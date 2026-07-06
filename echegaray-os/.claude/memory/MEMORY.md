@@ -13,6 +13,7 @@
 - [PRP-004 Costos Reales de Obra](project/prp-004-costos-reales-obra.md) — `costos_reales` (comprometido/pendiente/pagado), vínculo opcional a `movimientos_caja` validado por trigger, verificación puntual de CONTROL DE GASTOS.xlsx
 - [PRP-005 Control Económico Básico de Obra](project/prp-005-control-economico-basico-obra.md) — vista `obra_resumen_economico` (presupuesto aprobado vs costo real), `security_invoker` obligatorio, umbrales sano/atención/crítico abiertos
 - [PRP-006 Gestión Integral de Adicionales](project/prp-006-gestion-integral-adicionales.md) — `adicionales` con fecha/monto por etapa (no enum lineal, permite detectar secuencias fuera de orden), alertas en TypeScript puro
+- [PRP-007 Ejecución Financiera de la Obra](project/prp-007-ejecucion-financiera-obra.md) — `certificados` (contrato base, no se mezcla con adicionales) + vista `obra_ejecucion_financiera` (contratado/certificado/facturado/cobrado)
 
 ## feedback/ — Correcciones y preferencias
 - [Construir capacidades, no pantallas aisladas](feedback/construir-capacidades-no-pantallas-aisladas.md) — cada incremento debe resolver una decisión real y ser base reutilizable; justificar toda entidad nueva o evitarla

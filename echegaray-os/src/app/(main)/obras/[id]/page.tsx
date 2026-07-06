@@ -19,6 +19,13 @@ import { ResumenEconomicoObra } from '@/features/control-economico/components/Re
 import { getAdicionalesPorObra } from '@/features/adicionales/services/adicionalesService'
 import { AdicionalForm } from '@/features/adicionales/components/AdicionalForm'
 import { AdicionalesList } from '@/features/adicionales/components/AdicionalesList'
+import {
+  getCertificadosPorObra,
+  getEjecucionFinancieraPorObra,
+} from '@/features/ejecucion-financiera/services/ejecucionFinancieraService'
+import { CertificadoForm } from '@/features/ejecucion-financiera/components/CertificadoForm'
+import { CertificadosList } from '@/features/ejecucion-financiera/components/CertificadosList'
+import { ResumenEjecucionFinanciera } from '@/features/ejecucion-financiera/components/ResumenEjecucionFinanciera'
 
 async function loadObraDetalle(id: string) {
   try {
@@ -34,6 +41,8 @@ async function loadObraDetalle(id: string) {
       resumenEconomico,
       costosQueExplicanDesvio,
       adicionales,
+      certificados,
+      ejecucionFinanciera,
     ] = await Promise.all([
       getObraById(supabase, id),
       getClientes(supabase),
@@ -45,6 +54,8 @@ async function loadObraDetalle(id: string) {
       getResumenEconomicoPorObra(supabase, id),
       getCostosQueExplicanDesvio(supabase, id),
       getAdicionalesPorObra(supabase, id),
+      getCertificadosPorObra(supabase, id),
+      getEjecucionFinancieraPorObra(supabase, id),
     ])
 
     // Las partidas se muestran de la versión más reciente (mayor `version`), que es
@@ -66,6 +77,8 @@ async function loadObraDetalle(id: string) {
       resumenEconomico,
       costosQueExplicanDesvio,
       adicionales,
+      certificados,
+      ejecucionFinanciera,
     }
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Error desconocido al conectar con Supabase'
@@ -82,6 +95,8 @@ async function loadObraDetalle(id: string) {
       resumenEconomico: failed,
       costosQueExplicanDesvio: failed,
       adicionales: failed,
+      certificados: failed,
+      ejecucionFinanciera: failed,
     }
   }
 }
@@ -100,6 +115,8 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
     resumenEconomico,
     costosQueExplicanDesvio,
     adicionales,
+    certificados,
+    ejecucionFinanciera,
   } = await loadObraDetalle(id)
 
   const pageError =
@@ -112,7 +129,9 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
     costosReales.error ??
     resumenEconomico.error ??
     costosQueExplicanDesvio.error ??
-    adicionales.error
+    adicionales.error ??
+    certificados.error ??
+    ejecucionFinanciera.error
   const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
 
   if (!pageError && !obra.data) {
@@ -171,6 +190,28 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
               </div>
             </dl>
           </div>
+
+          <section data-testid="ejecucion-financiera-obra-section">
+            <h2 className="text-xl font-semibold">Ejecución financiera</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Contrato → Certificados → Facturación → Cobranza → Caja. No incluye adicionales (tienen su propio ciclo).
+            </p>
+            {ejecucionFinanciera.data && (
+              <div className="mt-3">
+                <ResumenEjecucionFinanciera resumen={ejecucionFinanciera.data} />
+              </div>
+            )}
+
+            <div className="mt-4">
+              <h3 className="text-lg font-semibold">Certificados</h3>
+              <CertificadoForm obraId={id} />
+              <CertificadosList
+                certificados={certificados.data ?? []}
+                obraId={id}
+                movimientosDeCobro={movimientosDeCobro}
+              />
+            </div>
+          </section>
 
           <section data-testid="control-economico-obra-section">
             <h2 className="text-xl font-semibold">Control económico</h2>
