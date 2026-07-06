@@ -16,22 +16,36 @@ import {
   getCostosQueExplicanDesvio,
 } from '@/features/control-economico/services/controlEconomicoService'
 import { ResumenEconomicoObra } from '@/features/control-economico/components/ResumenEconomicoObra'
+import { getAdicionalesPorObra } from '@/features/adicionales/services/adicionalesService'
+import { AdicionalForm } from '@/features/adicionales/components/AdicionalForm'
+import { AdicionalesList } from '@/features/adicionales/components/AdicionalesList'
 
 async function loadObraDetalle(id: string) {
   try {
     const supabase = await createClient()
-    const [obra, clientes, cuentas, proveedores, movimientos, presupuestos, costosReales, resumenEconomico, costosQueExplicanDesvio] =
-      await Promise.all([
-        getObraById(supabase, id),
-        getClientes(supabase),
-        getCuentasFinancieras(supabase),
-        getProveedores(supabase),
-        getMovimientosCajaPorObra(supabase, id),
-        getPresupuestosPorObra(supabase, id),
-        getCostosRealesPorObra(supabase, id),
-        getResumenEconomicoPorObra(supabase, id),
-        getCostosQueExplicanDesvio(supabase, id),
-      ])
+    const [
+      obra,
+      clientes,
+      cuentas,
+      proveedores,
+      movimientos,
+      presupuestos,
+      costosReales,
+      resumenEconomico,
+      costosQueExplicanDesvio,
+      adicionales,
+    ] = await Promise.all([
+      getObraById(supabase, id),
+      getClientes(supabase),
+      getCuentasFinancieras(supabase),
+      getProveedores(supabase),
+      getMovimientosCajaPorObra(supabase, id),
+      getPresupuestosPorObra(supabase, id),
+      getCostosRealesPorObra(supabase, id),
+      getResumenEconomicoPorObra(supabase, id),
+      getCostosQueExplicanDesvio(supabase, id),
+      getAdicionalesPorObra(supabase, id),
+    ])
 
     // Las partidas se muestran de la versión más reciente (mayor `version`), que es
     // además a la que se agregan partidas nuevas — simplificación deliberada (PRP-003).
@@ -51,6 +65,7 @@ async function loadObraDetalle(id: string) {
       costosReales,
       resumenEconomico,
       costosQueExplicanDesvio,
+      adicionales,
     }
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Error desconocido al conectar con Supabase'
@@ -66,6 +81,7 @@ async function loadObraDetalle(id: string) {
       costosReales: failed,
       resumenEconomico: failed,
       costosQueExplicanDesvio: failed,
+      adicionales: failed,
     }
   }
 }
@@ -83,6 +99,7 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
     costosReales,
     resumenEconomico,
     costosQueExplicanDesvio,
+    adicionales,
   } = await loadObraDetalle(id)
 
   const pageError =
@@ -94,7 +111,8 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
     presupuestos.error ??
     costosReales.error ??
     resumenEconomico.error ??
-    costosQueExplicanDesvio.error
+    costosQueExplicanDesvio.error ??
+    adicionales.error
   const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
 
   if (!pageError && !obra.data) {
@@ -106,6 +124,7 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
   const proveedorNombre = (id: string | null) => proveedores.data?.find((p) => p.id === id)?.nombre ?? '—'
   const presupuestoMasReciente = presupuestos.data?.[0] ?? null
   const movimientosDePago = (movimientos.data ?? []).filter((m) => m.tipo === 'pago')
+  const movimientosDeCobro = (movimientos.data ?? []).filter((m) => m.tipo === 'cobro')
   const movimientoConcepto = (id: string | null) =>
     movimientos.data?.find((m) => m.id === id)?.concepto ?? '—'
 
@@ -166,6 +185,22 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
                 />
               </div>
             )}
+          </section>
+
+          <section data-testid="adicionales-obra-section">
+            <h2 className="text-xl font-semibold">Adicionales</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Trazabilidad completa: detección → cotización → aprobación → ejecución → facturación → cobranza.
+              Nunca se asume una etapa como cumplida sin registrarla.
+            </p>
+
+            <AdicionalForm obraId={id} />
+
+            <AdicionalesList
+              adicionales={adicionales.data ?? []}
+              obraId={id}
+              movimientosDeCobro={movimientosDeCobro}
+            />
           </section>
 
           <section data-testid="presupuesto-obra-section">
