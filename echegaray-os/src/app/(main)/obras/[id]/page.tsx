@@ -9,17 +9,20 @@ import {
 } from '@/features/presupuestos/services/presupuestosService'
 import { PresupuestoForm } from '@/features/presupuestos/components/PresupuestoForm'
 import { PartidaPresupuestoForm } from '@/features/presupuestos/components/PartidaPresupuestoForm'
+import { getCostosRealesPorObra } from '@/features/costos-reales/services/costosRealesService'
+import { CostoRealForm } from '@/features/costos-reales/components/CostoRealForm'
 
 async function loadObraDetalle(id: string) {
   try {
     const supabase = await createClient()
-    const [obra, clientes, cuentas, proveedores, movimientos, presupuestos] = await Promise.all([
+    const [obra, clientes, cuentas, proveedores, movimientos, presupuestos, costosReales] = await Promise.all([
       getObraById(supabase, id),
       getClientes(supabase),
       getCuentasFinancieras(supabase),
       getProveedores(supabase),
       getMovimientosCajaPorObra(supabase, id),
       getPresupuestosPorObra(supabase, id),
+      getCostosRealesPorObra(supabase, id),
     ])
 
     // Las partidas se muestran de la versión más reciente (mayor `version`), que es
@@ -29,7 +32,7 @@ async function loadObraDetalle(id: string) {
       ? await getPartidasPorPresupuesto(supabase, presupuestoMasReciente.id)
       : { data: [], error: null }
 
-    return { obra, clientes, cuentas, proveedores, movimientos, presupuestos, partidas }
+    return { obra, clientes, cuentas, proveedores, movimientos, presupuestos, partidas, costosReales }
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Error desconocido al conectar con Supabase'
     const failed = { data: null, error } as const
@@ -41,17 +44,24 @@ async function loadObraDetalle(id: string) {
       movimientos: failed,
       presupuestos: failed,
       partidas: failed,
+      costosReales: failed,
     }
   }
 }
 
 export default async function ObraDetallePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { obra, clientes, cuentas, proveedores, movimientos, presupuestos, partidas } =
+  const { obra, clientes, cuentas, proveedores, movimientos, presupuestos, partidas, costosReales } =
     await loadObraDetalle(id)
 
   const pageError =
-    obra.error ?? clientes.error ?? cuentas.error ?? proveedores.error ?? movimientos.error ?? presupuestos.error
+    obra.error ??
+    clientes.error ??
+    cuentas.error ??
+    proveedores.error ??
+    movimientos.error ??
+    presupuestos.error ??
+    costosReales.error
   const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
 
   if (!pageError && !obra.data) {
@@ -62,6 +72,9 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
   const cuentaNombre = (id: string | null) => cuentas.data?.find((c) => c.id === id)?.nombre ?? '—'
   const proveedorNombre = (id: string | null) => proveedores.data?.find((p) => p.id === id)?.nombre ?? '—'
   const presupuestoMasReciente = presupuestos.data?.[0] ?? null
+  const movimientosDePago = (movimientos.data ?? []).filter((m) => m.tipo === 'pago')
+  const movimientoConcepto = (id: string | null) =>
+    movimientos.data?.find((m) => m.id === id)?.concepto ?? '—'
 
   return (
     <div className="min-h-screen space-y-8 p-8">
@@ -167,6 +180,53 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
                 </ul>
               </div>
             )}
+          </section>
+
+          <section data-testid="costos-reales-obra-section">
+            <h2 className="text-xl font-semibold">Costos reales</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Costo real devengado o comprometido — no reemplaza a CONTROL DE GASTOS.xlsx.
+            </p>
+
+            <CostoRealForm
+              obraId={id}
+              proveedores={proveedores.data ?? []}
+              movimientosDePago={movimientosDePago}
+            />
+
+            <table className="mt-3 w-full text-left text-sm">
+              <thead>
+                <tr>
+                  <th className="pr-4">Fecha</th>
+                  <th className="pr-4">Concepto</th>
+                  <th className="pr-4">Proveedor</th>
+                  <th className="pr-4">Monto</th>
+                  <th className="pr-4">Estado</th>
+                  <th className="pr-4">Movimiento de caja vinculado</th>
+                  <th className="pr-4">Fuente</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(costosReales.data ?? []).map((c) => (
+                  <tr key={c.id}>
+                    <td className="pr-4">{c.fecha}</td>
+                    <td className="pr-4">{c.concepto}</td>
+                    <td className="pr-4">{proveedorNombre(c.proveedor_id)}</td>
+                    <td className="pr-4">${c.monto}</td>
+                    <td className="pr-4">{c.estado}</td>
+                    <td className="pr-4">{movimientoConcepto(c.movimiento_caja_id)}</td>
+                    <td className="pr-4">{c.fuente_legacy}</td>
+                  </tr>
+                ))}
+                {(costosReales.data ?? []).length === 0 && !pageError && (
+                  <tr>
+                    <td colSpan={7} className="pt-2 text-gray-500">
+                      Sin costos reales registrados todavía.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </section>
 
           <section data-testid="movimientos-obra-section">
