@@ -10,6 +10,10 @@ metadata:
 
 Reglas confirmadas para el módulo de Flujo de Caja de Echegaray Business OS (Fase 1 del Blueprint TO-BE). Este skill encapsula qué debe cumplirse — no diseña tablas ni código, eso es el PRP de Fase 1.
 
+## Modelo ya implementado (Fase 1, 2026-07-06)
+
+Existe la tabla `movimientos_caja` (una sola tabla para Cobro y Pago, con `tipo` discriminador — no `cobros`/`pagos` separados). Antes de proponer una tabla nueva para Cheques (Fase 2) u Obligaciones recurrentes (Fase 3), leer `supabase/migrations/20260706190257_flujo_caja_movimientos.sql` y evaluar primero si extiende esta misma tabla (nuevo valor de `tipo`, o una tabla relacionada que la referencia) antes de duplicar su estructura. Columnas: `tipo` (cobro/pago), `estado` (proyectado/real), `monto`, `cuenta_financiera_id`, `fecha_esperada`, `fecha_real`, `cliente_id`/`proveedor_id`/`obra_id` (nullable, con CHECK de contraparte según `tipo`), `concepto`, `origen` (manual/flujo_caja_sheet/control_gastos), `referencia_externa`, `notas`.
+
 ## Principio central
 
 **Cash Flow = criterio percibido. P&L = criterio devengado. Nunca mezclar ambos.** Esta es la regla de oro del `CLAUDE.md` raíz; este skill la aplica, no la repite en detalle. Todo cálculo de este módulo responde "¿cuándo entra y sale efectivamente el dinero?", nunca "¿cuándo se generó el derecho económico?".

@@ -104,7 +104,42 @@ alter table cuentas_financieras enable row level security;
 alter table proveedores enable row level security;
 ```
 
-Entidades de Flujo de Caja (Cobro, Pago, Cheque, obligaciones recurrentes, posición) se modelan en incrementos posteriores de este mismo PRP, no en el Incremento 1.
+### Modelo de datos — Caja Operativa (Fase 1, implementado 2026-07-06)
+
+Decisión de arquitectura: **una sola tabla `movimientos_caja`** (no `cobros`/`pagos` separados). Cobro y Pago comparten casi toda la estructura (fecha esperada/real, monto, cuenta, estado, concepto, origen, notas); lo único que diverge es la contraparte, resuelto con dos FK nullable + un CHECK que exige la combinación correcta según `tipo`. Esto minimiza duplicación, hace que la futura posición de caja (Fase 4) sea un `GROUP BY` sobre una tabla en vez de un `UNION` de dos, y calza con cómo ya funciona el ledger real (tab "Compras" del Cash Flow actual: un registro plano, no dos hojas separadas).
+
+```sql
+create table movimientos_caja (
+  id uuid primary key default gen_random_uuid(),
+  tipo text not null check (tipo in ('cobro', 'pago')),
+  estado text not null check (estado in ('proyectado', 'real')),
+  monto numeric(14,2) not null check (monto > 0),
+  cuenta_financiera_id uuid not null references cuentas_financieras(id) on delete restrict,
+  fecha_esperada date not null,
+  fecha_real date,
+  cliente_id uuid references clientes(id) on delete restrict,
+  proveedor_id uuid references proveedores(id) on delete restrict,
+  obra_id uuid references obras(id) on delete restrict,
+  concepto text not null,
+  origen text not null default 'manual' check (origen in ('manual', 'flujo_caja_sheet', 'control_gastos')),
+  referencia_externa text,
+  notas text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint movimientos_caja_contraparte_check check (
+    (tipo = 'cobro' and cliente_id is not null and obra_id is not null and proveedor_id is null)
+    or
+    (tipo = 'pago' and proveedor_id is not null and cliente_id is null)
+  ),
+  constraint movimientos_caja_fecha_real_check check (
+    (estado = 'real' and fecha_real is not null) or (estado = 'proyectado')
+  )
+);
+```
+
+Fuera de alcance deliberado de esta fase (YAGNI, no pedido explícitamente): Factura/Certificado como entidades propias (los pagos/cobros parciales se agrupan con `referencia_externa` en texto libre por ahora), cálculo de posición/saldo (Fase 4), cheques/echeqs (Fase 2), `creado_por`/`actualizado_por` (no hay usuarios reales todavía).
+
+Entidades de Cheque, obligaciones recurrentes y posición se modelan en incrementos posteriores de este mismo PRP.
 
 ---
 
@@ -116,9 +151,9 @@ Entidades de Flujo de Caja (Cobro, Pago, Cheque, obligaciones recurrentes, posic
 **Objetivo**: Cliente, Obra, Cuenta financiera y Proveedor existen con ID único, tipados de punta a punta (DB → tipos → servicios → UI mínima de alta/listado).
 **Validación**: migración aplicada contra Supabase real (Project Ref `jdqbpchkjrxktcxndnho`) vía MCP oficial, no solo Postgres local; tablas/FKs/CHECKs/trigger verificados con datos de prueba; RLS verificado con `get_advisors` + acceso real autenticado/no autenticado (ver memoria del proyecto para el detalle); `tsc`/`build`/`lint`/Playwright en verde contra el proyecto real.
 
-### Fase 1 — Movimientos base de caja (Cobro / Pago)
+### Fase 1 — Movimientos base de caja (Cobro / Pago) ✅ CERRADA (2026-07-06)
 **Objetivo**: registrar cobros y pagos, reales o proyectados, ligados a Cliente/Obra/Proveedor/Cuenta financiera.
-**Validación**: un cobro y un pago de prueba quedan registrados y visibles, con el flag real/proyectado correcto.
+**Validación**: migración `movimientos_caja` aplicada contra Supabase real vía MCP; constraints de contraparte (`tipo`) y de fecha real probados (aceptan combinaciones válidas, rechazan inválidas); GRANT a `authenticated` incluido desde el inicio (no repitió el bug de Fundación); acceso autenticado/no autenticado verificado; UI en `/caja` con formulario que cambia campos según `tipo`; `tsc`/`build`/`lint`/Playwright en verde.
 
 ### Fase 2 — Cheques y echeqs
 **Objetivo**: representar cheques/echeqs emitidos y recibidos como compromisos de pago/cobro diferido.
@@ -175,6 +210,10 @@ Entidades de Flujo de Caja (Cobro, Pago, Cheque, obligaciones recurrentes, posic
 - **Fix**: `page.tsx` distingue ahora si el mensaje de error contiene `permission denied` (RLS haciendo su trabajo) de otros errores (configuración real), con un aviso distinto para cada caso.
 - **Aplicar en**: cualquier pantalla futura que consuma Supabase antes de que exista login real — no asumir que todo error es de configuración.
 
+### 2026-07-06: modelar Cobro/Pago como una sola tabla (`movimientos_caja`) evitó la duplicación esperada
+- **Decisión**: en vez de `cobros` y `pagos` separados, una tabla con `tipo` discriminador y contraparte resuelta con FKs nullable + CHECK. Confirmado con datos de prueba reales: constraints de contraparte y de fecha rechazan combinaciones inválidas correctamente, GRANT incluido desde el inicio (no repitió el bug de Fundación).
+- **Aplicar en**: Fase 2 (cheques/echeqs) y Fase 3 (obligaciones recurrentes) — evaluar si extienden esta misma tabla (nuevos valores de `tipo`, o una tabla relacionada que referencia `movimientos_caja`) antes de proponer tablas nuevas independientes.
+
 ---
 
 ## Gotchas
@@ -190,4 +229,4 @@ Entidades de Flujo de Caja (Cobro, Pago, Cheque, obligaciones recurrentes, posic
 
 ---
 
-*Fase 0 (Fundación), Incremento 1: CERRADO y validado contra Supabase real. Próximo: Incremento 2 (Fase 1 — Cobro/Pago), pendiente de aprobación.*
+*Fase 0 (Fundación) y Fase 1 (Movimientos de Caja — Capacidad "Caja Operativa"): CERRADAS y validadas contra Supabase real. Próximo: Fase 2 (Cheques y echeqs), pendiente de aprobación.*
