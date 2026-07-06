@@ -2,7 +2,8 @@
 
 import { useActionState, useState } from 'react'
 import { createMovimientoCajaAction, type ActionState } from '../services/actions'
-import type { Cliente, Obra, Proveedor, CuentaFinanciera } from '@/features/fundacion/types'
+import type { Cliente, Proveedor, CuentaFinanciera } from '@/features/fundacion/types'
+import type { Obra } from '@/features/obras/types'
 
 const initialState: ActionState = { error: null }
 

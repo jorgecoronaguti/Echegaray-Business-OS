@@ -1,12 +1,11 @@
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import {
   getClientes,
-  getObras,
   getCuentasFinancieras,
   getProveedores,
 } from '@/features/fundacion/services/fundacionService'
 import { ClienteForm } from '@/features/fundacion/components/ClienteForm'
-import { ObraForm } from '@/features/fundacion/components/ObraForm'
 import { CuentaFinancieraForm } from '@/features/fundacion/components/CuentaFinancieraForm'
 import { ProveedorForm } from '@/features/fundacion/components/ProveedorForm'
 
@@ -15,24 +14,23 @@ type Loaded<T> = { data: T; error: null } | { data: null; error: string }
 async function loadFundacionData() {
   try {
     const supabase = await createClient()
-    const [clientes, obras, cuentas, proveedores] = await Promise.all([
+    const [clientes, cuentas, proveedores] = await Promise.all([
       getClientes(supabase),
-      getObras(supabase),
       getCuentasFinancieras(supabase),
       getProveedores(supabase),
     ])
-    return { clientes, obras, cuentas, proveedores }
+    return { clientes, cuentas, proveedores }
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Error desconocido al conectar con Supabase'
     const failed: Loaded<never> = { data: null, error }
-    return { clientes: failed, obras: failed, cuentas: failed, proveedores: failed }
+    return { clientes: failed, cuentas: failed, proveedores: failed }
   }
 }
 
 export default async function FundacionPage() {
-  const { clientes, obras, cuentas, proveedores } = await loadFundacionData()
+  const { clientes, cuentas, proveedores } = await loadFundacionData()
 
-  const configError = clientes.error ?? obras.error ?? cuentas.error ?? proveedores.error
+  const configError = clientes.error ?? cuentas.error ?? proveedores.error
   const isAuthError = configError?.toLowerCase().includes('permission denied') ?? false
 
   return (
@@ -40,8 +38,8 @@ export default async function FundacionPage() {
       <div>
         <h1 className="text-3xl font-bold">Fundación</h1>
         <p className="mt-2 text-gray-600">
-          Identidad única de Cliente, Obra, Cuenta financiera y Proveedor — base del módulo de Flujo
-          de Caja (PRP-001, Fase 0).
+          Datos de referencia: Cliente, Cuenta financiera y Proveedor (PRP-001, Fase 0). La Obra —
+          unidad económica central — se gestiona en <Link href="/obras" className="underline">/obras</Link>.
         </p>
       </div>
 
@@ -74,18 +72,6 @@ export default async function FundacionPage() {
         <ul className="mt-3 list-inside list-disc">
           {(clientes.data ?? []).map((c) => (
             <li key={c.id}>{c.nombre}</li>
-          ))}
-        </ul>
-      </section>
-
-      <section data-testid="obras-section">
-        <h2 className="text-xl font-semibold">Obras</h2>
-        <ObraForm clientes={clientes.data ?? []} />
-        <ul className="mt-3 list-inside list-disc">
-          {(obras.data ?? []).map((o) => (
-            <li key={o.id}>
-              {o.nombre} — {o.estado}
-            </li>
           ))}
         </ul>
       </section>

@@ -2,13 +2,8 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import {
-  clienteInputSchema,
-  obraInputSchema,
-  cuentaFinancieraInputSchema,
-  proveedorInputSchema,
-} from '../types'
-import { insertCliente, insertObra, insertCuentaFinanciera, insertProveedor } from './fundacionService'
+import { clienteInputSchema, cuentaFinancieraInputSchema, proveedorInputSchema } from '../types'
+import { insertCliente, insertCuentaFinanciera, insertProveedor } from './fundacionService'
 
 export type ActionState = { error: string | null }
 
@@ -36,23 +31,6 @@ export async function createClienteAction(
   if (!client.supabase) return { error: client.error }
 
   const { error } = await insertCliente(client.supabase, parsed.data)
-  if (error) return { error }
-
-  revalidatePath(FUNDACION_PATH)
-  return { error: null }
-}
-
-export async function createObraAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const parsed = obraInputSchema.safeParse({
-    cliente_id: formData.get('cliente_id'),
-    nombre: formData.get('nombre'),
-  })
-  if (!parsed.success) return { error: parsed.error.issues[0].message }
-
-  const client = await createClientOrError()
-  if (!client.supabase) return { error: client.error }
-
-  const { error } = await insertObra(client.supabase, parsed.data)
   if (error) return { error }
 
   revalidatePath(FUNDACION_PATH)

@@ -2,8 +2,6 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   Cliente,
   ClienteInput,
-  Obra,
-  ObraInput,
   CuentaFinanciera,
   CuentaFinancieraInput,
   Proveedor,
@@ -35,26 +33,6 @@ export async function insertCliente(
     const { data, error } = await supabase.from('clientes').insert(input).select().single()
     if (error) return { data: null, error: error.message }
     return { data: data as Cliente, error: null }
-  } catch (err) {
-    return { data: null, error: toServiceError(err) }
-  }
-}
-
-export async function getObras(supabase: SupabaseClient): Promise<ServiceResult<Obra[]>> {
-  try {
-    const { data, error } = await supabase.from('obras').select('*').order('nombre')
-    if (error) return { data: null, error: error.message }
-    return { data: data as Obra[], error: null }
-  } catch (err) {
-    return { data: null, error: toServiceError(err) }
-  }
-}
-
-export async function insertObra(supabase: SupabaseClient, input: ObraInput): Promise<ServiceResult<Obra>> {
-  try {
-    const { data, error } = await supabase.from('obras').insert(input).select().single()
-    if (error) return { data: null, error: error.message }
-    return { data: data as Obra, error: null }
   } catch (err) {
     return { data: null, error: toServiceError(err) }
   }

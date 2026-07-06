@@ -23,6 +23,23 @@ export async function getMovimientosCaja(
   }
 }
 
+export async function getMovimientosCajaPorObra(
+  supabase: SupabaseClient,
+  obraId: string
+): Promise<ServiceResult<MovimientoCaja[]>> {
+  try {
+    const { data, error } = await supabase
+      .from('movimientos_caja')
+      .select('*')
+      .eq('obra_id', obraId)
+      .order('fecha_esperada', { ascending: false })
+    if (error) return { data: null, error: error.message }
+    return { data: data as MovimientoCaja[], error: null }
+  } catch (err) {
+    return { data: null, error: toServiceError(err) }
+  }
+}
+
 export async function insertMovimientoCaja(
   supabase: SupabaseClient,
   input: MovimientoCajaInput

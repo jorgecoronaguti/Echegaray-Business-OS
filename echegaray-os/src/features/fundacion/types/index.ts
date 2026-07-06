@@ -10,15 +10,6 @@ export interface Cliente {
   updated_at: string
 }
 
-export interface Obra {
-  id: string
-  cliente_id: string
-  nombre: string
-  estado: 'activa' | 'pausada' | 'cerrada'
-  created_at: string
-  updated_at: string
-}
-
 export interface CuentaFinanciera {
   id: string
   nombre: string
@@ -41,13 +32,6 @@ export const clienteInputSchema = z.object({
   nombre: z.string().trim().min(1, 'El nombre es obligatorio'),
 })
 export type ClienteInput = z.infer<typeof clienteInputSchema>
-
-export const obraInputSchema = z.object({
-  cliente_id: z.string().uuid('Elegí un cliente'),
-  nombre: z.string().trim().min(1, 'El nombre es obligatorio'),
-  estado: z.enum(['activa', 'pausada', 'cerrada']).default('activa'),
-})
-export type ObraInput = z.infer<typeof obraInputSchema>
 
 export const cuentaFinancieraInputSchema = z.object({
   nombre: z.string().trim().min(1, 'El nombre es obligatorio'),

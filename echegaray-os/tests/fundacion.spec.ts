@@ -1,17 +1,18 @@
 import { test, expect } from '@playwright/test'
 
-// PRP-001 / Fase 0 — Fundación (Cliente, Obra, Cuenta financiera, Proveedor)
+// PRP-001 / Fase 0 — Fundación (Cliente, Cuenta financiera, Proveedor).
+// Obra se mudó a su propio feature (PRP-002, ver tests/obras.spec.ts) — es la unidad
+// económica central, ya no un dato de referencia simple como estos tres.
 // Conectado a un proyecto Supabase real (migraciones aplicadas, RLS verificado vía MCP).
 // Todavía no existe login real (feature separada), así que el request del servidor no
 // tiene sesión autenticada: RLS bloquea correctamente con "permission denied" — eso es
 // el comportamiento esperado y correcto, no un error de configuración.
 
-test('la página de Fundación renderiza las 4 secciones', async ({ page }) => {
+test('la página de Fundación renderiza las 3 secciones', async ({ page }) => {
   await page.goto('/fundacion')
 
   await expect(page.getByRole('heading', { name: 'Fundación' })).toBeVisible()
   await expect(page.getByTestId('clientes-section')).toBeVisible()
-  await expect(page.getByTestId('obras-section')).toBeVisible()
   await expect(page.getByTestId('cuentas-section')).toBeVisible()
   await expect(page.getByTestId('proveedores-section')).toBeVisible()
 })
@@ -33,13 +34,6 @@ test('el formulario de Cliente exige un nombre antes de enviar', async ({ page }
 
   const clienteInput = page.getByTestId('clientes-section').getByPlaceholder('Nombre del cliente')
   await expect(clienteInput).toHaveAttribute('required', '')
-})
-
-test('el formulario de Obra no permite elegir un cliente si no hay ninguno cargado', async ({ page }) => {
-  await page.goto('/fundacion')
-
-  const obraSubmit = page.getByTestId('obras-section').getByRole('button', { name: 'Agregar' })
-  await expect(obraSubmit).toBeDisabled()
 })
 
 test('enviar el formulario de Proveedor sin sesión autenticada muestra el error de RLS, no un crash', async ({

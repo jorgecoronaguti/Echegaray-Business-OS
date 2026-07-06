@@ -1,10 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import {
   getClientes,
-  getObras,
   getCuentasFinancieras,
   getProveedores,
 } from '@/features/fundacion/services/fundacionService'
+import { getObras } from '@/features/obras/services/obrasService'
 import { getMovimientosCaja } from '@/features/flujo-caja/services/movimientosCajaService'
 import { MovimientoCajaForm } from '@/features/flujo-caja/components/MovimientoCajaForm'
 

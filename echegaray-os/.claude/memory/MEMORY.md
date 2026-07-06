@@ -8,9 +8,10 @@
 
 ## project/ — Proyectos y decisiones activas
 - [PRP-001 Fundación + Flujo de Caja](project/prp-001-fundacion-flujo-caja.md) — estado, decisiones de RLS, bloqueante de Supabase live, próximo incremento
+- [PRP-002 Obra como Unidad Económica](project/prp-002-obra-unidad-economica.md) — extensión de `obras` (no tabla nueva), refactor a `features/obras/`, entidades descartadas y por qué
 
 ## feedback/ — Correcciones y preferencias
-(vacio)
+- [Construir capacidades, no pantallas aisladas](feedback/construir-capacidades-no-pantallas-aisladas.md) — cada incremento debe resolver una decisión real y ser base reutilizable; justificar toda entidad nueva o evitarla
 
 ## reference/ — Donde encontrar cosas
 - [Validar SQL sin Supabase live](reference/validar-sql-sin-supabase-live.md) — procedimiento con Postgres local (Homebrew) cuando no hay Docker ni proyecto real conectado
