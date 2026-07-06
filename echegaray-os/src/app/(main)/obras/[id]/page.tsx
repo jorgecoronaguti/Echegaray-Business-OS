@@ -3,30 +3,55 @@ import { createClient } from '@/lib/supabase/server'
 import { getClientes, getCuentasFinancieras, getProveedores } from '@/features/fundacion/services/fundacionService'
 import { getObraById } from '@/features/obras/services/obrasService'
 import { getMovimientosCajaPorObra } from '@/features/flujo-caja/services/movimientosCajaService'
+import {
+  getPresupuestosPorObra,
+  getPartidasPorPresupuesto,
+} from '@/features/presupuestos/services/presupuestosService'
+import { PresupuestoForm } from '@/features/presupuestos/components/PresupuestoForm'
+import { PartidaPresupuestoForm } from '@/features/presupuestos/components/PartidaPresupuestoForm'
 
 async function loadObraDetalle(id: string) {
   try {
     const supabase = await createClient()
-    const [obra, clientes, cuentas, proveedores, movimientos] = await Promise.all([
+    const [obra, clientes, cuentas, proveedores, movimientos, presupuestos] = await Promise.all([
       getObraById(supabase, id),
       getClientes(supabase),
       getCuentasFinancieras(supabase),
       getProveedores(supabase),
       getMovimientosCajaPorObra(supabase, id),
+      getPresupuestosPorObra(supabase, id),
     ])
-    return { obra, clientes, cuentas, proveedores, movimientos }
+
+    // Las partidas se muestran de la versión más reciente (mayor `version`), que es
+    // además a la que se agregan partidas nuevas — simplificación deliberada (PRP-003).
+    const presupuestoMasReciente = presupuestos.data?.[0] ?? null
+    const partidas = presupuestoMasReciente
+      ? await getPartidasPorPresupuesto(supabase, presupuestoMasReciente.id)
+      : { data: [], error: null }
+
+    return { obra, clientes, cuentas, proveedores, movimientos, presupuestos, partidas }
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Error desconocido al conectar con Supabase'
     const failed = { data: null, error } as const
-    return { obra: failed, clientes: failed, cuentas: failed, proveedores: failed, movimientos: failed }
+    return {
+      obra: failed,
+      clientes: failed,
+      cuentas: failed,
+      proveedores: failed,
+      movimientos: failed,
+      presupuestos: failed,
+      partidas: failed,
+    }
   }
 }
 
 export default async function ObraDetallePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { obra, clientes, cuentas, proveedores, movimientos } = await loadObraDetalle(id)
+  const { obra, clientes, cuentas, proveedores, movimientos, presupuestos, partidas } =
+    await loadObraDetalle(id)
 
-  const pageError = obra.error ?? clientes.error ?? cuentas.error ?? proveedores.error ?? movimientos.error
+  const pageError =
+    obra.error ?? clientes.error ?? cuentas.error ?? proveedores.error ?? movimientos.error ?? presupuestos.error
   const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
 
   if (!pageError && !obra.data) {
@@ -36,6 +61,7 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
   const clienteNombre = clientes.data?.find((c) => c.id === obra.data?.cliente_id)?.nombre ?? '—'
   const cuentaNombre = (id: string | null) => cuentas.data?.find((c) => c.id === id)?.nombre ?? '—'
   const proveedorNombre = (id: string | null) => proveedores.data?.find((p) => p.id === id)?.nombre ?? '—'
+  const presupuestoMasReciente = presupuestos.data?.[0] ?? null
 
   return (
     <div className="min-h-screen space-y-8 p-8">
@@ -80,6 +106,68 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
               </div>
             </dl>
           </div>
+
+          <section data-testid="presupuesto-obra-section">
+            <h2 className="text-xl font-semibold">Presupuesto</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Registro del presupuesto base — no reemplaza a Planilla para Cotizar.xlsm.
+            </p>
+
+            <PresupuestoForm obraId={id} />
+
+            <table className="mt-3 w-full text-left text-sm">
+              <thead>
+                <tr>
+                  <th className="pr-4">Versión</th>
+                  <th className="pr-4">Estado</th>
+                  <th className="pr-4">Monto presupuestado</th>
+                  <th className="pr-4">Costo directo</th>
+                  <th className="pr-4">Costo indirecto</th>
+                  <th className="pr-4">Margen esperado</th>
+                  <th className="pr-4">Fuente</th>
+                  <th className="pr-4">Fecha</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(presupuestos.data ?? []).map((p) => (
+                  <tr key={p.id}>
+                    <td className="pr-4">{p.version}</td>
+                    <td className="pr-4">{p.estado}</td>
+                    <td className="pr-4">${p.monto_presupuestado}</td>
+                    <td className="pr-4">${p.costo_directo_presupuestado}</td>
+                    <td className="pr-4">${p.costo_indirecto_presupuestado}</td>
+                    <td className="pr-4">${p.margen_esperado}</td>
+                    <td className="pr-4">{p.fuente_legacy}</td>
+                    <td className="pr-4">{p.fecha_presupuesto}</td>
+                  </tr>
+                ))}
+                {(presupuestos.data ?? []).length === 0 && !pageError && (
+                  <tr>
+                    <td colSpan={8} className="pt-2 text-gray-500">
+                      Sin presupuesto registrado todavía.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+            {presupuestoMasReciente && (
+              <div className="mt-4" data-testid="partidas-presupuesto-section">
+                <h3 className="text-lg font-semibold">
+                  Partidas — versión {presupuestoMasReciente.version}
+                </h3>
+                <PartidaPresupuestoForm presupuestoId={presupuestoMasReciente.id} obraId={id} />
+                <ul className="mt-3 list-inside list-disc text-sm">
+                  {(partidas.data ?? []).map((pp) => (
+                    <li key={pp.id}>
+                      {pp.codigo ? `${pp.codigo} — ` : ''}
+                      {pp.descripcion}: ${pp.monto}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
 
           <section data-testid="movimientos-obra-section">
             <h2 className="text-xl font-semibold">Movimientos de caja de esta obra</h2>
