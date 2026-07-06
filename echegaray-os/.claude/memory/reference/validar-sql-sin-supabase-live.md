@@ -23,5 +23,6 @@ Contexto: no hay proyecto Supabase conectado ni Docker instalado en la máquina 
 ## Qué NO valida (limitación real, no ocultar)
 - RLS con `auth.uid()` real — Postgres puro no tiene el esquema `auth` de Supabase, solo los roles vacíos.
 - Comportamiento de la API REST (PostgREST) que Supabase expone — eso requiere el proyecto real o el stack local completo con Docker.
+- **Confirmado en PRP-001**: los GRANTs de tabla que Supabase configura por defecto en un proyecto real (o que hay que crear a mano) no existen en este setup de Postgres local — una migración puede pasar este procedimiento perfectamente y aun así fallar con `permission denied` para `authenticated` en un proyecto real, porque falta el `GRANT` explícito. Este procedimiento valida DDL, no el modelo completo de acceso.
 
-Cuando exista un proyecto Supabase real, re-aplicar las migraciones ahí (`apply_migration` del MCP `supabase`, o `supabase db push`) y correr `get_advisors(type: "security")` para la validación real de RLS.
+Cuando exista un proyecto Supabase real, re-aplicar las migraciones ahí (`apply_migration` del MCP `supabase`, o `supabase db push`), correr `get_advisors(type: "security")`, y probar el acceso real (rol o JWT) antes de dar la tabla por cerrada — no confiar solo en este procedimiento local.

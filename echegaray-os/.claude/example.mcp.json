@@ -21,15 +21,8 @@
       ]
     },
     "supabase": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@supabase/mcp-server-supabase@latest",
-        "--project-ref=YOUR_SUPABASE_PROJECT_REF"
-      ],
-      "env": {
-        "SUPABASE_ACCESS_TOKEN": "YOUR_SUPABASE_ACCESS_TOKEN"
-      }
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=YOUR_SUPABASE_PROJECT_REF"
     },
     "brave-search": {
       "command": "npx",

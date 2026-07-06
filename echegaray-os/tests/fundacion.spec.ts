@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test'
 
 // PRP-001 / Fase 0 — Fundación (Cliente, Obra, Cuenta financiera, Proveedor)
-// Sin proyecto Supabase real conectado todavía (ver Aprendizajes del PRP), por lo que
-// estos tests verifican que la página renderiza y degrada con claridad, no un CRUD real
-// contra la base de datos.
+// Conectado a un proyecto Supabase real (migraciones aplicadas, RLS verificado vía MCP).
+// Todavía no existe login real (feature separada), así que el request del servidor no
+// tiene sesión autenticada: RLS bloquea correctamente con "permission denied" — eso es
+// el comportamiento esperado y correcto, no un error de configuración.
 
 test('la página de Fundación renderiza las 4 secciones', async ({ page }) => {
   await page.goto('/fundacion')
@@ -15,11 +16,16 @@ test('la página de Fundación renderiza las 4 secciones', async ({ page }) => {
   await expect(page.getByTestId('proveedores-section')).toBeVisible()
 })
 
-test('muestra el aviso de Supabase no configurado (sin credenciales reales todavía)', async ({ page }) => {
+test('sin sesión autenticada, RLS bloquea el acceso con un aviso claro (no "no configurado")', async ({
+  page,
+}) => {
   await page.goto('/fundacion')
 
-  await expect(page.getByTestId('config-error')).toBeVisible()
-  await expect(page.getByTestId('config-error')).toContainText('Supabase no está configurado')
+  const banner = page.getByTestId('config-error')
+  await expect(banner).toBeVisible()
+  await expect(banner).toContainText('No hay sesión autenticada')
+  await expect(banner).toContainText('permission denied')
+  await expect(page.locator('body')).not.toContainText('Application error')
 })
 
 test('el formulario de Cliente exige un nombre antes de enviar', async ({ page }) => {
@@ -36,7 +42,7 @@ test('el formulario de Obra no permite elegir un cliente si no hay ninguno carga
   await expect(obraSubmit).toBeDisabled()
 })
 
-test('enviar el formulario de Proveedor sin Supabase real muestra el error de conexión, no un crash', async ({
+test('enviar el formulario de Proveedor sin sesión autenticada muestra el error de RLS, no un crash', async ({
   page,
 }) => {
   await page.goto('/fundacion')

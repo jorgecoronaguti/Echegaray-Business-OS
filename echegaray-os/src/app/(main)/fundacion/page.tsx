@@ -33,6 +33,7 @@ export default async function FundacionPage() {
   const { clientes, obras, cuentas, proveedores } = await loadFundacionData()
 
   const configError = clientes.error ?? obras.error ?? cuentas.error ?? proveedores.error
+  const isAuthError = configError?.toLowerCase().includes('permission denied') ?? false
 
   return (
     <div className="min-h-screen space-y-10 p-8">
@@ -44,7 +45,18 @@ export default async function FundacionPage() {
         </p>
       </div>
 
-      {configError && (
+      {configError && isAuthError && (
+        <div className="rounded border border-amber-300 bg-amber-50 p-4 text-amber-900" data-testid="config-error">
+          <p className="font-semibold">No hay sesión autenticada — RLS está bloqueando el acceso correctamente.</p>
+          <p className="mt-1 text-sm">{configError}</p>
+          <p className="mt-1 text-sm">
+            Supabase está configurado y las tablas existen; esto es lo esperado hasta que exista un
+            login real (feature separada, todavía no construida).
+          </p>
+        </div>
+      )}
+
+      {configError && !isAuthError && (
         <div className="rounded border border-red-300 bg-red-50 p-4 text-red-800" data-testid="config-error">
           <p className="font-semibold">Supabase no está configurado o no responde.</p>
           <p className="mt-1 text-sm">{configError}</p>

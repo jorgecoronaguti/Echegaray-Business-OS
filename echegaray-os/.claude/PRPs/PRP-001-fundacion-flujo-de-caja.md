@@ -112,9 +112,9 @@ Entidades de Flujo de Caja (Cobro, Pago, Cheque, obligaciones recurrentes, posic
 
 > Solo fases. Las subtareas se generan al entrar a cada una (bucle agéntico).
 
-### Fase 0 — Fundación de datos
+### Fase 0 — Fundación de datos ✅ CERRADA (2026-07-06)
 **Objetivo**: Cliente, Obra, Cuenta financiera y Proveedor existen con ID único, tipados de punta a punta (DB → tipos → servicios → UI mínima de alta/listado).
-**Validación**: migración aplica sin error contra Postgres real; `tsc`/`build`/`lint` en verde; alta y listado de Obra/Cliente funciona en el navegador (Playwright).
+**Validación**: migración aplicada contra Supabase real (Project Ref `jdqbpchkjrxktcxndnho`) vía MCP oficial, no solo Postgres local; tablas/FKs/CHECKs/trigger verificados con datos de prueba; RLS verificado con `get_advisors` + acceso real autenticado/no autenticado (ver memoria del proyecto para el detalle); `tsc`/`build`/`lint`/Playwright en verde contra el proyecto real.
 
 ### Fase 1 — Movimientos base de caja (Cobro / Pago)
 **Objetivo**: registrar cobros y pagos, reales o proyectados, ligados a Cliente/Obra/Proveedor/Cuenta financiera.
@@ -165,12 +165,23 @@ Entidades de Flujo de Caja (Cobro, Pago, Cheque, obligaciones recurrentes, posic
 - **Fix**: se reescribió `.claude/skills/playwright-cli/SKILL.md` para reflejar el flujo real — escribir `tests/*.spec.ts` con `@playwright/test` y correr `npx playwright test`, con `playwright.config.ts` en la raíz del proyecto.
 - **Aplicar en**: cualquier PRP futuro que use el skill `playwright-cli` — ya no hace falta redescubrir esto.
 
+### 2026-07-06: RLS `USING (true)` sin GRANT de tabla sigue bloqueando todo (confirmado solo contra Supabase real)
+- **Error**: la migración de Fundación tenía policies RLS correctas (`for all to authenticated using (true) with check (true)`) pero **sin GRANT de tabla explícito** para `authenticated`. Resultado: `authenticated` tenía el mismo `permission denied` que `anon`. Esto no se detectó validando contra Postgres local (Incremento 1, primera pasada) porque ese entorno no reproduce el modelo de roles/grants de un proyecto Supabase real — solo apareció al probar contra el proyecto real vía MCP.
+- **Fix**: `GRANT SELECT, INSERT, UPDATE, DELETE ON <tabla> TO authenticated` explícito en cada tabla, migración separada (`20260706184852_fundacion_grant_authenticated.sql`). `anon` se deja deliberadamente sin GRANT.
+- **Aplicar en**: toda tabla nueva de este proyecto con RLS — el GRANT de tabla a `authenticated` es un paso obligatorio, no implícito por tener la policy. Verificar siempre con un test de acceso real (rol o JWT), no solo con `get_advisors`.
+
+### 2026-07-06: mensaje de error de la UI confundía "no configurado" con "RLS bloqueando correctamente"
+- **Error**: `/fundacion` mostraba "Supabase no está configurado o no responde" incluso cuando Supabase estaba perfectamente configurado y el verdadero motivo era la ausencia de sesión autenticada (esperable, porque el login todavía no existe).
+- **Fix**: `page.tsx` distingue ahora si el mensaje de error contiene `permission denied` (RLS haciendo su trabajo) de otros errores (configuración real), con un aviso distinto para cada caso.
+- **Aplicar en**: cualquier pantalla futura que consuma Supabase antes de que exista login real — no asumir que todo error es de configuración.
+
 ---
 
 ## Gotchas
 
-- [ ] Postgres local (Homebrew) no tiene el esquema `auth` de Supabase — las políticas RLS se escriben para Supabase pero no se pueden probar end-to-end localmente hasta conectar un proyecto real.
+- [x] ~~Postgres local (Homebrew) no tiene el esquema `auth` de Supabase~~ — resuelto: ya se validó contra el proyecto Supabase real (`jdqbpchkjrxktcxndnho`), no solo Postgres local.
 - [ ] `estado` de Obra (`activa/pausada/cerrada`) es un campo mínimo agregado para poder filtrar obras vigentes en el cálculo de caja — no confundir con el modelo completo de ciclo de vida de obra (eso es de fases posteriores, no de Fundación).
+- [ ] No se probó el acceso autenticado con un JWT real de usuario (el signup de prueba chocó con el rate limit de emails del proyecto) — se validó a nivel de rol de Postgres (`SET LOCAL ROLE authenticated`), que es el mismo rol al que mapea un JWT real. Repetir con un usuario real cuando exista la feature de login.
 
 ## Anti-patrones
 - NO fabricar credenciales ni un project-ref de Supabase falso.
@@ -179,4 +190,4 @@ Entidades de Flujo de Caja (Cobro, Pago, Cheque, obligaciones recurrentes, posic
 
 ---
 
-*PRP en progreso. Fase 0, Incremento 1 en ejecución.*
+*Fase 0 (Fundación), Incremento 1: CERRADO y validado contra Supabase real. Próximo: Incremento 2 (Fase 1 — Cobro/Pago), pendiente de aprobación.*

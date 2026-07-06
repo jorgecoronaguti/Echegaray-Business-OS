@@ -19,7 +19,13 @@ Estructura, datos, seguridad, y metricas. Todo en un solo lugar.
 
 ---
 
-## Setup Inicial (Una Sola Vez)
+## Este proyecto usa el MCP remoto oficial, no el legado con PAT/service_role
+
+Echegaray Business OS ya tiene el MCP de Supabase configurado en `.mcp.json` como servidor HTTP remoto con OAuth (`https://mcp.supabase.com/mcp?project_ref=jdqbpchkjrxktcxndnho`), aprobado y autenticado por el usuario. Las herramientas `list_tables`/`apply_migration`/`execute_sql`/`get_advisors`/etc. de las secciones siguientes se usan igual, pero **no crear ni pedir un Personal Access Token ni una service_role key para esto** — el "Setup Inicial" y las secciones de PostgREST/Management API de abajo son un patrón genérico heredado, no lo que este proyecto usa. Si en algún momento las tools `mcp__supabase__*` no aparecen disponibles en la sesión (bug conocido: agregar/autenticar el MCP a mitad de una conversación no siempre refresca el listado de tools), no fabricar un PAT como atajo — documentarlo en memoria y esperar una sesión donde las tools carguen, o pedirle al usuario que pruebe recargar la ventana/extensión (no solo abrir una pestaña de conversación nueva).
+
+---
+
+## Setup Inicial (Una Sola Vez) — patrón genérico heredado, no aplica a este proyecto tal cual
 
 ### Paso 1: Credenciales
 
@@ -112,6 +118,8 @@ curl -s -X POST "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/data
 
 ## Patron: Crear Tabla con RLS
 
+**GOTCHA confirmado en PRP-001 (Fundación) contra Supabase real**: una policy RLS con `USING (true)` (o cualquier condicion) **no alcanza sin el GRANT de tabla** para el rol. Sin `GRANT ... TO authenticated`, ese rol tiene `permission denied` igual que `anon`, sin importar que la policy sea permisiva. Esto no se detecta validando contra Postgres local sin el setup de roles de Supabase — solo aparece contra un proyecto real o probando el rol explicitamente (`SET LOCAL ROLE authenticated`). Por eso el paso 3.5 de abajo es obligatorio, no opcional.
+
 ```sql
 -- 1. Crear la tabla
 apply_migration(
@@ -148,6 +156,12 @@ apply_migration(
     CREATE POLICY profiles_update_own ON profiles
     FOR UPDATE USING (auth.uid() = id)
   "
+)
+
+-- 3.5. GRANT de tabla — sin esto, la policy de arriba no sirve de nada
+apply_migration(
+  name: "profiles_grant_authenticated",
+  query: "GRANT SELECT, INSERT, UPDATE, DELETE ON profiles TO authenticated"
 )
 
 -- 4. Verificar
