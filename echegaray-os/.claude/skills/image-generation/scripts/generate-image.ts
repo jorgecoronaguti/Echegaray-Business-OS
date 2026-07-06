@@ -85,8 +85,8 @@ async function generateImage() {
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
-      "HTTP-Referer": "https://saas-factory.dev",
-      "X-Title": "SaaS Factory Image Generation",
+      "HTTP-Referer": "https://echegaray-os.internal",
+      "X-Title": "Echegaray Business OS - Image Generation",
     },
     body: JSON.stringify({
       model,

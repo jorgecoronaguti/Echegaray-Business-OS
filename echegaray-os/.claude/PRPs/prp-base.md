@@ -1,12 +1,12 @@
 # Sistema PRP (Product Requirements Proposal)
 
-> **Los Blueprints de la Fábrica** - Contrato humano-IA antes de escribir código
+> Contrato humano-IA antes de escribir código
 
 ---
 
-## 🏭 Qué es un PRP (Analogía Tesla Factory)
+## Qué es un PRP
 
-Un PRP es el **blueprint de una pieza de la fábrica**. Define QUÉ construir antes de escribir una sola línea de código.
+Un PRP es el plan de una pieza de funcionalidad. Define QUÉ construir antes de escribir una sola línea de código.
 
 | Sección | Propósito | Responsable |
 |---------|-----------|-------------|

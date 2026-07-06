@@ -1,45 +1,32 @@
-# Skills System - SaaS Factory V4
+# Sistema de Skills — Echegaray Business OS
 
-> Todo es un Skill. Hot reload. Auto-discovery. Zero config.
+> Herramientas metodológicas de desarrollo. No son funcionalidades del negocio.
 
 ---
 
-## Inventario de Skills (25 total)
+## Inventario real de skills (10 total)
 
-### Invocables por el Usuario (/)
+Este inventario refleja únicamente lo que existe en disco después de la limpieza de herencia SaaS Factory. Cualquier skill mencionada en otro documento y que no esté en esta lista no existe.
 
-| Skill | Comando | Descripcion |
-|-------|---------|-------------|
-| `new-app` | `/new-app` | Entrevista de negocio → BUSINESS_LOGIC.md |
-| `landing` | `/landing` | Landing cinematica: scroll-driven video + copy AIDA/PAS + glass-morphism |
-| `primer` | `/primer` | Inicializar contexto del proyecto |
-| `add-login` | `/add-login` | Auth completo Supabase (login, signup, password reset, profiles, RLS) |
-| `add-payments` | `/add-payments` | Pagos con Polar (MoR): checkout, webhooks, suscripciones, acceso |
-| `add-emails` | `/add-emails` | Emails transaccionales: Resend + React Email + batch + unsubscribe |
-| `add-mobile` | `/add-mobile` | PWA instalable + push notifications (iOS compatible) |
-| `eject-sf` | `/eject-sf` | Remover SaaS Factory del proyecto (DESTRUCTIVO) |
-| `update-sf` | `/update-sf` | Actualizar a ultima version |
-| `bucle-agentico` | `/bucle-agentico` | Bucle Agentico para sistemas complejos (por fases) |
-| `sprint` | `/sprint` | Bucle Agentico para tareas rapidas |
-| `prp` | `/prp [feature]` | Generar Product Requirements Proposal |
-| `ai` | `/ai [template]` | Implementar AI Templates (chat, RAG, vision, tools) |
-| `qa` | `/qa [descripcion]` | QA automatizado con Playwright CLI |
-| `skill-creator` | `/skill-creator` | Crear nuevos skills |
-| `memory-manager` | `/memory-manager` | Memoria persistente por proyecto (reemplaza auto-memory) |
-| `image-generation` | `/image-generation` | Generar/editar imagenes con OpenRouter + Gemini |
-| `autoresearch` | `/autoresearch [skill]` | Auto-optimizar skills con loop autonomo (Karpathy) |
+### Activas
 
-### Invocables por Claude (automaticos)
+| Skill | Comando | Qué hace |
+|---|---|---|
+| `primer` | `/primer` | Carga contexto completo del proyecto (negocio + técnico + memoria) al inicio de sesión |
+| `prp` | `/prp [feature]` | Genera un plan (Product Requirements Proposal) antes de construir una feature no trivial |
+| `bucle-agentico` | — | Ejecuta una feature ya planificada, por fases, con mapeo de contexto real |
+| `supabase` | — | Modela tablas, RLS, migraciones, queries y métricas |
+| `playwright-cli` | — | QA automatizado navegando la app real |
+| `memory-manager` | — | Memoria persistente del proyecto en `.claude/memory/` |
+| `skill-creator` | `/skill-creator` | Crea una nueva skill si hace falta una herramienta de este tipo |
 
-| Skill | Se activa cuando... |
-|-------|---------------------|
-| `backend` | Tareas de Server Actions, APIs, logica de negocio, validaciones |
-| `frontend` | UI/UX, componentes React, Tailwind, animaciones |
-| `supabase-admin` | Migraciones, RLS, queries SQL, auth config |
-| `codebase-analyst` | Analisis de patrones, convenciones, arquitectura |
-| `vercel-deployer` | Deploy, env vars, dominios, rollbacks |
-| `documentacion` | Actualizar docs despues de cambios en codigo |
-| `calidad` | Testing, quality gates, validacion |
+### Latentes (se conservan, sin caso de uso activo)
+
+| Skill | Estado |
+|---|---|
+| `ai` | Requiere justificar con las 8 preguntas de IA del `CLAUDE.md` raíz antes de usarse |
+| `image-generation` | Sin caso de uso confirmado |
+| `add-login` | Construiría auth real; sin roles/usuarios internos definidos todavía |
 
 ---
 
@@ -48,9 +35,9 @@
 ```
 skill-name/
 ├── SKILL.md              # Requerido: frontmatter YAML + instrucciones
-├── scripts/              # Opcional: codigo ejecutable (.py, .sh, .js)
-├── references/           # Opcional: docs de referencia (>5k palabras)
-└── assets/               # Opcional: templates, imagenes, fonts
+├── scripts/               # Opcional: codigo ejecutable (.py, .sh, .js)
+├── references/            # Opcional: docs de referencia (>5k palabras)
+└── assets/                # Opcional: templates, imagenes, fonts
 ```
 
 ### Frontmatter YAML
@@ -89,9 +76,7 @@ agent: Explore                      # Tipo de agente (opcional)
 
 ## Memoria Persistente (.claude/memory/)
 
-SaaS Factory incluye un sistema de memoria persistente POR PROYECTO que reemplaza la auto-memory de Claude Code.
-
-**Por que?** La auto-memory de Claude Code guarda notas en `~/.claude/projects/` (local a tu maquina). Eso significa que no viaja con el repo, no es versionado, no es compartido con tu equipo, y Claude decide que guardar sin tu control.
+Sistema de memoria persistente POR PROYECTO, versionado en git.
 
 **Como funciona:**
 - `.claude/memory/MEMORY.md` es el indice (max 200 lineas, se carga automaticamente)
@@ -99,19 +84,14 @@ SaaS Factory incluye un sistema de memoria persistente POR PROYECTO que reemplaz
 - Git-versioned: cada cambio es un commit que puedes revertir
 - El skill `memory-manager` gestiona cuando consultar y cuando guardar
 
-**Activacion:** La primera vez que se usa el skill `memory-manager`, automaticamente deshabilita la auto-memory de Claude Code en `.claude/settings.json` y crea la estructura de carpetas.
-
 ---
 
 ## Recursos Compartidos
 
-Los skills referencian estos directorios (NO se mueven):
-
 | Recurso | Path | Usado por |
 |---------|------|-----------|
 | PRP Template | `.claude/PRPs/prp-base.md` | Skill `prp` |
-| AI Templates | `.claude/skills/ai/references/` | Skill `ai` |
-| Design Systems | `.claude/design-systems/` | Directo (5 sistemas) |
+| AI Templates | `.claude/skills/ai/references/` | Skill `ai` (latente) |
 
 ---
 
@@ -133,21 +113,3 @@ mkdir .claude/skills/mi-skill
 - [ ] Scripts con --help y manejo de errores
 - [ ] References para docs >5k palabras
 - [ ] Descripcion clara de cuando usarlo
-
----
-
-## Migracion V3 → V4
-
-| V3 | V4 |
-|----|-----|
-| `.claude/commands/*.md` | `.claude/skills/*/SKILL.md` |
-| `.claude/agents/*.md` | `.claude/skills/*/SKILL.md` (user-invocable: false, context: fork) |
-| `.claude/prompts/*.md` | `.claude/skills/*/SKILL.md` |
-| Agentes como archivos sueltos | Frontmatter `agent:` y `context: fork` en skills |
-| AI Templates como docs | Skill `/ai` con `references/` colocalizados |
-| PRPs como template suelto | Skill `/prp` que genera PRPs con context: fork |
-
----
-
-*SaaS Factory V4: Todo es un Skill.*
-*Basado en Claude Code Skills 2.0 (CC 2.1.0+)*

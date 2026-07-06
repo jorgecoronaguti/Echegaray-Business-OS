@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'SaaS Factory App',
-  description: 'Built with SaaS Factory',
+  title: 'Echegaray Business OS',
+  description: 'Sistema de gestión interno de Echegaray Construcciones',
 }
 
 export default function RootLayout({

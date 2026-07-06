@@ -1,12 +1,12 @@
 ---
 name: skill-creator
-description: Crear nuevos skills para extender la fabrica. Guia paso a paso con scripts de inicializacion, validacion y empaquetado. Usar cuando el usuario quiere crear un skill personalizado o extender las capacidades del agente.
+description: Crear nuevos skills para Echegaray Business OS. Guia paso a paso con scripts de inicializacion, validacion y empaquetado. Usar cuando el usuario quiere crear un skill personalizado o extender las capacidades del agente.
 license: MIT
 ---
 
-# Skill Creator - SaaS Factory Edition
+# Skill Creator
 
-This skill provides guidance for creating custom skills following SaaS Factory standards.
+This skill provides guidance for creating custom skills for this project.
 
 ## Purpose
 
@@ -211,4 +211,4 @@ See `references/` for:
 
 ---
 
-**Create skills following SaaS Factory standards for consistency and quality.**
+**Create skills following the Anthropic Skills Specification for consistency and quality.**

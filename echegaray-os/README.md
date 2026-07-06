@@ -1,61 +1,21 @@
-# SaaS Factory V4
+# Echegaray Business OS — Aplicación Técnica
 
-Template production-ready para crear aplicaciones SaaS con desarrollo asistido por IA. Filosofia Agent-First: el usuario dice que quiere, el agente construye todo.
+Aplicación interna de gestión para Echegaray Construcciones. No es un producto que se venda a terceros — es una herramienta de uso interno.
 
-## Que incluye
+El contexto de negocio, estrategia y reglas de decisión están en el `CLAUDE.md` de la raíz del repositorio (un nivel arriba de esta carpeta). Ese documento manda sobre cualquier decisión técnica tomada acá.
 
-- Next.js 16 (App Router) + TypeScript
-- Supabase (Database + Auth + RLS)
-- Tailwind CSS + shadcn/ui
-- 19 Skills de Claude Code (V4 Skills 2.0)
-- Playwright CLI para QA automatizado
-- AI Templates (Vercel AI SDK v5 + OpenRouter)
-- 5 Design Systems listos para usar
-- Arquitectura Feature-First optimizada para IA
-- Auto-Blindaje: el sistema aprende de cada error
+## Estado actual
 
-## Quick Start
+Esqueleto técnico sin módulos de negocio construidos todavía. `src/app/`, `src/features/` y `src/shared/` existen como estructura, pendientes de contenido real.
 
-### 1. Instalar
-
-```bash
-npm install
-```
-
-### 2. Variables de Entorno
-
-```bash
-cp .env.example .env.local
-# Editar con credenciales de Supabase
-```
-
-### 3. MCPs (Opcional)
-
-```bash
-cp .claude/example.mcp.json .mcp.json
-# Editar con project ref de Supabase
-```
-
-### 4. Desarrollar
-
-```bash
-npm run dev
-# Auto-detecta puerto disponible (3000-3006)
-```
-
-## Tech Stack
+## Stack técnico
 
 ```yaml
-Runtime: Node.js + TypeScript
-Framework: Next.js 16 (App Router)
-Database: PostgreSQL/Supabase
-Styling: Tailwind CSS 3.4
-Components: shadcn/ui
-State: Zustand
-Validation: Zod
-AI Engine: Vercel AI SDK v5 + OpenRouter
-Testing: Playwright CLI + MCP
-Deploy: Vercel
+Framework: Next.js (App Router)
+UI: React + TypeScript
+Estilos: Tailwind CSS
+Backend: Supabase (Auth + Postgres + RLS)
+Testing: Playwright CLI
 ```
 
 ## Arquitectura Feature-First
@@ -63,108 +23,63 @@ Deploy: Vercel
 ```
 src/
 ├── app/                      # Next.js App Router
-│   ├── (auth)/              # Rutas auth
-│   ├── (main)/              # Rutas principales
+│   ├── (auth)/               # Rutas de autenticación
+│   ├── (main)/                # Rutas principales
 │   └── layout.tsx
 │
-├── features/                 # Organizadas por funcionalidad
-│   └── [feature]/
+├── features/                  # Un dominio de negocio real por carpeta
+│   └── [dominio]/
 │       ├── components/
 │       ├── hooks/
 │       ├── services/
 │       ├── types/
 │       └── store/
 │
-└── shared/                   # Codigo reutilizable
+└── shared/                    # Código genuinamente reutilizable entre dominios
     ├── components/
     ├── hooks/
     ├── lib/
     └── types/
 ```
 
-## Skills (19 total)
+Cada carpeta de `features/` debe corresponder a un dominio real del negocio (ej. presupuestos, cobranza, horas hombre, adicionales), no a una feature de producto genérico.
 
-### Para el usuario
+## Quick Start
 
-| Skill | Que hace |
-|-------|----------|
-| `/new-app` | Entrevista de negocio → BUSINESS_LOGIC.md |
-| `/landing` | Landing page de alta conversion |
-| `/add-login` | Auth completo (Email + Google OAuth + profiles + RLS) |
-| `/bucle-agentico` | Implementar features complejas por fases |
-| `/sprint` | Tareas rapidas sin planificacion |
-| `/prp` | Planificar features complejas antes de implementar |
-| `/ai [template]` | Agregar IA: chat, RAG, vision, tools |
-| `/qa` | QA automatizado con Playwright CLI |
-| `/primer` | Inicializar contexto del proyecto |
-| `/update-sf` | Actualizar a ultima version |
-| `/eject-sf` | Remover SaaS Factory (destructivo) |
-| `/skill-creator` | Crear nuevos skills |
-
-### Automaticos (Claude los activa segun la tarea)
-
-backend, frontend, supabase-admin, codebase-analyst, vercel-deployer, documentacion, calidad
-
-## AI Templates
-
-Bloques LEGO para construir features de IA con Vercel AI SDK v5 + OpenRouter:
-
-| Template | Que hace |
-|----------|----------|
-| setup-base | Configuracion inicial |
-| chat | Chat streaming con useChat |
-| web-search | Busqueda con :online |
-| historial | Persistencia en Supabase |
-| vision | Analisis de imagenes |
-| tools | Funciones/herramientas |
-| rag | pgvector + embeddings |
-| single-call | generateText() puntual |
-| structured-outputs | generateObject() con Zod |
-| generative-ui | LLM decide que componente renderizar |
-
-## Design Systems
-
-5 sistemas visuales listos en `.claude/design-systems/`:
-
-- **Liquid Glass** - iOS-like, transparencias
-- **Gradient Mesh** - Degradados fluidos
-- **Neumorphism** - Soft UI, sombras suaves
-- **Bento Grid** - Grids asimetricos
-- **Neobrutalism** - Bold, bordes duros
+```bash
+npm install
+cp .env.local.example .env.local
+# completar credenciales de Supabase
+npm run dev
+```
 
 ## Comandos
 
 ```bash
-npm run dev          # Desarrollo (auto-port 3000-3006)
-npm run build        # Build produccion
-npm run typecheck    # TypeScript check
+npm run dev          # Desarrollo
+npm run build        # Build de producción
+npm run typecheck    # Verificación de tipos
 npm run lint         # ESLint
 ```
 
+## Herramientas metodológicas (`.claude/`)
+
+Este proyecto usa Claude Code con un conjunto de skills que ordenan **cómo** se construye, no **qué** se construye (eso lo define el `CLAUDE.md` raíz). Ver detalle completo en [`.claude/README.md`](.claude/README.md).
+
+Resumen:
+
+| Herramienta | Cuándo usarla |
+|---|---|
+| `primer` | Al empezar una sesión, para cargar contexto completo |
+| `prp` | Antes de construir cualquier feature no trivial: planificar objetivo, datos y fases |
+| `bucle-agentico` | Para ejecutar una feature ya planificada, fase por fase |
+| `supabase` | Para modelar tablas, RLS, migraciones y queries |
+| `playwright-cli` | Para QA automatizado navegando la app real |
+| `memory-manager` | Para guardar y consultar memoria persistente del proyecto |
+| `skill-creator` | Para crear una nueva herramienta de este tipo si hace falta |
+
+Capacidades latentes (existen, sin uso activo por falta de caso de uso justificado): `ai`, `image-generation`, `add-login`, `update-sf`.
+
 ## Deploy
 
-```bash
-# Vercel (recomendado)
-npm install -g vercel
-vercel
-```
-
-Variables en Vercel Dashboard:
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-
-## Estructura .claude/
-
-```
-.claude/
-├── skills/              # 19 Skills (V4 Skills 2.0)
-├── PRPs/                # Product Requirements Proposals
-│   │   └── references/  # AI Templates (11 bloques)
-├── design-systems/      # 5 sistemas de diseno
-├── hooks/               # Scripts en eventos
-└── example.mcp.json     # Config de MCPs
-```
-
----
-
-**SaaS Factory V4** | Agent-First. Todo es un Skill.
+Vercel, con las variables de entorno de Supabase configuradas en el dashboard del proyecto.
