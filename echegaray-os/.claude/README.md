@@ -78,7 +78,19 @@ Skills que se conservan porque el chasis técnico es reutilizable, pero sin caso
 
 ## MCPs (`.mcp.json`)
 
-Configurados: `next-devtools`, `playwright`, `supabase`. Opcionales adicionales documentados en `example.mcp.json` (brave-search, firecrawl, n8n, google-workspace, etc.) — se agregan solo si un caso de uso concreto lo justifica.
+Configurados: `next-devtools`, `playwright`, `supabase`. Opcionales adicionales documentados en `example.mcp.json` (brave-search, firecrawl, n8n, firebase, etc.) — se agregan solo si un caso de uso concreto lo justifica.
+
+## Google Drive / Sheets / Docs (discovery)
+
+El acceso de lectura y búsqueda a Google Drive (Sheets, Docs, PDFs, estructura de carpetas) **no se configura en este repositorio**. Se usa el conector nativo de Google Workspace de Claude (cuenta/organización, en Settings → Connectors de Claude), no un servidor MCP local declarado en `.mcp.json`.
+
+Esto es intencional:
+
+- Cero credenciales, tokens o client secrets de Google en el repo — no hay nada que gitignorear porque no hay ningún archivo de configuración local para esto.
+- El conector es gestionado por Anthropic; no depende de un paquete npm/PyPI de terceros que haya que auditar o mantener actualizado.
+- Alcance de esta primera etapa: exclusivamente descubrimiento (buscar, listar, leer). No se usan las capacidades de escritura que el conector también expone (crear/copiar archivos) hasta que exista una razón de negocio explícita para eso.
+
+Si en el futuro se necesita un control de acceso más estricto (solo-lectura garantizado a nivel de scope OAuth, no solo por convención), la alternativa evaluada y descartada por ahora es un servidor MCP self-hosted como `taylorwilsdon/google_workspace_mcp` en modo `--read-only`, declarado en `.mcp.json` con credenciales propias del proyecto (nunca commiteadas).
 
 ## Estructura de `.claude/`
 

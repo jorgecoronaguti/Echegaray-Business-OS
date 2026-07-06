@@ -80,17 +80,6 @@
         "firebase-tools@latest",
         "mcp"
       ]
-    },
-    "google-workspace": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@anthropic-ai/google-workspace-mcp@latest"
-      ],
-      "env": {
-        "GOOGLE_CLIENT_ID": "YOUR_GOOGLE_CLIENT_ID",
-        "GOOGLE_CLIENT_SECRET": "YOUR_GOOGLE_CLIENT_SECRET"
-      }
     }
   }
 }
