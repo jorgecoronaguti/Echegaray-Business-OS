@@ -51,6 +51,8 @@ Herramientas de proceso que se usan de forma directa hoy:
 | `playwright-cli` | — | QA automatizado navegando la app real |
 | `memory-manager` | — | Memoria persistente del proyecto en `.claude/memory/`, versionada en git |
 | `skill-creator` | `/skill-creator` | Crea una nueva skill si hace falta una herramienta de este tipo |
+| `discovery-drive-echegaray` | — | Resume el conocimiento de las dos rondas de discovery de Drive para resolver dudas puntuales sin re-explorar de cero |
+| `cash-flow-operativo` | — | Reglas de negocio del módulo de Flujo de Caja (Fase 1 del Blueprint TO-BE): percibido vs. devengado, real vs. proyectado, vínculo Cliente/Obra/Proveedor |
 
 ## Capacidades latentes
 
@@ -111,6 +113,8 @@ Si en el futuro se necesita un control de acceso más estricto (solo-lectura gar
 │   ├── playwright-cli/
 │   ├── memory-manager/
 │   ├── skill-creator/
+│   ├── discovery-drive-echegaray/
+│   ├── cash-flow-operativo/
 │   ├── ai/                    # latente
 │   ├── image-generation/      # latente
 │   └── add-login/             # latente

@@ -4,7 +4,7 @@
 
 ---
 
-## Inventario real de skills (10 total)
+## Inventario real de skills (12 total)
 
 Este inventario refleja únicamente lo que existe en disco después de la limpieza de herencia SaaS Factory. Cualquier skill mencionada en otro documento y que no esté en esta lista no existe.
 
@@ -19,6 +19,8 @@ Este inventario refleja únicamente lo que existe en disco después de la limpie
 | `playwright-cli` | — | QA automatizado navegando la app real |
 | `memory-manager` | — | Memoria persistente del proyecto en `.claude/memory/` |
 | `skill-creator` | `/skill-creator` | Crea una nueva skill si hace falta una herramienta de este tipo |
+| `discovery-drive-echegaray` | — | Resume el conocimiento ya confirmado de Drive (sistemas, duplicaciones, obsoletos) para resolver dudas puntuales sin re-explorar |
+| `cash-flow-operativo` | — | Reglas de negocio del Flujo de Caja: percibido vs. devengado, real vs. proyectado, vínculo Cliente/Obra/Proveedor, decisiones abiertas |
 
 ### Latentes (se conservan, sin caso de uso activo)
 

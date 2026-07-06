@@ -77,6 +77,8 @@ Estas son herramientas de proceso de desarrollo, no funcionalidades del negocio:
 | `memory-manager` / `.claude/memory/` | Memoria persistente del proyecto, versionada en git |
 | `primer` | Cargar contexto completo al inicio de una sesión |
 | `skill-creator` | Crear nuevas herramientas de este tipo si hace falta |
+| `discovery-drive-echegaray` | Resolver dudas puntuales sobre Drive usando el conocimiento ya confirmado en los discoveries, sin re-explorar de cero |
+| `cash-flow-operativo` | Reglas de negocio del módulo de Flujo de Caja (Fase 1 del Blueprint TO-BE) |
 
 Capacidades latentes (existen, no se usan todavía porque no hay caso de uso justificado):
 

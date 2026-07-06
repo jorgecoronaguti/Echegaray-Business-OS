@@ -32,26 +32,32 @@ Instalar Chromium si no esta instalado:
 npx playwright install chromium
 ```
 
+Debe existir `playwright.config.ts` en la raiz del proyecto (testDir, baseURL, webServer que levanta `npm run dev`). Ver el de `echegaray-os/` como referencia.
+
 ---
 
 ## Comandos Core de Playwright CLI
 
+`npx playwright` **no tiene** subcomandos interactivos tipo `navigate`/`click`/`fill`/`snapshot` — eso no existe en el CLI real (confirmado con `npx playwright --help` durante PRP-001). Los subcomandos reales son:
+
 ```bash
-# Navegar a una pagina
-npx playwright navigate http://localhost:3000
+# Correr todos los tests (usa testDir + webServer de playwright.config.ts)
+npx playwright test
 
-# Tomar screenshot
-npx playwright screenshot http://localhost:3000 --output screenshot.png
+# Correr un archivo especifico
+npx playwright test tests/fundacion.spec.ts
 
-# Click en un elemento
-npx playwright click "text=Sign In"
+# Screenshot standalone de una URL (util para un chequeo visual rapido, sin test)
+npx playwright screenshot http://localhost:3000/ruta screenshot.png
 
-# Llenar un campo de formulario
-npx playwright fill "#email" "test@example.com"
+# Grabar interacciones y generar el codigo de un test automaticamente
+npx playwright codegen http://localhost:3000
 
-# Obtener snapshot de pagina (accessibility tree como YAML)
-npx playwright snapshot http://localhost:3000
+# Ver el reporte HTML de la ultima corrida
+npx playwright show-report
 ```
+
+El flujo real es: escribir un archivo `tests/[feature].spec.ts` con `@playwright/test` (`import { test, expect } from '@playwright/test'`), y correrlo con `npx playwright test`. `playwright.config.ts` ya tiene `screenshot: 'only-on-failure'`, asi que los screenshots se generan solos cuando algo falla — no hace falta pedirlos manualmente en el happy path.
 
 ---
 
@@ -87,38 +93,40 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:3000
 
 ### Fase 3: NAVIGATE
 
-Abrir la app y navegar a las paginas relevantes.
+Escribir (o ubicar) el archivo `tests/[feature].spec.ts` y confirmar que apunta a las rutas relevantes con `page.goto('/ruta')`. Si es un chequeo puntual sin test formal, usar `npx playwright screenshot` para ver el estado inicial:
 
 ```bash
-# Screenshot inicial de la pagina
-npx playwright screenshot http://localhost:3000/[ruta] --output .qa-reports/[fecha]-[nombre]/screenshots/01-inicio.png
+npx playwright screenshot http://localhost:3000/[ruta] .qa-reports/[fecha]-[nombre]/screenshots/01-inicio.png
 ```
 
 ### Fase 4: TEST
 
-Ejecutar los pasos del test. Llenar formularios, hacer clicks, verificar resultados.
+Escribir los pasos como aserciones de Playwright Test (`expect(locator).toBeVisible()`, `.fill()`, `.click()`) dentro del `.spec.ts`, y correrlos:
 
-```bash
-# Ejemplo: test de login
-npx playwright screenshot http://localhost:3000/login --output .qa-reports/[fecha]-[nombre]/screenshots/02-login-page.png
-npx playwright fill "#email" "test@example.com"
-npx playwright fill "#password" "testpassword"
-npx playwright click "text=Sign In"
-npx playwright screenshot http://localhost:3000/dashboard --output .qa-reports/[fecha]-[nombre]/screenshots/03-after-login.png
+```ts
+// tests/login.spec.ts
+import { test, expect } from '@playwright/test'
+
+test('login redirige al dashboard', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByLabel('Email').fill('test@example.com')
+  await page.getByLabel('Password').fill('testpassword')
+  await page.getByRole('button', { name: 'Sign In' }).click()
+  await expect(page).toHaveURL('/dashboard')
+})
 ```
 
-Tomar screenshot ANTES y DESPUES de cada accion critica.
+```bash
+npx playwright test tests/login.spec.ts
+```
+
+Con `screenshot: 'only-on-failure'` en `playwright.config.ts`, un test que pasa no genera capturas — si necesitás ver un estado intermedio a proposito, usar `await page.screenshot({ path: '...' })` dentro del test.
 
 ### Fase 5: DOCUMENT
 
-Guardar snapshots de pagina solo cuando se necesite inspeccionar estructura.
+El reporte de texto de `npx playwright test` (reporter `list`) ya resume que paso y que fallo. Si algo fallo, revisar los screenshots automaticos en `test-results/` y el `error-context.md` que Playwright genera junto a cada falla — no hace falta pedir un snapshot manual aparte.
 
-```bash
-# Solo si necesitas ver la estructura del DOM
-npx playwright snapshot http://localhost:3000/[ruta] > .qa-reports/[fecha]-[nombre]/snapshot-[paso].yaml
-```
-
-**Principio sticky-notes**: NO volcar snapshots completos al contexto. Leer el archivo YAML solo cuando se necesite inspeccionar algo especifico. Resumen primero, detalles on-demand.
+**Principio sticky-notes**: no volcar el HTML completo del reporte al contexto. Leer el resumen de la terminal primero; abrir `test-results/` o `npx playwright show-report` solo si se necesita inspeccionar un fallo especifico.
 
 ### Fase 6: REPORT
 
