@@ -168,6 +168,34 @@ apply_migration(
 get_advisors(type: "security")
 ```
 
+## Patron: Vista Derivada sobre Tablas con RLS
+
+**GOTCHA confirmado en PRP-005 (Control Económico) contra Supabase real**: una vista de Postgres, por default, se ejecuta con los permisos de su dueño (el rol que la creó) — esto **bypasea el RLS de las tablas subyacentes** sin que sea obvio, ya que la vista igual "funciona" (solo que le muestra a cualquier `authenticated` filas que su RLS debería haberle ocultado). Hay que forzar `with (security_invoker = true)` al crear la vista para que respete el RLS del usuario que consulta, no el del dueño.
+
+```sql
+apply_migration(
+  name: "create_obra_resumen_economico",
+  query: "
+    CREATE VIEW obra_resumen_economico
+    WITH (security_invoker = true)
+    AS SELECT ...
+  "
+)
+
+-- La vista necesita su propio GRANT, además del de las tablas de abajo
+apply_migration(
+  name: "grant_obra_resumen_economico",
+  query: "GRANT SELECT ON obra_resumen_economico TO authenticated"
+)
+
+-- Verificar: sin security_invoker, este lint aparecería como "Security Definer View"
+get_advisors(type: "security")
+```
+
+Preferir una vista (sobre una tabla nueva) cuando el dato es 100% derivable de tablas existentes en el momento de la consulta — evita duplicar datos y mantenerlos sincronizados con triggers.
+
+---
+
 ### Claves Foraneas
 ```sql
 apply_migration(

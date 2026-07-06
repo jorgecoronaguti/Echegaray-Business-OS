@@ -11,6 +11,7 @@
 - [PRP-002 Obra como Unidad Económica](project/prp-002-obra-unidad-economica.md) — extensión de `obras` (no tabla nueva), refactor a `features/obras/`, entidades descartadas y por qué
 - [PRP-003 Presupuesto Base de Obra](project/prp-003-presupuesto-base-obra.md) — `presupuestos`/`partidas_presupuesto`, versionado (único aprobado por obra), verificación puntual de costo directo/indirecto/margen en Planilla para Cotizar
 - [PRP-004 Costos Reales de Obra](project/prp-004-costos-reales-obra.md) — `costos_reales` (comprometido/pendiente/pagado), vínculo opcional a `movimientos_caja` validado por trigger, verificación puntual de CONTROL DE GASTOS.xlsx
+- [PRP-005 Control Económico Básico de Obra](project/prp-005-control-economico-basico-obra.md) — vista `obra_resumen_economico` (presupuesto aprobado vs costo real), `security_invoker` obligatorio, umbrales sano/atención/crítico abiertos
 
 ## feedback/ — Correcciones y preferencias
 - [Construir capacidades, no pantallas aisladas](feedback/construir-capacidades-no-pantallas-aisladas.md) — cada incremento debe resolver una decisión real y ser base reutilizable; justificar toda entidad nueva o evitarla

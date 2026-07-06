@@ -11,19 +11,27 @@ import { PresupuestoForm } from '@/features/presupuestos/components/PresupuestoF
 import { PartidaPresupuestoForm } from '@/features/presupuestos/components/PartidaPresupuestoForm'
 import { getCostosRealesPorObra } from '@/features/costos-reales/services/costosRealesService'
 import { CostoRealForm } from '@/features/costos-reales/components/CostoRealForm'
+import {
+  getResumenEconomicoPorObra,
+  getCostosQueExplicanDesvio,
+} from '@/features/control-economico/services/controlEconomicoService'
+import { ResumenEconomicoObra } from '@/features/control-economico/components/ResumenEconomicoObra'
 
 async function loadObraDetalle(id: string) {
   try {
     const supabase = await createClient()
-    const [obra, clientes, cuentas, proveedores, movimientos, presupuestos, costosReales] = await Promise.all([
-      getObraById(supabase, id),
-      getClientes(supabase),
-      getCuentasFinancieras(supabase),
-      getProveedores(supabase),
-      getMovimientosCajaPorObra(supabase, id),
-      getPresupuestosPorObra(supabase, id),
-      getCostosRealesPorObra(supabase, id),
-    ])
+    const [obra, clientes, cuentas, proveedores, movimientos, presupuestos, costosReales, resumenEconomico, costosQueExplicanDesvio] =
+      await Promise.all([
+        getObraById(supabase, id),
+        getClientes(supabase),
+        getCuentasFinancieras(supabase),
+        getProveedores(supabase),
+        getMovimientosCajaPorObra(supabase, id),
+        getPresupuestosPorObra(supabase, id),
+        getCostosRealesPorObra(supabase, id),
+        getResumenEconomicoPorObra(supabase, id),
+        getCostosQueExplicanDesvio(supabase, id),
+      ])
 
     // Las partidas se muestran de la versión más reciente (mayor `version`), que es
     // además a la que se agregan partidas nuevas — simplificación deliberada (PRP-003).
@@ -32,7 +40,18 @@ async function loadObraDetalle(id: string) {
       ? await getPartidasPorPresupuesto(supabase, presupuestoMasReciente.id)
       : { data: [], error: null }
 
-    return { obra, clientes, cuentas, proveedores, movimientos, presupuestos, partidas, costosReales }
+    return {
+      obra,
+      clientes,
+      cuentas,
+      proveedores,
+      movimientos,
+      presupuestos,
+      partidas,
+      costosReales,
+      resumenEconomico,
+      costosQueExplicanDesvio,
+    }
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Error desconocido al conectar con Supabase'
     const failed = { data: null, error } as const
@@ -45,14 +64,26 @@ async function loadObraDetalle(id: string) {
       presupuestos: failed,
       partidas: failed,
       costosReales: failed,
+      resumenEconomico: failed,
+      costosQueExplicanDesvio: failed,
     }
   }
 }
 
 export default async function ObraDetallePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { obra, clientes, cuentas, proveedores, movimientos, presupuestos, partidas, costosReales } =
-    await loadObraDetalle(id)
+  const {
+    obra,
+    clientes,
+    cuentas,
+    proveedores,
+    movimientos,
+    presupuestos,
+    partidas,
+    costosReales,
+    resumenEconomico,
+    costosQueExplicanDesvio,
+  } = await loadObraDetalle(id)
 
   const pageError =
     obra.error ??
@@ -61,7 +92,9 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
     proveedores.error ??
     movimientos.error ??
     presupuestos.error ??
-    costosReales.error
+    costosReales.error ??
+    resumenEconomico.error ??
+    costosQueExplicanDesvio.error
   const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
 
   if (!pageError && !obra.data) {
@@ -119,6 +152,21 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
               </div>
             </dl>
           </div>
+
+          <section data-testid="control-economico-obra-section">
+            <h2 className="text-xl font-semibold">Control económico</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Presupuesto aprobado vs. costo real acumulado. No reemplaza compras, HH ni adicionales.
+            </p>
+            {resumenEconomico.data && (
+              <div className="mt-3">
+                <ResumenEconomicoObra
+                  resumen={resumenEconomico.data}
+                  costosQueExplicanDesvio={costosQueExplicanDesvio.data ?? []}
+                />
+              </div>
+            )}
+          </section>
 
           <section data-testid="presupuesto-obra-section">
             <h2 className="text-xl font-semibold">Presupuesto</h2>
