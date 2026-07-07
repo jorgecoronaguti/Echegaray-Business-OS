@@ -17,6 +17,7 @@
 - [PRP-008 HH y Productividad de Obra](project/prp-008-hh-productividad-obra.md) — `registros_hh` semanal (texto libre, sin legajo/cuadrilla/tarea), `hh_estimada` en `presupuestos`, HH y costo de mano de obra deliberadamente separados
 - [PRP-009 Compras y Abastecimiento de Obra](project/prp-009-compras-abastecimiento-obra.md) — `compras` (obra/proveedor nullable para poder alertar), FK invertida (`costos_reales.compra_id`, `movimientos_caja.compra_id`) para soportar N costos y N pagos por compra
 - [PRP-010 Obligaciones y Medios de Pago](project/prp-010-obligaciones-medios-pago.md) — `obligaciones` (sirve como cuota/vencimiento), `aplicaciones_pago` (única relación N:M real, trigger anti-sobreaplicación), `medio_pago` en `movimientos_caja` (sin tabla instrumentos_pago)
+- [PRP-011 Dashboard de Dirección](project/prp-011-dashboard-direccion.md) — 100% síntesis TypeScript reutilizando las alertas ya calculadas por cada capacidad, sin SQL nuevo ni tabla de alertas
 
 ## feedback/ — Correcciones y preferencias
 - [Construir capacidades, no pantallas aisladas](feedback/construir-capacidades-no-pantallas-aisladas.md) — cada incremento debe resolver una decisión real y ser base reutilizable; justificar toda entidad nueva o evitarla

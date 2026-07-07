@@ -41,6 +41,32 @@ export async function getComprasResumenPorObra(
   }
 }
 
+// Sin filtro de obra — usado por el Dashboard de Dirección (PRP-011).
+export async function getComprasTodasLasObras(supabase: SupabaseClient): Promise<ServiceResult<Compra[]>> {
+  try {
+    const { data, error } = await supabase
+      .from('compras')
+      .select('*')
+      .order('fecha_necesidad', { ascending: false })
+    if (error) return { data: null, error: error.message }
+    return { data: data as Compra[], error: null }
+  } catch (err) {
+    return { data: null, error: toServiceError(err) }
+  }
+}
+
+export async function getComprasResumenTodasLasObras(
+  supabase: SupabaseClient
+): Promise<ServiceResult<CompraResumen[]>> {
+  try {
+    const { data, error } = await supabase.from('compra_resumen').select('*')
+    if (error) return { data: null, error: error.message }
+    return { data: data as CompraResumen[], error: null }
+  } catch (err) {
+    return { data: null, error: toServiceError(err) }
+  }
+}
+
 export async function insertCompra(
   supabase: SupabaseClient,
   input: CompraInput

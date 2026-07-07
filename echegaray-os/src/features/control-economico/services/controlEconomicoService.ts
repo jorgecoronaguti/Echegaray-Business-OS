@@ -26,6 +26,20 @@ export async function getResumenEconomicoPorObra(
   }
 }
 
+// Sin filtro de obra — usado por el Dashboard de Dirección (PRP-011) para cruzar
+// todas las obras a la vez. Misma vista, mismo cálculo, sin tabla nueva.
+export async function getResumenEconomicoTodasLasObras(
+  supabase: SupabaseClient
+): Promise<ServiceResult<ObraResumenEconomico[]>> {
+  try {
+    const { data, error } = await supabase.from('obra_resumen_economico').select('*')
+    if (error) return { data: null, error: error.message }
+    return { data: data as ObraResumenEconomico[], error: null }
+  } catch (err) {
+    return { data: null, error: toServiceError(err) }
+  }
+}
+
 // Costos que más explican el desvío: los de mayor monto primero, no los más recientes
 // (a diferencia de getCostosRealesPorObra, que ordena por fecha para la ficha general).
 export async function getCostosQueExplicanDesvio(

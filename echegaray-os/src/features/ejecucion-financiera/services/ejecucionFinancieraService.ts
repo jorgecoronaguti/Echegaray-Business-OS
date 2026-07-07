@@ -47,6 +47,31 @@ export async function getEjecucionFinancieraPorObra(
   }
 }
 
+// Sin filtro de obra — usado por el Dashboard de Dirección (PRP-011).
+export async function getCertificadosTodasLasObras(
+  supabase: SupabaseClient
+): Promise<ServiceResult<Certificado[]>> {
+  try {
+    const { data, error } = await supabase.from('certificados').select('*').order('numero', { ascending: true })
+    if (error) return { data: null, error: error.message }
+    return { data: data as Certificado[], error: null }
+  } catch (err) {
+    return { data: null, error: toServiceError(err) }
+  }
+}
+
+export async function getEjecucionFinancieraTodasLasObras(
+  supabase: SupabaseClient
+): Promise<ServiceResult<ObraEjecucionFinanciera[]>> {
+  try {
+    const { data, error } = await supabase.from('obra_ejecucion_financiera').select('*')
+    if (error) return { data: null, error: error.message }
+    return { data: data as ObraEjecucionFinanciera[], error: null }
+  } catch (err) {
+    return { data: null, error: toServiceError(err) }
+  }
+}
+
 export async function insertCertificado(
   supabase: SupabaseClient,
   input: CertificadoInput

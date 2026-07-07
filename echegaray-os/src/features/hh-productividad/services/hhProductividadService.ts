@@ -42,6 +42,36 @@ export async function getHHResumenPorObra(
   }
 }
 
+// Sin filtro de obra — usado por el Dashboard de Dirección (PRP-011). Se necesitan
+// los registros crudos (no solo el resumen) para poder calcular "concentración
+// anormal" por obra, que agrupa por semana — el resumen no expone ese detalle.
+export async function getRegistrosHHTodasLasObras(
+  supabase: SupabaseClient
+): Promise<ServiceResult<RegistroHH[]>> {
+  try {
+    const { data, error } = await supabase
+      .from('registros_hh')
+      .select('*')
+      .order('fecha_inicio_semana', { ascending: false })
+    if (error) return { data: null, error: error.message }
+    return { data: data as RegistroHH[], error: null }
+  } catch (err) {
+    return { data: null, error: toServiceError(err) }
+  }
+}
+
+export async function getHHResumenTodasLasObras(
+  supabase: SupabaseClient
+): Promise<ServiceResult<ObraHHResumen[]>> {
+  try {
+    const { data, error } = await supabase.from('obra_hh_resumen').select('*')
+    if (error) return { data: null, error: error.message }
+    return { data: data as ObraHHResumen[], error: null }
+  } catch (err) {
+    return { data: null, error: toServiceError(err) }
+  }
+}
+
 export async function insertRegistroHH(
   supabase: SupabaseClient,
   input: RegistroHHInput

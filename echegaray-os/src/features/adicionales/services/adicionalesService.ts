@@ -25,6 +25,22 @@ export async function getAdicionalesPorObra(
   }
 }
 
+// Sin filtro de obra — usado por el Dashboard de Dirección (PRP-011).
+export async function getAdicionalesTodasLasObras(
+  supabase: SupabaseClient
+): Promise<ServiceResult<Adicional[]>> {
+  try {
+    const { data, error } = await supabase
+      .from('adicionales')
+      .select('*')
+      .order('fecha_deteccion', { ascending: false })
+    if (error) return { data: null, error: error.message }
+    return { data: data as Adicional[], error: null }
+  } catch (err) {
+    return { data: null, error: toServiceError(err) }
+  }
+}
+
 export async function insertAdicional(
   supabase: SupabaseClient,
   input: AdicionalInput
