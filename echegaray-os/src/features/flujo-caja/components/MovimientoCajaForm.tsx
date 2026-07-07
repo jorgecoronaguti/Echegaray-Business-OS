@@ -146,6 +146,25 @@ export function MovimientoCajaForm({
         className="rounded border px-2 py-1"
       />
 
+      <div className="flex flex-wrap gap-2">
+        <select name="medio_pago" defaultValue="" className="rounded border px-2 py-1">
+          <option value="">Medio de pago (opcional)</option>
+          <option value="efectivo">Efectivo</option>
+          <option value="transferencia">Transferencia</option>
+          <option value="debito">Débito</option>
+          <option value="tarjeta">Tarjeta</option>
+          <option value="cheque">Cheque</option>
+          <option value="echeq">Echeq</option>
+          <option value="otro">Otro</option>
+        </select>
+
+        <input
+          name="referencia_instrumento"
+          placeholder="Referencia del instrumento (ej. N° de cheque)"
+          className="w-64 rounded border px-2 py-1"
+        />
+      </div>
+
       <textarea name="notas" placeholder="Notas (opcional)" className="rounded border px-2 py-1" />
 
       {state.error && <span className="text-sm text-red-600">{state.error}</span>}

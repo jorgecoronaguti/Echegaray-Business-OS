@@ -37,6 +37,8 @@ export async function createMovimientoCajaAction(
     concepto: formData.get('concepto'),
     origen: formData.get('origen') || undefined,
     referencia_externa: formData.get('referencia_externa') || undefined,
+    medio_pago: formData.get('medio_pago') || undefined,
+    referencia_instrumento: formData.get('referencia_instrumento') || undefined,
     notas: formData.get('notas') || undefined,
   })
   if (!parsed.success) return { error: parsed.error.issues[0].message }

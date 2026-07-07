@@ -61,6 +61,8 @@ export async function insertMovimientoCaja(
         origen: input.origen,
         referencia_externa: input.referencia_externa ?? null,
         compra_id: input.compra_id ?? null,
+        medio_pago: input.medio_pago ?? null,
+        referencia_instrumento: input.referencia_instrumento ?? null,
         notas: input.notas ?? null,
       })
       .select()

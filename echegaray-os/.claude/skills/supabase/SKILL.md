@@ -217,6 +217,31 @@ Esto permite `1 compra -> N costos_reales` y `1 compra -> N movimientos_caja` si
 
 ---
 
+## Patron: Tabla de Unión N:M con Trigger Anti-Sobreaplicación
+
+**Confirmado en PRP-010 (Obligaciones)**: cuando la relación es genuinamente muchos-a-muchos (ej. un pago puede saldar varias obligaciones, y una obligación puede recibir varios pagos — a diferencia del patrón anterior, que alcanza cuando cada fila "muchos" pertenece a un solo padre), hace falta una tabla de unión real con su propio monto, más un trigger que valide que la suma de las partes nunca exceda el total de NINGUNO de los dos lados:
+
+```sql
+create table aplicaciones_pago (
+  id uuid primary key default gen_random_uuid(),
+  obligacion_id uuid not null references obligaciones(id) on delete restrict,
+  movimiento_caja_id uuid not null references movimientos_caja(id) on delete restrict,
+  monto_aplicado numeric(14,2) not null check (monto_aplicado > 0),
+  unique (obligacion_id, movimiento_caja_id) -- evita el duplicado exacto del mismo vínculo
+);
+
+-- Un CHECK no alcanza: hay que sumar filas HERMANAS de esta misma tabla y consultar
+-- otras dos tablas. Se necesita un trigger BEFORE INSERT OR UPDATE que, al insertar
+-- una fila nueva, sume las ya existentes (excluyendo la propia si es un UPDATE) y
+-- rechace si el nuevo total excede el monto_total de la obligación O el monto del
+-- movimiento_caja. Ver función completa en supabase/migrations/20260707121612_obligaciones_medios_pago.sql
+-- (aplicaciones_pago_valida_montos).
+```
+
+Con este trigger + el `unique`, "doble aplicación" o "sobreaplicación" quedan estructuralmente imposibles — no hace falta una alerta de aplicación que las detecte después, porque nunca llegan a existir.
+
+---
+
 ### Claves Foraneas
 ```sql
 apply_migration(

@@ -22,6 +22,11 @@ export interface MovimientoCaja {
   // unique index acá, a diferencia del patrón anterior (costos_reales/adicionales).
   // Solo válido cuando tipo = 'pago' (CHECK en la base).
   compra_id: string | null
+  // Medio real con el que se pagó/cobrará (PRP-010). El ciclo emisión→vencimiento→
+  // débito de un cheque/echeq ya lo representa `estado` (proyectado/real) — este
+  // campo solo clasifica el medio, no duplica ese ciclo con una tabla nueva.
+  medio_pago: 'efectivo' | 'transferencia' | 'debito' | 'tarjeta' | 'cheque' | 'echeq' | 'otro' | null
+  referencia_instrumento: string | null
   notas: string | null
   created_at: string
   updated_at: string
@@ -44,6 +49,8 @@ export const movimientoCajaInputSchema = z
     origen: z.enum(['manual', 'flujo_caja_sheet', 'control_gastos']).default('manual'),
     referencia_externa: z.string().trim().min(1).optional(),
     compra_id: z.string().uuid('Compra inválida').optional(),
+    medio_pago: z.enum(['efectivo', 'transferencia', 'debito', 'tarjeta', 'cheque', 'echeq', 'otro']).optional(),
+    referencia_instrumento: z.string().trim().min(1).optional(),
     notas: z.string().trim().min(1).optional(),
   })
   .superRefine((data, ctx) => {

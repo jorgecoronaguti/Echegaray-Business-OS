@@ -32,6 +32,12 @@ import { ResumenHHObra } from '@/features/hh-productividad/components/ResumenHHO
 import { getComprasPorObra, getComprasResumenPorObra } from '@/features/compras/services/comprasService'
 import { CompraForm } from '@/features/compras/components/CompraForm'
 import { ComprasList } from '@/features/compras/components/ComprasList'
+import {
+  getObligacionesPorObra,
+  getObligacionesResumenPorObra,
+} from '@/features/obligaciones/services/obligacionesService'
+import { ObligacionForm } from '@/features/obligaciones/components/ObligacionForm'
+import { ObligacionesList } from '@/features/obligaciones/components/ObligacionesList'
 
 async function loadObraDetalle(id: string) {
   try {
@@ -53,6 +59,8 @@ async function loadObraDetalle(id: string) {
       resumenHH,
       compras,
       comprasResumen,
+      obligaciones,
+      obligacionesResumen,
     ] = await Promise.all([
       getObraById(supabase, id),
       getClientes(supabase),
@@ -70,6 +78,8 @@ async function loadObraDetalle(id: string) {
       getHHResumenPorObra(supabase, id),
       getComprasPorObra(supabase, id),
       getComprasResumenPorObra(supabase, id),
+      getObligacionesPorObra(supabase, id),
+      getObligacionesResumenPorObra(supabase, id),
     ])
 
     // Las partidas se muestran de la versión más reciente (mayor `version`), que es
@@ -97,6 +107,8 @@ async function loadObraDetalle(id: string) {
       resumenHH,
       compras,
       comprasResumen,
+      obligaciones,
+      obligacionesResumen,
     }
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Error desconocido al conectar con Supabase'
@@ -119,6 +131,8 @@ async function loadObraDetalle(id: string) {
       resumenHH: failed,
       compras: failed,
       comprasResumen: failed,
+      obligaciones: failed,
+      obligacionesResumen: failed,
     }
   }
 }
@@ -143,6 +157,8 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
     resumenHH,
     compras,
     comprasResumen,
+    obligaciones,
+    obligacionesResumen,
   } = await loadObraDetalle(id)
 
   const pageError =
@@ -161,7 +177,9 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
     registrosHH.error ??
     resumenHH.error ??
     compras.error ??
-    comprasResumen.error
+    comprasResumen.error ??
+    obligaciones.error ??
+    obligacionesResumen.error
   const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
 
   if (!pageError && !obra.data) {
@@ -353,6 +371,24 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
                 </ul>
               </div>
             )}
+          </section>
+
+          <section data-testid="obligaciones-obra-section">
+            <h2 className="text-xl font-semibold">Obligaciones de esta obra</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Compromisos financieros pendientes de pago, total o parcial. No es Caja: una obligación futura recién
+              impacta caja cuando se le aplica un pago real.
+            </p>
+
+            <ObligacionForm obraId={id} proveedores={proveedores.data ?? []} compras={compras.data ?? []} />
+
+            <ObligacionesList
+              obligaciones={obligaciones.data ?? []}
+              resumenes={obligacionesResumen.data ?? []}
+              proveedores={proveedores.data ?? []}
+              movimientosDePago={movimientosDePago}
+              obraId={id}
+            />
           </section>
 
           <section data-testid="compras-obra-section">
