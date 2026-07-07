@@ -3,24 +3,38 @@ import { createClient } from '@/lib/supabase/server'
 import { getClientes } from '@/features/fundacion/services/fundacionService'
 import { getObras } from '@/features/obras/services/obrasService'
 import { ObraForm } from '@/features/obras/components/ObraForm'
+import { getDashboardDatosFuente } from '@/features/dashboard/services/dashboardDataService'
+import { construirAlertasDashboard } from '@/features/dashboard/types'
+import { getAcciones, accionesPorAlertaOrigen } from '@/features/acciones/services/accionesService'
+import { SeccionAlertas } from '@/features/dashboard/components/SeccionAlertas'
+import { alertasPorArea } from '@/features/areas/types'
 
 async function loadObrasData() {
   try {
     const supabase = await createClient()
-    const [clientes, obras] = await Promise.all([getClientes(supabase), getObras(supabase)])
-    return { clientes, obras }
+    const [clientes, obras, datosDashboard, acciones] = await Promise.all([
+      getClientes(supabase),
+      getObras(supabase),
+      getDashboardDatosFuente(supabase),
+      getAcciones(supabase),
+    ])
+    return { clientes, obras, datosDashboard, acciones }
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Error desconocido al conectar con Supabase'
     const failed = { data: null, error } as const
-    return { clientes: failed, obras: failed }
+    return { clientes: failed, obras: failed, datosDashboard: failed, acciones: failed }
   }
 }
 
 export default async function ObrasPage() {
-  const { clientes, obras } = await loadObrasData()
+  const { clientes, obras, datosDashboard, acciones } = await loadObrasData()
 
   const pageError = clientes.error ?? obras.error
   const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
+
+  const todasLasAlertas = datosDashboard.data ? construirAlertasDashboard(datosDashboard.data) : []
+  const alertasDelArea = alertasPorArea(todasLasAlertas, 'obras_produccion')
+  const accionesMap = accionesPorAlertaOrigen(acciones.data ?? [])
 
   return (
     <div className="min-h-screen space-y-8 p-8">
@@ -44,6 +58,16 @@ export default async function ObrasPage() {
           <p className="font-semibold">Supabase no está configurado o no responde.</p>
           <p className="mt-1 text-sm">{pageError}</p>
         </div>
+      )}
+
+      {datosDashboard.data && (
+        <SeccionAlertas
+          titulo="Qué requiere atención hoy"
+          descripcion="Margen en riesgo, adicionales sin gestionar y obras activas sin movimiento reciente."
+          alertas={alertasDelArea}
+          testId="obras-area-alertas"
+          accionesPorAlertaId={accionesMap}
+        />
       )}
 
       <section data-testid="obra-form-section">

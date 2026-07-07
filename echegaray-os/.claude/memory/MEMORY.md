@@ -19,6 +19,7 @@
 - [PRP-010 Obligaciones y Medios de Pago](project/prp-010-obligaciones-medios-pago.md) — `obligaciones` (sirve como cuota/vencimiento), `aplicaciones_pago` (única relación N:M real, trigger anti-sobreaplicación), `medio_pago` en `movimientos_caja` (sin tabla instrumentos_pago)
 - [PRP-011 Dashboard de Dirección](project/prp-011-dashboard-direccion.md) — 100% síntesis TypeScript reutilizando las alertas ya calculadas por cada capacidad, sin SQL nuevo ni tabla de alertas
 - [PRP-012 Post Mortem de Obra](project/prp-012-post-mortem-obra.md) — `post_mortems` (borrador/cerrado, snapshot jsonb solo al cerrar), reutiliza todo lo existente sin duplicar; cierra la Etapa 4 del roadmap
+- [PRP-013 Áreas y Centro de Acción](project/prp-013-areas-y-centro-de-accion.md) — 6 áreas mapeadas a capacidades existentes + tabla `acciones` (seguimiento de estado/responsable, no duplica alertas); Fase II
 
 ## feedback/ — Correcciones y preferencias
 - [Construir capacidades, no pantallas aisladas](feedback/construir-capacidades-no-pantallas-aisladas.md) — cada incremento debe resolver una decisión real y ser base reutilizable; justificar toda entidad nueva o evitarla

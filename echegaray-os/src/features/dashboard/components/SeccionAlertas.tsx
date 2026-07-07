@@ -1,4 +1,5 @@
 import type { AlertaDashboard } from '../types'
+import type { Accion } from '@/features/acciones/types'
 import { AlertaCard } from './AlertaCard'
 
 export function SeccionAlertas({
@@ -6,11 +7,13 @@ export function SeccionAlertas({
   descripcion,
   alertas,
   testId,
+  accionesPorAlertaId,
 }: {
   titulo: string
   descripcion: string
   alertas: AlertaDashboard[]
   testId: string
+  accionesPorAlertaId?: Map<string, Accion>
 }) {
   return (
     <section data-testid={testId}>
@@ -24,7 +27,7 @@ export function SeccionAlertas({
       ) : (
         <ul className="mt-3 space-y-2">
           {alertas.map((a) => (
-            <AlertaCard key={a.id} alerta={a} />
+            <AlertaCard key={a.id} alerta={a} accionExistente={accionesPorAlertaId?.get(a.id)} />
           ))}
         </ul>
       )}

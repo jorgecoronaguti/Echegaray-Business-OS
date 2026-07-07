@@ -1,24 +1,30 @@
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getDashboardDatosFuente } from '@/features/dashboard/services/dashboardDataService'
 import { construirAlertasDashboard, ORDEN_SEVERIDAD } from '@/features/dashboard/types'
 import type { SeveridadAlerta } from '@/features/dashboard/types'
 import { SeccionAlertas } from '@/features/dashboard/components/SeccionAlertas'
+import { getAcciones, accionesPorAlertaOrigen } from '@/features/acciones/services/accionesService'
 
 async function loadDashboard() {
   try {
     const supabase = await createClient()
-    return await getDashboardDatosFuente(supabase)
+    const [datos, acciones] = await Promise.all([getDashboardDatosFuente(supabase), getAcciones(supabase)])
+    return { datos, acciones }
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Error desconocido al conectar con Supabase'
-    return { data: null, error } as const
+    const failed = { data: null, error } as const
+    return { datos: failed, acciones: failed }
   }
 }
 
 export default async function DashboardPage() {
-  const { data: datos, error: pageError } = await loadDashboard()
+  const { datos, acciones } = await loadDashboard()
+  const pageError = datos.error ?? acciones.error
   const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
 
-  const alertas = datos ? construirAlertasDashboard(datos) : []
+  const alertas = datos.data ? construirAlertasDashboard(datos.data) : []
+  const accionesMap = accionesPorAlertaOrigen(acciones.data ?? [])
 
   const conteoPorSeveridad: Record<SeveridadAlerta, number> = { critica: 0, alta: 0, media: 0, informativa: 0 }
   for (const a of alertas) conteoPorSeveridad[a.severidad]++
@@ -58,8 +64,14 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      {datos && (
+      {datos.data && (
         <>
+          <div>
+            <Link href="/acciones" className="text-sm font-medium text-blue-700 underline">
+              Ir al Centro de Acción →
+            </Link>
+          </div>
+
           <section data-testid="dashboard-resumen-severidad">
             <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {(Object.keys(ORDEN_SEVERIDAD) as SeveridadAlerta[]).map((sev) => (
@@ -76,6 +88,7 @@ export default async function DashboardPage() {
             descripcion="Las situaciones más urgentes de todas las capacidades, ordenadas por severidad."
             alertas={rankingPrioridades}
             testId="dashboard-ranking"
+            accionesPorAlertaId={accionesMap}
           />
 
           <SeccionAlertas
@@ -83,6 +96,7 @@ export default async function DashboardPage() {
             descripcion="Vencimientos, pagos parciales, tensión de liquidez y concentración de vencimientos."
             alertas={alertasCajaObligaciones}
             testId="dashboard-obligaciones"
+            accionesPorAlertaId={accionesMap}
           />
 
           <SeccionAlertas
@@ -90,6 +104,7 @@ export default async function DashboardPage() {
             descripcion="Margen crítico o en atención, y obras activas sin movimiento reciente registrado."
             alertas={alertasObrasEnRiesgo}
             testId="dashboard-obras-riesgo"
+            accionesPorAlertaId={accionesMap}
           />
 
           <SeccionAlertas
@@ -97,6 +112,7 @@ export default async function DashboardPage() {
             descripcion="Adicionales ejecutados sin cotizar, aprobados sin facturar, facturados sin cobrar."
             alertas={alertasAdicionales}
             testId="dashboard-adicionales"
+            accionesPorAlertaId={accionesMap}
           />
 
           <SeccionAlertas
@@ -104,6 +120,7 @@ export default async function DashboardPage() {
             descripcion="Certificados pendientes de facturar o cobrar, y obras con baja conversión de contrato a caja."
             alertas={alertasEjecucionFinanciera}
             testId="dashboard-ejecucion-financiera"
+            accionesPorAlertaId={accionesMap}
           />
 
           <SeccionAlertas
@@ -111,6 +128,7 @@ export default async function DashboardPage() {
             descripcion="Desvíos de HH contra lo estimado, concentración anormal y obras sin registro reciente."
             alertas={alertasHH}
             testId="dashboard-hh"
+            accionesPorAlertaId={accionesMap}
           />
 
           <SeccionAlertas
@@ -118,6 +136,7 @@ export default async function DashboardPage() {
             descripcion="Compras retrasadas, sin trazabilidad, o pagadas sin recepción confirmada."
             alertas={alertasCompras}
             testId="dashboard-compras"
+            accionesPorAlertaId={accionesMap}
           />
         </>
       )}

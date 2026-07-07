@@ -21,6 +21,22 @@ export async function getPostMortemPorObra(
   }
 }
 
+// Variante sin filtro por obra, para el área Comercial/Presupuestación (Fase II) —
+// muestra los "cambios sugeridos para la próxima cotización" ya capturados en
+// cualquier obra cerrada, sin recalcular nada.
+export async function getPostMortemsTodasLasObras(supabase: SupabaseClient): Promise<ServiceResult<PostMortem[]>> {
+  try {
+    const { data, error } = await supabase
+      .from('post_mortems')
+      .select('*')
+      .order('fecha_cierre', { ascending: false })
+    if (error) return { data: null, error: error.message }
+    return { data: data as PostMortem[], error: null }
+  } catch (err) {
+    return { data: null, error: toServiceError(err) }
+  }
+}
+
 export async function insertPostMortem(
   supabase: SupabaseClient,
   input: PostMortemInput

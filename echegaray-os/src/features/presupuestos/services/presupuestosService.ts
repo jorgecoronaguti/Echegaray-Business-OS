@@ -30,6 +30,21 @@ export async function getPresupuestosPorObra(
   }
 }
 
+// Variante sin filtro por obra, para vistas cross-obra (área Comercial/Presupuestación,
+// Fase II) — misma consulta que getPresupuestosPorObra, reutilizada sin duplicar lógica.
+export async function getPresupuestosTodasLasObras(supabase: SupabaseClient): Promise<ServiceResult<Presupuesto[]>> {
+  try {
+    const { data, error } = await supabase
+      .from('presupuestos')
+      .select('*')
+      .order('fecha_presupuesto', { ascending: false })
+    if (error) return { data: null, error: error.message }
+    return { data: data as Presupuesto[], error: null }
+  } catch (err) {
+    return { data: null, error: toServiceError(err) }
+  }
+}
+
 export async function getPartidasPorPresupuesto(
   supabase: SupabaseClient,
   presupuestoId: string

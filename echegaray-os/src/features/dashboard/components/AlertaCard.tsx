@@ -1,5 +1,8 @@
 import Link from 'next/link'
 import type { AlertaDashboard, SeveridadAlerta } from '../types'
+import type { Accion } from '@/features/acciones/types'
+import { ESTADO_ACCION_LABEL } from '@/features/acciones/types'
+import { ConvertirEnAccionForm } from '@/features/acciones/components/ConvertirEnAccionForm'
 
 const SEVERIDAD_CLASSNAME: Record<SeveridadAlerta, string> = {
   critica: 'border-red-400 bg-red-50',
@@ -22,7 +25,7 @@ const SEVERIDAD_BADGE: Record<SeveridadAlerta, string> = {
   informativa: 'bg-gray-400 text-white',
 }
 
-export function AlertaCard({ alerta }: { alerta: AlertaDashboard }) {
+export function AlertaCard({ alerta, accionExistente }: { alerta: AlertaDashboard; accionExistente?: Accion }) {
   return (
     <li className={`rounded border p-3 ${SEVERIDAD_CLASSNAME[alerta.severidad]}`} data-testid="alerta-dashboard">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -69,6 +72,18 @@ export function AlertaCard({ alerta }: { alerta: AlertaDashboard }) {
         <Link href={alerta.link} className="mt-2 inline-block text-sm font-medium text-blue-700 underline">
           Ir a la ficha →
         </Link>
+      )}
+
+      {accionExistente ? (
+        <p className="mt-2 text-xs text-gray-500" data-testid="alerta-ya-convertida">
+          Ya convertida en acción — estado: {ESTADO_ACCION_LABEL[accionExistente.estado]} (
+          <Link href="/acciones" className="underline">
+            ver en Centro de Acción
+          </Link>
+          )
+        </p>
+      ) : (
+        <ConvertirEnAccionForm alerta={alerta} />
       )}
     </li>
   )
