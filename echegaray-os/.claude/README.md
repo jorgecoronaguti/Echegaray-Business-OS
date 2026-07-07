@@ -73,6 +73,7 @@ Conocimiento profesional multidisciplinario de una empresa constructora (San Jua
 | `calidad-obra` | Ensayos, tolerancias, no conformidades |
 | `compras-abastecimiento-subcontratacion` | Evaluación de proveedores y subcontratistas |
 | `gestion-empresarial-riesgos` | Riesgo de concentración, Go/No-Go, riesgo financiero agregado |
+| `integraciones-apis-sistemas-externos` | Arquitectura de integraciones (APIs, webhooks, sincronización, reconciliación) — única de naturaleza técnica, no normativa; decide el *cómo* conectar, nunca el *qué* dato capturar |
 
 Cada una declara su propia política de fuentes, jurisdicción, protocolo de vigencia y mecanismo de aprendizaje continuo dentro de su `SKILL.md` — ninguna cita normativa, tasa o convenio específico sin verificación explícita en el momento de uso.
 
@@ -150,6 +151,7 @@ Si en el futuro se necesita un control de acceso más estricto (solo-lectura gar
 │   ├── calidad-obra/                        # experta de dominio
 │   ├── compras-abastecimiento-subcontratacion/ # experta de dominio
 │   ├── gestion-empresarial-riesgos/         # experta de dominio
+│   ├── integraciones-apis-sistemas-externos/ # experta tecnica
 │   ├── ai/                    # latente
 │   ├── image-generation/      # latente
 │   └── add-login/             # latente

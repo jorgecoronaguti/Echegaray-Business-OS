@@ -1015,6 +1015,7 @@ Esta sección no reemplaza ni resume nada de lo anterior. Es la capa operativa q
 | Desvincular personal | `derecho-laboral-construccion` · `seguridad-higiene-art` |
 | Actuar ante un incidente de seguridad | `seguridad-higiene-art` · `derecho-laboral-construccion` · `derecho-construccion-contratos` |
 | Cerrar una obra | `contabilidad-constructoras` · `impuestos-construccion` · `derecho-construccion-contratos` (Post Mortem, capacidad ya construida del OS, es la entrada de aprendizaje) |
+| Integrar o migrar una fuente de datos externa (banco, Sheet legacy, API de proveedor, AFIP/DGR) | `integraciones-apis-sistemas-externos` · más la skill de dominio dueña del dato (`finanzas-tesoreria-construccion`, `impuestos-construccion`, `contabilidad-constructoras` o `derecho-laboral-construccion` según corresponda) |
 
 ## Aprendizaje continuo
 
@@ -1033,7 +1034,7 @@ Una observación aislada (A) nunca se convierte automáticamente en regla genera
 ## Dónde vive cada cosa
 
 - **Este documento**: filosofía, estrategia, reglas de decisión de negocio, estilo. No contiene conocimiento técnico-normativo.
-- **`.claude/skills/[dominio]/SKILL.md`**: las 13 skills expertas (ingeniería civil, dirección de obra, planificación/producción, costos/presupuestación, derecho de la construcción/contratos, contabilidad de constructoras, impuestos, finanzas/tesorería, derecho laboral de la construcción, seguridad e higiene/ART, calidad de obra, compras/abastecimiento/subcontratación, gestión empresarial y riesgos). Cada una declara su propia política de fuentes, vigencia y aprendizaje.
+- **`.claude/skills/[dominio]/SKILL.md`**: las 14 skills expertas (ingeniería civil, dirección de obra, planificación/producción, costos/presupuestación, derecho de la construcción/contratos, contabilidad de constructoras, impuestos, finanzas/tesorería, derecho laboral de la construcción, seguridad e higiene/ART, calidad de obra, compras/abastecimiento/subcontratación, gestión empresarial y riesgos, e integraciones/APIs/sistemas externos). Cada una declara su propia política de fuentes, vigencia y aprendizaje. La última es la única de naturaleza técnica, no profesional-normativa — decide *cómo* conectar el OS con un sistema externo, nunca *qué* dato capturar (eso lo sigue decidiendo la skill de dominio dueña del dato).
 - **`.claude/memory/`**: aprendizaje acumulado específico de Echegaray (decisiones, hallazgos de discovery, patrones validados).
 
 La jurisdicción operativa principal de todo el conocimiento normativo es **San Juan, Argentina** — distinguiendo siempre normativa nacional, provincial (San Juan), municipal según ubicación concreta, contractual específica del cliente, y normas técnicas aplicables.
