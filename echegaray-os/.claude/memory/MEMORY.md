@@ -21,9 +21,11 @@
 - [PRP-012 Post Mortem de Obra](project/prp-012-post-mortem-obra.md) — `post_mortems` (borrador/cerrado, snapshot jsonb solo al cerrar), reutiliza todo lo existente sin duplicar; cierra la Etapa 4 del roadmap
 - [PRP-013 Áreas y Centro de Acción](project/prp-013-areas-y-centro-de-accion.md) — 6 áreas mapeadas a capacidades existentes + tabla `acciones` (seguimiento de estado/responsable, no duplica alertas); Fase II
 - [Arquitectura de Conocimiento Experto](project/arquitectura-conocimiento-experto.md) — 15 skills expertas (13 de dominio + 2 técnicas: integraciones, lectura de Drive/multiformato) + matriz multidisciplinaria en CLAUDE.md raíz; usar en toda decisión real de la empresa, no solo al construir features
+- [PR0 Línea Base Echegaray](project/pr0-linea-base-echegaray.md) — respuestas resueltas del checklist PR0-A (N=negro, Messinas=cliente, SGR no vigente, etc.), qué queda abierto, advertencia de no confundir "cómo se hace hoy" con especificación futura
 
 ## feedback/ — Correcciones y preferencias
 - [Construir capacidades, no pantallas aisladas](feedback/construir-capacidades-no-pantallas-aisladas.md) — cada incremento debe resolver una decisión real y ser base reutilizable; justificar toda entidad nueva o evitarla
 
 ## reference/ — Donde encontrar cosas
 - [Validar SQL sin Supabase live](reference/validar-sql-sin-supabase-live.md) — procedimiento con Postgres local (Homebrew) cuando no hay Docker ni proyecto real conectado
+- [Fuentes Drive PR0 Línea Base](reference/fuentes-drive-pr0-linea-base.md) — URLs/gid exactos confirmados por Jorge para nómina, fechas de obra, caja, vencimientos, adicionales, avance de obra
