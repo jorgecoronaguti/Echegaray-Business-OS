@@ -38,6 +38,11 @@ import {
 } from '@/features/obligaciones/services/obligacionesService'
 import { ObligacionForm } from '@/features/obligaciones/components/ObligacionForm'
 import { ObligacionesList } from '@/features/obligaciones/components/ObligacionesList'
+import { getPostMortemPorObra } from '@/features/post-mortem/services/postMortemService'
+import { construirResumenSnapshot } from '@/features/post-mortem/types'
+import { IniciarPostMortemForm } from '@/features/post-mortem/components/IniciarPostMortemForm'
+import { PostMortemForm } from '@/features/post-mortem/components/PostMortemForm'
+import { ResumenPostMortem } from '@/features/post-mortem/components/ResumenPostMortem'
 
 async function loadObraDetalle(id: string) {
   try {
@@ -61,6 +66,7 @@ async function loadObraDetalle(id: string) {
       comprasResumen,
       obligaciones,
       obligacionesResumen,
+      postMortem,
     ] = await Promise.all([
       getObraById(supabase, id),
       getClientes(supabase),
@@ -80,6 +86,7 @@ async function loadObraDetalle(id: string) {
       getComprasResumenPorObra(supabase, id),
       getObligacionesPorObra(supabase, id),
       getObligacionesResumenPorObra(supabase, id),
+      getPostMortemPorObra(supabase, id),
     ])
 
     // Las partidas se muestran de la versión más reciente (mayor `version`), que es
@@ -109,6 +116,7 @@ async function loadObraDetalle(id: string) {
       comprasResumen,
       obligaciones,
       obligacionesResumen,
+      postMortem,
     }
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Error desconocido al conectar con Supabase'
@@ -133,6 +141,7 @@ async function loadObraDetalle(id: string) {
       comprasResumen: failed,
       obligaciones: failed,
       obligacionesResumen: failed,
+      postMortem: failed,
     }
   }
 }
@@ -159,6 +168,7 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
     comprasResumen,
     obligaciones,
     obligacionesResumen,
+    postMortem,
   } = await loadObraDetalle(id)
 
   const pageError =
@@ -179,7 +189,8 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
     compras.error ??
     comprasResumen.error ??
     obligaciones.error ??
-    obligacionesResumen.error
+    obligacionesResumen.error ??
+    postMortem.error
   const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
 
   if (!pageError && !obra.data) {
@@ -194,6 +205,21 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
   const movimientosDeCobro = (movimientos.data ?? []).filter((m) => m.tipo === 'cobro')
   const movimientoConcepto = (id: string | null) =>
     movimientos.data?.find((m) => m.id === id)?.concepto ?? '—'
+
+  // Vista previa en vivo del resumen del Post Mortem — misma función que usa el
+  // cierre real (construirResumenSnapshot), sin duplicar el cálculo; solo se muestra
+  // mientras el post mortem sigue en 'borrador'.
+  const resumenPostMortemEnVivo = construirResumenSnapshot({
+    resumenEconomico: resumenEconomico.data,
+    ejecucionFinanciera: ejecucionFinanciera.data,
+    resumenHH: resumenHH.data,
+    registrosHH: registrosHH.data ?? [],
+    adicionales: adicionales.data ?? [],
+    certificados: certificados.data ?? [],
+    compras: compras.data ?? [],
+    comprasResumen: comprasResumen.data ?? [],
+    obligacionesResumen: obligacionesResumen.data ?? [],
+  })
 
   return (
     <div className="min-h-screen space-y-8 p-8">
@@ -238,6 +264,35 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
               </div>
             </dl>
           </div>
+
+          <section data-testid="post-mortem-obra-section">
+            <h2 className="text-xl font-semibold">Post Mortem</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              El cierre inteligente de la obra: qué margen esperábamos vs. qué obtuvimos, qué se desvió y qué
+              aprendemos para la próxima cotización.
+            </p>
+
+            {!postMortem.data && <IniciarPostMortemForm obraId={id} />}
+
+            {postMortem.data && (
+              <div className="mt-3 space-y-4">
+                <span
+                  className={`inline-block rounded px-2 py-1 text-xs font-semibold ${
+                    postMortem.data.estado === 'cerrado' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'
+                  }`}
+                >
+                  {postMortem.data.estado === 'cerrado' ? 'Cerrado' : 'Borrador'}
+                </span>
+
+                <ResumenPostMortem
+                  resumen={postMortem.data.resumen_snapshot ?? resumenPostMortemEnVivo}
+                  congelado={postMortem.data.estado === 'cerrado'}
+                />
+
+                <PostMortemForm postMortem={postMortem.data} obraId={id} />
+              </div>
+            )}
+          </section>
 
           <section data-testid="ejecucion-financiera-obra-section">
             <h2 className="text-xl font-semibold">Ejecución financiera</h2>
