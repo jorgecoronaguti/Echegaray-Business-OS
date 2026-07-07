@@ -66,6 +66,14 @@ export function PresupuestoForm({ obraId }: { obraId: string }) {
           Fecha del presupuesto
           <input name="fecha_presupuesto" type="date" required className="rounded border px-2 py-1" />
         </label>
+
+        <input
+          name="hh_estimada"
+          type="number"
+          step="0.01"
+          placeholder="HH estimadas (opcional)"
+          className="rounded border px-2 py-1"
+        />
       </div>
 
       <textarea name="notas" placeholder="Notas (opcional)" className="rounded border px-2 py-1" />

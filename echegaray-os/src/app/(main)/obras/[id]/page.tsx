@@ -26,6 +26,9 @@ import {
 import { CertificadoForm } from '@/features/ejecucion-financiera/components/CertificadoForm'
 import { CertificadosList } from '@/features/ejecucion-financiera/components/CertificadosList'
 import { ResumenEjecucionFinanciera } from '@/features/ejecucion-financiera/components/ResumenEjecucionFinanciera'
+import { getRegistrosHHPorObra, getHHResumenPorObra } from '@/features/hh-productividad/services/hhProductividadService'
+import { RegistroHHForm } from '@/features/hh-productividad/components/RegistroHHForm'
+import { ResumenHHObra } from '@/features/hh-productividad/components/ResumenHHObra'
 
 async function loadObraDetalle(id: string) {
   try {
@@ -43,6 +46,8 @@ async function loadObraDetalle(id: string) {
       adicionales,
       certificados,
       ejecucionFinanciera,
+      registrosHH,
+      resumenHH,
     ] = await Promise.all([
       getObraById(supabase, id),
       getClientes(supabase),
@@ -56,6 +61,8 @@ async function loadObraDetalle(id: string) {
       getAdicionalesPorObra(supabase, id),
       getCertificadosPorObra(supabase, id),
       getEjecucionFinancieraPorObra(supabase, id),
+      getRegistrosHHPorObra(supabase, id),
+      getHHResumenPorObra(supabase, id),
     ])
 
     // Las partidas se muestran de la versión más reciente (mayor `version`), que es
@@ -79,6 +86,8 @@ async function loadObraDetalle(id: string) {
       adicionales,
       certificados,
       ejecucionFinanciera,
+      registrosHH,
+      resumenHH,
     }
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Error desconocido al conectar con Supabase'
@@ -97,6 +106,8 @@ async function loadObraDetalle(id: string) {
       adicionales: failed,
       certificados: failed,
       ejecucionFinanciera: failed,
+      registrosHH: failed,
+      resumenHH: failed,
     }
   }
 }
@@ -117,6 +128,8 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
     adicionales,
     certificados,
     ejecucionFinanciera,
+    registrosHH,
+    resumenHH,
   } = await loadObraDetalle(id)
 
   const pageError =
@@ -131,7 +144,9 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
     costosQueExplicanDesvio.error ??
     adicionales.error ??
     certificados.error ??
-    ejecucionFinanciera.error
+    ejecucionFinanciera.error ??
+    registrosHH.error ??
+    resumenHH.error
   const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
 
   if (!pageError && !obra.data) {
@@ -228,6 +243,23 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
             )}
           </section>
 
+          <section data-testid="hh-productividad-obra-section">
+            <h2 className="text-xl font-semibold">HH y productividad</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Consumo real de horas hombre por semana vs. HH estimadas del presupuesto aprobado. No calcula costo de
+              mano de obra (eso ya se registra en Costos Reales) ni reemplaza JORNALES todavía.
+            </p>
+            {resumenHH.data && (
+              <div className="mt-3">
+                <ResumenHHObra resumen={resumenHH.data} registros={registrosHH.data ?? []} />
+              </div>
+            )}
+
+            <div className="mt-4">
+              <RegistroHHForm obraId={id} costosReales={costosReales.data ?? []} />
+            </div>
+          </section>
+
           <section data-testid="adicionales-obra-section">
             <h2 className="text-xl font-semibold">Adicionales</h2>
             <p className="mt-1 text-sm text-gray-600">
@@ -261,6 +293,7 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
                   <th className="pr-4">Costo directo</th>
                   <th className="pr-4">Costo indirecto</th>
                   <th className="pr-4">Margen esperado</th>
+                  <th className="pr-4">HH estimadas</th>
                   <th className="pr-4">Fuente</th>
                   <th className="pr-4">Fecha</th>
                 </tr>
@@ -274,13 +307,14 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
                     <td className="pr-4">${p.costo_directo_presupuestado}</td>
                     <td className="pr-4">${p.costo_indirecto_presupuestado}</td>
                     <td className="pr-4">${p.margen_esperado}</td>
+                    <td className="pr-4">{p.hh_estimada ?? '—'}</td>
                     <td className="pr-4">{p.fuente_legacy}</td>
                     <td className="pr-4">{p.fecha_presupuesto}</td>
                   </tr>
                 ))}
                 {(presupuestos.data ?? []).length === 0 && !pageError && (
                   <tr>
-                    <td colSpan={8} className="pt-2 text-gray-500">
+                    <td colSpan={9} className="pt-2 text-gray-500">
                       Sin presupuesto registrado todavía.
                     </td>
                   </tr>

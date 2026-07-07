@@ -85,6 +85,7 @@ export async function insertPresupuesto(
         margen_esperado: input.margen_esperado,
         fuente_legacy: input.fuente_legacy,
         fecha_presupuesto: input.fecha_presupuesto,
+        hh_estimada: input.hh_estimada ?? null,
         notas: input.notas ?? null,
       })
       .select()

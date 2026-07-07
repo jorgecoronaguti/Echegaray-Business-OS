@@ -15,6 +15,9 @@ export interface Presupuesto {
   margen_esperado: number
   fuente_legacy: string
   fecha_presupuesto: string
+  // HH estimadas para la obra (PRP-008) — dimensión del mismo presupuesto aprobado,
+  // no una entidad separada. Nullable: no todo presupuesto tiene HH estimadas confiables.
+  hh_estimada: number | null
   notas: string | null
   created_at: string
   updated_at: string
@@ -46,6 +49,7 @@ export const presupuestoInputSchema = z.object({
   margen_esperado: z.coerce.number(),
   fuente_legacy: z.string().trim().min(1, 'Indicá de qué archivo o fuente viene'),
   fecha_presupuesto: z.string().min(1, 'La fecha del presupuesto es obligatoria'),
+  hh_estimada: z.coerce.number().positive('Las HH estimadas deben ser mayores a 0').optional(),
   notas: z.string().trim().min(1).optional(),
 })
 export type PresupuestoInput = z.infer<typeof presupuestoInputSchema>

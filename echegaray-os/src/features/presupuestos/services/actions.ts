@@ -32,6 +32,7 @@ export async function createPresupuestoAction(
     margen_esperado: formData.get('margen_esperado'),
     fuente_legacy: formData.get('fuente_legacy'),
     fecha_presupuesto: formData.get('fecha_presupuesto'),
+    hh_estimada: formData.get('hh_estimada') || undefined,
     notas: formData.get('notas') || undefined,
   })
   if (!parsed.success) return { error: parsed.error.issues[0].message }

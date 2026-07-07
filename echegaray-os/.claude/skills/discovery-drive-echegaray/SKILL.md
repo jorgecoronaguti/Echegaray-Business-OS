@@ -90,6 +90,19 @@ El detalle completo vive en el análisis AS-IS ya producido en esta conversació
 
 - Contenido real de la pestaña "DIAGRAMACION" de Planilla para Cotizar.
 - Si RESUMEN DE CUENTAS BANCARIAS.xlsx es la única fuente de cuentas/CBUs reales o hay otra.
-- Origen real del dato diario de horas en JORNALES (¿parte en papel? ¿WhatsApp?).
 - Si existe algún criterio informal de selección de obras no documentado.
 - Tratamiento de la columna "Categoría" (B/N) del Flujo de Caja — pendiente de definición de negocio, no técnica.
+
+## JORNALES — estructura confirmada (verificación puntual PRP-008, 2026-07-07)
+
+- **Granularidad semanal**: cada bloque de filas es una semana, con columnas de horas por día (L-V) que suman un total semanal por trabajador.
+- **Trabajador**: nombre libre ("OBRERO"), no legajo — no cruza automáticamente con ALTAS-BAJAS ni RESUMEN DE CUENTAS BANCARIAS.
+- **Obra**: texto libre, **una sola por trabajador por semana** (valores como "S/O", "SAINT GOBAIN", incluso "VACACIONES" usado como si fuera una obra) — un trabajador no puede repartir horas entre dos obras en la misma semana en esta fuente.
+- **Sin columna de cuadrilla, frente ni especialidad.** La columna "Tarea del día" no tiene texto de tarea real confiable en la muestra revisada.
+- Columnas "$ HORA"/"JORNAL" son cálculo de sueldo semanal (nómina), no una valorización lista para costo real de obra.
+
+## Planilla para Cotizar — HH estimadas (verificación puntual PRP-008)
+
+- Hoja **"Recursos"**: valoriza Oficial/Ayudante como insumos por hora (alimenta `COSTO MO` de cada partida en pesos, sin exponer cantidad de HH).
+- Hoja **"DESCRIPCION DE TAREAS"**: sí tiene HH estimadas por tarea (Ayudantes/Oficial/Horas), pero con **layout ad-hoc que cambia dentro de la misma hoja** — no parseable de forma automática y confiable.
+- Hojas **"MO Lu-Vi 8 a 16"** y **"Costo MO"** (oculta): confirman 4 categorías reales UOCRA reutilizables: Oficial Especializado, Oficial, Medio Oficial, Ayudante.
