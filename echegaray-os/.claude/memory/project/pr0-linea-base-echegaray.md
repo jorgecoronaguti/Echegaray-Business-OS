@@ -18,14 +18,22 @@ Fecha de las respuestas: 2026-07-07. PR0-A (inventario y extracción, sin cargar
 - **Sueldos $3.000.000 triplicado en Flujo de Caja proyectado (julio 26)**: confirmado **error** de esa planilla, no son 3 pagos reales. La fuente real de sueldos es una planilla dedicada (ver [[fuentes-drive-pr0-linea-base]]) — con la advertencia explícita de Jorge de que **`Flujo de Fondos - Cash flow` también usa datos de sueldos y no está conectado/sincronizado con esa planilla** — riesgo real de inconsistencia entre dos sistemas, sin investigar todavía.
 - **Fuente de verdad de posición de caja**: `Flujo de Caja - Cash Flow`, no `CONTROL DE GASTOS.xlsx`.
 
-## Sin resolver
+## Resueltas en la segunda pasada (2026-07-07, vía descarga local + openpyxl)
 
-- **Cuál `EJERCICIO 8.xlsx` es el vigente** (hay dos, IDs y fechas de modificación distintas — uno en la raíz, otro archivado en "AÑO 2025"): pregunta repetida dos veces, todavía sin responder.
-- **Fechas reales de inicio/fin de La Estrella y ARCOR**: Jorge señaló la pestaña `CF_COB` (gid=1294821039) pero no pude confirmar haber leído esa pestaña específica y no esa por defecto — sigue pendiente de verificación real.
-- **Monto exacto y vencimiento de sueldos de junio/julio 2026**: la planilla real de sueldos que inspeccioné solo mostró datos hasta abril 2026 — falta el período relevante para el corte del 01/07/2026.
-- **Vencimientos exactos (no solo devengado mensual) de IIBB / cargas sociales / gastos generales de julio**: señaladas las mismas dos fuentes de arriba, sin confirmar lectura de la pestaña correcta.
-- **Adicionales pendientes reales**: Jorge confirmó que sí existen y señaló dos fuentes posibles, pero no pude leer ninguna con el detalle de fila necesario.
-- **Diseño de O1 (avance de obra)**: la fuente que Jorge indicó como "control de avances de obra" (ver [[fuentes-drive-pr0-linea-base]]) muestra, en lo leído hasta ahora, un checklist de tareas/materiales — no el modelo %-planificado/%-real asumido en el diseño previo de O1. No confirmado si es la pestaña equivocada o si así es el proceso real. Esto puede requerir ajustar la entidad `avance_fisico_semanal` hacia un modelo de estado discreto por tarea antes de construir O1.
+Usando `download_file_content` + `openpyxl` local (método ahora validado, ver [[fuentes-drive-pr0-linea-base]] y la skill `lectura-drive-documentos-multiformato`) se pudo leer el contenido completo de los 5 archivos clave, no solo la pestaña por defecto:
+
+- **`EJERCICIO 8.xlsx`**: confirmado por Jorge que ya no está vigente — se usan `Flujo de Caja - Cash Flow` e `Ingresos y Egresos - P&L`.
+- **Fechas reales de obra**: encontradas en `Ingresos y Egresos` → pestañas `08_Control_Obra ARCOR/LA ESTRELLA/SAN FRANCISCO`. ARCOR (Cambio de Pisos RRHH) 22/06→03/07/2026; LA ESTRELLA (Galpón 9) 06/07→07/08/2026; SAN FRANCISCO (Pisos) 06/07→21/08/2026. Las tres en estado "Pausada". Sin resolver: la "Fecha Inicio" de las tres coincide sospechosamente con fechas muy cercanas a hoy — podría ser una fórmula `HOY()` no fijada, no una fecha histórica real (pendiente de confirmación de Jorge).
+- **Nómina real de junio/julio**: `JORNALES` → Obreros 26 sí tiene datos hasta 04/07/2026. Semana que cierra 30/06: $9.393.250 (obreros). Pero `CONTROL DE GASTOS` → GASTOS FIJOS muestra "JORNALES OBRAS" $3.500.000 A PAGAR con vencimiento 10/07/2026 (período junio) — **conflicto sin resolver** entre ambas cifras, mismo período.
+- **Vencimientos exactos de julio**: encontrados en `CONTROL DE GASTOS` → GASTOS FIJOS: Fondo de Cese/UOCRA/IERIC $2.700.000 vence 10/07/2026; Alquileres $2.000.000/mes. IIBB sigue sin fecha exacta (solo devengado mensual del P&L) — gap bloqueante que se mantiene.
+- **Adicionales pendientes reales**: sí existen y tienen monto — `CONTROL DE GASTOS` → OBRAS SIN FACTURA, ítems "P/FACTURAR": Alquiler Puntales - Macro Construcciones, $38.720 y $58.080.
+- **Diseño de O1 — resuelto, con matiz importante**: el archivo de avance de obra tiene **dos modelos reales conviviendo**, no uno solo. `Estrella` es checklist de materiales/tareas (como se había detectado antes). Pero `San Francisco` y `Messina` son un tracker Gantt real con % de avance diario por actividad, oficiales/ayudantes asignados y estado "Completado" — el modelo %-based sí existe y se usa, pero no en todas las obras. O1 debe soportar ambos modelos, no elegir uno solo.
+
+## Conflictos nuevos detectados, sin resolver (bloquean F1)
+
+- **Cheques a cubrir**: `CONTROL DE GASTOS` → header BANCO dice $13.747.399,44; la tabla dinámica "CHEQUES A CUBRIR" del mismo archivo dice $21.269.220,23. Mismo archivo, mismo corte, dos cifras.
+- **Cheques/montos a cobrar**: header BANCO dice $45.000.000 ("CHEQUES A COBRAR") y $76.309.940,59 ("Monto a Cobrar S/F"); la tabla dinámica "CHEQUES A COBRAR" dice $23.449.800. Tres cifras distintas para un concepto similar, sin reconciliar.
+- Ambos conflictos están en el checklist humano final entregado a Jorge — no se resolvieron por elección propia porque cualquier elección sería una decisión de negocio disfrazada de dato.
 
 ## Advertencia explícita del usuario — no confundir descripción con prescripción
 
