@@ -13,6 +13,10 @@ export interface CostoReal {
   fecha: string
   estado: 'comprometido' | 'pendiente' | 'pagado'
   movimiento_caja_id: string | null
+  // Vínculo opcional con la compra que originó este costo (PRP-009) — a diferencia de
+  // movimiento_caja_id, una misma compra puede tener varios costos_reales vinculados
+  // (entregas parciales facturadas por separado), por eso no hay unique index acá.
+  compra_id: string | null
   fuente_legacy: string
   notas: string | null
   created_at: string
@@ -29,6 +33,7 @@ export const costoRealInputSchema = z.object({
   fecha: z.string().min(1, 'La fecha es obligatoria'),
   estado: z.enum(['comprometido', 'pendiente', 'pagado']).default('pendiente'),
   movimiento_caja_id: z.string().uuid('Movimiento inválido').optional(),
+  compra_id: z.string().uuid('Compra inválida').optional(),
   fuente_legacy: z.string().trim().min(1, 'Indicá de qué archivo o fuente viene'),
   notas: z.string().trim().min(1).optional(),
 })

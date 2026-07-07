@@ -40,6 +40,7 @@ export async function insertCostoReal(
         fecha: input.fecha,
         estado: input.estado,
         movimiento_caja_id: input.movimiento_caja_id ?? null,
+        compra_id: input.compra_id ?? null,
         fuente_legacy: input.fuente_legacy,
         notas: input.notas ?? null,
       })

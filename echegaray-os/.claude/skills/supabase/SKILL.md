@@ -196,6 +196,27 @@ Preferir una vista (sobre una tabla nueva) cuando el dato es 100% derivable de t
 
 ---
 
+## Patron: Vínculo Opcional 1:N (FK del Lado de "Muchos")
+
+**Confirmado en PRP-009 (Compras)**: cuando una entidad "cabecera" puede tener VARIAS filas relacionadas del otro lado (ej. una Compra con varios pagos parciales o varios costos por entregas parciales), **no** poner una FK única en la cabecera (`compras.movimiento_caja_id`) — eso fuerza una relación 1:1 que bloquea el caso real de pagos múltiples. En cambio, poner la FK **del lado de "muchos"**:
+
+```sql
+-- La cabecera (compras) no tiene ninguna FK hacia el pago o el costo.
+-- El vínculo vive en la tabla que puede repetirse:
+alter table costos_reales add column compra_id uuid references compras(id) on delete set null;
+alter table movimientos_caja add column compra_id uuid references compras(id) on delete set null;
+
+-- Si la tabla "muchos" ya distingue un tipo (como movimientos_caja: cobro/pago),
+-- un CHECK simple alcanza — no hace falta trigger, porque ambas columnas ya viven
+-- en la misma tabla:
+alter table movimientos_caja add constraint movimientos_caja_compra_solo_pago
+  check (compra_id is null or tipo = 'pago');
+```
+
+Esto permite `1 compra -> N costos_reales` y `1 compra -> N movimientos_caja` sin tabla de unión. Para agregar (sumar los N vinculados) usar una vista con `left join lateral` (ver patrón de vista derivada arriba). Contrastar con el patrón anterior (FK única + trigger, usado en costos_reales/adicionales/certificados hacia `movimiento_caja_id`), que es correcto solo cuando la relación real es 1:1.
+
+---
+
 ### Claves Foraneas
 ```sql
 apply_migration(

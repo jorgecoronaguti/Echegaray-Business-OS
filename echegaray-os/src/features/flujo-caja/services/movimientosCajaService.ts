@@ -60,6 +60,7 @@ export async function insertMovimientoCaja(
         concepto: input.concepto,
         origen: input.origen,
         referencia_externa: input.referencia_externa ?? null,
+        compra_id: input.compra_id ?? null,
         notas: input.notas ?? null,
       })
       .select()

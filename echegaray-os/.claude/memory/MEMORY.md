@@ -15,6 +15,7 @@
 - [PRP-006 Gestión Integral de Adicionales](project/prp-006-gestion-integral-adicionales.md) — `adicionales` con fecha/monto por etapa (no enum lineal, permite detectar secuencias fuera de orden), alertas en TypeScript puro
 - [PRP-007 Ejecución Financiera de la Obra](project/prp-007-ejecucion-financiera-obra.md) — `certificados` (contrato base, no se mezcla con adicionales) + vista `obra_ejecucion_financiera` (contratado/certificado/facturado/cobrado)
 - [PRP-008 HH y Productividad de Obra](project/prp-008-hh-productividad-obra.md) — `registros_hh` semanal (texto libre, sin legajo/cuadrilla/tarea), `hh_estimada` en `presupuestos`, HH y costo de mano de obra deliberadamente separados
+- [PRP-009 Compras y Abastecimiento de Obra](project/prp-009-compras-abastecimiento-obra.md) — `compras` (obra/proveedor nullable para poder alertar), FK invertida (`costos_reales.compra_id`, `movimientos_caja.compra_id`) para soportar N costos y N pagos por compra
 
 ## feedback/ — Correcciones y preferencias
 - [Construir capacidades, no pantallas aisladas](feedback/construir-capacidades-no-pantallas-aisladas.md) — cada incremento debe resolver una decisión real y ser base reutilizable; justificar toda entidad nueva o evitarla

@@ -17,6 +17,11 @@ export interface MovimientoCaja {
   concepto: string
   origen: 'manual' | 'flujo_caja_sheet' | 'control_gastos'
   referencia_externa: string | null
+  // Vínculo opcional con la compra que este pago liquida (PRP-009). Una misma compra
+  // puede tener varios movimientos_caja vinculados (cuotas, pagos parciales) — no hay
+  // unique index acá, a diferencia del patrón anterior (costos_reales/adicionales).
+  // Solo válido cuando tipo = 'pago' (CHECK en la base).
+  compra_id: string | null
   notas: string | null
   created_at: string
   updated_at: string
@@ -38,6 +43,7 @@ export const movimientoCajaInputSchema = z
     concepto: z.string().trim().min(1, 'El concepto es obligatorio'),
     origen: z.enum(['manual', 'flujo_caja_sheet', 'control_gastos']).default('manual'),
     referencia_externa: z.string().trim().min(1).optional(),
+    compra_id: z.string().uuid('Compra inválida').optional(),
     notas: z.string().trim().min(1).optional(),
   })
   .superRefine((data, ctx) => {
@@ -62,6 +68,9 @@ export const movimientoCajaInputSchema = z
     }
     if (data.estado === 'real' && !data.fecha_real) {
       ctx.addIssue({ code: 'custom', message: 'Un movimiento real requiere fecha real', path: ['fecha_real'] })
+    }
+    if (data.compra_id && data.tipo !== 'pago') {
+      ctx.addIssue({ code: 'custom', message: 'Solo un pago puede vincularse a una compra', path: ['compra_id'] })
     }
   })
 

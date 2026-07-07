@@ -31,6 +31,7 @@ export async function createCostoRealAction(
     fecha: formData.get('fecha'),
     estado: formData.get('estado') || undefined,
     movimiento_caja_id: formData.get('movimiento_caja_id') || undefined,
+    compra_id: formData.get('compra_id') || undefined,
     fuente_legacy: formData.get('fuente_legacy'),
     notas: formData.get('notas') || undefined,
   })

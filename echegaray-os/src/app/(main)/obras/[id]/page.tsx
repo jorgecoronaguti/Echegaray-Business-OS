@@ -29,6 +29,9 @@ import { ResumenEjecucionFinanciera } from '@/features/ejecucion-financiera/comp
 import { getRegistrosHHPorObra, getHHResumenPorObra } from '@/features/hh-productividad/services/hhProductividadService'
 import { RegistroHHForm } from '@/features/hh-productividad/components/RegistroHHForm'
 import { ResumenHHObra } from '@/features/hh-productividad/components/ResumenHHObra'
+import { getComprasPorObra, getComprasResumenPorObra } from '@/features/compras/services/comprasService'
+import { CompraForm } from '@/features/compras/components/CompraForm'
+import { ComprasList } from '@/features/compras/components/ComprasList'
 
 async function loadObraDetalle(id: string) {
   try {
@@ -48,6 +51,8 @@ async function loadObraDetalle(id: string) {
       ejecucionFinanciera,
       registrosHH,
       resumenHH,
+      compras,
+      comprasResumen,
     ] = await Promise.all([
       getObraById(supabase, id),
       getClientes(supabase),
@@ -63,6 +68,8 @@ async function loadObraDetalle(id: string) {
       getEjecucionFinancieraPorObra(supabase, id),
       getRegistrosHHPorObra(supabase, id),
       getHHResumenPorObra(supabase, id),
+      getComprasPorObra(supabase, id),
+      getComprasResumenPorObra(supabase, id),
     ])
 
     // Las partidas se muestran de la versión más reciente (mayor `version`), que es
@@ -88,6 +95,8 @@ async function loadObraDetalle(id: string) {
       ejecucionFinanciera,
       registrosHH,
       resumenHH,
+      compras,
+      comprasResumen,
     }
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Error desconocido al conectar con Supabase'
@@ -108,6 +117,8 @@ async function loadObraDetalle(id: string) {
       ejecucionFinanciera: failed,
       registrosHH: failed,
       resumenHH: failed,
+      compras: failed,
+      comprasResumen: failed,
     }
   }
 }
@@ -130,6 +141,8 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
     ejecucionFinanciera,
     registrosHH,
     resumenHH,
+    compras,
+    comprasResumen,
   } = await loadObraDetalle(id)
 
   const pageError =
@@ -146,7 +159,9 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
     certificados.error ??
     ejecucionFinanciera.error ??
     registrosHH.error ??
-    resumenHH.error
+    resumenHH.error ??
+    compras.error ??
+    comprasResumen.error
   const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
 
   if (!pageError && !obra.data) {
@@ -340,6 +355,24 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
             )}
           </section>
 
+          <section data-testid="compras-obra-section">
+            <h2 className="text-xl font-semibold">Compras y abastecimiento</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Necesidad → solicitud → cotización → orden → recepción. Una compra puede tener varios costos reales
+              (entregas parciales) y varios pagos (cuotas) — no se fuerza un único vínculo.
+            </p>
+
+            <CompraForm obraId={id} proveedores={proveedores.data ?? []} />
+
+            <ComprasList
+              compras={compras.data ?? []}
+              resumenes={comprasResumen.data ?? []}
+              obraId={id}
+              movimientosDePago={movimientosDePago}
+              proveedores={proveedores.data ?? []}
+            />
+          </section>
+
           <section data-testid="costos-reales-obra-section">
             <h2 className="text-xl font-semibold">Costos reales</h2>
             <p className="mt-1 text-sm text-gray-600">
@@ -350,6 +383,7 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
               obraId={id}
               proveedores={proveedores.data ?? []}
               movimientosDePago={movimientosDePago}
+              compras={compras.data ?? []}
             />
 
             <table className="mt-3 w-full text-left text-sm">

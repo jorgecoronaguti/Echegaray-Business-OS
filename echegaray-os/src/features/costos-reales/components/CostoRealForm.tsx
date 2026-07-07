@@ -4,6 +4,7 @@ import { useActionState } from 'react'
 import { createCostoRealAction, type ActionState } from '../services/actions'
 import type { Proveedor } from '@/features/fundacion/types'
 import type { MovimientoCaja } from '@/features/flujo-caja/types'
+import type { Compra } from '@/features/compras/types'
 
 const initialState: ActionState = { error: null }
 
@@ -11,10 +12,12 @@ export function CostoRealForm({
   obraId,
   proveedores,
   movimientosDePago,
+  compras = [],
 }: {
   obraId: string
   proveedores: Proveedor[]
   movimientosDePago: MovimientoCaja[]
+  compras?: Compra[]
 }) {
   const [state, formAction, pending] = useActionState(createCostoRealAction, initialState)
 
@@ -76,6 +79,15 @@ export function CostoRealForm({
           required
           className="w-64 rounded border px-2 py-1"
         />
+
+        <select name="compra_id" defaultValue="" className="w-72 rounded border px-2 py-1">
+          <option value="">Sin vínculo a compra</option>
+          {compras.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.concepto} ({c.fecha_necesidad})
+            </option>
+          ))}
+        </select>
       </div>
 
       <textarea name="notas" placeholder="Notas (opcional)" className="rounded border px-2 py-1" />
