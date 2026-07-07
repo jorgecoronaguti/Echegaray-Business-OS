@@ -46,9 +46,39 @@ Permitir que una sesión futura resuelva una duda puntual sobre un proceso o arc
 
 ## Archivos obsoletos conocidos
 
-- `Flujo de Fondos.xlsx` — reemplazado por Ingresos y Egresos (P&L) + Flujo de Caja (Cash Flow) actuales. No usar como fuente.
-- `EJERCICIO 8.xlsx` — obsoleto, mismo reemplazo que arriba.
 - `Contrato de Obra.docx` — la plantilla existe, pero no se confirmó uso sistemático (no se encontraron contratos firmados en las carpetas de cliente revisadas).
+
+## SISTEMA FINANCIERO VIGENTE (corrección mayor, confirmada por el usuario, 2026-07-07)
+
+Hubo dos correcciones erróneas de este archivo en la misma sesión antes de llegar a esto — quedan documentadas para no repetir el error de método (búsquedas sin acotar `parentId` devuelven homónimos y llevan a conclusiones falsas). La jerarquía real, confirmada directamente por el usuario:
+
+**Fuente de verdad actual — ambos archivos propiedad de `jorge.o.corona@gmail.com` (el dueño), parentId `1a_3sIbioAQm0EcuJTbu3L6q_hy_LHUXs`, actualizados semanalmente:**
+
+| Archivo | Pestañas | Contenido real |
+|---|---|---|
+| **`Flujo de Caja - Cash Flow`** (id `1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8`) | `RESUMEN` | Posición consolidada: deudas por proveedor, cobros proyectados/reales (con Categoría B/N), cheques emitidos aún no debitados, pendientes del mes, proyectado por mes (incluye "Sueldos" y "SINDICATOS" como buckets de pago), composición Banco/Caja |
+| | `Compras` | Ledger detallado de gastos: Categoría (B/N), fecha factura, proveedor, modalidad de pago, tipo de comprobante, **Unidad de Negocio** (`Civil` / `Mantenimiento` / `Estructura`), **Cliente/Asignación** (obra si es Civil/Mantenimiento; `Taller` o `Administracion` si es Estructura), importe/IVA/total, forma de pago, estado (parcial/total, pagado) |
+| **`Ingresos y Egresos - P&L`** (id `1-NAqlEuKoB0IqCY4res5OiJhbbz_7-F2M-zmpnkpMYg`) | `05_Dashboard_P&L` | **P&L mensual completo devengado**, ya proyectado a todo 2026: Ingresos Civil / Ingresos Mantenimiento → Costos Directos (por línea) → Margen Bruto (%) → Gastos generales (Estructura, Administrativos) → **Cargas sociales y contribuciones (FCL, otros)** → Total Gastos operativos → **Impuesto a los Ingresos Brutos** → EBITDA (%) → Amortizaciones → Resultados financieros → **Impuesto s/ Débitos y Créditos Bancarios** → EBT → Impuesto a las ganancias → Resultado neto (%). Incluye mix Civil/Mantenimiento % |
+| | `CF_COB` | Cobranzas proyectadas y reales — ledger detallado paralelo a `Compras`, mismo nivel de detalle del lado de ingresos |
+
+**Esto reemplaza conclusiones previas de este mismo archivo y de la revisión estratégica de arquitectura**: el P&L consolidado de empresa, el desglose de cargas sociales, IIBB, impuesto al cheque, y la separación Civil/Mantenimiento **ya existen, completos y con proyección a futuro** — no es un gap de "construir desde cero", es un gap de **integración/migración** de un sistema ya sofisticado.
+
+**Confirmaciones clave que esto resuelve:**
+- **"Civil" y "Mantenimiento" son las dos líneas de negocio reales** con ingresos/costos propios en el P&L — confirma exactamente lo que dijo el usuario ("no son licitación, es mantenimiento edilicio"): Mantenimiento es una línea de negocio con entidad propia, no una curiosidad de un cliente.
+- **"Estructura" es la unidad de negocio no vinculada a obra**, y sus dos sub-asignaciones reales son **Taller** y **Administración** (no "Almacen" — esa lectura de la carpeta separada de abajo era de un sistema legacy distinto).
+- **La dualidad Blanco/Negro es real, explícita, y vive en la Categoría de cada movimiento** tanto en `Compras` como en cobros — confirma la pregunta abierta que ya existía sobre la columna Categoría B/N. Ninguna tabla del OS la modela hoy.
+- **Cargas sociales, IIBB e impuesto al cheque ya se calculan** mensualmente en el P&L — no hacen falta preguntas de descubrimiento adicionales sobre esto, hace falta decidir cómo integrarlo.
+
+**Sistema legacy, superseded por lo anterior — carpeta `Administración` (parentId `1tJH-J8HFSF_B5r0qa-iA3RlqSsH3T9CO`), mantenida por `administracion@ecsas.com.ar` / `rodrigo@ecsas.com.ar`:**
+
+| Archivo | Qué era | Estado |
+|---|---|---|
+| `EJERCICIO 7.xlsx` / `EJERCICIO 8.xlsx` | Ledger de gastos con IVA por comprobante, precursor de la pestaña `Compras` actual | **Reemplazado** — confirmado por el usuario. Última modificación marzo 2026, antes de que el sistema nuevo tomara la posta |
+| `Flujo de Fondos.xlsx` | Ledger de pagos/cheques a cubrir | Probablemente superseded por el mismo motivo — no confirmado explícitamente, tratar como legacy salvo evidencia en contrario |
+| `CONTROL DE GASTOS - HISTORICO.xlsx` | Ya se sabía histórico por nombre | Histórico |
+| `Flujos_Obras_Corregido.xlsx` | Control financiero por obra con **Grado de avance (%)** y plan de cobro por cuotas | Sin confirmar si fue reemplazado — **el dato de avance físico no vi que esté en el sistema nuevo**, puede seguir siendo la única fuente de ese dato puntual. Verificar antes de descartarlo. |
+
+**Lección de método**: cuando el usuario corrige una conclusión de discovery, la corrección del usuario prima sobre cualquier lectura de archivo — pero documentar igual la evidencia encontrada (fechas de modificación, contenido) porque ayuda a explicar el "por qué" del reemplazo en vez de aceptarlo a ciegas.
 
 ## Duplicaciones conocidas
 

@@ -20,6 +20,7 @@
 - [PRP-011 Dashboard de Dirección](project/prp-011-dashboard-direccion.md) — 100% síntesis TypeScript reutilizando las alertas ya calculadas por cada capacidad, sin SQL nuevo ni tabla de alertas
 - [PRP-012 Post Mortem de Obra](project/prp-012-post-mortem-obra.md) — `post_mortems` (borrador/cerrado, snapshot jsonb solo al cerrar), reutiliza todo lo existente sin duplicar; cierra la Etapa 4 del roadmap
 - [PRP-013 Áreas y Centro de Acción](project/prp-013-areas-y-centro-de-accion.md) — 6 áreas mapeadas a capacidades existentes + tabla `acciones` (seguimiento de estado/responsable, no duplica alertas); Fase II
+- [Arquitectura de Conocimiento Experto](project/arquitectura-conocimiento-experto.md) — 13 skills expertas de dominio + matriz multidisciplinaria en CLAUDE.md raíz; usar en toda decisión real de la empresa, no solo al construir features
 
 ## feedback/ — Correcciones y preferencias
 - [Construir capacidades, no pantallas aisladas](feedback/construir-capacidades-no-pantallas-aisladas.md) — cada incremento debe resolver una decisión real y ser base reutilizable; justificar toda entidad nueva o evitarla

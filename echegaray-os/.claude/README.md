@@ -54,6 +54,28 @@ Herramientas de proceso que se usan de forma directa hoy:
 | `discovery-drive-echegaray` | — | Resume el conocimiento de las dos rondas de discovery de Drive para resolver dudas puntuales sin re-explorar de cero |
 | `cash-flow-operativo` | — | Reglas de negocio del módulo de Flujo de Caja (Fase 1 del Blueprint TO-BE): percibido vs. devengado, real vs. proyectado, vínculo Cliente/Obra/Proveedor |
 
+## Skills expertas de dominio
+
+Conocimiento profesional multidisciplinario de una empresa constructora (San Juan, Argentina). No son herramientas de proceso técnico — son criterio experto que Claude activa según el dominio de la decisión. Ver la sección "SISTEMA DE RAZONAMIENTO MULTIDISCIPLINARIO" del `CLAUDE.md` raíz para la matriz de activación cruzada.
+
+| Skill | Dominio |
+|---|---|
+| `ingenieria-civil-construccion` | Ingeniería civil, métodos constructivos, patologías |
+| `direccion-obra` | Coordinación de frentes, relación con cliente en sitio |
+| `planificacion-produccion` | Cronograma, ruta crítica, rendimientos |
+| `costos-presupuestacion` | Cómputos, presupuestación técnica, análisis de desvío de costo |
+| `derecho-construccion-contratos` | Contratos de obra, pliegos, adicionales, reclamos |
+| `contabilidad-constructoras` | Reconocimiento de ingresos por obra, P&L consolidado |
+| `impuestos-construccion` | IVA, Ingresos Brutos, Ganancias, tasas municipales |
+| `finanzas-tesoreria-construccion` | Capital de trabajo, caja, financiamiento de obra |
+| `derecho-laboral-construccion` | CCT UOCRA, IERIC, Fondo de Cese Laboral |
+| `seguridad-higiene-art` | Seguridad e higiene, ART, pliegos SSMA de cliente |
+| `calidad-obra` | Ensayos, tolerancias, no conformidades |
+| `compras-abastecimiento-subcontratacion` | Evaluación de proveedores y subcontratistas |
+| `gestion-empresarial-riesgos` | Riesgo de concentración, Go/No-Go, riesgo financiero agregado |
+
+Cada una declara su propia política de fuentes, jurisdicción, protocolo de vigencia y mecanismo de aprendizaje continuo dentro de su `SKILL.md` — ninguna cita normativa, tasa o convenio específico sin verificación explícita en el momento de uso.
+
 ## Capacidades latentes
 
 Skills que se conservan porque el chasis técnico es reutilizable, pero sin caso de uso confirmado en Echegaray Construcciones todavía. No activarlas sin justificación explícita:
@@ -115,6 +137,19 @@ Si en el futuro se necesita un control de acceso más estricto (solo-lectura gar
 │   ├── skill-creator/
 │   ├── discovery-drive-echegaray/
 │   ├── cash-flow-operativo/
+│   ├── ingenieria-civil-construccion/       # experta de dominio
+│   ├── direccion-obra/                      # experta de dominio
+│   ├── planificacion-produccion/            # experta de dominio
+│   ├── costos-presupuestacion/              # experta de dominio
+│   ├── derecho-construccion-contratos/      # experta de dominio
+│   ├── contabilidad-constructoras/          # experta de dominio
+│   ├── impuestos-construccion/              # experta de dominio
+│   ├── finanzas-tesoreria-construccion/     # experta de dominio
+│   ├── derecho-laboral-construccion/        # experta de dominio
+│   ├── seguridad-higiene-art/                # experta de dominio
+│   ├── calidad-obra/                        # experta de dominio
+│   ├── compras-abastecimiento-subcontratacion/ # experta de dominio
+│   ├── gestion-empresarial-riesgos/         # experta de dominio
 │   ├── ai/                    # latente
 │   ├── image-generation/      # latente
 │   └── add-login/             # latente

@@ -971,3 +971,69 @@ El objetivo es construir una empresa que cada año:
 Cada sistema implementado debe acercar a Echegaray Construcciones a ese resultado.
 
 Si no lo hace, no es prioridad.
+
+---
+
+# SISTEMA DE RAZONAMIENTO MULTIDISCIPLINARIO
+
+Esta sección no reemplaza ni resume nada de lo anterior. Es la capa operativa que conecta este documento con las skills expertas de dominio (`.claude/skills/`), que existen desde este incremento para que Claude opere como un equipo multidisciplinario real, no como un generalista que "actúa como si supiera".
+
+## Principios
+
+1. **Una decisión puede involucrar múltiples dominios simultáneamente.** Cotizar una obra no es solo un ejercicio de costos: puede tocar ingeniería, contratos, impuestos y finanzas al mismo tiempo.
+
+2. **Antes de analizar una decisión compleja, identificar los dominios relevantes.** No responder desde un solo ángulo cuando la decisión lo requiere.
+
+3. **Activar y cruzar las skills necesarias**, no una sola por comodidad. Ver matriz de activación abajo.
+
+4. **Separar siempre**, en cualquier análisis multidisciplinario:
+
+**HECHO** · **DATO INTERNO** · **CÁLCULO** · **SUPUESTO** · **ESTIMACIÓN** · **PROYECCIÓN** · **NORMA OBLIGATORIA** · **INTERPRETACIÓN PROFESIONAL** · **RECOMENDACIÓN**
+
+5. **Detectar conflictos entre dimensiones** antes de recomendar — típicamente entre: solución técnicamente correcta, costo, plazo, caja, margen, contrato, impuestos, obligaciones laborales, seguridad, calidad, capacidad operativa. Un conflicto no resuelto no se oculta en la recomendación final: se nombra explícitamente.
+
+6. **La recomendación final es integrada, no una suma de opiniones por disciplina.** Cruzar las skills relevantes y presentar una sola lectura coherente, no un párrafo por especialidad pegado uno detrás del otro.
+
+7. **Todo conocimiento normativo o regulatorio cambiante se verifica antes de usarse como vigente** (impuestos, laboral, seguridad, normativa técnica). Ninguna skill afirma una tasa, alícuota, convenio o norma específica sin verificación en la sesión.
+
+8. **Ninguna decisión de alto riesgo se ejecuta de forma autónoma.** Financiero, contractual, laboral, de seguridad o de cierre de obra: siempre requieren aprobación humana explícita.
+
+## Matriz de activación multidisciplinaria
+
+| Decisión | Skills a cruzar |
+|---|---|
+| Cambio de solución constructiva | `ingenieria-civil-construccion` · `planificacion-produccion` · `costos-presupuestacion` · `finanzas-tesoreria-construccion` · `derecho-construccion-contratos` · `contabilidad-constructoras` · `seguridad-higiene-art` · `calidad-obra` |
+| Cotizar una obra | `costos-presupuestacion` · `ingenieria-civil-construccion` · `derecho-construccion-contratos` · `finanzas-tesoreria-construccion` · `gestion-empresarial-riesgos` |
+| Decidir Go/No-Go | `gestion-empresarial-riesgos` · `finanzas-tesoreria-construccion` (la decisión final es de negocio, estas skills informan) |
+| Aceptar un contrato | `derecho-construccion-contratos` · `impuestos-construccion` · `finanzas-tesoreria-construccion` |
+| Aprobar un adicional | `derecho-construccion-contratos` · `costos-presupuestacion` · `ingenieria-civil-construccion` |
+| Comprar vs. alquilar equipo | `finanzas-tesoreria-construccion` · `planificacion-produccion` · `impuestos-construccion` |
+| Contratar subcontratista | `compras-abastecimiento-subcontratacion` · `derecho-laboral-construccion` · `seguridad-higiene-art` · `derecho-construccion-contratos` |
+| Cambiar planificación | `planificacion-produccion` · `costos-presupuestacion` · `direccion-obra` |
+| Financiar capital de trabajo | `finanzas-tesoreria-construccion` · `contabilidad-constructoras` · `impuestos-construccion` |
+| Responder un reclamo | `derecho-construccion-contratos` · `calidad-obra` · `ingenieria-civil-construccion` |
+| Desvincular personal | `derecho-laboral-construccion` · `seguridad-higiene-art` |
+| Actuar ante un incidente de seguridad | `seguridad-higiene-art` · `derecho-laboral-construccion` · `derecho-construccion-contratos` |
+| Cerrar una obra | `contabilidad-constructoras` · `impuestos-construccion` · `derecho-construccion-contratos` (Post Mortem, capacidad ya construida del OS, es la entrada de aprendizaje) |
+
+## Aprendizaje continuo
+
+El aprendizaje no depende únicamente del cierre de una obra. Cualquier punto del ciclo de operación puede generar conocimiento nuevo:
+
+`OPERACIÓN → EVENTO → RESULTADO → DESVÍO → CAUSA → EVIDENCIA → PATRÓN → PROPUESTA DE APRENDIZAJE → VALIDACIÓN SEGÚN RIESGO → INCORPORACIÓN → APLICACIÓN FUTURA → MEDICIÓN`
+
+Fuentes válidas: operación diaria, alertas, acciones, resolución de problemas, costos reales, HH, productividad, compras, entregas, proveedores, adicionales, certificaciones, cobranzas, obligaciones, incidentes, no conformidades, decisiones, Post Mortem.
+
+Clasificación obligatoria antes de incorporar cualquier aprendizaje a una skill:
+
+**A.** Observación aislada · **B.** Recurrencia · **C.** Patrón probable · **D.** Conocimiento interno validado · **E.** Regla operativa aprobada
+
+Una observación aislada (A) nunca se convierte automáticamente en regla general. Solo pasa a D o E con validación explícita del usuario, proporcional al riesgo (ver política de riesgo en cada skill).
+
+## Dónde vive cada cosa
+
+- **Este documento**: filosofía, estrategia, reglas de decisión de negocio, estilo. No contiene conocimiento técnico-normativo.
+- **`.claude/skills/[dominio]/SKILL.md`**: las 13 skills expertas (ingeniería civil, dirección de obra, planificación/producción, costos/presupuestación, derecho de la construcción/contratos, contabilidad de constructoras, impuestos, finanzas/tesorería, derecho laboral de la construcción, seguridad e higiene/ART, calidad de obra, compras/abastecimiento/subcontratación, gestión empresarial y riesgos). Cada una declara su propia política de fuentes, vigencia y aprendizaje.
+- **`.claude/memory/`**: aprendizaje acumulado específico de Echegaray (decisiones, hallazgos de discovery, patrones validados).
+
+La jurisdicción operativa principal de todo el conocimiento normativo es **San Juan, Argentina** — distinguiendo siempre normativa nacional, provincial (San Juan), municipal según ubicación concreta, contractual específica del cliente, y normas técnicas aplicables.
