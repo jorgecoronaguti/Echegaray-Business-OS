@@ -73,7 +73,8 @@ Conocimiento profesional multidisciplinario de una empresa constructora (San Jua
 | `calidad-obra` | Ensayos, tolerancias, no conformidades |
 | `compras-abastecimiento-subcontratacion` | Evaluación de proveedores y subcontratistas |
 | `gestion-empresarial-riesgos` | Riesgo de concentración, Go/No-Go, riesgo financiero agregado |
-| `integraciones-apis-sistemas-externos` | Arquitectura de integraciones (APIs, webhooks, sincronización, reconciliación) — única de naturaleza técnica, no normativa; decide el *cómo* conectar, nunca el *qué* dato capturar |
+| `integraciones-apis-sistemas-externos` | Arquitectura de integraciones (APIs, webhooks, sincronización, reconciliación) — técnica, no normativa; decide el *cómo* conectar, nunca el *qué* dato capturar |
+| `lectura-drive-documentos-multiformato` | Metodología de inspección/lectura/extracción/validación de Google Drive y documentos multiformato (Sheets, Docs, PDF, Excel, Word, CSV, imágenes/OCR) — técnica, no normativa; decide el *cómo* leer y extraer, nunca el *qué* dato capturar ni cuál fuente gana en un conflicto |
 
 Cada una declara su propia política de fuentes, jurisdicción, protocolo de vigencia y mecanismo de aprendizaje continuo dentro de su `SKILL.md` — ninguna cita normativa, tasa o convenio específico sin verificación explícita en el momento de uso.
 
@@ -152,6 +153,7 @@ Si en el futuro se necesita un control de acceso más estricto (solo-lectura gar
 │   ├── compras-abastecimiento-subcontratacion/ # experta de dominio
 │   ├── gestion-empresarial-riesgos/         # experta de dominio
 │   ├── integraciones-apis-sistemas-externos/ # experta tecnica
+│   ├── lectura-drive-documentos-multiformato/ # experta tecnica
 │   ├── ai/                    # latente
 │   ├── image-generation/      # latente
 │   └── add-login/             # latente
