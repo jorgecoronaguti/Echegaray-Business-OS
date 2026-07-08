@@ -1,8 +1,13 @@
-export default function Home() {
-  return (
-    <main className="min-h-screen p-8">
-      <h1 className="text-2xl font-bold">Echegaray Business OS</h1>
-      <p className="mt-2 text-gray-600">Base técnica lista. Módulos de negocio pendientes de construir.</p>
-    </main>
-  )
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
+
+// La raíz nunca tuvo a dónde ir -- quedaba mostrando el placeholder original de la
+// Fundación (Bloque 12-B: "no quiero tener que inferir dónde está la interfaz").
+export default async function Home() {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  redirect(user ? '/dashboard' : '/login')
 }
