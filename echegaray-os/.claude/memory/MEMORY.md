@@ -23,6 +23,9 @@
 - [Arquitectura de Conocimiento Experto](project/arquitectura-conocimiento-experto.md) — 15 skills expertas (13 de dominio + 2 técnicas: integraciones, lectura de Drive/multiformato) + matriz multidisciplinaria en CLAUDE.md raíz; usar en toda decisión real de la empresa, no solo al construir features
 - [PR0 Línea Base Echegaray](project/pr0-linea-base-echegaray.md) — respuestas resueltas del checklist PR0-A (N=negro, Messinas=cliente, SGR no vigente, etc.), qué queda abierto, advertencia de no confundir "cómo se hace hoy" con especificación futura
 - [PRP-014 Posición de Caja Consolidada (F1)](project/prp-014-posicion-caja-consolidada-f1.md) — forecast semanal/mensual, reemplaza cálculo duplicado del Dashboard, saldo actual real da negativo (cobertura parcial declarada)
+- [Arquitectura de Fuentes de Información](project/arquitectura-fuentes-informacion.md) — principio permanente aprobado: Drive/Supabase/OS/skills/Internet, jerarquía de verdad por dato, gaps confirmados (Libro de Sueldos, IVA neto, adicionales sin obra)
+- [PR1-B — CF_COB y Cheques](project/pr1-b-cf-cob-cheques.md) — lectura completa (49+848 filas reales), clasificación A-E, cuotas de echeq reales vs. duplicados, carga con trazabilidad
+- [PRP-015 Capital de Trabajo (F2)](project/prp-015-capital-trabajo-f2.md) — elegido sobre O1 por concentración real de cliente/proveedor detectada en PR1-B; primer incremento, exposición por obra queda pendiente
 
 ## feedback/ — Correcciones y preferencias
 - [Construir capacidades, no pantallas aisladas](feedback/construir-capacidades-no-pantallas-aisladas.md) — cada incremento debe resolver una decisión real y ser base reutilizable; justificar toda entidad nueva o evitarla

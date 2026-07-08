@@ -112,8 +112,10 @@ export default async function CajaPage() {
           <h2 className="text-xl font-semibold">Posición de Caja Consolidada (F1)</h2>
           <p className="text-sm text-gray-600">
             Saldo actual: <span className="font-semibold">{formatoMoneda(posicionCaja.data.saldoActual)}</span>.
-            Cobertura parcial — ver <code>pr0-linea-base-echegaray.md</code>: CxC, cheques individuales y algunos
-            gastos generales todavía no están cargados en su totalidad.
+            Cobertura ampliada en PR1-B: CF_COB y cheques/eCheq relevantes ya están cargados en su totalidad.
+            Quedan pendientes: Libro de Sueldos real (no localizado en Drive), IIBB/IVA neto exacto (falta IVA
+            Compras) y algunas obligaciones sin fecha de vencimiento conocida — ver{' '}
+            <code>pr1-b-cf-cob-cheques.md</code>.
           </p>
           <TablaForecast titulo="Forecast semanal (8 semanas)" periodos={posicionCaja.data.forecastSemanal} />
           <TablaForecast titulo="Forecast mensual (6 meses)" periodos={posicionCaja.data.forecastMensual} />
