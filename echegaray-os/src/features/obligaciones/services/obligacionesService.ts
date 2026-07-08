@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Obligacion, ObligacionInput, ObligacionResumen, AplicacionPagoInput } from '../types'
+import type { Obligacion, ObligacionInput, ObligacionResumen, AplicacionPagoInput, AplicacionPago } from '../types'
 
 export type ServiceResult<T> = { data: T; error: null } | { data: null; error: string }
 
@@ -86,6 +86,20 @@ export async function insertObligacion(
       .single()
     if (error) return { data: null, error: error.message }
     return { data: data as Obligacion, error: null }
+  } catch (err) {
+    return { data: null, error: toServiceError(err) }
+  }
+}
+
+// Usado por F1 (posición de caja) para no contar dos veces el mismo pago: un
+// movimiento_caja ya aplicado a una obligación no debe sumarse de nuevo como "pago
+// proyectado suelto" en el forecast — la obligación (vía obligacion_resumen.saldo_pendiente)
+// ya refleja ese pago.
+export async function getAplicacionesPago(supabase: SupabaseClient): Promise<ServiceResult<AplicacionPago[]>> {
+  try {
+    const { data, error } = await supabase.from('aplicaciones_pago').select('*')
+    if (error) return { data: null, error: error.message }
+    return { data: data as AplicacionPago[], error: null }
   } catch (err) {
     return { data: null, error: toServiceError(err) }
   }

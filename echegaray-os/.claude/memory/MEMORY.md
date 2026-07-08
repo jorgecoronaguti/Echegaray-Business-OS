@@ -22,6 +22,7 @@
 - [PRP-013 Áreas y Centro de Acción](project/prp-013-areas-y-centro-de-accion.md) — 6 áreas mapeadas a capacidades existentes + tabla `acciones` (seguimiento de estado/responsable, no duplica alertas); Fase II
 - [Arquitectura de Conocimiento Experto](project/arquitectura-conocimiento-experto.md) — 15 skills expertas (13 de dominio + 2 técnicas: integraciones, lectura de Drive/multiformato) + matriz multidisciplinaria en CLAUDE.md raíz; usar en toda decisión real de la empresa, no solo al construir features
 - [PR0 Línea Base Echegaray](project/pr0-linea-base-echegaray.md) — respuestas resueltas del checklist PR0-A (N=negro, Messinas=cliente, SGR no vigente, etc.), qué queda abierto, advertencia de no confundir "cómo se hace hoy" con especificación futura
+- [PRP-014 Posición de Caja Consolidada (F1)](project/prp-014-posicion-caja-consolidada-f1.md) — forecast semanal/mensual, reemplaza cálculo duplicado del Dashboard, saldo actual real da negativo (cobertura parcial declarada)
 
 ## feedback/ — Correcciones y preferencias
 - [Construir capacidades, no pantallas aisladas](feedback/construir-capacidades-no-pantallas-aisladas.md) — cada incremento debe resolver una decisión real y ser base reutilizable; justificar toda entidad nueva o evitarla

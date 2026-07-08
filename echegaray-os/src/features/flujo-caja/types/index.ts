@@ -27,6 +27,11 @@ export interface MovimientoCaja {
   // campo solo clasifica el medio, no duplica ese ciclo con una tabla nueva.
   medio_pago: 'efectivo' | 'transferencia' | 'debito' | 'tarjeta' | 'cheque' | 'echeq' | 'otro' | null
   referencia_instrumento: string | null
+  // Solo para tipo='pago' sin proveedor_id: gasto interno recurrente sin contraparte
+  // comercial (nómina, cargas sociales, impuestos). Ver migración
+  // relajar_contraparte_movimientos_caja (F1) — antes el esquema exigía proveedor_id
+  // en todo pago, lo que impedía cargar nómina real sin fabricar un proveedor ficticio.
+  categoria_pago: 'nomina' | 'cargas_sociales' | 'impuestos' | null
   notas: string | null
   created_at: string
   updated_at: string
@@ -51,6 +56,7 @@ export const movimientoCajaInputSchema = z
     compra_id: z.string().uuid('Compra inválida').optional(),
     medio_pago: z.enum(['efectivo', 'transferencia', 'debito', 'tarjeta', 'cheque', 'echeq', 'otro']).optional(),
     referencia_instrumento: z.string().trim().min(1).optional(),
+    categoria_pago: z.enum(['nomina', 'cargas_sociales', 'impuestos']).optional(),
     notas: z.string().trim().min(1).optional(),
   })
   .superRefine((data, ctx) => {
@@ -58,16 +64,30 @@ export const movimientoCajaInputSchema = z
       if (!data.cliente_id) {
         ctx.addIssue({ code: 'custom', message: 'Un cobro requiere un Cliente', path: ['cliente_id'] })
       }
-      if (!data.obra_id) {
-        ctx.addIssue({ code: 'custom', message: 'Un cobro requiere una Obra', path: ['obra_id'] })
-      }
       if (data.proveedor_id) {
         ctx.addIssue({ code: 'custom', message: 'Un cobro no debe tener Proveedor', path: ['proveedor_id'] })
       }
+      if (data.categoria_pago) {
+        ctx.addIssue({ code: 'custom', message: 'Un cobro no lleva categoría de pago', path: ['categoria_pago'] })
+      }
     }
     if (data.tipo === 'pago') {
-      if (!data.proveedor_id) {
-        ctx.addIssue({ code: 'custom', message: 'Un pago requiere un Proveedor', path: ['proveedor_id'] })
+      // Un pago con categoria_pago (nómina/cargas sociales/impuestos) es un gasto
+      // interno sin proveedor comercial — no lo exigimos en ese caso (migración
+      // relajar_contraparte_movimientos_caja, F1).
+      if (!data.proveedor_id && !data.categoria_pago) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Un pago requiere un Proveedor, o una categoría de gasto interno (nómina/cargas sociales/impuestos)',
+          path: ['proveedor_id'],
+        })
+      }
+      if (data.proveedor_id && data.categoria_pago) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Un pago no puede tener Proveedor y categoría de gasto interno a la vez',
+          path: ['categoria_pago'],
+        })
       }
       if (data.cliente_id) {
         ctx.addIssue({ code: 'custom', message: 'Un pago no debe tener Cliente', path: ['cliente_id'] })

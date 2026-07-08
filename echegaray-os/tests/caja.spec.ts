@@ -4,6 +4,11 @@ import { test, expect } from '@playwright/test'
 // Conectado a Supabase real; sin login todavía, así que RLS bloquea correctamente
 // las lecturas/escrituras (mismo patrón que tests/fundacion.spec.ts).
 
+// F1 — Posición de Caja Consolidada (features/posicion-caja). Sin sesión autenticada
+// no hay forma de ver el forecast poblado (RLS bloquea la lectura, igual que el resto
+// de la página) — este test solo verifica que la sección no rompe el render cuando
+// no hay datos, mismo criterio que el resto de esta suite.
+
 test('la página de Caja renderiza el formulario y el listado', async ({ page }) => {
   await page.goto('/caja')
 
@@ -46,6 +51,14 @@ test('el formulario muestra "Fecha real" solo cuando el estado es "real"', async
 
   await form.locator('select[name="estado"]').selectOption('real')
   await expect(form.getByText('Fecha real', { exact: true })).toBeVisible()
+})
+
+test('sin sesión autenticada, la sección de Posición de Caja (F1) no rompe el render', async ({ page }) => {
+  const response = await page.goto('/caja')
+
+  expect(response?.status()).toBe(200)
+  await expect(page.getByTestId('posicion-caja-section')).toHaveCount(0)
+  await expect(page.locator('body')).not.toContainText('Application error')
 })
 
 test('enviar el formulario sin sesión autenticada muestra el error de RLS, no un crash', async ({ page }) => {

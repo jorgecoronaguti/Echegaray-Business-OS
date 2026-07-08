@@ -49,6 +49,15 @@ export const aplicacionPagoInputSchema = z.object({
 })
 export type AplicacionPagoInput = z.infer<typeof aplicacionPagoInputSchema>
 
+export interface AplicacionPago {
+  id: string
+  obligacion_id: string
+  movimiento_caja_id: string
+  monto_aplicado: number
+  notas: string | null
+  created_at: string
+}
+
 // Fila de la vista obligacion_resumen — saldo pendiente agregado desde
 // aplicaciones_pago.
 export interface ObligacionResumen {

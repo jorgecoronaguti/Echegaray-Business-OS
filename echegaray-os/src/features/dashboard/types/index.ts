@@ -19,6 +19,8 @@ import {
   calcularAlertasGeneralesObligaciones,
   calcularTensionLiquidez,
 } from '@/features/obligaciones/types'
+import type { PosicionCajaConsolidada } from '@/features/posicion-caja/types'
+import { calcularAlertasDeficit } from '@/features/posicion-caja/types'
 
 // Dashboard de Dirección (PRP-011): no fabrica alertas nuevas — cruza y normaliza las
 // que cada capacidad ya calcula sobre sus propias vistas/datos (Control Económico,
@@ -43,6 +45,7 @@ export type CategoriaAlerta =
   | 'compras'
   | 'obligaciones'
   | 'actividad_obra'
+  | 'posicion_caja'
 
 export interface AlertaDashboard {
   id: string
@@ -73,6 +76,7 @@ export interface DashboardDatosFuente {
   obligaciones: Obligacion[]
   obligacionesResumen: ObligacionResumen[]
   cobrosProyectadosEnVentana: number
+  posicionCaja: PosicionCajaConsolidada
 }
 
 // Umbral propuesto, no validado con el usuario todavía — mismo criterio abierto que
@@ -446,6 +450,26 @@ function mapObligaciones(
   return alertas
 }
 
+// F1 — Posición de Caja Consolidada: alerta de déficit proyectado en el forecast
+// semanal. La lógica de cálculo vive en features/posicion-caja (calcularAlertasDeficit),
+// acá solo se normaliza al formato AlertaDashboard, igual que el resto de capacidades.
+function mapPosicionCaja(posicionCaja: PosicionCajaConsolidada): AlertaDashboard[] {
+  return calcularAlertasDeficit(posicionCaja.forecastSemanal).map((alerta) => ({
+    id: `pc-deficit-${alerta.periodo.inicio}`,
+    titulo: `Déficit de caja proyectado — semana del ${alerta.periodo.inicio}`,
+    severidad: 'critica',
+    categoria: 'posicion_caja',
+    obraId: null,
+    obraNombre: null,
+    contraparte: null,
+    monto: alerta.periodo.saldoFinal,
+    fechaCritica: alerta.periodo.inicio,
+    causa: alerta.mensaje,
+    decisionSugerida: 'Anticipar cobranzas, renegociar vencimientos o priorizar pagos antes de esa semana.',
+    link: '/caja',
+  }))
+}
+
 // "Obra activa sin movimiento reciente relevante" — no es una vista ni tabla nueva:
 // reutiliza los mismos arreglos ya cargados por las demás secciones para encontrar la
 // fecha de actividad más reciente por obra, sin fabricar un dato que no exista.
@@ -510,6 +534,7 @@ export function construirAlertasDashboard(datos: DashboardDatosFuente): AlertaDa
       datos.proveedores,
       datos.cobrosProyectadosEnVentana
     ),
+    ...mapPosicionCaja(datos.posicionCaja),
     ...mapActividadObra(datos),
   ]
 

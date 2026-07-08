@@ -13,9 +13,11 @@ import {
   getHHResumenTodasLasObras,
 } from '@/features/hh-productividad/services/hhProductividadService'
 import { getComprasTodasLasObras, getComprasResumenTodasLasObras } from '@/features/compras/services/comprasService'
-import { getObligaciones, getObligacionesResumen } from '@/features/obligaciones/services/obligacionesService'
+import { getObligaciones, getObligacionesResumen, getAplicacionesPago } from '@/features/obligaciones/services/obligacionesService'
 import { getMovimientosCaja } from '@/features/flujo-caja/services/movimientosCajaService'
 import { UMBRAL_DIAS_PROXIMO_VENCIMIENTO } from '@/features/obligaciones/types'
+import { getCuentasFinancieras } from '@/features/fundacion/services/fundacionService'
+import { calcularPosicionCajaConsolidada, cobrosProyectadosEnVentana } from '@/features/posicion-caja/types'
 
 export type ServiceResult<T> = { data: T; error: null } | { data: null; error: string }
 
@@ -40,6 +42,8 @@ export async function getDashboardDatosFuente(
       obligaciones,
       obligacionesResumen,
       movimientos,
+      cuentas,
+      aplicacionesPago,
     ] = await Promise.all([
       getObras(supabase),
       getProveedores(supabase),
@@ -54,6 +58,8 @@ export async function getDashboardDatosFuente(
       getObligaciones(supabase),
       getObligacionesResumen(supabase),
       getMovimientosCaja(supabase),
+      getCuentasFinancieras(supabase),
+      getAplicacionesPago(supabase),
     ])
 
     const primerError =
@@ -69,20 +75,23 @@ export async function getDashboardDatosFuente(
       comprasResumen.error ??
       obligaciones.error ??
       obligacionesResumen.error ??
-      movimientos.error
+      movimientos.error ??
+      cuentas.error ??
+      aplicacionesPago.error
     if (primerError) return { data: null, error: primerError }
 
-    // Cobros proyectados en la misma ventana que usa la alerta de tensión de liquidez
-    // (PRP-010) — se recalcula acá porque el Dashboard es quien conoce esa ventana
-    // para el conjunto completo de movimientos, no una obra puntual.
-    const hoy = new Date()
-    const cobrosProyectadosEnVentana = (movimientos.data ?? [])
-      .filter((m) => {
-        if (m.tipo !== 'cobro' || m.estado !== 'proyectado') return false
-        const dias = (new Date(m.fecha_esperada).getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)
-        return dias >= 0 && dias <= UMBRAL_DIAS_PROXIMO_VENCIMIENTO
-      })
-      .reduce((acc, m) => acc + m.monto, 0)
+    // F1: posición de caja consolidada — reemplaza el cálculo de "cobros proyectados
+    // en ventana" que antes vivía inline acá (ver features/posicion-caja).
+    const posicionCaja = calcularPosicionCajaConsolidada({
+      cuentas: cuentas.data ?? [],
+      movimientos: movimientos.data ?? [],
+      obligacionesResumen: obligacionesResumen.data ?? [],
+      aplicacionesPago: aplicacionesPago.data ?? [],
+    })
+    const cobrosProyectados = cobrosProyectadosEnVentana(
+      movimientos.data ?? [],
+      UMBRAL_DIAS_PROXIMO_VENCIMIENTO
+    )
 
     return {
       data: {
@@ -98,7 +107,8 @@ export async function getDashboardDatosFuente(
         comprasResumen: comprasResumen.data ?? [],
         obligaciones: obligaciones.data ?? [],
         obligacionesResumen: obligacionesResumen.data ?? [],
-        cobrosProyectadosEnVentana,
+        cobrosProyectadosEnVentana: cobrosProyectados,
+        posicionCaja,
       },
       error: null,
     }

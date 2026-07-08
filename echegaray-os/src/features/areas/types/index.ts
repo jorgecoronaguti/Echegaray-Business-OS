@@ -52,6 +52,7 @@ export const AREA_POR_CATEGORIA: Record<CategoriaAlerta, AreaOS> = {
   compras: 'compras_abastecimiento',
   obligaciones: 'administracion_finanzas',
   actividad_obra: 'obras_produccion',
+  posicion_caja: 'administracion_finanzas',
 }
 
 export function areaDeAlerta(alerta: AlertaDashboard): AreaOS {
