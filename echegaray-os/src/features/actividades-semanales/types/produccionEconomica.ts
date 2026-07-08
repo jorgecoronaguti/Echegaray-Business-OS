@@ -1,21 +1,14 @@
 import type { ActividadSemanal } from './index'
 import type { RegistroHH } from '@/features/hh-productividad/types'
 import type { ObraResumenEconomico } from '@/features/control-economico/types'
+import type { DatoTrazado } from '@/shared/types/datoTrazado'
 
 // O1-C — Conexión físico-económica. Cruza lo que ya calculan otras capacidades
 // (control-economico, hh-productividad) con el avance físico real (actividades
 // semanales) sin fabricar precisión que la evidencia no sostiene. Cada dato
-// devuelto declara su naturaleza: 'observado' (viene directo de una fuente real),
-// 'calculado' (aritmética exacta sobre datos observados), 'estimado' (una
-// simplificación explícita, ej. interpolación lineal) o 'inferido' (un juicio,
-// no un cálculo determinista).
-export type NaturalezaDato = 'observado' | 'calculado' | 'estimado' | 'inferido' | 'sin_dato'
-
-export interface DatoTrazado<T> {
-  valor: T | null
-  naturaleza: NaturalezaDato
-  explicacion: string
-}
+// devuelto declara su naturaleza (ver src/shared/types/datoTrazado.ts, generalizado
+// en Track B / B1 -- este fue el primer lugar donde nació el patrón).
+export type { NaturalezaDato, DatoTrazado } from '@/shared/types/datoTrazado'
 
 export interface ResumenProduccionEconomica {
   avanceFisicoPromedio: DatoTrazado<number>

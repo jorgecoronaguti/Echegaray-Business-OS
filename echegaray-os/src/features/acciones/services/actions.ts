@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { accionManualInputSchema, cambiarEstadoAccionInputSchema } from '../types'
 import { insertAccionManual, insertAccionDesdeAlerta, cambiarEstadoAccion } from './accionesService'
-import type { AlertaDashboard } from '@/features/dashboard/types'
+import type { AlertaDashboardBase } from '@/features/dashboard/types'
 
 export type ActionState = { error: string | null }
 
@@ -59,11 +59,11 @@ export async function crearAccionDesdeAlertaAction(_prev: ActionState, formData:
     return { error: 'Alerta inválida' }
   }
 
-  const alerta: AlertaDashboard = {
+  const alerta: AlertaDashboardBase = {
     id,
     titulo,
-    severidad: severidad as AlertaDashboard['severidad'],
-    categoria: categoria as AlertaDashboard['categoria'],
+    severidad: severidad as AlertaDashboardBase['severidad'],
+    categoria: categoria as AlertaDashboardBase['categoria'],
     obraId: (formData.get('alerta_obra_id') as string) || null,
     obraNombre: (formData.get('alerta_obra_nombre') as string) || null,
     contraparte: (formData.get('alerta_contraparte') as string) || null,

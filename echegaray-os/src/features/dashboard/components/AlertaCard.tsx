@@ -57,6 +57,14 @@ export function AlertaCard({ alerta, accionExistente }: { alerta: AlertaDashboar
             <dd>{alerta.fechaCritica}</dd>
           </div>
         )}
+        <div>
+          <dt className="font-medium">Confianza</dt>
+          <dd className="capitalize">{alerta.confianza}</dd>
+        </div>
+        <div>
+          <dt className="font-medium">Fuente</dt>
+          <dd>{alerta.fuente}</dd>
+        </div>
       </dl>
 
       <p className="mt-2 text-sm">

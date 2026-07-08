@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { AreaOS } from '@/features/areas/types'
-import type { AlertaDashboard, CategoriaAlerta, SeveridadAlerta } from '@/features/dashboard/types'
+import type { AlertaDashboardBase, CategoriaAlerta, SeveridadAlerta } from '@/features/dashboard/types'
 import { AREA_POR_CATEGORIA } from '@/features/areas/types'
 
 // Acción — unidad de seguimiento del Centro de Acción (Fase II). No duplica ninguna
@@ -81,7 +81,7 @@ export type CambiarEstadoAccionInput = z.infer<typeof cambiarEstadoAccionInputSc
 
 // Construye los campos a insertar para "convertir" una alerta ya calculada en una
 // Acción trazable — copia el contenido una sola vez, no recalcula nada.
-export function accionDesdeAlerta(alerta: AlertaDashboard) {
+export function accionDesdeAlerta(alerta: AlertaDashboardBase) {
   return {
     origen: 'sistema' as const,
     titulo: alerta.titulo,

@@ -26,6 +26,7 @@ import { calcularAlertasConcentracion } from '@/features/capital-trabajo/types'
 import type { ActividadSemanal } from '@/features/actividades-semanales/types'
 import { calcularResumenProduccionEconomica } from '@/features/actividades-semanales/types/produccionEconomica'
 import { calcularAdvertenciasOperacionFinanciera } from '@/features/actividades-semanales/types/impactoFinanciero'
+import type { NaturalezaDato } from '@/shared/types/datoTrazado'
 
 // Dashboard de Dirección (PRP-011): no fabrica alertas nuevas — cruza y normaliza las
 // que cada capacidad ya calcula sobre sus propias vistas/datos (Control Económico,
@@ -54,7 +55,16 @@ export type CategoriaAlerta =
   | 'exposicion_financiera'
   | 'riesgo_operacion_financiero'
 
-export interface AlertaDashboard {
+export type Materialidad = 'alta' | 'media' | 'baja'
+
+// Motor de Observación v1 (Track B / B4): AlertaDashboard ya ES la forma común de
+// observación del OS -- cada `mapX` de este archivo normaliza una capacidad distinta
+// al mismo shape. En vez de crear una segunda estructura paralela ("Observacion"),
+// se generaliza esta agregándole los campos que el motor de observación necesita
+// (fuente, confianza, materialidad, skills relevantes) para que Dirección y, más
+// adelante, el Motor de Decisiones puedan razonar sobre cualquier alerta sin
+// preguntar de qué capacidad viene.
+export interface AlertaDashboardBase {
   id: string
   titulo: string
   severidad: SeveridadAlerta
@@ -67,6 +77,80 @@ export interface AlertaDashboard {
   causa: string
   decisionSugerida: string
   link: string | null
+}
+
+export interface AlertaDashboard extends AlertaDashboardBase {
+  /** De qué capacidad/tabla surge -- para no perder de vista la fuente al escalar. */
+  fuente: string
+  /** Naturaleza del dato subyacente (ver src/shared/types/datoTrazado.ts). */
+  confianza: NaturalezaDato
+  /** Redundante con severidad hoy (misma escala, otro nombre) -- existe para que el
+   *  vocabulario del Motor de Observación (materialidad) no dependa de renombrar
+   *  severidad en todo el dashboard existente. */
+  materialidad: Materialidad
+  /** Skills del CLAUDE.md raíz relevantes para razonar esta alerta multidisciplinariamente. */
+  skillsRelevantes: string[]
+}
+
+const FUENTE_POR_CATEGORIA: Record<CategoriaAlerta, string> = {
+  control_economico: 'obra_resumen_economico (vista SQL, Control Económico)',
+  adicionales: 'adicionales',
+  ejecucion_financiera: 'certificados / obra_ejecucion_financiera',
+  hh: 'registros_hh / obra_hh_resumen',
+  compras: 'compras / compra_resumen',
+  obligaciones: 'obligaciones / obligacion_resumen',
+  actividad_obra: 'última fecha de movimiento entre adicionales/certificados/compras/HH',
+  posicion_caja: 'posición de caja consolidada (F1)',
+  exposicion_financiera: 'capital de trabajo (F2)',
+  riesgo_operacion_financiero: 'actividades_semanales + certificados + movimientos_caja (O1-D)',
+}
+
+const CONFIANZA_POR_CATEGORIA: Record<CategoriaAlerta, NaturalezaDato> = {
+  control_economico: 'calculado',
+  adicionales: 'observado',
+  ejecucion_financiera: 'calculado',
+  hh: 'calculado',
+  compras: 'observado',
+  obligaciones: 'calculado',
+  actividad_obra: 'observado',
+  posicion_caja: 'calculado',
+  exposicion_financiera: 'calculado',
+  riesgo_operacion_financiero: 'inferido',
+}
+
+const SKILLS_POR_CATEGORIA: Record<CategoriaAlerta, string[]> = {
+  control_economico: ['costos-presupuestacion', 'finanzas-tesoreria-construccion', 'gestion-empresarial-riesgos'],
+  adicionales: ['derecho-construccion-contratos', 'costos-presupuestacion', 'ingenieria-civil-construccion'],
+  ejecucion_financiera: ['finanzas-tesoreria-construccion', 'contabilidad-constructoras', 'derecho-construccion-contratos'],
+  hh: ['planificacion-produccion', 'costos-presupuestacion', 'direccion-obra'],
+  compras: ['compras-abastecimiento-subcontratacion', 'finanzas-tesoreria-construccion'],
+  obligaciones: ['finanzas-tesoreria-construccion', 'contabilidad-constructoras'],
+  actividad_obra: ['direccion-obra', 'planificacion-produccion'],
+  posicion_caja: ['finanzas-tesoreria-construccion', 'contabilidad-constructoras'],
+  exposicion_financiera: ['finanzas-tesoreria-construccion', 'gestion-empresarial-riesgos'],
+  riesgo_operacion_financiero: [
+    'planificacion-produccion',
+    'costos-presupuestacion',
+    'finanzas-tesoreria-construccion',
+    'derecho-construccion-contratos',
+  ],
+}
+
+const MATERIALIDAD_POR_SEVERIDAD: Record<SeveridadAlerta, Materialidad> = {
+  critica: 'alta',
+  alta: 'alta',
+  media: 'media',
+  informativa: 'baja',
+}
+
+function enriquecerObservacion(alerta: AlertaDashboardBase): AlertaDashboard {
+  return {
+    ...alerta,
+    fuente: FUENTE_POR_CATEGORIA[alerta.categoria],
+    confianza: CONFIANZA_POR_CATEGORIA[alerta.categoria],
+    materialidad: MATERIALIDAD_POR_SEVERIDAD[alerta.severidad],
+    skillsRelevantes: SKILLS_POR_CATEGORIA[alerta.categoria],
+  }
 }
 
 export interface DashboardDatosFuente {
@@ -107,8 +191,8 @@ function linkObra(obraId: string | null): string | null {
   return obraId ? `/obras/${obraId}` : null
 }
 
-function mapControlEconomico(resumenes: ObraResumenEconomico[]): AlertaDashboard[] {
-  const alertas: AlertaDashboard[] = []
+function mapControlEconomico(resumenes: ObraResumenEconomico[]): AlertaDashboardBase[] {
+  const alertas: AlertaDashboardBase[] = []
   for (const r of resumenes) {
     const estado = calcularEstadoEconomico(r)
     if (estado === 'sano') continue
@@ -169,8 +253,8 @@ const SEVERIDAD_ADICIONAL: Record<string, SeveridadAlerta> = {
   aprobado_pendiente_ejecucion: 'media',
 }
 
-function mapAdicionales(adicionales: Adicional[], obras: Obra[]): AlertaDashboard[] {
-  const alertas: AlertaDashboard[] = []
+function mapAdicionales(adicionales: Adicional[], obras: Obra[]): AlertaDashboardBase[] {
+  const alertas: AlertaDashboardBase[] = []
   for (const a of adicionales) {
     for (const alerta of calcularAlertasAdicional(a)) {
       alertas.push({
@@ -218,8 +302,8 @@ function mapEjecucionFinanciera(
   certificados: Certificado[],
   resumenes: ObraEjecucionFinanciera[],
   obras: Obra[]
-): AlertaDashboard[] {
-  const alertas: AlertaDashboard[] = []
+): AlertaDashboardBase[] {
+  const alertas: AlertaDashboardBase[] = []
   for (const c of certificados) {
     for (const alerta of calcularAlertasCertificado(c)) {
       alertas.push({
@@ -275,8 +359,8 @@ const SEVERIDAD_HH: Record<string, SeveridadAlerta> = {
   informacion_insuficiente: 'informativa',
 }
 
-function mapHH(resumenes: ObraHHResumen[], registrosPorObra: Map<string, RegistroHH[]>): AlertaDashboard[] {
-  const alertas: AlertaDashboard[] = []
+function mapHH(resumenes: ObraHHResumen[], registrosPorObra: Map<string, RegistroHH[]>): AlertaDashboardBase[] {
+  const alertas: AlertaDashboardBase[] = []
   for (const r of resumenes) {
     const registros = registrosPorObra.get(r.obra_id) ?? []
     for (const alerta of calcularAlertasObraHH(r, registros)) {
@@ -329,8 +413,8 @@ function mapCompras(
   resumenes: CompraResumen[],
   obras: Obra[],
   proveedores: Proveedor[]
-): AlertaDashboard[] {
-  const alertas: AlertaDashboard[] = []
+): AlertaDashboardBase[] {
+  const alertas: AlertaDashboardBase[] = []
   for (const c of compras) {
     const resumen = resumenes.find((r) => r.compra_id === c.id)
     if (!resumen) continue
@@ -401,8 +485,8 @@ function mapObligaciones(
   obras: Obra[],
   proveedores: Proveedor[],
   cobrosProyectadosEnVentana: number
-): AlertaDashboard[] {
-  const alertas: AlertaDashboard[] = []
+): AlertaDashboardBase[] {
+  const alertas: AlertaDashboardBase[] = []
   for (const r of resumenes) {
     for (const alerta of calcularAlertasObligacion(r)) {
       alertas.push({
@@ -462,7 +546,7 @@ function mapObligaciones(
 // F1 — Posición de Caja Consolidada: alerta de déficit proyectado en el forecast
 // semanal. La lógica de cálculo vive en features/posicion-caja (calcularAlertasDeficit),
 // acá solo se normaliza al formato AlertaDashboard, igual que el resto de capacidades.
-function mapPosicionCaja(posicionCaja: PosicionCajaConsolidada): AlertaDashboard[] {
+function mapPosicionCaja(posicionCaja: PosicionCajaConsolidada): AlertaDashboardBase[] {
   return calcularAlertasDeficit(posicionCaja.forecastSemanal).map((alerta) => {
     const causaPrincipal = causaPrincipalDeficit(alerta.periodo)
     const decisionSugerida = causaPrincipal
@@ -487,7 +571,7 @@ function mapPosicionCaja(posicionCaja: PosicionCajaConsolidada): AlertaDashboard
 
 // F2 — Capital de Trabajo: alerta de concentración de cliente/proveedor en las
 // cuentas por cobrar/pagar pendientes. Lógica de cálculo vive en features/capital-trabajo.
-function mapExposicionFinanciera(capitalTrabajo: CapitalTrabajo): AlertaDashboard[] {
+function mapExposicionFinanciera(capitalTrabajo: CapitalTrabajo): AlertaDashboardBase[] {
   return calcularAlertasConcentracion(capitalTrabajo).map((alerta) => ({
     id: `ct-${alerta.tipo}-${alerta.contraparte.id}`,
     titulo:
@@ -513,8 +597,8 @@ function mapExposicionFinanciera(capitalTrabajo: CapitalTrabajo): AlertaDashboar
 // O1-D — Conexión operación -> finanzas. Ver features/actividades-semanales/types/
 // impactoFinanciero.ts: nunca reclasifica un movimiento_caja ni un certificado, solo
 // agrega una advertencia de riesgo cuando hay atraso físico detectado en la obra.
-function mapImpactoOperacionFinanciera(datos: DashboardDatosFuente): AlertaDashboard[] {
-  const alertas: AlertaDashboard[] = []
+function mapImpactoOperacionFinanciera(datos: DashboardDatosFuente): AlertaDashboardBase[] {
+  const alertas: AlertaDashboardBase[] = []
   for (const obra of datos.obras) {
     const actividadesObra = datos.actividadesSemanales.filter((a) => a.obra_id === obra.id)
     if (actividadesObra.length === 0) continue
@@ -561,8 +645,8 @@ function mapImpactoOperacionFinanciera(datos: DashboardDatosFuente): AlertaDashb
 // "Obra activa sin movimiento reciente relevante" — no es una vista ni tabla nueva:
 // reutiliza los mismos arreglos ya cargados por las demás secciones para encontrar la
 // fecha de actividad más reciente por obra, sin fabricar un dato que no exista.
-function mapActividadObra(datos: DashboardDatosFuente): AlertaDashboard[] {
-  const alertas: AlertaDashboard[] = []
+function mapActividadObra(datos: DashboardDatosFuente): AlertaDashboardBase[] {
+  const alertas: AlertaDashboardBase[] = []
   const hoy = new Date()
 
   for (const obra of datos.obras) {
@@ -628,5 +712,7 @@ export function construirAlertasDashboard(datos: DashboardDatosFuente): AlertaDa
     ...mapActividadObra(datos),
   ]
 
-  return alertas.sort((a, b) => ORDEN_SEVERIDAD[a.severidad] - ORDEN_SEVERIDAD[b.severidad])
+  return alertas
+    .map(enriquecerObservacion)
+    .sort((a, b) => ORDEN_SEVERIDAD[a.severidad] - ORDEN_SEVERIDAD[b.severidad])
 }

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Accion, AccionManualInput, CambiarEstadoAccionInput } from '../types'
-import type { AlertaDashboard } from '@/features/dashboard/types'
+import type { AlertaDashboardBase } from '@/features/dashboard/types'
 import { accionDesdeAlerta } from '../types'
 
 export type ServiceResult<T> = { data: T; error: null } | { data: null; error: string }
@@ -61,7 +61,7 @@ export async function insertAccionManual(
 // misma alerta — acá se traduce ese error a un mensaje legible.
 export async function insertAccionDesdeAlerta(
   supabase: SupabaseClient,
-  alerta: AlertaDashboard,
+  alerta: AlertaDashboardBase,
   responsable?: string
 ): Promise<ServiceResult<Accion>> {
   try {
