@@ -27,6 +27,7 @@
 - [PR1-B — CF_COB y Cheques](project/pr1-b-cf-cob-cheques.md) — lectura completa (49+848 filas reales), clasificación A-E, cuotas de echeq reales vs. duplicados, carga con trazabilidad
 - [PRP-015 Capital de Trabajo (F2)](project/prp-015-capital-trabajo-f2.md) — elegido sobre O1 por concentración real de cliente/proveedor detectada en PR1-B; primer incremento, exposición por obra queda pendiente
 - [O1-A Obra Piloto y Base Operacional](project/o1-a-obra-piloto-base-operacional.md) — Galpones (cadena retrospectiva real) + Pisos (presupuesto para ciclo hacia adelante); pausado antes de O1-B por requerir tabla nueva
+- [PR5 Login y Roles](project/pr5-login-roles.md) — Supabase Auth real + perfiles/roles + RLS diferenciada, auditoría con get_advisors, pruebas autenticadas reales (lectura/escritura permitida/denegada por rol)
 
 ## feedback/ — Correcciones y preferencias
 - [Construir capacidades, no pantallas aisladas](feedback/construir-capacidades-no-pantallas-aisladas.md) — cada incremento debe resolver una decisión real y ser base reutilizable; justificar toda entidad nueva o evitarla
