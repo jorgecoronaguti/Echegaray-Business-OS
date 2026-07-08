@@ -26,6 +26,7 @@
 - [Arquitectura de Fuentes de Información](project/arquitectura-fuentes-informacion.md) — principio permanente aprobado: Drive/Supabase/OS/skills/Internet, jerarquía de verdad por dato, gaps confirmados (Libro de Sueldos, IVA neto, adicionales sin obra)
 - [PR1-B — CF_COB y Cheques](project/pr1-b-cf-cob-cheques.md) — lectura completa (49+848 filas reales), clasificación A-E, cuotas de echeq reales vs. duplicados, carga con trazabilidad
 - [PRP-015 Capital de Trabajo (F2)](project/prp-015-capital-trabajo-f2.md) — elegido sobre O1 por concentración real de cliente/proveedor detectada en PR1-B; primer incremento, exposición por obra queda pendiente
+- [O1-A Obra Piloto y Base Operacional](project/o1-a-obra-piloto-base-operacional.md) — Galpones (cadena retrospectiva real) + Pisos (presupuesto para ciclo hacia adelante); pausado antes de O1-B por requerir tabla nueva
 
 ## feedback/ — Correcciones y preferencias
 - [Construir capacidades, no pantallas aisladas](feedback/construir-capacidades-no-pantallas-aisladas.md) — cada incremento debe resolver una decisión real y ser base reutilizable; justificar toda entidad nueva o evitarla
