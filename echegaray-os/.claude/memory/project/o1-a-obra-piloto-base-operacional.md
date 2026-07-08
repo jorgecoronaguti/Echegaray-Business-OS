@@ -37,3 +37,17 @@ El ciclo semanal (Lunes: plan; Viernes: avance real) requiere una entidad nueva 
 ## Grano operacional decidido (para cuando se retome O1-B)
 
 **Actividad semanal en texto libre + personas asignadas + avance/tiempo** — no partida presupuestaria ni frente formal. Evidencia: el propio checklist manual de Galpones ya opera así ("MUROS INTERNOS - 4 DE 24M", 7 personas, 7 días), consistente con el diseño ya deliberado de `registros_hh` (texto libre, sin legajo/cuadrilla/tarea formal, PRP-008).
+
+## HH real de Pisos cargada (OLA 0.2, Programa de Ejecución Continua, 2026-07-08)
+
+Fuente: `JORNALES` (Sheet, hoja "Obreros 26"). Hallazgo clave: San Francisco/IMOTOR **no aparece con ese nombre** en JORNALES — el CLIENTE/OBRA ahí es literalmente **"JAVIER SANCHEZ"** (el contacto, no la razón social). Confirmado cruzando `obras.cliente_id` en Supabase antes de cargar nada — no se asumió por parecido de nombre.
+
+Gap real de reconciliación encontrado (documentado, no resuelto): el Gantt real (`avance_obra.xlsx`) muestra avance físico semanal de Pisos con cuadrillas trabajando, pero JORNALES no siempre tiene el mismo conjunto de trabajadores registrados en las mismas fechas exactas bajo "JAVIER SANCHEZ" — 2 de 8 trabajadores (Bronia Rodrigo, Gonzalez Valentin) desaparecen de JORNALES a partir del 07-01 sin pasar a ninguna otra obra visible, y Navarro Matias se reasigna a "Bases de Tanque" (cliente Messinas) el mismo día. Quiroga Alexander pasa a licencia por enfermedad. Cargado como observado con huecos explícitos en `notas`, nunca inferido.
+
+Cuidado de no confusión: existe una obra real distinta, no relacionada, llamada **"Cambio de Pisos - RRHH"** (cliente ARCOR, `fecha_inicio` también 2026-06-22) — coincidencia de nombre y fecha con nuestra obra piloto "Pisos", verificada como entidad separada antes de cargar cualquier dato.
+
+19 filas insertadas en `registros_hh` (por trabajador, por semana): 412h semana 06-22 (completa, 8 trabajadores), 242h semana 06-29 (parcial, 4 de 8 continúan a julio), 27h semana 07-06 (parcial, semana en curso al 07-08). Total observado: **681h** sobre 4.047h estimadas del presupuesto (16,8% del total, no comparable todavía con el 58% de avance físico porque son bases distintas — total obra vs. 3 actividades cerradas).
+
+Confirmado con esta carga: `ResumenProduccionEconomica.hhConsumidaObra` pasa de `sin_dato` a `observado` (681h) — pero `costoRealAcumulado`/`margenActualizado`/`desvioCosto` **no cambian**, porque HH y costo de mano de obra siguen deliberadamente separados (PRP-008) y no existe una conversión automática HH→costo. Backlog: si se quiere ver el impacto económico real de estas HH, hace falta cargar el costo de mano de obra correspondiente en `costos_reales` — no se inventó una tarifa para hacerlo automático.
+
+También detectado (no accionado sin pedido explícito): el equipo de Pisos pasó de 8 trabajadores (semana 06-22) a 4 confirmados (semana 07-06) según JORNALES — podría ser reducción real de cuadrilla o simplemente datos de julio todavía no completos en la planilla. Queda como observación en el backlog autónomo, no como alerta generada automáticamente.

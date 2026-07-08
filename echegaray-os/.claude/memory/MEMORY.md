@@ -28,7 +28,9 @@
 - [PRP-015 Capital de Trabajo (F2)](project/prp-015-capital-trabajo-f2.md) — elegido sobre O1 por concentración real de cliente/proveedor detectada en PR1-B; primer incremento, exposición por obra queda pendiente
 - [O1-A Obra Piloto y Base Operacional](project/o1-a-obra-piloto-base-operacional.md) — Galpones (cadena retrospectiva real) + Pisos (presupuesto para ciclo hacia adelante); pausado antes de O1-B por requerir tabla nueva
 - [PR5 Login y Roles](project/pr5-login-roles.md) — Supabase Auth real + perfiles/roles + RLS diferenciada, auditoría con get_advisors, pruebas autenticadas reales (lectura/escritura permitida/denegada por rol)
-- [Scorecard de Madurez](project/scorecard-madurez.md) — baseline de la auditoría + actualización real tras O1-B/C/D/Centro de Acción 2.0/Login (Obra 2→4, Dirección 3→4, Software 3→4)
+- [Scorecard de Madurez (SUPERSEDED)](project/scorecard-madurez.md) — snapshot histórico 0-5; reemplazado por la tabla real `scorecard_dominios` (0-10) y `/scorecard`
+- [Arquitectura de Cobertura Integral](project/arquitectura-cobertura-integral.md) — escala 0-10 (11 niveles) + 22 dominios críticos, baseline permanente aprobado
+- [Programa de Ejecución Continua](project/programa-ejecucion-continua.md) — Track A + Track B en paralelo por olas; OLA 0 (backup/PITR, HH real Pisos) y OLA 1 (scorecard vivo, catálogo de preguntas, tests de negocio, Motor de Confianza/Observación transversales) completadas
 
 ## feedback/ — Correcciones y preferencias
 - [Construir capacidades, no pantallas aisladas](feedback/construir-capacidades-no-pantallas-aisladas.md) — cada incremento debe resolver una decisión real y ser base reutilizable; justificar toda entidad nueva o evitarla

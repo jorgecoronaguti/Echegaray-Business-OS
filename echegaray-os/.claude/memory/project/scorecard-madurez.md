@@ -1,9 +1,11 @@
 ---
 name: scorecard-madurez
-description: Scorecard de madurez del Business OS, baseline de la auditoría de cobertura integral, actualizado solo en las dimensiones realmente afectadas después de cada incremento (O1-B/C/D, Centro de Acción 2.0, Login+Roles).
+description: "SUPERSEDED (2026-07-08): el scorecard 0-5 de este archivo fue reemplazado por la tabla real scorecard_dominios (escala 0-10, página /scorecard) -- ver [[programa-ejecucion-continua]]. Se conserva como snapshot histórico de la auditoría original, no como fuente de verdad."
 metadata:
   type: project
 ---
+
+> **SUPERSEDED.** El scorecard vivo (escala 0-10, 22 dominios) vive ahora en la tabla `scorecard_dominios` de Supabase y se lee en `/scorecard`. Este archivo queda como registro histórico de la auditoría 0-5 original — no editarlo para reflejar avances nuevos, esos van a la tabla real. Ver [[programa-ejecucion-continua]].
 
 Escala 0-5: 0 inexistente · 1 documental/disperso · 2 dato estructurado parcial · 3 visibilidad · 4 diagnóstico y recomendación · 5 ciclo cerrado (detección→decisión→acción→seguimiento→aprendizaje).
 
