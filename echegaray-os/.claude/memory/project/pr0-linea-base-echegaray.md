@@ -29,11 +29,20 @@ Usando `download_file_content` + `openpyxl` local (método ahora validado, ver [
 - **Adicionales pendientes reales**: sí existen y tienen monto — `CONTROL DE GASTOS` → OBRAS SIN FACTURA, ítems "P/FACTURAR": Alquiler Puntales - Macro Construcciones, $38.720 y $58.080.
 - **Diseño de O1 — resuelto, con matiz importante**: el archivo de avance de obra tiene **dos modelos reales conviviendo**, no uno solo. `Estrella` es checklist de materiales/tareas (como se había detectado antes). Pero `San Francisco` y `Messina` son un tracker Gantt real con % de avance diario por actividad, oficiales/ayudantes asignados y estado "Completado" — el modelo %-based sí existe y se usa, pero no en todas las obras. O1 debe soportar ambos modelos, no elegir uno solo.
 
-## Conflictos nuevos detectados, sin resolver (bloquean F1)
+## Conflictos legacy — resueltos con criterio profesional (no bloquean, ver [[no-bloquear-por-conflictos-legacy]])
 
-- **Cheques a cubrir**: `CONTROL DE GASTOS` → header BANCO dice $13.747.399,44; la tabla dinámica "CHEQUES A CUBRIR" del mismo archivo dice $21.269.220,23. Mismo archivo, mismo corte, dos cifras.
-- **Cheques/montos a cobrar**: header BANCO dice $45.000.000 ("CHEQUES A COBRAR") y $76.309.940,59 ("Monto a Cobrar S/F"); la tabla dinámica "CHEQUES A COBRAR" dice $23.449.800. Tres cifras distintas para un concepto similar, sin reconciliar.
-- Ambos conflictos están en el checklist humano final entregado a Jorge — no se resolvieron por elección propia porque cualquier elección sería una decisión de negocio disfrazada de dato.
+Jorge corrigió el enfoque: no escalar cada conflicto, resolverlo con criterio y seguir. Aplicado:
+
+- **Cheques a cubrir/cobrar**: se usan las tablas dinámicas (construidas sobre el detalle transaccional de 997 cheques), no las celdas de header manuales. Cheques a cubrir = $21.269.220,23; cheques a cobrar = $23.449.800. "Monto a Cobrar S/F" ($76.309.940,59) es un concepto distinto (sin factura) y no se suma.
+- **Nómina**: la línea "JORNALES OBRAS" de GASTOS FIJOS mostraba el mismo $3.500.000 dos meses seguidos (mayo y junio) mientras la nómina real fluctúa cada semana — señal de valor no actualizado. Fuente de verdad = planilla `JORNALES` real (semana que cierra 30/06 = $9.393.250).
+- **Fecha de inicio de obra**: San Francisco se resolvió cruzando con el tracker Gantt real (`avance_obra.xlsx` → San Francisco), que muestra tareas "Completado" desde 22/06/2026 — se cargó esa fecha, no la de la ficha de control. La Estrella y ARCOR no tienen una segunda fuente para cruzar — quedaron cargadas igual, con una `acción` de verificación pendiente en vez de bloquear la carga.
+- **Adicionales pendientes**: se usan los 2 ítems `P/FACTURAR` reales encontrados (Alquiler Puntales, $38.720 y $58.080) como línea base, marcados como posiblemente no exhaustivos.
+
+## PR0-B ejecutado (2026-07-07) — carga real en Supabase
+
+Cargado (ver script de auditoría [[pr0-b-carga-ejecutada]]): 4 clientes, 6 proveedores, 2 cuentas_financieras (Banco $3.473.742,75 / Caja $2.739.600), 3 obras (ARCOR/La Estrella/San Francisco, total contratado $106.727.980,49), 10 obligaciones (total $37.706.775,50 — coincide exacto con el total de deudas de RESUMEN + Fondo de Cese + Alquileres), 2 acciones de verificación de fecha.
+
+**Gap de esquema real descubierto, no fabricado**: `movimientos_caja_contraparte_check` exige `obra_id` NOT NULL en todo `tipo='cobro'` y `proveedor_id` NOT NULL en todo `tipo='pago'`. Esto bloqueó cargar: (1) los adicionales P/FACTURAR (ingreso por alquiler de equipos a un tercero, no ligado a ninguna obra de construcción), (2) la nómina real ($9.393.250, semana 30/06) como movimiento de caja (no existe un "proveedor" que represente personal/nómina). **F1 necesita nómina como componente de la proyección** — este gap debe resolverse (¿modelar "Personal" como proveedor especial? ¿tabla propia?) antes de que F1 pueda proyectar nómina con datos reales en vez de solo el devengado del P&L.
 
 ## Advertencia explícita del usuario — no confundir descripción con prescripción
 
