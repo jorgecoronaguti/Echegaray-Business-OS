@@ -23,6 +23,10 @@ export interface ResumenProduccionEconomica {
   clasificacionDesvio: DatoTrazado<string>
   margenActualizado: DatoTrazado<number>
   margenEnRiesgo: DatoTrazado<boolean>
+  cpi: DatoTrazado<number>
+  etc: DatoTrazado<number>
+  eac: DatoTrazado<number>
+  vac: DatoTrazado<number>
 }
 
 interface DatosProduccionEconomica {
@@ -120,6 +124,53 @@ export function calcularResumenProduccionEconomica(datos: DatosProduccionEconomi
         ? { valor: null, naturaleza: 'sin_dato', explicacion: 'Datos insuficientes para evaluar riesgo de margen.' }
         : { valor: false, naturaleza: 'inferido', explicacion: 'Sin señales combinadas de atraso físico y sobrecosto a la fecha.' }
 
+  // ETC/EAC/VAC (forecast de terminación, sección 12): reutiliza costoEsperadoAFecha
+  // como "valor ganado" (EV) -- no se recalcula. Cobertura declarada explícitamente:
+  // cuando el avance surge de pocas actividades cerradas sobre el total planificado, o
+  // el costo real acumulado no cubre todos los rubros (hoy en Pisos, solo mano de
+  // obra), el CPI resultante puede no ser representativo -- se declara `inferido` con
+  // la cobertura exacta en la explicación, nunca se presenta como un forecast sólido
+  // sin esa salvedad (CLAUDE.md raíz: "no aplicar fórmulas mecánicas sin datos
+  // suficientes", "declarar método, cobertura, confianza, supuestos").
+  const coberturaActividades = datos.actividades.length > 0 ? cerradas.length / datos.actividades.length : 0
+  const coberturaTexto = `Cobertura de avance: ${cerradas.length} de ${datos.actividades.length} actividad(es) planificadas (${(coberturaActividades * 100).toFixed(0)}%). Costo real acumulado puede no incluir todos los rubros (materiales/subcontratos/equipos) -- ver desglose en Control Económico.`
+
+  const cpi: DatoTrazado<number> =
+    costoEsperadoAFecha.valor != null && costoEsperadoAFecha.valor > 0 && (costoRealAcumulado.valor ?? 0) > 0
+      ? {
+          valor: costoEsperadoAFecha.valor / costoRealAcumulado.valor!,
+          naturaleza: 'inferido',
+          explicacion: `CPI = valor ganado / costo real acumulado. ${coberturaTexto} Un CPI calculado sobre coberturas parciales no debe leerse como un índice de eficiencia real todavía.`,
+        }
+      : { valor: null, naturaleza: 'sin_dato', explicacion: 'No se puede calcular CPI sin valor ganado y costo real acumulado positivos.' }
+
+  const etc: DatoTrazado<number> =
+    cpi.valor != null && costoPresupuestado.valor != null && costoEsperadoAFecha.valor != null
+      ? {
+          valor: (costoPresupuestado.valor - costoEsperadoAFecha.valor) / cpi.valor,
+          naturaleza: 'inferido',
+          explicacion: `ETC = (costo presupuestado total - valor ganado) / CPI -- asume que la eficiencia de costo observada se mantiene para el resto de la obra (método estándar, PMI). ${coberturaTexto}`,
+        }
+      : { valor: null, naturaleza: 'sin_dato', explicacion: 'No calculable sin CPI.' }
+
+  const eac: DatoTrazado<number> =
+    etc.valor != null
+      ? {
+          valor: costoRealAcumulado.valor! + etc.valor,
+          naturaleza: 'inferido',
+          explicacion: `EAC = costo real acumulado + ETC. ${coberturaTexto}`,
+        }
+      : { valor: null, naturaleza: 'sin_dato', explicacion: 'No calculable sin ETC.' }
+
+  const vac: DatoTrazado<number> =
+    eac.valor != null && costoPresupuestado.valor != null
+      ? {
+          valor: costoPresupuestado.valor - eac.valor,
+          naturaleza: 'inferido',
+          explicacion: `VAC = costo presupuestado total - EAC. Positivo = se espera terminar por debajo del presupuesto (con la cobertura parcial ya declarada), negativo = por encima. ${coberturaTexto}`,
+        }
+      : { valor: null, naturaleza: 'sin_dato', explicacion: 'No calculable sin EAC.' }
+
   return {
     avanceFisicoPromedio,
     tendencia,
@@ -133,5 +184,9 @@ export function calcularResumenProduccionEconomica(datos: DatosProduccionEconomi
     clasificacionDesvio,
     margenActualizado,
     margenEnRiesgo,
+    cpi,
+    etc,
+    eac,
+    vac,
   }
 }

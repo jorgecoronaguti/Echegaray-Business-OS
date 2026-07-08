@@ -51,4 +51,23 @@ test.describe.serial('preguntas confiables contra casos reales conocidos', () =>
     await expect(produccion).toContainText('58%')
     await expect(produccion).toContainText('atrasado')
   })
+
+  test('Forecast de terminación de Pisos (ETC/EAC/VAC) declara cobertura parcial, no un número confiable', async ({
+    page,
+  }) => {
+    await login(page)
+    await page.goto(`/obras/${PISOS_ID}`)
+
+    const produccion = page.getByTestId('produccion-economica-obra-section')
+    // Calculado a mano contra costo real de mano de obra recién cargado ($3.105.500,
+    // JORNALES x HH real) y el mismo valor ganado ya usado por costoEsperadoAFecha.
+    await expect(produccion).toContainText('6.88')
+    await expect(produccion).toContainText('2.218.214')
+    await expect(produccion).toContainText('5.323.714')
+    await expect(produccion).toContainText('31.284.187')
+    // No debe presentarse como un forecast sólido: cobertura real es 3 de 15
+    // actividades (20%) y el costo real acumulado hoy es solo mano de obra.
+    await expect(produccion).toContainText('3 de 15 actividad')
+    await expect(produccion).toContainText('no debe leerse como')
+  })
 })

@@ -33,6 +33,7 @@
 - [Programa de Ejecución Continua](project/programa-ejecucion-continua.md) — Track A + Track B en paralelo por olas; OLA 0/1/2 completadas (backup/PITR, HH real Pisos, scorecard vivo, catálogo de preguntas, Motor de Confianza/Observación, Backlog Autónomo, Motor de Decisiones, Rutinas on-demand)
 - [Continuidad Operacional de Datos](project/continuidad-operacional-datos.md) — descubrimiento exhaustivo de Drive (23 fuentes reales), `fuentes_datos` con frescura/cobertura conectado al Motor de Decisiones, primer dato real de Equipos y Vehículos y Fiscal
 - [Tracks A-D: Personas, Rutinas, Integridad](project/tracks-abcd-personas-rutinas-integridad.md) — marco permanente de 4 tracks paralelos; primer ciclo: 30 legajos reales (Personas/Laboral/Seguridad e Higiene), primera rutina de negocio autónoma real (pg_cron), auditoría de integridad de datos de test
+- [Obra Piloto Pisos: Verdad Financiera](project/obra-piloto-pisos-verdad-financiera.md) — costo real de mano de obra vinculado a HH (JORNALES), forecast ETC/EAC/VAC/CPI con cobertura declarada, auditoría honesta de F1
 
 ## feedback/ — Correcciones y preferencias
 - [Construir capacidades, no pantallas aisladas](feedback/construir-capacidades-no-pantallas-aisladas.md) — cada incremento debe resolver una decisión real y ser base reutilizable; justificar toda entidad nueva o evitarla

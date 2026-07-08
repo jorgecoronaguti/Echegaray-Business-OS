@@ -55,6 +55,10 @@ export function ResumenProduccionEconomicaView({ resumen }: { resumen: ResumenTy
         <Fila etiqueta="Clasificación del desvío" dato={resumen.clasificacionDesvio} />
         <Fila etiqueta="Margen actualizado" dato={resumen.margenActualizado} formato={money} />
         <Fila etiqueta="Margen en riesgo" dato={resumen.margenEnRiesgo} formato={(v) => (v ? 'Sí' : 'No')} />
+        <Fila etiqueta="CPI (índice de eficiencia de costo)" dato={resumen.cpi} formato={(v) => (v as number).toFixed(2)} />
+        <Fila etiqueta="ETC (falta gastar para terminar)" dato={resumen.etc} formato={money} />
+        <Fila etiqueta="EAC (costo final estimado)" dato={resumen.eac} formato={money} />
+        <Fila etiqueta="VAC (variación final estimada)" dato={resumen.vac} formato={money} />
       </tbody>
     </table>
   )
