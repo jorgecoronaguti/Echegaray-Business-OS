@@ -66,15 +66,40 @@ from public.obras where nombre = 'Cambio de Pisos - RRHH';
 -- "Completado" desde esa fecha. Por eso San Francisco NO tiene acción de verificación:
 -- su fecha ya está corroborada por evidencia independiente.
 
--- NO CARGADO EN PR0-B (gap de esquema documentado, no fabricado):
--- 1) Adicionales pendientes de facturar (Alquiler Puntales - Macro Construcciones,
---    $38.720 y $58.080): movimientos_caja exige obra_id NOT NULL para todo tipo='cobro'
---    (constraint movimientos_caja_contraparte_check). Este ingreso es alquiler de
---    equipos a un tercero, no está vinculado a ninguna obra de construcción — no hay
---    forma de cargarlo sin inventar una obra ficticia. Pendiente de decisión de diseño.
--- 2) Nómina (semana JORNALES que cierra 30/06: $9.393.250 real, ya pagada): el mismo
---    constraint exige proveedor_id NOT NULL para todo tipo='pago', y "empleados"/"nómina"
---    no es un proveedor. No se cargó para no fabricar un proveedor ficticio "Personal".
---    F1 necesita nómina como componente de la proyección — hay que resolver este gap de
---    modelo antes de que F1 pueda proyectar nómina con datos reales, no solo con el
---    P&L devengado.
+-- GAP DE ESQUEMA (2026-07-07) resuelto en PR0-C — ver migración
+-- relajar_contraparte_movimientos_caja (supabase/migrations). Jorge eligió relajar el
+-- constraint en vez de fabricar un proveedor/obra placeholder. Tras la migración se
+-- cargaron los siguientes movimientos_caja que antes estaban bloqueados:
+
+insert into public.movimientos_caja (tipo, estado, monto, cuenta_financiera_id, fecha_esperada, fecha_real, concepto, origen, categoria_pago, notas)
+select 'pago', 'real', 9393250, id, '2026-06-30', '2026-06-30',
+  'Nómina obreros - semana que cierra 30/06/2026', 'manual', 'nomina',
+  'Fuente: JORNALES (Obreros 26), TOTAL SEMANA. Desglose origen: Caja $9.270.000 + diferencia $123.250 sin reconciliar en la planilla (posible ajuste). No se usó la línea "JORNALES OBRAS" de CONTROL DE GASTOS ($3.500.000) por ser un valor repetido sin variar entre mayo y junio.'
+from public.cuentas_financieras where tipo = 'caja';
+
+insert into public.movimientos_caja (tipo, estado, monto, cuenta_financiera_id, fecha_esperada, cliente_id, obra_id, concepto, origen, referencia_externa, notas)
+select 'cobro', 'proyectado', 14999999.99, cf.id, '2026-07-02',
+  cl.id, ob.id,
+  'Echeq pendiente - Oficinas y Fábrica de Palitos (FA 01-00000208)', 'flujo_caja_sheet', '01-00000208',
+  'CF_COB fila 22: categoría B (con factura), estado Pendiente, ya vencido a la fecha de lectura (07/07/2026). vencimiento original 02/07/2026.'
+from public.cuentas_financieras cf, public.clientes cl
+left join public.obras ob on ob.cliente_id = cl.id and ob.nombre = 'Galpón 9'
+where cf.tipo = 'banco' and cl.nombre = 'La Estrella (Alimentos del Sur SAS)';
+
+insert into public.movimientos_caja (tipo, estado, monto, cuenta_financiera_id, fecha_esperada, cliente_id, obra_id, concepto, origen, referencia_externa, notas)
+select 'cobro', 'proyectado', 10000000, cf.id, '2026-07-15',
+  cl.id, ob.id,
+  'Echeq pendiente - Galpón 9 (FA 01_00000213)', 'flujo_caja_sheet', '01_00000213',
+  'CF_COB fila 29: categoría B (con factura), estado Pendiente, vence 15/07/2026.'
+from public.cuentas_financieras cf, public.clientes cl
+left join public.obras ob on ob.cliente_id = cl.id and ob.nombre = 'Galpón 9'
+where cf.tipo = 'banco' and cl.nombre = 'La Estrella (Alimentos del Sur SAS)';
+
+-- TODAVÍA NO CARGADO (próximo incremento, ya no bloqueado por esquema):
+-- 1) Adicionales P/FACTURAR (Alquiler Puntales - Macro Construcciones, $38.720 y
+--    $58.080) — ahora cargable como cobro sin obra_id, cliente "Macro Construcciones"
+--    todavía no creado.
+-- 2) Resto de CF_COB (~1.470 de ~1.500 filas sin inspeccionar) — cobertura de CxC
+--    sigue parcial.
+-- 3) Detalle de cheques individuales (997 filas en Flujo de Caja → Cheques) — se
+--    cargaron los saldos agregados (obligaciones), no el instrumento por instrumento.

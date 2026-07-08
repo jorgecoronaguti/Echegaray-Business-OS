@@ -42,7 +42,15 @@ Jorge corrigió el enfoque: no escalar cada conflicto, resolverlo con criterio y
 
 Cargado (ver script de auditoría [[pr0-b-carga-ejecutada]]): 4 clientes, 6 proveedores, 2 cuentas_financieras (Banco $3.473.742,75 / Caja $2.739.600), 3 obras (ARCOR/La Estrella/San Francisco, total contratado $106.727.980,49), 10 obligaciones (total $37.706.775,50 — coincide exacto con el total de deudas de RESUMEN + Fondo de Cese + Alquileres), 2 acciones de verificación de fecha.
 
-**Gap de esquema real descubierto, no fabricado**: `movimientos_caja_contraparte_check` exige `obra_id` NOT NULL en todo `tipo='cobro'` y `proveedor_id` NOT NULL en todo `tipo='pago'`. Esto bloqueó cargar: (1) los adicionales P/FACTURAR (ingreso por alquiler de equipos a un tercero, no ligado a ninguna obra de construcción), (2) la nómina real ($9.393.250, semana 30/06) como movimiento de caja (no existe un "proveedor" que represente personal/nómina). **F1 necesita nómina como componente de la proyección** — este gap debe resolverse (¿modelar "Personal" como proveedor especial? ¿tabla propia?) antes de que F1 pueda proyectar nómina con datos reales en vez de solo el devengado del P&L.
+**Gap de esquema real descubierto, no fabricado**: `movimientos_caja_contraparte_check` exigía `obra_id` NOT NULL en todo `tipo='cobro'` y `proveedor_id` NOT NULL en todo `tipo='pago'`. Esto bloqueaba cargar Mantenimiento (ARCOR, no organizado en obras) y nómina/cargas sociales/impuestos (sin proveedor real).
+
+## PR0-C — resolución del gap y cierre (2026-07-07)
+
+Jorge eligió la opción "Relajar el constraint" ante las 3 alternativas presentadas. Migración aplicada: `relajar_contraparte_movimientos_caja` — agrega columna `categoria_pago` (nomina/cargas_sociales/impuestos) y reescribe `movimientos_caja_contraparte_check` para permitir `tipo='pago'` sin `proveedor_id` cuando `categoria_pago` está seteada, y deja `obra_id` opcional en `tipo='cobro'` (ya era nullable a nivel de columna, el constraint viejo era el que lo forzaba).
+
+Con el gap resuelto, se cargaron 3 `movimientos_caja` reales: nómina obreros semana 30/06 ($9.393.250, real, `categoria_pago='nomina'`) y 2 cobranzas pendientes de La Estrella verificadas como categoría B en CF_COB (Echeq $14.999.999,99 vencido 02/07, Echeq $10.000.000 vence 15/07) — **no** se cargaron las filas categoría N (Negro), consistente con la regla ya resuelta.
+
+**Cobertura de CxC sigue parcial y así queda documentado, no maquillado**: CF_COB tiene ~1.500 filas; solo se inspeccionaron y cargaron las primeras ~30 (2 de ellas categoría B pendientes). Falta revisar el resto del archivo antes de poder afirmar que F1 tiene la cobranza completa. Los adicionales P/FACTURAR ($38.720 + $58.080, Alquiler Puntales) y el detalle de cheques individuales (997 filas en `Flujo de Caja` → Cheques) tampoco se cargaron todavía — quedan como próximo incremento, ahora que el esquema ya lo permite.
 
 ## Advertencia explícita del usuario — no confundir descripción con prescripción
 
