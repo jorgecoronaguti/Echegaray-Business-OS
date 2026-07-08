@@ -3,6 +3,7 @@ import type { AlertaDashboard, SeveridadAlerta } from '../types'
 import type { Accion } from '@/features/acciones/types'
 import { ESTADO_ACCION_LABEL } from '@/features/acciones/types'
 import { ConvertirEnAccionForm } from '@/features/acciones/components/ConvertirEnAccionForm'
+import { ConfianzaBadge } from '@/shared/components/ConfianzaBadge'
 
 const SEVERIDAD_CLASSNAME: Record<SeveridadAlerta, string> = {
   critica: 'border-red-400 bg-red-50',
@@ -53,34 +54,40 @@ export function AlertaCard({ alerta, accionExistente }: { alerta: AlertaDashboar
         )}
         {alerta.fechaCritica && (
           <div>
-            <dt className="font-medium">Fecha crítica</dt>
+            <dt className="font-medium">Para cuándo</dt>
             <dd>{alerta.fechaCritica}</dd>
           </div>
         )}
-        <div>
-          <dt className="font-medium">Confianza</dt>
-          <dd className="capitalize">{alerta.confianza}</dd>
-        </div>
-        <div>
-          <dt className="font-medium">Fuente</dt>
-          <dd>{alerta.fuente}</dd>
-        </div>
+        {accionExistente?.responsable && (
+          <div>
+            <dt className="font-medium">Responsable</dt>
+            <dd>{accionExistente.responsable}</dd>
+          </div>
+        )}
       </dl>
 
       <p className="mt-2 text-sm">
-        <span className="font-medium">Causa: </span>
+        <span className="font-medium">Por qué pasa: </span>
         {alerta.causa}
       </p>
       <p className="text-sm">
-        <span className="font-medium">Decisión sugerida: </span>
+        <span className="font-medium">Qué recomiendo: </span>
         {alerta.decisionSugerida}
       </p>
 
-      {alerta.link && (
-        <Link href={alerta.link} className="mt-2 inline-block text-sm font-medium text-blue-700 underline">
-          Ir a la ficha →
-        </Link>
-      )}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <ConfianzaBadge naturaleza={alerta.confianza} />
+        {alerta.link && (
+          <Link href={alerta.link} className="text-sm font-medium text-blue-700 underline">
+            Ir a la ficha →
+          </Link>
+        )}
+      </div>
+
+      <details className="mt-1">
+        <summary className="cursor-pointer text-xs text-gray-400">Detalle técnico</summary>
+        <p className="mt-1 text-xs text-gray-400">Fuente del dato: {alerta.fuente}</p>
+      </details>
 
       {accionExistente ? (
         <p className="mt-2 text-xs text-gray-500" data-testid="alerta-ya-convertida">
