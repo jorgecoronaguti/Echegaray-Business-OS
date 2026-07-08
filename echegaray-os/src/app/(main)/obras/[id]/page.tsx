@@ -30,6 +30,8 @@ import { getRegistrosHHPorObra, getHHResumenPorObra } from '@/features/hh-produc
 import { getActividadesSemanales } from '@/features/actividades-semanales/services/actividadesSemanalesService'
 import { ActividadesSemanalesList } from '@/features/actividades-semanales/components/ActividadesSemanalesList'
 import { PlanSemanalForm } from '@/features/actividades-semanales/components/PlanSemanalForm'
+import { calcularResumenProduccionEconomica } from '@/features/actividades-semanales/types/produccionEconomica'
+import { ResumenProduccionEconomicaView } from '@/features/actividades-semanales/components/ResumenProduccionEconomica'
 import { RegistroHHForm } from '@/features/hh-productividad/components/RegistroHHForm'
 import { ResumenHHObra } from '@/features/hh-productividad/components/ResumenHHObra'
 import { getComprasPorObra, getComprasResumenPorObra } from '@/features/compras/services/comprasService'
@@ -352,6 +354,26 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
             <div className="mt-4">
               <PlanSemanalForm obraId={id} />
             </div>
+          </section>
+
+          <section data-testid="produccion-economica-obra-section">
+            <h2 className="text-xl font-semibold">Conexión físico-económica (O1-C)</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Cruza avance físico real con HH, costo y margen ya cargados. Cada dato declara si es observado,
+              calculado, estimado o inferido -- no inventa precisión que la evidencia no sostiene.
+            </p>
+            {resumenEconomico.data && (
+              <div className="mt-3">
+                <ResumenProduccionEconomicaView
+                  resumen={calcularResumenProduccionEconomica({
+                    actividades: actividadesSemanales.data ?? [],
+                    registrosHH: registrosHH.data ?? [],
+                    resumenEconomico: resumenEconomico.data,
+                    hhEstimadaPresupuesto: presupuestoMasReciente?.hh_estimada ?? null,
+                  })}
+                />
+              </div>
+            )}
           </section>
 
           <section data-testid="hh-productividad-obra-section">
