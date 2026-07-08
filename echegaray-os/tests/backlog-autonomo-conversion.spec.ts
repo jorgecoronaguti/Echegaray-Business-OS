@@ -23,6 +23,17 @@ test('un item de backlog abierto puede convertirse en una acción real', async (
   )
   await supabase.auth.signInWithPassword({ email: EMAIL, password: PASSWORD })
 
+  // Auto-sanación: una corrida anterior interrumpida (proceso matado a mitad de test)
+  // deja el finally de abajo sin ejecutar -- hallazgo real y recurrente en esta
+  // sesión (varias corridas de fondo interrumpidas dejaron fixtures reales en
+  // acciones/backlog_autonomo). Se limpia cualquier residuo previo por nombre antes
+  // de crear el fixture nuevo, en vez de depender solo del finally.
+  const { data: huerfanos } = await supabase.from('backlog_autonomo').select('id').ilike('titulo', 'Prueba E2E backlog->acción%')
+  for (const h of huerfanos ?? []) {
+    await supabase.from('acciones').delete().eq('alerta_origen_id', h.id)
+    await supabase.from('backlog_autonomo').delete().eq('id', h.id)
+  }
+
   const titulo = `Prueba E2E backlog->acción ${Date.now()}`
   const { data: item, error: insertError } = await supabase
     .from('backlog_autonomo')

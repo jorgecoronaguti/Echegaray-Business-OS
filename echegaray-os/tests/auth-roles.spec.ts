@@ -33,6 +33,17 @@ test.describe.serial('acceso autenticado real por rol', () => {
   })
 
   test('jefe_obra: puede planificar actividad semanal (escritura operación permitida)', async ({ page }) => {
+    const supabaseLimpieza = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string,
+    )
+    await supabaseLimpieza.auth.signInWithPassword({ email: EMAIL, password: PASSWORD })
+    // Auto-sanación: si una corrida anterior fue interrumpida, la limpieza de abajo
+    // (no envuelta en try/finally) nunca llegó a ejecutar -- hallazgo real y
+    // recurrente en esta sesión. Se borra cualquier residuo previo antes de crear el
+    // fixture nuevo.
+    await supabaseLimpieza.from('actividades_semanales').delete().ilike('actividad', 'Prueba E2E jefe_obra%')
+
     const actividad = `Prueba E2E jefe_obra ${Date.now()}`
     await login(page)
     await page.goto('/obras')

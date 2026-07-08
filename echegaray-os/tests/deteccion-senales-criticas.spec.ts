@@ -17,6 +17,17 @@ test.describe('detectar_senales_criticas_transversales', () => {
     )
     await supabase.auth.signInWithPassword({ email: EMAIL, password: PASSWORD })
 
+    // Auto-sanación: si una corrida anterior fue interrumpida (proceso matado a mitad
+    // de test, timeout global de Playwright), el finally de abajo nunca llegó a
+    // ejecutar y dejó un fixture real en acciones/backlog_autonomo -- hallazgo real de
+    // esta ola (6 filas encontradas, ver memoria). Se limpia cualquier residuo previo
+    // antes de crear el fixture nuevo, en vez de depender solo del finally.
+    const { data: huerfanas } = await supabase.from('acciones').select('id').ilike('titulo', 'Prueba E2E acción vencida%')
+    for (const h of huerfanas ?? []) {
+      await supabase.from('backlog_autonomo').delete().eq('origen_tabla', 'acciones').eq('origen_id', h.id)
+      await supabase.from('acciones').delete().eq('id', h.id)
+    }
+
     const titulo = `Prueba E2E acción vencida ${Date.now()}`
     const { data: accion, error } = await supabase
       .from('acciones')
