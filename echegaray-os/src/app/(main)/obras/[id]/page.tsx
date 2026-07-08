@@ -27,6 +27,9 @@ import { CertificadoForm } from '@/features/ejecucion-financiera/components/Cert
 import { CertificadosList } from '@/features/ejecucion-financiera/components/CertificadosList'
 import { ResumenEjecucionFinanciera } from '@/features/ejecucion-financiera/components/ResumenEjecucionFinanciera'
 import { getRegistrosHHPorObra, getHHResumenPorObra } from '@/features/hh-productividad/services/hhProductividadService'
+import { getActividadesSemanales } from '@/features/actividades-semanales/services/actividadesSemanalesService'
+import { ActividadesSemanalesList } from '@/features/actividades-semanales/components/ActividadesSemanalesList'
+import { PlanSemanalForm } from '@/features/actividades-semanales/components/PlanSemanalForm'
 import { RegistroHHForm } from '@/features/hh-productividad/components/RegistroHHForm'
 import { ResumenHHObra } from '@/features/hh-productividad/components/ResumenHHObra'
 import { getComprasPorObra, getComprasResumenPorObra } from '@/features/compras/services/comprasService'
@@ -67,6 +70,7 @@ async function loadObraDetalle(id: string) {
       obligaciones,
       obligacionesResumen,
       postMortem,
+      actividadesSemanales,
     ] = await Promise.all([
       getObraById(supabase, id),
       getClientes(supabase),
@@ -87,6 +91,7 @@ async function loadObraDetalle(id: string) {
       getObligacionesPorObra(supabase, id),
       getObligacionesResumenPorObra(supabase, id),
       getPostMortemPorObra(supabase, id),
+      getActividadesSemanales(supabase, id),
     ])
 
     // Las partidas se muestran de la versión más reciente (mayor `version`), que es
@@ -117,6 +122,7 @@ async function loadObraDetalle(id: string) {
       obligaciones,
       obligacionesResumen,
       postMortem,
+      actividadesSemanales,
     }
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Error desconocido al conectar con Supabase'
@@ -142,6 +148,7 @@ async function loadObraDetalle(id: string) {
       obligaciones: failed,
       obligacionesResumen: failed,
       postMortem: failed,
+      actividadesSemanales: failed,
     }
   }
 }
@@ -169,6 +176,7 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
     obligaciones,
     obligacionesResumen,
     postMortem,
+    actividadesSemanales,
   } = await loadObraDetalle(id)
 
   const pageError =
@@ -190,7 +198,8 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
     comprasResumen.error ??
     obligaciones.error ??
     obligacionesResumen.error ??
-    postMortem.error
+    postMortem.error ??
+    actividadesSemanales.error
   const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
 
   if (!pageError && !obra.data) {
@@ -329,6 +338,20 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
                 />
               </div>
             )}
+          </section>
+
+          <section data-testid="actividades-semanales-obra-section">
+            <h2 className="text-xl font-semibold">Actividad semanal (O1-B)</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Ciclo semanal mínimo: lunes se planifica, viernes se informa solo el avance real y la causa de desvío
+              -- todo lo demás ya está cargado. Reutiliza responsable, HH y costos ya existentes, no los duplica.
+            </p>
+            <div className="mt-3">
+              <ActividadesSemanalesList obraId={id} actividades={actividadesSemanales.data ?? []} />
+            </div>
+            <div className="mt-4">
+              <PlanSemanalForm obraId={id} />
+            </div>
           </section>
 
           <section data-testid="hh-productividad-obra-section">
