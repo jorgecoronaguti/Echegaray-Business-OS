@@ -47,7 +47,16 @@ test.describe.serial('acceso autenticado real por rol', () => {
     await expect(error).toHaveCount(0)
   })
 
-  test('jefe_obra: NO puede registrar un movimiento de caja (escritura financiera denegada)', async ({ page }) => {
+  // Deshabilitado: esta cuenta de prueba se reasignó a rol 'direccion' (a pedido
+  // explícito de Jorge, para poder navegar el OS él mismo sin restricciones de
+  // escritura -- ver .claude/memory/project/continuidad-operacional-datos.md). Con ese
+  // rol el insert YA NO es denegado, así que este test no solo fallaba: además dejaba
+  // un movimiento de caja real ("Prueba E2E denegada") insertado en datos financieros
+  // reales en cada corrida de la suite (encontrado y limpiado el 2026-07-08). No se
+  // revierte el rol de la cuenta compartida (decisión ya tomada), así que este test
+  // queda deshabilitado hasta que exista una cuenta de prueba dedicada con rol
+  // jefe_obra real, no compartida con la navegación de Jorge.
+  test.skip('jefe_obra: NO puede registrar un movimiento de caja (escritura financiera denegada)', async ({ page }) => {
     await login(page)
     await page.goto('/caja')
 
