@@ -41,6 +41,12 @@ export default async function MainLayout({
             <Link href="/acciones" className="rounded px-3 py-1 font-semibold hover:bg-gray-100">
               Centro de Acción
             </Link>
+            <Link href="/scorecard" className="rounded px-3 py-1 font-semibold hover:bg-gray-100">
+              Scorecard
+            </Link>
+            <Link href="/preguntas-negocio" className="rounded px-3 py-1 font-semibold hover:bg-gray-100">
+              Preguntas de Negocio
+            </Link>
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-600" data-testid="usuario-actual">
             {email ? (
