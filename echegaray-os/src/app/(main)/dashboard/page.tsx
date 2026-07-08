@@ -13,6 +13,7 @@ import { getActividadesSemanalesTodasLasObras } from '@/features/actividades-sem
 import { construirTableroObras, ordenarTableroObras } from '@/features/obras/types/tableroObras'
 import { ESTADO_ECONOMICO_LABEL, ESTADO_ECONOMICO_CLASSNAME } from '@/features/control-economico/types'
 import { getBacklogAutonomo } from '@/features/backlog-autonomo/services/backlogAutonomoService'
+import { ordenarBacklogPorPrioridad } from '@/features/backlog-autonomo/types'
 import { getFuentesDatos } from '@/features/fuentes-datos/services/fuentesDatosService'
 import { fuentesCriticasConProblema } from '@/features/fuentes-datos/types'
 import { AREAS_OS, AREA_LABEL, AREA_RUTA } from '@/features/areas/types'
@@ -125,7 +126,7 @@ export default async function DashboardPage() {
     ? posicion.forecastSemanal.reduce((peor, p) => (p.saldoFinal < peor.saldoFinal ? p : peor), posicion.forecastSemanal[0])
     : null
 
-  const backlogAbierto = (backlog.data ?? []).filter((b) => b.estado === 'abierto')
+  const backlogAbierto = ordenarBacklogPorPrioridad((backlog.data ?? []).filter((b) => b.estado === 'abierto'))
   const fuentesConProblema = fuentesCriticasConProblema(fuentes.data ?? [])
 
   return (

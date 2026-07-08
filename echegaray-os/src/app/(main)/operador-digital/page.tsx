@@ -8,7 +8,7 @@ import { getAcciones } from '@/features/acciones/services/accionesService'
 import { getBacklogAutonomo } from '@/features/backlog-autonomo/services/backlogAutonomoService'
 import { getFuentesDatos } from '@/features/fuentes-datos/services/fuentesDatosService'
 import { ESTADO_FUENTE_LABEL, fuentesCriticasConProblema } from '@/features/fuentes-datos/types'
-import { TIPO_BACKLOG_LABEL } from '@/features/backlog-autonomo/types'
+import { TIPO_BACKLOG_LABEL, ordenarBacklogPorPrioridad } from '@/features/backlog-autonomo/types'
 
 // PR UX-4: "Operador Digital" consolida en una sola página entendible lo que antes
 // eran 3 pantallas técnicas sueltas (Motor de Decisiones, Rutinas, Backlog Autónomo)
@@ -48,7 +48,7 @@ export default async function OperadorDigitalPage() {
   const analisisDestacado = alertas.slice(0, 3).map((a) => ({ alerta: a, analisis: construirAnalisisMultidisciplinario(a) }))
   const rutinaDiaria = datos.data ? construirRutinaDiaria(alertas, acciones.data ?? []) : []
   const rutinaSemanal = datos.data ? construirRutinaSemanal(alertas, backlog.data ?? []) : []
-  const backlogAbierto = (backlog.data ?? []).filter((b) => b.estado === 'abierto')
+  const backlogAbierto = ordenarBacklogPorPrioridad((backlog.data ?? []).filter((b) => b.estado === 'abierto'))
   const fuentesConProblema = fuentesCriticasConProblema(fuentes.data ?? [])
 
   return (

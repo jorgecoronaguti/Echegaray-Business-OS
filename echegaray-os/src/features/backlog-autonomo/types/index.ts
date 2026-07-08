@@ -90,6 +90,24 @@ const SEVERIDAD_POR_IMPACTO: Record<ImpactoBacklog, SeveridadAlerta> = {
   baja: 'informativa',
 }
 
+// UX-4: getBacklogAutonomo ordena por created_at ascendente (más viejo primero) --
+// correcto para el listado completo, pero un resumen de "primeros N" sobre esa
+// lista muestra los ítems más viejos, no los más importantes. Bug real encontrado en
+// esta ola (Operador Digital mostraba 8 ítems de meses atrás y no el hallazgo de
+// hoy). Prioriza por impacto, después por urgencia, después por más reciente.
+const ORDEN_IMPACTO: Record<ImpactoBacklog, number> = { alta: 0, media: 1, baja: 2 }
+const ORDEN_URGENCIA: Record<UrgenciaBacklog, number> = { alta: 0, media: 1, por_confirmar: 2, baja: 3 }
+
+export function ordenarBacklogPorPrioridad(items: BacklogItem[]): BacklogItem[] {
+  return [...items].sort((a, b) => {
+    const porImpacto = ORDEN_IMPACTO[a.impacto] - ORDEN_IMPACTO[b.impacto]
+    if (porImpacto !== 0) return porImpacto
+    const porUrgencia = ORDEN_URGENCIA[a.urgencia] - ORDEN_URGENCIA[b.urgencia]
+    if (porUrgencia !== 0) return porUrgencia
+    return a.created_at < b.created_at ? 1 : -1
+  })
+}
+
 // Construye los campos a insertar para convertir un item de backlog en una Acción
 // trazable -- copia el contenido una sola vez, igual que accionDesdeAlerta.
 export function accionDesdeBacklog(item: BacklogItem) {
