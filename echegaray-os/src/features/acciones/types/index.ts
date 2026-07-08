@@ -35,6 +35,9 @@ export interface Accion {
   fecha_resolucion: string | null
   resultado_real: string | null
   aprendizaje_asociado: string | null
+  bloqueada: boolean
+  motivo_bloqueo: string | null
+  evidencia: string | null
   created_at: string
   updated_at: string
 }
@@ -78,6 +81,16 @@ export const cambiarEstadoAccionInputSchema = z
     }
   })
 export type CambiarEstadoAccionInput = z.infer<typeof cambiarEstadoAccionInputSchema>
+
+// Bloqueo (Sección 4, ciclo "operabilidad real") — una acción bloqueada sigue activa
+// (no es un estado más) pero necesita visibilidad propia: "sin responsable" y
+// "bloqueada" son las dos preguntas reales que Dirección hace en la revisión diaria.
+export const bloqueoAccionInputSchema = z.object({
+  bloqueada: z.coerce.boolean(),
+  motivo_bloqueo: z.string().trim().min(1).optional(),
+  evidencia: z.string().trim().min(1).optional(),
+})
+export type BloqueoAccionInput = z.infer<typeof bloqueoAccionInputSchema>
 
 // Construye los campos a insertar para "convertir" una alerta ya calculada en una
 // Acción trazable — copia el contenido una sola vez, no recalcula nada.

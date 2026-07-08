@@ -2,8 +2,8 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { accionManualInputSchema, cambiarEstadoAccionInputSchema } from '../types'
-import { insertAccionManual, insertAccionDesdeAlerta, cambiarEstadoAccion } from './accionesService'
+import { accionManualInputSchema, cambiarEstadoAccionInputSchema, bloqueoAccionInputSchema } from '../types'
+import { insertAccionManual, insertAccionDesdeAlerta, cambiarEstadoAccion, actualizarBloqueoAccion } from './accionesService'
 import type { AlertaDashboardBase } from '@/features/dashboard/types'
 
 export type ActionState = { error: string | null }
@@ -105,5 +105,27 @@ export async function cambiarEstadoAccionAction(_prev: ActionState, formData: Fo
   if (error) return { error }
 
   revalidatePath('/acciones')
+  return { error: null }
+}
+
+export async function actualizarBloqueoAccionAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const accionId = formData.get('accion_id')
+  if (typeof accionId !== 'string' || !accionId) return { error: 'Acción inválida' }
+
+  const parsed = bloqueoAccionInputSchema.safeParse({
+    bloqueada: formData.get('bloqueada') === 'true',
+    motivo_bloqueo: formData.get('motivo_bloqueo') || undefined,
+    evidencia: formData.get('evidencia') || undefined,
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0].message }
+
+  const client = await createClientOrError()
+  if (!client.supabase) return { error: client.error }
+
+  const { error } = await actualizarBloqueoAccion(client.supabase, accionId, parsed.data)
+  if (error) return { error }
+
+  revalidatePath('/acciones')
+  revalidatePath('/dashboard')
   return { error: null }
 }

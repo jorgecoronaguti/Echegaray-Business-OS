@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Accion, AccionManualInput, CambiarEstadoAccionInput } from '../types'
+import type { Accion, AccionManualInput, CambiarEstadoAccionInput, BloqueoAccionInput } from '../types'
 import type { AlertaDashboardBase } from '@/features/dashboard/types'
 import { accionDesdeAlerta } from '../types'
 
@@ -102,6 +102,29 @@ export async function cambiarEstadoAccion(
     }
 
     const { data, error } = await supabase.from('acciones').update(cambios).eq('id', id).select().single()
+    if (error) return { data: null, error: error.message }
+    return { data: data as Accion, error: null }
+  } catch (err) {
+    return { data: null, error: toServiceError(err) }
+  }
+}
+
+export async function actualizarBloqueoAccion(
+  supabase: SupabaseClient,
+  id: string,
+  input: BloqueoAccionInput
+): Promise<ServiceResult<Accion>> {
+  try {
+    const { data, error } = await supabase
+      .from('acciones')
+      .update({
+        bloqueada: input.bloqueada,
+        motivo_bloqueo: input.bloqueada ? (input.motivo_bloqueo ?? null) : null,
+        evidencia: input.evidencia ?? null,
+      })
+      .eq('id', id)
+      .select()
+      .single()
     if (error) return { data: null, error: error.message }
     return { data: data as Accion, error: null }
   } catch (err) {

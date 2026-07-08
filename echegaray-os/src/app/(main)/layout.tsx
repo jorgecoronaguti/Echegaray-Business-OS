@@ -18,6 +18,7 @@ const GRUPOS_NAV = [
     grupo: 'Dirección',
     links: [
       { href: '/dashboard', label: 'Dirección' },
+      { href: '/sintesis-semanal', label: 'Síntesis semanal' },
       { href: '/acciones', label: 'Centro de Acción' },
     ],
   },

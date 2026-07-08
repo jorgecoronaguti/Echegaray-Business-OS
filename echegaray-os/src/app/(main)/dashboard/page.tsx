@@ -106,12 +106,20 @@ export default async function DashboardPage() {
   const decidirHoy = todasLasAlertas.slice(0, 5)
 
   const hoy = new Date().toISOString().slice(0, 10)
-  const accionesVencidas = (acciones.data ?? []).filter(
-    (a) => (a.estado === 'pendiente' || a.estado === 'en_curso') && a.fecha_limite && a.fecha_limite < hoy
-  )
-  const accionesProximas = (acciones.data ?? []).filter(
-    (a) => (a.estado === 'pendiente' || a.estado === 'en_curso') && a.fecha_limite && a.fecha_limite >= hoy
-  )
+  const accionesActivas = (acciones.data ?? []).filter((a) => a.estado === 'pendiente' || a.estado === 'en_curso')
+  const accionesVencidas = accionesActivas.filter((a) => a.fecha_limite && a.fecha_limite < hoy)
+  const accionesProximas = accionesActivas.filter((a) => a.fecha_limite && a.fecha_limite >= hoy)
+  const accionesSinResponsable = accionesActivas.filter((a) => !a.responsable)
+  const accionesBloqueadas = accionesActivas.filter((a) => a.bloqueada)
+
+  // Ritual diario (Sección 6): "qué cambió" se aproxima con lo generado en las
+  // últimas 24hs -- no existe todavía un "última revisión" por usuario, así que se
+  // declara explícitamente la ventana usada en vez de fingir un diff real.
+  const fechaHace24hs = new Date()
+  fechaHace24hs.setDate(fechaHace24hs.getDate() - 1)
+  const hace24hs = fechaHace24hs.toISOString()
+  const backlogReciente = (backlog.data ?? []).filter((b) => b.created_at >= hace24hs)
+  const accionesRecientes = (acciones.data ?? []).filter((a) => a.created_at >= hace24hs)
 
   const tablero =
     obras.data && resumenes.data && hhResumenes.data && ejecuciones.data && actividades.data
@@ -135,6 +143,26 @@ export default async function DashboardPage() {
         <h1 className="text-3xl font-bold">Dirección</h1>
         <p className="mt-2 text-gray-600">Qué pasa, qué requiere atención y qué decisión tomar hoy.</p>
       </div>
+
+      <section data-testid="direccion-cambios-recientes">
+        <h2 className="text-xl font-semibold">Qué cambió (últimas 24 horas)</h2>
+        <p className="mt-1 text-xs text-gray-500">
+          Aproximación por ventana de tiempo, no un diff contra tu última visita real — todavía no existe ese
+          seguimiento por usuario.
+        </p>
+        {backlogReciente.length === 0 && accionesRecientes.length === 0 ? (
+          <p className="mt-2 text-sm text-gray-500">Sin observaciones ni acciones nuevas en las últimas 24hs.</p>
+        ) : (
+          <ul className="mt-2 space-y-1 text-sm">
+            {backlogReciente.map((b) => (
+              <li key={b.id}>· Nuevo en backlog: {b.titulo}</li>
+            ))}
+            {accionesRecientes.map((a) => (
+              <li key={a.id}>· Nueva acción: {a.titulo}</li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <SeccionAlertas
         titulo="Decidir hoy"
@@ -207,27 +235,36 @@ export default async function DashboardPage() {
               <tr className="border-b text-xs text-gray-500 uppercase">
                 <th className="pr-4 py-2">Obra</th>
                 <th className="pr-4 py-2">Avance</th>
+                <th className="pr-4 py-2">HH real/est.</th>
                 <th className="pr-4 py-2">Margen actualizado</th>
+                <th className="pr-4 py-2">Pendiente de cobrar</th>
                 <th className="pr-4 py-2">Salud</th>
+                <th className="pr-4 py-2">Principal riesgo</th>
               </tr>
             </thead>
             <tbody>
-              {obrasDestacadas.map((o) => (
-                <tr key={o.obra_id} className="border-b" data-testid="direccion-obra-fila">
-                  <td className="pr-4 py-2">
-                    <Link href={`/obras/${o.obra_id}`} className="underline">
-                      {o.obra_nombre}
-                    </Link>
-                  </td>
-                  <td className="pr-4 py-2">{o.avanceFisicoPromedio != null ? `${o.avanceFisicoPromedio.toFixed(0)}%` : '—'}</td>
-                  <td className="pr-4 py-2">{o.margenActualizado != null ? money(o.margenActualizado) : '—'}</td>
-                  <td className="pr-4 py-2">
-                    <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${ESTADO_ECONOMICO_CLASSNAME[o.estadoEconomico]}`}>
-                      {ESTADO_ECONOMICO_LABEL[o.estadoEconomico]}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {obrasDestacadas.map((o) => {
+                const riesgoObra = todasLasAlertas.find((a) => a.obraId === o.obra_id)
+                return (
+                  <tr key={o.obra_id} className="border-b" data-testid="direccion-obra-fila">
+                    <td className="pr-4 py-2">
+                      <Link href={`/obras/${o.obra_id}`} className="underline">
+                        {o.obra_nombre}
+                      </Link>
+                    </td>
+                    <td className="pr-4 py-2">{o.avanceFisicoPromedio != null ? `${o.avanceFisicoPromedio.toFixed(0)}%` : '—'}</td>
+                    <td className="pr-4 py-2">{o.hhReal} / {o.hhEstimada ?? '—'}</td>
+                    <td className="pr-4 py-2">{o.margenActualizado != null ? money(o.margenActualizado) : '—'}</td>
+                    <td className="pr-4 py-2">{money(o.pendienteCobrar)}</td>
+                    <td className="pr-4 py-2">
+                      <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${ESTADO_ECONOMICO_CLASSNAME[o.estadoEconomico]}`}>
+                        {ESTADO_ECONOMICO_LABEL[o.estadoEconomico]}
+                      </span>
+                    </td>
+                    <td className="pr-4 py-2 text-xs text-gray-600">{riesgoObra?.titulo ?? '—'}</td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         ) : (
@@ -239,8 +276,8 @@ export default async function DashboardPage() {
       </section>
 
       <section data-testid="direccion-acciones">
-        <h2 className="text-xl font-semibold">Acciones</h2>
-        <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <h2 className="text-xl font-semibold">Trabajo</h2>
+        <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div className="rounded border border-red-300 bg-red-50 p-3 text-center">
             <p className="text-2xl font-bold text-red-700">{accionesVencidas.length}</p>
             <p className="text-xs text-gray-600">Vencidas</p>
@@ -248,6 +285,14 @@ export default async function DashboardPage() {
           <div className="rounded border p-3 text-center">
             <p className="text-2xl font-bold">{accionesProximas.length}</p>
             <p className="text-xs text-gray-600">Próximas</p>
+          </div>
+          <div className="rounded border border-amber-300 bg-amber-50 p-3 text-center">
+            <p className="text-2xl font-bold text-amber-700">{accionesSinResponsable.length}</p>
+            <p className="text-xs text-gray-600">Sin responsable</p>
+          </div>
+          <div className="rounded border border-red-300 bg-red-50 p-3 text-center">
+            <p className="text-2xl font-bold text-red-700">{accionesBloqueadas.length}</p>
+            <p className="text-xs text-gray-600">Bloqueadas</p>
           </div>
         </div>
         <Link href="/acciones" className="mt-2 inline-block text-sm font-medium text-blue-700 underline">

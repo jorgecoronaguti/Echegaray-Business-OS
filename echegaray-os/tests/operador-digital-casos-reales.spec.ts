@@ -2,7 +2,11 @@ import { test, expect } from '@playwright/test'
 
 // PR UX-4, con datos reales: al menos una recomendación real (los 4 casos ya
 // verificados en motor-decisiones-casos-reales.spec.ts) y el backlog real generado
-// automáticamente por detectar_senales_criticas_transversales() (IVA 2026/TELEGRAMAS).
+// automáticamente por detectar_senales_criticas_transversales(). Desde el ciclo
+// "operabilidad real" (2026-07-09) el backlog creció con señales de mayor prioridad
+// (margen, HH, cobranza, pagos) -- "IVA 2026" sigue real pero ya no entra en el top 8
+// mostrado acá (prioridad correcta, no una regresión); se valida contra "Margen
+// crítico — Galpones", que sí es material y estable.
 
 const EMAIL = 'jorge.o.corona+direccion-test-1783513222134@gmail.com'
 const PASSWORD = 'TestPassword123!'
@@ -18,5 +22,5 @@ test('Operador Digital muestra recomendaciones y backlog real, no una pantalla v
 
   await expect(page.getByTestId('operador-digital-recomendacion').first()).toBeVisible()
   const backlogSection = page.getByTestId('operador-digital-backlog')
-  await expect(backlogSection).toContainText('IVA 2026')
+  await expect(backlogSection).toContainText('Margen crítico — Galpones')
 })

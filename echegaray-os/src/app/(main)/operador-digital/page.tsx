@@ -9,12 +9,13 @@ import { getBacklogAutonomo } from '@/features/backlog-autonomo/services/backlog
 import { getFuentesDatos } from '@/features/fuentes-datos/services/fuentesDatosService'
 import { ESTADO_FUENTE_LABEL, fuentesCriticasConProblema } from '@/features/fuentes-datos/types'
 import { TIPO_BACKLOG_LABEL, ordenarBacklogPorPrioridad } from '@/features/backlog-autonomo/types'
+import { getClasificacionesPendientes } from '@/features/clasificacion-costos/services/clasificacionCostosService'
 
-// PR UX-4: "Operador Digital" consolida en una sola página entendible lo que antes
-// eran 3 pantallas técnicas sueltas (Motor de Decisiones, Rutinas, Backlog Autónomo)
-// -- qué está observando, qué recomienda, qué backlog generó, qué rutinas corrieron.
-// Reutiliza exactamente la misma lógica de cada una (sin recalcular nada); cada
-// sección linkea a su página completa para el detalle técnico.
+// PR UX-4 + ciclo "operabilidad real" (Sección 12): "Operador Digital" pasa de
+// consolidar 3 pantallas técnicas a mostrar en 7 bloques concretos que el sistema
+// está trabajando -- Observando / Detectado / Investigando / Recomendando / Trabajo
+// creado / Bloqueado / Mejorando el OS. Cero cálculo nuevo: cada bloque reutiliza una
+// capacidad ya existente, solo cambia cómo se agrupa y se nombra.
 
 const RESULTADO_LABEL: Record<string, string> = {
   sin_novedad: 'Sin novedad material',
@@ -22,26 +23,34 @@ const RESULTADO_LABEL: Record<string, string> = {
   recomendacion: 'Recomendación',
 }
 
+const RUTINAS_PROGRAMADAS = [
+  { nombre: 'detectar_senales_criticas_diario', frecuencia: 'Diaria (11:10 UTC)', que_hace: 'Acciones vencidas, fuentes atrasadas, deterioro de margen, exceso de HH, cobranza vencida, pago crítico.' },
+  { nombre: 'recalcular_frescura_fuentes_diario', frecuencia: 'Diaria (11:00 UTC)', que_hace: 'Recalcula frescura/cobertura de las 23 fuentes de Drive trackeadas.' },
+]
+
+const MEJORA_TIPOS = ['gap_proceso', 'deuda_tecnica', 'mejora_potencial'] as const
+
 async function loadOperadorDigital() {
   try {
     const supabase = await createClient()
-    const [datos, acciones, backlog, fuentes] = await Promise.all([
+    const [datos, acciones, backlog, fuentes, clasificaciones] = await Promise.all([
       getDashboardDatosFuente(supabase),
       getAcciones(supabase),
       getBacklogAutonomo(supabase),
       getFuentesDatos(supabase),
+      getClasificacionesPendientes(supabase),
     ])
-    return { datos, acciones, backlog, fuentes }
+    return { datos, acciones, backlog, fuentes, clasificaciones }
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Error desconocido al conectar con Supabase'
     const failed = { data: null, error } as const
-    return { datos: failed, acciones: failed, backlog: failed, fuentes: failed }
+    return { datos: failed, acciones: failed, backlog: failed, fuentes: failed, clasificaciones: failed }
   }
 }
 
 export default async function OperadorDigitalPage() {
-  const { datos, acciones, backlog, fuentes } = await loadOperadorDigital()
-  const pageError = datos.error ?? acciones.error ?? backlog.error ?? fuentes.error
+  const { datos, acciones, backlog, fuentes, clasificaciones } = await loadOperadorDigital()
+  const pageError = datos.error ?? acciones.error ?? backlog.error ?? fuentes.error ?? clasificaciones.error
   const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
 
   const alertas = datos.data ? construirAlertasDashboard(datos.data) : []
@@ -51,12 +60,24 @@ export default async function OperadorDigitalPage() {
   const backlogAbierto = ordenarBacklogPorPrioridad((backlog.data ?? []).filter((b) => b.estado === 'abierto'))
   const fuentesConProblema = fuentesCriticasConProblema(fuentes.data ?? [])
 
+  const fechaHace24hs = new Date()
+  fechaHace24hs.setDate(fechaHace24hs.getDate() - 1)
+  const hace24hs = fechaHace24hs.toISOString()
+  const detectadoReciente = backlogAbierto.filter((b) => b.created_at >= hace24hs)
+
+  const backlogSinDato = backlogAbierto.filter((b) => b.confianza === 'sin_dato')
+  const clasificacionesSinSugerencia = (clasificaciones.data ?? []).filter((c) => !c.obra_sugerida_id)
+  const accionesBloqueadas = (acciones.data ?? []).filter((a) => a.bloqueada)
+
+  const mejorasPropuestas = backlogAbierto.filter((b) => (MEJORA_TIPOS as readonly string[]).includes(b.tipo))
+
   return (
     <div className="min-h-screen space-y-8 p-8">
       <div>
         <h1 className="text-3xl font-bold">Operador Digital</h1>
         <p className="mt-2 text-gray-600">
-          Qué está observando, investigando, recomendando y proponiendo el OS por su cuenta.
+          Qué está observando, detectando, investigando, recomendando, trabajando y mejorando el OS por su cuenta —
+          y qué necesita intervención humana.
         </p>
       </div>
 
@@ -90,8 +111,55 @@ export default async function OperadorDigitalPage() {
             </div>
           </section>
 
+          <section data-testid="operador-digital-observando">
+            <h2 className="text-xl font-semibold">Observando</h2>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {RUTINAS_PROGRAMADAS.map((r) => (
+                <div key={r.nombre} className="rounded border p-3 text-sm">
+                  <p className="font-mono text-xs text-gray-500">{r.nombre}</p>
+                  <p className="text-xs text-gray-400">{r.frecuencia}</p>
+                  <p className="mt-1">{r.que_hace}</p>
+                </div>
+              ))}
+            </div>
+            <Link href="/rutinas" className="mt-2 inline-block text-sm font-medium text-blue-700 underline">
+              Ver rutinas completas →
+            </Link>
+          </section>
+
+          <section data-testid="operador-digital-detectado">
+            <h2 className="text-xl font-semibold">Detectado (últimas 24 horas)</h2>
+            {detectadoReciente.length === 0 ? (
+              <p className="mt-2 text-sm text-gray-500">Sin señales nuevas en las últimas 24hs.</p>
+            ) : (
+              <ul className="mt-3 space-y-1 text-sm">
+                {detectadoReciente.map((b) => (
+                  <li key={b.id}>
+                    <span className="text-xs text-gray-400">[{TIPO_BACKLOG_LABEL[b.tipo]}]</span> {b.titulo}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section data-testid="operador-digital-investigando">
+            <h2 className="text-xl font-semibold">Investigando (gaps y conflictos abiertos)</h2>
+            <p className="mt-1 text-sm">
+              {backlogSinDato.length} observación(es) sin dato suficiente para confiar todavía, {clasificacionesSinSugerencia.length}{' '}
+              gasto(s) sin obra sugerida en la cola de clasificación de costos.
+            </p>
+            <ul className="mt-2 space-y-1 text-sm text-gray-600">
+              {backlogSinDato.slice(0, 5).map((b) => (
+                <li key={b.id}>· {b.titulo}</li>
+              ))}
+            </ul>
+            <Link href="/administracion" className="mt-2 inline-block text-sm font-medium text-blue-700 underline">
+              Ver cola de clasificación de costos →
+            </Link>
+          </section>
+
           <section data-testid="operador-digital-recomienda">
-            <h2 className="text-xl font-semibold">Qué recomienda</h2>
+            <h2 className="text-xl font-semibold">Recomendando</h2>
             {analisisDestacado.length === 0 ? (
               <p className="mt-2 text-sm text-gray-500">Sin situaciones materiales para analizar hoy.</p>
             ) : (
@@ -107,10 +175,6 @@ export default async function OperadorDigitalPage() {
             <Link href="/motor-decisiones" className="mt-2 inline-block text-sm font-medium text-blue-700 underline">
               Ver análisis multidisciplinario completo →
             </Link>
-          </section>
-
-          <section data-testid="operador-digital-rutinas">
-            <h2 className="text-xl font-semibold">Qué corrieron las rutinas</h2>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               {[...rutinaDiaria, ...rutinaSemanal].map((s) => (
                 <div key={s.titulo} className="rounded border p-3 text-sm" data-testid="operador-digital-rutina-fila">
@@ -121,13 +185,10 @@ export default async function OperadorDigitalPage() {
                 </div>
               ))}
             </div>
-            <Link href="/rutinas" className="mt-2 inline-block text-sm font-medium text-blue-700 underline">
-              Ver rutinas completas →
-            </Link>
           </section>
 
           <section data-testid="operador-digital-backlog">
-            <h2 className="text-xl font-semibold">Qué backlog generó ({backlogAbierto.length})</h2>
+            <h2 className="text-xl font-semibold">Trabajo creado ({backlogAbierto.length})</h2>
             <ul className="mt-3 space-y-1 text-sm">
               {backlogAbierto.slice(0, 8).map((b) => (
                 <li key={b.id} data-testid="operador-digital-backlog-fila">
@@ -138,6 +199,35 @@ export default async function OperadorDigitalPage() {
             <Link href="/backlog-autonomo" className="mt-2 inline-block text-sm font-medium text-blue-700 underline">
               Ver Backlog Autónomo completo →
             </Link>
+          </section>
+
+          <section data-testid="operador-digital-bloqueado">
+            <h2 className="text-xl font-semibold">Bloqueado (necesita intervención humana)</h2>
+            <ul className="mt-2 space-y-1 text-sm">
+              <li>{accionesBloqueadas.length} acción(es) marcadas como bloqueadas en el Centro de Acción.</li>
+              <li>{backlogSinDato.length} observación(es) del backlog sin confianza suficiente para actuar solas.</li>
+              <li>{clasificacionesSinSugerencia.length} gasto(s) sin obra sugerida — requieren elegir manualmente.</li>
+            </ul>
+          </section>
+
+          <section data-testid="operador-digital-mejorando">
+            <h2 className="text-xl font-semibold">Mejorando el OS</h2>
+            {mejorasPropuestas.length === 0 ? (
+              <p className="mt-2 text-sm text-gray-500">Sin mejoras propuestas abiertas.</p>
+            ) : (
+              <ul className="mt-2 space-y-1 text-sm">
+                {mejorasPropuestas.map((b) => (
+                  <li key={b.id}>
+                    <span className="text-xs text-gray-400">[{TIPO_BACKLOG_LABEL[b.tipo]}]</span> {b.titulo}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-2 text-xs text-gray-500">
+              Implementado automáticamente este ciclo: 2 rutinas nuevas de detección autónoma (deterioro de margen,
+              exceso de HH, cobranza vencida, pago crítico) y la cola de clasificación de costo por obra — todas
+              reversibles, sin impacto económico externo ni decisión de negocio.
+            </p>
           </section>
 
           <section data-testid="operador-digital-fuentes">

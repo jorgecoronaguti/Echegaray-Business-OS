@@ -5,21 +5,30 @@ import { construirAlertasDashboard } from '@/features/dashboard/types'
 import { getAcciones, accionesPorAlertaOrigen } from '@/features/acciones/services/accionesService'
 import { SeccionAlertas } from '@/features/dashboard/components/SeccionAlertas'
 import { alertasPorArea } from '@/features/areas/types'
+import { getClasificacionesPendientes } from '@/features/clasificacion-costos/services/clasificacionCostosService'
+import { ColaClasificacionCostos } from '@/features/clasificacion-costos/components/ColaClasificacionCostos'
+import { getObras } from '@/features/obras/services/obrasService'
 
 async function loadAdministracionData() {
   try {
     const supabase = await createClient()
-    const [datos, acciones] = await Promise.all([getDashboardDatosFuente(supabase), getAcciones(supabase)])
-    return { datos, acciones }
+    const [datos, acciones, clasificaciones, obras] = await Promise.all([
+      getDashboardDatosFuente(supabase),
+      getAcciones(supabase),
+      getClasificacionesPendientes(supabase),
+      getObras(supabase),
+    ])
+    return { datos, acciones, clasificaciones, obras }
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Error desconocido al conectar con Supabase'
-    return { datos: { data: null, error } as const, acciones: { data: null, error } as const }
+    const failed = { data: null, error } as const
+    return { datos: failed, acciones: failed, clasificaciones: failed, obras: failed }
   }
 }
 
 export default async function AdministracionPage() {
-  const { datos, acciones } = await loadAdministracionData()
-  const pageError = datos.error ?? acciones.error
+  const { datos, acciones, clasificaciones, obras } = await loadAdministracionData()
+  const pageError = datos.error ?? acciones.error ?? clasificaciones.error ?? obras.error
   const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
 
   const todasLasAlertas = datos.data ? construirAlertasDashboard(datos.data) : []
@@ -86,6 +95,18 @@ export default async function AdministracionPage() {
             testId="administracion-alertas"
             accionesPorAlertaId={accionesMap}
           />
+
+          <section data-testid="clasificacion-costos-section">
+            <h2 className="text-xl font-semibold">Costos sin obra confirmada</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Gastos reales de un cliente con más de una obra concurrente, sin tag de obra en la fuente de origen. El
+              OS sugiere una obra cuando la evidencia alcanza; si no, pide elegir manualmente en vez de forzar una
+              asignación (ver ciclo de Pisos, gap real encontrado el 2026-07-08).
+            </p>
+            <div className="mt-3">
+              <ColaClasificacionCostos pendientes={clasificaciones.data ?? []} obras={obras.data ?? []} />
+            </div>
+          </section>
 
           <section data-testid="ejecucion-financiera-cross-obra">
             <h2 className="text-xl font-semibold">Ejecución financiera por obra</h2>

@@ -3,6 +3,7 @@ import type { Accion } from '../types'
 import { ESTADO_ACCION_LABEL } from '../types'
 import { AREA_LABEL } from '@/features/areas/types'
 import { CambiarEstadoAccionForm } from './CambiarEstadoAccionForm'
+import { BloqueoAccionForm } from './BloqueoAccionForm'
 
 const ESTADO_CLASSNAME: Record<Accion['estado'], string> = {
   pendiente: 'bg-gray-200 text-gray-800',
@@ -36,6 +37,16 @@ export function AccionesList({ acciones }: { acciones: Accion[] }) {
               <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${ESTADO_CLASSNAME[a.estado]}`}>
                 {ESTADO_ACCION_LABEL[a.estado]}
               </span>
+              {a.bloqueada && (
+                <span className="ml-2 inline-block rounded bg-red-600 px-2 py-0.5 text-xs font-semibold text-white" data-testid="accion-bloqueada-badge">
+                  ⛔ Bloqueada
+                </span>
+              )}
+              {!a.responsable && (a.estado === 'pendiente' || a.estado === 'en_curso') && (
+                <span className="ml-2 inline-block rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                  Sin responsable
+                </span>
+              )}
               <span className="ml-2 text-xs text-gray-500">
                 {AREA_LABEL[a.area]} · {a.origen === 'manual' ? 'Manual' : 'Generada por alerta'}
               </span>
@@ -78,6 +89,20 @@ export function AccionesList({ acciones }: { acciones: Accion[] }) {
             </Link>
           )}
 
+          {a.motivo_bloqueo && (
+            <p className="mt-2 text-sm text-red-700">
+              <span className="font-medium">Motivo del bloqueo: </span>
+              {a.motivo_bloqueo}
+            </p>
+          )}
+
+          {a.evidencia && (
+            <p className="mt-1 text-xs text-gray-500">
+              <span className="font-medium">Evidencia: </span>
+              {a.evidencia}
+            </p>
+          )}
+
           {(a.estado === 'resuelta' || a.estado === 'descartada') && a.resolucion_notas && (
             <p className="mt-2 text-xs text-gray-500">
               <span className="font-medium">Resolución ({a.fecha_resolucion}): </span>
@@ -86,6 +111,7 @@ export function AccionesList({ acciones }: { acciones: Accion[] }) {
           )}
 
           <CambiarEstadoAccionForm accion={a} />
+          <BloqueoAccionForm accion={a} />
         </li>
       ))}
     </ul>
