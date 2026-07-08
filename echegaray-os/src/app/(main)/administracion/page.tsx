@@ -45,6 +45,9 @@ export default async function AdministracionPage() {
           <Link href="/caja" className="underline">
             Ir a Caja →
           </Link>
+          <Link href="/capital-trabajo" className="underline">
+            Ir a Capital de Trabajo →
+          </Link>
         </div>
       </div>
 

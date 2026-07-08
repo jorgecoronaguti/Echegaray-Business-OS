@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { DashboardDatosFuente } from '../types'
 import { getObras } from '@/features/obras/services/obrasService'
-import { getProveedores } from '@/features/fundacion/services/fundacionService'
+import { getClientes, getProveedores } from '@/features/fundacion/services/fundacionService'
 import { getResumenEconomicoTodasLasObras } from '@/features/control-economico/services/controlEconomicoService'
 import { getAdicionalesTodasLasObras } from '@/features/adicionales/services/adicionalesService'
 import {
@@ -18,6 +18,7 @@ import { getMovimientosCaja } from '@/features/flujo-caja/services/movimientosCa
 import { UMBRAL_DIAS_PROXIMO_VENCIMIENTO } from '@/features/obligaciones/types'
 import { getCuentasFinancieras } from '@/features/fundacion/services/fundacionService'
 import { calcularPosicionCajaConsolidada, cobrosProyectadosEnVentana } from '@/features/posicion-caja/types'
+import { calcularCapitalTrabajo } from '@/features/capital-trabajo/types'
 
 export type ServiceResult<T> = { data: T; error: null } | { data: null; error: string }
 
@@ -30,6 +31,7 @@ export async function getDashboardDatosFuente(
   try {
     const [
       obras,
+      clientes,
       proveedores,
       resumenEconomico,
       adicionales,
@@ -46,6 +48,7 @@ export async function getDashboardDatosFuente(
       aplicacionesPago,
     ] = await Promise.all([
       getObras(supabase),
+      getClientes(supabase),
       getProveedores(supabase),
       getResumenEconomicoTodasLasObras(supabase),
       getAdicionalesTodasLasObras(supabase),
@@ -64,6 +67,7 @@ export async function getDashboardDatosFuente(
 
     const primerError =
       obras.error ??
+      clientes.error ??
       proveedores.error ??
       resumenEconomico.error ??
       adicionales.error ??
@@ -93,6 +97,16 @@ export async function getDashboardDatosFuente(
       UMBRAL_DIAS_PROXIMO_VENCIMIENTO
     )
 
+    // F2 (primer incremento): capital de trabajo y exposición por cliente/proveedor —
+    // ver features/capital-trabajo.
+    const capitalTrabajo = calcularCapitalTrabajo({
+      clientes: clientes.data ?? [],
+      proveedores: proveedores.data ?? [],
+      movimientos: movimientos.data ?? [],
+      obligacionesResumen: obligacionesResumen.data ?? [],
+      aplicacionesPago: aplicacionesPago.data ?? [],
+    })
+
     return {
       data: {
         obras: obras.data ?? [],
@@ -109,6 +123,7 @@ export async function getDashboardDatosFuente(
         obligacionesResumen: obligacionesResumen.data ?? [],
         cobrosProyectadosEnVentana: cobrosProyectados,
         posicionCaja,
+        capitalTrabajo,
       },
       error: null,
     }

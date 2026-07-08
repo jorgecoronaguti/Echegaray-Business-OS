@@ -20,7 +20,9 @@ import {
   calcularTensionLiquidez,
 } from '@/features/obligaciones/types'
 import type { PosicionCajaConsolidada } from '@/features/posicion-caja/types'
-import { calcularAlertasDeficit } from '@/features/posicion-caja/types'
+import { calcularAlertasDeficit, causaPrincipalDeficit } from '@/features/posicion-caja/types'
+import type { CapitalTrabajo } from '@/features/capital-trabajo/types'
+import { calcularAlertasConcentracion } from '@/features/capital-trabajo/types'
 
 // Dashboard de Dirección (PRP-011): no fabrica alertas nuevas — cruza y normaliza las
 // que cada capacidad ya calcula sobre sus propias vistas/datos (Control Económico,
@@ -46,6 +48,7 @@ export type CategoriaAlerta =
   | 'obligaciones'
   | 'actividad_obra'
   | 'posicion_caja'
+  | 'exposicion_financiera'
 
 export interface AlertaDashboard {
   id: string
@@ -77,6 +80,7 @@ export interface DashboardDatosFuente {
   obligacionesResumen: ObligacionResumen[]
   cobrosProyectadosEnVentana: number
   posicionCaja: PosicionCajaConsolidada
+  capitalTrabajo: CapitalTrabajo
 }
 
 // Umbral propuesto, no validado con el usuario todavía — mismo criterio abierto que
@@ -454,19 +458,50 @@ function mapObligaciones(
 // semanal. La lógica de cálculo vive en features/posicion-caja (calcularAlertasDeficit),
 // acá solo se normaliza al formato AlertaDashboard, igual que el resto de capacidades.
 function mapPosicionCaja(posicionCaja: PosicionCajaConsolidada): AlertaDashboard[] {
-  return calcularAlertasDeficit(posicionCaja.forecastSemanal).map((alerta) => ({
-    id: `pc-deficit-${alerta.periodo.inicio}`,
-    titulo: `Déficit de caja proyectado — semana del ${alerta.periodo.inicio}`,
-    severidad: 'critica',
-    categoria: 'posicion_caja',
+  return calcularAlertasDeficit(posicionCaja.forecastSemanal).map((alerta) => {
+    const causaPrincipal = causaPrincipalDeficit(alerta.periodo)
+    const decisionSugerida = causaPrincipal
+      ? `Cubrir o reprogramar "${causaPrincipal.concepto}" ($${causaPrincipal.monto.toLocaleString('es-AR')}, ${causaPrincipal.fecha}) — es la salida que más pesa en esta semana. Evaluar posponerla, financiarla o adelantar una cobranza antes de esa fecha.`
+      : 'Anticipar cobranzas, renegociar vencimientos o priorizar pagos antes de esa semana.'
+    return {
+      id: `pc-deficit-${alerta.periodo.inicio}`,
+      titulo: `Déficit de caja proyectado — semana del ${alerta.periodo.inicio}`,
+      severidad: 'critica',
+      categoria: 'posicion_caja',
+      obraId: null,
+      obraNombre: null,
+      contraparte: null,
+      monto: alerta.periodo.saldoFinal,
+      fechaCritica: alerta.periodo.inicio,
+      causa: alerta.mensaje,
+      decisionSugerida,
+      link: '/caja',
+    }
+  })
+}
+
+// F2 — Capital de Trabajo: alerta de concentración de cliente/proveedor en las
+// cuentas por cobrar/pagar pendientes. Lógica de cálculo vive en features/capital-trabajo.
+function mapExposicionFinanciera(capitalTrabajo: CapitalTrabajo): AlertaDashboard[] {
+  return calcularAlertasConcentracion(capitalTrabajo).map((alerta) => ({
+    id: `ct-${alerta.tipo}-${alerta.contraparte.id}`,
+    titulo:
+      alerta.tipo === 'concentracion_cliente'
+        ? `Concentración de cliente — ${alerta.contraparte.nombre}`
+        : `Concentración de proveedor — ${alerta.contraparte.nombre}`,
+    severidad: 'alta',
+    categoria: 'exposicion_financiera',
     obraId: null,
     obraNombre: null,
-    contraparte: null,
-    monto: alerta.periodo.saldoFinal,
-    fechaCritica: alerta.periodo.inicio,
+    contraparte: alerta.contraparte.nombre,
+    monto: alerta.contraparte.montoPendiente,
+    fechaCritica: null,
     causa: alerta.mensaje,
-    decisionSugerida: 'Anticipar cobranzas, renegociar vencimientos o priorizar pagos antes de esa semana.',
-    link: '/caja',
+    decisionSugerida:
+      alerta.tipo === 'concentracion_cliente'
+        ? 'Priorizar la cobranza de esta cuenta y evaluar diversificar cartera de clientes antes de asumir nuevas obras que dependan de la misma contraparte.'
+        : 'Evaluar diversificar proveedores o negociar plazos para reducir la dependencia de un único proveedor crítico.',
+    link: '/capital-trabajo',
   }))
 }
 
@@ -535,6 +570,7 @@ export function construirAlertasDashboard(datos: DashboardDatosFuente): AlertaDa
       datos.cobrosProyectadosEnVentana
     ),
     ...mapPosicionCaja(datos.posicionCaja),
+    ...mapExposicionFinanciera(datos.capitalTrabajo),
     ...mapActividadObra(datos),
   ]
 

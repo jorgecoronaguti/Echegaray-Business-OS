@@ -232,3 +232,12 @@ export function calcularAlertasDeficit(forecastSemanal: ComposicionPeriodo[]): A
       mensaje: `Semana del ${periodo.inicio}: saldo proyectado $${periodo.saldoFinal.toFixed(2)} (déficit).`,
     }))
 }
+
+// Identifica el ítem individual (pago comprometido o proyectado suelto) que más pesa
+// en el déficit de un período, para que la acción sugerida sea concreta ("cubrir X")
+// en vez de un texto genérico repetido en cada semana con déficit.
+export function causaPrincipalDeficit(periodo: ComposicionPeriodo): ItemComposicion | null {
+  const items = [...periodo.detallePagosComprometidos, ...periodo.detallePagosProyectadosSueltos]
+  if (items.length === 0) return null
+  return items.reduce((mayor, actual) => (actual.monto > mayor.monto ? actual : mayor))
+}
