@@ -90,11 +90,15 @@ export async function cambiarEstadoAccion(
     if (input.estado === 'resuelta' || input.estado === 'descartada') {
       cambios.fecha_resolucion = input.fecha_resolucion
       cambios.resolucion_notas = input.resolucion_notas ?? null
+      cambios.resultado_real = input.resultado_real ?? null
+      cambios.aprendizaje_asociado = input.aprendizaje_asociado ?? null
     } else {
       // Reabrir una acción ya resuelta/descartada limpia el cierre anterior —
       // evita dejar una fecha de resolución "fantasma" en una acción activa de nuevo.
       cambios.fecha_resolucion = null
       cambios.resolucion_notas = null
+      cambios.resultado_real = null
+      cambios.aprendizaje_asociado = null
     }
 
     const { data, error } = await supabase.from('acciones').update(cambios).eq('id', id).select().single()

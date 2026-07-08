@@ -51,6 +51,18 @@ export function CambiarEstadoAccionForm({ accion }: { accion: Accion }) {
             defaultValue={accion.resolucion_notas ?? ''}
             className="w-48 rounded border px-2 py-1 text-sm"
           />
+          <input
+            name="resultado_real"
+            placeholder="Resultado real (opcional)"
+            defaultValue={accion.resultado_real ?? ''}
+            className="w-48 rounded border px-2 py-1 text-sm"
+          />
+          <input
+            name="aprendizaje_asociado"
+            placeholder="Aprendizaje para el futuro (opcional)"
+            defaultValue={accion.aprendizaje_asociado ?? ''}
+            className="w-56 rounded border px-2 py-1 text-sm"
+          />
         </>
       )}
 

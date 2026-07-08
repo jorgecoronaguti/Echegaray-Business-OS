@@ -33,6 +33,8 @@ export interface Accion {
   estado: EstadoAccion
   resolucion_notas: string | null
   fecha_resolucion: string | null
+  resultado_real: string | null
+  aprendizaje_asociado: string | null
   created_at: string
   updated_at: string
 }
@@ -63,6 +65,8 @@ export const cambiarEstadoAccionInputSchema = z
     estado: z.enum(['pendiente', 'en_curso', 'resuelta', 'descartada']),
     resolucion_notas: z.string().trim().min(1).optional(),
     fecha_resolucion: z.string().trim().min(1).optional(),
+    resultado_real: z.string().trim().min(1).optional(),
+    aprendizaje_asociado: z.string().trim().min(1).optional(),
   })
   .superRefine((data, ctx) => {
     if ((data.estado === 'resuelta' || data.estado === 'descartada') && !data.fecha_resolucion) {
@@ -98,4 +102,45 @@ export const ESTADO_ACCION_LABEL: Record<EstadoAccion, string> = {
   en_curso: 'En curso',
   resuelta: 'Resuelta',
   descartada: 'Descartada',
+}
+
+// Centro de Acción 2.0 — escalamiento por antigüedad. Días de atraso: cuánto pasó
+// desde fecha_limite sin resolver, solo para acciones activas (pendiente/en_curso).
+export function calcularDiasAtraso(accion: Accion, hoy: Date = new Date()): number | null {
+  if (!accion.fecha_limite) return null
+  if (accion.estado !== 'pendiente' && accion.estado !== 'en_curso') return null
+  const limite = new Date(accion.fecha_limite + 'T00:00:00Z')
+  const dias = Math.floor((hoy.getTime() - limite.getTime()) / (1000 * 60 * 60 * 24))
+  return dias > 0 ? dias : null
+}
+
+const ORDEN_SEVERIDAD_ESCALADA: SeveridadAlerta[] = ['informativa', 'media', 'alta', 'critica']
+
+// Escalamiento automático: una acción vencida sube de severidad cuanto más tiempo
+// sigue sin resolverse -- una excepción ignorada no debe quedar invisible.
+const UMBRAL_DIAS_ESCALAMIENTO_1 = 3
+const UMBRAL_DIAS_ESCALAMIENTO_2 = 7
+
+export function calcularSeveridadEscalada(accion: Accion, hoy: Date = new Date()): SeveridadAlerta | null {
+  const diasAtraso = calcularDiasAtraso(accion, hoy)
+  if (diasAtraso == null || !accion.severidad) return accion.severidad
+  const indiceActual = ORDEN_SEVERIDAD_ESCALADA.indexOf(accion.severidad)
+  const escalones = diasAtraso >= UMBRAL_DIAS_ESCALAMIENTO_2 ? 2 : diasAtraso >= UMBRAL_DIAS_ESCALAMIENTO_1 ? 1 : 0
+  const indiceEscalado = Math.min(indiceActual + escalones, ORDEN_SEVERIDAD_ESCALADA.length - 1)
+  return ORDEN_SEVERIDAD_ESCALADA[indiceEscalado]
+}
+
+// Vista de Dirección: 5 buckets, no un sexto sistema -- solo una forma de mirar las
+// mismas acciones ya existentes. "Decidir hoy" y "acción vencida" priorizan sobre
+// "riesgo abierto" (severidad alta/crítica pero sin fecha límite todavía).
+export type BucketDireccion = 'decidir_hoy' | 'riesgo_abierto' | 'accion_vencida' | 'seguimiento' | 'aprendizaje_pendiente'
+
+export function clasificarParaDireccion(accion: Accion, hoy: Date = new Date()): BucketDireccion {
+  if (accion.estado === 'resuelta' && !accion.aprendizaje_asociado) return 'aprendizaje_pendiente'
+  if (accion.estado === 'resuelta' || accion.estado === 'descartada') return 'seguimiento'
+  const diasAtraso = calcularDiasAtraso(accion, hoy)
+  if (diasAtraso != null) return 'accion_vencida'
+  if (accion.estado === 'en_curso') return 'seguimiento'
+  if (accion.severidad === 'critica' || accion.severidad === 'alta') return 'decidir_hoy'
+  return 'riesgo_abierto'
 }

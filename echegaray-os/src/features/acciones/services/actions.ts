@@ -93,6 +93,8 @@ export async function cambiarEstadoAccionAction(_prev: ActionState, formData: Fo
     estado: formData.get('estado'),
     resolucion_notas: formData.get('resolucion_notas') || undefined,
     fecha_resolucion: formData.get('fecha_resolucion') || undefined,
+    resultado_real: formData.get('resultado_real') || undefined,
+    aprendizaje_asociado: formData.get('aprendizaje_asociado') || undefined,
   })
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 

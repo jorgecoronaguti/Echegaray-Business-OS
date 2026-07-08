@@ -3,6 +3,7 @@ import { getObras } from '@/features/obras/services/obrasService'
 import { getAcciones } from '@/features/acciones/services/accionesService'
 import { AccionForm } from '@/features/acciones/components/AccionForm'
 import { AccionesList } from '@/features/acciones/components/AccionesList'
+import { VistaDireccion } from '@/features/acciones/components/VistaDireccion'
 import { AREAS_OS, AREA_LABEL } from '@/features/areas/types'
 import type { EstadoAccion } from '@/features/acciones/types'
 import { ESTADO_ACCION_LABEL } from '@/features/acciones/types'
@@ -64,6 +65,8 @@ export default async function AccionesPage({
           <p className="mt-1 text-sm">{pageError}</p>
         </div>
       )}
+
+      <VistaDireccion acciones={acciones.data ?? []} />
 
       <section data-testid="acciones-resumen-estado">
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
