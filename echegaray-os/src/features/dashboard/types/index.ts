@@ -23,6 +23,9 @@ import type { PosicionCajaConsolidada } from '@/features/posicion-caja/types'
 import { calcularAlertasDeficit, causaPrincipalDeficit } from '@/features/posicion-caja/types'
 import type { CapitalTrabajo } from '@/features/capital-trabajo/types'
 import { calcularAlertasConcentracion } from '@/features/capital-trabajo/types'
+import type { ActividadSemanal } from '@/features/actividades-semanales/types'
+import { calcularResumenProduccionEconomica } from '@/features/actividades-semanales/types/produccionEconomica'
+import { calcularAdvertenciasOperacionFinanciera } from '@/features/actividades-semanales/types/impactoFinanciero'
 
 // Dashboard de Dirección (PRP-011): no fabrica alertas nuevas — cruza y normaliza las
 // que cada capacidad ya calcula sobre sus propias vistas/datos (Control Económico,
@@ -49,6 +52,7 @@ export type CategoriaAlerta =
   | 'actividad_obra'
   | 'posicion_caja'
   | 'exposicion_financiera'
+  | 'riesgo_operacion_financiero'
 
 export interface AlertaDashboard {
   id: string
@@ -81,6 +85,7 @@ export interface DashboardDatosFuente {
   cobrosProyectadosEnVentana: number
   posicionCaja: PosicionCajaConsolidada
   capitalTrabajo: CapitalTrabajo
+  actividadesSemanales: ActividadSemanal[]
 }
 
 // Umbral propuesto, no validado con el usuario todavía — mismo criterio abierto que
@@ -505,6 +510,54 @@ function mapExposicionFinanciera(capitalTrabajo: CapitalTrabajo): AlertaDashboar
   }))
 }
 
+// O1-D — Conexión operación -> finanzas. Ver features/actividades-semanales/types/
+// impactoFinanciero.ts: nunca reclasifica un movimiento_caja ni un certificado, solo
+// agrega una advertencia de riesgo cuando hay atraso físico detectado en la obra.
+function mapImpactoOperacionFinanciera(datos: DashboardDatosFuente): AlertaDashboard[] {
+  const alertas: AlertaDashboard[] = []
+  for (const obra of datos.obras) {
+    const actividadesObra = datos.actividadesSemanales.filter((a) => a.obra_id === obra.id)
+    if (actividadesObra.length === 0) continue
+    const resumenEco = datos.resumenEconomico.find((r) => r.obra_id === obra.id) ?? null
+    const resumenProduccion = calcularResumenProduccionEconomica({
+      actividades: actividadesObra,
+      registrosHH: datos.registrosHH.filter((r) => r.obra_id === obra.id),
+      resumenEconomico: resumenEco,
+      hhEstimadaPresupuesto: null,
+    })
+    const advertencias = calcularAdvertenciasOperacionFinanciera({
+      obraId: obra.id,
+      obraNombre: obra.nombre,
+      resumenProduccion,
+      certificadosObra: datos.certificados.filter((c) => c.obra_id === obra.id),
+      movimientosCajaObra: [], // movimientos_caja no tiene relación 1:1 confiable con certificado todavía -- se deja vacío a propósito
+      costoPendiente: resumenEco?.costo_pendiente ?? null,
+    })
+    for (const a of advertencias) {
+      alertas.push({
+        id: `impacto-${a.tipo}-${obra.id}-${a.mensaje.length}`,
+        titulo: `${a.confianza === 'en_riesgo' ? 'Riesgo' : 'Aviso'} operación→finanzas — ${obra.nombre}`,
+        severidad: a.confianza === 'en_riesgo' ? 'alta' : 'media',
+        categoria: 'riesgo_operacion_financiero',
+        obraId: obra.id,
+        obraNombre: obra.nombre,
+        contraparte: null,
+        monto: a.monto,
+        fechaCritica: null,
+        causa: a.mensaje,
+        decisionSugerida:
+          a.tipo === 'certificacion_en_riesgo'
+            ? 'Confirmar con el cliente si la certificación se sostiene pese al atraso, antes de que afecte la cobranza.'
+            : a.tipo === 'cobranza_en_riesgo'
+              ? 'Revisar con el jefe de obra si el atraso físico va a mover la fecha de cobro proyectada en F1.'
+              : 'Verificar cuándo este costo comprometido va a impactar realmente en caja.',
+        link: linkObra(obra.id),
+      })
+    }
+  }
+  return alertas
+}
+
 // "Obra activa sin movimiento reciente relevante" — no es una vista ni tabla nueva:
 // reutiliza los mismos arreglos ya cargados por las demás secciones para encontrar la
 // fecha de actividad más reciente por obra, sin fabricar un dato que no exista.
@@ -571,6 +624,7 @@ export function construirAlertasDashboard(datos: DashboardDatosFuente): AlertaDa
     ),
     ...mapPosicionCaja(datos.posicionCaja),
     ...mapExposicionFinanciera(datos.capitalTrabajo),
+    ...mapImpactoOperacionFinanciera(datos),
     ...mapActividadObra(datos),
   ]
 

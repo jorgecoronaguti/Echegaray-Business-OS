@@ -54,6 +54,7 @@ export const AREA_POR_CATEGORIA: Record<CategoriaAlerta, AreaOS> = {
   actividad_obra: 'obras_produccion',
   posicion_caja: 'administracion_finanzas',
   exposicion_financiera: 'administracion_finanzas',
+  riesgo_operacion_financiero: 'obras_produccion',
 }
 
 export function areaDeAlerta(alerta: AlertaDashboard): AreaOS {

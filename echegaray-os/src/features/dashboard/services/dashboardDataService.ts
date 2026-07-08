@@ -19,6 +19,7 @@ import { UMBRAL_DIAS_PROXIMO_VENCIMIENTO } from '@/features/obligaciones/types'
 import { getCuentasFinancieras } from '@/features/fundacion/services/fundacionService'
 import { calcularPosicionCajaConsolidada, cobrosProyectadosEnVentana } from '@/features/posicion-caja/types'
 import { calcularCapitalTrabajo } from '@/features/capital-trabajo/types'
+import { getActividadesSemanalesTodasLasObras } from '@/features/actividades-semanales/services/actividadesSemanalesService'
 
 export type ServiceResult<T> = { data: T; error: null } | { data: null; error: string }
 
@@ -46,6 +47,7 @@ export async function getDashboardDatosFuente(
       movimientos,
       cuentas,
       aplicacionesPago,
+      actividadesSemanales,
     ] = await Promise.all([
       getObras(supabase),
       getClientes(supabase),
@@ -63,6 +65,7 @@ export async function getDashboardDatosFuente(
       getMovimientosCaja(supabase),
       getCuentasFinancieras(supabase),
       getAplicacionesPago(supabase),
+      getActividadesSemanalesTodasLasObras(supabase),
     ])
 
     const primerError =
@@ -81,7 +84,8 @@ export async function getDashboardDatosFuente(
       obligacionesResumen.error ??
       movimientos.error ??
       cuentas.error ??
-      aplicacionesPago.error
+      aplicacionesPago.error ??
+      actividadesSemanales.error
     if (primerError) return { data: null, error: primerError }
 
     // F1: posición de caja consolidada — reemplaza el cálculo de "cobros proyectados
@@ -124,6 +128,7 @@ export async function getDashboardDatosFuente(
         cobrosProyectadosEnVentana: cobrosProyectados,
         posicionCaja,
         capitalTrabajo,
+        actividadesSemanales: actividadesSemanales.data ?? [],
       },
       error: null,
     }
