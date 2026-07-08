@@ -72,3 +72,33 @@ Cuando se decida desplegar, evaluar (documentar antes de ejecutar, no antes de q
 - No convertir el OS en una colección de pantallas lindas sin decisión asociada (regla ya vigente del `CLAUDE.md` raíz para dashboards).
 - No construir una pantalla nueva por cada tabla nueva — agrupar por trabajo real del rol.
 - No declarar una pantalla "completa" si no está conectada a datos reales o si depende de una fuente sin verificar — marcarla explícitamente como pendiente/parcial/no confiable.
+
+## Checklist de buenas prácticas (aplicar en cada pantalla, no solo al crearla)
+
+Heurísticas de usabilidad ya adaptadas a este proyecto — no una lista genérica copiada, cada punto tiene el criterio concreto de este OS:
+
+1. **Visibilidad del estado del sistema** — el usuario siempre sabe dónde está (nav con página activa resaltada), qué está cargando, y qué acción se acaba de ejecutar (confirmación visible, no solo un cambio silencioso de datos).
+2. **Coincidencia con el mundo real** — nombrar por lo que la persona reconoce ("Centro de Acción", "Legajos"), no por el nombre de la tabla o el PRP que lo construyó.
+3. **Control y libertad** — toda acción reversible debe poder deshacerse o al menos confirmarse antes de ejecutar (ver Bloque 14 del `CLAUDE.md` raíz: nivel de autonomía D+ requiere esto).
+4. **Consistencia** — mismo patrón de `page-error`/RLS/loading en todas las páginas (ya vigente); mismo peso tipográfico para el mismo nivel de jerarquía (no aplicar `font-semibold` a unos links sí y a otros no sin razón).
+5. **Prevención de errores** — validar en el formulario antes de someter (Zod ya se usa así), deshabilitar botones cuando falta un dato requerido (ya vigente en `/caja`).
+6. **Reconocer antes que recordar** — agrupar navegación por categoría con etiqueta visible (Áreas / Sistema) en vez de una lista plana; no obligar a memorizar dónde vive cada cosa.
+7. **Flexibilidad y eficiencia de uso** — accesos directos para quien ya sabe lo que busca, sin estorbar a quien recién entra.
+8. **Diseño minimalista** — cada pantalla muestra lo que ese rol necesita para decidir, no todo lo que existe en la tabla.
+9. **Ayudar a reconocer y recuperarse de errores** — mensajes de error que dicen qué pasó y qué hacer, nunca un stack trace crudo ni "Application error" (ya vigente, no romper este patrón).
+10. **Confianza y frescura visibles** — todo dato no `confirmado` o toda fuente no `actualizado` se declara en pantalla (patrón ya construido, ver arriba).
+11. **Accesibilidad básica** — `lang` correcto en `<html>`, foco de teclado visible, contraste suficiente, labels reales en inputs (no solo placeholder).
+12. **Performance percibida** — evitar que una pantalla se sienta lenta por falta de feedback, no solo por ser objetivamente rápida.
+
+## Mecanismo de mejora continua (no un documento estático)
+
+Esta skill no mejora por releerla — mejora por auditarse contra páginas reales y dejar rastro accionable. Cada vez que se invoca para una decisión de UX (o al cerrar un ciclo de trabajo que tocó pantallas):
+
+1. Recorrer 2-3 páginas reales (no hipotéticas) contra el checklist de arriba.
+2. Todo hallazgo real (no cosmético) que no se resuelve en el momento se carga en `backlog_autonomo` (`tipo = 'mejora_potencial'`, `fuente = 'auditoría UX'`) — reutiliza la infraestructura ya construida, no un tracker paralelo.
+3. Todo hallazgo simple, reversible y de bajo riesgo (sin decisión de negocio de por medio) se corrige en el momento, con test Playwright que lo verifique — no se documenta "para después" lo que se puede arreglar ahora.
+4. Se registra en la sección "Historial de hallazgos" de abajo qué se encontró y qué se hizo — para que la próxima auditoría no repita el mismo hallazgo ni pierda contexto de qué ya se decidió no tocar y por qué.
+
+### Historial de hallazgos (append-only, más reciente arriba)
+
+- **2026-07-08** — Auditoría inicial de la skill. Encontrado y corregido: (1) `src/app/page.tsx` era un placeholder sin redirección — `localhost:3000` no llevaba a ningún lado real (violaba #1 y #9); ahora redirige a `/login` o `/dashboard` según sesión. (2) Navegación de 14 links planos sin jerarquía ni agrupación (violaba #4 y #6); ahora agrupada en "Áreas" / "Sistema" con etiqueta visible. (3) Ningún link de navegación indicaba la página activa (violaba #1); ahora `NavLink` (`src/shared/components/NavLink.tsx`) resalta la página actual. (4) `<html lang="en">` en una app 100% en español (violaba #11); corregido a `lang="es"`. No se encontraron ni corrigieron temas de contraste/foco de teclado en esta pasada — pendiente para la próxima auditoría.
