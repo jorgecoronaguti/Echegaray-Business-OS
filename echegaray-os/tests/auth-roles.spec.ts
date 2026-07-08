@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { createClient } from '@supabase/supabase-js'
 
 // PR5 — Login y roles reales. Usa una cuenta real de Supabase Auth (creada por este
 // mismo test suite en una sesión anterior vía signup real, confirmada manualmente por
@@ -32,19 +33,30 @@ test.describe.serial('acceso autenticado real por rol', () => {
   })
 
   test('jefe_obra: puede planificar actividad semanal (escritura operación permitida)', async ({ page }) => {
+    const actividad = `Prueba E2E jefe_obra ${Date.now()}`
     await login(page)
     await page.goto('/obras')
     await page.getByRole('link', { name: /Pisos/i }).first().click()
     await page.waitForURL(/\/obras\//)
 
     const form = page.getByTestId('plan-semanal-form')
-    await form.locator('input[name="actividad"]').fill(`Prueba E2E jefe_obra ${Date.now()}`)
+    await form.locator('input[name="actividad"]').fill(actividad)
     await form.locator('input[name="responsable"]').fill('Test E2E')
     await form.locator('button[type="submit"]').click()
     await page.waitForTimeout(1500)
     // Sin mensaje de error de permisos -- la escritura operacional fue permitida.
     const error = form.locator('span.text-red-600')
     await expect(error).toHaveCount(0)
+
+    // Este insert es real (obra Pisos real) -- se borra acá mismo para no dejar datos
+    // de prueba mezclados con la planificación real de la obra (auditoría de
+    // integridad de datos, 2026-07-08).
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string,
+    )
+    await supabase.auth.signInWithPassword({ email: EMAIL, password: PASSWORD })
+    await supabase.from('actividades_semanales').delete().eq('actividad', actividad)
   })
 
   // Deshabilitado: esta cuenta de prueba se reasignó a rol 'direccion' (a pedido
