@@ -40,3 +40,19 @@ export function calcularEstadoEconomico(resumen: ObraResumenEconomico): EstadoEc
   if (desvio <= UMBRAL_DESVIO_CRITICO) return 'atencion'
   return 'critico'
 }
+
+// Elevado desde ResumenEconomicoObra.tsx (UX-2) para reutilizar en el tablero de
+// /obras y en la home de Dirección sin duplicar el mapeo.
+export const ESTADO_ECONOMICO_LABEL: Record<EstadoEconomico, string> = {
+  sin_presupuesto_aprobado: 'Sin presupuesto aprobado',
+  sano: 'Sano',
+  atencion: 'Atención',
+  critico: 'Crítico',
+}
+
+export const ESTADO_ECONOMICO_CLASSNAME: Record<EstadoEconomico, string> = {
+  sin_presupuesto_aprobado: 'bg-gray-100 text-gray-700',
+  sano: 'bg-green-100 text-green-800',
+  atencion: 'bg-amber-100 text-amber-800',
+  critico: 'bg-red-100 text-red-800',
+}

@@ -1,20 +1,6 @@
 import type { ObraResumenEconomico } from '../types'
-import { calcularEstadoEconomico } from '../types'
+import { calcularEstadoEconomico, ESTADO_ECONOMICO_LABEL as ESTADO_LABEL, ESTADO_ECONOMICO_CLASSNAME as ESTADO_CLASSNAME } from '../types'
 import type { CostoReal } from '@/features/costos-reales/types'
-
-const ESTADO_LABEL: Record<string, string> = {
-  sin_presupuesto_aprobado: 'Sin presupuesto aprobado',
-  sano: 'Sano',
-  atencion: 'Atención',
-  critico: 'Crítico',
-}
-
-const ESTADO_CLASSNAME: Record<string, string> = {
-  sin_presupuesto_aprobado: 'bg-gray-100 text-gray-700',
-  sano: 'bg-green-100 text-green-800',
-  atencion: 'bg-amber-100 text-amber-800',
-  critico: 'bg-red-100 text-red-800',
-}
 
 export function ResumenEconomicoObra({
   resumen,
