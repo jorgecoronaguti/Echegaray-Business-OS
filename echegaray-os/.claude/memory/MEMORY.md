@@ -30,7 +30,7 @@
 - [PR5 Login y Roles](project/pr5-login-roles.md) — Supabase Auth real + perfiles/roles + RLS diferenciada, auditoría con get_advisors, pruebas autenticadas reales (lectura/escritura permitida/denegada por rol)
 - [Scorecard de Madurez (SUPERSEDED)](project/scorecard-madurez.md) — snapshot histórico 0-5; reemplazado por la tabla real `scorecard_dominios` (0-10) y `/scorecard`
 - [Arquitectura de Cobertura Integral](project/arquitectura-cobertura-integral.md) — escala 0-10 (11 niveles) + 22 dominios críticos, baseline permanente aprobado
-- [Programa de Ejecución Continua](project/programa-ejecucion-continua.md) — Track A + Track B en paralelo por olas; OLA 0 (backup/PITR, HH real Pisos) y OLA 1 (scorecard vivo, catálogo de preguntas, tests de negocio, Motor de Confianza/Observación transversales) completadas
+- [Programa de Ejecución Continua](project/programa-ejecucion-continua.md) — Track A + Track B en paralelo por olas; OLA 0/1/2 completadas (backup/PITR, HH real Pisos, scorecard vivo, catálogo de preguntas, Motor de Confianza/Observación, Backlog Autónomo, Motor de Decisiones, Rutinas on-demand)
 
 ## feedback/ — Correcciones y preferencias
 - [Construir capacidades, no pantallas aisladas](feedback/construir-capacidades-no-pantallas-aisladas.md) — cada incremento debe resolver una decisión real y ser base reutilizable; justificar toda entidad nueva o evitarla
