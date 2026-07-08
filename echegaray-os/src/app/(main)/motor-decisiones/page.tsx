@@ -3,15 +3,18 @@ import { getDashboardDatosFuente } from '@/features/dashboard/services/dashboard
 import { construirAlertasDashboard } from '@/features/dashboard/types'
 import { construirAnalisisMultidisciplinario } from '@/features/motor-decisiones/types'
 import type { DatoTrazado } from '@/shared/types/datoTrazado'
+import { getFuentesDatos } from '@/features/fuentes-datos/services/fuentesDatosService'
+import { ESTADO_FUENTE_LABEL, fuentesCriticasConProblema } from '@/features/fuentes-datos/types'
 
 async function loadMotorDecisionesData() {
   try {
     const supabase = await createClient()
-    const datos = await getDashboardDatosFuente(supabase)
-    return { datos }
+    const [datos, fuentes] = await Promise.all([getDashboardDatosFuente(supabase), getFuentesDatos(supabase)])
+    return { datos, fuentes }
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Error desconocido al conectar con Supabase'
-    return { datos: { data: null, error } as const }
+    const failed = { data: null, error } as const
+    return { datos: failed, fuentes: failed }
   }
 }
 
@@ -29,12 +32,13 @@ function CampoImpacto({ etiqueta, dato }: { etiqueta: string; dato: DatoTrazado<
 }
 
 export default async function MotorDecisionesPage() {
-  const { datos } = await loadMotorDecisionesData()
+  const { datos, fuentes } = await loadMotorDecisionesData()
 
-  const pageError = datos.error
+  const pageError = datos.error ?? fuentes.error
   const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
   const alertas = datos.data ? construirAlertasDashboard(datos.data) : []
   const analisis = alertas.map((a) => ({ alerta: a, analisis: construirAnalisisMultidisciplinario(a) }))
+  const fuentesConProblema = fuentesCriticasConProblema(fuentes.data ?? [])
 
   return (
     <div className="min-h-screen space-y-8 p-8">
@@ -62,6 +66,21 @@ export default async function MotorDecisionesPage() {
 
       {datos.data && (
         <section data-testid="motor-decisiones-section" className="space-y-4">
+          {fuentesConProblema.length > 0 && (
+            <div className="rounded border border-amber-300 bg-amber-50 p-4 text-amber-900" data-testid="fuentes-frescura-advertencia">
+              <p className="font-semibold">
+                {fuentesConProblema.length} fuente(s) crítica(s) con problema de frescura -- las recomendaciones de
+                abajo pueden depender de datos no del todo actualizados.
+              </p>
+              <ul className="mt-1 list-disc pl-5 text-sm">
+                {fuentesConProblema.map((f) => (
+                  <li key={f.id}>
+                    {f.nombre} — {ESTADO_FUENTE_LABEL[f.estado]}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {analisis.length === 0 && <p className="text-gray-500">Sin situaciones materiales para analizar hoy.</p>}
           {analisis.map(({ alerta, analisis: a }) => (
             <div key={alerta.id} className="rounded border p-4" data-testid="analisis-multidisciplinario">
