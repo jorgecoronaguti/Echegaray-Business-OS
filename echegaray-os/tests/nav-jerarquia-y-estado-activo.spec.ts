@@ -1,15 +1,17 @@
 import { test, expect } from '@playwright/test'
 
-// UX (2026-07-08): la navegación pasó de 14 links planos a 2 grupos con etiqueta
-// (Áreas / Sistema) + resaltado de la página activa (heurística "visibilidad del
-// estado del sistema" -- antes ningún link indicaba dónde estabas parado).
+// UX-1 (2026-07-08): navegación por trabajo real en 8 grupos (Dirección, Finanzas,
+// Obras, Operación, Administración, Recursos, Operador Digital, Sistema) + resaltado
+// de la página activa. Motor de Decisiones/Rutinas/Backlog Autónomo dejan de ser
+// links de primer nivel -- pasan a ser secciones de "Operador Digital".
 
-test('la navegación muestra los grupos Áreas y Sistema, y resalta la página activa', async ({ page }) => {
+test('la navegación muestra los 8 grupos de trabajo y resalta la página activa', async ({ page }) => {
   await page.goto('/scorecard')
 
   const nav = page.getByTestId('nav-areas')
-  await expect(nav).toContainText('Áreas')
-  await expect(nav).toContainText('Sistema')
+  for (const grupo of ['Dirección', 'Finanzas', 'Obras', 'Operación', 'Administración', 'Recursos', 'Operador Digital', 'Sistema']) {
+    await expect(nav).toContainText(grupo)
+  }
 
   const linkActivo = nav.getByRole('link', { name: 'Scorecard' })
   await expect(linkActivo).toHaveClass(/bg-gray-900/)
