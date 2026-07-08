@@ -25,6 +25,7 @@
 
 ## feedback/ — Correcciones y preferencias
 - [Construir capacidades, no pantallas aisladas](feedback/construir-capacidades-no-pantallas-aisladas.md) — cada incremento debe resolver una decisión real y ser base reutilizable; justificar toda entidad nueva o evitarla
+- [No bloquear por conflictos legacy](feedback/no-bloquear-por-conflictos-legacy.md) — ante datos legacy inconsistentes, proponer resolución con criterio y seguir; escalar solo lo genuinamente irreducible, sin frenar todo el flujo
 
 ## reference/ — Donde encontrar cosas
 - [Validar SQL sin Supabase live](reference/validar-sql-sin-supabase-live.md) — procedimiento con Postgres local (Homebrew) cuando no hay Docker ni proyecto real conectado
