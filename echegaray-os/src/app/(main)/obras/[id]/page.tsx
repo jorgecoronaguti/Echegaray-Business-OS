@@ -48,6 +48,11 @@ import { construirResumenSnapshot } from '@/features/post-mortem/types'
 import { IniciarPostMortemForm } from '@/features/post-mortem/components/IniciarPostMortemForm'
 import { PostMortemForm } from '@/features/post-mortem/components/PostMortemForm'
 import { ResumenPostMortem } from '@/features/post-mortem/components/ResumenPostMortem'
+import { getDashboardDatosFuente } from '@/features/dashboard/services/dashboardDataService'
+import { construirAlertasDashboard } from '@/features/dashboard/types'
+import { getAcciones } from '@/features/acciones/services/accionesService'
+import { construirFichaObra } from '@/features/obras/types/fichaObra'
+import { FichaObraView } from '@/features/obras/components/FichaObraView'
 
 async function loadObraDetalle(id: string) {
   try {
@@ -73,6 +78,8 @@ async function loadObraDetalle(id: string) {
       obligacionesResumen,
       postMortem,
       actividadesSemanales,
+      datosFuente,
+      acciones,
     ] = await Promise.all([
       getObraById(supabase, id),
       getClientes(supabase),
@@ -94,6 +101,8 @@ async function loadObraDetalle(id: string) {
       getObligacionesResumenPorObra(supabase, id),
       getPostMortemPorObra(supabase, id),
       getActividadesSemanales(supabase, id),
+      getDashboardDatosFuente(supabase),
+      getAcciones(supabase),
     ])
 
     // Las partidas se muestran de la versión más reciente (mayor `version`), que es
@@ -125,6 +134,8 @@ async function loadObraDetalle(id: string) {
       obligacionesResumen,
       postMortem,
       actividadesSemanales,
+      datosFuente,
+      acciones,
     }
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Error desconocido al conectar con Supabase'
@@ -151,6 +162,8 @@ async function loadObraDetalle(id: string) {
       obligacionesResumen: failed,
       postMortem: failed,
       actividadesSemanales: failed,
+      datosFuente: failed,
+      acciones: failed,
     }
   }
 }
@@ -179,6 +192,8 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
     obligacionesResumen,
     postMortem,
     actividadesSemanales,
+    datosFuente,
+    acciones,
   } = await loadObraDetalle(id)
 
   const pageError =
@@ -201,7 +216,9 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
     obligaciones.error ??
     obligacionesResumen.error ??
     postMortem.error ??
-    actividadesSemanales.error
+    actividadesSemanales.error ??
+    datosFuente.error ??
+    acciones.error
   const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
 
   if (!pageError && !obra.data) {
@@ -231,6 +248,32 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
     comprasResumen: comprasResumen.data ?? [],
     obligacionesResumen: obligacionesResumen.data ?? [],
   })
+
+  const resumenProduccion = calcularResumenProduccionEconomica({
+    actividades: actividadesSemanales.data ?? [],
+    registrosHH: registrosHH.data ?? [],
+    resumenEconomico: resumenEconomico.data,
+    hhEstimadaPresupuesto: presupuestoMasReciente?.hh_estimada ?? null,
+  })
+
+  const ficha =
+    obra.data && datosFuente.data
+      ? construirFichaObra({
+          obra: obra.data,
+          clienteNombre,
+          resumenEconomico: resumenEconomico.data,
+          resumenProduccion,
+          ejecucionFinanciera: ejecucionFinanciera.data,
+          resumenHH: resumenHH.data,
+          registrosHH: registrosHH.data ?? [],
+          costosReales: costosReales.data ?? [],
+          movimientosObra: movimientos.data ?? [],
+          adicionalesObra: adicionales.data ?? [],
+          actividadesObra: actividadesSemanales.data ?? [],
+          accionesObra: (acciones.data ?? []).filter((a) => a.obra_id === id),
+          alertasObra: construirAlertasDashboard(datosFuente.data).filter((a) => a.obraId === id),
+        })
+      : null
 
   return (
     <div className="min-h-screen space-y-8 p-8">
@@ -276,6 +319,13 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
             </dl>
           </div>
 
+          {ficha && <FichaObraView ficha={ficha} />}
+
+          <details className="mt-6" data-testid="obra-detalle-operativo">
+            <summary className="cursor-pointer text-sm font-semibold text-gray-600">
+              Detalle operativo completo (carga y edición de datos)
+            </summary>
+            <div className="mt-4 space-y-8">
           <section data-testid="post-mortem-obra-section">
             <h2 className="text-xl font-semibold">Post Mortem</h2>
             <p className="mt-1 text-sm text-gray-600">
@@ -364,14 +414,7 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
             </p>
             {resumenEconomico.data && (
               <div className="mt-3">
-                <ResumenProduccionEconomicaView
-                  resumen={calcularResumenProduccionEconomica({
-                    actividades: actividadesSemanales.data ?? [],
-                    registrosHH: registrosHH.data ?? [],
-                    resumenEconomico: resumenEconomico.data,
-                    hhEstimadaPresupuesto: presupuestoMasReciente?.hh_estimada ?? null,
-                  })}
-                />
+                <ResumenProduccionEconomicaView resumen={resumenProduccion} />
               </div>
             )}
           </section>
@@ -593,6 +636,8 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ id
               </tbody>
             </table>
           </section>
+            </div>
+          </details>
         </>
       )}
     </div>

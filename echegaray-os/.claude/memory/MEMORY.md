@@ -35,6 +35,7 @@
 - [Tracks A-D: Personas, Rutinas, Integridad](project/tracks-abcd-personas-rutinas-integridad.md) — marco permanente de 4 tracks paralelos; primer ciclo: 30 legajos reales (Personas/Laboral/Seguridad e Higiene), primera rutina de negocio autónoma real (pg_cron), auditoría de integridad de datos de test
 - [Obra Piloto Pisos: Verdad Financiera](project/obra-piloto-pisos-verdad-financiera.md) — costo real de mano de obra vinculado a HH (JORNALES), forecast ETC/EAC/VAC/CPI con cobertura declarada, auditoría honesta de F1
 - [Corrección de Producto UX-1 a 5](project/correccion-producto-ux-1-a-5.md) — navegación por trabajo real (8 grupos), home de Dirección accionable, tablero de Obras, alertas humanizadas, Operador Digital consolidado, badges de confianza
+- [Ficha Integral de Obra — Pisos](project/ficha-integral-obra-pisos.md) — circuito completo contrato→caja en una sola ficha, costo real de materiales y cobranza real cargados desde Drive con cobertura declarada, detección autónoma de deterioro de margen/exceso HH por obra
 
 ## feedback/ — Correcciones y preferencias
 - [Construir capacidades, no pantallas aisladas](feedback/construir-capacidades-no-pantallas-aisladas.md) — cada incremento debe resolver una decisión real y ser base reutilizable; justificar toda entidad nueva o evitarla

@@ -47,8 +47,12 @@ test.describe.serial('acceso autenticado real por rol', () => {
     const actividad = `Prueba E2E jefe_obra ${Date.now()}`
     await login(page)
     await page.goto('/obras')
-    await page.getByRole('link', { name: /Pisos/i }).first().click()
+    await page.getByRole('link', { name: 'Pisos', exact: true }).click()
     await page.waitForURL(/\/obras\//)
+    // Ficha Integral de Obra (2026-07-08): el detalle operativo (formularios de carga)
+    // quedó colapsado detrás de "Detalle operativo completo" -- hay que expandirlo
+    // antes de poder interactuar con el formulario.
+    await page.getByTestId('obra-detalle-operativo').locator('summary').first().click()
 
     const form = page.getByTestId('plan-semanal-form')
     await form.locator('input[name="actividad"]').fill(actividad)

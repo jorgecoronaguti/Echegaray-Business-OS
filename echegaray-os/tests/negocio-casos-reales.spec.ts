@@ -59,14 +59,17 @@ test.describe.serial('preguntas confiables contra casos reales conocidos', () =>
     await page.goto(`/obras/${PISOS_ID}`)
 
     const produccion = page.getByTestId('produccion-economica-obra-section')
-    // Calculado a mano contra costo real de mano de obra recién cargado ($3.105.500,
-    // JORNALES x HH real) y el mismo valor ganado ya usado por costoEsperadoAFecha.
-    await expect(produccion).toContainText('6.88')
-    await expect(produccion).toContainText('2.218.214')
-    await expect(produccion).toContainText('5.323.714')
-    await expect(produccion).toContainText('31.284.187')
-    // No debe presentarse como un forecast sólido: cobertura real es 3 de 15
-    // actividades (20%) y el costo real acumulado hoy es solo mano de obra.
+    // Recalculado en el ciclo de Ficha Integral de Obra (2026-07-08) tras cargar el
+    // costo real de materiales/subcontratos ($7.056.140, Flujo de Caja - Cash Flow >
+    // Compras) sobre el costo de mano de obra ya existente ($3.105.500) -- costo real
+    // acumulado ahora $10.161.640. Verificado a mano contra el mismo valor ganado ya
+    // usado por costoEsperadoAFecha (ver .claude/memory/project/ficha-integral-obra-pisos.md).
+    await expect(produccion).toContainText('2.10')
+    await expect(produccion).toContainText('7.258.314')
+    await expect(produccion).toContainText('17.419.955')
+    await expect(produccion).toContainText('19.187.946')
+    // No debe presentarse como un forecast sólido: cobertura real sigue siendo parcial
+    // (3 de 15 actividades cerradas) aunque el costo real ya no sea solo mano de obra.
     await expect(produccion).toContainText('3 de 15 actividad')
     await expect(produccion).toContainText('no debe leerse como')
   })
