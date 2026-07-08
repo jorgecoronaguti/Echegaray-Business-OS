@@ -40,6 +40,10 @@ Se avanzó sin pedir aprobación en cada paso porque todos los cambios de OLA 0/
 
 Las 3 tablas nuevas de OLA 1 (`scorecard_dominios`, `preguntas_negocio`) y la nueva de OLA 2 (`backlog_autonomo`) tenían RLS correcta pero **sin el GRANT base a `authenticated`** — Postgres deniega el acceso antes de evaluar la policy si falta el grant. Lo encontró un test real (`tests/backlog-autonomo-conversion.spec.ts`), no una revisión manual. Corregido con `grant select, insert, update, delete ... to authenticated`, mismo patrón que ya usan `acciones`/`actividades_semanales`.
 
+## Dependencia transversal resuelta — Continuidad Operacional de Datos (2026-07-08)
+
+Antes de OLA 3, se ejecutó un descubrimiento exhaustivo del universo documental real (carpeta `administracion` de Drive) y se construyó `fuentes_datos` (registro vivo de frescura/cobertura) conectado al Motor de Decisiones. Ver [[continuidad-operacional-datos]] para el detalle completo — incluye 2 de los dominios objetivo de OLA 3 (Fiscal, Equipos y Vehículos) ya avanzados con datos reales (0-1 → 2) como efecto directo del descubrimiento.
+
 ## Próximo paso natural
 
-OLA 3 (cobertura mínima de dominios en nivel 0-1: Comercial, Fiscal, Personas, Laboral, Seguridad e Higiene, Legal y Contractual, Equipos y Vehículos) — priorizar por evidencia real de impacto/dependencia, no por orden arbitrario. El primer paso concreto ya identificado: confirmar con Jorge si Pipeline Comercial es hoy el cuello de botella real antes de construir cualquier estructura (regla de oro del CLAUDE.md raíz).
+OLA 3 (cobertura mínima de dominios en nivel 0-1: Comercial, Personas, Laboral, Seguridad e Higiene, Legal y Contractual) — priorizar por evidencia real de impacto/dependencia, no por orden arbitrario. El primer paso concreto ya identificado: explorar ALTAS-BAJAS-HM-EPP-DNI en profundidad (Personas/Seguridad e Higiene). Sigue pendiente la única pregunta que no se puede inferir: confirmar con Jorge si Pipeline Comercial es hoy el cuello de botella real antes de construir cualquier estructura (regla de oro del CLAUDE.md raíz).
