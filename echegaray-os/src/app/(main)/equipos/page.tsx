@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getEquipos } from '@/features/equipos/services/equiposService'
+import { EquipoForm } from '@/features/equipos/components/EquipoForm'
+import { EliminarEquipoForm } from '@/features/equipos/components/EliminarEquipoForm'
 
 async function loadEquiposData() {
   try {
@@ -44,16 +46,28 @@ export default async function EquiposPage() {
 
       {equipos.data && (
         <section data-testid="equipos-section">
+          <details className="rounded border p-3" data-testid="equipo-alta-section">
+            <summary className="cursor-pointer font-medium text-gray-700">+ Nuevo equipo</summary>
+            <div className="mt-3">
+              <EquipoForm />
+            </div>
+          </details>
+
           <ul className="mt-3 space-y-2">
             {lista.map((e) => (
               <li key={e.id} className="rounded border p-3" data-testid="equipo-fila">
-                <p className="font-semibold">
-                  {e.nombre} {e.patente_o_identificador && `— ${e.patente_o_identificador}`}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {e.tipo} · fuente: {e.fuente_legacy}
-                </p>
-                {e.notas && <p className="mt-1 text-sm text-gray-600">{e.notas}</p>}
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="font-semibold">
+                      {e.nombre} {e.patente_o_identificador && `— ${e.patente_o_identificador}`}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {e.tipo} · fuente: {e.fuente_legacy}
+                    </p>
+                    {e.notas && <p className="mt-1 text-sm text-gray-600">{e.notas}</p>}
+                  </div>
+                  <EliminarEquipoForm equipoId={e.id} />
+                </div>
               </li>
             ))}
             {lista.length === 0 && <p className="text-gray-500">Sin equipos cargados todavía.</p>}

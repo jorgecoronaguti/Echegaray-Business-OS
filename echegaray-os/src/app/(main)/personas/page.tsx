@@ -7,6 +7,8 @@ import { SeccionAlertas } from '@/features/dashboard/components/SeccionAlertas'
 import { alertasPorArea } from '@/features/areas/types'
 import { getPersonas, getDocumentacionLegajo } from '@/features/personas/services/personasService'
 import { TIPO_DOCUMENTO_LABEL, documentosFaltantes, personaActiva, type Persona } from '@/features/personas/types'
+import { PersonaForm } from '@/features/personas/components/PersonaForm'
+import { PersonaActualizarForm } from '@/features/personas/components/PersonaActualizarForm'
 
 async function loadPersonasData() {
   try {
@@ -112,6 +114,13 @@ export default async function PersonasPage() {
                 {personas.data.filter((p) => p.documentacion_relevada).length} con documentación relevada en
                 profundidad, el resto solo con nombre real de carpeta (no se inventó su documentación).
               </p>
+              <details className="mt-4 rounded border p-3" data-testid="persona-alta-section">
+                <summary className="cursor-pointer font-medium text-gray-700">+ Dar de alta un legajo</summary>
+                <div className="mt-3">
+                  <PersonaForm />
+                </div>
+              </details>
+
               <table className="mt-3 w-full text-left text-sm">
                 <thead>
                   <tr>
@@ -119,8 +128,10 @@ export default async function PersonasPage() {
                     <th className="pr-4">Categoría</th>
                     <th className="pr-4">Especialidad</th>
                     <th className="pr-4">Fecha ingreso</th>
+                    <th className="pr-4">Estado</th>
                     <th className="pr-4">Documentación relevada</th>
                     <th className="pr-4">Documentos faltantes</th>
+                    <th className="pr-4"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -132,9 +143,26 @@ export default async function PersonasPage() {
                         <td className="pr-4">{p.categoria ?? '—'}</td>
                         <td className="pr-4">{p.especialidad ?? '—'}</td>
                         <td className="pr-4">{p.fecha_ingreso ?? '—'}</td>
+                        <td className="pr-4">
+                          {personaActiva(p) ? (
+                            <span className="text-emerald-700">Activo</span>
+                          ) : (
+                            <span className="text-gray-500" data-testid="persona-baja-badge">
+                              Baja ({p.fecha_egreso})
+                            </span>
+                          )}
+                        </td>
                         <td className="pr-4">{p.documentacion_relevada ? 'Sí' : 'No relevada'}</td>
                         <td className="pr-4 text-amber-700">
                           {faltantes.length > 0 ? faltantes.map((f) => TIPO_DOCUMENTO_LABEL[f]).join(', ') : '—'}
+                        </td>
+                        <td className="pr-4">
+                          <details data-testid="persona-actualizar-section">
+                            <summary className="cursor-pointer text-xs underline">Editar / dar de baja</summary>
+                            <div className="mt-2">
+                              <PersonaActualizarForm persona={p} />
+                            </div>
+                          </details>
                         </td>
                       </tr>
                     )

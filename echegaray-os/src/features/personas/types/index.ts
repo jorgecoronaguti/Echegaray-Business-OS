@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 // Personas / Laboral / Seguridad e Higiene (0-1/10 antes de esta ola). Primer dato
 // real estructurado, sembrado desde la carpeta "ALTAS - BAJAS - HM - EPP - DNI" de
 // Drive -- ver fuentes_datos. `personas` = identidad + relación laboral (evidencia
@@ -58,3 +60,36 @@ export function documentosFaltantes(persona: Persona, docs: DocumentacionLegajo[
 export function legajosNoRelevados(personas: Persona[]): Persona[] {
   return personas.filter((p) => !p.documentacion_relevada)
 }
+
+// Alta de legajo — Administración carga el ingreso real ya resuelto en el papeleo
+// legal (AFIP, ART, obra social); este formulario no toma la decisión laboral, solo
+// la registra en el OS en vez de en la carpeta de Drive.
+export const personaInputSchema = z.object({
+  nombre_completo: z.string().trim().min(1, 'El nombre es obligatorio'),
+  dni: z.string().trim().min(1).optional(),
+  cuil: z.string().trim().min(1).optional(),
+  fecha_nacimiento: z.string().trim().min(1).optional(),
+  nacionalidad: z.string().trim().min(1).optional(),
+  fecha_ingreso: z.string().min(1, 'La fecha de ingreso es obligatoria'),
+  categoria: z.string().trim().min(1).optional(),
+  especialidad: z.string().trim().min(1).optional(),
+  art: z.string().trim().min(1).optional(),
+  obra_social: z.string().trim().min(1).optional(),
+  convenio_colectivo: z.string().trim().min(1).optional(),
+  retribucion_pactada: z.coerce.number().positive('La retribución debe ser mayor a 0').optional(),
+  modalidad_liquidacion: z.string().trim().min(1).optional(),
+})
+export type PersonaInput = z.infer<typeof personaInputSchema>
+
+// Modificación / baja — fecha_egreso es la baja real (Art. 245 LCT ya resuelta fuera
+// del OS, acá solo se registra). Todos los campos opcionales: se actualiza lo que
+// cambió, no se reescribe el legajo entero.
+export const actualizarPersonaInputSchema = z.object({
+  persona_id: z.string().uuid('Persona inválida'),
+  categoria: z.string().trim().min(1).optional(),
+  especialidad: z.string().trim().min(1).optional(),
+  retribucion_pactada: z.coerce.number().positive('La retribución debe ser mayor a 0').optional(),
+  fecha_egreso: z.string().trim().min(1).optional(),
+  notas: z.string().trim().min(1).optional(),
+})
+export type ActualizarPersonaInput = z.infer<typeof actualizarPersonaInputSchema>
