@@ -37,6 +37,7 @@
 - [Corrección de Producto UX-1 a 5](project/correccion-producto-ux-1-a-5.md) — navegación por trabajo real (8 grupos), home de Dirección accionable, tablero de Obras, alertas humanizadas, Operador Digital consolidado, badges de confianza
 - [Ficha Integral de Obra — Pisos](project/ficha-integral-obra-pisos.md) — circuito completo contrato→caja en una sola ficha, costo real de materiales y cobranza real cargados desde Drive con cobertura declarada, detección autónoma de deterioro de margen/exceso HH por obra
 - [Operabilidad Real](project/operabilidad-real.md) — cola de clasificación de costo por obra, bloqueo/evidencia en Acciones, cobranzas/pagos como trabajo autónomo, rituales diario/semanal, Operador Digital en 7 bloques, solo 1 cuenta real existente
+- [Integración real Google Workspace](project/integracion-real-google-workspace.md) — cuenta de servicio con lectura/escritura acotada (agregar, nunca sobrescribir) a Sheets/Docs/Drive; acceso real a ~45 archivos, incluye ADICIONALES.xlsm nunca antes localizado
 - [El OS es el lugar de trabajo](project/el-os-es-el-lugar-de-trabajo.md) — 11 tablas sin RLS por rol corregidas, trazabilidad de auditoría en las 26 tablas, alta/baja nativa de Personas y Equipos (únicos 2 dominios sin escritura), cron diario reorientado a carga nativa
 
 ## feedback/ — Correcciones y preferencias

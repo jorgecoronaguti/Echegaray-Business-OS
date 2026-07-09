@@ -96,15 +96,19 @@ No tiene jurisdicción normativa propia. Cuando la integración es bancaria o fi
 
 No puede afirmar que una API de un proveedor específico soporta webhooks, un rate limit concreto, o un método de autenticación determinado sin verificar su documentación vigente. No puede garantizar cero duplicados sin que exista una clave de idempotencia real definida por diseño — no basta con "reintentar con cuidado".
 
-## Gaps de conocimiento conocidos (primera versión)
+## Gaps de conocimiento conocidos (primera versión, parcialmente superado -- ver Historial)
 
-No existe todavía ninguna integración real construida en Echegaray Business OS — todo el dato hoy entra por carga manual o por lectura puntual de Drive vía `discovery-drive-echegaray` (que es descubrimiento de lectura, no una integración operativa). Esta skill parte sin ningún patrón propio de Echegaray más allá de los campos `origen`/`fuente_legacy` ya usados en el esquema — es intencional, para no fabricar un historial de integraciones que no existió.
+Hasta el 2026-07-09 no existía ninguna integración real construida en Echegaray Business OS — todo el dato entraba por carga manual o por lectura puntual de Drive vía `discovery-drive-echegaray` (descubrimiento de lectura, no integración operativa). Esto cambió parcialmente: ver Historial de aprendizaje. Sigue sin existir ninguna integración bancaria (Santander) ni fiscal (ARCA) real -- ambas requieren un trámite externo (gestión con el banco, certificado digital en ARCA) que todavía no se hizo.
 
 ## Mecanismo de aprendizaje continuo
 
 `OPERACIÓN → EVENTO → RESULTADO → DESVÍO → CAUSA → EVIDENCIA → PATRÓN → PROPUESTA DE APRENDIZAJE → VALIDACIÓN SEGÚN RIESGO → INCORPORACIÓN → APLICACIÓN FUTURA → MEDICIÓN`
 
 Ejemplo: una futura integración bancaria deja de sincronizar durante varios días sin que nadie lo note (evento) → se detecta por una diferencia entre el saldo del OS y el saldo real del banco (resultado/desvío) → la causa es la ausencia de una alerta de salud de la integración (causa/evidencia) → si se repite con otra integración futura (recurrencia), se propone que toda integración nueva incluya un chequeo de salud obligatorio desde el diseño (propuesta de aprendizaje) → el usuario valida (nivel 2, criterio profesional) → se incorpora como criterio de esta skill → se mide en la próxima integración que se construya.
+
+## Historial de aprendizaje (append-only, más reciente arriba)
+
+- **2026-07-09** — Primera integración real construida: cuenta de servicio de Google (`scripts/google_workspace/`) con lectura/escritura acotada a archivos compartidos explícitamente (Sheets/Docs/Drive), sin delegación de dominio -- mecanismo más simple que alcanza, siguiendo el marco de esta misma skill. Jorge compartió la carpeta completa "administracion" de Drive, dando acceso real a ~45 archivos (incluyendo hallazgos nuevos: `ADICIONALES.xlsm`, `PRESUPUESTO PISO - INTERNO.xlsm`, carpetas `CERTIFICADOS`/`RECIBOS`/`FACTURAS A`). Escritura limitada por diseño a agregar (filas/pestañas/texto), nunca a sobrescribir -- varias fuentes reales (Control de Gastos, JORNALES) ya tienen fórmulas rotas y no hay que arriesgarse a empeorarlo. Idempotencia: no aplica todavía porque no hay escritura automática recurrente, solo lectura y agregado puntual bajo pedido.
 
 ## Relación con el OS
 
