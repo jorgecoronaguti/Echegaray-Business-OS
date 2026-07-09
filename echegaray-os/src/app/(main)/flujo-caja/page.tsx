@@ -1,69 +1,161 @@
-import { leerResumenFlujoCaja } from '@/features/flujo-caja/services/sheetsReader'
+import {
+  leerCalendario,
+  SHEET_URL,
+  type Movimiento,
+} from '@/features/flujo-caja/services/calendarioReader'
 
-// Espejo web del RESUMEN del Sheet real "Flujo de Caja - Cash Flow" (decisión
-// 2026-07-09: el OS se enfoca en Flujo de Caja; el Sheet sigue siendo la fuente
-// de verdad y se opera ahí -- esta página es lectura para decidir, no captura).
-// Se refresca como máximo cada 5 minutos (revalidate del fetch en sheetsReader).
+// Calendario de cobros y pagos — la web muestra lo que hay que cobrar y pagar,
+// día por día, con el saldo proyectado acumulado. Fuente única: el Sheet real
+// "Flujo de Caja - Cash Flow" (la operación sigue viviendo ahí).
 
 export const dynamic = 'force-dynamic'
 
-function esNegativo(valor: string): boolean {
-  return valor.trimStart().startsWith('-') || valor.includes('-$')
+const pesos = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
+
+const TIPO_BADGE: Record<Movimiento['tipo'], { label: string; clase: string }> = {
+  cobro: { label: 'COBRO', clase: 'bg-green-100 text-green-800' },
+  pago: { label: 'PAGO', clase: 'bg-red-100 text-red-800' },
+  cheque: { label: 'CHEQUE', clase: 'bg-orange-100 text-orange-800' },
+  tarjeta: { label: 'TARJETA', clase: 'bg-purple-100 text-purple-800' },
+}
+
+function fechaLarga(iso: string): string {
+  return new Date(`${iso}T12:00:00`).toLocaleDateString('es-AR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  })
+}
+
+function FilaMovimiento({ m }: { m: Movimiento }) {
+  const badge = TIPO_BADGE[m.tipo]
+  return (
+    <div className="flex items-center justify-between gap-3 py-1.5">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${badge.clase}`}>
+          {badge.label}
+        </span>
+        <div className="min-w-0">
+          <span className="text-sm font-medium text-gray-900">{m.quien}</span>
+          {m.detalle && <span className="ml-2 truncate text-xs text-gray-500">{m.detalle}</span>}
+        </div>
+      </div>
+      <span
+        className={`text-sm font-semibold whitespace-nowrap tabular-nums ${m.monto > 0 ? 'text-green-700' : 'text-gray-900'}`}
+      >
+        {m.monto > 0 ? '+' : ''}
+        {pesos.format(m.monto)}
+      </span>
+    </div>
+  )
 }
 
 export default async function FlujoCajaPage() {
-  const resumen = await leerResumenFlujoCaja()
+  const cal = await leerCalendario()
 
-  if ('error' in resumen) {
+  if ('error' in cal) {
     return (
       <div className="mx-auto max-w-3xl p-6">
-        <h1 className="text-2xl font-bold">💰 Flujo de Caja</h1>
+        <h1 className="text-2xl font-bold">📅 Calendario de cobros y pagos</h1>
         <div className="mt-4 rounded border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
           <p className="font-semibold">La conexión con el Sheet no está configurada en este entorno.</p>
-          <p className="mt-2">{resumen.error}</p>
+          <p className="mt-2">{cal.error}</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
+    <div className="mx-auto max-w-4xl p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="text-2xl font-bold">💰 Flujo de Caja</h1>
+        <h1 className="text-2xl font-bold">📅 Calendario de cobros y pagos</h1>
         <div className="text-xs text-gray-500">
           Fuente:{' '}
-          <a href={resumen.sheetUrl} target="_blank" rel="noreferrer" className="underline hover:text-gray-700">
-            Sheet «Flujo de Caja - Cash Flow»
+          <a href={SHEET_URL} target="_blank" rel="noreferrer" className="underline hover:text-gray-700">
+            Sheet «Flujo de Caja»
           </a>{' '}
-          · leído {resumen.actualizadoEn}
+          · leído {cal.leidoEn}
         </div>
       </div>
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
-        {resumen.bloques.map((bloque) => (
-          <section key={bloque.titulo} className="rounded-lg border bg-white p-4 shadow-sm">
-            <h2 className="text-xs font-semibold tracking-wide text-gray-500 uppercase">{bloque.titulo}</h2>
-            <dl className="mt-3 space-y-2">
-              {bloque.filas.map(({ label, valor }) => (
-                <div key={label} className="flex items-baseline justify-between gap-3">
-                  <dt className="text-sm text-gray-700">{label}</dt>
-                  <dd
-                    className={`text-sm font-semibold whitespace-nowrap tabular-nums ${
-                      esNegativo(valor) ? 'text-red-700' : 'text-gray-900'
-                    }`}
-                  >
-                    {valor}
-                  </dd>
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="rounded-lg border bg-white p-3">
+          <div className="text-[11px] text-gray-500 uppercase">Saldo disponible hoy</div>
+          <div
+            className={`mt-1 text-lg font-bold tabular-nums ${(cal.saldoHoy ?? 0) < 0 ? 'text-red-700' : 'text-gray-900'}`}
+          >
+            {cal.saldoHoy === null ? 'sin dato' : pesos.format(cal.saldoHoy)}
+          </div>
+        </div>
+        <div className="rounded-lg border bg-white p-3">
+          <div className="text-[11px] text-gray-500 uppercase">Por cobrar</div>
+          <div className="mt-1 text-lg font-bold text-green-700 tabular-nums">{pesos.format(cal.totalCobros)}</div>
+        </div>
+        <div className="rounded-lg border bg-white p-3">
+          <div className="text-[11px] text-gray-500 uppercase">Por pagar</div>
+          <div className="mt-1 text-lg font-bold text-red-700 tabular-nums">{pesos.format(cal.totalPagos)}</div>
+        </div>
+        <div className="rounded-lg border bg-white p-3">
+          <div className="text-[11px] text-gray-500 uppercase">Neto pendiente</div>
+          <div
+            className={`mt-1 text-lg font-bold tabular-nums ${cal.totalCobros + cal.totalPagos < 0 ? 'text-red-700' : 'text-green-700'}`}
+          >
+            {pesos.format(cal.totalCobros + cal.totalPagos)}
+          </div>
+        </div>
+      </div>
+
+      {cal.vencidos.length > 0 && (
+        <section className="mt-6 rounded-lg border-2 border-red-300 bg-red-50 p-4">
+          <h2 className="text-sm font-bold text-red-800 uppercase">
+            ⚠️ Vencido y sin ejecutar ({cal.vencidos.length})
+          </h2>
+          <p className="mt-1 text-xs text-red-700">
+            Fecha pasada y sigue sin cobrarse/pagarse — resolver o recalendarizar en el Sheet.
+          </p>
+          <div className="mt-2 divide-y divide-red-200">
+            {cal.vencidos.map((m, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span className="w-20 shrink-0 text-xs text-red-700 tabular-nums">
+                  {new Date(`${m.fecha}T12:00:00`).toLocaleDateString('es-AR')}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <FilaMovimiento m={m} />
                 </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <div className="mt-6 space-y-4">
+        {cal.dias.map((dia) => (
+          <section key={dia.fecha} className="rounded-lg border bg-white p-4 shadow-sm">
+            <div className="flex items-baseline justify-between gap-2">
+              <h2 className="text-sm font-bold text-gray-900 capitalize">{fechaLarga(dia.fecha)}</h2>
+              <div className="text-xs whitespace-nowrap text-gray-500 tabular-nums">
+                neto {pesos.format(dia.neto)} · saldo proy.{' '}
+                <span className={dia.acumulado < 0 ? 'font-semibold text-red-700' : 'font-semibold text-gray-800'}>
+                  {pesos.format(dia.acumulado)}
+                </span>
+              </div>
+            </div>
+            <div className="mt-1 divide-y divide-gray-100">
+              {dia.movimientos.map((m, i) => (
+                <FilaMovimiento key={i} m={m} />
               ))}
-            </dl>
+            </div>
           </section>
         ))}
+        {cal.dias.length === 0 && (
+          <p className="text-sm text-gray-500">No hay cobros ni pagos futuros con fecha cargada en el Sheet.</p>
+        )}
       </div>
 
       <p className="mt-6 text-xs text-gray-500">
-        Esta página es un espejo de lectura del RESUMEN del Sheet — la operación (cargar cobros, pagos, saldos) sigue
-        viviendo en el Sheet. Si un número no cierra, la fuente de verdad es el archivo.
+        El saldo proyectado parte del saldo disponible real (pestaña Caja) y acumula solo los movimientos con fecha
+        cargada. Los vencidos NO están sumados al proyectado hasta que tengan fecha nueva. La carga y corrección de
+        datos se hace en el Sheet.
       </p>
     </div>
   )
