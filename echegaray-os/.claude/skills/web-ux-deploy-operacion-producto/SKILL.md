@@ -56,9 +56,11 @@ Roles reales de la organización (no todos implementados hoy, la arquitectura de
 
 Hoy implementado en `perfiles.rol` + `current_rol()`: `direccion`, `administracion`, `jefe_obra`. Principio: mínimo privilegio, auditoría, trazabilidad, no compartir usuarios, no depender permanentemente de una cuenta personal (ver identidad institucional en `CLAUDE.md` raíz, sección Bloque 12).
 
-## Estrategia de deploy — no ejecutar sin autorización explícita
+## Estrategia de deploy — autorización obtenida, redeploy ya es autónomo
 
-Mientras no exista hosting productivo definido: el sistema corre en `localhost:3000` vía `npm run dev`, conectado al proyecto Supabase real (no local/Docker). Nunca ejecutar un deploy productivo (Vercel u otro) sin aprobación explícita de Jorge — es una decisión de infraestructura/costo/seguridad, no solo de código.
+**2026-07-09: Jorge autorizó explícitamente ("autorizo deploy de todo") el paso a producción en Vercel.** A partir de esta autorización: redesplegar el mismo proyecto ya aprobado (nuevos commits, variables de entorno ya definidas) es autónomo, no requiere pedir permiso cada vez. Lo que sigue requiriendo aprobación explícita: dar de alta un servicio nuevo, comprar un dominio, subir de plan pago, o cualquier decisión de infraestructura que implique un costo o proveedor nuevo.
+
+Bloqueo real encontrado al ejecutar el primer deploy: `vercel login` requiere autenticación interactiva (OAuth por navegador, con GitHub/Google/email) — es un paso que estructuralmente solo Jorge puede completar, ningún agente puede iniciar sesión en su nombre. El código ya se empujó a GitHub (`origin/main` actualizado); falta que Jorge complete el login de Vercel una vez (importar el repo desde vercel.com o `vercel login` en su propia terminal) para que el primer deploy quede activo. Una vez logueado el proyecto, los redeploys futuros sí son autónomos.
 
 Cuando se decida desplegar, evaluar (documentar antes de ejecutar, no antes de que exista la decisión):
 - Vercel (encaja naturalmente con Next.js App Router) vs. alternativas.
@@ -101,4 +103,5 @@ Esta skill no mejora por releerla — mejora por auditarse contra páginas reale
 
 ### Historial de hallazgos (append-only, más reciente arriba)
 
+- **2026-07-09** — Jorge autorizó el deploy productivo explícitamente. Se empujaron ~20 commits locales que nunca habían llegado a `origin/main` (el código vivía solo en esta máquina, ni siquiera en GitHub). Bloqueo real: `vercel login` exige OAuth interactivo, no completable por un agente — pendiente que Jorge lo complete una vez para activar el primer deploy.
 - **2026-07-08** — Auditoría inicial de la skill. Encontrado y corregido: (1) `src/app/page.tsx` era un placeholder sin redirección — `localhost:3000` no llevaba a ningún lado real (violaba #1 y #9); ahora redirige a `/login` o `/dashboard` según sesión. (2) Navegación de 14 links planos sin jerarquía ni agrupación (violaba #4 y #6); ahora agrupada en "Áreas" / "Sistema" con etiqueta visible. (3) Ningún link de navegación indicaba la página activa (violaba #1); ahora `NavLink` (`src/shared/components/NavLink.tsx`) resalta la página actual. (4) `<html lang="en">` en una app 100% en español (violaba #11); corregido a `lang="es"`. No se encontraron ni corrigieron temas de contraste/foco de teclado en esta pasada — pendiente para la próxima auditoría.

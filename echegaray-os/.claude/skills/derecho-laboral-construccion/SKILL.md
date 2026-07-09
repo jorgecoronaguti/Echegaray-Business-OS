@@ -96,6 +96,10 @@ JORNALES (fuente real confirmada) no vincula trabajador a legajo ni a categoría
 
 Ejemplo: una desvinculación genera un reclamo porque se aplicó el criterio equivocado (evento/resultado adverso) → se documenta la causa (régimen mal aplicado) → si se identifica que el error viene de una confusión recurrente de criterio, se propone una regla clara para todas las desvinculaciones futuras → el usuario/asesor laboral valida (nivel 3, alto riesgo regulatorio) → se incorpora → se mide en la próxima situación comparable.
 
+## Historial de aprendizaje (append-only, más reciente arriba)
+
+- **2026-07-09** — Confirmado con evidencia real (lectura completa de JORNALES, tab de nómina 2026) que el gap ya anotado abajo ("JORNALES no vincula trabajador a legajo/categoría de forma estructurada") tiene una consecuencia práctica medible, no solo teórica: las celdas resumen BANCO y CAJA de esa hoja devuelven `#REF!` en casi todas las semanas de enero a abril, y el SALDO C (caja) de la cuadrilla de Javier Sanchez crece en negativo semana a semana (-$199.366 → -$1.640.625 en marzo). Clasificación: **A. observación aislada** (una sola cuadrilla, un solo período revisado) — no se generaliza a "todo JORNALES está mal" sin revisar más cuadrillas/períodos. Acción real creada en Centro de Acción para que Rodrigo confirme si ese saldo es real o un error de fórmula.
+
 ## Relación con el OS
 
 - **Áreas**: Personas (dominio Legajo y Documentación, aún no construido en el OS).

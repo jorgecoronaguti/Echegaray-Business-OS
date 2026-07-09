@@ -96,6 +96,10 @@ No se confirmó el criterio contable formal exacto que usa el estudio de Echegar
 
 Ejemplo: el resultado neto mensual del P&L no coincide con la suma de márgenes por obra del control económico (evento/desvío) → se investiga la causa (ej. gastos de Estructura no distribuidos, o desfase de reconocimiento) → si se repite mes a mes (recurrencia), se propone un ajuste de criterio de conciliación entre ambos sistemas → el usuario/contador valida (nivel 3, alto riesgo — requiere confirmación profesional) → se incorpora como regla de conciliación → se mide en el próximo cierre mensual.
 
+## Historial de aprendizaje (append-only, más reciente arriba)
+
+- **2026-07-09** — Confirmado con evidencia real (lectura completa del Dashboard P&L, `Ingresos y Egresos - P&L`) que el gap ya anotado abajo ("no se confirmó el criterio contable de reconocimiento de ingresos") se manifiesta como un riesgo concreto: la planilla muestra ene-26 a dic-26 en la misma fila sin marcar cuáles meses son reales y cuáles presupuesto/proyección (ago-26 a dic-26 no pueden ser reales, estamos en julio). Clasificación: **A. observación aislada** — confirma el gap ya conocido, no lo resuelve; sigue pendiente preguntar al estudio contable externo el criterio formal. Acción real creada en Centro de Acción.
+
 ## Relación con el OS
 
 - **Áreas**: Administración y Finanzas (dominio Fiscal/Contable).

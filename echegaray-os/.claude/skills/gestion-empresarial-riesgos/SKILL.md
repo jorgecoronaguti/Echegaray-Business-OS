@@ -96,6 +96,10 @@ No existe hoy en el OS ninguna vista de backlog contratado consolidado, pipeline
 
 Ejemplo: una obra aceptada por necesidad de facturar termina con margen bajo o problemas de capacidad (evento/desvío) → Post Mortem documenta la causa → si se repite el patrón ("obra aceptada bajo presión de caja termina mal", recurrencia), se propone un criterio explícito de margen mínimo/capital de trabajo antes de aceptar bajo presión → el usuario valida (nivel 2/3 según el monto en juego) → se incorpora como regla de Go/No-Go → se mide en la próxima decisión comparable.
 
+## Historial de aprendizaje (append-only, más reciente arriba)
+
+- **2026-07-09** — Primera medición real de concentración de proveedor (gap ya anotado abajo: "no existe vista de concentración de cliente/proveedor"): Alumetal representa el 56,5% de toda la deuda a proveedores de Echegaray ($20.837.210 de $36.870.194,9, según Flujo de Caja). Clasificación: **A. observación aislada** (una sola lectura, un solo punto en el tiempo) — falta ver si esta concentración es estructural o coyuntural antes de proponerla como regla de diversificación de proveedores. Acción real creada en Centro de Acción.
+
 ## Relación con el OS
 
 - **Áreas**: Dirección y Estrategia (dominio Selección de obras, reasignado desde el mapeo original de Fase II tras la revisión estratégica aprobada).

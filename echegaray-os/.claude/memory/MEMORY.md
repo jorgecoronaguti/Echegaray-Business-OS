@@ -44,6 +44,7 @@
 - [No bloquear por conflictos legacy](feedback/no-bloquear-por-conflictos-legacy.md) — ante datos legacy inconsistentes, proponer resolución con criterio y seguir; escalar solo lo genuinamente irreducible, sin frenar todo el flujo
 - [Tests autenticados deben autolimpiarse](feedback/tests-autenticados-deben-autolimpiarse.md) — nunca operar sobre "la fila real que aparezca primero"; crear fixture propio y borrarlo en el mismo test
 - [RLS sin policy falla en silencio](feedback/rls-sin-policy-falla-en-silencio.md) — un DELETE/UPDATE sin policy no da error, afecta 0 filas; verificar pg_policy antes de asumir un bug de lógica
+- [Autonomía: deploy y skills vivas](feedback/autonomia-deploy-y-skills.md) — deploy productivo autorizado de forma permanente, login interactivo (Vercel/banco/ARCA) es un límite real no evitable, actualizar aprendizaje de skills ya es autónomo
 
 ## reference/ — Donde encontrar cosas
 - [Validar SQL sin Supabase live](reference/validar-sql-sin-supabase-live.md) — procedimiento con Postgres local (Homebrew) cuando no hay Docker ni proyecto real conectado
