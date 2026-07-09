@@ -1,7 +1,7 @@
 ---
 name: planificacion-produccion
-description: "Planificación técnica de obra: cronograma, secuencia constructiva, ruta crítica y rendimientos de producción para Echegaray Construcciones. Activar ante preguntas sobre plazos, secuencia de tareas, impacto de un cambio en el cronograma, o análisis de rendimiento real vs. estimado. Trabaja junto a costos-presupuestacion (rendimientos alimentan ambos) y direccion-obra (coordinación operativa)."
-allowed-tools: Read, Bash
+description: "Planificación técnica y control económico-productivo de obra: cronograma, secuencia constructiva, ruta crítica, rendimientos, restricciones, ETC/EAC/margen forecast y el ciclo comercial completo de la obra (avance→certificación→facturación→cobranza). Activar ante preguntas sobre plazos, avance físico vs. económico, rendimiento real vs. estimado, o al auditar/editar el Sheet real de avance/control de obra (junto con google-sheets-business-systems, obligatorio). Trabaja junto a costos-presupuestacion (rendimientos alimentan ambos) y direccion-obra (coordinación operativa)."
+allowed-tools: Read, Bash, WebSearch
 metadata:
   author: echegaray-os
   type: expert-domain
@@ -16,17 +16,60 @@ Aportar el criterio técnico para programar una obra en el tiempo, secuenciar ta
 
 ## Alcance
 
-Cubre: secuencia constructiva, dependencias entre tareas, ruta crítica, rendimientos de cuadrilla por tarea/unidad ejecutada, impacto de un cambio en el plazo.
+Cubre, con nivel de especialista:
 
-No cubre: la valorización económica del rendimiento (`costos-presupuestacion`, aunque comparten el dato de rendimiento), ni la coordinación diaria de personas (`direccion-obra`).
+- **Planificación**: estructura de obra, partidas, actividades, hitos, dependencias, cronograma, camino crítico, lookahead, planificación semanal, restricciones, compromisos semanales, PPC (Percent Plan Complete) cuando sea útil.
+- **Avance**: avance planificado, avance real, avance físico, ponderaciones, criterios de medición, evidencia, hitos, actividades cerradas/en curso, atraso/adelanto.
+- **HH**: estimadas vs. reales por tarea/persona/cuadrilla/obra/fecha/categoría, costo, productividad.
+- **Productividad**: rendimiento esperado vs. real, unidad producida, HH por unidad, consumo de recursos, tendencia, aprendizaje histórico, anomalías, deterioro.
+- **Restricciones**: materiales, planos, decisiones de cliente, subcontratos, equipos, herramientas, permisos, personal, clima, seguridad.
+- **Economía de obra**: presupuesto, costo presupuestado/real/comprometido/pendiente, ETC (estimate to complete), EAC (estimate at completion), margen esperado, margen forecast, desviación, contingencia, adicionales.
+- **Ciclo comercial de la obra**: contrato → avance → medición → certificación → aprobación → facturación → cuenta por cobrar → cobranza → retenciones → adicionales.
+
+Secuencia constructiva, dependencias, ruta crítica y rendimientos de cuadrilla siguen siendo el núcleo técnico — lo de arriba conecta ese núcleo con el resultado económico real de cada obra, que es lo que Dirección necesita para decidir.
+
+No cubre: la valorización económica del precio unitario (`costos-presupuestacion`, aunque comparten el dato de rendimiento), la coordinación diaria de personas (`direccion-obra`), ni la arquitectura/fórmulas del Sheet donde vive este dato (`google-sheets-business-systems`, obligatorio siempre que la tarea sea leer/auditar/editar el Sheet real de avance/control de obra). La coherencia de este dato contra Caja y P&L es responsabilidad de `arquitectura-integracion-finanzas-obras`.
+
+## Fórmulas de referencia (EAC/ETC)
+
+- `EAC = AC + ETC` (costo real incurrido + lo que falta gastar para terminar).
+- `EAC = BAC / CPI` (presupuesto total ÷ índice de desempeño de costo) — usar cuando la tendencia de desvío observada hasta hoy se espera que continúe igual hasta el cierre.
+- `ETC = EAC − AC`.
+- Nunca aplicar estas fórmulas con un `AC` (costo real) incompleto — ver "Principio de control" abajo antes de calcular cualquier EAC.
 
 ## Preguntas profesionales que debe hacer
 
+- ¿La obra está atrasada? ¿Cuánto, y qué actividad concreta lo explica?
+- ¿Las HH consumidas son coherentes con el avance físico reportado, o algo no cuadra?
+- ¿Qué cuadrilla tiene desvíos de rendimiento y desde cuándo?
+- ¿Qué restricción está bloqueando la producción hoy (material, plano, decisión, equipo)?
+- ¿Qué compra crítica está atrasada y puede parar la obra?
+- ¿Cuánto falta gastar para terminar (ETC)? ¿Cuánto costará terminar en total (EAC)?
+- ¿Cuál es el margen forecast hoy, no el margen presupuestado original?
+- ¿Qué adicional está ejecutado pero no formalizado (sin cotizar/aprobar)?
+- ¿Qué trabajo ya ejecutado todavía no se certificó? ¿Qué certificado no se facturó? ¿Qué factura no se cobró?
+- ¿Qué debería decidir Operaciones esta semana, y qué debería decidir Dirección?
 - ¿Qué tareas son dependencia dura de otras (no pueden empezar antes) y cuáles son solo preferencia de orden?
 - ¿Cuál es la ruta crítica de esta obra hoy, y qué tarea la está definiendo?
 - ¿El rendimiento real de la cuadrilla en esta tarea es comparable al de obras anteriores, o hay una diferencia que explicar?
 - ¿Un cambio de secuencia o de solución técnica mueve la fecha de fin, o hay holgura suficiente para absorberlo?
 - ¿La falta de un material o de una definición de cliente está bloqueando la ruta crítica?
+
+## Principio de control (calidad del dato antes que la conclusión)
+
+No aceptar un cruce del tipo "avance 60% / costo 30%" como conclusión suficiente de que hay productividad extraordinaria. Antes de concluir eso, investigar:
+
+- si la medición de avance físico es confiable o es una estimación optimista sin evidencia;
+- si todos los costos del período ya están cargados (compras registradas pero no facturadas, subcontratos no imputados);
+- si existen compromisos no registrados (órdenes de compra emitidas sin recepción);
+- si las HH están completas (cuadrillas con parte de horas cargado informalmente, fuera de sistema);
+- si existen materiales comprados pero no consumidos todavía (inventario en obra, no gasto real);
+- si existen anticipos que inflan el avance económico sin avance físico real;
+- si existen costos compartidos entre obras mal distribuidos;
+- si existen gastos sin obra asignada que en realidad pertenecen a esta obra;
+- si el presupuesto base contra el que se compara es confiable o ya quedó desactualizado por adicionales no incorporados.
+
+Razonar sobre la calidad del dato **antes** de reportar un margen o rendimiento como extraordinario — un dato incompleto que "muestra" ahorro no es ahorro, es información faltante.
 
 ## Marcos de análisis
 
@@ -62,6 +105,10 @@ No cubre: la valorización económica del rendimiento (`costos-presupuestacion`,
 | Hay que decidir cómo coordinar el cambio en obra | `direccion-obra` |
 | El retraso es por un proveedor/subcontratista | `compras-abastecimiento-subcontratacion` |
 | El cambio de secuencia puede ser un adicional | `derecho-construccion-contratos` |
+| El certificado/facturación no coincide con el avance económico | `contabilidad-constructoras` |
+| La certificación pendiente de cobro afecta el forecast de caja | `finanzas-tesoreria-construccion` |
+| Se va a leer, auditar o editar el Sheet real de avance/control de obra | `google-sheets-business-systems` (obligatorio, siempre) |
+| Hay que verificar que el margen forecast no se calcule distinto en Caja, P&L o el OS | `arquitectura-integracion-finanzas-obras` (obligatorio ante cualquier cambio de fórmula que cruce sistemas) |
 
 ## Sistema de fuentes
 
@@ -87,7 +134,9 @@ No puede afirmar un rendimiento "normal para este tipo de tarea" sin comparar co
 
 ## Gaps de conocimiento conocidos (primera versión)
 
-No existe hoy un dato de avance físico estructurado en el OS (confirmado que existe informalmente fuera de él). No existe tampoco un registro de rendimiento por tarea específica (JORNALES no tiene columna de tarea confiable, confirmado en discovery PRP-008) — el rendimiento hoy solo puede analizarse a nivel de HH totales por obra, no por tarea. Protocolo: cuando se decida sistematizar el dato de tarea (fuera de esta skill, es un cambio de captura de datos), esta skill gana granularidad.
+**Corregido 2026-07-09**: sí existe un dato de avance físico estructurado, fuera del OS — el Sheet real `Avances de Obra` (propiedad de Rodrigo, una pestaña Gantt por obra con % de avance diario por actividad). No está migrado ni conectado al OS todavía; tampoco está conciliado contra las pestañas `08_Control_Obra/Cliente [obra]` del P&L, que registran un estado narrativo distinto de la misma obra (ver `arquitectura-integracion-finanzas-obras` para el detalle de esta duplicación pendiente de resolver).
+
+No existe tampoco un registro de rendimiento por tarea específica (JORNALES no tiene columna de tarea confiable, confirmado en discovery PRP-008) — el rendimiento hoy solo puede analizarse a nivel de HH totales por obra, no por tarea. Protocolo: cuando se decida sistematizar el dato de tarea (fuera de esta skill, es un cambio de captura de datos), esta skill gana granularidad.
 
 ## Mecanismo de aprendizaje continuo
 

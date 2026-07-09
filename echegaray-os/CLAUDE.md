@@ -68,8 +68,11 @@ Cada carpeta de `features/` corresponde a un dominio real del negocio (ej. presu
 
 Estas son herramientas de proceso de desarrollo, no funcionalidades del negocio:
 
+**Regla previa a todas**: la selección de skills para cualquier trabajo material se gobierna por el ORQUESTADOR DE RAZONAMIENTO Y SKILLS (`CLAUDE.md` raíz + `.claude/skills/orquestador-de-razonamiento-y-skills/`). El inventario real se descubre con `python3 .claude/skills/orquestador-de-razonamiento-y-skills/scripts/inventario_skills.py` — la tabla de abajo es orientativa, no exhaustiva.
+
 | Herramienta | Para qué sirve |
 |---|---|
+| `orquestador-de-razonamiento-y-skills` | Capa meta obligatoria: problema real → dominios → skills → gaps → investigación → integración → ejecución → validación → aprendizaje |
 | `prp` | Planificar una feature antes de construirla (objetivo, datos, fases) |
 | `bucle-agentico` | Ejecutar una feature aprobada por fases, con contexto real de cada fase |
 | `supabase` | Modelar tablas, RLS, migraciones y queries |
@@ -79,6 +82,8 @@ Estas son herramientas de proceso de desarrollo, no funcionalidades del negocio:
 | `skill-creator` | Crear nuevas herramientas de este tipo si hace falta |
 | `discovery-drive-echegaray` | Resolver dudas puntuales sobre Drive usando el conocimiento ya confirmado en los discoveries, sin re-explorar de cero |
 | `cash-flow-operativo` | Reglas de negocio del módulo de Flujo de Caja (Fase 1 del Blueprint TO-BE) |
+| `google-sheets-business-systems` | Criterio profesional obligatorio antes de leer, auditar o editar cualquier Google Sheet real de negocio (arquitectura, fórmulas, modelado financiero, UX, controles, performance) |
+| `arquitectura-integracion-finanzas-obras` | Guardiana de coherencia entre Flujo de Fondos, P&L, Avance de Obras, Supabase y el OS — decide dónde vive cada cálculo económico-financiero y evita que se duplique entre sistemas |
 
 Capacidades latentes (existen, no se usan todavía porque no hay caso de uso justificado):
 

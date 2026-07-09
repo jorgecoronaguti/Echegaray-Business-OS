@@ -3,6 +3,7 @@ name: cash-flow-operativo
 description: "Aplicar las reglas de negocio del Flujo de Caja de Echegaray Construcciones: criterio percibido, distinción entre movimiento real y proyectado, vínculo obligatorio de cada entrada/salida con Cliente/Obra/Proveedor, y las decisiones todavía abiertas sobre reconciliación con Control de Gastos. Activar al diseñar, construir o calcular cualquier parte del módulo de Flujo de Caja (Fase 1 del Blueprint TO-BE), o al interpretar el Flujo de Caja - Cash Flow / Control de Gastos actuales."
 allowed-tools: Read, Grep
 metadata:
+  type: methodology
   author: echegaray-os
 ---
 

@@ -14,6 +14,33 @@ documento. Si algún día hace falta editar una celda puntual con fórmula, eso
 se agrega como una función nueva y explícita, revisada antes de usarse -- no
 se generaliza un "sobrescribir cualquier rango" por comodidad.
 
+## Incidente real: sobrescritura accidental (2026-07-09)
+
+Al agregar un panel nuevo dentro de una pestaña que YA tenía contenido disperso
+más abajo (RESUMEN de Cash Flow, fila 44), escribir en una fila que se asumía
+"vacía" pisó datos reales (`Caja` / `$14.000.000` / `$-1.300.000`) sin haberlo
+verificado antes. Se detectó por el valor sobrante en una columna no escrita,
+se restauró leyendo la revisión anterior del archivo vía
+`drive.revisions().get(fileId, revisionId, fields='exportLinks')` +
+descarga del export xlsx de esa revisión puntual (Drive guarda historial real,
+no hace falta pedírselo al dueño del archivo).
+
+**Regla nueva, no negociable**: antes de escribir en cualquier rango que no sea
+"agregar fila al final" (ej. un bloque nuevo en medio de una pestaña grande),
+primero LEER ese rango exacto y confirmar que está 100% vacío. Nunca asumir
+vacío por estar "lejos" del contenido conocido -- estas pestañas tienen
+contenido disperso en filas/columnas no evidentes a simple vista.
+
+## Trampa de locale al escribir fórmulas (2026-07-09)
+
+Los Sheets reales de Echegaray usan **configuración regional en español/Argentina**:
+el separador de argumentos de fórmula es **`;` (punto y coma), no `,`**. Cualquier
+fórmula escrita con comas (`=FILTER(A:A,B:B="x")`) falla con "Formula parse error"
+aunque la sintaxis sea válida en inglés. Siempre escribir `;` al generar fórmulas
+por API en estos archivos, y verificar con `spreadsheets().get(...,
+fields='sheets.data.rowData.values.effectiveValue')` que no haya quedado un
+`errorValue` antes de dar por buena una escritura.
+
 ## Paso 1 -- Crear el proyecto y la cuenta de servicio (lo hacés vos, una sola vez)
 
 1. Andá a [console.cloud.google.com](https://console.cloud.google.com) con tu cuenta de Google (la personal o la de `ecsas.com.ar`, cualquiera sirve).

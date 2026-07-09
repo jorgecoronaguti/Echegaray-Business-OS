@@ -9,6 +9,7 @@ description: |
   funnel, storage, auth, configurar permisos, o cualquier operacion de BD.
 allowed-tools: Bash(curl *) Bash(export *) Bash(grep *) Bash(python3 *) Read, Write, Edit, Grep
 metadata:
+  type: technical
   author: echegaray-os
   version: "2.0"
 ---

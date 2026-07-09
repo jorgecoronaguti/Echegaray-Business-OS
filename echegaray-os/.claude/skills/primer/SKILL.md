@@ -2,6 +2,8 @@
 name: primer
 description: "Cargar contexto completo de Echegaray Business OS al inicio de una conversacion. Lee CLAUDE.md raiz, arquitectura tecnica, memoria y decisiones previas. Activar cuando el agente no tiene contexto del proyecto o el usuario dice: que tenemos, donde estamos, dame contexto, resumeme el proyecto."
 allowed-tools: Read, Grep, Glob, Bash
+metadata:
+  type: methodology
 ---
 
 # Primer: Contexto de Echegaray Business OS

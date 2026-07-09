@@ -1,6 +1,6 @@
 ---
 name: finanzas-tesoreria-construccion
-description: "Criterio de finanzas y tesorería específico de empresas constructoras: capital de trabajo, posición de caja, financiamiento de obra, cheques/echeqs. Activar ante preguntas sobre cómo financiar el capital de trabajo de una obra, gestionar la posición de caja, o decidir entre instrumentos de pago/financiamiento. Trabaja en percibido (caja), nunca mezclar con contabilidad-constructoras (devengado)."
+description: "Criterio experto de tesorería y flujo de fondos de empresas constructoras: posición de caja, cobranzas, pagos, obligaciones (UOCRA/IERIC/Fondo de Cese/impuestos/financiación), forecast semanal/8 semanas/mensual y controles anti-duplicación. Activar ante cualquier pregunta sobre caja, cobranzas, pagos, financiamiento de capital de trabajo, o al auditar/editar el Sheet real 'Flujo de Caja - Cash Flow' (junto con google-sheets-business-systems, obligatorio). Trabaja siempre en percibido, nunca mezclar con contabilidad-constructoras (devengado)."
 allowed-tools: Read, Bash, WebSearch
 metadata:
   author: echegaray-os
@@ -16,16 +16,38 @@ Aportar el criterio de gestión financiera de caja y capital de trabajo — la p
 
 ## Alcance
 
-Cubre: capital de trabajo, posición de caja actual y proyectada, financiamiento de obra (adelantos, SGR, ANR, préstamos), gestión de cheques/echeqs, condiciones de cobro/pago.
+Cubre, con nivel de especialista (no de resumen):
 
-No cubre: el reconocimiento contable devengado (`contabilidad-constructoras`), ni la carga impositiva de una operación financiera (`impuestos-construccion`).
+- **Posición de caja**: bancos, cajas, efectivo, saldos reales, saldos conciliados, saldos contables vs. bancarios, disponibilidades, fondos restringidos.
+- **Cobranzas**: cuentas por cobrar, certificados, facturas, hitos contractuales, anticipos, adicionales, retenciones, cobros parciales/totales, fechas comprometidas/estimadas/reales, mora, probabilidad de cobro, concentración por cliente.
+- **Pagos**: proveedores, compras, obligaciones, pagos parciales/totales, vencimientos, prioridades, pagos críticos vs. diferibles, transferencias, efectivo, tarjetas, débitos, cheques, eCheq.
+- **Obligaciones de construcción**: proveedores, subcontratistas, nómina, cargas sociales, UOCRA, IERIC, Fondo de Cese Laboral, ART, impuestos, seguros, alquileres, servicios, financiación, cuotas, intereses.
+- **Forecast**: diario cuando haga falta, semanal, 8 semanas / 13 semanas, mensual, escenarios (base/optimista/conservador), sensibilidad, déficit, superávit, necesidad de financiación.
+
+Capital de trabajo, financiamiento de obra (adelantos, SGR, ANR, préstamos) y condiciones de cobro/pago siguen siendo el marco de decisión de esta skill — lo de arriba es cómo se audita y opera ese marco sobre datos reales.
+
+No cubre: el reconocimiento contable devengado (`contabilidad-constructoras`), la carga impositiva de una operación financiera (`impuestos-construccion`), ni la arquitectura/fórmulas del Sheet donde vive este dato (`google-sheets-business-systems`, a activar siempre que la tarea sea leer/auditar/editar `Flujo de Caja - Cash Flow` o cualquier otro Sheet financiero real). La coherencia entre este dato y P&L/Obras es responsabilidad de `arquitectura-integracion-finanzas-obras`.
+
+## Regla absoluta
+
+**Flujo de fondos = criterio percibido y temporal.** Todo movimiento se clasifica explícitamente como uno de: REAL · COMPROMETIDO · PROYECTADO · ESTIMADO · VENCIDO · PAGADO · COBRADO · CONCILIADO. Nunca se suman dos categorías distintas en la misma columna sin distinguirlas. Un proyectado que se cumple se marca como real — no se duplica sumando ambos.
 
 ## Preguntas profesionales que debe hacer
 
+- ¿Cuánta caja real tenemos hoy, y está conciliada contra el banco?
+- ¿Qué entra esta semana? ¿Qué sale esta semana?
+- ¿Qué está realmente comprometido (obligación firme) contra lo que es solo estimado?
+- ¿Cuál es la peor semana del forecast, y qué la explica?
+- ¿Qué cliente concentra la tensión de cobranza? ¿Qué proveedor concentra la tensión de pago?
+- ¿Qué cobro está atrasado (mora) y qué probabilidad real tiene de cobrarse?
+- ¿Qué pago puede diferirse sin costo relevante y cuál no?
+- ¿Qué obligaciones no tienen fecha asignada (UOCRA, IERIC, ART, impuestos) y por qué?
+- ¿Qué diferencia hay entre lo que el forecast de la semana pasada decía y lo que realmente pasó — y qué supuesto falló?
+- ¿Qué obra consume caja y cuál genera caja?
+- ¿Cuánto capital de trabajo requiere la operación completa, no solo una obra?
 - ¿Cuánto capital de trabajo necesita esta obra antes de recibir el primer cobro?
 - ¿La condición de cobro pactada (anticipo, certificación mensual, contra entrega) alcanza para financiar la ejecución sin recurrir a deuda?
 - ¿Un cheque o echeq ya emitido está realmente debitado, o solo comprometido a futuro? (distinción ya establecida en PRP-010 del OS)
-- ¿Existe tensión de liquidez proyectada en las próximas semanas, cruzando obligaciones a pagar contra cobros esperados?
 - ¿El financiamiento disponible (SGR, ANR, préstamo) tiene costo financiero menor que el retorno de aceptar la obra?
 
 ## Marcos de análisis
@@ -49,6 +71,32 @@ No cubre: el reconocimiento contable devengado (`contabilidad-constructoras`), n
 - Confundir un cheque emitido con dinero ya debitado (distinción explícita ya resuelta en PRP-010 del OS — obligaciones y medios de pago).
 - Proyectar caja sumando cobros "esperados" sin distinguir probabilidad real de cobro por cliente.
 
+## Controles obligatorios antes de dar por buena una posición de caja o un forecast
+
+Buscar activamente, no asumir que no existen:
+
+- doble conteo de un mismo movimiento (ej. un cheque cargado como pago Y como obligación proyectada aparte);
+- cobros o pagos duplicados entre dos pestañas/fuentes que registran lo mismo (patrón real ya confirmado entre `Flujo de Caja` y `Control de Gastos`);
+- un cheque/echeq contado como "pago contado" y también como "cheque pendiente";
+- un histórico real mezclado en la misma columna que el forecast (sin marcar cuál es cuál);
+- pagos sin obligación de origen, u obligaciones sin fecha;
+- saldos no conciliados contra el extracto bancario real;
+- movimientos de obra sin obra asignada (no se puede calcular exposición ni capital de trabajo por obra sin este dato);
+- pagos o cobros parciales tratados como si cerraran el total (verificar que el saldo pendiente sea `comprometido − suma de parciales reales`, nunca se fuerza un solo registro por el total).
+
+## Forecast: horizonte y disciplina de actualización
+
+- El horizonte de referencia profesional es el **forecast rodante de 13 semanas** (o 8 si la volatilidad de obra lo justifica): se actualiza cada semana quitando la que ya pasó, agregando una al final, y comparando lo proyectado la semana anterior contra lo que realmente ocurrió — este contraste explícito hoy no existe en ningún Sheet real de Echegaray (gap confirmado) y es la base para que Dirección vea qué supuesto de cobro/pago falló.
+- Rutina semanal mínima: lunes, saldo real de banco + revisión de cobranzas vs. lo esperado + aging de cuentas por pagar; seguimiento de cobros atrasados; viernes, revisión de las salidas comprometidas de la semana siguiente.
+- Reforzar el forecast con 3 escenarios cuando la decisión lo amerite (financiamiento, aceptar obra grande): base, optimista, conservador — variando velocidad de cobro y timing de pago, no el monto total.
+
+## Obligaciones específicas del régimen de la construcción (verificado 2026-07)
+
+- **Fondo de Cese Laboral (Ley 22.250)**: aporte patronal (no se descuenta del neto del trabajador) depositado mensualmente en una cuenta a nombre del trabajador administrada por **IERIC**; debe depositarse dentro de los 15 días de devengado el salario; se calcula sobre básico + adicionales tipo presentismo, excluye SAC, horas extra e indemnizaciones. Está prohibido pagarlo directamente al trabajador.
+- **IERIC** es el ente de contralor de la actividad — toda empresa constructora debe estar inscripta y llevar la libreta del Fondo de Cese de cada trabajador.
+- Verificar siempre la alícuota y plazos vigentes antes de citarlos como definitivos — esto es normativa laboral sectorial, cruzar con `derecho-laboral-construccion` para cualquier caso concreto (desvinculación, cálculo de indemnización, fiscalización).
+- Estas obligaciones son recurrentes y de calendario conocido — deben aparecer en el forecast con fecha, no como "gasto general" sin fecha.
+
 ## Información necesaria
 
 - `movimientos_caja` reales y proyectados (PRP-001).
@@ -63,6 +111,9 @@ No cubre: el reconocimiento contable devengado (`contabilidad-constructoras`), n
 | Hay impacto impositivo en el instrumento financiero | `impuestos-construccion` |
 | Se está evaluando si aceptar una obra por su necesidad de capital | `costos-presupuestacion`, `gestion-empresarial-riesgos` |
 | El financiamiento afecta la decisión de comprar vs. alquilar un equipo | `compras-abastecimiento-subcontratacion` |
+| Se va a leer, auditar o editar un Sheet real (`Flujo de Caja - Cash Flow`, Control de Gastos) | `google-sheets-business-systems` (obligatorio, siempre, antes de tocar una celda) |
+| Hay que verificar que este dato no se calcule distinto en P&L, Obras o el OS | `arquitectura-integracion-finanzas-obras` (obligatorio ante cualquier cambio de fórmula que cruce sistemas) |
+| Una obra puntual explica la tensión de caja | `planificacion-produccion`, `direccion-obra` |
 
 ## Sistema de fuentes
 
@@ -95,6 +146,10 @@ No existe hoy en el OS una vista de posición de caja consolidada ni de capital 
 `OPERACIÓN → EVENTO → RESULTADO → DESVÍO → CAUSA → EVIDENCIA → PATRÓN → PROPUESTA DE APRENDIZAJE → VALIDACIÓN SEGÚN RIESGO → INCORPORACIÓN → APLICACIÓN FUTURA → MEDICIÓN`
 
 Ejemplo: una obra genera tensión de liquidez recurrente por su condición de cobro pactada (evento/desvío) → se documenta la causa (ej. certificación mensual pero pago a 60 días) → si se repite con el mismo tipo de cliente (recurrencia), se propone exigir mejores condiciones de anticipo en la próxima cotización con ese perfil de cliente → el usuario valida (nivel 2) → se incorpora como criterio de `costos-presupuestacion` también → se mide en la próxima obra comparable.
+
+## Historial de aprendizaje (append-only, más reciente arriba)
+
+- **2026-07-09** — Auditoría real de `Flujo de Caja - Cash Flow` confirmó tres controles obligatorios de esta skill como necesarios, no teóricos: (1) un total de Cuentas por Pagar calculado por SUMIFS ($178.647.280,11) generó una alarma falsa al compararlo contra una lectura parcial vía QUERY — se resolvió con verificación independiente (COUNTIF/SUMPRODUCT), reforzando la regla de nunca aceptar una discrepancia sin cruce de componentes; (2) el saldo disponible real de banco requiere descontar cheques emitidos no debitados y consumos de tarjeta no debitados — antes no existía ese cálculo, ahora vive en `Caja!I7`; (3) una edición concurrente real (Rodrigo) pisó parte de un panel de resumen — la Regla de Oro de "saldo conciliado" debe entenderse siempre como un dato vivo, no una foto fija. Clasificación: **D. conocimiento interno validado** (verificado con datos reales de la empresa, no una obra aislada).
 
 ## Relación con el OS
 

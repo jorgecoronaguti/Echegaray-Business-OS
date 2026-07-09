@@ -4,31 +4,25 @@
 
 ---
 
-## Inventario real de skills (12 total)
+## Inventario de skills — AUTOMÁTICO, no manual
 
-Este inventario refleja únicamente lo que existe en disco después de la limpieza de herencia SaaS Factory. Cualquier skill mencionada en otro documento y que no esté en esta lista no existe.
+**Este README no mantiene una lista de skills.** La lista manual anterior quedó obsoleta (decía "12 total" con 30+ en disco) — evidencia de que las listas manuales mueren. La fuente de verdad es el descubrimiento automático:
 
-### Activas
+```bash
+python3 .claude/skills/orquestador-de-razonamiento-y-skills/scripts/inventario_skills.py            # inventario completo
+python3 .claude/skills/orquestador-de-razonamiento-y-skills/scripts/inventario_skills.py --validar  # exit 1 si hay errores estructurales
+```
 
-| Skill | Comando | Qué hace |
+El script escanea el filesystem, extrae frontmatter, deriva última modificación desde git y valida la estructura según `metadata.type`:
+
+| `metadata.type` | Qué es | Validación extra |
 |---|---|---|
-| `primer` | `/primer` | Carga contexto completo del proyecto (negocio + técnico + memoria) al inicio de sesión |
-| `prp` | `/prp [feature]` | Genera un plan (Product Requirements Proposal) antes de construir una feature no trivial |
-| `bucle-agentico` | — | Ejecuta una feature ya planificada, por fases, con mapeo de contexto real |
-| `supabase` | — | Modela tablas, RLS, migraciones, queries y métricas |
-| `playwright-cli` | — | QA automatizado navegando la app real |
-| `memory-manager` | — | Memoria persistente del proyecto en `.claude/memory/` |
-| `skill-creator` | `/skill-creator` | Crea una nueva skill si hace falta una herramienta de este tipo |
-| `discovery-drive-echegaray` | — | Resume el conocimiento ya confirmado de Drive (sistemas, duplicaciones, obsoletos) para resolver dudas puntuales sin re-explorar |
-| `cash-flow-operativo` | — | Reglas de negocio del Flujo de Caja: percibido vs. devengado, real vs. proyectado, vínculo Cliente/Obra/Proveedor, decisiones abiertas |
+| `expert-domain` | Conocimiento profesional de un dominio (ingeniería, contabilidad, laboral…) | Secciones obligatorias: Propósito, Alcance, Interacción con otras skills, Límites de certeza, Prohibido |
+| `technical` | Capacidad técnica (supabase, playwright, web/UX…) | — |
+| `methodology` | Método de trabajo del proyecto (prp, bucle-agentico, primer, memoria…) | — |
+| `meta-orchestration` | El orquestador — gobierna a todas las demás | — |
 
-### Latentes (se conservan, sin caso de uso activo)
-
-| Skill | Estado |
-|---|---|
-| `ai` | Requiere justificar con las 8 preguntas de IA del `CLAUDE.md` raíz antes de usarse |
-| `image-generation` | Sin caso de uso confirmado |
-| `add-login` | Construiría auth real; sin roles/usuarios internos definidos todavía |
+Toda skill nueva declara su `metadata.type`. La activación de skills se gobierna desde el `CLAUDE.md` raíz (sección ORQUESTADOR DE RAZONAMIENTO Y SKILLS) y `.claude/skills/orquestador-de-razonamiento-y-skills/`.
 
 ---
 

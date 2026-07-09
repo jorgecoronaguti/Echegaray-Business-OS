@@ -1,6 +1,8 @@
 ---
 name: bucle-agentico
 description: "Ejecutar features complejas por fases con mapeo de contexto real antes de cada fase. Activar cuando la tarea toca multiples archivos, requiere cambios en BD + codigo + UI coordinados, tiene fases que dependen una de otra, o cuando un PRP fue aprobado y hay que implementarlo."
+metadata:
+  type: methodology
 ---
 
 # Modo BLUEPRINT del Bucle Agentico

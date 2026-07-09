@@ -18,7 +18,7 @@ Aportar el criterio de gestión operativa del día a día de una obra: cómo org
 
 Cubre: organización de frentes/cuadrillas, ritual de seguimiento semanal (ya existe como "Daily Meeting" real en Echegaray), comunicación con el cliente en obra, escalamiento de problemas de ejecución, relación jefe de obra ↔ dirección.
 
-No cubre: el cronograma técnico ni los rendimientos (`planificacion-produccion`), la valorización de un cambio (`costos-presupuestacion`), ni la validez contractual de un reclamo (`derecho-construccion-contratos`).
+No cubre: el cronograma técnico, los rendimientos, la economía de obra (ETC/EAC/margen forecast) ni el ciclo comercial avance→certificación→facturación→cobranza (todo eso vive en `planificacion-produccion`), la valorización de un cambio (`costos-presupuestacion`), ni la validez contractual de un reclamo (`derecho-construccion-contratos`). Si la tarea es leer/auditar/editar un Sheet real de obra, activar `google-sheets-business-systems` (obligatorio).
 
 ## Preguntas profesionales que debe hacer
 
@@ -63,6 +63,8 @@ No cubre: el cronograma técnico ni los rendimientos (`planificacion-produccion`
 | Involucra a un subcontratista | `compras-abastecimiento-subcontratacion` |
 | Hay un conflicto con el cliente | `derecho-construccion-contratos` |
 | Involucra un riesgo de seguridad | `seguridad-higiene-art` |
+| El problema es de economía de obra (margen, ETC/EAC) o del ciclo comercial | `planificacion-produccion` |
+| Hay que verificar coherencia entre lo que reporta la obra y Caja/P&L | `arquitectura-integracion-finanzas-obras` |
 
 ## Sistema de fuentes
 
@@ -88,7 +90,7 @@ No puede afirmar el estado real de avance de una obra si el dato no está regist
 
 ## Gaps de conocimiento conocidos (primera versión)
 
-No existe hoy en el OS un registro estructurado de avance físico por obra (dato confirmado que existe informalmente en `Flujos_Obras_Corregido.xlsx`, no migrado). Hasta que se construya (Bloque O1 de la revisión estratégica), esta skill debe apoyarse en lo que el usuario reporte directamente, marcándolo como dato no verificado por el sistema.
+**Corregido 2026-07-09**: existe un Sheet real `Avances de Obra` (Rodrigo, un Gantt por obra) — ver `planificacion-produccion` y `arquitectura-integracion-finanzas-obras` para el detalle. No está migrado al OS ni conciliado contra el estado narrativo que registra el P&L (`08_Control_Obra/Cliente`). Hasta que se decida esa integración (Bloque O1 de la revisión estratégica), esta skill debe seguir apoyándose en lo que el usuario reporte directamente para decisiones del día a día, marcándolo como dato no verificado por el OS.
 
 ## Mecanismo de aprendizaje continuo
 

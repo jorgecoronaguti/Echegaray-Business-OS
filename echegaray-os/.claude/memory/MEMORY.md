@@ -39,6 +39,7 @@
 - [Operabilidad Real](project/operabilidad-real.md) — cola de clasificación de costo por obra, bloqueo/evidencia en Acciones, cobranzas/pagos como trabajo autónomo, rituales diario/semanal, Operador Digital en 7 bloques, solo 1 cuenta real existente
 - [Integración real Google Workspace](project/integracion-real-google-workspace.md) — cuenta de servicio con lectura/escritura acotada (agregar, nunca sobrescribir) a Sheets/Docs/Drive; acceso real a ~45 archivos, incluye ADICIONALES.xlsm nunca antes localizado
 - [El OS es el lugar de trabajo](project/el-os-es-el-lugar-de-trabajo.md) — 11 tablas sin RLS por rol corregidas, trazabilidad de auditoría en las 26 tablas, alta/baja nativa de Personas y Equipos (únicos 2 dominios sin escritura), cron diario reorientado a carga nativa
+- [Orquestador de Razonamiento y Skills](project/orquestador-razonamiento-skills.md) — comportamiento estructural obligatorio (2026-07-09): protocolo A–M antes de todo trabajo material, inventario automático de skills, detector de gaps, casos de test, gaps reales al backlog_autonomo
 
 ## feedback/ — Correcciones y preferencias
 - [Construir capacidades, no pantallas aisladas](feedback/construir-capacidades-no-pantallas-aisladas.md) — cada incremento debe resolver una decisión real y ser base reutilizable; justificar toda entidad nueva o evitarla
@@ -46,6 +47,9 @@
 - [Tests autenticados deben autolimpiarse](feedback/tests-autenticados-deben-autolimpiarse.md) — nunca operar sobre "la fila real que aparezca primero"; crear fixture propio y borrarlo en el mismo test
 - [RLS sin policy falla en silencio](feedback/rls-sin-policy-falla-en-silencio.md) — un DELETE/UPDATE sin policy no da error, afecta 0 filas; verificar pg_policy antes de asumir un bug de lógica
 - [Autonomía: deploy y skills vivas](feedback/autonomia-deploy-y-skills.md) — deploy productivo autorizado de forma permanente, login interactivo (Vercel/banco/ARCA) es un límite real no evitable, actualizar aprendizaje de skills ya es autónomo
+- [Autonomía: lectura/edición financiera](feedback/autonomia-lectura-edicion-financiera.md) — lectura y edición (append-only) de archivos financieros/impositivos autorizada siempre, sin pedir permiso cada vez
+- [Skill Google Sheets Business Systems](feedback/skill-google-sheets-business-systems.md) — creada tras incidentes reales de edición; protocolo obligatorio Entender→Auditar→Diseñar→Implementar→Verificar→Validar antes de tocar cualquier Sheet real
+- [RESUMEN manual vs. Dashboard con pivots](feedback/resumen-manual-vs-dashboard-pivots.md) — "mejores prácticas" técnicas no bastan si no responden la pregunta operativa real; preferir vistas cortas y ordenadas por fecha sobre agregados históricos
 
 ## reference/ — Donde encontrar cosas
 - [Validar SQL sin Supabase live](reference/validar-sql-sin-supabase-live.md) — procedimiento con Postgres local (Homebrew) cuando no hay Docker ni proyecto real conectado

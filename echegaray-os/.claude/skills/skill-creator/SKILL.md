@@ -2,6 +2,8 @@
 name: skill-creator
 description: Crear nuevos skills para Echegaray Business OS. Guia paso a paso con scripts de inicializacion, validacion y empaquetado. Usar cuando el usuario quiere crear un skill personalizado o extender las capacidades del agente.
 license: MIT
+metadata:
+  type: methodology
 ---
 
 # Skill Creator

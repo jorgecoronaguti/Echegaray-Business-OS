@@ -9,5 +9,6 @@ export default async function Home() {
     data: { user },
   } = await supabase.auth.getUser()
 
-  redirect(user ? '/dashboard' : '/login')
+  // 2026-07-09: el OS se enfoca en Flujo de Caja -- el home es el espejo del Sheet.
+  redirect(user ? '/flujo-caja' : '/login')
 }

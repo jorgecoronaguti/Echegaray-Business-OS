@@ -3,6 +3,8 @@ name: ai
 description: "Agregar capacidades de IA a la app usando templates de Vercel AI SDK v5 + OpenRouter. Activar cuando el usuario dice: quiero un chat, agregar IA, analizar imagenes, buscar en internet, generar texto, chatbot, asistente, RAG, embeddings, o cualquier feature que involucre un modelo de lenguaje."
 argument-hint: "[template-name: setup-base|chat|action-stream|web-search|historial|vision|tools|rag|single-call|structured-outputs|generative-ui]"
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash
+metadata:
+  type: technical
 ---
 
 # Skill: AI Templates

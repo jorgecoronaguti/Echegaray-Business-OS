@@ -7,6 +7,8 @@ description: |
   Triggers: imagen, image, genera imagen, create image, generate image, foto, picture,
   edita imagen, edit image, thumbnail, banner, logo, ilustracion, dibujo.
 allowed-tools: Read, Write, Edit, Bash, Glob
+metadata:
+  type: technical
 ---
 
 # Image Generation (OpenRouter + Gemini)

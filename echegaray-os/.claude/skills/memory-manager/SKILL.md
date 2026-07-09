@@ -9,6 +9,8 @@ description: |
   Triggers: recuerda, remember, guarda esto, no olvides, te acuerdas, recuerdas, memoria,
   en que quedamos, contexto anterior, que sabes de, conversacion pasada, sesion anterior.
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash
+metadata:
+  type: methodology
 ---
 
 # Memory Manager — Memoria Persistente por Proyecto

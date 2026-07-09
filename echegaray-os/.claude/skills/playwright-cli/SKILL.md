@@ -2,6 +2,8 @@
 name: playwright-cli
 description: "Testing automatizado con Playwright CLI. Navega la app, llena formularios, hace click, toma screenshots, y genera reportes. Activar cuando el usuario dice: testea esto, revisa que funcione, hay un bug, verificalo, checalo en el browser, o despues de implementar una feature para validar."
 allowed-tools: Read, Write, Edit, Bash, Grep, Glob
+metadata:
+  type: technical
 ---
 
 # Skill: QA Automatizado con Playwright CLI

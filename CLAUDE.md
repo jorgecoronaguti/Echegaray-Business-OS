@@ -978,6 +978,25 @@ Si no lo hace, no es prioridad.
 
 Esta sección no reemplaza ni resume nada de lo anterior. Es la capa operativa que conecta este documento con las skills expertas de dominio (`.claude/skills/`), que existen desde este incremento para que Claude opere como un equipo multidisciplinario real, no como un generalista que "actúa como si supiera".
 
+## ORQUESTADOR DE RAZONAMIENTO Y SKILLS — REGLA OBLIGATORIA
+
+Antes de **todo trabajo material** (análisis, decisión, código, edición de un Sheet, conciliación, diseño de proceso, integración, pantalla), sin excepción:
+
+1. Identificar el **problema real** y la decisión o trabajo que depende de él — no la pregunta literal.
+2. Identificar los **dominios** que intervienen (normalmente más de uno).
+3. **Descubrir y activar** las skills relevantes desde el inventario real (`.claude/skills/`), usando la matriz de activación de abajo como punto de partida, no como techo. El conjunto correcto es el **mínimo suficiente**: ni una sola por comodidad, ni veinte por ritual.
+4. Evaluar **gaps de conocimiento**: skill inexistente, superficial, desactualizada, sin contexto argentino/construcción, sin integración entre dominios, o con conocimiento pero sin capacidad operativa.
+5. Ante un gap: **investigar → evaluar → crear o mejorar la skill → aplicar**. La ausencia de skill no habilita a improvisar. Un gap que no se resuelve en la sesión se registra como `gap_skill` en el Backlog Autónomo.
+6. Trabajar sobre **evidencia clasificada** (real conciliado > real no conciliado > inferido fuerte > inferido parcial > supuesto > desconocido). El razonamiento nunca supera la calidad de la evidencia; "tengo el método pero falta este dato" es una respuesta válida — seguida del intento de conseguir el dato.
+7. Integrar perspectivas en **una recomendación coherente**, nombrando los conflictos entre dominios que queden sin resolver.
+8. Ejecutar autónomamente solo lo interno, seguro, reversible y sin efecto económico/legal/fiscal externo.
+9. **Validar** contra evidencia definida antes de ejecutar.
+10. Incorporar el **aprendizaje reusable**: actualizar la skill, la memoria o crear un test — clasificando A–E según la sección Aprendizaje continuo.
+
+Prohibiciones: no ejecutar trabajo experto sin revisar skills aplicables; no improvisar sobre un gap; no crear una skill nueva si mejorar una existente alcanza; no activar skills de forma ceremonial — si una skill activada no modificó el análisis o la ejecución, no debía activarse.
+
+El protocolo completo, el detector de gaps, el inventario automático y los tests viven en `.claude/skills/orquestador-de-razonamiento-y-skills/`.
+
 ## Principios
 
 1. **Una decisión puede involucrar múltiples dominios simultáneamente.** Cotizar una obra no es solo un ejercicio de costos: puede tocar ingeniería, contratos, impuestos y finanzas al mismo tiempo.
@@ -1002,6 +1021,7 @@ Esta sección no reemplaza ni resume nada de lo anterior. Es la capa operativa q
 
 | Decisión | Skills a cruzar |
 |---|---|
+| **Todo trabajo material (regla previa, sin excepción)** | `orquestador-de-razonamiento-y-skills` — decide el conjunto mínimo suficiente para el caso; las filas de abajo son su punto de partida, no su techo |
 | Cambio de solución constructiva | `ingenieria-civil-construccion` · `planificacion-produccion` · `costos-presupuestacion` · `finanzas-tesoreria-construccion` · `derecho-construccion-contratos` · `contabilidad-constructoras` · `seguridad-higiene-art` · `calidad-obra` |
 | Cotizar una obra | `costos-presupuestacion` · `ingenieria-civil-construccion` · `derecho-construccion-contratos` · `finanzas-tesoreria-construccion` · `gestion-empresarial-riesgos` |
 | Decidir Go/No-Go | `gestion-empresarial-riesgos` · `finanzas-tesoreria-construccion` (la decisión final es de negocio, estas skills informan) |
@@ -1018,6 +1038,8 @@ Esta sección no reemplaza ni resume nada de lo anterior. Es la capa operativa q
 | Integrar o migrar una fuente de datos externa (banco, Sheet legacy, API de proveedor, AFIP/DGR) | `integraciones-apis-sistemas-externos` · más la skill de dominio dueña del dato (`finanzas-tesoreria-construccion`, `impuestos-construccion`, `contabilidad-constructoras` o `derecho-laboral-construccion` según corresponda) |
 | Leer, extraer o validar información desde Google Drive o un documento multiformato (Sheet, Doc, PDF, Excel, Word, CSV, imagen) para cualquier decisión — auditoría de datos, carga de línea base (PR0), conciliación financiera, control de obra, contratos y documentación legal, compras y proveedores, personas/jornales/documentación laboral, seguridad e higiene, Post Mortem | `lectura-drive-documentos-multiformato` · más la skill de dominio dueña del dato encontrado |
 | Agregar o cambiar una pantalla, definir navegación/permisos visibles por rol, o decidir dónde/cómo corre y se despliega el Business OS (local, staging, producción) | `web-ux-deploy-operacion-producto` · más la skill de dominio dueña del dato mostrado en esa pantalla |
+| Leer, auditar, corregir o rediseñar un Google Sheet real de negocio (finanzas, tesorería, control de gestión, compras, cobranzas, HH, avance, certificaciones, adicionales, equipos) | `google-sheets-business-systems` · más la skill de dominio dueña del dato mostrado en ese Sheet |
+| Auditar simultáneamente Flujo de Fondos, P&L y Avance de Obras, decidir si un cálculo económico-financiero se duplica entre sistemas, o decidir si un Sheet se mantiene/mejora/integra/reemplaza/retira frente al OS | `arquitectura-integracion-finanzas-obras` · más `finanzas-tesoreria-construccion` · `contabilidad-constructoras` · `planificacion-produccion` · `direccion-obra` · `google-sheets-business-systems` según corresponda |
 
 ## Aprendizaje continuo
 
@@ -1036,7 +1058,8 @@ Una observación aislada (A) nunca se convierte automáticamente en regla genera
 ## Dónde vive cada cosa
 
 - **Este documento**: filosofía, estrategia, reglas de decisión de negocio, estilo. No contiene conocimiento técnico-normativo.
-- **`.claude/skills/[dominio]/SKILL.md`**: las 17 skills expertas (ingeniería civil, dirección de obra, planificación/producción, costos/presupuestación, derecho de la construcción/contratos, contabilidad de constructoras, impuestos, finanzas/tesorería, derecho laboral de la construcción, seguridad e higiene/ART, calidad de obra, compras/abastecimiento/subcontratación, gestión empresarial y riesgos, **administración operativa de la construcción**, integraciones/APIs/sistemas externos, lectura de Drive/documentos multiformato, y web/UX/deploy/operación de producto). Cada una declara su propia política de fuentes, vigencia y aprendizaje. Las tres últimas son de naturaleza técnica, no profesional-normativa: `integraciones-apis-sistemas-externos` decide *cómo* conectar el OS con un sistema externo una vez que el dato ya está validado; `lectura-drive-documentos-multiformato` decide *cómo* inspeccionar, leer y extraer un dato desde una fuente legacy/documental; `web-ux-deploy-operacion-producto` decide *cómo* se presenta y opera esa información en pantalla y dónde corre el sistema. Ninguna de las tres decide *qué* dato capturar ni cuál es la fuente de verdad de fondo — eso lo sigue decidiendo la skill de dominio dueña del dato.
+- **`.claude/skills/[dominio]/SKILL.md`**: las 19 skills expertas (ingeniería civil, dirección de obra, planificación/producción, costos/presupuestación, derecho de la construcción/contratos, contabilidad de constructoras, impuestos, finanzas/tesorería, derecho laboral de la construcción, seguridad e higiene/ART, calidad de obra, compras/abastecimiento/subcontratación, gestión empresarial y riesgos, **administración operativa de la construcción**, integraciones/APIs/sistemas externos, lectura de Drive/documentos multiformato, web/UX/deploy/operación de producto, **Google Sheets como sistemas de negocio**, y **arquitectura de integración finanzas-obras**). Cada una declara su propia política de fuentes, vigencia y aprendizaje. `arquitectura-integracion-finanzas-obras` es la guardiana de coherencia entre Flujo de Fondos, P&L, Avance de Obras, Supabase y el OS: decide dónde vive cada cálculo y evita que un mismo concepto (margen, cuentas por pagar, caja) tenga versiones distintas en cinco sistemas — no reemplaza el criterio de negocio de cada skill de dominio, lo arbitra cuando cruza más de una. Las cuatro anteriores son de naturaleza técnica, no profesional-normativa: `integraciones-apis-sistemas-externos` decide *cómo* conectar el OS con un sistema externo una vez que el dato ya está validado; `lectura-drive-documentos-multiformato` decide *cómo* inspeccionar, leer y extraer un dato desde una fuente legacy/documental; `web-ux-deploy-operacion-producto` decide *cómo* se presenta y opera esa información en pantalla y dónde corre el sistema; `google-sheets-business-systems` decide *cómo* se construye, audita y corrige un Google Sheet real tratado como sistema de negocio. Ninguna de las cuatro decide *qué* dato capturar ni cuál es la fuente de verdad de fondo — eso lo sigue decidiendo la skill de dominio dueña del dato (o `arquitectura-integracion-finanzas-obras` cuando el dato cruza más de un sistema).
+- **`.claude/skills/orquestador-de-razonamiento-y-skills/`**: la capa meta que gobierna a todas las anteriores — protocolo obligatorio de razonamiento (problema → dominios → skills → gaps → investigación → integración → ejecución → validación → aprendizaje), inventario automático desde el filesystem, detector de gaps, creación/mejora autónoma de skills y tests de comportamiento profesional. No contiene conocimiento de dominio: decide *qué capacidades* se necesitan y *si existen*.
 - **`.claude/memory/`**: aprendizaje acumulado específico de Echegaray (decisiones, hallazgos de discovery, patrones validados).
 
 La jurisdicción operativa principal de todo el conocimiento normativo es **San Juan, Argentina** — distinguiendo siempre normativa nacional, provincial (San Juan), municipal según ubicación concreta, contractual específica del cliente, y normas técnicas aplicables.

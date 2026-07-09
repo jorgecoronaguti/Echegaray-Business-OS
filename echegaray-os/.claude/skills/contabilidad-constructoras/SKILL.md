@@ -1,6 +1,6 @@
 ---
 name: contabilidad-constructoras
-description: "Criterio contable específico de empresas constructoras: reconocimiento de ingresos por obra, tratamiento de certificados, costos diferidos y P&L consolidado. Activar ante preguntas sobre cómo se debe registrar contablemente un certificado, un adicional, o el cierre de una obra, y para interpretar el P&L consolidado real de Echegaray (Ingresos y Egresos - P&L). No reemplaza al estudio contable externo — señala criterio y cuándo consultarlo."
+description: "Criterio experto de contabilidad de gestión y P&L devengado de empresas constructoras: ingresos, costos directos/indirectos, impuestos y resultado, indicadores (margen bruto/EBITDA/EBT/neto), y el puente obligatorio EBITDA≠CAJA hacia tesorería. Activar ante preguntas sobre reconocimiento contable, cierre de obra, o al auditar/editar el Sheet real 'Ingresos y Egresos - P&L' (junto con google-sheets-business-systems, obligatorio). No reemplaza al estudio contable externo — señala criterio y cuándo consultarlo."
 allowed-tools: Read, Bash, WebSearch, WebFetch
 metadata:
   author: echegaray-os
@@ -16,12 +16,35 @@ Aportar el criterio contable específico del sector construcción (reconocimient
 
 ## Alcance
 
-Cubre: criterio de reconocimiento de ingresos (por avance de obra vs. por entrega), tratamiento contable de certificados/adicionales, costos directos e indirectos en el estado de resultados, lectura del P&L consolidado (`Ingresos y Egresos - P&L`, confirmado real, líneas Civil/Mantenimiento/Estructura).
+Cubre, con nivel de especialista:
 
-No cubre: el aspecto fiscal específico (`impuestos-construccion`), ni la gestión de caja/tesorería (`finanzas-tesoreria-construccion`) — esta skill es sobre el **devengado**, no sobre el percibido.
+- **Ingresos**: obras civiles, mantenimiento, contratos, adicionales, certificaciones, avance económico, reconocimiento temporal, ingresos devengados, facturación, cobranza, y las diferencias temporales entre todos estos eventos.
+- **Costos directos**: materiales, mano de obra, cargas directamente atribuibles, subcontratos, equipos, alquileres específicos, combustible/logística/seguridad atribuibles.
+- **Costos indirectos y gastos**: estructura, administración, cargas sociales, gastos generales/administrativos, seguros, honorarios, servicios, movilidad, tecnología, alquileres no atribuibles.
+- **Impuestos y resultados**: IIBB, IVA (crédito/débito y su tratamiento), impuesto a las ganancias devengado, anticipos, amortizaciones/depreciaciones, intereses, resultados financieros, diferencias de cambio, resultados no operativos, EBT, resultado neto.
+- **Indicadores**: ingresos, costos directos, margen bruto y %, gastos operativos, EBITDA y %, EBT, resultado neto, margen neto, mix de negocios, rentabilidad por obra/unidad de negocio, evolución mensual, variación contra presupuesto.
+
+Tratamiento contable de certificados/adicionales y lectura del P&L consolidado (`Ingresos y Egresos - P&L`, confirmado real, líneas Civil/Mantenimiento/Estructura) siguen siendo el eje de esta skill — lo de arriba es el detalle profesional con el que se audita ese P&L.
+
+No cubre: el aspecto fiscal específico (`impuestos-construccion`), la gestión de caja/tesorería (`finanzas-tesoreria-construccion` — esta skill es sobre el **devengado**, no sobre el percibido), ni la arquitectura/fórmulas del Sheet (`google-sheets-business-systems`, obligatorio siempre que la tarea sea leer/auditar/editar `Ingresos y Egresos - P&L`). La coherencia de este dato contra Caja y Obras es responsabilidad de `arquitectura-integracion-finanzas-obras`.
+
+## Regla absoluta
+
+**P&L = devengado, siempre.** Nunca reconocer un gasto por fecha de pago ni un ingreso por fecha de cobro. PAGO ≠ GASTO DEL PERÍODO. COBRO ≠ INGRESO DEL PERÍODO.
 
 ## Preguntas profesionales que debe hacer
 
+- ¿La empresa gana o pierde este mes, y por qué?
+- ¿Qué negocio (Civil/Mantenimiento/Estructura) genera margen y cuál lo deteriora?
+- ¿Qué costo está creciendo por encima de lo esperado, y en qué línea?
+- ¿Qué gasto está mal imputado (de estructura cargado a una obra, o viceversa)?
+- ¿Qué parte del resultado es operativa y qué parte es financiera (intereses, diferencia de cambio)?
+- ¿Qué diferencia existe entre el EBITDA del mes y la variación real de caja del mismo mes — y puede explicarse línea por línea?
+- ¿Qué gastos o ingresos de este cierre en realidad pertenecen a otro período?
+- ¿Qué costos están pagados pero no corresponden devengarse en este período? ¿Cuáles están devengados pero todavía no pagados?
+- ¿El cierre mensual es confiable? ¿Qué dato falta para poder cerrarlo con certeza?
+- ¿Qué cambió respecto del mes anterior, y qué explica ese cambio (no solo cuánto cambió)?
+- ¿Qué explica el desvío contra el presupuesto/forecast del mes?
 - ¿El ingreso de esta obra se está reconociendo por avance certificado o por facturación — y coincide con el criterio contable correcto?
 - ¿El costo asociado a un certificado ya está devengado en el mismo período, o hay un desfase?
 - ¿Los gastos de Estructura (Administración/Taller, confirmados en `Ingresos y Egresos - P&L`) están bien distribuidos entre el resultado de Civil y Mantenimiento, o se están mezclando?
@@ -49,10 +72,19 @@ No cubre: el aspecto fiscal específico (`impuestos-construccion`), ni la gesti�
 - Reconocer un certificado como ingreso pero no reconocer su costo asociado en el mismo período.
 - Tratar los gastos de Estructura como si fueran gasto de una obra puntual.
 
+## Conciliación obligatoria con Flujo de Fondos
+
+Todo cierre relevante debe poder explicar el puente:
+
+`RESULTADO ECONÓMICO → ajustes no monetarios (amortizaciones) → variaciones de capital de trabajo → devengados no pagados → pagos de períodos anteriores → ingresos devengados no cobrados → cobros de períodos anteriores → anticipos → inversiones → financiación → VARIACIÓN DE CAJA`
+
+No hace falta un Estado de Flujo de Efectivo contable formal si no aporta valor en esta etapa — sí es obligatorio poder explicar, con estas categorías, por qué **EBITDA ≠ CAJA** en un mes concreto. Si no se puede explicar la diferencia, el cierre no está terminado, aunque el P&L "cierre" numéricamente.
+
 ## Información necesaria
 
 - `Ingresos y Egresos - P&L` (Sheet real confirmado, P&L mensual completo Civil/Mantenimiento/Estructura, con EBITDA/EBT/Resultado neto).
 - `obra_resumen_economico` y `obra_ejecucion_financiera` del OS (margen y certificación por obra).
+- Posición de caja real del mismo período (`finanzas-tesoreria-construccion`) para poder armar el puente EBITDA↔Caja.
 - Criterio contable formal que aplique el estudio externo de Echegaray (no confirmado en discovery — gap).
 
 ## Interacción con otras skills
@@ -63,6 +95,9 @@ No cubre: el aspecto fiscal específico (`impuestos-construccion`), ni la gesti�
 | Se necesita entender el impacto en caja (no solo devengado) | `finanzas-tesoreria-construccion` |
 | El costo viene de una compra o subcontrato | `compras-abastecimiento-subcontratacion` |
 | Es el cierre contable de una obra | Post Mortem (capacidad del OS, no skill) |
+| Se va a leer, auditar o editar el Sheet `Ingresos y Egresos - P&L` | `google-sheets-business-systems` (obligatorio, siempre) |
+| Hay que verificar que el margen no se calcule distinto en Caja, Obras o el OS | `arquitectura-integracion-finanzas-obras` (obligatorio ante cualquier cambio de fórmula que cruce sistemas) |
+| El desvío del mes viene de una obra puntual | `planificacion-produccion`, `costos-presupuestacion` |
 
 ## Sistema de fuentes
 

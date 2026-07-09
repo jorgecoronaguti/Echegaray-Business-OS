@@ -3,6 +3,8 @@ name: prp
 description: "Planificar una feature compleja antes de implementarla. Genera un PRP (Product Requirements Proposal) con objetivo, comportamiento, modelo de datos, y fases. Activar SIEMPRE antes de bucle-agentico, o cuando el usuario dice: planea esto, necesito un sistema de X, quiero agregar algo grande."
 context: fork
 allowed-tools: Read, Write, Edit, Grep, Glob
+metadata:
+  type: methodology
 ---
 
 # Skill: Generar PRP (Product Requirements Proposal)

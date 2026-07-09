@@ -5,61 +5,16 @@ import { ROL_LABEL } from '@/features/auth/types'
 import { LogoutButton } from '@/features/auth/components/LogoutButton'
 import { NavLink } from '@/shared/components/NavLink'
 
-// PR UX-1: navegación por trabajo real, no por feature técnica. Antes: 14 links
-// planos mezclando áreas de negocio con herramientas internas del propio OS (Motor de
-// Decisiones, Rutinas, Backlog Autónomo como links sueltos al mismo nivel que "Caja").
-// Ahora: 8 grupos según quién los usa y para qué -- Motor de Decisiones/Rutinas/
-// Backlog Autónomo pasan a ser secciones de una sola página ("Operador Digital"), no
-// links de primer nivel. Comercial y Compras se sacan del nav (sin datos reales
-// todavía -- nivel 1 y "sin uso real" en el scorecard) pero siguen accesibles por URL
-// directa, no se borran.
+// Decisión de Jorge (2026-07-09): el OS se enfoca exclusivamente en Flujo de Caja.
+// El Sheet real "Flujo de Caja - Cash Flow" es la fuente de verdad; la web lo
+// refleja en /flujo-caja. Todo lo demás (Dirección, Obras, Operación, Personas,
+// Operador Digital, Scorecard...) sale del nav pero NO se borra: cada página
+// sigue accesible por URL directa, igual que se hizo con Comercial/Compras en
+// UX-1. Si se retoma un módulo, se re-agrega acá su grupo.
 const GRUPOS_NAV = [
   {
-    grupo: 'Dirección',
-    links: [
-      { href: '/dashboard', label: 'Dirección' },
-      { href: '/sintesis-semanal', label: 'Síntesis semanal' },
-      { href: '/acciones', label: 'Centro de Acción' },
-    ],
-  },
-  {
     grupo: 'Finanzas',
-    links: [
-      { href: '/caja', label: 'Caja' },
-      { href: '/capital-trabajo', label: 'Capital de Trabajo' },
-      { href: '/obligaciones', label: 'Obligaciones' },
-    ],
-  },
-  {
-    grupo: 'Obras',
-    links: [{ href: '/obras', label: 'Obras' }],
-  },
-  {
-    grupo: 'Operación',
-    links: [{ href: '/operacion', label: 'Operación' }],
-  },
-  {
-    grupo: 'Administración',
-    links: [
-      { href: '/administracion', label: 'Administración' },
-      { href: '/personas', label: 'Personas' },
-    ],
-  },
-  {
-    grupo: 'Recursos',
-    links: [{ href: '/equipos', label: 'Equipos' }],
-  },
-  {
-    grupo: 'Operador Digital',
-    links: [{ href: '/operador-digital', label: 'Operador Digital' }],
-  },
-  {
-    grupo: 'Sistema',
-    links: [
-      { href: '/scorecard', label: 'Scorecard' },
-      { href: '/preguntas-negocio', label: 'Preguntas de Negocio' },
-      { href: '/fuentes', label: 'Fuentes' },
-    ],
+    links: [{ href: '/flujo-caja', label: 'Flujo de Caja' }],
   },
 ] as const
 
