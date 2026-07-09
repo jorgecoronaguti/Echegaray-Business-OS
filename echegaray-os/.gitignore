@@ -70,3 +70,8 @@ Thumbs.db
 # Supabase
 supabase/.branches
 supabase/.temp
+
+# Credenciales de la cuenta de servicio de Google (Sheets/Docs/Drive) -- nunca versionar
+scripts/google_workspace/credentials/
+__pycache__/
+*.pyc
