@@ -9,6 +9,8 @@ Contexto real: después de varios ciclos construyendo capacidades (Operabilidad 
 
 **Autorización explícita obtenida (2026-07-09)**: "autorizo deploy de todo", "incorpora skills", "crea lo q haga falta", "gana autonomia".
 
+**Deploy completado y verificado (2026-07-09)**: `https://echegaray-business-os.vercel.app` — proyecto importado desde GitHub (Root Directory `echegaray-os`), conectado al mismo Supabase real. Confirmado en vivo (`/login` responde 200). Al estar conectado a GitHub, **cada `git push` a `main` redespliega solo** -- Jorge no vuelve a tocar la UI de Vercel para actualizaciones normales.
+
 ## Qué cambia a partir de esto
 
 1. **Deploy productivo (Vercel) ya está autorizado de forma permanente para este proyecto.** Redesplegar el mismo proyecto ya aprobado (nuevos commits, mismas variables de entorno) es autónomo -- no hace falta pedir permiso cada vez. Ver [[web-ux-deploy-operacion-producto]] (la skill misma documenta la regla actualizada). Solo requiere aprobación nueva: dar de alta un servicio/infraestructura distinta, dominio pago, upgrade de plan.
