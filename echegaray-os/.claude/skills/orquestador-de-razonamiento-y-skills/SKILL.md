@@ -12,6 +12,8 @@ metadata:
 
 ## Propósito
 
+**Subordinado a la MISIÓN DEL BUSINESS OS** (CLAUDE.md raíz, sección inicial): la pregunta previa a todo trabajo material es la de la misión — *¿cómo contribuye este trabajo a la misión y cuál es la forma de mayor impacto de resolver el problema real?* La misión es la función de priorización del Backlog Autónomo y de los ciclos autónomos; su integridad se verifica con `scripts/verificar_mision.py` (correr junto con `--validar` al tocar skills o el CLAUDE.md).
+
 Que ningún trabajo material se ejecute con razonamiento genérico cuando existe (o debería existir) una capacidad experta que lo haga mejor. El orquestador convierte al sistema en algo más que "un LLM + una lista de skills": un sistema que sabe qué capacidades necesita para cada problema, detecta cuando no las tiene, las adquiere o mejora, las combina, actúa, valida y aprende.
 
 Secuencia obligatoria:
@@ -100,7 +102,7 @@ Proceso obligatorio antes de crear:
 1. Buscar si ya existe algo equivalente (inventario automático).
 2. Evaluar si conviene mejorar una existente — **mejor antes que nuevo** (principio del CLAUDE.md raíz).
 3. Investigar fuentes de calidad.
-4. Definir alcance y límites explícitos (qué cubre / qué NO cubre / con qué skills cruza).
+4. Definir alcance y límites explícitos (qué cubre / qué NO cubre / con qué skills cruza), **declarando cómo contribuye a la MISIÓN DEL BUSINESS OS** (qué resultado del Principio de Utilidad habilita).
 5. Crear ejemplos con casos reales de Echegaray.
 6. Definir validaciones (casos de test de comportamiento).
 7. Integrarla al inventario (automático: existir en `.claude/skills/` con frontmatter válido alcanza).
