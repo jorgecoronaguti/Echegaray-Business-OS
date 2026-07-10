@@ -6,15 +6,23 @@
 - `wsaa-client.mjs`: cliente WSAA oficial (firma CMS del TRA, LoginCMS, cachea el ticket 12 h). Listo, **no probado** porque el certificado todavía no está emitido/autorizado.
 - `portal-login.mjs`: intento de automatizar el portal — **bloqueado por anti-bot de ARCA** (rechaza un CUIT de checksum válido tipeado tecla por tecla). No es una vía viable.
 
-## Las 3 capacidades pedidas — realidad
+## Capacidades pedidas — realidad (verificado en catálogo oficial 2026-07-10)
 
-| Dato | ¿Web service oficial? | Vía recomendada |
+| Capacidad | Web service oficial | Vía |
 |---|---|---|
-| **IVA Ventas** | ✅ `wsfev1` (FECompConsultar) | API oficial. Mi código listo; falta 1 paso humano (autorizar cert) |
-| **IVA Compras** | ❌ No existe API | PDFs del estudio contable ya en Drive (carpeta IVA 2026) — parseo automático |
-| **F931** | ❌ No existe API | Acuse/PDF del estudio en Drive — parseo automático |
+| **Generar facturas** | ✅ `wsfev1` FECAESolicitar | API oficial. Nivel E (efecto fiscal externo): se construye, pero cada emisión la confirma una persona |
+| **IVA Ventas actualizado** | ✅ `wsfev1` FECompConsultar / FECompUltimoAutorizado | API oficial. Reconstruye el Libro IVA Ventas completo de lo emitido bajo este CUIT (por API o portal) |
+| **F931** | ✅ `TRABAJO_F931` | API oficial. Remuneración total/imponible, aportes y contribuciones por período. Límite: últimos 12 meses |
+| **Constatar comprobantes recibidos** | ✅ `WSCDCV1` | API oficial. VALIDA uno por uno (dado el CAE), NO lista |
+| **IVA Compras: LISTAR recibidos** | ❌ No existe WS que liste | Única pieza no oficial: Libro IVA Compras del estudio, o export del portal Mis Comprobantes |
 
-**Conclusión**: para Compras y F931 NO conviene ARCA (no hay API y el portal está blindado). La fuente confiable ya existe: los PDFs que produce el estudio contable, que caen a Drive. Eso lo ingiero yo, sin pelear con anti-bot.
+**Corrección**: en el reporte anterior dije que F931 no tenía API. Falso — existe `TRABAJO_F931`. Verificado en el catálogo oficial de web services.
+
+**Lo único sin API oficial**: obtener la LISTA de comprobantes que los proveedores nos emitieron. WSCDC valida uno que ya tengas, no te da la lista. Esa lista sale del Libro IVA Compras del estudio. Una vez que la tengo, puedo validar cada comprobante con WSCDC oficial.
+
+## Un solo paso humano cubre TODO
+
+El mismo certificado se autoriza una vez y se le delegan los 4 servicios (`wsfe`, `wscdc`, `TRABAJO_F931`, padrón) en el Administrador de Relaciones. No es un paso por servicio.
 
 ## Paso humano único — autorizar el certificado (solo para IVA Ventas por API)
 
