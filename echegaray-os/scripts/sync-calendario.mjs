@@ -9,16 +9,50 @@
 // Uso: node scripts/sync-calendario.mjs   (desde echegaray-os/)
 
 import crypto from 'crypto'
-import { readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
-const CRED = join(ROOT, 'scripts/google_workspace/credentials/service-account.json')
 const SALIDA = join(ROOT, 'src/features/flujo-caja/data/calendario-snapshot.json')
 const SPREADSHEET_ID = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 
-const sa = JSON.parse(readFileSync(CRED, 'utf8'))
+// Carga .env.local (si existe) sin pisar variables ya presentes en el entorno
+// real: en la VM mandan las env vars del sistema; en local, el archivo las cubre.
+function cargarEnvLocal() {
+  const p = join(ROOT, '.env.local')
+  if (!existsSync(p)) return
+  for (const linea of readFileSync(p, 'utf8').split('\n')) {
+    const l = linea.trim()
+    if (!l || l.startsWith('#') || !l.includes('=')) continue
+    const i = l.indexOf('=')
+    const clave = l.slice(0, i).trim()
+    const valor = l.slice(i + 1).trim()
+    if (!(clave in process.env)) process.env[clave] = valor
+  }
+}
+cargarEnvLocal()
+
+// Credencial de Google: primero GOOGLE_SERVICE_ACCOUNT_JSON (contenido JSON o
+// ruta a un archivo); si no está, el archivo local (gitignorado).
+function cargarServiceAccount() {
+  const desdeEnv = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()
+  if (desdeEnv) {
+    const crudo = desdeEnv.startsWith('{') ? desdeEnv : readFileSync(desdeEnv, 'utf8')
+    return JSON.parse(crudo)
+  }
+  const credPath = join(ROOT, 'scripts/google_workspace/credentials/service-account.json')
+  if (!existsSync(credPath)) {
+    console.error(
+      'No hay credencial de Google: definí GOOGLE_SERVICE_ACCOUNT_JSON (JSON o ruta) ' +
+        'o proveé scripts/google_workspace/credentials/service-account.json',
+    )
+    process.exit(1)
+  }
+  return JSON.parse(readFileSync(credPath, 'utf8'))
+}
+
+const sa = cargarServiceAccount()
 const now = Math.floor(Date.now() / 1000)
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url')
 const input = `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64({

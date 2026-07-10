@@ -2,37 +2,76 @@
 // Vacía la cola de saldos cargados desde la web (acciones con
 // categoria_alerta='cargar_saldo_caja', estado pendiente) hacia la pestaña Caja
 // del Sheet real, y marca cada acción como resuelta. Corre antes del sync del
-// calendario en sync-calendario-cron.sh, para que el saldo nuevo entre en el
+// calendario en sync-calendario-vm.sh, para que el saldo nuevo entre en el
 // snapshot de la misma corrida. Una persona real cargó el dato; esto solo lo
 // transcribe (techo de autonomía respetado).
+//
+// Worker de backend confiable: usa SUPABASE_SERVICE_ROLE_KEY (bypassa RLS, sin
+// login interactivo). Las credenciales se toman del entorno; en local se
+// completan desde .env.local si existe. Nunca se imprimen secretos.
 //
 // Uso: node scripts/flush-saldos.mjs   (desde echegaray-os/)
 
 import crypto from 'crypto'
-import { readFileSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import { createClient } from '@supabase/supabase-js'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
-const CRED = join(ROOT, 'scripts/google_workspace/credentials/service-account.json')
 const SPREADSHEET_ID = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 
-const env = Object.fromEntries(
-  readFileSync(join(ROOT, '.env.local'), 'utf8')
-    .split('\n')
-    .filter((l) => l.includes('='))
-    .map((l) => {
-      const i = l.indexOf('=')
-      return [l.slice(0, i), l.slice(i + 1).trim()]
-    }),
-)
-const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
-const { error: authErr } = await supabase.auth.signInWithPassword({
-  email: 'jorge.o.corona+direccion-test-1783513222134@gmail.com',
-  password: 'TestPassword123!',
+// Carga .env.local (si existe) sin pisar variables ya presentes en el entorno
+// real: en la VM mandan las env vars del sistema; en local, el archivo las cubre.
+function cargarEnvLocal() {
+  const p = join(ROOT, '.env.local')
+  if (!existsSync(p)) return
+  for (const linea of readFileSync(p, 'utf8').split('\n')) {
+    const l = linea.trim()
+    if (!l || l.startsWith('#') || !l.includes('=')) continue
+    const i = l.indexOf('=')
+    const clave = l.slice(0, i).trim()
+    const valor = l.slice(i + 1).trim()
+    if (!(clave in process.env)) process.env[clave] = valor
+  }
+}
+cargarEnvLocal()
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+const faltantes = []
+if (!SUPABASE_URL) faltantes.push('NEXT_PUBLIC_SUPABASE_URL')
+if (!SERVICE_ROLE_KEY) faltantes.push('SUPABASE_SERVICE_ROLE_KEY')
+if (faltantes.length) {
+  console.error(`Faltan variables de entorno requeridas: ${faltantes.join(', ')}`)
+  console.error('Definilas en el entorno de la VM o en .env.local. No se imprimen valores por seguridad.')
+  process.exit(1)
+}
+
+// Credencial de Google: primero GOOGLE_SERVICE_ACCOUNT_JSON (contenido JSON o
+// ruta a un archivo); si no está, el archivo local (gitignorado).
+function cargarServiceAccount() {
+  const desdeEnv = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()
+  if (desdeEnv) {
+    const crudo = desdeEnv.startsWith('{') ? desdeEnv : readFileSync(desdeEnv, 'utf8')
+    return JSON.parse(crudo)
+  }
+  const credPath = join(ROOT, 'scripts/google_workspace/credentials/service-account.json')
+  if (!existsSync(credPath)) {
+    console.error(
+      'No hay credencial de Google: definí GOOGLE_SERVICE_ACCOUNT_JSON (JSON o ruta) ' +
+        'o proveé scripts/google_workspace/credentials/service-account.json',
+    )
+    process.exit(1)
+  }
+  return JSON.parse(readFileSync(credPath, 'utf8'))
+}
+
+// Worker confiable: service role, sin sesión persistida ni refresh automático.
+const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false },
 })
-if (authErr) throw new Error(`auth: ${authErr.message}`)
 
 const { data: pendientes, error } = await supabase
   .from('acciones')
@@ -46,7 +85,7 @@ if (!pendientes?.length) {
   process.exit(0)
 }
 
-const sa = JSON.parse(readFileSync(CRED, 'utf8'))
+const sa = cargarServiceAccount()
 const now = Math.floor(Date.now() / 1000)
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url')
 const input = `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64({
@@ -91,4 +130,3 @@ for (const p of pendientes) {
     .eq('id', p.id)
   console.log(updErr ? `append OK pero no se pudo marcar resuelta ${p.id}: ${updErr.message}` : `saldo ${d.cuenta} ${d.fecha} pasado al Sheet`)
 }
-await supabase.auth.signOut()
