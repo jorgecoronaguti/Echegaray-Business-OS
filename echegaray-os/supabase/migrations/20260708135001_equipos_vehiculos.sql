@@ -27,3 +27,11 @@ grant select, insert, update, delete on public.equipos to authenticated;
 
 create trigger equipos_set_updated_at before update on equipos
   for each row execute function set_updated_at();
+
+insert into equipos (nombre, tipo, patente_o_identificador, notas) values
+('Ford F100', 'vehiculo', 'AXH205', 'RTO vigente verificado a marzo 2026.'),
+('Toyota Hilux', 'vehiculo', 'NMN898', null),
+('Toyota Hilux', 'vehiculo', 'EEA885', null),
+('Mercedes Benz 608D', 'vehiculo', null, 'Camión, sin patente confirmada en la documentación revisada.'),
+('Toyota Hilux', 'vehiculo', 'AD119YO', null),
+('Ford XLS', 'vehiculo', 'AG503PV', null);
