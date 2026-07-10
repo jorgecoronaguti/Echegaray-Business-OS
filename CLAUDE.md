@@ -1272,6 +1272,7 @@ El protocolo completo, el detector de gaps, el inventario automático y los test
 | Agregar o cambiar una pantalla, definir navegación/permisos visibles por rol, o decidir dónde/cómo corre y se despliega el Business OS (local, staging, producción) | `web-ux-deploy-operacion-producto` · más la skill de dominio dueña del dato mostrado en esa pantalla |
 | Leer, auditar, corregir o rediseñar un Google Sheet real de negocio (finanzas, tesorería, control de gestión, compras, cobranzas, HH, avance, certificaciones, adicionales, equipos) | `google-sheets-business-systems` · más la skill de dominio dueña del dato mostrado en ese Sheet |
 | Auditar simultáneamente Flujo de Fondos, P&L y Avance de Obras, decidir si un cálculo económico-financiero se duplica entre sistemas, o decidir si un Sheet se mantiene/mejora/integra/reemplaza/retira frente al OS | `arquitectura-integracion-finanzas-obras` · más `finanzas-tesoreria-construccion` · `contabilidad-constructoras` · `planificacion-produccion` · `direccion-obra` · `google-sheets-business-systems` según corresponda |
+| Crear/modificar un reporte automático, decidir su canal de entrega (OS/PDF/GDoc/email/WhatsApp), o detectar una revisión manual recurrente reemplazable por un reporte | `reportes-automaticos-y-comunicaciones` · más la skill de dominio dueña del contenido (`finanzas-tesoreria-construccion`, `planificacion-produccion`, `direccion-obra`, `contabilidad-constructoras`…) |
 
 ## Aprendizaje continuo
 

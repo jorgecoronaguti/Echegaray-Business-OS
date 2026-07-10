@@ -50,6 +50,8 @@
 - [Autonomía: lectura/edición financiera](feedback/autonomia-lectura-edicion-financiera.md) — lectura y edición (append-only) de archivos financieros/impositivos autorizada siempre, sin pedir permiso cada vez
 - [Skill Google Sheets Business Systems](feedback/skill-google-sheets-business-systems.md) — creada tras incidentes reales de edición; protocolo obligatorio Entender→Auditar→Diseñar→Implementar→Verificar→Validar antes de tocar cualquier Sheet real
 - [RESUMEN manual vs. Dashboard con pivots](feedback/resumen-manual-vs-dashboard-pivots.md) — "mejores prácticas" técnicas no bastan si no responden la pregunta operativa real; preferir vistas cortas y ordenadas por fecha sobre agregados históricos
+- [Nunca delegar pasos ejecutables](feedback/nunca-delegar-pasos-ejecutables.md) — prohibido cerrar con "hacé vos este paso técnico"; agotar canales autenticados o rediseñar la solución (caso: env var Vercel → snapshot commiteado + LaunchAgent)
+- [Propuestas de impacto, no de higiene](feedback/propuestas-impacto-negocio-no-higiene.md) — propuestas rechazadas por ser limpieza de datos sin decisión económica asociada; la higiene se ejecuta en silencio, lo que se propone es lo que mueve plata/riesgo
 
 ## reference/ — Donde encontrar cosas
 - [Validar SQL sin Supabase live](reference/validar-sql-sin-supabase-live.md) — procedimiento con Postgres local (Homebrew) cuando no hay Docker ni proyecto real conectado

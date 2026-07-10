@@ -16,6 +16,10 @@ const GRUPOS_NAV = [
     grupo: 'Finanzas',
     links: [{ href: '/flujo-caja', label: 'Flujo de Caja' }],
   },
+  {
+    grupo: 'Reportes',
+    links: [{ href: '/reportes', label: 'Reportes' }],
+  },
 ] as const
 
 async function loadUsuario() {
