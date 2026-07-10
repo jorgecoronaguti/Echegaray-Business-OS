@@ -1,0 +1,11 @@
+-- scripts/flush-saldos.mjs corre como worker de backend confiable usando la
+-- secret key sb_secret_, que PostgREST asume como el rol service_role.
+-- service_role tiene BYPASSRLS pero NINGÚN privilegio de tabla sobre acciones
+-- (las migraciones previas solo otorgaron DML a authenticated), por lo que su
+-- primer SELECT falla con "permission denied for table acciones" -- error de la
+-- capa de privilegios (GRANT), que Postgres evalúa antes que RLS.
+--
+-- Se otorga EXCLUSIVAMENTE lo que el worker usa sobre acciones: SELECT (leer la
+-- cola de saldos pendientes) y UPDATE (marcarlos resueltos). No hace INSERT ni
+-- DELETE. BYPASSRLS hace innecesaria cualquier policy nueva para service_role.
+grant select, update on public.acciones to service_role;
