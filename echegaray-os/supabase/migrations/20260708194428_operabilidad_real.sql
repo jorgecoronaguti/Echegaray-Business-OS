@@ -42,10 +42,4 @@ alter table clasificaciones_costo_obra enable row level security;
 create policy authenticated_full_access on clasificaciones_costo_obra
   for all to authenticated using (true) with check (true);
 
--- La RLS policy sola no alcanza: Supabase revoca los privilegios por defecto de
--- `authenticated` sobre tablas nuevas -- sin este GRANT, PostgREST devuelve
--- "permission denied" incluso con una policy `using (true)` (encontrado real, ver
--- .claude/memory/feedback/rls-sin-policy-falla-en-silencio.md).
-grant select, insert, update, delete on clasificaciones_costo_obra to authenticated;
-
 create index clasificaciones_costo_obra_estado_idx on clasificaciones_costo_obra (estado);

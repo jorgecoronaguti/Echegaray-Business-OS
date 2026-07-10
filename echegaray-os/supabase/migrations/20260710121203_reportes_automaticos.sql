@@ -79,8 +79,3 @@ insert into reportes_definiciones (clave, nombre, objetivo, audiencia, dominio, 
    'Posición de caja, cobros y pagos de los próximos 7 días y vencidos sin ejecutar, desde la fuente de verdad (Sheet Flujo de Caja).',
    'direccion', 'administracion_finanzas', 'semanal', 'lunes 07:30', 'proximos_7_dias',
    array['calendario_sheet','obligaciones','fuentes_datos'], 'os', 'Administración');
-
--- Mismo patrón que 20260708134500: sin GRANT explícito, RLS nunca llega a
--- evaluarse y la app ve las tablas vacías sin error visible.
-grant all on reportes_definiciones to authenticated;
-grant select, insert, update on reportes_generados to authenticated;
