@@ -75,3 +75,5 @@ supabase/.temp
 scripts/google_workspace/credentials/
 __pycache__/
 *.pyc
+scripts/arca/credentials/
+scripts/arca/out/
