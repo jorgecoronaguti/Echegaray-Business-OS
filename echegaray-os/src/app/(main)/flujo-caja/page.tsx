@@ -3,6 +3,7 @@ import {
   SHEET_URL,
   type Movimiento,
 } from '@/features/flujo-caja/services/calendarioReader'
+import { CargarSaldoForm } from '@/features/flujo-caja/components/CargarSaldoForm'
 
 // Calendario de cobros y pagos — la web muestra lo que hay que cobrar y pagar,
 // día por día, con el saldo proyectado acumulado. Fuente única: el Sheet real
@@ -103,6 +104,10 @@ export default async function FlujoCajaPage() {
             {pesos.format(cal.totalCobros + cal.totalPagos)}
           </div>
         </div>
+      </div>
+
+      <div className="mt-4">
+        <CargarSaldoForm />
       </div>
 
       {cal.vencidos.length > 0 && (

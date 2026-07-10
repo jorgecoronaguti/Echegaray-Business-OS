@@ -11,6 +11,9 @@ LOG="$HOME/Library/Logs/echegaray-sync-calendario.log"
 {
   echo "--- $(date '+%Y-%m-%d %H:%M:%S') ---"
   cd "$REPO/echegaray-os"
+  # primero vaciar la cola de saldos cargados desde la web hacia el Sheet,
+  # así el snapshot de esta misma corrida ya los incluye
+  node scripts/flush-saldos.mjs || echo "flush de saldos falló, el sync sigue"
   node scripts/sync-calendario.mjs
 
   cd "$REPO"
