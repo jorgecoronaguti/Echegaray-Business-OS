@@ -13,6 +13,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import { loadEnvLocalInto } from './lib/env-file.mjs'
+import { mismosDatosReales } from './lib/snapshot-diff.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const SALIDA = join(ROOT, 'src/features/flujo-caja/data/calendario-snapshot.json')
@@ -160,6 +161,16 @@ const snapshot = {
   leidoEn: new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/San_Juan' }),
 }
 
+// Evitar reescrituras (y por lo tanto commits/deploys) cuando lo único que
+// cambiaría es `leidoEn`: se compara contra el snapshot existente ignorando ese
+// campo. Solo si cambió algún dato real (saldoHoy/vencidos/dias/totales) se
+// reescribe todo el archivo, incluido leidoEn.
+const anterior = existsSync(SALIDA) ? JSON.parse(readFileSync(SALIDA, 'utf8')) : null
+if (anterior && mismosDatosReales(snapshot, anterior)) {
+  console.log(`sin cambios de datos: ${movimientos.length} movimientos, ${vencidos.length} vencidos (no se reescribe el snapshot)`)
+  process.exit(0)
+}
+
 mkdirSync(dirname(SALIDA), { recursive: true })
 writeFileSync(SALIDA, JSON.stringify(snapshot, null, 1))
-console.log(`snapshot OK: ${movimientos.length} movimientos, ${vencidos.length} vencidos -> ${SALIDA}`)
+console.log(`snapshot actualizado: ${movimientos.length} movimientos, ${vencidos.length} vencidos -> ${SALIDA}`)
