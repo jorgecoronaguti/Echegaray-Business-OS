@@ -17,25 +17,17 @@ import { existsSync, readFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import { createClient } from '@supabase/supabase-js'
+import { loadEnvLocalInto } from './lib/env-file.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const SPREADSHEET_ID = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 
 // Carga .env.local (si existe) sin pisar variables ya presentes en el entorno
 // real: en la VM mandan las env vars del sistema; en local, el archivo las cubre.
-function cargarEnvLocal() {
-  const p = join(ROOT, '.env.local')
-  if (!existsSync(p)) return
-  for (const linea of readFileSync(p, 'utf8').split('\n')) {
-    const l = linea.trim()
-    if (!l || l.startsWith('#') || !l.includes('=')) continue
-    const i = l.indexOf('=')
-    const clave = l.slice(0, i).trim()
-    const valor = l.slice(i + 1).trim()
-    if (!(clave in process.env)) process.env[clave] = valor
-  }
-}
-cargarEnvLocal()
+// El parser (scripts/lib/env-file.mjs) interpreta comillas y escapes del formato
+// de Vercel: sin esto, un valor como `URL="https://..."` se guardaba con las
+// comillas literales y createClient fallaba con "Invalid supabaseUrl".
+loadEnvLocalInto(process.env, join(ROOT, '.env.local'))
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -46,6 +38,15 @@ if (!SERVICE_ROLE_KEY) faltantes.push('SUPABASE_SERVICE_ROLE_KEY')
 if (faltantes.length) {
   console.error(`Faltan variables de entorno requeridas: ${faltantes.join(', ')}`)
   console.error('Definilas en el entorno de la VM o en .env.local. No se imprimen valores por seguridad.')
+  process.exit(1)
+}
+
+// Validación explícita: la URL debe ser http(s). Atrapa el caso real de comillas
+// o escapes mal parseados sin imprimir el valor (podría no ser sensible, pero se
+// mantiene el criterio de no exponer nada del entorno).
+if (!/^https?:\/\//.test(SUPABASE_URL)) {
+  console.error('NEXT_PUBLIC_SUPABASE_URL inválida: debe empezar con http:// o https://.')
+  console.error('Suele ser por comillas o escapes en .env.local. No se imprime el valor por seguridad.')
   process.exit(1)
 }
 

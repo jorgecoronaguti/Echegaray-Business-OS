@@ -12,6 +12,7 @@ import crypto from 'crypto'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
+import { loadEnvLocalInto } from './lib/env-file.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const SALIDA = join(ROOT, 'src/features/flujo-caja/data/calendario-snapshot.json')
@@ -19,19 +20,9 @@ const SPREADSHEET_ID = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 
 // Carga .env.local (si existe) sin pisar variables ya presentes en el entorno
 // real: en la VM mandan las env vars del sistema; en local, el archivo las cubre.
-function cargarEnvLocal() {
-  const p = join(ROOT, '.env.local')
-  if (!existsSync(p)) return
-  for (const linea of readFileSync(p, 'utf8').split('\n')) {
-    const l = linea.trim()
-    if (!l || l.startsWith('#') || !l.includes('=')) continue
-    const i = l.indexOf('=')
-    const clave = l.slice(0, i).trim()
-    const valor = l.slice(i + 1).trim()
-    if (!(clave in process.env)) process.env[clave] = valor
-  }
-}
-cargarEnvLocal()
+// El parser (scripts/lib/env-file.mjs) interpreta comillas y escapes del formato
+// de Vercel; por ejemplo, GOOGLE_SERVICE_ACCOUNT_JSON entre comillas.
+loadEnvLocalInto(process.env, join(ROOT, '.env.local'))
 
 // Credencial de Google: primero GOOGLE_SERVICE_ACCOUNT_JSON (contenido JSON o
 // ruta a un archivo); si no está, el archivo local (gitignorado).
