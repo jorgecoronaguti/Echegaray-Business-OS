@@ -1,0 +1,1214 @@
+{
+ "saldoHoy": -9859808.03334,
+ "vencidos": [
+  {
+   "fecha": "2026-03-27",
+   "tipo": "pago",
+   "quien": "Gerson Castro",
+   "detalle": "Civil · CAÑERIA BASE",
+   "monto": -700000
+  },
+  {
+   "fecha": "2026-06-19",
+   "tipo": "pago",
+   "quien": "Gerson Castro",
+   "detalle": "Civil · Duchas y cambio de cocina",
+   "monto": -250000
+  },
+  {
+   "fecha": "2026-06-19",
+   "tipo": "pago",
+   "quien": "Gerson Castro",
+   "detalle": "Civil · CLOACA Y AGUA POTABLE",
+   "monto": -1450000
+  },
+  {
+   "fecha": "2026-06-26",
+   "tipo": "pago",
+   "quien": "Const-Sek",
+   "detalle": "Civil · Oficinas y Fabrica de Palitos · proyectado",
+   "monto": -1278820
+  },
+  {
+   "fecha": "2026-06-26",
+   "tipo": "pago",
+   "quien": "Alumetal",
+   "detalle": "Civil · Materiales para la ejecucion de Galpon 9",
+   "monto": -18166380.84
+  },
+  {
+   "fecha": "2026-07-01",
+   "tipo": "pago",
+   "quien": "Hormiserv",
+   "detalle": "Civil · HORMIGON PISO FRENTE · proyectado",
+   "monto": -2768480
+  },
+  {
+   "fecha": "2026-07-02",
+   "tipo": "cobro",
+   "quien": "LA ESTRELLA /ALIMENTOS DEL SUR SAS",
+   "detalle": "Civil · Pendiente",
+   "monto": 14999999.99
+  },
+  {
+   "fecha": "2026-07-07",
+   "tipo": "cheque",
+   "quien": "Corralon Progreso",
+   "detalle": "FISICO N° 218",
+   "monto": -200000
+  },
+  {
+   "fecha": "2026-07-07",
+   "tipo": "cheque",
+   "quien": "Corralon Progreso",
+   "detalle": "FISICO N° 217",
+   "monto": -200000
+  },
+  {
+   "fecha": "2026-07-08",
+   "tipo": "cobro",
+   "quien": "IMOTOR/San Francisco/JAVI SANCHEZ",
+   "detalle": "Civil · Pendiente",
+   "monto": 5000000
+  }
+ ],
+ "dias": [
+  {
+   "fecha": "2026-07-10",
+   "movimientos": [
+    {
+     "fecha": "2026-07-10",
+     "tipo": "pago",
+     "quien": "FCL",
+     "detalle": "Impuestos · Junio · proyectado",
+     "monto": -800000
+    },
+    {
+     "fecha": "2026-07-10",
+     "tipo": "pago",
+     "quien": "ARCA",
+     "detalle": "Impuestos · Junio · proyectado",
+     "monto": -9000000
+    },
+    {
+     "fecha": "2026-07-10",
+     "tipo": "pago",
+     "quien": "Sueldos",
+     "detalle": "Estructura · Junio · proyectado",
+     "monto": -3000000
+    },
+    {
+     "fecha": "2026-07-10",
+     "tipo": "pago",
+     "quien": "SINDICATOS",
+     "detalle": "Impuestos · JUNIO · proyectado",
+     "monto": -7300
+    },
+    {
+     "fecha": "2026-07-10",
+     "tipo": "pago",
+     "quien": "SINDICATOS",
+     "detalle": "Impuestos · JUNIO · proyectado",
+     "monto": -7300
+    },
+    {
+     "fecha": "2026-07-10",
+     "tipo": "cheque",
+     "quien": "Corralon Progreso",
+     "detalle": "FISICO N° 224",
+     "monto": -323000
+    }
+   ],
+   "neto": -13137600,
+   "acumulado": -22997408.03334
+  },
+  {
+   "fecha": "2026-07-15",
+   "movimientos": [
+    {
+     "fecha": "2026-07-15",
+     "tipo": "cobro",
+     "quien": "IMOTOR/San Francisco/JAVI SANCHEZ",
+     "detalle": "Civil · Pendiente",
+     "monto": 6215646
+    },
+    {
+     "fecha": "2026-07-15",
+     "tipo": "cobro",
+     "quien": "LA ESTRELLA /ALIMENTOS DEL SUR SAS",
+     "detalle": "Civil · Pendiente",
+     "monto": 10000000
+    },
+    {
+     "fecha": "2026-07-15",
+     "tipo": "pago",
+     "quien": "Sueldos",
+     "detalle": "Estructura · Primera · proyectado",
+     "monto": -3000000
+    }
+   ],
+   "neto": 13215646,
+   "acumulado": -9781762.03334
+  },
+  {
+   "fecha": "2026-07-16",
+   "movimientos": [
+    {
+     "fecha": "2026-07-16",
+     "tipo": "pago",
+     "quien": "ARCA",
+     "detalle": "Impuestos · cuota 6 · proyectado",
+     "monto": -1034931.82
+    },
+    {
+     "fecha": "2026-07-16",
+     "tipo": "pago",
+     "quien": "ARCA",
+     "detalle": "Impuestos · Deuda Previcional - 931 Enero 26 · proyectado",
+     "monto": -473767.08
+    }
+   ],
+   "neto": -1508698.9,
+   "acumulado": -11290460.93334
+  },
+  {
+   "fecha": "2026-07-17",
+   "movimientos": [
+    {
+     "fecha": "2026-07-17",
+     "tipo": "cobro",
+     "quien": "MESSINAS",
+     "detalle": "Civil · Pendiente",
+     "monto": 3488735
+    },
+    {
+     "fecha": "2026-07-17",
+     "tipo": "pago",
+     "quien": "SINDICATOS",
+     "detalle": "Impuestos · Junio · proyectado",
+     "monto": -700000
+    },
+    {
+     "fecha": "2026-07-17",
+     "tipo": "cheque",
+     "quien": "Corralon Progreso",
+     "detalle": "FISICO N° 313",
+     "monto": -470945
+    }
+   ],
+   "neto": 2317790,
+   "acumulado": -8972670.93334
+  },
+  {
+   "fecha": "2026-07-18",
+   "movimientos": [
+    {
+     "fecha": "2026-07-18",
+     "tipo": "cheque",
+     "quien": "Alumetal",
+     "detalle": "ECHEQ N° 305",
+     "monto": -893098.79
+    },
+    {
+     "fecha": "2026-07-18",
+     "tipo": "cheque",
+     "quien": "Corralon Progreso",
+     "detalle": "FISICO N° 221",
+     "monto": -200000
+    },
+    {
+     "fecha": "2026-07-18",
+     "tipo": "cheque",
+     "quien": "Corralon Progreso",
+     "detalle": "FISICO N° 222",
+     "monto": -200000
+    },
+    {
+     "fecha": "2026-07-18",
+     "tipo": "cheque",
+     "quien": "Corralon Progreso",
+     "detalle": "FISICO N° 223",
+     "monto": -200000
+    },
+    {
+     "fecha": "2026-07-18",
+     "tipo": "cheque",
+     "quien": "Corralon Progreso",
+     "detalle": "FISICO N° 220",
+     "monto": -200000
+    }
+   ],
+   "neto": -1693098.79,
+   "acumulado": -10665769.723340001
+  },
+  {
+   "fecha": "2026-07-20",
+   "movimientos": [
+    {
+     "fecha": "2026-07-20",
+     "tipo": "cobro",
+     "quien": "LA ESTRELLA /ALIMENTOS DEL SUR SAS",
+     "detalle": "Civil · Proyectado",
+     "monto": 2000000
+    },
+    {
+     "fecha": "2026-07-20",
+     "tipo": "cobro",
+     "quien": "LA ESTRELLA /ALIMENTOS DEL SUR SAS",
+     "detalle": "Civil · Proyectado",
+     "monto": 13000000
+    }
+   ],
+   "neto": 15000000,
+   "acumulado": 4334230.276659999
+  },
+  {
+   "fecha": "2026-07-23",
+   "movimientos": [
+    {
+     "fecha": "2026-07-23",
+     "tipo": "cheque",
+     "quien": "Diesel Rodriguez",
+     "detalle": "FISICO N° 314",
+     "monto": -500000
+    },
+    {
+     "fecha": "2026-07-23",
+     "tipo": "cheque",
+     "quien": "Diesel Rodriguez",
+     "detalle": "FISICO N° 315",
+     "monto": -500000
+    }
+   ],
+   "neto": -1000000,
+   "acumulado": 3334230.276659999
+  },
+  {
+   "fecha": "2026-07-30",
+   "movimientos": [
+    {
+     "fecha": "2026-07-30",
+     "tipo": "pago",
+     "quien": "Sueldos",
+     "detalle": "Estructura · Segunda · proyectado",
+     "monto": -3000000
+    }
+   ],
+   "neto": -3000000,
+   "acumulado": 334230.27665999904
+  },
+  {
+   "fecha": "2026-07-31",
+   "movimientos": [
+    {
+     "fecha": "2026-07-31",
+     "tipo": "cobro",
+     "quien": "LA ESTRELLA /ALIMENTOS DEL SUR SAS",
+     "detalle": "Civil · Pendiente",
+     "monto": 10000000
+    }
+   ],
+   "neto": 10000000,
+   "acumulado": 10334230.276659999
+  },
+  {
+   "fecha": "2026-08-02",
+   "movimientos": [
+    {
+     "fecha": "2026-08-02",
+     "tipo": "tarjeta",
+     "quien": "Modica SA",
+     "detalle": "débito de tarjeta",
+     "monto": -355413.39
+    },
+    {
+     "fecha": "2026-08-02",
+     "tipo": "tarjeta",
+     "quien": "Pintureria Cordoba",
+     "detalle": "débito de tarjeta",
+     "monto": -80454.91667
+    },
+    {
+     "fecha": "2026-08-02",
+     "tipo": "tarjeta",
+     "quien": "Pintureria Cordoba",
+     "detalle": "débito de tarjeta",
+     "monto": -266181.37
+    },
+    {
+     "fecha": "2026-08-02",
+     "tipo": "tarjeta",
+     "quien": "Pintureria Cordoba",
+     "detalle": "débito de tarjeta",
+     "monto": -263813.91333333333
+    }
+   ],
+   "neto": -965863.5900033333,
+   "acumulado": 9368366.686656665
+  },
+  {
+   "fecha": "2026-08-03",
+   "movimientos": [
+    {
+     "fecha": "2026-08-03",
+     "tipo": "cobro",
+     "quien": "MESSINAS",
+     "detalle": "Civil · Facturado",
+     "monto": 10133750
+    },
+    {
+     "fecha": "2026-08-03",
+     "tipo": "cobro",
+     "quien": "MESSINAS",
+     "detalle": "Civil · Facturado",
+     "monto": 6981554.8
+    },
+    {
+     "fecha": "2026-08-03",
+     "tipo": "cheque",
+     "quien": "NEUMAGOM SAS",
+     "detalle": "ECHEQ N° 307",
+     "monto": -317000
+    }
+   ],
+   "neto": 16798304.8,
+   "acumulado": 26166671.486656666
+  },
+  {
+   "fecha": "2026-08-07",
+   "movimientos": [
+    {
+     "fecha": "2026-08-07",
+     "tipo": "pago",
+     "quien": "Banco",
+     "detalle": "Financiero · Prestamo Camioneta Ford XLS · proyectado",
+     "monto": -1282810.54
+    }
+   ],
+   "neto": -1282810.54,
+   "acumulado": 24883860.946656667
+  },
+  {
+   "fecha": "2026-08-10",
+   "movimientos": [
+    {
+     "fecha": "2026-08-10",
+     "tipo": "pago",
+     "quien": "FCL",
+     "detalle": "Impuestos · Julio · proyectado",
+     "monto": -800000
+    },
+    {
+     "fecha": "2026-08-10",
+     "tipo": "pago",
+     "quien": "ARCA",
+     "detalle": "Impuestos · Julio · proyectado",
+     "monto": -8000000
+    },
+    {
+     "fecha": "2026-08-10",
+     "tipo": "pago",
+     "quien": "Sueldos",
+     "detalle": "Estructura · Julio · proyectado",
+     "monto": -1700000
+    },
+    {
+     "fecha": "2026-08-10",
+     "tipo": "pago",
+     "quien": "Sueldos",
+     "detalle": "Estructura · Julio · proyectado",
+     "monto": -1600000
+    },
+    {
+     "fecha": "2026-08-10",
+     "tipo": "pago",
+     "quien": "Sueldos",
+     "detalle": "Estructura · Julio · proyectado",
+     "monto": -3000000
+    },
+    {
+     "fecha": "2026-08-10",
+     "tipo": "pago",
+     "quien": "Sueldos",
+     "detalle": "Estructura · Julio · proyectado",
+     "monto": -1500000
+    },
+    {
+     "fecha": "2026-08-10",
+     "tipo": "pago",
+     "quien": "Sueldos",
+     "detalle": "Estructura · Julio · proyectado",
+     "monto": -2000000
+    },
+    {
+     "fecha": "2026-08-10",
+     "tipo": "pago",
+     "quien": "SINDICATOS",
+     "detalle": "Impuestos · JULIO · proyectado",
+     "monto": -7300
+    },
+    {
+     "fecha": "2026-08-10",
+     "tipo": "pago",
+     "quien": "SINDICATOS",
+     "detalle": "Impuestos · JULIO · proyectado",
+     "monto": -7300
+    },
+    {
+     "fecha": "2026-08-10",
+     "tipo": "cheque",
+     "quien": "Corralon Progreso",
+     "detalle": "FISICO N° 225",
+     "monto": -323000
+    }
+   ],
+   "neto": -18937600,
+   "acumulado": 5946260.946656667
+  },
+  {
+   "fecha": "2026-08-12",
+   "movimientos": [
+    {
+     "fecha": "2026-08-12",
+     "tipo": "cheque",
+     "quien": "Diesel Rodriguez",
+     "detalle": "FISICO N° 316",
+     "monto": -500000
+    },
+    {
+     "fecha": "2026-08-12",
+     "tipo": "cheque",
+     "quien": "Diesel Rodriguez",
+     "detalle": "FISICO N° 316",
+     "monto": -510000
+    }
+   ],
+   "neto": -1010000,
+   "acumulado": 4936260.946656667
+  },
+  {
+   "fecha": "2026-08-15",
+   "movimientos": [
+    {
+     "fecha": "2026-08-15",
+     "tipo": "cobro",
+     "quien": "LA ESTRELLA /ALIMENTOS DEL SUR SAS",
+     "detalle": "Civil · Pendiente",
+     "monto": 10000000
+    },
+    {
+     "fecha": "2026-08-15",
+     "tipo": "cobro",
+     "quien": "LA ESTRELLA /ALIMENTOS DEL SUR SAS",
+     "detalle": "Civil · Proyectado",
+     "monto": 20600000
+    },
+    {
+     "fecha": "2026-08-15",
+     "tipo": "pago",
+     "quien": "Sueldos",
+     "detalle": "Estructura · Primera · proyectado",
+     "monto": -3000000
+    }
+   ],
+   "neto": 27600000,
+   "acumulado": 32536260.946656667
+  },
+  {
+   "fecha": "2026-08-16",
+   "movimientos": [
+    {
+     "fecha": "2026-08-16",
+     "tipo": "pago",
+     "quien": "ARCA",
+     "detalle": "Impuestos · Deuda Previcional - 931 Enero 26 · proyectado",
+     "monto": -473767.08
+    }
+   ],
+   "neto": -473767.08,
+   "acumulado": 32062493.86665667
+  },
+  {
+   "fecha": "2026-08-17",
+   "movimientos": [
+    {
+     "fecha": "2026-08-17",
+     "tipo": "pago",
+     "quien": "SINDICATOS",
+     "detalle": "Impuestos · Julio · proyectado",
+     "monto": -700000
+    },
+    {
+     "fecha": "2026-08-17",
+     "tipo": "cheque",
+     "quien": "Corralon Progreso",
+     "detalle": "FISICO N° 312",
+     "monto": -470944
+    }
+   ],
+   "neto": -1170944,
+   "acumulado": 30891549.86665667
+  },
+  {
+   "fecha": "2026-08-30",
+   "movimientos": [
+    {
+     "fecha": "2026-08-30",
+     "tipo": "pago",
+     "quien": "Sueldos",
+     "detalle": "Estructura · Segunda · proyectado",
+     "monto": -8000000
+    }
+   ],
+   "neto": -8000000,
+   "acumulado": 22891549.86665667
+  },
+  {
+   "fecha": "2026-08-31",
+   "movimientos": [
+    {
+     "fecha": "2026-08-31",
+     "tipo": "cobro",
+     "quien": "MESSINAS",
+     "detalle": "Civil · Pendiente",
+     "monto": 9856712.514
+    },
+    {
+     "fecha": "2026-08-31",
+     "tipo": "cobro",
+     "quien": "MESSINAS",
+     "detalle": "Civil · Pendiente",
+     "monto": 4336586.76
+    },
+    {
+     "fecha": "2026-08-31",
+     "tipo": "cobro",
+     "quien": "MESSINAS",
+     "detalle": "Civil · Pendiente",
+     "monto": 7228782
+    },
+    {
+     "fecha": "2026-08-31",
+     "tipo": "cobro",
+     "quien": "LA ESTRELLA /ALIMENTOS DEL SUR SAS",
+     "detalle": "Civil · Pendiente",
+     "monto": 10000000
+    }
+   ],
+   "neto": 31422081.274,
+   "acumulado": 54313631.140656665
+  },
+  {
+   "fecha": "2026-09-02",
+   "movimientos": [
+    {
+     "fecha": "2026-09-02",
+     "tipo": "tarjeta",
+     "quien": "Modica SA",
+     "detalle": "débito de tarjeta",
+     "monto": -355413.39
+    },
+    {
+     "fecha": "2026-09-02",
+     "tipo": "tarjeta",
+     "quien": "Pintureria Cordoba",
+     "detalle": "débito de tarjeta",
+     "monto": -80454.91667
+    },
+    {
+     "fecha": "2026-09-02",
+     "tipo": "tarjeta",
+     "quien": "Pintureria Cordoba",
+     "detalle": "débito de tarjeta",
+     "monto": -266181.37
+    },
+    {
+     "fecha": "2026-09-02",
+     "tipo": "tarjeta",
+     "quien": "Pintureria Cordoba",
+     "detalle": "débito de tarjeta",
+     "monto": -263813.91333333333
+    }
+   ],
+   "neto": -965863.5900033333,
+   "acumulado": 53347767.55065333
+  },
+  {
+   "fecha": "2026-09-03",
+   "movimientos": [
+    {
+     "fecha": "2026-09-03",
+     "tipo": "cheque",
+     "quien": "NEUMAGOM SAS",
+     "detalle": "ECHEQ N° 308",
+     "monto": -317000
+    }
+   ],
+   "neto": -317000,
+   "acumulado": 53030767.55065333
+  },
+  {
+   "fecha": "2026-09-07",
+   "movimientos": [
+    {
+     "fecha": "2026-09-07",
+     "tipo": "pago",
+     "quien": "Banco",
+     "detalle": "Financiero · Prestamo Camioneta Ford XLS · proyectado",
+     "monto": -1282810.54
+    }
+   ],
+   "neto": -1282810.54,
+   "acumulado": 51747957.01065333
+  },
+  {
+   "fecha": "2026-09-10",
+   "movimientos": [
+    {
+     "fecha": "2026-09-10",
+     "tipo": "pago",
+     "quien": "FCL",
+     "detalle": "Impuestos · Agosto · proyectado",
+     "monto": -800000
+    },
+    {
+     "fecha": "2026-09-10",
+     "tipo": "pago",
+     "quien": "ARCA",
+     "detalle": "Impuestos · Agosto · proyectado",
+     "monto": -6500000
+    },
+    {
+     "fecha": "2026-09-10",
+     "tipo": "pago",
+     "quien": "Sueldos",
+     "detalle": "Estructura · Agosto · proyectado",
+     "monto": -3000000
+    }
+   ],
+   "neto": -10300000,
+   "acumulado": 41447957.01065333
+  },
+  {
+   "fecha": "2026-09-15",
+   "movimientos": [
+    {
+     "fecha": "2026-09-15",
+     "tipo": "pago",
+     "quien": "Sueldos",
+     "detalle": "Estructura · Primera · proyectado",
+     "monto": -3000000
+    }
+   ],
+   "neto": -3000000,
+   "acumulado": 38447957.01065333
+  },
+  {
+   "fecha": "2026-09-17",
+   "movimientos": [
+    {
+     "fecha": "2026-09-17",
+     "tipo": "pago",
+     "quien": "SINDICATOS",
+     "detalle": "Impuestos · Agosto · proyectado",
+     "monto": -700000
+    },
+    {
+     "fecha": "2026-09-17",
+     "tipo": "cheque",
+     "quien": "Corralon Progreso",
+     "detalle": "FISICO N° 311",
+     "monto": -470944
+    }
+   ],
+   "neto": -1170944,
+   "acumulado": 37277013.01065333
+  },
+  {
+   "fecha": "2026-09-30",
+   "movimientos": [
+    {
+     "fecha": "2026-09-30",
+     "tipo": "cobro",
+     "quien": "ARCOR",
+     "detalle": "Mantenimiento · Facturado",
+     "monto": 11374000
+    },
+    {
+     "fecha": "2026-09-30",
+     "tipo": "cobro",
+     "quien": "ARCOR",
+     "detalle": "Mantenimiento · Proyectado",
+     "monto": 3019749.6
+    },
+    {
+     "fecha": "2026-09-30",
+     "tipo": "cobro",
+     "quien": "ARCOR",
+     "detalle": "Mantenimiento · Proyectado",
+     "monto": 2100049.38
+    },
+    {
+     "fecha": "2026-09-30",
+     "tipo": "cobro",
+     "quien": "ARCOR",
+     "detalle": "Mantenimiento · Proyectado",
+     "monto": 955504.33
+    },
+    {
+     "fecha": "2026-09-30",
+     "tipo": "cobro",
+     "quien": "ARCOR",
+     "detalle": "Mantenimiento · Pendiente",
+     "monto": 2274800
+    },
+    {
+     "fecha": "2026-09-30",
+     "tipo": "pago",
+     "quien": "Sueldos",
+     "detalle": "Estructura · Segunda · proyectado",
+     "monto": -3000000
+    }
+   ],
+   "neto": 16724103.309999999,
+   "acumulado": 54001116.320653334
+  },
+  {
+   "fecha": "2026-10-02",
+   "movimientos": [
+    {
+     "fecha": "2026-10-02",
+     "tipo": "tarjeta",
+     "quien": "Modica SA",
+     "detalle": "débito de tarjeta",
+     "monto": -355413.39
+    },
+    {
+     "fecha": "2026-10-02",
+     "tipo": "tarjeta",
+     "quien": "Pintureria Cordoba",
+     "detalle": "débito de tarjeta",
+     "monto": -263813.91333333333
+    }
+   ],
+   "neto": -619227.3033333333,
+   "acumulado": 53381889.01732
+  },
+  {
+   "fecha": "2026-10-03",
+   "movimientos": [
+    {
+     "fecha": "2026-10-03",
+     "tipo": "cheque",
+     "quien": "NEUMAGOM SAS",
+     "detalle": "ECHEQ N° 309",
+     "monto": -317000
+    }
+   ],
+   "neto": -317000,
+   "acumulado": 53064889.01732
+  },
+  {
+   "fecha": "2026-10-07",
+   "movimientos": [
+    {
+     "fecha": "2026-10-07",
+     "tipo": "pago",
+     "quien": "Banco",
+     "detalle": "Financiero · Prestamo Camioneta Ford XLS · proyectado",
+     "monto": -1282810.54
+    }
+   ],
+   "neto": -1282810.54,
+   "acumulado": 51782078.47732
+  },
+  {
+   "fecha": "2026-10-10",
+   "movimientos": [
+    {
+     "fecha": "2026-10-10",
+     "tipo": "pago",
+     "quien": "FCL",
+     "detalle": "Impuestos · Septiembre · proyectado",
+     "monto": -800000
+    },
+    {
+     "fecha": "2026-10-10",
+     "tipo": "pago",
+     "quien": "ARCA",
+     "detalle": "Impuestos · Septiembre · proyectado",
+     "monto": -6500000
+    },
+    {
+     "fecha": "2026-10-10",
+     "tipo": "pago",
+     "quien": "Sueldos",
+     "detalle": "Estructura · Septiembre · proyectado",
+     "monto": -3000000
+    }
+   ],
+   "neto": -10300000,
+   "acumulado": 41482078.47732
+  },
+  {
+   "fecha": "2026-10-15",
+   "movimientos": [
+    {
+     "fecha": "2026-10-15",
+     "tipo": "pago",
+     "quien": "Sueldos",
+     "detalle": "Estructura · Primera · proyectado",
+     "monto": -3000000
+    }
+   ],
+   "neto": -3000000,
+   "acumulado": 38482078.47732
+  },
+  {
+   "fecha": "2026-10-17",
+   "movimientos": [
+    {
+     "fecha": "2026-10-17",
+     "tipo": "pago",
+     "quien": "SINDICATOS",
+     "detalle": "Impuestos · Septiembre · proyectado",
+     "monto": -700000
+    },
+    {
+     "fecha": "2026-10-17",
+     "tipo": "cheque",
+     "quien": "Corralon Progreso",
+     "detalle": "FISICO N° 310",
+     "monto": -470944
+    }
+   ],
+   "neto": -1170944,
+   "acumulado": 37311134.47732
+  },
+  {
+   "fecha": "2026-10-30",
+   "movimientos": [
+    {
+     "fecha": "2026-10-30",
+     "tipo": "pago",
+     "quien": "Sueldos",
+     "detalle": "Estructura · Segunda · proyectado",
+     "monto": -3000000
+    }
+   ],
+   "neto": -3000000,
+   "acumulado": 34311134.47732
+  },
+  {
+   "fecha": "2026-11-02",
+   "movimientos": [
+    {
+     "fecha": "2026-11-02",
+     "tipo": "tarjeta",
+     "quien": "Modica SA",
+     "detalle": "débito de tarjeta",
+     "monto": -355413.39
+    }
+   ],
+   "neto": -355413.39,
+   "acumulado": 33955721.08732
+  },
+  {
+   "fecha": "2026-11-07",
+   "movimientos": [
+    {
+     "fecha": "2026-11-07",
+     "tipo": "pago",
+     "quien": "Banco",
+     "detalle": "Financiero · Prestamo Camioneta Ford XLS · proyectado",
+     "monto": -1282810.54
+    }
+   ],
+   "neto": -1282810.54,
+   "acumulado": 32672910.54732
+  },
+  {
+   "fecha": "2026-11-10",
+   "movimientos": [
+    {
+     "fecha": "2026-11-10",
+     "tipo": "pago",
+     "quien": "FCL",
+     "detalle": "Impuestos · Octubre · proyectado",
+     "monto": -800000
+    },
+    {
+     "fecha": "2026-11-10",
+     "tipo": "pago",
+     "quien": "ARCA",
+     "detalle": "Impuestos · Octubre · proyectado",
+     "monto": -6500000
+    },
+    {
+     "fecha": "2026-11-10",
+     "tipo": "pago",
+     "quien": "Sueldos",
+     "detalle": "Estructura · Octubre · proyectado",
+     "monto": -3000000
+    }
+   ],
+   "neto": -10300000,
+   "acumulado": 22372910.54732
+  },
+  {
+   "fecha": "2026-11-15",
+   "movimientos": [
+    {
+     "fecha": "2026-11-15",
+     "tipo": "pago",
+     "quien": "Sueldos",
+     "detalle": "Estructura · Primera · proyectado",
+     "monto": -3000000
+    }
+   ],
+   "neto": -3000000,
+   "acumulado": 19372910.54732
+  },
+  {
+   "fecha": "2026-11-17",
+   "movimientos": [
+    {
+     "fecha": "2026-11-17",
+     "tipo": "pago",
+     "quien": "SINDICATOS",
+     "detalle": "Impuestos · Octubre · proyectado",
+     "monto": -700000
+    }
+   ],
+   "neto": -700000,
+   "acumulado": 18672910.54732
+  },
+  {
+   "fecha": "2026-11-30",
+   "movimientos": [
+    {
+     "fecha": "2026-11-30",
+     "tipo": "pago",
+     "quien": "Sueldos",
+     "detalle": "Estructura · Segunda · proyectado",
+     "monto": -3000000
+    }
+   ],
+   "neto": -3000000,
+   "acumulado": 15672910.54732
+  },
+  {
+   "fecha": "2026-12-02",
+   "movimientos": [
+    {
+     "fecha": "2026-12-02",
+     "tipo": "tarjeta",
+     "quien": "Modica SA",
+     "detalle": "débito de tarjeta",
+     "monto": -355413.39
+    }
+   ],
+   "neto": -355413.39,
+   "acumulado": 15317497.15732
+  },
+  {
+   "fecha": "2026-12-07",
+   "movimientos": [
+    {
+     "fecha": "2026-12-07",
+     "tipo": "pago",
+     "quien": "Banco",
+     "detalle": "Financiero · Prestamo Camioneta Ford XLS · proyectado",
+     "monto": -1282810.54
+    }
+   ],
+   "neto": -1282810.54,
+   "acumulado": 14034686.617320001
+  },
+  {
+   "fecha": "2026-12-10",
+   "movimientos": [
+    {
+     "fecha": "2026-12-10",
+     "tipo": "pago",
+     "quien": "FCL",
+     "detalle": "Impuestos · Noviembre · proyectado",
+     "monto": -800000
+    },
+    {
+     "fecha": "2026-12-10",
+     "tipo": "pago",
+     "quien": "ARCA",
+     "detalle": "Impuestos · Noviembre · proyectado",
+     "monto": -6500000
+    },
+    {
+     "fecha": "2026-12-10",
+     "tipo": "pago",
+     "quien": "Sueldos",
+     "detalle": "Estructura · Noviembre · proyectado",
+     "monto": -3000000
+    }
+   ],
+   "neto": -10300000,
+   "acumulado": 3734686.617320001
+  },
+  {
+   "fecha": "2026-12-15",
+   "movimientos": [
+    {
+     "fecha": "2026-12-15",
+     "tipo": "pago",
+     "quien": "Sueldos",
+     "detalle": "Estructura · Primera · proyectado",
+     "monto": -7000000
+    }
+   ],
+   "neto": -7000000,
+   "acumulado": -3265313.382679999
+  },
+  {
+   "fecha": "2026-12-17",
+   "movimientos": [
+    {
+     "fecha": "2026-12-17",
+     "tipo": "pago",
+     "quien": "SINDICATOS",
+     "detalle": "Impuestos · Noviembre · proyectado",
+     "monto": -700000
+    }
+   ],
+   "neto": -700000,
+   "acumulado": -3965313.382679999
+  },
+  {
+   "fecha": "2026-12-30",
+   "movimientos": [
+    {
+     "fecha": "2026-12-30",
+     "tipo": "pago",
+     "quien": "Sueldos",
+     "detalle": "Estructura · Segunda · proyectado",
+     "monto": -3000000
+    },
+    {
+     "fecha": "2026-12-30",
+     "tipo": "pago",
+     "quien": "SAC",
+     "detalle": "Estructura · Segunda - 15 Empleados · proyectado",
+     "monto": -7000000
+    },
+    {
+     "fecha": "2026-12-30",
+     "tipo": "pago",
+     "quien": "SAC",
+     "detalle": "Estructura · Segunda - 2 Empleados · proyectado",
+     "monto": -1500000
+    }
+   ],
+   "neto": -11500000,
+   "acumulado": -15465313.382679999
+  },
+  {
+   "fecha": "2027-01-02",
+   "movimientos": [
+    {
+     "fecha": "2027-01-02",
+     "tipo": "tarjeta",
+     "quien": "Modica SA",
+     "detalle": "débito de tarjeta",
+     "monto": -355413.39
+    }
+   ],
+   "neto": -355413.39,
+   "acumulado": -15820726.77268
+  },
+  {
+   "fecha": "2027-02-02",
+   "movimientos": [
+    {
+     "fecha": "2027-02-02",
+     "tipo": "tarjeta",
+     "quien": "Modica SA",
+     "detalle": "débito de tarjeta",
+     "monto": -355413.39
+    }
+   ],
+   "neto": -355413.39,
+   "acumulado": -16176140.16268
+  },
+  {
+   "fecha": "2027-03-02",
+   "movimientos": [
+    {
+     "fecha": "2027-03-02",
+     "tipo": "tarjeta",
+     "quien": "Modica SA",
+     "detalle": "débito de tarjeta",
+     "monto": -355413.39
+    }
+   ],
+   "neto": -355413.39,
+   "acumulado": -16531553.55268
+  },
+  {
+   "fecha": "2027-04-02",
+   "movimientos": [
+    {
+     "fecha": "2027-04-02",
+     "tipo": "tarjeta",
+     "quien": "Modica SA",
+     "detalle": "débito de tarjeta",
+     "monto": -355413.39
+    }
+   ],
+   "neto": -355413.39,
+   "acumulado": -16886966.94268
+  },
+  {
+   "fecha": "2027-05-02",
+   "movimientos": [
+    {
+     "fecha": "2027-05-02",
+     "tipo": "tarjeta",
+     "quien": "Modica SA",
+     "detalle": "débito de tarjeta",
+     "monto": -355413.39
+    }
+   ],
+   "neto": -355413.39,
+   "acumulado": -17242380.33268
+  },
+  {
+   "fecha": "2027-06-02",
+   "movimientos": [
+    {
+     "fecha": "2027-06-02",
+     "tipo": "tarjeta",
+     "quien": "Modica SA",
+     "detalle": "débito de tarjeta",
+     "monto": -355413.39
+    }
+   ],
+   "neto": -355413.39,
+   "acumulado": -17597793.722680002
+  },
+  {
+   "fecha": "2027-07-02",
+   "movimientos": [
+    {
+     "fecha": "2027-07-02",
+     "tipo": "tarjeta",
+     "quien": "Modica SA",
+     "detalle": "débito de tarjeta",
+     "monto": -355413.39
+    }
+   ],
+   "neto": -355413.39,
+   "acumulado": -17953207.112680003
+  }
+ ],
+ "totalCobros": 163565870.374,
+ "totalPagos": -176672950.3033398,
+ "leidoEn": "9/7/2026, 09:12:27"
+}

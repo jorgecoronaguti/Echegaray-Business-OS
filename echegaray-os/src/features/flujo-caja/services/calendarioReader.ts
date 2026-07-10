@@ -79,10 +79,12 @@ function serialAIso(serial: number): string {
 export async function leerCalendario(): Promise<Calendario | { error: string }> {
   const saJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
   if (!saJson) {
-    return {
-      error:
-        'Falta GOOGLE_SERVICE_ACCOUNT_JSON en el entorno. Cargar el JSON de la cuenta de servicio (scripts/google_workspace/credentials/service-account.json) como variable de entorno en Vercel.',
-    }
+    // Sin credencial en el entorno (caso Vercel hoy): servir el snapshot
+    // commiteado por scripts/sync-calendario.mjs. Es el mismo dato, con la
+    // frescura del último sync -- el timestamp visible (leidoEn) es el del
+    // momento en que se leyó el Sheet, nunca se disfraza de "en vivo".
+    const { default: snapshot } = await import('../data/calendario-snapshot.json')
+    return snapshot as Calendario
   }
   try {
     const token = await getAccessToken(saJson)
