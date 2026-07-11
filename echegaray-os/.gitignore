@@ -77,3 +77,6 @@ __pycache__/
 *.pyc
 scripts/arca/credentials/
 scripts/arca/out/
+
+# Sandbox de pruebas del Work Fabric (solo debe existir en worktrees aislados)
+orquestador/.orq-sandbox/
