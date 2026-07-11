@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "orq:worker": "node orquestador/worker.mjs",
+    "orq:worker:once": "node orquestador/worker.mjs --once",
+    "orq:health": "node orquestador/worker.mjs --health",
+    "orq:enqueue": "node orquestador/scripts/enqueue.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.6.0",

@@ -63,8 +63,53 @@ config validada, secretos, logs estructurados, docs.
 
 ---
 
-## FASE 1 — Work Ledger y Worker durable ⏳ EN CURSO
-## FASE 2 — Executor real (Engine/Runner + Claude CLI) ⬜
+## FASE 1 — Work Ledger y Worker durable ✅ COMPLETA
+
+**Objetivo**: capa satélite de ejecución con intentos, DAG, prioridades,
+deadlines, reintentos, backoff, dead-letter, leases, visibility-timeout, claim
+`FOR UPDATE SKIP LOCKED`, recuperación de abandonados, worker Node (`--once`/
+daemon/health), heartbeat y ejecución no-op para validar el ciclo sin IA.
+
+### Entregado
+- Migración `supabase/migrations/20260711121000_orq_ledger.sql`:
+  - `orq.tasks` (envelope: linaje correlation/causation/parent, origen
+    polimórfico subject_type/subject_id, capability_slug, priority, run_after,
+    deadline, DAG, lease, result/evidence/cost, dedupe_key único).
+  - `orq.task_deps` (DAG), `orq.task_attempts` (retry-aware, session_id/tokens/
+    cost/logs_ref/review).
+  - Funciones (todas transaccionales → outbox): `enqueue_task` (idempotente),
+    `claim_task` (SKIP LOCKED), `heartbeat_task`, `transition_task` (valida
+    transición + ownership del lease), `fail_task` (backoff/dead-letter),
+    `reap_expired_leases` (recuperación).
+  - Índices parciales de cola/lease; RLS + grants.
+- Worker Node: `orquestador/worker.mjs` (loop claim→running→reviewing→succeeded,
+  heartbeat, timeout, graceful shutdown SIGTERM/SIGINT, `--once`/daemon/`--health`,
+  concurrencia por slots) + `lib/ledger.mjs` (port) + `handlers/` (registry +
+  noop) + `scripts/enqueue.mjs`. npm scripts `orq:*`.
+
+### Pruebas ejecutadas (evidencia, Postgres 16 docker)
+- Ciclo completo: received→claimed→running→reviewing→succeeded; outbox con los 5
+  eventos; dedupe_key idempotente (reenvío devuelve el mismo id). ✅
+- Fallo: fail#1→retrying (backoff), fail#2 (=max_attempts)→dead_letter; intentos
+  registrados. ✅
+- Reap: tarea con lease vencido → recuperada a retrying. ✅
+- Concurrencia SQL (claims solapados): exactamente 1 worker gana. ✅
+- Worker Node end-to-end `--once`: 2 succeeded + 1 dead_letter (max_attempts=1). ✅
+- **Concurrencia definitiva (2 workers Node)**: 7 tareas, W1=1/W2=6, 7 succeeded,
+  **0 tareas con >1 intento**, 7 intentos, 2 workers distintos. Sin doble
+  ejecución. ✅
+- Rollback F1: drop → re-apply limpio. Repo typecheck/lint verde.
+
+### Decisiones
+- Claim admite `ready` y `retrying` (con run_after vencido) para no duplicar
+  lógica de promoción.
+- `transition_task` valida la transición (F0) y el ownership del lease en estados
+  activos → un worker no puede pisar la tarea de otro.
+
+### Pendiente
+- Aplicar F0+F1 a Supabase prod (pooler) — dentro de política automática.
+
+## FASE 2 — Executor real (Engine/Runner + Claude CLI) ⏳ EN CURSO
 ## FASE 3 — Planner, Router y Agentes ⬜
 ## FASE 4 — Review, Recovery y Aprendizaje ⬜
 ## FASE 5 — Human Control y Observabilidad ⬜
