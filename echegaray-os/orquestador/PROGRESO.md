@@ -190,15 +190,48 @@ Corre sobre store Postgres LOCAL durable en la VM porque el password de la
 Supabase real (pooler) no está disponible. Migrar a prod (D1) = cambiar
 `DATABASE_URL` en el EnvironmentFile (una línea). Ver bloqueo al pie del progreso.
 
-## FASE 3 — Planner, Router y Agentes ⬜
-## FASE 4 — Review, Recovery y Aprendizaje ⬜ (recovery/reap ya operativo desde F1/F6)
-## FASE 5 — Human Control y Observabilidad ⬜
-## FASE 7 — Intake e integraciones ⬜
+## FASE 3 — Planner, Router y Agentes ⬜ PENDIENTE (no bloqueado por credencial)
+## FASE 4 — Review, Recovery y Aprendizaje 🟡 PARCIAL (recovery/reap operativo; falta reviewer full + learning)
+## FASE 5 — Human Control y Observabilidad 🟡 PARCIAL (status.mjs CLI; UI en app bloqueada por prod DB)
+## FASE 7 — Intake e integraciones 🟡 PARCIAL (enqueue CLI; API/webhooks pendientes)
 
 ---
 
-### Siguiente acción
-Fase 1: capa satélite `orq.tasks` + `orq.task_attempts` + funciones de claim
-(`FOR UPDATE SKIP LOCKED`), leases/visibility-timeout, reintentos/backoff/
-dead-letter, y el worker Node (`--once` / daemon, health, heartbeat, handler
-no-op). Validar concurrencia con dos workers sobre la misma tarea.
+## CRITERIO DE FINALIZACIÓN — estado
+
+| Requisito | Estado |
+|---|---|
+| worker como servicio permanente | ✅ systemd, active, enabled |
+| sobrevive cierre de Claude/VS Code/SSH | ✅ systemd --user + Linger=yes + WantedBy=default.target |
+| reinicia automáticamente | ✅ Restart=always (probado con kill -9, NRestarts=1) |
+| procesa una tarea de prueba completa | ✅ noop y Claude, vía servicio |
+| crea un worktree | ✅ |
+| ejecuta Claude headless | ✅ (sonnet, sesiones reales, costo capturado) |
+| modifica un archivo de prueba controlado | ✅ NOTA-SERVICIO.md |
+| corre revisión | ✅ gates (cambio/rutas prohibidas/typecheck) |
+| crea un commit local | ✅ (nunca push) |
+| persiste eventos e intentos | ✅ outbox + task_attempts |
+| libera/limpia el workspace | ✅ release + cleanup timer |
+| recupera una tarea interrumpida | ✅ reap probado end-to-end |
+| muestra el estado en la interfaz existente | 🟡 CLI status.mjs; UI del app **bloqueada por prod DB** |
+| deja documentación / rollback / pruebas / evidencia | ✅ README, rollback/, test-fabric.sh, este PROGRESO |
+
+## BLOQUEO DECLARADO — credencial no disponible
+
+- **Bloqueo**: no hay password de la Supabase real. `supabase/.temp/pooler-url`
+  trae el usuario/host pero SIN password; ninguna otra fuente lo tiene.
+- **Impacto**: por D1 el `orq` debe vivir en la Supabase de producción (para
+  referenciar backlog_autonomo/acciones y para que la UI existente lo lea).
+  Hoy corre sobre un Postgres durable LOCAL en la VM (interino, restart=always).
+- **Alternativas**: (a) me pasás el `DATABASE_URL` del pooler con password;
+  (b) autorizás habilitar el MCP de Supabase para aplicar `orq` a prod;
+  (c) seguimos en el store local hasta tener el dato.
+- **Comando mínimo tuyo**: pegar en el EnvironmentFile
+  `~/.config/echegaray-orq/worker.env` el `DATABASE_URL` real y
+  `ORQ_DB_SSL=true`, y avisarme para aplicar F0+F1 a prod (aditivo/reversible,
+  ya validado) y reiniciar el servicio.
+
+### Siguiente acción (una vez desbloqueado o en paralelo, no bloqueado)
+Fase 3 (Planner durable + Agent/Capability Registry + Router multi-modelo +
+agentes mínimos) y Fase 4 (Reviewer full + aprendizaje a memoria). Ambas
+avanzan sobre el store actual sin necesitar la credencial de prod.
