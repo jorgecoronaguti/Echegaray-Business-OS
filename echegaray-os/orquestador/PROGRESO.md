@@ -109,8 +109,48 @@ daemon/health), heartbeat y ejecución no-op para validar el ciclo sin IA.
 ### Pendiente
 - Aplicar F0+F1 a Supabase prod (pooler) — dentro de política automática.
 
-## FASE 2 — Executor real (Engine/Runner + Claude CLI) ⏳ EN CURSO
-## FASE 3 — Planner, Router y Agentes ⬜
+## FASE 2 — Executor real (Engine/Runner + Claude CLI) ✅ COMPLETA
+
+**Objetivo**: port Engine/Runner neutral + adaptador Claude CLI headless +
+worktree aislado por tarea + review + commit local. Nunca push/PR/merge.
+
+### Entregado
+- Port neutral (D3): `orquestador/engines/index.mjs` — registry con `noop` y
+  `claude-cli` implementados; `claude-sdk`/`anthropic-api`/`openai`/`gemini` con
+  interfaz lista y `notImplemented` (el resto del Fabric no depende del motor).
+- Adaptador `engines/claude-cli.mjs`: `claude -p --output-format json
+  --permission-mode acceptEdits --model --add-dir --session-id`, guardarraíl de
+  herramientas (solo Read/Edit/Write/Glob/Grep; sin Bash/red/MCP), timeout +
+  kill, captura session_id/exit/cost/tokens. Corre con cwd en el worktree →
+  reutiliza CLAUDE.md/skills/memoria nativamente. No filtra DATABASE_URL/
+  SERVICE_ROLE al subproceso.
+- `engines/noop-engine.mjs`: cambio determinista sin IA (valida el pipeline sin
+  tokens).
+- Workspace Manager `lib/workspace.mjs`: `git worktree` aislado + branch por
+  tarea, commit LOCAL (nunca push), release seguro (solo bajo WORKSPACES_DIR).
+- Reviewer básico `lib/review.mjs`: gates (cambio presente, sin rutas prohibidas
+  —.env/credentials/pem—, typecheck si cambió TS). Port del Reviewer completo (F4).
+- Policy port `lib/policy.mjs` + handler `handlers/code_change.mjs` (worktree →
+  engine → review → policy gate `git.commit_local` → commit local → release).
+
+### Pruebas ejecutadas (evidencia)
+- Smoke `claude -p` headless: crea archivo, JSON con session_id/cost/usage. ✅
+- Pipeline con `noop-engine`: worktree→review→commit local→release; tarea
+  succeeded con sha/branch. ✅
+- **Pipeline con Claude real**: worktree aislado → `claude-cli` (sonnet, sesión
+  1fe55580, cost $0.23) → review pass → commit local `8ec5b36` → worktree
+  removido → succeeded. El archivo creado por Claude describe correctamente el
+  Work Fabric (confirma reuso real de CLAUDE.md/skills). Working tree principal
+  intacto; ramas de prueba limpiadas. ✅
+- typecheck/lint verde.
+
+### Decisiones
+- Guardarraíl de push en DOS capas: el motor no tiene Bash (no puede pushear) y
+  el Fabric hace el commit local determinista; push/PR quedan como capacidad
+  Nivel E (requires_approval) para Fase 5.
+- Release remueve el worktree pero conserva la branch (commit inspeccionable).
+
+## FASE 3 — Planner, Router y Agentes ⏳ EN CURSO
 ## FASE 4 — Review, Recovery y Aprendizaje ⬜
 ## FASE 5 — Human Control y Observabilidad ⬜
 ## FASE 6 — Operación remota 24×7 (systemd) ⬜

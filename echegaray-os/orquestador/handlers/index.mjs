@@ -9,10 +9,12 @@
 //   - lanzar un Error marca el intento como fallido (dispara reintento/backoff).
 
 import { noopHandler } from './noop.mjs'
+import { codeChangeHandler } from './code_change.mjs'
 
 export const HANDLERS = {
   noop: noopHandler,
-  generic: noopHandler, // por defecto, hasta que existan handlers reales (Fase 2+)
+  generic: noopHandler,
+  code_change: codeChangeHandler, // Fase 2: worktree -> engine -> review -> commit local
 }
 
 export function resolveHandler(type) {
