@@ -150,10 +150,49 @@ worktree aislado por tarea + review + commit local. Nunca push/PR/merge.
   Nivel E (requires_approval) para Fase 5.
 - Release remueve el worktree pero conserva la branch (commit inspeccionable).
 
-## FASE 3 — Planner, Router y Agentes ⏳ EN CURSO
-## FASE 4 — Review, Recovery y Aprendizaje ⬜
+## FASE 6 — Operación remota 24×7 (systemd) ✅ COMPLETA (interino sobre store local)
+
+**Objetivo**: servicios systemd en la VM, Restart=always, arranque al boot, sin
+sesión SSH, journal, graceful shutdown, recuperación. Sin tocar
+echegaray-claude-remote.service.
+
+### Entregado
+- Units `orquestador/systemd/`: `echegaray-orq-worker.service` (daemon,
+  Restart=always, RestartSec=5, KillSignal=SIGTERM, TimeoutStopSec=90, journal),
+  `echegaray-orq-health.{service,timer}` (cada 5 min), `echegaray-orq-cleanup.
+  {service,timer}` (worktrees huérfanos cada 6 h). Instalador idempotente
+  `install.sh` (crea EnvironmentFile chmod 600, NO versionado).
+- `scripts/cleanup-worktrees.mjs` (poda git + borra dirs huérfanos >1h).
+- Store durable interino en la VM: contenedor `orq-store` (postgres:16,
+  `--restart=always`, volumen `orq-store-data`, 127.0.0.1:55433). F0+F1 aplicadas.
+
+### Pruebas ejecutadas (evidencia)
+- Servicios instalados y `active (running)`; timers activos;
+  echegaray-claude-remote.service intacto. ✅
+- El servicio permanente procesó tareas encoladas EXTERNAMENTE (svc1/svc2 →
+  succeeded) sin intervención. ✅
+- **Supervivencia**: `kill -9` del MainPID → systemd reinició (PID nuevo,
+  NRestarts=1, active). ✅
+- **Recuperación de tarea interrumpida** (end-to-end): worker claim→running,
+  kill -9, lease vencido → otro worker reap (attempt1=timeout) → attempt2
+  succeeded. ✅
+- Loop completo con Claude a través del servicio: ver Fase 2 (mismo pipeline).
+
+### Bugs reales encontrados por el propio sistema y corregidos
+- `spawn claude ENOENT` bajo systemd --user (PATH sin nvm): resuelto vía
+  `CLAUDE_BIN` junto a node + PATH del child (`ORQ_CLAUDE_BIN` override).
+- Colisión de branch en reintentos: nombre de branch/worktree único por intento
+  (`-a<attempt>`) + borrado de branch vacía al fallar (keepBranch=false).
+- `.orq-sandbox` gitignoreado ocultaba el cambio al review/commit: revertido.
+
+### Nota (bloqueo declarado)
+Corre sobre store Postgres LOCAL durable en la VM porque el password de la
+Supabase real (pooler) no está disponible. Migrar a prod (D1) = cambiar
+`DATABASE_URL` en el EnvironmentFile (una línea). Ver bloqueo al pie del progreso.
+
+## FASE 3 — Planner, Router y Agentes ⬜
+## FASE 4 — Review, Recovery y Aprendizaje ⬜ (recovery/reap ya operativo desde F1/F6)
 ## FASE 5 — Human Control y Observabilidad ⬜
-## FASE 6 — Operación remota 24×7 (systemd) ⬜
 ## FASE 7 — Intake e integraciones ⬜
 
 ---

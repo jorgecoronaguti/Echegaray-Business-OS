@@ -32,6 +32,7 @@ export async function codeChangeHandler(task, ctx) {
   const engineName = task.engine || task.inputs?.engine || 'claude-cli'
   const engine = resolveEngine(engineName)
   const ws = await acquireWorktree(task, ctx)
+  let committed = false
   try {
     const eng = await engine.run(
       { prompt: buildPrompt(task), worktreePath: ws.path, model: task.inputs?.model, task, timeoutMs: ctx.config.ENGINE_TIMEOUT_MS },
@@ -49,6 +50,7 @@ export async function codeChangeHandler(task, ctx) {
     if (dispo !== 'auto') throw new Error(`commit local no autorizado por policy: ${dispo}`)
 
     const sha = await commitLocal(ws, commitMessage(task, eng, engineName))
+    committed = true
     ctx.logger.info('commit local creado', { task_id: task.id, sha, branch: ws.branch })
 
     return {
@@ -67,6 +69,6 @@ export async function codeChangeHandler(task, ctx) {
       },
     }
   } finally {
-    await releaseWorktree(ws, ctx)
+    await releaseWorktree(ws, ctx, { keepBranch: committed })
   }
 }

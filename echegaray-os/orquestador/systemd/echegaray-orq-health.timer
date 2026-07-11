@@ -1,0 +1,10 @@
+[Unit]
+Description=Echegaray OS - Work Fabric health check cada 5 min
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+Unit=echegaray-orq-health.service
+
+[Install]
+WantedBy=timers.target
