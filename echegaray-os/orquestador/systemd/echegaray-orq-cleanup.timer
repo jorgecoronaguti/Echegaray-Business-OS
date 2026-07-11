@@ -1,0 +1,10 @@
+[Unit]
+Description=Echegaray OS - limpieza de worktrees cada 6 h
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=6h
+Unit=echegaray-orq-cleanup.service
+
+[Install]
+WantedBy=timers.target

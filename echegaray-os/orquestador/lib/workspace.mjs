@@ -16,9 +16,12 @@ export async function acquireWorktree(task, ctx) {
   const repoRoot = ctx.context.repository?.rootPath
   if (!repoRoot) throw new Error('Repositorio sin root_path en orq.repositories')
 
+  // nombre único POR INTENTO: los reintentos no colisionan con la branch/worktree
+  // que dejó el intento anterior (fallido o crasheado).
   const short = String(task.id).slice(0, 8)
-  const branch = `orq/${(task.type || 'task').replace(/[^a-z0-9_-]/gi, '-')}/${short}`
-  const wtPath = path.join(cfg.WORKSPACES_DIR, String(task.id))
+  const attempt = task.attempt ?? 1
+  const branch = `orq/${(task.type || 'task').replace(/[^a-z0-9_-]/gi, '-')}/${short}-a${attempt}`
+  const wtPath = path.join(cfg.WORKSPACES_DIR, `${task.id}-a${attempt}`)
 
   await mkdir(cfg.WORKSPACES_DIR, { recursive: true })
   const { stdout: head } = await git(repoRoot, ['rev-parse', 'HEAD'])
@@ -45,8 +48,10 @@ export async function commitLocal(ws, message) {
   return sha.trim()
 }
 
-/** Remueve el worktree (la branch persiste, para inspección). Seguro e idempotente. */
-export async function releaseWorktree(ws, ctx) {
+/** Remueve el worktree. Con keepBranch=true la branch persiste (para inspección
+ *  del commit); con keepBranch=false borra la branch (intento fallido sin commit,
+ *  para no acumular ramas vacías). Seguro e idempotente. */
+export async function releaseWorktree(ws, ctx, { keepBranch = true } = {}) {
   const cfg = loadConfig()
   if (!ws?.path?.startsWith(cfg.WORKSPACES_DIR)) {
     ctx?.logger?.warn('releaseWorktree: path fuera de WORKSPACES_DIR, no se toca', { path: ws?.path })
@@ -54,7 +59,8 @@ export async function releaseWorktree(ws, ctx) {
   }
   try {
     await git(ws.repoRoot, ['worktree', 'remove', '--force', ws.path])
-    ctx?.logger?.info('worktree removido', { path: ws.path, branch: ws.branch })
+    if (!keepBranch) await git(ws.repoRoot, ['branch', '-D', ws.branch]).catch(() => {})
+    ctx?.logger?.info('worktree removido', { path: ws.path, branch: ws.branch, keepBranch })
   } catch (err) {
     ctx?.logger?.warn('releaseWorktree falló (se reintentará por limpieza periódica)', { error: err.message })
   }

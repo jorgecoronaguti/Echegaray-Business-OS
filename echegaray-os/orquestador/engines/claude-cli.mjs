@@ -8,10 +8,15 @@
 // Fabric, no el motor.
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import path from 'node:path'
 
 const DEFAULT_ALLOWED = 'Read,Edit,Write,Glob,Grep'
 const DEFAULT_DISALLOWED = 'Bash,WebFetch,WebSearch,Task,NotebookEdit'
 const DEFAULT_MODEL = process.env.ORQ_CLAUDE_MODEL || 'sonnet'
+// Bajo systemd --user el PATH no incluye el bin de nvm. Resolvemos claude junto
+// a node (misma carpeta en instalaciones nvm) o por ORQ_CLAUDE_BIN.
+const NODE_BIN_DIR = path.dirname(process.execPath)
+const CLAUDE_BIN = process.env.ORQ_CLAUDE_BIN || path.join(NODE_BIN_DIR, 'claude')
 
 export const claudeCliEngine = {
   async run(job, ctx) {
@@ -38,8 +43,9 @@ export const claudeCliEngine = {
     const childEnv = { ...process.env }
     delete childEnv.DATABASE_URL
     delete childEnv.SUPABASE_SERVICE_ROLE_KEY
+    childEnv.PATH = `${NODE_BIN_DIR}:${childEnv.PATH || '/usr/bin:/bin'}`
 
-    const { stdout, stderr, code, timedOut } = await runProcess('claude', args, {
+    const { stdout, stderr, code, timedOut } = await runProcess(CLAUDE_BIN, args, {
       cwd: job.worktreePath,
       timeoutMs,
       env: childEnv,

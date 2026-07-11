@@ -1,0 +1,22 @@
+[Unit]
+Description=Echegaray OS - Work Fabric worker (orquestador, 24x7)
+Documentation=file:///home/jorge/echegaray-os/app/echegaray-os/orquestador/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+EnvironmentFile=%h/.config/echegaray-orq/worker.env
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/worker.mjs
+Restart=always
+RestartSec=5
+# drenado ordenado: el worker atrapa SIGTERM y termina las tareas en vuelo
+KillSignal=SIGTERM
+TimeoutStopSec=90
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=orq-worker
+
+[Install]
+WantedBy=default.target
