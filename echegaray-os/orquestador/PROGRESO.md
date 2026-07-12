@@ -278,7 +278,42 @@ Pasos ejecutados y validados (todo contra la Supabase real, proyecto
 
 `echegaray-claude-remote.service` intacto. Sin push, sin PR, sin deploy.
 
-### Siguiente
-Fase 3 (Planner durable + Agent/Capability Registry + Router multi-modelo +
-agentes mínimos), Fase 4 (Reviewer full + aprendizaje a memoria) y Fase 5
-(integración con la interfaz existente sobre la capa de datos ya lista).
+---
+
+## ETAPA 2 — CERRADA (PR #6 mergeado + deploy productivo)
+
+**Merge**: PR #6 mergeado a `main` por **rebase** → `main` = `6c44216` con
+**exactamente los 11 commits de Work Fabric** (F0–F6 + cutover), sin merge commit
+y **sin el commit ajeno** del calendario (excluido por rebase; recuperable por
+reflog `b8c27fe`). Checkout de la VM movido a `main` (el worker ya no corre desde
+la rama temporal). Cambios de `scripts/arca` **intactos** (md5 verificado
+antes/después).
+
+**Deploy productivo**: Vercel Production, sha **`6c44216`** (== `main` HEAD),
+estado *success*, deployment id `5416248834`, 2026-07-12T21:08:05Z.
+URL: https://echegaray-business-os.vercel.app
+
+**Servicios**: `echegaray-orq-worker` active+enabled (PID 134746) sobre Supabase
+prod; `echegaray-claude-remote` intacto; timers health+cleanup activos; Linger=yes.
+
+**Smoke tests productivos**:
+- reachability `/`, `/login`, rutas existentes (`/flujo-caja`, `/reportes`,
+  `/operador-digital`, `/dashboard`): 200 ✅ (sin regresión)
+- `/orquestador`: renderiza con gate "Iniciá sesión", **sin filtrar datos** a
+  anónimos ✅
+- **RLS/permisos (data-layer, prod)**: anon → **401** en `orq_tasks`, `orq_agents`
+  y en la RPC `orq_task_action` ✅ (acciones y lectura denegadas a no autorizados)
+- **Bundle web**: 0 credenciales / worker / infra en `.next/static` y en los chunks
+  productivos ✅ (solo anon key, público por diseño)
+- **Pendiente de sesión humana**: la vista autenticada de tareas/agentes/timeline y
+  el click de reintentar/cancelar con usuario autorizado requieren tu login (no
+  tengo credenciales de usuario). El happy-path de `orq_task_action` ya quedó
+  validado a nivel función (dead_letter→ready) y anon queda rechazado.
+
+**Rollback disponible**: DB `db/rollback/0000–0003` (aditivo/reversible); código
+`git revert` de los 11 commits o checkout de la rama preservada; commit del
+calendario recuperable por reflog. Migraciones ya aplicadas a prod (el merge NO
+las re-ejecuta).
+
+**Estado**: Etapa 2 (F0–F5 + operación 24×7 + PR/merge/deploy) COMPLETADA.
+No iniciar Etapa 3 sin nueva instrucción.
