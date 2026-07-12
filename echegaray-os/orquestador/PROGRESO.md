@@ -213,8 +213,43 @@ Supabase real (pooler) no está disponible. Migrar a prod (D1) = cambiar
 | persiste eventos e intentos | ✅ outbox + task_attempts |
 | libera/limpia el workspace | ✅ release + cleanup timer |
 | recupera una tarea interrumpida | ✅ reap probado end-to-end |
-| muestra el estado en la interfaz existente | 🟡 CLI status.mjs operativo; capa de datos lista para la UI (RLS+grants); pantallas = F5 |
-| deja documentación / rollback / pruebas / evidencia | ✅ README, rollback/, test-fabric.sh, este PROGRESO |
+| muestra el estado en la interfaz existente | ✅ CLI status.mjs + pantalla /orquestador (F5) sobre vistas public.orq_* |
+| deja documentación / rollback / pruebas / evidencia | ✅ README, rollback/ (0000-0003), test-fabric.sh, este PROGRESO |
+
+## FASES 3–5 — COMPLETADAS Y VALIDADAS EN PRODUCCIÓN
+
+**F3 — Planner · Agent Registry · Model Router** (commit F3)
+- `orq.agents`, `orq.agent_capabilities`, `orq.model_routes`, `capabilities.agent_role`.
+  6 agentes mínimos (director-planner, software-architect, implementer, reviewer-qa,
+  devops, knowledge-manager); identidad/clearance en `principals`.
+- `lib/registry.mjs` (lectura), `lib/router.mjs` (candidatos por especificidad
+  capability>agent>default, fallback, techo de costo), `handlers/plan.mjs` (Planner:
+  objetivo → DAG con criterios de éxito, hijos+deps atómicos; el ledger hace cumplir
+  el orden). `code_change` elige modelo por router; el fallback escala con el intento.
+- Validado en prod: router (3 casos) + DAG (analyze→implement→verify) ejecutado en
+  orden por el worker vivo, 100% verde.
+
+**F4 — Reviewer completo · Policy Gate · Learning** (commit F4)
+- `review.mjs`: gates configurables (lint/build/definition_of_done) + **Policy Gate
+  de rutas protegidas (D5)**: bloquea escritura autónoma sobre `.claude/`, `CLAUDE.md`
+  y `supabase/migrations` (editar el cerebro es Nivel E). `workspace.mjs` con `-uall`.
+- `learning.mjs`: post-mortem de dead_letter (causa+recomendación+historial) y captura
+  de aprendizaje como eventos append-only (clase A/B; C+ requiere validación humana).
+- `worker.mjs`: post-mortem automático + reconciliación de arranque.
+- Validado en prod: 3 rutas protegidas bloqueadas, normal pasa, DoD, post-mortem e2e.
+
+**F5 — Observabilidad + Control Humano en la interfaz existente** (commit F5)
+- Vistas read-only `public.orq_*` (security_invoker, respetan RLS) — el cliente
+  Supabase de la app las lee sin exponer `orq` a la API. Control humano vía
+  `orq.human_action` (valida contra el state machine) expuesto por RPC
+  `public.orq_task_action` (SECURITY DEFINER, sólo autenticado).
+- Feature `src/features/orquestador` + pantalla `/orquestador`: resumen, cola por
+  estado, dead-letter con reintentar/cancelar, tareas, agentes, timeline de eventos.
+- Validado en prod: vistas + security_invoker + control (dead_letter→ready, cupo de
+  intentos, evento, transición inválida rechazada). `typecheck` y `build` OK. Sin deploy.
+
+Estado prod: 15 tablas `orq`, 5 vistas `public.orq_*`, 6 agentes. Worker 24×7 sobre
+Supabase (canónico). `echegaray-claude-remote.service` intacto. Sin push/PR/merge/deploy.
 
 ## CUTOVER A PRODUCCIÓN (Supabase canónico) — RESUELTO
 
