@@ -17,6 +17,7 @@ import {
   claimTask, heartbeat, transition, failTask, reapExpiredLeases, queueSnapshot,
 } from './lib/ledger.mjs'
 import { resolveHandler } from './handlers/index.mjs'
+import { capturePostMortem } from './lib/learning.mjs'
 
 const cfg = loadConfig()
 const log = createLogger({ component: 'worker', worker_id: cfg.WORKER_ID })
@@ -37,12 +38,12 @@ async function processTask(task) {
     } catch (e) { tlog.warn('heartbeat error', { error: e.message }) }
   }, cfg.HEARTBEAT_MS)
 
+  const ctx = { logger: tlog, config: cfg, context: await resolveContext() }
   try {
     await transition(task.id, cfg.WORKER_ID, 'running')
     const handler = resolveHandler(task.type)
     if (!handler) throw new Error(`sin handler para type='${task.type}'`)
 
-    const ctx = { logger: tlog, config: cfg, context: await resolveContext() }
     const out = await runWithTimeout(handler(task, ctx), cfg.ENGINE_TIMEOUT_MS)
 
     if (lost) return // el reap se encargará; no pisamos a otro worker
@@ -55,6 +56,10 @@ async function processTask(task) {
     if (lost) return
     const next = await failTask(task.id, cfg.WORKER_ID, err.message, cfg.BACKOFF_BASE_MS)
     tlog.error('tarea falló', { error: err.message, next_state: next })
+    // Aprendizaje (Fase 4): sin más reintentos -> post-mortem con causa + recomendación.
+    if (next === 'dead_letter') {
+      try { await capturePostMortem(task, ctx, err.message) } catch (e) { tlog.warn('post-mortem falló', { error: e.message }) }
+    }
   } finally {
     clearInterval(hb)
   }
@@ -129,9 +134,17 @@ function installSignals() {
   process.on('SIGINT', () => shutdown('SIGINT'))
 }
 
+/** Reconciliación al arranque (Fase 4): recupera trabajo que quedó "en vuelo" con
+ *  lease vencido por un worker anterior caído. Idempotente y seguro. */
+async function reconcileOnStartup() {
+  const recovered = await reapExpiredLeases()
+  if (recovered.length) log.info('reconciliación de arranque: trabajo recuperado', { recovered: recovered.length })
+}
+
 async function main() {
   if (MODE === 'health') return health()
   await resolveContext() // valida ejes/DB antes de tomar trabajo
+  await reconcileOnStartup()
   installSignals()
   if (MODE === 'once') { await runOnce(); await closePool(); log.info('--once completo') }
   else await runDaemon()

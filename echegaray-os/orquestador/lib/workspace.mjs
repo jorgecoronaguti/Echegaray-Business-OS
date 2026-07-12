@@ -31,9 +31,11 @@ export async function acquireWorktree(task, ctx) {
   return { repoRoot, path: wtPath, branch }
 }
 
-/** Lista de archivos cambiados (porcelain) en el worktree. */
+/** Lista de archivos cambiados en el worktree. `-uall` lista los untracked de
+ *  forma INDIVIDUAL (sin colapsar directorios nuevos), para que el reviewer vea
+ *  cada archivo — clave para detectar rutas protegidas/prohibidas con precisión. */
 export async function changedFiles(ws) {
-  const { stdout } = await git(ws.path, ['status', '--porcelain'])
+  const { stdout } = await git(ws.path, ['status', '--porcelain', '-uall'])
   return stdout
     .split('\n')
     .map((l) => l.slice(3).trim())
