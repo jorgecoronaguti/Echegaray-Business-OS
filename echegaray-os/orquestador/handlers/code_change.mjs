@@ -5,6 +5,7 @@ import { acquireWorktree, commitLocal, releaseWorktree } from '../lib/workspace.
 import { resolveEngine } from '../engines/index.mjs'
 import { runReview } from '../lib/review.mjs'
 import { decide } from '../lib/policy.mjs'
+import { route } from '../lib/router.mjs'
 
 function buildPrompt(task) {
   const target = task.inputs?.target_file ? `\nArchivo objetivo: ${task.inputs.target_file}` : ''
@@ -31,11 +32,25 @@ function commitMessage(task, eng, engineName) {
 export async function codeChangeHandler(task, ctx) {
   const engineName = task.engine || task.inputs?.engine || 'claude-cli'
   const engine = resolveEngine(engineName)
+
+  // Model Router: el modelo lo elige el router por capacidad. El FALLBACK escala
+  // con el intento: attempt 1 -> candidato 0; attempt 2 -> candidato 1; etc. Así
+  // el reintento del ledger sube al modelo siguiente sin lógica extra acá.
+  const { candidates } = await route({
+    tenantId: ctx.context.tenantId,
+    capabilitySlug: task.capability_slug || 'code.edit_worktree',
+    agentSlug: task.agent_slug,
+    preferredModel: task.inputs?.model,
+  })
+  const idx = Math.min(Math.max((task.attempt ?? 1) - 1, 0), candidates.length - 1)
+  const model = candidates[idx]?.model
+  ctx.logger.info('router: modelo seleccionado', { task_id: task.id, model, attempt: task.attempt, candidatos: candidates.length })
+
   const ws = await acquireWorktree(task, ctx)
   let committed = false
   try {
     const eng = await engine.run(
-      { prompt: buildPrompt(task), worktreePath: ws.path, model: task.inputs?.model, task, timeoutMs: ctx.config.ENGINE_TIMEOUT_MS },
+      { prompt: buildPrompt(task), worktreePath: ws.path, model, task, timeoutMs: ctx.config.ENGINE_TIMEOUT_MS },
       ctx,
     )
 
