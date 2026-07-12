@@ -213,25 +213,37 @@ Supabase real (pooler) no está disponible. Migrar a prod (D1) = cambiar
 | persiste eventos e intentos | ✅ outbox + task_attempts |
 | libera/limpia el workspace | ✅ release + cleanup timer |
 | recupera una tarea interrumpida | ✅ reap probado end-to-end |
-| muestra el estado en la interfaz existente | 🟡 CLI status.mjs; UI del app **bloqueada por prod DB** |
+| muestra el estado en la interfaz existente | 🟡 CLI status.mjs operativo; capa de datos lista para la UI (RLS+grants); pantallas = F5 |
 | deja documentación / rollback / pruebas / evidencia | ✅ README, rollback/, test-fabric.sh, este PROGRESO |
 
-## BLOQUEO DECLARADO — credencial no disponible
+## CUTOVER A PRODUCCIÓN (Supabase canónico) — RESUELTO
 
-- **Bloqueo**: no hay password de la Supabase real. `supabase/.temp/pooler-url`
-  trae el usuario/host pero SIN password; ninguna otra fuente lo tiene.
-- **Impacto**: por D1 el `orq` debe vivir en la Supabase de producción (para
-  referenciar backlog_autonomo/acciones y para que la UI existente lo lea).
-  Hoy corre sobre un Postgres durable LOCAL en la VM (interino, restart=always).
-- **Alternativas**: (a) me pasás el `DATABASE_URL` del pooler con password;
-  (b) autorizás habilitar el MCP de Supabase para aplicar `orq` a prod;
-  (c) seguimos en el store local hasta tener el dato.
-- **Comando mínimo tuyo**: pegar en el EnvironmentFile
-  `~/.config/echegaray-orq/worker.env` el `DATABASE_URL` real y
-  `ORQ_DB_SSL=true`, y avisarme para aplicar F0+F1 a prod (aditivo/reversible,
-  ya validado) y reiniciar el servicio.
+El bloqueo de credencial quedó **resuelto**: el `DATABASE_URL` real se cargó en
+`~/.config/echegaray-orq/worker.env` (no versionado, nunca impreso).
 
-### Siguiente acción (una vez desbloqueado o en paralelo, no bloqueado)
+Pasos ejecutados y validados (todo contra la Supabase real, proyecto
+`jdqbpchkjrxktcxndnho`, PG 17.6):
+
+1. **Verificación de destino**: proyecto correcto, `public` intacto (33 tablas).
+2. **Fix de robustez** (`lib/db.mjs`): parser de connection string tolerante a
+   passwords crudos (con `#`, `!`, etc.) — separa por el último `@` y pasa
+   `user`/`password` como campos discretos a `pg`. Además se corrigió el usuario
+   del pooler al formato `postgres.<project_ref>` (ref público, password intacto).
+3. **F0 + F1 aplicadas** a prod, cada una en **transacción atómica** (todo-o-nada):
+   12 tablas, 12 funciones, 23 capabilities, 16 estados, 35 transiciones, 6
+   niveles A–F, principal `system`. `public` sin cambios. Rollback disponible.
+4. **Supabase = fuente canónica**: worker reiniciado sobre prod (`db=postgres`,
+   NRestarts 0). Store local interino **retirado de forma reversible** (detenido,
+   auto-restart off, volumen `orq-store-data` conservado, sin pérdida de datos).
+5. **Revalidación en prod** (determinística): LEASE ✅ · HEARTBEAT ✅ ·
+   REAP/recuperación ✅ · RETRY/backoff ✅ · DEAD-LETTER ✅ · OUTBOX/eventos ✅ ·
+   procesamiento end-to-end (`succeeded` ~2.5s) ✅ · scheduler (timers health +
+   cleanup active+enabled) ✅ · RLS en 12 tablas + 24 policies + SELECT a
+   `authenticated` (legibilidad de la UI) ✅.
+
+`echegaray-claude-remote.service` intacto. Sin push, sin PR, sin deploy.
+
+### Siguiente
 Fase 3 (Planner durable + Agent/Capability Registry + Router multi-modelo +
-agentes mínimos) y Fase 4 (Reviewer full + aprendizaje a memoria). Ambas
-avanzan sobre el store actual sin necesitar la credencial de prod.
+agentes mínimos), Fase 4 (Reviewer full + aprendizaje a memoria) y Fase 5
+(integración con la interfaz existente sobre la capa de datos ya lista).
