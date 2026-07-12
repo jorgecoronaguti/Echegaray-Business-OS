@@ -11,12 +11,14 @@
 import { noopHandler } from './noop.mjs'
 import { codeChangeHandler } from './code_change.mjs'
 import { planHandler } from './plan.mjs'
+import { directionHandler } from './direction.mjs'
 
 export const HANDLERS = {
   noop: noopHandler,
   generic: noopHandler,
   code_change: codeChangeHandler, // Fase 2: worktree -> engine -> review -> commit local
   plan: planHandler, // Fase 3: descompone un objetivo en un DAG de subtareas
+  direction: directionHandler, // Etapa 3: ciclo del Director IA (comprende->prioriza->planifica->asigna)
 }
 
 export function resolveHandler(type) {
