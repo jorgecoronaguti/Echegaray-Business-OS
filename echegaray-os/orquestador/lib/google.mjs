@@ -10,11 +10,19 @@
 // (o, con domain-wide delegation, impersonando una cuenta @ecsas vía `subject`).
 import { GoogleAuth } from 'google-auth-library'
 import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const READONLY_SCOPES = [
   'https://www.googleapis.com/auth/drive.readonly',
   'https://www.googleapis.com/auth/spreadsheets.readonly',
 ]
+
+// Raíz del repo (orquestador/lib -> ../..), para localizar la credencial existente
+// sin depender del cwd. La integración real de Google (2026-07-09) ya dejó la key
+// del service account acá; la REUSAMOS (no creamos una nueva).
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+const EXISTING_SA_KEY = path.join(REPO_ROOT, 'scripts', 'google_workspace', 'credentials', 'service-account.json')
 
 /** Falta la key del service account. Tipada para fallar claro y NO reintentar. */
 export class MissingGoogleCredential extends Error {
@@ -26,13 +34,19 @@ export class MissingGoogleCredential extends Error {
   }
 }
 
-/** Path del key JSON: env explícito o el default del worker. */
+/** Path del key JSON: primer candidato que exista. Prioriza el env explícito, luego
+ *  la credencial de la integración real ya existente, luego el default del worker. */
 export function resolveKeyPath(config) {
-  return (
-    config?.GOOGLE_SA_KEY_PATH ||
-    process.env.GOOGLE_SA_KEY_PATH ||
-    `${process.env.HOME || '/root'}/.config/echegaray-orq/google-sa.json`
-  )
+  const candidates = [
+    config?.GOOGLE_SA_KEY_PATH,
+    process.env.GOOGLE_SA_KEY_PATH,
+    EXISTING_SA_KEY,
+    `${process.env.HOME || '/root'}/.config/echegaray-orq/google-sa.json`,
+  ].filter(Boolean)
+  for (const c of candidates) {
+    try { if (fs.existsSync(c)) return c } catch { /* sigue */ }
+  }
+  return candidates[candidates.length - 1]
 }
 
 /**
@@ -72,9 +86,11 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate } = {}) 
   }
 
   return {
-    /** Busca archivos por nombre exacto. Devuelve [{id,name,mimeType}]. */
+    /** Busca archivos cuyo nombre CONTIENE el texto (robusto a espacios/variantes del
+     *  título; el match exacto falla, p.ej., por el espacio final de "Flujo de Caja - Cash Flow ").
+     *  Devuelve [{id,name,mimeType}]. */
     async searchFile(name) {
-      const q = encodeURIComponent(`name = '${String(name).replace(/'/g, "\\'")}' and trashed = false`)
+      const q = encodeURIComponent(`name contains '${String(name).replace(/'/g, "\\'")}' and trashed = false`)
       const j = await apiGet(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&pageSize=10`)
       return j.files || []
     },
