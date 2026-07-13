@@ -162,13 +162,6 @@
    "movimientos": [
     {
      "fecha": "2026-07-17",
-     "tipo": "cobro",
-     "quien": "MESSINAS",
-     "detalle": "Civil · Pendiente",
-     "monto": 3488735
-    },
-    {
-     "fecha": "2026-07-17",
      "tipo": "pago",
      "quien": "SINDICATOS",
      "detalle": "Impuestos · Junio · proyectado",
@@ -182,8 +175,8 @@
      "monto": -470945
     }
    ],
-   "neto": 2317790,
-   "acumulado": 2653780.1
+   "neto": -1170945,
+   "acumulado": -834954.8999999999
   },
   {
    "fecha": "2026-07-18",
@@ -225,7 +218,7 @@
     }
    ],
    "neto": -1693098.79,
-   "acumulado": 960681.31
+   "acumulado": -2528053.69
   },
   {
    "fecha": "2026-07-20",
@@ -246,7 +239,7 @@
     }
    ],
    "neto": 15000000,
-   "acumulado": 15960681.31
+   "acumulado": 12471946.31
   },
   {
    "fecha": "2026-07-23",
@@ -267,6 +260,20 @@
     }
    ],
    "neto": -1000000,
+   "acumulado": 11471946.31
+  },
+  {
+   "fecha": "2026-07-24",
+   "movimientos": [
+    {
+     "fecha": "2026-07-24",
+     "tipo": "cobro",
+     "quien": "MESSINAS",
+     "detalle": "Civil · Pendiente",
+     "monto": 3488735
+    }
+   ],
+   "neto": 3488735,
    "acumulado": 14960681.31
   },
   {
@@ -1224,5 +1231,5 @@
  ],
  "totalCobros": 143565870.374,
  "totalPagos": -163006569.4633398,
- "leidoEn": "13/7/2026, 04:26:03"
+ "leidoEn": "13/7/2026, 04:53:52"
 }
