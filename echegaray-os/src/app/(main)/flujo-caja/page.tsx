@@ -4,6 +4,7 @@ import {
   type Movimiento,
 } from '@/features/flujo-caja/services/calendarioReader'
 import { CargarSaldoForm } from '@/features/flujo-caja/components/CargarSaldoForm'
+import { CalendarioMensual } from '@/features/flujo-caja/components/CalendarioMensual'
 
 // Calendario de cobros y pagos — la web muestra lo que hay que cobrar y pagar,
 // día por día, con el saldo proyectado acumulado. Fuente única: el Sheet real
@@ -133,35 +134,63 @@ export default async function FlujoCajaPage() {
         </section>
       )}
 
-      <div className="mt-6 space-y-4">
-        {cal.dias.map((dia) => (
-          <section key={dia.fecha} className="rounded-lg border bg-white p-4 shadow-sm">
-            <div className="flex items-baseline justify-between gap-2">
-              <h2 className="text-sm font-bold text-gray-900 capitalize">{fechaLarga(dia.fecha)}</h2>
-              <div className="text-xs whitespace-nowrap text-gray-500 tabular-nums">
-                neto {pesos.format(dia.neto)} · saldo proy.{' '}
-                <span className={dia.acumulado < 0 ? 'font-semibold text-red-700' : 'font-semibold text-gray-800'}>
-                  {pesos.format(dia.acumulado)}
-                </span>
-              </div>
-            </div>
-            <div className="mt-1 divide-y divide-gray-100">
-              {dia.movimientos.map((m, i) => (
-                <FilaMovimiento key={i} m={m} />
-              ))}
-            </div>
-          </section>
-        ))}
+      {/* Vista principal: CALENDARIO mensual (grilla) */}
+      <section className="mt-6">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-bold text-gray-900 uppercase">Calendario</h2>
+          <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-500">
+            <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded border border-green-200 bg-green-50" /> día positivo</span>
+            <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded border border-red-300 bg-red-50" /> saldo proy. negativo</span>
+            <span className="flex items-center gap-1"><span className="rounded bg-green-600 px-1 text-[9px] font-bold text-white">n</span> cobros</span>
+            <span className="flex items-center gap-1"><span className="rounded bg-red-600 px-1 text-[9px] font-bold text-white">n</span> pagos</span>
+          </div>
+        </div>
+        <CalendarioMensual dias={cal.dias} hoyIso={new Date().toISOString().slice(0, 10)} />
         {cal.dias.length === 0 && (
           <p className="text-sm text-gray-500">No hay cobros ni pagos futuros con fecha cargada en el Sheet.</p>
         )}
-      </div>
+      </section>
 
-      <p className="mt-6 text-xs text-gray-500">
-        El saldo proyectado parte del saldo disponible real (pestaña Caja) y acumula solo los movimientos con fecha
-        cargada. Los vencidos NO están sumados al proyectado hasta que tengan fecha nueva. La carga y corrección de
-        datos se hace en el Sheet.
-      </p>
+      {/* Detalle día por día (debajo del calendario, para trazabilidad total) */}
+      {cal.dias.length > 0 && (
+        <section className="mt-8">
+          <h2 className="mb-2 text-sm font-bold text-gray-900 uppercase">Detalle día por día</h2>
+          <div className="space-y-4">
+            {cal.dias.map((dia) => (
+              <div key={dia.fecha} className="rounded-lg border bg-white p-4 shadow-sm">
+                <div className="flex items-baseline justify-between gap-2">
+                  <h3 className="text-sm font-bold text-gray-900 capitalize">{fechaLarga(dia.fecha)}</h3>
+                  <div className="text-xs whitespace-nowrap text-gray-500 tabular-nums">
+                    neto {pesos.format(dia.neto)} · saldo proy.{' '}
+                    <span className={dia.acumulado < 0 ? 'font-semibold text-red-700' : 'font-semibold text-gray-800'}>
+                      {pesos.format(dia.acumulado)}
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-1 divide-y divide-gray-100">
+                  {dia.movimientos.map((m, i) => (
+                    <FilaMovimiento key={i} m={m} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <div className="mt-6 space-y-1 text-xs text-gray-500">
+        <p>
+          <span className="font-semibold text-gray-700">Certeza:</span> los cobros del calendario concilian exactamente con
+          «Cuentas por Cobrar» del Sheet ({pesos.format(cal.totalCobros)}). La lógica de pagos usa el mismo criterio
+          anti-doble-conteo del CF Semanal (cobros no cobrados; compras pendientes/proyectadas; cheques y tarjeta no
+          debitados por su fecha real).
+        </p>
+        <p>
+          El saldo proyectado parte del saldo de banco (pestaña Caja) y acumula solo los movimientos con fecha cargada.
+          Los vencidos NO están sumados al proyectado hasta que tengan fecha nueva. La carga y corrección de datos se
+          hace en el Sheet.
+        </p>
+      </div>
     </div>
   )
 }
