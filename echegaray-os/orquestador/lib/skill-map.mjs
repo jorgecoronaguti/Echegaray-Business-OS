@@ -13,7 +13,7 @@ export const CAPABILITY_SKILLS = {
   'advise.finance':      ['finanzas-tesoreria-construccion', 'impuestos-construccion'],
   'advise.accounting':   ['contabilidad-constructoras', 'impuestos-construccion'],
   'advise.legal':        ['derecho-construccion-contratos', 'derecho-laboral-construccion'],
-  'advise.hr':           ['derecho-laboral-construccion', 'seguridad-higiene-art', 'administracion-operativa-construccion'],
+  'advise.hr':           ['derecho-laboral-construccion', 'seguridad-higiene-art', 'administracion-operativa-construccion', 'orden-documental-dataroom'],
   'advise.procurement':  ['compras-abastecimiento-subcontratacion', 'costos-presupuestacion'],
   'advise.engineering':  ['planificacion-produccion', 'costos-presupuestacion', 'direccion-obra'],
   'advise.civil':        ['ingenieria-civil-construccion', 'calidad-obra'],
