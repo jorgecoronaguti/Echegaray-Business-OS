@@ -62,7 +62,7 @@ const tokRes = await fetch('https://oauth2.googleapis.com/token', {
 })
 const { access_token } = await tokRes.json()
 
-const rangos = ['02_Cobranzas!A5:Q200', 'Compras!A5:Y940', 'Cheques!A2:L997', "'Tarjeta de Credito'!A3:K200", 'Caja!I7']
+const rangos = ['02_Cobranzas!A5:Q200', 'Compras!A5:Y940', 'Cheques!A2:L997', "'Tarjeta de Credito'!A3:K200", 'Caja!I7', 'RESUMEN!A1:F15']
 const params = rangos.map((r) => `ranges=${encodeURIComponent(r)}`).join('&')
 const res = await fetch(
   `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values:batchGet?${params}&valueRenderOption=UNFORMATTED_VALUE`,
@@ -70,7 +70,7 @@ const res = await fetch(
 )
 if (!res.ok) throw new Error(`sheets: ${res.status}`)
 const data = await res.json()
-const [cobranzas, compras, cheques, tarjeta, caja] = data.valueRanges.map((v) => v.values ?? [])
+const [cobranzas, compras, cheques, tarjeta, caja, resumen] = data.valueRanges.map((v) => v.values ?? [])
 
 const texto = (r, i) => String((r.length > i ? r[i] : null) ?? '').trim()
 const numero = (r, i) => (typeof r[i] === 'number' ? r[i] : null)
@@ -138,7 +138,19 @@ for (const r of tarjeta) {
 const hoyIso = new Date().toISOString().slice(0, 10)
 const vencidos = movimientos.filter((m) => m.fecha < hoyIso).sort((a, b) => a.fecha.localeCompare(b.fecha))
 const futuros = movimientos.filter((m) => m.fecha >= hoyIso).sort((a, b) => a.fecha.localeCompare(b.fecha))
-const saldoHoy = caja.length && typeof caja[0][0] === 'number' ? caja[0][0] : null
+// Saldo = "SALDO TOTAL DISPONIBLE" del RESUMEN (banco + efectivo), congruente con
+// la pestaña. Fallback a Caja!I7 (solo banco) si no se encuentra.
+const cajaBanco = caja.length && typeof caja[0][0] === 'number' ? caja[0][0] : null
+const saldoTotalResumen = (() => {
+  for (const r of resumen) {
+    if (String((r.length > 0 ? r[0] : null) ?? '').toUpperCase().includes('SALDO TOTAL DISPONIBLE')) {
+      const n = r.find((c, i) => i > 0 && typeof c === 'number')
+      if (typeof n === 'number') return n
+    }
+  }
+  return cajaBanco
+})()
+const saldoHoy = saldoTotalResumen
 
 const porDia = new Map()
 for (const m of futuros) {

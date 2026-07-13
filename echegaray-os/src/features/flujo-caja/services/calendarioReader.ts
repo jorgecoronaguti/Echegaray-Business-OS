@@ -76,6 +76,18 @@ function serialAIso(serial: number): string {
   return new Date(Math.round((serial - 25569) * 86400 * 1000)).toISOString().slice(0, 10)
 }
 
+// Ubica "SALDO TOTAL DISPONIBLE" en el RESUMEN y devuelve su valor numérico (el
+// primero de la fila). Fallback al saldo de banco si no lo encuentra.
+function saldoTotalDeResumen(resumen: Fila[], fallback: number | null): number | null {
+  for (const r of resumen) {
+    if (String(celda(r, 0) ?? '').toUpperCase().includes('SALDO TOTAL DISPONIBLE')) {
+      const n = r.find((c, i) => i > 0 && typeof c === 'number')
+      if (typeof n === 'number') return n
+    }
+  }
+  return fallback
+}
+
 export async function leerCalendario(): Promise<Calendario | { error: string }> {
   const saJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
   if (!saJson) {
@@ -88,15 +100,15 @@ export async function leerCalendario(): Promise<Calendario | { error: string }> 
   }
   try {
     const token = await getAccessToken(saJson)
-    const rangos = ['02_Cobranzas!A5:Q200', 'Compras!A5:Y940', 'Cheques!A2:L997', "'Tarjeta de Credito'!A3:K200", 'Caja!I7']
+    const rangos = ['02_Cobranzas!A5:Q200', 'Compras!A5:Y940', 'Cheques!A2:L997', "'Tarjeta de Credito'!A3:K200", 'Caja!I7', 'RESUMEN!A1:F15']
     const params = rangos.map((r) => `ranges=${encodeURIComponent(r)}`).join('&')
     const res = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values:batchGet?${params}&valueRenderOption=UNFORMATTED_VALUE`,
-      { headers: { Authorization: `Bearer ${token}` }, next: { revalidate: 300 } },
+      { headers: { Authorization: `Bearer ${token}` }, next: { revalidate: 60 } },
     )
     if (!res.ok) throw new Error(`sheets: ${res.status}`)
     const data = (await res.json()) as { valueRanges: { values?: Fila[] }[] }
-    const [cobranzas, compras, cheques, tarjeta, caja] = data.valueRanges.map((v) => v.values ?? [])
+    const [cobranzas, compras, cheques, tarjeta, caja, resumen] = data.valueRanges.map((v) => v.values ?? [])
 
     const movimientos: Movimiento[] = []
 
@@ -170,7 +182,11 @@ export async function leerCalendario(): Promise<Calendario | { error: string }> 
     const vencidos = movimientos.filter((m) => m.fecha < hoyIso).sort((a, b) => a.fecha.localeCompare(b.fecha))
     const futuros = movimientos.filter((m) => m.fecha >= hoyIso).sort((a, b) => a.fecha.localeCompare(b.fecha))
 
-    const saldoHoy = caja.length && typeof caja[0][0] === 'number' ? caja[0][0] : null
+    // Saldo = "SALDO TOTAL DISPONIBLE" del RESUMEN (banco + efectivo), la MISMA
+    // cifra que ve el usuario en la pestaña. Antes se usaba Caja!I7 (solo banco),
+    // que omitía el efectivo y generaba incongruencia con el RESUMEN.
+    const cajaBanco = caja.length && typeof caja[0][0] === 'number' ? caja[0][0] : null
+    const saldoHoy = saldoTotalDeResumen(resumen, cajaBanco)
 
     const porDia = new Map<string, Movimiento[]>()
     for (const m of futuros) {
