@@ -148,16 +148,48 @@ async function reason(task, ctx, engineOverride, agent, digest, principalId) {
   if (engineName === 'anthropic-api' && principalId) {
     const google = makeGoogleClient({ config: ctx.config })
     const registry = driveReadTools(google)
+    // Búsqueda sobre el índice COMPLETO de administracion (~1.658 archivos) en
+    // public.drive_index: encontrar un archivo por nombre sin navegar carpeta por
+    // carpeta. Capacidad drive.read (lectura/auto). Usa la DB del worker.
+    registry['drive.find'] = {
+      capability: 'drive.read',
+      account: 'ecsas',
+      schema: {
+        name: 'drive_find',
+        description:
+          'Busca archivos por nombre en el índice COMPLETO de la carpeta administración (~1.658 archivos: legajos, facturas, presupuestos, contratos, etc.). Devuelve nombre, ruta, tipo y file_id. Usalo para encontrar un archivo puntual sin navegar carpeta por carpeta — ej. "legajo Aballay", "factura Corralon", "presupuesto obra X". Después leé el que sirva con drive_read.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'texto a buscar dentro del nombre del archivo' },
+            solo_carpetas: { type: 'boolean', description: 'true para buscar solo carpetas' },
+          },
+          required: ['query'],
+        },
+      },
+      async run(input) {
+        const term = String(input?.query ?? '').trim()
+        if (!term) return { error: 'falta query' }
+        const { rows } = await query(
+          `select name, path, tipo, drive_file_id from public.drive_index
+             where name ilike $1 ${input?.solo_carpetas ? 'and is_folder = true' : ''}
+             order by is_folder desc, name limit 40`,
+          [`%${term}%`],
+        )
+        return { query: term, count: rows.length, items: rows.map((r) => ({ name: r.name, ruta: r.path, tipo: r.tipo, file_id: r.drive_file_id })) }
+      },
+    }
     toolExecutor = makeToolExecutor({
       decide, tools: registry, principalId, logger: ctx.logger,
       enqueue: (op) => enqueuePendingOperation({ ...op, tenantId: ctx.context.tenantId, taskId: task.id, agentSlug: task.agent_slug }),
     })
     tools = Object.values(registry).map((t) => t.schema)
-    toolsHint = '\n\nHERRAMIENTAS (Drive real de la empresa):\n' +
-      '- `drive_list`: lista el contenido de una carpeta (ej. "administracion", "PRESUPUESTOS", o los legajos). Usalo para VER qué archivos hay antes de proponer un orden o detectar qué falta.\n' +
-      '- `drive_read`: lee un Sheet real (ej. "Flujo de Caja - Cash Flow" para la caja). Usalo en vez de responder "desconocido".\n' +
-      'Navegá y leé las fuentes reales antes de opinar. Declará qué miraste (carpeta/archivo y fecha) en evidence. ' +
-      'Para mejoras de ORDEN documental, primero listá y después proponé — mover/renombrar/eliminar NO lo hacés vos: va como approval_requests.'
+    toolsHint = '\n\nHERRAMIENTAS (Drive real de la empresa — usalas SIEMPRE antes de responder):\n' +
+      '- `drive_find`: busca un archivo por nombre en el índice completo (~1.658 archivos: legajos, facturas, presupuestos…). Devuelve su file_id.\n' +
+      '- `drive_list`: lista el contenido de una carpeta (ej. "administracion", "PRESUPUESTOS", legajos). Para ver qué hay y qué falta.\n' +
+      '- `drive_read`: lee un Sheet real por file_id (ej. "Flujo de Caja - Cash Flow", "avance_obra.xlsx"). Usalo en vez de responder "desconocido".\n' +
+      'El índice de Supabase es PARCIAL: buscá/navegá/leé la fuente real antes de opinar. Declará qué miraste (archivo y fecha) en evidence. ' +
+      'Para mejoras de ORDEN documental, primero listá/buscá y después proponé — mover/renombrar/eliminar NO lo hacés vos: va como approval_requests.'
   }
 
   const eng = await engine.run(
