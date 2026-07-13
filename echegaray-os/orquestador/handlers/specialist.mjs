@@ -38,6 +38,39 @@ function extractJson(text) {
   return JSON.parse(text.slice(a, b + 1))
 }
 
+/**
+ * Normaliza el `confidence` que devuelve el modelo a uno de los tres valores del
+ * contrato (alta|media|baja) ANTES de validar con Zod. El modelo expresa la
+ * confianza en lenguaje natural ("baja-media", "alta con reservas", frases largas)
+ * y esas variantes hacían fallar el enum -> reintentos y hasta dead-letter (caso
+ * real observado en el objetivo 431d5576). Regla: gana el PRIMER término reconocido
+ * en el texto ("alta-media"->alta, "baja-media"->baja, "media-alta"->media,
+ * "media con incertidumbre"->media). Ausente (null/undefined) -> undefined, para que
+ * Zod aplique su default 'media' sin ruido. Desconocido (string sin ningún término
+ * válido) -> warning + 'media'. No cambia el contrato: sólo sanea la entrada.
+ */
+export function normalizeConfidence(value, logger) {
+  if (value == null) return undefined
+  if (typeof value === 'string') {
+    const lc = value.toLowerCase().trim()
+    if (lc === 'alta' || lc === 'media' || lc === 'baja') return lc
+    const m = lc.match(/alta|media|baja/)
+    if (m) return m[0]
+  }
+  logger?.warn?.('especialista: confidence no reconocido; normalizado a media', { received: value })
+  return 'media'
+}
+
+/** Parsea la salida del especialista saneando `confidence` antes de validar. */
+export function parseSpecialist(raw, logger) {
+  if (raw && typeof raw === 'object' && 'confidence' in raw) {
+    const norm = normalizeConfidence(raw.confidence, logger)
+    if (norm === undefined) delete raw.confidence // deja que Zod aplique el default
+    else raw.confidence = norm
+  }
+  return SpecialistResult.parse(raw)
+}
+
 function specialistPrompt(task, agent, digest) {
   return (
     `Sos ${agent?.org_title || agent?.role || 'un especialista'} de Echegaray Construcciones, ` +
@@ -61,7 +94,7 @@ function specialistPrompt(task, agent, digest) {
 async function reason(task, ctx, engineOverride, agent, digest) {
   if (engineOverride === 'fixture') {
     const canned = task.inputs?.canned_specialist
-    if (canned) return { out: SpecialistResult.parse(canned), cost: { usd: 0 }, tokens: null, sessionId: null, engine: 'fixture' }
+    if (canned) return { out: parseSpecialist(canned, ctx.logger), cost: { usd: 0 }, tokens: null, sessionId: null, engine: 'fixture' }
     return {
       out: SpecialistResult.parse({
         analysis: `Análisis determinístico (${agent?.org_title || task.agent_slug}) del objetivo: ${task.title}.`,
@@ -94,7 +127,7 @@ async function reason(task, ctx, engineOverride, agent, digest) {
     },
     ctx,
   )
-  return { out: SpecialistResult.parse(extractJson(eng.result)), cost: eng.cost, tokens: eng.tokens, sessionId: eng.sessionId, engine: engineName }
+  return { out: parseSpecialist(extractJson(eng.result), ctx.logger), cost: eng.cost, tokens: eng.tokens, sessionId: eng.sessionId, engine: engineName }
 }
 
 async function specialistPrincipalId(agentSlug) {
