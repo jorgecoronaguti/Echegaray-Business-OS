@@ -387,3 +387,91 @@ queda preparada la arquitectura (se registran como agentes; el Director los enru
 
 **Estado**: Etapa 3 (Director IA sobre el Work Fabric) COMPLETADA.
 No iniciar Etapa 4 sin nueva instrucción.
+
+---
+
+# ETAPA 4 — ORGANIZACIÓN IA (cierre productivo)
+
+**Qué se construyó** (todo aditivo, reutiliza el Work Fabric; sin sistemas paralelos):
+el Director General IA ahora coordina **11 especialistas reales** que **trabajan de
+verdad** sobre el Work Fabric. Cierra el gap de Etapa 3: los especialistas ya no
+mueren en dead_letter por no producir un diff — su trabajo es análisis/preparación
+(Nivel C) con salida estructurada.
+
+- **Migración `20260713120000`** (aditiva, aplicada a prod; rollback `0005`):
+  `orq.agents.org_title/org_order`; **9 capacidades `advise.*`** (clearance C, auto);
+  **9 especialistas de negocio** (CFO, Contador, Compras, Comercial, Ingeniería,
+  Arquitecto, Ingeniero Civil, Abogado, RRHH) con `context_ref` → su **skill de
+  dominio**; Software Architect/Developer mapeados a los agentes F3 existentes
+  (`software-architect`/`implementer`); vistas `public.orq_org` (métricas por
+  especialista) y `public.orq_objective_closure`. `public.orq_direction` NO se tocó.
+- **Handlers nuevos**: `specialist.mjs` (`type='specialist'`, análisis read-only,
+  salida estructurada findings/recomendaciones/approval_requests/confianza, **no
+  exige diff**, **no ejecuta Nivel E**) y `consolidate.mjs` (`type='direction_consolidate'`,
+  depende de todas las hojas, cierra el objetivo con `direction.completed`).
+  `direction.mjs` enruta a las capacidades de negocio, marca el `type` por
+  especialista y agrega el nodo de consolidación al DAG.
+- **Motor `noop` retirado** del camino productivo → `fixture` (solo tests, env-gated);
+  el config coacciona valores legacy a `claude-cli` (no brickea la VM). `worker.env`
+  de la VM actualizado a `ORQ_ENGINE=claude-cli`.
+- **UI `/organizacion`** (Organización IA): organigrama Director→11, métricas
+  (estado/tareas/éxitos/fallos/retries/costo/tokens/duración/última actividad),
+  evidencia y control humano (`TaskActions` reutilizado). `/direccion` muestra el
+  cierre del Director y enlaza la Organización.
+
+**Cierre productivo**:
+- PR **#8** (rebase merge). El commit ajeno del calendario (`5acbbf4`) quedó FUERA
+  del PR (rebase sobre `origin/main` en worktree aislado). `main` = **`d49814d`**.
+- Deploy Vercel **success** = `d49814d`. URL **https://echegaray-business-os.vercel.app**;
+  `/organizacion` responde **200** en prod. Sin regresión (`/direccion` `/orquestador`
+  `/obras` `/login` → 200).
+- Worker reiniciado desde el commit mergeado (engine `claude-cli`), **16 agentes**
+  habilitados (6 infra F3 + Director + 9 negocio), heartbeats/ledger OK,
+  `claude-remote` **intacto**, **ARCA md5 idéntico** al baseline.
+- RLS: anon → **401** en `orq_org`, `orq_objective_closure`, `orq_tasks` y la RPC.
+- QA: typecheck · lint · build · suite base del Work Fabric · **e2e efímero de Etapa 4**
+  (Director→especialistas `succeeded` sin diff→consolidación que cierra el objetivo,
+  cero dead_letter) — VERDE.
+
+**Smoke productivo con Claude sobre datos reales** (objetivo: "prioridades de Dirección
+30 días, solo análisis"):
+- Objetivo **succeeded** (director $0.31). **4 prioridades** (desbloquear 3 obras
+  pausadas; resolver obligaciones vencidas; causa raíz del scorecard 22/22 bloqueado;
+  triage del backlog 38/3). **DAG de 7 subtareas de especialista + consolidación**,
+  todas `created_by=agent:director-general` (invariante respetada). **2 approval_requests
+  del Director** (no ejecutadas).
+- **4/7 especialistas SUCCEEDED** con análisis real y escéptico (sin dead_letter por el
+  motivo de Etapa 3 — el gap está cerrado):
+  - **CFO IA**: detectó que la cifra del propio Director ("obligaciones vencidas por
+    $37,7M") era incorrecta; consultó `obligaciones`+`aplicaciones_pago` y propuso
+    secuencia de pago por riesgo legal (UOCRA/IERIC/Fondo de Cese primero).
+  - **Contador IA**: exigió comprobante primario (F.931, CONTROL DE GASTOS) antes de
+    escalar pagos; criterio devengado.
+  - **Ingeniero Civil IA**: halló que "Pisos" tiene HH reciente que **contradice** su
+    estado "pausado" declarado; pidió validar antes de diagnosticar.
+  - **Software Architect IA** (conf. alta): sin causa común de "fuente caída";
+    priorizó actualizar Flujo de Caja + CONTROL DE GASTOS (6 días de atraso).
+  - **7 approval_requests de especialistas** — todas registradas, **no ejecutadas**.
+- **3 especialistas en dead_letter** (Abogado + 2 subtareas duplicadas de CFO/Software
+  Architect) por **error transitorio del motor** (`claude-cli: exit 1`, stderr vacío)
+  tras 3 reintentos — **contenidos por el ledger, sin efecto externo**. Reintentables
+  por un humano desde `/organizacion` (control humano).
+- **Consolidación** quedó en `ready` **bloqueada**: el nodo join exige que **todas** las
+  hojas estén `succeeded`; con 3 en dead_letter, no se puede reclamar. Al reintentar y
+  cerrar esas 3 hojas desde la UI, la consolidación se destraba y emite `direction.completed`.
+- Costo total del smoke: **$3.57** (especialistas $3.26 + director $0.31).
+
+**Hallazgo / follow-up (Nivel D, no bloqueante)**: el nodo de consolidación depende de
+`success` de todas las hojas (semántica DAG estándar). Cuando un especialista queda en
+dead_letter, la consolidación se bloquea hasta intervención humana. Mejora futura:
+permitir consolidación con hojas fallidas (reportar parcial) o "depende-de-settled".
+Segundo follow-up: el motor `claude-cli` con `CONCURRENCY=2` produjo `exit 1` transitorios
+en 3/7 llamadas — evaluar serializar por agente o backoff específico del motor.
+
+**Rollback disponible**: DB `orquestador/db/rollback/0005_organizacion_down.sql`
+(verificado: restaura el estado de Etapa 3); código `git revert d49814d` o checkout de
+la rama `etapa-4/organizacion-ia` (preservada). Migración ya aplicada a prod (el merge
+no la re-ejecuta).
+
+**Estado**: Etapa 4 (Organización IA) COMPLETADA. Los 11 especialistas ejecutan sobre
+el Work Fabric. No iniciar Etapa 5 sin nueva instrucción.
