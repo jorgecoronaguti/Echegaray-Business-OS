@@ -15,6 +15,7 @@ import { resolveEngine } from '../engines/index.mjs'
 import { getCapability } from '../lib/registry.mjs'
 import { assembleSituation, domainDigest } from '../lib/situation.mjs'
 import { assembleReasoningSystem, ROLE_FRAMING } from '../lib/context-assembler.mjs'
+import { skillsForCapability } from '../lib/skill-map.mjs'
 import { makeGoogleClient } from '../lib/google.mjs'
 import { driveReadTools } from '../lib/tools/drive.mjs'
 import { makeToolExecutor } from '../lib/tool-executor.mjs'
@@ -123,11 +124,18 @@ async function reason(task, ctx, engineOverride, agent, digest, principalId) {
   const { candidates } = await route({ tenantId: ctx.context.tenantId, capabilitySlug: task.capability_slug, agentSlug: task.agent_slug, preferredModel: task.inputs?.model })
   const engineName = engineOverride || candidates[0]?.engine || ctx.config.AI_ENGINE_DEFAULT
   const engine = resolveEngine(engineName)
-  // Gobernanza + SKILL.md del dominio inyectadas en el system (reemplaza el Read del CLI).
-  const { system } = await assembleReasoningSystem({
+  // Gobernanza + skills de dominio inyectadas en el system. "Según la tarea": el
+  // conjunto de skills lo decide la CAPACIDAD de la tarea (skill-map), no una skill
+  // fija del agente. Cubre los 14 dominios; fallback al context_ref legacy si no hay mapeo.
+  const skillNames = skillsForCapability(task.capability_slug)
+  const { system, skillsLoaded } = await assembleReasoningSystem({
     rootPath: ctx.context.repository.rootPath, config: ctx.config,
-    roleFraming: ROLE_FRAMING.specialist, contextRef: agent?.context_ref, logger: ctx.logger,
+    roleFraming: ROLE_FRAMING.specialist,
+    skillNames: skillNames.length ? skillNames : undefined,
+    contextRef: skillNames.length ? undefined : agent?.context_ref,
+    logger: ctx.logger,
   })
+  if (ctx.logger) ctx.logger.info('especialista: conocimiento cargado', { capability: task.capability_slug, skills: skillsLoaded })
 
   // Tool-use SÓLO sobre el Reasoner (anthropic-api). El especialista gana MANOS de
   // lectura sobre Drive: cada tool pasa por policy (decide) en el ejecutor. Si falta

@@ -64,6 +64,35 @@ async function main() {
       check('full: inyecta el CLAUDE.md completo', system.includes('XYZZY'))
       check('full: governance = full', governance === 'full')
     }
+
+    // 5. Multi-skill por skillNames + skillsDir (vía "según la tarea", robusta al cwd)
+    {
+      const skillsBase = path.join(root, 'skills')
+      const dirY = path.join(skillsBase, 'dominio-y')
+      await mkdir(dirY, { recursive: true })
+      await writeFile(path.join(dirY, 'SKILL.md'), 'CRITERIO Y DEF456', 'utf8')
+      const { system, skillLoaded, skillsLoaded } = await assembleReasoningSystem({
+        rootPath: root, config: { GOVERNANCE_FULL: false }, roleFraming: ROLE_FRAMING.specialist,
+        skillNames: ['dominio-x', 'dominio-y'], skillsDir: skillsBase,
+      })
+      check('multi: carga la 1ra skill', system.includes('ABC123'))
+      check('multi: carga la 2da skill', system.includes('DEF456'))
+      check('multi: skillsLoaded lista ambas', skillsLoaded.length === 2 && skillsLoaded.includes('dominio-y'))
+      check('multi: skillLoaded true', skillLoaded === true)
+    }
+
+    // 6. skillNames con una ausente: carga las presentes, deja constancia de la faltante
+    {
+      const skillsBase = path.join(root, 'skills')
+      const { system, skillLoaded, skillsLoaded } = await assembleReasoningSystem({
+        rootPath: root, config: { GOVERNANCE_FULL: false }, roleFraming: ROLE_FRAMING.specialist,
+        skillNames: ['dominio-x', 'no-existe'], skillsDir: skillsBase,
+      })
+      check('multi-parcial: carga la presente', system.includes('ABC123'))
+      check('multi-parcial: skillLoaded true (al menos una)', skillLoaded === true)
+      check('multi-parcial: skillsLoaded solo la presente', skillsLoaded.length === 1 && skillsLoaded[0] === 'dominio-x')
+      check('multi-parcial: deja constancia de la faltante', system.includes('no-existe'))
+    }
   } finally {
     await rm(root, { recursive: true, force: true })
   }

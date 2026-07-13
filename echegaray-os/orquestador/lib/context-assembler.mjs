@@ -13,6 +13,14 @@
 // — eso es la próxima etapa del roadmap. Sólo conocimiento genésico (archivos).
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// Raíz del repo, robusta al cwd (orquestador/lib -> ../..). Las SKILL.md viven en
+// <REPO_ROOT>/.claude/skills/<name>/SKILL.md. Resolver por NOMBRE elimina la
+// fragilidad de depender de rootPath (bug latente: si rootPath cambiaba, las skills
+// dejaban de cargar en silencio, sin que nadie lo notara).
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+const DEFAULT_SKILLS_DIR = path.join(REPO_ROOT, '.claude', 'skills')
 
 // KERNEL de gobernanza: destilación fiel de las reglas VINCULANTES de CLAUDE.md
 // (misión, clasificación de evidencia, niveles de autonomía, confianza, estilo).
@@ -56,7 +64,7 @@ async function readTextSafe(absPath) {
  * @param {object} [p.logger]
  * @returns {Promise<{ system: string, skillLoaded: boolean, governance: 'kernel'|'full' }>}
  */
-export async function assembleReasoningSystem({ rootPath, config, roleFraming, contextRef, logger }) {
+export async function assembleReasoningSystem({ rootPath, config, roleFraming, contextRef, skillNames, skillsDir, logger }) {
   const parts = []
   if (roleFraming) parts.push(roleFraming)
 
@@ -72,23 +80,41 @@ export async function assembleReasoningSystem({ rootPath, config, roleFraming, c
     }
   }
 
-  let skillLoaded = false
-  if (contextRef) {
-    const skillPath = path.join(rootPath, contextRef, 'SKILL.md')
-    const skill = await readTextSafe(skillPath)
+  // CONOCIMIENTO DE DOMINIO. Preferí `skillNames` (una o VARIAS skills por nombre,
+  // resueltas de forma robusta al cwd) — es la vía "según la tarea": el conjunto lo
+  // decide la capacidad de la tarea. Fallback a `contextRef` (legacy, ruta relativa
+  // a rootPath). Se cargan TODAS las skills del conjunto; lo que falta se declara.
+  const loaded = []
+  const missing = []
+  const baseDir = skillsDir || DEFAULT_SKILLS_DIR
+  const names = Array.isArray(skillNames) ? skillNames.filter(Boolean) : null
+
+  if (names && names.length) {
+    for (const name of names) {
+      const skill = await readTextSafe(path.join(baseDir, name, 'SKILL.md'))
+      if (skill) {
+        loaded.push(name)
+        parts.push(`--- CONOCIMIENTO DE TU DOMINIO: ${name} (aplicá su criterio profesional) ---\n${skill}`)
+      } else {
+        missing.push(name)
+        if (logger) logger.warn('context-assembler: SKILL.md no encontrada', { skill: name })
+      }
+    }
+    if (missing.length) {
+      parts.push(`(Nota: no se pudieron leer estas skills: ${missing.join(', ')} — razoná con la gobernanza y el estado real, sin fabricar criterio en esos dominios.)`)
+    }
+  } else if (contextRef) {
+    const skill = await readTextSafe(path.join(rootPath, contextRef, 'SKILL.md'))
     if (skill) {
-      parts.push(
-        `--- CONOCIMIENTO DE TU DOMINIO (skill del repo, aplicá su criterio profesional) ---\n${skill}`,
-      )
-      skillLoaded = true
+      loaded.push(contextRef)
+      parts.push(`--- CONOCIMIENTO DE TU DOMINIO (skill del repo, aplicá su criterio profesional) ---\n${skill}`)
     } else {
-      // No inventamos: dejamos constancia de que la skill no se pudo leer.
       parts.push(`(Nota: no se pudo leer la skill de dominio en ${contextRef}/SKILL.md — razoná con la gobernanza y el estado real, sin fabricar criterio.)`)
       if (logger) logger.warn('context-assembler: SKILL.md no encontrada', { contextRef })
     }
   }
 
-  return { system: parts.join('\n\n'), skillLoaded, governance }
+  return { system: parts.join('\n\n'), skillLoaded: loaded.length > 0, skillsLoaded: loaded, governance }
 }
 
 // Encuadres de rol reutilizables (una línea que precede al kernel).

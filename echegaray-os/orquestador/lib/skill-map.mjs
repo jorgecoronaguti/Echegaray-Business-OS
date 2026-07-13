@@ -1,0 +1,27 @@
+// Mapa CAPACIDAD -> conjunto de skills de dominio que el especialista debe usar en
+// una tarea de ese dominio. Es la selección "según la tarea": el Director rutea la
+// tarea a una capability (advise.finance, advise.legal, ...) y ésta define el
+// conjunto de conocimiento experto que se inyecta. Cubre los 14 dominios reales de
+// negocio (ningún dominio queda huérfano). El nombre es el directorio en
+// .claude/skills/. Vive en código (versionado, auditable), no en un context_ref
+// frágil de la DB.
+//
+// Criterio: skill primaria del rol + las secundarias que un profesional de ese rol
+// cruza de verdad (ej. el CFO cruza finanzas con impuestos; RRHH cruza laboral con
+// seguridad e higiene y administración operativa).
+export const CAPABILITY_SKILLS = {
+  'advise.finance':      ['finanzas-tesoreria-construccion', 'impuestos-construccion'],
+  'advise.accounting':   ['contabilidad-constructoras', 'impuestos-construccion'],
+  'advise.legal':        ['derecho-construccion-contratos', 'derecho-laboral-construccion'],
+  'advise.hr':           ['derecho-laboral-construccion', 'seguridad-higiene-art', 'administracion-operativa-construccion'],
+  'advise.procurement':  ['compras-abastecimiento-subcontratacion', 'costos-presupuestacion'],
+  'advise.engineering':  ['planificacion-produccion', 'costos-presupuestacion', 'direccion-obra'],
+  'advise.civil':        ['ingenieria-civil-construccion', 'calidad-obra'],
+  'advise.architecture': ['ingenieria-civil-construccion', 'calidad-obra', 'direccion-obra'],
+  'advise.commercial':   ['gestion-empresarial-riesgos', 'costos-presupuestacion'],
+}
+
+/** Skills de dominio para una capability. [] si no hay mapeo (el caller decide fallback). */
+export function skillsForCapability(capabilitySlug) {
+  return CAPABILITY_SKILLS[capabilitySlug] || []
+}
