@@ -47,8 +47,15 @@ const ConfigSchema = z.object({
   // Workspaces (Fase 2): worktrees fuera del repo para no ensuciar el working tree.
   WORKSPACES_DIR: z.string().default(path.resolve(REPO_ROOT, '..', 'orq-workspaces')),
 
-  // Motor de ejecución. 'noop' valida el ciclo sin IA (Fase 1). 'claude-cli' (Fase 2).
-  ENGINE: z.enum(['noop', 'claude-cli']).default('noop'),
+  // Motor de ejecución productivo: 'claude-cli' (Etapa 4: se retiró 'noop' como
+  // motor de ejecución — los especialistas razonan de verdad, no sobre un stub).
+  // 'fixture' es determinístico y SOLO para tests (gateado en engines/index.mjs).
+  // Coerción defensiva: cualquier valor legacy (p.ej. 'noop') se degrada a
+  // 'claude-cli' con seguridad, para que un env viejo nunca impida arrancar.
+  ENGINE: z.preprocess(
+    (v) => (v === 'fixture' ? 'fixture' : 'claude-cli'),
+    z.enum(['claude-cli', 'fixture']),
+  ).default('claude-cli'),
   ENGINE_TIMEOUT_MS: z.coerce.number().int().positive().default(1000 * 60 * 20),
 
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),

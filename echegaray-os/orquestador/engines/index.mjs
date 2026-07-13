@@ -17,7 +17,7 @@
 //
 // El motor SOLO ejecuta; el aislamiento (worktree), la política (Policy Engine),
 // la revisión y el commit los hace el Fabric, no el motor.
-import { noopEngine } from './noop-engine.mjs'
+import { fixtureEngine } from './fixture-engine.mjs'
 import { claudeCliEngine } from './claude-cli.mjs'
 
 // Motores futuros: interfaz lista, implementación pendiente (neutralidad D3).
@@ -29,9 +29,15 @@ function notImplemented(name) {
   }
 }
 
+// 'fixture' es un motor determinista SOLO para tests. En producción no se resuelve
+// (evita que cualquier tarea corra sobre un stub): Etapa 4 retiró 'noop'.
+function fixtureAllowed() {
+  return process.env.ORQ_ALLOW_FIXTURE === '1' || process.env.NODE_ENV === 'test'
+}
+
 export const ENGINES = {
-  'noop': noopEngine,
   'claude-cli': claudeCliEngine,
+  'fixture': fixtureEngine,
   'claude-sdk': notImplemented('claude-sdk'),
   'anthropic-api': notImplemented('anthropic-api'),
   'openai': notImplemented('openai'),
@@ -39,6 +45,9 @@ export const ENGINES = {
 }
 
 export function resolveEngine(name) {
+  if (name === 'fixture' && !fixtureAllowed()) {
+    throw new Error("Engine 'fixture' es solo para tests (definí ORQ_ALLOW_FIXTURE=1). En producción usá 'claude-cli'.")
+  }
   const engine = ENGINES[name]
   if (!engine) throw new Error(`Engine desconocido: '${name}'. Disponibles: ${Object.keys(ENGINES).join(', ')}`)
   return engine

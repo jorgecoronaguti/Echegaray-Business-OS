@@ -23,7 +23,7 @@ DATABASE_URL=postgres://postgres:orq_local@127.0.0.1:55433/orq
 ORQ_DB_SSL=false
 ORQ_CONCURRENCY=2
 ORQ_LOG_LEVEL=info
-ORQ_ENGINE=noop
+ORQ_ENGINE=claude-cli
 # Cuando tengas el pooler real de Supabase (D1), reemplazá DATABASE_URL por:
 #   postgresql://postgres.<ref>:<PASSWORD>@aws-1-sa-east-1.pooler.supabase.com:5432/postgres
 # y ORQ_DB_SSL=true

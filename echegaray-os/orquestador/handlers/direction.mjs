@@ -39,39 +39,45 @@ function extractJson(text) {
 function directorPrompt(task, digest) {
   return (
     `Sos el DIRECTOR GENERAL IA de Echegaray Construcciones. No implementás ni calculás: ` +
-    `dirigís. Comprendé el estado, priorizá, y descomponé el objetivo en trabajo para ` +
-    `especialistas.\n\nESTADO ACTUAL DEL BUSINESS OS:\n${digest}\n\n` +
+    `dirigís una organización de especialistas. Comprendé el estado, priorizá, y descomponé ` +
+    `el objetivo en trabajo para tus especialistas.\n\nESTADO ACTUAL DEL BUSINESS OS:\n${digest}\n\n` +
     `OBJETIVO DE DIRECCIÓN:\n${task.goal || task.title}\n\n` +
-    `Capacidades disponibles para asignar (capability_slug): read.analyze, doc.write, ` +
-    `code.edit_worktree, run.tests, run.lint, run.build, knowledge.write_memory, ` +
-    `plan.decompose. Cada subtarea se enruta al especialista dueño de esa capacidad.\n\n` +
+    `TUS ESPECIALISTAS (elegí capability_slug; cada uno enruta a su especialista):\n` +
+    `- advise.finance → CFO IA · advise.accounting → Contador IA · advise.procurement → Compras IA\n` +
+    `- advise.commercial → Comercial IA · advise.engineering → Ingeniería IA · advise.architecture → Arquitecto IA\n` +
+    `- advise.civil → Ingeniero Civil IA · advise.legal → Abogado IA · advise.hr → RRHH IA\n` +
+    `- read.analyze/doc.write → Software Architect IA · code.edit_worktree/run.tests/run.lint/run.build → Software Developer IA\n\n` +
+    `Para cada subtarea, elegí el TYPE:\n` +
+    `- type="specialist" para trabajo de análisis/asesoría de negocio (todas las advise.*).\n` +
+    `- type="code_change" SOLO para cambios de código (capacidades code.*/run.*).\n\n` +
     `Devolvé ÚNICAMENTE un JSON con esta forma:\n` +
     `{"priorities":[{"titulo":"...","razon":"..."}],` +
-    `"plan":{"subtasks":[{"key":"k1","type":"code_change","title":"...","goal":"...",` +
-    `"capability_slug":"read.analyze","success_criteria":"...","depends_on":[]}]},` +
+    `"plan":{"subtasks":[{"key":"k1","type":"specialist","title":"...","goal":"instrucción concreta al especialista",` +
+    `"capability_slug":"advise.finance","success_criteria":"...","depends_on":[]}]},` +
     `"recommendations":["..."],` +
     `"approval_requests":[{"titulo":"...","motivo":"...","capability_slug":"..."}],` +
     `"executive_summary":"..."}\n` +
     `Reglas: sólo trabajo interno (Nivel A–D) en el plan. Lo que requiera aprobación ` +
-    `humana (Nivel E: push, deploy, escritura económica real, comunicación externa) va ` +
-    `en approval_requests, NO en el plan. Mantené el DAG mínimo y accionable.`
+    `humana (Nivel E: push, deploy, escritura económica/fiscal/laboral/legal real, comunicación ` +
+    `externa) va en approval_requests, NO en el plan. Asigná cada tema al especialista de su ` +
+    `dominio. Mantené el DAG mínimo y accionable (no más de ~8 subtareas).`
   )
 }
 
 async function think(task, ctx, engineName, digest) {
-  if (engineName === 'noop') {
+  if (engineName === 'fixture') {
     const canned = task.inputs?.canned_direction
     if (canned) return { dir: Direction.parse(canned), cost: { usd: 0 }, sessionId: null }
     return {
       dir: Direction.parse({
         priorities: [{ titulo: 'Estabilizar y comprender', razon: 'línea base del OS' }],
         plan: { subtasks: [
-          { key: 'diag', type: 'noop', title: 'Diagnóstico de estado', capability_slug: 'read.analyze', success_criteria: 'estado comprendido' },
-          { key: 'doc', type: 'noop', title: 'Documentar hallazgos', capability_slug: 'doc.write', depends_on: ['diag'] },
+          { key: 'fin', type: 'specialist', title: 'Diagnóstico financiero', capability_slug: 'advise.finance', success_criteria: 'caja comprendida' },
+          { key: 'legal', type: 'specialist', title: 'Revisión contractual', capability_slug: 'advise.legal', depends_on: ['fin'] },
         ] },
         recommendations: ['Revisar dead-letter si > 0'],
         approval_requests: [],
-        executive_summary: 'Ciclo de dirección (modo determinístico): diagnóstico + documentación.',
+        executive_summary: 'Ciclo de dirección (modo determinístico): finanzas + legal.',
       }),
       cost: { usd: 0 }, sessionId: null,
     }
@@ -132,11 +138,34 @@ export async function directionHandler(task, ctx) {
         deps++
       }
     }
+
+    // Nodo de CONSOLIDACIÓN: cierra el objetivo integrando el trabajo de los
+    // especialistas. Depende de TODAS las hojas del plan (el ledger lo mantiene
+    // en cola hasta que terminan). Lo asigna el propio Director (a sí mismo).
+    let consolidationId = null
+    if (routed.length > 0) {
+      const consol = {
+        type: 'direction_consolidate', title: `Cierre de dirección: ${task.title}`,
+        goal: 'Integrar el trabajo de los especialistas y cerrar el objetivo para la Dirección.',
+        capability_slug: 'direction.report', agent_slug: 'director-general',
+        parent_task_id: task.id, causation_id: task.id, created_by: directorId,
+        engine: task.engine || task.inputs?.engine || null,
+        dedupe_key: `dir:${task.id}:__consolidate__`,
+      }
+      const { rows } = await client.query('select orq.enqueue_task($1::jsonb) as id', [JSON.stringify(consol)])
+      consolidationId = rows[0].id
+      await client.query('update orq.tasks set correlation_id=$1 where id=$2', [task.correlation_id, consolidationId])
+      for (const id of Object.values(keyToId)) {
+        await client.query('insert into orq.task_deps (task_id, depends_on_task_id) values ($1,$2) on conflict do nothing', [consolidationId, id])
+        deps++
+      }
+    }
+
     await emitEvent(client, {
       tenantId: ctx.context.tenantId, subjectType: 'task', subjectId: task.id,
       type: 'direction.planned', actorId: directorId, projectId: ctx.context.projectId,
       correlationId: task.correlation_id, causationId: task.id,
-      payload: { priorities: dir.priorities.length, subtasks: routed.length, deps, children: Object.values(keyToId) },
+      payload: { priorities: dir.priorities.length, subtasks: routed.length, deps, children: Object.values(keyToId), consolidation: consolidationId },
     })
     for (const ar of dir.approval_requests) {
       await emitEvent(client, {
@@ -146,16 +175,17 @@ export async function directionHandler(task, ctx) {
         payload: ar,
       })
     }
-    return { keyToId, deps }
+    return { keyToId, deps, consolidationId }
   })
 
-  ctx.logger.info('director: ciclo completado', { task_id: task.id, subtasks: routed.length, approvals: dir.approval_requests.length })
+  ctx.logger.info('director: ciclo completado', { task_id: task.id, subtasks: routed.length, approvals: dir.approval_requests.length, consolidation: created.consolidationId })
   return {
     result: {
       engine: engineName, session_id: sessionId, cost,
       priorities: dir.priorities,
       assigned: routed.map((s) => ({ key: s.key, capability: s.capability_slug, agent: s.agent_slug })),
       children: created.keyToId,
+      consolidation: created.consolidationId,
       recommendations: dir.recommendations,
       approval_requests: dir.approval_requests,
       executive_summary: dir.executive_summary,

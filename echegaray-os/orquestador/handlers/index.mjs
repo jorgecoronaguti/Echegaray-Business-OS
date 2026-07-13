@@ -12,6 +12,8 @@ import { noopHandler } from './noop.mjs'
 import { codeChangeHandler } from './code_change.mjs'
 import { planHandler } from './plan.mjs'
 import { directionHandler } from './direction.mjs'
+import { specialistHandler } from './specialist.mjs'
+import { consolidateHandler } from './consolidate.mjs'
 
 export const HANDLERS = {
   noop: noopHandler,
@@ -19,6 +21,8 @@ export const HANDLERS = {
   code_change: codeChangeHandler, // Fase 2: worktree -> engine -> review -> commit local
   plan: planHandler, // Fase 3: descompone un objetivo en un DAG de subtareas
   direction: directionHandler, // Etapa 3: ciclo del Director IA (comprende->prioriza->planifica->asigna)
+  specialist: specialistHandler, // Etapa 4: trabajo de análisis/preparación de un especialista de dominio
+  direction_consolidate: consolidateHandler, // Etapa 4: cierra el objetivo integrando el trabajo de los especialistas
 }
 
 export function resolveHandler(type) {
