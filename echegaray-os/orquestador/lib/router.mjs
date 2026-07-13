@@ -4,6 +4,7 @@
 // El techo de costo efectivo por candidato = min(route.max_cost_usd, límite del
 // agente por tarea). Resolución por especificidad: capability > agent > default.
 import { query } from './db.mjs'
+import { loadConfig } from './config.mjs'
 import { getCapability, getAgentBySlug, getAgentForCapability } from './registry.mjs'
 
 async function routesFor(tenantId, scope, matchKey) {
@@ -39,9 +40,11 @@ export async function route({ tenantId, capabilitySlug, agentSlug, preferredMode
   if (!raw.length && agent) raw = await routesFor(tenantId, 'agent', agent.slug)
   if (!raw.length) raw = await routesFor(tenantId, 'default', '*')
 
-  // fallback duro si no hay rutas configuradas
+  // fallback duro si no hay rutas configuradas. SIN fallback silencioso a
+  // claude-cli: el motor por defecto del negocio es el Reasoner (AI_ENGINE_DEFAULT).
   if (!raw.length) {
-    raw = [{ engine: agent?.default_engine || 'claude-cli', model: agent?.default_model || 'sonnet', max_cost_usd: 0.75 }]
+    const cfg = loadConfig()
+    raw = [{ engine: agent?.default_engine || cfg.AI_ENGINE_DEFAULT, model: agent?.default_model || 'sonnet', max_cost_usd: 0.75 }]
   }
 
   const agentCeiling = agent?.max_cost_usd_per_task != null ? Number(agent.max_cost_usd_per_task) : Infinity
@@ -54,7 +57,8 @@ export async function route({ tenantId, capabilitySlug, agentSlug, preferredMode
   // override suave de modelo pedido explícitamente: se antepone respetando el techo
   if (preferredModel && !candidates.some((c) => c.model === preferredModel)) {
     const ceiling = candidates[0]?.maxCostUsd ?? agentCeiling
-    candidates = [{ engine: candidates[0]?.engine || 'claude-cli', model: preferredModel, maxCostUsd: ceiling }, ...candidates]
+    const engine = candidates[0]?.engine || loadConfig().AI_ENGINE_DEFAULT
+    candidates = [{ engine, model: preferredModel, maxCostUsd: ceiling }, ...candidates]
   }
 
   return { agent, capability, candidates }

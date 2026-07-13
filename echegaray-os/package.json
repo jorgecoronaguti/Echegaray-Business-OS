@@ -11,9 +11,12 @@
     "orq:worker": "node orquestador/worker.mjs",
     "orq:worker:once": "node orquestador/worker.mjs --once",
     "orq:health": "node orquestador/worker.mjs --health",
-    "orq:enqueue": "node orquestador/scripts/enqueue.mjs"
+    "orq:enqueue": "node orquestador/scripts/enqueue.mjs",
+    "orq:smoke": "node orquestador/scripts/smoke-anthropic.mjs",
+    "orq:test": "node orquestador/engines/anthropic-api.test.mjs && node orquestador/lib/breaker.test.mjs && node orquestador/lib/context-assembler.test.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.111.0",
     "@supabase/ssr": "^0.6.0",
     "@supabase/supabase-js": "^2.49.0",
     "next": "^16.0.0",

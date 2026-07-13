@@ -8,6 +8,11 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
 EnvironmentFile=%h/.config/echegaray-orq/worker.env
+# Credencial del Reasoner Anthropic en archivo SEPARADO (chmod 600, rotación
+# independiente). El prefijo '-' lo hace opcional: si falta, el worker arranca y
+# falla claro (MissingSecretError) en la primera tarea de negocio, sin exponer la
+# clave en logs/Supabase/Vercel/frontend/repo.
+EnvironmentFile=-%h/.config/echegaray-orq/anthropic.env
 ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/worker.mjs
 Restart=always
 RestartSec=5

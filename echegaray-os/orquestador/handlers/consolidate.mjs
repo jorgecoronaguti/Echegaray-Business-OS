@@ -10,6 +10,7 @@ import { emitEvent } from '../lib/events.mjs'
 import { decide } from '../lib/policy.mjs'
 import { route } from '../lib/router.mjs'
 import { resolveEngine } from '../engines/index.mjs'
+import { assembleReasoningSystem, ROLE_FRAMING } from '../lib/context-assembler.mjs'
 
 const Closure = z.object({
   closure_summary: z.string().max(6000),
@@ -38,7 +39,9 @@ async function gatherSiblings(objectiveId, selfId) {
   let succeeded = 0, failed = 0
   for (const r of rows) {
     if (r.state === 'succeeded') succeeded++
-    if (['dead_letter', 'failed'].includes(r.state)) failed++
+    // Con la dependencia por estado TERMINAL, un especialista muerto ya no bloquea
+    // la consolidación: acá se contabiliza para cerrar en 'parcial' sin ocultarlo.
+    if (['dead_letter', 'failed', 'cancelled', 'rejected'].includes(r.state)) failed++
     const res = r.result || {}
     specialists.push({
       agent: r.agent_slug, org_title: res.org_title ?? null, title: r.title, state: r.state,
@@ -68,24 +71,30 @@ function consolidationPrompt(objective, agg) {
   )
 }
 
-async function synth(task, ctx, engineName, objective, agg) {
-  if (engineName === 'fixture') {
+async function synth(task, ctx, engineOverride, objective, agg) {
+  if (engineOverride === 'fixture') {
     return {
       closure: Closure.parse({
         closure_summary: `Cierre determinístico: ${agg.succeeded}/${agg.total} especialistas completaron; ${agg.openApprovals.length} aprobaciones pendientes.`,
         objective_status: agg.failed > 0 ? 'parcial' : 'cumplido',
         key_points: agg.specialists.flatMap((s) => s.recommendations.slice(0, 1)).slice(0, 6),
       }),
-      cost: { usd: 0 }, sessionId: null,
+      cost: { usd: 0 }, sessionId: null, engine: 'fixture',
     }
   }
   const { candidates } = await route({ tenantId: ctx.context.tenantId, capabilitySlug: 'direction.report', preferredModel: task.inputs?.model })
+  const engineName = engineOverride || candidates[0]?.engine || ctx.config.AI_ENGINE_DEFAULT
   const engine = resolveEngine(engineName)
+  const { system } = await assembleReasoningSystem({
+    rootPath: ctx.context.repository.rootPath, config: ctx.config,
+    roleFraming: ROLE_FRAMING.consolidation, logger: ctx.logger,
+  })
   const eng = await engine.run(
-    { prompt: consolidationPrompt(objective, agg), worktreePath: ctx.context.repository.rootPath, model: candidates[0]?.model, allowedTools: 'Read,Glob,Grep', task, timeoutMs: ctx.config.ENGINE_TIMEOUT_MS },
+    { system, prompt: consolidationPrompt(objective, agg), worktreePath: ctx.context.repository.rootPath,
+      model: candidates[0]?.model, maxCostUsd: candidates[0]?.maxCostUsd, allowedTools: 'Read,Glob,Grep', task },
     ctx,
   )
-  return { closure: Closure.parse(extractJson(eng.result)), cost: eng.cost, sessionId: eng.sessionId }
+  return { closure: Closure.parse(extractJson(eng.result)), cost: eng.cost, sessionId: eng.sessionId, engine: engineName }
 }
 
 async function directorPrincipalId(tenantId) {
@@ -105,8 +114,8 @@ export async function consolidateHandler(task, ctx) {
   const objective = orows[0]
   const agg = await gatherSiblings(objectiveId, task.id)
 
-  const engineName = task.engine || task.inputs?.engine || 'claude-cli'
-  const { closure, cost, sessionId } = await synth(task, ctx, engineName, objective, agg)
+  const engineOverride = task.engine || task.inputs?.engine || null
+  const { closure, cost, sessionId, engine: engineName } = await synth(task, ctx, engineOverride, objective, agg)
 
   await withTx(async (client) => {
     await emitEvent(client, {

@@ -19,15 +19,14 @@
 // la revisión y el commit los hace el Fabric, no el motor.
 import { fixtureEngine } from './fixture-engine.mjs'
 import { claudeCliEngine } from './claude-cli.mjs'
+import { anthropicApiEngine } from './anthropic-api.mjs'
 
-// Motores futuros: interfaz lista, implementación pendiente (neutralidad D3).
-function notImplemented(name) {
-  return {
-    async run() {
-      throw new Error(`Engine '${name}' aún no implementado (la interfaz Engine/Runner ya lo soporta)`)
-    },
-  }
-}
+// ARQUITECTURA DE DOS PUERTOS (Anthropic-only, sin plataforma multi-proveedor):
+//   'anthropic-api' → REASONER: motor del negocio 24×7 (API oficial de Anthropic).
+//   'claude-cli'    → BUILDER: desarrollo del propio OS (herramientas locales).
+//   'fixture'       → determinista, SOLO tests (no se resuelve en producción).
+// No hay stubs de otros proveedores: la capa AI existe únicamente para aislar los
+// detalles de la API de Anthropic, no para abstraer proveedores.
 
 // 'fixture' es un motor determinista SOLO para tests. En producción no se resuelve
 // (evita que cualquier tarea corra sobre un stub): Etapa 4 retiró 'noop'.
@@ -36,17 +35,14 @@ function fixtureAllowed() {
 }
 
 export const ENGINES = {
+  'anthropic-api': anthropicApiEngine,
   'claude-cli': claudeCliEngine,
   'fixture': fixtureEngine,
-  'claude-sdk': notImplemented('claude-sdk'),
-  'anthropic-api': notImplemented('anthropic-api'),
-  'openai': notImplemented('openai'),
-  'gemini': notImplemented('gemini'),
 }
 
 export function resolveEngine(name) {
   if (name === 'fixture' && !fixtureAllowed()) {
-    throw new Error("Engine 'fixture' es solo para tests (definí ORQ_ALLOW_FIXTURE=1). En producción usá 'claude-cli'.")
+    throw new Error("Engine 'fixture' es solo para tests (definí ORQ_ALLOW_FIXTURE=1). En producción usá 'anthropic-api' (negocio) o 'claude-cli' (dev).")
   }
   const engine = ENGINES[name]
   if (!engine) throw new Error(`Engine desconocido: '${name}'. Disponibles: ${Object.keys(ENGINES).join(', ')}`)

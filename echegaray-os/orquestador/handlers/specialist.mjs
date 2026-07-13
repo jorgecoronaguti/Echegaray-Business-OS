@@ -14,6 +14,7 @@ import { route } from '../lib/router.mjs'
 import { resolveEngine } from '../engines/index.mjs'
 import { getCapability } from '../lib/registry.mjs'
 import { assembleSituation, domainDigest } from '../lib/situation.mjs'
+import { assembleReasoningSystem, ROLE_FRAMING } from '../lib/context-assembler.mjs'
 
 const SpecialistResult = z.object({
   analysis: z.string().max(8000),
@@ -38,15 +39,11 @@ function extractJson(text) {
 }
 
 function specialistPrompt(task, agent, digest) {
-  const skill = agent?.context_ref ? `${agent.context_ref}/SKILL.md` : null
   return (
     `Sos ${agent?.org_title || agent?.role || 'un especialista'} de Echegaray Construcciones, ` +
     `parte de una organización dirigida por el Director General IA. Trabajás SOLO en tu ` +
-    `dominio; no coordinás a otros especialistas ni salís de tu especialidad.\n\n` +
-    (skill
-      ? `Tu conocimiento de dominio vive en la skill del repo: ${skill}. Leéla con Read ` +
-        `ANTES de analizar y aplicá su criterio profesional.\n\n`
-      : '') +
+    `dominio; no coordinás a otros especialistas ni salís de tu especialidad. Tu conocimiento ` +
+    `de dominio y la gobernanza están en tu contexto de sistema: aplicá ese criterio profesional.\n\n` +
     `ESTADO REAL (datos de la empresa; nunca inventes cifras que no estén acá):\n${digest}\n\n` +
     `TAREA QUE TE ASIGNÓ EL DIRECTOR:\n${task.goal || task.title}\n` +
     (task.success_criteria ? `\nCriterio de éxito: ${task.success_criteria}\n` : '') +
@@ -61,10 +58,10 @@ function specialistPrompt(task, agent, digest) {
   )
 }
 
-async function reason(task, ctx, engineName, agent, digest) {
-  if (engineName === 'fixture') {
+async function reason(task, ctx, engineOverride, agent, digest) {
+  if (engineOverride === 'fixture') {
     const canned = task.inputs?.canned_specialist
-    if (canned) return { out: SpecialistResult.parse(canned), cost: { usd: 0 }, tokens: null, sessionId: null }
+    if (canned) return { out: SpecialistResult.parse(canned), cost: { usd: 0 }, tokens: null, sessionId: null, engine: 'fixture' }
     return {
       out: SpecialistResult.parse({
         analysis: `Análisis determinístico (${agent?.org_title || task.agent_slug}) del objetivo: ${task.title}.`,
@@ -74,22 +71,30 @@ async function reason(task, ctx, engineName, agent, digest) {
         evidence: ['digest situacional'],
         confidence: 'media',
       }),
-      cost: { usd: 0 }, tokens: null, sessionId: null,
+      cost: { usd: 0 }, tokens: null, sessionId: null, engine: 'fixture',
     }
   }
   const { candidates } = await route({ tenantId: ctx.context.tenantId, capabilitySlug: task.capability_slug, agentSlug: task.agent_slug, preferredModel: task.inputs?.model })
+  const engineName = engineOverride || candidates[0]?.engine || ctx.config.AI_ENGINE_DEFAULT
   const engine = resolveEngine(engineName)
+  // Gobernanza + SKILL.md del dominio inyectadas en el system (reemplaza el Read del CLI).
+  const { system } = await assembleReasoningSystem({
+    rootPath: ctx.context.repository.rootPath, config: ctx.config,
+    roleFraming: ROLE_FRAMING.specialist, contextRef: agent?.context_ref, logger: ctx.logger,
+  })
   const eng = await engine.run(
     {
+      system,
       prompt: specialistPrompt(task, agent, digest),
       worktreePath: ctx.context.repository.rootPath,
       model: candidates[0]?.model,
+      maxCostUsd: candidates[0]?.maxCostUsd,
       allowedTools: 'Read,Glob,Grep',
-      task, timeoutMs: ctx.config.ENGINE_TIMEOUT_MS,
+      task,
     },
     ctx,
   )
-  return { out: SpecialistResult.parse(extractJson(eng.result)), cost: eng.cost, tokens: eng.tokens, sessionId: eng.sessionId }
+  return { out: SpecialistResult.parse(extractJson(eng.result)), cost: eng.cost, tokens: eng.tokens, sessionId: eng.sessionId, engine: engineName }
 }
 
 async function specialistPrincipalId(agentSlug) {
@@ -114,8 +119,8 @@ export async function specialistHandler(task, ctx) {
 
   const situation = await assembleSituation()
   const digest = domainDigest(situation, cap?.domain || 'core')
-  const engineName = task.engine || task.inputs?.engine || 'claude-cli'
-  const { out, cost, tokens, sessionId } = await reason(task, ctx, engineName, agent, digest)
+  const engineOverride = task.engine || task.inputs?.engine || null
+  const { out, cost, tokens, sessionId, engine: engineName } = await reason(task, ctx, engineOverride, agent, digest)
 
   await withTx(async (client) => {
     await emitEvent(client, {

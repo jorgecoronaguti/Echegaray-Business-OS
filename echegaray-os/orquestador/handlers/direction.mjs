@@ -11,6 +11,7 @@ import { decide } from '../lib/policy.mjs'
 import { route } from '../lib/router.mjs'
 import { resolveEngine } from '../engines/index.mjs'
 import { assembleSituation, situationDigest } from '../lib/situation.mjs'
+import { assembleReasoningSystem, ROLE_FRAMING } from '../lib/context-assembler.mjs'
 
 const Subtask = z.object({
   key: z.string().min(1).max(64),
@@ -64,10 +65,10 @@ function directorPrompt(task, digest) {
   )
 }
 
-async function think(task, ctx, engineName, digest) {
-  if (engineName === 'fixture') {
+async function think(task, ctx, engineOverride, digest) {
+  if (engineOverride === 'fixture') {
     const canned = task.inputs?.canned_direction
-    if (canned) return { dir: Direction.parse(canned), cost: { usd: 0 }, sessionId: null }
+    if (canned) return { dir: Direction.parse(canned), cost: { usd: 0 }, sessionId: null, engine: 'fixture' }
     return {
       dir: Direction.parse({
         priorities: [{ titulo: 'Estabilizar y comprender', razon: 'línea base del OS' }],
@@ -79,16 +80,24 @@ async function think(task, ctx, engineName, digest) {
         approval_requests: [],
         executive_summary: 'Ciclo de dirección (modo determinístico): finanzas + legal.',
       }),
-      cost: { usd: 0 }, sessionId: null,
+      cost: { usd: 0 }, sessionId: null, engine: 'fixture',
     }
   }
   const { candidates } = await route({ tenantId: ctx.context.tenantId, capabilitySlug: 'direction.plan', preferredModel: task.inputs?.model })
+  // Motor: override explícito de la tarea > engine de la ruta > default del negocio.
+  const engineName = engineOverride || candidates[0]?.engine || ctx.config.AI_ENGINE_DEFAULT
   const engine = resolveEngine(engineName)
+  // Gobernanza (CLAUDE.md) inyectada en el system; el Director no tiene skill de dominio.
+  const { system } = await assembleReasoningSystem({
+    rootPath: ctx.context.repository.rootPath, config: ctx.config,
+    roleFraming: ROLE_FRAMING.director, logger: ctx.logger,
+  })
   const eng = await engine.run(
-    { prompt: directorPrompt(task, digest), worktreePath: ctx.context.repository.rootPath, model: candidates[0]?.model, allowedTools: 'Read,Glob,Grep', task, timeoutMs: ctx.config.ENGINE_TIMEOUT_MS },
+    { system, prompt: directorPrompt(task, digest), worktreePath: ctx.context.repository.rootPath,
+      model: candidates[0]?.model, maxCostUsd: candidates[0]?.maxCostUsd, allowedTools: 'Read,Glob,Grep', task },
     ctx,
   )
-  return { dir: Direction.parse(extractJson(eng.result)), cost: eng.cost, sessionId: eng.sessionId }
+  return { dir: Direction.parse(extractJson(eng.result)), cost: eng.cost, sessionId: eng.sessionId, engine: engineName }
 }
 
 async function directorPrincipalId(tenantId) {
@@ -103,8 +112,8 @@ export async function directionHandler(task, ctx) {
 
   const situation = await assembleSituation()
   const digest = situationDigest(situation)
-  const engineName = task.engine || task.inputs?.engine || 'claude-cli'
-  const { dir, cost, sessionId } = await think(task, ctx, engineName, digest)
+  const engineOverride = task.engine || task.inputs?.engine || null
+  const { dir, cost, sessionId, engine: engineName } = await think(task, ctx, engineOverride, digest)
 
   const directorId = await directorPrincipalId(ctx.context.tenantId)
 
