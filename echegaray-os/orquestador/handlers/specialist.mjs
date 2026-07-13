@@ -15,6 +15,19 @@ import { resolveEngine } from '../engines/index.mjs'
 import { getCapability } from '../lib/registry.mjs'
 import { assembleSituation, domainDigest } from '../lib/situation.mjs'
 import { assembleReasoningSystem, ROLE_FRAMING } from '../lib/context-assembler.mjs'
+import { makeGoogleClient } from '../lib/google.mjs'
+import { driveReadTools } from '../lib/tools/drive.mjs'
+import { makeToolExecutor } from '../lib/tool-executor.mjs'
+
+/** Encola una operación que requiere aprobación humana (Nivel E) con su payload real. */
+async function enqueuePendingOperation({ tenantId, taskId, agentSlug, capability_slug, account, target, payload }) {
+  const { rows } = await query(
+    `insert into orq.pending_operations (tenant_id, task_id, agent_slug, capability_slug, account, target, payload)
+     values ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb) returning id`,
+    [tenantId, taskId, agentSlug, capability_slug, account, JSON.stringify(target ?? {}), JSON.stringify(payload ?? {})],
+  )
+  return rows[0].id
+}
 
 const SpecialistResult = z.object({
   analysis: z.string().max(8000),
@@ -91,7 +104,7 @@ function specialistPrompt(task, agent, digest) {
   )
 }
 
-async function reason(task, ctx, engineOverride, agent, digest) {
+async function reason(task, ctx, engineOverride, agent, digest, principalId) {
   if (engineOverride === 'fixture') {
     const canned = task.inputs?.canned_specialist
     if (canned) return { out: parseSpecialist(canned, ctx.logger), cost: { usd: 0 }, tokens: null, sessionId: null, engine: 'fixture' }
@@ -115,15 +128,36 @@ async function reason(task, ctx, engineOverride, agent, digest) {
     rootPath: ctx.context.repository.rootPath, config: ctx.config,
     roleFraming: ROLE_FRAMING.specialist, contextRef: agent?.context_ref, logger: ctx.logger,
   })
+
+  // Tool-use SÓLO sobre el Reasoner (anthropic-api). El especialista gana MANOS de
+  // lectura sobre Drive: cada tool pasa por policy (decide) en el ejecutor. Si falta
+  // la credencial de Google, la tool devuelve {error} y el modelo sigue (degrada, no rompe).
+  let tools
+  let toolExecutor
+  let toolsHint = ''
+  if (engineName === 'anthropic-api' && principalId) {
+    const google = makeGoogleClient({ config: ctx.config })
+    const registry = driveReadTools(google)
+    toolExecutor = makeToolExecutor({
+      decide, tools: registry, principalId, logger: ctx.logger,
+      enqueue: (op) => enqueuePendingOperation({ ...op, tenantId: ctx.context.tenantId, taskId: task.id, agentSlug: task.agent_slug }),
+    })
+    tools = Object.values(registry).map((t) => t.schema)
+    toolsHint = '\n\nHERRAMIENTAS: tenés `drive_read` para leer Sheets reales de la empresa (caja, P&L, presupuestos). ' +
+      'Si te falta un dato concreto (ej. el saldo de caja real vive en el Sheet "Flujo de Caja - Cash Flow"), ' +
+      'LEELO con la herramienta en vez de responder "desconocido". Declará la fuente y la fecha de lectura en evidence.'
+  }
+
   const eng = await engine.run(
     {
       system,
-      prompt: specialistPrompt(task, agent, digest),
+      prompt: specialistPrompt(task, agent, digest) + toolsHint,
       worktreePath: ctx.context.repository.rootPath,
       model: candidates[0]?.model,
       maxCostUsd: candidates[0]?.maxCostUsd,
       allowedTools: 'Read,Glob,Grep',
       task,
+      ...(tools ? { tools, toolExecutor, agentSlug: task.agent_slug } : {}),
     },
     ctx,
   )
@@ -153,7 +187,7 @@ export async function specialistHandler(task, ctx) {
   const situation = await assembleSituation()
   const digest = domainDigest(situation, cap?.domain || 'core')
   const engineOverride = task.engine || task.inputs?.engine || null
-  const { out, cost, tokens, sessionId, engine: engineName } = await reason(task, ctx, engineOverride, agent, digest)
+  const { out, cost, tokens, sessionId, engine: engineName } = await reason(task, ctx, engineOverride, agent, digest, principalId)
 
   await withTx(async (client) => {
     await emitEvent(client, {

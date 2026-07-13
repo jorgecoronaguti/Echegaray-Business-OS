@@ -1,0 +1,96 @@
+// Cliente Google (Drive/Sheets) del worker — READ-ONLY en esta fase. Autentica
+// con el SERVICE ACCOUNT del Workspace (key JSON fuera de git, en la VM) y llama
+// a las REST APIs con fetch (evita la dependencia pesada `googleapis`).
+//
+// La credencial NUNCA vive en el repo ni se loguea: se lee de un archivo cuyo path
+// llega por env (GOOGLE_SA_KEY_PATH), patrón `-EnvironmentFile` de systemd. Si el
+// archivo no está, falla CLARO y NO reintentable (como MissingSecretError del motor).
+//
+// Acceso: el service account lee los archivos que le fueron COMPARTIDOS en Drive
+// (o, con domain-wide delegation, impersonando una cuenta @ecsas vía `subject`).
+import { GoogleAuth } from 'google-auth-library'
+import fs from 'node:fs'
+
+const READONLY_SCOPES = [
+  'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/spreadsheets.readonly',
+]
+
+/** Falta la key del service account. Tipada para fallar claro y NO reintentar. */
+export class MissingGoogleCredential extends Error {
+  constructor(path) {
+    super(`credencial de Google ausente: falta el key JSON del service account en ${path || '(GOOGLE_SA_KEY_PATH)'}. Definila en la VM, nunca en git.`)
+    this.name = 'MissingGoogleCredential'
+    this.code = 'MISSING_GOOGLE_CREDENTIAL'
+    this.retryable = false
+  }
+}
+
+/** Path del key JSON: env explícito o el default del worker. */
+export function resolveKeyPath(config) {
+  return (
+    config?.GOOGLE_SA_KEY_PATH ||
+    process.env.GOOGLE_SA_KEY_PATH ||
+    `${process.env.HOME || '/root'}/.config/echegaray-orq/google-sa.json`
+  )
+}
+
+/**
+ * Fábrica del cliente. En producción se construye con la key real; en tests se
+ * inyecta `auth` (con getAccessToken) y `fetchImpl` para no tocar red ni disco.
+ * @param {object} deps
+ * @param {object} [deps.config]
+ * @param {object} [deps.auth]       override para tests (debe exponer getAccessToken())
+ * @param {function} [deps.fetchImpl] override de fetch para tests
+ * @param {string}  [deps.impersonate] cuenta @ecsas a impersonar (domain-wide delegation)
+ */
+export function makeGoogleClient({ config, auth, fetchImpl, impersonate } = {}) {
+  const doFetch = fetchImpl || globalThis.fetch
+  let _auth = auth || null
+
+  async function accessToken() {
+    if (!_auth) {
+      const keyPath = resolveKeyPath(config)
+      if (!fs.existsSync(keyPath)) throw new MissingGoogleCredential(keyPath)
+      const ga = new GoogleAuth({ keyFile: keyPath, scopes: READONLY_SCOPES, clientOptions: impersonate ? { subject: impersonate } : {} })
+      _auth = await ga.getClient()
+    }
+    const t = await _auth.getAccessToken()
+    return typeof t === 'string' ? t : t?.token
+  }
+
+  async function apiGet(url) {
+    const token = await accessToken()
+    const res = await doFetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    if (!res.ok) {
+      const body = String(await res.text()).slice(0, 200)
+      const err = new Error(`google api ${res.status}: ${body}`)
+      err.status = res.status
+      throw err
+    }
+    return res.json()
+  }
+
+  return {
+    /** Busca archivos por nombre exacto. Devuelve [{id,name,mimeType}]. */
+    async searchFile(name) {
+      const q = encodeURIComponent(`name = '${String(name).replace(/'/g, "\\'")}' and trashed = false`)
+      const j = await apiGet(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&pageSize=10`)
+      return j.files || []
+    },
+    /** Lee valores de un rango A1 de un Sheet. Devuelve matriz de filas. */
+    async readSheetValues(fileId, range) {
+      const j = await apiGet(
+        `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values/${encodeURIComponent(range)}`,
+      )
+      return j.values || []
+    },
+    /** Lista los nombres de pestañas de un Sheet. */
+    async listTabs(fileId) {
+      const j = await apiGet(
+        `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?fields=sheets.properties.title`,
+      )
+      return (j.sheets || []).map((s) => s.properties?.title).filter(Boolean)
+    },
+  }
+}
