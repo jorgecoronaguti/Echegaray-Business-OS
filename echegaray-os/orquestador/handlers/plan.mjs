@@ -44,9 +44,9 @@ function planPrompt(task) {
   )
 }
 
-/** Genera el plan: canned si engine='noop' (test determinístico), si no via engine. */
+/** Genera el plan: canned si engine='fixture' (test determinístico), si no via engine. */
 async function buildPlan(task, ctx, engineName) {
-  if (engineName === 'noop') {
+  if (engineName === 'fixture') {
     const canned = task.inputs?.canned_plan
     if (canned) return { plan: PlanSchema.parse(canned), cost: { usd: 0 }, sessionId: null }
     // plan por defecto para validar la maquinaria sin gastar tokens

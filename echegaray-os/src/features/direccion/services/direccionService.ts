@@ -19,6 +19,20 @@ export async function getObjetivos(supabase: SupabaseClient): Promise<ServiceRes
   }
 }
 
+/** Cierres de objetivos (informe de consolidación del Director), por objective_id. */
+export async function getCierres(supabase: SupabaseClient): Promise<ServiceResult<Record<string, unknown>>> {
+  try {
+    const { data, error } = await supabase
+      .from('orq_objective_closure').select('objective_id, closure_state, closure, closed_at')
+    if (error) return { data: null, error: error.message }
+    const byId: Record<string, unknown> = {}
+    for (const row of (data ?? []) as { objective_id: string }[]) byId[row.objective_id] = row
+    return { data: byId, error: null }
+  } catch (err) {
+    return { data: null, error: toServiceError(err) }
+  }
+}
+
 /** Conteos de negocio de titular (display, no lógica de negocio) para el encabezado. */
 export async function getTitularesNegocio(supabase: SupabaseClient): Promise<ServiceResult<Record<string, number>>> {
   try {
