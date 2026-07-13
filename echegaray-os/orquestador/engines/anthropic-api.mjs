@@ -64,6 +64,34 @@ export function estimateCostUsd(modelId, usage) {
   return Math.round(usd * 1e6) / 1e6
 }
 
+// Techo de vueltas del loop agéntico de tool-use (anti bucle infinito). El handler
+// puede bajarlo con job.maxToolIterations; nunca subir sin querer el costo.
+const MAX_TOOL_ITERATIONS = 8
+
+/** Suma los usages de varias vueltas del loop en un solo objeto de tokens. */
+export function accumulateUsage(usages) {
+  const acc = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }
+  for (const u of usages) {
+    if (!u) continue
+    acc.input_tokens += u.input_tokens || 0
+    acc.output_tokens += u.output_tokens || 0
+    acc.cache_creation_input_tokens += u.cache_creation_input_tokens || 0
+    acc.cache_read_input_tokens += u.cache_read_input_tokens || 0
+  }
+  return acc
+}
+
+/** Costo total (USD) sumando el costo estimado de cada vuelta. null si el modelo no tiene precio. */
+export function totalCostUsd(usages, modelId) {
+  let usd = 0
+  let known = false
+  for (const u of usages) {
+    const c = estimateCostUsd(modelId, u)
+    if (c != null) { usd += c; known = true }
+  }
+  return known ? Math.round(usd * 1e6) / 1e6 : null
+}
+
 /** Clasifica un error del SDK por status HTTP. `hard` = credencial (no reintentar). */
 export function classifyError(err) {
   const status = err?.status ?? err?.statusCode ?? null
@@ -126,71 +154,130 @@ export function makeAnthropicEngine({ config, client, breaker, semaphore }) {
       // Falla claro y NO reintentable si falta la credencial.
       const api = getClient()
 
-      let response
-      try {
-        response = await sem.run(() =>
-          api.messages.create(
-            {
-              model: modelId,
-              max_tokens: config.ANTHROPIC_MAX_TOKENS,
-              ...(job.system ? { system: job.system } : {}),
-              messages: [{ role: 'user', content: job.prompt }],
-            },
-            { timeout: job.timeoutMs || config.ANTHROPIC_TIMEOUT_MS },
-          ),
-        )
-      } catch (err) {
-        const c = classifyError(err)
-        brk.onFailure({ hard: c.hard })
-        // El mensaje del SDK no contiene la key; igual acotamos por prudencia.
-        const detail = String(err?.message ?? err).slice(0, 300)
-        const wrapped = new Error(`anthropic-api: ${c.kind}${c.status ? ` (${c.status})` : ''}: ${detail}`)
-        wrapped.cause = err
-        wrapped.kind = c.kind
-        wrapped.status = c.status
-        wrapped.retryable = err instanceof BreakerOpenError ? false : c.hard ? false : true
-        if (log) log.warn('anthropic-api: request falló', { model: modelId, kind: c.kind, status: c.status, duration_ms: Date.now() - startedAt })
-        throw wrapped
+      // Tool-use OPT-IN: sólo si el handler pasa job.tools + job.toolExecutor. Sin
+      // eso, el motor hace UNA vuelta y se comporta EXACTO como antes (retrocompat).
+      const hasTools = Array.isArray(job.tools) && job.tools.length > 0
+      if (hasTools && typeof job.toolExecutor !== 'function') {
+        const e = new Error('anthropic-api: job.tools presente pero falta job.toolExecutor')
+        e.retryable = false
+        throw e
+      }
+      const maxIterations = hasTools ? (job.maxToolIterations ?? MAX_TOOL_ITERATIONS) : 1
+
+      // Una llamada a la API, con manejo de error + breaker idéntico al de siempre.
+      const callModel = async (messages) => {
+        let response
+        try {
+          response = await sem.run(() =>
+            api.messages.create(
+              {
+                model: modelId,
+                max_tokens: config.ANTHROPIC_MAX_TOKENS,
+                ...(job.system ? { system: job.system } : {}),
+                messages,
+                ...(hasTools ? { tools: job.tools } : {}),
+              },
+              { timeout: job.timeoutMs || config.ANTHROPIC_TIMEOUT_MS },
+            ),
+          )
+        } catch (err) {
+          const c = classifyError(err)
+          brk.onFailure({ hard: c.hard })
+          // El mensaje del SDK no contiene la key; igual acotamos por prudencia.
+          const detail = String(err?.message ?? err).slice(0, 300)
+          const wrapped = new Error(`anthropic-api: ${c.kind}${c.status ? ` (${c.status})` : ''}: ${detail}`)
+          wrapped.cause = err
+          wrapped.kind = c.kind
+          wrapped.status = c.status
+          wrapped.retryable = err instanceof BreakerOpenError ? false : c.hard ? false : true
+          if (log) log.warn('anthropic-api: request falló', { model: modelId, kind: c.kind, status: c.status, duration_ms: Date.now() - startedAt })
+          throw wrapped
+        }
+        brk.onSuccess()
+        return response
       }
 
-      brk.onSuccess()
-      const usage = response.usage ?? null
-      const cost = { usd: estimateCostUsd(modelId, usage) }
-      const durationMs = Date.now() - startedAt
+      // Loop agéntico. El modelo transporta tool_use/tool_result; el WORKER ejecuta
+      // (via job.toolExecutor, que ya viene policy-gated). El motor no conoce policy.
+      const messages = [{ role: 'user', content: job.prompt }]
+      const usages = []
+      let toolTurns = 0
 
-      // Soft-enforce del techo de costo de la ruta: no aborta (el costo se conoce
-      // post-facto), pero lo deja registrado como señal.
-      if (log && job.maxCostUsd != null && cost.usd != null && cost.usd > Number(job.maxCostUsd)) {
-        log.warn('anthropic-api: costo supera el techo de la ruta', {
-          model: modelId, cost_usd: cost.usd, max_cost_usd: Number(job.maxCostUsd),
-        })
+      for (let i = 0; i < maxIterations; i++) {
+        const response = await callModel(messages)
+        if (response.usage) usages.push(response.usage)
+
+        if (hasTools && response.stop_reason === 'tool_use') {
+          toolTurns++
+          messages.push({ role: 'assistant', content: response.content })
+          const toolResults = []
+          for (const block of response.content || []) {
+            if (!block || block.type !== 'tool_use') continue
+            let content
+            let isError = false
+            try {
+              const r = await job.toolExecutor(block.name, block.input, { id: block.id, agentSlug: job.agentSlug, task: job.task })
+              content = typeof r === 'string' ? r : JSON.stringify(r ?? null)
+            } catch (err) {
+              // Un fallo de tool no rompe el razonamiento: vuelve al modelo como error.
+              content = `ERROR: ${String(err?.message ?? err).slice(0, 500)}`
+              isError = true
+            }
+            const tr = { type: 'tool_result', tool_use_id: block.id, content }
+            if (isError) tr.is_error = true
+            toolResults.push(tr)
+          }
+          messages.push({ role: 'user', content: toolResults })
+          continue
+        }
+
+        // Respuesta final (o no había tools): construir el EngineResult del port.
+        const singleTurn = toolTurns === 0 && usages.length <= 1
+        const cost = { usd: totalCostUsd(usages, modelId) }
+        const durationMs = Date.now() - startedAt
+
+        // Soft-enforce del techo de costo de la ruta: no aborta (el costo se conoce
+        // post-facto), pero lo deja registrado como señal.
+        if (log && job.maxCostUsd != null && cost.usd != null && cost.usd > Number(job.maxCostUsd)) {
+          log.warn('anthropic-api: costo supera el techo de la ruta', {
+            model: modelId, cost_usd: cost.usd, max_cost_usd: Number(job.maxCostUsd),
+          })
+        }
+        if (log) {
+          const tot = accumulateUsage(usages)
+          log.info('anthropic-api: request ok', {
+            model: modelId,
+            request_id: response._request_id ?? response.id ?? null,
+            input_tokens: tot.input_tokens || null,
+            output_tokens: tot.output_tokens || null,
+            cost_usd: cost.usd,
+            stop_reason: response.stop_reason ?? null,
+            tool_turns: toolTurns,
+            duration_ms: durationMs,
+          })
+        }
+
+        return {
+          sessionId: response.id ?? null,
+          result: extractText(response.content),
+          exitCode: 0,
+          cost,
+          // Sin tools: el usage exacto de la única vuelta (retrocompat). Con tools: suma de vueltas.
+          tokens: singleTurn ? (usages[0] ?? response.usage ?? null) : accumulateUsage(usages),
+          raw: {
+            request_id: response._request_id ?? null,
+            model: response.model ?? modelId,
+            stop_reason: response.stop_reason ?? null,
+            duration_ms: durationMs,
+            ...(toolTurns > 0 ? { tool_turns: toolTurns } : {}),
+          },
+        }
       }
 
-      if (log) {
-        log.info('anthropic-api: request ok', {
-          model: modelId,
-          request_id: response._request_id ?? response.id ?? null,
-          input_tokens: usage?.input_tokens ?? null,
-          output_tokens: usage?.output_tokens ?? null,
-          cost_usd: cost.usd,
-          stop_reason: response.stop_reason ?? null,
-          duration_ms: durationMs,
-        })
-      }
-
-      return {
-        sessionId: response.id ?? null,
-        result: extractText(response.content),
-        exitCode: 0,
-        cost,
-        tokens: usage, // {input_tokens, output_tokens, cache_*} — consumido por public.orq_org
-        raw: {
-          request_id: response._request_id ?? null,
-          model: response.model ?? modelId,
-          stop_reason: response.stop_reason ?? null,
-          duration_ms: durationMs,
-        },
-      }
+      // Agotó las iteraciones y el modelo seguía pidiendo tools: cortar claro.
+      const err = new Error(`anthropic-api: excedió el máximo de iteraciones de tool-use (${maxIterations})`)
+      err.retryable = false
+      throw err
     },
   }
 }

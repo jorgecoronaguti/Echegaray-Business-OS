@@ -122,6 +122,89 @@ async function main() {
     if (prev !== undefined) process.env.ANTHROPIC_API_KEY = prev
   }
 
+  // --- TOOL-USE: el motor corre el loop agéntico (2 vueltas: pide tool -> responde) ---
+  {
+    let calls = 0
+    const seen = []
+    const client = {
+      messages: {
+        create: async (params) => {
+          calls++
+          seen.push(params)
+          if (calls === 1) {
+            return {
+              id: 'msg_t1', _request_id: 'req_t1', model: params.model, stop_reason: 'tool_use',
+              usage: { input_tokens: 200, output_tokens: 30 },
+              content: [
+                { type: 'text', text: 'déjame leer el sheet' },
+                { type: 'tool_use', id: 'tu_1', name: 'drive.read', input: { file_id: 'ABC' } },
+              ],
+            }
+          }
+          return {
+            id: 'msg_t2', _request_id: 'req_t2', model: params.model, stop_reason: 'end_turn',
+            usage: { input_tokens: 300, output_tokens: 40 },
+            content: [{ type: 'text', text: '{"caja":123}' }],
+          }
+        },
+      },
+    }
+    const execCalls = []
+    const toolExecutor = async (name, input, meta) => { execCalls.push({ name, input, meta }); return { saldo: -12080208 } }
+    const eng = makeAnthropicEngine({ config: CFG, client })
+    const out = await eng.run({
+      system: 'SYS', prompt: 'caja?', model: 'sonnet', maxCostUsd: 1,
+      tools: [{ name: 'drive.read', description: 'lee', input_schema: { type: 'object' } }],
+      toolExecutor, agentSlug: 'cfo',
+    }, ctx)
+    check('tooluse: 2 llamadas al modelo', calls === 2)
+    check('tooluse: ejecutó la tool una vez', execCalls.length === 1)
+    check('tooluse: pasó nombre e input al ejecutor', execCalls[0].name === 'drive.read' && execCalls[0].input.file_id === 'ABC')
+    check('tooluse: pasó meta.agentSlug', execCalls[0].meta.agentSlug === 'cfo')
+    check('tooluse: 1ra llamada mandó tools', Array.isArray(seen[0].tools) && seen[0].tools.length === 1)
+    check('tooluse: 2da llamada = user+assistant+tool_result', seen[1].messages.length === 3 && seen[1].messages[2].content[0].type === 'tool_result')
+    check('tooluse: tool_result referencia el tool_use_id', seen[1].messages[2].content[0].tool_use_id === 'tu_1')
+    check('tooluse: result es el texto final', out.result === '{"caja":123}')
+    check('tooluse: sessionId de la última respuesta', out.sessionId === 'msg_t2')
+    check('tooluse: tokens acumulados', out.tokens.input_tokens === 500 && out.tokens.output_tokens === 70)
+    check('tooluse: costo sumado de las 2 vueltas', Math.abs(out.cost.usd - (estimateCostUsd('claude-sonnet-4-6', { input_tokens: 200, output_tokens: 30 }) + estimateCostUsd('claude-sonnet-4-6', { input_tokens: 300, output_tokens: 40 }))) < 1e-9)
+    check('tooluse: raw.tool_turns = 1', out.raw.tool_turns === 1)
+  }
+
+  // --- TOOL-USE: un error del ejecutor NO rompe el loop, va como tool_result is_error ---
+  {
+    let calls = 0
+    const seen = []
+    const client = { messages: { create: async (p) => {
+      calls++; seen.push(p)
+      if (calls === 1) return { id: 'e1', stop_reason: 'tool_use', usage: { input_tokens: 10, output_tokens: 5 }, content: [{ type: 'tool_use', id: 'tu_x', name: 'drive.read', input: {} }] }
+      return { id: 'e2', stop_reason: 'end_turn', usage: { input_tokens: 12, output_tokens: 6 }, content: [{ type: 'text', text: 'listo' }] }
+    } } }
+    const eng = makeAnthropicEngine({ config: CFG, client })
+    const out = await eng.run({ prompt: 'x', tools: [{ name: 'drive.read', description: 'd', input_schema: {} }], toolExecutor: async () => { throw new Error('boom') } }, ctx)
+    check('tooluse-error: el loop continuó pese al error de la tool', out.result === 'listo')
+    check('tooluse-error: mandó tool_result is_error', seen[1].messages[2].content[0].is_error === true)
+  }
+
+  // --- TOOL-USE: falta toolExecutor -> error claro no reintentable ---
+  {
+    const client = { messages: { create: async () => ({ id: 'z', content: [] }) } }
+    const eng = makeAnthropicEngine({ config: CFG, client })
+    let err = null
+    try { await eng.run({ prompt: 'x', tools: [{ name: 't', description: 'd', input_schema: {} }] }, ctx) } catch (e) { err = e }
+    check('tooluse: sin toolExecutor lanza', err instanceof Error)
+    check('tooluse: sin toolExecutor no reintentable', err && err.retryable === false)
+  }
+
+  // --- TOOL-USE: tope de iteraciones -> corta claro (anti bucle infinito) ---
+  {
+    const client = { messages: { create: async () => ({ id: 'loop', stop_reason: 'tool_use', usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: 'tool_use', id: 'tu', name: 't', input: {} }] }) } }
+    const eng = makeAnthropicEngine({ config: CFG, client })
+    let err = null
+    try { await eng.run({ prompt: 'x', tools: [{ name: 't', description: 'd', input_schema: {} }], toolExecutor: async () => 'ok', maxToolIterations: 3 }, ctx) } catch (e) { err = e }
+    check('tooluse: excede iteraciones lanza claro', err instanceof Error && /máximo de iteraciones/.test(err.message))
+  }
+
   console.log(`anthropic-api.test: ${ok} OK, ${fail} FALLA`)
   process.exit(fail ? 1 : 0)
 }
