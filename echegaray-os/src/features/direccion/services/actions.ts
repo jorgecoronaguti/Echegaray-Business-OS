@@ -15,11 +15,14 @@ export async function cargarObjetivo(
   if (!goal) return { ok: false, error: 'El objetivo no puede estar vacío.' }
   try {
     const supabase = await createClient()
+    // La UI NO decide el motor: se omite p_engine para que la tarea raíz quede
+    // sin override y el router (orq.model_routes) resuelva direction.plan →
+    // anthropic-api. La RPC default-ea p_engine a null (ver migración
+    // 20260714140000). El conocimiento del engine vive sólo en model_routes.
     const { error } = await supabase.rpc('orq_submit_objective', {
       p_title: title || goal.slice(0, 80),
       p_goal: goal,
       p_priority: priority,
-      p_engine: 'claude-cli',
     })
     if (error) return { ok: false, error: error.message }
     revalidatePath('/direccion')

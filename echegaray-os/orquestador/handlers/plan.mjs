@@ -9,6 +9,7 @@ import { emitEvent } from '../lib/events.mjs'
 import { decide } from '../lib/policy.mjs'
 import { route } from '../lib/router.mjs'
 import { resolveEngine } from '../engines/index.mjs'
+import { assembleReasoningSystem, ROLE_FRAMING } from '../lib/context-assembler.mjs'
 
 const SubtaskSchema = z.object({
   key: z.string().min(1).max(64),
@@ -45,10 +46,10 @@ function planPrompt(task) {
 }
 
 /** Genera el plan: canned si engine='fixture' (test determinístico), si no via engine. */
-async function buildPlan(task, ctx, engineName) {
-  if (engineName === 'fixture') {
+async function buildPlan(task, ctx, engineOverride) {
+  if (engineOverride === 'fixture') {
     const canned = task.inputs?.canned_plan
-    if (canned) return { plan: PlanSchema.parse(canned), cost: { usd: 0 }, sessionId: null }
+    if (canned) return { plan: PlanSchema.parse(canned), cost: { usd: 0 }, sessionId: null, engine: 'fixture' }
     // plan por defecto para validar la maquinaria sin gastar tokens
     return {
       plan: PlanSchema.parse({
@@ -60,17 +61,24 @@ async function buildPlan(task, ctx, engineName) {
       }),
       cost: { usd: 0 },
       sessionId: null,
+      engine: 'fixture',
     }
   }
-  // engine real, read-only, modelo elegido por el router para plan.decompose
+  // engine real, read-only, modelo elegido por el router para plan.decompose.
+  // plan.decompose es RAZONAMIENTO: sin fallback silencioso a claude-cli.
   const { candidates } = await route({ tenantId: ctx.context.tenantId, capabilitySlug: 'plan.decompose', preferredModel: task.inputs?.model })
-  const model = candidates[0]?.model
+  const engineName = engineOverride || candidates[0]?.engine || ctx.config.AI_ENGINE_DEFAULT
   const engine = resolveEngine(engineName)
+  const { system } = await assembleReasoningSystem({
+    rootPath: ctx.context.repository.rootPath, config: ctx.config,
+    roleFraming: ROLE_FRAMING.director, logger: ctx.logger,
+  })
   const eng = await engine.run(
-    { prompt: planPrompt(task), worktreePath: ctx.context.repository.rootPath, model, allowedTools: 'Read,Glob,Grep', task, timeoutMs: ctx.config.ENGINE_TIMEOUT_MS },
+    { system, prompt: planPrompt(task), worktreePath: ctx.context.repository.rootPath,
+      model: candidates[0]?.model, maxCostUsd: candidates[0]?.maxCostUsd, allowedTools: 'Read,Glob,Grep', task },
     ctx,
   )
-  return { plan: PlanSchema.parse(extractJson(eng.result)), cost: eng.cost, sessionId: eng.sessionId }
+  return { plan: PlanSchema.parse(extractJson(eng.result)), cost: eng.cost, sessionId: eng.sessionId, engine: engineName }
 }
 
 export async function planHandler(task, ctx) {
@@ -78,8 +86,8 @@ export async function planHandler(task, ctx) {
   const dispo = await decide('plan.decompose', ctx.context.systemPrincipalId, task.blast_override)
   if (dispo === 'forbidden') throw new Error('planner: plan.decompose prohibido por policy')
 
-  const engineName = task.engine || task.inputs?.engine || 'claude-cli'
-  const { plan, cost, sessionId } = await buildPlan(task, ctx, engineName)
+  const engineOverride = task.engine || task.inputs?.engine || null
+  const { plan, cost, sessionId, engine: engineName } = await buildPlan(task, ctx, engineOverride)
 
   // Enrutar cada subtarea a su agente por defecto (por capability) para trazabilidad.
   const routed = []
