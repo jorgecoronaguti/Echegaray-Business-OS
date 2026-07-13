@@ -13,6 +13,13 @@ import { NavLink } from '@/shared/components/NavLink'
 // UX-1. Si se retoma un módulo, se re-agrega acá su grupo.
 const GRUPOS_NAV = [
   {
+    grupo: 'OS',
+    links: [
+      { href: '/os', label: 'Centro de Operación' },
+      { href: '/aprobaciones', label: 'Aprobaciones' },
+    ],
+  },
+  {
     grupo: 'Finanzas',
     links: [{ href: '/flujo-caja', label: 'Flujo de Caja' }],
   },
