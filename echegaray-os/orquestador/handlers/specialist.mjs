@@ -91,7 +91,9 @@ function specialistPrompt(task, agent, digest) {
     `parte de una organización dirigida por el Director General IA. Trabajás SOLO en tu ` +
     `dominio; no coordinás a otros especialistas ni salís de tu especialidad. Tu conocimiento ` +
     `de dominio y la gobernanza están en tu contexto de sistema: aplicá ese criterio profesional.\n\n` +
-    `ESTADO REAL (datos de la empresa; nunca inventes cifras que no estén acá):\n${digest}\n\n` +
+    `ESTADO DEL OS — índice PARCIAL de Supabase + CATÁLOGO de fuentes reales. Los conteos son ` +
+    `incompletos (la verdad está en Drive). Nunca inventes; si el dato no está o el índice es parcial, ` +
+    `LEÉ la fuente real con drive_read (por su file_id del catálogo) o navegá con drive_list ANTES de responder:\n${digest}\n\n` +
     `TAREA QUE TE ASIGNÓ EL DIRECTOR:\n${task.goal || task.title}\n` +
     (task.success_criteria ? `\nCriterio de éxito: ${task.success_criteria}\n` : '') +
     `\nDevolvé ÚNICAMENTE un JSON con esta forma:\n` +

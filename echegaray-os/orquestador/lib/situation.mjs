@@ -55,7 +55,15 @@ async function negocio() {
     por_estado: await groupCount('select estado k, count(*) n from public.fuentes_datos group by estado'),
     criticas: (await rows("select count(*)::int n from public.fuentes_datos where criticidad ilike '%alt%' or criticidad ilike '%crit%'"))[0].n,
   }))
-  return { backlog, acciones, obras, caja, obligaciones, scorecard, fuentes }
+  // Catálogo REAL de fuentes (con drive_file_id) para que el especialista sepa QUÉ
+  // fuentes existen y pueda leer la correcta con drive_read/drive_list. Sin esto
+  // sólo veía un conteo ("hay 23 fuentes") y adivinaba dónde estaba el dato.
+  const fuentes_catalogo = await safe(async () =>
+    rows(`select nombre, area, naturaleza_dato, drive_file_id, criticidad, estado, proceso_negocio
+            from public.fuentes_datos
+           order by (criticidad ilike '%alt%' or criticidad ilike '%crit%') desc nulls last, nombre
+           limit 40`), [])
+  return { backlog, acciones, obras, caja, obligaciones, scorecard, fuentes, fuentes_catalogo }
 }
 
 async function sistema() {
@@ -98,19 +106,38 @@ export function domainDigest(s, domain) {
   return focus ? `FOCO DE TU DOMINIO (${domain}): ${focus}\n\n${base}` : base
 }
 
+/** Cataloga las fuentes reales en texto: nombre, área/naturaleza, file_id y estado.
+ *  Es lo que permite al especialista ir a leer la fuente CORRECTA con drive_read. */
+function catalogoTexto(catalogo) {
+  if (!catalogo || !catalogo.length) return ''
+  const lineas = catalogo.map((f) => {
+    const meta = [f.area, f.naturaleza_dato].filter(Boolean).join('/')
+    const id = f.drive_file_id ? ` · file_id:${f.drive_file_id}` : ''
+    const est = f.estado ? ` · ${f.estado}` : ''
+    return `  - ${f.nombre}${meta ? ` [${meta}]` : ''}${id}${est}`
+  })
+  return (
+    'FUENTES DE DATOS REALES DE LA EMPRESA — la verdad vive acá, en Drive. Los conteos de arriba ' +
+    'son un índice PARCIAL de Supabase (incompleto: hay muchas más obras/legajos/presupuestos en Drive). ' +
+    'Para responder con precisión, LEÉ la fuente que corresponda con drive_read (por su file_id) o navegá ' +
+    'con drive_list. NO te quedes con el conteo parcial:\n' + lineas.join('\n')
+  )
+}
+
 /** Resumen compacto en texto para el prompt del Director (barato de leer). */
 export function situationDigest(s) {
   const n = s.negocio ?? {}
   const y = s.sistema ?? {}
   const lines = [
     `SISTEMA: ${y.tareas_totales ?? 0} tareas (dead-letter ${y.dead_letter ?? 0}), ${y.agentes ?? 0} agentes, ${y.workers_activos_1h ?? 0} workers/1h, ${y.postmortems_24h ?? 0} post-mortems/24h.`,
-    `BACKLOG: ${n.backlog?.total ?? '?'} items ${JSON.stringify(n.backlog?.por_estado ?? {})}.`,
-    `ACCIONES: ${n.acciones?.total ?? '?'} (bloqueadas ${n.acciones?.bloqueadas ?? '?'}, vencidas ${n.acciones?.vencidas ?? '?'}).`,
-    `OBRAS: ${n.obras?.total ?? '?'} ${JSON.stringify(n.obras?.por_estado ?? {})}, contratado ${n.obras?.monto_contratado_total ?? '?'}.`,
-    `CAJA: ${n.caja?.cuentas ?? '?'} cuentas, cobros30d ${n.caja?.cobros_esperados_30d ?? '?'}, pagos30d ${n.caja?.pagos_esperados_30d ?? '?'}.`,
-    `OBLIGACIONES: ${n.obligaciones?.total ?? '?'} (vencidas ${n.obligaciones?.vencidas ?? '?'}, monto ${n.obligaciones?.monto_total ?? '?'}).`,
-    `SCORECARD: ${n.scorecard?.dominios ?? '?'} dominios, nivel prom ${n.scorecard?.nivel_promedio ?? '?'}, con bloqueo ${n.scorecard?.con_bloqueo ?? '?'}.`,
-    `FUENTES: ${n.fuentes?.total ?? '?'} (críticas ${n.fuentes?.criticas ?? '?'}).`,
+    `ÍNDICE PARCIAL (Supabase — NO es el total real, sólo lo ya cargado):`,
+    `  BACKLOG: ${n.backlog?.total ?? '?'} items ${JSON.stringify(n.backlog?.por_estado ?? {})}.`,
+    `  ACCIONES: ${n.acciones?.total ?? '?'} (bloqueadas ${n.acciones?.bloqueadas ?? '?'}, vencidas ${n.acciones?.vencidas ?? '?'}).`,
+    `  OBRAS: ${n.obras?.total ?? '?'} ${JSON.stringify(n.obras?.por_estado ?? {})}, contratado ${n.obras?.monto_contratado_total ?? '?'} (parcial: el detalle real está en PRESUPUESTOS/obras de Drive).`,
+    `  CAJA: ${n.caja?.cuentas ?? '?'} cuentas, cobros30d ${n.caja?.cobros_esperados_30d ?? '?'}, pagos30d ${n.caja?.pagos_esperados_30d ?? '?'} (el saldo y flujo real están en el Sheet Flujo de Caja).`,
+    `  OBLIGACIONES: ${n.obligaciones?.total ?? '?'} (vencidas ${n.obligaciones?.vencidas ?? '?'}, monto ${n.obligaciones?.monto_total ?? '?'}).`,
+    `  SCORECARD: ${n.scorecard?.dominios ?? '?'} dominios, nivel prom ${n.scorecard?.nivel_promedio ?? '?'}, con bloqueo ${n.scorecard?.con_bloqueo ?? '?'}.`,
   ]
-  return lines.join('\n')
+  const cat = catalogoTexto(n.fuentes_catalogo)
+  return cat ? `${lines.join('\n')}\n\n${cat}` : lines.join('\n')
 }
