@@ -85,6 +85,18 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate } = {}) 
     return res.json()
   }
 
+  /** Descarga los bytes crudos de un archivo (alt=media). Para Excel/binarios. */
+  async function downloadBytes(fileId) {
+    const token = await accessToken()
+    const res = await doFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`, { headers: { Authorization: `Bearer ${token}` } })
+    if (!res.ok) {
+      const err = new Error(`google download ${res.status}`)
+      err.status = res.status
+      throw err
+    }
+    return Buffer.from(await res.arrayBuffer())
+  }
+
   return {
     /** Busca archivos cuyo nombre CONTIENE el texto (robusto a espacios/variantes del
      *  título; el match exacto falla, p.ej., por el espacio final de "Flujo de Caja - Cash Flow ").
@@ -119,6 +131,22 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate } = {}) 
       const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`)
       const j = await apiGet(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType,size,modifiedTime)&orderBy=folder,name&pageSize=1000`)
       return j.files || []
+    },
+    /** Metadata de un archivo (id, name, mimeType, size). */
+    async getMeta(fileId) {
+      return apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,size`)
+    },
+    /** Lee un archivo Excel (.xlsx/.xlsm) descargándolo y parseándolo. Acotado a
+     *  maxRows para no explotar tokens. Devuelve pestañas + filas de la elegida. */
+    async readExcel(fileId, { sheet, maxRows = 50 } = {}) {
+      const XLSX = await import('xlsx')
+      const buf = await downloadBytes(fileId)
+      const wb = XLSX.read(buf, { type: 'buffer', cellDates: true })
+      const sheets = wb.SheetNames
+      const target = sheet && sheets.includes(sheet) ? sheet : sheets[0]
+      const ws = wb.Sheets[target]
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false, defval: null })
+      return { sheets, sheet: target, total_rows: rows.length, rows: rows.slice(0, maxRows) }
     },
   }
 }

@@ -56,8 +56,10 @@ export function driveReadTools(google) {
           type: 'object',
           properties: {
             file_id: { type: 'string', description: 'ID del archivo de Drive (preferido si lo conocés)' },
-            query: { type: 'string', description: 'nombre exacto del archivo si no tenés file_id, ej. "Flujo de Caja - Cash Flow"' },
-            range: { type: 'string', description: 'rango A1, ej. "RESUMEN!A1:F60". Por defecto A1:F60 de la primera pestaña.' },
+            query: { type: 'string', description: 'nombre del archivo si no tenés file_id, ej. "Flujo de Caja - Cash Flow"' },
+            range: { type: 'string', description: 'rango A1 para Google Sheets nativos, ej. "RESUMEN!A1:F60". Por defecto A1:F60.' },
+            sheet: { type: 'string', description: 'nombre de la pestaña a leer (para Excel .xlsx). Por defecto la primera.' },
+            max_rows: { type: 'number', description: 'máximo de filas a devolver de un Excel (default 50).' },
           },
         },
       },
@@ -69,9 +71,21 @@ export function driveReadTools(google) {
           fileId = files[0].id
         }
         if (!fileId) return { error: 'falta file_id o query' }
-        const range = input?.range || 'A1:F60'
-        const values = await google.readSheetValues(fileId, range)
-        return { file_id: fileId, range, rows: values.length, values }
+        const meta = await google.getMeta(fileId)
+        const mt = meta.mimeType || ''
+        // Excel .xlsx/.xlsm (subido, no nativo): descargar + parsear.
+        if (mt.includes('spreadsheetml') || mt.includes('ms-excel')) {
+          const x = await google.readExcel(fileId, { sheet: input?.sheet, maxRows: input?.max_rows || 50 })
+          return { file_id: fileId, name: meta.name, tipo: 'excel', ...x }
+        }
+        // Google Sheet nativo: leer rango por la Sheets API.
+        if (mt.includes('google-apps.spreadsheet')) {
+          const range = input?.range || 'A1:F60'
+          const values = await google.readSheetValues(fileId, range)
+          return { file_id: fileId, name: meta.name, tipo: 'google_sheet', range, rows: values.length, values }
+        }
+        // PDF/Word/imagen: aún no legibles por contenido — se informa honestamente.
+        return { file_id: fileId, name: meta.name, tipo: mt, nota: 'Este archivo no es una planilla (PDF/Word/imagen): el OS sabe que existe pero todavía no lee su contenido.' }
       },
     },
   }

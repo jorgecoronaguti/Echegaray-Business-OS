@@ -85,6 +85,7 @@ async function main() {
   {
     const g = {
       searchFile: async (n) => (n === 'Flujo de Caja - Cash Flow' ? [{ id: 'CF1' }] : []),
+      getMeta: async () => ({ mimeType: 'application/vnd.google-apps.spreadsheet', name: 'Flujo de Caja' }),
       readSheetValues: async (id, range) => [['SALDO', '-12080208'], [`${id}`, `${range}`]],
     }
     const tool = driveReadTools(g)['drive.read']
