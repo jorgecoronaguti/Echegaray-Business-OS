@@ -75,6 +75,29 @@ export async function assembleSituation() {
   return { generated_at: new Date().toISOString(), negocio: neg, sistema: sis }
 }
 
+// Dominio del especialista -> qué bloques del estado mirar con prioridad. No
+// fabrica datos: enfoca la lectura sobre las señales reales que sí existen.
+const DOMAIN_FOCUS = {
+  finanzas:      'Enfocá CAJA, OBLIGACIONES y el contratado de OBRAS. Criterio percibido (nunca mezcles con devengado).',
+  contabilidad:  'Enfocá el contratado de OBRAS, CAJA y OBLIGACIONES. Criterio devengado (P&L), separado de caja.',
+  compras:       'Enfocá OBRAS activas y OBLIGACIONES a proveedores; evaluá riesgo de abastecimiento y subcontratos.',
+  comercial:     'Enfocá OBRAS (pipeline/backlog contratado) y BACKLOG; riesgo de cliente y de concentración.',
+  planificacion: 'Enfocá OBRAS (avance/estado), ACCIONES bloqueadas/vencidas y SCORECARD; cuellos de botella de producción.',
+  arquitectura:  'Enfocá OBRAS y SCORECARD; calidad, especificación y no conformidades.',
+  ingenieria:    'Enfocá OBRAS y SCORECARD; viabilidad técnica, métodos y patologías.',
+  legal:         'Enfocá OBRAS (contratos), OBLIGACIONES y ACCIONES; exigibilidad de adicionales, reclamos y garantías.',
+  rrhh:          'Enfocá OBLIGACIONES (UOCRA/IERIC/Fondo de Cese) y ACCIONES; régimen laboral de construcción.',
+}
+
+/** Digest enfocado por dominio para el prompt de un especialista: el estado real
+ *  completo + una guía de qué mirar con prioridad. Cae al digest general si el
+ *  dominio no está mapeado. */
+export function domainDigest(s, domain) {
+  const focus = DOMAIN_FOCUS[domain]
+  const base = situationDigest(s)
+  return focus ? `FOCO DE TU DOMINIO (${domain}): ${focus}\n\n${base}` : base
+}
+
 /** Resumen compacto en texto para el prompt del Director (barato de leer). */
 export function situationDigest(s) {
   const n = s.negocio ?? {}

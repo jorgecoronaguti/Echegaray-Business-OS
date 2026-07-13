@@ -28,6 +28,26 @@ export interface DirectorResult {
   session_id?: string | null
 }
 
+export interface ObjetivoCierre {
+  objective_id: string
+  closure_state: string
+  closed_at: string | null
+  closure: {
+    objective_status?: 'cumplido' | 'parcial' | 'bloqueado'
+    closure_summary?: string
+    key_points?: string[]
+    specialists?: { agent: string; org_title?: string | null; state: string }[]
+    open_approval_requests?: { titulo: string; motivo?: string; from?: string }[]
+    counts?: { succeeded?: number; failed?: number; total?: number }
+  } | null
+}
+
+export const ESTADO_CIERRE_COLOR: Record<string, string> = {
+  cumplido: 'bg-emerald-100 text-emerald-700',
+  parcial: 'bg-amber-100 text-amber-800',
+  bloqueado: 'bg-red-100 text-red-700',
+}
+
 export interface SituationSnapshot {
   generated_at?: string
   negocio?: Record<string, unknown>

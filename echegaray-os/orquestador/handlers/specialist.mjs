@@ -1,0 +1,150 @@
+// Handler del ESPECIALISTA IA (Etapa 4). El "trabajar" de la organización.
+// Una tarea type='specialist' es trabajo de análisis/preparación (Nivel C) que el
+// Director asignó a un especialista de dominio (CFO, Abogado, Contador, ...).
+//   recibe tarea -> obtiene contexto (estado real + su skill de dominio) ->
+//   razona (claude-cli READ-ONLY) -> registra evidencia -> emite evento -> responde.
+// NO produce un diff (su salida es conocimiento estructurado, no código) y NO
+// ejecuta acciones de aprobación humana (Nivel E): las deja como approval_requests.
+// El trabajo de SOFTWARE sigue por el handler code_change (worktree + review).
+import { z } from 'zod'
+import { query, withTx } from '../lib/db.mjs'
+import { emitEvent } from '../lib/events.mjs'
+import { decide } from '../lib/policy.mjs'
+import { route } from '../lib/router.mjs'
+import { resolveEngine } from '../engines/index.mjs'
+import { getCapability } from '../lib/registry.mjs'
+import { assembleSituation, domainDigest } from '../lib/situation.mjs'
+
+const SpecialistResult = z.object({
+  analysis: z.string().max(8000),
+  findings: z.array(z.object({
+    titulo: z.string(),
+    detalle: z.string().max(2000).optional(),
+    severidad: z.enum(['info', 'baja', 'media', 'alta']).default('info'),
+  })).default([]),
+  recommendations: z.array(z.string()).max(20).default([]),
+  approval_requests: z.array(z.object({
+    titulo: z.string(), motivo: z.string().optional(), capability_slug: z.string().optional(),
+  })).default([]),
+  evidence: z.array(z.string()).max(20).default([]),
+  confidence: z.enum(['alta', 'media', 'baja']).default('media'),
+})
+
+function extractJson(text) {
+  if (typeof text !== 'string') throw new Error('especialista: el engine no devolvió texto')
+  const a = text.indexOf('{'); const b = text.lastIndexOf('}')
+  if (a < 0 || b <= a) throw new Error('especialista: no se encontró JSON en la salida')
+  return JSON.parse(text.slice(a, b + 1))
+}
+
+function specialistPrompt(task, agent, digest) {
+  const skill = agent?.context_ref ? `${agent.context_ref}/SKILL.md` : null
+  return (
+    `Sos ${agent?.org_title || agent?.role || 'un especialista'} de Echegaray Construcciones, ` +
+    `parte de una organización dirigida por el Director General IA. Trabajás SOLO en tu ` +
+    `dominio; no coordinás a otros especialistas ni salís de tu especialidad.\n\n` +
+    (skill
+      ? `Tu conocimiento de dominio vive en la skill del repo: ${skill}. Leéla con Read ` +
+        `ANTES de analizar y aplicá su criterio profesional.\n\n`
+      : '') +
+    `ESTADO REAL (datos de la empresa; nunca inventes cifras que no estén acá):\n${digest}\n\n` +
+    `TAREA QUE TE ASIGNÓ EL DIRECTOR:\n${task.goal || task.title}\n` +
+    (task.success_criteria ? `\nCriterio de éxito: ${task.success_criteria}\n` : '') +
+    `\nDevolvé ÚNICAMENTE un JSON con esta forma:\n` +
+    `{"analysis":"tu análisis","findings":[{"titulo":"...","detalle":"...","severidad":"media"}],` +
+    `"recommendations":["..."],"approval_requests":[{"titulo":"...","motivo":"...","capability_slug":"..."}],` +
+    `"evidence":["qué miraste / qué te consta"],"confidence":"media"}\n` +
+    `Reglas: SOLO análisis y preparación interna (Nivel A–C). Lo que tenga efecto ` +
+    `económico/fiscal/laboral/legal/contractual REAL o comunicación externa (Nivel E) ` +
+    `NO lo ejecutes: va en approval_requests. Distinguí hecho/dato/estimación; no muestres ` +
+    `más precisión que la evidencia. Si falta un dato, decilo en findings.`
+  )
+}
+
+async function reason(task, ctx, engineName, agent, digest) {
+  if (engineName === 'fixture') {
+    const canned = task.inputs?.canned_specialist
+    if (canned) return { out: SpecialistResult.parse(canned), cost: { usd: 0 }, tokens: null, sessionId: null }
+    return {
+      out: SpecialistResult.parse({
+        analysis: `Análisis determinístico (${agent?.org_title || task.agent_slug}) del objetivo: ${task.title}.`,
+        findings: [{ titulo: 'Estado leído', detalle: 'Digest de dominio procesado.', severidad: 'info' }],
+        recommendations: ['Confirmar con datos conciliados antes de decidir.'],
+        approval_requests: [],
+        evidence: ['digest situacional'],
+        confidence: 'media',
+      }),
+      cost: { usd: 0 }, tokens: null, sessionId: null,
+    }
+  }
+  const { candidates } = await route({ tenantId: ctx.context.tenantId, capabilitySlug: task.capability_slug, agentSlug: task.agent_slug, preferredModel: task.inputs?.model })
+  const engine = resolveEngine(engineName)
+  const eng = await engine.run(
+    {
+      prompt: specialistPrompt(task, agent, digest),
+      worktreePath: ctx.context.repository.rootPath,
+      model: candidates[0]?.model,
+      allowedTools: 'Read,Glob,Grep',
+      task, timeoutMs: ctx.config.ENGINE_TIMEOUT_MS,
+    },
+    ctx,
+  )
+  return { out: SpecialistResult.parse(extractJson(eng.result)), cost: eng.cost, tokens: eng.tokens, sessionId: eng.sessionId }
+}
+
+async function specialistPrincipalId(agentSlug) {
+  const { rows } = await query("select id from orq.principals where slug = $1", ['agent:' + agentSlug])
+  return rows[0]?.id ?? null
+}
+
+export async function specialistHandler(task, ctx) {
+  if (!task.agent_slug) throw new Error('especialista: la tarea no tiene agent_slug (¿la asignó el Director?)')
+  const capSlug = task.capability_slug || 'read.analyze'
+  const principalId = (await specialistPrincipalId(task.agent_slug)) || ctx.context.systemPrincipalId
+
+  // Policy gate: el especialista actúa dentro de su clearance (análisis = auto).
+  const dispo = await decide(capSlug, principalId, task.blast_override)
+  if (dispo === 'forbidden') throw new Error(`especialista: ${capSlug} prohibido por policy`)
+  if (dispo === 'requires_approval') throw new Error(`especialista: ${capSlug} requiere aprobación humana (no autónomo)`)
+
+  const cap = await getCapability(capSlug)
+  const agent = ctx.context.agent || (await query(
+    'select a.slug, a.role, a.org_title, a.context_ref from orq.agents a where a.slug=$1', [task.agent_slug],
+  )).rows[0]
+
+  const situation = await assembleSituation()
+  const digest = domainDigest(situation, cap?.domain || 'core')
+  const engineName = task.engine || task.inputs?.engine || 'claude-cli'
+  const { out, cost, tokens, sessionId } = await reason(task, ctx, engineName, agent, digest)
+
+  await withTx(async (client) => {
+    await emitEvent(client, {
+      tenantId: ctx.context.tenantId, subjectType: 'task', subjectId: task.id,
+      type: 'specialist.completed', actorId: principalId, projectId: ctx.context.projectId,
+      correlationId: task.correlation_id, causationId: task.id,
+      payload: {
+        agent: task.agent_slug, capability: capSlug,
+        findings: out.findings.length, recommendations: out.recommendations.length,
+        approvals: out.approval_requests.length, confidence: out.confidence,
+      },
+    })
+    for (const ar of out.approval_requests) {
+      await emitEvent(client, {
+        tenantId: ctx.context.tenantId, subjectType: 'task', subjectId: task.id,
+        type: 'specialist.approval_requested', actorId: principalId, projectId: ctx.context.projectId,
+        correlationId: task.correlation_id, causationId: task.id, blastRadius: 'high', payload: ar,
+      })
+    }
+  })
+
+  ctx.logger.info('especialista: trabajo completado', { task_id: task.id, agent: task.agent_slug, findings: out.findings.length, approvals: out.approval_requests.length })
+  return {
+    result: {
+      engine: engineName, session_id: sessionId, cost, tokens,
+      agent: task.agent_slug, org_title: agent?.org_title ?? null, capability: capSlug,
+      analysis: out.analysis, findings: out.findings, recommendations: out.recommendations,
+      approval_requests: out.approval_requests, confidence: out.confidence,
+    },
+    evidence: { evidence: out.evidence, digest, situation_generated_at: situation.generated_at },
+  }
+}

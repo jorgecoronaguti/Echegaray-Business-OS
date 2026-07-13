@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
-import { getObjetivos, getTitularesNegocio } from '@/features/direccion/services/direccionService'
+import { getObjetivos, getTitularesNegocio, getCierres } from '@/features/direccion/services/direccionService'
 import { getQueue, getAgents } from '@/features/orquestador/services/orquestadorService'
-import { ESTADO_OBJETIVO_LABEL, ESTADO_OBJETIVO_COLOR } from '@/features/direccion/types'
+import { ESTADO_OBJETIVO_LABEL, ESTADO_OBJETIVO_COLOR, ESTADO_CIERRE_COLOR, type ObjetivoCierre } from '@/features/direccion/types'
 import { ObjetivoForm } from '@/features/direccion/components/ObjetivoForm'
 
 // Etapa 3 — CENTRO DE DIRECCIÓN. El Director IA dirige el trabajo de la
@@ -19,19 +19,20 @@ function fmt(ts: string | null): string {
 async function load() {
   try {
     const supabase = await createClient()
-    const [objetivos, negocio, queue, agents] = await Promise.all([
-      getObjetivos(supabase), getTitularesNegocio(supabase), getQueue(supabase), getAgents(supabase),
+    const [objetivos, negocio, queue, agents, cierres] = await Promise.all([
+      getObjetivos(supabase), getTitularesNegocio(supabase), getQueue(supabase), getAgents(supabase), getCierres(supabase),
     ])
-    return { objetivos, negocio, queue, agents }
+    return { objetivos, negocio, queue, agents, cierres }
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Error al conectar con Supabase'
     const failed = { data: null, error } as const
-    return { objetivos: failed, negocio: failed, queue: failed, agents: failed }
+    return { objetivos: failed, negocio: failed, queue: failed, agents: failed, cierres: failed }
   }
 }
 
 export default async function DireccionPage() {
-  const { objetivos, negocio, queue, agents } = await load()
+  const { objetivos, negocio, queue, agents, cierres } = await load()
+  const cierrePorObjetivo = (cierres.data ?? {}) as Record<string, ObjetivoCierre>
   const pageError = objetivos.error ?? negocio.error
   const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
 
@@ -101,6 +102,34 @@ export default async function DireccionPage() {
                     <p className="mt-3 rounded bg-slate-50 p-3 text-sm text-slate-700">{r.executive_summary}</p>
                   )}
 
+                  {(() => {
+                    const cierre = cierrePorObjetivo[o.id]?.closure
+                    if (!cierre?.closure_summary) return null
+                    return (
+                      <div className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50/50 p-3">
+                        <div className="mb-1 flex items-center gap-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">Cierre del Director</p>
+                          {cierre.objective_status && (
+                            <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${ESTADO_CIERRE_COLOR[cierre.objective_status] ?? ''}`}>
+                              {cierre.objective_status}
+                            </span>
+                          )}
+                          {cierre.counts && (
+                            <span className="text-[11px] text-slate-500">
+                              {cierre.counts.succeeded ?? 0}/{cierre.counts.total ?? 0} especialistas
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-slate-700">{cierre.closure_summary}</p>
+                        {!!cierre.key_points?.length && (
+                          <ul className="mt-2 list-disc pl-5 text-sm text-slate-600">
+                            {cierre.key_points.map((k, i) => <li key={i}>{k}</li>)}
+                          </ul>
+                        )}
+                      </div>
+                    )
+                  })()}
+
                   {!!r?.priorities?.length && (
                     <Block title="Prioridades">
                       <ul className="list-disc pl-5 text-sm text-slate-600">
@@ -161,9 +190,14 @@ export default async function DireccionPage() {
             </div>
           ))}
         </div>
-        <p className="mt-3 text-xs text-slate-400">
-          Los especialistas no se coordinan directamente entre sí: toda asignación pasa por el Director (invariante del sistema).
-        </p>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-slate-400">
+            Los especialistas no se coordinan directamente entre sí: toda asignación pasa por el Director (invariante del sistema).
+          </p>
+          <a href="/organizacion" className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
+            Ver Organización IA →
+          </a>
+        </div>
       </Card>
     </div>
   )
