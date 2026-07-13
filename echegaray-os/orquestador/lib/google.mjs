@@ -108,5 +108,17 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate } = {}) 
       )
       return (j.sheets || []).map((s) => s.properties?.title).filter(Boolean)
     },
+    /** Encuentra una carpeta por nombre (contains). Devuelve {id,name} o null. */
+    async findFolder(name) {
+      const q = encodeURIComponent(`name contains '${String(name).replace(/'/g, "\\'")}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`)
+      const j = await apiGet(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&pageSize=10`)
+      return (j.files || [])[0] || null
+    },
+    /** Lista el contenido inmediato de una carpeta (archivos y subcarpetas). */
+    async listFolder(folderId) {
+      const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`)
+      const j = await apiGet(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType,size,modifiedTime)&orderBy=folder,name&pageSize=1000`)
+      return j.files || []
+    },
   }
 }

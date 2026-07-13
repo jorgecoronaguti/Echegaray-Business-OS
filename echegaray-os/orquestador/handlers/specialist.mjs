@@ -151,9 +151,11 @@ async function reason(task, ctx, engineOverride, agent, digest, principalId) {
       enqueue: (op) => enqueuePendingOperation({ ...op, tenantId: ctx.context.tenantId, taskId: task.id, agentSlug: task.agent_slug }),
     })
     tools = Object.values(registry).map((t) => t.schema)
-    toolsHint = '\n\nHERRAMIENTAS: tenés `drive_read` para leer Sheets reales de la empresa (caja, P&L, presupuestos). ' +
-      'Si te falta un dato concreto (ej. el saldo de caja real vive en el Sheet "Flujo de Caja - Cash Flow"), ' +
-      'LEELO con la herramienta en vez de responder "desconocido". Declará la fuente y la fecha de lectura en evidence.'
+    toolsHint = '\n\nHERRAMIENTAS (Drive real de la empresa):\n' +
+      '- `drive_list`: lista el contenido de una carpeta (ej. "administracion", "PRESUPUESTOS", o los legajos). Usalo para VER qué archivos hay antes de proponer un orden o detectar qué falta.\n' +
+      '- `drive_read`: lee un Sheet real (ej. "Flujo de Caja - Cash Flow" para la caja). Usalo en vez de responder "desconocido".\n' +
+      'Navegá y leé las fuentes reales antes de opinar. Declará qué miraste (carpeta/archivo y fecha) en evidence. ' +
+      'Para mejoras de ORDEN documental, primero listá y después proponé — mover/renombrar/eliminar NO lo hacés vos: va como approval_requests.'
   }
 
   const eng = await engine.run(

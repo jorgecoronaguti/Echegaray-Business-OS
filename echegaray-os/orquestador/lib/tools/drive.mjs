@@ -7,9 +7,44 @@
 // encola en pending_operations (requires_approval). Sus definiciones se agregan
 // cuando exista la pantalla de aprobación (Fase 5).
 
+const FOLDER = 'application/vnd.google-apps.folder'
+const tipoLegible = (m) =>
+  m === FOLDER ? 'carpeta' : m.includes('spreadsheet') || m.includes('excel') ? 'planilla' : m.includes('document') || m.includes('word') ? 'documento' : m.includes('pdf') ? 'pdf' : m.includes('image') ? 'imagen' : 'archivo'
+
 /** Devuelve el registry de tools de lectura, cerrado sobre un cliente Google. */
 export function driveReadTools(google) {
   return {
+    'drive.list': {
+      capability: 'drive.read',
+      account: 'ecsas',
+      schema: {
+        name: 'drive_list',
+        description:
+          'Lista el contenido de una carpeta de Drive (archivos y subcarpetas, con tipo y fecha). Usalo para VER qué hay en una carpeta antes de proponer un orden o detectar qué falta — ej. listar la carpeta "administracion", "PRESUPUESTOS" o los legajos de personal. Pasá folder_id si lo tenés, o query con el nombre de la carpeta.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            folder_id: { type: 'string', description: 'ID de la carpeta (preferido)' },
+            query: { type: 'string', description: 'nombre de la carpeta si no tenés id, ej. "administracion"' },
+          },
+        },
+      },
+      async run(input) {
+        let folderId = input?.folder_id
+        if (!folderId && input?.query) {
+          const f = await google.findFolder(input.query)
+          if (!f) return { error: `no encontré una carpeta llamada "${input.query}"` }
+          folderId = f.id
+        }
+        if (!folderId) return { error: 'falta folder_id o query' }
+        const items = await google.listFolder(folderId)
+        return {
+          folder_id: folderId,
+          count: items.length,
+          items: items.map((i) => ({ name: i.name, tipo: tipoLegible(i.mimeType), id: i.id, modificado: i.modifiedTime ?? null })),
+        }
+      },
+    },
     'drive.read': {
       capability: 'drive.read',
       account: 'ecsas',
