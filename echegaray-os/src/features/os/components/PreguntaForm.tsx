@@ -10,10 +10,12 @@ import { cargarObjetivo } from '@/features/direccion/services/actions'
 // Director (cargarObjetivo): el título se deriva del texto, prioridad por defecto.
 
 const EJEMPLOS = [
+  'Proponé cómo ordenar mejor la carpeta administración',
+  '¿Qué legajos de personal están incompletos y qué falta en cada uno?',
+  'Revisá la carpeta de presupuestos y proponé cómo organizarla',
+  '¿Qué facturas no tienen comprobante de pago asociado?',
   '¿Cuál es nuestra posición de caja hoy y qué riesgo tenemos?',
-  '¿Qué legajos de personal están incompletos?',
-  'Revisá las obligaciones vencidas y proponé un plan de pago',
-  '¿Cómo conviene ordenar la carpeta administración?',
+  'Dame ideas para reducir el desorden administrativo',
 ]
 
 export function PreguntaForm() {
@@ -48,7 +50,7 @@ export function PreguntaForm() {
         name="goal"
         required
         rows={3}
-        placeholder="Preguntale o pedile algo al OS… (caja, obras, personal, impuestos, compras, orden de la administración — lo que necesites)"
+        placeholder="Preguntale, pedile una mejora sobre los archivos y su organización, una tarea de administración o una idea… (caja, legajos, presupuestos, facturas, orden de la carpeta administración — lo que necesites)"
         className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
       />
       <div className="flex flex-wrap items-center gap-2">

@@ -1,12 +1,12 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { getObjetivos, getTitularesNegocio } from '@/features/direccion/services/direccionService'
+import { getObjetivos, getTitularesNegocio, getCierres } from '@/features/direccion/services/direccionService'
 import { getQueue } from '@/features/orquestador/services/orquestadorService'
 import { getPendingOperations } from '@/features/aprobaciones/services/aprobacionesService'
 import { PreguntaForm } from '@/features/os/components/PreguntaForm'
 import { AutoRefresh } from '@/features/os/components/AutoRefresh'
 import { OperacionCard } from '@/features/aprobaciones/components/OperacionCard'
-import { ESTADO_OBJETIVO_LABEL, ESTADO_OBJETIVO_COLOR, type DireccionObjetivo } from '@/features/direccion/types'
+import { type DireccionObjetivo, type ObjetivoCierre } from '@/features/direccion/types'
 import type { PendingOperation } from '@/features/aprobaciones/types'
 
 // Centro de Operación — la interfaz para trabajar con el OS: comandar (dar un
@@ -23,23 +23,38 @@ function fmt(ts: string | null): string {
 async function load() {
   try {
     const supabase = await createClient()
-    const [objetivos, negocio, queue, pendientes] = await Promise.all([
+    const [objetivos, negocio, queue, pendientes, cierres] = await Promise.all([
       getObjetivos(supabase),
       getTitularesNegocio(supabase),
       getQueue(supabase),
       getPendingOperations(supabase),
+      getCierres(supabase),
     ])
-    return { objetivos, negocio, queue, pendientes, error: objetivos.error ?? negocio.error }
+    return { objetivos, negocio, queue, pendientes, cierres, error: objetivos.error ?? negocio.error }
   } catch (err) {
-    return { objetivos: null, negocio: null, queue: null, pendientes: null, error: err instanceof Error ? err.message : 'Error' }
+    return { objetivos: null, negocio: null, queue: null, pendientes: null, cierres: null, error: err instanceof Error ? err.message : 'Error' }
   }
 }
 
+// Estado real de una pregunta desde la perspectiva del usuario: ¿ya hay respuesta?
+function estadoPregunta(o: DireccionObjetivo, cierre: ObjetivoCierre | undefined) {
+  const respuesta = cierre?.closure?.closure_summary
+  if (respuesta) {
+    const st = cierre?.closure?.objective_status
+    return { fase: 'respondido' as const, respuesta, keyPoints: cierre?.closure?.key_points ?? [], badge: st === 'bloqueado' ? 'Respondido (con bloqueos)' : 'Respondido', color: st === 'bloqueado' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700' }
+  }
+  if (['failed', 'dead_letter', 'cancelled'].includes(o.state)) {
+    return { fase: 'error' as const, respuesta: null, keyPoints: [], badge: 'No se pudo', color: 'bg-red-100 text-red-700' }
+  }
+  return { fase: 'trabajando' as const, respuesta: null, keyPoints: [], badge: 'Trabajando…', color: 'bg-indigo-100 text-indigo-700' }
+}
+
 export default async function OsPage() {
-  const { objetivos, negocio, queue, pendientes, error } = await load()
+  const { objetivos, negocio, queue, pendientes, cierres, error } = await load()
   const isAuth = error?.toLowerCase().includes('permission denied') ?? false
 
   const objs = (objetivos?.data ?? []) as DireccionObjetivo[]
+  const cierrePorObjetivo = (cierres?.data ?? {}) as Record<string, ObjetivoCierre>
   const pend = ((pendientes?.data ?? []) as PendingOperation[]).filter((o) => o.status === 'awaiting_approval')
   const activos = (queue?.data ?? []).filter((r) => r.is_active).reduce((s, r) => s + r.n, 0)
   const enCurso = objs.filter((o) => ['ready', 'claimed', 'running', 'reviewing', 'retrying'].includes(o.state)).length
@@ -92,41 +107,59 @@ export default async function OsPage() {
         )}
       </Card>
 
-      {/* Mirar */}
+      {/* Respuestas del OS */}
       <Card
-        title="Trabajo del OS"
-        action={<Link href="/direccion" className="text-xs text-indigo-600 hover:underline">Ver detalle →</Link>}
+        title="Preguntas y respuestas"
+        action={<Link href="/direccion" className="text-xs text-indigo-600 hover:underline">Ver detalle completo →</Link>}
       >
         {objs.length === 0 ? (
-          <p className="text-sm text-slate-400">Todavía no diste ningún objetivo. Empezá arriba.</p>
+          <p className="text-sm text-slate-400">Todavía no le preguntaste nada al OS. Empezá arriba.</p>
         ) : (
           <ul className="space-y-3">
-            {objs.slice(0, 6).map((o) => (
-              <li key={o.id} className="rounded-lg border border-slate-100 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="font-medium text-slate-800">{o.title}</p>
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${ESTADO_OBJETIVO_COLOR[o.state] ?? 'bg-slate-100 text-slate-700'}`}>
-                    {ESTADO_OBJETIVO_LABEL[o.state] ?? o.state}
-                  </span>
-                </div>
-                <p className="mt-0.5 text-xs text-slate-400">
-                  {fmt(o.created_at)} · {o.subtasks_done}/{o.subtasks} especialistas
-                  {o.subtasks_failed > 0 && <span className="text-red-600"> · {o.subtasks_failed} con fallo</span>}
-                </p>
-                {o.result?.executive_summary && (
-                  <p className="mt-2 line-clamp-3 text-sm text-slate-600">{o.result.executive_summary}</p>
-                )}
-                {!!o.result?.assigned?.length && (
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {o.result.assigned.map((a, i) => (
-                      <span key={i} className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-700">
-                        {a.agent ?? a.capability}
-                      </span>
-                    ))}
+            {objs.slice(0, 8).map((o) => {
+              const e = estadoPregunta(o, cierrePorObjetivo[o.id])
+              return (
+                <li key={o.id} className="rounded-lg border border-slate-100 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-medium text-slate-800">{o.goal || o.title}</p>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${e.color}`}>{e.badge}</span>
                   </div>
-                )}
-              </li>
-            ))}
+
+                  {e.fase === 'respondido' && (
+                    <div className="mt-2 rounded-lg bg-emerald-50/50 p-3">
+                      <p className="text-sm text-slate-700">{e.respuesta}</p>
+                      {!!e.keyPoints.length && (
+                        <ul className="mt-2 list-disc pl-5 text-sm text-slate-600">
+                          {e.keyPoints.slice(0, 5).map((k, i) => <li key={i}>{k}</li>)}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+
+                  {e.fase === 'trabajando' && (
+                    <p className="mt-1 text-xs text-slate-500">
+                      El OS está trabajando la respuesta — {o.subtasks_done}/{o.subtasks || '…'} especialistas listos.
+                      Aparece acá sola en cuanto termina.
+                    </p>
+                  )}
+
+                  {e.fase === 'error' && (
+                    <p className="mt-1 text-xs text-red-600">No se pudo resolver{o.error ? `: ${o.error.slice(0, 100)}` : '.'}</p>
+                  )}
+
+                  {!!o.result?.assigned?.length && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {o.result.assigned.map((a, i) => (
+                        <span key={i} className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-700">
+                          {a.agent ?? a.capability}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <p className="mt-1 text-[11px] text-slate-400">{fmt(o.created_at)}</p>
+                </li>
+              )
+            })}
           </ul>
         )}
       </Card>
