@@ -316,4 +316,74 @@ calendario recuperable por reflog. Migraciones ya aplicadas a prod (el merge NO
 las re-ejecuta).
 
 **Estado**: Etapa 2 (F0–F5 + operación 24×7 + PR/merge/deploy) COMPLETADA.
-No iniciar Etapa 3 sin nueva instrucción.
+
+---
+
+## ETAPA 3 — DIRECCIÓN IA (cierre productivo)
+
+**Qué es**: primer **Director General IA** del Business OS, construido *sobre* el
+Work Fabric (sin sistemas paralelos). Es un agente/principal más
+(`agent:director-general`, clearance D); su "pensar" es una tarea `type='direction'`
+(handler `handlers/direction.mjs`). Comprende el estado (Situation Assembler
+`lib/situation.mjs` sobre tablas reales de `public`), prioriza, planifica,
+descompone en un DAG, **asigna** a especialistas (`created_by=director`), controla
+y reporta. NO ejecuta Nivel E: lo deja en `approval_requests`.
+
+**Invariante (DB)**: `tasks_direction_assignment` — sólo el Director asigna a
+especialistas; especialista→especialista queda bloqueado.
+
+**PR / commit / deploy**
+- PR **#7** (`direccion-ia/etapa-3` → `main`), rebase merge, 1 commit, 10 archivos,
+  100% aditivo. El commit ajeno del calendario (`6de24e2`) quedó **fuera** del PR.
+- **main = `45b69f9`** ("etapa3(Dirección IA): Director General IA sobre el Work Fabric").
+- Deploy productivo Vercel: **success** para `45b69f9`. URL `https://echegaray-business-os.vercel.app`.
+  `/direccion` responde 200 (ruta nueva desplegada, no 404).
+
+**Validación previa (pre-merge)**: lint ✅ · typecheck ✅ · build ✅ · suite fabric
+base (PG efímero) ✅ · e2e Etapa 3 (PG efímero) ✅ — invariante bidireccional,
+gating de RPC (sin auth / vacío / válido), ciclo objetivo→DAG(2,1 dep)→enrutado→
+informe→evento.
+
+**Migración**: `20260712140000_orq_direccion_ia.sql` (aditiva, ya aplicada a prod).
+Rollback: `db/rollback/0004_direccion_down.sql`.
+
+**Servicios**: `echegaray-orq-worker.service` active+enabled corriendo desde `main`
+(checkout estable actualizado, ARCA intacto md5). `echegaray-claude-remote.service`
+intacto. Ledger sin duplicados; heartbeats/leases/retries/dead-letter OK.
+
+**Bundle/RLS (prod)**: anon → **401** en `orq_direction`, `orq_tasks` y la RPC
+`orq_submit_objective`. Bundle: 0 secretos / 0 lógica de worker (643 KB escaneados).
+
+**Smoke productivo del Director (con Claude, datos reales)** — objetivo:
+"Analizar el estado actual y proponer las 5 prioridades de Dirección para los
+próximos 30 días, sin acciones externas ni modificar datos críticos".
+- Director `succeeded`, engine `claude-cli`, costo **$0.27**.
+- Comprendió estado real: 311M contratados con 0 obras activas (3 pausadas + 1
+  cerrada), 37,7M en obligaciones vencidas con caja sana, backlog 38/42 abierto,
+  scorecard 22/22 con bloqueo, 13 fuentes críticas.
+- Generó **5 prioridades** razonadas (cuello de botella = 0 obras activas),
+  **4 recomendaciones**, y un **DAG de 8 subtareas / 7 dependencias**, todas
+  `created_by=agent:director-general` (invariante respetada), enrutadas a
+  software-architect / director-planner / knowledge-manager.
+- **2 solicitudes de aprobación humana** (destino de las 3 obras pausadas —
+  contractual; gestión de 2 obligaciones vencidas — Nivel E fiscal) **NO ejecutadas**.
+- Subtareas de especialistas: 3 succeeded, **2 dead_letter** (los especialistas
+  están DIFERIDOS en Etapa 3; el engine por defecto del worker es `noop`, un stub
+  — el ledger las frenó con retries→dead-letter, sin efecto externo), 3 canceladas
+  (bloqueadas por dependencia). Cierre en vuelo global = 0.
+
+**Pendiente de sesión humana** (igual que Etapa 2): el click autenticado en
+`/direccion` (login → cargar objetivo vía RPC `orq_submit_objective` → ver plan/
+informe) y reintentar/cancelar desde la UI requieren tu login. La RPC quedó
+validada a nivel función y anon queda rechazado.
+
+**Rollback disponible**: DB `db/rollback/0004`; código `git revert 45b69f9` o
+checkout de la rama `direccion-ia/etapa-3` (preservada). Migración ya aplicada a
+prod (el merge no la re-ejecuta).
+
+**NO IMPLEMENTADO (diferido, por diseño)**: CFO / Compras / Ingeniería / RRHH /
+Comercial / Arquitecto / Ingeniero Civil / Contador / Abogado / Software IA. Sólo
+queda preparada la arquitectura (se registran como agentes; el Director los enruta).
+
+**Estado**: Etapa 3 (Director IA sobre el Work Fabric) COMPLETADA.
+No iniciar Etapa 4 sin nueva instrucción.
