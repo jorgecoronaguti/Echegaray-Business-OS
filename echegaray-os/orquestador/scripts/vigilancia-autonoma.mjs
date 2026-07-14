@@ -36,19 +36,33 @@ async function contextoAbierto() {
       where coalesce(estado,'') not in ('resuelta','cerrada','cancelada')
         and (bloqueada or fecha_limite < now() or responsable is null)
       order by fecha_limite asc nulls last limit 15`)
-  // MEMORIA: lo que el OS ya concluyó en sus últimas rondas (para acumular, no re-derivar).
-  const memoria = await safe(
-    `select result->>'closure_summary' as resumen, result->'key_points' as puntos
-       from orq.tasks
-      where type = 'direction_consolidate' and state = 'succeeded'
-      order by updated_at desc limit 3`)
-  if (!backlog.length && !acciones.length && !memoria.length) return ''
+  // CEREBRO — acumular: subo a la base de conocimiento las conclusiones de las últimas
+  // consolidaciones (dedup por clave normalizada; si se repite, sube veces_confirmado).
+  const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 220)
+  const cierres = await safe(
+    `select id, result->'key_points' as puntos from orq.tasks
+      where type='direction_consolidate' and state='succeeded' order by updated_at desc limit 6`)
+  for (const c of cierres) {
+    for (const p of (Array.isArray(c.puntos) ? c.puntos : [])) {
+      const af = String(p).trim().slice(0, 400); const clave = norm(af)
+      if (af.length < 8) continue
+      await query(
+        `insert into public.conocimiento_empresa (area, afirmacion, clave, origen_task_id) values ('direccion',$1,$2,$3)
+         on conflict (clave) do update set veces_confirmado = public.conocimiento_empresa.veces_confirmado + 1, updated_at = now(), vigente = true`,
+        [af, clave, c.id]).catch(() => {})
+    }
+  }
+  // CEREBRO — recordar: lo que el OS ya sabe (más confirmado primero).
+  const saber = await safe(
+    `select afirmacion, veces_confirmado from public.conocimiento_empresa
+      where vigente order by veces_confirmado desc, updated_at desc limit 14`)
+
+  if (!backlog.length && !acciones.length && !saber.length) return ''
   const b = backlog.map((r) => `  - [${r.impacto}/${r.tipo}] ${r.titulo}`).join('\n')
   const a = acciones.map((r) => `  - [${r.situacion}] ${r.titulo}`).join('\n')
-  const m = memoria.flatMap((r) => Array.isArray(r.puntos) ? r.puntos.slice(0, 4) : []).slice(0, 10)
-    .map((p) => `  - ${p}`).join('\n')
+  const m = saber.map((r) => `  - ${r.afirmacion}${r.veces_confirmado > 1 ? ` (confirmado ${r.veces_confirmado}×)` : ''}`).join('\n')
   return (
-    (m ? `\n\nLO QUE EL OS YA CONCLUYÓ EN SUS ÚLTIMAS RONDAS (memoria — construí sobre esto, no lo re-descubras):\n${m}\n` : '') +
+    (m ? `\n\nLO QUE EL OS YA SABE DE LA EMPRESA (memoria acumulada — construí sobre esto, no lo re-descubras):\n${m}\n` : '') +
     `\n\nYA REGISTRADO POR EL OS (revisá y NO lo repitas — deltas, no duplicados):\n` +
     (backlog.length ? `BACKLOG AUTÓNOMO abierto (${backlog.length}):\n${b}\n` : '') +
     (acciones.length ? `ACCIONES que requieren atención (${acciones.length}):\n${a}\n` : '') +
