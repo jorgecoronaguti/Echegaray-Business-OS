@@ -1,0 +1,10 @@
+[Unit]
+Description=Echegaray OS - Vigilancia autónoma round-the-clock (cada 6h: 00/06/12/18 -03)
+
+[Timer]
+OnCalendar=*-*-* 00,06,12,18:00:00
+Persistent=true
+Unit=echegaray-orq-vigilancia.service
+
+[Install]
+WantedBy=timers.target

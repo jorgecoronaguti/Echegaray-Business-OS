@@ -1,0 +1,17 @@
+[Unit]
+Description=Echegaray OS - Vigilancia autónoma (encola objetivo de Dirección)
+After=network-online.target echegaray-orq-worker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+Environment=PATH=/home/jorge/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=%h/.config/echegaray-orq/worker.env
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/vigilancia-autonoma.mjs
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=orq-vigilancia
+
+[Install]
+WantedBy=default.target

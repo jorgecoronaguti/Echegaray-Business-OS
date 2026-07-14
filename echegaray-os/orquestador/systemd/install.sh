@@ -41,5 +41,6 @@ systemctl --user daemon-reload
 systemctl --user enable --now echegaray-orq-worker.service
 systemctl --user enable --now echegaray-orq-health.timer
 systemctl --user enable --now echegaray-orq-cleanup.timer
+systemctl --user enable --now echegaray-orq-vigilancia.timer
 echo "servicios habilitados y arrancados."
 systemctl --user --no-pager status echegaray-orq-worker.service | head -6 || true
