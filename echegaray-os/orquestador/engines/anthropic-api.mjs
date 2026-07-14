@@ -174,7 +174,9 @@ export function makeAnthropicEngine({ config, client, breaker, semaphore }) {
             api.messages.create(
               {
                 model: modelId,
-                max_tokens: config.ANTHROPIC_MAX_TOKENS,
+                // job.maxTokens acota la salida por pedido (respuestas más cortas y
+                // rápidas, ej. el canal interactivo). Sin override, el default global.
+                max_tokens: job.maxTokens ?? config.ANTHROPIC_MAX_TOKENS,
                 ...(job.system ? { system: job.system } : {}),
                 messages,
                 ...(hasTools ? { tools: job.tools } : {}),

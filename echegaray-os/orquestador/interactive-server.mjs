@@ -19,7 +19,7 @@ import { createLogger } from './lib/logger.mjs'
 import { query } from './lib/db.mjs'
 import { resolveContext } from './lib/identity.mjs'
 import { resolveEngine } from './engines/index.mjs'
-import { assembleReasoningSystem, ROLE_FRAMING } from './lib/context-assembler.mjs'
+import { assembleReasoningSystem } from './lib/context-assembler.mjs'
 import { decide } from './lib/policy.mjs'
 import { makeGoogleClient } from './lib/google.mjs'
 import { driveReadTools } from './lib/tools/drive.mjs'
@@ -129,9 +129,10 @@ async function ask({ directive, fileId, fast, attachment }) {
   // asistente administrativo de siempre. Si falla la clasificación, degrada a general.
   const capability = await classifyDirective(directive, CTX)
   const skillNames = capability === 'general' ? [] : skillsForCapability(capability)
-  const roleFraming = skillNames.length
-    ? ROLE_FRAMING.specialist
-    : 'Sos el asistente operativo del Business OS de Echegaray Construcciones: respondés directivas del dueño sobre sus archivos y su operación, con criterio y datos reales.'
+  // Framing conciso SIEMPRE (aunque cargue skills): queremos el CONOCIMIENTO del
+  // especialista pero una entrega corta y directa, no el análisis extenso del worker.
+  const roleFraming =
+    'Sos el asistente operativo del OS de Echegaray Construcciones: respondés directivas del dueño con criterio experto y datos reales, pero DIRECTO y CONCISO — pocas palabras, al grano, sin relleno.'
   const { system, skillsLoaded } = await assembleReasoningSystem({
     rootPath: CTX.context.repository.rootPath, config: cfg,
     roleFraming,
@@ -147,12 +148,14 @@ async function ask({ directive, fileId, fast, attachment }) {
     enqueue: (op) => enqueuePendingOperation({ ...op, tenantId: CTX.context.tenantId, agentSlug: 'interactive' }),
   })
   const memoria = await memoriaBrief()
+  const hoy = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
   const prompt =
+    `HOY: ${hoy} (San Juan, Argentina). Usá esta fecha; no la inventes.\n\n` +
     `DIRECTIVA DEL DUEÑO:\n${directive}\n` +
     (fileId ? `\nEstá mirando el archivo de Drive con file_id=${fileId}. Leélo con drive_read si la directiva lo requiere.\n` : '') +
     memoria +
-    `\n\nRespondé en español, claro y directo, como un buen administrativo. Si necesitás un dato de un archivo, LEELO con las tools antes de responder (no inventes). ` +
-    `Distinguí hecho/estimación; si falta algo decilo. ` +
+    `\n\nESTILO OBLIGATORIO: respondé en español, MUY conciso y específico. Sin preámbulos, sin repetir la pregunta, sin explicar tu proceso ("leí el archivo…", "voy a…"), sin cierres de cortesía. Andá directo al dato o a la acción. Números concretos. Por defecto 1–3 líneas o pocos bullets; solo extendé si te piden el detalle. Si necesitás un dato de un archivo, LEELO con las tools antes de responder (no inventes). ` +
+    `Distinguí hecho/estimación; si falta algo, decilo en pocas palabras. ` +
     `Si la directiva pide ESCRIBIR/ordenar/completar/corregir/registrar/mejorar un archivo: ` +
     `(1) descubrí la estructura con drive_tabs — ojo: las pestañas como "Compras", "Caja", "Sueldos" son parte del MISMO archivo, NO archivos distintos — y leé la pestaña con drive_read para ver los encabezados y DÓNDE terminan los datos (ej. range "Compras!A1:M60"). ` +
     `(2) NO pidas aclaraciones que puedas resolver leyendo el archivo: ACTUÁ. ` +
@@ -162,14 +165,14 @@ async function ask({ directive, fileId, fast, attachment }) {
     (att
       ? `\n\nTE ADJUNTARON UN ARCHIVO (foto/PDF): interpretalo. Si es una factura/remito/comprobante, extraé proveedor, fecha, importe total, número y concepto. Si la directiva pide registrarlo, encontrá el Sheet correcto (ej. "Flujo de Caja - Cash Flow", pestaña de compras/gastos), LEÉ su estructura con drive_read y proponé la fila con drive_append. No inventes lo que no ves; si un dato no está en la imagen, decilo.\n`
       : '') +
-    `Lo demás con efecto económico/fiscal/legal externo (Nivel E) tampoco lo ejecutes: proponelo. Sé breve.`
+    `Lo demás con efecto económico/fiscal/legal externo (Nivel E) tampoco lo ejecutes: proponelo en una línea. Recordá: máxima concisión.`
 
   // Con adjunto, el prompt es un array de bloques (visión/documento + texto). El
   // engine acepta content como array sin cambios.
   const promptContent = att ? [att, { type: 'text', text: prompt }] : prompt
 
   const eng = await engine.run(
-    { system, prompt: promptContent, worktreePath: CTX.context.repository.rootPath, model, maxCostUsd: 0.8,
+    { system, prompt: promptContent, worktreePath: CTX.context.repository.rootPath, model, maxCostUsd: 0.8, maxTokens: 800,
       maxToolIterations: att || writeIntent ? 12 : fast === false ? 10 : 6, allowedTools: 'Read',
       task: { id: 'interactive', capability_slug: 'advise.admin' },
       tools: Object.values(registry).map((t) => t.schema), toolExecutor, agentSlug: 'interactive' },
