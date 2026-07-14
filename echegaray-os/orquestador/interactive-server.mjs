@@ -28,6 +28,7 @@ import { makeToolExecutor } from './lib/tool-executor.mjs'
 import { enqueuePendingOperation, listPendingOperations, decidePendingOperation } from './lib/pending-ops.mjs'
 import { classifyDirective } from './lib/classify-directive.mjs'
 import { skillsForCapability } from './lib/skill-map.mjs'
+import { createSchedule, listSchedules, toggleSchedule } from './lib/schedules.mjs'
 
 const cfg = loadConfig()
 const log = createLogger({ component: 'interactive' })
@@ -203,7 +204,14 @@ const server = http.createServer(async (req, res) => {
     } catch (e) { return send(res, 500, { error: e.message }) }
   }
 
-  if (req.method !== 'POST' || (req.url !== '/ask' && req.url !== '/operation')) {
+  // Agenda: recurrencias programadas por el dueño.
+  if (req.method === 'GET' && req.url === '/schedules') {
+    try {
+      return send(res, 200, { items: await listSchedules() })
+    } catch (e) { return send(res, 500, { error: e.message }) }
+  }
+
+  if (req.method !== 'POST' || !['/ask', '/operation', '/schedule', '/schedule/toggle'].includes(req.url)) {
     return send(res, 404, { error: 'no encontrado' })
   }
 
@@ -223,6 +231,25 @@ const server = http.createServer(async (req, res) => {
         const out = await decidePendingOperation({ id, action, note, decidedBy: DIRECTOR_PRINCIPAL })
         log.info('operación decidida', { id, action })
         return send(res, 200, { ok: true, ...out })
+      }
+
+      // Crear una recurrencia (ej. "todos los lunes revisá cobranzas").
+      if (req.url === '/schedule') {
+        const { title, directive, cadence } = data
+        if (!directive || !cadence) return send(res, 400, { error: 'faltan directive y cadence' })
+        const s = await createSchedule({
+          tenantId: CTX.context.tenantId, createdBy: DIRECTOR_PRINCIPAL,
+          title: (title || directive).slice(0, 120), directive: directive.slice(0, 2000), cadence,
+        })
+        log.info('recurrencia creada', { id: s.id, cadence })
+        return send(res, 200, { ok: true, schedule: s })
+      }
+
+      // Habilitar/deshabilitar una recurrencia.
+      if (req.url === '/schedule/toggle') {
+        const { id, enabled } = data
+        if (!id) return send(res, 400, { error: 'falta id' })
+        return send(res, 200, { ok: true, schedule: await toggleSchedule(id, enabled) })
       }
 
       // Directiva normal (opcionalmente con un archivo adjunto: {media_type, data(base64), name}).

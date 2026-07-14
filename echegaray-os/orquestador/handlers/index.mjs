@@ -15,6 +15,7 @@ import { directionHandler } from './direction.mjs'
 import { specialistHandler } from './specialist.mjs'
 import { consolidateHandler } from './consolidate.mjs'
 import { operationExecuteHandler } from './operation_execute.mjs'
+import { scheduledDirectiveHandler } from './scheduled_directive.mjs'
 
 export const HANDLERS = {
   noop: noopHandler,
@@ -25,6 +26,7 @@ export const HANDLERS = {
   specialist: specialistHandler, // Etapa 4: trabajo de análisis/preparación de un especialista de dominio
   direction_consolidate: consolidateHandler, // Etapa 4: cierra el objetivo integrando el trabajo de los especialistas
   operation_execute: operationExecuteHandler, // PRP-015 F1: ejecuta una operación aprobada (escritura en Drive) idempotentemente
+  scheduled_directive: scheduledDirectiveHandler, // PRP-015 F4: corre una directiva programada (recurrencia)
 }
 
 export function resolveHandler(type) {

@@ -189,14 +189,77 @@ async function onFilePicked(file) {
   }
 }
 
+// ---- Agenda (recurrencias) ----
+
+const CAD_LABEL = {
+  'daily:08:00': 'Todos los días 08:00', 'weekly:lun:09:00': 'Lunes 09:00',
+  'weekly:vie:17:00': 'Viernes 17:00', 'monthly:01:09:00': 'Día 1 del mes 09:00',
+}
+function cadLabel(c) { return CAD_LABEL[c] || c }
+
+async function loadSchedules() {
+  const { addr, token } = await getCfg()
+  if (!token) return
+  let items = []
+  try {
+    const r = await fetch(`${addr}/schedules`, { headers: { authorization: `Bearer ${token}` } })
+    const data = await r.json()
+    items = Array.isArray(data.items) ? data.items : []
+  } catch { return }
+  const list = $('aglist'); list.innerHTML = ''
+  if (!items.length) { const h = document.createElement('div'); h.className = 'hint'; h.textContent = 'No hay tareas programadas todavía.'; list.appendChild(h); return }
+  for (const s of items) {
+    const card = document.createElement('div'); card.className = 'sch' + (s.enabled ? '' : ' off')
+    const tog = document.createElement('span'); tog.className = 'tog'; tog.textContent = s.enabled ? 'pausar' : 'activar'
+    tog.addEventListener('click', () => toggleSchedule(s.id, !s.enabled))
+    const t = document.createElement('div'); t.className = 't'; t.textContent = s.title
+    const c = document.createElement('div'); c.className = 'c'; c.textContent = cadLabel(s.cadence)
+    card.append(tog, t, c)
+    if (s.last_result) { const r = document.createElement('div'); r.className = 'r'; r.textContent = '↳ ' + s.last_result.slice(0, 300); card.appendChild(r) }
+    list.appendChild(card)
+  }
+}
+
+async function addSchedule() {
+  const directive = $('agdir').value.trim()
+  if (!directive) return
+  const cadence = $('agcad').value
+  const { addr, token } = await getCfg()
+  $('agadd').disabled = true
+  try {
+    const r = await fetch(`${addr}/schedule`, {
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ directive, cadence, title: directive }),
+    })
+    const data = await r.json()
+    if (!r.ok) throw new Error(data.error || `error ${r.status}`)
+    $('agdir').value = ''
+    loadSchedules()
+  } catch (e) { addMsg('No se pudo programar: ' + e.message, 'os') } finally { $('agadd').disabled = false }
+}
+
+async function toggleSchedule(id, enabled) {
+  const { addr, token } = await getCfg()
+  try {
+    await fetch(`${addr}/schedule/toggle`, {
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ id, enabled }),
+    })
+    loadSchedules()
+  } catch { /* ignore */ }
+}
+
+const VIEWS = ['chat', 'pending', 'agenda']
 function showView(view) {
-  const chat = view === 'chat'
-  $('chat').style.display = chat ? 'flex' : 'none'
-  $('pending').classList.toggle('show', !chat)
-  $('tabChat').classList.toggle('active', chat)
-  $('tabPending').classList.toggle('active', !chat)
-  document.querySelector('footer').style.display = chat ? 'flex' : 'none'
-  if (!chat) loadPending()
+  for (const v of VIEWS) {
+    const el = $(v)
+    if (v === 'chat') el.style.display = view === 'chat' ? 'flex' : 'none'
+    else el.classList.toggle('show', view === v)
+    $('tab' + v[0].toUpperCase() + v.slice(1)).classList.toggle('active', view === v)
+  }
+  document.querySelector('footer').style.display = view === 'chat' ? 'flex' : 'none'
+  if (view === 'pending') loadPending()
+  if (view === 'agenda') loadSchedules()
 }
 
 // eventos
@@ -204,6 +267,8 @@ $('send').addEventListener('click', send)
 $('input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } })
 $('tabChat').addEventListener('click', () => showView('chat'))
 $('tabPending').addEventListener('click', () => showView('pending'))
+$('tabAgenda').addEventListener('click', () => showView('agenda'))
+$('agadd').addEventListener('click', addSchedule)
 $('attach').addEventListener('click', () => $('file').click())
 $('file').addEventListener('change', (e) => onFilePicked(e.target.files[0]))
 $('chipx').addEventListener('click', clearAttachment)
