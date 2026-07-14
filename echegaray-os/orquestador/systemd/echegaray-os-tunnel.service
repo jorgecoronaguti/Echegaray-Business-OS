@@ -1,0 +1,18 @@
+[Unit]
+Description=Echegaray OS - Túnel HTTPS saliente (cloudflared) + auto-registro de endpoint
+After=network-online.target echegaray-orq-interactive.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+EnvironmentFile=%h/.config/echegaray-orq/worker.env
+ExecStart=/home/jorge/echegaray-os/app/echegaray-os/orquestador/scripts/os-tunnel.sh
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=os-tunnel
+
+[Install]
+WantedBy=default.target

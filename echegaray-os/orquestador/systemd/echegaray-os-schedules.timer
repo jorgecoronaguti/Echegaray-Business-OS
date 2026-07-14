@@ -1,0 +1,10 @@
+[Unit]
+Description=Echegaray OS - Chequeo de recurrencias vencidas (cada 5 min)
+
+[Timer]
+OnCalendar=*:0/5
+Persistent=true
+Unit=echegaray-os-schedules.service
+
+[Install]
+WantedBy=timers.target

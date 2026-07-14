@@ -35,6 +35,8 @@ else
 fi
 
 cp "$SRC_DIR"/echegaray-orq-*.service "$SRC_DIR"/echegaray-orq-*.timer "$UNIT_DIR/"
+# Servicios del canal de la extensión (PRP-015): túnel HTTPS saliente + agenda.
+cp "$SRC_DIR"/echegaray-os-*.service "$SRC_DIR"/echegaray-os-*.timer "$UNIT_DIR/"
 echo "units copiadas a $UNIT_DIR"
 
 systemctl --user daemon-reload
@@ -43,5 +45,7 @@ systemctl --user enable --now echegaray-orq-health.timer
 systemctl --user enable --now echegaray-orq-cleanup.timer
 systemctl --user enable --now echegaray-orq-vigilancia.timer
 systemctl --user enable --now echegaray-orq-interactive.service
+systemctl --user enable --now echegaray-os-tunnel.service      # túnel HTTPS saliente (canal extensión)
+systemctl --user enable --now echegaray-os-schedules.timer     # disparador de recurrencias (agenda)
 echo "servicios habilitados y arrancados."
 systemctl --user --no-pager status echegaray-orq-worker.service | head -6 || true
