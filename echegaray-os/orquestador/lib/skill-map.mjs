@@ -19,6 +19,19 @@ export const CAPABILITY_SKILLS = {
   'advise.civil':        ['ingenieria-civil-construccion', 'calidad-obra'],
   'advise.architecture': ['ingenieria-civil-construccion', 'calidad-obra', 'direccion-obra'],
   'advise.commercial':   ['gestion-empresarial-riesgos', 'costos-presupuestacion'],
+  // Organización completa (8 especialistas nuevos). El Presupuestador cruza costo
+  // con criterio técnico; el Jefe de Obra cruza coordinación con seguridad; Fiscal
+  // es monodominio de alto riesgo de vigencia; Continuidad de Datos es el motor de
+  // confiabilidad de fuentes. 'advise.equipment' usa costos+administración como
+  // interino: no existe todavía una skill dedicada de equipos/flota (gap_skill).
+  'advise.estimating':   ['costos-presupuestacion', 'ingenieria-civil-construccion'],
+  'advise.quality':      ['calidad-obra'],
+  'advise.site':         ['direccion-obra', 'seguridad-higiene-art', 'planificacion-produccion'],
+  'advise.equipment':    ['costos-presupuestacion', 'administracion-operativa-construccion'],
+  'advise.tax':          ['impuestos-construccion'],
+  'advise.admin':        ['administracion-operativa-construccion', 'orden-documental-dataroom'],
+  'advise.safety':       ['seguridad-higiene-art'],
+  'advise.data':         ['lectura-drive-documentos-multiformato', 'integraciones-apis-sistemas-externos', 'google-sheets-business-systems', 'arquitectura-integracion-finanzas-obras'],
 }
 
 /** Skills de dominio para una capability. [] si no hay mapeo (el caller decide fallback). */

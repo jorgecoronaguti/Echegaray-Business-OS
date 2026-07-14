@@ -40,6 +40,7 @@
 - [Integración real Google Workspace](project/integracion-real-google-workspace.md) — cuenta de servicio con lectura/escritura acotada (agregar, nunca sobrescribir) a Sheets/Docs/Drive; acceso real a ~45 archivos, incluye ADICIONALES.xlsm nunca antes localizado
 - [El OS es el lugar de trabajo](project/el-os-es-el-lugar-de-trabajo.md) — 11 tablas sin RLS por rol corregidas, trazabilidad de auditoría en las 26 tablas, alta/baja nativa de Personas y Equipos (únicos 2 dominios sin escritura), cron diario reorientado a carga nativa
 - [Orquestador de Razonamiento y Skills](project/orquestador-razonamiento-skills.md) — comportamiento estructural obligatorio (2026-07-09): protocolo A–M antes de todo trabajo material, inventario automático de skills, detector de gaps, casos de test, gaps reales al backlog_autonomo
+- [Matriz Completa del Proyecto](project/matriz-completa-proyecto.md) — estado verificado en vivo (2026-07-14): 8 etapas (5✅/3⏳), 22 dominios con nivel real 0-10 (promedio 3,5, techo N7), 16 agentes IA/11 especialistas, 34 skills, huecos de cobertura, artifact visual; fuente de verdad del estado para Etapas 5-6-7
 
 ## feedback/ — Correcciones y preferencias
 - [Construir capacidades, no pantallas aisladas](feedback/construir-capacidades-no-pantallas-aisladas.md) — cada incremento debe resolver una decisión real y ser base reutilizable; justificar toda entidad nueva o evitarla
@@ -51,6 +52,7 @@
 - [Skill Google Sheets Business Systems](feedback/skill-google-sheets-business-systems.md) — creada tras incidentes reales de edición; protocolo obligatorio Entender→Auditar→Diseñar→Implementar→Verificar→Validar antes de tocar cualquier Sheet real
 - [RESUMEN manual vs. Dashboard con pivots](feedback/resumen-manual-vs-dashboard-pivots.md) — "mejores prácticas" técnicas no bastan si no responden la pregunta operativa real; preferir vistas cortas y ordenadas por fecha sobre agregados históricos
 - [Nunca delegar pasos ejecutables](feedback/nunca-delegar-pasos-ejecutables.md) — prohibido cerrar con "hacé vos este paso técnico"; agotar canales autenticados o rediseñar la solución (caso: env var Vercel → snapshot commiteado + LaunchAgent)
+- [Preferencia: OS completo de agentes](feedback/preferencia-os-agentes-completo.md) — la visión es un sistema operativo COMPLETO de agentes para una constructora, no un vertical financiero; encuadrar desde la completitud (roster + substrato horizontal), activar autonomía por dominio según confianza de dato
 - [Propuestas de impacto, no de higiene](feedback/propuestas-impacto-negocio-no-higiene.md) — propuestas rechazadas por ser limpieza de datos sin decisión económica asociada; la higiene se ejecuta en silencio, lo que se propone es lo que mueve plata/riesgo
 
 ## reference/ — Donde encontrar cosas

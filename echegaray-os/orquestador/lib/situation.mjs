@@ -95,6 +95,14 @@ const DOMAIN_FOCUS = {
   ingenieria:    'Enfocá OBRAS y SCORECARD; viabilidad técnica, métodos y patologías.',
   legal:         'Enfocá OBRAS (contratos), OBLIGACIONES y ACCIONES; exigibilidad de adicionales, reclamos y garantías.',
   rrhh:          'Enfocá OBLIGACIONES (UOCRA/IERIC/Fondo de Cese) y ACCIONES; régimen laboral de construcción.',
+  presupuestacion: 'Enfocá OBRAS (contratado vs presupuesto) y SCORECARD; costo de insumo, márgenes y precisión de cotización.',
+  calidad:       'Enfocá OBRAS y SCORECARD; ensayos, tolerancias, no conformidades y pliegos de calidad del cliente.',
+  obra:          'Enfocá OBRAS (avance/estado), ACCIONES bloqueadas/vencidas y HH; coordinación de frentes y problemas de sitio.',
+  equipos:       'Enfocá EQUIPOS/vehículos y OBRAS; utilización, mantenimiento y costo por equipo.',
+  fiscal:        'Enfocá OBLIGACIONES fiscales y el contratado/facturado de OBRAS; IVA, IIBB (San Juan), Ganancias, retenciones. Verificá norma vigente.',
+  administracion:'Enfocá FUENTES de datos, OBLIGACIONES y ACCIONES; orden documental y relación con organismos (IERIC/UOCRA/ARCA/estudio contable).',
+  seguridad:     'Enfocá OBRAS, PERSONAS y ACCIONES; ART, EPP, capacitaciones, incidentes y pliegos SSMA del cliente.',
+  datos:         'Enfocá FUENTES de datos (frescura/cobertura) y el SCORECARD; continuidad, reconciliación y confiabilidad del dato.',
 }
 
 /** Digest enfocado por dominio para el prompt de un especialista: el estado real

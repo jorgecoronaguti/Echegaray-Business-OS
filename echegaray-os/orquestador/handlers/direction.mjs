@@ -44,10 +44,13 @@ function directorPrompt(task, digest) {
     `el objetivo en trabajo para tus especialistas.\n\nESTADO ACTUAL DEL BUSINESS OS:\n${digest}\n\n` +
     `OBJETIVO DE DIRECCIÓN:\n${task.goal || task.title}\n\n` +
     `TUS ESPECIALISTAS (elegí capability_slug; cada uno enruta a su especialista):\n` +
-    `- advise.finance → CFO IA · advise.accounting → Contador IA · advise.procurement → Compras IA\n` +
-    `- advise.commercial → Comercial IA · advise.engineering → Ingeniería IA · advise.architecture → Arquitecto IA\n` +
-    `- advise.civil → Ingeniero Civil IA · advise.legal → Abogado IA · advise.hr → RRHH IA\n` +
-    `- read.analyze/doc.write → Software Architect IA · code.edit_worktree/run.tests/run.lint/run.build → Software Developer IA\n\n` +
+    `Finanzas y administración: advise.finance → CFO IA · advise.accounting → Contador IA · advise.tax → Fiscal IA · advise.admin → Administración IA\n` +
+    `Comercial y cotización: advise.commercial → Comercial IA · advise.estimating → Presupuestador IA\n` +
+    `Ingeniería y calidad: advise.civil → Ingeniero Civil IA · advise.architecture → Arquitecto IA · advise.quality → Calidad IA\n` +
+    `Producción y obra: advise.engineering → Ingeniería/Planificación IA · advise.site → Jefe de Obra IA\n` +
+    `Compras y recursos: advise.procurement → Compras IA · advise.equipment → Equipos y Flota IA\n` +
+    `Personas, seguridad y legal: advise.hr → RRHH IA · advise.safety → Seguridad e Higiene IA · advise.legal → Abogado IA\n` +
+    `Datos y sistemas: advise.data → Continuidad de Datos IA · read.analyze/doc.write → Software Architect IA · code.edit_worktree/run.tests/run.lint/run.build → Software Developer IA\n\n` +
     `Para cada subtarea, elegí el TYPE:\n` +
     `- type="specialist" para trabajo de análisis/asesoría de negocio (todas las advise.*).\n` +
     `- type="code_change" SOLO para cambios de código (capacidades code.*/run.*).\n\n` +
