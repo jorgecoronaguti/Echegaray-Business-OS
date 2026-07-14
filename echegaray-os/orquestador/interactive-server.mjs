@@ -109,11 +109,22 @@ function attachmentBlock(att) {
 
 async function ask({ directive, fileId, fast, attachment, history }) {
   const att = attachmentBlock(attachment)
-  // Intención de escritura: haiku es demasiado tímido para el ciclo leer→ubicar
-  // pestaña→proponer cambio (bailaba a preguntar). Con intención de escribir o un
-  // adjunto, usamos sonnet (más agéntico y preciso).
-  const writeIntent = /\b(registr|agreg|añad|anot|escrib|orden|complet|corrig|carg|aplic|hacelo|hac[eé]|modific|pon[eé]|actualiz|edit|arregl|reemplaz|renombr|mejor)/i.test(String(directive || ''))
-  const model = att || writeIntent ? 'sonnet' : fast === false ? 'sonnet' : 'haiku'
+  // Intención de escritura SIGUIENDO EL HILO: cuando el dueño responde "a"/"dale"/
+  // "la 2"/"hacelo", la intención de escribir vive en el turno ANTERIOR, no en el
+  // literal. Antes se miraba solo la directiva actual → un "a" caía como charla
+  // trivial (modelo tímido, pocas iteraciones) y el OS reseteaba en vez de ejecutar
+  // la opción elegida. Ahora miramos la directiva Y el historial reciente.
+  const WRITE_RE = /\b(registr|agreg|añad|anot|escrib|orden|complet|corrig|carg|aplic|hacelo|hac[eé]|modific|pon[eé]|actualiz|edit|arregl|reemplaz|renombr|mov[eé]|crea|mejor)/i
+  const CONFIRM_RE = /^\s*(s[ií]|dale|ok(ay)?|listo|hacelo|hazlo|aplicalo?|proced[eé]|adelante|confirmo|de una|opci[oó]n\s*)?[\s,.:]*([abc]|[123]|la\s*[123]|el\s*[123]|es[ae]|aquel[la]?)?\s*$/i
+  const histText = Array.isArray(history) ? history.slice(-4).map((m) => String(m.text || '')).join('\n') : ''
+  const directiveWrite = WRITE_RE.test(String(directive || ''))
+  // Confirmación/elección corta ("a", "dale", "la 2") + la charla previa proponía una
+  // acción u opciones → el dueño está eligiendo: hay que ACTUAR, no re-preguntar.
+  const followUpAction = CONFIRM_RE.test(String(directive || '')) && WRITE_RE.test(histText)
+  const writeIntent = directiveWrite || followUpAction
+  // Inteligencia > 1s de latencia: el canal interactivo razona con sonnet por defecto.
+  // haiku "no seguía el hilo" y bailaba a preguntar; el dueño pidió que sea inteligente.
+  const model = 'sonnet'
   const engine = resolveEngine('anthropic-api')
 
   // Fase 3: rutear al especialista correcto. Clasificamos la directiva a un dominio
@@ -145,9 +156,13 @@ async function ask({ directive, fileId, fast, attachment, history }) {
     ? 'CONVERSACIÓN PREVIA (seguí el hilo; "hacelo"/"aplicá eso" se refieren a lo último que propusiste):\n' +
       history.slice(-8).map((m) => `${m.role === 'me' ? 'Dueño' : 'OS'}: ${String(m.text || '').slice(0, 700)}`).join('\n') + '\n\n'
     : ''
+  const threadNudge = followUpAction
+    ? 'IMPORTANTE — SEGUÍ EL HILO: el dueño está CONFIRMANDO o ELIGIENDO una opción de lo que propusiste recién (ver CONVERSACIÓN PREVIA). Interpretá "a/b/c", "la 2", "dale", "hacelo", "sí" como esa elección. NO vuelvas a preguntar, NO reinicies, NO respondas un estado genérico: EJECUTÁ ahora esa opción — leé el archivo si hace falta y dejá la operación concreta (drive_update en la fila/rango exacto) en Pendientes, avisando en una línea qué cambio y dónde.\n\n'
+    : ''
   const prompt =
     `HOY: ${hoy} (San Juan, Argentina). Usá esta fecha; no la inventes.\n\n` +
     hist +
+    threadNudge +
     `DIRECTIVA DEL DUEÑO:\n${directive}\n` +
     (fileId ? `\nEstá mirando el archivo de Drive con file_id=${fileId}. Leélo con drive_read si la directiva lo requiere.\n` : '') +
     `\n\nESTILO OBLIGATORIO: respondé en español, MUY conciso y específico. Sin preámbulos, sin repetir la pregunta, sin explicar tu proceso ("leí el archivo…", "voy a…"), sin cierres de cortesía. Andá directo al dato o a la acción. Números concretos. Por defecto 1–3 líneas o pocos bullets; solo extendé si te piden el detalle. Si necesitás un dato de un archivo, LEELO con las tools antes de responder (no inventes). ` +
@@ -170,7 +185,7 @@ async function ask({ directive, fileId, fast, attachment, history }) {
 
   const eng = await engine.run(
     { system, prompt: promptContent, worktreePath: CTX.context.repository.rootPath, model, maxCostUsd: 0.8, maxTokens: 800,
-      maxToolIterations: att || writeIntent ? 12 : fast === false ? 10 : 6, allowedTools: 'Read',
+      maxToolIterations: att || writeIntent ? 14 : 10, allowedTools: 'Read',
       task: { id: 'interactive', capability_slug: 'advise.admin' },
       tools: Object.values(registry).map((t) => t.schema), toolExecutor, agentSlug: 'interactive' },
     CTX)
