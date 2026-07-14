@@ -18,15 +18,18 @@ const READONLY_SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets.readonly',
 ]
 
-// Scopes de ESCRITURA — mínimos a propósito (Gotcha del PRP-015): NO se pide `drive`
-// full. `spreadsheets` da lectura+escritura sobre los Sheets que la SA ya tiene
-// compartidos (el caso "ordená/completá este Sheet"); `drive.file` permite crear
-// archivos propios del OS. Se mantiene `drive.readonly` para poder seguir navegando/
-// leyendo cualquier archivo compartido. Cambiar scopes puede requerir re-consentir la SA.
+// Scopes de ESCRITURA. GOTCHA REAL (verificado 2026-07-14): `drive.file` solo da acceso
+// a archivos CREADOS por la app o abiertos vía Picker — NO a archivos existentes del
+// dueño aunque estén compartidos como editor. Por eso mover/renombrar una carpeta que
+// ya existía devolvía 403 "app has not been granted write access", mientras crear
+// carpetas y editar Sheets (scope `spreadsheets`) sí funcionaba. Para reorganizar el
+// Drive real del dueño (mover/renombrar/editar cualquier archivo COMPARTIDO como editor
+// con la SA) hace falta el scope `drive` completo. Es un service account SIN delegación:
+// el acceso real lo sigue gobernando el COMPARTIR de cada archivo, no el scope — el scope
+// amplio no da acceso a nada que no esté compartido con la cuenta. No requiere re-consent.
 export const WRITE_SCOPES = [
-  'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/spreadsheets',
-  'https://www.googleapis.com/auth/drive.file',
 ]
 
 // Raíz del repo (orquestador/lib -> ../..), para localizar la credencial existente
@@ -205,7 +208,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes 
     async createFile({ name, mimeType, parents } = {}) {
       if (!name || !mimeType) throw new Error('createFile: faltan name o mimeType')
       return apiSend(
-        'https://www.googleapis.com/drive/v3/files?fields=id,name,mimeType,webViewLink',
+        'https://www.googleapis.com/drive/v3/files?fields=id,name,mimeType,webViewLink&supportsAllDrives=true',
         'POST',
         { name, mimeType, ...(parents ? { parents } : {}) },
       )
@@ -213,17 +216,17 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes 
     /** Renombra un archivo/carpeta existente. */
     async renameFile(fileId, name) {
       return apiSend(
-        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name`,
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name&supportsAllDrives=true`,
         'PATCH',
         { name },
       )
     },
     /** Mueve un archivo/carpeta a otra carpeta (saca de sus padres actuales). */
     async moveFile(fileId, folderId) {
-      const meta = await apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=parents`)
+      const meta = await apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=parents&supportsAllDrives=true`)
       const remove = (meta.parents || []).join(',')
       const url = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?addParents=${encodeURIComponent(folderId)}` +
-        (remove ? `&removeParents=${encodeURIComponent(remove)}` : '') + '&fields=id,name,parents'
+        (remove ? `&removeParents=${encodeURIComponent(remove)}` : '') + '&fields=id,name,parents&supportsAllDrives=true'
       return apiSend(url, 'PATCH', {})
     },
   }
