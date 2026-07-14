@@ -55,11 +55,27 @@ async function send() {
   const pending = addMsg('Pensando…', 'os')
   const fileId = await driveFileId()
   const t0 = Date.now()
+  const runId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()
+  // Indicador en vivo: mientras el OS trabaja, mostramos el paso actual (leyendo, preparando…).
+  let polling = true
+  ;(async () => {
+    while (polling) {
+      await new Promise((r) => setTimeout(r, 1000))
+      if (!polling) break
+      try {
+        const pr = await fetch(`${addr}/progress?id=${runId}`, { headers: { authorization: `Bearer ${token}` } })
+        const pd = await pr.json()
+        if (!polling) break
+        const last = (pd.steps || []).slice(-1)[0]
+        if (last) pending.textContent = `⏳ ${last}… (${Math.round((Date.now() - t0) / 1000)}s)`
+      } catch { /* reintenta */ }
+    }
+  })()
   try {
     const r = await fetch(`${addr}/ask`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
-      body: JSON.stringify({ directive, fileId, attachment: att, history }),
+      body: JSON.stringify({ directive, fileId, attachment: att, history, runId }),
     })
     const data = await r.json()
     if (!r.ok) throw new Error(data.error || `error ${r.status}`)
@@ -71,6 +87,7 @@ async function send() {
   } catch (e) {
     pending.textContent = 'No pude conectar con el OS: ' + e.message
   } finally {
+    polling = false
     $('send').disabled = false
     $('chat').scrollTop = $('chat').scrollHeight
     loadPending() // una directiva puede haber dejado operaciones pendientes

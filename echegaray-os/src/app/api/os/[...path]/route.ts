@@ -36,7 +36,9 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
   if (!endpoint) {
     return NextResponse.json({ error: 'el OS no está publicado ahora mismo (túnel abajo)' }, { status: 503, headers: CORS })
   }
-  const target = `${endpoint.replace(/\/$/, '')}/${path.join('/')}`
+  // Preservar el query string (?id=…): la extensión lo usa en /progress y
+  // /operation-status. Sin esto llegaban sin parámetros al OS.
+  const target = `${endpoint.replace(/\/$/, '')}/${path.join('/')}${req.nextUrl.search}`
   const headers: Record<string, string> = { 'content-type': 'application/json' }
   const auth = req.headers.get('authorization')
   if (auth) headers.authorization = auth

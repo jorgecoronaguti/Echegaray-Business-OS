@@ -107,7 +107,32 @@ function attachmentBlock(att) {
   return null
 }
 
-async function ask({ directive, fileId, fast, attachment, history }) {
+// Progreso en vivo. Mientras el motor razona y usa tools, guardamos pasos legibles
+// indexados por runId (que genera la extensión). La extensión hace polling a
+// /progress?id= y muestra "trabajando: Leyendo Compras…". Se limpia solo al terminar.
+const PROGRESS = new Map()
+function progressInit(runId) { if (runId) PROGRESS.set(runId, { steps: ['Pensando…'], done: false, updated: Date.now() }) }
+function progressPush(runId, step) { const p = runId && PROGRESS.get(runId); if (p) { p.steps.push(step); p.updated = Date.now() } }
+function progressDone(runId) { const p = runId && PROGRESS.get(runId); if (p) { p.done = true; p.updated = Date.now() } if (runId) setTimeout(() => PROGRESS.delete(runId), 30000) }
+function friendlyStep(name, input) {
+  const i = input || {}
+  switch (name) {
+    case 'drive_read': return `Leyendo ${i.range || 'el archivo'}`
+    case 'drive_tabs': return 'Viendo las pestañas del archivo'
+    case 'drive_find': case 'drive_list': case 'drive_search': return `Buscando en Drive${i.name ? ` "${i.name}"` : ''}`
+    case 'drive_last_row': return 'Ubicando la última fila con datos'
+    case 'drive_excel': return 'Leyendo el Excel'
+    case 'drive_update': return `Preparando el cambio en ${i.range || 'el archivo'}`
+    case 'drive_append': return 'Preparando el registro nuevo'
+    case 'drive_create': return `Preparando crear ${i.tipo || 'el archivo'}${i.name ? ` "${i.name}"` : ''}`
+    case 'drive_rename': return `Preparando renombrar${i.new_name ? ` a "${i.new_name}"` : ''}`
+    case 'drive_move': return 'Preparando mover el archivo'
+    default: return `Trabajando (${name})`
+  }
+}
+
+async function ask({ directive, fileId, fast, attachment, history, runId }) {
+  progressInit(runId)
   const att = attachmentBlock(attachment)
   // Intención de escritura SIGUIENDO EL HILO: cuando el dueño responde "a"/"dale"/
   // "la 2"/"hacelo", la intención de escribir vive en el turno ANTERIOR, no en el
@@ -144,12 +169,17 @@ async function ask({ directive, fileId, fast, attachment, history }) {
   })
   log.info('directiva ruteada', { capability, skills: skillsLoaded || [] })
   const registry = driveRegistry()
-  const toolExecutor = makeToolExecutor({
+  const baseExecutor = makeToolExecutor({
     decide, tools: registry, principalId: DIRECTOR_PRINCIPAL, logger: log,
     // Enqueue REAL: una escritura propuesta (drive.write) se registra en
     // orq.pending_operations con su cambio concreto y queda esperando aprobación.
     enqueue: (op) => enqueuePendingOperation({ ...op, tenantId: CTX.context.tenantId, agentSlug: 'interactive' }),
   })
+  // Cada tool que el modelo invoca deja un paso legible para el indicador en vivo.
+  const toolExecutor = async (name, input, meta) => {
+    progressPush(runId, friendlyStep(name, input))
+    return baseExecutor(name, input, meta)
+  }
   const hoy = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
   // Historial de la charla: seguir el hilo ("aplicá la 2", "hacelo", "y el otro?").
   const hist = Array.isArray(history) && history.length
@@ -227,6 +257,13 @@ const server = http.createServer(async (req, res) => {
     } catch (e) { return send(res, 500, { error: e.message }) }
   }
 
+  // Progreso en vivo de una directiva en curso (polling desde la extensión).
+  if (req.method === 'GET' && req.url.startsWith('/progress')) {
+    const rid = new URL(req.url, 'http://x').searchParams.get('id')
+    const p = rid && PROGRESS.get(rid)
+    return send(res, 200, p ? { steps: p.steps.slice(-6), done: p.done } : { steps: [], done: false })
+  }
+
   // Estado de una operación por id: la extensión lo consulta tras aprobar para avisar
   // si se ejecutó o falló (antes fallaba en silencio y el dueño no se enteraba).
   if (req.method === 'GET' && req.url.startsWith('/operation-status')) {
@@ -287,13 +324,15 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { ok: true, schedule: await toggleSchedule(id, enabled) })
       }
 
-      // Directiva normal (opcional: attachment {media_type,data,name} + history [{role,text}]).
-      const { directive, fileId, fast, attachment, history } = data
+      // Directiva normal (opcional: attachment {media_type,data,name} + history [{role,text}] + runId).
+      const { directive, fileId, fast, attachment, history, runId } = data
       if (!directive || typeof directive !== 'string') return send(res, 400, { error: 'falta "directive"' })
       const t0 = Date.now()
-      const out = await ask({ directive: directive.slice(0, 4000), fileId, fast, attachment, history })
-      log.info('directiva respondida', { ms: Date.now() - t0, model: out.model, cost: out.cost })
-      send(res, 200, { ...out, ms: Date.now() - t0 })
+      try {
+        const out = await ask({ directive: directive.slice(0, 4000), fileId, fast, attachment, history, runId })
+        log.info('directiva respondida', { ms: Date.now() - t0, model: out.model, cost: out.cost })
+        send(res, 200, { ...out, ms: Date.now() - t0 })
+      } finally { progressDone(runId) }
     } catch (e) {
       log.error('request falló', { url: req.url, error: e.message })
       send(res, 500, { error: e.message })
