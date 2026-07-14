@@ -23,7 +23,9 @@ import { assembleReasoningSystem, ROLE_FRAMING } from './lib/context-assembler.m
 import { decide } from './lib/policy.mjs'
 import { makeGoogleClient } from './lib/google.mjs'
 import { driveReadTools } from './lib/tools/drive.mjs'
+import { driveWriteTools } from './lib/tools/drive-write.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
+import { enqueuePendingOperation, listPendingOperations, decidePendingOperation } from './lib/pending-ops.mjs'
 
 const cfg = loadConfig()
 const log = createLogger({ component: 'interactive' })
@@ -71,10 +73,12 @@ async function memoriaBrief() {
   return rows.length ? '\n\nLO QUE EL OS YA SABE DE LA EMPRESA:\n' + rows.map((r) => `- ${r.afirmacion}`).join('\n') : ''
 }
 
-/** Registro de tools de lectura de Drive + búsqueda por índice (idéntico al especialista). */
+/** Registro de tools de Drive: lectura (auto) + escritura (requieren aprobación) +
+ *  búsqueda por índice. Las de escritura no se ejecutan acá: el tool-executor las
+ *  encola como operaciones pendientes (Nivel E). */
 function driveRegistry() {
   const google = makeGoogleClient({ config: cfg })
-  const registry = driveReadTools(google)
+  const registry = { ...driveReadTools(google), ...driveWriteTools(google) }
   registry['drive.find'] = {
     capability: 'drive.read', account: 'ecsas',
     schema: {
@@ -105,7 +109,9 @@ async function ask({ directive, fileId, fast }) {
   const registry = driveRegistry()
   const toolExecutor = makeToolExecutor({
     decide, tools: registry, principalId: DIRECTOR_PRINCIPAL, logger: log,
-    enqueue: async () => 'pendiente-de-aprobacion', // Nivel E no se ejecuta acá
+    // Enqueue REAL: una escritura propuesta (drive.write) se registra en
+    // orq.pending_operations con su cambio concreto y queda esperando aprobación.
+    enqueue: (op) => enqueuePendingOperation({ ...op, tenantId: CTX.context.tenantId, agentSlug: 'interactive' }),
   })
   const memoria = await memoriaBrief()
   const prompt =
@@ -113,7 +119,9 @@ async function ask({ directive, fileId, fast }) {
     (fileId ? `\nEstá mirando el archivo de Drive con file_id=${fileId}. Leélo con drive_read si la directiva lo requiere.\n` : '') +
     memoria +
     `\n\nRespondé en español, claro y directo, como un buen administrativo. Si necesitás un dato de un archivo, LEELO con las tools antes de responder (no inventes). ` +
-    `Distinguí hecho/estimación; si falta algo decilo. Lo que tenga efecto económico/fiscal/legal real o escritura de un archivo NO lo ejecutes: proponelo y aclaralo como "requiere tu aprobación". Sé breve.`
+    `Distinguí hecho/estimación; si falta algo decilo. ` +
+    `Si la directiva pide ESCRIBIR/ordenar/completar/corregir/registrar en un archivo, usá drive_update / drive_append / drive_create con el cambio CONCRETO (leé antes el archivo para no pisar datos): la operación queda PENDIENTE de tu aprobación, no se ejecuta sola. Avisá qué dejaste pendiente. ` +
+    `Lo demás con efecto económico/fiscal/legal externo (Nivel E) tampoco lo ejecutes: proponelo. Sé breve.`
 
   const eng = await engine.run(
     { system, prompt, worktreePath: CTX.context.repository.rootPath, model, maxCostUsd: 0.5,
@@ -148,21 +156,46 @@ const server = http.createServer(async (req, res) => {
       return res.end(zip)
     } catch { return send(res, 404, { error: 'extensión no empaquetada todavía' }) }
   }
-  if (req.method !== 'POST' || req.url !== '/ask') return send(res, 404, { error: 'no encontrado' })
+  // A partir de acá, rutas protegidas por el token de la extensión.
   if (TOKEN && req.headers.authorization !== `Bearer ${TOKEN}`) return send(res, 401, { error: 'no autorizado' })
+
+  // Operaciones pendientes de aprobación (la extensión las lista y las decide).
+  if (req.method === 'GET' && req.url === '/pending') {
+    try {
+      const items = await listPendingOperations({ status: 'awaiting_approval' })
+      return send(res, 200, { items })
+    } catch (e) { return send(res, 500, { error: e.message }) }
+  }
+
+  if (req.method !== 'POST' || (req.url !== '/ask' && req.url !== '/operation')) {
+    return send(res, 404, { error: 'no encontrado' })
+  }
 
   let body = ''
   req.on('data', (c) => { body += c; if (body.length > 1e6) req.destroy() })
   req.on('end', async () => {
     try {
-      const { directive, fileId, fast } = JSON.parse(body || '{}')
+      const data = JSON.parse(body || '{}')
+
+      // Aprobar/Rechazar una operación pendiente. La extensión usa Bearer token (no
+      // tiene auth.uid()), por eso va por el motor y no por el RPC orq_operation_action.
+      if (req.url === '/operation') {
+        const { id, action, note } = data
+        if (!id || !['approve', 'reject'].includes(action)) return send(res, 400, { error: 'faltan id / action (approve|reject)' })
+        const out = await decidePendingOperation({ id, action, note, decidedBy: DIRECTOR_PRINCIPAL })
+        log.info('operación decidida', { id, action })
+        return send(res, 200, { ok: true, ...out })
+      }
+
+      // Directiva normal.
+      const { directive, fileId, fast } = data
       if (!directive || typeof directive !== 'string') return send(res, 400, { error: 'falta "directive"' })
       const t0 = Date.now()
       const out = await ask({ directive: directive.slice(0, 4000), fileId, fast })
       log.info('directiva respondida', { ms: Date.now() - t0, model: out.model, cost: out.cost })
       send(res, 200, { ...out, ms: Date.now() - t0 })
     } catch (e) {
-      log.error('directiva falló', { error: e.message })
+      log.error('request falló', { url: req.url, error: e.message })
       send(res, 500, { error: e.message })
     }
   })

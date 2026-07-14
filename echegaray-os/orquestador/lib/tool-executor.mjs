@@ -42,7 +42,9 @@ export function makeToolExecutor({ decide, tools, principalId, enqueue, logger }
         capability_slug: entry.capability,
         account: entry.account ?? 'ecsas',
         target: input ?? {},
-        payload: input ?? {},
+        // payload guarda QUÉ tool ejecutar (schema.name) + sus args, para que el
+        // ejecutor de lo aprobado sepa reconstruir exactamente el efecto.
+        payload: { tool: name, args: input ?? {} },
       })
       logger?.info?.('tool-executor: operación encolada para aprobación', { capability: entry.capability, op_id: opId })
       return { queued: true, pending_operation_id: opId, capability: entry.capability, reason: 'requiere aprobación humana (Nivel E): quedó encolada. NO se ejecutó. Continuá el análisis sin asumir que ya ocurrió.' }

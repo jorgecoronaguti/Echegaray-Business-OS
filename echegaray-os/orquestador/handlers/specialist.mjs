@@ -19,16 +19,7 @@ import { skillsForCapability } from '../lib/skill-map.mjs'
 import { makeGoogleClient } from '../lib/google.mjs'
 import { driveReadTools } from '../lib/tools/drive.mjs'
 import { makeToolExecutor } from '../lib/tool-executor.mjs'
-
-/** Encola una operación que requiere aprobación humana (Nivel E) con su payload real. */
-async function enqueuePendingOperation({ tenantId, taskId, agentSlug, capability_slug, account, target, payload }) {
-  const { rows } = await query(
-    `insert into orq.pending_operations (tenant_id, task_id, agent_slug, capability_slug, account, target, payload)
-     values ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb) returning id`,
-    [tenantId, taskId, agentSlug, capability_slug, account, JSON.stringify(target ?? {}), JSON.stringify(payload ?? {})],
-  )
-  return rows[0].id
-}
+import { enqueuePendingOperation } from '../lib/pending-ops.mjs'
 
 const SpecialistResult = z.object({
   analysis: z.string().max(8000),

@@ -33,7 +33,7 @@ async function main() {
   check('E: no ejecutó', ran === 1)
   check('E: encoló la operación', enqueued.length === 1 && enqueued[0].capability_slug === 'drive.write')
   check('E: devolvió pending_operation_id', r2.queued === true && r2.pending_operation_id === 'op_123')
-  check('E: pasó el payload real', enqueued[0].payload.file_id === 'X')
+  check('E: pasó el payload real (tool+args)', enqueued[0].payload.tool === 'drive_write' && enqueued[0].payload.args.file_id === 'X')
 
   // forbidden -> NO ejecuta, niega
   const r3 = await exec('drive_delete', { file_id: 'Y' }, {})

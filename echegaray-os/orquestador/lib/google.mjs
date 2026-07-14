@@ -18,6 +18,17 @@ const READONLY_SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets.readonly',
 ]
 
+// Scopes de ESCRITURA — mínimos a propósito (Gotcha del PRP-015): NO se pide `drive`
+// full. `spreadsheets` da lectura+escritura sobre los Sheets que la SA ya tiene
+// compartidos (el caso "ordená/completá este Sheet"); `drive.file` permite crear
+// archivos propios del OS. Se mantiene `drive.readonly` para poder seguir navegando/
+// leyendo cualquier archivo compartido. Cambiar scopes puede requerir re-consentir la SA.
+export const WRITE_SCOPES = [
+  'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/drive.file',
+]
+
 // Raíz del repo (orquestador/lib -> ../..), para localizar la credencial existente
 // sin depender del cwd. La integración real de Google (2026-07-09) ya dejó la key
 // del service account acá; la REUSAMOS (no creamos una nueva).
@@ -58,19 +69,39 @@ export function resolveKeyPath(config) {
  * @param {function} [deps.fetchImpl] override de fetch para tests
  * @param {string}  [deps.impersonate] cuenta @ecsas a impersonar (domain-wide delegation)
  */
-export function makeGoogleClient({ config, auth, fetchImpl, impersonate } = {}) {
+export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes } = {}) {
   const doFetch = fetchImpl || globalThis.fetch
+  const authScopes = scopes || READONLY_SCOPES
   let _auth = auth || null
 
   async function accessToken() {
     if (!_auth) {
       const keyPath = resolveKeyPath(config)
       if (!fs.existsSync(keyPath)) throw new MissingGoogleCredential(keyPath)
-      const ga = new GoogleAuth({ keyFile: keyPath, scopes: READONLY_SCOPES, clientOptions: impersonate ? { subject: impersonate } : {} })
+      const ga = new GoogleAuth({ keyFile: keyPath, scopes: authScopes, clientOptions: impersonate ? { subject: impersonate } : {} })
       _auth = await ga.getClient()
     }
     const t = await _auth.getAccessToken()
     return typeof t === 'string' ? t : t?.token
+  }
+
+  /** POST/PUT/PATCH con cuerpo JSON. Devuelve el JSON de respuesta. Error CLARO con
+   *  el status y el cuerpo (para distinguir p.ej. 403 sin permiso de edición sobre
+   *  el archivo destino — el Gotcha del Service Account). */
+  async function apiSend(url, method, body) {
+    const token = await accessToken()
+    const res = await doFetch(url, {
+      method,
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+    if (!res.ok) {
+      const text = String(await res.text()).slice(0, 300)
+      const err = new Error(`google api ${res.status}: ${text}`)
+      err.status = res.status
+      throw err
+    }
+    return res.json()
   }
 
   async function apiGet(url) {
@@ -147,6 +178,37 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate } = {}) 
       const ws = wb.Sheets[target]
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false, defval: null })
       return { sheets, sheet: target, total_rows: rows.length, rows: rows.slice(0, maxRows) }
+    },
+
+    // ---- ESCRITURA (requiere scopes de WRITE_SCOPES; cada efecto pasó por aprobación) ----
+
+    /** Sobrescribe un rango A1 de un Sheet con `values` (matriz de filas).
+     *  USER_ENTERED: respeta fórmulas y formatos de número como si lo tipearas. */
+    async updateSheetValues(fileId, range, values) {
+      return apiSend(
+        `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+        'PUT',
+        { range, majorDimension: 'ROWS', values },
+      )
+    },
+    /** Agrega filas al final de la tabla que arranca en `range` (INSERT_ROWS: no pisa
+     *  lo que haya debajo). Devuelve el rango efectivamente escrito. */
+    async appendSheetValues(fileId, range, values) {
+      return apiSend(
+        `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+        'POST',
+        { range, majorDimension: 'ROWS', values },
+      )
+    },
+    /** Crea un archivo propio del OS (Doc/Sheet nativo o carpeta) vía Drive metadata.
+     *  Con `parents` lo ubica en una carpeta. Devuelve {id,name,mimeType,webViewLink}. */
+    async createFile({ name, mimeType, parents } = {}) {
+      if (!name || !mimeType) throw new Error('createFile: faltan name o mimeType')
+      return apiSend(
+        'https://www.googleapis.com/drive/v3/files?fields=id,name,mimeType,webViewLink',
+        'POST',
+        { name, mimeType, ...(parents ? { parents } : {}) },
+      )
     },
   }
 }
