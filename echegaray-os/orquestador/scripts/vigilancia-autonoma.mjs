@@ -36,16 +36,27 @@ async function contextoAbierto() {
       where coalesce(estado,'') not in ('resuelta','cerrada','cancelada')
         and (bloqueada or fecha_limite < now() or responsable is null)
       order by fecha_limite asc nulls last limit 15`)
-  if (!backlog.length && !acciones.length) return ''
+  // MEMORIA: lo que el OS ya concluyó en sus últimas rondas (para acumular, no re-derivar).
+  const memoria = await safe(
+    `select result->>'closure_summary' as resumen, result->'key_points' as puntos
+       from orq.tasks
+      where type = 'direction_consolidate' and state = 'succeeded'
+      order by updated_at desc limit 3`)
+  if (!backlog.length && !acciones.length && !memoria.length) return ''
   const b = backlog.map((r) => `  - [${r.impacto}/${r.tipo}] ${r.titulo}`).join('\n')
   const a = acciones.map((r) => `  - [${r.situacion}] ${r.titulo}`).join('\n')
+  const m = memoria.flatMap((r) => Array.isArray(r.puntos) ? r.puntos.slice(0, 4) : []).slice(0, 10)
+    .map((p) => `  - ${p}`).join('\n')
   return (
+    (m ? `\n\nLO QUE EL OS YA CONCLUYÓ EN SUS ÚLTIMAS RONDAS (memoria — construí sobre esto, no lo re-descubras):\n${m}\n` : '') +
     `\n\nYA REGISTRADO POR EL OS (revisá y NO lo repitas — deltas, no duplicados):\n` +
     (backlog.length ? `BACKLOG AUTÓNOMO abierto (${backlog.length}):\n${b}\n` : '') +
     (acciones.length ? `ACCIONES que requieren atención (${acciones.length}):\n${a}\n` : '') +
     `INSTRUCCIÓN sobre esto: para cada ítem ya registrado, decidí si (a) sigue vigente y hay algo NUEVO que aportar, ` +
     `(b) ya está resuelto y hay que proponer cerrarlo, o (c) no amerita trabajo hoy. NO vuelvas a levantar un hallazgo ` +
-    `que ya está en esta lista salvo que haya un cambio material. Priorizá lo NUEVO por sobre lo ya conocido.`
+    `que ya está en esta lista salvo que haya un cambio material. Priorizá lo NUEVO por sobre lo ya conocido. ` +
+    `Y CONECTÁ ENTRE ÁREAS: si dos hallazgos de dominios distintos son parte del mismo problema (ej. un vencimiento ` +
+    `de caja + una obra parada + un pago a proveedor), decilo como UN solo cuadro, no como alertas sueltas.`
   )
 }
 

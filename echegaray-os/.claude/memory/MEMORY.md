@@ -53,6 +53,7 @@
 - [RESUMEN manual vs. Dashboard con pivots](feedback/resumen-manual-vs-dashboard-pivots.md) — "mejores prácticas" técnicas no bastan si no responden la pregunta operativa real; preferir vistas cortas y ordenadas por fecha sobre agregados históricos
 - [Nunca delegar pasos ejecutables](feedback/nunca-delegar-pasos-ejecutables.md) — prohibido cerrar con "hacé vos este paso técnico"; agotar canales autenticados o rediseñar la solución (caso: env var Vercel → snapshot commiteado + LaunchAgent)
 - [Preferencia: OS completo de agentes](feedback/preferencia-os-agentes-completo.md) — la visión es un sistema operativo COMPLETO de agentes para una constructora, no un vertical financiero; encuadrar desde la completitud (roster + substrato horizontal), activar autonomía por dominio según confianza de dato
+- [Conducir autónomo, sin preguntar, y rápido](feedback/conducir-autonomo-sin-preguntar-y-rapido.md) — NO hacerle elegir forks técnicos; conducir el plan entero hacia el objetivo ya fijado (cerebro general + trabajador 24×7); hablar en criollo; priorizar velocidad (de ejecución y del sistema)
 - [Propuestas de impacto, no de higiene](feedback/propuestas-impacto-negocio-no-higiene.md) — propuestas rechazadas por ser limpieza de datos sin decisión económica asociada; la higiene se ejecuta en silencio, lo que se propone es lo que mueve plata/riesgo
 
 ## reference/ — Donde encontrar cosas
