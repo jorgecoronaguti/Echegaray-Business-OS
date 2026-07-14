@@ -24,7 +24,7 @@ export const CAPABILITY_SKILLS = {
   // es monodominio de alto riesgo de vigencia; Continuidad de Datos es el motor de
   // confiabilidad de fuentes. Equipos usa su skill dedicada + costos (para el costo
   // por equipo) — gap_skill cerrado: existe equipos-flota-construccion.
-  'advise.estimating':   ['costos-presupuestacion', 'ingenieria-civil-construccion'],
+  'advise.estimating':   ['costos-presupuestacion', 'ingenieria-civil-construccion', 'planificacion-produccion', 'compras-abastecimiento-subcontratacion'],
   'advise.quality':      ['calidad-obra'],
   'advise.site':         ['direccion-obra', 'seguridad-higiene-art', 'planificacion-produccion'],
   'advise.equipment':    ['equipos-flota-construccion', 'costos-presupuestacion'],

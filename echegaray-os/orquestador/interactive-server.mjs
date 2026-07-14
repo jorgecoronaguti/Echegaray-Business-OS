@@ -24,6 +24,7 @@ import { decide } from './lib/policy.mjs'
 import { makeGoogleClient } from './lib/google.mjs'
 import { driveReadTools } from './lib/tools/drive.mjs'
 import { driveWriteTools } from './lib/tools/drive-write.mjs'
+import { webSearchTools } from './lib/tools/web.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
 import { enqueuePendingOperation, listPendingOperations, decidePendingOperation, getPendingOperationById } from './lib/pending-ops.mjs'
 import { classifyDirective, classifyDirectiveMulti } from './lib/classify-directive.mjs'
@@ -75,7 +76,7 @@ async function boot() {
  *  encola como operaciones pendientes (Nivel E). */
 function driveRegistry() {
   const google = makeGoogleClient({ config: cfg })
-  const registry = { ...driveReadTools(google), ...driveWriteTools(google) }
+  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...webSearchTools() }
   registry['drive.find'] = {
     capability: 'drive.read', account: 'ecsas',
     schema: {
@@ -267,7 +268,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
     ? '\n\nPRESUPUESTACIÓN (método Echegaray) — MODO GUÍA: cuando el dueño quiere ARMAR un presupuesto, LIDERÁ la conversación PASO A PASO. NO pidas todo junto ni tires el presupuesto entero de una. Arrancá confirmando la obra y su alcance/partidas (podés tomarlas de un presupuesto anterior si te lo señala — carpeta PRESUPUESTOS, cada obra tiene su subcarpeta). Después construí PARTIDA POR PARTIDA: para cada una armá el APU (material + desperdicio, MO = rendimiento HH/unidad × costo horario UOCRA Zona A, equipos, subcontrato), mostrá el subtotal, CONFIRMÁ con el dueño y seguí a la próxima. Mantené un TOTAL CORRIENTE visible. Preguntá SOLO lo que necesitás para el paso actual (una cosa a la vez). ' +
       'El FLUJO completo (es GUÍA, el dueño puede saltear pasos): alcance → cómputo → APU por partida → costo directo → gastos generales → beneficio → financiación → impuestos → oferta → control vs histórico. ' +
       'DISCIPLINA: no mezclar costo directo / GG / beneficio / impuestos; MO siempre desde el convenio vigente (Zona A de arriba); dejar el alcance por escrito (para cobrar adicionales). ' +
-      'Armá el presupuesto EN EL CHAT con tablas claras (no necesitás una planilla). Si el dueño tiene una planilla nativa compartida y te lo pide, además la completás con drive_batch_update (queda en Pendientes). Si falta un precio de material y no te lo dan, DECILO y pedilo — no inventes precios.'
+      'Armá el presupuesto EN EL CHAT con tablas claras (no necesitás una planilla). Si el dueño tiene una planilla nativa compartida y te lo pide, además la completás con drive_batch_update (queda en Pendientes). Si falta un precio de material y no está en los archivos, BUSCALO en internet con web_search (ej. "precio m3 hormigón H21 San Juan 2026") — es precio de REFERENCIA con fuente, a verificar, NUNCA inventes un precio. Para jornales usá los UOCRA Zona A de arriba (ya verificados).'
     : '')
   // Framing conciso SIEMPRE (aunque cargue skills): queremos el CONOCIMIENTO del
   // especialista pero una entrega corta y directa, no el análisis extenso del worker.
