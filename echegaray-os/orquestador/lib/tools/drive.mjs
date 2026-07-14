@@ -45,6 +45,49 @@ export function driveReadTools(google) {
         }
       },
     },
+    'drive.tabs': {
+      capability: 'drive.read',
+      account: 'ecsas',
+      schema: {
+        name: 'drive_tabs',
+        description:
+          'Lista las PESTAÑAS (hojas) de un Google Sheet. Usalo ANTES de leer o escribir para descubrir en qué pestaña está lo que buscás (ej. "Compras", "Caja", "Sueldos" son pestañas del mismo archivo, no archivos distintos). Después leé/escribí con el rango de esa pestaña, ej. "Compras!A1:F".',
+        input_schema: { type: 'object', properties: { file_id: { type: 'string', description: 'ID del Sheet' } }, required: ['file_id'] },
+      },
+      async run(input) {
+        if (!input?.file_id) return { error: 'falta file_id' }
+        const tabs = await google.listTabs(input.file_id)
+        return { file_id: input.file_id, tabs }
+      },
+    },
+    'drive.lastrow': {
+      capability: 'drive.read',
+      account: 'ecsas',
+      schema: {
+        name: 'drive_last_row',
+        description:
+          'Devuelve el número de la ÚLTIMA fila con datos de una pestaña (mirando una columna de referencia, por defecto "A"). Usalo para saber en qué fila escribir el próximo registro (next_empty_row) SIN leer toda la planilla ni insertar/desplazar filas: después escribís con drive_update en esa fila.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            file_id: { type: 'string' },
+            tab: { type: 'string', description: 'nombre de la pestaña, ej. "Compras"' },
+            column: { type: 'string', description: 'columna de referencia (siempre poblada en filas con datos), default "A"' },
+          },
+          required: ['file_id', 'tab'],
+        },
+      },
+      async run(input) {
+        if (!input?.file_id || !input?.tab) return { error: 'faltan file_id y tab' }
+        const col = String(input.column || 'A').toUpperCase()
+        const vals = await google.readSheetValues(input.file_id, `${input.tab}!${col}1:${col}20000`)
+        let last = 0
+        for (let i = 0; i < vals.length; i++) {
+          if (vals[i] && vals[i][0] != null && String(vals[i][0]).trim() !== '') last = i + 1
+        }
+        return { file_id: input.file_id, tab: input.tab, column: col, last_data_row: last, next_empty_row: last + 1 }
+      },
+    },
     'drive.read': {
       capability: 'drive.read',
       account: 'ecsas',

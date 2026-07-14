@@ -117,8 +117,11 @@ function attachmentBlock(att) {
 
 async function ask({ directive, fileId, fast, attachment }) {
   const att = attachmentBlock(attachment)
-  // Con adjunto conviene más precisión (OCR de factura/remito): sonnet.
-  const model = att ? 'sonnet' : fast === false ? 'sonnet' : 'haiku'
+  // Intención de escritura: haiku es demasiado tímido para el ciclo leer→ubicar
+  // pestaña→proponer cambio (bailaba a preguntar). Con intención de escribir o un
+  // adjunto, usamos sonnet (más agéntico y preciso).
+  const writeIntent = /\b(registr|agreg|añad|anot|escrib|orden|complet|corrig|carg|aplic|hacelo|hac[eé]|modific|pon[eé]|actualiz|edit|arregl|reemplaz|renombr|mejor)/i.test(String(directive || ''))
+  const model = att || writeIntent ? 'sonnet' : fast === false ? 'sonnet' : 'haiku'
   const engine = resolveEngine('anthropic-api')
 
   // Fase 3: rutear al especialista correcto. Clasificamos la directiva a un dominio
@@ -150,7 +153,12 @@ async function ask({ directive, fileId, fast, attachment }) {
     memoria +
     `\n\nRespondé en español, claro y directo, como un buen administrativo. Si necesitás un dato de un archivo, LEELO con las tools antes de responder (no inventes). ` +
     `Distinguí hecho/estimación; si falta algo decilo. ` +
-    `Si la directiva pide ESCRIBIR/ordenar/completar/corregir/registrar en un archivo, usá drive_update / drive_append / drive_create con el cambio CONCRETO (leé antes el archivo para no pisar datos): la operación queda PENDIENTE de tu aprobación, no se ejecuta sola. Avisá qué dejaste pendiente. ` +
+    `Si la directiva pide ESCRIBIR/ordenar/completar/corregir/registrar/mejorar un archivo: ` +
+    `(1) descubrí la estructura con drive_tabs — ojo: las pestañas como "Compras", "Caja", "Sueldos" son parte del MISMO archivo, NO archivos distintos — y leé la pestaña con drive_read para ver los encabezados y DÓNDE terminan los datos (ej. range "Compras!A1:M60"). ` +
+    `(2) NO pidas aclaraciones que puedas resolver leyendo el archivo: ACTUÁ. ` +
+    `(3) Para AGREGAR un registro (proceso EXACTO, sin loopear): drive_tabs → leé los encabezados con UNA sola drive_read (ej. "Compras!A1:M10") → drive_last_row(pestaña) te da next_empty_row → drive_update en "Pestaña!A<next>:M<next>" con la fila en el orden de los encabezados. NUNCA drive_append con rango abierto "A:M" (se ancla al título e inserta desplazando/rompiendo fórmulas). ` +
+    `(4) Ojo con las columnas que son FÓRMULAS (ej. un ID autonumérico): no las pises con un valor fijo, dejá esa celda vacía o replicá la fórmula. ` +
+    `La operación queda PENDIENTE de tu aprobación (no se ejecuta sola); avisá en una línea QUÉ y en qué fila/rango vas a escribir. Solo preguntá si falta un dato que no está en NINGÚN archivo. ` +
     (att
       ? `\n\nTE ADJUNTARON UN ARCHIVO (foto/PDF): interpretalo. Si es una factura/remito/comprobante, extraé proveedor, fecha, importe total, número y concepto. Si la directiva pide registrarlo, encontrá el Sheet correcto (ej. "Flujo de Caja - Cash Flow", pestaña de compras/gastos), LEÉ su estructura con drive_read y proponé la fila con drive_append. No inventes lo que no ves; si un dato no está en la imagen, decilo.\n`
       : '') +
@@ -161,8 +169,8 @@ async function ask({ directive, fileId, fast, attachment }) {
   const promptContent = att ? [att, { type: 'text', text: prompt }] : prompt
 
   const eng = await engine.run(
-    { system, prompt: promptContent, worktreePath: CTX.context.repository.rootPath, model, maxCostUsd: 0.6,
-      maxToolIterations: att ? 8 : fast === false ? 10 : 6, allowedTools: 'Read',
+    { system, prompt: promptContent, worktreePath: CTX.context.repository.rootPath, model, maxCostUsd: 0.8,
+      maxToolIterations: att || writeIntent ? 12 : fast === false ? 10 : 6, allowedTools: 'Read',
       task: { id: 'interactive', capability_slug: 'advise.admin' },
       tools: Object.values(registry).map((t) => t.schema), toolExecutor, agentSlug: 'interactive' },
     CTX)

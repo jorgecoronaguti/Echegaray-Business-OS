@@ -53,7 +53,7 @@ export function driveWriteTools(google) {
       schema: {
         name: 'drive_append',
         description:
-          'Agrega filas NUEVAS al final de una tabla de un Google Sheet existente (no pisa nada). Ideal para registrar un movimiento — ej. una fila en el Flujo de Caja. Pasá file_id, range (la tabla, ej. "Compras!A:D") y values (matriz de filas a agregar). REQUIERE aprobación humana.',
+          'Agrega filas al final de una tabla, insertando filas nuevas. CUIDADO: Sheets ancla el append a la tabla que contiene el range; si la pestaña tiene un TÍTULO en las primeras filas, un range abierto ("A:M") se ancla al título e inserta en el lugar equivocado, desplazando datos y rompiendo fórmulas. Para agregar un registro en una pestaña con títulos, PREFERÍ drive_update en la primera fila vacía después de los datos (no desplaza). Usá drive_append solo si el range cae dentro de la tabla real de datos (ej. la fila de encabezados). Pasá file_id, range y values.',
         input_schema: {
           type: 'object',
           properties: {
@@ -91,8 +91,17 @@ export function driveWriteTools(google) {
       async run(input) {
         const mimeType = TIPO_MIME[String(input?.tipo || '').toLowerCase()]
         if (!input?.name || !mimeType) return { error: 'faltan name o tipo válido ("doc"|"sheet"|"carpeta")' }
-        const f = await google.createFile({ name: input.name, mimeType, parents: input.folder_id ? [input.folder_id] : undefined })
-        return { ok: true, id: f.id, name: f.name, link: f.webViewLink ?? null }
+        try {
+          const f = await google.createFile({ name: input.name, mimeType, parents: input.folder_id ? [input.folder_id] : undefined })
+          return { ok: true, id: f.id, name: f.name, link: f.webViewLink ?? null }
+        } catch (e) {
+          // La cuenta de servicio no tiene almacenamiento propio: crear un archivo
+          // NUEVO suelto falla. Editar archivos EXISTENTES compartidos sí funciona.
+          if (/storageQuota|quota has been exceeded/i.test(e?.message || '')) {
+            return { error: 'no puedo crear un archivo nuevo desde cero (la cuenta de servicio no tiene almacenamiento propio). Sí puedo EDITAR un archivo existente compartido conmigo: creá el archivo vacío y compartímelo, o decime en cuál escribir.' }
+          }
+          throw e
+        }
       },
     },
     'drive.delete': {
