@@ -22,12 +22,12 @@ export const CAPABILITY_SKILLS = {
   // Organización completa (8 especialistas nuevos). El Presupuestador cruza costo
   // con criterio técnico; el Jefe de Obra cruza coordinación con seguridad; Fiscal
   // es monodominio de alto riesgo de vigencia; Continuidad de Datos es el motor de
-  // confiabilidad de fuentes. 'advise.equipment' usa costos+administración como
-  // interino: no existe todavía una skill dedicada de equipos/flota (gap_skill).
+  // confiabilidad de fuentes. Equipos usa su skill dedicada + costos (para el costo
+  // por equipo) — gap_skill cerrado: existe equipos-flota-construccion.
   'advise.estimating':   ['costos-presupuestacion', 'ingenieria-civil-construccion'],
   'advise.quality':      ['calidad-obra'],
   'advise.site':         ['direccion-obra', 'seguridad-higiene-art', 'planificacion-produccion'],
-  'advise.equipment':    ['costos-presupuestacion', 'administracion-operativa-construccion'],
+  'advise.equipment':    ['equipos-flota-construccion', 'costos-presupuestacion'],
   'advise.tax':          ['impuestos-construccion'],
   'advise.admin':        ['administracion-operativa-construccion', 'orden-documental-dataroom'],
   'advise.safety':       ['seguridad-higiene-art'],
