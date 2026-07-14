@@ -11,6 +11,9 @@
 // Auth: header 'authorization: Bearer <INTERACTIVE_TOKEN>' (env). CORS abierto para
 // que la extensión pueda llamarlo. Corre como servicio systemd aparte del worker.
 import http from 'node:http'
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { loadConfig } from './lib/config.mjs'
 import { createLogger } from './lib/logger.mjs'
 import { query } from './lib/db.mjs'
@@ -26,6 +29,29 @@ const cfg = loadConfig()
 const log = createLogger({ component: 'interactive' })
 const PORT = Number(process.env.ORQ_INTERACTIVE_PORT ?? 8790)
 const TOKEN = process.env.ORQ_INTERACTIVE_TOKEN ?? ''
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const ZIP_PATH = path.join(REPO, 'extension.zip')
+const PUBLIC_URL = process.env.ORQ_PUBLIC_URL || `http://64.176.22.159:${PORT}`
+
+// Página simple de descarga de la extensión (servida desde la propia VM).
+const DOWNLOAD_PAGE = () => `<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Echegaray OS — Extensión</title>
+<style>body{font-family:system-ui,sans-serif;background:#0e1118;color:#e6eaf2;max-width:640px;margin:0 auto;padding:40px 24px;line-height:1.6}
+h1{letter-spacing:-.02em}a.btn{display:inline-block;background:#6f9dea;color:#0b1220;font-weight:700;padding:12px 20px;border-radius:10px;text-decoration:none;margin:12px 0}
+ol{padding-left:20px}code{background:#161b25;padding:2px 6px;border-radius:5px;border:1px solid #2a323f}li{margin:8px 0}.soft{color:#aab3c5}</style></head>
+<body><h1>Echegaray OS — Extensión de Chrome</h1>
+<p class="soft">Un panel para darle directivas al OS sobre tus archivos de Drive, desde el navegador.</p>
+<a class="btn" href="/extension.zip">⬇ Descargar la extensión</a>
+<h3>Cómo instalarla</h3>
+<ol>
+<li>Descargá el .zip y <b>descomprimilo</b> en una carpeta.</li>
+<li>Abrí Chrome en <code>chrome://extensions</code>.</li>
+<li>Activá <b>“Modo de desarrollador”</b> (arriba a la derecha).</li>
+<li>Clic en <b>“Cargar descomprimida”</b> y elegí la carpeta.</li>
+<li>Clic en el ícono de la extensión → se abre el panel. En ⚙ pegá tu <b>llave de acceso</b>.</li>
+</ol>
+<p class="soft">La extensión le habla a este mismo servidor (<code>${PUBLIC_URL}</code>). Todo corre acá, en tu VM.</p>
+</body></html>`
 
 let CTX = null
 let DIRECTOR_PRINCIPAL = null
@@ -111,6 +137,17 @@ function send(res, code, obj) {
 const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') return send(res, 204, {})
   if (req.method === 'GET' && req.url === '/health') return send(res, 200, { ok: true, ready: !!CTX })
+  if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+    return res.end(DOWNLOAD_PAGE())
+  }
+  if (req.method === 'GET' && req.url === '/extension.zip') {
+    try {
+      const zip = await readFile(ZIP_PATH)
+      res.writeHead(200, { 'content-type': 'application/zip', 'content-disposition': 'attachment; filename="echegaray-os-extension.zip"' })
+      return res.end(zip)
+    } catch { return send(res, 404, { error: 'extensión no empaquetada todavía' }) }
+  }
   if (req.method !== 'POST' || req.url !== '/ask') return send(res, 404, { error: 'no encontrado' })
   if (TOKEN && req.headers.authorization !== `Bearer ${TOKEN}`) return send(res, 401, { error: 'no autorizado' })
 
@@ -131,5 +168,5 @@ const server = http.createServer(async (req, res) => {
   })
 })
 
-boot().then(() => server.listen(PORT, '127.0.0.1', () => log.info('escuchando', { port: PORT })))
+boot().then(() => server.listen(PORT, '0.0.0.0', () => log.info('escuchando (público)', { port: PORT, url: PUBLIC_URL })))
   .catch((e) => { log.error('boot falló', { error: e.message }); process.exit(1) })
