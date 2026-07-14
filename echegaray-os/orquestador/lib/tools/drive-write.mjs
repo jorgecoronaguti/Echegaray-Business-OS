@@ -10,8 +10,9 @@
 
 const DOC = 'application/vnd.google-apps.document'
 const SHEET = 'application/vnd.google-apps.spreadsheet'
+const SLIDES = 'application/vnd.google-apps.presentation'
 const FOLDER = 'application/vnd.google-apps.folder'
-const TIPO_MIME = { doc: DOC, documento: DOC, sheet: SHEET, planilla: SHEET, carpeta: FOLDER, folder: FOLDER }
+const TIPO_MIME = { doc: DOC, documento: DOC, sheet: SHEET, planilla: SHEET, slides: SLIDES, presentacion: SLIDES, presentación: SLIDES, carpeta: FOLDER, folder: FOLDER }
 
 /** Valida que `values` sea una matriz de filas (array de arrays de celdas). */
 function normalizeValues(values) {
@@ -77,13 +78,13 @@ export function driveWriteTools(google) {
       schema: {
         name: 'drive_create',
         description:
-          'Crea un archivo NUEVO propio del OS en Drive: un documento (doc), una planilla (sheet) o una carpeta. Pasá name, tipo ("doc"|"sheet"|"carpeta") y opcional folder_id para ubicarlo. REQUIERE aprobación humana.',
+          'Crea un archivo NUEVO en Drive: planilla (sheet), documento (doc), presentación (slides) o carpeta. FUNCIONA cuando se crea dentro de la Unidad Compartida "Echegaray OS" (pasá su folder_id) — ahí la cuenta del OS sí puede crear. Pasá name, tipo y folder_id (la Unidad Compartida o una carpeta dentro). REQUIERE aprobación humana.',
         input_schema: {
           type: 'object',
           properties: {
             name: { type: 'string', description: 'nombre del archivo/carpeta' },
-            tipo: { type: 'string', enum: ['doc', 'sheet', 'carpeta'], description: 'qué crear' },
-            folder_id: { type: 'string', description: 'ID de la carpeta contenedora (opcional)' },
+            tipo: { type: 'string', enum: ['doc', 'sheet', 'slides', 'carpeta'], description: 'qué crear' },
+            folder_id: { type: 'string', description: 'ID de la Unidad Compartida "Echegaray OS" o una carpeta dentro (necesario para que la creación funcione)' },
           },
           required: ['name', 'tipo'],
         },
