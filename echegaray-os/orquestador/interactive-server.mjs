@@ -172,7 +172,7 @@ async function ask({ directive, fileId, fast, attachment, history }) {
     `(2) NO pidas aclaraciones que puedas resolver leyendo el archivo: ACTUÁ. ` +
     `(3) Para AGREGAR un registro (proceso EXACTO, sin loopear): drive_tabs → leé los encabezados con UNA sola drive_read (ej. "Compras!A1:M10") → drive_last_row(pestaña) te da next_empty_row → drive_update en "Pestaña!A<next>:M<next>" con la fila en el orden de los encabezados. NUNCA drive_append con rango abierto "A:M" (se ancla al título e inserta desplazando/rompiendo fórmulas). ` +
     `(4) Ojo con las columnas que son FÓRMULAS (ej. un ID autonumérico): no las pises con un valor fijo, dejá esa celda vacía o replicá la fórmula. ` +
-    `La operación queda PENDIENTE de tu aprobación (no se ejecuta sola); avisá en una línea QUÉ y en qué fila/rango vas a escribir. Solo preguntá si falta un dato que no está en NINGÚN archivo. ` +
+    `REGLA CRÍTICA — ACTUÁ, NO NARRES: para que un cambio ocurra TENÉS QUE LLAMAR la tool de escritura (drive_update/drive_append/drive_rename/drive_move) AHORA MISMO. Describir el cambio en prosa ("Reescribo…", "Voy a…") NO crea NADA. Solo la llamada a la tool deja la operación en Pendientes. NO pidas confirmación en el chat ("¿confirmo?", "¿te muestro fila por fila?", "¿querés que…?"): la aprobación ES el botón de Pendientes, ahí el dueño revisa y aprueba/rechaza. Cuando tengas el cambio listo, LLAMÁ la tool con los values REALES y COMPLETOS (si es una reescritura grande de muchas filas, emití la matriz entera, no la resumas), y recién después avisá en UNA línea qué quedó pendiente y en qué rango. Solo preguntá si falta un dato que no está en NINGÚN archivo. ` +
     `Para ADMINISTRAR/ORGANIZAR Drive: mirá con drive_list/drive_find y usá drive_create (tipo "carpeta"), drive_rename o drive_move (todo pendiente de aprobación). Podés crear CARPETAS y renombrar/mover archivos existentes; NO podés crear documentos/planillas nuevos desde cero (la cuenta no tiene almacenamiento propio) — para eso el dueño crea el archivo y lo comparte. ` +
     (att
       ? `\n\nTE ADJUNTARON UN ARCHIVO (foto/PDF): interpretalo. Si es una factura/remito/comprobante, extraé proveedor, fecha, importe total, número y concepto. Si la directiva pide registrarlo, encontrá el Sheet correcto (ej. "Flujo de Caja - Cash Flow", pestaña de compras/gastos), LEÉ su estructura con drive_read y proponé la fila con drive_append. No inventes lo que no ves; si un dato no está en la imagen, decilo.\n`
@@ -184,7 +184,7 @@ async function ask({ directive, fileId, fast, attachment, history }) {
   const promptContent = att ? [att, { type: 'text', text: prompt }] : prompt
 
   const eng = await engine.run(
-    { system, prompt: promptContent, worktreePath: CTX.context.repository.rootPath, model, maxCostUsd: 0.8, maxTokens: 800,
+    { system, prompt: promptContent, worktreePath: CTX.context.repository.rootPath, model, maxCostUsd: 0.8, maxTokens: writeIntent || att ? 4096 : 900,
       maxToolIterations: att || writeIntent ? 14 : 10, allowedTools: 'Read',
       task: { id: 'interactive', capability_slug: 'advise.admin' },
       tools: Object.values(registry).map((t) => t.schema), toolExecutor, agentSlug: 'interactive' },
