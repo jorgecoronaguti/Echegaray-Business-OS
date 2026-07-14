@@ -94,7 +94,7 @@ export function driveReadTools(google) {
       schema: {
         name: 'drive_read',
         description:
-          'Lee un Google Sheet de Drive y devuelve las celdas de un rango. Usá esto para consultar datos reales de la empresa (caja, P&L, presupuestos) en vez de decir "desconocido". Pasá file_id si lo tenés, o query con el nombre del archivo.',
+          'Lee el CONTENIDO de un archivo de Drive: Google Sheets (celdas de un rango), Excel (.xlsx/.xlsm) y también PDFs (contratos, cotizaciones, remitos, planos con texto — devuelve el texto extraído). Usá esto para consultar datos reales de la empresa en vez de decir "desconocido". Pasá file_id si lo tenés, o query con el nombre. Para PDFs no hace falta rango.',
         input_schema: {
           type: 'object',
           properties: {
@@ -127,8 +127,15 @@ export function driveReadTools(google) {
           const values = await google.readSheetValues(fileId, range)
           return { file_id: fileId, name: meta.name, tipo: 'google_sheet', range, rows: values.length, values }
         }
-        // PDF/Word/imagen: aún no legibles por contenido — se informa honestamente.
-        return { file_id: fileId, name: meta.name, tipo: mt, nota: 'Este archivo no es una planilla (PDF/Word/imagen): el OS sabe que existe pero todavía no lee su contenido.' }
+        // PDF: extraer el TEXTO localmente (0 API). Cubre contratos, cotizaciones,
+        // remitos, planos con texto. Un PDF escaneado (imagen) devuelve poco texto.
+        if (mt.includes('pdf')) {
+          const p = await google.readPdfText(fileId)
+          if (p.scanned) return { file_id: fileId, name: meta.name, tipo: 'pdf', pages: p.pages, nota: 'PDF sin texto extraíble (probablemente escaneado/imagen). Para leerlo haría falta OCR/visión.' }
+          return { file_id: fileId, name: meta.name, tipo: 'pdf', pages: p.pages, chars: p.chars, truncado: p.truncated, texto: p.text }
+        }
+        // Word/imagen: aún no legibles por contenido — se informa honestamente.
+        return { file_id: fileId, name: meta.name, tipo: mt, nota: 'Este archivo no es una planilla ni PDF (Word/imagen): el OS sabe que existe pero todavía no lee su contenido.' }
       },
     },
     'drive.navigate': {

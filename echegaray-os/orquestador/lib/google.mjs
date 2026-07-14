@@ -182,6 +182,19 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes 
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false, defval: null })
       return { sheets, sheet: target, total_rows: rows.length, rows: rows.slice(0, maxRows) }
     },
+    /** Lee el TEXTO de un PDF extrayéndolo LOCALMENTE (0 costo de API — no manda el PDF
+     *  al modelo). Acotado a maxChars para no explotar tokens. Un PDF escaneado (imagen)
+     *  devuelve poco/nada de texto: se marca `scanned` para que el que llama lo sepa. */
+    async readPdfText(fileId, { maxChars = 20000 } = {}) {
+      const { PDFParse } = await import('pdf-parse')
+      const buf = await downloadBytes(fileId)
+      const parser = new PDFParse({ data: new Uint8Array(buf) })
+      try {
+        const r = await parser.getText()
+        const text = String(r.text || '')
+        return { pages: r.total ?? null, chars: text.length, text: text.slice(0, maxChars), truncated: text.length > maxChars, scanned: text.trim().length < 40 }
+      } finally { try { await parser.destroy() } catch { /* noop */ } }
+    },
 
     // ---- ESCRITURA (requiere scopes de WRITE_SCOPES; cada efecto pasó por aprobación) ----
 
