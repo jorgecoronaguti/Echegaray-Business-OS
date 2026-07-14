@@ -2,41 +2,6 @@
  "saldoHoy": -9170957,
  "vencidos": [
   {
-   "fecha": "2026-03-27",
-   "tipo": "pago",
-   "quien": "Gerson Castro",
-   "detalle": "Civil · CAÑERIA BASE",
-   "monto": -700000
-  },
-  {
-   "fecha": "2026-06-19",
-   "tipo": "pago",
-   "quien": "Gerson Castro",
-   "detalle": "Civil · Duchas y cambio de cocina",
-   "monto": -250000
-  },
-  {
-   "fecha": "2026-06-19",
-   "tipo": "pago",
-   "quien": "Gerson Castro",
-   "detalle": "Civil · CLOACA Y AGUA POTABLE",
-   "monto": -1450000
-  },
-  {
-   "fecha": "2026-06-26",
-   "tipo": "pago",
-   "quien": "Const-Sek",
-   "detalle": "Civil · Oficinas y Fabrica de Palitos · proyectado",
-   "monto": -1278820
-  },
-  {
-   "fecha": "2026-07-01",
-   "tipo": "pago",
-   "quien": "Hormiserv",
-   "detalle": "Civil · HORMIGON PISO FRENTE · proyectado",
-   "monto": -2768480
-  },
-  {
    "fecha": "2026-07-02",
    "tipo": "cobro",
    "quien": "LA ESTRELLA /ALIMENTOS DEL SUR SAS",
@@ -66,41 +31,6 @@
   },
   {
    "fecha": "2026-07-10",
-   "tipo": "pago",
-   "quien": "FCL",
-   "detalle": "Impuestos · Junio · proyectado",
-   "monto": -800000
-  },
-  {
-   "fecha": "2026-07-10",
-   "tipo": "pago",
-   "quien": "ARCA",
-   "detalle": "Impuestos · Junio · proyectado",
-   "monto": -9000000
-  },
-  {
-   "fecha": "2026-07-10",
-   "tipo": "pago",
-   "quien": "Sueldos",
-   "detalle": "Estructura · Junio · proyectado",
-   "monto": -3000000
-  },
-  {
-   "fecha": "2026-07-10",
-   "tipo": "pago",
-   "quien": "SINDICATOS",
-   "detalle": "Impuestos · JUNIO · proyectado",
-   "monto": -7300
-  },
-  {
-   "fecha": "2026-07-10",
-   "tipo": "pago",
-   "quien": "SINDICATOS",
-   "detalle": "Impuestos · JUNIO · proyectado",
-   "monto": -7300
-  },
-  {
-   "fecha": "2026-07-10",
    "tipo": "cheque",
    "quien": "Corralon Progreso",
    "detalle": "FISICO N° 224",
@@ -124,49 +54,14 @@
      "quien": "LA ESTRELLA /ALIMENTOS DEL SUR SAS",
      "detalle": "Civil · Pendiente",
      "monto": 10000000
-    },
-    {
-     "fecha": "2026-07-15",
-     "tipo": "pago",
-     "quien": "Sueldos",
-     "detalle": "Estructura · Primera · proyectado",
-     "monto": -3000000
     }
    ],
-   "neto": 13215646,
-   "acumulado": 4044689
-  },
-  {
-   "fecha": "2026-07-16",
-   "movimientos": [
-    {
-     "fecha": "2026-07-16",
-     "tipo": "pago",
-     "quien": "ARCA",
-     "detalle": "Impuestos · cuota 6 · proyectado",
-     "monto": -1034931.82
-    },
-    {
-     "fecha": "2026-07-16",
-     "tipo": "pago",
-     "quien": "ARCA",
-     "detalle": "Impuestos · Deuda Previcional - 931 Enero 26 · proyectado",
-     "monto": -473767.08
-    }
-   ],
-   "neto": -1508698.9,
-   "acumulado": 2535990.1
+   "neto": 16215646,
+   "acumulado": 7044689
   },
   {
    "fecha": "2026-07-17",
    "movimientos": [
-    {
-     "fecha": "2026-07-17",
-     "tipo": "pago",
-     "quien": "SINDICATOS",
-     "detalle": "Impuestos · Junio · proyectado",
-     "monto": -700000
-    },
     {
      "fecha": "2026-07-17",
      "tipo": "cheque",
@@ -175,8 +70,8 @@
      "monto": -470945
     }
    ],
-   "neto": -1170945,
-   "acumulado": 1365045.1
+   "neto": -470945,
+   "acumulado": 6573744
   },
   {
    "fecha": "2026-07-18",
@@ -218,7 +113,7 @@
     }
    ],
    "neto": -1693098.79,
-   "acumulado": -328053.68999999994
+   "acumulado": 4880645.21
   },
   {
    "fecha": "2026-07-20",
@@ -239,7 +134,7 @@
     }
    ],
    "neto": 15000000,
-   "acumulado": 14671946.31
+   "acumulado": 19880645.21
   },
   {
    "fecha": "2026-07-23",
@@ -260,7 +155,7 @@
     }
    ],
    "neto": -1000000,
-   "acumulado": 13671946.31
+   "acumulado": 18880645.21
   },
   {
    "fecha": "2026-07-24",
@@ -274,21 +169,7 @@
     }
    ],
    "neto": 3488735,
-   "acumulado": 17160681.310000002
-  },
-  {
-   "fecha": "2026-07-30",
-   "movimientos": [
-    {
-     "fecha": "2026-07-30",
-     "tipo": "pago",
-     "quien": "Sueldos",
-     "detalle": "Estructura · Segunda · proyectado",
-     "monto": -3000000
-    }
-   ],
-   "neto": -3000000,
-   "acumulado": 14160681.310000002
+   "acumulado": 22369380.21
   },
   {
    "fecha": "2026-07-31",
@@ -302,7 +183,7 @@
     }
    ],
    "neto": 10000000,
-   "acumulado": 24160681.310000002
+   "acumulado": 32369380.21
   },
   {
    "fecha": "2026-08-02",
@@ -337,7 +218,7 @@
     }
    ],
    "neto": -965863.5900033333,
-   "acumulado": 23194817.71999667
+   "acumulado": 31403516.619996667
   },
   {
    "fecha": "2026-08-03",
@@ -365,88 +246,11 @@
     }
    ],
    "neto": 16798304.8,
-   "acumulado": 39993122.51999667
-  },
-  {
-   "fecha": "2026-08-07",
-   "movimientos": [
-    {
-     "fecha": "2026-08-07",
-     "tipo": "pago",
-     "quien": "Banco",
-     "detalle": "Financiero · Prestamo Camioneta Ford XLS · proyectado",
-     "monto": -1282810.54
-    }
-   ],
-   "neto": -1282810.54,
-   "acumulado": 38710311.979996674
+   "acumulado": 48201821.419996664
   },
   {
    "fecha": "2026-08-10",
    "movimientos": [
-    {
-     "fecha": "2026-08-10",
-     "tipo": "pago",
-     "quien": "FCL",
-     "detalle": "Impuestos · Julio · proyectado",
-     "monto": -800000
-    },
-    {
-     "fecha": "2026-08-10",
-     "tipo": "pago",
-     "quien": "ARCA",
-     "detalle": "Impuestos · Julio · proyectado",
-     "monto": -8000000
-    },
-    {
-     "fecha": "2026-08-10",
-     "tipo": "pago",
-     "quien": "Sueldos",
-     "detalle": "Estructura · Julio · proyectado",
-     "monto": -1700000
-    },
-    {
-     "fecha": "2026-08-10",
-     "tipo": "pago",
-     "quien": "Sueldos",
-     "detalle": "Estructura · Julio · proyectado",
-     "monto": -1600000
-    },
-    {
-     "fecha": "2026-08-10",
-     "tipo": "pago",
-     "quien": "Sueldos",
-     "detalle": "Estructura · Julio · proyectado",
-     "monto": -3000000
-    },
-    {
-     "fecha": "2026-08-10",
-     "tipo": "pago",
-     "quien": "Sueldos",
-     "detalle": "Estructura · Julio · proyectado",
-     "monto": -1500000
-    },
-    {
-     "fecha": "2026-08-10",
-     "tipo": "pago",
-     "quien": "Sueldos",
-     "detalle": "Estructura · Julio · proyectado",
-     "monto": -2000000
-    },
-    {
-     "fecha": "2026-08-10",
-     "tipo": "pago",
-     "quien": "SINDICATOS",
-     "detalle": "Impuestos · JULIO · proyectado",
-     "monto": -7300
-    },
-    {
-     "fecha": "2026-08-10",
-     "tipo": "pago",
-     "quien": "SINDICATOS",
-     "detalle": "Impuestos · JULIO · proyectado",
-     "monto": -7300
-    },
     {
      "fecha": "2026-08-10",
      "tipo": "cheque",
@@ -469,8 +273,8 @@
      "monto": -750000
     }
    ],
-   "neto": -20437600,
-   "acumulado": 18272711.979996674
+   "neto": -1823000,
+   "acumulado": 46378821.419996664
   },
   {
    "fecha": "2026-08-12",
@@ -491,7 +295,7 @@
     }
    ],
    "neto": -1010000,
-   "acumulado": 17262711.979996674
+   "acumulado": 45368821.419996664
   },
   {
    "fecha": "2026-08-15",
@@ -502,42 +306,14 @@
      "quien": "LA ESTRELLA /ALIMENTOS DEL SUR SAS",
      "detalle": "Civil · Proyectado",
      "monto": 20600000
-    },
-    {
-     "fecha": "2026-08-15",
-     "tipo": "pago",
-     "quien": "Sueldos",
-     "detalle": "Estructura · Primera · proyectado",
-     "monto": -3000000
     }
    ],
-   "neto": 17600000,
-   "acumulado": 34862711.979996674
-  },
-  {
-   "fecha": "2026-08-16",
-   "movimientos": [
-    {
-     "fecha": "2026-08-16",
-     "tipo": "pago",
-     "quien": "ARCA",
-     "detalle": "Impuestos · Deuda Previcional - 931 Enero 26 · proyectado",
-     "monto": -473767.08
-    }
-   ],
-   "neto": -473767.08,
-   "acumulado": 34388944.899996676
+   "neto": 20600000,
+   "acumulado": 65968821.419996664
   },
   {
    "fecha": "2026-08-17",
    "movimientos": [
-    {
-     "fecha": "2026-08-17",
-     "tipo": "pago",
-     "quien": "SINDICATOS",
-     "detalle": "Impuestos · Julio · proyectado",
-     "monto": -700000
-    },
     {
      "fecha": "2026-08-17",
      "tipo": "cheque",
@@ -546,22 +322,8 @@
      "monto": -470944
     }
    ],
-   "neto": -1170944,
-   "acumulado": 33218000.899996676
-  },
-  {
-   "fecha": "2026-08-30",
-   "movimientos": [
-    {
-     "fecha": "2026-08-30",
-     "tipo": "pago",
-     "quien": "Sueldos",
-     "detalle": "Estructura · Segunda · proyectado",
-     "monto": -8000000
-    }
-   ],
-   "neto": -8000000,
-   "acumulado": 25218000.899996676
+   "neto": -470944,
+   "acumulado": 65497877.419996664
   },
   {
    "fecha": "2026-08-31",
@@ -589,7 +351,7 @@
     }
    ],
    "neto": 21422081.274,
-   "acumulado": 46640082.17399667
+   "acumulado": 86919958.69399667
   },
   {
    "fecha": "2026-09-02",
@@ -624,7 +386,7 @@
     }
    ],
    "neto": -965863.5900033333,
-   "acumulado": 45674218.58399334
+   "acumulado": 85954095.10399334
   },
   {
    "fecha": "2026-09-03",
@@ -638,46 +400,11 @@
     }
    ],
    "neto": -317000,
-   "acumulado": 45357218.58399334
-  },
-  {
-   "fecha": "2026-09-07",
-   "movimientos": [
-    {
-     "fecha": "2026-09-07",
-     "tipo": "pago",
-     "quien": "Banco",
-     "detalle": "Financiero · Prestamo Camioneta Ford XLS · proyectado",
-     "monto": -1282810.54
-    }
-   ],
-   "neto": -1282810.54,
-   "acumulado": 44074408.04399334
+   "acumulado": 85637095.10399334
   },
   {
    "fecha": "2026-09-10",
    "movimientos": [
-    {
-     "fecha": "2026-09-10",
-     "tipo": "pago",
-     "quien": "FCL",
-     "detalle": "Impuestos · Agosto · proyectado",
-     "monto": -800000
-    },
-    {
-     "fecha": "2026-09-10",
-     "tipo": "pago",
-     "quien": "ARCA",
-     "detalle": "Impuestos · Agosto · proyectado",
-     "monto": -6500000
-    },
-    {
-     "fecha": "2026-09-10",
-     "tipo": "pago",
-     "quien": "Sueldos",
-     "detalle": "Estructura · Agosto · proyectado",
-     "monto": -3000000
-    },
     {
      "fecha": "2026-09-10",
      "tipo": "cheque",
@@ -693,33 +420,12 @@
      "monto": -750000
     }
    ],
-   "neto": -11800000,
-   "acumulado": 32274408.04399334
-  },
-  {
-   "fecha": "2026-09-15",
-   "movimientos": [
-    {
-     "fecha": "2026-09-15",
-     "tipo": "pago",
-     "quien": "Sueldos",
-     "detalle": "Estructura · Primera · proyectado",
-     "monto": -3000000
-    }
-   ],
-   "neto": -3000000,
-   "acumulado": 29274408.04399334
+   "neto": -1500000,
+   "acumulado": 84137095.10399334
   },
   {
    "fecha": "2026-09-17",
    "movimientos": [
-    {
-     "fecha": "2026-09-17",
-     "tipo": "pago",
-     "quien": "SINDICATOS",
-     "detalle": "Impuestos · Agosto · proyectado",
-     "monto": -700000
-    },
     {
      "fecha": "2026-09-17",
      "tipo": "cheque",
@@ -728,8 +434,8 @@
      "monto": -470944
     }
    ],
-   "neto": -1170944,
-   "acumulado": 28103464.04399334
+   "neto": -470944,
+   "acumulado": 83666151.10399334
   },
   {
    "fecha": "2026-09-26",
@@ -743,7 +449,7 @@
     }
    ],
    "neto": 2274800,
-   "acumulado": 30378264.04399334
+   "acumulado": 85940951.10399334
   },
   {
    "fecha": "2026-09-30",
@@ -775,17 +481,10 @@
      "quien": "ARCOR",
      "detalle": "Mantenimiento · Proyectado",
      "monto": 955504.33
-    },
-    {
-     "fecha": "2026-09-30",
-     "tipo": "pago",
-     "quien": "Sueldos",
-     "detalle": "Estructura · Segunda · proyectado",
-     "monto": -3000000
     }
    ],
-   "neto": 14449303.309999999,
-   "acumulado": 44827567.35399334
+   "neto": 17449303.31,
+   "acumulado": 103390254.41399334
   },
   {
    "fecha": "2026-10-02",
@@ -806,7 +505,7 @@
     }
    ],
    "neto": -619227.3033333333,
-   "acumulado": 44208340.05066001
+   "acumulado": 102771027.11066002
   },
   {
    "fecha": "2026-10-03",
@@ -820,46 +519,11 @@
     }
    ],
    "neto": -317000,
-   "acumulado": 43891340.05066001
-  },
-  {
-   "fecha": "2026-10-07",
-   "movimientos": [
-    {
-     "fecha": "2026-10-07",
-     "tipo": "pago",
-     "quien": "Banco",
-     "detalle": "Financiero · Prestamo Camioneta Ford XLS · proyectado",
-     "monto": -1282810.54
-    }
-   ],
-   "neto": -1282810.54,
-   "acumulado": 42608529.51066001
+   "acumulado": 102454027.11066002
   },
   {
    "fecha": "2026-10-10",
    "movimientos": [
-    {
-     "fecha": "2026-10-10",
-     "tipo": "pago",
-     "quien": "FCL",
-     "detalle": "Impuestos · Septiembre · proyectado",
-     "monto": -800000
-    },
-    {
-     "fecha": "2026-10-10",
-     "tipo": "pago",
-     "quien": "ARCA",
-     "detalle": "Impuestos · Septiembre · proyectado",
-     "monto": -6500000
-    },
-    {
-     "fecha": "2026-10-10",
-     "tipo": "pago",
-     "quien": "Sueldos",
-     "detalle": "Estructura · Septiembre · proyectado",
-     "monto": -3000000
-    },
     {
      "fecha": "2026-10-10",
      "tipo": "cheque",
@@ -875,33 +539,12 @@
      "monto": -750000
     }
    ],
-   "neto": -11800000,
-   "acumulado": 30808529.510660008
-  },
-  {
-   "fecha": "2026-10-15",
-   "movimientos": [
-    {
-     "fecha": "2026-10-15",
-     "tipo": "pago",
-     "quien": "Sueldos",
-     "detalle": "Estructura · Primera · proyectado",
-     "monto": -3000000
-    }
-   ],
-   "neto": -3000000,
-   "acumulado": 27808529.510660008
+   "neto": -1500000,
+   "acumulado": 100954027.11066002
   },
   {
    "fecha": "2026-10-17",
    "movimientos": [
-    {
-     "fecha": "2026-10-17",
-     "tipo": "pago",
-     "quien": "SINDICATOS",
-     "detalle": "Impuestos · Septiembre · proyectado",
-     "monto": -700000
-    },
     {
      "fecha": "2026-10-17",
      "tipo": "cheque",
@@ -910,22 +553,8 @@
      "monto": -470944
     }
    ],
-   "neto": -1170944,
-   "acumulado": 26637585.510660008
-  },
-  {
-   "fecha": "2026-10-30",
-   "movimientos": [
-    {
-     "fecha": "2026-10-30",
-     "tipo": "pago",
-     "quien": "Sueldos",
-     "detalle": "Estructura · Segunda · proyectado",
-     "monto": -3000000
-    }
-   ],
-   "neto": -3000000,
-   "acumulado": 23637585.510660008
+   "neto": -470944,
+   "acumulado": 100483083.11066002
   },
   {
    "fecha": "2026-11-02",
@@ -939,91 +568,7 @@
     }
    ],
    "neto": -355413.39,
-   "acumulado": 23282172.120660007
-  },
-  {
-   "fecha": "2026-11-07",
-   "movimientos": [
-    {
-     "fecha": "2026-11-07",
-     "tipo": "pago",
-     "quien": "Banco",
-     "detalle": "Financiero · Prestamo Camioneta Ford XLS · proyectado",
-     "monto": -1282810.54
-    }
-   ],
-   "neto": -1282810.54,
-   "acumulado": 21999361.580660008
-  },
-  {
-   "fecha": "2026-11-10",
-   "movimientos": [
-    {
-     "fecha": "2026-11-10",
-     "tipo": "pago",
-     "quien": "FCL",
-     "detalle": "Impuestos · Octubre · proyectado",
-     "monto": -800000
-    },
-    {
-     "fecha": "2026-11-10",
-     "tipo": "pago",
-     "quien": "ARCA",
-     "detalle": "Impuestos · Octubre · proyectado",
-     "monto": -6500000
-    },
-    {
-     "fecha": "2026-11-10",
-     "tipo": "pago",
-     "quien": "Sueldos",
-     "detalle": "Estructura · Octubre · proyectado",
-     "monto": -3000000
-    }
-   ],
-   "neto": -10300000,
-   "acumulado": 11699361.580660008
-  },
-  {
-   "fecha": "2026-11-15",
-   "movimientos": [
-    {
-     "fecha": "2026-11-15",
-     "tipo": "pago",
-     "quien": "Sueldos",
-     "detalle": "Estructura · Primera · proyectado",
-     "monto": -3000000
-    }
-   ],
-   "neto": -3000000,
-   "acumulado": 8699361.580660008
-  },
-  {
-   "fecha": "2026-11-17",
-   "movimientos": [
-    {
-     "fecha": "2026-11-17",
-     "tipo": "pago",
-     "quien": "SINDICATOS",
-     "detalle": "Impuestos · Octubre · proyectado",
-     "monto": -700000
-    }
-   ],
-   "neto": -700000,
-   "acumulado": 7999361.580660008
-  },
-  {
-   "fecha": "2026-11-30",
-   "movimientos": [
-    {
-     "fecha": "2026-11-30",
-     "tipo": "pago",
-     "quien": "Sueldos",
-     "detalle": "Estructura · Segunda · proyectado",
-     "monto": -3000000
-    }
-   ],
-   "neto": -3000000,
-   "acumulado": 4999361.580660008
+   "acumulado": 100127669.72066002
   },
   {
    "fecha": "2026-12-02",
@@ -1037,105 +582,7 @@
     }
    ],
    "neto": -355413.39,
-   "acumulado": 4643948.190660008
-  },
-  {
-   "fecha": "2026-12-07",
-   "movimientos": [
-    {
-     "fecha": "2026-12-07",
-     "tipo": "pago",
-     "quien": "Banco",
-     "detalle": "Financiero · Prestamo Camioneta Ford XLS · proyectado",
-     "monto": -1282810.54
-    }
-   ],
-   "neto": -1282810.54,
-   "acumulado": 3361137.650660008
-  },
-  {
-   "fecha": "2026-12-10",
-   "movimientos": [
-    {
-     "fecha": "2026-12-10",
-     "tipo": "pago",
-     "quien": "FCL",
-     "detalle": "Impuestos · Noviembre · proyectado",
-     "monto": -800000
-    },
-    {
-     "fecha": "2026-12-10",
-     "tipo": "pago",
-     "quien": "ARCA",
-     "detalle": "Impuestos · Noviembre · proyectado",
-     "monto": -6500000
-    },
-    {
-     "fecha": "2026-12-10",
-     "tipo": "pago",
-     "quien": "Sueldos",
-     "detalle": "Estructura · Noviembre · proyectado",
-     "monto": -3000000
-    }
-   ],
-   "neto": -10300000,
-   "acumulado": -6938862.349339992
-  },
-  {
-   "fecha": "2026-12-15",
-   "movimientos": [
-    {
-     "fecha": "2026-12-15",
-     "tipo": "pago",
-     "quien": "Sueldos",
-     "detalle": "Estructura · Primera · proyectado",
-     "monto": -7000000
-    }
-   ],
-   "neto": -7000000,
-   "acumulado": -13938862.349339992
-  },
-  {
-   "fecha": "2026-12-17",
-   "movimientos": [
-    {
-     "fecha": "2026-12-17",
-     "tipo": "pago",
-     "quien": "SINDICATOS",
-     "detalle": "Impuestos · Noviembre · proyectado",
-     "monto": -700000
-    }
-   ],
-   "neto": -700000,
-   "acumulado": -14638862.349339992
-  },
-  {
-   "fecha": "2026-12-30",
-   "movimientos": [
-    {
-     "fecha": "2026-12-30",
-     "tipo": "pago",
-     "quien": "Sueldos",
-     "detalle": "Estructura · Segunda · proyectado",
-     "monto": -3000000
-    },
-    {
-     "fecha": "2026-12-30",
-     "tipo": "pago",
-     "quien": "SAC",
-     "detalle": "Estructura · Segunda - 15 Empleados · proyectado",
-     "monto": -7000000
-    },
-    {
-     "fecha": "2026-12-30",
-     "tipo": "pago",
-     "quien": "SAC",
-     "detalle": "Estructura · Segunda - 2 Empleados · proyectado",
-     "monto": -1500000
-    }
-   ],
-   "neto": -11500000,
-   "acumulado": -26138862.34933999
+   "acumulado": 99772256.33066002
   },
   {
    "fecha": "2027-01-02",
@@ -1149,7 +596,7 @@
     }
    ],
    "neto": -355413.39,
-   "acumulado": -26494275.739339992
+   "acumulado": 99416842.94066001
   },
   {
    "fecha": "2027-02-02",
@@ -1163,7 +610,7 @@
     }
    ],
    "neto": -355413.39,
-   "acumulado": -26849689.129339993
+   "acumulado": 99061429.55066001
   },
   {
    "fecha": "2027-03-02",
@@ -1177,7 +624,7 @@
     }
    ],
    "neto": -355413.39,
-   "acumulado": -27205102.519339994
+   "acumulado": 98706016.16066001
   },
   {
    "fecha": "2027-04-02",
@@ -1191,7 +638,7 @@
     }
    ],
    "neto": -355413.39,
-   "acumulado": -27560515.909339994
+   "acumulado": 98350602.77066001
   },
   {
    "fecha": "2027-05-02",
@@ -1205,7 +652,7 @@
     }
    ],
    "neto": -355413.39,
-   "acumulado": -27915929.299339995
+   "acumulado": 97995189.38066001
   },
   {
    "fecha": "2027-06-02",
@@ -1219,7 +666,7 @@
     }
    ],
    "neto": -355413.39,
-   "acumulado": -28271342.689339995
+   "acumulado": 97639775.99066001
   },
   {
    "fecha": "2027-07-02",
@@ -1233,10 +680,10 @@
     }
    ],
    "neto": -355413.39,
-   "acumulado": -28626756.079339996
+   "acumulado": 97284362.60066001
   }
  ],
  "totalCobros": 143565870.374,
- "totalPagos": -163006569.4633398,
- "leidoEn": "13/7/2026, 05:02:06"
+ "totalPagos": -17833550.783340007,
+ "leidoEn": "14/7/2026, 01:08:53"
 }
