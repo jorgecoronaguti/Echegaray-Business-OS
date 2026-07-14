@@ -112,6 +112,16 @@ function attachmentBlock(att) {
 // Progreso en vivo. Mientras el motor razona y usa tools, guardamos pasos legibles
 // indexados por runId (que genera la extensión). La extensión hace polling a
 // /progress?id= y muestra "trabajando: Leyendo Compras…". Se limpia solo al terminar.
+// Telemetría de costo del CHAT (en memoria, desde el arranque): para que el dueño vea
+// en qué se le va el crédito sin entrar a la consola. Aproximado; el total real vive en
+// console.anthropic.com. Se resetea al reiniciar el servicio.
+const COST = { since: Date.now(), total: 0, n: 0, byModel: {} }
+function trackCost(usd, model) { const u = Number(usd) || 0; COST.total += u; COST.n++; COST.byModel[model] = (COST.byModel[model] || 0) + u }
+function costSummary() {
+  const hrs = Math.max(0.01, (Date.now() - COST.since) / 3.6e6)
+  const per = Object.entries(COST.byModel).map(([m, u]) => `${m}: US$${u.toFixed(4)}`).join(' · ')
+  return `Gasto de API del chat desde que arrancó el OS (hace ${hrs.toFixed(1)}h): **US$${COST.total.toFixed(4)}** en ${COST.n} pedidos (~US$${(COST.total / Math.max(1, COST.n)).toFixed(4)} c/u).\n${per || ''}\n\n_Aproximado — el total real de la cuenta está en console.anthropic.com. Los agentes autónomos no cuentan acá._`
+}
 const PROGRESS = new Map()
 // Resultados de directivas largas que se resolvieron en segundo plano (tras superar el
 // techo de 45s inline). La extensión los recoge por /result?id=. Se limpian solos.
@@ -233,6 +243,10 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   if (/^\s*(qu[eé] pod[eé]s hacer|qu[eé] sab[eé]s hacer|ayuda\b|help\b|para qu[eé] serv|qu[eé] (te )?puedo pedir|capacidades|qu[eé] hac[eé]s)/i.test(directive)) {
     return { answer: CAPABILITIES_HELP, model: 'ayuda', capability: 'general', skills: [], navigate: null }
   }
+  // "¿Cuánto gasté?" — telemetría de costo del chat, sin llamar a la API.
+  if (/cu[aá]nto (gast[eé]|consum[ií]|cost|llev|va).*(api|cr[eé]dit|chat|hoy|plata|gastando)?|gasto de api|consumo de api|cu[aá]nto (me )?sale/i.test(directive)) {
+    return { answer: costSummary(), model: 'costo', capability: 'general', skills: [], navigate: null }
+  }
   // F1: si el pedido pide trabajo PROFUNDO de un dominio, lo despachamos al AGENTE durable
   // real (tarda, razona en el worker); si no, seguimos con el razonamiento rápido en canal.
   const dispatchDeep = capability !== 'general' && /\b(dictam|informe (complet|t[eé]cnic|detallad)|an[aá]lisis (profund|complet|detallad)|en profundidad|estudi[aá][^.]{0,25}(a fondo|profund)|que (lo|la) (trabaje|analice|estudie|revise) (a fondo|en profundidad|de verdad))\b/i.test(directive)
@@ -329,6 +343,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
       task: { id: 'interactive', capability_slug: 'advise.admin' },
       tools: Object.values(registry).map((t) => t.schema), toolExecutor, agentSlug: 'interactive' },
     CTX)
+  trackCost(eng.cost?.usd ?? 0, model)
   return { answer: eng.result, model, cost: eng.cost?.usd ?? 0, capability, skills: skillsLoaded || [], navigate: navTarget }
 }
 
@@ -373,6 +388,11 @@ const server = http.createServer(async (req, res) => {
       const items = await listPendingOperations({ status: 'awaiting_approval' })
       return send(res, 200, { items })
     } catch (e) { return send(res, 500, { error: e.message }) }
+  }
+
+  // Gasto de API del chat (telemetría en memoria).
+  if (req.method === 'GET' && req.url === '/cost') {
+    return send(res, 200, { since: COST.since, total_usd: Number(COST.total.toFixed(6)), requests: COST.n, by_model: COST.byModel })
   }
 
   // Progreso en vivo de una directiva en curso (polling desde la extensión).
