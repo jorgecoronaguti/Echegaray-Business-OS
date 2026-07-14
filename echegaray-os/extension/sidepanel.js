@@ -38,6 +38,32 @@ async function ping() {
   catch { $('status').classList.remove('on') }
 }
 
+// Llevar al dueño directo al archivo/carpeta pedido: abrimos el destino en una pestaña
+// nueva y enfocada (no pisamos la pestaña actual por si está trabajando en algo).
+async function openInTab(nav) {
+  addMsg('🧭 Te llevo a: ' + (nav.name || 'el archivo'), 'os')
+  try { await chrome.tabs.create({ url: nav.url, active: true }) }
+  catch { window.open(nav.url, '_blank') }
+}
+
+// ¿Hay una versión más nueva de la extensión publicada? (los unpacked no se auto-actualizan)
+function isNewer(a, b) {
+  const pa = String(a).split('.').map(Number), pb = String(b).split('.').map(Number)
+  for (let i = 0; i < 3; i++) { if ((pa[i] || 0) > (pb[i] || 0)) return true; if ((pa[i] || 0) < (pb[i] || 0)) return false }
+  return false
+}
+async function checkVersion() {
+  const { addr } = await getCfg()
+  try {
+    const r = await fetch(`${addr}/version`, { signal: AbortSignal.timeout(4000) })
+    const d = await r.json()
+    const mine = chrome.runtime.getManifest().version
+    if (d.version && isNewer(d.version, mine)) {
+      addMsg(`🆕 Hay una versión nueva de la extensión (${d.version}, tenés la ${mine}). Bajala de ${DEFAULT_ADDR.replace('/api/os', '')}/echegaray-os-extension.zip y recargala en chrome://extensions para las últimas mejoras.`, 'os')
+    }
+  } catch { /* silencioso */ }
+}
+
 async function send() {
   let directive = $('input').value.trim()
   if (!directive && !attachment) return
@@ -84,6 +110,7 @@ async function send() {
     const m = document.createElement('div'); m.className = 'meta'
     m.textContent = `${((Date.now() - t0) / 1000).toFixed(1)}s${att ? ' · leyó el adjunto' : fileId ? ' · leyó el archivo abierto' : ''}`
     pending.appendChild(m)
+    if (data.navigate && data.navigate.url) openInTab(data.navigate)
   } catch (e) {
     pending.textContent = 'No pude conectar con el OS: ' + e.message
   } finally {
@@ -388,4 +415,5 @@ $('save').addEventListener('click', async () => {
   $('token').value = token
   ping()
   loadPending() // pobla el badge de pendientes al abrir
+  checkVersion() // avisa si hay una versión más nueva publicada
 })()

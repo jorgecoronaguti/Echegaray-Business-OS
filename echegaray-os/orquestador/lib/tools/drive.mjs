@@ -131,5 +131,37 @@ export function driveReadTools(google) {
         return { file_id: fileId, name: meta.name, tipo: mt, nota: 'Este archivo no es una planilla (PDF/Word/imagen): el OS sabe que existe pero todavía no lee su contenido.' }
       },
     },
+    'drive.navigate': {
+      capability: 'drive.read',
+      account: 'ecsas',
+      schema: {
+        name: 'navigate_to',
+        description:
+          'ABRE en el navegador del dueño un archivo o CARPETA de Drive: úsalo cuando pida "llevame a", "abrí", "andá a", "mostrame la carpeta", "dónde está X". Resuelve el nombre a su ubicación real y devuelve el destino para abrirlo en su pestaña. Pasá query (nombre del archivo/carpeta) o file_id si ya lo tenés. Es lo que permite MOVERSE entre carpetas del Drive y llegar directo a lo buscado.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'nombre del archivo o carpeta a abrir, ej. "administracion", "Flujo de Caja", "PRESUPUESTOS 2026"' },
+            file_id: { type: 'string', description: 'ID si ya lo conocés (preferido)' },
+          },
+        },
+      },
+      async run(input) {
+        let fileId = input?.file_id
+        if (!fileId && input?.query) {
+          // Buscar como archivo Y como carpeta; priorizar coincidencia de carpeta si el
+          // pedido suena a carpeta, si no el primer archivo.
+          const folder = await google.findFolder(input.query)
+          const files = await google.searchFile(input.query)
+          fileId = folder?.id || files[0]?.id
+          if (!fileId) return { error: `no encontré ningún archivo ni carpeta llamado "${input.query}"` }
+        }
+        if (!fileId) return { error: 'falta query o file_id' }
+        const meta = await google.getMeta(fileId)
+        const url = meta.webViewLink
+          || (meta.mimeType?.includes('folder') ? `https://drive.google.com/drive/folders/${fileId}` : `https://drive.google.com/file/d/${fileId}/view`)
+        return { ok: true, name: meta.name, tipo: tipoLegible(meta.mimeType), navigate: { url, name: meta.name, file_id: fileId } }
+      },
+    },
   }
 }

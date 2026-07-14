@@ -166,9 +166,9 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes 
       const j = await apiGet(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType,size,modifiedTime)&orderBy=folder,name&pageSize=1000`)
       return j.files || []
     },
-    /** Metadata de un archivo (id, name, mimeType, size). */
+    /** Metadata de un archivo (id, name, mimeType, size, link para abrirlo). */
     async getMeta(fileId) {
-      return apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,size`)
+      return apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,size,webViewLink&supportsAllDrives=true`)
     },
     /** Lee un archivo Excel (.xlsx/.xlsm) descargándolo y parseándolo. Acotado a
      *  maxRows para no explotar tokens. Devuelve pestañas + filas de la elegida. */

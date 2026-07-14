@@ -127,6 +127,7 @@ function friendlyStep(name, input) {
     case 'drive_create': return `Preparando crear ${i.tipo || 'el archivo'}${i.name ? ` "${i.name}"` : ''}`
     case 'drive_rename': return `Preparando renombrar${i.new_name ? ` a "${i.new_name}"` : ''}`
     case 'drive_move': return 'Preparando mover el archivo'
+    case 'navigate_to': return `Buscando dónde está${i.query ? ` "${i.query}"` : ''} en Drive`
     default: return `Trabajando (${name})`
   }
 }
@@ -175,10 +176,15 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
     // orq.pending_operations con su cambio concreto y queda esperando aprobación.
     enqueue: (op) => enqueuePendingOperation({ ...op, tenantId: CTX.context.tenantId, agentSlug: 'interactive' }),
   })
-  // Cada tool que el modelo invoca deja un paso legible para el indicador en vivo.
+  // Cada tool que el modelo invoca deja un paso legible para el indicador en vivo;
+  // si una tool devuelve un destino de navegación (navigate_to), lo capturamos para
+  // que la extensión abra ese archivo/carpeta en la pestaña del dueño.
+  let navTarget = null
   const toolExecutor = async (name, input, meta) => {
     progressPush(runId, friendlyStep(name, input))
-    return baseExecutor(name, input, meta)
+    const out = await baseExecutor(name, input, meta)
+    if (out && out.navigate && out.navigate.url) navTarget = out.navigate
+    return out
   }
   const hoy = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
   // Historial de la charla: seguir el hilo ("aplicá la 2", "hacelo", "y el otro?").
@@ -203,6 +209,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
     `(3) Para AGREGAR un registro (proceso EXACTO, sin loopear): drive_tabs → leé los encabezados con UNA sola drive_read (ej. "Compras!A1:M10") → drive_last_row(pestaña) te da next_empty_row → drive_update en "Pestaña!A<next>:M<next>" con la fila en el orden de los encabezados. NUNCA drive_append con rango abierto "A:M" (se ancla al título e inserta desplazando/rompiendo fórmulas). ` +
     `(4) Ojo con las columnas que son FÓRMULAS (ej. un ID autonumérico): no las pises con un valor fijo, dejá esa celda vacía o replicá la fórmula. ` +
     `REGLA CRÍTICA — ACTUÁ, NO NARRES: para que un cambio ocurra TENÉS QUE LLAMAR la tool de escritura (drive_update/drive_append/drive_rename/drive_move) AHORA MISMO. Describir el cambio en prosa ("Reescribo…", "Voy a…") NO crea NADA. Solo la llamada a la tool deja la operación en Pendientes. NO pidas confirmación en el chat ("¿confirmo?", "¿te muestro fila por fila?", "¿querés que…?"): la aprobación ES el botón de Pendientes, ahí el dueño revisa y aprueba/rechaza. Cuando tengas el cambio listo, LLAMÁ la tool con los values REALES y COMPLETOS (si es una reescritura grande de muchas filas, emití la matriz entera, no la resumas), y recién después avisá en UNA línea qué quedó pendiente y en qué rango. Solo preguntá si falta un dato que no está en NINGÚN archivo. ` +
+    `Para LLEVAR al dueño a un archivo/carpeta ("llevame a", "abrí", "andá a", "mostrame la carpeta", "dónde está X", "quiero ver Y"): usá navigate_to (query = el nombre) — abre el destino en su navegador. Es también cómo se MUEVE entre carpetas del Drive: navegás a la carpeta y podés listar su contenido con drive_list. ` +
     `Para ADMINISTRAR/ORGANIZAR Drive: mirá con drive_list/drive_find y usá drive_create (tipo "carpeta"), drive_rename o drive_move (todo pendiente de aprobación). Podés crear CARPETAS y renombrar/mover archivos existentes; NO podés crear documentos/planillas nuevos desde cero (la cuenta no tiene almacenamiento propio) — para eso el dueño crea el archivo y lo comparte. ` +
     (att
       ? `\n\nTE ADJUNTARON UN ARCHIVO (foto/PDF): interpretalo. Si es una factura/remito/comprobante, extraé proveedor, fecha, importe total, número y concepto. Si la directiva pide registrarlo, encontrá el Sheet correcto (ej. "Flujo de Caja - Cash Flow", pestaña de compras/gastos), LEÉ su estructura con drive_read y proponé la fila con drive_append. No inventes lo que no ves; si un dato no está en la imagen, decilo.\n`
@@ -219,7 +226,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
       task: { id: 'interactive', capability_slug: 'advise.admin' },
       tools: Object.values(registry).map((t) => t.schema), toolExecutor, agentSlug: 'interactive' },
     CTX)
-  return { answer: eng.result, model, cost: eng.cost?.usd ?? 0, capability, skills: skillsLoaded || [] }
+  return { answer: eng.result, model, cost: eng.cost?.usd ?? 0, capability, skills: skillsLoaded || [], navigate: navTarget }
 }
 
 function send(res, code, obj) {
@@ -235,6 +242,14 @@ function send(res, code, obj) {
 const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') return send(res, 204, {})
   if (req.method === 'GET' && req.url === '/health') return send(res, 200, { ok: true, ready: !!CTX })
+  // Versión de la extensión publicada: la extensión la compara con la suya y avisa si
+  // hay que actualizar (los unpacked no se auto-actualizan). Sin auth: es solo un número.
+  if (req.method === 'GET' && req.url === '/version') {
+    try {
+      const m = JSON.parse(await readFile(path.join(REPO, 'extension', 'manifest.json'), 'utf8'))
+      return send(res, 200, { version: m.version })
+    } catch { return send(res, 200, { version: null }) }
+  }
   if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
     return res.end(DOWNLOAD_PAGE())
