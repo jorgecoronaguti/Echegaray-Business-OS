@@ -29,6 +29,8 @@ import { enqueuePendingOperation, listPendingOperations, decidePendingOperation,
 import { classifyDirective, classifyDirectiveMulti } from './lib/classify-directive.mjs'
 import { skillsForCapability } from './lib/skill-map.mjs'
 import { createSchedule, listSchedules, toggleSchedule } from './lib/schedules.mjs'
+import { enqueueTask } from './lib/ledger.mjs'
+import { route } from './lib/router.mjs'
 
 const cfg = loadConfig()
 const log = createLogger({ component: 'interactive' })
@@ -141,6 +143,57 @@ function friendlyStep(name, input) {
   }
 }
 
+// Lista viva de lo que el OS sabe hacer hoy. Se responde sin llamar a la API (gratis) y
+// se actualiza acá cuando el cerebro gana una capacidad — la extensión la refleja sola.
+const CAPABILITIES_HELP = [
+  'Esto es lo que podés pedirme (escribí en lenguaje normal):',
+  '',
+  '📊 **Consultar datos reales** — "¿cuánto tengo en caja?", "mostrame el avance de la obra X", "qué dice el presupuesto de Y".',
+  '📄 **Leer PDFs del Drive** — "leé el contrato/cotización/remito/plano X y resumímelo". Interpreto contratos, cotizaciones, facturas y planos con texto.',
+  '🧮 **Armar presupuestos guiado** — "armemos el presupuesto de la obra X, guiame". Te llevo paso a paso con jornales UOCRA Zona A vigentes, APU, GG y margen.',
+  '✏️ **Editar y ordenar Drive** — "completá esta planilla", "agregá esta fila", "copiá esta plantilla", "renombrá/mové este archivo". Todo queda en Pendientes para tu OK.',
+  '🧭 **Llevarte a un archivo** — "llevame a la carpeta administración", "abrí el Cash Flow".',
+  '👷 **Especialistas por tema** — finanzas, impuestos, laboral/UOCRA, legal/contratos, ingeniería, calidad, seguridad, compras, dirección de obra. Activo los que correspondan a tu pedido.',
+  '📎 **Interpretar una foto/PDF que subas** — adjuntá una factura y "registrala en el Cash Flow".',
+  '⏰ **Agenda** — "todos los lunes revisá cobranzas y avisame".',
+  '',
+  'Para trabajo profundo de un especialista, pedí "hacé un análisis en profundidad de…" (tarda más, razona hondo).',
+].join('\n')
+
+/** Da formato legible a la salida estructurada de un especialista (analysis + recos). */
+function formatSpecialistResult(result, who) {
+  if (!result || typeof result !== 'object') return String(result || 'Sin resultado.')
+  const parts = []
+  if (result.analysis) parts.push(String(result.analysis))
+  if (Array.isArray(result.recommendations) && result.recommendations.length) parts.push('\n**Recomendaciones:**\n' + result.recommendations.map((r) => '• ' + (typeof r === 'string' ? r : r.text || JSON.stringify(r))).join('\n'))
+  if (Array.isArray(result.approval_requests) && result.approval_requests.length) parts.push('\n**Requiere tu aprobación:** ' + result.approval_requests.map((a) => a.titulo || a).join('; '))
+  return parts.join('\n') || 'Trabajo completado (sin salida estructurada).'
+}
+
+/** F1: despacha una directiva al AGENTE durable real del Work Fabric (creado por el
+ *  Director para respetar el invariante) y espera su resultado. Tarda (razona hondo en
+ *  el worker); por eso solo se invoca en pedidos explícitamente profundos. */
+async function dispatchToSpecialist({ directive, capability, runId }) {
+  const { agent } = await route({ tenantId: CTX.context.tenantId, capabilitySlug: capability })
+  const agentSlug = agent?.slug || null
+  const who = agent?.org_title || agent?.role || agentSlug || 'especialista'
+  progressPush(runId, `Derivando al ${who}`)
+  const taskId = await enqueueTask({
+    tenant_id: CTX.context.tenantId, type: 'specialist', title: directive.slice(0, 120),
+    capability_slug: capability, agent_slug: agentSlug, created_by: DIRECTOR_PRINCIPAL,
+    inputs: { directive, from: 'interactive' }, dedupe_key: `chat-spec:${runId}:${Date.now()}`,
+  })
+  for (let i = 0; i < 90; i++) { // hasta ~6 min
+    await new Promise((r) => setTimeout(r, 4000))
+    const { rows } = await query('select state, result, error from orq.tasks where id = $1', [taskId])
+    const t = rows[0]
+    progressPush(runId, `El ${who} está trabajando… (${t?.state || '?'})`)
+    if (t?.state === 'succeeded') return { answer: formatSpecialistResult(t.result, who), model: `agente:${agentSlug}`, capability, skills: [agentSlug], navigate: null }
+    if (t?.state === 'failed' || t?.state === 'dead_letter') return { answer: `No pude completar el trabajo del ${who}: ${String(t?.error || 'error').slice(0, 200)}`, model: `agente:${agentSlug}`, capability, skills: [] }
+  }
+  return { answer: `El ${who} sigue trabajando; tardó más de lo esperado. Reintentá en un momento.`, model: 'agente', capability, skills: [] }
+}
+
 async function ask({ directive, fileId, fast, attachment, history, runId }) {
   progressInit(runId)
   const att = attachmentBlock(attachment)
@@ -175,6 +228,15 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   const skillNames = capabilities.length
     ? [...new Set(capabilities.flatMap((c) => skillsForCapability(c)))].slice(0, 4)
     : []
+  // "¿Qué podés hacer?" — respuesta DETERMINÍSTICA (0 API, siempre actualizada): así la
+  // extensión refleja las capacidades del cerebro sin reinstalarse y sin gastar crédito.
+  if (/^\s*(qu[eé] pod[eé]s hacer|qu[eé] sab[eé]s hacer|ayuda\b|help\b|para qu[eé] serv|qu[eé] (te )?puedo pedir|capacidades|qu[eé] hac[eé]s)/i.test(directive)) {
+    return { answer: CAPABILITIES_HELP, model: 'ayuda', capability: 'general', skills: [], navigate: null }
+  }
+  // F1: si el pedido pide trabajo PROFUNDO de un dominio, lo despachamos al AGENTE durable
+  // real (tarda, razona en el worker); si no, seguimos con el razonamiento rápido en canal.
+  const dispatchDeep = capability !== 'general' && /\b(dictam|informe (complet|t[eé]cnic|detallad)|an[aá]lisis (profund|complet|detallad)|en profundidad|estudi[aá][^.]{0,25}(a fondo|profund)|que (lo|la) (trabaje|analice|estudie|revise) (a fondo|en profundidad|de verdad))\b/i.test(directive)
+  if (dispatchDeep) return await dispatchToSpecialist({ directive, capability, runId })
   // Contexto de PRESUPUESTACIÓN: jornales UOCRA Zona A verificados (jul-2026) + flujo
   // FLEXIBLE (guía, se puede saltear) + disciplina. Solo cuando la directiva es de armar
   // presupuesto/cotizar. Los jornales van acá para que use los vigentes y no los del
