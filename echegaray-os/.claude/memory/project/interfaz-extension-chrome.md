@@ -23,9 +23,19 @@ Verificado en vivo: `GET /api/os/health` → `{"ok":true,"ready":true}`, `POST /
 ## Deploy
 Deploy por **`git push origin HEAD:main`** (fast-forward, sin cambiar de rama en la VM para no cortar los servicios). Vercel prod = `main`. Commit del canal: `dd79a82`. La rama de trabajo sigue siendo `infra/anthropic-api-engine`.
 
+## Canal de ACCIÓN — PRP-015 (2026-07-14, implementado y verificado en vivo)
+La extensión pasó de "ve y aconseja" a "actúa con tu aprobación". 4 fases sobre la infra de PRP-014 (`orq.pending_operations`, policy, ledger) — ver `.claude/PRPs/PRP-015-canal-accion-extension-os.md`:
+- **F1 escritura+gate**: tools `drive_update/append/create` (capability drive.write=E→requires_approval) en `lib/tools/drive-write.mjs`; `lib/google.mjs` ganó WRITE_SCOPES + métodos de escritura; `lib/pending-ops.mjs` (enqueue/list/decide, DRY desde specialist); `handlers/operation_execute.mjs` ejecuta lo aprobado idempotentemente (dedupe `opexec:<id>`, re-chequea policy). Endpoints motor `GET /pending`, `POST /operation`. Extensión: pestaña **Pendientes** (Aprobar/Rechazar). Aprobar va por el MOTOR (Bearer token), no por el RPC (que exige auth.uid).
+- **F2 multimedia**: la extensión adjunta foto/PDF (📎), reduce la imagen en canvas (límite Vercel ~4.5MB), el motor la pasa como visión/documento. Caso factura → asiento propuesto (pendiente).
+- **F3 especialistas**: `lib/classify-directive.mjs` (haiku) rutea la directiva a una capability e inyecta las skills del especialista (skill-map), no el generalista.
+- **F4 agenda**: `orq.schedules` (única tabla nueva) + timer `echegaray-os-schedules.timer` (5 min) + `handlers/scheduled_directive.mjs` (corre la directiva por el propio /ask). Endpoints `POST /schedule`, `GET /schedules`. Extensión: pestaña **Agenda**. computeNextRun en hora AR (UTC-3).
+- Servicios systemd nuevos versionados en `orquestador/systemd/` (tunnel + schedules), instala `install.sh`.
+
 ## Pendiente / caveat
-- **Límite de duración**: el motor está pensado para respuestas en SEGUNDOS. Vercel (maxDuration 60) y el túnel cloudflared (~100s) cortan directivas muy largas. Si una directiva pesada (leer Drive grande + razonar) supera eso → timeout. Si molesta: pasar a async (job id + polling).
-- **Permanencia real de la URL de túnel**: hoy es trycloudflare (gratis, se recrea sola vía registro). Más sólido aún: dominio propio + túnel nombrado de Cloudflare, o sudo para Caddy+443 en la VM.
-- **Siguiente**: que la extensión no sólo conteste sino que ACTÚE sobre el archivo (completar/ordenar/corregir) con aprobación.
+- **Auto-follow-up deferido**: el agente NO se auto-programa desde un hallazgo todavía (falta darle una tool de scheduling). La programación explícita del dueño sí anda.
+- **"Avisame" sin push**: hoy el resultado de una recurrencia queda en la Agenda (last_result) y las acciones en Pendientes; el envío por WhatsApp/email es pieza aparte (skill `reportes-automaticos-y-comunicaciones`).
+- **Gotcha Service Account**: la escritura sobre un Sheet de negocio existente exige que ese archivo esté COMPARTIDO con edición a la SA, o la operación termina `failed` con el 403 (mensaje claro).
+- **Límite de duración**: el motor responde en SEGUNDOS. Vercel (maxDuration 60) y el túnel (~100s) cortan directivas muy largas; por eso la escritura real es diferida al worker.
+- **Permanencia URL túnel**: trycloudflare (gratis, se recrea sola vía `os_runtime`). Más sólido: dominio propio + túnel nombrado, o sudo para Caddy+443.
 
 Ver [[preferencia-os-agentes-completo]] y [[conducir-autonomo-sin-preguntar-y-rapido]].
