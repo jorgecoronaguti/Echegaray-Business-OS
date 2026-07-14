@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "Dale directivas al cerebro del OS de Echegaray sobre tus archivos de Drive, y recibí respuestas en segundos.",
   "permissions": ["sidePanel", "storage", "tabs"],
-  "host_permissions": ["http://64.176.22.159:8790/*"],
+  "host_permissions": ["https://echegaray-business-os.vercel.app/*"],
   "action": { "default_title": "Echegaray OS" },
   "side_panel": { "default_path": "sidepanel.html" },
   "background": { "service_worker": "background.js" }

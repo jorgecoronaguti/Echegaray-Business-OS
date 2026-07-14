@@ -1,7 +1,7 @@
 // Panel del OS. Lee la config (dirección + llave), detecta el archivo de Drive
 // abierto en la pestaña activa, y manda la directiva al cerebro del OS.
 const $ = (id) => document.getElementById(id)
-const DEFAULT_ADDR = 'http://64.176.22.159:8790'
+const DEFAULT_ADDR = 'https://echegaray-business-os.vercel.app/api/os'
 
 async function getCfg() {
   const c = await chrome.storage.local.get(['addr', 'token'])
