@@ -213,6 +213,7 @@ async function waitResult(addr, token, runId, pending, t0) {
       const rr = await fetch(`${addr}/result?id=${runId}`, { headers: { authorization: `Bearer ${token}` } })
       const rd = await rr.json()
       if (rd.done) return rd
+      if (rd.lost) return { error: 'Se perdió esta tarea (el servidor se reinició mientras corría). Reintentá el pedido.' }
     } catch { /* reintenta */ }
   }
   return { error: 'La tarea tardó demasiado. Probá pedirla más acotada (ej. una obra o una pestaña a la vez).' }

@@ -323,7 +323,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
     `OBRAS: las obras/clientes viven en la carpeta PRESUPUESTOS (cada subcarpeta es una obra, con "Cotizaciones" y "Planos" adentro). Para "mis obras" / "qué obras tengo" / el estado de una obra: usá list_obras, después entrá a su carpeta con drive_list y leé su presupuesto/avance/adicionales con drive_read (que ya lee Sheets, Excel y PDFs). ` +
     `Para LLEVAR al dueño a un archivo/carpeta ("llevame a", "abrí", "andá a", "mostrame la carpeta", "dónde está X", "quiero ver Y"): usá navigate_to (query = el nombre) — abre el destino en su navegador. Es también cómo se MUEVE entre carpetas del Drive: navegás a la carpeta y podés listar su contenido con drive_list. ` +
     `EDICIÓN POTENTE (usala, no vayas celda por celda): drive_batch_update escribe VARIOS rangos/bloques en UNA operación (preferila para completar secciones enteras); drive_insert_rows / drive_delete_rows agregan/quitan filas; drive_clear vacía un rango; drive_copy DUPLICA una plantilla o un presupuesto anterior; drive_trash da de baja a la papelera (reversible). Todo queda en Pendientes. ` +
-    `Para ADMINISTRAR/ORGANIZAR Drive: mirá con drive_list/drive_find y usá drive_create (tipo "carpeta"), drive_rename o drive_move (todo pendiente de aprobación). Podés crear CARPETAS y renombrar/mover archivos existentes; NO podés crear documentos/planillas nuevos desde cero (la cuenta no tiene almacenamiento propio) — para eso el dueño crea el archivo y lo comparte. ` +
+    `Para ADMINISTRAR/ORGANIZAR Drive: mirá con drive_list/drive_find y usá drive_create (tipo "carpeta"), drive_rename o drive_move (todo pendiente de aprobación). Podés crear CARPETAS y renombrar/mover archivos existentes. IMPORTANTE — NO podés crear un Sheet/Doc NUEVO desde cero (la cuenta no tiene almacenamiento). Si el dueño pide "hacé/creá un sheet/planilla con el presupuesto": NO lo intentes con las tools (falla y te colgás gastando iteraciones); decíselo YA en la primera respuesta, en una línea, y ofrecé: (a) armarlo acá en el chat, (b) que él cree la planilla vacía y la comparta, o (c) una Unidad Compartida para que el OS la cree solo. ` +
     (att
       ? `\n\nTE ADJUNTARON UN ARCHIVO (foto/PDF): interpretalo. Si es una factura/remito/comprobante, extraé proveedor, fecha, importe total, número y concepto. Si la directiva pide registrarlo, encontrá el Sheet correcto (ej. "Flujo de Caja - Cash Flow", pestaña de compras/gastos), LEÉ su estructura con drive_read y proponé la fila con drive_append. No inventes lo que no ves; si un dato no está en la imagen, decilo.\n`
       : '') +
@@ -406,7 +406,13 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && req.url.startsWith('/result')) {
     const rid = new URL(req.url, 'http://x').searchParams.get('id')
     const r = rid && RESULTS.get(rid)
-    if (!r) return send(res, 200, { done: false })
+    if (!r) {
+      // Si no está ni en RESULTS ni en PROGRESS, la tarea se PERDIÓ (server reiniciado
+      // mientras corría). Avisamos 'lost' para que la extensión corte y pida reintentar,
+      // en vez de esperar 6 minutos a un resultado que ya no existe.
+      const stillWorking = rid && PROGRESS.has(rid)
+      return send(res, 200, { done: false, lost: !stillWorking })
+    }
     if (r.error) return send(res, 200, { done: true, error: r.error })
     return send(res, 200, { done: true, ...r.out })
   }
