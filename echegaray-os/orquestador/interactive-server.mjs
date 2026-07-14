@@ -25,7 +25,7 @@ import { makeGoogleClient } from './lib/google.mjs'
 import { driveReadTools } from './lib/tools/drive.mjs'
 import { driveWriteTools } from './lib/tools/drive-write.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
-import { enqueuePendingOperation, listPendingOperations, decidePendingOperation } from './lib/pending-ops.mjs'
+import { enqueuePendingOperation, listPendingOperations, decidePendingOperation, getPendingOperationById } from './lib/pending-ops.mjs'
 import { classifyDirective } from './lib/classify-directive.mjs'
 import { skillsForCapability } from './lib/skill-map.mjs'
 import { createSchedule, listSchedules, toggleSchedule } from './lib/schedules.mjs'
@@ -224,6 +224,18 @@ const server = http.createServer(async (req, res) => {
     try {
       const items = await listPendingOperations({ status: 'awaiting_approval' })
       return send(res, 200, { items })
+    } catch (e) { return send(res, 500, { error: e.message }) }
+  }
+
+  // Estado de una operación por id: la extensión lo consulta tras aprobar para avisar
+  // si se ejecutó o falló (antes fallaba en silencio y el dueño no se enteraba).
+  if (req.method === 'GET' && req.url.startsWith('/operation-status')) {
+    try {
+      const id = new URL(req.url, 'http://x').searchParams.get('id')
+      if (!id) return send(res, 400, { error: 'falta id' })
+      const op = await getPendingOperationById(id)
+      if (!op) return send(res, 404, { error: 'operación inexistente' })
+      return send(res, 200, op)
     } catch (e) { return send(res, 500, { error: e.message }) }
   }
 

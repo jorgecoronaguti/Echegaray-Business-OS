@@ -33,6 +33,16 @@ export async function listPendingOperations({ status = 'awaiting_approval', limi
   return rows
 }
 
+/** Estado de UNA operación por id — para que la extensión reporte el desenlace
+ *  ('executed'/'failed') después de aprobar, en vez de fallar en silencio. */
+export async function getPendingOperationById(id) {
+  const { rows } = await query(
+    `select id, status, result, error, payload->>'tool' as tool from orq.pending_operations where id = $1`,
+    [id],
+  )
+  return rows[0] || null
+}
+
 /**
  * Decisión humana sobre una operación pendiente. `approve` la marca 'approved' y
  * ENCOLA la tarea de ejecución (idempotente por dedupe_key `opexec:<id>`, así aprobar

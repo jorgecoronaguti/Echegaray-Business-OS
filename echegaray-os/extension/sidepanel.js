@@ -136,11 +136,29 @@ async function decide(id, action, card) {
     const data = await r.json()
     if (!r.ok) throw new Error(data.error || `error ${r.status}`)
     setTimeout(loadPending, 500)
+    // Aprobar solo ENCOLA la ejecución (el worker corre asíncrono). Seguimos el
+    // desenlace real para avisar "aplicado" o "falló: motivo" — no fallar en silencio.
+    if (action === 'approve') reportOutcome(id)
   } catch (e) {
     card.classList.remove('done')
     card.querySelectorAll('button').forEach((b) => (b.disabled = false))
     addMsg('No se pudo procesar la operación: ' + e.message, 'os')
   }
+}
+
+async function reportOutcome(id) {
+  const { addr, token } = await getCfg()
+  for (let i = 0; i < 8; i++) {
+    await new Promise((r) => setTimeout(r, 1500))
+    try {
+      const r = await fetch(`${addr}/operation-status?id=${encodeURIComponent(id)}`, { headers: { authorization: `Bearer ${token}` } })
+      const op = await r.json()
+      if (!r.ok) continue
+      if (op.status === 'executed') { addMsg('✅ Aplicado en Drive.', 'os'); return }
+      if (op.status === 'failed') { addMsg('❌ No se pudo aplicar: ' + (op.error || 'error desconocido'), 'os'); return }
+    } catch { /* reintenta */ }
+  }
+  addMsg('⏳ La operación quedó aprobada; sigue procesándose. Revisá el archivo en un momento.', 'os')
 }
 
 // ---- Conversaciones persistentes (chrome.storage.local) ----
