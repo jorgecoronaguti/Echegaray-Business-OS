@@ -3,7 +3,8 @@
 const $ = (id) => document.getElementById(id)
 const DEFAULT_ADDR = 'https://echegaray-business-os.vercel.app/api/os'
 let attachment = null // { media_type, data(base64), name }
-const convo = [] // historial de la charla {role:'me'|'os', text} para seguir el hilo
+let convo = [] // mensajes del chat actual {role:'me'|'os', text}
+let currentChatId = null // id del chat abierto (persistido en chrome.storage)
 
 async function getCfg() {
   const c = await chrome.storage.local.get(['addr', 'token'])
@@ -44,6 +45,7 @@ async function send() {
   const { addr, token } = await getCfg()
   if (!token) { $('settings').classList.add('show'); addMsg('Primero pegá tu llave de acceso en configuración (⚙).', 'os'); return }
   $('input').value = ''
+  if (!currentChatId) currentChatId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now())
   const att = attachment
   addMsg(directive + (att ? `\n📎 ${att.name}` : ''), 'me')
   clearAttachment()
@@ -72,6 +74,7 @@ async function send() {
     $('send').disabled = false
     $('chat').scrollTop = $('chat').scrollHeight
     loadPending() // una directiva puede haber dejado operaciones pendientes
+    persistCurrent() // guarda la conversación para poder volver a ella
   }
 }
 
@@ -137,6 +140,65 @@ async function decide(id, action, card) {
     card.classList.remove('done')
     card.querySelectorAll('button').forEach((b) => (b.disabled = false))
     addMsg('No se pudo procesar la operación: ' + e.message, 'os')
+  }
+}
+
+// ---- Conversaciones persistentes (chrome.storage.local) ----
+
+async function getChats() { const c = await chrome.storage.local.get('chats'); return Array.isArray(c.chats) ? c.chats : [] }
+
+async function persistCurrent() {
+  if (!currentChatId || !convo.length) return
+  const chats = await getChats()
+  const title = (convo.find((m) => m.role === 'me')?.text || 'Chat').slice(0, 48)
+  const entry = { id: currentChatId, title, messages: convo.slice(-100), updated: Date.now() }
+  const i = chats.findIndex((c) => c.id === currentChatId)
+  if (i >= 0) chats[i] = entry; else chats.unshift(entry)
+  await chrome.storage.local.set({ chats })
+}
+
+function newChat() {
+  currentChatId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now())
+  convo = []
+  $('chat').innerHTML = '<div class="hint" id="hint">Nuevo chat. Escribí una directiva o adjuntá una foto/PDF.</div>'
+  $('chats').classList.remove('show')
+  showView('chat')
+}
+
+function renderMessages(messages) {
+  $('chat').innerHTML = ''
+  for (const m of messages) addMsg(m.text, m.role === 'me' ? 'me' : 'os')
+}
+
+async function openChat(id) {
+  const c = (await getChats()).find((x) => x.id === id)
+  if (!c) return
+  currentChatId = id
+  convo = c.messages.slice()
+  renderMessages(convo)
+  $('chats').classList.remove('show')
+  showView('chat')
+}
+
+async function deleteChat(id, ev) {
+  ev?.stopPropagation()
+  const chats = (await getChats()).filter((c) => c.id !== id)
+  await chrome.storage.local.set({ chats })
+  if (id === currentChatId) newChat()
+  renderChatsList()
+}
+
+async function renderChatsList() {
+  const chats = (await getChats()).sort((a, b) => b.updated - a.updated)
+  const box = $('chatslist'); box.innerHTML = ''
+  if (!chats.length) { const h = document.createElement('div'); h.className = 'hint'; h.textContent = 'Sin conversaciones guardadas.'; box.appendChild(h); return }
+  for (const c of chats) {
+    const row = document.createElement('div'); row.className = 'chatrow' + (c.id === currentChatId ? ' active' : '')
+    const ti = document.createElement('div'); ti.className = 'ti'; ti.textContent = c.title
+    const del = document.createElement('span'); del.className = 'del'; del.textContent = '🗑'
+    del.addEventListener('click', (e) => deleteChat(c.id, e))
+    row.addEventListener('click', () => openChat(c.id))
+    row.append(ti, del); box.appendChild(row)
   }
 }
 
@@ -277,6 +339,8 @@ $('attach').addEventListener('click', () => $('file').click())
 $('file').addEventListener('change', (e) => onFilePicked(e.target.files[0]))
 $('chipx').addEventListener('click', clearAttachment)
 $('gear').addEventListener('click', () => $('settings').classList.toggle('show'))
+$('chatsBtn').addEventListener('click', () => { $('chats').classList.toggle('show'); if ($('chats').classList.contains('show')) renderChatsList() })
+$('newchat').addEventListener('click', newChat)
 $('save').addEventListener('click', async () => {
   await chrome.storage.local.set({ addr: $('addr').value.trim() || DEFAULT_ADDR, token: $('token').value.trim() })
   $('settings').classList.remove('show')

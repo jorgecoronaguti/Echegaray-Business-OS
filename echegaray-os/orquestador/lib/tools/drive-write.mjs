@@ -104,6 +104,42 @@ export function driveWriteTools(google) {
         }
       },
     },
+    'drive.rename': {
+      capability: 'drive.write',
+      account: 'ecsas',
+      schema: {
+        name: 'drive_rename',
+        description: 'Renombra un archivo o carpeta existente de Drive. Pasá file_id y new_name. REQUIERE aprobación humana.',
+        input_schema: {
+          type: 'object',
+          properties: { file_id: { type: 'string' }, new_name: { type: 'string' } },
+          required: ['file_id', 'new_name'],
+        },
+      },
+      async run(input) {
+        if (!input?.file_id || !input?.new_name) return { error: 'faltan file_id o new_name' }
+        const r = await google.renameFile(input.file_id, input.new_name)
+        return { ok: true, id: r.id, name: r.name }
+      },
+    },
+    'drive.move': {
+      capability: 'drive.write',
+      account: 'ecsas',
+      schema: {
+        name: 'drive_move',
+        description: 'Mueve un archivo o carpeta a otra carpeta de Drive (para ORGANIZAR). Pasá file_id y folder_id (carpeta destino; buscala con drive_list/drive_find). REQUIERE aprobación humana.',
+        input_schema: {
+          type: 'object',
+          properties: { file_id: { type: 'string' }, folder_id: { type: 'string', description: 'ID de la carpeta destino' } },
+          required: ['file_id', 'folder_id'],
+        },
+      },
+      async run(input) {
+        if (!input?.file_id || !input?.folder_id) return { error: 'faltan file_id o folder_id (carpeta destino)' }
+        const r = await google.moveFile(input.file_id, input.folder_id)
+        return { ok: true, id: r.id, name: r.name, parents: r.parents }
+      },
+    },
     'drive.delete': {
       capability: 'drive.delete', // Nivel F → la policy lo deja SIEMPRE forbidden; run nunca se alcanza
       account: 'ecsas',

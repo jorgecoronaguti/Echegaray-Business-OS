@@ -210,5 +210,21 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes 
         { name, mimeType, ...(parents ? { parents } : {}) },
       )
     },
+    /** Renombra un archivo/carpeta existente. */
+    async renameFile(fileId, name) {
+      return apiSend(
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name`,
+        'PATCH',
+        { name },
+      )
+    },
+    /** Mueve un archivo/carpeta a otra carpeta (saca de sus padres actuales). */
+    async moveFile(fileId, folderId) {
+      const meta = await apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=parents`)
+      const remove = (meta.parents || []).join(',')
+      const url = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?addParents=${encodeURIComponent(folderId)}` +
+        (remove ? `&removeParents=${encodeURIComponent(remove)}` : '') + '&fields=id,name,parents'
+      return apiSend(url, 'PATCH', {})
+    },
   }
 }
