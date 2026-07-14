@@ -12,11 +12,42 @@
 // Uso:  node orquestador/scripts/vigilancia-autonoma.mjs         (encola)
 //       node orquestador/scripts/vigilancia-autonoma.mjs --dry   (muestra, no encola)
 import { enqueueTask } from '../lib/ledger.mjs'
-import { closePool } from '../lib/db.mjs'
+import { query, closePool } from '../lib/db.mjs'
 import { createLogger } from '../lib/logger.mjs'
 
 const log = createLogger({ component: 'vigilancia-autonoma' })
 const DRY = process.argv.includes('--dry')
+
+// Lo YA REGISTRADO por el OS (detección pg_cron + trabajo humano): el Director debe
+// TRIAGEARLO y surfacear sólo DELTAS, no repetir. Conecta las señales autónomas del
+// backlog (que hoy no llegan al Work Fabric) con la organización IA. Defensivo: si una
+// tabla no está, devuelve el bloque vacío sin romper el disparo.
+async function contextoAbierto() {
+  const safe = async (sql, p) => { try { return (await query(sql, p)).rows } catch { return [] } }
+  const backlog = await safe(
+    `select titulo, impacto, tipo from public.backlog_autonomo
+      where estado = 'abierto' order by (impacto='alta') desc, updated_at desc limit 15`)
+  const acciones = await safe(
+    `select titulo, estado,
+            case when bloqueada then 'bloqueada'
+                 when fecha_limite < now() then 'vencida'
+                 when responsable is null then 'sin responsable' else 'abierta' end as situacion
+       from public.acciones
+      where coalesce(estado,'') not in ('resuelta','cerrada','cancelada')
+        and (bloqueada or fecha_limite < now() or responsable is null)
+      order by fecha_limite asc nulls last limit 15`)
+  if (!backlog.length && !acciones.length) return ''
+  const b = backlog.map((r) => `  - [${r.impacto}/${r.tipo}] ${r.titulo}`).join('\n')
+  const a = acciones.map((r) => `  - [${r.situacion}] ${r.titulo}`).join('\n')
+  return (
+    `\n\nYA REGISTRADO POR EL OS (revisá y NO lo repitas — deltas, no duplicados):\n` +
+    (backlog.length ? `BACKLOG AUTÓNOMO abierto (${backlog.length}):\n${b}\n` : '') +
+    (acciones.length ? `ACCIONES que requieren atención (${acciones.length}):\n${a}\n` : '') +
+    `INSTRUCCIÓN sobre esto: para cada ítem ya registrado, decidí si (a) sigue vigente y hay algo NUEVO que aportar, ` +
+    `(b) ya está resuelto y hay que proponer cerrarlo, o (c) no amerita trabajo hoy. NO vuelvas a levantar un hallazgo ` +
+    `que ya está en esta lista salvo que haya un cambio material. Priorizá lo NUEVO por sobre lo ya conocido.`
+  )
+}
 
 // Fecha+hora local (America/Argentina), sin depender del TZ del proceso.
 function partesLocales() {
@@ -41,19 +72,21 @@ const OBJETIVO = (fecha) =>
 
 async function main() {
   const { fecha, hora } = partesLocales()
+  const contexto = await contextoAbierto()
   const task = {
     type: 'direction',
     title: `Vigilancia autónoma — ${fecha} ${hora}:00`,
-    goal: OBJETIVO(`${fecha} ${hora}:00`),
+    goal: OBJETIVO(`${fecha} ${hora}:00`) + contexto,
     dedupe_key: `auto-vigilancia:${fecha}-${hora}`,
   }
   if (DRY) {
-    log.info('DRY-RUN (no se encola)', { dedupe_key: task.dedupe_key, title: task.title })
+    log.info('DRY-RUN (no se encola)', { dedupe_key: task.dedupe_key, contexto_chars: contexto.length })
     console.log(JSON.stringify(task, null, 2))
+    await closePool()
     return
   }
   const id = await enqueueTask(task)
-  log.info('objetivo de vigilancia encolado', { id, dedupe_key: task.dedupe_key })
+  log.info('objetivo de vigilancia encolado', { id, dedupe_key: task.dedupe_key, contexto_chars: contexto.length })
   await closePool()
 }
 
