@@ -26,7 +26,7 @@ import { driveReadTools } from './lib/tools/drive.mjs'
 import { driveWriteTools } from './lib/tools/drive-write.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
 import { enqueuePendingOperation, listPendingOperations, decidePendingOperation, getPendingOperationById } from './lib/pending-ops.mjs'
-import { classifyDirective } from './lib/classify-directive.mjs'
+import { classifyDirective, classifyDirectiveMulti } from './lib/classify-directive.mjs'
 import { skillsForCapability } from './lib/skill-map.mjs'
 import { createSchedule, listSchedules, toggleSchedule } from './lib/schedules.mjs'
 
@@ -168,8 +168,13 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   // Fase 3: rutear al especialista correcto. Clasificamos la directiva a un dominio
   // e inyectamos SUS skills (mismo skill-map que el worker). Si es general, el
   // asistente administrativo de siempre. Si falla la clasificación, degrada a general.
-  const capability = classifyDirective(directive) // instantáneo (keywords)
-  const skillNames = capability === 'general' ? [] : skillsForCapability(capability)
+  // Multi-dominio: un pedido puede cruzar varias skills (cotizar = costos + ingeniería +
+  // legal + finanzas). Activamos TODAS las que correspondan, acotado a 4 por costo/prompt.
+  const capabilities = classifyDirectiveMulti(directive)
+  const capability = capabilities[0] || 'general' // principal (para isBudgeting, telemetría)
+  const skillNames = capabilities.length
+    ? [...new Set(capabilities.flatMap((c) => skillsForCapability(c)))].slice(0, 4)
+    : []
   // Contexto de PRESUPUESTACIÓN: jornales UOCRA Zona A verificados (jul-2026) + flujo
   // FLEXIBLE (guía, se puede saltear) + disciplina. Solo cuando la directiva es de armar
   // presupuesto/cotizar. Los jornales van acá para que use los vigentes y no los del

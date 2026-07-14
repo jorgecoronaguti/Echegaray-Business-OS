@@ -37,3 +37,20 @@ export function classifyDirective(directive) {
   }
   return bestScore > 0 ? best : 'general'
 }
+
+/** Como classifyDirective pero devuelve TODAS las capacidades que matchean (ranked por
+ *  score), para pedidos que cruzan dominios (ej. cotizar = costos + ingeniería + legal +
+ *  finanzas). Acotado a `max` para no inflar el prompt/costo. [] si es general. */
+export function classifyDirectiveMulti(directive, max = 3) {
+  const t = String(directive || '').toLowerCase()
+  if (!t.trim()) return []
+  const scored = []
+  for (const [cap, kws] of Object.entries(CAP_KEYWORDS)) {
+    if (!CAPABILITY_SKILLS[cap]) continue
+    let score = 0
+    for (const kw of kws) if (t.includes(kw)) score++
+    if (score > 0) scored.push({ cap, score })
+  }
+  scored.sort((a, b) => b.score - a.score)
+  return scored.slice(0, max).map((s) => s.cap)
+}
