@@ -140,6 +140,125 @@ export function driveWriteTools(google) {
         return { ok: true, id: r.id, name: r.name, parents: r.parents }
       },
     },
+    'drive.batchupdate': {
+      capability: 'drive.write',
+      account: 'ecsas',
+      schema: {
+        name: 'drive_batch_update',
+        description:
+          'Escribe VARIOS rangos de un Google Sheet en UNA sola operación (potente y rápido): ideal para completar un bloque entero de un presupuesto de una vez, no celda por celda. Pasá file_id y updates = lista de { range, values } (cada values es matriz de filas). REQUIERE aprobación.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            file_id: { type: 'string' },
+            updates: { type: 'array', description: 'lista de {range, values}', items: { type: 'object' } },
+          },
+          required: ['file_id', 'updates'],
+        },
+      },
+      async run(input) {
+        if (!input?.file_id || !Array.isArray(input?.updates) || !input.updates.length) return { error: 'faltan file_id o updates [{range, values}]' }
+        const data = input.updates.map((u) => ({ range: u.range, majorDimension: 'ROWS', values: normalizeValues(u.values) || [] })).filter((d) => d.range)
+        const r = await google.batchUpdateValues(input.file_id, data)
+        return { ok: true, updated_ranges: r.responses?.map((x) => x.updatedRange) ?? null, total_updated_cells: r.totalUpdatedCells ?? null }
+      },
+    },
+    'drive.insertrows': {
+      capability: 'drive.write',
+      account: 'ecsas',
+      schema: {
+        name: 'drive_insert_rows',
+        description:
+          'Inserta N filas VACÍAS en una pestaña, a partir de una fila (empuja el resto hacia abajo sin romper nada). Para agregar espacio en medio de una tabla. Pasá file_id, tab (nombre de la pestaña), at_row (fila 1-based donde insertar) y count. REQUIERE aprobación.',
+        input_schema: {
+          type: 'object',
+          properties: { file_id: { type: 'string' }, tab: { type: 'string' }, at_row: { type: 'number' }, count: { type: 'number' } },
+          required: ['file_id', 'tab', 'at_row', 'count'],
+        },
+      },
+      async run(input) {
+        if (!input?.file_id || !input?.tab || !input?.at_row || !input?.count) return { error: 'faltan file_id, tab, at_row o count' }
+        const meta = (await google.getSheetMeta(input.file_id)).find((s) => s.title === input.tab)
+        if (!meta) return { error: `no encontré la pestaña "${input.tab}"` }
+        const start = Math.max(0, input.at_row - 1)
+        await google.spreadsheetBatchUpdate(input.file_id, [{ insertDimension: { range: { sheetId: meta.sheetId, dimension: 'ROWS', startIndex: start, endIndex: start + input.count }, inheritFromBefore: start > 0 } }])
+        return { ok: true, inserted: input.count, at_row: input.at_row, tab: input.tab }
+      },
+    },
+    'drive.deleterows': {
+      capability: 'drive.write',
+      account: 'ecsas',
+      schema: {
+        name: 'drive_delete_rows',
+        description:
+          'Borra N filas de una pestaña a partir de una fila (elimina filas enteras, sube el resto). Pasá file_id, tab, from_row (1-based) y count. REQUIERE aprobación.',
+        input_schema: {
+          type: 'object',
+          properties: { file_id: { type: 'string' }, tab: { type: 'string' }, from_row: { type: 'number' }, count: { type: 'number' } },
+          required: ['file_id', 'tab', 'from_row', 'count'],
+        },
+      },
+      async run(input) {
+        if (!input?.file_id || !input?.tab || !input?.from_row || !input?.count) return { error: 'faltan file_id, tab, from_row o count' }
+        const meta = (await google.getSheetMeta(input.file_id)).find((s) => s.title === input.tab)
+        if (!meta) return { error: `no encontré la pestaña "${input.tab}"` }
+        const start = Math.max(0, input.from_row - 1)
+        await google.spreadsheetBatchUpdate(input.file_id, [{ deleteDimension: { range: { sheetId: meta.sheetId, dimension: 'ROWS', startIndex: start, endIndex: start + input.count } } }])
+        return { ok: true, deleted: input.count, from_row: input.from_row, tab: input.tab }
+      },
+    },
+    'drive.clear': {
+      capability: 'drive.write',
+      account: 'ecsas',
+      schema: {
+        name: 'drive_clear',
+        description: 'Vacía el contenido de un rango de celdas (sin borrar el formato). Pasá file_id y range (ej. "Presupuesto!B5:F40"). REQUIERE aprobación.',
+        input_schema: { type: 'object', properties: { file_id: { type: 'string' }, range: { type: 'string' } }, required: ['file_id', 'range'] },
+      },
+      async run(input) {
+        if (!input?.file_id || !input?.range) return { error: 'faltan file_id o range' }
+        const r = await google.clearValues(input.file_id, input.range)
+        return { ok: true, cleared_range: r.clearedRange ?? input.range }
+      },
+    },
+    'drive.copy': {
+      capability: 'drive.write',
+      account: 'ecsas',
+      schema: {
+        name: 'drive_copy',
+        description:
+          'DUPLICA un archivo existente (una plantilla o un presupuesto anterior) para partir de él. CLAVE para armar un presupuesto nuevo desde uno parecido. Pasá file_id (a copiar), name (nombre de la copia) y opcional folder_id (dónde dejarla). REQUIERE aprobación.',
+        input_schema: {
+          type: 'object',
+          properties: { file_id: { type: 'string' }, name: { type: 'string' }, folder_id: { type: 'string' } },
+          required: ['file_id', 'name'],
+        },
+      },
+      async run(input) {
+        if (!input?.file_id || !input?.name) return { error: 'faltan file_id o name' }
+        try {
+          const f = await google.copyFile(input.file_id, input.name, input.folder_id ? [input.folder_id] : undefined)
+          return { ok: true, id: f.id, name: f.name, link: f.webViewLink ?? null, navigate: f.webViewLink ? { url: f.webViewLink, name: f.name, file_id: f.id } : undefined }
+        } catch (e) {
+          if (/storageQuota|quota/i.test(e?.message || '')) return { error: 'la copia quedaría a nombre de la cuenta del OS, que no tiene almacenamiento. Para que el OS duplique solo, hace falta una Unidad Compartida. Por ahora duplicá vos el archivo (clic derecho → Hacer una copia) y compartímelo.' }
+          throw e
+        }
+      },
+    },
+    'drive.trash': {
+      capability: 'drive.write', // Baja REVERSIBLE (papelera) → requiere aprobación, no es Nivel F
+      account: 'ecsas',
+      schema: {
+        name: 'drive_trash',
+        description: 'Da de BAJA un archivo/carpeta mandándolo a la PAPELERA (reversible, se puede restaurar 30 días). Pasá file_id. REQUIERE aprobación. (El borrado definitivo sigue prohibido.)',
+        input_schema: { type: 'object', properties: { file_id: { type: 'string' } }, required: ['file_id'] },
+      },
+      async run(input) {
+        if (!input?.file_id) return { error: 'falta file_id' }
+        const r = await google.trashFile(input.file_id)
+        return { ok: true, id: r.id, name: r.name, trashed: r.trashed }
+      },
+    },
     'drive.delete': {
       capability: 'drive.delete', // Nivel F → la policy lo deja SIEMPRE forbidden; run nunca se alcanza
       account: 'ecsas',

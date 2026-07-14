@@ -101,7 +101,7 @@ async function send() {
     const r = await fetch(`${addr}/ask`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
-      body: JSON.stringify({ directive, fileId, attachment: att, history, runId }),
+      body: JSON.stringify({ directive, fileId, attachment: att, history, runId, wantsAsync: true, extVersion: chrome.runtime.getManifest().version }),
     })
     let data = await r.json()
     if (!r.ok) throw new Error(data.error || `error ${r.status}`)
@@ -441,6 +441,7 @@ $('save').addEventListener('click', async () => {
   const { addr, token } = await getCfg()
   $('addr').value = addr
   $('token').value = token
+  try { $('ver').textContent = 'v' + chrome.runtime.getManifest().version } catch { /* noop */ }
   ping()
   loadPending() // pobla el badge de pendientes al abrir
   checkVersion() // avisa si hay una versión más nueva publicada

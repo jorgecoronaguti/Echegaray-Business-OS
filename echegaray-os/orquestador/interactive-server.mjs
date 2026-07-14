@@ -130,6 +130,12 @@ function friendlyStep(name, input) {
     case 'drive_create': return `Preparando crear ${i.tipo || 'el archivo'}${i.name ? ` "${i.name}"` : ''}`
     case 'drive_rename': return `Preparando renombrar${i.new_name ? ` a "${i.new_name}"` : ''}`
     case 'drive_move': return 'Preparando mover el archivo'
+    case 'drive_batch_update': return `Preparando ${Array.isArray(i.updates) ? i.updates.length : 'varios'} bloques de cambios`
+    case 'drive_insert_rows': return `Preparando insertar ${i.count || ''} filas en ${i.tab || ''}`
+    case 'drive_delete_rows': return `Preparando borrar ${i.count || ''} filas de ${i.tab || ''}`
+    case 'drive_clear': return `Preparando vaciar ${i.range || 'un rango'}`
+    case 'drive_copy': return `Preparando duplicar${i.name ? ` como "${i.name}"` : ''}`
+    case 'drive_trash': return 'Preparando dar de baja (papelera)'
     case 'navigate_to': return `Buscando dónde está${i.query ? ` "${i.query}"` : ''} en Drive`
     default: return `Trabajando (${name})`
   }
@@ -161,6 +167,21 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   // asistente administrativo de siempre. Si falla la clasificación, degrada a general.
   const capability = classifyDirective(directive) // instantáneo (keywords)
   const skillNames = capability === 'general' ? [] : skillsForCapability(capability)
+  // Contexto de PRESUPUESTACIÓN: jornales UOCRA Zona A verificados (jul-2026) + flujo
+  // FLEXIBLE (guía, se puede saltear) + disciplina. Solo cuando la directiva es de armar
+  // presupuesto/cotizar. Los jornales van acá para que use los vigentes y no los del
+  // archivo viejo; si cambian, se actualizan en un solo lugar.
+  // Presupuestación detectada por KEYWORDS (no por el clasificador ganador: "jornal"
+  // caía en RRHH y respondía con jornales viejos). Los jornales UOCRA verificados se
+  // inyectan siempre que el tema toque mano de obra, aunque haya ruteado a RRHH.
+  const isBudgeting = /presupuest|cotiz|c[oó]mputo|precio unitario|an[aá]lisis de precio|arm[aá].*(presupuesto|oferta)|apu\b/i.test(directive) || capability === 'advise.estimating'
+  const needsUocra = isBudgeting || /jornal|uocra|categor[ií]a|oficial|ayudante|medio oficial|mano de obra|costo.*(hora|mo)\b/i.test(directive)
+  const uocraRates = needsUocra
+    ? '\n\nJORNALES UOCRA ZONA A VIGENTES (jul-2026, CCT 76/75, VERIFICADO — usá ESTOS, NO los de un archivo viejo): Oficial Especializado $6.800/h · Oficial $5.817/h · Medio Oficial $5.375/h · Ayudante $4.948/h. Sumas no remunerativas jul: Of.Esp $72.900 · Of $67.100 · M.Of $61.500 · Ayudante $57.900. Sobre el jornal van cargas sociales + adicionales de convenio (asistencia, Art.56 hormigonado 15%, EPP, ropa).'
+    : ''
+  const budgetingContext = uocraRates + (isBudgeting
+    ? '\n\nPRESUPUESTACIÓN (método Echegaray). FLUJO (GUÍA, NO obligatorio — el dueño PUEDE saltear pasos): 1 alcance → 2 cómputo métrico → 3 APU por partida (material+desperdicio, MO=rendimiento HH/unidad × costo horario, equipos, subcontrato) → 4 costo MO desde UOCRA → 5 costo directo → 6 gastos generales → 7 beneficio → 8 financiación → 9 impuestos → 10 oferta → 11 control vs histórico. DISCIPLINA: no mezclar costo directo / GG / beneficio / impuestos; MO siempre desde el convenio vigente; dejar el alcance por escrito (para cobrar adicionales). Si hay una planilla de presupuesto abierta (Google Sheet NATIVO compartido), COMPLETALA de una con drive_batch_update (queda en Pendientes). Reusá APU/plantillas de obras anteriores (carpeta PRESUPUESTOS: cada cliente/obra tiene su subcarpeta) — podés duplicar con drive_copy. Si falta un precio de material y no está en el archivo ni te lo dan, DECILO (no inventes precios).'
+    : '')
   // Framing conciso SIEMPRE (aunque cargue skills): queremos el CONOCIMIENTO del
   // especialista pero una entrega corta y directa, no el análisis extenso del worker.
   const roleFraming =
@@ -213,19 +234,24 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
     `(4) Ojo con las columnas que son FÓRMULAS (ej. un ID autonumérico): no las pises con un valor fijo, dejá esa celda vacía o replicá la fórmula. ` +
     `REGLA CRÍTICA — ACTUÁ, NO NARRES: para que un cambio ocurra TENÉS QUE LLAMAR la tool de escritura (drive_update/drive_append/drive_rename/drive_move) AHORA MISMO. Describir el cambio en prosa ("Reescribo…", "Voy a…") NO crea NADA. Solo la llamada a la tool deja la operación en Pendientes. NO pidas confirmación en el chat ("¿confirmo?", "¿te muestro fila por fila?", "¿querés que…?"): la aprobación ES el botón de Pendientes, ahí el dueño revisa y aprueba/rechaza. Cuando tengas el cambio listo, LLAMÁ la tool con los values REALES y COMPLETOS (si es una reescritura grande de muchas filas, emití la matriz entera, no la resumas), y recién después avisá en UNA línea qué quedó pendiente y en qué rango. Solo preguntá si falta un dato que no está en NINGÚN archivo. ` +
     `Para LLEVAR al dueño a un archivo/carpeta ("llevame a", "abrí", "andá a", "mostrame la carpeta", "dónde está X", "quiero ver Y"): usá navigate_to (query = el nombre) — abre el destino en su navegador. Es también cómo se MUEVE entre carpetas del Drive: navegás a la carpeta y podés listar su contenido con drive_list. ` +
+    `EDICIÓN POTENTE (usala, no vayas celda por celda): drive_batch_update escribe VARIOS rangos/bloques en UNA operación (preferila para completar secciones enteras); drive_insert_rows / drive_delete_rows agregan/quitan filas; drive_clear vacía un rango; drive_copy DUPLICA una plantilla o un presupuesto anterior; drive_trash da de baja a la papelera (reversible). Todo queda en Pendientes. ` +
     `Para ADMINISTRAR/ORGANIZAR Drive: mirá con drive_list/drive_find y usá drive_create (tipo "carpeta"), drive_rename o drive_move (todo pendiente de aprobación). Podés crear CARPETAS y renombrar/mover archivos existentes; NO podés crear documentos/planillas nuevos desde cero (la cuenta no tiene almacenamiento propio) — para eso el dueño crea el archivo y lo comparte. ` +
     (att
       ? `\n\nTE ADJUNTARON UN ARCHIVO (foto/PDF): interpretalo. Si es una factura/remito/comprobante, extraé proveedor, fecha, importe total, número y concepto. Si la directiva pide registrarlo, encontrá el Sheet correcto (ej. "Flujo de Caja - Cash Flow", pestaña de compras/gastos), LEÉ su estructura con drive_read y proponé la fila con drive_append. No inventes lo que no ves; si un dato no está en la imagen, decilo.\n`
       : '') +
-    `Lo demás con efecto económico/fiscal/legal externo (Nivel E) tampoco lo ejecutes: proponelo en una línea. Recordá: máxima concisión.`
+    `Lo demás con efecto económico/fiscal/legal externo (Nivel E) tampoco lo ejecutes: proponelo en una línea.` +
+    budgetingContext +
+    (isBudgeting
+      ? ' Para presupuestar podés extenderte lo necesario (tablas, partidas, APU) — acá la claridad importa más que la brevedad.'
+      : ' Recordá: máxima concisión.')
 
   // Con adjunto, el prompt es un array de bloques (visión/documento + texto). El
   // engine acepta content como array sin cambios.
   const promptContent = att ? [att, { type: 'text', text: prompt }] : prompt
 
   const eng = await engine.run(
-    { system, prompt: promptContent, worktreePath: CTX.context.repository.rootPath, model, maxCostUsd: 0.8, maxTokens: writeIntent || att ? 4096 : 900,
-      maxToolIterations: att || writeIntent ? 14 : 10, allowedTools: 'Read',
+    { system, prompt: promptContent, worktreePath: CTX.context.repository.rootPath, model, maxCostUsd: 1.2, maxTokens: writeIntent || att || isBudgeting ? 4096 : 900,
+      maxToolIterations: att || writeIntent || isBudgeting ? 16 : 10, allowedTools: 'Read',
       task: { id: 'interactive', capability_slug: 'advise.admin' },
       tools: Object.values(registry).map((t) => t.schema), toolExecutor, agentSlug: 'interactive' },
     CTX)
@@ -351,31 +377,41 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { ok: true, schedule: await toggleSchedule(id, enabled) })
       }
 
-      // Directiva normal (opcional: attachment {media_type,data,name} + history [{role,text}] + runId).
-      const { directive, fileId, fast, attachment, history, runId } = data
+      // Directiva normal. La extensión 0.6.0+ manda wantsAsync + extVersion.
+      const { directive, fileId, fast, attachment, history, runId, wantsAsync, extVersion } = data
       if (!directive || typeof directive !== 'string') return send(res, 400, { error: 'falta "directive"' })
+      log.info('directiva recibida', { extVersion: extVersion || 'desconocida', wantsAsync: !!wantsAsync })
       const t0 = Date.now()
-      // Ejecución con FALLBACK ASÍNCRONO: un análisis profundo (muchas lecturas) puede
-      // pasar los ~55s donde Vercel corta. Corremos ask() y, si no termina en 45s,
-      // respondemos { async } y la seguimos en segundo plano; la extensión trae el
-      // resultado por /result?id=. Así una tarea larga ya no "clava el timeout".
       const rid = runId || (`srv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
       const work = ask({ directive: directive.slice(0, 4000), fileId, fast, attachment, history, runId: rid })
         .then((out) => { RESULTS.set(rid, { done: true, out }); return out })
         .catch((e) => { RESULTS.set(rid, { done: true, error: e.message }); throw e })
         .finally(() => { progressDone(rid); setTimeout(() => RESULTS.delete(rid), 120000) })
-      let timer
-      const timeout = new Promise((r) => { timer = setTimeout(() => r('__async__'), 45000) })
-      const winner = await Promise.race([work.catch((e) => ({ __error__: e.message })), timeout])
-      clearTimeout(timer)
-      if (winner === '__async__') {
-        log.info('directiva larga → segundo plano', { rid })
-        send(res, 200, { async: true, runId: rid, note: 'Es una tarea larga; la sigo trabajando y te traigo el resultado acá mismo.' })
-      } else if (winner && winner.__error__) {
-        send(res, 500, { error: winner.__error__ })
+      if (wantsAsync) {
+        // FALLBACK ASÍNCRONO (extensión 0.6.0+): un análisis profundo puede pasar los ~55s
+        // donde Vercel corta. Si no termina en 48s, respondemos { async } y la seguimos en
+        // segundo plano; la extensión trae el resultado por /result?id=.
+        let timer
+        const timeout = new Promise((r) => { timer = setTimeout(() => r('__async__'), 48000) })
+        const winner = await Promise.race([work.catch((e) => ({ __error__: e.message })), timeout])
+        clearTimeout(timer)
+        if (winner === '__async__') {
+          log.info('directiva larga → segundo plano', { rid })
+          send(res, 200, { async: true, runId: rid, note: 'Es una tarea larga; la sigo trabajando y te traigo el resultado acá mismo.' })
+        } else if (winner && winner.__error__) {
+          send(res, 500, { error: winner.__error__ })
+        } else {
+          log.info('directiva respondida', { ms: Date.now() - t0, model: winner.model, cost: winner.cost })
+          send(res, 200, { ...winner, ms: Date.now() - t0 })
+        }
       } else {
-        log.info('directiva respondida', { ms: Date.now() - t0, model: winner.model, cost: winner.cost })
-        send(res, 200, { ...winner, ms: Date.now() - t0 })
+        // Cliente viejo (no entiende { async }): esperamos el resultado real. Si la tarea es
+        // muy larga, el proxy corta a ~55s — por eso conviene actualizar la extensión.
+        try {
+          const out = await work
+          log.info('directiva respondida (sync)', { ms: Date.now() - t0, model: out.model })
+          send(res, 200, { ...out, ms: Date.now() - t0 })
+        } catch (e) { send(res, 500, { error: e.message }) }
       }
     } catch (e) {
       log.error('request falló', { url: req.url, error: e.message })

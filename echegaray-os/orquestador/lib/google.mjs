@@ -229,5 +229,56 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes 
         (remove ? `&removeParents=${encodeURIComponent(remove)}` : '') + '&fields=id,name,parents&supportsAllDrives=true'
       return apiSend(url, 'PATCH', {})
     },
+
+    // ---- ABM POTENTE de Sheets/Drive (todas pasan por aprobación vía la policy) ----
+
+    /** Escribe VARIOS rangos de un Sheet en UNA sola operación (batch). `data` = matriz de
+     *  { range, values }. Mucho más rápido y menos "escueto" que una celda por vez. */
+    async batchUpdateValues(fileId, data) {
+      return apiSend(
+        `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values:batchUpdate`,
+        'POST',
+        { valueInputOption: 'USER_ENTERED', data },
+      )
+    },
+    /** Limpia (vacía) el contenido de un rango sin borrar formato. */
+    async clearValues(fileId, range) {
+      return apiSend(
+        `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values/${encodeURIComponent(range)}:clear`,
+        'POST',
+        {},
+      )
+    },
+    /** Propiedades de las pestañas: [{ sheetId, title }]. El sheetId numérico hace falta
+     *  para operaciones estructurales (insertar/borrar filas, formato). */
+    async getSheetMeta(fileId) {
+      const j = await apiGet(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?fields=sheets.properties(sheetId,title,gridProperties)`)
+      return (j.sheets || []).map((s) => ({ sheetId: s.properties?.sheetId, title: s.properties?.title, rows: s.properties?.gridProperties?.rowCount }))
+    },
+    /** Operaciones ESTRUCTURALES de un Sheet (insertar/borrar filas o columnas, formato)
+     *  vía batchUpdate. `requests` = array de requests de la Sheets API. */
+    async spreadsheetBatchUpdate(fileId, requests) {
+      return apiSend(
+        `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}:batchUpdate`,
+        'POST',
+        { requests },
+      )
+    },
+    /** Copia/duplica un archivo (para partir de una plantilla o de un presupuesto previo). */
+    async copyFile(fileId, name, parents) {
+      return apiSend(
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/copy?fields=id,name,webViewLink,mimeType&supportsAllDrives=true`,
+        'POST',
+        { ...(name ? { name } : {}), ...(parents ? { parents } : {}) },
+      )
+    },
+    /** Baja REVERSIBLE: manda el archivo a la papelera (no borra definitivo). */
+    async trashFile(fileId) {
+      return apiSend(
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,trashed&supportsAllDrives=true`,
+        'PATCH',
+        { trashed: true },
+      )
+    },
   }
 }
