@@ -98,8 +98,24 @@ function driveRegistry() {
   return registry
 }
 
-async function ask({ directive, fileId, fast }) {
-  const model = fast === false ? 'sonnet' : 'haiku' // rápido por defecto
+/** Construye el bloque de contenido de visión/documento para un adjunto (foto/PDF).
+ *  Imágenes → type 'image'; PDF → type 'document'. Otros formatos no se interpretan
+ *  por visión (se avisa honestamente en el prompt). */
+function attachmentBlock(att) {
+  if (!att?.data || !att?.media_type) return null
+  if (att.media_type === 'application/pdf') {
+    return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: att.data } }
+  }
+  if (/^image\/(jpeg|png|webp|gif)$/.test(att.media_type)) {
+    return { type: 'image', source: { type: 'base64', media_type: att.media_type, data: att.data } }
+  }
+  return null
+}
+
+async function ask({ directive, fileId, fast, attachment }) {
+  const att = attachmentBlock(attachment)
+  // Con adjunto conviene más precisión (OCR de factura/remito): sonnet.
+  const model = att ? 'sonnet' : fast === false ? 'sonnet' : 'haiku'
   const engine = resolveEngine('anthropic-api')
   const { system } = await assembleReasoningSystem({
     rootPath: CTX.context.repository.rootPath, config: cfg,
@@ -121,11 +137,18 @@ async function ask({ directive, fileId, fast }) {
     `\n\nRespondé en español, claro y directo, como un buen administrativo. Si necesitás un dato de un archivo, LEELO con las tools antes de responder (no inventes). ` +
     `Distinguí hecho/estimación; si falta algo decilo. ` +
     `Si la directiva pide ESCRIBIR/ordenar/completar/corregir/registrar en un archivo, usá drive_update / drive_append / drive_create con el cambio CONCRETO (leé antes el archivo para no pisar datos): la operación queda PENDIENTE de tu aprobación, no se ejecuta sola. Avisá qué dejaste pendiente. ` +
+    (att
+      ? `\n\nTE ADJUNTARON UN ARCHIVO (foto/PDF): interpretalo. Si es una factura/remito/comprobante, extraé proveedor, fecha, importe total, número y concepto. Si la directiva pide registrarlo, encontrá el Sheet correcto (ej. "Flujo de Caja - Cash Flow", pestaña de compras/gastos), LEÉ su estructura con drive_read y proponé la fila con drive_append. No inventes lo que no ves; si un dato no está en la imagen, decilo.\n`
+      : '') +
     `Lo demás con efecto económico/fiscal/legal externo (Nivel E) tampoco lo ejecutes: proponelo. Sé breve.`
 
+  // Con adjunto, el prompt es un array de bloques (visión/documento + texto). El
+  // engine acepta content como array sin cambios.
+  const promptContent = att ? [att, { type: 'text', text: prompt }] : prompt
+
   const eng = await engine.run(
-    { system, prompt, worktreePath: CTX.context.repository.rootPath, model, maxCostUsd: 0.5,
-      maxToolIterations: fast === false ? 10 : 6, allowedTools: 'Read',
+    { system, prompt: promptContent, worktreePath: CTX.context.repository.rootPath, model, maxCostUsd: 0.6,
+      maxToolIterations: att ? 8 : fast === false ? 10 : 6, allowedTools: 'Read',
       task: { id: 'interactive', capability_slug: 'advise.admin' },
       tools: Object.values(registry).map((t) => t.schema), toolExecutor, agentSlug: 'interactive' },
     CTX)
@@ -172,7 +195,9 @@ const server = http.createServer(async (req, res) => {
   }
 
   let body = ''
-  req.on('data', (c) => { body += c; if (body.length > 1e6) req.destroy() })
+  // Techo de 12MB: alcanza para una foto reducida o un PDF chico en base64. (El
+  // proxy de Vercel corta antes, ~4.5MB, por eso la extensión reduce las imágenes.)
+  req.on('data', (c) => { body += c; if (body.length > 12e6) req.destroy() })
   req.on('end', async () => {
     try {
       const data = JSON.parse(body || '{}')
@@ -187,11 +212,11 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { ok: true, ...out })
       }
 
-      // Directiva normal.
-      const { directive, fileId, fast } = data
+      // Directiva normal (opcionalmente con un archivo adjunto: {media_type, data(base64), name}).
+      const { directive, fileId, fast, attachment } = data
       if (!directive || typeof directive !== 'string') return send(res, 400, { error: 'falta "directive"' })
       const t0 = Date.now()
-      const out = await ask({ directive: directive.slice(0, 4000), fileId, fast })
+      const out = await ask({ directive: directive.slice(0, 4000), fileId, fast, attachment })
       log.info('directiva respondida', { ms: Date.now() - t0, model: out.model, cost: out.cost })
       send(res, 200, { ...out, ms: Date.now() - t0 })
     } catch (e) {

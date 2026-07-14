@@ -2,6 +2,7 @@
 // abierto en la pestaña activa, y manda la directiva al cerebro del OS.
 const $ = (id) => document.getElementById(id)
 const DEFAULT_ADDR = 'https://echegaray-business-os.vercel.app/api/os'
+let attachment = null // { media_type, data(base64), name }
 
 async function getCfg() {
   const c = await chrome.storage.local.get(['addr', 'token'])
@@ -36,12 +37,15 @@ async function ping() {
 }
 
 async function send() {
-  const directive = $('input').value.trim()
-  if (!directive) return
+  let directive = $('input').value.trim()
+  if (!directive && !attachment) return
+  if (!directive && attachment) directive = 'Interpretá este archivo adjunto y decime qué es.'
   const { addr, token } = await getCfg()
   if (!token) { $('settings').classList.add('show'); addMsg('Primero pegá tu llave de acceso en configuración (⚙).', 'os'); return }
   $('input').value = ''
-  addMsg(directive, 'me')
+  const att = attachment
+  addMsg(directive + (att ? `\n📎 ${att.name}` : ''), 'me')
+  clearAttachment()
   $('send').disabled = true
   const pending = addMsg('Pensando…', 'os')
   const fileId = await driveFileId()
@@ -50,13 +54,13 @@ async function send() {
     const r = await fetch(`${addr}/ask`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
-      body: JSON.stringify({ directive, fileId }),
+      body: JSON.stringify({ directive, fileId, attachment: att }),
     })
     const data = await r.json()
     if (!r.ok) throw new Error(data.error || `error ${r.status}`)
     pending.textContent = data.answer || '(sin respuesta)'
     const m = document.createElement('div'); m.className = 'meta'
-    m.textContent = `${((Date.now() - t0) / 1000).toFixed(1)}s${fileId ? ' · leyó el archivo abierto' : ''}`
+    m.textContent = `${((Date.now() - t0) / 1000).toFixed(1)}s${att ? ' · leyó el adjunto' : fileId ? ' · leyó el archivo abierto' : ''}`
     pending.appendChild(m)
   } catch (e) {
     pending.textContent = 'No pude conectar con el OS: ' + e.message
@@ -132,6 +136,59 @@ async function decide(id, action, card) {
   }
 }
 
+// ---- Adjuntar archivo (foto/PDF) ----
+
+function clearAttachment() {
+  attachment = null
+  $('file').value = ''
+  $('chip').classList.remove('show')
+}
+
+/** Reduce una imagen a máx `maxDim` px por lado y la codifica JPEG. Baja el peso muy
+ *  por debajo del límite de Vercel (~4.5MB) y ahorra tokens, sin perder legibilidad. */
+function downscaleImage(file, maxDim, quality) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      let { width: w, height: h } = img
+      const scale = Math.min(1, maxDim / Math.max(w, h))
+      w = Math.round(w * scale); h = Math.round(h * scale)
+      const cv = document.createElement('canvas'); cv.width = w; cv.height = h
+      cv.getContext('2d').drawImage(img, 0, 0, w, h)
+      URL.revokeObjectURL(url)
+      resolve(cv.toDataURL('image/jpeg', quality))
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('no pude leer la imagen')) }
+    img.src = url
+  })
+}
+
+function readAsDataURL(file) {
+  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error('no pude leer el archivo')); r.readAsDataURL(file) })
+}
+
+async function onFilePicked(file) {
+  if (!file) return
+  try {
+    if (file.type.startsWith('image/')) {
+      const dataUrl = await downscaleImage(file, 1600, 0.82)
+      attachment = { media_type: 'image/jpeg', data: dataUrl.split(',')[1], name: file.name }
+    } else if (file.type === 'application/pdf') {
+      if (file.size > 3.5e6) throw new Error('PDF muy grande (máx ~3.5MB). Sacale una foto a la hoja o mandá un PDF más chico.')
+      const dataUrl = await readAsDataURL(file)
+      attachment = { media_type: 'application/pdf', data: String(dataUrl).split(',')[1], name: file.name }
+    } else {
+      throw new Error('Formato no soportado. Adjuntá una foto (JPG/PNG) o un PDF.')
+    }
+    $('chipname').textContent = '📎 ' + file.name
+    $('chip').classList.add('show')
+  } catch (e) {
+    clearAttachment()
+    addMsg(e.message, 'os')
+  }
+}
+
 function showView(view) {
   const chat = view === 'chat'
   $('chat').style.display = chat ? 'flex' : 'none'
@@ -147,6 +204,9 @@ $('send').addEventListener('click', send)
 $('input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } })
 $('tabChat').addEventListener('click', () => showView('chat'))
 $('tabPending').addEventListener('click', () => showView('pending'))
+$('attach').addEventListener('click', () => $('file').click())
+$('file').addEventListener('change', (e) => onFilePicked(e.target.files[0]))
+$('chipx').addEventListener('click', clearAttachment)
 $('gear').addEventListener('click', () => $('settings').classList.toggle('show'))
 $('save').addEventListener('click', async () => {
   await chrome.storage.local.set({ addr: $('addr').value.trim() || DEFAULT_ADDR, token: $('token').value.trim() })

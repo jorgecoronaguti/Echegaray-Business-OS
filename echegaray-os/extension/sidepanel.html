@@ -26,6 +26,12 @@
   button.send { background:var(--accent); color:#0b1220; border:0; border-radius:10px; padding:0 16px;
     font-weight:700; cursor:pointer; }
   button.send:disabled { opacity:.5; cursor:default; }
+  button.attach { background:var(--panel); color:var(--soft); border:1px solid var(--line); border-radius:10px;
+    width:44px; font-size:17px; cursor:pointer; }
+  #chip { display:none; align-items:center; gap:8px; margin:0 10px; padding:7px 10px; background:var(--panel);
+    border:1px solid var(--line); border-top:0; border-radius:0 0 10px 10px; font-size:12px; color:var(--soft); }
+  #chip.show { display:flex; }
+  #chip .x { margin-left:auto; cursor:pointer; color:var(--faint); font-weight:700; }
   #settings { display:none; padding:14px; border-bottom:1px solid var(--line); background:var(--panel); }
   #settings.show { display:block; }
   #settings label { display:block; font-size:12px; color:var(--soft); margin:8px 0 4px; }
@@ -75,7 +81,10 @@
   <div id="pending">
     <div class="hint" id="phint">No hay operaciones esperando tu aprobación.</div>
   </div>
+  <div id="chip"><span id="chipname"></span><span class="x" id="chipx" title="Quitar">✕</span></div>
   <footer>
+    <input type="file" id="file" accept="image/*,application/pdf" hidden>
+    <button class="attach" id="attach" title="Adjuntar foto o PDF">📎</button>
     <textarea id="input" placeholder="Escribí una directiva…"></textarea>
     <button class="send" id="send">Enviar</button>
   </footer>
