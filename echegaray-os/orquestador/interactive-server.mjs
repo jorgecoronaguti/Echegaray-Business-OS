@@ -157,9 +157,12 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   // acción u opciones → el dueño está eligiendo: hay que ACTUAR, no re-preguntar.
   const followUpAction = CONFIRM_RE.test(String(directive || '')) && WRITE_RE.test(histText)
   const writeIntent = directiveWrite || followUpAction
-  // Inteligencia > 1s de latencia: el canal interactivo razona con sonnet por defecto.
-  // haiku "no seguía el hilo" y bailaba a preguntar; el dueño pidió que sea inteligente.
-  const model = 'sonnet'
+  // MODELO POR NIVELES (ahorro de API): sonnet (potente, caro) solo cuando hace falta
+  // criterio real — escribir, interpretar un adjunto, o presupuestar; haiku (barato,
+  // rápido) para consultas simples y de charla. Antes era sonnet-siempre y quemaba
+  // crédito hasta en un "hola". `fast === false` fuerza sonnet si el pedido lo pide.
+  const budgetingKw = /presupuest|cotiz|c[oó]mputo|precio unitario|an[aá]lisis de precio|arm[aá].*(presupuesto|oferta)|apu\b/i.test(directive)
+  const model = writeIntent || att || budgetingKw || fast === false ? 'sonnet' : 'haiku'
   const engine = resolveEngine('anthropic-api')
 
   // Fase 3: rutear al especialista correcto. Clasificamos la directiva a un dominio

@@ -1,8 +1,8 @@
 [Unit]
-Description=Echegaray OS - Vigilancia autónoma round-the-clock (cada 6h: 00/06/12/18 -03)
+Description=Echegaray OS - Vigilancia autónoma (1x/día 07:00 -03) — ahorro de API
 
 [Timer]
-OnCalendar=*-*-* 00,06,12,18:00:00
+OnCalendar=*-*-* 07:00:00
 Persistent=true
 Unit=echegaray-orq-vigilancia.service
 

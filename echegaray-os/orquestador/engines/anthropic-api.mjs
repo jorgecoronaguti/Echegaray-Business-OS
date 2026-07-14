@@ -177,9 +177,16 @@ export function makeAnthropicEngine({ config, client, breaker, semaphore }) {
                 // job.maxTokens acota la salida por pedido (respuestas más cortas y
                 // rápidas, ej. el canal interactivo). Sin override, el default global.
                 max_tokens: job.maxTokens ?? config.ANTHROPIC_MAX_TOKENS,
-                ...(job.system ? { system: job.system } : {}),
+                // PROMPT CACHING: el system (skills, ~miles de tokens estáticos) y las
+                // tools son idénticos en cada iteración del loop agéntico y entre pedidos
+                // que usan las mismas skills. Cachearlos hace que las repeticiones se
+                // lean a ~10% del costo (TTL ~5min). Es el mayor ahorro de API sin perder
+                // capacidad. Marcar el ÚLTIMO bloque cachea todo el prefijo anterior.
+                ...(job.system
+                  ? { system: typeof job.system === 'string' ? [{ type: 'text', text: job.system, cache_control: { type: 'ephemeral' } }] : job.system }
+                  : {}),
                 messages,
-                ...(hasTools ? { tools: job.tools } : {}),
+                ...(hasTools ? { tools: job.tools.map((t, i) => (i === job.tools.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t)) } : {}),
               },
               { timeout: job.timeoutMs || config.ANTHROPIC_TIMEOUT_MS },
             ),
