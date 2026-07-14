@@ -3,6 +3,7 @@
 const $ = (id) => document.getElementById(id)
 const DEFAULT_ADDR = 'https://echegaray-business-os.vercel.app/api/os'
 let attachment = null // { media_type, data(base64), name }
+const convo = [] // historial de la charla {role:'me'|'os', text} para seguir el hilo
 
 async function getCfg() {
   const c = await chrome.storage.local.get(['addr', 'token'])
@@ -46,6 +47,8 @@ async function send() {
   const att = attachment
   addMsg(directive + (att ? `\n📎 ${att.name}` : ''), 'me')
   clearAttachment()
+  const history = convo.slice(-8) // turnos previos (antes de agregar el actual)
+  convo.push({ role: 'me', text: directive })
   $('send').disabled = true
   const pending = addMsg('Pensando…', 'os')
   const fileId = await driveFileId()
@@ -54,11 +57,12 @@ async function send() {
     const r = await fetch(`${addr}/ask`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
-      body: JSON.stringify({ directive, fileId, attachment: att }),
+      body: JSON.stringify({ directive, fileId, attachment: att, history }),
     })
     const data = await r.json()
     if (!r.ok) throw new Error(data.error || `error ${r.status}`)
     pending.textContent = data.answer || '(sin respuesta)'
+    convo.push({ role: 'os', text: data.answer || '' })
     const m = document.createElement('div'); m.className = 'meta'
     m.textContent = `${((Date.now() - t0) / 1000).toFixed(1)}s${att ? ' · leyó el adjunto' : fileId ? ' · leyó el archivo abierto' : ''}`
     pending.appendChild(m)

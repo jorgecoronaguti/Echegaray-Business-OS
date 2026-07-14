@@ -1,54 +1,39 @@
-// Clasificador de directivas → dominio experto. El canal interactivo era un
-// generalista; con esto, una directiva de un dominio (finanzas, laboral, impuestos,
-// adicional exigible…) se atiende con las SKILLS de ese especialista inyectadas
-// (reusa el mismo skill-map que el worker), no con criterio genérico.
-//
-// Barato y rápido: una vuelta de haiku que elige un slug de la lista. Si no encaja
-// en un dominio, devuelve 'general' (el asistente administrativo de siempre). Si el
-// clasificador falla por lo que sea, degrada a 'general' (nunca rompe el /ask).
-import { resolveEngine } from '../engines/index.mjs'
+// Clasificador de directivas → dominio experto. INSTANTÁNEO (por palabras clave, sin
+// llamar al modelo): antes hacía una vuelta de haiku que sumaba ~1-2s de latencia a
+// CADA respuesta. Para el canal interactivo prioriza velocidad; si no encaja claro,
+// 'general' (asistente sin skill específica). El ruteo fino profundo lo hace el worker.
+import { CAPABILITY_SKILLS } from './skill-map.mjs'
 
-// Descripción corta por capacidad — lo que el clasificador ve. Las claves DEBEN
-// existir en CAPABILITY_SKILLS (skill-map.mjs).
-const CAP_DESC = {
-  'advise.finance': 'caja, cobranzas, pagos, flujo de fondos, tesorería, financiamiento, capital de trabajo',
-  'advise.accounting': 'contabilidad, P&L, resultado económico, margen, cierre contable',
-  'advise.tax': 'impuestos, IVA, ingresos brutos, ganancias, ARCA/DGR, retenciones, alícuotas',
-  'advise.legal': 'contratos, adicionales exigibles, reclamos, garantías, pliegos, cláusulas',
-  'advise.hr': 'personal, UOCRA, IERIC, altas/bajas, jornales, legajos, fondo de cese laboral',
-  'advise.safety': 'seguridad e higiene, ART, incidentes, riesgo laboral, pliego SSMA',
-  'advise.procurement': 'compras, proveedores, subcontratistas, abastecimiento, cotización de insumos',
-  'advise.estimating': 'cotizar una obra, presupuestar, cómputo, valorizar un adicional, análisis de costo',
-  'advise.engineering': 'planificación, cronograma, avance de obra, productividad, rendimientos, ruta crítica',
-  'advise.civil': 'técnica constructiva, materiales, patologías, sistemas estructurales, viabilidad técnica',
-  'advise.quality': 'control de calidad, ensayos, tolerancias, no conformidades',
-  'advise.equipment': 'equipos, vehículos, flota, mantenimiento, habilitaciones, comprar vs alquilar',
-  'advise.site': 'coordinación de obra, jefe de obra, frentes de trabajo, conflictos en sitio',
-  'advise.data': 'auditar/leer/integrar fuentes de datos, Sheets, Drive, migraciones, conciliación',
+// Palabras/raíces clave por capacidad (en minúsculas, sin tildes para robustez).
+// Se elige la capacidad con más coincidencias; empate/cero → 'general'.
+const CAP_KEYWORDS = {
+  'advise.finance': ['caja', 'saldo', 'cobranz', 'cobrar', 'pagar', 'pago', 'tesorer', 'flujo', 'fondos', 'liquidez', 'capital de trabajo', 'banco', 'cheque', 'transferenc'],
+  'advise.accounting': ['contab', 'p&l', 'resultado', 'margen', 'balance', 'devengad', 'asiento', 'ganancia neta'],
+  'advise.tax': ['impuesto', 'iva', 'ingresos brutos', 'ganancias', 'arca', 'afip', 'dgr', 'retenc', 'alicuota', 'fiscal', 'monotributo'],
+  'advise.legal': ['contrato', 'adicional', 'reclamo', 'garantia', 'pliego', 'clausula', 'exigib', 'legal', 'demanda', 'penal'],
+  'advise.hr': ['uocra', 'ieric', 'personal', 'empleado', 'jornal', 'legajo', 'alta', 'baja', 'despido', 'sueldo', 'fondo de cese', 'convenio', 'obrero'],
+  'advise.safety': ['seguridad', 'higiene', 'art', 'accidente', 'incidente', 'riesgo laboral', 'ssma', 'epp'],
+  'advise.procurement': ['comprar', 'compra', 'proveedor', 'subcontrat', 'abastec', 'cotiza insumo', 'orden de compra', 'presupuesto de compra'],
+  'advise.estimating': ['cotizar', 'presupuest', 'computo', 'cómputo', 'valoriz', 'costo', 'precio unitario', 'analisis de precio'],
+  'advise.engineering': ['plan', 'cronograma', 'avance', 'productividad', 'rendimiento', 'ruta critica', 'gantt', 'certificac'],
+  'advise.civil': ['hormigon', 'estructura', 'material', 'patologia', 'fisura', 'losa', 'columna', 'suelo', 'tecnica constructiv'],
+  'advise.quality': ['calidad', 'ensayo', 'tolerancia', 'no conformidad', 'control de calidad'],
+  'advise.equipment': ['equipo', 'vehiculo', 'flota', 'camion', 'maquina', 'mantenimiento', 'rto', 'vtv', 'combustible', 'alquiler de equipo'],
+  'advise.site': ['obra', 'jefe de obra', 'cuadrilla', 'frente', 'sitio', 'capataz'],
+  'advise.data': ['auditar', 'integr', 'migrar', 'conciliar', 'fuente de datos', 'base de datos', 'sheet', 'planilla'],
 }
 
-export const CLASSIFIABLE = Object.keys(CAP_DESC)
-
-/** Devuelve un slug de CAP_DESC o 'general'. Nunca lanza. */
-export async function classifyDirective(directive, ctx) {
-  const text = String(directive || '').trim()
-  if (!text) return 'general'
-  const list = Object.entries(CAP_DESC).map(([k, v]) => `- ${k}: ${v}`).join('\n')
-  const prompt =
-    `Clasificá esta DIRECTIVA del dueño de una constructora en UNA de estas áreas expertas. ` +
-    `Devolvé SOLO el slug exacto (ej. "advise.finance"), sin nada más. Si es una consulta ` +
-    `administrativa/operativa general, un saludo, o no encaja claramente en un dominio experto, devolvé "general".\n\n` +
-    `ÁREAS:\n${list}\n\nDIRECTIVA: ${text}\n\nSlug:`
-  try {
-    const engine = resolveEngine('anthropic-api')
-    const eng = await engine.run(
-      { prompt, model: 'haiku', maxToolIterations: 1, maxCostUsd: 0.02, task: { id: 'classify', capability_slug: 'read.analyze' } },
-      ctx,
-    )
-    const raw = String(eng.result || '').toLowerCase()
-    return CLASSIFIABLE.find((k) => raw.includes(k)) || 'general'
-  } catch (e) {
-    ctx?.logger?.warn?.('classify-directive: falló, degrada a general', { error: e?.message })
-    return 'general'
+/** Devuelve un slug de CAPABILITY_SKILLS o 'general'. Síncrono, instantáneo. */
+export function classifyDirective(directive) {
+  const t = String(directive || '').toLowerCase()
+  if (!t.trim()) return 'general'
+  let best = 'general'
+  let bestScore = 0
+  for (const [cap, kws] of Object.entries(CAP_KEYWORDS)) {
+    if (!CAPABILITY_SKILLS[cap]) continue
+    let score = 0
+    for (const kw of kws) if (t.includes(kw)) score++
+    if (score > bestScore) { bestScore = score; best = cap }
   }
+  return bestScore > 0 ? best : 'general'
 }

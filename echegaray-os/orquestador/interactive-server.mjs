@@ -68,14 +68,6 @@ async function boot() {
   log.info('motor interactivo listo', { port: PORT, tenant: CTX.context.tenantId })
 }
 
-/** Resumen corto de lo que el OS ya sabe (memoria acumulada), para dar contexto. */
-async function memoriaBrief() {
-  const { rows } = await query(
-    `select afirmacion from public.conocimiento_empresa where vigente
-      order by veces_confirmado desc, updated_at desc limit 10`).catch(() => ({ rows: [] }))
-  return rows.length ? '\n\nLO QUE EL OS YA SABE DE LA EMPRESA:\n' + rows.map((r) => `- ${r.afirmacion}`).join('\n') : ''
-}
-
 /** Registro de tools de Drive: lectura (auto) + escritura (requieren aprobación) +
  *  búsqueda por índice. Las de escritura no se ejecutan acá: el tool-executor las
  *  encola como operaciones pendientes (Nivel E). */
@@ -115,7 +107,7 @@ function attachmentBlock(att) {
   return null
 }
 
-async function ask({ directive, fileId, fast, attachment }) {
+async function ask({ directive, fileId, fast, attachment, history }) {
   const att = attachmentBlock(attachment)
   // Intención de escritura: haiku es demasiado tímido para el ciclo leer→ubicar
   // pestaña→proponer cambio (bailaba a preguntar). Con intención de escribir o un
@@ -127,7 +119,7 @@ async function ask({ directive, fileId, fast, attachment }) {
   // Fase 3: rutear al especialista correcto. Clasificamos la directiva a un dominio
   // e inyectamos SUS skills (mismo skill-map que el worker). Si es general, el
   // asistente administrativo de siempre. Si falla la clasificación, degrada a general.
-  const capability = await classifyDirective(directive, CTX)
+  const capability = classifyDirective(directive) // instantáneo (keywords)
   const skillNames = capability === 'general' ? [] : skillsForCapability(capability)
   // Framing conciso SIEMPRE (aunque cargue skills): queremos el CONOCIMIENTO del
   // especialista pero una entrega corta y directa, no el análisis extenso del worker.
@@ -147,13 +139,17 @@ async function ask({ directive, fileId, fast, attachment }) {
     // orq.pending_operations con su cambio concreto y queda esperando aprobación.
     enqueue: (op) => enqueuePendingOperation({ ...op, tenantId: CTX.context.tenantId, agentSlug: 'interactive' }),
   })
-  const memoria = await memoriaBrief()
   const hoy = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  // Historial de la charla: seguir el hilo ("aplicá la 2", "hacelo", "y el otro?").
+  const hist = Array.isArray(history) && history.length
+    ? 'CONVERSACIÓN PREVIA (seguí el hilo; "hacelo"/"aplicá eso" se refieren a lo último que propusiste):\n' +
+      history.slice(-8).map((m) => `${m.role === 'me' ? 'Dueño' : 'OS'}: ${String(m.text || '').slice(0, 700)}`).join('\n') + '\n\n'
+    : ''
   const prompt =
     `HOY: ${hoy} (San Juan, Argentina). Usá esta fecha; no la inventes.\n\n` +
+    hist +
     `DIRECTIVA DEL DUEÑO:\n${directive}\n` +
     (fileId ? `\nEstá mirando el archivo de Drive con file_id=${fileId}. Leélo con drive_read si la directiva lo requiere.\n` : '') +
-    memoria +
     `\n\nESTILO OBLIGATORIO: respondé en español, MUY conciso y específico. Sin preámbulos, sin repetir la pregunta, sin explicar tu proceso ("leí el archivo…", "voy a…"), sin cierres de cortesía. Andá directo al dato o a la acción. Números concretos. Por defecto 1–3 líneas o pocos bullets; solo extendé si te piden el detalle. Si necesitás un dato de un archivo, LEELO con las tools antes de responder (no inventes). ` +
     `Distinguí hecho/estimación; si falta algo, decilo en pocas palabras. ` +
     `Si la directiva pide ESCRIBIR/ordenar/completar/corregir/registrar/mejorar un archivo: ` +
@@ -263,11 +259,11 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { ok: true, schedule: await toggleSchedule(id, enabled) })
       }
 
-      // Directiva normal (opcionalmente con un archivo adjunto: {media_type, data(base64), name}).
-      const { directive, fileId, fast, attachment } = data
+      // Directiva normal (opcional: attachment {media_type,data,name} + history [{role,text}]).
+      const { directive, fileId, fast, attachment, history } = data
       if (!directive || typeof directive !== 'string') return send(res, 400, { error: 'falta "directive"' })
       const t0 = Date.now()
-      const out = await ask({ directive: directive.slice(0, 4000), fileId, fast, attachment })
+      const out = await ask({ directive: directive.slice(0, 4000), fileId, fast, attachment, history })
       log.info('directiva respondida', { ms: Date.now() - t0, model: out.model, cost: out.cost })
       send(res, 200, { ...out, ms: Date.now() - t0 })
     } catch (e) {
