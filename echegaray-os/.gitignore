@@ -77,4 +77,4 @@ __pycache__/
 *.pyc
 scripts/arca/credentials/
 scripts/arca/out/
-extension.zip
+/extension.zip
