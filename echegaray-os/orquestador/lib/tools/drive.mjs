@@ -138,6 +138,23 @@ export function driveReadTools(google) {
         return { file_id: fileId, name: meta.name, tipo: mt, nota: 'Este archivo no es una planilla ni PDF (Word/imagen): el OS sabe que existe pero todavía no lee su contenido.' }
       },
     },
+    'drive.obras': {
+      capability: 'drive.read',
+      account: 'ecsas',
+      schema: {
+        name: 'list_obras',
+        description:
+          'Lista las OBRAS/clientes de la empresa (las subcarpetas de PRESUPUESTOS, cada una es un cliente/obra con sus Cotizaciones y Planos adentro). Usalo cuando el dueño dice "mis obras", "qué obras tengo", o quiere el estado de una obra: te da el nombre y el folder_id de cada una para después entrar con drive_list/drive_read a su presupuesto, avance o adicionales.',
+        input_schema: { type: 'object', properties: {} },
+      },
+      async run() {
+        const f = await google.findFolder('PRESUPUESTOS')
+        if (!f) return { error: 'no encontré la carpeta PRESUPUESTOS en el Drive' }
+        const items = await google.listFolder(f.id)
+        const obras = items.filter((i) => (i.mimeType || '').includes('folder')).map((i) => ({ obra: i.name, folder_id: i.id }))
+        return { fuente: 'PRESUPUESTOS', count: obras.length, obras }
+      },
+    },
     'drive.navigate': {
       capability: 'drive.read',
       account: 'ecsas',
