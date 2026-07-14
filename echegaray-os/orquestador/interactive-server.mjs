@@ -111,6 +111,9 @@ function attachmentBlock(att) {
 // indexados por runId (que genera la extensión). La extensión hace polling a
 // /progress?id= y muestra "trabajando: Leyendo Compras…". Se limpia solo al terminar.
 const PROGRESS = new Map()
+// Resultados de directivas largas que se resolvieron en segundo plano (tras superar el
+// techo de 45s inline). La extensión los recoge por /result?id=. Se limpian solos.
+const RESULTS = new Map()
 function progressInit(runId) { if (runId) PROGRESS.set(runId, { steps: ['Pensando…'], done: false, updated: Date.now() }) }
 function progressPush(runId, step) { const p = runId && PROGRESS.get(runId); if (p) { p.steps.push(step); p.updated = Date.now() } }
 function progressDone(runId) { const p = runId && PROGRESS.get(runId); if (p) { p.done = true; p.updated = Date.now() } if (runId) setTimeout(() => PROGRESS.delete(runId), 30000) }
@@ -279,6 +282,15 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, p ? { steps: p.steps.slice(-6), done: p.done } : { steps: [], done: false })
   }
 
+  // Resultado de una directiva que se fue a segundo plano (fallback asíncrono).
+  if (req.method === 'GET' && req.url.startsWith('/result')) {
+    const rid = new URL(req.url, 'http://x').searchParams.get('id')
+    const r = rid && RESULTS.get(rid)
+    if (!r) return send(res, 200, { done: false })
+    if (r.error) return send(res, 200, { done: true, error: r.error })
+    return send(res, 200, { done: true, ...r.out })
+  }
+
   // Estado de una operación por id: la extensión lo consulta tras aprobar para avisar
   // si se ejecutó o falló (antes fallaba en silencio y el dueño no se enteraba).
   if (req.method === 'GET' && req.url.startsWith('/operation-status')) {
@@ -343,11 +355,28 @@ const server = http.createServer(async (req, res) => {
       const { directive, fileId, fast, attachment, history, runId } = data
       if (!directive || typeof directive !== 'string') return send(res, 400, { error: 'falta "directive"' })
       const t0 = Date.now()
-      try {
-        const out = await ask({ directive: directive.slice(0, 4000), fileId, fast, attachment, history, runId })
-        log.info('directiva respondida', { ms: Date.now() - t0, model: out.model, cost: out.cost })
-        send(res, 200, { ...out, ms: Date.now() - t0 })
-      } finally { progressDone(runId) }
+      // Ejecución con FALLBACK ASÍNCRONO: un análisis profundo (muchas lecturas) puede
+      // pasar los ~55s donde Vercel corta. Corremos ask() y, si no termina en 45s,
+      // respondemos { async } y la seguimos en segundo plano; la extensión trae el
+      // resultado por /result?id=. Así una tarea larga ya no "clava el timeout".
+      const rid = runId || (`srv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
+      const work = ask({ directive: directive.slice(0, 4000), fileId, fast, attachment, history, runId: rid })
+        .then((out) => { RESULTS.set(rid, { done: true, out }); return out })
+        .catch((e) => { RESULTS.set(rid, { done: true, error: e.message }); throw e })
+        .finally(() => { progressDone(rid); setTimeout(() => RESULTS.delete(rid), 120000) })
+      let timer
+      const timeout = new Promise((r) => { timer = setTimeout(() => r('__async__'), 45000) })
+      const winner = await Promise.race([work.catch((e) => ({ __error__: e.message })), timeout])
+      clearTimeout(timer)
+      if (winner === '__async__') {
+        log.info('directiva larga → segundo plano', { rid })
+        send(res, 200, { async: true, runId: rid, note: 'Es una tarea larga; la sigo trabajando y te traigo el resultado acá mismo.' })
+      } else if (winner && winner.__error__) {
+        send(res, 500, { error: winner.__error__ })
+      } else {
+        log.info('directiva respondida', { ms: Date.now() - t0, model: winner.model, cost: winner.cost })
+        send(res, 200, { ...winner, ms: Date.now() - t0 })
+      }
     } catch (e) {
       log.error('request falló', { url: req.url, error: e.message })
       send(res, 500, { error: e.message })

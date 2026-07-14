@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Echegaray OS",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Dale directivas al cerebro del OS de Echegaray sobre tus archivos de Drive, y recibí respuestas en segundos.",
   "permissions": ["sidePanel", "storage", "tabs"],
   "host_permissions": ["https://echegaray-business-os.vercel.app/*"],

@@ -103,8 +103,16 @@ async function send() {
       headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
       body: JSON.stringify({ directive, fileId, attachment: att, history, runId }),
     })
-    const data = await r.json()
+    let data = await r.json()
     if (!r.ok) throw new Error(data.error || `error ${r.status}`)
+    // Tarea larga: el OS la sigue en segundo plano; esperamos el resultado por /result
+    // (sin cortar por timeout). El indicador de progreso sigue mostrando los pasos.
+    if (data.async && data.runId) {
+      polling = false // de acá en más el progreso lo maneja waitResult (evita pisar la respuesta)
+      pending.textContent = '⏳ Tarea larga: la estoy trabajando…'
+      data = await waitResult(addr, token, data.runId, pending, t0)
+      if (data.error) throw new Error(data.error)
+    }
     pending.textContent = data.answer || '(sin respuesta)'
     convo.push({ role: 'os', text: data.answer || '' })
     const m = document.createElement('div'); m.className = 'meta'
@@ -188,6 +196,26 @@ async function decide(id, action, card) {
     card.querySelectorAll('button').forEach((b) => (b.disabled = false))
     addMsg('No se pudo procesar la operación: ' + e.message, 'os')
   }
+}
+
+// Espera el resultado de una directiva larga (fallback asíncrono), mostrando el paso
+// actual mientras tanto. Hasta ~6 min; el OS sigue trabajando aunque cierres el panel.
+async function waitResult(addr, token, runId, pending, t0) {
+  for (let i = 0; i < 180; i++) {
+    await new Promise((r) => setTimeout(r, 2000))
+    try {
+      const pr = await fetch(`${addr}/progress?id=${runId}`, { headers: { authorization: `Bearer ${token}` } })
+      const pd = await pr.json()
+      const last = (pd.steps || []).slice(-1)[0]
+      if (last) pending.textContent = `⏳ ${last}… (${Math.round((Date.now() - t0) / 1000)}s)`
+    } catch { /* reintenta */ }
+    try {
+      const rr = await fetch(`${addr}/result?id=${runId}`, { headers: { authorization: `Bearer ${token}` } })
+      const rd = await rr.json()
+      if (rd.done) return rd
+    } catch { /* reintenta */ }
+  }
+  return { error: 'La tarea tardó demasiado. Probá pedirla más acotada (ej. una obra o una pestaña a la vez).' }
 }
 
 async function reportOutcome(id) {
