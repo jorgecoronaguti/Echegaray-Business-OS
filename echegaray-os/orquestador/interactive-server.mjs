@@ -26,6 +26,8 @@ import { driveReadTools } from './lib/tools/drive.mjs'
 import { driveWriteTools } from './lib/tools/drive-write.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
 import { enqueuePendingOperation, listPendingOperations, decidePendingOperation } from './lib/pending-ops.mjs'
+import { classifyDirective } from './lib/classify-directive.mjs'
+import { skillsForCapability } from './lib/skill-map.mjs'
 
 const cfg = loadConfig()
 const log = createLogger({ component: 'interactive' })
@@ -117,11 +119,22 @@ async function ask({ directive, fileId, fast, attachment }) {
   // Con adjunto conviene más precisión (OCR de factura/remito): sonnet.
   const model = att ? 'sonnet' : fast === false ? 'sonnet' : 'haiku'
   const engine = resolveEngine('anthropic-api')
-  const { system } = await assembleReasoningSystem({
+
+  // Fase 3: rutear al especialista correcto. Clasificamos la directiva a un dominio
+  // e inyectamos SUS skills (mismo skill-map que el worker). Si es general, el
+  // asistente administrativo de siempre. Si falla la clasificación, degrada a general.
+  const capability = await classifyDirective(directive, CTX)
+  const skillNames = capability === 'general' ? [] : skillsForCapability(capability)
+  const roleFraming = skillNames.length
+    ? ROLE_FRAMING.specialist
+    : 'Sos el asistente operativo del Business OS de Echegaray Construcciones: respondés directivas del dueño sobre sus archivos y su operación, con criterio y datos reales.'
+  const { system, skillsLoaded } = await assembleReasoningSystem({
     rootPath: CTX.context.repository.rootPath, config: cfg,
-    roleFraming: 'Sos el asistente operativo del Business OS de Echegaray Construcciones: respondés directivas del dueño sobre sus archivos y su operación, con criterio y datos reales.',
+    roleFraming,
+    skillNames: skillNames.length ? skillNames : undefined,
     logger: log,
   })
+  log.info('directiva ruteada', { capability, skills: skillsLoaded || [] })
   const registry = driveRegistry()
   const toolExecutor = makeToolExecutor({
     decide, tools: registry, principalId: DIRECTOR_PRINCIPAL, logger: log,
@@ -152,7 +165,7 @@ async function ask({ directive, fileId, fast, attachment }) {
       task: { id: 'interactive', capability_slug: 'advise.admin' },
       tools: Object.values(registry).map((t) => t.schema), toolExecutor, agentSlug: 'interactive' },
     CTX)
-  return { answer: eng.result, model, cost: eng.cost?.usd ?? 0 }
+  return { answer: eng.result, model, cost: eng.cost?.usd ?? 0, capability, skills: skillsLoaded || [] }
 }
 
 function send(res, code, obj) {
