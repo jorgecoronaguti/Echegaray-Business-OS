@@ -171,6 +171,30 @@ const CAPABILITIES_HELP = [
   'Para trabajo profundo de un especialista, pedí "hacé un análisis en profundidad de…" (tarda más, razona hondo).',
 ].join('\n')
 
+// PRP-016 — APRENDIZAJE. Guarda un hecho que el DUEÑO enseña ("recordá que…") en
+// conocimiento_empresa con origen_task_id NULL (así queda separado del ruido de la
+// vigilancia autónoma, que sí setea origen_task_id). Dedup por clave normalizada.
+async function saveKnowledge(area, afirmacion) {
+  const clave = String(afirmacion).toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 200)
+  if (!clave) return
+  await query(
+    `insert into public.conocimiento_empresa (area, afirmacion, clave, confianza)
+     values ($1, $2, $3, 'alta')
+     on conflict (clave) do update set veces_confirmado = public.conocimiento_empresa.veces_confirmado + 1, updated_at = now(), vigente = true`,
+    [area, String(afirmacion).slice(0, 1000), clave],
+  )
+}
+/** Trae lo que el dueño le enseñó (solo owner-taught: origen_task_id NULL), acotado. */
+async function ownerTaughtFacts(limit = 8) {
+  try {
+    const { rows } = await query(
+      `select afirmacion from public.conocimiento_empresa
+        where vigente = true and origen_task_id is null
+        order by veces_confirmado desc, updated_at desc limit $1`, [limit])
+    return rows.map((r) => r.afirmacion)
+  } catch { return [] }
+}
+
 /** Da formato legible a la salida estructurada de un especialista (analysis + recos). */
 function formatSpecialistResult(result, who) {
   if (!result || typeof result !== 'object') return String(result || 'Sin resultado.')
@@ -248,6 +272,14 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   if (/cu[aá]nto (gast[eé]|consum[ií]|cost|llev|va).*(api|cr[eé]dit|chat|hoy|plata|gastando)?|gasto de api|consumo de api|cu[aá]nto (me )?sale/i.test(directive)) {
     return { answer: costSummary(), model: 'costo', capability: 'general', skills: [], navigate: null }
   }
+  // APRENDIZAJE (PRP-016): "recordá/aprendé/acordate/anotá que X" → guarda el hecho y lo
+  // usará en próximas respuestas. Sin llamar a la API (0 costo) — pura captura.
+  const learn = String(directive).match(/^\s*(?:record[aá]|aprend[eé]|acord[aá]te|anot[aá]|ten[eé] en cuenta|guard[aá])(?:\s+que)?[\s:,-]+(.{4,})/i)
+  if (learn) {
+    const hecho = learn[1].trim()
+    await saveKnowledge(capability === 'general' ? 'general' : capability.replace('advise.', ''), hecho)
+    return { answer: `✅ Anotado, lo voy a recordar y usar: "${hecho.slice(0, 200)}"`, model: 'aprendizaje', capability, skills: [], navigate: null }
+  }
   // F1: si el pedido pide trabajo PROFUNDO de un dominio, lo despachamos al AGENTE durable
   // real (tarda, razona en el worker); si no, seguimos con el razonamiento rápido en canal.
   const dispatchDeep = capability !== 'general' && /\b(dictam|informe (complet|t[eé]cnic|detallad)|an[aá]lisis (profund|complet|detallad)|en profundidad|estudi[aá][^.]{0,25}(a fondo|profund)|que (lo|la) (trabaje|analice|estudie|revise) (a fondo|en profundidad|de verdad))\b/i.test(directive)
@@ -304,11 +336,17 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
     ? 'CONVERSACIÓN PREVIA (seguí el hilo; "hacelo"/"aplicá eso" se refieren a lo último que propusiste):\n' +
       history.slice(-8).map((m) => `${m.role === 'me' ? 'Dueño' : 'OS'}: ${String(m.text || '').slice(0, 700)}`).join('\n') + '\n\n'
     : ''
+  // PRP-016 — usar lo que el dueño enseñó (acotado, como referencia, no como orden).
+  const known = await ownerTaughtFacts()
+  const knownBlock = known.length
+    ? 'LO QUE EL DUEÑO YA TE ENSEÑÓ (usalo como referencia si viene al caso; no lo repitas porque sí):\n' + known.map((k) => '• ' + k).join('\n') + '\n\n'
+    : ''
   const threadNudge = followUpAction
     ? 'IMPORTANTE — SEGUÍ EL HILO: el dueño está CONFIRMANDO o ELIGIENDO una opción de lo que propusiste recién (ver CONVERSACIÓN PREVIA). Interpretá "a/b/c", "la 2", "dale", "hacelo", "sí" como esa elección. NO vuelvas a preguntar, NO reinicies, NO respondas un estado genérico: EJECUTÁ ahora esa opción — leé el archivo si hace falta y dejá la operación concreta (drive_update en la fila/rango exacto) en Pendientes, avisando en una línea qué cambio y dónde.\n\n'
     : ''
   const prompt =
     `HOY: ${hoy} (San Juan, Argentina). Usá esta fecha; no la inventes.\n\n` +
+    knownBlock +
     hist +
     threadNudge +
     `DIRECTIVA DEL DUEÑO:\n${directive}\n` +
