@@ -1,0 +1,19 @@
+[Unit]
+Description=Echegaray OS - Motor interactivo (directivas en segundos)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+EnvironmentFile=%h/.config/echegaray-orq/worker.env
+EnvironmentFile=-%h/.config/echegaray-orq/anthropic.env
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/interactive-server.mjs
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=orq-interactive
+
+[Install]
+WantedBy=default.target
