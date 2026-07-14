@@ -48,10 +48,85 @@ async function gatherSiblings(objectiveId, selfId) {
       confidence: res.confidence ?? null,
       recommendations: Array.isArray(res.recommendations) ? res.recommendations : [],
       findings: Array.isArray(res.findings) ? res.findings.length : 0,
+      findingsList: Array.isArray(res.findings) ? res.findings : [], // para auto-acción Nivel D
     })
     for (const ar of (Array.isArray(res.approval_requests) ? res.approval_requests : [])) openApprovals.push({ ...ar, from: r.agent_slug })
   }
   return { specialists, openApprovals, succeeded, failed, total: rows.length }
+}
+
+// ── AUTO-ACCIÓN NIVEL D (romper el muro N6→N7) ──────────────────────────────
+// Al cerrar un objetivo, los hallazgos MATERIALES de los especialistas se
+// convierten SOLOS en Acciones con seguimiento (interno, reversible). La acción es
+// un REGISTRO de trabajo pendiente (estado='pendiente', sin responsable → un humano
+// lo asigna): su RESOLUCIÓN real (pagar, renovar, firmar) sigue siendo Nivel E. Se
+// activa con ORQ_AUTO_ACTIONS=on (apagado → comportamiento A–C previo). Deduplica
+// contra acciones abiertas y contra sí mismo; tope por objetivo para no inundar.
+const AUTO_ACTIONS = String(process.env.ORQ_AUTO_ACTIONS ?? 'off').toLowerCase() === 'on'
+const MAX_AUTO_ACTIONS = Math.max(1, Number(process.env.ORQ_AUTO_ACTIONS_MAX ?? 8))
+
+// agent_slug → area válida de public.acciones (constraint acciones_area_check).
+const AGENT_AREA = {
+  cfo: 'administracion_finanzas', contador: 'administracion_finanzas', fiscal: 'administracion_finanzas', administracion: 'administracion_finanzas',
+  ingenieria: 'obras_produccion', arquitecto: 'obras_produccion', 'ingeniero-civil': 'obras_produccion', calidad: 'obras_produccion', 'jefe-obra': 'obras_produccion',
+  compras: 'compras_abastecimiento', equipos: 'compras_abastecimiento',
+  rrhh: 'personas_productividad', seguridad: 'personas_productividad',
+  comercial: 'comercial_presupuestacion', presupuestador: 'comercial_presupuestacion',
+  abogado: 'direccion', 'continuidad-datos': 'direccion',
+}
+// severidad del especialista (info|baja|media|alta) → severidad de acciones (critica|alta|media|informativa).
+const SEV_MAP = { alta: 'alta', media: 'media', baja: 'informativa', info: 'informativa' }
+const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 120)
+
+/**
+ * Crea Acciones de seguimiento a partir de los hallazgos materiales (Nivel D).
+ * Idempotente: no duplica contra acciones ya abiertas ni dentro del mismo lote.
+ * @returns {Promise<{created:number, titles:string[]}>}
+ */
+async function autoCreateActions(client, objectiveId, agg) {
+  if (!AUTO_ACTIONS) return { created: 0, titles: [] }
+  // candidatos: hallazgos alta/media de especialistas que terminaron OK.
+  const candidatos = []
+  for (const s of agg.specialists) {
+    if (s.state !== 'succeeded') continue
+    const area = AGENT_AREA[s.agent] || 'direccion'
+    for (const f of s.findingsList) {
+      const sev = SEV_MAP[String(f?.severidad || '').toLowerCase()]
+      if (sev !== 'alta' && sev !== 'media') continue // sólo material
+      const titulo = String(f?.titulo || '').trim().slice(0, 200)
+      if (!titulo) continue
+      candidatos.push({ titulo, causa: String(f?.detalle || '').slice(0, 1000), area, sev, agent: s.org_title || s.agent, weight: sev === 'alta' ? 0 : 1 })
+    }
+  }
+  if (!candidatos.length) return { created: 0, titles: [] }
+
+  // dedup contra acciones abiertas existentes (por título normalizado).
+  const { rows: abiertas } = await client.query(
+    "select titulo from public.acciones where estado in ('pendiente','en_curso')")
+  const vistos = new Set(abiertas.map((r) => norm(r.titulo)))
+
+  candidatos.sort((a, b) => a.weight - b.weight) // alta primero
+  const aCrear = []
+  for (const c of candidatos) {
+    const k = norm(c.titulo)
+    if (vistos.has(k)) continue
+    vistos.add(k)
+    aCrear.push(c)
+    if (aCrear.length >= MAX_AUTO_ACTIONS) break
+  }
+  if (!aCrear.length) return { created: 0, titles: [] }
+
+  const titles = []
+  for (let i = 0; i < aCrear.length; i++) {
+    const c = aCrear[i]
+    await client.query(
+      `insert into public.acciones (origen, alerta_origen_id, titulo, causa, area, severidad, estado)
+       values ('sistema', $1, $2, $3, $4, $5, 'pendiente')`,
+      [`auto:${objectiveId}:${i}`, `[${c.agent}] ${c.titulo}`.slice(0, 200), c.causa, c.area, c.sev],
+    )
+    titles.push(c.titulo)
+  }
+  return { created: titles.length, titles }
 }
 
 function consolidationPrompt(objective, agg) {
@@ -117,7 +192,10 @@ export async function consolidateHandler(task, ctx) {
   const engineOverride = task.engine || task.inputs?.engine || null
   const { closure, cost, sessionId, engine: engineName } = await synth(task, ctx, engineOverride, objective, agg)
 
-  await withTx(async (client) => {
+  const autoActions = await withTx(async (client) => {
+    // Nivel D: los hallazgos materiales se vuelven Acciones con seguimiento (si está
+    // habilitado). Atómico con el cierre: o se cierra y se crean, o nada.
+    const aa = await autoCreateActions(client, objectiveId, agg)
     await emitEvent(client, {
       tenantId: ctx.context.tenantId, subjectType: 'task', subjectId: objectiveId,
       type: 'direction.completed', actorId: directorId, projectId: ctx.context.projectId,
@@ -126,11 +204,21 @@ export async function consolidateHandler(task, ctx) {
         objective_status: closure.objective_status,
         specialists_ok: agg.succeeded, specialists_total: agg.total,
         open_approvals: agg.openApprovals.length,
+        auto_actions: aa.created,
       },
     })
+    if (aa.created > 0) {
+      await emitEvent(client, {
+        tenantId: ctx.context.tenantId, subjectType: 'task', subjectId: objectiveId,
+        type: 'direction.auto_actions_created', actorId: directorId, projectId: ctx.context.projectId,
+        correlationId: task.correlation_id, causationId: task.id, blastRadius: 'low',
+        payload: { count: aa.created, titles: aa.titles },
+      })
+    }
+    return aa
   })
 
-  ctx.logger.info('consolidación: objetivo cerrado', { objective_id: objectiveId, status: closure.objective_status, ok: agg.succeeded, total: agg.total })
+  ctx.logger.info('consolidación: objetivo cerrado', { objective_id: objectiveId, status: closure.objective_status, ok: agg.succeeded, total: agg.total, auto_actions: autoActions.created })
   return {
     result: {
       engine: engineName, session_id: sessionId, cost,
@@ -140,6 +228,7 @@ export async function consolidateHandler(task, ctx) {
       key_points: closure.key_points,
       specialists: agg.specialists,
       open_approval_requests: agg.openApprovals,
+      auto_actions_created: autoActions.created,
       counts: { succeeded: agg.succeeded, failed: agg.failed, total: agg.total },
     },
     evidence: { gathered: agg.total },
