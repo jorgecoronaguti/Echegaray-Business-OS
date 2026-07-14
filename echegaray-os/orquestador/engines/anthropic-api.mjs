@@ -65,8 +65,10 @@ export function estimateCostUsd(modelId, usage) {
 }
 
 // Techo de vueltas del loop agéntico de tool-use (anti bucle infinito). El handler
-// puede bajarlo con job.maxToolIterations; nunca subir sin querer el costo.
-const MAX_TOOL_ITERATIONS = 8
+// puede bajarlo con job.maxToolIterations. Configurable por entorno: los dominios que
+// leen muchas fuentes de Drive (Continuidad de Datos, Equipos, Fiscal) superaban 8 y
+// caían en reintento; 14 les da aire sin abrir el costo de par en par. Tope duro 24.
+const MAX_TOOL_ITERATIONS = Math.min(24, Math.max(4, Number(process.env.ORQ_MAX_TOOL_ITERATIONS ?? 14)))
 
 /** Suma los usages de varias vueltas del loop en un solo objeto de tokens. */
 export function accumulateUsage(usages) {
