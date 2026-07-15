@@ -20,6 +20,16 @@ export const ROL_CAPS = {
 // operaciones (Nivel E), gestión de otros usuarios.
 export const CAPS_SENSIBLES = ['caja', 'proyeccion_caja', 'priorizar_caja', 'fiscal', 'costo_api', 'aprobar_operacion', 'gestion_usuarios']
 
+// Capacidades del CLASIFICADOR (advise.*) que son financieras/fiscales/contables: un
+// 'usuario' NO accede a ellas por el CAMINO GENERAL (razonamiento libre). Cierra el hueco
+// de que un pedido sensible que esquiva las detecciones determinísticas caiga al modelo sin
+// filtro. Las vistas permitidas al usuario (cuadro de obra, avance, briefing) responden por
+// su propia detección ANTES de llegar acá, así que gatear finance/tax/accounting es seguro.
+export const CAPS_CLASIFICADOR_SENSIBLES = ['advise.finance', 'advise.tax', 'advise.accounting']
+export function capClasificadorSensible(capability) {
+  return CAPS_CLASIFICADOR_SENSIBLES.includes(capability)
+}
+
 /** ¿El rol tiene la capacidad? super_admin siempre; usuario según ROL_CAPS. */
 export function puede(rol, cap) {
   const caps = ROL_CAPS[rol]

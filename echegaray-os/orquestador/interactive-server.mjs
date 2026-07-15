@@ -38,7 +38,7 @@ import { avanceResumen } from './lib/avance-fisico.mjs'
 import { estadoPresupuesto, degradarModeloOnDemand, pausarAutonomo } from './lib/budget.mjs'
 import { fichaObra } from './lib/ficha-obra.mjs'
 import { carteraResumen } from './lib/cartera.mjs'
-import { resolveUsuario, puede } from './lib/usuarios.mjs'
+import { resolveUsuario, puede, capClasificadorSensible } from './lib/usuarios.mjs'
 import { authUrl, exchangeCode, operadorEmail, operadorPara, getTokenFor } from './lib/google-oauth.mjs'
 import { WORKSPACE_SCOPES } from './lib/google.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
@@ -397,7 +397,11 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // Intención de enseñar/corregir → sonnet, que llama la tool "aprender" de forma confiable
   // (haiku a veces no la invoca). Así la captura automática de correcciones funciona.
   const teachingIntent = /\b(ten[eé] en cuenta|en realidad|ojo que|que quede claro|te corrijo|corrijo|est[aá] mal|te equivocaste|no es as[ií]|acord[aá]te|record[aá]|aprend[eé]|anot[aá])\b/i.test(directive)
-  let model = writeIntent || att || budgetingKw || teachingIntent || fast === false ? 'sonnet' : 'haiku'
+  // Si hay un ARCHIVO ABIERTO (fileId), el dueño casi siempre quiere TRABAJAR sobre él
+  // (reordenar, completar, rehacer, analizar a fondo) → sonnet, que lee y ACTÚA con las
+  // tools de forma confiable. haiku propone/pregunta en vez de ejecutar (causa real de
+  // "le pido que haga algo y no lo hace"). Vale el costo: la acción tiene que salir.
+  let model = writeIntent || att || budgetingKw || teachingIntent || fast === false || fileId ? 'sonnet' : 'haiku'
   // TOPE DE GASTO (degrada, NUNCA bloquea): si el gasto de hoy pasó el umbral, un pedido
   // que iba a usar sonnet baja a haiku. La respuesta SIEMPRE llega — solo cambia el modelo.
   // Las respuestas determinísticas (0 API) ya devolvieron antes; nunca pagan esto.
@@ -518,6 +522,11 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // En modo TOPE no despachamos al especialista (caro); respondemos inline con haiku
   // (ya degradado). Nunca se bloquea: el dueño obtiene una respuesta, más económica.
   if (dispatchDeep && !pausarAutonomo(presupuesto.modo)) return await dispatchToSpecialist({ directive, capability, runId })
+  // ENFORCEMENT en el CAMINO GENERAL: un 'usuario' que llegó hasta acá con un pedido
+  // financiero/fiscal/contable (que esquivó las detecciones permitidas — cuadro de obra,
+  // avance, briefing ya respondieron antes) se deniega. Cierra el hueco de sacar caja/costo/
+  // fiscal por el razonamiento libre. super_admin pasa.
+  if (rol === 'usuario' && capClasificadorSensible(capability)) return denegar(capability)
   // Contexto de PRESUPUESTACIÓN: jornales UOCRA Zona A verificados (jul-2026) + flujo
   // FLEXIBLE (guía, se puede saltear) + disciplina. Solo cuando la directiva es de armar
   // presupuesto/cotizar. Los jornales van acá para que use los vigentes y no los del
@@ -625,6 +634,8 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
     threadNudge +
     `DIRECTIVA DEL DUEÑO:\n${directive}\n` +
     (fileId ? `\nEstá mirando el archivo de Drive con file_id=${fileId}. Leélo con drive_read si la directiva lo requiere.\n` : '') +
+    `\n\nREGLA #1 — EJECUTÁ, NO PROPONGAS NI PREGUNTES: si el dueño te pide HACER algo (rehacer/reordenar/reconstruir/mejorar/completar una planilla o pestaña), NO respondas con un plan ("Propongo…", "Podría…", "3 cambios:…") ni con una pregunta ("¿Tenés el dato?", "¿Querés que…?", "Decime qué necesitás"). HACELO YA con las tools de escritura (drive_read para ver la estructura → drive_batch_update para aplicar). Proponer o preguntar en vez de actuar es EXACTAMENTE lo que el dueño odia y te está reclamando. ` +
+    `Si para terminar te falta UN dato real que no podés inventar (ej. el saldo bancario de hoy), NO frenes a preguntarlo: hacé TODO el resto (estructura, encabezados, fórmulas, formato) y dejá ESA celda con un placeholder clarísimo (ej. "← cargar saldo Santander de hoy") — después, en UNA línea, avisá qué celda te queda por completar. Nunca entregues solo una propuesta o una pregunta cuando se pidió una acción.\n` +
     `\n\nESTILO OBLIGATORIO: respondé en español, MUY conciso y específico. Sin preámbulos, sin repetir la pregunta, sin explicar tu proceso ("leí el archivo…", "voy a…"), sin cierres de cortesía. Andá directo al dato o a la acción. Números concretos. Por defecto 1–3 líneas o pocos bullets; solo extendé si te piden el detalle. Si necesitás un dato de un archivo, LEELO con las tools antes de responder (no inventes). ` +
     `Distinguí hecho/estimación; si falta algo, decilo en pocas palabras. ` +
     `APRENDÉ: si el dueño te CORRIGE o te enseña un HECHO DURABLE de la empresa (un proveedor clave, un criterio/preferencia, un precio de referencia, un dato estable de una obra/cliente), llamá a la tool "aprender" con ese hecho — así lo recordás para siempre y no lo volvés a preguntar. NO para acciones/tareas puntuales, saldos del día, ni datos que ya están en un archivo. ` +
