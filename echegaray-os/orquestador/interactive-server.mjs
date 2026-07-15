@@ -39,7 +39,7 @@ import { estadoPresupuesto, degradarModeloOnDemand, pausarAutonomo } from './lib
 import { fichaObra } from './lib/ficha-obra.mjs'
 import { carteraResumen } from './lib/cartera.mjs'
 import { resolveUsuario, puede } from './lib/usuarios.mjs'
-import { authUrl, exchangeCode, operadorEmail, getTokenFor } from './lib/google-oauth.mjs'
+import { authUrl, exchangeCode, operadorEmail, operadorPara, getTokenFor } from './lib/google-oauth.mjs'
 import { WORKSPACE_SCOPES } from './lib/google.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
 import { enqueuePendingOperation, listPendingOperations, decidePendingOperation, getPendingOperationById } from './lib/pending-ops.mjs'
@@ -90,15 +90,17 @@ async function boot() {
 /** Registro de tools de Drive: lectura (auto) + escritura (requieren aprobación) +
  *  búsqueda por índice. Las de escritura no se ejecutan acá: el tool-executor las
  *  encola como operaciones pendientes (Nivel E). */
-async function driveRegistry(attachment) {
+async function driveRegistry(attachment, userEmail) {
   // OAuth por usuario (PRP-024): si hay una cuenta autorizada, el cliente de Drive actúa
   // COMO ella (crear/copiar/editar donde sea, leer Docs/Gmail/Calendar) en vez del Service
   // Account sin storage. Si nadie autorizó todavía, cae al SA (comportamiento previo).
-  const op = await operadorEmail()
+  // Si el USUARIO que pide autorizó su propia cuenta, el OS actúa COMO ÉL (su Drive, su
+  // Gmail); si no, usa la cuenta operadora del OS.
+  const op = await operadorPara(userEmail)
   const google = op
     ? makeGoogleClient({ config: cfg, scopes: WORKSPACE_SCOPES, getToken: getTokenFor(op) })
     : makeGoogleClient({ config: cfg })
-  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ config: cfg }) }
+  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ google: op ? google : null }) }
   // Si el dueño adjuntó una imagen/archivo, exponer una tool para GUARDARLO en su Drive.
   if (attachment?.data && attachment?.media_type) {
     registry['drive.upload_adjunto'] = {
@@ -535,7 +537,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
     logger: log,
   })
   log.info('directiva ruteada', { capability, skills: skillsLoaded || [] })
-  const registry = await driveRegistry(attachment)
+  const registry = await driveRegistry(attachment, userEmail)
   const baseExecutor = makeToolExecutor({
     decide, tools: registry, principalId: DIRECTOR_PRINCIPAL, logger: log,
     // Enqueue REAL: una escritura propuesta (drive.write) se registra en

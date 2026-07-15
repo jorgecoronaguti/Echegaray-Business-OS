@@ -95,3 +95,17 @@ export async function operadorEmail() {
 export function getTokenFor(email) {
   return async () => accessTokenFor(email)
 }
+
+/** ¿Este email autorizó su Google? (sin refrescar token: solo mira la DB). */
+export async function tieneToken(email) {
+  const e = String(email || '').toLowerCase()
+  if (!e) return false
+  try { const { rows } = await query(`select 1 from orq.google_tokens where email = $1 limit 1`, [e]); return rows.length > 0 } catch { return false }
+}
+
+/** Email cuya cuenta Google usará el OS para ESTE pedido: la del usuario que pide si
+ *  autorizó la suya (actúa como él mismo), si no la operadora del OS (fallback). */
+export async function operadorPara(userEmail) {
+  if (await tieneToken(userEmail)) return String(userEmail).toLowerCase()
+  return operadorEmail()
+}

@@ -16,7 +16,8 @@ import { getCapability } from '../lib/registry.mjs'
 import { assembleSituation, domainDigest } from '../lib/situation.mjs'
 import { assembleReasoningSystem, ROLE_FRAMING } from '../lib/context-assembler.mjs'
 import { skillsForCapability } from '../lib/skill-map.mjs'
-import { makeGoogleClient } from '../lib/google.mjs'
+import { makeGoogleClient, WORKSPACE_SCOPES } from '../lib/google.mjs'
+import { operadorEmail, getTokenFor } from '../lib/google-oauth.mjs'
 import { driveReadTools } from '../lib/tools/drive.mjs'
 import { obraTools } from '../lib/tools/obra.mjs'
 import { workspaceTools } from '../lib/tools/workspace.mjs'
@@ -140,11 +141,17 @@ async function reason(task, ctx, engineOverride, agent, digest, principalId) {
   let toolExecutor
   let toolsHint = ''
   if (engineName === 'anthropic-api' && principalId) {
-    const google = makeGoogleClient({ config: ctx.config })
+    // Cuenta operadora OAuth (si alguien autorizó su Google): el especialista actúa COMO
+    // ella para leer Drive/Gmail/Calendar. Si nadie autorizó todavía, cae al SA (Drive por
+    // archivo compartido; Gmail/Calendar avisan que falta conectar la cuenta).
+    const op = await operadorEmail()
+    const google = op
+      ? makeGoogleClient({ config: ctx.config, scopes: WORKSPACE_SCOPES, getToken: getTokenFor(op) })
+      : makeGoogleClient({ config: ctx.config })
     // Cuadro económico por obra (números reales de rentabilidad/margen/desvío) + búsqueda
     // en internet (precios/convenios): read-only, para que el CFO/jefe de obra/presupuestador
     // razonen sobre datos reales en vez de suponer. Misma fuente que el chat (sin duplicar).
-    const registry = { ...driveReadTools(google), ...obraTools(), ...webSearchTools(), ...workspaceTools({ config: ctx.config }) }
+    const registry = { ...driveReadTools(google), ...obraTools(), ...webSearchTools(), ...workspaceTools({ google: op ? google : null }) }
     // Búsqueda sobre el índice COMPLETO de administracion (~1.658 archivos) en
     // public.drive_index: encontrar un archivo por nombre sin navegar carpeta por
     // carpeta. Capacidad drive.read (lectura/auto). Usa la DB del worker.

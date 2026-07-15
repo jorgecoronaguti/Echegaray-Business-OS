@@ -1,27 +1,24 @@
 // PRP-024 — Tools de GMAIL y CALENDAR (lectura) para el motor y los especialistas.
-// Requieren domain-wide delegation activa (@ecsas.com.ar) + una cuenta a impersonar
-// (env ORQ_GOOGLE_IMPERSONATE). Sin eso, devuelven un mensaje CLARO (no rompen). Son
-// lectura (Nivel A) → capacidad 'drive.read' (auto). El envío de mail / crear evento es
-// una fase posterior (Nivel E, con aprobación) y NO está acá.
-import { makeGoogleClient, WORKSPACE_SCOPES } from '../google.mjs'
+// Ahora usan el MISMO cliente OAuth por usuario que Drive (scopes gmail.readonly +
+// calendar ya autorizados cuando el usuario conectó su Google). Ya NO dependen de la
+// delegación de dominio: si el usuario autorizó, funcionan; si no, mensaje claro.
+// Son lectura (Nivel A) → capacidad 'drive.read' (auto). El envío de mail / crear
+// evento es una fase posterior (Nivel E, con aprobación) y NO está acá.
 
-// Cliente con scopes de Workspace + impersonación EXPLÍCITA (lazy, se comparte en el módulo).
-// La cuenta a impersonar sale de la env ORQ_GOOGLE_IMPERSONATE — SOLO acá (Gmail/Calendar),
-// no en el cliente global de Drive/Sheets (que accede por archivo compartido con el SA).
-let _ws = null
-function ws(config) {
-  if (!_ws) _ws = makeGoogleClient({ config, scopes: WORKSPACE_SCOPES, impersonate: process.env.ORQ_GOOGLE_IMPERSONATE || null })
-  return _ws
-}
 const sinAcceso = (e) => {
   const m = String(e?.message ?? e)
-  if (/unauthorized_client|403|delegat|invalid_grant/i.test(m)) {
-    return { error: 'Todavía no tengo acceso a la cuenta de Google. Falta activar la delegación de dominio en admin.google.com y configurar la cuenta a impersonar (ORQ_GOOGLE_IMPERSONATE).' }
+  if (/unauthorized_client|401|403|delegat|invalid_grant|insufficient/i.test(m)) {
+    return { error: 'Todavía no tengo acceso a tu Google. Conectá tu cuenta desde el botón "Conectar con Google" en la extensión (autoriza Gmail y Calendar) y volvé a pedírmelo.' }
   }
   return { error: `no pude consultar Google: ${m.slice(0, 140)}` }
 }
 
-export function workspaceTools({ config } = {}) {
+// Recibe el cliente Google YA construido con el token del usuario (el mismo de Drive).
+export function workspaceTools({ google } = {}) {
+  const ws = () => {
+    if (!google) throw new Error('unauthorized_client: sin cuenta Google conectada')
+    return google
+  }
   return {
     'gmail.search': {
       capability: 'drive.read',
@@ -32,7 +29,7 @@ export function workspaceTools({ config } = {}) {
         input_schema: { type: 'object', properties: { query: { type: 'string' }, max: { type: 'number' } }, required: ['query'] },
       },
       async run(input) {
-        try { return { ok: true, mensajes: await ws(config).gmailSearch(String(input?.query || ''), { max: Math.min(Number(input?.max) || 8, 15) }) } }
+        try { return { ok: true, mensajes: await ws().gmailSearch(String(input?.query || ''), { max: Math.min(Number(input?.max) || 8, 15) }) } }
         catch (e) { return sinAcceso(e) }
       },
     },
@@ -46,7 +43,7 @@ export function workspaceTools({ config } = {}) {
       },
       async run(input) {
         if (!input?.id) return { error: 'falta id' }
-        try { return { ok: true, ...(await ws(config).gmailGet(String(input.id))) } }
+        try { return { ok: true, ...(await ws().gmailGet(String(input.id))) } }
         catch (e) { return sinAcceso(e) }
       },
     },
@@ -59,7 +56,7 @@ export function workspaceTools({ config } = {}) {
         input_schema: { type: 'object', properties: { dias: { type: 'number' }, max: { type: 'number' } } },
       },
       async run(input) {
-        try { return { ok: true, eventos: await ws(config).calendarUpcoming({ days: Math.min(Number(input?.dias) || 30, 120), max: Math.min(Number(input?.max) || 10, 25) }) } }
+        try { return { ok: true, eventos: await ws().calendarUpcoming({ days: Math.min(Number(input?.dias) || 30, 120), max: Math.min(Number(input?.max) || 10, 25) }) } }
         catch (e) { return sinAcceso(e) }
       },
     },
