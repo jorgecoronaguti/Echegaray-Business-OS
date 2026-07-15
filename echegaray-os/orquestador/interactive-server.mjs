@@ -35,6 +35,7 @@ import { recallResumen } from './lib/memory.mjs'
 import { priorizarCajaResumen, proyeccionCajaResumen } from './lib/caja-alertas.mjs'
 import { registerChatGap } from './lib/emergence.mjs'
 import { avanceResumen } from './lib/avance-fisico.mjs'
+import { libroIvaResumen, comprobantesSinRegistrar, parsePeriodo } from './lib/libro-iva.mjs'
 import { estadoPresupuesto, degradarModeloOnDemand, pausarAutonomo } from './lib/budget.mjs'
 import { fichaObra } from './lib/ficha-obra.mjs'
 import { carteraResumen } from './lib/cartera.mjs'
@@ -237,6 +238,7 @@ const CAPABILITIES_HELP = [
   '📊 **Consultar datos reales** — "¿cuánto tengo en caja?", "mostrame el avance de la obra X", "qué dice el presupuesto de Y".',
   '📐 **Avance físico de obra** — "avance físico", "avance de obra San Francisco". Lee el tracker real "Avances de Obra" y da el % de actividades completas por obra.',
   '💰 **Cuadro económico por obra** — "cuadro económico", "¿cómo va Galpones económicamente?", "margen de la obra X". Contratado vs presupuesto vs costo real vs adicionales, con margen y desvío, marcando qué es dato y qué es cálculo.',
+  '🧾 **Libro IVA (ARCA)** — "libro IVA de junio", "¿cuánto IVA pagamos?", "comprobantes recibidos". IVA ventas/compras y posición (débito − crédito) desde los comprobantes reales de ARCA, y qué comprobantes de compra podrían estar sin registrar. 0 API. (Solo Dirección.)',
   '🧠 **Aprender de vos** — "recordá que…" o corregime en pleno trabajo y lo guardo; "¿qué sabés de la empresa?" te muestro lo aprendido.',
   '📄 **Leer PDFs del Drive** — "leé el contrato/cotización/remito/plano X y resumímelo". Interpreto contratos, cotizaciones, facturas y planos con texto.',
   '🧮 **Armar presupuestos guiado** — "armemos el presupuesto de la obra X, guiame". Te llevo paso a paso con jornales UOCRA Zona A vigentes, APU, GG y margen.',
@@ -445,6 +447,29 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // "¿Cuánto aprendiste / qué sabés de la empresa?" — mide el aprendizaje (0 API).
   if (/\b(cu[aá]nto (aprend|sab[eé]s)|qu[eé] (aprendiste|sab[eé]s|ten[eé]s (guardado|aprendido|anotado))|qu[eé] (cosas )?record[aá]s|qu[eé] conoc[eé]s de (la empresa|nosotros|echegaray)|hechos (aprendidos|que sab[eé]s))/i.test(directive)) {
     return { answer: await learnedSummary(), model: 'aprendizaje', capability: 'general', skills: [], navigate: null }
+  }
+  // LIBRO IVA (Plan 1 F1 — ARCA) — respuesta determinística (0 API) desde los comprobantes
+  // reales extraídos de ARCA. "libro iva", "iva de junio", "cuánto iva pagamos", "posición
+  // de iva", "comprobantes recibidos/emitidos". Sensible (fiscal) → un 'usuario' no accede.
+  {
+    const pideIva = /\blibro\s+iva\b|\biva\b.*\b(mes|per[ií]odo|junio|mayo|abril|marzo|febrero|enero|julio|agosto|septiembre|octubre|noviembre|diciembre|\d{4}|pag|deb[ií]to|cr[eé]dito|posici[oó]n|ventas|compras)|\b(posici[oó]n|d[eé]bito|cr[eé]dito)\s+(de\s+)?iva|\bcu[aá]nto\s+iva\b|comprobantes?\s+(recibidos|emitidos|de\s+arca|arca)/i.test(directive)
+    if (pideIva) {
+      if (!puede(rol, 'fiscal')) return denegar('fiscal')
+      const per = parsePeriodo(directive)
+      let tipo = null
+      if (/\b(compras?|recibidos)\b/i.test(directive) && !/\bventas?\b/i.test(directive)) tipo = 'R'
+      else if (/\b(ventas?|emitidos)\b/i.test(directive) && !/\bcompras?\b/i.test(directive)) tipo = 'E'
+      let ans = await libroIvaResumen(per, tipo)
+      // Si preguntó por compras / recibidos, sumo la señal de comprobantes sin registrar.
+      if ((tipo === 'R' || /sin\s+registrar|faltan?|no\s+registrad|conciliar|cruce|cruz[aá]/i.test(directive)) && per) {
+        const cr = await comprobantesSinRegistrar(per)
+        if (cr.total && cr.sinMatch.length) {
+          const top = cr.sinMatch.slice(0, 8).map((c) => `- ${c.emisor_nombre || c.emisor_cuit} — ${new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(Number(c.imp_total))}`).join('\n')
+          ans += `\n\n**Posibles comprobantes sin registrar** (heurística por nombre de proveedor, no es un hecho): ${cr.sinMatch.length} de ${cr.total} comprobantes de compra de ARCA no encuentran un proveedor con costo cargado en el OS.\n${top}${cr.sinMatch.length > 8 ? `\n_…y ${cr.sinMatch.length - 8} más._` : ''}\n\n_Para confirmar hace falta cargar el CUIT en proveedores; hoy el match es por nombre aproximado._`
+        }
+      }
+      return { answer: ans, model: 'libro-iva', capability: 'advise.tax', skills: [], navigate: null }
+    }
   }
   // CAJA — PROYECCIÓN (PRP-021 F2): "proyección/proyectá la caja", "cómo viene la caja",
   // "alcanza la caja", "flujo/cash proyectado" → saldo hoy + semanas + gap (0 API, percibido).
