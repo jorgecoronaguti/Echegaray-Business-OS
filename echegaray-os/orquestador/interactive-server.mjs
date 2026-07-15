@@ -31,6 +31,7 @@ import { obraTools } from './lib/tools/obra.mjs'
 import { proposeSkillImprovement } from './lib/skill-proposals.mjs'
 import { briefingEjecutivo } from './lib/briefing.mjs'
 import { recallResumen } from './lib/memory.mjs'
+import { priorizarCajaResumen } from './lib/caja-alertas.mjs'
 import { registerChatGap } from './lib/emergence.mjs'
 import { avanceResumen } from './lib/avance-fisico.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
@@ -340,6 +341,12 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   // "¿Cuánto aprendiste / qué sabés de la empresa?" — mide el aprendizaje (0 API).
   if (/\b(cu[aá]nto (aprend|sab[eé]s)|qu[eé] (aprendiste|sab[eé]s|ten[eé]s (guardado|aprendido|anotado))|qu[eé] (cosas )?record[aá]s|qu[eé] conoc[eé]s de (la empresa|nosotros|echegaray)|hechos (aprendidos|que sab[eé]s))/i.test(directive)) {
     return { answer: await learnedSummary(), model: 'aprendizaje', capability: 'general', skills: [], navigate: null }
+  }
+  // CAJA — PRIORIZACIÓN (PRP-021 F1): "qué cobro/pago primero", "priorizá la caja",
+  // "qué gestiono de caja" → ranking por impacto (0 API). Va antes del briefing (más específico).
+  if (/\b(qu[eé]\s+(cobro|pago|cobr[aá]s|pag[aá]s|gestiono|gestion[aá]s|prioriz)|prioriz[aá].*(caja|cobr|pag)|qu[eé].*(primero).*(cobr|pag|caja)|orden.*(cobr|pag))\b/i.test(directive)
+      && /\b(caja|cobr|pag|cobranza|vencid|primero)\b/i.test(directive)) {
+    return { answer: await priorizarCajaResumen(), model: 'caja-prioridad', capability: 'advise.finance', skills: [], navigate: null }
   }
   // BRIEFING EJECUTIVO (0 API) — "¿cómo estamos?" / "resumen" / "qué hay hoy" → foto
   // unificada de caja vencida + desvíos de obra + backlog autónomo (lo que el OS detectó
