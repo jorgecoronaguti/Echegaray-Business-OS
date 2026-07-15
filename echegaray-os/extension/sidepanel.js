@@ -7,8 +7,8 @@ let convo = [] // mensajes del chat actual {role:'me'|'os', text}
 let currentChatId = null // id del chat abierto (persistido en chrome.storage)
 
 async function getCfg() {
-  const c = await chrome.storage.local.get(['addr', 'token'])
-  return { addr: c.addr || DEFAULT_ADDR, token: c.token || '' }
+  const c = await chrome.storage.local.get(['addr', 'token', 'email'])
+  return { addr: c.addr || DEFAULT_ADDR, token: c.token || '', email: c.email || '' }
 }
 
 // Extrae el file_id de Drive/Sheets/Docs de la URL de la pestaña activa.
@@ -68,7 +68,7 @@ async function send() {
   let directive = $('input').value.trim()
   if (!directive && !attachment) return
   if (!directive && attachment) directive = 'Interpretá este archivo adjunto y decime qué es.'
-  const { addr, token } = await getCfg()
+  const { addr, token, email } = await getCfg()
   if (!token) { $('settings').classList.add('show'); addMsg('Primero pegá tu llave de acceso en configuración (⚙).', 'os'); return }
   $('input').value = ''
   if (!currentChatId) currentChatId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now())
@@ -101,7 +101,7 @@ async function send() {
     const r = await fetch(`${addr}/ask`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
-      body: JSON.stringify({ directive, fileId, attachment: att, history, runId, wantsAsync: true, extVersion: chrome.runtime.getManifest().version }),
+      body: JSON.stringify({ directive, fileId, attachment: att, history, runId, wantsAsync: true, userEmail: email, extVersion: chrome.runtime.getManifest().version }),
     })
     let data = await r.json()
     if (!r.ok) throw new Error(data.error || `error ${r.status}`)
@@ -433,15 +433,27 @@ $('gear').addEventListener('click', () => $('settings').classList.toggle('show')
 $('chatsBtn').addEventListener('click', () => { $('chats').classList.toggle('show'); if ($('chats').classList.contains('show')) renderChatsList() })
 $('newchat').addEventListener('click', newChat)
 $('save').addEventListener('click', async () => {
-  await chrome.storage.local.set({ addr: $('addr').value.trim() || DEFAULT_ADDR, token: $('token').value.trim() })
+  await chrome.storage.local.set({ addr: $('addr').value.trim() || DEFAULT_ADDR, token: $('token').value.trim(), email: $('email').value.trim().toLowerCase() })
   $('settings').classList.remove('show')
   ping()
 })
+// Conectar con Google: pide al OS la URL de consentimiento y la abre en una pestaña.
+$('gauth').addEventListener('click', async () => {
+  const { addr, token } = await getCfg()
+  $('gauthmsg').textContent = 'Abriendo autorización de Google…'
+  try {
+    const r = await fetch(`${addr}/oauth/start`, { headers: { authorization: `Bearer ${token}` } })
+    const d = await r.json()
+    if (d.url) { window.open(d.url, '_blank'); $('gauthmsg').textContent = 'Autorizá en la pestaña nueva. Después escribí tu email arriba y Guardá.' }
+    else $('gauthmsg').textContent = d.error || 'no pude obtener el link de autorización.'
+  } catch (e) { $('gauthmsg').textContent = 'error: ' + e.message }
+})
 
 ;(async () => {
-  const { addr, token } = await getCfg()
+  const { addr, token, email } = await getCfg()
   $('addr').value = addr
   $('token').value = token
+  $('email').value = email
   try { $('ver').textContent = 'v' + chrome.runtime.getManifest().version } catch { /* noop */ }
   ping()
   loadPending() // pobla el badge de pendientes al abrir
