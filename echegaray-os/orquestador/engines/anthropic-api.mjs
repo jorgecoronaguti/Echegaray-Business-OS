@@ -213,9 +213,11 @@ export function makeAnthropicEngine({ config, client, breaker, semaphore }) {
       const messages = [{ role: 'user', content: job.prompt }]
       const usages = []
       let toolTurns = 0
+      let lastResponse = null
 
       for (let i = 0; i < maxIterations; i++) {
         const response = await callModel(messages)
+        lastResponse = response
         if (response.usage) usages.push(response.usage)
 
         if (hasTools && response.stop_reason === 'tool_use') {
@@ -285,10 +287,25 @@ export function makeAnthropicEngine({ config, client, breaker, semaphore }) {
         }
       }
 
-      // Agotó las iteraciones y el modelo seguía pidiendo tools: cortar claro.
-      const err = new Error(`anthropic-api: excedió el máximo de iteraciones de tool-use (${maxIterations})`)
-      err.retryable = false
-      throw err
+      // Agotó las iteraciones y el modelo seguía pidiendo tools. NO tiramos error (perdería
+      // TODO el trabajo, incluidas las escrituras que YA se aplicaron vía las tools): devolvemos
+      // lo que alcanzó a hacer + un aviso claro para continuar. Trabajo parcial > falla total.
+      const parcial = extractText(lastResponse?.content) || ''
+      const cost = { usd: totalCostUsd(usages, modelId) }
+      if (log) {
+        log.warn('anthropic-api: agotó iteraciones — devuelve trabajo parcial', {
+          model: modelId, max_iterations: maxIterations, tool_turns: toolTurns, cost_usd: cost.usd,
+        })
+      }
+      return {
+        sessionId: lastResponse?.id ?? null,
+        result: (parcial ? parcial + '\n\n' : '') +
+          `_(Avancé por partes y me quedé sin pasos para terminar TODO de una. Lo que ya escribí quedó aplicado. Pedime "seguí" y continúo desde donde quedé.)_`,
+        exitCode: 0,
+        cost,
+        tokens: accumulateUsage(usages),
+        raw: { model: modelId, stop_reason: 'max_tool_iterations', duration_ms: Date.now() - startedAt, tool_turns: toolTurns, partial: true },
+      }
     },
   }
 }

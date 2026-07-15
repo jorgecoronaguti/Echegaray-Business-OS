@@ -199,13 +199,14 @@ async function main() {
     check('tooluse: sin toolExecutor no reintentable', err && err.retryable === false)
   }
 
-  // --- TOOL-USE: tope de iteraciones -> corta claro (anti bucle infinito) ---
+  // --- TOOL-USE: tope de iteraciones -> devuelve trabajo PARCIAL (no tira error, que
+  //     perdería las escrituras ya aplicadas); marca raw.partial y sugiere "seguí". ---
   {
-    const client = { messages: { create: async () => ({ id: 'loop', stop_reason: 'tool_use', usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: 'tool_use', id: 'tu', name: 't', input: {} }] }) } }
+    const client = { messages: { create: async () => ({ id: 'loop', stop_reason: 'tool_use', usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: 'text', text: 'voy por partes' }, { type: 'tool_use', id: 'tu', name: 't', input: {} }] }) } }
     const eng = makeAnthropicEngine({ config: CFG, client })
-    let err = null
-    try { await eng.run({ prompt: 'x', tools: [{ name: 't', description: 'd', input_schema: {} }], toolExecutor: async () => 'ok', maxToolIterations: 3 }, ctx) } catch (e) { err = e }
-    check('tooluse: excede iteraciones lanza claro', err instanceof Error && /máximo de iteraciones/.test(err.message))
+    let res = null, err = null
+    try { res = await eng.run({ prompt: 'x', tools: [{ name: 't', description: 'd', input_schema: {} }], toolExecutor: async () => 'ok', maxToolIterations: 3 }, ctx) } catch (e) { err = e }
+    check('tooluse: excede iteraciones devuelve parcial (no lanza)', err === null && res && res.exitCode === 0 && res.raw?.partial === true && /segu[ií]/.test(res.result))
   }
 
   console.log(`anthropic-api.test: ${ok} OK, ${fail} FALLA`)
