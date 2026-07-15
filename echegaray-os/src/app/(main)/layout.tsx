@@ -32,6 +32,7 @@ const GRUPOS_NAV = [
     links: [
       { href: '/integraciones', label: 'Integraciones' },
       { href: '/integraciones/pedidos-materiales', label: 'Pedidos de Materiales' },
+      { href: '/integraciones/herramientas', label: 'Herramientas' },
     ],
   },
 ] as const
