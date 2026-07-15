@@ -90,7 +90,7 @@ async function boot() {
 /** Registro de tools de Drive: lectura (auto) + escritura (requieren aprobación) +
  *  búsqueda por índice. Las de escritura no se ejecutan acá: el tool-executor las
  *  encola como operaciones pendientes (Nivel E). */
-async function driveRegistry() {
+async function driveRegistry(attachment) {
   // OAuth por usuario (PRP-024): si hay una cuenta autorizada, el cliente de Drive actúa
   // COMO ella (crear/copiar/editar donde sea, leer Docs/Gmail/Calendar) en vez del Service
   // Account sin storage. Si nadie autorizó todavía, cae al SA (comportamiento previo).
@@ -99,6 +99,22 @@ async function driveRegistry() {
     ? makeGoogleClient({ config: cfg, scopes: WORKSPACE_SCOPES, getToken: getTokenFor(op) })
     : makeGoogleClient({ config: cfg })
   const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ config: cfg }) }
+  // Si el dueño adjuntó una imagen/archivo, exponer una tool para GUARDARLO en su Drive.
+  if (attachment?.data && attachment?.media_type) {
+    registry['drive.upload_adjunto'] = {
+      capability: 'drive.write', account: 'ecsas',
+      schema: {
+        name: 'guardar_adjunto_en_drive',
+        description: 'Guarda el archivo/imagen que el dueño ADJUNTÓ en este mensaje, dentro de su Drive. Pasá name (nombre del archivo, con extensión) y folder_id opcional (carpeta destino). Devuelve el link.',
+        input_schema: { type: 'object', properties: { name: { type: 'string' }, folder_id: { type: 'string' } }, required: ['name'] },
+      },
+      async run(input) {
+        if (!input?.name) return { error: 'falta name' }
+        try { const r = await google.uploadFile(input.name, attachment.data, attachment.media_type, { parentId: input.folder_id }); return { ok: true, ...r } }
+        catch (e) { return { error: `no pude guardar el adjunto: ${String(e?.message ?? e).slice(0, 160)}` } }
+      },
+    }
+  }
   registry['drive.find'] = {
     capability: 'drive.read', account: 'ecsas',
     schema: {
@@ -519,7 +535,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
     logger: log,
   })
   log.info('directiva ruteada', { capability, skills: skillsLoaded || [] })
-  const registry = await driveRegistry()
+  const registry = await driveRegistry(attachment)
   const baseExecutor = makeToolExecutor({
     decide, tools: registry, principalId: DIRECTOR_PRINCIPAL, logger: log,
     // Enqueue REAL: una escritura propuesta (drive.write) se registra en

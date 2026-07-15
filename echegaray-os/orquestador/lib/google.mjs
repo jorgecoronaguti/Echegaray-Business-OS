@@ -258,6 +258,30 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       } finally { try { await parser.destroy() } catch { /* noop */ } }
     },
 
+    /** Sube un archivo BINARIO (imagen, PDF, cualquier formato) a Drive vía multipart.
+     *  data = base64. Devuelve {id, link}. Requiere actuar como usuario (OAuth) o Shared Drive. */
+    async uploadFile(name, base64Data, mimeType, { parentId } = {}) {
+      const token = await accessToken()
+      const meta = { name, mimeType }
+      if (parentId) meta.parents = [parentId]
+      const boundary = 'echeg' + Math.random().toString(36).slice(2)
+      const body =
+        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n` +
+        `--${boundary}\r\nContent-Type: ${mimeType}\r\nContent-Transfer-Encoding: base64\r\n\r\n${base64Data}\r\n--${boundary}--`
+      const res = await doFetch(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,webViewLink',
+        { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/related; boundary=${boundary}` }, body })
+      if (!res.ok) { const b = String(await res.text()).slice(0, 200); const e = new Error(`google upload ${res.status}: ${b}`); e.status = res.status; throw e }
+      const j = await res.json()
+      return { id: j.id, link: j.webViewLink || `https://drive.google.com/file/d/${j.id}/view` }
+    },
+    /** Inserta una imagen (por URL pública accesible por Google) en un Google Doc. */
+    async insertImageInDoc(fileId, imageUrl, { index = 1 } = {}) {
+      return apiSend(
+        `https://docs.googleapis.com/v1/documents/${encodeURIComponent(fileId)}:batchUpdate`,
+        'POST',
+        { requests: [{ insertInlineImage: { location: { index }, uri: imageUrl } }] })
+    },
     /** Lee un GOOGLE DOC nativo exportándolo a texto plano (Drive export). Cubre contratos,
      *  notas, informes en Docs. Acotado a maxChars. */
     async readDocText(fileId, { maxChars = 20000 } = {}) {
