@@ -16,6 +16,7 @@ import { query, closePool } from '../lib/db.mjs'
 import { createLogger } from '../lib/logger.mjs'
 import { desviosObras } from '../lib/obra-economics.mjs'
 import { alertasCaja } from '../lib/caja-alertas.mjs'
+import { avanceTodasLasObras, formatAvance } from '../lib/avance-fisico.mjs'
 
 const log = createLogger({ component: 'vigilancia-autonoma' })
 const DRY = process.argv.includes('--dry')
@@ -66,16 +67,24 @@ async function contextoAbierto() {
   // CAJA — cobranzas y pagos vencidos con números concretos (palanca #1 del CLAUDE.md).
   let caja = []
   try { caja = await alertasCaja() } catch { caja = [] }
+  // AVANCE FÍSICO — del archivo real de la empresa (obras con % de actividades completas).
+  // Señala obras casi terminadas (→ certificar/cobrar) y arrancadas sin avance (→ revisar).
+  let avance = []
+  try { avance = (await avanceTodasLasObras()).filter((a) => a.estructurado) } catch { avance = [] }
 
-  if (!backlog.length && !acciones.length && !saber.length && !desvios.length && !caja.length) return ''
+  if (!backlog.length && !acciones.length && !saber.length && !desvios.length && !caja.length && !avance.length) return ''
   const b = backlog.map((r) => `  - [${r.impacto}/${r.tipo}] ${r.titulo}`).join('\n')
   const a = acciones.map((r) => `  - [${r.situacion}] ${r.titulo}`).join('\n')
   const m = saber.map((r) => `  - ${r.afirmacion}${r.veces_confirmado > 1 ? ` (confirmado ${r.veces_confirmado}×)` : ''}`).join('\n')
   const d = desvios.map((x) => `  - ${x}`).join('\n')
   const cj = caja.map((x) => `  - ${x}`).join('\n')
+  const av = avance.map((a) => `  - ${formatAvance(a).replace(/\*\*/g, '')}`).join('\n')
   return (
     (caja.length
       ? `\n\nCAJA — VENCIDOS YA CALCULADOS (dato real, palanca inmediata — decidí qué gestionar hoy):\n${cj}\n`
+      : '') +
+    (avance.length
+      ? `\n\nAVANCE FÍSICO DE OBRAS (dato real del tracker — ≥90% ⇒ ver certificación/cobro; arrancada y ~0% ⇒ ¿estancada?):\n${av}\n`
       : '') +
     (desvios.length
       ? `\n\nDESVÍOS ECONÓMICOS DE OBRA YA CALCULADOS (dato real, no los recalcules — decidí si ameritan trabajo hoy):\n${d}\n`
