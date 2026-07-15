@@ -15,6 +15,7 @@ import { enqueueTask } from '../lib/ledger.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { createLogger } from '../lib/logger.mjs'
 import { desviosObras } from '../lib/obra-economics.mjs'
+import { alertasCaja } from '../lib/caja-alertas.mjs'
 
 const log = createLogger({ component: 'vigilancia-autonoma' })
 const DRY = process.argv.includes('--dry')
@@ -62,13 +63,20 @@ async function contextoAbierto() {
   // números concretos en vez de pedirle que "vaya a buscar el desvío". Grounding real.
   let desvios = []
   try { desvios = await desviosObras() } catch { desvios = [] }
+  // CAJA — cobranzas y pagos vencidos con números concretos (palanca #1 del CLAUDE.md).
+  let caja = []
+  try { caja = await alertasCaja() } catch { caja = [] }
 
-  if (!backlog.length && !acciones.length && !saber.length && !desvios.length) return ''
+  if (!backlog.length && !acciones.length && !saber.length && !desvios.length && !caja.length) return ''
   const b = backlog.map((r) => `  - [${r.impacto}/${r.tipo}] ${r.titulo}`).join('\n')
   const a = acciones.map((r) => `  - [${r.situacion}] ${r.titulo}`).join('\n')
   const m = saber.map((r) => `  - ${r.afirmacion}${r.veces_confirmado > 1 ? ` (confirmado ${r.veces_confirmado}×)` : ''}`).join('\n')
   const d = desvios.map((x) => `  - ${x}`).join('\n')
+  const cj = caja.map((x) => `  - ${x}`).join('\n')
   return (
+    (caja.length
+      ? `\n\nCAJA — VENCIDOS YA CALCULADOS (dato real, palanca inmediata — decidí qué gestionar hoy):\n${cj}\n`
+      : '') +
     (desvios.length
       ? `\n\nDESVÍOS ECONÓMICOS DE OBRA YA CALCULADOS (dato real, no los recalcules — decidí si ameritan trabajo hoy):\n${d}\n`
       : '') +
