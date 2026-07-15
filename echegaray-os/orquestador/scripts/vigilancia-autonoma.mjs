@@ -119,8 +119,15 @@ const OBJETIVO = (fecha) =>
   `(3) SEGURIDAD e higiene de obras en curso (ARCOR); (4) CONFIABILIDAD de las fuentes de datos; (5) FISCAL (IVA/vencimientos). ` +
   `Cada especialista debe LEER su fuente real en Drive antes de opinar y declarar qué miró. ` +
   `Sólo análisis y preparación (Nivel A–C). Todo lo que tenga efecto económico/fiscal/laboral/legal/contractual real o ` +
-  `comunicación externa (Nivel E) NO se ejecuta: va en approval_requests. Mantené el DAG MÍNIMO: si no hay nada material ` +
-  `en un dominio, no le asignes trabajo. Si el día está tranquilo, un informe corto "sin novedades materiales" es una salida válida y deseable.`
+  `comunicación externa (Nivel E) NO se ejecuta: va en approval_requests. ` +
+  // COSTO: cada especialista es una llamada CARA. La mayoría de lo material YA está en los
+  // datos calculados (caja, desvíos de obra, avance) y en tu memoria de arriba. Despachá lo mínimo.
+  `DISCIPLINA DE COSTO (importante): despachar un especialista es CARO. La mayor parte de lo material ya te lo doy ` +
+  `CALCULADO arriba (caja vencida, desvíos de obra, avance físico) y ya está en tu memoria. NO despaches un especialista ` +
+  `para reconfirmar, recalcular o re-leer algo que ya está resuelto o ya conocés. Despachá SÓLO cuando haya algo NUEVO y ` +
+  `MATERIAL que exija leer una fuente que todavía no tenés o un criterio profundo no resuelto. Meta: 0 a 2 especialistas por ronda, ` +
+  `no un abanico. Si con los datos calculados y tu memoria alcanza para el informe, NO despaches a nadie. Un informe corto ` +
+  `"sin novedades materiales / lo relevante ya está calculado" es la salida CORRECTA y deseable la mayoría de los días.`
 
 async function main() {
   const { fecha, hora } = partesLocales()
