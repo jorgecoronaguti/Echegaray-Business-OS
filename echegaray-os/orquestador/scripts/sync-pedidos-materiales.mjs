@@ -69,12 +69,13 @@ async function main() {
     const obraId = matchObra(obraTexto)
     if (obraId) conObra++
     await query(
-      `insert into public.pedidos_materiales (id_pedido, obra_texto, obra_id, fecha, material, cantidad, estado, sincronizado_en)
-       values ($1,$2,$3,$4,$5,$6,$7, now())
+      `insert into public.pedidos_materiales (id_pedido, obra_texto, obra_id, fecha, material, cantidad, estado, origen, sincronizado_en)
+       values ($1,$2,$3,$4,$5,$6,$7,'appsheet_sheet', now())
        on conflict (id_pedido) do update set
          obra_texto=excluded.obra_texto, obra_id=excluded.obra_id, fecha=excluded.fecha,
          material=excluded.material, cantidad=excluded.cantidad, estado=excluded.estado,
-         sincronizado_en=now()`,
+         sincronizado_en=now()
+       where public.pedidos_materiales.origen = 'appsheet_sheet'`,
       [idPedido, obraTexto, obraId, fechaISO(row[iFecha]), row[iMat] ?? null, numOrNull(row[iCant]), (row[iEst] ?? null)],
     )
     n++
