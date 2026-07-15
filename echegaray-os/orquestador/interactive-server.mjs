@@ -162,6 +162,8 @@ const CAPABILITIES_HELP = [
   'Esto es lo que podés pedirme (escribí en lenguaje normal):',
   '',
   '📊 **Consultar datos reales** — "¿cuánto tengo en caja?", "mostrame el avance de la obra X", "qué dice el presupuesto de Y".',
+  '💰 **Cuadro económico por obra** — "cuadro económico", "¿cómo va Galpones económicamente?", "margen de la obra X". Contratado vs presupuesto vs costo real vs adicionales, con margen y desvío, marcando qué es dato y qué es cálculo.',
+  '🧠 **Aprender de vos** — "recordá que…" o corregime en pleno trabajo y lo guardo; "¿qué sabés de la empresa?" te muestro lo aprendido.',
   '📄 **Leer PDFs del Drive** — "leé el contrato/cotización/remito/plano X y resumímelo". Interpreto contratos, cotizaciones, facturas y planos con texto.',
   '🧮 **Armar presupuestos guiado** — "armemos el presupuesto de la obra X, guiame". Te llevo paso a paso con jornales UOCRA Zona A vigentes, APU, GG y margen.',
   '✏️ **Editar y ordenar Drive** — "completá esta planilla", "agregá esta fila", "copiá esta plantilla", "renombrá/mové este archivo". Todo queda en Pendientes para tu OK.',
