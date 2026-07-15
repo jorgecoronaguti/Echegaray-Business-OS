@@ -227,13 +227,32 @@ async function saveKnowledge(area, afirmacion) {
   if (veces >= 2) await proposeSkillImprovement({ area, afirmacion, veces })
 }
 /** Trae lo que el dueño le enseñó (solo owner-taught: origen_task_id NULL), acotado. */
-async function ownerTaughtFacts(limit = 8) {
+async function ownerTaughtFacts(limit = 10) {
   try {
     const { rows } = await query(
       `select afirmacion from public.conocimiento_empresa
         where vigente = true and origen_task_id is null
         order by veces_confirmado desc, updated_at desc limit $1`, [limit])
     return rows.map((r) => r.afirmacion)
+  } catch { return [] }
+}
+// Memoria RELEVANTE al pedido actual: trae de TODA la memoria (owner-taught + lo que el OS
+// dedujo) los hechos que mencionan las palabras significativas de la directiva. Así el chat
+// "recuerda" lo específico del tema que estás tocando, no solo los top-N fijos. 0 API.
+const MEM_STOP = new Set('para con los las una unos unas que del por como cuando donde cual esta este esto esa ese sobre según sino pero más muy hay son está están fue han sido'.split(' '))
+async function relevantMemory(directive, limit = 6) {
+  try {
+    const words = String(directive || '').toLowerCase().replace(/[^\wáéíóúñ\s]/g, ' ').split(/\s+/)
+      .filter((w) => w.length > 3 && !MEM_STOP.has(w)).slice(0, 8)
+    if (!words.length) return []
+    const ors = words.map((_, i) => `afirmacion ilike $${i + 2}`).join(' or ')
+    const { rows } = await query(
+      `select afirmacion, case when origen_task_id is null then 'vos' else 'OS' end as fuente
+         from public.conocimiento_empresa
+        where vigente = true and (${ors})
+        order by veces_confirmado desc, updated_at desc limit $1`,
+      [limit, ...words.map((w) => `%${w}%`)])
+    return rows.map((r) => `${r.afirmacion} _(${r.fuente})_`)
   } catch { return [] }
 }
 
@@ -521,12 +540,14 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // Historial de la charla: seguir el hilo ("aplicá la 2", "hacelo", "y el otro?").
   const hist = Array.isArray(history) && history.length
     ? 'CONVERSACIÓN PREVIA (seguí el hilo; "hacelo"/"aplicá eso" se refieren a lo último que propusiste):\n' +
-      history.slice(-8).map((m) => `${m.role === 'me' ? 'Dueño' : 'OS'}: ${String(m.text || '').slice(0, 700)}`).join('\n') + '\n\n'
+      history.slice(-14).map((m) => `${m.role === 'me' ? 'Dueño' : 'OS'}: ${String(m.text || '').slice(0, 1100)}`).join('\n') + '\n\n'
     : ''
-  // PRP-016 — usar lo que el dueño enseñó (acotado, como referencia, no como orden).
-  const known = await ownerTaughtFacts()
-  const knownBlock = known.length
-    ? 'LO QUE EL DUEÑO YA TE ENSEÑÓ (usalo como referencia si viene al caso; no lo repitas porque sí):\n' + known.map((k) => '• ' + k).join('\n') + '\n\n'
+  // MEMORIA (PRP-016/023): lo que el dueño enseñó (top, referencia) + lo RELEVANTE al pedido
+  // actual (recuperado por tema, de toda la memoria) → el chat "recuerda" lo específico.
+  const [known, relevante] = await Promise.all([ownerTaughtFacts(), relevantMemory(directive)])
+  const memoria = [...new Set([...relevante, ...known.map((k) => k + ' _(vos)_')])].slice(0, 12)
+  const knownBlock = memoria.length
+    ? 'MEMORIA DEL OS (lo que sabés de la empresa; _(vos)_ = te lo enseñó el dueño, _(OS)_ = lo dedujo el OS; usalo si viene al caso, no lo repitas porque sí):\n' + memoria.map((k) => '• ' + k).join('\n') + '\n\n'
     : ''
   const threadNudge = followUpAction
     ? 'IMPORTANTE — SEGUÍ EL HILO: el dueño está CONFIRMANDO o ELIGIENDO una opción de lo que propusiste recién (ver CONVERSACIÓN PREVIA). Interpretá "a/b/c", "la 2", "dale", "hacelo", "sí" como esa elección. NO vuelvas a preguntar, NO reinicies, NO respondas un estado genérico: EJECUTÁ ahora esa opción — leé el archivo si hace falta y dejá la operación concreta (drive_update en la fila/rango exacto) en Pendientes, avisando en una línea qué cambio y dónde.\n\n'

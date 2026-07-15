@@ -75,7 +75,7 @@ async function send() {
   const att = attachment
   addMsg(directive + (att ? `\n📎 ${att.name}` : ''), 'me')
   clearAttachment()
-  const history = convo.slice(-8) // turnos previos (antes de agregar el actual)
+  const history = convo.slice(-16) // turnos previos (antes de agregar el actual)
   convo.push({ role: 'me', text: directive })
   $('send').disabled = true
   const pending = addMsg('Pensando…', 'os')
