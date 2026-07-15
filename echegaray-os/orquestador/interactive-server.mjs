@@ -28,6 +28,7 @@ import { webSearchTools } from './lib/tools/web.mjs'
 import { learnTools } from './lib/tools/learn.mjs'
 import { cuadroEconomico } from './lib/obra-economics.mjs'
 import { obraTools } from './lib/tools/obra.mjs'
+import { proposeSkillImprovement } from './lib/skill-proposals.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
 import { enqueuePendingOperation, listPendingOperations, decidePendingOperation, getPendingOperationById } from './lib/pending-ops.mjs'
 import { classifyDirective, classifyDirectiveMulti } from './lib/classify-directive.mjs'
@@ -182,12 +183,16 @@ const CAPABILITIES_HELP = [
 async function saveKnowledge(area, afirmacion) {
   const clave = String(afirmacion).toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 200)
   if (!clave) return
-  await query(
+  const { rows } = await query(
     `insert into public.conocimiento_empresa (area, afirmacion, clave, confianza)
      values ($1, $2, $3, 'alta')
-     on conflict (clave) do update set veces_confirmado = public.conocimiento_empresa.veces_confirmado + 1, updated_at = now(), vigente = true`,
+     on conflict (clave) do update set veces_confirmado = public.conocimiento_empresa.veces_confirmado + 1, updated_at = now(), vigente = true
+     returning veces_confirmado`,
     [area, String(afirmacion).slice(0, 1000), clave],
   )
+  // PRP-016 F3: recurrencia (≥2) ⇒ proponer revisar la skill del dominio (no la muta).
+  const veces = rows[0]?.veces_confirmado ?? 0
+  if (veces >= 2) await proposeSkillImprovement({ area, afirmacion, veces })
 }
 /** Trae lo que el dueño le enseñó (solo owner-taught: origen_task_id NULL), acotado. */
 async function ownerTaughtFacts(limit = 8) {

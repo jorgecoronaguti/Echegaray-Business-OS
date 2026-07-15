@@ -4,6 +4,7 @@
 // ruido de la vigilancia). Lectura/Nivel A — reusa 'drive.read' (auto) para no requerir
 // una migración de policy. Efecto: solo escribe una fila de conocimiento propio; seguro.
 import { query } from '../db.mjs'
+import { proposeSkillImprovement } from '../skill-proposals.mjs'
 
 export function learnTools() {
   return {
@@ -27,12 +28,17 @@ export function learnTools() {
         const af = String(input?.afirmacion || '').trim()
         if (af.length < 4) return { error: 'afirmacion muy corta o vacía' }
         const clave = af.toLowerCase().replace(/\s+/g, ' ').slice(0, 200)
-        await query(
+        const area = String(input?.area || 'general').slice(0, 40)
+        const { rows } = await query(
           `insert into public.conocimiento_empresa (area, afirmacion, clave, confianza)
            values ($1, $2, $3, 'alta')
-           on conflict (clave) do update set veces_confirmado = public.conocimiento_empresa.veces_confirmado + 1, updated_at = now(), vigente = true`,
-          [String(input?.area || 'general').slice(0, 40), af.slice(0, 1000), clave],
+           on conflict (clave) do update set veces_confirmado = public.conocimiento_empresa.veces_confirmado + 1, updated_at = now(), vigente = true
+           returning veces_confirmado`,
+          [area, af.slice(0, 1000), clave],
         )
+        // PRP-016 F3: recurrencia (≥2) ⇒ proponer revisar la skill del dominio (no la muta).
+        const veces = rows[0]?.veces_confirmado ?? 0
+        if (veces >= 2) await proposeSkillImprovement({ area, afirmacion: af, veces })
         return { ok: true, aprendido: af.slice(0, 160) }
       },
     },
