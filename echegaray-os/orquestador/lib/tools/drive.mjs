@@ -134,8 +134,18 @@ export function driveReadTools(google) {
           if (p.scanned) return { file_id: fileId, name: meta.name, tipo: 'pdf', pages: p.pages, nota: 'PDF sin texto extraíble (probablemente escaneado/imagen). Para leerlo haría falta OCR/visión.' }
           return { file_id: fileId, name: meta.name, tipo: 'pdf', pages: p.pages, chars: p.chars, truncado: p.truncated, texto: p.text }
         }
-        // Word/imagen: aún no legibles por contenido — se informa honestamente.
-        return { file_id: fileId, name: meta.name, tipo: mt, nota: 'Este archivo no es una planilla ni PDF (Word/imagen): el OS sabe que existe pero todavía no lee su contenido.' }
+        // Google Doc nativo: exportar a texto plano (contratos, informes, notas).
+        if (mt.includes('google-apps.document')) {
+          const d = await google.readDocText(fileId)
+          return { file_id: fileId, name: meta.name, tipo: 'google_doc', chars: d.chars, truncado: d.truncated, texto: d.text }
+        }
+        // Word .docx (subido, no nativo): Google lo puede exportar a texto vía Drive export.
+        if (mt.includes('wordprocessingml') || mt.includes('msword')) {
+          try { const d = await google.readDocText(fileId); return { file_id: fileId, name: meta.name, tipo: 'word', chars: d.chars, truncado: d.truncated, texto: d.text } }
+          catch { /* si no exporta, cae al aviso honesto */ }
+        }
+        // Imagen u otro: aún no legible por contenido — se informa honestamente.
+        return { file_id: fileId, name: meta.name, tipo: mt, nota: 'Este archivo no es planilla, PDF ni documento de texto (probablemente imagen): el OS sabe que existe pero todavía no lee su contenido.' }
       },
     },
     'drive.obras': {

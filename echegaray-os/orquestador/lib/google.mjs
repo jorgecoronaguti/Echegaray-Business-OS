@@ -83,9 +83,20 @@ export function resolveKeyPath(config) {
  * @param {function} [deps.fetchImpl] override de fetch para tests
  * @param {string}  [deps.impersonate] cuenta @ecsas a impersonar (domain-wide delegation)
  */
-export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes } = {}) {
+export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes, getToken } = {}) {
   const doFetch = fetchImpl || globalThis.fetch
   const authScopes = scopes || READONLY_SCOPES
+  // OAuth POR USUARIO (PRP-024): si se pasa getToken (async → access token del usuario que
+  // autorizó), el cliente actúa COMO ese usuario en vez del Service Account. Cacheamos el
+  // token ~50 min para no refrescar en cada llamada. Es el cable que hace que el OS opere
+  // el Drive/Gmail/Calendar del dueño (crear/copiar donde sea), no la cuenta sin storage.
+  let _tokCache = null
+  async function userToken() {
+    if (_tokCache && _tokCache.exp > Date.now()) return _tokCache.val
+    const val = await getToken()
+    if (val) _tokCache = { val, exp: Date.now() + 50 * 60 * 1000 }
+    return val
+  }
   // Cuenta a impersonar (domain-wide delegation) — SOLO si se pasa EXPLÍCITA (la usan las
   // tools de Gmail/Calendar). NO se toma de la env global: los clientes de Drive/Sheets
   // acceden por archivo compartido con el SA y NO deben impersonar (si lo hicieran antes de
@@ -94,6 +105,8 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes 
   let _auth = auth || null
 
   async function accessToken() {
+    // OAuth por usuario: si hay getToken y devuelve token, se actúa COMO el usuario.
+    if (getToken) { const ut = await userToken(); if (ut) return ut }
     if (!_auth) {
       const keyPath = resolveKeyPath(config)
       if (!fs.existsSync(keyPath)) throw new MissingGoogleCredential(keyPath)
@@ -243,6 +256,39 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes 
         const text = String(r.text || '')
         return { pages: r.total ?? null, chars: text.length, text: text.slice(0, maxChars), truncated: text.length > maxChars, scanned: text.trim().length < 40 }
       } finally { try { await parser.destroy() } catch { /* noop */ } }
+    },
+
+    /** Lee un GOOGLE DOC nativo exportándolo a texto plano (Drive export). Cubre contratos,
+     *  notas, informes en Docs. Acotado a maxChars. */
+    async readDocText(fileId, { maxChars = 20000 } = {}) {
+      const token = await accessToken()
+      const res = await doFetch(
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/export?mimeType=text/plain`,
+        { headers: { Authorization: `Bearer ${token}` } })
+      if (!res.ok) { const b = String(await res.text()).slice(0, 200); const e = new Error(`google export ${res.status}: ${b}`); e.status = res.status; throw e }
+      const text = await res.text()
+      return { chars: text.length, text: text.slice(0, maxChars), truncated: text.length > maxChars }
+    },
+    /** Crea un GOOGLE DOC con título y contenido de texto. Devuelve {id, link}. Requiere
+     *  poder crear en Drive (OAuth por usuario o Unidad Compartida). */
+    async createDoc(name, text, { parentId } = {}) {
+      const meta = { name, mimeType: 'application/vnd.google-apps.document' }
+      if (parentId) meta.parents = [parentId]
+      const created = await apiSend(`https://www.googleapis.com/drive/v3/files?supportsAllDrives=true`, 'POST', meta)
+      if (text) {
+        await apiSend(
+          `https://docs.googleapis.com/v1/documents/${encodeURIComponent(created.id)}:batchUpdate`,
+          'POST',
+          { requests: [{ insertText: { location: { index: 1 }, text: String(text) } }] })
+      }
+      return { id: created.id, link: `https://docs.google.com/document/d/${created.id}/edit` }
+    },
+    /** Inserta texto en un Google Doc existente (al inicio por defecto). */
+    async appendToDoc(fileId, text, { index = 1 } = {}) {
+      return apiSend(
+        `https://docs.googleapis.com/v1/documents/${encodeURIComponent(fileId)}:batchUpdate`,
+        'POST',
+        { requests: [{ insertText: { location: { index }, text: String(text) } }] })
     },
 
     // ---- ESCRITURA (requiere scopes de WRITE_SCOPES; cada efecto pasó por aprobación) ----

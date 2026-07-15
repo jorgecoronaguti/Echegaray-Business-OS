@@ -78,3 +78,20 @@ export async function accessTokenFor(email) {
 export async function hayCuentaAutorizada() {
   try { const { rows } = await query(`select count(*)::int n from orq.google_tokens`); return rows[0].n > 0 } catch { return false }
 }
+
+/** Cuenta OPERADORA del OS: la que usa para el trabajo autónomo/de fondo sobre Drive.
+ *  Preferencia: env ORQ_GOOGLE_IMPERSONATE (si está autorizada), si no la más reciente. */
+export async function operadorEmail() {
+  try {
+    const pref = String(process.env.ORQ_GOOGLE_IMPERSONATE || '').toLowerCase()
+    const { rows } = await query(`select email from orq.google_tokens order by updated_at desc`)
+    if (!rows.length) return null
+    if (pref && rows.some((r) => r.email === pref)) return pref
+    return rows[0].email
+  } catch { return null }
+}
+
+/** Factory de getToken para makeGoogleClient: token fresco de la cuenta operadora. */
+export function getTokenFor(email) {
+  return async () => accessTokenFor(email)
+}
