@@ -12,6 +12,7 @@ import { route } from '../lib/router.mjs'
 import { resolveEngine } from '../engines/index.mjs'
 import { assembleSituation, situationDigest } from '../lib/situation.mjs'
 import { assembleReasoningSystem, ROLE_FRAMING } from '../lib/context-assembler.mjs'
+import { maxEspecialistasPorRonda } from '../lib/budget.mjs'
 
 const Subtask = z.object({
   key: z.string().min(1).max(64),
@@ -120,9 +121,24 @@ export async function directionHandler(task, ctx) {
 
   const directorId = await directorPrincipalId(ctx.context.tenantId)
 
+  // FRENO DURO DE COSTO: el prompt pide "0-2 especialistas" pero el modelo lo ignora y abre
+  // un abanico de 7-38 (cada uno una llamada cara). Acá se recorta al máximo real por ronda
+  // (modoAutonomia: digest=0, full=ORQ_MAX_ESPECIALISTAS). Las subtareas de código no cuentan.
+  const capEsp = maxEspecialistasPorRonda()
+  const subtasksRaw = Array.isArray(dir?.plan?.subtasks) ? dir.plan.subtasks : []
+  let vistos = 0
+  const subtasks = subtasksRaw.filter((st) => {
+    if (st?.type !== 'specialist') return true
+    vistos += 1
+    return vistos <= capEsp
+  })
+  if (subtasks.length < subtasksRaw.length) {
+    ctx.logger?.info('freno de costo: especialistas recortados', { pidio: subtasksRaw.length, cap: capEsp, quedaron: subtasks.length })
+  }
+
   // enrutar cada subtarea a su especialista
   const routed = []
-  for (const st of dir.plan.subtasks) {
+  for (const st of subtasks) {
     const { agent } = await route({ tenantId: ctx.context.tenantId, capabilitySlug: st.capability_slug })
     routed.push({ ...st, agent_slug: agent?.slug ?? null })
   }

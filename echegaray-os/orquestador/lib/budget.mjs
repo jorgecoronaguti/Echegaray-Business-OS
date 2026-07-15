@@ -39,3 +39,27 @@ export function degradarModeloOnDemand(modo) {
 export function pausarAutonomo(modo) {
   return modo === 'tope'
 }
+
+// ── INTERRUPTOR DE AUTONOMÍA (nivel del negocio, no del tope diario) ──────────────
+// El tope diario aprieta el gasto. Este interruptor decide CUÁNTA organización autónoma
+// corre, independiente del tope. Existe porque hoy hay UN usuario probando y el equipo NO
+// está adentro: un directorio de IA razonando 4×/día para un público de cero es puro gasto.
+// La regla del CLAUDE.md: una capacidad sin público no es progreso.
+//
+//   off    → NO se dispara vigilancia (0 API de fondo). El chat y las respuestas
+//            determinísticas (briefing/caja/desvíos) siguen intactas y gratis. ← bootstrap
+//   digest → vigilancia corre, PERO el Director hace UNA pasada barata (haiku) y NO abre
+//            especialistas: informe corto con lo ya calculado. Costo mínimo.
+//   full   → organización completa (Director + especialistas). Para cuando el equipo
+//            consume la salida y cada especialista deja conocimiento reutilizable.
+export function modoAutonomia() {
+  const m = String(process.env.ORQ_AUTONOMIA || 'off').toLowerCase()
+  return ['off', 'digest', 'full'].includes(m) ? m : 'off'
+}
+
+// Tope DURO de especialistas que un Director puede abrir por ronda, pase lo que pase (el
+// prompt de "0-2" lo ignora el modelo y abre 38). En 'digest' es 0; en 'full', configurable.
+export function maxEspecialistasPorRonda() {
+  if (modoAutonomia() === 'digest') return 0
+  return Math.max(0, Number(process.env.ORQ_MAX_ESPECIALISTAS || 2))
+}

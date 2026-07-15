@@ -12,7 +12,7 @@
 // Uso:  node orquestador/scripts/vigilancia-autonoma.mjs         (encola)
 //       node orquestador/scripts/vigilancia-autonoma.mjs --dry   (muestra, no encola)
 import { enqueueTask } from '../lib/ledger.mjs'
-import { estadoPresupuesto, pausarAutonomo } from '../lib/budget.mjs'
+import { estadoPresupuesto, pausarAutonomo, modoAutonomia } from '../lib/budget.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { createLogger } from '../lib/logger.mjs'
 import { desviosObras } from '../lib/obra-economics.mjs'
@@ -132,6 +132,16 @@ const OBJETIVO = (fecha) =>
 
 async function main() {
   const { fecha, hora } = partesLocales()
+  // INTERRUPTOR DE AUTONOMÍA: en 'off' (bootstrap, sin equipo adentro) la ronda autónoma
+  // NO se dispara — cero gasto de API de fondo. El chat y el briefing determinístico
+  // (caja/desvíos/avance) siguen 100% vivos y gratis, a pedido. Se reactiva con
+  // ORQ_AUTONOMIA=digest|full cuando el equipo consuma la salida.
+  const autonomia = modoAutonomia()
+  if (autonomia === 'off') {
+    log.info('autonomía OFF — no se dispara vigilancia (0 API de fondo). El chat sigue vivo.', { fecha, hora })
+    await closePool()
+    return
+  }
   const contexto = await contextoAbierto()
   // TOPE DE GASTO: si hoy ya se pasó el tope, la ronda autónoma NO despacha especialistas
   // (el gasto caro). Igual corre y hace el informe con los datos ya calculados y su memoria
