@@ -36,6 +36,7 @@ import { priorizarCajaResumen, proyeccionCajaResumen } from './lib/caja-alertas.
 import { registerChatGap } from './lib/emergence.mjs'
 import { avanceResumen } from './lib/avance-fisico.mjs'
 import { estadoPresupuesto, degradarModeloOnDemand, pausarAutonomo } from './lib/budget.mjs'
+import { fichaObra } from './lib/ficha-obra.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
 import { enqueuePendingOperation, listPendingOperations, decidePendingOperation, getPendingOperationById } from './lib/pending-ops.mjs'
 import { classifyDirective, classifyDirectiveMulti } from './lib/classify-directive.mjs'
@@ -379,6 +380,15 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   // solo). Debe ir ANTES del cuadro económico (más específico) para no ser tapado.
   if (/^\s*(?:d[aá]me\s+|hac[eé]me\s+|quiero\s+)?(?:un\s+)?(briefing|resumen ejecutivo|resumen del d[ií]a|c[oó]mo (estamos|venimos|va todo|anda todo)|qu[eé] (hay|tenemos) (hoy|para hoy)|estado (general|de la empresa)|situaci[oó]n general|poneme al d[ií]a|puesta al d[ií]a)\b/i.test(directive)) {
     return { answer: await briefingEjecutivo(), model: 'briefing', capability: 'general', skills: [], navigate: null }
+  }
+  // FICHA DE OBRA (PRP-019) — "ficha de la obra X", "todo de la obra X", "obra X completa"
+  // → económico + caja + avance + alertas en una respuesta (0 API). Va antes de avance/cuadro.
+  {
+    const f = String(directive).match(/(?:ficha|todo|resumen completo|informe completo|panorama)\s+(?:de\s+|sobre\s+)?(?:la\s+)?obra\s+([\wáéíóúñ][\wáéíóúñ .\-]{1,30})|obra\s+([\wáéíóúñ .\-]{2,30})\s+(?:completa|entera|todo)/i)
+    if (f) {
+      const nombre = (f[1] || f[2] || '').replace(/[?¿!¡.]+$/g, '').trim()
+      if (nombre) return { answer: await fichaObra(nombre), model: 'ficha-obra', capability: 'advise.site', skills: [], navigate: null }
+    }
   }
   // AVANCE FÍSICO (PRP-017 F4) — lee el archivo real "Avances de Obra" y da el % de
   // actividades completas por obra. Debe ir ANTES del cuadro económico (que captura
