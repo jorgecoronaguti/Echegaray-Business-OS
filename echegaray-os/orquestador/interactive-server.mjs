@@ -36,6 +36,7 @@ import { priorizarCajaResumen, proyeccionCajaResumen } from './lib/caja-alertas.
 import { registerChatGap } from './lib/emergence.mjs'
 import { avanceResumen } from './lib/avance-fisico.mjs'
 import { libroIvaResumen, comprobantesSinRegistrar, parsePeriodo, conciliarProveedoresArca } from './lib/libro-iva.mjs'
+import { pedidosResumen } from './lib/pedidos-materiales.mjs'
 import { estadoPresupuesto, degradarModeloOnDemand, pausarAutonomo } from './lib/budget.mjs'
 import { fichaObra } from './lib/ficha-obra.mjs'
 import { carteraResumen } from './lib/cartera.mjs'
@@ -239,6 +240,7 @@ const CAPABILITIES_HELP = [
   '📐 **Avance físico de obra** — "avance físico", "avance de obra San Francisco". Lee el tracker real "Avances de Obra" y da el % de actividades completas por obra.',
   '💰 **Cuadro económico por obra** — "cuadro económico", "¿cómo va Galpones económicamente?", "margen de la obra X". Contratado vs presupuesto vs costo real vs adicionales, con margen y desvío, marcando qué es dato y qué es cálculo.',
   '🧾 **Libro IVA (ARCA)** — "libro IVA de junio", "¿cuánto IVA pagamos?", "comprobantes recibidos". IVA ventas/compras y posición (débito − crédito) desde los comprobantes reales de ARCA, y qué comprobantes de compra podrían estar sin registrar. 0 API. (Solo Dirección.)',
+  '📦 **Pedidos de materiales** — "pedidos de materiales", "pedidos pendientes", "qué se pidió para la obra X". Lee la app de campo (AppSheet) espejada en el OS: material, cantidad, obra y estado. 0 API.',
   '🧠 **Aprender de vos** — "recordá que…" o corregime en pleno trabajo y lo guardo; "¿qué sabés de la empresa?" te muestro lo aprendido.',
   '📄 **Leer PDFs del Drive** — "leé el contrato/cotización/remito/plano X y resumímelo". Interpreto contratos, cotizaciones, facturas y planos con texto.',
   '🧮 **Armar presupuestos guiado** — "armemos el presupuesto de la obra X, guiame". Te llevo paso a paso con jornales UOCRA Zona A vigentes, APU, GG y margen.',
@@ -447,6 +449,16 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // "¿Cuánto aprendiste / qué sabés de la empresa?" — mide el aprendizaje (0 API).
   if (/\b(cu[aá]nto (aprend|sab[eé]s)|qu[eé] (aprendiste|sab[eé]s|ten[eé]s (guardado|aprendido|anotado))|qu[eé] (cosas )?record[aá]s|qu[eé] conoc[eé]s de (la empresa|nosotros|echegaray)|hechos (aprendidos|que sab[eé]s))/i.test(directive)) {
     return { answer: await learnedSummary(), model: 'aprendizaje', capability: 'general', skills: [], navigate: null }
+  }
+  // PEDIDOS DE MATERIALES (Plan 2 — AppSheet) — respuesta determinística (0 API) desde el
+  // espejo public.pedidos_materiales. "pedidos de materiales", "qué se pidió", "pedidos
+  // pendientes de la obra X". Dato operativo de obra → accesible también al rol 'usuario'.
+  if (/\bpedidos?\s+(de\s+)?(materiales?|obra|la\s+obra)\b|\bmateriales?\s+pedidos?\b|\bpedidos?\s+pendientes?\b|\bqu[eé]\s+(se\s+)?pidi[oó]/i.test(directive)) {
+    const soloPendientes = /\bpendientes?\b/i.test(directive)
+    const mo = String(directive).match(/\b(?:de\s+la\s+obra|obra|para)\s+([\wáéíóúñ][\wáéíóúñ .\-]{1,30})/i)
+    let obra = (mo?.[1] || '').replace(/^(la\s+)?obra\s+/i, '').replace(/^la\s+/i, '').replace(/\b(pendientes?|materiales?)\b/gi, '').replace(/[?¿!¡.]+$/g, '').trim()
+    if (/^(materiales?|pendientes?)?$/i.test(obra)) obra = ''
+    return { answer: await pedidosResumen({ obra: obra || null, soloPendientes }), model: 'pedidos-mat', capability: 'advise.site', skills: [], navigate: null }
   }
   // LIBRO IVA (Plan 1 F1 — ARCA) — respuesta determinística (0 API) desde los comprobantes
   // reales extraídos de ARCA. "libro iva", "iva de junio", "cuánto iva pagamos", "posición
