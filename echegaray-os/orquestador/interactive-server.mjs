@@ -35,6 +35,7 @@ import { recallResumen } from './lib/memory.mjs'
 import { priorizarCajaResumen, proyeccionCajaResumen } from './lib/caja-alertas.mjs'
 import { registerChatGap } from './lib/emergence.mjs'
 import { avanceResumen } from './lib/avance-fisico.mjs'
+import { estadoPresupuesto, degradarModeloOnDemand, pausarAutonomo } from './lib/budget.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
 import { enqueuePendingOperation, listPendingOperations, decidePendingOperation, getPendingOperationById } from './lib/pending-ops.mjs'
 import { classifyDirective, classifyDirectiveMulti } from './lib/classify-directive.mjs'
@@ -139,7 +140,9 @@ async function costSummary() {
     const { rows: sem } = await query(`select round(sum(coalesce((result->'cost'->>'usd')::numeric,0))::numeric,2) usd from orq.tasks where created_at > now() - interval '7 days'`)
     const { rows: porTipo } = await query(`select type, round(sum(coalesce((result->'cost'->>'usd')::numeric,0))::numeric,2) usd from orq.tasks where created_at > now() - interval '7 days' and result ? 'cost' group by type order by usd desc nulls last limit 4`)
     const tipos = porTipo.filter((r) => Number(r.usd) > 0).map((r) => `${r.type} $${r.usd}`).join(' · ')
-    auto = `\n\n**Agentes autónomos (worker) — costo REAL:**\n• Hoy: US$${hoy[0].usd || 0} (${hoy[0].n || 0} tareas) · Últimos 7 días: US$${sem[0].usd || 0}\n• Por tipo (7d): ${tipos || 'sin datos'}\n_El 90% es la vigilancia diaria disparando especialistas. Es lo que más pesa._`
+    const pres = await estadoPresupuesto(COST.total).catch(() => null)
+    const capLinea = pres ? `\n• Tope diario: US$${pres.cap} — usado hoy US$${pres.usado} (${Math.round(pres.ratio * 100)}%) → modo **${pres.modo}**${pres.modo !== 'normal' ? ' (análisis caros bajan a haiku; la vigilancia no despacha especialistas; el chat nunca se corta)' : ''}` : ''
+    auto = `\n\n**Agentes autónomos (worker) — costo REAL:**\n• Hoy: US$${hoy[0].usd || 0} (${hoy[0].n || 0} tareas) · Últimos 7 días: US$${sem[0].usd || 0}\n• Por tipo (7d): ${tipos || 'sin datos'}${capLinea}\n_El 90% es la vigilancia diaria disparando especialistas. Es lo que más pesa._`
   } catch { auto = '' }
   return `**Chat** desde que arrancó el OS (hace ${hrs.toFixed(1)}h): US$${COST.total.toFixed(4)} en ${COST.n} pedidos.\n${per || ''}${auto}\n\n_Estimado desde el uso de tokens; el total exacto está en console.anthropic.com._`
 }
@@ -315,7 +318,13 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   // Intención de enseñar/corregir → sonnet, que llama la tool "aprender" de forma confiable
   // (haiku a veces no la invoca). Así la captura automática de correcciones funciona.
   const teachingIntent = /\b(ten[eé] en cuenta|en realidad|ojo que|que quede claro|te corrijo|corrijo|est[aá] mal|te equivocaste|no es as[ií]|acord[aá]te|record[aá]|aprend[eé]|anot[aá])\b/i.test(directive)
-  const model = writeIntent || att || budgetingKw || teachingIntent || fast === false ? 'sonnet' : 'haiku'
+  let model = writeIntent || att || budgetingKw || teachingIntent || fast === false ? 'sonnet' : 'haiku'
+  // TOPE DE GASTO (degrada, NUNCA bloquea): si el gasto de hoy pasó el umbral, un pedido
+  // que iba a usar sonnet baja a haiku. La respuesta SIEMPRE llega — solo cambia el modelo.
+  // Las respuestas determinísticas (0 API) ya devolvieron antes; nunca pagan esto.
+  const presupuesto = await estadoPresupuesto(COST.total).catch(() => ({ modo: 'normal' }))
+  let degradadoPorCosto = false
+  if (model === 'sonnet' && degradarModeloOnDemand(presupuesto.modo)) { model = 'haiku'; degradadoPorCosto = true }
   const engine = resolveEngine('anthropic-api')
 
   // Fase 3: rutear al especialista correcto. Clasificamos la directiva a un dominio
@@ -410,7 +419,9 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   // F1: si el pedido pide trabajo PROFUNDO de un dominio, lo despachamos al AGENTE durable
   // real (tarda, razona en el worker); si no, seguimos con el razonamiento rápido en canal.
   const dispatchDeep = capability !== 'general' && /\b(dictam|informe (complet|t[eé]cnic|detallad)|an[aá]lisis (profund|complet|detallad)|en profundidad|estudi[aá][^.]{0,25}(a fondo|profund)|que (lo|la) (trabaje|analice|estudie|revise) (a fondo|en profundidad|de verdad))\b/i.test(directive)
-  if (dispatchDeep) return await dispatchToSpecialist({ directive, capability, runId })
+  // En modo TOPE no despachamos al especialista (caro); respondemos inline con haiku
+  // (ya degradado). Nunca se bloquea: el dueño obtiene una respuesta, más económica.
+  if (dispatchDeep && !pausarAutonomo(presupuesto.modo)) return await dispatchToSpecialist({ directive, capability, runId })
   // Contexto de PRESUPUESTACIÓN: jornales UOCRA Zona A verificados (jul-2026) + flujo
   // FLEXIBLE (guía, se puede saltear) + disciplina. Solo cuando la directiva es de armar
   // presupuesto/cotizar. Los jornales van acá para que use los vigentes y no los del
@@ -530,7 +541,10 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   // registrar el gap (propone capacidad solo ante recurrencia). Fire-and-forget: nunca
   // demora ni rompe la respuesta al dueño.
   registerChatGap({ directive, answer: eng.result, capability }).catch(() => {})
-  return { answer: eng.result, model, cost: eng.cost?.usd ?? 0, capability, skills: skillsLoaded || [], navigate: navTarget }
+  const answerFinal = degradadoPorCosto
+    ? `${eng.result}\n\n_(Nota: hoy el gasto de API superó el umbral, así que respondí con el modelo económico. Si necesitás el análisis profundo igual, decímelo y lo corro.)_`
+    : eng.result
+  return { answer: answerFinal, model, cost: eng.cost?.usd ?? 0, capability, skills: skillsLoaded || [], navigate: navTarget }
 }
 
 function send(res, code, obj) {

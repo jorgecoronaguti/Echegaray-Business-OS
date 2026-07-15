@@ -12,6 +12,7 @@
 // Uso:  node orquestador/scripts/vigilancia-autonoma.mjs         (encola)
 //       node orquestador/scripts/vigilancia-autonoma.mjs --dry   (muestra, no encola)
 import { enqueueTask } from '../lib/ledger.mjs'
+import { estadoPresupuesto, pausarAutonomo } from '../lib/budget.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { createLogger } from '../lib/logger.mjs'
 import { desviosObras } from '../lib/obra-economics.mjs'
@@ -132,10 +133,18 @@ const OBJETIVO = (fecha) =>
 async function main() {
   const { fecha, hora } = partesLocales()
   const contexto = await contextoAbierto()
+  // TOPE DE GASTO: si hoy ya se pasó el tope, la ronda autónoma NO despacha especialistas
+  // (el gasto caro). Igual corre y hace el informe con los datos ya calculados y su memoria
+  // (gratis) — no se pierde el monitoreo, solo el dispatch caro.
+  const pres = await estadoPresupuesto().catch(() => ({ modo: 'normal' }))
+  const topeNota = pausarAutonomo(pres.modo)
+    ? `\n\nMODO TOPE DE GASTO (hoy se superó el presupuesto de API): NO despaches NINGÚN especialista hoy. ` +
+      `Hacé el informe SOLO con los datos ya calculados arriba (caja, desvíos, avance) y tu memoria. Cero llamadas caras.`
+    : ''
   const task = {
     type: 'direction',
     title: `Vigilancia autónoma — ${fecha} ${hora}:00`,
-    goal: OBJETIVO(`${fecha} ${hora}:00`) + contexto,
+    goal: OBJETIVO(`${fecha} ${hora}:00`) + contexto + topeNota,
     dedupe_key: `auto-vigilancia:${fecha}-${hora}`,
   }
   if (DRY) {
