@@ -128,10 +128,20 @@ function attachmentBlock(att) {
 // console.anthropic.com. Se resetea al reiniciar el servicio.
 const COST = { since: Date.now(), total: 0, n: 0, byModel: {} }
 function trackCost(usd, model) { const u = Number(usd) || 0; COST.total += u; COST.n++; COST.byModel[model] = (COST.byModel[model] || 0) + u }
-function costSummary() {
+async function costSummary() {
   const hrs = Math.max(0.01, (Date.now() - COST.since) / 3.6e6)
   const per = Object.entries(COST.byModel).map(([m, u]) => `${m}: US$${u.toFixed(4)}`).join(' · ')
-  return `Gasto de API del chat desde que arrancó el OS (hace ${hrs.toFixed(1)}h): **US$${COST.total.toFixed(4)}** en ${COST.n} pedidos (~US$${(COST.total / Math.max(1, COST.n)).toFixed(4)} c/u).\n${per || ''}\n\n_Aproximado — el total real de la cuenta está en console.anthropic.com. Los agentes autónomos no cuentan acá._`
+  // Costo REAL de los agentes autónomos (worker), de la DB: hoy y 7 días, por tipo. Es
+  // el 90% del gasto (los especialistas), invisible hasta ahora en el chat.
+  let auto = ''
+  try {
+    const { rows: hoy } = await query(`select round(sum(coalesce((result->'cost'->>'usd')::numeric,0))::numeric,2) usd, count(*) filter (where result ? 'cost') n from orq.tasks where created_at >= date_trunc('day', now())`)
+    const { rows: sem } = await query(`select round(sum(coalesce((result->'cost'->>'usd')::numeric,0))::numeric,2) usd from orq.tasks where created_at > now() - interval '7 days'`)
+    const { rows: porTipo } = await query(`select type, round(sum(coalesce((result->'cost'->>'usd')::numeric,0))::numeric,2) usd from orq.tasks where created_at > now() - interval '7 days' and result ? 'cost' group by type order by usd desc nulls last limit 4`)
+    const tipos = porTipo.filter((r) => Number(r.usd) > 0).map((r) => `${r.type} $${r.usd}`).join(' · ')
+    auto = `\n\n**Agentes autónomos (worker) — costo REAL:**\n• Hoy: US$${hoy[0].usd || 0} (${hoy[0].n || 0} tareas) · Últimos 7 días: US$${sem[0].usd || 0}\n• Por tipo (7d): ${tipos || 'sin datos'}\n_El 90% es la vigilancia diaria disparando especialistas. Es lo que más pesa._`
+  } catch { auto = '' }
+  return `**Chat** desde que arrancó el OS (hace ${hrs.toFixed(1)}h): US$${COST.total.toFixed(4)} en ${COST.n} pedidos.\n${per || ''}${auto}\n\n_Estimado desde el uso de tokens; el total exacto está en console.anthropic.com._`
 }
 const PROGRESS = new Map()
 // Resultados de directivas largas que se resolvieron en segundo plano (tras superar el
@@ -325,7 +335,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   }
   // "¿Cuánto gasté?" — telemetría de costo del chat, sin llamar a la API.
   if (/cu[aá]nto (gast[eé]|consum[ií]|cost|llev|va).*(api|cr[eé]dit|chat|hoy|plata|gastando)?|gasto de api|consumo de api|cu[aá]nto (me )?sale/i.test(directive)) {
-    return { answer: costSummary(), model: 'costo', capability: 'general', skills: [], navigate: null }
+    return { answer: await costSummary(), model: 'costo', capability: 'general', skills: [], navigate: null }
   }
   // MEMORIA TOTAL (PRP-023) — "¿qué sabemos de X?" / "¿qué sabés sobre X?" → recupera de
   // TODA la memoria (hechos + hallazgos) por tema (0 API). Va ANTES del resumen de empresa;
