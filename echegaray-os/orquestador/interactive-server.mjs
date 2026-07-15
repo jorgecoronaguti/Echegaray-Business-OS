@@ -158,7 +158,12 @@ function attachmentBlock(att) {
 // en qué se le va el crédito sin entrar a la consola. Aproximado; el total real vive en
 // console.anthropic.com. Se resetea al reiniciar el servicio.
 const COST = { since: Date.now(), total: 0, n: 0, byModel: {} }
-function trackCost(usd, model) { const u = Number(usd) || 0; COST.total += u; COST.n++; COST.byModel[model] = (COST.byModel[model] || 0) + u }
+function trackCost(usd, model, rol) {
+  const u = Number(usd) || 0
+  COST.total += u; COST.n++; COST.byModel[model] = (COST.byModel[model] || 0) + u
+  // Persistir para que el TOPE diario sea honesto entre reinicios (no solo en memoria).
+  if (u > 0) query(`insert into orq.chat_cost (model, usd, rol) values ($1, $2, $3)`, [model, u, rol || null]).catch(() => {})
+}
 // Cerebro que compone: cuántas preguntas respondió la caché con 0 API (y el ahorro estimado).
 const CACHE_STATS = { hits: 0 }
 async function costSummary() {
@@ -645,7 +650,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
       task: { id: 'interactive', capability_slug: 'advise.admin' },
       tools: Object.values(registry).map((t) => t.schema), toolExecutor, agentSlug: 'interactive' },
     CTX)
-  trackCost(eng.cost?.usd ?? 0, model)
+  trackCost(eng.cost?.usd ?? 0, model, rol)
   // PRP-018 F3: si el pedido no lo cubrió ningún dominio y el modelo admitió no poder,
   // registrar el gap (propone capacidad solo ante recurrencia). Fire-and-forget: nunca
   // demora ni rompe la respuesta al dueño.
