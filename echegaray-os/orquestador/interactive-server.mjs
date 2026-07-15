@@ -37,6 +37,7 @@ import { registerChatGap } from './lib/emergence.mjs'
 import { avanceResumen } from './lib/avance-fisico.mjs'
 import { estadoPresupuesto, degradarModeloOnDemand, pausarAutonomo } from './lib/budget.mjs'
 import { fichaObra } from './lib/ficha-obra.mjs'
+import { carteraResumen } from './lib/cartera.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
 import { enqueuePendingOperation, listPendingOperations, decidePendingOperation, getPendingOperationById } from './lib/pending-ops.mjs'
 import { classifyDirective, classifyDirectiveMulti } from './lib/classify-directive.mjs'
@@ -380,6 +381,11 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   // solo). Debe ir ANTES del cuadro económico (más específico) para no ser tapado.
   if (/^\s*(?:d[aá]me\s+|hac[eé]me\s+|quiero\s+)?(?:un\s+)?(briefing|resumen ejecutivo|resumen del d[ií]a|c[oó]mo (estamos|venimos|va todo|anda todo)|qu[eé] (hay|tenemos) (hoy|para hoy)|estado (general|de la empresa)|situaci[oó]n general|poneme al d[ií]a|puesta al d[ií]a)\b/i.test(directive)) {
     return { answer: await briefingEjecutivo(), model: 'briefing', capability: 'general', skills: [], navigate: null }
+  }
+  // MACRO DE CARTERA (PRP-020) — "cartera", "macro de obras", "portfolio", "estado de la
+  // cartera", "todas las obras juntas" → la foto agregada de todas las obras (0 API).
+  if (/\b(cartera|portfolio|macro de obras?|estado (de|de la) (cartera|obras)|todas las obras juntas|resumen de (la )?cartera|panorama de obras)\b/i.test(directive)) {
+    return { answer: await carteraResumen(), model: 'cartera', capability: 'advise.commercial', skills: [], navigate: null }
   }
   // FICHA DE OBRA (PRP-019) — "ficha de la obra X", "todo de la obra X", "obra X completa"
   // → económico + caja + avance + alertas en una respuesta (0 API). Va antes de avance/cuadro.
