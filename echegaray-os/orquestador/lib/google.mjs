@@ -199,7 +199,44 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     return Buffer.from(await res.arrayBuffer())
   }
 
+  // LOCALIZACIÓN DE FÓRMULAS: en un Sheet es_AR (y la mayoría no-inglés) el separador de
+  // argumentos es ';' y la coma es DECIMAL. Escribir "=SUM(1,2)" da #ERROR!. USER_ENTERED
+  // parsea según el idioma del sheet. Convertimos la coma separadora → ';' (respetando
+  // strings) SOLO si el sheet no es inglés. Cacheamos el separador por fileId.
+  const _sepCache = new Map()
+  async function argSeparator(fileId) {
+    if (_sepCache.has(fileId)) return _sepCache.get(fileId)
+    let sep = ';'
+    try {
+      const j = await apiGet(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?fields=properties.locale`)
+      sep = /^en[_-]/i.test(j.properties?.locale || '') ? ',' : ';'
+    } catch { sep = ';' }
+    _sepCache.set(fileId, sep)
+    return sep
+  }
+  function convertFormula(s) {
+    if (typeof s !== 'string' || s[0] !== '=') return s
+    let out = '', inStr = false
+    for (const c of s) {
+      if (c === '"') { inStr = !inStr; out += c }
+      else if (!inStr && c === ',') out += ';'
+      else out += c
+    }
+    return out
+  }
+  async function localizeValues(fileId, values) {
+    if (!Array.isArray(values)) return values
+    // ¿Hay alguna fórmula? (evita el fetch de locale si son solo datos)
+    const hayFormula = values.some((r) => Array.isArray(r) && r.some((c) => typeof c === 'string' && c[0] === '='))
+    if (!hayFormula) return values
+    if ((await argSeparator(fileId)) === ',') return values // sheet inglés: coma es correcta
+    return values.map((r) => (Array.isArray(r) ? r.map(convertFormula) : r))
+  }
+
   return {
+    /** Convierte una fórmula al separador del sheet (coma→; en es_AR). Expuesto para tests
+     *  y para que las tools puedan localizar antes de mostrar/escribir. */
+    _convertFormula: convertFormula,
     /** Busca archivos cuyo nombre CONTIENE el texto (robusto a espacios/variantes del
      *  título; el match exacto falla, p.ej., por el espacio final de "Flujo de Caja - Cash Flow ").
      *  Devuelve [{id,name,mimeType}]. */
@@ -426,6 +463,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     /** Sobrescribe un rango A1 de un Sheet con `values` (matriz de filas).
      *  USER_ENTERED: respeta fórmulas y formatos de número como si lo tipearas. */
     async updateSheetValues(fileId, range, values) {
+      values = await localizeValues(fileId, values)
       return apiSend(
         `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
         'PUT',
@@ -435,6 +473,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     /** Agrega filas al final de la tabla que arranca en `range` (INSERT_ROWS: no pisa
      *  lo que haya debajo). Devuelve el rango efectivamente escrito. */
     async appendSheetValues(fileId, range, values) {
+      values = await localizeValues(fileId, values)
       return apiSend(
         `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
         'POST',
@@ -473,10 +512,12 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     /** Escribe VARIOS rangos de un Sheet en UNA sola operación (batch). `data` = matriz de
      *  { range, values }. Mucho más rápido y menos "escueto" que una celda por vez. */
     async batchUpdateValues(fileId, data) {
+      const loc = []
+      for (const d of data) loc.push({ ...d, values: await localizeValues(fileId, d.values) })
       return apiSend(
         `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values:batchUpdate`,
         'POST',
-        { valueInputOption: 'USER_ENTERED', data },
+        { valueInputOption: 'USER_ENTERED', data: loc },
       )
     },
     /** Limpia (vacía) el contenido de un rango sin borrar formato. */

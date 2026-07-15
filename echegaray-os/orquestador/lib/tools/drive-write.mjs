@@ -21,6 +21,22 @@ function normalizeValues(values) {
   return values
 }
 
+// Verificación post-escritura: si se escribieron FÓRMULAS, releemos el rango y detectamos
+// celdas que quedaron en error (#ERROR!, #REF!, #N/A, …). Así el modelo SABE que NO quedó
+// resuelto y no puede declarar "listo" con la planilla rota (bug real: fórmulas con coma en
+// sheet es_AR daban #ERROR! y el OS decía que estaba hecho).
+const CELL_ERR = /^#(ERROR|REF|N\/A|VALUE|DIV\/0|NAME|NUM|NULL)!?/i
+async function verificarErrores(google, fileId, range, values) {
+  const hayFormula = Array.isArray(values) && values.some((r) => Array.isArray(r) && r.some((c) => typeof c === 'string' && c[0] === '='))
+  if (!hayFormula || !range) return []
+  try {
+    const back = await google.readSheetValues(fileId, range)
+    const errs = new Set()
+    for (const row of back || []) for (const c of row || []) if (typeof c === 'string' && CELL_ERR.test(c.trim())) errs.add(c.trim())
+    return [...errs]
+  } catch { return [] }
+}
+
 /** Reduce un rango A1 a su CELDA DE INICIO ("Hoja!D22:G22" → "Hoja!D22"). Sheets dimensiona
  *  la escritura según la matriz de values, así que dando solo la celda inicial NO puede haber
  *  el error "tried writing to column/row X" cuando el modelo se equivoca en el fin del rango
@@ -60,7 +76,11 @@ export function driveWriteTools(google) {
         // Escribir desde la celda inicial: Sheets dimensiona según la matriz, evitando el 400
         // "tried writing to column/row X" que hacía loopear al modelo hasta agotar iteraciones.
         const r = await google.updateSheetValues(input.file_id, startCell(input.range), values)
-        return { ok: true, updated_range: r.updatedRange ?? input.range, updated_cells: r.updatedCells ?? null }
+        const errs = await verificarErrores(google, input.file_id, r.updatedRange ?? input.range, values)
+        return {
+          ok: errs.length === 0, updated_range: r.updatedRange ?? input.range, updated_cells: r.updatedCells ?? null,
+          ...(errs.length ? { advertencia: 'OJO: NO quedó resuelto. Estas celdas dan error tras escribir: ' + errs.join(', ') + '. NO le digas al dueño que está listo; revisá y corregí la fórmula (¿separador, referencia, rango?).', celdas_con_error: errs } : {}),
+        }
       },
     },
     'drive.append': {
@@ -206,7 +226,15 @@ export function driveWriteTools(google) {
         if (!input?.file_id || !Array.isArray(input?.updates) || !input.updates.length) return { error: 'faltan file_id o updates [{range, values}]' }
         const data = input.updates.map((u) => ({ range: startCell(u.range), majorDimension: 'ROWS', values: normalizeValues(u.values) || [] })).filter((d) => d.range)
         const r = await google.batchUpdateValues(input.file_id, data)
-        return { ok: true, updated_ranges: r.responses?.map((x) => x.updatedRange) ?? null, total_updated_cells: r.totalUpdatedCells ?? null }
+        const rangos = r.responses?.map((x) => x.updatedRange) ?? data.map((d) => d.range)
+        // Verificar cada rango escrito que tenía fórmulas.
+        const errs = new Set()
+        for (let i = 0; i < data.length; i++) for (const e of await verificarErrores(google, input.file_id, rangos[i] || data[i].range, data[i].values)) errs.add(e)
+        const errList = [...errs]
+        return {
+          ok: errList.length === 0, updated_ranges: rangos, total_updated_cells: r.totalUpdatedCells ?? null,
+          ...(errList.length ? { advertencia: 'OJO: NO quedó resuelto. Estas celdas dan error tras escribir: ' + errList.join(', ') + '. NO le digas al dueño que está listo; revisá y corregí las fórmulas.', celdas_con_error: errList } : {}),
+        }
       },
     },
     'drive.insertrows': {
