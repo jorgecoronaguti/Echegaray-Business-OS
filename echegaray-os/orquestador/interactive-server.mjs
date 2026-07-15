@@ -26,6 +26,7 @@ import { driveReadTools } from './lib/tools/drive.mjs'
 import { driveWriteTools } from './lib/tools/drive-write.mjs'
 import { webSearchTools } from './lib/tools/web.mjs'
 import { learnTools } from './lib/tools/learn.mjs'
+import { cuadroEconomico } from './lib/obra-economics.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
 import { enqueuePendingOperation, listPendingOperations, decidePendingOperation, getPendingOperationById } from './lib/pending-ops.mjs'
 import { classifyDirective, classifyDirectiveMulti } from './lib/classify-directive.mjs'
@@ -313,6 +314,23 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   // "¿Cuánto aprendiste / qué sabés de la empresa?" — mide el aprendizaje (0 API).
   if (/\b(cu[aá]nto (aprend|sab[eé]s)|qu[eé] (aprendiste|sab[eé]s|ten[eé]s (guardado|aprendido|anotado))|qu[eé] (cosas )?record[aá]s|qu[eé] conoc[eé]s de (la empresa|nosotros|echegaray)|hechos (aprendidos|que sab[eé]s))/i.test(directive)) {
     return { answer: await learnedSummary(), model: 'aprendizaje', capability: 'general', skills: [], navigate: null }
+  }
+  // CUADRO ECONÓMICO POR OBRA (PRP-017) — respuesta determinística (0 API) que ensambla
+  // contratado↔presupuesto↔costo real↔adicionales con margen y desvío, desde Supabase.
+  // "cuadro económico" / "cómo va (la obra) X (económicamente)" / "margen/situación de X".
+  {
+    const econ = String(directive).match(
+      /(?:cuadro\s+econ[oó]mico|situaci[oó]n\s+econ[oó]mica|resultado\s+econ[oó]mico|c[oó]mo\s+(?:va|viene|est[aá]|anda)\b|margen|desv[ií]o|rentabilidad|gan(?:amos|ancia|é))\s*(?:de\s+|en\s+|la\s+obra\s+|de\s+la\s+obra\s+|econ[oó]mic[ao]?\s+(?:de\s+)?)?([\wáéíóúñ][\wáéíóúñ .\-]{1,40})?/i,
+    )
+    const mentionsObra = /\bobra(s)?\b|cuadro\s+econ[oó]mico|econ[oó]mic/i.test(directive)
+    if (econ && mentionsObra) {
+      let nombre = (econ[1] || '').trim()
+        .replace(/\b(econ[oó]mic[ao]?(mente)?|financier[ao]?(mente)?|la obra|de la obra|hoy|ahora|va|viene|anda|est[aá])\b/gi, '')
+        .replace(/[?¿!¡.]+$/g, '').trim()
+      // "todas las obras" / "mis obras" / "las obras" → resumen de todas (nombre vacío).
+      if (/^((tod[ao]s?|l[ao]s?|mis?)\s+)*obras?$/i.test(nombre) || /^tod[ao]s?$/i.test(nombre)) nombre = ''
+      return { answer: await cuadroEconomico(nombre || null), model: 'obra-econ', capability: 'advise.finance', skills: [], navigate: null }
+    }
   }
   // APRENDIZAJE (PRP-016): "recordá/aprendé/acordate/anotá que X" → guarda el hecho y lo
   // usará en próximas respuestas. Sin llamar a la API (0 costo) — pura captura.
