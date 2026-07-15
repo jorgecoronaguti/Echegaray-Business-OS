@@ -148,6 +148,34 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     return res.json()
   }
 
+  async function apiDelete(url) {
+    const token = await accessToken()
+    const res = await doFetch(url, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+    if (!res.ok && res.status !== 204) {
+      const body = String(await res.text()).slice(0, 200)
+      const err = new Error(`google api ${res.status}: ${body}`)
+      err.status = res.status
+      throw err
+    }
+    return { ok: true }
+  }
+
+  // Construye un mensaje RFC 2822 y lo codifica base64url para la Gmail API. Asunto en
+  // encoded-word UTF-8 para no romper con acentos (común en español).
+  function buildRawEmail({ to, cc, bcc, subject, body }) {
+    const encWord = (s) => `=?UTF-8?B?${Buffer.from(String(s || ''), 'utf8').toString('base64')}?=`
+    const h = []
+    if (to) h.push(`To: ${to}`)
+    if (cc) h.push(`Cc: ${cc}`)
+    if (bcc) h.push(`Bcc: ${bcc}`)
+    h.push(`Subject: ${encWord(subject)}`)
+    h.push('MIME-Version: 1.0')
+    h.push('Content-Type: text/plain; charset="UTF-8"')
+    h.push('Content-Transfer-Encoding: 8bit')
+    const mime = h.join('\r\n') + '\r\n\r\n' + String(body || '')
+    return Buffer.from(mime, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  }
+
   /** Descarga los bytes crudos de un archivo (alt=media). Para Excel/binarios. */
   async function downloadBytes(fileId) {
     const token = await accessToken()
@@ -200,7 +228,61 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       const timeMin = new Date().toISOString()
       const timeMax = new Date(Date.now() + days * 86400000).toISOString()
       const j = await apiGet(`https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&maxResults=${max}`)
-      return (j.items || []).map((e) => ({ summary: e.summary || '(sin título)', start: e.start?.dateTime || e.start?.date || '', end: e.end?.dateTime || e.end?.date || '' }))
+      return (j.items || []).map((e) => ({ id: e.id, summary: e.summary || '(sin título)', start: e.start?.dateTime || e.start?.date || '', end: e.end?.dateTime || e.end?.date || '' }))
+    },
+    // ---- GMAIL (escritura) — el OS actúa COMO el usuario (OAuth). Enviar/borrar pasan por
+    //      aprobación (Nivel E); borrador/etiquetar/archivar son reversibles e internos. ----
+    /** Envía un mail. to/cc/bcc son strings ("a@x, b@y"). threadId opcional para responder en hilo. */
+    async gmailSend({ to, cc, bcc, subject, body, threadId } = {}) {
+      const raw = buildRawEmail({ to, cc, bcc, subject, body })
+      const payload = threadId ? { raw, threadId } : { raw }
+      const r = await apiSend('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', 'POST', payload)
+      return { id: r.id, threadId: r.threadId, to, subject }
+    },
+    /** Crea un BORRADOR (no envía). Reversible, sin efecto externo. */
+    async gmailCreateDraft({ to, cc, bcc, subject, body } = {}) {
+      const raw = buildRawEmail({ to, cc, bcc, subject, body })
+      const r = await apiSend('https://gmail.googleapis.com/gmail/v1/users/me/drafts', 'POST', { message: { raw } })
+      return { draft_id: r.id, to, subject }
+    },
+    /** Modifica etiquetas de un mensaje (agregar/quitar). Archivar = quitar INBOX. */
+    async gmailModifyLabels(id, { add = [], remove = [] } = {}) {
+      const r = await apiSend(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}/modify`, 'POST', { addLabelIds: add, removeLabelIds: remove })
+      return { id: r.id, labels: r.labelIds || [] }
+    },
+    /** Archiva un mensaje (lo saca de INBOX; reversible). */
+    async gmailArchive(id) {
+      const r = await apiSend(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}/modify`, 'POST', { removeLabelIds: ['INBOX'] })
+      return { id: r.id, archived: true }
+    },
+    /** Manda un mensaje a la PAPELERA de Gmail (reversible 30 días). */
+    async gmailTrash(id) {
+      const r = await apiSend(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}/trash`, 'POST', {})
+      return { id: r.id, trashed: true }
+    },
+    // ---- CALENDAR (escritura) — crear/editar/borrar; si hay invitados, avisa a todos. ----
+    /** Crea un evento. start/end: "YYYY-MM-DD" (día completo) o ISO datetime. attendees: [emails]. */
+    async calendarCreateEvent({ summary, description, location, start, end, attendees = [] } = {}) {
+      const when = (v) => (String(v).length <= 10 ? { date: String(v) } : { dateTime: String(v) })
+      const ev = { summary, description, location, start: when(start), end: when(end) }
+      if (attendees.length) ev.attendees = attendees.map((e) => ({ email: e }))
+      const q = attendees.length ? '?sendUpdates=all' : ''
+      const r = await apiSend(`https://www.googleapis.com/calendar/v3/calendars/primary/events${q}`, 'POST', ev)
+      return { id: r.id, summary: r.summary, start: r.start, end: r.end, link: r.htmlLink }
+    },
+    /** Modifica un evento existente (patch parcial). */
+    async calendarUpdateEvent(id, patch = {}) {
+      const body = { ...patch }
+      if (patch.start) body.start = String(patch.start).length <= 10 ? { date: String(patch.start) } : { dateTime: String(patch.start) }
+      if (patch.end) body.end = String(patch.end).length <= 10 ? { date: String(patch.end) } : { dateTime: String(patch.end) }
+      if (Array.isArray(patch.attendees)) body.attendees = patch.attendees.map((e) => ({ email: e }))
+      const r = await apiSend(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(id)}?sendUpdates=all`, 'PATCH', body)
+      return { id: r.id, summary: r.summary, start: r.start, end: r.end, link: r.htmlLink }
+    },
+    /** Borra un evento (avisa a los invitados). */
+    async calendarDeleteEvent(id) {
+      await apiDelete(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(id)}?sendUpdates=all`)
+      return { id, deleted: true }
     },
     /** Lee valores de un rango A1 de un Sheet. Devuelve matriz de filas. */
     async readSheetValues(fileId, range) {

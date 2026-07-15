@@ -10,8 +10,10 @@
 // solo se orquesta — un solo lugar con la lógica de escritura (DRY).
 import { query } from '../lib/db.mjs'
 import { decide } from '../lib/policy.mjs'
-import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
+import { makeGoogleClient, WRITE_SCOPES, WORKSPACE_SCOPES } from '../lib/google.mjs'
 import { driveWriteTools } from '../lib/tools/drive-write.mjs'
+import { workspaceTools } from '../lib/tools/workspace.mjs'
+import { operadorEmail, getTokenFor } from '../lib/google-oauth.mjs'
 
 async function markFailed(opId, error) {
   await query(
@@ -49,8 +51,14 @@ export async function operationExecuteHandler(task, ctx) {
   const payload = op.payload || {}
   const toolName = payload.tool
   const args = payload.args ?? {}
-  const google = makeGoogleClient({ config: ctx.config, scopes: WRITE_SCOPES })
-  const registry = driveWriteTools(google)
+  // Cliente OAuth actuando COMO el usuario operador (Drive + Gmail + Calendar): así una
+  // operación aprobada de mail/calendar se ejecuta desde SU cuenta, no la del SA (que no
+  // tiene buzón). Si nadie autorizó, cae al SA (solo sirve para Drive compartido).
+  const op_email = await operadorEmail()
+  const google = op_email
+    ? makeGoogleClient({ config: ctx.config, scopes: WORKSPACE_SCOPES, getToken: getTokenFor(op_email) })
+    : makeGoogleClient({ config: ctx.config, scopes: WRITE_SCOPES })
+  const registry = { ...driveWriteTools(google), ...workspaceTools({ google: op_email ? google : null }) }
   const entry = Object.values(registry).find((t) => t.schema.name === toolName)
   if (!entry) {
     await markFailed(opId, `tool desconocida en la operación: ${toolName}`)

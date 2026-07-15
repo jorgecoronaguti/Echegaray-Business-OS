@@ -13,7 +13,10 @@ export const OAUTH_SCOPES = [
   'openid', 'email', 'profile',
   'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/spreadsheets',
-  'https://www.googleapis.com/auth/gmail.readonly',
+  // GMAIL completo (menos borrado PERMANENTE, que no exponemos): leer, enviar, redactar,
+  // etiquetar, archivar y mandar a papelera. modify+send+compose cubren "todo en los mails".
+  'https://www.googleapis.com/auth/gmail.modify',
+  'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/gmail.compose',
   'https://www.googleapis.com/auth/calendar',
 ]
