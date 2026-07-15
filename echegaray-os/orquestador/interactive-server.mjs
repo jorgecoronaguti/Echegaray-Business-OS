@@ -39,6 +39,7 @@ import { estadoPresupuesto, degradarModeloOnDemand, pausarAutonomo } from './lib
 import { fichaObra } from './lib/ficha-obra.mjs'
 import { carteraResumen } from './lib/cartera.mjs'
 import { resolveUsuario, puede } from './lib/usuarios.mjs'
+import { authUrl, exchangeCode } from './lib/google-oauth.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
 import { enqueuePendingOperation, listPendingOperations, decidePendingOperation, getPendingOperationById } from './lib/pending-ops.mjs'
 import { classifyDirective, classifyDirectiveMulti } from './lib/classify-directive.mjs'
@@ -593,6 +594,18 @@ const server = http.createServer(async (req, res) => {
       const m = JSON.parse(await readFile(path.join(REPO, 'extension', 'manifest.json'), 'utf8'))
       return send(res, 200, { version: m.version })
     } catch { return send(res, 200, { version: null }) }
+  }
+  // PRP-024 OAuth por usuario — sin auth (el retorno de Google no trae el token del OS).
+  // /oauth/start: devuelve la URL de consentimiento. /oauth/exchange: canjea el code y
+  // guarda el refresh_token (lo llama el callback de Vercel). El code es de un solo uso.
+  if (req.method === 'GET' && req.url.startsWith('/oauth/start')) {
+    try { return send(res, 200, { url: authUrl('os') }) } catch (e) { return send(res, 400, { error: String(e.message) }) }
+  }
+  if (req.method === 'GET' && req.url.startsWith('/oauth/exchange')) {
+    const code = new URL(req.url, 'http://x').searchParams.get('code')
+    if (!code) return send(res, 400, { error: 'falta code' })
+    try { const r = await exchangeCode(code); return send(res, 200, { ok: true, email: r.email }) }
+    catch (e) { return send(res, 400, { error: String(e.message).slice(0, 200) }) }
   }
   if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
