@@ -290,6 +290,19 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         'POST',
         { requests: [{ insertText: { location: { index }, text: String(text) } }] })
     },
+    /** Escribe en un Google Doc con modo: 'insertar' (inicio), 'agregar' (final) o
+     *  'reemplazar' (borra todo y escribe). Los Docs SÍ se escriben vía la Docs API. */
+    async writeDoc(fileId, text, { modo = 'insertar' } = {}) {
+      const doc = await apiGet(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(fileId)}`)
+      const content = doc.body?.content || []
+      const endIndex = content.length ? (content[content.length - 1].endIndex || 1) : 1
+      const requests = []
+      if (modo === 'reemplazar' && endIndex > 2) requests.push({ deleteContentRange: { range: { startIndex: 1, endIndex: endIndex - 1 } } })
+      const at = modo === 'agregar' ? Math.max(1, endIndex - 1) : 1
+      requests.push({ insertText: { location: { index: at }, text: String(text) } })
+      await apiSend(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(fileId)}:batchUpdate`, 'POST', { requests })
+      return { escrito: text.length }
+    },
 
     // ---- ESCRITURA (requiere scopes de WRITE_SCOPES; cada efecto pasó por aprobación) ----
 

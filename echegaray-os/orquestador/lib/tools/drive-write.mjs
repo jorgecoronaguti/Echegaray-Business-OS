@@ -78,31 +78,61 @@ export function driveWriteTools(google) {
       schema: {
         name: 'drive_create',
         description:
-          'Crea un archivo NUEVO en Drive: planilla (sheet), documento (doc), presentación (slides) o carpeta. FUNCIONA cuando se crea dentro de la Unidad Compartida "Echegaray OS" (pasá su folder_id) — ahí la cuenta del OS sí puede crear. Pasá name, tipo y folder_id (la Unidad Compartida o una carpeta dentro). REQUIERE aprobación humana.',
+          'Crea un archivo NUEVO en el Drive del usuario (o en una carpeta si pasás folder_id): documento (doc), planilla (sheet), presentación (slides) o carpeta. Para un DOC podés pasar "contenido" (texto) y se crea con ese texto adentro. Devuelve el link. El OS actúa como el usuario autorizado, así que puede crear en cualquier carpeta suya.',
         input_schema: {
           type: 'object',
           properties: {
             name: { type: 'string', description: 'nombre del archivo/carpeta' },
             tipo: { type: 'string', enum: ['doc', 'sheet', 'slides', 'carpeta'], description: 'qué crear' },
-            folder_id: { type: 'string', description: 'ID de la Unidad Compartida "Echegaray OS" o una carpeta dentro (necesario para que la creación funcione)' },
+            folder_id: { type: 'string', description: 'ID de la carpeta destino (opcional; si no, va a la raíz del Drive del usuario)' },
+            contenido: { type: 'string', description: 'solo para doc: texto inicial del documento' },
           },
           required: ['name', 'tipo'],
         },
       },
       async run(input) {
-        const mimeType = TIPO_MIME[String(input?.tipo || '').toLowerCase()]
-        if (!input?.name || !mimeType) return { error: 'faltan name o tipo válido ("doc"|"sheet"|"carpeta")' }
+        const tipo = String(input?.tipo || '').toLowerCase()
+        const mimeType = TIPO_MIME[tipo]
+        if (!input?.name || !mimeType) return { error: 'faltan name o tipo válido ("doc"|"sheet"|"slides"|"carpeta")' }
         try {
+          // Doc con contenido: usar createDoc (crea + inserta texto en un solo paso).
+          if ((tipo === 'doc' || tipo === 'documento') && input?.contenido) {
+            const d = await google.createDoc(input.name, input.contenido, { parentId: input.folder_id })
+            return { ok: true, id: d.id, name: input.name, link: d.link }
+          }
           const f = await google.createFile({ name: input.name, mimeType, parents: input.folder_id ? [input.folder_id] : undefined })
           return { ok: true, id: f.id, name: f.name, link: f.webViewLink ?? null }
         } catch (e) {
-          // La cuenta de servicio no tiene almacenamiento propio: crear un archivo
-          // NUEVO suelto falla. Editar archivos EXISTENTES compartidos sí funciona.
           if (/storageQuota|quota has been exceeded/i.test(e?.message || '')) {
-            return { error: 'no puedo crear un archivo nuevo desde cero (la cuenta de servicio no tiene almacenamiento propio). Sí puedo EDITAR un archivo existente compartido conmigo: creá el archivo vacío y compartímelo, o decime en cuál escribir.' }
+            return { error: 'no pude crear el archivo por almacenamiento. Verificá que el OS esté autorizado a actuar como tu cuenta (login de Google).' }
           }
           throw e
         }
+      },
+    },
+    'drive.write_doc': {
+      capability: 'drive.write',
+      account: 'ecsas',
+      schema: {
+        name: 'drive_write_doc',
+        description:
+          'Escribe TEXTO en un Google Doc: por defecto lo INSERTA al inicio; con modo="reemplazar" borra el contenido y escribe el texto nuevo; con modo="agregar" lo suma al final. Los Docs SÍ se escriben (vía la Docs API), no es una limitación. Pasá file_id y texto.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            file_id: { type: 'string', description: 'ID del Google Doc' },
+            texto: { type: 'string', description: 'texto a escribir' },
+            modo: { type: 'string', enum: ['insertar', 'agregar', 'reemplazar'], description: 'insertar (inicio, def), agregar (final) o reemplazar (todo)' },
+          },
+          required: ['file_id', 'texto'],
+        },
+      },
+      async run(input) {
+        if (!input?.file_id || !input?.texto) return { error: 'faltan file_id o texto' }
+        try {
+          const r = await google.writeDoc(input.file_id, String(input.texto), { modo: input?.modo || 'insertar' })
+          return { ok: true, file_id: input.file_id, modo: input?.modo || 'insertar', link: `https://docs.google.com/document/d/${input.file_id}/edit`, ...r }
+        } catch (e) { return { error: `no pude escribir el Doc: ${String(e?.message ?? e).slice(0, 160)}` } }
       },
     },
     'drive.rename': {
