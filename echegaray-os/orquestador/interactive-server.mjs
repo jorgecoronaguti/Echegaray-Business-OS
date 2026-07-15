@@ -29,6 +29,7 @@ import { learnTools } from './lib/tools/learn.mjs'
 import { cuadroEconomico } from './lib/obra-economics.mjs'
 import { obraTools } from './lib/tools/obra.mjs'
 import { proposeSkillImprovement } from './lib/skill-proposals.mjs'
+import { briefingEjecutivo } from './lib/briefing.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
 import { enqueuePendingOperation, listPendingOperations, decidePendingOperation, getPendingOperationById } from './lib/pending-ops.mjs'
 import { classifyDirective, classifyDirectiveMulti } from './lib/classify-directive.mjs'
@@ -163,6 +164,7 @@ function friendlyStep(name, input) {
 const CAPABILITIES_HELP = [
   'Esto es lo que podés pedirme (escribí en lenguaje normal):',
   '',
+  '🗞️ **Briefing ejecutivo** — "¿cómo estamos?", "resumen", "qué hay hoy". Una foto: caja vencida + desvíos de obra + lo que el OS detectó y propuso solo. 0 API.',
   '📊 **Consultar datos reales** — "¿cuánto tengo en caja?", "mostrame el avance de la obra X", "qué dice el presupuesto de Y".',
   '💰 **Cuadro económico por obra** — "cuadro económico", "¿cómo va Galpones económicamente?", "margen de la obra X". Contratado vs presupuesto vs costo real vs adicionales, con margen y desvío, marcando qué es dato y qué es cálculo.',
   '🧠 **Aprender de vos** — "recordá que…" o corregime en pleno trabajo y lo guardo; "¿qué sabés de la empresa?" te muestro lo aprendido.',
@@ -322,6 +324,12 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   // "¿Cuánto aprendiste / qué sabés de la empresa?" — mide el aprendizaje (0 API).
   if (/\b(cu[aá]nto (aprend|sab[eé]s)|qu[eé] (aprendiste|sab[eé]s|ten[eé]s (guardado|aprendido|anotado))|qu[eé] (cosas )?record[aá]s|qu[eé] conoc[eé]s de (la empresa|nosotros|echegaray)|hechos (aprendidos|que sab[eé]s))/i.test(directive)) {
     return { answer: await learnedSummary(), model: 'aprendizaje', capability: 'general', skills: [], navigate: null }
+  }
+  // BRIEFING EJECUTIVO (0 API) — "¿cómo estamos?" / "resumen" / "qué hay hoy" → foto
+  // unificada de caja vencida + desvíos de obra + backlog autónomo (lo que el OS detectó
+  // solo). Debe ir ANTES del cuadro económico (más específico) para no ser tapado.
+  if (/^\s*(?:d[aá]me\s+|hac[eé]me\s+|quiero\s+)?(?:un\s+)?(briefing|resumen ejecutivo|resumen del d[ií]a|c[oó]mo (estamos|venimos|va todo|anda todo)|qu[eé] (hay|tenemos) (hoy|para hoy)|estado (general|de la empresa)|situaci[oó]n general|poneme al d[ií]a|puesta al d[ií]a)\b/i.test(directive)) {
+    return { answer: await briefingEjecutivo(), model: 'briefing', capability: 'general', skills: [], navigate: null }
   }
   // CUADRO ECONÓMICO POR OBRA (PRP-017) — respuesta determinística (0 API) que ensambla
   // contratado↔presupuesto↔costo real↔adicionales con margen y desvío, desde Supabase.
