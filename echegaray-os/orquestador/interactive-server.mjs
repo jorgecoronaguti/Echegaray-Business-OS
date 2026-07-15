@@ -38,6 +38,8 @@ import { avanceResumen } from './lib/avance-fisico.mjs'
 import { libroIvaResumen, comprobantesSinRegistrar, parsePeriodo, conciliarProveedoresArca } from './lib/libro-iva.mjs'
 import { pedidosResumen } from './lib/pedidos-materiales.mjs'
 import { appsheetPedidosTools } from './lib/tools/appsheet-pedidos.mjs'
+import { estadoOperativoObra, esObraOperativa } from './lib/obra-operativa.mjs'
+import { findObras } from './lib/obra-economics.mjs'
 import { estadoPresupuesto, degradarModeloOnDemand, pausarAutonomo } from './lib/budget.mjs'
 import { fichaObra } from './lib/ficha-obra.mjs'
 import { carteraResumen } from './lib/cartera.mjs'
@@ -604,6 +606,14 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
         .replace(/[?¿!¡.]+$/g, '').trim()
       // "todas las obras" / "mis obras" / "las obras" → resumen de todas (nombre vacío).
       if (/^((tod[ao]s?|l[ao]s?|mis?)\s+)*obras?$/i.test(nombre) || /^tod[ao]s?$/i.test(nombre)) nombre = ''
+      // Obra ACTIVA no cargada en el maestro económico (decisión: solo operativo por ahora):
+      // en vez de "no encontré la obra", devolver la vista operativa (avance + pedidos).
+      if (nombre) {
+        const enMaestro = (await findObras(nombre).catch(() => [])).length > 0
+        if (!enMaestro && (await esObraOperativa(nombre).catch(() => false))) {
+          return { answer: await estadoOperativoObra(nombre), model: 'obra-operativa', capability: 'advise.site', skills: [], navigate: null }
+        }
+      }
       return { answer: await cuadroEconomico(nombre || null), model: 'obra-econ', capability: 'advise.finance', skills: [], navigate: null }
     }
   }
