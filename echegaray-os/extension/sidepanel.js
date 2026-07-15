@@ -111,6 +111,21 @@ async function send() {
       polling = false // de acá en más el progreso lo maneja waitResult (evita pisar la respuesta)
       pending.textContent = '⏳ Tarea larga: la estoy trabajando…'
       data = await waitResult(addr, token, data.runId, pending, t0)
+      // AUTO-REINTENTO (una vez): si un reinicio perdió la tarea a mitad, la reintentamos
+      // solos y transparente en vez de tirarle el error al dueño. La durabilidad server-side
+      // ya cubre lo terminado; esto cubre el reinicio en plena ejecución.
+      if (data && data.lost) {
+        pending.textContent = '⏳ El servidor se reinició; lo reintento solo…'
+        const rid2 = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()
+        const r2 = await fetch(`${addr}/ask`, {
+          method: 'POST', headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
+          body: JSON.stringify({ directive, fileId, attachment: att, history, runId: rid2, wantsAsync: true, userEmail: email, extVersion: chrome.runtime.getManifest().version }),
+        })
+        let d2 = await r2.json()
+        if (r2.ok && d2.async && d2.runId) d2 = await waitResult(addr, token, d2.runId, pending, t0)
+        data = d2
+      }
+      if (data && data.lost) throw new Error('Se perdió la tarea incluso tras reintentar. Probá de nuevo en un momento.')
       if (data.error) throw new Error(data.error)
     }
     pending.textContent = data.answer || '(sin respuesta)'
@@ -213,7 +228,7 @@ async function waitResult(addr, token, runId, pending, t0) {
       const rr = await fetch(`${addr}/result?id=${runId}`, { headers: { authorization: `Bearer ${token}` } })
       const rd = await rr.json()
       if (rd.done) return rd
-      if (rd.lost) return { error: 'Se perdió esta tarea (el servidor se reinició mientras corría). Reintentá el pedido.' }
+      if (rd.lost) return { lost: true }
     } catch { /* reintenta */ }
   }
   return { error: 'La tarea tardó demasiado. Probá pedirla más acotada (ej. una obra o una pestaña a la vez).' }
@@ -251,7 +266,7 @@ async function persistCurrent() {
 function newChat() {
   currentChatId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now())
   convo = []
-  $('chat').innerHTML = '<div class="hint" id="hint">Nuevo chat. Escribí una directiva o adjuntá una foto/PDF.</div>'
+  $('chat').innerHTML = '<div class="hint" id="hint">Nuevo chat. Escribí una directiva, adjuntá o PEGÁ una imagen (Ctrl+V) o un PDF.</div>'
   $('chats').classList.remove('show')
   showView('chat')
 }
@@ -429,6 +444,18 @@ $('agadd').addEventListener('click', addSchedule)
 $('attach').addEventListener('click', () => $('file').click())
 $('file').addEventListener('change', (e) => onFilePicked(e.target.files[0]))
 $('chipx').addEventListener('click', clearAttachment)
+// PEGAR IMAGEN (Ctrl/Cmd+V): si el portapapeles tiene una imagen (captura de pantalla,
+// foto copiada), la adjuntamos igual que si la hubieras elegido con el clip. El OS la ve,
+// la interpreta y razona sobre ella. El pegado de texto normal sigue funcionando igual.
+document.addEventListener('paste', (e) => {
+  const items = (e.clipboardData && e.clipboardData.items) || []
+  for (const it of items) {
+    if (it.type && it.type.startsWith('image/')) {
+      const file = it.getAsFile()
+      if (file) { e.preventDefault(); onFilePicked(file); break }
+    }
+  }
+})
 $('gear').addEventListener('click', () => $('settings').classList.toggle('show'))
 $('chatsBtn').addEventListener('click', () => { $('chats').classList.toggle('show'); if ($('chats').classList.contains('show')) renderChatsList() })
 $('newchat').addEventListener('click', newChat)
