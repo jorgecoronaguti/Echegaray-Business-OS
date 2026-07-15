@@ -663,8 +663,22 @@ const server = http.createServer(async (req, res) => {
       return res.end(zip)
     } catch { return send(res, 404, { error: 'extensión no empaquetada todavía' }) }
   }
-  // A partir de acá, rutas protegidas por el token de la extensión.
-  if (TOKEN && req.headers.authorization !== `Bearer ${TOKEN}`) return send(res, 401, { error: 'no autorizado' })
+  // A partir de acá, rutas protegidas. Acepta (1) el token compartido (dueño, super_admin)
+  // o (2) una LLAVE POR USUARIO (usuarios_os.access_key) → identidad y rol atados a la llave
+  // (seguro: el email no se auto-declara). authEmail queda para el /ask.
+  const bearer = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
+  let authEmail = null
+  if (TOKEN && bearer === TOKEN) {
+    authEmail = null // dueño con la llave compartida → super_admin por defecto
+  } else if (bearer) {
+    try {
+      const { rows } = await query(`select email from public.usuarios_os where access_key = $1 and activo = true limit 1`, [bearer])
+      if (rows.length) authEmail = rows[0].email
+      else return send(res, 401, { error: 'no autorizado' })
+    } catch { return send(res, 401, { error: 'no autorizado' }) }
+  } else if (TOKEN) {
+    return send(res, 401, { error: 'no autorizado' })
+  }
 
   // Operaciones pendientes de aprobación (la extensión las lista y las decide).
   if (req.method === 'GET' && req.url === '/pending') {
@@ -763,11 +777,13 @@ const server = http.createServer(async (req, res) => {
 
       // Directiva normal. La extensión 0.6.0+ manda wantsAsync + extVersion.
       const { directive, fileId, fast, attachment, history, runId, wantsAsync, extVersion, userEmail } = data
+      // La identidad de la LLAVE (authEmail) manda sobre el email tipeado (seguro).
+      const identidad = authEmail || userEmail
       if (!directive || typeof directive !== 'string') return send(res, 400, { error: 'falta "directive"' })
       log.info('directiva recibida', { extVersion: extVersion || 'desconocida', wantsAsync: !!wantsAsync, user: userEmail || 'anon' })
       const t0 = Date.now()
       const rid = runId || (`srv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
-      const work = ask({ directive: directive.slice(0, 4000), fileId, fast, attachment, history, runId: rid, userEmail })
+      const work = ask({ directive: directive.slice(0, 4000), fileId, fast, attachment, history, runId: rid, userEmail: identidad })
         .then((out) => { RESULTS.set(rid, { done: true, out }); return out })
         .catch((e) => { RESULTS.set(rid, { done: true, error: e.message }); throw e })
         .finally(() => { progressDone(rid); setTimeout(() => RESULTS.delete(rid), 120000) })
