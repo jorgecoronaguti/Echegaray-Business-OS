@@ -31,6 +31,7 @@ import { obraTools } from './lib/tools/obra.mjs'
 import { proposeSkillImprovement } from './lib/skill-proposals.mjs'
 import { briefingEjecutivo } from './lib/briefing.mjs'
 import { registerChatGap } from './lib/emergence.mjs'
+import { avanceResumen } from './lib/avance-fisico.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
 import { enqueuePendingOperation, listPendingOperations, decidePendingOperation, getPendingOperationById } from './lib/pending-ops.mjs'
 import { classifyDirective, classifyDirectiveMulti } from './lib/classify-directive.mjs'
@@ -167,6 +168,7 @@ const CAPABILITIES_HELP = [
   '',
   '🗞️ **Briefing ejecutivo** — "¿cómo estamos?", "resumen", "qué hay hoy". Una foto: caja vencida + desvíos de obra + lo que el OS detectó y propuso solo. 0 API.',
   '📊 **Consultar datos reales** — "¿cuánto tengo en caja?", "mostrame el avance de la obra X", "qué dice el presupuesto de Y".',
+  '📐 **Avance físico de obra** — "avance físico", "avance de obra San Francisco". Lee el tracker real "Avances de Obra" y da el % de actividades completas por obra.',
   '💰 **Cuadro económico por obra** — "cuadro económico", "¿cómo va Galpones económicamente?", "margen de la obra X". Contratado vs presupuesto vs costo real vs adicionales, con margen y desvío, marcando qué es dato y qué es cálculo.',
   '🧠 **Aprender de vos** — "recordá que…" o corregime en pleno trabajo y lo guardo; "¿qué sabés de la empresa?" te muestro lo aprendido.',
   '📄 **Leer PDFs del Drive** — "leé el contrato/cotización/remito/plano X y resumímelo". Interpreto contratos, cotizaciones, facturas y planos con texto.',
@@ -331,6 +333,17 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   // solo). Debe ir ANTES del cuadro económico (más específico) para no ser tapado.
   if (/^\s*(?:d[aá]me\s+|hac[eé]me\s+|quiero\s+)?(?:un\s+)?(briefing|resumen ejecutivo|resumen del d[ií]a|c[oó]mo (estamos|venimos|va todo|anda todo)|qu[eé] (hay|tenemos) (hoy|para hoy)|estado (general|de la empresa)|situaci[oó]n general|poneme al d[ií]a|puesta al d[ií]a)\b/i.test(directive)) {
     return { answer: await briefingEjecutivo(), model: 'briefing', capability: 'general', skills: [], navigate: null }
+  }
+  // AVANCE FÍSICO (PRP-017 F4) — lee el archivo real "Avances de Obra" y da el % de
+  // actividades completas por obra. Debe ir ANTES del cuadro económico (que captura
+  // "cómo va X"). Solo dispara si menciona avance/físico explícitamente.
+  {
+    const av = String(directive).match(/\bavance(s)?\s+(f[ií]sic|de\s+obra|de\s+la\s+obra|de\s+las\s+obras)|\b(avance|%\s*de\s*avance|porcentaje de avance)\b.*\bobra|\bc[oó]mo\s+va(n)?\s+las\s+obras\b/i)
+    if (av) {
+      const m = String(directive).match(/avance\s+(?:f[ií]sic[ao]\s+)?(?:de\s+)?(?:la\s+)?(?:obra\s+)?([\wáéíóúñ][\wáéíóúñ .\-]{1,30})?/i)
+      let nombre = (m?.[1] || '').replace(/\b(f[ií]sic[ao]|de obra|las obras|obras|obra)\b/gi, '').replace(/[?¿!¡.]+$/g, '').trim()
+      return { answer: await avanceResumen(nombre || null), model: 'avance-fisico', capability: 'advise.site', skills: [], navigate: null }
+    }
   }
   // CUADRO ECONÓMICO POR OBRA (PRP-017) — respuesta determinística (0 API) que ensambla
   // contratado↔presupuesto↔costo real↔adicionales con margen y desvío, desde Supabase.
