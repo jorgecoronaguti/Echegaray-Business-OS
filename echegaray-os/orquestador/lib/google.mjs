@@ -86,9 +86,11 @@ export function resolveKeyPath(config) {
 export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes } = {}) {
   const doFetch = fetchImpl || globalThis.fetch
   const authScopes = scopes || READONLY_SCOPES
-  // Cuenta a impersonar (domain-wide delegation). Si no se pasa explícita, sale de la env
-  // ORQ_GOOGLE_IMPERSONATE (ej. una cuenta @ecsas.com.ar). Sin cuenta => sin impersonación.
-  const subject = impersonate || process.env.ORQ_GOOGLE_IMPERSONATE || null
+  // Cuenta a impersonar (domain-wide delegation) — SOLO si se pasa EXPLÍCITA (la usan las
+  // tools de Gmail/Calendar). NO se toma de la env global: los clientes de Drive/Sheets
+  // acceden por archivo compartido con el SA y NO deben impersonar (si lo hicieran antes de
+  // que la delegación esté activa, romperían las lecturas que hoy funcionan).
+  const subject = impersonate || null
   let _auth = auth || null
 
   async function accessToken() {

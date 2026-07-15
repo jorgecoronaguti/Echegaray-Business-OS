@@ -5,10 +5,12 @@
 // una fase posterior (Nivel E, con aprobación) y NO está acá.
 import { makeGoogleClient, WORKSPACE_SCOPES } from '../google.mjs'
 
-// Cliente con scopes de Workspace + impersonación (lazy, se comparte en el módulo).
+// Cliente con scopes de Workspace + impersonación EXPLÍCITA (lazy, se comparte en el módulo).
+// La cuenta a impersonar sale de la env ORQ_GOOGLE_IMPERSONATE — SOLO acá (Gmail/Calendar),
+// no en el cliente global de Drive/Sheets (que accede por archivo compartido con el SA).
 let _ws = null
 function ws(config) {
-  if (!_ws) _ws = makeGoogleClient({ config, scopes: WORKSPACE_SCOPES })
+  if (!_ws) _ws = makeGoogleClient({ config, scopes: WORKSPACE_SCOPES, impersonate: process.env.ORQ_GOOGLE_IMPERSONATE || null })
   return _ws
 }
 const sinAcceso = (e) => {
