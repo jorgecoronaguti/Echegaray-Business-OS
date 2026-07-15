@@ -196,6 +196,40 @@ async function ownerTaughtFacts(limit = 8) {
   } catch { return [] }
 }
 
+/** PRP-016 F4: mide y muestra lo APRENDIDO del dueño (owner-taught) — cuántos hechos,
+ *  por área, y cuándo fue el último. Determinístico (0 API): así el dueño puede auditar
+ *  qué "sabe" el OS de su empresa y ver el interés compuesto del aprendizaje. */
+async function learnedSummary() {
+  try {
+    const { rows } = await query(
+      `select area, afirmacion, veces_confirmado, updated_at
+         from public.conocimiento_empresa
+        where vigente = true and origen_task_id is null
+        order by updated_at desc`)
+    const total = rows.length
+    if (!total) {
+      return 'Todavía no aprendí ningún hecho durable de la empresa.\n\nEnseñame cosas y las voy a recordar y usar en próximas respuestas: "recordá que el margen objetivo es 18%", o corregime en pleno trabajo ("ojo que el proveedor de hierro es X") y lo guardo solo. Cada hecho me hace preguntar menos y gastar menos API.'
+    }
+    const byArea = {}
+    for (const r of rows) byArea[r.area || 'general'] = (byArea[r.area || 'general'] || 0) + 1
+    const areasLine = Object.entries(byArea).sort((a, b) => b[1] - a[1]).map(([a, n]) => `${a} (${n})`).join(', ')
+    const recientes = rows.slice(0, 5).map((r) => `• ${String(r.afirmacion).slice(0, 140)}`).join('\n')
+    const confirmados = rows.filter((r) => (r.veces_confirmado || 0) > 0).length
+    return [
+      `Sé **${total}** ${total === 1 ? 'hecho durable' : 'hechos durables'} de la empresa que me enseñaste.`,
+      `Por área: ${areasLine}.`,
+      confirmados ? `Reconfirmados al menos una vez: ${confirmados}.` : null,
+      '',
+      'Lo más reciente:',
+      recientes,
+      '',
+      'Todo esto lo uso solo en cada respuesta (no vuelvo a preguntarlo). Si algo cambió, corregime y lo actualizo.',
+    ].filter((l) => l !== null).join('\n')
+  } catch (e) {
+    return `No pude leer lo aprendido: ${String(e?.message ?? e).slice(0, 160)}`
+  }
+}
+
 /** Da formato legible a la salida estructurada de un especialista (analysis + recos). */
 function formatSpecialistResult(result, who) {
   if (!result || typeof result !== 'object') return String(result || 'Sin resultado.')
@@ -275,6 +309,10 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   // "¿Cuánto gasté?" — telemetría de costo del chat, sin llamar a la API.
   if (/cu[aá]nto (gast[eé]|consum[ií]|cost|llev|va).*(api|cr[eé]dit|chat|hoy|plata|gastando)?|gasto de api|consumo de api|cu[aá]nto (me )?sale/i.test(directive)) {
     return { answer: costSummary(), model: 'costo', capability: 'general', skills: [], navigate: null }
+  }
+  // "¿Cuánto aprendiste / qué sabés de la empresa?" — mide el aprendizaje (0 API).
+  if (/\b(cu[aá]nto (aprend|sab[eé]s)|qu[eé] (aprendiste|sab[eé]s|ten[eé]s (guardado|aprendido|anotado))|qu[eé] (cosas )?record[aá]s|qu[eé] conoc[eé]s de (la empresa|nosotros|echegaray)|hechos (aprendidos|que sab[eé]s))/i.test(directive)) {
+    return { answer: await learnedSummary(), model: 'aprendizaje', capability: 'general', skills: [], navigate: null }
   }
   // APRENDIZAJE (PRP-016): "recordá/aprendé/acordate/anotá que X" → guarda el hecho y lo
   // usará en próximas respuestas. Sin llamar a la API (0 costo) — pura captura.
