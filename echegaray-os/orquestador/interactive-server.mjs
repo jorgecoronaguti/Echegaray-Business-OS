@@ -37,6 +37,7 @@ import { registerChatGap } from './lib/emergence.mjs'
 import { avanceResumen } from './lib/avance-fisico.mjs'
 import { libroIvaResumen, comprobantesSinRegistrar, parsePeriodo, conciliarProveedoresArca } from './lib/libro-iva.mjs'
 import { pedidosResumen } from './lib/pedidos-materiales.mjs'
+import { appsheetPedidosTools } from './lib/tools/appsheet-pedidos.mjs'
 import { estadoPresupuesto, degradarModeloOnDemand, pausarAutonomo } from './lib/budget.mjs'
 import { fichaObra } from './lib/ficha-obra.mjs'
 import { carteraResumen } from './lib/cartera.mjs'
@@ -103,7 +104,7 @@ async function driveRegistry(attachment, userEmail) {
   const google = op
     ? makeGoogleClient({ config: cfg, scopes: WORKSPACE_SCOPES, getToken: getTokenFor(op) })
     : makeGoogleClient({ config: cfg })
-  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ google: op ? google : null }) }
+  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ google: op ? google : null }), ...appsheetPedidosTools({ google: op ? google : null }) }
   // Si el dueño adjuntó una imagen/archivo, exponer una tool para GUARDARLO en su Drive.
   if (attachment?.data && attachment?.media_type) {
     registry['drive.upload_adjunto'] = {
@@ -241,6 +242,7 @@ const CAPABILITIES_HELP = [
   '💰 **Cuadro económico por obra** — "cuadro económico", "¿cómo va Galpones económicamente?", "margen de la obra X". Contratado vs presupuesto vs costo real vs adicionales, con margen y desvío, marcando qué es dato y qué es cálculo.',
   '🧾 **Libro IVA (ARCA)** — "libro IVA de junio", "¿cuánto IVA pagamos?", "comprobantes recibidos". IVA ventas/compras y posición (débito − crédito) desde los comprobantes reales de ARCA, y qué comprobantes de compra podrían estar sin registrar. 0 API. (Solo Dirección.)',
   '📦 **Pedidos de materiales** — "pedidos de materiales", "pedidos pendientes", "qué se pidió para la obra X". Lee la app de campo (AppSheet) espejada en el OS: material, cantidad, obra y estado. 0 API.',
+  '✅ **Modificar la app de Pedidos (AppSheet)** — "marcá el pedido 1 como entregado", "agregá 10 bolsas de cemento para Galpones". Escribo en la app real; como lo ve el campo, cae en Pendientes para tu OK y recién ahí se aplica.',
   '🧠 **Aprender de vos** — "recordá que…" o corregime en pleno trabajo y lo guardo; "¿qué sabés de la empresa?" te muestro lo aprendido.',
   '📄 **Leer PDFs del Drive** — "leé el contrato/cotización/remito/plano X y resumímelo". Interpreto contratos, cotizaciones, facturas y planos con texto.',
   '🧮 **Armar presupuestos guiado** — "armemos el presupuesto de la obra X, guiame". Te llevo paso a paso con jornales UOCRA Zona A vigentes, APU, GG y margen.',
@@ -385,7 +387,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // literal. Antes se miraba solo la directiva actual → un "a" caía como charla
   // trivial (modelo tímido, pocas iteraciones) y el OS reseteaba en vez de ejecutar
   // la opción elegida. Ahora miramos la directiva Y el historial reciente.
-  const WRITE_RE = /\b(registr|agreg|añad|anot|escrib|orden|complet|corrig|carg|aplic|hacelo|hac[eé]|modific|pon[eé]|actualiz|edit|arregl|reemplaz|renombr|mov[eé]|crea|mejor|reconstru|rehac|rearm|limpi|f[oó]rmula|borr|elimin|vaci|duplic|copi)/i
+  const WRITE_RE = /\b(registr|agreg|añad|anot|escrib|orden|complet|corrig|carg|aplic|hacelo|hac[eé]|modific|pon[eé]|actualiz|edit|arregl|reemplaz|renombr|mov[eé]|crea|mejor|reconstru|rehac|rearm|limpi|f[oó]rmula|borr|elimin|vaci|duplic|copi|marc[aá]|pas[aá]\s+a)/i
   const CONFIRM_RE = /^\s*(s[ií]|dale|ok(ay)?|listo|hacelo|hazlo|aplicalo?|proced[eé]|adelante|confirmo|de una|opci[oó]n\s*)?[\s,.:]*([abc]|[123]|la\s*[123]|el\s*[123]|es[ae]|aquel[la]?)?\s*$/i
   const histText = Array.isArray(history) ? history.slice(-4).map((m) => String(m.text || '')).join('\n') : ''
   const directiveWrite = WRITE_RE.test(String(directive || ''))
@@ -453,7 +455,44 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // PEDIDOS DE MATERIALES (Plan 2 — AppSheet) — respuesta determinística (0 API) desde el
   // espejo public.pedidos_materiales. "pedidos de materiales", "qué se pidió", "pedidos
   // pendientes de la obra X". Dato operativo de obra → accesible también al rol 'usuario'.
-  if (/\bpedidos?\s+(de\s+)?(materiales?|obra|la\s+obra)\b|\bmateriales?\s+pedidos?\b|\bpedidos?\s+pendientes?\b|\bqu[eé]\s+(se\s+)?pidi[oó]/i.test(directive)) {
+  // Ojo: sin \b final — un token que termina en vocal acentuada (marcá, agregá, pasá) no
+  // tiene frontera de palabra ASCII antes del espacio siguiente, y el \b lo rompería.
+  const pedidoEstadoIntent = /\b(marc[aá]|cambi[aá]|actualiz[aá]|pas[aá]|pon[eé])/i.test(directive)
+    && /\bpedido\b/i.test(directive)
+  // Alta: verbo de agregar + una obra, excluyendo contextos de Drive/planilla para no pisar
+  // "agregá una fila al Sheet de Compras".
+  const pedidoAltaIntent = /\b(agreg[aá]|a[ñn]ad[ií]|carg[aá]|nuevo\s+pedido)/i.test(directive)
+    && /(pedido|para\s+(la\s+)?obra)/i.test(directive)
+    && !/\b(fila|columna|celda|sheet|planilla|hoja|drive|archivo|compras?|cash|caja|presupuesto)\b/i.test(directive)
+  const pedidoWriteIntent = pedidoEstadoIntent || pedidoAltaIntent
+  // ESCRITURA de la app de Pedidos (AppSheet) — DETERMINÍSTICO (0 API, fiable: no depende de
+  // que el modelo llame la tool). Encola la operación en Pendientes (appsheet.write =
+  // requires_approval); recién al aprobar se escribe en el Sheet y lo ve el campo.
+  if (pedidoWriteIntent) {
+    const encolarPedido = async (tool, args, resumen) => {
+      const opId = await enqueuePendingOperation({
+        tenantId: CTX.context.tenantId, agentSlug: 'interactive', capability_slug: 'appsheet.write',
+        account: 'ecsas', target: { app: 'Pedidos de Materiales' }, payload: { tool, args },
+      })
+      return { answer: `${resumen}\n\nQuedó en **Pendientes** para tu aprobación (id \`${opId}\`). Cuando lo apruebes se escribe en la app y lo ve el campo.`, model: 'appsheet-write', capability: 'appsheet.write', skills: [], navigate: null }
+    }
+    // Cambio de estado: "marcá el pedido 3 como entregado".
+    const mNum = directive.match(/pedido\s+(?:n[°º.]?\s*)?(\d+)/i)
+    let estado = /entregad/i.test(directive) ? 'ENTREGADO' : /pendiente/i.test(directive) ? 'PENDIENTE' : (directive.match(/\bcomo\s+([\wáéíóúñ]+)/i)?.[1] || '').toUpperCase()
+    if (mNum && estado) return await encolarPedido('appsheet_pedido_estado', { id_pedido: mNum[1], estado }, `Pedido ${mNum[1]} → **${estado}**.`)
+    // Alta: "agregá 10 bolsas de cemento para la obra Galpones". Se ancla en "para" para no
+    // partir el material por el "de" de la unidad ("bolsas DE cemento").
+    const mCant = directive.match(/(\d+(?:[.,]\d+)?)\s+(.+?)\s+para\s+(?:la\s+)?(?:obra\s+)?([\wáéíóúñ][\wáéíóúñ .\-]{1,30})/i)
+    if (mCant) {
+      const cant = Number(mCant[1].replace(',', '.'))
+      const material = mCant[2].trim()
+      const obra = mCant[3].replace(/[?¿!¡.]+$/g, '').trim()
+      return await encolarPedido('appsheet_pedido_nuevo', { obra, material, cantidad: cant }, `Nuevo pedido: ${cant} ${material} para ${obra}.`)
+    }
+    return { answer: 'Puedo modificar la app de pedidos, pero necesito el dato claro. Ejemplos: **"marcá el pedido 3 como entregado"** · **"agregá 10 bolsas de cemento para la obra Galpones"**. Todo cae en Pendientes para tu OK antes de tocar la app.', model: 'appsheet-write', capability: 'appsheet.write', skills: [], navigate: null }
+  }
+  if (!pedidoWriteIntent
+      && (/\bpedidos?\s+(de\s+)?(materiales?|obra|la\s+obra)\b|\bmateriales?\s+pedidos?\b|\bpedidos?\s+pendientes?\b|\bqu[eé]\s+(se\s+)?pidi[oó]/i.test(directive))) {
     const soloPendientes = /\bpendientes?\b/i.test(directive)
     const mo = String(directive).match(/\b(?:de\s+la\s+obra|obra|para)\s+([\wáéíóúñ][\wáéíóúñ .\-]{1,30})/i)
     let obra = (mo?.[1] || '').replace(/^(la\s+)?obra\s+/i, '').replace(/^la\s+/i, '').replace(/\b(pendientes?|materiales?)\b/gi, '').replace(/[?¿!¡.]+$/g, '').trim()
