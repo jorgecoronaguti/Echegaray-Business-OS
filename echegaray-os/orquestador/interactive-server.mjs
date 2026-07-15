@@ -27,6 +27,7 @@ import { driveWriteTools } from './lib/tools/drive-write.mjs'
 import { webSearchTools } from './lib/tools/web.mjs'
 import { learnTools } from './lib/tools/learn.mjs'
 import { cuadroEconomico } from './lib/obra-economics.mjs'
+import { obraTools } from './lib/tools/obra.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
 import { enqueuePendingOperation, listPendingOperations, decidePendingOperation, getPendingOperationById } from './lib/pending-ops.mjs'
 import { classifyDirective, classifyDirectiveMulti } from './lib/classify-directive.mjs'
@@ -78,7 +79,7 @@ async function boot() {
  *  encola como operaciones pendientes (Nivel E). */
 function driveRegistry() {
   const google = makeGoogleClient({ config: cfg })
-  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...webSearchTools(), ...learnTools() }
+  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...webSearchTools(), ...learnTools(), ...obraTools() }
   registry['drive.find'] = {
     capability: 'drive.read', account: 'ecsas',
     schema: {
