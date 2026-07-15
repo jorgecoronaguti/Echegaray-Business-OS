@@ -359,7 +359,22 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   const uocraRates = needsUocra
     ? '\n\nJORNALES UOCRA ZONA A VIGENTES (jul-2026, CCT 76/75, VERIFICADO — usá ESTOS, NO los de un archivo viejo): Oficial Especializado $6.800/h · Oficial $5.817/h · Medio Oficial $5.375/h · Ayudante $4.948/h. Sumas no remunerativas jul: Of.Esp $72.900 · Of $67.100 · M.Of $61.500 · Ayudante $57.900. Sobre el jornal van cargas sociales + adicionales de convenio (asistencia, Art.56 hormigonado 15%, EPP, ropa).'
     : ''
-  const budgetingContext = uocraRates + (isBudgeting
+  // APRENDIZAJE COMPUESTO (misión): antes de cotizar, traer los desvíos REALES de las
+  // obras YA CERRADAS para no repetir el error. Determinístico (0 API). Si Galpones cerró
+  // 23% sobre-costo, el presupuestador lo tiene delante al armar una obra parecida.
+  let learningBudget = ''
+  if (isBudgeting) {
+    try {
+      const cerradas = await desviosObras({ soloCerradas: true })
+      if (cerradas.length) {
+        learningBudget =
+          '\n\nAPRENDIZAJE DE OBRAS YA CERRADAS (usalo para NO repetir el error en esta cotización; es dato real, no lo recalcules): ' +
+          cerradas.join(' | ') +
+          '. Si la obra que estás presupuestando se parece a alguna, avisale al dueño el desvío histórico, revisá los rendimientos HH y precios que vas a cargar contra lo que realmente pasó, y considerá un colchón en los rubros que se dispararon. Esto es interés compuesto: cada obra cerrada mejora la próxima cotización.'
+      }
+    } catch { /* si falla, la cotización sigue sin el aprendizaje */ }
+  }
+  const budgetingContext = uocraRates + learningBudget + (isBudgeting
     ? '\n\nPRESUPUESTACIÓN (método Echegaray) — MODO GUÍA: cuando el dueño quiere ARMAR un presupuesto, LIDERÁ la conversación PASO A PASO. NO pidas todo junto ni tires el presupuesto entero de una. Arrancá confirmando la obra y su alcance/partidas (podés tomarlas de un presupuesto anterior si te lo señala — carpeta PRESUPUESTOS, cada obra tiene su subcarpeta). Después construí PARTIDA POR PARTIDA: para cada una armá el APU (material + desperdicio, MO = rendimiento HH/unidad × costo horario UOCRA Zona A, equipos, subcontrato), mostrá el subtotal, CONFIRMÁ con el dueño y seguí a la próxima. Mantené un TOTAL CORRIENTE visible. Preguntá SOLO lo que necesitás para el paso actual (una cosa a la vez). ' +
       'El FLUJO completo (es GUÍA, el dueño puede saltear pasos): alcance → cómputo → APU por partida → costo directo → gastos generales → beneficio → financiación → impuestos → oferta → control vs histórico. ' +
       'DISCIPLINA: no mezclar costo directo / GG / beneficio / impuestos; MO siempre desde el convenio vigente (Zona A de arriba); dejar el alcance por escrito (para cobrar adicionales). ' +

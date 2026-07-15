@@ -126,7 +126,7 @@ function formatCuadro(d) {
  *  autónoma con números concretos (no "andá a buscar el desvío"). Determinístico, 1 query.
  *  Marca: sobre-costo (costo real > presupuesto) y margen real por debajo del esperado.
  *  Devuelve [] si no hay desvío material o falta dato. En curso ⇒ desvío "a la fecha". */
-export async function desviosObras({ margenGapMin = 0.03, sobreCostoMin = 0.05 } = {}) {
+export async function desviosObras({ margenGapMin = 0.03, sobreCostoMin = 0.05, soloCerradas = false } = {}) {
   const { rows } = await query(`
     select o.id, o.nombre, o.estado, o.monto_contratado,
       p.monto_presupuestado, p.margen_esperado,
@@ -145,6 +145,7 @@ export async function desviosObras({ margenGapMin = 0.03, sobreCostoMin = 0.05 }
     const costoReal = num(r.costo_real)
     const costoPresup = num(r.costo_presup)
     const enCurso = !['cerrada', 'terminada', 'finalizada'].includes(String(r.estado || '').toLowerCase())
+    if (soloCerradas && enCurso) continue // aprendizaje de Post Mortem: solo obras cerradas
     const flags = []
     if (costoPresup && costoReal != null) {
       const desvio = (costoReal - costoPresup) / costoPresup
