@@ -87,3 +87,55 @@ export async function priorizarCajaResumen() {
   L.push('', '_Es una recomendación de prioridad. Mover plata real es Nivel E: requiere tu aprobación._')
   return L.join('\n')
 }
+
+// PRP-021 F2 — PROYECCIÓN DE CAJA CORTA (0 API, criterio PERCIBIDO). Saldo actual estimado
+// (saldo_inicial de las cuentas + neto de movimientos REALES) proyectado semana a semana con
+// los cobros/pagos PROYECTADOS, marcando dónde la caja se pone negativa (gap). El saldo
+// inicial es un GAP conocido (hay que confirmar el extracto real) → se declara ESTIMADO.
+async function saldoActual() {
+  const { rows: a } = await query(`select coalesce(sum(saldo_inicial),0) s from public.cuentas_financieras`)
+  const { rows: b } = await query(`select coalesce(sum(case when tipo='cobro' then monto when tipo='pago' then -monto else 0 end),0) s from public.movimientos_caja where estado='real'`)
+  return Number(a[0].s) + Number(b[0].s)
+}
+
+/** Proyección semanal: [{semana, cobros, pagos, neto, saldoProyectado, negativo}]. */
+export async function proyeccionCaja({ semanas = 6 } = {}) {
+  const saldo0 = await saldoActual()
+  // Vencidos (fecha pasada, aún proyectados) + futuros, agrupados por semana ISO.
+  const { rows } = await query(`
+    select greatest(date_trunc('week', fecha_esperada), date_trunc('week', now()))::date as semana,
+           coalesce(sum(case when tipo='cobro' then monto else 0 end),0) as cobros,
+           coalesce(sum(case when tipo='pago'  then monto else 0 end),0) as pagos
+      from public.movimientos_caja
+     where estado='proyectado' and fecha_esperada is not null
+       and fecha_esperada < now() + ($1 || ' weeks')::interval
+     group by 1 order by 1`, [String(semanas)])
+  let saldo = saldo0
+  const out = []
+  for (const r of rows) {
+    const cobros = Number(r.cobros), pagos = Number(r.pagos), neto = cobros - pagos
+    saldo += neto
+    out.push({ semana: r.semana, cobros, pagos, neto, saldoProyectado: saldo, negativo: saldo < 0 })
+  }
+  return { saldo0, semanas: out }
+}
+
+/** Resumen para el chat (0 API): saldo hoy + proyección + primer gap. */
+export async function proyeccionCajaResumen() {
+  const { saldo0, semanas } = await proyeccionCaja()
+  const L = ['**Proyección de caja (corto plazo)**  _(criterio percibido; 0 API)_', '']
+  L.push(`Saldo actual estimado: **${ars(saldo0)}**  _(estimado: saldo_inicial + movimientos reales — confirmá el extracto bancario real)_`)
+  if (!semanas.length) { L.push('', 'No hay cobros/pagos proyectados en el horizonte.'); return L.join('\n') }
+  L.push('', 'Semana | Cobros | Pagos | Saldo proyectado')
+  L.push('---|---|---|---')
+  for (const s of semanas) {
+    const fecha = new Date(s.semana).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
+    L.push(`${fecha} | ${ars(s.cobros)} | ${ars(s.pagos)} | ${s.negativo ? '⚠️ ' : ''}${ars(s.saldoProyectado)}`)
+  }
+  const gap = semanas.find((s) => s.negativo)
+  L.push('')
+  if (gap) L.push(`🔴 La caja queda **negativa** desde la semana del ${new Date(gap.semana).toLocaleDateString('es-AR')} (${ars(gap.saldoProyectado)}). Gestioná los cobros de esas semanas o corré pagos.`)
+  else L.push('🟢 La caja se mantiene positiva en el horizonte proyectado (con estos cobros/pagos).')
+  L.push('', '_Depende de que los cobros proyectados entren en fecha. Pedime "qué cobro primero" para accionar._')
+  return L.join('\n')
+}

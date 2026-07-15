@@ -32,7 +32,7 @@ import { workspaceTools } from './lib/tools/workspace.mjs'
 import { proposeSkillImprovement } from './lib/skill-proposals.mjs'
 import { briefingEjecutivo } from './lib/briefing.mjs'
 import { recallResumen } from './lib/memory.mjs'
-import { priorizarCajaResumen } from './lib/caja-alertas.mjs'
+import { priorizarCajaResumen, proyeccionCajaResumen } from './lib/caja-alertas.mjs'
 import { registerChatGap } from './lib/emergence.mjs'
 import { avanceResumen } from './lib/avance-fisico.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
@@ -352,6 +352,12 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   // "¿Cuánto aprendiste / qué sabés de la empresa?" — mide el aprendizaje (0 API).
   if (/\b(cu[aá]nto (aprend|sab[eé]s)|qu[eé] (aprendiste|sab[eé]s|ten[eé]s (guardado|aprendido|anotado))|qu[eé] (cosas )?record[aá]s|qu[eé] conoc[eé]s de (la empresa|nosotros|echegaray)|hechos (aprendidos|que sab[eé]s))/i.test(directive)) {
     return { answer: await learnedSummary(), model: 'aprendizaje', capability: 'general', skills: [], navigate: null }
+  }
+  // CAJA — PROYECCIÓN (PRP-021 F2): "proyección/proyectá la caja", "cómo viene la caja",
+  // "alcanza la caja", "flujo/cash proyectado" → saldo hoy + semanas + gap (0 API, percibido).
+  if (/\b(proyecci[oó]n|proyect[aá]|alcanza|va a alcanzar|c[oó]mo (viene|va a venir)|flujo (de caja )?proyect|cash ?flow proyect|saldo proyect)/i.test(directive)
+      && /\b(caja|flujo|cash|saldo|plata|fondos)\b/i.test(directive)) {
+    return { answer: await proyeccionCajaResumen(), model: 'caja-proyeccion', capability: 'advise.finance', skills: [], navigate: null }
   }
   // CAJA — PRIORIZACIÓN (PRP-021 F1): "qué cobro/pago primero", "priorizá la caja",
   // "qué gestiono de caja" → ranking por impacto (0 API). Va antes del briefing (más específico).
