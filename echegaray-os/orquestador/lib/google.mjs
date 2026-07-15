@@ -32,6 +32,17 @@ export const WRITE_SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
 ]
 
+// PRP-024 — Workspace completo (Drive + Gmail lectura/borradores + Calendar). SOLO funcionan
+// con domain-wide delegation activa (admin de @ecsas.com.ar autoriza el client-id del SA para
+// estos scopes) e impersonando una cuenta real. Sin eso, las llamadas dan 403 (claro, no rompe).
+export const WORKSPACE_SCOPES = [
+  'https://www.googleapis.com/auth/drive',
+  'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/gmail.compose',
+  'https://www.googleapis.com/auth/calendar',
+]
+
 // Raíz del repo (orquestador/lib -> ../..), para localizar la credencial existente
 // sin depender del cwd. La integración real de Google (2026-07-09) ya dejó la key
 // del service account acá; la REUSAMOS (no creamos una nueva).
@@ -75,13 +86,16 @@ export function resolveKeyPath(config) {
 export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes } = {}) {
   const doFetch = fetchImpl || globalThis.fetch
   const authScopes = scopes || READONLY_SCOPES
+  // Cuenta a impersonar (domain-wide delegation). Si no se pasa explícita, sale de la env
+  // ORQ_GOOGLE_IMPERSONATE (ej. una cuenta @ecsas.com.ar). Sin cuenta => sin impersonación.
+  const subject = impersonate || process.env.ORQ_GOOGLE_IMPERSONATE || null
   let _auth = auth || null
 
   async function accessToken() {
     if (!_auth) {
       const keyPath = resolveKeyPath(config)
       if (!fs.existsSync(keyPath)) throw new MissingGoogleCredential(keyPath)
-      const ga = new GoogleAuth({ keyFile: keyPath, scopes: authScopes, clientOptions: impersonate ? { subject: impersonate } : {} })
+      const ga = new GoogleAuth({ keyFile: keyPath, scopes: authScopes, clientOptions: subject ? { subject } : {} })
       _auth = await ga.getClient()
     }
     const t = await _auth.getAccessToken()
@@ -139,6 +153,39 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes 
       const q = encodeURIComponent(`name contains '${String(name).replace(/'/g, "\\'")}' and trashed = false`)
       const j = await apiGet(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&pageSize=10`)
       return j.files || []
+    },
+    // ---- PRP-024: GMAIL (lectura) — requiere delegation + impersonación activa ----
+    /** Busca hilos/mensajes por query estilo Gmail (ej. "from:proveedor factura vencida").
+     *  Devuelve [{id, from, subject, date, snippet}]. Vacío si no hay o si falta acceso. */
+    async gmailSearch(queryStr, { max = 8 } = {}) {
+      const list = await apiGet(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(queryStr || '')}&maxResults=${max}`)
+      const out = []
+      for (const m of (list.messages || []).slice(0, max)) {
+        const msg = await apiGet(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`)
+        const h = Object.fromEntries((msg.payload?.headers || []).map((x) => [x.name.toLowerCase(), x.value]))
+        out.push({ id: m.id, from: h.from || '', subject: h.subject || '(sin asunto)', date: h.date || '', snippet: msg.snippet || '' })
+      }
+      return out
+    },
+    /** Texto plano de un mensaje por id (para leer el cuerpo). Acotado. */
+    async gmailGet(id, { maxChars = 4000 } = {}) {
+      const msg = await apiGet(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=full`)
+      const parts = []
+      const walk = (p) => {
+        if (!p) return
+        if (p.mimeType === 'text/plain' && p.body?.data) parts.push(Buffer.from(p.body.data, 'base64').toString('utf8'))
+        for (const c of p.parts || []) walk(c)
+      }
+      walk(msg.payload)
+      return { id, snippet: msg.snippet || '', text: parts.join('\n').slice(0, maxChars) }
+    },
+    // ---- PRP-024: CALENDAR (lectura) ----
+    /** Próximos eventos del calendario primario. Devuelve [{summary, start, end}]. */
+    async calendarUpcoming({ max = 10, days = 30 } = {}) {
+      const timeMin = new Date().toISOString()
+      const timeMax = new Date(Date.now() + days * 86400000).toISOString()
+      const j = await apiGet(`https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&maxResults=${max}`)
+      return (j.items || []).map((e) => ({ summary: e.summary || '(sin título)', start: e.start?.dateTime || e.start?.date || '', end: e.end?.dateTime || e.end?.date || '' }))
     },
     /** Lee valores de un rango A1 de un Sheet. Devuelve matriz de filas. */
     async readSheetValues(fileId, range) {

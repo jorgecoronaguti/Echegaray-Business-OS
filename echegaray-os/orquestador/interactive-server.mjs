@@ -28,6 +28,7 @@ import { webSearchTools } from './lib/tools/web.mjs'
 import { learnTools } from './lib/tools/learn.mjs'
 import { cuadroEconomico } from './lib/obra-economics.mjs'
 import { obraTools } from './lib/tools/obra.mjs'
+import { workspaceTools } from './lib/tools/workspace.mjs'
 import { proposeSkillImprovement } from './lib/skill-proposals.mjs'
 import { briefingEjecutivo } from './lib/briefing.mjs'
 import { recallResumen } from './lib/memory.mjs'
@@ -85,7 +86,7 @@ async function boot() {
  *  encola como operaciones pendientes (Nivel E). */
 function driveRegistry() {
   const google = makeGoogleClient({ config: cfg })
-  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...webSearchTools(), ...learnTools(), ...obraTools() }
+  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ config: cfg }) }
   registry['drive.find'] = {
     capability: 'drive.read', account: 'ecsas',
     schema: {

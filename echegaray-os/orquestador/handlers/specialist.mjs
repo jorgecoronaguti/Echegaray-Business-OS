@@ -19,6 +19,7 @@ import { skillsForCapability } from '../lib/skill-map.mjs'
 import { makeGoogleClient } from '../lib/google.mjs'
 import { driveReadTools } from '../lib/tools/drive.mjs'
 import { obraTools } from '../lib/tools/obra.mjs'
+import { workspaceTools } from '../lib/tools/workspace.mjs'
 import { webSearchTools } from '../lib/tools/web.mjs'
 import { makeToolExecutor } from '../lib/tool-executor.mjs'
 import { enqueuePendingOperation } from '../lib/pending-ops.mjs'
@@ -143,7 +144,7 @@ async function reason(task, ctx, engineOverride, agent, digest, principalId) {
     // Cuadro económico por obra (números reales de rentabilidad/margen/desvío) + búsqueda
     // en internet (precios/convenios): read-only, para que el CFO/jefe de obra/presupuestador
     // razonen sobre datos reales en vez de suponer. Misma fuente que el chat (sin duplicar).
-    const registry = { ...driveReadTools(google), ...obraTools(), ...webSearchTools() }
+    const registry = { ...driveReadTools(google), ...obraTools(), ...webSearchTools(), ...workspaceTools({ config: ctx.config }) }
     // Búsqueda sobre el índice COMPLETO de administracion (~1.658 archivos) en
     // public.drive_index: encontrar un archivo por nombre sin navegar carpeta por
     // carpeta. Capacidad drive.read (lectura/auto). Usa la DB del worker.
