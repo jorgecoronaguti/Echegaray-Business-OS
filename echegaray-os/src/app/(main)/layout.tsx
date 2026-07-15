@@ -27,6 +27,13 @@ const GRUPOS_NAV = [
     grupo: 'Reportes',
     links: [{ href: '/reportes', label: 'Reportes' }],
   },
+  {
+    grupo: 'Conexiones',
+    links: [
+      { href: '/integraciones', label: 'Integraciones' },
+      { href: '/integraciones/pedidos-materiales', label: 'Pedidos de Materiales' },
+    ],
+  },
 ] as const
 
 async function loadUsuario() {
