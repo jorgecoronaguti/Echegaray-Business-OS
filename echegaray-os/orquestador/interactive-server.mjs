@@ -830,8 +830,24 @@ const server = http.createServer(async (req, res) => {
       log.info('directiva recibida', { extVersion: extVersion || 'desconocida', wantsAsync: !!wantsAsync, user: userEmail || 'anon' })
       const t0 = Date.now()
       const rid = runId || (`srv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
-      const work = ask({ directive: directive.slice(0, 4000), fileId, fast, attachment, history, runId: rid, userEmail: identidad })
-        .then((out) => { RESULTS.set(rid, { done: true, out }); return out })
+      // WATCHDOG: ninguna tarea puede colgarse para siempre. Si el trabajo (incluida una
+      // tool que se cuelga, ej. una llamada a Google que no responde) pasa el techo duro,
+      // devolvemos un mensaje CLARO en vez de dejar el spinner infinito. La tarea de fondo
+      // puede seguir y aplicar lo que ya hizo, pero el dueño nunca queda esperando sin fin.
+      const HARD_MS = Number(process.env.ORQ_TASK_TIMEOUT_MS || 180000)
+      const watchdog = new Promise((resolve) => setTimeout(() => resolve({ __timeout__: true }), HARD_MS))
+      const work = Promise.race([
+        ask({ directive: directive.slice(0, 4000), fileId, fast, attachment, history, runId: rid, userEmail: identidad }),
+        watchdog,
+      ])
+        .then((out) => {
+          if (out && out.__timeout__) {
+            const msg = { answer: 'Esto está tardando más de lo razonable, así que lo corté para no dejarte esperando. Suele pasar con pedidos muy grandes (reconstruir una pestaña entera de una). Pedímelo más acotado —ej. "reconstruí solo el panel de SALDO ACTUAL"— o por partes, y lo hago al toque.', model: 'timeout', cost: 0, capability: 'general', skills: [], navigate: null }
+            RESULTS.set(rid, { done: true, out: msg })
+            return msg
+          }
+          RESULTS.set(rid, { done: true, out }); return out
+        })
         .catch((e) => { RESULTS.set(rid, { done: true, error: e.message }); throw e })
         .finally(() => { progressDone(rid); setTimeout(() => RESULTS.delete(rid), 120000) })
       if (wantsAsync) {

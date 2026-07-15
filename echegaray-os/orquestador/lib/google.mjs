@@ -84,7 +84,18 @@ export function resolveKeyPath(config) {
  * @param {string}  [deps.impersonate] cuenta @ecsas a impersonar (domain-wide delegation)
  */
 export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes, getToken } = {}) {
-  const doFetch = fetchImpl || globalThis.fetch
+  const rawFetch = fetchImpl || globalThis.fetch
+  // Toda llamada a Google se acota en el tiempo (AbortController): una llamada colgada (red,
+  // API que no responde) falla RÁPIDO y claro en vez de colgar la tarea entera del dueño.
+  const FETCH_MS = Number(process.env.ORQ_GOOGLE_FETCH_TIMEOUT_MS || 45000)
+  const doFetch = async (url, opts = {}) => {
+    if (opts.signal) return rawFetch(url, opts) // respeta un signal ya provisto (tests)
+    const ac = new AbortController()
+    const t = setTimeout(() => ac.abort(), FETCH_MS)
+    try { return await rawFetch(url, { ...opts, signal: ac.signal }) }
+    catch (e) { if (e?.name === 'AbortError') { const err = new Error(`google api timeout (${FETCH_MS}ms) — la llamada no respondió`); err.status = 504; throw err } throw e }
+    finally { clearTimeout(t) }
+  }
   const authScopes = scopes || READONLY_SCOPES
   // OAuth POR USUARIO (PRP-024): si se pasa getToken (async → access token del usuario que
   // autorizó), el cliente actúa COMO ese usuario en vez del Service Account. Cacheamos el
