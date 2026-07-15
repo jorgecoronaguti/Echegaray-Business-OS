@@ -38,6 +38,7 @@ import { avanceResumen } from './lib/avance-fisico.mjs'
 import { estadoPresupuesto, degradarModeloOnDemand, pausarAutonomo } from './lib/budget.mjs'
 import { fichaObra } from './lib/ficha-obra.mjs'
 import { carteraResumen } from './lib/cartera.mjs'
+import { resolveUsuario, puede } from './lib/usuarios.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
 import { enqueuePendingOperation, listPendingOperations, decidePendingOperation, getPendingOperationById } from './lib/pending-ops.mjs'
 import { classifyDirective, classifyDirectiveMulti } from './lib/classify-directive.mjs'
@@ -296,7 +297,13 @@ async function dispatchToSpecialist({ directive, capability, runId }) {
   return { answer: `El ${who} sigue trabajando; tardó más de lo esperado. Reintentá en un momento.`, model: 'agente', capability, skills: [] }
 }
 
-async function ask({ directive, fileId, fast, attachment, history, runId }) {
+async function ask({ directive, fileId, fast, attachment, history, runId, userEmail }) {
+  // PRP-022 — ROL del usuario. Sin email (extensión actual con token compartido) →
+  // super_admin (comportamiento del dueño de hoy, compatible hacia atrás). Con email →
+  // se resuelve de usuarios_os. Un 'usuario' no recibe caja/fiscal/costo ni aprueba.
+  const rol = userEmail ? (await resolveUsuario(userEmail)).rol || 'no_autorizado' : 'super_admin'
+  const denegar = (cap) => ({ answer: `Tu rol (${rol}) no tiene acceso a esto. Pedíselo a Dirección.`, model: 'rol-denegado', capability: 'general', skills: [], navigate: null, denegadoPor: cap })
+  if (rol === 'no_autorizado') { progressInit(runId); return { answer: 'Tu cuenta no está autorizada para usar el OS. Pedile a Dirección que te agregue.', model: 'no-autorizado', capability: 'general', skills: [], navigate: null } }
   progressInit(runId)
   const att = attachmentBlock(attachment)
   // Intención de escritura SIGUIENDO EL HILO: cuando el dueño responde "a"/"dale"/
@@ -346,6 +353,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   }
   // "¿Cuánto gasté?" — telemetría de costo del chat, sin llamar a la API.
   if (/cu[aá]nto (gast[eé]|consum[ií]|cost|llev|va).*(api|cr[eé]dit|chat|hoy|plata|gastando)?|gasto de api|consumo de api|cu[aá]nto (me )?sale/i.test(directive)) {
+    if (!puede(rol, 'costo_api')) return denegar('costo_api')
     return { answer: await costSummary(), model: 'costo', capability: 'general', skills: [], navigate: null }
   }
   // MEMORIA TOTAL (PRP-023) — "¿qué sabemos de X?" / "¿qué sabés sobre X?" → recupera de
@@ -368,12 +376,14 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   // "alcanza la caja", "flujo/cash proyectado" → saldo hoy + semanas + gap (0 API, percibido).
   if (/\b(proyecci[oó]n|proyect[aá]|alcanza|va a alcanzar|c[oó]mo (viene|va a venir)|flujo (de caja )?proyect|cash ?flow proyect|saldo proyect)/i.test(directive)
       && /\b(caja|flujo|cash|saldo|plata|fondos)\b/i.test(directive)) {
+    if (!puede(rol, 'caja')) return denegar('caja')
     return { answer: await proyeccionCajaResumen(), model: 'caja-proyeccion', capability: 'advise.finance', skills: [], navigate: null }
   }
   // CAJA — PRIORIZACIÓN (PRP-021 F1): "qué cobro/pago primero", "priorizá la caja",
   // "qué gestiono de caja" → ranking por impacto (0 API). Va antes del briefing (más específico).
   if (/\b(qu[eé]\s+(cobro|pago|cobr[aá]s|pag[aá]s|gestiono|gestion[aá]s|prioriz)|prioriz[aá].*(caja|cobr|pag)|qu[eé].*(primero).*(cobr|pag|caja)|orden.*(cobr|pag))\b/i.test(directive)
       && /\b(caja|cobr|pag|cobranza|vencid|primero)\b/i.test(directive)) {
+    if (!puede(rol, 'caja')) return denegar('caja')
     return { answer: await priorizarCajaResumen(), model: 'caja-prioridad', capability: 'advise.finance', skills: [], navigate: null }
   }
   // BRIEFING EJECUTIVO (0 API) — "¿cómo estamos?" / "resumen" / "qué hay hoy" → foto
@@ -694,12 +704,12 @@ const server = http.createServer(async (req, res) => {
       }
 
       // Directiva normal. La extensión 0.6.0+ manda wantsAsync + extVersion.
-      const { directive, fileId, fast, attachment, history, runId, wantsAsync, extVersion } = data
+      const { directive, fileId, fast, attachment, history, runId, wantsAsync, extVersion, userEmail } = data
       if (!directive || typeof directive !== 'string') return send(res, 400, { error: 'falta "directive"' })
-      log.info('directiva recibida', { extVersion: extVersion || 'desconocida', wantsAsync: !!wantsAsync })
+      log.info('directiva recibida', { extVersion: extVersion || 'desconocida', wantsAsync: !!wantsAsync, user: userEmail || 'anon' })
       const t0 = Date.now()
       const rid = runId || (`srv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
-      const work = ask({ directive: directive.slice(0, 4000), fileId, fast, attachment, history, runId: rid })
+      const work = ask({ directive: directive.slice(0, 4000), fileId, fast, attachment, history, runId: rid, userEmail })
         .then((out) => { RESULTS.set(rid, { done: true, out }); return out })
         .catch((e) => { RESULTS.set(rid, { done: true, error: e.message }); throw e })
         .finally(() => { progressDone(rid); setTimeout(() => RESULTS.delete(rid), 120000) })
