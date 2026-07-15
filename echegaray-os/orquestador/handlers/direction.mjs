@@ -12,7 +12,7 @@ import { route } from '../lib/router.mjs'
 import { resolveEngine } from '../engines/index.mjs'
 import { assembleSituation, situationDigest } from '../lib/situation.mjs'
 import { assembleReasoningSystem, ROLE_FRAMING } from '../lib/context-assembler.mjs'
-import { maxEspecialistasPorRonda } from '../lib/budget.mjs'
+import { maxEspecialistasPorRonda, modoAutonomia } from '../lib/budget.mjs'
 
 const Subtask = z.object({
   key: z.string().min(1).max(64),
@@ -96,9 +96,13 @@ async function think(task, ctx, engineOverride, digest) {
     rootPath: ctx.context.repository.rootPath, config: ctx.config,
     roleFraming: ROLE_FRAMING.director, logger: ctx.logger,
   })
+  // MODO DIGEST (autonomía barata): el Director hace UNA pasada en haiku y NO abre
+  // especialistas (el cap de maxEspecialistasPorRonda ya es 0 en digest). Pulso autónomo
+  // de bajo costo con los datos ya calculados, para cuando el dueño lo prenda sin miedo.
+  const digestMode = modoAutonomia() === 'digest'
   const eng = await engine.run(
     { system, prompt: directorPrompt(task, digest), worktreePath: ctx.context.repository.rootPath,
-      model: candidates[0]?.model, maxCostUsd: candidates[0]?.maxCostUsd, allowedTools: 'Read,Glob,Grep', task },
+      model: digestMode ? 'haiku' : candidates[0]?.model, maxCostUsd: digestMode ? 0.05 : candidates[0]?.maxCostUsd, allowedTools: 'Read,Glob,Grep', task },
     ctx,
   )
   return { dir: Direction.parse(extractJson(eng.result)), cost: eng.cost, sessionId: eng.sessionId, engine: engineName }
