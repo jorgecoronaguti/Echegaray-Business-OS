@@ -21,6 +21,19 @@ function normalizeValues(values) {
   return values
 }
 
+/** Reduce un rango A1 a su CELDA DE INICIO ("Hoja!D22:G22" → "Hoja!D22"). Sheets dimensiona
+ *  la escritura según la matriz de values, así que dando solo la celda inicial NO puede haber
+ *  el error "tried writing to column/row X" cuando el modelo se equivoca en el fin del rango
+ *  (causa real de loops de tool-use hasta agotar iteraciones). */
+function startCell(range) {
+  if (!range || typeof range !== 'string') return range
+  const bang = range.lastIndexOf('!')
+  const sheet = bang >= 0 ? range.slice(0, bang + 1) : ''
+  const a1 = bang >= 0 ? range.slice(bang + 1) : range
+  const start = a1.split(':')[0].trim()
+  return start ? sheet + start : range
+}
+
 /** Registry de tools de escritura, cerrado sobre un cliente Google con WRITE_SCOPES. */
 export function driveWriteTools(google) {
   return {
@@ -44,7 +57,9 @@ export function driveWriteTools(google) {
       async run(input) {
         const values = normalizeValues(input?.values)
         if (!input?.file_id || !input?.range || !values) return { error: 'faltan file_id, range o values (matriz de filas)' }
-        const r = await google.updateSheetValues(input.file_id, input.range, values)
+        // Escribir desde la celda inicial: Sheets dimensiona según la matriz, evitando el 400
+        // "tried writing to column/row X" que hacía loopear al modelo hasta agotar iteraciones.
+        const r = await google.updateSheetValues(input.file_id, startCell(input.range), values)
         return { ok: true, updated_range: r.updatedRange ?? input.range, updated_cells: r.updatedCells ?? null }
       },
     },
@@ -189,7 +204,7 @@ export function driveWriteTools(google) {
       },
       async run(input) {
         if (!input?.file_id || !Array.isArray(input?.updates) || !input.updates.length) return { error: 'faltan file_id o updates [{range, values}]' }
-        const data = input.updates.map((u) => ({ range: u.range, majorDimension: 'ROWS', values: normalizeValues(u.values) || [] })).filter((d) => d.range)
+        const data = input.updates.map((u) => ({ range: startCell(u.range), majorDimension: 'ROWS', values: normalizeValues(u.values) || [] })).filter((d) => d.range)
         const r = await google.batchUpdateValues(input.file_id, data)
         return { ok: true, updated_ranges: r.responses?.map((x) => x.updatedRange) ?? null, total_updated_cells: r.totalUpdatedCells ?? null }
       },
