@@ -30,6 +30,7 @@ import { cuadroEconomico } from './lib/obra-economics.mjs'
 import { obraTools } from './lib/tools/obra.mjs'
 import { proposeSkillImprovement } from './lib/skill-proposals.mjs'
 import { briefingEjecutivo } from './lib/briefing.mjs'
+import { recallResumen } from './lib/memory.mjs'
 import { registerChatGap } from './lib/emergence.mjs'
 import { avanceResumen } from './lib/avance-fisico.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
@@ -323,6 +324,18 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   // "¿Cuánto gasté?" — telemetría de costo del chat, sin llamar a la API.
   if (/cu[aá]nto (gast[eé]|consum[ií]|cost|llev|va).*(api|cr[eé]dit|chat|hoy|plata|gastando)?|gasto de api|consumo de api|cu[aá]nto (me )?sale/i.test(directive)) {
     return { answer: costSummary(), model: 'costo', capability: 'general', skills: [], navigate: null }
+  }
+  // MEMORIA TOTAL (PRP-023) — "¿qué sabemos de X?" / "¿qué sabés sobre X?" → recupera de
+  // TODA la memoria (hechos + hallazgos) por tema (0 API). Va ANTES del resumen de empresa;
+  // si el tema es "la empresa/nosotros" se deja pasar a learnedSummary.
+  {
+    const rec = String(directive).match(/\bqu[eé]\s+(?:sab(?:emos|[eé]s|e el os)|ten(?:emos|[eé]s)|hay|conoc(?:emos|[eé]s))\s+(?:de|sobre|acerca de|respecto a|hay de)\s+(.+)/i)
+    if (rec) {
+      let tema = rec[1].replace(/\b(la\s+obra|el\s+cliente|la\s+)\b/gi, ' ').replace(/[?¿!¡.]+$/g, '').trim()
+      if (!/^(la\s+)?(empresa|nosotros|echegaray|todo)$/i.test(tema) && tema.length >= 2) {
+        return { answer: await recallResumen(tema), model: 'memoria', capability: 'general', skills: [], navigate: null }
+      }
+    }
   }
   // "¿Cuánto aprendiste / qué sabés de la empresa?" — mide el aprendizaje (0 API).
   if (/\b(cu[aá]nto (aprend|sab[eé]s)|qu[eé] (aprendiste|sab[eé]s|ten[eé]s (guardado|aprendido|anotado))|qu[eé] (cosas )?record[aá]s|qu[eé] conoc[eé]s de (la empresa|nosotros|echegaray)|hechos (aprendidos|que sab[eé]s))/i.test(directive)) {
