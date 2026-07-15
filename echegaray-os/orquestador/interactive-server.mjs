@@ -196,6 +196,14 @@ const RESULTS = new Map()
 function progressInit(runId) { if (runId) PROGRESS.set(runId, { steps: ['Pensando…'], done: false, updated: Date.now() }) }
 function progressPush(runId, step) { const p = runId && PROGRESS.get(runId); if (p) { p.steps.push(step); p.updated = Date.now() } }
 function progressDone(runId) { const p = runId && PROGRESS.get(runId); if (p) { p.done = true; p.updated = Date.now() } if (runId) setTimeout(() => PROGRESS.delete(runId), 30000) }
+// DURABILIDAD: guardar el resultado en DB para que sobreviva un reinicio del proceso
+// (si el server muere entremedio, /result lo recupera de acá en vez de dar "se perdió").
+function persistResult(rid, payload) {
+  if (!rid) return
+  query(`insert into orq.chat_result (rid, payload) values ($1, $2::jsonb)
+         on conflict (rid) do update set payload = excluded.payload, created_at = now()`,
+    [rid, JSON.stringify(payload)]).catch(() => {})
+}
 function friendlyStep(name, input) {
   const i = input || {}
   switch (name) {
@@ -752,9 +760,16 @@ const server = http.createServer(async (req, res) => {
     const rid = new URL(req.url, 'http://x').searchParams.get('id')
     const r = rid && RESULTS.get(rid)
     if (!r) {
-      // Si no está ni en RESULTS ni en PROGRESS, la tarea se PERDIÓ (server reiniciado
-      // mientras corría). Avisamos 'lost' para que la extensión corte y pida reintentar,
-      // en vez de esperar 6 minutos a un resultado que ya no existe.
+      // No está en memoria: buscar en DB (sobrevive reinicios). Si la tarea TERMINÓ antes
+      // de que el proceso muriera, el resultado sigue acá y se lo damos igual.
+      if (rid) {
+        try {
+          const { rows } = await query(`select payload from orq.chat_result where rid = $1 limit 1`, [rid])
+          if (rows.length) return send(res, 200, rows[0].payload)
+        } catch { /* si la DB falla, cae al comportamiento previo */ }
+      }
+      // Ni en memoria ni en DB: la tarea se PERDIÓ (reinicio a mitad de ejecución) o sigue
+      // corriendo. Avisamos 'lost' para que la extensión corte y pida reintentar.
       const stillWorking = rid && PROGRESS.has(rid)
       return send(res, 200, { done: false, lost: !stillWorking })
     }
@@ -843,12 +858,12 @@ const server = http.createServer(async (req, res) => {
         .then((out) => {
           if (out && out.__timeout__) {
             const msg = { answer: 'Esto está tardando más de lo razonable, así que lo corté para no dejarte esperando. Suele pasar con pedidos muy grandes (reconstruir una pestaña entera de una). Pedímelo más acotado —ej. "reconstruí solo el panel de SALDO ACTUAL"— o por partes, y lo hago al toque.', model: 'timeout', cost: 0, capability: 'general', skills: [], navigate: null }
-            RESULTS.set(rid, { done: true, out: msg })
+            RESULTS.set(rid, { done: true, out: msg }); persistResult(rid, { done: true, ...msg })
             return msg
           }
-          RESULTS.set(rid, { done: true, out }); return out
+          RESULTS.set(rid, { done: true, out }); persistResult(rid, { done: true, ...out }); return out
         })
-        .catch((e) => { RESULTS.set(rid, { done: true, error: e.message }); throw e })
+        .catch((e) => { RESULTS.set(rid, { done: true, error: e.message }); persistResult(rid, { done: true, error: e.message }); throw e })
         .finally(() => { progressDone(rid); setTimeout(() => RESULTS.delete(rid), 120000) })
       if (wantsAsync) {
         // FALLBACK ASÍNCRONO (extensión 0.6.0+): un análisis profundo puede pasar los ~55s
