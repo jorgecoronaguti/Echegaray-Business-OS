@@ -35,7 +35,7 @@ import { recallResumen } from './lib/memory.mjs'
 import { priorizarCajaResumen, proyeccionCajaResumen } from './lib/caja-alertas.mjs'
 import { registerChatGap } from './lib/emergence.mjs'
 import { avanceResumen } from './lib/avance-fisico.mjs'
-import { libroIvaResumen, comprobantesSinRegistrar, parsePeriodo } from './lib/libro-iva.mjs'
+import { libroIvaResumen, comprobantesSinRegistrar, parsePeriodo, conciliarProveedoresArca } from './lib/libro-iva.mjs'
 import { estadoPresupuesto, degradarModeloOnDemand, pausarAutonomo } from './lib/budget.mjs'
 import { fichaObra } from './lib/ficha-obra.mjs'
 import { carteraResumen } from './lib/cartera.mjs'
@@ -470,6 +470,29 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
       }
       return { answer: ans, model: 'libro-iva', capability: 'advise.tax', skills: [], navigate: null }
     }
+  }
+  // CONCILIACIÓN DE PROVEEDORES con ARCA (Plan 1 F1) — "conciliá proveedores con arca",
+  // "proveedores de arca", "qué proveedores faltan dar de alta". Determinístico (0 API):
+  // propone completar CUIT / dar de alta, NO escribe. Sensible (fiscal) → 'usuario' denegado.
+  if (/(concili[aá]|complet[aá]|carg[aá]).*(proveedor|cuit).*(arca|afip)|proveedor(es)?\s+(de\s+)?(arca|afip)|proveedor(es)?\s+(sin|para)\s+(registrar|dar de alta|alta)|qu[eé]\s+proveedor(es)?\s+(faltan?|no\s+(est[aá]n|tengo|tenemos))/i.test(directive)) {
+    if (!puede(rol, 'fiscal')) return denegar('fiscal')
+    const c = await conciliarProveedoresArca()
+    const money = (n) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(Number(n || 0))
+    const out = [`## Conciliación de proveedores con ARCA`, `De ${c.emisores} emisores en tus comprobantes de compra de ARCA:`]
+    out.push(`- **${c.conCuit.length}** ya tienen CUIT cargado en el OS (conciliados por hecho).`)
+    out.push(`- **${c.candidatosCuit.length}** matchean un proveedor existente por nombre → falta cargarles el CUIT.`)
+    out.push(`- **${c.candidatosAlta.length}** no existen como proveedor en el OS → candidatos a dar de alta.`)
+    if (c.candidatosAlta.length) {
+      out.push('', '**Candidatos a dar de alta** (mayor gasto primero):')
+      out.push(...c.candidatosAlta.slice(0, 12).map((e) => `- ${e.nombre} — CUIT ${e.emisor_cuit} — ${e.n} comprob., ${money(e.tot)}`))
+      if (c.candidatosAlta.length > 12) out.push(`_…y ${c.candidatosAlta.length - 12} más._`)
+    }
+    if (c.candidatosCuit.length) {
+      out.push('', '**Proveedores existentes a los que les falta el CUIT:**')
+      out.push(...c.candidatosCuit.slice(0, 10).map((e) => `- ${e.proveedor} ← ARCA: ${e.nombre} (CUIT ${e.emisor_cuit})`))
+    }
+    out.push('', '_Propuesta, no aplicada: no asigno un CUIT ni doy de alta un proveedor por parecido de nombre (sería fabricar dato). Decime "dá de alta / cargá el CUIT de X" y lo hago con tu OK._')
+    return { answer: out.join('\n'), model: 'conciliar-prov', capability: 'advise.tax', skills: [], navigate: null }
   }
   // CAJA — PROYECCIÓN (PRP-021 F2): "proyección/proyectá la caja", "cómo viene la caja",
   // "alcanza la caja", "flujo/cash proyectado" → saldo hoy + semanas + gap (0 API, percibido).

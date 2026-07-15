@@ -138,32 +138,64 @@ export async function libroIvaResumen(periodo = null, tipoLibro = null) {
   return out.join('\n')
 }
 
+const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, ' ').replace(/\b(sa|srl|sas|sh|s a|s r l)\b/g, '').replace(/\s+/g, ' ').trim()
+const soloDigitos = (s) => String(s || '').replace(/\D/g, '')
+const nombreMatch = (en, pn) => Boolean(en && pn && (pn.includes(en) || en.includes(pn) || pn.split(' ')[0] === en.split(' ')[0]))
+
 /**
- * Cruce HEURÍSTICO (no es un hecho) entre comprobantes de compra de ARCA y los costos ya
- * registrados en el OS. proveedores no tiene CUIT todavía, así que el match es por NOMBRE
- * de proveedor aproximado — sirve para SEÑALAR posibles faltantes, no para afirmarlos.
+ * Cruce entre comprobantes de compra de ARCA y los costos ya registrados en el OS.
+ * Prefiere el CUIT (HECHO) cuando el proveedor lo tiene cargado; si no, cae a NOMBRE
+ * aproximado (heurística — señala, no afirma). Devuelve los comprobantes sin match.
  */
 export async function comprobantesSinRegistrar(periodo) {
-  const per = periodo
   const { rows: comps } = await query(
     `select emisor_cuit, emisor_nombre, numero, imp_total
        from public.comprobantes_arca where periodo = $1 and tipo_libro = 'R'
       order by imp_total desc`,
-    [per],
+    [periodo],
   )
   if (!comps.length) return { total: 0, sinMatch: [] }
-  // Nombres de proveedores con algún costo registrado (para el match aproximado).
+  // Proveedores con algún costo registrado, con su CUIT (si lo tienen cargado) y nombre.
   const { rows: provs } = await query(
-    `select distinct p.nombre from public.proveedores p
+    `select distinct p.nombre, p.cuit from public.proveedores p
        join public.costos_reales c on c.proveedor_id = p.id`,
   )
-  const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, ' ').replace(/\b(sa|srl|sas|sh|s a|s r l)\b/g, '').replace(/\s+/g, ' ').trim()
+  const cuitsConCosto = new Set(provs.map((p) => soloDigitos(p.cuit)).filter(Boolean))
   const provNorms = provs.map((p) => norm(p.nombre)).filter(Boolean)
   const sinMatch = []
   for (const c of comps) {
+    const cuit = soloDigitos(c.emisor_cuit)
+    if (cuit && cuitsConCosto.has(cuit)) continue // match por CUIT (hecho)
     const en = norm(c.emisor_nombre)
-    const hit = en && provNorms.some((pn) => pn && (pn.includes(en) || en.includes(pn) || pn.split(' ')[0] === en.split(' ')[0]))
-    if (!hit) sinMatch.push(c)
+    if (provNorms.some((pn) => nombreMatch(en, pn))) continue // match por nombre (heurística)
+    sinMatch.push(c)
   }
   return { total: comps.length, sinMatch }
+}
+
+/**
+ * Concilia los EMISORES de ARCA (compras) contra la tabla de proveedores del OS.
+ * Determinístico (0 API). PROPONE, no escribe: separa emisores que matchean un proveedor
+ * existente (candidatos a completar el CUIT) de los que no existen (candidatos a alta).
+ * El nombre nunca es prueba suficiente para asignar un CUIT solo: por eso propone y no aplica.
+ */
+export async function conciliarProveedoresArca() {
+  const { rows: emis } = await query(
+    `select emisor_cuit, max(emisor_nombre) nombre, count(*)::int n, sum(imp_total) tot
+       from public.comprobantes_arca where tipo_libro = 'R' and emisor_cuit is not null
+      group by emisor_cuit order by sum(imp_total) desc`,
+  )
+  const { rows: provs } = await query(`select id, nombre, cuit from public.proveedores`)
+  const provNorms = provs.map((p) => ({ ...p, n: norm(p.nombre), c: soloDigitos(p.cuit) }))
+  const conCuit = [], candidatosCuit = [], candidatosAlta = []
+  for (const e of emis) {
+    const cuit = soloDigitos(e.emisor_cuit)
+    const porCuit = cuit && provNorms.find((p) => p.c && p.c === cuit)
+    if (porCuit) { conCuit.push({ ...e, proveedor: porCuit.nombre }); continue }
+    const en = norm(e.nombre)
+    const porNombre = provNorms.find((p) => nombreMatch(en, p.n))
+    if (porNombre) candidatosCuit.push({ ...e, proveedor: porNombre.nombre, proveedor_id: porNombre.id })
+    else candidatosAlta.push(e)
+  }
+  return { emisores: emis.length, conCuit, candidatosCuit, candidatosAlta }
 }
