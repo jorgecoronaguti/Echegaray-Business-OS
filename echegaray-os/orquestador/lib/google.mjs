@@ -484,11 +484,24 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
      *  Con `parents` lo ubica en una carpeta. Devuelve {id,name,mimeType,webViewLink}. */
     async createFile({ name, mimeType, parents } = {}) {
       if (!name || !mimeType) throw new Error('createFile: faltan name o mimeType')
-      return apiSend(
+      const f = await apiSend(
         'https://www.googleapis.com/drive/v3/files?fields=id,name,mimeType,webViewLink&supportsAllDrives=true',
         'POST',
         { name, mimeType, ...(parents ? { parents } : {}) },
       )
+      // Un Sheet creado por API nace en_US (formato inglés: coma decimal, fechas MM/DD, fórmulas
+      // con coma). Todo el Drive de la empresa es es_AR → lo fijamos para que nazca en el
+      // formato correcto (fechas DD/MM/YYYY, decimales con coma, fórmulas con ';').
+      if (mimeType.includes('spreadsheet') && f?.id) {
+        const locale = process.env.ORQ_SHEET_LOCALE || 'es_AR'
+        const timeZone = process.env.ORQ_SHEET_TZ || 'America/Argentina/San_Juan'
+        try {
+          await apiSend(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(f.id)}:batchUpdate`, 'POST',
+            { requests: [{ updateSpreadsheetProperties: { properties: { locale, timeZone }, fields: 'locale,timeZone' } }] })
+          _sepCache.set(f.id, /^en[_-]/i.test(locale) ? ',' : ';')
+        } catch { /* si falla, la localización al escribir igual detecta el locale */ }
+      }
+      return f
     },
     /** Renombra un archivo/carpeta existente. */
     async renameFile(fileId, name) {
