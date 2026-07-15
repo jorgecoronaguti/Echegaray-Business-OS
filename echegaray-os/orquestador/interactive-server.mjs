@@ -30,6 +30,7 @@ import { cuadroEconomico } from './lib/obra-economics.mjs'
 import { obraTools } from './lib/tools/obra.mjs'
 import { proposeSkillImprovement } from './lib/skill-proposals.mjs'
 import { briefingEjecutivo } from './lib/briefing.mjs'
+import { registerChatGap } from './lib/emergence.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
 import { enqueuePendingOperation, listPendingOperations, decidePendingOperation, getPendingOperationById } from './lib/pending-ops.mjs'
 import { classifyDirective, classifyDirectiveMulti } from './lib/classify-directive.mjs'
@@ -475,6 +476,10 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
       tools: Object.values(registry).map((t) => t.schema), toolExecutor, agentSlug: 'interactive' },
     CTX)
   trackCost(eng.cost?.usd ?? 0, model)
+  // PRP-018 F3: si el pedido no lo cubrió ningún dominio y el modelo admitió no poder,
+  // registrar el gap (propone capacidad solo ante recurrencia). Fire-and-forget: nunca
+  // demora ni rompe la respuesta al dueño.
+  registerChatGap({ directive, answer: eng.result, capability }).catch(() => {})
   return { answer: eng.result, model, cost: eng.cost?.usd ?? 0, capability, skills: skillsLoaded || [], navigate: navTarget }
 }
 
