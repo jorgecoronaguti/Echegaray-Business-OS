@@ -14,6 +14,7 @@
 import { enqueueTask } from '../lib/ledger.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { createLogger } from '../lib/logger.mjs'
+import { desviosObras } from '../lib/obra-economics.mjs'
 
 const log = createLogger({ component: 'vigilancia-autonoma' })
 const DRY = process.argv.includes('--dry')
@@ -57,11 +58,20 @@ async function contextoAbierto() {
     `select afirmacion, veces_confirmado from public.conocimiento_empresa
       where vigente order by veces_confirmado desc, updated_at desc limit 14`)
 
-  if (!backlog.length && !acciones.length && !saber.length) return ''
+  // DESVÍOS DE OBRA YA CALCULADOS (determinístico, 0 API): le damos al Director los
+  // números concretos en vez de pedirle que "vaya a buscar el desvío". Grounding real.
+  let desvios = []
+  try { desvios = await desviosObras() } catch { desvios = [] }
+
+  if (!backlog.length && !acciones.length && !saber.length && !desvios.length) return ''
   const b = backlog.map((r) => `  - [${r.impacto}/${r.tipo}] ${r.titulo}`).join('\n')
   const a = acciones.map((r) => `  - [${r.situacion}] ${r.titulo}`).join('\n')
   const m = saber.map((r) => `  - ${r.afirmacion}${r.veces_confirmado > 1 ? ` (confirmado ${r.veces_confirmado}×)` : ''}`).join('\n')
+  const d = desvios.map((x) => `  - ${x}`).join('\n')
   return (
+    (desvios.length
+      ? `\n\nDESVÍOS ECONÓMICOS DE OBRA YA CALCULADOS (dato real, no los recalcules — decidí si ameritan trabajo hoy):\n${d}\n`
+      : '') +
     (m ? `\n\nLO QUE EL OS YA SABE DE LA EMPRESA (memoria acumulada — construí sobre esto, no lo re-descubras):\n${m}\n` : '') +
     `\n\nYA REGISTRADO POR EL OS (revisá y NO lo repitas — deltas, no duplicados):\n` +
     (backlog.length ? `BACKLOG AUTÓNOMO abierto (${backlog.length}):\n${b}\n` : '') +

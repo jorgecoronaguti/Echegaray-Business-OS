@@ -122,6 +122,45 @@ function formatCuadro(d) {
   return L.join('\n')
 }
 
+/** Desvíos económicos YA CALCULADOS de todas las obras, para alimentar la vigilancia
+ *  autónoma con números concretos (no "andá a buscar el desvío"). Determinístico, 1 query.
+ *  Marca: sobre-costo (costo real > presupuesto) y margen real por debajo del esperado.
+ *  Devuelve [] si no hay desvío material o falta dato. En curso ⇒ desvío "a la fecha". */
+export async function desviosObras({ margenGapMin = 0.03, sobreCostoMin = 0.05 } = {}) {
+  const { rows } = await query(`
+    select o.id, o.nombre, o.estado, o.monto_contratado,
+      p.monto_presupuestado, p.margen_esperado,
+      coalesce(p.costo_directo_presupuestado,0) + coalesce(p.costo_indirecto_presupuestado,0) as costo_presup,
+      (select coalesce(sum(cr.monto),0) from public.costos_reales cr where cr.obra_id = o.id) as costo_real,
+      (select count(*) from public.costos_reales cr where cr.obra_id = o.id) as n_costos
+    from public.obras o
+    left join lateral (
+      select monto_presupuestado, margen_esperado, costo_directo_presupuestado, costo_indirecto_presupuestado
+        from public.presupuestos where obra_id = o.id order by version desc nulls last, fecha_presupuesto desc nulls last limit 1
+    ) p on true`)
+  const alerts = []
+  for (const r of rows) {
+    if (!Number(r.n_costos)) continue // sin costo real cargado → nada que comparar aún
+    const contratado = num(r.monto_contratado)
+    const costoReal = num(r.costo_real)
+    const costoPresup = num(r.costo_presup)
+    const enCurso = !['cerrada', 'terminada', 'finalizada'].includes(String(r.estado || '').toLowerCase())
+    const flags = []
+    if (costoPresup && costoReal != null) {
+      const desvio = (costoReal - costoPresup) / costoPresup
+      if (desvio > sobreCostoMin) flags.push(`sobre-costo ${pct(desvio)} (real ${ars(costoReal)} vs presup ${ars(costoPresup)})`)
+    }
+    if (contratado && costoReal != null && num(r.monto_presupuestado) && num(r.margen_esperado) != null) {
+      const margenRealPct = (contratado - costoReal) / contratado
+      const margenEspPct = num(r.margen_esperado) / num(r.monto_presupuestado)
+      const gap = margenRealPct - margenEspPct
+      if (!enCurso && gap < -margenGapMin) flags.push(`margen real ${pct(margenRealPct)} vs esperado ${pct(margenEspPct)} (${pct(gap)})`)
+    }
+    if (flags.length) alerts.push(`${r.nombre} (${r.estado}${enCurso ? ', en curso→parcial' : ''}): ${flags.join('; ')}`)
+  }
+  return alerts
+}
+
 /** API principal: cuadro económico. Sin nombre → lista todas las obras con 1 línea c/u.
  *  Con nombre → cuadro completo de la que coincide (o desambigua si hay varias). */
 export async function cuadroEconomico(nombre) {
