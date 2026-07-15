@@ -68,7 +68,10 @@ async function main() {
     check('run: tokens pasa el usage', out.tokens.input_tokens === 100 && out.tokens.output_tokens === 50)
     check('run: cost.usd calculado', Math.abs(out.cost.usd - 0.00105) < 1e-9)
     check('run: raw.request_id', out.raw.request_id === 'req_1')
-    check('run: mandó system', calledWith.params.system === 'SYS')
+    // PROMPT CACHING: el system string se envuelve en un bloque con cache_control ephemeral.
+    check('run: mandó system con caching', Array.isArray(calledWith.params.system)
+      && calledWith.params.system[0].text === 'SYS'
+      && calledWith.params.system[0].cache_control?.type === 'ephemeral')
     check('run: mandó user message', calledWith.params.messages[0].content === 'HOLA')
     check('run: resolvió el modelo alias->ID', calledWith.params.model === 'claude-sonnet-4-6')
     check('run: aplicó timeout de config', calledWith.opts.timeout === 120000)
