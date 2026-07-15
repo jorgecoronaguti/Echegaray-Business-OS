@@ -25,6 +25,7 @@ import { makeGoogleClient } from './lib/google.mjs'
 import { driveReadTools } from './lib/tools/drive.mjs'
 import { driveWriteTools } from './lib/tools/drive-write.mjs'
 import { webSearchTools } from './lib/tools/web.mjs'
+import { learnTools } from './lib/tools/learn.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
 import { enqueuePendingOperation, listPendingOperations, decidePendingOperation, getPendingOperationById } from './lib/pending-ops.mjs'
 import { classifyDirective, classifyDirectiveMulti } from './lib/classify-directive.mjs'
@@ -76,7 +77,7 @@ async function boot() {
  *  encola como operaciones pendientes (Nivel E). */
 function driveRegistry() {
   const google = makeGoogleClient({ config: cfg })
-  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...webSearchTools() }
+  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...webSearchTools(), ...learnTools() }
   registry['drive.find'] = {
     capability: 'drive.read', account: 'ecsas',
     schema: {
@@ -250,7 +251,10 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
   // rápido) para consultas simples y de charla. Antes era sonnet-siempre y quemaba
   // crédito hasta en un "hola". `fast === false` fuerza sonnet si el pedido lo pide.
   const budgetingKw = /presupuest|cotiz|c[oó]mputo|precio unitario|an[aá]lisis de precio|arm[aá].*(presupuesto|oferta)|apu\b/i.test(directive)
-  const model = writeIntent || att || budgetingKw || fast === false ? 'sonnet' : 'haiku'
+  // Intención de enseñar/corregir → sonnet, que llama la tool "aprender" de forma confiable
+  // (haiku a veces no la invoca). Así la captura automática de correcciones funciona.
+  const teachingIntent = /\b(ten[eé] en cuenta|en realidad|ojo que|que quede claro|te corrijo|corrijo|est[aá] mal|te equivocaste|no es as[ií]|acord[aá]te|record[aá]|aprend[eé]|anot[aá])\b/i.test(directive)
+  const model = writeIntent || att || budgetingKw || teachingIntent || fast === false ? 'sonnet' : 'haiku'
   const engine = resolveEngine('anthropic-api')
 
   // Fase 3: rutear al especialista correcto. Clasificamos la directiva a un dominio
@@ -353,6 +357,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId }) {
     (fileId ? `\nEstá mirando el archivo de Drive con file_id=${fileId}. Leélo con drive_read si la directiva lo requiere.\n` : '') +
     `\n\nESTILO OBLIGATORIO: respondé en español, MUY conciso y específico. Sin preámbulos, sin repetir la pregunta, sin explicar tu proceso ("leí el archivo…", "voy a…"), sin cierres de cortesía. Andá directo al dato o a la acción. Números concretos. Por defecto 1–3 líneas o pocos bullets; solo extendé si te piden el detalle. Si necesitás un dato de un archivo, LEELO con las tools antes de responder (no inventes). ` +
     `Distinguí hecho/estimación; si falta algo, decilo en pocas palabras. ` +
+    `APRENDÉ: si el dueño te CORRIGE o te enseña un HECHO DURABLE de la empresa (un proveedor clave, un criterio/preferencia, un precio de referencia, un dato estable de una obra/cliente), llamá a la tool "aprender" con ese hecho — así lo recordás para siempre y no lo volvés a preguntar. NO para acciones/tareas puntuales, saldos del día, ni datos que ya están en un archivo. ` +
     `Si la directiva pide ESCRIBIR/ordenar/completar/corregir/registrar/mejorar un archivo: ` +
     `(1) descubrí la estructura con drive_tabs — ojo: las pestañas como "Compras", "Caja", "Sueldos" son parte del MISMO archivo, NO archivos distintos — y leé la pestaña con drive_read para ver los encabezados y DÓNDE terminan los datos (ej. range "Compras!A1:M60"). ` +
     `(2) NO pidas aclaraciones que puedas resolver leyendo el archivo: ACTUÁ. ` +
