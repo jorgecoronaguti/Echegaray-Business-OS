@@ -4,7 +4,7 @@
 
 export const metadata = { title: 'Echegaray OS — Extensión' }
 
-const VERSION = '0.8.1'
+const VERSION = '0.8.2'
 const CAMBIOS = [
   'Login por usuario: botón "Conectar con Google" + llave por persona (rol atado a la llave).',
   'Control total de Drive actuando como vos: crear/escribir Google Docs, editar Sheets, copiar, mover, imágenes.',
