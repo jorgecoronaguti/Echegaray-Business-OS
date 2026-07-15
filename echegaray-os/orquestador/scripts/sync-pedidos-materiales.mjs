@@ -26,10 +26,26 @@ async function main() {
   const op = await operadorEmail()
   if (!op) throw new Error('no hay cuenta operadora OAuth conectada — no puedo leer el Sheet')
   const token = await getTokenFor(op)()
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(TAB + '!A1:F2000')}`
-  const j = await (await fetch(url, { headers: { Authorization: `Bearer ${token}` } })).json()
-  if (j.error) throw new Error('no pude leer el Sheet: ' + JSON.stringify(j.error).slice(0, 160))
-  const rows = j.values || []
+  const fetchTab = async (rng) => {
+    const u = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(rng)}`
+    const r = await (await fetch(u, { headers: { Authorization: `Bearer ${token}` } })).json()
+    if (r.error) throw new Error('no pude leer el Sheet: ' + JSON.stringify(r.error).slice(0, 160))
+    return r.values || []
+  }
+  const rows = await fetchTab(`${TAB}!A1:F2000`)
+  // Mapa de la tabla OBRAS de la app: ID_OBRA (OB1, Ob4…) -> NOMBRE, para resolver los
+  // pedidos que referencian la obra por código en vez de por nombre.
+  const obrasApp = await fetchTab('OBRAS!A2:B50')
+  const codigoAObra = new Map()
+  for (const r of obrasApp) {
+    const cod = String(r[0] ?? '').trim().toUpperCase()
+    const nom = String(r[1] ?? '').trim()
+    if (cod && nom) codigoAObra.set(cod, nom)
+  }
+  const resolverObra = (txt) => {
+    const t = String(txt ?? '').trim()
+    return codigoAObra.get(t.toUpperCase()) || t
+  }
   const header = rows[0] || []
   const idx = (name) => header.findIndex((h) => norm(h) === norm(name))
   const iId = idx('ID_PEDIDO'), iObra = idx('OBRA'), iFecha = idx('FECHA'), iMat = idx('MATERIAL'), iCant = idx('CANTIDAD'), iEst = idx('ESTADO')
@@ -49,7 +65,7 @@ async function main() {
     const row = rows[r]
     const idPedido = String(row[iId] ?? '').trim()
     if (!idPedido) continue
-    const obraTexto = row[iObra] ?? null
+    const obraTexto = resolverObra(row[iObra]) || null // resuelve OB1 -> ESTRELLA
     const obraId = matchObra(obraTexto)
     if (obraId) conObra++
     await query(
