@@ -159,6 +159,8 @@ function attachmentBlock(att) {
 // console.anthropic.com. Se resetea al reiniciar el servicio.
 const COST = { since: Date.now(), total: 0, n: 0, byModel: {} }
 function trackCost(usd, model) { const u = Number(usd) || 0; COST.total += u; COST.n++; COST.byModel[model] = (COST.byModel[model] || 0) + u }
+// Cerebro que compone: cuántas preguntas respondió la caché con 0 API (y el ahorro estimado).
+const CACHE_STATS = { hits: 0 }
 async function costSummary() {
   const hrs = Math.max(0.01, (Date.now() - COST.since) / 3.6e6)
   const per = Object.entries(COST.byModel).map(([m, u]) => `${m}: US$${u.toFixed(4)}`).join(' · ')
@@ -174,7 +176,13 @@ async function costSummary() {
     const capLinea = pres ? `\n• Tope diario: US$${pres.cap} — usado hoy US$${pres.usado} (${Math.round(pres.ratio * 100)}%) → modo **${pres.modo}**${pres.modo !== 'normal' ? ' (análisis caros bajan a haiku; la vigilancia no despacha especialistas; el chat nunca se corta)' : ''}` : ''
     auto = `\n\n**Agentes autónomos (worker) — costo REAL:**\n• Hoy: US$${hoy[0].usd || 0} (${hoy[0].n || 0} tareas) · Últimos 7 días: US$${sem[0].usd || 0}\n• Por tipo (7d): ${tipos || 'sin datos'}${capLinea}\n_El 90% es la vigilancia diaria disparando especialistas. Es lo que más pesa._`
   } catch { auto = '' }
-  return `**Chat** desde que arrancó el OS (hace ${hrs.toFixed(1)}h): US$${COST.total.toFixed(4)} en ${COST.n} pedidos.\n${per || ''}${auto}\n\n_Estimado desde el uso de tokens; el total exacto está en console.anthropic.com._`
+  // Cerebro que compone: preguntas respondidas con 0 API desde la caché + ahorro estimado.
+  let cacheLinea = ''
+  if (CACHE_STATS.hits > 0) {
+    const avg = COST.n > 0 ? COST.total / COST.n : 0.03
+    cacheLinea = `\n\n**Cerebro que compone:** ${CACHE_STATS.hits} pregunta(s) respondidas con **0 API** desde la memoria del OS (ahorro estimado US$${(CACHE_STATS.hits * avg).toFixed(4)}). Cuanto más se usa, más barato responde.`
+  }
+  return `**Chat** desde que arrancó el OS (hace ${hrs.toFixed(1)}h): US$${COST.total.toFixed(4)} en ${COST.n} pedidos.\n${per || ''}${cacheLinea}${auto}\n\n_Estimado desde el uso de tokens; el total exacto está en console.anthropic.com._`
 }
 const PROGRESS = new Map()
 // Resultados de directivas largas que se resolvieron en segundo plano (tras superar el
@@ -517,6 +525,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   if (cacheable) {
     const hit = await cacheGet(rol, directive)
     if (hit) {
+      CACHE_STATS.hits++
       progressPush(runId, 'Respondiendo desde la memoria del OS (0 API)')
       const nota = hit.edadMin >= 20 ? `\n\n_↻ Respuesta reutilizada de la memoria del OS (0 API). Si algo cambió, pedime "actualizá"._` : ''
       return { answer: hit.respuesta + nota, model: 'cache', cost: 0, capability, skills: [], navigate: null }
