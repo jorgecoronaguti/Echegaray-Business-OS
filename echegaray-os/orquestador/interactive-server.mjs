@@ -44,6 +44,7 @@ import { WORKSPACE_SCOPES } from './lib/google.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
 import { enqueuePendingOperation, listPendingOperations, decidePendingOperation, getPendingOperationById } from './lib/pending-ops.mjs'
 import { classifyDirective, classifyDirectiveMulti } from './lib/classify-directive.mjs'
+import { cacheGet, cachePut, cacheClearAll } from './lib/chat-cache.mjs'
 import { skillsForCapability } from './lib/skill-map.mjs'
 import { createSchedule, listSchedules, toggleSchedule } from './lib/schedules.mjs'
 import { enqueueTask } from './lib/ledger.mjs'
@@ -240,6 +241,9 @@ async function saveKnowledge(area, afirmacion) {
      returning veces_confirmado`,
     [area, String(afirmacion).slice(0, 1000), clave],
   )
+  // El conocimiento cambió ⇒ invalidar la caché de respuestas (las viejas pueden quedar
+  // desactualizadas frente a lo que el dueño acaba de enseñar). Se repuebla sola.
+  cacheClearAll().catch(() => {})
   // PRP-016 F3: recurrencia (≥2) ⇒ proponer revisar la skill del dominio (no la muta).
   const veces = rows[0]?.veces_confirmado ?? 0
   if (veces >= 2) await proposeSkillImprovement({ area, afirmacion, veces })
@@ -501,6 +505,23 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // caía en RRHH y respondía con jornales viejos). Los jornales UOCRA verificados se
   // inyectan siempre que el tema toque mano de obra, aunque haya ruteado a RRHH.
   const isBudgeting = /presupuest|cotiz|c[oó]mputo|precio unitario|an[aá]lisis de precio|arm[aá].*(presupuesto|oferta)|apu\b/i.test(directive) || capability === 'advise.estimating'
+
+  // ── CEREBRO QUE COMPONE — caché de respuestas (0 API en la repetición) ──────────
+  // Solo es cacheable el subconjunto SEGURO: pregunta standalone (sin hilo), sin adjunto,
+  // sin archivo fijado, sin intención de escritura/confirmación, sin presupuestación
+  // interactiva. Los datos vivos (caja/avance/briefing) ya se respondieron determinístico
+  // antes y nunca llegan acá. Si el dueño pide refrescar, se saltea la caché y recalcula.
+  const pideRefrescar = /(actualiz|recalcul|de nuevo|otra vez|sin cache|sin cach[eé]|[uú]ltima versi[oó]n|volv[eé] a|de cero|refresc)/i.test(directive)
+  const cacheable = !att && !fileId && !writeIntent && !followUpAction && !isBudgeting
+    && !dispatchDeep && !(Array.isArray(history) && history.length) && !pideRefrescar
+  if (cacheable) {
+    const hit = await cacheGet(rol, directive)
+    if (hit) {
+      progressPush(runId, 'Respondiendo desde la memoria del OS (0 API)')
+      const nota = hit.edadMin >= 20 ? `\n\n_↻ Respuesta reutilizada de la memoria del OS (0 API). Si algo cambió, pedime "actualizá"._` : ''
+      return { answer: hit.respuesta + nota, model: 'cache', cost: 0, capability, skills: [], navigate: null }
+    }
+  }
   const needsUocra = isBudgeting || /jornal|uocra|categor[ií]a|oficial|ayudante|medio oficial|mano de obra|costo.*(hora|mo)\b/i.test(directive)
   const uocraRates = needsUocra
     ? '\n\nJORNALES UOCRA ZONA A VIGENTES (jul-2026, CCT 76/75, VERIFICADO — usá ESTOS, NO los de un archivo viejo): Oficial Especializado $6.800/h · Oficial $5.817/h · Medio Oficial $5.375/h · Ayudante $4.948/h. Sumas no remunerativas jul: Of.Esp $72.900 · Of $67.100 · M.Of $61.500 · Ayudante $57.900. Sobre el jornal van cargas sociales + adicionales de convenio (asistencia, Art.56 hormigonado 15%, EPP, ropa).'
@@ -548,7 +569,12 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // si una tool devuelve un destino de navegación (navigate_to), lo capturamos para
   // que la extensión abra ese archivo/carpeta en la pestaña del dueño.
   let navTarget = null
+  // Si el modelo TOCÓ el Drive (crear/editar/mover/copiar/subir), la respuesta NO es
+  // cacheable: replayarla después no re-ejecutaría el efecto y mentiría diciendo que lo hizo.
+  let didWrite = false
+  const WRITE_TOOLS = /^(drive_update|drive_append|drive_create|drive_write_doc|drive_batch_update|drive_insert_rows|drive_delete_rows|drive_clear|drive_copy|drive_rename|drive_move|drive_trash|guardar_adjunto_en_drive)$/
   const toolExecutor = async (name, input, meta) => {
+    if (WRITE_TOOLS.test(String(name))) didWrite = true
     progressPush(runId, friendlyStep(name, input))
     const out = await baseExecutor(name, input, meta)
     if (out && out.navigate && out.navigate.url) navTarget = out.navigate
@@ -618,6 +644,10 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   const answerFinal = degradadoPorCosto
     ? `${eng.result}\n\n_(Nota: hoy el gasto de API superó el umbral, así que respondí con el modelo económico. Si necesitás el análisis profundo igual, decímelo y lo corro.)_`
     : eng.result
+  // CEREBRO QUE COMPONE: guardar la respuesta para que la próxima pregunta igual salga con
+  // 0 API. Solo si era cacheable Y el modelo no escribió en Drive Y no fue una navegación
+  // (esos son efectos/one-off que no se deben replayar). Fire-and-forget: nunca demora.
+  if (cacheable && !didWrite && !navTarget) cachePut(rol, directive, eng.result, model).catch(() => {})
   return { answer: answerFinal, model, cost: eng.cost?.usd ?? 0, capability, skills: skillsLoaded || [], navigate: navTarget }
 }
 
