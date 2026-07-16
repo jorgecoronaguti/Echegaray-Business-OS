@@ -138,6 +138,41 @@ export async function libroIvaResumen(periodo = null, tipoLibro = null) {
   return out.join('\n')
 }
 
+/**
+ * Posición de IVA ESTRUCTURADA mes por mes de un año — para COMPONER tablas/reportes (no texto).
+ * Devuelve los 12 meses: los que tienen comprobantes cargados con números REALES (débito/crédito/
+ * posición), y los que no, marcados `disponible:false`. NUNCA fabrica un mes sin datos. Es el
+ * insumo para que el agente arme una planilla de IVA del año con los superpoderes de Sheets.
+ */
+export async function posicionIvaAnio(anio) {
+  const y = String(anio || new Date().getFullYear()).slice(0, 4)
+  const disp = new Set((await periodosDisponibles()).map((d) => d.periodo))
+  const meses = []
+  for (let mm = 1; mm <= 12; mm++) {
+    const periodo = `${y}-${String(mm).padStart(2, '0')}`
+    if (!disp.has(periodo)) { meses.push({ periodo, mes: periodoLegible(periodo), disponible: false }); continue }
+    const [v, c] = await Promise.all([totales(periodo, 'E'), totales(periodo, 'R')])
+    const debito = Number(v.iva), credito = Number(c.iva)
+    const pos = debito - credito
+    meses.push({
+      periodo, mes: periodoLegible(periodo), disponible: true,
+      n_ventas: v.n, n_compras: c.n,
+      debito_fiscal: debito, credito_fiscal: credito,
+      posicion: pos, a_pagar: pos >= 0 ? pos : 0, a_favor: pos < 0 ? -pos : 0,
+    })
+  }
+  const conDatos = meses.filter((m) => m.disponible)
+  return {
+    anio: y,
+    meses,
+    meses_con_datos: conDatos.map((m) => m.periodo),
+    meses_sin_datos: meses.filter((m) => !m.disponible).map((m) => m.periodo),
+    nota: conDatos.length < 12
+      ? 'Faltan meses: no hay comprobantes cargados de ARCA para ellos (la descarga de ARCA está bloqueada por el certificado sin autorizar). NO inventes esos meses: en la tabla dejalos como "sin datos" y avisá que falta cargarlos.'
+      : 'Año completo con datos reales.',
+  }
+}
+
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, ' ').replace(/\b(sa|srl|sas|sh|s a|s r l)\b/g, '').replace(/\s+/g, ' ').trim()
 const soloDigitos = (s) => String(s || '').replace(/\D/g, '')
 const nombreMatch = (en, pn) => Boolean(en && pn && (pn.includes(en) || en.includes(pn) || pn.split(' ')[0] === en.split(' ')[0]))
