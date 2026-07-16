@@ -56,8 +56,11 @@ async function crear() {
     body: JSON.stringify({
       automation: 'mis-comprobantes',
       params: {
+        // En ARCA se LOGUEA la persona (LOGIN_CUIT del representante), no la empresa. `cuit`
+        // es de quién se leen los comprobantes (la empresa). Usar la CUIT de la empresa como
+        // username daba "Número de CUIL/CUIT incorrecto".
         cuit: cred.CUIT,
-        username: cred.CUIT,
+        username: cred.LOGIN_CUIT || cred.CUIT,
         password: cred.CLAVE,
         filters: { t: tipo, fechaEmision: `${desde} - ${hasta}` },
       },
@@ -104,7 +107,7 @@ console.log(`automation creada (${inicio.id ?? 'sin id'}), esperando resultado�
 const resultado = inicio.status === 'in_process' && inicio.id ? await esperar(inicio.id) : inicio
 console.log('')
 
-if (resultado.status && resultado.status !== 'success' && resultado.status !== 'finished') {
+if (resultado.status && resultado.status !== 'success' && resultado.status !== 'finished' && resultado.status !== 'complete') {
   console.error(`la automation terminó con estado "${resultado.status}": ${JSON.stringify(resultado).slice(0, 400)}`)
   process.exit(1)
 }
