@@ -427,6 +427,15 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         'POST',
         { requests: [{ insertInlineImage: { location: { index }, uri: imageUrl } }] })
     },
+    /** Documento Docs COMPLETO (estructura con índices) — para ubicar texto, tablas, fin. */
+    async getDoc(fileId) {
+      return apiGet(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(fileId)}`)
+    },
+    /** batchUpdate genérico de la Docs API: `requests` = array de requests de Docs. Un solo
+     *  lugar para formato, tablas, imágenes, reemplazos — igual que spreadsheetBatchUpdate. */
+    async docsBatchUpdate(fileId, requests) {
+      return apiSend(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(fileId)}:batchUpdate`, 'POST', { requests })
+    },
     /** Lee un GOOGLE DOC nativo exportándolo a texto plano (Drive export). Cubre contratos,
      *  notas, informes en Docs. Acotado a maxChars. */
     async readDocText(fileId, { maxChars = 20000 } = {}) {
