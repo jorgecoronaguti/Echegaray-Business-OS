@@ -2,10 +2,10 @@
 
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  setUbicacionAction,
   uploadFotoAction,
   createHerramientaAction,
   deleteHerramientaAction,
+  registrarMovimientoAction,
   type ActionState,
 } from '../services/herramientasActions'
 import type { Herramienta } from '../services/herramientasService'
@@ -102,13 +102,13 @@ function HerramientaCard({ h, ubicaciones }: { h: Herramienta; ubicaciones: stri
             {h.nombre}
           </div>
         </div>
-        <UbicacionSelect h={h} ubicaciones={ubicaciones} />
-        <div className="mt-auto flex items-center justify-between pt-1">
+        <div className="flex items-center justify-between">
           <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${ubicacionTone(h.ubicacion_actual)}`}>
             {h.ubicacion_actual || 'sin ubicación'}
           </span>
           <BorrarBtn h={h} />
         </div>
+        <MoverHerramienta key={h.ubicacion_actual ?? ''} h={h} ubicaciones={ubicaciones} />
       </div>
     </div>
   )
@@ -161,28 +161,57 @@ function Foto({ h }: { h: Herramienta }) {
   )
 }
 
-function UbicacionSelect({ h, ubicaciones }: { h: Herramienta; ubicaciones: string[] }) {
-  const [, setUbi, saving] = useActionState(setUbicacionAction, initial)
-  return (
-    <form action={setUbi} className="flex">
-      <input type="hidden" name="id_herramienta" value={h.id_herramienta} />
-      <select
-        name="ubicacion_actual"
-        defaultValue={h.ubicacion_actual || ''}
-        disabled={saving}
-        onChange={(e) => e.currentTarget.form?.requestSubmit()}
-        className="w-full rounded-md border border-gray-200 px-1.5 py-1 text-xs text-gray-700 focus:border-gray-900 focus:outline-none disabled:opacity-50"
-        aria-label="Cambiar ubicación"
+function MoverHerramienta({ h, ubicaciones }: { h: Herramienta; ubicaciones: string[] }) {
+  // key en el card (por ubicacion_actual) remonta este componente tras un movimiento
+  // exitoso → `abierto` vuelve a false sin efectos sincrónicos.
+  const [state, mover, saving] = useActionState(registrarMovimientoAction, initial)
+  const [abierto, setAbierto] = useState(false)
+
+  if (!abierto) {
+    return (
+      <button
+        onClick={() => setAbierto(true)}
+        className="inline-flex items-center gap-1 self-start rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-600 hover:border-gray-900 hover:text-gray-900"
       >
-        {!ubicaciones.includes(h.ubicacion_actual || '') && h.ubicacion_actual && (
-          <option value={h.ubicacion_actual}>{h.ubicacion_actual}</option>
-        )}
-        {ubicaciones.map((u) => (
-          <option key={u} value={u}>
-            {u}
-          </option>
-        ))}
-      </select>
+        <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+          <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l5 5a1 1 0 010 1.414l-5 5a1 1 0 01-1.414-1.414L13.586 11H3a1 1 0 110-2h10.586l-3.293-3.293a1 1 0 010-1.414z" clipRule="evenodd" />
+        </svg>
+        Mover
+      </button>
+    )
+  }
+  return (
+    <form action={mover} className="space-y-1.5 rounded-md bg-gray-50 p-2">
+      <input type="hidden" name="id_herramienta" value={h.id_herramienta} />
+      <label className="block text-[11px] font-medium text-gray-500">
+        Destino
+        <input
+          name="destino"
+          list="ubis-list"
+          required
+          defaultValue=""
+          placeholder="Obra / Almacén / Taller"
+          className="mt-0.5 w-full rounded border border-gray-300 px-1.5 py-1 text-xs text-gray-900 focus:border-gray-900 focus:outline-none"
+        />
+        <datalist id="ubis-list">
+          {ubicaciones.map((u) => (
+            <option key={u} value={u} />
+          ))}
+        </datalist>
+      </label>
+      <label className="block text-[11px] font-medium text-gray-500">
+        Responsable
+        <input name="responsable" placeholder="Quién lo mueve" className="mt-0.5 w-full rounded border border-gray-300 px-1.5 py-1 text-xs text-gray-900 focus:border-gray-900 focus:outline-none" />
+      </label>
+      {state.error && <p className="text-[11px] text-rose-600">{state.error}</p>}
+      <div className="flex gap-2">
+        <button type="submit" disabled={saving} className="flex-1 rounded bg-gray-900 px-2 py-1 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50">
+          {saving ? 'Moviendo…' : 'Registrar'}
+        </button>
+        <button type="button" onClick={() => setAbierto(false)} className="rounded px-2 py-1 text-xs text-gray-500 hover:text-gray-800">
+          Cancelar
+        </button>
+      </div>
     </form>
   )
 }
