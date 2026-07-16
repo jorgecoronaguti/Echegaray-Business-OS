@@ -6,9 +6,17 @@ import {
   createHerramientaAction,
   deleteHerramientaAction,
   registrarMovimientoAction,
+  setEstadoHerramientaAction,
   type ActionState,
 } from '../services/herramientasActions'
-import type { Herramienta } from '../services/herramientasService'
+import { ESTADOS, estadoInfo, type Herramienta } from '../services/herramientasService'
+
+const ESTADO_TONE: Record<'ok' | 'info' | 'amber' | 'red', string> = {
+  ok: 'bg-emerald-100 text-emerald-700',
+  info: 'bg-sky-100 text-sky-700',
+  amber: 'bg-amber-100 text-amber-800',
+  red: 'bg-rose-100 text-rose-700',
+}
 import type { MovimientoConHerramienta } from '../services/movimientosService'
 
 const initial: ActionState = { error: null }
@@ -33,16 +41,26 @@ export function HerramientasManager({
 }) {
   const [q, setQ] = useState('')
   const [ubiFiltro, setUbiFiltro] = useState('')
+  const [estadoFiltro, setEstadoFiltro] = useState('')
+  const [vista, setVista] = useState<'tabla' | 'tarjetas'>('tabla')
   const [mostrarAlta, setMostrarAlta] = useState(false)
 
   const filtradas = useMemo(() => {
     const term = q.trim().toLowerCase()
     return herramientas
       .filter((h) => (ubiFiltro ? (h.ubicacion_actual || '') === ubiFiltro : true))
-      .filter((h) => (term ? `${h.nombre} ${h.ubicacion_actual}`.toLowerCase().includes(term) : true))
-  }, [herramientas, q, ubiFiltro])
+      .filter((h) => (estadoFiltro ? h.estado === estadoFiltro : true))
+      .filter((h) => (term ? `${h.nombre} ${h.ubicacion_actual} ${h.responsable_actual ?? ''}`.toLowerCase().includes(term) : true))
+  }, [herramientas, q, ubiFiltro, estadoFiltro])
 
   const conFoto = herramientas.filter((h) => h.imagen_url).length
+  // Resumen de estado (para ver de un vistazo cuántas necesitan atención).
+  const porEstado = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const h of herramientas) m.set(h.estado, (m.get(h.estado) ?? 0) + 1)
+    return m
+  }, [herramientas])
+  const atencion = (porEstado.get('en_reparacion') ?? 0) + (porEstado.get('fuera_servicio') ?? 0) + (porEstado.get('perdida') ?? 0)
 
   return (
     <div className="space-y-4">
@@ -72,6 +90,33 @@ export function HerramientasManager({
             </option>
           ))}
         </select>
+        <select
+          value={estadoFiltro}
+          onChange={(e) => setEstadoFiltro(e.target.value)}
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
+          aria-label="Filtrar por estado"
+        >
+          <option value="">Todos los estados</option>
+          {ESTADOS.map((e) => (
+            <option key={e.value} value={e.value}>
+              {e.label} ({porEstado.get(e.value) ?? 0})
+            </option>
+          ))}
+        </select>
+        <div className="inline-flex overflow-hidden rounded-lg border border-gray-300">
+          <button
+            onClick={() => setVista('tabla')}
+            className={`px-3 py-2 text-sm font-medium ${vista === 'tabla' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+          >
+            Tabla
+          </button>
+          <button
+            onClick={() => setVista('tarjetas')}
+            className={`px-3 py-2 text-sm font-medium ${vista === 'tarjetas' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+          >
+            Tarjetas
+          </button>
+        </div>
         <button
           onClick={() => setMostrarAlta((v) => !v)}
           className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700"
@@ -84,12 +129,15 @@ export function HerramientasManager({
 
       <p className="text-xs text-gray-400">
         {filtradas.length} de {herramientas.length} herramienta(s) · {conFoto} con foto
+        {atencion > 0 && <span className="ml-1 font-semibold text-rose-600">· {atencion} necesitan atención</span>}
       </p>
 
       {filtradas.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center text-sm text-gray-500">
           {herramientas.length === 0 ? 'Sin herramientas. Agregá la primera.' : 'Ninguna coincide con el filtro.'}
         </div>
+      ) : vista === 'tabla' ? (
+        <HerramientasTabla filas={filtradas} ubicaciones={ubicaciones} />
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {filtradas.map((h) => (
@@ -118,6 +166,10 @@ function HerramientaCard({ h, ubicaciones, movimientos }: { h: Herramienta; ubic
           </span>
           <BorrarBtn h={h} />
         </div>
+        <div className="flex items-center justify-between gap-1">
+          <EstadoControl h={h} />
+        </div>
+        {h.responsable_actual && <div className="truncate text-[11px] text-gray-500" title={h.responsable_actual}>👷 {h.responsable_actual}</div>}
         <MoverHerramienta key={h.ubicacion_actual ?? ''} h={h} ubicaciones={ubicaciones} />
         {movimientos.length > 0 && (
           <>
@@ -254,6 +306,92 @@ function MoverHerramienta({ h, ubicaciones }: { h: Herramienta; ubicaciones: str
         </button>
       </div>
     </form>
+  )
+}
+
+function EstadoBadge({ estado }: { estado: string }) {
+  const info = estadoInfo(estado)
+  return <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${ESTADO_TONE[info.tone]}`}>{info.label}</span>
+}
+
+// Cambio de estado inline (select que se guarda al elegir). Reversible, sin recargar.
+function EstadoControl({ h }: { h: Herramienta }) {
+  const [state, setEstado, saving] = useActionState(setEstadoHerramientaAction, initial)
+  const formRef = useRef<HTMLFormElement>(null)
+  return (
+    <form ref={formRef} action={setEstado} className="inline-flex items-center gap-1">
+      <input type="hidden" name="id_herramienta" value={h.id_herramienta} />
+      <select
+        name="estado"
+        defaultValue={h.estado}
+        disabled={saving}
+        onChange={() => formRef.current?.requestSubmit()}
+        className={`rounded-md border-0 py-0.5 pl-2 pr-6 text-[11px] font-medium focus:ring-1 focus:ring-gray-900 ${ESTADO_TONE[estadoInfo(h.estado).tone]}`}
+        aria-label="Estado"
+      >
+        {ESTADOS.map((e) => (
+          <option key={e.value} value={e.value}>
+            {e.label}
+          </option>
+        ))}
+      </select>
+      {saving && <span className="h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-gray-700" />}
+      {state.error && <span className="text-[10px] text-rose-600">{state.error}</span>}
+    </form>
+  )
+}
+
+// Vista TABLA: listado con ID único, nombre, estado, ubicación, responsable actual y datos.
+function HerramientasTabla({ filas, ubicaciones }: { filas: Herramienta[]; ubicaciones: string[] }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-gray-200">
+      <table className="w-full min-w-[720px] border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-gray-200 bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
+            <th className="px-3 py-2 font-semibold">Herramienta</th>
+            <th className="px-3 py-2 font-semibold">ID único</th>
+            <th className="px-3 py-2 font-semibold">Estado</th>
+            <th className="px-3 py-2 font-semibold">Ubicación</th>
+            <th className="px-3 py-2 font-semibold">Responsable actual</th>
+            <th className="px-3 py-2 font-semibold">Categoría</th>
+            <th className="px-3 py-2 font-semibold">Actualizado</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {filas.map((h) => (
+            <tr key={h.id_herramienta} className="hover:bg-gray-50">
+              <td className="px-3 py-2">
+                <div className="flex items-center gap-2">
+                  {h.imagen_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={h.imagen_url} alt="" className="h-8 w-8 shrink-0 rounded object-cover" />
+                  ) : (
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded bg-gray-100 text-[10px] text-gray-400">s/f</span>
+                  )}
+                  <span className="font-medium text-gray-900">{h.nombre}</span>
+                </div>
+              </td>
+              <td className="px-3 py-2 font-mono text-xs text-gray-500">{h.id_herramienta}</td>
+              <td className="px-3 py-2">
+                <EstadoControl h={h} />
+                {h.estado_nota && <div className="mt-0.5 text-[10px] text-gray-400">{h.estado_nota}</div>}
+              </td>
+              <td className="px-3 py-2">
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${ubicacionTone(h.ubicacion_actual)}`}>
+                  {h.ubicacion_actual || 'sin ubicación'}
+                </span>
+              </td>
+              <td className="px-3 py-2 text-gray-700">{h.responsable_actual || <span className="text-gray-300">—</span>}</td>
+              <td className="px-3 py-2 text-gray-500">{h.categoria || <span className="text-gray-300">—</span>}</td>
+              <td className="px-3 py-2 text-xs text-gray-400">{fechaCortaMov(h.fecha)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="border-t border-gray-100 px-3 py-1.5 text-[11px] text-gray-400">
+        Cada fila es una herramienta única (1 ID = 1 unidad). Tocá el estado para cambiarlo.
+      </p>
+    </div>
   )
 }
 
