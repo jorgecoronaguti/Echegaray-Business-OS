@@ -6,7 +6,11 @@
 import { query } from './db.mjs'
 
 // Tope diario en USD (configurable). Default holgado; el dueño lo ajusta con la variable.
-export const CAP_DIARIO_USD = Number(process.env.ORQ_COST_DAILY_CAP_USD || 5)
+// Subido a 25 (era 5): con los superpoderes de edición de documentos, UNA reconstrucción de
+// planilla en sonnet puede costar ~$4 — con tope 5 el dueño tocaba el umbral con una sola
+// tarea real y encima se degradaba a haiku (que hace PEOR ese trabajo). 25 da aire para un
+// día de trabajo real de un usuario sin degradar lo que importa.
+export const CAP_DIARIO_USD = Number(process.env.ORQ_COST_DAILY_CAP_USD || 25)
 const UMBRAL_AHORRO = 0.8 // a partir del 80% del tope entra en modo ahorro
 
 /** Gasto real de HOY (día local): worker (orq.tasks) + chat (orq.chat_cost, persistido).

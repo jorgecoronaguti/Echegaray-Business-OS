@@ -205,6 +205,9 @@ const RESULTS = new Map()
 // primero sigue trabajando, lo ADJUNTAMOS al run existente en vez de arrancar de cero.
 // Rompe el bucle real "se corta y empieza de nuevo y se vuelve a cortar".
 const INFLIGHT = new Map()
+// Runs DETENIDOS por el usuario (botón Stop): se ignora su entrega tardía y se libera el
+// pedido. La tarea de fondo termina sola (acotada) pero su resultado ya no se muestra.
+const CANCELLED = new Set()
 function progressInit(runId) { if (runId) PROGRESS.set(runId, { steps: ['Pensando…'], done: false, updated: Date.now() }) }
 function progressPush(runId, step) { const p = runId && PROGRESS.get(runId); if (p) { p.steps.push(step); p.updated = Date.now() } }
 function progressDone(runId) { const p = runId && PROGRESS.get(runId); if (p) { p.done = true; p.updated = Date.now() } if (runId) setTimeout(() => PROGRESS.delete(runId), 30000) }
@@ -439,7 +442,11 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // Las respuestas determinísticas (0 API) ya devolvieron antes; nunca pagan esto.
   const presupuesto = await estadoPresupuesto(COST.total).catch(() => ({ modo: 'normal' }))
   let degradadoPorCosto = false
-  if (model === 'sonnet' && degradarModeloOnDemand(presupuesto.modo)) { model = 'haiku'; degradadoPorCosto = true }
+  // EXCEPCIÓN: NO degradar a haiku cuando el dueño está EDITANDO un documento (writeToDocIntent,
+  // archivo abierto o adjunto). Ese trabajo NECESITA sonnet para salir bien; bajarlo a haiku lo
+  // rompe (más iteraciones fallidas = MÁS gasto y peor resultado). Degradar solo consultas/charla.
+  const tareaCritica = writeToDocIntent || att || !!fileId
+  if (model === 'sonnet' && !tareaCritica && degradarModeloOnDemand(presupuesto.modo)) { model = 'haiku'; degradadoPorCosto = true }
   const engine = resolveEngine('anthropic-api')
 
   // Fase 3: rutear al especialista correcto. Clasificamos la directiva a un dominio
@@ -923,6 +930,21 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Resultado de una directiva que se fue a segundo plano (fallback asíncrono).
+  // STOP (botón Detener de la extensión): marca el run como cancelado, libera el pedido
+  // duplicado y devuelve un resultado 'detenido'. La tarea de fondo termina sola (acotada)
+  // pero su entrega tardía se ignora (CANCELLED). Así el usuario recupera el control ya.
+  if (req.method === 'GET' && req.url.startsWith('/cancel')) {
+    const rid = new URL(req.url, 'http://x').searchParams.get('id')
+    if (rid) {
+      CANCELLED.add(rid)
+      for (const [k, v] of INFLIGHT) if (v.rid === rid) INFLIGHT.delete(k)
+      const msg = { answer: '⏹ Tarea detenida por vos.', model: 'cancelado', cost: 0, capability: 'general', skills: [], navigate: null }
+      RESULTS.set(rid, { done: true, out: msg }); persistResult(rid, { done: true, ...msg })
+      progressDone(rid)
+      log.info('run cancelado por el usuario', { rid })
+    }
+    return send(res, 200, { ok: true })
+  }
   if (req.method === 'GET' && req.url.startsWith('/result')) {
     const rid = new URL(req.url, 'http://x').searchParams.get('id')
     const r = rid && RESULTS.get(rid)
@@ -1041,9 +1063,9 @@ const server = http.createServer(async (req, res) => {
       // del bucle de reinicio: antes, al vencer el watchdog se marcaba "cortado" y lo que
       // terminaba después se perdía).
       const askPromise = ask({ directive: directive.slice(0, 4000), fileId, fast, attachment, history, runId: rid, userEmail: identidad })
-        .then((out) => { RESULTS.set(rid, { done: true, out }); persistResult(rid, { done: true, ...out }); return out })
-        .catch((e) => { RESULTS.set(rid, { done: true, error: e.message }); persistResult(rid, { done: true, error: e.message }); throw e })
-        .finally(() => { progressDone(rid); INFLIGHT.delete(dedupKey); setTimeout(() => RESULTS.delete(rid), 120000) })
+        .then((out) => { if (!CANCELLED.has(rid)) { RESULTS.set(rid, { done: true, out }); persistResult(rid, { done: true, ...out }) } return out })
+        .catch((e) => { if (!CANCELLED.has(rid)) { RESULTS.set(rid, { done: true, error: e.message }); persistResult(rid, { done: true, error: e.message }) } throw e })
+        .finally(() => { progressDone(rid); INFLIGHT.delete(dedupKey); setTimeout(() => { RESULTS.delete(rid); CANCELLED.delete(rid) }, 120000) })
       // WATCHDOG SUAVE: NO mata la tarea (sigue en segundo plano y entrega tarde). Solo evita
       // el spinner infinito con un aviso que INVITA A ESPERAR, no a reenviar (reenviar reinicia).
       const watchdog = new Promise((resolve) => setTimeout(() => resolve({

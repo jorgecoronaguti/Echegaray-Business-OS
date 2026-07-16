@@ -4,6 +4,21 @@ const $ = (id) => document.getElementById(id)
 const DEFAULT_ADDR = 'https://echegaray-business-os.vercel.app/api/os'
 let attachment = null // { media_type, data(base64), name }
 let convo = [] // mensajes del chat actual {role:'me'|'os', text}
+let activeRun = null // { runId, addr, token, pending, cancelled } mientras una tarea corre
+
+// Mientras una tarea corre, el botón Enviar se convierte en DETENER (rojo). Al terminar
+// vuelve a Enviar. Así el dueño puede cortar una tarea en curso en vez de esperarla.
+function setStopMode() { const b = $('send'); if (b) { b.textContent = 'Detener'; b.classList.add('stop'); b.disabled = false } }
+function clearStopMode() { const b = $('send'); if (b) { b.textContent = 'Enviar'; b.classList.remove('stop'); b.disabled = false } }
+async function stopRun() {
+  const run = activeRun
+  if (!run) return
+  run.cancelled = true
+  if (run.pending) run.pending.textContent = '⏹ Tarea detenida.'
+  try { await fetch(`${run.addr}/cancel?id=${run.runId}`, { headers: { authorization: `Bearer ${run.token}` } }) } catch { /* igual la cortamos local */ }
+  activeRun = null
+  clearStopMode()
+}
 let currentChatId = null // id del chat abierto (persistido en chrome.storage)
 
 async function getCfg() {
@@ -77,17 +92,19 @@ async function send() {
   clearAttachment()
   const history = convo.slice(-16) // turnos previos (antes de agregar el actual)
   convo.push({ role: 'me', text: directive })
-  $('send').disabled = true
   const pending = addMsg('Pensando…', 'os')
   const fileId = await driveFileId()
   const t0 = Date.now()
   const runId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()
+  const run = { runId, addr, token, pending, cancelled: false }
+  activeRun = run
+  setStopMode()
   // Indicador en vivo: mientras el OS trabaja, mostramos el paso actual (leyendo, preparando…).
   let polling = true
   ;(async () => {
-    while (polling) {
+    while (polling && !run.cancelled) {
       await new Promise((r) => setTimeout(r, 1000))
-      if (!polling) break
+      if (!polling || run.cancelled) break
       try {
         const pr = await fetch(`${addr}/progress?id=${runId}`, { headers: { authorization: `Bearer ${token}` } })
         const pd = await pr.json()
@@ -110,11 +127,12 @@ async function send() {
     if (data.async && data.runId) {
       polling = false // de acá en más el progreso lo maneja waitResult (evita pisar la respuesta)
       pending.textContent = '⏳ Tarea larga: la estoy trabajando…'
-      data = await waitResult(addr, token, data.runId, pending, t0)
+      data = await waitResult(addr, token, data.runId, pending, t0, run)
       // AUTO-REINTENTO (una vez): si un reinicio perdió la tarea a mitad, la reintentamos
       // solos y transparente en vez de tirarle el error al dueño. La durabilidad server-side
-      // ya cubre lo terminado; esto cubre el reinicio en plena ejecución.
-      if (data && data.lost) {
+      // ya cubre lo terminado; esto cubre el reinicio en plena ejecución. NO reintentar si el
+      // usuario la detuvo.
+      if (!run.cancelled && data && data.lost) {
         pending.textContent = '⏳ El servidor se reinició; lo reintento solo…'
         const rid2 = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()
         const r2 = await fetch(`${addr}/ask`, {
@@ -138,7 +156,8 @@ async function send() {
     pending.textContent = 'No pude conectar con el OS: ' + e.message
   } finally {
     polling = false
-    $('send').disabled = false
+    if (activeRun === run) activeRun = null
+    clearStopMode()
     $('chat').scrollTop = $('chat').scrollHeight
     loadPending() // una directiva puede haber dejado operaciones pendientes
     persistCurrent() // guarda la conversación para poder volver a ella
@@ -215,9 +234,10 @@ async function decide(id, action, card) {
 
 // Espera el resultado de una directiva larga (fallback asíncrono), mostrando el paso
 // actual mientras tanto. Hasta ~6 min; el OS sigue trabajando aunque cierres el panel.
-async function waitResult(addr, token, runId, pending, t0) {
+async function waitResult(addr, token, runId, pending, t0, run) {
   for (let i = 0; i < 180; i++) {
     await new Promise((r) => setTimeout(r, 2000))
+    if (run && run.cancelled) return { done: true, answer: '⏹ Tarea detenida por vos.' }
     try {
       const pr = await fetch(`${addr}/progress?id=${runId}`, { headers: { authorization: `Bearer ${token}` } })
       const pd = await pr.json()
@@ -435,8 +455,8 @@ function showView(view) {
 }
 
 // eventos
-$('send').addEventListener('click', send)
-$('input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } })
+$('send').addEventListener('click', () => { if (activeRun) stopRun(); else send() })
+$('input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!activeRun) send() } })
 $('tabChat').addEventListener('click', () => showView('chat'))
 $('tabPending').addEventListener('click', () => showView('pending'))
 $('tabAgenda').addEventListener('click', () => showView('agenda'))
