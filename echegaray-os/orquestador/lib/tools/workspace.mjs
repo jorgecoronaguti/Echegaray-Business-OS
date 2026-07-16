@@ -7,6 +7,8 @@
 // crear/editar/borrar eventos que invitan a terceros. La disposición la fija la policy por
 // capacidad (mail.send/mail.trash/calendar.write/calendar.delete = requires_approval).
 
+import { normalizarDestinatarios } from '../google.mjs'
+
 const sinAcceso = (e) => {
   const m = String(e?.message ?? e)
   if (/unauthorized_client|401|403|delegat|invalid_grant|insufficient/i.test(m)) {
@@ -32,6 +34,23 @@ export function workspaceTools({ google } = {}) {
       }
     }
     return null
+  }
+  // Preflight de mail: (1) completa/valida destinatarios ABREVIADOS antes de encolar —
+  // "rodrigo@ecsas" → "rodrigo@ecsas.com.ar" — MUTANDO input para que la tarjeta de
+  // Pendientes y el envío usen la dirección real (antes esto fallaba recién en la aprobación
+  // con un 400 "Invalid To header"); (2) valida que los adjuntos existan. Si un destinatario
+  // no se puede completar con seguridad, NO encola y pide el mail completo.
+  const validarMail = async (input) => {
+    for (const campo of ['to', 'cc', 'bcc']) {
+      const v = input?.[campo]
+      if (v == null || v === '') continue
+      const { lista, invalidos } = normalizarDestinatarios(v)
+      if (invalidos.length) {
+        return { error: `No entendí el destinatario "${invalidos.join(', ')}". Pasame el mail completo (ej. nombre@ecsas.com.ar) y lo mando.` }
+      }
+      input[campo] = lista
+    }
+    return validarAdjuntos(input)
   }
   return {
     'gmail.search': {
@@ -78,7 +97,7 @@ export function workspaceTools({ google } = {}) {
     // ───────── ESCRITURA ─────────
     // AUTO (reversible/interno): borrador, archivar, etiquetar.
     'mail.draft': {
-      preflight: validarAdjuntos,
+      preflight: validarMail,
       capability: 'mail.draft', account: 'ecsas',
       schema: {
         name: 'gmail_borrador',
@@ -104,7 +123,7 @@ export function workspaceTools({ google } = {}) {
     },
     // APROBACIÓN (irreversible/externo): enviar, papelera, eventos.
     'mail.send': {
-      preflight: validarAdjuntos,
+      preflight: validarMail,
       capability: 'mail.send', account: 'ecsas',
       schema: {
         name: 'gmail_enviar',
@@ -254,7 +273,7 @@ export function workspaceTools({ google } = {}) {
       },
     },
     'mail.forward': {
-      preflight: validarAdjuntos,
+      preflight: validarMail,
       capability: 'mail.send', account: 'ecsas',
       schema: {
         name: 'gmail_reenviar',

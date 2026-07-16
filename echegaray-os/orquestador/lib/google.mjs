@@ -75,6 +75,52 @@ export function resolveKeyPath(config) {
   return candidates[candidates.length - 1]
 }
 
+// Dominio interno por defecto (Echegaray). Configurable por env. Se usa para COMPLETAR
+// destinatarios que el dueño escribe abreviados: "rodrigo" → rodrigo@ecsas.com.ar,
+// "rodrigo@ecsas" (sin TLD) → rodrigo@ecsas.com.ar. Sin esto, Gmail devuelve
+// 400 "Invalid To header" al ENVIAR (falla recién en la aprobación, no al componer).
+export const DEFAULT_MAIL_DOMAIN = String(process.env.ORQ_MAIL_DOMAIN || 'ecsas.com.ar').toLowerCase()
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+/** ¿Es una dirección de mail sintácticamente válida? (no verifica que exista). */
+export function esEmailValido(s) { return EMAIL_RE.test(String(s || '').trim()) }
+
+/** Completa UN destinatario abreviado a un mail interno válido, sin adivinar de más:
+ *  - "Nombre <mail>" → extrae el mail
+ *  - "rodrigo"        → rodrigo@DEFAULT_DOMAIN (token simple, sin @)
+ *  - "rodrigo@ecsas"  → rodrigo@ecsas.com.ar (dominio sin punto que es PREFIJO del interno)
+ *  - "juan@gmail.com" → intacto (dominio externo válido, no se toca)
+ *  - "juan@gmail"     → intacto (dominio externo incompleto: NO lo forzamos a interno; que
+ *                        falle la validación y se pida el mail completo, no mandar a la persona equivocada)
+ *  Devuelve el string tal cual si no puede completarlo con seguridad. */
+export function completarDestinatario(raw, domain = DEFAULT_MAIL_DOMAIN) {
+  let s = String(raw || '').trim()
+  if (!s) return s
+  const ang = s.match(/<([^>]+)>/)
+  if (ang) s = ang[1].trim()
+  if (!s.includes('@')) {
+    return /^[a-z0-9._%+-]+$/i.test(s) ? `${s}@${domain}` : s
+  }
+  const at = s.lastIndexOf('@')
+  const local = s.slice(0, at)
+  const dom = s.slice(at + 1).toLowerCase()
+  if (local && dom && !dom.includes('.') && domain.startsWith(dom)) return `${local}@${domain}`
+  return s
+}
+
+/** Normaliza una lista de destinatarios (separados por coma o punto y coma), completando
+ *  cada uno. Devuelve { lista, invalidos }: `lista` es el string listo para el header To/Cc;
+ *  `invalidos` son los que ni completados quedaron válidos (para avisar y NO enviar). */
+export function normalizarDestinatarios(raw) {
+  const partes = String(raw || '').split(/[,;]+/).map((p) => p.trim()).filter(Boolean)
+  const ok = [], invalidos = []
+  for (const p of partes) {
+    const c = completarDestinatario(p)
+    if (esEmailValido(c)) ok.push(c); else invalidos.push(p)
+  }
+  return { lista: ok.join(', '), invalidos }
+}
+
 /**
  * Fábrica del cliente. En producción se construye con la key real; en tests se
  * inyecta `auth` (con getAccessToken) y `fetchImpl` para no tocar red ni disco.
@@ -191,10 +237,17 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
   // encoded-word UTF-8 para no romper con acentos (común en español).
   function buildRawEmail({ to, cc, bcc, subject, body, attachments = [] }) {
     const encWord = (s) => `=?UTF-8?B?${Buffer.from(String(s || ''), 'utf8').toString('base64')}?=`
+    // Completar destinatarios abreviados (rodrigo@ecsas → rodrigo@ecsas.com.ar) para no
+    // mandar un header inválido a Gmail. Si tras completar sigue habiendo inválidos, cortamos
+    // acá con un error CLARO (mejor fallar honesto que enviar a una dirección rota/equivocada).
+    const nTo = normalizarDestinatarios(to), nCc = normalizarDestinatarios(cc), nBcc = normalizarDestinatarios(bcc)
+    const malos = [...nTo.invalidos, ...nCc.invalidos, ...nBcc.invalidos]
+    if (malos.length) throw new Error(`destinatario inválido: ${malos.join(', ')}. Dame el mail completo (ej. nombre@ecsas.com.ar).`)
+    if (!nTo.lista) throw new Error('falta el destinatario (to) del mail.')
     const h = []
-    if (to) h.push(`To: ${to}`)
-    if (cc) h.push(`Cc: ${cc}`)
-    if (bcc) h.push(`Bcc: ${bcc}`)
+    h.push(`To: ${nTo.lista}`)
+    if (nCc.lista) h.push(`Cc: ${nCc.lista}`)
+    if (nBcc.lista) h.push(`Bcc: ${nBcc.lista}`)
     h.push(`Subject: ${encWord(subject)}`)
     h.push('MIME-Version: 1.0')
     let mime
