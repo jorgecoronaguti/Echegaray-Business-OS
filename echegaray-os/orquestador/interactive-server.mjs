@@ -36,7 +36,7 @@ import { proposeSkillImprovement } from './lib/skill-proposals.mjs'
 import { briefingEjecutivo } from './lib/briefing.mjs'
 import { recallResumen } from './lib/memory.mjs'
 import { priorizarCajaResumen, proyeccionCajaResumen } from './lib/caja-alertas.mjs'
-import { registerChatGap } from './lib/emergence.mjs'
+import { registerChatGap, registerRespuestaFallida } from './lib/emergence.mjs'
 import { avanceResumen } from './lib/avance-fisico.mjs'
 import { libroIvaResumen, comprobantesSinRegistrar, parsePeriodo, conciliarProveedoresArca } from './lib/libro-iva.mjs'
 import { pedidosResumen } from './lib/pedidos-materiales.mjs'
@@ -425,6 +425,10 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   const WRITE_RE = /\b(registr|agreg|añad|anot|escrib|orden|complet|corrig|carg|aplic|hacelo|hac[eé]|modific|pon[eé]|actualiz|edit|arregl|reemplaz|renombr|mov[eé]|crea|mejor|reconstru|rehac|rehag|rearm|arm[aá]|gener[aá]|complet|calcul[aá]|llen[aá]|limpi|f[oó]rmula|borr|elimin|vaci|duplic|copi|marc[aá]|pas[aá]\s+a)/i
   const CONFIRM_RE = /^\s*(s[ií]|dale|ok(ay)?|listo|hacelo|hazlo|aplicalo?|proced[eé]|adelante|confirmo|de una|opci[oó]n\s*)?[\s,.:]*([abc]|[123]|la\s*[123]|el\s*[123]|es[ae]|aquel[la]?)?\s*$/i
   const histText = Array.isArray(history) ? history.slice(-4).map((m) => String(m.text || '')).join('\n') : ''
+  // AUTO-MEJORA (0-API, fire-and-forget): si el dueño RECHAZA la respuesta anterior ("no sirve",
+  // "sigue mal", "es una mierda"), registrar la señal de fallo para que el OS lo proponga como
+  // mejora. Va temprano y no bloquea: captura el rechazo sea cual sea el camino de la respuesta.
+  registerRespuestaFallida({ directive, history }).catch(() => {})
   const directiveWrite = WRITE_RE.test(String(directive || ''))
   // Confirmación/elección corta ("a", "dale", "la 2") + la charla previa proponía una
   // acción u opciones → el dueño está eligiendo: hay que ACTUAR, no re-preguntar.

@@ -64,3 +64,48 @@ export async function registerChatGap({ directive, answer, capability }) {
     return { registrado: false, motivo: `error: ${String(e?.message ?? e).slice(0, 120)}` }
   }
 }
+
+// El dueño RECHAZA la respuesta anterior: señal fuerte de que algo del OS falló. Conservador:
+// frases claras de rechazo, no dudas. Es 0-API (solo patrón observado, nunca se fabrica).
+const RECHAZO_RE =
+  /\b(no\s+(sirve|funciona|anda|es\s+eso|es\s+lo\s+que|hiciste|me\s+sirve|era\s+eso)|sigue\s+(sin|fallando|igual|mal)|segu[ií]\s+(sin|con\s+el\s+error)|est[aá]\s+mal|de\s+nuevo\s+mal|otra\s+vez\s+(mal|lo\s+mismo)|es\s+una\s+mierda|una\s+mierda|no\s+lo\s+(hizo|hiciste)|es\s+tonto|no\s+es\s+inteligente|un\s+desastre|mal\s+de\s+nuevo)\b/i
+
+/** Registra que la respuesta ANTERIOR probablemente falló, cuando el dueño la rechaza en el
+ *  turno actual. Toma el TEMA del pedido previo (no del rechazo). Recurrencia → propuesta firme.
+ *  0-API, fire-and-forget. Nunca lanza. */
+export async function registerRespuestaFallida({ directive, history }) {
+  try {
+    if (!RECHAZO_RE.test(String(directive || ''))) return { registrado: false, motivo: 'no hay rechazo claro' }
+    if (!Array.isArray(history) || !history.length) return { registrado: false, motivo: 'sin contexto previo' }
+    // El pedido que falló = último mensaje del dueño en la charla previa.
+    const previo = [...history].reverse().find((m) => (m.role === 'me' || m.role === 'user') && String(m.text || '').trim())
+    const slug = topicSlug(previo?.text || '')
+    if (slug.length < 6) return { registrado: false, motivo: 'pedido previo muy corto/ambiguo' }
+    const titulo = `Respuesta del chat que falló (revisar): "${slug}"`
+    const { rows: existe } = await query(
+      `select id from public.backlog_autonomo where tipo='respuesta_fallida' and estado='abierto' and titulo=$1 limit 1`,
+      [titulo],
+    )
+    if (existe.length) {
+      await query(
+        `update public.backlog_autonomo set impacto='alta', urgencia='alta', confianza='observado',
+            evidencia=$2, updated_at=now() where id=$1`,
+        [existe[0].id, `El dueño rechazó la respuesta MÁS DE UNA VEZ para este tema. Último rechazo: "${String(directive || '').slice(0, 160)}".`],
+      )
+      return { registrado: true, escalado: true, motivo: 'fallo recurrente → propuesta firme' }
+    }
+    await query(
+      `insert into public.backlog_autonomo
+         (tipo, titulo, evidencia, fuente, confianza, impacto, urgencia, esfuerzo, recomendacion, nivel_autonomia_permitido, estado)
+       values ('respuesta_fallida', $1, $2, 'chat interactivo (rechazo del dueño)', 'observado', 'media', 'media', 'medio', $3, 'D', 'abierto')`,
+      [
+        titulo,
+        `El dueño rechazó la respuesta del OS. Pedido que falló: "${String(previo?.text || '').slice(0, 200)}". Rechazo: "${String(directive || '').slice(0, 120)}".`,
+        'Revisar por qué falló ese tipo de pedido (ruteo, comprensión, o capacidad faltante) y proponer el arreglo. Verificar en vivo con la frase real antes de dar por resuelto.',
+      ],
+    )
+    return { registrado: true, escalado: false, motivo: 'fallo registrado (1ª vez)' }
+  } catch (e) {
+    return { registrado: false, motivo: `error: ${String(e?.message ?? e).slice(0, 120)}` }
+  }
+}
