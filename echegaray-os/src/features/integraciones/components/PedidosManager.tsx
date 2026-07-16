@@ -4,6 +4,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
 import {
   createPedidoAction,
   setEstadoPedidoAction,
+  updatePedidoAction,
   deletePedidoAction,
   type ActionState,
 } from '../services/pedidosActions'
@@ -60,6 +61,12 @@ export function PedidosManager({ pedidos, obras }: { pedidos: PedidoMaterial[]; 
 
   return (
     <div className="space-y-4">
+      {/* Datalist de obras compartido por los formularios (alta y edición). */}
+      <datalist id="obras-list">
+        {obras.map((o) => (
+          <option key={o} value={o} />
+        ))}
+      </datalist>
       {/* KPIs accionables */}
       <div className="grid grid-cols-3 gap-3">
         <Kpi n={conteo.PENDIENTE} label="Pendientes" tone="rose" active={estadoFiltro === 'PENDIENTE'} onClick={() => setEstadoFiltro(estadoFiltro === 'PENDIENTE' ? 'TODOS' : 'PENDIENTE')} />
@@ -103,7 +110,7 @@ export function PedidosManager({ pedidos, obras }: { pedidos: PedidoMaterial[]; 
         </button>
       </div>
 
-      {mostrarAlta && <AltaPedido obras={obras} onDone={() => setMostrarAlta(false)} />}
+      {mostrarAlta && <AltaPedido onDone={() => setMostrarAlta(false)} />}
 
       {/* Lista: tabla en desktop, tarjetas en mobile */}
       {filtrados.length === 0 ? (
@@ -164,7 +171,7 @@ function Kpi({ n, label, tone, active, onClick }: { n: number; label: string; to
   )
 }
 
-function AltaPedido({ obras, onDone }: { obras: string[]; onDone: () => void }) {
+function AltaPedido({ onDone }: { onDone: () => void }) {
   const [state, action, creating] = useActionState(createPedidoAction, initial)
   const formRef = useRef<HTMLFormElement>(null)
   useEffect(() => {
@@ -183,11 +190,6 @@ function AltaPedido({ obras, onDone }: { obras: string[]; onDone: () => void }) 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Campo label="Obra" className="lg:col-span-1">
           <input name="obra_texto" list="obras-list" required placeholder="San Francisco" className={inputCls} />
-          <datalist id="obras-list">
-            {obras.map((o) => (
-              <option key={o} value={o} />
-            ))}
-          </datalist>
         </Campo>
         <Campo label="Material" className="lg:col-span-2">
           <input name="material" required placeholder="Cemento" className={inputCls} />
@@ -276,7 +278,46 @@ function BorrarBtn({ p }: { p: PedidoMaterial }) {
   )
 }
 
+// key sobre los valores editables → tras un guardado exitoso (revalidatePath cambia p),
+// el componente remonta y `editando` vuelve a false sin efectos sincrónicos.
+function editKey(p: PedidoMaterial) {
+  return `${p.material}|${p.obra_texto}|${p.cantidad}`
+}
+
+function IconBtn({ onClick, label, children }: { onClick: () => void; label: string; children: React.ReactNode }) {
+  return (
+    <button type="button" onClick={onClick} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label={label} title={label}>
+      {children}
+    </button>
+  )
+}
+const iconEdit = (
+  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+    <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+  </svg>
+)
+
 function FilaDesktop({ p }: { p: PedidoMaterial }) {
+  const [editando, setEditando] = useState(false)
+  const [, edit, saving] = useActionState(updatePedidoAction, initial)
+  if (editando) {
+    return (
+      <tr key={editKey(p)} className="bg-amber-50/40">
+        <td className="px-4 py-2 text-xs text-gray-400">editar</td>
+        <td className="px-4 py-2" colSpan={4}>
+          <form action={edit} className="flex flex-wrap items-center gap-2">
+            <input type="hidden" name="id_pedido" value={p.id_pedido} />
+            <input name="material" defaultValue={p.material ?? ''} required placeholder="Material" className="min-w-[10rem] flex-1 rounded border border-gray-300 px-2 py-1 text-sm focus:border-gray-900 focus:outline-none" />
+            <input name="obra_texto" list="obras-list" defaultValue={p.obra_texto ?? ''} required placeholder="Obra" className="w-40 rounded border border-gray-300 px-2 py-1 text-sm focus:border-gray-900 focus:outline-none" />
+            <input name="cantidad" type="number" step="0.01" min="0" defaultValue={p.cantidad ?? ''} required className="w-20 rounded border border-gray-300 px-2 py-1 text-sm focus:border-gray-900 focus:outline-none" />
+            <button type="submit" disabled={saving} className="rounded bg-gray-900 px-3 py-1 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50">{saving ? '…' : 'Guardar'}</button>
+            <button type="button" onClick={() => setEditando(false)} className="text-xs text-gray-500 hover:text-gray-800">Cancelar</button>
+          </form>
+        </td>
+        <td className="px-4 py-2"></td>
+      </tr>
+    )
+  }
   return (
     <tr className="hover:bg-gray-50/60">
       <td className="px-4 py-2.5"><EstadoSelect p={p} /></td>
@@ -284,12 +325,35 @@ function FilaDesktop({ p }: { p: PedidoMaterial }) {
       <td className="px-4 py-2.5 text-gray-600">{p.obra_texto || '—'}</td>
       <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{p.cantidad ?? '—'}</td>
       <td className="px-4 py-2.5 whitespace-nowrap text-gray-500">{fechaAR(p.fecha)}</td>
-      <td className="px-4 py-2.5 text-right"><BorrarBtn p={p} /></td>
+      <td className="px-4 py-2.5 text-right">
+        <div className="inline-flex items-center gap-1">
+          <IconBtn onClick={() => setEditando(true)} label="Editar">{iconEdit}</IconBtn>
+          <BorrarBtn p={p} />
+        </div>
+      </td>
     </tr>
   )
 }
 
 function TarjetaMobile({ p }: { p: PedidoMaterial }) {
+  const [editando, setEditando] = useState(false)
+  const [, edit, saving] = useActionState(updatePedidoAction, initial)
+  if (editando) {
+    return (
+      <form key={editKey(p)} action={edit} className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/40 p-3">
+        <input type="hidden" name="id_pedido" value={p.id_pedido} />
+        <input name="material" defaultValue={p.material ?? ''} required placeholder="Material" className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-gray-900 focus:outline-none" />
+        <div className="flex gap-2">
+          <input name="obra_texto" list="obras-list" defaultValue={p.obra_texto ?? ''} required placeholder="Obra" className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-gray-900 focus:outline-none" />
+          <input name="cantidad" type="number" step="0.01" min="0" defaultValue={p.cantidad ?? ''} required className="w-24 rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-gray-900 focus:outline-none" />
+        </div>
+        <div className="flex gap-2">
+          <button type="submit" disabled={saving} className="flex-1 rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50">{saving ? '…' : 'Guardar'}</button>
+          <button type="button" onClick={() => setEditando(false)} className="rounded px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800">Cancelar</button>
+        </div>
+      </form>
+    )
+  }
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-3">
       <div className="flex items-start justify-between gap-2">
@@ -299,7 +363,10 @@ function TarjetaMobile({ p }: { p: PedidoMaterial }) {
             {p.obra_texto || 'sin obra'} · <span className="tabular-nums">{p.cantidad ?? '—'}</span> · {fechaAR(p.fecha)}
           </div>
         </div>
-        <BorrarBtn p={p} />
+        <div className="flex items-center gap-1">
+          <IconBtn onClick={() => setEditando(true)} label="Editar">{iconEdit}</IconBtn>
+          <BorrarBtn p={p} />
+        </div>
       </div>
       <div className="mt-2"><EstadoSelect p={p} /></div>
     </div>
