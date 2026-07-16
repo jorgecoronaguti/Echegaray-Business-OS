@@ -74,6 +74,38 @@ export async function setEstadoPedidoAction(_prev: ActionState, formData: FormDa
   return { error: null, ok: true }
 }
 
+const editSchema = z.object({
+  id_pedido: z.string().trim().min(1),
+  obra_texto: z.string().trim().min(1, 'La obra es obligatoria').max(60),
+  material: z.string().trim().min(1, 'El material es obligatorio').max(120),
+  cantidad: z.coerce.number().positive('La cantidad debe ser mayor a 0'),
+})
+
+export async function updatePedidoAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = editSchema.safeParse({
+    id_pedido: formData.get('id_pedido'),
+    obra_texto: formData.get('obra_texto'),
+    material: formData.get('material'),
+    cantidad: formData.get('cantidad'),
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0].message }
+  const c = await client()
+  if (!c.supabase) return { error: c.error! }
+  const { error } = await c.supabase
+    .from('pedidos_materiales')
+    .update({
+      obra_texto: parsed.data.obra_texto,
+      material: parsed.data.material,
+      cantidad: parsed.data.cantidad,
+      origen: 'os',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id_pedido', parsed.data.id_pedido)
+  if (error) return { error: error.message }
+  revalidatePath(PATH)
+  return { error: null, ok: true }
+}
+
 export async function deletePedidoAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const id = String(formData.get('id_pedido') || '').trim()
   if (!id) return { error: 'falta id' }
