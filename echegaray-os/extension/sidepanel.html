@@ -14,11 +14,6 @@
   header .dot.on { background:var(--ok); }
   header h1 { font-size:14px; margin:0; font-weight:700; letter-spacing:-.01em; }
   header .gear { cursor:pointer; color:var(--faint); background:none; border:0; font-size:16px; }
-  header .gasto { margin-left:auto; font-size:11px; font-weight:700; color:var(--soft); background:var(--panel);
-    border:1px solid var(--line); border-radius:8px; padding:2px 7px; cursor:pointer; white-space:nowrap; }
-  header .gasto.warn { color:#f0b34a; border-color:#5a4520; }
-  header .gasto.alert { color:#e5534b; border-color:#5a2420; }
-  header .gasto.hidden { display:none; }
   #chat { flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:12px; }
   .msg { padding:10px 12px; border-radius:12px; max-width:92%; line-height:1.5; white-space:pre-wrap; }
   .me { align-self:flex-end; background:var(--accent); color:#0b1220; font-weight:500; }
@@ -90,8 +85,7 @@
     <span class="dot" id="status"></span>
     <h1>Echegaray OS</h1>
     <span id="ver" style="color:var(--faint);font-size:11px;font-weight:600"></span>
-    <span class="gasto hidden" id="gasto" title="Gasto de API de hoy"></span>
-    <button class="gear" id="chatsBtn" title="Conversaciones">🗂</button>
+    <button class="gear" id="chatsBtn" title="Conversaciones" style="margin-left:auto">🗂</button>
     <button class="gear" id="gear" title="Configuración">⚙</button>
   </header>
   <div id="settings">
