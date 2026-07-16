@@ -20,6 +20,10 @@ const GRUPOS_NAV = [
     ],
   },
   {
+    grupo: 'Obras',
+    links: [{ href: '/control-obras', label: 'Control de obras' }],
+  },
+  {
     grupo: 'Finanzas',
     links: [{ href: '/flujo-caja', label: 'Flujo de Caja' }],
   },
