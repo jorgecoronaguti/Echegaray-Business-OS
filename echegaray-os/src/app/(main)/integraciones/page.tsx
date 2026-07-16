@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getIntegraciones } from '@/features/integraciones/services/integracionesService'
+import { getResumenPorObra, type ResumenObra } from '@/features/integraciones/services/resumenPorObraService'
 import {
   ESTADO_LABEL,
   ESTADO_BADGE,
@@ -15,10 +16,11 @@ export const dynamic = 'force-dynamic'
 async function loadData() {
   try {
     const supabase = await createClient()
-    return { res: await getIntegraciones(supabase) }
+    const [res, porObra] = await Promise.all([getIntegraciones(supabase), getResumenPorObra(supabase)])
+    return { res, porObra }
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Error desconocido al conectar con Supabase'
-    return { res: { data: null, error } as const }
+    return { res: { data: null, error } as const, porObra: { data: null, error } as const }
   }
 }
 
@@ -34,8 +36,9 @@ function fechaAR(iso: string | null): string {
 }
 
 export default async function IntegracionesPage() {
-  const { res } = await loadData()
+  const { res, porObra } = await loadData()
   const pageError = res.error
+  const obras: ResumenObra[] = porObra.data ?? []
   const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
   const lista = ordenar(res.data ?? [])
   const c = contar(res.data ?? [])
@@ -139,6 +142,48 @@ export default async function IntegracionesPage() {
           )
         })}
       </div>
+
+      {obras.length > 0 && (
+        <section data-testid="por-obra" className="space-y-3">
+          <div>
+            <h2 className="text-xl font-semibold">Operación por obra</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Herramientas y pedidos de material, agrupados por obra. Sale de los datos operativos reales
+              (ubicación de cada herramienta y obra de cada pedido). Ordenado por pedidos pendientes.
+            </p>
+          </div>
+          <div className="overflow-x-auto rounded-lg border bg-white">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-gray-50 text-left text-xs font-medium tracking-wide text-gray-500 uppercase">
+                  <th className="px-4 py-2.5">Obra</th>
+                  <th className="px-4 py-2.5 text-right">Herramientas</th>
+                  <th className="px-4 py-2.5 text-right">Pedidos pendientes</th>
+                  <th className="px-4 py-2.5 text-right">Pedidos (total)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {obras.map((o) => (
+                  <tr key={o.obra} className="hover:bg-gray-50/60">
+                    <td className="px-4 py-2.5 font-medium text-gray-900">{o.obra}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{o.herramientas}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">
+                      {o.pedidosPendientes > 0 ? (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800">
+                          {o.pedidosPendientes}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">0</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-gray-500">{o.pedidosTotal}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       <p className="text-xs text-gray-400">
         La frescura y cobertura del dato (para decisiones) vive en{' '}
