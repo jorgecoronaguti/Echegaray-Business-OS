@@ -42,30 +42,45 @@ async function loadUsuario() {
   try {
     const supabase = await createClient()
     const user = await getUsuarioActual(supabase)
-    if (!user) return { email: null, rolLabel: null }
+    if (!user) return { email: null, rolLabel: null, rol: null }
     const perfil = await getPerfilActual(supabase)
     return {
       email: user.email ?? null,
       rolLabel: perfil.data ? ROL_LABEL[perfil.data.rol] : 'Sin rol asignado',
+      rol: perfil.data?.rol ?? null,
     }
   } catch {
-    return { email: null, rolLabel: null }
+    return { email: null, rolLabel: null, rol: null }
   }
 }
+
+// El campo (operario) ve una navegación mínima: solo sus módulos operativos.
+const NAV_CAMPO = [
+  {
+    grupo: 'Campo',
+    links: [
+      { href: '/campo', label: 'Inicio' },
+      { href: '/integraciones/pedidos-materiales', label: 'Pedidos' },
+      { href: '/integraciones/herramientas', label: 'Herramientas' },
+      { href: '/integraciones/movimientos', label: 'Movimientos' },
+    ],
+  },
+] as const
 
 export default async function MainLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const { email, rolLabel } = await loadUsuario()
+  const { email, rolLabel, rol } = await loadUsuario()
+  const grupos = rol === 'campo' ? NAV_CAMPO : GRUPOS_NAV
 
   return (
     <div className="min-h-screen">
       <nav className="border-b bg-white" data-testid="nav-areas">
         <div className="flex flex-wrap items-start justify-between gap-3 p-3 text-sm">
           <div className="flex flex-wrap items-start gap-4">
-            {GRUPOS_NAV.map(({ grupo, links }) => (
+            {grupos.map(({ grupo, links }) => (
               <div key={grupo} className="flex flex-col gap-1">
                 <span className="text-[11px] font-semibold tracking-wide text-gray-400 uppercase">{grupo}</span>
                 <div className="flex flex-wrap gap-1">
