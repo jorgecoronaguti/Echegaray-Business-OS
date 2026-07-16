@@ -53,6 +53,29 @@ async function ping() {
   catch { $('status').classList.remove('on') }
 }
 
+// Indicador de gasto de API de HOY en el header (reusa /cost — 0 API, no dispara modelo).
+// Verde/ámbar/rojo según el % del tope diario. Clic = pide el detalle (respuesta 0-API).
+async function loadCost() {
+  const el = $('gasto'); if (!el) return
+  const { addr, token } = await getCfg()
+  if (!token) { el.classList.add('hidden'); return }
+  try {
+    const r = await fetch(`${addr}/cost`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(5000) })
+    const d = await r.json()
+    if (typeof d.dia_usd !== 'number') { el.classList.add('hidden'); return }
+    const cap = d.cap_diario_usd
+    // % REAL sin topear: si se pasó del tope, mostramos 477%, no un 100% que miente.
+    const pct = cap ? Math.round((d.dia_usd / cap) * 100) : null
+    el.textContent = `US$${d.dia_usd.toFixed(2)}${pct != null ? ` · ${pct}%` : ''}`
+    el.title = `Gasto de API hoy: US$${d.dia_usd.toFixed(2)}${cap ? ` de un tope de US$${cap} (${pct}% del tope)` : ''}.`
+      + (d.zero_api_pct != null ? ` ${d.zero_api_pct}% de las respuestas del chat salieron sin costo.` : '')
+      + ' Clic para el detalle.'
+    el.classList.remove('hidden', 'warn', 'alert')
+    if (pct != null && pct >= 80) el.classList.add('alert')
+    else if (pct != null && pct >= 50) el.classList.add('warn')
+  } catch { /* silencioso: sin conexión no molestamos */ }
+}
+
 // Llevar al dueño directo al archivo/carpeta pedido: abrimos el destino en una pestaña
 // nueva y enfocada (no pisamos la pestaña actual por si está trabajando en algo).
 async function openInTab(nav) {
@@ -160,6 +183,7 @@ async function send() {
     clearStopMode()
     $('chat').scrollTop = $('chat').scrollHeight
     loadPending() // una directiva puede haber dejado operaciones pendientes
+    loadCost() // el gasto de hoy pudo cambiar si esta directiva pagó modelo
     persistCurrent() // guarda la conversación para poder volver a ella
   }
 }
@@ -476,6 +500,14 @@ document.addEventListener('paste', (e) => {
     }
   }
 })
+// Clic en el gasto: pide el desglose al cerebro. "cuánto gasté de api" es una detección
+// 0-API (costSummary), así el propio indicador no cuesta nada.
+$('gasto').addEventListener('click', () => {
+  if (activeRun) return
+  showView('chat')
+  $('input').value = 'cuánto gasté de api hoy'
+  send()
+})
 $('gear').addEventListener('click', () => $('settings').classList.toggle('show'))
 $('chatsBtn').addEventListener('click', () => { $('chats').classList.toggle('show'); if ($('chats').classList.contains('show')) renderChatsList() })
 $('newchat').addEventListener('click', newChat)
@@ -504,5 +536,6 @@ $('gauth').addEventListener('click', async () => {
   try { $('ver').textContent = 'v' + chrome.runtime.getManifest().version } catch { /* noop */ }
   ping()
   loadPending() // pobla el badge de pendientes al abrir
+  loadCost() // muestra el gasto de hoy en el header
   checkVersion() // avisa si hay una versión más nueva publicada
 })()
