@@ -456,12 +456,20 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // chat-intents.mjs, testeada (chat-intents.test) para que este bug no regrese nunca más.
   const mailComposeIntent = isMailComposeIntent(directive, histText)
   const calendarWriteIntent = isCalendarWriteIntent(directive)
+  // Clasificación de dominio (0-API) TEMPRANA: una CONSULTA DE CRITERIO de dominio (finanzas,
+  // laboral, ingeniería…) se razona como ESE especialista y con sonnet; y NO debe ser secuestrada
+  // por una detección determinística de lectura (ej. "me conviene una obra que paga a 90 días…"
+  // lo agarraba la detección de cuadro económico y buscaba una obra "es 18%"). Por eso entra en
+  // la compuerta readBlocked de abajo.
+  const capabilities = classifyDirectiveMulti(directive)
+  const capability = capabilities[0] || 'general' // principal (para isBudgeting, telemetría)
+  const { persona: personaExperta, asesoria: asesoriaProfunda } = personaParaConsulta(capability, directive)
   // COMPUERTA ÚNICA de lectura: NINGUNA respuesta determinística 0-API (avance, caja, briefing,
   // cartera, IVA, cuadro, pedidos, agenda, mails…) debe dispararse cuando el dueño pide una
-  // ACCIÓN (editar doc, componer/enviar mail, agendar). Antes cada detección guardaba solo
-  // writeToDocIntent → un "redactá un mail sobre el AVANCE de obra" lo secuestraba la detección
-  // de avance. Este bloqueo cubre TODAS de una: es el fix sistémico del secuestro de acciones.
-  const readBlocked = writeToDocIntent || mailComposeIntent || calendarWriteIntent
+  // ACCIÓN (editar doc, componer/enviar mail, agendar) o una CONSULTA DE CRITERIO experta. Antes
+  // cada detección guardaba solo writeToDocIntent → un "redactá un mail sobre el AVANCE de obra"
+  // lo secuestraba la detección de avance. Este bloqueo cubre TODAS de una: fix sistémico.
+  const readBlocked = writeToDocIntent || mailComposeIntent || calendarWriteIntent || asesoriaProfunda
   // MODELO POR NIVELES (ahorro de API): sonnet (potente, caro) solo cuando hace falta
   // criterio real — escribir, interpretar un adjunto, o presupuestar; haiku (barato,
   // rápido) para consultas simples y de charla. Antes era sonnet-siempre y quemaba
@@ -478,12 +486,6 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // (reordenar, completar, rehacer, analizar a fondo) → sonnet, que lee y ACTÚA con las
   // tools de forma confiable. haiku propone/pregunta en vez de ejecutar (causa real de
   // "le pido que haga algo y no lo hace"). Vale el costo: la acción tiene que salir.
-  // Clasificación de dominio (0-API) ANTES de elegir modelo: una CONSULTA DE CRITERIO de un
-  // dominio experto (finanzas, laboral, ingeniería…) se razona como ESE especialista y con
-  // sonnet, no como asistente genérico con haiku. Es lo que hace que se sienta el cerebro.
-  const capabilities = classifyDirectiveMulti(directive)
-  const capability = capabilities[0] || 'general' // principal (para isBudgeting, telemetría)
-  const { persona: personaExperta, asesoria: asesoriaProfunda } = personaParaConsulta(capability, directive)
   let model = writeIntent || mailComposeIntent || calendarWriteIntent || att || budgetingKw || teachingIntent || researchLearnIntent || asesoriaProfunda || fast === false || fileId ? 'sonnet' : 'haiku'
   // TOPE DE GASTO (degrada, NUNCA bloquea): si el gasto de hoy pasó el umbral, un pedido
   // que iba a usar sonnet baja a haiku. La respuesta SIEMPRE llega — solo cambia el modelo.
