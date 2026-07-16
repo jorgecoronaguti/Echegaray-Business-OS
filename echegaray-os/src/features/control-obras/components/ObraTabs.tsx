@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { pedidoPendiente, type AvanceObra, type ObraDetalle } from '../services/controlObrasService'
 import type { CostosObra } from '../services/costosObraService'
 
-type Tab = 'avance' | 'costos' | 'herramientas' | 'pedidos' | 'movimientos'
+type Tab = 'economico' | 'avance' | 'costos' | 'herramientas' | 'pedidos' | 'movimientos'
 
 function fecha(f: string | null): string {
   if (!f) return '—'
@@ -17,8 +17,9 @@ function money(n: number): string {
 }
 
 export function ObraTabs({ detalle, avance, costos }: { detalle: ObraDetalle; avance: AvanceObra | null; costos: CostosObra }) {
-  const [tab, setTab] = useState<Tab>(avance?.estructurado ? 'avance' : 'herramientas')
-  const tabs: { id: Tab; label: string; count: number }[] = [
+  const [tab, setTab] = useState<Tab>('economico')
+  const tabs: { id: Tab; label: string; count?: number }[] = [
+    { id: 'economico', label: 'Económico' },
     { id: 'avance', label: 'Avance', count: avance?.estructurado ? avance.actividades : 0 },
     { id: 'costos', label: 'Costos', count: costos.comprobantes },
     { id: 'herramientas', label: 'Herramientas', count: detalle.herramientas.length },
@@ -38,14 +39,20 @@ export function ObraTabs({ detalle, avance, costos }: { detalle: ObraDetalle; av
             }`}
           >
             {t.label}
-            <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${tab === t.id ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500'}`}>
-              {t.count}
-            </span>
+            {t.count !== undefined && (
+              <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${tab === t.id ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                {t.count}
+              </span>
+            )}
           </button>
         ))}
       </div>
 
       <div className="divide-y divide-gray-100">
+        {tab === 'economico' && (
+          <EconomicoPanel avance={avance} costos={costos} pedidosPendientes={detalle.pedidos.filter((p) => pedidoPendiente(p.estado)).length} />
+        )}
+
         {tab === 'avance' && <AvancePanel avance={avance} />}
 
         {tab === 'costos' && <CostosPanel costos={costos} />}
@@ -180,6 +187,87 @@ function AvancePanel({ avance }: { avance: AvanceObra | null }) {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+function EconomicoPanel({
+  avance,
+  costos,
+  pedidosPendientes,
+}: {
+  avance: AvanceObra | null
+  costos: CostosObra
+  pedidosPendientes: number
+}) {
+  const avancePct = avance?.estructurado && avance.avance_promedio != null ? avance.avance_promedio : null
+  return (
+    <div>
+      <div className="grid grid-cols-1 gap-px bg-gray-100 sm:grid-cols-3">
+        <LineaEco
+          titulo="Presupuesto de contrato"
+          valor={null}
+          nota="Sin contrato cargado"
+          detalle="Se completa cuando se cargue el contrato de la obra."
+        />
+        <LineaEco
+          titulo="Comprometido"
+          valor={null}
+          nota={`${pedidosPendientes} pedido${pedidosPendientes === 1 ? '' : 's'} pendiente${pedidosPendientes === 1 ? '' : 's'}`}
+          detalle="Los pedidos de material aún no tienen monto; se valoriza al integrar precios."
+        />
+        <LineaEco
+          titulo="Ejecutado (costo real)"
+          valor={money(costos.total)}
+          nota={`${costos.comprobantes} comprobante${costos.comprobantes === 1 ? '' : 's'} de ARCA`}
+          detalle={costos.comprobantes === 0 ? 'Asigná comprobantes a esta obra para ver el costo real.' : 'Suma de comprobantes de ARCA atribuidos a esta obra.'}
+          fuerte
+        />
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
+        <div className="text-sm text-gray-600">
+          {avancePct != null ? (
+            <>
+              Avance físico <span className="font-semibold text-gray-900">{avancePct}%</span>. El cruce físico vs
+              económico (¿el % ejecutado acompaña al % de obra?) se activa cuando haya presupuesto de contrato.
+            </>
+          ) : (
+            <>El avance físico de esta obra todavía no está cargado en el tracker.</>
+          )}
+        </div>
+      </div>
+
+      <div className="border-t border-gray-100 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+        Para completar el cuadro económico falta cargar el <strong>contrato</strong> (monto, plazo, condiciones de
+        cobro) y valorizar los pedidos. Mientras tanto, solo el <strong>ejecutado</strong> es un número real; el resto
+        se muestra como pendiente, no se estima.
+      </div>
+    </div>
+  )
+}
+
+function LineaEco({
+  titulo,
+  valor,
+  nota,
+  detalle,
+  fuerte = false,
+}: {
+  titulo: string
+  valor: string | null
+  nota: string
+  detalle: string
+  fuerte?: boolean
+}) {
+  return (
+    <div className="bg-white px-4 py-4">
+      <div className="text-[11px] font-semibold tracking-wide text-gray-400 uppercase">{titulo}</div>
+      <div className={`mt-1 tabular-nums ${fuerte ? 'text-2xl font-bold text-gray-900' : 'text-lg font-semibold text-gray-400'}`}>
+        {valor ?? '—'}
+      </div>
+      <div className="text-xs font-medium text-gray-600">{nota}</div>
+      <div className="mt-1 text-[11px] text-gray-400">{detalle}</div>
     </div>
   )
 }
