@@ -22,7 +22,7 @@ export const ROL_LABEL: Record<Rol, string> = {
 
 // Rutas que el rol 'campo' (operario) PUEDE ver en la web. Todo lo demás (caja, reportes,
 // dirección…) queda fuera de su alcance. Se usa en el middleware y en el nav.
-export const CAMPO_RUTAS_PERMITIDAS = ['/integraciones/pedidos-materiales', '/integraciones/herramientas', '/integraciones/movimientos', '/campo']
+export const CAMPO_RUTAS_PERMITIDAS = ['/integraciones/pedidos-materiales', '/integraciones/herramientas', '/integraciones/movimientos', '/campo', '/descargas']
 export function esRutaCampoPermitida(pathname: string): boolean {
   return CAMPO_RUTAS_PERMITIDAS.some((r) => pathname === r || pathname.startsWith(r + '/'))
 }

@@ -34,6 +34,7 @@ const GRUPOS_NAV = [
       { href: '/integraciones/pedidos-materiales', label: 'Pedidos de Materiales' },
       { href: '/integraciones/herramientas', label: 'Herramientas' },
       { href: '/integraciones/movimientos', label: 'Movimientos' },
+      { href: '/descargas', label: 'Descargar extensión' },
     ],
   },
 ] as const
@@ -63,6 +64,7 @@ const NAV_CAMPO = [
       { href: '/integraciones/pedidos-materiales', label: 'Pedidos' },
       { href: '/integraciones/herramientas', label: 'Herramientas' },
       { href: '/integraciones/movimientos', label: 'Movimientos' },
+      { href: '/descargas', label: 'Descargar extensión' },
     ],
   },
 ] as const
