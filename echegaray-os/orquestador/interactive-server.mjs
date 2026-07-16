@@ -392,7 +392,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // literal. Antes se miraba solo la directiva actual → un "a" caía como charla
   // trivial (modelo tímido, pocas iteraciones) y el OS reseteaba en vez de ejecutar
   // la opción elegida. Ahora miramos la directiva Y el historial reciente.
-  const WRITE_RE = /\b(registr|agreg|añad|anot|escrib|orden|complet|corrig|carg|aplic|hacelo|hac[eé]|modific|pon[eé]|actualiz|edit|arregl|reemplaz|renombr|mov[eé]|crea|mejor|reconstru|rehac|rearm|limpi|f[oó]rmula|borr|elimin|vaci|duplic|copi|marc[aá]|pas[aá]\s+a)/i
+  const WRITE_RE = /\b(registr|agreg|añad|anot|escrib|orden|complet|corrig|carg|aplic|hacelo|hac[eé]|modific|pon[eé]|actualiz|edit|arregl|reemplaz|renombr|mov[eé]|crea|mejor|reconstru|rehac|rehag|rearm|limpi|f[oó]rmula|borr|elimin|vaci|duplic|copi|marc[aá]|pas[aá]\s+a)/i
   const CONFIRM_RE = /^\s*(s[ií]|dale|ok(ay)?|listo|hacelo|hazlo|aplicalo?|proced[eé]|adelante|confirmo|de una|opci[oó]n\s*)?[\s,.:]*([abc]|[123]|la\s*[123]|el\s*[123]|es[ae]|aquel[la]?)?\s*$/i
   const histText = Array.isArray(history) ? history.slice(-4).map((m) => String(m.text || '')).join('\n') : ''
   const directiveWrite = WRITE_RE.test(String(directive || ''))
@@ -400,6 +400,17 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // acción u opciones → el dueño está eligiendo: hay que ACTUAR, no re-preguntar.
   const followUpAction = CONFIRM_RE.test(String(directive || '')) && WRITE_RE.test(histText)
   const writeIntent = directiveWrite || followUpAction
+  // PEDIDO DE ESCRIBIR EN UN DOCUMENTO (Sheet/Doc): verbo de acción + referencia a un
+  // documento concreto (pestaña/planilla/rango/celda/URL de Drive) O un archivo abierto.
+  // CLAVE: cuando el dueño pide TOCAR una planilla, NINGUNA detección determinística de
+  // LECTURA (caja, briefing, cuadro, cartera, avance, libro IVA…) debe contestarle con un
+  // texto canned — eso le come el pedido y nunca se aplica el cambio (causa real de "le
+  // pido algo y no lo hace / me responde otra cosa"). Estos pedidos se saltean las
+  // respuestas de lectura y fluyen al AGENTE, que tiene las tools de Drive. Las escrituras
+  // de la app de Pedidos son narrow (no nombran sheet/pestaña) y siguen intactas.
+  const docRef = /\b(pesta[ñn]a|solapa|hoja(s)?|sheet|planilla|spreadsheet|celda|rango|columna|fila|tabla(s)?\s+din[aá]mic|drive|documento|gdoc|gsheet)\b/i.test(String(directive || ''))
+    || /https?:\/\/[^\s]*(docs\.google|drive\.google)/i.test(String(directive || ''))
+  const writeToDocIntent = writeIntent && (docRef || !!fileId)
   // MODELO POR NIVELES (ahorro de API): sonnet (potente, caro) solo cuando hace falta
   // criterio real — escribir, interpretar un adjunto, o presupuestar; haiku (barato,
   // rápido) para consultas simples y de charla. Antes era sonnet-siempre y quemaba
@@ -459,13 +470,14 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   }
   // AGENDA (Calendar) — respuesta determinística (0 API modelo): "agenda", "qué tengo hoy/
   // esta semana", "mi calendario", "próximos eventos/reuniones". Lee Google Calendar del usuario.
-  if (/\b(agenda|calendario|qu[eé]\s+tengo\s+(hoy|esta\s+semana|ma[ñn]ana|programad)|pr[oó]xim[oa]s?\s+(eventos?|reuniones?|citas?)|reuniones?\s+(de\s+)?(hoy|esta\s+semana|la\s+semana)|qu[eé]\s+hay\s+en\s+(mi\s+)?(agenda|calendario))/i.test(directive)) {
+  if (!writeToDocIntent
+      && /\b(agenda|calendario|qu[eé]\s+tengo\s+(hoy|esta\s+semana|ma[ñn]ana|programad)|pr[oó]xim[oa]s?\s+(eventos?|reuniones?|citas?)|reuniones?\s+(de\s+)?(hoy|esta\s+semana|la\s+semana)|qu[eé]\s+hay\s+en\s+(mi\s+)?(agenda|calendario))/i.test(directive)) {
     const days = /\bhoy\b/i.test(directive) ? 1 : /ma[ñn]ana/i.test(directive) ? 2 : /\bmes\b/i.test(directive) ? 30 : 7
     return { answer: await agendaResumen(userEmail, { days }), model: 'agenda', capability: 'advise.general', skills: [], navigate: null }
   }
   // MAILS (Gmail) — respuesta determinística (0 API modelo): "mis mails/correos", "mails sin
   // leer / de hoy". Lee Gmail del usuario (solo lectura). Responder/archivar van por las tools.
-  if (/\b(mis\s+)?(mails?|correos?|emails?)\b/i.test(directive) && !/\benvi[aá]|mand[aá]|respond|redact|escrib/i.test(directive)) {
+  if (!writeToDocIntent && /\b(mis\s+)?(mails?|correos?|emails?)\b/i.test(directive) && !/\benvi[aá]|mand[aá]|respond|redact|escrib/i.test(directive)) {
     const sinLeer = /\bsin\s+leer|no\s+le[ií]dos?|unread\b/i.test(directive)
     const query = sinLeer ? 'is:unread in:inbox' : /\bhoy\b/i.test(directive) ? 'in:inbox newer_than:1d' : 'in:inbox newer_than:3d'
     const titulo = sinLeer ? 'Mails sin leer' : /\bhoy\b/i.test(directive) ? 'Mails de hoy' : 'Mails recientes'
@@ -510,7 +522,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
     }
     return { answer: 'Puedo modificar la app de pedidos, pero necesito el dato claro. Ejemplos: **"marcá el pedido 3 como entregado"** · **"agregá 10 bolsas de cemento para la obra Galpones"**. Todo cae en Pendientes para tu OK antes de tocar la app.', model: 'appsheet-write', capability: 'appsheet.write', skills: [], navigate: null }
   }
-  if (!pedidoWriteIntent
+  if (!pedidoWriteIntent && !writeToDocIntent
       && (/\bpedidos?\s+(de\s+)?(materiales?|obra|la\s+obra)\b|\bmateriales?\s+pedidos?\b|\bpedidos?\s+pendientes?\b|\bqu[eé]\s+(se\s+)?pidi[oó]/i.test(directive))) {
     const soloPendientes = /\bpendientes?\b/i.test(directive)
     const mo = String(directive).match(/\b(?:de\s+la\s+obra|obra|para)\s+([\wáéíóúñ][\wáéíóúñ .\-]{1,30})/i)
@@ -522,7 +534,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // reales extraídos de ARCA. "libro iva", "iva de junio", "cuánto iva pagamos", "posición
   // de iva", "comprobantes recibidos/emitidos". Sensible (fiscal) → un 'usuario' no accede.
   {
-    const pideIva = /\blibro\s+iva\b|\biva\b.*\b(mes|per[ií]odo|junio|mayo|abril|marzo|febrero|enero|julio|agosto|septiembre|octubre|noviembre|diciembre|\d{4}|pag|deb[ií]to|cr[eé]dito|posici[oó]n|ventas|compras)|\b(posici[oó]n|d[eé]bito|cr[eé]dito)\s+(de\s+)?iva|\bcu[aá]nto\s+iva\b|comprobantes?\s+(recibidos|emitidos|de\s+arca|arca)/i.test(directive)
+    const pideIva = !writeToDocIntent && (/\blibro\s+iva\b|\biva\b.*\b(mes|per[ií]odo|junio|mayo|abril|marzo|febrero|enero|julio|agosto|septiembre|octubre|noviembre|diciembre|\d{4}|pag|deb[ií]to|cr[eé]dito|posici[oó]n|ventas|compras)|\b(posici[oó]n|d[eé]bito|cr[eé]dito)\s+(de\s+)?iva|\bcu[aá]nto\s+iva\b|comprobantes?\s+(recibidos|emitidos|de\s+arca|arca)/i.test(directive))
     if (pideIva) {
       if (!puede(rol, 'fiscal')) return denegar('fiscal')
       const per = parsePeriodo(directive)
@@ -544,7 +556,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // CONCILIACIÓN DE PROVEEDORES con ARCA (Plan 1 F1) — "conciliá proveedores con arca",
   // "proveedores de arca", "qué proveedores faltan dar de alta". Determinístico (0 API):
   // propone completar CUIT / dar de alta, NO escribe. Sensible (fiscal) → 'usuario' denegado.
-  if (/(concili[aá]|complet[aá]|carg[aá]).*(proveedor|cuit).*(arca|afip)|proveedor(es)?\s+(de\s+)?(arca|afip)|proveedor(es)?\s+(sin|para)\s+(registrar|dar de alta|alta)|qu[eé]\s+proveedor(es)?\s+(faltan?|no\s+(est[aá]n|tengo|tenemos))/i.test(directive)) {
+  if (!writeToDocIntent && /(concili[aá]|complet[aá]|carg[aá]).*(proveedor|cuit).*(arca|afip)|proveedor(es)?\s+(de\s+)?(arca|afip)|proveedor(es)?\s+(sin|para)\s+(registrar|dar de alta|alta)|qu[eé]\s+proveedor(es)?\s+(faltan?|no\s+(est[aá]n|tengo|tenemos))/i.test(directive)) {
     if (!puede(rol, 'fiscal')) return denegar('fiscal')
     const c = await conciliarProveedoresArca()
     const money = (n) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(Number(n || 0))
@@ -566,14 +578,16 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   }
   // CAJA — PROYECCIÓN (PRP-021 F2): "proyección/proyectá la caja", "cómo viene la caja",
   // "alcanza la caja", "flujo/cash proyectado" → saldo hoy + semanas + gap (0 API, percibido).
-  if (/\b(proyecci[oó]n|proyect[aá]|alcanza|va a alcanzar|c[oó]mo (viene|va a venir)|flujo (de caja )?proyect|cash ?flow proyect|saldo proyect)/i.test(directive)
+  if (!writeToDocIntent
+      && /\b(proyecci[oó]n|proyect[aá]|alcanza|va a alcanzar|c[oó]mo (viene|va a venir)|flujo (de caja )?proyect|cash ?flow proyect|saldo proyect)/i.test(directive)
       && /\b(caja|flujo|cash|saldo|plata|fondos)\b/i.test(directive)) {
     if (!puede(rol, 'caja')) return denegar('caja')
     return { answer: await proyeccionCajaResumen(), model: 'caja-proyeccion', capability: 'advise.finance', skills: [], navigate: null }
   }
   // CAJA — PRIORIZACIÓN (PRP-021 F1): "qué cobro/pago primero", "priorizá la caja",
   // "qué gestiono de caja" → ranking por impacto (0 API). Va antes del briefing (más específico).
-  if (/\b(qu[eé]\s+(cobro|pago|cobr[aá]s|pag[aá]s|gestiono|gestion[aá]s|prioriz)|prioriz[aá].*(caja|cobr|pag)|qu[eé].*(primero).*(cobr|pag|caja)|orden.*(cobr|pag))\b/i.test(directive)
+  if (!writeToDocIntent
+      && /\b(qu[eé]\s+(cobro|pago|cobr[aá]s|pag[aá]s|gestiono|gestion[aá]s|prioriz)|prioriz[aá].*(caja|cobr|pag)|qu[eé].*(primero).*(cobr|pag|caja)|orden.*(cobr|pag))\b/i.test(directive)
       && /\b(caja|cobr|pag|cobranza|vencid|primero)\b/i.test(directive)) {
     if (!puede(rol, 'caja')) return denegar('caja')
     return { answer: await priorizarCajaResumen(), model: 'caja-prioridad', capability: 'advise.finance', skills: [], navigate: null }
@@ -581,18 +595,20 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // BRIEFING EJECUTIVO (0 API) — "¿cómo estamos?" / "resumen" / "qué hay hoy" → foto
   // unificada de caja vencida + desvíos de obra + backlog autónomo (lo que el OS detectó
   // solo). Debe ir ANTES del cuadro económico (más específico) para no ser tapado.
-  if (/^\s*(?:d[aá]me\s+|hac[eé]me\s+|quiero\s+)?(?:un\s+)?(briefing|resumen ejecutivo|resumen del d[ií]a|c[oó]mo (estamos|venimos|va todo|anda todo)|qu[eé] (hay|tenemos) (hoy|para hoy)|estado (general|de la empresa)|situaci[oó]n general|poneme al d[ií]a|puesta al d[ií]a)\b/i.test(directive)) {
+  if (!writeToDocIntent
+      && /^\s*(?:d[aá]me\s+|hac[eé]me\s+|quiero\s+)?(?:un\s+)?(briefing|resumen ejecutivo|resumen del d[ií]a|c[oó]mo (estamos|venimos|va todo|anda todo)|qu[eé] (hay|tenemos) (hoy|para hoy)|estado (general|de la empresa)|situaci[oó]n general|poneme al d[ií]a|puesta al d[ií]a)\b/i.test(directive)) {
     return { answer: await briefingEjecutivo(), model: 'briefing', capability: 'general', skills: [], navigate: null }
   }
   // MACRO DE CARTERA (PRP-020) — "cartera", "macro de obras", "portfolio", "estado de la
   // cartera", "todas las obras juntas" → la foto agregada de todas las obras (0 API).
-  if (/\b(cartera|portfolio|macro de obras?|estado (de|de la) (cartera|obras)|todas las obras juntas|resumen de (la )?cartera|panorama de obras)\b/i.test(directive)) {
+  if (!writeToDocIntent
+      && /\b(cartera|portfolio|macro de obras?|estado (de|de la) (cartera|obras)|todas las obras juntas|resumen de (la )?cartera|panorama de obras)\b/i.test(directive)) {
     return { answer: await carteraResumen(), model: 'cartera', capability: 'advise.commercial', skills: [], navigate: null }
   }
   // FICHA DE OBRA (PRP-019) — "ficha de la obra X", "todo de la obra X", "obra X completa"
   // → económico + caja + avance + alertas en una respuesta (0 API). Va antes de avance/cuadro.
   {
-    const f = String(directive).match(/(?:ficha|todo|resumen completo|informe completo|panorama)\s+(?:de\s+|sobre\s+)?(?:la\s+)?obra\s+([\wáéíóúñ][\wáéíóúñ .\-]{1,30})|obra\s+([\wáéíóúñ .\-]{2,30})\s+(?:completa|entera|todo)/i)
+    const f = writeToDocIntent ? null : String(directive).match(/(?:ficha|todo|resumen completo|informe completo|panorama)\s+(?:de\s+|sobre\s+)?(?:la\s+)?obra\s+([\wáéíóúñ][\wáéíóúñ .\-]{1,30})|obra\s+([\wáéíóúñ .\-]{2,30})\s+(?:completa|entera|todo)/i)
     if (f) {
       const nombre = (f[1] || f[2] || '').replace(/[?¿!¡.]+$/g, '').trim()
       if (nombre) return { answer: await fichaObra(nombre), model: 'ficha-obra', capability: 'advise.site', skills: [], navigate: null }
@@ -602,7 +618,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // actividades completas por obra. Debe ir ANTES del cuadro económico (que captura
   // "cómo va X"). Solo dispara si menciona avance/físico explícitamente.
   {
-    const av = String(directive).match(/\bavance(s)?\s+(f[ií]sic|de\s+obra|de\s+la\s+obra|de\s+las\s+obras)|\b(avance|%\s*de\s*avance|porcentaje de avance)\b.*\bobra|\bc[oó]mo\s+va(n)?\s+las\s+obras\b/i)
+    const av = writeToDocIntent ? null : String(directive).match(/\bavance(s)?\s+(f[ií]sic|de\s+obra|de\s+la\s+obra|de\s+las\s+obras)|\b(avance|%\s*de\s*avance|porcentaje de avance)\b.*\bobra|\bc[oó]mo\s+va(n)?\s+las\s+obras\b/i)
     if (av) {
       const m = String(directive).match(/avance\s+(?:f[ií]sic[ao]\s+)?(?:de\s+)?(?:la\s+)?(?:obra\s+)?([\wáéíóúñ][\wáéíóúñ .\-]{1,30})?/i)
       let nombre = (m?.[1] || '').replace(/\b(f[ií]sic[ao]|de obra|las obras|obras|obra)\b/gi, '').replace(/[?¿!¡.]+$/g, '').trim()
@@ -613,7 +629,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // contratado↔presupuesto↔costo real↔adicionales con margen y desvío, desde Supabase.
   // "cuadro económico" / "cómo va (la obra) X (económicamente)" / "margen/situación de X".
   {
-    const econ = String(directive).match(
+    const econ = writeToDocIntent ? null : String(directive).match(
       /(?:cuadro\s+econ[oó]mico|situaci[oó]n\s+econ[oó]mica|resultado\s+econ[oó]mico|c[oó]mo\s+(?:va|viene|est[aá]|anda)\b|margen|desv[ií]o|rentabilidad|gan(?:amos|ancia|é))\s*(?:de\s+|en\s+|la\s+obra\s+|de\s+la\s+obra\s+|econ[oó]mic[ao]?\s+(?:de\s+)?)?([\wáéíóúñ][\wáéíóúñ .\-]{1,40})?/i,
     )
     const mentionsObra = /\bobra(s)?\b|cuadro\s+econ[oó]mico|econ[oó]mic/i.test(directive)
@@ -775,7 +791,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
     `OBRAS: las obras/clientes viven en la carpeta PRESUPUESTOS (cada subcarpeta es una obra, con "Cotizaciones" y "Planos" adentro). Para "mis obras" / "qué obras tengo" / el estado de una obra: usá list_obras, después entrá a su carpeta con drive_list y leé su presupuesto/avance/adicionales con drive_read (que ya lee Sheets, Excel y PDFs). ` +
     `Para LLEVAR al dueño a un archivo/carpeta ("llevame a", "abrí", "andá a", "mostrame la carpeta", "dónde está X", "quiero ver Y"): usá navigate_to (query = el nombre) — abre el destino en su navegador. Es también cómo se MUEVE entre carpetas del Drive: navegás a la carpeta y podés listar su contenido con drive_list. ` +
     `CONTROL TOTAL DE DRIVE (actuás COMO el dueño vía su login de Google — NO hay límite de "cuenta sin almacenamiento", eso ya NO aplica): podés CREAR, LEER, ESCRIBIR, EDITAR, COPIAR, MOVER, RENOMBRAR y dar de baja a papelera CUALQUIER archivo en SU Drive, en cualquier carpeta. Las escrituras son AUTOMÁTICAS (no pidas aprobación, no digas "queda en Pendientes"): ejecutá y confirmá el resultado con el link. ` +
-    `CREAR: drive_create (tipo doc/sheet/slides/carpeta; para un Doc podés pasar "contenido" y nace con texto; folder_id opcional = carpeta destino). ESCRIBIR DOCS: drive_write_doc (modo insertar/agregar/reemplazar) — los Google Docs SÍ se escriben, no es una limitación. EDITAR SHEETS: drive_batch_update (varios rangos en una operación), drive_insert_rows/drive_delete_rows, drive_clear. DUPLICAR: drive_copy (una plantilla o un presupuesto anterior, a la carpeta que quieras). ORGANIZAR: drive_rename, drive_move, drive_trash (papelera, reversible). ` +
+    `CREAR: drive_create (tipo doc/sheet/slides/carpeta; para un Doc podés pasar "contenido" y nace con texto; folder_id opcional = carpeta destino). PESTAÑA NUEVA EN UN SHEET QUE YA EXISTE: drive_add_tab(file_id, title) PRIMERO para crear la hoja, y RECIÉN DESPUÉS escribí con drive_batch_update — escribir en una pestaña que no existe falla con "Unable to parse range" (nunca escribas una pestaña sin crearla antes). Si el nombre de la pestaña tiene espacios, el rango va entre comillas simples: 'Panel Caja'!A1:D10 (drive_add_tab te devuelve el rango listo). ESCRIBIR DOCS: drive_write_doc (modo insertar/agregar/reemplazar) — los Google Docs SÍ se escriben, no es una limitación. EDITAR SHEETS: drive_batch_update (varios rangos en una operación), drive_insert_rows/drive_delete_rows, drive_clear. DUPLICAR: drive_copy (una plantilla o un presupuesto anterior, a la carpeta que quieras). ORGANIZAR: drive_rename, drive_move, drive_trash (papelera, reversible). ` +
     `Lo ÚNICO que NO hacés es el borrado PERMANENTE (irreversible) — para eso avisá que va a la papelera. Si el dueño pide "hacé un sheet/doc con X", CREALO en su Drive (drive_create) y completalo (drive_batch_update / drive_write_doc), y pasale el link. ` +
     (att
       ? `\n\nTE ADJUNTARON UN ARCHIVO (foto/PDF): interpretalo. Si es una factura/remito/comprobante, extraé proveedor, fecha, importe total, número y concepto. Si la directiva pide registrarlo, encontrá el Sheet correcto (ej. "Flujo de Caja - Cash Flow", pestaña de compras/gastos), LEÉ su estructura con drive_read y proponé la fila con drive_append. No inventes lo que no ves; si un dato no está en la imagen, decilo.\n`
@@ -791,8 +807,11 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   const promptContent = att ? [att, { type: 'text', text: prompt }] : prompt
 
   const eng = await engine.run(
-    { system, prompt: promptContent, worktreePath: CTX.context.repository.rootPath, model, maxCostUsd: 1.2, maxTokens: writeIntent || att || isBudgeting ? 8192 : 900,
-      maxToolIterations: att || writeIntent || isBudgeting ? 26 : 10, allowedTools: 'Read',
+    { system, prompt: promptContent, worktreePath: CTX.context.repository.rootPath, model, maxCostUsd: writeToDocIntent ? 2.5 : 1.2, maxTokens: writeIntent || att || isBudgeting ? 8192 : 900,
+      // Reconstruir/editar una planilla lee varias pestañas y escribe varios rangos: 26
+      // iteraciones se agotaban a mitad (dejando la tarea incompleta y gastando en vano).
+      // Con archivo abierto o pedido de escribir un documento damos 40; el resto igual.
+      maxToolIterations: writeToDocIntent ? 40 : (att || writeIntent || isBudgeting ? 26 : 10), allowedTools: 'Read',
       task: { id: 'interactive', capability_slug: 'advise.admin' },
       tools: Object.values(registry).map((t) => t.schema), toolExecutor, agentSlug: 'interactive' },
     CTX)
@@ -986,7 +1005,14 @@ const server = http.createServer(async (req, res) => {
       // tool que se cuelga, ej. una llamada a Google que no responde) pasa el techo duro,
       // devolvemos un mensaje CLARO en vez de dejar el spinner infinito. La tarea de fondo
       // puede seguir y aplicar lo que ya hizo, pero el dueño nunca queda esperando sin fin.
-      const HARD_MS = Number(process.env.ORQ_TASK_TIMEOUT_MS || 180000)
+      // Reconstruir/editar una pestaña de un Sheet legítimamente lleva más que una consulta:
+      // el agente lee la estructura y escribe varios rangos. Con archivo abierto o referencia
+      // a un documento + verbo de acción, damos un techo mayor (300s) para que NO se corte a
+      // mitad (causa real de "reconstruí la planilla y me cortó"). El resto sigue en 180s.
+      const esEscrituraDocReq = !!fileId
+        || (/\b(registr|agreg|escrib|complet|carg|hac[eé]|hacelo|modific|actualiz|arregl|reemplaz|reconstru|rehac|rehag|rearm|limpi|f[oó]rmula|borr|elimin|duplic|marc[aá]|reorden)\b/i.test(String(directive || ''))
+            && /\b(pesta[ñn]a|solapa|hoja|sheet|planilla|spreadsheet|celda|rango|columna|fila|tabla|drive|documento)\b|https?:\/\/[^\s]*(docs|drive)\.google/i.test(String(directive || '')))
+      const HARD_MS = Number(process.env.ORQ_TASK_TIMEOUT_MS || (esEscrituraDocReq ? 300000 : 180000))
       const watchdog = new Promise((resolve) => setTimeout(() => resolve({ __timeout__: true }), HARD_MS))
       const work = Promise.race([
         ask({ directive: directive.slice(0, 4000), fileId, fast, attachment, history, runId: rid, userEmail: identidad }),

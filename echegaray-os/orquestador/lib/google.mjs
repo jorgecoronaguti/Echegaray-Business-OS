@@ -131,13 +131,28 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
   /** POST/PUT/PATCH con cuerpo JSON. Devuelve el JSON de respuesta. Error CLARO con
    *  el status y el cuerpo (para distinguir p.ej. 403 sin permiso de edición sobre
    *  el archivo destino — el Gotcha del Service Account). */
+  // Reintento con backoff ante límites transitorios de Google: 429 (Quota exceeded —
+  // "Read requests per minute per user", que salta cuando el agente lee muchos rangos
+  // seguidos al reconstruir una planilla) y 5xx. Sin esto, una ráfaga de lecturas rompe
+  // toda la tarea a mitad. Hasta 4 intentos, espera creciente (0.6s, 1.4s, 3s, 6s).
+  async function withRetry(doer) {
+    const esperas = [600, 1400, 3000, 6000]
+    for (let intento = 0; ; intento++) {
+      const res = await doer()
+      if (res.ok || res.status === 204) return res
+      const transitorio = res.status === 429 || (res.status >= 500 && res.status < 600)
+      if (!transitorio || intento >= esperas.length) return res
+      await new Promise((r) => setTimeout(r, esperas[intento]))
+    }
+  }
+
   async function apiSend(url, method, body) {
     const token = await accessToken()
-    const res = await doFetch(url, {
+    const res = await withRetry(() => doFetch(url, {
       method,
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
-    })
+    }))
     if (!res.ok) {
       const text = String(await res.text()).slice(0, 300)
       const err = new Error(`google api ${res.status}: ${text}`)
@@ -149,7 +164,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
 
   async function apiGet(url) {
     const token = await accessToken()
-    const res = await doFetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    const res = await withRetry(() => doFetch(url, { headers: { Authorization: `Bearer ${token}` } }))
     if (!res.ok) {
       const body = String(await res.text()).slice(0, 200)
       const err = new Error(`google api ${res.status}: ${body}`)

@@ -295,6 +295,38 @@ export function driveWriteTools(google) {
         return { ok: true, cleared_range: r.clearedRange ?? input.range }
       },
     },
+    'drive.addtab': {
+      capability: 'drive.write',
+      account: 'ecsas',
+      schema: {
+        name: 'drive_add_tab',
+        description:
+          'Crea una PESTAÑA (hoja) NUEVA dentro de un Google Sheet que YA EXISTE (no crea un archivo nuevo — para eso está drive_create). USALO ANTES de escribir en una pestaña que todavía no existe: primero drive_add_tab, y RECIÉN DESPUÉS drive_batch_update/drive_update sobre esa pestaña. Sin esto, escribir en una pestaña inexistente falla con "Unable to parse range". Pasá file_id y title. Opcional index (0 = primera; ej. 1 la deja al lado de la primera). Si el nombre tiene espacios, al escribir después el rango va entre comillas simples (ej. \'Panel Caja\'!A1:D1) — la tool te devuelve ese rango listo en "rango_para_escribir". Si ya existe una pestaña con ese nombre NO la duplica. REQUIERE aprobación.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            file_id: { type: 'string', description: 'ID del Google Sheet existente' },
+            title: { type: 'string', description: 'nombre de la pestaña nueva' },
+            index: { type: 'number', description: 'posición opcional (0 = primera pestaña); si no, va al final' },
+          },
+          required: ['file_id', 'title'],
+        },
+      },
+      async run(input) {
+        if (!input?.file_id || !input?.title) return { error: 'faltan file_id o title' }
+        const existentes = await google.getSheetMeta(input.file_id)
+        const ya = existentes.find((s) => s.title === input.title)
+        if (ya) {
+          const rango = /\s/.test(input.title) ? `'${input.title}'!A1` : `${input.title}!A1`
+          return { ok: true, ya_existia: true, title: input.title, sheet_id: ya.sheetId, rango_para_escribir: rango, nota: 'la pestaña ya existía; no se duplicó (escribí directo con drive_batch_update)' }
+        }
+        const props = { title: input.title, ...(Number.isInteger(input?.index) ? { index: input.index } : {}) }
+        const r = await google.spreadsheetBatchUpdate(input.file_id, [{ addSheet: { properties: props } }])
+        const created = r?.replies?.[0]?.addSheet?.properties
+        const rango = /\s/.test(input.title) ? `'${input.title}'!A1` : `${input.title}!A1`
+        return { ok: true, title: input.title, sheet_id: created?.sheetId ?? null, rango_para_escribir: rango }
+      },
+    },
     'drive.copy': {
       capability: 'drive.write',
       account: 'ecsas',
