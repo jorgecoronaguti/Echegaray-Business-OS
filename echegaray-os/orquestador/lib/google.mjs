@@ -298,6 +298,14 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       const j = await apiGet(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&pageSize=10`)
       return j.files || []
     },
+    /** Metadata liviana de un archivo por id (existe? cómo se llama?). Lanza si NO existe (404).
+     *  Para VALIDAR un adjunto antes de encolar un mail — así el OS no afirma haber adjuntado
+     *  un archivo inexistente. */
+    async fileMeta(fileId) {
+      const j = await apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,trashed&supportsAllDrives=true`)
+      if (!j || !j.id || j.trashed) throw new Error(`archivo no encontrado: ${fileId}`)
+      return { id: j.id, name: j.name, mimeType: j.mimeType }
+    },
     // ---- PRP-024: GMAIL (lectura) — requiere delegation + impersonación activa ----
     /** Busca hilos/mensajes por query estilo Gmail (ej. "from:proveedor factura vencida").
      *  Devuelve [{id, from, subject, date, snippet}]. Vacío si no hay o si falta acceso. */

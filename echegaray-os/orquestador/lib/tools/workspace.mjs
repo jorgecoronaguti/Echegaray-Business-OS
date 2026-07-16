@@ -21,6 +21,18 @@ export function workspaceTools({ google } = {}) {
     if (!google) throw new Error('unauthorized_client: sin cuenta Google conectada')
     return google
   }
+  // Valida que TODO adjunto exista en Drive ANTES de encolar/enviar. Evita que el OS afirme
+  // haber adjuntado un archivo inexistente (honestidad). Devuelve {error} si falta alguno.
+  const validarAdjuntos = async (input) => {
+    const ids = input?.adjuntos
+    if (!Array.isArray(ids) || !ids.length) return null
+    for (const id of ids) {
+      try { await ws().fileMeta(String(id)) } catch {
+        return { error: `No pude adjuntar: no existe en tu Drive un archivo con id "${id}". Buscalo con drive_find y pasá el file_id EXACTO que devuelve. Si no aparece, NO digas que lo adjuntaste: pedile al dueño el nombre exacto del archivo. Nunca afirmes un adjunto sin verificarlo.` }
+      }
+    }
+    return null
+  }
   return {
     'gmail.search': {
       capability: 'drive.read',
@@ -66,6 +78,7 @@ export function workspaceTools({ google } = {}) {
     // ───────── ESCRITURA ─────────
     // AUTO (reversible/interno): borrador, archivar, etiquetar.
     'mail.draft': {
+      preflight: validarAdjuntos,
       capability: 'mail.draft', account: 'ecsas',
       schema: {
         name: 'gmail_borrador',
@@ -91,6 +104,7 @@ export function workspaceTools({ google } = {}) {
     },
     // APROBACIÓN (irreversible/externo): enviar, papelera, eventos.
     'mail.send': {
+      preflight: validarAdjuntos,
       capability: 'mail.send', account: 'ecsas',
       schema: {
         name: 'gmail_enviar',
@@ -240,6 +254,7 @@ export function workspaceTools({ google } = {}) {
       },
     },
     'mail.forward': {
+      preflight: validarAdjuntos,
       capability: 'mail.send', account: 'ecsas',
       schema: {
         name: 'gmail_reenviar',

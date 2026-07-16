@@ -24,6 +24,18 @@ export function makeToolExecutor({ decide, tools, principalId, enqueue, logger }
     const entry = Object.values(tools).find((t) => t.schema?.name === name) || tools[name]
     if (!entry) return { error: `tool desconocida: ${name}` }
 
+    // PRE-FLIGHT (antes de decidir auto/aprobación): valida precondiciones que NO deben
+    // asumirse cumplidas — ej. que un adjunto exista de verdad. Si falla, se devuelve el error
+    // y NO se encola/ejecuta: así el OS nunca afirma haber hecho algo que no pudo (honestidad).
+    if (typeof entry.preflight === 'function') {
+      try {
+        const pf = await entry.preflight(input ?? {})
+        if (pf && pf.error) return pf
+      } catch (err) {
+        return { error: String(err?.message ?? err).slice(0, 300) }
+      }
+    }
+
     let dispo
     try {
       dispo = await decide(entry.capability, principalId)

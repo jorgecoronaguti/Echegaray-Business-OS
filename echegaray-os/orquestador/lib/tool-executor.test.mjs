@@ -56,6 +56,28 @@ async function main() {
   const r6 = await exec3('drive_write', {}, {})
   check('E sin cola -> denied', r6.denied === true)
 
+  // PRE-FLIGHT (honestidad): si la precondición falla (ej. adjunto inexistente), NO se ejecuta
+  // NI se encola, y se devuelve el error — así el OS no puede afirmar haber adjuntado algo falso.
+  {
+    let corrio = false
+    const encoladas = []
+    const toolsPF = {
+      'mail.send': {
+        capability: 'mail.send', schema: { name: 'gmail_enviar' },
+        preflight: async (input) => (input?.adjuntos?.length ? { error: 'no existe el archivo X' } : null),
+        run: async () => { corrio = true; return { ok: true } },
+      },
+    }
+    const execPF = makeToolExecutor({ decide: async () => 'requires_approval', tools: toolsPF, principalId: 'x', enqueue: async (op) => { encoladas.push(op); return 'op_pf' } })
+    const rPF = await execPF('gmail_enviar', { to: 'a@b.com', body: 'x', adjuntos: ['fantasma'] }, {})
+    check('preflight falla -> devuelve error', rPF.error && /no existe el archivo/.test(rPF.error))
+    check('preflight falla -> NO encoló', encoladas.length === 0)
+    check('preflight falla -> NO ejecutó', corrio === false)
+    // sin adjuntos, preflight pasa y encola normal
+    const rOK = await execPF('gmail_enviar', { to: 'a@b.com', body: 'x' }, {})
+    check('preflight OK -> encoló', rOK.queued === true && encoladas.length === 1)
+  }
+
   // --- cliente Google con fetch + auth falsos: construye URL y parsea ---
   {
     const calls = []
