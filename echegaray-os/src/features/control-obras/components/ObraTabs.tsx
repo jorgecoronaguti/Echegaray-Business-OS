@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { pedidoPendiente, type ObraDetalle } from '../services/controlObrasService'
+import { pedidoPendiente, type AvanceObra, type ObraDetalle } from '../services/controlObrasService'
 
-type Tab = 'herramientas' | 'pedidos' | 'movimientos'
+type Tab = 'avance' | 'herramientas' | 'pedidos' | 'movimientos'
 
 function fecha(f: string | null): string {
   if (!f) return '—'
@@ -11,9 +11,10 @@ function fecha(f: string | null): string {
   return isNaN(d.getTime()) ? f : d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
-export function ObraTabs({ detalle }: { detalle: ObraDetalle }) {
-  const [tab, setTab] = useState<Tab>('herramientas')
+export function ObraTabs({ detalle, avance }: { detalle: ObraDetalle; avance: AvanceObra | null }) {
+  const [tab, setTab] = useState<Tab>(avance?.estructurado ? 'avance' : 'herramientas')
   const tabs: { id: Tab; label: string; count: number }[] = [
+    { id: 'avance', label: 'Avance', count: avance?.estructurado ? avance.actividades : 0 },
     { id: 'herramientas', label: 'Herramientas', count: detalle.herramientas.length },
     { id: 'pedidos', label: 'Pedidos', count: detalle.pedidos.length },
     { id: 'movimientos', label: 'Movimientos', count: detalle.movimientos.length },
@@ -39,6 +40,8 @@ export function ObraTabs({ detalle }: { detalle: ObraDetalle }) {
       </div>
 
       <div className="divide-y divide-gray-100">
+        {tab === 'avance' && <AvancePanel avance={avance} />}
+
         {tab === 'herramientas' &&
           (detalle.herramientas.length === 0 ? (
             <Vacio texto="No hay herramientas asignadas a esta obra." />
@@ -115,6 +118,60 @@ function Row({
         </span>
       )}
       {stamp && <span className="shrink-0 text-xs text-gray-400">{stamp}</span>}
+    </div>
+  )
+}
+
+function barra(pct: number): string {
+  if (pct >= 100) return 'bg-emerald-500'
+  if (pct >= 50) return 'bg-sky-500'
+  if (pct > 0) return 'bg-amber-400'
+  return 'bg-gray-300'
+}
+
+function AvancePanel({ avance }: { avance: AvanceObra | null }) {
+  if (!avance || !avance.estructurado) {
+    return (
+      <Vacio
+        texto={
+          avance?.motivo
+            ? `Avance físico sin cargar: ${avance.motivo}.`
+            : 'Esta obra todavía no tiene avance físico cargado en el tracker de Drive.'
+        }
+      />
+    )
+  }
+  const prom = avance.avance_promedio ?? 0
+  return (
+    <div>
+      <div className="flex items-center gap-4 px-4 py-4">
+        <div className="grid h-16 w-16 shrink-0 place-items-center rounded-full border-4 border-gray-100">
+          <span className="text-lg font-bold tabular-nums text-gray-900">{prom}%</span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-gray-900">Avance físico</div>
+          <div className="mt-1 h-2.5 w-full overflow-hidden rounded-full bg-gray-100">
+            <div className={`h-full rounded-full ${barra(prom)}`} style={{ width: `${Math.min(prom, 100)}%` }} />
+          </div>
+          <div className="mt-1 text-xs text-gray-500">
+            {avance.completadas}/{avance.actividades} actividades completas · fuente: tracker de Drive
+          </div>
+        </div>
+      </div>
+      <div className="border-t border-gray-100">
+        {avance.detalle.map((a, i) => (
+          <div key={`${a.codigo ?? ''}-${i}`} className="flex items-center gap-3 px-4 py-2.5">
+            <span className="w-12 shrink-0 text-xs tabular-nums text-gray-400">{a.codigo ?? '—'}</span>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm text-gray-900">{a.actividad}</div>
+              <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+                <div className={`h-full rounded-full ${barra(a.pct)}`} style={{ width: `${Math.min(a.pct, 100)}%` }} />
+              </div>
+            </div>
+            <span className="w-10 shrink-0 text-right text-xs font-semibold tabular-nums text-gray-700">{a.pct}%</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

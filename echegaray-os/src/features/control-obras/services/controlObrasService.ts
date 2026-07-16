@@ -15,6 +15,24 @@ export interface ObraDetalle {
   movimientos: MovimientoConHerramienta[]
 }
 
+export interface AvanceActividad {
+  codigo: string | null
+  actividad: string
+  pct: number
+  estado: string | null
+}
+
+export interface AvanceObra {
+  obra: string
+  estructurado: boolean
+  motivo: string | null
+  actividades: number
+  completadas: number
+  avance_promedio: number | null
+  detalle: AvanceActividad[]
+  sincronizado_en: string | null
+}
+
 export type ServiceResult<T> = { data: T; error: null } | { data: null; error: string }
 
 const norm = (s: string | null | undefined): string => (s ?? '').trim().toLowerCase()
@@ -43,6 +61,29 @@ export async function getObraDetalle(supabase: SupabaseClient, nombre: string): 
   } catch (err) {
     return { data: null, error: err instanceof Error ? err.message : 'Error desconocido' }
   }
+}
+
+// Avance físico de TODAS las obras (para la cartera). Lee public.avance_obra (espejo del
+// tracker de Drive, sincronizado por el VM). Devuelve un mapa por nombre normalizado.
+export async function getAvanceMap(supabase: SupabaseClient): Promise<Map<string, AvanceObra>> {
+  const map = new Map<string, AvanceObra>()
+  const { data, error } = await supabase
+    .from('avance_obra')
+    .select('obra, estructurado, motivo, actividades, completadas, avance_promedio, detalle, sincronizado_en')
+  if (error || !data) return map
+  for (const r of data as AvanceObra[]) map.set(norm(r.obra), { ...r, detalle: r.detalle ?? [] })
+  return map
+}
+
+// Avance físico de UNA obra. Match por nombre normalizado; si no hay exacto, prueba por
+// inclusión (los nombres del tracker no siempre son idénticos a los operativos). null si no hay.
+export async function getAvanceObra(supabase: SupabaseClient, nombre: string): Promise<AvanceObra | null> {
+  const map = await getAvanceMap(supabase)
+  const key = norm(nombre)
+  const exacto = map.get(key)
+  if (exacto) return exacto
+  for (const [k, v] of map) if (k.includes(key) || key.includes(k)) return v
+  return null
 }
 
 // Un pedido está PENDIENTE si tiene estado y no está entregado ni anulado.
