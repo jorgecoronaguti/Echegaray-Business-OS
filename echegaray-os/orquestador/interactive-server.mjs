@@ -837,9 +837,12 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   }
   const hoy = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
   // Historial de la charla: seguir el hilo ("aplicá la 2", "hacelo", "y el otro?").
+  // Contexto reciente acotado: 8 mensajes (≈4 idas y vueltas) y 800 chars c/u alcanzan para el
+  // hilo ("hacelo"/"aplicá eso"). Antes 14×1100 (~4000 tokens) se re-mandaba en CADA pedido:
+  // caro y distractivo (turnos viejos hacen divagar). Menos historia = más barato y más enfocado.
   const hist = Array.isArray(history) && history.length
     ? 'CONVERSACIÓN PREVIA (seguí el hilo; "hacelo"/"aplicá eso" se refieren a lo último que propusiste):\n' +
-      history.slice(-14).map((m) => `${m.role === 'me' ? 'Dueño' : 'OS'}: ${String(m.text || '').slice(0, 1100)}`).join('\n') + '\n\n'
+      history.slice(-8).map((m) => `${m.role === 'me' ? 'Dueño' : 'OS'}: ${String(m.text || '').slice(0, 800)}`).join('\n') + '\n\n'
     : ''
   // MEMORIA (PRP-016/023): lo que el dueño enseñó (top, referencia) + lo RELEVANTE al pedido
   // actual (recuperado por tema, de toda la memoria) → el chat "recuerda" lo específico.
