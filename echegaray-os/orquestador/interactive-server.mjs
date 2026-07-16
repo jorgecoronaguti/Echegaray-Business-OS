@@ -57,6 +57,7 @@ import { cacheGet, cachePut, cacheClearAll } from './lib/chat-cache.mjs'
 import { skillsForCapability } from './lib/skill-map.mjs'
 import { extraerRestricciones, DOCTRINA_EDICION, VERIFICACION_EDICION } from './lib/doc-edit-guardrails.mjs'
 import { isMailComposeIntent, isCalendarWriteIntent } from './lib/chat-intents.mjs'
+import { propuestasMejoraResumen } from './lib/mejoras.mjs'
 import { createSchedule, listSchedules, toggleSchedule } from './lib/schedules.mjs'
 import { enqueueTask } from './lib/ledger.mjs'
 import { route } from './lib/router.mjs'
@@ -530,6 +531,13 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // "¿Cuánto aprendiste / qué sabés de la empresa?" — mide el aprendizaje (0 API).
   if (/\b(cu[aá]nto (aprend|sab[eé]s)|qu[eé] (aprendiste|sab[eé]s|ten[eé]s (guardado|aprendido|anotado))|qu[eé] (cosas )?record[aá]s|qu[eé] conoc[eé]s de (la empresa|nosotros|echegaray)|hechos (aprendidos|que sab[eé]s))/i.test(directive)) {
     return { answer: await learnedSummary(), model: 'aprendizaje', capability: 'general', skills: [], navigate: null }
+  }
+  // AUTO-MEJORA (0 API) — "en qué puedo/podés mejorar", "propuestas de mejora", "tus gaps/huecos",
+  // "en qué mejorar el OS", "mejorate". Lista lo que el OS ya detectó solo (backlog_autonomo).
+  // Meta/interno → gateado a Dirección (mismo criterio que la telemetría de costo).
+  if (!readBlocked && /\b(propuestas?\s+de\s+mejora|en\s+qu[eé]\s+(pod[eé]s|puedo|podemos|te\s+puedo\s+ayudar\s+a)?\s*mejorar|qu[eé]\s+(pod[eé]s|puedo|podemos|hay\s+para)\s+mejorar|mejorar\s+el\s+os|tus\s+(gaps|huecos|falencias|fallas)|en\s+qu[eé]\s+fall[aá]s|qu[eé]\s+te\s+falta\s+mejorar|mejorate|auto\s*mejora)\b/i.test(directive)) {
+    if (!puede(rol, 'costo_api')) return denegar('costo_api')
+    return { answer: await propuestasMejoraResumen(), model: 'auto-mejora', capability: 'general', skills: [], navigate: null }
   }
   // AGENDA (Calendar) — respuesta determinística (0 API modelo): "agenda", "qué tengo hoy/
   // esta semana", "mi calendario", "próximos eventos/reuniones". Lee Google Calendar del usuario.
