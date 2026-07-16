@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import {
-  getComprobantesSinAsignar,
+  getComprobantesSinAsignarConSugerencia,
   getObrasCanonicas,
   getResumenAsignacion,
 } from '@/features/control-obras/services/costosObraService'
@@ -19,13 +19,13 @@ function money(n: number): string {
 
 export default async function CostosAsignacionPage() {
   let error: string | null = null
-  let comprobantes = [] as Awaited<ReturnType<typeof getComprobantesSinAsignar>>
+  let comprobantes = [] as Awaited<ReturnType<typeof getComprobantesSinAsignarConSugerencia>>
   let obras: string[] = []
   let resumen = { sinAsignar: 0, montoSinAsignar: 0, asignados: 0, montoAsignado: 0 }
   try {
     const supabase = await createClient()
     ;[comprobantes, obras, resumen] = await Promise.all([
-      getComprobantesSinAsignar(supabase),
+      getComprobantesSinAsignarConSugerencia(supabase),
       getObrasCanonicas(supabase),
       getResumenAsignacion(supabase),
     ])
@@ -35,6 +35,7 @@ export default async function CostosAsignacionPage() {
 
   const totalCompras = resumen.montoAsignado + resumen.montoSinAsignar
   const pctAsignado = totalCompras > 0 ? Math.round((resumen.montoAsignado / totalCompras) * 100) : 0
+  const conSugerencia = comprobantes.filter((c) => c.sugerencia).length
 
   return (
     <div className="min-h-screen space-y-6 p-8">
@@ -46,7 +47,9 @@ export default async function CostosAsignacionPage() {
         <p className="mt-1 max-w-2xl text-sm text-gray-500">
           Los comprobantes reales de ARCA no dicen a qué obra fueron. Asigná cada uno a su obra para
           construir el costo real. Empezá por los de mayor monto. Nada se adivina: lo que no asignás
-          queda “sin asignar”.
+          queda “sin asignar”. Donde ya imputaste antes a ese proveedor, el OS te{' '}
+          <span className="font-medium text-gray-700">sugiere</span> la obra por tu historial (la
+          pre-selecciona) — vos confirmás o la cambiás.
         </p>
       </div>
 
@@ -62,6 +65,9 @@ export default async function CostosAsignacionPage() {
           <Kpi label="Sin asignar" valor={money(resumen.montoSinAsignar)} sub={`${resumen.sinAsignar} comprobantes`} tone="amber" />
           <Kpi label="Asignado a obras" valor={money(resumen.montoAsignado)} sub={`${resumen.asignados} comprobantes`} tone="ok" />
           <Kpi label="Cobertura" valor={`${pctAsignado}%`} sub="del costo de compras atribuido" />
+          {conSugerencia > 0 && (
+            <Kpi label="Con sugerencia" valor={`${conSugerencia}`} sub="confirmables por tu historial" tone="ok" />
+          )}
         </div>
       )}
 
