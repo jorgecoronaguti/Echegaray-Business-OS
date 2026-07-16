@@ -52,6 +52,26 @@ async function readTextSafe(absPath) {
   }
 }
 
+// Secciones META/gobernanza de una SKILL.md que NO ayudan a razonar en una respuesta de chat
+// (son sobre vigencia de fuentes, jurisdicción ya cubierta por el kernel, límites, gaps,
+// aprendizaje, y cableado con el OS). Descartarlas recorta ~22% de tokens por skill sin perder
+// NADA del criterio operativo (propósito, reglas, preguntas, marcos, criterios, errores,
+// controles, prohibiciones). El worker de análisis profundo puede seguir cargando todo.
+const SKILL_META_HEADING = /^##\s+(Sistema de fuentes|Pol[ií]tica de fuentes|Jurisdicci[óo]n|L[íi]mites de certeza|Gaps de conocimiento|Mecanismo de aprendizaje|Relaci[óo]n con el OS|Interacci[óo]n con otras skills)\b/i
+
+/** Devuelve la SKILL.md sin sus secciones meta/gobernanza. Determinístico: corta por headings
+ *  `##`; una sección meta se omite hasta el próximo `##`. No toca el conocimiento operativo. */
+export function compactSkillMd(md) {
+  if (typeof md !== 'string' || !md) return md
+  const out = []
+  let skip = false
+  for (const line of md.split('\n')) {
+    if (/^##\s+/.test(line)) skip = SKILL_META_HEADING.test(line) // reevaluar en cada sección
+    if (!skip) out.push(line)
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
 /**
  * Arma el `system` para una tarea de razonamiento.
  * @param {object} p
@@ -64,7 +84,7 @@ async function readTextSafe(absPath) {
  * @param {object} [p.logger]
  * @returns {Promise<{ system: string, skillLoaded: boolean, governance: 'kernel'|'full' }>}
  */
-export async function assembleReasoningSystem({ rootPath, config, roleFraming, contextRef, skillNames, skillsDir, logger }) {
+export async function assembleReasoningSystem({ rootPath, config, roleFraming, contextRef, skillNames, skillsDir, logger, compact = false }) {
   const parts = []
   if (roleFraming) parts.push(roleFraming)
 
@@ -91,7 +111,8 @@ export async function assembleReasoningSystem({ rootPath, config, roleFraming, c
 
   if (names && names.length) {
     for (const name of names) {
-      const skill = await readTextSafe(path.join(baseDir, name, 'SKILL.md'))
+      const raw = await readTextSafe(path.join(baseDir, name, 'SKILL.md'))
+      const skill = raw && compact ? compactSkillMd(raw) : raw
       if (skill) {
         loaded.push(name)
         parts.push(`--- CONOCIMIENTO DE TU DOMINIO: ${name} (aplicá su criterio profesional) ---\n${skill}`)

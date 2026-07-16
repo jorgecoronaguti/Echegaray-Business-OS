@@ -759,6 +759,10 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
     roleFraming,
     skillNames: skillNames.length ? skillNames : undefined,
     logger: log,
+    // El chat es la vía rápida y sensible a costo: carga el extracto operativo de cada skill
+    // (sin las secciones meta/gobernanza), ~22% menos tokens sin perder criterio. El worker
+    // de análisis profundo sigue cargando la skill completa.
+    compact: true,
   })
   log.info('directiva ruteada', { capability, skills: skillsLoaded || [] })
   const registry = await driveRegistry(attachment, userEmail)

@@ -21,6 +21,10 @@ const CAP_KEYWORDS = {
   'advise.equipment': ['equipo', 'vehiculo', 'flota', 'camion', 'maquina', 'mantenimiento', 'rto', 'vtv', 'combustible', 'alquiler de equipo'],
   'advise.site': ['obra', 'jefe de obra', 'cuadrilla', 'frente', 'sitio', 'capataz'],
   'advise.data': ['auditar', 'integr', 'migrar', 'conciliar', 'fuente de datos', 'base de datos', 'sheet', 'planilla'],
+  // Decisión de negocio / comercial (Go-No-Go, selección de obra, pipeline, riesgo del negocio).
+  // Antes NO existía en el clasificador → la skill gestion-empresarial-riesgos era inalcanzable
+  // desde el chat pese a estar mapeada a advise.commercial. Cableada.
+  'advise.commercial': ['go/no-go', 'go no go', 'conviene', 'aceptar la obra', 'aceptamos', 'rechazar', 'pipeline', 'licitac', 'oportunidad', 'seleccion de obra', 'elegir obra', 'riesgo del negocio', 'entrar a la obra', 'nos conviene', 'vale la pena'],
 }
 
 /** Devuelve un slug de CAPABILITY_SKILLS o 'general'. Síncrono, instantáneo. */

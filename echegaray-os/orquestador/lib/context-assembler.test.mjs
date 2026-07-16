@@ -4,7 +4,7 @@
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { assembleReasoningSystem, ROLE_FRAMING, GOVERNANCE_KERNEL } from './context-assembler.mjs'
+import { assembleReasoningSystem, ROLE_FRAMING, GOVERNANCE_KERNEL, compactSkillMd } from './context-assembler.mjs'
 
 let ok = 0
 let fail = 0
@@ -95,6 +95,44 @@ async function main() {
     }
   } finally {
     await rm(root, { recursive: true, force: true })
+  }
+
+  // ── compactSkillMd: descarta secciones meta, conserva lo operativo ──────────────
+  {
+    const md = [
+      '# Skill X', '',
+      '## Propósito', 'Hacer bien la cosa operativa.', '',
+      '## Criterios de decisión', 'Regla operativa clave.', '',
+      '## Sistema de fuentes', 'Fuente A, fuente B (meta).', '',
+      '## Política de fuentes externas y protocolo de vigencia', 'Verificar antes (meta).', '',
+      '## Errores frecuentes', 'El error típico.', '',
+      '## Gaps de conocimiento conocidos', 'Falta esto (meta).', '',
+    ].join('\n')
+    const c = compactSkillMd(md)
+    check('compact: conserva Propósito operativo', c.includes('Hacer bien la cosa operativa'))
+    check('compact: conserva Criterios', c.includes('Regla operativa clave'))
+    check('compact: conserva Errores frecuentes', c.includes('El error típico'))
+    check('compact: DESCARTA Sistema de fuentes', !c.includes('Fuente A, fuente B'))
+    check('compact: DESCARTA Política de vigencia', !c.includes('Verificar antes'))
+    check('compact: DESCARTA Gaps', !c.includes('Falta esto'))
+    check('compact: más corto que el original', c.length < md.length)
+    check('compact: robusto a vacío', compactSkillMd('') === '' && compactSkillMd(null) === null)
+  }
+  // compact=true en assembleReasoningSystem recorta la skill inyectada
+  {
+    const base = await mkdtemp(path.join(tmpdir(), 'ctxasm-compact-'))
+    try {
+      const sb = path.join(base, 'skills')
+      await mkdir(path.join(sb, 'dom'), { recursive: true })
+      await writeFile(path.join(sb, 'dom', 'SKILL.md'), '# Dom\n\n## Propósito\nOPERATIVO_OK\n\n## Sistema de fuentes\nMETA_FUERA\n')
+      const full = await assembleReasoningSystem({ rootPath: base, config: { GOVERNANCE_FULL: false }, skillNames: ['dom'], skillsDir: sb })
+      const comp = await assembleReasoningSystem({ rootPath: base, config: { GOVERNANCE_FULL: false }, skillNames: ['dom'], skillsDir: sb, compact: true })
+      check('assemble full: incluye meta', full.system.includes('META_FUERA'))
+      check('assemble compact: conserva operativo', comp.system.includes('OPERATIVO_OK'))
+      check('assemble compact: descarta meta', !comp.system.includes('META_FUERA'))
+    } finally {
+      await rm(base, { recursive: true, force: true })
+    }
   }
 
   console.log(`context-assembler.test: ${ok} OK, ${fail} FALLA`)
