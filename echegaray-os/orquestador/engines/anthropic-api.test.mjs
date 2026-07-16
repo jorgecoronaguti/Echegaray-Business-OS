@@ -165,6 +165,11 @@ async function main() {
     check('tooluse: pasó nombre e input al ejecutor', execCalls[0].name === 'drive.read' && execCalls[0].input.file_id === 'ABC')
     check('tooluse: pasó meta.agentSlug', execCalls[0].meta.agentSlug === 'cfo')
     check('tooluse: 1ra llamada mandó tools', Array.isArray(seen[0].tools) && seen[0].tools.length === 1)
+    // PROMPT CACHING: con loop agéntico, el primer mensaje de usuario se envuelve con
+    // cache_control en su último bloque (se re-lee al ~10% en las iteraciones siguientes).
+    check('tooluse: primer mensaje de usuario cacheado', Array.isArray(seen[0].messages[0].content)
+      && seen[0].messages[0].content.at(-1).cache_control?.type === 'ephemeral'
+      && seen[0].messages[0].content.at(-1).text === 'caja?')
     check('tooluse: 2da llamada = user+assistant+tool_result', seen[1].messages.length === 3 && seen[1].messages[2].content[0].type === 'tool_result')
     check('tooluse: tool_result referencia el tool_use_id', seen[1].messages[2].content[0].tool_use_id === 'tu_1')
     check('tooluse: result es el texto final', out.result === '{"caja":123}')

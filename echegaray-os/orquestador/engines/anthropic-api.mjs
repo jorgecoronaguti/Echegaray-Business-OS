@@ -210,7 +210,21 @@ export function makeAnthropicEngine({ config, client, breaker, semaphore }) {
 
       // Loop agéntico. El modelo transporta tool_use/tool_result; el WORKER ejecuta
       // (via job.toolExecutor, que ya viene policy-gated). El motor no conoce policy.
-      const messages = [{ role: 'user', content: job.prompt }]
+      //
+      // PROMPT CACHING del PRIMER mensaje de usuario: en una edición de documento el mismo
+      // prompt (guía + directiva, y si hay adjunto, la imagen/PDF) se re-manda en cada una de
+      // las 26-40 iteraciones. Sin breakpoint se re-cobra a precio completo cada vuelta; con él,
+      // las repeticiones se leen a ~10%. Solo cuando hay loop agéntico (hasTools): un prompt
+      // chico (lectura simple) Anthropic lo ignora solo si no llega al mínimo cacheable, sin
+      // penalidad. Marcar el ÚLTIMO bloque cachea todo el mensaje (texto, o adjunto+texto).
+      const firstContent = hasTools
+        ? (typeof job.prompt === 'string'
+            ? [{ type: 'text', text: job.prompt, cache_control: { type: 'ephemeral' } }]
+            : Array.isArray(job.prompt) && job.prompt.length
+              ? job.prompt.map((b, i) => (i === job.prompt.length - 1 ? { ...b, cache_control: { type: 'ephemeral' } } : b))
+              : job.prompt)
+        : job.prompt
+      const messages = [{ role: 'user', content: firstContent }]
       const usages = []
       let toolTurns = 0
       let lastResponse = null
