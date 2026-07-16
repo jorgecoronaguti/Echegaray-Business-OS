@@ -24,6 +24,7 @@ import { decide } from './lib/policy.mjs'
 import { makeGoogleClient } from './lib/google.mjs'
 import { driveReadTools } from './lib/tools/drive.mjs'
 import { driveWriteTools } from './lib/tools/drive-write.mjs'
+import { sheetsFormatTools } from './lib/tools/sheets-format.mjs'
 import { webSearchTools } from './lib/tools/web.mjs'
 import { learnTools } from './lib/tools/learn.mjs'
 import { cuadroEconomico } from './lib/obra-economics.mjs'
@@ -107,7 +108,7 @@ async function driveRegistry(attachment, userEmail) {
   const google = op
     ? makeGoogleClient({ config: cfg, scopes: WORKSPACE_SCOPES, getToken: getTokenFor(op) })
     : makeGoogleClient({ config: cfg })
-  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ google: op ? google : null }), ...appsheetPedidosTools({ google: op ? google : null }) }
+  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...sheetsFormatTools(op ? google : null), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ google: op ? google : null }), ...appsheetPedidosTools({ google: op ? google : null }) }
   // Si el dueño adjuntó una imagen/archivo, exponer una tool para GUARDARLO en su Drive.
   if (attachment?.data && attachment?.media_type) {
     registry['drive.upload_adjunto'] = {
@@ -199,6 +200,10 @@ const PROGRESS = new Map()
 // Resultados de directivas largas que se resolvieron en segundo plano (tras superar el
 // techo de 45s inline). La extensión los recoge por /result?id=. Se limpian solos.
 const RESULTS = new Map()
+// Pedidos EN CURSO por (usuario+directiva): si llega un reenvío idéntico mientras el
+// primero sigue trabajando, lo ADJUNTAMOS al run existente en vez de arrancar de cero.
+// Rompe el bucle real "se corta y empieza de nuevo y se vuelve a cortar".
+const INFLIGHT = new Map()
 function progressInit(runId) { if (runId) PROGRESS.set(runId, { steps: ['Pensando…'], done: false, updated: Date.now() }) }
 function progressPush(runId, step) { const p = runId && PROGRESS.get(runId); if (p) { p.steps.push(step); p.updated = Date.now() } }
 function progressDone(runId) { const p = runId && PROGRESS.get(runId); if (p) { p.done = true; p.updated = Date.now() } if (runId) setTimeout(() => PROGRESS.delete(runId), 30000) }
@@ -791,7 +796,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
     `OBRAS: las obras/clientes viven en la carpeta PRESUPUESTOS (cada subcarpeta es una obra, con "Cotizaciones" y "Planos" adentro). Para "mis obras" / "qué obras tengo" / el estado de una obra: usá list_obras, después entrá a su carpeta con drive_list y leé su presupuesto/avance/adicionales con drive_read (que ya lee Sheets, Excel y PDFs). ` +
     `Para LLEVAR al dueño a un archivo/carpeta ("llevame a", "abrí", "andá a", "mostrame la carpeta", "dónde está X", "quiero ver Y"): usá navigate_to (query = el nombre) — abre el destino en su navegador. Es también cómo se MUEVE entre carpetas del Drive: navegás a la carpeta y podés listar su contenido con drive_list. ` +
     `CONTROL TOTAL DE DRIVE (actuás COMO el dueño vía su login de Google — NO hay límite de "cuenta sin almacenamiento", eso ya NO aplica): podés CREAR, LEER, ESCRIBIR, EDITAR, COPIAR, MOVER, RENOMBRAR y dar de baja a papelera CUALQUIER archivo en SU Drive, en cualquier carpeta. Las escrituras son AUTOMÁTICAS (no pidas aprobación, no digas "queda en Pendientes"): ejecutá y confirmá el resultado con el link. ` +
-    `CREAR: drive_create (tipo doc/sheet/slides/carpeta; para un Doc podés pasar "contenido" y nace con texto; folder_id opcional = carpeta destino). PESTAÑA NUEVA EN UN SHEET QUE YA EXISTE: drive_add_tab(file_id, title) PRIMERO para crear la hoja, y RECIÉN DESPUÉS escribí con drive_batch_update — escribir en una pestaña que no existe falla con "Unable to parse range" (nunca escribas una pestaña sin crearla antes). Si el nombre de la pestaña tiene espacios, el rango va entre comillas simples: 'Panel Caja'!A1:D10 (drive_add_tab te devuelve el rango listo). ESCRIBIR DOCS: drive_write_doc (modo insertar/agregar/reemplazar) — los Google Docs SÍ se escriben, no es una limitación. EDITAR SHEETS: drive_batch_update (varios rangos en una operación), drive_insert_rows/drive_delete_rows, drive_clear. DUPLICAR: drive_copy (una plantilla o un presupuesto anterior, a la carpeta que quieras). ORGANIZAR: drive_rename, drive_move, drive_trash (papelera, reversible). ` +
+    `CREAR: drive_create (tipo doc/sheet/slides/carpeta; para un Doc podés pasar "contenido" y nace con texto; folder_id opcional = carpeta destino). PESTAÑA NUEVA EN UN SHEET QUE YA EXISTE: drive_add_tab(file_id, title) PRIMERO para crear la hoja, y RECIÉN DESPUÉS escribí con drive_batch_update — escribir en una pestaña que no existe falla con "Unable to parse range" (nunca escribas una pestaña sin crearla antes). Si el nombre de la pestaña tiene espacios, el rango va entre comillas simples: 'Panel Caja'!A1:D10 (drive_add_tab te devuelve el rango listo). ESCRIBIR DOCS: drive_write_doc (modo insertar/agregar/reemplazar) — los Google Docs SÍ se escriben, no es una limitación. EDITAR SHEETS (valores): drive_batch_update (varios rangos en una operación), drive_insert_rows/drive_delete_rows, drive_clear. SUPERPODERES DE SHEETS (formato y estructura, úsalos para dejar TODO prolijo, no solo cargar números): drive_format_cells (negrita, color de fondo/letra, formato moneda/%/fecha, alineación, bordes, ajuste de texto — ej. encabezados en negrita con fondo y números en moneda), drive_table_style (rango → tabla con cebra y encabezado), drive_merge_cells (título que cruza columnas), drive_freeze (fijar la fila de encabezados), drive_auto_resize (ancho de columnas al contenido), drive_add_chart (gráfico de columna/barra/línea/torta desde un rango), drive_insert_image (imagen en una celda vía URL), drive_delete_tab / drive_rename_tab (borrar/renombrar pestañas). Cuando armes o rehagas una planilla/panel, no te quedes en los valores: aplicá formato (encabezados, moneda, bordes), congelá encabezados y ajustá anchos para que quede presentable. DUPLICAR: drive_copy (una plantilla o un presupuesto anterior, a la carpeta que quieras). ORGANIZAR: drive_rename, drive_move, drive_trash (papelera, reversible). ` +
     `Lo ÚNICO que NO hacés es el borrado PERMANENTE (irreversible) — para eso avisá que va a la papelera. Si el dueño pide "hacé un sheet/doc con X", CREALO en su Drive (drive_create) y completalo (drive_batch_update / drive_write_doc), y pasale el link. ` +
     (att
       ? `\n\nTE ADJUNTARON UN ARCHIVO (foto/PDF): interpretalo. Si es una factura/remito/comprobante, extraé proveedor, fecha, importe total, número y concepto. Si la directiva pide registrarlo, encontrá el Sheet correcto (ej. "Flujo de Caja - Cash Flow", pestaña de compras/gastos), LEÉ su estructura con drive_read y proponé la fila con drive_append. No inventes lo que no ves; si un dato no está en la imagen, decilo.\n`
@@ -1013,32 +1018,42 @@ const server = http.createServer(async (req, res) => {
         || (/\b(registr|agreg|escrib|complet|carg|hac[eé]|hacelo|modific|actualiz|arregl|reemplaz|reconstru|rehac|rehag|rearm|limpi|f[oó]rmula|borr|elimin|duplic|marc[aá]|reorden)\b/i.test(String(directive || ''))
             && /\b(pesta[ñn]a|solapa|hoja|sheet|planilla|spreadsheet|celda|rango|columna|fila|tabla|drive|documento)\b|https?:\/\/[^\s]*(docs|drive)\.google/i.test(String(directive || '')))
       const HARD_MS = Number(process.env.ORQ_TASK_TIMEOUT_MS || (esEscrituraDocReq ? 300000 : 180000))
-      const watchdog = new Promise((resolve) => setTimeout(() => resolve({ __timeout__: true }), HARD_MS))
-      const work = Promise.race([
-        ask({ directive: directive.slice(0, 4000), fileId, fast, attachment, history, runId: rid, userEmail: identidad }),
-        watchdog,
-      ])
-        .then((out) => {
-          if (out && out.__timeout__) {
-            const msg = { answer: 'Esto está tardando más de lo razonable, así que lo corté para no dejarte esperando. Suele pasar con pedidos muy grandes (reconstruir una pestaña entera de una). Pedímelo más acotado —ej. "reconstruí solo el panel de SALDO ACTUAL"— o por partes, y lo hago al toque.', model: 'timeout', cost: 0, capability: 'general', skills: [], navigate: null }
-            RESULTS.set(rid, { done: true, out: msg }); persistResult(rid, { done: true, ...msg })
-            return msg
-          }
-          RESULTS.set(rid, { done: true, out }); persistResult(rid, { done: true, ...out }); return out
-        })
+      // DEDUP: ¿este MISMO pedido ya está en curso? Entonces NO arranco otro run (eso es el
+      // bucle "se corta y empieza de nuevo"): devuelvo el runId existente para que el cliente
+      // siga esperando el mismo trabajo. Ventana = HARD_MS + colchón; si es más viejo, es
+      // basura y arranco fresco.
+      const dedupKey = `${identidad || 'anon'}::${String(directive).trim().slice(0, 4000)}`
+      const enCurso = INFLIGHT.get(dedupKey)
+      if (enCurso && Date.now() - enCurso.since < HARD_MS + 90000) {
+        log.info('pedido idéntico ya en curso → adjunto al run existente', { rid: enCurso.rid })
+        return send(res, 200, { async: true, runId: enCurso.rid, note: 'Ese mismo pedido ya lo estoy trabajando — no lo reinicio, te traigo el resultado acá mismo en cuanto termine.' })
+      }
+      INFLIGHT.set(dedupKey, { rid, since: Date.now() })
+      // ENTREGA TARDÍA: la tarea SIEMPRE termina sola (el motor está acotado por iteraciones
+      // y costo). Guardamos el resultado REAL cuando termina, aunque haya pasado el watchdog
+      // —así el trabajo largo NO se descarta y el dueño no tiene que reintentar (causa real
+      // del bucle de reinicio: antes, al vencer el watchdog se marcaba "cortado" y lo que
+      // terminaba después se perdía).
+      const askPromise = ask({ directive: directive.slice(0, 4000), fileId, fast, attachment, history, runId: rid, userEmail: identidad })
+        .then((out) => { RESULTS.set(rid, { done: true, out }); persistResult(rid, { done: true, ...out }); return out })
         .catch((e) => { RESULTS.set(rid, { done: true, error: e.message }); persistResult(rid, { done: true, error: e.message }); throw e })
-        .finally(() => { progressDone(rid); setTimeout(() => RESULTS.delete(rid), 120000) })
+        .finally(() => { progressDone(rid); INFLIGHT.delete(dedupKey); setTimeout(() => RESULTS.delete(rid), 120000) })
+      // WATCHDOG SUAVE: NO mata la tarea (sigue en segundo plano y entrega tarde). Solo evita
+      // el spinner infinito con un aviso que INVITA A ESPERAR, no a reenviar (reenviar reinicia).
+      const watchdog = new Promise((resolve) => setTimeout(() => resolve({
+        __working__: true, answer: 'Es un pedido grande y lo sigo trabajando en segundo plano — **no lo reenvíes** (reenviarlo lo reinicia). En un momento te traigo el resultado acá mismo.', model: 'trabajando', cost: 0, capability: 'general', skills: [], navigate: null,
+      }), HARD_MS))
+      const work = Promise.race([askPromise.catch((e) => ({ __error__: e.message })), watchdog])
       if (wantsAsync) {
-        // FALLBACK ASÍNCRONO (extensión 0.6.0+): un análisis profundo puede pasar los ~55s
-        // donde Vercel corta. Si no termina en 48s, respondemos { async } y la seguimos en
-        // segundo plano; la extensión trae el resultado por /result?id=.
+        // FALLBACK ASÍNCRONO (extensión 0.6.0+): si no termina en 48s, respondemos { async } y
+        // la seguimos en segundo plano; la extensión trae el resultado por /result?id=.
         let timer
         const timeout = new Promise((r) => { timer = setTimeout(() => r('__async__'), 48000) })
-        const winner = await Promise.race([work.catch((e) => ({ __error__: e.message })), timeout])
+        const winner = await Promise.race([work, timeout])
         clearTimeout(timer)
-        if (winner === '__async__') {
-          log.info('directiva larga → segundo plano', { rid })
-          send(res, 200, { async: true, runId: rid, note: 'Es una tarea larga; la sigo trabajando y te traigo el resultado acá mismo.' })
+        if (winner === '__async__' || winner.__working__) {
+          log.info('directiva larga → segundo plano (sigue y entrega tarde)', { rid })
+          send(res, 200, { async: true, runId: rid, note: 'Es un pedido grande; lo sigo trabajando y te traigo el resultado acá mismo. No lo reenvíes.' })
         } else if (winner && winner.__error__) {
           send(res, 500, { error: winner.__error__ })
         } else {
@@ -1049,7 +1064,7 @@ const server = http.createServer(async (req, res) => {
         // Cliente viejo (no entiende { async }): esperamos el resultado real. Si la tarea es
         // muy larga, el proxy corta a ~55s — por eso conviene actualizar la extensión.
         try {
-          const out = await work
+          const out = await askPromise
           log.info('directiva respondida (sync)', { ms: Date.now() - t0, model: out.model })
           send(res, 200, { ...out, ms: Date.now() - t0 })
         } catch (e) { send(res, 500, { error: e.message }) }
