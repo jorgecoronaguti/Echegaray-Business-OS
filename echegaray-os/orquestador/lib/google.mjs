@@ -222,17 +222,31 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
   }
 
   /** Resuelve un archivo de Drive (por file_id) a un adjunto de mail: {filename, mimeType,
-   *  dataBase64}. Un archivo nativo de Google (Doc/Sheet/Slides) se EXPORTA a PDF; el resto
-   *  se baja tal cual. Para "mandá el mail con el archivo X adjunto". */
-  async function fetchAttachment(fileId) {
+   *  dataBase64}. Un archivo nativo de Google (Doc/Sheet/Slides) NO se puede adjuntar "como
+   *  gdoc" (es un archivo en la nube, no un binario), hay que EXPORTARLO: por defecto al
+   *  formato Office equivalente que RESPETA el documento y es editable (Doc→docx, Sheet→xlsx,
+   *  Slides→pptx); con formato='pdf' sale como PDF (final, no editable). El resto se baja tal
+   *  cual. Para "mandá el mail con el archivo X adjunto". */
+  async function fetchAttachment(fileId, { formato = 'documento' } = {}) {
     const token = await accessToken()
     const meta = await (await doFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=name,mimeType&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } })).json()
     const nativo = /application\/vnd\.google-apps\./.test(meta.mimeType || '')
     if (nativo) {
-      const res = await doFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/export?mimeType=application/pdf`, { headers: { Authorization: `Bearer ${token}` } })
+      // Mapa formato Office (respeta el tipo de documento, editable). Si el nativo no tiene
+      // equivalente Office (Form, Drawing…), cae a PDF.
+      const OFFICE = {
+        'application/vnd.google-apps.document': { mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', ext: 'docx' },
+        'application/vnd.google-apps.spreadsheet': { mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', ext: 'xlsx' },
+        'application/vnd.google-apps.presentation': { mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', ext: 'pptx' },
+      }
+      const office = OFFICE[meta.mimeType]
+      const usarPdf = formato === 'pdf' || !office
+      const exportMime = usarPdf ? 'application/pdf' : office.mime
+      const ext = usarPdf ? 'pdf' : office.ext
+      const res = await doFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent(exportMime)}`, { headers: { Authorization: `Bearer ${token}` } })
       if (!res.ok) throw new Error(`export ${res.status}`)
       const buf = Buffer.from(await res.arrayBuffer())
-      return { filename: `${meta.name || 'documento'}.pdf`, mimeType: 'application/pdf', dataBase64: buf.toString('base64') }
+      return { filename: `${meta.name || 'documento'}.${ext}`, mimeType: exportMime, dataBase64: buf.toString('base64') }
     }
     const res = await doFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } })
     if (!res.ok) throw new Error(`download ${res.status}`)
@@ -341,27 +355,30 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     },
     // ---- GMAIL (escritura) — el OS actúa COMO el usuario (OAuth). Enviar/borrar pasan por
     //      aprobación (Nivel E); borrador/etiquetar/archivar son reversibles e internos. ----
-    /** Resuelve una lista de file_ids de Drive a adjuntos de mail (export PDF si son nativos). */
-    async resolveAttachments(attachmentFileIds = []) {
+    /** Resuelve file_ids de Drive a adjuntos de mail. formato: 'documento' (default, respeta
+     *  el tipo: Doc→docx, Sheet→xlsx) o 'pdf'. */
+    async resolveAttachments(attachmentFileIds = [], formato = 'documento') {
       const out = []
-      for (const id of attachmentFileIds || []) { if (id) out.push(await fetchAttachment(String(id))) }
+      for (const id of attachmentFileIds || []) { if (id) out.push(await fetchAttachment(String(id), { formato })) }
       return out
     },
     /** Envía un mail. to/cc/bcc son strings. threadId opcional (responder en hilo).
-     *  attachmentFileIds: lista de file_ids de Drive para ADJUNTAR (nativos → PDF). */
-    async gmailSend({ to, cc, bcc, subject, body, threadId, attachmentFileIds } = {}) {
-      const attachments = await this.resolveAttachments(attachmentFileIds)
-      const raw = buildRawEmail({ to, cc, bcc, subject, body, attachments })
+     *  attachmentFileIds: file_ids de Drive para ADJUNTAR; attachmentFormat 'documento'|'pdf'. */
+    async gmailSend({ to, cc, bcc, subject, body, threadId, attachmentFileIds, attachmentFormat } = {}) {
+      const { attachments, links } = await this.prepareAttachments(attachmentFileIds, { formato: attachmentFormat, shareWith: to })
+      const finalBody = links.length ? `${body || ''}\n\n${links.map((l) => `📎 ${l.name}: ${l.url}`).join('\n')}` : body
+      const raw = buildRawEmail({ to, cc, bcc, subject, body: finalBody, attachments })
       const payload = threadId ? { raw, threadId } : { raw }
       const r = await apiSend('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', 'POST', payload)
-      return { id: r.id, threadId: r.threadId, to, subject, adjuntos: attachments.map((a) => a.filename) }
+      return { id: r.id, threadId: r.threadId, to, subject, adjuntos: [...attachments.map((a) => a.filename), ...links.map((l) => `${l.name} (link Drive)`)] }
     },
     /** Crea un BORRADOR (no envía). Reversible, sin efecto externo. Soporta adjuntos de Drive. */
-    async gmailCreateDraft({ to, cc, bcc, subject, body, attachmentFileIds } = {}) {
-      const attachments = await this.resolveAttachments(attachmentFileIds)
-      const raw = buildRawEmail({ to, cc, bcc, subject, body, attachments })
+    async gmailCreateDraft({ to, cc, bcc, subject, body, attachmentFileIds, attachmentFormat } = {}) {
+      const { attachments, links } = await this.prepareAttachments(attachmentFileIds, { formato: attachmentFormat, shareWith: to })
+      const finalBody = links.length ? `${body || ''}\n\n${links.map((l) => `📎 ${l.name}: ${l.url}`).join('\n')}` : body
+      const raw = buildRawEmail({ to, cc, bcc, subject, body: finalBody, attachments })
       const r = await apiSend('https://gmail.googleapis.com/gmail/v1/users/me/drafts', 'POST', { message: { raw } })
-      return { draft_id: r.id, to, subject, adjuntos: attachments.map((a) => a.filename) }
+      return { draft_id: r.id, to, subject, adjuntos: [...attachments.map((a) => a.filename), ...links.map((l) => `${l.name} (link Drive)`)] }
     },
     /** Modifica etiquetas de un mensaje (agregar/quitar). Archivar = quitar INBOX. */
     async gmailModifyLabels(id, { add = [], remove = [] } = {}) {
@@ -466,13 +483,13 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     },
     /** REENVÍA un mail a otro destinatario, con el cuerpo original citado y una nota opcional
      *  arriba. Efecto externo (envía). Preserva adjuntos si se pasan file_ids de Drive. */
-    async gmailForward(id, to, note = '', { attachmentFileIds } = {}) {
+    async gmailForward(id, to, note = '', { attachmentFileIds, attachmentFormat } = {}) {
       const meta = await apiGet(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`)
       const h = Object.fromEntries((meta.payload?.headers || []).map((x) => [x.name.toLowerCase(), x.value]))
       const orig = await this.gmailGet(id, { maxChars: 12000 })
       const subject = /^fwd:/i.test(h.subject || '') ? h.subject : `Fwd: ${h.subject || ''}`
       const body = `${note ? note + '\n\n' : ''}---------- Mensaje reenviado ----------\nDe: ${h.from || ''}\nFecha: ${h.date || ''}\nAsunto: ${h.subject || ''}\n\n${orig.text || ''}`
-      const attachments = await this.resolveAttachments(attachmentFileIds)
+      const attachments = await this.resolveAttachments(attachmentFileIds, attachmentFormat)
       const raw = buildRawEmail({ to, subject, body, attachments })
       const r = await apiSend('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', 'POST', { raw })
       return { id: r.id, to, subject }
@@ -725,6 +742,37 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         'POST',
         { ...(name ? { name } : {}), ...(parents ? { parents } : {}) },
       )
+    },
+    /** Comparte un archivo con un email (rol reader por defecto), para que el destinatario de
+     *  un mail pueda abrir el link al Doc real. sendNotificationEmail=false: no manda el mail
+     *  automático de Drive (el aviso va en NUESTRO mail). Silencioso si ya estaba compartido. */
+    async shareFile(fileId, email, role = 'reader') {
+      if (!email) return { shared: false }
+      return apiSend(
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/permissions?sendNotificationEmail=false&supportsAllDrives=true`,
+        'POST',
+        { type: 'user', role, emailAddress: String(email) },
+      )
+    },
+    /** Prepara los adjuntos de un mail RESPETANDO el formato: un archivo NATIVO de Google
+     *  (Doc/Sheet/Slides) NO se puede adjuntar como binario → va como LINK al documento real
+     *  (y se comparte con el destinatario). Un binario (docx/xlsx/pdf subido) se adjunta tal
+     *  cual. formato 'pdf'|'word' fuerza una copia exportada. Devuelve {attachments, links}. */
+    async prepareAttachments(fileIds = [], { formato = 'documento', shareWith } = {}) {
+      const attachments = []
+      const links = []
+      for (const id of fileIds || []) {
+        if (!id) continue
+        const meta = await this.fileMeta(String(id))
+        const nativo = /application\/vnd\.google-apps\./.test(meta.mimeType || '')
+        if (nativo && formato !== 'pdf' && formato !== 'word') {
+          if (shareWith) { try { await this.shareFile(String(id), String(shareWith), 'reader') } catch { /* ya compartido o sin permiso: igual mandamos el link */ } }
+          links.push({ name: meta.name, url: `https://drive.google.com/open?id=${id}` })
+        } else {
+          attachments.push(await fetchAttachment(String(id), { formato: formato === 'word' ? 'documento' : formato }))
+        }
+      }
+      return { attachments, links }
     },
     /** Baja REVERSIBLE: manda el archivo a la papelera (no borra definitivo). */
     async trashFile(fileId) {

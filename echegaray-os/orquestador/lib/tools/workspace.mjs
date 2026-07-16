@@ -82,12 +82,12 @@ export function workspaceTools({ google } = {}) {
       capability: 'mail.draft', account: 'ecsas',
       schema: {
         name: 'gmail_borrador',
-        description: 'Crea un BORRADOR de mail (NO lo envía; queda en Borradores para que el dueño lo revise/mande). Reversible. Pasá to, subject y body; cc/bcc opcionales. Para ADJUNTAR archivos, pasá adjuntos = lista de file_id de Drive (buscalos antes con drive_find; los Doc/Sheet nativos se adjuntan como PDF).',
-        input_schema: { type: 'object', properties: { to: { type: 'string' }, cc: { type: 'string' }, bcc: { type: 'string' }, subject: { type: 'string' }, body: { type: 'string' }, adjuntos: { type: 'array', items: { type: 'string' } } }, required: ['to', 'subject', 'body'] },
+        description: 'Crea un BORRADOR de mail (NO lo envía; queda en Borradores para que el dueño lo revise/mande). Reversible. Pasá to, subject y body; cc/bcc opcionales. Para ADJUNTAR archivos, pasá adjuntos = lista de file_id de Drive (buscalos antes con drive_find; RESPETA el formato: un archivo NATIVO de Google (Doc/Sheet/Slides) va como LINK al documento real (se comparte con el destinatario), NO se convierte; un binario ya subido (docx/xlsx/pdf) se adjunta tal cual. Solo si el dueño pide una copia de archivo, pasá adjuntos_formato:"pdf" o "word".',
+        input_schema: { type: 'object', properties: { to: { type: 'string' }, cc: { type: 'string' }, bcc: { type: 'string' }, subject: { type: 'string' }, body: { type: 'string' }, adjuntos: { type: 'array', items: { type: 'string' } }, adjuntos_formato: { type: 'string', enum: ['documento', 'pdf', 'word'] } }, required: ['to', 'subject', 'body'] },
       },
       async run(input) {
         if (!input?.to || !input?.body) return { error: 'faltan to y body' }
-        try { return { ok: true, ...(await ws().gmailCreateDraft({ ...input, attachmentFileIds: input?.adjuntos })) } } catch (e) { return sinAcceso(e) }
+        try { return { ok: true, ...(await ws().gmailCreateDraft({ ...input, attachmentFileIds: input?.adjuntos, attachmentFormat: input?.adjuntos_formato })) } } catch (e) { return sinAcceso(e) }
       },
     },
     'mail.archive': {
@@ -108,12 +108,12 @@ export function workspaceTools({ google } = {}) {
       capability: 'mail.send', account: 'ecsas',
       schema: {
         name: 'gmail_enviar',
-        description: 'ENVÍA un mail desde la cuenta del dueño. Efecto externo: REQUIERE aprobación (cae en Pendientes con el destinatario, asunto, cuerpo y adjuntos; el dueño aprueba y recién ahí sale). Pasá to, subject, body; cc/bcc/threadId opcionales (threadId para responder en un hilo). Para ADJUNTAR archivos, pasá adjuntos = lista de file_id de Drive (buscalos antes con drive_find; los Doc/Sheet nativos se adjuntan como PDF).',
-        input_schema: { type: 'object', properties: { to: { type: 'string' }, cc: { type: 'string' }, bcc: { type: 'string' }, subject: { type: 'string' }, body: { type: 'string' }, threadId: { type: 'string' }, adjuntos: { type: 'array', items: { type: 'string' } } }, required: ['to', 'subject', 'body'] },
+        description: 'ENVÍA un mail desde la cuenta del dueño. Efecto externo: REQUIERE aprobación (cae en Pendientes con el destinatario, asunto, cuerpo y adjuntos; el dueño aprueba y recién ahí sale). Pasá to, subject, body; cc/bcc/threadId opcionales (threadId para responder en un hilo). Para ADJUNTAR archivos, pasá adjuntos = lista de file_id de Drive (buscalos antes con drive_find; RESPETA el formato: un archivo NATIVO de Google (Doc/Sheet/Slides) va como LINK al documento real (se comparte con el destinatario), NO se convierte; un binario ya subido (docx/xlsx/pdf) se adjunta tal cual. Solo si el dueño pide una copia de archivo, pasá adjuntos_formato:"pdf" o "word".',
+        input_schema: { type: 'object', properties: { to: { type: 'string' }, cc: { type: 'string' }, bcc: { type: 'string' }, subject: { type: 'string' }, body: { type: 'string' }, threadId: { type: 'string' }, adjuntos: { type: 'array', items: { type: 'string' } }, adjuntos_formato: { type: 'string', enum: ['documento', 'pdf', 'word'] } }, required: ['to', 'subject', 'body'] },
       },
       async run(input) {
         if (!input?.to || !input?.body) return { error: 'faltan to y body' }
-        try { return { ok: true, ...(await ws().gmailSend({ ...input, attachmentFileIds: input?.adjuntos })) } } catch (e) { return sinAcceso(e) }
+        try { return { ok: true, ...(await ws().gmailSend({ ...input, attachmentFileIds: input?.adjuntos, attachmentFormat: input?.adjuntos_formato })) } } catch (e) { return sinAcceso(e) }
       },
     },
     'mail.trash': {
