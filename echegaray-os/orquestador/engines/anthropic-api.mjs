@@ -229,7 +229,27 @@ export function makeAnthropicEngine({ config, client, breaker, semaphore }) {
       let toolTurns = 0
       let lastResponse = null
 
+      // PROMPT CACHING INCREMENTAL del loop agéntico (el mayor freno de costo real). Sin esto,
+      // cada iteración re-manda TODO el historial creciente de tool_results a precio pleno →
+      // costo O(n²): una tarea de 30 vueltas leyendo planillas trepaba a $6. Con un breakpoint
+      // RODANTE en el último bloque del último mensaje, la vuelta siguiente lee todo el prefijo
+      // previo (assistant + tool_results acumulados) desde caché a ~10% → O(n). Presupuesto de
+      // breakpoints = 4 (Anthropic): system + tools + primer mensaje + este rodante. Movemos el
+      // marcador cada vuelta (lo sacamos del anterior) para no pasarnos del tope de 4.
+      let rollingCached = null
+      const setRollingCache = () => {
+        if (rollingCached && rollingCached.cache_control) delete rollingCached.cache_control
+        rollingCached = null
+        if (messages.length < 2) return // msg0 ya lleva su propio marcador (firstContent)
+        const last = messages[messages.length - 1]
+        const content = last && last.content
+        if (!Array.isArray(content) || !content.length) return
+        const block = content[content.length - 1]
+        if (block && typeof block === 'object') { block.cache_control = { type: 'ephemeral' }; rollingCached = block }
+      }
+
       for (let i = 0; i < maxIterations; i++) {
+        setRollingCache()
         const response = await callModel(messages)
         lastResponse = response
         if (response.usage) usages.push(response.usage)

@@ -172,6 +172,22 @@ async function main() {
       && seen[0].messages[0].content.at(-1).text === 'caja?')
     check('tooluse: 2da llamada = user+assistant+tool_result', seen[1].messages.length === 3 && seen[1].messages[2].content[0].type === 'tool_result')
     check('tooluse: tool_result referencia el tool_use_id', seen[1].messages[2].content[0].tool_use_id === 'tu_1')
+    // PROMPT CACHING INCREMENTAL: en la 2da llamada el ÚLTIMO bloque del ÚLTIMO mensaje
+    // (los tool_results acumulados) lleva el breakpoint rodante → la vuelta lee el prefijo
+    // desde caché a ~10% (freno real del costo O(n²) del loop). Y el total de breakpoints
+    // en la request NO pasa de 4 (límite de Anthropic).
+    check('tooluse: breakpoint rodante en el último tool_result', seen[1].messages.at(-1).content.at(-1).cache_control?.type === 'ephemeral')
+    {
+      const contarBreakpoints = (p) => {
+        let n = 0
+        if (Array.isArray(p.system)) n += p.system.filter((b) => b?.cache_control).length
+        if (Array.isArray(p.tools)) n += p.tools.filter((t) => t?.cache_control).length
+        for (const msg of p.messages || []) if (Array.isArray(msg.content)) n += msg.content.filter((b) => b && typeof b === 'object' && b.cache_control).length
+        return n
+      }
+      check('tooluse: breakpoints ≤ 4 en la 1ra llamada', contarBreakpoints(seen[0]) <= 4)
+      check('tooluse: breakpoints ≤ 4 en la 2da llamada', contarBreakpoints(seen[1]) <= 4)
+    }
     check('tooluse: result es el texto final', out.result === '{"caja":123}')
     check('tooluse: sessionId de la última respuesta', out.sessionId === 'msg_t2')
     check('tooluse: tokens acumulados', out.tokens.input_tokens === 500 && out.tokens.output_tokens === 70)
