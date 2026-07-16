@@ -231,6 +231,14 @@ export function makeAnthropicEngine({ config, client, breaker, semaphore }) {
             try {
               const r = await job.toolExecutor(block.name, block.input, { id: block.id, agentSlug: job.agentSlug, task: job.task })
               content = typeof r === 'string' ? r : JSON.stringify(r ?? null)
+              // TOPE DE CONTEXTO: un tool_result gigante (ej. leer una pestaña de 500 filas)
+              // se ACUMULA y se re-manda cada vuelta → el contexto explotaba a 1M+ tokens y
+              // $6 por tarea (o 400 por pasar el límite). Recortamos cada resultado y le
+              // decimos al modelo que lea rangos más chicos. Es el freno real del gasto.
+              const TOPE = 24000
+              if (typeof content === 'string' && content.length > TOPE) {
+                content = content.slice(0, TOPE) + `\n…[resultado recortado — eran ${content.length} caracteres. Leé un rango/porción MÁS CHICO (menos filas o menos columnas) en vez de la pestaña entera; no repitas lecturas grandes.]`
+              }
             } catch (err) {
               // Un fallo de tool no rompe el razonamiento: vuelve al modelo como error.
               content = `ERROR: ${String(err?.message ?? err).slice(0, 500)}`

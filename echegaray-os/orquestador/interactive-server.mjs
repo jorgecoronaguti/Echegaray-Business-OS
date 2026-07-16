@@ -402,7 +402,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // literal. Antes se miraba solo la directiva actual → un "a" caía como charla
   // trivial (modelo tímido, pocas iteraciones) y el OS reseteaba en vez de ejecutar
   // la opción elegida. Ahora miramos la directiva Y el historial reciente.
-  const WRITE_RE = /\b(registr|agreg|añad|anot|escrib|orden|complet|corrig|carg|aplic|hacelo|hac[eé]|modific|pon[eé]|actualiz|edit|arregl|reemplaz|renombr|mov[eé]|crea|mejor|reconstru|rehac|rehag|rearm|limpi|f[oó]rmula|borr|elimin|vaci|duplic|copi|marc[aá]|pas[aá]\s+a)/i
+  const WRITE_RE = /\b(registr|agreg|añad|anot|escrib|orden|complet|corrig|carg|aplic|hacelo|hac[eé]|modific|pon[eé]|actualiz|edit|arregl|reemplaz|renombr|mov[eé]|crea|mejor|reconstru|rehac|rehag|rearm|arm[aá]|gener[aá]|complet|calcul[aá]|llen[aá]|limpi|f[oó]rmula|borr|elimin|vaci|duplic|copi|marc[aá]|pas[aá]\s+a)/i
   const CONFIRM_RE = /^\s*(s[ií]|dale|ok(ay)?|listo|hacelo|hazlo|aplicalo?|proced[eé]|adelante|confirmo|de una|opci[oó]n\s*)?[\s,.:]*([abc]|[123]|la\s*[123]|el\s*[123]|es[ae]|aquel[la]?)?\s*$/i
   const histText = Array.isArray(history) ? history.slice(-4).map((m) => String(m.text || '')).join('\n') : ''
   const directiveWrite = WRITE_RE.test(String(directive || ''))
@@ -447,11 +447,11 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // archivo abierto o adjunto). Ese trabajo NECESITA sonnet para salir bien; bajarlo a haiku lo
   // rompe (más iteraciones fallidas = MÁS gasto y peor resultado). Degradar solo consultas/charla.
   const tareaCritica = writeToDocIntent || att || !!fileId
-  // La edición usa sonnet normalmente (haiku la rompe). PERO si el gasto de hoy YA SUPERÓ el
-  // tope ('tope'), degradamos TODO —incluso la edición—: quemar crédito que no hay es peor que
-  // un resultado más pobre. En 'ahorro' (80-100%) solo se degrada lo NO crítico.
-  const enTope = presupuesto.modo === 'tope'
-  if (model === 'sonnet' && degradarModeloOnDemand(presupuesto.modo) && (!tareaCritica || enTope)) { model = 'haiku'; degradadoPorCosto = true }
+  // La edición de documentos NUNCA se degrada a haiku: haiku la ROMPE (no hace pivots, no
+  // formatea) y el dueño termina con una tabla a medias — peor que gastar. El gasto se controla
+  // ahora por el lado correcto: contexto acotado (tope de tool_result) + tope de costo por
+  // tarea, que dejan una edición en centavos. Solo se degrada lo NO crítico (charla/consulta).
+  if (model === 'sonnet' && !tareaCritica && degradarModeloOnDemand(presupuesto.modo)) { model = 'haiku'; degradadoPorCosto = true }
   const engine = resolveEngine('anthropic-api')
 
   // Fase 3: rutear al especialista correcto. Clasificamos la directiva a un dominio
@@ -838,7 +838,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   const promptContent = att ? [att, { type: 'text', text: prompt }] : prompt
 
   const eng = await engine.run(
-    { system, prompt: promptContent, worktreePath: CTX.context.repository.rootPath, model, maxCostUsd: writeToDocIntent ? 1.2 : 0.8, maxTokens: writeIntent || att || isBudgeting ? 8192 : 900,
+    { system, prompt: promptContent, worktreePath: CTX.context.repository.rootPath, model, maxCostUsd: writeToDocIntent ? 1.5 : 0.8, maxTokens: writeIntent || att || isBudgeting ? 8192 : 900,
       // Reconstruir/editar una planilla lee varias pestañas y escribe varios rangos: 26
       // iteraciones se agotaban a mitad (dejando la tarea incompleta y gastando en vano).
       // Con archivo abierto o pedido de escribir un documento damos 40; el resto igual.
@@ -1056,7 +1056,7 @@ const server = http.createServer(async (req, res) => {
       // a un documento + verbo de acción, damos un techo mayor (300s) para que NO se corte a
       // mitad (causa real de "reconstruí la planilla y me cortó"). El resto sigue en 180s.
       const esEscrituraDocReq = !!fileId
-        || (/\b(registr|agreg|escrib|complet|carg|hac[eé]|hacelo|modific|actualiz|arregl|reemplaz|reconstru|rehac|rehag|rearm|limpi|f[oó]rmula|borr|elimin|duplic|marc[aá]|reorden)\b/i.test(String(directive || ''))
+        || (/\b(registr|agreg|escrib|complet|carg|hac[eé]|hacelo|modific|actualiz|arregl|reemplaz|reconstru|rehac|rehag|rearm|arm[aá]|gener[aá]|limpi|f[oó]rmula|borr|elimin|duplic|marc[aá]|reorden)\b/i.test(String(directive || ''))
             && /\b(pesta[ñn]a|solapa|hoja|sheet|planilla|spreadsheet|celda|rango|columna|fila|tabla|drive|documento)\b|https?:\/\/[^\s]*(docs|drive)\.google/i.test(String(directive || '')))
       const HARD_MS = Number(process.env.ORQ_TASK_TIMEOUT_MS || (esEscrituraDocReq ? 300000 : 180000))
       // DEDUP: ¿este MISMO pedido ya está en curso? Entonces NO arranco otro run (eso es el
