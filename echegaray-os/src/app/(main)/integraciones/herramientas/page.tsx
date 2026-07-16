@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getHerramientas } from '@/features/integraciones/services/herramientasService'
+import { getMovimientos, type MovimientoConHerramienta } from '@/features/integraciones/services/movimientosService'
 import { HerramientasManager } from '@/features/integraciones/components/HerramientasManager'
 
 export const dynamic = 'force-dynamic'
@@ -8,16 +9,23 @@ export const dynamic = 'force-dynamic'
 async function loadData() {
   try {
     const supabase = await createClient()
-    return { res: await getHerramientas(supabase) }
+    const [res, movs] = await Promise.all([getHerramientas(supabase), getMovimientos(supabase, 1000)])
+    return { res, movs }
   } catch (err) {
-    return { res: { data: null, error: err instanceof Error ? err.message : 'Error' } as const }
+    const error = err instanceof Error ? err.message : 'Error'
+    return { res: { data: null, error } as const, movs: { data: null, error } as const }
   }
 }
 
 export default async function HerramientasPage() {
-  const { res } = await loadData()
+  const { res, movs } = await loadData()
   const herramientas = res.data ?? []
   const ubicaciones = [...new Set(herramientas.map((h) => h.ubicacion_actual).filter((u): u is string => !!u))].sort()
+  // Movimientos agrupados por herramienta (para el timeline en cada card).
+  const movimientosPorHerramienta: Record<string, MovimientoConHerramienta[]> = {}
+  for (const m of movs.data ?? []) {
+    ;(movimientosPorHerramienta[m.id_herramienta] ??= []).push(m)
+  }
 
   return (
     <div className="min-h-screen space-y-6 p-8">
@@ -42,7 +50,7 @@ export default async function HerramientasPage() {
         </div>
       )}
 
-      <HerramientasManager herramientas={herramientas} ubicaciones={ubicaciones} />
+      <HerramientasManager herramientas={herramientas} ubicaciones={ubicaciones} movimientosPorHerramienta={movimientosPorHerramienta} />
     </div>
   )
 }
