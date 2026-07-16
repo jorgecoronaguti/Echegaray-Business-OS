@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getAvanceObra, getObraDetalle, pedidoPendiente, type AvanceObra } from '@/features/control-obras/services/controlObrasService'
+import { getCostosPorObra, type CostosObra } from '@/features/control-obras/services/costosObraService'
 import { ObraTabs } from '@/features/control-obras/components/ObraTabs'
 
 export const dynamic = 'force-dynamic'
@@ -12,12 +13,18 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ ob
   let error: string | null = null
   let detalle = null
   let avance: AvanceObra | null = null
+  let costos: CostosObra = { obra: nombre, total: 0, comprobantes: 0, porProveedor: [] }
   try {
     const supabase = await createClient()
-    const [res, av] = await Promise.all([getObraDetalle(supabase, nombre), getAvanceObra(supabase, nombre)])
+    const [res, av, cos] = await Promise.all([
+      getObraDetalle(supabase, nombre),
+      getAvanceObra(supabase, nombre),
+      getCostosPorObra(supabase, nombre),
+    ])
     error = res.error
     detalle = res.data
     avance = av
+    costos = cos
   } catch (err) {
     error = err instanceof Error ? err.message : 'Error desconocido'
   }
@@ -55,7 +62,7 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ ob
         </div>
       )}
 
-      {detalle && <ObraTabs detalle={detalle} avance={avance} />}
+      {detalle && <ObraTabs detalle={detalle} avance={avance} costos={costos} />}
     </div>
   )
 }

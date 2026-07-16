@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import { pedidoPendiente, type AvanceObra, type ObraDetalle } from '../services/controlObrasService'
+import type { CostosObra } from '../services/costosObraService'
 
-type Tab = 'avance' | 'herramientas' | 'pedidos' | 'movimientos'
+type Tab = 'avance' | 'costos' | 'herramientas' | 'pedidos' | 'movimientos'
 
 function fecha(f: string | null): string {
   if (!f) return '—'
@@ -11,10 +12,15 @@ function fecha(f: string | null): string {
   return isNaN(d.getTime()) ? f : d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
-export function ObraTabs({ detalle, avance }: { detalle: ObraDetalle; avance: AvanceObra | null }) {
+function money(n: number): string {
+  return n.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
+}
+
+export function ObraTabs({ detalle, avance, costos }: { detalle: ObraDetalle; avance: AvanceObra | null; costos: CostosObra }) {
   const [tab, setTab] = useState<Tab>(avance?.estructurado ? 'avance' : 'herramientas')
   const tabs: { id: Tab; label: string; count: number }[] = [
     { id: 'avance', label: 'Avance', count: avance?.estructurado ? avance.actividades : 0 },
+    { id: 'costos', label: 'Costos', count: costos.comprobantes },
     { id: 'herramientas', label: 'Herramientas', count: detalle.herramientas.length },
     { id: 'pedidos', label: 'Pedidos', count: detalle.pedidos.length },
     { id: 'movimientos', label: 'Movimientos', count: detalle.movimientos.length },
@@ -41,6 +47,8 @@ export function ObraTabs({ detalle, avance }: { detalle: ObraDetalle; avance: Av
 
       <div className="divide-y divide-gray-100">
         {tab === 'avance' && <AvancePanel avance={avance} />}
+
+        {tab === 'costos' && <CostosPanel costos={costos} />}
 
         {tab === 'herramientas' &&
           (detalle.herramientas.length === 0 ? (
@@ -169,6 +177,45 @@ function AvancePanel({ avance }: { avance: AvanceObra | null }) {
               </div>
             </div>
             <span className="w-10 shrink-0 text-right text-xs font-semibold tabular-nums text-gray-700">{a.pct}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function CostosPanel({ costos }: { costos: CostosObra }) {
+  if (costos.comprobantes === 0) {
+    return (
+      <div className="px-4 py-10 text-center text-sm text-gray-400">
+        Todavía no hay costos de ARCA asignados a esta obra.
+        <br />
+        <a href="/control-obras/costos" className="mt-2 inline-block font-medium text-gray-700 underline hover:text-gray-900">
+          Asignar comprobantes a obras →
+        </a>
+      </div>
+    )
+  }
+  return (
+    <div>
+      <div className="flex items-baseline justify-between px-4 py-4">
+        <div>
+          <div className="text-sm font-semibold text-gray-900">Costo real (comprobantes ARCA)</div>
+          <div className="text-xs text-gray-500">{costos.comprobantes} comprobantes asignados · fuente: ARCA</div>
+        </div>
+        <div className="text-2xl font-bold tabular-nums text-gray-900">{money(costos.total)}</div>
+      </div>
+      <div className="border-t border-gray-100">
+        {costos.porProveedor.map((p) => (
+          <div key={p.cuit || p.proveedor} className="flex items-center gap-3 px-4 py-2.5">
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm text-gray-900">{p.proveedor}</div>
+              <div className="text-xs text-gray-500">
+                {p.comprobantes} comprobante{p.comprobantes === 1 ? '' : 's'}
+                {p.cuit ? ` · CUIT ${p.cuit}` : ''}
+              </div>
+            </div>
+            <span className="shrink-0 text-sm font-semibold tabular-nums text-gray-800">{money(p.total)}</span>
           </div>
         ))}
       </div>

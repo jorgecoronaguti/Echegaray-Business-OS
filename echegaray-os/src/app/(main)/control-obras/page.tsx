@@ -26,12 +26,20 @@ export default async function ControlObrasPage() {
 
   return (
     <div className="min-h-screen space-y-6 p-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Control de obras</h1>
-        <p className="mt-2 max-w-2xl text-gray-600">
-          Todas las obras de un vistazo, por actividad operativa. Tocá una obra para ver sus herramientas, pedidos y
-          movimientos. El avance físico y el control económico se suman en las próximas fases.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Control de obras</h1>
+          <p className="mt-2 max-w-2xl text-gray-600">
+            Todas las obras de un vistazo, por actividad operativa. Tocá una obra para ver su avance físico,
+            herramientas, pedidos, movimientos y el costo real.
+          </p>
+        </div>
+        <Link
+          href="/control-obras/costos"
+          className="shrink-0 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm transition hover:border-gray-900"
+        >
+          Asignar costos (ARCA) →
+        </Link>
       </div>
 
       {error && (
