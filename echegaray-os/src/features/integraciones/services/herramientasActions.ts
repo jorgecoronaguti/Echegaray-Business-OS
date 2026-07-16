@@ -41,6 +41,38 @@ export async function setUbicacionAction(_prev: ActionState, formData: FormData)
   return { error: null, ok: true }
 }
 
+const estadoSchema = z.object({
+  id_herramienta: z.string().trim().min(1),
+  estado: z.enum(['disponible', 'en_uso', 'en_reparacion', 'fuera_servicio', 'perdida']),
+  estado_nota: z.string().trim().max(160).optional(),
+})
+
+export async function setEstadoHerramientaAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = estadoSchema.safeParse({
+    id_herramienta: formData.get('id_herramienta'),
+    estado: formData.get('estado'),
+    estado_nota: formData.get('estado_nota') || undefined,
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0].message }
+  const c = await client()
+  if (!c.supabase) return { error: c.error! }
+  // NO marcamos origen='os': estado va en una columna propia que el sync del AppSheet nunca
+  // toca (su upsert solo actualiza nombre/ubicacion/fecha). Así el estado se preserva Y la
+  // ubicación se sigue sincronizando desde el campo. Ver sync-herramientas.mjs.
+  const { error } = await c.supabase
+    .from('herramientas')
+    .update({
+      estado: parsed.data.estado,
+      estado_nota: parsed.data.estado_nota ?? null,
+      estado_actualizado_en: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id_herramienta', parsed.data.id_herramienta)
+  if (error) return { error: error.message }
+  revalidatePath(PATH)
+  return { error: null, ok: true }
+}
+
 export async function uploadFotoAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const id = String(formData.get('id_herramienta') || '').trim()
   const file = formData.get('foto')
