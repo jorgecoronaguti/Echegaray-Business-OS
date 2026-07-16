@@ -58,6 +58,7 @@ import { skillsForCapability } from './lib/skill-map.mjs'
 import { extraerRestricciones, DOCTRINA_EDICION, VERIFICACION_EDICION } from './lib/doc-edit-guardrails.mjs'
 import { isMailComposeIntent, isCalendarWriteIntent } from './lib/chat-intents.mjs'
 import { stripPreamble } from './lib/chat-format.mjs'
+import { personaParaConsulta } from './lib/chat-persona.mjs'
 import { propuestasMejoraResumen } from './lib/mejoras.mjs'
 import { createSchedule, listSchedules, toggleSchedule } from './lib/schedules.mjs'
 import { enqueueTask } from './lib/ledger.mjs'
@@ -477,7 +478,13 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // (reordenar, completar, rehacer, analizar a fondo) → sonnet, que lee y ACTÚA con las
   // tools de forma confiable. haiku propone/pregunta en vez de ejecutar (causa real de
   // "le pido que haga algo y no lo hace"). Vale el costo: la acción tiene que salir.
-  let model = writeIntent || mailComposeIntent || calendarWriteIntent || att || budgetingKw || teachingIntent || researchLearnIntent || fast === false || fileId ? 'sonnet' : 'haiku'
+  // Clasificación de dominio (0-API) ANTES de elegir modelo: una CONSULTA DE CRITERIO de un
+  // dominio experto (finanzas, laboral, ingeniería…) se razona como ESE especialista y con
+  // sonnet, no como asistente genérico con haiku. Es lo que hace que se sienta el cerebro.
+  const capabilities = classifyDirectiveMulti(directive)
+  const capability = capabilities[0] || 'general' // principal (para isBudgeting, telemetría)
+  const { persona: personaExperta, asesoria: asesoriaProfunda } = personaParaConsulta(capability, directive)
+  let model = writeIntent || mailComposeIntent || calendarWriteIntent || att || budgetingKw || teachingIntent || researchLearnIntent || asesoriaProfunda || fast === false || fileId ? 'sonnet' : 'haiku'
   // TOPE DE GASTO (degrada, NUNCA bloquea): si el gasto de hoy pasó el umbral, un pedido
   // que iba a usar sonnet baja a haiku. La respuesta SIEMPRE llega — solo cambia el modelo.
   // Las respuestas determinísticas (0 API) ya devolvieron antes; nunca pagan esto.
@@ -499,8 +506,6 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // asistente administrativo de siempre. Si falla la clasificación, degrada a general.
   // Multi-dominio: un pedido puede cruzar varias skills (cotizar = costos + ingeniería +
   // legal + finanzas). Activamos TODAS las que correspondan, acotado a 4 por costo/prompt.
-  const capabilities = classifyDirectiveMulti(directive)
-  const capability = capabilities[0] || 'general' // principal (para isBudgeting, telemetría)
   // AHORRO DE TOKENS (causa real del gasto): editar/formatear un documento NO necesita skills
   // de dominio (finanzas, impuestos…) — es trabajo mecánico de Drive, y esas skills sólo
   // inflan el prompt que se RE-MANDA 26-40 veces por tarea. Para edición de documento (sin
@@ -800,8 +805,9 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
     : '')
   // Framing conciso SIEMPRE (aunque cargue skills): queremos el CONOCIMIENTO del
   // especialista pero una entrega corta y directa, no el análisis extenso del worker.
-  const roleFraming =
-    'Sos el asistente operativo del OS de Echegaray Construcciones: respondés directivas del dueño con criterio experto y datos reales, pero DIRECTO y CONCISO — pocas palabras, al grano, sin relleno.'
+  const roleFraming = personaExperta
+    ? `Sos ${personaExperta}. Respondé al dueño con tu CRITERIO EXPERTO de ese dominio y datos reales: razoná CON tu conocimiento (no lo recites), distinguí HECHO / ESTIMACIÓN / RECOMENDACIÓN, y si hay un riesgo o una mejor opción, decilo. DIRECTO y CONCISO — al grano, sin relleno ni preámbulo.`
+    : 'Sos el asistente operativo del OS de Echegaray Construcciones: respondés directivas del dueño con criterio experto y datos reales, pero DIRECTO y CONCISO — pocas palabras, al grano, sin relleno.'
   const { system, skillsLoaded } = await assembleReasoningSystem({
     rootPath: CTX.context.repository.rootPath, config: cfg,
     roleFraming,
