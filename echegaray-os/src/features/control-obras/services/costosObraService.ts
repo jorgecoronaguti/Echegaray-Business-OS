@@ -44,6 +44,74 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0
 }
 
+// Clave de proveedor para cruzar historial: CUIT primero (confiable), nombre normalizado si no.
+// La MISMA clave se usa al construir el historial y al buscarle sugerencia a un comprobante.
+export function provKey(cuit: string | null, nombre: string | null): string {
+  const c = String(cuit ?? '').replace(/\D/g, '')
+  if (c) return `cuit:${c}`
+  const n = String(nombre ?? '').trim().toLowerCase()
+  return n ? `name:${n}` : ''
+}
+
+// Fase 3.1 — sugerencia de obra por HISTORIAL del proveedor. `veces` de `deTotal` comprobantes
+// ya asignados de ese proveedor fueron a `obra`. unánime = todos fueron a la misma obra.
+export interface SugerenciaObra {
+  obra: string
+  veces: number
+  deTotal: number
+  unanime: boolean
+}
+
+export type ComprobanteConSugerencia = ComprobanteArca & { sugerencia: SugerenciaObra | null }
+
+// Historial de atribución por proveedor: a qué obra imputaste antes cada uno. 0-API, solo lee lo
+// que VOS ya asignaste — no adivina. Si un proveedor no tiene historial, no hay sugerencia; si
+// imputaste a varias obras, propone la dominante mostrando la evidencia (N de M). Propone, no aplica.
+export async function getSugerenciasProveedor(supabase: SupabaseClient): Promise<Map<string, SugerenciaObra>> {
+  const { data } = await supabase
+    .from('comprobantes_arca')
+    .select('emisor_nombre, emisor_cuit, obra_texto')
+    .eq('tipo_libro', COMPRAS)
+    .not('obra_texto', 'is', null)
+  const porProv = new Map<string, Map<string, number>>()
+  for (const c of (data ?? []) as { emisor_nombre: string | null; emisor_cuit: string | null; obra_texto: string | null }[]) {
+    const key = provKey(c.emisor_cuit, c.emisor_nombre)
+    const obra = String(c.obra_texto ?? '').trim()
+    if (!key || !obra) continue
+    if (!porProv.has(key)) porProv.set(key, new Map())
+    const m = porProv.get(key)!
+    m.set(obra, (m.get(obra) ?? 0) + 1)
+  }
+  const out = new Map<string, SugerenciaObra>()
+  for (const [key, obras] of porProv) {
+    let total = 0
+    let top = ''
+    let topN = 0
+    for (const [obra, n] of obras) {
+      total += n
+      if (n > topN) { topN = n; top = obra }
+    }
+    if (top) out.set(key, { obra: top, veces: topN, deTotal: total, unanime: obras.size === 1 })
+  }
+  return out
+}
+
+// Comprobantes sin asignar YA con su sugerencia de obra adjunta (Fase 3.1). Una sola pasada,
+// 0-API: cruza cada comprobante con el historial de su proveedor.
+export async function getComprobantesSinAsignarConSugerencia(
+  supabase: SupabaseClient,
+  limit = 200,
+): Promise<ComprobanteConSugerencia[]> {
+  const [comprobantes, sugerencias] = await Promise.all([
+    getComprobantesSinAsignar(supabase, limit),
+    getSugerenciasProveedor(supabase),
+  ])
+  return comprobantes.map((c) => ({
+    ...c,
+    sugerencia: sugerencias.get(provKey(c.emisor_cuit, c.emisor_nombre)) ?? null,
+  }))
+}
+
 // Lista canónica de obras para el selector: unión de las fuentes operativas (avance, pedidos,
 // herramientas), deduplicada sin distinguir mayúsculas y con la mejor grafía (prefiere la del
 // tracker de avance; si no, una con minúsculas antes que TODO EN MAYÚSCULAS).
