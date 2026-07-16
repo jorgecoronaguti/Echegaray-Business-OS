@@ -9,6 +9,7 @@ import {
   type ActionState,
 } from '../services/herramientasActions'
 import type { Herramienta } from '../services/herramientasService'
+import type { MovimientoConHerramienta } from '../services/movimientosService'
 
 const initial: ActionState = { error: null }
 
@@ -21,7 +22,15 @@ function ubicacionTone(u: string | null): string {
   return 'bg-sky-100 text-sky-700' // en obra
 }
 
-export function HerramientasManager({ herramientas, ubicaciones }: { herramientas: Herramienta[]; ubicaciones: string[] }) {
+export function HerramientasManager({
+  herramientas,
+  ubicaciones,
+  movimientosPorHerramienta = {},
+}: {
+  herramientas: Herramienta[]
+  ubicaciones: string[]
+  movimientosPorHerramienta?: Record<string, MovimientoConHerramienta[]>
+}) {
   const [q, setQ] = useState('')
   const [ubiFiltro, setUbiFiltro] = useState('')
   const [mostrarAlta, setMostrarAlta] = useState(false)
@@ -84,7 +93,7 @@ export function HerramientasManager({ herramientas, ubicaciones }: { herramienta
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {filtradas.map((h) => (
-            <HerramientaCard key={h.id_herramienta} h={h} ubicaciones={ubicaciones} />
+            <HerramientaCard key={h.id_herramienta} h={h} ubicaciones={ubicaciones} movimientos={movimientosPorHerramienta[h.id_herramienta] ?? []} />
           ))}
         </div>
       )}
@@ -92,7 +101,8 @@ export function HerramientasManager({ herramientas, ubicaciones }: { herramienta
   )
 }
 
-function HerramientaCard({ h, ubicaciones }: { h: Herramienta; ubicaciones: string[] }) {
+function HerramientaCard({ h, ubicaciones, movimientos }: { h: Herramienta; ubicaciones: string[]; movimientos: MovimientoConHerramienta[] }) {
+  const [verHistorial, setVerHistorial] = useState(false)
   return (
     <div className="group flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white">
       <Foto h={h} />
@@ -109,9 +119,40 @@ function HerramientaCard({ h, ubicaciones }: { h: Herramienta; ubicaciones: stri
           <BorrarBtn h={h} />
         </div>
         <MoverHerramienta key={h.ubicacion_actual ?? ''} h={h} ubicaciones={ubicaciones} />
+        {movimientos.length > 0 && (
+          <>
+            <button
+              onClick={() => setVerHistorial((v) => !v)}
+              className="flex items-center gap-1 self-start text-[11px] text-gray-400 hover:text-gray-700"
+              aria-expanded={verHistorial}
+            >
+              <svg className={`h-3 w-3 transition-transform ${verHistorial ? 'rotate-90' : ''}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                <path fillRule="evenodd" d="M7.293 4.293a1 1 0 011.414 0l5 5a1 1 0 010 1.414l-5 5a1 1 0 01-1.414-1.414L11.586 10 7.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+              Historial ({movimientos.length})
+            </button>
+            {verHistorial && (
+              <ol className="space-y-1 border-l border-gray-200 pl-3 text-[11px] text-gray-500">
+                {movimientos.slice(0, 12).map((m) => (
+                  <li key={m.id_movimiento}>
+                    <span className="text-gray-700">{m.destino || '—'}</span>
+                    {m.responsable ? ` · ${m.responsable}` : ''}
+                    <span className="text-gray-400"> · {fechaCortaMov(m.fecha)}</span>
+                  </li>
+                ))}
+                {movimientos.length > 12 && <li className="text-gray-400">…y {movimientos.length - 12} más</li>}
+              </ol>
+            )}
+          </>
+        )}
       </div>
     </div>
   )
+}
+
+function fechaCortaMov(iso: string | null): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
 }
 
 function Foto({ h }: { h: Herramienta }) {
