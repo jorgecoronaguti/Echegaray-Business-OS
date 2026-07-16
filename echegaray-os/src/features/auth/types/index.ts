@@ -3,7 +3,7 @@ import { z } from 'zod'
 // Perfil — rol real del usuario autenticado (PR5). El alta de perfil (asignación de
 // rol) se hace manualmente por Jorge en Supabase, no vía signup -- así nadie se
 // autoasigna 'direccion'. Ver supabase/migrations/20260708121545_login_roles.sql
-export type Rol = 'direccion' | 'administracion' | 'jefe_obra'
+export type Rol = 'direccion' | 'administracion' | 'jefe_obra' | 'campo'
 
 export interface Perfil {
   id: string
@@ -17,6 +17,14 @@ export const ROL_LABEL: Record<Rol, string> = {
   direccion: 'Dirección',
   administracion: 'Administración',
   jefe_obra: 'Jefe de Obra',
+  campo: 'Campo',
+}
+
+// Rutas que el rol 'campo' (operario) PUEDE ver en la web. Todo lo demás (caja, reportes,
+// dirección…) queda fuera de su alcance. Se usa en el middleware y en el nav.
+export const CAMPO_RUTAS_PERMITIDAS = ['/integraciones/pedidos-materiales', '/integraciones/herramientas', '/integraciones/movimientos', '/campo']
+export function esRutaCampoPermitida(pathname: string): boolean {
+  return CAMPO_RUTAS_PERMITIDAS.some((r) => pathname === r || pathname.startsWith(r + '/'))
 }
 
 export const loginInputSchema = z.object({
