@@ -7,19 +7,19 @@ import { CAPABILITY_SKILLS } from './skill-map.mjs'
 // Palabras/raíces clave por capacidad (en minúsculas, sin tildes para robustez).
 // Se elige la capacidad con más coincidencias; empate/cero → 'general'.
 const CAP_KEYWORDS = {
-  'advise.finance': ['caja', 'saldo', 'cobranz', 'cobrar', 'pagar', 'pago', 'tesorer', 'flujo', 'fondos', 'liquidez', 'capital de trabajo', 'banco', 'cheque', 'transferenc'],
-  'advise.accounting': ['contab', 'p&l', 'resultado', 'margen', 'balance', 'devengad', 'asiento', 'ganancia neta'],
-  'advise.tax': ['impuesto', 'iva', 'ingresos brutos', 'ganancias', 'arca', 'afip', 'dgr', 'retenc', 'alicuota', 'fiscal', 'monotributo'],
-  'advise.legal': ['contrato', 'adicional', 'reclamo', 'garantia', 'pliego', 'clausula', 'exigib', 'legal', 'demanda', 'penal'],
-  'advise.hr': ['uocra', 'ieric', 'personal', 'empleado', 'jornal', 'legajo', 'alta', 'baja', 'despido', 'sueldo', 'fondo de cese', 'convenio', 'obrero'],
-  'advise.safety': ['seguridad', 'higiene', 'art', 'accidente', 'incidente', 'riesgo laboral', 'ssma', 'epp'],
-  'advise.procurement': ['comprar', 'compra', 'proveedor', 'subcontrat', 'abastec', 'cotiza insumo', 'orden de compra', 'presupuesto de compra'],
-  'advise.estimating': ['cotizar', 'presupuest', 'computo', 'cómputo', 'valoriz', 'costo', 'precio unitario', 'analisis de precio'],
-  'advise.engineering': ['plan', 'cronograma', 'avance', 'productividad', 'rendimiento', 'ruta critica', 'gantt', 'certificac'],
-  'advise.civil': ['hormigon', 'estructura', 'material', 'patologia', 'fisura', 'losa', 'columna', 'suelo', 'tecnica constructiv'],
-  'advise.quality': ['calidad', 'ensayo', 'tolerancia', 'no conformidad', 'control de calidad'],
-  'advise.equipment': ['equipo', 'vehiculo', 'flota', 'camion', 'maquina', 'mantenimiento', 'rto', 'vtv', 'combustible', 'alquiler de equipo'],
-  'advise.site': ['obra', 'jefe de obra', 'cuadrilla', 'frente', 'sitio', 'capataz'],
+  'advise.finance': ['caja', 'saldo', 'cobranz', 'cobrar', 'pagar', 'pago', 'tesorer', 'flujo', 'fondos', 'liquidez', 'capital de trabajo', 'banco', 'cheque', 'transferenc', 'gasto', 'gastar', 'deuda', 'vencimiento', 'anticipo', 'efectivo', 'financ'],
+  'advise.accounting': ['contab', 'p&l', 'resultado', 'margen', 'balance', 'devengad', 'asiento', 'ganancia neta', 'rentabilidad', 'utilidad', 'ebitda'],
+  'advise.tax': ['impuesto', 'iva', 'ingresos brutos', 'ganancias', 'arca', 'afip', 'dgr', 'retenc', 'alicuota', 'fiscal', 'monotributo', 'factur', 'percepcion', 'f931'],
+  'advise.legal': ['contrato', 'adicional', 'reclamo', 'garantia', 'pliego', 'clausula', 'exigib', 'legal', 'demanda', 'penal', 'penalidad', 'multa', 'rescision', 'incumplimiento', 'certificado de obra'],
+  'advise.hr': ['uocra', 'ieric', 'personal', 'empleado', 'jornal', 'legajo', 'alta', 'baja', 'despido', 'sueldo', 'fondo de cese', 'convenio', 'obrero', 'nomina', 'aguinaldo', 'vacaciones', 'presentismo', 'indemniz', 'ausent'],
+  'advise.safety': ['seguridad', 'higiene', 'art', 'accidente', 'incidente', 'riesgo laboral', 'ssma', 'epp', 'casco', 'arnes', 'capacitacion', 'siniestr'],
+  'advise.procurement': ['compr', 'proveedor', 'subcontrat', 'abastec', 'cotiza insumo', 'orden de compra', 'presupuesto de compra', 'remito', 'insumo', 'stock', 'pedido de material'],
+  'advise.estimating': ['cotiz', 'presupuest', 'computo', 'cómputo', 'valoriz', 'costo', 'precio unitario', 'analisis de precio', 'apu', 'oferta', 'metro cuadrado'],
+  'advise.engineering': ['plan', 'cronograma', 'avance', 'productividad', 'rendimiento', 'ruta critica', 'gantt', 'certificac', 'hito', 'programa de obra', 'plazo de obra'],
+  'advise.civil': ['hormigon', 'estructura', 'material', 'patologia', 'fisura', 'losa', 'columna', 'suelo', 'tecnica constructiv', 'zapata', 'viga', 'encofrado', 'armadura', 'cimiento', 'mamposteria', 'revoque'],
+  'advise.quality': ['calidad', 'ensayo', 'tolerancia', 'no conformidad', 'control de calidad', 'probeta', 'inspeccion'],
+  'advise.equipment': ['equipo', 'vehiculo', 'flota', 'camion', 'maquina', 'mantenimiento', 'rto', 'vtv', 'combustible', 'alquiler de equipo', 'grua', 'autoelevador', 'retroexcavadora', 'hormigonera'],
+  'advise.site': ['obra', 'jefe de obra', 'cuadrilla', 'frente', 'sitio', 'capataz', 'parte diario', 'jornada'],
   'advise.data': ['auditar', 'integr', 'migrar', 'conciliar', 'fuente de datos', 'base de datos', 'sheet', 'planilla'],
   // Decisión de negocio / comercial (Go-No-Go, selección de obra, pipeline, riesgo del negocio).
   // Antes NO existía en el clasificador → la skill gestion-empresarial-riesgos era inalcanzable
