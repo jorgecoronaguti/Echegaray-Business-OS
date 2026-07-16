@@ -55,6 +55,7 @@ import { enqueuePendingOperation, listPendingOperations, decidePendingOperation,
 import { classifyDirective, classifyDirectiveMulti } from './lib/classify-directive.mjs'
 import { cacheGet, cachePut, cacheClearAll } from './lib/chat-cache.mjs'
 import { skillsForCapability } from './lib/skill-map.mjs'
+import { extraerRestricciones, DOCTRINA_EDICION, VERIFICACION_EDICION } from './lib/doc-edit-guardrails.mjs'
 import { createSchedule, listSchedules, toggleSchedule } from './lib/schedules.mjs'
 import { enqueueTask } from './lib/ledger.mjs'
 import { route } from './lib/router.mjs'
@@ -798,12 +799,31 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   const threadNudge = followUpAction
     ? 'IMPORTANTE — SEGUÍ EL HILO: el dueño está CONFIRMANDO o ELIGIENDO una opción de lo que propusiste recién (ver CONVERSACIÓN PREVIA). Interpretá "a/b/c", "la 2", "dale", "hacelo", "sí" como esa elección. NO vuelvas a preguntar, NO reinicies, NO respondas un estado genérico: EJECUTÁ ahora esa opción — leé el archivo si hace falta y dejá la operación concreta (drive_update en la fila/rango exacto) en Pendientes, avisando en una línea qué cambio y dónde.\n\n'
     : ''
+  // ── P0 (jul-2026) — la edición fallaba por FALTA DE CRITERIO, no por falta de skills ──
+  // Los 3 bloques de abajo arreglan los 3 reclamos concretos del dueño (inunda de color /
+  // ignora "sin gráficos" / canta "listo" sin verificar) SIN subir el costo de API: son
+  // ~400 tokens que se cachean (cache_control ephemeral), muchísimo menos que cargar las
+  // 4 SKILL.md completas (~10k tokens), y el tope de costo/iteración por tarea NO se mueve.
+  // (1) DOCTRINA DE DISEÑO — destilado operativo de google-sheets-business-systems: da el
+  //     criterio que faltaba (sobriedad, jerarquía sin relleno, un dato en un solo lugar).
+  const docEditDoctrine = writeToDocIntent ? DOCTRINA_EDICION : ''
+  // (2) RESTRICCIONES EXPLÍCITAS — parsear el texto del dueño es GRATIS en API y evita el
+  //     re-pedido (que sí cuesta el doble). Ignorar un "sacá los gráficos" es el reclamo #2.
+  const restricciones = writeToDocIntent ? extraerRestricciones(directive) : []
+  const restriccionesBlock = restricciones.length
+    ? '\n\nRESTRICCIONES EXPLÍCITAS DEL DUEÑO (son ÓRDENES; cumplí CADA UNA sí o sí — ignorar una es lo que más lo enoja):\n' + restricciones.map((r) => '• ' + r).join('\n') + '\n'
+    : ''
+  // (3) VERIFICACIÓN — dentro de la MISMA tarea (mismo tope de iteraciones/costo, no suma
+  //     una llamada nueva): releer lo que tocó y corregir antes de cantar "listo".
+  const verifBlock = writeToDocIntent ? VERIFICACION_EDICION : ''
+
   const prompt =
     `HOY: ${hoy} (San Juan, Argentina). Usá esta fecha; no la inventes.\n\n` +
     knownBlock +
     hist +
     threadNudge +
     `DIRECTIVA DEL DUEÑO:\n${directive}\n` +
+    restriccionesBlock +
     (fileId ? `\nEstá mirando el archivo de Drive con file_id=${fileId}. Leélo con drive_read si la directiva lo requiere.\n` : '') +
     `\n\nREGLA #1 — EJECUTÁ, NO PROPONGAS NI PREGUNTES: si el dueño te pide HACER algo (rehacer/reordenar/reconstruir/mejorar/completar una planilla o pestaña), NO respondas con un plan ("Propongo…", "Podría…", "3 cambios:…") ni con una pregunta ("¿Tenés el dato?", "¿Querés que…?", "Decime qué necesitás"). HACELO YA con las tools de escritura (drive_read para ver la estructura → drive_batch_update para aplicar). Proponer o preguntar en vez de actuar es EXACTAMENTE lo que el dueño odia y te está reclamando. ` +
     `Si para terminar te falta UN dato real que no podés inventar (ej. el saldo bancario de hoy), NO frenes a preguntarlo: hacé TODO el resto (estructura, encabezados, fórmulas, formato) y dejá ESA celda con un placeholder clarísimo (ej. "← cargar saldo Santander de hoy") — después, en UNA línea, avisá qué celda te queda por completar. Nunca entregues solo una propuesta o una pregunta cuando se pidió una acción.\n` +
@@ -828,6 +848,8 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
       ? `\n\nTE ADJUNTARON UN ARCHIVO (foto/PDF): interpretalo. Si es una factura/remito/comprobante, extraé proveedor, fecha, importe total, número y concepto. Si la directiva pide registrarlo, encontrá el Sheet correcto (ej. "Flujo de Caja - Cash Flow", pestaña de compras/gastos), LEÉ su estructura con drive_read y proponé la fila con drive_append. No inventes lo que no ves; si un dato no está en la imagen, decilo.\n`
       : '') +
     `Lo demás con efecto económico/fiscal/legal externo (Nivel E) tampoco lo ejecutes: proponelo en una línea.` +
+    docEditDoctrine +
+    verifBlock +
     budgetingContext +
     (isBudgeting
       ? ' Para presupuestar podés extenderte lo necesario (tablas, partidas, APU) — acá la claridad importa más que la brevedad.'
