@@ -175,7 +175,18 @@ function trackCost(usd, model, rol) {
   if (u > 0) query(`insert into orq.chat_cost (model, usd, rol) values ($1, $2, $3)`, [model, u, rol || null]).catch(() => {})
 }
 // Cerebro que compone: cuántas preguntas respondió la caché con 0 API (y el ahorro estimado).
-const CACHE_STATS = { hits: 0 }
+const CACHE_STATS = { hits: 0, misses: 0 }
+// Eficiencia global del cerebro: respuestas resueltas SIN modelo (detecciones determinísticas
+// + caché) vs. respuestas que pagaron API. Es la métrica de "cuánto se autoabastece el OS".
+const USAGE = { zeroApi: 0 }
+const PAID_MODEL = /^(haiku|sonnet|opus|agente)/i
+// Cuenta cada respuesta REAL una sola vez (se llama en el .then del askPromise). Los estados
+// transitorios (trabajando/cancelado/error) no cuentan. Lo pago ya lo cuenta trackCost (COST.n).
+function countAnswer(model) {
+  const m = String(model || '')
+  if (!m || m === 'trabajando' || m === 'cancelado' || m === 'error') return
+  if (!PAID_MODEL.test(m)) USAGE.zeroApi++
+}
 async function costSummary() {
   const hrs = Math.max(0.01, (Date.now() - COST.since) / 3.6e6)
   const per = Object.entries(COST.byModel).map(([m, u]) => `${m}: US$${u.toFixed(4)}`).join(' · ')
@@ -191,11 +202,17 @@ async function costSummary() {
     const capLinea = pres ? `\n• Tope diario: US$${pres.cap} — usado hoy US$${pres.usado} (${Math.round(pres.ratio * 100)}%) → modo **${pres.modo}**${pres.modo !== 'normal' ? ' (análisis caros bajan a haiku; la vigilancia no despacha especialistas; el chat nunca se corta)' : ''}` : ''
     auto = `\n\n**Agentes autónomos (worker) — costo REAL:**\n• Hoy: US$${hoy[0].usd || 0} (${hoy[0].n || 0} tareas) · Últimos 7 días: US$${sem[0].usd || 0}\n• Por tipo (7d): ${tipos || 'sin datos'}${capLinea}\n_El 90% es la vigilancia diaria disparando especialistas. Es lo que más pesa._`
   } catch { auto = '' }
-  // Cerebro que compone: preguntas respondidas con 0 API desde la caché + ahorro estimado.
+  // Eficiencia del cerebro: qué proporción de respuestas salió SIN pagar modelo (detecciones
+  // determinísticas + caché) y hit-rate del caché. Es la métrica de autoabastecimiento.
   let cacheLinea = ''
-  if (CACHE_STATS.hits > 0) {
+  const totalResp = USAGE.zeroApi + COST.n
+  if (totalResp > 0) {
     const avg = COST.n > 0 ? COST.total / COST.n : 0.03
-    cacheLinea = `\n\n**Cerebro que compone:** ${CACHE_STATS.hits} pregunta(s) respondidas con **0 API** desde la memoria del OS (ahorro estimado US$${(CACHE_STATS.hits * avg).toFixed(4)}). Cuanto más se usa, más barato responde.`
+    const pct0 = Math.round((USAGE.zeroApi / totalResp) * 100)
+    const ahorro = (USAGE.zeroApi * avg).toFixed(2)
+    const cacheTot = CACHE_STATS.hits + CACHE_STATS.misses
+    const hitRate = cacheTot > 0 ? `${Math.round((CACHE_STATS.hits / cacheTot) * 100)}% (${CACHE_STATS.hits}/${cacheTot})` : 'sin datos aún'
+    cacheLinea = `\n\n**Eficiencia del cerebro:** ${USAGE.zeroApi}/${totalResp} respuestas (**${pct0}%**) salieron con **0 API** (detecciones + memoria), ${COST.n} pagaron modelo. Ahorro estimado US$${ahorro}. Hit-rate del caché: ${hitRate}. Cuanto más se usa, más barato responde.`
   }
   return `**Chat** desde que arrancó el OS (hace ${hrs.toFixed(1)}h): US$${COST.total.toFixed(4)} en ${COST.n} pedidos.\n${per || ''}${cacheLinea}${auto}\n\n_Estimado desde el uso de tokens; el total exacto está en console.anthropic.com._`
 }
@@ -724,6 +741,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
       const nota = hit.edadMin >= 20 ? `\n\n_↻ Respuesta reutilizada de la memoria del OS (0 API). Si algo cambió, pedime "actualizá"._` : ''
       return { answer: hit.respuesta + nota, model: 'cache', cost: 0, capability, skills: [], navigate: null }
     }
+    CACHE_STATS.misses++
   }
   const needsUocra = isBudgeting || /jornal|uocra|categor[ií]a|oficial|ayudante|medio oficial|mano de obra|costo.*(hora|mo)\b/i.test(directive)
   const uocraRates = needsUocra
@@ -956,9 +974,37 @@ const server = http.createServer(async (req, res) => {
     } catch (e) { return send(res, 500, { error: e.message }) }
   }
 
-  // Gasto de API del chat (telemetría en memoria).
+  // Gasto de API del chat + eficiencia (0-API vs pago) + costo del worker hoy. Todo para que
+  // la extensión muestre el gasto del día y avise al acercarse al tope (0 API).
   if (req.method === 'GET' && req.url === '/cost') {
-    return send(res, 200, { since: COST.since, total_usd: Number(COST.total.toFixed(6)), requests: COST.n, by_model: COST.byModel })
+    const totalResp = USAGE.zeroApi + COST.n
+    let workerHoy = 0
+    let cap = null
+    let usadoHoy = COST.total
+    try {
+      const { rows } = await query(`select round(sum(coalesce((result->'cost'->>'usd')::numeric,0))::numeric,4) usd from orq.tasks where created_at >= date_trunc('day', now())`)
+      workerHoy = Number(rows[0]?.usd || 0)
+      const pres = await estadoPresupuesto(COST.total).catch(() => null)
+      if (pres) { cap = pres.cap; usadoHoy = pres.usado }
+    } catch { /* si falla la DB, devolvemos solo lo del chat */ }
+    // usadoHoy (de estadoPresupuesto) ya es worker+chat del día leído de la DB; NO sumar
+    // workerHoy otra vez (doble conteo). worker_hoy_usd se expone aparte para el desglose.
+    const diaUsd = cap != null ? usadoHoy : COST.total + workerHoy
+    const capRatio = cap ? Math.min(1, diaUsd / cap) : null
+    return send(res, 200, {
+      since: COST.since,
+      total_usd: Number(COST.total.toFixed(6)),
+      requests: COST.n,
+      by_model: COST.byModel,
+      zero_api: USAGE.zeroApi,
+      zero_api_pct: totalResp > 0 ? Math.round((USAGE.zeroApi / totalResp) * 100) : null,
+      cache: { hits: CACHE_STATS.hits, misses: CACHE_STATS.misses },
+      worker_hoy_usd: workerHoy,
+      dia_usd: Number(diaUsd.toFixed(4)),
+      cap_diario_usd: cap,
+      cap_ratio: capRatio,
+      alerta: capRatio != null && capRatio >= 0.8,
+    })
   }
 
   // Progreso en vivo de una directiva en curso (polling desde la extensión).
@@ -1102,7 +1148,7 @@ const server = http.createServer(async (req, res) => {
       // del bucle de reinicio: antes, al vencer el watchdog se marcaba "cortado" y lo que
       // terminaba después se perdía).
       const askPromise = ask({ directive: directive.slice(0, 4000), fileId, fast, attachment, history, runId: rid, userEmail: identidad })
-        .then((out) => { if (!CANCELLED.has(rid)) { RESULTS.set(rid, { done: true, out }); persistResult(rid, { done: true, ...out }) } return out })
+        .then((out) => { countAnswer(out?.model); if (!CANCELLED.has(rid)) { RESULTS.set(rid, { done: true, out }); persistResult(rid, { done: true, ...out }) } return out })
         .catch((e) => { if (!CANCELLED.has(rid)) { RESULTS.set(rid, { done: true, error: e.message }); persistResult(rid, { done: true, error: e.message }) } throw e })
         .finally(() => { progressDone(rid); INFLIGHT.delete(dedupKey); setTimeout(() => { RESULTS.delete(rid); CANCELLED.delete(rid) }, 120000) })
       // WATCHDOG SUAVE: NO mata la tarea (sigue en segundo plano y entrega tarde). Solo evita
