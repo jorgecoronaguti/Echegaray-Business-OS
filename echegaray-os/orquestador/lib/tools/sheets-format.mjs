@@ -322,5 +322,65 @@ export function sheetsFormatTools(google) {
         return { ok: true, celda: input.celda, imagen: input.url }
       },
     },
+    'drive.pivot': {
+      capability: 'drive.write',
+      account: 'ecsas',
+      schema: {
+        name: 'drive_add_pivot',
+        description:
+          'Crea una TABLA DINÁMICA (pivot) en un Google Sheet: agrupa un rango de datos por una o más columnas y resume otras (suma/cuenta/promedio…). Ej: de la pestaña Compras, gasto TOTAL por Proveedor y por Mes. Pasá file_id, datos (rango A1 con pestaña, INCLUÍ la fila de encabezados, ej. "Compras!A3:N500"), destino (celda A1 con pestaña donde poner la pivot, ej. "Resumen!B3" — si la pestaña no existe la creo), filas (columnas por las que agrupar en filas — por NOMBRE de encabezado o letra), opcional columnas (agrupar en columnas) y valores (qué resumir: lista de { columna, funcion }, funcion ∈ suma/cuenta/promedio/max/min/cuenta_unica). REQUIERE aprobación.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            file_id: { type: 'string' },
+            datos: { type: 'string', description: 'rango fuente con pestaña e incluyendo encabezados, ej. "Compras!A3:N500"' },
+            destino: { type: 'string', description: 'celda ancla con pestaña, ej. "Resumen!B3"' },
+            filas: { type: 'array', items: { type: 'string' }, description: 'columnas a agrupar en filas (nombre de encabezado o letra)' },
+            columnas: { type: 'array', items: { type: 'string' } },
+            valores: { type: 'array', items: { type: 'object', properties: { columna: { type: 'string' }, funcion: { type: 'string', enum: ['suma', 'cuenta', 'promedio', 'max', 'min', 'cuenta_unica'] } } } },
+          },
+          required: ['file_id', 'datos', 'destino', 'filas', 'valores'],
+        },
+      },
+      async run(input) {
+        if (!input?.file_id || !input?.datos || !input?.destino) return { error: 'faltan file_id, datos o destino' }
+        const meta0 = await google.getSheetMeta(input.file_id)
+        const src = a1ToGridRange(meta0, input.datos)
+        if (!src || src.startColumnIndex == null || src.startRowIndex == null) return { error: `rango de datos inválido: "${input.datos}"` }
+        // Encabezados de la fuente para mapear NOMBRE → offset (0-based desde la col inicial).
+        const headerRow = (await google.readSheetValues(input.file_id, input.datos))[0] || []
+        const FN = { suma: 'SUM', cuenta: 'COUNTA', promedio: 'AVERAGE', max: 'MAX', min: 'MIN', cuenta_unica: 'COUNTUNIQUE' }
+        const offsetDe = (id) => {
+          const s = String(id || '').trim()
+          const i = headerRow.findIndex((h) => String(h).trim().toLowerCase() === s.toLowerCase())
+          if (i >= 0) return i
+          if (/^[A-Za-z]{1,3}$/.test(s)) return colToIdx(s) - src.startColumnIndex
+          return null
+        }
+        const mapGroup = (arr) => (arr || []).map((id) => { const o = offsetDe(id); return o == null ? null : { sourceColumnOffset: o, showTotals: true, sortOrder: 'ASCENDING' } }).filter(Boolean)
+        const rows = mapGroup(input.filas)
+        const columns = mapGroup(input.columnas)
+        const values = (input.valores || []).map((v) => { const o = offsetDe(v.columna); return o == null ? null : { summarizeFunction: FN[v.funcion] || 'SUM', sourceColumnOffset: o } }).filter(Boolean)
+        if (!rows.length || !values.length) return { error: 'no pude mapear las columnas de filas/valores a la fuente (revisá los nombres de encabezado)' }
+        // Destino: crear la pestaña si no existe; resolver la celda ancla.
+        const bang = input.destino.lastIndexOf('!')
+        const destTab = bang >= 0 ? input.destino.slice(0, bang).replace(/^'|'$/g, '') : null
+        let meta = meta0
+        if (destTab && !meta.find((m) => m.title === destTab)) {
+          await google.spreadsheetBatchUpdate(input.file_id, [{ addSheet: { properties: { title: destTab } } }])
+          meta = await google.getSheetMeta(input.file_id)
+        }
+        const anchor = a1ToGridRange(meta, input.destino)
+        if (!anchor) return { error: `destino inválido: "${input.destino}"` }
+        await google.spreadsheetBatchUpdate(input.file_id, [{
+          updateCells: {
+            rows: [{ values: [{ pivotTable: { source: src, rows, columns, values, valueLayout: 'HORIZONTAL' } }] }],
+            start: { sheetId: anchor.sheetId, rowIndex: anchor.startRowIndex ?? 0, columnIndex: anchor.startColumnIndex ?? 0 },
+            fields: 'pivotTable',
+          },
+        }])
+        return { ok: true, pivot: input.destino, agrupado_por: input.filas, resume: (input.valores || []).map((v) => `${v.funcion} de ${v.columna}`) }
+      },
+    },
   }
 }
