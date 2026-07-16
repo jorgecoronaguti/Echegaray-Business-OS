@@ -94,6 +94,33 @@ export async function createHerramientaAction(_prev: ActionState, formData: Form
   return { error: null, ok: true }
 }
 
+const movimientoSchema = z.object({
+  id_herramienta: z.string().trim().min(1),
+  destino: z.string().trim().min(1, 'El destino es obligatorio').max(60),
+  responsable: z.string().trim().max(60).optional(),
+})
+
+export async function registrarMovimientoAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = movimientoSchema.safeParse({
+    id_herramienta: formData.get('id_herramienta'),
+    destino: formData.get('destino'),
+    responsable: formData.get('responsable') || undefined,
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0].message }
+  const c = await client()
+  if (!c.supabase) return { error: c.error! }
+  // RPC atómica: inserta el log + actualiza la ubicación de la herramienta en una transacción.
+  const { error } = await c.supabase.rpc('registrar_movimiento_herramienta', {
+    p_id_herramienta: parsed.data.id_herramienta,
+    p_destino: parsed.data.destino,
+    p_responsable: parsed.data.responsable ?? '',
+  })
+  if (error) return { error: error.message }
+  revalidatePath(PATH)
+  revalidatePath('/integraciones/movimientos')
+  return { error: null, ok: true }
+}
+
 export async function deleteHerramientaAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const id = String(formData.get('id_herramienta') || '').trim()
   if (!id) return { error: 'falta id' }
