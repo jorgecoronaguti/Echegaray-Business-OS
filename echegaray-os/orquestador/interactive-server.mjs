@@ -439,6 +439,20 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   const docRef = /\b(pesta[ñn]a|solapa|hoja(s)?|sheet|planilla|spreadsheet|celda|rango|columna|fila|tabla(s)?\s+din[aá]mic|drive|documento|gdoc|gsheet)\b/i.test(String(directive || ''))
     || /https?:\/\/[^\s]*(docs\.google|drive\.google)/i.test(String(directive || ''))
   const writeToDocIntent = writeIntent && (docRef || !!fileId)
+  // PEDIDO DE COMPONER/ENVIAR/REENVIAR UN MAIL: menciona mail/correo + un verbo de envío o un
+  // campo de composición (asunto/cuerpo/adjunto/destinatario). Va al MODELO con las tools de
+  // Gmail (no a la lectura de mails) y usa sonnet (redactar bien). Cubre el follow-up "el cuerpo
+  // del mail…", "con adjunto…" cuando la charla previa ya venía armando un envío. WRITE_RE no
+  // trae verbos de mail (mandar/enviar), así que sin esto el envío caía en haiku y se colgaba.
+  const mailWord = /\b(mails?|correos?|e-?mails?)\b/i.test(String(directive || ''))
+  const mailVerbOrField = /\b(envi[aá]|mand[aá]|reenvi|respond|contest|redact|escrib|adjunt|asunto|destinatari|cuerpo|borrador)\b/i.test(String(directive || ''))
+  const mailComposeIntent = (mailWord && mailVerbOrField)
+    || (Array.isArray(history) && histText && /\b(mails?|correos?)\b/i.test(histText)
+        && /\b(adjunt|asunto|cuerpo|destinatari|que\s+diga|@)/i.test(String(directive || '')))
+  // CREAR/EDITAR un evento o TAREA: verbo de alta + objeto (reunión/evento/cita/turno/tarea).
+  // "agendá una reunión…" tiene "agenda" y sería secuestrado por la lectura de calendario.
+  const calendarWriteIntent = /\b(reuni[oó]n|evento|cita|turno|tarea|pendiente|recordatori)\b/i.test(String(directive || ''))
+    && /\b(crea|cre[aá]|agend[aá]|program[aá]|anot[aá]|pon[eé]|reserv[aá]|nuev[ao]|complet[aá]|marc[aá])\b/i.test(String(directive || ''))
   // MODELO POR NIVELES (ahorro de API): sonnet (potente, caro) solo cuando hace falta
   // criterio real — escribir, interpretar un adjunto, o presupuestar; haiku (barato,
   // rápido) para consultas simples y de charla. Antes era sonnet-siempre y quemaba
@@ -455,7 +469,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // (reordenar, completar, rehacer, analizar a fondo) → sonnet, que lee y ACTÚA con las
   // tools de forma confiable. haiku propone/pregunta en vez de ejecutar (causa real de
   // "le pido que haga algo y no lo hace"). Vale el costo: la acción tiene que salir.
-  let model = writeIntent || att || budgetingKw || teachingIntent || researchLearnIntent || fast === false || fileId ? 'sonnet' : 'haiku'
+  let model = writeIntent || mailComposeIntent || calendarWriteIntent || att || budgetingKw || teachingIntent || researchLearnIntent || fast === false || fileId ? 'sonnet' : 'haiku'
   // TOPE DE GASTO (degrada, NUNCA bloquea): si el gasto de hoy pasó el umbral, un pedido
   // que iba a usar sonnet baja a haiku. La respuesta SIEMPRE llega — solo cambia el modelo.
   // Las respuestas determinísticas (0 API) ya devolvieron antes; nunca pagan esto.
@@ -464,7 +478,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // EXCEPCIÓN: NO degradar a haiku cuando el dueño está EDITANDO un documento (writeToDocIntent,
   // archivo abierto o adjunto). Ese trabajo NECESITA sonnet para salir bien; bajarlo a haiku lo
   // rompe (más iteraciones fallidas = MÁS gasto y peor resultado). Degradar solo consultas/charla.
-  const tareaCritica = writeToDocIntent || att || !!fileId
+  const tareaCritica = writeToDocIntent || att || !!fileId || mailComposeIntent || calendarWriteIntent
   // La edición de documentos NUNCA se degrada a haiku: haiku la ROMPE (no hace pivots, no
   // formatea) y el dueño termina con una tabla a medias — peor que gastar. El gasto se controla
   // ahora por el lado correcto: contexto acotado (tope de tool_result) + tope de costo por
@@ -517,14 +531,15 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   }
   // AGENDA (Calendar) — respuesta determinística (0 API modelo): "agenda", "qué tengo hoy/
   // esta semana", "mi calendario", "próximos eventos/reuniones". Lee Google Calendar del usuario.
-  if (!writeToDocIntent
+  if (!writeToDocIntent && !calendarWriteIntent
       && /\b(agenda|calendario|qu[eé]\s+tengo\s+(hoy|esta\s+semana|ma[ñn]ana|programad)|pr[oó]xim[oa]s?\s+(eventos?|reuniones?|citas?)|reuniones?\s+(de\s+)?(hoy|esta\s+semana|la\s+semana)|qu[eé]\s+hay\s+en\s+(mi\s+)?(agenda|calendario))/i.test(directive)) {
     const days = /\bhoy\b/i.test(directive) ? 1 : /ma[ñn]ana/i.test(directive) ? 2 : /\bmes\b/i.test(directive) ? 30 : 7
     return { answer: await agendaResumen(userEmail, { days }), model: 'agenda', capability: 'advise.general', skills: [], navigate: null }
   }
   // MAILS (Gmail) — respuesta determinística (0 API modelo): "mis mails/correos", "mails sin
-  // leer / de hoy". Lee Gmail del usuario (solo lectura). Responder/archivar van por las tools.
-  if (!writeToDocIntent && /\b(mis\s+)?(mails?|correos?|emails?)\b/i.test(directive) && !/\benvi[aá]|mand[aá]|respond|redact|escrib/i.test(directive)) {
+  // leer / de hoy". Lee Gmail (solo lectura). GUARDA con mailComposeIntent (def arriba): un
+  // pedido de COMPONER/enviar/reenviar un mail NO se secuestra acá — va al modelo con las tools.
+  if (!writeToDocIntent && !mailComposeIntent && /\b(mis\s+)?(mails?|correos?|emails?)\b/i.test(directive) && !/\benvi[aá]|mand[aá]|respond|redact|escrib/i.test(directive)) {
     const sinLeer = /\bsin\s+leer|no\s+le[ií]dos?|unread\b/i.test(directive)
     const query = sinLeer ? 'is:unread in:inbox' : /\bhoy\b/i.test(directive) ? 'in:inbox newer_than:1d' : 'in:inbox newer_than:3d'
     const titulo = sinLeer ? 'Mails sin leer' : /\bhoy\b/i.test(directive) ? 'Mails de hoy' : 'Mails recientes'
@@ -838,6 +853,11 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // (3) VERIFICACIÓN — dentro de la MISMA tarea (mismo tope de iteraciones/costo, no suma
   //     una llamada nueva): releer lo que tocó y corregir antes de cantar "listo".
   const verifBlock = writeToDocIntent ? VERIFICACION_EDICION : ''
+  // GUÍA DE MAIL/AGENDA/TAREAS (solo cuando el pedido lo toca): que EJECUTE con las tools, no
+  // que tire un preámbulo ni liste mails. Si falta UN dato imprescindible, lo pide en 1 línea.
+  const mailGuidance = mailComposeIntent
+    ? '\n\nESTÁS COMPONIENDO/ENVIANDO UN MAIL — EJECUTÁ YA, no narres ni listes la bandeja. Con destinatario + asunto + cuerpo, LLAMÁ la tool AHORA: gmail_enviar (envío → Pendientes para su OK) o gmail_borrador (si piden borrador); gmail_responder para responder, gmail_reenviar para reenviar. El asunto y el cuerpo son TEXTO que te da el dueño ("el cuerpo dice X" ⇒ body=X); NO los interpretes como un archivo a buscar. ADJUNTAR es OPCIONAL y SOLO si el dueño lo pide explícitamente ("adjuntá el archivo Y"): ahí buscás Y con drive_find y pasás su file_id en "adjuntos". Si NO pidió adjunto, no busques ningún archivo. Preguntá (UNA línea, sin preámbulos ni recitar tu rol) SOLO si falta un dato imprescindible: el destinatario, o —cuando pidieron adjuntar— cuál es el archivo. NUNCA respondas "Entendido, estoy listo" ni un resumen de capacidades: o llamás la tool, o hacés esa única pregunta.'
+    : ''
 
   const prompt =
     `HOY: ${hoy} (San Juan, Argentina). Usá esta fecha; no la inventes.\n\n` +
@@ -872,6 +892,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
     `Lo demás con efecto económico/fiscal/legal externo (Nivel E) tampoco lo ejecutes: proponelo en una línea.` +
     docEditDoctrine +
     verifBlock +
+    mailGuidance +
     budgetingContext +
     (isBudgeting
       ? ' Para presupuestar podés extenderte lo necesario (tablas, partidas, APU) — acá la claridad importa más que la brevedad.'
