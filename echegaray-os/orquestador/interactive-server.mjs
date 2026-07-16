@@ -40,6 +40,7 @@ import { pedidosResumen } from './lib/pedidos-materiales.mjs'
 import { appsheetPedidosTools } from './lib/tools/appsheet-pedidos.mjs'
 import { estadoOperativoObra, esObraOperativa } from './lib/obra-operativa.mjs'
 import { findObras } from './lib/obra-economics.mjs'
+import { agendaResumen, mailsResumen } from './lib/agenda-mail.mjs'
 import { estadoPresupuesto, degradarModeloOnDemand, pausarAutonomo } from './lib/budget.mjs'
 import { fichaObra } from './lib/ficha-obra.mjs'
 import { carteraResumen } from './lib/cartera.mjs'
@@ -252,6 +253,8 @@ const CAPABILITIES_HELP = [
   '🧭 **Llevarte a un archivo** — "llevame a la carpeta administración", "abrí el Cash Flow".',
   '👷 **Especialistas por tema** — finanzas, impuestos, laboral/UOCRA, legal/contratos, ingeniería, calidad, seguridad, compras, dirección de obra. Activo los que correspondan a tu pedido.',
   '📎 **Interpretar una foto/PDF que subas** — adjuntá una factura y "registrala en el Cash Flow".',
+  '📅 **Tu agenda** — "qué tengo hoy / esta semana", "mi calendario", "próximas reuniones". Lee tu Google Calendar. 0 API. (Crear/editar eventos: con tu aprobación.)',
+  '📬 **Tus mails** — "mis mails de hoy", "mails sin leer", "correos recientes". Lee tu Gmail. 0 API. (Responder/archivar: pedímelo.)',
   '⏰ **Agenda** — "todos los lunes revisá cobranzas y avisame".',
   '',
   'Para trabajo profundo de un especialista, pedí "hacé un análisis en profundidad de…" (tarda más, razona hondo).',
@@ -453,6 +456,20 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // "¿Cuánto aprendiste / qué sabés de la empresa?" — mide el aprendizaje (0 API).
   if (/\b(cu[aá]nto (aprend|sab[eé]s)|qu[eé] (aprendiste|sab[eé]s|ten[eé]s (guardado|aprendido|anotado))|qu[eé] (cosas )?record[aá]s|qu[eé] conoc[eé]s de (la empresa|nosotros|echegaray)|hechos (aprendidos|que sab[eé]s))/i.test(directive)) {
     return { answer: await learnedSummary(), model: 'aprendizaje', capability: 'general', skills: [], navigate: null }
+  }
+  // AGENDA (Calendar) — respuesta determinística (0 API modelo): "agenda", "qué tengo hoy/
+  // esta semana", "mi calendario", "próximos eventos/reuniones". Lee Google Calendar del usuario.
+  if (/\b(agenda|calendario|qu[eé]\s+tengo\s+(hoy|esta\s+semana|ma[ñn]ana|programad)|pr[oó]xim[oa]s?\s+(eventos?|reuniones?|citas?)|reuniones?\s+(de\s+)?(hoy|esta\s+semana|la\s+semana)|qu[eé]\s+hay\s+en\s+(mi\s+)?(agenda|calendario))/i.test(directive)) {
+    const days = /\bhoy\b/i.test(directive) ? 1 : /ma[ñn]ana/i.test(directive) ? 2 : /\bmes\b/i.test(directive) ? 30 : 7
+    return { answer: await agendaResumen(userEmail, { days }), model: 'agenda', capability: 'advise.general', skills: [], navigate: null }
+  }
+  // MAILS (Gmail) — respuesta determinística (0 API modelo): "mis mails/correos", "mails sin
+  // leer / de hoy". Lee Gmail del usuario (solo lectura). Responder/archivar van por las tools.
+  if (/\b(mis\s+)?(mails?|correos?|emails?)\b/i.test(directive) && !/\benvi[aá]|mand[aá]|respond|redact|escrib/i.test(directive)) {
+    const sinLeer = /\bsin\s+leer|no\s+le[ií]dos?|unread\b/i.test(directive)
+    const query = sinLeer ? 'is:unread in:inbox' : /\bhoy\b/i.test(directive) ? 'in:inbox newer_than:1d' : 'in:inbox newer_than:3d'
+    const titulo = sinLeer ? 'Mails sin leer' : /\bhoy\b/i.test(directive) ? 'Mails de hoy' : 'Mails recientes'
+    return { answer: await mailsResumen(userEmail, { query, titulo }), model: 'mails', capability: 'advise.general', skills: [], navigate: null }
   }
   // PEDIDOS DE MATERIALES (Plan 2 — AppSheet) — respuesta determinística (0 API) desde el
   // espejo public.pedidos_materiales. "pedidos de materiales", "qué se pidió", "pedidos
