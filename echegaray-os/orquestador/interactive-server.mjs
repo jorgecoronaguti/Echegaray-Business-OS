@@ -56,6 +56,7 @@ import { classifyDirective, classifyDirectiveMulti } from './lib/classify-direct
 import { cacheGet, cachePut, cacheClearAll } from './lib/chat-cache.mjs'
 import { skillsForCapability } from './lib/skill-map.mjs'
 import { extraerRestricciones, DOCTRINA_EDICION, VERIFICACION_EDICION } from './lib/doc-edit-guardrails.mjs'
+import { isMailComposeIntent, isCalendarWriteIntent } from './lib/chat-intents.mjs'
 import { createSchedule, listSchedules, toggleSchedule } from './lib/schedules.mjs'
 import { enqueueTask } from './lib/ledger.mjs'
 import { route } from './lib/router.mjs'
@@ -444,15 +445,10 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // Gmail (no a la lectura de mails) y usa sonnet (redactar bien). Cubre el follow-up "el cuerpo
   // del mail…", "con adjunto…" cuando la charla previa ya venía armando un envío. WRITE_RE no
   // trae verbos de mail (mandar/enviar), así que sin esto el envío caía en haiku y se colgaba.
-  const mailWord = /\b(mails?|correos?|e-?mails?)\b/i.test(String(directive || ''))
-  const mailVerbOrField = /\b(envi[aá]|mand[aá]|reenvi|respond|contest|redact|escrib|adjunt|asunto|destinatari|cuerpo|borrador)\b/i.test(String(directive || ''))
-  const mailComposeIntent = (mailWord && mailVerbOrField)
-    || (Array.isArray(history) && histText && /\b(mails?|correos?)\b/i.test(histText)
-        && /\b(adjunt|asunto|cuerpo|destinatari|que\s+diga|@)/i.test(String(directive || '')))
-  // CREAR/EDITAR un evento o TAREA: verbo de alta + objeto (reunión/evento/cita/turno/tarea).
-  // "agendá una reunión…" tiene "agenda" y sería secuestrado por la lectura de calendario.
-  const calendarWriteIntent = /\b(reuni[oó]n|evento|cita|turno|tarea|pendiente|recordatori)\b/i.test(String(directive || ''))
-    && /\b(crea|cre[aá]|agend[aá]|program[aá]|anot[aá]|pon[eé]|reserv[aá]|nuev[ao]|complet[aá]|marc[aá])\b/i.test(String(directive || ''))
+  // Intención de ACCIÓN de mail/agenda (raíces de verbo, robusto al voseo): lógica en el lib
+  // chat-intents.mjs, testeada (chat-intents.test) para que este bug no regrese nunca más.
+  const mailComposeIntent = isMailComposeIntent(directive, histText)
+  const calendarWriteIntent = isCalendarWriteIntent(directive)
   // MODELO POR NIVELES (ahorro de API): sonnet (potente, caro) solo cuando hace falta
   // criterio real — escribir, interpretar un adjunto, o presupuestar; haiku (barato,
   // rápido) para consultas simples y de charla. Antes era sonnet-siempre y quemaba
@@ -539,7 +535,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // MAILS (Gmail) — respuesta determinística (0 API modelo): "mis mails/correos", "mails sin
   // leer / de hoy". Lee Gmail (solo lectura). GUARDA con mailComposeIntent (def arriba): un
   // pedido de COMPONER/enviar/reenviar un mail NO se secuestra acá — va al modelo con las tools.
-  if (!writeToDocIntent && !mailComposeIntent && /\b(mis\s+)?(mails?|correos?|emails?)\b/i.test(directive) && !/\benvi[aá]|mand[aá]|respond|redact|escrib/i.test(directive)) {
+  if (!writeToDocIntent && !mailComposeIntent && /\b(mis\s+)?(mails?|correos?|emails?)\b/i.test(directive) && !/\b(envi|mand|reenvi|respond|redact|escrib|adjunt)/i.test(directive)) {
     const sinLeer = /\bsin\s+leer|no\s+le[ií]dos?|unread\b/i.test(directive)
     const query = sinLeer ? 'is:unread in:inbox' : /\bhoy\b/i.test(directive) ? 'in:inbox newer_than:1d' : 'in:inbox newer_than:3d'
     const titulo = sinLeer ? 'Mails sin leer' : /\bhoy\b/i.test(directive) ? 'Mails de hoy' : 'Mails recientes'
