@@ -50,11 +50,17 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
       body: req.method === 'POST' ? await req.text() : undefined,
       signal: AbortSignal.timeout(55_000),
     })
-    const text = await upstream.text()
-    return new NextResponse(text, {
-      status: upstream.status,
-      headers: { ...CORS, 'content-type': upstream.headers.get('content-type') ?? 'application/json' },
-    })
+    // Pasar los BYTES CRUDOS (no text()): leer como texto rompe cualquier binario —
+    // el .zip de la extensión llegaba corrupto ("formato no compatible") porque UTF-8
+    // re-encodeaba los bytes. arrayBuffer preserva JSON y binario por igual.
+    const body = await upstream.arrayBuffer()
+    const outHeaders: Record<string, string> = {
+      ...CORS,
+      'content-type': upstream.headers.get('content-type') ?? 'application/json',
+    }
+    const cd = upstream.headers.get('content-disposition')
+    if (cd) outHeaders['content-disposition'] = cd
+    return new NextResponse(body, { status: upstream.status, headers: outHeaders })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'error de conexión con el OS'
     return NextResponse.json({ error: `no se pudo alcanzar el OS: ${msg}` }, { status: 502, headers: CORS })
