@@ -21,10 +21,24 @@ async function main() {
   const op = await operadorEmail()
   if (!op) throw new Error('no hay cuenta operadora OAuth conectada')
   const token = await getTokenFor(op)()
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(TAB + '!A1:D2000')}`
-  const j = await (await fetch(url, { headers: { Authorization: `Bearer ${token}` } })).json()
-  if (j.error) throw new Error('no pude leer el Sheet: ' + JSON.stringify(j.error).slice(0, 160))
-  const rows = j.values || []
+  const fetchTab = async (rng) => {
+    const u = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(rng)}`
+    const r = await (await fetch(u, { headers: { Authorization: `Bearer ${token}` } })).json()
+    if (r.error) throw new Error('no pude leer el Sheet: ' + JSON.stringify(r.error).slice(0, 160))
+    return r.values || []
+  }
+  const rows = await fetchTab(`${TAB}!A1:D2000`)
+  // Mapa OBRAS: OB1→ESTRELLA, etc. para que la ubicación actual sea consistente con el
+  // historial de movimientos (que ya resuelve códigos).
+  const obrasApp = await fetchTab('OBRAS!A2:B50')
+  const cod = new Map()
+  for (const r of obrasApp) {
+    const c = String(r[0] ?? '').trim().toUpperCase()
+    const nom = String(r[1] ?? '').trim()
+    if (c && nom) cod.set(c, nom)
+  }
+  const resolver = (t) => cod.get(String(t ?? '').trim().toUpperCase()) || (t ?? null)
+
   let n = 0
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r]
@@ -37,7 +51,7 @@ async function main() {
          nombre=excluded.nombre, ubicacion_actual=excluded.ubicacion_actual, fecha=excluded.fecha,
          sincronizado_en=now()
        where public.herramientas.origen = 'appsheet_sheet'`,
-      [id, row[1] ?? null, row[2] ?? null, fechaISO(row[3])],
+      [id, row[1] ?? null, resolver(row[2]), fechaISO(row[3])],
     )
     n++
   }
