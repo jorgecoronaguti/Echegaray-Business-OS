@@ -73,7 +73,12 @@ export default async function MainLayout({
   children: React.ReactNode
 }) {
   const { email, rolLabel, rol } = await loadUsuario()
-  const grupos = rol === 'campo' ? NAV_CAMPO : GRUPOS_NAV
+  const grupos =
+    rol === 'campo'
+      ? NAV_CAMPO
+      : rol === 'direccion'
+        ? [...GRUPOS_NAV, { grupo: 'Administración', links: [{ href: '/operarios', label: 'Operarios' }] }]
+        : GRUPOS_NAV
 
   return (
     <div className="min-h-screen">
