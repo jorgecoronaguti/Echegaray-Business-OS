@@ -872,6 +872,14 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   const mailGuidance = mailComposeIntent
     ? '\n\nESTÁS COMPONIENDO/ENVIANDO UN MAIL — EJECUTÁ YA, no narres ni listes la bandeja. Con destinatario + asunto + cuerpo, LLAMÁ la tool AHORA: gmail_enviar (envío → Pendientes para su OK) o gmail_borrador (si piden borrador); gmail_responder para responder, gmail_reenviar para reenviar. El asunto y el cuerpo son TEXTO que te da el dueño ("el cuerpo dice X" ⇒ body=X); NO los interpretes como un archivo a buscar. ADJUNTAR es OPCIONAL y SOLO si el dueño lo pide explícitamente ("adjuntá el archivo Y"): ahí buscás Y con drive_find PRIMERO, y pasás el file_id EXACTO que devuelve en "adjuntos". Si NO pidió adjunto, no busques ningún archivo. HONESTIDAD ABSOLUTA CON EL ADJUNTO: NUNCA digas "va con el archivo adjunto" / "adjunto en PDF" si drive_find no te devolvió un file_id real. Si el archivo NO aparece en Drive, NO lo adjuntes y NO afirmes que lo hiciste: decí "no encontré el archivo X" y pedí el nombre exacto. El mail se puede mandar SIN adjunto si el dueño confirma, pero jamás mientas que adjuntaste algo. Preguntá (UNA línea, sin preámbulos ni recitar tu rol) SOLO si falta un dato imprescindible: el destinatario, o —cuando pidieron adjuntar y no aparece— cuál es el archivo. NUNCA respondas "Entendido, estoy listo" ni un resumen de capacidades: o llamás la tool, o hacés esa única pregunta.'
     : ''
+  // GUÍA DE REPLICAR MOVIMIENTOS/EXTRACTO BANCARIO EN UNA PESTAÑA (pegados como texto o foto/PDF):
+  // capacidad GENERAL, no un parser fijo — el OS LEE la estructura del destino y mapea según lo
+  // que esa hoja guarda. Previene el error real: volcar 200 transacciones en un ledger de SALDOS
+  // (ej. Caja del Cash Flow, que guarda 1 fila por saldo). 0-API (cacheado), solo cuando aplica.
+  const bancoSaldoKw = /\b(movimient|extracto|saldo|banco|santander|galicia|naci[oó]n|acredit|d[eé]bito|cr[eé]dito|conciliaci)\b/i.test(String(directive || '') + ' ' + histText)
+  const saldoGuidance = (writeToDocIntent && bancoSaldoKw)
+    ? '\n\nREPLICAR MOVIMIENTOS/EXTRACTO BANCARIO EN UNA PESTAÑA — LEÉ EL DESTINO ANTES DE ESCRIBIR. (1) Con drive_tabs + drive_read mirá los ENCABEZADOS, las filas de ejemplo y la fila de INSTRUCCIONES de la pestaña destino, y entendé QUÉ guarda. Si es un ledger de SALDOS (columnas tipo Fecha·Cuenta·Saldo·Fuente, "una fila nueva por saldo"): NO vuelques cada transacción — del extracto pegado sacá el SALDO resultante y agregá UNA sola fila nueva. Si fuese una pestaña de movimientos-detalle, ahí sí una fila por transacción. (2) Respetá EXACTO el formato que ya usa esa hoja: fecha DD/MM/YYYY, montos con el mismo estilo ($ y coma decimal si así están), y completá la columna Fuente indicando de dónde salió (ej. "Santander Empresas — pantalla DD/MM/YYYY HH:MMh"). (3) NUNCA inventes un número que no esté en lo que te pegaron; si el saldo no se ve claro, pedilo en UNA línea. (4) Agregá fila NUEVA (drive_last_row → drive_update en la fila vacía), NO edites ni borres las anteriores. La escritura cae en Pendientes para su OK.'
+    : ''
 
   const prompt =
     `HOY: ${hoy} (San Juan, Argentina). Usá esta fecha; no la inventes.\n\n` +
@@ -907,6 +915,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
     docEditDoctrine +
     verifBlock +
     mailGuidance +
+    saldoGuidance +
     budgetingContext +
     (isBudgeting
       ? ' Para presupuestar podés extenderte lo necesario (tablas, partidas, APU) — acá la claridad importa más que la brevedad.'
