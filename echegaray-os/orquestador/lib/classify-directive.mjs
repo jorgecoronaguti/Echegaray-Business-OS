@@ -27,6 +27,17 @@ const CAP_KEYWORDS = {
   'advise.commercial': ['go/no-go', 'go no go', 'conviene', 'aceptar la obra', 'aceptamos', 'rechazar', 'pipeline', 'licitac', 'oportunidad', 'seleccion de obra', 'elegir obra', 'riesgo del negocio', 'entrar a la obra', 'nos conviene', 'vale la pena'],
 }
 
+// Match de keyword con LÍMITE DE PALABRA al inicio: "iva" NO matchea dentro de "act·iva·s"
+// (bug real que mandaba "comprar retroexcavadora" a impuestos). Los prefijos siguen andando
+// ("compr"→comprar, "retenc"→retención) porque solo anclamos el INICIO, no el final.
+const _kwCache = new Map()
+function matchKw(t, kw) {
+  let re = _kwCache.get(kw)
+  if (!re) { re = new RegExp('\\b' + kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')); _kwCache.set(kw, re) }
+  return re.test(t)
+}
+function contarMatches(t, kws) { let s = 0; for (const kw of kws) if (matchKw(t, kw)) s++; return s }
+
 /** Devuelve un slug de CAPABILITY_SKILLS o 'general'. Síncrono, instantáneo. */
 export function classifyDirective(directive) {
   const t = String(directive || '').toLowerCase()
@@ -35,8 +46,7 @@ export function classifyDirective(directive) {
   let bestScore = 0
   for (const [cap, kws] of Object.entries(CAP_KEYWORDS)) {
     if (!CAPABILITY_SKILLS[cap]) continue
-    let score = 0
-    for (const kw of kws) if (t.includes(kw)) score++
+    const score = contarMatches(t, kws)
     if (score > bestScore) { bestScore = score; best = cap }
   }
   return bestScore > 0 ? best : 'general'
@@ -51,8 +61,7 @@ export function classifyDirectiveMulti(directive, max = 3) {
   const scored = []
   for (const [cap, kws] of Object.entries(CAP_KEYWORDS)) {
     if (!CAPABILITY_SKILLS[cap]) continue
-    let score = 0
-    for (const kw of kws) if (t.includes(kw)) score++
+    const score = contarMatches(t, kws)
     if (score > 0) scored.push({ cap, score })
   }
   scored.sort((a, b) => b.score - a.score)

@@ -41,5 +41,15 @@ for (const dir of ['caja', 'iva', 'contrato', 'uocra', 'accidente', 'comprar', '
   if (cap !== 'general') check(`${dir} → ${cap} tiene skills`, skillsForCapability(cap).length > 0)
 }
 
+// REGRESIÓN: keyword corta NO debe matchear dentro de una palabra (bug real: "iva" matcheaba
+// "act·iva·s" y mandaba "comprar retroexcavadora para obras activas" a impuestos).
+{
+  const m = classifyDirectiveMulti('conviene comprar o alquilar una retroexcavadora para las obras activas?')
+  check('substring: "activas" NO cuenta como iva → sin advise.tax', !m.includes('advise.tax'))
+  check('substring: retroexcavadora → advise.equipment', m.includes('advise.equipment'))
+  check('IVA real sí cuenta', classifyDirectiveMulti('cuánto pago de iva este mes').includes('advise.tax'))
+  check('operario en blanco → advise.hr', classifyDirective('registrar operario en blanco') === 'advise.hr')
+}
+
 console.log(`\nclassify-directive.test: ${ok} OK, ${fail} FALLA`)
 process.exit(fail ? 1 : 0)

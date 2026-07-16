@@ -493,7 +493,10 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // EXCEPCIÓN: NO degradar a haiku cuando el dueño está EDITANDO un documento (writeToDocIntent,
   // archivo abierto o adjunto). Ese trabajo NECESITA sonnet para salir bien; bajarlo a haiku lo
   // rompe (más iteraciones fallidas = MÁS gasto y peor resultado). Degradar solo consultas/charla.
-  const tareaCritica = writeToDocIntent || att || !!fileId || mailComposeIntent || calendarWriteIntent
+  // asesoriaProfunda entra acá a propósito: una CONSULTA DE CRITERIO de dominio es donde el
+  // dueño MÁS quiere el cerebro experto (sonnet). Son pocas y valen el costo; no se degradan a
+  // haiku aunque el día esté sobre el tope. Los lookups y la charla sí se degradan (baratos).
+  const tareaCritica = writeToDocIntent || att || !!fileId || mailComposeIntent || calendarWriteIntent || asesoriaProfunda
   // La edición de documentos NUNCA se degrada a haiku: haiku la ROMPE (no hace pivots, no
   // formatea) y el dueño termina con una tabla a medias — peor que gastar. El gasto se controla
   // ahora por el lado correcto: contexto acotado (tope de tool_result) + tope de costo por
