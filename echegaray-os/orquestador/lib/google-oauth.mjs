@@ -19,6 +19,9 @@ export const OAUTH_SCOPES = [
   'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/gmail.compose',
   'https://www.googleapis.com/auth/calendar',
+  // Google Tasks: crear/listar/completar las tareas (pendientes) del dueño. Nuevo scope →
+  // requiere que el dueño RE-AUTORICE una vez para que las tools de tareas dejen de dar 403.
+  'https://www.googleapis.com/auth/tasks',
 ]
 
 function cfg() {

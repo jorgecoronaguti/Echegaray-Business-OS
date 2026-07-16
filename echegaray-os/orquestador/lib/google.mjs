@@ -41,6 +41,7 @@ export const WORKSPACE_SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/gmail.compose',
   'https://www.googleapis.com/auth/calendar',
+  'https://www.googleapis.com/auth/tasks',
 ]
 
 // Raíz del repo (orquestador/lib -> ../..), para localizar la credencial existente
@@ -188,7 +189,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
 
   // Construye un mensaje RFC 2822 y lo codifica base64url para la Gmail API. Asunto en
   // encoded-word UTF-8 para no romper con acentos (común en español).
-  function buildRawEmail({ to, cc, bcc, subject, body }) {
+  function buildRawEmail({ to, cc, bcc, subject, body, attachments = [] }) {
     const encWord = (s) => `=?UTF-8?B?${Buffer.from(String(s || ''), 'utf8').toString('base64')}?=`
     const h = []
     if (to) h.push(`To: ${to}`)
@@ -196,10 +197,47 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     if (bcc) h.push(`Bcc: ${bcc}`)
     h.push(`Subject: ${encWord(subject)}`)
     h.push('MIME-Version: 1.0')
-    h.push('Content-Type: text/plain; charset="UTF-8"')
-    h.push('Content-Transfer-Encoding: 8bit')
-    const mime = h.join('\r\n') + '\r\n\r\n' + String(body || '')
+    let mime
+    if (Array.isArray(attachments) && attachments.length) {
+      // multipart/mixed: cuerpo de texto + cada adjunto en base64.
+      const bnd = `b_${Date.now()}_${Math.random().toString(36).slice(2)}`
+      const p = [`Content-Type: multipart/mixed; boundary="${bnd}"`, '', `--${bnd}`,
+        'Content-Type: text/plain; charset="UTF-8"', 'Content-Transfer-Encoding: 8bit', '', String(body || '')]
+      for (const a of attachments) {
+        const b64 = String(a.dataBase64 || '').replace(/[\r\n]/g, '')
+        p.push(`--${bnd}`,
+          `Content-Type: ${a.mimeType || 'application/octet-stream'}; name="${a.filename || 'adjunto'}"`,
+          'Content-Transfer-Encoding: base64',
+          `Content-Disposition: attachment; filename="${a.filename || 'adjunto'}"`, '',
+          b64.replace(/(.{76})/g, '$1\r\n'))
+      }
+      p.push(`--${bnd}--`)
+      mime = h.join('\r\n') + '\r\n' + p.join('\r\n')
+    } else {
+      h.push('Content-Type: text/plain; charset="UTF-8"')
+      h.push('Content-Transfer-Encoding: 8bit')
+      mime = h.join('\r\n') + '\r\n\r\n' + String(body || '')
+    }
     return Buffer.from(mime, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  }
+
+  /** Resuelve un archivo de Drive (por file_id) a un adjunto de mail: {filename, mimeType,
+   *  dataBase64}. Un archivo nativo de Google (Doc/Sheet/Slides) se EXPORTA a PDF; el resto
+   *  se baja tal cual. Para "mandá el mail con el archivo X adjunto". */
+  async function fetchAttachment(fileId) {
+    const token = await accessToken()
+    const meta = await (await doFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=name,mimeType&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } })).json()
+    const nativo = /application\/vnd\.google-apps\./.test(meta.mimeType || '')
+    if (nativo) {
+      const res = await doFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/export?mimeType=application/pdf`, { headers: { Authorization: `Bearer ${token}` } })
+      if (!res.ok) throw new Error(`export ${res.status}`)
+      const buf = Buffer.from(await res.arrayBuffer())
+      return { filename: `${meta.name || 'documento'}.pdf`, mimeType: 'application/pdf', dataBase64: buf.toString('base64') }
+    }
+    const res = await doFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } })
+    if (!res.ok) throw new Error(`download ${res.status}`)
+    const buf = Buffer.from(await res.arrayBuffer())
+    return { filename: meta.name || 'adjunto', mimeType: meta.mimeType || 'application/octet-stream', dataBase64: buf.toString('base64') }
   }
 
   /** Descarga los bytes crudos de un archivo (alt=media). Para Excel/binarios. */
@@ -295,18 +333,27 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     },
     // ---- GMAIL (escritura) — el OS actúa COMO el usuario (OAuth). Enviar/borrar pasan por
     //      aprobación (Nivel E); borrador/etiquetar/archivar son reversibles e internos. ----
-    /** Envía un mail. to/cc/bcc son strings ("a@x, b@y"). threadId opcional para responder en hilo. */
-    async gmailSend({ to, cc, bcc, subject, body, threadId } = {}) {
-      const raw = buildRawEmail({ to, cc, bcc, subject, body })
+    /** Resuelve una lista de file_ids de Drive a adjuntos de mail (export PDF si son nativos). */
+    async resolveAttachments(attachmentFileIds = []) {
+      const out = []
+      for (const id of attachmentFileIds || []) { if (id) out.push(await fetchAttachment(String(id))) }
+      return out
+    },
+    /** Envía un mail. to/cc/bcc son strings. threadId opcional (responder en hilo).
+     *  attachmentFileIds: lista de file_ids de Drive para ADJUNTAR (nativos → PDF). */
+    async gmailSend({ to, cc, bcc, subject, body, threadId, attachmentFileIds } = {}) {
+      const attachments = await this.resolveAttachments(attachmentFileIds)
+      const raw = buildRawEmail({ to, cc, bcc, subject, body, attachments })
       const payload = threadId ? { raw, threadId } : { raw }
       const r = await apiSend('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', 'POST', payload)
-      return { id: r.id, threadId: r.threadId, to, subject }
+      return { id: r.id, threadId: r.threadId, to, subject, adjuntos: attachments.map((a) => a.filename) }
     },
-    /** Crea un BORRADOR (no envía). Reversible, sin efecto externo. */
-    async gmailCreateDraft({ to, cc, bcc, subject, body } = {}) {
-      const raw = buildRawEmail({ to, cc, bcc, subject, body })
+    /** Crea un BORRADOR (no envía). Reversible, sin efecto externo. Soporta adjuntos de Drive. */
+    async gmailCreateDraft({ to, cc, bcc, subject, body, attachmentFileIds } = {}) {
+      const attachments = await this.resolveAttachments(attachmentFileIds)
+      const raw = buildRawEmail({ to, cc, bcc, subject, body, attachments })
       const r = await apiSend('https://gmail.googleapis.com/gmail/v1/users/me/drafts', 'POST', { message: { raw } })
-      return { draft_id: r.id, to, subject }
+      return { draft_id: r.id, to, subject, adjuntos: attachments.map((a) => a.filename) }
     },
     /** Modifica etiquetas de un mensaje (agregar/quitar). Archivar = quitar INBOX. */
     async gmailModifyLabels(id, { add = [], remove = [] } = {}) {
@@ -346,6 +393,66 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     async calendarDeleteEvent(id) {
       await apiDelete(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(id)}?sendUpdates=all`)
       return { id, deleted: true }
+    },
+    /** Alta RÁPIDA por lenguaje natural ("Reunión con Pérez el martes 15hs"). Google parsea la
+     *  fecha/hora. Ideal cuando el dueño tira el evento en una frase. */
+    async calendarQuickAdd(text) {
+      const r = await apiSend(`https://www.googleapis.com/calendar/v3/calendars/primary/events/quickAdd?text=${encodeURIComponent(String(text || ''))}`, 'POST', {})
+      return { id: r.id, summary: r.summary, start: r.start, end: r.end, link: r.htmlLink }
+    },
+    // ---- GOOGLE TASKS — lista de pendientes del dueño. Requiere el scope tasks (re-consent
+    //      OAuth). Crear/completar una tarea es interno y reversible (no notifica a nadie). ----
+    /** Listas de tareas del usuario. Devuelve [{id, title}]. La default suele ser "Mis tareas". */
+    async tasksLists() {
+      const j = await apiGet('https://tasks.googleapis.com/tasks/v1/users/@me/lists?maxResults=50')
+      return (j.items || []).map((l) => ({ id: l.id, title: l.title }))
+    },
+    /** Crea una TAREA (título, notas y vencimiento opcional "YYYY-MM-DD"). tasklist def '@default'. */
+    async taskCreate({ title, notes, due, tasklist = '@default' } = {}) {
+      const body = { title }
+      if (notes) body.notes = notes
+      if (due) body.due = String(due).length <= 10 ? `${due}T00:00:00.000Z` : String(due)
+      const r = await apiSend(`https://tasks.googleapis.com/tasks/v1/lists/${encodeURIComponent(tasklist)}/tasks`, 'POST', body)
+      return { id: r.id, title: r.title, due: r.due || null, status: r.status }
+    },
+    /** Lista tareas de una lista (por defecto pendientes). */
+    async tasksList({ tasklist = '@default', includeCompleted = false, max = 50 } = {}) {
+      const q = `showCompleted=${includeCompleted}&showHidden=${includeCompleted}&maxResults=${max}`
+      const j = await apiGet(`https://tasks.googleapis.com/tasks/v1/lists/${encodeURIComponent(tasklist)}/tasks?${q}`)
+      return (j.items || []).map((t) => ({ id: t.id, title: t.title || '(sin título)', due: t.due || null, status: t.status, notes: t.notes || '' }))
+    },
+    /** Marca una tarea como completada (o la reabre con status='needsAction'). */
+    async taskComplete(id, { tasklist = '@default', status = 'completed' } = {}) {
+      const r = await apiSend(`https://tasks.googleapis.com/tasks/v1/lists/${encodeURIComponent(tasklist)}/tasks/${encodeURIComponent(id)}`, 'PATCH', { status })
+      return { id: r.id, title: r.title, status: r.status }
+    },
+    /** Borra una tarea (reversible sólo desde la papelera de Tasks; efecto interno). */
+    async taskDelete(id, { tasklist = '@default' } = {}) {
+      await apiDelete(`https://tasks.googleapis.com/tasks/v1/lists/${encodeURIComponent(tasklist)}/tasks/${encodeURIComponent(id)}`)
+      return { id, deleted: true }
+    },
+    // ---- GMAIL (más acciones) — el scope modify habilita responder, marcar leído y destacar. ----
+    /** RESPONDE un mail en su hilo: toma remitente y asunto del original y envía "Re:". */
+    async gmailReply(id, body) {
+      const msg = await apiGet(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Message-ID`)
+      const h = Object.fromEntries((msg.payload?.headers || []).map((x) => [x.name.toLowerCase(), x.value]))
+      const to = h.from || ''
+      const subject = /^re:/i.test(h.subject || '') ? h.subject : `Re: ${h.subject || ''}`
+      const raw = buildRawEmail({ to, subject, body })
+      const r = await apiSend('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', 'POST', { raw, threadId: msg.threadId })
+      return { id: r.id, threadId: r.threadId, to, subject }
+    },
+    /** Marca un mensaje como leído (quita UNREAD) o no leído. */
+    async gmailMarkRead(id, read = true) {
+      const mod = read ? { removeLabelIds: ['UNREAD'] } : { addLabelIds: ['UNREAD'] }
+      const r = await apiSend(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}/modify`, 'POST', mod)
+      return { id: r.id, read }
+    },
+    /** Destaca (STARRED) o quita la estrella de un mensaje. */
+    async gmailStar(id, star = true) {
+      const mod = star ? { addLabelIds: ['STARRED'] } : { removeLabelIds: ['STARRED'] }
+      const r = await apiSend(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}/modify`, 'POST', mod)
+      return { id: r.id, starred: star }
     },
     /** Lee valores de un rango A1 de un Sheet. Devuelve matriz de filas. */
     async readSheetValues(fileId, range) {

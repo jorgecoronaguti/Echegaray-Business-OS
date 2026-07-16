@@ -69,12 +69,12 @@ export function workspaceTools({ google } = {}) {
       capability: 'mail.draft', account: 'ecsas',
       schema: {
         name: 'gmail_borrador',
-        description: 'Crea un BORRADOR de mail (NO lo envía; queda en Borradores para que el dueño lo revise/mande). Reversible. Pasá to, subject y body; cc/bcc opcionales.',
-        input_schema: { type: 'object', properties: { to: { type: 'string' }, cc: { type: 'string' }, bcc: { type: 'string' }, subject: { type: 'string' }, body: { type: 'string' } }, required: ['to', 'subject', 'body'] },
+        description: 'Crea un BORRADOR de mail (NO lo envía; queda en Borradores para que el dueño lo revise/mande). Reversible. Pasá to, subject y body; cc/bcc opcionales. Para ADJUNTAR archivos, pasá adjuntos = lista de file_id de Drive (buscalos antes con drive_find; los Doc/Sheet nativos se adjuntan como PDF).',
+        input_schema: { type: 'object', properties: { to: { type: 'string' }, cc: { type: 'string' }, bcc: { type: 'string' }, subject: { type: 'string' }, body: { type: 'string' }, adjuntos: { type: 'array', items: { type: 'string' } } }, required: ['to', 'subject', 'body'] },
       },
       async run(input) {
         if (!input?.to || !input?.body) return { error: 'faltan to y body' }
-        try { return { ok: true, ...(await ws().gmailCreateDraft(input)) } } catch (e) { return sinAcceso(e) }
+        try { return { ok: true, ...(await ws().gmailCreateDraft({ ...input, attachmentFileIds: input?.adjuntos })) } } catch (e) { return sinAcceso(e) }
       },
     },
     'mail.archive': {
@@ -94,12 +94,12 @@ export function workspaceTools({ google } = {}) {
       capability: 'mail.send', account: 'ecsas',
       schema: {
         name: 'gmail_enviar',
-        description: 'ENVÍA un mail desde la cuenta del dueño. Efecto externo: REQUIERE aprobación (cae en Pendientes con el destinatario, asunto y cuerpo; el dueño aprueba y recién ahí sale). Pasá to, subject, body; cc/bcc/threadId opcionales (threadId para responder en un hilo).',
-        input_schema: { type: 'object', properties: { to: { type: 'string' }, cc: { type: 'string' }, bcc: { type: 'string' }, subject: { type: 'string' }, body: { type: 'string' }, threadId: { type: 'string' } }, required: ['to', 'subject', 'body'] },
+        description: 'ENVÍA un mail desde la cuenta del dueño. Efecto externo: REQUIERE aprobación (cae en Pendientes con el destinatario, asunto, cuerpo y adjuntos; el dueño aprueba y recién ahí sale). Pasá to, subject, body; cc/bcc/threadId opcionales (threadId para responder en un hilo). Para ADJUNTAR archivos, pasá adjuntos = lista de file_id de Drive (buscalos antes con drive_find; los Doc/Sheet nativos se adjuntan como PDF).',
+        input_schema: { type: 'object', properties: { to: { type: 'string' }, cc: { type: 'string' }, bcc: { type: 'string' }, subject: { type: 'string' }, body: { type: 'string' }, threadId: { type: 'string' }, adjuntos: { type: 'array', items: { type: 'string' } } }, required: ['to', 'subject', 'body'] },
       },
       async run(input) {
         if (!input?.to || !input?.body) return { error: 'faltan to y body' }
-        try { return { ok: true, ...(await ws().gmailSend(input)) } } catch (e) { return sinAcceso(e) }
+        try { return { ok: true, ...(await ws().gmailSend({ ...input, attachmentFileIds: input?.adjuntos })) } } catch (e) { return sinAcceso(e) }
       },
     },
     'mail.trash': {
@@ -149,6 +149,94 @@ export function workspaceTools({ google } = {}) {
       async run(input) {
         if (!input?.id) return { error: 'falta id' }
         try { return { ok: true, ...(await ws().calendarDeleteEvent(String(input.id))) } } catch (e) { return sinAcceso(e) }
+      },
+    },
+    'calendar.quickadd': {
+      capability: 'calendar.write', account: 'ecsas',
+      schema: {
+        name: 'agenda_crear_rapido',
+        description: 'Crea un evento por lenguaje NATURAL (Google parsea la fecha/hora): ej. "Reunión con Pérez el martes a las 15". Úsalo cuando el dueño tira el evento en una frase y no querés armar start/end a mano. REQUIERE aprobación. Pasá text.',
+        input_schema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+      },
+      async run(input) {
+        if (!input?.text) return { error: 'falta text' }
+        try { return { ok: true, ...(await ws().calendarQuickAdd(String(input.text))) } } catch (e) { return sinAcceso(e) }
+      },
+    },
+
+    // ───────── GOOGLE TASKS (pendientes del dueño) — crear/listar/completar es interno ─────────
+    'tasks.list': {
+      capability: 'tasks.read', account: 'ecsas',
+      schema: {
+        name: 'tareas_listar',
+        description: 'Lista las TAREAS (pendientes de Google Tasks) del dueño: título, vencimiento y estado. Por defecto solo las no completadas. Lectura. Opcional: incluir_completadas (bool).',
+        input_schema: { type: 'object', properties: { incluir_completadas: { type: 'boolean' } } },
+      },
+      async run(input) {
+        try { return { ok: true, tareas: await ws().tasksList({ includeCompleted: !!input?.incluir_completadas }) } } catch (e) { return sinAcceso(e) }
+      },
+    },
+    'tasks.create': {
+      capability: 'tasks.write', account: 'ecsas',
+      schema: {
+        name: 'tarea_crear',
+        description: 'Crea una TAREA (pendiente) en Google Tasks del dueño. Interno y reversible (no notifica a nadie) → se hace directo, sin aprobación. Pasá title; notes (detalle) y due ("YYYY-MM-DD", fecha de vencimiento) opcionales.',
+        input_schema: { type: 'object', properties: { title: { type: 'string' }, notes: { type: 'string' }, due: { type: 'string' } }, required: ['title'] },
+      },
+      async run(input) {
+        if (!input?.title) return { error: 'falta title' }
+        try { return { ok: true, ...(await ws().taskCreate(input)) } } catch (e) { return sinAcceso(e) }
+      },
+    },
+    'tasks.complete': {
+      capability: 'tasks.write', account: 'ecsas',
+      schema: {
+        name: 'tarea_completar',
+        description: 'Marca una tarea como COMPLETADA (o la reabre con completada=false). Pasá id (el que devuelve tareas_listar); completada opcional (def true).',
+        input_schema: { type: 'object', properties: { id: { type: 'string' }, completada: { type: 'boolean' } }, required: ['id'] },
+      },
+      async run(input) {
+        if (!input?.id) return { error: 'falta id' }
+        const status = input?.completada === false ? 'needsAction' : 'completed'
+        try { return { ok: true, ...(await ws().taskComplete(String(input.id), { status })) } } catch (e) { return sinAcceso(e) }
+      },
+    },
+
+    // ───────── GMAIL (más acciones: responder, marcar leído, destacar) ─────────
+    'mail.reply': {
+      capability: 'mail.send', account: 'ecsas',
+      schema: {
+        name: 'gmail_responder',
+        description: 'RESPONDE un mail en su hilo (al remitente, con "Re:"). Efecto externo: REQUIERE aprobación (cae en Pendientes). Pasá id (del mail a responder) y body (tu respuesta).',
+        input_schema: { type: 'object', properties: { id: { type: 'string' }, body: { type: 'string' } }, required: ['id', 'body'] },
+      },
+      async run(input) {
+        if (!input?.id || !input?.body) return { error: 'faltan id y body' }
+        try { return { ok: true, ...(await ws().gmailReply(String(input.id), String(input.body))) } } catch (e) { return sinAcceso(e) }
+      },
+    },
+    'mail.markread': {
+      capability: 'mail.modify', account: 'ecsas',
+      schema: {
+        name: 'gmail_marcar_leido',
+        description: 'Marca un mail como leído (o no leído con leido=false). Reversible, interno. Pasá id.',
+        input_schema: { type: 'object', properties: { id: { type: 'string' }, leido: { type: 'boolean' } }, required: ['id'] },
+      },
+      async run(input) {
+        if (!input?.id) return { error: 'falta id' }
+        try { return { ok: true, ...(await ws().gmailMarkRead(String(input.id), input?.leido !== false)) } } catch (e) { return sinAcceso(e) }
+      },
+    },
+    'mail.star': {
+      capability: 'mail.modify', account: 'ecsas',
+      schema: {
+        name: 'gmail_destacar',
+        description: 'Destaca (estrella) un mail o le quita la estrella con destacar=false. Reversible, interno. Pasá id.',
+        input_schema: { type: 'object', properties: { id: { type: 'string' }, destacar: { type: 'boolean' } }, required: ['id'] },
+      },
+      async run(input) {
+        if (!input?.id) return { error: 'falta id' }
+        try { return { ok: true, ...(await ws().gmailStar(String(input.id), input?.destacar !== false)) } } catch (e) { return sinAcceso(e) }
       },
     },
   }
