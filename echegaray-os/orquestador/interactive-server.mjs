@@ -449,6 +449,12 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // chat-intents.mjs, testeada (chat-intents.test) para que este bug no regrese nunca más.
   const mailComposeIntent = isMailComposeIntent(directive, histText)
   const calendarWriteIntent = isCalendarWriteIntent(directive)
+  // COMPUERTA ÚNICA de lectura: NINGUNA respuesta determinística 0-API (avance, caja, briefing,
+  // cartera, IVA, cuadro, pedidos, agenda, mails…) debe dispararse cuando el dueño pide una
+  // ACCIÓN (editar doc, componer/enviar mail, agendar). Antes cada detección guardaba solo
+  // writeToDocIntent → un "redactá un mail sobre el AVANCE de obra" lo secuestraba la detección
+  // de avance. Este bloqueo cubre TODAS de una: es el fix sistémico del secuestro de acciones.
+  const readBlocked = writeToDocIntent || mailComposeIntent || calendarWriteIntent
   // MODELO POR NIVELES (ahorro de API): sonnet (potente, caro) solo cuando hace falta
   // criterio real — escribir, interpretar un adjunto, o presupuestar; haiku (barato,
   // rápido) para consultas simples y de charla. Antes era sonnet-siempre y quemaba
@@ -527,7 +533,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   }
   // AGENDA (Calendar) — respuesta determinística (0 API modelo): "agenda", "qué tengo hoy/
   // esta semana", "mi calendario", "próximos eventos/reuniones". Lee Google Calendar del usuario.
-  if (!writeToDocIntent && !calendarWriteIntent
+  if (!readBlocked && !calendarWriteIntent
       && /\b(agenda|calendario|qu[eé]\s+tengo\s+(hoy|esta\s+semana|ma[ñn]ana|programad)|pr[oó]xim[oa]s?\s+(eventos?|reuniones?|citas?)|reuniones?\s+(de\s+)?(hoy|esta\s+semana|la\s+semana)|qu[eé]\s+hay\s+en\s+(mi\s+)?(agenda|calendario))/i.test(directive)) {
     const days = /\bhoy\b/i.test(directive) ? 1 : /ma[ñn]ana/i.test(directive) ? 2 : /\bmes\b/i.test(directive) ? 30 : 7
     return { answer: await agendaResumen(userEmail, { days }), model: 'agenda', capability: 'advise.general', skills: [], navigate: null }
@@ -535,7 +541,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // MAILS (Gmail) — respuesta determinística (0 API modelo): "mis mails/correos", "mails sin
   // leer / de hoy". Lee Gmail (solo lectura). GUARDA con mailComposeIntent (def arriba): un
   // pedido de COMPONER/enviar/reenviar un mail NO se secuestra acá — va al modelo con las tools.
-  if (!writeToDocIntent && !mailComposeIntent && /\b(mis\s+)?(mails?|correos?|emails?)\b/i.test(directive) && !/\b(envi|mand|reenvi|respond|redact|escrib|adjunt)/i.test(directive)) {
+  if (!readBlocked && !mailComposeIntent && /\b(mis\s+)?(mails?|correos?|emails?)\b/i.test(directive) && !/\b(envi|mand|reenvi|respond|redact|escrib|adjunt)/i.test(directive)) {
     const sinLeer = /\bsin\s+leer|no\s+le[ií]dos?|unread\b/i.test(directive)
     const query = sinLeer ? 'is:unread in:inbox' : /\bhoy\b/i.test(directive) ? 'in:inbox newer_than:1d' : 'in:inbox newer_than:3d'
     const titulo = sinLeer ? 'Mails sin leer' : /\bhoy\b/i.test(directive) ? 'Mails de hoy' : 'Mails recientes'
@@ -580,7 +586,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
     }
     return { answer: 'Puedo modificar la app de pedidos, pero necesito el dato claro. Ejemplos: **"marcá el pedido 3 como entregado"** · **"agregá 10 bolsas de cemento para la obra Galpones"**. Todo cae en Pendientes para tu OK antes de tocar la app.', model: 'appsheet-write', capability: 'appsheet.write', skills: [], navigate: null }
   }
-  if (!pedidoWriteIntent && !writeToDocIntent
+  if (!pedidoWriteIntent && !readBlocked
       && (/\bpedidos?\s+(de\s+)?(materiales?|obra|la\s+obra)\b|\bmateriales?\s+pedidos?\b|\bpedidos?\s+pendientes?\b|\bqu[eé]\s+(se\s+)?pidi[oó]/i.test(directive))) {
     const soloPendientes = /\bpendientes?\b/i.test(directive)
     const mo = String(directive).match(/\b(?:de\s+la\s+obra|obra|para)\s+([\wáéíóúñ][\wáéíóúñ .\-]{1,30})/i)
@@ -592,7 +598,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // reales extraídos de ARCA. "libro iva", "iva de junio", "cuánto iva pagamos", "posición
   // de iva", "comprobantes recibidos/emitidos". Sensible (fiscal) → un 'usuario' no accede.
   {
-    const pideIva = !writeToDocIntent && (/\blibro\s+iva\b|\biva\b.*\b(mes|per[ií]odo|junio|mayo|abril|marzo|febrero|enero|julio|agosto|septiembre|octubre|noviembre|diciembre|\d{4}|pag|deb[ií]to|cr[eé]dito|posici[oó]n|ventas|compras)|\b(posici[oó]n|d[eé]bito|cr[eé]dito)\s+(de\s+)?iva|\bcu[aá]nto\s+iva\b|comprobantes?\s+(recibidos|emitidos|de\s+arca|arca)/i.test(directive))
+    const pideIva = !readBlocked && (/\blibro\s+iva\b|\biva\b.*\b(mes|per[ií]odo|junio|mayo|abril|marzo|febrero|enero|julio|agosto|septiembre|octubre|noviembre|diciembre|\d{4}|pag|deb[ií]to|cr[eé]dito|posici[oó]n|ventas|compras)|\b(posici[oó]n|d[eé]bito|cr[eé]dito)\s+(de\s+)?iva|\bcu[aá]nto\s+iva\b|comprobantes?\s+(recibidos|emitidos|de\s+arca|arca)/i.test(directive))
     if (pideIva) {
       if (!puede(rol, 'fiscal')) return denegar('fiscal')
       const per = parsePeriodo(directive)
@@ -614,7 +620,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // CONCILIACIÓN DE PROVEEDORES con ARCA (Plan 1 F1) — "conciliá proveedores con arca",
   // "proveedores de arca", "qué proveedores faltan dar de alta". Determinístico (0 API):
   // propone completar CUIT / dar de alta, NO escribe. Sensible (fiscal) → 'usuario' denegado.
-  if (!writeToDocIntent && /(concili[aá]|complet[aá]|carg[aá]).*(proveedor|cuit).*(arca|afip)|proveedor(es)?\s+(de\s+)?(arca|afip)|proveedor(es)?\s+(sin|para)\s+(registrar|dar de alta|alta)|qu[eé]\s+proveedor(es)?\s+(faltan?|no\s+(est[aá]n|tengo|tenemos))/i.test(directive)) {
+  if (!readBlocked && /(concili[aá]|complet[aá]|carg[aá]).*(proveedor|cuit).*(arca|afip)|proveedor(es)?\s+(de\s+)?(arca|afip)|proveedor(es)?\s+(sin|para)\s+(registrar|dar de alta|alta)|qu[eé]\s+proveedor(es)?\s+(faltan?|no\s+(est[aá]n|tengo|tenemos))/i.test(directive)) {
     if (!puede(rol, 'fiscal')) return denegar('fiscal')
     const c = await conciliarProveedoresArca()
     const money = (n) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(Number(n || 0))
@@ -636,7 +642,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   }
   // CAJA — PROYECCIÓN (PRP-021 F2): "proyección/proyectá la caja", "cómo viene la caja",
   // "alcanza la caja", "flujo/cash proyectado" → saldo hoy + semanas + gap (0 API, percibido).
-  if (!writeToDocIntent
+  if (!readBlocked
       && /\b(proyecci[oó]n|proyect[aá]|alcanza|va a alcanzar|c[oó]mo (viene|va a venir)|flujo (de caja )?proyect|cash ?flow proyect|saldo proyect)/i.test(directive)
       && /\b(caja|flujo|cash|saldo|plata|fondos)\b/i.test(directive)) {
     if (!puede(rol, 'caja')) return denegar('caja')
@@ -644,7 +650,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   }
   // CAJA — PRIORIZACIÓN (PRP-021 F1): "qué cobro/pago primero", "priorizá la caja",
   // "qué gestiono de caja" → ranking por impacto (0 API). Va antes del briefing (más específico).
-  if (!writeToDocIntent
+  if (!readBlocked
       && /\b(qu[eé]\s+(cobro|pago|cobr[aá]s|pag[aá]s|gestiono|gestion[aá]s|prioriz)|prioriz[aá].*(caja|cobr|pag)|qu[eé].*(primero).*(cobr|pag|caja)|orden.*(cobr|pag))\b/i.test(directive)
       && /\b(caja|cobr|pag|cobranza|vencid|primero)\b/i.test(directive)) {
     if (!puede(rol, 'caja')) return denegar('caja')
@@ -653,20 +659,20 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // BRIEFING EJECUTIVO (0 API) — "¿cómo estamos?" / "resumen" / "qué hay hoy" → foto
   // unificada de caja vencida + desvíos de obra + backlog autónomo (lo que el OS detectó
   // solo). Debe ir ANTES del cuadro económico (más específico) para no ser tapado.
-  if (!writeToDocIntent
+  if (!readBlocked
       && /^\s*(?:d[aá]me\s+|hac[eé]me\s+|quiero\s+)?(?:un\s+)?(briefing|resumen ejecutivo|resumen del d[ií]a|c[oó]mo (estamos|venimos|va todo|anda todo)|qu[eé] (hay|tenemos) (hoy|para hoy)|estado (general|de la empresa)|situaci[oó]n general|poneme al d[ií]a|puesta al d[ií]a)\b/i.test(directive)) {
     return { answer: await briefingEjecutivo(), model: 'briefing', capability: 'general', skills: [], navigate: null }
   }
   // MACRO DE CARTERA (PRP-020) — "cartera", "macro de obras", "portfolio", "estado de la
   // cartera", "todas las obras juntas" → la foto agregada de todas las obras (0 API).
-  if (!writeToDocIntent
+  if (!readBlocked
       && /\b(cartera|portfolio|macro de obras?|estado (de|de la) (cartera|obras)|todas las obras juntas|resumen de (la )?cartera|panorama de obras)\b/i.test(directive)) {
     return { answer: await carteraResumen(), model: 'cartera', capability: 'advise.commercial', skills: [], navigate: null }
   }
   // FICHA DE OBRA (PRP-019) — "ficha de la obra X", "todo de la obra X", "obra X completa"
   // → económico + caja + avance + alertas en una respuesta (0 API). Va antes de avance/cuadro.
   {
-    const f = writeToDocIntent ? null : String(directive).match(/(?:ficha|todo|resumen completo|informe completo|panorama)\s+(?:de\s+|sobre\s+)?(?:la\s+)?obra\s+([\wáéíóúñ][\wáéíóúñ .\-]{1,30})|obra\s+([\wáéíóúñ .\-]{2,30})\s+(?:completa|entera|todo)/i)
+    const f = readBlocked ? null : String(directive).match(/(?:ficha|todo|resumen completo|informe completo|panorama)\s+(?:de\s+|sobre\s+)?(?:la\s+)?obra\s+([\wáéíóúñ][\wáéíóúñ .\-]{1,30})|obra\s+([\wáéíóúñ .\-]{2,30})\s+(?:completa|entera|todo)/i)
     if (f) {
       const nombre = (f[1] || f[2] || '').replace(/[?¿!¡.]+$/g, '').trim()
       if (nombre) return { answer: await fichaObra(nombre), model: 'ficha-obra', capability: 'advise.site', skills: [], navigate: null }
@@ -676,7 +682,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // actividades completas por obra. Debe ir ANTES del cuadro económico (que captura
   // "cómo va X"). Solo dispara si menciona avance/físico explícitamente.
   {
-    const av = writeToDocIntent ? null : String(directive).match(/\bavance(s)?\s+(f[ií]sic|de\s+obra|de\s+la\s+obra|de\s+las\s+obras)|\b(avance|%\s*de\s*avance|porcentaje de avance)\b.*\bobra|\bc[oó]mo\s+va(n)?\s+las\s+obras\b/i)
+    const av = readBlocked ? null : String(directive).match(/\bavance(s)?\s+(f[ií]sic|de\s+obra|de\s+la\s+obra|de\s+las\s+obras)|\b(avance|%\s*de\s*avance|porcentaje de avance)\b.*\bobra|\bc[oó]mo\s+va(n)?\s+las\s+obras\b/i)
     if (av) {
       const m = String(directive).match(/avance\s+(?:f[ií]sic[ao]\s+)?(?:de\s+)?(?:la\s+)?(?:obra\s+)?([\wáéíóúñ][\wáéíóúñ .\-]{1,30})?/i)
       let nombre = (m?.[1] || '').replace(/\b(f[ií]sic[ao]|de obra|las obras|obras|obra)\b/gi, '').replace(/[?¿!¡.]+$/g, '').trim()
@@ -687,7 +693,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // contratado↔presupuesto↔costo real↔adicionales con margen y desvío, desde Supabase.
   // "cuadro económico" / "cómo va (la obra) X (económicamente)" / "margen/situación de X".
   {
-    const econ = writeToDocIntent ? null : String(directive).match(
+    const econ = readBlocked ? null : String(directive).match(
       /(?:cuadro\s+econ[oó]mico|situaci[oó]n\s+econ[oó]mica|resultado\s+econ[oó]mico|c[oó]mo\s+(?:va|viene|est[aá]|anda)\b|margen|desv[ií]o|rentabilidad|gan(?:amos|ancia|é))\s*(?:de\s+|en\s+|la\s+obra\s+|de\s+la\s+obra\s+|econ[oó]mic[ao]?\s+(?:de\s+)?)?([\wáéíóúñ][\wáéíóúñ .\-]{1,40})?/i,
     )
     const mentionsObra = /\bobra(s)?\b|cuadro\s+econ[oó]mico|econ[oó]mic/i.test(directive)
