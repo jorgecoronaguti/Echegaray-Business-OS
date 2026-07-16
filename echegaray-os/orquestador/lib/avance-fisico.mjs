@@ -40,6 +40,7 @@ export async function avanceHoja(g, tab) {
   const cols = ubicarColumnas(Array.isArray(rows) ? rows : [])
   if (!cols) return { tab, estructurado: false, motivo: 'la hoja no tiene columna de % avance (checklist sin estado)' }
   let n = 0, suma = 0, completadas = 0
+  const detalle = []
   for (let i = cols.header + 1; i < rows.length; i++) {
     const r = rows[i] || []
     const actividad = norm(r[cols.act])
@@ -49,9 +50,10 @@ export async function avanceHoja(g, tab) {
     const p = parsePct(r[cols.pct])
     if (p == null) continue
     n++; suma += p; if (p >= 99.5 || /complet|termin|finaliz/i.test(norm(r[cols.status]))) completadas++
+    detalle.push({ codigo: norm(r[cols.num]) || null, actividad, pct: Math.round(p), estado: cols.status >= 0 ? norm(r[cols.status]) || null : null })
   }
   if (!n) return { tab, estructurado: false, motivo: 'tracker presente pero sin actividades con % cargado' }
-  return { tab, estructurado: true, actividades: n, completadas, avancePromedio: Math.round(suma / n) }
+  return { tab, estructurado: true, actividades: n, completadas, avancePromedio: Math.round(suma / n), detalle }
 }
 
 /** Avance físico de todas las hojas del archivo. Reusa un solo cliente Google. */

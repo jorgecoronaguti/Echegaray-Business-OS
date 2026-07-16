@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { getObraDetalle, pedidoPendiente } from '@/features/control-obras/services/controlObrasService'
+import { getAvanceObra, getObraDetalle, pedidoPendiente, type AvanceObra } from '@/features/control-obras/services/controlObrasService'
 import { ObraTabs } from '@/features/control-obras/components/ObraTabs'
 
 export const dynamic = 'force-dynamic'
@@ -11,11 +11,13 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ ob
 
   let error: string | null = null
   let detalle = null
+  let avance: AvanceObra | null = null
   try {
     const supabase = await createClient()
-    const res = await getObraDetalle(supabase, nombre)
+    const [res, av] = await Promise.all([getObraDetalle(supabase, nombre), getAvanceObra(supabase, nombre)])
     error = res.error
     detalle = res.data
+    avance = av
   } catch (err) {
     error = err instanceof Error ? err.message : 'Error desconocido'
   }
@@ -30,6 +32,11 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ ob
         </Link>
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <h1 className="text-3xl font-bold tracking-tight">{nombre}</h1>
+          {avance?.estructurado && avance.avance_promedio != null && (
+            <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-800">
+              {avance.avance_promedio}% físico
+            </span>
+          )}
           {pendientes > 0 ? (
             <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
               {pendientes} pedido{pendientes === 1 ? '' : 's'} pendiente{pendientes === 1 ? '' : 's'}
@@ -38,7 +45,7 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ ob
             <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">al día</span>
           )}
         </div>
-        <p className="mt-1 text-sm text-gray-500">Vista operativa de la obra. El avance físico y el económico llegan en las próximas fases.</p>
+        <p className="mt-1 text-sm text-gray-500">Vista operativa de la obra. El control económico llega en las próximas fases.</p>
       </div>
 
       {error && (
@@ -48,7 +55,7 @@ export default async function ObraDetallePage({ params }: { params: Promise<{ ob
         </div>
       )}
 
-      {detalle && <ObraTabs detalle={detalle} />}
+      {detalle && <ObraTabs detalle={detalle} avance={avance} />}
     </div>
   )
 }
