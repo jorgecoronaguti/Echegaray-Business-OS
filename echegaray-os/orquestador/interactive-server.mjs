@@ -447,7 +447,11 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // archivo abierto o adjunto). Ese trabajo NECESITA sonnet para salir bien; bajarlo a haiku lo
   // rompe (más iteraciones fallidas = MÁS gasto y peor resultado). Degradar solo consultas/charla.
   const tareaCritica = writeToDocIntent || att || !!fileId
-  if (model === 'sonnet' && !tareaCritica && degradarModeloOnDemand(presupuesto.modo)) { model = 'haiku'; degradadoPorCosto = true }
+  // La edición usa sonnet normalmente (haiku la rompe). PERO si el gasto de hoy YA SUPERÓ el
+  // tope ('tope'), degradamos TODO —incluso la edición—: quemar crédito que no hay es peor que
+  // un resultado más pobre. En 'ahorro' (80-100%) solo se degrada lo NO crítico.
+  const enTope = presupuesto.modo === 'tope'
+  if (model === 'sonnet' && degradarModeloOnDemand(presupuesto.modo) && (!tareaCritica || enTope)) { model = 'haiku'; degradadoPorCosto = true }
   const engine = resolveEngine('anthropic-api')
 
   // Fase 3: rutear al especialista correcto. Clasificamos la directiva a un dominio
@@ -457,9 +461,16 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // legal + finanzas). Activamos TODAS las que correspondan, acotado a 4 por costo/prompt.
   const capabilities = classifyDirectiveMulti(directive)
   const capability = capabilities[0] || 'general' // principal (para isBudgeting, telemetría)
-  const skillNames = capabilities.length
-    ? [...new Set(capabilities.flatMap((c) => skillsForCapability(c)))].slice(0, 4)
-    : []
+  // AHORRO DE TOKENS (causa real del gasto): editar/formatear un documento NO necesita skills
+  // de dominio (finanzas, impuestos…) — es trabajo mecánico de Drive, y esas skills sólo
+  // inflan el prompt que se RE-MANDA 26-40 veces por tarea. Para edición de documento (sin
+  // presupuestación, que sí las usa) NO cargamos skills: la guía de tools ya está en el prompt
+  // base. Corta el contexto de miles de tokens/iteración a casi nada.
+  const skillNames = (writeToDocIntent && !budgetingKw)
+    ? []
+    : capabilities.length
+      ? [...new Set(capabilities.flatMap((c) => skillsForCapability(c)))].slice(0, 4)
+      : []
   // "¿Qué podés hacer?" — respuesta DETERMINÍSTICA (0 API, siempre actualizada): así la
   // extensión refleja las capacidades del cerebro sin reinstalarse y sin gastar crédito.
   if (/^\s*(qu[eé] pod[eé]s hacer|qu[eé] sab[eé]s hacer|ayuda\b|help\b|para qu[eé] serv|qu[eé] (te )?puedo pedir|capacidades|qu[eé] hac[eé]s)/i.test(directive)) {
@@ -827,11 +838,11 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   const promptContent = att ? [att, { type: 'text', text: prompt }] : prompt
 
   const eng = await engine.run(
-    { system, prompt: promptContent, worktreePath: CTX.context.repository.rootPath, model, maxCostUsd: writeToDocIntent ? 2.5 : 1.2, maxTokens: writeIntent || att || isBudgeting ? 8192 : 900,
+    { system, prompt: promptContent, worktreePath: CTX.context.repository.rootPath, model, maxCostUsd: writeToDocIntent ? 1.2 : 0.8, maxTokens: writeIntent || att || isBudgeting ? 8192 : 900,
       // Reconstruir/editar una planilla lee varias pestañas y escribe varios rangos: 26
       // iteraciones se agotaban a mitad (dejando la tarea incompleta y gastando en vano).
       // Con archivo abierto o pedido de escribir un documento damos 40; el resto igual.
-      maxToolIterations: writeToDocIntent ? 40 : (att || writeIntent || isBudgeting ? 26 : 10), allowedTools: 'Read',
+      maxToolIterations: writeToDocIntent ? 26 : (att || writeIntent || isBudgeting ? 20 : 10), allowedTools: 'Read',
       task: { id: 'interactive', capability_slug: 'advise.admin' },
       tools: Object.values(registry).map((t) => t.schema), toolExecutor, agentSlug: 'interactive' },
     CTX)
