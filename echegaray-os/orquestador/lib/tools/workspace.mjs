@@ -180,12 +180,12 @@ export function workspaceTools({ google } = {}) {
       capability: 'tasks.write', account: 'ecsas',
       schema: {
         name: 'tarea_crear',
-        description: 'Crea una TAREA (pendiente) en Google Tasks del dueño. Interno y reversible (no notifica a nadie) → se hace directo, sin aprobación. Pasá title; notes (detalle) y due ("YYYY-MM-DD", fecha de vencimiento) opcionales.',
-        input_schema: { type: 'object', properties: { title: { type: 'string' }, notes: { type: 'string' }, due: { type: 'string' } }, required: ['title'] },
+        description: 'Crea una TAREA (pendiente) en Google Tasks del dueño. Interno y reversible (no notifica a nadie) → se hace directo, sin aprobación. Pasá title; notes (detalle), due ("YYYY-MM-DD") y subtarea_de (id de otra tarea, para crearla como subtarea) opcionales.',
+        input_schema: { type: 'object', properties: { title: { type: 'string' }, notes: { type: 'string' }, due: { type: 'string' }, subtarea_de: { type: 'string' } }, required: ['title'] },
       },
       async run(input) {
         if (!input?.title) return { error: 'falta title' }
-        try { return { ok: true, ...(await ws().taskCreate(input)) } } catch (e) { return sinAcceso(e) }
+        try { return { ok: true, ...(await ws().taskCreate({ ...input, parent: input?.subtarea_de })) } } catch (e) { return sinAcceso(e) }
       },
     },
     'tasks.complete': {
@@ -237,6 +237,30 @@ export function workspaceTools({ google } = {}) {
       async run(input) {
         if (!input?.id) return { error: 'falta id' }
         try { return { ok: true, ...(await ws().gmailStar(String(input.id), input?.destacar !== false)) } } catch (e) { return sinAcceso(e) }
+      },
+    },
+    'mail.forward': {
+      capability: 'mail.send', account: 'ecsas',
+      schema: {
+        name: 'gmail_reenviar',
+        description: 'REENVÍA un mail a otro destinatario, con el original citado. Efecto externo: REQUIERE aprobación. Pasá id (del mail) y to (destinatario); nota (texto arriba) y adjuntos (file_ids de Drive) opcionales.',
+        input_schema: { type: 'object', properties: { id: { type: 'string' }, to: { type: 'string' }, nota: { type: 'string' }, adjuntos: { type: 'array', items: { type: 'string' } } }, required: ['id', 'to'] },
+      },
+      async run(input) {
+        if (!input?.id || !input?.to) return { error: 'faltan id y to' }
+        try { return { ok: true, ...(await ws().gmailForward(String(input.id), String(input.to), String(input.nota || ''), { attachmentFileIds: input?.adjuntos })) } } catch (e) { return sinAcceso(e) }
+      },
+    },
+    'calendar.freebusy': {
+      capability: 'drive.read', account: 'ecsas',
+      schema: {
+        name: 'agenda_buscar_hueco',
+        description: 'Devuelve las franjas OCUPADAS del calendario entre dos fechas, para encontrar un hueco libre (ej. antes de proponer una reunión). Lectura. Pasá start y end ("YYYY-MM-DD" o ISO datetime).',
+        input_schema: { type: 'object', properties: { start: { type: 'string' }, end: { type: 'string' } }, required: ['start', 'end'] },
+      },
+      async run(input) {
+        if (!input?.start || !input?.end) return { error: 'faltan start y end' }
+        try { return { ok: true, ...(await ws().calendarBusy({ start: String(input.start), end: String(input.end) })) } } catch (e) { return sinAcceso(e) }
       },
     },
   }

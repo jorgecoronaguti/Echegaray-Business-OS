@@ -407,13 +407,15 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       const j = await apiGet('https://tasks.googleapis.com/tasks/v1/users/@me/lists?maxResults=50')
       return (j.items || []).map((l) => ({ id: l.id, title: l.title }))
     },
-    /** Crea una TAREA (título, notas y vencimiento opcional "YYYY-MM-DD"). tasklist def '@default'. */
-    async taskCreate({ title, notes, due, tasklist = '@default' } = {}) {
+    /** Crea una TAREA (título, notas y vencimiento opcional "YYYY-MM-DD"). tasklist def '@default'.
+     *  parent = id de otra tarea → la crea como SUBTAREA (Google soporta 1 nivel de anidado). */
+    async taskCreate({ title, notes, due, tasklist = '@default', parent } = {}) {
       const body = { title }
       if (notes) body.notes = notes
       if (due) body.due = String(due).length <= 10 ? `${due}T00:00:00.000Z` : String(due)
-      const r = await apiSend(`https://tasks.googleapis.com/tasks/v1/lists/${encodeURIComponent(tasklist)}/tasks`, 'POST', body)
-      return { id: r.id, title: r.title, due: r.due || null, status: r.status }
+      const q = parent ? `?parent=${encodeURIComponent(parent)}` : ''
+      const r = await apiSend(`https://tasks.googleapis.com/tasks/v1/lists/${encodeURIComponent(tasklist)}/tasks${q}`, 'POST', body)
+      return { id: r.id, title: r.title, due: r.due || null, status: r.status, parent: r.parent || null }
     },
     /** Lista tareas de una lista (por defecto pendientes). */
     async tasksList({ tasklist = '@default', includeCompleted = false, max = 50 } = {}) {
@@ -453,6 +455,27 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       const mod = star ? { addLabelIds: ['STARRED'] } : { removeLabelIds: ['STARRED'] }
       const r = await apiSend(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}/modify`, 'POST', mod)
       return { id: r.id, starred: star }
+    },
+    /** REENVÍA un mail a otro destinatario, con el cuerpo original citado y una nota opcional
+     *  arriba. Efecto externo (envía). Preserva adjuntos si se pasan file_ids de Drive. */
+    async gmailForward(id, to, note = '', { attachmentFileIds } = {}) {
+      const meta = await apiGet(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`)
+      const h = Object.fromEntries((meta.payload?.headers || []).map((x) => [x.name.toLowerCase(), x.value]))
+      const orig = await this.gmailGet(id, { maxChars: 12000 })
+      const subject = /^fwd:/i.test(h.subject || '') ? h.subject : `Fwd: ${h.subject || ''}`
+      const body = `${note ? note + '\n\n' : ''}---------- Mensaje reenviado ----------\nDe: ${h.from || ''}\nFecha: ${h.date || ''}\nAsunto: ${h.subject || ''}\n\n${orig.text || ''}`
+      const attachments = await this.resolveAttachments(attachmentFileIds)
+      const raw = buildRawEmail({ to, subject, body, attachments })
+      const r = await apiSend('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', 'POST', { raw })
+      return { id: r.id, to, subject }
+    },
+    /** Franjas OCUPADAS del calendario en un rango (freeBusy). Para buscar hueco: el modelo
+     *  pide el rango y ve los huecos libres entre las franjas ocupadas. */
+    async calendarBusy({ start, end } = {}) {
+      const timeMin = String(start).length <= 10 ? `${start}T00:00:00-03:00` : String(start)
+      const timeMax = String(end).length <= 10 ? `${end}T23:59:59-03:00` : String(end)
+      const r = await apiSend('https://www.googleapis.com/calendar/v3/freeBusy', 'POST', { timeMin, timeMax, items: [{ id: 'primary' }] })
+      return { ocupado: (r.calendars?.primary?.busy || []).map((b) => ({ desde: b.start, hasta: b.end })), rango: { desde: timeMin, hasta: timeMax } }
     },
     /** Lee valores de un rango A1 de un Sheet. Devuelve matriz de filas. */
     async readSheetValues(fileId, range) {
