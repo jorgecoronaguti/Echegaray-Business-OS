@@ -529,13 +529,16 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // asistente administrativo de siempre. Si falla la clasificación, degrada a general.
   // Multi-dominio: un pedido puede cruzar varias skills (cotizar = costos + ingeniería +
   // legal + finanzas). Activamos TODAS las que correspondan, acotado a 4 por costo/prompt.
-  // AHORRO DE TOKENS (causa real del gasto): editar/formatear un documento NO necesita skills
-  // de dominio (finanzas, impuestos…) — es trabajo mecánico de Drive, y esas skills sólo
-  // inflan el prompt que se RE-MANDA 26-40 veces por tarea. Para edición de documento (sin
-  // presupuestación, que sí las usa) NO cargamos skills: la guía de tools ya está en el prompt
-  // base. Corta el contexto de miles de tokens/iteración a casi nada.
+  // Editar un documento NO necesita las skills de DOMINIO (finanzas, impuestos…) — sólo inflan.
+  // PERO editar un SHEET SÍ necesita la skill EXPERTA DE SHEETS (google-sheets-business-systems:
+  // arquitectura, fórmulas vs. números pegados, tablas dinámicas, no romper celdas combinadas,
+  // presentación). Antes la cortaba junto con las de dominio "por ahorro" → editaba SIN criterio
+  // de Sheet (reclamo real del dueño: "hay super skill de sheet y le pido algo simple y nada").
+  // El system va CACHEADO (cache_control) → esa skill se paga ~una vez, no 26; y el corte por
+  // costo + anti-espiral acotan el downside. Un Doc/Word (no Sheet) sigue sin skill.
+  const editaDoc = /\b(doc|documento|gdoc|word|carta|memo)\b/i.test(String(directive || ''))
   const skillNames = (writeToDocIntent && !budgetingKw)
-    ? []
+    ? (editaDoc ? [] : ['google-sheets-business-systems'])
     : capabilities.length
       ? [...new Set(capabilities.flatMap((c) => skillsForCapability(c)))].slice(0, 4)
       : []
