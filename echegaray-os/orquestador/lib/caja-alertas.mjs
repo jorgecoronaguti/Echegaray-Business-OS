@@ -93,8 +93,17 @@ export async function priorizarCajaResumen() {
 // los cobros/pagos PROYECTADOS, marcando dónde la caja se pone negativa (gap). El saldo
 // inicial es un GAP conocido (hay que confirmar el extracto real) → se declara ESTIMADO.
 async function saldoActual() {
-  const { rows: a } = await query(`select coalesce(sum(saldo_inicial),0) s from public.cuentas_financieras`)
-  const { rows: b } = await query(`select coalesce(sum(case when tipo='cobro' then monto when tipo='pago' then -monto else 0 end),0) s from public.movimientos_caja where estado='real'`)
+  // saldo_inicial = saldo REAL del ledger del Sheet a la fecha saldo_fecha (sincronizado por
+  // sync-caja.mjs). Los movimientos reales con fecha <= saldo_fecha YA están en ese saldo → no se
+  // recuentan (evita el doble conteo, ej. la nómina 30/06 ya reflejada en el saldo del 17/07). Si
+  // saldo_fecha es null (sin sync), se comporta como antes (cuenta todos los reales). Ancla global
+  // = la fecha de saldo más nueva entre las cuentas (todas se cargan del mismo snapshot del ledger).
+  const { rows: a } = await query(`select coalesce(sum(saldo_inicial),0) s, max(saldo_fecha) anchor from public.cuentas_financieras`)
+  const { rows: b } = await query(
+    `select coalesce(sum(case when tipo='cobro' then monto when tipo='pago' then -monto else 0 end),0) s
+       from public.movimientos_caja
+      where estado='real' and ($1::date is null or coalesce(fecha_real, fecha_esperada) > $1::date)`,
+    [a[0].anchor])
   return Number(a[0].s) + Number(b[0].s)
 }
 
@@ -124,7 +133,7 @@ export async function proyeccionCaja({ semanas = 6 } = {}) {
 export async function proyeccionCajaResumen() {
   const { saldo0, semanas } = await proyeccionCaja()
   const L = ['**Proyección de caja (corto plazo)**  _(criterio percibido; 0 API)_', '']
-  L.push(`Saldo actual estimado: **${ars(saldo0)}**  _(estimado: saldo_inicial + movimientos reales — confirmá el extracto bancario real)_`)
+  L.push(`Saldo actual: **${ars(saldo0)}**  _(saldo real del ledger del Sheet Flujo de Caja + movimientos reales posteriores)_`)
   if (!semanas.length) { L.push('', 'No hay cobros/pagos proyectados en el horizonte.'); return L.join('\n') }
   L.push('', 'Semana | Cobros | Pagos | Saldo proyectado')
   L.push('---|---|---|---')
