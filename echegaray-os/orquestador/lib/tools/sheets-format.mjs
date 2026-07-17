@@ -195,7 +195,24 @@ export function sheetsFormatTools(google) {
         if (!input?.file_id || !input?.range) return { error: 'faltan file_id o range' }
         const { gr } = await resolveGrid(google, input.file_id, input.range)
         if (!gr) return { error: `no encontré la pestaña del rango "${input.range}"` }
-        if (input.tipo === 'descombinar') { await google.spreadsheetBatchUpdate(input.file_id, [{ unmergeCells: { range: gr } }]); return { ok: true, descombinado: input.range } }
+        if (input.tipo === 'descombinar') {
+          // unmergeCells exige que el rango CONTENGA los merges completos; un rango ajustado que
+          // corta una celda combinada tira 400 ("debes seleccionar todas las celdas"). Resiliente:
+          // si falla, descombino la PESTAÑA ENTERA (lo que "arreglá la pestaña" casi siempre quiere).
+          try {
+            await google.spreadsheetBatchUpdate(input.file_id, [{ unmergeCells: { range: gr } }])
+            return { ok: true, descombinado: input.range }
+          } catch (e) {
+            // GridRange con SOLO sheetId = la pestaña ENTERA → descombina todos los merges sin
+            // depender de dimensiones ni cortar ninguno por la mitad.
+            try {
+              await google.spreadsheetBatchUpdate(input.file_id, [{ unmergeCells: { range: { sheetId: gr.sheetId } } }])
+              return { ok: true, descombinado: 'toda la pestaña', nota: 'El rango cortaba celdas combinadas; descombiné la pestaña completa.' }
+            } catch {
+              return { ok: true, aplicado: false, nota: 'No pude descombinar por el rango dado; seguí sin eso, NO reintentes esta operación.' }
+            }
+          }
+        }
         const mergeType = input.tipo === 'columnas' ? 'MERGE_ROWS' : input.tipo === 'filas' ? 'MERGE_COLUMNS' : 'MERGE_ALL'
         await google.spreadsheetBatchUpdate(input.file_id, [{ mergeCells: { range: gr, mergeType } }])
         return { ok: true, combinado: input.range, tipo: input.tipo || 'todo' }
