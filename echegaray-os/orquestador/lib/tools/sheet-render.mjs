@@ -87,19 +87,30 @@ export function sheetRenderTools(google) {
         requests.push({
           updateCells: { rows, fields: 'userEnteredValue,userEnteredFormat', start: { sheetId: hoja.sheetId, rowIndex: r0, columnIndex: c0 } },
         })
-        // 2) limpiar merges previos en el bloque (evita 400) y aplicar los del spec (combinar:N)
+        // 2) limpiar merges previos en el bloque (evita 400)
         requests.push({ unmergeCells: { range: { sheetId: hoja.sheetId, startRowIndex: r0, endRowIndex: r0 + filas.length, startColumnIndex: c0, endColumnIndex: c0 + ancho } } })
+        // Las COMBINACIONES (combinar:N) van APARTE, no en el batch de contenido: si la pestaña
+        // tiene una tabla dinámica (o celdas combinadas raras), mergeCells tira 400 — y si fuera
+        // atómico con la escritura, se caería TODO el render (le pasó al dueño: "No puedes combinar
+        // celdas que formen parte de una tabla dinámica" → no escribió nada). Se aplican best-effort.
+        const mergeReqs = []
         filas.forEach((fila, ri) => {
           if (!Array.isArray(fila)) return
           let ci = 0
           for (const cell of fila) {
             const span = (cell && typeof cell === 'object' && Number(cell.combinar) > 1) ? Number(cell.combinar) : 1
-            if (span > 1) requests.push({ mergeCells: { mergeType: 'MERGE_ALL', range: { sheetId: hoja.sheetId, startRowIndex: r0 + ri, endRowIndex: r0 + ri + 1, startColumnIndex: c0 + ci, endColumnIndex: c0 + ci + span } } })
+            if (span > 1) mergeReqs.push({ mergeCells: { mergeType: 'MERGE_ALL', range: { sheetId: hoja.sheetId, startRowIndex: r0 + ri, endRowIndex: r0 + ri + 1, startColumnIndex: c0 + ci, endColumnIndex: c0 + ci + span } } })
             ci += span
           }
         })
-        // 3) ESCRIBIR el contenido (valores+formato+merges) — atómico y OBLIGATORIO.
+        // 3) ESCRIBIR el contenido (valores+formato) — atómico y OBLIGATORIO.
         await google.spreadsheetBatchUpdate(input.file_id, requests)
+        // 3b) aplicar las combinaciones de títulos — best-effort (una tabla dinámica no las deja).
+        let mergeNota = ''
+        if (mergeReqs.length) {
+          try { await google.spreadsheetBatchUpdate(input.file_id, mergeReqs) }
+          catch { mergeNota = ' (no pude combinar los títulos —¿hay una tabla dinámica en la pestaña?—, pero el contenido quedó escrito).' }
+        }
         // 4) congelar encabezado: VA APARTE, NO en el batch de arriba. Si la pestaña tiene una
         //    celda combinada que cruza la línea de freeze, updateSheetProperties tira 400 — y si
         //    estuviera en el mismo batch atómico, se caería TODA la escritura (el contenido se
@@ -113,7 +124,7 @@ export function sheetRenderTools(google) {
             freezeNota = ' (no pude congelar el encabezado por una celda combinada, pero el contenido quedó escrito).'
           }
         }
-        return { ok: true, tab: input.tab, filas: filas.length, columnas: ancho, requests: requests.length, nota: 'Tabla escrita en UNA sola pasada (valores+formato+merges).' + freezeNota }
+        return { ok: true, tab: input.tab, filas: filas.length, columnas: ancho, requests: requests.length, nota: 'Tabla escrita (valores+formato).' + mergeNota + freezeNota }
       },
     },
   }
