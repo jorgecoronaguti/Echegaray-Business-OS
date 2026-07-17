@@ -61,6 +61,8 @@ import { stripPreamble } from './lib/chat-format.mjs'
 import { personaParaConsulta } from './lib/chat-persona.mjs'
 import { isWriteIntent } from './lib/write-intent.mjs'
 import { isBudgetingIntent } from './lib/budget-intent.mjs'
+import { parseScheduleRequest, describeCadence } from './lib/schedule-intent.mjs'
+import { scheduleTools } from './lib/tools/schedule-tools.mjs'
 import { propuestasMejoraResumen } from './lib/mejoras.mjs'
 import { createSchedule, listSchedules, toggleSchedule } from './lib/schedules.mjs'
 import { enqueueTask } from './lib/ledger.mjs'
@@ -460,6 +462,13 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // chat-intents.mjs, testeada (chat-intents.test) para que este bug no regrese nunca más.
   const mailComposeIntent = isMailComposeIntent(directive, histText)
   const calendarWriteIntent = isCalendarWriteIntent(directive)
+  // AGENDA / TAREAS PROGRAMABLES (0-API): "todos los lunes revisá cobranzas", "programá…".
+  // El backend (orq.schedules + timer) ya existe; acá se detecta el pedido en lenguaje natural.
+  // list/stop se responden determinístico (baratos); CREATE va al modelo con MODO AGENDA para un
+  // diálogo que deje la tarea bien definida (alcance/expectativa/cronograma/costo) antes de dejarla
+  // corriendo sola. Es la funcionalidad de agenda pedida por el dueño, sin formularios ni código.
+  const sched = parseScheduleRequest(directive)
+  const scheduleCreateIntent = sched?.action === 'create'
   // Clasificación de dominio (0-API) TEMPRANA: una CONSULTA DE CRITERIO de dominio (finanzas,
   // laboral, ingeniería…) se razona como ESE especialista y con sonnet; y NO debe ser secuestrada
   // por una detección determinística de lectura (ej. "me conviene una obra que paga a 90 días…"
@@ -473,7 +482,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // ACCIÓN (editar doc, componer/enviar mail, agendar) o una CONSULTA DE CRITERIO experta. Antes
   // cada detección guardaba solo writeToDocIntent → un "redactá un mail sobre el AVANCE de obra"
   // lo secuestraba la detección de avance. Este bloqueo cubre TODAS de una: fix sistémico.
-  const readBlocked = writeToDocIntent || mailComposeIntent || calendarWriteIntent || asesoriaProfunda
+  const readBlocked = writeToDocIntent || mailComposeIntent || calendarWriteIntent || asesoriaProfunda || !!sched
   // MODELO POR NIVELES (ahorro de API): sonnet (potente, caro) solo cuando hace falta
   // criterio real — escribir, interpretar un adjunto, o presupuestar; haiku (barato,
   // rápido) para consultas simples y de charla. Antes era sonnet-siempre y quemaba
@@ -494,7 +503,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // (reordenar, completar, rehacer, analizar a fondo) → sonnet, que lee y ACTÚA con las
   // tools de forma confiable. haiku propone/pregunta en vez de ejecutar (causa real de
   // "le pido que haga algo y no lo hace"). Vale el costo: la acción tiene que salir.
-  let model = writeIntent || mailComposeIntent || calendarWriteIntent || att || budgetingKw || teachingIntent || researchLearnIntent || asesoriaProfunda || fast === false || fileId ? 'sonnet' : 'haiku'
+  let model = writeIntent || mailComposeIntent || calendarWriteIntent || att || budgetingKw || teachingIntent || researchLearnIntent || asesoriaProfunda || scheduleCreateIntent || fast === false || fileId ? 'sonnet' : 'haiku'
   // TOPE DE GASTO (degrada, NUNCA bloquea): si el gasto de hoy pasó el umbral, un pedido
   // que iba a usar sonnet baja a haiku. La respuesta SIEMPRE llega — solo cambia el modelo.
   // Las respuestas determinísticas (0 API) ya devolvieron antes; nunca pagan esto.
@@ -506,7 +515,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // asesoriaProfunda entra acá a propósito: una CONSULTA DE CRITERIO de dominio es donde el
   // dueño MÁS quiere el cerebro experto (sonnet). Son pocas y valen el costo; no se degradan a
   // haiku aunque el día esté sobre el tope. Los lookups y la charla sí se degradan (baratos).
-  const tareaCritica = writeToDocIntent || att || !!fileId || mailComposeIntent || calendarWriteIntent || asesoriaProfunda
+  const tareaCritica = writeToDocIntent || att || !!fileId || mailComposeIntent || calendarWriteIntent || asesoriaProfunda || scheduleCreateIntent
   // La edición de documentos NUNCA se degrada a haiku: haiku la ROMPE (no hace pivots, no
   // formatea) y el dueño termina con una tabla a medias — peor que gastar. El gasto se controla
   // ahora por el lado correcto: contexto acotado (tope de tool_result) + tope de costo por
@@ -538,6 +547,23 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   if (/cu[aá]nto (gast[eé]|consum[ií]|cost|llev|va).*(api|cr[eé]dit|chat|hoy|plata|gastando)?|gasto de api|consumo de api|cu[aá]nto (me )?sale/i.test(directive)) {
     if (!puede(rol, 'costo_api')) return denegar('costo_api')
     return { answer: await costSummary(), model: 'costo', capability: 'general', skills: [], navigate: null }
+  }
+  // AGENDA — LISTAR (0 API): "mis tareas programadas", "qué tengo agendado".
+  if (sched?.action === 'list') {
+    const items = await listSchedules().catch(() => [])
+    if (!items.length) return { answer: 'No tenés ninguna tarea programada todavía. Podés crear una diciéndome, por ejemplo: *"todos los lunes a las 8 revisá cobranzas y avisame"*.', model: 'agenda', capability: 'general', skills: [], navigate: null }
+    const linea = (s) => `• ${s.enabled ? '🟢' : '⏸️'} **${s.title}** — ${describeCadence(s.cadence)}${s.enabled ? ` (próxima: ${new Date(s.next_run_at).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })})` : ' — frenada'} · id \`${String(s.id).slice(0, 8)}\``
+    return { answer: `**Tareas programadas (${items.length}):**\n${items.map(linea).join('\n')}\n\n_Para frenar una: "pará la tarea de <nombre>"._`, model: 'agenda', capability: 'general', skills: [], navigate: null }
+  }
+  // AGENDA — FRENAR (0 API): "pará la tarea de cobranzas".
+  if (sched?.action === 'stop') {
+    const items = await listSchedules().catch(() => [])
+    const q = (sched.targetName || '').toLowerCase().trim()
+    const match = q ? items.filter((s) => String(s.title || '').toLowerCase().includes(q) || String(s.directive || '').toLowerCase().includes(q)) : []
+    if (!q || match.length === 0) return { answer: `¿Cuál tarea querés frenar? Decime el nombre. ${items.length ? 'Tenés: ' + items.map((s) => `*${s.title}*`).join(', ') + '.' : 'No hay tareas programadas.'}`, model: 'agenda', capability: 'general', skills: [], navigate: null }
+    if (match.length > 1) return { answer: `Hay varias que coinciden con "${sched.targetName}": ${match.map((s) => `*${s.title}*`).join(', ')}. Decime cuál exacto.`, model: 'agenda', capability: 'general', skills: [], navigate: null }
+    await toggleSchedule(match[0].id, false).catch(() => {})
+    return { answer: `Frené **${match[0].title}**. Dejó de correr; se puede reactivar cuando quieras.`, model: 'agenda', capability: 'general', skills: [], navigate: null }
   }
   // MEMORIA TOTAL (PRP-023) — "¿qué sabemos de X?" / "¿qué sabés sobre X?" → recupera de
   // TODA la memoria (hechos + hallazgos) por tema (0 API). Va ANTES del resumen de empresa;
@@ -837,6 +863,9 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   })
   log.info('directiva ruteada', { capability, skills: skillsLoaded || [] })
   const registry = await driveRegistry(attachment, userEmail)
+  // AGENDA: solo cuando el dueño está programando una tarea, sumamos las tools de recurrencia
+  // (crear/listar/frenar). Condicional para no inflar el prompt del resto de los pedidos.
+  if (scheduleCreateIntent) Object.assign(registry, scheduleTools({ tenantId: CTX.context.tenantId, createdBy: DIRECTOR_PRINCIPAL }))
   const baseExecutor = makeToolExecutor({
     decide, tools: registry, principalId: DIRECTOR_PRINCIPAL, logger: log,
     // Enqueue REAL: una escritura propuesta (drive.write) se registra en
@@ -907,6 +936,11 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   const saldoGuidance = (writeToDocIntent && bancoSaldoKw)
     ? '\n\nREPLICAR MOVIMIENTOS/EXTRACTO BANCARIO EN UNA PESTAÑA — LEÉ EL DESTINO ANTES DE ESCRIBIR. (1) Con drive_tabs + drive_read mirá los ENCABEZADOS, las filas de ejemplo y la fila de INSTRUCCIONES de la pestaña destino, y entendé QUÉ guarda. Si es un ledger de SALDOS (columnas tipo Fecha·Cuenta·Saldo·Fuente, "una fila nueva por saldo"): NO vuelques cada transacción — del extracto pegado sacá el SALDO resultante y agregá UNA sola fila nueva. Si fuese una pestaña de movimientos-detalle, ahí sí una fila por transacción. (2) Respetá EXACTO el formato que ya usa esa hoja: fecha DD/MM/YYYY, montos con el mismo estilo ($ y coma decimal si así están), y completá la columna Fuente indicando de dónde salió (ej. "Santander Empresas — pantalla DD/MM/YYYY HH:MMh"). (3) NUNCA inventes un número que no esté en lo que te pegaron; si el saldo no se ve claro, pedilo en UNA línea. (4) Agregá fila NUEVA (drive_last_row → drive_update en la fila vacía), NO edites ni borres las anteriores. La escritura cae en Pendientes para su OK.'
     : ''
+  // GUÍA MODO AGENDA — el dueño quiere PROGRAMAR una tarea recurrente. NO la crees de una:
+  // primero un diálogo CORTO que la deje BIEN DEFINIDA, y recién ahí llamás programar_tarea.
+  const agendaGuidance = scheduleCreateIntent
+    ? `\n\nMODO AGENDA — vas a dejar una tarea corriendo SOLA (recurrente). NO la programes hasta que esté BIEN DEFINIDA en estas 4 dimensiones; preguntá SOLO las que falten, UNA por vez, conciso (no interrogues de más si el dueño ya las dio):\n• ALCANCE: qué tiene que hacer exactamente, sobre qué datos/obra/fuente.\n• EXPECTATIVA: qué entrega y CÓMO/A QUIÉN (¿solo mostrarlo en el chat?, ¿mail a quién?, ¿qué formato?). Si va por mail necesitás el destinatario.\n• CRONOGRAMA: cada cuánto y a qué hora (ej. "todos los lunes a las 8"). Si falta la hora, asumí 08:00 y confirmá.\n• COSTO: cada corrida gasta API. Estimá y decilo en una línea: un lookup simple + aviso ≈ US$0.02–0.10/corrida; un análisis pesado ≈ US$0.30–1. Que el dueño sepa el gasto recurrente antes de activarla (regla del OS: nada corre de fondo si no da utilidad clara).\nCuando las 4 estén claras, LLAMÁ programar_tarea con: directiva = la orden COMPLETA y autocontenida (como si se la dieras al OS cada vez, incluyendo a quién avisar), cadencia_texto en palabras, y un titulo corto. Después confirmá en 1–2 líneas qué quedó programado, cuándo corre y el costo estimado. Para ver o frenar tareas ya existen listar_tareas_programadas y frenar_tarea. NADA de efecto externo (mails, pagos) se ejecuta solo: cuando la tarea corra, esas acciones igual caerán en Pendientes.`
+    : ''
 
   // LECTURA vs ESCRITURA. El manual pesado de ESCRIBIR Drive (crear/editar/pivots/formato,
   // ~1500 tokens) sólo sirve cuando el pedido escribe/edita. Para una LECTURA ("cuánto es X",
@@ -945,6 +979,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
     verifBlock +
     mailGuidance +
     saldoGuidance +
+    agendaGuidance +
     budgetingContext +
     (isBudgeting
       ? ' Para presupuestar podés extenderte lo necesario (tablas, partidas, APU) — acá la claridad importa más que la brevedad.'
