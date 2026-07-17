@@ -299,6 +299,9 @@ export function makeAnthropicEngine({ config, client, breaker, semaphore }) {
               content = `ERROR: ${String(err?.message ?? err).slice(0, 500)}`
               isError = true
             }
+            // Traza de CADA tool (nombre + ok/error + snippet) para la revisión interna de logs:
+            // sin esto no se ve QUÉ tools llamó el modelo y por qué falló una carga/edición.
+            if (log) log.info('anthropic-api: tool', { tool: block.name, ok: !isError && !/"error"\s*:/.test(String(content).slice(0, 300)), out: String(content).slice(0, 160) })
             // Freno anti-espiral: si esta tool ya falló, escalamos la orden de NO reintentar.
             if (esFallo(isError, content)) {
               const n = (toolFails.get(block.name) || 0) + 1
