@@ -79,3 +79,4 @@ scripts/arca/credentials/
 scripts/arca/out/
 /extension.zip
 orquestador/scripts/.caja-backup-*.json
+orquestador/scripts/.cfsemanal-backup-*.json
