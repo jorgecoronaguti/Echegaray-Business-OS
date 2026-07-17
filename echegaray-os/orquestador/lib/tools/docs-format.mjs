@@ -65,7 +65,7 @@ export function docsFormatTools(google) {
       account: 'ecsas',
       schema: {
         name: 'drive_doc_replace_text',
-        description: 'Reemplaza TODAS las apariciones de un texto por otro en un Google Doc (ideal para completar plantillas: [CLIENTE] → "Arcor", [FECHA] → "16/07/2026"). Pasá file_id, buscar y reemplazar. Opcional coincidir_mayusculas. REQUIERE aprobación.',
+        description: 'Reemplaza TODAS las apariciones de un texto por otro en un Google Doc (ideal para completar plantillas: [CLIENTE] → "Arcor", [FECHA] → "16/07/2026"). Pasá file_id, buscar y reemplazar. Opcional coincidir_mayusculas. Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
         input_schema: { type: 'object', properties: { file_id: { type: 'string' }, buscar: { type: 'string' }, reemplazar: { type: 'string' }, coincidir_mayusculas: { type: 'boolean' } }, required: ['file_id', 'buscar', 'reemplazar'] },
       },
       async run(input) {
@@ -80,7 +80,7 @@ export function docsFormatTools(google) {
       account: 'ecsas',
       schema: {
         name: 'drive_doc_style_text',
-        description: 'Da FORMATO a un texto DENTRO de un Google Doc: convertí una línea en título/subtítulo/encabezado, ponela en negrita/itálica/subrayado, cambiá tamaño o color de letra, o alineá el párrafo. NO necesitás índices: pasás el TEXTO a formatear y la tool lo encuentra. Pasá file_id, texto (el texto exacto a formatear) y las opciones. Por defecto formatea la PRIMERA aparición (todas:true para todas). REQUIERE aprobación.',
+        description: 'Da FORMATO a un texto DENTRO de un Google Doc: convertí una línea en título/subtítulo/encabezado, ponela en negrita/itálica/subrayado, cambiá tamaño o color de letra, o alineá el párrafo. NO necesitás índices: pasás el TEXTO a formatear y la tool lo encuentra. Pasá file_id, texto (el texto exacto a formatear) y las opciones. Por defecto formatea la PRIMERA aparición (todas:true para todas). Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
         input_schema: {
           type: 'object',
           properties: {
@@ -126,7 +126,7 @@ export function docsFormatTools(google) {
       account: 'ecsas',
       schema: {
         name: 'drive_doc_insert_image',
-        description: 'Inserta una IMAGEN en un Google Doc desde una URL pública. Por defecto al FINAL del documento; con despues_de podés insertarla justo después de un texto dado. Pasá file_id, url y opcional despues_de. REQUIERE aprobación.',
+        description: 'Inserta una IMAGEN en un Google Doc desde una URL pública. Por defecto al FINAL del documento; con despues_de podés insertarla justo después de un texto dado. Pasá file_id, url y opcional despues_de. Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
         input_schema: { type: 'object', properties: { file_id: { type: 'string' }, url: { type: 'string' }, despues_de: { type: 'string', description: 'texto tras el cual insertar (si no, va al final)' } }, required: ['file_id', 'url'] },
       },
       async run(input) {
@@ -144,7 +144,7 @@ export function docsFormatTools(google) {
       account: 'ecsas',
       schema: {
         name: 'drive_doc_insert_table',
-        description: 'Inserta una TABLA con datos al final de un Google Doc. Pasá file_id y datos = matriz de filas (la primera fila suele ser el encabezado). Ej. datos = [["Obra","Costo"],["Estrella","$1.000"],["Messina","$2.500"]]. REQUIERE aprobación.',
+        description: 'Inserta una TABLA con datos al final de un Google Doc. Pasá file_id y datos = matriz de filas (la primera fila suele ser el encabezado). Ej. datos = [["Obra","Costo"],["Estrella","$1.000"],["Messina","$2.500"]]. Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
         input_schema: { type: 'object', properties: { file_id: { type: 'string' }, datos: { type: 'array', items: { type: 'array', items: { type: 'string' } } } }, required: ['file_id', 'datos'] },
       },
       async run(input) {

@@ -59,7 +59,7 @@ export function driveWriteTools(google) {
       schema: {
         name: 'drive_update',
         description:
-          'Sobrescribe un rango de celdas de un Google Sheet EXISTENTE con valores nuevos. Usalo para corregir/completar/ordenar celdas concretas. Pasá file_id, range (A1, ej. "RESUMEN!B4:B6") y values (matriz de filas). REQUIERE aprobación humana: no se ejecuta hasta que el dueño la apruebe.',
+          'Sobrescribe un rango de celdas de un Google Sheet EXISTENTE con valores nuevos. Usalo para corregir/completar/ordenar celdas concretas. Pasá file_id, range (A1, ej. "RESUMEN!B4:B6") y values (matriz de filas). Se aplica AL INSTANTE al llamarla (no pidas aprobación): no se ejecuta hasta que el dueño la apruebe.',
         input_schema: {
           type: 'object',
           properties: {
@@ -175,7 +175,7 @@ export function driveWriteTools(google) {
       account: 'ecsas',
       schema: {
         name: 'drive_rename',
-        description: 'Renombra un archivo o carpeta existente de Drive. Pasá file_id y new_name. REQUIERE aprobación humana.',
+        description: 'Renombra un archivo o carpeta existente de Drive. Pasá file_id y new_name. Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
         input_schema: {
           type: 'object',
           properties: { file_id: { type: 'string' }, new_name: { type: 'string' } },
@@ -193,7 +193,7 @@ export function driveWriteTools(google) {
       account: 'ecsas',
       schema: {
         name: 'drive_move',
-        description: 'Mueve un archivo o carpeta a otra carpeta de Drive (para ORGANIZAR). Pasá file_id y folder_id (carpeta destino; buscala con drive_list/drive_find). REQUIERE aprobación humana.',
+        description: 'Mueve un archivo o carpeta a otra carpeta de Drive (para ORGANIZAR). Pasá file_id y folder_id (carpeta destino; buscala con drive_list/drive_find). Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
         input_schema: {
           type: 'object',
           properties: { file_id: { type: 'string' }, folder_id: { type: 'string', description: 'ID de la carpeta destino' } },
@@ -212,7 +212,7 @@ export function driveWriteTools(google) {
       schema: {
         name: 'drive_batch_update',
         description:
-          'Escribe VARIOS rangos de un Google Sheet en UNA sola operación (potente y rápido): ideal para completar un bloque entero de un presupuesto de una vez, no celda por celda. Pasá file_id y updates = lista de { range, values } (cada values es matriz de filas). REQUIERE aprobación.',
+          'Escribe VARIOS rangos de un Google Sheet en UNA sola operación (potente y rápido): ideal para completar un bloque entero de un presupuesto de una vez, no celda por celda. Pasá file_id y updates = lista de { range, values } (cada values es matriz de filas). Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
         input_schema: {
           type: 'object',
           properties: {
@@ -243,7 +243,7 @@ export function driveWriteTools(google) {
       schema: {
         name: 'drive_insert_rows',
         description:
-          'Inserta N filas VACÍAS en una pestaña, a partir de una fila (empuja el resto hacia abajo sin romper nada). Para agregar espacio en medio de una tabla. Pasá file_id, tab (nombre de la pestaña), at_row (fila 1-based donde insertar) y count. REQUIERE aprobación.',
+          'Inserta N filas VACÍAS en una pestaña, a partir de una fila (empuja el resto hacia abajo sin romper nada). Para agregar espacio en medio de una tabla. Pasá file_id, tab (nombre de la pestaña), at_row (fila 1-based donde insertar) y count. Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
         input_schema: {
           type: 'object',
           properties: { file_id: { type: 'string' }, tab: { type: 'string' }, at_row: { type: 'number' }, count: { type: 'number' } },
@@ -265,7 +265,7 @@ export function driveWriteTools(google) {
       schema: {
         name: 'drive_delete_rows',
         description:
-          'Borra N filas de una pestaña a partir de una fila (elimina filas enteras, sube el resto). Pasá file_id, tab, from_row (1-based) y count. REQUIERE aprobación.',
+          'Borra N filas de una pestaña a partir de una fila (elimina filas enteras, sube el resto). Pasá file_id, tab, from_row (1-based) y count. Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
         input_schema: {
           type: 'object',
           properties: { file_id: { type: 'string' }, tab: { type: 'string' }, from_row: { type: 'number' }, count: { type: 'number' } },
@@ -286,7 +286,7 @@ export function driveWriteTools(google) {
       account: 'ecsas',
       schema: {
         name: 'drive_clear',
-        description: 'Vacía el contenido de un rango de celdas (sin borrar el formato). Pasá file_id y range (ej. "Presupuesto!B5:F40"). REQUIERE aprobación.',
+        description: 'Vacía el contenido de un rango de celdas (sin borrar el formato). Pasá file_id y range (ej. "Presupuesto!B5:F40"). Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
         input_schema: { type: 'object', properties: { file_id: { type: 'string' }, range: { type: 'string' } }, required: ['file_id', 'range'] },
       },
       async run(input) {
@@ -301,7 +301,7 @@ export function driveWriteTools(google) {
       schema: {
         name: 'drive_add_tab',
         description:
-          'Crea una PESTAÑA (hoja) NUEVA dentro de un Google Sheet que YA EXISTE (no crea un archivo nuevo — para eso está drive_create). USALO ANTES de escribir en una pestaña que todavía no existe: primero drive_add_tab, y RECIÉN DESPUÉS drive_batch_update/drive_update sobre esa pestaña. Sin esto, escribir en una pestaña inexistente falla con "Unable to parse range". Pasá file_id y title. Opcional index (0 = primera; ej. 1 la deja al lado de la primera). Si el nombre tiene espacios, al escribir después el rango va entre comillas simples (ej. \'Panel Caja\'!A1:D1) — la tool te devuelve ese rango listo en "rango_para_escribir". Si ya existe una pestaña con ese nombre NO la duplica. REQUIERE aprobación.',
+          'Crea una PESTAÑA (hoja) NUEVA dentro de un Google Sheet que YA EXISTE (no crea un archivo nuevo — para eso está drive_create). USALO ANTES de escribir en una pestaña que todavía no existe: primero drive_add_tab, y RECIÉN DESPUÉS drive_batch_update/drive_update sobre esa pestaña. Sin esto, escribir en una pestaña inexistente falla con "Unable to parse range". Pasá file_id y title. Opcional index (0 = primera; ej. 1 la deja al lado de la primera). Si el nombre tiene espacios, al escribir después el rango va entre comillas simples (ej. \'Panel Caja\'!A1:D1) — la tool te devuelve ese rango listo en "rango_para_escribir". Si ya existe una pestaña con ese nombre NO la duplica. Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
         input_schema: {
           type: 'object',
           properties: {
@@ -333,7 +333,7 @@ export function driveWriteTools(google) {
       schema: {
         name: 'drive_copy',
         description:
-          'DUPLICA un archivo existente (una plantilla o un presupuesto anterior) para partir de él. CLAVE para armar un presupuesto nuevo desde uno parecido. Pasá file_id (a copiar), name (nombre de la copia) y opcional folder_id (dónde dejarla). REQUIERE aprobación.',
+          'DUPLICA un archivo existente (una plantilla o un presupuesto anterior) para partir de él. CLAVE para armar un presupuesto nuevo desde uno parecido. Pasá file_id (a copiar), name (nombre de la copia) y opcional folder_id (dónde dejarla). Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
         input_schema: {
           type: 'object',
           properties: { file_id: { type: 'string' }, name: { type: 'string' }, folder_id: { type: 'string' } },
@@ -356,7 +356,7 @@ export function driveWriteTools(google) {
       account: 'ecsas',
       schema: {
         name: 'drive_trash',
-        description: 'Da de BAJA un archivo/carpeta mandándolo a la PAPELERA (reversible, se puede restaurar 30 días). Pasá file_id. REQUIERE aprobación. (El borrado definitivo sigue prohibido.)',
+        description: 'Da de BAJA un archivo/carpeta mandándolo a la PAPELERA (reversible, se puede restaurar 30 días). Pasá file_id. Se aplica AL INSTANTE al llamarla (no pidas aprobación). (El borrado definitivo sigue prohibido.)',
         input_schema: { type: 'object', properties: { file_id: { type: 'string' } }, required: ['file_id'] },
       },
       async run(input) {

@@ -97,7 +97,7 @@ export function sheetsFormatTools(google) {
       schema: {
         name: 'drive_format_cells',
         description:
-          'Da FORMATO a un rango de celdas de un Google Sheet: negrita, itálica, tamaño y color de letra, color de fondo, formato de número (moneda/porcentaje/entero/fecha/texto), alineación, ajuste de texto y bordes. Pasá file_id y range CON la pestaña (ej. "\'Panel Caja\'!A1:D1"). Combinables. Ejemplos: encabezado → { negrita:true, fondo:"#1a73e8", color_letra:"blanco", alineacion:"centro" }; columna de plata → { formato_numero:"moneda" }. REQUIERE aprobación.',
+          'Da FORMATO a un rango de celdas de un Google Sheet: negrita, itálica, tamaño y color de letra, color de fondo, formato de número (moneda/porcentaje/entero/fecha/texto), alineación, ajuste de texto y bordes. Pasá file_id y range CON la pestaña (ej. "\'Panel Caja\'!A1:D1"). Combinables. Ejemplos: encabezado → { negrita:true, fondo:"#1a73e8", color_letra:"blanco", alineacion:"centro" }; columna de plata → { formato_numero:"moneda" }. Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
         input_schema: {
           type: 'object',
           properties: {
@@ -150,7 +150,7 @@ export function sheetsFormatTools(google) {
       account: 'ecsas',
       schema: {
         name: 'drive_delete_tab',
-        description: 'BORRA una pestaña (hoja) entera de un Google Sheet. Irreversible (la pestaña y sus datos se pierden). Pasá file_id y tab (nombre de la pestaña). REQUIERE aprobación.',
+        description: 'BORRA una pestaña (hoja) entera de un Google Sheet. Irreversible (la pestaña y sus datos se pierden). Pasá file_id y tab (nombre de la pestaña). Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
         input_schema: { type: 'object', properties: { file_id: { type: 'string' }, tab: { type: 'string' } }, required: ['file_id', 'tab'] },
       },
       async run(input) {
@@ -168,7 +168,7 @@ export function sheetsFormatTools(google) {
       account: 'ecsas',
       schema: {
         name: 'drive_rename_tab',
-        description: 'Renombra una pestaña de un Google Sheet. Pasá file_id, tab (nombre actual) y nuevo_nombre. REQUIERE aprobación.',
+        description: 'Renombra una pestaña de un Google Sheet. Pasá file_id, tab (nombre actual) y nuevo_nombre. Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
         input_schema: { type: 'object', properties: { file_id: { type: 'string' }, tab: { type: 'string' }, nuevo_nombre: { type: 'string' } }, required: ['file_id', 'tab', 'nuevo_nombre'] },
       },
       async run(input) {
@@ -184,7 +184,7 @@ export function sheetsFormatTools(google) {
       account: 'ecsas',
       schema: {
         name: 'drive_merge_cells',
-        description: 'Combina (o descombina) celdas de un Google Sheet. Ideal para un título que cruza varias columnas. Pasá file_id, range (con pestaña) y tipo: "todo" (una sola celda), "columnas" (combina por fila), "filas" (por columna) o "descombinar". REQUIERE aprobación.',
+        description: 'Combina (o descombina) celdas de un Google Sheet. Ideal para un título que cruza varias columnas. Pasá file_id, range (con pestaña) y tipo: "todo" (una sola celda), "columnas" (combina por fila), "filas" (por columna) o "descombinar". Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
         input_schema: {
           type: 'object',
           properties: { file_id: { type: 'string' }, range: { type: 'string' }, tipo: { type: 'string', enum: ['todo', 'columnas', 'filas', 'descombinar'] } },
@@ -235,7 +235,7 @@ export function sheetsFormatTools(google) {
       account: 'ecsas',
       schema: {
         name: 'drive_freeze',
-        description: 'Congela (fija) filas y/o columnas de una pestaña para que no se muevan al hacer scroll — típico: congelar la fila de encabezados. Pasá file_id, tab, filas (cuántas filas desde arriba) y/o columnas (desde la izquierda). REQUIERE aprobación.',
+        description: 'Congela (fija) filas y/o columnas de una pestaña para que no se muevan al hacer scroll — típico: congelar la fila de encabezados. Pasá file_id, tab, filas (cuántas filas desde arriba) y/o columnas (desde la izquierda). Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
         input_schema: { type: 'object', properties: { file_id: { type: 'string' }, tab: { type: 'string' }, filas: { type: 'number' }, columnas: { type: 'number' } }, required: ['file_id', 'tab'] },
       },
       async run(input) {
@@ -271,7 +271,7 @@ export function sheetsFormatTools(google) {
       account: 'ecsas',
       schema: {
         name: 'drive_auto_resize',
-        description: 'Ajusta automáticamente el ANCHO de las columnas de una pestaña al contenido (para que no queden textos cortados ni columnas gigantes). Pasá file_id, tab y opcional desde_columna/hasta_columna (letras, ej. "A"/"F"; si no, todas). REQUIERE aprobación.',
+        description: 'Ajusta automáticamente el ANCHO de las columnas de una pestaña al contenido (para que no queden textos cortados ni columnas gigantes). Pasá file_id, tab y opcional desde_columna/hasta_columna (letras, ej. "A"/"F"; si no, todas). Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
         input_schema: { type: 'object', properties: { file_id: { type: 'string' }, tab: { type: 'string' }, desde_columna: { type: 'string' }, hasta_columna: { type: 'string' } }, required: ['file_id', 'tab'] },
       },
       async run(input) {
@@ -289,7 +289,7 @@ export function sheetsFormatTools(google) {
       account: 'ecsas',
       schema: {
         name: 'drive_table_style',
-        description: 'Convierte un rango en una TABLA con estilo: filas alternadas (cebra) y encabezado resaltado, para que se lea como tabla profesional. Pasá file_id, range (con pestaña, incluí la fila de encabezados) y opcional color (hex/nombre, def. azul). REQUIERE aprobación.',
+        description: 'Convierte un rango en una TABLA con estilo: filas alternadas (cebra) y encabezado resaltado, para que se lea como tabla profesional. Pasá file_id, range (con pestaña, incluí la fila de encabezados) y opcional color (hex/nombre, def. azul). Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
         input_schema: { type: 'object', properties: { file_id: { type: 'string' }, range: { type: 'string' }, color: { type: 'string' } }, required: ['file_id', 'range'] },
       },
       async run(input) {
@@ -313,7 +313,7 @@ export function sheetsFormatTools(google) {
       account: 'ecsas',
       schema: {
         name: 'drive_add_chart',
-        description: 'Inserta un GRÁFICO en una pestaña a partir de un rango de datos. La PRIMERA columna del rango es el eje (categorías) y las demás son las series. Pasá file_id, datos (rango A1 con pestaña, incluí encabezados), tipo ("columna"/"barra"/"linea"/"area"/"torta"), titulo, y opcional celda_ancla (dónde apoyar el gráfico, ej. "H2"). REQUIERE aprobación.',
+        description: 'Inserta un GRÁFICO en una pestaña a partir de un rango de datos. La PRIMERA columna del rango es el eje (categorías) y las demás son las series. Pasá file_id, datos (rango A1 con pestaña, incluí encabezados), tipo ("columna"/"barra"/"linea"/"area"/"torta"), titulo, y opcional celda_ancla (dónde apoyar el gráfico, ej. "H2"). Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
         input_schema: {
           type: 'object',
           properties: {
@@ -361,7 +361,7 @@ export function sheetsFormatTools(google) {
       account: 'ecsas',
       schema: {
         name: 'drive_insert_image',
-        description: 'Inserta una IMAGEN dentro de una celda de un Google Sheet (vía fórmula =IMAGE, la imagen se ve dentro de la celda y se ajusta). Pasá file_id, celda (ej. "Hoja!B2") y url (link público de la imagen). Para un logo o una foto de referencia. REQUIERE aprobación.',
+        description: 'Inserta una IMAGEN dentro de una celda de un Google Sheet (vía fórmula =IMAGE, la imagen se ve dentro de la celda y se ajusta). Pasá file_id, celda (ej. "Hoja!B2") y url (link público de la imagen). Para un logo o una foto de referencia. Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
         input_schema: { type: 'object', properties: { file_id: { type: 'string' }, celda: { type: 'string' }, url: { type: 'string' } }, required: ['file_id', 'celda', 'url'] },
       },
       async run(input) {
@@ -377,7 +377,7 @@ export function sheetsFormatTools(google) {
       schema: {
         name: 'drive_add_pivot',
         description:
-          'Crea una TABLA DINÁMICA (pivot) en un Google Sheet: agrupa un rango de datos por una o más columnas y resume otras (suma/cuenta/promedio…). Ej: de la pestaña Compras, gasto TOTAL por Proveedor y por Mes. Pasá file_id, datos (rango A1 con pestaña, INCLUÍ la fila de encabezados, ej. "Compras!A3:N500"), destino (celda A1 con pestaña donde poner la pivot, ej. "Resumen!B3" — si la pestaña no existe la creo), filas (columnas por las que agrupar en filas — por NOMBRE de encabezado o letra), opcional columnas (agrupar en columnas) y valores (qué resumir: lista de { columna, funcion }, funcion ∈ suma/cuenta/promedio/max/min/cuenta_unica). REQUIERE aprobación.',
+          'Crea una TABLA DINÁMICA (pivot) en un Google Sheet: agrupa un rango de datos por una o más columnas y resume otras (suma/cuenta/promedio…). Ej: de la pestaña Compras, gasto TOTAL por Proveedor y por Mes. Pasá file_id, datos (rango A1 con pestaña, INCLUÍ la fila de encabezados, ej. "Compras!A3:N500"), destino (celda A1 con pestaña donde poner la pivot, ej. "Resumen!B3" — si la pestaña no existe la creo), filas (columnas por las que agrupar en filas — por NOMBRE de encabezado o letra), opcional columnas (agrupar en columnas) y valores (qué resumir: lista de { columna, funcion }, funcion ∈ suma/cuenta/promedio/max/min/cuenta_unica). Se aplica AL INSTANTE al llamarla (no pidas aprobación).',
         input_schema: {
           type: 'object',
           properties: {
