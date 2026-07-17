@@ -214,8 +214,20 @@ export function sheetsFormatTools(google) {
           }
         }
         const mergeType = input.tipo === 'columnas' ? 'MERGE_ROWS' : input.tipo === 'filas' ? 'MERGE_COLUMNS' : 'MERGE_ALL'
-        await google.spreadsheetBatchUpdate(input.file_id, [{ mergeCells: { range: gr, mergeType } }])
-        return { ok: true, combinado: input.range, tipo: input.tipo || 'todo' }
+        // mergeCells RESILIENTE: si el rango pisa un merge existente → 400 ("debes seleccionar
+        // todas las celdas de un rango combinado"). Recuperación: des-combino primero ese rango y
+        // reintento; si aún falla, salteo suave (combinar es cosmético, no vale trabar la tarea).
+        try {
+          await google.spreadsheetBatchUpdate(input.file_id, [{ mergeCells: { range: gr, mergeType } }])
+          return { ok: true, combinado: input.range, tipo: input.tipo || 'todo' }
+        } catch (e) {
+          try {
+            await google.spreadsheetBatchUpdate(input.file_id, [{ unmergeCells: { range: gr } }, { mergeCells: { range: gr, mergeType } }])
+            return { ok: true, combinado: input.range, tipo: input.tipo || 'todo', nota: 'Había un merge previo; lo rehíce.' }
+          } catch {
+            return { ok: true, aplicado: false, nota: `No combiné "${input.range}" (pisa celdas ya combinadas); seguí sin eso, NO reintentes.` }
+          }
+        }
       },
     },
     'drive.freeze': {
