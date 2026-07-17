@@ -972,7 +972,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
     guiaEscritura +
     guiaInvestigar +
     (att
-      ? `\n\nTE ADJUNTARON UN ARCHIVO (foto/PDF): interpretalo. Si es una factura/remito/comprobante, extraé proveedor, fecha, importe total, número y concepto. Si la directiva pide registrarlo, encontrá el Sheet correcto (ej. "Flujo de Caja - Cash Flow", pestaña de compras/gastos), LEÉ su estructura con drive_read y proponé la fila con drive_update. No inventes lo que no ves; si un dato no está en la imagen, decilo.\n`
+      ? `\n\nTE ADJUNTARON UN ARCHIVO (foto/PDF): interpretalo. Si es una factura/remito/comprobante, extraé proveedor, CUIT, fecha, importe total, número y concepto. Si hay VARIAS facturas en la imagen, procesá cada una. Según lo que pida el dueño:\n• CHEQUEAR si un gasto YA ESTÁ REGISTRADO ("¿está registrado esto?", "¿dónde está?", "¿ya lo cargué?"): por cada factura llamá la tool buscar_comprobante con proveedor/cuit/numero/importe extraídos. Devolvé por cada una: SÍ/NO registrada, y si sí, el comprobante (tipo, punto de venta-número), período y OBRA asignada. Si da 0 coincidencias, decí que NO figura en ARCA (falta cargarla o los datos de la foto no coinciden). NO propongas cargar nada salvo que te lo pidan.\n• REGISTRAR/cargar el gasto: encontrá el Sheet correcto (ej. "Flujo de Caja - Cash Flow", pestaña de compras/gastos), LEÉ su estructura con drive_read y proponé la fila con drive_update (queda en Pendientes).\nNo inventes lo que no ves; si un dato no está en la imagen, decilo.\n`
       : '') +
     ` Lo que tenga efecto económico/fiscal/legal externo (Nivel E) no lo ejecutes: proponelo en una línea.` +
     docEditDoctrine +
