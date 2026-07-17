@@ -171,24 +171,42 @@ export async function getResumenAsignacion(supabase: SupabaseClient): Promise<Re
   return r
 }
 
-// Costo real de UNA obra = comprobantes de ARCA asignados a ella, agrupado por proveedor.
+// Normaliza un nombre de obra para cruzar grafías ("LA ESTRELLA"/"Estrella", "MESSINAS"/"Messina",
+// "SAN FRANCISCO"/"San Francisco"). Saca acentos, artículos y puntuación.
+function normObra(s: string): string {
+  return String(s ?? '')
+    .toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ').replace(/\b(la|el|los|las|de|del)\b/g, ' ')
+    .replace(/\s+/g, ' ').trim()
+}
+function obraMatch(a: string, b: string): boolean {
+  const na = normObra(a), nb = normObra(b)
+  if (!na || !nb) return false
+  if (na === nb || na.includes(nb) || nb.includes(na)) return true
+  const wa = na.split(' ')[0], wb = nb.split(' ')[0]
+  return wa.length > 3 && wa === wb
+}
+
+// Costo real de UNA obra = compras del Sheet Flujo de Caja (pestaña Compras) que el dueño YA
+// asignó a esa obra (public.costos_obra, sincronizado por sync-compras.mjs), agrupado por proveedor.
+// Antes leía comprobantes_arca sin asignar → siempre $0. El match es por nombre normalizado
+// (las obras viven como texto con grafías distintas entre fuentes).
 export async function getCostosPorObra(supabase: SupabaseClient, obra: string): Promise<CostosObra> {
   const { data } = await supabase
-    .from('comprobantes_arca')
-    .select('emisor_nombre, emisor_cuit, imp_total')
-    .eq('tipo_libro', COMPRAS)
-    .eq('obra_texto', obra)
+    .from('costos_obra')
+    .select('proveedor, total, obra_texto')
   const porProv = new Map<string, CostoProveedor>()
   let total = 0
   let n = 0
-  for (const c of (data ?? []) as { emisor_nombre: string | null; emisor_cuit: string | null; imp_total: number | null }[]) {
-    const m = num(c.imp_total)
+  for (const c of (data ?? []) as { proveedor: string | null; total: number | null; obra_texto: string }[]) {
+    if (!obraMatch(c.obra_texto, obra)) continue
+    const m = num(c.total)
     total += m
     n++
-    const key = c.emisor_cuit || c.emisor_nombre || 'sin proveedor'
+    const key = c.proveedor || 'sin proveedor'
     const prev = porProv.get(key)
     if (prev) { prev.comprobantes++; prev.total += m } else {
-      porProv.set(key, { proveedor: c.emisor_nombre || 'Sin nombre', cuit: c.emisor_cuit, comprobantes: 1, total: m })
+      porProv.set(key, { proveedor: c.proveedor || 'Sin proveedor', cuit: null, comprobantes: 1, total: m })
     }
   }
   return {
