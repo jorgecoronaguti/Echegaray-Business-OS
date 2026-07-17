@@ -43,7 +43,7 @@ export async function cashBriefing(google, hoy = new Date()) {
   //    sin cobrar = plata que debería estar y no está). "Vencida" NO interpreta la taxonomía de
   //    estados (Pendiente/Proyectado/Facturado…): solo "no Cobrado" + fecha de cobro < hoy. Honesto.
   const cob = await google.readSheetValues(ID, '02_Cobranzas!A5:R2000').catch(() => [])
-  let cobrado = 0, porCobrar = 0
+  let cobrado = 0, porCobrar = 0, entra7 = 0
   const vencidas = []
   for (const r of cob) {
     const estado = String(r?.[14] ?? '').trim()
@@ -53,10 +53,11 @@ export async function cashBriefing(google, hoy = new Date()) {
     if (String(r?.[17] ?? '').trim().toLowerCase() === mesActual) {
       if (cobradoYa) cobrado += monto; else porCobrar += monto
     }
-    // VENCIDAS: por "Fecha cobro" real (idx16), pasada y sin cobrar
+    // Por "Fecha cobro" real (idx16), sin cobrar: VENCIDA (pasada) o ENTRA esta semana (dentro 7d)
     if (!cobradoYa && monto > 0) {
       const fc = parseFecha(r?.[16])
       if (fc && fc < hoy0) vencidas.push({ cliente: String(r?.[6] ?? '').trim() || '(sin cliente)', estado, fecha: String(r?.[16]).trim(), monto, dias: Math.round((hoy0 - fc) / 86400000) })
+      else if (dentro7(fc)) entra7 += monto
     }
   }
   vencidas.sort((a, z) => z.dias - a.dias)
@@ -78,6 +79,10 @@ export async function cashBriefing(google, hoy = new Date()) {
     cobranzas_mes: { mes: mesActual, cobrado, por_cobrar: porCobrar },
     cobranzas_vencidas: { total: totalVencido, items: vencidas },
     vencimientos_7dias: { total: totalVenc, cheques, tarjeta },
+    // PROYECCIÓN de caja a 7 días (ESTIMADA, no hecho): caja hoy + lo que tiene fecha de cobro esta
+    // semana (sin cobrar) − lo que hay que pagar esta semana. Asume que se cobra lo prometido; NO
+    // incluye lo vencido (fecha ya fallada = incierto). Responde "¿cierro la semana en positivo?".
+    proyeccion_7dias: { caja_hoy: cajaTotal, entra: entra7, sale: totalVenc, proyectado: cajaTotal + entra7 - totalVenc },
   }
 }
 
@@ -100,5 +105,11 @@ export function formatBriefing(b) {
   for (const it of items.slice(0, 12)) L.push(`  • ${it.fecha} · ${it.proveedor}: ${fmt(it.monto)} _(${it.t})_`)
   if (items.length > 12) L.push(`  • …y ${items.length - 12} más`)
   if (!items.length) L.push('  • Nada por vencer esta semana.')
+  const p = b.proyeccion_7dias
+  if (p) {
+    const signo = p.proyectado < 0 ? '⚠️ ' : ''
+    L.push('', `🔮 **Proyección caja 7 días (estimada): ${signo}${fmt(p.proyectado)}**`)
+    L.push(`  _caja ${fmt(p.caja_hoy)} + entra ${fmt(p.entra)} − paga ${fmt(p.sale)} · asume que se cobra lo de esta semana; no cuenta lo vencido_`)
+  }
   return L.join('\n')
 }

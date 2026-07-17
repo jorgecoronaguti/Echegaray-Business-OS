@@ -27,6 +27,8 @@ const data = {
     [7, '', '', '', '', '', 'IMOTOR', '', '', '', '', '', '$6.000.000', '', 'Cobrado', '', '1/7/2026', 'jul-26'],
     // NO vencida: monto 0 (ruido)
     [8, '', '', '', '', '', 'IMOTOR', '', '', '', '', '', '$0', '', 'Efectivo', '', '1/7/2026', 'jul-26'],
+    // ENTRA esta semana: fecha cobro 20/7 (dentro de [17,24]), sin cobrar → suma a proyección
+    [9, '', '', '', '', '', 'LA ESTRELLA', '', '', '', '', '', '$2.000.000', '', 'Pendiente', '', '20/7/2026', 'jul-26'],
   ],
   'Cheques!A2:J997': [
     // idx4=E prov, idx5=F monto, idx8=I fecha pago
@@ -51,8 +53,8 @@ async function main() {
   check('caja total = Santander + Efectivo', b.caja.total === 17691359 + 2000000)
   check('cobranzas mes en curso = jul-26', b.cobranzas_mes.mes === 'jul-26')
   check('cobrado del mes (jul-26 Cobrado: 5M + 6M)', b.cobranzas_mes.cobrado === 11000000)
-  check('por cobrar del mes (jul-26 no cobrado: 3M+15M+8M)', b.cobranzas_mes.por_cobrar === 26000000)
-  check('NO cuenta cobranza de otro mes (jun-26 excluida)', b.cobranzas_mes.cobrado + b.cobranzas_mes.por_cobrar === 37000000)
+  check('por cobrar del mes (jul-26 no cobrado: 3M+15M+8M+2M)', b.cobranzas_mes.por_cobrar === 28000000)
+  check('NO cuenta cobranza de otro mes (jun-26 excluida)', b.cobranzas_mes.cobrado + b.cobranzas_mes.por_cobrar === 39000000)
   // VENCIDAS: por Fecha cobro (idx16) pasada y sin cobrar
   check('vencidas: 2 items (LA ESTRELLA 2/7 + MESSINAS 10/6)', b.cobranzas_vencidas.items.length === 2)
   check('total vencido = 15M + 4M', b.cobranzas_vencidas.total === 19000000)
@@ -65,6 +67,11 @@ async function main() {
   check('cheque viejo (fuera de 7d) excluido', !b.vencimientos_7dias.cheques.some((c) => c.proveedor === 'Viejo'))
   check('tarjeta NO debitada incluida, DEBITADA excluida', b.vencimientos_7dias.tarjeta.length === 1)
   check('total vencimientos 7d = cheque + tarjeta', b.vencimientos_7dias.total === 470945 + 355413)
+  // PROYECCIÓN 7 días: caja + lo que entra esta semana − lo que se paga esta semana
+  check('proyección: entra esta semana (fecha cobro 20/7, sin cobrar)', b.proyeccion_7dias.entra === 2000000)
+  check('proyección: NO cuenta vencido (2/7, 10/6) como entrada', b.proyeccion_7dias.entra === 2000000)
+  check('proyección: sale = vencimientos 7d', b.proyeccion_7dias.sale === 826358)
+  check('proyección: proyectado = caja + entra − sale', b.proyeccion_7dias.proyectado === 19691359 + 2000000 - 826358)
 
   console.log(`\ncash-briefing.test: ${ok} OK, ${fail} FALLA`)
   process.exit(fail ? 1 : 0)
