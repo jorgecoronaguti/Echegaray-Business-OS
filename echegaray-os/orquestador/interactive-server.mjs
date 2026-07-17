@@ -41,6 +41,7 @@ import { avanceResumen } from './lib/avance-fisico.mjs'
 import { libroIvaResumen, comprobantesSinRegistrar, parsePeriodo, conciliarProveedoresArca } from './lib/libro-iva.mjs'
 import { pedidosResumen } from './lib/pedidos-materiales.mjs'
 import { appsheetPedidosTools } from './lib/tools/appsheet-pedidos.mjs'
+import { gastoSheetTools } from './lib/tools/gasto-sheet.mjs'
 import { estadoOperativoObra, esObraOperativa } from './lib/obra-operativa.mjs'
 import { findObras } from './lib/obra-economics.mjs'
 import { agendaResumen, mailsResumen } from './lib/agenda-mail.mjs'
@@ -119,7 +120,7 @@ async function driveRegistry(attachment, userEmail) {
   const google = op
     ? makeGoogleClient({ config: cfg, scopes: WORKSPACE_SCOPES, getToken: getTokenFor(op) })
     : makeGoogleClient({ config: cfg })
-  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...sheetsFormatTools(op ? google : null), ...docsFormatTools(op ? google : null), ...osDataTools(), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ google: op ? google : null }), ...appsheetPedidosTools({ google: op ? google : null }) }
+  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...sheetsFormatTools(op ? google : null), ...docsFormatTools(op ? google : null), ...osDataTools(), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ google: op ? google : null }), ...appsheetPedidosTools({ google: op ? google : null }), ...gastoSheetTools(op ? google : null) }
   // Si el dueño adjuntó una imagen/archivo, exponer una tool para GUARDARLO en su Drive.
   if (attachment?.data && attachment?.media_type) {
     registry['drive.upload_adjunto'] = {
@@ -972,7 +973,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
     guiaEscritura +
     guiaInvestigar +
     (att
-      ? `\n\nTE ADJUNTARON UN ARCHIVO (foto/PDF): interpretalo. Si es una factura/remito/comprobante, extraé proveedor, CUIT, fecha, importe total, número y concepto. Si hay VARIAS facturas en la imagen, procesá cada una. Según lo que pida el dueño:\n• CHEQUEAR si un gasto YA ESTÁ REGISTRADO ("¿está registrado esto?", "¿dónde está?", "¿ya lo cargué?"): por cada factura llamá la tool buscar_comprobante con proveedor/cuit/numero/importe extraídos. Devolvé por cada una: SÍ/NO registrada, y si sí, el comprobante (tipo, punto de venta-número), período y OBRA asignada. Si da 0 coincidencias, decí que NO figura en ARCA (falta cargarla o los datos de la foto no coinciden). NO propongas cargar nada salvo que te lo pidan.\n• REGISTRAR/cargar el gasto: encontrá el Sheet correcto (ej. "Flujo de Caja - Cash Flow", pestaña de compras/gastos), LEÉ su estructura con drive_read y proponé la fila con drive_update (queda en Pendientes).\nNo inventes lo que no ves; si un dato no está en la imagen, decilo.\n`
+      ? `\n\nTE ADJUNTARON UN ARCHIVO (foto/PDF): interpretalo. Si es una factura/remito/comprobante, extraé proveedor, CUIT, fecha, importe total, número y concepto. Si hay VARIAS facturas en la imagen, procesá cada una. Según lo que pida el dueño:\n• CHEQUEAR si un gasto YA ESTÁ CARGADO ("¿está registrado esto?", "¿dónde está?", "¿ya lo cargué?", "¿está en el flujo de fondos?"): por cada factura extraé proveedor, número e importe y llamá buscar_gasto_en_flujo (busca en el Flujo de Fondos real, pestaña Compras). Si aparece, decí que SÍ está cargado, en qué FILA y con qué OBRA, y PASALE EL LINK directo a esa fila (viene en la respuesta de la tool). Si da 0, decí que NO figura en el Flujo de Fondos. Complemento fiscal: si además pregunta si está facturado/en ARCA, usá buscar_comprobante (comprobantes_arca). NO propongas cargar nada salvo que te lo pidan.\n• REGISTRAR/cargar el gasto: encontrá el Sheet correcto (ej. "Flujo de Caja - Cash Flow", pestaña de compras/gastos), LEÉ su estructura con drive_read y proponé la fila con drive_update (queda en Pendientes).\nNo inventes lo que no ves; si un dato no está en la imagen, decilo.\n`
       : '') +
     ` Lo que tenga efecto económico/fiscal/legal externo (Nivel E) no lo ejecutes: proponelo en una línea.` +
     docEditDoctrine +
