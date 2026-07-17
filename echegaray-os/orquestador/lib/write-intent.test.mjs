@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Test de isWriteIntent (lib/write-intent.mjs). Guard de COSTO: un falso positivo manda un
 // READ barato (haiku) a sonnet. Hermético, 0 API. exit 0 = OK, 1 = falla.
-import { isWriteIntent } from './write-intent.mjs'
+import { isWriteIntent, isProposedWrite } from './write-intent.mjs'
 
 let ok = 0, fail = 0
 const yes = (t) => { if (isWriteIntent(t)) ok++; else { fail++; console.error(`FALLA: "${t}" → esperaba WRITE, dio false`) } }
@@ -65,6 +65,22 @@ no('cuánto tengo en caja hoy')
 no('qué obras tengo activas')
 no('hola, cómo va todo')
 no('cuáles son los cheques pendientes a proveedores')
+
+// isProposedWrite: detecta que el turno PREVIO del OS PROPUSO una escritura (para que un "dale"
+// del dueño la ejecute). Debe cazar el lenguaje de propuesta del OS, no solo órdenes del dueño.
+const yprop = (t) => { if (isProposedWrite(t)) ok++; else { fail++; console.error(`FALLA prop-yes: ${t}`) } }
+const nprop = (t) => { if (!isProposedWrite(t)) ok++; else { fail++; console.error(`FALLA prop-no: ${t}`) } }
+// propuestas reales del OS que quedaron sin ejecutar en el CF Semanal:
+yprop('uso SUMIFS sobre Compras!C:C (Fecha factura), Compras!I:I y Compras!O:O')
+yprop('La estrategia para Nómina es referenciar la pestaña Sueldos fila 14 por mes')
+yprop('Voy a reescribir col H con fórmulas que limpian el texto')
+yprop('Para las categorías de Compras en el CF Semanal, uso SUMIFS')
+yprop('te propongo armar la tabla con fórmulas que referencian las otras pestañas')
+yprop('puedo reemplazar la col G con valores numéricos puros')
+// respuestas de LECTURA puras → NO son propuesta de escritura (no forzar write en un "dale"):
+nprop('El saldo de caja hoy es $17.691.359')
+nprop('Tu obra San Francisco tiene 85% de avance físico')
+nprop('Las cobranzas de julio suman $16,2M')
 
 console.log(`\nwrite-intent.test: ${ok} OK, ${fail} FALLA`)
 process.exit(fail ? 1 : 0)

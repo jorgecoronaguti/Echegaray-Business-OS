@@ -34,3 +34,15 @@ export function isWriteIntent(text) {
   const sinDescriptores = String(text || '').replace(DESCRIPTOR_RE, ' ')
   return WRITE_INTENT_RE.test(sinDescriptores)
 }
+
+// El turno PREVIO del OS PROPUSO una acción de escritura/edición en un Sheet/Doc. Es DISTINTO de
+// isWriteIntent: eso detecta la ORDEN del dueño (imperativos, sin participios); esto detecta el
+// lenguaje de PROPUESTA del OS en primera persona + tokens de fórmula/planilla. Sirve para que un
+// "dale/ok/hacelo" corto del dueño EJECUTE la propuesta previa en vez de re-narrarla (reclamo real:
+// "me propone cosas, le doy el OK y no lo hace" — el CF Semanal quedó sin fórmulas por esto). Se usa
+// SOLO junto a una confirmación corta (CONFIRM_RE), así que puede ser generoso sin fugar costo.
+const PROPOSED_WRITE_RE = /(=?sumifs?|=sum\(|f[oó]rmula|referenci|\bcelda|\bcolumna|\bpesta[ñn]a|\bsolapa|encaden|voy a (escrib|hacer|armar|re?escrib|cargar|actualiz|complet|reemplaz|referenc|agreg|poner|aplicar|combin|sumar|render)|propong|te propong|la estrategia|puedo (armar|hacer|escrib|cargar|re?escrib|complet|aplicar|poner|combin)|paso a (escrib|cargar|armar|aplicar|complet)|re?escrib|reemplaz|dejame (escrib|hacer|armar|aplicar|cargar))/i
+/** true si el texto (turno previo del OS) PROPONE escribir/editar un Sheet/Doc. */
+export function isProposedWrite(text) {
+  return PROPOSED_WRITE_RE.test(String(text || ''))
+}

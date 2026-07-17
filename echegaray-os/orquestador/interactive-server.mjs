@@ -63,7 +63,7 @@ import { extraerRestricciones, DOCTRINA_EDICION, VERIFICACION_EDICION } from './
 import { isMailComposeIntent, isCalendarWriteIntent } from './lib/chat-intents.mjs'
 import { stripPreamble } from './lib/chat-format.mjs'
 import { personaParaConsulta } from './lib/chat-persona.mjs'
-import { isWriteIntent } from './lib/write-intent.mjs'
+import { isWriteIntent, isProposedWrite } from './lib/write-intent.mjs'
 import { isBudgetingIntent } from './lib/budget-intent.mjs'
 import { parseScheduleRequest, describeCadence } from './lib/schedule-intent.mjs'
 import { scheduleTools } from './lib/tools/schedule-tools.mjs'
@@ -449,7 +449,11 @@ async function ask({ directive, fileId, fast, attachments, attachment, history, 
   const directiveWrite = isWriteIntent(directive)
   // Confirmación/elección corta ("a", "dale", "la 2") + la charla previa proponía una
   // acción u opciones → el dueño está eligiendo: hay que ACTUAR, no re-preguntar.
-  const followUpAction = CONFIRM_RE.test(String(directive || '')) && isWriteIntent(histText)
+  // Ejecutar cuando el dueño CONFIRMA corto ("dale/ok/hacelo") y el turno previo pedía O PROPONÍA
+  // una escritura. isWriteIntent(histText) cubre la orden del dueño; isProposedWrite cubre la
+  // PROPUESTA del OS ("uso SUMIFS…", "la estrategia es referenciar…") — antes esto no se detectaba
+  // y el "dale" iba a haiku sin herramientas → "me propone y no lo hace" (el CF Semanal quedó sin fórmulas).
+  const followUpAction = CONFIRM_RE.test(String(directive || '')) && (isWriteIntent(histText) || isProposedWrite(histText))
   const writeIntent = directiveWrite || followUpAction
   // PEDIDO DE ESCRIBIR EN UN DOCUMENTO (Sheet/Doc): verbo de acción + referencia a un
   // documento concreto (pestaña/planilla/rango/celda/URL de Drive) O un archivo abierto.
