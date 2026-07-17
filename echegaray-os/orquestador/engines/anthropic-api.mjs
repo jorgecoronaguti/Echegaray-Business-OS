@@ -259,11 +259,21 @@ export function makeAnthropicEngine({ config, client, breaker, semaphore }) {
           && /"error"\s*:|api 400|INVALID_ARGUMENT|no pude\b|no puedes\b/i.test(contentStr.slice(0, 400))
           && !/"queued"\s*:\s*true/.test(contentStr))
 
+      let abortedByCost = null
       for (let i = 0; i < maxIterations; i++) {
         setRollingCache()
         const response = await callModel(messages)
         lastResponse = response
         if (response.usage) usages.push(response.usage)
+
+        // CORTE DURO POR COSTO: antes solo se AVISABA post-facto; una tarea podía correr las 26
+        // vueltas y vaciar el crédito (reclamo real: "con algo simple se queda sin créditos").
+        // Ahora, si el costo acumulado supera el techo de la ruta (job.maxCostUsd), FRENAMOS acá
+        // y devolvemos lo hecho — nunca se pasa del presupuesto por tarea.
+        if (job.maxCostUsd != null) {
+          const running = totalCostUsd(usages, modelId)
+          if (running != null && running > Number(job.maxCostUsd)) { abortedByCost = { usd: running }; break }
+        }
 
         if (hasTools && response.stop_reason === 'tool_use') {
           toolTurns++
@@ -353,18 +363,21 @@ export function makeAnthropicEngine({ config, client, breaker, semaphore }) {
       const parcial = extractText(lastResponse?.content) || ''
       const cost = { usd: totalCostUsd(usages, modelId) }
       if (log) {
-        log.warn('anthropic-api: agotó iteraciones — devuelve trabajo parcial', {
+        log.warn(abortedByCost ? 'anthropic-api: frenó por tope de costo — trabajo parcial' : 'anthropic-api: agotó iteraciones — devuelve trabajo parcial', {
           model: modelId, max_iterations: maxIterations, tool_turns: toolTurns, cost_usd: cost.usd,
+          ...(abortedByCost ? { max_cost_usd: Number(job.maxCostUsd) } : {}),
         })
       }
+      const aviso = abortedByCost
+        ? `_(Frené para no gastar de más: esta tarea llegó al tope de costo (US$${abortedByCost.usd.toFixed(2)}). Lo que ya escribí quedó aplicado. Pedímela por partes o más simple y la termino.)_`
+        : `_(Avancé por partes y me quedé sin pasos para terminar TODO de una. Lo que ya escribí quedó aplicado. Pedime "seguí" y continúo desde donde quedé.)_`
       return {
         sessionId: lastResponse?.id ?? null,
-        result: (parcial ? parcial + '\n\n' : '') +
-          `_(Avancé por partes y me quedé sin pasos para terminar TODO de una. Lo que ya escribí quedó aplicado. Pedime "seguí" y continúo desde donde quedé.)_`,
+        result: (parcial ? parcial + '\n\n' : '') + aviso,
         exitCode: 0,
         cost,
         tokens: accumulateUsage(usages),
-        raw: { model: modelId, stop_reason: 'max_tool_iterations', duration_ms: Date.now() - startedAt, tool_turns: toolTurns, partial: true },
+        raw: { model: modelId, stop_reason: abortedByCost ? 'cost_cap' : 'max_tool_iterations', duration_ms: Date.now() - startedAt, tool_turns: toolTurns, partial: true },
       }
     },
   }

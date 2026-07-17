@@ -228,6 +228,20 @@ async function main() {
     check('anti-espiral: inyecta FRENO tras 2 fallos', typeof ultTR.content === 'string' && /FRENO/.test(ultTR.content))
   }
 
+  // --- CORTE DURO POR COSTO: la tarea frena al pasar maxCostUsd (no vacía el crédito) ---
+  {
+    let calls = 0
+    const client = { messages: { create: async () => {
+      calls++
+      return { id: 'c' + calls, stop_reason: 'tool_use', usage: { input_tokens: 100000, output_tokens: 50000 }, content: [{ type: 'tool_use', id: 'tu', name: 't', input: {} }] }
+    } } }
+    const eng = makeAnthropicEngine({ config: CFG, client })
+    const out = await eng.run({ prompt: 'x', model: 'sonnet', maxCostUsd: 0.001, tools: [{ name: 't', description: 'd', input_schema: {} }], toolExecutor: async () => 'ok', maxToolIterations: 26 }, ctx)
+    check('costo: frenó MUCHO antes de las 26 iteraciones', calls <= 2)
+    check('costo: avisa que frenó por tope de costo', /tope de costo/i.test(out.result))
+    check('costo: raw.stop_reason = cost_cap', out.raw?.stop_reason === 'cost_cap')
+  }
+
   // --- TOOL-USE: falta toolExecutor -> error claro no reintentable ---
   {
     const client = { messages: { create: async () => ({ id: 'z', content: [] }) } }
