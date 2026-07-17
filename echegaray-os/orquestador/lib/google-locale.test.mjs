@@ -1,0 +1,29 @@
+#!/usr/bin/env node
+// Test de localización de fórmulas es-AR (google.mjs _convertFormula). El modelo escribe fórmulas
+// CANÓNICAS (coma=separador, punto=decimal); en un sheet es_AR hay que pasar a ';'=separador y
+// ','=decimal. El bug real: antes solo se hacía coma→';' y el punto decimal quedaba → "=A1*1.02"
+// se leía como A1*102 (número MAL). Hermético, 0 API.
+import { makeGoogleClient } from './google.mjs'
+
+let ok = 0, fail = 0
+const check = (n, c) => { if (c) ok++; else { fail++; console.error(`FALLA: ${n} → ${c}`) } }
+const f = makeGoogleClient()._convertFormula
+
+// separador de argumentos: coma → ';'
+check('SUM: coma→;', f('=SUM(A1,A2)') === '=SUM(A1;A2)')
+check('VLOOKUP multi-arg', f('=VLOOKUP(A1,B:C,2,FALSE)') === '=VLOOKUP(A1;B:C;2;FALSE)')
+// decimal: punto → ',' (el bug del +2%)
+check('decimal *1.02 → *1,02 (2% bien, no 10200%)', f('=G62*1.02') === '=G62*1,02')
+check('decimal 0.21 (IVA)', f('=A1*0.21') === '=A1*0,21')
+check('mixto: separador y decimal', f('=ROUND(A1*1.05,2)') === '=ROUND(A1*1,05;2)')
+// strings: NO tocar el contenido entre comillas dobles ni simples
+check('SUBSTITUTE: el "." del string NO se toca, sí los separadores', f('=VALUE(SUBSTITUTE(G62,".",""))') === '=VALUE(SUBSTITUTE(G62;".";""))')
+check('string con coma adentro no se toca', f('=CONCAT(A1,", pesos")') === '=CONCAT(A1;", pesos")')
+check('pestaña con punto en comillas simples', f("='Hoja.2'!A1+1.5") === "='Hoja.2'!A1+1,5")
+// no-fórmulas y sin cambios
+check('no-fórmula (texto) intacto', f('hola, mundo') === 'hola, mundo')
+check('número plano (no string =) intacto', f(1234) === 1234)
+check('fórmula sin comas/puntos intacta', f('=A1*102/100') === '=A1*102/100')
+
+console.log(`\ngoogle-locale.test: ${ok} OK, ${fail} FALLA`)
+process.exit(fail ? 1 : 0)

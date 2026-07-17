@@ -336,10 +336,18 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
   }
   function convertFormula(s) {
     if (typeof s !== 'string' || s[0] !== '=') return s
-    let out = '', inStr = false
+    // El modelo escribe fórmulas en formato CANÓNICO (coma = separador de argumentos, punto =
+    // decimal). En un sheet es_AR hay que convertir a ';' = separador y ',' = decimal. Antes SOLO
+    // se hacía coma→';' y el PUNTO DECIMAL quedaba intacto → "=A1*1.02" se leía como A1*102 (en
+    // es_AR el punto es separador de miles) = número MAL (reclamo real del dueño: "pone mal los
+    // números"). Se respetan los literales de string (comillas dobles Y simples, ej. nombres de
+    // pestaña 'Hoja.2'!A1, o el "." dentro de SUBSTITUTE(...;".";"")).
+    let out = '', inStr = false, quote = ''
     for (const c of s) {
-      if (c === '"') { inStr = !inStr; out += c }
-      else if (!inStr && c === ',') out += ';'
+      if (inStr) { out += c; if (c === quote) inStr = false; continue }
+      if (c === '"' || c === "'") { inStr = true; quote = c; out += c; continue }
+      if (c === ',') out += ';'
+      else if (c === '.') out += ','
       else out += c
     }
     return out
