@@ -16,6 +16,7 @@ import { sheetsFormatTools } from '../lib/tools/sheets-format.mjs'
 import { docsFormatTools } from '../lib/tools/docs-format.mjs'
 import { workspaceTools } from '../lib/tools/workspace.mjs'
 import { appsheetPedidosTools } from '../lib/tools/appsheet-pedidos.mjs'
+import { sheetRenderTools } from '../lib/tools/sheet-render.mjs'
 import { operadorEmail, getTokenFor } from '../lib/google-oauth.mjs'
 
 async function markFailed(opId, error) {
@@ -61,7 +62,7 @@ export async function operationExecuteHandler(task, ctx) {
   const google = op_email
     ? makeGoogleClient({ config: ctx.config, scopes: WORKSPACE_SCOPES, getToken: getTokenFor(op_email) })
     : makeGoogleClient({ config: ctx.config, scopes: WRITE_SCOPES })
-  const registry = { ...driveWriteTools(google), ...sheetsFormatTools(op_email ? google : null), ...docsFormatTools(op_email ? google : null), ...workspaceTools({ google: op_email ? google : null }), ...appsheetPedidosTools({ google: op_email ? google : null }) }
+  const registry = { ...driveWriteTools(google), ...sheetsFormatTools(op_email ? google : null), ...docsFormatTools(op_email ? google : null), ...workspaceTools({ google: op_email ? google : null }), ...appsheetPedidosTools({ google: op_email ? google : null }), ...sheetRenderTools(op_email ? google : null) }
   const entry = Object.values(registry).find((t) => t.schema.name === toolName)
   if (!entry) {
     await markFailed(opId, `tool desconocida en la operación: ${toolName}`)
