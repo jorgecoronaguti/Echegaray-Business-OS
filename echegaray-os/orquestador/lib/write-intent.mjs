@@ -13,7 +13,16 @@
 // texto ANTES de testear la intención: la orden real ("agregá", "cargá") sobrevive; el
 // descriptor ("cargado") desaparece. Es lingüísticamente seguro: ningún imperativo/infinitivo
 // rioplatense termina en -ado ni en -ó, así que nunca borramos un verbo de acción real.
-export const WRITE_INTENT_RE = /\b(registr|agreg|añad|anot|escrib|orden|complet|corrig|carg|aplic|hacelo|hac[eé]|modific|pon[eé]|actualiz|edit|arregl|reemplaz|renombr|mov[eé]|crea|mejor|reconstru|rehac|rehag|rearm|arm[aá]|gener[aá]|calcul[aá]|llen[aá]|limpi|f[oó]rmula|borr|elimin|vaci|duplic|copi|marc[aá]|pas[aá]\s+a)/i
+// SUSTANTIVOS HOMÓGRAFOS de una raíz-verbo, separables por su terminación (medido: 9/10
+// reads fugaban a sonnet). Solo se acotan los CLARAMENTE separables sin romper la orden:
+//   registr(?!os?\b) → excluye el sustantivo "registro/registros" (termina en o/os);
+//                       deja "registrá/registra/registrar/registralo" (termina en a).
+//   orden(?=[aá])    → exige que "orden" vaya seguido de a/á: deja "ordená/ordenar/ordename",
+//                       excluye el sustantivo pelado "orden/ordenes/órdenes" ("la orden de compra").
+// NO se tocan copi/marc[aá]/carg: ahí sustantivo (copia/marca/carga) y verbo (copiá/marcá/cargá)
+// terminan igual en -a y el dueño omite acentos → separarlos rompería una orden real (peor que
+// la fuga de un read: la orden iría a haiku y no se ejecutaría). Se prefiere no romper la acción.
+export const WRITE_INTENT_RE = /\b(registr(?!os?\b)|agreg|añad|anot|escrib|orden(?=[aá])|complet|corrig|carg|aplic|hacelo|hac[eé]|modific|pon[eé]|actualiz|edit|arregl|reemplaz|renombr|mov[eé]|crea|mejor|reconstru|rehac|rehag|rearm|arm[aá]|gener[aá]|calcul[aá]|llen[aá]|limpi|f[oó]rmula|borr|elimin|vaci|duplic|copi|marc[aá]|pas[aá]\s+a)/i
 
 // Participios (-ado/-ada/-ados/-adas) y pretéritos (-ó) = descriptores de dato, no órdenes.
 // El cierre NO usa \b (en JS \b es ASCII y NO detecta el borde tras la "ó" acentuada: dejaba

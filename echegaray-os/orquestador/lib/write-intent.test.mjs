@@ -45,6 +45,21 @@ yes('borrá la fila')
 yes('poné la fórmula en la columna F')
 yes('reemplazá el valor de la celda B2')
 
+// SUSTANTIVO HOMÓGRAFO separable (registro/orden) → NO write; el verbo homógrafo → SÍ.
+no('mostrame ese registro de compras')
+no('cuántos registros hay en la pestaña')
+no('cuál es la orden de compra de Corralón')
+no('las órdenes de compra pendientes')
+no('la orden de pago ya salió?')
+yes('registrá ese comprobante')
+yes('registra el pago de hoy')          // orden sin acento = igual es orden de escribir
+yes('ordená la pestaña por fecha')
+yes('cargá la orden de compra en el sheet')  // "orden de" no cuenta, pero "cargá" sí
+// copi/marc/carg NO se acotan (sustantivo=verbo en -a): se preserva la orden a costa de que
+// "una copia"/"la marca"/"la carga" sigan yendo a sonnet (write-safety > fuga de un read).
+yes('copiá la fila 5 a la 6')
+yes('marcá el pedido como entregado')
+
 // Lecturas/charla puras → NO write.
 no('cuánto tengo en caja hoy')
 no('qué obras tengo activas')
