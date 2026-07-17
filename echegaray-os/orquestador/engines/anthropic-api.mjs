@@ -248,6 +248,17 @@ export function makeAnthropicEngine({ config, client, breaker, semaphore }) {
         if (block && typeof block === 'object') { block.cache_control = { type: 'ephemeral' }; rollingCached = block }
       }
 
+      // ANTI-ESPIRAL DE REINTENTOS: cuando una tool falla (ej. un formato de Sheet que choca con
+      // celdas combinadas, o un gráfico con el eje mal), el modelo tendía a REPETIR la misma
+      // llamada hasta agotar las 26 iteraciones → 3 min, tokens quemados, resultado a medias (el
+      // reclamo real del dueño: "se clava y hace todo de cualquier forma"). Contamos los fallos
+      // por tool y le inyectamos una orden firme para que DEJE de reintentar y cierre con lo hecho.
+      const toolFails = new Map()
+      const esFallo = (isError, contentStr) =>
+        isError || (typeof contentStr === 'string'
+          && /"error"\s*:|api 400|INVALID_ARGUMENT|no pude\b|no puedes\b/i.test(contentStr.slice(0, 400))
+          && !/"queued"\s*:\s*true/.test(contentStr))
+
       for (let i = 0; i < maxIterations; i++) {
         setRollingCache()
         const response = await callModel(messages)
@@ -277,6 +288,13 @@ export function makeAnthropicEngine({ config, client, breaker, semaphore }) {
               // Un fallo de tool no rompe el razonamiento: vuelve al modelo como error.
               content = `ERROR: ${String(err?.message ?? err).slice(0, 500)}`
               isError = true
+            }
+            // Freno anti-espiral: si esta tool ya falló, escalamos la orden de NO reintentar.
+            if (esFallo(isError, content)) {
+              const n = (toolFails.get(block.name) || 0) + 1
+              toolFails.set(block.name, n)
+              if (n === 2) content += `\n\n[FRENO: la tool ${block.name} YA FALLÓ 2 veces con un error similar. NO la vuelvas a llamar con los mismos argumentos. Si es un problema de formato (celdas combinadas, eje de gráfico, rango), SALTÁ ese paso puntual, dejá TODO el resto hecho, y seguí. No repitas la misma llamada.]`
+              else if (n >= 3) content += `\n\n[BASTA: la tool ${block.name} falló ${n} veces. DEJÁ de intentar eso. Dame YA la respuesta final con lo que sí lograste y avisá en UNA línea qué no se pudo por ese error. No llames más esta tool.]`
             }
             const tr = { type: 'tool_result', tool_use_id: block.id, content }
             if (isError) tr.is_error = true

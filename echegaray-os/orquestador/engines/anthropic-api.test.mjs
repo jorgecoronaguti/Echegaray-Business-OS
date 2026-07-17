@@ -210,6 +210,24 @@ async function main() {
     check('tooluse-error: mandó tool_result is_error', seen[1].messages[2].content[0].is_error === true)
   }
 
+  // --- ANTI-ESPIRAL: una tool que falla repetido recibe el FRENO inyectado (no reintenta 26x) ---
+  {
+    let calls = 0
+    const seen = []
+    const client = { messages: { create: async (p) => {
+      calls++; seen.push(p)
+      if (calls <= 2) return { id: 'f' + calls, stop_reason: 'tool_use', usage: { input_tokens: 5, output_tokens: 3 }, content: [{ type: 'tool_use', id: 'tu' + calls, name: 'drive.freeze', input: {} }] }
+      return { id: 'fin', stop_reason: 'end_turn', usage: { input_tokens: 4, output_tokens: 2 }, content: [{ type: 'text', text: 'salté el freeze y seguí' }] }
+    } } }
+    const eng = makeAnthropicEngine({ config: CFG, client })
+    // la tool devuelve {error} (no throw), como el tool-executor real ante un 400 de Google
+    const out = await eng.run({ prompt: 'x', tools: [{ name: 'drive.freeze', description: 'd', input_schema: {} }], toolExecutor: async () => ({ error: 'google api 400: INVALID_ARGUMENT' }), maxToolIterations: 26 }, ctx)
+    check('anti-espiral: cerró sin agotar iteraciones', out.result === 'salté el freeze y seguí' && calls === 3)
+    // el 2do fallo inyecta el FRENO en el tool_result que se manda en la 3ra llamada
+    const ultTR = seen[2].messages.at(-1).content.at(-1)
+    check('anti-espiral: inyecta FRENO tras 2 fallos', typeof ultTR.content === 'string' && /FRENO/.test(ultTR.content))
+  }
+
   // --- TOOL-USE: falta toolExecutor -> error claro no reintentable ---
   {
     const client = { messages: { create: async () => ({ id: 'z', content: [] }) } }

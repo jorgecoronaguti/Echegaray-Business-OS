@@ -213,13 +213,28 @@ export function sheetsFormatTools(google) {
         if (!input?.file_id || !input?.tab) return { error: 'faltan file_id o tab' }
         const s = (await google.getSheetMeta(input.file_id)).find((x) => x.title === input.tab)
         if (!s) return { error: `no encontré la pestaña "${input.tab}"` }
-        const gridProperties = {}
-        const fields = []
-        if (input.filas != null) { gridProperties.frozenRowCount = Number(input.filas); fields.push('gridProperties.frozenRowCount') }
-        if (input.columnas != null) { gridProperties.frozenColumnCount = Number(input.columnas); fields.push('gridProperties.frozenColumnCount') }
-        if (!fields.length) return { error: 'indicá filas y/o columnas a congelar' }
-        await google.spreadsheetBatchUpdate(input.file_id, [{ updateSheetProperties: { properties: { sheetId: s.sheetId, gridProperties }, fields: fields.join(',') } }])
-        return { ok: true, tab: input.tab, filas: input.filas ?? 0, columnas: input.columnas ?? 0 }
+        const wantRows = input.filas != null ? Number(input.filas) : null
+        const wantCols = input.columnas != null ? Number(input.columnas) : null
+        if (wantRows == null && wantCols == null) return { error: 'indicá filas y/o columnas a congelar' }
+        const doFreeze = async (rows, cols) => {
+          const gp = {}; const fields = []
+          if (rows != null) { gp.frozenRowCount = rows; fields.push('gridProperties.frozenRowCount') }
+          if (cols != null) { gp.frozenColumnCount = cols; fields.push('gridProperties.frozenColumnCount') }
+          await google.spreadsheetBatchUpdate(input.file_id, [{ updateSheetProperties: { properties: { sheetId: s.sheetId, gridProperties: gp }, fields: fields.join(',') } }])
+        }
+        // Freeze RESILIENTE: si choca con celdas combinadas (400), reintenta solo filas (lo
+        // habitual: fijar encabezado) y si tampoco, saltea con aviso SUAVE — nunca tira error
+        // que haga al modelo reintentar en loop (causa real de "se clava con una pestaña").
+        try {
+          await doFreeze(wantRows, wantCols)
+          return { ok: true, tab: input.tab, filas: wantRows ?? 0, columnas: wantCols ?? 0 }
+        } catch (e) {
+          const esMerge = /combinada|merged|inmoviliz|part of a merge/i.test(String(e?.message ?? e))
+          if (esMerge && wantRows != null) {
+            try { await doFreeze(wantRows, null); return { ok: true, tab: input.tab, filas: wantRows, columnas: 0, nota: 'Congelé solo las filas; las columnas tienen celdas combinadas que lo impiden.' } } catch { /* cae al aviso */ }
+          }
+          return { ok: true, aplicado: false, tab: input.tab, nota: `Salteé el freeze en "${input.tab}" (hay celdas combinadas). Seguí sin eso; NO reintentes esta operación.` }
+        }
       },
     },
     'drive.autoresize': {
@@ -294,10 +309,15 @@ export function sheetsFormatTools(google) {
         if (tipo === 'torta') {
           spec = { title: input.titulo || '', pieChart: { legendPosition: 'RIGHT_LEGEND', domain: src(gr.startColumnIndex, gr.startColumnIndex + 1), series: src(gr.startColumnIndex + 1, gr.startColumnIndex + 2) } }
         } else {
+          const chartType = CHART_TIPO[tipo] || 'COLUMN'
+          // En un gráfico de BARRAS (horizontal) el eje de valores es el de ABAJO; en columnas/
+          // línea/área es el de la IZQUIERDA. Apuntar al eje equivocado = 400 "Bar charts series
+          // may only target the BOTTOM_AXIS" (reclamo real del dueño). Se elige según el tipo.
+          const valueAxis = chartType === 'BAR' ? 'BOTTOM_AXIS' : 'LEFT_AXIS'
           const series = []
-          for (let c = gr.startColumnIndex + 1; c < gr.endColumnIndex; c++) series.push({ series: src(c, c + 1), targetAxis: 'LEFT_AXIS' })
+          for (let c = gr.startColumnIndex + 1; c < gr.endColumnIndex; c++) series.push({ series: src(c, c + 1), targetAxis: valueAxis })
           spec = { title: input.titulo || '', basicChart: {
-            chartType: CHART_TIPO[tipo] || 'COLUMN', legendPosition: 'BOTTOM_LEGEND', headerCount: 1,
+            chartType, legendPosition: 'BOTTOM_LEGEND', headerCount: 1,
             axis: [{ position: 'BOTTOM_AXIS' }, { position: 'LEFT_AXIS' }],
             domains: [{ domain: src(gr.startColumnIndex, gr.startColumnIndex + 1) }],
             series,
