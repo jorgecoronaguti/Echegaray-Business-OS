@@ -69,7 +69,21 @@ export function sheetRenderTools(google) {
         const ancho = Math.max(...filas.map((f) => (Array.isArray(f) ? f.length : 1)))
 
         const requests = []
-        // 0) LIMPIEZA ACOTADA (no destructiva). Antes esto borraba la PESTAÑA ENTERA a ciegas:
+        // 0a) AGRANDAR LA GRILLA si el bloque no entra. Antes, si el reporte era más ancho o más
+        //    largo que las dimensiones actuales de la pestaña, updateCells tiraba 400 "Attempting
+        //    to write column N beyond the grid" — y como va en el batch de CONTENIDO, se caía TODA
+        //    la escritura (le pasó al dueño: "no completa el dato"). Crecemos la grilla PRIMERO, en
+        //    el mismo batch atómico (ampliar rowCount/columnCount nunca falla), así el updateCells
+        //    siempre entra. Solo si conocemos las dims actuales (meta las reporta) y hacen falta.
+        const needRows = r0 + filas.length
+        const needCols = c0 + ancho
+        const grow = {}
+        if (Number(hoja.rows) > 0 && needRows > Number(hoja.rows)) grow.rowCount = needRows
+        if (Number(hoja.cols) > 0 && needCols > Number(hoja.cols)) grow.columnCount = needCols
+        if (grow.rowCount || grow.columnCount) {
+          requests.push({ updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: grow }, fields: Object.keys(grow).map((k) => `gridProperties.${k}`).join(',') } })
+        }
+        // 0b) LIMPIEZA ACOTADA (no destructiva). Antes esto borraba la PESTAÑA ENTERA a ciegas:
         //    si la tarea se cortaba (tope de costo / max_tokens) DESPUÉS de limpiar y ANTES de
         //    reescribir todo, se perdían secciones enteras (le pasó al dueño: se borró §7 Deudas).
         //    Ahora limpia SOLO las filas que este render reescribe (del anclaje al final del

@@ -59,6 +59,34 @@ async function main() {
     check('limpiar_pestana respeta el anclaje (fila 5 → índice 4, solo 2 filas)', anchoTotal)
   }
 
+  // Si el bloque NO ENTRA en la grilla actual (más ancho/largo que rowCount/columnCount), el
+  // render debe AGRANDAR la grilla ANTES de escribir, en el MISMO batch atómico (updateSheetProperties
+  // con gridProperties). Así "Attempting to write beyond the grid" nunca tira el contenido.
+  {
+    const c3 = []
+    const g3 = { async getSheetMeta() { return [{ sheetId: 9, title: 'CHICA', rows: 3, cols: 2 }] }, async spreadsheetBatchUpdate(f, r) { c3.push(r) } }
+    await sheetRenderTools(g3)['sheet.render'].run({
+      file_id: 'x', tab: 'CHICA', anclaje: 'A1', filas: [
+        [{ t: 'a' }, { t: 'b' }, { t: 'c' }, { t: 'd' }], // 4 columnas > 2
+        [{ t: 'e' }], [{ t: 'f' }], [{ t: 'g' }], [{ t: 'h' }], // 5 filas > 3
+      ],
+    })
+    const grow = c3[0].find((r) => r.updateSheetProperties)
+    check('agranda la grilla cuando el bloque no entra', !!grow)
+    check('crece a >=4 columnas', grow?.updateSheetProperties?.properties?.gridProperties?.columnCount >= 4)
+    check('crece a >=5 filas', grow?.updateSheetProperties?.properties?.gridProperties?.rowCount >= 5)
+    const idxGrow = c3[0].findIndex((r) => r.updateSheetProperties)
+    const idxWrite = c3[0].findIndex((r) => r.updateCells && r.updateCells.rows)
+    check('el crecimiento va ANTES del updateCells (mismo batch atómico)', idxGrow >= 0 && idxWrite >= 0 && idxGrow < idxWrite)
+  }
+  // Si el bloque SÍ entra, NO toca las dimensiones (no ensucia con updateSheetProperties inútil).
+  {
+    const c4 = []
+    const g4 = { async getSheetMeta() { return [{ sheetId: 1, title: 'GRANDE', rows: 1000, cols: 26 }] }, async spreadsheetBatchUpdate(f, r) { c4.push(r) } }
+    await sheetRenderTools(g4)['sheet.render'].run({ file_id: 'x', tab: 'GRANDE', filas: [[{ t: 'a' }, { t: 'b' }]] })
+    check('no agranda si el bloque ya entra', !c4[0].some((r) => r.updateSheetProperties && r.updateSheetProperties.properties.gridProperties.rowCount))
+  }
+
   console.log(`\nsheet-render.test: ${ok} OK, ${fail} FALLA`)
   process.exit(fail ? 1 : 0)
 }
