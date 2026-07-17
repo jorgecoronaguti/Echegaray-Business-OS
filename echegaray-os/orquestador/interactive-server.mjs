@@ -60,6 +60,7 @@ import { isMailComposeIntent, isCalendarWriteIntent } from './lib/chat-intents.m
 import { stripPreamble } from './lib/chat-format.mjs'
 import { personaParaConsulta } from './lib/chat-persona.mjs'
 import { isWriteIntent } from './lib/write-intent.mjs'
+import { isBudgetingIntent } from './lib/budget-intent.mjs'
 import { propuestasMejoraResumen } from './lib/mejoras.mjs'
 import { createSchedule, listSchedules, toggleSchedule } from './lib/schedules.mjs'
 import { enqueueTask } from './lib/ledger.mjs'
@@ -477,7 +478,11 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // criterio real — escribir, interpretar un adjunto, o presupuestar; haiku (barato,
   // rápido) para consultas simples y de charla. Antes era sonnet-siempre y quemaba
   // crédito hasta en un "hola". `fast === false` fuerza sonnet si el pedido lo pide.
-  const budgetingKw = /presupuest|cotiz|c[oó]mputo|precio unitario|an[aá]lisis de precio|arm[aá].*(presupuesto|oferta)|apu\b/i.test(directive)
+  // CREAR/cotizar un presupuesto (no consultar uno existente) → sonnet + método. isBudgetingIntent
+  // vive en ./lib/budget-intent.mjs (guard de costo testeable): exige el VERBO de la acción
+  // (cotizá/presupuestar) o un verbo de crear cerca del sustantivo, NO el sustantivo "presupuesto"
+  // solo — que aparece en reads ("mostrame el presupuesto", "cuánto cotizamos") y fugaba a sonnet.
+  const budgetingKw = isBudgetingIntent(directive)
   // Intención de enseñar/corregir → sonnet, que llama la tool "aprender" de forma confiable
   // (haiku a veces no la invoca). Así la captura automática de correcciones funciona.
   const teachingIntent = /\b(ten[eé] en cuenta|en realidad|ojo que|que quede claro|te corrijo|corrijo|est[aá] mal|te equivocaste|no es as[ií]|acord[aá]te|record[aá]|aprend[eé]|anot[aá])\b/i.test(directive)
@@ -766,7 +771,11 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // Presupuestación detectada por KEYWORDS (no por el clasificador ganador: "jornal"
   // caía en RRHH y respondía con jornales viejos). Los jornales UOCRA verificados se
   // inyectan siempre que el tema toque mano de obra, aunque haya ruteado a RRHH.
-  const isBudgeting = /presupuest|cotiz|c[oó]mputo|precio unitario|an[aá]lisis de precio|arm[aá].*(presupuesto|oferta)|apu\b/i.test(directive) || capability === 'advise.estimating'
+  // Misma detección de CREAR presupuesto que el modelo. Antes OR-eaba `capability ===
+  // 'advise.estimating'`, pero esa capability la dispara el SUSTANTIVO en un read ("mostrame el
+  // presupuesto") → inyectaba el método + UOCRA + desactivaba caché en una simple consulta. Ahora
+  // solo cuando hay intención real de crear/cotizar; el read de un presupuesto queda barato.
+  const isBudgeting = isBudgetingIntent(directive)
 
   // ── CEREBRO QUE COMPONE — caché de respuestas (0 API en la repetición) ──────────
   // Solo es cacheable el subconjunto SEGURO: pregunta standalone (sin hilo), sin adjunto,
