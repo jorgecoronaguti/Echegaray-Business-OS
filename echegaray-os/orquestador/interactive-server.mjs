@@ -44,6 +44,7 @@ import { appsheetPedidosTools } from './lib/tools/appsheet-pedidos.mjs'
 import { gastoSheetTools } from './lib/tools/gasto-sheet.mjs'
 import { sheetRenderTools } from './lib/tools/sheet-render.mjs'
 import { sheetDropdownTools } from './lib/tools/sheet-dropdowns.mjs'
+import { briefingCajaTools } from './lib/tools/briefing-caja-tool.mjs'
 import { estadoOperativoObra, esObraOperativa } from './lib/obra-operativa.mjs'
 import { findObras } from './lib/obra-economics.mjs'
 import { agendaResumen, mailsResumen } from './lib/agenda-mail.mjs'
@@ -122,7 +123,7 @@ async function driveRegistry(attachment, userEmail) {
   const google = op
     ? makeGoogleClient({ config: cfg, scopes: WORKSPACE_SCOPES, getToken: getTokenFor(op) })
     : makeGoogleClient({ config: cfg })
-  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...sheetsFormatTools(op ? google : null), ...docsFormatTools(op ? google : null), ...osDataTools(), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ google: op ? google : null }), ...appsheetPedidosTools({ google: op ? google : null }), ...gastoSheetTools(op ? google : null), ...sheetRenderTools(op ? google : null), ...sheetDropdownTools(op ? google : null) }
+  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...sheetsFormatTools(op ? google : null), ...docsFormatTools(op ? google : null), ...osDataTools(), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ google: op ? google : null }), ...appsheetPedidosTools({ google: op ? google : null }), ...gastoSheetTools(op ? google : null), ...sheetRenderTools(op ? google : null), ...sheetDropdownTools(op ? google : null), ...briefingCajaTools(op ? google : null) }
   // Si el dueño adjuntó una imagen/archivo, exponer una tool para GUARDARLO en su Drive.
   if (attachment?.data && attachment?.media_type) {
     registry['drive.upload_adjunto'] = {
