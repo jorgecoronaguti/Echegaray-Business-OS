@@ -59,6 +59,7 @@ import { extraerRestricciones, DOCTRINA_EDICION, VERIFICACION_EDICION } from './
 import { isMailComposeIntent, isCalendarWriteIntent } from './lib/chat-intents.mjs'
 import { stripPreamble } from './lib/chat-format.mjs'
 import { personaParaConsulta } from './lib/chat-persona.mjs'
+import { WRITE_INTENT_RE } from './lib/write-intent.mjs'
 import { propuestasMejoraResumen } from './lib/mejoras.mjs'
 import { createSchedule, listSchedules, toggleSchedule } from './lib/schedules.mjs'
 import { enqueueTask } from './lib/ledger.mjs'
@@ -424,7 +425,9 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // literal. Antes se miraba solo la directiva actual → un "a" caía como charla
   // trivial (modelo tímido, pocas iteraciones) y el OS reseteaba en vez de ejecutar
   // la opción elegida. Ahora miramos la directiva Y el historial reciente.
-  const WRITE_RE = /\b(registr|agreg|añad|anot|escrib|orden|complet|corrig|carg|aplic|hacelo|hac[eé]|modific|pon[eé]|actualiz|edit|arregl|reemplaz|renombr|mov[eé]|crea|mejor|reconstru|rehac|rehag|rearm|arm[aá]|gener[aá]|complet|calcul[aá]|llen[aá]|limpi|f[oó]rmula|borr|elimin|vaci|duplic|copi|marc[aá]|pas[aá]\s+a)/i
+  // WRITE_INTENT_RE vive en ./lib/write-intent.mjs (guard de costo testeable): un falso
+  // positivo manda un READ barato a sonnet. La raíz 'carg' NO cuenta el participio "cargado".
+  const WRITE_RE = WRITE_INTENT_RE
   const CONFIRM_RE = /^\s*(s[ií]|dale|ok(ay)?|listo|hacelo|hazlo|aplicalo?|proced[eé]|adelante|confirmo|de una|opci[oó]n\s*)?[\s,.:]*([abc]|[123]|la\s*[123]|el\s*[123]|es[ae]|aquel[la]?)?\s*$/i
   const histText = Array.isArray(history) ? history.slice(-4).map((m) => String(m.text || '')).join('\n') : ''
   // AUTO-MEJORA (0-API, fire-and-forget): si el dueño RECHAZA la respuesta anterior ("no sirve",
