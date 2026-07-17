@@ -180,11 +180,11 @@ function attachmentBlock(att) {
 // en qué se le va el crédito sin entrar a la consola. Aproximado; el total real vive en
 // console.anthropic.com. Se resetea al reiniciar el servicio.
 const COST = { since: Date.now(), total: 0, n: 0, byModel: {} }
-function trackCost(usd, model, rol) {
+function trackCost(usd, model, rol, motivo) {
   const u = Number(usd) || 0
   COST.total += u; COST.n++; COST.byModel[model] = (COST.byModel[model] || 0) + u
   // Persistir para que el TOPE diario sea honesto entre reinicios (no solo en memoria).
-  if (u > 0) query(`insert into orq.chat_cost (model, usd, rol) values ($1, $2, $3)`, [model, u, rol || null]).catch(() => {})
+  if (u > 0) query(`insert into orq.chat_cost (model, usd, rol, motivo) values ($1, $2, $3, $4)`, [model, u, rol || null, motivo || null]).catch(() => {})
 }
 // Cerebro que compone: cuántas preguntas respondió la caché con 0 API (y el ahorro estimado).
 const CACHE_STATS = { hits: 0, misses: 0 }
@@ -530,6 +530,16 @@ async function ask({ directive, fileId, fast, attachments, attachment, history, 
   // ahora por el lado correcto: contexto acotado (tope de tool_result) + tope de costo por
   // tarea, que dejan una edición en centavos. Solo se degrada lo NO crítico (charla/consulta).
   if (model === 'sonnet' && !tareaCritica && degradarModeloOnDemand(presupuesto.modo)) { model = 'haiku'; degradadoPorCosto = true }
+  // MOTIVO de la elección de modelo (telemetría de costo — se persiste en chat_cost). Distingue,
+  // sobre todo, el ADJUNTO de LECTURA (chequear "¿está cargado?", candidato a haiku) del ADJUNTO
+  // de ESCRITURA (cargar el gasto, necesita sonnet). Así "sum(usd) by motivo" dice qué mover.
+  const motivoModelo = degradadoPorCosto ? 'degradado'
+    : model === 'haiku' ? 'simple'
+      : hasAtt ? (writeIntent ? 'adjunto_escritura' : 'adjunto_lectura')
+        : writeToDocIntent ? 'escritura_sheet' : writeIntent ? 'escritura' : fileId ? 'archivo_abierto'
+          : budgetingKw ? 'presupuesto' : asesoriaProfunda ? 'criterio' : mailComposeIntent ? 'mail'
+            : teachingIntent ? 'ensenar' : researchLearnIntent ? 'investigar' : scheduleCreateIntent ? 'agenda'
+              : fast === false ? 'fast_off' : 'otro'
   const engine = resolveEngine('anthropic-api')
 
   // Fase 3: rutear al especialista correcto. Clasificamos la directiva a un dominio
@@ -1024,7 +1034,7 @@ async function ask({ directive, fileId, fast, attachments, attachment, history, 
       label: `${capability || 'general'}${hasAtt ? '+adj' : ''}${writeIntent ? '+escr' : ''}:${String(directive || '').replace(/\s+/g, ' ').slice(0, 70)}`,
       tools: Object.values(registry).map((t) => t.schema), toolExecutor, agentSlug: 'interactive' },
     CTX)
-  trackCost(eng.cost?.usd ?? 0, model, rol)
+  trackCost(eng.cost?.usd ?? 0, model, rol, motivoModelo)
   // PRP-018 F3: si el pedido no lo cubrió ningún dominio y el modelo admitió no poder,
   // registrar el gap (propone capacidad solo ante recurrencia). Fire-and-forget: nunca
   // demora ni rompe la respuesta al dueño.
