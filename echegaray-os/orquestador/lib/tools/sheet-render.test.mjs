@@ -25,7 +25,9 @@ async function main() {
   })
 
   check('devuelve ok', out.ok === true)
-  check('UNA sola llamada a la API (no poke-por-poke)', calls.length === 1)
+  // El CONTENIDO va en UNA sola llamada (no poke-por-poke). El freeze puede ir en una 2ª
+  // llamada aparte (para que un freeze fallido no tire abajo la escritura) → ≤2 llamadas.
+  check('contenido en UNA sola llamada (no poke-por-poke)', calls.length <= 2 && calls[0].reqs.filter((r) => r.updateCells).length >= 1)
   const reqs = calls[0].reqs
   check('un updateCells con todo el bloque', reqs.filter((r) => r.updateCells).length === 1)
   const rows = reqs.find((r) => r.updateCells).updateCells.rows
@@ -36,7 +38,8 @@ async function main() {
   check('fórmula sin "=" se completa', (await (async () => { const c = []; const g = { async getSheetMeta() { return [{ sheetId: 1, title: 'T' }] }, async spreadsheetBatchUpdate(f, r) { c.push(r) } }; await sheetRenderTools(g)['sheet.render'].run({ file_id: 'x', tab: 'T', filas: [[{ f: 'A1+B1' }]] }); return c[0].find((r) => r.updateCells).updateCells.rows[0].values[0].userEnteredValue.formulaValue })()) === '=A1+B1')
   check('merge del título (combinar:3)', !!reqs.find((r) => r.mergeCells))
   check('limpia merges previos (unmergeCells)', !!reqs.find((r) => r.unmergeCells))
-  check('congela encabezado', !!reqs.find((r) => r.updateSheetProperties))
+  check('congela encabezado (en alguna llamada)', calls.some((c) => c.reqs.some((r) => r.updateSheetProperties)))
+  check('freeze NO va en el batch de contenido (no puede tirar la escritura)', !calls[0].reqs.some((r) => r.updateSheetProperties))
   check('pestaña inexistente → error claro', (await sheetRenderTools(google)['sheet.render'].run({ file_id: 'x', tab: 'NOEXISTE', filas: [[{ t: 'a' }]] })).error != null)
 
   // limpiar_pestana debe ser NO DESTRUCTIVO: limpia SOLO las filas que reescribe (rango acotado

@@ -98,11 +98,22 @@ export function sheetRenderTools(google) {
             ci += span
           }
         })
-        // 3) congelar encabezado (opcional)
-        if (input.congelar_encabezado) requests.push({ updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { frozenRowCount: r0 + 1 } }, fields: 'gridProperties.frozenRowCount' } })
-
+        // 3) ESCRIBIR el contenido (valores+formato+merges) — atómico y OBLIGATORIO.
         await google.spreadsheetBatchUpdate(input.file_id, requests)
-        return { ok: true, tab: input.tab, filas: filas.length, columnas: ancho, requests: requests.length, nota: 'Tabla escrita en UNA sola pasada (valores+formato+merges+freeze).' }
+        // 4) congelar encabezado: VA APARTE, NO en el batch de arriba. Si la pestaña tiene una
+        //    celda combinada que cruza la línea de freeze, updateSheetProperties tira 400 — y si
+        //    estuviera en el mismo batch atómico, se caería TODA la escritura (el contenido se
+        //    perdía = "no escribió nada"). Como paso separado, un freeze fallido es cosmético: el
+        //    contenido YA quedó escrito. Fallo suave, con nota.
+        let freezeNota = ''
+        if (input.congelar_encabezado) {
+          try {
+            await google.spreadsheetBatchUpdate(input.file_id, [{ updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { frozenRowCount: r0 + 1 } }, fields: 'gridProperties.frozenRowCount' } }])
+          } catch {
+            freezeNota = ' (no pude congelar el encabezado por una celda combinada, pero el contenido quedó escrito).'
+          }
+        }
+        return { ok: true, tab: input.tab, filas: filas.length, columnas: ancho, requests: requests.length, nota: 'Tabla escrita en UNA sola pasada (valores+formato+merges).' + freezeNota }
       },
     },
   }
