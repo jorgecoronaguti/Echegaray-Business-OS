@@ -43,7 +43,7 @@ export function sheetRenderTools(google) {
       account: 'ecsas',
       schema: {
         name: 'drive_render_tabla',
-        description: 'ARMA/REHACE una tabla, reporte o PESTAÑA ENTERA en un Google Sheet de UNA SOLA VEZ (valores + formato + títulos + combinaciones + congelar, todo en una pasada). USALO SIEMPRE para construir o rehacer contenido de un Sheet — es MUCHO más rápido y barato que ir celda por celda con drive_update/format/merge (NO lo hagas así, quema créditos y queda desalineado). Para REHACER UNA PESTAÑA COMPLETA: leé toda la pestaña primero, armá TODAS sus filas (todas las secciones, con columnas alineadas entre sí) y pasalas juntas con limpiar_pestana:true. Pasá file_id, tab (pestaña destino ya existente), anclaje (celda A1 de arranque, ej "A1"), filas (array de filas; cada fila = array de celdas), congelar_encabezado, y limpiar_pestana:true para BORRAR todo lo previo de la pestaña y escribirla entera de nuevo (rehacer completo). Cada celda es {t:texto} o {n:número} o {f:"=fórmula"}, con estilo opcional ("titulo"|"encabezado"|"etiqueta"|"moneda"|"moneda_negrita"|"total"|"pct"|"normal") y combinar:N (combinar a lo ancho de N columnas, para títulos). Totales/subtotales SIEMPRE {f:"=SUM(...)"} (fórmula), NUNCA número tipeado. REQUIERE aprobación.',
+        description: 'ARMA/REHACE una tabla o reporte en un Google Sheet de UNA SOLA VEZ (valores + formato + títulos + combinaciones + congelar, todo en una pasada). USALO para construir o reescribir contenido de un Sheet — es MUCHO más rápido y barato que ir celda por celda con drive_update/format/merge (NO lo hagas así, quema créditos y queda desalineado). ⚠️ NUNCA regeneres de memoria una pestaña grande con datos que ya existen (ej. un RESUMEN de 100+ filas con muchas secciones): NO entra en una sola respuesta, se corta a la mitad y PERDÉS secciones. Si la pestaña ya tiene datos y solo hay que ARREGLAR formato/alineación, tocá SOLO eso; si el RESUMEN debe reflejar otras pestañas, usá FÓRMULAS que las referencien (no vuelvas a tipear los datos). Pasá file_id, tab (pestaña destino ya existente), anclaje (celda A1 de arranque, ej "A1"), filas (array de filas; cada fila = array de celdas), congelar_encabezado, y limpiar_pestana:true para limpiar las filas que estás reescribiendo antes de escribirlas (limpia SOLO ese rango, NO borra el resto de la pestaña — así nunca perdés lo que no reescribís; para ACORTAR una pestaña borrá el sobrante aparte con drive_clear). Cada celda es {t:texto} o {n:número} o {f:"=fórmula"}, con estilo opcional ("titulo"|"encabezado"|"etiqueta"|"moneda"|"moneda_negrita"|"total"|"pct"|"normal") y combinar:N (combinar a lo ancho de N columnas, para títulos). Totales/subtotales SIEMPRE {f:"=SUM(...)"} (fórmula), NUNCA número tipeado. REQUIERE aprobación.',
         input_schema: {
           type: 'object',
           properties: {
@@ -69,12 +69,18 @@ export function sheetRenderTools(google) {
         const ancho = Math.max(...filas.map((f) => (Array.isArray(f) ? f.length : 1)))
 
         const requests = []
-        // 0) REHACER PESTAÑA COMPLETA: limpiar TODO el contenido/formato y merges previos de la
-        //    pestaña, así se reescribe entera sin restos ni partes sueltas (pedido del dueño:
-        //    contemplar la pestaña ENTERA, no un pedazo).
+        // 0) LIMPIEZA ACOTADA (no destructiva). Antes esto borraba la PESTAÑA ENTERA a ciegas:
+        //    si la tarea se cortaba (tope de costo / max_tokens) DESPUÉS de limpiar y ANTES de
+        //    reescribir todo, se perdían secciones enteras (le pasó al dueño: se borró §7 Deudas).
+        //    Ahora limpia SOLO las filas que este render reescribe (del anclaje al final del
+        //    bloque), en TODAS las columnas → saca restos a la derecha que "parten" la tabla,
+        //    SIN tocar filas fuera del bloque. Atómico con la escritura: nunca deja un hueco.
+        //    Lo de abajo del bloque NO se borra (si querés ACORTAR la pestaña, borralo aparte con
+        //    drive_clear un rango explícito). Esto hace imposible perder datos que no reescribiste.
         if (input.limpiar_pestana) {
-          requests.push({ unmergeCells: { range: { sheetId: hoja.sheetId } } })
-          requests.push({ updateCells: { range: { sheetId: hoja.sheetId }, fields: 'userEnteredValue,userEnteredFormat' } })
+          const rango = { sheetId: hoja.sheetId, startRowIndex: r0, endRowIndex: r0 + filas.length }
+          requests.push({ unmergeCells: { range: rango } })
+          requests.push({ updateCells: { range: rango, fields: 'userEnteredValue,userEnteredFormat' } })
         }
         // 1) valores + formato de TODO el bloque en UN updateCells
         const rows = filas.map((fila) => ({ values: (Array.isArray(fila) ? fila : [fila]).map(toCellData) }))

@@ -39,6 +39,20 @@ async function main() {
   check('congela encabezado', !!reqs.find((r) => r.updateSheetProperties))
   check('pestaña inexistente → error claro', (await sheetRenderTools(google)['sheet.render'].run({ file_id: 'x', tab: 'NOEXISTE', filas: [[{ t: 'a' }]] })).error != null)
 
+  // limpiar_pestana debe ser NO DESTRUCTIVO: limpia SOLO las filas que reescribe (rango acotado
+  // con startRowIndex/endRowIndex), NUNCA la pestaña entera a ciegas (range con solo sheetId).
+  // Esto es lo que evita perder secciones si la tarea se corta a la mitad.
+  {
+    const c2 = []
+    const g2 = { async getSheetMeta() { return [{ sheetId: 7, title: 'R' }] }, async spreadsheetBatchUpdate(f, r) { c2.push(r) } }
+    await sheetRenderTools(g2)['sheet.render'].run({ file_id: 'x', tab: 'R', anclaje: 'A5', limpiar_pestana: true, filas: [[{ t: 'a' }], [{ t: 'b' }]] })
+    const limpiezas = c2[0].filter((r) => r.updateCells && !r.updateCells.rows) // updateCells de limpieza (sin rows, solo range)
+    const acotada = limpiezas.every((r) => r.updateCells.range.startRowIndex != null && r.updateCells.range.endRowIndex != null)
+    check('limpiar_pestana limpia rango ACOTADO (no la pestaña entera)', limpiezas.length >= 1 && acotada)
+    const anchoTotal = c2[0].some((r) => r.updateCells && !r.updateCells.rows && r.updateCells.range.startRowIndex === 4 && r.updateCells.range.endRowIndex === 6)
+    check('limpiar_pestana respeta el anclaje (fila 5 → índice 4, solo 2 filas)', anchoTotal)
+  }
+
   console.log(`\nsheet-render.test: ${ok} OK, ${fail} FALLA`)
   process.exit(fail ? 1 : 0)
 }
