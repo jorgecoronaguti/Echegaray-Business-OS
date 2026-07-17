@@ -416,7 +416,7 @@ async function dispatchToSpecialist({ directive, capability, runId }) {
   return { answer: `El ${who} sigue trabajando; tardó más de lo esperado. Reintentá en un momento.`, model: 'agente', capability, skills: [] }
 }
 
-async function ask({ directive, fileId, fast, attachment, history, runId, userEmail }) {
+async function ask({ directive, fileId, fast, attachments, attachment, history, runId, userEmail }) {
   // PRP-022 — ROL del usuario. Sin email (extensión actual con token compartido) →
   // super_admin (comportamiento del dueño de hoy, compatible hacia atrás). Con email →
   // se resuelve de usuarios_os. Un 'usuario' no recibe caja/fiscal/costo ni aprueba.
@@ -424,7 +424,12 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   const denegar = (cap) => ({ answer: `Tu rol (${rol}) no tiene acceso a esto. Pedíselo a Dirección.`, model: 'rol-denegado', capability: 'general', skills: [], navigate: null, denegadoPor: cap })
   if (rol === 'no_autorizado') { progressInit(runId); return { answer: 'Tu cuenta no está autorizada para usar el OS. Pedile a Dirección que te agregue.', model: 'no-autorizado', capability: 'general', skills: [], navigate: null } }
   progressInit(runId)
-  const att = attachmentBlock(attachment)
+  // Adjuntos: la extensión ahora manda VARIAS imágenes (attachments[]) — el dueño saca foto a
+  // un fajo de facturas y las sube juntas. Compat hacia atrás: si vino el viejo `attachment`
+  // singular, lo envolvemos. Cada adjunto → un bloque de visión/documento en el mismo mensaje.
+  const atts = Array.isArray(attachments) ? attachments.filter(Boolean) : (attachment ? [attachment] : [])
+  const attBlocks = atts.map(attachmentBlock).filter(Boolean)
+  const hasAtt = attBlocks.length > 0
   // Intención de escritura SIGUIENDO EL HILO: cuando el dueño responde "a"/"dale"/
   // "la 2"/"hacelo", la intención de escribir vive en el turno ANTERIOR, no en el
   // literal. Antes se miraba solo la directiva actual → un "a" caía como charla
@@ -505,7 +510,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // (reordenar, completar, rehacer, analizar a fondo) → sonnet, que lee y ACTÚA con las
   // tools de forma confiable. haiku propone/pregunta en vez de ejecutar (causa real de
   // "le pido que haga algo y no lo hace"). Vale el costo: la acción tiene que salir.
-  let model = writeIntent || mailComposeIntent || calendarWriteIntent || att || budgetingKw || teachingIntent || researchLearnIntent || asesoriaProfunda || scheduleCreateIntent || fast === false || fileId ? 'sonnet' : 'haiku'
+  let model = writeIntent || mailComposeIntent || calendarWriteIntent || hasAtt || budgetingKw || teachingIntent || researchLearnIntent || asesoriaProfunda || scheduleCreateIntent || fast === false || fileId ? 'sonnet' : 'haiku'
   // TOPE DE GASTO (degrada, NUNCA bloquea): si el gasto de hoy pasó el umbral, un pedido
   // que iba a usar sonnet baja a haiku. La respuesta SIEMPRE llega — solo cambia el modelo.
   // Las respuestas determinísticas (0 API) ya devolvieron antes; nunca pagan esto.
@@ -517,7 +522,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // asesoriaProfunda entra acá a propósito: una CONSULTA DE CRITERIO de dominio es donde el
   // dueño MÁS quiere el cerebro experto (sonnet). Son pocas y valen el costo; no se degradan a
   // haiku aunque el día esté sobre el tope. Los lookups y la charla sí se degradan (baratos).
-  const tareaCritica = writeToDocIntent || att || !!fileId || mailComposeIntent || calendarWriteIntent || asesoriaProfunda || scheduleCreateIntent
+  const tareaCritica = writeToDocIntent || hasAtt || !!fileId || mailComposeIntent || calendarWriteIntent || asesoriaProfunda || scheduleCreateIntent
   // La edición de documentos NUNCA se degrada a haiku: haiku la ROMPE (no hace pivots, no
   // formatea) y el dueño termina con una tabla a medias — peor que gastar. El gasto se controla
   // ahora por el lado correcto: contexto acotado (tope de tool_result) + tope de costo por
@@ -814,7 +819,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // interactiva. Los datos vivos (caja/avance/briefing) ya se respondieron determinístico
   // antes y nunca llegan acá. Si el dueño pide refrescar, se saltea la caché y recalcula.
   const pideRefrescar = /(actualiz|recalcul|de nuevo|otra vez|sin cache|sin cach[eé]|[uú]ltima versi[oó]n|volv[eé] a|de cero|refresc)/i.test(directive)
-  const cacheable = !att && !fileId && !writeIntent && !followUpAction && !isBudgeting
+  const cacheable = !hasAtt && !fileId && !writeIntent && !followUpAction && !isBudgeting
     && !dispatchDeep && !(Array.isArray(history) && history.length) && !pideRefrescar
   if (cacheable) {
     const hit = await cacheGet(rol, directive)
@@ -867,7 +872,7 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
     compact: true,
   })
   log.info('directiva ruteada', { capability, skills: skillsLoaded || [] })
-  const registry = await driveRegistry(attachment, userEmail)
+  const registry = await driveRegistry(atts[0], userEmail)
   // AGENDA: solo cuando el dueño está programando una tarea, sumamos las tools de recurrencia
   // (crear/listar/frenar). Condicional para no inflar el prompt del resto de los pedidos.
   if (scheduleCreateIntent) Object.assign(registry, scheduleTools({ tenantId: CTX.context.tenantId, createdBy: DIRECTOR_PRINCIPAL }))
@@ -978,8 +983,8 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
     `PARA RESPONDER, LEÉ CON LAS TOOLS (no inventes): un Sheet/Excel/PDF con drive_read (drive_tabs primero para ver las pestañas del archivo); tus obras con list_obras + drive_list (viven en la carpeta PRESUPUESTOS) y leé su presupuesto/avance con drive_read; la memoria de la empresa con "qué sabés de X". FILTRÁ: contestá SOLO lo que se pidió (el dato puntual, esa fila, ese proveedor), NO vuelques la planilla entera. Para LLEVAR al dueño a un archivo/carpeta ("llevame a", "abrí", "mostrame X") usá navigate_to. ` +
     guiaEscritura +
     guiaInvestigar +
-    (att
-      ? `\n\nTE ADJUNTARON UN ARCHIVO (foto/PDF): interpretalo. Si es una factura/remito/comprobante, extraé proveedor, CUIT, fecha, importe total, número y concepto. Si hay VARIAS facturas en la imagen, procesá cada una. Según lo que pida el dueño:\n• CHEQUEAR si un gasto YA ESTÁ CARGADO ("¿está registrado esto?", "¿dónde está?", "¿ya lo cargué?", "¿está en el flujo de fondos?"): por cada factura extraé proveedor, número e importe y llamá buscar_gasto_en_flujo (busca en el Flujo de Fondos real, pestaña Compras). Si aparece, decí que SÍ está cargado, en qué FILA y con qué OBRA, y PASALE EL LINK directo a esa fila (viene en la respuesta de la tool). Si da 0, decí que NO figura en el Flujo de Fondos. Complemento fiscal: si además pregunta si está facturado/en ARCA, usá buscar_comprobante (comprobantes_arca). NO propongas cargar nada salvo que te lo pidan.\n• REGISTRAR/cargar el gasto: encontrá el Sheet correcto (ej. "Flujo de Caja - Cash Flow", pestaña de compras/gastos), LEÉ su estructura con drive_read y proponé la fila con drive_update (queda en Pendientes).\nNo inventes lo que no ves; si un dato no está en la imagen, decilo.\n`
+    (hasAtt
+      ? `\n\nTE ADJUNTARON ${attBlocks.length > 1 ? `${attBlocks.length} ARCHIVOS` : 'UN ARCHIVO'} (foto/PDF): interpretá CADA UNO. Si son facturas/remitos/comprobantes, extraé de cada uno proveedor, CUIT, fecha, importe total, número y concepto. Puede venir MÁS DE UNA factura por imagen Y varias imágenes: procesá TODAS, una por una, y respondé por cada factura por separado (identificala por proveedor+número+importe). Según lo que pida el dueño:\n• CHEQUEAR si un gasto YA ESTÁ CARGADO ("¿está registrado esto?", "¿dónde está?", "¿ya lo cargué?", "¿está en el flujo de fondos?"): por cada factura extraé proveedor, número e importe y llamá buscar_gasto_en_flujo (busca en el Flujo de Fondos real, pestaña Compras). Si aparece, decí que SÍ está cargado, en qué FILA y con qué OBRA, y PASALE EL LINK directo a esa fila (viene en la respuesta de la tool). Si da 0, decí que NO figura en el Flujo de Fondos. Complemento fiscal: si además pregunta si está facturado/en ARCA, usá buscar_comprobante (comprobantes_arca). NO propongas cargar nada salvo que te lo pidan.\n• REGISTRAR/cargar el gasto: encontrá el Sheet correcto (ej. "Flujo de Caja - Cash Flow", pestaña de compras/gastos), LEÉ su estructura con drive_read y proponé la fila con drive_update (queda en Pendientes).\nNo inventes lo que no ves; si un dato no está en la imagen, decilo.\n`
       : '') +
     ` Lo que tenga efecto económico/fiscal/legal externo (Nivel E) no lo ejecutes: proponelo en una línea.` +
     docEditDoctrine +
@@ -994,14 +999,14 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
 
   // Con adjunto, el prompt es un array de bloques (visión/documento + texto). El
   // engine acepta content como array sin cambios.
-  const promptContent = att ? [att, { type: 'text', text: prompt }] : prompt
+  const promptContent = hasAtt ? [...attBlocks, { type: 'text', text: prompt }] : prompt
 
   const eng = await engine.run(
-    { system, prompt: promptContent, worktreePath: CTX.context.repository.rootPath, model, maxCostUsd: writeToDocIntent ? 1.5 : 0.8, maxTokens: writeIntent || att || isBudgeting ? 8192 : 900,
+    { system, prompt: promptContent, worktreePath: CTX.context.repository.rootPath, model, maxCostUsd: writeToDocIntent ? 1.5 : (hasAtt ? 1.2 : 0.8), maxTokens: writeIntent || hasAtt || isBudgeting ? 8192 : 900,
       // Reconstruir/editar una planilla lee varias pestañas y escribe varios rangos: 26
       // iteraciones se agotaban a mitad (dejando la tarea incompleta y gastando en vano).
       // Con archivo abierto o pedido de escribir un documento damos 40; el resto igual.
-      maxToolIterations: writeToDocIntent ? 26 : (att || writeIntent || isBudgeting ? 20 : 10), allowedTools: 'Read',
+      maxToolIterations: writeToDocIntent ? 26 : (hasAtt || writeIntent || isBudgeting ? 20 : 10), allowedTools: 'Read',
       task: { id: 'interactive', capability_slug: 'advise.admin' },
       tools: Object.values(registry).map((t) => t.schema), toolExecutor, agentSlug: 'interactive' },
     CTX)
@@ -1191,9 +1196,10 @@ const server = http.createServer(async (req, res) => {
   }
 
   let body = ''
-  // Techo de 12MB: alcanza para una foto reducida o un PDF chico en base64. (El
-  // proxy de Vercel corta antes, ~4.5MB, por eso la extensión reduce las imágenes.)
-  req.on('data', (c) => { body += c; if (body.length > 12e6) req.destroy() })
+  // Techo de 24MB: alcanza para VARIAS fotos reducidas (el dueño sube un fajo de facturas)
+  // o un PDF chico en base64. (El proxy de Vercel corta antes, ~4.5MB, por eso la extensión
+  // reduce cada imagen; varias reducidas siguen entrando muy por debajo de este techo.)
+  req.on('data', (c) => { body += c; if (body.length > 24e6) req.destroy() })
   req.on('end', async () => {
     try {
       const data = JSON.parse(body || '{}')
@@ -1228,7 +1234,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       // Directiva normal. La extensión 0.6.0+ manda wantsAsync + extVersion.
-      const { directive, fileId, fast, attachment, history, runId, wantsAsync, extVersion, userEmail } = data
+      const { directive, fileId, fast, attachment, attachments, history, runId, wantsAsync, extVersion, userEmail } = data
       // La identidad de la LLAVE (authEmail) manda sobre el email tipeado (seguro).
       const identidad = authEmail || userEmail
       if (!directive || typeof directive !== 'string') return send(res, 400, { error: 'falta "directive"' })
@@ -1263,7 +1269,7 @@ const server = http.createServer(async (req, res) => {
       // —así el trabajo largo NO se descarta y el dueño no tiene que reintentar (causa real
       // del bucle de reinicio: antes, al vencer el watchdog se marcaba "cortado" y lo que
       // terminaba después se perdía).
-      const askPromise = ask({ directive: directive.slice(0, 4000), fileId, fast, attachment, history, runId: rid, userEmail: identidad })
+      const askPromise = ask({ directive: directive.slice(0, 4000), fileId, fast, attachment, attachments, history, runId: rid, userEmail: identidad })
         .then((out) => { countAnswer(out?.model); if (!CANCELLED.has(rid)) { RESULTS.set(rid, { done: true, out }); persistResult(rid, { done: true, ...out }) } return out })
         .catch((e) => { if (!CANCELLED.has(rid)) { RESULTS.set(rid, { done: true, error: e.message }); persistResult(rid, { done: true, error: e.message }) } throw e })
         .finally(() => { progressDone(rid); INFLIGHT.delete(dedupKey); setTimeout(() => { RESULTS.delete(rid); CANCELLED.delete(rid) }, 120000) })

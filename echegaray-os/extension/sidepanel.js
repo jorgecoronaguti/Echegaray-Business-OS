@@ -2,7 +2,7 @@
 // abierto en la pestaña activa, y manda la directiva al cerebro del OS.
 const $ = (id) => document.getElementById(id)
 const DEFAULT_ADDR = 'https://echegaray-business-os.vercel.app/api/os'
-let attachment = null // { media_type, data(base64), name }
+let attachments = [] // [{ media_type, data(base64), name }] — el dueño puede subir VARIAS fotos juntas
 let convo = [] // mensajes del chat actual {role:'me'|'os', text}
 let activeRun = null // { runId, addr, token, pending, cancelled } mientras una tarea corre
 
@@ -81,14 +81,15 @@ async function checkVersion() {
 
 async function send() {
   let directive = $('input').value.trim()
-  if (!directive && !attachment) return
-  if (!directive && attachment) directive = 'Interpretá este archivo adjunto y decime qué es.'
+  if (!directive && !attachments.length) return
+  if (!directive && attachments.length) directive = attachments.length > 1 ? `Interpretá estas ${attachments.length} imágenes/archivos y decime qué son.` : 'Interpretá este archivo adjunto y decime qué es.'
   const { addr, token, email } = await getCfg()
   if (!token) { $('settings').classList.add('show'); addMsg('Primero pegá tu llave de acceso en configuración (⚙).', 'os'); return }
   $('input').value = ''
   if (!currentChatId) currentChatId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now())
-  const att = attachment
-  addMsg(directive + (att ? `\n📎 ${att.name}` : ''), 'me')
+  const atts = attachments
+  const attLabel = atts.length ? `\n📎 ${atts.length === 1 ? atts[0].name : atts.length + ' archivos'}` : ''
+  addMsg(directive + attLabel, 'me')
   clearAttachment()
   const history = convo.slice(-16) // turnos previos (antes de agregar el actual)
   convo.push({ role: 'me', text: directive })
@@ -118,7 +119,7 @@ async function send() {
     const r = await fetch(`${addr}/ask`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
-      body: JSON.stringify({ directive, fileId, attachment: att, history, runId, wantsAsync: true, userEmail: email, extVersion: chrome.runtime.getManifest().version }),
+      body: JSON.stringify({ directive, fileId, attachments: atts, history, runId, wantsAsync: true, userEmail: email, extVersion: chrome.runtime.getManifest().version }),
     })
     let data = await r.json()
     if (!r.ok) throw new Error(data.error || `error ${r.status}`)
@@ -137,7 +138,7 @@ async function send() {
         const rid2 = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()
         const r2 = await fetch(`${addr}/ask`, {
           method: 'POST', headers: { 'content-type': 'application/json', 'authorization': `Bearer ${token}` },
-          body: JSON.stringify({ directive, fileId, attachment: att, history, runId: rid2, wantsAsync: true, userEmail: email, extVersion: chrome.runtime.getManifest().version }),
+          body: JSON.stringify({ directive, fileId, attachments: atts, history, runId: rid2, wantsAsync: true, userEmail: email, extVersion: chrome.runtime.getManifest().version }),
         })
         let d2 = await r2.json()
         if (r2.ok && d2.async && d2.runId) d2 = await waitResult(addr, token, d2.runId, pending, t0)
@@ -331,7 +332,7 @@ async function renderChatsList() {
 // ---- Adjuntar archivo (foto/PDF) ----
 
 function clearAttachment() {
-  attachment = null
+  attachments = []
   $('file').value = ''
   $('chip').classList.remove('show')
 }
@@ -360,24 +361,33 @@ function readAsDataURL(file) {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error('no pude leer el archivo')); r.readAsDataURL(file) })
 }
 
-async function onFilePicked(file) {
-  if (!file) return
-  try {
-    if (file.type.startsWith('image/')) {
-      const dataUrl = await downscaleImage(file, 1600, 0.82)
-      attachment = { media_type: 'image/jpeg', data: dataUrl.split(',')[1], name: file.name }
-    } else if (file.type === 'application/pdf') {
-      if (file.size > 3.5e6) throw new Error('PDF muy grande (máx ~3.5MB). Sacale una foto a la hoja o mandá un PDF más chico.')
-      const dataUrl = await readAsDataURL(file)
-      attachment = { media_type: 'application/pdf', data: String(dataUrl).split(',')[1], name: file.name }
-    } else {
-      throw new Error('Formato no soportado. Adjuntá una foto (JPG/PNG) o un PDF.')
-    }
-    $('chipname').textContent = '📎 ' + file.name
+const MAX_ADJUNTOS = 10
+
+/** Procesa UNA foto/PDF y la agrega a la lista de adjuntos (sin pisar los anteriores). */
+async function addOneFile(file) {
+  if (file.type.startsWith('image/')) {
+    const dataUrl = await downscaleImage(file, 1600, 0.82)
+    attachments.push({ media_type: 'image/jpeg', data: dataUrl.split(',')[1], name: file.name })
+  } else if (file.type === 'application/pdf') {
+    if (file.size > 3.5e6) throw new Error(`PDF muy grande (${file.name}, máx ~3.5MB). Sacale una foto a la hoja o mandá un PDF más chico.`)
+    const dataUrl = await readAsDataURL(file)
+    attachments.push({ media_type: 'application/pdf', data: String(dataUrl).split(',')[1], name: file.name })
+  } else {
+    throw new Error(`Formato no soportado (${file.name}). Adjuntá fotos (JPG/PNG) o un PDF.`)
+  }
+}
+
+/** Recibe UNA o VARIAS fotos/PDF (del clip o del pegado) y las adjunta todas. */
+async function onFilesPicked(fileList) {
+  const files = Array.from(fileList || []).filter(Boolean)
+  if (!files.length) return
+  for (const file of files) {
+    if (attachments.length >= MAX_ADJUNTOS) { addMsg(`Máximo ${MAX_ADJUNTOS} archivos por mensaje. Mandá el resto en otro.`, 'os'); break }
+    try { await addOneFile(file) } catch (e) { addMsg(e.message, 'os') }
+  }
+  if (attachments.length) {
+    $('chipname').textContent = attachments.length === 1 ? '📎 ' + attachments[0].name : `📎 ${attachments.length} archivos`
     $('chip').classList.add('show')
-  } catch (e) {
-    clearAttachment()
-    addMsg(e.message, 'os')
   }
 }
 
@@ -462,19 +472,18 @@ $('tabPending').addEventListener('click', () => showView('pending'))
 $('tabAgenda').addEventListener('click', () => showView('agenda'))
 $('agadd').addEventListener('click', addSchedule)
 $('attach').addEventListener('click', () => $('file').click())
-$('file').addEventListener('change', (e) => onFilePicked(e.target.files[0]))
+$('file').addEventListener('change', (e) => onFilesPicked(e.target.files))
 $('chipx').addEventListener('click', clearAttachment)
 // PEGAR IMAGEN (Ctrl/Cmd+V): si el portapapeles tiene una imagen (captura de pantalla,
 // foto copiada), la adjuntamos igual que si la hubieras elegido con el clip. El OS la ve,
 // la interpreta y razona sobre ella. El pegado de texto normal sigue funcionando igual.
 document.addEventListener('paste', (e) => {
   const items = (e.clipboardData && e.clipboardData.items) || []
+  const imgs = []
   for (const it of items) {
-    if (it.type && it.type.startsWith('image/')) {
-      const file = it.getAsFile()
-      if (file) { e.preventDefault(); onFilePicked(file); break }
-    }
+    if (it.type && it.type.startsWith('image/')) { const f = it.getAsFile(); if (f) imgs.push(f) }
   }
+  if (imgs.length) { e.preventDefault(); onFilesPicked(imgs) } // pegá varias capturas de una
 })
 $('gear').addEventListener('click', () => $('settings').classList.toggle('show'))
 $('chatsBtn').addEventListener('click', () => { $('chats').classList.toggle('show'); if ($('chats').classList.contains('show')) renderChatsList() })
