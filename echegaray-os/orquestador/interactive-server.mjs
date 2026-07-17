@@ -554,8 +554,11 @@ async function ask({ directive, fileId, fast, attachments, attachment, history, 
   if (/^\s*(qu[eé] pod[eé]s hacer|qu[eé] sab[eé]s hacer|ayuda\b|help\b|para qu[eé] serv|qu[eé] (te )?puedo pedir|capacidades|qu[eé] hac[eé]s)/i.test(directive)) {
     return { answer: CAPABILITIES_HELP, model: 'ayuda', capability: 'general', skills: [], navigate: null }
   }
-  // "¿Cuánto gasté?" — telemetría de costo del chat, sin llamar a la API.
-  if (/cu[aá]nto (gast[eé]|consum[ií]|cost|llev|va).*(api|cr[eé]dit|chat|hoy|plata|gastando)?|gasto de api|consumo de api|cu[aá]nto (me )?sale/i.test(directive)) {
+  // "¿Cuánto gasté en API/chat?" — telemetría de costo del chat, sin llamar a la API.
+  // OJO: exige un CONTEXTO de costo (api/crédito/chat/token/plata/gastando) — antes los verbos
+  // genéricos "llev"/"va" + contexto OPCIONAL secuestraban preguntas reales ("cuánto LLEVamos
+  // cobrado", "cuánto VA la obra") y devolvían el reporte de gasto en vez de la respuesta.
+  if (/cu[aá]nto (gast[eé]|consum[ií]|cuesta|sale).{0,25}\b(api|cr[eé]dit|chat|token|plata|d[oó]lar|us\$|gastando)\b|gasto de (api|chat|token)|consumo de (api|chat|token)|cu[aá]nto (me )?(sale|cuesta) (el|la|usar) (chat|os|api)/i.test(directive)) {
     if (!puede(rol, 'costo_api')) return denegar('costo_api')
     return { answer: await costSummary(), model: 'costo', capability: 'general', skills: [], navigate: null }
   }
