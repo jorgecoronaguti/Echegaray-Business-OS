@@ -38,14 +38,29 @@ export async function cashBriefing(google, hoy = new Date()) {
   }
   const cajaTotal = [...saldos.values()].reduce((s, v) => s + v.saldo, 0)
 
-  // 2) COBRANZAS del mes en curso (02_Cobranzas: R idx17 "Mes cobro", O idx14 Estado, M idx12 Total)
+  // 2) COBRANZAS del mes en curso (02_Cobranzas: R idx17 "Mes cobro", O idx14 Estado, M idx12 Total,
+  //    G idx6 Obra/Cliente, Q idx16 "Fecha cobro" fecha real) + VENCIDAS (fecha de cobro ya pasó y
+  //    sin cobrar = plata que debería estar y no está). "Vencida" NO interpreta la taxonomía de
+  //    estados (Pendiente/Proyectado/Facturado…): solo "no Cobrado" + fecha de cobro < hoy. Honesto.
   const cob = await google.readSheetValues(ID, '02_Cobranzas!A5:R2000').catch(() => [])
   let cobrado = 0, porCobrar = 0
+  const vencidas = []
   for (const r of cob) {
-    if (String(r?.[17] ?? '').trim().toLowerCase() !== mesActual) continue
+    const estado = String(r?.[14] ?? '').trim()
+    const cobradoYa = /cobrado/i.test(estado)
     const monto = parseMonto(r?.[12])
-    if (/cobrado/i.test(String(r?.[14] ?? ''))) cobrado += monto; else porCobrar += monto
+    // cobranzas del mes en curso (por "Mes cobro (auto)")
+    if (String(r?.[17] ?? '').trim().toLowerCase() === mesActual) {
+      if (cobradoYa) cobrado += monto; else porCobrar += monto
+    }
+    // VENCIDAS: por "Fecha cobro" real (idx16), pasada y sin cobrar
+    if (!cobradoYa && monto > 0) {
+      const fc = parseFecha(r?.[16])
+      if (fc && fc < hoy0) vencidas.push({ cliente: String(r?.[6] ?? '').trim() || '(sin cliente)', estado, fecha: String(r?.[16]).trim(), monto, dias: Math.round((hoy0 - fc) / 86400000) })
+    }
   }
+  vencidas.sort((a, z) => z.dias - a.dias)
+  const totalVencido = vencidas.reduce((s, v) => s + v.monto, 0)
 
   // 3) VENCIMIENTOS próximos 7 días — Cheques (I idx8 fecha pago, F idx5 monto) +
   //    Tarjeta (H idx7 fecha pago, E idx4 monto, J idx9 DEBITADO)
@@ -61,6 +76,7 @@ export async function cashBriefing(google, hoy = new Date()) {
     fecha: hoy.toLocaleDateString('es-AR'),
     caja: { total: cajaTotal, cuentas: [...saldos.entries()].map(([cuenta, v]) => ({ cuenta, saldo: v.saldo, al: v.fecha })) },
     cobranzas_mes: { mes: mesActual, cobrado, por_cobrar: porCobrar },
+    cobranzas_vencidas: { total: totalVencido, items: vencidas },
     vencimientos_7dias: { total: totalVenc, cheques, tarjeta },
   }
 }
@@ -72,6 +88,12 @@ export function formatBriefing(b) {
   for (const c of b.caja.cuentas) L.push(`  • ${c.cuenta}: ${fmt(c.saldo)} _(al ${c.al})_`)
   if (b.caja.cuentas.length > 1) L.push(`  • **Total: ${fmt(b.caja.total)}**`)
   L.push('', `📥 **Cobranzas ${b.cobranzas_mes.mes}**: cobrado ${fmt(b.cobranzas_mes.cobrado)} · por cobrar ${fmt(b.cobranzas_mes.por_cobrar)}`)
+  const venc = b.cobranzas_vencidas
+  if (venc && venc.items.length) {
+    L.push('', `🔴 **Cobranzas VENCIDAS: ${fmt(venc.total)}** _(fecha de cobro ya pasó, sin cobrar — llamar hoy)_`)
+    for (const v of venc.items.slice(0, 8)) L.push(`  • ${v.cliente}: ${fmt(v.monto)} _(vencía ${v.fecha}, hace ${v.dias}d, ${v.estado})_`)
+    if (venc.items.length > 8) L.push(`  • …y ${venc.items.length - 8} más`)
+  }
   L.push('', `📤 **A pagar en 7 días: ${fmt(b.vencimientos_7dias.total)}**`)
   const items = [...b.vencimientos_7dias.cheques.map((c) => ({ ...c, t: 'cheque' })), ...b.vencimientos_7dias.tarjeta.map((c) => ({ ...c, t: 'tarjeta' }))]
     .sort((a, z) => (parseFecha(a.fecha) || 0) - (parseFecha(z.fecha) || 0))
