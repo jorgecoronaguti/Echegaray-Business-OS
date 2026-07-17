@@ -59,7 +59,7 @@ import { extraerRestricciones, DOCTRINA_EDICION, VERIFICACION_EDICION } from './
 import { isMailComposeIntent, isCalendarWriteIntent } from './lib/chat-intents.mjs'
 import { stripPreamble } from './lib/chat-format.mjs'
 import { personaParaConsulta } from './lib/chat-persona.mjs'
-import { WRITE_INTENT_RE } from './lib/write-intent.mjs'
+import { isWriteIntent } from './lib/write-intent.mjs'
 import { propuestasMejoraResumen } from './lib/mejoras.mjs'
 import { createSchedule, listSchedules, toggleSchedule } from './lib/schedules.mjs'
 import { enqueueTask } from './lib/ledger.mjs'
@@ -425,19 +425,19 @@ async function ask({ directive, fileId, fast, attachment, history, runId, userEm
   // literal. Antes se miraba solo la directiva actual → un "a" caía como charla
   // trivial (modelo tímido, pocas iteraciones) y el OS reseteaba en vez de ejecutar
   // la opción elegida. Ahora miramos la directiva Y el historial reciente.
-  // WRITE_INTENT_RE vive en ./lib/write-intent.mjs (guard de costo testeable): un falso
-  // positivo manda un READ barato a sonnet. La raíz 'carg' NO cuenta el participio "cargado".
-  const WRITE_RE = WRITE_INTENT_RE
+  // isWriteIntent vive en ./lib/write-intent.mjs (guard de costo testeable): un falso positivo
+  // manda un READ barato a sonnet. Quita participios-dato ("cargado", "registrado") antes de
+  // testear, para no confundir un descriptor con una orden ("cargá", "registrá").
   const CONFIRM_RE = /^\s*(s[ií]|dale|ok(ay)?|listo|hacelo|hazlo|aplicalo?|proced[eé]|adelante|confirmo|de una|opci[oó]n\s*)?[\s,.:]*([abc]|[123]|la\s*[123]|el\s*[123]|es[ae]|aquel[la]?)?\s*$/i
   const histText = Array.isArray(history) ? history.slice(-4).map((m) => String(m.text || '')).join('\n') : ''
   // AUTO-MEJORA (0-API, fire-and-forget): si el dueño RECHAZA la respuesta anterior ("no sirve",
   // "sigue mal", "es una mierda"), registrar la señal de fallo para que el OS lo proponga como
   // mejora. Va temprano y no bloquea: captura el rechazo sea cual sea el camino de la respuesta.
   registerRespuestaFallida({ directive, history }).catch(() => {})
-  const directiveWrite = WRITE_RE.test(String(directive || ''))
+  const directiveWrite = isWriteIntent(directive)
   // Confirmación/elección corta ("a", "dale", "la 2") + la charla previa proponía una
   // acción u opciones → el dueño está eligiendo: hay que ACTUAR, no re-preguntar.
-  const followUpAction = CONFIRM_RE.test(String(directive || '')) && WRITE_RE.test(histText)
+  const followUpAction = CONFIRM_RE.test(String(directive || '')) && isWriteIntent(histText)
   const writeIntent = directiveWrite || followUpAction
   // PEDIDO DE ESCRIBIR EN UN DOCUMENTO (Sheet/Doc): verbo de acción + referencia a un
   // documento concreto (pestaña/planilla/rango/celda/URL de Drive) O un archivo abierto.
