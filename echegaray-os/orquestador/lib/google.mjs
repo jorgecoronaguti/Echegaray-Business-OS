@@ -562,6 +562,17 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       )
       return j.values || []
     },
+    /** Lee las reglas de VALIDACIÓN DE DATOS (desplegables) de un rango. Devuelve la data
+     *  cruda de la Sheets API (sheets[].data[].rowData[].values[].dataValidation) para que el
+     *  llamador extraiga, por celda, las opciones permitidas. Sirve para NO pisar un desplegable
+     *  al cargar un dato: primero se leen las opciones válidas y se elige la que corresponde. */
+    async readSheetValidations(fileId, ranges) {
+      const rs = (Array.isArray(ranges) ? ranges : [ranges]).map((r) => `ranges=${encodeURIComponent(r)}`).join('&')
+      const j = await apiGet(
+        `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?${rs}&fields=${encodeURIComponent('sheets.properties.title,sheets.data(startRow,startColumn,rowData.values.dataValidation)')}`,
+      )
+      return j.sheets || []
+    },
     /** Lista los nombres de pestañas de un Sheet. */
     async listTabs(fileId) {
       const j = await apiGet(
