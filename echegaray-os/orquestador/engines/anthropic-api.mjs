@@ -227,6 +227,7 @@ export function makeAnthropicEngine({ config, client, breaker, semaphore }) {
       const messages = [{ role: 'user', content: firstContent }]
       const usages = []
       let toolTurns = 0
+      const toolsUsed = new Map() // histograma tool→veces (telemetría de cortes)
       let lastResponse = null
 
       // PROMPT CACHING INCREMENTAL del loop agéntico (el mayor freno de costo real). Sin esto,
@@ -281,6 +282,7 @@ export function makeAnthropicEngine({ config, client, breaker, semaphore }) {
           const toolResults = []
           for (const block of response.content || []) {
             if (!block || block.type !== 'tool_use') continue
+            toolsUsed.set(block.name, (toolsUsed.get(block.name) || 0) + 1)
             let content
             let isError = false
             try {
@@ -368,6 +370,8 @@ export function makeAnthropicEngine({ config, client, breaker, semaphore }) {
       if (log) {
         log.warn(abortedByCost ? 'anthropic-api: frenó por tope de costo — trabajo parcial' : 'anthropic-api: agotó iteraciones — devuelve trabajo parcial', {
           model: modelId, max_iterations: maxIterations, tool_turns: toolTurns, cost_usd: cost.usd,
+          // telemetría de corte: qué operación era y qué tools quemó → para rankear y convertir a 0-API
+          label: job.label || null, tools_used: Object.fromEntries(toolsUsed), tool_fails: Object.fromEntries(toolFails),
           ...(abortedByCost ? { max_cost_usd: Number(job.maxCostUsd) } : {}),
         })
       }

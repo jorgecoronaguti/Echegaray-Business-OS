@@ -1018,6 +1018,10 @@ async function ask({ directive, fileId, fast, attachments, attachment, history, 
       // El breaker anti-espiral + la guía "no preguntes lo que ya está" evitan que el aire se malgaste.
       maxToolIterations: (writeToDocIntent || (hasAtt && writeIntent)) ? 32 : (hasAtt || writeIntent || isBudgeting ? 22 : 10), allowedTools: 'Read',
       task: { id: 'interactive', capability_slug: 'advise.admin' },
+      // Etiqueta de telemetría: si esta ruta se CORTA (tope de costo/iteraciones), el engine la
+      // loguea junto a qué tools usó → mi rutina interna (revisar-logs) rankea qué operaciones se
+      // cortan más, para convertir esas a 0-API (plan de costo/velocidad/eficiencia).
+      label: `${capability || 'general'}${hasAtt ? '+adj' : ''}${writeIntent ? '+escr' : ''}:${String(directive || '').replace(/\s+/g, ' ').slice(0, 70)}`,
       tools: Object.values(registry).map((t) => t.schema), toolExecutor, agentSlug: 'interactive' },
     CTX)
   trackCost(eng.cost?.usd ?? 0, model, rol)

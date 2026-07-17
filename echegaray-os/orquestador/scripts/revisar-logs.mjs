@@ -40,7 +40,22 @@ async function main() {
     const p = patron(msg); if (!p) continue
     const g = grupos.get(p) || { veces: 0, ej: msg.slice(0, 200) }; g.veces++; grupos.set(p, g)
   }
-  const cortes = lineas.filter((l) => /frenó por tope|"stop_reason"\s*:\s*"(cost_cap|max_tokens)"/.test(l)).length
+  // CORTES por costo/iteraciones, RANKEADOS por operación (label) + tools que quemó. Es el insumo
+  // del plan de eficiencia: qué operaciones se cortan más → cuáles conviene pasar a 0-API.
+  const cortesPorOp = new Map() // label-normalizado -> { veces, usd, tools:Map }
+  let cortes = 0
+  for (const l of lineas) {
+    let j = null; try { j = JSON.parse(l) } catch { /* */ }
+    const esCorte = j && /frenó por tope de costo|agotó iteraciones/.test(j.msg || '')
+    if (!esCorte && !/frenó por tope|"stop_reason"\s*:\s*"(cost_cap|max_tokens)"/.test(l)) continue
+    cortes++
+    if (!j) continue
+    const label = String(j.label || '(sin etiqueta)').split(':')[0] // capability+flags (sin el texto libre)
+    const g = cortesPorOp.get(label) || { veces: 0, usd: 0, tools: new Map() }
+    g.veces++; g.usd += Number(j.cost_usd || 0)
+    for (const [t, n] of Object.entries(j.tools_used || {})) g.tools.set(t, (g.tools.get(t) || 0) + n)
+    cortesPorOp.set(label, g)
+  }
   const espirales = lineas.filter((l) => /\[FRENO|\[BASTA/.test(l)).length
 
   console.log(`\n=== REVISIÓN DE LOGS — últimas ${horas}h (${new Date().toLocaleString()}) ===`)
@@ -49,6 +64,13 @@ async function main() {
   if (ops.rows.length) { console.log('\nOPERACIONES FALLADAS:'); ops.rows.forEach((r) => console.log(`  [${r.cuando}] ${r.tool} — ${r.err}`)) }
   if (toolFails.size) { console.log('\nTOOLS QUE DEVOLVIERON ERROR (por frecuencia):'); [...toolFails.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15).forEach(([k, v]) => console.log(`  ${v}× ${k}`)) }
   if (grupos.size) { console.log('\nERRORES/WARNINGS DEL LOG (por patrón):'); [...grupos.entries()].sort((a, b) => b[1].veces - a[1].veces).slice(0, 15).forEach(([p, g]) => console.log(`  ${g.veces}× ${p}`)) }
+  if (cortesPorOp.size) {
+    console.log('\nCORTES POR OPERACIÓN (rankeado — candidatos a pasar a 0-API):')
+    ;[...cortesPorOp.entries()].sort((a, b) => b[1].veces - a[1].veces).slice(0, 10).forEach(([op, g]) => {
+      const tops = [...g.tools.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([t, n]) => `${t}×${n}`).join(', ')
+      console.log(`  ${g.veces}× ${op}  ($${g.usd.toFixed(2)})  tools: ${tops || '—'}`)
+    })
+  }
   if (!tareas.rows.length && !ops.rows.length && !toolFails.size && !grupos.size) console.log('\n✓ Sin fallas registradas. El OS está sano.')
   process.exit(0)
 }
