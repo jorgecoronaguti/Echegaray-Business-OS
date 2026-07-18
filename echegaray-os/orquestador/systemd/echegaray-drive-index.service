@@ -1,0 +1,17 @@
+[Unit]
+Description=Echegaray OS - Indexa el data room (carpeta administracion) -> public.drive_index
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+EnvironmentFile=%h/.config/echegaray-orq/worker.env
+EnvironmentFile=-%h/.config/echegaray-orq/anthropic.env
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node scripts/indexar-drive.mjs
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=10min
+
+[Install]
+WantedBy=default.target

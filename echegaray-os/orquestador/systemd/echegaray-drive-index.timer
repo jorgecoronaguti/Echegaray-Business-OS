@@ -1,0 +1,10 @@
+[Unit]
+Description=Echegaray OS - Reindexa el data room cada 6h
+
+[Timer]
+OnBootSec=8min
+OnUnitActiveSec=6h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
