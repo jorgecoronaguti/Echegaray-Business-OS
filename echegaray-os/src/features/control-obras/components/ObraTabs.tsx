@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { pedidoPendiente, type AvanceObra, type ObraDetalle } from '../services/controlObrasService'
 import type { CostosObra } from '../services/costosObraService'
 
@@ -278,9 +279,9 @@ function CostosPanel({ costos }: { costos: CostosObra }) {
       <div className="px-4 py-10 text-center text-sm text-gray-400">
         Todavía no hay costos de ARCA asignados a esta obra.
         <br />
-        <a href="/control-obras/costos" className="mt-2 inline-block font-medium text-gray-700 underline hover:text-gray-900">
+        <Link href="/control-obras/costos" className="mt-2 inline-block font-medium text-gray-700 underline hover:text-gray-900">
           Asignar comprobantes a obras →
-        </a>
+        </Link>
       </div>
     )
   }
