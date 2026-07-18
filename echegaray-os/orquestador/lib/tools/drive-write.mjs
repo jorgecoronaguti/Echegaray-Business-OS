@@ -55,11 +55,21 @@ function startCell(range) {
  *  iteraciones/costo (bug real del journal: "Sheet1!A1", "Cómputo!A63"). Convertimos ese 400 en
  *  un error ÚTIL: le devolvemos las pestañas reales para que corrija el nombre en UN paso barato. */
 const RANGE_ERR = /Unable to parse range|Invalid data\[\d+\].*(range|parse)/i
+// F4: editar un archivo OFFICE (.xlsx/.xlsm subido, no Sheet nativo) tira un 400 opaco
+// ("must not be an Office file" / FAILED_PRECONDITION) y el modelo reintentaba a ciegas
+// quemando iteraciones. Lo traducimos: leer sí anda, editar requiere convertir a Sheet nativo.
+const OFFICE_ERR = /must not be an Office file|not supported for this document|FAILED_PRECONDITION/i
 async function conPestanasSiFalla(google, fileId, fn) {
   try {
     return await fn()
   } catch (e) {
     const msg = String(e?.message || e)
+    if (OFFICE_ERR.test(msg)) {
+      return {
+        error: 'Este archivo es un EXCEL (.xlsx/.xlsm) subido, NO un Google Sheet nativo: la API de edición no opera sobre Office. Se puede LEER (drive_read), pero para EDITARLO hay que convertirlo primero a Google Sheet nativo. Avisale al dueño y ofrecé convertirlo (o trabajar sobre una copia nativa). NO reintentes escribir sobre el Office.',
+        google_error: msg.slice(0, 200),
+      }
+    }
     if (!RANGE_ERR.test(msg)) throw e
     let tabs = []
     try { tabs = await google.listTabs(fileId) } catch { /* si tampoco puedo listar, devuelvo el error crudo */ }

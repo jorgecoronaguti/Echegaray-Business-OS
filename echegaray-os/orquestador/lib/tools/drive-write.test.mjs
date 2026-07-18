@@ -71,6 +71,18 @@ async function main() {
   check('celda-error: ok=false', e.ok === false)
   check('celda-error: aviso menciona TEXTO e ISNUMBER', /texto/i.test(e.advertencia) && /ISNUMBER/i.test(e.advertencia))
 
+  // F4 (auditoría 18/07): editar un Excel .xlsx/.xlsm -> 400 opaco. Ahora mensaje accionable
+  // (leer sí, editar requiere convertir a Sheet nativo), sin reintentar a ciegas.
+  const gOffice = {
+    async updateSheetValues() { throw new Error('google api 400: This operation is not supported for this document. The document must not be an Office file.') },
+    async listTabs() { return [] },
+  }
+  const rOff = driveWriteTools(gOffice)
+  const o = await rOff['drive.update'].run({ file_id: 'XLSX1', range: 'A1', values: [['x']] })
+  check('office: devuelve error, no throw', !!o.error)
+  check('office: guía a convertir a Sheet nativo', /excel/i.test(o.error) && /convert/i.test(o.error))
+  check('office: NO ofrece pestañas (no es problema de pestaña)', !/pesta/i.test(o.error))
+
   console.log(`\n${ok} ok, ${fail} fallas`)
   process.exit(fail ? 1 : 0)
 }
