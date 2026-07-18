@@ -8,6 +8,7 @@
 import { posicionIvaAnio } from '../libro-iva.mjs'
 import { saludObra } from '../salud-obra.mjs'
 import { resumenCostos } from '../obra-costos.mjs'
+import { estadoCobranzas } from '../cobranzas.mjs'
 import { query } from '../db.mjs'
 
 export function osDataTools() {
@@ -121,6 +122,25 @@ export function osDataTools() {
           return await resumenCostos()
         } catch (e) {
           return { error: `no pude calcular los costos por obra: ${String(e?.message ?? e).slice(0, 160)}` }
+        }
+      },
+    },
+    // COBRANZAS (ingresos/percibido). Espejo $0 de 02_Cobranzas. Lo cobrado, lo por cobrar, las
+    // VENCIDAS, lo que entra en 7 días y el DSO real. 0 API, nada inventado.
+    'os.cobranzas': {
+      capability: 'drive.read',
+      account: 'ecsas',
+      schema: {
+        name: 'cobranzas',
+        description:
+          'Estado de COBRANZAS (lo que la empresa tiene que cobrar): total cobrado, total por cobrar, cuánto está VENCIDO (fecha de cobro pasada y sin cobrar), cuánto entra en los próximos 7 días, el DSO (días promedio de cobro) y la lista de cobranzas vencidas por obra/cliente. USALO para "¿qué tengo por cobrar?", "¿cuánto me deben?", "¿qué cobranzas están vencidas?", "¿cuánto entra esta semana?", "¿cómo venimos de cobranzas?". Números REALES del Sheet 02_Cobranzas (reconciliado $0), 0 inventado. Sin parámetros.',
+        input_schema: { type: 'object', properties: {} },
+      },
+      async run() {
+        try {
+          return await estadoCobranzas()
+        } catch (e) {
+          return { error: `no pude calcular las cobranzas: ${String(e?.message ?? e).slice(0, 160)}` }
         }
       },
     },
