@@ -162,6 +162,25 @@ export async function desviosObras({ margenGapMin = 0.03, sobreCostoMin = 0.05, 
   return alerts
 }
 
+/** APRENDIZAJE DE POST-MORTEM (0 API): los desvíos REALES y el cambio sugerido de cotización de
+ *  las obras YA CERRADas, leídos de public.post_mortems. Distinto de desviosObras (que calcula
+ *  desde costos_reales, hoy casi vacío): esto trae el aprendizaje RICO que ya se documentó al
+ *  cerrar (ej. Galpones: HH +19%, costo +23%, "ajustar coeficientes de rendimiento Civil"). Es lo
+ *  que hace que cada obra cerrada mejore la próxima cotización (interés compuesto de la misión). */
+export async function aprendizajesPostMortem() {
+  const { rows } = await query(
+    `select coalesce(o.nombre,'obra') nombre, to_char(p.fecha_cierre,'DD/MM/YYYY') cierre,
+            p.causas_desvio, p.cambios_sugeridos_cotizacion
+       from public.post_mortems p left join public.obras o on o.id = p.obra_id
+      where p.estado = 'cerrado' order by p.fecha_cierre desc nulls last limit 6`)
+  return rows.map((r) => {
+    const causa = String(r.causas_desvio || '').replace(/\s+/g, ' ').trim()
+    const cambio = String(r.cambios_sugeridos_cotizacion || '').replace(/\s+/g, ' ').trim()
+    const causaCorta = causa.slice(0, 190) // inicio de las causas (trae los % de desvío HH/costo)
+    return `${r.nombre} (cerrada ${r.cierre}): ${causaCorta}${cambio ? ' → Cambio para cotizar: ' + cambio.slice(0, 240) : ''}`
+  })
+}
+
 /** API principal: cuadro económico. Sin nombre → lista todas las obras con 1 línea c/u.
  *  Con nombre → cuadro completo de la que coincide (o desambigua si hay varias). */
 export async function cuadroEconomico(nombre) {

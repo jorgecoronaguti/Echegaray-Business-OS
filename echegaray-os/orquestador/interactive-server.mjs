@@ -46,7 +46,7 @@ import { sheetRenderTools } from './lib/tools/sheet-render.mjs'
 import { sheetDropdownTools } from './lib/tools/sheet-dropdowns.mjs'
 import { briefingCajaTools } from './lib/tools/briefing-caja-tool.mjs'
 import { estadoOperativoObra, esObraOperativa } from './lib/obra-operativa.mjs'
-import { findObras } from './lib/obra-economics.mjs'
+import { findObras, desviosObras, aprendizajesPostMortem } from './lib/obra-economics.mjs'
 import { agendaResumen, mailsResumen } from './lib/agenda-mail.mjs'
 import { estadoPresupuesto, degradarModeloOnDemand, pausarAutonomo } from './lib/budget.mjs'
 import { fichaObra } from './lib/ficha-obra.mjs'
@@ -862,12 +862,21 @@ async function ask({ directive, fileId, fast, attachments, attachment, history, 
   let learningBudget = ''
   if (isBudgeting) {
     try {
-      const cerradas = await desviosObras({ soloCerradas: true })
-      if (cerradas.length) {
+      // Dos fuentes: aprendizajesPostMortem (RICO: causas + cambio sugerido de cotización, de
+      // public.post_mortems) + desviosObras (calculado de costos_reales). Post-mortem primero;
+      // dedup por nombre de obra para no repetir. Antes desviosObras NI se importaba → ReferenceError
+      // tragado por el catch = la cotización nunca veía el aprendizaje (falla silenciosa, arreglada).
+      const [pm, cerradas] = await Promise.all([
+        aprendizajesPostMortem().catch(() => []),
+        desviosObras({ soloCerradas: true }).catch(() => []),
+      ])
+      const vistos = new Set(pm.map((s) => String(s).split(' (cerrada')[0].trim().toLowerCase()))
+      const items = [...pm, ...cerradas.filter((s) => !vistos.has(String(s).split(' (')[0].trim().toLowerCase()))]
+      if (items.length) {
         learningBudget =
           '\n\nAPRENDIZAJE DE OBRAS YA CERRADAS (usalo para NO repetir el error en esta cotización; es dato real, no lo recalcules): ' +
-          cerradas.join(' | ') +
-          '. Si la obra que estás presupuestando se parece a alguna, avisale al dueño el desvío histórico, revisá los rendimientos HH y precios que vas a cargar contra lo que realmente pasó, y considerá un colchón en los rubros que se dispararon. Esto es interés compuesto: cada obra cerrada mejora la próxima cotización.'
+          items.join(' | ') +
+          '. Si la obra que estás presupuestando se parece a alguna, avisale al dueño el desvío histórico, ajustá los rendimientos HH y precios según el CAMBIO SUGERIDO, y considerá un colchón en los rubros que se dispararon. Esto es interés compuesto: cada obra cerrada mejora la próxima cotización.'
       }
     } catch { /* si falla, la cotización sigue sin el aprendizaje */ }
   }
