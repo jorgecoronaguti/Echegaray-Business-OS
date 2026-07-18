@@ -64,6 +64,7 @@ import { extraerRestricciones, DOCTRINA_EDICION, VERIFICACION_EDICION } from './
 import { isMailComposeIntent, isCalendarWriteIntent } from './lib/chat-intents.mjs'
 import { stripPreamble } from './lib/chat-format.mjs'
 import { personaParaConsulta } from './lib/chat-persona.mjs'
+import { crearCacheLecturaPorCorrida } from './lib/run-read-cache.mjs'
 import { isWriteIntent, isProposedWrite } from './lib/write-intent.mjs'
 import { isBudgetingIntent } from './lib/budget-intent.mjs'
 import { parseScheduleRequest, describeCadence } from './lib/schedule-intent.mjs'
@@ -946,9 +947,21 @@ async function ask({ directive, fileId, fast, attachments, attachment, history, 
   // cacheable: replayarla después no re-ejecutaría el efecto y mentiría diciendo que lo hizo.
   let didWrite = false
   const WRITE_TOOLS = /^(drive_update|drive_append|drive_create|drive_write_doc|drive_batch_update|drive_insert_rows|drive_delete_rows|drive_clear|drive_copy|drive_rename|drive_move|drive_trash|guardar_adjunto_en_drive)$/
+  // F5: caché de LECTURAS por-corrida — no releer el mismo rango 7 veces en una edición
+  // (costo + 429). Se invalida ante CUALQUIER escritura, así una lectura posterior a un
+  // cambio re-consulta. No cambia ninguna respuesta.
+  const readCache = crearCacheLecturaPorCorrida()
   const toolExecutor = async (name, input, meta) => {
-    if (WRITE_TOOLS.test(String(name))) didWrite = true
+    if (WRITE_TOOLS.test(String(name))) { didWrite = true; readCache.invalidar() }
     progressPush(runId, friendlyStep(name, input))
+    if (readCache.cacheable(name)) {
+      const k = readCache.key(name, input)
+      if (readCache.has(k)) return readCache.get(k)
+      const out = await baseExecutor(name, input, meta)
+      if (out && !out.error) readCache.set(k, out) // no cachear errores (429/transitorios)
+      if (out && out.navigate && out.navigate.url) navTarget = out.navigate
+      return out
+    }
     const out = await baseExecutor(name, input, meta)
     if (out && out.navigate && out.navigate.url) navTarget = out.navigate
     return out
