@@ -21,6 +21,11 @@ const CAP_KEYWORDS = {
   'advise.equipment': ['equipo', 'vehiculo', 'flota', 'camion', 'maquina', 'mantenimiento', 'rto', 'vtv', 'combustible', 'alquiler de equipo', 'grua', 'autoelevador', 'retroexcavadora', 'hormigonera'],
   'advise.site': ['obra', 'jefe de obra', 'cuadrilla', 'frente', 'sitio', 'capataz', 'parte diario', 'jornada'],
   'advise.data': ['auditar', 'integr', 'migrar', 'conciliar', 'fuente de datos', 'base de datos', 'sheet', 'planilla'],
+  // ARCHIVISTA / orden documental del data room. advise.admin ya estaba mapeado a
+  // administracion-operativa + orden-documental-dataroom en skill-map, pero SIN keywords acá
+  // era inalcanzable desde el chat (la skill existía, desconectada). Keywords distintivos de
+  // ORGANIZAR el archivo (no un dato de negocio): carpetas, nomenclatura, mover/renombrar/archivar.
+  'advise.admin': ['carpeta', 'carpetas', 'orden documental', 'data room', 'dataroom', 'archivar', 'nomenclatura', 'renombrar', 'clasificar', 'crear carpeta', 'mover archivo', 'estructura de carpeta', 'organizar el drive', 'ordenar el drive', 'donde guardo', 'donde va este', 'archivo desordenad'],
   // Decisión de negocio / comercial (Go-No-Go, selección de obra, pipeline, riesgo del negocio).
   // Antes NO existía en el clasificador → la skill gestion-empresarial-riesgos era inalcanzable
   // desde el chat pese a estar mapeada a advise.commercial. Cableada.

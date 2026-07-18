@@ -17,6 +17,7 @@ export const PERSONA_EXPERTA = {
   'advise.equipment': 'el responsable de equipos y flota de Echegaray Construcciones',
   'advise.tax': 'el asesor impositivo de Echegaray Construcciones',
   'advise.safety': 'el responsable de seguridad e higiene y ART de Echegaray Construcciones',
+  'advise.admin': 'el responsable de administración y ORDEN DOCUMENTAL (archivista del data room) de Echegaray Construcciones',
 }
 
 // Marcadores de consulta de CRITERIO (no un dato suelto): merecen sonnet + razonamiento experto.

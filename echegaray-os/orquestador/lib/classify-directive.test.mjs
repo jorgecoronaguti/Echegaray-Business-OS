@@ -51,5 +51,16 @@ for (const dir of ['caja', 'iva', 'contrato', 'uocra', 'accidente', 'comprar', '
   check('operario en blanco → advise.hr', classifyDirective('registrar operario en blanco') === 'advise.hr')
 }
 
+// ARCHIVISTA (advise.admin): pedidos de ORDEN DOCUMENTAL del data room ahora son alcanzables.
+{
+  check('organizar el drive → advise.admin', classifyDirective('ayudame a organizar el drive') === 'advise.admin')
+  check('carpeta nueva en el drive → advise.admin', classifyDirective('hacé una carpeta nueva en el drive') === 'advise.admin')
+  check('renombrar → advise.admin', classifyDirective('renombrar los archivos con una nomenclatura clara') === 'advise.admin')
+  check('orden documental → advise.admin', classifyDirective('quiero orden documental del data room') === 'advise.admin')
+  check('advise.admin tiene skills (orden-documental-dataroom)', skillsForCapability('advise.admin').includes('orden-documental-dataroom'))
+  // No secuestra un pedido financiero con "ordenar" genérico: "ordená la caja" pesa más finanzas.
+  check('"ordená la caja" NO va a admin', classifyDirective('ordená la caja de hoy') !== 'advise.admin')
+}
+
 console.log(`\nclassify-directive.test: ${ok} OK, ${fail} FALLA`)
 process.exit(fail ? 1 : 0)
