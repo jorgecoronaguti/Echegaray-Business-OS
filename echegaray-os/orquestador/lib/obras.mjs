@@ -1,0 +1,52 @@
+// F0.2 EL EJE — resolver de obras. Toda tabla viva guarda la obra como TEXTO suelto con grafías
+// distintas. Esto lo resuelve a la obra CANÓNICA (o la clasifica indirecto/excluido) usando la
+// tabla public.obra_alias como fuente única (misma que consume la web → una-capacidad-una-fuente).
+//
+// normObra() es IDÉNTICA a la de la web (src/features/control-obras/services/costosObraService.ts):
+// lowercase, sin acentos, saca artículos, colapsa. Si cambia una, cambia la otra.
+import { query } from './db.mjs'
+
+/** Normaliza un texto de obra a su clave canónica (misma regla que la web). */
+export function normObra(s) {
+  return String(s ?? '')
+    .toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ').replace(/\b(la|el|los|las|de|del)\b/g, ' ')
+    .replace(/\s+/g, ' ').trim()
+}
+
+// Cache del mapa de alias (se refresca solo cada 5 min; la tabla cambia rara vez).
+let _cache = null, _cacheAt = 0
+const TTL = 5 * 60 * 1000
+
+/** Carga el mapa alias→{obra_id, clasificacion} desde la DB (cacheado). */
+export async function cargarAliasMap() {
+  if (_cache && Date.now() - _cacheAt < TTL) return _cache
+  const { rows } = await query('select alias, obra_id, clasificacion from public.obra_alias')
+  const map = new Map()
+  for (const r of rows) map.set(r.alias, { obra_id: r.obra_id, clasificacion: r.clasificacion })
+  _cache = map; _cacheAt = Date.now()
+  return map
+}
+
+/** Resuelve un texto de obra crudo. Con `aliasMap` inyectado es PURO (para tests, sin DB).
+ *  Devuelve { obra_id, clasificacion, alias, resuelto }. Si no matchea ningún alias exacto,
+ *  intenta contención (la|nb.includes) como la web, y si nada, queda 'desconocido'. */
+export function resolverObraCon(aliasMap, texto) {
+  const alias = normObra(texto)
+  if (!alias) return { obra_id: null, clasificacion: 'desconocido', alias, resuelto: false }
+  const exacto = aliasMap.get(alias)
+  if (exacto) return { ...exacto, alias, resuelto: true }
+  // fallback tipo obraMatch de la web: contención por nombre (para grafías no vistas aún)
+  const w = alias.split(' ')[0]
+  for (const [k, v] of aliasMap) {
+    if (alias.includes(k) || k.includes(alias) || (w.length > 3 && k.split(' ')[0] === w)) {
+      return { ...v, alias, resuelto: true, aproximado: true }
+    }
+  }
+  return { obra_id: null, clasificacion: 'desconocido', alias, resuelto: false }
+}
+
+/** Versión async que usa la DB (para el chat / capacidades). */
+export async function resolverObra(texto) {
+  return resolverObraCon(await cargarAliasMap(), texto)
+}
