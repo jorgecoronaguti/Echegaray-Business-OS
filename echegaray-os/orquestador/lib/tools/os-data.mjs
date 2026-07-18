@@ -6,6 +6,8 @@
 // Capability 'drive.read' → corre inline (como la tool 'aprender'), sin aprobación (es lectura).
 // NUNCA fabrican: un período sin datos viene marcado, y el agente debe dejarlo como "sin datos".
 import { posicionIvaAnio } from '../libro-iva.mjs'
+import { saludObra } from '../salud-obra.mjs'
+import { resumenCostos } from '../obra-costos.mjs'
 import { query } from '../db.mjs'
 
 export function osDataTools() {
@@ -80,6 +82,45 @@ export function osDataTools() {
           return await posicionIvaAnio(input?.anio)
         } catch (e) {
           return { error: `no pude calcular la posición de IVA: ${String(e?.message ?? e).slice(0, 160)}` }
+        }
+      },
+    },
+    // SALUD ECONÓMICA DE UNA OBRA (capacidad-decisión, no dato suelto). Devuelve la LECTURA del
+    // CFO: costo real (del eje canónico F0.2), consumo de presupuesto, y honesta sobre lo que
+    // falta para cerrar el margen (certificación). NUNCA inventa ingreso ni margen. 0 API.
+    'os.salud_obra': {
+      capability: 'drive.read',
+      account: 'ecsas',
+      schema: {
+        name: 'salud_obra',
+        description:
+          'La salud ECONÓMICA de una obra: costo real acumulado (respaldado por comprobantes, resuelto por el eje canónico de obras), consumo del presupuesto, margen real si hay certificación, y qué falta para cerrarlo. USALO cuando el dueño pregunte "¿cómo va [obra]?", "¿cuánto llevo gastado en [obra]?", "¿gana o pierde [obra]?", "¿en qué gasté en [obra]?". Devuelve la lectura lista + costo por rubro/proveedor + recomendación + siguiente paso. Es HONESTO: si falta la certificación (ingreso devengado), dice que ve el costo pero NO el margen — no lo inventes. Obras válidas: La Estrella, San Francisco, Messina, ARCOR, Galpones (acepta cualquier grafía). Pasá obra (el nombre o texto tal cual lo dijo el dueño).',
+        input_schema: { type: 'object', properties: { obra: { type: 'string', description: 'nombre/texto de la obra, ej. "San Francisco" o "la estrella"' } }, required: ['obra'] },
+      },
+      async run(input) {
+        try {
+          if (!input?.obra) return { error: 'falta "obra" (nombre de la obra)' }
+          return await saludObra(input.obra)
+        } catch (e) {
+          return { error: `no pude leer la salud de la obra: ${String(e?.message ?? e).slice(0, 160)}` }
+        }
+      },
+    },
+    // COSTO REAL POR OBRA (rollup de todas). Para "¿cómo venimos por obra?" / "¿dónde va la plata?".
+    'os.costos_obras': {
+      capability: 'drive.read',
+      account: 'ecsas',
+      schema: {
+        name: 'costos_obras',
+        description:
+          'Costo real acumulado de TODAS las obras (rollup del eje canónico sobre los comprobantes), ordenado de mayor a menor, más los buckets de indirectos/estructura (Administracion, Taller, F931, UOCRA…) y excluidos. USALO para "¿cómo venimos por obra?", "¿dónde se va la plata?", "ranking de costos por obra". Números REALES, 0 inventado. No requiere parámetros.',
+        input_schema: { type: 'object', properties: {} },
+      },
+      async run() {
+        try {
+          return await resumenCostos()
+        } catch (e) {
+          return { error: `no pude calcular los costos por obra: ${String(e?.message ?? e).slice(0, 160)}` }
         }
       },
     },
