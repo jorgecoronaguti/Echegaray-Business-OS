@@ -66,7 +66,7 @@ export default async function ObrasPage() {
   const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
 
   const todasLasAlertas = datosDashboard.data ? construirAlertasDashboard(datosDashboard.data) : []
-  const alertasDelArea = alertasPorArea(todasLasAlertas, 'obras_produccion')
+  const alertasDelArea = alertasPorArea(todasLasAlertas, 'obras')
   const accionesMap = accionesPorAlertaOrigen(acciones.data ?? [])
 
   const tablero =

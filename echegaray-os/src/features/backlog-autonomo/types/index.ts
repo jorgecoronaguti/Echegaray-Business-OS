@@ -73,15 +73,15 @@ export const ESTADO_BACKLOG_LABEL: Record<EstadoBacklog, string> = {
 // la mayoría del backlog autónomo es transversal al OS, no de una obra o área
 // operativa específica -- se asigna a Dirección salvo que sea claramente de obra.
 const AREA_POR_TIPO_BACKLOG: Record<TipoBacklog, AreaOS> = {
-  gap_dato: 'direccion',
-  gap_proceso: 'direccion',
-  riesgo: 'direccion',
-  anomalia: 'obras_produccion',
-  oportunidad: 'direccion',
-  gap_skill: 'direccion',
-  deuda_tecnica: 'direccion',
-  integracion_faltante: 'direccion',
-  mejora_potencial: 'direccion',
+  gap_dato: 'gestion_general',
+  gap_proceso: 'gestion_general',
+  riesgo: 'gestion_general',
+  anomalia: 'obras',
+  oportunidad: 'gestion_general',
+  gap_skill: 'gestion_general',
+  deuda_tecnica: 'gestion_general',
+  integracion_faltante: 'gestion_general',
+  mejora_potencial: 'gestion_general',
 }
 
 const SEVERIDAD_POR_IMPACTO: Record<ImpactoBacklog, SeveridadAlerta> = {

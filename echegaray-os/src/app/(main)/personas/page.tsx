@@ -37,7 +37,7 @@ export default async function PersonasPage() {
   const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
 
   const todasLasAlertas = datos.data ? construirAlertasDashboard(datos.data) : []
-  const alertasDelArea = alertasPorArea(todasLasAlertas, 'personas_productividad')
+  const alertasDelArea = alertasPorArea(todasLasAlertas, 'personas')
   const accionesMap = accionesPorAlertaOrigen(acciones.data ?? [])
 
   const resumenHH = datos.data?.resumenHH ?? []
