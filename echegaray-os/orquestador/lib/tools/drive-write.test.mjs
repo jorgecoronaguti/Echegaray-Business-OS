@@ -18,8 +18,11 @@ async function main() {
 
   // update
   const u = await reg['drive.update'].run({ file_id: 'F1', range: 'RESUMEN!B4:B4', values: [['100']] })
-  check('update: llamó updateSheetValues', calls[0][0] === 'update' && calls[0][1] === 'F1')
-  check('update: ok con updated_range', u.ok === true && u.updated_range === 'RESUMEN!B4:B4')
+  // startCell() colapsa el rango a su celda inicial (RESUMEN!B4:B4 -> RESUMEN!B4) para que
+  // Sheets dimensione la escritura según la matriz de values y no tire el 400 "tried writing
+  // to column/row X" que hacía loopear al modelo. El update_range refleja esa celda de inicio.
+  check('update: llamó updateSheetValues con celda inicial', calls[0][0] === 'update' && calls[0][1] === 'F1' && calls[0][2] === 'RESUMEN!B4')
+  check('update: ok con updated_range', u.ok === true && u.updated_range === 'RESUMEN!B4')
   check('update: capability drive.write', reg['drive.update'].capability === 'drive.write')
 
   // update sin values -> error, no llama a google
