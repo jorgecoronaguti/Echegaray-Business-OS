@@ -6,6 +6,7 @@
 import { query } from './db.mjs'
 import { resolverObra } from './obras.mjs'
 import { costoRealObra } from './obra-costos.mjs'
+import { ingresoCertificado } from './certificaciones.mjs'
 
 const money = (n) => '$' + Math.round(Number(n || 0)).toLocaleString('es-AR')
 
@@ -85,16 +86,8 @@ async function buscarPresupuesto(nombreObra) {
   return exact ? { monto: Number(exact.monto), margen_esperado: exact.margen_esperado != null ? Number(exact.margen_esperado) : null } : null
 }
 
-/** Ingreso certificado real de la obra (hoy certificados=0 → null). */
-async function buscarIngresoCertificado(nombreObra) {
-  const r = (await query(
-    `select coalesce(sum(c.monto_certificado),0) total, count(*) n
-       from public.certificados c join public.obras o on o.id = c.obra_id
-      where lower(o.nombre) = lower($1)`, [nombreObra])).rows[0]
-  return Number(r?.n || 0) > 0 ? Number(r.total) : null
-}
-
-/** Capacidad pública: salud económica de una obra por su texto/nombre. 0 API. */
+/** Capacidad pública: salud económica de una obra por su texto/nombre. 0 API. El ingreso
+ *  DEVENGADO viene de las certificaciones keyeadas al eje canónico (regla: devengado en P&L). */
 export async function saludObra(texto) {
   const r = await resolverObra(texto)
   if (!r.obra_id) {
@@ -103,6 +96,6 @@ export async function saludObra(texto) {
   const canon = (await query('select id, nombre, estado, tipo from public.obra_canonica where id=$1', [r.obra_id])).rows[0]
   const costo = await costoRealObra(r.obra_id)
   const presupuesto = await buscarPresupuesto(canon.nombre)
-  const ingresoCertificado = await buscarIngresoCertificado(canon.nombre)
-  return armarSalud({ obra: canon, costo, presupuesto, ingresoCertificado })
+  const ingresoCert = await ingresoCertificado(r.obra_id)
+  return armarSalud({ obra: canon, costo, presupuesto, ingresoCertificado: ingresoCert })
 }
