@@ -250,6 +250,31 @@ function persistResult(rid, payload) {
          on conflict (rid) do update set payload = excluded.payload, created_at = now()`,
     [rid, JSON.stringify(payload)]).catch(() => {})
 }
+// F0.1 INSTRUMENTAR: un registro por pedido con su TEXTO + desenlace + latencia. Es el instrumento
+// que faltaba (el OS no guardaba qué se le pedía → no podía medir qué falla ni qué hacer instantáneo).
+// Fire-and-forget, nunca rompe la respuesta. El desenlace se deriva de la respuesta real.
+function outcomeDe(out) {
+  if (!out) return 'error'
+  if (out.error) return 'error'
+  if (out.__working__ || out.async) return 'async'
+  const a = String(out.answer || '')
+  if (/frené para no gastar|tope de costo/i.test(a)) return 'corte_costo'
+  if (/agot[oó] iteraciones|demasiados pasos/i.test(a)) return 'corte_iter'
+  if (a.length < 40) return 'corta'
+  return 'normal'
+}
+function logChatRequest({ rid, directive, user, surface, out, latencyMs, extVersion }) {
+  if (!rid) return
+  query(`insert into orq.chat_request
+           (rid, directive, user_email, surface, capability, model, cost_usd, latency_ms, outcome, ext_version)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         on conflict (rid) do update set
+           capability=excluded.capability, model=excluded.model, cost_usd=excluded.cost_usd,
+           latency_ms=excluded.latency_ms, outcome=excluded.outcome`,
+    [rid, String(directive || '').slice(0, 2000), user || 'anon', surface || 'extension',
+      out?.capability || null, out?.model || null, out?.cost ?? null,
+      latencyMs ?? null, outcomeDe(out), extVersion || null]).catch(() => {})
+}
 function friendlyStep(name, input) {
   const i = input || {}
   switch (name) {
@@ -1309,8 +1334,8 @@ const server = http.createServer(async (req, res) => {
       // del bucle de reinicio: antes, al vencer el watchdog se marcaba "cortado" y lo que
       // terminaba después se perdía).
       const askPromise = ask({ directive: directive.slice(0, 4000), fileId, fast, attachment, attachments, history, runId: rid, userEmail: identidad })
-        .then((out) => { countAnswer(out?.model); if (!CANCELLED.has(rid)) { RESULTS.set(rid, { done: true, out }); persistResult(rid, { done: true, ...out }) } return out })
-        .catch((e) => { if (!CANCELLED.has(rid)) { RESULTS.set(rid, { done: true, error: e.message }); persistResult(rid, { done: true, error: e.message }) } throw e })
+        .then((out) => { countAnswer(out?.model); if (!CANCELLED.has(rid)) { RESULTS.set(rid, { done: true, out }); persistResult(rid, { done: true, ...out }) } logChatRequest({ rid, directive, user: identidad, surface: extVersion ? 'extension' : 'web', out, latencyMs: Date.now() - t0, extVersion }); return out })
+        .catch((e) => { if (!CANCELLED.has(rid)) { RESULTS.set(rid, { done: true, error: e.message }); persistResult(rid, { done: true, error: e.message }) } logChatRequest({ rid, directive, user: identidad, surface: extVersion ? 'extension' : 'web', out: { error: e.message }, latencyMs: Date.now() - t0, extVersion }); throw e })
         .finally(() => { progressDone(rid); INFLIGHT.delete(dedupKey); setTimeout(() => { RESULTS.delete(rid); CANCELLED.delete(rid) }, 120000) })
       // WATCHDOG SUAVE: NO mata la tarea (sigue en segundo plano y entrega tarde). Solo evita
       // el spinner infinito con un aviso que INVITA A ESPERAR, no a reenviar (reenviar reinicia).
