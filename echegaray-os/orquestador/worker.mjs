@@ -12,6 +12,7 @@
 import { loadConfig } from './lib/config.mjs'
 import { createLogger } from './lib/logger.mjs'
 import { ping, closePool } from './lib/db.mjs'
+import { esperarDb } from './lib/db-espera.mjs'
 import { resolveContext } from './lib/identity.mjs'
 import {
   claimTask, heartbeat, transition, failTask, reapExpiredLeases, queueSnapshot,
@@ -143,6 +144,9 @@ async function reconcileOnStartup() {
 
 async function main() {
   if (MODE === 'health') return health()
+  // Espera resiliente a la DB: un blip transitorio de Supabase (econnrefused) no debe
+  // crashear el worker en cadena — espera con backoff y aborta solo ante caída real.
+  await esperarDb({ ping, onRetry: (i) => log.warn('DB no disponible, esperando (blip de Supabase)', i) })
   await resolveContext() // valida ejes/DB antes de tomar trabajo
   await reconcileOnStartup()
   installSignals()

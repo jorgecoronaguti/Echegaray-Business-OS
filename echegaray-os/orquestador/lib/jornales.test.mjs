@@ -6,7 +6,6 @@ let ok = 0, fail = 0
 const check = (n, c) => { if (c) ok++; else { fail++; console.error(`FALLA: ${n}`) } }
 
 // Grid sintético: 2 bloques de quincena, total pagado en col índice 4.
-const F = ['', '', '', '', '']
 const g = [
   ['n', 'Obrero', '', 'Cat', 'total'],          // 0
   ['', '', '', '', ''],                           // 1
