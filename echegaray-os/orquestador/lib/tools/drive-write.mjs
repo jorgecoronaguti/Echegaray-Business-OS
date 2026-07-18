@@ -50,6 +50,43 @@ function startCell(range) {
   return start ? sheet + start : range
 }
 
+/** Google devuelve "Unable to parse range: Pestaña!A1" cuando la PESTAÑA no existe (no cuando
+ *  el rango A1 está mal). El modelo, sin saber los nombres reales, reintenta a ciegas y quema
+ *  iteraciones/costo (bug real del journal: "Sheet1!A1", "Cómputo!A63"). Convertimos ese 400 en
+ *  un error ÚTIL: le devolvemos las pestañas reales para que corrija el nombre en UN paso barato. */
+const RANGE_ERR = /Unable to parse range|Invalid data\[\d+\].*(range|parse)/i
+async function conPestanasSiFalla(google, fileId, fn) {
+  try {
+    return await fn()
+  } catch (e) {
+    const msg = String(e?.message || e)
+    if (!RANGE_ERR.test(msg)) throw e
+    let tabs = []
+    try { tabs = await google.listTabs(fileId) } catch { /* si tampoco puedo listar, devuelvo el error crudo */ }
+    return {
+      error: 'No pude escribir: la PESTAÑA del rango no existe (o el nombre no coincide exacto). ' +
+        (tabs.length
+          ? 'Pestañas reales de este Sheet: ' + tabs.map((t) => `"${t}"`).join(', ') + '. Usá EXACTO uno de esos nombres (respetá acentos/mayúsculas) o creá la pestaña con drive_add_tab antes de escribir.'
+          : 'No pude listar las pestañas. Verificá el file_id.'),
+      google_error: msg.slice(0, 200),
+    }
+  }
+}
+
+/** Mensaje cuando una celda quedó en #ERROR!/#VALUE! tras escribir una fórmula. Antes solo decía
+ *  "revisá el separador". Pero la causa #1 real (auditoría 18/07, caso =G62*1.02 con G62="$248.000")
+ *  es que la celda REFERENCIADA es TEXTO, no número → la fórmula no puede operarla. Guiamos al
+ *  modelo a la verificación BARATA (=ISNUMBER en esa celda) en vez de re-leer todo el sheet y
+ *  agotar el tope de costo. Así el diagnóstico cuesta centavos, no dólares. */
+function avisoErrorCeldas(errs) {
+  const esValor = errs.some((e) => /#(VALUE|ERROR)/i.test(e))
+  return 'OJO: NO quedó resuelto. Estas celdas dan error tras escribir: ' + errs.join(', ') + '. ' +
+    'NO le digas al dueño que está listo. Causa MÁS PROBABLE: la celda que referencia la fórmula está guardada como TEXTO ' +
+    '(ej. "$248.000" o "1.234,56" con símbolos), no como número — entonces no se puede multiplicar/sumar. ' +
+    'Verificá BARATO con =ISNUMBER(<esa celda>) en una celda libre; si da FALSO, el problema es el DATO (normalizá esa celda a número), no tu fórmula. ' +
+    (esValor ? '' : 'Si el dato SÍ es número, revisá separador/referencia/rango de la fórmula. ')
+}
+
 /** Registry de tools de escritura, cerrado sobre un cliente Google con WRITE_SCOPES. */
 export function driveWriteTools(google) {
   return {
@@ -73,14 +110,16 @@ export function driveWriteTools(google) {
       async run(input) {
         const values = normalizeValues(input?.values)
         if (!input?.file_id || !input?.range || !values) return { error: 'faltan file_id, range o values (matriz de filas)' }
-        // Escribir desde la celda inicial: Sheets dimensiona según la matriz, evitando el 400
-        // "tried writing to column/row X" que hacía loopear al modelo hasta agotar iteraciones.
-        const r = await google.updateSheetValues(input.file_id, startCell(input.range), values)
-        const errs = await verificarErrores(google, input.file_id, r.updatedRange ?? input.range, values)
-        return {
-          ok: errs.length === 0, updated_range: r.updatedRange ?? input.range, updated_cells: r.updatedCells ?? null,
-          ...(errs.length ? { advertencia: 'OJO: NO quedó resuelto. Estas celdas dan error tras escribir: ' + errs.join(', ') + '. NO le digas al dueño que está listo; revisá y corregí la fórmula (¿separador, referencia, rango?).', celdas_con_error: errs } : {}),
-        }
+        return conPestanasSiFalla(google, input.file_id, async () => {
+          // Escribir desde la celda inicial: Sheets dimensiona según la matriz, evitando el 400
+          // "tried writing to column/row X" que hacía loopear al modelo hasta agotar iteraciones.
+          const r = await google.updateSheetValues(input.file_id, startCell(input.range), values)
+          const errs = await verificarErrores(google, input.file_id, r.updatedRange ?? input.range, values)
+          return {
+            ok: errs.length === 0, updated_range: r.updatedRange ?? input.range, updated_cells: r.updatedCells ?? null,
+            ...(errs.length ? { advertencia: avisoErrorCeldas(errs), celdas_con_error: errs } : {}),
+          }
+        })
       },
     },
     'drive.append': {
@@ -103,8 +142,10 @@ export function driveWriteTools(google) {
       async run(input) {
         const values = normalizeValues(input?.values)
         if (!input?.file_id || !input?.range || !values) return { error: 'faltan file_id, range o values (matriz de filas)' }
-        const r = await google.appendSheetValues(input.file_id, input.range, values)
-        return { ok: true, updated_range: r.updates?.updatedRange ?? null, appended_rows: r.updates?.updatedRows ?? values.length }
+        return conPestanasSiFalla(google, input.file_id, async () => {
+          const r = await google.appendSheetValues(input.file_id, input.range, values)
+          return { ok: true, updated_range: r.updates?.updatedRange ?? null, appended_rows: r.updates?.updatedRows ?? values.length }
+        })
       },
     },
     'drive.create': {
@@ -225,16 +266,18 @@ export function driveWriteTools(google) {
       async run(input) {
         if (!input?.file_id || !Array.isArray(input?.updates) || !input.updates.length) return { error: 'faltan file_id o updates [{range, values}]' }
         const data = input.updates.map((u) => ({ range: startCell(u.range), majorDimension: 'ROWS', values: normalizeValues(u.values) || [] })).filter((d) => d.range)
-        const r = await google.batchUpdateValues(input.file_id, data)
-        const rangos = r.responses?.map((x) => x.updatedRange) ?? data.map((d) => d.range)
-        // Verificar cada rango escrito que tenía fórmulas.
-        const errs = new Set()
-        for (let i = 0; i < data.length; i++) for (const e of await verificarErrores(google, input.file_id, rangos[i] || data[i].range, data[i].values)) errs.add(e)
-        const errList = [...errs]
-        return {
-          ok: errList.length === 0, updated_ranges: rangos, total_updated_cells: r.totalUpdatedCells ?? null,
-          ...(errList.length ? { advertencia: 'OJO: NO quedó resuelto. Estas celdas dan error tras escribir: ' + errList.join(', ') + '. NO le digas al dueño que está listo; revisá y corregí las fórmulas.', celdas_con_error: errList } : {}),
-        }
+        return conPestanasSiFalla(google, input.file_id, async () => {
+          const r = await google.batchUpdateValues(input.file_id, data)
+          const rangos = r.responses?.map((x) => x.updatedRange) ?? data.map((d) => d.range)
+          // Verificar cada rango escrito que tenía fórmulas.
+          const errs = new Set()
+          for (let i = 0; i < data.length; i++) for (const e of await verificarErrores(google, input.file_id, rangos[i] || data[i].range, data[i].values)) errs.add(e)
+          const errList = [...errs]
+          return {
+            ok: errList.length === 0, updated_ranges: rangos, total_updated_cells: r.totalUpdatedCells ?? null,
+            ...(errList.length ? { advertencia: avisoErrorCeldas(errList), celdas_con_error: errList } : {}),
+          }
+        })
       },
     },
     'drive.insertrows': {

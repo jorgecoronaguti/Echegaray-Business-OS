@@ -342,6 +342,14 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     // es_AR el punto es separador de miles) = número MAL (reclamo real del dueño: "pone mal los
     // números"). Se respetan los literales de string (comillas dobles Y simples, ej. nombres de
     // pestaña 'Hoja.2'!A1, o el "." dentro de SUBSTITUTE(...;".";"")).
+    //
+    // BUG REAL (auditoría 18/07): un modelo en español a veces escribe la fórmula ya en es_AR
+    // ("=G62*1,02") en vez de canónico. La pasada de abajo convertía ESA coma decimal en ';'
+    // ("=G62*1;02") → #ERROR!. Normalizamos primero SOLO la coma decimal inequívoca: un número
+    // que sigue a un operador aritmético / '(' / '=' (ej. "*1,02", "=2,5", "(3,14"). NO toca
+    // separadores de argumentos ("VLOOKUP(A1,Data!A:B,2,0)" no matchea: los operandos no vienen
+    // de un operador aritmético), ni comas dentro de strings (el '"' o "'" no es operador).
+    s = s.replace(/([=(*/+\-]\s*\d+),(\d+)/g, '$1.$2')
     let out = '', inStr = false, quote = ''
     for (const c of s) {
       if (inStr) { out += c; if (c === quote) inStr = false; continue }

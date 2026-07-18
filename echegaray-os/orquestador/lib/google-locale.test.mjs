@@ -20,6 +20,14 @@ check('mixto: separador y decimal', f('=ROUND(A1*1.05,2)') === '=ROUND(A1*1,05;2
 check('SUBSTITUTE: el "." del string NO se toca, sí los separadores', f('=VALUE(SUBSTITUTE(G62,".",""))') === '=VALUE(SUBSTITUTE(G62;".";""))')
 check('string con coma adentro no se toca', f('=CONCAT(A1,", pesos")') === '=CONCAT(A1;", pesos")')
 check('pestaña con punto en comillas simples', f("='Hoja.2'!A1+1.5") === "='Hoja.2'!A1+1,5")
+// BUG REAL (auditoría 18/07): el modelo a veces escribe la fórmula YA en es_AR (coma decimal).
+// Antes la coma decimal se convertía en ';' → "=G62*1;02" = #ERROR!. Ahora se preserva la coma
+// decimal inequívoca (número tras operador aritmético / '(' / '=') SIN romper separadores.
+check('modelo es-AR: *1,02 se preserva (NO pasa a 1;02)', f('=G62*1,02') === '=G62*1,02')
+check('modelo es-AR: dos decimales', f('=A1*1,5+B2*2,3') === '=A1*1,5+B2*2,3')
+check('modelo es-AR: división decimal', f('=A1/2,5') === '=A1/2,5')
+check('modelo es-AR: arg negativo decimal, sep intacto', f('=MIN(A1,-2,5)') === '=MIN(A1;-2,5)')
+check('args enteros NO se confunden con decimal', f('=VLOOKUP(A1,Data!A:B,2,0)') === '=VLOOKUP(A1;Data!A:B;2;0)')
 // no-fórmulas y sin cambios
 check('no-fórmula (texto) intacto', f('hola, mundo') === 'hola, mundo')
 check('número plano (no string =) intacto', f(1234) === 1234)

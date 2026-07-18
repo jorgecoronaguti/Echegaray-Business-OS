@@ -49,6 +49,28 @@ async function main() {
   check('delete: run no ejecuta (mensaje forbidden)', !!d.error && /prohibido|Nivel F/i.test(d.error))
   check('delete: no tocó google', calls.length === 3)
 
+  // Bug 4 (auditoría 18/07): pestaña inexistente -> error ÚTIL con las pestañas reales,
+  // en vez del 400 crudo que hacía loopear al modelo.
+  const gTabFail = {
+    async updateSheetValues() { throw new Error('google api 400: { "message": "Unable to parse range: Sheet1!A1" }') },
+    async listTabs() { return ['Compras', 'Caja', 'Cómputo'] },
+  }
+  const rTab = driveWriteTools(gTabFail)
+  const t = await rTab['drive.update'].run({ file_id: 'F1', range: 'Sheet1!A1', values: [['x']] })
+  check('range-fail: devuelve error, no throw', !!t.error)
+  check('range-fail: lista las pestañas reales', /Compras/.test(t.error) && /Cómputo/.test(t.error))
+
+  // Bug 3 (auditoría 18/07): fórmula que queda en #VALUE! -> el aviso nombra la causa TEXTO
+  // y guía a ISNUMBER (diagnóstico barato), no solo "revisá el separador".
+  const gErr = {
+    async updateSheetValues(_f, range, values) { return { updatedRange: range, updatedCells: values.flat().length } },
+    async readSheetValues() { return [['#VALUE!']] },
+  }
+  const rErr = driveWriteTools(gErr)
+  const e = await rErr['drive.update'].run({ file_id: 'F1', range: 'H10', values: [['=G62*1,02']] })
+  check('celda-error: ok=false', e.ok === false)
+  check('celda-error: aviso menciona TEXTO e ISNUMBER', /texto/i.test(e.advertencia) && /ISNUMBER/i.test(e.advertencia))
+
   console.log(`\n${ok} ok, ${fail} fallas`)
   process.exit(fail ? 1 : 0)
 }
