@@ -32,6 +32,20 @@ No cubre: el aspecto fiscal específico (`impuestos-construccion`), la gestión 
 
 **P&L = devengado, siempre.** Nunca reconocer un gasto por fecha de pago ni un ingreso por fecha de cobro. PAGO ≠ GASTO DEL PERÍODO. COBRO ≠ INGRESO DEL PERÍODO.
 
+## Cableado al OS real (verificado 2026-07-18) — qué leer y qué llamar
+
+Esta skill razona; el dato vive en el núcleo (Supabase + capacidades 0-API). El OS con la persona del contador NO estima el margen a mano: lee estas fuentes.
+
+**El lado de COSTOS del devengado ya está limpio (el eje F0.2):**
+- `public.costos_obra` (731 filas, costo real por obra) resuelto por `orquestador/lib/obras.mjs` → `resolverObra()` contra `obra_canonica`. Rollup verificado: **La Estrella $168,7M · San Francisco $66,6M · Messina $11,7M · ARCOR $10,0M (mantenimiento) · indirectos $321M**, 0 desconocidos. Los "indirectos" (Administracion, Taller, F931, UOCRA, IERIC…) NO son costo de obra → son Estructura, no se imputan a Civil/Mantenimiento.
+- `orquestador/lib/obra-economics.mjs` → `cuadroEconomico(obra)` (contratado↔presup↔costo real↔adicionales), `desviosObras()` (margen/sobrecosto), `aprendizajesPostMortem()`. `public.post_mortems` (1: Galpones, HH +19% / costo +23%).
+
+**El lado de INGRESOS del devengado NO existe — es el gap #1:**
+- `public.certificados = 0`. Sin certificación no hay ingreso devengado por obra → **no se puede cerrar el margen (ingreso devengado − costo real), solo se ve el costo.** El puente EBITDA↔Caja tampoco cierra sin esto. Cuando se pregunte "¿gana o pierde esta obra?", la respuesta honesta hoy es "veo el costo real ($X) pero NO el ingreso devengado — falta certificación". No inventar el ingreso.
+- El P&L consolidado real vive en el Sheet `Ingresos y Egresos - P&L` (Civil/Mantenimiento/Estructura, con meses reales vs presupuesto mezclados sin marcar — riesgo ya documentado). Aún no está en el núcleo.
+
+**Regla de arquitectura ([[arquitectura-3-caras-nucleo]]):** el costo real por obra se calcula UNA vez (el eje + obra-economics); web, chat y Claude Code lo consultan, no lo recalculan con otra fórmula.
+
 ## Preguntas profesionales que debe hacer
 
 - ¿La empresa gana o pierde este mes, y por qué?

@@ -43,9 +43,15 @@ La fecha que importa para la posición de caja es la fecha en que el movimiento 
 | Obligaciones financieras | Préstamos, SGR, ANR según documentación societaria existente | Cuenta financiera |
 | Gastos operativos | Real, del día a día | Proveedor u obligación |
 
+## Estado real del OS (actualizado 2026-07-18)
+
+- **El gap crítico "obra en texto libre, sin ID" YA está resuelto** por el eje F0.2: `public.obra_canonica` (obras reales) + `public.obra_alias` (resolver) + `orquestador/lib/obras.mjs` → `resolverObra(texto)`. Cualquier `obra_texto` crudo ("LA ESTRELLA"/"ESTRELLA"/"Estrella") resuelve a la obra canónica o se clasifica indirecto/excluido. Verificado: las 731 filas de `costos_obra` rollean sin desconocidos. **Todo movimiento nuevo debe resolver su obra por acá, no cargar texto libre.**
+- **El sync desde el Sheet ya existe**: `echegaray-caja-sync` (30 min) carga saldos del `Flujo de Caja - Cash Flow` a `cuentas_financieras`; `echegaray-compras-sync` (1h) carga costos a `costos_obra`.
+- **La posición y las alertas ya se calculan**: `caja-alertas.saldoActual()` + `cash-briefing.mjs` (posición, cobranzas vencidas, proyección 7d) — tool `briefing_caja`, corre 8am. No recalcular a mano lo que estas capacidades ya dan (una-capacidad-una-fuente, [[arquitectura-3-caras-nucleo]]).
+
 ## Vínculo obligatorio de cada movimiento
 
-- **Toda entrada de dinero debe explicar qué Cliente y qué Obra la generan.** Si no se puede determinar la Obra, no se carga el movimiento sin ese dato — es el gap que el AS-IS identificó como crítico (obra en texto libre, sin ID).
+- **Toda entrada de dinero debe explicar qué Cliente y qué Obra la generan.** La Obra se resuelve con `resolverObra()` contra el eje canónico (ya no es texto libre). Si el texto no resuelve a ninguna obra, se clasifica indirecto/excluido — no se inventa una obra.
 - **Toda salida de dinero debe explicar qué Proveedor, qué Obra (si aplica) o qué obligación la genera.** Una salida sin una de estas tres referencias es un dato incompleto, no se asume.
 
 ## Cobros y pagos parciales

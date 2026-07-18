@@ -32,6 +32,24 @@ No cubre: el reconocimiento contable devengado (`contabilidad-constructoras`), l
 
 **Flujo de fondos = criterio percibido y temporal.** Todo movimiento se clasifica explícitamente como uno de: REAL · COMPROMETIDO · PROYECTADO · ESTIMADO · VENCIDO · PAGADO · COBRADO · CONCILIADO. Nunca se suman dos categorías distintas en la misma columna sin distinguirlas. Un proyectado que se cumple se marca como real — no se duplica sumando ambos.
 
+## Cableado al OS real (verificado 2026-07-18) — qué leer y qué llamar
+
+Esta skill razona; el dato y el cálculo viven en el núcleo (Supabase + capacidades 0-API). Regla de arquitectura del proyecto ([[arquitectura-3-caras-nucleo]]): **una capacidad = una fuente**; web, chat y Claude Code consultan lo mismo, no recalculan. Cuando el OS adopta la persona del CFO, NO estima a mano lo que estas capacidades ya calculan — las llama.
+
+**Capacidades determinísticas existentes (0 API — llamar, no reimplementar):**
+- `orquestador/lib/caja-alertas.mjs` → `saldoActual()`: posición de caja real anclada a `max(saldo_fecha)` (evita el doble conteo de movimientos ya reflejados en el saldo). Es el número canónico de "cuánta caja hay hoy".
+- `orquestador/lib/cash-briefing.mjs` → posición + **cobranzas vencidas** + **proyección 7 días** (caja + entra7 − vencimientos). Tool del chat: `briefing_caja`. Corre solo a las 8am (briefing diario, 0 API, verificado).
+
+**Tablas reales (Supabase `public`, verificado):**
+- `cuentas_financieras` (3): `saldo_inicial` + `saldo_fecha`. HOY: *Santander Empresas Pesos = $13.916.209 al 2026-07-17*; **Banco y Caja/Efectivo en $0 → la posición NO está consolidada de verdad** (gap de carga, no de capacidad). Sync `echegaray-caja-sync` cada 30 min desde el Sheet `Flujo de Caja - Cash Flow` (pestaña Caja, ledger de saldos).
+- `movimientos_caja` (48): `tipo` (cobro/pago), `estado` (proyectado/real), `fecha_esperada`/`fecha_real`. Rango jun→oct (incluye proyección).
+- `obligaciones` (10, fino) + `aplicaciones_pago` (16): salidas comprometidas. **Gap: 10 obligaciones es incompleto** — faltan cargas sociales, IIBB/IVA, Crédito Prendario, Plan de pago (todas visibles hoy como "indirecto" en `costos_obra`).
+
+**Gaps reales de HOY (no los viejos "Bloques Fx"):**
+1. **Cobranzas NO está en el núcleo** — vive solo en el Sheet `02_Cobranzas`. Sin esto no hay DSO ni proyección de ingresos desde el OS, y la proyección de caja del `cash-briefing` es coja del lado de las entradas. Es el mayor gap de tesorería.
+2. **Posición de caja incompleta** — solo 1 de 3 cuentas tiene saldo real; los $13,9M de Santander no cuadran con los ~$17,7M del ledger completo del Sheet (falta cargar efectivo/otras).
+3. **Capital de trabajo** = `saldoActual()` + cobranzas − `obligaciones`: calculable en cuanto cobranzas entre al núcleo; hoy queda como cálculo ad-hoc marcado como tal.
+
 ## Preguntas profesionales que debe hacer
 
 - ¿Cuánta caja real tenemos hoy, y está conciliada contra el banco?
@@ -137,9 +155,12 @@ Nacional (BCRA, entidades financieras) — no suele haber variación provincial 
 
 No puede afirmar una tasa de interés o condición de financiamiento vigente sin verificación. No puede afirmar la posición de caja de la empresa sin cruzar `movimientos_caja` y `obligaciones` reales — no estimar sin dato.
 
-## Gaps de conocimiento conocidos (primera versión)
+## Gaps de conocimiento conocidos (actualizado 2026-07-18)
 
-No existe hoy en el OS una vista de posición de caja consolidada ni de capital de trabajo (Bloques F1/F2 de la revisión estratégica, priorizados por el usuario pero aún no construidos) — mientras tanto, esta skill debe calcularlos manualmente cruzando `movimientos_caja` y `obligaciones` cuando se necesite, dejando explícito que es un cálculo ad-hoc, no una vista persistida.
+- **Posición de caja: YA existe** como capacidad (`caja-alertas.saldoActual()` + `cash-briefing.mjs`), pero está **incompleta por dato**: solo Santander tiene saldo real; Banco y Caja/Efectivo en $0. No es un gap de capacidad sino de carga.
+- **Cobranzas: gap real y prioritario** — no está en el núcleo (solo en el Sheet `02_Cobranzas`). Hasta que entre, la proyección de ingresos y el DSO no se calculan desde el OS.
+- **Capital de trabajo**: calculable en cuanto cobranzas entre al núcleo; mientras tanto es cálculo ad-hoc (marcarlo como tal), no vista persistida.
+- **Obligaciones**: 10 cargadas es fino — faltan las recurrentes (cargas sociales, IIBB/IVA, financieras) que hoy aparecen como "indirecto" en `costos_obra`.
 
 ## Mecanismo de aprendizaje continuo
 

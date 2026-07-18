@@ -47,6 +47,26 @@ Regla fundamental — nunca:
 
 Cada concepto crítico debe poder responder: definición, evento de origen, fecha relevante, fuente primaria, sistema propietario, sistema(s) consumidor(es), criterio de actualización, mecanismo de conciliación, nivel de confianza.
 
+## Estado real de la arquitectura (verificado 2026-07-18)
+
+Dos decisiones estructurales de esta skill YA se construyeron — usarlas como base, no re-proponerlas:
+
+1. **El eje canónico de obras (F0.2) es el master-data que esta skill pedía.** `public.obra_canonica` (1 fila por obra real) + `public.obra_alias` (resolver) + `orquestador/lib/obras.mjs` `resolverObra()`. Resuelve la duplicación conceptual "obra en texto libre en 4 tablas" (costos_obra, avance_obra, pedidos_materiales, comprobantes_arca). **Regla: cualquier cálculo cruzado por obra resuelve el texto por este eje — no se vuelve a hacer match de nombre ad-hoc en cada fórmula.** `normObra()` es idéntica en el backend (obras.mjs) y en la web (costosObraService.ts): si cambia una, cambia la otra.
+
+2. **La arquitectura de consumo es 3-caras sobre 1 núcleo** ([[arquitectura-3-caras-nucleo]], regla del proyecto): web (Vercel/TS), chat (VM/Node) y Claude Code consumen el MISMO núcleo (Supabase + capacidades 0-API). **Contrato: una capacidad = una fuente.** El nudo real: web y chat son dos códigos que comparten UNA base → la lógica común vive como vista/función de Postgres o capacidad del orquestador que la web llama, nunca reescrita en cada cara. Esta skill es la guardiana de ese contrato.
+
+**El instrumento (F0.1):** `orq.chat_request` registra cada pedido (directiva, latencia, desenlace, superficie) — la evidencia para medir qué se calcula dónde y detectar divergencias reales, no supuestas.
+
+**Matriz de fuente de verdad — estado real hoy (reemplaza filas "razonables" por evidencia):**
+| Concepto | Propietario real hoy | Estado |
+|---|---|---|
+| Obra (identidad) | `obra_canonica` + `obra_alias` (el eje) | ✅ construido, verificado 731 filas |
+| Caja real | `cuentas_financieras` (sync del Sheet, 30min) | 🟡 solo Santander cargado |
+| Costo real por obra | `costos_obra` resuelto por el eje | ✅ La Estrella $168,7M… |
+| Ingreso devengado / certificado | — (`certificados`=0) | 🔴 gap #1 |
+| Cobranza | Sheet `02_Cobranzas` (no en el núcleo) | 🔴 fuera del núcleo |
+| IVA / fiscal | `comprobantes_arca` + `libro-iva.mjs` | ✅ construido |
+
 ## Diccionario de eventos de negocio (mínimo obligatorio)
 
 Para cada evento de la lista, antes de tocar una fórmula que lo use, confirmar: qué significa, quién lo genera, fecha del evento vs. fecha económica vs. fecha financiera, fuente primaria, identificador único, tablas/pestañas afectadas, sistemas consumidores, mecanismo de conciliación, riesgo de duplicación.

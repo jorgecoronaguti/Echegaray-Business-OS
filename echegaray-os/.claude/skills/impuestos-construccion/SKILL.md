@@ -34,6 +34,15 @@ No cubre: el tratamiento contable de reconocimiento (`contabilidad-constructoras
 - **Jurisdicción primero, alícuota después**: antes de citar cualquier número, identificar si la operación es nacional, de San Juan, de otra provincia (si el cliente opera fuera de San Juan) o municipal.
 - **El impuesto es un costo real de la operación**, no un tema aparte — debe entrar en el margen que calcula `costos-presupuestacion`, no analizarse de forma aislada.
 
+## Cableado al OS real (verificado 2026-07-18) — qué leer
+
+**Corrección: el OS SÍ modela dato fiscal hoy** (la primera versión decía "ninguno"). Existe:
+- `public.comprobantes_arca` (459 comprobantes fiscales reales, sincronizados de ARCA — timer `echegaray-arca-sync`). Es la fuente real de IVA crédito/débito y de qué se facturó/compró con respaldo fiscal.
+- `orquestador/lib/libro-iva.mjs` → arma el **Libro IVA** por período desde `comprobantes_arca` (verificado: junio 2026 ≈ $2,64M a pagar). Capacidad determinística, 0 API — llamarla, no recalcular el IVA a mano.
+- `costos_obra` distingue `iva` y `total` por comprobante; el eje `obra_canonica` permite ver carga fiscal por obra.
+
+**Lo que sigue siendo cierto (no cambió):** ninguna **alícuota o norma** se cita sin verificar en la sesión (AFIP/ARCA nacional, DGR San Juan provincial, municipio por obra). El dato del OS te dice *qué comprobantes hay y cuánto IVA*; NO te dice *qué alícuota aplica hoy* — eso siempre se verifica. El dato real y la norma vigente son dos cosas distintas: el primero está en el núcleo, la segunda se verifica cada vez.
+
 ## Criterios de decisión
 
 | Variable | Pregunta |
@@ -69,7 +78,7 @@ No cubre: el tratamiento contable de reconocimiento (`contabilidad-constructoras
 1. **Conocimiento profesional estable**: estructura general del sistema tributario argentino (qué impuestos existen y su naturaleza, no sus valores).
 2. **Normativa y regulación cambiante**: alícuotas, exenciones, regímenes de retención — **cambian con frecuencia, nunca se citan sin verificación**.
 3. **Documentación interna de Echegaray**: FACTURAS A/B/C, constancia AFIP (confirmados en Drive), `Ingresos y Egresos - P&L` (línea de Impuesto a los Ingresos Brutos e Impuesto a los Débitos y Créditos, ya presente en el P&L real).
-4. **Datos estructurados del OS**: ninguno hoy modela impuestos explícitamente.
+4. **Datos estructurados del OS**: `comprobantes_arca` (459, IVA crédito/débito real) + `libro-iva.mjs` (Libro IVA por período). El `total`/`iva` por comprobante y el eje `obra_canonica` permiten carga fiscal por obra. (Modelan el DATO fiscal real; NO las alícuotas vigentes — esas se verifican siempre.)
 5. **Experiencia histórica de obras**: Post Mortem, si documenta situaciones fiscales relevantes.
 6. **Interpretación profesional**: lectura del caso concreto.
 7. **Recomendación**: acción sugerida, incluyendo cuándo confirmar con el estudio contable/impositivo externo de Echegaray.
