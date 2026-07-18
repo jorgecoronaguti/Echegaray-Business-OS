@@ -47,8 +47,8 @@ export async function registrarAdicional({ obra, concepto, monto, estado, detect
   if (!v.ok) return { error: v.error }
   const f = fecha || ISO_HOY()
   const col = { cotizado: ['fecha_cotizacion', 'monto_cotizado'], aprobado: ['fecha_aprobacion', 'monto_aprobado'], facturado: ['fecha_facturacion', 'monto_facturado'], cobrado: ['fecha_cobranza', 'monto_cobrado'] }[v.estado]
-  const campos = ['obra_canonica_id', 'concepto', 'detectado_por', 'fecha_deteccion']
-  const vals = [r.obra_id, v.concepto, detectado_por ? String(detectado_por) : null, f]
+  const campos = ['obra_canonica_id', 'concepto', 'origen', 'detectado_por', 'fecha_deteccion']
+  const vals = [r.obra_id, v.concepto, 'os', detectado_por ? String(detectado_por) : 'os', f]
   if (col) { campos.push(col[0], col[1]); vals.push(f, v.monto) }
   const ph = vals.map((_, i) => `$${i + 1}`).join(',')
   const ins = await query(`insert into public.adicionales (${campos.join(',')}, created_at) values (${ph}, now()) returning id`, vals)
