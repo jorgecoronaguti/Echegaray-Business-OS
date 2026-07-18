@@ -24,7 +24,7 @@ export default async function ComprasAreaPage() {
   const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
 
   const todasLasAlertas = datos.data ? construirAlertasDashboard(datos.data) : []
-  const alertasDelArea = alertasPorArea(todasLasAlertas, 'compras_abastecimiento')
+  const alertasDelArea = alertasPorArea(todasLasAlertas, 'compras')
   const accionesMap = accionesPorAlertaOrigen(acciones.data ?? [])
 
   const compras = datos.data?.compras ?? []
