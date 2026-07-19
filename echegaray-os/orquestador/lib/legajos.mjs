@@ -25,6 +25,12 @@ export function clasificarDoc(name) {
   return 'otro'
 }
 
+/** ¿El archivo es un telegrama / carta documento / intimación laboral? Señal de CONFLICTO LABORAL. PURA. */
+export function esTelegrama(name) {
+  const n = sinAcento(String(name || '')).toLowerCase()
+  return /telegrama|carta document|\btcl\b|intimacion|colacionad/.test(n)
+}
+
 /** Normaliza el nombre de una persona (carpeta o archivo suelto) a una clave estable. PURA. */
 export function personaKey(raw) {
   let s = sinAcento(String(raw || '')).replace(/\.pdf$/i, '')
@@ -48,7 +54,12 @@ export function analizarLegajos(filas) {
   const personas = new Map()
   for (const f of folders) {
     const key = personaKey(f.name)
-    if (key) personas.set(key, { nombre: f.name, toks: keyTokens(f.name), docs: new Set(), archivos: [] })
+    if (key) personas.set(key, { nombre: f.name, toks: keyTokens(f.name), docs: new Set(), archivos: [], telegrama: false })
+  }
+  const anotar = (p, name, prefijo) => {
+    p.docs.add(clasificarDoc(name))
+    if (esTelegrama(name)) p.telegrama = true
+    p.archivos.push(prefijo + name)
   }
   let porCarpeta = 0, porNombre = 0, sinAtribuir = 0
   const sueltosSinDueno = []
@@ -57,7 +68,7 @@ export function analizarLegajos(filas) {
     if (s === BASE + 2) { // archivo dentro de una carpeta persona
       const parts = segmentos(f.path)
       const p = personas.get(personaKey(parts[parts.length - 2]))
-      if (p) { p.docs.add(clasificarDoc(f.name)); p.archivos.push(f.name); porCarpeta++ } else sinAtribuir++
+      if (p) { anotar(p, f.name, ''); porCarpeta++ } else sinAtribuir++
     } else { // archivo suelto: atribuir por tokens de apellido/nombre
       const ft = keyTokens(f.name)
       let best = null, score = 0
@@ -65,18 +76,20 @@ export function analizarLegajos(filas) {
         const ov = ft.filter((t) => p.toks.includes(t)).length
         if (ov > score) { score = ov; best = p }
       }
-      if (best && score >= 1) { best.docs.add(clasificarDoc(f.name)); best.archivos.push('(suelto) ' + f.name); porNombre++ }
+      if (best && score >= 1) { anotar(best, f.name, '(suelto) '); porNombre++ }
       else { sinAtribuir++; sueltosSinDueno.push(f.name) }
     }
   }
   const lista = []
   const faltaPorDoc = { alta: 0, dni: 0, hm: 0, epp: 0 }
-  let completos = 0, incompletos = 0, inactivos = 0
+  let completos = 0, incompletos = 0, inactivos = 0, conTelegrama = 0, activosConTelegrama = 0
+  const conflictos = []
   for (const p of personas.values()) {
     const inactivo = p.docs.has('baja')
     const falta = REQUERIDOS.filter((d) => !p.docs.has(d))
-    const fila = { persona: p.nombre, activo: !inactivo, docs: [...p.docs].filter((d) => d !== 'otro' && d !== 'baja'), falta, archivos: p.archivos }
+    const fila = { persona: p.nombre, activo: !inactivo, docs: [...p.docs].filter((d) => d !== 'otro' && d !== 'baja'), falta, conflicto_laboral: p.telegrama, archivos: p.archivos }
     lista.push(fila)
+    if (p.telegrama) { conTelegrama++; if (!inactivo) activosConTelegrama++; conflictos.push({ persona: p.nombre, activo: !inactivo }) }
     if (inactivo) { inactivos++; continue }
     if (falta.length === 0) completos++
     else { incompletos++; for (const d of falta) if (d in faltaPorDoc) faltaPorDoc[d]++ }
@@ -87,8 +100,10 @@ export function analizarLegajos(filas) {
       personas: personas.size, activos: completos + incompletos, completos, incompletos, inactivos,
       activos_sin_examen_medico: faltaPorDoc.hm, activos_sin_dni: faltaPorDoc.dni,
       activos_sin_alta: faltaPorDoc.alta, activos_sin_epp: faltaPorDoc.epp,
+      con_conflicto_laboral: conTelegrama, activos_con_conflicto_laboral: activosConTelegrama,
     },
     legajos: lista,
+    conflictos_laborales: conflictos,
     atribucion: { por_carpeta: porCarpeta, por_nombre_inferido: porNombre, sin_dueno: sinAtribuir },
     sueltos_sin_dueno: sueltosSinDueno,
   }
@@ -103,6 +118,6 @@ export async function estadoLegajos() {
   return {
     ...analizarLegajos(rows),
     fuente: `data room · ${RAIZ_LEGAJOS} (public.drive_index)`,
-    criterio: 'legajo activo completo = ALTA + DNI + HM (examen médico) + EPP; con BAJA = inactivo. Sueltos atribuidos por nombre son inferencia — verificar contra el archivo.',
+    criterio: 'legajo activo completo = ALTA + DNI + HM (examen médico) + EPP; con BAJA = inactivo. Un telegrama/carta documento/intimación en el legajo marca CONFLICTO LABORAL (riesgo). Sueltos atribuidos por nombre son inferencia — verificar contra el archivo.',
   }
 }
