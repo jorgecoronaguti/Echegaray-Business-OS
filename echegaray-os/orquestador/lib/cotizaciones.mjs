@@ -6,6 +6,7 @@
 // Interno/reversible (patrón adicionales/certificaciones). 0 API.
 import { query } from './db.mjs'
 import { resolverObra } from './obras.mjs'
+import { costoRealObra } from './obra-costos.mjs'
 
 const ISO_HOY = () => new Date().toISOString().slice(0, 10)
 export const ESTADOS = ['borrador', 'emitida', 'ganada', 'perdida']
@@ -68,6 +69,62 @@ export async function registrarCotizacion({ cliente, obra_nombre, obra, monto_ve
   const ph = vals.map((_, i) => `$${i + 1}`).join(',')
   const ins = await query(`insert into public.cotizaciones (${campos.join(',')}, created_at) values (${ph}, now()) returning id`, vals)
   return { registrada: true, id: ins.rows[0].id, cliente: v.cliente, obra: v.obra_nombre, monto_venta: v.monto_venta, margen_pct: v.margen_pct, estado: v.estado, obra_canonica_id: obraCanId }
+}
+
+/**
+ * CORE PURO (Fase 2 del PRP): el aprendizaje de la cotización. Compara lo COTIZADO contra lo REAL y
+ * expone la erosión de margen — que es la señal que pide el CLAUDE.md (margen esperado vs. margen real).
+ * Todo null-safe: si falta el costo estimado o la venta, devuelve null en vez de inventar un número.
+ */
+export function calcularDesvioCotizacion({ monto_venta, costo_estimado, costo_real }) {
+  const venta = Number(monto_venta) || null
+  const est = costo_estimado == null ? null : Number(costo_estimado)
+  const real = costo_real == null ? null : Number(costo_real)
+  const pct = (n, d) => (d ? Math.round((n / d) * 1000) / 10 : null)
+  const margenEstPct = venta && est != null ? pct(venta - est, venta) : null
+  const margenRealPct = venta && real != null ? pct(venta - real, venta) : null
+  return {
+    monto_venta: venta, costo_estimado: est, costo_real: real,
+    desvio_costo: est != null && real != null ? Math.round(real - est) : null,
+    desvio_costo_pct: est ? pct(real - est, est) : null,
+    margen_estimado: venta && est != null ? Math.round(venta - est) : null,
+    margen_estimado_pct: margenEstPct,
+    margen_real: venta && real != null ? Math.round(venta - real) : null,
+    margen_real_pct: margenRealPct,
+    erosion_margen_pct: margenEstPct != null && margenRealPct != null ? Math.round((margenEstPct - margenRealPct) * 10) / 10 : null,
+  }
+}
+
+/**
+ * Fase 2: desvío de UNA obra — lo cotizado (biblioteca) vs. el costo real (costos_obra, capacidad ya
+ * existente que se REUSA). Deliberadamente NO usa public.presupuestos: sus filas apuntan a obras
+ * legacy cuyo nombre no coincide con la obra real de la que salieron (compararía peras con manzanas).
+ * Si no hay cotización cargada para la obra, lo dice — no inventa una base.
+ */
+export async function desvioCotizacionObra(obraTexto) {
+  const r = await resolverObra(obraTexto)
+  if (!r.obra_id) return { error: `"${obraTexto}" no resuelve a una obra. Obras: La Estrella, San Francisco, Messina, ARCOR, Galpones.` }
+  const { rows } = await query(
+    `select cliente, obra_nombre, monto_venta::float8 monto_venta, costo_estimado::float8 costo_estimado,
+            margen_pct::float8 margen_pct, estado, to_char(fecha_cotizacion,'DD/MM/YYYY') fecha
+       from public.cotizaciones where obra_canonica_id=$1
+      order by (estado='ganada') desc, fecha_cotizacion desc nulls last limit 1`, [r.obra_id])
+  const real = await costoRealObra(r.obra_id)
+  if (!rows.length) {
+    return {
+      obra: r.obra_id, costo_real: Math.round(real.total), sin_cotizacion: true,
+      mensaje: `No hay cotización cargada para ${r.obra_id}. El costo real es $${Math.round(real.total).toLocaleString('es-AR')} pero no tengo contra qué compararlo. Cargá la cotización (cliente, monto y costo estimado) con registrar_cotizacion y ahí sí puedo medir el desvío.`,
+      fuente: 'public.cotizaciones (vacía para esta obra) + costos_obra',
+    }
+  }
+  const c = rows[0]
+  return {
+    obra: r.obra_id, cotizacion: { cliente: c.cliente, obra_nombre: c.obra_nombre, estado: c.estado, fecha: c.fecha },
+    ...calcularDesvioCotizacion({ monto_venta: c.monto_venta, costo_estimado: c.costo_estimado, costo_real: real.total }),
+    costo_real_detalle: { n_comprobantes: real.n, por_categoria: real.por_categoria },
+    fuente: 'cotizado = public.cotizaciones (cargado por el dueño) · real = public.costos_obra',
+    criterio: 'el costo real es TODO lo imputado a la obra (no solo las partidas del APU); si el desvío sorprende, revisar primero qué se imputó.',
+  }
 }
 
 /** Estado de la biblioteca de cotizaciones (todas, o filtradas por cliente/estado). 0 API. */
