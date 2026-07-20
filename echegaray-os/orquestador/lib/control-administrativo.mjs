@@ -85,7 +85,13 @@ export function evaluarCierre(d = {}, hoy = new Date()) {
       hallazgos.push({
         codigo: 'cobranzas_vencidas',
         severidad: 'alta',
-        titulo: `${venc.length} cobranza(s) con fecha de cobro vencida`,
+        // EL ORIGEN VA EN EL TÍTULO A PROPÓSITO. La ronda autónoma muestra este bloque junto al de
+        // caja, que cuenta cobranzas vencidas desde `movimientos_caja` (instrumentos/echeqs) y da
+        // otro número — no porque uno esté mal, sino porque son registros distintos del mismo hecho
+        // y su cobertura difiere. Sin decir de dónde sale cada cifra, se leen como contradicción y
+        // se quema un especialista reconciliando algo ya conocido. Nombrar la fuente es más barato
+        // y más honesto que forzar un único número que la evidencia no sostiene.
+        titulo: `${venc.length} cobranza(s) con fecha de cobro vencida (según el registro de cobranzas; caja las cuenta por instrumento y puede diferir)`,
         monto: sum(venc, 'total_bruto'),
         detalle: venc.map((c) => `${c.obra_cliente || 's/obra'}: $${Math.round(Number(c.total_bruto) || 0).toLocaleString('es-AR')} (esperado ${fechaAR(c.fecha_cobro)})`).join(' · '),
         accion: 'Asignar responsable de reclamo a cada una — el checklist de cierre exige responsable, no solo la lista.',

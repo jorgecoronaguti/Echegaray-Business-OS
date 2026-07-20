@@ -40,6 +40,11 @@ t('cobranza vencida se detecta; cobrada NO cuenta aunque esté vencida', () => {
   assert.equal(h.monto, 15000000, 'solo la vencida y no cobrada')
 })
 
+t('el hallazgo de cobranzas declara su fuente (convive con el bloque de caja, que cuenta distinto)', () => {
+  const r = evaluarCierre({ cobranzas: [{ estado: 'Pendiente', fecha_cobro: '2026-07-02', total_bruto: '1', obra_cliente: 'X' }] }, HOY)
+  assert.match(r.hallazgos[0].titulo, /registro de cobranzas/, 'sin origen, dos cifras distintas del mismo hecho se leen como contradicción')
+})
+
 t('la fecha se muestra en formato argentino, venga Date (pg) o string (bug real 2026-07-19)', () => {
   const conDate = evaluarCierre({ cobranzas: [{ estado: 'Pendiente', fecha_cobro: new Date('2026-07-02T03:00:00Z'), total_bruto: '1', obra_cliente: 'X' }] }, HOY)
   assert.match(conDate.hallazgos[0].detalle, /02\/07\/2026/, 'un Date cortado con slice daba "Thu Jul 0"')
