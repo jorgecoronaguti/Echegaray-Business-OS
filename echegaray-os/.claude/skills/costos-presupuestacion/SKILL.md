@@ -34,10 +34,21 @@ No cubre: la viabilidad técnica de la solución que se está costeando (`ingeni
 - **Buscar las variables que explican la mayor parte del error**, no agregar detalle indiscriminado — regla explícita ya en el CLAUDE.md raíz.
 - **Costo directo ≠ costo indirecto ≠ margen**: mantenerlos siempre separados, nunca mezclar overhead de estructura con costo directo de obra al analizar un desvío.
 
+
+## Contrato de arquitectura del OS (vale para toda esta skill)
+
+Reglas que gobiernan de dónde sale cada dato. No son técnicas: definen qué respuesta es legítima.
+
+1. **Todo sale del data room.** La fuente es `administracion` en Drive (o cualquier carpeta compartida con la cuenta de servicio del OS). Si un dato existe ahí, **el OS lo LEE — no se le pide al dueño que lo cargue a mano.** Antes de decir "no tengo ese dato", verificar si está en el data room.
+2. **Fuente única.** Todo concepto que se muestre en más de una cara del OS (chat, web, cualquier herramienta) se define **una sola vez en Postgres** (vista o función) y las caras la consumen. Ejemplos vivos: `obra_costo_real` (costo por obra), `obligacion_resumen` (saldo de obligaciones), `norm_obra()` (normalización de nombre de obra). **Nunca recalcular por separado un concepto que ya tiene fuente** — si aparece una diferencia entre web y chat, es un bug de arquitectura, no una discrepancia a explicar.
+3. **Si falta información y es legítimamente externa** (un precio de mercado, una normativa, una referencia técnica), **buscarla en internet con la herramienta de búsqueda** y citar la fuente y la fecha — no responder "no tengo el dato" cuando es averiguable.
+4. **Una capacidad sin dato responde "no tengo el dato" y ofrece registrarlo.** Nunca un número inventado.
+
 ## Cableado al OS real — qué LLAMAR en vez de estimar a mano
 
 Esta skill razona; el dato y el cálculo viven en el núcleo. Regla de arquitectura: **una capacidad = una fuente**. Cuando el OS adopta la persona del presupuestador, **no estima a mano lo que estas capacidades ya calculan** — las llama.
 
+- **`cotizaciones_historial`** — **EMPEZAR SIEMPRE POR ACÁ al cotizar algo nuevo.** Es el historial REAL de todo lo cotizado, leído del data room (`administracion/PRESUPUESTOS/<CLIENTE>/<TRABAJO>/`): **53 clientes, 96 trabajos cotizados, 899 archivos** — solo ARCOR tiene 33 trabajos con su expediente completo (planilla de cotización, presupuesto, pliego, planos, orden de compra, adicionales). Antes de armar un precio: **buscar el trabajo parecido ya cotizado y abrir su expediente.** Cotizar desde cero teniendo el antecedente es tirar a la basura la mejor información que tiene la empresa.
 - **`cotizacion_vs_real`** — el ciclo de aprendizaje ya construido: compara lo COTIZADO contra el COSTO REAL de la obra y devuelve desvío de costo, margen estimado vs. real y **erosión de margen en puntos**. Ante "¿cotizamos bien [obra]?" o "¿cuánto margen perdimos?", **llamarla siempre** antes de opinar. Si no hay cotización cargada lo dice — ese "no sé" es información, no una falla.
 - **`cotizaciones_estado` / `registrar_cotizacion`** — la biblioteca viva: embudo (en juego / ganadas / perdidas), tasa de conversión, monto cotizado y margen promedio. Toda cotización nueva se registra acá para que deje aprendizaje.
 - **`costos_obras` / `salud_obra`** — costo real por obra (desde `costos_obra`, ya conciliado al eje canónico) y margen real. Es la base contra la que se valida cualquier APU.

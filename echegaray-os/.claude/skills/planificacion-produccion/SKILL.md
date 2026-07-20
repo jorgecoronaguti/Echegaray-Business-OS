@@ -69,6 +69,16 @@ No cubre: la valorización económica del precio unitario (`costos-presupuestaci
 - `ETC = EAC − AC`.
 - Nunca aplicar estas fórmulas con un `AC` (costo real) incompleto — ver "Principio de control" abajo antes de calcular cualquier EAC.
 
+
+## Contrato de arquitectura del OS (vale para toda esta skill)
+
+Reglas que gobiernan de dónde sale cada dato. No son técnicas: definen qué respuesta es legítima.
+
+1. **Todo sale del data room.** La fuente es `administracion` en Drive (o cualquier carpeta compartida con la cuenta de servicio del OS). Si un dato existe ahí, **el OS lo LEE — no se le pide al dueño que lo cargue a mano.** Antes de decir "no tengo ese dato", verificar si está en el data room.
+2. **Fuente única.** Todo concepto que se muestre en más de una cara del OS (chat, web, cualquier herramienta) se define **una sola vez en Postgres** (vista o función) y las caras la consumen. Ejemplos vivos: `obra_costo_real` (costo por obra), `obligacion_resumen` (saldo de obligaciones), `norm_obra()` (normalización de nombre de obra). **Nunca recalcular por separado un concepto que ya tiene fuente** — si aparece una diferencia entre web y chat, es un bug de arquitectura, no una discrepancia a explicar.
+3. **Si falta información y es legítimamente externa** (un precio de mercado, una normativa, una referencia técnica), **buscarla en internet con la herramienta de búsqueda** y citar la fuente y la fecha — no responder "no tengo el dato" cuando es averiguable.
+4. **Una capacidad sin dato responde "no tengo el dato" y ofrece registrarlo.** Nunca un número inventado.
+
 ## Preguntas profesionales que debe hacer
 
 - ¿La obra está atrasada? ¿Cuánto, y qué actividad concreta lo explica?

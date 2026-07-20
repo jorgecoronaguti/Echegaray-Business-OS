@@ -32,12 +32,23 @@ No cubre: el reconocimiento contable devengado (`contabilidad-constructoras`), l
 
 **Flujo de fondos = criterio percibido y temporal.** Todo movimiento se clasifica explícitamente como uno de: REAL · COMPROMETIDO · PROYECTADO · ESTIMADO · VENCIDO · PAGADO · COBRADO · CONCILIADO. Nunca se suman dos categorías distintas en la misma columna sin distinguirlas. Un proyectado que se cumple se marca como real — no se duplica sumando ambos.
 
+
+## Contrato de arquitectura del OS (vale para toda esta skill)
+
+Reglas que gobiernan de dónde sale cada dato. No son técnicas: definen qué respuesta es legítima.
+
+1. **Todo sale del data room.** La fuente es `administracion` en Drive (o cualquier carpeta compartida con la cuenta de servicio del OS). Si un dato existe ahí, **el OS lo LEE — no se le pide al dueño que lo cargue a mano.** Antes de decir "no tengo ese dato", verificar si está en el data room.
+2. **Fuente única.** Todo concepto que se muestre en más de una cara del OS (chat, web, cualquier herramienta) se define **una sola vez en Postgres** (vista o función) y las caras la consumen. Ejemplos vivos: `obra_costo_real` (costo por obra), `obligacion_resumen` (saldo de obligaciones), `norm_obra()` (normalización de nombre de obra). **Nunca recalcular por separado un concepto que ya tiene fuente** — si aparece una diferencia entre web y chat, es un bug de arquitectura, no una discrepancia a explicar.
+3. **Si falta información y es legítimamente externa** (un precio de mercado, una normativa, una referencia técnica), **buscarla en internet con la herramienta de búsqueda** y citar la fuente y la fecha — no responder "no tengo el dato" cuando es averiguable.
+4. **Una capacidad sin dato responde "no tengo el dato" y ofrece registrarlo.** Nunca un número inventado.
+
 ## Cableado al OS real (verificado 2026-07-18) — qué leer y qué llamar
 
 Esta skill razona; el dato y el cálculo viven en el núcleo (Supabase + capacidades 0-API). Regla de arquitectura del proyecto ([[arquitectura-3-caras-nucleo]]): **una capacidad = una fuente**; web, chat y Claude Code consultan lo mismo, no recalculan. Cuando el OS adopta la persona del CFO, NO estima a mano lo que estas capacidades ya calculan — las llama.
 
 **Capacidades determinísticas existentes (0 API — llamar, no reimplementar):**
 - `orquestador/lib/caja-alertas.mjs` → `saldoActual()`: posición de caja real anclada a `max(saldo_fecha)` (evita el doble conteo de movimientos ya reflejados en el saldo). Es el número canónico de "cuánta caja hay hoy".
+- **`caja_vencido_sin_conciliar`** — cobros y pagos que estaban PROYECTADOS, cuya fecha ya pasó, y que nadie marcó como reales. **Hoy: $25.000.000 en cobros (el más viejo del 2 de julio) y $9.949.042 en pagos.** Es la aplicación directa de la regla "un proyectado que se cumple se marca como real": mientras no se concilie, no se sabe si ese dinero entró. Ante "¿qué tengo vencido?" o "¿de qué me ocupo en la caja?", **llamarla**. Si vuelve vacía, distinguir "está todo conciliado" de "hace tiempo que nadie carga movimientos" — no son lo mismo.
 - `orquestador/lib/cash-briefing.mjs` → posición + **cobranzas vencidas** + **proyección 7 días** (caja + entra7 − vencimientos). Tool del chat: `briefing_caja`. Corre solo a las 8am (briefing diario, 0 API, verificado).
 
 **Tablas reales (Supabase `public`, verificado):**
