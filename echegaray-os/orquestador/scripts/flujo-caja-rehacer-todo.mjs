@@ -17,6 +17,7 @@
 //   5. impuestos-pestana  — IVA real de ARCA con saldo arrastrado.
 //   6. cargas-planes      — planes de pago de deuda previsional.
 //   7. cobranzas-control  — el detector de cobros duplicados.
+//   8. cheques-cobertura   — cuánto de los cheques y la tarjeta todavía no tiene factura en Compras.
 //
 // POR QUÉ ES 0 API. No pasa por el modelo: son scripts determinísticos. Un agente que razona para
 // rehacer la misma tabla todos los días es plata tirada y además puede improvisar distinto cada vez.
@@ -46,6 +47,7 @@ const PASOS = [
   ['impuestos-pestana.mjs', 'Impuestos y Financieros — IVA real de ARCA'],
   ['cargas-planes.mjs', 'Cargas Sociales — planes de pago'],
   ['cobranzas-control.mjs', 'Cobranzas — detector de duplicados'],
+  ['cheques-cobertura-sheet.mjs', 'Cash Flow Mensual — qué cheques y tarjeta faltan cargar en Compras'],
 ]
 
 async function main() {

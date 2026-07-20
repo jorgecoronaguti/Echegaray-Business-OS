@@ -27,6 +27,10 @@ const PESTAÑA = 'Impuestos y Financieros'
 const DRY = process.argv.includes('--dry')
 const AÑO = 2026
 const ANCHO = 9
+// Alícuota de Ingresos Brutos de San Juan para construcción. La dio el dueño (20/07); la búsqueda
+// web no la confirmó contra la Ley Impositiva provincial, así que vive en UN solo lugar y queda
+// declarada como tal en la propia pestaña. Si el contador la corrige, se cambia acá.
+const ALICUOTA_IIBB = Number(process.env.ORQ_ALICUOTA_IIBB || 0.03)
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
@@ -117,16 +121,18 @@ function grilla(iva, planes) {
   push()
 
   // ── 2. IIBB ─────────────────────────────────────────────────────────────────────────────────────
-  push(['2. INGRESOS BRUTOS (San Juan) — FALTA EL DATO, no lo invento'])
-  const fIIBB = push(['Alícuota IIBB construcción San Juan', '', '', '', '', '', '', '',
-    '← COMPLETAR ACÁ (ej. 0,025 para 2,5%). Lo sabe el contador o está en la Ley Impositiva de San Juan. Busqué la alícuota oficial en la web y no la pude confirmar; poner un número inventado sería peor que dejarlo vacío.'])
+  push(['2. INGRESOS BRUTOS (San Juan)'])
+  const fIIBB = push(['Alícuota IIBB construcción San Juan', ALICUOTA_IIBB, '', '', '', '', '', '',
+    'Dato aportado por el dueño el 20/07/2026. La busqué en la web y no la pude confirmar contra la Ley Impositiva de San Juan — si el contador la corrige, se cambia SOLO acá y todo el bloque se recalcula.'])
   push(['Base imponible del año (ventas netas)', `=SUM(B${f0}:B${f1})/${ALICUOTA_IVA}`, '', '', '', '', '', '',
     'Sale del débito fiscal de arriba dividido la alícuota de IVA.'])
   const fIIBBcalc = filas.length + 1
-  push(['IIBB estimado del año', `=IF($B$${fIIBB}="";"(falta la alícuota)";$B$${fIIBBcalc - 1}*$B$${fIIBB})`, '', '', '', '', '', '',
-    'Se calcula solo apenas se complete la alícuota. ESTIMACIÓN: no contempla convenio multilateral ni exenciones.'])
+  push(['IIBB estimado del año', `=$B$${fIIBBcalc - 1}*$B$${fIIBB}`, '', '', '', '', '', '',
+    `ESTIMACIÓN sobre la base imponible de arriba al ${(ALICUOTA_IIBB * 100).toFixed(1)}%. No contempla convenio multilateral, exenciones ni las retenciones de IIBB que la empresa ya sufre — así que el pago real es MENOR que esto.`])
   push(['IIBB pagado que figura en Compras', '=SUMPRODUCT((REGEXMATCH(LOWER(Compras!$E$4:$E&" "&Compras!$L$4:$L);"iibb|ingresos brutos|rentas|dgr"))*IF(ISNUMBER(Compras!$O$4:$O);Compras!$O$4:$O;0))', '', '', '', '', '', '',
-    'Hoy da $0: no hay ningún pago de IIBB cargado en todo el año.'])
+    'Si da $0, no hay ningún pago de IIBB cargado y el cash flow no lo ve.'])
+  push(['⇒ IIBB que faltaría provisionar', `=$B${fIIBBcalc}-$B${fIIBBcalc + 1}`, '', '', '', '', '', '',
+    'Estimado menos lo cargado. Es plata que sale y que hoy no está en ninguna línea del cash flow.'])
   push()
 
   // ── 3. PLANES DE PAGO ───────────────────────────────────────────────────────────────────────────
