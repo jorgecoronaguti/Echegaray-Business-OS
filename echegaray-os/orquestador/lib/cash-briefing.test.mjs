@@ -8,10 +8,19 @@ const check = (n, c) => { if (c) ok++; else { fail++; console.error(`FALLA: ${n}
 // Mock del Cash Flow. hoy = 17/07/2026 (mes "jul-26"; ventana 17→24/07).
 const HOY = new Date(2026, 6, 17)
 const data = {
-  'Caja!A5:D200': [
-    ['10/07/2026', 'Santander', '$10.000.000', 'x'],
-    ['17/07/2026', 'Santander', '$17.691.359', 'x'],  // más nuevo → gana
-    ['17/07/2026', 'Efectivo', '$2.000.000', 'x'],
+  // ESTRUCTURA REAL de la pestaña Caja: título, aclaración, un bloque resumen en G/H, y recién
+  // en la fila 4 el encabezado — con una columna ID que se agregó DESPUÉS de escribir este parseo.
+  // Bug real (2026-07-20): leyendo por posición fija, la FECHA se tomaba como cuenta y el NOMBRE
+  // DE LA CUENTA como saldo → parseMonto de un texto = 0, y el briefing informaba caja $0 sin
+  // fallar ni avisar. Por eso ahora las columnas se ubican por su encabezado.
+  'Caja!A1:H200': [
+    ['LEDGER DE SALDOS BANCARIOS Y EFECTIVO'],
+    ['Una fila por actualización. No borres filas anteriores.'],
+    ['', '', '', '', '', '', 'Banco Santander (último)', '$0'],
+    ['ID', 'Fecha', 'Cuenta', 'Saldo', 'Estado', 'Fuente / Observación'],
+    ['001', '10/07/2026', 'Santander', '$10.000.000', 'Confirmado', 'x'],
+    ['002', '17/07/2026', 'Santander', '$17.691.359', 'Confirmado', 'x'],  // más nuevo → gana
+    ['003', '17/07/2026', 'Efectivo', '$2.000.000', 'Confirmado', 'x'],
   ],
   '02_Cobranzas!A5:R2000': [
     // A..R (18 cols): idx12=M Total, idx14=O Estado, idx16=Q Fecha cobro, idx17=R Mes cobro

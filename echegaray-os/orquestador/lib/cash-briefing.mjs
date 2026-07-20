@@ -27,14 +27,30 @@ export async function cashBriefing(google, hoy = new Date()) {
   const dentro7 = (d) => d && d >= hoy0 && d <= fin7
   const mesActual = `${MESES[hoy.getMonth()]}-${String(hoy.getFullYear()).slice(2)}` // "jul-26"
 
-  // 1) CAJA — último saldo por cuenta (ledger Fecha·Cuenta·Saldo)
-  const caja = await google.readSheetValues(ID, 'Caja!A5:D200').catch(() => [])
+  // 1) CAJA — último saldo por cuenta (ledger Fecha·Cuenta·Saldo).
+  //
+  // POR ENCABEZADO, NO POR POSICIÓN. Bug real (2026-07-20): la pestaña Caja ganó una columna "ID"
+  // al principio y este parseo, que leía índices fijos, pasó a tomar la FECHA como cuenta y el
+  // NOMBRE DE LA CUENTA como saldo → parseMonto de un texto = 0. El briefing diario informaba
+  // caja $0 sin fallar ni avisar. Una columna nueva no puede convertir el saldo de la empresa en
+  // cero en silencio: se localizan las columnas por su título.
+  const cajaRaw = await google.readSheetValues(ID, 'Caja!A1:H200').catch(() => [])
+  const hIdx = cajaRaw.findIndex((r) => (r || []).some((c) => /^\s*cuenta\s*$/i.test(String(c ?? ''))))
+  const head = (cajaRaw[hIdx] || []).map((c) => String(c ?? '').trim().toLowerCase())
+  const col = (re, def) => { const i = head.findIndex((h) => re.test(h)); return i >= 0 ? i : def }
+  const iFecha = col(/^fecha/, 0)
+  const iCuenta = col(/^cuenta/, 1)
+  const iSaldo = col(/^saldo/, 2)
+  const caja = hIdx >= 0 ? cajaRaw.slice(hIdx + 1) : cajaRaw.slice(4)
   const saldos = new Map()
   for (const r of caja) {
-    const cuenta = String(r?.[1] ?? '').trim()
-    if (!cuenta || r?.[2] == null || String(r?.[2]).trim() === '') continue
-    const f = parseFecha(r?.[0]); const prev = saldos.get(cuenta)
-    if (!prev || (f && (!prev.f || f >= prev.f))) saldos.set(cuenta, { saldo: parseMonto(r?.[2]), f, fecha: String(r?.[0] ?? '').trim() })
+    const cuenta = String(r?.[iCuenta] ?? '').trim()
+    if (!cuenta || r?.[iSaldo] == null || String(r?.[iSaldo]).trim() === '') continue
+    const monto = parseMonto(r?.[iSaldo])
+    // Un saldo que no parsea a número NO es cero: es una fila que no entendimos. Se saltea.
+    if (!Number.isFinite(monto) || (monto === 0 && !/^[\s$]*0/.test(String(r[iSaldo])))) continue
+    const f = parseFecha(r?.[iFecha]); const prev = saldos.get(cuenta)
+    if (!prev || (f && (!prev.f || f >= prev.f))) saldos.set(cuenta, { saldo: monto, f, fecha: String(r?.[iFecha] ?? '').trim() })
   }
   const cajaTotal = [...saldos.values()].reduce((s, v) => s + v.saldo, 0)
 
