@@ -25,7 +25,10 @@ const GRUPOS_NAV = [
   },
   {
     grupo: 'Finanzas',
-    links: [{ href: '/flujo-caja', label: 'Flujo de Caja' }],
+    links: [
+      { href: '/calendario-caja', label: 'Scorecard' },
+      { href: '/flujo-caja', label: 'Flujo de Caja' },
+    ],
   },
   {
     grupo: 'Reportes',

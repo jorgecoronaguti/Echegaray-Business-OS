@@ -3,6 +3,7 @@ import { sincronizarNomina, formatSync } from '../nomina-sync.mjs'
 import { sheetRenderTools } from './sheet-render.mjs'
 import { driveWriteTools } from './drive-write.mjs'
 import { replicarNomina, formatReplica } from '../nomina-replica.mjs'
+import { replicarCobranzas, formatCobranzas } from '../cobranzas-replica.mjs'
 
 const FLUJO = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DDJJ = '1em3q6p2Gy4SMk2zRfaATbVL0FWqOf0HB'
@@ -57,7 +58,10 @@ export function nominaSyncTools(google) {
           let replica = null
           try { replica = await replicarNomina(google, { file_id: FLUJO }) }
           catch (e) { replica = { error: String(e?.message ?? e).slice(0, 160) } }
-          return { ...r, replica, resumen_texto: `${formatSync(r)}\n\n${formatReplica(replica)}` }
+          let cobr = null
+          try { cobr = await replicarCobranzas(google, { file_id: FLUJO }) }
+          catch (e) { cobr = { error: String(e?.message ?? e).slice(0, 160) } }
+          return { ...r, replica, cobranzas: cobr, resumen_texto: `${formatSync(r)}\n\n${formatReplica(replica)}\n\n${formatCobranzas(cobr)}` }
         } catch (e) {
           return { error: `no pude sincronizar: ${String(e?.message ?? e).slice(0, 200)}` }
         }
