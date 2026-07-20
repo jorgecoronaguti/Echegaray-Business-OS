@@ -11,7 +11,7 @@
 // pestaña Caja del Cash Flow" y aun así ponerse a buscarlo de cero.
 //
 // Esto NO agrega conocimiento nuevo. Lo hace recuperable por área, desde una sola fuente
-// (public.conocimiento_por_area) que no copia ninguna fila: cada una sigue viviendo en su tabla
+// (public.biblioteca_completa) que no copia ninguna fila: cada una sigue viviendo en su tabla
 // dueña. Costo 0 API.
 //
 // CRITERIO: un área sin conocimiento no es un área sana. Se declara el hueco tal cual — "Calidad:
@@ -117,12 +117,23 @@ export function componerBiblioteca(d = {}) {
   const acciones = activos('accion')
   const reportes = activos('reporte')
   const capacidad = de('capacidad')
+  const frameworks = activos('framework')
+  const playbooks = activos('playbook')
+  const checklists = activos('checklist')
+  const kpis = activos('kpi')
+  const reglas = activos('regla')
+  const aprendizajes = de('aprendizaje')
+  const objetivos = activos('objetivo')
+  const reuniones = activos('reunion')
 
   // Un área "vacía" no se disimula: es el hallazgo más útil que puede dar esta capacidad.
   const huecos = []
   if (!saber.length) huecos.push('no hay ninguna afirmación confirmada: el OS no sabe nada estable de esta área')
   if (!fuentes.length) huecos.push('no hay ninguna fuente de datos declarada: no se sabe de dónde sale el dato')
   if (!reportes.length) huecos.push('no hay ningún reporte automático definido')
+  if (!kpis.length) huecos.push('no hay ningún KPI definido: no se puede medir si el área mejora')
+  if (!frameworks.length) huecos.push('no hay criterio profesional (framework) asignado al área')
+  if (!playbooks.length) huecos.push('no hay ningún playbook: cada problema se resuelve improvisando')
 
   return {
     area: clave,
@@ -135,6 +146,14 @@ export function componerBiblioteca(d = {}) {
     acciones_abiertas: acciones.map((p) => p.titulo),
     reportes: reportes.map((p) => p.titulo),
     capacidad_declarada: capacidad.map((p) => ({ dominio: p.titulo, nivel: p.confianza })),
+    frameworks: frameworks.map((p) => p.titulo),
+    playbooks: playbooks.map((p) => p.titulo),
+    checklists: checklists.map((p) => p.titulo),
+    kpis: kpis.map((p) => ({ nombre: p.titulo, base: p.confianza })),
+    reglas: reglas.map((p) => p.titulo),
+    aprendizajes: aprendizajes.map((p) => ({ titulo: p.titulo, clase: p.confianza })),
+    objetivos: objetivos.map((p) => p.titulo),
+    reuniones: reuniones.map((p) => ({ nombre: p.titulo, frecuencia: p.confianza })),
     huecos,
   }
 }
@@ -153,6 +172,14 @@ export function formatBiblioteca(r) {
 
   bloque('LO QUE SABE', r.sabe, (s) => `  • ${s.afirmacion}${s.confianza ? ` [${s.confianza}]` : ''}`)
   bloque('DE DÓNDE SALE EL DATO', r.fuentes, (f) => `  • ${f.nombre}${f.criticidad ? ` [${f.criticidad}]` : ''}`)
+  bloque('CRITERIO PROFESIONAL', r.frameworks)
+  bloque('KPIs', r.kpis, (k) => `  • ${k.nombre}${k.base ? ` [${k.base}]` : ''}`)
+  bloque('PLAYBOOKS', r.playbooks)
+  bloque('CHECKLISTS', r.checklists)
+  bloque('REGLAS DE DECISIÓN', r.reglas)
+  bloque('REUNIONES', r.reuniones, (m) => `  • ${m.nombre} (${m.frecuencia})`)
+  bloque('OBJETIVOS', r.objetivos)
+  bloque('APRENDIZAJES', r.aprendizajes, (a) => `  • [${a.clase}] ${a.titulo}`)
   bloque('CAPACIDAD MEDIDA', r.capacidad_declarada, (c) => `  • ${c.dominio}: nivel ${c.nivel}`)
   bloque('PREGUNTAS SIN RESPONDER', r.preguntas_abiertas)
   bloque('ACCIONES ABIERTAS', r.acciones_abiertas)
@@ -169,12 +196,13 @@ export function formatBiblioteca(r) {
 /** Panorama de las 8 áreas: cuánto sabe el OS de cada una. PURO. */
 export function formatPanorama(filas) {
   const L = ['CONOCIMIENTO DEL OS POR ÁREA', '']
-  L.push('  ÁREA                          TOTAL  SABE  FUENTES  PREG  PEND')
+  L.push('  ÁREA                          TOTAL  SABE  FUENTES  CRIT  KPIs  PREG  PEND')
   for (const f of filas) {
     if (f.area === null) continue
     L.push(
       `  ${nombreArea(f.area).padEnd(28)}  ${String($(f.total)).padStart(5)}  ${String($(f.sabe)).padStart(4)}  ` +
-        `${String($(f.fuentes)).padStart(7)}  ${String($(f.preguntas)).padStart(4)}  ${String($(f.pendientes)).padStart(4)}`,
+        `${String($(f.fuentes)).padStart(7)}  ${String($(f.criterio)).padStart(4)}  ${String($(f.kpis)).padStart(4)}  ` +
+        `${String($(f.preguntas)).padStart(4)}  ${String($(f.pendientes)).padStart(4)}`,
     )
   }
   const sin = filas.find((f) => f.area === null)
@@ -199,7 +227,7 @@ export async function bibliotecaArea(areaTexto) {
   const { query } = await import('./db.mjs')
   const { rows } = await query(
     `select tipo, titulo, confianza, activo, origen_tabla
-       from public.conocimiento_por_area
+       from public.biblioteca_completa
       where area = $1
       order by tipo, created_at desc`,
     [clave],
@@ -219,13 +247,15 @@ export async function panoramaAreas() {
             count(*) filter (where k.tipo = 'afirmacion')::int             as sabe,
             count(*) filter (where k.tipo = 'fuente')::int                 as fuentes,
             count(*) filter (where k.tipo = 'pregunta'  and k.activo)::int as preguntas,
-            count(*) filter (where k.tipo = 'pendiente' and k.activo)::int as pendientes
+            count(*) filter (where k.tipo = 'pendiente' and k.activo)::int as pendientes,
+            count(*) filter (where k.tipo = 'kpi')::int                     as kpis,
+            count(*) filter (where k.tipo = 'framework')::int               as criterio
        from public.area_canonica a
-       left join public.conocimiento_por_area k on k.area = a.clave
+       left join public.biblioteca_completa k on k.area = a.clave
       group by a.clave, a.orden
       union all
-     select null, count(*)::int, 0, 0, 0, count(*) filter (where tipo = 'pendiente' and activo)::int
-       from public.conocimiento_por_area where area is null
+     select null, count(*)::int, 0, 0, 0, count(*) filter (where tipo = 'pendiente' and activo)::int, 0, 0
+       from public.biblioteca_completa where area is null
       order by 1 nulls last`,
   )
   // El union all rompe el orden del catálogo; se reordena con el orden oficial del programa.

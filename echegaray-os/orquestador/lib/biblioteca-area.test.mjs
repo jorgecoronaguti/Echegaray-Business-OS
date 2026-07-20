@@ -74,7 +74,9 @@ check('no inventa hueco de afirmaciones si las hay', !r.huecos.some((h) => h.inc
 // Un área vacía (Calidad, al 20/07) debe gritar, no quedar en blanco.
 const vacia = componerBiblioteca({ area: 'calidad', piezas: [] })
 check('área vacía: total 0', vacia.total === 0)
-check('área vacía: declara los 3 huecos', vacia.huecos.length === 3)
+check('área vacía: declara los 6 huecos', vacia.huecos.length === 6)
+check('área vacía: dice que no puede medir', vacia.huecos.some((h) => h.includes('KPI')))
+check('área vacía: dice que improvisa', vacia.huecos.some((h) => h.includes('playbook')))
 check('área vacía: dice que no sabe nada', vacia.huecos.some((h) => h.includes('no sabe nada')))
 
 // ── formato ──
