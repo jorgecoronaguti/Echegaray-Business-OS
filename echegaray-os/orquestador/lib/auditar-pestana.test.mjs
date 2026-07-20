@@ -37,6 +37,27 @@ t('TOTAL con fórmula NO es hallazgo', () => {
   assert.equal(cod(r, 'total_pegado_a_mano'), undefined)
 })
 
+t('FALSO POSITIVO REAL: "Total" como DATO de una columna llamada "Total o Parcial" no es fila de total', () => {
+  // Compras (2026-07-20): 615 filas de datos marcadas como totales porque la columna S guarda
+  // literalmente la palabra "Total" en cada fila.
+  const fila = (id) => [celda(id), celda('Proveedor'), celda(1000), celda('Total'), celda(1000)]
+  const r = auditarGrid({ titulo: 'Compras', filas: [
+    [celda('ID'), celda('Proveedor'), celda('Importe'), celda('Total o Parcial'), celda('Monto Pagado')],
+    fila(1), fila(2), fila(3), fila(4), fila(5),
+  ] })
+  assert.equal(cod(r, 'total_pegado_a_mano'), undefined, 'son filas de datos, no de totales')
+})
+
+t('una fila de total RALA sí se detecta (pocas celdas llenas, etiqueta fuera de columna "total")', () => {
+  const fila = (id) => [celda(id), celda('Proveedor'), celda(1000), celda('x'), celda(1000)]
+  const r = auditarGrid({ titulo: 'T', filas: [
+    [celda('ID'), celda('Proveedor'), celda('Importe'), celda('Estado'), celda('Pagado')],
+    fila(1), fila(2), fila(3), fila(4),
+    [celda('TOTAL'), celda(null), celda(4000), celda(null), celda(null)],
+  ] })
+  assert.ok(cod(r, 'total_pegado_a_mano'))
+})
+
 t('rango abierto A:M se detecta; el cerrado no', () => {
   const abierto = auditarGrid({ titulo: 'T', filas: [[celda('a'), celda('b')], [celda(1, '=SUMA(A:A)'), celda(2)]] })
   assert.ok(cod(abierto, 'rangos_abiertos'))

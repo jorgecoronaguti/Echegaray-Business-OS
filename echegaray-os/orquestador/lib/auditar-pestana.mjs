@@ -76,11 +76,23 @@ export function auditarGrid(grid = {}) {
   // ---- 2. Totales pegados a mano (LA regla de oro del proyecto) ----
   // Una fila que dice TOTAL/SUBTOTAL y tiene números SIN fórmula: el número no se recalcula solo.
   const RE_TOTAL = /^\s*(total|totales|subtotal|suma|acumulado|saldo)\b/i
+  // FALSO POSITIVO REAL (2026-07-20, pestaña Compras): la columna "Total o Parcial" tiene como DATO
+  // la palabra "Total" en cada fila, y esto marcaba 615 filas de datos como filas de total. Dos
+  // guardas: (a) no cuenta si la palabra cae en una columna cuyo encabezado ya habla de total —
+  // ahí es un valor, no una etiqueta; (b) una fila de total es RALA (resume, no detalla), así que
+  // se exige que tenga bastantes menos celdas llenas que una fila de datos típica.
+  const colsTotal = new Set(encabezado.map((h, i) => (/total|saldo|suma/i.test(String(h || '')) ? i : -1)).filter((i) => i >= 0))
+  const llenasPorFila = filas.slice(encabezadoIdx + 1).map((f) => (f || []).filter(llena).length).filter((n) => n > 0)
+  const tipico = llenasPorFila.length
+    ? llenasPorFila.slice().sort((a, b) => a - b)[Math.floor(llenasPorFila.length / 2)]
+    : 0
   const totalesDuros = []
   for (let i = 0; i < filas.length; i++) {
     const f = filas[i] || []
-    const etiqueta = f.find((c) => c?.valor && RE_TOTAL.test(c.valor))
+    const etiqueta = f.find((c, ci) => c?.valor && RE_TOTAL.test(c.valor) && !colsTotal.has(ci))
     if (!etiqueta) continue
+    // Una fila de total resume: si está tan llena como una fila de datos, es una fila de datos.
+    if (tipico >= 4 && f.filter(llena).length > tipico * 0.7) continue
     const durosEnFila = f.filter((c) => !c?.formula && c?.numero !== null)
     if (durosEnFila.length) totalesDuros.push({ fila: i + 1, cantidad: durosEnFila.length })
   }
