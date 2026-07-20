@@ -71,6 +71,45 @@ Esta skill razona; el dato vive en el núcleo (Supabase + capacidades 0-API). El
 - **Nunca mezclar Civil, Mantenimiento y Estructura** al analizar rentabilidad — son líneas de negocio distintas, confirmadas con datos reales, y mezclarlas oculta cuál de las dos genera el resultado real.
 - **Costo comprometido ≠ costo devengado ≠ costo pagado**: ya modelado en el OS (`costos_reales`, PRP-004) — esta skill debe reforzar esa distinción al leer cualquier resultado contable.
 
+## Reconocimiento del ingreso en construcción: el corazón del devengado
+
+- El ingreso devengado se reconoce **según el avance real de la obra**, no cuando se factura ni cuando se cobra. El disparador natural es el **certificado de obra aprobado por el comitente** — es la medición del avance validada por la otra parte.
+- **Factura ≠ certificado ≠ cobro.** Un certificado aprobado y no facturado ya es ingreso devengado. Una factura emitida por anticipo **no** es ingreso: es un pasivo hasta que se ejecute la obra que la respalda.
+- **Adicionales**: por prudencia no se reconocen como ingreso hasta que sean **aprobados/exigibles**. Un adicional ejecutado pero no aprobado es riesgo, no ingreso (cruzar con `derecho-construccion-contratos`; el OS ya distingue detectado→cotizado→aprobado→facturado→cobrado).
+- **Costos**: se reconocen contra el ingreso de la obra que los generó (correlación). Un costo de una obra imputado a otra distorsiona ambos márgenes — y es el error más común cuando la imputación por obra es floja.
+
+## Obra en curso y certificación en exceso o en defecto (el concepto que casi nadie lleva)
+
+Es la cuenta que revela la verdad económica de una obra en ejecución:
+
+- **Ejecutado > certificado** → hay trabajo hecho todavía no reconocido por el cliente: es un **activo** (obra en curso / trabajos en proceso). Si crece, hay que preguntarse por qué el cliente no está certificando — suele anticipar un conflicto o una demora de cobro.
+- **Certificado > ejecutado** → se cobró/certificó por adelantado: es un **pasivo** (anticipo a devengar). Tratarlo como ingreso infla el resultado y después aparece el agujero.
+- Sin esta distinción, el P&L de una constructora con obras en curso **no es confiable**: muestra margen que todavía no existe o esconde el que ya se ganó.
+
+## Ajuste por inflación: sin él, los estados contables mienten
+
+- En un contexto inflacionario, los estados contables **reexpresados** son los únicos comparables. Los importes históricos de distintos meses no se pueden sumar como si fueran la misma moneda.
+- El **RECPAM** (resultado por exposición a los cambios en el poder adquisitivo de la moneda) es un resultado real, no un tecnicismo: **mantener activos monetarios** (caja, créditos por ventas sin ajuste) **genera pérdida**; mantener **pasivos monetarios** (deuda a tasa fija en pesos) **genera ganancia**. Una constructora con mucho crédito por ventas a plazo pierde por inflación aunque el margen nominal se vea bien.
+- Verificar el marco vigente de aplicación (resoluciones técnicas y su obligatoriedad según el tipo de ente) antes de afirmar cómo corresponde presentarlo — es normativa profesional cambiante y la decisión final es del estudio contable.
+- **Regla práctica de gestión**: al comparar margen entre obras o entre períodos, declarar si los importes están en moneda homogénea. Una obra "más rentable" que otra ejecutada seis meses antes puede ser solo inflación.
+
+## Previsiones y contingencias propias de una constructora
+
+- **Vicios ocultos / garantía de obra**: la responsabilidad sobrevive a la entrega. Si la empresa tiene obras entregadas, corresponde evaluar una previsión — no reconocerla infla el resultado del ejercicio en que se entregó (cruzar con `derecho-construccion-contratos` para los plazos de responsabilidad).
+- **Fondo de reparo retenido**: es un **crédito** de la empresa (margen ya ganado pendiente de liberación), no un gasto ni un menor ingreso. Registrarlo como quita es regalar margen contablemente.
+- **Juicios laborales**: en construcción son frecuentes; evaluar previsión según probabilidad y monto estimado (cruzar con `derecho-laboral-construccion`).
+
+## Qué mira un tercero en el balance de una constructora PyME (banco, SGR, cliente grande)
+
+Importa porque de esto depende el acceso al financiamiento barato:
+
+- **Patrimonio neto y su evolución** — si crece solo por revalúos y no por resultados, se nota.
+- **Liquidez corriente y capital de trabajo** — la foto de si puede sostener las obras que tiene.
+- **Composición de los créditos por ventas**: antigüedad y concentración por cliente (un solo cliente concentrando la cobranza es una observación, no un detalle).
+- **Obra en curso**: cuánta y con qué respaldo documental (certificados aprobados).
+- **Endeudamiento y su calce**: deuda corta financiando activos largos es una señal de alerta.
+- **Consistencia entre el balance, las DDJJ impositivas y el flujo de fondos** — las diferencias sin explicación destruyen credibilidad más rápido que un mal número.
+
 ## Criterios de decisión
 
 | Variable | Pregunta |
