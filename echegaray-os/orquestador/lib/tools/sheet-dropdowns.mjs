@@ -6,6 +6,8 @@
 // corresponde (match, aunque el texto de la factura no sea idéntico) — nunca inventar una nueva.
 // Solo lectura (capability drive.read) → corre inline en el chat, sin aprobación.
 
+import { a1ToGridRange } from './sheets-format.mjs'
+
 /** Convierte índice de columna (0-based, ya con offset) a letra A1 (A, B, …, Z, AA…). */
 function colToLetter(i) {
   let s = ''
@@ -15,6 +17,55 @@ function colToLetter(i) {
 
 export function sheetDropdownTools(google) {
   return {
+    // El OS sabía LEER desplegables pero no crearlos: cada columna categórica nueva quedaba como
+    // texto libre, que es de donde salen "San Francisco" / "san francisco" / "S. Francisco" como
+    // tres cosas distintas. Sin esto, ninguna pestaña nueva puede nacer bien.
+    'sheet.crear_desplegable': {
+      capability: 'drive.write',
+      account: 'ecsas',
+      schema: {
+        name: 'drive_crear_desplegable',
+        description:
+          'CREA un desplegable (validación de datos tipo lista) en un rango de columna de un Google ' +
+          'Sheet, para que nadie escriba texto libre en una columna categórica (cliente, obra, estado, ' +
+          'proveedor). Las opciones se pasan en `opciones`, o se toman de un rango con `rango_origen` ' +
+          '(preferible: así la lista vive en una pestaña de parámetros y se mantiene en un solo lugar). ' +
+          'Con `estricto:true` rechaza cualquier valor fuera de la lista; con false sólo avisa.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            file_id: { type: 'string' },
+            range: { type: 'string', description: 'rango A1 con pestaña donde poner el desplegable, ej. "Jornales!A5:A80"' },
+            opciones: { type: 'array', items: { type: 'string' }, description: 'lista de opciones fijas' },
+            rango_origen: { type: 'string', description: 'rango A1 de donde salen las opciones, ej. "Parámetros!A45:A50"' },
+            estricto: { type: 'boolean', description: 'true = rechaza lo que no esté en la lista (default true)' },
+          },
+          required: ['file_id', 'range'],
+        },
+      },
+      async run(input) {
+        if (!input?.file_id || !input?.range) return { error: 'faltan file_id o range' }
+        const opciones = Array.isArray(input.opciones) ? input.opciones.filter(Boolean) : []
+        if (!opciones.length && !input.rango_origen) return { error: 'pasá `opciones` o `rango_origen`' }
+        try {
+          const meta = await google.getSheetMeta(input.file_id)
+          const rango = a1ToGridRange(meta, input.range)
+          const condition = opciones.length
+            ? { type: 'ONE_OF_LIST', values: opciones.map((v) => ({ userEnteredValue: String(v) })) }
+            : { type: 'ONE_OF_RANGE', values: [{ userEnteredValue: '=' + input.rango_origen }] }
+          await google.spreadsheetBatchUpdate(input.file_id, [{
+            setDataValidation: {
+              range: rango,
+              rule: { condition, showCustomUi: true, strict: input.estricto !== false },
+            },
+          }])
+          return { ok: true, range: input.range, opciones: opciones.length || `desde ${input.rango_origen}` }
+        } catch (e) {
+          return { error: `no pude crear el desplegable: ${String(e?.message ?? e).slice(0, 200)}` }
+        }
+      },
+    },
+
     'sheet.desplegables': {
       capability: 'drive.read',
       account: 'ecsas',
