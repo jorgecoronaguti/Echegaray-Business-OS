@@ -5,27 +5,31 @@ import { evaluarCierre, formatCierre, periodoActual } from './control-administra
 const HOY = new Date('2026-07-19T12:00:00Z')
 let n = 0
 const t = (nombre, fn) => { fn(); n++; console.log('  ok', nombre) }
+const cod = (r, c) => r.hallazgos.find((h) => h.codigo === c)
 
-t('factura de compra sin obra → hallazgo con el monto real', () => {
-  const r = evaluarCierre({
-    recibidos: [{ obra_texto: '', imp_total: '1000' }, { obra_texto: 'ARCOR', imp_total: '500' }],
-  }, HOY)
-  const h = r.hallazgos.find((x) => x.codigo === 'compras_sin_obra')
-  assert.ok(h, 'debe detectar la no imputada')
-  assert.equal(h.monto, 1000)
-  assert.equal(h.severidad, 'media', 'si algunas sí están imputadas, es media')
+t('gasto de ARCA que no está en la pestaña Compras → hallazgo con el monto real', () => {
+  const r = evaluarCierre({ recibidos: [{ emisor_nombre: 'ALUMETAL', imp_total: '1000' }, { emisor_nombre: 'X', imp_total: '500' }] }, HOY)
+  const h = cod(r, 'gasto_fuera_de_obra')
+  assert.ok(h, 'ese gasto no está en ninguna obra')
+  assert.equal(h.monto, 1500)
 })
 
-t('TODAS sin obra → severidad alta (el costo por obra entero es irreal)', () => {
-  const r = evaluarCierre({ recibidos: [{ obra_texto: null, imp_total: '10' }] }, HOY)
-  assert.equal(r.hallazgos[0].severidad, 'alta')
-  assert.equal(r.cerrable, false)
+t('REGRESIÓN: sin comprobantes huérfanos NO se inventa alarma (la falsa alarma de 2026-07-20)', () => {
+  // Antes miraba comprobantes_arca.obra_texto (campo que nadie llena) y gritaba "47/47 sin
+  // imputar" cuando la imputación real existe en costos_obra. Alertar sobre algo ya resuelto
+  // en otra fuente rompe la confianza más rápido que no alertar.
+  const r = evaluarCierre({ recibidos: [] }, HOY)
+  assert.equal(cod(r, 'gasto_fuera_de_obra'), undefined)
+  assert.ok(r.ok.some((s) => /pestaña Compras/.test(s)), 'consultado y sin huérfanos = OK verificado')
+  // Pero NO consultar la fuente no es un OK: es no verificable.
+  const sinConsultar = evaluarCierre({}, HOY)
+  assert.equal(sinConsultar.ok.length, 0)
+  assert.ok(sinConsultar.no_verificable.some((s) => /pestaña Compras/.test(s)))
 })
 
-t('todo imputado → va a ok, no a hallazgos', () => {
-  const r = evaluarCierre({ recibidos: [{ obra_texto: 'ARCOR', imp_total: '10' }] }, HOY)
-  assert.equal(r.hallazgos.length, 0)
-  assert.ok(r.ok.some((s) => /imputadas/.test(s)))
+t('muchos huérfanos → severidad alta', () => {
+  const muchos = Array.from({ length: 26 }, () => ({ emisor_nombre: 'P', imp_total: '10' }))
+  assert.equal(cod(evaluarCierre({ recibidos: muchos }, HOY), 'gasto_fuera_de_obra').severidad, 'alta')
 })
 
 t('cobranza vencida se detecta; cobrada NO cuenta aunque esté vencida', () => {

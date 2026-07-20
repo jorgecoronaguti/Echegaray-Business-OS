@@ -47,7 +47,9 @@ function fechaAR(f) {
  * @param {Date} hoy
  */
 export function evaluarCierre(d = {}, hoy = new Date()) {
-  const recibidos = d.recibidos || []
+  // `undefined` = no se consultó la fuente (no verificable). `[]` = se consultó y no hay huérfanos
+  // (OK verificado). Confundirlos daría un OK sobre algo que nunca se miró.
+  const recibidos = d.recibidos
   const cobranzas = d.cobranzas || []
   const obligaciones = d.obligaciones || []
   const fuentes = d.fuentes || {}
@@ -55,22 +57,26 @@ export function evaluarCierre(d = {}, hoy = new Date()) {
   const ok = []
   const no_verificable = []
 
-  // 1. Toda factura de compra se imputa a una obra o a Estructura AL CARGARLA (regla de la skill).
-  //    Un gasto sin obra no se puede controlar ni recuperar: se disfraza de indirecto.
-  if (recibidos.length) {
-    const sinObra = recibidos.filter((r) => !String(r.obra_texto || '').trim())
-    if (sinObra.length) {
-      hallazgos.push({
-        codigo: 'compras_sin_obra',
-        severidad: sinObra.length === recibidos.length ? 'alta' : 'media',
-        titulo: `${sinObra.length} de ${recibidos.length} facturas de compra sin imputar a obra`,
-        monto: sum(sinObra, 'imp_total'),
-        detalle: 'Un gasto sin obra asignada no entra en el costo real de ninguna obra: el margen que muestra el OS está sobreestimado en ese monto.',
-        accion: 'Imputar cada comprobante a la obra que lo consumió o a Estructura.',
-      })
-    } else ok.push('Todas las facturas de compra del período están imputadas a obra.')
+  // 1. Gasto de ARCA que nunca entró a la pestaña Compras → no está imputado a NINGUNA obra.
+  //
+  // ESTO CORRIGE UNA FALSA ALARMA PROPIA (2026-07-20). Antes miraba `comprobantes_arca.obra_texto`
+  // y gritaba "47 de 47 facturas sin imputar". Era falso: la imputación real existe y funciona —
+  // la empresa asigna cada compra a una obra en la pestaña Compras, y eso vive en `costos_obra`
+  // (731 filas, $578M). Alertar sobre un problema ya resuelto en otra fuente destruye la confianza
+  // más rápido que no alertar. El problema real es el gasto que ARCA registró y el Sheet no tiene.
+  if (recibidos && recibidos.length) {
+    hallazgos.push({
+      codigo: 'gasto_fuera_de_obra',
+      severidad: recibidos.length > 20 ? 'alta' : 'media',
+      titulo: `${recibidos.length} comprobante(s) de ARCA que no están en la pestaña Compras`,
+      monto: sum(recibidos, 'imp_total'),
+      detalle: `Ese gasto existe y es real, pero no está imputado a ninguna obra: el margen por obra que muestra el OS lo ignora y queda sobreestimado en ese monto. Mayores: ${recibidos.slice(0, 3).map((r) => `${r.emisor_nombre} $${Math.round(Number(r.imp_total) || 0).toLocaleString('es-AR')}`).join(' · ')}.`,
+      accion: 'Cargarlos en la pestaña Compras con su obra, o marcarlos como Estructura si no corresponden a una obra.',
+    })
+  } else if (recibidos) {
+    ok.push('Todo el gasto registrado en ARCA está cargado en la pestaña Compras con su obra.')
   } else {
-    no_verificable.push('Facturas de compra del período: no hay comprobantes cargados para este período.')
+    no_verificable.push('Gasto de ARCA vs. pestaña Compras: no se consultó la conciliación.')
   }
 
   // 2. Cobranzas vencidas: emitido/pendiente con fecha de cobro pasada. Plata que ya se ganó y no entró.
@@ -172,9 +178,10 @@ export function periodoActual(hoy = new Date()) {
 export async function controlAdministrativo({ periodo } = {}) {
   const { query } = await import('./db.mjs')
   const per = periodo || periodoActual()
+  // Fuente única: la vista de conciliación (no se recalcula el cruce acá).
   const recibidos = (await query(
-    `select obra_texto, imp_total, emisor_nombre from public.comprobantes_arca
-      where tipo_libro = 'R' and periodo = $1`, [per])).rows
+    `select emisor_nombre, imp_total, comprobante from public.comprobante_sin_registrar
+      where periodo = $1 order by imp_total desc`, [per])).rows
   const cobranzas = (await query(
     `select estado, fecha_cobro, total_bruto, obra_cliente from public.cobranzas`)).rows
   const obligaciones = (await query(
