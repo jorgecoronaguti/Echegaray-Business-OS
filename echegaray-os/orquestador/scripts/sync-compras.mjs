@@ -12,12 +12,14 @@ import { query, closePool } from '../lib/db.mjs'
 import { CASHFLOW_ID, parseMonto, parseFecha } from '../lib/cash-briefing.mjs'
 
 const iso = (d) => (d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : null)
-// Compras!A..O (headers en fila 3, datos desde fila 4): idx0 ID, 1 Categoría, 2 Fecha factura,
+// Compras!A..Y (headers en fila 3, datos desde fila 4): idx0 ID, 1 Categoría, 2 Fecha factura,
+// 16 Fecha prevista de pago, 24 Fecha contable del pago. Leía sólo hasta la O y por eso fecha_pago
+// quedaba en NULL en las 736 filas: el calendario de caja ponía cada pago el día de la FACTURA.
 // 3 mes, 4 Proveedor, 5 Modalidad, 6 Tipo, 7 N° Comprobante, 8 Unidad de Negocio,
 // 9 Cliente/Asignación (OBRA), 10 Detalles/Obra, 11 Concepto, 12 Importe, 13 IVA, 14 Total.
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
-  const rows = await google.readSheetValues(CASHFLOW_ID, 'Compras!A4:O5000').catch(() => [])
+  const rows = await google.readSheetValues(CASHFLOW_ID, 'Compras!A4:Y5000').catch(() => [])
   const compras = []
   for (const r of rows) {
     const total = parseMonto(r?.[14])
@@ -39,6 +41,9 @@ async function main() {
       iva: parseMonto(r?.[13]) || null,
       total: total || parseMonto(r?.[12]),
       fecha: iso(parseFecha(r?.[2])),
+      // Cuándo SALE la plata: la contable si está, si no la prevista. `fecha` es la de factura y
+      // sirve para el devengado; el calendario de caja necesita ésta.
+      fecha_pago: iso(parseFecha(r?.[24])) ?? iso(parseFecha(r?.[16])),
       mes: String(r?.[3] ?? '').trim() || null,
     })
   }
@@ -52,9 +57,9 @@ async function main() {
     for (const c of compras) {
       await query(
         `insert into public.costos_obra
-          (obra_texto, unidad_negocio, proveedor, modalidad, tipo, comprobante, categoria, concepto, importe, iva, total, fecha, mes, origen, referencia_externa, sincronizado_en)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'compras_sheet',$14, now())`,
-        [c.obra_texto, c.unidad_negocio, c.proveedor, c.modalidad, c.tipo, c.comprobante, c.categoria, c.concepto, c.importe, c.iva, c.total, c.fecha, c.mes, c.referencia_externa],
+          (obra_texto, unidad_negocio, proveedor, modalidad, tipo, comprobante, categoria, concepto, importe, iva, total, fecha, fecha_pago, mes, origen, referencia_externa, sincronizado_en)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'compras_sheet',$15, now())`,
+        [c.obra_texto, c.unidad_negocio, c.proveedor, c.modalidad, c.tipo, c.comprobante, c.categoria, c.concepto, c.importe, c.iva, c.total, c.fecha, c.fecha_pago, c.mes, c.referencia_externa],
       )
     }
     await query('commit')
