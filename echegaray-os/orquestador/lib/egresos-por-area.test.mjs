@@ -32,6 +32,8 @@ check('SAC', a({ proveedor: 'SAC' }).grupo === 'SAC / aguinaldo')
 check('fondo de cese', a({ proveedor: 'FCL' }).grupo === 'Fondo de cese')
 check('sindicatos', a({ proveedor: 'SINDICATOS' }).grupo === 'Sindicatos')
 check('concepto de liquidación también entra', a({ concepto: 'Liquidacion Guada, Ignacio' }).area === 'personas')
+// Un ADICIONAL DE OBRA es material, no sueldo. Lo tenía mal y lo delató la pestaña con fórmulas.
+check('"Barniz - Adicional de obra" NO es nómina', a({ concepto: 'Barniz para Entre piso - Adicional de obra', cliente: 'LA ESTRELLA' }).area === 'obras')
 
 // El resto de las áreas
 check('unidad Impuestos → contabilidad', a({ unidad: 'Impuestos', proveedor: 'X' }).area === 'contabilidad_legales')

@@ -20,7 +20,7 @@ import { resolverObraCon, cargarAliasMap } from './obras.mjs'
 /** Las asignaciones que son NÓMINA. El proveedor manda: los sueldos se cargan SIN concepto. */
 const NOMINA_PROVEEDOR = new Set(['sueldos', 'sac', 'sindicatos', 'uocra', 'fcl', 'ieric', 'fodeco'])
 const NOMINA_CLIENTE = new Set(['f931', 'uocra', 'fcl', 'ieric', 'fodeco'])
-const RE_NOMINA_CONCEPTO = /sueldo|jornal|aguinaldo|liquidacion|adicional de obra/i
+const RE_NOMINA_CONCEPTO = /sueldo|jornal|aguinaldo|liquidacion/i
 const INDIRECTO = new Set(['administracion', 'taller', 'almacen', 'obras'])
 const RE_FLOTA = /\bford\b|\btoyota\b|\bmoto\b|chevrolet|hilux|amarok|patente/i
 
@@ -97,6 +97,7 @@ export function componerEgresos(filas = [], aliasMap = new Map()) {
   let sinConcepto = 0
   let sinConceptoMonto = 0
 
+  const porCruce = new Map()
   for (const f of filas) {
     const { area, grupo } = areaDeEgreso(f, aliasMap)
     const m = montoAR(f.total)
@@ -110,6 +111,13 @@ export function componerEgresos(filas = [], aliasMap = new Map()) {
 
     const g = porGrupo.get(grupo) ?? { grupo, area: ka, filas: 0, monto: 0 }
     g.filas++; g.monto += m; porGrupo.set(grupo, g)
+
+    // CRUCE con la clasificación que ya usa el Sheet (columna "Unidad de Negocio"). Sirve para ver
+    // si esa lista y las áreas dicen lo mismo o son dos cortes distintos superpuestos.
+    const u = String(f.unidad ?? '').trim() || '(vacío)'
+    const kc = `${u}||${ka}`
+    const c = porCruce.get(kc) ?? { unidad: u, area: ka, filas: 0, monto: 0 }
+    c.filas++; c.monto += m; porCruce.set(kc, c)
   }
 
   const areas = [...porArea.values()].sort((x, y) => y.monto - x.monto)
@@ -127,6 +135,7 @@ export function componerEgresos(filas = [], aliasMap = new Map()) {
     // Huecos de captura: no son un defecto de esta capacidad, son trabajo real del dueño.
     sin_concepto: sinConcepto,
     sin_concepto_monto: sinConceptoMonto,
+    cruce_unidad_area: [...porCruce.values()].sort((x, y) => y.monto - x.monto),
   }
 }
 
@@ -151,6 +160,14 @@ export function formatEgresos(r, nombreArea = (a) => a) {
   L.push('')
   if (r.filas_plantilla) L.push(`  ${r.filas_plantilla} filas de PLANTILLA (fórmulas vivas sin dato): se limpian antes de tocar nada.`)
   if (r.sin_concepto) L.push(`  ${r.sin_concepto} filas SIN concepto por ${$(r.sin_concepto_monto)}: no se sabe qué se compró.`)
+  if (r.cruce_unidad_area?.length) {
+    L.push('')
+    L.push('  CRUCE con "Unidad de Negocio" (la lista que ya usa el Sheet):')
+    L.push('  UNIDAD            ÁREA DEL OS                 FILAS            TOTAL')
+    for (const c of r.cruce_unidad_area) {
+      L.push(`  ${c.unidad.padEnd(17)} ${String(c.area === '(sin clasificar)' ? c.area : nombreArea(c.area)).padEnd(26)} ${String(c.filas).padStart(5)} ${$(c.monto).padStart(16)}`)
+    }
+  }
   return L.join('\n')
 }
 
