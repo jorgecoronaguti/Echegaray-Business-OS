@@ -18,16 +18,19 @@ export function tipoObligacion(concepto) {
 }
 
 /** CORE PURO (testeable sin DB): estado de obligaciones a una fecha.
- *  filas = [{ concepto, monto, pagado, vencimiento }]  (pagado = suma de aplicaciones_pago). */
+ *  filas = [{ concepto, saldo, vencimiento }].
+ *
+ *  FUENTE ÚNICA: el `saldo` NO se calcula acá — viene de la vista `public.obligacion_resumen`
+ *  (saldo_pendiente = monto_total − pagos aplicados), que es la MISMA que consume la web. Antes este
+ *  módulo lo recalculaba en JS: dos definiciones del mismo concepto, que coincidían por cuidado y no
+ *  por construcción. Esta función clasifica y agrega; qué es el saldo lo define Postgres. */
 export function analizarObligaciones(hoy, filas) {
   const hoyD = dias(hoy)
   const porTipo = {}
   let saldoTotal = 0, vencido = 0, prox30 = 0
   const vencidas = []
   for (const f of filas) {
-    const monto = Number(f.monto || 0)
-    const pagado = Number(f.pagado || 0)
-    const saldo = Math.max(0, monto - pagado)
+    const saldo = Math.max(0, Number(f.saldo || 0))
     if (saldo <= 0) continue
     saldoTotal += saldo
     const tipo = tipoObligacion(f.concepto)
@@ -44,16 +47,18 @@ export function analizarObligaciones(hoy, filas) {
     vencido: Math.round(vencido),
     entra_30_dias: Math.round(prox30),
     vencidas: vencidas.sort((a, b) => b.saldo - a.saldo).slice(0, 10),
-    sin_vencimiento: filas.filter((f) => !f.vencimiento && Math.max(0, Number(f.monto || 0) - Number(f.pagado || 0)) > 0).length,
+    sin_vencimiento: filas.filter((f) => !f.vencimiento && Math.max(0, Number(f.saldo || 0)) > 0).length,
   }
 }
 
-/** Capacidad pública: estado de obligaciones a hoy. Cruza obligaciones con sus pagos aplicados. 0 API. */
+/** Capacidad pública: estado de obligaciones a hoy. 0 API.
+ *  Lee la VISTA `public.obligacion_resumen` — la MISMA fuente que consume la web. No recalcula el
+ *  saldo: un concepto de negocio que se muestra en más de una cara del OS se define una sola vez,
+ *  en Postgres. Ver scripts/canario-fuente-unica.mjs (verifica que web y chat sigan dando lo mismo). */
 export async function estadoObligaciones(hoy = new Date()) {
   const { rows } = await query(
-    `select o.concepto, o.monto_total::float8 monto, o.fecha_vencimiento vencimiento,
-            coalesce((select sum(ap.monto_aplicado) from public.aplicaciones_pago ap where ap.obligacion_id = o.id), 0)::float8 pagado
-       from public.obligaciones o`)
+    `select concepto, saldo_pendiente::float8 saldo, fecha_vencimiento vencimiento
+       from public.obligacion_resumen`)
   const a = analizarObligaciones(hoy, rows)
-  return { ...a, n_obligaciones: rows.length, fuente: 'public.obligaciones + aplicaciones_pago (Cash Flow / Control de Gastos)' }
+  return { ...a, n_obligaciones: rows.length, fuente: 'vista public.obligacion_resumen (fuente única compartida con la web)' }
 }

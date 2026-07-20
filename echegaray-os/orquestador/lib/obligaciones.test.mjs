@@ -13,10 +13,13 @@ check('clasifica operativa (alquiler)', tipoObligacion('Alquileres (junio 2026)'
 
 const hoy = new Date('2026-07-18')
 const filas = [
-  { concepto: 'Alquileres', monto: 2000000, pagado: 0, vencimiento: '2026-06-10' },      // vencida
-  { concepto: 'Fondo de Cese / UOCRA', monto: 2700000, pagado: 700000, vencimiento: '2026-07-25' }, // próx 30, saldo 2M
-  { concepto: 'Deuda comercial acumulada', monto: 20000000, pagado: 0, vencimiento: null }, // sin venc
-  { concepto: 'Deuda impositiva (ARCA)', monto: 1000000, pagado: 1000000, vencimiento: null }, // saldada → excluida
+  // FUENTE ÚNICA: `saldo` llega ya calculado desde la vista public.obligacion_resumen
+  // (saldo_pendiente = monto_total − pagos aplicados), la misma que consume la web.
+  // Este core clasifica y agrega; NO define qué es el saldo.
+  { concepto: 'Alquileres', saldo: 2000000, vencimiento: '2026-06-10' },      // vencida
+  { concepto: 'Fondo de Cese / UOCRA', saldo: 2000000, vencimiento: '2026-07-25' }, // próx 30 (2,7M − 0,7M pagados)
+  { concepto: 'Deuda comercial acumulada', saldo: 20000000, vencimiento: null }, // sin venc
+  { concepto: 'Deuda impositiva (ARCA)', saldo: 0, vencimiento: null }, // saldada → excluida
 ]
 const r = analizarObligaciones(hoy, filas)
 
