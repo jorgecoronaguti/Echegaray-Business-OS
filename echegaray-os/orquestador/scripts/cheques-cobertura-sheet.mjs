@@ -57,15 +57,17 @@ function grilla({ enCompras, cheques, tarjeta }) {
   push(['', 'Cantidad', 'Monto', '', '', 'Qué significa'])
   push(['CHEQUES — total emitido', cheques.length, ars(ch.total), '', '', ''])
   push(['  · ya contemplados (su factura está en Compras)', ch.contemplados.length, ars(ch.monto_contemplado), '', '', 'Ya están en el cash flow, en el rubro de esa factura. Sumarlos de nuevo sería duplicar.'])
-  push(['  · SIN factura en Compras', ch.sin_registrar.length, ars(ch.monto_sin_registrar), '', '', '⚠ Plata que sale y que NINGUNA línea del cash flow ve. No es un problema del cash flow: es una compra que nadie registró.'])
-  push(['  · sin número de comprobante cargado', ch.sin_numero, '', '', '', 'Sin número no se puede cruzar. Puede estar en Compras y no saberlo.'])
+  push(['  · FALTA la factura en Compras (confirmado)', ch.falta_factura.length, ars(ch.monto_falta_factura), '', '', '⚠ Tienen número de comprobante y ese número NO está en Compras. Plata que sale y que ninguna línea del cash flow ve.'])
+  push(['  · sin N° de comprobante — no se puede saber', ch.sin_numero_comprobante.length, ars(ch.monto_sin_numero), '', '', 'Su factura puede estar en Compras perfectamente. Cargando el N° de comprobante en la pestaña Cheques se resuelve solo.'])
   push()
   push(['TARJETA DE CRÉDITO — total', tarjeta.length, ars(tj.total), '', '', ''])
   push(['  · ya contemplados', tj.contemplados.length, ars(tj.monto_contemplado), '', '', ''])
-  push(['  · SIN factura en Compras', tj.sin_registrar.length, ars(tj.monto_sin_registrar), '', '', '⚠ Ídem: falta cargarlas en Compras.'])
+  push(['  · FALTA la factura (confirmado)', tj.falta_factura.length, ars(tj.monto_falta_factura), '', '', ''])
+  push(['  · sin N° de comprobante', tj.sin_numero_comprobante.length, ars(tj.monto_sin_numero), '', '', ''])
   push()
   const fFalta = filas.length + 1
-  push(['⇒ TOTAL QUE FALTA CARGAR EN COMPRAS', ch.sin_registrar.length + tj.sin_registrar.length, ars(ch.monto_sin_registrar + tj.monto_sin_registrar), '', '', 'Hasta que estas facturas se carguen, el cash flow subestima los egresos en este monto.'])
+  push(['⇒ FALTA CARGAR, CONFIRMADO', ch.falta_factura.length + tj.falta_factura.length, ars(ch.monto_falta_factura + tj.monto_falta_factura), '', '', 'El cash flow subestima los egresos AL MENOS en esto.'])
+  push(['⇒ Sin poder verificar (falta el N° de comprobante)', ch.sin_numero_comprobante.length + tj.sin_numero_comprobante.length, ars(ch.monto_sin_numero + tj.monto_sin_numero), '', '', 'No es un faltante: es una ignorancia. Se resuelve cargando el número en Cheques y Tarjeta.'])
   push()
   push(['CHEQUES A CUBRIR — los que todavía no se debitaron'])
   push(['Otra pregunta, y es de tesorería: no importa si la factura está registrada, importa cuánta plata tiene que haber en la cuenta y cuándo. Un cheque emitido es un compromiso más firme que una factura con fecha prevista.'])
@@ -81,8 +83,8 @@ async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const datos = await leer(google)
   const g = grilla(datos)
-  console.log(`CHEQUES  ${datos.cheques.length} · contemplados ${g.ch.contemplados.length} (${ars(g.ch.monto_contemplado).toLocaleString('es-AR')}) · sin registrar ${g.ch.sin_registrar.length} (${ars(g.ch.monto_sin_registrar).toLocaleString('es-AR')})`)
-  console.log(`TARJETA  ${datos.tarjeta.length} · contemplados ${g.tj.contemplados.length} (${ars(g.tj.monto_contemplado).toLocaleString('es-AR')}) · sin registrar ${g.tj.sin_registrar.length} (${ars(g.tj.monto_sin_registrar).toLocaleString('es-AR')})`)
+  console.log(`CHEQUES  ${datos.cheques.length} · contemplados ${g.ch.contemplados.length} (${ars(g.ch.monto_contemplado).toLocaleString('es-AR')}) · falta factura ${g.ch.falta_factura.length} (${ars(g.ch.monto_falta_factura).toLocaleString('es-AR')}) · sin N° ${g.ch.sin_numero_comprobante.length} (${ars(g.ch.monto_sin_numero).toLocaleString('es-AR')})`)
+  console.log(`TARJETA  ${datos.tarjeta.length} · contemplados ${g.tj.contemplados.length} (${ars(g.tj.monto_contemplado).toLocaleString('es-AR')}) · falta factura ${g.tj.falta_factura.length} · sin N° ${g.tj.sin_numero_comprobante.length}`)
   console.log(`A CUBRIR ${ars(g.cubrir.total).toLocaleString('es-AR')} en ${g.cubrir.por_mes.length} meses`)
   if (DRY) return
 
@@ -112,9 +114,60 @@ async function main() {
     { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 5, endIndex: 6 }, properties: { pixelSize: 460 }, fields: 'pixelSize' } },
   ])
 
+  await marcarPestanaCheques(google, datos)
+
   const v = await google.readSheetValues(ID, `${PESTAÑA}!A${F}:C${F + filas.length - 1}`)
   console.log(`\nEscrito en la fila ${F}:`)
   for (const f of v) if (f?.[0] && (f?.[2] || f?.[1])) console.log(`  ${String(f[0]).slice(0, 46).padEnd(48)}${String(f[1] ?? '').padStart(6)}${String(f[2] ?? '').padStart(16)}`)
+}
+
+/**
+ * Marca cada cheque en su propia pestaña: ¿su factura está cargada en Compras o no?
+ *
+ * El resumen del Cash Flow dice cuánto falta; acá se ve CUÁL. Sin esto, "$33,5M sin factura" es un
+ * número que nadie puede accionar — hay que poder abrir la pestaña, filtrar por la marca y cargar
+ * esas facturas.
+ *
+ * Se escribe como VALOR, no como fórmula: el cruce necesita normalizar el número de comprobante de
+ * los dos lados ("0001-000036" vs "1-36") y eso en fórmula sería ilegible. El agente lo reescribe
+ * cada 2 horas y la celda dice de cuándo es.
+ */
+async function marcarPestanaCheques(google, { enCompras, cheques }) {
+  const hoja = (await google.getSheetMeta(ID)).find((s) => s.title === 'Cheques')
+  const COL = 12 // M: la primera libre después de "Unidad de Negocio"
+  // La pestaña tiene 12 columnas exactas, así que M no existe todavía. Igual se verifica: escribir
+  // sobre una columna sin mirar TODA su altura ya me costó pisar el desglose de retenciones de
+  // Cobranzas.
+  if (hoja.cols > COL) {
+    const zona = await google.readSheetValues(ID, `Cheques!M1:M${hoja.rows}`)
+    // Reconocer la propia firma incluye el encabezado, que lleva la fecha de la última corrida.
+    const mio = (t) => t.startsWith('✓') || t.startsWith('⚠') || t.startsWith('Estado en el OS')
+    const ocupada = zona.some((f) => { const t = String(f?.[0] ?? '').trim(); return t && !mio(t) })
+    if (ocupada) throw new Error('me niego a escribir: la columna M de Cheques tiene contenido que no reconozco.')
+  } else {
+    await google.spreadsheetBatchUpdate(ID, [{ appendDimension: { sheetId: hoja.sheetId, dimension: 'COLUMNS', length: COL + 1 - hoja.cols } }])
+  }
+
+  const hoy = new Date().toLocaleDateString('es-AR')
+  const marcas = cheques.map((c) => {
+    const k = normComprobante(c.comprobante)
+    if (!esLlaveUtil(k)) return ['⚠ sin N° de comprobante — no se puede cruzar']
+    return enCompras.has(k)
+      ? ['✓ su factura está en Compras']
+      : ['⚠ FALTA cargar la factura en Compras — este pago no lo ve el cash flow']
+  })
+  await google.batchUpdateValues(ID, [
+    { range: 'Cheques!M1', values: [[`Estado en el OS · al ${hoy}`]] },
+    { range: `Cheques!M2:M${1 + marcas.length}`, values: marcas },
+  ])
+  await google.spreadsheetBatchUpdate(ID, [
+    { repeatCell: { range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: COL, endColumnIndex: COL + 1 }, cell: { userEnteredFormat: { backgroundColor: { red: 0.17, green: 0.25, blue: 0.37 }, textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 }, fontSize: 9 }, wrapStrategy: 'WRAP' } }, fields: 'userEnteredFormat' } },
+    { repeatCell: { range: { sheetId: hoja.sheetId, startRowIndex: 1, endRowIndex: 1 + marcas.length, startColumnIndex: COL, endColumnIndex: COL + 1 }, cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' }, textFormat: { fontSize: 9 } } }, fields: 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat' } },
+    { updateDimensionProperties: { range: { sheetId: hoja.sheetId, dimension: 'COLUMNS', startIndex: COL, endIndex: COL + 1 }, properties: { pixelSize: 380 }, fields: 'pixelSize' } },
+    { setBasicFilter: { filter: { range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: 1 + marcas.length, startColumnIndex: 0, endColumnIndex: COL + 1 } } } },
+  ])
+  const faltan = marcas.filter((m) => m[0].startsWith('⚠ FALTA')).length
+  console.log(`Cheques: ${marcas.length} marcados en la columna M · ${faltan} necesitan que se cargue la factura`)
 }
 
 main().then(() => process.exit(0)).catch((e) => { console.error('ERROR:', e.message); process.exit(1) })

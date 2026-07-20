@@ -21,16 +21,25 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { posicionIvaCompleta, ALICUOTA_IVA } from '../lib/posicion-iva.mjs'
 import { query } from '../lib/db.mjs'
+import { parsearDDJJ, alicuotaDeclarada } from '../lib/iibb-ddjj.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Impuestos y Financieros'
 const DRY = process.argv.includes('--dry')
 const AÑO = 2026
 const ANCHO = 9
-// Alícuota de Ingresos Brutos de San Juan para construcción. La dio el dueño (20/07); la búsqueda
-// web no la confirmó contra la Ley Impositiva provincial, así que vive en UN solo lugar y queda
-// declarada como tal en la propia pestaña. Si el contador la corrige, se cambia acá.
-const ALICUOTA_IIBB = Number(process.env.ORQ_ALICUOTA_IIBB || 0.03)
+// Las DDJJ de IIBB de San Juan viven en Drive, en una carpeta que el índice del OS no tenía.
+// El dueño: "IIBB tenés que buscarlo en Drive, ahí puede haber datos de cuánto se ha ido pagando".
+// Se leen los PDF originales: son la fuente primaria y traen número de control y fecha de
+// presentación, así que el número se puede volver a verificar. Un dato tipeado no.
+const DDJJ_IIBB = {
+  '2026-01': '13phAslVR3kMBUlFFGISfLZggcCsxjJV_',
+  '2026-02': '11xRFtU6QmZLi4ioD-03WllEBFXAGgz3w',
+  '2026-03': '1sLsNGWOFzCApJQvX0EV6oWjd5XC3-Zyt',
+  '2026-04': '1NnB10U91xWt797UfzJ806ntTFp0N8POp',
+  '2026-05': '1IHZ4hT3AzeFi_k8qAskm5cBaKy5R0aq5',
+  '2026-06': '1Ejg14GrkcmZWD9A6podaEkbzqpKChbli',
+}
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
@@ -80,7 +89,7 @@ async function planesDePago() {
   return [...planes.values()].sort((a, b) => b.total - a.total)
 }
 
-function grilla(iva, planes) {
+function grilla(iva, planes, iibb) {
   const filas = []
   const push = (c = []) => { const r = [...c]; while (r.length < ANCHO) r.push(''); filas.push(r); return filas.length }
   const hoy = new Date().toISOString().slice(0, 10)
@@ -121,18 +130,34 @@ function grilla(iva, planes) {
   push()
 
   // ── 2. IIBB ─────────────────────────────────────────────────────────────────────────────────────
-  push(['2. INGRESOS BRUTOS (San Juan)'])
-  const fIIBB = push(['Alícuota IIBB construcción San Juan', ALICUOTA_IIBB, '', '', '', '', '', '',
-    'Dato aportado por el dueño el 20/07/2026. La busqué en la web y no la pude confirmar contra la Ley Impositiva de San Juan — si el contador la corrige, se cambia SOLO acá y todo el bloque se recalcula.'])
-  push(['Base imponible del año (ventas netas)', `=SUM(B${f0}:B${f1})/${ALICUOTA_IVA}`, '', '', '', '', '', '',
-    'Sale del débito fiscal de arriba dividido la alícuota de IVA.'])
-  const fIIBBcalc = filas.length + 1
-  push(['IIBB estimado del año', `=$B$${fIIBBcalc - 1}*$B$${fIIBB}`, '', '', '', '', '', '',
-    `ESTIMACIÓN sobre la base imponible de arriba al ${(ALICUOTA_IIBB * 100).toFixed(1)}%. No contempla convenio multilateral, exenciones ni las retenciones de IIBB que la empresa ya sufre — así que el pago real es MENOR que esto.`])
+  push(['2. INGRESOS BRUTOS (San Juan) — de las DDJJ reales de Rentas, leídas de Drive'])
+  const al = alicuotaDeclarada(iibb)
+  const cab2 = push(['Período', 'Base imponible', 'Impuesto determinado', 'Retenciones y percepciones sufridas', 'Saldo a favor que venía', 'A PAGAR', 'Saldo a favor que queda', 'Presentada', 'Origen'])
+  const i0 = filas.length + 1
+  for (const d of iibb) {
+    const i = Number((d.periodo ?? '').slice(5, 7)) - 1
+    push([
+      `${MES[i] ?? d.periodo}-26`, Math.round(d.base_total), Math.round(d.impuesto_determinado),
+      Math.round(d.retenciones), Math.round(d.saldo_favor_anterior),
+      d.a_favor ? 0 : Math.round(d.a_ingresar),
+      d.a_favor ? Math.round(d.a_ingresar) : 0,
+      d.fecha_presentacion ?? '',
+      `DDJJ Rentas San Juan · control ${d.nro_control ?? '?'}`,
+    ])
+  }
+  const i1 = filas.length
+  push(['TOTAL', `=SUM(B${i0}:B${i1})`, `=SUM(C${i0}:C${i1})`, `=SUM(D${i0}:D${i1})`, '', `=SUM(F${i0}:F${i1})`, '', '',
+    'Si la columna "A PAGAR" da $0 en todo el semestre, la empresa NO paga IIBB: las retenciones que sufre alcanzan y sobran.'])
+  push()
+  const fIIBB = push(['Alícuota que la empresa DECLARA', al.alicuota ?? '', '', '', '', '', '', '',
+    `Sale de sus propias DDJJ (códigos ${al.codigos.join(' y ')}), no de la ley. NO es 3%: el 3% de la Ley Impositiva es para el código 711001 "Servicios relacionados con la construcción", que Echegaray no usa. Estimar al 3% inflaba el impuesto un 50%.`])
+  const ultIIBB = iibb[iibb.length - 1]
+  push(['⚠ Saldo a favor de IIBB HOY', Math.round(ultIIBB?.a_favor ? ultIIBB.a_ingresar : 0), '', '', '', '', '', '',
+    `Plata de la empresa inmovilizada en Rentas, igual que con el IVA. Venía de ${Math.round(iibb[0]?.saldo_favor_anterior ?? 0).toLocaleString('es-AR')} en enero: está BAJANDO, así que en algún momento la empresa va a empezar a pagar IIBB de verdad.`])
+  push(['Consumo mensual del saldo (impuesto − retenciones)', `=IFERROR((C${i1}-D${i1});0)`, '', '', '', '', '', '',
+    'Lo que el último mes se comió del saldo a favor. Dividí el saldo por esto para saber cuántos meses faltan para empezar a pagar.'])
   push(['IIBB pagado que figura en Compras', '=SUMPRODUCT((REGEXMATCH(LOWER(Compras!$E$4:$E&" "&Compras!$L$4:$L);"iibb|ingresos brutos|rentas|dgr"))*IF(ISNUMBER(Compras!$O$4:$O);Compras!$O$4:$O;0))', '', '', '', '', '', '',
-    'Si da $0, no hay ningún pago de IIBB cargado y el cash flow no lo ve.'])
-  push(['⇒ IIBB que faltaría provisionar', `=$B${fIIBBcalc}-$B${fIIBBcalc + 1}`, '', '', '', '', '', '',
-    'Estimado menos lo cargado. Es plata que sale y que hoy no está en ninguna línea del cash flow.'])
+    'Da $0, y esta vez está BIEN que dé $0: con saldo a favor no hay nada que pagar. El día que el saldo se agote, va a haber que cargarlo acá.'])
   push()
 
   // ── 3. PLANES DE PAGO ───────────────────────────────────────────────────────────────────────────
@@ -165,15 +190,32 @@ function grilla(iva, planes) {
   return { filas, f0, f1, tot, p0, p1, b0, cab, fIIBB }
 }
 
+/** Lee las DDJJ de IIBB desde los PDF originales de Drive. */
+async function leerIIBB(google) {
+  const out = []
+  for (const [periodo, id] of Object.entries(DDJJ_IIBB)) {
+    try {
+      const pdf = await google.readPdfText(id, { maxChars: 8000 })
+      const d = parsearDDJJ(pdf?.text ?? '')
+      out.push({ ...d, periodo: d.periodo ?? periodo })
+    } catch (e) {
+      // Un PDF que no se puede leer NO se rellena con ceros: se omite y se avisa.
+      console.error(`  ⚠ no pude leer la DDJJ de ${periodo}: ${e.message}`)
+    }
+  }
+  return out
+}
+
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
+  const iibb = await leerIIBB(google)
   const ventas = await ventasProyectadas(google)
   // La regla de oro: toda proyección considera inflación, y el dato lo trae el OS de la web.
   const fi = await query("select periodo, factor_acumulado from public.factor_ajuste where indice='ipc' order by periodo")
   const factor = Object.fromEntries(fi.rows.map((r) => [r.periodo, Number(r.factor_acumulado)]))
   const iva = await posicionIvaCompleta(AÑO, ventas, factor)
   const planes = await planesDePago()
-  const g = grilla(iva, planes)
+  const g = grilla(iva, planes, iibb)
   console.log(`${PESTAÑA}: ${g.filas.length} filas · ${planes.length} planes · IVA de ${iva.filter((m) => m.disponible).length} meses reales`)
   if (DRY) {
     for (const m of iva.filter((x) => x.disponible || x.es_proyeccion)) {

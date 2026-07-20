@@ -11,16 +11,23 @@ test('el comprobante se normaliza: "0001-000036" y "1-36" son el mismo', () => {
 test('separa lo ya contemplado de lo que falta cargar', () => {
   // El caso real: un cheque cuya factura SÍ está en Compras ya viajó al cash flow por su rubro.
   // Sumarlo otra vez sería duplicar — que es justamente la regla de oro del dueño.
+  // "7-7206" NO está en Compras: es el caso de falta confirmada.
   const enCompras = new Set(['6-6452', '3-242'])
   const r = repartirCobertura([
     { comprobante: '06-006452', monto: 880018 },
     { comprobante: '03-000242', monto: 1002331 },
-    { comprobante: '7206', monto: 265000 },
+    { comprobante: '0007-0007206', monto: 265000 },
     { comprobante: '', monto: 500000 },
   ], enCompras)
   assert.equal(r.contemplados.length, 2)
   assert.equal(r.monto_contemplado, 1882349)
-  assert.equal(r.sin_registrar.length, 2, 'los que no tienen factura en Compras son plata invisible')
+  // La distinción que importa: uno tiene número y no está en Compras (falta confirmada), el otro
+  // no tiene número (no se puede saber). Mezclarlos exagera el problema.
+  assert.equal(r.falta_factura.length, 1)
+  assert.equal(r.monto_falta_factura, 265000)
+  assert.equal(r.sin_numero_comprobante.length, 1)
+  assert.equal(r.monto_sin_numero, 500000)
+  assert.equal(r.sin_registrar.length, 2)
   assert.equal(r.monto_sin_registrar, 765000)
   assert.equal(r.total, 2647349)
 })

@@ -53,23 +53,33 @@ export const esLlaveUtil = (k) => k.includes('-') || k.replace(/-/g, '').length 
  * @returns {{contemplados:Array, sin_registrar:Array, total:number, monto_contemplado:number, monto_sin_registrar:number, sin_numero:number}}
  */
 export function repartirCobertura(instrumentos = [], comprobantesEnCompras = new Set()) {
+  // TRES grupos, no dos. La diferencia importa y casi la paso por alto: de los 50 cheques que no
+  // matchean, 40 ($21.880.254) simplemente NO TIENEN número de comprobante cargado — su factura
+  // puede estar perfectamente en Compras y no hay forma de saberlo. Sólo 10 ($11.631.542) tienen
+  // número y ese número no aparece en Compras: ésos sí son, con seguridad, facturas sin cargar.
+  // Decir "$33,5M sin registrar" mezcla un problema confirmado con una ignorancia, y exagera.
   const contemplados = []
-  const sinRegistrar = []
-  let sinNumero = 0
+  const faltaFactura = []
+  const sinNumero = []
   for (const i of instrumentos) {
     const k = normComprobante(i.comprobante)
-    if (!esLlaveUtil(k)) sinNumero++
-    if (esLlaveUtil(k) && comprobantesEnCompras.has(k)) contemplados.push(i)
-    else sinRegistrar.push(i)
+    if (!esLlaveUtil(k)) sinNumero.push(i)
+    else if (comprobantesEnCompras.has(k)) contemplados.push(i)
+    else faltaFactura.push(i)
   }
   const suma = (a) => a.reduce((s, x) => s + (Number(x.monto) || 0), 0)
   return {
     contemplados,
-    sin_registrar: sinRegistrar,
+    falta_factura: faltaFactura,
+    sin_numero_comprobante: sinNumero,
+    // Se mantiene por compatibilidad: todo lo que NO se pudo confirmar como contemplado.
+    sin_registrar: [...faltaFactura, ...sinNumero],
     total: suma(instrumentos),
     monto_contemplado: suma(contemplados),
-    monto_sin_registrar: suma(sinRegistrar),
-    sin_numero: sinNumero,
+    monto_falta_factura: suma(faltaFactura),
+    monto_sin_numero: suma(sinNumero),
+    monto_sin_registrar: suma(faltaFactura) + suma(sinNumero),
+    sin_numero: sinNumero.length,
   }
 }
 
