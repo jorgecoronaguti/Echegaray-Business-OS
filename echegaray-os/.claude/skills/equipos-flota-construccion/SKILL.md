@@ -18,6 +18,45 @@ Aportar el criterio para gestionar los activos físicos móviles de la construct
 
 Cubre: habilitaciones legales de circulación y operación (RTO/VTV, seguro, patente/dominio, título), asignación unidad↔obra, plan de mantenimiento preventivo/correctivo, cálculo de costo por equipo (combustible, mantenimiento, seguro, patente, amortización, costo de inmovilización), y el criterio comprar / alquilar / reparar / dar de baja.
 
+## Cableado al OS real — qué LLAMAR en vez de estimar
+
+- **`gasto_proveedores`** — el gasto real en combustible, repuestos, gomería y talleres sale de los comprobantes de ARCA. Ante "¿cuánto gastamos en combustible?" o "¿cuánto nos costó mantener el camión?" **se llama, no se estima**.
+- **`obra_costo_real`** (vista, fuente única) — para ver a qué obra se imputa el costo de equipos.
+- **Módulo de herramientas del OS** (`/herramientas`, con fotos en Storage) para el inventario de herramienta menor.
+- **Gap real**: hoy el costo NO está atribuido por unidad (patente/equipo) sino por proveedor y obra. **No se puede afirmar el costo por vehículo sin ese dato** — decirlo en vez de estimarlo. Cerrar ese gap requiere imputar cada comprobante a una unidad.
+
+## El costo real de un equipo propio (lo que casi nunca se suma completo)
+
+Comparar "alquilar vs. tener" con solo el combustible es cómo se justifican malas compras. El costo horario real de una unidad propia incluye:
+
+- **combustible y lubricantes** (el único que todos cuentan);
+- **mantenimiento preventivo + correctivo** (incluidas las roturas que no se planifican);
+- **neumáticos** y consumibles de desgaste;
+- **seguro, patente, RTO/VTV, habilitaciones**;
+- **operador** con cargas sociales (si aplica);
+- **amortización** — la unidad se consume aunque no se pague cuota;
+- **costo de INMOVILIZACIÓN**: los días que la máquina está parada siguen costando seguro, patente y capital inmovilizado. Una máquina con baja utilización tiene un costo horario altísimo aunque "sea nuestra";
+- **traslado entre obras** (a veces mayor que el alquiler de un día).
+
+**La variable que decide es la UTILIZACIÓN**, no el precio de compra: una máquina usada pocos días al año casi siempre conviene alquilada.
+
+## Comprar, alquilar, reparar o dar de baja
+
+Aplicar el marco de inversiones del CLAUDE.md raíz, con las preguntas propias del rubro:
+
+- **¿Cuántos días/año se va a usar realmente?** (no el uso deseado: el histórico).
+- **¿Elimina una restricción real** o solo evita una molestia?
+- **Alquilar** cubre picos y evita inmovilizar capital de trabajo — que en una constructora es lo más escaso (cruzar con `finanzas-tesoreria-construccion`).
+- **Leasing**: no inmoviliza capital propio y tiene tratamiento fiscal propio (cruzar con `impuestos-construccion`).
+- **Reparar vs. reemplazar**: si la reparación supera un porcentaje relevante del valor de la unidad, o si las roturas son recurrentes, la reparación está financiando una baja diferida. Mirar el **historial de fallas**, no la última rotura.
+- **Dar de baja**: una unidad inhabilitada (RTO/seguro vencido) que no puede operar sigue costando. O se regulariza o se vende.
+
+## Habilitaciones: sin papeles la unidad no puede facturar
+
+- **RTO/VTV, seguro vigente, patente al día** y documentación del conductor: sin eso la unidad **no debe salir a obra**. Un siniestro con habilitación vencida puede dejar sin cobertura y la responsabilidad recae sobre la empresa.
+- En **planta de cliente industrial** (caso ARCOR) suele exigirse además documentación propia del equipo y del operador para poder ingresar — es requisito comercial, no solo legal (cruzar con `seguridad-higiene-art`).
+- El vencimiento de una habilitación es **fecha conocida**: debe estar en el calendario con alerta, no descubrirse en un control.
+
 No cubre: la decisión financiera de la inversión en sí (`finanzas-tesoreria-construccion` — payback, capital de trabajo), la compra/contratación del proveedor (`compras-abastecimiento-subcontratacion`), ni el tratamiento contable/fiscal de la amortización (`contabilidad-constructoras`, `impuestos-construccion`). Esta skill decide *qué conviene* con la flota; esas deciden *cómo se paga, compra y registra*.
 
 ## Preguntas profesionales que debe hacer

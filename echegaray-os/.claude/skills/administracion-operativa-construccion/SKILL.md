@@ -18,6 +18,51 @@ Aportar el criterio de ejecución administrativa cotidiana que sostiene a las de
 
 Cubre: organización y archivo de comprobantes/facturas, seguimiento de tareas administrativas recurrentes (envío mensual de documentación al Estudio Contable, pago de boletas IERIC/UOCRA, gestión de caja chica), coordinación con proveedores externos de servicios administrativos (Estudio Contable, gestorías), checklist de qué falta antes de un cierre mensual.
 
+## Cableado al OS real — qué LLAMAR en vez de estimar
+
+- **`obligaciones_estado`** (lee la vista compartida con la web) — qué se debe, qué está vencido y qué entra en 30 días.
+- **`briefing_caja`** — posición de caja y proyección a 7 días. **`pyl_estado`** — el resultado devengado del mes.
+- **`gasto_proveedores`** — gasto real por proveedor desde ARCA. **`legajos_estado`** — completitud documental del personal.
+- **`buscar_comprobante`** — verificar si una factura ya está registrada en ARCA y a qué obra se imputó.
+
+## El circuito administrativo: cada papel tiene un camino, no un cajón
+
+El principio que ordena todo: **un comprobante que entra sin circuito definido termina siendo un problema de cierre de mes.**
+
+- **Compra**: pedido → orden de compra → **remito firmado en recepción** → factura → control (que los tres coincidan: pedido, remito, factura) → imputación a obra → pago → archivo.
+- **El control de tres puntas** (pedido/remito/factura) es lo que evita pagar lo que no llegó o pagar dos veces la misma factura. Es el control interno más barato y más rentable que existe.
+- **Toda factura se imputa a una obra o a Estructura al momento de cargarla**, no después. Un gasto sin obra asignada no se puede controlar ni recuperar (es el hallazgo recurrente: costos que quedan como "indirecto" sin serlo).
+- **Ingresos**: certificado aprobado → factura → seguimiento de cobro → imputación del cobro. El certificado aprobado y no facturado es plata parada.
+
+## Calendario administrativo: lo recurrente no se recuerda, se agenda
+
+Las obligaciones de una constructora tienen **fecha conocida de antemano**; que sorprendan es una falla de proceso, no de memoria. Deben estar en calendario con alerta previa:
+
+- cargas sociales y **F931**; **Fondo de Cese / IERIC / UOCRA**; ART;
+- IVA, Ingresos Brutos, anticipos de Ganancias; SIRCREB y retenciones;
+- cuotas de financiación, seguros, alquileres;
+- vencimientos de **habilitaciones de flota** (RTO/VTV, seguros) y de **documentación de personal** (exámenes médicos);
+- envío mensual de documentación al Estudio Contable.
+
+**Verificar fechas y alícuotas vigentes** — nunca citarlas de memoria (cruzar con `impuestos-construccion`).
+
+## Cierre de mes: qué tiene que estar antes de decir "cerrado"
+
+1. Todas las facturas de compra del mes **cargadas e imputadas a obra o Estructura**.
+2. **Conciliación bancaria** de cada cuenta contra el extracto real (no contra el saldo que uno cree).
+3. Cobranzas del mes registradas y las **vencidas identificadas con responsable de reclamo**.
+4. Obligaciones del mes cargadas con fecha de vencimiento (no como "gasto general sin fecha").
+5. Documentación al Estudio Contable enviada, con constancia.
+6. Diferencias sin explicar → se anotan como pendientes, **no se ajustan a mano para que cierre**. Un número forzado para que cuadre destruye la confianza en todo el sistema.
+
+## Control interno mínimo para una PyME (sin burocracia)
+
+Tres reglas que evitan la mayoría de los desvíos y no requieren estructura:
+
+- **Separación de funciones**: quien autoriza un pago no debería ser el único que lo ejecuta y lo concilia.
+- **Todo pago tiene respaldo**: factura + imputación + autorización. Sin excepciones "porque es urgente".
+- **La caja chica se rinde**, con comprobantes y tope; no es una cuenta paralela.
+
 No cubre: el criterio fiscal de fondo (`impuestos-construccion`), el criterio contable de fondo (`contabilidad-constructoras`), la decisión de riesgo/Go-No-Go (`gestion-empresarial-riesgos`), ni el registro laboral formal (`derecho-laboral-construccion`) — esta skill ejecuta y organiza, no decide el criterio de fondo.
 
 ## Preguntas profesionales que debe hacer

@@ -20,6 +20,23 @@ Cubre: ensayos y controles habituales por tipo de tarea, tolerancias técnicas, 
 
 No cubre: la viabilidad técnica de la solución en sí (`ingenieria-civil-construccion`), ni el tratamiento contractual de un reclamo derivado de un problema de calidad (`derecho-construccion-contratos`).
 
+## Los controles que de verdad hay que hacer (y cuándo)
+
+El principio: **el control tiene que ocurrir cuando todavía se puede corregir barato.** Un control que se hace después de que el hormigón fraguó no es control, es constatación de daño.
+
+- **Antes de tapar**: armaduras (diámetros, cantidad, separación, recubrimiento, empalmes y **confinamiento en nudos** — crítico en zona sísmica), instalaciones embutidas, encofrado (aplomado, estanqueidad, apuntalamiento). **Lo que se tapa sin verificar se demuele para verificar.**
+- **Hormigón**: asentamiento en obra y **probetas** con su identificación (fecha, elemento, camión). El remito del hormigón elaborado es respaldo: guardarlo. Curado — en San Juan, con Zonda y alta evaporación, es donde más se pierde calidad (ver `ingenieria-civil-construccion`).
+- **Recepción de materiales**: que lo entregado coincida con lo especificado. Un material fuera de especificación aceptado en recepción es una no conformidad que aparece meses después.
+- **Terminaciones y tolerancias**: contra lo que dice el pliego, no contra el criterio personal.
+- **Ensayos exigidos por el pliego del cliente**: son obligación contractual, tienen costo y plazo — si no se cotizaron, salen del margen (cruzar con `costos-presupuestacion`).
+
+## Documentar calidad es proteger patrimonio, no llenar planillas
+
+- La **responsabilidad por ruina es decenal y de orden público** (ver `derecho-construccion-contratos`): años después de entregada la obra, la única defensa de la empresa son los registros de lo que se controló.
+- Guardar con trazabilidad: **remitos de hormigón, resultados de ensayos, actas de recepción con observaciones, fotos fechadas de lo que se tapó**, y las no conformidades con su tratamiento y cierre.
+- Una observación del cliente **respondida por escrito y cerrada** vale mucho más que una resuelta "de palabra" en obra.
+- En un reclamo, la ausencia de registro se interpreta en contra de quien tenía la obligación de controlar.
+
 ## Cableado al OS real — qué LLAMAR en vez de estimar (verificado 2026-07-19)
 
 - **`registrar_no_conformidad` / `no_conformidades_estado`** — la no conformidad se trata como **proceso** (detección → tratamiento → cierre), keyeada al eje canónico de obras. La capacidad devuelve: abiertas vs. cerradas, desglose por gravedad, **graves/críticas abiertas** (lo que hay que atacar ya) y **días promedio de cierre**. Ante "¿cómo venimos con calidad?" o "¿hay algo grave sin resolver?" **se llama, no se estima**.

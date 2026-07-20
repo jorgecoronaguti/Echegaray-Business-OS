@@ -18,6 +18,37 @@ Aportar el marco de análisis de riesgo a nivel de empresa completa — más all
 
 Cubre: riesgo de concentración (pocos clientes grandes, ej. dependencia de ARCOR/Saint Gobain confirmada como relación comercial recurrente), riesgo financiero agregado (capital de trabajo comprometido en varias obras simultáneas), riesgo operativo (capacidad real vs. comprometida), marco de decisión Go/No-Go.
 
+## Cableado al OS real — el riesgo se mide con datos, no con sensación
+
+- **`cotizacion_vs_real`** — el desvío histórico entre lo cotizado y el costo real es el mejor predictor del riesgo de la próxima obra similar. Sin ese número, cualquier Go/No-Go es intuición.
+- **`obra_costo_real`** (vista, fuente única) + **`salud_obra`** — exposición por obra.
+- **`obligaciones_estado`** y **`briefing_caja`** — capacidad financiera real para sostener una obra más.
+- **`cobranzas`** — concentración por cliente y DSO: dónde está la tensión de cobro.
+- **`legajos_estado`** y **`no_conformidades_estado`** — riesgo laboral/ART y riesgo de calidad, que también son riesgo empresarial.
+
+## Go/No-Go: las preguntas que hay que poder contestar con número
+
+Una obra se rechaza por razones concretas, no por corazonada. Antes de aceptar:
+
+1. **¿Cuál es el peak funding de esta obra** (máxima caja negativa acumulada antes de darse vuelta) **y lo aguantamos junto con las obras en curso?** Éste es el número que más veces debería frenar una obra y casi nunca se calcula (ver `finanzas-tesoreria-construccion`).
+2. **¿Qué margen esperado tiene, y cuánto se desvió históricamente en obras parecidas?** Un margen del 20% con desvío histórico del 15% no es un margen del 20%.
+3. **¿Cómo paga este cliente realmente** (no lo que dice el contrato)? DSO real, historial de mora.
+4. **¿Tenemos la capacidad operativa** —gente, equipos, conducción— **sin desatender las obras en curso?** Tomar una obra que degrada dos existentes destruye más valor del que crea.
+5. **¿Qué pasa si se atrasa 2 meses?** Multa, costo de estructura, obra que no se puede tomar por estar ocupados.
+6. **¿Qué exige el cliente que hoy no tenemos?** (pliego de SSMA, certificaciones, garantías, seguros): tiene costo y plazo.
+7. **¿Cuál es el costo de oportunidad?** Aceptar esta obra es rechazar la que venga en tres meses.
+
+**Criterio de rechazo explícito**: si el peak funding supera la capacidad financiera, o si el cliente tiene historial de no pagar, se rechaza aunque el margen se vea bien. Facturar no es ganar.
+
+## Los riesgos que matan a una PyME constructora argentina
+
+- **Concentración de cliente**: cuando un cliente es la mayoría de la cobranza, no es un cliente — es el dueño de tu caja. *Caso real de Echegaray: ARCOR concentra buena parte de la cobranza.* Mitigación: diversificar antes de necesitarlo, y no financiarlo más de lo que se puede perder.
+- **Crecer más rápido que la caja**: el modo más común de quebrar con rentabilidad. Más obras = más capital de trabajo inmovilizado; el resultado llega meses después que el desembolso.
+- **Inflación sin cláusula de ajuste**: en obra larga a precio fijo, el margen se lo come la inflación aunque la ejecución sea perfecta.
+- **Dependencia del dueño**: si las decisiones operativas pasan todas por una persona, la capacidad de la empresa tiene un techo y un riesgo de continuidad (es el cuello de botella que el CLAUDE.md raíz marca explícitamente).
+- **Riesgo laboral y de seguridad**: un accidente con documentación incompleta puede costar más que el margen de la obra (ver `seguridad-higiene-art`: hoy 18 de 20 activos sin constancia de EPP).
+- **Responsabilidad decenal por ruina**: riesgo latente durante 10 años después de entregar, no dispensable por contrato.
+
 No cubre: el riesgo técnico de una solución puntual (`ingenieria-civil-construccion`), el riesgo contractual de un contrato puntual (`derecho-construccion-contratos`) — esta skill agrega esos riesgos a nivel de empresa, no los reemplaza a nivel de obra.
 
 ## Preguntas profesionales que debe hacer

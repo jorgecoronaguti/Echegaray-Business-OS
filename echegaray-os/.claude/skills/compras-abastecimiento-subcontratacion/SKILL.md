@@ -18,6 +18,44 @@ Aportar el criterio profesional para decidir qué comprar, a quién, y cuándo c
 
 Cubre: criterio de evaluación de proveedores (confiabilidad, plazos, calidad), decisión de subcontratar vs. ejecutar con recursos propios, riesgos de un subcontratista (técnico, legal, de seguridad).
 
+## Cableado al OS real — qué LLAMAR en vez de estimar (verificado 2026-07-19)
+
+- **`gasto_proveedores`** — ranking real de gasto por proveedor desde los comprobantes de ARCA (respaldo fiscal). Da el total, la cantidad de facturas y la concentración. Ante "¿a quién le compramos más?" o "¿cuánto le llevamos gastado a X?" **se llama, no se estima**.
+- **`obra_costo_real`** (vista, fuente única compartida con la web) — costo por obra, para ver a qué obra está pegando una compra.
+- **`pedidos_materiales`** — los pedidos de obra que ya vienen del circuito real (Sheet/AppSheet espejado en el OS).
+- Regla de fuente: **el Flujo de Fondos manda el costo por obra; ARCA es el respaldo fiscal.** Si un gasto está en ARCA y no en el Flujo, es un hallazgo — no se suman las dos fuentes.
+
+## Comprar bien no es conseguir el precio más bajo
+
+Una compra se evalúa por el **costo total de tenerla**, no por el número de la cotización:
+
+- **Precio + condición de pago**: comprar a 60 días a un precio 5% mayor puede ser mejor negocio que contado, y al revés — depende del costo del dinero. **La condición de pago es parte del precio** y se compara en las mismas condiciones (cruzar con `finanzas-tesoreria-construccion`).
+- **Plazo de entrega y confiabilidad**: un proveedor barato que entrega tarde para una obra frena la cuadrilla. El costo de la cuadrilla parada supera cualquier diferencia de precio.
+- **Comparar ofertas COMPARABLES**: mismo alcance, misma unidad, mismo desperdicio, flete incluido o no, descarga incluida o no. La mayoría de las "diferencias de precio" son diferencias de alcance.
+- **Calidad y respaldo**: un material fuera de especificación se paga dos veces (retrabajo + no conformidad), y en zona sísmica puede comprometer la estructura.
+- **Concentración**: depender de un solo proveedor para un insumo crítico es un riesgo operativo, aunque el precio sea el mejor.
+
+## Comprar con inflación (Argentina)
+
+- **Validez de la cotización**: exigirla por escrito y corta. Una cotización sin fecha de validez no es un precio, es una intención.
+- **Precio de reposición**: lo que importa para decidir es lo que va a costar reponerlo, no lo que costó la última vez.
+- **Acopio**: comprar adelantado congela precio pero **inmoviliza caja** y agrega riesgo de robo/deterioro. Es una decisión conjunta con tesorería, no una decisión de compras sola.
+- **Anticipos a proveedor**: si se paga por adelantado, exigir respaldo (el anticipo sin garantía es crédito al proveedor).
+
+## Subcontratistas: qué exigir ANTES de que pisen la obra
+
+La solidaridad laboral y de seguridad social hace que un problema del sub sea un problema de Echegaray (ver `derecho-laboral-construccion` y `derecho-construccion-contratos`).
+
+Control mínimo, **mes a mes y no solo al inicio**:
+
+- inscripción del sub y **constancia de pago de cargas sociales**;
+- **ART vigente con la nómina** del personal que entra a obra (que la nómina incluya a los que efectivamente están);
+- seguros (responsabilidad civil, accidentes personales según el caso);
+- **alcance por escrito**: quién pone andamios, herramientas, energía, agua, retiro de escombros, EPP. Acá nace el 80% de los conflictos con subcontratistas;
+- condiciones de certificación y pago, y retención/fondo de reparo si corresponde.
+
+**Verificación fiscal del proveedor**: antes de operar por montos relevantes, controlar su condición en los registros del organismo. Una factura apócrifa impugna el crédito fiscal **y** el gasto — el costo lo termina pagando Echegaray (cruzar con `impuestos-construccion`).
+
 No cubre: el registro operativo de la compra (ya construido, PRP-009), el registro laboral del subcontratista (`derecho-laboral-construccion`), ni el riesgo de seguridad que introduce (`seguridad-higiene-art`).
 
 ## Preguntas profesionales que debe hacer
