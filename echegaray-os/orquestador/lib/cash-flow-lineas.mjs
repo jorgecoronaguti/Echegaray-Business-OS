@@ -450,7 +450,12 @@ export function formulaLineaMes(l, colMes, colTabla, filaCab) {
   if (p?.tipo === 'tabla') {
     proy = p.ref(colTabla)
   } else {
-    const ventana = `${expresionReal(l, 'EOMONTH(TODAY();-4)+1', 'EOMONTH(TODAY();0)+1')}/3`
+    // LOS TRES MESES CERRADOS, SIN EL MES EN CURSO. La ventana anterior llegaba hasta el fin del
+    // mes corriente y dividía por 3: metía un mes a medio transcurrir en el promedio, así que el
+    // ritmo salía más bajo cuanto más temprano se miraba. Un mes que todavía no terminó no es una
+    // observación completa. Además ahora coincide exactamente con la ventana del núcleo Postgres,
+    // que es la condición para que la web y la planilla digan lo mismo.
+    const ventana = `${expresionReal(l, 'EOMONTH(TODAY();-4)+1', 'EOMONTH(TODAY();-1)+1')}/3`
     const factor = `IFERROR(INDEX(Parámetros!$C$74:$C$90;MATCH(EOMONTH(${mes};0);ARRAYFORMULA(EOMONTH(Parámetros!$A$74:$A$90;0));0));1)`
     const mesesConGasto = `SUMPRODUCT(--(COUNTIFS(${COL_RUBRO};"${l.rubro}";${COL_FECHA};">="&${MESES_CAB};${COL_FECHA};"<"&EOMONTH(${MESES_CAB};0)+1)>0))`
     proy = `IF(${mesesConGasto}<${MIN_MESES};0;${ventana}*${factor})`

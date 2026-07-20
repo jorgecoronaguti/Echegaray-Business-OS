@@ -50,6 +50,9 @@ const PASOS = [
   ['cheques-cobertura-sheet.mjs', 'Cash Flow Mensual — qué cheques y tarjeta faltan cargar en Compras'],
   // Va última: ubica las líneas del Cash Flow por rótulo, así que necesita el cuadro ya escrito.
   ['caja-pestana.mjs', 'CAJA — disponibilidades, cheques emitidos y margen de tarjeta'],
+  // El núcleo Postgres, para que la web y el chat vean lo mismo que la planilla y no un mes atrás.
+  ['sync-compras.mjs', 'núcleo: Compras → costos_obra'],
+  ['sync-caja-nucleo.mjs', 'núcleo: quincenas de jornales e instrumentos de pago'],
 ]
 
 /**

@@ -32,19 +32,60 @@ $fn$;
 comment on function public.rubro_caja is
   'A qué línea del cash flow pertenece un gasto. Generado desde orquestador/lib/rubro-caja.mjs: es la misma regla que la columna AC de Compras, no una copia.';
 
--- El REAL por rubro y mes. La fecha es la de PAGO: una factura de enero pagada en junio es caja de
+-- Se dropean en orden inverso a la dependencia: proyeccion_egreso y calendario_caja leen de
+-- egreso_rubro_mes, y `create or replace view` no admite insertar una columna en el medio. Sin
+-- cascade a propósito: si mañana algo más depende de estas vistas, el drop tiene que fallar y
+-- avisar, no llevárselo puesto.
+drop view if exists public.calendario_caja;
+drop view if exists public.proyeccion_egreso;
+drop view if exists public.egreso_rubro_mes;
+
+-- El egreso por rubro y mes. La fecha es la de PAGO: una factura de enero pagada en junio es caja de
 -- junio, y para un flujo de fondos esa distinción no es un detalle, es el dato.
+--
+-- Y SI NO HAY FECHA DE PAGO, EL GASTO NO CAE EN NINGÚN MES. Antes se usaba la fecha de la factura
+-- como reemplazo, y eso es adivinar: son 6 gastos por $2.088.176 de los que se sabe el monto pero no
+-- CUÁNDO salen. Meterlos en el mes de la factura hacía que el núcleo mostrara $2.088.225 de más
+-- repartidos entre abril y julio, y hacía desaparecer el problema en vez de mostrarlo. El Sheet los
+-- deja fuera de todo mes y los reporta en su control; acá se hace lo mismo, y quedan visibles con
+-- `select * from costos_obra where fecha_pago is null`.
+--
+-- TRES FUENTES, PORQUE COMPRAS NO ALCANZA. Contrastando contra el Sheet, el núcleo daba $60.402.163
+-- menos en el año, y $53.637.487 salían de acá:
+--   · los JORNALES no se leen de Compras. Ahí están tipeados a mano como estimación ($144.848.022);
+--     el dato real está en la planilla de quincenas ($185.505.626). Usar Compras subestimaba el
+--     egreso más grande de la empresa en $40,7M. Es la misma decisión que ya tomaba el Sheet.
+--   · los CHEQUES Y LA TARJETA SIN FACTURA ($12.979.883) son pagos que salen del banco y cuya
+--     factura nadie cargó: no están en Compras y por definición no pueden estar. Sólo entran los
+--     que tienen número de comprobante y ese número NO aparece en Compras — si apareciera, ese pago
+--     ya viaja por el rubro de su factura y sumarlo sería duplicar.
 create or replace view public.egreso_rubro_mes as
-  select public.rubro_caja(o.proveedor, o.unidad_negocio, o.obra_texto, o.concepto) as rubro,
-         date_trunc('month', coalesce(o.fecha_pago, o.fecha))::date                 as mes,
-         sum(o.total)                                                               as monto,
-         count(*)::int                                                              as filas
-    from public.costos_obra o
-   where coalesce(o.fecha_pago, o.fecha) is not null
-     and o.origen = 'compras_sheet'
-   group by 1, 2;
+  select rubro, mes, clase, sum(monto) as monto, sum(filas)::int as filas
+    from (
+      select public.rubro_caja(o.proveedor, o.unidad_negocio, o.obra_texto, o.concepto) as rubro,
+             date_trunc('month', o.fecha_pago)::date                                     as mes,
+             'real'::text                                                               as clase,
+             o.total                                                                    as monto,
+             1                                                                          as filas
+        from public.costos_obra o
+       where o.fecha_pago is not null
+         and o.origen = 'compras_sheet'
+         and public.rubro_caja(o.proveedor, o.unidad_negocio, o.obra_texto, o.concepto)
+             <> 'Nómina · Jornales de obra'
+      union all
+      -- La quincena es caja del día en que CIERRA: se paga al terminarla.
+      select 'Nómina · Jornales de obra', date_trunc('month', j.hasta)::date, j.clase, j.total, 1
+        from public.jornal_quincena j
+      union all
+      select 'Cheques y tarjeta sin factura cargada', date_trunc('month', i.fecha_pago)::date, 'real', i.monto, 1
+        from public.instrumento_pago i
+       where not i.factura_en_compras
+         and i.comprobante_norm is not null
+         and i.fecha_pago is not null
+    ) t
+   group by 1, 2, 3;
 comment on view public.egreso_rubro_mes is
-  'Egresos REALES por rubro de caja y mes de pago. Es el equivalente en el núcleo del cuadro del Cash Flow Mensual.';
+  'Egresos por rubro de caja y mes de pago, desde las tres fuentes que usa el cash flow: Compras, la planilla de quincenas y los instrumentos sin factura. clase distingue lo liquidado de lo proyectado.';
 
 -- LA PROYECCIÓN. Misma regla que el Sheet:
 --   · el promedio de los ÚLTIMOS 3 MESES CERRADOS, no el del año. Los rubros de esta empresa
@@ -65,6 +106,7 @@ with cerrado as (
   select rubro, mes, monto
     from public.egreso_rubro_mes
    where mes < date_trunc('month', current_date)::date
+     and clase = 'real'
      and monto <> 0
 ), ritmo as (
   select rubro,
@@ -86,7 +128,13 @@ with cerrado as (
 )
 select r.rubro,
        f.mes,
-       round(r.promedio * coalesce(fa.factor_acumulado, b.f) / nullif(b.f, 0))::numeric as monto,
+       -- INCREMENTAL: lo que FALTA para llegar al ritmo, no el ritmo entero. Si el mes ya tiene
+       -- $6,5M cargados y el ritmo dice $10,9M, lo que se proyecta son $4,4M — no $10,9M encima de
+       -- los $6,5M. Sumar los dos daba $17,4M y el cash flow del Sheet muestra $10,9M: es la
+       -- diferencia entre "el mes va a costar esto" y "el mes va a costar esto MÁS lo que ya sé".
+       -- Medido antes del arreglo: cargas sociales ago-dic daba $10.324.074 de más.
+       greatest(0, round(r.promedio * coalesce(fa.factor_acumulado, b.f) / nullif(b.f, 0))
+                   - coalesce(yr.real_mes, 0))::numeric                                 as monto,
        r.meses_con_gasto,
        round(r.promedio)::numeric                                                       as promedio_mensual,
        round(coalesce(fa.factor_acumulado, b.f) / nullif(b.f, 0), 4)                    as factor
@@ -95,26 +143,22 @@ select r.rubro,
  cross join base b
   left join public.factor_ajuste fa
          on fa.indice = 'ipc' and fa.periodo = to_char(f.mes, 'YYYY-MM')
+  left join (select rubro, mes, sum(monto) as real_mes
+               from public.egreso_rubro_mes where clase = 'real' group by 1, 2) yr
+         on yr.rubro = r.rubro and yr.mes = f.mes
  where r.meses_con_gasto >= 4
    -- Estos rubros ya tienen sus cuotas futuras CARGADAS (quincenas de jornales, planes de pago,
    -- prendario). Proyectarlos encima inventaría plata que nadie va a pagar: un plan de pago tiene un
    -- número de cuotas fijo, no un ritmo.
    and r.rubro not in ('Nómina · Jornales de obra', 'Deuda previsional (planes de pago)', 'Financiero')
-   -- Si el mes futuro ya tiene un pago REAL igual o mayor que la proyección, manda el hecho.
-   and not exists (
-     select 1 from public.egreso_rubro_mes e
-      where e.rubro = r.rubro and e.mes = f.mes and e.monto >= r.promedio
-   );
+   -- Un mes cuyo real ya supera el ritmo no proyecta nada: greatest() lo deja en 0 y la fila se
+   -- descarta acá para no ensuciar el calendario con proyecciones de $0.
+   and coalesce(yr.real_mes, 0) < round(r.promedio * coalesce(fa.factor_acumulado, b.f) / nullif(b.f, 0));
 comment on view public.proyeccion_egreso is
   'Egresos ESPERADOS por rubro y mes futuro. SUPUESTO declarado, no dato: promedio de los últimos 3 meses cerrados (con al menos 4 meses con gasto en el año) ajustado por IPC. Misma regla que el Cash Flow del Sheet.';
 
 -- El calendario que lee la web, ahora con el futuro adentro y DICIENDO que es proyección.
 --
--- SE DROPEA ANTES DE CREAR porque `create or replace view` no admite insertar una columna en el
--- medio: Postgres contesta "cannot change name of view column fecha to clase". Se verificó que
--- ninguna otra vista dependa de ésta antes de dropearla — si mañana alguna depende, este drop tiene
--- que fallar en vez de llevársela puesta, y por eso NO lleva cascade.
-drop view if exists public.calendario_caja;
 -- La columna clase separa el hecho de la estimación: sin ella un promedio se lee como un
 -- comprobante, y alguien decide sobre plata que nadie prometió.
 create or replace view public.calendario_caja as
@@ -129,13 +173,36 @@ create or replace view public.calendario_caja as
    where coalesce(c.fecha_cobro, c.fecha_vencimiento) is not null
   union all
   select 'pago', 'real',
-         coalesce(o.fecha_pago, o.fecha),
+         o.fecha_pago,
          o.proveedor,
          coalesce(nullif(o.concepto, ''), o.obra_texto),
          -o.total,
-         (o.fecha_pago is not null)
+         true
     from public.costos_obra o
-   where coalesce(o.fecha_pago, o.fecha) is not null
+   where o.fecha_pago is not null
+     and public.rubro_caja(o.proveedor, o.unidad_negocio, o.obra_texto, o.concepto)
+         <> 'Nómina · Jornales de obra'
+  union all
+  select 'pago', j.clase, j.hasta,
+         'Jornales de obra',
+         'Quincena ' || to_char(j.desde, 'DD/MM') || '–' || to_char(j.hasta, 'DD/MM')
+           || coalesce(' · ' || j.personas || ' personas', ''),
+         -j.total,
+         (j.clase = 'real')
+    from public.jornal_quincena j
+  union all
+  -- Pagos reales que ninguna factura respalda todavía. No pueden duplicar: si el comprobante
+  -- estuviera en Compras, esta fila no existiría.
+  select 'pago', 'real', i.fecha_pago,
+         i.proveedor,
+         (case i.tipo when 'cheque' then 'Cheque' else 'Tarjeta' end)
+           || ' ' || coalesce(i.comprobante, '') || ' — falta cargar la factura en Compras',
+         -i.monto,
+         true
+    from public.instrumento_pago i
+   where not i.factura_en_compras
+     and i.comprobante_norm is not null
+     and i.fecha_pago is not null
   union all
   -- Fechadas el 15: repartirlas por día sería inventar precisión sobre CUÁNDO, cuando lo único que
   -- se sabe es CUÁNTO en el mes. El 15 no distorsiona el mes y no amontona todo en el día 1.
