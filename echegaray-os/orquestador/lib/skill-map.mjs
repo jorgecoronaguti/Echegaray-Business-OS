@@ -31,7 +31,11 @@ export const CAPABILITY_SKILLS = {
   'advise.tax':          ['impuestos-construccion'],
   'advise.admin':        ['administracion-operativa-construccion', 'orden-documental-dataroom'],
   'advise.safety':       ['seguridad-higiene-art'],
-  'advise.data':         ['lectura-drive-documentos-multiformato', 'integraciones-apis-sistemas-externos', 'google-sheets-business-systems', 'arquitectura-integracion-finanzas-obras'],
+  // ORDEN = PRIORIDAD: el chat corta en 4 skills, y cuando esta capacidad se combina con otra
+  // (ej. "mejorame la pestaña de cobranzas del sheet" = finance + data) las últimas se pierden.
+  // google-sheets-business-systems va PRIMERA porque es la operativa real de estas preguntas;
+  // antes quedaba cortada y el chat opinaba de un Sheet sin el criterio de Sheets (auditoría 2026-07-19).
+  'advise.data':         ['google-sheets-business-systems', 'arquitectura-integracion-finanzas-obras', 'lectura-drive-documentos-multiformato', 'integraciones-apis-sistemas-externos'],
 }
 
 /** Skills de dominio para una capability. [] si no hay mapeo (el caller decide fallback). */

@@ -7,8 +7,11 @@ import { CAPABILITY_SKILLS } from './skill-map.mjs'
 // Palabras/raíces clave por capacidad (en minúsculas, sin tildes para robustez).
 // Se elige la capacidad con más coincidencias; empate/cero → 'general'.
 const CAP_KEYWORDS = {
-  'advise.finance': ['caja', 'saldo', 'cobranz', 'cobrar', 'pagar', 'pago', 'tesorer', 'flujo', 'fondos', 'liquidez', 'capital de trabajo', 'banco', 'cheque', 'transferenc', 'gasto', 'gastar', 'deuda', 'vencimiento', 'anticipo', 'efectivo', 'financ'],
-  'advise.accounting': ['contab', 'p&l', 'resultado', 'margen', 'balance', 'devengad', 'asiento', 'ganancia neta', 'rentabilidad', 'utilidad', 'ebitda'],
+  // FINANZAS — vocabulario REAL del dueño (auditado 2026-07-19: "cash flow", "forecast",
+  // "conciliar" y "administracion" caían a 'general' → el chat respondía sin NADA de finanzas.
+  // Área declarada como foco: acá el ruteo tiene que ser generoso, no tacaño.
+  'advise.finance': ['caja', 'saldo', 'cobranz', 'cobrar', 'pagar', 'pago', 'tesorer', 'flujo', 'fondos', 'liquidez', 'capital de trabajo', 'working capital', 'banco', 'bancari', 'cheque', 'echeq', 'transferenc', 'gasto', 'gastar', 'deuda', 'vencimiento', 'anticipo', 'efectivo', 'financ', 'cash flow', 'cashflow', 'cash-flow', 'forecast', 'proyecci', 'concilia', 'dso', 'mora', 'morosidad', 'cobrabilidad', 'plazo de pago', 'cuenta corriente', 'posicion financiera', 'disponibilidad', 'egreso', 'ingreso de dinero', 'presupuesto de caja', 'runway', 'fondo de maniobra'],
+  'advise.accounting': ['contab', 'p&l', 'p y l', 'pyl', 'resultado', 'estado de resultado', 'margen', 'balance', 'devengad', 'asiento', 'ganancia neta', 'rentabilidad', 'utilidad', 'ebitda', 'costo fijo', 'costo variable', 'amortizac', 'depreciac', 'cierre contable'],
   'advise.tax': ['impuesto', 'iva', 'ingresos brutos', 'ganancias', 'arca', 'afip', 'dgr', 'retenc', 'alicuota', 'fiscal', 'monotributo', 'factur', 'percepcion', 'f931'],
   'advise.legal': ['contrato', 'adicional', 'reclamo', 'garantia', 'pliego', 'clausula', 'exigib', 'legal', 'demanda', 'penal', 'penalidad', 'multa', 'rescision', 'incumplimiento', 'certificado de obra'],
   'advise.hr': ['uocra', 'ieric', 'personal', 'empleado', 'operario', 'en blanco', 'blanqueo', 'jornal', 'legajo', 'alta', 'baja', 'despido', 'sueldo', 'fondo de cese', 'convenio', 'obrero', 'nomina', 'aguinaldo', 'vacaciones', 'presentismo', 'indemniz', 'ausent'],
@@ -25,7 +28,10 @@ const CAP_KEYWORDS = {
   // administracion-operativa + orden-documental-dataroom en skill-map, pero SIN keywords acá
   // era inalcanzable desde el chat (la skill existía, desconectada). Keywords distintivos de
   // ORGANIZAR el archivo (no un dato de negocio): carpetas, nomenclatura, mover/renombrar/archivar.
-  'advise.admin': ['carpeta', 'carpetas', 'orden documental', 'data room', 'dataroom', 'archivar', 'nomenclatura', 'renombrar', 'clasificar', 'crear carpeta', 'mover archivo', 'estructura de carpeta', 'organizar el drive', 'ordenar el drive', 'donde guardo', 'donde va este', 'archivo desordenad'],
+  'advise.admin': ['carpeta', 'carpetas', 'orden documental', 'data room', 'dataroom', 'archivar', 'nomenclatura', 'renombrar', 'clasificar', 'crear carpeta', 'mover archivo', 'estructura de carpeta', 'organizar el drive', 'ordenar el drive', 'donde guardo', 'donde va este', 'archivo desordenad',
+    // El PROCESO administrativo (no solo el archivo): "cómo organizo la administración",
+    // "circuito administrativo", "control interno". Antes caía a 'general' (auditoría 2026-07-19).
+    'administrac', 'administrativ', 'circuito', 'control interno', 'back office', 'backoffice', 'procedimiento'],
   // Decisión de negocio / comercial (Go-No-Go, selección de obra, pipeline, riesgo del negocio).
   // Antes NO existía en el clasificador → la skill gestion-empresarial-riesgos era inalcanzable
   // desde el chat pese a estar mapeada a advise.commercial. Cableada.
@@ -70,5 +76,12 @@ export function classifyDirectiveMulti(directive, max = 3) {
     if (score > 0) scored.push({ cap, score })
   }
   scored.sort((a, b) => b.score - a.score)
-  return scored.slice(0, max).map((s) => s.cap)
+  // ANTI-CONTAMINACIÓN (auditoría 2026-07-19): antes bastaba UNA palabra incidental para arrastrar
+  // un dominio ajeno — "qué estructura debería tener el flujo de fondos" cargaba ingeniería civil y
+  // calidad de obra ('estructura'), que diluían a las de finanzas dentro del tope de 4 skills del
+  // chat. Regla: el dominio ganador entra siempre; los secundarios solo si tienen señal REAL
+  // (≥2 keywords propias, o empatan con el ganador). Determinístico y testeable.
+  const best = scored[0].score
+  const filtrado = scored.filter((s, i) => i === 0 || s.score >= 2 || s.score >= best)
+  return filtrado.slice(0, max).map((s) => s.cap)
 }

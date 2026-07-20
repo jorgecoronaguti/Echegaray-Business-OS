@@ -18,12 +18,21 @@ export const PERSONA_EXPERTA = {
   'advise.tax': 'el asesor impositivo de Echegaray Construcciones',
   'advise.safety': 'el responsable de seguridad e higiene y ART de Echegaray Construcciones',
   'advise.admin': 'el responsable de administración y ORDEN DOCUMENTAL (archivista del data room) de Echegaray Construcciones',
+  // Faltaba: 'sheet'/'planilla'/'conciliar' rutean a advise.data y el chat cargaba la skill de
+  // Google Sheets pero SIN persona → contestaba como asistente genérico sobre el sistema financiero
+  // de la empresa. Auditoría 2026-07-19 (foco Admin y Finanzas).
+  'advise.data': 'el arquitecto de datos y sistemas de negocio en Google Sheets de Echegaray Construcciones (tratás cada Sheet como un sistema: arquitectura, fórmulas, controles y trazabilidad — no como una planilla suelta)',
 }
 
 // Marcadores de consulta de CRITERIO (no un dato suelto): merecen sonnet + razonamiento experto.
 // SIN \b final: en JS el boundary es ASCII y "convien"+"e" / "cotiz"+"o" no tienen boundary
 // (rompía el match). El \b inicial alcanza; los prefijos son distintivos (recomend→recomendás).
-export const ASESORIA_RE = /\b(convien|deber[íi]a|recomend|analiz|eval[uú]|opin|vale la pena|mejor opci[oó]n|compar|por qu[eé]|riesgo|qu[eé] hago|c[oó]mo (cotiz|calcul|manej|encar|financ)|tiene sentido|qu[eé] pas[aá] si)/i
+// Ampliado tras la auditoría del área Admin y Finanzas (2026-07-19): "cómo mejoro el capital de
+// trabajo" o "está bien armado mi cash flow" son consultas de CRITERIO puro y NO escalaban —
+// las contestaba el modelo barato sin razonar. Se suman los verbos con que el dueño realmente
+// pide criterio (mejorar, armar, organizar, estructurar, auditar, implementar) y las fórmulas
+// de estándar profesional (mejores prácticas, world class, qué me falta).
+export const ASESORIA_RE = /\b(convien|deber[íi]a|recomend|analiz|eval[uú]|opin|vale la pena|mejor opci[oó]n|compar|por qu[eé]|riesgo|qu[eé] hago|c[oó]mo (cotiz|calcul|manej|encar|financ|mejor|arm|organiz|estructur|orden|control|implement|hago|hacemos)|tiene sentido|qu[eé] pas[aá] si|est[aá] bien|estar[íi]a bien|qu[eé] me falta|qu[eé] falta|mejores pr[aá]cticas|buenas pr[aá]cticas|best practice|world class|auditar|audit[aá]|revis[aá]|mejor[aá]|rehac|profesionaliz|est[aá]ndar)/i
 
 /** Dada la capacidad principal y la directiva, devuelve la persona experta (o null) y si es una
  *  consulta de criterio profunda (→ sonnet). La persona sola es gratis; la profundidad sube modelo. */

@@ -34,5 +34,25 @@ check('lookup "mostrame mis obras" NO es asesoría', !ASESORIA_RE.test('mostrame
 }
 check('todas las personas de dominio existen', Object.keys(PERSONA_EXPERTA).length >= 15)
 
+// FOCO ADMIN Y FINANZAS (auditoría 2026-07-19).
+{
+  // advise.data cargaba la skill de Sheets pero SIN persona → opinaba del sistema financiero
+  // de la empresa como asistente genérico.
+  check('advise.data TIENE persona (Sheets)', !!PERSONA_EXPERTA['advise.data'])
+  check('la persona de Sheets habla de sistema, no de planilla', /sistema/i.test(PERSONA_EXPERTA['advise.data']))
+  // Consultas de CRITERIO que antes NO escalaban al modelo bueno.
+  const crit = [
+    'como mejoro el capital de trabajo',
+    'esta bien armado mi cash flow?',
+    'que me falta para tener el area world class',
+    'mejores practicas de tesoreria',
+    'como organizo la administracion',
+    'auditá el flujo de fondos',
+  ]
+  for (const q of crit) check(`criterio escala a sonnet: "${q}"`, personaParaConsulta('advise.finance', q).asesoria === true)
+  // Un pedido de dato suelto NO debe escalar (control de costo).
+  check('dato suelto NO escala', personaParaConsulta('advise.finance', 'cuanta caja tengo hoy').asesoria === false)
+}
+
 console.log(`chat-persona.test: ${ok} OK, ${fail} FALLA`)
 process.exit(fail ? 1 : 0)

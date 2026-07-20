@@ -62,5 +62,27 @@ for (const dir of ['caja', 'iva', 'contrato', 'uocra', 'accidente', 'comprar', '
   check('"ordená la caja" NO va a admin', classifyDirective('ordená la caja de hoy') !== 'advise.admin')
 }
 
+// ÁREA ADMIN Y FINANZAS (foco declarado del dueño). Auditoría 2026-07-19: estas preguntas REALES
+// caían a 'general' → el chat contestaba sin una sola línea de criterio financiero. Regresión cara.
+{
+  check('"cash flow" → advise.finance', classifyDirective('esta bien armado mi cash flow?') === 'advise.finance')
+  check('"forecast" → advise.finance', classifyDirective('armame un forecast de 13 semanas') === 'advise.finance')
+  check('"conciliar el banco" → advise.finance', classifyDirective('como concilio el banco con el sheet') === 'advise.finance')
+  check('"dso" → advise.finance', classifyDirective('cual es mi dso') === 'advise.finance')
+  check('"working capital" → advise.finance', classifyDirective('como mejoro el working capital') === 'advise.finance')
+  check('"administracion" (proceso) → advise.admin', classifyDirective('como deberia organizar la administracion') === 'advise.admin')
+  check('"circuito administrativo" → advise.admin', classifyDirective('armame el circuito administrativo de pagos') === 'advise.admin')
+  check('"estado de resultados" → advise.accounting', classifyDirective('mostrame el estado de resultados') === 'advise.accounting')
+  // ANTI-CONTAMINACIÓN: una palabra incidental de otro dominio no debe arrastrarlo ni desplazar
+  // a las skills reales dentro del tope de 4 del chat.
+  const caps = classifyDirectiveMulti('que estructura deberia tener el flujo de fondos')
+  check('"estructura" no arrastra ingeniería civil a una pregunta financiera', !caps.includes('advise.civil'))
+  check('la pregunta financiera queda en finanzas', caps[0] === 'advise.finance')
+  // Una pregunta de Sheet financiero debe recibir el criterio de Sheets DENTRO del tope de 4.
+  const skFin = [...new Set(classifyDirectiveMulti('mejorame la pestaña de cobranzas del sheet').flatMap((c) => skillsForCapability(c)))].slice(0, 4)
+  check('Sheet financiero incluye google-sheets-business-systems en el top 4', skFin.includes('google-sheets-business-systems'))
+  check('Sheet financiero incluye también finanzas', skFin.includes('finanzas-tesoreria-construccion'))
+}
+
 console.log(`\nclassify-directive.test: ${ok} OK, ${fail} FALLA`)
 process.exit(fail ? 1 : 0)
