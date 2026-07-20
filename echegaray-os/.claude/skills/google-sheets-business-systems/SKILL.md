@@ -53,6 +53,60 @@ Después de cada escritura: releer el rango modificado, confirmar que la fórmul
 ### F. Validar con números reales
 No dar una mejora por terminada porque "la fórmula parece correcta". Comparar contra el dato fuente, contra un total conocido, contra una muestra a mano, contra un período ya conocido. Un resultado que "se ve razonable" no es un resultado verificado.
 
+## es-AR: la trampa que ya rompió el OS cuatro veces (no es un detalle)
+
+**Todo el Drive de Echegaray está en español Argentina.** Esto no es cosmético: cambia la sintaxis de las fórmulas y ya causó errores reales en producción.
+
+- **Separador de argumentos = `;` (punto y coma), NO coma.** Porque la coma es el separador decimal. `=SUMA(A1;B1)` — con coma da error.
+- **Decimal = coma, miles = punto**: `$1.234.567,89`. Un número escrito con punto decimal entra como texto y **rompe toda fórmula que lo sume**.
+- **Fechas DD/MM/YYYY.** Una fecha en formato US entra como texto o como el día equivocado (07/05 puede ser 7 de mayo o 5 de julio: el error es silencioso y no se nota hasta que el total no cierra).
+- **Nombres de función en español** en la UI (SUMA, SI, BUSCARV, CONTAR.SI) aunque la API acepte los ingleses.
+- **REGLA OPERATIVA**: después de escribir una fórmula por API, **releer la celda y verificar que no devuelva `#ERROR!` / `#¿NOMBRE?`**. Escribir sin verificar es cómo se dejan planillas rotas en silencio.
+- **Un valor que debía ser número y entró como texto no da error visible**: el total simplemente lo ignora. Si un total "no cierra por poco", sospechar de esto antes que de la fórmula.
+
+## Fórmulas que escalan (y las que se rompen al crecer)
+
+- **ARRAYFORMULA** es la diferencia entre una planilla que aguanta y una que se rompe: una sola fórmula en la fila de encabezado que se aplica a toda la columna, en vez de arrastrar la misma fórmula 2.000 veces. Ventajas: no se "pierde" al insertar filas, no queda una fila sin fórmula, y se corrige en un solo lugar. Combinada con `SI(fila_vacía; ""; cálculo)` evita llenar de ceros las filas vacías.
+- **Preferir funciones de rango completo** (SUMAR.SI.CONJUNTO / SUMIFS, CONTAR.SI.CONJUNTO, QUERY) sobre construcciones fila a fila.
+- **BUSCARV es frágil**: se rompe al insertar una columna. Preferir **ÍNDICE+COINCIDIR** o **BUSCARX/XLOOKUP** — no dependen de la posición numérica de la columna.
+- **LET** para no repetir el mismo subcálculo cinco veces dentro de una fórmula larga: más rápido y mucho más legible al auditar.
+- **Nunca hardcodear un número dentro de una fórmula** (una alícuota, un tipo de cambio, un porcentaje de margen): va a una celda de parámetros con etiqueta, y la fórmula la referencia. Un número enterrado en una fórmula es imposible de auditar y nadie recuerda de dónde salió.
+
+## IFERROR: la función más abusada de todas
+
+Envolver todo en `SI.ERROR(...; 0)` es la forma más común de **esconder un problema en vez de resolverlo**.
+
+- Un `#N/A` está diciendo algo real: "esta clave no existe en la tabla destino". Convertirlo en 0 hace que un total dé bien y sea falso.
+- Regla: **usar SI.ERROR solo cuando el error es esperado y conocido** (ej. división por cero en un ratio cuando el denominador legítimamente puede ser 0), y **nunca** para tapar una búsqueda que falla.
+- Al auditar un Sheet ajeno, **buscar los SI.ERROR y preguntarse qué están tapando**. Es donde suelen esconderse las diferencias que nadie explica.
+
+## Celdas combinadas: el asesino silencioso de las planillas de datos
+
+En una **tabla de datos**, las celdas combinadas rompen ordenar, filtrar, tablas dinámicas, fórmulas de rango y la escritura por API (ya causó fallas reales en este OS).
+
+- **En zonas de datos: nunca combinar.** Si hace falta un efecto visual de agrupación, usar formato (bordes, color, negrita) o "Centrar en la selección" — se ve igual y no rompe nada.
+- Combinar es aceptable **solo** en encabezados de presentación de un dashboard que nadie va a ordenar ni procesar.
+- Una tabla que hay que "desarmar" antes de poder usarla no es una tabla: es un informe impreso guardado en una planilla.
+
+## Integridad: proteger lo que no se debe tocar
+
+- **Rangos protegidos** sobre las celdas de fórmula y los parámetros: evita que alguien pise una fórmula con un número escrito a mano — el modo más común de romper un modelo sin que nadie se entere.
+- **Validación de datos** (listas desplegables) en toda columna categórica: obra, proveedor, estado, tipo. Sin ella aparecen "San Francisco", "san francisco" y "S. Francisco" como tres cosas distintas, y ningún resumen vuelve a cerrar.
+- **Rangos con nombre** para los parámetros clave: una fórmula que dice `Parametros!Alicuota_IVA` se audita sola; una que dice `$B$47` no.
+- **Formato condicional** para que el error se vea: montos negativos, fechas vencidas, celdas que deberían tener dato y están vacías.
+
+## Cómo auditar un Sheet ajeno (protocolo de diagnóstico)
+
+Antes de tocar una celda, entender qué se está mirando:
+
+1. **Mapear las pestañas**: cuáles son entrada, cuáles cálculo, cuáles presentación. Si están mezcladas, ese ya es el hallazgo principal.
+2. **Buscar los números pegados a mano donde debería haber fórmula** — el defecto más frecuente y el que más silenciosamente miente.
+3. **Rastrear una cifra clave de punta a punta** (ej. el total de un dashboard) hasta su origen. Si el rastro se corta en un número escrito a mano, el modelo no es confiable.
+4. **Buscar errores visibles y ocultos**: `#REF!`, `#N/A`, `#VALOR!`, y los `SI.ERROR` que los tapan.
+5. **Verificar consistencia de rangos**: fórmulas que suman `A2:A500` en una tabla que ya tiene 700 filas — el clásico total que se queda corto sin avisar.
+6. **Contrastar totales por dos caminos independientes** (SUMAR.SI.CONJUNTO vs. QUERY vs. tabla dinámica). Si no coinciden, hay un supuesto escondido. *Este control ya evitó una alarma falsa real en el Flujo de Caja.*
+7. **Revisar filas y columnas ocultas**: suelen contener el ajuste manual que nadie documentó.
+
 ## Arquitectura de spreadsheets
 
 - **Separación captura / cálculo / presentación**: nunca calcular directamente sobre la pestaña donde alguien escribe a mano -- eso hace que romper una fórmula sea un accidente de un click. Estructura de referencia (adaptar, no copiar literal): datos crudos/captura → cálculos → dashboard/presentación. Si un Sheet ya mezcla las tres capas (como varios de los reales de Echegaray), no es motivo para reconstruir todo de cero -- es motivo para no agregar más mezcla nueva encima.

@@ -68,7 +68,7 @@ import { makeToolExecutor } from './lib/tool-executor.mjs'
 import { enqueuePendingOperation, listPendingOperations, decidePendingOperation, getPendingOperationById } from './lib/pending-ops.mjs'
 import { classifyDirective, classifyDirectiveMulti } from './lib/classify-directive.mjs'
 import { cacheGet, cachePut, cacheClearAll } from './lib/chat-cache.mjs'
-import { skillsForCapability } from './lib/skill-map.mjs'
+import { skillsForCapability, skillsParaDirectiva, mencionaSheet, SKILL_SHEETS } from './lib/skill-map.mjs'
 import { extraerRestricciones, DOCTRINA_EDICION, VERIFICACION_EDICION } from './lib/doc-edit-guardrails.mjs'
 import { isMailComposeIntent, isCalendarWriteIntent } from './lib/chat-intents.mjs'
 import { stripPreamble } from './lib/chat-format.mjs'
@@ -597,9 +597,12 @@ async function ask({ directive, fileId, fast, attachments, attachment, history, 
   const editaDoc = /\b(doc|documento|gdoc|word|carta|memo)\b/i.test(String(directive || ''))
   const skillNames = (writeToDocIntent && !budgetingKw)
     ? (editaDoc ? [] : ['google-sheets-business-systems'])
+    // skillsParaDirectiva garantiza que, si se habla de un Sheet/planilla, el criterio de Sheets
+    // entre SIEMPRE junto al dominio dueño del dato (regla obligatoria del CLAUDE.md raíz). Antes
+    // se perdía: 7 de 8 áreas quedaban sin él porque la capacidad de dominio ganaba la clasificación.
     : capabilities.length
-      ? [...new Set(capabilities.flatMap((c) => skillsForCapability(c)))].slice(0, 4)
-      : []
+      ? skillsParaDirectiva(capabilities, directive, 4)
+      : (mencionaSheet(directive) ? [SKILL_SHEETS] : [])
   // "¿Qué podés hacer?" — respuesta DETERMINÍSTICA (0 API, siempre actualizada): así la
   // extensión refleja las capacidades del cerebro sin reinstalarse y sin gastar crédito.
   if (/^\s*(qu[eé] pod[eé]s hacer|qu[eé] sab[eé]s hacer|ayuda\b|help\b|para qu[eé] serv|qu[eé] (te )?puedo pedir|capacidades|qu[eé] hac[eé]s)/i.test(directive)) {

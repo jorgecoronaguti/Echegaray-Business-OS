@@ -42,3 +42,30 @@ export const CAPABILITY_SKILLS = {
 export function skillsForCapability(capabilitySlug) {
   return CAPABILITY_SKILLS[capabilitySlug] || []
 }
+
+// El CLAUDE.md raíz lo marca como OBLIGATORIO, no opcional: para leer, auditar, corregir o rediseñar
+// un Google Sheet real de negocio se activa `google-sheets-business-systems` MÁS la skill de dominio
+// dueña del dato. Auditoría 2026-07-19: no pasaba — 7 de 8 áreas quedaban sin ella porque la
+// capacidad de dominio ganaba la clasificación y `advise.data` no llegaba al tope de skills.
+// Un Sheet mal tocado rompe el sistema de negocio de la empresa, así que esto es regla dura.
+const SHEET_RE = /\b(sheet|sheets|planilla|planillas|pesta[ñn]a|spreadsheet|celda|celdas|f[oó]rmula|f[oó]rmulas|excel|xlsx?|hoja de c[aá]lculo|tabla din[aá]mica)\b/i
+export const SKILL_SHEETS = 'google-sheets-business-systems'
+
+/** ¿La directiva habla de un Sheet/planilla (y por lo tanto exige el criterio de Sheets)? PURA. */
+export function mencionaSheet(directive) {
+  return SHEET_RE.test(String(directive || ''))
+}
+
+/**
+ * Conjunto de skills para una directiva: las de dominio según las capacidades detectadas, y —si se
+ * habla de un Sheet— la de Sheets GARANTIZADA dentro del tope. Se inserta en 2ª posición: primero
+ * manda el dominio dueño del dato (qué dato es correcto), después cómo se toca la planilla.
+ * PURA (testeable sin DB ni API).
+ */
+export function skillsParaDirectiva(capabilities, directive, max = 4) {
+  const base = [...new Set((capabilities || []).flatMap((c) => skillsForCapability(c)))]
+  if (!mencionaSheet(directive)) return base.slice(0, max)
+  const sinSheets = base.filter((s) => s !== SKILL_SHEETS)
+  const conSheets = sinSheets.length ? [sinSheets[0], SKILL_SHEETS, ...sinSheets.slice(1)] : [SKILL_SHEETS]
+  return conSheets.slice(0, max)
+}

@@ -3,7 +3,7 @@
 // Fija el ruteo de pedidos realistas del dueño para que una expansión futura de keywords no
 // rompa el comportamiento. exit 0 = OK, 1 = falla.
 import { classifyDirective, classifyDirectiveMulti } from './classify-directive.mjs'
-import { skillsForCapability } from './skill-map.mjs'
+import { skillsForCapability, skillsParaDirectiva, mencionaSheet, SKILL_SHEETS } from './skill-map.mjs'
 
 let ok = 0, fail = 0
 const check = (n, c) => { if (c) ok++; else { fail++; console.error(`FALLA: ${n} → dio ${JSON.stringify(c)}`) } }
@@ -82,6 +82,32 @@ for (const dir of ['caja', 'iva', 'contrato', 'uocra', 'accidente', 'comprar', '
   const skFin = [...new Set(classifyDirectiveMulti('mejorame la pestaña de cobranzas del sheet').flatMap((c) => skillsForCapability(c)))].slice(0, 4)
   check('Sheet financiero incluye google-sheets-business-systems en el top 4', skFin.includes('google-sheets-business-systems'))
   check('Sheet financiero incluye también finanzas', skFin.includes('finanzas-tesoreria-construccion'))
+}
+
+// SHEETS OBLIGATORIO EN TODAS LAS ÁREAS (auditoría 2026-07-19). El CLAUDE.md raíz lo marca como
+// obligatorio antes de tocar una celda, pero 7 de 8 áreas se quedaban sin él: la capacidad de
+// dominio ganaba la clasificación y advise.data no entraba en el tope de skills.
+{
+  const casos = [
+    'mejorame el sheet de avance de obra',
+    'armame una planilla de comparativa de proveedores',
+    'el sheet de jornales esta desordenado, arreglalo',
+    'quiero una planilla de no conformidades',
+    'planilla de mantenimiento de la flota',
+    'mejora la planilla para cotizar',
+    'audita el sheet de flujo de caja',
+    'revisa el sheet de P&L',
+  ]
+  for (const q of casos) {
+    const sk = skillsParaDirectiva(classifyDirectiveMulti(q), q, 4)
+    check(`Sheets presente: "${q.slice(0, 38)}"`, sk.includes(SKILL_SHEETS))
+    check(`el dominio manda primero: "${q.slice(0, 26)}"`, sk[0] !== SKILL_SHEETS)
+  }
+  // Sin Sheet de por medio NO se carga (control de costo).
+  check('sin sheet no carga la skill de Sheets',
+    !skillsParaDirectiva(classifyDirectiveMulti('cuanta caja tengo hoy'), 'cuanta caja tengo hoy', 4).includes(SKILL_SHEETS))
+  check('mencionaSheet detecta pestaña/celda/fórmula',
+    mencionaSheet('cambiá la fórmula de esa celda') && mencionaSheet('en la pestaña Caja') && !mencionaSheet('cuánto debemos'))
 }
 
 console.log(`\nclassify-directive.test: ${ok} OK, ${fail} FALLA`)
