@@ -26,8 +26,20 @@ check('pestaña con punto en comillas simples', f("='Hoja.2'!A1+1.5") === "='Hoj
 check('modelo es-AR: *1,02 se preserva (NO pasa a 1;02)', f('=G62*1,02') === '=G62*1,02')
 check('modelo es-AR: dos decimales', f('=A1*1,5+B2*2,3') === '=A1*1,5+B2*2,3')
 check('modelo es-AR: división decimal', f('=A1/2,5') === '=A1/2,5')
-check('modelo es-AR: arg negativo decimal, sep intacto', f('=MIN(A1,-2,5)') === '=MIN(A1;-2,5)')
 check('args enteros NO se confunden con decimal', f('=VLOOKUP(A1,Data!A:B,2,0)') === '=VLOOKUP(A1;Data!A:B;2;0)')
+// Adentro de una lista de argumentos, una coma es SEPARADOR salvo que la fórmula ya use ';'.
+// "=MIN(A1,-2,5)" en canónico son tres argumentos; si el modelo quiso -2,5 decimal, lo escribe
+// con ';' de separador y ahí sí se preserva (caso de abajo).
+check('coma entre args: separador, no decimal', f('=MIN(A1,-2,5)') === '=MIN(A1;-2;5)')
+check('si ya usa ";", sus comas SON decimales', f('=MIN(A1;-2,5)') === '=MIN(A1;-2,5)')
+
+// ── BUG REAL (20/07): argumento numérico después de una cuenta ──
+// El regex viejo leía "+1,1" y "-4,0" como decimales y se comía un argumento. Se escribía mal y
+// el #N/A aparecía lejos, en la celda que usaba el resultado.
+check('DATE con mes+1: NO se come el último argumento', f('=DATE(YEAR(A1),MONTH(A1)+1,1)') === '=DATE(YEAR(A1);MONTH(A1)+1;1)')
+check('OFFSET con desplazamiento calculado conserva los 5 args', f('=OFFSET($D$5,COUNTA($A$6:$A$19)-4,0,4,1)') === '=OFFSET($D$5;COUNTA($A$6:$A$19)-4;0;4;1)')
+check('MAX(0,x-y) conserva los dos args', f('=MAX(0,F37-G37)') === '=MAX(0;F37-G37)')
+check('INDEX con fila calculada', f('=INDEX(A1:A9,COUNTA(A1:A9)-1,1)') === '=INDEX(A1:A9;COUNTA(A1:A9)-1;1)')
 // no-fórmulas y sin cambios
 check('no-fórmula (texto) intacto', f('hola, mundo') === 'hola, mundo')
 check('número plano (no string =) intacto', f(1234) === 1234)

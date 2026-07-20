@@ -1,5 +1,5 @@
 // Test hermético del sincronizador de nómina. Sin Sheet, sin Drive.
-import { detectarQuincenas, filasQuincenas, hayCambio, formatSync } from './nomina-sync.mjs'
+import { detectarQuincenas, filasQuincenas, hayCambio, cuerpoDelCuadro, formatSync } from './nomina-sync.mjs'
 
 let ok = 0, falla = 0
 const check = (n, c) => { if (c) ok++; else { falla++; console.error(`  FALLA: ${n}`) } }
@@ -28,12 +28,30 @@ check('grilla vacía no rompe', detectarQuincenas([]).length === 0)
 check('grilla sin bloques', detectarQuincenas([['x'], ['y']]).length === 0)
 
 const filas = filasQuincenas(b)
-check('7 columnas por quincena', filas[0].length === 7)
+// Tiene que coincidir EXACTO con las 10 columnas de la pestaña. Devolvía 7 (de un layout viejo):
+// como sólo escribe cuando algo cambia y nada había cambiado, nunca se notó — la primera quincena
+// nueva habría reescrito el cuadro con las columnas corridas.
+check('10 columnas por quincena, como la pestaña', filas[0].length === 10)
 // La etiqueta es una REFERENCIA a la celda de fecha, nunca la fecha copiada.
-check('la fecha se referencia, no se copia', filas[0][0].f === '=_J_OBREROS!F3')
-check('el total usa el rango del bloque', filas[0][6].f === '=SUMA(_J_OBREROS!AA4:AA6)')
-check('el segundo bloque usa SU rango', filas[1][6].f === '=SUMA(_J_OBREROS!AA9:AA10)')
+check('la fecha se referencia, no se copia', filas[0][0].f === "='_J_OBREROS'!F3")
+check('el total usa el rango del bloque', filas[0][9].f === "=SUM('_J_OBREROS'!AA4:AA6)")
+check('el segundo bloque usa SU rango', filas[1][9].f === "=SUM('_J_OBREROS'!AA9:AA10)")
+// Las hs correspondientes se autorreferencian: dependen de la fila donde va a quedar la quincena.
+check('hs correspondientes referencian su propia fila', filas[0][4].f === "=C6*D6*'Parámetros'!$B$43")
+check('la segunda quincena referencia la fila 7', filas[1][4].f === "=C7*D7*'Parámetros'!$B$43")
 check('ninguna celda trae un número suelto', filas.every((r) => r.every((c) => c.f && !('n' in c))))
+
+// cuerpoDelCuadro: dónde termina el cuerpo. Contar "celdas no vacías de la columna A" daba 30
+// quincenas donde hay 14, porque debajo viven los bloques POR CLIENTE y PROYECCIÓN — el agente
+// habría creído que cambió algo en cada corrida.
+{
+  const colA = [['5/1'], ['16/1'], ['2/2'], ['TOTAL AÑO'], [''], ['POR CLIENTE'], ['San Francisco'], ['PROYECCIÓN']]
+  const c = cuerpoDelCuadro(colA, 6)
+  check('el cuerpo termina en el TOTAL, no en la última celda con texto', c.filas === 3)
+  check('la fila del TOTAL se ubica bien', c.filaTotal === 9)
+}
+check('pestaña sin TOTAL todavía: cuenta lo que hay', cuerpoDelCuadro([['5/1'], ['16/1']], 6).filas === 2)
+check('pestaña vacía', cuerpoDelCuadro([], 6).filas === 0)
 
 // hayCambio: sólo se reescribe si aparecieron quincenas nuevas.
 check('mismo número de quincenas → no hay cambio', !hayCambio(b, 2))

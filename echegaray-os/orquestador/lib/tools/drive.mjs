@@ -7,6 +7,8 @@
 // encola en pending_operations (requires_approval). Sus definiciones se agregan
 // cuando exista la pantalla de aprobación (Fase 5).
 
+import { mapearFormulas, formatFormulas } from '../sheet-formulas.mjs'
+
 const FOLDER = 'application/vnd.google-apps.folder'
 const tipoLegible = (m) =>
   m === FOLDER ? 'carpeta' : m.includes('spreadsheet') || m.includes('excel') ? 'planilla' : m.includes('document') || m.includes('word') ? 'documento' : m.includes('pdf') ? 'pdf' : m.includes('image') ? 'imagen' : 'archivo'
@@ -105,6 +107,7 @@ export function driveReadTools(google) {
             range: { type: 'string', description: 'rango A1 para Google Sheets nativos, ej. "RESUMEN!A1:F60". Por defecto A1:F60.' },
             sheet: { type: 'string', description: 'nombre de la pestaña a leer (para Excel .xlsx). Por defecto la primera.' },
             max_rows: { type: 'number', description: 'máximo de filas a devolver de un Excel (default 50).' },
+            formulas: { type: 'boolean', description: 'true = devuelve la FÓRMULA de cada celda además del valor. USALO SIEMPRE que veas un #REF!, #ERROR!, #N/A, #¡VALOR! o un número que no cierra: sin la fórmula no se puede saber qué se rompió, sólo adivinar. También sirve para verificar que una celda es fórmula y no un número pegado a mano.' },
           },
         },
       },
@@ -126,6 +129,13 @@ export function driveReadTools(google) {
         // Google Sheet nativo: leer rango por la Sheets API.
         if (mt.includes('google-apps.spreadsheet')) {
           const range = input?.range || 'A1:F60'
+          // Con `formulas` se lee la pestaña COMO ES (fórmula + valor), que es lo único que permite
+          // diagnosticar un #REF! en vez de opinar sobre él.
+          if (input?.formulas) {
+            const grid = await google.readSheetGrid(fileId, range)
+            const m = mapearFormulas(grid)
+            return { file_id: fileId, name: meta.name, tipo: 'google_sheet', range, ...m, resumen: formatFormulas(m, range) }
+          }
           const values = await google.readSheetValues(fileId, range)
           return { file_id: fileId, name: meta.name, tipo: 'google_sheet', range, rows: values.length, values }
         }

@@ -344,25 +344,43 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     // pestaña 'Hoja.2'!A1, o el "." dentro de SUBSTITUTE(...;".";"")).
     //
     // BUG REAL (auditoría 18/07): un modelo en español a veces escribe la fórmula ya en es_AR
-    // ("=G62*1,02") en vez de canónico. La pasada de abajo convertía ESA coma decimal en ';'
-    // ("=G62*1;02") → #ERROR!. Normalizamos primero SOLO la coma decimal inequívoca: un número
-    // que sigue a un operador aritmético / '(' / '=' (ej. "*1,02", "=2,5", "(3,14"). NO toca
-    // separadores de argumentos ("VLOOKUP(A1,Data!A:B,2,0)" no matchea: los operandos no vienen
-    // de un operador aritmético), ni comas dentro de strings (el '"' o "'" no es operador).
-    s = s.replace(/([=(*/+\-]\s*\d+),(\d+)/g, '$1.$2')
-    // BUG REAL (20/07): el punto NO se puede convertir a coma siempre. Los nombres de función en
-    // español LLEVAN punto — SUMAR.SI, SUMAR.SI.CONJUNTO, CONTAR.SI.CONJUNTO, SI.ERROR, FIN.MES —
-    // y la conversión ciega los rompía ("SUMAR,SI" → #ERROR!). Cualquier fórmula escrita con
-    // funciones españolas moría al pasar por drive_update, en silencio.
-    // Sólo es punto DECIMAL el que está entre dígitos: "1.5". El de "SUMAR.SI" está entre letras.
+    // ("=G62*1,02") en vez de canónico. Convertir ESA coma decimal en ';' daba "=G62*1;02" →
+    // #ERROR!. La defensa era un regex: "un número que sigue a un operador aritmético es decimal".
+    //
+    // BUG REAL MÁS GRAVE (20/07): ese regex rompía cualquier ARGUMENTO numérico que viniera
+    // después de una cuenta, que es lo más común que hay:
+    //     DATE(YEAR(A1),MONTH(A1)+1,1)     → "+1,1" se leía decimal → DATE con 2 args → #N/A
+    //     OFFSET($D$5,COUNTA(X)-4,0,4,1)   → "-4,0" se leía decimal → OFFSET perdía un argumento
+    // Se escribía mal y el error aparecía lejos, en la celda que lo usaba.
+    //
+    // La regla que SÍ distingue los dos casos es la PROFUNDIDAD DE PARÉNTESIS: dentro de una lista
+    // de argumentos, una coma es un separador. Sólo es decimal si
+    //   (a) está fuera de todo paréntesis  → "=G62*1,02", el caso que motivó la defensa; o
+    //   (b) la fórmula ya usa ';' como separador → el modelo escribió en es_AR, sus comas son
+    //       decimales ("=SUMAR.SI(A:A;\"x\";B:B)*1,02").
+    //
+    // Y el punto: sólo es DECIMAL entre dígitos ("1.5"). Los nombres de función españoles llevan
+    // punto entre letras — SUMAR.SI, SI.ERROR, FIN.MES — y convertirlos los rompía (bug 20/07).
     const esDigito = (c) => c >= '0' && c <= '9'
-    let out = '', inStr = false, quote = ''
+    // ¿La fórmula ya viene con ';' de separador? (fuera de strings)
+    let usaPuntoYComa = false
+    for (let i = 0, dentro = false, q = ''; i < s.length; i++) {
+      const c = s[i]
+      if (dentro) { if (c === q) dentro = false; continue }
+      if (c === '"' || c === "'") { dentro = true; q = c; continue }
+      if (c === ';') { usaPuntoYComa = true; break }
+    }
+    let out = '', inStr = false, quote = '', prof = 0
     for (let i = 0; i < s.length; i++) {
       const c = s[i]
       if (inStr) { out += c; if (c === quote) inStr = false; continue }
       if (c === '"' || c === "'") { inStr = true; quote = c; out += c; continue }
-      if (c === ',') out += ';'
-      else if (c === '.' && esDigito(s[i - 1]) && esDigito(s[i + 1])) out += ','
+      if (c === '(') { prof++; out += c; continue }
+      if (c === ')') { prof--; out += c; continue }
+      if (c === ',') {
+        const entreDigitos = esDigito(s[i - 1]) && esDigito(s[i + 1])
+        out += entreDigitos && (prof === 0 || usaPuntoYComa) ? ',' : ';'
+      } else if (c === '.' && esDigito(s[i - 1]) && esDigito(s[i + 1])) out += ','
       else out += c
     }
     return out

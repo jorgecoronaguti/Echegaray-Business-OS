@@ -1,6 +1,7 @@
 // Tool: SINCRONIZAR NÓMINA — el agente que mantiene vivo lo que en el Sheet no puede ser fórmula.
 import { sincronizarNomina, formatSync } from '../nomina-sync.mjs'
 import { sheetRenderTools } from './sheet-render.mjs'
+import { driveWriteTools } from './drive-write.mjs'
 
 const FLUJO = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DDJJ = '1em3q6p2Gy4SMk2zRfaATbVL0FWqOf0HB'
@@ -34,11 +35,18 @@ export function nominaSyncTools(google) {
           })
           if (r.error) return r
           if (r.spec_quincenas?.length) {
-            // Se reescribe SOLO el cuerpo del cuadro de quincenas (desde la fila 5), no la pestaña
-            // entera: el encabezado y el bloque "por obra" son fórmulas que no hay que tocar.
+            // Si entró una quincena nueva, primero se INSERTA la fila justo antes del TOTAL. Google
+            // reajusta solo el SUM del total, el bloque POR CLIENTE y la proyección. Escribir encima
+            // del TOTAL en vez de insertar rompería los tres.
+            if (r.insertar_filas > 0) {
+              const ins = driveWriteTools(google)['drive.insertrows']
+              await ins.run({ file_id: FLUJO, tab: 'Jornales por Quincena', at_row: r.fila_total, count: r.insertar_filas })
+            }
+            // Se reescribe SOLO el cuerpo del cuadro (desde la fila 6): el encabezado, el bloque por
+            // cliente y el de proyección son fórmulas que no hay que tocar.
             const render = sheetRenderTools(google)['sheet.render']
             await render.run({
-              file_id: FLUJO, tab: 'Jornales por Quincena', anclaje: 'A5', filas: r.spec_quincenas,
+              file_id: FLUJO, tab: 'Jornales por Quincena', anclaje: `A${r.fila_inicio}`, filas: r.spec_quincenas,
             })
           }
           return { ...r, resumen_texto: formatSync(r) }

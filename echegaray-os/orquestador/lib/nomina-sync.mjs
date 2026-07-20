@@ -39,22 +39,58 @@ export function detectarQuincenas(filas = []) {
   return bloques
 }
 
-/** Las filas del cuadro de quincenas, todas como fórmula. PURA. */
-export function filasQuincenas(bloques, hoja = '_J_OBREROS') {
-  return bloques.map((b) => [
-    { f: `=${hoja}!F${b.filaFecha}` },
-    { f: `=CONTAR(${hoja}!A${b.inicio}:A${b.fin})` },
-    { f: `=SUMA(${hoja}!V${b.inicio}:V${b.fin})` },
-    { f: `=SUMA(${hoja}!X${b.inicio}:X${b.fin})`, estilo: 'moneda' },
-    { f: `=SUMA(${hoja}!Y${b.inicio}:Y${b.fin})`, estilo: 'moneda' },
-    { f: `=SUMA(${hoja}!Z${b.inicio}:Z${b.fin})`, estilo: 'moneda' },
-    { f: `=SUMA(${hoja}!AA${b.inicio}:AA${b.fin})`, estilo: 'moneda_negrita' },
-  ])
+/**
+ * Las filas del cuadro de quincenas, TODAS fórmula. PURA.
+ *
+ * Tiene que devolver EXACTAMENTE las 10 columnas que hoy tiene la pestaña, en su orden:
+ *   Desde · Hasta · Días hábiles · Personas · Hs correspondientes · Hs reales · Banco ·
+ *   Adelanto · Total recibo · TOTAL QUINCENA
+ * Antes devolvía 7 columnas de un layout anterior. Nunca se notó porque sólo escribe cuando algo
+ * cambia y nada había cambiado — pero la primera quincena nueva habría reescrito el cuadro con las
+ * columnas corridas. Un agente que "no escribe todavía" no está probado: está esperando.
+ *
+ * @param {Array} bloques salida de detectarQuincenas
+ * @param {number} filaInicio primera fila del cuerpo en la pestaña (las fórmulas se autorreferencian)
+ */
+export function filasQuincenas(bloques, filaInicio = 6, hoja = '_J_OBREROS') {
+  const H = `'${hoja}'`
+  return bloques.map((b, i) => {
+    const r = filaInicio + i
+    const ff = b.filaFecha
+    return [
+      { f: `=${H}!F${ff}` },
+      // El ÚLTIMO día cargado de la fila de fechas, aunque la fila tenga huecos.
+      { f: `=IFERROR(LOOKUP(2,1/(${H}!F${ff}:U${ff}<>""),${H}!F${ff}:U${ff}),"")` },
+      { f: `=COUNTA(${H}!F${ff}:U${ff})` },
+      { f: `=COUNT(${H}!A${b.inicio}:A${b.fin})` },
+      { f: `=C${r}*D${r}*'Parámetros'!$B$43` },
+      { f: `=SUM(${H}!V${b.inicio}:V${b.fin})` },
+      { f: `=SUM(${H}!X${b.inicio}:X${b.fin})`, estilo: 'moneda' },
+      { f: `=SUM(${H}!Y${b.inicio}:Y${b.fin})`, estilo: 'moneda' },
+      { f: `=SUM(${H}!Z${b.inicio}:Z${b.fin})`, estilo: 'moneda' },
+      { f: `=SUM(${H}!AA${b.inicio}:AA${b.fin})`, estilo: 'moneda_negrita' },
+    ]
+  })
 }
 
 /** Compara lo que hay contra lo que debería haber. PURA. Sirve para no reescribir al pepe. */
 export function hayCambio(bloquesNuevos = [], quincenasEnSheet = 0) {
   return bloquesNuevos.length !== quincenasEnSheet
+}
+
+/**
+ * NÚCLEO PURO: cuántas filas ocupa HOY el cuerpo del cuadro, y en qué fila está el TOTAL.
+ *
+ * No se puede contar "celdas no vacías de la columna A": debajo del cuadro viven el bloque POR
+ * CLIENTE y el de PROYECCIÓN, y contarlos daba 30 quincenas donde hay 14 — el agente habría creído
+ * que cambió algo en cada corrida y reescrito de más. El cuerpo termina donde dice TOTAL.
+ * @param {Array<Array>} colA valores de la columna A desde `filaInicio`
+ * @param {number} filaInicio
+ */
+export function cuerpoDelCuadro(colA = [], filaInicio = 6) {
+  const i = colA.findIndex((r) => /^total/i.test(String(r?.[0] ?? '').trim()))
+  const filas = i >= 0 ? i : colA.filter((r) => String(r?.[0] ?? '').trim()).length
+  return { filas, filaTotal: filaInicio + filas }
 }
 
 const $ = (v) => `$${Math.round(Number(v) || 0).toLocaleString('es-AR')}`
@@ -77,7 +113,7 @@ export function formatSync(r) {
  * Refresca los dos bloques que no son fórmula. `escribir:false` = solo informa qué cambiaría.
  */
 export async function sincronizarNomina(google, {
-  file_id, folder_ddjj, anio, tab_cargas = 'Nómina y Cargas Sociales',
+  file_id, folder_ddjj, anio, tab_cargas = 'Cargas Sociales',
   tab_quincenas = 'Jornales por Quincena', escribir = true,
 } = {}) {
   if (!google?.readSheetValues) return { error: 'no hay una cuenta de Google autorizada' }
@@ -98,11 +134,13 @@ export async function sincronizarNomina(google, {
   // ── 2. Quincenas de jornales ──
   const grid = await google.readSheetValues(file_id, '_J_OBREROS!A1:AC990')
   const bloques = detectarQuincenas(grid ?? [])
-  let quincenasEnSheet = 0
+  const FILA_INICIO = 6
+  let cuerpo = { filas: 0, filaTotal: FILA_INICIO }
   try {
-    const q = await google.readSheetValues(file_id, `${tab_quincenas}!A5:A200`)
-    quincenasEnSheet = (q ?? []).filter((r) => String(r?.[0] ?? '').trim()).length - 1 // menos la fila TOTAL
+    const q = await google.readSheetValues(file_id, `${tab_quincenas}!A${FILA_INICIO}:A200`)
+    cuerpo = cuerpoDelCuadro(q ?? [], FILA_INICIO)
   } catch { /* pestaña nueva */ }
+  const quincenasEnSheet = cuerpo.filas
 
   const cambio = nuevos.length > 0 || hayCambio(bloques, quincenasEnSheet)
   const base = {
@@ -116,7 +154,20 @@ export async function sincronizarNomina(google, {
   }
   if (!escribir || !cambio) return base
 
-  // Se devuelve el spec de filas para que la tool lo escriba con el renderizador. Este módulo no
-  // escribe: así se puede probar en seco y el llamador decide.
-  return { ...base, escribio: true, spec_quincenas: filasQuincenas(bloques), ddjj: ddjj?.meses ?? [] }
+  // Se devuelve el spec de filas para que la tool lo escriba. Este módulo no escribe: así se puede
+  // probar en seco y el llamador decide.
+  //
+  // `insertar_filas` importa: si entró una quincena nueva, hay que INSERTAR la fila antes de
+  // escribir, no pisar la fila TOTAL. Al insertar, Google reajusta solo el SUM del total y los
+  // rangos del bloque por cliente y de la proyección — por eso insertar es lo correcto y sobrescribir
+  // sería destruir el cuadro.
+  return {
+    ...base,
+    escribio: true,
+    fila_inicio: FILA_INICIO,
+    fila_total: cuerpo.filaTotal,
+    insertar_filas: Math.max(0, bloques.length - cuerpo.filas),
+    spec_quincenas: filasQuincenas(bloques, FILA_INICIO),
+    ddjj: ddjj?.meses ?? [],
+  }
 }
