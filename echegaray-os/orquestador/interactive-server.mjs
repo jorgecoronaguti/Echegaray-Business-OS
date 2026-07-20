@@ -39,6 +39,8 @@ import { cajaVencidoTools } from './lib/tools/caja-vencido-tool.mjs'
 import { controlAdministrativoTools } from './lib/tools/control-administrativo-tool.mjs'
 import { auditarPestanaTools } from './lib/tools/auditar-pestana-tool.mjs'
 import { estadoEmpresaTools } from './lib/tools/estado-empresa-tool.mjs'
+import { tomarSnapshot } from './lib/sheet-snapshot.mjs'
+import { deshacerSheetTools } from './lib/tools/deshacer-sheet-tool.mjs'
 import { cotizacionesHistorialTools } from './lib/tools/cotizaciones-historial-tool.mjs'
 import { slidesPdfTools } from './lib/tools/slides-pdf-tool.mjs'
 import { noConformidadesTools } from './lib/tools/no-conformidades-tool.mjs'
@@ -139,7 +141,7 @@ async function driveRegistry(attachment, userEmail) {
   const google = op
     ? makeGoogleClient({ config: cfg, scopes: WORKSPACE_SCOPES, getToken: getTokenFor(op) })
     : makeGoogleClient({ config: cfg })
-  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...sheetsFormatTools(op ? google : null), ...docsFormatTools(op ? google : null), ...osDataTools(), ...jornalesTools(google), ...certificacionesTools(), ...comprasTools(), ...obligacionesTools(), ...adicionalesTools(), ...legajosTools(), ...pylTools(google), ...cotizacionesTools(), ...noConformidadesTools(), ...cajaVencidoTools(), ...controlAdministrativoTools(), ...auditarPestanaTools(op ? google : null), ...estadoEmpresaTools(op ? google : null), ...cotizacionesHistorialTools(), ...slidesPdfTools(op ? google : null), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ google: op ? google : null }), ...appsheetPedidosTools({ google: op ? google : null }), ...gastoSheetTools(op ? google : null), ...sheetRenderTools(op ? google : null), ...sheetDropdownTools(op ? google : null), ...briefingCajaTools(op ? google : null) }
+  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...sheetsFormatTools(op ? google : null), ...docsFormatTools(op ? google : null), ...osDataTools(), ...jornalesTools(google), ...certificacionesTools(), ...comprasTools(), ...obligacionesTools(), ...adicionalesTools(), ...legajosTools(), ...pylTools(google), ...cotizacionesTools(), ...noConformidadesTools(), ...cajaVencidoTools(), ...controlAdministrativoTools(), ...auditarPestanaTools(op ? google : null), ...estadoEmpresaTools(op ? google : null), ...deshacerSheetTools(op ? google : null), ...cotizacionesHistorialTools(), ...slidesPdfTools(op ? google : null), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ google: op ? google : null }), ...appsheetPedidosTools({ google: op ? google : null }), ...gastoSheetTools(op ? google : null), ...sheetRenderTools(op ? google : null), ...sheetDropdownTools(op ? google : null), ...briefingCajaTools(op ? google : null) }
   // Si el dueño adjuntó una imagen/archivo, exponer una tool para GUARDARLO en su Drive.
   if (attachment?.data && attachment?.media_type) {
     registry['drive.upload_adjunto'] = {
@@ -172,6 +174,9 @@ async function driveRegistry(attachment, userEmail) {
       return { count: rows.length, items: rows.map((r) => ({ name: r.name, ruta: r.path, tipo: r.tipo, file_id: r.drive_file_id })) }
     },
   }
+  // El cliente de Google se expone aparte (no como tool) para que el ejecutor pueda tomar el
+  // snapshot de la pestaña antes de escribir. No enumerable: no debe aparecer como una tool más.
+  Object.defineProperty(registry, "__google", { value: google, enumerable: false })
   return registry
 }
 
@@ -966,6 +971,10 @@ async function ask({ directive, fileId, fast, attachments, attachment, history, 
     // Enqueue REAL: una escritura propuesta (drive.write) se registra en
     // orq.pending_operations con su cambio concreto y queda esperando aprobación.
     enqueue: (op) => enqueuePendingOperation({ ...op, tenantId: CTX.context.tenantId, agentSlug: 'interactive' }),
+    // RED DE SEGURIDAD: guarda cómo estaba la pestaña ANTES de cada escritura, para poder deshacer.
+    // El OS toca planillas reales de la empresa; el 2026-07-19 una edición frenó por tope de costo
+    // y dejó la Caja medio reescrita sin forma de volver.
+    snapshot: (args) => tomarSnapshot({ ...args, google: registry.__google, directive, runId, logger: log }),
   })
   // Cada tool que el modelo invoca deja un paso legible para el indicador en vivo;
   // si una tool devuelve un destino de navegación (navigate_to), lo capturamos para

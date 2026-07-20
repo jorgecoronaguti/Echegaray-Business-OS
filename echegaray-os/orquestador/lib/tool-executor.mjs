@@ -10,6 +10,8 @@
 //
 // Un fallo de la tool no rompe el razonamiento: vuelve como {error} y el modelo sigue.
 
+import { mereceSnapshot, archivoObjetivo, pestanaObjetivo } from './sheet-snapshot.mjs'
+
 /**
  * @param {object} deps
  * @param {(capabilitySlug:string, principalId:string)=>Promise<string>} deps.decide  policy (auto|requires_approval|forbidden)
@@ -18,7 +20,7 @@
  * @param {(op:object)=>Promise<string>} [deps.enqueue]  encola una operación pendiente, devuelve su id
  * @param {object} [deps.logger]
  */
-export function makeToolExecutor({ decide, tools, principalId, enqueue, logger }) {
+export function makeToolExecutor({ decide, tools, principalId, enqueue, logger, snapshot }) {
   return async function toolExecutor(name, input, meta) {
     // El modelo usa el `schema.name` (drive_read); mapeamos a la tool por ese nombre.
     const entry = Object.values(tools).find((t) => t.schema?.name === name) || tools[name]
@@ -60,6 +62,20 @@ export function makeToolExecutor({ decide, tools, principalId, enqueue, logger }
       })
       logger?.info?.('tool-executor: operación encolada para aprobación', { capability: entry.capability, op_id: opId })
       return { queued: true, pending_operation_id: opId, capability: entry.capability, reason: 'requiere aprobación humana (Nivel E): quedó encolada. NO se ejecutó. Continuá el análisis sin asumir que ya ocurrió.' }
+    }
+
+    // RED DE SEGURIDAD: antes de tocar el contenido de una pestaña, guardar cómo estaba. Va acá
+    // —punto único por donde pasan las 30 tools de escritura de Drive— y no tool por tool, para que
+    // ninguna escritura futura nazca sin marcha atrás por olvido. Si el snapshot falla, se registra
+    // y se sigue: no puede bloquear el trabajo del dueño.
+    if (snapshot && mereceSnapshot(name, entry.capability, input ?? {}, meta?.fileId)) {
+      await snapshot({
+        fileId: archivoObjetivo(input ?? {}, meta?.fileId),
+        pestana: pestanaObjetivo(input ?? {}),
+        tool: name,
+        directive: meta?.directive,
+        runId: meta?.runId,
+      }).catch(() => null)
     }
 
     // auto
