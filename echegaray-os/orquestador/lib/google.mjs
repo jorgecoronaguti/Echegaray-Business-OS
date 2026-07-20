@@ -655,6 +655,68 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       const j = await res.json()
       return { id: j.id, link: j.webViewLink || `https://drive.google.com/file/d/${j.id}/view` }
     },
+    /** EXPORTA un archivo nativo de Google (Sheet/Doc/Slides) a PDF y lo GUARDA en Drive.
+     *  Devuelve {id, link, nombre}. Si se pasa `parentId`, queda en esa carpeta (ej. la del cliente
+     *  en el data room). Es lo que permite mandar un presupuesto o un informe como PDF. */
+    async exportarComoPdf(fileId, { nombre, parentId } = {}) {
+      const token = await accessToken()
+      const res = await withRetry(() => doFetch(
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/export?mimeType=application/pdf`,
+        { headers: { Authorization: `Bearer ${token}` } }))
+      if (!res.ok) {
+        const t = String(await res.text()).slice(0, 200)
+        const e = new Error(`google export pdf ${res.status}: ${t}`); e.status = res.status; throw e
+      }
+      const b64 = Buffer.from(await res.arrayBuffer()).toString('base64')
+      let base = nombre
+      if (!base) {
+        const meta = await apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=name&supportsAllDrives=true`).catch(() => null)
+        base = meta?.name || 'documento'
+      }
+      const final = /\.pdf$/i.test(base) ? base : `${base}.pdf`
+      const up = await this.uploadFile(final, b64, 'application/pdf', { parentId })
+      return { ...up, nombre: final }
+    },
+
+    /** Crea una PRESENTACIÓN de Google Slides. `slides` = [{titulo, cuerpo}]. La primera queda como
+     *  portada. Devuelve {id, link}. Requiere actuar como usuario (OAuth). */
+    async createSlides(name, slides = [], { parentId } = {}) {
+      const pres = await apiSend('https://slides.googleapis.com/v1/presentations', 'POST', { title: name })
+      const id = pres.presentationId
+      if (parentId) {
+        await apiSend(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?addParents=${encodeURIComponent(parentId)}&supportsAllDrives=true`, 'PATCH', {}).catch(() => {})
+      }
+      // La presentación nace con 1 slide en blanco: se usa para la portada.
+      const primera = pres.slides?.[0]?.objectId
+      const requests = []
+      const conTexto = (slideId, titulo, cuerpo, i) => {
+        // Cada slide creada con layout TITLE_AND_BODY trae placeholders; se rellenan por índice.
+        if (titulo) requests.push({ insertText: { objectId: `titulo_${i}`, text: String(titulo) } })
+        if (cuerpo) requests.push({ insertText: { objectId: `cuerpo_${i}`, text: String(cuerpo) } })
+      }
+      slides.forEach((s, i) => {
+        if (i === 0 && primera) {
+          // portada: se reemplaza la slide inicial por una con layout de título
+          requests.push({ deleteObject: { objectId: primera } })
+        }
+        requests.push({
+          createSlide: {
+            objectId: `slide_${i}`,
+            slideLayoutReference: { predefinedLayout: i === 0 ? 'TITLE' : 'TITLE_AND_BODY' },
+            placeholderIdMappings: [
+              { layoutPlaceholder: { type: i === 0 ? 'CENTERED_TITLE' : 'TITLE', index: 0 }, objectId: `titulo_${i}` },
+              ...(i === 0 ? [] : [{ layoutPlaceholder: { type: 'BODY', index: 0 }, objectId: `cuerpo_${i}` }]),
+            ],
+          },
+        })
+        conTexto(`slide_${i}`, s?.titulo, i === 0 ? null : s?.cuerpo, i)
+      })
+      if (requests.length) {
+        await apiSend(`https://slides.googleapis.com/v1/presentations/${encodeURIComponent(id)}:batchUpdate`, 'POST', { requests })
+      }
+      return { id, link: `https://docs.google.com/presentation/d/${id}/edit` }
+    },
+
     /** Inserta una imagen (por URL pública accesible por Google) en un Google Doc. */
     async insertImageInDoc(fileId, imageUrl, { index = 1 } = {}) {
       return apiSend(
