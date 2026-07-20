@@ -14,7 +14,7 @@ export function learnTools() {
       schema: {
         name: 'aprender',
         description:
-          'Guardá un HECHO DURABLE que el dueño te enseñó o con el que te CORRIGIÓ: un proveedor clave, un criterio/preferencia de trabajo, un precio de referencia, un dato estable de una obra o cliente. El OS lo recordará y lo usará en próximas respuestas (interés compuesto: menos preguntar, menos API). NO uses esto para acciones/tareas puntuales, ni datos que cambian seguido (saldos del día), ni cosas que ya están en un archivo. Pasá afirmacion (el hecho claro y completo, autocontenido) y area (dominio: finanzas, obra, presupuesto, compras, etc.).',
+          'Guardá un HECHO DURABLE que el dueño te enseñó o con el que te CORRIGIÓ: un proveedor clave, un criterio/preferencia de trabajo, un precio de referencia, un dato estable de una obra o cliente. El OS lo recordará y lo usará en próximas respuestas (interés compuesto: menos preguntar, menos API). NO uses esto para acciones/tareas puntuales, ni datos que cambian seguido (saldos del día), ni cosas que ya están en un archivo. Pasá afirmacion (el hecho claro y completo, autocontenido) y area (dominio: finanzas, obra, presupuesto, compras, etc.). REGLA CRÍTICA: esto guarda lo que el DUEÑO te enseñó, NO tu propio análisis. Si te hizo una PREGUNTA, la respuesta va en tu texto al dueño — nunca metas tu respuesta acá y contestes "Guardado". Guardar no es responder: si llamás a esta herramienta, tu mensaje final igual tiene que contener la respuesta completa.',
         input_schema: {
           type: 'object',
           properties: {

@@ -48,12 +48,20 @@ export function skillsForCapability(capabilitySlug) {
 // dueña del dato. Auditoría 2026-07-19: no pasaba — 7 de 8 áreas quedaban sin ella porque la
 // capacidad de dominio ganaba la clasificación y `advise.data` no llegaba al tope de skills.
 // Un Sheet mal tocado rompe el sistema de negocio de la empresa, así que esto es regla dura.
-const SHEET_RE = /\b(sheet|sheets|planilla|planillas|pesta[ñn]a|spreadsheet|celda|celdas|f[oó]rmula|f[oó]rmulas|excel|xlsx?|hoja de c[aá]lculo|tabla din[aá]mica)\b/i
+const SHEET_RE = /\b(sheet|sheets|planilla|planillas|pesta[ñn]a|spreadsheet|celda|celdas|f[oó]rmula|f[oó]rmulas|excel|xlsx?|hoja de c[aá]lculo|tabla din[aá]mica|fila|filas|columna|columnas|rango|encabezado|validaci[oó]n de datos|formato condicional)\b/i
+
+// DOCUMENTOS REALES DE LA EMPRESA QUE **SON** SHEETS. El dueño los nombra por su nombre, no dice
+// "el sheet": "cómo debería estar armado el flujo de fondos" es una pregunta de Sheets aunque la
+// palabra "sheet" no aparezca. Medido 2026-07-20: esa pregunta exacta —la primera que dijo que iba
+// a hacer— NO cargaba la skill de Sheets, así que el OS iba a opinar del Flujo de Fondos sin el
+// criterio de cómo se construye una planilla. Los nombres salen del data room real, no inventados.
+const ARTEFACTO_SHEET_RE = /\b(flujo de fondos|flujo de caja|cash ?-?flow|control de gastos|avance de obra|avance_obra|cobranzas|libro iva|jornales|fcl|p&l|dashboard)\b/i
 export const SKILL_SHEETS = 'google-sheets-business-systems'
 
 /** ¿La directiva habla de un Sheet/planilla (y por lo tanto exige el criterio de Sheets)? PURA. */
 export function mencionaSheet(directive) {
-  return SHEET_RE.test(String(directive || ''))
+  const d = String(directive || '')
+  return SHEET_RE.test(d) || ARTEFACTO_SHEET_RE.test(d)
 }
 
 /**
