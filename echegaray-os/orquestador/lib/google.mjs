@@ -600,6 +600,11 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         valor: c?.formattedValue ?? null,
         numero: c?.effectiveValue?.numberValue ?? null,
         formato: c?.userEnteredFormat?.numberFormat?.type ?? null,
+        // DERRAMADA: tiene valor calculado pero NADIE escribió nada en ella — es el resultado de una
+        // fórmula matricial vecina (IMPORTRANGE, ARRAYFORMULA, QUERY, IMPORTHTML). Sin esta marca,
+        // auditar contaba cada celda derramada como "número escrito a mano": una IMPORTRANGE de 990
+        // filas aparecía como 5.593 números tipeados. Es exactamente lo contrario de lo que es.
+        derivada: !c?.userEnteredValue && !!c?.effectiveValue,
       })))
       return {
         titulo: s.properties?.title ?? null,

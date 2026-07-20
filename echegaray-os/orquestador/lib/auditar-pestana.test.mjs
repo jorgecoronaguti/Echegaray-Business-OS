@@ -4,7 +4,9 @@ import { auditarGrid, formatAuditoria, detectarEncabezado, colA1 } from './audit
 
 let n = 0
 const t = (nombre, fn) => { fn(); n++; console.log('  ok', nombre) }
-const celda = (v, f = null) => ({ formula: f, valor: v === null ? null : String(v), numero: typeof v === 'number' ? v : null, formato: null })
+const celda = (v, f = null) => ({ formula: f, valor: v === null ? null : String(v), numero: typeof v === 'number' ? v : null, formato: null, derivada: false })
+// Celda DERRAMADA por una fórmula matricial: tiene valor calculado y nadie escribió en ella.
+const derr = (v) => ({ formula: null, valor: String(v), numero: typeof v === 'number' ? v : null, formato: null, derivada: true })
 const cod = (r, c) => r.hallazgos.find((h) => h.codigo === c)
 
 t('columna A1 more allá de la Z', () => {
@@ -117,6 +119,26 @@ t('detectarEncabezado saltea filas de título', () => {
 t('formatAuditoria no rompe con pestaña sin defectos', () => {
   const r = auditarGrid({ titulo: 'T', filas: [[celda('a'), celda('b')], [celda('x'), celda(2, '=1+1')]] })
   assert.match(formatAuditoria(r), /Sin defectos estructurales/)
+})
+
+t('las celdas DERRAMADAS por IMPORTRANGE no son "números a mano" (error real 2026-07-20)', () => {
+  // _J_OBREROS tiene UNA fórmula (=IMPORTRANGE) y ~5.593 valores derramados. Contarlos como
+  // tipeados a mano hacía ver la pestaña mejor construida del archivo como la peor.
+  const r = auditarGrid({ titulo: '_J_OBREROS', filas: [
+    [celda('OBRERO', '=IMPORTRANGE("x";"Obreros!A1:C9")'), derr('DIAS'), derr('$ HORA')],
+    [derr('Aguero'), derr(76), derr(5250)],
+    [derr('Ochoa'), derr(76), derr(5875)],
+  ] })
+  assert.equal(r.censo.numeros_escritos_a_mano, 0)
+  assert.equal(r.censo.celdas_derramadas, 8, 'las 8 celdas derramadas del ejemplo')
+  assert.equal(cod(r, 'sin_una_sola_formula'), undefined, 'tiene cálculo: es una IMPORTRANGE viva')
+})
+
+t('una columna derramada no se marca como contaminada con texto', () => {
+  const r = auditarGrid({ titulo: 'T', filas: [
+    [celda('Monto')], [derr(1)], [derr(2)], [derr(3)], [derr(4)], [derr('s/d')],
+  ] })
+  assert.equal(cod(r, 'columna_mixta'), undefined)
 })
 
 console.log(`auditar-pestana: ${n} checks OK`)

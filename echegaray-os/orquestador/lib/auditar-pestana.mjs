@@ -46,13 +46,18 @@ export function auditarGrid(grid = {}) {
   const ancho = anchos.length ? Math.max(...anchos) : 0
   const celdas = filasConDato.flatMap((f) => f.filter(llena))
   const conFormula = celdas.filter((c) => c.formula)
-  const numericas = celdas.filter((c) => !c.formula && c.numero !== null)
+  // Una celda DERRAMADA por una fórmula matricial no es un número escrito a mano: es cálculo. Sin
+  // esta distinción, una pestaña alimentada por IMPORTRANGE parecía la peor del archivo cuando en
+  // realidad es la mejor construida (hallazgo del dueño, 2026-07-20).
+  const derramadas = celdas.filter((c) => c.derivada)
+  const numericas = celdas.filter((c) => !c.formula && !c.derivada && c.numero !== null)
 
   const censo = {
     filas_con_dato: filasConDato.length,
     columnas: ancho,
     celdas_con_contenido: celdas.length,
     con_formula: conFormula.length,
+    celdas_derramadas: derramadas.length,
     numeros_escritos_a_mano: numericas.length,
     celdas_combinadas: merges.length,
   }
@@ -130,7 +135,7 @@ export function auditarGrid(grid = {}) {
 
   // ---- 6. Columna numérica contaminada con texto ----
   for (let col = 0; col < ancho; col++) {
-    const cuerpo = filas.slice(encabezadoIdx + 1).map((f) => (f || [])[col]).filter(llena)
+    const cuerpo = filas.slice(encabezadoIdx + 1).map((f) => (f || [])[col]).filter((c) => llena(c) && !c.derivada)
     if (cuerpo.length < 4) continue
     const nums = cuerpo.filter((c) => c.numero !== null).length
     const txt = cuerpo.length - nums
@@ -153,7 +158,7 @@ export function auditarGrid(grid = {}) {
   }
 
   // ---- 8. Proporción de cálculo: ¿la pestaña calcula o es una foto? ----
-  if (numericas.length > 0 && conFormula.length === 0) {
+  if (numericas.length > 0 && conFormula.length === 0 && derramadas.length === 0) {
     add('sin_una_sola_formula', 'alta', 'La pestaña no tiene ni una fórmula: es una foto',
       `${numericas.length} números escritos a mano y cero cálculo. Nada se actualiza solo; cada cambio depende de que alguien recuerde recalcular.`,
       'Definir qué columnas son captura (se escriben) y cuáles son cálculo (fórmula), y convertir las de cálculo.')
@@ -171,7 +176,7 @@ export function formatAuditoria(r) {
   const c = r.censo
   const L = [`PESTAÑA "${r.titulo}" — ${c.filas_con_dato} filas × ${c.columnas} columnas`]
   L.push(`Columnas: ${r.encabezado.join(' | ') || '(sin encabezado claro)'}`)
-  L.push(`Cálculo: ${c.con_formula} celdas con fórmula vs ${c.numeros_escritos_a_mano} números escritos a mano${c.celdas_combinadas ? ` · ${c.celdas_combinadas} combinadas` : ''}`)
+  L.push(`Cálculo: ${c.con_formula} celdas con fórmula${c.celdas_derramadas ? ` · ${c.celdas_derramadas} derramadas por fórmula matricial (IMPORTRANGE/ARRAYFORMULA)` : ''} vs ${c.numeros_escritos_a_mano} números escritos a mano${c.celdas_combinadas ? ` · ${c.celdas_combinadas} combinadas` : ''}`)
   const v = r.vinculos
   if (v?.obras_reconocidas?.length) L.push(`Obras reconocidas por el OS: ${v.obras_reconocidas.map((o) => o.en_el_sheet === o.obra ? o.obra : `${o.en_el_sheet}→${o.obra}`).join(', ')}`)
   if (v?.sabe_el_os?.length) L.push(`\nLO QUE EL OS YA SABE de esta área (no lo redescubras):\n  - ${v.sabe_el_os.join('\n  - ')}`)
