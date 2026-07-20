@@ -232,3 +232,32 @@ export async function panoramaAreas() {
   const orden = new Map(AREAS.map((a, i) => [a.clave, i]))
   return rows.sort((x, y) => (orden.get(x.area) ?? 99) - (orden.get(y.area) ?? 99))
 }
+
+/**
+ * Bloque COMPACTO de la biblioteca de un área para inyectar al contexto del chat.
+ * PURO. Sólo lo que sirve para trabajar: lo que el OS ya sabe (dónde vive cada dato) y de qué
+ * fuentes. No manda pendientes ni acciones — eso es material de review, no de contexto, y gastaría
+ * tokens en cada pedido. Se recorta duro: el objetivo es que el CFO no salga a buscar de cero algo
+ * que el OS ya tiene anotado, no volcarle la biblioteca entera.
+ */
+export function bloqueContextoArea(r, maxAfirmaciones = 6) {
+  if (!r || r.error || !r.sabe?.length) return ''
+  const L = [
+    `LO QUE EL OS YA SABE DE ${r.area_nombre.toUpperCase()} (dato confirmado; NO salgas a buscar de ` +
+      'cero lo que ya está acá, y si algo de esto contradice lo que ves, avisá en vez de asumir):',
+  ]
+  for (const s of r.sabe.slice(0, maxAfirmaciones)) L.push(`• ${String(s.afirmacion).slice(0, 400)}`)
+  if (r.fuentes?.length) L.push(`Fuentes declaradas del área: ${r.fuentes.map((f) => f.nombre).join(' · ')}.`)
+  return L.join('\n') + '\n\n'
+}
+
+// Verbos de ACCIÓN que descalifican la respuesta-biblioteca. La biblioteca es una LECTURA; si el
+// dueño pide abrir un review, preparar una reunión o decidir, secuestrarle el pedido con un listado
+// es exactamente el defecto de ruteo que esta detección venía a corregir (me pasó el 20/07 con
+// "procedé con la revisión operativa": contestó la biblioteca en vez de abrir el review).
+const RE_ACCION = /(?:^|[^a-záéíóúñ])(revisi[oó]n\s+operativa|operating\s+review|abr[ií]|prepar|arm[aá]|proced|decid|resolv|reuni[oó]n|ejecut|corr[eé]|gener|cre[aá]|carg|actualiz|escrib|mand[aá]|envi)(?:l[oa]s?|me|te|se|nos)?(?![a-z])/i
+
+/** ¿El pedido es una ACCIÓN y no una consulta de biblioteca? PURA. */
+export function pideAccion(texto) {
+  return RE_ACCION.test(String(texto || ''))
+}

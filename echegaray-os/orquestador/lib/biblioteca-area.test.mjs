@@ -1,5 +1,5 @@
 // Test hermético del núcleo de la biblioteca por área. Sin DB, sin API.
-import { resolverArea, areaMencionada, nombreArea, componerBiblioteca, formatBiblioteca, formatPanorama, AREAS } from './biblioteca-area.mjs'
+import { resolverArea, areaMencionada, pideAccion, bloqueContextoArea, nombreArea, componerBiblioteca, formatBiblioteca, formatPanorama, AREAS } from './biblioteca-area.mjs'
 
 let ok = 0
 let falla = 0
@@ -39,6 +39,14 @@ check('"cuánta caja hay" NO es el área de finanzas', areaMencionada('cuánta c
 check('"la obra Messina" NO es el área Obras', areaMencionada('cómo viene la obra Messina') === null)
 check('dos áreas nombradas → null, no elige', areaMencionada('compará compras contra personas') === null)
 check('vacío → null', areaMencionada('') === null)
+
+// ── pideAccion: la biblioteca NO debe secuestrar un pedido de acción (defecto real 20/07) ──
+check('"procedé con la revisión operativa" es acción', pideAccion('procedé con la revisión operativa formal'))
+check('"abrila y listame" es acción', pideAccion('abrila y listame los puntos'))
+check('"prepará la reunión" es acción', pideAccion('prepará la reunión de finanzas'))
+check('"mandá un mail" es acción', pideAccion('mandá un mail al cliente'))
+check('"qué sabés de personas" NO es acción', !pideAccion('¿qué sabés del área de personas?'))
+check('"qué le falta a finanzas" NO es acción', !pideAccion('qué le falta a finanzas'))
 
 // ── componerBiblioteca ──
 const piezas = [
@@ -86,6 +94,19 @@ check('panorama: lista las áreas', pan.includes('Compras'))
 check('panorama: expone las sin clasificar', pan.includes('SIN CLASIFICAR: 35'))
 check('panorama: marca las áreas sin afirmaciones', pan.includes('Calidad'))
 check('panorama: la fila null no se imprime como área', !/\n {2}null/.test(pan))
+
+// ── bloqueContextoArea: lo que se le inyecta al chat en cada pedido del área ──
+const blq = bloqueContextoArea(r)
+check('contexto: nombra el área', blq.includes('ADMINISTRACIÓN Y FINANZAS'))
+check('contexto: trae la afirmación', blq.includes('pestaña Caja'))
+check('contexto: le dice que no busque de cero', blq.includes('de cero'))
+check('contexto: lista las fuentes', blq.includes('Cash Flow'))
+// Es contexto de trabajo, no un review: pendientes y acciones NO viajan en cada pedido (costo).
+check('contexto: NO manda pendientes', !blq.includes('Conciliar banco'))
+check('contexto: NO manda acciones', !blq.includes('Llamar a Messina'))
+check('contexto: área sin afirmaciones no inyecta nada', bloqueContextoArea(vacia) === '')
+check('contexto: error no inyecta nada', bloqueContextoArea({ error: 'x' }) === '')
+check('contexto: recorta a maxAfirmaciones', bloqueContextoArea({ area_nombre: 'X', sabe: [{afirmacion:'a'},{afirmacion:'b'},{afirmacion:'c'}] }, 2).split('•').length === 3)
 
 console.log(`biblioteca-area.test: ${ok} OK, ${falla} FALLA`)
 if (falla) process.exit(1)

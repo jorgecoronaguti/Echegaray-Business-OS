@@ -64,7 +64,9 @@ import { gastoSheetTools } from './lib/tools/gasto-sheet.mjs'
 import { sheetRenderTools } from './lib/tools/sheet-render.mjs'
 import { sheetDropdownTools } from './lib/tools/sheet-dropdowns.mjs'
 import { bibliotecaAreaTools } from './lib/tools/biblioteca-area-tool.mjs'
-import { areaMencionada, bibliotecaArea, formatBiblioteca } from './lib/biblioteca-area.mjs'
+import { operatingReviewTools } from './lib/tools/operating-review-tool.mjs'
+import { abrirReview, formatReview } from './lib/operating-review.mjs'
+import { areaMencionada, bibliotecaArea, formatBiblioteca, bloqueContextoArea, pideAccion } from './lib/biblioteca-area.mjs'
 import { briefingCajaTools } from './lib/tools/briefing-caja-tool.mjs'
 import { estadoOperativoObra, esObraOperativa } from './lib/obra-operativa.mjs'
 import { findObras, desviosObras, aprendizajesPostMortem } from './lib/obra-economics.mjs'
@@ -145,7 +147,7 @@ async function driveRegistry(attachment, userEmail) {
   const google = op
     ? makeGoogleClient({ config: cfg, scopes: WORKSPACE_SCOPES, getToken: getTokenFor(op) })
     : makeGoogleClient({ config: cfg })
-  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...sheetsFormatTools(op ? google : null), ...docsFormatTools(op ? google : null), ...osDataTools(), ...jornalesTools(google), ...certificacionesTools(), ...comprasTools(), ...obligacionesTools(), ...adicionalesTools(), ...legajosTools(), ...pylTools(google), ...cotizacionesTools(), ...noConformidadesTools(), ...cajaVencidoTools(), ...controlAdministrativoTools(), ...auditarPestanaTools(op ? google : null), ...estadoEmpresaTools(op ? google : null), ...deshacerSheetTools(op ? google : null), ...operacionesSheetTools(op ? google : null), ...reclamoCobranzaTools(op ? google : null), ...cotizacionesHistorialTools(), ...slidesPdfTools(op ? google : null), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ google: op ? google : null }), ...appsheetPedidosTools({ google: op ? google : null }), ...gastoSheetTools(op ? google : null), ...sheetRenderTools(op ? google : null), ...sheetDropdownTools(op ? google : null), ...briefingCajaTools(op ? google : null), ...bibliotecaAreaTools() }
+  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...sheetsFormatTools(op ? google : null), ...docsFormatTools(op ? google : null), ...osDataTools(), ...jornalesTools(google), ...certificacionesTools(), ...comprasTools(), ...obligacionesTools(), ...adicionalesTools(), ...legajosTools(), ...pylTools(google), ...cotizacionesTools(), ...noConformidadesTools(), ...cajaVencidoTools(), ...controlAdministrativoTools(), ...auditarPestanaTools(op ? google : null), ...estadoEmpresaTools(op ? google : null), ...deshacerSheetTools(op ? google : null), ...operacionesSheetTools(op ? google : null), ...reclamoCobranzaTools(op ? google : null), ...cotizacionesHistorialTools(), ...slidesPdfTools(op ? google : null), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ google: op ? google : null }), ...appsheetPedidosTools({ google: op ? google : null }), ...gastoSheetTools(op ? google : null), ...sheetRenderTools(op ? google : null), ...sheetDropdownTools(op ? google : null), ...briefingCajaTools(op ? google : null), ...bibliotecaAreaTools(), ...operatingReviewTools() }
   // Si el dueño adjuntó una imagen/archivo, exponer una tool para GUARDARLO en su Drive.
   if (attachment?.data && attachment?.media_type) {
     registry['drive.upload_adjunto'] = {
@@ -670,13 +672,28 @@ async function ask({ directive, fileId, fast, attachments, attachment, history, 
       }
     }
   }
+  // REVISIÓN OPERATIVA (0 API) — "abrí/prepará la revisión operativa de X". Es una capacidad
+  // DETERMINÍSTICA: junta hallazgos que ya existen y les pone la estructura. Se resuelve acá y no
+  // por el modelo porque en haiku alucinaba un "bloqueo de arquitectura" y no llamaba la tool
+  // (medido el 20/07). El modelo sigue teniendo la tool para los casos que no matchean esto.
+  if (/\b(revisi[oó]n\s+operativa|operating\s+review)\b/i.test(directive)) {
+    const areaRev = areaMencionada(directive)
+    if (areaRev) {
+      const rev = await abrirReview({ area: areaRev }).catch((e) => ({ error: String(e?.message ?? e) }))
+      if (!rev.error) {
+        return { answer: formatReview(rev), model: 'review', capability: 'general', skills: [], navigate: null }
+      }
+    }
+  }
   // BIBLIOTECA POR ÁREA (0 API) — si la pregunta NOMBRA una de las 8 áreas, la respuesta es la
   // biblioteca de ESA área, no el volcado general de lo aprendido. Va ANTES de learnedSummary:
   // "¿qué sabés del área de personas?" caía en el resumen global y contestaba con la taxonomía
   // vieja (defecto real medido el 20/07). areaMencionada() devuelve null si no hay área o si hay
   // más de una, y entonces sigue el camino de siempre.
   if (/\b(qu[eé]\s+(sab[eé]s|sabemos|ten[eé]s|tenemos|hay|le\s+falta|falta)|biblioteca|conocimiento|pendientes?)\b/i.test(directive)) {
-    const areaClave = areaMencionada(directive)
+    // Si pide ACCIÓN (abrir un review, preparar una reunión, decidir), NO se contesta con la
+    // biblioteca: eso lo resuelve el modelo con las tools. La biblioteca es sólo lectura.
+    const areaClave = pideAccion(directive) ? null : areaMencionada(directive)
     if (areaClave) {
       const r = await bibliotecaArea(areaClave)
       return { answer: formatBiblioteca(r), model: 'biblioteca', capability: 'general', skills: [], navigate: null }
@@ -1030,7 +1047,17 @@ async function ask({ directive, fileId, fast, attachments, attachment, history, 
     : ''
   // MEMORIA (PRP-016/023): lo que el dueño enseñó (top, referencia) + lo RELEVANTE al pedido
   // actual (recuperado por tema, de toda la memoria) → el chat "recuerda" lo específico.
-  const [known, relevante] = await Promise.all([ownerTaughtFacts(), relevantMemory(directive)])
+  // BIBLIOTECA DEL ÁREA (0 API extra, ~200 tokens cacheables): si el pedido nombra un área, el
+  // contexto recibe lo que el OS YA SABE de ella. Antes el conocimiento llegaba sólo por
+  // coincidencia de palabras (relevantMemory), así que el CFO podía salir a buscar dónde están
+  // los saldos teniéndolo anotado. Esto cierra ese circuito.
+  const areaDelPedido = areaMencionada(directive)
+  const [known, relevante, bibArea] = await Promise.all([
+    ownerTaughtFacts(),
+    relevantMemory(directive),
+    areaDelPedido ? bibliotecaArea(areaDelPedido).catch(() => null) : Promise.resolve(null),
+  ])
+  const areaBlock = bibArea ? bloqueContextoArea(bibArea) : ''
   const memoria = [...new Set([...relevante, ...known.map((k) => k + ' _(vos)_')])].slice(0, 12)
   const knownBlock = memoria.length
     ? 'MEMORIA DEL OS (lo que sabés de la empresa; _(vos)_ = te lo enseñó el dueño, _(OS)_ = lo dedujo el OS; usalo si viene al caso, no lo repitas porque sí):\n' + memoria.map((k) => '• ' + k).join('\n') + '\n\n'
@@ -1097,6 +1124,7 @@ async function ask({ directive, fileId, fast, attachments, attachment, history, 
 
   const prompt =
     `HOY: ${hoy} (San Juan, Argentina). Usá esta fecha; no la inventes.\n\n` +
+    areaBlock +
     knownBlock +
     hist +
     threadNudge +
