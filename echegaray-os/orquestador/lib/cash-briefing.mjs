@@ -6,8 +6,22 @@ export const CASHFLOW_ID = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 
 export function parseMonto(s) {
-  const n = Number(String(s ?? '').replace(/[^\d,-]/g, '').replace(/\./g, '').replace(',', '.'))
-  return Number.isFinite(n) ? n : 0
+  const t = String(s ?? '').trim()
+  // NOTACIÓN CONTABLE: "($ 531.000,00)" son PARÉNTESIS, y en contabilidad los paréntesis son el
+  // signo menos. Sin esto, las notas de crédito entraban como cargos POSITIVOS.
+  //
+  // Medido el 20/07: tres notas de crédito (DUPEC $531.000 y dos de Corralón Progreso) se replicaron
+  // en Supabase con el signo invertido, y la réplica quedó $1.093.849 por encima del Sheet — el doble
+  // de cada nota, porque no sólo no restaban: sumaban. Se descubrió recién al contrastar el total del
+  // núcleo contra el control de la planilla, que es exactamente para lo que sirve ese control.
+  //
+  // El formato de la celda no es asunto del parser en general, PERO el paréntesis no es formato: es
+  // el signo. Un parser que lo tira devuelve un número con la magnitud correcta y el sentido opuesto,
+  // que es peor que no devolver nada.
+  const negativo = /^\(.*\)$/.test(t)
+  const n = Number(t.replace(/[^\d,-]/g, '').replace(/\./g, '').replace(',', '.'))
+  if (!Number.isFinite(n)) return 0
+  return negativo ? -Math.abs(n) : n
 }
 /** "DD/MM/YYYY" o "DD/MM/YY" (es-AR) → Date, o null. */
 export function parseFecha(s) {

@@ -98,7 +98,7 @@ export const LINEA_CHEQUES = {
 //                ajustado por la inflación de Parámetros. Es un SUPUESTO declarado, no un dato.
 //   · null     — no se proyecta. Los jornales ya traen sus quincenas futuras de su propia planilla.
 /** Menos de esto no es una tendencia mensual, es un pago suelto. Misma regla que Estructura. */
-const MIN_MESES = 4
+export const MIN_MESES = 4
 /** La fila del encabezado con los 12 primeros-de-mes. Se usa para contar en cuántos hubo gasto. */
 const MESES_CAB = '$B$3:$M$3'
 
