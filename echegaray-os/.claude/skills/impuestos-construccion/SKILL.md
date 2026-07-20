@@ -43,6 +43,42 @@ No cubre: el tratamiento contable de reconocimiento (`contabilidad-constructoras
 
 **Lo que sigue siendo cierto (no cambió):** ninguna **alícuota o norma** se cita sin verificar en la sesión (AFIP/ARCA nacional, DGR San Juan provincial, municipio por obra). El dato del OS te dice *qué comprobantes hay y cuánto IVA*; NO te dice *qué alícuota aplica hoy* — eso siempre se verifica. El dato real y la norma vigente son dos cosas distintas: el primero está en el núcleo, la segunda se verifica cada vez.
 
+## IVA en la construcción: lo que cambia respecto de cualquier otra empresa
+
+- **Obra sobre inmueble AJENO** (el caso típico de Echegaray: se construye para un tercero): la locación está gravada. El punto crítico no es la alícuota sino **cuándo nace la obligación**.
+- **Perfeccionamiento del hecho imponible**: en obra sobre inmueble ajeno se perfecciona con la **aceptación del certificado de obra** (total o parcial) o con la **percepción del precio**, lo que ocurra **primero**. Consecuencia de caja brutal: **se debe el IVA del certificado aprobado aunque el cliente todavía no haya pagado.** Toda proyección de caja tiene que contemplarlo (cruzar con `finanzas-tesoreria-construccion`).
+- **Obra sobre inmueble PROPIO** (empresa constructora que construye para vender): el tratamiento es distinto — el hecho imponible se vincula a la transferencia del inmueble, con reglas propias. No asimilarlo al caso anterior.
+- **Alícuota reducida** para determinadas obras destinadas a vivienda: existe, pero su alcance es específico — **verificar alcance y vigencia antes de aplicarla**, nunca asumirla por tratarse de vivienda.
+- **Anticipos que congelan precio**: generan hecho imponible en el momento del anticipo, no al final.
+- **Saldo técnico vs. libre disponibilidad**: el IVA a favor de origen técnico no se pide de vuelta ni se compensa libremente — queda inmovilizado. Un saldo técnico creciente es caja atrapada y hay que monitorearlo.
+
+## Ganancias en obras que abarcan más de un ejercicio
+
+- Cuando una obra se extiende más allá del cierre del ejercicio, la ley prevé **métodos específicos de imputación del resultado** (según grado de avance / obra terminada, con condiciones). **La opción elegida debe mantenerse** y no se cambia libremente de un ejercicio a otro.
+- Elegir el método sin analizarlo distorsiona el resultado fiscal y el anticipo a pagar. **Verificar el artículo aplicable y sus condiciones vigentes** antes de definirlo — y decidirlo con el estudio contable, no unilateralmente.
+- Los **anticipos de Ganancias** se calculan sobre el impuesto del período anterior: en una empresa con resultado volátil (lo normal en construcción) esto genera pagos desalineados con la realidad → evaluar el régimen de **reducción de anticipos** cuando corresponda.
+
+## Ingresos Brutos y Convenio Multilateral: el régimen ESPECIAL de la construcción
+
+- Si la empresa tiene su administración en una jurisdicción y **ejecuta obra en otra**, no se aplica el régimen general de Convenio Multilateral sino un **régimen ESPECIAL para la actividad de construcción**, que atribuye una porción de la base a la jurisdicción de la sede/administración y el resto a la jurisdicción donde se ejecuta la obra. **Verificar el artículo y los porcentajes vigentes** antes de liquidar.
+- Ignorar esto es una de las contingencias más frecuentes y caras de una constructora que sale de su provincia.
+- **Alícuotas de IIBB**: varían por jurisdicción y por actividad. Para San Juan verificar la alícuota vigente de la actividad de construcción — nunca citarla de memoria.
+- **SIRCREB** (retención sobre acreditaciones bancarias): recauda IIBB directamente de la cuenta; si supera el impuesto determinado genera **saldo a favor permanente**.
+
+## Retenciones y percepciones: dónde se traba la caja (y cómo destrabarla)
+
+- La empresa puede estar **sufriendo** retenciones (IVA, Ganancias, IIBB, SUSS) y a la vez **actuar como agente** de retención — son roles distintos, con obligaciones distintas.
+- **Certificado de exclusión / constancia de no retención**: cuando la empresa acumula saldo a favor crónico, existen regímenes para solicitar la **exclusión** de retenciones/percepciones. Es una de las herramientas de caja más subutilizadas por una PyME: deja de financiar gratis al fisco. Verificar requisitos y vigencia del régimen aplicable.
+- Toda retención sufrida es **un pago a cuenta ya hecho**: si no se computa correctamente en la declaración, se paga dos veces. Controlar que todas estén imputadas.
+
+## Riesgos fiscales típicos de una constructora PyME (contingencias reales)
+
+- **Subcontratar monotributistas que en los hechos son dependientes**: riesgo laboral *y* fiscal (cruzar con `derecho-laboral-construccion`).
+- **Facturas apócrifas de proveedores**: la impugnación del crédito fiscal y del gasto recae sobre la empresa. Verificar la condición del proveedor en los registros del organismo antes de operar con montos relevantes.
+- **Diferencias entre lo certificado, lo facturado y lo declarado**: la construcción tiene desfasajes naturales; si no están explicados y documentados, se leen como omisión.
+- **Pagos en efectivo por encima del límite legal**: pueden impugnar el gasto y el crédito fiscal, aunque la operación sea real. Verificar el tope vigente.
+- **Falta de inscripción o registración** ante los organismos sectoriales/provinciales que correspondan a la obra.
+
 ## Criterios de decisión
 
 | Variable | Pregunta |
