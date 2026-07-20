@@ -935,6 +935,25 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       const j = await apiGet(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?fields=sheets.properties(sheetId,title,gridProperties)`)
       return (j.sheets || []).map((s) => ({ sheetId: s.properties?.sheetId, title: s.properties?.title, rows: s.properties?.gridProperties?.rowCount, cols: s.properties?.gridProperties?.columnCount }))
     },
+    /**
+     * Los grupos de filas (+/-) que ya tiene cada pestaña: [{ title, grupos:[{startIndex, endIndex, depth}] }].
+     *
+     * Hace falta para poder BORRARLOS antes de crear los nuevos. La API no reemplaza un grupo: lo
+     * apila. Un script que agrega grupos sin limpiar los anteriores deja el margen izquierdo con una
+     * escalera de +/- que crece en cada corrida — y este cuadro lo rehace un agente cada 2 horas.
+     */
+    async getRowGroups(fileId) {
+      const j = await apiGet(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?fields=sheets(properties(sheetId,title),rowGroups)`)
+      return (j.sheets || []).map((s) => ({
+        sheetId: s.properties?.sheetId,
+        title: s.properties?.title,
+        grupos: (s.rowGroups || []).map((g) => ({
+          startIndex: g.range?.startIndex ?? 0,
+          endIndex: g.range?.endIndex ?? 0,
+          depth: g.depth ?? 1,
+        })),
+      }))
+    },
     /** Operaciones ESTRUCTURALES de un Sheet (insertar/borrar filas o columnas, formato)
      *  vía batchUpdate. `requests` = array de requests de la Sheets API. */
     async spreadsheetBatchUpdate(fileId, requests) {

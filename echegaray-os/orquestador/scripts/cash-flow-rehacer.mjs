@@ -12,9 +12,12 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import {
-  lineasEgreso, formulaRubroEnVentana, formulaJornales, formulaCobranzas, bloqueControl,
-  formulaMesConProyeccion, origenProyeccion, LINEA_CHEQUES,
+  bloqueControl, CUADRO, verificarCuadro, formulaLineaMes, expresionReal, formulaTotalRubro, origenLinea,
 } from '../lib/cash-flow-lineas.mjs'
+import { REGLAS } from '../lib/rubro-caja.mjs'
+
+/** En qué pestaña está el detalle de un rubro. Sale de REGLAS: una sola definición. */
+const detallePorRubro = (r) => REGLAS.find((x) => x.rubro === r)?.detalle ?? 'Compras'
 import {
   normComprobante, esLlaveUtil, faltaFacturaConFecha, montoEnVentana, hallarPestana,
 } from '../lib/cheques-cobertura.mjs'
@@ -62,55 +65,81 @@ function grilla(periodo, faltantes = []) {
     ? `=HYPERLINK("#gid=SEMGID&range="&SUBSTITUTE(ADDRESS(1;MATCH(1;ARRAYFORMULA((${letra(1)}$${FILA_CAB}:${letra(n)}$${FILA_CAB}<=TODAY())*(${letra(1)}$${FILA_CAB}:${letra(n)}$${FILA_CAB}+7>TODAY()));0)+1;4);"1";"");"📅 IR A LA SEMANA DE HOY — "&TEXT(TODAY();"dd/mm/yyyy"))`
     : `=HYPERLINK("#gid=SEMGID&range="&SUBSTITUTE(ADDRESS(1;MONTH(TODAY())+1;4);"1";"");"📅 IR AL MES DE HOY — "&TEXT(TODAY();"mmmm yyyy"))`
   const nota = periodo === 'semanal'
-    ? 'Cada línea de egreso es un rubro de la columna "Rubro de caja" de Compras. ESTE CUADRO MUESTRA LO COMPROMETIDO: sólo pagos con fecha ya cargada. Las proyecciones de los meses que faltan están en el Cash Flow Mensual — a nivel semana una proyección de materiales es ruido, no información.'
-    : 'Cada línea de egreso es un rubro de la columna "Rubro de caja" de Compras. Los meses que todavía no pasaron son PROYECCIÓN (fondo ámbar): Estructura y Recurrentes traen la suya de su propia pestaña; el resto usa el promedio de los últimos 3 meses cerrados ajustado por inflación.'
+    ? 'Estado de flujo de efectivo por método directo (RT 8/9 · NIC 7): operativas, inversión y financiación. Tocá el + del margen izquierdo para abrir el detalle de cada categoría. ESTE CUADRO MUESTRA LO COMPROMETIDO: sólo cobros y pagos con fecha ya cargada — las proyecciones están en el Mensual, porque a nivel semana una proyección de materiales es ruido, no información.'
+    : 'Estado de flujo de efectivo por método directo (RT 8/9 · NIC 7): operativas, inversión y financiación. Tocá el + del margen izquierdo para abrir el detalle de cada categoría. Los meses que todavía no pasaron son PROYECCIÓN: Estructura y Recurrentes traen la suya de su propia pestaña; el resto usa el ritmo de los últimos 3 meses cerrados ajustado por inflación. Los INGRESOS no se proyectan (no hay obra facturada de octubre en adelante), así que el déficit del último trimestre es un piso, no un pronóstico.'
   push([irASemana, nota])
   meta.cabFila = push(['Período', ...cols.map(fechaAR), `Total ${AÑO}`])
 
-  push([])
-  push(['INGRESOS DE CAJA (pestaña Cobranzas — por fecha de cobro, no de facturación)'])
-  meta.ing0 = push(['Cobranzas Civil', ...cols.map((_, i) => formulaCobranzas('civil', desde(i), hasta(i)))])
-  push(['Cobranzas Mantenimiento', ...cols.map((_, i) => formulaCobranzas('mantenimiento', desde(i), hasta(i)))])
-  meta.ing1 = push(['Otras cobranzas', ...cols.map((_, i) => formulaCobranzas('otras', desde(i), hasta(i)))])
-  meta.totIng = push(['TOTAL INGRESOS', ...cols.map((_, i) => `=SUM(${letra(i + 1)}${meta.ing0}:${letra(i + 1)}${meta.ing1})`)])
-
-  push([])
-  push(['EGRESOS DE CAJA — un renglón por rubro. El detalle de cada uno está en la pestaña que se indica.'])
-  const lineas = lineasEgreso()
-  meta.egr0 = filas.length + 1
-  for (const l of lineas) {
-    const fila = filas.length + 1
-    let f
-    if (l.paga !== 'compras') {
-      f = cols.map((_, i) => formulaJornales(desde(i), hasta(i)))
-    } else if (periodo === 'mensual') {
-      // El mensual PROYECTA los meses que faltan. El semanal no: ver la nota del encabezado.
-      // La columna de la pestaña de detalle es la misma que la del mes (las dos arrancan en B).
-      f = cols.map((_, i) => formulaMesConProyeccion(l.rubro, `$A${fila}`, letra(i + 1), letra(i + 1), FILA_CAB))
-    } else {
-      f = cols.map((_, i) => formulaRubroEnVentana(`$A${fila}`, desde(i), hasta(i)))
-    }
-    push([l.rubro, ...f])
-  }
-  // La línea que NO sale de Compras porque mide lo que a Compras le falta. Va última y adentro del
-  // bloque de egresos, así entra al TOTAL. Los importes son VALORES, no fórmulas: el cruce necesita
-  // normalizar el número de comprobante de los dos lados ("0001-000036" vs "1-36") y eso en fórmula
-  // sería ilegible. El agente la reescribe cada 2 horas.
+  // ── EL CUERPO DEL ESTADO, POR ACTIVIDAD ────────────────────────────────────────────────────────
+  // Cada categoría muestra su subtotal; el detalle va agrupado debajo y se abre con el +/- del
+  // margen. El dueño lee subtotales para decidir y abre el detalle sólo cuando algo no cierra.
+  const { lineas: lineasCuadro } = verificarCuadro()
   const finVentana = (i) => (periodo === 'semanal'
     ? new Date(cols[i].getTime() + 7 * 86400000)
     : new Date(Date.UTC(AÑO, cols[i].getUTCMonth() + 1, 1)))
-  push([LINEA_CHEQUES.rubro, ...cols.map((d, i) => montoEnVentana(faltantes, d, finVentana(i)) || '')])
-  const lineasTodas = [...lineas, LINEA_CHEQUES]
-  meta.egr1 = filas.length
-  meta.totEgr = push(['TOTAL EGRESOS', ...cols.map((_, i) => `=SUM(${letra(i + 1)}${meta.egr0}:${letra(i + 1)}${meta.egr1})`)])
+  const sumaFilas = (f0, f1) => cols.map((_, i) => `=SUM(${letra(i + 1)}${f0}:${letra(i + 1)}${f1})`)
+
+  meta.grupos = []      // [{fila0, fila1}] los rangos que se agrupan con +/-
+  meta.actividades = [] // las filas de encabezado de cada actividad
+  meta.detalle = []     // las filas de detalle, para la columna "dónde está"
+  const subtotalesAct = []
+
+  for (const act of CUADRO) {
+    push([])
+    push([act.actividad, act.nota])
+    const filaAct = filas.length
+    const subGrupos = []
+    for (const g of act.grupos) {
+      const filaGrupo = filas.length + 1
+      push([`${g.signo > 0 ? '' : '(–) '}${g.nombre}`])
+      const d0 = filas.length + 1
+      for (const l of g.lineas) {
+        const f = periodo === 'mensual'
+          ? cols.map((_, i) => formulaLineaMes(l, letra(i + 1), letra(i + 1), FILA_CAB))
+          : cols.map((_, i) => `=${expresionReal(l, desde(i), hasta(i))}`)
+        // La línea de cheques no tiene fórmula: se llena con valores (ver expresionReal).
+        const celdas = l.cheques
+          ? cols.map((d, i) => montoEnVentana(faltantes, d, finVentana(i)) || '')
+          : f
+        push([`    ${l.nombre}`, ...celdas])
+        meta.detalle.push({ fila: filas.length, linea: l })
+      }
+      const d1 = filas.length
+      // El subtotal de la categoría suma su propio detalle. Con signo: los pagos se muestran en
+      // positivo dentro de su categoría (es lo que se paga) y la categoría entra restando al flujo.
+      filas[filaGrupo - 1] = [filas[filaGrupo - 1][0], ...sumaFilas(d0, d1)]
+      meta.grupos.push({ fila0: d0, fila1: d1 })
+      subGrupos.push({ fila: filaGrupo, signo: g.signo })
+    }
+    const expr = (i) => subGrupos.map((sg) => `${sg.signo > 0 ? '+' : '-'}${letra(i + 1)}${sg.fila}`).join('')
+    const filaSub = push([`FLUJO NETO DE ${act.actividad}`, ...cols.map((_, i) => `=${expr(i)}`)])
+    subtotalesAct.push(filaSub)
+    meta[`sub_${subtotalesAct.length}`] = filaSub
+    filas[filaAct - 1][0] = act.actividad
+    meta.actividades.push(filaAct)
+  }
+  meta.subtotales = subtotalesAct
+
+  // ── EL CIERRE QUE PIDE LA NORMA ────────────────────────────────────────────────────────────────
   push([])
-  meta.neto = push(['FLUJO NETO DEL PERÍODO', ...cols.map((_, i) => `=${letra(i + 1)}${meta.totIng}-${letra(i + 1)}${meta.totEgr}`)])
-  meta.acum = push(['Flujo acumulado del año', ...cols.map((_, i) => (i === 0 ? `=${letra(1)}${meta.neto}` : `=${letra(i)}${filas.length + 1}+${letra(i + 1)}${meta.neto}`))])
+  meta.variacion = push(['AUMENTO / (DISMINUCIÓN) NETA DEL EFECTIVO',
+    ...cols.map((_, i) => `=${subtotalesAct.map((f) => `${letra(i + 1)}${f}`).join('+')}`)])
+  // El efectivo al inicio: el primer período lo toma del único lugar donde puede vivir un saldo
+  // real, y de ahí en adelante encadena. Hoy esa celda está VACÍA y por eso el cuadro arranca en
+  // cero — no es un error de fórmula, es un dato que la empresa todavía no cargó, y así se dice.
+  meta.inicio = push(['Efectivo y equivalentes al inicio del período',
+    ...cols.map((_, i) => (i === 0 ? "=N('01_Valores Iniciales'!$B$2)" : `=${letra(i)}${filas.length + 2}`))])
+  meta.cierre = push(['Efectivo y equivalentes al cierre del período',
+    ...cols.map((_, i) => `=${letra(i + 1)}${meta.inicio}+${letra(i + 1)}${meta.variacion}`)])
+  meta.egr0 = meta.detalle[0].fila
+  meta.egr1 = meta.detalle[meta.detalle.length - 1].fila
 
   push([])
   const filaRef = push(['DÓNDE ESTÁ EL DETALLE DE CADA LÍNEA'])
-  for (const l of lineasTodas) {
-    push([l.rubro, l.paga === 'compras' ? `Compras (rubro "${l.rubro}") · detalle en la pestaña ${l.detalle}` : `Pestaña ${l.paga} — el monto NO sale de Compras`])
+  for (const { linea: l } of meta.detalle) {
+    push([l.nombre, l.detalle
+      ? `Pestaña ${l.detalle}`
+      : `Compras, rubro "${l.rubro}"${l.excluirSub ? ` (sin "${l.excluirSub}", que va a inversión)` : ''} · detalle en la pestaña ${detallePorRubro(l.rubro)}`])
   }
 
   push([])
@@ -118,29 +147,30 @@ function grilla(periodo, faltantes = []) {
   const filaCtrl = filas.length + 1
   for (const c of bloqueControl(meta.egr0, meta.egr1, 'B', filaCtrl)) push([c.etiqueta, c.formula, c.nota])
 
-  // El total del año, columna por columna, para las filas que lo tienen sentido.
-  const conTotal = [meta.ing0, meta.ing0 + 1, meta.ing1, meta.totIng, meta.totEgr, meta.neto]
-  for (let f = meta.egr0; f <= meta.egr1; f++) conTotal.push(f)
-  for (const f of conTotal) {
-    filas[f - 1][n + 1] = `=SUM(${letra(1)}${f}:${letra(n)}${f})`
-  }
+  // El total del año para las filas donde tiene sentido: detalle, subtotales y el cierre.
+  const conTotal = [...meta.detalle.map((d) => d.fila), ...meta.subtotales, meta.variacion,
+    ...meta.grupos.map((g) => g.fila0 - 1)]
+  for (const f of conTotal) filas[f - 1][n + 1] = `=SUM(${letra(1)}${f}:${letra(n)}${f})`
+  // El efectivo al cierre del año NO se suma: es un saldo, y sumar doce saldos no significa nada.
+  // Lo que va en la columna del total es el saldo del último período.
+  filas[meta.cierre - 1][n + 1] = `=${letra(n)}${meta.cierre}`
+  filas[meta.inicio - 1][n + 1] = `=${letra(1)}${meta.inicio}`
+
   // En el mensual, el total del año mezcla real y proyección: hay que poder separarlos de un vistazo,
-  // o un estimado se lee como un hecho. El REAL sale de Compras (SUMIF sobre la columna de rubro),
-  // así que el control de abajo sigue cerrando igual.
+  // o un estimado se lee como un hecho.
   if (periodo === 'mensual') {
     filas[meta.cabFila - 1][n + 2] = 'Real (Compras)'
     filas[meta.cabFila - 1][n + 3] = 'Proyectado'
     filas[meta.cabFila - 1][n + 4] = 'De dónde sale la proyección'
-    for (let f = meta.egr0; f <= meta.egr1; f++) {
-      const l = lineasTodas[f - meta.egr0]
-      filas[f - 1][n + 2] = l.paga === 'compras'
-        ? `=SUMIF(${'Compras!$AC$4:$AC'};$A${f};${'Compras!$O$4:$O'})`
+    for (const { fila: f, linea: l } of meta.detalle) {
+      filas[f - 1][n + 2] = l.rubro && !l.cobranzas
+        ? `=${l.excluirSub
+          ? `${formulaTotalRubro(l.rubro)}-SUMIF(${'Compras!$AF$4:$AF'};"${l.excluirSub}";${'Compras!$O$4:$O'})`
+          : formulaTotalRubro(l.rubro)}`
         : `=${letra(n + 1)}${f}`
       filas[f - 1][n + 3] = `=${letra(n + 1)}${f}-${letra(n + 2)}${f}`
-      filas[f - 1][n + 4] = origenProyeccion(l.rubro)
+      filas[f - 1][n + 4] = origenLinea(l)
     }
-    filas[meta.totEgr - 1][n + 2] = `=SUM(${letra(n + 2)}${meta.egr0}:${letra(n + 2)}${meta.egr1})`
-    filas[meta.totEgr - 1][n + 3] = `=SUM(${letra(n + 3)}${meta.egr0}:${letra(n + 3)}${meta.egr1})`
   }
 
   return { filas, meta, n, colTotal, filaCtrl, filaRef }
@@ -150,6 +180,7 @@ function grilla(periodo, faltantes = []) {
 // formato de la grilla vieja y quedan números crudos al lado de importes. Se reformatea entero.
 async function formatear(google, data) {
   const meta = await google.getSheetMeta(ID)
+  const gruposPrevios = await google.getRowGroups(ID)
   const AZUL = { red: 0.17, green: 0.25, blue: 0.37 }
   const GRIS = { red: 0.93, green: 0.94, blue: 0.95 }
   const req = []
@@ -182,12 +213,25 @@ async function formatear(google, data) {
       horizontalAlignment: 'CENTER',
     })
     fmt({ ...rango(2, 3), startColumnIndex: cols - 1, endColumnIndex: cols }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
-    // Encabezados de sección y totales.
-    for (const [r, fondo] of [[4, GRIS], [9, GRIS]]) fmt(rango(r, r + 1), 'userEnteredFormat', { backgroundColor: fondo, textFormat: { bold: true, fontSize: 9 } })
-    for (const r of [g.meta.totIng, g.meta.totEgr, g.meta.neto, g.meta.acum]) {
+    // La jerarquía visual tiene que coincidir con la jerarquía contable, o el +/- no se entiende:
+    // ACTIVIDAD en oscuro, categoría en gris y negrita, detalle liviano y sangrado.
+    for (const r of g.meta.actividades) {
+      fmt(rango(r - 1, r), 'userEnteredFormat',
+        { backgroundColor: AZUL, textFormat: { bold: true, fontSize: 10, foregroundColor: { red: 1, green: 1, blue: 1 } } })
+    }
+    for (const gr of g.meta.grupos) {
+      fmt(rango(gr.fila0 - 2, gr.fila0 - 1), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
+        { textFormat: { bold: true, fontSize: 9 }, backgroundColor: GRIS })
+      fmt(rango(gr.fila0 - 1, gr.fila1), 'userEnteredFormat.textFormat',
+        { textFormat: { bold: false, fontSize: 9, foregroundColor: { red: 0.3, green: 0.32, blue: 0.36 } } })
+    }
+    for (const r of [...g.meta.subtotales, g.meta.variacion]) {
       fmt(rango(r - 1, r), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
         { textFormat: { bold: true }, backgroundColor: { red: 0.89, green: 0.91, blue: 0.94 } })
     }
+    // El efectivo al cierre es LA línea del cuadro: la que contesta qué día te quedás sin plata.
+    fmt(rango(g.meta.cierre - 1, g.meta.cierre), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
+      { textFormat: { bold: true, fontSize: 10 }, backgroundColor: { red: 0.85, green: 0.92, blue: 0.85 } })
     // El bloque de referencias y el de control son texto, no plata.
     fmt(rango(g.filaRef - 1, filas, 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
       { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' })
@@ -200,6 +244,20 @@ async function formatear(google, data) {
     req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: cols }, properties: { pixelSize: 96 }, fields: 'pixelSize' } })
     // Congelar el encabezado y la columna de rubros: sin esto, en la semana 40 no se sabe qué se está mirando.
     req.push({ updateSheetProperties: { properties: { sheetId, gridProperties: { frozenRowCount: 3, frozenColumnCount: 1 } }, fields: 'gridProperties.frozenRowCount,gridProperties.frozenColumnCount' } })
+
+    // ── LOS +/- ────────────────────────────────────────────────────────────────────────────────
+    // Primero se BORRAN los grupos que había. La API no reemplaza un grupo: lo apila. Sin esto, el
+    // agente que rehace el cuadro cada 2 horas dejaría una escalera de +/- creciendo sola.
+    for (const viejo of (gruposPrevios.find((x) => x.title === p)?.grupos ?? [])) {
+      req.push({ deleteDimensionGroup: { range: { sheetId, dimension: 'ROWS', startIndex: viejo.startIndex, endIndex: viejo.endIndex } } })
+    }
+    for (const gr of g.meta.grupos) {
+      const range = { sheetId, dimension: 'ROWS', startIndex: gr.fila0 - 1, endIndex: gr.fila1 }
+      req.push({ addDimensionGroup: { range } })
+      // Arranca CERRADO. El cuadro se abre para decidir con los subtotales; el detalle se despliega
+      // sólo cuando algo no cierra. Un estado de flujo con 17 renglones abiertos no se lee.
+      req.push({ updateDimensionGroup: { dimensionGroup: { range, depth: 1, collapsed: true }, fields: 'collapsed' } })
+    }
   }
   await google.spreadsheetBatchUpdate(ID, req)
 }

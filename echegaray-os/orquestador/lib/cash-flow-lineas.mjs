@@ -14,7 +14,12 @@
 // es exactamente un rubro de rubro-caja.mjs, que es una PARTICIÓN de Compras. Duplicar es imposible
 // (un gasto cae en un solo rubro) y quedar afuera es visible (el control de abajo lo resta).
 
-import { REGLAS } from './rubro-caja.mjs'
+import { REGLAS, RUBROS } from './rubro-caja.mjs'
+
+/** El sub-rubro de Estructura que NO es gasto del mes sino inversión. Lo escribe estructura-pestana. */
+export const SUB_BIENES_DE_USO = 'Equipos y rodados (inversión)'
+/** La columna de Compras donde vive el sub-rubro de Estructura. */
+export const COL_SUB = 'Compras!$AF$4:$AF'
 
 /** Rango de la columna de rubro en Compras (la escribe scripts/rubro-caja-sheet.mjs). */
 export const COL_RUBRO = 'Compras!$AC$4:$AC'
@@ -218,7 +223,11 @@ export function formulaCobranzas(tipo, desde, hasta) {
  * @returns {Array<{etiqueta:string, formula:string, nota?:string}>}
  */
 export function bloqueControl(filaPrimerEgreso, filaUltimoEgreso, colTotal, filaControl) {
-  const rangoRubros = `$A${filaPrimerEgreso}:$A${filaUltimoEgreso}`
+  // Se suma RUBRO POR RUBRO y no leyendo los rótulos de la columna A. Desde que el cuadro tiene
+  // estructura contable, esos rótulos son nombres para el que lee ("Materiales e insumos de obra
+  // civil"), no los rubros de Compras — un SUMIF contra ellos daría $0 y el control mentiría
+  // diciendo que todo cierra. La lista sale de REGLAS, así que un rubro nuevo entra solo.
+  const porRubro = RUBROS.map((r) => formulaTotalRubro(r)).join('+')
   return [
     {
       etiqueta: 'Compras — total cargado',
@@ -227,8 +236,8 @@ export function bloqueControl(filaPrimerEgreso, filaUltimoEgreso, colTotal, fila
     },
     {
       etiqueta: 'Suma de las líneas de egreso (a valores de Compras)',
-      formula: `=SUMPRODUCT(SUMIF(${COL_RUBRO};${rangoRubros};${COL_TOTAL}))`,
-      nota: 'Cada línea de arriba, sumada sobre Compras entera. Si una línea faltara, esto daría menos.',
+      formula: `=${porRubro}`,
+      nota: 'Cada rubro de Compras sumado por separado. Si un rubro quedara fuera del cuadro, esto daría menos que el total de arriba.',
     },
     {
       etiqueta: '⇒ Diferencia (tiene que ser $0)',
@@ -246,4 +255,204 @@ export function bloqueControl(filaPrimerEgreso, filaUltimoEgreso, colTotal, fila
       nota: 'El cash flow NO usa este número: usa el real de Jornales por Quincena. Por eso el total de egresos del año no coincide con el total de Compras, y está bien que no coincida.',
     },
   ]
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL CUADRO CON ESTRUCTURA CONTABLE — ESTADO DE FLUJO DE EFECTIVO, MÉTODO DIRECTO
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// POR QUÉ SE REHIZO (20/07). El dueño: "los cash flows tienen que quedar con conceptos utilizados en
+// las áreas financieras contables, y que con +/- se abran las categorías y se vea adentro lo que
+// corresponde puntualmente". Tenía razón: el cuadro anterior era una lista plana de 13 renglones
+// operativos donde la cuota del crédito prendario estaba al lado del cemento. Eso no es un estado de
+// flujo de efectivo, es un listado de gastos ordenado por comodidad interna.
+//
+// LA NORMA. RT 8 y RT 9 de la FACPCE (y NIC 7, que dice lo mismo) exigen que el flujo de efectivo se
+// clasifique en TRES actividades, y por el método directo se muestran las clases de cobros y pagos:
+//   · OPERATIVAS   — la actividad que genera los ingresos: cobrar obras, pagar gente, materiales,
+//                    estructura e impuestos.
+//   · INVERSIÓN    — comprar o vender bienes de uso. Una grúa no es gasto del mes: es inversión.
+//   · FINANCIACIÓN — tomar y devolver deuda financiera. La cuota del prendario va acá, no en gastos.
+// Y el cuadro cierra como manda la norma: variación neta del efectivo + efectivo al inicio =
+// efectivo al cierre. Sin esas dos últimas líneas, un cash flow dice cuánto se mueve pero no puede
+// contestar qué día te quedás sin plata.
+//
+// POR QUÉ IMPORTA ECONÓMICAMENTE Y NO ES PROLIJIDAD. Mezclar las tres actividades hace ilegible el
+// dato que más manda en una constructora: si el flujo OPERATIVO es negativo, la empresa se está
+// financiando con deuda o con capital de trabajo para sostener la operación, y eso tiene fecha de
+// vencimiento. Con todo junto en una sola bolsa, ese diagnóstico no se puede hacer.
+//
+// LOS DOS CRITERIOS DISCUTIBLES, DECLARADOS EN VEZ DE ESCONDIDOS:
+//   · Los PLANES DE PAGO DE DEUDA PREVISIONAL van en OPERATIVAS. Es un pasivo operativo (cargas
+//     sociales) refinanciado, no deuda financiera tomada para invertir. La porción de intereses sí
+//     sería financiación, pero en Compras el capital y el interés vienen en una sola cuota y
+//     separarlos a ojo sería inventar el corte.
+//   · La TARJETA DE CRÉDITO se trata por lo que se compró, no por el instrumento. Comprar materiales
+//     en 6 cuotas es un pago a proveedores financiado, no una operación de financiación.
+
+/** Los cobros y pagos que la norma pide mostrar por separado, agrupados por actividad. */
+export const CUADRO = [
+  {
+    actividad: 'ACTIVIDADES OPERATIVAS',
+    nota: 'Lo que genera y consume la operación: cobrar obras, pagar gente, materiales, estructura e impuestos. Si esta sección da negativo de forma sostenida, la operación se está financiando con deuda o con capital de trabajo.',
+    grupos: [
+      {
+        nombre: 'Cobros por ventas y servicios', signo: 1,
+        lineas: [
+          { nombre: 'Cobranzas de obra civil', cobranzas: 'civil', detalle: 'Cobranzas' },
+          { nombre: 'Cobranzas de mantenimiento', cobranzas: 'mantenimiento', detalle: 'Cobranzas' },
+          { nombre: 'Otras cobranzas', cobranzas: 'otras', detalle: 'Cobranzas' },
+        ],
+      },
+      {
+        nombre: 'Pagos al personal y cargas sociales', signo: -1,
+        lineas: [
+          { nombre: 'Jornales de obra', rubro: 'Nómina · Jornales de obra' },
+          { nombre: 'Sueldos de administración', rubro: 'Nómina · Sueldos administración' },
+          { nombre: 'Sueldo anual complementario', rubro: 'Nómina · SAC' },
+          { nombre: 'Cargas sociales (F931)', rubro: 'Nómina · Cargas sociales' },
+          { nombre: 'Aportes y contribuciones gremiales', rubro: 'Nómina · Gremiales' },
+          { nombre: 'Planes de pago de deuda previsional', rubro: 'Deuda previsional (planes de pago)' },
+        ],
+      },
+      {
+        nombre: 'Pagos a proveedores de obra', signo: -1,
+        lineas: [
+          { nombre: 'Materiales e insumos de obra civil', rubro: 'Materiales Civil' },
+          { nombre: 'Materiales de mantenimiento', rubro: 'Materiales Mantenimiento' },
+          { nombre: 'Pagos con cheque y tarjeta sin factura registrada', cheques: true, detalle: 'Cheques Emitidos y Tarjeta de Credito' },
+        ],
+      },
+      {
+        nombre: 'Gastos de estructura y servicios', signo: -1,
+        lineas: [
+          // Estructura MENOS los bienes de uso, que se van a la sección de inversión. Las dos
+          // líneas juntas suman el rubro completo, así que el control del pie sigue cerrando.
+          { nombre: 'Gastos de estructura y administración', rubro: 'Estructura', excluirSub: SUB_BIENES_DE_USO },
+          { nombre: 'Servicios recurrentes', rubro: 'Servicios recurrentes' },
+        ],
+      },
+      {
+        nombre: 'Pagos de impuestos', signo: -1,
+        lineas: [
+          { nombre: 'Impuestos nacionales y provinciales', rubro: 'Impuestos' },
+        ],
+      },
+    ],
+  },
+  {
+    actividad: 'ACTIVIDADES DE INVERSIÓN',
+    nota: 'Compra y venta de bienes de uso. Una moto o una grúa no son gasto del mes: se usan durante años y por eso la norma las saca de la operación. Mezclarlas hacía parecer que la estructura costaba el doble.',
+    grupos: [
+      {
+        nombre: 'Adquisición de bienes de uso', signo: -1,
+        lineas: [
+          { nombre: 'Equipos, rodados y maquinaria', soloSub: SUB_BIENES_DE_USO, detalle: 'Estructura' },
+        ],
+      },
+    ],
+  },
+  {
+    actividad: 'ACTIVIDADES DE FINANCIACIÓN',
+    nota: 'Deuda financiera tomada y devuelta. Acá va la cuota del crédito prendario, que antes estaba entre los gastos y hacía ver como operativo un compromiso que no lo es.',
+    grupos: [
+      {
+        nombre: 'Servicio de deuda financiera', signo: -1,
+        lineas: [
+          { nombre: 'Cuotas de crédito prendario y gastos bancarios', rubro: 'Financiero' },
+        ],
+      },
+    ],
+  },
+]
+
+/**
+ * NÚCLEO PURO: verifica que el cuadro contable cubra TODOS los rubros de Compras, exactamente una vez.
+ *
+ * Es la misma propiedad que defiende rubro-caja.mjs, un nivel más arriba. Sin este chequeo, agregar
+ * un rubro nuevo y olvidarse de ubicarlo en una actividad lo dejaría fuera del estado de flujo EN
+ * SILENCIO — que es el bug que este archivo entero vino a matar, ahora con más lugares donde
+ * esconderse.
+ * @returns {{lineas:Array, rubrosUsados:Array<string>}}
+ */
+export function verificarCuadro() {
+  const lineas = CUADRO.flatMap((a) => a.grupos.flatMap((g) => g.lineas))
+  const usados = lineas.map((l) => l.rubro).filter(Boolean)
+  const dup = usados.filter((r, i) => usados.indexOf(r) !== i)
+  if (dup.length) throw new Error(`cash-flow-lineas: rubros repetidos en el cuadro: ${dup.join(', ')}`)
+  const faltan = RUBROS.filter((r) => !usados.includes(r))
+  if (faltan.length) throw new Error(`cash-flow-lineas: rubros sin ubicar en ninguna actividad: ${faltan.join(', ')}`)
+  const sobran = usados.filter((r) => !RUBROS.includes(r))
+  if (sobran.length) throw new Error(`cash-flow-lineas: el cuadro nombra rubros que no existen: ${sobran.join(', ')}`)
+  // El corte de bienes de uso sólo cierra si alguien se queda con el resto de ese rubro.
+  const soloSub = lineas.filter((l) => l.soloSub).map((l) => l.soloSub)
+  const excl = lineas.filter((l) => l.excluirSub).map((l) => l.excluirSub)
+  for (const s of soloSub) {
+    if (!excl.includes(s)) throw new Error(`cash-flow-lineas: "${s}" se muestra aparte pero nadie lo excluye de su rubro — se contaría dos veces`)
+  }
+  return { lineas, rubrosUsados: usados }
+}
+
+/** El total de un rubro sobre Compras entera, para el control del pie. PURA. */
+export function formulaTotalRubro(rubro) {
+  return `SUMIF(${COL_RUBRO};"${rubro}";${COL_TOTAL})`
+}
+
+/**
+ * NÚCLEO PURO: la expresión del monto REAL de una línea del cuadro, en una ventana de fechas.
+ * Una sola función para los cinco casos, para que no vuelva a haber una fórmula por pestaña.
+ * @param {object} l línea del CUADRO
+ * @param {string} desde expresión de inicio · @param {string} hasta límite EXCLUYENTE
+ * @returns {string} fórmula es-AR SIN el "=" inicial
+ */
+export function expresionReal(l, desde, hasta) {
+  // La línea de cheques y tarjeta NO tiene fórmula: el cruce por número de comprobante hay que
+  // normalizarlo de los dos lados ("0001-000036" vs "1-36") y eso en fórmula sería ilegible. La
+  // llena el script con VALORES y el agente la reescribe cada 2 horas. Devolver null es la señal.
+  if (l.cheques) return null
+  if (l.cobranzas) return formulaCobranzas(l.cobranzas, desde, hasta).slice(1)
+  if (l.rubro === 'Nómina · Jornales de obra') return formulaJornales(desde, hasta).slice(1)
+  const ventana = `${COL_FECHA};">="&${desde};${COL_FECHA};"<"&${hasta}`
+  // Los bienes de uso salen por su SUB-rubro (columna AF), no por el rubro: son una parte de
+  // Estructura que la norma manda mostrar en otra actividad.
+  if (l.soloSub) return `SUMIFS(${COL_TOTAL};${COL_SUB};"${l.soloSub}";${ventana})`
+  const total = `SUMIFS(${COL_TOTAL};${COL_RUBRO};"${l.rubro}";${ventana})`
+  // ...y el resto del rubro se muestra acá, restando lo que se fue a inversión. Las dos líneas
+  // juntas dan el rubro completo: por eso el control del pie sigue cerrando en $0.
+  if (l.excluirSub) return `(${total}-SUMIFS(${COL_TOTAL};${COL_SUB};"${l.excluirSub}";${ventana}))`
+  return total
+}
+
+/**
+ * NÚCLEO PURO: la fórmula de una línea en un MES, con proyección si el mes todavía no pasó.
+ * @param {object} l línea del CUADRO
+ * @param {string} colMes letra de la columna del mes · @param {string} colTabla la equivalente en la pestaña de detalle
+ * @param {number} filaCab fila del encabezado con las fechas
+ */
+export function formulaLineaMes(l, colMes, colTabla, filaCab) {
+  if (l.cheques) return null
+  const mes = `${colMes}$${filaCab}`
+  const real = expresionReal(l, mes, `EOMONTH(${mes};0)+1`)
+  // Un bien de uso no tiene ritmo: comprar una moto en enero no significa comprar una por mes. Es
+  // el mismo error que el SAC, y la misma regla lo mata.
+  const p = l.soloSub ? null : PROYECCION[l.rubro]
+  if (p === null || l.cobranzas) return `=${real}`
+  let proy
+  if (p?.tipo === 'tabla') {
+    proy = p.ref(colTabla)
+  } else {
+    const ventana = `${expresionReal(l, 'EOMONTH(TODAY();-4)+1', 'EOMONTH(TODAY();0)+1')}/3`
+    const factor = `IFERROR(INDEX(Parámetros!$C$74:$C$90;MATCH(EOMONTH(${mes};0);ARRAYFORMULA(EOMONTH(Parámetros!$A$74:$A$90;0));0));1)`
+    const mesesConGasto = `SUMPRODUCT(--(COUNTIFS(${COL_RUBRO};"${l.rubro}";${COL_FECHA};">="&${MESES_CAB};${COL_FECHA};"<"&EOMONTH(${MESES_CAB};0)+1)>0))`
+    proy = `IF(${mesesConGasto}<${MIN_MESES};0;${ventana}*${factor})`
+  }
+  return `=IF(EOMONTH(${mes};0)<=EOMONTH(TODAY();0);${real};MAX(${real};${proy}))`
+}
+
+/** De dónde sale la proyección de una línea, para explicarlo en el Sheet. PURA. */
+export function origenLinea(l) {
+  if (l.cobranzas) return 'cobros ya facturados con fecha de cobro — no se proyecta facturación que todavía no existe'
+  if (l.cheques) return 'no se proyecta: son cheques y tarjeta YA emitidos, con fecha de débito cierta'
+  if (l.soloSub) return 'no se proyecta: un bien de uso es una decisión, no un ritmo mensual'
+  return origenProyeccion(l.rubro)
 }
