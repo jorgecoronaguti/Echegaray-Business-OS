@@ -132,9 +132,13 @@ function grilla(periodo, faltantes = [], refCaja = null) {
   // Si todavía no hay ninguno cargado da $0 y el cuadro arranca de cero: no es un error de fórmula,
   // es un dato que la empresa no cargó, y el propio rótulo lo dice para que nadie lea el saldo
   // proyectado como si fuera plata que hay.
+  // El aviso es una FÓRMULA y no un texto fijo: tiene que aparecer y desaparecer solo según haya o
+  // no un saldo cargado, sin esperar a que el agente vuelva a correr. Un cuadro que arranca de $0
+  // sin decirlo hace leer el saldo proyectado como plata que hay.
+  const rotuloInicio = 'Efectivo y equivalentes al inicio del período'
   meta.inicio = push([refCaja
-    ? 'Efectivo y equivalentes al inicio del período'
-    : 'Efectivo y equivalentes al inicio del período ⚠ sin saldo cargado en CAJA — el cuadro arranca de $0',
+    ? `=IF(N(${refCaja})=0;"${rotuloInicio}  ⚠ sin saldo cargado en CAJA — el cuadro arranca de $0";"${rotuloInicio}")`
+    : `${rotuloInicio}  ⚠ no encontré la pestaña CAJA`,
     ...cols.map((_, i) => (i === 0 ? (refCaja ? `=N(${refCaja})` : '=0') : `=${letra(i)}${filas.length + 2}`))])
   meta.cierre = push(['Efectivo y equivalentes al cierre del período',
     ...cols.map((_, i) => `=${letra(i + 1)}${meta.inicio}+${letra(i + 1)}${meta.variacion}`)])
