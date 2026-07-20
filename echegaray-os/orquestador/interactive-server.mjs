@@ -36,6 +36,7 @@ import { legajosTools } from './lib/tools/legajos-tool.mjs'
 import { pylTools } from './lib/tools/pyl-tool.mjs'
 import { cotizacionesTools } from './lib/tools/cotizaciones-tool.mjs'
 import { cajaVencidoTools } from './lib/tools/caja-vencido-tool.mjs'
+import { controlAdministrativoTools } from './lib/tools/control-administrativo-tool.mjs'
 import { cotizacionesHistorialTools } from './lib/tools/cotizaciones-historial-tool.mjs'
 import { slidesPdfTools } from './lib/tools/slides-pdf-tool.mjs'
 import { noConformidadesTools } from './lib/tools/no-conformidades-tool.mjs'
@@ -136,7 +137,7 @@ async function driveRegistry(attachment, userEmail) {
   const google = op
     ? makeGoogleClient({ config: cfg, scopes: WORKSPACE_SCOPES, getToken: getTokenFor(op) })
     : makeGoogleClient({ config: cfg })
-  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...sheetsFormatTools(op ? google : null), ...docsFormatTools(op ? google : null), ...osDataTools(), ...jornalesTools(google), ...certificacionesTools(), ...comprasTools(), ...obligacionesTools(), ...adicionalesTools(), ...legajosTools(), ...pylTools(google), ...cotizacionesTools(), ...noConformidadesTools(), ...cajaVencidoTools(), ...cotizacionesHistorialTools(), ...slidesPdfTools(op ? google : null), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ google: op ? google : null }), ...appsheetPedidosTools({ google: op ? google : null }), ...gastoSheetTools(op ? google : null), ...sheetRenderTools(op ? google : null), ...sheetDropdownTools(op ? google : null), ...briefingCajaTools(op ? google : null) }
+  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...sheetsFormatTools(op ? google : null), ...docsFormatTools(op ? google : null), ...osDataTools(), ...jornalesTools(google), ...certificacionesTools(), ...comprasTools(), ...obligacionesTools(), ...adicionalesTools(), ...legajosTools(), ...pylTools(google), ...cotizacionesTools(), ...noConformidadesTools(), ...cajaVencidoTools(), ...controlAdministrativoTools(), ...cotizacionesHistorialTools(), ...slidesPdfTools(op ? google : null), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ google: op ? google : null }), ...appsheetPedidosTools({ google: op ? google : null }), ...gastoSheetTools(op ? google : null), ...sheetRenderTools(op ? google : null), ...sheetDropdownTools(op ? google : null), ...briefingCajaTools(op ? google : null) }
   // Si el dueño adjuntó una imagen/archivo, exponer una tool para GUARDARLO en su Drive.
   if (attachment?.data && attachment?.media_type) {
     registry['drive.upload_adjunto'] = {

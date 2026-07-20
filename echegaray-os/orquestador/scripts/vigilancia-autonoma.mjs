@@ -18,6 +18,7 @@ import { createLogger } from '../lib/logger.mjs'
 import { desviosObras } from '../lib/obra-economics.mjs'
 import { alertasCaja } from '../lib/caja-alertas.mjs'
 import { avanceTodasLasObras, formatAvance } from '../lib/avance-fisico.mjs'
+import { controlAdministrativo, formatCierre } from '../lib/control-administrativo.mjs'
 
 const log = createLogger({ component: 'vigilancia-autonoma' })
 const DRY = process.argv.includes('--dry')
@@ -73,7 +74,13 @@ async function contextoAbierto() {
   let avance = []
   try { avance = (await avanceTodasLasObras()).filter((a) => a.estructurado) } catch { avance = [] }
 
-  if (!backlog.length && !acciones.length && !saber.length && !desvios.length && !caja.length && !avance.length) return ''
+  // CONTROL ADMINISTRATIVO — el checklist de cierre de la skill de administración, corrido solo.
+  // Es la pata que faltaba para que el área de Administración trabaje sin que el dueño la empuje:
+  // el criterio ya estaba escrito en la skill, pero nadie lo ejecutaba si no se lo pedían.
+  let admin = ''
+  try { const r = await controlAdministrativo(); if (r.hallazgos.length) admin = formatCierre(r) } catch { admin = '' }
+
+  if (!admin && !backlog.length && !acciones.length && !saber.length && !desvios.length && !caja.length && !avance.length) return ''
   const b = backlog.map((r) => `  - [${r.impacto}/${r.tipo}] ${r.titulo}`).join('\n')
   const a = acciones.map((r) => `  - [${r.situacion}] ${r.titulo}`).join('\n')
   const m = saber.map((r) => `  - ${r.afirmacion}${r.veces_confirmado > 1 ? ` (confirmado ${r.veces_confirmado}×)` : ''}`).join('\n')
@@ -81,6 +88,9 @@ async function contextoAbierto() {
   const cj = caja.map((x) => `  - ${x}`).join('\n')
   const av = avance.map((a) => `  - ${formatAvance(a).replace(/\*\*/g, '')}`).join('\n')
   return (
+    (admin
+      ? `\n\nCONTROL ADMINISTRATIVO YA CORRIDO (checklist de cierre sobre dato real — NO lo recalcules; decidí qué amerita trabajo):\n${admin}\n`
+      : '') +
     (caja.length
       ? `\n\nCAJA — VENCIDOS YA CALCULADOS (dato real, palanca inmediata — decidí qué gestionar hoy):\n${cj}\n`
       : '') +

@@ -31,7 +31,10 @@ const CAP_KEYWORDS = {
   'advise.admin': ['carpeta', 'carpetas', 'orden documental', 'data room', 'dataroom', 'archivar', 'nomenclatura', 'renombrar', 'clasificar', 'crear carpeta', 'mover archivo', 'estructura de carpeta', 'organizar el drive', 'ordenar el drive', 'donde guardo', 'donde va este', 'archivo desordenad',
     // El PROCESO administrativo (no solo el archivo): "cómo organizo la administración",
     // "circuito administrativo", "control interno". Antes caía a 'general' (auditoría 2026-07-19).
-    'administrac', 'administrativ', 'circuito', 'control interno', 'back office', 'backoffice', 'procedimiento'],
+    'administrac', 'administrativ', 'circuito', 'control interno', 'back office', 'backoffice', 'procedimiento',
+    // CIERRE DE MES: la pregunta más frecuente del área ('¿puedo cerrar?', '¿qué me falta?') caía a
+    // 'general' — justo la que tiene capacidad determinística detrás (control_administrativo).
+    'cierre de mes', 'cerrar el mes', 'cierre mensual', 'que me falta', 'esta todo en orden', 'estudio contable', 'imputar', 'imputac', 'sin imputar', 'conciliacion bancaria'],
   // Decisión de negocio / comercial (Go-No-Go, selección de obra, pipeline, riesgo del negocio).
   // Antes NO existía en el clasificador → la skill gestion-empresarial-riesgos era inalcanzable
   // desde el chat pese a estar mapeada a advise.commercial. Cableada.

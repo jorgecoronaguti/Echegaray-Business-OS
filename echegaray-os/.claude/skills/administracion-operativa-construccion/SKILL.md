@@ -34,6 +34,7 @@ Reglas que gobiernan de dónde sale cada dato. No son técnicas: definen qué re
 - **`briefing_caja`** — posición de caja y proyección a 7 días. **`pyl_estado`** — el resultado devengado del mes.
 - **`gasto_proveedores`** — gasto real por proveedor desde ARCA. **`legajos_estado`** — completitud documental del personal.
 - **`buscar_comprobante`** — verificar si una factura ya está registrada en ARCA y a qué obra se imputó.
+- **`control_administrativo`** — **corre el checklist de cierre de esta skill sobre el dato real** y devuelve excepciones (facturas sin imputar a obra, cobranzas vencidas, obligaciones vencidas o sin fecha). Es esta skill hecha ejecución: ante "¿puedo cerrar el mes?" / "¿qué me falta?" **se llama, no se opina**. También corre sola en la ronda autónoma diaria.
 
 ## El circuito administrativo: cada papel tiene un camino, no un cajón
 
@@ -141,9 +142,13 @@ Nacional (IERIC, UOCRA, ARCA) y provincial (DGR San Juan) según el organismo �
 
 No reemplaza al Estudio Contable ni a un gestor administrativo real — organiza y da seguimiento, no certifica ni resuelve un criterio de fondo.
 
-## Gaps de conocimiento conocidos (primera versión)
+## Gaps de conocimiento conocidos
 
-No existe hoy un calendario consolidado de vencimientos administrativos recurrentes (IERIC, UOCRA, ARCA, alquileres, servicios) en el OS — vive en la memoria de Rodrigo y en el Daily Meeting, sin alerta automática si algo se atrasa.
+**CERRADO (2026-07-20)** — el checklist de cierre ya no depende de que alguien lo pida: `control_administrativo` lo ejecuta sobre dato real y corre solo en la ronda autónoma diaria.
+
+**ABIERTO** — sigue sin existir un calendario consolidado de vencimientos administrativos *recurrentes* (IERIC, UOCRA, ARCA, alquileres, seguros) con fecha propia. El OS detecta la obligación **ya cargada** que venció o que no tiene fecha, pero no anticipa la que todavía nadie cargó. Medido el 2026-07-20: **8 de 10 obligaciones con saldo no tienen fecha de vencimiento** — mientras eso siga así, la alerta anticipada es estructuralmente imposible, y ése es el próximo trabajo del área.
+
+**ABIERTO — puntos del cierre sin fuente en el OS**: conciliación bancaria (no hay extractos cargados), control de tres puntas (no hay remitos de recepción registrados: `public.compras` está vacía), constancia de envío al Estudio Contable. La capacidad los declara `no_verificable` en vez de darlos por buenos.
 
 ## Mecanismo de aprendizaje continuo
 
@@ -151,13 +156,15 @@ No existe hoy un calendario consolidado de vencimientos administrativos recurren
 
 ## Historial de aprendizaje (append-only, más reciente arriba)
 
+- **2026-07-20** — **La skill pasó de saber a hacer.** El checklist de cierre de mes que esta skill describía se convirtió en capacidad determinística (`control-administrativo.mjs`, 0 API, 12 tests) y se cableó a las tres caras: chat, ronda autónoma diaria y ruteo ("¿puedo cerrar el mes?" antes caía a 'general'). Primera corrida real sobre datos de Echegaray: **NO cerrable** — 47 de 47 facturas de compra de julio sin imputar a obra ($25,8M), 1 cobranza vencida ($15M), 2 obligaciones vencidas ($4,7M). **Aprendizaje de método incorporado a la capacidad**: un checklist que devuelve OK sobre algo que no puede verificar es una mentira; cada punto cae en `hallazgo`, `ok` o `no_verificable`, nunca se omite por falta de datos. Clasificación: **E — regla operativa**.
+
 - **2026-07-09** — Creación de la skill, a partir del gap identificado en la revisión conjunta de las 16 skills existentes: ninguna cubría la ejecución administrativa cotidiana (distinta de la decisión estratégica de `gestion-empresarial-riesgos`). Primera evidencia real usada: tareas administrativas recurrentes ya visibles en el Daily Meeting real de Echegaray.
 
 ## Relación con el OS
 
 - **Áreas**: Administración y Finanzas.
 - **Capacidades existentes**: `obligaciones`, `acciones` (Centro de Acción), `backlog_autonomo`.
-- **Centro de Acción**: debería generar acciones de vencimiento administrativo recurrente — no construido hoy.
+- **Centro de Acción**: `control_administrativo` ya emite las excepciones con acción asociada; falta que esas excepciones se persistan como acciones con responsable y fecha (hoy se entregan, no se asignan).
 - **Dashboard**: no aporta alertas propias hoy.
 - **Post Mortem**: consumidora si documenta un problema administrativo en el cierre de obra.
 - **Memoria del proyecto**: procesos administrativos formalizados deberían documentarse ahí.
