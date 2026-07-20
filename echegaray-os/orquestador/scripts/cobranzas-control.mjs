@@ -60,10 +60,13 @@ const flagPorFila = `=ARRAYFORMULA(IF(${M}=0;"";
   IF((${O}="Proyectado")*(COUNTIFS(${G};${G};${M};${M})>1)>0;"⚠ Proyección con gemela ya facturada por el mismo monto — dar de baja o queda contada dos veces";
   "")))))`.replace(/\s*\n\s*/g, '')
 
+/** La firma que identifica el bloque como escrito por el OS. Permite rehacerlo sin pisar nada ajeno. */
+const FIRMA = 'CONTROL DE COBRANZAS'
+
 function bloque() {
   const L = (t, f = '', nota = '') => [t, f, nota]
   return [
-    L('CONTROL DE COBRANZAS'),
+    L(FIRMA),
     L('Se recalcula solo. Si algo da distinto de cero, es trabajo pendiente, no un error del control.'),
     L(''),
     L('Total bruto cargado', `=SUM(${M})`, 'Todo lo que hay en la pestaña.'),
@@ -93,11 +96,22 @@ async function main() {
   const hoja = (await google.getSheetMeta(ID)).find((s) => s.title === PESTAÑA)
 
   // Nunca más escribir sobre una columna sin haber mirado TODA su altura.
+  //
+  // Pero el control se rehace todos los días, así que la zona va a tener contenido: el MÍO. Se
+  // distingue por la firma que este mismo script deja. Si está la firma, es nuestro y se pisa; si
+  // hay algo que no reconozco, me niego. Un guard que también bloquea la reejecución no protege
+  // nada — sólo obliga a desactivarlo, que es peor.
   const zona = await google.readSheetValues(ID, `${PESTAÑA}!${letra(C_FLAG)}1:${letra(C_CTRL + 2)}${F1}`)
-  const ocupadas = new Set()
-  zona.forEach((f) => (f || []).forEach((c, j) => { if (String(c ?? '').trim()) ocupadas.add(letra(C_FLAG + j)) }))
-  if (ocupadas.size) {
-    throw new Error(`me niego a escribir: las columnas ${[...ocupadas].join(', ')} ya tienen contenido. Elegí otra zona antes de pisar datos del dueño.`)
+  const firma = String(zona?.[0]?.[C_CTRL - C_FLAG] ?? '').trim()
+  const esMio = firma === FIRMA
+  if (!esMio) {
+    const ocupadas = new Set()
+    zona.forEach((f) => (f || []).forEach((c, j) => { if (String(c ?? '').trim()) ocupadas.add(letra(C_FLAG + j)) }))
+    if (ocupadas.size) {
+      throw new Error(`me niego a escribir: las columnas ${[...ocupadas].join(', ')} tienen contenido que no reconozco (esperaba la firma "${FIRMA}" en ${letra(C_CTRL)}1). Elegí otra zona antes de pisar datos del dueño.`)
+    }
+  } else {
+    await google.clearValues(ID, `${PESTAÑA}!${letra(C_FLAG)}1:${letra(C_CTRL + 2)}${F1}`)
   }
 
   await google.batchUpdateValues(ID, [

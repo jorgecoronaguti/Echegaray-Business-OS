@@ -1,0 +1,13 @@
+[Unit]
+Description=Echegaray OS — rehace las pestañas derivadas del Flujo de Caja (0 API)
+Documentation=file:///home/jorge/echegaray-os/app/echegaray-os/orquestador/scripts/flujo-caja-rehacer-todo.mjs
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+EnvironmentFile=/home/jorge/.config/echegaray-orq/worker.env
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/flujo-caja-rehacer-todo.mjs
+# Las pestañas se calculan desde Compras/Cobranzas/ARCA. Si el Sheet está pesado puede tardar;
+# 10 minutos es holgado (una corrida real tarda 24 segundos).
+TimeoutStartSec=600

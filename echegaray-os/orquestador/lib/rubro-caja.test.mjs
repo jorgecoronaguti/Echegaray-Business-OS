@@ -68,3 +68,34 @@ test('cada regla declara dónde vive su detalle y quién la paga', () => {
   const fuera = REGLAS.filter((r) => r.paga !== 'compras').map((r) => r.rubro)
   assert.deepEqual(fuera, ['Nómina · Jornales de obra'])
 })
+
+test('un plan de pago de F931 es deuda previsional, no un impuesto', () => {
+  // Los 20 registros reales: estaban dentro de "Impuestos" ($9.835.877) y tapaban que de IVA e IIBB
+  // no hay nada cargado. Son cuotas fijas de deuda de seguridad social.
+  // Lo que decide es el CONCEPTO, no el cliente: "Plan de pago" a secas no alcanza, porque bajo esa
+  // misma etiqueta hay impuestos nacionales (ver el test de abajo).
+  assert.equal(rubroDeCaja({ proveedor: 'ARCA', concepto: 'Deuda Previcional - 931 Dic 25 — cuota 3' }), 'Deuda previsional (planes de pago)')
+  assert.equal(rubroDeCaja({ proveedor: 'ARCA', concepto: 'JUNIO Financiación - Cuota 1 1° Venc — Plan F931 W303094' }), 'Deuda previsional (planes de pago)')
+  // Un impuesto de verdad (IVA, IIBB) sigue cayendo en Impuestos.
+  assert.equal(rubroDeCaja({ proveedor: 'ARCA', unidad: 'Impuestos', concepto: 'IVA junio' }), 'Impuestos')
+  // Y el F931 del mes corriente sigue siendo carga social, no deuda financiada.
+  assert.equal(rubroDeCaja({ proveedor: 'ARCA', cliente: 'F931' }), 'Nómina · Cargas sociales')
+})
+
+test('bajo la etiqueta "Plan de pago" también hay impuestos de verdad', () => {
+  // Estas dos filas reales llevan cliente "Plan de pago" pero son impuestos nacionales, no deuda
+  // previsional. Filtrando por cliente en vez de por concepto se las llevaba puestas ($783.684).
+  assert.equal(rubroDeCaja({ proveedor: 'ARCA', cliente: 'Plan de pago', concepto: 'Anticipo de Ganancias E6' }), 'Impuestos')
+  assert.equal(rubroDeCaja({ proveedor: 'ARCA', cliente: 'Plan de pago', concepto: 'Acciones y Participaciones' }), 'Impuestos')
+})
+
+test('la financiación del F931 de junio es un PLAN, no el F931 del mes', () => {
+  // Tiene cliente F931, así que la regla de cargas sociales se lo llevaba: $7.484.627 aparecían como
+  // aporte del mes cuando son una cuota fija ya comprometida. Para la caja no es lo mismo.
+  assert.equal(
+    rubroDeCaja({ proveedor: 'ARCA', cliente: 'F931', concepto: 'JUNIO Financiación - Cuota 1 1° Venc — Plan F931 W303094' }),
+    'Deuda previsional (planes de pago)',
+  )
+  // El F931 del mes corriente, sin plan, sigue siendo carga social.
+  assert.equal(rubroDeCaja({ proveedor: 'ARCA', cliente: 'F931', concepto: 'F931 junio' }), 'Nómina · Cargas sociales')
+})

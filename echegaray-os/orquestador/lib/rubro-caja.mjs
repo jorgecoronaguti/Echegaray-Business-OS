@@ -50,6 +50,24 @@ export const REGLAS = [
     sheet: '(LOWER($E$4:$E)="sac")',
   },
   {
+    // NO son impuestos: son F931 viejos financiados en cuotas. Estaban dentro de "Impuestos" y por
+    // eso esa línea mostraba $9.835.877 — tapando que de IVA e IIBB no hay NADA cargado. Es deuda
+    // de seguridad social, y para la caja se comporta como una cuota fija, no como un impuesto que
+    // varía con las ventas.
+    //
+    // MIRA EL CONCEPTO, NO EL CLIENTE. Todas estas filas tienen cliente "Plan de pago", pero bajo esa
+    // misma etiqueta también están el Anticipo de Ganancias ($577.710) y Acciones y Participaciones
+    // ($205.974), que SÍ son impuestos nacionales. Filtrando por cliente se los llevaba puestos.
+    //
+    // VA ANTES QUE "Cargas sociales" A PROPÓSITO. El "Plan F931 W303094" tiene cliente F931, así que
+    // la regla de cargas sociales se lo llevaba y sus $7.484.627 aparecían como F931 del mes. No lo
+    // es: es la financiación en cuotas del F931 de junio. Para la caja son cosas distintas — una
+    // varía con la nómina del mes, la otra es una cuota fija que ya está comprometida.
+    rubro: 'Deuda previsional (planes de pago)', detalle: 'Cargas Sociales', paga: 'compras',
+    js: (r) => /deuda previcional|deuda previsional|plan f931/i.test(String(r.concepto ?? '')),
+    sheet: '(REGEXMATCH(LOWER($K$4:$K&" "&$L$4:$L);"deuda previcional|deuda previsional|plan f931"))',
+  },
+  {
     rubro: 'Nómina · Cargas sociales', detalle: 'Cargas Sociales', paga: 'compras',
     js: (r) => norm(r.cliente) === 'f931',
     sheet: '(LOWER($J$4:$J)="f931")',
@@ -72,6 +90,10 @@ export const REGLAS = [
     sheet: '(LOWER($E$4:$E)="sueldos")',
   },
   {
+    // Impuestos de verdad. Hoy son sólo $783.684 (Anticipo de Ganancias y Acciones y
+    // Participaciones): de IVA y de IIBB no hay NI UN PAGO cargado en todo el año, aunque ARCA tiene
+    // 459 comprobantes y la posición de marzo dio $11,1M a pagar. La línea existe justamente para
+    // que ese hueco se vea en el cash flow en vez de quedar tapado por los planes de pago.
     rubro: 'Impuestos', detalle: 'Impuestos y Financieros', paga: 'compras',
     js: (r) => norm(r.unidad) === 'impuestos' || norm(r.proveedor) === 'arca' || norm(r.cliente) === 'plan de pago',
     sheet: '((LOWER($I$4:$I)="impuestos")+(LOWER($E$4:$E)="arca")+(LOWER($J$4:$J)="plan de pago")>0)',
@@ -114,7 +136,7 @@ export const RUBROS_DE_COMPRAS = REGLAS.filter((r) => r.paga === 'compras').map(
 
 /**
  * NÚCLEO PURO: a qué rubro de caja pertenece una fila de Compras.
- * @param {{proveedor?:string, unidad?:string, cliente?:string}} fila columnas E, I, J de Compras
+ * @param {{proveedor?:string, unidad?:string, cliente?:string, concepto?:string}} fila columnas E, I, J, K+L de Compras
  * @returns {string} el rubro, o SIN_CLASIFICAR
  */
 export function rubroDeCaja(fila = {}) {

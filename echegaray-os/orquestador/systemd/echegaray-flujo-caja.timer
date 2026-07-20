@@ -1,0 +1,11 @@
+[Unit]
+Description=Rehace el Flujo de Caja cada 2 horas y al arrancar
+
+[Timer]
+# Corre DESPUÉS de los syncs de compras (cada hora) y cobranzas (cada hora): a las :50 ya están.
+OnCalendar=*-*-* 06,08,10,12,14,16,18,20:50:00
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

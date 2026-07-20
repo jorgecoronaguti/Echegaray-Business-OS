@@ -50,7 +50,13 @@ function grilla(periodo) {
   const push = (celdas) => { filas.push(celdas); return filas.length }
 
   push([periodo === 'semanal' ? `Cash Flow Semanal ${AÑO} — cuándo entra y sale la plata` : `Cash Flow Mensual ${AÑO} — cuándo entra y sale la plata`])
-  push(['Cada línea de egreso es un rubro de la columna "Rubro de caja" de Compras. Esa columna es la ÚNICA definición: si un gasto cambia de rubro ahí, cambia acá.'])
+  // A2 = el atajo a la semana de hoy. En una grilla de 53 semanas, sin esto hay que buscar a mano
+  // dónde estamos cada vez que se abre la pestaña. El dueño lo pidió de vuelta después de que se lo
+  // borré al rehacer el cuadro. HYPERLINK a la celda de la columna cuya semana contiene HOY.
+  const irASemana = periodo === 'semanal'
+    ? `=HYPERLINK("#gid=SEMGID&range="&SUBSTITUTE(ADDRESS(1;MATCH(1;ARRAYFORMULA((${letra(1)}$${FILA_CAB}:${letra(n)}$${FILA_CAB}<=TODAY())*(${letra(1)}$${FILA_CAB}:${letra(n)}$${FILA_CAB}+7>TODAY()));0)+1;4);"1";"");"📅 IR A LA SEMANA DE HOY — "&TEXT(TODAY();"dd/mm/yyyy"))`
+    : `=HYPERLINK("#gid=SEMGID&range="&SUBSTITUTE(ADDRESS(1;MONTH(TODAY())+1;4);"1";"");"📅 IR AL MES DE HOY — "&TEXT(TODAY();"mmmm yyyy"))`
+  push([irASemana, 'Cada línea de egreso es un rubro de la columna "Rubro de caja" de Compras. Esa columna es la ÚNICA definición: si un gasto cambia de rubro ahí, cambia acá.'])
   push(['Período', ...cols.map(fechaAR), `Total ${AÑO}`])
 
   push([])
@@ -164,7 +170,7 @@ async function main() {
     // Normalizar el rectángulo: si una fila es más corta, la API deja lo viejo debajo.
     const cuadro = g.filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r })
     console.log(`${pestaña}: ${cuadro.length} filas x ${ancho} columnas · egresos ${g.meta.egr0}-${g.meta.egr1} · control fila ${g.filaCtrl}`)
-    data.push({ range: `${pestaña}!A1:${letra(ancho - 1)}${cuadro.length}`, values: cuadro, g })
+    data.push({ range: `${pestaña}!A1:${letra(ancho - 1)}${cuadro.length}`, values: cuadro, g, pestaña })
   }
   if (DRY) {
     console.log('\n--dry. Muestra de las primeras líneas del semanal:')
@@ -174,6 +180,12 @@ async function main() {
 
   // Limpiar primero lo viejo: la grilla nueva es más corta que la que había y quedarían restos
   // (incluidas las columnas auxiliares BE/BF, que ahora viven en Compras).
+  // El HYPERLINK necesita el gid REAL de la pestaña: se resuelve acá, no se adivina.
+  const metaGid = await google.getSheetMeta(ID)
+  for (const d of data) {
+    const gid = metaGid.find((s) => s.title === d.pestaña)?.sheetId
+    d.values = d.values.map((f) => f.map((c) => (typeof c === 'string' ? c.replace('SEMGID', String(gid)) : c)))
+  }
   for (const p of ['Cash Flow Semanal', 'Cash Flow Mensual']) await google.clearValues(ID, `${p}!A1:BZ200`)
   await google.batchUpdateValues(ID, data.map(({ range, values }) => ({ range, values })))
   await formatear(google, data)

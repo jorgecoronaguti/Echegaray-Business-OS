@@ -37,6 +37,7 @@ const ORDEN = [
   'Materiales Mantenimiento',
   'Estructura',
   'Servicios recurrentes',
+  'Deuda previsional (planes de pago)',
   'Impuestos',
   'Financiero',
 ]
