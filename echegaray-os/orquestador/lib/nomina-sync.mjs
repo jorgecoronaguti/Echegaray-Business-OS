@@ -59,8 +59,12 @@ export function filasQuincenas(bloques, filaInicio = 6, hoja = '_J_OBREROS') {
     const ff = b.filaFecha
     return [
       { f: `=${H}!F${ff}` },
-      // El ÚLTIMO día cargado de la fila de fechas, aunque la fila tenga huecos.
-      { f: `=IFERROR(LOOKUP(2,1/(${H}!F${ff}:U${ff}<>""),${H}!F${ff}:U${ff}),"")` },
+      // HASTA = el ÚLTIMO día cargado de la fila de fechas.
+      // No sirve INDEX(rango, COUNTA(rango)): eso da el enésimo, y las filas de fecha TIENEN huecos
+      // (feriados, días sin cuadrilla). Medido en el bloque del 16/3: COUNTA da 12 pero el último
+      // día está en la posición 14 → la celda quedaba VACÍA. Hay que buscar la POSICIÓN del último
+      // no vacío, no contar cuántos hay.
+      { f: `=IFERROR(INDEX(${H}!F${ff}:U${ff},SUMPRODUCT(MAX((${H}!F${ff}:U${ff}<>"")*(COLUMN(${H}!F${ff}:U${ff})-COLUMN(${H}!F${ff})+1)))),"")` },
       { f: `=COUNTA(${H}!F${ff}:U${ff})` },
       { f: `=COUNT(${H}!A${b.inicio}:A${b.fin})` },
       { f: `=C${r}*D${r}*'Parámetros'!$B$43` },

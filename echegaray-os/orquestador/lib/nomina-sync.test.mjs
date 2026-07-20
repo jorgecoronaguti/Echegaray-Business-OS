@@ -34,6 +34,9 @@ const filas = filasQuincenas(b)
 check('10 columnas por quincena, como la pestaña', filas[0].length === 10)
 // La etiqueta es una REFERENCIA a la celda de fecha, nunca la fecha copiada.
 check('la fecha se referencia, no se copia', filas[0][0].f === "='_J_OBREROS'!F3")
+// El "Hasta" busca la POSICIÓN del último día cargado, no cuántos días hay: las filas de fecha
+// tienen huecos y COUNTA dejaba la celda vacía (bloque del 16/3: COUNTA 12, última posición 14).
+check('Hasta busca la posición del último, no cuenta', filas[0][1].f.includes('MAX(') && !filas[0][1].f.includes('COUNTA('))
 check('el total usa el rango del bloque', filas[0][9].f === "=SUM('_J_OBREROS'!AA4:AA6)")
 check('el segundo bloque usa SU rango', filas[1][9].f === "=SUM('_J_OBREROS'!AA9:AA10)")
 // Las hs correspondientes se autorreferencian: dependen de la fila donde va a quedar la quincena.
