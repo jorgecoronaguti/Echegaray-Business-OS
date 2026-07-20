@@ -51,11 +51,13 @@ export function driveReadTools(google) {
       schema: {
         name: 'drive_tabs',
         description:
-          'Lista las PESTAÑAS (hojas) de un Google Sheet. Usalo ANTES de leer o escribir para descubrir en qué pestaña está lo que buscás (ej. "Compras", "Caja", "Sueldos" son pestañas del mismo archivo, no archivos distintos). Después leé/escribí con el rango de esa pestaña, ej. "Compras!A1:F".',
+          'Lista las PESTAÑAS (hojas) de un Google Sheet con su gid (el número del final de la URL que manda el dueño: .../edit#gid=123 → esa pestaña). Usalo ANTES de leer o escribir para descubrir en qué pestaña está lo que buscás (ej. "Compras", "Caja", "Sueldos" son pestañas del mismo archivo, no archivos distintos). Después leé/escribí con el rango de esa pestaña, ej. "Compras!A1:F".',
         input_schema: { type: 'object', properties: { file_id: { type: 'string', description: 'ID del Sheet' } }, required: ['file_id'] },
       },
       async run(input) {
         if (!input?.file_id) return { error: 'falta file_id' }
+        const meta = await google.getSheetMeta(input.file_id).catch(() => null)
+        if (meta?.length) return { file_id: input.file_id, tabs: meta.map((m) => m.title), pestanas: meta.map((m) => ({ titulo: m.title, gid: m.sheetId, filas: m.rows, columnas: m.cols })) }
         const tabs = await google.listTabs(input.file_id)
         return { file_id: input.file_id, tabs }
       },
