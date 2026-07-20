@@ -41,10 +41,17 @@ export function fechaSheet(v) {
 export function mapearQuincenas(filas = [], { hoy = new Date(), proyectadas = [] } = {}) {
   const out = []
   for (const r of filas) {
-    const desde = fechaSheet(r?.[0])
-    if (!desde) continue
     if (/^total/i.test(String(r?.[0] ?? ''))) continue
     const hasta = fechaSheet(r?.[1])
+    // La columna "Desde" viene del archivo JORNALES y trae el día sin año ("5/1", "16/7"), así que
+    // fechaSheet devuelve null y la quincena se perdía: la réplica marcaba 0 cerradas y $0. El año
+    // sale de "Hasta", que sí es una fecha real.
+    let desde = fechaSheet(r?.[0])
+    if (!desde && hasta) {
+      const m = /^(\d{1,2})[/-](\d{1,2})$/.exec(String(r?.[0] ?? '').trim())
+      if (m) desde = `${hasta.slice(0, 4)}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
+    }
+    if (!desde) continue
     // En curso = la quincena todavía no terminó. Distinguirlo importa: su total va a SEGUIR
     // subiendo, y presentarlo como cerrado haría creer que la quincena costó menos de lo que costó.
     const estado = hasta && new Date(hasta) >= hoy ? 'en_curso' : 'cerrada'

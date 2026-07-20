@@ -4,6 +4,7 @@ import { sheetRenderTools } from './sheet-render.mjs'
 import { driveWriteTools } from './drive-write.mjs'
 import { replicarNomina, formatReplica } from '../nomina-replica.mjs'
 import { replicarCobranzas, formatCobranzas } from '../cobranzas-replica.mjs'
+import { refrescarEspejo, formatEspejo } from '../espejo-jornales.mjs'
 
 const FLUJO = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DDJJ = '1em3q6p2Gy4SMk2zRfaATbVL0FWqOf0HB'
@@ -33,6 +34,11 @@ export function nominaSyncTools(google) {
       },
       async run({ anio, solo_revisar, forzar } = {}) {
         try {
+          // PRIMERO el espejo: si _J_OBREROS está vacío, el detector encuentra 0 quincenas y el
+          // agente reescribe el cuadro en cero. Le pasó al dueño el 20/07.
+          let espejo = null
+          try { espejo = await refrescarEspejo(google) }
+          catch (e) { espejo = { error: String(e?.message ?? e).slice(0, 160) } }
           const r = await sincronizarNomina(google, {
             file_id: FLUJO, folder_ddjj: DDJJ, anio, escribir: !solo_revisar, forzar,
           })
@@ -61,7 +67,7 @@ export function nominaSyncTools(google) {
           let cobr = null
           try { cobr = await replicarCobranzas(google, { file_id: FLUJO }) }
           catch (e) { cobr = { error: String(e?.message ?? e).slice(0, 160) } }
-          return { ...r, replica, cobranzas: cobr, resumen_texto: `${formatSync(r)}\n\n${formatReplica(replica)}\n\n${formatCobranzas(cobr)}` }
+          return { ...r, replica, espejo, cobranzas: cobr, resumen_texto: `${formatEspejo(espejo)}\n\n${formatSync(r)}\n\n${formatReplica(replica)}\n\n${formatCobranzas(cobr)}` }
         } catch (e) {
           return { error: `no pude sincronizar: ${String(e?.message ?? e).slice(0, 200)}` }
         }

@@ -26,6 +26,9 @@ assert.equal(num(1234.5), 1234.5)
     ['16/07/2026', '31/07/2026', '12', '19', '1631,65', '8157588'],   // misma quincena en curso
     ['01/08/2026', '15/08/2026', '10', '19', '1359,71', '6797990'],
   ]
+  // "Desde" sin año, como lo trae el archivo JORNALES: el año se toma de "Hasta".
+  const sinAnio = mapearQuincenas([['5/1', '15/01/2026', '10', '15', '1350', '959', '0', '0', '0', '4888075']], { hoy })
+  if (sinAnio[0].desde !== '2026-01-05') throw new Error('desde sin año: ' + sinAnio[0].desde)
   const q = mapearQuincenas(filas, { hoy, proyectadas: proy })
   assert.equal(q.length, 3, 'dos reales + una proyectada; la fila TOTAL no entra')
   assert.equal(q[0].estado, 'cerrada')
