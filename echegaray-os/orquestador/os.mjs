@@ -49,6 +49,7 @@ import { obraTools } from './lib/tools/obra.mjs'
 import { bibliotecaAreaTools } from './lib/tools/biblioteca-area-tool.mjs'
 import { operatingReviewTools } from './lib/tools/operating-review-tool.mjs'
 import { egresosTools } from './lib/tools/egresos-tool.mjs'
+import { cargasSocialesTools } from './lib/tools/cargas-sociales-tool.mjs'
 import { sheetRenderTools } from './lib/tools/sheet-render.mjs'
 import { learnTools } from './lib/tools/learn.mjs'
 import { sheetsFormatTools } from './lib/tools/sheets-format.mjs'
@@ -73,7 +74,7 @@ async function construirRegistro() {
     ...controlAdministrativoTools(), ...auditarPestanaTools(google), ...estadoEmpresaTools(google),
     ...deshacerSheetTools(google), ...operacionesSheetTools(google), ...reclamoCobranzaTools(google),
     ...cotizacionesHistorialTools(), ...briefingCajaTools(google), ...obraTools(),
-    ...bibliotecaAreaTools(), ...operatingReviewTools(), ...egresosTools(google), ...sheetRenderTools(google), ...learnTools(), ...sheetsFormatTools(google),
+    ...bibliotecaAreaTools(), ...operatingReviewTools(), ...egresosTools(google), ...cargasSocialesTools(google), ...sheetRenderTools(google), ...learnTools(), ...sheetsFormatTools(google),
   }
 }
 
