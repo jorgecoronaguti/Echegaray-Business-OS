@@ -20,6 +20,21 @@ Cubre: sistemas estructurales y constructivos habituales en obra civil e industr
 
 No cubre: la valorización económica de una solución (`costos-presupuestacion`), la programación en el tiempo (`planificacion-produccion`), ni el riesgo contractual de un cambio técnico (`derecho-construccion-contratos`) — esta skill responde "¿es técnicamente correcto y viable?", no "¿cuánto cuesta, cuándo se hace o qué dice el contrato?".
 
+## Construir en San Juan: condiciones del sitio que cambian las decisiones técnicas
+
+No es contexto de color: es lo que diferencia una obra bien resuelta acá de una copiada de otra región.
+
+- **Peligrosidad sísmica elevada.** San Juan está entre las zonas de mayor riesgo sísmico de la Argentina, con historia de sismos destructivos. El diseño sismorresistente **no es un agregado, es la condición de partida** de toda estructura. *(La zonificación y el reglamento aplicable —familia CIRSOC 103 y lo que exija el código de edificación provincial/municipal— deben verificarse en su edición vigente antes de citarse: ver la política de vigencia de esta skill.)*
+- **Qué implica en la ejecución, que es donde Echegaray incide**: en zona sísmica **la calidad de ejecución es tan determinante como el cálculo**. Los puntos donde una estructura correctamente calculada falla igual son casi siempre de obra:
+  - **detallado y anclaje de armaduras**: longitudes de anclaje y empalme, ganchos, y sobre todo el **confinamiento en nudos y extremos de columnas** (separación de estribos donde el reglamento la exige más estricta). Ahí se juega la ductilidad, que es lo que evita el colapso.
+  - **encadenados y confinamiento de la mampostería**: los muros sin confinar son un mecanismo de falla clásico en la región.
+  - **juntas de dilatación / separación sísmica entre cuerpos**: si no se respetan, los cuerpos se golpean.
+  - **anclaje de elementos NO estructurales**: cielorrasos, luminarias, tabiques, estanterías, equipos industriales. En sismo son causa mayor de daño y lesiones, y suelen quedar fuera del control.
+  - **calidad y continuidad del hormigón**: nidos de abeja, juntas frías y recubrimientos insuficientes comprometen justo lo que el diseño sísmico necesita.
+- **Suelos de la región**: en Cuyo son frecuentes los **suelos limosos/loéssicos con riesgo de colapso por humedecimiento** — un suelo que se comporta bien seco y se desmorona al mojarse. Implica: estudio de suelos real (no supuesto), cuidado extremo con **pérdidas de agua y drenaje** cerca de fundaciones, y desconfiar de extrapolar la fundación de una obra vecina. **Nunca definir fundación sin estudio de suelos del sitio.**
+- **Clima**: amplitud térmica marcada, baja humedad y **viento Zonda** (cálido, seco e intenso). Efecto técnico directo sobre el **curado del hormigón y los morteros**: alta evaporación → fisuración por retracción plástica. Hormigonar con Zonda o en horas de máxima evaporación sin protección y curado adecuado es una causa real y evitable de patología. Es también restricción de programación y de seguridad (cruzar con `planificacion-produccion` y `seguridad-higiene-art`).
+- **Sismo y responsabilidad**: en zona sísmica, un vicio que compromete la solidez tiene consecuencias de otra magnitud — y la **responsabilidad por ruina es decenal y de orden público** (ver `derecho-construccion-contratos`). Documentar ensayos, controles y no conformidades (`calidad-obra`) es protección patrimonial de la empresa, no burocracia.
+
 ## Preguntas profesionales que debe hacer
 
 - ¿La solución propuesta cumple con la función estructural/funcional requerida, o solo resuelve el síntoma?

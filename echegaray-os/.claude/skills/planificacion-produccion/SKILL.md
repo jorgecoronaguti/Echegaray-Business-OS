@@ -14,6 +14,38 @@ metadata:
 
 Aportar el criterio técnico para programar una obra en el tiempo, secuenciar tareas correctamente, y analizar rendimientos reales de producción — la base técnica de "¿cuándo se termina esto y por qué a este ritmo?".
 
+## Las tres curvas: avance físico ≠ certificación ≠ costo
+
+El error de lectura más común en una constructora PyME es mirar una sola curva y creer que describe la obra. Son tres y casi nunca coinciden:
+
+- **Avance FÍSICO**: lo realmente ejecutado en obra.
+- **CERTIFICACIÓN**: lo que el cliente reconoció (y por lo tanto lo que se puede facturar y cobrar).
+- **COSTO INCURRIDO**: lo que la empresa ya gastó, esté certificado o no.
+
+Lecturas que hay que saber hacer:
+
+- **Físico > certificado** → hay trabajo hecho que el cliente todavía no reconoció: es **obra en curso** (activo) y, sobre todo, **caja que no entra**. Si la brecha crece, preguntar por qué no certifica: suele anticipar un conflicto, una observación de calidad o una demora deliberada de pago.
+- **Certificado > físico** → se certificó por adelantado: es un **pasivo**, no una ganancia. Genera la ilusión de una obra sana que después se da vuelta.
+- **Costo > físico** → la obra está consumiendo más recursos que producción: **desvío de productividad o de precio**, y hay que atacarlo *durante*, no en el cierre.
+- Regla: **una desviación detectada al cierre es historia; detectada durante la ejecución es una herramienta de gestión** (CLAUDE.md raíz). El seguimiento tiene que ser lo bastante frecuente como para poder corregir.
+
+## Restricciones reales que rompen el plan en San Juan
+
+Un cronograma que no las contempla es una lista de deseos:
+
+- **Provisión de hormigón elaborado**: disponibilidad de planta, distancia de traslado y ventana de colocación. Una losa depende de que el camión llegue en tiempo.
+- **Clima**: viento **Zonda** y días de alta evaporación condicionan hormigonado, curado y trabajo en altura; lluvia condiciona excavaciones y movimiento de suelos (cruzar con `ingenieria-civil-construccion` y `seguridad-higiene-art`).
+- **Materiales importados o de plaza escasa** (perfilería, chapa, aberturas, equipamiento): plazos de entrega largos y volátiles. Estos ítems deben tener **fecha de pedido en el cronograma**, no solo fecha de montaje. El acopio es decisión conjunta con `finanzas-tesoreria-construccion` (protege precio, consume caja).
+- **Disponibilidad de mano de obra especializada** y su curva de aprendizaje.
+- **Permisos, habilitaciones e inducciones del cliente**: en planta industrial (caso ARCOR) el permiso de trabajo y la inducción de SSMA son parte del camino crítico real, no trámites.
+- **Frente liberado por el cliente**: la causa de improductividad más frecuente y la más reclamable — si el cliente no libera el frente, **documentarlo por escrito el mismo día** (sostiene un reclamo de mayores costos o ampliación de plazo; ver `derecho-construccion-contratos`).
+
+## Plazo contractual, ampliaciones y multas
+
+- El plazo es una obligación contractual con **consecuencia económica** (multa por mora). Un atraso no gestionado se convierte en una quita del margen.
+- Cuando la causa del atraso **no es imputable a la empresa** (frente no liberado, lluvia extraordinaria, cambios del comitente, demora en aprobar un adicional), corresponde **pedir ampliación de plazo por escrito y en el momento** — no al final. El silencio equivale a aceptar el atraso como propio.
+- La ampliación de plazo y el reconocimiento de **mayores costos** son cosas distintas: pedir una no implica la otra. Definir cuál corresponde con `derecho-construccion-contratos`.
+
 ## Alcance
 
 Cubre, con nivel de especialista:

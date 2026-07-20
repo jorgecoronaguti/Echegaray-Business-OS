@@ -18,6 +18,37 @@ Aportar el criterio de gestión operativa del día a día de una obra: cómo org
 
 Cubre: organización de frentes/cuadrillas, ritual de seguimiento semanal (ya existe como "Daily Meeting" real en Echegaray), comunicación con el cliente en obra, escalamiento de problemas de ejecución, relación jefe de obra ↔ dirección.
 
+## El jefe de obra es un responsable ECONÓMICO, no solo técnico
+
+El cambio de mentalidad que más margen protege en una PyME constructora: quien conduce la obra decide plata todos los días, aunque nadie se lo haya dicho.
+
+- Cada decisión de campo tiene consecuencia económica: mandar una cuadrilla a un frente no liberado, aceptar un trabajo "chiquito" que no estaba en el alcance, resolver con más material del previsto, cubrir una demora con horas extras.
+- Por eso el jefe de obra necesita saber **cuánto tiene presupuestado** su obra por partida — no solo qué hay que construir. Una obra donde el responsable no conoce el presupuesto **no se puede controlar**, solo se puede auditar cuando terminó.
+- Su tarea económica diaria: **detectar el desvío temprano y avisar**. Un sobrecosto avisado a tiempo es gestionable; el mismo sobrecosto descubierto en el cierre es una pérdida consumada.
+
+## Lo que se documenta el mismo día (o se pierde)
+
+Lo que en el momento parece burocracia es, semanas después, la diferencia entre cobrar y discutir:
+
+- **Trabajo fuera de alcance ordenado en obra** → nota/mail al representante del cliente **antes de ejecutarlo**, o constancia escrita el mismo día si hubo que hacerlo por urgencia. Sin eso, el adicional no se cobra (ver `derecho-construccion-contratos`).
+- **Frente no liberado, demora del cliente, interferencia de otro contratista** → asentarlo por escrito el día que ocurre, con fecha. Es la prueba de una ampliación de plazo o de un reclamo de mayores costos.
+- **Parte diario**: personal presente, tareas, frentes, clima, equipos, novedades. Es la fuente primaria de HH reales y la base de cualquier reclamo.
+- **Libro de órdenes de servicio / notas de pedido** cuando el contrato los prevé: son prueba formal.
+- **Observaciones de calidad** en el momento (`calidad-obra`) y **condiciones inseguras** (`seguridad-higiene-art`).
+
+Regla: **lo que no está escrito el mismo día, en un conflicto no existe.**
+
+## Coordinación de subcontratistas en obra
+
+- El sub responde ante Echegaray, pero **frente al cliente y frente a la ley responde Echegaray** (solidaridad laboral y de seguridad social — ver `derecho-laboral-construccion`).
+- Control de ingreso a obra: personal declarado en la nómina, ART vigente **con esa nómina**, inducción y EPP. El control es **mes a mes**, no una vez al inicio.
+- Definir por escrito el **límite de alcance** con cada sub (quién pone andamios, quién retira escombros, quién provee agua/energía): el 80% de los conflictos con subcontratistas sale de ahí.
+- Un sub que trabaja mal o inseguro es un problema de Echegaray ante el cliente, no del sub.
+
+## Reunión de obra que sirve para decidir
+
+Siguiendo la estructura de reuniones del CLAUDE.md raíz, aplicada a obra: **avance real vs. plan** → **desvíos** (costo, plazo, HH) → **restricciones que hay que destrabar y quién las destraba** → **acuerdos con responsable y fecha** → la próxima reunión **empieza revisando los acuerdos anteriores**. Una reunión de obra que solo informa lo que pasó no justifica el tiempo de la gente que está parada.
+
 No cubre: el cronograma técnico, los rendimientos, la economía de obra (ETC/EAC/margen forecast) ni el ciclo comercial avance→certificación→facturación→cobranza (todo eso vive en `planificacion-produccion`), la valorización de un cambio (`costos-presupuestacion`), ni la validez contractual de un reclamo (`derecho-construccion-contratos`). Si la tarea es leer/auditar/editar un Sheet real de obra, activar `google-sheets-business-systems` (obligatorio).
 
 ## Preguntas profesionales que debe hacer
