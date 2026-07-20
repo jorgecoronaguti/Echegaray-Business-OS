@@ -114,3 +114,36 @@ export function classifyDirectiveMulti(directive, max = 3) {
   const filtrado = scored.filter((s, i) => i === 0 || s.score >= 2 || s.score >= best)
   return filtrado.slice(0, max).map((s) => s.cap)
 }
+
+// CONTINUACIONES: "segui", "dale", "ok", "y ahora?", "hacelo". No tienen NINGUNA palabra clave, así
+// que caen a 'general' con CERO skills — en medio de una edición de Sheet el chat se queda sin el
+// experto justo cuando más lo necesita. Bug real visto en el log (2026-07-19 23:37): venía con la
+// skill de Sheets, el dueño escribió "segui" y la vuelta siguiente ruteó `general, skills: []`.
+//
+// OJO con \b: en JS sin flag unicode, 'á' no es carácter de palabra, así que /continuá\b/ NUNCA
+// matchea al final del string. Se usa un lookahead negativo de letra en su lugar.
+// Regla: si el mensaje es una continuación (corto y sin señal propia), se rutea con el CONTEXTO de
+// lo que se venía hablando. No se inventa dominio: se hereda el que ya estaba.
+const CONTINUACION_RE = /^\s*(segu[ií]|dale|ok|oka?y|listo|hacelo|hacela|hazlo|adelante|continu[aá]|continuar|sigue|y ahora|proceg?u[ií]|s[ií]|bueno|perfecto|mejor[aá](lo|la)?|arregl[aá](lo|la)?|aplicalo|aplicala|termin[aá](lo|la)?|dale que va)(?![a-záéíóúñ])[\s.!?]*$/i
+
+/** ¿Es un "seguí/dale/ok" sin contenido propio? PURA. */
+export function esContinuacion(directive) {
+  const t = String(directive || '').trim()
+  if (!t) return true
+  if (t.length > 40) return false
+  return CONTINUACION_RE.test(t)
+}
+
+/**
+ * Texto a usar para rutear: el mensaje, o —si es una continuación— el mensaje MÁS lo último que
+ * dijo el dueño, para heredar el dominio. PURA.
+ * @param {Array<{role:string,text:string}>} history
+ */
+export function textoParaRutear(directive, history) {
+  if (!esContinuacion(directive)) return String(directive || '')
+  const previos = (Array.isArray(history) ? history : [])
+    .filter((m) => m && m.role === 'me' && String(m.text || '').trim())
+    .slice(-3)
+    .map((m) => String(m.text))
+  return [String(directive || ''), ...previos].join(' \n ')
+}

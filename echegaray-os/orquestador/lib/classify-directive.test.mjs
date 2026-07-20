@@ -2,7 +2,7 @@
 // Test del clasificador de directivas → dominio (lib/classify-directive.mjs). Hermético, 0 API.
 // Fija el ruteo de pedidos realistas del dueño para que una expansión futura de keywords no
 // rompa el comportamiento. exit 0 = OK, 1 = falla.
-import { classifyDirective, classifyDirectiveMulti } from './classify-directive.mjs'
+import { classifyDirective, classifyDirectiveMulti, esContinuacion, textoParaRutear } from './classify-directive.mjs'
 import { skillsForCapability, skillsParaDirectiva, mencionaSheet, SKILL_SHEETS } from './skill-map.mjs'
 
 let ok = 0, fail = 0
@@ -147,6 +147,21 @@ for (const dir of ['caja', 'iva', 'contrato', 'uocra', 'accidente', 'comprar', '
     }
   }
 }
+
+
+// CONTINUACIONES — bug real del log (2026-07-19 23:37): "segui" ruteó `general, skills: []` en
+// medio de una edición de Sheet y el chat se quedó sin el experto.
+const HIST = [{ role: 'me', text: 'mejorá la pestaña Caja del flujo de fondos' }, { role: 'os', text: 'ok' }]
+for (const q of ['segui', 'dale', 'ok', 'hacelo', 'mejoralo', 'listo', 'continuá']) {
+  check(`"${q}" es continuación`, esContinuacion(q))
+  check(`"${q}" hereda el dominio del historial`, classifyDirectiveMulti(textoParaRutear(q, HIST)).includes('advise.finance'))
+}
+check('un pedido con contenido propio NO es continuación', !esContinuacion('cuanta caja tengo hoy'))
+check('un pedido largo que empieza con segui NO es continuación',
+  !esContinuacion('segui con la pestaña de cobranzas y arreglá los totales'))
+check('sin historial, una continuación no inventa dominio', classifyDirectiveMulti(textoParaRutear('segui', [])).length === 0)
+check('el historial del OS no se usa para rutear (solo lo que dijo el dueño)',
+  classifyDirectiveMulti(textoParaRutear('segui', [{ role: 'os', text: 'hormigon losa viga' }])).length === 0)
 
 console.log(`\nclassify-directive.test: ${ok} OK, ${fail} FALLA`)
 process.exit(fail ? 1 : 0)

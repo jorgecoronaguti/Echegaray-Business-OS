@@ -38,6 +38,7 @@ import { cotizacionesTools } from './lib/tools/cotizaciones-tool.mjs'
 import { cajaVencidoTools } from './lib/tools/caja-vencido-tool.mjs'
 import { controlAdministrativoTools } from './lib/tools/control-administrativo-tool.mjs'
 import { auditarPestanaTools } from './lib/tools/auditar-pestana-tool.mjs'
+import { estadoEmpresaTools } from './lib/tools/estado-empresa-tool.mjs'
 import { cotizacionesHistorialTools } from './lib/tools/cotizaciones-historial-tool.mjs'
 import { slidesPdfTools } from './lib/tools/slides-pdf-tool.mjs'
 import { noConformidadesTools } from './lib/tools/no-conformidades-tool.mjs'
@@ -70,7 +71,7 @@ import { authUrl, exchangeCode, operadorEmail, operadorPara, getTokenFor } from 
 import { WORKSPACE_SCOPES } from './lib/google.mjs'
 import { makeToolExecutor } from './lib/tool-executor.mjs'
 import { enqueuePendingOperation, listPendingOperations, decidePendingOperation, getPendingOperationById } from './lib/pending-ops.mjs'
-import { classifyDirective, classifyDirectiveMulti } from './lib/classify-directive.mjs'
+import { classifyDirective, classifyDirectiveMulti, textoParaRutear, esContinuacion } from './lib/classify-directive.mjs'
 import { cacheGet, cachePut, cacheClearAll } from './lib/chat-cache.mjs'
 import { skillsForCapability, skillsParaDirectiva, skillsSegunProfundidad, mencionaSheet, SKILL_SHEETS } from './lib/skill-map.mjs'
 import { extraerRestricciones, DOCTRINA_EDICION, VERIFICACION_EDICION } from './lib/doc-edit-guardrails.mjs'
@@ -138,7 +139,7 @@ async function driveRegistry(attachment, userEmail) {
   const google = op
     ? makeGoogleClient({ config: cfg, scopes: WORKSPACE_SCOPES, getToken: getTokenFor(op) })
     : makeGoogleClient({ config: cfg })
-  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...sheetsFormatTools(op ? google : null), ...docsFormatTools(op ? google : null), ...osDataTools(), ...jornalesTools(google), ...certificacionesTools(), ...comprasTools(), ...obligacionesTools(), ...adicionalesTools(), ...legajosTools(), ...pylTools(google), ...cotizacionesTools(), ...noConformidadesTools(), ...cajaVencidoTools(), ...controlAdministrativoTools(), ...auditarPestanaTools(op ? google : null), ...cotizacionesHistorialTools(), ...slidesPdfTools(op ? google : null), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ google: op ? google : null }), ...appsheetPedidosTools({ google: op ? google : null }), ...gastoSheetTools(op ? google : null), ...sheetRenderTools(op ? google : null), ...sheetDropdownTools(op ? google : null), ...briefingCajaTools(op ? google : null) }
+  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...sheetsFormatTools(op ? google : null), ...docsFormatTools(op ? google : null), ...osDataTools(), ...jornalesTools(google), ...certificacionesTools(), ...comprasTools(), ...obligacionesTools(), ...adicionalesTools(), ...legajosTools(), ...pylTools(google), ...cotizacionesTools(), ...noConformidadesTools(), ...cajaVencidoTools(), ...controlAdministrativoTools(), ...auditarPestanaTools(op ? google : null), ...estadoEmpresaTools(op ? google : null), ...cotizacionesHistorialTools(), ...slidesPdfTools(op ? google : null), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ google: op ? google : null }), ...appsheetPedidosTools({ google: op ? google : null }), ...gastoSheetTools(op ? google : null), ...sheetRenderTools(op ? google : null), ...sheetDropdownTools(op ? google : null), ...briefingCajaTools(op ? google : null) }
   // Si el dueño adjuntó una imagen/archivo, exponer una tool para GUARDARLO en su Drive.
   if (attachment?.data && attachment?.media_type) {
     registry['drive.upload_adjunto'] = {
@@ -505,7 +506,15 @@ async function ask({ directive, fileId, fast, attachments, attachment, history, 
   // de la app de Pedidos son narrow (no nombran sheet/pestaña) y siguen intactas.
   const docRef = /\b(pesta[ñn]a|solapa|hoja(s)?|sheet|planilla|spreadsheet|celda|rango|columna|fila|tabla(s)?\s+din[aá]mic|drive|documento|gdoc|gsheet)\b/i.test(String(directive || ''))
     || /https?:\/\/[^\s]*(docs\.google|drive\.google)/i.test(String(directive || ''))
-  const writeToDocIntent = writeIntent && (docRef || !!fileId)
+  // CONTINUACIÓN de una edición ya en curso: "segui"/"dale" no tienen verbo ni referencia a
+  // documento, así que perdían la intención de escritura y se les asignaba el tope de costo de una
+  // consulta simple ($0,80) en medio de reescribir una pestaña. Resultado real (2026-07-19): frenó
+  // a mitad y dejó la Caja del dueño a medio hacer — peor que no haber empezado. Si el mensaje es
+  // una continuación y lo anterior era una edición de documento, la intención se HEREDA.
+  const editandoDoc = /\b(pesta[ñn]a|planilla|sheet|celda|rango|columna|fila|documento)\b/i.test(
+    (Array.isArray(history) ? history.slice(-4).map((m) => String(m?.text || '')).join(' ') : ''))
+  const writeToDocIntent = (writeIntent && (docRef || !!fileId))
+    || (esContinuacion(directive) && editandoDoc)
   // PEDIDO DE COMPONER/ENVIAR/REENVIAR UN MAIL: menciona mail/correo + un verbo de envío o un
   // campo de composición (asunto/cuerpo/adjunto/destinatario). Va al MODELO con las tools de
   // Gmail (no a la lectura de mails) y usa sonnet (redactar bien). Cubre el follow-up "el cuerpo
@@ -527,7 +536,10 @@ async function ask({ directive, fileId, fast, attachments, attachment, history, 
   // por una detección determinística de lectura (ej. "me conviene una obra que paga a 90 días…"
   // lo agarraba la detección de cuadro económico y buscaba una obra "es 18%"). Por eso entra en
   // la compuerta readBlocked de abajo.
-  const capabilities = classifyDirectiveMulti(directive)
+  // Se rutea con el CONTEXTO: un "segui" hereda el dominio de lo que se venía hablando en vez de
+  // caer a 'general' sin skills (bug real del 2026-07-19: perdía la skill de Sheets a mitad de una edición).
+  const textoRuteo = textoParaRutear(directive, history)
+  const capabilities = classifyDirectiveMulti(textoRuteo)
   const capability = capabilities[0] || 'general' // principal (para isBudgeting, telemetría)
   const { persona: personaExperta, asesoria: asesoriaProfunda } = personaParaConsulta(capability, directive)
   // COMPUERTA ÚNICA de lectura: NINGUNA respuesta determinística 0-API (avance, caja, briefing,
@@ -605,7 +617,7 @@ async function ask({ directive, fileId, fast, attachments, attachment, history, 
     // entre SIEMPRE junto al dominio dueño del dato (regla obligatoria del CLAUDE.md raíz). Antes
     // se perdía: 7 de 8 áreas quedaban sin él porque la capacidad de dominio ganaba la clasificación.
     : capabilities.length
-      ? skillsSegunProfundidad(capabilities, directive, { asesoria: asesoriaProfunda })
+      ? skillsSegunProfundidad(capabilities, textoRuteo, { asesoria: asesoriaProfunda })
       : (mencionaSheet(directive) ? [SKILL_SHEETS] : [])
   // "¿Qué podés hacer?" — respuesta DETERMINÍSTICA (0 API, siempre actualizada): así la
   // extensión refleja las capacidades del cerebro sin reinstalarse y sin gastar crédito.
