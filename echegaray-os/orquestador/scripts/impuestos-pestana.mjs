@@ -187,7 +187,7 @@ function grilla(iva, planes, iibb) {
   push(['· La alícuota de IIBB de San Juan para construcción (celda B' + fIIBB + ').'])
   push(['· Cargar en Compras los pagos de IVA y de IIBB que se hayan hecho. Hoy no hay ninguno y el cash flow no los ve.'])
   push(['· Revisar las retenciones de IVA que sufre la empresa (Cobranzas, columnas X a AA): son la causa probable del saldo a favor creciente.'])
-  return { filas, f0, f1, tot, p0, p1, b0, cab, fIIBB }
+  return { filas, f0, f1, tot, p0, p1, b0, cab, fIIBB, i0, i1 }
 }
 
 /** Lee las DDJJ de IIBB desde los PDF originales de Drive. */
@@ -278,6 +278,13 @@ async function formatear(google, sheetId, g) {
   // Las cuotas son cantidades.
   fmt({ ...r(g.p0 - 1, g.p1 + 1), startColumnIndex: 1, endColumnIndex: 2 }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '0' } })
   fmt({ ...r(g.b0 - 1, g.b0), startColumnIndex: 2, endColumnIndex: 3 }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '0' } })
+  // LAS FECHAS NO SON PESOS. El formato de moneda de arriba barre las columnas B a H enteras, así
+  // que la fecha de presentación de cada DDJJ salía "$46.072" y la primera cuota de cada plan
+  // "$46.250" — el número de serie de la fecha, pintado de plata. Un cuadro donde una fecha se lee
+  // como un importe no se puede revisar: el ojo suma lo que no es.
+  const FECHA = { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER' }
+  fmt({ ...r(g.i0 - 1, g.i1), startColumnIndex: 7, endColumnIndex: 8 }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', FECHA)
+  fmt({ ...r(g.p0 - 1, g.p1), startColumnIndex: 4, endColumnIndex: 6 }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', FECHA)
 
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 280 }, fields: 'pixelSize' } })
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: 8 }, properties: { pixelSize: 130 }, fields: 'pixelSize' } })

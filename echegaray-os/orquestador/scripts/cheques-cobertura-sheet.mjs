@@ -17,7 +17,7 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { repartirCobertura, aCubrirPorMes, normComprobante, esLlaveUtil } from '../lib/cheques-cobertura.mjs'
+import { repartirCobertura, aCubrirPorMes, normComprobante, esLlaveUtil, hallarPestana } from '../lib/cheques-cobertura.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Cash Flow Mensual'
@@ -30,18 +30,20 @@ const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26
 const ars = (x) => Math.round(x)
 
 async function leer(google) {
+  const hojas = await google.getSheetMeta(ID)
+  const CH = hallarPestana(hojas, 'Cheques').title
   const compras = await google.readSheetValues(ID, 'Compras!A4:AD800')
   // La llave: el número de comprobante de la factura. Es lo único que comparten las tres planillas.
   const enCompras = new Set(
     compras.filter((f) => num(f?.[14]) > 0).map((f) => normComprobante(f?.[7])).filter(esLlaveUtil),
   )
-  const cheques = (await google.readSheetValues(ID, 'Cheques!A2:L400'))
+  const cheques = (await google.readSheetValues(ID, `${CH}!A2:L400`))
     .filter((f) => num(f?.[5]) > 0)
     .map((f) => ({ tipo: f[0], proveedor: f[4], monto: num(f[5]), comprobante: f[7], fecha_pago: f[9], debitado: f[10] }))
   const tarjeta = (await google.readSheetValues(ID, 'Tarjeta de Credito!A3:K400'))
     .filter((f) => num(f?.[4]) > 0)
     .map((f) => ({ proveedor: f[2], monto: num(f[4]), comprobante: f[6], fecha_pago: f[8], debitado: f[9] }))
-  return { enCompras, cheques, tarjeta }
+  return { enCompras, cheques, tarjeta, pestanaCheques: CH }
 }
 
 function grilla({ enCompras, cheques, tarjeta }) {
@@ -132,18 +134,18 @@ async function main() {
  * los dos lados ("0001-000036" vs "1-36") y eso en fórmula sería ilegible. El agente lo reescribe
  * cada 2 horas y la celda dice de cuándo es.
  */
-async function marcarPestanaCheques(google, { enCompras, cheques }) {
-  const hoja = (await google.getSheetMeta(ID)).find((s) => s.title === 'Cheques')
+async function marcarPestanaCheques(google, { enCompras, cheques, pestanaCheques }) {
+  const hoja = hallarPestana(await google.getSheetMeta(ID), pestanaCheques)
   const COL = 12 // M: la primera libre después de "Unidad de Negocio"
   // La pestaña tiene 12 columnas exactas, así que M no existe todavía. Igual se verifica: escribir
   // sobre una columna sin mirar TODA su altura ya me costó pisar el desglose de retenciones de
   // Cobranzas.
   if (hoja.cols > COL) {
-    const zona = await google.readSheetValues(ID, `Cheques!M1:M${hoja.rows}`)
+    const zona = await google.readSheetValues(ID, `${pestanaCheques}!M1:M${hoja.rows}`)
     // Reconocer la propia firma incluye el encabezado, que lleva la fecha de la última corrida.
     const mio = (t) => t.startsWith('✓') || t.startsWith('⚠') || t.startsWith('Estado en el OS')
     const ocupada = zona.some((f) => { const t = String(f?.[0] ?? '').trim(); return t && !mio(t) })
-    if (ocupada) throw new Error('me niego a escribir: la columna M de Cheques tiene contenido que no reconozco.')
+    if (ocupada) throw new Error(`me niego a escribir: la columna M de ${pestanaCheques} tiene contenido que no reconozco.`)
   } else {
     await google.spreadsheetBatchUpdate(ID, [{ appendDimension: { sheetId: hoja.sheetId, dimension: 'COLUMNS', length: COL + 1 - hoja.cols } }])
   }
@@ -157,8 +159,8 @@ async function marcarPestanaCheques(google, { enCompras, cheques }) {
       : ['⚠ FALTA cargar la factura en Compras — este pago no lo ve el cash flow']
   })
   await google.batchUpdateValues(ID, [
-    { range: 'Cheques!M1', values: [[`Estado en el OS · al ${hoy}`]] },
-    { range: `Cheques!M2:M${1 + marcas.length}`, values: marcas },
+    { range: `${pestanaCheques}!M1`, values: [[`Estado en el OS · al ${hoy}`]] },
+    { range: `${pestanaCheques}!M2:M${1 + marcas.length}`, values: marcas },
   ])
   await google.spreadsheetBatchUpdate(ID, [
     { repeatCell: { range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: COL, endColumnIndex: COL + 1 }, cell: { userEnteredFormat: { backgroundColor: { red: 0.17, green: 0.25, blue: 0.37 }, textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 }, fontSize: 9 }, wrapStrategy: 'WRAP' } }, fields: 'userEnteredFormat' } },

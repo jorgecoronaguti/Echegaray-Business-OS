@@ -33,6 +33,15 @@ const RECURRENTES = ['robles jose maria', 'movistar', 'meglioli facundo fabian',
 const OBRAS = ['obras', 'san francisco', 'la estrella', 'messinas', 'arcor', 'javier sanchez', 'imotor']
 const GREMIALES = ['sindicatos', 'uocra', 'fcl', 'ieric', 'fodeco']
 
+// Los nombres de las columnas de costos_obra que corresponden a cada dato de Compras. La tabla usa
+// otros nombres que la planilla (obra_texto es el "Cliente/Asignación" de la columna J), así que la
+// traducción se escribe UNA vez acá y no en cada consulta.
+const P = { proveedor: 'proveedor', unidad: 'unidad_negocio', cliente: 'obra_texto', concepto: 'concepto' }
+/** Compara en minúsculas y sin NULL: en SQL, NULL = 'x' no es falso, es NULL, y arrastra el CASE. */
+const L = (c) => `lower(coalesce(${c}, ''))`
+const ES = (c, v) => `${L(P[c])} = '${v}'`
+const UNO_DE = (c, vs) => `${L(P[c])} ~ '^(${vs.join('|')})$'`
+
 /**
  * Las reglas, EN ORDEN. La primera que matchea gana.
  *   rubro   — la línea del cash flow (el nombre exacto que se ve en el Sheet)
@@ -48,6 +57,7 @@ export const REGLAS = [
     rubro: 'Nómina · SAC', detalle: 'Compras', paga: 'compras',
     js: (r) => norm(r.proveedor) === 'sac',
     sheet: '(LOWER($E$4:$E)="sac")',
+    sql: ES('proveedor', 'sac'),
   },
   {
     // NO son impuestos: son F931 viejos financiados en cuotas. Estaban dentro de "Impuestos" y por
@@ -66,16 +76,19 @@ export const REGLAS = [
     rubro: 'Deuda previsional (planes de pago)', detalle: 'Cargas Sociales', paga: 'compras',
     js: (r) => /deuda previcional|deuda previsional|plan f931/i.test(String(r.concepto ?? '')),
     sheet: '(REGEXMATCH(LOWER($K$4:$K&" "&$L$4:$L);"deuda previcional|deuda previsional|plan f931"))',
+    sql: `${L(P.concepto)} ~ 'deuda previcional|deuda previsional|plan f931'`,
   },
   {
     rubro: 'Nómina · Cargas sociales', detalle: 'Cargas Sociales', paga: 'compras',
     js: (r) => norm(r.cliente) === 'f931',
     sheet: '(LOWER($J$4:$J)="f931")',
+    sql: ES('cliente', 'f931'),
   },
   {
     rubro: 'Nómina · Gremiales', detalle: 'Cargas Sociales', paga: 'compras',
     js: (r) => GREMIALES.includes(norm(r.proveedor)) || GREMIALES.slice(1).includes(norm(r.cliente)),
     sheet: `(REGEXMATCH(LOWER($E$4:$E&"");"^(${GREMIALES.join('|')})$")+REGEXMATCH(LOWER($J$4:$J&"");"^(${GREMIALES.slice(1).join('|')})$")>0)`,
+    sql: `(${UNO_DE('proveedor', GREMIALES)} or ${UNO_DE('cliente', GREMIALES.slice(1))})`,
   },
   {
     // Se paga desde Jornales por Quincena, que tiene el dato REAL de la planilla de jornales.
@@ -83,11 +96,13 @@ export const REGLAS = [
     rubro: 'Nómina · Jornales de obra', detalle: 'Jornales por Quincena', paga: 'Jornales por Quincena',
     js: (r) => norm(r.proveedor) === 'sueldos' && OBRAS.includes(norm(r.cliente)),
     sheet: `((LOWER($E$4:$E)="sueldos")*REGEXMATCH(LOWER($J$4:$J&"");"^(${OBRAS.join('|')})$")>0)`,
+    sql: `(${ES('proveedor', 'sueldos')} and ${UNO_DE('cliente', OBRAS)})`,
   },
   {
     rubro: 'Nómina · Sueldos administración', detalle: 'Compras', paga: 'compras',
     js: (r) => norm(r.proveedor) === 'sueldos',
     sheet: '(LOWER($E$4:$E)="sueldos")',
+    sql: ES('proveedor', 'sueldos'),
   },
   {
     // Impuestos de verdad. Hoy son sólo $783.684 (Anticipo de Ganancias y Acciones y
@@ -97,31 +112,37 @@ export const REGLAS = [
     rubro: 'Impuestos', detalle: 'Impuestos y Financieros', paga: 'compras',
     js: (r) => norm(r.unidad) === 'impuestos' || norm(r.proveedor) === 'arca' || norm(r.cliente) === 'plan de pago',
     sheet: '((LOWER($I$4:$I)="impuestos")+(LOWER($E$4:$E)="arca")+(LOWER($J$4:$J)="plan de pago")>0)',
+    sql: `(${ES('unidad', 'impuestos')} or ${ES('proveedor', 'arca')} or ${ES('cliente', 'plan de pago')})`,
   },
   {
     rubro: 'Financiero', detalle: 'Impuestos y Financieros', paga: 'compras',
     js: (r) => norm(r.unidad) === 'financiero' || norm(r.cliente) === 'credito prendario' || norm(r.proveedor) === 'banco',
     sheet: '((LOWER($I$4:$I)="financiero")+(LOWER($J$4:$J)="credito prendario")+(LOWER($E$4:$E)="banco")>0)',
+    sql: `(${ES('unidad', 'financiero')} or ${ES('cliente', 'credito prendario')} or ${ES('proveedor', 'banco')})`,
   },
   {
     rubro: 'Servicios recurrentes', detalle: 'Recurrentes', paga: 'compras',
     js: (r) => RECURRENTES.includes(norm(r.proveedor)),
     sheet: `(REGEXMATCH(LOWER($E$4:$E&"");"^(${RECURRENTES.join('|').replace(/\./g, '\\.')})$"))`,
+    sql: UNO_DE('proveedor', RECURRENTES.map((r) => r.replace(/\./g, '\\.'))),
   },
   {
     rubro: 'Materiales Civil', detalle: 'Materiales', paga: 'compras',
     js: (r) => norm(r.unidad) === 'civil',
     sheet: '(LOWER($I$4:$I)="civil")',
+    sql: ES('unidad', 'civil'),
   },
   {
     rubro: 'Materiales Mantenimiento', detalle: 'Materiales', paga: 'compras',
     js: (r) => norm(r.unidad) === 'mantenimiento',
     sheet: '(LOWER($I$4:$I)="mantenimiento")',
+    sql: ES('unidad', 'mantenimiento'),
   },
   {
     rubro: 'Estructura', detalle: 'Estructura', paga: 'compras',
     js: (r) => norm(r.unidad) === 'estructura',
     sheet: '(LOWER($I$4:$I)="estructura")',
+    sql: ES('unidad', 'estructura'),
   },
 ]
 
@@ -162,6 +183,26 @@ export function formulaRubro() {
   let f = `"${SIN_CLASIFICAR}"`
   for (const r of [...REGLAS].reverse()) f = `IF(${r.sheet};"${r.rubro}";${f})`
   return `=ARRAYFORMULA(IF(${FILA_REAL};"";${f}))`
+}
+
+/**
+ * La MISMA regla, como función de Postgres. Tercera cara de la única definición.
+ *
+ * POR QUÉ HACE FALTA. La regla estaba escrita para JS y para el Sheet, pero NO para la base — así
+ * que la web y el chat, que leen Supabase, no sabían qué rubro era cada gasto. Medido: el calendario
+ * de caja de la web mostraba $4.121.169 de egresos futuros contra $352.066.471 en el Sheet. No era
+ * un bug de la web: era que la definición vivía en la planilla en vez de en el núcleo.
+ *
+ * Se GENERA desde REGLAS, igual que formulaRubro(). Un CASE tipeado a mano en una migración se
+ * desincroniza el día que alguien agrega un rubro, y nadie se entera hasta que los números no cierran.
+ * @returns {string} cuerpo del CASE, en SQL
+ */
+export function sqlRubroDeCaja() {
+  const ramas = REGLAS.map((r) => {
+    if (!r.sql) throw new Error(`rubro-caja: la regla "${r.rubro}" no tiene traducción a SQL`)
+    return `    when ${r.sql} then '${r.rubro}'`
+  })
+  return ['  case', ...ramas, `    else '${SIN_CLASIFICAR}'`, '  end'].join('\n')
 }
 
 /**

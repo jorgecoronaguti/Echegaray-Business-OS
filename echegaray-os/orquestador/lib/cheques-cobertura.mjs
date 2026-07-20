@@ -106,3 +106,22 @@ export function aCubrirPorMes(instrumentos = []) {
   }
   return { por_mes: [...acc.values()].sort((a, b) => a.mes.localeCompare(b.mes)), total }
 }
+
+/**
+ * Encuentra una pestaña por cómo EMPIEZA su nombre, no por el nombre exacto.
+ *
+ * POR QUÉ. El script pedía la pestaña "Cheques" y el dueño la renombró a "Cheques Emitidos" — que es
+ * un nombre mejor. La corrida entera falló con "Unable to parse range", y el agente de cada 2 horas
+ * venía fallando en silencio ese paso. Un nombre de pestaña es del dueño, no del código: renombrarla
+ * es su derecho y no puede romper nada. Si el prefijo llega a coincidir con dos pestañas, avisa en
+ * vez de elegir una al azar.
+ */
+export function hallarPestana(hojas, prefijo) {
+  const norm = (s) => String(s ?? '').trim().toLowerCase()
+  const exacta = hojas.find((h) => norm(h.title) === norm(prefijo))
+  if (exacta) return exacta
+  const cand = hojas.filter((h) => norm(h.title).startsWith(norm(prefijo)))
+  if (cand.length === 1) return cand[0]
+  if (cand.length > 1) throw new Error(`"${prefijo}" coincide con ${cand.length} pestañas: ${cand.map((c) => c.title).join(', ')}`)
+  throw new Error(`no encontré ninguna pestaña que empiece con "${prefijo}"`)
+}

@@ -1,6 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { repartirCobertura, aCubrirPorMes, normComprobante } from './cheques-cobertura.mjs'
+import { repartirCobertura, aCubrirPorMes, normComprobante, hallarPestana } from './cheques-cobertura.mjs'
+
+const eq = (a, b, m) => assert.equal(a, b, m)
 
 test('el comprobante se normaliza: "0001-000036" y "1-36" son el mismo', () => {
   assert.equal(normComprobante('0001-000036'), '1-36')
@@ -57,4 +59,20 @@ test('a cubrir es otra pregunta: cuánta plata tiene que haber y cuándo', () =>
   assert.deepEqual(r.por_mes.map((m) => [m.mes, m.cantidad, m.monto]), [
     ['agosto 26', 2, 500], ['septiembre 26', 1, 400],
   ])
+})
+
+// Un nombre de pestaña es del dueño: renombrar "Cheques" a "Cheques Emitidos" no puede romper el
+// agente. Antes de este test, ese renombre hacía fallar la corrida entera con un 400 de la API.
+test('hallarPestana tolera que el dueño renombre la pestaña', () => {
+  const hojas = [{ title: 'Compras' }, { title: 'Cheques Emitidos' }, { title: 'Tarjeta de Credito' }]
+  eq(hallarPestana(hojas, 'Cheques').title, 'Cheques Emitidos', 'encuentra por prefijo')
+  eq(hallarPestana([{ title: 'Cheques' }], 'Cheques').title, 'Cheques', 'el nombre exacto sigue andando')
+  // Exacto le gana a prefijo: si existen las dos, no hay ambigüedad que resolver.
+  eq(hallarPestana([{ title: 'Cheques Emitidos' }, { title: 'Cheques' }], 'Cheques').title, 'Cheques', 'exacto primero')
+  let rompio = false
+  try { hallarPestana([{ title: 'Cheques A' }, { title: 'Cheques B' }], 'Cheques') } catch { rompio = true }
+  eq(rompio, true, 'con dos candidatas avisa en vez de elegir al azar')
+  rompio = false
+  try { hallarPestana([{ title: 'Compras' }], 'Cheques') } catch { rompio = true }
+  eq(rompio, true, 'si no está, avisa')
 })

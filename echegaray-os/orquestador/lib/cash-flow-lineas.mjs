@@ -118,9 +118,18 @@ export function formulaMesConProyeccion(rubro, celdaRubro, colMes, colTabla, fil
     const mesesConGasto = `SUMPRODUCT(--(COUNTIFS(${COL_RUBRO};${celdaRubro};${COL_FECHA};">="&${MESES_CAB};${COL_FECHA};"<"&EOMONTH(${MESES_CAB};0)+1)>0))`
     proy = `IF(${mesesConGasto}<${MIN_MESES};0;${ventana}*${factor})`
   }
-  // Un mes ya cerrado muestra lo que pasó, aunque sea cero. Sólo el futuro se proyecta, y sólo si no
-  // hay un pago REAL ya cargado con esa fecha (nómina y financiero sí los tienen).
-  return `=IF(EOMONTH(${mes};0)<=EOMONTH(TODAY();0);${real};IF(${real}<>0;${real};${proy}))`
+  // Un mes ya cerrado muestra lo que pasó, aunque sea cero. Sólo el futuro se proyecta.
+  //
+  // EN EL FUTURO GANA EL MAYOR, y esto NO es un detalle. La versión anterior decía "si hay algo real
+  // cargado, mostrá eso y no proyectes". Medido en el Sheet: agosto de Materiales Civil mostraba
+  // $203.132 — una sola factura cargada por adelantado — contra $39.936.681 en septiembre. Una
+  // factura suelta con fecha de agosto apagaba la proyección del mes entero y borraba ~$40M de
+  // egresos previstos.
+  //
+  // La lógica correcta es que en un mes que todavía no pasó, lo ya cargado es un PISO, no el total:
+  // faltan cargar las compras que ese mes seguro va a tener. Si lo comprometido supera al ritmo
+  // histórico, entonces sí manda lo comprometido — es un hecho, y un hecho le gana a un promedio.
+  return `=IF(EOMONTH(${mes};0)<=EOMONTH(TODAY();0);${real};MAX(${real};${proy}))`
 }
 
 /** Los rubros cuya proyección sale de su propia pestaña, para poder explicarlo en el Sheet. PURA. */
