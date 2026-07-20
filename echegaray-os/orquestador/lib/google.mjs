@@ -578,6 +578,38 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       )
       return j.values || []
     },
+    /**
+     * Lee la PESTAÑA COMO ES: fórmula y valor de cada celda, celdas combinadas y formato numérico.
+     *
+     * `readSheetValues` devuelve sólo el valor calculado — con eso es IMPOSIBLE distinguir un
+     * número pegado a mano de una celda con fórmula, que es exactamente la distinción que manda en
+     * este proyecto ("en el Sheet nunca números sueltos: fórmulas o celdas con origen trazable").
+     * Sin esto, cualquier "analizá esta pestaña y mejorala" es opinión sobre una foto.
+     */
+    async readSheetGrid(fileId, range) {
+      const campos = 'sheets(properties(title,gridProperties),merges,data(startRow,startColumn,rowData(values(formattedValue,userEnteredValue,effectiveValue,userEnteredFormat/numberFormat))))'
+      const j = await apiGet(
+        `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?ranges=${encodeURIComponent(range)}&fields=${encodeURIComponent(campos)}`,
+      )
+      const s = (j.sheets || [])[0]
+      if (!s) return { titulo: null, filas: [], merges: [] }
+      const d = (s.data || [])[0] || {}
+      const filas = (d.rowData || []).map((r) => (r.values || []).map((c) => ({
+        // La fórmula sólo existe si el usuario la escribió; si no, el contenido es literal.
+        formula: c?.userEnteredValue?.formulaValue ?? null,
+        valor: c?.formattedValue ?? null,
+        numero: c?.effectiveValue?.numberValue ?? null,
+        formato: c?.userEnteredFormat?.numberFormat?.type ?? null,
+      })))
+      return {
+        titulo: s.properties?.title ?? null,
+        filas,
+        merges: (s.merges || []).map((m) => ({
+          fila: m.startRowIndex, filaFin: m.endRowIndex, col: m.startColumnIndex, colFin: m.endColumnIndex,
+        })),
+        offset: { fila: d.startRow || 0, col: d.startColumn || 0 },
+      }
+    },
     /** Lee las reglas de VALIDACIÓN DE DATOS (desplegables) de un rango. Devuelve la data
      *  cruda de la Sheets API (sheets[].data[].rowData[].values[].dataValidation) para que el
      *  llamador extraiga, por celda, las opciones permitidas. Sirve para NO pisar un desplegable
