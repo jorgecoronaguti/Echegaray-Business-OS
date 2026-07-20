@@ -50,6 +50,7 @@ import { bibliotecaAreaTools } from './lib/tools/biblioteca-area-tool.mjs'
 import { operatingReviewTools } from './lib/tools/operating-review-tool.mjs'
 import { egresosTools } from './lib/tools/egresos-tool.mjs'
 import { sheetRenderTools } from './lib/tools/sheet-render.mjs'
+import { learnTools } from './lib/tools/learn.mjs'
 import { sheetsFormatTools } from './lib/tools/sheets-format.mjs'
 
 /** Cliente de Google con la MISMA cuenta autorizada que usa el chat (OAuth por usuario, PRP-024).
@@ -72,7 +73,7 @@ async function construirRegistro() {
     ...controlAdministrativoTools(), ...auditarPestanaTools(google), ...estadoEmpresaTools(google),
     ...deshacerSheetTools(google), ...operacionesSheetTools(google), ...reclamoCobranzaTools(google),
     ...cotizacionesHistorialTools(), ...briefingCajaTools(google), ...obraTools(),
-    ...bibliotecaAreaTools(), ...operatingReviewTools(), ...egresosTools(google), ...sheetRenderTools(google), ...sheetsFormatTools(google),
+    ...bibliotecaAreaTools(), ...operatingReviewTools(), ...egresosTools(google), ...sheetRenderTools(google), ...learnTools(), ...sheetsFormatTools(google),
   }
 }
 
