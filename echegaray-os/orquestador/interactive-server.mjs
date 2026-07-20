@@ -63,6 +63,8 @@ import { appsheetPedidosTools } from './lib/tools/appsheet-pedidos.mjs'
 import { gastoSheetTools } from './lib/tools/gasto-sheet.mjs'
 import { sheetRenderTools } from './lib/tools/sheet-render.mjs'
 import { sheetDropdownTools } from './lib/tools/sheet-dropdowns.mjs'
+import { bibliotecaAreaTools } from './lib/tools/biblioteca-area-tool.mjs'
+import { areaMencionada, bibliotecaArea, formatBiblioteca } from './lib/biblioteca-area.mjs'
 import { briefingCajaTools } from './lib/tools/briefing-caja-tool.mjs'
 import { estadoOperativoObra, esObraOperativa } from './lib/obra-operativa.mjs'
 import { findObras, desviosObras, aprendizajesPostMortem } from './lib/obra-economics.mjs'
@@ -143,7 +145,7 @@ async function driveRegistry(attachment, userEmail) {
   const google = op
     ? makeGoogleClient({ config: cfg, scopes: WORKSPACE_SCOPES, getToken: getTokenFor(op) })
     : makeGoogleClient({ config: cfg })
-  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...sheetsFormatTools(op ? google : null), ...docsFormatTools(op ? google : null), ...osDataTools(), ...jornalesTools(google), ...certificacionesTools(), ...comprasTools(), ...obligacionesTools(), ...adicionalesTools(), ...legajosTools(), ...pylTools(google), ...cotizacionesTools(), ...noConformidadesTools(), ...cajaVencidoTools(), ...controlAdministrativoTools(), ...auditarPestanaTools(op ? google : null), ...estadoEmpresaTools(op ? google : null), ...deshacerSheetTools(op ? google : null), ...operacionesSheetTools(op ? google : null), ...reclamoCobranzaTools(op ? google : null), ...cotizacionesHistorialTools(), ...slidesPdfTools(op ? google : null), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ google: op ? google : null }), ...appsheetPedidosTools({ google: op ? google : null }), ...gastoSheetTools(op ? google : null), ...sheetRenderTools(op ? google : null), ...sheetDropdownTools(op ? google : null), ...briefingCajaTools(op ? google : null) }
+  const registry = { ...driveReadTools(google), ...driveWriteTools(google), ...sheetsFormatTools(op ? google : null), ...docsFormatTools(op ? google : null), ...osDataTools(), ...jornalesTools(google), ...certificacionesTools(), ...comprasTools(), ...obligacionesTools(), ...adicionalesTools(), ...legajosTools(), ...pylTools(google), ...cotizacionesTools(), ...noConformidadesTools(), ...cajaVencidoTools(), ...controlAdministrativoTools(), ...auditarPestanaTools(op ? google : null), ...estadoEmpresaTools(op ? google : null), ...deshacerSheetTools(op ? google : null), ...operacionesSheetTools(op ? google : null), ...reclamoCobranzaTools(op ? google : null), ...cotizacionesHistorialTools(), ...slidesPdfTools(op ? google : null), ...webSearchTools(), ...learnTools(), ...obraTools(), ...workspaceTools({ google: op ? google : null }), ...appsheetPedidosTools({ google: op ? google : null }), ...gastoSheetTools(op ? google : null), ...sheetRenderTools(op ? google : null), ...sheetDropdownTools(op ? google : null), ...briefingCajaTools(op ? google : null), ...bibliotecaAreaTools() }
   // Si el dueño adjuntó una imagen/archivo, exponer una tool para GUARDARLO en su Drive.
   if (attachment?.data && attachment?.media_type) {
     registry['drive.upload_adjunto'] = {
@@ -666,6 +668,18 @@ async function ask({ directive, fileId, fast, attachments, attachment, history, 
       if (!/^(la\s+)?(empresa|nosotros|echegaray|todo)$/i.test(tema) && tema.length >= 2) {
         return { answer: await recallResumen(tema), model: 'memoria', capability: 'general', skills: [], navigate: null }
       }
+    }
+  }
+  // BIBLIOTECA POR ÁREA (0 API) — si la pregunta NOMBRA una de las 8 áreas, la respuesta es la
+  // biblioteca de ESA área, no el volcado general de lo aprendido. Va ANTES de learnedSummary:
+  // "¿qué sabés del área de personas?" caía en el resumen global y contestaba con la taxonomía
+  // vieja (defecto real medido el 20/07). areaMencionada() devuelve null si no hay área o si hay
+  // más de una, y entonces sigue el camino de siempre.
+  if (/\b(qu[eé]\s+(sab[eé]s|sabemos|ten[eé]s|tenemos|hay|le\s+falta|falta)|biblioteca|conocimiento|pendientes?)\b/i.test(directive)) {
+    const areaClave = areaMencionada(directive)
+    if (areaClave) {
+      const r = await bibliotecaArea(areaClave)
+      return { answer: formatBiblioteca(r), model: 'biblioteca', capability: 'general', skills: [], navigate: null }
     }
   }
   // "¿Cuánto aprendiste / qué sabés de la empresa?" — mide el aprendizaje (0 API).

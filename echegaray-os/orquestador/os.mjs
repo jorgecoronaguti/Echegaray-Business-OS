@@ -46,6 +46,7 @@ import { reclamoCobranzaTools } from './lib/tools/reclamo-cobranza-tool.mjs'
 import { cotizacionesHistorialTools } from './lib/tools/cotizaciones-historial-tool.mjs'
 import { briefingCajaTools } from './lib/tools/briefing-caja-tool.mjs'
 import { obraTools } from './lib/tools/obra.mjs'
+import { bibliotecaAreaTools } from './lib/tools/biblioteca-area-tool.mjs'
 
 /** Cliente de Google con la MISMA cuenta autorizada que usa el chat (OAuth por usuario, PRP-024).
  *  Si nadie autorizó, devuelve null y las capacidades de Drive lo dicen en vez de fallar raro. */
@@ -67,6 +68,7 @@ async function construirRegistro() {
     ...controlAdministrativoTools(), ...auditarPestanaTools(google), ...estadoEmpresaTools(google),
     ...deshacerSheetTools(google), ...operacionesSheetTools(google), ...reclamoCobranzaTools(google),
     ...cotizacionesHistorialTools(), ...briefingCajaTools(google), ...obraTools(),
+    ...bibliotecaAreaTools(),
   }
 }
 
