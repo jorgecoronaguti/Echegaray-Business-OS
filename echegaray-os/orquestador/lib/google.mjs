@@ -954,6 +954,16 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         })),
       }))
     },
+    /**
+     * El ancho en píxeles de cada columna de una pestaña. Sirve para VERIFICAR el formato en vez de
+     * suponerlo: una columna descolocada no se ve en los valores, sólo en el ancho, y sin poder
+     * leerlo el diagnóstico de "quedó descuadrado" es adivinanza.
+     */
+    async getColumnWidths(fileId, titulo) {
+      const j = await apiGet(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?ranges=${encodeURIComponent(`${titulo}!A1:BZ1`)}&fields=${encodeURIComponent('sheets(properties.title,data(columnMetadata(pixelSize)))')}`)
+      const s = (j.sheets || [])[0]
+      return ((s?.data || [])[0]?.columnMetadata || []).map((c) => c.pixelSize)
+    },
     /** Operaciones ESTRUCTURALES de un Sheet (insertar/borrar filas o columnas, formato)
      *  vía batchUpdate. `requests` = array de requests de la Sheets API. */
     async spreadsheetBatchUpdate(fileId, requests) {

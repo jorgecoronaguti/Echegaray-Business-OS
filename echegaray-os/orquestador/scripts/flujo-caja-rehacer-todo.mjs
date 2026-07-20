@@ -52,6 +52,33 @@ const PASOS = [
   ['caja-pestana.mjs', 'CAJA — disponibilidades, cheques emitidos y margen de tarjeta'],
 ]
 
+/**
+ * Los dos cash flow son pestañas COMPARTIDAS: el cuadro lo arma un script y el bloque de cheques lo
+ * escribe otro. Ese segundo script ensanchaba la columna F a 460px para su columna de explicación, y
+ * arriba la F es el mes de mayo — el cuadro entero quedaba descuadrado y ningún control lo veía,
+ * porque los valores estaban bien. Sólo el ancho estaba mal.
+ *
+ * Un defecto que sólo se ve mirando la pantalla vuelve. Por eso se mide.
+ */
+async function verificarGeometria() {
+  const { makeGoogleClient, WRITE_SCOPES } = await import('../lib/google.mjs')
+  const { loadConfig } = await import('../lib/config.mjs')
+  const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
+  const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
+  const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
+  let hubo = false
+  for (const [pestaña, hasta] of [['Cash Flow Mensual', 13], ['Cash Flow Semanal', 54]]) {
+    const w = await google.getColumnWidths(ID, pestaña).catch(() => [])
+    // Las columnas de período tienen que medir todas lo mismo. Una distinta = alguien la tocó.
+    const raras = w.slice(1, hasta).map((px, i) => ({ col: letra(i + 1), px })).filter((c) => c.px !== 96)
+    if (raras.length) {
+      hubo = true
+      console.log(`   ⚠ ${pestaña}: columnas de período con ancho distinto de 96px → ${raras.map((c) => `${c.col}=${c.px}`).join(' ')}`)
+    }
+  }
+  if (!hubo) console.log('   ✓ geometría: las columnas de período miden todas 96px en las dos pestañas')
+}
+
 async function main() {
   const t0 = Date.now()
   const ok = []
@@ -81,6 +108,8 @@ async function main() {
   }
 
   if (DRY) return
+  await verificarGeometria()
+
   console.log(`\n${ok.length}/${PASOS.length} pestañas rehechas en ${((Date.now() - t0) / 1000).toFixed(1)}s`)
   const conAlerta = ok.filter((r) => r.alerta)
   if (conAlerta.length) {

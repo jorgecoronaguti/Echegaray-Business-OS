@@ -113,7 +113,11 @@ async function main() {
     { repeatCell: { range: rg(F - 1, F), cell: { userEnteredFormat: { textFormat: { bold: true, fontSize: 12 } } }, fields: 'userEnteredFormat.textFormat' } },
     { repeatCell: { range: rg(F, F + 1), cell: { userEnteredFormat: { textFormat: { italic: true, fontSize: 9, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'WRAP' } }, fields: 'userEnteredFormat.textFormat,userEnteredFormat.wrapStrategy' } },
     { repeatCell: { range: rg(F + g.fFalta - 2, F + g.fFalta - 1), cell: { userEnteredFormat: { textFormat: { bold: true, foregroundColor: { red: 0.7, green: 0.2, blue: 0.1 } }, backgroundColor: { red: 1, green: 0.93, blue: 0.93 } } }, fields: 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor' } },
-    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 5, endIndex: 6 }, properties: { pixelSize: 460 }, fields: 'pixelSize' } },
+    // NO SE TOCAN LOS ANCHOS DE COLUMNA. Este bloque vive al pie del Cash Flow Mensual, que es una
+    // pestaña COMPARTIDA: arriba, la columna F es el mes de mayo. Ensancharla a 460px para que
+    // entrara la explicación de este bloque descuadraba el cuadro entero — el dueño lo vio como
+    // "quedan descuadradas". El texto desborda a la derecha sobre celdas vacías, que es gratis.
+    // Regla general: un script que escribe en una pestaña que no es suya no cambia su geometría.
   ])
 
   await marcarPestanaCheques(google, datos)

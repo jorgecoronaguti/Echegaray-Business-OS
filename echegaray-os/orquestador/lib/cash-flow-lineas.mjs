@@ -157,6 +157,15 @@ export function formulaMesConProyeccion(rubro, celdaRubro, colMes, colTabla, fil
   return `=IF(EOMONTH(${mes};0)<=EOMONTH(TODAY();0);${real};MAX(${real};${proy}))`
 }
 
+/**
+ * Los rubros que NO se proyectan por ritmo, y por qué cada uno. Lo consume también el núcleo
+ * Postgres: si la web proyectara un rubro que el Sheet no proyecta, serían dos verdades distintas
+ * sobre la misma plata — que es el error que este archivo entero vino a matar.
+ */
+export const RUBROS_SIN_PROYECCION = Object.entries(PROYECCION)
+  .filter(([, v]) => v === null)
+  .map(([k]) => k)
+
 /** Los rubros cuya proyección sale de su propia pestaña, para poder explicarlo en el Sheet. PURA. */
 export function origenProyeccion(rubro) {
   if (rubro === LINEA_CHEQUES.rubro) return 'no se proyecta: son cheques y tarjeta YA emitidos, con fecha de pago cierta'
