@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getClientes } from '@/features/fundacion/services/fundacionService'
 import { getObras } from '@/features/obras/services/obrasService'
+import { getObrasPanel } from '@/features/obras/services/obraPanelService'
+import { CarteraReal } from '@/features/obras/components/CarteraReal'
 import { ObraForm } from '@/features/obras/components/ObraForm'
 import { getResumenEconomicoTodasLasObras } from '@/features/control-economico/services/controlEconomicoService'
 import { getHHResumenTodasLasObras } from '@/features/hh-productividad/services/hhProductividadService'
@@ -26,10 +28,11 @@ const ESTADO_OBRA_LABEL: Record<string, string> = {
 async function loadObrasData() {
   try {
     const supabase = await createClient()
-    const [clientes, obras, resumenes, hhResumenes, ejecuciones, actividades, datosDashboard, acciones] =
+    const [clientes, obras, cartera, resumenes, hhResumenes, ejecuciones, actividades, datosDashboard, acciones] =
       await Promise.all([
         getClientes(supabase),
         getObras(supabase),
+        getObrasPanel(supabase),
         getResumenEconomicoTodasLasObras(supabase),
         getHHResumenTodasLasObras(supabase),
         getEjecucionFinancieraTodasLasObras(supabase),
@@ -37,13 +40,14 @@ async function loadObrasData() {
         getDashboardDatosFuente(supabase),
         getAcciones(supabase),
       ])
-    return { clientes, obras, resumenes, hhResumenes, ejecuciones, actividades, datosDashboard, acciones }
+    return { clientes, obras, cartera, resumenes, hhResumenes, ejecuciones, actividades, datosDashboard, acciones }
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Error desconocido al conectar con Supabase'
     const failed = { data: null, error } as const
     return {
       clientes: failed,
       obras: failed,
+      cartera: failed,
       resumenes: failed,
       hhResumenes: failed,
       ejecuciones: failed,
@@ -59,7 +63,7 @@ function money(v: number) {
 }
 
 export default async function ObrasPage() {
-  const { clientes, obras, resumenes, hhResumenes, ejecuciones, actividades, datosDashboard, acciones } =
+  const { clientes, obras, cartera, resumenes, hhResumenes, ejecuciones, actividades, datosDashboard, acciones } =
     await loadObrasData()
 
   const pageError = clientes.error ?? obras.error
@@ -82,6 +86,8 @@ export default async function ObrasPage() {
         <h1 className="text-3xl font-bold">Obras</h1>
         <p className="mt-2 text-gray-600">Tablero de gestión — obras activas primero, ordenadas por riesgo económico.</p>
       </div>
+
+      {cartera.data && <CarteraReal obras={cartera.data} />}
 
       {pageError && isAuthError && (
         <div className="rounded border border-amber-300 bg-amber-50 p-4 text-amber-900" data-testid="page-error">
