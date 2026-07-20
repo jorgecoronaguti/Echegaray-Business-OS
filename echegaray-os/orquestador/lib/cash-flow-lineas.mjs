@@ -57,6 +57,80 @@ export function lineasEgreso() {
   return ORDEN.map((r) => ({ rubro: r, detalle: porRubro.get(r).detalle, paga: porRubro.get(r).paga }))
 }
 
+// De dónde sale la PROYECCIÓN de cada rubro para los meses que todavía no pasaron.
+//
+// POR QUÉ HACE FALTA (20/07). Medido: el cash flow proyectaba los INGRESOS pero no los egresos.
+// De agosto a diciembre, Materiales Civil mostraba $203.132 contra un ritmo real de ~$26M por mes,
+// y Estructura, Recurrentes, Mantenimiento e Impuestos mostraban $0. Con los cobros proyectados y
+// los pagos no, el último cuatrimestre daba un superávit que no existe — del orden de $165M.
+//
+// DOS ORÍGENES, Y LA DIFERENCIA IMPORTA:
+//   · 'tabla'  — la pestaña de detalle YA calcula su proyección (Estructura y Recurrentes lo hacen,
+//                cada una con su regla y su ajuste por inflación). El cash flow la LEE de ahí. Si la
+//                recalculara acá habría dos definiciones del mismo número, que es el error que este
+//                archivo entero vino a corregir.
+//   · 'ritmo'  — no hay pestaña que lo proyecte: se usa el promedio de los últimos 3 meses cerrados
+//                ajustado por la inflación de Parámetros. Es un SUPUESTO declarado, no un dato.
+//   · null     — no se proyecta. Los jornales ya traen sus quincenas futuras de su propia planilla.
+/** Menos de esto no es una tendencia mensual, es un pago suelto. Misma regla que Estructura. */
+const MIN_MESES = 4
+/** La fila del encabezado con los 12 primeros-de-mes. Se usa para contar en cuántos hubo gasto. */
+const MESES_CAB = '$B$3:$M$3'
+
+const PROYECCION = {
+  'Estructura': { tipo: 'tabla', ref: (col) => `Estructura!${col}$15` },
+  'Servicios recurrentes': { tipo: 'tabla', ref: (col) => `Recurrentes!${col}$24` },
+  'Nómina · Jornales de obra': null,
+  // Las cuotas que faltan YA están cargadas en Compras con su fecha de vencimiento (el saldo
+  // pendiente es $7.958.394 y se ve en Cargas Sociales). Proyectar encima inventaba $4.355.383 de
+  // cuotas que ningún plan tiene: un plan de pago tiene un número de cuotas fijo, no un ritmo.
+  'Deuda previsional (planes de pago)': null,
+  // Ídem: el crédito prendario tiene las cuotas 15 a 26 cargadas hasta diciembre.
+  'Financiero': null,
+}
+
+/**
+ * NÚCLEO PURO: el monto de un rubro en un MES, con proyección si el mes todavía no pasó.
+ * @param {string} rubro nombre exacto
+ * @param {string} celdaRubro celda con el nombre (ej. '$A12')
+ * @param {string} colMes letra de la columna del mes en el cash flow (ej. 'I')
+ * @param {string} colTabla letra de la columna equivalente en la pestaña de detalle
+ * @param {number} filaCab fila del encabezado con las fechas
+ * @returns {string} fórmula es-AR
+ */
+export function formulaMesConProyeccion(rubro, celdaRubro, colMes, colTabla, filaCab) {
+  const mes = `${colMes}$${filaCab}`
+  const real = `SUMIFS(${COL_TOTAL};${COL_RUBRO};${celdaRubro};${COL_FECHA};">="&${mes};${COL_FECHA};"<"&EOMONTH(${mes};0)+1)`
+  const p = PROYECCION[rubro]
+  if (p === null) return `=${real}`
+  let proy
+  if (p?.tipo === 'tabla') {
+    proy = p.ref(colTabla)
+  } else {
+    // Promedio de los 3 meses cerrados anteriores a hoy, ajustado por inflación...
+    const ventana = `SUMIFS(${COL_TOTAL};${COL_RUBRO};${celdaRubro};${COL_FECHA};">="&EOMONTH(TODAY();-4)+1;${COL_FECHA};"<="&EOMONTH(TODAY();0))/3`
+    const factor = `IFERROR(INDEX(Parámetros!$C$74:$C$90;MATCH(EOMONTH(${mes};0);ARRAYFORMULA(EOMONTH(Parámetros!$A$74:$A$90;0));0));1)`
+    // ...PERO SÓLO SI EL GASTO ES MENSUAL DE VERDAD. Sin este guard, el SAC — que se paga en junio y
+    // en diciembre — entraba al promedio móvil de julio y se proyectaba TODOS los meses: $18.777.459
+    // de aguinaldo inventado contra $7.368.710 reales. Es el mismo error que la moto en Estructura,
+    // y la misma regla lo mata: un rubro que no aparece en al menos 4 meses del año no es una
+    // tendencia, es un pago suelto, y proyectarlo es fabricar plata que nadie va a pagar.
+    const mesesConGasto = `SUMPRODUCT(--(COUNTIFS(${COL_RUBRO};${celdaRubro};${COL_FECHA};">="&${MESES_CAB};${COL_FECHA};"<"&EOMONTH(${MESES_CAB};0)+1)>0))`
+    proy = `IF(${mesesConGasto}<${MIN_MESES};0;${ventana}*${factor})`
+  }
+  // Un mes ya cerrado muestra lo que pasó, aunque sea cero. Sólo el futuro se proyecta, y sólo si no
+  // hay un pago REAL ya cargado con esa fecha (nómina y financiero sí los tienen).
+  return `=IF(EOMONTH(${mes};0)<=EOMONTH(TODAY();0);${real};IF(${real}<>0;${real};${proy}))`
+}
+
+/** Los rubros cuya proyección sale de su propia pestaña, para poder explicarlo en el Sheet. PURA. */
+export function origenProyeccion(rubro) {
+  const p = PROYECCION[rubro]
+  if (p === null) return 'sus quincenas futuras ya vienen de Jornales por Quincena'
+  if (p?.tipo === 'tabla') return `la proyección la calcula la pestaña ${p.ref('B').split('!')[0]}`
+  return 'promedio de los últimos 3 meses cerrados, ajustado por inflación (Parámetros)'
+}
+
 /**
  * NÚCLEO PURO: la fórmula del monto de un rubro en una ventana de fechas.
  * Todas las columnas viven en Compras, así que SUMIFS alcanza (SUMIFS falla cuando el rango a sumar

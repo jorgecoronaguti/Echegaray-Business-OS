@@ -13,6 +13,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import {
   lineasEgreso, formulaRubroEnVentana, formulaJornales, formulaCobranzas, bloqueControl,
+  formulaMesConProyeccion, origenProyeccion,
 } from '../lib/cash-flow-lineas.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -56,8 +57,11 @@ function grilla(periodo) {
   const irASemana = periodo === 'semanal'
     ? `=HYPERLINK("#gid=SEMGID&range="&SUBSTITUTE(ADDRESS(1;MATCH(1;ARRAYFORMULA((${letra(1)}$${FILA_CAB}:${letra(n)}$${FILA_CAB}<=TODAY())*(${letra(1)}$${FILA_CAB}:${letra(n)}$${FILA_CAB}+7>TODAY()));0)+1;4);"1";"");"📅 IR A LA SEMANA DE HOY — "&TEXT(TODAY();"dd/mm/yyyy"))`
     : `=HYPERLINK("#gid=SEMGID&range="&SUBSTITUTE(ADDRESS(1;MONTH(TODAY())+1;4);"1";"");"📅 IR AL MES DE HOY — "&TEXT(TODAY();"mmmm yyyy"))`
-  push([irASemana, 'Cada línea de egreso es un rubro de la columna "Rubro de caja" de Compras. Esa columna es la ÚNICA definición: si un gasto cambia de rubro ahí, cambia acá.'])
-  push(['Período', ...cols.map(fechaAR), `Total ${AÑO}`])
+  const nota = periodo === 'semanal'
+    ? 'Cada línea de egreso es un rubro de la columna "Rubro de caja" de Compras. ESTE CUADRO MUESTRA LO COMPROMETIDO: sólo pagos con fecha ya cargada. Las proyecciones de los meses que faltan están en el Cash Flow Mensual — a nivel semana una proyección de materiales es ruido, no información.'
+    : 'Cada línea de egreso es un rubro de la columna "Rubro de caja" de Compras. Los meses que todavía no pasaron son PROYECCIÓN (fondo ámbar): Estructura y Recurrentes traen la suya de su propia pestaña; el resto usa el promedio de los últimos 3 meses cerrados ajustado por inflación.'
+  push([irASemana, nota])
+  meta.cabFila = push(['Período', ...cols.map(fechaAR), `Total ${AÑO}`])
 
   push([])
   push(['INGRESOS DE CAJA (pestaña Cobranzas — por fecha de cobro, no de facturación)'])
@@ -71,9 +75,17 @@ function grilla(periodo) {
   const lineas = lineasEgreso()
   meta.egr0 = filas.length + 1
   for (const l of lineas) {
-    const f = l.paga === 'compras'
-      ? cols.map((_, i) => formulaRubroEnVentana('$A' + (filas.length + 1), desde(i), hasta(i)))
-      : cols.map((_, i) => formulaJornales(desde(i), hasta(i)))
+    const fila = filas.length + 1
+    let f
+    if (l.paga !== 'compras') {
+      f = cols.map((_, i) => formulaJornales(desde(i), hasta(i)))
+    } else if (periodo === 'mensual') {
+      // El mensual PROYECTA los meses que faltan. El semanal no: ver la nota del encabezado.
+      // La columna de la pestaña de detalle es la misma que la del mes (las dos arrancan en B).
+      f = cols.map((_, i) => formulaMesConProyeccion(l.rubro, `$A${fila}`, letra(i + 1), letra(i + 1), FILA_CAB))
+    } else {
+      f = cols.map((_, i) => formulaRubroEnVentana(`$A${fila}`, desde(i), hasta(i)))
+    }
     push([l.rubro, ...f])
   }
   meta.egr1 = filas.length
@@ -98,6 +110,24 @@ function grilla(periodo) {
   for (let f = meta.egr0; f <= meta.egr1; f++) conTotal.push(f)
   for (const f of conTotal) {
     filas[f - 1][n + 1] = `=SUM(${letra(1)}${f}:${letra(n)}${f})`
+  }
+  // En el mensual, el total del año mezcla real y proyección: hay que poder separarlos de un vistazo,
+  // o un estimado se lee como un hecho. El REAL sale de Compras (SUMIF sobre la columna de rubro),
+  // así que el control de abajo sigue cerrando igual.
+  if (periodo === 'mensual') {
+    filas[meta.cabFila - 1][n + 2] = 'Real (Compras)'
+    filas[meta.cabFila - 1][n + 3] = 'Proyectado'
+    filas[meta.cabFila - 1][n + 4] = 'De dónde sale la proyección'
+    for (let f = meta.egr0; f <= meta.egr1; f++) {
+      const l = lineas[f - meta.egr0]
+      filas[f - 1][n + 2] = l.paga === 'compras'
+        ? `=SUMIF(${'Compras!$AC$4:$AC'};$A${f};${'Compras!$O$4:$O'})`
+        : `=${letra(n + 1)}${f}`
+      filas[f - 1][n + 3] = `=${letra(n + 1)}${f}-${letra(n + 2)}${f}`
+      filas[f - 1][n + 4] = origenProyeccion(l.rubro)
+    }
+    filas[meta.totEgr - 1][n + 2] = `=SUM(${letra(n + 2)}${meta.egr0}:${letra(n + 2)}${meta.egr1})`
+    filas[meta.totEgr - 1][n + 3] = `=SUM(${letra(n + 3)}${meta.egr0}:${letra(n + 3)}${meta.egr1})`
   }
 
   return { filas, meta, n, colTotal, filaCtrl, filaRef }
