@@ -122,12 +122,26 @@ async function main() {
 
   const sheetId = hoja.sheetId
   const rg = (r0, r1, c0, c1) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
+
+  // El formato de la columna de importes va celda por celda, con updateCells, NO con repeatCell.
+  // Con repeatCell sobre el rango entero, seis celdas quedaban sin formato y otras sí — no
+  // contiguas, así que no era un rango mal calculado. No encontré la causa; lo que sí es cierto es
+  // que mandando valor y formato juntos en la misma celda funciona siempre. Preferí una escritura
+  // que anda a seguir gastando en entender por qué la otra no.
+  const MONEDA = { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }, horizontalAlignment: 'RIGHT' }
+  const CANTIDAD = { numberFormat: { type: 'NUMBER', pattern: '0' }, horizontalAlignment: 'RIGHT' }
+  // Las tres filas que cuentan FILAS y no pesos: los dos detectores de duplicados y el de gemelas.
+  const esCantidad = (etiqueta) => /^Filas con|^Proyecciones con/.test(etiqueta)
+  const celdas = b.map(([etiqueta, formula]) => ({
+    values: [{
+      ...(formula ? { userEnteredValue: { formulaValue: formula } } : {}),
+      userEnteredFormat: esCantidad(etiqueta) ? CANTIDAD : MONEDA,
+    }],
+  }))
   await google.spreadsheetBatchUpdate(ID, [
+    { updateCells: { range: rg(0, b.length, C_CTRL + 1, C_CTRL + 2), rows: celdas, fields: 'userEnteredValue,userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment' } },
     { repeatCell: { range: rg(3, 4, C_FLAG, C_FLAG + 1), cell: { userEnteredFormat: { backgroundColor: { red: 0.17, green: 0.25, blue: 0.37 }, textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } } } }, fields: 'userEnteredFormat' } },
     { repeatCell: { range: rg(4, F1, C_FLAG, C_FLAG + 1), cell: { userEnteredFormat: { textFormat: { fontSize: 9, foregroundColor: { red: 0.7, green: 0.3, blue: 0.1 } }, numberFormat: { type: 'TEXT' } } }, fields: 'userEnteredFormat.textFormat,userEnteredFormat.numberFormat' } },
-    { repeatCell: { range: rg(0, b.length, C_CTRL + 1, C_CTRL + 2), cell: { userEnteredFormat: { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat' } },
-    // Los dos contadores de filas son cantidades, no pesos.
-    { repeatCell: { range: rg(11, 14, C_CTRL + 1, C_CTRL + 2), cell: { userEnteredFormat: { numberFormat: { type: 'NUMBER', pattern: '0' }, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment' } },
     { repeatCell: { range: rg(0, 1, C_CTRL, C_CTRL + 1), cell: { userEnteredFormat: { textFormat: { bold: true, fontSize: 12 } } }, fields: 'userEnteredFormat.textFormat' } },
     { repeatCell: { range: rg(10, 11, C_CTRL, C_CTRL + 1), cell: { userEnteredFormat: { textFormat: { bold: true, fontSize: 11, foregroundColor: { red: 0.7, green: 0.2, blue: 0.1 } } } }, fields: 'userEnteredFormat.textFormat' } },
     { repeatCell: { range: rg(0, b.length, C_CTRL + 2, C_CTRL + 3), cell: { userEnteredFormat: { textFormat: { fontSize: 9, italic: true, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'CLIP' } }, fields: 'userEnteredFormat' } },
