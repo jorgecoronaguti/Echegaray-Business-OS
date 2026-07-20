@@ -34,6 +34,51 @@ No cubre: el tratamiento fiscal del contrato (`impuestos-construccion`), el regi
 - **Nunca asumir que un adicional detectado es ingreso** (regla explícita ya en CLAUDE.md raíz) — desde el ángulo legal, esto significa que la sola ejecución de un trabajo fuera de contrato no genera automáticamente derecho a cobro si no está documentado.
 - **El pliego del cliente prevalece sobre la práctica habitual de Echegaray** cuando es más exigente (confirmado con evidencia real: ARCOR exige Pliego de Seguridad/Salud/Medio Ambiente propio).
 
+## El contrato de obra en el Código Civil y Comercial argentino
+
+La obra privada se rige por el **contrato de obra** del CCyC (locación de obra). Lo que sigue es el marco de referencia — **verificar el articulado y su redacción vigente antes de fundar un reclamo o una defensa**, y no reemplaza al abogado en un caso concreto.
+
+- **Sistemas de determinación del precio** (define quién carga con el riesgo de mayor costo):
+  - **Ajuste alzado**: precio global fijo por la obra completa. El riesgo de mayor cantidad o mayor costo es del constructor, salvo pacto de ajuste. En Argentina, sin cláusula de actualización, es el sistema más peligroso para el constructor en obra larga.
+  - **Por unidad de medida**: se paga por unidad ejecutada. El riesgo de cantidad es del comitente; el de precio unitario, del constructor.
+  - **Coste y costas**: se reconoce el costo real más un beneficio. Traslada el riesgo de costo al comitente; exige trazabilidad documental impecable del costo.
+  - Elegir el sistema **es una decisión económica, no formal** — cruzar siempre con `costos-presupuestacion` y `finanzas-tesoreria-construccion`.
+- **Variaciones del proyecto**: el constructor **no puede introducir variaciones sin autorización escrita** del comitente; y las que el comitente ordena y alteran significativamente la obra tienen efectos sobre precio y plazo. **Toda variación sin instrucción escrita es un adicional que después no se cobra.**
+- **Desistimiento unilateral del comitente**: el comitente puede desistir de la obra por su sola voluntad, pero debe **indemnizar** al constructor (incluida la utilidad esperada, según el alcance que fije la norma). Si un cliente frena una obra, esto es un derecho, no un favor a negociar.
+- **Recepción provisoria y definitiva**: la recepción **sin reservas** hace presumir la aceptación de los vicios **aparentes**. Por eso las observaciones se dejan **por escrito en el acta**, en el momento — no después.
+- **Vicios ocultos**: se responde por los que no eran detectables en la recepción; hay **plazo de caducidad para denunciarlos** desde que se los descubre. Verificar plazos vigentes.
+- **Responsabilidad por ruina total o parcial** (obra destinada a larga duración): alcanza al constructor y demás intervinientes por un plazo **decenal** desde la recepción, por vicios que comprometan la solidez o la hagan impropia para su destino. **Es responsabilidad de orden público: no se puede dispensar por contrato.** Es el riesgo latente más grande de una constructora y la razón de fondo para documentar ensayos y controles (cruzar con `calidad-obra`).
+- **Prescripción**: los plazos para reclamar difieren según se trate de responsabilidad contractual, por ruina o por vicios — verificar el aplicable antes de asumir que un reclamo caducó (o que el propio ya no puede iniciarse).
+
+## Obra pública: régimen distinto, no es un contrato privado
+
+- Si el comitente es el Estado, se aplica el **régimen de obra pública** (marco nacional **Ley 13.064** y, en la provincia, la **ley de obras públicas de San Juan** — verificar cuál rige el pliego concreto), no el contrato de obra del CCyC.
+- Consecuencias prácticas: prerrogativas de la Administración, régimen propio de **certificación, redeterminación de precios, sanciones, garantías, recepción y plazos de reclamo**. Los reclamos tienen **plazos y formas rituales**: **el silencio o la demora hacen perder el derecho**.
+- Regla operativa: en obra pública, **todo reclamo se hace por escrito, en plazo y por la vía del pliego**, aunque la relación cotidiana con el inspector sea buena.
+
+## Adicionales: cómo se vuelven exigibles (y por qué se pierden)
+
+El adicional se cobra por lo que se documentó, no por lo que se trabajó.
+
+- Un trabajo fuera del alcance ordenado **verbalmente** y ejecutado sin respaldo es, en un conflicto, **muy difícil de cobrar**.
+- Secuencia que lo hace exigible: **alcance original claro por escrito** → detección del desvío → **notificación al comitente antes de ejecutar** → cotización → **aprobación escrita** (orden de servicio, nota de pedido, mail del representante autorizado) → ejecución → certificación → factura.
+- Si hay que ejecutar por urgencia sin aprobación previa: **dejar constancia escrita en el momento** (nota, libro de obra, mail) describiendo el hecho, la orden recibida y quién la dio.
+- **El libro de órdenes de servicio y el de notas de pedido son prueba.** Si el contrato los prevé, usarlos; si no, construir el equivalente por escrito.
+- Cruzar siempre con `costos-presupuestacion` (valorización) — el OS ya sigue el embudo detectado→cotizado→aprobado→facturado→cobrado.
+
+## Garantías, retenciones y mora
+
+- **Fondo de reparo**: retención sobre cada certificado, liberable a la recepción definitiva; suele ser **sustituible por póliza de caución** (decisión financiera: costo de la póliza vs. dinero inmovilizado).
+- **Garantías típicas**: mantenimiento de oferta, cumplimiento de contrato, anticipo, fondo de reparo.
+- **Mora del comitente**: para reclamar intereses y eventualmente suspender trabajos hay que **constituir en mora en la forma que fije el contrato** (intimación escrita). Suspender la obra sin intimar previamente expone a la constructora al incumplimiento.
+- **Intereses**: verificar la tasa pactada; sin pacto, la que corresponda según la normativa y jurisprudencia aplicable.
+
+## Subcontratación: la responsabilidad no se terceriza
+
+- El constructor **responde frente al comitente** por sus subcontratistas.
+- En materia laboral y de seguridad social existe **responsabilidad solidaria** del contratante por el personal del subcontratista (cruzar con `derecho-laboral-construccion` y `seguridad-higiene-art`).
+- Control mínimo antes y durante: inscripción, personal declarado, **constancia de pago de cargas sociales y ART con nómina**, seguros vigentes. Guardar la documentación **mes a mes**, no al final.
+
 ## Criterios de decisión
 
 | Variable | Pregunta |
