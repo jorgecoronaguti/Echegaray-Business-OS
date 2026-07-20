@@ -70,7 +70,7 @@ import { makeToolExecutor } from './lib/tool-executor.mjs'
 import { enqueuePendingOperation, listPendingOperations, decidePendingOperation, getPendingOperationById } from './lib/pending-ops.mjs'
 import { classifyDirective, classifyDirectiveMulti } from './lib/classify-directive.mjs'
 import { cacheGet, cachePut, cacheClearAll } from './lib/chat-cache.mjs'
-import { skillsForCapability, skillsParaDirectiva, mencionaSheet, SKILL_SHEETS } from './lib/skill-map.mjs'
+import { skillsForCapability, skillsParaDirectiva, skillsSegunProfundidad, mencionaSheet, SKILL_SHEETS } from './lib/skill-map.mjs'
 import { extraerRestricciones, DOCTRINA_EDICION, VERIFICACION_EDICION } from './lib/doc-edit-guardrails.mjs'
 import { isMailComposeIntent, isCalendarWriteIntent } from './lib/chat-intents.mjs'
 import { stripPreamble } from './lib/chat-format.mjs'
@@ -603,7 +603,7 @@ async function ask({ directive, fileId, fast, attachments, attachment, history, 
     // entre SIEMPRE junto al dominio dueño del dato (regla obligatoria del CLAUDE.md raíz). Antes
     // se perdía: 7 de 8 áreas quedaban sin él porque la capacidad de dominio ganaba la clasificación.
     : capabilities.length
-      ? skillsParaDirectiva(capabilities, directive, 4)
+      ? skillsSegunProfundidad(capabilities, directive, { asesoria: asesoriaProfunda })
       : (mencionaSheet(directive) ? [SKILL_SHEETS] : [])
   // "¿Qué podés hacer?" — respuesta DETERMINÍSTICA (0 API, siempre actualizada): así la
   // extensión refleja las capacidades del cerebro sin reinstalarse y sin gastar crédito.

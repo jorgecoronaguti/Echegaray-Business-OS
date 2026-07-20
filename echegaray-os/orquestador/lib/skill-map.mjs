@@ -65,7 +65,27 @@ export function mencionaSheet(directive) {
 export function skillsParaDirectiva(capabilities, directive, max = 4) {
   const base = [...new Set((capabilities || []).flatMap((c) => skillsForCapability(c)))]
   if (!mencionaSheet(directive)) return base.slice(0, max)
+  // (el caller decide `max`: ver skillsSegunProfundidad)
   const sinSheets = base.filter((s) => s !== SKILL_SHEETS)
   const conSheets = sinSheets.length ? [sinSheets[0], SKILL_SHEETS, ...sinSheets.slice(1)] : [SKILL_SHEETS]
   return conSheets.slice(0, max)
+}
+
+/**
+ * Cuántas skills cargar según lo que la pregunta REALMENTE necesita. Medido 2026-07-19:
+ * "cuánta caja tengo hoy" cargaba 8.405 tokens de criterio experto (finanzas + impuestos) para una
+ * pregunta que responde una tool determinística con el número exacto — no hace falta la ley
+ * impositiva para decir el saldo. A $0,58 promedio por consulta en los días de uso real, esa
+ * diferencia es plata.
+ *
+ * - CONSULTA DE DATO (no es de criterio): 1 skill — la del dominio dueño del dato. Alcanza para
+ *   interpretar el número; el resto lo dan las capacidades determinísticas.
+ * - CONSULTA DE CRITERIO ("cómo mejoro", "está bien", "mejores prácticas"): hasta 4. Acá el
+ *   conocimiento ES la respuesta y ahorrar tokens sería ahorrar calidad.
+ * - Si toca un Sheet, la skill de Sheets entra igual (regla obligatoria): mínimo 2.
+ */
+export function skillsSegunProfundidad(capabilities, directive, { asesoria = false } = {}) {
+  const tocaSheet = mencionaSheet(directive)
+  const max = asesoria ? 4 : (tocaSheet ? 2 : 1)
+  return skillsParaDirectiva(capabilities, directive, max)
 }
