@@ -110,5 +110,43 @@ for (const dir of ['caja', 'iva', 'contrato', 'uocra', 'accidente', 'comprar', '
     mencionaSheet('cambiá la fórmula de esa celda') && mencionaSheet('en la pestaña Caja') && !mencionaSheet('cuánto debemos'))
 }
 
+// GUARDA ANTI-CRASH (bug real introducido con el filtro anti-contaminación, 2026-07-19).
+// Sin ella, una directiva que no matchea ninguna palabra clave tiraba TypeError y se caía el
+// ruteo entero del chat. Es la ruta más caliente del sistema: no puede lanzar nunca.
+{
+  const raros = ['', '   ', 'asdkjhasd', 'hola', '¿?', 'xyz 123', 'gracias']
+  for (const q of raros) {
+    let tiro = false
+    try { classifyDirectiveMulti(q) } catch { tiro = true }
+    check(`no crashea con "${q || '(vacío)'}"`, tiro === false)
+  }
+  check('sin match devuelve lista vacía', classifyDirectiveMulti('asdkjhasd').length === 0)
+  check('sin match skillsParaDirectiva tampoco crashea', skillsParaDirectiva(classifyDirectiveMulti('asdkjhasd'), 'asdkjhasd', 4).length === 0)
+}
+
+// MATRIZ DE LAS 8 ÁREAS (2026-07-19). El dueño va a exigir las skills área por área: cada pregunta
+// típica tiene que llegar a un dominio experto CON skill y CON persona. Cuando esto se midió por
+// primera vez, Personas fallaba 2/4 (no se podía preguntar por examen médico ni telegramas, que el
+// OS YA detecta) y Gestión General 0/2. Es la red que evita que un área quede muda.
+{
+  const AREAS = {
+    'Adm. y Finanzas': ['cuanta caja tengo hoy', 'armame el forecast de 13 semanas', 'que tengo vencido sin conciliar', 'como mejoro el capital de trabajo'],
+    'Comercial': ['que le cotizamos a ARCOR', 'cotizamos con 30% de margen esta bien', 'cuanto margen perdimos en San Francisco', 'conviene tomar esta obra'],
+    'Obras': ['como viene el avance de La Estrella', 'cuanto costo real lleva San Francisco', 'que restricciones tiene el cronograma', 'hay adicionales sin cobrar'],
+    'Compras': ['a que proveedor le compramos mas', 'conviene comprar o alquilar el autoelevador', 'que le exijo a un subcontratista'],
+    'Personas': ['como estan los legajos', 'a quien le falta el examen medico', 'hay algun telegrama en curso', 'como se calcula el fondo de cese'],
+    'Calidad': ['que no conformidades tenemos abiertas', 'que controles hago antes de hormigonar'],
+    'Contab. y Legales': ['como viene el P&L', 'que margen bruto tuvimos en julio', 'puedo cobrar este adicional', 'que dice el contrato sobre la mora'],
+    'Gestion General': ['cual es el riesgo mas grande que tenemos', 'en que estado esta la empresa'],
+  }
+  for (const [area, preguntas] of Object.entries(AREAS)) {
+    for (const q of preguntas) {
+      const cap = classifyDirective(q)
+      const sk = skillsParaDirectiva(classifyDirectiveMulti(q), q, 4)
+      check(`[${area}] "${q.slice(0, 34)}" tiene dominio y skill`, cap !== 'general' && sk.length > 0)
+    }
+  }
+}
+
 console.log(`\nclassify-directive.test: ${ok} OK, ${fail} FALLA`)
 process.exit(fail ? 1 : 0)

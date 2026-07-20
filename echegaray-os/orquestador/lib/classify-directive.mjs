@@ -14,7 +14,7 @@ const CAP_KEYWORDS = {
   'advise.accounting': ['contab', 'p&l', 'p y l', 'pyl', 'resultado', 'estado de resultado', 'margen', 'balance', 'devengad', 'asiento', 'ganancia neta', 'rentabilidad', 'utilidad', 'ebitda', 'costo fijo', 'costo variable', 'amortizac', 'depreciac', 'cierre contable'],
   'advise.tax': ['impuesto', 'iva', 'ingresos brutos', 'ganancias', 'arca', 'afip', 'dgr', 'retenc', 'alicuota', 'fiscal', 'monotributo', 'factur', 'percepcion', 'f931'],
   'advise.legal': ['contrato', 'adicional', 'reclamo', 'garantia', 'pliego', 'clausula', 'exigib', 'legal', 'demanda', 'penal', 'penalidad', 'multa', 'rescision', 'incumplimiento', 'certificado de obra'],
-  'advise.hr': ['uocra', 'ieric', 'personal', 'empleado', 'operario', 'en blanco', 'blanqueo', 'jornal', 'legajo', 'alta', 'baja', 'despido', 'sueldo', 'fondo de cese', 'convenio', 'obrero', 'nomina', 'aguinaldo', 'vacaciones', 'presentismo', 'indemniz', 'ausent'],
+  'advise.hr': ['uocra', 'ieric', 'personal', 'empleado', 'operario', 'en blanco', 'blanqueo', 'jornal', 'legajo', 'alta', 'baja', 'despido', 'sueldo', 'fondo de cese', 'convenio', 'obrero', 'nomina', 'aguinaldo', 'vacaciones', 'presentismo', 'indemniz', 'ausent', 'examen medico', 'apto medico', 'preocupacional', 'telegrama', 'carta documento', 'intimacion', 'libreta', 'categoria', 'quincena'],
   'advise.safety': ['seguridad', 'higiene', 'art', 'accidente', 'incidente', 'riesgo laboral', 'ssma', 'epp', 'casco', 'arnes', 'capacitacion', 'siniestr'],
   'advise.procurement': ['compr', 'proveedor', 'subcontrat', 'abastec', 'cotiza insumo', 'orden de compra', 'presupuesto de compra', 'remito', 'insumo', 'stock', 'pedido de material'],
   'advise.estimating': ['cotiz', 'presupuest', 'computo', 'cómputo', 'valoriz', 'costo', 'precio unitario', 'analisis de precio', 'apu', 'oferta', 'metro cuadrado'],
@@ -35,7 +35,7 @@ const CAP_KEYWORDS = {
   // Decisión de negocio / comercial (Go-No-Go, selección de obra, pipeline, riesgo del negocio).
   // Antes NO existía en el clasificador → la skill gestion-empresarial-riesgos era inalcanzable
   // desde el chat pese a estar mapeada a advise.commercial. Cableada.
-  'advise.commercial': ['go/no-go', 'go no go', 'conviene', 'aceptar la obra', 'aceptamos', 'rechazar', 'pipeline', 'licitac', 'oportunidad', 'seleccion de obra', 'elegir obra', 'riesgo del negocio', 'entrar a la obra', 'nos conviene', 'vale la pena'],
+  'advise.commercial': ['go/no-go', 'go no go', 'conviene', 'aceptar la obra', 'aceptamos', 'rechazar', 'pipeline', 'licitac', 'oportunidad', 'seleccion de obra', 'elegir obra', 'riesgo del negocio', 'entrar a la obra', 'nos conviene', 'vale la pena', 'riesgo', 'riesgos', 'exposicion', 'concentracion', 'estado de la empresa', 'situacion de la empresa', 'como venimos', 'como estamos', 'panorama', 'scorecard', 'tablero', 'empresa', 'compania', 'negocio'],
 }
 
 // Match de keyword con LÍMITE DE PALABRA al inicio: "iva" NO matchea dentro de "act·iva·s"
@@ -81,6 +81,11 @@ export function classifyDirectiveMulti(directive, max = 3) {
   // calidad de obra ('estructura'), que diluían a las de finanzas dentro del tope de 4 skills del
   // chat. Regla: el dominio ganador entra siempre; los secundarios solo si tienen señal REAL
   // (≥2 keywords propias, o empatan con el ganador). Determinístico y testeable.
+  // Guarda obligatoria: si NINGUNA capacidad matcheó, `scored` está vacío. Sin esto,
+  // `scored[0].score` tira TypeError y se cae el ruteo entero del chat ante cualquier pregunta
+  // que no matchee una palabra clave — bug real introducido con el filtro y detectado al probar
+  // las 8 áreas. Es la ruta más caliente del sistema: no puede lanzar nunca.
+  if (!scored.length) return []
   const best = scored[0].score
   const filtrado = scored.filter((s, i) => i === 0 || s.score >= 2 || s.score >= best)
   return filtrado.slice(0, max).map((s) => s.cap)
