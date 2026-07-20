@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { repartirCobertura, aCubrirPorMes, normComprobante, hallarPestana, faltaFacturaConFecha, montoEnVentana } from './cheques-cobertura.mjs'
+import { hallarPestana } from './sheet-pestanas.mjs'
+import { repartirCobertura, aCubrirPorMes, normComprobante, faltaFacturaConFecha, montoEnVentana } from './cheques-cobertura.mjs'
 
 const eq = (a, b, m) => assert.equal(a, b, m)
 

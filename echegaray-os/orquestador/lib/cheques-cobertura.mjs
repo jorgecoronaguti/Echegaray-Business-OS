@@ -1,3 +1,5 @@
+import { hallarPestana } from './sheet-pestanas.mjs'
+
 // ¿LOS CHEQUES Y LA TARJETA ESTÁN CONTEMPLADOS EN EL CASH FLOW, O SON PLATA INVISIBLE?
 //
 // LA PREGUNTA DEL DUEÑO (20/07): "¿qué pasó con los cheques a cubrir en los cash flows, en qué
@@ -108,25 +110,6 @@ export function aCubrirPorMes(instrumentos = []) {
 }
 
 /**
- * Encuentra una pestaña por cómo EMPIEZA su nombre, no por el nombre exacto.
- *
- * POR QUÉ. El script pedía la pestaña "Cheques" y el dueño la renombró a "Cheques Emitidos" — que es
- * un nombre mejor. La corrida entera falló con "Unable to parse range", y el agente de cada 2 horas
- * venía fallando en silencio ese paso. Un nombre de pestaña es del dueño, no del código: renombrarla
- * es su derecho y no puede romper nada. Si el prefijo llega a coincidir con dos pestañas, avisa en
- * vez de elegir una al azar.
- */
-export function hallarPestana(hojas, prefijo) {
-  const norm = (s) => String(s ?? '').trim().toLowerCase()
-  const exacta = hojas.find((h) => norm(h.title) === norm(prefijo))
-  if (exacta) return exacta
-  const cand = hojas.filter((h) => norm(h.title).startsWith(norm(prefijo)))
-  if (cand.length === 1) return cand[0]
-  if (cand.length > 1) throw new Error(`"${prefijo}" coincide con ${cand.length} pestañas: ${cand.map((c) => c.title).join(', ')}`)
-  throw new Error(`no encontré ninguna pestaña que empiece con "${prefijo}"`)
-}
-
-/**
  * NÚCLEO PURO: los instrumentos SIN factura en Compras, con su fecha real de pago.
  *
  * POR QUÉ HACE FALTA UNA LÍNEA EN EL CASH FLOW Y NO ALCANZA CON MEDIRLO. El bloque de medición del
@@ -157,3 +140,6 @@ export function faltaFacturaConFecha(instrumentos = [], comprobantesEnCompras = 
 export function montoEnVentana(items = [], desde, hasta) {
   return items.reduce((s, i) => (i.fecha >= desde && i.fecha < hasta ? s + i.monto : s), 0)
 }
+
+// Se re-exporta para no romper a quien ya la importaba de acá; su casa es sheet-pestanas.mjs.
+export { hallarPestana }
