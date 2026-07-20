@@ -42,9 +42,9 @@ export function detectarQuincenas(filas = []) {
 /**
  * Las filas del cuadro de quincenas, TODAS fórmula. PURA.
  *
- * Tiene que devolver EXACTAMENTE las 10 columnas que hoy tiene la pestaña, en su orden:
+ * Tiene que devolver EXACTAMENTE las 11 columnas que hoy tiene la pestaña, en su orden:
  *   Desde · Hasta · Días hábiles · Personas · Hs correspondientes · Hs reales · Banco ·
- *   Adelanto · Total recibo · TOTAL QUINCENA
+ *   Adelanto · Total recibo · TOTAL QUINCENA · Σ $/hora del plantel
  * Antes devolvía 7 columnas de un layout anterior. Nunca se notó porque sólo escribe cuando algo
  * cambia y nada había cambiado — pero la primera quincena nueva habría reescrito el cuadro con las
  * columnas corridas. Un agente que "no escribe todavía" no está probado: está esperando.
@@ -73,6 +73,11 @@ export function filasQuincenas(bloques, filaInicio = 6, hoja = '_J_OBREROS') {
       { f: `=SUM(${H}!Y${b.inicio}:Y${b.fin})`, estilo: 'moneda' },
       { f: `=SUM(${H}!Z${b.inicio}:Z${b.fin})`, estilo: 'moneda' },
       { f: `=SUM(${H}!AA${b.inicio}:AA${b.fin})`, estilo: 'moneda_negrita' },
+      // Σ DEL JORNAL POR HORA DE TODO EL PLANTEL de esa quincena (columna W de JORNALES, el valor
+      // hora REAL de cada persona según su categoría UOCRA). Es la base correcta para proyectar:
+      // antes se usaba "total ÷ horas", que es un promedio inventado y cambia con el ausentismo.
+      // Comprobado: Σ($/hora) × horas por persona reproduce el total real de la quincena.
+      { f: `=SUM(${H}!W${b.inicio}:W${b.fin})`, estilo: 'moneda' },
     ]
   })
 }

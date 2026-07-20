@@ -56,6 +56,7 @@ import { learnTools } from './lib/tools/learn.mjs'
 import { sheetsFormatTools } from './lib/tools/sheets-format.mjs'
 import { sheetDropdownTools } from './lib/tools/sheet-dropdowns.mjs'
 import { aliasPendientesTools } from './lib/tools/alias-pendientes-tool.mjs'
+import { indicesTools } from './lib/tools/indices-tool.mjs'
 
 /** Cliente de Google con la MISMA cuenta autorizada que usa el chat (OAuth por usuario, PRP-024).
  *  Si nadie autorizó, devuelve null y las capacidades de Drive lo dicen en vez de fallar raro. */
@@ -77,7 +78,7 @@ async function construirRegistro() {
     ...controlAdministrativoTools(), ...auditarPestanaTools(google), ...estadoEmpresaTools(google),
     ...deshacerSheetTools(google), ...operacionesSheetTools(google), ...reclamoCobranzaTools(google),
     ...cotizacionesHistorialTools(), ...briefingCajaTools(google), ...obraTools(),
-    ...bibliotecaAreaTools(), ...operatingReviewTools(), ...egresosTools(google), ...cargasSocialesTools(google), ...nominaSyncTools(google), ...sheetRenderTools(google), ...learnTools(), ...sheetsFormatTools(google), ...sheetDropdownTools(google), ...aliasPendientesTools(google),
+    ...bibliotecaAreaTools(), ...operatingReviewTools(), ...egresosTools(google), ...cargasSocialesTools(google), ...nominaSyncTools(google), ...sheetRenderTools(google), ...learnTools(), ...sheetsFormatTools(google), ...sheetDropdownTools(google), ...aliasPendientesTools(google), ...indicesTools(),
   }
 }
 
