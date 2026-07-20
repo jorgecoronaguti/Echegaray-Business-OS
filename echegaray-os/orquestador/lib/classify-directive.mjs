@@ -10,20 +10,22 @@ const CAP_KEYWORDS = {
   // FINANZAS — vocabulario REAL del dueño (auditado 2026-07-19: "cash flow", "forecast",
   // "conciliar" y "administracion" caían a 'general' → el chat respondía sin NADA de finanzas.
   // Área declarada como foco: acá el ruteo tiene que ser generoso, no tacaño.
-  'advise.finance': ['caja', 'saldo', 'cobranz', 'cobrar', 'pagar', 'pago', 'tesorer', 'flujo', 'fondos', 'liquidez', 'capital de trabajo', 'working capital', 'banco', 'bancari', 'cheque', 'echeq', 'transferenc', 'gasto', 'gastar', 'deuda', 'vencimiento', 'anticipo', 'efectivo', 'financ', 'vencid', 'atrasad', 'impago', 'cash flow', 'cashflow', 'cash-flow', 'forecast', 'proyecci', 'concilia', 'dso', 'mora', 'morosidad', 'cobrabilidad', 'plazo de pago', 'cuenta corriente', 'posicion financiera', 'disponibilidad', 'egreso', 'ingreso de dinero', 'presupuesto de caja', 'runway', 'fondo de maniobra'],
+  'advise.finance': ['caja', 'saldo', 'cobranz', 'cobrar', 'pagar', 'pago', 'tesorer', 'flujo', 'fondos', 'liquidez', 'capital de trabajo', 'working capital', 'banco', 'bancari', 'cheque', 'echeq', 'transferenc', 'gasto', 'gastar', 'deuda', 'debo', 'debemos', 'adeud', 'cobro', 'cobros', 'vencimiento', 'anticipo', 'efectivo', 'financ', 'vencid', 'atrasad', 'impago', 'cash flow', 'cashflow', 'cash-flow', 'forecast', 'proyecci', 'concilia', 'dso', 'mora', 'morosidad', 'cobrabilidad', 'plazo de pago', 'cuenta corriente', 'posicion financiera', 'disponibilidad', 'egreso', 'ingreso de dinero', 'presupuesto de caja', 'runway', 'fondo de maniobra'],
   'advise.accounting': ['contab', 'p&l', 'p y l', 'pyl', 'resultado', 'estado de resultado', 'margen', 'balance', 'devengad', 'asiento', 'ganancia neta', 'rentabilidad', 'utilidad', 'ebitda', 'costo fijo', 'costo variable', 'amortizac', 'depreciac', 'cierre contable'],
   'advise.tax': ['impuesto', 'iva', 'ingresos brutos', 'ganancias', 'arca', 'afip', 'dgr', 'retenc', 'alicuota', 'fiscal', 'monotributo', 'factur', 'percepcion', 'f931'],
   'advise.legal': ['contrato', 'adicional', 'reclamo', 'garantia', 'pliego', 'clausula', 'exigib', 'legal', 'demanda', 'penal', 'penalidad', 'multa', 'rescision', 'incumplimiento', 'certificado de obra'],
   'advise.hr': ['uocra', 'ieric', 'personal', 'empleado', 'operario', 'en blanco', 'blanqueo', 'jornal', 'legajo', 'alta', 'baja', 'despido', 'sueldo', 'fondo de cese', 'convenio', 'obrero', 'nomina', 'aguinaldo', 'vacaciones', 'presentismo', 'indemniz', 'ausent', 'examen medico', 'apto medico', 'preocupacional', 'telegrama', 'carta documento', 'intimacion', 'libreta', 'categoria', 'quincena'],
-  'advise.safety': ['seguridad', 'higiene', 'art', 'accidente', 'incidente', 'riesgo laboral', 'ssma', 'epp', 'casco', 'arnes', 'capacitacion', 'siniestr'],
-  'advise.procurement': ['compr', 'proveedor', 'subcontrat', 'abastec', 'cotiza insumo', 'orden de compra', 'presupuesto de compra', 'remito', 'insumo', 'stock', 'pedido de material'],
+  'advise.safety': ['seguridad', 'higiene', 'art', 'accidente', 'incidente', 'riesgo laboral', 'ssma', 'epp', 'casco', 'arnes', 'capacitacion', 'siniestr', 'entrar a planta', 'ingreso a planta', 'acceso a planta', 'ssma', 'induccion', 'apto para ingresar'],
+  'advise.procurement': ['compr', 'proveedor', 'subcontrat', 'abastec', 'cotiza insumo', 'orden de compra', 'presupuesto de compra', 'remito', 'insumo', 'stock', 'pedido de material', 'pedidos de material', 'pedido', 'pedidos', 'materiales'],
   'advise.estimating': ['cotiz', 'presupuest', 'computo', 'cómputo', 'valoriz', 'costo', 'precio unitario', 'analisis de precio', 'apu', 'oferta', 'metro cuadrado'],
-  'advise.engineering': ['plan', 'cronograma', 'avance', 'productividad', 'rendimiento', 'ruta critica', 'gantt', 'certificac', 'hito', 'programa de obra', 'plazo de obra'],
+    // 'plan' PELADO matcheaba "planta" (bug real: "entrar a planta de ARCOR" iba a planificación
+  // en vez de seguridad) y también "plano"/"plantel". Se usan las formas reales del dominio.
+  'advise.engineering': ['planific', 'replanific', 'reprogram', 'plan de obra', 'plan de trabajo', 'atras', 'cronograma', 'avance', 'productividad', 'rendimiento', 'ruta critica', 'gantt', 'certificac', 'hito', 'programa de obra', 'plazo de obra'],
     // 'estructura' PELADO era contaminación pura: en esta empresa significa casi siempre el centro
   // de costo 'Estructura' (imputar a obra o a Estructura) o la estructura de una pestaña. Medido
   // 2026-07-20: "qué estructura tiene que tener la pestaña de egresos" cargaba ingeniería civil y
   // le comía un lugar a Sheets. Ahora se exige que sea estructura CONSTRUCTIVA.
-  'advise.civil': ['hormigon', 'estructura de hormigon', 'estructura metalica', 'estructural', 'calculo estructural', 'material', 'patologia', 'fisura', 'losa', 'columna', 'suelo', 'tecnica constructiv', 'zapata', 'viga', 'encofrado', 'armadura', 'cimiento', 'mamposteria', 'revoque'],
+  'advise.civil': ['hormigon', 'estructura de hormigon', 'estructura metalica', 'estructural', 'calculo estructural', 'patologia', 'fisura', 'losa', 'columna', 'suelo', 'tecnica constructiv', 'zapata', 'viga', 'encofrado', 'armadura', 'cimiento', 'mamposteria', 'revoque'],
   'advise.quality': ['calidad', 'ensayo', 'tolerancia', 'no conformidad', 'control de calidad', 'probeta', 'inspeccion'],
   'advise.equipment': ['equipo', 'vehiculo', 'flota', 'camion', 'maquina', 'mantenimiento', 'rto', 'vtv', 'combustible', 'alquiler de equipo', 'grua', 'autoelevador', 'retroexcavadora', 'hormigonera'],
   'advise.site': ['obra', 'jefe de obra', 'cuadrilla', 'frente', 'sitio', 'capataz', 'parte diario', 'jornada'],
@@ -48,13 +50,28 @@ const CAP_KEYWORDS = {
 // Match de keyword con LÍMITE DE PALABRA al inicio: "iva" NO matchea dentro de "act·iva·s"
 // (bug real que mandaba "comprar retroexcavadora" a impuestos). Los prefijos siguen andando
 // ("compr"→comprar, "retenc"→retención) porque solo anclamos el INICIO, no el final.
+// KEYWORDS FUERTES: valen doble. Una palabra genérica ("pago", "obra", "costo") aparece en
+// preguntas de medio sistema; una específica ("iva", "uocra", "rto", "epp") sólo puede ser de su
+// dominio. Sin esto empataban y ganaba el orden de declaración — bug real: "cuánto pago de IVA
+// este mes" caía en finanzas y respondía sin la skill impositiva. La señal inequívoca manda.
+const FUERTES = new Set([
+  'iva', 'ingresos brutos', 'ganancias', 'arca', 'afip', 'dgr', 'f931', 'monotributo', 'alicuota', 'retenc',
+  'uocra', 'ieric', 'telegrama', 'carta documento', 'fondo de cese', 'aguinaldo', 'indemniz', 'legajo',
+  'epp', 'art', 'accidente', 'ssma', 'siniestr',
+  'rto', 'vtv', 'flota', 'autoelevador', 'retroexcavadora',
+  'no conformidad', 'probeta', 'ensayo',
+  'apu', 'precio unitario', 'analisis de precio',
+  'ebitda', 'p&l', 'devengad',
+  'hormigon', 'encofrado', 'mamposteria',
+])
+
 const _kwCache = new Map()
 function matchKw(t, kw) {
   let re = _kwCache.get(kw)
   if (!re) { re = new RegExp('\\b' + kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')); _kwCache.set(kw, re) }
   return re.test(t)
 }
-function contarMatches(t, kws) { let s = 0; for (const kw of kws) if (matchKw(t, kw)) s++; return s }
+function contarMatches(t, kws) { let s = 0; for (const kw of kws) if (matchKw(t, kw)) s += FUERTES.has(kw) ? 2 : 1; return s }
 
 /** Devuelve un slug de CAPABILITY_SKILLS o 'general'. Síncrono, instantáneo. */
 export function classifyDirective(directive) {
