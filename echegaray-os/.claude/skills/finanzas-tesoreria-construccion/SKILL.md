@@ -83,6 +83,57 @@ Esta skill razona; el dato y el cálculo viven en el núcleo (Supabase + capacid
 | Tensión de liquidez | ¿Hay semanas con posición proyectada negativa? |
 | Instrumento de pago | ¿Cheque, echeq, transferencia — y cuándo impacta realmente en caja? |
 
+## Inflación: en Argentina es la variable que decide el resultado
+
+No es un tema macro de fondo — es operativo y destruye margen obra por obra.
+
+- **Descalce de certificación**: se certifica a precio de contrato (viejo) y se pagan insumos a precio de reposición (nuevo). En obra larga es el principal destructor de margen, más que cualquier ineficiencia de ejecución. Toda obra de plazo largo debe analizarse por este descalce antes de firmarse.
+- **Redeterminación de precios**: en obra pública el mecanismo formal es la redeterminación por **fórmula polinómica** (marco nacional Decreto 691/2016 y concordantes; para San Juan verificar el régimen provincial aplicable antes de invocarlo). Requiere: estructura de ponderación por insumo, índices publicados (INDEC / los que fije el pliego), umbral de disparo y **solicitud formal en plazo** — si no se pide en tiempo y forma, se pierde. En obra **privada** no existe redeterminación por ley: solo vale la **cláusula de ajuste escrita en el contrato**. Sin cláusula, el riesgo de inflación es 100% del constructor.
+- **Validez de oferta**: sin cláusula de ajuste, la protección es una validez de oferta corta y explícita (días, no meses), o precio referido a un índice/moneda.
+- **Costo financiero real vs. nominal**: una tasa nominal alta puede ser tasa **real negativa**. Financiarse puede convenir en términos reales — pero el riesgo no es la tasa, es el **descalce de plazos** entre lo que se paga y lo que se cobra.
+- **Nunca comparar montos de distintas fechas sin deflactar/indexar**: en Argentina la comparación nominal miente (un costo "que subió 80%" puede ser una baja en términos reales). Al comparar presupuesto vs. real, o mes contra mes, declarar el criterio usado.
+- El **ajuste por inflación** contable (RECPAM) e impositivo afecta resultado e impuesto a pagar — cruzar con `contabilidad-constructoras` e `impuestos-construccion`.
+
+## El ciclo financiero de la obra: dónde se consume la caja
+
+Secuencia real: **anticipo → acopio → ejecución → certificación → facturación → cobro → fondo de reparo → liberación**.
+
+- **Anticipo**: mejora la caja al inicio, pero **no es ingreso adicional** — se amortiza descontándose proporcionalmente en cada certificado. Suele exigir póliza de caución. Un forecast que trata el anticipo como ingreso neto está mal armado.
+- **Acopio de materiales**: comprar adelantado protege del aumento de precio pero **inmoviliza caja**. La decisión es: ahorro esperado por inflación vs. costo financiero del dinero inmovilizado + riesgo de robo/deterioro/cambio de proyecto. Si el cliente certifica acopio, cambia por completo la ecuación.
+- **Fondo de reparo / retención de garantía**: un % de cada certificado retenido hasta la recepción definitiva. Es **margen ya ganado pero no cobrado**; hay que tenerlo en el forecast con su fecha de liberación real, no olvidado. Suele poder sustituirse por póliza de caución: comparar el costo de la póliza contra el costo de tener ese dinero inmovilizado meses.
+- **Garantías típicas** (cada una cuesta o inmoviliza): mantenimiento de oferta, cumplimiento de contrato, anticipo, fondo de reparo.
+- **PEAK FUNDING — el número que decide si podés tomar la obra**: toda obra tiene un punto de **máxima caja negativa acumulada** antes de darse vuelta. Ese número, no la facturación ni el margen, define si la obra es tomable. Calcularlo ANTES de firmar, y calcular el **pico agregado de todas las obras en el tiempo** (la suma de los picos individuales no es el pico del conjunto: hay que sumarlos mes a mes).
+
+## Instrumentos de financiamiento de una PyME constructora argentina
+
+Regla madre: **el instrumento debe calzar con el plazo de la necesidad**. Un descalce de días no se financia con deuda a 3 años, y una inversión en equipo no se financia con descubierto.
+
+- **Certificado MiPyME (ARCA/AFIP)**: es la llave de acceso a FCE, tasas preferenciales y programas de fomento. Sin él, la empresa queda afuera de los instrumentos más baratos. Verificar que esté vigente (se renueva).
+- **Factura de Crédito Electrónica MiPyME (FCE)**: cuando una gran empresa le compra a una PyME, corresponde FCE. Si el cliente no la rechaza en el plazo legal queda **aceptada tácitamente** y se convierte en título ejecutivo **negociable** — se puede descontar en el mercado para adelantar el cobro. *Echegaray ya la emite (visible en `CF_COB` con ARCOR)*: es un activo financiero que hoy probablemente no se está aprovechando para descontar.
+- **Cheque de pago diferido / echeq**: descontable en banco o en el mercado de capitales (MAV). El **echeq avalado por SGR** consigue tasas sensiblemente menores que el descuento bancario común.
+- **SGR (Sociedad de Garantía Recíproca)**: avala los cheques/pagarés de la PyME; con ese aval la tasa baja fuerte. Requiere ser socio partícipe. Suele ser **el financiamiento más barato disponible para una PyME sin garantías reales** — evaluar si Echegaray está incorporada a alguna.
+- **Descubierto / adelanto en cuenta corriente**: el más caro. Solo para descalces de días, nunca estructural.
+- **Leasing**: para equipos y vehículos; no inmoviliza capital propio y tiene tratamiento fiscal propio (cruzar con `impuestos-construccion` y `equipos-flota-construccion`).
+- **Líneas de inversión productiva, BICE, Banco Nación, programas provinciales de San Juan**: verificar vigencia y condiciones antes de recomendarlas — cambian permanentemente.
+
+## Impuestos mirados como caja (timing, no solo costo)
+
+Desde tesorería lo que importa no es cuánto es el impuesto sino **cuándo sale la plata** y cuánta caja queda atrapada.
+
+- **IVA — saldo técnico inmovilizado**: el IVA pagado en compras y anticipos que no encuentra débito suficiente queda como saldo a favor **técnico**, que no se puede pedir de vuelta ni compensar libremente. Un saldo técnico creciente es **caja atrapada** y hay que monitorearlo como tal.
+- **Retenciones y percepciones** (IVA, Ganancias, IIBB, **SIRCREB** sobre acreditaciones bancarias): inmovilizan caja mucho antes del vencimiento del impuesto. Un régimen mal gestionado genera saldos a favor permanentes que financian gratis al fisco.
+- **Impuesto al cheque (Ley 25.413)**: grava débitos y créditos bancarios; una porción es computable contra otros impuestos. Verificar alícuota y porcentaje de cómputo vigentes antes de citarlos.
+- **Convenio Multilateral**: si se trabaja en más de una provincia, la asignación de base imponible cambia la carga de IIBB.
+
+## Indicadores que mira un CFO de constructora (no los genéricos de manual)
+
+- **Peak funding** por obra y agregado (ver arriba) — el más importante para decidir si se toma una obra.
+- **Ciclo de conversión de efectivo de obra**: días entre pagar el insumo y cobrar el certificado que lo contiene. Es el que explica por qué una empresa con margen se queda sin caja.
+- **DSO por cliente, nunca solo el promedio**: el promedio esconde al cliente malo. Un cliente que paga a 90 días con otro que paga a 15 da un promedio "sano" que no existe.
+- **Cobertura de obligaciones**: (caja + cobranzas comprometidas) / obligaciones de los próximos 30-60-90 días.
+- **Concentración de cobranza**: % de la cobranza que depende de un solo cliente (caso real de Echegaray: ARCOR). Alta concentración = el riesgo de caja no es financiero, es comercial.
+- **Backlog sostenible**: cuánta obra contratada se puede sostener con la caja y el financiamiento disponibles — crecer más rápido que eso es cómo una constructora rentable quiebra.
+
 ## Errores frecuentes
 
 - Aceptar una obra grande sin evaluar si el capital de trabajo que requiere pone en riesgo la caja de las obras en curso.
