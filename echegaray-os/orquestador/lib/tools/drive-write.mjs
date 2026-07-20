@@ -348,6 +348,63 @@ export function driveWriteTools(google) {
         return { ok: true, cleared_range: r.clearedRange ?? input.range }
       },
     },
+    // Faltaban las dos operaciones más básicas sobre una pestaña: renombrarla y borrarla.
+    // drive_rename existe pero es para ARCHIVOS, así que "renombrá la pestaña X" no tenía forma de
+    // ejecutarse: había que crear otra, copiar todo y borrar la vieja — y en el medio se pierden las
+    // referencias de las fórmulas que apuntaban a la pestaña original.
+    'drive.rename_tab': {
+      capability: 'drive.write',
+      account: 'ecsas',
+      schema: {
+        name: 'drive_renombrar_pestana',
+        description:
+          'RENOMBRA una pestaña (hoja) de un Google Sheet conservando su contenido, su formato y — lo ' +
+          'importante — todas las fórmulas que la referencian desde otras pestañas, que Google reescribe ' +
+          'solo. Usá esto en vez de crear una pestaña nueva y borrar la vieja: eso rompe las referencias. ' +
+          'Pasá file_id, tab (nombre actual) y nuevo_nombre. NO es drive_rename, que renombra el ARCHIVO.',
+        input_schema: {
+          type: 'object',
+          properties: { file_id: { type: 'string' }, tab: { type: 'string' }, nuevo_nombre: { type: 'string' } },
+          required: ['file_id', 'tab', 'nuevo_nombre'],
+        },
+      },
+      async run(input) {
+        if (!input?.file_id || !input?.tab || !input?.nuevo_nombre) return { error: 'faltan file_id, tab o nuevo_nombre' }
+        const meta = (await google.getSheetMeta(input.file_id)).find((s) => s.title === input.tab)
+        if (!meta) return { error: `no encontré la pestaña "${input.tab}"` }
+        await google.spreadsheetBatchUpdate(input.file_id, [{
+          updateSheetProperties: { properties: { sheetId: meta.sheetId, title: input.nuevo_nombre }, fields: 'title' },
+        }])
+        return { ok: true, antes: input.tab, ahora: input.nuevo_nombre }
+      },
+    },
+
+    'drive.delete_tab': {
+      capability: 'drive.write',
+      account: 'ecsas',
+      schema: {
+        name: 'drive_borrar_pestana',
+        description:
+          'BORRA una pestaña entera de un Google Sheet. Es IRREVERSIBLE y rompe cualquier fórmula que la ' +
+          'referencie (quedan en #REF!). Antes de usarla, verificá que nada dependa de esa pestaña. ' +
+          'Pasá file_id y tab.',
+        input_schema: {
+          type: 'object',
+          properties: { file_id: { type: 'string' }, tab: { type: 'string' } },
+          required: ['file_id', 'tab'],
+        },
+      },
+      async run(input) {
+        if (!input?.file_id || !input?.tab) return { error: 'faltan file_id o tab' }
+        const hojas = await google.getSheetMeta(input.file_id)
+        const meta = hojas.find((s) => s.title === input.tab)
+        if (!meta) return { error: `no encontré la pestaña "${input.tab}"` }
+        if (hojas.length <= 1) return { error: 'es la única pestaña del archivo: no se puede borrar' }
+        await google.spreadsheetBatchUpdate(input.file_id, [{ deleteSheet: { sheetId: meta.sheetId } }])
+        return { ok: true, borrada: input.tab }
+      },
+    },
+
     'drive.addtab': {
       capability: 'drive.write',
       account: 'ecsas',
