@@ -57,6 +57,26 @@ export function lineasEgreso() {
   return ORDEN.map((r) => ({ rubro: r, detalle: porRubro.get(r).detalle, paga: porRubro.get(r).paga }))
 }
 
+/**
+ * La línea 13, la que NO sale de Compras porque justamente mide lo que a Compras le falta.
+ *
+ * POR QUÉ EXISTE (20/07). El dueño preguntó dos veces por los cheques. La primera respuesta fue
+ * correcta pero incompleta: "el cheque es CÓMO se paga, no qué se compró, así que no se suma". Eso
+ * vale para los 39 cheques cuya factura SÍ está en Compras — sumarlos duplicaría $38.388.505. Pero
+ * hay 15 instrumentos ($12.979.883) cuya factura NO está cargada en ningún lado: esa plata sale del
+ * banco y NINGUNA línea del cash flow la veía. Medirla al pie y no sumarla dejaba el cuadro
+ * subestimado a propósito.
+ *
+ * Se llena desde las pestañas Cheques Emitidos y Tarjeta de Credito, sólo con lo que no matchea
+ * contra Compras. El día que se carguen esas facturas, esta línea baja sola a $0 y la plata aparece
+ * en el rubro que le corresponde. Es una línea que existe para desaparecer.
+ */
+export const LINEA_CHEQUES = {
+  rubro: 'Cheques y tarjeta sin factura cargada',
+  detalle: 'Cheques Emitidos y Tarjeta de Credito',
+  paga: 'Cheques Emitidos',
+}
+
 // De dónde sale la PROYECCIÓN de cada rubro para los meses que todavía no pasaron.
 //
 // POR QUÉ HACE FALTA (20/07). Medido: el cash flow proyectaba los INGRESOS pero no los egresos.
@@ -134,6 +154,7 @@ export function formulaMesConProyeccion(rubro, celdaRubro, colMes, colTabla, fil
 
 /** Los rubros cuya proyección sale de su propia pestaña, para poder explicarlo en el Sheet. PURA. */
 export function origenProyeccion(rubro) {
+  if (rubro === LINEA_CHEQUES.rubro) return 'no se proyecta: son cheques y tarjeta YA emitidos, con fecha de pago cierta'
   const p = PROYECCION[rubro]
   if (p === null) return 'sus quincenas futuras ya vienen de Jornales por Quincena'
   if (p?.tipo === 'tabla') return `la proyección la calcula la pestaña ${p.ref('B').split('!')[0]}`

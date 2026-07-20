@@ -125,3 +125,35 @@ export function hallarPestana(hojas, prefijo) {
   if (cand.length > 1) throw new Error(`"${prefijo}" coincide con ${cand.length} pestañas: ${cand.map((c) => c.title).join(', ')}`)
   throw new Error(`no encontré ninguna pestaña que empiece con "${prefijo}"`)
 }
+
+/**
+ * NÚCLEO PURO: los instrumentos SIN factura en Compras, con su fecha real de pago.
+ *
+ * POR QUÉ HACE FALTA UNA LÍNEA EN EL CASH FLOW Y NO ALCANZA CON MEDIRLO. El bloque de medición del
+ * pie contesta "cuánto falta cargar", pero el cuadro de arriba —el que se mira para decidir— seguía
+ * sin ver esa plata. Y son pagos que salen de la cuenta igual: $12.979.883 confirmados.
+ *
+ * NO PUEDE DUPLICAR, POR CONSTRUCCIÓN. Sólo entran los instrumentos cuyo número de comprobante NO
+ * está en Compras. Si estuviera, ya viajó al cash flow por el rubro de esa factura y acá no aparece.
+ * Es la única forma de sumar cheques sin romper la regla de oro: el que ya está contemplado, se
+ * excluye solo.
+ *
+ * @param {Array} instrumentos con {comprobante, monto, fecha} — fecha es la de PAGO, no la de emisión
+ * @param {Set<string>} comprobantesEnCompras claves ya normalizadas
+ * @returns {Array<{fecha:Date, monto:number, proveedor:string}>}
+ */
+export function faltaFacturaConFecha(instrumentos = [], comprobantesEnCompras = new Set()) {
+  const { falta_factura: falta } = repartirCobertura(instrumentos, comprobantesEnCompras)
+  return falta.filter((i) => i.fecha instanceof Date && !Number.isNaN(i.fecha.getTime()))
+    .map((i) => ({ fecha: i.fecha, monto: Number(i.monto) || 0, proveedor: i.proveedor ?? '' }))
+}
+
+/**
+ * NÚCLEO PURO: cuánto de una lista cae en una ventana [desde, hasta).
+ * El límite superior es EXCLUYENTE para que ningún pago caiga en dos columnas del cash flow.
+ * @param {Array<{fecha:Date, monto:number}>} items
+ * @returns {number}
+ */
+export function montoEnVentana(items = [], desde, hasta) {
+  return items.reduce((s, i) => (i.fecha >= desde && i.fecha < hasta ? s + i.monto : s), 0)
+}

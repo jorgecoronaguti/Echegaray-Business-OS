@@ -13,8 +13,12 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import {
   lineasEgreso, formulaRubroEnVentana, formulaJornales, formulaCobranzas, bloqueControl,
-  formulaMesConProyeccion, origenProyeccion,
+  formulaMesConProyeccion, origenProyeccion, LINEA_CHEQUES,
 } from '../lib/cash-flow-lineas.mjs'
+import {
+  normComprobante, esLlaveUtil, faltaFacturaConFecha, montoEnVentana, hallarPestana,
+} from '../lib/cheques-cobertura.mjs'
+import { parseMonto, parseFecha } from '../lib/cash-briefing.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
@@ -36,7 +40,7 @@ const fechaAR = (d) => `${d.getUTCDate()}/${d.getUTCMonth() + 1}/${d.getUTCFullY
  * Arma la grilla de una pestaña de cash flow.
  * @param {'semanal'|'mensual'} periodo
  */
-function grilla(periodo) {
+function grilla(periodo, faltantes = []) {
   const cols = periodo === 'semanal' ? semanas() : Array.from({ length: 12 }, (_, m) => new Date(Date.UTC(AÑO, m, 1)))
   const n = cols.length
   const colTotal = letra(n + 1) // A + n períodos → la siguiente es el total
@@ -88,6 +92,15 @@ function grilla(periodo) {
     }
     push([l.rubro, ...f])
   }
+  // La línea que NO sale de Compras porque mide lo que a Compras le falta. Va última y adentro del
+  // bloque de egresos, así entra al TOTAL. Los importes son VALORES, no fórmulas: el cruce necesita
+  // normalizar el número de comprobante de los dos lados ("0001-000036" vs "1-36") y eso en fórmula
+  // sería ilegible. El agente la reescribe cada 2 horas.
+  const finVentana = (i) => (periodo === 'semanal'
+    ? new Date(cols[i].getTime() + 7 * 86400000)
+    : new Date(Date.UTC(AÑO, cols[i].getUTCMonth() + 1, 1)))
+  push([LINEA_CHEQUES.rubro, ...cols.map((d, i) => montoEnVentana(faltantes, d, finVentana(i)) || '')])
+  const lineasTodas = [...lineas, LINEA_CHEQUES]
   meta.egr1 = filas.length
   meta.totEgr = push(['TOTAL EGRESOS', ...cols.map((_, i) => `=SUM(${letra(i + 1)}${meta.egr0}:${letra(i + 1)}${meta.egr1})`)])
   push([])
@@ -96,7 +109,7 @@ function grilla(periodo) {
 
   push([])
   const filaRef = push(['DÓNDE ESTÁ EL DETALLE DE CADA LÍNEA'])
-  for (const l of lineas) {
+  for (const l of lineasTodas) {
     push([l.rubro, l.paga === 'compras' ? `Compras (rubro "${l.rubro}") · detalle en la pestaña ${l.detalle}` : `Pestaña ${l.paga} — el monto NO sale de Compras`])
   }
 
@@ -119,7 +132,7 @@ function grilla(periodo) {
     filas[meta.cabFila - 1][n + 3] = 'Proyectado'
     filas[meta.cabFila - 1][n + 4] = 'De dónde sale la proyección'
     for (let f = meta.egr0; f <= meta.egr1; f++) {
-      const l = lineas[f - meta.egr0]
+      const l = lineasTodas[f - meta.egr0]
       filas[f - 1][n + 2] = l.paga === 'compras'
         ? `=SUMIF(${'Compras!$AC$4:$AC'};$A${f};${'Compras!$O$4:$O'})`
         : `=${letra(n + 1)}${f}`
@@ -191,11 +204,38 @@ async function formatear(google, data) {
   await google.spreadsheetBatchUpdate(ID, req)
 }
 
+/**
+ * Los cheques y la tarjeta cuya factura NO está en Compras, con su fecha real de pago.
+ * Se leen acá y no en el otro script porque la línea tiene que estar DENTRO del bloque de egresos
+ * para entrar al total, y ese bloque lo arma esta grilla.
+ */
+async function faltantesDeCompras(google) {
+  const hojas = await google.getSheetMeta(ID)
+  const chequesTab = hallarPestana(hojas, 'Cheques').title
+  const compras = await google.readSheetValues(ID, 'Compras!A4:O800')
+  const enCompras = new Set(
+    compras.filter((f) => parseMonto(f?.[14]) > 0).map((f) => normComprobante(f?.[7])).filter(esLlaveUtil),
+  )
+  // Columna I de Cheques y I de Tarjeta = la fecha de pago real (dd/mm/yyyy), no la de emisión: lo
+  // que importa para la caja es cuándo se debita, no cuándo se firmó el cheque.
+  const cheques = (await google.readSheetValues(ID, `${chequesTab}!A2:L400`))
+    .filter((f) => parseMonto(f?.[5]) > 0)
+    .map((f) => ({ proveedor: f[4], monto: parseMonto(f[5]), comprobante: f[7], fecha: parseFecha(f[8]) }))
+  const tarjeta = (await google.readSheetValues(ID, 'Tarjeta de Credito!A3:K400'))
+    .filter((f) => parseMonto(f?.[4]) > 0)
+    .map((f) => ({ proveedor: f[2], monto: parseMonto(f[4]), comprobante: f[6], fecha: parseFecha(f[7]) }))
+  const out = [...faltaFacturaConFecha(cheques, enCompras), ...faltaFacturaConFecha(tarjeta, enCompras)]
+  const total = out.reduce((s, i) => s + i.monto, 0)
+  console.log(`Cheques y tarjeta SIN factura en Compras: ${out.length} pagos · $${Math.round(total).toLocaleString('es-AR')}`)
+  return out
+}
+
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
+  const faltantes = await faltantesDeCompras(google)
   const data = []
   for (const [pestaña, periodo] of [['Cash Flow Semanal', 'semanal'], ['Cash Flow Mensual', 'mensual']]) {
-    const g = grilla(periodo)
+    const g = grilla(periodo, faltantes)
     const ancho = Math.max(...g.filas.map((f) => f.length))
     // Normalizar el rectángulo: si una fila es más corta, la API deja lo viejo debajo.
     const cuadro = g.filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r })
