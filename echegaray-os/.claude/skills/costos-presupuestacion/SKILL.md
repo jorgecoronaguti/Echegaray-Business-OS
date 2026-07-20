@@ -34,6 +34,73 @@ No cubre: la viabilidad técnica de la solución que se está costeando (`ingeni
 - **Buscar las variables que explican la mayor parte del error**, no agregar detalle indiscriminado — regla explícita ya en el CLAUDE.md raíz.
 - **Costo directo ≠ costo indirecto ≠ margen**: mantenerlos siempre separados, nunca mezclar overhead de estructura con costo directo de obra al analizar un desvío.
 
+## La estructura del precio: el ORDEN de aplicación (donde se pierde plata sin darse cuenta)
+
+Secuencia correcta, cada componente sobre **su** base:
+
+```
+  costo directo  (materiales c/desperdicio + MO con cargas reales + equipos + subcontratos)
++ gastos generales / estructura        → sobre el costo directo
+= costo total
++ beneficio                            → sobre el costo total
+= precio antes de financiación e impuestos
++ costo financiero                     → según el PLAZO DE COBRO REAL del cliente
++ impuestos sobre la venta             → IIBB, impuesto al cheque, anticipo de Ganancias
+= PRECIO DE VENTA (s/IVA)
++ IVA                                  → alícuota según el tipo de obra (verificar)
+```
+
+- **Aplicar todos los porcentajes sobre el costo directo subestima el precio.** Cada uno va sobre la base que le corresponde, en este orden.
+- **MARKUP ≠ MARGEN — el error más caro y más común.** Un margen del 30% sobre el precio equivale a un markup del 42,9% sobre el costo: `precio = costo / (1 − margen)`, no `costo × (1 + margen)`. Quien aplica "30%" sobre el costo creyendo que gana 30% en realidad gana 23,1%. Antes de validar cualquier presupuesto: **preguntar si ese porcentaje es sobre costo o sobre precio.**
+- Todo porcentaje de la configuración (GG, beneficio, financiero, impuestos) debe poder justificarse: de dónde sale, no "siempre se usó ese".
+
+## Mano de obra: el costo real de una hora, no el jornal
+
+El **jornal básico del CCT no es el costo**. El costo horario real se arma sumando:
+
+- jornal básico del convenio UOCRA vigente (**verificar zona aplicable a San Juan y la escala vigente — nunca citar de memoria**);
+- adicionales del convenio (asistencia/presentismo, zona desfavorable, altura, insalubridad, especialización según corresponda);
+- **cargas sociales y contribuciones**: en construcción la incidencia sobre el jornal es muy alta — verificar el porcentaje vigente y **nunca asumirlo**;
+- **Fondo de Cese Laboral (Ley 22.250)**: aporte patronal específico del régimen, no es indemnización (cruzar con `derecho-laboral-construccion`);
+- ART, seguro de vida obligatorio;
+- ropa de trabajo y EPP **prorrateados** por la duración de obra;
+- **improductividad**: lluvia y clima, traslados dentro de obra, esperas por material o frente no liberado, reuniones, limpieza. Si el APU asume 100% de productividad, está mal.
+- incidencia de horas extras si la obra las requiere estructuralmente.
+
+El otro factor del APU es el **rendimiento** (HH por unidad). Un jornal correcto con rendimiento equivocado destruye el precio igual. El rendimiento se valida contra la obra real ejecutada (ciclo de aprendizaje) — es el dato que más mejora la próxima cotización.
+
+## Materiales
+
+- **Precio de reposición, no el histórico**: se cotiza con lo que va a costar comprarlo, no con lo que costó.
+- **Desperdicio declarado por ítem**, no un porcentaje global (no desperdicia igual el hormigón que el cerámico).
+- **Flete, descarga y acarreo**: en San Juan la logística puede ser un componente relevante, no un detalle.
+- **Acopio**: comprar adelantado congela el precio pero inmoviliza caja — la decisión es económica *y* financiera (cruzar con `finanzas-tesoreria-construccion`).
+
+## Cotizar con inflación (Argentina)
+
+- Toda cotización lleva **validez explícita y corta**. Sin fecha de validez, el riesgo de inflación queda 100% del lado del constructor.
+- **Obra privada**: solo protege la **cláusula de ajuste escrita en el contrato**. Si no está, no existe.
+- **Obra pública**: el mecanismo es la **redeterminación de precios por fórmula polinómica** — hay que cotizar sabiendo qué índices y qué estructura de ponderación va a aplicar, y pedirla en plazo (cruzar con `finanzas-tesoreria-construccion` y `derecho-construccion-contratos`).
+- El **costo financiero se cotiza sobre el plazo de cobro REAL del cliente**, no el teórico del contrato: un cliente que paga a 90 días requiere financiar 90 días.
+- **Nunca comparar un precio de hace meses con uno de hoy sin actualizar** — en Argentina la comparación nominal miente.
+
+## Costos indirectos, estructura y subcontratos
+
+- Los **gastos generales** son la estructura que sostiene la obra (administración, taller, conducción, vehículos, seguros). Se distribuyen por obra con un criterio **declarado** (facturación, HH o duración) — no un número heredado.
+- Una obra que no absorbe su parte de estructura parece rentable y no lo es.
+- **Subcontratos**: antes de comparar el precio del sub contra el APU propio, verificar que **incluya lo mismo** (materiales, equipos, andamios, seguridad, retiro de escombros, garantía). Un sub "más barato" que excluye tres ítems no es más barato.
+
+## Errores que destruyen el margen antes de empezar la obra
+
+- Confundir **markup con margen** (ver arriba) — el más caro.
+- Aplicar todos los porcentajes **sobre el costo directo**.
+- Costear la MO con el **jornal básico sin cargas** ni improductividad.
+- **No cotizar el costo financiero** del plazo de pago real del cliente.
+- Olvidar el **fondo de reparo**: durante meses se cobra menos de lo que se factura.
+- **No dejar el alcance por escrito** → todo lo que aparezca después es discusión, y los adicionales no se cobran.
+- Cotizar bajo **por necesidad de facturar** (jugar a no perder — CLAUDE.md raíz).
+- Usar precios de la planilla **sin verificar cuáles están desactualizados** respecto del precio de reposición de hoy.
+
 ## Criterios de decisión
 
 | Variable | Pregunta |
