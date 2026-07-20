@@ -20,6 +20,13 @@ Cubre: ensayos y controles habituales por tipo de tarea, tolerancias técnicas, 
 
 No cubre: la viabilidad técnica de la solución en sí (`ingenieria-civil-construccion`), ni el tratamiento contractual de un reclamo derivado de un problema de calidad (`derecho-construccion-contratos`).
 
+## Cableado al OS real — qué LLAMAR en vez de estimar (verificado 2026-07-19)
+
+- **`registrar_no_conformidad` / `no_conformidades_estado`** — la no conformidad se trata como **proceso** (detección → tratamiento → cierre), keyeada al eje canónico de obras. La capacidad devuelve: abiertas vs. cerradas, desglose por gravedad, **graves/críticas abiertas** (lo que hay que atacar ya) y **días promedio de cierre**. Ante "¿cómo venimos con calidad?" o "¿hay algo grave sin resolver?" **se llama, no se estima**.
+- **Hoy `public.no_conformidades` está VACÍA** (0 filas): la capacidad existe, el dato no. La respuesta honesta es "no hay ninguna registrada" — que no significa que no haya no conformidades en obra, significa que **no se están registrando**. Ofrecer registrar la primera es el camino para que el indicador empiece a existir.
+- **Por qué importa más allá del indicador**: la responsabilidad por **ruina es decenal y de orden público** (ver `derecho-construccion-contratos`) — el registro de no conformidades y su tratamiento documentado es la principal defensa probatoria de la empresa años después de entregada la obra. No es burocracia: es protección patrimonial.
+- Cruzar con `derecho-construccion-contratos` cuando una no conformidad puede derivar en reclamo, y con `ingenieria-civil-construccion` para la causa técnica.
+
 ## Preguntas profesionales que debe hacer
 
 - ¿Qué ensayo o control corresponde a esta tarea antes de darla por terminada?

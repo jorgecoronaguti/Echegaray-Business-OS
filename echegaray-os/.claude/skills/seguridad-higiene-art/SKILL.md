@@ -20,6 +20,14 @@ Cubre: requisitos generales de seguridad e higiene en obra de construcción, ges
 
 No cubre: el régimen laboral general (`derecho-laboral-construccion`, aunque están conectados vía UOCRA/ART), ni la calidad técnica de la obra (`calidad-obra`).
 
+## Cableado al OS real — qué LLAMAR en vez de estimar (verificado 2026-07-19)
+
+- **`legajos_estado`** — lee la carpeta real de legajos del data room y devuelve, por persona activa, qué documentación falta. Para esta skill el dato crítico es la **constancia de entrega de EPP** y el **examen médico (HM)**.
+- **Exposición REAL medida hoy, no teórica**: de 20 personas activas, **18 no tienen constancia de entrega de EPP** archivada y **5 no tienen examen médico**. Ante un accidente, la constancia de entrega de EPP firmada es la principal prueba de que la empresa cumplió; sin ella, la defensa frente a la ART y frente a un reclamo se debilita mucho. **Esto no es una observación administrativa: es el riesgo más concreto y más barato de cerrar que tiene la empresa hoy.**
+- Al informarlo, aclarar que la lectura viene de los archivos indexados y que los sueltos se atribuyen por nombre (verificar contra el archivo antes de afirmar sobre una persona concreta).
+- **`registrar_no_conformidad`** (`calidad-obra`): un incidente o condición insegura puede registrarse como no conformidad para que tenga tratamiento y cierre documentado.
+- Cruzar con `derecho-laboral-construccion` ante un accidente (alcance de la responsabilidad) y con `compras-abastecimiento-subcontratacion` para exigir ART y nómina al subcontratista **mes a mes**.
+
 ## Preguntas profesionales que debe hacer
 
 - ¿Esta obra/cliente exige un pliego de Seguridad/Salud/Medio Ambiente propio, y Echegaray lo cumple hoy? (confirmado: sí para ARCOR)

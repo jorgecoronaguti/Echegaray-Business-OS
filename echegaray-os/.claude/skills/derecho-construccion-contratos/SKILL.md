@@ -34,6 +34,13 @@ No cubre: el tratamiento fiscal del contrato (`impuestos-construccion`), el regi
 - **Nunca asumir que un adicional detectado es ingreso** (regla explícita ya en CLAUDE.md raíz) — desde el ángulo legal, esto significa que la sola ejecución de un trabajo fuera de contrato no genera automáticamente derecho a cobro si no está documentado.
 - **El pliego del cliente prevalece sobre la práctica habitual de Echegaray** cuando es más exigente (confirmado con evidencia real: ARCOR exige Pliego de Seguridad/Salud/Medio Ambiente propio).
 
+## Cableado al OS real — qué LLAMAR en vez de estimar
+
+- **`adicionales_estado` / `registrar_adicional`** — el embudo **detectado → cotizado → aprobado → facturado → cobrado** por obra, con el KPI **% cobrado sobre aprobado** y el monto sin cobrar. Ante cualquier pregunta sobre adicionales ("¿cuánto tenemos sin cobrar?", "¿cómo venimos con los adicionales de [obra]?") **se llama, no se estima**. Al analizar exigibilidad, cruzar el estado registrado con la documentación real: un adicional en estado "detectado" sin aprobación escrita **no es un crédito, es un riesgo**.
+- **`salud_obra` / `costos_obras`** — costo real por obra, para valorizar un reclamo o una defensa con números propios y no con estimaciones.
+- **Hoy `public.adicionales` está VACÍA**: la capacidad existe, el dato no. Si se pregunta por adicionales, decir que no hay ninguno registrado y ofrecer registrarlos — nunca inventar un monto.
+- Documentación contractual del data room: los contratos, órdenes de servicio y notas de pedido viven en Drive (cruzar con `lectura-drive-documentos-multiformato` para leerlos antes de opinar sobre un caso concreto).
+
 ## El contrato de obra en el Código Civil y Comercial argentino
 
 La obra privada se rige por el **contrato de obra** del CCyC (locación de obra). Lo que sigue es el marco de referencia — **verificar el articulado y su redacción vigente antes de fundar un reclamo o una defensa**, y no reemplaza al abogado en un caso concreto.

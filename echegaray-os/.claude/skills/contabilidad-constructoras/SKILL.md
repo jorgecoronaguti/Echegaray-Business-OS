@@ -40,9 +40,14 @@ Esta skill razona; el dato vive en el núcleo (Supabase + capacidades 0-API). El
 - `public.costos_obra` (731 filas, costo real por obra) resuelto por `orquestador/lib/obras.mjs` → `resolverObra()` contra `obra_canonica`. Rollup verificado: **La Estrella $168,7M · San Francisco $66,6M · Messina $11,7M · ARCOR $10,0M (mantenimiento) · indirectos $321M**, 0 desconocidos. Los "indirectos" (Administracion, Taller, F931, UOCRA, IERIC…) NO son costo de obra → son Estructura, no se imputan a Civil/Mantenimiento.
 - `orquestador/lib/obra-economics.mjs` → `cuadroEconomico(obra)` (contratado↔presup↔costo real↔adicionales), `desviosObras()` (margen/sobrecosto), `aprendizajesPostMortem()`. `public.post_mortems` (1: Galpones, HH +19% / costo +23%).
 
-**El lado de INGRESOS del devengado NO existe — es el gap #1:**
-- `public.certificados = 0`. Sin certificación no hay ingreso devengado por obra → **no se puede cerrar el margen (ingreso devengado − costo real), solo se ve el costo.** El puente EBITDA↔Caja tampoco cierra sin esto. Cuando se pregunte "¿gana o pierde esta obra?", la respuesta honesta hoy es "veo el costo real ($X) pero NO el ingreso devengado — falta certificación". No inventar el ingreso.
-- El P&L consolidado real vive en el Sheet `Ingresos y Egresos - P&L` (Civil/Mantenimiento/Estructura, con meses reales vs presupuesto mezclados sin marcar — riesgo ya documentado). Aún no está en el núcleo.
+**El P&L consolidado YA está en el núcleo (actualizado 2026-07-19):**
+- **`pyl_estado`** → lee el P&L DEVENGADO del Sheet `Ingresos y Egresos - P&L`, pestaña `05_Dashboard_P&L` (12 meses + acumulado): ingresos, costos directos, **margen bruto (monto y %)**, gastos operativos, IIBB y EBITDA. Ante cualquier pregunta de resultado ("¿cómo viene el P&L?", "margen de julio", "EBITDA acumulado") **se llama, no se estima**. Acepta un mes o "acumulado". El cálculo vive en el Sheet (fuente declarada por el dueño) y el OS lo referencia — una capacidad, una fuente.
+- Advertencia de lectura que sigue vigente: el Sheet mezcla meses reales con proyectados sin marcarlo. Al informar un mes futuro, decir que es proyección.
+
+**El lado de INGRESOS POR OBRA: la capacidad existe, falta el dato (gap de carga, no de capacidad):**
+- **`registrar_certificacion`** ya permite cargar certificados keyeados al eje canónico, y `salud_obra` calcula el margen devengado por obra como **certificado − costo real**. Pero `public.certificados` sigue en **0 filas**.
+- Consecuencia honesta mientras siga vacía: ante "¿gana o pierde esta obra?" la respuesta es "veo el costo real ($X) pero **no hay certificación cargada**, así que no puedo cerrar el margen de esa obra". **No inventar el ingreso** — y ofrecer registrar la certificación, que es lo que destraba el cálculo.
+- Lo mismo aplica a `cotizaciones`, `adicionales` y `no_conformidades`: las capacidades están construidas y verificadas, las tablas están **vacías**. Una capacidad sin dato responde "no tengo el dato", nunca un número inventado.
 
 **Regla de arquitectura ([[arquitectura-3-caras-nucleo]]):** el costo real por obra se calcula UNA vez (el eje + obra-economics); web, chat y Claude Code lo consultan, no lo recalculan con otra fórmula.
 

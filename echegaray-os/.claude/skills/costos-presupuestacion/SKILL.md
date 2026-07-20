@@ -34,6 +34,18 @@ No cubre: la viabilidad técnica de la solución que se está costeando (`ingeni
 - **Buscar las variables que explican la mayor parte del error**, no agregar detalle indiscriminado — regla explícita ya en el CLAUDE.md raíz.
 - **Costo directo ≠ costo indirecto ≠ margen**: mantenerlos siempre separados, nunca mezclar overhead de estructura con costo directo de obra al analizar un desvío.
 
+## Cableado al OS real — qué LLAMAR en vez de estimar a mano
+
+Esta skill razona; el dato y el cálculo viven en el núcleo. Regla de arquitectura: **una capacidad = una fuente**. Cuando el OS adopta la persona del presupuestador, **no estima a mano lo que estas capacidades ya calculan** — las llama.
+
+- **`cotizacion_vs_real`** — el ciclo de aprendizaje ya construido: compara lo COTIZADO contra el COSTO REAL de la obra y devuelve desvío de costo, margen estimado vs. real y **erosión de margen en puntos**. Ante "¿cotizamos bien [obra]?" o "¿cuánto margen perdimos?", **llamarla siempre** antes de opinar. Si no hay cotización cargada lo dice — ese "no sé" es información, no una falla.
+- **`cotizaciones_estado` / `registrar_cotizacion`** — la biblioteca viva: embudo (en juego / ganadas / perdidas), tasa de conversión, monto cotizado y margen promedio. Toda cotización nueva se registra acá para que deje aprendizaje.
+- **`costos_obras` / `salud_obra`** — costo real por obra (desde `costos_obra`, ya conciliado al eje canónico) y margen real. Es la base contra la que se valida cualquier APU.
+- **`adicionales_estado`** — embudo detectado→cotizado→aprobado→facturado→cobrado y **% cobrado sobre aprobado**. Un adicional ejecutado y no cobrado es margen perdido: entra en el análisis de rentabilidad de la obra, no se ignora.
+- **Fuente del método actual**: el motor de APU vive en el Sheet "Ingresos y Egresos - P&L" (pestañas `11_RECURSOS` precios de insumos con estado VIEJO/SIN FECHA, `12_ANALISIS_TAREAS` recetas/rendimientos, `13_PRESUPUESTO_TAREAS`, `_CATALOGO_COT`, `NUEVA_COT` config de GG/beneficio/financiero/impuestos, `14_MO_UOCRA` costo horario con cargas). **No reimplementar ese cálculo**: leerlo, auditarlo y mejorarlo (cruzar con `google-sheets-business-systems`).
+
+**Gap conocido**: los rendimientos reales (HH por unidad) todavía no vuelven desde la obra ejecutada al APU — el dato de HH por obra no mapea limpio al eje canónico. Mientras siga así, el rendimiento del APU es un supuesto, no un dato validado: **decirlo cuando se use**.
+
 ## La estructura del precio: el ORDEN de aplicación (donde se pierde plata sin darse cuenta)
 
 Secuencia correcta, cada componente sobre **su** base:

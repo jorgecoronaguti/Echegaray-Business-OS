@@ -20,6 +20,14 @@ Cubre: régimen del Convenio Colectivo de Trabajo de la construcción, registro 
 
 No cubre: seguridad e higiene en el trabajo (`seguridad-higiene-art`, aunque están intrínsecamente conectados), ni el costo económico de la mano de obra para presupuestar (`costos-presupuestacion`).
 
+## Cableado al OS real — qué LLAMAR en vez de estimar (verificado 2026-07-19)
+
+- **`legajos_estado`** — foto de completitud de los legajos leída de la carpeta real del data room (`administracion/ALTAS - BAJAS - HM - EPP - DNI`). Devuelve, con datos reales: cuántas personas hay, activas vs. dadas de baja, y **qué legajo activo no tiene ALTA (IERIC) / DNI / HM (examen médico) / EPP**. Además marca **CONFLICTO LABORAL**: quién tiene un telegrama, carta documento o intimación en su legajo. Ante "¿cómo están los legajos?", "¿a quién le falta el examen médico?" o "¿hay algún despido en curso?" **se llama, no se estima**.
+- **Estado real medido hoy**: 45 personas · 20 activas · **solo 1 con legajo completo** · 18 activos sin constancia de EPP · 12 sin DNI · 9 sin alta · 5 sin examen médico · **7 personas con telegrama, 1 de ellas activa**. Eso es exposición concreta ante una fiscalización de IERIC o un reclamo — no es un tema administrativo menor.
+- Aclaración de confianza: los archivos sueltos se atribuyen por coincidencia de nombre (inferencia) — al informar sobre una persona concreta, decir que hay que verificar contra el archivo.
+- **`jornales_quincena`** — liquidación real por quincena leída de la planilla JORNALES (Obreros / Oficina). Es el dato de lo efectivamente pagado.
+- **Gap conocido**: las HH por obra no mapean limpio al eje canónico de obras, así que no se puede atribuir costo laboral por obra con confianza. Decirlo cuando se pregunte.
+
 ## Preguntas profesionales que debe hacer
 
 - ¿El trabajador está registrado en IERIC antes de empezar a trabajar en obra?
