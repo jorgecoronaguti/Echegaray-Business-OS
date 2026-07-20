@@ -25,6 +25,22 @@ const ESTILOS = {
   normal: {},
 }
 
+/**
+ * Localiza las FÓRMULAS del spec antes de escribirlas.
+ * updateCells escribe `formulaValue` crudo y NO pasa por batchUpdateValues, que es donde vive la
+ * conversión de separadores. Resultado: este renderizador escribía "INDEX(a,b)" en un sheet es-AR y
+ * dejaba #ERROR!. Pasó de verdad el 20/07 — el agente de nómina rehizo el cuadro de quincenas y las
+ * 14 celdas de "Hasta" quedaron rotas, mientras las escritas por otra vía funcionaban.
+ */
+async function localizarSpec(google, fileId, filas) {
+  if (!google?.localizeFormulas) return filas
+  const planas = filas.map((f) => (Array.isArray(f) ? f : [f]).map((c) => (c && typeof c === 'object' && c.f != null ? String(c.f) : '')))
+  const loc = await google.localizeFormulas(fileId, planas)
+  return filas.map((f, i) => (Array.isArray(f) ? f : [f]).map((c, j) => (
+    c && typeof c === 'object' && c.f != null ? { ...c, f: loc[i]?.[j] ?? c.f } : c
+  )))
+}
+
 /** Una celda del spec → CellData de la API (valor + formato del estilo). */
 function toCellData(cell) {
   if (cell == null || cell === '') return {}
@@ -65,7 +81,7 @@ export function sheetRenderTools(google) {
         const ancla = a1ToGridRange(meta, `${input.tab}!${input.anclaje || 'A1'}`, input.tab)
         if (!ancla || ancla.startRowIndex == null) return { error: `anclaje inválido: "${input.anclaje}"` }
         const r0 = ancla.startRowIndex, c0 = ancla.startColumnIndex
-        const filas = input.filas
+        const filas = await localizarSpec(google, input.file_id, input.filas)
         const ancho = Math.max(...filas.map((f) => (Array.isArray(f) ? f.length : 1)))
 
         const requests = []

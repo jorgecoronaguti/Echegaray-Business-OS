@@ -1,5 +1,5 @@
 // Test hermético del sincronizador de nómina. Sin Sheet, sin Drive.
-import { detectarQuincenas, filasQuincenas, hayCambio, cuerpoDelCuadro, formatSync } from './nomina-sync.mjs'
+import { detectarQuincenas, filasQuincenas, hayCambio, cuerpoDelCuadro, ubicarCuadro, formatSync } from './nomina-sync.mjs'
 
 let ok = 0, falla = 0
 const check = (n, c) => { if (c) ok++; else { falla++; console.error(`  FALLA: ${n}`) } }
@@ -55,6 +55,22 @@ check('ninguna celda trae un número suelto', filas.every((r) => r.every((c) => 
 }
 check('pestaña sin TOTAL todavía: cuenta lo que hay', cuerpoDelCuadro([['5/1'], ['16/1']], 6).filas === 2)
 check('pestaña vacía', cuerpoDelCuadro([], 6).filas === 0)
+
+// ubicarCuadro: el agente NO puede asumir en qué fila arranca el cuadro. El 20/07 el dueño borró
+// tres filas de arriba, el cuadro pasó de la 6 a la 3 y el agente escribió igual en la 6: duplicó
+// tres quincenas y dejó el total corto $3.011.996.
+{
+  const colA = [['JORNALES POR QUINCENA'], ['Desde'], ['5/1/2026'], ['16/1/2026'], ['TOTAL AÑO'], [''], ['POR CLIENTE']]
+  const u = ubicarCuadro(colA)
+  check('encuentra el cuadro por el encabezado "Desde"', u.encontrado && u.filaInicio === 3)
+  check('cuenta las quincenas que hay', u.filas === 2)
+  check('ubica el TOTAL', u.filaTotal === 5)
+}
+{
+  const corrido = [[''], [''], [''], [''], [''], ['Desde'], ['5/1/2026'], ['TOTAL AÑO']]
+  check('si el cuadro está más abajo, lo sigue', ubicarCuadro(corrido).filaInicio === 7)
+}
+check('sin encabezado no inventa una fila', ubicarCuadro([['hola'], ['chau']]).encontrado === false)
 
 // hayCambio: sólo se reescribe si aparecieron quincenas nuevas.
 check('mismo número de quincenas → no hay cambio', !hayCambio(b, 2))

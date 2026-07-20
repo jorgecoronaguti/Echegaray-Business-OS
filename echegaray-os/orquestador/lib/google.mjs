@@ -398,6 +398,11 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     /** Convierte una fórmula al separador del sheet (coma→; en es_AR). Expuesto para tests
      *  y para que las tools puedan localizar antes de mostrar/escribir. */
     _convertFormula: convertFormula,
+    /** Localiza las fórmulas de una matriz de valores al separador del sheet. Expuesto porque el
+     *  renderizador escribe con updateCells (formulaValue), que NO pasa por batchUpdateValues y por
+     *  eso se saltaba la localización: escribía "INDEX(a,b)" en un sheet es-AR → #ERROR!. Bug real
+     *  20/07: el agente de nómina reescribió el cuadro de quincenas y dejó 14 celdas en error. */
+    localizeFormulas: localizeValues,
     /** Busca archivos cuyo nombre CONTIENE el texto (robusto a espacios/variantes del
      *  título; el match exacto falla, p.ej., por el espacio final de "Flujo de Caja - Cash Flow ").
      *  Devuelve [{id,name,mimeType}]. */

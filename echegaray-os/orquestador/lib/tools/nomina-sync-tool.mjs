@@ -2,6 +2,7 @@
 import { sincronizarNomina, formatSync } from '../nomina-sync.mjs'
 import { sheetRenderTools } from './sheet-render.mjs'
 import { driveWriteTools } from './drive-write.mjs'
+import { replicarNomina, formatReplica } from '../nomina-replica.mjs'
 
 const FLUJO = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DDJJ = '1em3q6p2Gy4SMk2zRfaATbVL0FWqOf0HB'
@@ -25,13 +26,14 @@ export function nominaSyncTools(google) {
           properties: {
             anio: { type: 'string', description: 'Año de las DDJJ a leer. Por defecto, el actual.' },
             solo_revisar: { type: 'boolean', description: 'true = informa qué cambiaría sin escribir.' },
+            forzar: { type: 'boolean', description: 'true = reescribe el cuadro de quincenas aunque la cantidad no haya cambiado. Usalo para REPARAR la pestaña si alguien movió, borró o pegó filas y quedó desordenada.' },
           },
         },
       },
-      async run({ anio, solo_revisar } = {}) {
+      async run({ anio, solo_revisar, forzar } = {}) {
         try {
           const r = await sincronizarNomina(google, {
-            file_id: FLUJO, folder_ddjj: DDJJ, anio, escribir: !solo_revisar,
+            file_id: FLUJO, folder_ddjj: DDJJ, anio, escribir: !solo_revisar, forzar,
           })
           if (r.error) return r
           if (r.spec_quincenas?.length) {
@@ -49,7 +51,13 @@ export function nominaSyncTools(google) {
               file_id: FLUJO, tab: 'Jornales por Quincena', anclaje: `A${r.fila_inicio}`, filas: r.spec_quincenas,
             })
           }
-          return { ...r, resumen_texto: formatSync(r) }
+          // REGLA DE ORO: todo replicado en Supabase. Se hace SIEMPRE, incluso cuando el Sheet no
+          // cambió — porque lo que puede haber cambiado es la base (un deploy, un truncate) y la web
+          // tiene que poder leer esto sin depender de que alguien haya tocado la planilla.
+          let replica = null
+          try { replica = await replicarNomina(google, { file_id: FLUJO }) }
+          catch (e) { replica = { error: String(e?.message ?? e).slice(0, 160) } }
+          return { ...r, replica, resumen_texto: `${formatSync(r)}\n\n${formatReplica(replica)}` }
         } catch (e) {
           return { error: `no pude sincronizar: ${String(e?.message ?? e).slice(0, 200)}` }
         }

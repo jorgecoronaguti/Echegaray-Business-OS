@@ -97,6 +97,26 @@ export function cuerpoDelCuadro(colA = [], filaInicio = 6) {
   return { filas, filaTotal: filaInicio + filas }
 }
 
+/**
+ * NÚCLEO PURO: DÓNDE está el cuadro. La columna A completa desde la fila 1.
+ *
+ * Antes la fila de inicio estaba clavada en 6. El 20/07 el dueño borró tres filas de arriba, el
+ * cuadro pasó a arrancar en la 3, y el agente escribió igual en la 6: duplicó tres quincenas y dejó
+ * el total corto en $3.011.996. Un agente que escribe en una posición fija rompe la planilla la
+ * primera vez que alguien la reordena — y reordenarla es normal.
+ *
+ * El ancla es el encabezado "Desde", que es lo que define el cuadro.
+ * @param {Array<Array>} colA valores de A1:A200
+ */
+export function ubicarCuadro(colA = []) {
+  const txt = (r) => String(r?.[0] ?? '').trim()
+  const enc = colA.findIndex((r) => /^desde$/i.test(txt(r)))
+  if (enc < 0) return { encontrado: false, filaInicio: null, filas: 0, filaTotal: null }
+  const filaInicio = enc + 2                       // +1 por base 1, +1 para pasar el encabezado
+  const cuerpo = cuerpoDelCuadro(colA.slice(enc + 1), filaInicio)
+  return { encontrado: true, filaInicio, ...cuerpo }
+}
+
 const $ = (v) => `$${Math.round(Number(v) || 0).toLocaleString('es-AR')}`
 
 /** Texto del resultado de la sincronización. PURO. */
@@ -118,7 +138,7 @@ export function formatSync(r) {
  */
 export async function sincronizarNomina(google, {
   file_id, folder_ddjj, anio, tab_cargas = 'Cargas Sociales',
-  tab_quincenas = 'Jornales por Quincena', escribir = true,
+  tab_quincenas = 'Jornales por Quincena', escribir = true, forzar = false,
 } = {}) {
   if (!google?.readSheetValues) return { error: 'no hay una cuenta de Google autorizada' }
   if (!file_id) return { error: 'falta file_id del Flujo de Caja' }
@@ -138,15 +158,24 @@ export async function sincronizarNomina(google, {
   // ── 2. Quincenas de jornales ──
   const grid = await google.readSheetValues(file_id, '_J_OBREROS!A1:AC990')
   const bloques = detectarQuincenas(grid ?? [])
-  const FILA_INICIO = 6
-  let cuerpo = { filas: 0, filaTotal: FILA_INICIO }
+  let ubic = { encontrado: false, filaInicio: 6, filas: 0, filaTotal: 6 }
   try {
-    const q = await google.readSheetValues(file_id, `${tab_quincenas}!A${FILA_INICIO}:A200`)
-    cuerpo = cuerpoDelCuadro(q ?? [], FILA_INICIO)
+    const q = await google.readSheetValues(file_id, `${tab_quincenas}!A1:A200`)
+    ubic = ubicarCuadro(q ?? [])
   } catch { /* pestaña nueva */ }
+  // Si no aparece el encabezado "Desde", NO se escribe a ciegas: se avisa. Escribir en una posición
+  // adivinada es exactamente lo que rompió la pestaña el 20/07.
+  if (!ubic.encontrado && escribir) {
+    return { error: `no encontré el encabezado "Desde" en ${tab_quincenas}: no voy a escribir en una fila adivinada` }
+  }
+  const FILA_INICIO = ubic.filaInicio ?? 6
+  const cuerpo = { filas: ubic.filas, filaTotal: ubic.filaTotal ?? FILA_INICIO }
   const quincenasEnSheet = cuerpo.filas
 
-  const cambio = nuevos.length > 0 || hayCambio(bloques, quincenasEnSheet)
+  // `forzar` existe porque el Sheet lo edita gente: si alguien mueve, borra o pega filas, el cuadro
+  // puede estar mal aunque la CANTIDAD de quincenas coincida — y entonces la comparación por cantidad
+  // dice "no cambió nada" y el error queda. Es el botón de reparar.
+  const cambio = forzar || nuevos.length > 0 || hayCambio(bloques, quincenasEnSheet)
   const base = {
     ddjj_meses: ddjj?.meses?.length ?? 0,
     ddjj_total: (ddjj?.meses ?? []).reduce((a, m) => a + m.total, 0),
