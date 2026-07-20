@@ -59,12 +59,18 @@ function grilla(periodo, faltantes = [], refCaja = null) {
   const push = (celdas) => { filas.push(celdas); return filas.length }
 
   push([periodo === 'semanal' ? `Cash Flow Semanal ${AÑO} — cuándo entra y sale la plata` : `Cash Flow Mensual ${AÑO} — cuándo entra y sale la plata`])
-  // A2 = el atajo a la semana de hoy. En una grilla de 53 semanas, sin esto hay que buscar a mano
+  // A2 = el atajo a la semana de hoy.
+  //
+  // EL RANGO TIENE QUE SER UNA CELDA, NO UNA COLUMNA. La versión anterior armaba ADDRESS(1;col;4) y
+  // le sacaba el "1" con SUBSTITUTE para quedarse con la letra: producía "AE", y Google contesta
+  // "no se puede abrir el vínculo porque se borró el rango vinculado" — porque "AE" a secas no es un
+  // rango A1 válido. Medido en el Sheet real: la fórmula vieja devolvía AE y la nueva AE3.
+  // Apuntar a la fila del encabezado además deja la semana a la vista con su fecha arriba. En una grilla de 53 semanas, sin esto hay que buscar a mano
   // dónde estamos cada vez que se abre la pestaña. El dueño lo pidió de vuelta después de que se lo
   // borré al rehacer el cuadro. HYPERLINK a la celda de la columna cuya semana contiene HOY.
   const irASemana = periodo === 'semanal'
-    ? `=HYPERLINK("#gid=SEMGID&range="&SUBSTITUTE(ADDRESS(1;MATCH(1;ARRAYFORMULA((${letra(1)}$${FILA_CAB}:${letra(n)}$${FILA_CAB}<=TODAY())*(${letra(1)}$${FILA_CAB}:${letra(n)}$${FILA_CAB}+7>TODAY()));0)+1;4);"1";"");"📅 IR A LA SEMANA DE HOY — "&TEXT(TODAY();"dd/mm/yyyy"))`
-    : `=HYPERLINK("#gid=SEMGID&range="&SUBSTITUTE(ADDRESS(1;MONTH(TODAY())+1;4);"1";"");"📅 IR AL MES DE HOY — "&TEXT(TODAY();"mmmm yyyy"))`
+    ? `=HYPERLINK("#gid=SEMGID&range="&ADDRESS(${FILA_CAB};MATCH(1;ARRAYFORMULA((${letra(1)}$${FILA_CAB}:${letra(n)}$${FILA_CAB}<=TODAY())*(${letra(1)}$${FILA_CAB}:${letra(n)}$${FILA_CAB}+7>TODAY()));0)+1;4);"📅 IR A LA SEMANA DE HOY — "&TEXT(TODAY();"dd/mm/yyyy"))`
+    : `=HYPERLINK("#gid=SEMGID&range="&ADDRESS(${FILA_CAB};MONTH(TODAY())+1;4);"📅 IR AL MES DE HOY — "&TEXT(TODAY();"mmmm yyyy"))`
   const nota = periodo === 'semanal'
     ? 'Estado de flujo de efectivo por método directo (RT 8/9 · NIC 7): operativas, inversión y financiación. Tocá el + del margen izquierdo para abrir el detalle de cada categoría. ESTE CUADRO MUESTRA LO COMPROMETIDO: sólo cobros y pagos con fecha ya cargada — las proyecciones están en el Mensual, porque a nivel semana una proyección de materiales es ruido, no información.'
     : 'Estado de flujo de efectivo por método directo (RT 8/9 · NIC 7): operativas, inversión y financiación. Tocá el + del margen izquierdo para abrir el detalle de cada categoría. Los meses que todavía no pasaron son PROYECCIÓN: Estructura y Recurrentes traen la suya de su propia pestaña; el resto usa el ritmo de los últimos 3 meses cerrados ajustado por inflación. Los INGRESOS no se proyectan (no hay obra facturada de octubre en adelante), así que el déficit del último trimestre es un piso, no un pronóstico.'

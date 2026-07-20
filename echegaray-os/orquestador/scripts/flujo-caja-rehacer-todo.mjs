@@ -60,12 +60,13 @@ const PASOS = [
  *
  * Un defecto que sólo se ve mirando la pantalla vuelve. Por eso se mide.
  */
-async function verificarGeometria() {
+async function verificarPresentacion() {
   const { makeGoogleClient, WRITE_SCOPES } = await import('../lib/google.mjs')
   const { loadConfig } = await import('../lib/config.mjs')
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
   const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
+  const hojas = await google.getSheetMeta(ID)
   let hubo = false
   for (const [pestaña, hasta] of [['Cash Flow Mensual', 13], ['Cash Flow Semanal', 54]]) {
     const w = await google.getColumnWidths(ID, pestaña).catch(() => [])
@@ -74,6 +75,35 @@ async function verificarGeometria() {
     if (raras.length) {
       hubo = true
       console.log(`   ⚠ ${pestaña}: columnas de período con ancho distinto de 96px → ${raras.map((c) => `${c.col}=${c.px}`).join(' ')}`)
+    }
+  }
+  // EL HIPERVÍNCULO "IR A LA SEMANA DE HOY" TAMBIÉN SE PRUEBA.
+  //
+  // Estaba roto y sólo se veía haciendo clic: Google contestaba "no se puede abrir el vínculo porque
+  // se borró el rango vinculado". La fórmula armaba el destino con ADDRESS(1;col;4) y le sacaba el
+  // "1" con SUBSTITUTE para quedarse con la letra, así que producía "AE" — y una letra de columna
+  // suelta no es un rango A1 válido. Ahora apunta a la fila del encabezado ("AE3").
+  //
+  // Se verifica de verdad: se aísla la expresión que arma el rango, se evalúa en una celda de
+  // descarte del propio Sheet y se comprueba que dé una referencia válida y que el gid sea el de la
+  // pestaña. Leer la fórmula y "ver que está bien" no es verificar.
+  for (const pestaña of ['Cash Flow Semanal', 'Cash Flow Mensual']) {
+    const gidReal = hojas.find((h) => h.title === pestaña)?.sheetId
+    const f = (await google.readSheetGrid(ID, `${pestaña}!A2`)).filas?.[0]?.[0]?.formula ?? ''
+    const gid = /#gid=(\d+)/.exec(f)?.[1]
+    const i = f.indexOf('&range="&')
+    const j = f.lastIndexOf(';"📅')
+    let rango = null
+    if (i > 0 && j > i) {
+      await google.batchUpdateValues(ID, [{ range: `${pestaña}!A200`, values: [[`=${f.slice(i + 9, j)}`]] }])
+      rango = (await google.readSheetValues(ID, `${pestaña}!A200`))?.[0]?.[0]
+      await google.clearValues(ID, `${pestaña}!A200`)
+    }
+    if (/^[A-Z]+\d+$/.test(String(rango)) && String(gid) === String(gidReal)) {
+      console.log(`   ✓ atajo de ${pestaña}: lleva a ${rango}`)
+    } else {
+      hubo = true
+      console.log(`   ⚠ ${pestaña}: el atajo "IR A HOY" apunta a un destino inválido (gid ${gid}, range ${rango})`)
     }
   }
   if (!hubo) console.log('   ✓ geometría: las columnas de período miden todas 96px en las dos pestañas')
@@ -108,7 +138,7 @@ async function main() {
   }
 
   if (DRY) return
-  await verificarGeometria()
+  await verificarPresentacion()
 
   console.log(`\n${ok.length}/${PASOS.length} pestañas rehechas en ${((Date.now() - t0) / 1000).toFixed(1)}s`)
   const conAlerta = ok.filter((r) => r.alerta)
