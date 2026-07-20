@@ -350,12 +350,19 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     // separadores de argumentos ("VLOOKUP(A1,Data!A:B,2,0)" no matchea: los operandos no vienen
     // de un operador aritmético), ni comas dentro de strings (el '"' o "'" no es operador).
     s = s.replace(/([=(*/+\-]\s*\d+),(\d+)/g, '$1.$2')
+    // BUG REAL (20/07): el punto NO se puede convertir a coma siempre. Los nombres de función en
+    // español LLEVAN punto — SUMAR.SI, SUMAR.SI.CONJUNTO, CONTAR.SI.CONJUNTO, SI.ERROR, FIN.MES —
+    // y la conversión ciega los rompía ("SUMAR,SI" → #ERROR!). Cualquier fórmula escrita con
+    // funciones españolas moría al pasar por drive_update, en silencio.
+    // Sólo es punto DECIMAL el que está entre dígitos: "1.5". El de "SUMAR.SI" está entre letras.
+    const esDigito = (c) => c >= '0' && c <= '9'
     let out = '', inStr = false, quote = ''
-    for (const c of s) {
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i]
       if (inStr) { out += c; if (c === quote) inStr = false; continue }
       if (c === '"' || c === "'") { inStr = true; quote = c; out += c; continue }
       if (c === ',') out += ';'
-      else if (c === '.') out += ','
+      else if (c === '.' && esDigito(s[i - 1]) && esDigito(s[i + 1])) out += ','
       else out += c
     }
     return out

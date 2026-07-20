@@ -33,5 +33,17 @@ check('no-fórmula (texto) intacto', f('hola, mundo') === 'hola, mundo')
 check('número plano (no string =) intacto', f(1234) === 1234)
 check('fórmula sin comas/puntos intacta', f('=A1*102/100') === '=A1*102/100')
 
+// ── El punto de los nombres de función españoles NO es un decimal (bug real 20/07) ──
+// SUMAR.SI, SUMAR.SI.CONJUNTO, SI.ERROR, FIN.MES: la conversión ciega punto→coma los rompía
+// ("SUMAR,SI" → #ERROR!) y toda fórmula escrita en español moría al pasar por drive_update.
+check('SUMAR.SI no se rompe', f('=SUMAR.SI(A:A,"x",B:B)') === '=SUMAR.SI(A:A;"x";B:B)')
+check('SUMAR.SI.CONJUNTO tampoco', f('=SUMAR.SI.CONJUNTO(O:O,J:J,"x")') === '=SUMAR.SI.CONJUNTO(O:O;J:J;"x")')
+check('SI.ERROR y FIN.MES', f('=SI.ERROR(FIN.MES(A1,0),0)') === '=SI.ERROR(FIN.MES(A1;0);0)')
+check('el decimal SÍ se sigue convirtiendo', f('=A1*1.02') === '=A1*1,02')
+// Dentro de un literal de string NO se toca nada, a propósito: ahí puede haber un nombre de
+// archivo, una fecha o un texto del negocio. El criterio numérico se escribe ya localizado.
+check('el string literal se respeta', f('=SUMAR.SI(A:A,">1.5")') === '=SUMAR.SI(A:A;">1.5")')
+check('nombre de pestaña con punto', f("='Hoja.2'!A1*2.5") === "='Hoja.2'!A1*2,5")
+
 console.log(`\ngoogle-locale.test: ${ok} OK, ${fail} FALLA`)
 process.exit(fail ? 1 : 0)
