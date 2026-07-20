@@ -20,6 +20,43 @@ Cubre: requisitos generales de seguridad e higiene en obra de construcción, ges
 
 No cubre: el régimen laboral general (`derecho-laboral-construccion`, aunque están conectados vía UOCRA/ART), ni la calidad técnica de la obra (`calidad-obra`).
 
+## El marco normativo argentino de seguridad EN OBRA (no el genérico de industria)
+
+La construcción tiene su propia reglamentación, distinta de la de un establecimiento industrial común. **Verificar la redacción y vigencia de cada norma antes de citarla en un caso concreto**, pero éste es el esqueleto:
+
+- **Ley 19.587 de Higiene y Seguridad en el Trabajo** — marco general.
+- **Decreto 911/96** — el reglamento **específico de la industria de la construcción**. Es la norma de cabecera del rubro: define las condiciones de obra, las responsabilidades del empleador y las exigencias documentales.
+- **Ley 24.557 de Riesgos del Trabajo (ART)** y las resoluciones de la **SRT** que la reglamentan para construcción.
+
+Obligaciones documentales que una fiscalización pide primero (y que suelen faltar):
+
+- **Aviso de obra a la ART** antes de comenzar los trabajos.
+- **Programa de Seguridad de la obra**, aprobado por la ART cuando corresponde según el tipo y magnitud de los trabajos.
+- **Legajo técnico de obra**, actualizado durante toda la ejecución.
+- **Servicio de Higiene y Seguridad** con profesional habilitado y **horas de asignación mínimas según la cantidad de trabajadores** (verificar la escala vigente).
+- **Capacitaciones registradas y firmadas** por los trabajadores — la capacitación que no está firmada, no existe.
+- **Constancia de entrega de EPP firmada** por cada trabajador.
+- **Exámenes médicos** (preocupacional, periódicos según riesgo).
+
+## Ante un accidente: qué se hace y en qué orden
+
+1. **Atención del trabajador** y aseguramiento de la zona (evitar el segundo accidente).
+2. **Denuncia a la ART de inmediato** — hay plazos; denunciar tarde complica la cobertura y expone a la empresa.
+3. **Preservar la escena y documentar**: fotos, testigos, condiciones. Lo que no se documenta en el momento, después no se puede probar.
+4. **Investigación del hecho** y acción correctiva documentada (se puede registrar como no conformidad para que tenga cierre trazable).
+5. **Revisar qué documentación respalda a la empresa**: capacitación firmada de esa tarea, entrega de EPP, examen médico, programa de seguridad. **Ahí se define la exposición real de la empresa**, no en el momento del accidente.
+6. Cruzar con `derecho-laboral-construccion` (alcance de responsabilidad) y, si hay reclamo, con `derecho-construccion-contratos`.
+
+## Riesgos críticos de obra que concentran la siniestralidad
+
+Los que más gravedad producen en construcción y por lo tanto los que más control documental exigen: **caída de altura**, **derrumbe en excavaciones**, **contacto eléctrico**, **caída de objetos**, **atrapamiento con maquinaria** y **espacios confinados**. Para cada uno debe existir medida de control, capacitación específica y EPP adecuado — y los tres deben estar **documentados**.
+
+## Clientes industriales: el pliego manda por encima del mínimo legal
+
+- Un cliente industrial puede exigir **más** que la ley (pliego propio de SSMA, inducción obligatoria, permisos de trabajo, estándares propios de EPP). **Confirmado: ARCOR exige su propio pliego de SSMA para poder trabajar en planta.**
+- Consecuencia económica directa: **esos requisitos tienen costo y deben estar en la cotización**. Un pliego de SSMA exigente puede agregar horas de profesional, capacitaciones, EPP específico y tiempos de permiso que, si no se cotizaron, salen del margen (cruzar con `costos-presupuestacion`).
+- No poder cumplir el pliego = no poder facturar en ese cliente. Es un requisito comercial, no solo técnico.
+
 ## Cableado al OS real — qué LLAMAR en vez de estimar (verificado 2026-07-19)
 
 - **`legajos_estado`** — lee la carpeta real de legajos del data room y devuelve, por persona activa, qué documentación falta. Para esta skill el dato crítico es la **constancia de entrega de EPP** y el **examen médico (HM)**.
