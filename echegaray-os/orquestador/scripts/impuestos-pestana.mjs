@@ -126,6 +126,11 @@ function grilla(iva, planes, iibb, ret) {
     ])
   }
   const f1 = filas.length
+  // Dónde termina lo REAL y dónde empieza la proyección. Hace falta para poder medir la tasa de
+  // retención sobre los meses que de verdad ocurrieron y aplicarla al escenario de abajo.
+  const nReales = iva.filter((m) => m.disponible).length
+  const fReal1 = f0 + nReales - 1
+  const fProy0 = fReal1 + 1
   const tot = push(['TOTAL 2026',
     `=SUM(B${f0}:B${f1})`, `=SUM(C${f0}:C${f1})`, `=SUM(D${f0}:D${f1})`, `=SUM(E${f0}:E${f1})`, '',
     `=SUM(G${f0}:G${f1})`, '', '', 'La suma de "A PAGAR" es la caja que el IVA se lleva en el año.'])
@@ -154,7 +159,28 @@ function grilla(iva, planes, iibb, ret) {
   // depende de qué cliente facture cada mes, y hoy sólo ARCOR lo hace. Proyectarla supondría una
   // mezcla de clientes que no está en ningún dato. La consecuencia se declara en vez de taparse.
   push(['⚠ Los meses proyectados van SIN retención', '', '', '',
-    'Quién retiene depende de qué cliente se facture, y eso no está proyectado. Si el mix se parece al de este año, el "A PAGAR" de agosto a diciembre está SOBREESTIMADO — es un error conservador, pero es un error.', '', '', '', '', ''])
+    'Quién retiene depende de qué cliente se facture, y eso no está proyectado. El "A PAGAR" de agosto a diciembre queda SOBREESTIMADO — es un error conservador, pero es un error.', '', '', '', '', ''])
+  // ── EL ESCENARIO, CON NÚMERO ──────────────────────────────────────────────────────────────────
+  //
+  // "Está sobreestimado" sin una cifra es un aviso que nadie puede usar. Acá va la cifra, y va como
+  // ESCENARIO —afuera del cuadro de arriba, en su propio bloque— porque proyectar retenciones
+  // supone una mezcla de clientes que no está en ningún dato. La regla es no presentar una
+  // inferencia como un hecho; mostrarla con su supuesto explícito es distinto de esconderla.
+  //
+  // TODO SALE DE FÓRMULAS SOBRE LAS PROPIAS FILAS DEL CUADRO: la tasa se mide sola cada vez que
+  // entra un cobro con retención, y el escenario se recalcula. Un porcentaje pegado a mano acá
+  // envejecería el día que cambie la cartera de clientes, que es justo lo que hay que vigilar.
+  push(['ESCENARIO — ¿y si la mezcla de clientes se mantiene?', '', '', '', '', '', '', '', '',
+    'No es una proyección del OS: es qué pasaría SI el mix de clientes de agosto a diciembre se pareciera al de enero a julio.'])
+  const fTasa = push(['Tasa de retención medida sobre el débito real (ene–jul)',
+    `=IFERROR(SUM($E$${f0}:$E$${fReal1})/SUM($B$${f0}:$B$${fReal1});0)`, '', '', '', '', '', '', '',
+    'Lo que efectivamente le retuvieron sobre lo que efectivamente facturó. Se mide, no se supone.'])
+  const fRetEsc = push(['Retención que tendrían ago–dic a esa misma tasa',
+    `=SUM($B$${fProy0}:$B$${f1})*$B$${fTasa}`, '', '', '', '', '', '', '',
+    'ESTIMACIÓN. Depende de a quién se le facture: hoy sólo algunos clientes retienen.'])
+  push(['⇒ "A PAGAR" de ago–dic si eso ocurriera',
+    `=MAX(0;SUM($G$${fProy0}:$G$${f1})-$B$${fRetEsc})`, '', '', '', '', '', '', '',
+    `Contra ${'$'}{SUM(G${fProy0}:G${f1})} que muestra el cuadro. La diferencia es plata que el cash flow está reservando para un impuesto que quizás no salga.`.replace('${SUM(G' + fProy0 + ':G' + f1 + ')}', 'lo que muestra el cuadro')])
   if (ret?.sospechosas?.length) {
     push([`⚠ ${ret.sospechosas.length} retención(es) con alícuota que no encaja`, Math.round(ret.sospechosas.reduce((s, x) => s + x.monto, 0)), '', '', 'NO se computaron: puede ser otro régimen o un error de carga. Filas de Cobranzas: ' + ret.sospechosas.map((x) => x.fila).join(', '), '', '', '', '', ''])
   }

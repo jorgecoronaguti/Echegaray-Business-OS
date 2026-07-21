@@ -84,7 +84,22 @@ export function proyectarIva(meses = [], ventasProyectadas = {}, factorInflacion
     const porRitmo = !netoCargado
     const debito = porRitmo ? debitoProm * factor : netoCargado * ALICUOTA_IVA
     const neto = debito / ALICUOTA_IVA
-    const pos = debito - creditoProm
+    // ═══ EL CRÉDITO TAMBIÉN SE AJUSTA POR INFLACIÓN (21/07) ═══
+    //
+    // Hasta hoy el crédito proyectado era el promedio PLANO de los meses reales —$3.613.138 clavado
+    // de agosto a diciembre— mientras el débito sí crecía con el índice. O sea que el cuadro
+    // proyectaba el ingreso con inflación y el costo sin ella.
+    //
+    // No es un detalle de método: la posición de IVA es una RESTA entre los dos. Inflando un solo
+    // lado, la posición crece sola mes a mes por una razón que no existe, y el "A PAGAR" del año
+    // sale sobreestimado. El cash flow entonces reserva plata para un impuesto más grande que el
+    // que va a haber.
+    //
+    // El supuesto es explícito: las compras siguen a las ventas y a los precios. No es una verdad
+    // —una obra puede comprar mucho un mes y nada el siguiente— pero es el ÚNICO supuesto coherente
+    // con inflar el débito. Si un lado se ajusta, el otro también, o la resta no significa nada.
+    const credito = creditoProm * factor
+    const pos = debito - credito
     const aPagar = Math.max(0, pos - saldo)
     const previo = saldo
     saldo = Math.max(0, saldo - pos)
@@ -93,14 +108,14 @@ export function proyectarIva(meses = [], ventasProyectadas = {}, factorInflacion
       es_proyeccion: true,
       neto_proyectado: neto,
       debito_fiscal: debito,
-      credito_fiscal: creditoProm,
+      credito_fiscal: credito,
       posicion: pos,
       saldo_previo: previo,
       a_pagar_real: aPagar,
       saldo_queda: saldo,
       metodo: porRitmo
-        ? `SIN facturación cargada para este mes: débito = ritmo real de ${reales.length} meses × inflación (${factor.toFixed(3)}) · crédito = promedio de esos meses`
-        : `débito = facturación cargada × ${ALICUOTA_IVA * 100}% · crédito = promedio de ${reales.length} meses reales`,
+        ? `SIN facturación cargada: débito = ritmo real de ${reales.length} meses × inflación (${factor.toFixed(3)}) · crédito = promedio de esos meses × la MISMA inflación`
+        : `débito = facturación cargada × ${ALICUOTA_IVA * 100}% · crédito = promedio de ${reales.length} meses reales × inflación (${factor.toFixed(3)})`,
     }
   })
 }

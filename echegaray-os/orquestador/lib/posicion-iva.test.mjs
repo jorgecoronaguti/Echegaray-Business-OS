@@ -81,3 +81,28 @@ test('sin retenciones el resultado no cambia', () => {
   const m = [{ periodo: '2026-03', disponible: true, debito_fiscal: 500, credito_fiscal: 200 }]
   assert.deepEqual(arrastrarSaldo(m)[0].a_pagar_real, arrastrarSaldo(m, {})[0].a_pagar_real)
 })
+
+test('el crédito fiscal se proyecta con la MISMA inflación que el débito', () => {
+  // Proyectar la facturación con inflación y las compras sin ella infla el "A PAGAR" de todos los
+  // meses futuros. El crédito fiscal sale de las compras, y las compras suben igual que las ventas.
+  const meses = [
+    { periodo: '2026-06', disponible: true, debito_fiscal: 1000, credito_fiscal: 400, saldo_queda: 0 },
+    { periodo: '2026-07', disponible: false },
+  ]
+  const r = proyectarIva(meses, {}, { '2026-07': 1.10 })
+  const jul = r[1]
+  const cerca = (a, b, msg) => assert.ok(Math.abs(a - b) < 0.01, `${msg}: ${a} vs ${b}`)
+  cerca(jul.debito_fiscal, 1100, 'el débito lleva el factor')
+  cerca(jul.credito_fiscal, 440, 'y el crédito el mismo factor')
+  cerca(jul.posicion, 660, 'la posición crece con la inflación, no más que ella')
+})
+
+test('sin inflación declarada, el factor es 1 y nada se distorsiona', () => {
+  const meses = [
+    { periodo: '2026-06', disponible: true, debito_fiscal: 1000, credito_fiscal: 400, saldo_queda: 0 },
+    { periodo: '2026-07', disponible: false },
+  ]
+  const r = proyectarIva(meses, {}, {})
+  assert.equal(r[1].credito_fiscal, 400)
+  assert.equal(r[1].debito_fiscal, 1000)
+})
