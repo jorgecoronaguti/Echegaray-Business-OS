@@ -17,7 +17,9 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { MOVIMIENTOS, verificarCadena, porTipo, CUENTA, CORTE, ORIGEN, enCartera, endosados, totalEcheqs } from '../lib/banco-santander.mjs'
+import { MOVIMIENTOS, verificarCadena, porTipo, CUENTA, CORTE, ORIGEN, enCartera, endosados, totalEcheqs, compromisosPorBeneficiario, normProveedor, ECHEQS_EMITIDOS } from '../lib/banco-santander.mjs'
+import { saldosPorProveedor } from '../lib/cuentas-por-pagar.mjs'
+import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { parseMonto, parseFecha } from '../lib/cash-briefing.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -99,6 +101,69 @@ async function main() {
   const esperado = echeqFuturos.reduce((s, f) => s + parseMonto(f?.[12]), 0)
   console.log(`  Cobranzas espera cobrar en echeq, de acá en adelante: ${ars(esperado)} (${echeqFuturos.length} filas)`)
   console.log(`  ⇒ el cash flow cuenta ${ars(esperado - totalEcheqs(enCartera()))} de ingreso que ya se entregó`)
+
+  // ── LOS INSTRUMENTOS EMITIDOS CONTRA LA DEUDA POR PROVEEDOR ───────────────────────────────────
+  // La pregunta que faltaba contestar: a quién le debo, y con qué instrumento. Un cheque emitido y
+  // no debitado es una deuda que YA tiene fecha cierta y no se puede renegociar; una deuda sin
+  // cheque todavía se puede conversar. Son dos cosas distintas y hasta hoy estaban en dos pestañas
+  // que no se miraban entre sí.
+  console.log('\nINSTRUMENTOS EMITIDOS CONTRA LA DEUDA DE PROVEEDORES')
+  const deuda = saldosPorProveedor(compras.map((f) => ({
+    proveedor: f?.[4], modalidad: f?.[5], total: parseMonto(f?.[14]), estado: f?.[23], fechaCaja: parseFecha(f?.[29]),
+  })), new Date())
+
+  // UNA SOLA FUENTE PARA EL IMPORTE, Y EL BANCO COMO CONTROL.
+  //
+  // La primera versión sumaba los cheques físicos de la pestaña MÁS los echeq del banco, y NEUMAGOM
+  // daba $1.902.000: exactamente el doble de los $951.000 reales. La pestaña ya tiene los 40 echeq
+  // cargados (columna TIPO: 49 FISICO + 40 ECHEQ), así que el banco no es una segunda fuente del
+  // importe — es la forma de verificar que la pestaña esté completa. Sumar las dos era la
+  // duplicación que la regla de oro prohíbe, cometida por mí mientras la controlaba.
+  const hojas = await google.getSheetMeta(ID)
+  const tabCh = hallarPestana(hojas, 'Cheques').title
+  const enPestana = (await google.readSheetValues(ID, `${tabCh}!A2:L400`))
+    .filter((f) => parseMonto(f?.[5]) > 0 && String(f?.[10] ?? '').trim().toUpperCase() !== 'SI')
+    .map((f) => ({ tipo: f?.[0], numero: String(f?.[1] ?? '').trim(), beneficiario: f?.[4], monto: parseMonto(f?.[5]), pago: f?.[8] }))
+  const porProv = new Map()
+  for (const f of enPestana) {
+    const k = normProveedor(f.beneficiario)
+    if (!k) continue
+    const a = porProv.get(k) ?? { nombre: f.beneficiario, cheques: 0, echeq: 0 }
+    a[/eche?q/i.test(String(f.tipo)) ? 'echeq' : 'cheques'] += f.monto
+    porProv.set(k, a)
+  }
+
+  // EL CONTROL: cada echeq que el banco muestra vivo tiene que estar en la pestaña.
+  const numerosPestana = new Set(enPestana.map((f) => f.numero.replace(/^0+/, '')))
+  const faltanEnPestana = compromisosPorBeneficiario().length
+    ? ECHEQS_EMITIDOS.filter((e) => /emitido|aceptado/i.test(e.estado) && !numerosPestana.has(e.numero.replace(/^0+/, '')))
+    : []
+  console.log(`  control: ${ECHEQS_EMITIDOS.filter((e) => /emitido|aceptado/i.test(e.estado)).length} echeq vivos en el banco · ${faltanEnPestana.length} sin cargar en la pestaña ${tabCh}`)
+  for (const e of faltanEnPestana) console.log(`     ⚠ ${e.numero} ${e.beneficiario} ${ars(e.importe)} vence ${e.pago}`)
+
+  const filas = []
+  const vistos = new Set()
+  for (const d of deuda) {
+    const k = normProveedor(d.proveedor)
+    vistos.add(k)
+    const i = porProv.get(k) ?? { cheques: 0, echeq: 0 }
+    filas.push({ prov: d.proveedor, deuda: d.total, instrumento: i.cheques + i.echeq })
+  }
+  for (const [k, v] of porProv) if (!vistos.has(k)) filas.push({ prov: v.nombre, deuda: 0, instrumento: v.cheques + v.echeq })
+
+  console.log(`  ${'Proveedor'.padEnd(30)}${'Deuda en Compras'.padStart(18)}${'Cheque/echeq emitido'.padStart(22)}   Lectura`)
+  let sinInstrumento = 0, sinFactura = 0
+  for (const f of filas.sort((a, b) => (b.deuda + b.instrumento) - (a.deuda + a.instrumento))) {
+    let lectura
+    if (f.deuda > 0 && f.instrumento === 0) { lectura = 'deuda SIN instrumento: todavía se puede negociar'; sinInstrumento += f.deuda }
+    else if (f.deuda === 0 && f.instrumento > 0) { lectura = '⚠ instrumento SIN factura pendiente en Compras'; sinFactura += f.instrumento }
+    else lectura = 'deuda con instrumento entregado: fecha cierta'
+    console.log(`  ${f.prov.slice(0, 28).padEnd(30)}${ars(f.deuda).padStart(18)}${ars(f.instrumento).padStart(22)}   ${lectura}`)
+  }
+  console.log(`\n  ⇒ ${ars(sinInstrumento)} de deuda sin cheque emitido: es la parte negociable.`)
+  console.log(`  ⇒ ${ars(sinFactura)} de cheques emitidos a proveedores que NO tienen factura pendiente en Compras.`)
+  console.log('     O la factura está cargada como pagada antes de que el cheque se debite, o falta cargarla.')
+  console.log(`  (los ECHEQ salen de la consulta del banco, ${ECHEQS_EMITIDOS.length} filas, página 1 de 2)`)
 
   console.log(`\nSaldo del banco al ${CORTE}: ${ars(CUENTA.saldoPesos)} en pesos · U$S ${CUENTA.saldoDolares} en dólares`)
 }

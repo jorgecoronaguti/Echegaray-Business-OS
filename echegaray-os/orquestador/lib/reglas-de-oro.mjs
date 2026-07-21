@@ -146,6 +146,42 @@ export function usaInflacion(formulas = []) {
 }
 
 /**
+ * NÚCLEO PURO: los criterios de rubro que usan las fórmulas del archivo.
+ *
+ * ES LA VERIFICACIÓN QUE LE FALTABA A LA REGLA "no duplicar". Le dije al dueño que esa regla no
+ * tenía control mecánico, y era cierto para la formulación amplia —"un concepto no se calcula en dos
+ * lados"— que no se puede decidir automáticamente: el cuadro y la pestaña de detalle SUMAN lo mismo
+ * a propósito, porque son dos vistas de la misma partición.
+ *
+ * Lo que sí se puede verificar, y es donde la duplicación hace daño de verdad, es que TODAS las
+ * fórmulas hablen de la MISMA lista de rubros. El día que alguien escriba "Materiales civil" en
+ * minúscula dentro de una fórmula, ese SUMIFS va a devolver $0 para siempre y ningún control de
+ * partición lo va a ver: la suma de Compras sigue cerrando porque la fila existe, sólo que ya no la
+ * cuenta nadie. Un rubro escrito a mano ES una segunda definición del concepto.
+ *
+ * @param {string[]} formulas
+ * @param {string} columna la columna de Compras que lleva el criterio (AC rubro, AE familia, AF sub)
+ * @returns {string[]} los criterios distintos encontrados
+ */
+export function criteriosEnFormulas(formulas = [], columna = 'AC') {
+  const re = new RegExp(`Compras!\\$${columna}\\$\\d+:\\$${columna}\\s*;\\s*"([^"]+)"`, 'g')
+  const out = new Set()
+  for (const f of formulas) {
+    for (const m of String(f ?? '').matchAll(re)) out.add(m[1])
+  }
+  return [...out].sort()
+}
+
+/**
+ * NÚCLEO PURO: los criterios que una fórmula usa y la definición única NO conoce.
+ * Cualquiera de estos suma $0 en silencio.
+ */
+export function criteriosHuerfanos(formulas = [], validos = [], columna = 'AC') {
+  const set = new Set(validos.map((v) => String(v).trim().toLowerCase()))
+  return criteriosEnFormulas(formulas, columna).filter((c) => !set.has(c.trim().toLowerCase()))
+}
+
+/**
  * NÚCLEO PURO: la tabla de índices, ¿está completa y con fuente?
  *
  * Un índice sin fuente es un número inventado con buena letra. Y una tabla que se corta antes de

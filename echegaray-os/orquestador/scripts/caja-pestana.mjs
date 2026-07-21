@@ -52,6 +52,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { CUENTAS, CARGA, ALIAS, TIPO_CAMBIO, RANGO_TC, filaDeCuenta } from '../lib/caja-disponibilidades.mjs'
 import * as BANCO from '../lib/banco-santander.mjs'
+import { TASAS, CARGO_VERIFICADO, tasaDiaria, costoConImpuestos, interesDelPeriodo } from '../lib/costo-descubierto.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -164,8 +165,10 @@ function grilla(cargado, refs) {
   const cab1 = push(['Cuenta', 'Moneda', 'Saldo en moneda de origen', 'Tipo de cambio', 'Saldo en pesos', 'Fecha del saldo', 'Antigüedad', 'Origen del dato', 'Declarado por'])
   const d0 = filas.length + 1
   const amarillas = []
+  let fBancoPesos = 0
   for (const c of CUENTAS) {
     const f = filas.length + 1
+    if (c.banco === 'saldoPesos') fBancoPesos = f
     if (!c.formula && !c.banco) amarillas.push(f)
     push([
       c.nombre,
@@ -264,6 +267,26 @@ function grilla(cargado, refs) {
     'Cuánto se puede estirar antes de no poder pagar. NO es plata: es deuda que todavía no se tomó, y al 62,78% anual tomarla tiene precio.', 'Se calcula solo'])
   push()
 
+  // ── QUÉ CUESTA USAR EL DESCUBIERTO ──────────────────────────────────────────────────────────────
+  // "Te pasé las tasas para que al momento de utilizarlo el Sheet indique los intereses que va
+  // generando". El modelo no se estimó: reproduce al centavo el cargo que el banco hizo el 14/07
+  // (ver costo-descubierto.mjs). Por eso el bloque muestra la verificación al lado del cálculo: una
+  // tasa copiada de una pantalla y una tasa que reproduce un cargo real no valen lo mismo.
+  push(['COSTO DE USAR EL DESCUBIERTO — lo que corre por día mientras la cuenta esté en rojo'])
+  const saldoBanco = `$${C_PESOS}$${fBancoPesos}`
+  const fTasa = push(['Tasa nominal anual del acuerdo', '', TASAS.tna, '', '', '', '',
+    `Acuerdo N° ${BANCO.ACUERDO.numero}. Costo financiero total ${(BANCO.ACUERDO.cft * 100).toFixed(2)}% anual.`, 'Réplica del banco'])
+  push(['Interés por día, por cada $1.000.000 en descubierto', 'ARS', Math.round(1000000 * tasaDiaria() * 100) / 100, '',
+    `=${C_IMP}${filas.length + 1}`, '', '',
+    `${(TASAS.tna * 100).toFixed(0)}% ÷ 365 días. Con IVA e impuestos es ${ars(costoConImpuestos(1000000 * tasaDiaria()))} por día.`, 'Se calcula solo'])
+  const fInt = push(['⇒ Interés que se está generando HOY', 'ARS',
+    `=IF(${saldoBanco}>=0;0;-${saldoBanco}*${TASAS.tna}/${TASAS.base}*(1+${TASAS.iva}+${TASAS.percepcion}))`,
+    '', `=${C_IMP}${filas.length + 1}`, '=TODAY()', '',
+    'Por día, con IVA del 10,5% y percepción del 1,5% incluidos. Si la cuenta está a favor, es $0 y no hay nada que hacer.', 'Se calcula solo'])
+  push(['      Últimos intereses que cobró el banco', 'ARS', CARGO_VERIFICADO.interes, '', `=${C_IMP}${filas.length + 1}*(1+${TASAS.iva}+${TASAS.percepcion})`, CARGO_VERIFICADO.hasta, '',
+    `Período ${CARGO_VERIFICADO.desde} al ${CARGO_VERIFICADO.hasta} (${CARGO_VERIFICADO.dias} días). Con IVA y percepción, salieron ${ars(CARGO_VERIFICADO.total)}. La columna de pesos aplica el mismo 1,12 y tiene que dar ese número: es la prueba de que la tasa está bien cargada.`, 'Réplica del banco'])
+  push()
+
   // ── 5 · ALERTA ──────────────────────────────────────────────────────────────────────────────────
   push(['4 · ALERTA DE CAJA — hasta cuándo alcanza'])
   const fMin = push(['Caja mínima deseada', '', '', '', "=N('01_Valores Iniciales'!$B$3)", '', '', '01_Valores Iniciales', ''])
@@ -327,7 +350,7 @@ function grilla(cargado, refs) {
   push(['· El tipo de cambio se actualiza solo con la cotización del día. Si operás a otro (MEP, tarjeta), cargalo en la fila "Dólar declarado" y ése pasa a mandar.'])
   push(['· Todo lo demás de esta pestaña se recalcula solo cada 2 horas junto con el resto del archivo.'])
 
-  return { filas, usd, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, amarillas }
+  return { filas, usd, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, amarillas }
 }
 
 async function main() {
@@ -416,6 +439,10 @@ async function formatear(google, sheetId, g) {
   fmt(r(0, n, 6, 7), 'userEnteredFormat.horizontalAlignment', { horizontalAlignment: 'CENTER' })
   fmt(r(0, n, 7, 9), 'userEnteredFormat',
     { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: { fontSize: 9, italic: true, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'CLIP' })
+  // UNA TASA NO ES PLATA. Con el formato de moneda, el 55% anual se dibujaba "$1" — que además de
+  // no significar nada, invita a leerlo como un peso.
+  fmt(r(g.fTasa - 1, g.fTasa, 2, 3), 'userEnteredFormat.numberFormat',
+    { numberFormat: { type: 'PERCENT', pattern: '0.00%' } })
   // LOS IMPORTES EN DÓLARES, con su propio símbolo. Sin esto, U$S 581,39 se dibuja "$581".
   for (const f of g.usd) {
     fmt(r(f - 1, f, 2, 3), 'userEnteredFormat.numberFormat',

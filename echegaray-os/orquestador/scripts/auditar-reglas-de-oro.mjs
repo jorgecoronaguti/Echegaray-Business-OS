@@ -15,7 +15,9 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { REGLAS, DERIVADAS, CALCULADAS, CON_ORIGEN, numerosPegados, derivadasHuerfanas, usaInflacion, indicesCompletos } from '../lib/reglas-de-oro.mjs'
+import { REGLAS, DERIVADAS, CALCULADAS, CON_ORIGEN, numerosPegados, derivadasHuerfanas, usaInflacion, indicesCompletos, criteriosEnFormulas, criteriosHuerfanos } from '../lib/reglas-de-oro.mjs'
+import { RUBROS } from '../lib/rubro-caja.mjs'
+import { SUB_ESTRUCTURA } from '../lib/sub-rubro-estructura.mjs'
 import { USA, CABECERA, comparar } from '../lib/cobertura-datos.mjs'
 import { PASOS } from '../lib/flujo-caja-pasos.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
@@ -57,6 +59,28 @@ async function main() {
     if (CON_ORIGEN[t]) { ok(`${t}: ${sueltos.length} números con origen declarado — ${CON_ORIGEN[t]}`); continue }
     mal(`${t}: ${sueltos.length} número(s) escritos a mano — ${muestra}`)
     anotar('formulas', `${t}: ${sueltos.length} números escritos`, muestra)
+  }
+
+  // ── REGLA "sin_duplicar" ─────────────────────────────────────────────────────────────────────────
+  // La formulación amplia —"un concepto no se calcula en dos lados"— no se puede decidir sola: el
+  // cuadro y la pestaña de detalle suman lo mismo a propósito, son dos vistas de la misma partición.
+  // Lo que SÍ se verifica es que todas las fórmulas hablen de la MISMA lista de rubros: un criterio
+  // escrito a mano que no existe en la definición única es una segunda definición del concepto, y
+  // devuelve $0 para siempre sin que ningún control de partición lo note.
+  console.log('\nREGLA · un solo juego de rubros para todo el archivo')
+  const todasLasFormulas = []
+  for (const t of [...CALCULADAS, ...Object.keys(CON_ORIGEN)]) {
+    if (!hojas.includes(t)) continue
+    const g = await google.readSheetGrid(ID, `${t}!A1:BZ200`).catch(() => ({ filas: [] }))
+    todasLasFormulas.push(...(g.filas ?? []).flatMap((f) => (f || []).map((c) => c?.formula).filter(Boolean)))
+  }
+  for (const [col, validos, que] of [['AC', RUBROS, 'rubro de caja'], ['AF', SUB_ESTRUCTURA, 'sub-rubro de estructura']]) {
+    const usados = criteriosEnFormulas(todasLasFormulas, col)
+    const huerfanos = criteriosHuerfanos(todasLasFormulas, validos, col)
+    if (huerfanos.length) {
+      mal(`${que}: ${huerfanos.length} criterio(s) que la definición única no conoce — ${huerfanos.join(' · ')}`)
+      anotar('sin_duplicar', `${que} escrito a mano en una fórmula`, huerfanos.join(' · '))
+    } else ok(`${que}: los ${usados.length} criterios usados en las fórmulas existen en la definición única`)
   }
 
   // ── REGLA "inflacion" ───────────────────────────────────────────────────────────────────────────

@@ -18,6 +18,7 @@ import {
 import { REGLAS } from '../lib/rubro-caja.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { ubicarCaja } from '../lib/caja-disponibilidades.mjs'
+import { formulaInteresMes } from '../lib/costo-descubierto.mjs'
 
 /** En qué pestaña está el detalle de un rubro. Sale de REGLAS: una sola definición. */
 const detallePorRubro = (r) => REGLAS.find((x) => x.rubro === r)?.detalle ?? 'Compras'
@@ -109,9 +110,24 @@ function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, fi
         // La línea de cheques SUMA las marcas que el OS escribe al lado de cada cheque y de cada
         // consumo de tarjeta. Antes era el único lugar del cuadro con números pegados: el día que se
         // cargaba una factura que faltaba, la línea seguía mostrando el importe viejo.
+        // Los intereses se calculan sobre el saldo con el que ARRANCA cada mes, que es la celda
+        // "Efectivo al inicio" de SU MISMA columna. No hay circularidad: ese inicio es el cierre del
+        // mes anterior, que ya está resuelto cuando le toca el turno a este mes.
+        //
+        // ME EQUIVOQUÉ UNA VUELTA ANTES y conviene dejarlo escrito: la primera versión referenciaba
+        // el inicio de la columna ANTERIOR, o sea un mes de más para atrás. Diciembre calculaba
+        // sobre el saldo de noviembre al arrancar (−$56,7M) en vez del de diciembre (−$127,1M), y
+        // daba $2.969.865 donde van $6,6M. El error no se ve en ningún control: la suma cierra igual.
+        //
+        // Es un PISO declarado: no cobra la deuda que se toma dentro del mismo mes. En el semanal no va: a nivel semana el saldo
+        // inicial no está calculado y un interés semanal sería ruido.
         const celdas = l.cheques
           ? cols.map((_, i) => formulaChequesSinFactura(desde(i), hasta(i), MARCAS.falta))
-          : f
+          : l.descubierto
+            ? cols.map((_, i) => (periodo === 'mensual'
+              ? formulaInteresMes(`${letra(i + 1)}#{INICIO}`, `${letra(i + 1)}$${FILA_CAB}`)
+              : 0))
+            : f
         push([`    ${l.nombre}`, ...celdas])
         meta.detalle.push({ fila: filas.length, linea: l })
       }
@@ -383,6 +399,9 @@ async function main() {
   const data = []
   for (const [pestaña, periodo] of [['Cash Flow Semanal', 'semanal'], ['Cash Flow Mensual', 'mensual']]) {
     const g = grilla(periodo, faltantes, refCaja, refCajaFecha, filasTabla)
+    // #{INICIO} = la fila del "Efectivo al inicio", que recién se conoce cuando el cuadro está
+    // armado. Escribir el número a mano rompería el día que el cuadro crezca una línea.
+    g.filas = g.filas.map((f) => f.map((c) => (typeof c === 'string' ? c.replace(/#\{INICIO\}/g, String(g.meta.inicio)) : c)))
     const ancho = Math.max(...g.filas.map((f) => f.length))
     // Normalizar el rectángulo: si una fila es más corta, la API deja lo viejo debajo.
     const cuadro = g.filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r })

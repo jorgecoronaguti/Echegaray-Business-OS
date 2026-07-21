@@ -470,6 +470,10 @@ export const CUADRO = [
         nombre: 'Servicio de deuda financiera', signo: -1,
         lineas: [
           { nombre: 'Cuotas de crédito prendario y gastos bancarios', rubro: 'Financiero' },
+          // NO SALE DE COMPRAS: se calcula con la tasa del acuerdo sobre el saldo con el que
+          // arranca cada mes. Ver costo-descubierto.mjs — el modelo reproduce al centavo el cargo
+          // que el banco hizo el 14/07, así que no es una estimación de escritorio.
+          { nombre: 'Intereses del acuerdo en descubierto (proyectados)', descubierto: true },
         ],
       },
     ],

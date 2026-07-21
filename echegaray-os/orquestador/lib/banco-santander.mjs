@@ -256,3 +256,68 @@ export function porTipo(movs = MOVIMIENTOS) {
   }
   return [...acc.values()].sort((a, b) => a.monto - b.monto)
 }
+
+/**
+ * LOS ECHEQ QUE LA EMPRESA EMITIÓ, según el banco.
+ *
+ * POR QUÉ HACEN FALTA (21/07). El dueño: "¿toda la información bancaria en referencia a cheques fue
+ * cruzada con las deudas a los proveedores?". No lo estaba: se cruzaban los cheques de la pestaña
+ * contra Compras por número de comprobante —o sea, si el pago tenía factura— pero nadie miraba lo
+ * contrario, que es la pregunta de tesorería: a quién le debo y con qué instrumento.
+ *
+ * Un cheque emitido y no debitado es una deuda con ese proveedor que YA tiene instrumento entregado.
+ * No es lo mismo que una deuda sin cheque: la primera tiene fecha cierta y no se puede negociar, la
+ * segunda sí. Cruzarlas es la única forma de saber cuál de las dos es cada peso que se debe.
+ *
+ * ALCANCE DECLARADO: es la PÁGINA 1 de 2 de la consulta. Los 18 de acá son los más recientes; puede
+ * haber más echeq viejos en la página siguiente. Los que importan para la caja —los que todavía no
+ * se pagaron— están todos acá, porque la lista viene ordenada por fecha.
+ */
+export const ECHEQS_EMITIDOS = [
+  { numero: '00000309', beneficiario: 'NEUMAGOM SAS', cuit: '30691853825', emision: '2026-06-03', pago: '2026-10-03', importe: 317000, estado: 'Emitido' },
+  { numero: '00000308', beneficiario: 'NEUMAGOM SAS', cuit: '30691853825', emision: '2026-06-03', pago: '2026-09-03', importe: 317000, estado: 'Emitido' },
+  { numero: '00000307', beneficiario: 'NEUMAGOM SAS', cuit: '30691853825', emision: '2026-06-03', pago: '2026-08-03', importe: 317000, estado: 'Aceptado' },
+  { numero: '00000305', beneficiario: 'ALUMETAL S.A', cuit: '30567363372', emision: '2026-06-03', pago: '2026-07-18', importe: 893098.79, estado: 'Depositado' },
+  { numero: '00000299', beneficiario: 'ACEROLATINA SA', cuit: '30712167986', emision: '2026-04-23', pago: '2026-07-07', importe: 1964635.58, estado: 'Pagado' },
+  { numero: '00000295', beneficiario: 'FRIOLATINA SA', cuit: '30679777986', emision: '2026-04-23', pago: '2026-07-07', importe: 1854564.14, estado: 'Pagado' },
+  { numero: '00000363', beneficiario: 'MADERAS LLITERAS S.R.L', cuit: '30708390557', emision: '2026-06-04', pago: '2026-07-04', importe: 383175, estado: 'Pagado' },
+  { numero: '00000362', beneficiario: 'MADERAS LLITERAS S.R.L', cuit: '30708390557', emision: '2026-06-04', pago: '2026-07-04', importe: 383175, estado: 'Pagado' },
+  { numero: '00000361', beneficiario: 'MADERAS LLITERAS S.R.L', cuit: '30708390557', emision: '2026-06-04', pago: '2026-07-04', importe: 383175, estado: 'Pagado' },
+  { numero: '00000360', beneficiario: 'MADERAS LLITERAS S.R.L', cuit: '30708390557', emision: '2026-06-04', pago: '2026-07-04', importe: 383175, estado: 'Pagado' },
+  { numero: '00000304', beneficiario: 'ALUMETAL S.A', cuit: '30567363372', emision: '2026-06-03', pago: '2026-07-03', importe: 893098.79, estado: 'Pagado' },
+  { numero: '00000306', beneficiario: 'NEUMAGOM SAS', cuit: '30691853825', emision: '2026-06-03', pago: '2026-07-03', importe: 317000, estado: 'Pagado' },
+  { numero: '00000302', beneficiario: 'DUBOS UGARTE PEDRO LUIS RAUL', cuit: '20287737824', emision: '2026-05-28', pago: '2026-06-26', importe: 3500000, estado: 'Pagado' },
+  { numero: '00000303', beneficiario: 'ALUMETAL S.A', cuit: '30567363372', emision: '2026-06-03', pago: '2026-06-18', importe: 893098.79, estado: 'Pagado' },
+  { numero: '00000294', beneficiario: 'FRIOLATINA SA', cuit: '30679777986', emision: '2026-04-23', pago: '2026-06-07', importe: 1854564.14, estado: 'Pagado' },
+  { numero: '00000298', beneficiario: 'ACEROLATINA SA', cuit: '30712167986', emision: '2026-04-23', pago: '2026-06-07', importe: 1964635.58, estado: 'Pagado' },
+  { numero: '00000301', beneficiario: 'PANEL NOW S.A.S', cuit: '30716236338', emision: '2026-04-23', pago: '2026-05-16', importe: 1058842.99, estado: 'Pagado' },
+  { numero: '00000293', beneficiario: 'FRIOLATINA SA', cuit: '30679777986', emision: '2026-04-23', pago: '2026-05-07', importe: 1854564.14, estado: 'Pagado' },
+]
+
+/** Estados que significan "todavía no salió de la cuenta": es un compromiso vivo. */
+const VIVOS = new Set(['emitido', 'aceptado'])
+
+/** NÚCLEO PURO: los echeq emitidos que todavía hay que cubrir, por beneficiario. */
+export function compromisosPorBeneficiario(echeqs = ECHEQS_EMITIDOS) {
+  const acc = new Map()
+  for (const e of echeqs) {
+    if (!VIVOS.has(String(e.estado ?? '').toLowerCase())) continue
+    const a = acc.get(e.beneficiario) ?? { beneficiario: e.beneficiario, cuit: e.cuit, cantidad: 0, monto: 0, proximo: null }
+    a.cantidad++; a.monto += Number(e.importe) || 0
+    if (!a.proximo || e.pago < a.proximo) a.proximo = e.pago
+    acc.set(e.beneficiario, a)
+  }
+  return [...acc.values()].sort((a, b) => b.monto - a.monto)
+}
+
+/**
+ * NÚCLEO PURO: dos nombres de proveedor, ¿son el mismo?
+ * El banco escribe "NEUMAGOM SAS" y Compras "Neumagom". Sin normalizar, el cruce da cero y la
+ * conclusión sería "no hay ningún cheque que corresponda a una deuda", que es falso.
+ */
+export const normProveedor = (s) => String(s ?? '')
+  .normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .toUpperCase()
+  .replace(/\bS\.?\s?A\.?\s?S\.?\b|\bS\.?\s?A\.?\b|\bS\.?R\.?L\.?\b|\bSAS\b/g, '')
+  .replace(/[^A-Z0-9]+/g, ' ')
+  .trim()
