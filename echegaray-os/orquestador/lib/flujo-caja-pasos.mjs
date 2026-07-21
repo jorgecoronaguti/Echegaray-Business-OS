@@ -45,6 +45,10 @@ export const PASOS = [
   // reparación por CONTENIDO —si adentro hay una frase, no es un importe— y por eso no se
   // desincroniza cuando un bloque crece una fila, que es lo que pasa con los formatos por coordenada.
   ['reparar-pantalla.mjs', 'devolver su formato a las celdas que quedaron con el de la columna', []],
+  // LA REGLA DE ORO, MEDIDA EN CADA CORRIDA. Cuenta cuántos números de cada pestaña calculada están
+  // PEGADOS en vez de ser fórmula o celda derramada. Sin este censo, la única forma de enterarse era
+  // que el dueño abriera una celda y mirara la barra de fórmulas — que es exactamente lo que pasó.
+  ['censo-numeros-pegados.mjs', 'regla de oro: cuántos números están pegados en vez de calculados', []],
   ['auditar-pantalla.mjs', 'control de defectos de pantalla en las 14 pestañas', []],
   ['sync-compras.mjs', 'núcleo: Compras → costos_obra', []],
   ['sync-caja-nucleo.mjs', 'núcleo: quincenas de jornales e instrumentos de pago', []],

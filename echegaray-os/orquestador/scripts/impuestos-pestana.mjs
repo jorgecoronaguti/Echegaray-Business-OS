@@ -172,6 +172,7 @@ function grilla(iva, planes, iibb, ret) {
   // envejecería el día que cambie la cartera de clientes, que es justo lo que hay que vigilar.
   push(['ESCENARIO — ¿y si la mezcla de clientes se mantiene?', '', '', '', '', '', '', '', '',
     'No es una proyección del OS: es qué pasaría SI el mix de clientes de agosto a diciembre se pareciera al de enero a julio.'])
+  const fTasaRet = filas.length + 1
   const fTasa = push(['Tasa de retención medida sobre el débito real (ene–jul)',
     `=IFERROR(SUM($E$${f0}:$E$${fReal1})/SUM($B$${f0}:$B$${fReal1});0)`, '', '', '', '', '', '', '',
     'Lo que efectivamente le retuvieron sobre lo que efectivamente facturó. Se mide, no se supone.'])
@@ -244,7 +245,7 @@ function grilla(iva, planes, iibb, ret) {
   push(['· La alícuota de IIBB de San Juan para construcción (celda B' + fIIBB + ').'])
   push(['· Cargar en Compras los pagos de IVA y de IIBB que se hayan hecho. Hoy no hay ninguno y el cash flow no los ve.'])
   push(['· Revisar las retenciones de IVA que sufre la empresa (Cobranzas, columnas X a AA): son la causa probable del saldo a favor creciente.'])
-  return { filas, f0, f1, tot, p0, p1, b0, cab, fIIBB, i0, i1 }
+  return { filas, fTasaRet, f0, f1, tot, p0, p1, b0, cab, fIIBB, i0, i1 }
 }
 
 /** Lee las DDJJ de IIBB desde los PDF originales de Drive. */
@@ -371,6 +372,15 @@ async function formatear(google, sheetId, g) {
     if (/^⚠/.test(String(f[0] ?? ''))) fmt(r(i, i + 1, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, foregroundColor: { red: 0.7, green: 0.2, blue: 0.1 } } })
   })
   // Las cuotas son cantidades.
+  // La tasa de retención medida es un PORCENTAJE, no plata: con formato moneda se mostraba como
+  // "$0" y el escenario entero parecía roto. Es el defecto que caza defectos-pantalla.mjs, cometido
+  // por mí en la misma sesión en que lo construí — el formato lo pone el rectángulo de arriba y hay
+  // que devolvérselo a la celda que no es un importe.
+  if (g.fTasaRet) {
+    fmt({ ...r(g.fTasaRet - 1, g.fTasaRet), startColumnIndex: 1, endColumnIndex: 2 },
+      'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+      { numberFormat: { type: 'PERCENT', pattern: '0.0%' }, horizontalAlignment: 'RIGHT' })
+  }
   fmt({ ...r(g.p0 - 1, g.p1 + 1), startColumnIndex: 1, endColumnIndex: 2 }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '0' } })
   fmt({ ...r(g.b0 - 1, g.b0), startColumnIndex: 2, endColumnIndex: 3 }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '0' } })
   // LAS FECHAS NO SON PESOS. El formato de moneda de arriba barre las columnas B a H enteras, así
