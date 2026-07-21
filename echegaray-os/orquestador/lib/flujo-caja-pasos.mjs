@@ -18,6 +18,9 @@ export const PASOS = [
   // actualizarse. El 21/07 había cuatro, y dos de ellas hacían que dos cobros de $16.200.000
   // quedaran fuera de cualquier filtro por mes.
   ['columnas-calculadas.mjs', 'devolver la fórmula a las celdas calculadas pisadas a mano', []],
+  // La réplica de ARCA va ANTES de Impuestos: esa pestaña la referencia con fórmulas y necesita que
+  // los comprobantes ya estén en el archivo. Es el mismo orden que el espejo de JORNALES.
+  ['arca-raw-pestana.mjs', '_ARCA_RAW — los comprobantes de ARCA dentro del Sheet', ['_ARCA_RAW']],
   ['rubro-caja-sheet.mjs', 'la columna "Rubro de caja" de Compras — de acá cuelga todo lo demás', []],
   // Recurrentes va ANTES del cash flow: el cuadro lee de ella su proyección y necesita que exista.
   ['recurrentes-pestana.mjs', 'Recurrentes — servicios fijos, sin proyectar meses ya cerrados', ['Recurrentes']],
