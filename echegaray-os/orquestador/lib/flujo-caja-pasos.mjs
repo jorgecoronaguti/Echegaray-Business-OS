@@ -41,6 +41,10 @@ export const PASOS = [
   // DESPUÉS de unificar el formato: el control de CÓMO SE VE. No arregla nada —arreglar cada
   // defecto es trabajo de la pestaña que lo produce— pero deja el número a la vista en cada corrida.
   // Sin él, la única forma de enterarse de un "30/12/99" repetido 22 veces era que el dueño lo viera.
+  // ANTES de auditar: devolverle su formato a las celdas que quedaron con el de la columna. Es
+  // reparación por CONTENIDO —si adentro hay una frase, no es un importe— y por eso no se
+  // desincroniza cuando un bloque crece una fila, que es lo que pasa con los formatos por coordenada.
+  ['reparar-pantalla.mjs', 'devolver su formato a las celdas que quedaron con el de la columna', []],
   ['auditar-pantalla.mjs', 'control de defectos de pantalla en las 14 pestañas', []],
   ['sync-compras.mjs', 'núcleo: Compras → costos_obra', []],
   ['sync-caja-nucleo.mjs', 'núcleo: quincenas de jornales e instrumentos de pago', []],

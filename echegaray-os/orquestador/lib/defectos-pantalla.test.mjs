@@ -92,3 +92,19 @@ test('el resumen agrupa por tipo y ordena por cantidad', () => {
   assert.equal(r[0].n, 2)
   assert.equal(r[1].n, 1)
 })
+
+test('una fila de encabezado de meses no vuelve sospechosa a toda la tabla', () => {
+  // Casi todos los cuadros del archivo abren con "ene feb mar…", que son fechas de verdad.
+  // Contándolas, cualquier gasto en el rango de seriales se marcaba: $54.043 de Recurrentes y
+  // $48.613 de Estructura son gastos reales.
+  const filas = [
+    [cel('Proveedor'), cel('ene', 'DATE'), cel('feb', 'DATE'), cel('mar', 'DATE')],
+    [cel('RSV'), cel('$54.043', 'CURRENCY'), cel('$48.613', 'CURRENCY'), cel('$1.000', 'CURRENCY')],
+  ]
+  assert.deepEqual(detectar(hoja(filas)), [])
+})
+
+test('pero una sola fecha suelta en la columna sí cuenta', () => {
+  const filas = [[cel('x'), cel('25/06/2026', 'DATE')], [cel('y'), cel('$46.198', 'CURRENCY')]]
+  assert.equal(detectar(hoja(filas))[0].tipo, 'fecha_como_moneda')
+})

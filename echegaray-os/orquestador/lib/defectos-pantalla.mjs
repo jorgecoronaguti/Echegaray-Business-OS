@@ -61,9 +61,17 @@ export function detectar(f, { desdeFila = 1, huecoMax = 3 } = {}) {
   // Proveedores y Materiales marcó "$54.358" de Ferretería y consumibles como si fuera una fecha,
   // porque veinte filas más abajo la misma columna E pertenece a otra tabla donde sí hay fechas.
   // La vecindad es lo que define una tabla en un layout de bloques apilados.
+  //
+  // Y UNA FILA DE ENCABEZADO DE MESES NO CUENTA. Casi todos los cuadros de este archivo tienen
+  // arriba una fila con "ene feb mar…" que son fechas de verdad, con formato de fecha. Contándola,
+  // TODAS las columnas de importes de ese cuadro pasaban a "tener fechas cerca" y cualquier importe
+  // en el rango de seriales se marcaba: pasó con $54.043 en Recurrentes y $48.613 en Estructura, que
+  // son gastos reales. Una fila con tres o más fechas es un encabezado de períodos, no datos.
   const VENTANA = 15
-  const conFecha = f.filas.map((fila) => new Set(
-    (fila || []).map((c, j) => ((c?.formato?.numberFormat?.type === 'DATE' || c?.formato?.numberFormat?.type === 'DATE_TIME') ? j : -1)).filter((j) => j >= 0)))
+  const conFecha = f.filas.map((fila) => {
+    const cols = (fila || []).map((c, j) => ((c?.formato?.numberFormat?.type === 'DATE' || c?.formato?.numberFormat?.type === 'DATE_TIME') ? j : -1)).filter((j) => j >= 0)
+    return new Set(cols.length >= 3 ? [] : cols)
+  })
   const fechaCerca = (fila, col) => {
     for (let k = Math.max(0, fila - VENTANA); k <= Math.min(conFecha.length - 1, fila + VENTANA); k++) {
       if (conFecha[k].has(col)) return true
