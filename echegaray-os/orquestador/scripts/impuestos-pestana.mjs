@@ -238,7 +238,18 @@ function grilla(iva, planes, iibb, ret) {
   push()
 
   // ── 2. IIBB ─────────────────────────────────────────────────────────────────────────────────────
-  push(['2. INGRESOS BRUTOS (San Juan) — de las DDJJ reales de Rentas, leídas de Drive'])
+  push(['2. INGRESOS BRUTOS (San Juan) — de las DDJJ reales de Rentas'])
+  // ═══ ESTE ES EL ÚNICO BLOQUE DEL ARCHIVO QUE NO SE PUEDE ACTUALIZAR SOLO, Y HAY QUE DECIRLO ═══
+  //
+  // El IVA sale de _ARCA_RAW, las cargas sociales de _F931_RAW —leídas del PDF de cada DDJJ— y los
+  // saldos del banco de _BANCO_RAW. Para Ingresos Brutos hice la misma búsqueda en el data room y lo
+  // único que hay es "administracion/ANRs/IIBB.pdf", que es el CERTIFICADO DE INSCRIPCIÓN: no tiene
+  // un solo número de una declaración mensual.
+  //
+  // Así que estos números son una transcripción, y como tal envejecen: cuando se presente la DDJJ de
+  // julio, el cuadro va a seguir mostrando hasta junio sin que nadie se entere. No se inventan y no
+  // se disfrazan de fórmula — se declara qué falta para que dejen de ser una transcripción.
+  push(['⚠ Este bloque NO se actualiza solo: son las DDJJ transcriptas. Para que se calcule como el IVA y las cargas sociales, hacen falta los PDF de las declaraciones mensuales de Rentas en el data room (hoy sólo está el certificado de inscripción). Con eso, el OS los lee y este cuadro pasa a ser fórmula.'])
   const al = alicuotaDeclarada(iibb)
   const cab2 = push(['Período', 'Base imponible', 'Impuesto determinado', 'Retenciones y percepciones sufridas', 'Saldo a favor que venía', 'A PAGAR', 'Saldo a favor que queda', 'Presentada', 'Origen'])
   const i0 = filas.length + 1
