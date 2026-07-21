@@ -54,7 +54,12 @@ export const PESTANAS = [
   { titulo: 'Impuestos y Financieros', congeladas: 0, hastaFila: 90, cols: 12 },
   { titulo: 'Recurrentes', congeladas: 4, hastaFila: 90, cols: 20 },
   { titulo: 'Estructura', congeladas: 6, hastaFila: 90, cols: 20 },
-  { titulo: 'Proveedores y Materiales', congeladas: 0, hastaFila: 140, cols: 20 },
+  // La vieja "Proveedores y Materiales" se partió el 21/07: eran ocho tablas sobre las mismas
+  // columnas y ningún ancho podía servirles a todas. Ver lib/partir-pestana.mjs.
+  { titulo: 'Proveedores — Deuda', congeladas: 3, hastaFila: 60, cols: 12 },
+  { titulo: 'Proveedores — Cuenta Corriente', congeladas: 3, hastaFila: 60, cols: 18 },
+  { titulo: 'Materiales', congeladas: 3, hastaFila: 60, cols: 18 },
+  { titulo: 'Proveedores — Control y ARCA', congeladas: 3, hastaFila: 130, cols: 12 },
   { titulo: 'CAJA', congeladas: 0, hastaFila: 120, cols: 12 },
   { titulo: 'Cash Flow Semanal', congeladas: 3, hastaFila: 90, cols: 60 },
   { titulo: 'Cash Flow Mensual', congeladas: 3, hastaFila: 90, cols: 20 },

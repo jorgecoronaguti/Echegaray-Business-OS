@@ -19,6 +19,17 @@
  */
 export const NOMBRES = {
   proveedoresMateriales: 'Proveedores y Materiales',
+
+  // ── LA PARTICIÓN DEL 21/07 ──────────────────────────────────────────────────────────────────
+  // "Proveedores y Materiales" eran OCHO TABLAS sobre las mismas columnas: la E era "Modalidad" en
+  // la primera, "Facturado según AFIP" en la segunda e "Importe" en la sexta. Ningún ancho podía
+  // servirles a las tres, así que se veía cortada sin importar cómo se la formateara. El dueño:
+  // "TODA LA PESTAÑA ES UNA MIERDA" — y la decisión fue partirla, respetando las reglas de oro.
+  // Cada una tiene UNA tabla por tema y sus propias columnas. No se perdió ni una fila.
+  provDeuda: 'Proveedores — Deuda',
+  provCtaCte: 'Proveedores — Cuenta Corriente',
+  materiales: 'Materiales',
+  provControl: 'Proveedores — Control y ARCA',
 }
 
 const norm = (s) => String(s ?? '').trim().toLowerCase()

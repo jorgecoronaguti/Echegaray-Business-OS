@@ -38,7 +38,11 @@ const esTextoDeVerdad = (v) => {
   // detector que grita por todo es peor que no tenerlo, porque enseña a ignorarlo.
   if (/^[-+]?\s*[$]?\s*[-+]?[\d.,\s]+\s*%?$/.test(s)) return false
   if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s)) return false
-  if (/^-?[\d.,]+ d$/.test(s)) return false
+  // UN NÚMERO CON SUFIJO DECLARADO SIGUE SIENDO UN NÚMERO. El formato `0" facturas"` produce
+  // "46 facturas" y el formato `0" d"` produce "7 d": los dos son la forma correcta de mostrar un
+  // contador para que no se lea como plata. Marcarlos era ruido, y un detector ruidoso enseña a
+  // ignorarlo — que es peor que no tenerlo.
+  if (/^-?[\d.,]+\s+[a-zá-ú.]+$/i.test(s)) return false
   return true
 }
 

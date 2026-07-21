@@ -71,6 +71,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { FAMILIAS, SIN_FAMILIA, formulaFamilia, familiaDeMaterial, RUBROS_CON_FAMILIA } from '../lib/familia-material.mjs'
 import { NOMBRES } from '../lib/sheet-pestanas.mjs'
+import { partir, filasHuerfanas, ref as refPestana } from '../lib/partir-pestana.mjs'
 import { ESTADO_DEUDA, MODALIDADES } from '../lib/cuentas-por-pagar.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
 import { normComprobante, esLlaveUtil } from '../lib/cheques-cobertura.mjs'
@@ -163,7 +164,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   // literal de array, que NO es portable al separador es-AR ({"a"\"b"} vs {"a";"b"}) — ya rompió
   // una vez en esta misma pestaña. El texto del QUERY va entre comillas y el localizador de
   // fórmulas respeta los literales, así que sus comas llegan intactas.
-  push(['1 · QUÉ SE DEBE Y CUÁNDO — ordenado por fecha de pago'])
+  const b1 = push(['1 · QUÉ SE DEBE Y CUÁNDO — ordenado por fecha de pago'])
   push(['Las facturas con Estado "Pendiente" en Compras, la más urgente primero. Es UNA fórmula viva: si allá se marca una como pagada, desaparece de acá sola, sin esperar al agente. El N° de comprobante es lo que permite ligar un pago a su factura: sin él, ese pago no se puede imputar nunca.'])
   // El total va ARRIBA de la tabla y no abajo: la tabla es de alto variable y un total al pie
   // quedaría flotando lejos, o pisado. Y es la MISMA fórmula que el control del bloque 7, así que
@@ -236,7 +237,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   push([])
 
   // ── 2 · CUENTA CORRIENTE POR PROVEEDOR ──────────────────────────────────────────────────────────
-  push(['2 · CON QUIÉN SE GASTA Y QUIÉN TE FINANCIA — la cuenta corriente de cada proveedor'])
+  const b2 = push(['2 · CON QUIÉN SE GASTA Y QUIÉN TE FINANCIA — la cuenta corriente de cada proveedor'])
   push(['El PLAZO es el dato que no estaba en ninguna parte: días promedio entre la factura y el pago. Un proveedor que te da 30 días te está financiando gratis; uno que cobra contra entrega te empuja al descubierto, que hoy cuesta 62,78% anual. Sólo proveedores comerciales: sueldos, ARCA y el banco no son alguien a quien pedirle plazo.'])
   const cabProv = push(['Proveedor', 'CUIT', 'Facturas', `Comprado ${AÑO}`, 'Facturado según AFIP',
     '⇒ AFIP menos Compras', 'Plazo promedio', 'DEUDA HOY', 'En cuenta corriente', 'Contra entrega',
@@ -292,7 +293,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   push([])
 
   // ── 3 · FAMILIA × MES ───────────────────────────────────────────────────────────────────────────
-  push(['3 · EN QUÉ SE VA LA PLATA — por familia de material y por mes'])
+  const b3 = push(['3 · EN QUÉ SE VA LA PLATA — por familia de material y por mes'])
   const cabFam = push(['Familia', ...meses, `Total ${AÑO}`, '% del total', 'Civil', 'Mantenimiento'])
   const fam0 = filas.length + 1
   for (const n of [...nombres, SIN_FAMILIA]) {
@@ -317,7 +318,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   push([])
 
   // ── 4 · FAMILIA × OBRA ──────────────────────────────────────────────────────────────────────────
-  push(['4 · EN QUÉ OBRA — la misma plata, abierta por obra'])
+  const b4 = push(['4 · EN QUÉ OBRA — la misma plata, abierta por obra'])
   const cabObra = push(['Familia', ...obras, 'Total', 'Control (tiene que dar $0)'])
   const obra0 = filas.length + 1
   for (const n of [...nombres, SIN_FAMILIA]) {
@@ -341,7 +342,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   // La pregunta que el libro de IVA NO contesta: una nota de crédito puede ser una DEVOLUCIÓN (el
   // costo de la obra baja de verdad) o una REFACTURACIÓN (el costo sigue, sólo cambió de número y
   // de mes). Las dos son "tipo 3". Ver lib/notas-credito.mjs.
-  push([`5 · NOTAS DE CRÉDITO — ¿el costo desapareció, o sólo cambió de factura?`])
+  const b5 = push([`5 · NOTAS DE CRÉDITO — ¿el costo desapareció, o sólo cambió de factura?`])
   push(['Una nota de crédito puede significar dos cosas opuestas y el libro de IVA las escribe igual. Si el proveedor volvió a facturar, el costo SIGUE existiendo: sólo cambió de número y muchas veces de mes. Darlo por ahorrado es el error caro. Cada nota se cruza contra las facturas del mismo CUIT: la que anula tiene que dar el MISMO importe al peso, la que la reemplaza da parecido.'])
   const cabNC = push(['Proveedor', 'Nota de crédito', 'Fecha', 'Importe', 'Qué es', 'Anula la factura', 'La reemplaza', '', ''])
   const nc0 = filas.length + 1
@@ -369,7 +370,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   }
 
   // ── 6 · LO QUE AFIP TIENE Y COMPRAS NO ──────────────────────────────────────────────────────────────
-  push([`6 · FACTURADO A LA EMPRESA QUE NO ESTÁ EN COMPRAS — ${faltanEnCompras.length} comprobantes`])
+  const b6 = push([`6 · FACTURADO A LA EMPRESA QUE NO ESTÁ EN COMPRAS — ${faltanEnCompras.length} comprobantes`])
   push([`Sale del libro de IVA COMPRAS de ARCA, que el OS ya replica. Se cruza contra Compras por N° de comprobante y, cuando ese número no está cargado, por proveedor + importe. Lo que queda acá está facturado a la empresa con CAE y no lo ve ninguna otra pestaña: no es un error de fórmula, es carga que falta.`])
   const cabAfip = push(['Proveedor según AFIP', 'CUIT', 'Comprobante', 'Fecha', 'Importe', '', '', '', ''])
   const afip0 = filas.length + 1
@@ -383,7 +384,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   push([])
 
   // ── 7 · CONTROL Y AUDITORÍA DE CARGA ────────────────────────────────────────────────────────────
-  push(['7 · CONTROL Y AUDITORÍA DE CARGA'])
+  const b7 = push(['7 · CONTROL Y AUDITORÍA DE CARGA'])
   const ctrl = filas.length + 1
   push([`${RUBROS_CON_FAMILIA[0]} (rubro de Compras)`, `=SUMIF(${COL_RUBRO};"${RUBROS_CON_FAMILIA[0]}";${COL_TOTAL})`, 'Es la misma línea del Cash Flow Mensual.'])
   push([`${RUBROS_CON_FAMILIA[1]} (rubro de Compras)`, `=SUMIF(${COL_RUBRO};"${RUBROS_CON_FAMILIA[1]}";${COL_TOTAL})`, ''])
@@ -438,7 +439,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   // Estos son los únicos números del archivo que NO salen del Sheet: salen del libro de IVA que el
   // OS replica desde ARCA. Viven acá —una pestaña réplica, con origen declarado— y el Cash Flow
   // Mensual los mira por RANGO CON NOMBRE en vez de tenerlos pegados. Ver lib/rangos-nombrados.mjs.
-  push(['8 · LO QUE ARCA REGISTRÓ — la plomería, no es para leer'])
+  const b8 = push(['8 · LO QUE ARCA REGISTRÓ — la plomería, no es para leer'])
   push(['Cualquier pestaña que necesite estas cifras las referencia por nombre (ARCA_COMPRAS_TOTAL, ARCA_FALTAN_MONTO…). Si se copiaran, el día que ARCA traiga un comprobante nuevo habría dos verdades en el archivo y nadie sabría cuál mirar.'])
   push(['Concepto', 'Cantidad', 'Monto', '', '', '', '', '', ''])
   const fArcaN = push(['Comprobantes de compra (neto de notas de crédito)', arca.nR, arca.totalR, '', '', '', '', '', ''])
@@ -462,7 +463,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   push(['TOTAL FACTURADO', '', '', '', `=SUM($E${emi0}:$E${emi1})`, '', '', '', ''])
   push([])
 
-  return { filas: resuelto, fSinFecha, sf0, sf1, cuentas: [fCuenta1, fCuenta2], doc0, doc1, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
+  return { filas: resuelto, marcas: { b1, b2, b3, b4, b5, b6, b7, b8, fin: filas.length }, fSinFecha, sf0, sf1, cuentas: [fCuenta1, fCuenta2], doc0, doc1, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
 }
 
 async function main() {
@@ -651,63 +652,134 @@ async function main() {
   reqC.push({ updateDimensionProperties: { range: { sheetId: hojaCompras.sheetId, dimension: 'COLUMNS', startIndex: 30, endIndex: 31 }, properties: { pixelSize: 230 }, fields: 'pixelSize' } })
   await google.spreadsheetBatchUpdate(ID, reqC)
 
-  // LA PESTAÑA: si existe la vieja "Materiales", se RENOMBRA en vez de crear una nueva. Crear otra
-  // dejaría dos pestañas con la mitad de la verdad cada una, que es el problema que esto arregla.
-  let hojas = await google.getSheetMeta(ID)
-  let hoja = hojas.find((s) => s.title === PESTAÑA)
-  if (!hoja) {
-    const vieja = hojas.find((s) => s.title === 'Materiales')
-    if (vieja) {
-      await google.spreadsheetBatchUpdate(ID, [{ updateSheetProperties: { properties: { sheetId: vieja.sheetId, title: PESTAÑA }, fields: 'title' } }])
-      console.log(`  pestaña "Materiales" renombrada a "${PESTAÑA}"`)
-      hoja = { ...vieja, title: PESTAÑA }
-    } else {
-      await google.spreadsheetBatchUpdate(ID, [{ addSheet: { properties: { title: PESTAÑA, gridProperties: { rowCount: 220, columnCount: 20 } } } }])
-      hoja = (await google.getSheetMeta(ID)).find((s) => s.title === PESTAÑA)
-    }
-  }
-  await google.clearValues(ID, `${PESTAÑA}!A1:Z220`)
-  await google.batchUpdateValues(ID, [{ range: `${PESTAÑA}!A1:${letra(ancho - 1)}${cuadro.length}`, values: cuadro }])
-  await formatear(google, hoja.sheetId, g, ancho, cuadro.length)
+  // ═══ LA PARTICIÓN ═══════════════════════════════════════════════════════════════════════════
+  //
+  // Ocho tablas sobre las mismas columnas no se pueden formatear bien: la E es "Modalidad" en el
+  // bloque 1, "Facturado según AFIP" en el 2 e "Importe" en el 6. Cada tema pasa a su pestaña, con
+  // sus columnas y sus anchos. Las fórmulas se reubican solas (lib/partir-pestana.mjs) y ninguna
+  // fila se pierde: `filasHuerfanas` lo verifica antes de escribir una sola celda.
+  const M = g.marcas
+  const TRAMOS = [
+    { titulo: NOMBRES.provDeuda, desde: M.b1, hasta: M.b2 - 1,
+      subtitulo: 'Qué se le debe a cada proveedor y cuándo vence, ordenado por fecha de PAGO. Es una fórmula viva sobre Compras: si allá se marca una factura como pagada, desaparece de acá sola.',
+      anchos: [104, 200, 148, 104, 116, 124, 128, 168, 116] },
+    { titulo: NOMBRES.provCtaCte, desde: M.b2, hasta: M.b3 - 1,
+      subtitulo: 'Con quién se gasta y quién te financia. El PLAZO es el dato que no estaba en ninguna parte: días entre la factura y el pago. Un proveedor que te da 30 días te financia gratis; uno que cobra contra entrega te empuja al descubierto.',
+      anchos: [196, 128, 76, 128, 128, 128, 88, 128, 128, 128, 128, 116, 136, 116, 104, 240] },
+    { titulo: NOMBRES.materiales, desde: M.b3, hasta: M.b5 - 1,
+      subtitulo: 'En qué se va la plata: por familia de material y por mes, y la misma plata abierta por obra. Sale de la columna "Familia de material" de Compras, que el OS calcula con una sola definición.',
+      anchos: [236, ...Array(12).fill(96), 116, 78, 116, 116] },
+    { titulo: NOMBRES.provControl, desde: M.b5, hasta: M.fin,
+      subtitulo: 'Los cruces contra el libro de IVA de ARCA —notas de crédito, facturas que Compras no tiene— y los controles de carga. Es la pestaña de auditoría: si algo acá no da, hay algo mal cargado en Compras.',
+      anchos: [268, 152, 116, 128, 176, 176, 176, 116, 116] },
+  ]
 
-  // Los nombres, DESPUÉS de escribir: la pestaña se rehace entera cada 2 horas y el bloque se corre
-  // de fila según cuántas notas de crédito o proveedores haya. Publicarlos antes los dejaría
-  // apuntando a la geometría vieja, en silencio.
-  const nombres = await publicar(google, ID, hoja.sheetId, [
-    { name: N_ARCA.comprobantes, fila: g.fArcaN, col: 2 },
-    { name: N_ARCA.total, fila: g.fArcaN, col: 3 },
-    { name: N_ARCA.notasN, fila: g.fArcaNotas, col: 2 },
-    { name: N_ARCA.notasMonto, fila: g.fArcaNotas, col: 3 },
-    { name: N_ARCA.enComprasN, fila: g.fArcaEn, col: 2 },
-    { name: N_ARCA.enComprasMonto, fila: g.fArcaEn, col: 3 },
-    { name: N_ARCA.sinNumeroN, fila: g.fArcaSinNum, col: 2 },
-    { name: N_ARCA.sinNumeroMonto, fila: g.fArcaSinNum, col: 3 },
-    { name: N_ARCA.faltanN, fila: g.fArcaFaltan, col: 2 },
-    { name: N_ARCA.faltanMonto, fila: g.fArcaFaltan, col: 3 },
-    { name: N_ARCA.ventasN, fila: g.fArcaVentas, col: 2 },
-    { name: N_ARCA.ventasMonto, fila: g.fArcaVentas, col: 3 },
-  ])
+  // NINGUNA FILA SE PIERDE. Es la regla que el dueño puso después del rollback: "falta información
+  // relevante de la que antes sí contaba". Las filas 1..b1-1 son el título de la pestaña vieja, que
+  // se reemplaza por el título propio de cada pestaña nueva.
+  const huerfanas = filasHuerfanas(g.filas, [...TRAMOS, { titulo: '(título viejo)', desde: 1, hasta: M.b1 - 1 }])
+  if (huerfanas.length) {
+    throw new Error(`${huerfanas.length} fila(s) quedarían afuera del reparto y se perderían: `
+      + huerfanas.slice(0, 5).map((h) => `${h.fila} "${h.contenido}"`).join(' · '))
+  }
+
+  const FILA0 = 4   // título, subtítulo, una vacía, y recién ahí el contenido
+  const partes = partir(g.filas, TRAMOS, { desdeFila: FILA0 })
+
+  // Dónde quedó cada fila vieja, para traducir los marcadores que usa el formateador.
+  const donde = new Map()
+  for (const t of TRAMOS) for (let f = t.desde; f <= t.hasta; f++) donde.set(f, { titulo: t.titulo, fila: f - t.desde + FILA0 })
+  // `anchoObras` es una CANTIDAD de columnas, no un número de fila: traducirlo lo rompería.
+  const NO_ES_FILA = new Set(['anchoObras'])
+  const traducir = (titulo) => {
+    const t = (n) => { const d = donde.get(n); return d && d.titulo === titulo ? d.fila : null }
+    const out = {}
+    for (const [k, v] of Object.entries(g)) {
+      if (NO_ES_FILA.has(k) || k === 'marcas' || k === 'filas') out[k] = v
+      else if (typeof v === 'number') out[k] = t(v)
+      else if (Array.isArray(v) && v.every((x) => typeof x === 'number')) out[k] = v.map(t).filter(Boolean)
+      else out[k] = v
+    }
+    return out
+  }
+
+  let hojas = await google.getSheetMeta(ID)
+  const escritas = []
+  for (const [i, t] of TRAMOS.entries()) {
+    const filasP = [[t.titulo.toUpperCase()], [t.subtitulo], [], ...partes[i].filas]
+    const anchoP = Math.max(...filasP.map((f) => f.length), t.anchos.length)
+    const cuadroP = filasP.map((f) => { const r = [...f]; while (r.length < anchoP) r.push(''); return r })
+
+    let hoja = hojas.find((h) => h.title === t.titulo)
+    if (!hoja) {
+      await google.spreadsheetBatchUpdate(ID, [{ addSheet: { properties: { title: t.titulo, gridProperties: { rowCount: cuadroP.length + 30, columnCount: Math.max(anchoP + 2, 12) } } } }])
+      hojas = await google.getSheetMeta(ID)
+      hoja = hojas.find((h) => h.title === t.titulo)
+      console.log(`  pestaña "${t.titulo}" creada`)
+    }
+    // La grilla tiene que alcanzar ANTES de escribir: un rango que excede la hoja hace fallar el
+    // batch entero y deja la pestaña a medio escribir.
+    const reqG = []
+    if ((hoja.rows ?? 0) < cuadroP.length + 10) reqG.push({ updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { rowCount: cuadroP.length + 30 } }, fields: 'gridProperties.rowCount' } })
+    if ((hoja.cols ?? 0) < anchoP) reqG.push({ appendDimension: { sheetId: hoja.sheetId, dimension: 'COLUMNS', length: anchoP - (hoja.cols ?? 0) + 2 } })
+    if (reqG.length) await google.spreadsheetBatchUpdate(ID, reqG)
+
+    await google.clearValues(ID, `${refPestana(t.titulo)}!A1:Z${Math.max(cuadroP.length + 30, 250)}`)
+    await google.batchUpdateValues(ID, [{ range: `${refPestana(t.titulo)}!A1:${letra(anchoP - 1)}${cuadroP.length}`, values: cuadroP }])
+
+    const gP = { ...traducir(t.titulo), filas: cuadroP }
+    await formatear(google, hoja.sheetId, gP, anchoP, cuadroP.length)
+
+    // El título y el subtítulo de la pestaña, con el estándar.
+    await google.spreadsheetBatchUpdate(ID, [
+      { repeatCell: { range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: anchoP }, cell: { userEnteredFormat: E.titulo() }, fields: 'userEnteredFormat' } },
+      { repeatCell: { range: { sheetId: hoja.sheetId, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 0, endColumnIndex: anchoP }, cell: { userEnteredFormat: E.nota() }, fields: 'userEnteredFormat' } },
+      { updateDimensionProperties: { range: { sheetId: hoja.sheetId, dimension: 'ROWS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: E.ALTO.titulo }, fields: 'pixelSize' } },
+      // LOS ANCHOS SON EL MOTIVO DE TODO ESTO. Cada pestaña declara los suyos según lo que lleva su
+      // única tabla, que es exactamente lo que no se podía hacer con las ocho apiladas.
+      ...t.anchos.map((px, j) => ({ updateDimensionProperties: { range: { sheetId: hoja.sheetId, dimension: 'COLUMNS', startIndex: j, endIndex: j + 1 }, properties: { pixelSize: px }, fields: 'pixelSize' } })),
+      { updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { frozenRowCount: 3 } }, fields: 'gridProperties.frozenRowCount' } },
+    ])
+    escritas.push({ titulo: t.titulo, filas: cuadroP.length, sheetId: hoja.sheetId })
+    console.log(`  ${t.titulo.padEnd(32)} ${String(cuadroP.length).padStart(4)} filas x ${anchoP} columnas`)
+  }
+
+  // Los nombres, DESPUÉS de escribir: se corren de fila según cuántas notas de crédito o
+  // proveedores haya, y publicarlos antes los dejaría apuntando a la geometría vieja, en silencio.
+  const hojaArca = escritas.find((e) => e.titulo === NOMBRES.provControl)
+  const tArca = traducir(NOMBRES.provControl)
+  const nombres = await publicar(google, ID, hojaArca.sheetId, [
+    { name: N_ARCA.comprobantes, fila: tArca.fArcaN, col: 2 },
+    { name: N_ARCA.total, fila: tArca.fArcaN, col: 3 },
+    { name: N_ARCA.notasN, fila: tArca.fArcaNotas, col: 2 },
+    { name: N_ARCA.notasMonto, fila: tArca.fArcaNotas, col: 3 },
+    { name: N_ARCA.enComprasN, fila: tArca.fArcaEn, col: 2 },
+    { name: N_ARCA.enComprasMonto, fila: tArca.fArcaEn, col: 3 },
+    { name: N_ARCA.sinNumeroN, fila: tArca.fArcaSinNum, col: 2 },
+    { name: N_ARCA.sinNumeroMonto, fila: tArca.fArcaSinNum, col: 3 },
+    { name: N_ARCA.faltanN, fila: tArca.fArcaFaltan, col: 2 },
+    { name: N_ARCA.faltanMonto, fila: tArca.fArcaFaltan, col: 3 },
+    { name: N_ARCA.ventasN, fila: tArca.fArcaVentas, col: 2 },
+    { name: N_ARCA.ventasMonto, fila: tArca.fArcaVentas, col: 3 },
+  ].filter((x) => x.fila))
   console.log(`  ${nombres.nombres} rangos con nombre publicados: el Cash Flow los referencia en vez de copiarlos`)
 
-  const v = await google.readSheetValues(ID, `${PESTAÑA}!A1:T${cuadro.length}`)
-  const err = []
-  v.forEach((f, i) => (f || []).forEach((c, j) => { if (/^#(REF|ERROR|N\/A|VALUE|¡|DIV|NAME|NUM|NULL)/.test(String(c ?? ''))) err.push(`${letra(j)}${i + 1}=${c}`) }))
-  console.log(err.length ? `\n⚠ ${err.length} celdas en error: ${err.slice(0, 8).join(' ')}` : '\n✓ sin errores')
+  // ═══ VERIFICACIÓN ANTES DE RETIRAR LA PESTAÑA VIEJA ═══
+  // No se borra nada hasta comprobar que las cuatro nuevas están escritas y sin errores.
+  let err = 0
+  for (const e of escritas) {
+    const v = await google.readSheetValues(ID, `${refPestana(e.titulo)}!A1:T${e.filas}`)
+    v.forEach((f, i) => (f || []).forEach((c, j) => { if (/^#(REF|ERROR|N\/A|VALUE|¡|DIV|NAME|NUM|NULL)/.test(String(c ?? ''))) { err++; if (err <= 8) console.log(`  ⚠ ${e.titulo}!${letra(j)}${i + 1} = ${c}`) } }))
+  }
+  console.log(err ? `\n⚠ ${err} celdas en error: NO retiro la pestaña vieja` : '\n✓ las cuatro pestañas, sin una sola celda en error')
 
-  console.log('\nCUENTA CORRIENTE (top 10):')
-  console.log(`  ${'Proveedor'.padEnd(24)}${'Comprado'.padStart(14)}${'AFIP'.padStart(14)}${'Plazo'.padStart(7)}${'Deuda'.padStart(13)}  Cheques`)
-  for (let i = g.p0; i < g.p0 + 10 && i <= g.p1; i++) {
-    const f = v[i - 1] ?? []
-    console.log(`  ${String(f[0] ?? '').slice(0, 22).padEnd(24)}${String(f[3] ?? '').padStart(14)}${String(f[4] ?? '').padStart(14)}${String(f[6] ?? '').padStart(7)}${String(f[7] ?? '').padStart(13)}  ${String(f[13] ?? '').slice(0, 34)}`)
+  const vieja = (await google.getSheetMeta(ID)).find((h) => h.title === PESTAÑA)
+  if (!err && vieja) {
+    await google.spreadsheetBatchUpdate(ID, [{ deleteSheet: { sheetId: vieja.sheetId } }])
+    console.log(`  pestaña "${PESTAÑA}" retirada: su contenido está repartido en las cuatro de arriba`)
   }
-  const fila = (rot) => v.find((f) => String(f?.[0] ?? '').startsWith(rot))
-  console.log('\nCONTROL:')
-  for (const rot of ['⇒ Diferencia contra el total', 'Deuda que NO es', '⇒ Deuda total', 'Sin describir — plata',
-    'Facturas de proveedor sin N° de comprobante — cuánta', 'Deuda sin fecha', 'Plazo promedio ponderado']) {
-    const f = fila(rot)
-    if (f) console.log(`  ${String(f[0]).slice(0, 52).padEnd(54)}${String(f[1] ?? '')}`)
-  }
-  console.log(`\n  AFIP: ${g.afip1 - g.afip0 + 1} comprobantes facturados que Compras no tiene · ${g.emi1 - g.emi0 + 1} facturas emitidas listadas`)
+
+  console.log(`  AFIP: ${g.afip1 - g.afip0 + 1} comprobantes facturados que Compras no tiene · ${g.emi1 - g.emi0 + 1} facturas emitidas listadas`)
 }
 
 async function formatear(google, sheetId, g, ancho, filas) {
@@ -747,7 +819,15 @@ async function formatear(google, sheetId, g, ancho, filas) {
     // a ésta — el último pedido sobre el mismo rango es el que manda.
     { updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: filas }, properties: { pixelSize: 21 }, fields: 'pixelSize' } },
   ]
-  const fmt = (rg, fields, format) => req.push({ repeatCell: { range: rg, cell: { userEnteredFormat: format }, fields } })
+  // ═══ UN RANGO QUE NO EXISTE EN ESTA PESTAÑA SE DESCARTA, NO SE PINTA ═══
+  //
+  // Desde que la pestaña se partió en cuatro, este formateador corre una vez por pestaña con los
+  // mismos marcadores: los bloques que se fueron a otra vienen en null. Sin este filtro, `r(null-1,
+  // null)` produce un rango con NaN que la API acepta como "toda la hoja" y pinta cualquier cosa
+  // encima. Es la misma clase de error que dejó bandas azules en el medio de la nada.
+  const valido = (rg) => Number.isFinite(rg?.startRowIndex) && Number.isFinite(rg?.endRowIndex)
+    && rg.startRowIndex >= 0 && rg.endRowIndex > rg.startRowIndex
+  const fmt = (rg, fields, format) => { if (valido(rg)) req.push({ repeatCell: { range: rg, cell: { userEnteredFormat: format }, fields } }) }
 
   fmt(r(0, filas, 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }, horizontalAlignment: 'RIGHT' })
@@ -866,7 +946,10 @@ async function formatear(google, sheetId, g, ancho, filas) {
   }
   // Las notas sueltas que viven al lado de un número: la de la fila del total adeudado y la del
   // "resto de proveedores". Van en TEXT y con el estilo de nota, no en moneda.
-  fmt({ ...r(5, 6, 5, 9) }, 'userEnteredFormat', E.nota())
+  // La nota que explica el total adeudado. Se busca por su rótulo: estaba clavada en la fila 6 y al
+  // partir la pestaña esa fila pasó a ser otra cosa.
+  const fTotAd = g.filas.findIndex((f) => /^TOTAL ADEUDADO/.test(String(f?.[0] ?? '')))
+  if (fTotAd >= 0) fmt({ ...r(fTotAd, fTotAd + 1, 5, 9) }, 'userEnteredFormat', E.nota())
   fmt({ ...r(g.fSub, g.fSub + 1, 15, 16) }, 'userEnteredFormat', E.nota())
   // La columna de fecha del bloque de ARCA, que mostraba el serial como plata.
   fmt({ ...r(g.afip0 - 1, g.afip1, 3, 4) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',

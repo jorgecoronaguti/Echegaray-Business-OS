@@ -169,12 +169,19 @@ export function subtotal(unidad = 'moneda') {
   return celda(unidad, { fondo: COLOR.subtotal, bold: true })
 }
 
-/** NÚCLEO PURO: una nota al costado. Chica, gris e itálica: se lee si hace falta. */
+/**
+ * NÚCLEO PURO: una nota al costado. Chica, gris e itálica: se lee si hace falta.
+ *
+ * DERRAMA, NO SE CORTA. Con CLIP, "Tiene que dar igual que…" se leía "Tiene que dar igu" y ahí
+ * terminaba: la explicación de un control quedaba a medias justo donde importa. Una nota vive al
+ * costado de celdas vacías; que use ese espacio es exactamente para lo que está. Si la vecina tiene
+ * contenido Sheets la corta igual, y eso lo caza el detector `texto_cortado`.
+ */
 export function nota() {
   return {
     textFormat: txt({ fontSize: TAM.nota, italic: true, foregroundColor: COLOR.nota }),
     horizontalAlignment: 'LEFT',
-    wrapStrategy: 'CLIP',
+    wrapStrategy: 'OVERFLOW_CELL',
   }
 }
 
