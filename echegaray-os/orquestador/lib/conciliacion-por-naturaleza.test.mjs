@@ -41,12 +41,13 @@ test('toda naturaleza que el clasificador produce tiene su grupo', () => {
   }
 })
 
-test('los dos costos bancarios quedan declarados SIN pestaña dueña', () => {
-  // Es el hallazgo del bloque: impuesto al cheque y costo del descubierto salen todos los meses y
-  // ninguna pestaña del archivo los espera. Si alguien les asigna una, este test lo obliga a
-  // revisar que de verdad los registre.
-  const huerfanos = sinPestanaDuena().map((g) => g.naturaleza)
-  assert.deepEqual(huerfanos, ['Impuesto al cheque (Ley 25.413)', 'Costo financiero del descubierto'])
+test('ningún grupo queda sin pestaña dueña', () => {
+  // ESTE TEST NACIÓ AL REVÉS Y ESO IMPORTA. Afirmaba que el impuesto al cheque y el costo del
+  // descubierto no tenían dueño, y era falso: el Cash Flow Mensual tiene las dos líneas. Llegué a
+  // publicar esa alerta en CAJA. Un test que consagra una conclusión sin verificarla contra el
+  // archivo la vuelve permanente — por eso ahora exige lo contrario: todo grupo tiene dueño, y si
+  // aparece uno sin dueño hay que ir a buscar dónde debería estar antes de declararlo huérfano.
+  assert.deepEqual(sinPestanaDuena().map((g) => g.naturaleza), [])
 })
 
 test('cada grupo dice qué significa la comparación', () => {

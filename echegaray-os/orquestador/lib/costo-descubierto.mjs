@@ -95,5 +95,27 @@ export function saldoPromedioImplicito(interes, dias, tna = TASAS.tna) {
 export function formulaInteresMes(saldoInicial, celdaMes) {
   const diaria = `${TASAS.tna}/${TASAS.base}`
   const conImp = `*(1+${TASAS.iva}+${TASAS.percepcion})`
-  return `=IF(N(${saldoInicial})>=0;0;-${saldoInicial}*${diaria}*DAY(EOMONTH(${celdaMes};0))${conImp})`
+  const proyectado = `IF(N(${saldoInicial})>=0;0;-${saldoInicial}*${diaria}*DAY(EOMONTH(${celdaMes};0))${conImp})`
+  // ═══ LO QUE EL BANCO YA COBRÓ MANDA SOBRE LA PROYECCIÓN ═══
+  //
+  // POR QUÉ (21/07). La proyección sólo cobra interés cuando el saldo con el que ARRANCA el mes es
+  // negativo. Julio arranca en positivo, así que el cuadro mostraba $0 — y el banco cobró $282.621
+  // el 14/07, más $252.340 del período anterior. La cuenta estuvo en descubierto DURANTE el mes
+  // aunque no empiece ni termine ahí, y un interés que corre por día no se puede proyectar mirando
+  // una sola foto.
+  //
+  // No se reemplaza la proyección: se toma el MAYOR de los dos. Lo que el banco ya cobró es un
+  // hecho y nunca puede quedar afuera; lo proyectado sigue mandando en los meses que todavía no
+  // tienen extracto. Así la línea nunca subestima, que es lo único que importa en un costo.
+  const real = `SUMIFS(${REAL.hoja}!$${REAL.importe}$4:$${REAL.importe};${REAL.hoja}!$${REAL.naturaleza}$4:$${REAL.naturaleza};"${REAL.marca}";${REAL.hoja}!$${REAL.fecha}$4:$${REAL.fecha};">="&${celdaMes};${REAL.hoja}!$${REAL.fecha}$4:$${REAL.fecha};"<="&EOMONTH(${celdaMes};0))`
+  return `=MAX(${proyectado};IFERROR(-${real};0))`
+}
+
+/** De dónde sale el interés REALMENTE cobrado. Es contrato con banco-raw-pestana.mjs. */
+export const REAL = {
+  hoja: '_BANCO_RAW',
+  fecha: 'A',
+  importe: 'C',
+  naturaleza: 'F',
+  marca: 'Costo financiero del descubierto',
 }

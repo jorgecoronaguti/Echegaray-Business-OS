@@ -86,13 +86,25 @@ export const GRUPOS = [
   },
   {
     naturaleza: 'Impuesto al cheque (Ley 25.413)',
-    pestana: null,
-    nota: '⚠ NINGUNA PESTAÑA LO ESPERA. Es el 0,6% de cada débito y de cada crédito: sale todos los meses, de todas las cuentas, y no está en ningún cuadro. El cash flow proyecta un saldo que la cuenta nunca va a tener.',
+    pestana: 'Cash Flow Mensual',
+    formula: null,
+    // ME CORRIJO SOBRE HACE UN RATO. Escribí que ninguna pestaña lo esperaba y llegué a publicarlo
+    // en CAJA: es falso. El Cash Flow Mensual tiene su línea propia —"Impuesto al cheque (Ley
+    // 25.413, 0,6% de cada lado)"— que proyecta $992.327 para julio. No se compara al peso porque
+    // el cuadro es MENSUAL y el extracto cubre 16 días, y porque el cuadro aplica la alícuota a
+    // TODO el movimiento proyectado, incluido el que no pasa por el banco.
+    nota: 'Tiene su línea en el Cash Flow Mensual, dentro de Actividades de Financiación. La alícuota no se inventó: el propio extracto la declara (0,6%) y medida sobre estos movimientos da 0,595% sobre los débitos y 0,600% sobre los créditos.',
   },
   {
     naturaleza: 'Costo financiero del descubierto',
-    pestana: null,
-    nota: '⚠ NINGUNA PESTAÑA LO ESPERA. Interés del acuerdo más su IVA y percepciones. El bloque 4 de CAJA calcula cuánto corre por día, pero ninguna línea del cash flow lo descuenta.',
+    pestana: 'Cash Flow Mensual',
+    formula: null,
+    // ACÁ SÍ HAY UN HALLAZGO, Y ES MÁS FINO QUE EL QUE CREÍ TENER. La línea existe, pero su fórmula
+    // sólo cobra interés cuando el saldo de CIERRE del mes queda negativo. En julio proyecta $0 y
+    // el banco cobró $282.621, más $252.340 del período anterior: la cuenta estuvo en descubierto
+    // DURANTE el mes aunque cierre en positivo. Un interés que se cobra por día no se puede
+    // proyectar mirando una sola foto del último día.
+    nota: '⚠ Tiene línea en el Cash Flow Mensual, pero proyecta $0 para julio: su fórmula mira el saldo de CIERRE del mes y la cuenta estuvo en rojo durante el mes aunque cierre en positivo. El interés corre por día, no por cierre.',
   },
 ]
 

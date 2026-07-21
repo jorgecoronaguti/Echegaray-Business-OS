@@ -45,6 +45,17 @@ test('lo que sale de la cuenta es el interés por 1,12', () => {
 test('la fórmula usa el saldo inicial y no crea una referencia circular', () => {
   const f = formulaInteresMes('B39', 'B$3')
   assert.ok(f.includes('B39') && f.includes('DAY(EOMONTH(B$3;0))'))
-  assert.ok(f.startsWith('=IF(N(B39)>=0;0;'), f)
+  // La proyección sigue apoyada en el saldo INICIAL; lo que cambió es que ahora va envuelta en un
+  // MAX contra lo que el banco ya cobró.
+  assert.ok(f.includes('IF(N(B39)>=0;0;'), f)
   assert.ok(f.includes('0.55/365') && f.includes('1+0.105+0.015'))
+})
+
+test('lo que el banco YA COBRÓ nunca queda afuera', () => {
+  // Julio proyectaba $0 porque arranca en positivo, y el banco había cobrado $282.621 el 14/07.
+  // Un costo que ya ocurrió no se puede perder detrás de una proyección optimista.
+  const f = formulaInteresMes('B39', 'B$3')
+  assert.ok(f.startsWith('=MAX('), f)
+  assert.ok(f.includes('_BANCO_RAW'), 'tiene que mirar el extracto real')
+  assert.ok(f.includes('Costo financiero del descubierto'), 'por la naturaleza clasificada')
 })
