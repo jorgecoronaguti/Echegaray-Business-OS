@@ -2,9 +2,11 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { titulo, bloque, encabezado, celda, total, nota, proyectado, alerta, reset, auditar, FUENTE, FUENTE_NUM, TAM, NUM, COLOR } from './estilo-pestana.mjs'
 
-test('los números van en monoespaciada y el texto no', () => {
-  // Es la decisión que hace legible una columna de importes: cada dígito mide igual, así que los
-  // millares se alinean solos entre filas.
+test('toda la pestaña usa la misma familia', () => {
+  // El dueño pidió Arial en todas. No se pierde la alineación de los importes: los dígitos de Arial
+  // son de ancho fijo, así que $1.111.111 y $8.888.888 siguen ocupando lo mismo entre filas.
+  assert.equal(FUENTE, 'Arial')
+  assert.equal(FUENTE_NUM, FUENTE)
   assert.equal(celda('moneda').textFormat.fontFamily, FUENTE_NUM)
   assert.equal(celda('cantidad').textFormat.fontFamily, FUENTE_NUM)
   assert.equal(celda('porcentaje').textFormat.fontFamily, FUENTE_NUM)
@@ -71,11 +73,12 @@ test('el reset borra formato pero NO contenido', () => {
   assert.match(r.repeatCell.fields, /textFormat/)
 })
 
-test('el auditor detecta las cuatro familias que había', () => {
-  const arial16 = { congeladas: { filas: 3 }, filas: [[{ formato: { textFormat: { fontFamily: 'Arial', fontSize: 16, bold: true }, backgroundColor: { red: 0.05, green: 0.11, blue: 0.11 } } }]] }
-  const d = auditar(arial16).desvios
-  assert.ok(d.some((x) => /Arial/.test(x)))
-  assert.ok(d.some((x) => /16pt/.test(x)))
+test('el auditor detecta las familias que había', () => {
+  // Calibri 12 sin barra de color: exactamente como estaban las nueve pestañas que armé yo.
+  const calibri = { congeladas: { filas: 3 }, filas: [[{ formato: { textFormat: { fontFamily: 'Calibri', fontSize: 12, bold: true }, backgroundColor: { red: 1, green: 1, blue: 1 } } }]] }
+  const d = auditar(calibri).desvios
+  assert.ok(d.some((x) => /Calibri/.test(x)))
+  assert.ok(d.some((x) => /12pt/.test(x)))
   assert.ok(d.some((x) => /barra de color/.test(x)))
 })
 

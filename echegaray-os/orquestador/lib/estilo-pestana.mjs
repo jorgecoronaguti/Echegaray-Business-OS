@@ -20,19 +20,18 @@
 // corrigió: "no, el estándar que sea el tuyo". Así que esto es una decisión de diseño, y la
 // justifico.
 //
-// 1. NÚMEROS EN MONOESPACIADA. Es el cambio que más se nota y el que más importa. En Calibri o Arial
-//    el "1" es angosto y el "8" ancho, así que $1.111.111 y $8.888.888 ocupan distinto y las
-//    columnas de importes quedan desparejas. Con Roboto Mono cada dígito mide igual: los millares se
-//    alinean solos y un número fuera de escala se ve sin leerlo. En una planilla que existe para
-//    comparar importes entre sí, eso no es estética.
-// 2. TEXTO EN ROBOTO. Legible a 10pt, disponible en Sheets sin instalar nada, y con suficiente
-//    contraste contra la monoespaciada como para que se distinga concepto de importe de un vistazo.
-// 3. UN VERDE AZULADO MUY OSCURO como color de mando (#0f2a33), no un azul genérico. Es el mismo
+// 1. ARIAL EN TODO. El dueño la eligió y no hay nada que discutir, pero además no se pierde nada:
+//    los dígitos de Arial son de ANCHO FIJO. Yo había puesto Roboto Mono en las columnas numéricas
+//    justamente para que los millares se alinearan entre filas —$1.111.111 y $8.888.888 tienen que
+//    ocupar lo mismo o la columna queda despareja y deja de servir para comparar— y Arial ya lo hace
+//    sola. La alineación se conserva con una sola familia en todo el archivo, que además es más
+//    prolijo que mezclar dos.
+// 2. UN VERDE AZULADO MUY OSCURO como color de mando (#0f2a33), no un azul genérico. Es el mismo
 //    familiar del #008b8b que las pestañas de carga ya traían, así que el archivo se siente uno solo
 //    en vez de dos documentos pegados — pero con la profundidad que le falta al turquesa original.
-// 4. TRES TAMAÑOS Y NO SIETE. Título, bloque, cuerpo, nota. Cada tamaño extra es una jerarquía que
+// 3. TRES TAMAÑOS Y NO SIETE. Título, bloque, cuerpo, nota. Cada tamaño extra es una jerarquía que
 //    el lector tiene que decodificar y que no significa nada.
-// 5. EL CERO SE MUESTRA COMO "—". Un "$0" invita a leerse como un dato medido; casi siempre es
+// 4. EL CERO SE MUESTRA COMO "—". Un "$0" invita a leerse como un dato medido; casi siempre es
 //    "acá no hay nada". Son dos cosas distintas y la planilla tiene que decir cuál es.
 //
 // ═══ POR QUÉ ESTO ES UNA LIB Y NO UNA FUNCIÓN EN CADA SCRIPT ═══
@@ -66,9 +65,10 @@ export const COLOR = {
   nota: { red: 0.357, green: 0.404, blue: 0.439 },        // #5b6770
 }
 
-/** Texto en Roboto; NÚMEROS en Roboto Mono, para que los millares se alineen entre filas. */
-export const FUENTE = 'Roboto'
-export const FUENTE_NUM = 'Roboto Mono'
+/** Arial en todo el archivo. Sus dígitos son de ancho fijo, así que las columnas de importes se
+ *  alinean solas entre filas sin necesidad de una segunda familia monoespaciada. */
+export const FUENTE = 'Arial'
+export const FUENTE_NUM = 'Arial'
 
 /** Cuatro tamaños. Cada uno de más es una jerarquía que no significa nada. */
 export const TAM = { titulo: 13, bloque: 11, cuerpo: 10, nota: 9 }
