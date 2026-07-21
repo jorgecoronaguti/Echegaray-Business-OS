@@ -377,10 +377,21 @@ function grilla(cargado, refs) {
     `Compromiso ya tomado: ${ars(T.cuotas.consumido)} consumidos en cuotas, ${ars(T.cuotasPendientes.proximoPeriodo)} caen en el próximo resumen.`)
   const fDisp = bancario('⇒ Disponible para compras', 'ARS', T.disponible,
     'EL QUE DECLARA EL BANCO, no uno calculado: límite menos consumido daría otro número y no voy a inventar la aritmética del resumen.')
-  push(['   Control contra la pestaña Tarjeta de Credito', 'ARS',
+  const fCtrlTar = push(['   Control contra la pestaña Tarjeta de Credito', 'ARS',
     `=SUMPRODUCT((UPPER('${refs.tarjeta}'!$J$3:$J$400)<>"SI")*IF(ISNUMBER('${refs.tarjeta}'!$E$3:$E$400);'${refs.tarjeta}'!$E$3:$E$400;0))`,
     '', `=${C_IMP}${filas.length + 1}`, '', '',
     `Pestaña ${refs.tarjeta}, columna DEBITADO distinta de SI. Es otro corte que el del resumen, así que no tienen por qué dar igual — pero una diferencia grande es una compra sin cargar.`, 'Se calcula solo'])
+  // UN CONTROL QUE NO CONCLUYE NADA NO ES UN CONTROL.
+  //
+  // POR QUÉ (21/07). Acá había dos números uno debajo del otro —lo que dice el resumen del banco y
+  // lo que dice la pestaña de la tarjeta— y ninguna fila que dijera si coinciden. Para saber si
+  // había un problema, el que mira tenía que sumar tres renglones de arriba a mano y restar. Nadie
+  // lo hace, así que el control estaba de adorno. El bloque de la cartera de cheques, dos bloques
+  // más arriba, ya tenía su "⇒ Diferencia": ésta es la misma idea donde faltaba.
+  push(['⇒ Diferencia — el resumen contra la pestaña', 'ARS',
+    `=(${C_IMP}${fLim + 1}+${C_PESOS}${fLim + 2}+${C_IMP}${fLim + 3})-${C_IMP}${fCtrlTar}`,
+    '', '', '', '',
+    'Consumos del período (pesos + dólares valuados) más cuotas futuras, contra lo no debitado de la pestaña. Son cortes distintos, así que un resto chico es normal; uno grande es una compra que no se cargó.', 'Se calcula solo'])
   push()
 
   // EL ACUERDO EN DESCUBIERTO. No es caja y no es gratis: el extracto muestra la cuenta en rojo casi
@@ -456,8 +467,23 @@ function grilla(cargado, refs) {
   const primerMes = (cond) => (rangoCierre
     ? `=IFERROR(TEXT(INDEX(${rangoMes};MATCH(1;ARRAYFORMULA((${rangoCierre}<>"")*(${rangoCierre}${cond}));0));"mmmm yyyy");"ningún mes del año")`
     : '⚠ falta la línea de cierre')
+  // ═══ LA ALERTA QUE FALTABA: ¿Y HOY? ═══
+  //
+  // POR QUÉ (21/07). La pestaña se contradecía a sí misma en dos filas. Arriba decía "3 DÍAS DE
+  // CAJA" y abajo "primer mes por debajo de la caja mínima: septiembre 2026". Las dos salían de
+  // datos correctos y una de las dos tranquilizaba: la de septiembre mira el CIERRE PROYECTADO de
+  // cada mes del cash flow, y julio cierra en $64.236.258 porque la proyección espera cobros que
+  // todavía no entraron. Hoy hay $17.955.476 contra una caja mínima de $20.000.000: ya estamos
+  // abajo, y la fila que lo tenía que decir hablaba de dentro de dos meses.
+  //
+  // Un aviso a futuro no reemplaza al del presente. Éste va PRIMERO y compara la disponibilidad
+  // neta —la de verdad, la que queda después de los cheques ya firmados— contra el mínimo.
+  push(['⇒ ¿HOY estamos por debajo de la caja mínima?', '', '', '',
+    `=IF(${C_PESOS}${fMin}=0;"⚠ falta cargar la caja mínima";IF(${C_PESOS}${fNeta}<${C_PESOS}${fMin};"⚠ SÍ — faltan "&TEXT(${C_PESOS}${fMin}-${C_PESOS}${fNeta};"$#,##0");"no, hay "&TEXT(${C_PESOS}${fNeta}-${C_PESOS}${fMin};"$#,##0")&" de sobra"))`,
+    '', '', '',
+    'Compara la disponibilidad NETA de hoy contra el mínimo. Las dos filas de abajo miran la proyección del cash flow, que puede estar meses adelante: ésta mira lo que hay.'])
   push(['Primer mes por debajo de la caja mínima', '', '', '', primerMes(`<$${C_PESOS}$${fMin}`), '', '', '',
-    'Sale del cierre proyectado del Cash Flow Mensual, que ya arranca del total declarado arriba. No se le vuelve a sumar el saldo de hoy: sería contar la misma plata dos veces.'])
+    'Sale del cierre proyectado del Cash Flow Mensual, que ya arranca del total declarado arriba. No se le vuelve a sumar el saldo de hoy: sería contar la misma plata dos veces. ⚠ Si la conciliación del bloque 6 no cierra, esta fecha es optimista: la proyección espera cobros que todavía no entraron.'])
   push(['Primer mes con caja negativa', '', '', '', primerMes('<0'), '', '', '',
     '⚠ Ojo: los ingresos de octubre en adelante están en $0 porque no hay obra facturada. Esta fecha es un PISO, no un pronóstico.'])
   // ── 4 · CONCILIACIÓN ────────────────────────────────────────────────────────────────────────────
@@ -471,6 +497,35 @@ function grilla(cargado, refs) {
     '', '', 'Cash Flow Mensual, línea "Efectivo y equivalentes al cierre"', 'Se calcula solo'])
   const fDifConc = push(['⇒ Diferencia', '', '', '', `=IFERROR(${C_PESOS}${fDecl}-${C_PESOS}${fProy};"")`, '', '', '',
     'Distinto de cero = movimientos que el archivo no ve. No es un error de fórmula: es trabajo de carga.'])
+
+  // ═══ POR QUÉ LA DIFERENCIA ES ENORME, Y CUÁNTO DE ELLA ES UN PROBLEMA DE VERDAD ═══
+  //
+  // POR QUÉ (21/07). Esta conciliación gritaba $46.280.782 y no se podía hacer nada con el número.
+  // Al abrirlo, la mayor parte NO ES UN ERROR: la fila de arriba compara la plata que hay HOY (21/07)
+  // contra el CIERRE PROYECTADO DE TODO JULIO. Entre una fecha y la otra hay diez días de cobros y
+  // pagos que el cuadro ya cuenta y que todavía no ocurrieron. Comparadas así, las dos cifras nunca
+  // van a coincidir, y una alerta que siempre está en rojo deja de leerse.
+  //
+  // Estas líneas separan las tres cosas que estaban sumadas en un solo número:
+  //   · lo que el cash flow espera del RESTO DEL MES — no es un problema, es futuro;
+  //   · lo que el cuadro cuenta como cobrado este mes y NO tiene estado Cobrado — eso sí es un
+  //     problema: la proyección está tomando como hecho algo que no entró;
+  //   · el residuo, que es lo único verdaderamente sin explicar y lo único que hay que salir a buscar.
+  const C = 'Cobranzas', CO = 'Compras'
+  const hoy = 'TODAY()'
+  const finMes = 'EOMONTH(TODAY();0)'
+  const cobRestoMes = `SUMIFS(${C}!$M$5:$M$400;${C}!$Q$5:$Q$400;">"&${hoy};${C}!$Q$5:$Q$400;"<="&${finMes})`
+  const pagRestoMes = `SUMIFS(${CO}!$O$4:$O$800;${CO}!$AD$4:$AD$800;">"&${hoy};${CO}!$AD$4:$AD$800;"<="&${finMes})`
+  const fResto = push(['   · lo que el cash flow espera que pase del 22 al fin de mes (cobros menos pagos)', '', '', '',
+    `=${cobRestoMes}-${pagRestoMes}`, '', '', '',
+    'NO es un error: es futuro. La fila de arriba compara la plata de HOY contra el cierre de TODO el mes, así que esta parte de la diferencia es simplemente lo que todavía no pasó.'])
+  const fNoCobrado = push(['   · cobros de este mes que el cuadro cuenta y NO tienen estado "Cobrado"', '', '', '',
+    `=SUMIFS(${C}!$M$5:$M$400;${C}!$Q$5:$Q$400;">="&EOMONTH(TODAY();-1)+1;${C}!$Q$5:$Q$400;"<="&${hoy};${C}!$O$5:$O$400;"<>Cobrado")`,
+    '', '', '',
+    '⚠ Esto SÍ es un problema: la proyección los da por entrados y su fecha ya pasó. O se cobraron y falta marcarlos, o hay que correr la fecha.'])
+  const fResiduo = push(['⇒ LO QUE QUEDA SIN EXPLICAR', '', '', '',
+    `=${C_PESOS}${fDifConc}+${C_PESOS}${fResto}+${C_PESOS}${fNoCobrado}`, '', '', '',
+    'Este es el número a buscar: plata que se movió y no está en ninguna pestaña. Los dos renglones de arriba ya tienen explicación.'])
   push()
 
   // ── 7 · ¿DÓNDE ESTÁ EL EFECTIVO COBRADO? ────────────────────────────────────────────────────
