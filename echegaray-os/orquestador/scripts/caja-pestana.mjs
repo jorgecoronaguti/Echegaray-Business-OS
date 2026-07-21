@@ -293,7 +293,7 @@ function grilla(cargado, refs) {
     `Compromiso ya tomado: ${ars(T.cuotas.consumido)} consumidos en cuotas, ${ars(T.cuotasPendientes.proximoPeriodo)} caen en el próximo resumen.`)
   const fDisp = bancario('⇒ Disponible para compras', 'ARS', T.disponible,
     'EL QUE DECLARA EL BANCO, no uno calculado: límite menos consumido daría otro número y no voy a inventar la aritmética del resumen.')
-  push(['      Control: la pestaña Tarjeta de Credito dice, de consumos sin debitar', 'ARS',
+  push(['   Control contra la pestaña Tarjeta de Credito', 'ARS',
     `=SUMPRODUCT((UPPER('${refs.tarjeta}'!$J$3:$J$400)<>"SI")*IF(ISNUMBER('${refs.tarjeta}'!$E$3:$E$400);'${refs.tarjeta}'!$E$3:$E$400;0))`,
     '', `=${C_IMP}${filas.length + 1}`, '', '',
     `Pestaña ${refs.tarjeta}, columna DEBITADO distinta de SI. Es otro corte que el del resumen, así que no tienen por qué dar igual — pero una diferencia grande es una compra sin cargar.`, 'Se calcula solo'])
@@ -318,7 +318,10 @@ function grilla(cargado, refs) {
   const saldoBanco = `$${C_PESOS}$${fBancoPesos}`
   const fTasa = push(['Tasa nominal anual del acuerdo', '', TASAS.tna, '', '', '', '',
     `Acuerdo N° ${BANCO.ACUERDO.numero}. Costo financiero total ${(BANCO.ACUERDO.cft * 100).toFixed(2)}% anual.`, 'Réplica del banco'])
-  push(['Interés por día, por cada $1.000.000 en descubierto', 'ARS', Math.round(1000000 * tasaDiaria() * 100) / 100, '',
+  // LA TASA DIARIA SE CALCULA EN EL SHEET, no en JavaScript. Era el único número CALCULADO que
+  // quedaba pegado en esta pestaña: si el banco cambia la TNA se corrige la celda de arriba y este
+  // número tiene que moverse solo, o queda mostrando el costo del acuerdo viejo.
+  push(['Interés por día, por cada $1.000.000 en descubierto', 'ARS', `=1000000*$${C_IMP}$${fTasa}/${TASAS.base}`, '',
     `=${C_IMP}${filas.length + 1}`, '', '',
     `${(TASAS.tna * 100).toFixed(0)}% ÷ 365 días. Con IVA e impuestos es ${ars(costoConImpuestos(1000000 * tasaDiaria()))} por día.`, 'Se calcula solo'])
   const fInt = push(['⇒ Interés que se está generando HOY', 'ARS',
@@ -331,6 +334,25 @@ function grilla(cargado, refs) {
 
   // ── 5 · ALERTA ──────────────────────────────────────────────────────────────────────────────────
   push(['5 · ALERTA DE CAJA — hasta cuándo alcanza'])
+
+  // ═══ DÍAS DE CAJA ═══════════════════════════════════════════════════════════════════════════
+  //
+  // La pregunta que una tesorería contesta primero y que este archivo no contestaba: si mañana no
+  // entra un peso, ¿cuántos días se puede seguir pagando? Es la única forma de que "$5.416.609
+  // disponibles" signifique algo — contra un ritmo de $6M por día es una semana corta, y contra uno
+  // de $500.000 son once semanas.
+  //
+  // El ritmo sale de lo que REALMENTE salió: las compras con fecha de caja en los últimos 90 días,
+  // divididas por 90. No es una proyección ni un presupuesto, es el promedio de lo que pasó. Y se
+  // mide contra la DISPONIBILIDAD NETA —descontados los cheques ya firmados— porque esa plata ya
+  // tiene dueño.
+  const egr90 = `SUMIFS(Compras!$O$4:$O;Compras!$AD$4:$AD;">="&TODAY()-90;Compras!$AD$4:$AD;"<="&TODAY())`
+  const fRitmo = push(['Egreso promedio por día (últimos 90 días reales)', 'ARS', `=${egr90}/90`, '',
+    `=${C_IMP}${filas.length + 1}`, '=TODAY()', '', 'Compras, por fecha de caja. Lo que salió de verdad en los últimos 90 días, dividido 90.', ''])
+  const fDias = push(['⇒ DÍAS DE CAJA, si no entrara nada más', '', `=IF(${C_IMP}${fRitmo}<=0;"";ROUND(${C_PESOS}${fNeta}/${C_IMP}${fRitmo};0))`, '', '', '', '',
+    'La disponibilidad neta dividida por el ritmo de egresos. Es el número que dice si hay que salir a cobrar esta semana o no.', 'Se calcula solo'])
+  push()
+
   const fMin = push(['Caja mínima deseada', '', '', '', "=N('01_Valores Iniciales'!$B$3)", '', '', '01_Valores Iniciales', ''])
   const rangoCierre = refs.cierre ? `'Cash Flow Mensual'!$B$${refs.cierre}:$M$${refs.cierre}` : null
   const rangoMes = refs.cab ? `'Cash Flow Mensual'!$B$${refs.cab}:$M$${refs.cab}` : null
@@ -446,7 +468,7 @@ function grilla(cargado, refs) {
   const PANEL = { '@TOTAL': `=${C_PESOS}${fTotal}`, '@CHEQUES': `=${C_PESOS}${fCh}`, '@NETA': `=${C_PESOS}${fNeta}`, '@AIRE': `=${C_PESOS}${fAire}` }
   for (const f of filas) f.forEach((c, j) => { if (typeof c === 'string' && PANEL[c]) f[j] = PANEL[c] })
 
-  return { filas, usd, fTitulos, fCifras, fAire, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, amarillas }
+  return { filas, usd, fTitulos, fCifras, fAire, fDias, fRitmo, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, amarillas }
 }
 
 async function main() {
@@ -598,6 +620,14 @@ async function formatear(google, sheetId, g, tab) {
     // Lo comprometido se resta: va en el color de alerta. Lo que queda, en el de un total.
     fmt(r(g.fCifras - 1, g.fCifras, 2, 4), 'userEnteredFormat.backgroundColor', { backgroundColor: E.COLOR.alerta })
     fmt(r(g.fCifras - 1, g.fCifras, 4, 6), 'userEnteredFormat.backgroundColor', { backgroundColor: E.COLOR.total })
+  }
+
+  // LOS DÍAS DE CAJA SON DÍAS. Con el formato moneda de la columna, "2 días" se dibujaba como "$2":
+  // el número más importante de la pestaña leído como dos pesos.
+  if (g.fDias) {
+    fmt(r(g.fDias - 1, g.fDias, 2, 3), 'userEnteredFormat',
+      { numberFormat: { type: 'NUMBER', pattern: '0" días";;"—"' }, textFormat: { bold: true, fontSize: 12, fontFamily: E.FUENTE_NUM }, horizontalAlignment: 'CENTER' })
+    fmt(r(g.fDias - 1, g.fDias, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontFamily: E.FUENTE, fontSize: E.TAM.cuerpo } })
   }
 
   // UN MES NO ES UN IMPORTE. "Primer mes por debajo de la caja mínima" devuelve "septiembre 2026" y

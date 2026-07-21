@@ -58,7 +58,11 @@ export const PESTANAS = [
   // columnas y ningún ancho podía servirles a todas. Ver lib/partir-pestana.mjs.
   { titulo: 'Proveedores', congeladas: 3, hastaFila: 210, cols: 18 },
   { titulo: 'Materiales', congeladas: 3, hastaFila: 60, cols: 18 },
-  { titulo: 'CAJA', congeladas: 0, hastaFila: 120, cols: 12 },
+  // LA COLUMNA C DE CAJA ES, POR DEFINICIÓN, DATO DE ORIGEN: "Saldo en moneda de origen" sale del
+  // extracto del banco, del arqueo de caja o de la réplica de la tarjeta. Son los quince números que
+  // el censo contaba como violación de la regla — y la regla dice justo lo contrario: el dato de
+  // origen SÍ se pega, y se declara. Acá se declara.
+  { titulo: 'CAJA', congeladas: 0, hastaFila: 120, cols: 12, origen: [{ col: 'C', que: 'extracto del banco, arqueo de caja o réplica de la tarjeta — cada fila declara el suyo en la columna "Origen del dato"' }] },
   { titulo: 'Cash Flow Semanal', congeladas: 3, hastaFila: 90, cols: 60 },
   { titulo: 'Cash Flow Mensual', congeladas: 3, hastaFila: 90, cols: 20 },
 ]

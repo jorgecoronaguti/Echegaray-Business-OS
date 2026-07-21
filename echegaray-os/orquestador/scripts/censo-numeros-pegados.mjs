@@ -98,10 +98,19 @@ async function main() {
     const grid = await google.readSheetGrid(ID, `${p.titulo}!A1:${colLetra(p.cols)}${hasta}`).catch(() => null)
     if (!grid) { console.log(`  ${p.titulo.padEnd(24)} no pude leerla`); continue }
     const c = censar(grid)
+    // ── LOS RANGOS DECLARADOS COMO DATO DE ORIGEN ────────────────────────────────────────────────
+    // La regla 3 dice: "el dato de ORIGEN sí se pega, y se declara". Una columna que por definición
+    // contiene lo que alguien leyó de un extracto no es una violación — contarla como tal hacía que
+    // el número del censo mintiera y que las violaciones REALES se perdieran entre ellas.
+    const declarados = (p.origen ?? []).map((o) => o.col)
+    const deOrigen = c.pegados.filter((x) => declarados.includes(x.celda.replace(/\d+/g, '')))
+    c.pegadoNumero -= deOrigen.length
+    c.pegados = c.pegados.filter((x) => !deOrigen.includes(x))
+
     const veredicto = p.carga
       ? `pestaña de CARGA: sus ${c.pegadoNumero} números son el dato de origen`
       : c.pegadoNumero === 0
-        ? '✓ ni un número pegado: todo se recalcula solo'
+        ? `✓ ni un número calculado y pegado${deOrigen.length ? ` (${deOrigen.length} son dato de origen declarado)` : ': todo se recalcula solo'}`
         : `⚠ ${c.pegadoNumero} número(s) calculado(s) y pegado(s) — VIOLA LA REGLA`
     if (!p.carga && c.pegadoNumero) malos += c.pegadoNumero
     console.log(`  ${p.titulo.padEnd(24)}${String(c.formula).padStart(10)}${String(c.derramada).padStart(9)}${String(c.fecha).padStart(8)}${String(c.pegadoNumero).padStart(9)}   ${veredicto}`)
