@@ -85,8 +85,10 @@ const PESTAÑA = NOMBRES.proveedoresMateriales
 const DRY = process.argv.includes('--dry')
 const AÑO = 2026
 const TOP = 30
-/** Filas reservadas para que la tabla de deuda derrame sin pisar el bloque siguiente. */
-const RESERVA_DEUDA = 40
+/** Colchón de filas sobre la deuda actual, para que la tabla derrame sin pisar el bloque siguiente.
+ *  ANTES ERA UN 40 FIJO y dejaba 27 filas muertas: el dueño vio la pestaña y dijo "es completamente
+ *  inútil". Un cuadro con un agujero de treinta filas no se lee, por más que los números estén bien. */
+const COLCHON_DEUDA = 8
 
 const COL_FAMILIA = 'Compras!$AE$4:$AE'
 const COL_RUBRO = 'Compras!$AC$4:$AC'
@@ -113,7 +115,7 @@ const normNombre = (s) => String(s ?? '')
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 
-function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, notasCredito, anuladasCargadas, cruce }) {
+function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, notasCredito, anuladasCargadas, cruce, nDeuda }) {
   const filas = []
   const push = (c) => { filas.push(c); return filas.length }
   const nombres = FAMILIAS.map(([n]) => n)
@@ -172,7 +174,8 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
     `=IFERROR(QUERY(Compras!$A$4:$AE;"select AD, E, H, C, F, O, J where upper(X) = '${ESTADO_DEUDA.toUpperCase()}' and O is not null order by AD label AD ''";0);"sin deuda pendiente")`,
     '', '', '', '', '', '', '', '',
   ])
-  for (let i = 0; i < RESERVA_DEUDA - 1; i++) push(['', '', '', '', '', '', '', '', ''])
+  const reserva = nDeuda + COLCHON_DEUDA
+  for (let i = 0; i < reserva - 1; i++) push(['', '', '', '', '', '', '', '', ''])
   const doc1 = filas.length
   // El instrumento no puede salir del QUERY (vive en otra pestaña), así que se busca POR EL
   // COMPROBANTE que la propia fórmula derramó. Si la fila derramada está vacía, la celda queda vacía.
@@ -232,69 +235,8 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
     '', '', '', '', '', '', '', ''])
   push([])
 
-  // ── 3 · LOS NÚMEROS DE ARCA, EN UN SOLO LUGAR ───────────────────────────────────────────────
-  // Estos son los únicos números del archivo que NO salen del Sheet: salen del libro de IVA que el
-  // OS replica desde ARCA. Viven acá —una pestaña réplica, con origen declarado— y el Cash Flow
-  // Mensual los mira por RANGO CON NOMBRE en vez de tenerlos pegados. Ver lib/rangos-nombrados.mjs.
-  push(['3 · LO QUE ARCA REGISTRÓ — el número de origen, para que ninguna otra pestaña lo copie'])
-  push(['Cualquier pestaña que necesite estas cifras las referencia por nombre (ARCA_COMPRAS_TOTAL, ARCA_FALTAN_MONTO…). Si se copiaran, el día que ARCA traiga un comprobante nuevo habría dos verdades en el archivo y nadie sabría cuál mirar.'])
-  push(['Concepto', 'Cantidad', 'Monto', '', '', '', '', '', ''])
-  const fArcaN = push(['Comprobantes de compra (neto de notas de crédito)', arca.nR, arca.totalR, '', '', '', '', '', ''])
-  const fArcaNotas = push(['  · notas de crédito (restan)', arca.nNotas, -arca.montoNotas, '', '', '', '', '', ''])
-  const fArcaEn = push(['  · cargados en Compras, por N° de comprobante', cruce.porNumero.length, cruce.totales.porNumero, '', '', '', '', '', ''])
-  const fArcaSinNum = push(['  · cargados SIN su N° de comprobante', cruce.porImporte.length, cruce.totales.porImporte, '', '', '', '', '', ''])
-  const fArcaFaltan = push(['  · ⚠ sin cargar en Compras', cruce.faltan.length, cruce.totales.faltan, '', '', '', '', '', ''])
-  const fArcaVentas = push(['Comprobantes emitidos (ventas)', emitidas.length, emitidas.reduce((s, x) => s + x.importe, 0), '', '', '', '', '', ''])
-  push([])
-
-  // ── 4 · LAS NOTAS DE CRÉDITO ────────────────────────────────────────────────────────────────
-  // La pregunta que el libro de IVA NO contesta: una nota de crédito puede ser una DEVOLUCIÓN (el
-  // costo de la obra baja de verdad) o una REFACTURACIÓN (el costo sigue, sólo cambió de número y
-  // de mes). Las dos son "tipo 3". Ver lib/notas-credito.mjs.
-  push([`4 · NOTAS DE CRÉDITO — ¿el costo desapareció, o sólo cambió de factura?`])
-  push(['Una nota de crédito puede significar dos cosas opuestas y el libro de IVA las escribe igual. Si el proveedor volvió a facturar, el costo SIGUE existiendo: sólo cambió de número y muchas veces de mes. Darlo por ahorrado es el error caro. Cada nota se cruza contra las facturas del mismo CUIT: la que anula tiene que dar el MISMO importe al peso, la que la reemplaza da parecido.'])
-  const cabNC = push(['Proveedor', 'Nota de crédito', 'Fecha', 'Importe', 'Qué es', 'Anula la factura', 'La reemplaza', '', ''])
-  const nc0 = filas.length + 1
-  for (const n of notasCredito) push([n.proveedor, n.comprobante, n.fecha, n.monto, n.que, n.anula, n.reemplaza, '', ''])
-  const nc1 = filas.length
-  push(['TOTAL ACREDITADO', '', '', `=SUM($D${nc0}:$D${nc1})`, '', '', '', '', ''])
-  push([])
-  let cabAnu = 0, anu0 = 0, anu1 = 0
-  if (anuladasCargadas.length) {
-    push([`⚠ COMPRAS TIENE CARGADA LA FACTURA ANULADA — ${anuladasCargadas.length} caso(s)`])
-    push(['El importe cierra, así que ningún control lo ve. Pero el comprobante que está cargado fue ANULADO por una nota de crédito y reemplazado por otro: el número no existe más para AFIP y el costo quedó imputado al mes viejo. Hay que corregir el N° de comprobante y la fecha en Compras.'])
-    cabAnu = push(['Proveedor', 'Cargada en Compras', 'Fecha cargada', 'Importe', 'Corresponde', 'Fecha correcta', '', '', ''])
-    anu0 = filas.length + 1
-    for (const m of anuladasCargadas) push([m.proveedor, m.cargada, m.fechaCargada, m.monto, m.corresponde, m.fechaCorrecta, '', '', ''])
-    anu1 = filas.length
-    push([])
-  }
-
-  // ── 5 · LO QUE AFIP TIENE Y COMPRAS NO ──────────────────────────────────────────────────────────────
-  push([`5 · FACTURADO A LA EMPRESA QUE NO ESTÁ EN COMPRAS — ${faltanEnCompras.length} comprobantes`])
-  push([`Sale del libro de IVA COMPRAS de ARCA, que el OS ya replica. Se cruza contra Compras por N° de comprobante y, cuando ese número no está cargado, por proveedor + importe. Lo que queda acá está facturado a la empresa con CAE y no lo ve ninguna otra pestaña: no es un error de fórmula, es carga que falta.`])
-  const cabAfip = push(['Proveedor según AFIP', 'CUIT', 'Comprobante', 'Fecha', 'Importe', '', '', '', ''])
-  const afip0 = filas.length + 1
-  for (const r of faltanEnCompras) push([r.nombre, r.cuit, r.comprobante, r.fecha, r.importe, '', '', '', ''])
-  const afip1 = filas.length
-  push(['TOTAL SIN CARGAR', '', '', '', `=SUM($E${afip0}:$E${afip1})`, '', '', '', ''])
-  push([])
-
-  // ── 6 · LO QUE LA EMPRESA FACTURÓ ───────────────────────────────────────────────────────────────
-  push([`6 · FACTURAS EMITIDAS — ${emitidas.length} comprobantes del libro de IVA VENTAS de ARCA`])
-  push(['Los números de las facturas que emitió la empresa, con su CAE, tal como los tiene AFIP. La última columna cruza contra Cobranzas por número: una factura emitida que Cobranzas no tiene es plata facturada que nadie está siguiendo.'])
-  const cabEmi = push(['Cliente', 'CUIT', 'Comprobante', 'Fecha', 'Importe', '¿Está en Cobranzas?', '', '', ''])
-  const emi0 = filas.length + 1
-  for (const r of emitidas) {
-    push([r.nombre, r.cuit, r.comprobante, r.fecha, r.importe,
-      `=IF(COUNTIF(Cobranzas!$E$5:$E$300;"*"&$C${filas.length + 1}&"*")>0;"✓ sí";"⚠ NO está en Cobranzas")`, '', '', ''])
-  }
-  const emi1 = filas.length
-  push(['TOTAL FACTURADO', '', '', '', `=SUM($E${emi0}:$E${emi1})`, '', '', '', ''])
-  push([])
-
-  // ── 7 · FAMILIA × MES ───────────────────────────────────────────────────────────────────────────
-  push(['7 · EN QUÉ SE VA LA PLATA — por familia de material y por mes'])
+  // ── 3 · FAMILIA × MES ───────────────────────────────────────────────────────────────────────────
+  push(['3 · EN QUÉ SE VA LA PLATA — por familia de material y por mes'])
   const cabFam = push(['Familia', ...meses, `Total ${AÑO}`, '% del total', 'Civil', 'Mantenimiento'])
   const fam0 = filas.length + 1
   for (const n of [...nombres, SIN_FAMILIA]) {
@@ -318,8 +260,8 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   ])
   push([])
 
-  // ── 8 · FAMILIA × OBRA ──────────────────────────────────────────────────────────────────────────
-  push(['8 · EN QUÉ OBRA — la misma plata, abierta por obra'])
+  // ── 4 · FAMILIA × OBRA ──────────────────────────────────────────────────────────────────────────
+  push(['4 · EN QUÉ OBRA — la misma plata, abierta por obra'])
   const cabObra = push(['Familia', ...obras, 'Total', 'Control (tiene que dar $0)'])
   const obra0 = filas.length + 1
   for (const n of [...nombres, SIN_FAMILIA]) {
@@ -339,8 +281,41 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   ])
   push([])
 
-  // ── 9 · CONTROL Y AUDITORÍA DE CARGA ────────────────────────────────────────────────────────────
-  push(['9 · CONTROL Y AUDITORÍA DE CARGA'])
+  // ── 5 · LAS NOTAS DE CRÉDITO ────────────────────────────────────────────────────────────────
+  // La pregunta que el libro de IVA NO contesta: una nota de crédito puede ser una DEVOLUCIÓN (el
+  // costo de la obra baja de verdad) o una REFACTURACIÓN (el costo sigue, sólo cambió de número y
+  // de mes). Las dos son "tipo 3". Ver lib/notas-credito.mjs.
+  push([`5 · NOTAS DE CRÉDITO — ¿el costo desapareció, o sólo cambió de factura?`])
+  push(['Una nota de crédito puede significar dos cosas opuestas y el libro de IVA las escribe igual. Si el proveedor volvió a facturar, el costo SIGUE existiendo: sólo cambió de número y muchas veces de mes. Darlo por ahorrado es el error caro. Cada nota se cruza contra las facturas del mismo CUIT: la que anula tiene que dar el MISMO importe al peso, la que la reemplaza da parecido.'])
+  const cabNC = push(['Proveedor', 'Nota de crédito', 'Fecha', 'Importe', 'Qué es', 'Anula la factura', 'La reemplaza', '', ''])
+  const nc0 = filas.length + 1
+  for (const n of notasCredito) push([n.proveedor, n.comprobante, n.fecha, n.monto, n.que, n.anula, n.reemplaza, '', ''])
+  const nc1 = filas.length
+  push(['TOTAL ACREDITADO', '', '', `=SUM($D${nc0}:$D${nc1})`, '', '', '', '', ''])
+  push([])
+  let cabAnu = 0, anu0 = 0, anu1 = 0
+  if (anuladasCargadas.length) {
+    push([`⚠ COMPRAS TIENE CARGADA LA FACTURA ANULADA — ${anuladasCargadas.length} caso(s)`])
+    push(['El importe cierra, así que ningún control lo ve. Pero el comprobante que está cargado fue ANULADO por una nota de crédito y reemplazado por otro: el número no existe más para AFIP y el costo quedó imputado al mes viejo. Hay que corregir el N° de comprobante y la fecha en Compras.'])
+    cabAnu = push(['Proveedor', 'Cargada en Compras', 'Fecha cargada', 'Importe', 'Corresponde', 'Fecha correcta', '', '', ''])
+    anu0 = filas.length + 1
+    for (const m of anuladasCargadas) push([m.proveedor, m.cargada, m.fechaCargada, m.monto, m.corresponde, m.fechaCorrecta, '', '', ''])
+    anu1 = filas.length
+    push([])
+  }
+
+  // ── 6 · LO QUE AFIP TIENE Y COMPRAS NO ──────────────────────────────────────────────────────────────
+  push([`6 · FACTURADO A LA EMPRESA QUE NO ESTÁ EN COMPRAS — ${faltanEnCompras.length} comprobantes`])
+  push([`Sale del libro de IVA COMPRAS de ARCA, que el OS ya replica. Se cruza contra Compras por N° de comprobante y, cuando ese número no está cargado, por proveedor + importe. Lo que queda acá está facturado a la empresa con CAE y no lo ve ninguna otra pestaña: no es un error de fórmula, es carga que falta.`])
+  const cabAfip = push(['Proveedor según AFIP', 'CUIT', 'Comprobante', 'Fecha', 'Importe', '', '', '', ''])
+  const afip0 = filas.length + 1
+  for (const r of faltanEnCompras) push([r.nombre, r.cuit, r.comprobante, r.fecha, r.importe, '', '', '', ''])
+  const afip1 = filas.length
+  push(['TOTAL SIN CARGAR', '', '', '', `=SUM($E${afip0}:$E${afip1})`, '', '', '', ''])
+  push([])
+
+  // ── 7 · CONTROL Y AUDITORÍA DE CARGA ────────────────────────────────────────────────────────────
+  push(['7 · CONTROL Y AUDITORÍA DE CARGA'])
   const ctrl = filas.length + 1
   push([`${RUBROS_CON_FAMILIA[0]} (rubro de Compras)`, `=SUMIF(${COL_RUBRO};"${RUBROS_CON_FAMILIA[0]}";${COL_TOTAL})`, 'Es la misma línea del Cash Flow Mensual.'])
   push([`${RUBROS_CON_FAMILIA[1]} (rubro de Compras)`, `=SUMIF(${COL_RUBRO};"${RUBROS_CON_FAMILIA[1]}";${COL_TOTAL})`, ''])
@@ -366,8 +341,8 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   // pagado vacío. Leer una columna a medio llenar es peor que no leerla; lo que corresponde es
   // mostrar la contradicción para que se resuelva en el origen.
   push(['⚠ Deudas pendientes que no entran en la tabla del bloque 2',
-    `=MAX(0;COUNTIFS(${COL_ESTADO};"${ESTADO_DEUDA}";${COL_TOTAL};"<>")-${RESERVA_DEUDA})`,
-    `⚠ La tabla de deuda tiene ${RESERVA_DEUDA} filas reservadas. Si este número deja de ser cero, hay deuda que no se está viendo y hay que agrandar la reserva (RESERVA_DEUDA en el script).`])
+    `=MAX(0;COUNTIFS(${COL_ESTADO};"${ESTADO_DEUDA}";${COL_TOTAL};"<>")-${nDeuda + COLCHON_DEUDA})`,
+    `⚠ La tabla de deuda tiene ${nDeuda + COLCHON_DEUDA} filas reservadas (las ${nDeuda} deudas de hoy más ${COLCHON_DEUDA} de colchón). El agente la redimensiona cada 2 horas; este número avisa si entre dos corridas entró más deuda de la que entra.`])
   push(['⚠ Filas que dicen "Pagado" pero no dicen cuánto se pagó',
     `=SUMPRODUCT((${COL_ESTADO}="Pagado")*(IF(ISNUMBER(${COL_TOTAL});${COL_TOTAL};0)>0)*(NOT(IF(ISNUMBER(Compras!$T$4:$T);Compras!$T$4:$T;0)>0)))`,
     '⚠ Cantidad de filas. La columna "Monto Pagado" está a medio llenar: el cash flow usa el TOTAL (columna O) justamente por eso. Si esta columna se completara, el cuadro podría pasar a lo efectivamente pagado.'])
@@ -391,6 +366,34 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   const resuelto = filas.map((f) => f.map((c) => (typeof c === 'string'
     ? c.replaceAll('$TOTFAM', String(totFam)).replaceAll('$TOTPROV', String(fTotProv)).replaceAll('$TOTDEUDA', String(fTotProv))
     : c)))
+  // ── 8 · LOS NÚMEROS DE ARCA, EN UN SOLO LUGAR ───────────────────────────────────────────────
+  // Estos son los únicos números del archivo que NO salen del Sheet: salen del libro de IVA que el
+  // OS replica desde ARCA. Viven acá —una pestaña réplica, con origen declarado— y el Cash Flow
+  // Mensual los mira por RANGO CON NOMBRE en vez de tenerlos pegados. Ver lib/rangos-nombrados.mjs.
+  push(['8 · LO QUE ARCA REGISTRÓ — la plomería, no es para leer'])
+  push(['Cualquier pestaña que necesite estas cifras las referencia por nombre (ARCA_COMPRAS_TOTAL, ARCA_FALTAN_MONTO…). Si se copiaran, el día que ARCA traiga un comprobante nuevo habría dos verdades en el archivo y nadie sabría cuál mirar.'])
+  push(['Concepto', 'Cantidad', 'Monto', '', '', '', '', '', ''])
+  const fArcaN = push(['Comprobantes de compra (neto de notas de crédito)', arca.nR, arca.totalR, '', '', '', '', '', ''])
+  const fArcaNotas = push(['  · notas de crédito (restan)', arca.nNotas, -arca.montoNotas, '', '', '', '', '', ''])
+  const fArcaEn = push(['  · cargados en Compras, por N° de comprobante', cruce.porNumero.length, cruce.totales.porNumero, '', '', '', '', '', ''])
+  const fArcaSinNum = push(['  · cargados SIN su N° de comprobante', cruce.porImporte.length, cruce.totales.porImporte, '', '', '', '', '', ''])
+  const fArcaFaltan = push(['  · ⚠ sin cargar en Compras', cruce.faltan.length, cruce.totales.faltan, '', '', '', '', '', ''])
+  const fArcaVentas = push(['Comprobantes emitidos (ventas)', emitidas.length, emitidas.reduce((s, x) => s + x.importe, 0), '', '', '', '', '', ''])
+  push([])
+
+  // ── 9 · LO QUE LA EMPRESA FACTURÓ ───────────────────────────────────────────────────────────────
+  push([`9 · FACTURAS EMITIDAS — control cruzado contra Cobranzas (esto es VENTAS, no proveedores)`])
+  push(['Los números de las facturas que emitió la empresa, con su CAE, tal como los tiene AFIP. La última columna cruza contra Cobranzas por número: una factura emitida que Cobranzas no tiene es plata facturada que nadie está siguiendo.'])
+  const cabEmi = push(['Cliente', 'CUIT', 'Comprobante', 'Fecha', 'Importe', '¿Está en Cobranzas?', '', '', ''])
+  const emi0 = filas.length + 1
+  for (const r of emitidas) {
+    push([r.nombre, r.cuit, r.comprobante, r.fecha, r.importe,
+      `=IF(COUNTIF(Cobranzas!$E$5:$E$300;"*"&$C${filas.length + 1}&"*")>0;"✓ sí";"⚠ NO está en Cobranzas")`, '', '', ''])
+  }
+  const emi1 = filas.length
+  push(['TOTAL FACTURADO', '', '', '', `=SUM($E${emi0}:$E${emi1})`, '', '', '', ''])
+  push([])
+
   return { filas: resuelto, cuentas: [fCuenta1, fCuenta2], doc0, doc1, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
 }
 
@@ -457,6 +460,8 @@ async function main() {
   const filasParaCruce = compras
     .map((f, i) => ({ fila: i + 4, prov: normNombre(f?.[4]), total: parseMonto(f?.[14]) || parseMonto(f?.[12]), comprobante: normComprobante(f?.[7]) }))
     .filter((f) => f.prov && f.total > 0)
+  // Cuántas deudas hay HOY: define cuántas filas reserva la tabla del bloque 1.
+  const nDeuda = compras.filter((f) => String(f?.[23] ?? '').trim().toLowerCase() === ESTADO_DEUDA.toLowerCase() && parseMonto(f?.[14])).length
   const cruce = cruzar(rArca, filasParaCruce, { norm: normNombre, clave: (c) => normComprobante(`${c.punto_venta}-${c.numero}`) })
   const chequeo = verificar(cruce)
   if (!chequeo.ok) {
@@ -547,7 +552,7 @@ async function main() {
   // salió el bug de las referencias corridas.
 
   const obras = ['LA ESTRELLA', 'San Francisco', 'MESSINAS', 'ARCOR', 'Administracion', 'Almacen', 'Taller', 'SAINT GOBAIN']
-  const g = grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, notasCredito, anuladasCargadas, cruce })
+  const g = grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, notasCredito, anuladasCargadas, cruce, nDeuda })
   const ancho = Math.max(...g.filas.map((f) => f.length))
   const cuadro = g.filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r })
   console.log(`${PESTAÑA}: ${cuadro.length} filas x ${ancho} columnas`)
@@ -636,16 +641,73 @@ async function formatear(google, sheetId, g, ancho, filas) {
   const GRIS = { red: 0.89, green: 0.91, blue: 0.94 }
   const ROJO = { red: 1, green: 0.93, blue: 0.93 }
   const r = (r0, r1, c0 = 0, c1 = ancho) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
-  const req = [{ unmergeCells: { range: r(0, filas) } }]
+  // ═══ PRIMERO SE BORRA TODO, DESPUÉS SE PINTA ═══
+  //
+  // POR QUÉ (21/07). Este formateador sólo APLICABA formatos, nunca los sacaba. Mientras el layout
+  // no cambió, no se notó. El día que reordené los bloques, las bandas azules de los encabezados
+  // viejos quedaron pintadas en las filas donde estaban antes —en el medio de la nada— y la pestaña
+  // se volvió ilegible. El dueño: "esa pestaña es completamente inútil", y tenía razón.
+  //
+  // Un formato es tan persistente como un dato: si el cuadro se rehace entero, el formato también.
+  const req = [
+    { unmergeCells: { range: r(0, filas) } },
+    {
+      repeatCell: {
+        range: r(0, filas),
+        cell: {
+          userEnteredFormat: {
+            backgroundColor: { red: 1, green: 1, blue: 1 },
+            textFormat: { bold: false, italic: false, fontSize: 10, foregroundColor: { red: 0, green: 0, blue: 0 } },
+            horizontalAlignment: 'LEFT',
+            verticalAlignment: 'MIDDLE',
+            wrapStrategy: 'CLIP',
+          },
+        },
+        fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment,userEnteredFormat.wrapStrategy',
+      },
+    },
+    // Y la ALTURA vuelve al estándar. Va acá, ANTES que nada: una fila que quedó de 200px por un
+    // formato viejo no se arregla sola, y las alturas específicas de más abajo tienen que ganarle
+    // a ésta — el último pedido sobre el mismo rango es el que manda.
+    { updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: filas }, properties: { pixelSize: 21 }, fields: 'pixelSize' } },
+  ]
   const fmt = (rg, fields, format) => req.push({ repeatCell: { range: rg, cell: { userEnteredFormat: format }, fields } })
 
   fmt(r(0, filas, 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }, horizontalAlignment: 'RIGHT' })
   fmt(r(0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 13 } })
-  for (const i of [1, 4]) {
-    fmt(r(i, i + 1), 'userEnteredFormat.textFormat,userEnteredFormat.wrapStrategy',
-      { textFormat: { italic: true, fontSize: 9, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'WRAP' })
+
+  // ═══ LOS TÍTULOS Y LAS EXPLICACIONES SE DETECTAN, NO SE ADIVINAN ═══
+  //
+  // Antes estaban a mano: `for (const i of [1, 4])`. Con nueve bloques que se reordenan, esos dos
+  // números apuntaban a cualquier lado. Ahora se buscan por su forma —"N · TÍTULO" y la línea de
+  // abajo— así que sobreviven a que los bloques cambien de orden.
+  //
+  // Y la explicación va MERGEADA a lo ancho con altura fija. Escrita en la columna A con ajuste de
+  // línea, un párrafo de 300 caracteres en una columna de 250px hacía una fila de 200px de alto:
+  // eso es el bloque azul gigante que hizo que la pestaña se volviera ilegible.
+  const esTitulo = (t) => /^\d+\s*·\s/.test(String(t ?? '').trim())
+  const titulos = []
+  for (let i = 0; i < g.filas.length; i++) if (esTitulo(g.filas[i]?.[0])) titulos.push(i)
+
+  for (const i of titulos) {
+    fmt(r(i, i + 1), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
+      { textFormat: { bold: true, fontSize: 12 }, backgroundColor: { red: 0.94, green: 0.95, blue: 0.97 } })
+    // La línea de abajo es la explicación del bloque: sólo si tiene texto largo y nada en B.
+    const sig = g.filas[i + 1]
+    if (sig && String(sig[0] ?? '').length > 40 && !String(sig[1] ?? '').trim()) {
+      fmt(r(i + 1, i + 2), 'userEnteredFormat.textFormat,userEnteredFormat.wrapStrategy,userEnteredFormat.verticalAlignment',
+        { textFormat: { italic: true, fontSize: 9, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'OVERFLOW_CELL', verticalAlignment: 'MIDDLE' })
+      req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: i + 1, endIndex: i + 2 }, properties: { pixelSize: 18 }, fields: 'pixelSize' } })
+    }
   }
+  // El subtítulo del encabezado de la pestaña, igual.
+  if (String(g.filas[1]?.[0] ?? '').length > 40) {
+    fmt(r(1, 2), 'userEnteredFormat.textFormat,userEnteredFormat.wrapStrategy,userEnteredFormat.verticalAlignment',
+      { textFormat: { italic: true, fontSize: 9, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'OVERFLOW_CELL', verticalAlignment: 'MIDDLE' })
+    req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 1, endIndex: 2 }, properties: { pixelSize: 18 }, fields: 'pixelSize' } })
+  }
+
   for (const f of [g.cabProv, g.cabFam, g.cabObra]) {
     fmt(r(f - 2, f - 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 11 } })
     fmt(r(f - 1, f), 'userEnteredFormat', { backgroundColor: AZUL, textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 }, fontSize: 9 }, horizontalAlignment: 'CENTER', wrapStrategy: 'WRAP' })

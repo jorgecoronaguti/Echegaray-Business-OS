@@ -21,6 +21,9 @@ export const PASOS = [
   ['estructura-pestana.mjs', 'pestaña Estructura con su proyección', ['Estructura']],
   ['impuestos-pestana.mjs', 'Impuestos y Financieros — IVA real de ARCA', ['Impuestos y Financieros']],
   ['cargas-planes.mjs', 'Cargas Sociales — planes de pago', ['Cargas Sociales']],
+  // Va DESPUÉS de los planes: la proyección ubica su bloque por rótulo y necesita la pestaña
+  // ya escrita para no calcular sobre una geometría que está por cambiar.
+  ['cargas-proyeccion.mjs', 'Cargas Sociales — la proyección concepto por concepto', ['Cargas Sociales']],
   ['cobranzas-control.mjs', 'Cobranzas — detector de duplicados', []],
   ['cheques-cobertura-sheet.mjs', 'Cash Flow Mensual — qué cheques y tarjeta faltan cargar en Compras', []],
   ['tarjeta-control.mjs', 'Tarjeta de Credito — el cruce contra el resumen del banco y la disponibilidad que ve CAJA', []],
