@@ -12,7 +12,7 @@ export const PASOS = [
   // PRIMERO DE TODOS: los jornales entran al archivo desde OTRO Sheet (JORNALES). Si el espejo no
   // se refresca, todo lo que sigue calcula sobre una foto vieja y ningún control lo ve — pasó el
   // 21/07: la quincena en curso quedó $1.231.963 por debajo de la real.
-  ['espejar-jornales.mjs', 'espejo del archivo JORNALES (_J_OBREROS y _J_OFICINA)', ['_J_OBREROS', '_J_OFICINA']],
+  ['espejar-jornales.mjs', 'espejo del archivo JORNALES (_J_OBREROS y _J_OFICINA) + el bloque de jornales de RESUMEN', ['_J_OBREROS', '_J_OFICINA', 'RESUMEN']],
   // SEGUNDO: devolver la fórmula a las celdas calculadas que alguien pisó pegando un valor. Va
   // antes de todo cálculo porque una celda pisada no grita: muestra un número creíble que dejó de
   // actualizarse. El 21/07 había cuatro, y dos de ellas hacían que dos cobros de $16.200.000
@@ -26,7 +26,11 @@ export const PASOS = [
   // Recurrentes va ANTES del cash flow: el cuadro lee de ella su proyección y necesita que exista.
   ['recurrentes-pestana.mjs', 'Recurrentes — servicios fijos, sin proyectar meses ya cerrados', ['Recurrentes']],
   ['cash-flow-rehacer.mjs', 'Cash Flow Semanal y Mensual', ['Cash Flow Semanal', 'Cash Flow Mensual']],
-  ['proveedores-materiales-pestana.mjs', 'Proveedores (Deuda · Cuenta Corriente · Control y ARCA) + Materiales', ['Proveedores — Deuda', 'Proveedores — Cuenta Corriente', 'Materiales', 'Proveedores — Control y ARCA']],
+  // LOS NOMBRES SON LOS DE HOY. Declaraba las cuatro pestañas del diseño viejo —"Proveedores —
+  // Deuda", "Proveedores — Cuenta Corriente"…— que dejaron de existir cuando el bloque se unificó en
+  // una sola pestaña "Proveedores". Con nombres que no existen, el control de "todo se actualiza
+  // solo" daba a Proveedores por huérfana aunque este script la rehaga en cada corrida.
+  ['proveedores-materiales-pestana.mjs', 'Proveedores (deuda, cuenta corriente, control y ARCA) + Materiales', ['Proveedores', 'Materiales']],
   ['estructura-pestana.mjs', 'pestaña Estructura con su proyección', ['Estructura']],
   ['impuestos-pestana.mjs', 'Impuestos y Financieros — IVA real de ARCA', ['Impuestos y Financieros']],
   ['f931-sheet.mjs', 'Cargas Sociales — las DDJJ F931 leídas del PDF (_F931_RAW + bloque 1)', ['Cargas Sociales', '_F931_RAW']],

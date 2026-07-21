@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { numerosPegados, derivadasHuerfanas, usaInflacion, indicesCompletos, criteriosHuerfanos, esOperador, CALCULADAS, CON_ORIGEN } from './reglas-de-oro.mjs'
+import { numerosPegados, derivadasHuerfanas, usaInflacion, indicesCompletos, criteriosHuerfanos, esOperador, CALCULADAS, CON_ORIGEN, TOPE_PEGADOS } from './reglas-de-oro.mjs'
 
 const celda = (o) => ({ formula: null, numero: null, derivada: false, formato: null, ...o })
 
@@ -52,10 +52,20 @@ test('un índice sin fuente es un número inventado con buena letra', () => {
   assert.equal(indicesCompletos([], new Date()).alcanza, false)
 })
 
-// Que una pestaña esté en las dos listas sería decir "tiene que ser toda fórmula" y "puede traer
-// números" a la vez: el permiso ganaría siempre y la regla dejaría de existir para esa pestaña.
-test('ninguna pestaña puede estar a la vez en calculadas y con origen declarado', () => {
-  assert.deepEqual(CALCULADAS.filter((t) => CON_ORIGEN[t]), [])
+// Estar en las dos listas era prohibido porque el permiso ganaba siempre y la regla dejaba de
+// existir para esa pestaña. Con TOPE_PEGADOS deja de ser un permiso abierto: se admite el caso
+// híbrido —Proveedores es toda fórmula MENOS cuatro celdas de conciliación— siempre que el tope
+// esté declarado. Sin tope, la combinación vuelve a ser lo que era y no se acepta.
+test('una pestaña calculada con origen declarado tiene que tener TOPE', () => {
+  const sinTope = CALCULADAS.filter((t) => CON_ORIGEN[t] && TOPE_PEGADOS[t] == null)
+  assert.deepEqual(sinTope, [], 'una pestaña calculada no puede tener permiso ABIERTO para números pegados')
+})
+
+test('el tope de una pestaña calculada es chico: es una excepción, no una puerta', () => {
+  for (const t of CALCULADAS) {
+    if (!CON_ORIGEN[t]) continue
+    assert.ok(TOPE_PEGADOS[t] <= 10, `${t} tiene tope ${TOPE_PEGADOS[t]}: demasiado para una pestaña que debe ser toda fórmula`)
+  }
 })
 
 test('no marca un OPERADOR de SUMIFS como rubro desconocido', () => {

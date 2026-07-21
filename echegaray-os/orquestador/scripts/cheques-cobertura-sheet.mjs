@@ -129,6 +129,13 @@ function grilla({ enCompras, cheques, tarjeta }) {
   for (const m of cubrir.por_mes) {
     if (!m.anio) { push([`${m.mes}  ⚠ sin fecha de pago cargada`, m.cantidad, '']); continue }
     const f = F.cheques.aCubrir(m.anio, m.num)
+    // EL MES ES UNA FECHA Y SE QUEDA COMO FECHA. Se ve "julio 26" gracias al formato de la columna,
+    // que se aplica más abajo — sin él, la celda muestra el serial crudo (46229) y parece un número
+    // pegado. Fue exactamente el hallazgo del auditor: la fila de julio había perdido el formato y
+    // se leía como un número de cinco cifras al lado de "agosto 26".
+    //
+    // Se descartó forzarlo a texto con apóstrofo: dejaría esta fila como texto y las otras como
+    // fecha, y el cuadro ya no se podría ordenar por mes.
     push([m.mes, f.cantidad, f.monto])
   }
   const c1 = filas.length
@@ -171,6 +178,9 @@ async function main() {
     { repeatCell: { range: { ...rg(F - 1, F + filas.length - 1), startColumnIndex: 2, endColumnIndex: 3 }, cell: { userEnteredFormat: { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment' } },
     { repeatCell: { range: { ...rg(F - 1, F + filas.length - 1), startColumnIndex: 1, endColumnIndex: 2 }, cell: { userEnteredFormat: { numberFormat: { type: 'NUMBER', pattern: '0' }, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment' } },
     { repeatCell: { range: { ...rg(F - 1, F + filas.length - 1), startColumnIndex: 5, endColumnIndex: 6 }, cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: { fontSize: 9, italic: true, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } } } }, fields: 'userEnteredFormat' } },
+    // LA COLUMNA DE MESES, CON SU FORMATO. Sin esto la celda muestra el serial de la fecha y el
+    // auditor de reglas la cuenta —con razón— como un número pegado donde todo tiene que ser fórmula.
+    { repeatCell: { range: { ...rg(F + g.c0 - 2, F + g.c1 - 1), startColumnIndex: 0, endColumnIndex: 1 }, cell: { userEnteredFormat: { numberFormat: { type: 'DATE', pattern: 'mmmm yy' } } }, fields: 'userEnteredFormat.numberFormat' } },
     { repeatCell: { range: rg(F - 1, F), cell: { userEnteredFormat: { textFormat: { bold: true, fontSize: 12 } } }, fields: 'userEnteredFormat.textFormat' } },
     { repeatCell: { range: rg(F, F + 1), cell: { userEnteredFormat: { textFormat: { italic: true, fontSize: 9, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'WRAP' } }, fields: 'userEnteredFormat.textFormat,userEnteredFormat.wrapStrategy' } },
     { repeatCell: { range: rg(F + g.fFalta - 2, F + g.fFalta - 1), cell: { userEnteredFormat: { textFormat: { bold: true, foregroundColor: { red: 0.7, green: 0.2, blue: 0.1 } }, backgroundColor: { red: 1, green: 0.93, blue: 0.93 } } }, fields: 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor' } },

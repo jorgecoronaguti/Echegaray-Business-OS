@@ -14,8 +14,25 @@ test('la fecha cero se caza: 30/12/99 no es un día, es "no hay fecha"', () => {
 })
 
 test('una nota metida en una columna de importes se ve como un dato', () => {
-  const d = detectar(hoja([[cel('Resto'), cel('ninguno llega al 1% del total', 'CURRENCY')]]))
+  // La nota va DEBAJO de los importes, que es donde molesta: en el medio de la tabla se lee como
+  // una fila más. Arriba de la columna sería el encabezado y es correcto — ver el test siguiente.
+  const d = detectar(hoja([
+    [cel('Concepto'), cel('Monto', 'CURRENCY')],
+    [cel('Alquiler'), cel('$100.000', 'CURRENCY')],
+    [cel('Resto'), cel('ninguno llega al 1% del total', 'CURRENCY')],
+  ]))
   assert.equal(d[0].tipo, 'texto_en_numero')
+  assert.equal(d[0].fila, 3)
+})
+
+test('el ENCABEZADO de una columna de importes no es un defecto', () => {
+  // 1.107 de los 1.182 avisos del archivo eran esto: "IMPORTES" arriba de una columna de moneda.
+  // Un detector que grita mil veces por cosas bien hechas entrena a no mirar la lista.
+  const d = detectar(hoja([
+    [cel('Concepto'), cel('IMPORTES', 'CURRENCY')],
+    [cel('Alquiler'), cel('$100.000', 'CURRENCY')],
+  ]))
+  assert.deepEqual(d.filter((x) => x.tipo === 'texto_en_numero'), [])
 })
 
 test('el guion del formato de número NO es texto pegado a mano', () => {

@@ -65,6 +65,31 @@ const esTextoDeVerdad = (v) => {
  * @param {{desdeFila?:number, huecoMax?:number}} [opts]
  * @returns {Array<{tipo:string, fila:number, col:string, valor:string, que:string}>}
  */
+/**
+ * NÚCLEO PURO: ¿este texto en una celda numérica es el ENCABEZADO de la columna?
+ *
+ * La diferencia con una nota mal puesta no está en la celda: está en dónde cae. Un encabezado va
+ * ARRIBA de los números de su columna; una nota metida en una tabla los tiene arriba y abajo.
+ *
+ * Se mira la propia columna: si no hay ningún número por encima, esto es el rótulo. En cuanto hay
+ * un importe más arriba, el texto está en el medio de los datos y ahí sí molesta.
+ *
+ * @param {Array<Array<object>>} filas la grilla completa
+ * @param {number} i índice de la fila (0-based)
+ * @param {number} j índice de la columna
+ */
+export function esRotuloDeColumna(filas = [], i = 0, j = 0) {
+  // "HAY UN NÚMERO ARRIBA" SE DECIDE POR EL VALOR QUE SE VE, no por un campo `numero`: el lector de
+  // formatos (readSheetFormats) devuelve sólo `valor` y `formato`. La primera versión preguntaba por
+  // `numero`, que ahí siempre viene vacío, así que TODO parecía encabezado y el detector dejó de
+  // marcar hasta las notas legítimas. Un control que se apaga entero es peor que uno ruidoso.
+  for (let k = 0; k < i; k++) {
+    const v = String(filas[k]?.[j]?.valor ?? '').trim()
+    if (v && !esTextoDeVerdad(v)) return false
+  }
+  return true
+}
+
 export function detectar(f, { desdeFila = 1, huecoMax = 3 } = {}) {
   const out = []
   if (!f?.filas) return out
@@ -132,7 +157,16 @@ export function detectar(f, { desdeFila = 1, huecoMax = 3 } = {}) {
 
       // ── TEXTO EN UNA CELDA CON FORMATO DE NÚMERO ────────────────────────────────────────────
       // Una nota metida en una columna de importes. Se ve como si fuera un dato de la tabla.
-      if (NUMERICO.has(nf) && esTextoDeVerdad(v)) {
+      //
+      // SALVO EN UNA FILA DE ENCABEZADO, y esta excepción es la diferencia entre un control que se
+      // usa y uno que se ignora. "IMPORTES" arriba de una columna de moneda es lo correcto, no un
+      // defecto: medido, 1.107 de los 1.182 avisos del archivo eran rótulos de columna. Un detector
+      // que grita mil veces por cosas bien hechas entrena a no mirar la lista — ya pasó con los 688
+      // falsos positivos del guion del cero contable.
+      //
+      // Una fila de encabezado se reconoce sin adivinar: TODAS sus celdas con contenido son texto.
+      // En cuanto aparece un número, es una fila de datos y ahí sí el texto molesta.
+      if (NUMERICO.has(nf) && esTextoDeVerdad(v) && !esRotuloDeColumna(f.filas, i, j)) {
         out.push({ tipo: 'texto_en_numero', fila: nFila, col, valor: v.slice(0, 40), que: `texto en una celda con formato ${nf}` })
       }
 

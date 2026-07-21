@@ -15,7 +15,7 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { REGLAS, DERIVADAS, CALCULADAS, CON_ORIGEN, CLASE, sinClasificar, numerosPegados, derivadasHuerfanas, usaInflacion, indicesCompletos, criteriosEnFormulas, criteriosHuerfanos } from '../lib/reglas-de-oro.mjs'
+import { REGLAS, DERIVADAS, CALCULADAS, CON_ORIGEN, TOPE_PEGADOS, CLASE, sinClasificar, numerosPegados, derivadasHuerfanas, usaInflacion, indicesCompletos, criteriosEnFormulas, criteriosHuerfanos } from '../lib/reglas-de-oro.mjs'
 import { RUBROS } from '../lib/rubro-caja.mjs'
 import { SUBRUBROS, OTROS } from '../lib/sub-rubro-estructura.mjs'
 import { USA, CABECERA, comparar } from '../lib/cobertura-datos.mjs'
@@ -84,7 +84,18 @@ async function main() {
     const muestra = sueltos.slice(0, 4).map((s) => `${letra(s.col - 1)}${s.fila}=${s.valor}`).join(' · ')
     // Un importe traído de ARCA o cargado del extracto CUMPLE la regla: tiene origen trazable y no
     // hay ninguna fórmula del archivo que lo pueda calcular. Se informa, no se marca como defecto.
-    if (CON_ORIGEN[t]) { ok(`${t}: ${sueltos.length} números con origen declarado — ${CON_ORIGEN[t]}`); continue }
+    if (CON_ORIGEN[t]) {
+      // EL PERMISO TIENE TOPE. Declarar la pestaña no puede apagar el control sobre todas sus
+      // celdas: uno pegado por error entraría escondido detrás de los legítimos.
+      const tope = TOPE_PEGADOS[t]
+      if (tope != null && sueltos.length > tope) {
+        mal(`${t}: ${sueltos.length} números pegados y el origen declarado cubre ${tope} — hay ${sueltos.length - tope} de más: ${muestra}`)
+        anotar('formulas', `${t}: ${sueltos.length - tope} número(s) pegados por encima de lo declarado`, muestra)
+        continue
+      }
+      ok(`${t}: ${sueltos.length} números con origen declarado — ${CON_ORIGEN[t]}`)
+      continue
+    }
     mal(`${t}: ${sueltos.length} número(s) escritos a mano — ${muestra}`)
     anotar('formulas', `${t}: ${sueltos.length} números escritos`, muestra)
   }

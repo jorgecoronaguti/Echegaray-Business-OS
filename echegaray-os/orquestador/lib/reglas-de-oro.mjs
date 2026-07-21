@@ -13,7 +13,7 @@
 
 /** Las pestañas que ESCRIBE el OS y que tienen que ser TODAS fórmula: cada número de acá sale de
  *  otro lado del archivo, así que pegarlo sería congelarlo. */
-export const CALCULADAS = ['Cash Flow Mensual', 'Cash Flow Semanal', 'Estructura', 'Recurrentes']
+export const CALCULADAS = ['Cash Flow Mensual', 'Cash Flow Semanal', 'Estructura', 'Recurrentes', 'RESUMEN', 'Proveedores', 'Materiales']
 
 /**
  * Pestañas donde un número escrito NO es un defecto, con el motivo declarado.
@@ -23,9 +23,30 @@ export const CALCULADAS = ['Cash Flow Mensual', 'Cash Flow Semanal', 'Estructura
  * fingir que sí la hay sería peor. Lo que no puede pasar es que aparezca acá una pestaña que sí se
  * podía calcular — por eso la lista es explícita y corta.
  */
+/**
+ * CUÁNTOS números pegados se admiten en cada pestaña con origen declarado.
+ *
+ * POR QUÉ NO ALCANZA CON DECLARAR LA PESTAÑA (21/07). El permiso era todo-o-nada: alcanzaba con que
+ * una pestaña estuviera en esta lista para que el auditor dejara de mirar TODOS sus números. Es
+ * demasiado: Proveedores tiene 1.200 celdas y sólo 4 son un resultado de conciliación legítimo. Con
+ * el permiso abierto, el número 5 —uno pegado por error— entraba sin que nadie lo viera.
+ *
+ * El tope convierte la excepción en algo medible, que es la regla 11: si aparece uno de más, el
+ * auditor lo dice. `null` = sin tope (las réplicas puras, donde CADA número viene de afuera).
+ */
+export const TOPE_PEGADOS = {
+  Proveedores: 4,
+  'Impuestos y Financieros': 47,
+  'Cargas Sociales': 18,
+  CAJA: 12,
+}
+
 export const CON_ORIGEN = {
-  'Proveedores y Materiales': 'réplica del libro de IVA de ARCA en los bloques 3 y 4: número de comprobante, CAE, CUIT e importe salen de AFIP y no se pueden calcular desde el Sheet',
   'Impuestos y Financieros': 'réplica de los comprobantes de ARCA: el importe es de AFIP, no se calcula acá',
+  Proveedores: 'el cruce de ARCA contra Compras: la normalización de números escritos de seis formas distintas no se puede hacer en una fórmula de Sheets sin dar un número DISTINTO al real, y uno parecido pero equivocado es peor que uno declarado',
+  _ARCA_RAW: 'los 459 comprobantes del libro de IVA, tal como los devuelve ARCA. La pestaña declara su fecha de corte en la fila 1',
+  _F931_RAW: 'las DDJJ de cargas sociales leídas del PDF del data room, concepto por concepto y por código',
+  _BANCO_RAW: 'los movimientos del extracto del Santander, con su fecha de corte declarada. La columna "Naturaleza" la deduce el OS y va aparte, sin tocar el concepto original',
   'Cargas Sociales': 'réplica de los F931 y de los planes de pago presentados',
   CAJA: 'la única pestaña donde una persona carga el saldo: no existe en ningún otro lado del archivo',
   Caja: 'la única pestaña donde una persona carga el saldo: no existe en ningún otro lado del archivo',
@@ -60,8 +81,18 @@ export const CLASE = {
   'Cash Flow Semanal': 'calculada',
   Estructura: 'calculada',
   Recurrentes: 'calculada',
-  'Proveedores y Materiales': 'replica',
+  // SE PARTIÓ EN DOS Y LA CLASE SE QUEDÓ CON EL NOMBRE VIEJO. Desde ese día ningún control miraba
+  // ninguna de las dos: 1.200 celdas de Proveedores y 535 de Materiales fuera de toda auditoría.
+  // Las dos las escribe el OS desde Compras, así que todo tiene que ser fórmula.
+  Proveedores: 'calculada',
+  Materiales: 'calculada',
   'Impuestos y Financieros': 'replica',
+  // LAS TRES RÉPLICAS DE INSUMO. Las escribe el agente desde una fuente externa declarada con fecha
+  // de corte: el libro de IVA de ARCA, las DDJJ de cargas sociales leídas del PDF y el extracto del
+  // Santander. Sus números son el hecho primario traído de afuera, no un cálculo del archivo.
+  _ARCA_RAW: 'replica',
+  _F931_RAW: 'replica',
+  _BANCO_RAW: 'replica',
   'Cargas Sociales': 'replica',
   CAJA: 'replica',
   RESUMEN: 'calculada',
