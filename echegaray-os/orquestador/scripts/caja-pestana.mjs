@@ -574,10 +574,25 @@ function grilla(cargado, refs) {
   const fEfDepos = push(['Depositado en efectivo en esa misma ventana', '', '', '',
     '=SUMPRODUCT((_BANCO_RAW!$E$4:$E="entra")*ISNUMBER(SEARCH("deposito de efectivo";LOWER(SUBSTITUTE(_BANCO_RAW!$B$4:$B;"ó";"o"))))*IF(ISNUMBER(_BANCO_RAW!$C$4:$C);_BANCO_RAW!$C$4:$C;0))', '', '', '',
     `Extracto del Santander ${BANCO.CORTE}. Los dos números miran los mismos días: comparar un año contra dos semanas no mide nada.`])
-  push(['Declarado hoy en caja física', '', '', '', `=${C_PESOS}${d0}`, '', '', '',
+  // LOS DEPÓSITOS, UNO POR UNO, PARA QUE EL TOTAL SE PUEDA VERIFICAR.
+  //
+  // POR QUÉ (21/07). "$9.960.000 depositados" es un número que hay que creer: no se puede contrastar
+  // contra el resumen del banco sin abrir el extracto y buscar a mano. El que mira esta pestaña
+  // tiene que poder decir "estos tres, tal día, tanto" — sobre todo cuando el renglón de abajo acusa
+  // $15.955.646 sin explicar. La lista sale de la misma fórmula que el total, así que no puede
+  // decir algo distinto, y no pega un solo número: es TEXTJOIN sobre la réplica del extracto.
+  const CONDEP = '(_BANCO_RAW!$E$4:$E="entra")*ISNUMBER(SEARCH("deposito de efectivo";LOWER(SUBSTITUTE(_BANCO_RAW!$B$4:$B;"ó";"o"))))'
+  push(['  · cuáles fueron', '', '', '',
+    `=IFERROR(TEXTJOIN("   ·   ";1;ARRAYFORMULA(IF(${CONDEP};TEXT(_BANCO_RAW!$A$4:$A;"dd/mm")&"  "&TEXT(_BANCO_RAW!$C$4:$C;"$#,##0");"")));"")`,
+    '', '', '',
+    'Cada depósito de efectivo del extracto, con su fecha. Sale de la misma condición que el total de arriba: si no coinciden, es que la fórmula cambió en un lado solo.'])
+  // LA FILA SE GUARDA, NO SE CUENTA. La resta de abajo la referenciaba como "fEfCobrado + 3": al
+  // insertar el detalle de los depósitos habría restado la fila equivocada sin dar error. Es el
+  // mismo defecto que ya rompió la alerta de echeqs esta misma tarde.
+  const fCajaFisica = push(['Declarado hoy en caja física', '', '', '', `=${C_PESOS}${d0}`, '', '', '',
     'La primera fila del bloque 1: la carga a mano.'])
   const fSinExpl = push(['⇒ EFECTIVO SIN EXPLICAR', '', '', '',
-    `=${C_PESOS}${fEfCobrado}-${C_PESOS}${fEfCobrado + 1}-${C_PESOS}${fEfDepos}-${C_PESOS}${fEfCobrado + 3}`, '', '', '',
+    `=${C_PESOS}${fEfCobrado}-${C_PESOS}${fEfCobrado + 1}-${C_PESOS}${fEfDepos}-${C_PESOS}${fCajaFisica}`, '', '', '',
     '⚠ Es el efectivo cobrado en la ventana que no se depositó NI aparece en la caja física. Puede tener explicación —un depósito posterior al corte, un pago a proveedor hecho en efectivo sin pasar por el banco— pero no puede quedar sin mirar. Al 21/07: dos filas de Cobranzas por $16.200.000 cada una, el mismo día y del mismo cliente, que el detector de duplicados ya venía marcando.'])
   push()
 
