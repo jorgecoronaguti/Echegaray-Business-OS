@@ -20,6 +20,7 @@ export const PASOS = [
   ['columnas-calculadas.mjs', 'devolver la fórmula a las celdas calculadas pisadas a mano', []],
   // La réplica de ARCA va ANTES de Impuestos: esa pestaña la referencia con fórmulas y necesita que
   // los comprobantes ya estén en el archivo. Es el mismo orden que el espejo de JORNALES.
+  ['banco-raw-pestana.mjs', '_BANCO_RAW — el extracto del Santander dentro del Sheet', ['_BANCO_RAW']],
   ['arca-raw-pestana.mjs', '_ARCA_RAW — los comprobantes de ARCA dentro del Sheet', ['_ARCA_RAW']],
   ['rubro-caja-sheet.mjs', 'la columna "Rubro de caja" de Compras — de acá cuelga todo lo demás', []],
   // Recurrentes va ANTES del cash flow: el cuadro lee de ella su proyección y necesita que exista.

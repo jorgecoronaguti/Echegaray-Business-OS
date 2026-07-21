@@ -453,7 +453,11 @@ function grilla(cargado, refs) {
     `=SUMPRODUCT((Cobranzas!$N$5:$N$400="Efectivo")*(Cobranzas!$O$5:$O$400="Cobrado")*(Cobranzas!$Q$5:$Q$400>=${dateF(desdeB)})*(Cobranzas!$Q$5:$Q$400<=${dateF(hastaB)})*(${INDIST_COB})*IF(ISNUMBER(Cobranzas!$M$5:$M$400);Cobranzas!$M$5:$M$400;0))/2`,
     '', '', '',
     '⚠ Mismo ID y mismo importe más de una vez. Caso real del 17/07: San Francisco pagó $16.200.000 en efectivo y quedó cargado dos veces —una al cobrarlo y otra al depositarlo—. Un depósito NO es un cobro: mover plata de la caja al banco no genera ingreso. Se divide por dos porque las dos filas del par suman.'])
-  const fEfDepos = push(['Depositado en efectivo en esa misma ventana', '', '', '', BANCO.depositosEfectivo(), '', '', '',
+  // ERA EL ÚLTIMO NÚMERO CALCULADO Y PEGADO DE ESTA PESTAÑA. Ahora sale del extracto que vive en
+  // _BANCO_RAW: mismo criterio que usaba el código —los créditos cuyo concepto dice "depósito de
+  // efectivo"—, pero escrito donde cualquiera lo puede abrir y verificar.
+  const fEfDepos = push(['Depositado en efectivo en esa misma ventana', '', '', '',
+    '=SUMPRODUCT((_BANCO_RAW!$E$4:$E="entra")*ISNUMBER(SEARCH("deposito de efectivo";LOWER(SUBSTITUTE(_BANCO_RAW!$B$4:$B;"ó";"o"))))*IF(ISNUMBER(_BANCO_RAW!$C$4:$C);_BANCO_RAW!$C$4:$C;0))', '', '', '',
     `Extracto del Santander ${BANCO.CORTE}. Los dos números miran los mismos días: comparar un año contra dos semanas no mide nada.`])
   push(['Declarado hoy en caja física', '', '', '', `=${C_PESOS}${d0}`, '', '', '',
     'La primera fila del bloque 1: la carga a mano.'])
