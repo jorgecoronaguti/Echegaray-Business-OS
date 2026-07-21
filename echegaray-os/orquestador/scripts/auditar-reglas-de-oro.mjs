@@ -17,7 +17,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { REGLAS, DERIVADAS, CALCULADAS, CON_ORIGEN, numerosPegados, derivadasHuerfanas, usaInflacion, indicesCompletos, criteriosEnFormulas, criteriosHuerfanos } from '../lib/reglas-de-oro.mjs'
 import { RUBROS } from '../lib/rubro-caja.mjs'
-import { SUB_ESTRUCTURA } from '../lib/sub-rubro-estructura.mjs'
+import { SUBRUBROS, OTROS } from '../lib/sub-rubro-estructura.mjs'
 import { USA, CABECERA, comparar } from '../lib/cobertura-datos.mjs'
 import { PASOS } from '../lib/flujo-caja-pasos.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
@@ -74,7 +74,7 @@ async function main() {
     const g = await google.readSheetGrid(ID, `${t}!A1:BZ200`).catch(() => ({ filas: [] }))
     todasLasFormulas.push(...(g.filas ?? []).flatMap((f) => (f || []).map((c) => c?.formula).filter(Boolean)))
   }
-  for (const [col, validos, que] of [['AC', RUBROS, 'rubro de caja'], ['AF', SUB_ESTRUCTURA, 'sub-rubro de estructura']]) {
+  for (const [col, validos, que] of [['AC', RUBROS, 'rubro de caja'], ['AF', [...SUBRUBROS.map(([n]) => n), OTROS], 'sub-rubro de estructura']]) {
     const usados = criteriosEnFormulas(todasLasFormulas, col)
     const huerfanos = criteriosHuerfanos(todasLasFormulas, validos, col)
     if (huerfanos.length) {

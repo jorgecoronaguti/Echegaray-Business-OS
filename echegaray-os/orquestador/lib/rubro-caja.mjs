@@ -1,3 +1,5 @@
+import { NOMBRES } from './sheet-pestanas.mjs'
+
 // EL RUBRO DE CAJA DE CADA GASTO — UNA SOLA DEFINICIÓN.
 //
 // POR QUÉ EXISTE (20/07). El dueño: "no puede haber nada ni duplicado ni fuera de consideración" y
@@ -132,13 +134,13 @@ export const REGLAS = [
     sql: `(${UNO_DE('proveedor', RECURRENTES.map((r) => r.replace(/\./g, '\\.')))} and ${L(P.unidad)} not in ('civil', 'mantenimiento'))`,
   },
   {
-    rubro: 'Materiales Civil', detalle: 'Materiales', paga: 'compras',
+    rubro: 'Materiales Civil', detalle: NOMBRES.proveedoresMateriales, paga: 'compras',
     js: (r) => norm(r.unidad) === 'civil',
     sheet: '(LOWER($I$4:$I)="civil")',
     sql: ES('unidad', 'civil'),
   },
   {
-    rubro: 'Materiales Mantenimiento', detalle: 'Materiales', paga: 'compras',
+    rubro: 'Materiales Mantenimiento', detalle: NOMBRES.proveedoresMateriales, paga: 'compras',
     js: (r) => norm(r.unidad) === 'mantenimiento',
     sheet: '(LOWER($I$4:$I)="mantenimiento")',
     sql: ES('unidad', 'mantenimiento'),

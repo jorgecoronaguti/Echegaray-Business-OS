@@ -473,7 +473,18 @@ export const CUADRO = [
           // NO SALE DE COMPRAS: se calcula con la tasa del acuerdo sobre el saldo con el que
           // arranca cada mes. Ver costo-descubierto.mjs — el modelo reproduce al centavo el cargo
           // que el banco hizo el 14/07, así que no es una estimación de escritorio.
-          { nombre: 'Intereses del acuerdo en descubierto (proyectados)', descubierto: true },
+          {
+            nombre: 'Intereses del acuerdo en descubierto (proyectados)',
+            descubierto: true,
+            nota: 'TNA 55% sobre el saldo con el que arranca el mes, con IVA e impuestos (×1,12). Es un PISO: no cobra la deuda que se toma dentro del mismo mes, así que el mes en que la caja se da vuelta muestra $0.',
+          },
+          // Tampoco sale de Compras: el banco lo debita solo, sin factura, sobre cada movimiento de
+          // la cuenta. 0,6% de cada lado — verificado al 99,1% contra el extracto (impuesto-cheque.mjs).
+          {
+            nombre: 'Impuesto al cheque (Ley 25.413, 0,6% de cada lado)',
+            impuestoCheque: true,
+            nota: '0,6% de todo lo que entra más 0,6% de todo lo que sale. Verificado al 99,1% contra el extracto. SOBREESTIMA cuando hay cobros o pagos en efectivo que no pasan por el banco: sólo se tributa sobre movimientos de cuenta.',
+          },
         ],
       },
     ],
@@ -572,6 +583,7 @@ export function formulaLineaMes(l, colMes, colTabla, filaCab, filasTabla = {}) {
 
 /** De dónde sale la proyección de una línea, para explicarlo en el Sheet. PURA. */
 export function origenLinea(l) {
+  if (l.nota) return l.nota
   if (l.cobranzas) return 'cobros ya facturados con fecha de cobro — no se proyecta facturación que todavía no existe'
   if (l.cheques) return 'no se proyecta: son cheques y tarjeta YA emitidos, con fecha de débito cierta'
   if (l.soloSub) return 'no se proyecta: un bien de uso es una decisión, no un ritmo mensual'

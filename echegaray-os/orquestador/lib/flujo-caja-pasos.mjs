@@ -13,12 +13,11 @@ export const PASOS = [
   // Recurrentes va ANTES del cash flow: el cuadro lee de ella su proyección y necesita que exista.
   ['recurrentes-pestana.mjs', 'Recurrentes — servicios fijos, sin proyectar meses ya cerrados', ['Recurrentes']],
   ['cash-flow-rehacer.mjs', 'Cash Flow Semanal y Mensual', ['Cash Flow Semanal', 'Cash Flow Mensual']],
-  ['materiales-pestana.mjs', 'pestaña Materiales + columna de familia en Compras', ['Materiales']],
+  ['proveedores-materiales-pestana.mjs', 'Proveedores y Materiales — cuenta corriente por proveedor + familias de material', ['Proveedores y Materiales']],
   ['estructura-pestana.mjs', 'pestaña Estructura con su proyección', ['Estructura']],
   ['impuestos-pestana.mjs', 'Impuestos y Financieros — IVA real de ARCA', ['Impuestos y Financieros']],
   ['cargas-planes.mjs', 'Cargas Sociales — planes de pago', ['Cargas Sociales']],
   ['cobranzas-control.mjs', 'Cobranzas — detector de duplicados', []],
-  ['proveedores-pestana.mjs', 'Proveedores — cuánto se le debe a cada uno y desde cuándo', ['Proveedores']],
   ['cheques-cobertura-sheet.mjs', 'Cash Flow Mensual — qué cheques y tarjeta faltan cargar en Compras', []],
   // Va última: ubica las líneas del Cash Flow por rótulo, así que necesita el cuadro ya escrito.
   ['caja-pestana.mjs', 'CAJA — disponibilidades, cheques emitidos y margen de tarjeta', ['CAJA', 'Caja']],

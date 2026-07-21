@@ -21,6 +21,7 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
+import { SUBRUBROS, OTROS } from '../lib/sub-rubro-estructura.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Estructura'
@@ -30,19 +31,9 @@ const MIN_MESES = 4 // menos que esto no es una tendencia, es un gasto suelto
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 
-// Los sub-rubros dentro de Estructura, en orden de prioridad (gana el primero que matchea).
-// "Equipos y rodados" va primero y aparte a propósito: una moto o una grúa NO son gasto del mes, son
-// inversión. Mezclarlas con el combustible hace parecer que la estructura cuesta el doble.
-const SUBRUBROS = [
-  ['Equipos y rodados (inversión)', 'compra moto|\\\\bmoto\\\\b|grua|pm1000|acoplado|camioneta'],
-  ['Combustible', 'combustible|nafta|gasoil'],
-  ['Vehículos y taller', 'arreglo|repuesto|neumatico|neumagom|bater|bujia|reparacion|lubricentro|camion|corta corriente|piñon|service|patente|seguro|\\\\bford\\\\b|toyota|mercedes|goldstein|hilux|amarok'],
-  ['Insumos y ferretería', 'insumo|ferret|caño|freno|manguito|carretel|foco|aceite|amoladora|herramienta|cortina|bomba'],
-  ['Honorarios y servicios', 'abogado|honorario|contador|google|servicio'],
-  ['Oficina e informática', 'notebook|oficina|impresora|cartucho|papeler'],
-  ['Ropa y seguridad', 'ropa de traba|casco|guante|calzado|seguridad'],
-]
-const OTROS = 'Otros'
+// Los sub-rubros viven en la lib: el auditor de reglas de oro necesita la lista para verificar que
+// ninguna fórmula use un sub-rubro que la definición única no conoce, y no puede importar un script.
+
 
 // Columnas. Visible: A + 12 meses + 4 de totales. Auxiliar (oculta): el real de cada mes, que es de
 // donde sale la proyección — sin separarlo, la fórmula de un mes se leería a sí misma (#REF!).

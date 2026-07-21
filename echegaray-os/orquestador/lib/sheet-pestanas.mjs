@@ -11,6 +11,16 @@
 // SI HAY AMBIGÜEDAD, AVISA. Con dos pestañas que empiezan igual no elige una al azar: rompe. Elegir
 // mal sería peor que fallar — escribiría datos correctos en la pestaña equivocada.
 
+/**
+ * Los nombres canónicos de las pestañas que el OS mantiene. Viven acá porque el mismo nombre lo
+ * necesitan el script que la escribe, el cuadro que la referencia como detalle y el auditor que
+ * verifica que alguien la rehaga. Estaba escrito en cinco archivos: renombrar la pestaña arreglaba
+ * unos y rompía otros en silencio.
+ */
+export const NOMBRES = {
+  proveedoresMateriales: 'Proveedores y Materiales',
+}
+
 const norm = (s) => String(s ?? '').trim().toLowerCase()
 
 /**

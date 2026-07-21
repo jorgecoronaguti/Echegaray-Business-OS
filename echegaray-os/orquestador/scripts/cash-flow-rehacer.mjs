@@ -19,6 +19,7 @@ import { REGLAS } from '../lib/rubro-caja.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { ubicarCaja } from '../lib/caja-disponibilidades.mjs'
 import { formulaInteresMes } from '../lib/costo-descubierto.mjs'
+import { formulaImpuesto } from '../lib/impuesto-cheque.mjs'
 
 /** En qué pestaña está el detalle de un rubro. Sale de REGLAS: una sola definición. */
 const detallePorRubro = (r) => REGLAS.find((x) => x.rubro === r)?.detalle ?? 'Compras'
@@ -127,9 +128,13 @@ function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, fi
             ? cols.map((_, i) => (periodo === 'mensual'
               ? formulaInteresMes(`${letra(i + 1)}#{INICIO}`, `${letra(i + 1)}$${FILA_CAB}`)
               : 0))
-            : f
+            : l.impuestoCheque
+              // Se resuelve al final: necesita la lista de TODAS las demás líneas, que todavía no
+              // existen. Referenciar el total de egresos sería circular — esta línea es un egreso.
+              ? cols.map((_, i) => `#{IMP:${letra(i + 1)}}`)
+              : f
         push([`    ${l.nombre}`, ...celdas])
-        meta.detalle.push({ fila: filas.length, linea: l })
+        meta.detalle.push({ fila: filas.length, linea: l, signo: g.signo })
       }
       const d1 = filas.length
       // El subtotal de la categoría suma su propio detalle. Con signo: los pagos se muestran en
@@ -399,9 +404,18 @@ async function main() {
   const data = []
   for (const [pestaña, periodo] of [['Cash Flow Semanal', 'semanal'], ['Cash Flow Mensual', 'mensual']]) {
     const g = grilla(periodo, faltantes, refCaja, refCajaFecha, filasTabla)
-    // #{INICIO} = la fila del "Efectivo al inicio", que recién se conoce cuando el cuadro está
-    // armado. Escribir el número a mano rompería el día que el cuadro crezca una línea.
-    g.filas = g.filas.map((f) => f.map((c) => (typeof c === 'string' ? c.replace(/#\{INICIO\}/g, String(g.meta.inicio)) : c)))
+    // Los marcadores se resuelven acá, cuando el cuadro ya está armado y se sabe en qué fila quedó
+    // cada línea. Escribir los números a mano rompería el día que el cuadro crezca una línea.
+    const ingreso = g.meta.detalle.filter((d) => d.signo > 0).map((d) => d.fila)
+    const egreso = g.meta.detalle.filter((d) => d.signo < 0 && !d.linea.impuestoCheque).map((d) => d.fila)
+    g.filas = g.filas.map((f) => f.map((c) => {
+      if (typeof c !== 'string') return c
+      return c
+        .replace(/#\{INICIO\}/g, String(g.meta.inicio))
+        // La celda ES el marcador, así que la fórmula entra entera CON su '=': sacárselo la dejaba
+        // como texto y el cuadro mostraba la fórmula escrita en vez de su resultado.
+        .replace(/^#\{IMP:([A-Z]+)\}$/, (_, col) => formulaImpuesto(col, ingreso, egreso))
+    }))
     const ancho = Math.max(...g.filas.map((f) => f.length))
     // Normalizar el rectángulo: si una fila es más corta, la API deja lo viejo debajo.
     const cuadro = g.filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r })
