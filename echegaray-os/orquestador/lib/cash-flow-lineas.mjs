@@ -76,6 +76,90 @@ export function lineasEgreso() {
  * contra Compras. El día que se carguen esas facturas, esta línea baja sola a $0 y la plata aparece
  * en el rubro que le corresponde. Es una línea que existe para desaparecer.
  */
+/**
+ * DÓNDE VIVE CADA INSTRUMENTO DE PAGO, DECLARADO UNA SOLA VEZ.
+ *
+ * Estas coordenadas estaban repetidas en tres archivos: el que lee los cheques, el que los marca y
+ * el que los suma en el cuadro. Con el número de columna escrito tres veces, cambiar la pestaña
+ * arreglaba dos lados y rompía el tercero en silencio. Acá se declaran una vez y los tres las leen.
+ *
+ * filaCab = fila del encabezado · las columnas son letras porque las usa una fórmula del Sheet.
+ */
+export const INSTRUMENTOS = {
+  cheques: { nombre: 'CHEQUES', pestaña: 'Cheques Emitidos', filaCab: 1, colMonto: 'F', colFecha: 'I', colMes: 'J', colDebitado: 'K', colMarca: 12 },
+  tarjeta: { nombre: 'TARJETA DE CRÉDITO', pestaña: 'Tarjeta de Credito', filaCab: 2, colMonto: 'E', colFecha: 'H', colMes: 'I', colDebitado: 'J', colMarca: 11 },
+}
+
+/** Hasta qué fila se busca en las pestañas de instrumentos. De sobra para lo que hay (89 y 29). */
+const FILA_FIN = 400
+
+const letraDe = (n) => { let s = ''; for (let x = n; x >= 0; x = Math.floor(x / 26) - 1) s = String.fromCharCode(65 + (x % 26)) + s; return s }
+
+/** El rango de una columna de un instrumento, desde su primera fila de datos. PURA. */
+export const rangoInstrumento = (inst, col) =>
+  `'${inst.pestaña}'!$${col}$${inst.filaCab + 1}:$${col}$${FILA_FIN}`
+
+/**
+ * NÚCLEO PURO: las fórmulas del bloque de medición de cheques y tarjeta del pie del cash flow.
+ *
+ * Antes ese bloque eran veinte números calculados en código y pegados. Ahora que la marca de cada
+ * cheque está escrita en su propia fila, el bloque puede contarlas: es la misma información pero
+ * verificable a mano y viva. La regla no distingue entre un número del cuadro y uno de un bloque de
+ * control — un número pegado envejece igual en los dos lados.
+ */
+export function formulasInstrumento(inst, marcas) {
+  const R = (c) => rangoInstrumento(inst, c)
+  const M = R(letraDe(inst.colMarca))
+  const importe = `IF(ISNUMBER(${R(inst.colMonto)});${R(inst.colMonto)};0)`
+  const conMarca = (m) => ({
+    cantidad: `=COUNTIF(${M};"${m}")`,
+    monto: `=SUMPRODUCT((${M}="${m}")*${importe})`,
+  })
+  return {
+    total: { cantidad: `=SUMPRODUCT(--(${M}<>""))`, monto: `=SUMPRODUCT((${M}<>"")*${importe})` },
+    contemplados: conMarca(marcas.ok),
+    falta: conMarca(marcas.falta),
+    sinNumero: conMarca(marcas.sinNumero),
+    /**
+     * Lo que todavía no se debitó, por mes. Se compara contra la FECHA, no contra el rótulo: la
+     * columna de mes de la pestaña dice "julio 26" pero adentro tiene una fecha, así que comparar
+     * texto daba $0 en las cuatro filas del bloque.
+     */
+    aCubrir: (anio, num) => {
+      const ini = `DATE(${anio};${num};1)`
+      const ventana = `(${R(inst.colFecha)}>=${ini})*(${R(inst.colFecha)}<EOMONTH(${ini};0)+1)`
+      const pendiente = `(UPPER(${R(inst.colDebitado)})<>"SI")`
+      return {
+        cantidad: `=SUMPRODUCT(${pendiente}*${ventana}*--ISNUMBER(${R(inst.colMonto)}))`,
+        monto: `=SUMPRODUCT(${pendiente}*${ventana}*${importe})`,
+      }
+    },
+  }
+}
+
+/**
+ * NÚCLEO PURO: la fórmula de "pagos con cheque y tarjeta sin factura registrada" en una ventana.
+ *
+ * POR QUÉ ES FÓRMULA Y ANTES ERA UN NÚMERO PEGADO (21/07). El auditor de reglas de oro lo encontró:
+ * $9.666.906,66 escritos a mano en el Cash Flow Mensual. El cruce contra Compras se hace en código
+ * —normalizar "0001-000036" contra "1-36" en una celda sería ilegible— pero el RESULTADO del cruce
+ * ya queda escrito fila por fila en cada pestaña, así que el total lo puede hacer el Sheet sumando
+ * esas filas. La diferencia práctica: el día que se carga una factura que faltaba, esta línea baja
+ * sola. Antes se quedaba con el número viejo hasta la próxima corrida del agente.
+ *
+ * @param {string} desde expresión de la fecha de inicio (ej. 'B$3')
+ * @param {string} hasta expresión de la fecha de fin, EXCLUYENTE
+ * @param {string} marcaFalta el texto exacto que el OS escribe cuando la factura no está
+ */
+export function formulaChequesSinFactura(desde, hasta, marcaFalta) {
+  const trozo = ({ pestaña, filaCab, colMonto, colFecha, colMarca }) => {
+    const col = (n) => { let s = ''; for (let x = n; x >= 0; x = Math.floor(x / 26) - 1) s = String.fromCharCode(65 + (x % 26)) + s; return s }
+    const r = (c) => `'${pestaña}'!$${c}$${filaCab + 1}:$${c}$${FILA_FIN}`
+    return `SUMPRODUCT((${r(col(colMarca))}="${marcaFalta}")*(${r(colFecha)}>=${desde})*(${r(colFecha)}<${hasta})*IF(ISNUMBER(${r(colMonto)});${r(colMonto)};0))`
+  }
+  return `=${Object.values(INSTRUMENTOS).map(trozo).join('+')}`
+}
+
 export const LINEA_CHEQUES = {
   rubro: 'Cheques y tarjeta sin factura cargada',
   detalle: 'Cheques Emitidos y Tarjeta de Credito',

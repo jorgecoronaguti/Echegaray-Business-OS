@@ -13,7 +13,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import {
   bloqueControl, CUADRO, verificarCuadro, formulaLineaMes, expresionReal, formulaTotalRubro, origenLinea,
-  tablasDeProyeccion,
+  tablasDeProyeccion, formulaChequesSinFactura,
 } from '../lib/cash-flow-lineas.mjs'
 import { REGLAS } from '../lib/rubro-caja.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
@@ -22,7 +22,7 @@ import { ubicarCaja } from '../lib/caja-disponibilidades.mjs'
 /** En qué pestaña está el detalle de un rubro. Sale de REGLAS: una sola definición. */
 const detallePorRubro = (r) => REGLAS.find((x) => x.rubro === r)?.detalle ?? 'Compras'
 import {
-  normComprobante, esLlaveUtil, faltaFacturaConFecha, montoEnVentana,
+  normComprobante, esLlaveUtil, faltaFacturaConFecha, montoEnVentana, MARCAS,
 } from '../lib/cheques-cobertura.mjs'
 import { parseMonto, parseFecha } from '../lib/cash-briefing.mjs'
 
@@ -106,9 +106,11 @@ function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, fi
         const f = periodo === 'mensual'
           ? cols.map((_, i) => formulaLineaMes(l, letra(i + 1), letra(i + 1), FILA_CAB, filasTabla))
           : cols.map((_, i) => `=${expresionReal(l, desde(i), hasta(i))}`)
-        // La línea de cheques no tiene fórmula: se llena con valores (ver expresionReal).
+        // La línea de cheques SUMA las marcas que el OS escribe al lado de cada cheque y de cada
+        // consumo de tarjeta. Antes era el único lugar del cuadro con números pegados: el día que se
+        // cargaba una factura que faltaba, la línea seguía mostrando el importe viejo.
         const celdas = l.cheques
-          ? cols.map((d, i) => montoEnVentana(faltantes, d, finVentana(i)) || '')
+          ? cols.map((_, i) => formulaChequesSinFactura(desde(i), hasta(i), MARCAS.falta))
           : f
         push([`    ${l.nombre}`, ...celdas])
         meta.detalle.push({ fila: filas.length, linea: l })
@@ -348,6 +350,8 @@ async function faltantesDeCompras(google) {
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
+  // Ya no alimenta el cuadro (esa línea es una fórmula), pero se sigue midiendo acá: es el número
+  // que tiene que dar igual que la fórmula, y si no da, algo se desalineó entre el código y el Sheet.
   const faltantes = await faltantesDeCompras(google)
   // Dónde está el total de disponibilidades, buscado POR RÓTULO. Si la pestaña todavía no se armó,
   // refCaja queda en null y el cuadro lo dice en vez de referenciar una celda inventada.

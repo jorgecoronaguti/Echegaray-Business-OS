@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { CUADRO, verificarCuadro, expresionReal, formulaLineaMes, SUB_BIENES_DE_USO } from './cash-flow-lineas.mjs'
+import { CUADRO, verificarCuadro, expresionReal, formulaLineaMes, SUB_BIENES_DE_USO, formulaChequesSinFactura, INSTRUMENTOS } from './cash-flow-lineas.mjs'
+import { MARCAS } from './cheques-cobertura.mjs'
 import { RUBROS } from './rubro-caja.mjs'
 
 // La propiedad que sostiene el cuadro: todo rubro de Compras aparece en UNA actividad, exactamente
@@ -53,5 +54,32 @@ test('los cobros no se proyectan', () => {
   const { lineas } = verificarCuadro()
   for (const l of lineas.filter((x) => x.cobranzas)) {
     assert.ok(!formulaLineaMes(l, 'I', 'I', 3).includes('MAX('), `${l.nombre} no proyecta`)
+  }
+})
+
+// EL ÚNICO NÚMERO PEGADO QUE QUEDABA EN EL CUADRO (lo encontró el auditor de reglas de oro):
+// $9.666.906,66 escritos a mano. Un importe pegado no baja cuando se carga la factura que faltaba.
+test('la línea de cheques sin factura es una fórmula que suma las marcas del OS', () => {
+  const f = formulaChequesSinFactura('B$3', 'EOMONTH(B$3;0)+1', MARCAS.falta)
+  assert.ok(f.startsWith('='))
+  // Las dos pestañas, o la mitad del número se pierde.
+  assert.ok(f.includes("'Cheques Emitidos'!$M$2:$M$400"))
+  assert.ok(f.includes("'Tarjeta de Credito'!$L$3:$L$400"))
+  // La marca EXACTA: si el texto cambia de un lado y no del otro, la fórmula da $0 en silencio.
+  assert.ok(f.includes(MARCAS.falta))
+  // Ventana con límite superior EXCLUYENTE: ningún pago puede caer en dos columnas.
+  assert.ok(f.includes('>=B$3') && f.includes('<EOMONTH(B$3;0)+1'))
+  // Un importe que no es número no rompe la suma (hay celdas con "-" en esas columnas).
+  assert.ok(f.includes('IF(ISNUMBER('))
+})
+
+// La columna de marcas tiene que caer DESPUÉS de la última columna de datos de cada pestaña, o el
+// OS pisaría un dato cargado por una persona.
+test('la columna de marcas no pisa ninguna columna de datos', () => {
+  assert.equal(INSTRUMENTOS.cheques.colMarca, 12)  // M, después de L "Unidad de Negocio"
+  assert.equal(INSTRUMENTOS.tarjeta.colMarca, 11)  // L, después de K "Unidad de Negocio"
+  for (const i of Object.values(INSTRUMENTOS)) {
+    const letraNum = (c) => c.charCodeAt(0) - 65
+    assert.ok(i.colMarca > letraNum(i.colMonto) && i.colMarca > letraNum(i.colFecha))
   }
 })

@@ -102,11 +102,19 @@ export function aCubrirPorMes(instrumentos = []) {
     const mes = String(i.fecha_pago ?? '').trim() || '(sin fecha)'
     const m = Number(i.monto) || 0
     total += m
-    const a = acc.get(mes) ?? { mes, cantidad: 0, monto: 0 }
+    // EL AÑO Y EL MES DE VERDAD, cuando se conocen. El rótulo "julio 26" que se ve en la pestaña es
+    // FORMATO: la celda tiene una fecha adentro. Agrupar por el texto funciona en código y falla en
+    // una fórmula del Sheet, que compara contra el valor real — daba $0 en las cuatro filas.
+    const d = i.fecha instanceof Date && !Number.isNaN(+i.fecha) ? i.fecha : null
+    const a = acc.get(mes) ?? { mes, cantidad: 0, monto: 0, anio: d?.getFullYear() ?? null, num: d ? d.getMonth() + 1 : null }
     a.cantidad++; a.monto += m
     acc.set(mes, a)
   }
-  return { por_mes: [...acc.values()].sort((a, b) => a.mes.localeCompare(b.mes)), total }
+  // Se ordena por la fecha real cuando existe: alfabéticamente, "agosto" va antes que "julio".
+  const por_mes = [...acc.values()].sort((a, b) => (
+    a.anio && b.anio ? (a.anio - b.anio) || (a.num - b.num) : a.mes.localeCompare(b.mes)
+  ))
+  return { por_mes, total }
 }
 
 /**
@@ -129,6 +137,31 @@ export function faltaFacturaConFecha(instrumentos = [], comprobantesEnCompras = 
   const { falta_factura: falta } = repartirCobertura(instrumentos, comprobantesEnCompras)
   return falta.filter((i) => i.fecha instanceof Date && !Number.isNaN(i.fecha.getTime()))
     .map((i) => ({ fecha: i.fecha, monto: Number(i.monto) || 0, proveedor: i.proveedor ?? '' }))
+}
+
+/**
+ * LAS MARCAS QUE EL OS ESCRIBE AL LADO DE CADA CHEQUE Y DE CADA CONSUMO DE TARJETA.
+ *
+ * POR QUÉ SON CONSTANTES Y NO TEXTOS SUELTOS (21/07). El cash flow SUMA por estas marcas: la línea
+ * "Pagos con cheque y tarjeta sin factura registrada" dejó de ser un número pegado y pasó a ser una
+ * fórmula que cuenta las filas marcadas. Si el texto cambia de un lado y no del otro, la fórmula da
+ * $0 y nadie se entera — que es exactamente la forma de fallar que este cambio vino a sacar.
+ *
+ * El cruce sigue haciéndose en código, no en fórmula: normalizar "0001-000036" contra "1-36" en una
+ * celda sería ilegible. Lo que cambia es que el resultado del cruce queda ESCRITO fila por fila —
+ * visible, filtrable, verificable— y el total lo hace el Sheet sumando esas filas.
+ */
+export const MARCAS = {
+  ok: '✓ su factura está en Compras',
+  falta: '⚠ FALTA cargar la factura en Compras — este pago no lo ve el cash flow',
+  sinNumero: '⚠ sin N° de comprobante — no se puede cruzar',
+}
+
+/** NÚCLEO PURO: qué marca le toca a un instrumento de pago. */
+export function marcaDe(comprobante, comprobantesEnCompras = new Set()) {
+  const k = normComprobante(comprobante)
+  if (!esLlaveUtil(k)) return MARCAS.sinNumero
+  return comprobantesEnCompras.has(k) ? MARCAS.ok : MARCAS.falta
 }
 
 /**
