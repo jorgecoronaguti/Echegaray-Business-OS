@@ -321,3 +321,34 @@ export const normProveedor = (s) => String(s ?? '')
   .replace(/\bS\.?\s?A\.?\s?S\.?\b|\bS\.?\s?A\.?\b|\bS\.?R\.?L\.?\b|\bSAS\b/g, '')
   .replace(/[^A-Z0-9]+/g, ' ')
   .trim()
+
+/**
+ * NÚCLEO PURO: cuánto EFECTIVO se depositó, según el extracto.
+ *
+ * POR QUÉ IMPORTA (21/07). Un cobro en efectivo que no se deposita tiene que estar en la caja
+ * física. Contrastar lo cobrado en efectivo contra lo depositado es lo único que dice si el
+ * efectivo declarado es plausible — y al 21/07 no lo era: $58.615.646 cobrados en efectivo entre el
+ * 06 y el 21/07 contra $9.960.000 depositados y $1.725.000 declarados en caja.
+ *
+ * ALCANCE DECLARADO: el extracto cubre del 06 al 21/07. Lo depositado ANTES de esa fecha no está
+ * acá, así que la diferencia que se calcule con este número está SOBREESTIMADA. Se informa igual
+ * porque el orden de magnitud ya dice algo; taparlo hasta tener el extracto completo sería esconder
+ * un problema de $46M detrás de una precisión que no hace falta para verlo.
+ */
+export function depositosEfectivo(movs = MOVIMIENTOS) {
+  return movs
+    .filter((m) => m.importe > 0 && /dep[oó]sito\s+de\s+efectivo/i.test(String(m.concepto ?? '')))
+    .reduce((s, m) => s + m.importe, 0)
+}
+
+/** NÚCLEO PURO: los créditos del extracto agrupados por concepto, para saber de dónde entró la plata. */
+export function ingresosPorConcepto(movs = MOVIMIENTOS) {
+  const acc = new Map()
+  for (const m of movs.filter((x) => x.importe > 0)) {
+    const k = String(m.concepto ?? '').trim()
+    const a = acc.get(k) ?? { concepto: k, n: 0, total: 0 }
+    a.n++; a.total += m.importe
+    acc.set(k, a)
+  }
+  return [...acc.values()].sort((a, b) => b.total - a.total)
+}

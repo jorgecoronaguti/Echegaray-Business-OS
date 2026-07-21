@@ -325,6 +325,48 @@ function grilla(cargado, refs) {
     'Distinto de cero = movimientos que el archivo no ve. No es un error de fórmula: es trabajo de carga.'])
   push()
 
+  // ── 5 bis · ¿DÓNDE ESTÁ EL EFECTIVO COBRADO? ────────────────────────────────────────────────────
+  //
+  // POR QUÉ EXISTE (21/07). El cash flow tenía un agujero de $36.742.078 entre lo que Cobranzas dice
+  // que se cobró y lo que entró al banco. Al abrirlo, el problema no era el total sino el EFECTIVO:
+  //
+  //   Cobranzas dice cobrado en efectivo, 06→21/07 ......  $58.615.646
+  //   Depositado en el banco (3 depósitos de efectivo) ...   $9.960.000
+  //   Declarado en caja física acá arriba .................  $1.725.000
+  //   ⇒ SIN EXPLICAR ..................................... $46.930.646
+  //
+  // Un cobro en efectivo que no se deposita tiene que estar en algún lado, y ese lado es esta
+  // pestaña. Si el número de arriba no lo refleja, o el efectivo no está o el cobro no ocurrió.
+  // Las dos cosas son graves y ninguna se ve mirando el total del cash flow, porque un cobro
+  // registrado suma igual esté la plata o no.
+  //
+  // ES UN CONTROL, NO UNA ACUSACIÓN: puede haber una explicación buena (un depósito posterior a la
+  // fecha del extracto, un pago a proveedor hecho en efectivo sin pasar por el banco). Lo que no
+  // puede pasar es que nadie lo mire.
+  push(['5 bis · ¿DÓNDE ESTÁ EL EFECTIVO COBRADO?'])
+  push(['Un cobro en efectivo que no se depositó tiene que estar en la caja física. Este control resta: lo cobrado en efectivo, menos lo que se depositó, menos lo que se declara en la caja de arriba. Si sobra plata, o no está o el cobro no ocurrió.'])
+  // ═══ LA MISMA VENTANA DE TIEMPO DE LOS DOS LADOS ═══
+  //
+  // La primera versión sumaba el efectivo de TODO EL AÑO ($173.434.381) y lo restaba contra 16 días
+  // de depósitos ($9.960.000). Daba $161.749.381 "sin explicar", que es un número inventado por el
+  // método: comparar un año contra dieciséis días es exactamente lo que la regla de oro prohíbe.
+  // El extracto cubre del 06 al 21/07, así que los dos lados se acotan ahí.
+  const desdeB = BANCO.MOVIMIENTOS[0].fecha
+  const hastaB = BANCO.MOVIMIENTOS[BANCO.MOVIMIENTOS.length - 1].fecha
+  const dParts = (f) => f.split('-').map(Number)
+  const dateF = (f) => { const [a, m, d] = dParts(f); return `DATE(${a};${m};${d})` }
+  const fEfCobrado = push([`Cobrado en EFECTIVO entre el ${desdeB} y el ${hastaB} (Cobranzas)`, '', '', '',
+    `=SUMIFS(Cobranzas!$M$5:$M$400;Cobranzas!$N$5:$N$400;"Efectivo";Cobranzas!$Q$5:$Q$400;">="&${dateF(desdeB)};Cobranzas!$Q$5:$Q$400;"<="&${dateF(hastaB)})`, '', '', '',
+    'Cobranzas: forma de cobro "Efectivo", por FECHA DE COBRO, acotado a la ventana que cubre el extracto.'])
+  const fEfDepos = push(['Depositado en efectivo en esa misma ventana', '', '', '', BANCO.depositosEfectivo(), '', '', '',
+    `Extracto del Santander ${BANCO.CORTE}. Los dos números miran los mismos días: comparar un año contra dos semanas no mide nada.`])
+  push(['Declarado hoy en caja física', '', '', '', `=${C_PESOS}${d0}`, '', '', '',
+    'La primera fila del bloque 1: la carga a mano.'])
+  push(['⇒ EFECTIVO SIN EXPLICAR', '', '', '',
+    `=${C_PESOS}${fEfCobrado}-${C_PESOS}${fEfDepos}-${C_PESOS}${fEfCobrado + 2}`, '', '', '',
+    '⚠ Es el efectivo cobrado en la ventana que no se depositó NI aparece en la caja física. Puede tener explicación —un depósito posterior al corte, un pago a proveedor hecho en efectivo sin pasar por el banco— pero no puede quedar sin mirar. Al 21/07: dos filas de Cobranzas por $16.200.000 cada una, el mismo día y del mismo cliente, que el detector de duplicados ya venía marcando.'])
+  push()
+
   push()
   // ── 0 · TIPO DE CAMBIO ──────────────────────────────────────────────────────────────────────────
   // Se define UNA sola vez y acá, que es donde se usa. Cualquier otra fórmula del archivo que
