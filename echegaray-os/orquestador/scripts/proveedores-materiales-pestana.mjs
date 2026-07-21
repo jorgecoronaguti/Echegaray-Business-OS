@@ -80,6 +80,7 @@ import { cruzar, verificar } from '../lib/cobertura-arca.mjs'
 import { ARCA as N_ARCA, publicar } from '../lib/rangos-nombrados.mjs'
 import { query } from '../lib/db.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
+import { R, IMPORTE, arcaPorCuit, arcaPorComprobante, totalLibro } from '../lib/arca-formula.mjs'
 import { formatear as formatearCuit } from '../lib/cuit.mjs'
 import { pivot, filtroValores, valoresNoCubiertos, plantar, borrar, RESUMEN } from '../lib/pivot-sheets.mjs'
 
@@ -250,8 +251,9 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
       p.cuit ? formatearCuit(p.cuit) : '',
       `=COUNTIF(${COL_PROV};$A${f})`,
       `=SUMIF(${COL_PROV};$A${f};${COL_TOTAL})`,
-      // AFIP: réplica de comprobantes_arca, la fuente fiscal. No se puede calcular desde el Sheet.
-      p.arca,
+      // AFIP: sale de _ARCA_RAW por CUIT, con el signo de cada comprobante. Antes era un número
+      // pegado porque el libro de IVA no estaba en el archivo; ahora sí lo está.
+      arcaPorCuit(`$B${f}`),
       `=IF(E${f}="";"";E${f}-D${f})`,
       // EL PLAZO REAL: días entre la fecha de factura y la fecha en que salió la plata. No se puede
       // con AVERAGEIFS porque la resta es entre dos columnas, así que va por SUMPRODUCT.
@@ -280,7 +282,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
     `=$H$TOTDEUDA-$H${fSub}`, '', '', '', '', '', '', '', 'ninguno llega al 1% del total'])
   const fTotProv = push(['TOTAL PROVEEDORES COMERCIALES', '',
     '', RUBROS_COMERCIALES.map((r) => `SUMIF(${COL_RUBRO};"${r}";${COL_TOTAL})`).join('+').replace(/^/, '='),
-    arca.totalR, '', '',
+    totalLibro('Compras'), '', '',
     // LA DEUDA DEL TOTAL TAMBIÉN SE LIMITA A LO COMERCIAL. Con la deuda entera, los $7.484.627 del
     // plan de pago de ARCA caían en la fila "resto de proveedores comerciales" y la dejaban con más
     // deuda que los treinta primeros juntos. ARCA no es un proveedor: es un plan de pago de
@@ -343,7 +345,12 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   push(['Una nota de crédito puede significar dos cosas opuestas y el libro de IVA las escribe igual. Si el proveedor volvió a facturar, el costo SIGUE existiendo: sólo cambió de número y muchas veces de mes. Darlo por ahorrado es el error caro. Cada nota se cruza contra las facturas del mismo CUIT: la que anula tiene que dar el MISMO importe al peso, la que la reemplaza da parecido.'])
   const cabNC = push(['Proveedor', 'Nota de crédito', 'Fecha', 'Importe', 'Qué es', 'Anula la factura', 'La reemplaza', '', ''])
   const nc0 = filas.length + 1
-  for (const n of notasCredito) push([n.proveedor, n.comprobante, n.fecha, n.monto, n.que, n.anula, n.reemplaza, '', ''])
+  // El IMPORTE sale del libro por CUIT + número; lo que el OS aporta es la CLASIFICACIÓN (devolución
+  // o refacturación), que no está en ningún libro y es criterio, no dato.
+  for (const n of notasCredito) {
+    const f = filas.length + 1
+    push([n.proveedor, n.comprobante, n.fecha, arcaPorComprobante(`"${n.cuit ?? ''}"`, `$B${f}`, '-1'), n.que, n.anula, n.reemplaza, '', ''])
+  }
   const nc1 = filas.length
   push(['TOTAL ACREDITADO', '', '', `=SUM($D${nc0}:$D${nc1})`, '', '', '', '', ''])
   push([])
@@ -353,7 +360,10 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
     push(['El importe cierra, así que ningún control lo ve. Pero el comprobante que está cargado fue ANULADO por una nota de crédito y reemplazado por otro: el número no existe más para AFIP y el costo quedó imputado al mes viejo. Hay que corregir el N° de comprobante y la fecha en Compras.'])
     cabAnu = push(['Proveedor', 'Cargada en Compras', 'Fecha cargada', 'Importe', 'Corresponde', 'Fecha correcta', '', '', ''])
     anu0 = filas.length + 1
-    for (const m of anuladasCargadas) push([m.proveedor, m.cargada, m.fechaCargada, m.monto, m.corresponde, m.fechaCorrecta, '', '', ''])
+    for (const m of anuladasCargadas) {
+      const f = filas.length + 1
+      push([m.proveedor, m.cargada, m.fechaCargada, arcaPorComprobante(`"${m.cuit ?? ''}"`, `$B${f}`, '1'), m.corresponde, m.fechaCorrecta, '', '', ''])
+    }
     anu1 = filas.length
     push([])
   }
@@ -363,7 +373,11 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   push([`Sale del libro de IVA COMPRAS de ARCA, que el OS ya replica. Se cruza contra Compras por N° de comprobante y, cuando ese número no está cargado, por proveedor + importe. Lo que queda acá está facturado a la empresa con CAE y no lo ve ninguna otra pestaña: no es un error de fórmula, es carga que falta.`])
   const cabAfip = push(['Proveedor según AFIP', 'CUIT', 'Comprobante', 'Fecha', 'Importe', '', '', '', ''])
   const afip0 = filas.length + 1
-  for (const r of faltanEnCompras) push([r.nombre, r.cuit ? formatearCuit(r.cuit) : '', r.comprobante, r.fecha, r.importe, '', '', '', ''])
+  for (const r of faltanEnCompras) {
+    const f = filas.length + 1
+    push([r.nombre, r.cuit ? formatearCuit(r.cuit) : '', r.comprobante, r.fecha,
+      r.cuit ? arcaPorComprobante(`$B${f}`, `$C${f}`, '1') : r.importe, '', '', '', ''])
+  }
   const afip1 = filas.length
   push(['TOTAL SIN CARGAR', '', '', '', `=SUM($E${afip0}:$E${afip1})`, '', '', '', ''])
   push([])
@@ -550,6 +564,7 @@ async function main() {
   const comp = (c) => `${String(c.punto_venta).padStart(4, '0')}-${String(c.numero).padStart(8, '0')}`
   const notasCredito = analisisNC.map((a) => ({
     proveedor: a.nota.emisor_nombre,
+    cuit: a.nota.emisor_cuit,
     comprobante: comp(a.nota),
     fecha: fecha(a.nota.fecha_emision),
     monto: -a.monto, // se muestra en negativo: es lo que resta
@@ -560,6 +575,7 @@ async function main() {
   const anuladasCargadas = facturasAnuladasCargadas(analisisNC, new Set([...enCompras.keys()]), (c) => normComprobante(claveNC(c)))
     .map((m) => ({
       proveedor: m.anulada.emisor_nombre,
+      cuit: m.anulada.emisor_cuit,
       cargada: comp(m.anulada),
       fechaCargada: fecha(m.anulada.fecha_emision),
       monto: Number(m.anulada.imp_total),

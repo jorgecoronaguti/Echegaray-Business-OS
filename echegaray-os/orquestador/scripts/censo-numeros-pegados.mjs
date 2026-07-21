@@ -79,10 +79,23 @@ async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const lista = SOLO ? PESTANAS.filter((p) => p.titulo.toLowerCase().includes(SOLO.toLowerCase())) : PESTANAS
 
+  // EL AUDITOR NO PUEDE MIRAR MENOS QUE LA PESTAÑA ENTERA.
+  //
+  // Este censo leía hasta el `hastaFila` declarado a mano en formato-pestanas.mjs. Para Proveedores y
+  // Materiales decía 140 y la pestaña llega a la fila 200: informó 34 números pegados cuando eran 79.
+  // Los 45 que faltaban eran justo el bloque de notas de crédito y el de facturas de ARCA sin cargar.
+  //
+  // Un control que mira una ventana fija da una tranquilidad falsa que es peor que no tenerlo: la
+  // pestaña crece, el defecto entra por abajo y el número sigue diciendo lo mismo. El alto se
+  // pregunta, no se declara.
+  const meta = await google.getSheetMeta(ID)
+  const alto = new Map(meta.map((h) => [h.title, h.rows ?? 0]))
+
   console.log('PESTAÑA'.padEnd(26) + 'FÓRMULAS'.padStart(10) + 'DERRAM.'.padStart(9) + 'FECHAS'.padStart(8) + 'PEGADOS'.padStart(9) + '   QUÉ SIGNIFICA')
   let malos = 0
   for (const p of lista) {
-    const grid = await google.readSheetGrid(ID, `${p.titulo}!A1:${colLetra(p.cols)}${p.hastaFila}`).catch(() => null)
+    const hasta = Math.max(p.hastaFila, alto.get(p.titulo) ?? 0)
+    const grid = await google.readSheetGrid(ID, `${p.titulo}!A1:${colLetra(p.cols)}${hasta}`).catch(() => null)
     if (!grid) { console.log(`  ${p.titulo.padEnd(24)} no pude leerla`); continue }
     const c = censar(grid)
     const veredicto = p.carga
