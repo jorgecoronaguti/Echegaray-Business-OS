@@ -44,7 +44,7 @@ const fechaAR = (d) => `${d.getUTCDate()}/${d.getUTCMonth() + 1}/${d.getUTCFullY
  * Arma la grilla de una pestaña de cash flow.
  * @param {'semanal'|'mensual'} periodo
  */
-function grilla(periodo, faltantes = [], refCaja = null) {
+function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null) {
   const cols = periodo === 'semanal' ? semanas() : Array.from({ length: 12 }, (_, m) => new Date(Date.UTC(AÑO, m, 1)))
   const n = cols.length
   const colTotal = letra(n + 1) // A + n períodos → la siguiente es el total
@@ -142,12 +142,31 @@ function grilla(periodo, faltantes = [], refCaja = null) {
   // no un saldo cargado, sin esperar a que el agente vuelva a correr. Un cuadro que arranca de $0
   // sin decirlo hace leer el saldo proyectado como plata que hay.
   const rotuloInicio = 'Efectivo y equivalentes al inicio del período'
+  // EL SALDO REAL ANCLA EN EL MES DE SU FECHA, NO EN ENERO.
+  //
+  // La primera versión ponía el saldo declarado como inicio de ENERO. El saldo cargado es de JULIO,
+  // así que arrastraba la plata de hoy siete meses hacia atrás y todos los meses cerrados quedaban
+  // mal. Ahora: antes del mes del saldo el cuadro no muestra saldo —no se puede, falta el saldo
+  // inicial de enero y nadie lo cargó— y desde ese mes en adelante encadena.
+  //
+  // APROXIMACIÓN DECLARADA: el saldo es de un día en el medio del mes, y acá se toma como cierre de
+  // ese mes. Los movimientos de los días que faltan de ese mes quedan afuera del arrastre. Es de
+  // orden menor frente a la alternativa, que era mentir en siete meses.
+  const mesAncla = refCajaFecha ? `EOMONTH(${refCajaFecha};0)` : null
   meta.inicio = push([refCaja
-    ? `=IF(N(${refCaja})=0;"${rotuloInicio}  ⚠ sin saldo cargado en CAJA — el cuadro arranca de $0";"${rotuloInicio}")`
+    ? `=IF(N(${refCaja})=0;"${rotuloInicio}  ⚠ sin saldo cargado en CAJA — el cuadro no puede decir cuándo se queda sin plata";"${rotuloInicio}")`
     : `${rotuloInicio}  ⚠ no encontré la pestaña CAJA`,
-    ...cols.map((_, i) => (i === 0 ? (refCaja ? `=N(${refCaja})` : '=0') : `=${letra(i)}${filas.length + 2}`))])
+    ...cols.map((_, i) => {
+      if (!refCaja || !mesAncla) return i === 0 ? '=0' : `=${letra(i)}${filas.length + 2}`
+      const mes = `${letra(i + 1)}$${FILA_CAB}`
+      const anterior = i === 0 ? '""' : `${letra(i)}${filas.length + 2}`
+      // Antes del mes del saldo: vacío. En el mes del saldo: el saldo declarado. Después: encadena.
+      return `=IF(EOMONTH(${mes};0)<${mesAncla};"";IF(EOMONTH(${mes};0)=${mesAncla};N(${refCaja});IF(N(${anterior})=0;"";${anterior})))`
+    })])
+  // Un mes anterior al saldo declarado NO tiene cierre: mostrar la variación acumulada como si fuera
+  // un saldo es exactamente el error que este bloque vino a corregir.
   meta.cierre = push(['Efectivo y equivalentes al cierre del período',
-    ...cols.map((_, i) => `=${letra(i + 1)}${meta.inicio}+${letra(i + 1)}${meta.variacion}`)])
+    ...cols.map((_, i) => `=IF(${letra(i + 1)}${meta.inicio}="";"";${letra(i + 1)}${meta.inicio}+${letra(i + 1)}${meta.variacion})`)])
   meta.egr0 = meta.detalle[0].fila
   meta.egr1 = meta.detalle[meta.detalle.length - 1].fila
 
@@ -331,16 +350,20 @@ async function main() {
   // Dónde está el total de disponibilidades, buscado POR RÓTULO. Si la pestaña todavía no se armó,
   // refCaja queda en null y el cuadro lo dice en vez de referenciar una celda inventada.
   let refCaja = null
+  let refCajaFecha = null
   try {
     const tab = hallarPestana(await google.getSheetMeta(ID), 'Caja').title
     const colA = await google.readSheetValues(ID, `${tab}!A1:A80`)
     const i = colA.findIndex((f) => String(f?.[0] ?? '').trim().startsWith('TOTAL DISPONIBILIDADES'))
     if (i >= 0) refCaja = `'${tab}'!$B$${i + 1}`
+    // La fecha del saldo más reciente: es la que decide en qué mes ancla el cuadro.
+    const j0 = colA.findIndex((f) => String(f?.[0] ?? '').trim() === 'Cuenta')
+    if (j0 >= 0 && i > j0) refCajaFecha = `MAX('${tab}'!$C$${j0 + 2}:$C$${i})`
   } catch { /* la pestaña puede no existir todavía */ }
-  console.log(`Efectivo al inicio: ${refCaja ?? '⚠ sin pestaña de saldos — arranca en $0'}`)
+  console.log(`Efectivo al inicio: ${refCaja ?? '⚠ sin pestaña de saldos'} · ancla en ${refCajaFecha ?? '(sin fecha)'}`)
   const data = []
   for (const [pestaña, periodo] of [['Cash Flow Semanal', 'semanal'], ['Cash Flow Mensual', 'mensual']]) {
-    const g = grilla(periodo, faltantes, refCaja)
+    const g = grilla(periodo, faltantes, refCaja, refCajaFecha)
     const ancho = Math.max(...g.filas.map((f) => f.length))
     // Normalizar el rectángulo: si una fila es más corta, la API deja lo viejo debajo.
     const cuadro = g.filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r })

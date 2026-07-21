@@ -38,9 +38,19 @@ export const CUENTAS = [
     origenSugerido: 'Extracto bancario — completar el nombre del banco',
   },
   {
+    // SE CALCULA SOLA, y por eso es la única cuenta sin celda amarilla.
+    //
+    // POR QUÉ (20/07). El dueño: "en Cobranzas hay cheques que no se encuentran considerados, ¿dónde
+    // los vamos a ubicar?". Estaban en la columna "Forma de Cobro", que el OS no leía. Son
+    // $115.000.000 cobrados en echeq de LA ESTRELLA, con vencimientos escalonados. Un echeq todavía
+    // no acreditado NO es plata en la cuenta: es un valor en cartera, y éste es su lugar.
+    //
+    // El corte es la fecha de acreditación: si todavía no llegó, el valor está en cartera. Los que ya
+    // se acreditaron son saldo del banco y contarlos acá los duplicaría.
     nombre: 'Valores a depositar (cheques de terceros en cartera)',
     patron: /^valores a depositar/i,
-    origenSugerido: 'Cartera de cheques recibidos',
+    origenSugerido: 'Cobranzas, forma de cobro Echeq, todavía no acreditados',
+    formula: '=SUMPRODUCT((Cobranzas!$N$5:$N$200="Echeq")*(Cobranzas!$Q$5:$Q$200>TODAY())*IF(ISNUMBER(Cobranzas!$M$5:$M$200);Cobranzas!$M$5:$M$200;0))',
   },
 ]
 

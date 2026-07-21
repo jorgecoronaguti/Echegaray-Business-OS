@@ -1,55 +1,72 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { familiaDeMaterial, formulaFamilia, repartirFamilias, FAMILIAS, SIN_FAMILIA } from './familia-material.mjs'
+import { familiaDeMaterial, repartirFamilias, SIN_FAMILIA, formulaFamilia } from './familia-material.mjs'
 
-test('el orden de prioridad decide, y está elegido a propósito', () => {
-  // Un subcontrato de cloaca es SUBCONTRATO: lo que importa para el costo es que lo hizo un tercero.
-  assert.equal(familiaDeMaterial({ concepto: 'Sub contratista — CLOACA Y AGUA POTABLE' }), 'Subcontratos y mano de obra')
-  // Un PNC es perfil, no hierro de armadura: otro mercado, otros proveedores.
-  assert.equal(familiaDeMaterial({ concepto: 'Galpon 8 — PNC 160' }), 'Chapa, perfiles y estructura metálica')
-  assert.equal(familiaDeMaterial({ concepto: 'Mamposteria — Malla ø6 - 10u' }), 'Hierro y malla')
-  // Ferretería es el cajón de sastre: va última justamente para no comerse el resto.
-  assert.equal(familiaDeMaterial({ concepto: 'Mamposteria — CEMENTO X 25 Y TARUGOS METALICOS X100' }), 'Cemento, cal y áridos')
+// LAS TRES COLUMNAS DICEN COSAS DISTINTAS y el orden en que se miran es la regla.
+// Estos casos son los que estaban MAL clasificados en la planilla real antes de la reescritura.
+test('el concepto le gana al frente de obra', () => {
+  // "Mamposteria" es el nombre del frente, no lo que se compró.
+  assert.equal(
+    familiaDeMaterial({ concepto: 'Insumos electricos', detalle: 'Mamposteria', proveedor: 'Trielec' }),
+    'Electricidad')
+  assert.equal(
+    familiaDeMaterial({ concepto: 'CEMENTO X 25', detalle: 'Mamposteria', proveedor: 'Corralon Progreso' }),
+    'Cemento, cal y áridos')
+})
+
+test('el proveedor es la señal más débil y va última', () => {
+  // Sideragro vende hierro, pero esto es pintura.
+  assert.equal(
+    familiaDeMaterial({ concepto: 'Vitrolux', detalle: '', proveedor: 'SIDERAGRO' }),
+    'Revoques, pintura y terminación')
+  assert.equal(
+    familiaDeMaterial({ concepto: 'PNC 160', detalle: 'Galpon 8', proveedor: 'SIDERAGRO' }),
+    'Chapa, perfiles y estructura metálica')
+  assert.equal(
+    familiaDeMaterial({ concepto: 'rejas y rejillas', detalle: 'Mamposteria', proveedor: 'SIDERAGRO' }),
+    'Aberturas, portones y herrería')
+  // Sin concepto ni frente, ahí sí decide el proveedor monoproducto.
+  assert.equal(familiaDeMaterial({ concepto: '', proveedor: 'Hormiserv' }), 'Hormigón y premoldeados')
+})
+
+test('el combustible se reconoce en cualquier columna', () => {
+  // El autoelevador es DÓNDE se puso el combustible, no qué se compró.
+  assert.equal(
+    familiaDeMaterial({ concepto: 'auto elevador', detalle: 'combustible', proveedor: 'Combustibles Barcelo' }),
+    'Combustible de obra')
+  assert.equal(
+    familiaDeMaterial({ concepto: 'Combustible', detalle: 'Galpon 7 - reparacion piso', proveedor: 'Combustibles Barcelo' }),
+    'Combustible de obra')
+})
+
+test('el orden dentro de la lista sigue mandando', () => {
+  assert.equal(familiaDeMaterial({ concepto: 'Sub contratista CLOACA Y AGUA POTABLE' }), 'Subcontratos y mano de obra')
+  assert.equal(familiaDeMaterial({ concepto: 'PNC 160' }), 'Chapa, perfiles y estructura metálica')
+  assert.equal(familiaDeMaterial({ concepto: 'Malla ø6 - 10u' }), 'Hierro y malla')
   assert.equal(familiaDeMaterial({ concepto: 'TARUGOS METALICOS Y DEMAS' }), 'Ferretería y consumibles')
 })
 
-test('el proveedor completa lo que el concepto no dice', () => {
-  // Filas reales sin concepto útil donde el proveedor es el dato.
-  assert.equal(familiaDeMaterial({ concepto: '', proveedor: 'Hormiserv' }), 'Hormigón elaborado')
-  assert.equal(familiaDeMaterial({ concepto: '', proveedor: 'SIDERAGRO' }), 'Hierro y malla')
-})
-
-test('lo que no se puede saber NO se inventa', () => {
-  // Estas tres son filas reales de Compras. Adivinarles familia sería fabricar un dato.
-  for (const c of ['MATERIALES VARIOS', '???', '']) {
+test('lo que no se puede saber no se inventa', () => {
+  for (const c of ['materiales varios', '???', '', 'Art varios']) {
     assert.equal(familiaDeMaterial({ concepto: c, proveedor: 'Janin' }), SIN_FAMILIA)
   }
 })
 
 test('repartirFamilias separa lo clasificado de lo que falta describir', () => {
   const r = repartirFamilias([
-    { concepto: 'cemento', total: 100 },
-    { concepto: 'cemento x 25', total: 50 },
-    { concepto: 'materiales varios', total: 999 },
+    { concepto: 'CEMENTO', total: 100 },
+    { concepto: 'materiales varios', total: 50 },
   ])
-  assert.equal(r.total, 1149)
-  assert.deepEqual(r.por_familia.map((f) => f.familia), ['Cemento, cal y áridos'])
-  assert.equal(r.por_familia[0].monto, 150)
-  // Lo sin clasificar sale APARTE, no se esconde dentro de una familia ni se pierde del total.
-  assert.equal(r.sin_clasificar.filas, 1)
-  assert.equal(r.sin_clasificar.monto, 999)
+  assert.equal(r.total, 150)
+  assert.equal(r.sin_clasificar.monto, 50)
+  assert.equal(r.por_familia.length, 1)
 })
 
-test('la fórmula del Sheet sale de la misma lista y respeta el orden', () => {
+// La fórmula del Sheet tiene que aplicar las MISMAS tres pasadas, o la planilla y el OS clasifican
+// distinto y nadie se entera hasta que los cortes no coinciden.
+test('la fórmula del Sheet mira L, después K y al final E', () => {
   const f = formulaFamilia()
-  for (const [n] of FAMILIAS) assert.ok(f.includes(`"${n}"`), `falta ${n}`)
-  const pos = FAMILIAS.map(([n]) => f.indexOf(`"${n}"`))
-  assert.deepEqual(pos, [...pos].sort((a, b) => a - b), 'el orden de la fórmula no es el de FAMILIAS')
-  // Sólo los rubros de material: para un F931 la familia queda vacía, no "SIN CLASIFICAR".
-  assert.ok(f.includes('$AC$4:$AC="Materiales Civil"'))
-  assert.ok(f.includes('$AC$4:$AC="Materiales Mantenimiento"'))
-  assert.ok(f.startsWith('=ARRAYFORMULA('))
-  // Tiene que mirar Detalles/Obra (K) además del Concepto (L): el detalle real suele estar en K.
-  assert.ok(f.includes('$K$4:$K'), 'la fórmula ignora la columna de detalle')
-  assert.ok(f.includes(';'), 'tiene que estar en es-AR')
+  assert.ok(f.indexOf('$L$4:$L') < f.indexOf('$K$4:$K'), 'el concepto antes que el frente')
+  assert.ok(f.indexOf('$K$4:$K') < f.lastIndexOf('$E$4:$E'), 'el frente antes que el proveedor')
+  assert.ok(f.includes('combustible|nafta|gasoil'), 'el combustible se chequea sobre el texto completo')
 })

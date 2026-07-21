@@ -67,8 +67,10 @@ function grilla(cargado, refs) {
     const f = filas.length + 1
     push([
       c.nombre,
-      previo(c.nombre, 'saldo'),
-      previo(c.nombre, 'fecha'),
+      // Una cuenta con fórmula NO se carga a mano: el OS la sabe calcular y pisarla sería perder
+      // el dato. Sólo las que el OS no puede saber quedan como celda de carga.
+      c.formula ?? previo(c.nombre, 'saldo'),
+      c.formula ? '=TODAY()' : previo(c.nombre, 'fecha'),
       // La antigüedad no es decorativa: un saldo de hace 20 días avisando que tiene 20 días vale
       // muchísimo más que el mismo saldo mudo. Arriba de una semana, avisa.
       `=IF(C${f}="";"⚠ sin cargar";IF(TODAY()-C${f}>7;"⚠ "&TEXT(TODAY()-C${f};"0")&" días";TEXT(TODAY()-C${f};"0")&" días"))`,
@@ -204,8 +206,12 @@ async function formatear(google, sheetId, g) {
   // LAS CELDAS DE CARGA EN AMARILLO. Es la diferencia más importante de la pestaña: lo que una
   // persona escribe tiene que verse distinto de lo que el sistema calcula, o nadie sabe qué puede
   // tocar sin romper nada.
-  fmt(r(g.d0 - 1, g.d1, 1, 3), 'userEnteredFormat.backgroundColor', { backgroundColor: AMARILLO })
-  fmt(r(g.d0 - 1, g.d1, 4, 6), 'userEnteredFormat.backgroundColor', { backgroundColor: AMARILLO })
+  // Sólo las cuentas SIN fórmula se pintan de amarillo: el amarillo significa "esto lo cargás vos".
+  CUENTAS.forEach((c, i) => {
+    if (c.formula) return
+    fmt(r(g.d0 - 1 + i, g.d0 + i, 1, 3), 'userEnteredFormat.backgroundColor', { backgroundColor: AMARILLO })
+    fmt(r(g.d0 - 1 + i, g.d0 + i, 4, 6), 'userEnteredFormat.backgroundColor', { backgroundColor: AMARILLO })
+  })
   fmt(r(g.fLim - 1, g.fLim, 1, 2), 'userEnteredFormat.backgroundColor', { backgroundColor: AMARILLO })
   fmt(r(g.fTotal - 1, g.fTotal), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
     { textFormat: { bold: true }, backgroundColor: GRIS })

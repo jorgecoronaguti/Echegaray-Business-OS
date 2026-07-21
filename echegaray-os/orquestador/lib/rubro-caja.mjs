@@ -121,10 +121,15 @@ export const REGLAS = [
     sql: `(${ES('unidad', 'financiero')} or ${ES('cliente', 'credito prendario')} or ${ES('proveedor', 'banco')})`,
   },
   {
+    // SÓLO SI NO ES DE UNA OBRA. Medido el 20/07: $4.186.497 de baños químicos, agua y servicio de
+    // higiene y seguridad facturados a LA ESTRELLA y San Francisco caían acá y salían del costo de
+    // esas obras. Peor todavía para proyectar: un baño de obra NO es un gasto fijo mensual — se
+    // termina cuando termina la obra, y proyectarlo como recurrente inventa caja que no se va a usar.
+    // Un servicio recurrente lo es cuando lo paga la estructura, no cuando lo consume una obra.
     rubro: 'Servicios recurrentes', detalle: 'Recurrentes', paga: 'compras',
-    js: (r) => RECURRENTES.includes(norm(r.proveedor)),
-    sheet: `(REGEXMATCH(LOWER($E$4:$E&"");"^(${RECURRENTES.join('|').replace(/\./g, '\\.')})$"))`,
-    sql: UNO_DE('proveedor', RECURRENTES.map((r) => r.replace(/\./g, '\\.'))),
+    js: (r) => RECURRENTES.includes(norm(r.proveedor)) && !['civil', 'mantenimiento'].includes(norm(r.unidad)),
+    sheet: `(REGEXMATCH(LOWER($E$4:$E&"");"^(${RECURRENTES.join('|').replace(/\./g, '\\.')})$")*(LOWER($I$4:$I)<>"civil")*(LOWER($I$4:$I)<>"mantenimiento")>0)`,
+    sql: `(${UNO_DE('proveedor', RECURRENTES.map((r) => r.replace(/\./g, '\\.')))} and ${L(P.unidad)} not in ('civil', 'mantenimiento'))`,
   },
   {
     rubro: 'Materiales Civil', detalle: 'Materiales', paga: 'compras',

@@ -37,6 +37,14 @@ const G = `$G$${F0}:$G$${F1}`   // Obra / Cliente
 const M = `$M$${F0}:$M$${F1}`   // TOTAL bruto
 const Q = `$Q$${F0}:$Q$${F1}`   // Fecha de cobro
 const O = `$O$${F0}:$O$${F1}`   // Estado
+// LO QUE DISTINGUE UN COBRO DE OTRO cuando el cliente, el monto y la fecha coinciden.
+// Se agregaron el 20/07 porque el detector marcó como duplicadas las filas 39 y 40 —dos cobros de
+// $10.000.000 a LA ESTRELLA el mismo día— y el dueño avisó que son DOS CONCEPTOS DISTINTOS. Tenía
+// razón: yo miraba tres columnas de una planilla que tiene diez. Un cobro se identifica por su
+// comprobante, su orden de compra o su concepto; si alguno difiere, son cobros distintos y punto.
+const E = `$E$${F0}:$E$${F1}`   // N° Comprobante
+const H = `$H$${F0}:$H$${F1}`   // Orden de compra
+const I = `$I$${F0}:$I$${F1}`   // Concepto
 // DÓNDE VAN LAS COLUMNAS, Y POR QUÉ ESTÁS LEYENDO ESTO. La primera versión de este script escribió
 // en X y Z:AB porque las vi vacías en las filas de abajo. NO estaban vacías: X, Y, Z y AA son el
 // desglose de retenciones de las facturas de ARCOR, y la columna L es su SUMA — así que al pisarlas
@@ -56,9 +64,10 @@ const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26
 // Una cuota legítima NO cae acá: comparte cliente y monto pero cobra en fechas distintas.
 const flagPorFila = `=ARRAYFORMULA(IF(${M}=0;"";
   IF((COUNTIF(${A};${A})>1)*(${A}<>"")>0;"⚠ ID repetido — ¿es la misma operación cargada dos veces?";
-  IF(COUNTIFS(${G};${G};${M};${M};${Q};${Q})>1;"⚠ Mismo cliente, monto y fecha de cobro — ¿quedó viva una proyección ya facturada?";
+  IF(COUNTIFS(${G};${G};${M};${M};${Q};${Q};${E};${E};${H};${H};${I};${I})>1;"⚠ Igual en TODO: cliente, monto, fecha, comprobante, orden de compra y concepto. Acá sí hay que revisar si se cargó dos veces.";
+  IF((COUNTIFS(${G};${G};${M};${M};${Q};${Q})>1)*(${E}="")*(${H}="")*(${I}="")>0;"Otro cobro del mismo cliente, monto y día. No se puede distinguir de su par porque los dos están SIN concepto — completalo y esta marca se va sola.";
   IF((${O}="Proyectado")*(COUNTIFS(${G};${G};${M};${M})>1)>0;"⚠ Proyección con gemela ya facturada por el mismo monto — dar de baja o queda contada dos veces";
-  "")))))`.replace(/\s*\n\s*/g, '')
+  ""))))))`.replace(/\s*\n\s*/g, '')
 
 /** La firma que identifica el bloque como escrito por el OS. Permite rehacerlo sin pisar nada ajeno. */
 const FIRMA = 'CONTROL DE COBRANZAS'
@@ -79,8 +88,9 @@ function bloque() {
     L('⚠ POSIBLES DUPLICADOS'),
     L('Filas con ID repetido', `=SUMPRODUCT((COUNTIF(${A};${A})>1)*(${A}<>"")*(${M}<>0))`, 'Ver la marca en la columna X.'),
     L('Proyecciones con gemela ya facturada', `=SUMPRODUCT((${O}="Proyectado")*(COUNTIFS(${G};${G};${M};${M})>1)*(${M}<>0))`, 'La proyección quedó viva después de emitir la factura. Es el caso de MESSINAS filas 55/56.'),
-    L('Filas con mismo cliente, monto y fecha', `=SUMPRODUCT((COUNTIFS(${G};${G};${M};${M};${Q};${Q})>1)*(${M}<>0))`, 'Una cuota legítima NO cae acá: cobra en otra fecha.'),
-    L('Plata en juego si son duplicados', `=SUMPRODUCT(((COUNTIF(${A};${A})>1)*(${A}<>"")+(COUNTIFS(${G};${G};${M};${M};${Q};${Q})>1)>0)*IF(ISNUMBER(${M});${M};0))/2`, 'Es la mitad del monto marcado: de cada par sobraría uno. Estimación, no un dato — sólo quien conoce el cobro sabe cuál sobra.'),
+    L('Filas idénticas en TODO (cliente, monto, fecha, comprobante, OC y concepto)', `=SUMPRODUCT((COUNTIFS(${G};${G};${M};${M};${Q};${Q};${E};${E};${H};${H};${I};${I})>1)*(${M}<>0))`, 'Esto sí amerita revisar si se cargó dos veces. Una cuota legítima NO cae acá: cobra en otra fecha.'),
+    L('Filas que no se pueden distinguir (mismo cliente, monto y día, SIN concepto)', `=SUMPRODUCT((COUNTIFS(${G};${G};${M};${M};${Q};${Q})>1)*(${E}="")*(${H}="")*(${I}="")*(${M}<>0))`, 'NO son duplicados: son cobros a los que les falta el dato que los diferencia. Se arregla completando el concepto, no borrando filas.'),
+    L('Plata en juego si esas filas idénticas fueran duplicados', `=SUMPRODUCT(((COUNTIF(${A};${A})>1)*(${A}<>"")+(COUNTIFS(${G};${G};${M};${M};${Q};${Q};${E};${E};${H};${H};${I};${I})>1)>0)*IF(ISNUMBER(${M});${M};0))/2`, 'Es la mitad del monto marcado: de cada par sobraría uno. Estimación, no un dato — sólo quien conoce el cobro sabe cuál sobra.'),
     L(''),
     L('Facturado y todavía no cobrado', `=SUMPRODUCT((${O}="Facturado")*IF(ISNUMBER(${M});${M};0))`, 'Plata emitida que la empresa está financiando.'),
     L('Proyectado (todavía ni facturado)', `=SUMPRODUCT((${O}="Proyectado")*IF(ISNUMBER(${M});${M};0))`, 'ESTIMACIÓN. Si una proyección ya se facturó, hay que darla de baja o queda contada dos veces.'),
