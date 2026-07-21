@@ -565,10 +565,19 @@ function grilla(cargado, refs) {
   const fEfCobrado = push([`Cobrado en EFECTIVO entre el ${desdeB} y el ${hastaB} (Cobranzas)`, '', '', '',
     `=SUMIFS(Cobranzas!$M$5:$M$400;Cobranzas!$N$5:$N$400;"Efectivo";Cobranzas!$O$5:$O$400;"Cobrado";Cobranzas!$Q$5:$Q$400;">="&${dateF(desdeB)};Cobranzas!$Q$5:$Q$400;"<="&${dateF(hastaB)})`, '', '', '',
     'Cobranzas: forma de cobro "Efectivo" Y estado "Cobrado", por FECHA DE COBRO, en la ventana del extracto. Un proyectado no es plata que esté.'])
-  push(['  · de eso, cargado DOS VECES con el mismo ID', '', '', '',
+  const fDup = push(['  · de eso, cargado DOS VECES con el mismo ID', '', '', '',
     `=SUMPRODUCT((Cobranzas!$N$5:$N$400="Efectivo")*(Cobranzas!$O$5:$O$400="Cobrado")*(Cobranzas!$Q$5:$Q$400>=${dateF(desdeB)})*(Cobranzas!$Q$5:$Q$400<=${dateF(hastaB)})*(${INDIST_COB})*IF(ISNUMBER(Cobranzas!$M$5:$M$400);Cobranzas!$M$5:$M$400;0))/2`,
     '', '', '',
     '⚠ Mismo ID y mismo importe más de una vez. Caso real del 17/07: San Francisco pagó $16.200.000 en efectivo y quedó cargado dos veces —una al cobrarlo y otra al depositarlo—. Un depósito NO es un cobro: mover plata de la caja al banco no genera ingreso. Se divide por dos porque las dos filas del par suman.'])
+  // DE QUÉ COBROS SE COMPONE EL EFECTIVO, uno por uno. El renglón de abajo acusa $15,9M sin
+  // explicar; un total no dice de quién. Al 21/07 los cuatro cobros en efectivo son del MISMO
+  // cliente —San Francisco— y eso cambia la lectura: no es plata dispersa, es un solo flujo que
+  // entró en efectivo y no llegó al banco. Sale de Cobranzas por fórmula, no pega ningún número.
+  const CONEF = `(Cobranzas!$N$5:$N$400="Efectivo")*(Cobranzas!$O$5:$O$400="Cobrado")*(Cobranzas!$Q$5:$Q$400>=${dateF(desdeB)})*(Cobranzas!$Q$5:$Q$400<=${dateF(hastaB)})`
+  push(['  · cuáles fueron', '', '', '',
+    `=IFERROR(TEXTJOIN("   ·   ";1;ARRAYFORMULA(IF(${CONEF};TEXT(Cobranzas!$Q$5:$Q$400;"dd/mm")&"  "&IF(Cobranzas!$G$5:$G$400="";"";Cobranzas!$G$5:$G$400&"  ")&TEXT(Cobranzas!$M$5:$M$400;"$#,##0");"")));"")`,
+    '', '', '',
+    'Cada cobro en efectivo de la ventana, con fecha y cliente. Sale de la misma condición que el total. Si dos tienen el mismo importe, fecha y cliente, ese es el duplicado que descuenta el renglón de arriba.'])
   // ERA EL ÚLTIMO NÚMERO CALCULADO Y PEGADO DE ESTA PESTAÑA. Ahora sale del extracto que vive en
   // _BANCO_RAW: mismo criterio que usaba el código —los créditos cuyo concepto dice "depósito de
   // efectivo"—, pero escrito donde cualquiera lo puede abrir y verificar.
@@ -593,7 +602,7 @@ function grilla(cargado, refs) {
   const fCajaFisica = push(['Declarado hoy en caja física', '', '', '', `=${C_PESOS}${d0}`, '', '', '',
     'La primera fila del bloque 1: la carga a mano.'])
   const fSinExpl = push(['⇒ EFECTIVO SIN EXPLICAR', '', '', '',
-    `=${C_PESOS}${fEfCobrado}-${C_PESOS}${fEfCobrado + 1}-${C_PESOS}${fEfDepos}-${C_PESOS}${fCajaFisica}`, '', '', '',
+    `=${C_PESOS}${fEfCobrado}-${C_PESOS}${fDup}-${C_PESOS}${fEfDepos}-${C_PESOS}${fCajaFisica}`, '', '', '',
     '⚠ Es el efectivo cobrado en la ventana que no se depositó NI aparece en la caja física. Puede tener explicación —un depósito posterior al corte, un pago a proveedor hecho en efectivo sin pasar por el banco— pero no puede quedar sin mirar. Al 21/07: dos filas de Cobranzas por $16.200.000 cada una, el mismo día y del mismo cliente, que el detector de duplicados ya venía marcando.'])
   push()
 
