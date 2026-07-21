@@ -33,8 +33,15 @@ const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1
 const SOLO = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : null
 const DRY = process.argv.includes('--dry')
 
-/** Hasta acá se puede ensanchar una columna sin romper la tabla. Más que esto, va a nota. */
-const ANCHO_MAX = 300
+/**
+ * Hasta acá se puede ensanchar una columna sin romper la tabla. Más que esto, va a nota.
+ *
+ * SUBIÓ DE 300 A 344 (21/07): cinco rótulos de línea del cash flow —"Intereses del acuerdo en
+ * descubierto…", 50 caracteres— necesitaban 301px y quedaban cortados por UN píxel. Un tope redondo
+ * no es un criterio: 344 es lo que mide la primera columna cuando lleva el nombre de una línea, que
+ * es el texto más largo que una tabla de este archivo pone en su columna de rótulos.
+ */
+const ANCHO_MAX = 344
 /** Un texto más largo que esto es un párrafo: no se arregla con ancho. */
 const ES_PARRAFO = 64
 

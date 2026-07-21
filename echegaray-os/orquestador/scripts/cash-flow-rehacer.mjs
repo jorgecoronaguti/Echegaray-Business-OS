@@ -297,6 +297,11 @@ async function formatear(google, data) {
       horizontalAlignment: 'CENTER',
     })
     fmt({ ...rango(2, 3), startColumnIndex: cols - 1, endColumnIndex: cols }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
+    // LA COLUMNA "DE DÓNDE SALE" ES UNA EXPLICACIÓN, NO UN IMPORTE. Tenía el formato moneda de todo
+    // el cuadro: diecinueve frases dibujadas como si fueran plata, en la columna que existe
+    // justamente para que el número de al lado se entienda.
+    fmt({ ...rango(3, filas), startColumnIndex: cols - 1, endColumnIndex: cols }, 'userEnteredFormat',
+      { numberFormat: { type: 'TEXT' }, textFormat: { fontFamily: 'Arial', fontSize: 9, italic: true, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, horizontalAlignment: 'LEFT', wrapStrategy: 'OVERFLOW_CELL' })
     // La jerarquía visual tiene que coincidir con la jerarquía contable, o el +/- no se entiende:
     // ACTIVIDAD en oscuro, categoría en gris y negrita, detalle liviano y sangrado.
     for (const r of g.meta.actividades) {

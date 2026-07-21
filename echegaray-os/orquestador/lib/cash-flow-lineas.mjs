@@ -264,11 +264,12 @@ export function tablasDeProyeccion() {
 
 /** Los rubros cuya proyección sale de su propia pestaña, para poder explicarlo en el Sheet. PURA. */
 export function origenProyeccion(rubro) {
-  if (rubro === LINEA_CHEQUES.rubro) return 'no se proyecta: son cheques y tarjeta YA emitidos, con fecha de pago cierta'
+  // Cortas a propósito: entran unos 48 caracteres en esta columna. El detalle va en la nota.
+  if (rubro === LINEA_CHEQUES.rubro) return 'cheques y tarjeta YA emitidos: fecha cierta'
   const p = PROYECCION[rubro]
-  if (p === null) return 'sus quincenas futuras ya vienen de Jornales por Quincena'
-  if (p?.tipo === 'tabla') return `la proyección la calcula la pestaña ${p.pestaña}`
-  return 'promedio de los últimos 3 meses cerrados, ajustado por inflación (Parámetros)'
+  if (p === null) return 'sus quincenas vienen de Jornales por Quincena'
+  if (p?.tipo === 'tabla') return `la calcula la pestaña ${p.pestaña}`
+  return 'promedio de 3 meses cerrados + inflación'
 }
 
 /**
@@ -439,7 +440,7 @@ export const CUADRO = [
         lineas: [
           { nombre: 'Materiales e insumos de obra civil', rubro: 'Materiales Civil' },
           { nombre: 'Materiales de mantenimiento', rubro: 'Materiales Mantenimiento' },
-          { nombre: 'Pagos con cheque y tarjeta sin factura registrada', cheques: true, detalle: 'Cheques Emitidos y Tarjeta de Credito' },
+          { nombre: 'Cheques y tarjeta sin factura cargada', cheques: true, detalle: 'Cheques Emitidos y Tarjeta de Credito' },
         ],
       },
       {
@@ -590,11 +591,22 @@ export function formulaLineaMes(l, colMes, colTabla, filaCab, filasTabla = {}) {
   return `=IF(EOMONTH(${mes};0)<=EOMONTH(TODAY();0);${real};MAX(${real};${proy}))`
 }
 
-/** De dónde sale la proyección de una línea, para explicarlo en el Sheet. PURA. */
+/**
+ * De dónde sale la proyección de una línea, para explicarlo en el Sheet. PURA.
+ *
+ * ═══ CORTAS A PROPÓSITO ═══
+ *
+ * Estas frases viven en una columna de 276px, donde entran unos 48 caracteres. Las que había medían
+ * 90 y se cortaban a mitad de palabra en diecisiete filas: la explicación de por qué un número es lo
+ * que es quedaba ilegible justo en el cuadro que se mira para decidir.
+ *
+ * La regla que se aplicó: la celda dice QUÉ, en una línea que entra; el POR QUÉ completo vive en la
+ * nota de la celda, que la pone reparar-textos.mjs. Nada se perdió — cambió de lugar.
+ */
 export function origenLinea(l) {
   if (l.nota) return l.nota
-  if (l.cobranzas) return 'cobros ya facturados con fecha de cobro — no se proyecta facturación que todavía no existe'
-  if (l.cheques) return 'no se proyecta: son cheques y tarjeta YA emitidos, con fecha de débito cierta'
-  if (l.soloSub) return 'no se proyecta: un bien de uso es una decisión, no un ritmo mensual'
+  if (l.cobranzas) return 'cobros ya facturados, con su fecha de cobro'
+  if (l.cheques) return 'cheques y tarjeta YA emitidos: fecha cierta'
+  if (l.soloSub) return 'no se proyecta: es una decisión, no un ritmo'
   return origenProyeccion(l.rubro)
 }

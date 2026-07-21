@@ -118,7 +118,7 @@ function grilla({ enCompras, cheques, tarjeta }) {
   // Los #{n} son números de fila RELATIVOS al bloque: el bloque no sabe todavía en qué fila del
   // Cash Flow va a caer. Se reemplazan por la fila real recién cuando se sabe. Escribir la fila
   // directo daba una referencia que apuntaba al vacío en cuanto el cuadro crecía una línea.
-  push(['⇒ FALTA CARGAR, CONFIRMADO', `=B#{${fFalta - 8}}+B#{${fFalta - 3}}`, `=C#{${fFalta - 8}}+C#{${fFalta - 3}}`, '', '', 'El cash flow subestima los egresos AL MENOS en esto. Es la misma plata que muestra la línea "Pagos con cheque y tarjeta sin factura registrada" del cuadro de arriba.'])
+  push(['⇒ FALTA CARGAR, CONFIRMADO', `=B#{${fFalta - 8}}+B#{${fFalta - 3}}`, `=C#{${fFalta - 8}}+C#{${fFalta - 3}}`, '', '', 'El cash flow subestima los egresos AL MENOS en esto. Es la misma plata que muestra la línea "Cheques y tarjeta sin factura cargada" del cuadro de arriba.'])
   push(['⇒ Sin poder verificar (falta el N° de comprobante)', `=B#{${fFalta - 7}}+B#{${fFalta - 2}}`, `=C#{${fFalta - 7}}+C#{${fFalta - 2}}`, '', '', 'No es un faltante: es una ignorancia. Se resuelve cargando el número en Cheques y Tarjeta.'])
   push()
   push(['CHEQUES A CUBRIR — los que todavía no se debitaron'])
