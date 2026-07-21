@@ -355,15 +355,22 @@ function grilla(cargado, refs) {
   const hastaB = BANCO.MOVIMIENTOS[BANCO.MOVIMIENTOS.length - 1].fecha
   const dParts = (f) => f.split('-').map(Number)
   const dateF = (f) => { const [a, m, d] = dParts(f); return `DATE(${a};${m};${d})` }
+  // SÓLO LO "COBRADO". Un cobro en estado "Proyectado" NO es efectivo en la caja: todavía no
+  // ocurrió. La primera versión de este control los sumaba y contaba $15.000.000 de LA ESTRELLA que
+  // nadie había recibido — inflaba el faltante con plata que no faltaba.
   const fEfCobrado = push([`Cobrado en EFECTIVO entre el ${desdeB} y el ${hastaB} (Cobranzas)`, '', '', '',
-    `=SUMIFS(Cobranzas!$M$5:$M$400;Cobranzas!$N$5:$N$400;"Efectivo";Cobranzas!$Q$5:$Q$400;">="&${dateF(desdeB)};Cobranzas!$Q$5:$Q$400;"<="&${dateF(hastaB)})`, '', '', '',
-    'Cobranzas: forma de cobro "Efectivo", por FECHA DE COBRO, acotado a la ventana que cubre el extracto.'])
+    `=SUMIFS(Cobranzas!$M$5:$M$400;Cobranzas!$N$5:$N$400;"Efectivo";Cobranzas!$O$5:$O$400;"Cobrado";Cobranzas!$Q$5:$Q$400;">="&${dateF(desdeB)};Cobranzas!$Q$5:$Q$400;"<="&${dateF(hastaB)})`, '', '', '',
+    'Cobranzas: forma de cobro "Efectivo" Y estado "Cobrado", por FECHA DE COBRO, en la ventana del extracto. Un proyectado no es plata que esté.'])
+  push(['  · de eso, cargado DOS VECES con el mismo ID', '', '', '',
+    `=SUMPRODUCT((Cobranzas!$N$5:$N$400="Efectivo")*(Cobranzas!$O$5:$O$400="Cobrado")*(Cobranzas!$Q$5:$Q$400>=${dateF(desdeB)})*(Cobranzas!$Q$5:$Q$400<=${dateF(hastaB)})*(COUNTIFS(Cobranzas!$A$5:$A$400;Cobranzas!$A$5:$A$400;Cobranzas!$M$5:$M$400;Cobranzas!$M$5:$M$400)>1)*IF(ISNUMBER(Cobranzas!$M$5:$M$400);Cobranzas!$M$5:$M$400;0))/2`,
+    '', '', '',
+    '⚠ Mismo ID y mismo importe más de una vez. Caso real del 17/07: San Francisco pagó $16.200.000 en efectivo y quedó cargado dos veces —una al cobrarlo y otra al depositarlo—. Un depósito NO es un cobro: mover plata de la caja al banco no genera ingreso. Se divide por dos porque las dos filas del par suman.'])
   const fEfDepos = push(['Depositado en efectivo en esa misma ventana', '', '', '', BANCO.depositosEfectivo(), '', '', '',
     `Extracto del Santander ${BANCO.CORTE}. Los dos números miran los mismos días: comparar un año contra dos semanas no mide nada.`])
   push(['Declarado hoy en caja física', '', '', '', `=${C_PESOS}${d0}`, '', '', '',
     'La primera fila del bloque 1: la carga a mano.'])
   push(['⇒ EFECTIVO SIN EXPLICAR', '', '', '',
-    `=${C_PESOS}${fEfCobrado}-${C_PESOS}${fEfDepos}-${C_PESOS}${fEfCobrado + 2}`, '', '', '',
+    `=${C_PESOS}${fEfCobrado}-${C_PESOS}${fEfCobrado + 1}-${C_PESOS}${fEfDepos}-${C_PESOS}${fEfCobrado + 3}`, '', '', '',
     '⚠ Es el efectivo cobrado en la ventana que no se depositó NI aparece en la caja física. Puede tener explicación —un depósito posterior al corte, un pago a proveedor hecho en efectivo sin pasar por el banco— pero no puede quedar sin mirar. Al 21/07: dos filas de Cobranzas por $16.200.000 cada una, el mismo día y del mismo cliente, que el detector de duplicados ya venía marcando.'])
   push()
 
