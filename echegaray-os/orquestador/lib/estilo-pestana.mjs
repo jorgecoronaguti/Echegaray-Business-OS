@@ -300,5 +300,25 @@ export function auditar(f, { congeladas = 3 } = {}) {
   if ((f.congeladas?.filas ?? 0) !== congeladas) {
     desvios.push(`tiene ${f.congeladas?.filas ?? 0} fila(s) congelada(s) y el estándar son ${congeladas}`)
   }
+
+  // ── LA TIPOGRAFÍA DE TODAS LAS CELDAS, NO SÓLO LA DEL TÍTULO ────────────────────────────────
+  //
+  // POR QUÉ (21/07). Este auditor miraba la fila 1 y las filas congeladas, y con eso daba una
+  // pestaña por "en estándar". Ocho pestañas pasaban el control con 1.593 celdas en Calibri adentro
+  // —651 en Proveedores, 533 en Materiales—, y como pasaban el control, el unificador las salteaba
+  // sin tocarlas. Un auditor que mira una muestra y declara sano el conjunto es peor que no tenerlo.
+  //
+  // La causa de fondo de esas celdas está en conFuente(): un textFormat que no nombra la tipografía
+  // hace que Sheets la reemplace por la de la hoja. Esto es lo que lo hace VISIBLE.
+  let fuera = 0
+  for (const fila of f.filas ?? []) {
+    for (const celda of fila ?? []) {
+      if (!String(celda?.valor ?? '').trim()) continue
+      const ff = celda?.formato?.textFormat?.fontFamily
+      if (ff && ff !== FUENTE && ff !== FUENTE_NUM) fuera++
+    }
+  }
+  if (fuera) desvios.push(`${fuera} celda(s) fuera de ${FUENTE}`)
+
   return { ok: desvios.length === 0, desvios }
 }
