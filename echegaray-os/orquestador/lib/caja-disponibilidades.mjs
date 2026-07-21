@@ -112,7 +112,11 @@ export const CUENTAS = [
     // sólo lo sabe el banco. La fórmula vieja quedó como CONTROL, para que la diferencia se vea.
     origenSugerido: 'Santander · ECHEQs en custodia',
     banco: 'cartera',
-    control: '=SUMPRODUCT((Cobranzas!$N$5:$N$200="Echeq")*(Cobranzas!$Q$5:$Q$200>TODAY())*IF(ISNUMBER(Cobranzas!$M$5:$M$200);Cobranzas!$M$5:$M$200;0))',
+    // El tope es 400, el mismo que el resto del archivo. Convivían tres (200, 300 y 400) sobre la
+    // MISMA pestaña: el control de acá miraba hasta la 200 y la línea que lo compara hasta la 400,
+    // así que el día que Cobranzas pasara esa fila la "diferencia contra el banco" iba a acusar un
+    // desvío que no existe.
+    control: '=SUMPRODUCT((Cobranzas!$N$5:$N$400="Echeq")*(Cobranzas!$Q$5:$Q$400>TODAY())*IF(ISNUMBER(Cobranzas!$M$5:$M$400);Cobranzas!$M$5:$M$400;0))',
     // El dueño (21/07): "quiero un agrupar +/- con la información de esos cheques". Un total de
     // $30.000.000 no se puede verificar ni gestionar: hay que saber de quién es cada cheque y qué
     // día entra. El detalle se arma con REFERENCIAS a las filas de Cobranzas, no copiando importes.

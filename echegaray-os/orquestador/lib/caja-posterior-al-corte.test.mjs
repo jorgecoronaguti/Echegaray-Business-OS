@@ -70,3 +70,25 @@ test('las columnas de Cobranzas son las verificadas contra el encabezado real', 
     { total: 'M', forma: 'N', estado: 'O', fecha: 'Q' },
   )
 })
+
+// ═══ QUE NO VUELVAN A CONVIVIR TRES TOPES SOBRE LA MISMA PESTAÑA ═══
+//
+// El 21/07 había rangos de Cobranzas terminando en la fila 200, en la 300 y en la 400 según qué
+// script los escribiera. Cobranzas va por la 60: el día que pase la 200, las fórmulas viejas dejan
+// de contar las filas nuevas SIN dar error —el cuadro sigue cuadrando, con menos plata— y la
+// "diferencia contra el banco" acusa un desvío inventado. Este test lo hace medible.
+test('todas las referencias a Cobranzas del repo terminan en la misma fila', async () => {
+  const { readdir, readFile } = await import('node:fs/promises')
+  const dirs = ['orquestador/lib', 'orquestador/scripts']
+  const topes = new Map()
+  for (const d of dirs) {
+    for (const f of await readdir(d)) {
+      if (!f.endsWith('.mjs') || f.includes('.test.')) continue
+      const src = await readFile(`${d}/${f}`, 'utf8')
+      for (const m of src.matchAll(/Cobranzas!\$[A-Z]{1,2}\$\d{1,3}:\$[A-Z]{1,2}\$(\d{1,4})/g)) {
+        if (!topes.has(m[1])) topes.set(m[1], `${d}/${f}`)
+      }
+    }
+  }
+  assert.equal(topes.size, 1, `conviven ${topes.size} topes distintos: ${[...topes].map(([t, f]) => `${t} en ${f}`).join(' · ')}`)
+})

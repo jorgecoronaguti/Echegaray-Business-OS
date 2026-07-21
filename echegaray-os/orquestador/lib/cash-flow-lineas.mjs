@@ -308,16 +308,26 @@ export function formulaJornales(desde, hasta) {
  * estimación disponible de CUÁNDO entra la plata. Cash flow es percibido, nunca devengado.
  * @returns {string} fórmula es-AR
  */
-export const COL_VALOR_BANCO = '$BB$5:$BB$200'
+/**
+ * HASTA QUÉ FILA SE LEE COBRANZAS. Es 400 y no 200 desde el 21/07.
+ *
+ * El tope viejo era una bomba de tiempo callada: Cobranzas va por la fila 60 y el día que pasara la
+ * 200 los tres ingresos del cash flow habrían dejado de contar las filas nuevas sin dar un solo
+ * error — el cuadro seguiría cuadrando, con menos plata. El resto del archivo (CAJA, los controles
+ * de duplicados) ya leía hasta la 400; esto los pone a todos a mirar las mismas filas.
+ */
+export const FIN_COB = 400
+export const COL_VALOR_BANCO = `$BB$5:$BB$${FIN_COB}`
 export const MARCA_ENDOSADO = 'ENDOSADO'
 
 export function formulaCobranzas(tipo, desde, hasta) {
   const C = 'Cobranzas'
-  const fecha = `IF(ISNUMBER(${C}!$Q$5:$Q$200);${C}!$Q$5:$Q$200;IF(ISNUMBER(${C}!$P$5:$P$200);${C}!$P$5:$P$200;0))`
-  const monto = `IF(ISNUMBER(${C}!$M$5:$M$200);${C}!$M$5:$M$200;0)`
-  const uni = `LOWER(${C}!$F$5:$F$200)`
+  const F = FIN_COB
+  const fecha = `IF(ISNUMBER(${C}!$Q$5:$Q$${F});${C}!$Q$5:$Q$${F};IF(ISNUMBER(${C}!$P$5:$P$${F});${C}!$P$5:$P$${F};0))`
+  const monto = `IF(ISNUMBER(${C}!$M$5:$M$${F});${C}!$M$5:$M$${F};0)`
+  const uni = `LOWER(${C}!$F$5:$F$${F})`
   const filtro = tipo === 'otras'
-    ? `(${uni}<>"civil")*(${uni}<>"mantenimiento")*(${C}!$F$5:$F$200<>"")`
+    ? `(${uni}<>"civil")*(${uni}<>"mantenimiento")*(${C}!$F$5:$F$${F}<>"")`
     : `(${uni}="${tipo}")`
   // UN VALOR ENDOSADO NO VA A ENTRAR. El banco dice que dos echeq de LA ESTRELLA por $10.000.000
   // cada uno se entregaron a Alumetal para pagarle. Cobranzas los muestra con fecha de cobro 15/08 y

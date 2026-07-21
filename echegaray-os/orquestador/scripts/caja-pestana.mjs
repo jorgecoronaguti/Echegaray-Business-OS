@@ -237,6 +237,11 @@ function grilla(cargado, refs) {
       // Si la pestaña réplica todavía no existe, se cae al número: mejor un dato viejo declarado
       // que un #REF! que rompe el total y las dos pestañas de cash flow que lo leen.
       c.banco === 'saldoPesos' && refs.bancoRaw ? formulaUltimoSaldo(refs.bancoRaw)
+        // LA CARTERA SALE DE SU PROPIO DETALLE, no de un total calculado aparte. Eran dos números
+        // distintos —el total acá y los cheques uno por uno en el bloque 3— que salían del mismo
+        // lugar pero podían dejar de coincidir sin que nada avisara. Se resuelve abajo, cuando ya
+        // se sabe en qué filas quedó el detalle.
+        : c.banco === 'cartera' ? '@CARTERA'
         : c.banco ? saldoDeBanco(c) : (c.formula ?? previo(c.nombre, 'saldo')),
       // El tipo de cambio se muestra sólo si hay algo que convertir: una cotización sola al lado de
       // una celda vacía es ruido que se lee como si hubiera un saldo.
@@ -302,12 +307,14 @@ function grilla(cargado, refs) {
   if (ultima.detalle && ultima.detalle !== 'echeq_en_cartera') throw new Error('el detalle desplegable sólo está resuelto para los echeq en cartera')
   const fValores = d1
   const g0 = filas.length + 1
+  const cust0 = g0
   for (const e of BANCO.enCartera()) {
     const f = filas.length + 1
     push([`   ECHEQ ${e.numero} · ${e.emisor}`, 'ARS', e.importe, '', `=${C_IMP}${f}`, e.pago,
       `=IF(F${f}="";"";"entra en "&TEXT(F${f}-TODAY();"0")&" días")`,
       `${BANCO.ORIGEN} · estado EN CUSTODIA`, 'Réplica del banco'])
   }
+  const cust1 = filas.length
   // LOS QUE SALIERON DE LA CARTERA. No suman —por eso van con importe en blanco— pero tienen que
   // estar A LA VISTA: son los $20.000.000 que el cuadro creía tener y ya no tiene.
   for (const e of BANCO.endosados()) {
@@ -526,6 +533,9 @@ function grilla(cargado, refs) {
   const PANEL = {
     '@TOTAL': `=${C_PESOS}${fTotal}`, '@CHEQUES': `=${C_PESOS}${fCh}`, '@NETA': `=${C_PESOS}${fNeta}`, '@AIRE': `=${C_PESOS}${fAire}`,
     '@DIFECHEQ': `=${C_IMP}${gDif}`, '@DIFCONC': `=ABS(${C_PESOS}${fDifConc})`, '@SINEXPL': `=${C_PESOS}${fSinExpl}`,
+    // Si el banco no reporta ningún echeq en custodia, la cartera es cero y hay que decirlo con un
+    // cero: un rango vacío daría #REF! y un total en blanco se leería como "falta cargar".
+    '@CARTERA': cust1 >= cust0 ? `=SUM(${C_IMP}${cust0}:${C_IMP}${cust1})` : '0',
   }
   for (const f of filas) f.forEach((c, j) => { if (typeof c === 'string' && PANEL[c]) f[j] = PANEL[c] })
 

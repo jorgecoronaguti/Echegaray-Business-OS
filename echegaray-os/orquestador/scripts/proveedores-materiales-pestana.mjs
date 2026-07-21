@@ -466,7 +466,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
       // Igual que las compras: el importe sale del libro, no de un número calculado afuera. El
       // signo va en la fórmula porque una nota de crédito emitida también resta.
       arcaPorComprobanteVentas(`$C${filas.length + 1}`),
-      `=IF(COUNTIF(Cobranzas!$E$5:$E$300;"*"&$C${filas.length + 1}&"*")>0;"✓ sí";"⚠ NO está en Cobranzas")`, '', '', ''])
+      `=IF(COUNTIF(Cobranzas!$E$5:$E$400;"*"&$C${filas.length + 1}&"*")>0;"✓ sí";"⚠ NO está en Cobranzas")`, '', '', ''])
   }
   const emi1 = filas.length
   push(['TOTAL FACTURADO', '', '', '', `=SUM($E${emi0}:$E${emi1})`, '', '', '', ''])
