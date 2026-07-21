@@ -31,6 +31,7 @@
 
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { PASOS } from '../lib/flujo-caja-pasos.mjs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -38,24 +39,8 @@ const ejecutar = promisify(execFile)
 const AQUI = path.dirname(fileURLToPath(import.meta.url))
 const DRY = process.argv.includes('--dry')
 
-// El orden NO es cosmético: cada uno lee lo que escribió el anterior.
-const PASOS = [
-  ['rubro-caja-sheet.mjs', 'la columna "Rubro de caja" de Compras — de acá cuelga todo lo demás'],
-  // Recurrentes va ANTES del cash flow: el cuadro lee de ella su proyección y necesita que exista.
-  ['recurrentes-pestana.mjs', 'Recurrentes — servicios fijos, sin proyectar meses ya cerrados'],
-  ['cash-flow-rehacer.mjs', 'Cash Flow Semanal y Mensual'],
-  ['materiales-pestana.mjs', 'pestaña Materiales + columna de familia en Compras'],
-  ['estructura-pestana.mjs', 'pestaña Estructura con su proyección'],
-  ['impuestos-pestana.mjs', 'Impuestos y Financieros — IVA real de ARCA'],
-  ['cargas-planes.mjs', 'Cargas Sociales — planes de pago'],
-  ['cobranzas-control.mjs', 'Cobranzas — detector de duplicados'],
-  ['cheques-cobertura-sheet.mjs', 'Cash Flow Mensual — qué cheques y tarjeta faltan cargar en Compras'],
-  // Va última: ubica las líneas del Cash Flow por rótulo, así que necesita el cuadro ya escrito.
-  ['caja-pestana.mjs', 'CAJA — disponibilidades, cheques emitidos y margen de tarjeta'],
-  // El núcleo Postgres, para que la web y el chat vean lo mismo que la planilla y no un mes atrás.
-  ['sync-compras.mjs', 'núcleo: Compras → costos_obra'],
-  ['sync-caja-nucleo.mjs', 'núcleo: quincenas de jornales e instrumentos de pago'],
-]
+// La lista de pasos vive en la lib: el auditor de reglas de oro necesita leerla sin ejecutar
+// el agente entero (ver flujo-caja-pasos.mjs).
 
 /**
  * Los dos cash flow son pestañas COMPARTIDAS: el cuadro lo arma un script y el bloque de cheques lo

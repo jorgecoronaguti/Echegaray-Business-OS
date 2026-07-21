@@ -17,6 +17,7 @@ import {
 } from '../lib/cash-flow-lineas.mjs'
 import { REGLAS } from '../lib/rubro-caja.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
+import { ubicarCaja } from '../lib/caja-disponibilidades.mjs'
 
 /** En qué pestaña está el detalle de un rubro. Sale de REGLAS: una sola definición. */
 const detallePorRubro = (r) => REGLAS.find((x) => x.rubro === r)?.detalle ?? 'Compras'
@@ -354,12 +355,14 @@ async function main() {
   let refCajaFecha = null
   try {
     const tab = hallarPestana(await google.getSheetMeta(ID), 'Caja').title
-    const colA = await google.readSheetValues(ID, `${tab}!A1:A80`)
-    const i = colA.findIndex((f) => String(f?.[0] ?? '').trim().startsWith('TOTAL DISPONIBILIDADES'))
-    if (i >= 0) refCaja = `'${tab}'!$B$${i + 1}`
-    // La fecha del saldo más reciente: es la que decide en qué mes ancla el cuadro.
-    const j0 = colA.findIndex((f) => String(f?.[0] ?? '').trim() === 'Cuenta')
-    if (j0 >= 0 && i > j0) refCajaFecha = `MAX('${tab}'!$C$${j0 + 2}:$C$${i})`
+    // POR RÓTULO, no por letra de columna: la pestaña CAJA lleva dos monedas y el total se movió de
+    // la B a la E. Una referencia fija se rompe en silencio (ver ubicarCaja).
+    const u = ubicarCaja(await google.readSheetValues(ID, `${tab}!A1:I80`))
+    if (u) {
+      refCaja = `'${tab}'!$${u.colPesos}$${u.filaTotal}`
+      // La fecha del saldo más reciente: es la que decide en qué mes ancla el cuadro.
+      refCajaFecha = `MAX('${tab}'!$${u.colFecha}$${u.filaCab + 1}:$${u.colFecha}$${u.filaUltimaCuenta})`
+    }
   } catch { /* la pestaña puede no existir todavía */ }
   console.log(`Efectivo al inicio: ${refCaja ?? '⚠ sin pestaña de saldos'} · ancla en ${refCajaFecha ?? '(sin fecha)'}`)
 

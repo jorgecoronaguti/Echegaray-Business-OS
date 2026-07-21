@@ -98,6 +98,17 @@ export const USA = {
   },
 }
 
+/** En qué fila está el encabezado de cada pestaña. No es la 1 en ninguna de las grandes: arriba
+ *  tienen títulos y bandas de agrupación, y leer la fila 1 como encabezado daría columnas sin
+ *  rótulo y, por lo tanto, huecos falsos. */
+export const CABECERA = {
+  Compras: 3,
+  Cobranzas: 4,
+  'Cheques Emitidos': 1,
+  'Tarjeta de Credito': 2,
+  'Jornales por Quincena': 2,
+}
+
 /** Columnas que el OS escribe y por lo tanto no son un hueco aunque nadie las lea. */
 export const ESCRIBE_EL_OS = new Set(['Compras!AC', 'Compras!AD', 'Compras!AE', 'Compras!AF', 'Cheques Emitidos!M'])
 

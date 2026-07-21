@@ -964,6 +964,18 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       const s = (j.sheets || [])[0]
       return ((s?.data || [])[0]?.columnMetadata || []).map((c) => c.pixelSize)
     },
+    /**
+     * Los rangos con NOMBRE del archivo: [{ namedRangeId, name, range }].
+     *
+     * Hacen falta para que un concepto que se define en una pestaña y se usa en otra no dependa del
+     * número de fila. Las pestañas de este archivo las reescribe un agente cada 2 horas: una fórmula
+     * que apunta a 'CAJA'!$C$8 queda apuntando a otra cosa el día que el cuadro crece una fila, y no
+     * avisa. Un nombre sobrevive a la reescritura.
+     */
+    async getNamedRanges(fileId) {
+      const j = await apiGet(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?fields=namedRanges`)
+      return j.namedRanges || []
+    },
     /** Operaciones ESTRUCTURALES de un Sheet (insertar/borrar filas o columnas, formato)
      *  vía batchUpdate. `requests` = array de requests de la Sheets API. */
     async spreadsheetBatchUpdate(fileId, requests) {
