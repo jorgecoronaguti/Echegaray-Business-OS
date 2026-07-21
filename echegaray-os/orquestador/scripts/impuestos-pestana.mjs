@@ -177,7 +177,10 @@ function grilla(iva, planes, iibb, ret) {
     `=SUM(G${f0}:G${f1})`, '', '', 'La suma de "A PAGAR" es la caja que el IVA se lleva en el año.'])
   push()
   const ult = [...iva].reverse().find((m) => m.disponible)
-  push(['⚠ Saldo técnico a favor HOY', Math.round(ult?.saldo_queda ?? 0), '', '', '', '', '', '',
+  // EL SALDO A FAVOR ES LA ÚLTIMA FILA DEL CUADRO DE ARRIBA, no un número calculado aparte. Pegarlo
+  // significaba que el día que entrara una factura nueva el cuadro se movía y este número no.
+  const filaUlt = f0 + iva.findIndex((m) => m === ult)
+  push(['⚠ Saldo técnico a favor HOY', ult ? `=H${filaUlt}` : 0, '', '', '', '', '', '',
     'Plata de la empresa adelantada al fisco. Si crece mes a mes, hay que revisar las retenciones que sufre (Cobranzas columnas X a AA).'])
   push(['⚠ IVA pagado que figura en Compras', '=SUMIF(Compras!$AC$4:$AC;"Impuestos";Compras!$O$4:$O)', '', '', '', '', '', '', '',
     'Si esto da $0 y arriba hay meses "A PAGAR", el IVA se está pagando fuera del Sheet y el cash flow miente.'])
@@ -189,13 +192,19 @@ function grilla(iva, planes, iibb, ret) {
   push(['1 bis. RETENCIONES SUFRIDAS — impuesto que la empresa YA pagó por adelantado'])
   push(['Salen de Cobranzas, columnas X, Y y Z. La alícuota de cada una se verifica contra su régimen antes de computarla: los rótulos de dos de esas columnas se habían perdido y una retención imputada al impuesto equivocado es un crédito fiscal que no existe.'])
   push(['Régimen', 'Total retenido', '', 'Alícuota medida', '¿Se computa acá?', '', '', '', '', 'Origen'])
-  push(['IVA', Math.round(ret?.porRegimen?.iva ?? 0), '', '80,00% del IVA facturado', 'SÍ — resta del "A PAGAR" de arriba, mes a mes', '', '', '', '',
+  // LOS TRES TOTALES SON FÓRMULAS SOBRE COBRANZAS. Eran números calculados en JavaScript y pegados:
+  // se cargaba un cobro con retención y el cuadro seguía mostrando el total del día que corrió el
+  // script. La suma ignora el texto —hay filas con notas en esas columnas— y por eso va SUMPRODUCT
+  // con ISNUMBER en vez de SUM.
+  const retDe = (col) => `=SUMPRODUCT(IF(ISNUMBER(Cobranzas!$${col}$5:$${col}$400);Cobranzas!$${col}$5:$${col}$400;0))`
+  const fIva = filas.length + 1
+  push(['IVA', retDe('X'), '', '80,00% del IVA facturado', 'SÍ — resta del "A PAGAR" de arriba, mes a mes', '', '', '', '',
     'Cobranzas col. X · imputado por fecha de cobro'])
-  push(['Ganancias', Math.round(ret?.porRegimen?.ganancias ?? 0), '', '2,00% del neto', 'No: es pago a cuenta de Ganancias, que este cuadro todavía no lleva', '', '', '', '',
+  push(['Ganancias', retDe('Y'), '', '2,00% del neto', 'No: es pago a cuenta de Ganancias, que este cuadro todavía no lleva', '', '', '', '',
     'Cobranzas col. Y'])
-  push(['Ingresos Brutos', Math.round(ret?.porRegimen?.iibb ?? 0), '', '2,50% / 3,50% del neto', 'No: YA vienen en la DDJJ de Rentas del bloque 2 — computarlas acá sería contarlas dos veces', '', '', '', '',
+  push(['Ingresos Brutos', retDe('Z'), '', '2,50% / 3,50% del neto', 'No: YA vienen en la DDJJ de Rentas del bloque 2 — computarlas acá sería contarlas dos veces', '', '', '', '',
     'Cobranzas col. Z'])
-  push(['TOTAL RETENIDO', Math.round(ret?.total ?? 0), '', '', 'Plata de la empresa adelantada al fisco.', '', '', '', '', ''])
+  push(['TOTAL RETENIDO', `=SUM(B${fIva}:B${fIva + 2})`, '', '', 'Plata de la empresa adelantada al fisco.', '', '', '', '', ''])
   // LO QUE NO SE PROYECTA, Y POR QUÉ. Los meses futuros van con retención CERO: quién retiene
   // depende de qué cliente facture cada mes, y hoy sólo ARCOR lo hace. Proyectarla supondría una
   // mezcla de clientes que no está en ningún dato. La consecuencia se declara en vez de taparse.
