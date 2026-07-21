@@ -58,6 +58,7 @@ import { TASAS, CARGO_VERIFICADO, tasaDiaria, costoConImpuestos, interesDelPerio
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { CAJA as N_CAJA, publicar } from '../lib/rangos-nombrados.mjs'
 import { esIndistinguible } from '../lib/cobranzas-duplicado.mjs'
+import * as CONC from '../lib/conciliacion-por-naturaleza.mjs'
 import { formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte } from '../lib/caja-posterior-al-corte.mjs'
 
 // LA MISMA definición de "dos cobros que no se pueden distinguir" que usa el control de la pestaña
@@ -600,7 +601,40 @@ function grilla(cargado, refs) {
   // ── 0 · TIPO DE CAMBIO ──────────────────────────────────────────────────────────────────────────
   // Se define UNA sola vez y acá, que es donde se usa. Cualquier otra fórmula del archivo que
   // necesite convertir dólares referencia el rango con nombre, no esta celda por su fila.
-  push(['8 · TIPO DE CAMBIO — sólo se usa para valuar la cuenta en dólares'])
+  // ── 8 · QUÉ SALIÓ DEL BANCO Y DÓNDE ESTÁ REGISTRADO ────────────────────────────────────────────
+  //
+  // POR QUÉ EXISTE (21/07). El bloque 6 dejó el residuo en $13.420.991 "sin explicar", que es el
+  // único número de la conciliación que es un problema de verdad. Un residuo global no se puede
+  // investigar: hay que abrirlo por naturaleza y preguntarle a cada pestaña si tiene su parte.
+  //
+  // El extracto trae 65 egresos. Agrupados por lo que SON —no por el concepto literal, que el banco
+  // escribe de veinte maneras— quedan nueve grupos, y cada uno tiene una pestaña que debería
+  // explicarlo. DOS NO TIENEN NINGUNA: el impuesto al cheque y el costo del descubierto salen todos
+  // los meses y ningún cuadro del archivo los espera. Por eso la proyección muestra un saldo que la
+  // cuenta nunca llega a tener.
+  push(['8 · QUÉ SALIÓ DEL BANCO Y DÓNDE ESTÁ REGISTRADO'])
+  push(['Cada peso que salió de la cuenta tiene una pestaña que debería tenerlo. Acá se compara, grupo por grupo, lo que dice el extracto contra lo que dice esa pestaña en los MISMOS días. Una diferencia puede ser carga pendiente o un corte de fechas distinto; lo que no puede pasar es que nadie la mire.'])
+  push(['Qué salió', '', 'Según el banco', '', 'Según la pestaña', 'Diferencia', '', 'Qué pestaña lo tiene que tener'])
+  const n0 = filas.length + 1
+  for (const gr of CONC.GRUPOS) {
+    const f = filas.length + 1
+    const banco = `=${CONC.segunBanco(gr.naturaleza)}`
+    const pest = gr.formula ? `=${gr.formula(CONC.VENTANA.desde, CONC.VENTANA.hasta)}` : ''
+    // LA DIFERENCIA SÓLO SE CALCULA CUANDO HAY CON QUÉ COMPARAR. Un "0" donde no hay pestaña se
+    // leería como "cuadra", que es exactamente lo contrario de lo que pasa: no hay nada que cuadre.
+    const dif = gr.formula ? `=${C_PESOS}${f}-${C_IMP}${f}` : ''
+    push([gr.naturaleza, '', banco, '', pest, dif, '',
+      gr.pestana ? `${gr.pestana} — ${gr.nota}` : gr.nota])
+  }
+  const n1 = filas.length
+  push(['⇒ TOTAL QUE SALIÓ DE LA CUENTA', '', `=SUM(${C_IMP}${n0}:${C_IMP}${n1})`, '', '', '', '',
+    'Tiene que ser todo lo que el extracto muestra como salida. Si no coincide, hay un concepto que el clasificador no reconoce y esa plata no está en ninguna fila de arriba.'])
+  push(['⇒ Control: lo que el extracto dice que salió', '',
+    `=-SUMIFS(_BANCO_RAW!$C$4:$C;_BANCO_RAW!$E$4:$E;"sale")`, '', '', '', '',
+    'Los dos números tienen que ser iguales. Distintos = apareció un concepto nuevo en el banco sin grupo asignado.'])
+  push()
+
+  push(['9 · TIPO DE CAMBIO — sólo se usa para valuar la cuenta en dólares'])
   push(['Está al final a propósito: la empresa cobra, paga y decide en pesos. El dólar acá no es una posición, es una cuenta chica que hay que poder sumar al total — y para eso hace falta una cotización con origen.'])
   const cab0 = push(['Concepto', '', 'Cotización', '', '', 'Fecha', '', 'Origen del dato'])
   const fRef = push([TIPO_CAMBIO.referencia.nombre, '', TIPO_CAMBIO.referencia.formula, '', '', '=TODAY()', '', TIPO_CAMBIO.referencia.origen, 'Se calcula solo'])
@@ -638,7 +672,7 @@ function grilla(cargado, refs) {
   }
   for (const f of filas) f.forEach((c, j) => { if (typeof c === 'string' && PANEL[c]) f[j] = PANEL[c] })
 
-  return { filas, usd, fTitulos, fCifras, fAire, fDias, fRitmo, fAlerta0, fAlerta1, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, amarillas }
+  return { filas, n0, n1, usd, fTitulos, fCifras, fAire, fDias, fRitmo, fAlerta0, fAlerta1, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, amarillas }
 }
 
 async function main() {
@@ -684,7 +718,17 @@ async function main() {
   const malas = g.filas.map((f, i) => (f.length > ANCHO ? i + 1 : 0)).filter(Boolean)
   if (malas.length) throw new Error(`${malas.length} fila(s) más anchas que la tabla (${ANCHO} columnas): ${malas.slice(0, 5).join(', ')}. NO borro nada.`)
   if (!g.filas.length) throw new Error('la grilla salió vacía: no borro la pestaña')
-  await google.clearValues(ID, `${tab}!A1:Z90`)
+  // EL BORRADO CUBRE TODA LA PESTAÑA, NO UNA FILA DECLARADA A MANO.
+  //
+  // Decía A1:Z90 y la grilla ya llega a la 105: las filas de más abajo conservaban lo de la corrida
+  // anterior y la escritura nueva quedaba a medias — el bloque 8 apareció con los rótulos y sin sus
+  // fórmulas, tres grupos en blanco y $731.820 fuera del control. A la segunda corrida se arreglaba
+  // solo, que es la peor forma de fallar: no se puede reproducir mirando.
+  //
+  // Es el mismo defecto de ventana fija que ya hizo mentir al censo de números pegados. El alto se
+  // pregunta, no se declara.
+  const hasta = Math.max(g.filas.length + 20, hoja.rows ?? 0)
+  await google.clearValues(ID, `${tab}!A1:Z${hasta}`)
   await google.batchUpdateValues(ID, [{ range: `${tab}!A1:${letra(ANCHO - 1)}${g.filas.length}`, values: g.filas }])
   await formatear(google, hoja.sheetId, g, tab)
 
@@ -835,6 +879,16 @@ async function formatear(google, sheetId, g, tab) {
     }
     fmt(r(g.fAlerta0 + 2, g.fAlerta1, 3, ANCHO), 'userEnteredFormat', { ...E.nota(), wrapStrategy: 'WRAP', verticalAlignment: 'MIDDLE' })
     fmt(r(g.fAlerta0 + 2, g.fAlerta1, 0, 1), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
+  }
+
+  // ── EL BLOQUE 8: DOS COLUMNAS DE IMPORTES Y UNA DE DIFERENCIA ──────────────────────────────────
+  // La columna de diferencia salía con formato de FECHA heredado de la columna vecina y mostraba
+  // "30/03/87349" donde hay -$899.154. Un desvío disfrazado de fecha no lo lee nadie.
+  if (g.n0 && g.n1 >= g.n0) {
+    fmt(r(g.n0 - 2, g.n1 + 2, 2, 3), 'userEnteredFormat', E.celda('moneda'))
+    fmt(r(g.n0 - 2, g.n1 + 2, 4, 5), 'userEnteredFormat', E.celda('moneda'))
+    fmt(r(g.n0 - 1, g.n1, 5, 6), 'userEnteredFormat', E.celda('moneda'))
+    fmt(r(g.n0 - 2, g.n0 - 1, 0, ANCHO), 'userEnteredFormat', E.encabezado())
   }
 
   // LOS DÍAS DE CAJA SON DÍAS. Con el formato moneda de la columna, "2 días" se dibujaba como "$2":

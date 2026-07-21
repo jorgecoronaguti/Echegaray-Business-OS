@@ -234,9 +234,41 @@ export function verificarCadena(movs = MOVIMIENTOS, inicial = SALDO_INICIAL) {
   return { rotas, saldoFinal: saldo }
 }
 
+/**
+ * NÚCLEO PURO: la naturaleza de UN movimiento, por su concepto.
+ *
+ * SE EXTRAJO DE `porTipo` (21/07) para poder escribirla en la réplica. Estaba adentro de una función
+ * que agrupa, así que la clasificación existía sólo en memoria y en un total: el cuadro de CAJA no
+ * podía preguntarle a _BANCO_RAW "cuánto salió en cheques" sin que alguien lo calculara afuera y lo
+ * pegara. Con la naturaleza escrita en su columna, ese cuadro pasa a ser un SUMIF.
+ *
+ * Es la pregunta que ninguna búsqueda contesta: el banco dice "Transferencia Realizada - A Herrajes
+ * S" y de eso hay que deducir que es un pago a proveedor y que tiene que estar en Compras.
+ */
+export function clasificarMovimiento(concepto = '') {
+  const c = String(concepto)
+  if (/impuesto ley 25\.413/i.test(c)) return 'Impuesto al cheque (Ley 25.413)'
+  if (/interes por descubierto|iva 10,5%|iva percep/i.test(c)) return 'Costo financiero del descubierto'
+  if (/pago haberes|pago de haberes/i.test(c)) return 'Sueldos'
+  if (/e-?cheq|cheque debitado|canje interno/i.test(c)) return 'Cheques y echeq'
+  if (/afip|imp\.afip/i.test(c)) return 'AFIP'
+  if (/prestamos prendarios/i.test(c)) return 'Préstamo prendario'
+  if (/tarjeta de credito/i.test(c)) return 'Pago de la tarjeta'
+  if (/deposito de efectivo|transferencia recibida/i.test(c)) {
+    const n = naturalezaIngreso({ concepto: c })
+    return n === 'cobranza' ? 'Cobranzas de clientes'
+      : n === 'financiero' ? 'Rescates de inversión y financiero'
+      : 'Traslados de fondos propios (no es ingreso)'
+  }
+  if (/tarjeta de debito/i.test(c)) return 'Compras con tarjeta de débito'
+  if (/debito automatico/i.test(c)) return 'Débitos automáticos (seguros)'
+  return 'Transferencias a proveedores'
+}
+
 /** NÚCLEO PURO: agrupa el extracto por tipo de movimiento, para poder cruzarlo contra el Sheet. */
 export function porTipo(movs = MOVIMIENTOS) {
-  const clas = (c) => {
+  const clas = (c) => clasificarMovimiento(c)
+  const _viejo = (c) => {
     if (/impuesto ley 25\.413/i.test(c)) return 'Impuesto al cheque (Ley 25.413)'
     if (/interes por descubierto|iva 10,5%|iva percep/i.test(c)) return 'Costo financiero del descubierto'
     if (/pago haberes|pago de haberes/i.test(c)) return 'Sueldos'

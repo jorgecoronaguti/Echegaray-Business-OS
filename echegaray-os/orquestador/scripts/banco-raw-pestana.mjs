@@ -55,7 +55,16 @@ export function fila(m) {
     Number(m.importe) || 0,
     Number(m.saldo) || 0,
     entra ? 'entra' : 'sale',
-    entra ? (BANCO.naturalezaIngreso?.(m) ?? '') : '',
+    // LA NATURALEZA SE ESCRIBE PARA TODOS, TAMBIÉN PARA LO QUE SALE (21/07).
+    //
+    // Antes sólo se llenaba en los ingresos, y eso dejaba la mitad más grande del extracto sin
+    // clasificar: 65 de los 70 movimientos son egresos. Sin naturaleza en la columna, la pregunta
+    // "¿cuánto salió del banco en cheques, y la pestaña de Cheques Emitidos lo tiene?" no se podía
+    // contestar con una fórmula — había que calcularla afuera y pegar el resultado.
+    //
+    // Es la columna que hace posible la conciliación por naturaleza: cada peso que salió tiene una
+    // pestaña donde debería estar registrado, y ahora el Sheet lo puede preguntar solo.
+    BANCO.clasificarMovimiento(m.concepto ?? ''),
   ]
 }
 
