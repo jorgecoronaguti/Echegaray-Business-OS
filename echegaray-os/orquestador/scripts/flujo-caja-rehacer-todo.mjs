@@ -41,6 +41,8 @@ const DRY = process.argv.includes('--dry')
 // El orden NO es cosmético: cada uno lee lo que escribió el anterior.
 const PASOS = [
   ['rubro-caja-sheet.mjs', 'la columna "Rubro de caja" de Compras — de acá cuelga todo lo demás'],
+  // Recurrentes va ANTES del cash flow: el cuadro lee de ella su proyección y necesita que exista.
+  ['recurrentes-pestana.mjs', 'Recurrentes — servicios fijos, sin proyectar meses ya cerrados'],
   ['cash-flow-rehacer.mjs', 'Cash Flow Semanal y Mensual'],
   ['materiales-pestana.mjs', 'pestaña Materiales + columna de familia en Compras'],
   ['estructura-pestana.mjs', 'pestaña Estructura con su proyección'],

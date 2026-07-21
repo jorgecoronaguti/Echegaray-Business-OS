@@ -102,9 +102,14 @@ export const MIN_MESES = 4
 /** La fila del encabezado con los 12 primeros-de-mes. Se usa para contar en cuántos hubo gasto. */
 const MESES_CAB = '$B$3:$M$3'
 
+// LAS FILAS NO SE HARDCODEAN MÁS. La versión anterior apuntaba a Estructura!$15 y Recurrentes!$24
+// escritos a mano, y eso ya falló una vez: los dos cash flow leían Estructura de un rango que había
+// dejado de existir y mostraban $33.223.269 en CERO sin que nada avisara. Ahora la fila se busca por
+// el rótulo de la columna A de cada pestaña y se pasa acá; si el rótulo no aparece, el script rompe
+// en vez de escribir una referencia muerta.
 const PROYECCION = {
-  'Estructura': { tipo: 'tabla', ref: (col) => `Estructura!${col}$15` },
-  'Servicios recurrentes': { tipo: 'tabla', ref: (col) => `Recurrentes!${col}$24` },
+  'Estructura': { tipo: 'tabla', pestaña: 'Estructura', rotulo: 'TOTAL ESTRUCTURA' },
+  'Servicios recurrentes': { tipo: 'tabla', pestaña: 'Recurrentes', rotulo: 'TOTAL' },
   'Nómina · Jornales de obra': null,
   // Las cuotas que faltan YA están cargadas en Compras con su fecha de vencimiento (el saldo
   // pendiente es $7.958.394 y se ve en Cargas Sociales). Proyectar encima inventaba $4.355.383 de
@@ -130,7 +135,9 @@ export function formulaMesConProyeccion(rubro, celdaRubro, colMes, colTabla, fil
   if (p === null) return `=${real}`
   let proy
   if (p?.tipo === 'tabla') {
-    proy = p.ref(colTabla)
+    const fila = filasTabla[p.pestaña]
+    if (!fila) throw new Error(`cash-flow-lineas: no sé en qué fila de "${p.pestaña}" está "${p.rotulo}" — sin eso la referencia sería a una fila muerta`)
+    proy = `${p.pestaña}!${colTabla}$${fila}`
   } else {
     // Promedio de los 3 meses cerrados anteriores a hoy, ajustado por inflación...
     const ventana = `SUMIFS(${COL_TOTAL};${COL_RUBRO};${celdaRubro};${COL_FECHA};">="&EOMONTH(TODAY();-4)+1;${COL_FECHA};"<="&EOMONTH(TODAY();0))/3`
@@ -166,12 +173,17 @@ export const RUBROS_SIN_PROYECCION = Object.entries(PROYECCION)
   .filter(([, v]) => v === null)
   .map(([k]) => k)
 
+/** Las pestañas de detalle cuya fila de total hay que ubicar antes de generar el cuadro. PURA. */
+export function tablasDeProyeccion() {
+  return Object.values(PROYECCION).filter((p) => p?.tipo === 'tabla').map((p) => ({ pestaña: p.pestaña, rotulo: p.rotulo }))
+}
+
 /** Los rubros cuya proyección sale de su propia pestaña, para poder explicarlo en el Sheet. PURA. */
 export function origenProyeccion(rubro) {
   if (rubro === LINEA_CHEQUES.rubro) return 'no se proyecta: son cheques y tarjeta YA emitidos, con fecha de pago cierta'
   const p = PROYECCION[rubro]
   if (p === null) return 'sus quincenas futuras ya vienen de Jornales por Quincena'
-  if (p?.tipo === 'tabla') return `la proyección la calcula la pestaña ${p.ref('B').split('!')[0]}`
+  if (p?.tipo === 'tabla') return `la proyección la calcula la pestaña ${p.pestaña}`
   return 'promedio de los últimos 3 meses cerrados, ajustado por inflación (Parámetros)'
 }
 
@@ -257,6 +269,11 @@ export function bloqueControl(filaPrimerEgreso, filaUltimoEgreso, colTotal, fila
       etiqueta: 'Gastos sin fecha de pago (no caen en ninguna semana)',
       formula: `=SUMIFS(${COL_TOTAL};${COL_FECHA};"")`,
       nota: 'Están clasificados y contados en el total, pero no se sabe CUÁNDO salen. Hay que fecharlos.',
+    },
+    {
+      etiqueta: 'Filas con rubro pero SIN importe (moneda extranjera o vacío)',
+      formula: `=SUMPRODUCT((${COL_RUBRO}<>"")*(NOT(ISNUMBER(${COL_TOTAL}))))`,
+      nota: 'Están clasificadas pero no suman en ningún lado porque su Total no es un número. Hoy son 3 filas de Google en USD 25,20 sin convertir a pesos: la suma del Sheet las ignora y nadie se entera.',
     },
     {
       etiqueta: 'Jornales: Compras (estimado) vs planilla real',
@@ -438,7 +455,7 @@ export function expresionReal(l, desde, hasta) {
  * @param {string} colMes letra de la columna del mes · @param {string} colTabla la equivalente en la pestaña de detalle
  * @param {number} filaCab fila del encabezado con las fechas
  */
-export function formulaLineaMes(l, colMes, colTabla, filaCab) {
+export function formulaLineaMes(l, colMes, colTabla, filaCab, filasTabla = {}) {
   if (l.cheques) return null
   const mes = `${colMes}$${filaCab}`
   const real = expresionReal(l, mes, `EOMONTH(${mes};0)+1`)
@@ -448,7 +465,9 @@ export function formulaLineaMes(l, colMes, colTabla, filaCab) {
   if (p === null || l.cobranzas) return `=${real}`
   let proy
   if (p?.tipo === 'tabla') {
-    proy = p.ref(colTabla)
+    const fila = filasTabla[p.pestaña]
+    if (!fila) throw new Error(`cash-flow-lineas: no sé en qué fila de "${p.pestaña}" está "${p.rotulo}" — sin eso la referencia sería a una fila muerta`)
+    proy = `${p.pestaña}!${colTabla}$${fila}`
   } else {
     // LOS TRES MESES CERRADOS, SIN EL MES EN CURSO. La ventana anterior llegaba hasta el fin del
     // mes corriente y dividía por 3: metía un mes a medio transcurrir en el promedio, así que el

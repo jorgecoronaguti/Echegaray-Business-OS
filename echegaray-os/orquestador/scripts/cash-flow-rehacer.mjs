@@ -13,6 +13,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import {
   bloqueControl, CUADRO, verificarCuadro, formulaLineaMes, expresionReal, formulaTotalRubro, origenLinea,
+  tablasDeProyeccion,
 } from '../lib/cash-flow-lineas.mjs'
 import { REGLAS } from '../lib/rubro-caja.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
@@ -44,7 +45,7 @@ const fechaAR = (d) => `${d.getUTCDate()}/${d.getUTCMonth() + 1}/${d.getUTCFullY
  * Arma la grilla de una pestaña de cash flow.
  * @param {'semanal'|'mensual'} periodo
  */
-function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null) {
+function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, filasTabla = {}) {
   const cols = periodo === 'semanal' ? semanas() : Array.from({ length: 12 }, (_, m) => new Date(Date.UTC(AÑO, m, 1)))
   const n = cols.length
   const colTotal = letra(n + 1) // A + n períodos → la siguiente es el total
@@ -102,7 +103,7 @@ function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null) {
       const d0 = filas.length + 1
       for (const l of g.lineas) {
         const f = periodo === 'mensual'
-          ? cols.map((_, i) => formulaLineaMes(l, letra(i + 1), letra(i + 1), FILA_CAB))
+          ? cols.map((_, i) => formulaLineaMes(l, letra(i + 1), letra(i + 1), FILA_CAB, filasTabla))
           : cols.map((_, i) => `=${expresionReal(l, desde(i), hasta(i))}`)
         // La línea de cheques no tiene fórmula: se llena con valores (ver expresionReal).
         const celdas = l.cheques
@@ -361,9 +362,20 @@ async function main() {
     if (j0 >= 0 && i > j0) refCajaFecha = `MAX('${tab}'!$C$${j0 + 2}:$C$${i})`
   } catch { /* la pestaña puede no existir todavía */ }
   console.log(`Efectivo al inicio: ${refCaja ?? '⚠ sin pestaña de saldos'} · ancla en ${refCajaFecha ?? '(sin fecha)'}`)
+
+  // Dónde está la fila de total de cada pestaña de detalle, buscada POR RÓTULO. Si no aparece, el
+  // script rompe: una referencia a una fila muerta devuelve $0 y nadie se entera.
+  const filasTabla = {}
+  for (const { pestaña, rotulo } of tablasDeProyeccion()) {
+    const colA = await google.readSheetValues(ID, `${pestaña}!A1:A80`)
+    const i = colA.findIndex((f) => String(f?.[0] ?? '').trim() === rotulo)
+    if (i < 0) throw new Error(`no encontré la fila "${rotulo}" en la pestaña ${pestaña} — la proyección quedaría apuntando a la nada`)
+    filasTabla[pestaña] = i + 1
+    console.log(`  proyección de ${pestaña}: fila ${i + 1}`)
+  }
   const data = []
   for (const [pestaña, periodo] of [['Cash Flow Semanal', 'semanal'], ['Cash Flow Mensual', 'mensual']]) {
-    const g = grilla(periodo, faltantes, refCaja, refCajaFecha)
+    const g = grilla(periodo, faltantes, refCaja, refCajaFecha, filasTabla)
     const ancho = Math.max(...g.filas.map((f) => f.length))
     // Normalizar el rectángulo: si una fila es más corta, la API deja lo viejo debajo.
     const cuadro = g.filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r })
