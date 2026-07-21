@@ -147,6 +147,17 @@ async function main() {
   console.log(`  ${provs.join(' · ')}`)
   if (DRY) return console.log('--dry: no escribí nada.')
 
+  // EL FORMATO SE LIMPIA ANTES DE ESCRIBIR, no después. Con USER_ENTERED, Google interpreta el valor
+  // SEGÚN EL FORMATO QUE LA CELDA YA TIENE: si quedó en TEXTO de un layout anterior, "1/2/2026" se
+  // guarda como texto y ninguna pintada posterior lo convierte en fecha. Por eso febrero salía
+  // "1/2/2026" al lado de enero mostrando "ene". Primero se limpia, después se escribe, y al final
+  // se pinta.
+  await google.spreadsheetBatchUpdate(ID, [{
+    repeatCell: {
+      range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: Math.min(hoja.rows ?? 200, 200), startColumnIndex: 0, endColumnIndex: hoja.cols ?? ANCHO },
+      cell: {}, fields: 'userEnteredFormat',
+    },
+  }])
   await google.clearValues(ID, `${hoja.title}!A1:BZ120`)
   await google.batchUpdateValues(ID, [{
     range: `${hoja.title}!A1:${letra(ANCHO - 1)}${g.filas.length}`,
@@ -167,10 +178,8 @@ async function formatear(google, hoja, g) {
   const AMBAR = { red: 1, green: 0.97, blue: 0.88 }
   const n = g.filas.length
   const r = (r0, r1, c0 = 0, c1 = ANCHO) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
+  // El formato viejo ya se limpió antes de escribir los valores (ver main): acá sólo se pinta.
   const req = [{ unmergeCells: { range: r(0, n) } }]
-  // Se borra el formato viejo de la pestaña entera antes de pintar: clearValues no borra formatos y
-  // el layout anterior era otro. Es la misma lección que descuadró el cash flow.
-  req.push({ repeatCell: { range: { sheetId, startRowIndex: 0, endRowIndex: Math.min(hoja.rows ?? 200, 200), startColumnIndex: 0, endColumnIndex: hoja.cols ?? ANCHO }, cell: {}, fields: 'userEnteredFormat' } })
   const fmt = (rg, fields, format) => req.push({ repeatCell: { range: rg, cell: { userEnteredFormat: format }, fields } })
 
   fmt(r(0, n, 1, ANCHO), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
@@ -188,7 +197,11 @@ async function formatear(google, hoja, g) {
   fmt(r(g.fTot - 1, g.fTot), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
     { textFormat: { bold: true }, backgroundColor: { red: 0.89, green: 0.91, blue: 0.94 } })
   fmt({ ...r(g.ctrl + 2, g.ctrl + 3), startColumnIndex: 0, endColumnIndex: 1 }, 'userEnteredFormat.textFormat', { textFormat: { bold: true } })
-  fmt(r(0, n, 2, 3), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
+  // Las notas van en la columna C, pero SÓLO en el bloque de control: en las filas de arriba la C es
+  // FEBRERO. Pintar la columna entera de texto —copiado de otra pestaña donde C sí es la columna de
+  // notas— dejaba febrero mostrando "359154,95" en crudo al lado de enero en pesos.
+  fmt(r(g.ctrl - 1, n, 2, 3), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+    { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' })
   // Las columnas auxiliares, ocultas: son andamio, no información.
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: C_AUX0, endIndex: ANCHO }, properties: { hiddenByUser: true }, fields: 'hiddenByUser' } })
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 240 }, fields: 'pixelSize' } })
