@@ -34,7 +34,7 @@ const DRY = process.argv.includes('--dry')
 const F0 = 5, F1 = 200
 const A = `$A$${F0}:$A$${F1}`   // ID
 const G = `$G$${F0}:$G$${F1}`   // Obra / Cliente
-const M = `$M$${F0}:$M$${F1}`   // TOTAL bruto
+const M = `$M$${F0}:$M$${F1}`   // TOTAL a cobrar, neto de retenciones (=J+K-L)
 const Q = `$Q$${F0}:$Q$${F1}`   // Fecha de cobro
 const O = `$O$${F0}:$O$${F1}`   // Estado
 // LO QUE DISTINGUE UN COBRO DE OTRO cuando el cliente, el monto y la fecha coinciden.
@@ -97,6 +97,32 @@ function bloque() {
   ]
 }
 
+/**
+ * El rótulo de la columna M dice "TOTAL Bruto" y la fórmula es =J+K-L: neto + IVA MENOS retenciones.
+ * O sea, lo que efectivamente entra a la cuenta. Bruto sería J+K.
+ *
+ * POR QUÉ IMPORTA Y NO ES COSMÉTICO: es la columna que el cash flow usa como ingreso. Quien lee
+ * "bruto" asume que todavía hay que descontarle retenciones y presupuesta de menos dos veces la
+ * misma plata. Un rótulo equivocado en la columna que decide es un error de datos, no de redacción.
+ *
+ * SE VERIFICA ANTES DE RENOMBRAR. Se lee la fórmula real de la primera fila: sólo si de verdad es
+ * J+K-L se corrige el rótulo. Renombrar por lo que yo creo que hace la columna sería exactamente el
+ * error que este cambio arregla.
+ */
+async function corregirRotuloTotal(google) {
+  const CORRECTO = 'TOTAL a cobrar (neto de retenciones)'
+  const g = await google.readSheetGrid(ID, `${PESTAÑA}!M4:M${F0}`)
+  const rotulo = String(g.filas?.[0]?.[0]?.valor ?? '').trim()
+  const formula = String(g.filas?.[1]?.[0]?.formula ?? '')
+  if (rotulo === CORRECTO) return
+  if (!/^=J\d+\+K\d+-L\d+$/.test(formula)) {
+    console.log(`  ⚠ no toco el rótulo de M: esperaba =J+K-L y encontré "${formula || '(sin fórmula)'}"`)
+    return
+  }
+  await google.batchUpdateValues(ID, [{ range: `${PESTAÑA}!M4`, values: [[CORRECTO]] }])
+  console.log(`  rótulo de M corregido: "${rotulo}" → "${CORRECTO}" (la fórmula es ${formula}: descuenta retenciones)`)
+}
+
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const b = bloque()
@@ -123,6 +149,8 @@ async function main() {
   } else {
     await google.clearValues(ID, `${PESTAÑA}!${letra(C_FLAG)}1:${letra(C_CTRL + 2)}${F1}`)
   }
+
+  await corregirRotuloTotal(google)
 
   await google.batchUpdateValues(ID, [
     { range: `${PESTAÑA}!${letra(C_FLAG)}4:${letra(C_FLAG)}4`, values: [['⚠ Control automático']] },
