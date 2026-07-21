@@ -38,6 +38,10 @@ export const PASOS = [
   // ÚLTIMO ANTES DEL NÚCLEO: unificar el formato de las catorce pestañas. Va al final porque cada
   // script anterior acaba de reescribir la suya, y una pasada de formato hecha antes se pierde.
   ['formato-pestanas.mjs', 'unificar tipografía, barra de título y filas congeladas en las 14 pestañas', []],
+  // DESPUÉS de unificar el formato: el control de CÓMO SE VE. No arregla nada —arreglar cada
+  // defecto es trabajo de la pestaña que lo produce— pero deja el número a la vista en cada corrida.
+  // Sin él, la única forma de enterarse de un "30/12/99" repetido 22 veces era que el dueño lo viera.
+  ['auditar-pantalla.mjs', 'control de defectos de pantalla en las 14 pestañas', []],
   ['sync-compras.mjs', 'núcleo: Compras → costos_obra', []],
   ['sync-caja-nucleo.mjs', 'núcleo: quincenas de jornales e instrumentos de pago', []],
 ]

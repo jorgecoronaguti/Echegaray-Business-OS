@@ -195,4 +195,9 @@ async function main() {
 
 function colLetra(n) { let s = ''; for (let i = n - 1; i >= 0; i = Math.floor(i / 26) - 1) s = String.fromCharCode(65 + (i % 26)) + s; return s }
 
-main().catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+// SÓLO CORRE SI SE LO INVOCA DIRECTO. Sin esta guarda, `import { PESTANAS }` desde otro script
+// ejecutaba el formateador entero como efecto secundario del import — auditar-pantalla.mjs terminó
+// reescribiendo las catorce pestañas sin que nadie se lo pidiera.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+}

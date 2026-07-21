@@ -80,6 +80,7 @@ import { cruzar, verificar } from '../lib/cobertura-arca.mjs'
 import { ARCA as N_ARCA, publicar } from '../lib/rangos-nombrados.mjs'
 import { query } from '../lib/db.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
+import { formatear as formatearCuit } from '../lib/cuit.mjs'
 import { pivot, filtroValores, valoresNoCubiertos, plantar, borrar, RESUMEN } from '../lib/pivot-sheets.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -90,7 +91,11 @@ const TOP = 30
 /** Colchón de filas sobre la deuda actual, para que la tabla derrame sin pisar el bloque siguiente.
  *  ANTES ERA UN 40 FIJO y dejaba 27 filas muertas: el dueño vio la pestaña y dijo "es completamente
  *  inútil". Un cuadro con un agujero de treinta filas no se lee, por más que los números estén bien. */
-const COLCHON_DEUDA = 8
+// El colchón de filas que se reserva para que el QUERY derrame sin pisar el bloque de abajo.
+// BAJÓ DE 8 A 2 (21/07): con 8 quedaban once filas en blanco a la vista en el medio de la pestaña, y
+// el dueño lo señaló. El agente redimensiona cada 2 horas y el control del bloque 7 avisa si entre
+// dos corridas entró más deuda de la que entra en la reserva, así que 2 alcanza.
+const COLCHON_DEUDA = 2
 
 const COL_FAMILIA = 'Compras!$AE$4:$AE'
 const COL_RUBRO = 'Compras!$AC$4:$AC'
@@ -117,7 +122,7 @@ const normNombre = (s) => String(s ?? '')
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 
-function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, notasCredito, anuladasCargadas, cruce, nDeuda }) {
+function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, notasCredito, anuladasCargadas, cruce, nDeuda, nSinFecha }) {
   const filas = []
   const push = (c) => { filas.push(c); return filas.length }
   const nombres = FAMILIAS.map(([n]) => n)
@@ -201,7 +206,8 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
     `=IFERROR(QUERY(Compras!$A$4:$AE;"select AD, E, H, C, F, O, J where upper(X) = '${ESTADO_DEUDA.toUpperCase()}' and O is not null and AD is not null order by AD label AD ''";0);"sin deuda con fecha")`,
     '', '', '', '', '', '', '', '',
   ])
-  const reserva = nDeuda + COLCHON_DEUDA
+  // La primera tabla sólo lleva las que TIENEN fecha de caja: las otras van en su propio bloque.
+  const reserva = Math.max(nDeuda - nSinFecha, 1) + COLCHON_DEUDA
   for (let i = 0; i < reserva - 1; i++) push(['', '', '', '', '', '', '', '', ''])
   const doc1 = filas.length
   // El instrumento no puede salir del QUERY (vive en otra pestaña), así que se busca POR EL
@@ -222,7 +228,9 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
     `=IFERROR(QUERY(Compras!$A$4:$AE;"select AD, E, H, C, F, O, J where upper(X) = '${ESTADO_DEUDA.toUpperCase()}' and O is not null and AD is null order by O desc label AD ''";0);"✓ toda la deuda tiene fecha de pago")`,
     '', '', '', '', '', '', '', '',
   ])
-  for (let i = 0; i < 18; i++) push(['', '', '', '', '', '', '', '', ''])
+  // Mismo criterio que arriba: la reserva es la cantidad real de filas sin fecha más dos, no un
+  // número fijo grande que deja un hueco visible.
+  for (let i = 0; i < Math.max(nSinFecha - 1, 0) + COLCHON_DEUDA; i++) push(['', '', '', '', '', '', '', '', ''])
   const sf1 = filas.length
   push([])
 
@@ -238,7 +246,8 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
     const deudaBase = `${COL_TOTAL};${COL_PROV};$A${f};${COL_ESTADO};"${ESTADO_DEUDA}"`
     push([
       p.nombre,
-      p.cuit,
+      // El CUIT con guiones: once dígitos seguidos no se leen. Formato único en lib/cuit.mjs.
+      p.cuit ? formatearCuit(p.cuit) : '',
       `=COUNTIF(${COL_PROV};$A${f})`,
       `=SUMIF(${COL_PROV};$A${f};${COL_TOTAL})`,
       // AFIP: réplica de comprobantes_arca, la fuente fiscal. No se puede calcular desde el Sheet.
@@ -255,7 +264,11 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
       // El banco escribe "NEUMAGOM SAS" y Compras "Neumagom": el cruce va por coincidencia parcial.
       `=SUMPRODUCT((UPPER(${CH}!$K$2:$K$400)<>"SI")*ISNUMBER(SEARCH($A${f};${CH}!$E$2:$E$400&""))*IF(ISNUMBER(${CH}!$F$2:$F$400);${CH}!$F$2:$F$400;0))`,
       p.cheques || '',
-      `=IFERROR(MINIFS(${COL_FECHA};${COL_PROV};$A${f};${COL_ESTADO};"${ESTADO_DEUDA}";${COL_FECHA};">0");"")`,
+      // UN MINIFS SIN COINCIDENCIAS DEVUELVE 0, NO UN ERROR — así que el IFERROR no lo atrapa y el 0
+      // con formato de fecha se muestra como "30/12/99". Eran veintidós filas de esta columna
+      // mostrando un día de 1899 donde en realidad no hay ningún pago pendiente. Se corta con un
+      // COUNTIFS previo: si no hay nada que contar, la celda queda vacía.
+      `=IF(COUNTIFS(${COL_PROV};$A${f};${COL_ESTADO};"${ESTADO_DEUDA}";${COL_FECHA};">0")=0;"";MINIFS(${COL_FECHA};${COL_PROV};$A${f};${COL_ESTADO};"${ESTADO_DEUDA}";${COL_FECHA};">0"))`,
       p.familia,
     ])
   }
@@ -350,7 +363,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   push([`Sale del libro de IVA COMPRAS de ARCA, que el OS ya replica. Se cruza contra Compras por N° de comprobante y, cuando ese número no está cargado, por proveedor + importe. Lo que queda acá está facturado a la empresa con CAE y no lo ve ninguna otra pestaña: no es un error de fórmula, es carga que falta.`])
   const cabAfip = push(['Proveedor según AFIP', 'CUIT', 'Comprobante', 'Fecha', 'Importe', '', '', '', ''])
   const afip0 = filas.length + 1
-  for (const r of faltanEnCompras) push([r.nombre, r.cuit, r.comprobante, r.fecha, r.importe, '', '', '', ''])
+  for (const r of faltanEnCompras) push([r.nombre, r.cuit ? formatearCuit(r.cuit) : '', r.comprobante, r.fecha, r.importe, '', '', '', ''])
   const afip1 = filas.length
   push(['TOTAL SIN CARGAR', '', '', '', `=SUM($E${afip0}:$E${afip1})`, '', '', '', ''])
   push([])
@@ -502,7 +515,11 @@ async function main() {
     .map((f, i) => ({ fila: i + 4, prov: normNombre(f?.[4]), total: parseMonto(f?.[14]) || parseMonto(f?.[12]), comprobante: normComprobante(f?.[7]) }))
     .filter((f) => f.prov && f.total > 0)
   // Cuántas deudas hay HOY: define cuántas filas reserva la tabla del bloque 1.
-  const nDeuda = compras.filter((f) => String(f?.[23] ?? '').trim().toLowerCase() === ESTADO_DEUDA.toLowerCase() && parseMonto(f?.[14])).length
+  const esDeuda = (f) => String(f?.[23] ?? '').trim().toLowerCase() === ESTADO_DEUDA.toLowerCase() && parseMonto(f?.[14])
+  const nDeuda = compras.filter(esDeuda).length
+  // Cuántas de esas NO tienen fecha de caja: es la reserva del segundo bloque. Se cuenta en vez de
+  // fijarse un número grande, que es lo que dejaba dieciocho filas en blanco a la vista.
+  const nSinFecha = compras.filter((f) => esDeuda(f) && !String(f?.[29] ?? '').trim()).length
   const cruce = cruzar(rArca, filasParaCruce, { norm: normNombre, clave: (c) => normComprobante(`${c.punto_venta}-${c.numero}`) })
   const chequeo = verificar(cruce)
   if (!chequeo.ok) {
@@ -593,7 +610,7 @@ async function main() {
   // salió el bug de las referencias corridas.
 
   const obras = ['LA ESTRELLA', 'San Francisco', 'MESSINAS', 'ARCOR', 'Administracion', 'Almacen', 'Taller', 'SAINT GOBAIN']
-  const g = grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, notasCredito, anuladasCargadas, cruce, nDeuda })
+  const g = grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, notasCredito, anuladasCargadas, cruce, nDeuda, nSinFecha })
   const ancho = Math.max(...g.filas.map((f) => f.length))
   const cuadro = g.filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r })
   console.log(`${PESTAÑA}: ${cuadro.length} filas x ${ancho} columnas`)
@@ -819,6 +836,26 @@ async function formatear(google, sheetId, g, ancho, filas) {
     fmt({ ...r(a - 1, b, 6, 9) }, 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment',
       { numberFormat: { type: 'TEXT' }, textFormat: { fontSize: 9 }, horizontalAlignment: 'LEFT' })
   }
+  // ── LOS DEFECTOS DE PANTALLA QUE ENCONTRÓ auditar-pantalla.mjs (21/07) ───────────────────────
+  //
+  // Todos son celdas que quedaron con el formato MONEDA que se aplica a la columna entera al
+  // principio, y a las que nadie les devolvió el suyo. No cambian un total en un peso: hacen que la
+  // pestaña se lea mal, que es lo que el dueño señaló tres veces. Ninguno los veía porque los
+  // controles del archivo suman, y sumar no ve un encabezado con formato de plata.
+  //
+  // Los encabezados de las tablas de notas de crédito y de facturas anuladas: mostraban "Fecha",
+  // "Importe" y "Qué es" como si fueran importes.
+  for (const c of [g.cabNC, g.cabAnu]) {
+    if (c) fmt({ ...r(c - 1, c, 0, 8) }, 'userEnteredFormat', E.encabezado())
+  }
+  // Las notas sueltas que viven al lado de un número: la de la fila del total adeudado y la del
+  // "resto de proveedores". Van en TEXT y con el estilo de nota, no en moneda.
+  fmt({ ...r(5, 6, 5, 9) }, 'userEnteredFormat', E.nota())
+  fmt({ ...r(g.fSub, g.fSub + 1, 15, 16) }, 'userEnteredFormat', E.nota())
+  // La columna de fecha del bloque de ARCA, que mostraba el serial como plata.
+  fmt({ ...r(g.afip0 - 1, g.afip1, 3, 4) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+    { numberFormat: E.NUM.fecha, horizontalAlignment: 'CENTER' })
+
   // El rótulo del bloque de las sin fecha, en rojo de alerta.
   fmt({ ...r(g.fSinFecha - 1, g.fSinFecha, 0, 6) }, 'userEnteredFormat', E.alerta())
   fmt({ ...r(g.fSinFecha - 1, g.fSinFecha, 1, 2) }, 'userEnteredFormat.numberFormat', { numberFormat: E.NUM.moneda })
