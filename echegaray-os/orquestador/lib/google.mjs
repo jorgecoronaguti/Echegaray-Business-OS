@@ -645,6 +645,43 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         offset: { fila: d.startRow || 0, col: d.startColumn || 0 },
       }
     },
+    /**
+     * El FORMATO VISUAL de un rango: fondo, tipografía, alineación, bordes, más los anchos de
+     * columna, las filas congeladas y los grupos.
+     *
+     * POR QUÉ EXISTE (21/07). El dueño: "revisar el formato de todas las pestañas y hacerlas
+     * coincidir". No se podía: `readSheetGrid` trae el formato de NÚMERO y nada más, así que el OS
+     * escribía formatos pero era ciego a lo que había escrito. Comparar catorce pestañas entre sí
+     * era imposible, y por eso cada una terminó con su propia paleta y su propio tamaño de letra.
+     *
+     * Lee `effectiveFormat` —lo que se VE— y no `userEnteredFormat`, que puede estar vacío cuando el
+     * formato viene heredado de la fila o la columna.
+     */
+    async readSheetFormats(fileId, range) {
+      const campos = 'sheets(properties(title,sheetId,gridProperties(frozenRowCount,frozenColumnCount,columnCount)),'
+        + 'data(startRow,startColumn,columnMetadata(pixelSize),rowMetadata(pixelSize),'
+        + 'rowData(values(formattedValue,effectiveFormat(backgroundColor,horizontalAlignment,wrapStrategy,numberFormat,textFormat(fontFamily,fontSize,bold,italic,foregroundColor))))))'
+      const j = await apiGet(
+        `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?ranges=${encodeURIComponent(range)}&fields=${encodeURIComponent(campos)}`)
+      const s = (j.sheets || [])[0]
+      if (!s) return null
+      const d = (s.data || [])[0] || {}
+      return {
+        titulo: s.properties?.title ?? null,
+        sheetId: s.properties?.sheetId,
+        congeladas: {
+          filas: s.properties?.gridProperties?.frozenRowCount ?? 0,
+          columnas: s.properties?.gridProperties?.frozenColumnCount ?? 0,
+        },
+        anchos: (d.columnMetadata || []).map((c) => c?.pixelSize ?? null),
+        altos: (d.rowMetadata || []).map((r) => r?.pixelSize ?? null),
+        filas: (d.rowData || []).map((r) => (r.values || []).map((c) => ({
+          valor: c?.formattedValue ?? null,
+          formato: c?.effectiveFormat ?? null,
+        }))),
+        offset: { fila: d.startRow || 0, col: d.startColumn || 0 },
+      }
+    },
     /** Lee las reglas de VALIDACIÓN DE DATOS (desplegables) de un rango. Devuelve la data
      *  cruda de la Sheets API (sheets[].data[].rowData[].values[].dataValidation) para que el
      *  llamador extraiga, por celda, las opciones permitidas. Sirve para NO pisar un desplegable
@@ -972,6 +1009,33 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
      * que apunta a 'CAJA'!$C$8 queda apuntando a otra cosa el día que el cuadro crece una fila, y no
      * avisa. Un nombre sobrevive a la reescritura.
      */
+    /**
+     * Las TABLAS DINÁMICAS nativas que ya tiene una pestaña, con su definición completa.
+     *
+     * POR QUÉ HACE FALTA (21/07). El dueño: "en pestaña resumen esta mejor esto al ser tablas
+     * dinámicas". RESUMEN usa pivots nativos —agrupan, colapsan y subtotalan solos, y el usuario
+     * puede reordenarlos sin tocar una fórmula— mientras que las pestañas que yo armé son listas
+     * planas generadas con QUERY. Para copiar bien esa forma hay que poder LEER la definición
+     * existente, no adivinarla.
+     *
+     * @returns {Array<{fila:number, col:number, pivot:object}>} en coordenadas absolutas del rango.
+     */
+    async getPivotTables(fileId, range) {
+      const j = await apiGet(
+        `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}`
+        + `?includeGridData=true&ranges=${encodeURIComponent(range)}`
+        + '&fields=sheets(data(startRow,startColumn,rowData(values(pivotTable))))')
+      const out = []
+      for (const sh of j.sheets || []) {
+        for (const d of sh.data || []) {
+          const r0 = d.startRow ?? 0, c0 = d.startColumn ?? 0
+          ;(d.rowData || []).forEach((row, i) => (row.values || []).forEach((cel, k) => {
+            if (cel?.pivotTable) out.push({ fila: r0 + i + 1, col: c0 + k, pivot: cel.pivotTable })
+          }))
+        }
+      }
+      return out
+    },
     async getNamedRanges(fileId) {
       const j = await apiGet(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?fields=namedRanges`)
       return j.namedRanges || []
