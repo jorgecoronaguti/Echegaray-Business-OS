@@ -15,7 +15,7 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { REGLAS, DERIVADAS, CALCULADAS, CON_ORIGEN, numerosPegados, derivadasHuerfanas, usaInflacion, indicesCompletos, criteriosEnFormulas, criteriosHuerfanos } from '../lib/reglas-de-oro.mjs'
+import { REGLAS, DERIVADAS, CALCULADAS, CON_ORIGEN, CLASE, sinClasificar, numerosPegados, derivadasHuerfanas, usaInflacion, indicesCompletos, criteriosEnFormulas, criteriosHuerfanos } from '../lib/reglas-de-oro.mjs'
 import { RUBROS } from '../lib/rubro-caja.mjs'
 import { SUBRUBROS, OTROS } from '../lib/sub-rubro-estructura.mjs'
 import { USA, CABECERA, comparar } from '../lib/cobertura-datos.mjs'
@@ -36,6 +36,34 @@ async function main() {
 
   for (const r of REGLAS) console.log(`· ${r.regla}`)
   console.log(`\n${hojas.length} pestañas: ${hojas.join(' · ')}\n`)
+
+  // ── PESTAÑA POR PESTAÑA ─────────────────────────────────────────────────────────────────────────
+  // El dueño pidió "revisar todo el Sheet pestaña por pestaña, AL DETALLE". Antes el auditor sólo
+  // miraba las nueve que el OS escribe: las otras diez no las controlaba nadie.
+  console.log('LAS PESTAÑAS, UNA POR UNA')
+  console.log(`  ${'Pestaña'.padEnd(26)}${'Clase'.padEnd(11)}${'valores'.padStart(8)}${'fórmulas'.padStart(9)}${'pegados'.padStart(8)}  Lectura`)
+  const huerfanasDeClase = sinClasificar(hojas)
+  const detalle = []
+  for (const t of hojas) {
+    const g = await google.readSheetGrid(ID, `${t}!A1:BZ400`).catch(() => ({ filas: [] }))
+    const cel = (g.filas ?? []).flat().filter(Boolean)
+    const formulas = cel.filter((c) => c.formula).length
+    const valores = cel.filter((c) => c.formula || (c.valor != null && String(c.valor).trim() !== '')).length
+    const pegados = numerosPegados(g.filas ?? []).length
+    const clase = CLASE[t] ?? '⚠ SIN CLASE'
+    let lectura = ''
+    if (!CLASE[t]) lectura = '⚠ nadie declaró qué es: ningún control la mira'
+    else if (clase === 'calculada' && pegados) lectura = `⚠ ${pegados} números escritos donde todo tiene que ser fórmula`
+    else if (clase === 'calculada') lectura = 'todo fórmula ✓'
+    else if (clase === 'replica') lectura = CON_ORIGEN[t] ? 'números con origen declarado ✓' : '⚠ réplica sin origen declarado'
+    else if (clase === 'carga') lectura = 'los números son el hecho primario'
+    else if (clase === 'cruda') lectura = 'importada: no se toca'
+    else lectura = 'configuración de otras pestañas'
+    detalle.push({ t, clase, valores, formulas, pegados })
+    console.log(`  ${t.slice(0, 24).padEnd(26)}${clase.padEnd(11)}${String(valores).padStart(8)}${String(formulas).padStart(9)}${String(pegados).padStart(8)}  ${lectura}`)
+  }
+  if (huerfanasDeClase.length) anotar('automatico', 'pestañas sin clasificar', huerfanasDeClase.join(' · '))
+  console.log()
 
   // ── REGLA "automatico" ──────────────────────────────────────────────────────────────────────────
   console.log('REGLA · todo se actualiza solo')

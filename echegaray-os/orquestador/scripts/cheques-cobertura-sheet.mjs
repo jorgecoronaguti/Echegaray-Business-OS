@@ -19,12 +19,13 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { repartirCobertura, aCubrirPorMes, normComprobante, esLlaveUtil, hallarPestana, MARCAS, marcaDe } from '../lib/cheques-cobertura.mjs'
 import { INSTRUMENTOS, formulasInstrumento } from '../lib/cash-flow-lineas.mjs'
+import { query } from '../lib/db.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Cash Flow Mensual'
 const DRY = process.argv.includes('--dry')
 const ANCHO = 6
-const FIRMA = 'CHEQUES Y TARJETA — ¿están contemplados en las líneas de arriba?'
+const FIRMA = '¿QUÉ NO ESTÁ EN ESTE CUADRO? — cobertura contra todas las fuentes'
 
 /** dd/mm/yyyy → Date. La pestaña es es-AR: el 2/1/2026 es el 2 de enero, no el 1 de febrero. */
 const fechaAR = (s) => {
@@ -38,6 +39,22 @@ const fechaAR = (s) => {
 const num = (s) => parseFloat(String(s ?? '').replace(/[^0-9,.-]/g, '').replace(/\./g, '').replace(',', '.')) || 0
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 const ars = (x) => Math.round(x)
+
+/** Lo que dice AFIP, cruzado por punto de venta + número contra el N° de comprobante de Compras. */
+async function leerAfip(enCompras) {
+  const r = (await query("select punto_venta, numero, imp_total from comprobantes_arca where tipo_libro='R'")).rows
+  const e = (await query("select imp_total from comprobantes_arca where tipo_libro='E'")).rows
+  let ok = 0, okM = 0, falta = 0, faltaM = 0
+  for (const x of r) {
+    const k = normComprobante(`${x.punto_venta}-${x.numero}`)
+    if (enCompras.has(k)) { ok++; okM += Number(x.imp_total) } else { falta++; faltaM += Number(x.imp_total) }
+  }
+  return {
+    nR: r.length, totalR: r.reduce((s, x) => s + Number(x.imp_total), 0),
+    nE: e.length, totalE: e.reduce((s, x) => s + Number(x.imp_total), 0),
+    enCompras: ok, montoEnCompras: okM, faltan: falta, montoFaltan: faltaM,
+  }
+}
 
 async function leer(google) {
   const hojas = await google.getSheetMeta(ID)
@@ -55,10 +72,11 @@ async function leer(google) {
   // fecha = la fecha REAL de pago (columna I). fecha_pago es su rótulo "julio 26", que es formato.
   const cheques = crudoCh.map((f, i) => ({ fila: i + 2, tipo: f[0], proveedor: f[4], monto: num(f[5]), comprobante: f[7], fecha: fechaAR(f[8]), fecha_pago: f[9], debitado: f[10] })).filter((c) => c.monto > 0)
   const tarjeta = crudoTj.map((f, i) => ({ fila: i + 3, proveedor: f[2], monto: num(f[4]), comprobante: f[6], fecha_pago: f[8], debitado: f[9] })).filter((c) => c.monto > 0)
-  return { enCompras, cheques, tarjeta, pestanaCheques: CH, filasCh: crudoCh.length + 1, filasTj: crudoTj.length + 2 }
+  const afip = await leerAfip(enCompras)
+  return { enCompras, cheques, tarjeta, afip, pestanaCheques: CH, filasCh: crudoCh.length + 1, filasTj: crudoTj.length + 2 }
 }
 
-function grilla({ enCompras, cheques, tarjeta }) {
+function grilla({ enCompras, cheques, tarjeta, afip }) {
   const ch = repartirCobertura(cheques, enCompras)
   const tj = repartirCobertura(tarjeta, enCompras)
   const cubrir = aCubrirPorMes(cheques)
@@ -66,8 +84,21 @@ function grilla({ enCompras, cheques, tarjeta }) {
   const push = (c = []) => { const r = [...c]; while (r.length < ANCHO) r.push(''); filas.push(r); return filas.length }
 
   push([FIRMA])
-  push(['El cheque y la tarjeta son CÓMO se paga, no QUÉ se compró: el concepto es el de la factura, y por eso viajan al cash flow desde Compras. Este bloque no suma nada — mide cuánto de cada instrumento tiene su factura cargada y cuánto no. Se cruza por número de comprobante.'])
+  push(['"Los cash flows deben reflejar todo, todo el tiempo, y cada gasto o ingreso debe estar en algún concepto." El control de partición del pie ya prueba que TODO lo que está en Compras está en una línea del cuadro. Este bloque contesta la otra mitad, que es la que duele: qué existe FUERA de Compras y por lo tanto el cuadro no puede ver.'])
   push()
+  push(['FUENTE', 'Cantidad', 'Monto', '', '', 'Qué significa'])
+  push(['AFIP — libro de IVA compras', afip.nR, ars(afip.totalR), '', '', 'Lo que le facturaron a la empresa con CAE. Es la única fuente fiscal: Compras es lo que alguien cargó.'])
+  push(['  · con su comprobante cargado en Compras', afip.enCompras, ars(afip.montoEnCompras), '', '', 'Ya viajó al cash flow por el rubro de esa factura.'])
+  push(['  · ⚠ SIN cargar en Compras', afip.faltan, ars(afip.montoFaltan), '', '',
+    '⚠ Facturado a la empresa y ausente de TODO el archivo. No es un error de fórmula: es carga que falta. El detalle, proveedor por proveedor, está en la pestaña Proveedores y Materiales.'])
+  push([])
+  push(['AFIP — libro de IVA ventas', afip.nE, ars(afip.totalE), '', '', 'Lo que la empresa facturó. Su detalle con número de comprobante está en Proveedores y Materiales.'])
+  push([])
+  push(['Compras sin fecha de caja', '', `=SUMIFS(Compras!$O$4:$O;Compras!$AC$4:$AC;"<>";Compras!$AD$4:$AD;"")`, '', '',
+    '⚠ Están clasificadas y suman en el total del año, pero sin fecha no caen en ningún mes ni semana: el cuadro no las puede ubicar en el tiempo.'])
+  push(['Compras con rubro pero sin importe numérico', '', `=SUMPRODUCT((Compras!$AC$4:$AC<>"")*(NOT(ISNUMBER(Compras!$O$4:$O))))`, '', '',
+    '⚠ Cantidad de filas, no pesos: su Total no es un número (moneda extranjera o texto), así que no suman en ningún lado.'])
+  push([])
   push(['', 'Cantidad', 'Monto', '', '', 'Qué significa'])
   // TODO ESTE BLOQUE ES FÓRMULA. Antes eran veinte números calculados acá y pegados: el día que se
   // cargaba una factura que faltaba, el bloque seguía acusando el faltante hasta la próxima corrida

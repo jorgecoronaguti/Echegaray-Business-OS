@@ -307,6 +307,9 @@ export function formulaJornales(desde, hasta) {
  * estimación disponible de CUÁNDO entra la plata. Cash flow es percibido, nunca devengado.
  * @returns {string} fórmula es-AR
  */
+export const COL_VALOR_BANCO = '$BB$5:$BB$200'
+export const MARCA_ENDOSADO = 'ENDOSADO'
+
 export function formulaCobranzas(tipo, desde, hasta) {
   const C = 'Cobranzas'
   const fecha = `IF(ISNUMBER(${C}!$Q$5:$Q$200);${C}!$Q$5:$Q$200;IF(ISNUMBER(${C}!$P$5:$P$200);${C}!$P$5:$P$200;0))`
@@ -315,7 +318,13 @@ export function formulaCobranzas(tipo, desde, hasta) {
   const filtro = tipo === 'otras'
     ? `(${uni}<>"civil")*(${uni}<>"mantenimiento")*(${C}!$F$5:$F$200<>"")`
     : `(${uni}="${tipo}")`
-  return `=SUMPRODUCT(${filtro}*(${fecha}>=${desde})*(${fecha}<${hasta})*${monto})`
+  // UN VALOR ENDOSADO NO VA A ENTRAR. El banco dice que dos echeq de LA ESTRELLA por $10.000.000
+  // cada uno se entregaron a Alumetal para pagarle. Cobranzas los muestra con fecha de cobro 15/08 y
+  // 31/08 —y tiene razón en registrar que se cobraron, el echeq entró— pero esa plata no va a pasar
+  // por la cuenta corriente nunca. Sin este filtro el cuadro esperaba $20.000.000 de ingreso en
+  // agosto que ya se habían entregado.
+  const noEndosado = `(LEFT(${C}!${COL_VALOR_BANCO}&"";${MARCA_ENDOSADO.length})<>"${MARCA_ENDOSADO}")`
+  return `=SUMPRODUCT(${filtro}*${noEndosado}*(${fecha}>=${desde})*(${fecha}<${hasta})*${monto})`
 }
 
 /**

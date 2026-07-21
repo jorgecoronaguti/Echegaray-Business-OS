@@ -25,6 +25,9 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
+import { ECHEQS_TERCEROS, CORTE as BANCO_CORTE } from '../lib/banco-santander.mjs'
+import { MARCA_ENDOSADO } from '../lib/cash-flow-lineas.mjs'
+import { parseMonto } from '../lib/cash-briefing.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Cobranzas'
@@ -52,6 +55,7 @@ const I = `$I$${F0}:$I$${F1}`   // Concepto
 // AA. Los importes se pudieron reconstruir contra la réplica de Supabase; los rótulos no.
 // Por eso ahora el bloque va a BA en adelante, verificado vacío en toda la altura de la pestaña, y
 // el script CHEQUEA que esté vacío antes de escribir. Mirar unas filas y suponer no alcanza.
+const C_VALOR = 53              // BB: qué dice el BANCO de ese valor (endosado, en custodia, cobrado)
 const C_FLAG = 52               // BA: la marca por fila
 const C_CTRL = 54               // BC: el bloque de control
 
@@ -95,6 +99,53 @@ function bloque() {
     L('Facturado y todavía no cobrado', `=SUMPRODUCT((${O}="Facturado")*IF(ISNUMBER(${M});${M};0))`, 'Plata emitida que la empresa está financiando.'),
     L('Proyectado (todavía ni facturado)', `=SUMPRODUCT((${O}="Proyectado")*IF(ISNUMBER(${M});${M};0))`, 'ESTIMACIÓN. Si una proyección ya se facturó, hay que darla de baja o queda contada dos veces.'),
   ]
+}
+
+/**
+ * QUÉ PASÓ DESPUÉS CON CADA VALOR, según el banco.
+ *
+ * POR QUÉ (21/07). El dueño: "tenés que cruzar datos, no esperar que yo te diga". Tenía razón: yo
+ * había detectado que dos echeq de $10.000.000 estaban ENDOSADOS a Alumetal y lo dejé anotado como
+ * "pendiente de tu decisión", mientras el cuadro seguía esperando esos $20.000.000 como ingreso de
+ * agosto. Detectar un error y no corregirlo es casi peor que no detectarlo.
+ *
+ * Cobranzas registra que el echeq se cobró, y es cierto. Lo que no puede saber es qué se hizo
+ * después con el valor: eso sólo lo sabe el banco. La marca va al lado de la fila y el cash flow la
+ * usa para NO contar como ingreso futuro algo que ya se entregó.
+ *
+ * EL CRUCE ES POR FECHA DE PAGO + IMPORTE, que es lo único que comparten las dos fuentes: el número
+ * de echeq del banco (90020100) no está en ninguna columna de Cobranzas.
+ */
+async function marcarValoresSegunBanco(google) {
+  const v = await google.readSheetValues(ID, `${PESTAÑA}!A${F0}:Q${F1}`)
+  const clave = (f, m) => `${f}|${Math.round(m)}`
+  const banco = new Map()
+  for (const e of ECHEQS_TERCEROS) {
+    const [a, mm, d] = e.pago.split('-').map(Number)
+    banco.set(clave(`${d}/${mm}/${a}`, e.importe), e)
+  }
+  const marcas = []
+  let endosados = 0
+  for (let i = 0; i < F1 - F0 + 1; i++) {
+    const f = v[i] ?? []
+    const forma = String(f?.[13] ?? '').trim()
+    const fecha = String(f?.[16] ?? '').trim()
+    const monto = parseMonto(f?.[12])
+    if (!/eche?q/i.test(forma) || !fecha || !monto) { marcas.push(['']); continue }
+    const e = banco.get(clave(fecha, monto))
+    if (!e) { marcas.push(['⚠ el banco no tiene un echeq con esta fecha e importe']); continue }
+    if (e.estado === 'endosado') {
+      endosados++
+      marcas.push([`${MARCA_ENDOSADO} a ${e.beneficiario} · echeq ${e.numero} — se entregó, NO va a entrar a la cuenta`])
+    } else if (e.estado === 'custodia') marcas.push([`EN CUSTODIA · echeq ${e.numero} — sigue siendo de la empresa`])
+    else marcas.push([`COBRADO · echeq ${e.numero} — ya está en el saldo del banco`])
+  }
+  const col = letra(C_VALOR)
+  await google.batchUpdateValues(ID, [
+    { range: `${PESTAÑA}!${col}4`, values: [[`Qué dice el banco de este valor · al ${BANCO_CORTE}`]] },
+    { range: `${PESTAÑA}!${col}${F0}:${col}${F1}`, values: marcas },
+  ])
+  console.log(`  valores marcados según el banco: ${endosados} endosados (no cuentan como ingreso futuro)`)
 }
 
 /**
@@ -151,6 +202,7 @@ async function main() {
   }
 
   await corregirRotuloTotal(google)
+  await marcarValoresSegunBanco(google)
 
   await google.batchUpdateValues(ID, [
     { range: `${PESTAÑA}!${letra(C_FLAG)}4:${letra(C_FLAG)}4`, values: [['⚠ Control automático']] },

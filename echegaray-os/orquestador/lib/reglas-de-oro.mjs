@@ -13,7 +13,7 @@
 
 /** Las pestañas que ESCRIBE el OS y que tienen que ser TODAS fórmula: cada número de acá sale de
  *  otro lado del archivo, así que pegarlo sería congelarlo. */
-export const CALCULADAS = ['Cash Flow Mensual', 'Cash Flow Semanal', 'Proveedores y Materiales', 'Estructura', 'Recurrentes']
+export const CALCULADAS = ['Cash Flow Mensual', 'Cash Flow Semanal', 'Estructura', 'Recurrentes']
 
 /**
  * Pestañas donde un número escrito NO es un defecto, con el motivo declarado.
@@ -24,6 +24,7 @@ export const CALCULADAS = ['Cash Flow Mensual', 'Cash Flow Semanal', 'Proveedore
  * podía calcular — por eso la lista es explícita y corta.
  */
 export const CON_ORIGEN = {
+  'Proveedores y Materiales': 'réplica del libro de IVA de ARCA en los bloques 3 y 4: número de comprobante, CAE, CUIT e importe salen de AFIP y no se pueden calcular desde el Sheet',
   'Impuestos y Financieros': 'réplica de los comprobantes de ARCA: el importe es de AFIP, no se calcula acá',
   'Cargas Sociales': 'réplica de los F931 y de los planes de pago presentados',
   CAJA: 'la única pestaña donde una persona carga el saldo: no existe en ningún otro lado del archivo',
@@ -38,6 +39,48 @@ export const DE_CARGA = [
   'Compras', 'Cobranzas', 'Cheques Emitidos', 'Tarjeta de Credito',
   'Jornales por Quincena', '01_Valores Iniciales', 'Parámetros',
 ]
+
+/**
+ * QUÉ ES CADA PESTAÑA DEL ARCHIVO. Las 19, sin excepción.
+ *
+ * POR QUÉ HACE FALTA LA LISTA COMPLETA (21/07). El dueño pidió revisar "todo el Sheet pestaña por
+ * pestaña, AL DETALLE". Hasta ahora el auditor sólo miraba las que el OS escribe: nueve de
+ * diecinueve. Una pestaña que no está clasificada no la controla nadie, y las que se escapaban eran
+ * justo las de datos crudos —_J_OBREROS con 4.299 números, _UOCRA_RAW con 3.506 celdas derramadas—
+ * donde un error no lo ve ningún control porque nadie las mira.
+ *
+ * calculada  → la escribe el OS y TODO tiene que ser fórmula
+ * replica    → la escribe el OS con datos de una fuente externa declarada (ARCA, banco, F931)
+ * carga      → la llena una persona: sus números son el hecho primario
+ * cruda      → importada de otra planilla; no se toca, sólo se lee
+ * parametro  → configuración que alimenta fórmulas de otras pestañas
+ */
+export const CLASE = {
+  'Cash Flow Mensual': 'calculada',
+  'Cash Flow Semanal': 'calculada',
+  Estructura: 'calculada',
+  Recurrentes: 'calculada',
+  'Proveedores y Materiales': 'replica',
+  'Impuestos y Financieros': 'replica',
+  'Cargas Sociales': 'replica',
+  CAJA: 'replica',
+  RESUMEN: 'calculada',
+  Compras: 'carga',
+  Cobranzas: 'carga',
+  'Cheques Emitidos': 'carga',
+  'Tarjeta de Credito': 'carga',
+  'Jornales por Quincena': 'carga',
+  _UOCRA_RAW: 'cruda',
+  _J_OBREROS: 'cruda',
+  _J_OFICINA: 'cruda',
+  '01_Valores Iniciales': 'parametro',
+  Parámetros: 'parametro',
+}
+
+/** NÚCLEO PURO: las pestañas del archivo que nadie clasificó. Una pestaña sin clase no la mira nadie. */
+export function sinClasificar(pestanas = []) {
+  return pestanas.filter((p) => !CLASE[p])
+}
 
 export const REGLAS = [
   {

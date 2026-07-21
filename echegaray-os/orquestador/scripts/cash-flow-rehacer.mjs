@@ -125,13 +125,16 @@ function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, fi
         const celdas = l.cheques
           ? cols.map((_, i) => formulaChequesSinFactura(desde(i), hasta(i), MARCAS.falta))
           : l.descubierto
+            // En el semanal va VACÍO, no cero: a nivel semana no hay saldo inicial calculado, así
+            // que no se puede saber el interés. Un 0 escrito dice "no hay interés" y es distinto de
+            // "no se puede saber" — además son 53 números pegados que el auditor marca, con razón.
             ? cols.map((_, i) => (periodo === 'mensual'
               ? formulaInteresMes(`${letra(i + 1)}#{INICIO}`, `${letra(i + 1)}$${FILA_CAB}`)
-              : 0))
+              : ''))
             : l.impuestoCheque
               // Se resuelve al final: necesita la lista de TODAS las demás líneas, que todavía no
               // existen. Referenciar el total de egresos sería circular — esta línea es un egreso.
-              ? cols.map((_, i) => `#{IMP:${letra(i + 1)}}`)
+              ? cols.map((_, i) => (periodo === 'mensual' ? `#{IMP:${letra(i + 1)}}` : ''))
               : f
         push([`    ${l.nombre}`, ...celdas])
         meta.detalle.push({ fila: filas.length, linea: l, signo: g.signo })
