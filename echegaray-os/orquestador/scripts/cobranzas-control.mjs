@@ -28,6 +28,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { ECHEQS_TERCEROS, CORTE as BANCO_CORTE } from '../lib/banco-santander.mjs'
 import { MARCA_ENDOSADO } from '../lib/cash-flow-lineas.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
+import { esIndistinguible, plataEnJuego } from '../lib/cobranzas-duplicado.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Cobranzas'
@@ -35,11 +36,15 @@ const DRY = process.argv.includes('--dry')
 
 // Los rangos de datos, iguales a los que usa el cash flow.
 const F0 = 5, F1 = 200
-const A = `$A$${F0}:$A$${F1}`   // ID
 const G = `$G$${F0}:$G$${F1}`   // Obra / Cliente
 const M = `$M$${F0}:$M$${F1}`   // TOTAL a cobrar, neto de retenciones (=J+K-L)
 const Q = `$Q$${F0}:$Q$${F1}`   // Fecha de cobro
 const O = `$O$${F0}:$O$${F1}`   // Estado
+
+// La ÚNICA definición de "dos cobros que no se pueden distinguir". Se comparte con el control de
+// efectivo de CAJA: dos definiciones del mismo concepto es lo que la regla de fuente única prohíbe.
+const INDIST = esIndistinguible(PESTAÑA, F0, F1)
+const PLATA = plataEnJuego(PESTAÑA, F0, F1)
 // LO QUE DISTINGUE UN COBRO DE OTRO cuando el cliente, el monto y la fecha coinciden.
 // Se agregaron el 20/07 porque el detector marcó como duplicadas las filas 39 y 40 —dos cobros de
 // $10.000.000 a LA ESTRELLA el mismo día— y el dueño avisó que son DOS CONCEPTOS DISTINTOS. Tenía
@@ -61,13 +66,18 @@ const C_CTRL = 54               // BC: el bloque de control
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 
-// Marca de cada fila. Dos señales distintas, porque son dos errores distintos:
-//   · ID repetido = la misma operación cargada dos veces.
-//   · Mismo cliente + monto + fecha de cobro = el mismo cobro escrito de dos maneras (típico cuando
-//     queda viva la proyección después de facturar).
+// Marca de cada fila.
+//
+// EL ID YA NO ES UNA SEÑAL, Y ESO ES UN ARREGLO, NO UNA PÉRDIDA (21/07). La columna A es
+// `=IF(C51="";"";ROW()-4)`: se autonumera y no puede repetirse. Los "IDs repetidos" que este control
+// marcaba eran dos celdas donde alguien había pegado "47" encima de la fórmula. Reparadas ésas, un
+// detector por ID da cero para siempre — incluso sobre el duplicado real de $16.200.000 de San
+// Francisco, que sigue ahí. Por eso la señal pasó a ser la IDENTIDAD DURA del cobro (cliente, monto,
+// forma, estado y fecha), definida una sola vez en lib/cobranzas-duplicado.mjs.
+//
 // Una cuota legítima NO cae acá: comparte cliente y monto pero cobra en fechas distintas.
 const flagPorFila = `=ARRAYFORMULA(IF(${M}=0;"";
-  IF((COUNTIF(${A};${A})>1)*(${A}<>"")>0;"⚠ ID repetido — ¿es la misma operación cargada dos veces?";
+  IF(${INDIST};"⚠ Otro cobro con el MISMO cliente, monto, forma, estado y día. Si son dos cobros distintos, escribí conceptos distintos; si es el mismo cargado dos veces, dá de baja uno.";
   IF(COUNTIFS(${G};${G};${M};${M};${Q};${Q};${E};${E};${H};${H};${I};${I})>1;"⚠ Igual en TODO: cliente, monto, fecha, comprobante, orden de compra y concepto. Acá sí hay que revisar si se cargó dos veces.";
   IF((COUNTIFS(${G};${G};${M};${M};${Q};${Q})>1)*(${E}="")*(${H}="")*(${I}="")>0;"Otro cobro del mismo cliente, monto y día. No se puede distinguir de su par porque los dos están SIN concepto — completalo y esta marca se va sola.";
   IF((${O}="Proyectado")*(COUNTIFS(${G};${G};${M};${M})>1)>0;"⚠ Proyección con gemela ya facturada por el mismo monto — dar de baja o queda contada dos veces";
@@ -77,7 +87,11 @@ const flagPorFila = `=ARRAYFORMULA(IF(${M}=0;"";
 const FIRMA = 'CONTROL DE COBRANZAS'
 
 function bloque() {
-  const L = (t, f = '', nota = '') => [t, f, nota]
+  // La UNIDAD se declara, no se adivina del rótulo. Antes se infería con una regex sobre el texto
+  // de la etiqueta y al renombrar dos filas el 21/07 los conteos pasaron a mostrarse como "$4" y
+  // "$2". Un formato que depende de cómo está redactado un rótulo se rompe cada vez que se mejora
+  // la redacción, y en silencio.
+  const L = (t, f = '', nota = '', unidad = 'moneda') => [t, f, nota, unidad]
   return [
     L(FIRMA),
     L('Se recalcula solo. Si algo da distinto de cero, es trabajo pendiente, no un error del control.'),
@@ -90,11 +104,11 @@ function bloque() {
     L('Cobros sin cliente', `=SUMPRODUCT((${G}="")*IF(ISNUMBER(${M});${M};0))`, 'El cash flow los clasifica por unidad de negocio; sin cliente no se sabe de qué obra son.'),
     L(''),
     L('⚠ POSIBLES DUPLICADOS'),
-    L('Filas con ID repetido', `=SUMPRODUCT((COUNTIF(${A};${A})>1)*(${A}<>"")*(${M}<>0))`, 'Ver la marca en la columna X.'),
-    L('Proyecciones con gemela ya facturada', `=SUMPRODUCT((${O}="Proyectado")*(COUNTIFS(${G};${G};${M};${M})>1)*(${M}<>0))`, 'La proyección quedó viva después de emitir la factura. Es el caso de MESSINAS filas 55/56.'),
-    L('Filas idénticas en TODO (cliente, monto, fecha, comprobante, OC y concepto)', `=SUMPRODUCT((COUNTIFS(${G};${G};${M};${M};${Q};${Q};${E};${E};${H};${H};${I};${I})>1)*(${M}<>0))`, 'Esto sí amerita revisar si se cargó dos veces. Una cuota legítima NO cae acá: cobra en otra fecha.'),
-    L('Filas que no se pueden distinguir (mismo cliente, monto y día, SIN concepto)', `=SUMPRODUCT((COUNTIFS(${G};${G};${M};${M};${Q};${Q})>1)*(${E}="")*(${H}="")*(${I}="")*(${M}<>0))`, 'NO son duplicados: son cobros a los que les falta el dato que los diferencia. Se arregla completando el concepto, no borrando filas.'),
-    L('Plata en juego si esas filas idénticas fueran duplicados', `=SUMPRODUCT(((COUNTIF(${A};${A})>1)*(${A}<>"")+(COUNTIFS(${G};${G};${M};${M};${Q};${Q};${E};${E};${H};${H};${I};${I})>1)>0)*IF(ISNUMBER(${M});${M};0))/2`, 'Es la mitad del monto marcado: de cada par sobraría uno. Estimación, no un dato — sólo quien conoce el cobro sabe cuál sobra.'),
+    L('Cobros indistinguibles entre sí (mismo cliente, monto, forma, estado y día)', `=SUMPRODUCT((${INDIST})*(${M}<>0))`, 'La señal ya NO es el ID: la columna A se autonumera sola y no puede repetirse. Ver la marca en la columna X.', 'cantidad'),
+    L('Proyecciones con gemela ya facturada', `=SUMPRODUCT((${O}="Proyectado")*(COUNTIFS(${G};${G};${M};${M})>1)*(${M}<>0))`, 'La proyección quedó viva después de emitir la factura. Es el caso de MESSINAS filas 55/56.', 'cantidad'),
+    L('Filas idénticas en TODO (cliente, monto, fecha, comprobante, OC y concepto)', `=SUMPRODUCT((COUNTIFS(${G};${G};${M};${M};${Q};${Q};${E};${E};${H};${H};${I};${I})>1)*(${M}<>0))`, 'Esto sí amerita revisar si se cargó dos veces. Una cuota legítima NO cae acá: cobra en otra fecha.', 'cantidad'),
+    L('Filas que no se pueden distinguir (mismo cliente, monto y día, SIN concepto)', `=SUMPRODUCT((COUNTIFS(${G};${G};${M};${M};${Q};${Q})>1)*(${E}="")*(${H}="")*(${I}="")*(${M}<>0))`, 'NO son duplicados: son cobros a los que les falta el dato que los diferencia. Se arregla completando el concepto, no borrando filas.', 'cantidad'),
+    L('Plata en juego si esos cobros fueran duplicados', `=${PLATA}`, 'Es la mitad del monto marcado: de cada par sobraría uno. ESTIMACIÓN, no un dato — sólo quien conoce el cobro sabe cuál sobra. El control concluyente es el de CAJA: lo cobrado en efectivo tiene que aparecer depositado o en caja.'),
     L(''),
     L('Facturado y todavía no cobrado', `=SUMPRODUCT((${O}="Facturado")*IF(ISNUMBER(${M});${M};0))`, 'Plata emitida que la empresa está financiando.'),
     L('Proyectado (todavía ni facturado)', `=SUMPRODUCT((${O}="Proyectado")*IF(ISNUMBER(${M});${M};0))`, 'ESTIMACIÓN. Si una proyección ya se facturó, hay que darla de baja o queda contada dos veces.'),
@@ -190,14 +204,42 @@ async function main() {
   // nada — sólo obliga a desactivarlo, que es peor.
   const zona = await google.readSheetValues(ID, `${PESTAÑA}!${letra(C_FLAG)}1:${letra(C_CTRL + 2)}${F1}`)
   const firma = String(zona?.[0]?.[C_CTRL - C_FLAG] ?? '').trim()
-  const esMio = firma === FIRMA
+
+  // UN GUARD QUE NO SABE RECONOCER SU PROPIO DESTROZO NO PROTEGE: BLOQUEA.
+  //
+  // El 21/07 una escritura falló DESPUÉS del borrado y BC1 quedó vacío, con la columna BB todavía
+  // escrita por este mismo script. El guard vio "BB ocupada, sin firma en BC1" y se negó a
+  // reescribir — o sea, se negó a reparar lo que él mismo acababa de dejar a medias, y la única
+  // salida era desactivarlo. Por eso ahora reconoce TODAS las marcas que deja, no sólo una: si lo
+  // único ocupado son celdas con texto que este script escribe, la zona es suya.
+  // Todo lo que este script puede llegar a escribir en la zona. Se reconoce POR CONTENIDO, no por
+  // posición: aprobar por posición equivale a apagar el guard, porque la zona entera es posición
+  // suya. Cualquier cosa que no empiece con uno de estos prefijos es del dueño y no se toca.
+  // Todo lo que este script puede llegar a escribir en la zona. Se reconoce POR CONTENIDO, no por
+  // posición: aprobar por posición equivale a apagar el guard, porque la zona entera es posición
+  // suya. Cualquier cosa que no salga de esta lista es del dueño y no se toca.
+  //
+  // LA LISTA SE DERIVA DEL PROPIO BLOQUE, no se escribe a mano: una lista de rótulos copiados se
+  // desincroniza el día que se mejora una redacción, y en silencio. Es el mismo defecto que hizo
+  // que los conteos se mostraran como "$4" — el formato se decidía leyendo el rótulo con una regex.
+  const MIAS = [
+    FIRMA, '⚠ Control automático', 'Qué dice el banco de este valor',
+    '⚠', 'COBRADO ·', 'EN CUSTODIA ·', MARCA_ENDOSADO,
+    ...b.flatMap(([rot, , nota]) => [rot, nota]).filter((t) => String(t ?? '').trim()),
+  ]
+  const ajeno = []
+  zona.forEach((f) => (f || []).forEach((c, j) => {
+    const t = String(c ?? '').trim()
+    if (!t || MIAS.some((m) => t.startsWith(m))) return
+    ajeno.push(letra(C_FLAG + j))
+  }))
+  // Con la firma alcanza. Sin ella —porque una escritura anterior falló a mitad de camino— sirve
+  // que todo lo que haya sea texto propio: así el script puede reparar su propio destrozo.
+  const esMio = firma === FIRMA || ajeno.length === 0
   if (!esMio) {
-    const ocupadas = new Set()
-    zona.forEach((f) => (f || []).forEach((c, j) => { if (String(c ?? '').trim()) ocupadas.add(letra(C_FLAG + j)) }))
-    if (ocupadas.size) {
-      throw new Error(`me niego a escribir: las columnas ${[...ocupadas].join(', ')} tienen contenido que no reconozco (esperaba la firma "${FIRMA}" en ${letra(C_CTRL)}1). Elegí otra zona antes de pisar datos del dueño.`)
-    }
-  } else {
+    throw new Error(`me niego a escribir: las columnas ${[...new Set(ajeno)].join(', ')} tienen contenido que no reconozco (esperaba la firma "${FIRMA}" en ${letra(C_CTRL)}1). Elegí otra zona antes de pisar datos del dueño.`)
+  }
+  {
     await google.clearValues(ID, `${PESTAÑA}!${letra(C_FLAG)}1:${letra(C_CTRL + 2)}${F1}`)
   }
 
@@ -207,7 +249,10 @@ async function main() {
   await google.batchUpdateValues(ID, [
     { range: `${PESTAÑA}!${letra(C_FLAG)}4:${letra(C_FLAG)}4`, values: [['⚠ Control automático']] },
     { range: `${PESTAÑA}!${letra(C_FLAG)}${F0}`, values: [[flagPorFila]] },
-    { range: `${PESTAÑA}!${letra(C_CTRL)}1:${letra(C_CTRL + 2)}${b.length}`, values: b },
+    // SÓLO las tres primeras columnas: la cuarta es la UNIDAD, que gobierna el formato y no se
+    // escribe. Mandar cuatro contra un rango de tres hace fallar el batch ENTERO — y como el
+    // borrado ya ocurrió, la pestaña queda sin el bloque. Pasó el 21/07.
+    { range: `${PESTAÑA}!${letra(C_CTRL)}1:${letra(C_CTRL + 2)}${b.length}`, values: b.map((f) => f.slice(0, 3)) },
   ])
 
   const sheetId = hoja.sheetId
@@ -220,12 +265,10 @@ async function main() {
   // que anda a seguir gastando en entender por qué la otra no.
   const MONEDA = { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }, horizontalAlignment: 'RIGHT' }
   const CANTIDAD = { numberFormat: { type: 'NUMBER', pattern: '0' }, horizontalAlignment: 'RIGHT' }
-  // Las tres filas que cuentan FILAS y no pesos: los dos detectores de duplicados y el de gemelas.
-  const esCantidad = (etiqueta) => /^Filas con|^Proyecciones con/.test(etiqueta)
-  const celdas = b.map(([etiqueta, formula]) => ({
+  const celdas = b.map(([, formula, , unidad]) => ({
     values: [{
       ...(formula ? { userEnteredValue: { formulaValue: formula } } : {}),
-      userEnteredFormat: esCantidad(etiqueta) ? CANTIDAD : MONEDA,
+      userEnteredFormat: unidad === 'cantidad' ? CANTIDAD : MONEDA,
     }],
   }))
   await google.spreadsheetBatchUpdate(ID, [

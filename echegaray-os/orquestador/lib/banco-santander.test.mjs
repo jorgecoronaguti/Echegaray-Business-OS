@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { MOVIMIENTOS, CUENTA, TARJETA, ACUERDO, verificarCadena, porTipo, enCartera, endosados, totalEcheqs, antiguedadDias } from './banco-santander.mjs'
+import { MOVIMIENTOS, CUENTA, TARJETA, ACUERDO, verificarCadena, porTipo, ingresosPorNaturaleza, naturalezaIngreso, enCartera, endosados, totalEcheqs, antiguedadDias } from './banco-santander.mjs'
 
 // EL TEST QUE HACE CONFIABLE LA TRANSCRIPCIÓN. El extracto es una cadena: saldo(n) = saldo(n−1) +
 // importe(n). Si tipeé mal un dígito, la cadena se rompe y esto falla. Sin este test, los 71
@@ -27,7 +27,26 @@ test('los echeq se reconocen con guion y sin guion', () => {
   const t = porTipo()
   const prov = t.find((x) => x.tipo === 'Transferencias a proveedores')
   assert.ok(prov.monto < 0, 'un grupo de pagos a proveedores no puede dar positivo')
-  assert.equal(t.find((x) => x.tipo === 'Ingresos').cantidad, 4)
+  // Desde el 21/07 los créditos ya no se agrupan como "Ingresos" a secas: un crédito puede ser un
+  // cobro, un traslado de plata propia o un rescate de inversión, y mezclarlos hizo que el OS
+  // reportara $11,9M "faltantes" que eran del rescate de Balanz.
+  assert.equal(t.find((x) => x.tipo === 'Traslados de fondos propios (no es ingreso)').cantidad, 3)
+  assert.equal(t.find((x) => x.tipo === 'Rescates de inversión y financiero').cantidad, 1)
+  assert.equal(t.find((x) => x.tipo === 'Ingresos'), undefined, 'un crédito no es automáticamente un ingreso')
+})
+
+test('el rescate de Balanz NO se cuenta como cobranza', () => {
+  // El caso que originó la distinción: $11.913.568 del 16/07, CUIT 30710630670. Es plata de la
+  // empresa que estaba invertida y volvió a la cuenta: contarla como cobro infla el cash flow.
+  const i = ingresosPorNaturaleza()
+  assert.equal(i.totales.financiero, 11913568.24)
+  assert.equal(i.totales.traslado, 9960000 + 10000000, 'depósitos de efectivo + el echeq acreditado')
+  assert.equal(i.totales.cobranza, 0, 'en los 18 días del extracto no entró un peso por transferencia de un cliente')
+})
+
+test('un número de once cifras que no es CUIT no identifica a nadie', () => {
+  // `extraer` valida el dígito verificador: un número de lote no puede hacerse pasar por contraparte.
+  assert.equal(naturalezaIngreso({ concepto: 'Transferencia Recibida - Lote 12345678901', importe: 1 }), 'cobranza')
 })
 
 test('el impuesto al cheque y el costo del descubierto salen separados', () => {

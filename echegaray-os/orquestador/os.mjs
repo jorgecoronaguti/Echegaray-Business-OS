@@ -30,6 +30,7 @@ import { osDataTools } from './lib/tools/os-data.mjs'
 import { jornalesTools } from './lib/tools/jornales-tool.mjs'
 import { certificacionesTools } from './lib/tools/certificaciones-tool.mjs'
 import { comprasTools } from './lib/tools/compras-tool.mjs'
+import { cuitTools } from './lib/tools/cuit-tool.mjs'
 import { obligacionesTools } from './lib/tools/obligaciones-tool.mjs'
 import { adicionalesTools } from './lib/tools/adicionales-tool.mjs'
 import { legajosTools } from './lib/tools/legajos-tool.mjs'
@@ -72,7 +73,7 @@ async function construirRegistro() {
   const google = await googleClient()
   return {
     ...driveReadTools(google), ...driveWriteTools(google), ...osDataTools(),
-    ...jornalesTools(google), ...certificacionesTools(), ...comprasTools(),
+    ...jornalesTools(google), ...certificacionesTools(), ...comprasTools(), ...cuitTools(),
     ...obligacionesTools(), ...adicionalesTools(), ...legajosTools(), ...pylTools(google),
     ...cotizacionesTools(), ...noConformidadesTools(), ...cajaVencidoTools(),
     ...controlAdministrativoTools(), ...auditarPestanaTools(google), ...estadoEmpresaTools(google),

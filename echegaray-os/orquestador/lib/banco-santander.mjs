@@ -30,6 +30,8 @@
 // silencio: por eso todo lleva CORTE y la pestaña muestra la antigüedad y avisa cuando pasa de una
 // semana.
 
+import { extraer } from './cuit.mjs'
+
 /** El día y la hora de la foto. Todo lo de abajo es verdad A ESTA FECHA, no hoy. */
 export const CORTE = '2026-07-21'
 export const ORIGEN = 'Santander Empresas · captura del 21/07/2026 09:19-09:25'
@@ -242,7 +244,13 @@ export function porTipo(movs = MOVIMIENTOS) {
     if (/afip|imp\.afip/i.test(c)) return 'AFIP'
     if (/prestamos prendarios/i.test(c)) return 'Préstamo prendario'
     if (/tarjeta de credito/i.test(c)) return 'Pago de la tarjeta'
-    if (/deposito de efectivo|transferencia recibida/i.test(c)) return 'Ingresos'
+    // Un crédito NO es automáticamente un ingreso: puede ser plata propia cambiando de lugar.
+    if (/deposito de efectivo|transferencia recibida/i.test(c)) {
+      const n = naturalezaIngreso({ concepto: c })
+      return n === 'cobranza' ? 'Cobranzas de clientes'
+        : n === 'financiero' ? 'Rescates de inversión y financiero'
+        : 'Traslados de fondos propios (no es ingreso)'
+    }
     if (/tarjeta de debito/i.test(c)) return 'Compras con tarjeta de débito'
     if (/debito automatico/i.test(c)) return 'Débitos automáticos (seguros)'
     return 'Transferencias a proveedores'
@@ -351,4 +359,79 @@ export function ingresosPorConcepto(movs = MOVIMIENTOS) {
     acc.set(k, a)
   }
   return [...acc.values()].sort((a, b) => b.total - a.total)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL BANCO NO DISTINGUE UN INGRESO DE UN TRASLADO DE PLATA PROPIA. ACÁ SE DISTINGUE.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// POR QUÉ (21/07). El OS reportó "una transferencia de $11.913.568 del 16/07 que Cobranzas no tiene
+// y que no aparece en el libro de ventas de ARCA". El dueño contestó qué era: el RESCATE DE UNA
+// INVERSIÓN en la plataforma Balanz. No es una venta ni un cobro — es plata de la empresa que estaba
+// invertida y volvió a la cuenta corriente.
+//
+// Es exactamente el mismo error que el de los $16.200.000 de San Francisco, que se habían cargado
+// dos veces en Cobranzas: al cobrarlos en efectivo y otra vez al depositarlos en el banco. Mover
+// plata de un bolsillo propio a otro NO ES UN INGRESO. Contarlo como tal infla el cash flow con plata
+// que ya estaba.
+//
+// El extracto tiene tres naturalezas distintas mezcladas en la columna de créditos:
+//
+//   COBRANZA  → un cliente pagó. Tiene que estar en Cobranzas con esta fecha.
+//   TRASLADO  → plata propia que cambia de lugar (depósito de efectivo, acreditación de un echeq que
+//               ya estaba en cartera). El ingreso económico ocurrió ANTES, con otra fecha, y ya está
+//               registrado. Comparar esto contra Cobranzas de la misma ventana da una diferencia
+//               falsa.
+//   FINANCIERO → rescate de una inversión, desembolso de un préstamo. Nunca es ingreso operativo.
+//
+// ═══ EL HALLAZGO QUE DEJA ESTE CASO ═══
+//
+// Si hubo un rescate de $11.913.568 en Balanz, la empresa TIENE (o tenía) una cuenta de inversión
+// que el cuadro de disponibilidades no muestra en ningún lado. Cuánto queda ahí es un dato que el OS
+// no posee y que no se inventa: se pide. Y el rendimiento de esa inversión SÍ es un ingreso
+// financiero real, que hoy no está en ninguna línea del P&L porque nadie sabe cuál fue el capital.
+
+/** Contrapartes conocidas por CUIT. El nombre se resuelve con `cuit_razon_social`; lo que se declara
+ *  acá es la NATURALEZA del movimiento, que ninguna búsqueda puede contestar. */
+export const CONTRAPARTES = new Map([
+  ['30710630670', {
+    nombre: 'BALANZ CAPITAL VALORES S.A.U.',
+    naturaleza: 'financiero',
+    // Confirmado por el dueño el 21/07. Sin esa confirmación esto sería una inferencia.
+    detalle: 'plataforma de inversión — un crédito de acá es el RESCATE de una inversión propia, no un cobro',
+    origen: 'razón social por búsqueda en internet (21/07); naturaleza confirmada por el dueño',
+  }],
+])
+
+/**
+ * NÚCLEO PURO: ¿qué es este crédito del extracto?
+ * @returns {'cobranza'|'traslado'|'financiero'}
+ */
+export function naturalezaIngreso(mov) {
+  const c = String(mov?.concepto ?? '')
+  // 1) Por CUIT: es lo único que identifica a la contraparte sin ambigüedad. `extraer` valida el
+  //    dígito verificador, así que un número de lote de once cifras no puede hacerse pasar por uno.
+  for (const cuit of extraer(c)) { const i = CONTRAPARTES.get(cuit); if (i) return i.naturaleza }
+  // 2) Plata propia cambiando de lugar.
+  if (/dep[oó]sito\s+de\s+efectivo/i.test(c)) return 'traslado'
+  if (/dep[oó]sito\s+e-?cheq|acreditaci[oó]n\s+de\s+cheque/i.test(c)) return 'traslado'
+  // 3) Todo lo demás que entra es, hasta prueba en contrario, un cobro de un cliente.
+  return 'cobranza'
+}
+
+/**
+ * NÚCLEO PURO: los créditos del extracto separados por naturaleza.
+ *
+ * `cobranza` es el ÚNICO grupo que se puede comparar contra Cobranzas en la misma ventana. Los otros
+ * dos, comparados, inventan una diferencia: eso es lo que hizo que el OS reportara $11,9M
+ * "faltantes" que nunca faltaron.
+ */
+export function ingresosPorNaturaleza(movs = MOVIMIENTOS) {
+  const out = { cobranza: [], traslado: [], financiero: [] }
+  for (const m of movs.filter((x) => x.importe > 0)) out[naturalezaIngreso(m)].push(m)
+  const tot = (l) => l.reduce((s, m) => s + m.importe, 0)
+  return {
+    ...out,
+    totales: { cobranza: tot(out.cobranza), traslado: tot(out.traslado), financiero: tot(out.financiero) },
+  }
 }

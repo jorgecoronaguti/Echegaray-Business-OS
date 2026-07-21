@@ -54,6 +54,12 @@ import { CUENTAS, CARGA, ALIAS, TIPO_CAMBIO, RANGO_TC, filaDeCuenta } from '../l
 import * as BANCO from '../lib/banco-santander.mjs'
 import { TASAS, CARGO_VERIFICADO, tasaDiaria, costoConImpuestos, interesDelPeriodo } from '../lib/costo-descubierto.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
+import { esIndistinguible } from '../lib/cobranzas-duplicado.mjs'
+
+// LA MISMA definición de "dos cobros que no se pueden distinguir" que usa el control de la pestaña
+// Cobranzas. Antes acá había una segunda basada en el ID, y al reparar la columna A —que se
+// autonumera y no puede repetirse— esa versión pasó a dar cero sobre un duplicado que sigue existiendo.
+const INDIST_COB = esIndistinguible('Cobranzas', 5, 400)
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Caja'
@@ -362,7 +368,7 @@ function grilla(cargado, refs) {
     `=SUMIFS(Cobranzas!$M$5:$M$400;Cobranzas!$N$5:$N$400;"Efectivo";Cobranzas!$O$5:$O$400;"Cobrado";Cobranzas!$Q$5:$Q$400;">="&${dateF(desdeB)};Cobranzas!$Q$5:$Q$400;"<="&${dateF(hastaB)})`, '', '', '',
     'Cobranzas: forma de cobro "Efectivo" Y estado "Cobrado", por FECHA DE COBRO, en la ventana del extracto. Un proyectado no es plata que esté.'])
   push(['  · de eso, cargado DOS VECES con el mismo ID', '', '', '',
-    `=SUMPRODUCT((Cobranzas!$N$5:$N$400="Efectivo")*(Cobranzas!$O$5:$O$400="Cobrado")*(Cobranzas!$Q$5:$Q$400>=${dateF(desdeB)})*(Cobranzas!$Q$5:$Q$400<=${dateF(hastaB)})*(COUNTIFS(Cobranzas!$A$5:$A$400;Cobranzas!$A$5:$A$400;Cobranzas!$M$5:$M$400;Cobranzas!$M$5:$M$400)>1)*IF(ISNUMBER(Cobranzas!$M$5:$M$400);Cobranzas!$M$5:$M$400;0))/2`,
+    `=SUMPRODUCT((Cobranzas!$N$5:$N$400="Efectivo")*(Cobranzas!$O$5:$O$400="Cobrado")*(Cobranzas!$Q$5:$Q$400>=${dateF(desdeB)})*(Cobranzas!$Q$5:$Q$400<=${dateF(hastaB)})*(${INDIST_COB})*IF(ISNUMBER(Cobranzas!$M$5:$M$400);Cobranzas!$M$5:$M$400;0))/2`,
     '', '', '',
     '⚠ Mismo ID y mismo importe más de una vez. Caso real del 17/07: San Francisco pagó $16.200.000 en efectivo y quedó cargado dos veces —una al cobrarlo y otra al depositarlo—. Un depósito NO es un cobro: mover plata de la caja al banco no genera ingreso. Se divide por dos porque las dos filas del par suman.'])
   const fEfDepos = push(['Depositado en efectivo en esa misma ventana', '', '', '', BANCO.depositosEfectivo(), '', '', '',

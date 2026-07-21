@@ -17,7 +17,8 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { MOVIMIENTOS, verificarCadena, porTipo, CUENTA, CORTE, ORIGEN, enCartera, endosados, totalEcheqs, compromisosPorBeneficiario, normProveedor, ECHEQS_EMITIDOS } from '../lib/banco-santander.mjs'
+import { MOVIMIENTOS, verificarCadena, porTipo, CUENTA, CORTE, ORIGEN, enCartera, endosados, totalEcheqs, compromisosPorBeneficiario, normProveedor, ECHEQS_EMITIDOS, ingresosPorNaturaleza, CONTRAPARTES } from '../lib/banco-santander.mjs'
+import { extraer as extraerCuit } from '../lib/cuit.mjs'
 import { saldosPorProveedor } from '../lib/cuentas-por-pagar.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { parseMonto, parseFecha } from '../lib/cash-briefing.mjs'
@@ -81,13 +82,42 @@ async function main() {
     return d && d >= DESDE && d < HASTA
   })
   const ingresoSheet = cobVentana.reduce((s, f) => s + parseMonto(f?.[12]), 0)
-  const ingresoBanco = MOVIMIENTOS.filter((m) => m.importe > 0).reduce((s, m) => s + m.importe, 0)
-  console.log('\nINGRESOS — el banco contra Cobranzas, misma ventana')
-  console.log(`  banco:     ${ars(ingresoBanco).padStart(16)}`)
-  for (const m of MOVIMIENTOS.filter((x) => x.importe > 0)) console.log(`     ${m.fecha}  ${m.concepto.slice(0, 52).padEnd(54)}${ars(m.importe).padStart(14)}`)
-  console.log(`  Cobranzas: ${ars(ingresoSheet).padStart(16)}  (${cobVentana.length} filas con fecha de cobro en la ventana)`)
+
+  // UN CRÉDITO DEL BANCO NO ES AUTOMÁTICAMENTE UN INGRESO.
+  //
+  // La primera versión sumaba TODOS los créditos y los comparaba contra Cobranzas. Así reportó que
+  // faltaban $11.913.568 —que resultaron ser el rescate de una inversión en Balanz, plata propia—
+  // y trató tres depósitos de efectivo como si fueran cobros nuevos, cuando el cobro ya estaba
+  // registrado en Cobranzas con la fecha en que se cobró en efectivo. Comparar traslados contra
+  // Cobranzas inventa una diferencia. Sólo el grupo `cobranza` se puede comparar.
+  const ing = ingresosPorNaturaleza()
+  console.log('\nINGRESOS — qué entró al banco, por naturaleza')
+  const ETIQ = {
+    cobranza: 'COBRANZAS de clientes — comparables contra el Sheet',
+    traslado: 'TRASLADOS de fondos propios — el ingreso ya se registró antes, con otra fecha',
+    financiero: 'FINANCIEROS — rescate de inversión o préstamo: nunca es ingreso operativo',
+  }
+  for (const k of ['cobranza', 'traslado', 'financiero']) {
+    console.log(`  ${ETIQ[k]}: ${ars(ing.totales[k])}`)
+    for (const m of ing[k]) {
+      const quien = extraerCuit(m.concepto).map((c) => CONTRAPARTES.get(c)?.nombre).filter(Boolean).join(', ')
+      console.log(`     ${m.fecha}  ${m.concepto.slice(0, 48).padEnd(50)}${ars(m.importe).padStart(14)}${quien ? '  → ' + quien : ''}`)
+    }
+  }
+  console.log(`\n  Cobranzas del Sheet en la ventana: ${ars(ingresoSheet)}  (${cobVentana.length} filas)`)
   for (const f of cobVentana) console.log(`     ${String(f?.[16]).padEnd(12)}${String(f?.[6] ?? '').slice(0, 34).padEnd(36)}${String(f?.[13] ?? '').padEnd(14)}${ars(parseMonto(f?.[12])).padStart(14)}`)
-  console.log(`  ⇒ diferencia: ${ars(ingresoBanco - ingresoSheet)}`)
+  console.log(`  ⇒ el banco recibió ${ars(ing.totales.cobranza)} de cobranzas por transferencia contra ${ars(ingresoSheet)} que registra el Sheet.`)
+  if (!ing.totales.cobranza) {
+    console.log('     NO ENTRÓ NI UN PESO DE COBRANZA POR TRANSFERENCIA en toda la ventana: lo que cobró la')
+    console.log('     empresa entró en EFECTIVO y en ECHEQ. El Sheet lo registra bien; el banco lo ve recién')
+    console.log('     cuando alguien deposita, y eso es lo que explica la diferencia entera.')
+  }
+  if (ing.totales.financiero) {
+    console.log(`\n  ⚠ ${ars(ing.totales.financiero)} entraron por RESCATE DE INVERSIÓN. Eso significa que la empresa`)
+    console.log('     tiene una cuenta de inversión que el cuadro de disponibilidades NO muestra. Cuánto queda')
+    console.log('     ahí es un dato que el OS no tiene y no se inventa: hay que cargarlo. Y el rendimiento de')
+    console.log('     esa inversión es un ingreso financiero que hoy no está en ninguna línea del resultado.')
+  }
 
   // ── LOS VALORES DE TERCEROS ───────────────────────────────────────────────────────────────────
   console.log('\nVALORES DE TERCEROS — lo que Cobranzas no puede saber')

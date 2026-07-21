@@ -134,6 +134,34 @@ export const DERIVADA_DE = {
   'Compras!D': 'C — es =TEXT(C;"mmm-yy"), el mes de la fecha de factura',
   'Compras!R': 'Q — es =Q, la fecha prevista de pago',
   'Compras!U': 'T y O — es =T-O, el saldo del pago parcial',
+  // 21/07: verificadas leyendo la fórmula real de cada una, no supuestas por el rótulo.
+  'Compras!AA': 'O y X — semáforo del estado de pago',
+  'Cobranzas!R': 'Q — es =TEXT(Q;"mmm-yy"), el mes de la fecha de cobro',
+  'Cobranzas!T': 'M y S — es =M*S, el monto ponderado por probabilidad',
+  'Cobranzas!U': 'J y O — los días hasta el vencimiento',
+  'Cobranzas!V': 'J y O — el semáforo del estado de cobro',
+  'Cheques Emitidos!D': 'C — es =C, una copia de la fecha de emisión',
+  'Cheques Emitidos!J': 'I — es =I, una copia de la fecha de pago',
+  'Tarjeta de Credito!B': 'A — es =A, una copia de la fecha de compra',
+  'Tarjeta de Credito!I': 'H — es =H, una copia de la fecha de pago',
+  'Jornales por Quincena!E': 'C, D y Parámetros!B43 — horas × dotación × jornal',
+  'Jornales por Quincena!K': '_J_OBREROS — suma del espejo que el OS refresca',
+}
+
+/**
+ * Columnas que el OS LEE PARA CONTROLARLAS, y deliberadamente NO consume.
+ *
+ * POR QUÉ EXISTE ESTA TERCERA CATEGORÍA (21/07). "Leída" y "no leída" no alcanzaban. Las columnas
+ * de pago de Compras están a medio llenar y se contradicen entre sí: hay filas marcadas "Pagado"
+ * con el monto pagado en blanco. Consumirlas haría desaparecer plata del cuadro; ignorarlas dejaría
+ * la contradicción sin dueño. La decisión fue leerlas para MOSTRAR el conflicto —eso hace
+ * consistencia-compras.mjs— sin usarlas como fuente de ningún número.
+ *
+ * No son un hueco: son una decisión declarada. Y no son "usadas": el cuadro no depende de ellas.
+ */
+export const CONTROLA_EL_OS = {
+  'Compras!S': 'Total o Parcial — se contrasta contra T y X, no se consume (consistencia-compras)',
+  'Compras!T': 'Monto Pagado — a medio llenar: hay "Pagado" con el monto vacío. Se controla, no se consume',
 }
 
 /**
@@ -149,6 +177,8 @@ export function comparar(pestaña, columnas = []) {
   for (const c of columnas) {
     if (decl[c.col]) { usadas.push({ ...c, para: decl[c.col] }); continue }
     if (ESCRIBE_EL_OS.has(`${pestaña}!${c.col}`)) { usadas.push({ ...c, para: 'la escribe el OS' }); continue }
+    const controla = CONTROLA_EL_OS[`${pestaña}!${c.col}`]
+    if (controla) { usadas.push({ ...c, para: `la CONTROLA el OS: ${controla}` }); continue }
     const deriva = DERIVADA_DE[`${pestaña}!${c.col}`]
     if (deriva) { usadas.push({ ...c, para: `deriva de ${deriva}` }); continue }
     // Una columna sin rótulo Y sin filas no es un hueco: es una columna que no existe.

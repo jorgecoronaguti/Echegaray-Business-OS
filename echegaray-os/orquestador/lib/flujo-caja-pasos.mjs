@@ -13,6 +13,11 @@ export const PASOS = [
   // se refresca, todo lo que sigue calcula sobre una foto vieja y ningún control lo ve — pasó el
   // 21/07: la quincena en curso quedó $1.231.963 por debajo de la real.
   ['espejar-jornales.mjs', 'espejo del archivo JORNALES (_J_OBREROS y _J_OFICINA)', ['_J_OBREROS', '_J_OFICINA']],
+  // SEGUNDO: devolver la fórmula a las celdas calculadas que alguien pisó pegando un valor. Va
+  // antes de todo cálculo porque una celda pisada no grita: muestra un número creíble que dejó de
+  // actualizarse. El 21/07 había cuatro, y dos de ellas hacían que dos cobros de $16.200.000
+  // quedaran fuera de cualquier filtro por mes.
+  ['columnas-calculadas.mjs', 'devolver la fórmula a las celdas calculadas pisadas a mano', []],
   ['rubro-caja-sheet.mjs', 'la columna "Rubro de caja" de Compras — de acá cuelga todo lo demás', []],
   // Recurrentes va ANTES del cash flow: el cuadro lee de ella su proyección y necesita que exista.
   ['recurrentes-pestana.mjs', 'Recurrentes — servicios fijos, sin proyectar meses ya cerrados', ['Recurrentes']],
