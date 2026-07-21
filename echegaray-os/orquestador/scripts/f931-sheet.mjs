@@ -188,6 +188,49 @@ async function main() {
   cuadro.push(['Archivo de origen', ...periodos.map((p) => celdaCabecera(p, COL.archivo)), ''])
 
   await google.batchUpdateValues(ID, [{ range: `${DESTINO}!A${fCab}`, values: cuadro }])
+
+  // ═══ EL BLOQUE DE SAC, QUE HASTA HOY NO TENÍA DUEÑO ═════════════════════════════════════════
+  //
+  // Era el único contenido del archivo que NINGÚN script escribía (regla 6: todo se actualiza solo).
+  // Y no era inofensivo: su fórmula del devengado referenciaba `$B$13:$M$13` —la fila de
+  // "Remuneración declarada"— POR NÚMERO. Desde que este script rehace el bloque 1, basta que
+  // aparezca un concepto nuevo en una DDJJ para que esa fila se corra y el SAC empiece a dividir por
+  // doce la fila equivocada, sin error y sin aviso.
+  //
+  // Ahora lo escribe quien sabe dónde quedó cada fila: este mismo script, que acaba de ponerlas.
+  const v2 = await google.readSheetValues(ID, `${DESTINO}!A1:A80`)
+  const filaSac = v2.findIndex((f) => /^SAC pagado/.test(String(f?.[0] ?? '').trim())) + 1
+  // encabezado + conceptos + TOTAL + empleados → recién ahí la remuneración. Se busca por RÓTULO y
+  // no se cuenta a mano: contando me dio 12 y la fila es la 13, o sea el SAC habría devengado un
+  // doceavo de la CANTIDAD DE EMPLEADOS. Un número plausible y absurdo, sin error a la vista.
+  const fRem = v2.findIndex((f) => /^Remuneración declarada/.test(String(f?.[0] ?? '').trim())) + 1
+  if (filaSac && fRem) {
+    const fCabSac = filaSac - 1
+    const colFin = String.fromCharCode(65 + periodos.length)
+    const sac = [
+      ['SAC pagado (real, de Compras)', ...periodos.map((_, j) => {
+        const c = String.fromCharCode(66 + j)
+        return `=SUMPRODUCT((LOWER(Compras!$E$4:$E)="sac")*(YEAR(Compras!$C$4:$C)=YEAR(${c}$${fCabSac}))*(MONTH(Compras!$C$4:$C)=MONTH(${c}$${fCabSac}))*IF(ISNUMBER(Compras!$O$4:$O);Compras!$O$4:$O;0))`
+      })],
+      // UN DOCEAVO DE LA REMUNERACIÓN DEL MES: así se devenga el aguinaldo. La referencia va a la
+      // fila que este script acaba de escribir, no a un número fijo.
+      ['SAC devengado (1/12 de la remuneración declarada)', ...periodos.map((_, j) => `=IFERROR(${String.fromCharCode(66 + j)}$${fRem}/12;"")`)],
+      ['Provisión acumulada (devengado − pagado)', ...periodos.map((_, j) => {
+        const c = String.fromCharCode(66 + j)
+        return `=SUM($B${filaSac + 1}:${c}${filaSac + 1})-SUM($B${filaSac}:${c}${filaSac})`
+      })],
+      // VACACIONES: NO SE INVENTA. Provisionarlas necesita la antigüedad de cada legajo —de eso
+      // dependen los días que le corresponden a cada uno— y esa información no está en ninguna
+      // pestaña de este archivo. Se declara el gap en vez de completar la fila con un número
+      // plausible: una provisión inventada es peor que una provisión ausente, porque se usa.
+      ['Vacaciones', ...periodos.map(() => ''), ],
+    ]
+    await google.batchUpdateValues(ID, [
+      { range: `${DESTINO}!A${filaSac}:${colFin}${filaSac + 3}`, values: sac },
+      { range: `${DESTINO}!${String.fromCharCode(66 + periodos.length + 1)}${filaSac + 3}`, values: [['⚠ falta la antigüedad por legajo: sin eso los días de vacaciones que corresponden a cada uno no se pueden calcular, y no se inventan']] },
+    ])
+    console.log(`  bloque SAC reescrito (filas ${filaSac}–${filaSac + 3}): el devengado ahora referencia la fila ${fRem}, no un número fijo`)
+  }
   console.log(`  bloque 1 de "${DESTINO}" reescrito con fórmulas: ${conceptos.length} conceptos × ${periodos.length} períodos`)
 
   // VERIFICACIÓN: el total del cuadro tiene que dar lo mismo que la suma de la réplica.

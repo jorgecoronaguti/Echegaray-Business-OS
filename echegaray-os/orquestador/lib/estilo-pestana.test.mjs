@@ -43,8 +43,12 @@ test('la jerarquía se lee sin leer: título > encabezado > bloque', () => {
   assert.ok(bloque().textFormat.fontSize > nota().textFormat.fontSize)
 })
 
-test('sólo hay cuatro tamaños', () => {
-  assert.equal(new Set(Object.values(TAM)).size, 4)
+test('la escala de tamaños es corta y no se inventa afuera', () => {
+  // CINCO, no cuatro: el titular del panel (16) entró como quinto escalón el 21/07. La regla no es
+  // el número: es que TODOS estén acá. Un tamaño escrito suelto en un script es un tamaño que nadie
+  // decidió, y así se llega a seis tipografías distintas en una misma pestaña.
+  assert.equal(new Set(Object.values(TAM)).size, 5)
+  assert.ok(TAM.titular > TAM.titulo && TAM.titulo > TAM.bloque && TAM.bloque > TAM.cuerpo && TAM.cuerpo > TAM.nota)
 })
 
 test('un proyectado nunca se confunde con un real', () => {

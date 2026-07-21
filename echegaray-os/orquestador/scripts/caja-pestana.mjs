@@ -601,11 +601,27 @@ async function formatear(google, sheetId, g, tab) {
   const AZUL = E.COLOR.encabezado
   const GRIS = E.COLOR.total
   const AMARILLO = { red: 1, green: 0.98, blue: 0.86 }
-  const VERDE = E.COLOR.subtotal
+  const VERDE = E.COLOR.ok
   const n = g.filas.length
   const r = (r0, r1, c0 = 0, c1 = ANCHO) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
-  const req = [{ unmergeCells: { range: r(0, n) } }]
-  const fmt = (rg, fields, format) => req.push({ repeatCell: { range: rg, cell: { userEnteredFormat: format }, fields } })
+  // ═══ SE RESETEA TODO AL ESTÁNDAR, Y RECIÉN DESPUÉS SE PINTAN LAS EXCEPCIONES ═══
+  //
+  // POR QUÉ (21/07). El dueño: "tiene mil formatos de letras y colores distintos la pestaña caja,
+  // ¿eso es world class?". Medido: DOS tipografías (Arial y Calibri), SEIS tamaños, NUEVE colores de
+  // texto —con tres rojos y tres grises apenas distintos— y NUEVE fondos, con dos azules casi
+  // iguales. No era un estándar: era sedimento de todas las versiones anteriores de la pestaña.
+  //
+  // La causa: este formateador sólo APLICABA formato, nunca lo sacaba, así que cada corrida dejaba
+  // encima lo suyo y debajo quedaba lo viejo. El mismo defecto que ya había hecho ilegible otra
+  // pestaña. Ahora la primera operación devuelve TODO al estándar del archivo —una tipografía, un
+  // tamaño de cuerpo, un negro, fondo blanco— y a partir de ahí cada excepción se pinta a propósito.
+  const req = [
+    { unmergeCells: { range: r(0, n) } },
+    E.reset(sheetId, Math.max(n + 20, 90), ANCHO),
+  ]
+  // TODO FORMATO PASA POR conFuente: si define textFormat sin nombrar la tipografía, Sheets la
+  // reemplaza por la de la hoja y la celda queda en otra fuente. Ver lib/estilo-pestana.mjs.
+  const fmt = (rg, fields, format) => req.push({ repeatCell: { range: rg, cell: { userEnteredFormat: E.conFuente(format) }, fields } })
 
   // Los grupos viejos se borran ANTES de crear el nuevo: la API los apila y el margen izquierdo
   // terminaría con una escalera de +/- que crece cada 2 horas.
@@ -619,12 +635,12 @@ async function formatear(google, sheetId, g, tab) {
   fmt(r(0, n, 3, 4), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'NUMBER', pattern: '#,##0.00;;""' }, horizontalAlignment: 'CENTER' })
   fmt(r(0, n, 1, 2), 'userEnteredFormat.horizontalAlignment,userEnteredFormat.textFormat',
-    { horizontalAlignment: 'CENTER', textFormat: { fontSize: 9 } })
+    { horizontalAlignment: 'CENTER', textFormat: { fontSize: E.TAM.nota, fontFamily: E.FUENTE } })
   fmt(r(0, n, 5, 6), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER' })
   fmt(r(0, n, 6, 7), 'userEnteredFormat.horizontalAlignment', { horizontalAlignment: 'CENTER' })
   fmt(r(0, n, 7, 9), 'userEnteredFormat',
-    { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: { fontSize: 9, italic: true, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'CLIP' })
+    { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: { fontSize: E.TAM.nota, italic: true, foregroundColor: E.COLOR.nota }, wrapStrategy: 'CLIP' })
   // UNA TASA NO ES PLATA. Con el formato de moneda, el 55% anual se dibujaba "$1" — que además de
   // no significar nada, invita a leerlo como un peso.
   fmt(r(g.fTasa - 1, g.fTasa, 2, 3), 'userEnteredFormat.numberFormat',
@@ -636,19 +652,19 @@ async function formatear(google, sheetId, g, tab) {
   }
   // La cotización de la fila del tipo de cambio NO es plata: se muestra como número.
   fmt(r(g.fRef - 1, g.fTC, 2, 3), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '#,##0.00' } })
-  fmt(r(0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 13 } })
+  fmt(r(0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: E.TAM.titulo } })
   fmt(r(1, 2), 'userEnteredFormat.textFormat,userEnteredFormat.wrapStrategy',
-    { textFormat: { italic: true, fontSize: 9, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'WRAP' })
+    { textFormat: { italic: true, fontSize: E.TAM.nota, foregroundColor: E.COLOR.nota }, wrapStrategy: 'WRAP' })
 
   // ── EL PANEL DE TITULARES ────────────────────────────────────────────────────────────────────
   // Grande, con aire, y con la unidad declarada: es lo primero que se ve al abrir la pestaña.
   if (g.fTitulos && g.fCifras) {
     fmt(r(g.fTitulos - 1, g.fTitulos), 'userEnteredFormat',
-      { backgroundColor: AZUL, textFormat: { bold: true, fontSize: 9, foregroundColor: { red: 1, green: 1, blue: 1 } }, horizontalAlignment: 'CENTER', wrapStrategy: 'WRAP' })
+      { backgroundColor: AZUL, textFormat: { bold: true, fontSize: E.TAM.nota, foregroundColor: { red: 1, green: 1, blue: 1 } }, horizontalAlignment: 'CENTER', wrapStrategy: 'WRAP' })
     fmt(r(g.fCifras - 1, g.fCifras), 'userEnteredFormat',
-      { numberFormat: E.NUM.moneda, textFormat: { bold: true, fontSize: 16, fontFamily: E.FUENTE_NUM }, horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE' })
+      { numberFormat: E.NUM.moneda, textFormat: { bold: true, fontSize: E.TAM.titular, fontFamily: E.FUENTE_NUM }, horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE' })
     fmt(r(g.fCifras, g.fCifras + 1), 'userEnteredFormat',
-      { numberFormat: { type: 'TEXT' }, textFormat: { italic: true, fontSize: 9, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, horizontalAlignment: 'CENTER', wrapStrategy: 'WRAP' })
+      { numberFormat: { type: 'TEXT' }, textFormat: { italic: true, fontSize: E.TAM.nota, foregroundColor: E.COLOR.nota }, horizontalAlignment: 'CENTER', wrapStrategy: 'WRAP' })
     req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: g.fCifras - 1, endIndex: g.fCifras }, properties: { pixelSize: 34 }, fields: 'pixelSize' } })
     // "Lo que ya está comprometido" se lee mejor en rojo suave: es lo que hay que restar.
     // Cada titular ocupa dos columnas: se combinan para que el número tenga aire.
@@ -665,10 +681,10 @@ async function formatear(google, sheetId, g, tab) {
   // ── EL BLOQUE DE ALERTAS SE VE COMO UNA ALERTA ──────────────────────────────────────────────
   // Con el formato del resto de la pestaña, "$47.681.181 de diferencia" se lee igual que un saldo.
   if (g.fAlerta0 && g.fAlerta1 > g.fAlerta0) {
-    fmt(r(g.fAlerta0 - 1, g.fAlerta0), 'userEnteredFormat', { ...E.bloque(), backgroundColor: E.COLOR.alerta, textFormat: { ...E.bloque().textFormat, foregroundColor: { red: 0.5, green: 0.05, blue: 0.05 } } })
+    fmt(r(g.fAlerta0 - 1, g.fAlerta0), 'userEnteredFormat', { ...E.bloque(), backgroundColor: E.COLOR.alerta, textFormat: { ...E.bloque().textFormat, foregroundColor: E.COLOR.alertaTexto } })
     fmt(r(g.fAlerta0 + 1, g.fAlerta0 + 2), 'userEnteredFormat', E.encabezado())
     fmt(r(g.fAlerta0 + 2, g.fAlerta1, 2, 3), 'userEnteredFormat',
-      { numberFormat: E.NUM.moneda, textFormat: { bold: true, fontSize: 11, fontFamily: E.FUENTE_NUM, foregroundColor: { red: 0.6, green: 0.05, blue: 0.05 } }, horizontalAlignment: 'RIGHT' })
+      { numberFormat: E.NUM.moneda, textFormat: { bold: true, fontSize: E.TAM.bloque, fontFamily: E.FUENTE_NUM, foregroundColor: E.COLOR.alertaTexto }, horizontalAlignment: 'RIGHT' })
     // La columna "qué hacer" son frases de 90 caracteres: se combinan a lo ancho y la fila crece.
     // Con una sola columna quedaban cortadas justo donde dice qué hay que hacer.
     for (let i = g.fAlerta0 + 2; i < g.fAlerta1; i++) {
@@ -683,7 +699,7 @@ async function formatear(google, sheetId, g, tab) {
   // el número más importante de la pestaña leído como dos pesos.
   if (g.fDias) {
     fmt(r(g.fDias - 1, g.fDias, 2, 3), 'userEnteredFormat',
-      { numberFormat: { type: 'NUMBER', pattern: '0" días";;"—"' }, textFormat: { bold: true, fontSize: 12, fontFamily: E.FUENTE_NUM }, horizontalAlignment: 'CENTER' })
+      { numberFormat: { type: 'NUMBER', pattern: '0" días";;"—"' }, textFormat: { bold: true, fontSize: E.TAM.bloque, fontFamily: E.FUENTE_NUM }, horizontalAlignment: 'CENTER' })
     fmt(r(g.fDias - 1, g.fDias, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontFamily: E.FUENTE, fontSize: E.TAM.cuerpo } })
   }
 
@@ -704,7 +720,7 @@ async function formatear(google, sheetId, g, tab) {
 
   for (const c of [g.cab0, g.cab1, g.cab3]) {
     fmt(r(c - 1, c), 'userEnteredFormat',
-      { backgroundColor: AZUL, textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 }, fontSize: 9 }, horizontalAlignment: 'CENTER', wrapStrategy: 'WRAP' })
+      { backgroundColor: AZUL, textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 }, fontSize: E.TAM.nota }, horizontalAlignment: 'CENTER', wrapStrategy: 'WRAP' })
   }
   // LAS CELDAS DE CARGA EN AMARILLO. Es la diferencia más importante de la pestaña: lo que una
   // persona escribe tiene que verse distinto de lo que el sistema calcula, o nadie sabe qué puede
@@ -717,14 +733,14 @@ async function formatear(google, sheetId, g, tab) {
   // El detalle de cheques, más chico y en gris: es información de respaldo, no una cuenta más.
   if (g.g1 > g.g0) {
     fmt(r(g.g0 - 1, g.g1, 0, 1), 'userEnteredFormat.textFormat',
-      { textFormat: { fontSize: 9, foregroundColor: { red: 0.35, green: 0.35, blue: 0.4 } } })
+      { textFormat: { fontSize: E.TAM.nota, foregroundColor: E.COLOR.nota } })
     req.push({ addDimensionGroup: { range: { sheetId, dimension: 'ROWS', startIndex: g.g0 - 1, endIndex: g.g1 } } })
     req.push({ updateDimensionGroup: { dimensionGroup: { range: { sheetId, dimension: 'ROWS', startIndex: g.g0 - 1, endIndex: g.g1 }, depth: 1, collapsed: false }, fields: 'collapsed' } })
   }
   fmt(r(g.fTotal - 1, g.fTotal), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
     { textFormat: { bold: true }, backgroundColor: GRIS })
   fmt(r(g.fNeta - 1, g.fNeta), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
-    { textFormat: { bold: true, fontSize: 10 }, backgroundColor: VERDE })
+    { textFormat: { bold: true, fontSize: E.TAM.cuerpo }, backgroundColor: VERDE })
   g.filas.forEach((f, i) => {
     const t = String(f[0] ?? '')
     // EL RÓTULO DE UN BLOQUE SE VE COMO UN BLOQUE, con el estilo del archivo y no con una negrita

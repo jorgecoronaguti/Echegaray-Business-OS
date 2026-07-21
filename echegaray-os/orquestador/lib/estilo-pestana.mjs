@@ -61,6 +61,9 @@ export const COLOR = {
   alertaTexto: { red: 0.612, green: 0.184, blue: 0.110 },
   // Un control que da bien.
   ok: { red: 0.875, green: 0.933, blue: 0.878 },          // #dfeee0
+  // El negro del archivo. No es el negro puro: un #000 sobre blanco vibra y cansa a las cuatro
+  // pestañas. Éste es el mismo tono del título, aclarado.
+  texto: { red: 0.063, green: 0.078, blue: 0.094 },        // #101317
   // Una nota al costado: se lee si hace falta, no compite con los números.
   nota: { red: 0.357, green: 0.404, blue: 0.439 },        // #5b6770
 }
@@ -71,7 +74,16 @@ export const FUENTE = 'Arial'
 export const FUENTE_NUM = 'Arial'
 
 /** Cuatro tamaños. Cada uno de más es una jerarquía que no significa nada. */
-export const TAM = { titulo: 13, bloque: 11, cuerpo: 10, nota: 9 }
+export const TAM = {
+  // El titular del panel de una pestaña: el número que se lee desde lejos. Se declara acá y no se
+  // escribe suelto en cada script — un tamaño que no está en esta tabla es un tamaño que nadie
+  // decidió, y así se llega a seis tipografías distintas en una misma pestaña.
+  titular: 16,
+  titulo: 13,
+  bloque: 11,
+  cuerpo: 10,
+  nota: 9,
+}
 
 /** Las alturas de fila. 21px es lo que entra en una pantalla sin scroll infinito. */
 export const ALTO = { titulo: 28, bloque: 24, fila: 21 }
@@ -105,6 +117,36 @@ export const ANCHO = { concepto: 270, texto: 150, numero: 112, fecha: 94, nota: 
 
 const txt = (o = {}) => ({ fontFamily: FUENTE, fontSize: TAM.cuerpo, ...o })
 const num = (o = {}) => ({ fontFamily: FUENTE_NUM, fontSize: TAM.cuerpo, ...o })
+
+/**
+ * NÚCLEO PURO: completa un formato con la tipografía del estándar.
+ *
+ * POR QUÉ EXISTE (21/07). El dueño: "tiene mil formatos de letras y colores distintos la pestaña
+ * caja, ¿eso es world class?". Medido: dos tipografías conviviendo, y la culpa era de una trampa de
+ * la API que no se ve leyendo el código.
+ *
+ * Cuando un pedido escribe `textFormat: { bold: true, fontSize: 9 }` con `fields:
+ * 'userEnteredFormat'`, Sheets REEMPLAZA el textFormat entero: lo que no se nombra no se conserva,
+ * se pierde. Y sin fontFamily la celda vuelve a la tipografía por defecto de la hoja —Calibri— aunque
+ * la pestaña entera esté en Arial. Así aparecieron 31 celdas en otra fuente: todos los títulos,
+ * encabezados y rótulos de bloque, o sea justo los que más se miran.
+ *
+ * Envolviendo cada formato con esto, la fuente deja de depender de que nadie se olvide de nombrarla.
+ */
+export function conFuente(formato = {}, { numerico = false } = {}) {
+  if (!formato?.textFormat) return formato
+  // El color del texto va por el mismo camino y por el mismo motivo: un textFormat que no lo nombra
+  // deja la celda en el negro puro del default en vez del negro del archivo. Eran 38 celdas.
+  return {
+    ...formato,
+    textFormat: {
+      fontFamily: numerico ? FUENTE_NUM : FUENTE,
+      fontSize: TAM.cuerpo,
+      foregroundColor: COLOR.texto,
+      ...formato.textFormat,
+    },
+  }
+}
 
 /** NÚCLEO PURO: el formato de la celda de TÍTULO de una pestaña (fila 1). */
 export function titulo() {
