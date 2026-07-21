@@ -17,6 +17,7 @@ import {
 } from '../lib/cash-flow-lineas.mjs'
 import { REGLAS } from '../lib/rubro-caja.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
+import { CAJA as N_CAJA } from '../lib/rangos-nombrados.mjs'
 import { ubicarCaja } from '../lib/caja-disponibilidades.mjs'
 import { formulaInteresMes } from '../lib/costo-descubierto.mjs'
 import { formulaImpuesto } from '../lib/impuesto-cheque.mjs'
@@ -396,6 +397,20 @@ async function main() {
       // La fecha del saldo más reciente: es la que decide en qué mes ancla el cuadro.
       refCajaFecha = `MAX('${tab}'!$${u.colFecha}$${u.filaCab + 1}:$${u.colFecha}$${u.filaUltimaCuenta})`
     }
+    // ═══ SI HAY RANGO CON NOMBRE, MANDA EL NOMBRE ═══
+    //
+    // La referencia por celda de arriba se recalcula leyendo CAJA, pero este paso corre ANTES que
+    // caja-pestana en el agente: siempre va una corrida atrasado. El día que se insertó un bloque
+    // arriba en CAJA, "Efectivo al inicio" y "al cierre" —las dos filas más importantes del cuadro—
+    // quedaron VACÍAS hasta la corrida siguiente, sin error y sin aviso.
+    //
+    // Un nombre sigue a la celda aunque se mueva, así que con él el orden de los pasos deja de
+    // importar. La referencia por rótulo se conserva como respaldo para la primera corrida, cuando
+    // el nombre todavía no existe.
+    const nombres = await google.getNamedRanges(ID).catch(() => [])
+    const tieneNombre = (n) => nombres.some((x) => x.name === n)
+    if (tieneNombre(N_CAJA.total)) refCaja = N_CAJA.total
+    if (tieneNombre(N_CAJA.fecha)) refCajaFecha = N_CAJA.fecha
   } catch { /* la pestaña puede no existir todavía */ }
   console.log(`Efectivo al inicio: ${refCaja ?? '⚠ sin pestaña de saldos'} · ancla en ${refCajaFecha ?? '(sin fecha)'}`)
 

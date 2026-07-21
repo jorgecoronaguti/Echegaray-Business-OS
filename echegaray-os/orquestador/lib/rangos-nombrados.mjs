@@ -33,6 +33,23 @@ export const ARCA = {
 }
 
 /**
+ * Los números de CAJA que el resto del archivo mira.
+ *
+ * POR QUÉ EXISTEN (21/07). El Cash Flow Mensual leía el saldo declarado con una referencia por
+ * celda —`CAJA!$F$10:$F$14`— y el día que se insertó un bloque arriba en CAJA, esas celdas pasaron a
+ * ser otra cosa: las dos filas más importantes del cuadro, "Efectivo al inicio" y "al cierre",
+ * quedaron VACÍAS. Sin error, sin aviso.
+ *
+ * Peor todavía: el cash flow corre ANTES que CAJA en el agente, así que aunque recalcule la
+ * referencia leyendo la pestaña, siempre está una corrida atrasado. Con un nombre, el orden deja de
+ * importar: el nombre sigue a la celda aunque se mueva.
+ */
+export const CAJA = {
+  total: 'CAJA_TOTAL_DISPONIBLE',
+  fecha: 'CAJA_FECHA_SALDO',
+}
+
+/**
  * NÚCLEO PURO: los pedidos de la API para dejar un conjunto de nombres apuntando donde toca.
  * Actualiza el que ya existe en vez de crear otro — la API no falla al duplicar un nombre, se queda
  * con dos y las fórmulas empiezan a leer el equivocado.

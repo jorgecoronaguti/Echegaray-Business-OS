@@ -56,6 +56,7 @@ import { CUENTAS, CARGA, ALIAS, TIPO_CAMBIO, RANGO_TC, filaDeCuenta } from '../l
 import * as BANCO from '../lib/banco-santander.mjs'
 import { TASAS, CARGO_VERIFICADO, tasaDiaria, costoConImpuestos, interesDelPeriodo } from '../lib/costo-descubierto.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
+import { CAJA as N_CAJA, publicar } from '../lib/rangos-nombrados.mjs'
 import { esIndistinguible } from '../lib/cobranzas-duplicado.mjs'
 
 // LA MISMA definición de "dos cobros que no se pueden distinguir" que usa el control de la pestaña
@@ -188,6 +189,29 @@ function grilla(cargado, refs) {
   const fTitulos = push(['LA PLATA QUE HAY', '', 'YA COMPROMETIDO', '', 'QUEDA DISPONIBLE', '', 'AIRE', ''])
   const fCifras = push(['@TOTAL', '', '@CHEQUES', '', '@NETA', '', '@AIRE', ''])
   push(['efectivo + bancos + valores', '', 'cheques firmados sin debitar', '', 'con esto se decide', '', 'crédito, no plata propia', ''])
+  push()
+
+  // ═══ LO QUE NO CIERRA, ARRIBA Y JUNTO ═══════════════════════════════════════════════════════
+  //
+  // POR QUÉ (21/07). El dueño, cuarta vez sobre esta pestaña: "¿no pensás mejorar caja?". Y tenía
+  // razón otra vez, pero el problema ya no era el formato: era la JERARQUÍA. La pestaña mostraba
+  // ochenta y tres millones de pesos en contradicciones —$20M de echeqs que el cash flow espera y
+  // ya se entregaron, $47,7M de diferencia contra la proyección, $15,7M de efectivo sin explicar,
+  // $16,2M cargados dos veces— y los dibujaba igual que un saldo cualquiera, cada uno perdido en su
+  // bloque. Arriba, el panel decía "$5.416.537 disponible" como si estuviera todo bien.
+  //
+  // Una pestaña de caja tiene que GRITAR lo que está roto, no listarlo. Estas filas son fórmulas que
+  // referencian el detalle de más abajo —no repiten ningún cálculo— y cada una dice qué hacer.
+  const fAlerta0 = push(['⚠ LO QUE NO CIERRA — mirar esto antes de decidir con los números de arriba'])
+  push(['Cada línea es un problema con nombre y monto. El detalle está en el bloque que dice al final.'])
+  push(['Qué pasa', '', 'Cuánto', 'Qué hacer', '', '', '', 'Dónde está el detalle'])
+  push(['Cheques de terceros que el cash flow espera y ya se entregaron', '', '@DIFECHEQ',
+    'Endosados a un proveedor: son un pago hecho, no un ingreso futuro. Corregir en Cobranzas.', '', '', '', 'Bloque 3'])
+  push(['El cash flow proyecta un efectivo que no está', '', '@DIFCONC',
+    'O faltan movimientos por cargar, o el saldo inicial del cuadro quedó viejo. Mientras no cierre, la proyección de caja no se puede usar para decidir.', '', '', '', 'Bloque 6'])
+  push(['Efectivo cobrado que no se depositó ni está en la caja física', '', '@SINEXPL',
+    'Puede tener explicación (un depósito posterior al corte, un pago en efectivo sin pasar por el banco), pero no puede quedar sin mirar.', '', '', '', 'Bloque 7'])
+  const fAlerta1 = filas.length
   push()
 
   // ── 1 · DISPONIBILIDADES ────────────────────────────────────────────────────────────────────────
@@ -385,7 +409,7 @@ function grilla(cargado, refs) {
       ? `=IFERROR(INDEX('Cash Flow Mensual'!$B$${refs.cierre}:$M$${refs.cierre};MATCH(EOMONTH(MAX($F$${d0}:$F$${d1});0);ARRAYFORMULA(EOMONTH('Cash Flow Mensual'!$B$${refs.cab}:$M$${refs.cab};0));0));"⚠ sin saldo cargado")`
       : '⚠ no encontré la línea de cierre en el Cash Flow Mensual',
     '', '', 'Cash Flow Mensual, línea "Efectivo y equivalentes al cierre"', 'Se calcula solo'])
-  push(['⇒ Diferencia', '', '', '', `=IFERROR(${C_PESOS}${fDecl}-${C_PESOS}${fProy};"")`, '', '', '',
+  const fDifConc = push(['⇒ Diferencia', '', '', '', `=IFERROR(${C_PESOS}${fDecl}-${C_PESOS}${fProy};"")`, '', '', '',
     'Distinto de cero = movimientos que el archivo no ve. No es un error de fórmula: es trabajo de carga.'])
   push()
 
@@ -433,7 +457,7 @@ function grilla(cargado, refs) {
     `Extracto del Santander ${BANCO.CORTE}. Los dos números miran los mismos días: comparar un año contra dos semanas no mide nada.`])
   push(['Declarado hoy en caja física', '', '', '', `=${C_PESOS}${d0}`, '', '', '',
     'La primera fila del bloque 1: la carga a mano.'])
-  push(['⇒ EFECTIVO SIN EXPLICAR', '', '', '',
+  const fSinExpl = push(['⇒ EFECTIVO SIN EXPLICAR', '', '', '',
     `=${C_PESOS}${fEfCobrado}-${C_PESOS}${fEfCobrado + 1}-${C_PESOS}${fEfDepos}-${C_PESOS}${fEfCobrado + 3}`, '', '', '',
     '⚠ Es el efectivo cobrado en la ventana que no se depositó NI aparece en la caja física. Puede tener explicación —un depósito posterior al corte, un pago a proveedor hecho en efectivo sin pasar por el banco— pero no puede quedar sin mirar. Al 21/07: dos filas de Cobranzas por $16.200.000 cada una, el mismo día y del mismo cliente, que el detector de duplicados ya venía marcando.'])
   push()
@@ -465,10 +489,13 @@ function grilla(cargado, refs) {
 
   // El panel de arriba se resuelve acá, cuando ya se sabe en qué fila quedó cada total. Son
   // referencias, no copias: si el detalle cambia, el titular cambia con él.
-  const PANEL = { '@TOTAL': `=${C_PESOS}${fTotal}`, '@CHEQUES': `=${C_PESOS}${fCh}`, '@NETA': `=${C_PESOS}${fNeta}`, '@AIRE': `=${C_PESOS}${fAire}` }
+  const PANEL = {
+    '@TOTAL': `=${C_PESOS}${fTotal}`, '@CHEQUES': `=${C_PESOS}${fCh}`, '@NETA': `=${C_PESOS}${fNeta}`, '@AIRE': `=${C_PESOS}${fAire}`,
+    '@DIFECHEQ': `=${C_IMP}${gDif}`, '@DIFCONC': `=ABS(${C_PESOS}${fDifConc})`, '@SINEXPL': `=${C_PESOS}${fSinExpl}`,
+  }
   for (const f of filas) f.forEach((c, j) => { if (typeof c === 'string' && PANEL[c]) f[j] = PANEL[c] })
 
-  return { filas, usd, fTitulos, fCifras, fAire, fDias, fRitmo, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, amarillas }
+  return { filas, usd, fTitulos, fCifras, fAire, fDias, fRitmo, fAlerta0, fAlerta1, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, amarillas }
 }
 
 async function main() {
@@ -514,6 +541,15 @@ async function main() {
   await google.clearValues(ID, `${tab}!A1:Z90`)
   await google.batchUpdateValues(ID, [{ range: `${tab}!A1:${letra(ANCHO - 1)}${g.filas.length}`, values: g.filas }])
   await formatear(google, hoja.sheetId, g, tab)
+
+  // LOS NOMBRES, DESPUÉS DE ESCRIBIR. El Cash Flow Mensual ancla su saldo inicial en estos dos: con
+  // referencias por celda, insertar un bloque acá arriba dejaba sus dos filas de efectivo vacías y
+  // sin avisar. Un nombre sigue a la celda aunque se mueva, y por eso el orden de los pasos del
+  // agente deja de importar.
+  await publicar(google, ID, hoja.sheetId, [
+    { name: N_CAJA.total, fila: g.fTotal, col: 5 },
+    { name: N_CAJA.fecha, fila: g.d1, col: 6 },
+  ])
 
   const v = await google.readSheetValues(ID, `${tab}!A1:I${g.filas.length}`)
   // El dólar declarado es OPCIONAL: vacío significa "uso la cotización del día", no un dato faltante.
@@ -620,6 +656,23 @@ async function formatear(google, sheetId, g, tab) {
     // Lo comprometido se resta: va en el color de alerta. Lo que queda, en el de un total.
     fmt(r(g.fCifras - 1, g.fCifras, 2, 4), 'userEnteredFormat.backgroundColor', { backgroundColor: E.COLOR.alerta })
     fmt(r(g.fCifras - 1, g.fCifras, 4, 6), 'userEnteredFormat.backgroundColor', { backgroundColor: E.COLOR.total })
+  }
+
+  // ── EL BLOQUE DE ALERTAS SE VE COMO UNA ALERTA ──────────────────────────────────────────────
+  // Con el formato del resto de la pestaña, "$47.681.181 de diferencia" se lee igual que un saldo.
+  if (g.fAlerta0 && g.fAlerta1 > g.fAlerta0) {
+    fmt(r(g.fAlerta0 - 1, g.fAlerta0), 'userEnteredFormat', { ...E.bloque(), backgroundColor: E.COLOR.alerta, textFormat: { ...E.bloque().textFormat, foregroundColor: { red: 0.5, green: 0.05, blue: 0.05 } } })
+    fmt(r(g.fAlerta0 + 1, g.fAlerta0 + 2), 'userEnteredFormat', E.encabezado())
+    fmt(r(g.fAlerta0 + 2, g.fAlerta1, 2, 3), 'userEnteredFormat',
+      { numberFormat: E.NUM.moneda, textFormat: { bold: true, fontSize: 11, fontFamily: E.FUENTE_NUM, foregroundColor: { red: 0.6, green: 0.05, blue: 0.05 } }, horizontalAlignment: 'RIGHT' })
+    // La columna "qué hacer" son frases de 90 caracteres: se combinan a lo ancho y la fila crece.
+    // Con una sola columna quedaban cortadas justo donde dice qué hay que hacer.
+    for (let i = g.fAlerta0 + 2; i < g.fAlerta1; i++) {
+      req.push({ mergeCells: { range: r(i, i + 1, 3, ANCHO), mergeType: 'MERGE_ROWS' } })
+      req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: 32 }, fields: 'pixelSize' } })
+    }
+    fmt(r(g.fAlerta0 + 2, g.fAlerta1, 3, ANCHO), 'userEnteredFormat', { ...E.nota(), wrapStrategy: 'WRAP', verticalAlignment: 'MIDDLE' })
+    fmt(r(g.fAlerta0 + 2, g.fAlerta1, 0, 1), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
   }
 
   // LOS DÍAS DE CAJA SON DÍAS. Con el formato moneda de la columna, "2 días" se dibujaba como "$2":
