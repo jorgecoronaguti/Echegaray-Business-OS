@@ -73,22 +73,25 @@ export const CUENTAS = [
   },
   {
     // El nombre del banco lo completa el dueño: no está en ningún dato del archivo y no se inventa.
-    nombre: 'Banco — Cuenta corriente en pesos',
+    nombre: 'Banco Santander — Cuenta corriente en pesos 179-091383/6',
     moneda: 'ARS',
+    // Desde el 21/07 lo trae el extracto, no una carga a mano. Ver banco-santander.mjs.
+    banco: 'saldoPesos',
     // La negación importa: si el dueño le pone el nombre real al banco y le saca el "en pesos", la
     // fila tiene que seguir siendo la de pesos y no capturar la de dólares.
     patron: /^banco(?!.*d[oó]lar).*cuenta corriente/i,
-    origenSugerido: 'Extracto bancario — completar el nombre del banco',
+    origenSugerido: 'Extracto bancario',
   },
   {
     // NUEVA (21/07). "En el banco se cuenta con un saldo en dólares."
     // Va en dólares y se convierte a pesos con el tipo de cambio de arriba. El saldo que se carga
     // es el del extracto, en dólares: convertirlo a mano al cargarlo perdería el dato original y
     // dejaría un número que envejece sin que se note.
-    nombre: 'Banco — Cuenta corriente en dólares',
+    nombre: 'Banco Santander — Cuenta corriente en dólares',
     moneda: 'USD',
+    banco: 'saldoDolares',
     patron: /^banco.*cuenta corriente en d[oó]lares/i,
-    origenSugerido: 'Extracto bancario en USD — cargar el saldo EN DÓLARES, no convertido',
+    origenSugerido: 'Santander, saldo total en dólares',
   },
   {
     // SE CALCULA SOLA, y por eso es la única cuenta sin celda amarilla.
@@ -103,8 +106,13 @@ export const CUENTAS = [
     nombre: 'Valores a depositar (cheques de terceros en cartera)',
     moneda: 'ARS',
     patron: /^valores a depositar/i,
-    origenSugerido: 'Cobranzas, forma de cobro Echeq, todavía no acreditados',
-    formula: '=SUMPRODUCT((Cobranzas!$N$5:$N$200="Echeq")*(Cobranzas!$Q$5:$Q$200>TODAY())*IF(ISNUMBER(Cobranzas!$M$5:$M$200);Cobranzas!$M$5:$M$200;0))',
+    // 21/07: DEJÓ DE SALIR DE COBRANZAS. La fórmula sobre Cobranzas daba $30.000.000 y la cartera
+    // real es $10.000.000: dos de los tres echeq están ENDOSADOS a Alumetal. Cobranzas registra que
+    // se cobró —y es cierto, el echeq entró— pero no puede saber qué pasó después con el valor. Eso
+    // sólo lo sabe el banco. La fórmula vieja quedó como CONTROL, para que la diferencia se vea.
+    origenSugerido: 'Santander · ECHEQs en custodia',
+    banco: 'cartera',
+    control: '=SUMPRODUCT((Cobranzas!$N$5:$N$200="Echeq")*(Cobranzas!$Q$5:$Q$200>TODAY())*IF(ISNUMBER(Cobranzas!$M$5:$M$200);Cobranzas!$M$5:$M$200;0))',
     // El dueño (21/07): "quiero un agrupar +/- con la información de esos cheques". Un total de
     // $30.000.000 no se puede verificar ni gestionar: hay que saber de quién es cada cheque y qué
     // día entra. El detalle se arma con REFERENCIAS a las filas de Cobranzas, no copiando importes.
@@ -115,15 +123,23 @@ export const CUENTAS = [
 /** Lo que se carga a mano pero NO es una disponibilidad. Una línea por moneda: el resumen de la
  *  tarjeta trae dos límites distintos y mezclarlos daría un cupo que no existe en ninguna de las
  *  dos. */
+/**
+ * Lo que se carga a mano pero NO es una disponibilidad.
+ *
+ * ME CORRIJO SOBRE AYER: modelé la tarjeta como dos cupos, uno en pesos y otro en dólares. El
+ * resumen dice que no. Hay UN cupo de $10.000.000 y los consumos en dólares (suscripciones, U$S
+ * 193,25) se pagan contra ese mismo cupo. Dos cupos habrían mostrado un aire que no existe.
+ */
 export const CARGA = {
-  limitePesos: 'Tarjeta de crédito — límite acordado en pesos',
-  limiteDolares: 'Tarjeta de crédito — límite acordado en dólares',
-  consumoDolares: 'Tarjeta de crédito — consumos en dólares pendientes de débito',
+  limiteTarjeta: 'Tarjeta de crédito — límite acordado',
+  acuerdo: 'Acuerdo en descubierto — importe acordado',
 }
 
 /** Nombres viejos → nombre actual, para no perder un dato ya cargado cuando se renombra una fila. */
 export const ALIAS = new Map([
-  ['Tarjeta de crédito — límite acordado', CARGA.limitePesos],
+  ['Tarjeta de crédito — límite acordado en pesos', CARGA.limiteTarjeta],
+  ['Banco — Cuenta corriente en pesos', 'Banco Santander — Cuenta corriente en pesos 179-091383/6'],
+  ['Banco — Cuenta corriente en dólares', 'Banco Santander — Cuenta corriente en dólares'],
 ])
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

@@ -50,7 +50,8 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { CUENTAS, CARGA, ALIAS, TIPO_CAMBIO, RANGO_TC, filaDeCuenta, echeqsEnCartera } from '../lib/caja-disponibilidades.mjs'
+import { CUENTAS, CARGA, ALIAS, TIPO_CAMBIO, RANGO_TC, filaDeCuenta } from '../lib/caja-disponibilidades.mjs'
+import * as BANCO from '../lib/banco-santander.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -77,6 +78,14 @@ const fecha = (s) => {
   const d = new Date(a, Number(m[2]) - 1, Number(m[1]))
   return Number.isNaN(+d) ? null : d
 }
+
+/** Cuánto vale hoy una cuenta según el banco. Nunca se pisa con una carga a mano vieja: el saldo
+ *  lleva SU fecha, y la columna de antigüedad avisa cuando la foto envejeció. */
+const saldoDeBanco = (c) => (c.banco === 'cartera'
+  ? BANCO.totalEcheqs(BANCO.enCartera())
+  : BANCO.CUENTA[c.banco])
+
+const ars = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
 
 const numero = (s) => {
   const t = String(s ?? '').replace(/[^\d,.-]/g, '')
@@ -127,9 +136,22 @@ function rescatar(previo) {
   return cargado
 }
 
-function grilla(cargado, refs, cheques) {
+function grilla(cargado, refs) {
+  // El tipo de cambio se referencia por su RANGO CON NOMBRE. Así el bloque que lo calcula puede
+  // vivir al pie de la pestaña —que es donde corresponde en una empresa que mueve todo en pesos—
+  // sin que las filas de arriba dependan de en qué fila quedó.
+  const TC = RANGO_TC
   const filas = []
-  const push = (c = []) => { const r = [...c]; while (r.length < ANCHO) r.push(''); filas.push(r); return filas.length }
+  // Las filas en dólares se anotan para pintarlas distinto. Un saldo de U$S 581,39 mostrado como
+  // "$581" con signo de peso se lee como 581 pesos: es un error de lectura de tres órdenes de
+  // magnitud, y sólo se ve mirando la pantalla.
+  const usd = []
+  const push = (c = []) => {
+    const r = [...c]; while (r.length < ANCHO) r.push('')
+    filas.push(r)
+    if (r[1] === 'USD') usd.push(filas.length)
+    return filas.length
+  }
   // El valor que el dueño ya había cargado para una cuenta, o vacío la primera vez.
   const previo = (cuenta, campo) => cargado.get(cuenta)?.[campo] ?? ''
 
@@ -137,42 +159,29 @@ function grilla(cargado, refs, cheques) {
   push(['Esta es la ÚNICA pestaña del archivo donde se carga un número a mano: cuánta plata hay. Todo lo demás se calcula solo. Las celdas AMARILLAS son para completar; el resto son fórmulas y se pisan en cada corrida del agente. Lo que está en dólares se carga EN DÓLARES: la conversión a pesos la hace la planilla.'])
   push()
 
-  // ── 0 · TIPO DE CAMBIO ──────────────────────────────────────────────────────────────────────────
-  // Se define UNA sola vez y acá, que es donde se usa. Cualquier otra fórmula del archivo que
-  // necesite convertir dólares referencia el rango con nombre, no esta celda por su fila.
-  push(['0 · TIPO DE CAMBIO — con qué se valúa lo que está en dólares'])
-  const cab0 = push(['Concepto', '', 'Cotización', '', '', 'Fecha', '', 'Origen del dato', 'Declarado por'])
-  const fRef = push([TIPO_CAMBIO.referencia.nombre, '', TIPO_CAMBIO.referencia.formula, '', '', '=TODAY()', '', TIPO_CAMBIO.referencia.origen, 'Se calcula solo'])
-  const fDec = push([TIPO_CAMBIO.declarado.nombre, '', previo(TIPO_CAMBIO.declarado.nombre, 'saldo'), '', '',
-    previo(TIPO_CAMBIO.declarado.nombre, 'fecha'), '', previo(TIPO_CAMBIO.declarado.nombre, 'origen') || TIPO_CAMBIO.declarado.origen,
-    previo(TIPO_CAMBIO.declarado.nombre, 'quien')])
-  const fTC = push([TIPO_CAMBIO.uso.nombre, '', `=IF(${C_IMP}${fDec}<>"";${C_IMP}${fDec};${C_IMP}${fRef})`, '', '', '', '', TIPO_CAMBIO.uso.origen, 'Se calcula solo'])
-  const TC = `$${C_IMP}$${fTC}`
-  push()
-
   // ── 1 · DISPONIBILIDADES ────────────────────────────────────────────────────────────────────────
-  push(['1 · DISPONIBILIDADES — lo que hay HOY'])
+  push(['1 · DISPONIBILIDADES — LO QUE HAY HOY'])
   const cab1 = push(['Cuenta', 'Moneda', 'Saldo en moneda de origen', 'Tipo de cambio', 'Saldo en pesos', 'Fecha del saldo', 'Antigüedad', 'Origen del dato', 'Declarado por'])
   const d0 = filas.length + 1
   const amarillas = []
   for (const c of CUENTAS) {
     const f = filas.length + 1
-    if (!c.formula) amarillas.push(f)
+    if (!c.formula && !c.banco) amarillas.push(f)
     push([
       c.nombre,
       c.moneda,
       // Una cuenta con fórmula NO se carga a mano: el OS la sabe calcular y pisarla sería perder
       // el dato. Sólo las que el OS no puede saber quedan como celda de carga.
-      c.formula ?? previo(c.nombre, 'saldo'),
+      c.banco ? saldoDeBanco(c) : (c.formula ?? previo(c.nombre, 'saldo')),
       // El tipo de cambio se muestra sólo si hay algo que convertir: una cotización sola al lado de
       // una celda vacía es ruido que se lee como si hubiera un saldo.
       c.moneda === 'USD' ? `=IF(ISNUMBER(${C_IMP}${f});${TC};"")` : '',
       `=IF(${C_IMP}${f}="";"";${C_IMP}${f}*IF(${C_TC}${f}="";1;${C_TC}${f}))`,
-      c.formula ? '=TODAY()' : previo(c.nombre, 'fecha'),
+      c.banco ? BANCO.CORTE : (c.formula ? '=TODAY()' : previo(c.nombre, 'fecha')),
       // La antigüedad no es decorativa: un saldo de hace 20 días avisando que tiene 20 días vale
       // muchísimo más que el mismo saldo mudo. Arriba de una semana, avisa.
       `=IF(F${f}="";"⚠ sin cargar";IF(TODAY()-F${f}>7;"⚠ "&TEXT(TODAY()-F${f};"0")&" días";TEXT(TODAY()-F${f};"0")&" días"))`,
-      previo(c.nombre, 'origen') || c.origenSugerido,
+      c.banco ? `${c.origenSugerido} · ${BANCO.ORIGEN}` : (previo(c.nombre, 'origen') || c.origenSugerido),
       previo(c.nombre, 'quien'),
     ])
   }
@@ -184,34 +193,29 @@ function grilla(cargado, refs, cheques) {
   if (ultima.detalle && ultima.detalle !== 'echeq_en_cartera') throw new Error('el detalle desplegable sólo está resuelto para los echeq en cartera')
   const fValores = d1
   const g0 = filas.length + 1
-  for (const ch of cheques) {
+  for (const e of BANCO.enCartera()) {
     const f = filas.length + 1
-    push([
-      `=IFERROR("      · "&Cobranzas!$G$${ch.fila};"")`,
-      'ARS',
-      `=Cobranzas!$M$${ch.fila}`,
-      '',
-      `=IF(${C_IMP}${f}="";"";${C_IMP}${f})`,
-      `=Cobranzas!$Q$${ch.fila}`,
+    push([`      · ECHEQ ${e.numero} · ${e.emisor}`, 'ARS', e.importe, '', `=${C_IMP}${f}`, e.pago,
       `=IF(F${f}="";"";"entra en "&TEXT(F${f}-TODAY();"0")&" días")`,
-      `=IFERROR("Cobranzas fila ${ch.fila} · comprobante "&Cobranzas!$E$${ch.fila};"Cobranzas fila ${ch.fila}")`,
-      'Se calcula solo',
-    ])
+      `${BANCO.ORIGEN} · estado EN CUSTODIA`, 'Réplica del banco'])
   }
-  const gControl = push(['      ⇒ Control: el detalle tiene que sumar igual que el total de arriba', '',
-    cheques.length ? `=SUM(${C_IMP}${g0}:${C_IMP}${g0 + cheques.length - 1})-${C_IMP}${fValores}` : `=-${C_IMP}${fValores}`,
-    '', '', '', '',
-    'Distinto de cero = hay un cheque en Cobranzas que el detalle no encontró. El total de arriba es el que manda.', 'Se calcula solo'])
+  // LOS QUE SALIERON DE LA CARTERA. No suman —por eso van con importe en blanco— pero tienen que
+  // estar A LA VISTA: son los $20.000.000 que el cuadro creía tener y ya no tiene.
+  for (const e of BANCO.endosados()) {
+    push([`      · ECHEQ ${e.numero} · ${e.emisor} → ENDOSADO a ${e.beneficiario}`, '', '', '', '',
+      e.pago, 'ya no es nuestro',
+      `${BANCO.ORIGEN} · se entregó para pagarle a ${e.beneficiario}: no va a entrar a la cuenta`, 'Réplica del banco'])
+  }
+  const gControl = push(['      ⇒ Control: qué dice Cobranzas de estos mismos cheques', '',
+    CUENTAS.find((c) => c.control)?.control ?? '', '', '', '', '',
+    'Cobranzas registra que el echeq se cobró —y es cierto— pero no sabe qué pasó DESPUÉS con el valor. Si este número es mayor que el de arriba, la diferencia son cheques que se endosaron para pagarle a alguien.', 'Se calcula solo'])
+  const gDif = push(['      ⇒ Diferencia contra el banco', '', `=${C_IMP}${gControl}-${C_IMP}${fValores}`, '', '', '', '',
+    'Distinto de cero = el cash flow espera como ingreso plata que ya se entregó. Manda el banco.', 'Se calcula solo'])
   const g1 = filas.length
 
   const fTotal = push(['TOTAL DISPONIBILIDADES', '', '', '', `=SUM(${C_PESOS}${d0}:${C_PESOS}${d1})`, '', '', '', 'Es el "Efectivo al inicio" que usan los dos cash flows.'])
   // La exposición al tipo de cambio. No es un detalle de presentación: decide si conviene vender o
   // quedarse. Sale de las mismas filas de arriba, no se carga aparte.
-  const fUSD = push(['De los cuales, en moneda extranjera', 'USD',
-    `=SUMIF($B$${d0}:$B$${d1};"USD";$${C_IMP}$${d0}:$${C_IMP}$${d1})`, `=${TC}`,
-    `=${C_IMP}${filas.length + 1}*${C_TC}${filas.length + 1}`, '', '',
-    'Exposición al tipo de cambio: esta parte de la caja cambia de valor sin que entre ni salga un peso.', 'Se calcula solo'])
-  push()
 
   // ── 2 · COMPROMISOS YA EMITIDOS ─────────────────────────────────────────────────────────────────
   push(['2 · COMPROMISOS YA EMITIDOS — plata que sigue en la cuenta pero ya no es tuya'])
@@ -228,37 +232,65 @@ function grilla(cargado, refs, cheques) {
   push(['El margen de una tarjeta es capacidad de endeudarse, no plata propia. Sumarlo a las disponibilidades es el error que hace que una empresa se crea líquida el día antes de no poder pagar sueldos. El límite en pesos y el límite en dólares son dos cupos distintos: mezclarlos daría un margen que no existe en ninguna de las dos monedas.'])
   const cab3 = push(['Línea', 'Moneda', 'Importe en moneda de origen', 'Tipo de cambio', 'Importe en pesos', '', '', 'Origen del dato', 'Declarado por'])
 
-  const carga = (nombre, moneda, origenSugerido) => {
+  const bancario = (nombre, moneda, importe, origen, fecha = BANCO.CORTE) => {
     const f = filas.length + 1
-    amarillas.push(f)
-    return push([nombre, moneda, previo(nombre, 'saldo'), moneda === 'USD' ? `=IF(ISNUMBER(${C_IMP}${f});${TC};"")` : '', enPesos(f), '', '',
-      previo(nombre, 'origen') || origenSugerido, previo(nombre, 'quien')])
+    return push([nombre, moneda, importe, moneda === 'USD' ? `=IF(ISNUMBER(${C_IMP}${f});${TC};"")` : '',
+      `=IF(ISNUMBER(${C_IMP}${f});${C_IMP}${f}*IF(${C_TC}${f}="";1;${C_TC}${f});"")`, fecha, '', origen, 'Réplica del banco'])
   }
-  const enPesos = (f) => `=IF(ISNUMBER(${C_IMP}${f});${C_IMP}${f}*IF(${C_TC}${f}="";1;${C_TC}${f});"")`
 
-  const fLimP = carga(CARGA.limitePesos, 'ARS', 'Resumen de la tarjeta')
-  const fConsP = push(['Tarjeta de crédito — consumos en pesos pendientes de débito', 'ARS',
+  const T = BANCO.TARJETA
+  const fLim = bancario(CARGA.limiteTarjeta, 'ARS', T.limite, `${BANCO.ORIGEN} · ${T.cuenta}`)
+  bancario('    · consumos del período, en pesos', 'ARS', T.consumidoPesos, `Cierra el ${T.cierra}, vence el ${T.vence}. Débito automático: ${T.debitoAutomatico}`)
+  // UN SOLO CUPO, CON CONSUMOS EN DOS MONEDAS. Ver banco-santander.mjs: modelarlo como dos límites
+  // mostraba un aire que no existe.
+  bancario('    · consumos del período, en dólares', 'USD', T.consumidoDolares, 'Suscripciones. Se pagan contra el MISMO cupo de pesos, al tipo de cambio del cierre.')
+  bancario('    · cuotas de compras anteriores que caen en períodos futuros', 'ARS', T.cuotasPendientes.restante,
+    `Compromiso ya tomado: ${ars(T.cuotas.consumido)} consumidos en cuotas, ${ars(T.cuotasPendientes.proximoPeriodo)} caen en el próximo resumen.`)
+  const fDisp = bancario('⇒ Disponible para compras', 'ARS', T.disponible,
+    'EL QUE DECLARA EL BANCO, no uno calculado: límite menos consumido daría otro número y no voy a inventar la aritmética del resumen.')
+  push(['      Control: la pestaña Tarjeta de Credito dice, de consumos sin debitar', 'ARS',
     `=SUMPRODUCT((UPPER('${refs.tarjeta}'!$J$3:$J$400)<>"SI")*IF(ISNUMBER('${refs.tarjeta}'!$E$3:$E$400);'${refs.tarjeta}'!$E$3:$E$400;0))`,
-    '', enPesos(filas.length + 1), '', '', `Pestaña ${refs.tarjeta}, columna DEBITADO distinta de SI`, 'Se calcula solo'])
-  const fMarP = push(['⇒ Margen disponible en pesos', 'ARS',
-    `=IF(${C_IMP}${fLimP}="";"⚠ falta el límite acordado";${C_IMP}${fLimP}-${C_IMP}${fConsP})`,
-    '', enPesos(filas.length + 1), '', '', '', 'Cuánto se puede seguir comprando sin efectivo. Es un colchón, no un activo.'])
-
-  const fLimD = carga(CARGA.limiteDolares, 'USD', 'Resumen de la tarjeta, sección en dólares')
-  // POR QUÉ ESTE SE CARGA A MANO Y EL DE PESOS NO: la pestaña Tarjeta de Credito no tiene columna de
-  // moneda, así que los consumos en dólares no están cargados en ningún lado del archivo. Sacar el
-  // número de ahí sería inventarlo. Hasta que la pestaña distinga moneda, entra a mano y se dice.
-  const fConsD = carga(CARGA.consumoDolares, 'USD', 'Resumen de la tarjeta. La pestaña Tarjeta de Credito no distingue moneda todavía, así que este dato no se puede calcular solo.')
-  const fMarD = push(['⇒ Margen disponible en dólares', 'USD',
-    `=IF(${C_IMP}${fLimD}="";"⚠ falta el límite acordado";${C_IMP}${fLimD}-IF(ISNUMBER(${C_IMP}${fConsD});${C_IMP}${fConsD};0))`,
-    `=IF(ISNUMBER(${C_IMP}${filas.length + 1});${TC};"")`, enPesos(filas.length + 1), '', '', '', 'El cupo en dólares es otro cupo: no se puede usar para pagar un proveedor en pesos.'])
-  push(['⇒ Margen total disponible, expresado en pesos', '', '', '',
-    `=IF(AND(NOT(ISNUMBER(${C_PESOS}${fMarP}));NOT(ISNUMBER(${C_PESOS}${fMarD})));"⚠ faltan los límites acordados";IF(ISNUMBER(${C_PESOS}${fMarP});${C_PESOS}${fMarP};0)+IF(ISNUMBER(${C_PESOS}${fMarD});${C_PESOS}${fMarD};0))`,
-    '', '', '', 'Sigue sin ser efectivo. Está acá para saber con cuánto aire se cuenta, no para sumarlo a la caja.'])
+    '', `=${C_IMP}${filas.length + 1}`, '', '',
+    `Pestaña ${refs.tarjeta}, columna DEBITADO distinta de SI. Es otro corte que el del resumen, así que no tienen por qué dar igual — pero una diferencia grande es una compra sin cargar.`, 'Se calcula solo'])
   push()
 
+  // EL ACUERDO EN DESCUBIERTO. No es caja y no es gratis: el extracto muestra la cuenta en rojo casi
+  // todo julio y $252.340,32 de intereses cobrados el 14/07 por el período 08/06 al 07/07.
+  const A = BANCO.ACUERDO
+  const fAcu = bancario(CARGA.acuerdo, 'ARS', A.importe,
+    `Acuerdo N° ${A.numero}, ${A.estado} · vence el ${A.vence} · TNA ${(A.tna * 100).toFixed(2)}% · costo financiero total ${(A.cft * 100).toFixed(2)}% anual`)
+  push(['⇒ AIRE TOTAL DISPONIBLE (tarjeta + acuerdo)', 'ARS', `=${C_IMP}${fDisp}+${C_IMP}${fAcu}`, '',
+    `=${C_PESOS}${fDisp}+${C_PESOS}${fAcu}`, '', '',
+    'Cuánto se puede estirar antes de no poder pagar. NO es plata: es deuda que todavía no se tomó, y al 62,78% anual tomarla tiene precio.', 'Se calcula solo'])
+  push()
+
+  // ── 5 · ALERTA ──────────────────────────────────────────────────────────────────────────────────
+  push(['4 · ALERTA DE CAJA — hasta cuándo alcanza'])
+  const fMin = push(['Caja mínima deseada', '', '', '', "=N('01_Valores Iniciales'!$B$3)", '', '', '01_Valores Iniciales', ''])
+  const rangoCierre = refs.cierre ? `'Cash Flow Mensual'!$B$${refs.cierre}:$M$${refs.cierre}` : null
+  const rangoMes = refs.cab ? `'Cash Flow Mensual'!$B$${refs.cab}:$M$${refs.cab}` : null
+  // DOS CORRECCIONES QUE CAMBIAN LA FECHA QUE AVISA. Las dos aparecieron al reordenar la pestaña, y
+  // ninguna la habría encontrado un control que suma: los números de arriba estaban perfectos.
+  //
+  // 1. LOS MESES SIN CIERRE NO CUENTAN. El cuadro deja en blanco los meses anteriores al saldo
+  //    declarado —no se puede saber el saldo de un mes previo— y una celda vacía vale 0 en una
+  //    suma. Sin el filtro, la alerta encontraba "enero 2026": un mes que ya pasó, o sea el aviso
+  //    más inútil posible porque no habilita ninguna decisión.
+  //
+  // 2. YA NO SE LE SUMA EL SALDO DE HOY. Esta fórmula nació cuando el cuadro arrancaba de cero y
+  //    había que agregarle la plata real. Desde que el "Efectivo al inicio" ancla en el total de
+  //    esta misma pestaña, el cierre YA la incluye, y sumarla otra vez contaba $18.182.657 dos
+  //    veces. Efecto medido: el aviso de caja mínima se corría de septiembre a octubre — un mes
+  //    entero de anticipación, que es justamente para lo que sirve la alerta.
+  const primerMes = (cond) => (rangoCierre
+    ? `=IFERROR(TEXT(INDEX(${rangoMes};MATCH(1;ARRAYFORMULA((${rangoCierre}<>"")*(${rangoCierre}${cond}));0));"mmmm yyyy");"ningún mes del año")`
+    : '⚠ falta la línea de cierre')
+  push(['Primer mes por debajo de la caja mínima', '', '', '', primerMes(`<$${C_PESOS}$${fMin}`), '', '', '',
+    'Sale del cierre proyectado del Cash Flow Mensual, que ya arranca del total declarado arriba. No se le vuelve a sumar el saldo de hoy: sería contar la misma plata dos veces.'])
+  push(['Primer mes con caja negativa', '', '', '', primerMes('<0'), '', '', '',
+    '⚠ Ojo: los ingresos de octubre en adelante están en $0 porque no hay obra facturada. Esta fecha es un PISO, no un pronóstico.'])
   // ── 4 · CONCILIACIÓN ────────────────────────────────────────────────────────────────────────────
-  push(['4 · CONCILIACIÓN — ¿el cash flow explica la plata que hay?'])
+  push(['5 · CONCILIACIÓN — ¿el cash flow explica la plata que hay?'])
   push(['El control que mide si el archivo sirve. Si la diferencia es chica, el cuadro es confiable. Si es grande, hay plata moviéndose fuera del Sheet y hay que buscarla antes de decidir con estos números.'])
   const fDecl = push(['Disponibilidad declarada (bloque 1)', '', '', '', `=${C_PESOS}${fTotal}`, '', '', '', 'Lo que dicen el extracto y el arqueo.'])
   const fProy = push(['Efectivo al cierre que proyecta el Cash Flow al mes de la fecha del saldo', '', '', '',
@@ -270,18 +302,24 @@ function grilla(cargado, refs, cheques) {
     'Distinto de cero = movimientos que el archivo no ve. No es un error de fórmula: es trabajo de carga.'])
   push()
 
-  // ── 5 · ALERTA ──────────────────────────────────────────────────────────────────────────────────
-  push(['5 · ALERTA DE CAJA — las dos fechas que se usan para decidir'])
-  const fMin = push(['Caja mínima deseada', '', '', '', "=N('01_Valores Iniciales'!$B$3)", '', '', '01_Valores Iniciales', ''])
-  const rangoCierre = refs.cierre ? `'Cash Flow Mensual'!$B$${refs.cierre}:$M$${refs.cierre}` : null
-  const rangoMes = refs.cab ? `'Cash Flow Mensual'!$B$${refs.cab}:$M$${refs.cab}` : null
-  const primerMes = (cond) => (rangoCierre
-    ? `=IFERROR(TEXT(INDEX(${rangoMes};MATCH(1;ARRAYFORMULA(--((${rangoCierre}+$${C_PESOS}$${fTotal})${cond})),0));"mmmm yyyy");"ningún mes del año")`
-    : '⚠ falta la línea de cierre')
-  push(['Primer mes por debajo de la caja mínima', '', '', '', primerMes(`<$${C_PESOS}$${fMin}`), '', '', '',
-    'Suma el saldo real de hoy a la proyección del cash flow. Sin saldo cargado, arranca de cero y la fecha es más pesimista de lo real.'])
-  push(['Primer mes con caja negativa', '', '', '', primerMes('<0'), '', '', '',
-    '⚠ Ojo: los ingresos de octubre en adelante están en $0 porque no hay obra facturada. Esta fecha es un PISO, no un pronóstico.'])
+  push()
+  // ── 0 · TIPO DE CAMBIO ──────────────────────────────────────────────────────────────────────────
+  // Se define UNA sola vez y acá, que es donde se usa. Cualquier otra fórmula del archivo que
+  // necesite convertir dólares referencia el rango con nombre, no esta celda por su fila.
+  push(['6 · TIPO DE CAMBIO — sólo se usa para valuar la cuenta en dólares'])
+  push(['Está al final a propósito: la empresa cobra, paga y decide en pesos. El dólar acá no es una posición, es una cuenta chica que hay que poder sumar al total — y para eso hace falta una cotización con origen.'])
+  const cab0 = push(['Concepto', '', 'Cotización', '', '', 'Fecha', '', 'Origen del dato', 'Declarado por'])
+  const fRef = push([TIPO_CAMBIO.referencia.nombre, '', TIPO_CAMBIO.referencia.formula, '', '', '=TODAY()', '', TIPO_CAMBIO.referencia.origen, 'Se calcula solo'])
+  const fDec = push([TIPO_CAMBIO.declarado.nombre, '', previo(TIPO_CAMBIO.declarado.nombre, 'saldo'), '', '',
+    previo(TIPO_CAMBIO.declarado.nombre, 'fecha'), '', previo(TIPO_CAMBIO.declarado.nombre, 'origen') || TIPO_CAMBIO.declarado.origen,
+    previo(TIPO_CAMBIO.declarado.nombre, 'quien')])
+  const fTC = push([TIPO_CAMBIO.uso.nombre, '', `=IF(${C_IMP}${fDec}<>"";${C_IMP}${fDec};${C_IMP}${fRef})`, '', '', '', '', TIPO_CAMBIO.uso.origen, 'Se calcula solo'])
+  push()
+
+  const fUSD = push(['De los cuales, en moneda extranjera', 'USD',
+    `=SUMIF($B$${d0}:$B$${d1};"USD";$${C_IMP}$${d0}:$${C_IMP}$${d1})`, `=${TC}`,
+    `=${C_IMP}${filas.length + 1}*${C_TC}${filas.length + 1}`, '', '',
+    'Exposición al tipo de cambio: esta parte de la caja cambia de valor sin que entre ni salga un peso.', 'Se calcula solo'])
   push()
   push(['CÓMO SE ACTUALIZA ESTO'])
   push(['· Los saldos (las celdas amarillas) se cargan a mano o pegando el extracto en el chat: el OS lo lee y los completa. Lo que está en dólares se carga en dólares.'])
@@ -289,7 +327,7 @@ function grilla(cargado, refs, cheques) {
   push(['· El tipo de cambio se actualiza solo con la cotización del día. Si operás a otro (MEP, tarjeta), cargalo en la fila "Dólar declarado" y ése pasa a mandar.'])
   push(['· Todo lo demás de esta pestaña se recalcula solo cada 2 horas junto con el resto del archivo.'])
 
-  return { filas, d0, d1, g0, g1, gControl, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLimP, fLimD, fConsD, fMarP, fMarD, fDecl, amarillas }
+  return { filas, usd, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, amarillas }
 }
 
 async function main() {
@@ -310,24 +348,18 @@ async function main() {
     cab: ubicarEnCashFlow(colA, 'Período'),
   }
 
-  // Qué cheques de terceros siguen en cartera HOY. Se leen para saber QUÉ FILAS referenciar; los
-  // importes no se copian: cada fila del detalle apunta a su fila de Cobranzas.
-  const cob = await google.readSheetValues(ID, 'Cobranzas!A1:R300')
-  const cheques = echeqsEnCartera(
-    cob.map((f, i) => ({ fila: i + 1, forma: f?.[13], fecha: fecha(f?.[16]), importe: numero(f?.[12]) })),
-    new Date(),
-  )
-
-  const g = grilla(cargado, refs, cheques)
+  const g = grilla(cargado, refs)
   console.log(`${tab}: ${g.filas.length} filas · ${CUENTAS.length} cuentas · ${cargado.size} con dato ya cargado`)
-  console.log(`  cheques de terceros en cartera: ${cheques.length} (filas de Cobranzas ${cheques.map((c) => c.fila).join(', ') || '—'})`)
+  console.log(`  cartera de echeqs según el banco al ${BANCO.CORTE}: ${BANCO.enCartera().length} en custodia por ${ars(BANCO.totalEcheqs(BANCO.enCartera()))} · ${BANCO.endosados().length} endosados por ${ars(BANCO.totalEcheqs(BANCO.endosados()))}`)
   console.log(`  cierre del Cash Flow en la fila ${refs.cierre ?? '?'} · encabezado en la ${refs.cab ?? '?'}`)
   if (DRY) return console.log('--dry: no escribí nada.')
 
+  // EL RANGO CON NOMBRE VA PRIMERO. Las fórmulas de arriba dicen TIPO_CAMBIO_USD, así que el nombre
+  // tiene que existir antes de escribirlas o la pestaña se llena de #NAME? en la primera corrida.
+  await rangoConNombre(google, hoja.sheetId, g.fTC)
   await google.clearValues(ID, `${tab}!A1:Z90`)
   await google.batchUpdateValues(ID, [{ range: `${tab}!A1:${letra(ANCHO - 1)}${g.filas.length}`, values: g.filas }])
   await formatear(google, hoja.sheetId, g)
-  await rangoConNombre(google, hoja.sheetId, g.fTC)
 
   const v = await google.readSheetValues(ID, `${tab}!A1:I${g.filas.length}`)
   // El dólar declarado es OPCIONAL: vacío significa "uso la cotización del día", no un dato faltante.
@@ -384,6 +416,11 @@ async function formatear(google, sheetId, g) {
   fmt(r(0, n, 6, 7), 'userEnteredFormat.horizontalAlignment', { horizontalAlignment: 'CENTER' })
   fmt(r(0, n, 7, 9), 'userEnteredFormat',
     { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: { fontSize: 9, italic: true, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'CLIP' })
+  // LOS IMPORTES EN DÓLARES, con su propio símbolo. Sin esto, U$S 581,39 se dibuja "$581".
+  for (const f of g.usd) {
+    fmt(r(f - 1, f, 2, 3), 'userEnteredFormat.numberFormat',
+      { numberFormat: { type: 'CURRENCY', pattern: '"U$S "#,##0.00;[Red]-"U$S "#,##0.00;"—"' } })
+  }
   // La cotización de la fila del tipo de cambio NO es plata: se muestra como número.
   fmt(r(g.fRef - 1, g.fTC, 2, 3), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '#,##0.00' } })
   fmt(r(0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 13 } })

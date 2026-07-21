@@ -18,6 +18,7 @@ export const PASOS = [
   ['impuestos-pestana.mjs', 'Impuestos y Financieros — IVA real de ARCA', ['Impuestos y Financieros']],
   ['cargas-planes.mjs', 'Cargas Sociales — planes de pago', ['Cargas Sociales']],
   ['cobranzas-control.mjs', 'Cobranzas — detector de duplicados', []],
+  ['proveedores-pestana.mjs', 'Proveedores — cuánto se le debe a cada uno y desde cuándo', ['Proveedores']],
   ['cheques-cobertura-sheet.mjs', 'Cash Flow Mensual — qué cheques y tarjeta faltan cargar en Compras', []],
   // Va última: ubica las líneas del Cash Flow por rótulo, así que necesita el cuadro ya escrito.
   ['caja-pestana.mjs', 'CAJA — disponibilidades, cheques emitidos y margen de tarjeta', ['CAJA', 'Caja']],

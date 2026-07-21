@@ -168,8 +168,11 @@ async function main() {
   const v = await google.readSheetValues(ID, `${hoja.title}!A1:C${g.filas.length}`)
   console.log(`\nCONTROL  Compras ${v[g.ctrl]?.[1]} · cuadro ${v[g.ctrl + 1]?.[1]} · diferencia ${v[g.ctrl + 2]?.[1]}`)
   console.log(`  sin proyectar: ${v[g.ctrl + 3]?.[1]} · sin fecha de caja: ${v[g.ctrl + 4]?.[1]} · meses cerrados en $0: ${v[g.ctrl + 5]?.[1]}`)
-  const dif = String(v[g.ctrl + 2]?.[1] ?? '').replace(/[^\d-]/g, '')
-  if (dif && dif !== '0') { console.log('  ⚠ la diferencia no es $0'); process.exitCode = 1 }
+  // "-$0" es CERO: el formato de moneda dibuja el signo cuando el número es una fracción negativa de
+  // peso. Comparar el texto contra "0" hacía fallar el control por medio centavo y dejaba el agente
+  // en rojo con los datos perfectos — un control que grita por nada se deja de mirar.
+  const dif = Number(String(v[g.ctrl + 2]?.[1] ?? '0').replace(/[^\d,-]/g, '').replace(/\./g, '').replace(',', '.')) || 0
+  if (Math.abs(dif) >= 1) { console.log(`  ⚠ la diferencia no es $0: ${dif}`); process.exitCode = 1 }
 }
 
 async function formatear(google, hoja, g) {

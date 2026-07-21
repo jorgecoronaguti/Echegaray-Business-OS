@@ -13,7 +13,7 @@
 
 /** Las pestañas que ESCRIBE el OS y que tienen que ser TODAS fórmula: cada número de acá sale de
  *  otro lado del archivo, así que pegarlo sería congelarlo. */
-export const CALCULADAS = ['Cash Flow Mensual', 'Cash Flow Semanal', 'Materiales', 'Estructura', 'Recurrentes']
+export const CALCULADAS = ['Cash Flow Mensual', 'Cash Flow Semanal', 'Materiales', 'Estructura', 'Recurrentes', 'Proveedores']
 
 /**
  * Pestañas donde un número escrito NO es un defecto, con el motivo declarado.

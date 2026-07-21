@@ -6,23 +6,26 @@ const cuenta = (n) => CUENTAS.find((c) => c.nombre === n)
 
 test('cada cuenta declara su moneda y hay una en dólares', () => {
   assert.ok(CUENTAS.every((c) => c.moneda === 'ARS' || c.moneda === 'USD'))
-  assert.equal(cuenta('Banco — Cuenta corriente en dólares').moneda, 'USD')
+  assert.equal(cuenta('Banco Santander — Cuenta corriente en dólares').moneda, 'USD')
 })
 
 // El día que le pongan el nombre real al banco, el saldo cargado tiene que seguir en SU fila.
 test('el patrón del banco sobrevive a que le pongan el nombre y no se cruza con la de dólares', () => {
-  const pesos = cuenta('Banco — Cuenta corriente en pesos').patron
-  const dolares = cuenta('Banco — Cuenta corriente en dólares').patron
+  const pesos = cuenta('Banco Santander — Cuenta corriente en pesos 179-091383/6').patron
+  const dolares = cuenta('Banco Santander — Cuenta corriente en dólares').patron
   assert.ok(pesos.test('Banco Galicia — Cuenta corriente en pesos'))
   assert.ok(pesos.test('Banco Galicia — Cuenta corriente'))
   assert.ok(!pesos.test('Banco Galicia — Cuenta corriente en dólares'))
   assert.ok(dolares.test('Banco Galicia — Cuenta corriente en dolares'))
 })
 
-test('renombrar el límite de la tarjeta no pierde el dato ya cargado', () => {
-  assert.ok(filaDeCuenta('Tarjeta de crédito — límite acordado'))
-  assert.equal(ALIAS.get('Tarjeta de crédito — límite acordado'), CARGA.limitePesos)
-  assert.ok(filaDeCuenta(CARGA.limiteDolares))
+// Los nombres de las filas cambiaron dos veces en dos días. Un dato cargado tiene que sobrevivir a
+// eso: el ALIAS es lo único que lo garantiza.
+test('renombrar una fila no pierde el dato ya cargado', () => {
+  assert.ok(filaDeCuenta('Tarjeta de crédito — límite acordado en pesos'))
+  assert.equal(ALIAS.get('Tarjeta de crédito — límite acordado en pesos'), CARGA.limiteTarjeta)
+  assert.equal(ALIAS.get('Banco — Cuenta corriente en pesos'), 'Banco Santander — Cuenta corriente en pesos 179-091383/6')
+  assert.ok(filaDeCuenta(CARGA.acuerdo))
   assert.ok(!filaDeCuenta('TOTAL DISPONIBILIDADES'))
 })
 
@@ -81,4 +84,27 @@ test('el saldo se ubica por rótulo y no por letra de columna', () => {
   // acreditación futuras y un MAX que las incluya ancla el cuadro dos meses adelante.
   assert.equal(u.filaUltimaCuenta, 6)
   assert.equal(ubicarCaja([['otra cosa']]), null)
+})
+
+// EL HALLAZGO DEL 21/07, CONGELADO EN UN TEST: CAJA decía $30.000.000 de cheques en cartera y el
+// banco dice $10.000.000. Dos de los tres están endosados a Alumetal: se usaron para pagarle.
+// Cobranzas registra que se cobró —y es cierto— pero no sabe qué pasó después con el valor.
+test('un echeq endosado ya no es plata de la empresa', async () => {
+  const b = await import('./banco-santander.mjs')
+  assert.equal(b.totalEcheqs(b.enCartera()), 10000000)
+  assert.equal(b.totalEcheqs(b.endosados()), 20000000)
+  assert.deepEqual(b.endosados().map((e) => e.beneficiario), ['ALUMETAL S.A', 'ALUMETAL S.A'])
+  // Un cobrado ya está adentro del saldo del banco: contarlo en cartera lo duplicaría.
+  assert.ok(b.enCartera().every((e) => e.estado === 'custodia'))
+})
+
+// La tarjeta tiene UN cupo, no dos. Modelarla con un límite en pesos y otro en dólares mostraba un
+// aire que no existe: los consumos en dólares se pagan contra el mismo $10.000.000.
+test('la tarjeta tiene un solo límite y el disponible lo declara el banco', async () => {
+  const { TARJETA } = await import('./banco-santander.mjs')
+  assert.equal(TARJETA.limite, 10000000)
+  assert.ok(TARJETA.consumidoPesos > 0 && TARJETA.consumidoDolares > 0)
+  // NO se recalcula: límite − consumido daría $9.001.636,47 y el banco dice $9.062.069,50.
+  assert.equal(TARJETA.disponible, 9062069.50)
+  assert.notEqual(TARJETA.disponible, TARJETA.limite - TARJETA.consumidoPesos)
 })
