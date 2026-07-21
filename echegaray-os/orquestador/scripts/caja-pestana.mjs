@@ -58,6 +58,7 @@ import { TASAS, CARGO_VERIFICADO, tasaDiaria, costoConImpuestos, interesDelPerio
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { CAJA as N_CAJA, publicar } from '../lib/rangos-nombrados.mjs'
 import { esIndistinguible } from '../lib/cobranzas-duplicado.mjs'
+import { formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte } from '../lib/caja-posterior-al-corte.mjs'
 
 // LA MISMA definición de "dos cobros que no se pueden distinguir" que usa el control de la pestaña
 // Cobranzas. Antes acá había una segunda basada en el ID, y al reparar la columna A —que se
@@ -229,18 +230,47 @@ function grilla(cargado, refs) {
       c.moneda,
       // Una cuenta con fórmula NO se carga a mano: el OS la sabe calcular y pisarla sería perder
       // el dato. Sólo las que el OS no puede saber quedan como celda de carga.
-      c.banco ? saldoDeBanco(c) : (c.formula ?? previo(c.nombre, 'saldo')),
+      // EL SALDO DEL BANCO ES UNA FÓRMULA CONTRA LA RÉPLICA DEL EXTRACTO, NO UN NÚMERO PEGADO.
+      // Hasta el 21/07 acá se escribía el resultado de una constante de JavaScript: la réplica ya
+      // estaba en el archivo (_BANCO_RAW) y ninguna celda la leía. Un saldo pegado sólo cambia
+      // cuando corre el agente, y encima calla si la réplica se actualizó y el código no.
+      // Si la pestaña réplica todavía no existe, se cae al número: mejor un dato viejo declarado
+      // que un #REF! que rompe el total y las dos pestañas de cash flow que lo leen.
+      c.banco === 'saldoPesos' && refs.bancoRaw ? formulaUltimoSaldo(refs.bancoRaw)
+        : c.banco ? saldoDeBanco(c) : (c.formula ?? previo(c.nombre, 'saldo')),
       // El tipo de cambio se muestra sólo si hay algo que convertir: una cotización sola al lado de
       // una celda vacía es ruido que se lee como si hubiera un saldo.
       c.moneda === 'USD' ? `=IF(ISNUMBER(${C_IMP}${f});${TC};"")` : '',
       `=IF(${C_IMP}${f}="";"";${C_IMP}${f}*IF(${C_TC}${f}="";1;${C_TC}${f}))`,
-      c.banco ? BANCO.CORTE : (c.formula ? '=TODAY()' : previo(c.nombre, 'fecha')),
+      // LA FECHA DE CORTE TAMBIÉN SE LEE DE LA RÉPLICA. Es la fecha del último movimiento del
+      // extracto, y de ella depende la ventana de "movimientos posteriores al corte" de más abajo:
+      // una fecha escrita a mano que quede vieja haría contar dos veces todo lo que hay en el medio.
+      c.banco === 'saldoPesos' && refs.bancoRaw ? formulaFechaCorte(refs.bancoRaw)
+        : c.banco ? BANCO.CORTE : (c.formula ? '=TODAY()' : previo(c.nombre, 'fecha')),
       // La antigüedad no es decorativa: un saldo de hace 20 días avisando que tiene 20 días vale
       // muchísimo más que el mismo saldo mudo. Arriba de una semana, avisa.
       `=IF(F${f}="";"⚠ sin cargar";IF(TODAY()-F${f}>7;"⚠ "&TEXT(TODAY()-F${f};"0")&" días";TEXT(TODAY()-F${f};"0")&" días"))`,
       c.banco ? `${c.origenSugerido} · ${BANCO.ORIGEN}` : (previo(c.nombre, 'origen') || c.origenSugerido),
       previo(c.nombre, 'quien'),
     ])
+  }
+  // ═══ LA LÍNEA QUE HACE QUE LA CAJA SE MUEVA ═══
+  //
+  // El dueño (21/07): "no se ajustan los saldos en caja a medida que toco cobranzas". Era cierto y
+  // era estructural: el saldo del banco es una foto del extracto a SU fecha de corte, y todo lo que
+  // pasa después no existía en ninguna parte de esta pestaña. Esta fila es la ventana que el
+  // extracto no cubre —del día después del corte en adelante— y por eso suma al total sin duplicar
+  // nada de lo que ya trae el saldo bancario.
+  //
+  // Es NETA a propósito: cobros nuevos menos cheques propios que se debitaron después del corte. Con
+  // un solo lado la caja crecería y nunca bajaría. Ver lib/caja-posterior-al-corte.mjs.
+  const fPost = fBancoPesos && refs.bancoRaw ? filas.length + 1 : 0
+  if (fPost) {
+    push(['Movimientos posteriores al corte del extracto', 'ARS',
+      formulaNetaPosterior(`$F$${fBancoPesos}`), '', `=${C_IMP}${fPost}`, '=TODAY()',
+      `=IF(${C_IMP}${fPost}=0;"sin movimientos";"vivo")`,
+      'Cobranzas (estado Cobrado, sin echeq) menos cheques debitados, todo con fecha POSTERIOR al corte del extracto. El extracto ya trae lo anterior: contarlo de nuevo duplicaría. Los echeq quedan afuera porque ya están en Valores a depositar.',
+      'Se calcula solo'])
   }
   const d1 = filas.length
 
@@ -516,6 +546,9 @@ async function main() {
   const refs = {
     cheques: hallarPestana(hojas, 'Cheques').title,
     tarjeta: hallarPestana(hojas, 'Tarjeta').title,
+    // La réplica del extracto. Si no está, el saldo del banco vuelve al número declarado y la línea
+    // de movimientos posteriores no se escribe: sin corte confiable, esa ventana no se puede acotar.
+    bancoRaw: hojas.some((h) => h.title === '_BANCO_RAW') ? '_BANCO_RAW' : null,
     cierre: ubicarEnCashFlow(colA, 'Efectivo y equivalentes al cierre'),
     cab: ubicarEnCashFlow(colA, 'Período'),
   }
