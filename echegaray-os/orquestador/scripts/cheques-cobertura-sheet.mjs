@@ -19,8 +19,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { repartirCobertura, aCubrirPorMes, normComprobante, esLlaveUtil, hallarPestana, MARCAS, marcaDe } from '../lib/cheques-cobertura.mjs'
 import { INSTRUMENTOS, formulasInstrumento } from '../lib/cash-flow-lineas.mjs'
-import { query } from '../lib/db.mjs'
-import { sumar, signo } from '../lib/comprobante-arca.mjs'
+import { ARCA as N_ARCA } from '../lib/rangos-nombrados.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Cash Flow Mensual'
@@ -40,61 +39,18 @@ const fechaAR = (s) => {
 const num = (s) => parseFloat(String(s ?? '').replace(/[^0-9,.-]/g, '').replace(/\./g, '').replace(',', '.')) || 0
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 const ars = (x) => Math.round(x)
-/** El banco y AFIP escriben "ALUMETAL S A" y Compras "Alumetal": sin normalizar, el cruce da cero. */
-const normProv = (s) => String(s ?? '')
-  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  .toUpperCase()
-  .replace(/\bS\.?\s?A\.?\s?S\.?\b|\bS\.?\s?A\.?\b|\bS\.?R\.?L\.?\b|\bSRL\b|\bSAS\b/g, '')
-  .replace(/[^A-Z0-9]+/g, ' ')
-  .trim()
-
-/** Lo que dice AFIP, cruzado por punto de venta + número contra el N° de comprobante de Compras.
+/** LAS CIFRAS DE ARCA NO SE CALCULAN ACÁ. Viven en "Proveedores y Materiales" —una pestaña réplica,
+ *  cuyo origen declarado es el libro de IVA— y este bloque las referencia por RANGO CON NOMBRE.
  *
- * CON SIGNO (21/07). Esto sumaba `imp_total` de todo, y en el libro de compras hay 13 notas de
- * crédito: el cuadro declaraba $197.442.458 comprados contra $155.489.182 reales. Una nota de
- * crédito que "falta en Compras" tampoco es carga faltante — es plata que el proveedor DEVOLVIÓ,
- * y contarla como compra pendiente manda a buscar un gasto que no existe. */
-async function leerAfip(enCompras, filasCompras = []) {
-  const r = (await query("select tipo_comprobante, emisor_nombre, punto_venta, numero, imp_total from comprobantes_arca where tipo_libro='R'")).rows
-  const e = (await query("select tipo_comprobante, imp_total from comprobantes_arca where tipo_libro='E'")).rows
-  let ok = 0, okM = 0, falta = 0, faltaM = 0, porImporte = 0, porImporteM = 0
-  const desconocidos = []
-  // SEGUNDA PASADA — 223 filas de Compras no tienen N° de comprobante, así que emparejar sólo por
-  // número declara faltante lo que sí está cargado. Reales del 21/07: la factura de ALUMETAL por
-  // $18.166.381 estaba en la fila 669 con el número vacío, y la de $75.415 escrita "0038-0002471",
-  // a la que le falta un dígito. Sin esta pasada el cuadro reportaba $71,19M faltantes cuando
-  // $38,41M nunca faltaron, y alguien iba a salir a buscarlos.
-  // Cada fila de Compras se consume UNA sola vez: si no, dos facturas del mismo importe se
-  // emparejan las dos contra la misma fila y el faltante vuelve a mentir, ahora para el otro lado.
-  const usadas = new Set()
-  const candidata = (nombre, total) => filasCompras.find((f) =>
-    !usadas.has(f.fila) && f.prov === normProv(nombre) && Math.abs(f.total - total) <= Math.max(1, total * 0.03))
-
-  for (const x of r) {
-    const s = signo(x.tipo_comprobante)
-    if (s === null) { desconocidos.push(x); continue }
-    // Las notas de crédito NO entran en "está / falta cargar". Restan del total de arriba y tienen
-    // su propia línea. Contarlas como carga faltante —con importe negativo, encima— manda a alguien
-    // a buscar un gasto que no existe y hace que el conteo y el monto cuenten cosas distintas.
-    if (s < 0) continue
-    const k = normComprobante(`${x.punto_venta}-${x.numero}`)
-    const m = Number(x.imp_total)
-    if (enCompras.has(k)) { ok++; okM += m; continue }
-    const c = candidata(x.emisor_nombre, m)
-    if (c) { usadas.add(c.fila); porImporte++; porImporteM += m; continue }
-    falta++; faltaM += m
-  }
-  const totR = sumar(r, 'imp_total')
-  const totE = sumar(e, 'imp_total')
-  return {
-    nR: r.length, totalR: totR.neto, notasCreditoR: r.filter((x) => signo(x.tipo_comprobante) === -1).length,
-    creditoR: totR.restan,
-    nE: e.length, totalE: totE.neto,
-    enCompras: ok, montoEnCompras: okM, faltan: falta, montoFaltan: faltaM,
-    porImporte, montoPorImporte: porImporteM,
-    desconocidos: desconocidos.length,
-  }
-}
+ *  POR QUÉ CAMBIÓ (21/07). Antes se calculaban acá y se escribían como números: el auditor marcó
+ *  8 números pegados en el Cash Flow Mensual, que es una pestaña "calculada" donde TODO tiene que
+ *  ser fórmula. Un número pegado no se puede auditar y el día que ARCA trae un comprobante nuevo,
+ *  miente sin avisar. Además el cruce contra Compras estaba escrito dos veces, una en cada script,
+ *  y las copias ya habían divergido. Ahora hay una sola definición (lib/cobertura-arca.mjs), un
+ *  solo lugar donde el número existe, y acá una referencia.
+ *
+ *  El orden de los pasos lo garantiza: proveedores-materiales corre ANTES que este script. */
+const ref = (nombre) => `=${nombre}`
 
 async function leer(google) {
   const hojas = await google.getSheetMeta(ID)
@@ -112,16 +68,10 @@ async function leer(google) {
   // fecha = la fecha REAL de pago (columna I). fecha_pago es su rótulo "julio 26", que es formato.
   const cheques = crudoCh.map((f, i) => ({ fila: i + 2, tipo: f[0], proveedor: f[4], monto: num(f[5]), comprobante: f[7], fecha: fechaAR(f[8]), fecha_pago: f[9], debitado: f[10] })).filter((c) => c.monto > 0)
   const tarjeta = crudoTj.map((f, i) => ({ fila: i + 3, proveedor: f[2], monto: num(f[4]), comprobante: f[6], fecha_pago: f[8], debitado: f[9] })).filter((c) => c.monto > 0)
-  // Para la segunda pasada: proveedor + total de cada fila real de Compras, con su número de fila
-  // (que es lo que permite consumir cada una una sola vez).
-  const filasCompras = compras
-    .map((f, i) => ({ fila: i + 4, prov: normProv(f?.[4]), total: num(f?.[14]) || num(f?.[12]) }))
-    .filter((f) => f.prov && f.total > 0)
-  const afip = await leerAfip(enCompras, filasCompras)
-  return { enCompras, cheques, tarjeta, afip, pestanaCheques: CH, filasCh: crudoCh.length + 1, filasTj: crudoTj.length + 2 }
+  return { enCompras, cheques, tarjeta, pestanaCheques: CH, filasCh: crudoCh.length + 1, filasTj: crudoTj.length + 2 }
 }
 
-function grilla({ enCompras, cheques, tarjeta, afip }) {
+function grilla({ enCompras, cheques, tarjeta }) {
   const ch = repartirCobertura(cheques, enCompras)
   const tj = repartirCobertura(tarjeta, enCompras)
   const cubrir = aCubrirPorMes(cheques)
@@ -132,24 +82,16 @@ function grilla({ enCompras, cheques, tarjeta, afip }) {
   push(['"Los cash flows deben reflejar todo, todo el tiempo, y cada gasto o ingreso debe estar en algún concepto." El control de partición del pie ya prueba que TODO lo que está en Compras está en una línea del cuadro. Este bloque contesta la otra mitad, que es la que duele: qué existe FUERA de Compras y por lo tanto el cuadro no puede ver.'])
   push()
   push(['FUENTE', 'Cantidad', 'Monto', '', '', 'Qué significa'])
-  push(['AFIP — libro de IVA compras (neto de notas de crédito)', afip.nR, ars(afip.totalR), '', '', 'Lo que le facturaron a la empresa con CAE. Es la única fuente fiscal: Compras es lo que alguien cargó.'])
-  if (afip.notasCreditoR) {
-    push(['  · de los cuales, notas de crédito', afip.notasCreditoR, ars(-afip.creditoR), '', '',
-      'RESTAN: es plata que el proveedor devolvió, no una compra. Contarlas como compra infló el total en el doble de su valor y, peor, infló el crédito fiscal de IVA.'])
-  }
-  push(['  · con su comprobante cargado en Compras', afip.enCompras, ars(afip.montoEnCompras), '', '', 'Ya viajó al cash flow por el rubro de esa factura.'])
-  if (afip.porImporte) {
-    push(['  · cargados SIN su N° de comprobante', afip.porImporte, ars(afip.montoPorImporte), '', '',
-      'Están en Compras: se los reconoce por proveedor + importe, no por número. Poner el N° de comprobante es lo que permite imputar un pago a su factura y reclamar un saldo.'])
-  }
-  push(['  · ⚠ SIN cargar en Compras', afip.faltan, ars(afip.montoFaltan), '', '',
-    '⚠ Facturado a la empresa y ausente de TODO el archivo. OJO: el cruce va por N° de comprobante y muchas filas de Compras no lo tienen, así que parte de esto está cargado sin número. El detalle, proveedor por proveedor, está en Proveedores y Materiales.'])
-  if (afip.desconocidos) {
-    push(['  · ⚠ tipo de comprobante desconocido', afip.desconocidos, '', '', '',
-      '⚠ No se sabe si suman o restan, así que quedaron FUERA del total en vez de asumirles un signo. Hay que agregar el código a lib/comprobante-arca.mjs.'])
-  }
+  push(['AFIP — libro de IVA compras (neto de notas de crédito)', ref(N_ARCA.comprobantes), ref(N_ARCA.total), '', '', 'Lo que le facturaron a la empresa con CAE. Es la única fuente fiscal: Compras es lo que alguien cargó. El número vive en Proveedores y Materiales; acá se referencia.'])
+  push(['  · de los cuales, notas de crédito', ref(N_ARCA.notasN), ref(N_ARCA.notasMonto), '', '',
+    'RESTAN: es plata que el proveedor devolvió, no una compra. Cuáles anulan una factura y cuáles son una refacturación está en Proveedores y Materiales, bloque 3 bis.'])
+  push(['  · con su comprobante cargado en Compras', ref(N_ARCA.enComprasN), ref(N_ARCA.enComprasMonto), '', '', 'Ya viajó al cash flow por el rubro de esa factura.'])
+  push(['  · cargados SIN su N° de comprobante', ref(N_ARCA.sinNumeroN), ref(N_ARCA.sinNumeroMonto), '', '',
+    'Están en Compras: se los reconoce por proveedor + importe. Poner el N° de comprobante es lo que permite imputar un pago a su factura y reclamar un saldo.'])
+  push(['  · ⚠ SIN cargar en Compras', ref(N_ARCA.faltanN), ref(N_ARCA.faltanMonto), '', '',
+    '⚠ Facturado a la empresa con CAE y ausente de TODO el archivo. El detalle, proveedor por proveedor, está en Proveedores y Materiales.'])
   push([])
-  push(['AFIP — libro de IVA ventas', afip.nE, ars(afip.totalE), '', '', 'Lo que la empresa facturó. Su detalle con número de comprobante está en Proveedores y Materiales.'])
+  push(['AFIP — libro de IVA ventas', ref(N_ARCA.ventasN), ref(N_ARCA.ventasMonto), '', '', 'Lo que la empresa facturó. Su detalle con número de comprobante está en Proveedores y Materiales.'])
   push([])
   push(['Compras sin fecha de caja', '', `=SUMIFS(Compras!$O$4:$O;Compras!$AC$4:$AC;"<>";Compras!$AD$4:$AD;"")`, '', '',
     '⚠ Están clasificadas y suman en el total del año, pero sin fecha no caen en ningún mes ni semana: el cuadro no las puede ubicar en el tiempo.'])

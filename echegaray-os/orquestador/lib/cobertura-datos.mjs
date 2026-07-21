@@ -40,6 +40,7 @@ export const USA = {
     N: 'IVA → costos_obra.iva',
     O: 'Total con IVA → el importe que usa el cash flow',
     Q: 'Fecha prevista de pago → fecha de caja cuando no hay fecha contable',
+    X: 'Estado → define la DEUDA: "Pendiente" es lo que se le debe al proveedor (lib/cuentas-por-pagar)',
     Y: 'Fecha contable del pago → fecha de caja (la que manda)',
     AC: 'Rubro de caja (la escribe el OS)',
     AD: 'Fecha de caja (la escribe el OS)',
@@ -109,8 +110,31 @@ export const CABECERA = {
   'Jornales por Quincena': 2,
 }
 
-/** Columnas que el OS escribe y por lo tanto no son un hueco aunque nadie las lea. */
-export const ESCRIBE_EL_OS = new Set(['Compras!AC', 'Compras!AD', 'Compras!AE', 'Compras!AF', 'Cheques Emitidos!M'])
+/** Columnas que el OS ESCRIBE y por lo tanto no son un hueco aunque nadie las lea.
+ *
+ *  SE DESACTUALIZÓ (21/07) y el control se llenó de ruido: el auditor reportaba como "dato que el
+ *  OS no mira" las marcas que el propio OS había escrito el minuto anterior —"⚠ Control
+ *  automático", "Qué dice el banco de este valor", "Estado en el OS"—. Un control que grita por
+ *  algo correcto se deja de mirar, y entonces tapa el hallazgo real que aparece al lado. Cada vez
+ *  que un script empiece a escribir una columna nueva, va acá. */
+export const ESCRIBE_EL_OS = new Set([
+  'Compras!AC', 'Compras!AD', 'Compras!AE', 'Compras!AF',
+  'Cheques Emitidos!M',            // marca de cobertura (cash-flow-lineas: colMarca 12)
+  'Tarjeta de Credito!L',          // marca de cobertura (colMarca 11)
+  'Cobranzas!BA',                  // ⚠ Control automático (cobranzas-control: C_FLAG)
+  'Cobranzas!BB',                  // qué dice el banco de ese valor (C_VALOR = 53)
+  'Cobranzas!BC', 'Cobranzas!BD', 'Cobranzas!BE', // el bloque de control del pie
+])
+
+/** Columnas que son una FÓRMULA sobre otra columna que el OS sí lee.
+ *
+ *  No son un hueco: su contenido ya está contemplado por la columna de origen, y leerlas sería
+ *  leer dos veces el mismo dato. "Fecha factura (mes)" es =TEXT(C;"mmm-yy") y el OS lee C. */
+export const DERIVADA_DE = {
+  'Compras!D': 'C — es =TEXT(C;"mmm-yy"), el mes de la fecha de factura',
+  'Compras!R': 'Q — es =Q, la fecha prevista de pago',
+  'Compras!U': 'T y O — es =T-O, el saldo del pago parcial',
+}
 
 /**
  * NÚCLEO PURO: compara lo declarado contra lo que hay cargado.
@@ -125,6 +149,8 @@ export function comparar(pestaña, columnas = []) {
   for (const c of columnas) {
     if (decl[c.col]) { usadas.push({ ...c, para: decl[c.col] }); continue }
     if (ESCRIBE_EL_OS.has(`${pestaña}!${c.col}`)) { usadas.push({ ...c, para: 'la escribe el OS' }); continue }
+    const deriva = DERIVADA_DE[`${pestaña}!${c.col}`]
+    if (deriva) { usadas.push({ ...c, para: `deriva de ${deriva}` }); continue }
     // Una columna sin rótulo Y sin filas no es un hueco: es una columna que no existe.
     if (!c.filas && !c.rotulo) continue
     huecos.push(c)

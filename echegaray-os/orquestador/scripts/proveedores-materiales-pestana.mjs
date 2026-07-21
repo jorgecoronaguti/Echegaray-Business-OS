@@ -72,10 +72,12 @@ import { loadConfig } from '../lib/config.mjs'
 import { FAMILIAS, SIN_FAMILIA, formulaFamilia, familiaDeMaterial, RUBROS_CON_FAMILIA } from '../lib/familia-material.mjs'
 import { NOMBRES } from '../lib/sheet-pestanas.mjs'
 import { ESTADO_DEUDA, MODALIDADES } from '../lib/cuentas-por-pagar.mjs'
-import { parseMonto, parseFecha } from '../lib/cash-briefing.mjs'
+import { parseMonto } from '../lib/cash-briefing.mjs'
 import { normComprobante, esLlaveUtil } from '../lib/cheques-cobertura.mjs'
 import { sumar, signo, esNotaDeCredito } from '../lib/comprobante-arca.mjs'
 import { analizar as analizarNC, facturasAnuladasCargadas, clave as claveNC } from '../lib/notas-credito.mjs'
+import { cruzar, verificar } from '../lib/cobertura-arca.mjs'
+import { ARCA as N_ARCA, publicar } from '../lib/rangos-nombrados.mjs'
 import { query } from '../lib/db.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -110,7 +112,7 @@ const normNombre = (s) => String(s ?? '')
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 const ars = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
 
-function grilla({ obras, proveedores, resto, deuda, faltanEnCompras, emitidas, arca, notasCredito, anuladasCargadas }) {
+function grilla({ obras, proveedores, resto, deuda, faltanEnCompras, emitidas, arca, notasCredito, anuladasCargadas, cruce }) {
   const filas = []
   const push = (c) => { filas.push(c); return filas.length }
   const nombres = FAMILIAS.map(([n]) => n)
@@ -204,6 +206,21 @@ function grilla({ obras, proveedores, resto, deuda, faltanEnCompras, emitidas, a
   for (const r of faltanEnCompras) push([r.nombre, r.cuit, r.comprobante, r.fecha, r.importe, '', '', '', ''])
   const afip1 = filas.length
   push(['TOTAL SIN CARGAR', '', '', '', `=SUM($E${afip0}:$E${afip1})`, '', '', '', ''])
+  push([])
+
+  // ── 3 ter · LOS NÚMEROS DE ARCA, EN UN SOLO LUGAR ───────────────────────────────────────────────
+  // Estos son los únicos números del archivo que NO salen del Sheet: salen del libro de IVA que el
+  // OS replica desde ARCA. Viven acá —una pestaña réplica, con origen declarado— y el Cash Flow
+  // Mensual los mira por RANGO CON NOMBRE en vez de tenerlos pegados. Ver lib/rangos-nombrados.mjs.
+  push(['3 ter · LO QUE ARCA REGISTRÓ — el número de origen, para que ninguna otra pestaña lo copie'])
+  push(['Cualquier pestaña que necesite estas cifras las referencia por nombre (ARCA_COMPRAS_TOTAL, ARCA_FALTAN_MONTO…). Si se copiaran, el día que ARCA traiga un comprobante nuevo habría dos verdades en el archivo y nadie sabría cuál mirar.'])
+  push(['Concepto', 'Cantidad', 'Monto', '', '', '', '', '', ''])
+  const fArcaN = push(['Comprobantes de compra (neto de notas de crédito)', arca.nR, arca.totalR, '', '', '', '', '', ''])
+  const fArcaNotas = push(['  · notas de crédito (restan)', arca.nNotas, -arca.montoNotas, '', '', '', '', '', ''])
+  const fArcaEn = push(['  · cargados en Compras, por N° de comprobante', cruce.porNumero.length, cruce.totales.porNumero, '', '', '', '', '', ''])
+  const fArcaSinNum = push(['  · cargados SIN su N° de comprobante', cruce.porImporte.length, cruce.totales.porImporte, '', '', '', '', '', ''])
+  const fArcaFaltan = push(['  · ⚠ sin cargar en Compras', cruce.faltan.length, cruce.totales.faltan, '', '', '', '', '', ''])
+  const fArcaVentas = push(['Comprobantes emitidos (ventas)', emitidas.length, emitidas.reduce((s, x) => s + x.importe, 0), '', '', '', '', '', ''])
   push([])
 
   // ── 3 bis · LAS NOTAS DE CRÉDITO ────────────────────────────────────────────────────────────────
@@ -315,7 +332,7 @@ function grilla({ obras, proveedores, resto, deuda, faltanEnCompras, emitidas, a
   const resuelto = filas.map((f) => f.map((c) => (typeof c === 'string'
     ? c.replaceAll('$TOTFAM', String(totFam)).replaceAll('$TOTPROV', String(fTotProv)).replaceAll('$TOTDEUDA', String(fTotProv))
     : c)))
-  return { filas: resuelto, cuentas: [fCuenta1, fCuenta2], doc0, doc1, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, cabDoc, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
+  return { filas: resuelto, cuentas: [fCuenta1, fCuenta2], doc0, doc1, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
 }
 
 async function main() {
@@ -367,10 +384,21 @@ async function main() {
     if (esLlaveUtil(k)) enCompras.set(k, { proveedor: String(f?.[4] ?? '').trim() })
   }
   const fecha = (d) => (d ? new Date(d).toLocaleDateString('es-AR') : '')
-  const faltanEnCompras = rArca
-    // Las notas de crédito se excluyen del "falta cargar": mandarían a buscar un gasto inexistente.
-    .filter((r) => !esNotaDeCredito(r.tipo_comprobante))
-    .filter((r) => !enCompras.has(normComprobante(`${r.punto_venta}-${r.numero}`)))
+
+  // EL CRUCE, UNA SOLA VEZ. La misma función que usa el bloque de cobertura del Cash Flow Mensual
+  // (lib/cobertura-arca.mjs). Antes estaba escrito dos veces y las copias ya habían divergido.
+  const filasParaCruce = compras
+    .map((f, i) => ({ fila: i + 4, prov: normNombre(f?.[4]), total: parseMonto(f?.[14]) || parseMonto(f?.[12]), comprobante: normComprobante(f?.[7]) }))
+    .filter((f) => f.prov && f.total > 0)
+  const cruce = cruzar(rArca, filasParaCruce, { norm: normNombre, clave: (c) => normComprobante(`${c.punto_venta}-${c.numero}`) })
+  const chequeo = verificar(cruce)
+  if (!chequeo.ok) {
+    // Si los grupos no reconstruyen el total, hay comprobantes que se cayeron de la clasificación y
+    // el cuadro estaría mostrando menos de lo que ARCA registró. Se avisa fuerte, no se sigue igual.
+    console.error(`⚠ el cruce contra ARCA no cierra: diferencia ${chequeo.diferencia}, ${chequeo.contados} de ${chequeo.esperados} comprobantes clasificados`)
+  }
+
+  const faltanEnCompras = cruce.faltan
     .map((r) => ({
       nombre: r.emisor_nombre, cuit: r.emisor_cuit,
       comprobante: `${String(r.punto_venta).padStart(4, '0')}-${String(r.numero).padStart(8, '0')}`,
@@ -465,7 +493,7 @@ async function main() {
     .sort((a, b) => a.fila - b.fila)
 
   const obras = ['LA ESTRELLA', 'San Francisco', 'MESSINAS', 'ARCOR', 'Administracion', 'Almacen', 'Taller', 'SAINT GOBAIN']
-  const g = grilla({ obras, proveedores, resto, deuda, faltanEnCompras, emitidas, arca, notasCredito, anuladasCargadas })
+  const g = grilla({ obras, proveedores, resto, deuda, faltanEnCompras, emitidas, arca, notasCredito, anuladasCargadas, cruce })
   const ancho = Math.max(...g.filas.map((f) => f.length))
   const cuadro = g.filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r })
   console.log(`${PESTAÑA}: ${cuadro.length} filas x ${ancho} columnas`)
@@ -508,6 +536,25 @@ async function main() {
   await google.clearValues(ID, `${PESTAÑA}!A1:Z220`)
   await google.batchUpdateValues(ID, [{ range: `${PESTAÑA}!A1:${letra(ancho - 1)}${cuadro.length}`, values: cuadro }])
   await formatear(google, hoja.sheetId, g, ancho, cuadro.length)
+
+  // Los nombres, DESPUÉS de escribir: la pestaña se rehace entera cada 2 horas y el bloque se corre
+  // de fila según cuántas notas de crédito o proveedores haya. Publicarlos antes los dejaría
+  // apuntando a la geometría vieja, en silencio.
+  const nombres = await publicar(google, ID, hoja.sheetId, [
+    { name: N_ARCA.comprobantes, fila: g.fArcaN, col: 2 },
+    { name: N_ARCA.total, fila: g.fArcaN, col: 3 },
+    { name: N_ARCA.notasN, fila: g.fArcaNotas, col: 2 },
+    { name: N_ARCA.notasMonto, fila: g.fArcaNotas, col: 3 },
+    { name: N_ARCA.enComprasN, fila: g.fArcaEn, col: 2 },
+    { name: N_ARCA.enComprasMonto, fila: g.fArcaEn, col: 3 },
+    { name: N_ARCA.sinNumeroN, fila: g.fArcaSinNum, col: 2 },
+    { name: N_ARCA.sinNumeroMonto, fila: g.fArcaSinNum, col: 3 },
+    { name: N_ARCA.faltanN, fila: g.fArcaFaltan, col: 2 },
+    { name: N_ARCA.faltanMonto, fila: g.fArcaFaltan, col: 3 },
+    { name: N_ARCA.ventasN, fila: g.fArcaVentas, col: 2 },
+    { name: N_ARCA.ventasMonto, fila: g.fArcaVentas, col: 3 },
+  ])
+  console.log(`  ${nombres.nombres} rangos con nombre publicados: el Cash Flow los referencia en vez de copiarlos`)
 
   const v = await google.readSheetValues(ID, `${PESTAÑA}!A1:T${cuadro.length}`)
   const err = []

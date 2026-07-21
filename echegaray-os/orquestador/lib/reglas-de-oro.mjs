@@ -221,7 +221,24 @@ export function criteriosEnFormulas(formulas = [], columna = 'AC') {
  */
 export function criteriosHuerfanos(formulas = [], validos = [], columna = 'AC') {
   const set = new Set(validos.map((v) => String(v).trim().toLowerCase()))
-  return criteriosEnFormulas(formulas, columna).filter((c) => !set.has(c.trim().toLowerCase()))
+  return criteriosEnFormulas(formulas, columna)
+    .filter((c) => !esOperador(c))
+    .filter((c) => !set.has(c.trim().toLowerCase()))
+}
+
+/**
+ * NÚCLEO PURO: ¿el "criterio" es en realidad un OPERADOR de SUMIFS?
+ *
+ * FALSO POSITIVO REAL (21/07). El auditor venía marcando `<>` como "un rubro que la definición única
+ * no conoce". No es un rubro: es el operador "distinto de vacío" con el que el cuadro cuenta las
+ * filas clasificadas —SUMIFS(...;Compras!$AC$4:$AC;"<>";...)—. Un control que grita por algo
+ * correcto se vuelve ruido, y un control que es ruido deja de mirarse: es peor que no tenerlo,
+ * porque tapa el hallazgo real que aparezca al lado.
+ */
+export function esOperador(criterio) {
+  const c = String(criterio ?? '').trim()
+  // "<>", "", "<>0", ">=100", "*" (comodín solo) — ninguno nombra un rubro.
+  return c === '' || c === '*' || /^(<>|<=|>=|<|>|=)/.test(c)
 }
 
 /**

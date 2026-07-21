@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { numerosPegados, derivadasHuerfanas, usaInflacion, indicesCompletos, CALCULADAS, CON_ORIGEN } from './reglas-de-oro.mjs'
+import { numerosPegados, derivadasHuerfanas, usaInflacion, indicesCompletos, criteriosHuerfanos, esOperador, CALCULADAS, CON_ORIGEN } from './reglas-de-oro.mjs'
 
 const celda = (o) => ({ formula: null, numero: null, derivada: false, formato: null, ...o })
 
@@ -56,4 +56,22 @@ test('un índice sin fuente es un número inventado con buena letra', () => {
 // números" a la vez: el permiso ganaría siempre y la regla dejaría de existir para esa pestaña.
 test('ninguna pestaña puede estar a la vez en calculadas y con origen declarado', () => {
   assert.deepEqual(CALCULADAS.filter((t) => CON_ORIGEN[t]), [])
+})
+
+test('no marca un OPERADOR de SUMIFS como rubro desconocido', () => {
+  // Falso positivo real: el cuadro cuenta las filas clasificadas con
+  // SUMIFS(...;Compras!$AC$4:$AC;"<>";...) y el auditor gritaba que "<>" era un rubro que la
+  // definición única no conoce. Un control que grita por algo correcto se deja de mirar.
+  const f = ['=SUMIFS(Compras!$O$4:$O;Compras!$AC$4:$AC;"<>";Compras!$AD$4:$AD;"")']
+  assert.deepEqual(criteriosHuerfanos(f, ['Materiales Civil'], 'AC'), [])
+})
+
+test('sigue marcando un rubro que de verdad no existe', () => {
+  const f = ['=SUMIFS(Compras!$O$4:$O;Compras!$AC$4:$AC;"Rubro Inventado")']
+  assert.deepEqual(criteriosHuerfanos(f, ['Materiales Civil'], 'AC'), ['Rubro Inventado'])
+})
+
+test('esOperador reconoce las formas que usa el archivo', () => {
+  for (const o of ['<>', '', '>=100', '<0', '=x', '*']) assert.equal(esOperador(o), true, `${JSON.stringify(o)}`)
+  for (const r of ['Materiales Civil', 'Estructura', 'Nómina · SAC']) assert.equal(esOperador(r), false, r)
 })
