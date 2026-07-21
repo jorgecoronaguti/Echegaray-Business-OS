@@ -31,8 +31,12 @@ const NUMERICO = new Set(['CURRENCY', 'NUMBER', 'PERCENT'])
 const esTextoDeVerdad = (v) => {
   const s = String(v ?? '').trim()
   if (!s) return false
-  // "—" es el guion del formato de número para el cero: no es texto pegado a mano.
-  if (s === '—') return false
+  // EL GUION ES EL CERO. Los formatos de número dibujan el cero como un guion para que una columna
+  // de importes no se llene de "$0" — y cada variante lo hace distinto: el estándar del OS usa "—"
+  // (largo) y el formato contable de Cobranzas usa "-" (corto), a veces con espacios. Reconocer sólo
+  // uno reportaba 684 ceros correctos como texto mal puesto, y ese ruido tapaba los 50 defectos
+  // reales que sí tiene esa pestaña.
+  if (/^\s*[—–-]\s*$/.test(s)) return false
   // EL SIGNO VA ANTES DEL PESO. La primera versión sólo aceptaba "$-1.234" y marcaba "-$2.949.816"
   // como texto: 2.486 falsos positivos en catorce pestañas, o sea un control inservible. Un
   // detector que grita por todo es peor que no tenerlo, porque enseña a ignorarlo.
@@ -40,6 +44,11 @@ const esTextoDeVerdad = (v) => {
   // Los dólares se escriben "U$S 581,39" en Argentina, y el símbolo va con letras adelante. Sin
   // esto, cada importe en moneda extranjera se reportaba como texto mal puesto.
   if (/^[-+]?\s*(?:U\$S|US\$|USD)\s*[-+]?[\d.,\s]+$/i.test(s)) return false
+  // NOTACIÓN CONTABLE: el paréntesis es el signo menos. "($ 96.800,00)" es un importe negativo, no
+  // un texto — así lo dibuja el formato contable que usa Cobranzas en dos columnas enteras. Sin
+  // esto el detector reportaba 688 celdas correctas como defectos: el 93% del ruido de esa pestaña,
+  // y suficiente para que nadie mire la lista donde SÍ hay 49 defectos reales.
+  if (/^\(\s*(?:U\$S|US\$|USD|\$)?\s*[\d.,\s]+\)$/i.test(s)) return false
   if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s)) return false
   // UN NÚMERO CON SUFIJO DECLARADO SIGUE SIENDO UN NÚMERO. El formato `0" facturas"` produce
   // "46 facturas" y el formato `0" d"` produce "7 d": los dos son la forma correcta de mostrar un

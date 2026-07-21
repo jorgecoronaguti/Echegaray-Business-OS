@@ -51,6 +51,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
+import { notasDeColumna, altoDeParrafo, entranEn } from '../lib/nota-celda.mjs'
 import { CUENTAS, CARGA, ALIAS, TIPO_CAMBIO, RANGO_TC, filaDeCuenta } from '../lib/caja-disponibilidades.mjs'
 import * as BANCO from '../lib/banco-santander.mjs'
 import { TASAS, CARGO_VERIFICADO, tasaDiaria, costoConImpuestos, interesDelPeriodo } from '../lib/costo-descubierto.mjs'
@@ -68,7 +69,10 @@ const DRY = process.argv.includes('--dry')
 
 // A concepto · B moneda · C importe en origen · D tipo de cambio · E importe en pesos ·
 // F fecha · G antigüedad · H origen del dato · I declarado por
-const ANCHO = 9
+const ANCHO = 8
+/** El ancho de cada columna. La de origen es angosta A PROPÓSITO: lleva una etiqueta, no un párrafo
+ *  —el texto completo vive en la nota de la celda (lib/nota-celda.mjs)—. */
+const ANCHOS = [400, 64, 148, 96, 152, 104, 96, 300]
 const C_IMP = 'C', C_TC = 'D', C_PESOS = 'E'
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
@@ -155,7 +159,10 @@ function grilla(cargado, refs) {
   // magnitud, y sólo se ve mirando la pantalla.
   const usd = []
   const push = (c = []) => {
+    // Se rellena Y SE TRUNCA a lo que mide la tabla: al sacar la columna "Declarado por" quedaron
+    // filas de nueve elementos contra una grilla de ocho, y el batch entero falla sin escribir nada.
     const r = [...c]; while (r.length < ANCHO) r.push('')
+    r.length = ANCHO
     filas.push(r)
     if (r[1] === 'USD') usd.push(filas.length)
     return filas.length
@@ -176,9 +183,11 @@ function grilla(cargado, refs) {
   // Una pestaña que se abre todos los días tiene que contestar su pregunta en la primera pantalla.
   // Estas tres celdas son fórmulas que apuntan a las filas de abajo: no repiten un cálculo, lo
   // muestran donde se mira. El detalle sigue estando entero, abajo.
-  const fTitulos = push(['LA PLATA QUE HAY', 'LO QUE YA ESTÁ COMPROMETIDO', 'QUEDA DISPONIBLE', '', 'AIRE (tarjeta + descubierto)'])
-  const fCifras = push(['@TOTAL', '@CHEQUES', '@NETA', '', '@AIRE'])
-  push(['efectivo + bancos + valores en cartera', 'cheques emitidos que todavía no debitaron', 'con esto se decide', '', 'NO es plata propia: es capacidad de endeudarse'])
+  // Cada titular ocupa DOS columnas: con el ancho de una columna de tabla, "$18.180.491" en cuerpo
+  // 16 no entra y Sheets lo dibuja como ###.
+  const fTitulos = push(['LA PLATA QUE HAY', '', 'YA COMPROMETIDO', '', 'QUEDA DISPONIBLE', '', 'AIRE', ''])
+  const fCifras = push(['@TOTAL', '', '@CHEQUES', '', '@NETA', '', '@AIRE', ''])
+  push(['efectivo + bancos + valores', '', 'cheques firmados sin debitar', '', 'con esto se decide', '', 'crédito, no plata propia', ''])
   push()
 
   // ── 1 · DISPONIBILIDADES ────────────────────────────────────────────────────────────────────────
@@ -211,32 +220,6 @@ function grilla(cargado, refs) {
   }
   const d1 = filas.length
 
-  // EL DETALLE DE LOS CHEQUES EN CARTERA, colapsable. Va DESPUÉS de las cuentas y antes del total,
-  // así que no entra en el rango que suma: sumaría dos veces la misma plata.
-  const ultima = CUENTAS[CUENTAS.length - 1]
-  if (ultima.detalle && ultima.detalle !== 'echeq_en_cartera') throw new Error('el detalle desplegable sólo está resuelto para los echeq en cartera')
-  const fValores = d1
-  const g0 = filas.length + 1
-  for (const e of BANCO.enCartera()) {
-    const f = filas.length + 1
-    push([`      · ECHEQ ${e.numero} · ${e.emisor}`, 'ARS', e.importe, '', `=${C_IMP}${f}`, e.pago,
-      `=IF(F${f}="";"";"entra en "&TEXT(F${f}-TODAY();"0")&" días")`,
-      `${BANCO.ORIGEN} · estado EN CUSTODIA`, 'Réplica del banco'])
-  }
-  // LOS QUE SALIERON DE LA CARTERA. No suman —por eso van con importe en blanco— pero tienen que
-  // estar A LA VISTA: son los $20.000.000 que el cuadro creía tener y ya no tiene.
-  for (const e of BANCO.endosados()) {
-    push([`      · ECHEQ ${e.numero} · ${e.emisor} → ENDOSADO a ${e.beneficiario}`, '', '', '', '',
-      e.pago, 'ya no es nuestro',
-      `${BANCO.ORIGEN} · se entregó para pagarle a ${e.beneficiario}: no va a entrar a la cuenta`, 'Réplica del banco'])
-  }
-  const gControl = push(['      ⇒ Control: qué dice Cobranzas de estos mismos cheques', '',
-    CUENTAS.find((c) => c.control)?.control ?? '', '', '', '', '',
-    'Cobranzas registra que el echeq se cobró —y es cierto— pero no sabe qué pasó DESPUÉS con el valor. Si este número es mayor que el de arriba, la diferencia son cheques que se endosaron para pagarle a alguien.', 'Se calcula solo'])
-  const gDif = push(['      ⇒ Diferencia contra el banco', '', `=${C_IMP}${gControl}-${C_IMP}${fValores}`, '', '', '', '',
-    'Distinto de cero = el cash flow espera como ingreso plata que ya se entregó. Manda el banco.', 'Se calcula solo'])
-  const g1 = filas.length
-
   const fTotal = push(['TOTAL DISPONIBILIDADES', '', '', '', `=SUM(${C_PESOS}${d0}:${C_PESOS}${d1})`, '', '', '', 'Es el "Efectivo al inicio" que usan los dos cash flows.'])
   // La exposición al tipo de cambio. No es un detalle de presentación: decide si conviene vender o
   // quedarse. Sale de las mismas filas de arriba, no se carga aparte.
@@ -251,8 +234,46 @@ function grilla(cargado, refs) {
     'Lo que queda después de cubrir los cheques ya firmados. Es el número con el que conviene decidir.'])
   push()
 
-  // ── 3 · LÍNEAS DE CRÉDITO ───────────────────────────────────────────────────────────────────────
-  push(['3 · LÍNEAS DE CRÉDITO — NO son efectivo, y por eso no suman arriba'])
+  // ── 3 · EL DETALLE DE LOS VALORES EN CARTERA ───────────────────────────────────────────────────
+  //
+  // ESTO ESTABA ADENTRO DE LA TABLA DE SALDOS, y era la razón principal por la que la pestaña no se
+  // entendía: entre "Banco Santander" y "TOTAL DISPONIBILIDADES" había tres echeqs —dos de ellos ya
+  // endosados, que no son plata— y dos filas de control. Una tabla que dice "acá está lo que tenés"
+  // con cinco filas en el medio que no son eso obliga a decidir fila por fila cuál suma. El detalle
+  // es valioso y se queda, pero abajo y con su propio título.
+  push(['3 · LOS VALORES EN CARTERA, UNO POR UNO — de dónde sale la línea de arriba'])
+  // EL DETALLE DE LOS CHEQUES EN CARTERA, colapsable. Va DESPUÉS de las cuentas y antes del total,
+  // así que no entra en el rango que suma: sumaría dos veces la misma plata.
+  const ultima = CUENTAS[CUENTAS.length - 1]
+  if (ultima.detalle && ultima.detalle !== 'echeq_en_cartera') throw new Error('el detalle desplegable sólo está resuelto para los echeq en cartera')
+  const fValores = d1
+  const g0 = filas.length + 1
+  for (const e of BANCO.enCartera()) {
+    const f = filas.length + 1
+    push([`   ECHEQ ${e.numero} · ${e.emisor}`, 'ARS', e.importe, '', `=${C_IMP}${f}`, e.pago,
+      `=IF(F${f}="";"";"entra en "&TEXT(F${f}-TODAY();"0")&" días")`,
+      `${BANCO.ORIGEN} · estado EN CUSTODIA`, 'Réplica del banco'])
+  }
+  // LOS QUE SALIERON DE LA CARTERA. No suman —por eso van con importe en blanco— pero tienen que
+  // estar A LA VISTA: son los $20.000.000 que el cuadro creía tener y ya no tiene.
+  for (const e of BANCO.endosados()) {
+    // EL RÓTULO DICE LO QUE PASÓ, NO EL TRÁMITE. "→ ENDOSADO a ALUMETAL S.A" con el emisor adelante
+    // daba 71 caracteres en una celda donde entran 68: se cortaba justo en el dato que importa.
+    push([`   ECHEQ ${e.numero} · YA NO ES NUESTRO — endosado a ${e.beneficiario}`, '', '', '', '',
+      e.pago, 'entregado',
+      `${BANCO.ORIGEN} · se entregó para pagarle a ${e.beneficiario}: no va a entrar a la cuenta`, 'Réplica del banco'])
+  }
+  const gControl = push(['⇒ Control: qué dice Cobranzas de estos cheques', '',
+    CUENTAS.find((c) => c.control)?.control ?? '', '', '', '', '',
+    'Cobranzas registra que el echeq se cobró —y es cierto— pero no sabe qué pasó DESPUÉS con el valor. Si este número es mayor que el de arriba, la diferencia son cheques que se endosaron para pagarle a alguien.', 'Se calcula solo'])
+  const gDif = push(['⇒ Diferencia contra el banco (manda el banco)', '', `=${C_IMP}${gControl}-${C_IMP}${fValores}`, '', '', '', '',
+    'Distinto de cero = el cash flow espera como ingreso plata que ya se entregó. Manda el banco.', 'Se calcula solo'])
+  const g1 = filas.length
+
+  push()
+
+  // ── 4 · LÍNEAS DE CRÉDITO ───────────────────────────────────────────────────────────────────────
+  push(['4 · LÍNEAS DE CRÉDITO — NO son efectivo, y por eso no suman arriba'])
   push(['El margen de una tarjeta es capacidad de endeudarse, no plata propia. Sumarlo a las disponibilidades es el error que hace que una empresa se crea líquida el día antes de no poder pagar sueldos. El límite en pesos y el límite en dólares son dos cupos distintos: mezclarlos daría un margen que no existe en ninguna de las dos monedas.'])
   const cab3 = push(['Línea', 'Moneda', 'Importe en moneda de origen', 'Tipo de cambio', 'Importe en pesos', '', '', 'Origen del dato'])
 
@@ -309,7 +330,7 @@ function grilla(cargado, refs) {
   push()
 
   // ── 5 · ALERTA ──────────────────────────────────────────────────────────────────────────────────
-  push(['4 · ALERTA DE CAJA — hasta cuándo alcanza'])
+  push(['5 · ALERTA DE CAJA — hasta cuándo alcanza'])
   const fMin = push(['Caja mínima deseada', '', '', '', "=N('01_Valores Iniciales'!$B$3)", '', '', '01_Valores Iniciales', ''])
   const rangoCierre = refs.cierre ? `'Cash Flow Mensual'!$B$${refs.cierre}:$M$${refs.cierre}` : null
   const rangoMes = refs.cab ? `'Cash Flow Mensual'!$B$${refs.cab}:$M$${refs.cab}` : null
@@ -334,7 +355,7 @@ function grilla(cargado, refs) {
   push(['Primer mes con caja negativa', '', '', '', primerMes('<0'), '', '', '',
     '⚠ Ojo: los ingresos de octubre en adelante están en $0 porque no hay obra facturada. Esta fecha es un PISO, no un pronóstico.'])
   // ── 4 · CONCILIACIÓN ────────────────────────────────────────────────────────────────────────────
-  push(['5 · CONCILIACIÓN — ¿el cash flow explica la plata que hay?'])
+  push(['6 · CONCILIACIÓN — ¿el cash flow explica la plata que hay?'])
   push(['El control que mide si el archivo sirve. Si la diferencia es chica, el cuadro es confiable. Si es grande, hay plata moviéndose fuera del Sheet y hay que buscarla antes de decidir con estos números.'])
   const fDecl = push(['Disponibilidad declarada (bloque 1)', '', '', '', `=${C_PESOS}${fTotal}`, '', '', '', 'Lo que dicen el extracto y el arqueo.'])
   const fProy = push(['Efectivo al cierre que proyecta el Cash Flow al mes de la fecha del saldo', '', '', '',
@@ -346,7 +367,7 @@ function grilla(cargado, refs) {
     'Distinto de cero = movimientos que el archivo no ve. No es un error de fórmula: es trabajo de carga.'])
   push()
 
-  // ── 5 bis · ¿DÓNDE ESTÁ EL EFECTIVO COBRADO? ────────────────────────────────────────────────────
+  // ── 7 · ¿DÓNDE ESTÁ EL EFECTIVO COBRADO? ────────────────────────────────────────────────────
   //
   // POR QUÉ EXISTE (21/07). El cash flow tenía un agujero de $36.742.078 entre lo que Cobranzas dice
   // que se cobró y lo que entró al banco. Al abrirlo, el problema no era el total sino el EFECTIVO:
@@ -364,7 +385,7 @@ function grilla(cargado, refs) {
   // ES UN CONTROL, NO UNA ACUSACIÓN: puede haber una explicación buena (un depósito posterior a la
   // fecha del extracto, un pago a proveedor hecho en efectivo sin pasar por el banco). Lo que no
   // puede pasar es que nadie lo mire.
-  push(['5 bis · ¿DÓNDE ESTÁ EL EFECTIVO COBRADO?'])
+  push(['7 · ¿DÓNDE ESTÁ EL EFECTIVO COBRADO?'])
   push(['Un cobro en efectivo que no se depositó tiene que estar en la caja física. Este control resta: lo cobrado en efectivo, menos lo que se depositó, menos lo que se declara en la caja de arriba. Si sobra plata, o no está o el cobro no ocurrió.'])
   // ═══ LA MISMA VENTANA DE TIEMPO DE LOS DOS LADOS ═══
   //
@@ -399,7 +420,7 @@ function grilla(cargado, refs) {
   // ── 0 · TIPO DE CAMBIO ──────────────────────────────────────────────────────────────────────────
   // Se define UNA sola vez y acá, que es donde se usa. Cualquier otra fórmula del archivo que
   // necesite convertir dólares referencia el rango con nombre, no esta celda por su fila.
-  push(['6 · TIPO DE CAMBIO — sólo se usa para valuar la cuenta en dólares'])
+  push(['8 · TIPO DE CAMBIO — sólo se usa para valuar la cuenta en dólares'])
   push(['Está al final a propósito: la empresa cobra, paga y decide en pesos. El dólar acá no es una posición, es una cuenta chica que hay que poder sumar al total — y para eso hace falta una cotización con origen.'])
   const cab0 = push(['Concepto', '', 'Cotización', '', '', 'Fecha', '', 'Origen del dato'])
   const fRef = push([TIPO_CAMBIO.referencia.nombre, '', TIPO_CAMBIO.referencia.formula, '', '', '=TODAY()', '', TIPO_CAMBIO.referencia.origen, 'Se calcula solo'])
@@ -455,9 +476,22 @@ async function main() {
   // EL RANGO CON NOMBRE VA PRIMERO. Las fórmulas de arriba dicen TIPO_CAMBIO_USD, así que el nombre
   // tiene que existir antes de escribirlas o la pestaña se llena de #NAME? en la primera corrida.
   await rangoConNombre(google, hoja.sheetId, g.fTC)
+  // ═══ NO SE BORRA HASTA SABER QUE LO NUEVO SE PUEDE ESCRIBIR ═══
+  //
+  // POR QUÉ (21/07). Esta pestaña es la ÚNICA donde una persona carga números a mano. Una corrida
+  // falló DESPUÉS del clear —filas de 9 columnas contra una grilla de 8, y la API rechaza el batch
+  // entero— y la pestaña quedó vacía. En la corrida siguiente el rescate leyó una pestaña ya
+  // limpia, no encontró nada que rescatar, y los $1.725.000 de "Caja en pesos" que alguien había
+  // tipeado se perdieron.
+  //
+  // El error no fue el ancho: fue el ORDEN. Borrar es irreversible y escribir puede fallar, así que
+  // lo que puede fallar va primero. Acá se valida la forma de la grilla ANTES de tocar nada.
+  const malas = g.filas.map((f, i) => (f.length > ANCHO ? i + 1 : 0)).filter(Boolean)
+  if (malas.length) throw new Error(`${malas.length} fila(s) más anchas que la tabla (${ANCHO} columnas): ${malas.slice(0, 5).join(', ')}. NO borro nada.`)
+  if (!g.filas.length) throw new Error('la grilla salió vacía: no borro la pestaña')
   await google.clearValues(ID, `${tab}!A1:Z90`)
   await google.batchUpdateValues(ID, [{ range: `${tab}!A1:${letra(ANCHO - 1)}${g.filas.length}`, values: g.filas }])
-  await formatear(google, hoja.sheetId, g)
+  await formatear(google, hoja.sheetId, g, tab)
 
   const v = await google.readSheetValues(ID, `${tab}!A1:I${g.filas.length}`)
   // El dólar declarado es OPCIONAL: vacío significa "uso la cotización del día", no un dato faltante.
@@ -486,11 +520,26 @@ async function rangoConNombre(google, sheetId, fila) {
     : { addNamedRange: { namedRange: { name: RANGO_TC, range: rango } } }])
 }
 
-async function formatear(google, sheetId, g) {
-  const AZUL = { red: 0.17, green: 0.25, blue: 0.37 }
-  const GRIS = { red: 0.93, green: 0.94, blue: 0.95 }
-  const AMARILLO = { red: 1, green: 0.98, blue: 0.86 } // las celdas de carga: se ven distintas a propósito
-  const VERDE = { red: 0.85, green: 0.92, blue: 0.85 }
+async function formatear(google, sheetId, g, tab) {
+  // ═══ LOS COLORES SALEN DEL ESTÁNDAR ÚNICO, NO DE CUATRO CONSTANTES DE ESTA PESTAÑA ═══
+  //
+  // POR QUÉ (21/07). El dueño: "los colores, lo que dice la información, cómo la refleja, todo es un
+  // desastre". Acá había cuatro colores definidos a mano —un azul, un gris, un amarillo y un verde—
+  // que no eran los del resto del archivo. Al pasar de CAJA a cualquier otra pestaña parecía otro
+  // documento, y peor: el mismo verde significaba "control" en una fila y "acordado con el banco" en
+  // otra. Un color que significa dos cosas no comunica nada.
+  //
+  // Ahora hay UNA paleta (lib/estilo-pestana.mjs) y cada color tiene un solo significado:
+  //   · encabezado  → el rótulo de una tabla
+  //   · total       → una fila que suma
+  //   · alerta      → algo que hay que mirar
+  //   · proyectado  → un número que todavía no pasó
+  //   · AMARILLO    → lo ÚNICO que una persona escribe a mano. Es el color más importante de esta
+  //                   pestaña y por eso es el único que no se toca.
+  const AZUL = E.COLOR.encabezado
+  const GRIS = E.COLOR.total
+  const AMARILLO = { red: 1, green: 0.98, blue: 0.86 }
+  const VERDE = E.COLOR.subtotal
   const n = g.filas.length
   const r = (r0, r1, c0 = 0, c1 = ANCHO) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
   const req = [{ unmergeCells: { range: r(0, n) } }]
@@ -540,8 +589,15 @@ async function formatear(google, sheetId, g) {
       { numberFormat: { type: 'TEXT' }, textFormat: { italic: true, fontSize: 9, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, horizontalAlignment: 'CENTER', wrapStrategy: 'WRAP' })
     req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: g.fCifras - 1, endIndex: g.fCifras }, properties: { pixelSize: 34 }, fields: 'pixelSize' } })
     // "Lo que ya está comprometido" se lee mejor en rojo suave: es lo que hay que restar.
-    fmt(r(g.fCifras - 1, g.fCifras, 1, 2), 'userEnteredFormat.backgroundColor', { backgroundColor: E.COLOR.alerta })
-    fmt(r(g.fCifras - 1, g.fCifras, 2, 3), 'userEnteredFormat.backgroundColor', { backgroundColor: E.COLOR.ok ?? E.COLOR.subtotal })
+    // Cada titular ocupa dos columnas: se combinan para que el número tenga aire.
+    for (const c of [0, 2, 4, 6]) {
+      req.push({ mergeCells: { range: r(g.fTitulos - 1, g.fTitulos, c, c + 2), mergeType: 'MERGE_ROWS' } })
+      req.push({ mergeCells: { range: r(g.fCifras - 1, g.fCifras, c, c + 2), mergeType: 'MERGE_ROWS' } })
+      req.push({ mergeCells: { range: r(g.fCifras, g.fCifras + 1, c, c + 2), mergeType: 'MERGE_ROWS' } })
+    }
+    // Lo comprometido se resta: va en el color de alerta. Lo que queda, en el de un total.
+    fmt(r(g.fCifras - 1, g.fCifras, 2, 4), 'userEnteredFormat.backgroundColor', { backgroundColor: E.COLOR.alerta })
+    fmt(r(g.fCifras - 1, g.fCifras, 4, 6), 'userEnteredFormat.backgroundColor', { backgroundColor: E.COLOR.total })
   }
 
   // UN MES NO ES UN IMPORTE. "Primer mes por debajo de la caja mínima" devuelve "septiembre 2026" y
@@ -584,10 +640,35 @@ async function formatear(google, sheetId, g) {
     { textFormat: { bold: true, fontSize: 10 }, backgroundColor: VERDE })
   g.filas.forEach((f, i) => {
     const t = String(f[0] ?? '')
-    if (/^\d · |^CÓMO SE ACTUALIZA/.test(t)) fmt(r(i, i + 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 11 } })
-    if (/^⇒/.test(t)) fmt(r(i, i + 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true } })
+    // EL RÓTULO DE UN BLOQUE SE VE COMO UN BLOQUE, con el estilo del archivo y no con una negrita
+    // suelta. Y ocupa la fila entera: no compite con ninguna columna.
+    if (/^\d+ · |^CÓMO SE ACTUALIZA|^COSTO DE USAR/.test(t)) fmt(r(i, i + 1), 'userEnteredFormat', E.bloque())
+    if (/^⇒/.test(t)) fmt(r(i, i + 1, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontFamily: E.FUENTE, fontSize: E.TAM.cuerpo } })
+    // ── LOS PÁRRAFOS DE EXPLICACIÓN NECESITAN ALTO ──────────────────────────────────────────────
+    // La introducción tiene 307 caracteres y la del bloque de crédito 332, las dos en filas de 20px:
+    // se leía la primera línea y el resto quedaba abajo del borde. Se combinan a lo ancho y la fila
+    // crece lo que haga falta, con tope: un párrafo no puede empujar la tabla media pantalla.
+    const explicacion = t.length > 120 && !String(f[1] ?? '').trim() && !String(f[4] ?? '').trim()
+    if (explicacion) {
+      req.push({ mergeCells: { range: r(i, i + 1, 0, ANCHO), mergeType: 'MERGE_ROWS' } })
+      fmt(r(i, i + 1, 0, ANCHO), 'userEnteredFormat', { ...E.nota(), wrapStrategy: 'WRAP', verticalAlignment: 'MIDDLE' })
+      req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: altoDeParrafo(t, ANCHOS.reduce((a, b) => a + b, 0)) }, fields: 'pixelSize' } })
+    }
   })
-  const ancho = [380, 70, 150, 95, 150, 110, 110, 300, 150]
+
+  // ── EL ORIGEN DEL DATO: ETIQUETA EN LA CELDA, TEXTO COMPLETO EN LA NOTA ────────────────────────
+  // Hasta hoy había orígenes de 207 caracteres en una celda donde entran 48. La procedencia de cada
+  // saldo —lo que hace que el número sea creíble— estaba escrita y no se podía leer.
+  const COL_ORIGEN = 7
+  const { requests: notas, celdas, conNota } = notasDeColumna(g.filas, COL_ORIGEN, sheetId, entranEn(ANCHOS[COL_ORIGEN]))
+  if (conNota) {
+    await google.batchUpdateValues(ID, [{ range: `'${tab}'!${letra(COL_ORIGEN)}1`, values: celdas.map((f) => [f[COL_ORIGEN] ?? '']) }])
+    req.push(...notas)
+    console.log(`  ${conNota} orígenes largos pasaron a nota: la celda muestra la etiqueta, el detalle está a un click`)
+  }
+  fmt(r(0, g.filas.length, COL_ORIGEN, COL_ORIGEN + 1), 'userEnteredFormat', E.nota())
+
+  const ancho = ANCHOS
   ancho.forEach((px, i) => req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: px }, fields: 'pixelSize' } }))
   await google.spreadsheetBatchUpdate(ID, req)
 }
