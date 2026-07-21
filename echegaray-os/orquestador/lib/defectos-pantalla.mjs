@@ -37,6 +37,9 @@ const esTextoDeVerdad = (v) => {
   // como texto: 2.486 falsos positivos en catorce pestañas, o sea un control inservible. Un
   // detector que grita por todo es peor que no tenerlo, porque enseña a ignorarlo.
   if (/^[-+]?\s*[$]?\s*[-+]?[\d.,\s]+\s*%?$/.test(s)) return false
+  // Los dólares se escriben "U$S 581,39" en Argentina, y el símbolo va con letras adelante. Sin
+  // esto, cada importe en moneda extranjera se reportaba como texto mal puesto.
+  if (/^[-+]?\s*(?:U\$S|US\$|USD)\s*[-+]?[\d.,\s]+$/i.test(s)) return false
   if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s)) return false
   // UN NÚMERO CON SUFIJO DECLARADO SIGUE SIENDO UN NÚMERO. El formato `0" facturas"` produce
   // "46 facturas" y el formato `0" d"` produce "7 d": los dos son la forma correcta de mostrar un

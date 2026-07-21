@@ -50,6 +50,7 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
+import * as E from '../lib/estilo-pestana.mjs'
 import { CUENTAS, CARGA, ALIAS, TIPO_CAMBIO, RANGO_TC, filaDeCuenta } from '../lib/caja-disponibilidades.mjs'
 import * as BANCO from '../lib/banco-santander.mjs'
 import { TASAS, CARGO_VERIFICADO, tasaDiaria, costoConImpuestos, interesDelPeriodo } from '../lib/costo-descubierto.mjs'
@@ -165,10 +166,24 @@ function grilla(cargado, refs) {
   push(['CAJA Y BANCOS — DISPONIBILIDADES'])
   push(['Esta es la ÚNICA pestaña del archivo donde se carga un número a mano: cuánta plata hay. Todo lo demás se calcula solo. Las celdas AMARILLAS son para completar; el resto son fórmulas y se pisan en cada corrida del agente. Lo que está en dólares se carga EN DÓLARES: la conversión a pesos la hace la planilla.'])
   push()
+  // ═══ LOS TRES NÚMEROS QUE CONTESTAN LA PREGUNTA, ARRIBA DE TODO ═══
+  //
+  // POR QUÉ (21/07). El dueño: "esta pestaña es clave y la verdad es que no se entiende una mierda".
+  // Y no era por los números: era porque para saber cuánta plata hay había que bajar hasta la fila
+  // 16, y para saber cuánta es REALMENTE disponible había que restar mentalmente los cheques ya
+  // firmados que estaban veinte filas más abajo.
+  //
+  // Una pestaña que se abre todos los días tiene que contestar su pregunta en la primera pantalla.
+  // Estas tres celdas son fórmulas que apuntan a las filas de abajo: no repiten un cálculo, lo
+  // muestran donde se mira. El detalle sigue estando entero, abajo.
+  const fTitulos = push(['LA PLATA QUE HAY', 'LO QUE YA ESTÁ COMPROMETIDO', 'QUEDA DISPONIBLE', '', 'AIRE (tarjeta + descubierto)'])
+  const fCifras = push(['@TOTAL', '@CHEQUES', '@NETA', '', '@AIRE'])
+  push(['efectivo + bancos + valores en cartera', 'cheques emitidos que todavía no debitaron', 'con esto se decide', '', 'NO es plata propia: es capacidad de endeudarse'])
+  push()
 
   // ── 1 · DISPONIBILIDADES ────────────────────────────────────────────────────────────────────────
   push(['1 · DISPONIBILIDADES — LO QUE HAY HOY'])
-  const cab1 = push(['Cuenta', 'Moneda', 'Saldo en moneda de origen', 'Tipo de cambio', 'Saldo en pesos', 'Fecha del saldo', 'Antigüedad', 'Origen del dato', 'Declarado por'])
+  const cab1 = push(['Cuenta', 'Moneda', 'Saldo en moneda de origen', 'Tipo de cambio', 'Saldo en pesos', 'Fecha del saldo', 'Antigüedad', 'Origen del dato'])
   const d0 = filas.length + 1
   const amarillas = []
   let fBancoPesos = 0
@@ -239,7 +254,7 @@ function grilla(cargado, refs) {
   // ── 3 · LÍNEAS DE CRÉDITO ───────────────────────────────────────────────────────────────────────
   push(['3 · LÍNEAS DE CRÉDITO — NO son efectivo, y por eso no suman arriba'])
   push(['El margen de una tarjeta es capacidad de endeudarse, no plata propia. Sumarlo a las disponibilidades es el error que hace que una empresa se crea líquida el día antes de no poder pagar sueldos. El límite en pesos y el límite en dólares son dos cupos distintos: mezclarlos daría un margen que no existe en ninguna de las dos monedas.'])
-  const cab3 = push(['Línea', 'Moneda', 'Importe en moneda de origen', 'Tipo de cambio', 'Importe en pesos', '', '', 'Origen del dato', 'Declarado por'])
+  const cab3 = push(['Línea', 'Moneda', 'Importe en moneda de origen', 'Tipo de cambio', 'Importe en pesos', '', '', 'Origen del dato'])
 
   const bancario = (nombre, moneda, importe, origen, fecha = BANCO.CORTE) => {
     const f = filas.length + 1
@@ -268,7 +283,7 @@ function grilla(cargado, refs) {
   const A = BANCO.ACUERDO
   const fAcu = bancario(CARGA.acuerdo, 'ARS', A.importe,
     `Acuerdo N° ${A.numero}, ${A.estado} · vence el ${A.vence} · TNA ${(A.tna * 100).toFixed(2)}% · costo financiero total ${(A.cft * 100).toFixed(2)}% anual`)
-  push(['⇒ AIRE TOTAL DISPONIBLE (tarjeta + acuerdo)', 'ARS', `=${C_IMP}${fDisp}+${C_IMP}${fAcu}`, '',
+  const fAire = push(['⇒ AIRE TOTAL DISPONIBLE (tarjeta + acuerdo)', 'ARS', `=${C_IMP}${fDisp}+${C_IMP}${fAcu}`, '',
     `=${C_PESOS}${fDisp}+${C_PESOS}${fAcu}`, '', '',
     'Cuánto se puede estirar antes de no poder pagar. NO es plata: es deuda que todavía no se tomó, y al 62,78% anual tomarla tiene precio.', 'Se calcula solo'])
   push()
@@ -386,7 +401,7 @@ function grilla(cargado, refs) {
   // necesite convertir dólares referencia el rango con nombre, no esta celda por su fila.
   push(['6 · TIPO DE CAMBIO — sólo se usa para valuar la cuenta en dólares'])
   push(['Está al final a propósito: la empresa cobra, paga y decide en pesos. El dólar acá no es una posición, es una cuenta chica que hay que poder sumar al total — y para eso hace falta una cotización con origen.'])
-  const cab0 = push(['Concepto', '', 'Cotización', '', '', 'Fecha', '', 'Origen del dato', 'Declarado por'])
+  const cab0 = push(['Concepto', '', 'Cotización', '', '', 'Fecha', '', 'Origen del dato'])
   const fRef = push([TIPO_CAMBIO.referencia.nombre, '', TIPO_CAMBIO.referencia.formula, '', '', '=TODAY()', '', TIPO_CAMBIO.referencia.origen, 'Se calcula solo'])
   const fDec = push([TIPO_CAMBIO.declarado.nombre, '', previo(TIPO_CAMBIO.declarado.nombre, 'saldo'), '', '',
     previo(TIPO_CAMBIO.declarado.nombre, 'fecha'), '', previo(TIPO_CAMBIO.declarado.nombre, 'origen') || TIPO_CAMBIO.declarado.origen,
@@ -405,7 +420,12 @@ function grilla(cargado, refs) {
   push(['· El tipo de cambio se actualiza solo con la cotización del día. Si operás a otro (MEP, tarjeta), cargalo en la fila "Dólar declarado" y ése pasa a mandar.'])
   push(['· Todo lo demás de esta pestaña se recalcula solo cada 2 horas junto con el resto del archivo.'])
 
-  return { filas, usd, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, amarillas }
+  // El panel de arriba se resuelve acá, cuando ya se sabe en qué fila quedó cada total. Son
+  // referencias, no copias: si el detalle cambia, el titular cambia con él.
+  const PANEL = { '@TOTAL': `=${C_PESOS}${fTotal}`, '@CHEQUES': `=${C_PESOS}${fCh}`, '@NETA': `=${C_PESOS}${fNeta}`, '@AIRE': `=${C_PESOS}${fAire}` }
+  for (const f of filas) f.forEach((c, j) => { if (typeof c === 'string' && PANEL[c]) f[j] = PANEL[c] })
+
+  return { filas, usd, fTitulos, fCifras, fAire, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, amarillas }
 }
 
 async function main() {
@@ -509,6 +529,36 @@ async function formatear(google, sheetId, g) {
   fmt(r(1, 2), 'userEnteredFormat.textFormat,userEnteredFormat.wrapStrategy',
     { textFormat: { italic: true, fontSize: 9, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'WRAP' })
 
+  // ── EL PANEL DE TITULARES ────────────────────────────────────────────────────────────────────
+  // Grande, con aire, y con la unidad declarada: es lo primero que se ve al abrir la pestaña.
+  if (g.fTitulos && g.fCifras) {
+    fmt(r(g.fTitulos - 1, g.fTitulos), 'userEnteredFormat',
+      { backgroundColor: AZUL, textFormat: { bold: true, fontSize: 9, foregroundColor: { red: 1, green: 1, blue: 1 } }, horizontalAlignment: 'CENTER', wrapStrategy: 'WRAP' })
+    fmt(r(g.fCifras - 1, g.fCifras), 'userEnteredFormat',
+      { numberFormat: E.NUM.moneda, textFormat: { bold: true, fontSize: 16, fontFamily: E.FUENTE_NUM }, horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE' })
+    fmt(r(g.fCifras, g.fCifras + 1), 'userEnteredFormat',
+      { numberFormat: { type: 'TEXT' }, textFormat: { italic: true, fontSize: 9, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, horizontalAlignment: 'CENTER', wrapStrategy: 'WRAP' })
+    req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: g.fCifras - 1, endIndex: g.fCifras }, properties: { pixelSize: 34 }, fields: 'pixelSize' } })
+    // "Lo que ya está comprometido" se lee mejor en rojo suave: es lo que hay que restar.
+    fmt(r(g.fCifras - 1, g.fCifras, 1, 2), 'userEnteredFormat.backgroundColor', { backgroundColor: E.COLOR.alerta })
+    fmt(r(g.fCifras - 1, g.fCifras, 2, 3), 'userEnteredFormat.backgroundColor', { backgroundColor: E.COLOR.ok ?? E.COLOR.subtotal })
+  }
+
+  // UN MES NO ES UN IMPORTE. "Primer mes por debajo de la caja mínima" devuelve "septiembre 2026" y
+  // la columna entera tiene formato moneda: la respuesta de la alerta de caja se leía como plata.
+  g.filas.forEach((f, i) => {
+    if (/^Primer mes/.test(String(f?.[0] ?? ''))) {
+      fmt(r(i, i + 1, 4, 5), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+        { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'CENTER' })
+    }
+  })
+
+  // LA COLUMNA "MONEDA" ES TEXTO. Con el formato moneda de la columna entera, "ARS" quedaba en una
+  // celda que dice ser plata: no cambia ningún total, pero es exactamente el tipo de defecto que
+  // hace que una pestaña no se entienda. Trece celdas.
+  fmt(r(0, g.filas.length, 1, 2), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+    { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'CENTER' })
+
   for (const c of [g.cab0, g.cab1, g.cab3]) {
     fmt(r(c - 1, c), 'userEnteredFormat',
       { backgroundColor: AZUL, textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 }, fontSize: 9 }, horizontalAlignment: 'CENTER', wrapStrategy: 'WRAP' })
@@ -526,7 +576,7 @@ async function formatear(google, sheetId, g) {
     fmt(r(g.g0 - 1, g.g1, 0, 1), 'userEnteredFormat.textFormat',
       { textFormat: { fontSize: 9, foregroundColor: { red: 0.35, green: 0.35, blue: 0.4 } } })
     req.push({ addDimensionGroup: { range: { sheetId, dimension: 'ROWS', startIndex: g.g0 - 1, endIndex: g.g1 } } })
-    req.push({ updateDimensionGroup: { dimensionGroup: { range: { sheetId, dimension: 'ROWS', startIndex: g.g0 - 1, endIndex: g.g1 }, depth: 1, collapsed: true }, fields: 'collapsed' } })
+    req.push({ updateDimensionGroup: { dimensionGroup: { range: { sheetId, dimension: 'ROWS', startIndex: g.g0 - 1, endIndex: g.g1 }, depth: 1, collapsed: false }, fields: 'collapsed' } })
   }
   fmt(r(g.fTotal - 1, g.fTotal), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
     { textFormat: { bold: true }, backgroundColor: GRIS })
