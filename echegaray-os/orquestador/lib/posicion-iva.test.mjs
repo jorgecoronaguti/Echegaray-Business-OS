@@ -50,3 +50,34 @@ test('sin facturación cargada NO proyecta cero ventas: usa el ritmo real + infl
   assert.match(r[3].metodo, /ritmo real de 3 meses × inflación \(1\.020\)/)
   assert.equal(r[3].es_proyeccion, true)
 })
+
+test('una retención sufrida reduce el IVA a pagar', () => {
+  const m = [{ periodo: '2026-05', disponible: true, debito_fiscal: 4200000, credito_fiscal: 1589238 }]
+  const sin = arrastrarSaldo(m)[0]
+  const con = arrastrarSaldo(m, { '2026-05': 1000000 })[0]
+  assert.equal(sin.a_pagar_real, 2610762)
+  assert.equal(con.a_pagar_real, 1610762, 'la retención es impuesto ya pagado')
+})
+
+test('una retención que SOBRA no se pierde: queda como saldo a favor', () => {
+  // Restarla del "a pagar" ya calculado haría desaparecer el excedente en silencio.
+  const m = [{ periodo: '2026-05', disponible: true, debito_fiscal: 1000, credito_fiscal: 0 }]
+  const r = arrastrarSaldo(m, { '2026-05': 2500 })[0]
+  assert.equal(r.a_pagar_real, 0)
+  assert.equal(r.saldo_queda, 1500, 'el excedente se arrastra')
+})
+
+test('el saldo a favor que venía se consume ANTES que la retención del mes', () => {
+  const m = [
+    { periodo: '2026-01', disponible: true, debito_fiscal: 0, credito_fiscal: 1000 },
+    { periodo: '2026-02', disponible: true, debito_fiscal: 3000, credito_fiscal: 0 },
+  ]
+  const r = arrastrarSaldo(m, { '2026-02': 500 })
+  assert.equal(r[1].saldo_previo, 1000)
+  assert.equal(r[1].a_pagar_real, 1500, '3000 - 500 de retención - 1000 de saldo')
+})
+
+test('sin retenciones el resultado no cambia', () => {
+  const m = [{ periodo: '2026-03', disponible: true, debito_fiscal: 500, credito_fiscal: 200 }]
+  assert.deepEqual(arrastrarSaldo(m)[0].a_pagar_real, arrastrarSaldo(m, {})[0].a_pagar_real)
+})

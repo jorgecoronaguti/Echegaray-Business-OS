@@ -19,15 +19,17 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { posicionIvaCompleta, ALICUOTA_IVA } from '../lib/posicion-iva.mjs'
+import { posicionIvaCompleta } from '../lib/posicion-iva.mjs'
+import { clasificar, mes as mesDe, COLUMNAS } from '../lib/retenciones-sufridas.mjs'
 import { query } from '../lib/db.mjs'
 import { parsearDDJJ, alicuotaDeclarada } from '../lib/iibb-ddjj.mjs'
+import { parseMonto } from '../lib/cash-briefing.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Impuestos y Financieros'
 const DRY = process.argv.includes('--dry')
 const AÑO = 2026
-const ANCHO = 9
+const ANCHO = 10
 // Las DDJJ de IIBB de San Juan viven en Drive, en una carpeta que el índice del OS no tenía.
 // El dueño: "IIBB tenés que buscarlo en Drive, ahí puede haber datos de cuánto se ha ido pagando".
 // Se leen los PDF originales: son la fuente primaria y traen número de control y fecha de
@@ -89,7 +91,7 @@ async function planesDePago() {
   return [...planes.values()].sort((a, b) => b.total - a.total)
 }
 
-function grilla(iva, planes, iibb) {
+function grilla(iva, planes, iibb, ret) {
   const filas = []
   const push = (c = []) => { const r = [...c]; while (r.length < ANCHO) r.push(''); filas.push(r); return filas.length }
   const hoy = new Date().toISOString().slice(0, 10)
@@ -100,7 +102,12 @@ function grilla(iva, planes, iibb) {
 
   // ── 1. IVA ──────────────────────────────────────────────────────────────────────────────────────
   push(['1. POSICIÓN DE IVA — con el saldo a favor arrastrado, que es lo que se paga de verdad'])
-  const cab = push(['Mes', 'Débito fiscal (ventas)', 'Crédito fiscal (compras)', 'Posición del mes', 'Saldo a favor que venía', 'A PAGAR', 'Saldo a favor que queda', 'Comprobantes (vta/cpa)', 'Origen'])
+  // LA COLUMNA DE RETENCIONES ES NUEVA (21/07) y va ENTRE la posición y el saldo previo, porque ése
+  // es el orden en que se aplican: la posición del mes se reduce primero por lo que ya se pagó por
+  // retención, y recién después se consume el saldo a favor que venía arrastrándose.
+  const cab = push(['Mes', 'Débito fiscal (ventas)', 'Crédito fiscal (compras)', 'Posición del mes',
+    'Retenciones de IVA sufridas', 'Saldo a favor que venía', 'A PAGAR', 'Saldo a favor que queda',
+    'Comprobantes (vta/cpa)', 'Origen'])
   const f0 = filas.length + 1
   for (const m of iva) {
     const i = Number(m.periodo.slice(5, 7)) - 1
@@ -110,6 +117,7 @@ function grilla(iva, planes, iibb) {
       Math.round(m.debito_fiscal ?? 0),
       Math.round(m.credito_fiscal ?? 0),
       Math.round(m.posicion ?? 0),
+      Math.round(m.retenciones ?? 0),
       Math.round(m.saldo_previo ?? 0),
       m.a_pagar_real == null ? '' : Math.round(m.a_pagar_real),
       Math.round(m.saldo_queda ?? 0),
@@ -119,14 +127,37 @@ function grilla(iva, planes, iibb) {
   }
   const f1 = filas.length
   const tot = push(['TOTAL 2026',
-    `=SUM(B${f0}:B${f1})`, `=SUM(C${f0}:C${f1})`, `=SUM(D${f0}:D${f1})`, '',
-    `=SUM(F${f0}:F${f1})`, '', '', 'La suma de "A PAGAR" es la caja que el IVA se lleva en el año.'])
+    `=SUM(B${f0}:B${f1})`, `=SUM(C${f0}:C${f1})`, `=SUM(D${f0}:D${f1})`, `=SUM(E${f0}:E${f1})`, '',
+    `=SUM(G${f0}:G${f1})`, '', '', 'La suma de "A PAGAR" es la caja que el IVA se lleva en el año.'])
   push()
   const ult = [...iva].reverse().find((m) => m.disponible)
   push(['⚠ Saldo técnico a favor HOY', Math.round(ult?.saldo_queda ?? 0), '', '', '', '', '', '',
     'Plata de la empresa adelantada al fisco. Si crece mes a mes, hay que revisar las retenciones que sufre (Cobranzas columnas X a AA).'])
-  push(['⚠ IVA pagado que figura en Compras', '=SUMIF(Compras!$AC$4:$AC;"Impuestos";Compras!$O$4:$O)', '', '', '', '', '', '',
+  push(['⚠ IVA pagado que figura en Compras', '=SUMIF(Compras!$AC$4:$AC;"Impuestos";Compras!$O$4:$O)', '', '', '', '', '', '', '',
     'Si esto da $0 y arriba hay meses "A PAGAR", el IVA se está pagando fuera del Sheet y el cash flow miente.'])
+  push()
+
+  // ── 1 bis. LAS RETENCIONES QUE LE HACEN A LA EMPRESA ────────────────────────────────────────────
+  // No estaban en ningún lado del archivo. Una retención es impuesto YA PAGADO: sin computarla, el
+  // cuadro muestra un "A PAGAR" inflado y el cash flow proyecta una salida que no va a ocurrir.
+  push(['1 bis. RETENCIONES SUFRIDAS — impuesto que la empresa YA pagó por adelantado'])
+  push(['Salen de Cobranzas, columnas X, Y y Z. La alícuota de cada una se verifica contra su régimen antes de computarla: los rótulos de dos de esas columnas se habían perdido y una retención imputada al impuesto equivocado es un crédito fiscal que no existe.'])
+  push(['Régimen', 'Total retenido', '', 'Alícuota medida', '¿Se computa acá?', '', '', '', '', 'Origen'])
+  push(['IVA', Math.round(ret?.porRegimen?.iva ?? 0), '', '80,00% del IVA facturado', 'SÍ — resta del "A PAGAR" de arriba, mes a mes', '', '', '', '',
+    'Cobranzas col. X · imputado por fecha de cobro'])
+  push(['Ganancias', Math.round(ret?.porRegimen?.ganancias ?? 0), '', '2,00% del neto', 'No: es pago a cuenta de Ganancias, que este cuadro todavía no lleva', '', '', '', '',
+    'Cobranzas col. Y'])
+  push(['Ingresos Brutos', Math.round(ret?.porRegimen?.iibb ?? 0), '', '2,50% / 3,50% del neto', 'No: YA vienen en la DDJJ de Rentas del bloque 2 — computarlas acá sería contarlas dos veces', '', '', '', '',
+    'Cobranzas col. Z'])
+  push(['TOTAL RETENIDO', Math.round(ret?.total ?? 0), '', '', 'Plata de la empresa adelantada al fisco.', '', '', '', '', ''])
+  // LO QUE NO SE PROYECTA, Y POR QUÉ. Los meses futuros van con retención CERO: quién retiene
+  // depende de qué cliente facture cada mes, y hoy sólo ARCOR lo hace. Proyectarla supondría una
+  // mezcla de clientes que no está en ningún dato. La consecuencia se declara en vez de taparse.
+  push(['⚠ Los meses proyectados van SIN retención', '', '', '',
+    'Quién retiene depende de qué cliente se facture, y eso no está proyectado. Si el mix se parece al de este año, el "A PAGAR" de agosto a diciembre está SOBREESTIMADO — es un error conservador, pero es un error.', '', '', '', '', ''])
+  if (ret?.sospechosas?.length) {
+    push([`⚠ ${ret.sospechosas.length} retención(es) con alícuota que no encaja`, Math.round(ret.sospechosas.reduce((s, x) => s + x.monto, 0)), '', '', 'NO se computaron: puede ser otro régimen o un error de carga. Filas de Cobranzas: ' + ret.sospechosas.map((x) => x.fila).join(', '), '', '', '', '', ''])
+  }
   push()
 
   // ── 2. IIBB ─────────────────────────────────────────────────────────────────────────────────────
@@ -206,6 +237,34 @@ async function leerIIBB(google) {
   return out
 }
 
+
+/** LAS RETENCIONES QUE LE HACEN A LA EMPRESA, desde Cobranzas.
+ *
+ *  El dueño (21/07): "hay retenciones que considerar, revisión absoluta". Cobranzas las registra en
+ *  tres columnas y esta pestaña no las miraba: $7.388.784 de impuesto YA PAGADO que no figuraba en
+ *  ningún lado. La alícuota de cada una se VERIFICA contra su régimen (lib/retenciones-sufridas),
+ *  porque los rótulos de dos de esas columnas estaban marcados como reconstruidos y una retención
+ *  imputada al impuesto equivocado es un crédito fiscal que no existe.
+ *
+ *  Se imputan por FECHA DE COBRO (columna Q), que es cuando se practica la retención — no por la
+ *  fecha de la factura. */
+async function leerRetenciones(google) {
+  const v = await google.readSheetValues(ID, 'Cobranzas!A5:AJ400').catch(() => [])
+  const cobros = v.map((f, i) => ({
+    fila: i + 5,
+    cliente: String(f?.[6] ?? '').trim(),
+    mes: mesDe(f?.[16]),
+    neto: parseMonto(f?.[9]),
+    iva: parseMonto(f?.[10]),
+    retenciones: {
+      iva: parseMonto(f?.[COLUMNAS.iva]),
+      ganancias: parseMonto(f?.[COLUMNAS.ganancias]),
+      iibb: parseMonto(f?.[COLUMNAS.iibb]),
+    },
+  })).filter((c) => c.retenciones.iva || c.retenciones.ganancias || c.retenciones.iibb)
+  return clasificar(cobros)
+}
+
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const iibb = await leerIIBB(google)
@@ -213,9 +272,19 @@ async function main() {
   // La regla de oro: toda proyección considera inflación, y el dato lo trae el OS de la web.
   const fi = await query("select periodo, factor_acumulado from public.factor_ajuste where indice='ipc' order by periodo")
   const factor = Object.fromEntries(fi.rows.map((r) => [r.periodo, Number(r.factor_acumulado)]))
-  const iva = await posicionIvaCompleta(AÑO, ventas, factor)
+  const ret = await leerRetenciones(google)
+  // Sólo IVA y Ganancias se computan como crédito. Las de Ingresos Brutos ya vienen declaradas en
+  // la DDJJ de Rentas que esta misma pestaña lee: sumarlas otra vez sería contarlas dos veces.
+  const retIva = Object.fromEntries(Object.entries(ret.porMes)
+    .filter(([k]) => k.startsWith('iva|')).map(([k, v]) => [k.slice(4), v]))
+  const iva = await posicionIvaCompleta(AÑO, ventas, factor, retIva)
   const planes = await planesDePago()
-  const g = grilla(iva, planes, iibb)
+  const g = grilla(iva, planes, iibb, ret)
+  if (ret.sospechosas.length) {
+    console.error(`  ⚠ ${ret.sospechosas.length} retención(es) con alícuota que no encaja con ningún régimen — NO se computaron:`)
+    for (const x of ret.sospechosas) console.error(`     fila ${x.fila} ${x.cliente}: ${x.regimen} ${Math.round(x.monto).toLocaleString('es-AR')} = ${(x.alicuota * 100).toFixed(2)}%`)
+  }
+  console.log(`  retenciones sufridas: ${Math.round(ret.total).toLocaleString('es-AR')} · IVA ${Math.round(ret.porRegimen.iva ?? 0).toLocaleString('es-AR')} · Ganancias ${Math.round(ret.porRegimen.ganancias ?? 0).toLocaleString('es-AR')} · IIBB ${Math.round(ret.porRegimen.iibb ?? 0).toLocaleString('es-AR')}`)
   console.log(`${PESTAÑA}: ${g.filas.length} filas · ${planes.length} planes · IVA de ${iva.filter((m) => m.disponible).length} meses reales`)
   if (DRY) {
     for (const m of iva.filter((x) => x.disponible || x.es_proyeccion)) {

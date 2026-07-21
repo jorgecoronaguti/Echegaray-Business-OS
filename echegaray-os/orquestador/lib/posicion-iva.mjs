@@ -10,9 +10,16 @@
 //      pagar; arrastrando los saldos de enero y febrero, se pagaron $11,1M. Y hoy hay $7,5M de saldo
 //      a favor que NO se ven por ningún lado.
 //
-// Esto NO reemplaza la DDJJ: no incluye retenciones ni percepciones sufridas, ni ajustes. Es la
-// posición técnica sobre los comprobantes reales de ARCA. La diferencia contra el F2002 hay que
-// mirarla, no taparla — por eso la función devuelve también de qué comprobantes salió cada mes.
+// 21/07 — YA INCLUYE LAS RETENCIONES SUFRIDAS. El dueño: "hay retenciones que considerar, revisión
+// absoluta". Cobranzas registraba $5.811.120 de retención de IVA (80% del IVA facturado, medido
+// fila por fila) y este cálculo las ignoraba, así que el cuadro mostraba un "A PAGAR" inflado y el
+// cash flow proyectaba una salida que no iba a ocurrir entera. Una retención no es un descuento:
+// es impuesto ya pagado por adelantado. Ver lib/retenciones-sufridas.mjs.
+//
+// Sigue sin reemplazar a la DDJJ: no incluye percepciones sufridas ni ajustes. Es la posición
+// técnica sobre los comprobantes reales de ARCA más las retenciones que constan en Cobranzas. La
+// diferencia contra el F2002 hay que mirarla, no taparla — por eso la función devuelve también de
+// qué comprobantes salió cada mes.
 
 import { posicionIvaAnio } from './libro-iva.mjs'
 
@@ -24,17 +31,22 @@ export const ALICUOTA_IVA = 0.21
  * @param {Array<{periodo:string, disponible:boolean, debito_fiscal?:number, credito_fiscal?:number}>} meses
  * @returns {Array} los mismos meses + saldo_previo, a_pagar_real, saldo_queda
  */
-export function arrastrarSaldo(meses = []) {
+export function arrastrarSaldo(meses = [], retencionesPorMes = {}) {
   let saldo = 0 // saldo técnico a favor que viene del mes anterior
   return meses.map((m) => {
-    if (!m.disponible) return { ...m, saldo_previo: saldo, a_pagar_real: null, saldo_queda: saldo }
+    const ret = Number(retencionesPorMes[m.periodo]) || 0
+    if (!m.disponible) return { ...m, retenciones: ret, saldo_previo: saldo, a_pagar_real: null, saldo_queda: saldo }
     const pos = (m.debito_fiscal ?? 0) - (m.credito_fiscal ?? 0)
-    // Posición positiva = hay que pagar, pero primero se consume el saldo a favor acumulado.
-    const aPagar = Math.max(0, pos - saldo)
-    const saldoQueda = Math.max(0, saldo - pos)
+    // EL ORDEN IMPORTA: primero se consume el saldo a favor que venía, después las retenciones del
+    // mes. Y una retención que sobra NO se pierde: engrosa el saldo a favor, igual que un crédito
+    // fiscal. Por eso se resta de la posición antes de decidir qué queda, y no del "a pagar" ya
+    // calculado — restarla al final haría desaparecer el excedente en silencio.
+    const neta = pos - ret
+    const aPagar = Math.max(0, neta - saldo)
+    const saldoQueda = Math.max(0, saldo - neta)
     const previo = saldo
     saldo = saldoQueda
-    return { ...m, posicion: pos, saldo_previo: previo, a_pagar_real: aPagar, saldo_queda: saldoQueda }
+    return { ...m, posicion: pos, retenciones: ret, saldo_previo: previo, a_pagar_real: aPagar, saldo_queda: saldoQueda }
   })
 }
 
@@ -98,7 +110,7 @@ export function proyectarIva(meses = [], ventasProyectadas = {}, factorInflacion
  * @param {number} anio
  * @param {Object} ventasProyectadas por período 'YYYY-MM'
  */
-export async function posicionIvaCompleta(anio, ventasProyectadas = {}, factorInflacion = {}) {
+export async function posicionIvaCompleta(anio, ventasProyectadas = {}, factorInflacion = {}, retencionesPorMes = {}) {
   const { meses } = await posicionIvaAnio(anio)
-  return proyectarIva(arrastrarSaldo(meses), ventasProyectadas, factorInflacion)
+  return proyectarIva(arrastrarSaldo(meses, retencionesPorMes), ventasProyectadas, factorInflacion)
 }
