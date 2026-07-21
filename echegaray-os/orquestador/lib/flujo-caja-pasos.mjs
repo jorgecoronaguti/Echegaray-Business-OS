@@ -53,6 +53,10 @@ export const PASOS = [
   // PEGADOS en vez de ser fórmula o celda derramada. Sin este censo, la única forma de enterarse era
   // que el dueño abriera una celda y mirara la barra de fórmulas — que es exactamente lo que pasó.
   ['censo-numeros-pegados.mjs', 'regla de oro: cuántos números están pegados en vez de calculados', []],
+  // ÚLTIMO ENTRE LOS QUE ESCRIBEN: cada script pone los anchos que declara, así que ensanchar antes
+  // de que corran no sirve de nada. Lo que este paso arregla es lo que ningún script dueño puede
+  // saber solo: si el texto que le tocó a esta corrida entra o no.
+  ['reparar-textos.mjs', 'Que todo texto se pueda leer entero (ensancha o manda a nota)', []],
   ['auditar-pantalla.mjs', 'control de defectos de pantalla en las 14 pestañas', []],
   ['sync-compras.mjs', 'núcleo: Compras → costos_obra', []],
   ['sync-caja-nucleo.mjs', 'núcleo: quincenas de jornales e instrumentos de pago', []],

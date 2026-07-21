@@ -72,6 +72,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { FAMILIAS, SIN_FAMILIA, formulaFamilia, familiaDeMaterial, RUBROS_CON_FAMILIA } from '../lib/familia-material.mjs'
 import { NOMBRES } from '../lib/sheet-pestanas.mjs'
 import { partir, filasHuerfanas, ref as refPestana } from '../lib/partir-pestana.mjs'
+import { anchosSegunContenido } from '../lib/nota-celda.mjs'
 import { ESTADO_DEUDA, MODALIDADES } from '../lib/cuentas-por-pagar.mjs'
 import { formulaOrden, formulaOrdenSinFecha, celdaDeuda, formulaComercial, COL as ORDEN } from '../lib/orden-deuda.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
@@ -171,7 +172,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   // literal de array, que NO es portable al separador es-AR ({"a"\"b"} vs {"a";"b"}) — ya rompió
   // una vez en esta misma pestaña. El texto del QUERY va entre comillas y el localizador de
   // fórmulas respeta los literales, así que sus comas llegan intactas.
-  const b1 = push(['1 · QUÉ SE DEBE Y CUÁNDO — ordenado por fecha de pago'])
+  const b1 = push(['1 · QUÉ SE DEBE Y CUÁNDO'])
   push(['Las facturas con Estado "Pendiente" en Compras, la más urgente primero. Es UNA fórmula viva: si allá se marca una como pagada, desaparece de acá sola, sin esperar al agente. El N° de comprobante es lo que permite ligar un pago a su factura: sin él, ese pago no se puede imputar nunca.'])
   // El total va ARRIBA de la tabla y no abajo: la tabla es de alto variable y un total al pie
   // quedaría flotando lejos, o pisado. Y es la MISMA fórmula que el control del bloque 7, así que
@@ -185,7 +186,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   const soloComercial = `${COL_TOTAL};${COL_ESTADO};"${ESTADO_DEUDA}";Compras!$AJ$4:$AJ;1`
   push(['TOTAL ADEUDADO A PROVEEDORES', `=SUMIFS(${soloComercial})`, '', '', '',
     'Sólo proveedores comerciales. Tiene que dar igual que la suma de la columna Importe de acá abajo.'])
-  push(['  · y además se le debe a ARCA y a la nómina', `=SUMIFS(${COL_TOTAL};${COL_ESTADO};"${ESTADO_DEUDA}")-SUMIFS(${soloComercial})`, '', '', '',
+  push(['  · más ARCA y nómina', `=SUMIFS(${COL_TOTAL};${COL_ESTADO};"${ESTADO_DEUDA}")-SUMIFS(${soloComercial})`, '', '', '', '',
     'Planes de pago de ARCA, impuestos y cargas sociales. NO se listan acá: su detalle, cuota por cuota, está en "Impuestos y Financieros" y en "Cargas Sociales". Repetirlos sería contar el mismo egreso dos veces.'])
   // EL ORDEN DE LAS COLUMNAS NO ES ESTÉTICO: las SEIS primeras las derrama el QUERY y tienen que
   // estar en el mismo orden que el "select". Las dos últimas son búsquedas y van DESPUÉS del
@@ -250,11 +251,13 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   // ── LO QUE NO TIENE FECHA, DEBAJO Y CON NOMBRE ──────────────────────────────────────────────────
   // Ordenado por MONTO, que es el otro criterio que pidió el dueño. Va acá y no arriba porque una
   // factura sin fecha no compite por urgencia con una que vence el martes: compite por tamaño.
-  const fSinFecha = push(['⚠ Y ESTAS NO TIENEN FECHA DE PAGO — no caen en ninguna semana del cash flow',
+  const fSinFecha = push(['⚠ SIN FECHA DE PAGO — no caen en ninguna semana',
     `=SUMIFS(${soloComercial})-SUM($F$${doc0}:$F$${doc1})`, '', '', '',
     'Estas filas no tienen FECHA DE CAJA (Compras, columna AD), que es la que usa el cash flow para ubicar el pago en una semana. Mientras siga vacía, el cuadro no las espera nunca. Aparte, hay once facturas con la palabra "Pendiente" escrita en la columna "Fecha prevista de pago" en vez de una fecha: es un defecto de carga, pero ésas sí tienen fecha de caja y el cash flow las ve.'])
   const sf0 = filas.length + 1
-  for (let i = 0; i < Math.max(nSinFecha, 1) + 1; i++) {
+  // La reserva es EXACTA: cada fila de más queda vacía a la vista, y cinco filas en blanco en el
+  // medio de una pestaña se leen como si faltara información.
+  for (let i = 0; i < Math.max(nSinFecha, 1); i++) {
     const r = filas.length + 1
     push(COL_DEUDA.map((c) => (c ? celdaDeuda(c[0], r, sf0, ORDEN.ordenSinFecha, c[1]) : '')))
   }
@@ -266,7 +269,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   push([])
 
   // ── 2 · CUENTA CORRIENTE POR PROVEEDOR ──────────────────────────────────────────────────────────
-  const b2 = push(['2 · CON QUIÉN SE GASTA Y QUIÉN TE FINANCIA — la cuenta corriente de cada proveedor'])
+  const b2 = push(['2 · CUENTA CORRIENTE POR PROVEEDOR'])
   push(['El PLAZO es el dato que no estaba en ninguna parte: días promedio entre la factura y el pago. Un proveedor que te da 30 días te está financiando gratis; uno que cobra contra entrega te empuja al descubierto, que hoy cuesta 62,78% anual. Sólo proveedores comerciales: sueldos, ARCA y el banco no son alguien a quien pedirle plazo.'])
   const cabProv = push(['Proveedor', 'CUIT', 'Facturas', `Comprado ${AÑO}`, 'Facturado según AFIP',
     '⇒ AFIP menos Compras', 'Plazo promedio', 'DEUDA HOY', 'En cuenta corriente', 'Contra entrega',
@@ -325,7 +328,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   // La pregunta que el libro de IVA NO contesta: una nota de crédito puede ser una DEVOLUCIÓN (el
   // costo de la obra baja de verdad) o una REFACTURACIÓN (el costo sigue, sólo cambió de número y
   // de mes). Las dos son "tipo 3". Ver lib/notas-credito.mjs.
-  const b5 = push([`5 · NOTAS DE CRÉDITO — ¿el costo desapareció, o sólo cambió de factura?`])
+  const b5 = push([`5 · NOTAS DE CRÉDITO`])
   push(['Una nota de crédito puede significar dos cosas opuestas y el libro de IVA las escribe igual. Si el proveedor volvió a facturar, el costo SIGUE existiendo: sólo cambió de número y muchas veces de mes. Darlo por ahorrado es el error caro. Cada nota se cruza contra las facturas del mismo CUIT: la que anula tiene que dar el MISMO importe al peso, la que la reemplaza da parecido.'])
   const cabNC = push(['Proveedor', 'Nota de crédito', 'Fecha', 'Importe', 'Qué es', 'Anula la factura', 'La reemplaza', '', ''])
   const nc0 = filas.length + 1
@@ -470,7 +473,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   push([])
 
   // ── 3 · FAMILIA × MES ───────────────────────────────────────────────────────────────────────────
-  const b3 = push(['3 · EN QUÉ SE VA LA PLATA — por familia de material y por mes'])
+  const b3 = push(['3 · POR FAMILIA Y POR MES'])
   const cabFam = push(['Familia', ...meses, `Total ${AÑO}`, '% del total', 'Civil', 'Mantenimiento'])
   const fam0 = filas.length + 1
   for (const n of [...nombres, SIN_FAMILIA]) {
@@ -495,7 +498,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   push([])
 
   // ── 4 · FAMILIA × OBRA ──────────────────────────────────────────────────────────────────────────
-  const b4 = push(['4 · EN QUÉ OBRA — la misma plata, abierta por obra'])
+  const b4 = push(['4 · POR OBRA'])
   const cabObra = push(['Familia', ...obras, 'Total', 'Control (tiene que dar $0)'])
   const obra0 = filas.length + 1
   for (const n of [...nombres, SIN_FAMILIA]) {
@@ -792,6 +795,9 @@ async function main() {
   for (const [i, t] of TRAMOS.entries()) {
     const filasP = [[t.titulo.toUpperCase()], [t.subtitulo], [], ...partes[i].filas]
     const anchoP = Math.max(...filasP.map((f) => f.length), t.anchos.length)
+    // LOS ANCHOS SALEN DEL CONTENIDO, con los declarados como piso: un ancho escrito a mano se queda
+    // corto en cuanto cambia un rótulo, y el texto se corta sin que nadie se entere.
+    t.anchos = anchosSegunContenido(filasP, { base: t.anchos, max: 300 })
     const cuadroP = filasP.map((f) => { const r = [...f]; while (r.length < anchoP) r.push(''); return r })
 
     let hoja = hojas.find((h) => h.title === t.titulo)
@@ -1044,8 +1050,10 @@ async function formatear(google, sheetId, g, ancho, filas) {
   // UNA CANTIDAD DE COMPROBANTES NO ES PLATA. La columna B del bloque de ARCA mostraba "$16" donde
   // dice cuántas facturas emitidas hay: el formato moneda de la columna entera se lo comía.
   if (g.fArcaN && g.fArcaVentas) fmt({ ...r(g.fArcaN - 1, g.fArcaVentas, 1, 2) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.cantidad, horizontalAlignment: 'CENTER' })
-  // Las notas sueltas que viven al lado de un número: la de la fila del total adeudado y la del
-  // "resto de proveedores". Van en TEXT y con el estilo de nota, no en moneda.
+  // Las notas sueltas que viven al lado de un número. Van en TEXT y con estilo de nota: una
+  // explicación en una celda con formato de plata se lee como si fuera un importe.
+  const fMasArca = g.filas.findIndex((f) => /^ {2}· más ARCA/.test(String(f?.[0] ?? '')))
+  if (fMasArca >= 0) fmt({ ...r(fMasArca, fMasArca + 1, 2, ancho) }, 'userEnteredFormat', E.nota())
   // La nota que explica el total adeudado. Se busca por su rótulo: estaba clavada en la fila 6 y al
   // partir la pestaña esa fila pasó a ser otra cosa.
   const fTotAd = g.filas.findIndex((f) => /^TOTAL ADEUDADO/.test(String(f?.[0] ?? '')))

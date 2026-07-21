@@ -155,7 +155,11 @@ export function celda(unidad = 'texto', { fondo, bold = false, alineacion, color
     // Los números a la derecha: una columna de importes existe para compararse consigo misma, y
     // centrada no se puede. Las fechas también, porque son ordinales.
     horizontalAlignment: alineacion ?? (esNum || unidad === 'fecha' || unidad === 'mes' ? 'RIGHT' : 'LEFT'),
-    wrapStrategy: 'CLIP',
+    // EL TEXTO DERRAMA, EL NÚMERO NO. Con CLIP, un rótulo de 53 caracteres en una columna de 230px
+    // se cortaba aunque tuviera media pestaña vacía al lado — y así se cortaban los títulos de
+    // bloque, las notas al costado y los "hay cheque al proveedor, sin imputar". Un número
+    // derramado, en cambio, se confunde con el de la columna de al lado: ese sigue en CLIP.
+    wrapStrategy: esNum ? 'CLIP' : 'OVERFLOW_CELL',
   }
 }
 

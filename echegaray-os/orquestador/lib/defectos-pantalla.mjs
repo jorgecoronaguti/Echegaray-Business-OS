@@ -68,6 +68,8 @@ const esTextoDeVerdad = (v) => {
 export function detectar(f, { desdeFila = 1, huecoMax = 3 } = {}) {
   const out = []
   if (!f?.filas) return out
+  const anchos = f.anchos || []
+  const altos = f.altos || []
   const L = (n) => { let s = ''; for (let i = n; i >= 0; i = Math.floor(i / 26) - 1) s = String.fromCharCode(65 + (i % 26)) + s; return s }
 
   // ¿Hay una celda con formato de FECHA cerca, en la misma columna?
@@ -155,6 +157,44 @@ export function detectar(f, { desdeFila = 1, huecoMax = 3 } = {}) {
         const n = Number(String(v).replace(/[^\d,-]/g, '').replace(',', '.'))
         if (Number.isInteger(n) && n >= 40000 && n <= 60000) {
           out.push({ tipo: 'fecha_como_moneda', fila: nFila, col, valor: v, que: 'un entero en el rango de seriales de fecha, en una columna que en otras filas SÍ tiene formato de fecha' })
+        }
+      }
+
+      // ── UN TEXTO QUE NO ENTRA EN SU CELDA ───────────────────────────────────────────────────
+      //
+      // POR QUÉ (21/07). El dueño, tres veces sobre la misma pestaña: "no se entiende una mierda".
+      // Los totales estaban bien y no había defectos de formato: lo que pasaba es que los rótulos y
+      // los orígenes eran más largos que su columna y se cortaban a mitad de palabra. Eso no lo ve
+      // ningún control que suma NI el detector de formatos — hay que MEDIR el texto contra el ancho
+      // de la columna, que es lo único que decide si algo se puede leer.
+      //
+      // Se marca sólo cuando el texto REALMENTE se corta: si la celda de al lado está vacía, Sheets
+      // lo derrama y se lee perfecto. Un rótulo largo sobre columnas vacías no es un defecto.
+      // EL ANCHO QUE DE VERDAD TIENE UNA CELDA no es el de su columna: es el que hay hasta la
+      // próxima celda con contenido. Así funciona el derrame de Sheets y así funciona una celda
+      // combinada. Midiendo sólo la columna propia, cada rótulo de bloque y cada párrafo de
+      // introducción salía reportado — y son justamente los que mejor se leen, porque tienen media
+      // pestaña vacía a la derecha.
+      let anchoCol = anchos[j] ?? 0
+      let vecinaOcupada = false
+      for (let k = j + 1; k < Math.max(fila.length, anchos.length); k++) {
+        if (String(fila?.[k]?.valor ?? '').trim() !== '') { vecinaOcupada = true; break }
+        anchoCol += anchos[k] ?? 0
+      }
+      if (anchoCol && !NUMERICO.has(nf)) {
+        const tam = c?.formato?.textFormat?.fontSize ?? 10
+        const px = v.length * tam * 0.57
+        const wrap = c?.formato?.wrapStrategy
+        if (px > anchoCol) {
+          if (wrap === 'WRAP') {
+            const lineas = Math.ceil(px / anchoCol)
+            const alto = altos[i] ?? 21
+            if (alto < lineas * (tam + 5)) {
+              out.push({ tipo: 'texto_apretado', fila: nFila, col, valor: v.slice(0, 40), que: `necesita ${lineas} líneas y la fila mide ${alto}px: se ve la primera y el resto queda cortado abajo` })
+            }
+          } else if (vecinaOcupada || wrap === 'CLIP') {
+            out.push({ tipo: 'texto_cortado', fila: nFila, col, valor: v.slice(0, 40), que: `${v.length} caracteres en una columna de ${anchoCol}px: entran ${Math.floor(anchoCol / (tam * 0.57))}` })
+          }
         }
       }
 

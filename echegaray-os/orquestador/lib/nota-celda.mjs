@@ -84,3 +84,36 @@ export function altoDeParrafo(texto, anchoPx, { lineaPx = 15, minimo = 20, maxim
   const lineas = Math.ceil(t.length / entranEn(anchoPx))
   return Math.min(maximo, Math.max(minimo, lineas * lineaPx + 6))
 }
+
+/**
+ * NÚCLEO PURO: el ancho que necesita cada columna para que su texto se lea.
+ *
+ * POR QUÉ EXISTE. Un reparador que ensancha columnas sirve una vez: en la corrida siguiente el
+ * script dueño de la pestaña vuelve a escribir sus anchos declarados a mano y todo se corta otra
+ * vez. El ancho no es una preferencia estética, es una consecuencia del contenido — así que se
+ * calcula donde se conoce el contenido.
+ *
+ * SÓLO CUENTAN LAS CELDAS QUE DE VERDAD SE CORTAN: si la de al lado está vacía, el texto derrama y
+ * se lee perfecto. Sin esta regla, un título de bloque de 60 caracteres forzaría la primera columna
+ * a 350px y desplazaría toda la tabla por un texto que ya se veía bien.
+ *
+ * @param {Array<Array<any>>} filas
+ * @param {{min?:number, max?:number, tam?:number, base?:number[]}} opts
+ * @returns {number[]}
+ */
+export function anchosSegunContenido(filas = [], { min = 64, max = 300, tam = 10, base = [] } = {}) {
+  const nCols = filas.reduce((m, f) => Math.max(m, (f || []).length), base.length)
+  const out = Array.from({ length: nCols }, (_, j) => base[j] ?? min)
+  for (const fila of filas) {
+    for (let j = 0; j < nCols; j++) {
+      const v = String(fila?.[j] ?? '')
+      if (!v || v.startsWith('=')) continue
+      // ¿Hay algo a la derecha? Si no, derrama y no necesita ancho propio.
+      let choca = false
+      for (let k = j + 1; k < nCols; k++) if (String(fila?.[k] ?? '').trim()) { choca = true; break }
+      if (!choca) continue
+      out[j] = Math.min(max, Math.max(out[j], Math.ceil(v.length * tam * 0.57) + 18))
+    }
+  }
+  return out
+}
