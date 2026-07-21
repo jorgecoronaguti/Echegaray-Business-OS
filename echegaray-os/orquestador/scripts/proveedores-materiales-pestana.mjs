@@ -75,6 +75,7 @@ import { ESTADO_DEUDA, MODALIDADES } from '../lib/cuentas-por-pagar.mjs'
 import { parseMonto, parseFecha } from '../lib/cash-briefing.mjs'
 import { normComprobante, esLlaveUtil } from '../lib/cheques-cobertura.mjs'
 import { sumar, signo, esNotaDeCredito } from '../lib/comprobante-arca.mjs'
+import { analizar as analizarNC, facturasAnuladasCargadas, clave as claveNC } from '../lib/notas-credito.mjs'
 import { query } from '../lib/db.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -109,7 +110,7 @@ const normNombre = (s) => String(s ?? '')
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 const ars = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
 
-function grilla({ obras, proveedores, resto, deuda, faltanEnCompras, emitidas, arca }) {
+function grilla({ obras, proveedores, resto, deuda, faltanEnCompras, emitidas, arca, notasCredito, anuladasCargadas }) {
   const filas = []
   const push = (c) => { filas.push(c); return filas.length }
   const nombres = FAMILIAS.map(([n]) => n)
@@ -205,6 +206,29 @@ function grilla({ obras, proveedores, resto, deuda, faltanEnCompras, emitidas, a
   push(['TOTAL SIN CARGAR', '', '', '', `=SUM($E${afip0}:$E${afip1})`, '', '', '', ''])
   push([])
 
+  // ── 3 bis · LAS NOTAS DE CRÉDITO ────────────────────────────────────────────────────────────────
+  // La pregunta que el libro de IVA NO contesta: una nota de crédito puede ser una DEVOLUCIÓN (el
+  // costo de la obra baja de verdad) o una REFACTURACIÓN (el costo sigue, sólo cambió de número y
+  // de mes). Las dos son "tipo 3". Ver lib/notas-credito.mjs.
+  push([`3 bis · NOTAS DE CRÉDITO — ¿el costo desapareció, o sólo cambió de factura?`])
+  push(['Una nota de crédito puede significar dos cosas opuestas y el libro de IVA las escribe igual. Si el proveedor volvió a facturar, el costo SIGUE existiendo: sólo cambió de número y muchas veces de mes. Darlo por ahorrado es el error caro. Cada nota se cruza contra las facturas del mismo CUIT: la que anula tiene que dar el MISMO importe al peso, la que la reemplaza da parecido.'])
+  const cabNC = push(['Proveedor', 'Nota de crédito', 'Fecha', 'Importe', 'Qué es', 'Anula la factura', 'La reemplaza', '', ''])
+  const nc0 = filas.length + 1
+  for (const n of notasCredito) push([n.proveedor, n.comprobante, n.fecha, n.monto, n.que, n.anula, n.reemplaza, '', ''])
+  const nc1 = filas.length
+  push(['TOTAL ACREDITADO', '', '', `=SUM($D${nc0}:$D${nc1})`, '', '', '', '', ''])
+  push([])
+  let cabAnu = 0, anu0 = 0, anu1 = 0
+  if (anuladasCargadas.length) {
+    push([`⚠ COMPRAS TIENE CARGADA LA FACTURA ANULADA — ${anuladasCargadas.length} caso(s)`])
+    push(['El importe cierra, así que ningún control lo ve. Pero el comprobante que está cargado fue ANULADO por una nota de crédito y reemplazado por otro: el número no existe más para AFIP y el costo quedó imputado al mes viejo. Hay que corregir el N° de comprobante y la fecha en Compras.'])
+    cabAnu = push(['Proveedor', 'Cargada en Compras', 'Fecha cargada', 'Importe', 'Corresponde', 'Fecha correcta', '', '', ''])
+    anu0 = filas.length + 1
+    for (const m of anuladasCargadas) push([m.proveedor, m.cargada, m.fechaCargada, m.monto, m.corresponde, m.fechaCorrecta, '', '', ''])
+    anu1 = filas.length
+    push([])
+  }
+
   // ── 4 · LO QUE LA EMPRESA FACTURÓ ───────────────────────────────────────────────────────────────
   push([`4 · FACTURAS EMITIDAS — ${emitidas.length} comprobantes del libro de IVA VENTAS de ARCA`])
   push(['Los números de las facturas que emitió la empresa, con su CAE, tal como los tiene AFIP. La última columna cruza contra Cobranzas por número: una factura emitida que Cobranzas no tiene es plata facturada que nadie está siguiendo.'])
@@ -291,7 +315,7 @@ function grilla({ obras, proveedores, resto, deuda, faltanEnCompras, emitidas, a
   const resuelto = filas.map((f) => f.map((c) => (typeof c === 'string'
     ? c.replaceAll('$TOTFAM', String(totFam)).replaceAll('$TOTPROV', String(fTotProv)).replaceAll('$TOTDEUDA', String(fTotProv))
     : c)))
-  return { filas: resuelto, cuentas: [fCuenta1, fCuenta2], doc0, doc1, afip0, afip1, emi0, emi1, cabDoc, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
+  return { filas: resuelto, cuentas: [fCuenta1, fCuenta2], doc0, doc1, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, cabDoc, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
 }
 
 async function main() {
@@ -328,10 +352,10 @@ async function main() {
     "select tipo_comprobante, receptor_cuit, punto_venta, numero, fecha_emision, imp_total from comprobantes_arca where tipo_libro='E' order by fecha_emision desc",
   )).rows
   const totR = sumar(rArca, 'imp_total')
-  const notasCredito = rArca.filter((r) => esNotaDeCredito(r.tipo_comprobante))
+  const notasCrudas = rArca.filter((r) => esNotaDeCredito(r.tipo_comprobante))
   const arca = {
     nR: rArca.length, totalR: totR.neto,
-    nNotas: notasCredito.length, montoNotas: totR.restan,
+    nNotas: notasCrudas.length, montoNotas: totR.restan,
     desconocidos: totR.desconocidos.length,
   }
 
@@ -358,6 +382,32 @@ async function main() {
     comprobante: `${String(r.punto_venta).padStart(4, '0')}-${String(r.numero).padStart(8, '0')}`,
     fecha: fecha(r.fecha_emision), importe: Number(r.imp_total),
   }))
+
+  // ── QUÉ HACE CADA NOTA DE CRÉDITO ──────────────────────────────────────────────────────────────
+  // Saber que RESTA arregla la aritmética; esto contesta la pregunta de negocio. Ver
+  // lib/notas-credito.mjs: una refacturación NO es un ahorro, y si Compras tiene cargada la factura
+  // anulada, el importe cierra pero el comprobante ya no existe y el mes está mal.
+  const analisisNC = analizarNC(rArca)
+  const QUE = { refacturacion: 'REFACTURACIÓN — el costo sigue', devolucion: 'Devolución — el costo baja', revisar: '⚠ revisar (parcial o descuento)' }
+  const comp = (c) => `${String(c.punto_venta).padStart(4, '0')}-${String(c.numero).padStart(8, '0')}`
+  const notasCredito = analisisNC.map((a) => ({
+    proveedor: a.nota.emisor_nombre,
+    comprobante: comp(a.nota),
+    fecha: fecha(a.nota.fecha_emision),
+    monto: -a.monto, // se muestra en negativo: es lo que resta
+    que: QUE[a.clase],
+    anula: a.anula.map(comp).join(' · '),
+    reemplaza: a.refactura.map(comp).join(' · '),
+  }))
+  const anuladasCargadas = facturasAnuladasCargadas(analisisNC, new Set([...enCompras.keys()]), (c) => normComprobante(claveNC(c)))
+    .map((m) => ({
+      proveedor: m.anulada.emisor_nombre,
+      cargada: comp(m.anulada),
+      fechaCargada: fecha(m.anulada.fecha_emision),
+      monto: Number(m.anulada.imp_total),
+      corresponde: m.reemplazos.map(comp).join(' / '),
+      fechaCorrecta: m.reemplazos.map((r) => fecha(r.fecha_emision)).join(' / '),
+    }))
 
   // Lo facturado por AFIP, por proveedor, para poder contrastarlo contra lo cargado en Compras.
   const porCuit = new Map()
@@ -415,7 +465,7 @@ async function main() {
     .sort((a, b) => a.fila - b.fila)
 
   const obras = ['LA ESTRELLA', 'San Francisco', 'MESSINAS', 'ARCOR', 'Administracion', 'Almacen', 'Taller', 'SAINT GOBAIN']
-  const g = grilla({ obras, proveedores, resto, deuda, faltanEnCompras, emitidas, arca })
+  const g = grilla({ obras, proveedores, resto, deuda, faltanEnCompras, emitidas, arca, notasCredito, anuladasCargadas })
   const ancho = Math.max(...g.filas.map((f) => f.length))
   const cuadro = g.filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r })
   console.log(`${PESTAÑA}: ${cuadro.length} filas x ${ancho} columnas`)
@@ -515,6 +565,24 @@ async function formatear(google, sheetId, g, ancho, filas) {
   fmt({ ...r(g.p0 - 1, g.p1, 10, 11) }, 'userEnteredFormat.backgroundColor', { backgroundColor: ROJO })
   fmt({ ...r(g.p0 - 1, g.p1, 13, 14) }, 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'TEXT' }, textFormat: { fontSize: 9 }, horizontalAlignment: 'CENTER' })
+  // NOTAS DE CRÉDITO — el formato moneda general de la pestaña convierte una fecha en "$46.119"
+  // (el número de serie del 7/4/2026 pintado como pesos). Ya pasó cinco veces en este archivo: un
+  // control que suma no ve un defecto de pantalla. Cada columna del bloque dice qué es.
+  if (g.nc0 && g.nc1 >= g.nc0) {
+    // C = fecha de la nota · B y F/G = comprobantes, que son texto y no números con separador.
+    fmt({ ...r(g.nc0 - 1, g.nc1, 2, 3) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+      { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER' })
+    fmt({ ...r(g.nc0 - 1, g.nc1, 1, 2) }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
+    fmt({ ...r(g.nc0 - 1, g.nc1, 4, 7) }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
+  }
+  if (g.anu0 && g.anu1 >= g.anu0) {
+    fmt({ ...r(g.anu0 - 1, g.anu1, 2, 3) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+      { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER' })
+    fmt({ ...r(g.anu0 - 1, g.anu1, 5, 6) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+      { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER' })
+    fmt({ ...r(g.anu0 - 1, g.anu1, 1, 2) }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
+    fmt({ ...r(g.anu0 - 1, g.anu1, 4, 5) }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
+  }
   fmt({ ...r(g.p0 - 1, g.p1, 14, 15) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'DATE', pattern: 'dd/mm/yy' }, horizontalAlignment: 'CENTER' })
   fmt({ ...r(g.p0 - 1, g.p1, 15, 16) }, 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment',
