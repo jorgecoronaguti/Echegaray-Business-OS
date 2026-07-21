@@ -25,8 +25,23 @@
 //   · 372 están en Compras   ($126.251.048)
 //   · 71 NO ESTÁN            ($71.191.410) — Acerolatina $19,6M, Alumetal $18,9M, Friolatina $18,5M
 //
-// Setenta y un millones de pesos facturados a la empresa que ninguna pestaña del archivo ve. No es
-// un error de fórmula: es carga que falta, y sólo aparece contra la fuente fiscal.
+// ═══ LA TERCERA VUELTA (21/07): LOS $71,19M NO ERAN $71,19M ═══
+//
+// Ese número de arriba está MAL y se deja escrito a propósito, porque el error enseña. Dos causas,
+// las dos encontradas al ir a buscar factura por factura en vez de confiar en el total:
+//
+// 1. EL CRUCE EMPAREJABA SÓLO POR N° DE COMPROBANTE, y 223 filas de Compras no tienen número. La
+//    factura de ALUMETAL por $18.166.381 SÍ estaba cargada (fila 669) con el número vacío, y la de
+//    $75.415 estaba como "0038-0002471" — le falta un dígito. Emparejando también por proveedor +
+//    importe aparecen 9 comprobantes por $38.411.092 que nunca faltaron.
+//
+// 2. LAS NOTAS DE CRÉDITO SE CONTABAN COMO COMPRAS. Ver lib/comprobante-arca.mjs: 13 notas por
+//    $20.976.638 sumadas en vez de restadas. Una nota de crédito "que falta en Compras" no es carga
+//    faltante — es plata que el proveedor devolvió, y buscarla manda a alguien a perseguir un gasto
+//    que no existe.
+//
+// LA LECCIÓN, que vale más que el número: un total grande y redondo invita a reportarlo. Los $71,19M
+// sobrevivieron porque nadie los abrió. Al abrirlos, casi todo se explicaba.
 //
 // Y AHORA HAY NÚMEROS, no sólo totales: cada deuda muestra su comprobante (punto de venta y número)
 // y el número del cheque que la paga. Un saldo sin el documento que lo respalda no se puede reclamar
@@ -59,6 +74,7 @@ import { NOMBRES } from '../lib/sheet-pestanas.mjs'
 import { ESTADO_DEUDA, MODALIDADES } from '../lib/cuentas-por-pagar.mjs'
 import { parseMonto, parseFecha } from '../lib/cash-briefing.mjs'
 import { normComprobante, esLlaveUtil } from '../lib/cheques-cobertura.mjs'
+import { sumar, signo, esNotaDeCredito } from '../lib/comprobante-arca.mjs'
 import { query } from '../lib/db.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -300,13 +316,24 @@ async function main() {
   // ── AFIP: LA FUENTE FISCAL ─────────────────────────────────────────────────────────────────────
   // comprobantes_arca es el libro de IVA que el OS ya replica. Es la única fuente que dice qué se
   // facturó DE VERDAD: Compras dice lo que alguien cargó.
+  //
+  // CON SIGNO (21/07): una NOTA DE CRÉDITO resta. En el libro hay 13 por $20.976.638 y se estaban
+  // sumando como compras: $197.442.458 declarados contra $155.489.182 reales. Y una nota de crédito
+  // no puede figurar como "falta cargar en Compras" — no es una compra que nadie anotó, es plata
+  // que el proveedor devolvió. Ver lib/comprobante-arca.mjs.
   const rArca = (await query(
-    "select emisor_nombre, emisor_cuit, punto_venta, numero, fecha_emision, imp_total from comprobantes_arca where tipo_libro='R' order by fecha_emision",
+    "select tipo_comprobante, emisor_nombre, emisor_cuit, punto_venta, numero, fecha_emision, imp_total from comprobantes_arca where tipo_libro='R' order by fecha_emision",
   )).rows
   const eArca = (await query(
-    "select receptor_cuit, punto_venta, numero, fecha_emision, imp_total from comprobantes_arca where tipo_libro='E' order by fecha_emision desc",
+    "select tipo_comprobante, receptor_cuit, punto_venta, numero, fecha_emision, imp_total from comprobantes_arca where tipo_libro='E' order by fecha_emision desc",
   )).rows
-  const arca = { nR: rArca.length, totalR: rArca.reduce((s, r) => s + Number(r.imp_total), 0) }
+  const totR = sumar(rArca, 'imp_total')
+  const notasCredito = rArca.filter((r) => esNotaDeCredito(r.tipo_comprobante))
+  const arca = {
+    nR: rArca.length, totalR: totR.neto,
+    nNotas: notasCredito.length, montoNotas: totR.restan,
+    desconocidos: totR.desconocidos.length,
+  }
 
   // El cruce va por punto de venta + número normalizados: "0038-00025483" y "38-25483" son la misma
   // factura, y cada planilla la escribe a su manera.
@@ -317,6 +344,8 @@ async function main() {
   }
   const fecha = (d) => (d ? new Date(d).toLocaleDateString('es-AR') : '')
   const faltanEnCompras = rArca
+    // Las notas de crédito se excluyen del "falta cargar": mandarían a buscar un gasto inexistente.
+    .filter((r) => !esNotaDeCredito(r.tipo_comprobante))
     .filter((r) => !enCompras.has(normComprobante(`${r.punto_venta}-${r.numero}`)))
     .map((r) => ({
       nombre: r.emisor_nombre, cuit: r.emisor_cuit,
@@ -324,7 +353,7 @@ async function main() {
       fecha: fecha(r.fecha_emision), importe: Number(r.imp_total),
     }))
     .sort((a, b) => b.importe - a.importe)
-  const emitidas = eArca.map((r) => ({
+  const emitidas = eArca.filter((r) => !esNotaDeCredito(r.tipo_comprobante)).map((r) => ({
     nombre: r.receptor_cuit ? `CUIT ${r.receptor_cuit}` : '(sin receptor)', cuit: r.receptor_cuit,
     comprobante: `${String(r.punto_venta).padStart(4, '0')}-${String(r.numero).padStart(8, '0')}`,
     fecha: fecha(r.fecha_emision), importe: Number(r.imp_total),
@@ -333,9 +362,11 @@ async function main() {
   // Lo facturado por AFIP, por proveedor, para poder contrastarlo contra lo cargado en Compras.
   const porCuit = new Map()
   for (const r of rArca) {
+    const s = signo(r.tipo_comprobante)
+    if (s === null) continue // tipo desconocido: no se le adivina el signo
     const k = normNombre(r.emisor_nombre)
     const a = porCuit.get(k) ?? { cuit: r.emisor_cuit, total: 0 }
-    a.total += Number(r.imp_total)
+    a.total += s * Number(r.imp_total)
     porCuit.set(k, a)
   }
 

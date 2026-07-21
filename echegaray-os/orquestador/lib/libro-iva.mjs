@@ -6,7 +6,14 @@
 // los comprobantes reales de ARCA). La POSICIÓN DE IVA (débito − crédito) es CÁLCULO. No es
 // la DDJJ presentada: es lo que surge de los comprobantes cargados; si falta un período o un
 // comprobante no se extrajo, el número es parcial y se dice. Fuente de verdad: ARCA.
+//
+// 21/07 — LAS NOTAS DE CRÉDITO RESTAN. Esto sumaba `total_iva` de todos los comprobantes sin mirar
+// `tipo_comprobante`, así que las 13 notas de crédito de compra del libro inflaban el CRÉDITO
+// FISCAL y el OS declaraba menos IVA del que hay que pagar: $7.231.456 en siete meses, con mayo
+// dando vuelta de $4.017.601 a favor a $2.610.762 a pagar. El signo vive en un solo lugar,
+// lib/comprobante-arca.mjs, y de ahí sale tanto el SQL de acá como el JS del resto del OS.
 import { query } from './db.mjs'
+import { sqlConSigno, sqlEsNotaDeCredito, signo } from './comprobante-arca.mjs'
 
 const ars = (n) =>
   n == null ? 'sin dato'
@@ -45,13 +52,16 @@ export async function periodosDisponibles() {
 
 async function totales(periodo, tipoLibro) {
   const { rows } = await query(
+    // Cada importe con su signo: una nota de crédito resta en TODAS las columnas, no sólo en el
+    // total. Un neto gravado inflado también miente, aunque el que duele sea el IVA.
     `select count(*)::int n,
-            coalesce(sum(neto_gravado),0) neto,
-            coalesce(sum(neto_no_gravado),0) no_gravado,
-            coalesce(sum(exento),0) exento,
-            coalesce(sum(total_iva),0) iva,
-            coalesce(sum(otros_tributos),0) otros,
-            coalesce(sum(imp_total),0) total
+            coalesce(${sqlConSigno('neto_gravado')},0) neto,
+            coalesce(${sqlConSigno('neto_no_gravado')},0) no_gravado,
+            coalesce(${sqlConSigno('exento')},0) exento,
+            coalesce(${sqlConSigno('total_iva')},0) iva,
+            coalesce(${sqlConSigno('otros_tributos')},0) otros,
+            coalesce(${sqlConSigno('imp_total')},0) total,
+            count(*) filter (where ${sqlEsNotaDeCredito()})::int notas_credito
        from public.comprobantes_arca
       where periodo = $1 and tipo_libro = $2`,
     [periodo, tipoLibro],
@@ -60,26 +70,34 @@ async function totales(periodo, tipoLibro) {
 }
 
 // Suma de IVA discriminado por alícuota (desde el jsonb iva_por_alicuota) para el detalle.
+// Con SIGNO, igual que los totales: si el desglose por alícuota no restara las notas de crédito,
+// el detalle no cerraría contra su propio total y no habría forma de saber cuál de los dos miente.
 async function porAlicuota(periodo, tipoLibro) {
   const { rows } = await query(
-    `select iva_por_alicuota from public.comprobantes_arca
+    `select tipo_comprobante, iva_por_alicuota from public.comprobantes_arca
       where periodo = $1 and tipo_libro = $2 and iva_por_alicuota is not null`,
     [periodo, tipoLibro],
   )
   const acc = {}
   for (const r of rows) {
+    const s = signo(r.tipo_comprobante)
+    if (s === null) continue // tipo desconocido: se aparta, no se adivina el signo
     const obj = r.iva_por_alicuota || {}
     for (const [alic, v] of Object.entries(obj)) {
       acc[alic] = acc[alic] || { neto: 0, iva: 0 }
-      acc[alic].neto += Number(v.neto || 0)
-      acc[alic].iva += Number(v.iva || 0)
+      acc[alic].neto += s * Number(v.neto || 0)
+      acc[alic].iva += s * Number(v.iva || 0)
     }
   }
   return acc
 }
 
 const bloqueLibro = (titulo, t, alic) => {
-  const lineas = [`**${titulo}** — ${t.n} comprobante(s)`]
+  // Se declara cuántas notas de crédito hay adentro. Sin esto, el día que un total baja porque
+  // entró una nota de crédito, parece un error de extracción y alguien "lo arregla" sumándolas
+  // de nuevo. Un número que cambió tiene que poder explicar por qué.
+  const nc = Number(t.notas_credito) || 0
+  const lineas = [`**${titulo}** — ${t.n} comprobante(s)${nc ? `, de los cuales ${nc} son notas de crédito (restan)` : ''}`]
   lineas.push(`- Neto gravado: ${ars(t.neto)}`)
   if (Number(t.no_gravado)) lineas.push(`- No gravado: ${ars(t.no_gravado)}`)
   if (Number(t.exento)) lineas.push(`- Exento: ${ars(t.exento)}`)
