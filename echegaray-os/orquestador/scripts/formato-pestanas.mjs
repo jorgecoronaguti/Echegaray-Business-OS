@@ -56,10 +56,8 @@ export const PESTANAS = [
   { titulo: 'Estructura', congeladas: 6, hastaFila: 90, cols: 20 },
   // La vieja "Proveedores y Materiales" se partió el 21/07: eran ocho tablas sobre las mismas
   // columnas y ningún ancho podía servirles a todas. Ver lib/partir-pestana.mjs.
-  { titulo: 'Proveedores — Deuda', congeladas: 3, hastaFila: 60, cols: 12 },
-  { titulo: 'Proveedores — Cuenta Corriente', congeladas: 3, hastaFila: 60, cols: 18 },
+  { titulo: 'Proveedores', congeladas: 3, hastaFila: 210, cols: 18 },
   { titulo: 'Materiales', congeladas: 3, hastaFila: 60, cols: 18 },
-  { titulo: 'Proveedores — Control y ARCA', congeladas: 3, hastaFila: 130, cols: 12 },
   { titulo: 'CAJA', congeladas: 0, hastaFila: 120, cols: 12 },
   { titulo: 'Cash Flow Semanal', congeladas: 3, hastaFila: 90, cols: 60 },
   { titulo: 'Cash Flow Mensual', congeladas: 3, hastaFila: 90, cols: 20 },
@@ -117,6 +115,20 @@ export function rectangulos(matriz = []) {
   return out
 }
 
+/**
+ * Hasta qué fila hay algo escrito. Se pregunta a la API en vez de confiar en `hastaFila`, que es un
+ * número declarado a mano y ya se quedó corto una vez (el censo informó 34 números pegados cuando
+ * eran 79 porque miraba hasta la fila 140 de una pestaña de 200).
+ */
+async function ultimaConContenido(google, titulo, filas) {
+  if (!filas) return 0
+  const v = await google.readSheetValues(ID, `${titulo}!A1:A${filas}`).catch(() => null)
+  if (!v) return 0
+  let ultima = 0
+  v.forEach((f, i) => { if (String(f?.[0] ?? '').trim()) ultima = i + 1 })
+  return ultima
+}
+
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const meta = await google.getSheetMeta(ID)
@@ -131,6 +143,21 @@ async function main() {
       return null
     })
     if (!f) continue
+
+    // ── LA GRILLA NO PUEDE SER DIEZ VECES MÁS GRANDE QUE EL CONTENIDO ──────────────────────────
+    //
+    // "Cargas Sociales" tenía 1.092 filas de grilla para 78 de contenido: mil filas vacías por las
+    // que hay que scrollear, herencia de un script que insertaba filas en cada corrida. Una hoja
+    // que sigue bajando después de donde termina la información se lee como si faltara algo.
+    //
+    // El margen es amplio en las pestañas de CARGA —ahí el dueño agrega filas a mano y quedarse sin
+    // lugar es peor que sobrar— y ajustado en las que rehace el OS.
+    const ultima = await ultimaConContenido(google, p.titulo, hoja.rows ?? 0)
+    const margen = p.carga ? 300 : 40
+    if (ultima && (hoja.rows ?? 0) > ultima + margen && !SOLO_AUDITAR) {
+      await google.spreadsheetBatchUpdate(ID, [{ deleteDimension: { range: { sheetId: hoja.sheetId, dimension: 'ROWS', startIndex: ultima + margen, endIndex: hoja.rows } } }])
+      console.log(`  ${p.titulo.padEnd(26)} grilla recortada: ${hoja.rows} → ${ultima + margen} filas (contenido hasta la ${ultima})`)
+    }
 
     const a = auditar(f, { congeladas: p.congeladas })
     if (!a.ok) desviadas++

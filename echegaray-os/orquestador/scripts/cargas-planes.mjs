@@ -29,7 +29,20 @@ const HOY = new Date().toISOString().slice(0, 10)
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 const ar = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : '')
 /** La firma del bloque: permite rehacerlo en su lugar en vez de agregar una copia cada día. */
-const FIRMA = '4 · PLANES DE PAGO DE DEUDA PREVISIONAL'
+const FIRMA = '5 · PLANES DE PAGO DE DEUDA PREVISIONAL'
+/**
+ * CÓMO SE RECONOCE EL BLOQUE VIEJO, con o sin su número.
+ *
+ * POR QUÉ (21/07). La búsqueda era `startsWith(FIRMA)`, o sea el rótulo COMPLETO con el "4 · "
+ * adelante. En la pestaña había una versión anterior del mismo bloque escrita sin numerar, así que
+ * no la encontraba, la dejaba donde estaba y escribía otra abajo: dos bloques de planes de pago con
+ * los mismos tres planes, y el lector no tiene forma de saber cuál mira. Y como el bloque 4 de la
+ * proyección también se llamaba "4 ·", había dos bloques distintos con el mismo número.
+ *
+ * Un bloque se reconoce por lo que DICE, no por cómo está numerado: la numeración es lo que más
+ * cambia cuando se reordena una pestaña.
+ */
+const ES_BLOQUE = /^\s*(?:\d+\s*·\s*)?PLANES DE PAGO DE DEUDA PREVISIONAL/i
 
 async function planes() {
   // El MISMO filtro que la regla de rubro-caja: por concepto, no por cliente. Bajo la etiqueta
@@ -81,7 +94,9 @@ async function main() {
   // cada corrida dejaría otra copia del bloque. Se busca la firma; si ya está, se limpia y se
   // reescribe EN EL MISMO LUGAR. Si no está, se agrega después de lo último que haya.
   const actual = await google.readSheetValues(ID, `${PESTAÑA}!A1:${letra(ANCHO - 1)}200`)
-  const yaEsta = actual.findIndex((f) => String(f?.[0] ?? '').startsWith(FIRMA))
+  const yaEsta = actual.findIndex((f) => ES_BLOQUE.test(String(f?.[0] ?? '')))
+  const copias = actual.filter((f) => ES_BLOQUE.test(String(f?.[0] ?? ''))).length
+  if (copias > 1) console.log(`  ⚠ había ${copias} copias del bloque: las reemplaza una sola`)
   let F
   if (yaEsta >= 0) {
     F = yaEsta + 1

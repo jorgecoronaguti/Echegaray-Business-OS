@@ -43,3 +43,15 @@ export const arcaPorComprobante = (cuit, comp, signo) =>
 
 /** El total de un libro entero, con los signos aplicados. */
 export const totalLibro = (libro) => `=SUMPRODUCT((${R}!$B$4:$B="${libro}")*${IMPORTE})`
+
+/**
+ * Un comprobante EMITIDO por la empresa, identificado sólo por su número.
+ *
+ * SIN CUIT, Y ES DELIBERADO. La réplica guarda el CUIT del EMISOR, que en una venta es la propia
+ * empresa: filtrar por el CUIT del cliente daba cero en las dieciséis filas. En ventas el número de
+ * comprobante ya es único —lo emite la empresa, con su propia numeración—, así que alcanza.
+ *
+ * El signo entra en la suma en vez de filtrarse: una nota de crédito emitida también resta.
+ */
+export const arcaPorComprobanteVentas = (comp) =>
+  `=SUMPRODUCT((${CLAVE_COMP}=${comp})*(${R}!$B$4:$B="Ventas")*${IMPORTE})`

@@ -26,10 +26,13 @@ export const NOMBRES = {
   // servirles a las tres, así que se veía cortada sin importar cómo se la formateara. El dueño:
   // "TODA LA PESTAÑA ES UNA MIERDA" — y la decisión fue partirla, respetando las reglas de oro.
   // Cada una tiene UNA tabla por tema y sus propias columnas. No se perdió ni una fila.
-  provDeuda: 'Proveedores — Deuda',
-  provCtaCte: 'Proveedores — Cuenta Corriente',
+  // Y el 21/07, un rato después: "unificar todas las pestañas de proveedores". Tres pestañas para
+  // el mismo interlocutor obligaban a saltar entre ellas para contestar una sola pregunta ("¿cuánto
+  // le debo a Alumetal y qué me facturó?"). Quedan DOS: todo lo de proveedores junto, y materiales
+  // aparte —que es otra pregunta: no con quién, sino en qué—. Lo que hace que una sola grilla les
+  // sirva a las seis tablas es que todas arrancan por el proveedor.
+  proveedores: 'Proveedores',
   materiales: 'Materiales',
-  provControl: 'Proveedores — Control y ARCA',
 }
 
 const norm = (s) => String(s ?? '').trim().toLowerCase()

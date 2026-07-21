@@ -55,6 +55,13 @@ const DRY = process.argv.includes('--dry')
 const AÑO = 2026
 const FIRMA = '4 · PROYECCIÓN DE CARGAS SOCIALES — concepto por concepto, con su propia regla'
 const ANCHO = 10
+/**
+ * LA FIRMA DE CIERRE DEL BLOQUE. Es la última fila que este script escribe, y es lo que le permite
+ * saber dónde termina su propio bloque en la próxima corrida. No es decorativa: sin ella el script
+ * inventaba un largo de 20 filas y se duplicaba a sí mismo en cada pasada.
+ */
+const CIERRE = '⚠ Lo que esta proyección NO contempla'
+
 /** Desde qué mes se proyecta. Julio ya tiene jornales cargados pero todavía no F931 presentado. */
 const DESDE = 7
 
@@ -197,7 +204,7 @@ function grilla(f, desde) {
   push(['Deuda previsional (planes de pago)', '', ...meses.map(() => ''), '',
     '⚠ NO se proyecta acá a propósito: son cuotas CIERTAS y ya están en "Impuestos y Financieros", bloque 3. Proyectarlas otra vez sería el mismo egreso contado dos veces.'])
   push()
-  push(['⚠ Lo que esta proyección NO contempla', '', '', '', '', '', '', '', '',
+  push([CIERRE, '', '', '', '', '', '', '', '',
     'SAC (se devenga todo el año y se paga en junio y diciembre) y vacaciones: están en el bloque 5, todavía sin conectar a esta proyección. Y la paritaria UOCRA: los jornales proyectados se ajustan por inflación, pero el jornal de convenio sigue a la paritaria, que es otro número y llega en otras fechas.'])
 
   return { filas, fTot, fCaja, cab, fRem, fDot, fEmpleadosProm, fPct, filasPorEmpleado }
@@ -227,11 +234,31 @@ async function main() {
     throw new Error('faltan las filas base (remuneración, empleados o total declarado): no proyecto sobre supuestos')
   }
 
-  // Dónde empieza el bloque 4 hoy, y hasta dónde llega (hasta el 5).
+  // ═══ HASTA DÓNDE LLEGA EL BLOQUE VIEJO ═══════════════════════════════════════════════════════
+  //
+  // ACÁ ESTUVO EL PEOR BUG DE ESTA PESTAÑA (encontrado el 21/07). Era esto:
+  //
+  //     const fin = filaDe(colA, '5 · SAC')
+  //     const hasta = fin ? fin - 1 : ini + 20
+  //
+  // El bloque "5 · SAC" no existe con ese rótulo, así que `fin` siempre daba 0 y el script asumía
+  // que su bloque medía 20 filas. Mide 30. Como el bloque nuevo era más largo que el rango que
+  // creía ocupar, cada corrida INSERTABA filas y escribía otra copia debajo, empujando la anterior
+  // hacia abajo. El cuadro de proyección terminó escrito DIEZ VECES, una atrás de la otra, en una
+  // pestaña que el agente rehace cada 2 horas.
+  //
+  // La lección general: un límite inventado ("si no lo encuentro, asumo 20") no es un valor por
+  // defecto prudente — es una corrupción silenciosa que se acumula. El bloque se delimita por su
+  // propia FIRMA DE CIERRE, que es la última fila que este mismo script escribe, y se toma la
+  // ÚLTIMA aparición: así una corrida limpia todas las copias que dejaron las anteriores.
   const ini = filaDe(colA, '4 · PROYECCIÓN')
-  const fin = filaDe(colA, '5 · SAC')
   if (!ini) throw new Error('no encontré el bloque "4 · PROYECCIÓN"')
-  const hasta = fin ? fin - 1 : ini + 20
+  const ultimaCon = (txt) => { let r = 0; colA.forEach((v, i) => { if (String(v ?? '').trim().startsWith(txt)) r = i + 1 }); return r }
+  const cierre = ultimaCon(CIERRE)
+  if (!cierre) console.error(`  ⚠ no encontré la firma de cierre "${CIERRE}": escribo sin borrar el bloque viejo`)
+  const hasta = cierre || ini + 20
+  const copias = colA.filter((v) => String(v ?? '').trim().startsWith(CIERRE)).length
+  if (copias > 1) console.log(`  ⚠ había ${copias} copias del bloque apiladas (filas ${ini}–${hasta}): las reemplaza una sola`)
 
   const g = grilla(f, ini)
   console.log(`${PESTAÑA}: bloque 4 en las filas ${ini}–${hasta} · ${g.filas.length} filas nuevas`)
