@@ -42,3 +42,12 @@ test('un párrafo declara cuánto alto necesita', () => {
   assert.equal(altoDeParrafo('', 400), 20)
   assert.ok(entranEn(300) > 40 && entranEn(300) < 60)
 })
+
+test('una FÓRMULA nunca se acorta: cortarla la deja sin parsear y la celda vacía', () => {
+  // Regresión real (21/07): las tres alertas de CAJA perdieron su explicación porque la fórmula
+  // =CONCATENATE(...) se cortó a 44 caracteres y Sheets no pudo leerla.
+  const f = '=CONCATENATE("fila 33: lo que Cobranzas dice que hay en echeq (";TEXT(C32;"$#.##0");")")'
+  const { corto, nota } = partirTexto(f, 44)
+  assert.equal(corto, f)
+  assert.equal(nota, null)
+})

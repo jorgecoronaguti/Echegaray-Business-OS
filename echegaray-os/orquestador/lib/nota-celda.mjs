@@ -35,6 +35,11 @@ export const entranEn = (px) => Math.max(12, Math.floor((px - 12) / 5.7))
 export function partirTexto(texto, max = 44) {
   const t = String(texto ?? '').trim()
   if (!t || t.length <= max) return { corto: t, nota: null }
+  // UNA FÓRMULA NO SE ACORTA. Se cortaba a 44 caracteres y se escribía el pedazo: Sheets no puede
+  // parsear "=CONCATENATE("fila 33: lo que Cobranzas di…" y deja la celda vacía. Pasó con las tres
+  // alertas de CAJA, que quedaron sin su explicación justo cuando se agregó. El largo de una
+  // fórmula no dice nada de lo que se ve: lo que se muestra es su RESULTADO.
+  if (t.startsWith('=')) return { corto: t, nota: null }
 
   const ventana = t.slice(0, max)
   const puntoMedio = ventana.lastIndexOf(' · ')

@@ -203,15 +203,29 @@ function grilla(cargado, refs) {
   //
   // Una pestaña de caja tiene que GRITAR lo que está roto, no listarlo. Estas filas son fórmulas que
   // referencian el detalle de más abajo —no repiten ningún cálculo— y cada una dice qué hacer.
+  // CADA ALERTA DICE DE DÓNDE SALE SU NÚMERO, CON LA CUENTA ESCRITA.
+  //
+  // El dueño (21/07): "eso de la pestaña caja no sé de dónde lo saca". Tenía razón: la columna de
+  // detalle decía "Bloque 6" —hay que buscarlo, contar filas y reconstruir la resta a mano—. Un
+  // número que acusa un problema de cuarenta millones tiene que traer su cuenta al lado, o no se
+  // puede discutir ni corregir. Ahora dice la RESTA y la FILA exacta.
   const fAlerta0 = push(['⚠ LO QUE NO CIERRA — mirar esto antes de decidir con los números de arriba'])
-  push(['Cada línea es un problema con nombre y monto. El detalle está en el bloque que dice al final.'])
-  push(['Qué pasa', '', 'Cuánto', 'Qué hacer', '', '', '', 'Dónde está el detalle'])
+  push(['Cada línea es un problema con nombre y monto. La última columna dice de qué resta sale y en qué fila está la cuenta completa.'])
+  // ═══ LA EXPLICACIÓN VA EN LA CELDA QUE SE VE ═══
+  //
+  // Había una columna "Dónde está el detalle" que decía "Bloque 6"… y NADIE PODÍA LEERLA: la celda
+  // de "qué hacer" se combina de la D a la H para que la frase entre, así que la última columna
+  // estaba tapada desde el día que se creó. El dueño preguntó "no sé de dónde lo saca" y tenía toda
+  // la razón: la respuesta estaba escrita en una celda invisible.
+  //
+  // Ahora la cuenta va concatenada al final de la misma frase, dentro de la celda combinada.
+  push(['Qué pasa', '', 'Cuánto', 'Qué hacer, y de dónde sale el número', '', '', '', ''])
   push(['Cheques de terceros que el cash flow espera y ya se entregaron', '', '@DIFECHEQ',
-    'Endosados a un proveedor: son un pago hecho, no un ingreso futuro. Corregir en Cobranzas.', '', '', '', 'Bloque 3'])
+    '@ORIGEN_ECHEQ', '', '', '', ''])
   push(['El cash flow proyecta un efectivo que no está', '', '@DIFCONC',
-    'O faltan movimientos por cargar, o el saldo inicial del cuadro quedó viejo. Mientras no cierre, la proyección de caja no se puede usar para decidir.', '', '', '', 'Bloque 6'])
+    '@ORIGEN_CONC', '', '', '', ''])
   push(['Efectivo cobrado que no se depositó ni está en la caja física', '', '@SINEXPL',
-    'Puede tener explicación (un depósito posterior al corte, un pago en efectivo sin pasar por el banco), pero no puede quedar sin mirar.', '', '', '', 'Bloque 7'])
+    '@ORIGEN_EFVO', '', '', '', ''])
   const fAlerta1 = filas.length
   push()
 
@@ -221,9 +235,17 @@ function grilla(cargado, refs) {
   const d0 = filas.length + 1
   const amarillas = []
   let fBancoPesos = 0
+  // LA FILA DE LA CARTERA SE GUARDA POR NOMBRE, NO SE DEDUCE DE LA POSICIÓN.
+  //
+  // Antes la alerta de echeqs restaba `d1`, "la última fila del bloque", que era la cartera sólo
+  // porque estaba última. El día que se agregó la línea de movimientos posteriores al corte, `d1`
+  // pasó a ser esa otra fila y la alerta empezó a restar cero: mostró $30.000.000 de cheques
+  // entregados cuando son $20.000.000. Ninguna suma cambió, así que ningún control lo vio.
+  let fCartera = 0
   for (const c of CUENTAS) {
     const f = filas.length + 1
     if (c.banco === 'saldoPesos') fBancoPesos = f
+    if (c.banco === 'cartera') fCartera = f
     if (!c.formula && !c.banco) amarillas.push(f)
     push([
       c.nombre,
@@ -305,7 +327,8 @@ function grilla(cargado, refs) {
   // así que no entra en el rango que suma: sumaría dos veces la misma plata.
   const ultima = CUENTAS[CUENTAS.length - 1]
   if (ultima.detalle && ultima.detalle !== 'echeq_en_cartera') throw new Error('el detalle desplegable sólo está resuelto para los echeq en cartera')
-  const fValores = d1
+  const fValores = fCartera
+  if (!fValores) throw new Error('no encontré la fila de la cartera de valores: la alerta de echeqs quedaría mal')
   const g0 = filas.length + 1
   const cust0 = g0
   for (const e of BANCO.enCartera()) {
@@ -536,6 +559,12 @@ function grilla(cargado, refs) {
     // Si el banco no reporta ningún echeq en custodia, la cartera es cero y hay que decirlo con un
     // cero: un rango vacío daría #REF! y un total en blanco se leería como "falta cargar".
     '@CARTERA': cust1 >= cust0 ? `=SUM(${C_IMP}${cust0}:${C_IMP}${cust1})` : '0',
+    // La cuenta escrita, con las filas reales. Se arma acá porque recién ahora se sabe dónde quedó
+    // cada bloque: escribirla a mano en el texto de arriba la dejaría vieja en la primera corrida
+    // que mueva una fila — que es exactamente lo que ya pasó con "Bloque 6".
+    '@ORIGEN_ECHEQ': `=CONCATENATE("Endosados a un proveedor: son un pago hecho, no un ingreso futuro. Corregir en Cobranzas.   ▸ SALE DE LA FILA ${gDif}: lo que Cobranzas dice que hay en echeq (";TEXT(${C_IMP}${gControl};"$#,##0");") menos lo que el banco tiene en custodia (";TEXT(${C_IMP}${fValores};"$#,##0");")")`,
+    '@ORIGEN_CONC': `=CONCATENATE("O faltan movimientos por cargar, o el saldo inicial del cuadro quedó viejo. Mientras no cierre, la proyección de caja no se puede usar para decidir.   ▸ SALE DE LA FILA ${fDifConc}: la plata que hay hoy (";TEXT(${C_PESOS}${fDecl};"$#,##0");") menos la que el Cash Flow Mensual proyecta para esa fecha (";TEXT(${C_PESOS}${fProy};"$#,##0");")")`,
+    '@ORIGEN_EFVO': `=CONCATENATE("Puede tener explicación (un depósito posterior al corte, un pago en efectivo sin pasar por el banco), pero no puede quedar sin mirar.   ▸ SALE DE LA FILA ${fSinExpl}, en el bloque 7: el efectivo que Cobranzas dice cobrado, menos lo que el extracto muestra depositado, menos lo que hay en la caja física.")`,
   }
   for (const f of filas) f.forEach((c, j) => { if (typeof c === 'string' && PANEL[c]) f[j] = PANEL[c] })
 
