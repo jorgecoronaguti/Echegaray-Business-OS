@@ -41,6 +41,12 @@ export const GRUPOS = [
     pestana: 'Cheques Emitidos',
     formula: (d, h) => `SUMIFS('Cheques Emitidos'!$F$2:$F$400;'Cheques Emitidos'!$K$2:$K$400;"SI";'Cheques Emitidos'!$I$2:$I$400;">="&${d};'Cheques Emitidos'!$I$2:$I$400;"<="&${h})`,
     nota: 'Los cheques propios que el banco ya debitó, contra los que la pestaña marca DEBITADO = SI en esos días.',
+    // LA DIFERENCIA DE ESTE GRUPO SE PUEDE ACCIONAR, así que se lista. Un desvío de $899.154 no le
+    // sirve a nadie; "el cheque 218 de Corralón Progreso, $200.000, con fecha 07/07" sí. Son cheques
+    // que el banco ya cobró y la pestaña sigue mostrando pendientes: la disponibilidad neta los
+    // resta como compromiso futuro cuando la plata ya salió, así que la caja se ve peor de lo que es.
+    detalle: () => '=IFERROR(TEXTJOIN("   ·   ";1;ARRAYFORMULA(IF((UPPER(\'Cheques Emitidos\'!$K$2:$K$400)<>"SI")*ISNUMBER(\'Cheques Emitidos\'!$I$2:$I$400)*(\'Cheques Emitidos\'!$I$2:$I$400>=' + VENTANA.desde + ')*(\'Cheques Emitidos\'!$I$2:$I$400<=' + VENTANA.hasta + ')*ISNUMBER(\'Cheques Emitidos\'!$F$2:$F$400);"N° "&\'Cheques Emitidos\'!$B$2:$B$400&" "&\'Cheques Emitidos\'!$E$2:$E$400&" "&TEXT(\'Cheques Emitidos\'!$F$2:$F$400;"$#,##0");"")));"")',
+    detalleNota: 'Cheques con fecha de pago dentro de la ventana del extracto que la pestaña NO marca como debitados. Si el banco ya los cobró, hay que marcarlos: mientras figuren pendientes, la disponibilidad neta los descuenta como si la plata todavía estuviera.',
   },
   {
     naturaleza: 'Pago de la tarjeta',

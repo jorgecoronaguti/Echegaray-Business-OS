@@ -53,3 +53,20 @@ test('ningún grupo queda sin pestaña dueña', () => {
 test('cada grupo dice qué significa la comparación', () => {
   for (const g of GRUPOS) assert.ok(g.nota && g.nota.length > 30, `${g.naturaleza} sin nota`)
 })
+
+/** Quita los literales entre comillas: lo que queda es la sintaxis de la fórmula. */
+const sinLiterales = (f) => String(f).replace(/"(?:[^"]|"")*"/g, '""')
+
+test('el grupo de cheques trae detalle accionable, no sólo un total', () => {
+  // Un desvío de $899.154 no le sirve a nadie; "N° 218 Corralón Progreso $200.000" se resuelve en
+  // dos minutos. El detalle lista los cheques que el banco debitó y la pestaña no marca.
+  const g = GRUPOS.find((x) => x.naturaleza === 'Cheques y echeq')
+  assert.ok(typeof g.detalle === 'function', 'el grupo de cheques tiene que traer detalle')
+  const f = g.detalle()
+  assert.ok(f.includes('Cheques Emitidos'), 'lee la pestaña de cheques')
+  assert.ok(f.includes('<>"SI"'), 'sólo los NO debitados')
+  // La coma sólo se prohíbe FUERA de un literal: dentro de un patrón como "$#,##0" es correcta y
+  // necesaria —los patrones de formato de Sheets usan siempre la coma para los miles, sin importar
+  // el locale—. Chequear la cadena entera marcaba como error una fórmula bien escrita.
+  assert.ok(!sinLiterales(f).includes(','), `es-AR: coma fuera de un literal en ${f}`)
+})

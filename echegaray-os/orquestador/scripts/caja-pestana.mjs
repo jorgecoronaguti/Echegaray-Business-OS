@@ -625,6 +625,9 @@ function grilla(cargado, refs) {
     const dif = gr.formula ? `=${C_PESOS}${f}-${C_IMP}${f}` : ''
     push([gr.naturaleza, '', banco, '', pest, dif, '',
       gr.pestana ? `${gr.pestana} — ${gr.nota}` : gr.nota])
+    // EL DETALLE VA DEBAJO DE SU GRUPO, cuando la diferencia se puede accionar. Un desvío con un
+    // total no le sirve a nadie; con el número de cheque y el proveedor se resuelve en dos minutos.
+    if (gr.detalle) push(['   · cuáles son', '', '', '', gr.detalle(), '', '', gr.detalleNota ?? ''])
   }
   const n1 = filas.length
   push(['⇒ TOTAL QUE SALIÓ DE LA CUENTA', '', `=SUM(${C_IMP}${n0}:${C_IMP}${n1})`, '', '', '', '',
