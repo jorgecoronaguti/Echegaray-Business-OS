@@ -28,6 +28,7 @@ export const PASOS = [
   ['proveedores-materiales-pestana.mjs', 'Proveedores (Deuda · Cuenta Corriente · Control y ARCA) + Materiales', ['Proveedores — Deuda', 'Proveedores — Cuenta Corriente', 'Materiales', 'Proveedores — Control y ARCA']],
   ['estructura-pestana.mjs', 'pestaña Estructura con su proyección', ['Estructura']],
   ['impuestos-pestana.mjs', 'Impuestos y Financieros — IVA real de ARCA', ['Impuestos y Financieros']],
+  ['f931-sheet.mjs', 'Cargas Sociales — las DDJJ F931 leídas del PDF (_F931_RAW + bloque 1)', ['Cargas Sociales', '_F931_RAW']],
   ['cargas-planes.mjs', 'Cargas Sociales — planes de pago', ['Cargas Sociales']],
   // Va DESPUÉS de los planes: la proyección ubica su bloque por rótulo y necesita la pestaña
   // ya escrita para no calcular sobre una geometría que está por cambiar.

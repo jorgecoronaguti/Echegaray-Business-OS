@@ -73,7 +73,7 @@ import { FAMILIAS, SIN_FAMILIA, formulaFamilia, familiaDeMaterial, RUBROS_CON_FA
 import { NOMBRES } from '../lib/sheet-pestanas.mjs'
 import { partir, filasHuerfanas, ref as refPestana } from '../lib/partir-pestana.mjs'
 import { ESTADO_DEUDA, MODALIDADES } from '../lib/cuentas-por-pagar.mjs'
-import { formulaOrden, formulaOrdenSinFecha, celdaDeuda, COL as ORDEN } from '../lib/orden-deuda.mjs'
+import { formulaOrden, formulaOrdenSinFecha, celdaDeuda, formulaComercial, COL as ORDEN } from '../lib/orden-deuda.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
 import { normComprobante, esLlaveUtil } from '../lib/cheques-cobertura.mjs'
 import { sumar, signo, esNotaDeCredito } from '../lib/comprobante-arca.mjs'
@@ -114,7 +114,8 @@ const CH = "'Cheques Emitidos'"
 /** Qué columna de Compras alimenta cada columna de la tabla de deuda. '' = la calcula otra fórmula.
  *  El orden es el que ve el dueño: fecha de pago, proveedor, comprobante, fecha factura, modalidad,
  *  importe, obra, y las dos últimas que se buscan en Cheques Emitidos. */
-const COL_DEUDA = ['$E', '$AD', '$H', '$C', '$F', '$O', '$J', '', '']
+/** Columna de Compras + si el dato es TEXTO (y hay que blindarlo contra la coacción de formato). */
+const COL_DEUDA = [['$E', true], ['$AD', false], ['$H', 'comprobante'], ['$C', false], ['$F', true], ['$O', false], ['$J', true], null, null]
 
 /** Los rubros que hacen que un proveedor sea COMERCIAL. Sueldos, ARCA o el banco no son proveedores
  *  a los que se les pueda pedir plazo, y mezclarlos tapa a los que sí. */
@@ -175,8 +176,17 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   // El total va ARRIBA de la tabla y no abajo: la tabla es de alto variable y un total al pie
   // quedaría flotando lejos, o pisado. Y es la MISMA fórmula que el control del bloque 7, así que
   // los dos números no pueden discrepar.
-  push(['TOTAL ADEUDADO HOY', `=SUMIFS(${COL_TOTAL};${COL_ESTADO};"${ESTADO_DEUDA}")`, '', '', '',
-    'Tiene que dar igual que "Deuda total con terceros", en el bloque de control, y que la suma de la columna Importe de acá abajo.'])
+  // ═══ ACÁ SÓLO VA LA DEUDA CON PROVEEDORES COMERCIALES ═══
+  //
+  // El dueño, 21/07: "ARCA no es proveedor, quitar de esa pestaña y reflejar esta info únicamente
+  // donde corresponde, que es Impuestos y Financieros". Esta tabla mostraba las tres cuotas del plan
+  // de pago F931 que YA están desglosadas allá — el mismo egreso leído en dos lugares, que es lo que
+  // la regla 4 prohíbe. Un plan de pago de impuestos no es alguien a quien pedirle plazo.
+  const soloComercial = `${COL_TOTAL};${COL_ESTADO};"${ESTADO_DEUDA}";Compras!$AJ$4:$AJ;1`
+  push(['TOTAL ADEUDADO A PROVEEDORES', `=SUMIFS(${soloComercial})`, '', '', '',
+    'Sólo proveedores comerciales. Tiene que dar igual que la suma de la columna Importe de acá abajo.'])
+  push(['  · y además se le debe a ARCA y a la nómina', `=SUMIFS(${COL_TOTAL};${COL_ESTADO};"${ESTADO_DEUDA}")-SUMIFS(${soloComercial})`, '', '', '',
+    'Planes de pago de ARCA, impuestos y cargas sociales. NO se listan acá: su detalle, cuota por cuota, está en "Impuestos y Financieros" y en "Cargas Sociales". Repetirlos sería contar el mismo egreso dos veces.'])
   // EL ORDEN DE LAS COLUMNAS NO ES ESTÉTICO: las SEIS primeras las derrama el QUERY y tienen que
   // estar en el mismo orden que el "select". Las dos últimas son búsquedas y van DESPUÉS del
   // derrame — ponerlas en el medio bloquea el spill entero con un #REF! (pasó, 21/07).
@@ -227,7 +237,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   const reserva = Math.max(nDeuda - nSinFecha, 1) + COLCHON_DEUDA
   for (let i = 0; i < reserva; i++) {
     const r = filas.length + 1
-    push(COL_DEUDA.map((c) => (c ? celdaDeuda(c, r, doc0) : '')))
+    push(COL_DEUDA.map((c) => (c ? celdaDeuda(c[0], r, doc0, ORDEN.orden, c[1]) : '')))
   }
   const doc1 = filas.length
   // El instrumento no puede salir del QUERY (vive en otra pestaña), así que se busca POR EL
@@ -241,12 +251,12 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   // Ordenado por MONTO, que es el otro criterio que pidió el dueño. Va acá y no arriba porque una
   // factura sin fecha no compite por urgencia con una que vence el martes: compite por tamaño.
   const fSinFecha = push(['⚠ Y ESTAS NO TIENEN FECHA DE PAGO — no caen en ninguna semana del cash flow',
-    `=SUMIFS(${COL_TOTAL};${COL_ESTADO};"${ESTADO_DEUDA}")-SUM($F$${doc0}:$F$${doc1})`, '', '', '',
+    `=SUMIFS(${soloComercial})-SUM($F$${doc0}:$F$${doc1})`, '', '', '',
     'Estas filas no tienen FECHA DE CAJA (Compras, columna AD), que es la que usa el cash flow para ubicar el pago en una semana. Mientras siga vacía, el cuadro no las espera nunca. Aparte, hay once facturas con la palabra "Pendiente" escrita en la columna "Fecha prevista de pago" en vez de una fecha: es un defecto de carga, pero ésas sí tienen fecha de caja y el cash flow las ve.'])
   const sf0 = filas.length + 1
   for (let i = 0; i < Math.max(nSinFecha, 1) + 1; i++) {
     const r = filas.length + 1
-    push(COL_DEUDA.map((c) => (c ? celdaDeuda(c, r, sf0, ORDEN.ordenSinFecha) : '')))
+    push(COL_DEUDA.map((c) => (c ? celdaDeuda(c[0], r, sf0, ORDEN.ordenSinFecha, c[1]) : '')))
   }
   // NO SE RESERVAN FILAS VACÍAS ADEMÁS DE ÉSTAS. Cuando la tabla la llenaba un QUERY por derrame
   // había que dejarle lugar; ahora cada fila es una fórmula que devuelve "" si no le toca factura,
@@ -371,6 +381,9 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   push([])
   push(['Sin describir — plata que no se sabe en qué se gastó', `=SUMIF(${COL_FAMILIA};"${SIN_FAMILIA}";${COL_TOTAL})`, 'Filas que dicen "materiales varios", "???" o están vacías. No se les inventa familia: hay que describirlas en Compras.'])
   const fCuenta1 = push(['Sin describir — cuántas facturas son', `=COUNTIF(${COL_FAMILIA};"${SIN_FAMILIA}")`, ''])
+  const fCompFecha = push(['⚠ N° de comprobante que Sheets guardó como FECHA',
+    '=SUMPRODUCT((Compras!$E$4:$E<>"")*ISNUMBER(Compras!$H$4:$H))',
+    '⚠ Se escribió "5-4163" y Sheets lo leyó como mayo de 4163: la celda guarda 826666. Se ve bien por el formato, pero el número dejó de ser un texto y ya no cruza contra Cheques Emitidos ni contra ARCA. Se arregla en Compras poniendo un apóstrofo delante.'])
   const fCuenta2 = push(['Facturas de proveedor sin N° de comprobante — cuántas son', `=SUMPRODUCT((${COL_PROV}<>"")*(Compras!$H$4:$H="")*(${COL_TOTAL}<>0))`,
     '⚠ Sin número no se puede ligar un pago a su factura, ni hoy ni nunca. Es lo que hace que 40 de los 89 cheques no se puedan imputar.'])
   push(['Facturas de proveedor sin N° de comprobante — cuánta plata', `=SUMPRODUCT((${COL_PROV}<>"")*(Compras!$H$4:$H="")*IF(ISNUMBER(${COL_TOTAL});${COL_TOTAL};0))`, ''])
@@ -506,7 +519,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
     ? c.replaceAll('$TOTFAM', String(totFam)).replaceAll('$TOTPROV', String(fTotProv)).replaceAll('$TOTDEUDA', String(fTotProv))
     : c)))
 
-  return { filas: resuelto, cabArca, marcas: { b1, b2, b3, b4, b5, b6, b7, b8, fin: filas.length }, fSinFecha, sf0, sf1, cuentas: [fCuenta1, fCuenta2], doc0, doc1, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
+  return { filas: resuelto, cabArca, marcas: { b1, b2, b3, b4, b5, b6, b7, b8, fin: filas.length }, fSinFecha, sf0, sf1, cuentas: [fCuenta1, fCuenta2], fCompFecha, doc0, doc1, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
 }
 
 async function main() {
@@ -704,16 +717,19 @@ async function main() {
   const ultimaCompras = Math.min(hojaCompras.rows ?? 800, 900)
   const orden = []
   for (let f = 4; f <= ultimaCompras; f++) orden.push([formulaOrden(f, ESTADO_DEUDA), formulaOrdenSinFecha(f, ESTADO_DEUDA)])
-  if ((hojaCompras.cols ?? 0) < 33) await google.spreadsheetBatchUpdate(ID, [{ appendDimension: { sheetId: hojaCompras.sheetId, dimension: 'COLUMNS', length: 33 - (hojaCompras.cols ?? 0) } }])
+  if ((hojaCompras.cols ?? 0) < 36) await google.spreadsheetBatchUpdate(ID, [{ appendDimension: { sheetId: hojaCompras.sheetId, dimension: 'COLUMNS', length: 36 - (hojaCompras.cols ?? 0) } }])
   await google.batchUpdateValues(ID, [
-    { range: 'Compras!AF3:AG3', values: [['Orden de pago (OS)', 'Orden sin fecha (OS)']] },
-    { range: 'Compras!AF4', values: orden },
+    { range: 'Compras!AH3:AJ3', values: [['Orden de pago (OS)', 'Orden sin fecha (OS)', '¿Proveedor comercial? (OS)']] },
+    { range: 'Compras!AH4', values: orden },
+    // Una sola fórmula que derrama: la definición de "proveedor comercial" vive en la columna donde
+    // vive el dato, no repetida dentro de cada fórmula de orden.
+    { range: 'Compras!AJ4', values: [[formulaComercial(RUBROS_COMERCIALES)]] },
   ])
   await google.spreadsheetBatchUpdate(ID, [
-    { repeatCell: { range: { sheetId: hojaCompras.sheetId, startRowIndex: 2, endRowIndex: 3, startColumnIndex: 31, endColumnIndex: 33 }, cell: { userEnteredFormat: E.encabezado() }, fields: 'userEnteredFormat' } },
-    { repeatCell: { range: { sheetId: hojaCompras.sheetId, startRowIndex: 3, endRowIndex: ultimaCompras, startColumnIndex: 31, endColumnIndex: 33 }, cell: { userEnteredFormat: E.celda('cantidad') }, fields: 'userEnteredFormat(numberFormat,textFormat,horizontalAlignment)' } },
+    { repeatCell: { range: { sheetId: hojaCompras.sheetId, startRowIndex: 2, endRowIndex: 3, startColumnIndex: 33, endColumnIndex: 36 }, cell: { userEnteredFormat: E.encabezado() }, fields: 'userEnteredFormat' } },
+    { repeatCell: { range: { sheetId: hojaCompras.sheetId, startRowIndex: 3, endRowIndex: ultimaCompras, startColumnIndex: 33, endColumnIndex: 36 }, cell: { userEnteredFormat: E.celda('cantidad') }, fields: 'userEnteredFormat(numberFormat,textFormat,horizontalAlignment)' } },
   ])
-  console.log(`  Compras: columnas de orden AF/AG escritas para ${orden.length} filas`)
+  console.log(`  Compras: columnas de orden AH/AI escritas para ${orden.length} filas`)
 
   // ═══ LA PARTICIÓN ═══════════════════════════════════════════════════════════════════════════
   //
@@ -993,18 +1009,26 @@ async function formatear(google, sheetId, g, ancho, filas) {
   // las MISMAS columnas que la de arriba, así que si sólo se formatea la primera, la segunda hereda
   // el formato moneda de la columna entera y las fechas salen como "$46.198". Pasó, se vio en la
   // pantalla y por eso las dos van juntas en este bucle en vez de repetidas a mano.
+  // ═══ EL FORMATO SIGUE AL ORDEN DE LAS COLUMNAS, Y ESTO YA FALLÓ UNA VEZ ═══
+  //
+  // Al unificar las pestañas, la tabla de deuda pasó a arrancar por Proveedor en vez de por Fecha de
+  // pago. Los formatos quedaron donde estaban y el resultado fue mudo pero grave: el comprobante
+  // "5-4163" cayó en una celda con formato de FECHA y se mostró como 826666 —el número de serie del
+  // año 4163—, y la fecha de pago cayó en una de TEXTO y se mostró como 46108.
+  //
+  // Ninguno de los dos cambia un total en un peso, y por eso ningún control que suma los ve. Por eso
+  // cada columna DECLARA su unidad acá, en el mismo orden que COL_DEUDA, en vez de repartirse en
+  // cinco llamadas con índices sueltos.
+  const UNIDAD_DEUDA = ['texto', 'fecha', 'texto', 'fecha', 'texto', 'moneda', 'texto', 'texto', 'texto']
   for (const [a, b] of [[g.doc0, g.doc1], [g.sf0, g.sf1]]) {
-    fmt({ ...r(a - 1, b, 0, 1) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.textFormat',
-      { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER', textFormat: { bold: true } })
-    fmt({ ...r(a - 1, b, 3, 4) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-      { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER' })
-    fmt({ ...r(a - 1, b, 1, 3) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-      { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' })
-    fmt({ ...r(a - 1, b, 4, 5) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-      { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'CENTER' })
-    fmt({ ...r(a - 1, b, 6, 9) }, 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment',
-      { numberFormat: { type: 'TEXT' }, textFormat: { fontSize: 9 }, horizontalAlignment: 'LEFT' })
+    UNIDAD_DEUDA.forEach((unidad, j) => {
+      fmt({ ...r(a - 1, b, j, j + 1) }, 'userEnteredFormat(numberFormat,textFormat,horizontalAlignment)',
+        E.celda(unidad, j >= 7 ? { alineacion: 'LEFT' } : {}))
+    })
+    // El proveedor, en negrita: es la primera columna y la que ordena la lectura.
+    fmt({ ...r(a - 1, b, 0, 1) }, 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontFamily: E.FUENTE, fontSize: E.TAM.cuerpo } })
   }
+
   // ── LOS DEFECTOS DE PANTALLA QUE ENCONTRÓ auditar-pantalla.mjs (21/07) ───────────────────────
   //
   // Todos son celdas que quedaron con el formato MONEDA que se aplica a la columna entera al
@@ -1052,6 +1076,7 @@ async function formatear(google, sheetId, g, ancho, filas) {
   g.filas.forEach((f, i) => { if (/^⇒/.test(String(f[0] ?? ''))) fmt(r(i, i + 1, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true } }) })
   // UN CONTADOR NO ES PLATA. "46 facturas" dibujado como "$46" se lee como cuarenta y seis pesos.
   for (const f of g.cuentas) fmt(r(f - 1, f, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '0" facturas"' } })
+  if (g.fCompFecha) fmt(r(g.fCompFecha - 1, g.fCompFecha, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '0" comprobantes"' } })
   // El plazo ponderado son días, no pesos: es la última fila del bloque de control.
   fmt(r(filas - 1, filas, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '0.0" días"' } })
 
