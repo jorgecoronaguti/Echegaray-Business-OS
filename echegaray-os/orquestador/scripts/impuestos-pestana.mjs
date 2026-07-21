@@ -109,27 +109,68 @@ function grilla(iva, planes, iibb, ret) {
     'Retenciones de IVA sufridas', 'Saldo a favor que venía', 'A PAGAR', 'Saldo a favor que queda',
     'Comprobantes (vta/cpa)', 'Origen'])
   const f0 = filas.length + 1
+  // ═══ TODO EL CUADRO ES FÓRMULA — NI UN NÚMERO PEGADO (21/07) ═══
+  //
+  // Hasta hoy estas doce filas eran `Math.round(m.debito_fiscal)`: el OS calculaba la posición de
+  // IVA en JavaScript y pegaba el resultado. El dueño lo detectó abriendo una celda: "la pestaña no
+  // es un documento que se actualice de manera automática, esto me genera dudas respecto a TODO el
+  // sheet". El censo le dio la razón — 21 fórmulas contra 136 números pegados en esta sola pestaña.
+  //
+  // La causa era estructural: los comprobantes de ARCA viven en Postgres y el Sheet no los tenía, así
+  // que no había con qué escribir la fórmula. Se resolvió trayendo el INSUMO (la pestaña _ARCA_RAW,
+  // 459 comprobantes con su fecha de corte) en vez de seguir pegando el RESULTADO.
+  //
+  // Ahora cada celda se recalcula sola: se carga un comprobante nuevo en ARCA, el agente refresca
+  // _ARCA_RAW y el cuadro cambia sin que nadie toque nada.
+  const R = "_ARCA_RAW"
+  const nReales0 = iva.filter((m) => m.disponible).length
+  const fReal1 = f0 + nReales0 - 1
+  // El signo sale de la columna F de la réplica: una nota de crédito lleva −1 y una factura +1. Si
+  // el código no se reconoce, la columna queda vacía y la fila NO se suma — asumir que sumaba fue el
+  // error que costó $41,9M.
+  const sumaArca = (per, libro, colImporte) =>
+    `SUMPRODUCT((${R}!$A$4:$A="${per}")*(${R}!$B$4:$B="${libro}")`
+    + `*IF(ISNUMBER(${R}!$F$4:$F);${R}!$F$4:$F;0)`
+    + `*IF(ISNUMBER(${R}!$${colImporte}$4:$${colImporte});${R}!$${colImporte}$4:$${colImporte};0))`
+  // El factor de inflación NO se pega: se busca en el bloque "ÍNDICES PARA PROYECTAR" de Parámetros,
+  // que declara su fuente (REM del BCRA). Es el mismo que ya usan Estructura y Recurrentes.
+  const factor = (mes) => `IFERROR(INDEX(Parámetros!$C$74:$C$79;MATCH(DATE(${AÑO};${mes};1);Parámetros!$A$74:$A$79;0));1)`
+
   for (const m of iva) {
     const i = Number(m.periodo.slice(5, 7)) - 1
-    if (!m.disponible && !m.es_proyeccion) { push([`${MES[i]}-26`, '', '', '', '', '', '', '', 'sin comprobantes cargados']); continue }
+    const mes = i + 1
+    const r = filas.length + 1
+    if (!m.disponible && !m.es_proyeccion) { push([`${MES[i]}-26`, '', '', '', '', '', '', '', '', 'sin comprobantes cargados']); continue }
+    const previo = r === f0 ? '' : `=$H${r - 1}`
     push([
       `${MES[i]}-26`,
-      Math.round(m.debito_fiscal ?? 0),
-      Math.round(m.credito_fiscal ?? 0),
-      Math.round(m.posicion ?? 0),
-      Math.round(m.retenciones ?? 0),
-      Math.round(m.saldo_previo ?? 0),
-      m.a_pagar_real == null ? '' : Math.round(m.a_pagar_real),
-      Math.round(m.saldo_queda ?? 0),
-      m.es_proyeccion ? '—' : `${m.n_ventas ?? 0} / ${m.n_compras ?? 0}`,
-      m.es_proyeccion ? `PROYECCIÓN · ${m.metodo}` : 'ARCA — comprobantes reales',
+      m.disponible
+        ? `=${sumaArca(m.periodo, 'Ventas', 'L')}`
+        // Sin comprobantes todavía: el ritmo real de los meses cerrados, ajustado por inflación.
+        : `=AVERAGE($B$${f0}:$B$${fReal1})*${factor(mes)}`,
+      m.disponible
+        ? `=${sumaArca(m.periodo, 'Compras', 'L')}`
+        // El crédito lleva la MISMA inflación que el débito: la posición es una resta y ajustar un
+        // solo lado la hace crecer por una razón que no existe.
+        : `=AVERAGE($C$${f0}:$C$${fReal1})*${factor(mes)}`,
+      `=$B${r}-$C${r}`,
+      // Las retenciones de IVA sufridas salen de Cobranzas columna X, imputadas al mes del COBRO
+      // (que es el período de la retención), no al de la factura.
+      `=SUMPRODUCT((YEAR(Cobranzas!$Q$5:$Q$400)=${AÑO})*(MONTH(Cobranzas!$Q$5:$Q$400)=${mes})*IF(ISNUMBER(Cobranzas!$X$5:$X$400);Cobranzas!$X$5:$X$400;0))`,
+      previo,
+      // El orden importa: primero se descuenta lo ya pagado por retención, después el saldo a favor.
+      `=MAX(0;$D${r}-$E${r}-IF($F${r}="";0;$F${r}))`,
+      `=MAX(0;IF($F${r}="";0;$F${r})-($D${r}-$E${r}))`,
+      m.disponible
+        ? `=COUNTIFS(${R}!$A$4:$A;"${m.periodo}";${R}!$B$4:$B;"Ventas")&" / "&COUNTIFS(${R}!$A$4:$A;"${m.periodo}";${R}!$B$4:$B;"Compras")`
+        : '—',
+      m.es_proyeccion ? `PROYECCIÓN · ritmo real de ${nReales0} meses × inflación de Parámetros` : `ARCA — fórmula sobre ${R}`,
     ])
   }
   const f1 = filas.length
   // Dónde termina lo REAL y dónde empieza la proyección. Hace falta para poder medir la tasa de
   // retención sobre los meses que de verdad ocurrieron y aplicarla al escenario de abajo.
-  const nReales = iva.filter((m) => m.disponible).length
-  const fReal1 = f0 + nReales - 1
+  const nReales = nReales0
   const fProy0 = fReal1 + 1
   const tot = push(['TOTAL 2026',
     `=SUM(B${f0}:B${f1})`, `=SUM(C${f0}:C${f1})`, `=SUM(D${f0}:D${f1})`, `=SUM(E${f0}:E${f1})`, '',
