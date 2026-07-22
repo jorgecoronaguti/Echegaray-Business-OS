@@ -57,7 +57,7 @@ export const GRUPOS = [
   {
     naturaleza: 'Transferencias a proveedores',
     pestana: 'Compras',
-    formula: (d, h) => `SUMIFS(Compras!$O$4:$O$800;Compras!$AD$4:$AD$800;">="&${d};Compras!$AD$4:$AD$800;"<="&${h})`,
+    formula: (d, h) => `SUMIFS(Compras!$O$4:$O;Compras!$AD$4:$AD;">="&${d};Compras!$AD$4:$AD;"<="&${h})`,
     nota: '⚠ Compara contra TODAS las compras con fecha de caja en la ventana, no sólo las pagadas por transferencia: la pestaña no distingue el medio de pago. Sirve como orden de magnitud, no como cuadre exacto.',
   },
   {

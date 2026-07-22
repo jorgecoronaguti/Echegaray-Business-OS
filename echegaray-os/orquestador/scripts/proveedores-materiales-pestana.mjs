@@ -527,7 +527,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
-  const compras = (await google.readSheetValues(ID, 'Compras!A4:AE800')).filter((f) => parseMonto(f?.[14]))
+  const compras = (await google.readSheetValues(ID, 'Compras!A4:AE')).filter((f) => parseMonto(f?.[14]))
 
   // LOS PROVEEDORES SALEN DEL DATO, no de una lista mía: si mañana aparece uno nuevo y grande, entra
   // solo. Comercial = tiene al menos una compra en un rubro al que se le puede pedir plazo.
@@ -717,7 +717,9 @@ async function main() {
   // el derrame de un QUERY. Van fila por fila y no con ARRAYFORMULA porque el desempate necesita un
   // rango que CRECE con la fila: dos facturas que vencen el mismo día tienen que recibir puestos
   // distintos, o la tabla mostraría una dos veces y otra ninguna.
-  const ultimaCompras = Math.min(hojaCompras.rows ?? 800, 900)
+  // Sigue la grilla real de Compras: si la carga masiva de comprobantes crece la hoja, las columnas
+  // de orden de la deuda (AH/AI) tienen que llegar hasta la última fila o la deuda nueva no ordena.
+  const ultimaCompras = hojaCompras.rows ?? 934
   const orden = []
   for (let f = 4; f <= ultimaCompras; f++) orden.push([formulaOrden(f, ESTADO_DEUDA), formulaOrdenSinFecha(f, ESTADO_DEUDA)])
   if ((hojaCompras.cols ?? 0) < 36) await google.spreadsheetBatchUpdate(ID, [{ appendDimension: { sheetId: hojaCompras.sheetId, dimension: 'COLUMNS', length: 36 - (hojaCompras.cols ?? 0) } }])

@@ -47,7 +47,7 @@ async function main() {
   for (const t of porTipo()) console.log(`  ${t.tipo.padEnd(38)}${String(t.cantidad).padStart(3)} mov  ${ars(t.monto).padStart(16)}`)
 
   // ── CONTRA COMPRAS ────────────────────────────────────────────────────────────────────────────
-  const compras = await google.readSheetValues(ID, 'Compras!A4:AD800')
+  const compras = await google.readSheetValues(ID, 'Compras!A4:AD')
   const enVentana = compras.filter((f) => {
     const d = parseFecha(f?.[29])
     return d && d >= DESDE && d < HASTA

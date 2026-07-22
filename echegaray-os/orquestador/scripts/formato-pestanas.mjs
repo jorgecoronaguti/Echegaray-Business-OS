@@ -45,7 +45,7 @@ const SOLO_AUDITAR = process.argv.includes('--auditar')
  */
 export const PESTANAS = [
   { titulo: 'RESUMEN', congeladas: 0, hastaFila: 80, cols: 14 },
-  { titulo: 'Compras', congeladas: 3, hastaFila: 800, cols: 32, carga: true },
+  { titulo: 'Compras', congeladas: 3, hastaFila: 1000, cols: 32, carga: true },
   { titulo: 'Cobranzas', congeladas: 4, hastaFila: 400, cols: 60, carga: true },
   { titulo: 'Cheques Emitidos', congeladas: 2, hastaFila: 200, cols: 14, carga: true },
   { titulo: 'Tarjeta de Credito', congeladas: 2, hastaFila: 120, cols: 14, carga: true },

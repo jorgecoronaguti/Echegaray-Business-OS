@@ -55,7 +55,7 @@ const ref = (nombre) => `=${nombre}`
 async function leer(google) {
   const hojas = await google.getSheetMeta(ID)
   const CH = hallarPestana(hojas, 'Cheques').title
-  const compras = await google.readSheetValues(ID, 'Compras!A4:AD800')
+  const compras = await google.readSheetValues(ID, 'Compras!A4:AD')
   // La llave: el número de comprobante de la factura. Es lo único que comparten las tres planillas.
   const enCompras = new Set(
     compras.filter((f) => num(f?.[14]) > 0).map((f) => normComprobante(f?.[7])).filter(esLlaveUtil),
