@@ -97,14 +97,16 @@ function grilla(iva, planes, iibb, ret) {
   const push = (c = []) => { const r = [...c]; while (r.length < ANCHO) r.push(''); filas.push(r); return filas.length }
   const hoy = new Date().toISOString().slice(0, 10)
 
-  push(['IMPUESTOS Y FINANCIEROS'])
-  push([`Al ${hoy} · en pesos · IVA de ARCA · IIBB de las DDJJ de Rentas · planes y financiero de Compras`])
+  push(['ECHEGARAY CONSTRUCCIONES · IMPUESTOS Y FINANCIERO'])
+  push(['Posición impositiva y financiera'])
+  push([`Al ${hoy} · en pesos`])
+  push(['Fuentes: IVA de ARCA · IIBB de las DDJJ de Rentas (Drive) · prendario del extracto Santander · planes F931 y compras de la pestaña Compras · retenciones de Cobranzas'])
   push()
-  // HERO — la posición fiscal de un vistazo. Se RESERVA acá y se llena al final con las cifras que
-  // calculan los bloques de abajo (referencias, no números pegados). Menos es más: lo primero que se
-  // ve es cuánto se tiene a favor y cuánto se debe, no una tabla de doce meses por diez columnas.
+  // HERO — DOS PANELES: a favor del fisco (inmovilizado, recuperable) vs deuda financiera (a pagar).
+  // Se RESERVA acá y se llena al final con referencias a las celdas de los bloques de abajo (ni un
+  // número pegado). Menos es más: lo primero que se ve es cuánto se tiene a favor y cuánto se debe.
   const heroBase = filas.length
-  push(); push(); push(); push()
+  for (let k = 0; k < 6; k++) push()
 
   // ── 1. IVA ──────────────────────────────────────────────────────────────────────────────────────
   push(['1. IVA — posición mensual, con el saldo a favor arrastrado'])
@@ -254,28 +256,33 @@ function grilla(iva, planes, iibb, ret) {
     'Da $0, y esta vez está BIEN que dé $0: con saldo a favor no hay nada que pagar. El día que el saldo se agote, va a haber que cargarlo acá.'])
   push()
 
-  // ── 3. PLANES DE PAGO ───────────────────────────────────────────────────────────────────────────
-  push(['3. PLANES DE PAGO DE DEUDA PREVISIONAL — F931 viejos financiados'])
-  push(['Plan', 'Cuotas cargadas', 'Monto por cuota', 'Total cargado', 'Primera', 'Última', '', '', 'Origen'])
+  // ── PLANES DE PAGO F931 (detalle) — de acá salen las cifras de la deuda financiera de abajo ──────
+  push(['Planes de pago F931 — detalle'])
+  push(['Plan', 'Cuotas', 'Monto por cuota', 'Total', 'Primera', 'Última', '', '', 'Origen'])
   const p0 = filas.length + 1
   // El total por plan es cuotas × monto de cuota: fórmula, no pegado. Cuotas y monto salen del rubro
   // "Deuda previsional" de Compras (agregación del OS por plan) y se declaran en la columna Origen.
   planes.forEach((p, k) => push([p.nombre, p.cuotas, p.monto_cuota, `=B${p0 + k}*C${p0 + k}`, p.primera ?? '', p.ultima ?? '', '', '', 'Compras, rubro "Deuda previsional (planes de pago)"']))
   const p1 = filas.length
   const fTotalPlanes = push(['TOTAL PLANES', `=SUM(B${p0}:B${p1})`, '', `=SUM(D${p0}:D${p1})`, '', '', '', '', ''])
-  const fCtrlP = filas.length + 1
-  push(['⇒ Control contra Compras', '=SUMIF(Compras!$AC$4:$AC;"Deuda previsional (planes de pago)";Compras!$O$4:$O)', '', `=$B${fCtrlP}-$D${fCtrlP - 1}`, '', '', '', '',
-    'La columna D tiene que dar $0: si no, hay cuotas que esta tabla no está viendo.'])
   push()
 
-  // ── 4. FINANCIERO ───────────────────────────────────────────────────────────────────────────────
-  push(['4. FINANCIERO — préstamos y créditos'])
-  push(['Concepto', 'Total del año', 'Cuotas', '', '', '', '', '', 'Origen'])
-  const b0 = filas.length + 1
-  push(['Crédito prendario — Camioneta Ford XLS',
-    '=SUMIF(Compras!$AC$4:$AC;"Financiero";Compras!$O$4:$O)',
-    '=COUNTIF(Compras!$AC$4:$AC;"Financiero")', '', '', '', '', '',
-    'Compras, rubro "Financiero". Cuotas 15 a 26 de 2026.'])
+  // ── 3. DEUDA FINANCIERA — planes previsionales + prendario del rodado ────────────────────────────
+  //
+  // Junta lo que se DEBE con instrumento financiero. El prendario es el punto que faltaba conectar:
+  // la CUOTA sale del BANCO (el débito real del extracto, _BANCO_RAW), la DEUDA del año de lo cargado
+  // en Compras (rubro Financiero). Los planes, de su detalle de arriba.
+  push(['3. DEUDA FINANCIERA — lo que se debe y con qué cuota'])
+  push(['Concepto', 'Cuotas', 'Cuota', 'Deuda', '', '', '', '', 'Origen'])
+  const fPlanLinea = push([`Planes previsionales F931 (${planes.length})`, `=B${fTotalPlanes}`, '', `=D${fTotalPlanes}`, '', '', '', '',
+    'Detalle arriba · Compras rubro "Deuda previsional"'])
+  const fPrend = push(['Prendario Ford XLS · Santander',
+    '=COUNTIF(Compras!$AC$4:$AC;"Financiero")',
+    `=ABS(SUMIF('_BANCO_RAW'!$F$4:$F;"Préstamo prendario";'_BANCO_RAW'!$C$4:$C))`,
+    '=SUMIF(Compras!$AC$4:$AC;"Financiero";Compras!$O$4:$O)', '', '', '', '',
+    'Cuota: extracto Santander · Deuda del año: Compras rubro "Financiero" (cuotas 15–26/2026)'])
+  const fDeudaTot = push(['TOTAL DEUDA FINANCIERA', '', '', `=D${fPlanLinea}+D${fPrend}`, '', '', '', '', ''])
+  const b0 = fPrend // ancla para el formato de "cuotas" (cantidad, no plata)
   push()
 
   // ── 5. LO QUE FALTA ─────────────────────────────────────────────────────────────────────────────
@@ -287,15 +294,20 @@ function grilla(iva, planes, iibb, ret) {
   // los bloques (saldo a favor de IVA, de IIBB, deuda de planes, retenciones adelantadas): ni un
   // número pegado, y se recalcula solo cuando cambia cualquiera de esos bloques.
   const heroRows = [
-    ['POSICIÓN FISCAL — HOY'],
-    ['Saldo a favor de IVA', '', 'Saldo a favor de IIBB', '', 'Deuda en planes de pago', '', 'Retenciones adelantadas'],
-    [`=B${fSaldoIVA}`, '', `=B${fSaldoIIBB}`, '', `=D${fTotalPlanes}`, '', `=B${fRetTotal}`],
-    [],
+    ['A FAVOR DEL FISCO · INMOVILIZADO', '', '', '', '', 'A PAGAR · DEUDA FINANCIERA'],
+    ['', `=B${fSaldoIVA}+B${fSaldoIIBB}+B${fRetTotal}`, '', '', '', '', `=D${fDeudaTot}`],
+    ['plata de la empresa adelantada, recuperable', '', '', '', '', 'planes previsionales + prendario del rodado'],
+    ['Saldo a favor de IVA', '', `=B${fSaldoIVA}`, '', '', 'Planes previsionales F931', '', `=D${fPlanLinea}`],
+    ['Saldo a favor de IIBB', '', `=B${fSaldoIIBB}`, '', '', 'Prendario · cuota mensual', '', `=C${fPrend}`],
+    ['Retenciones sufridas', '', `=B${fRetTotal}`, '', '', 'Prendario · deuda del año', '', `=D${fPrend}`],
   ]
   heroRows.forEach((c, k) => { const row = [...c]; while (row.length < ANCHO) row.push(''); filas[heroBase + k] = row })
-  const fHeroVal = heroBase + 3 // 1-indexed: la fila de los valores del hero
+  const fHeroCaps = heroBase + 1  // 1-indexed: fila de los títulos de panel
+  const fHeroBig = heroBase + 2   // fila de las dos cifras grandes
+  const fHeroBrk0 = heroBase + 4  // primera fila del desglose
+  const fHeroBrk1 = heroBase + 6  // última fila del desglose
 
-  return { filas, fHeroVal, f0, f1, tot, p0, p1, b0, cab, fIIBB, i0, i1 }
+  return { filas, fHeroCaps, fHeroBig, fHeroBrk0, fHeroBrk1, fDeuda: b0, f0, f1, tot, p0, p1, b0, cab, fIIBB, i0, i1 }
 }
 
 /** Lee las DDJJ de IIBB desde los PDF originales de Drive. */
@@ -398,9 +410,11 @@ async function formatear(google, sheetId, g) {
 
   fmt(r(0, n, 1, 8), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }, horizontalAlignment: 'RIGHT' })
-  fmt(r(0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 13 } })
-  fmt(r(1, 2), 'userEnteredFormat.textFormat,userEnteredFormat.wrapStrategy',
-    { textFormat: { italic: true, fontSize: 9, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'WRAP' })
+  // Encabezado: eyebrow (0) apagado dorado, título (1) grande. "Al…" (2) y "Fuentes:" (3), apagados.
+  fmt(r(0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 8, foregroundColor: { red: 0.60, green: 0.48, blue: 0.25 } } })
+  fmt(r(1, 2), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 18, foregroundColor: { red: 0.10, green: 0.13, blue: 0.20 } } })
+  fmt(r(2, 4), 'userEnteredFormat.textFormat,userEnteredFormat.wrapStrategy',
+    { textFormat: { fontSize: 9, foregroundColor: { red: 0.53, green: 0.52, blue: 0.49 } }, wrapStrategy: 'WRAP' })
   // La columna I es siempre explicación: nunca plata.
   fmt(r(0, n, 8, 9), 'userEnteredFormat',
     { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: { fontSize: 9, italic: true, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'CLIP' })
@@ -424,15 +438,24 @@ async function formatear(google, sheetId, g) {
   // Las cuotas son cantidades.
   // EL HERO: rótulos apagados arriba, las cuatro cifras de posición grandes en acento. Van en las
   // columnas A/C/E/G (la moneda de arriba sólo cubre B–H, así que acá se pone el formato de nuevo).
-  if (g.fHeroVal) {
+  // EL HERO DE DOS PANELES: A FAVOR (verde, inmovilizado) · A PAGAR (rojo, deuda). Los títulos en su
+  // color, las dos cifras grandes en B (verde) y G (rojo), el desglose en moneda chica.
+  if (g.fHeroBig) {
     const MONEDA = { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }
-    fmt(r(g.fHeroVal - 2, g.fHeroVal - 1), 'userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment',
-      { textFormat: { bold: true, fontSize: 9, foregroundColor: { red: 0.53, green: 0.52, blue: 0.49 } }, horizontalAlignment: 'LEFT' })
-    fmt(r(g.fHeroVal - 1, g.fHeroVal), 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment',
-      { numberFormat: MONEDA, textFormat: { bold: true, fontSize: 16, foregroundColor: { red: 0.11, green: 0.23, blue: 0.37 } }, horizontalAlignment: 'LEFT' })
+    const POS = { red: 0.11, green: 0.37, blue: 0.27 }
+    const NEG = { red: 0.55, green: 0.23, blue: 0.17 }
+    const MUT = { red: 0.53, green: 0.52, blue: 0.49 }
+    fmt({ ...r(g.fHeroCaps - 1, g.fHeroCaps), startColumnIndex: 0, endColumnIndex: 1 }, 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 9, foregroundColor: POS } })
+    fmt({ ...r(g.fHeroCaps - 1, g.fHeroCaps), startColumnIndex: 5, endColumnIndex: 6 }, 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 9, foregroundColor: NEG } })
+    fmt({ ...r(g.fHeroBig - 1, g.fHeroBig), startColumnIndex: 1, endColumnIndex: 2 }, 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment', { numberFormat: MONEDA, textFormat: { bold: true, fontSize: 18, foregroundColor: POS }, horizontalAlignment: 'LEFT' })
+    fmt({ ...r(g.fHeroBig - 1, g.fHeroBig), startColumnIndex: 6, endColumnIndex: 7 }, 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment', { numberFormat: MONEDA, textFormat: { bold: true, fontSize: 18, foregroundColor: NEG }, horizontalAlignment: 'LEFT' })
+    fmt(r(g.fHeroBig, g.fHeroBig + 1), 'userEnteredFormat.textFormat', { textFormat: { italic: true, fontSize: 9, foregroundColor: MUT } })
+    fmt({ ...r(g.fHeroBrk0 - 1, g.fHeroBrk1), startColumnIndex: 2, endColumnIndex: 3 }, 'userEnteredFormat.numberFormat', { numberFormat: MONEDA })
+    fmt({ ...r(g.fHeroBrk0 - 1, g.fHeroBrk1), startColumnIndex: 7, endColumnIndex: 8 }, 'userEnteredFormat.numberFormat', { numberFormat: MONEDA })
   }
   fmt({ ...r(g.p0 - 1, g.p1 + 1), startColumnIndex: 1, endColumnIndex: 2 }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '0' } })
-  fmt({ ...r(g.b0 - 1, g.b0), startColumnIndex: 2, endColumnIndex: 3 }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '0' } })
+  // Las "cuotas" de la deuda financiera (col B de las dos líneas) son cantidad, no plata.
+  fmt({ ...r(g.fDeuda - 2, g.fDeuda), startColumnIndex: 1, endColumnIndex: 2 }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '0' } })
   // LAS FECHAS NO SON PESOS. El formato de moneda de arriba barre las columnas B a H enteras, así
   // que la fecha de presentación de cada DDJJ salía "$46.072" y la primera cuota de cada plan
   // "$46.250" — el número de serie de la fecha, pintado de plata. Un cuadro donde una fecha se lee
@@ -448,6 +471,28 @@ async function formatear(google, sheetId, g) {
   // PIEL DE STATEMENT encima del formato de número: sin reja, secciones y encabezados por tipografía
   // + hairline (no barras rellenas), totales rulados. Deja la pestaña como CAJA y Cheques Emitidos.
   await google.spreadsheetBatchUpdate(ID, skinRequests({ sheetId, filas: g.filas, cols: ANCHO, congeladas: 1 }))
+  // DESPUÉS del skin: el skin trata la fila 0 y las mayúsculas como sección. El eyebrow, el título y
+  // los dos títulos de panel del hero tienen identidad propia (dorado / tinta grande / verde·rojo) y
+  // se re-aplican acá para que ganen.
+  const hzt = (row, c0, c1, f) => ({ repeatCell: { range: { sheetId, startRowIndex: row - 1, endRowIndex: row, startColumnIndex: c0, endColumnIndex: c1 }, cell: { userEnteredFormat: { textFormat: f } }, fields: 'userEnteredFormat.textFormat' } })
+  await google.spreadsheetBatchUpdate(ID, [
+    hzt(1, 0, 1, { bold: true, fontSize: 8, foregroundColor: { red: 0.60, green: 0.48, blue: 0.25 } }),
+    hzt(2, 0, 1, { bold: true, fontSize: 18, foregroundColor: { red: 0.10, green: 0.13, blue: 0.20 } }),
+    hzt(g.fHeroCaps, 0, 1, { bold: true, fontSize: 9, foregroundColor: { red: 0.11, green: 0.37, blue: 0.27 } }),
+    hzt(g.fHeroCaps, 5, 6, { bold: true, fontSize: 9, foregroundColor: { red: 0.55, green: 0.23, blue: 0.17 } }),
+  ])
+  // PLEGAR el detalle del IVA: los meses ya cerrados sin movimiento (ene–abr) y la proyección
+  // (ago–dic). Quedan visibles los tres últimos reales + el total — el resto, a un clic. Menos es más.
+  const previos = (await google.getRowGroups(ID).catch(() => [])).filter((x) => x.sheetId === sheetId)
+  if (previos.length) await google.spreadsheetBatchUpdate(ID, previos.map((x) => ({ deleteDimensionGroup: { range: { sheetId, dimension: 'ROWS', startIndex: x.startIndex, endIndex: x.endIndex } } }))).catch(() => {})
+  const grupo = (a, b) => ({ range: { sheetId, dimension: 'ROWS', startIndex: a, endIndex: b } })
+  await google.spreadsheetBatchUpdate(ID, [
+    { addDimensionGroup: grupo(g.f0 - 1, g.f0 + 3) }, { addDimensionGroup: grupo(g.f0 + 6, g.f1) },
+  ]).catch(() => {})
+  await google.spreadsheetBatchUpdate(ID, [
+    { updateDimensionGroup: { dimensionGroup: { ...grupo(g.f0 - 1, g.f0 + 3), depth: 1, collapsed: true }, fields: 'collapsed' } },
+    { updateDimensionGroup: { dimensionGroup: { ...grupo(g.f0 + 6, g.f1), depth: 1, collapsed: true }, fields: 'collapsed' } },
+  ]).catch(() => {})
 }
 
 main().then(() => process.exit(0)).catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
