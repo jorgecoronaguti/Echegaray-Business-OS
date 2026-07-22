@@ -72,14 +72,13 @@ export const CUENTAS = [
     origenSugerido: 'Arqueo de caja',
   },
   {
-    // El nombre del banco lo completa el dueño: no está en ningún dato del archivo y no se inventa.
-    nombre: 'Banco Santander — Cuenta corriente en pesos 179-091383/6',
+    // Nombre terso, estilo statement de tesorería (el n° de cuenta va en la nota de origen, no en el
+    // rótulo). El saldo lo trae el extracto (banco-santander.mjs), no depende del nombre de la fila.
+    nombre: 'Santander · cta cte ARS',
     moneda: 'ARS',
-    // Desde el 21/07 lo trae el extracto, no una carga a mano. Ver banco-santander.mjs.
     banco: 'saldoPesos',
-    // La negación importa: si el dueño le pone el nombre real al banco y le saca el "en pesos", la
-    // fila tiene que seguir siendo la de pesos y no capturar la de dólares.
-    patron: /^banco(?!.*d[oó]lar).*cuenta corriente/i,
+    // Match por moneda explícita: separa ARS de USD sin ambigüedad. El nombre viejo está en ALIAS.
+    patron: /^santander.*\bars\b/i,
     origenSugerido: 'Extracto bancario',
   },
   {
@@ -87,10 +86,10 @@ export const CUENTAS = [
     // Va en dólares y se convierte a pesos con el tipo de cambio de arriba. El saldo que se carga
     // es el del extracto, en dólares: convertirlo a mano al cargarlo perdería el dato original y
     // dejaría un número que envejece sin que se note.
-    nombre: 'Banco Santander — Cuenta corriente en dólares',
+    nombre: 'Santander · cta cte USD',
     moneda: 'USD',
     banco: 'saldoDolares',
-    patron: /^banco.*cuenta corriente en d[oó]lares/i,
+    patron: /^santander.*\busd\b/i,
     origenSugerido: 'Santander, saldo total en dólares',
   },
   {
@@ -103,7 +102,7 @@ export const CUENTAS = [
     //
     // El corte es la fecha de acreditación: si todavía no llegó, el valor está en cartera. Los que ya
     // se acreditaron son saldo del banco y contarlos acá los duplicaría.
-    nombre: 'Valores a depositar (cheques de terceros en cartera)',
+    nombre: 'Valores a depositar',
     moneda: 'ARS',
     patron: /^valores a depositar/i,
     // 21/07: DEJÓ DE SALIR DE COBRANZAS. La fórmula sobre Cobranzas daba $30.000.000 y la cartera
@@ -142,8 +141,12 @@ export const CARGA = {
 /** Nombres viejos → nombre actual, para no perder un dato ya cargado cuando se renombra una fila. */
 export const ALIAS = new Map([
   ['Tarjeta de crédito — límite acordado en pesos', CARGA.limiteTarjeta],
-  ['Banco — Cuenta corriente en pesos', 'Banco Santander — Cuenta corriente en pesos 179-091383/6'],
-  ['Banco — Cuenta corriente en dólares', 'Banco Santander — Cuenta corriente en dólares'],
+  ['Banco — Cuenta corriente en pesos', 'Santander · cta cte ARS'],
+  ['Banco — Cuenta corriente en dólares', 'Santander · cta cte USD'],
+  // Nombres largos anteriores → nombre terso actual, para no perder un dato ya cargado al renombrar.
+  ['Banco Santander — Cuenta corriente en pesos 179-091383/6', 'Santander · cta cte ARS'],
+  ['Banco Santander — Cuenta corriente en dólares', 'Santander · cta cte USD'],
+  ['Valores a depositar (cheques de terceros en cartera)', 'Valores a depositar'],
 ])
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

@@ -213,25 +213,7 @@ function grilla(cargado, refs) {
   // detalle decía "Bloque 6" —hay que buscarlo, contar filas y reconstruir la resta a mano—. Un
   // número que acusa un problema de cuarenta millones tiene que traer su cuenta al lado, o no se
   // puede discutir ni corregir. Ahora dice la RESTA y la FILA exacta.
-  const fAlerta0 = push(['⚠ LO QUE NO CIERRA — mirar antes de decidir con los números de arriba'])
-  push(['Cada línea es un problema con nombre y monto; la última columna dice de qué resta sale.'])
-  // ═══ LA EXPLICACIÓN VA EN LA CELDA QUE SE VE ═══
-  //
-  // Había una columna "Dónde está el detalle" que decía "Bloque 6"… y NADIE PODÍA LEERLA: la celda
-  // de "qué hacer" se combina de la D a la H para que la frase entre, así que la última columna
-  // estaba tapada desde el día que se creó. El dueño preguntó "no sé de dónde lo saca" y tenía toda
-  // la razón: la respuesta estaba escrita en una celda invisible.
-  //
-  // Ahora la cuenta va concatenada al final de la misma frase, dentro de la celda combinada.
-  push(['Qué pasa', '', 'Cuánto', 'Qué hacer, y de dónde sale el número', '', '', '', ''])
-  push(['Cheques de terceros que el cash flow espera y ya se entregaron', '', '@DIFECHEQ',
-    '@ORIGEN_ECHEQ', '', '', '', ''])
-  push(['El cash flow proyecta un efectivo que no está', '', '@DIFCONC',
-    '@ORIGEN_CONC', '', '', '', ''])
-  push(['Efectivo cobrado que no se depositó ni está en la caja física', '', '@SINEXPL',
-    '@ORIGEN_EFVO', '', '', '', ''])
-  const fAlerta1 = filas.length
-  push()
+  // El bloque "⚠ LO QUE NO CIERRA" se construye MÁS ABAJO, adentro de CONTROLES.
 
   // ── 1 · DISPONIBILIDADES ────────────────────────────────────────────────────────────────────────
   push(['DISPONIBILIDADES POR CUENTA'])
@@ -334,6 +316,18 @@ function grilla(cargado, refs) {
   // confiables— vive plegado bajo un "+", para no tapar la posición. Es la regla "nada suelto" sin
   // sacrificar el minimalismo: está, pero no estorba.
   const fCtrl0 = push(['CONTROLES Y CONCILIACIONES — el detalle y las verificaciones (desplegar con ▸)'])
+
+  const fAlerta0 = push(['⚠ LO QUE NO CIERRA — mirar antes de decidir con los números de arriba'])
+  push(['Cada línea es un problema con nombre y monto; la última columna dice de qué resta sale.'])
+  push(['Qué pasa', '', 'Cuánto', 'Qué hacer, y de dónde sale el número', '', '', '', ''])
+  push(['Cheques de terceros que el cash flow espera y ya se entregaron', '', '@DIFECHEQ',
+    '@ORIGEN_ECHEQ', '', '', '', ''])
+  push(['El cash flow proyecta un efectivo que no está', '', '@DIFCONC',
+    '@ORIGEN_CONC', '', '', '', ''])
+  push(['Efectivo cobrado que no se depositó ni está en la caja física', '', '@SINEXPL',
+    '@ORIGEN_EFVO', '', '', '', ''])
+  const fAlerta1 = filas.length
+  push()
 
   // ── 3 · EL DETALLE DE LOS VALORES EN CARTERA ───────────────────────────────────────────────────
   //

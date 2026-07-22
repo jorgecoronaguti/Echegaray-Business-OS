@@ -6,17 +6,17 @@ const cuenta = (n) => CUENTAS.find((c) => c.nombre === n)
 
 test('cada cuenta declara su moneda y hay una en dólares', () => {
   assert.ok(CUENTAS.every((c) => c.moneda === 'ARS' || c.moneda === 'USD'))
-  assert.equal(cuenta('Banco Santander — Cuenta corriente en dólares').moneda, 'USD')
+  assert.equal(cuenta('Santander · cta cte USD').moneda, 'USD')
 })
 
-// El día que le pongan el nombre real al banco, el saldo cargado tiene que seguir en SU fila.
-test('el patrón del banco sobrevive a que le pongan el nombre y no se cruza con la de dólares', () => {
-  const pesos = cuenta('Banco Santander — Cuenta corriente en pesos 179-091383/6').patron
-  const dolares = cuenta('Banco Santander — Cuenta corriente en dólares').patron
-  assert.ok(pesos.test('Banco Galicia — Cuenta corriente en pesos'))
-  assert.ok(pesos.test('Banco Galicia — Cuenta corriente'))
-  assert.ok(!pesos.test('Banco Galicia — Cuenta corriente en dólares'))
-  assert.ok(dolares.test('Banco Galicia — Cuenta corriente en dolares'))
+// El patrón separa ARS de USD por la moneda explícita del rótulo, sin cruzarse.
+test('el patrón de la cuenta bancaria separa ARS de USD sin cruzarse', () => {
+  const pesos = cuenta('Santander · cta cte ARS').patron
+  const dolares = cuenta('Santander · cta cte USD').patron
+  assert.ok(pesos.test('Santander · cta cte ARS'))
+  assert.ok(!pesos.test('Santander · cta cte USD'))
+  assert.ok(dolares.test('Santander · cta cte USD'))
+  assert.ok(!dolares.test('Santander · cta cte ARS'))
 })
 
 // Los nombres de las filas cambiaron dos veces en dos días. Un dato cargado tiene que sobrevivir a
@@ -24,7 +24,8 @@ test('el patrón del banco sobrevive a que le pongan el nombre y no se cruza con
 test('renombrar una fila no pierde el dato ya cargado', () => {
   assert.ok(filaDeCuenta('Tarjeta de crédito — límite acordado en pesos'))
   assert.equal(ALIAS.get('Tarjeta de crédito — límite acordado en pesos'), CARGA.limiteTarjeta)
-  assert.equal(ALIAS.get('Banco — Cuenta corriente en pesos'), 'Banco Santander — Cuenta corriente en pesos 179-091383/6')
+  assert.equal(ALIAS.get('Banco — Cuenta corriente en pesos'), 'Santander · cta cte ARS')
+  assert.equal(ALIAS.get('Banco Santander — Cuenta corriente en pesos 179-091383/6'), 'Santander · cta cte ARS')
   assert.ok(filaDeCuenta(CARGA.acuerdo))
   assert.ok(!filaDeCuenta('TOTAL DISPONIBILIDADES'))
 })
