@@ -176,8 +176,7 @@ function grilla(cargado, refs) {
   // El valor que el dueño ya había cargado para una cuenta, o vacío la primera vez.
   const previo = (cuenta, campo) => cargado.get(cuenta)?.[campo] ?? ''
 
-  push(['CAJA Y BANCOS — DISPONIBILIDADES'])
-  push(['Se carga un solo dato a mano: cuánta plata hay (celdas AMARILLAS). Lo demás se calcula. Lo que está en dólares se carga en dólares.'])
+  push(['Posición de caja'])
   push()
   // ═══ LOS TRES NÚMEROS QUE CONTESTAN LA PREGUNTA, ARRIBA DE TODO ═══
   //
@@ -855,10 +854,19 @@ async function formatear(google, sheetId, g, tab) {
   // encima lo suyo y debajo quedaba lo viejo. El mismo defecto que ya había hecho ilegible otra
   // pestaña. Ahora la primera operación devuelve TODO al estándar del archivo —una tipografía, un
   // tamaño de cuerpo, un negro, fondo blanco— y a partir de ahí cada excepción se pinta a propósito.
+  // JPMorgan: un statement no tiene la grilla de una planilla a la vista. Se ocultan las líneas de
+  // cuadrícula; la estructura la dan el espaciado y alguna hairline puntual, no una reja gris.
   const req = [
     { unmergeCells: { range: r(0, n) } },
     E.reset(sheetId, Math.max(n + 20, 90), ANCHO),
+    { updateSheetProperties: { properties: { sheetId, gridProperties: { hideGridlines: true } }, fields: 'gridProperties.hideGridlines' } },
   ]
+  // Paleta sobria de statement: tinta casi negra, un gris apagado, una hairline y un acento discreto.
+  const INK = { red: 0.10, green: 0.13, blue: 0.20 }
+  const MUTED = { red: 0.53, green: 0.52, blue: 0.49 }
+  const HAIR = { red: 0.82, green: 0.80, blue: 0.76 }
+  const ACENTO = { red: 0.11, green: 0.23, blue: 0.37 }
+  const borde = (rg, lados = { bottom: true }) => req.push({ updateBorders: { range: rg, ...(lados.bottom ? { bottom: { style: 'SOLID', color: HAIR } } : {}), ...(lados.top ? { top: { style: 'SOLID', color: HAIR } } : {}) } })
   // TODO FORMATO PASA POR conFuente: si define textFormat sin nombrar la tipografía, Sheets la
   // reemplaza por la de la hoja y la celda queda en otra fuente. Ver lib/estilo-pestana.mjs.
   const fmt = (rg, fields, format) => req.push({ repeatCell: { range: rg, cell: { userEnteredFormat: E.conFuente(format) }, fields } })
@@ -899,10 +907,13 @@ async function formatear(google, sheetId, g, tab) {
   // ── EL PANEL DE TITULARES ────────────────────────────────────────────────────────────────────
   // Grande, con aire, y con la unidad declarada: es lo primero que se ve al abrir la pestaña.
   if (g.fTitulos && g.fCifras) {
+    // Etiquetas tipo "eyebrow": chicas, apagadas, sin fondo. El número es el héroe, no la etiqueta.
     fmt(r(g.fTitulos - 1, g.fTitulos), 'userEnteredFormat',
-      { backgroundColor: AZUL, textFormat: { bold: true, fontSize: E.TAM.nota, foregroundColor: { red: 1, green: 1, blue: 1 } }, horizontalAlignment: 'CENTER', wrapStrategy: 'WRAP' })
+      { textFormat: { bold: true, fontSize: E.TAM.nota, foregroundColor: MUTED }, horizontalAlignment: 'LEFT', wrapStrategy: 'WRAP' })
     fmt(r(g.fCifras - 1, g.fCifras), 'userEnteredFormat',
-      { numberFormat: E.NUM.moneda, textFormat: { bold: true, fontSize: E.TAM.titular, fontFamily: E.FUENTE_NUM }, horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE' })
+      { numberFormat: E.NUM.moneda, textFormat: { bold: true, fontSize: E.TAM.titular, fontFamily: E.FUENTE_NUM, foregroundColor: INK }, horizontalAlignment: 'LEFT', verticalAlignment: 'MIDDLE' })
+    // El número que se decide —lo disponible— en el acento; los demás en tinta.
+    fmt(r(g.fCifras - 1, g.fCifras, 4, 5), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: E.TAM.titular, fontFamily: E.FUENTE_NUM, foregroundColor: ACENTO } })
     fmt(r(g.fCifras, g.fCifras + 1), 'userEnteredFormat',
       { numberFormat: { type: 'TEXT' }, textFormat: { italic: true, fontSize: E.TAM.nota, foregroundColor: E.COLOR.nota }, horizontalAlignment: 'CENTER', wrapStrategy: 'WRAP' })
     req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: g.fCifras - 1, endIndex: g.fCifras }, properties: { pixelSize: 34 }, fields: 'pixelSize' } })
@@ -972,9 +983,14 @@ async function formatear(google, sheetId, g, tab) {
   fmt(r(0, g.filas.length, 1, 2), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'CENTER' })
 
+  // Encabezados de columna al estilo statement: sin fondo, texto chico y apagado, alineado como su
+  // dato (los importes a la derecha), y una hairline abajo que separa el título de las filas.
   for (const c of [g.cab0, g.cab1, g.cab3]) {
     fmt(r(c - 1, c), 'userEnteredFormat',
-      { backgroundColor: AZUL, textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 }, fontSize: E.TAM.nota }, horizontalAlignment: 'CENTER', wrapStrategy: 'WRAP' })
+      { textFormat: { bold: true, foregroundColor: MUTED, fontSize: E.TAM.nota }, horizontalAlignment: 'LEFT', wrapStrategy: 'CLIP' })
+    fmt(r(c - 1, c, 2, 3), 'userEnteredFormat.horizontalAlignment', { horizontalAlignment: 'RIGHT' })
+    fmt(r(c - 1, c, 4, 5), 'userEnteredFormat.horizontalAlignment', { horizontalAlignment: 'RIGHT' })
+    borde(r(c - 1, c))
   }
   // LAS CELDAS DE CARGA EN AMARILLO. Es la diferencia más importante de la pestaña: lo que una
   // persona escribe tiene que verse distinto de lo que el sistema calcula, o nadie sabe qué puede
@@ -996,15 +1012,26 @@ async function formatear(google, sheetId, g, tab) {
     req.push({ addDimensionGroup: { range: { sheetId, dimension: 'ROWS', startIndex: g.fCtrl0, endIndex: g.fCtrl1 } } })
     req.push({ updateDimensionGroup: { dimensionGroup: { range: { sheetId, dimension: 'ROWS', startIndex: g.fCtrl0, endIndex: g.fCtrl1 }, depth: 1, collapsed: true }, fields: 'collapsed' } })
   }
+  // Totales RULADOS, no rellenos de color: la línea de subtotal lleva una hairline arriba; la
+  // disponibilidad neta —la cifra que se decide— va en acento, en negrita, encerrada entre dos
+  // hairlines. Es como un estado financiero cierra un total, no como una planilla lo pinta.
   fmt(r(g.fTotal - 1, g.fTotal), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
-    { textFormat: { bold: true }, backgroundColor: GRIS })
+    { textFormat: { bold: true, foregroundColor: INK }, backgroundColor: { red: 1, green: 1, blue: 1 } })
+  borde(r(g.fTotal - 1, g.fTotal), { top: true })
   fmt(r(g.fNeta - 1, g.fNeta), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
-    { textFormat: { bold: true, fontSize: E.TAM.cuerpo }, backgroundColor: VERDE })
+    { textFormat: { bold: true, fontSize: E.TAM.cuerpo, foregroundColor: ACENTO }, backgroundColor: { red: 1, green: 1, blue: 1 } })
+  fmt(r(g.fNeta - 1, g.fNeta, 4, 5), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: E.TAM.cuerpo, foregroundColor: ACENTO, fontFamily: E.FUENTE_NUM } })
+  borde(r(g.fNeta - 1, g.fNeta), { top: true, bottom: true })
   g.filas.forEach((f, i) => {
     const t = String(f[0] ?? '')
     // EL RÓTULO DE UN BLOQUE SE VE COMO UN BLOQUE, con el estilo del archivo y no con una negrita
     // suelta. Y ocupa la fila entera: no compite con ninguna columna.
-    if (/^\d+ · |^CÓMO SE ACTUALIZA|^COSTO DE USAR|^MARGEN DE CRÉDITO|^CONTROLES Y CONCILIAC/.test(t)) fmt(r(i, i + 1), 'userEnteredFormat', E.bloque())
+    if (/^\d+ · |^CÓMO SE ACTUALIZA|^COSTO DE USAR|^MARGEN DE CRÉDITO|^CONTROLES Y CONCILIAC|^DISPONIBILIDADES/.test(t)) {
+      // Encabezado de sección al estilo statement: versalita en tinta, sin barra de color, con una
+      // hairline abajo. La jerarquía la da la tipografía, no un rectángulo azul.
+      fmt(r(i, i + 1), 'userEnteredFormat', { textFormat: { bold: true, fontFamily: E.FUENTE, fontSize: E.TAM.cuerpo, foregroundColor: INK }, horizontalAlignment: 'LEFT' })
+      borde(r(i, i + 1))
+    }
     if (/^⇒/.test(t)) fmt(r(i, i + 1, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontFamily: E.FUENTE, fontSize: E.TAM.cuerpo } })
     // ── LOS PÁRRAFOS DE EXPLICACIÓN NECESITAN ALTO ──────────────────────────────────────────────
     // La introducción tiene 307 caracteres y la del bloque de crédito 332, las dos en filas de 20px:
