@@ -107,13 +107,13 @@ function grilla(iva, planes, iibb, ret) {
   push(); push(); push(); push()
 
   // ── 1. IVA ──────────────────────────────────────────────────────────────────────────────────────
-  push(['1. POSICIÓN DE IVA — con el saldo a favor arrastrado, que es lo que se paga de verdad'])
+  push(['1. IVA — posición mensual, con el saldo a favor arrastrado'])
   // LA COLUMNA DE RETENCIONES ES NUEVA (21/07) y va ENTRE la posición y el saldo previo, porque ése
   // es el orden en que se aplican: la posición del mes se reduce primero por lo que ya se pagó por
   // retención, y recién después se consume el saldo a favor que venía arrastrándose.
-  const cab = push(['Mes', 'Débito fiscal (ventas)', 'Crédito fiscal (compras)', 'Posición del mes',
-    'Retenciones de IVA sufridas', 'Saldo a favor que venía', 'A PAGAR', 'Saldo a favor que queda',
-    'Comprobantes (vta/cpa)', 'Origen'])
+  // MENOS ES MÁS: seis columnas, no diez. Débito y crédito se funden en "Posición del mes"
+  // (ventas − compras); "saldo que venía" es el "saldo a favor" del mes anterior y no se repite.
+  const cab = push(['Mes', 'Posición del mes', 'Retención IVA sufrida', 'A PAGAR', 'Saldo a favor', 'Comprobantes (vta/cpa)'])
   const f0 = filas.length + 1
   // ═══ TODO EL CUADRO ES FÓRMULA — NI UN NÚMERO PEGADO (21/07) ═══
   //
@@ -147,46 +147,33 @@ function grilla(iva, planes, iibb, ret) {
     const mes = i + 1
     const r = filas.length + 1
     if (!m.disponible && !m.es_proyeccion) { push([`${MES[i]}-26`, '', '', '', '', '', '', '', '', 'sin comprobantes cargados']); continue }
-    const previo = r === f0 ? '' : `=$H${r - 1}`
+    // El saldo a favor que venía = el que quedó el mes anterior (columna E). Para el primer mes, 0.
+    const prev = r === f0 ? '0' : `$E${r - 1}`
     push([
       `${MES[i]}-26`,
+      // POSICIÓN = ventas − compras (débito − crédito, fundidos). Proyección: el ritmo real ajustado
+      // por inflación (el crédito lleva la misma inflación, así que la resta ya viene ajustada).
       m.disponible
-        ? `=${sumaArca(m.periodo, 'Ventas', 'L')}`
-        // Sin comprobantes todavía: el ritmo real de los meses cerrados, ajustado por inflación.
+        ? `=${sumaArca(m.periodo, 'Ventas', 'L')}-${sumaArca(m.periodo, 'Compras', 'L')}`
         : `=AVERAGE($B$${f0}:$B$${fReal1})*${factor(mes)}`,
-      m.disponible
-        ? `=${sumaArca(m.periodo, 'Compras', 'L')}`
-        // El crédito lleva la MISMA inflación que el débito: la posición es una resta y ajustar un
-        // solo lado la hace crecer por una razón que no existe.
-        : `=AVERAGE($C$${f0}:$C$${fReal1})*${factor(mes)}`,
-      `=$B${r}-$C${r}`,
-      // Las retenciones de IVA sufridas salen de Cobranzas columna X, imputadas al mes del COBRO
-      // (que es el período de la retención), no al de la factura.
+      // Retención de IVA sufrida (Cobranzas col. X), imputada al mes del COBRO, no al de la factura.
       `=SUMPRODUCT((YEAR(Cobranzas!$Q$5:$Q$400)=${AÑO})*(MONTH(Cobranzas!$Q$5:$Q$400)=${mes})*IF(ISNUMBER(Cobranzas!$X$5:$X$400);Cobranzas!$X$5:$X$400;0))`,
-      previo,
-      // El orden importa: primero se descuenta lo ya pagado por retención, después el saldo a favor.
-      `=MAX(0;$D${r}-$E${r}-IF($F${r}="";0;$F${r}))`,
-      `=MAX(0;IF($F${r}="";0;$F${r})-($D${r}-$E${r}))`,
+      // Primero se descuenta lo pagado por retención, después el saldo a favor que venía.
+      `=MAX(0;$B${r}-$C${r}-${prev})`,
+      `=MAX(0;${prev}+$C${r}-$B${r})`,
       m.disponible
         ? `=COUNTIFS(${R}!$A$4:$A;"${m.periodo}";${R}!$B$4:$B;"Ventas")&" / "&COUNTIFS(${R}!$A$4:$A;"${m.periodo}";${R}!$B$4:$B;"Compras")`
         : '—',
-      m.es_proyeccion ? `PROYECCIÓN · ritmo real de ${nReales0} meses × inflación de Parámetros` : `ARCA — fórmula sobre ${R}`,
     ])
   }
   const f1 = filas.length
-  // Dónde termina lo REAL y dónde empieza la proyección. Hace falta para poder medir la tasa de
-  // retención sobre los meses que de verdad ocurrieron y aplicarla al escenario de abajo.
-  const nReales = nReales0
-  const fProy0 = fReal1 + 1
-  const tot = push(['TOTAL 2026',
-    `=SUM(B${f0}:B${f1})`, `=SUM(C${f0}:C${f1})`, `=SUM(D${f0}:D${f1})`, `=SUM(E${f0}:E${f1})`, '',
-    `=SUM(G${f0}:G${f1})`, '', '', 'La suma de "A PAGAR" es la caja que el IVA se lleva en el año.'])
+  const tot = push(['TOTAL 2026', `=SUM(B${f0}:B${f1})`, `=SUM(C${f0}:C${f1})`, `=SUM(D${f0}:D${f1})`, '', '',
+    'La suma de A PAGAR es la caja que el IVA se lleva en el año. El saldo a favor no se suma: es un saldo que corre.'])
   push()
   const ult = [...iva].reverse().find((m) => m.disponible)
-  // EL SALDO A FAVOR ES LA ÚLTIMA FILA DEL CUADRO DE ARRIBA, no un número calculado aparte. Pegarlo
-  // significaba que el día que entrara una factura nueva el cuadro se movía y este número no.
+  // EL SALDO A FAVOR ES LA ÚLTIMA FILA DEL CUADRO, no un número aparte: si entra una factura, se mueve.
   const filaUlt = f0 + iva.findIndex((m) => m === ult)
-  const fSaldoIVA = push(['⚠ Saldo técnico a favor HOY', ult ? `=H${filaUlt}` : 0, '', '', '', '', '', '',
+  const fSaldoIVA = push(['⚠ Saldo técnico a favor HOY', ult ? `=E${filaUlt}` : 0, '', '', '', '', '', '',
     'Plata de la empresa adelantada al fisco. Si crece mes a mes, hay que revisar las retenciones que sufre (Cobranzas columnas X a AA).'])
   push(['⚠ IVA pagado que figura en Compras', '=SUMIF(Compras!$AC$4:$AC;"Impuestos";Compras!$O$4:$O)', '', '', '', '', '', '', '',
     'Si esto da $0 y arriba hay meses "A PAGAR", el IVA se está pagando fuera del Sheet y el cash flow miente.'])
@@ -195,8 +182,7 @@ function grilla(iva, planes, iibb, ret) {
   // ── 1 bis. LAS RETENCIONES QUE LE HACEN A LA EMPRESA ────────────────────────────────────────────
   // No estaban en ningún lado del archivo. Una retención es impuesto YA PAGADO: sin computarla, el
   // cuadro muestra un "A PAGAR" inflado y el cash flow proyecta una salida que no va a ocurrir.
-  push(['1 bis. RETENCIONES SUFRIDAS — impuesto que la empresa YA pagó por adelantado'])
-  push(['Salen de Cobranzas, columnas X, Y y Z. La alícuota de cada una se verifica contra su régimen antes de computarla: los rótulos de dos de esas columnas se habían perdido y una retención imputada al impuesto equivocado es un crédito fiscal que no existe.'])
+  push(['1 bis. Retenciones sufridas — impuesto ya pagado por adelantado (de Cobranzas)'])
   push(['Régimen', 'Total retenido', '', 'Alícuota medida', '¿Se computa acá?', '', '', '', '', 'Origen'])
   // LOS TRES TOTALES SON FÓRMULAS SOBRE COBRANZAS. Eran números calculados en JavaScript y pegados:
   // se cargaba un cobro con retención y el cuadro seguía mostrando el total del día que corrió el
@@ -232,7 +218,7 @@ function grilla(iva, planes, iibb, ret) {
   // Así que estos números son una transcripción, y como tal envejecen: cuando se presente la DDJJ de
   // julio, el cuadro va a seguir mostrando hasta junio sin que nadie se entere. No se inventan y no
   // se disfrazan de fórmula — se declara qué falta para que dejen de ser una transcripción.
-  push(['⚠ Este bloque NO se actualiza solo: son las DDJJ transcriptas. Para que se calcule como el IVA y las cargas sociales, hacen falta los PDF de las declaraciones mensuales de Rentas en el data room (hoy sólo está el certificado de inscripción). Con eso, el OS los lee y este cuadro pasa a ser fórmula.'])
+  push(['⚠ Base y Retenciones son transcripción de las DDJJ de Rentas (los PDF no están en el data room); el impuesto y los saldos se calculan solos.'])
   const al = alicuotaDeclarada(iibb)
   const cab2 = push(['Período', 'Base imponible', 'Impuesto determinado', 'Retenciones y percepciones sufridas', 'Saldo a favor que venía', 'A PAGAR', 'Saldo a favor que queda', 'Presentada', 'Origen'])
   const i0 = filas.length + 1
@@ -250,7 +236,7 @@ function grilla(iva, planes, iibb, ret) {
       Math.round(d.retenciones), j === 0 ? Math.round(d.saldo_favor_anterior) : `=G${r - 1}`,
       `=MAX(0;C${r}-D${r}-E${r})`, `=MAX(0;E${r}+D${r}-C${r})`,
       d.fecha_presentacion ?? '',
-      `DDJJ Rentas San Juan · control ${d.nro_control ?? '?'} — Base y Retenciones transcriptas; impuesto y saldos calculados`,
+      `DDJJ Rentas San Juan · Base y Retenciones transcriptas`,
     ])
   })
   const i1 = filas.length
@@ -293,10 +279,9 @@ function grilla(iva, planes, iibb, ret) {
   push()
 
   // ── 5. LO QUE FALTA ─────────────────────────────────────────────────────────────────────────────
-  push(['LO QUE FALTA PARA QUE ESTA PESTAÑA ESTÉ COMPLETA'])
-  push(['· La alícuota de IIBB de San Juan para construcción (celda B' + fIIBB + ').'])
-  push(['· Cargar en Compras los pagos de IVA y de IIBB que se hayan hecho. Hoy no hay ninguno y el cash flow no los ve.'])
-  push(['· Revisar las retenciones de IVA que sufre la empresa (Cobranzas, columnas X a AA): son la causa probable del saldo a favor creciente.'])
+  push(['LO QUE FALTA'])
+  push(['· Cargar en Compras los pagos de IVA/IIBB que se hayan hecho — hoy el cash flow no los ve.'])
+  push(['· Los PDF de las DDJJ de IIBB de Rentas en el data room (hoy están transcriptas a mano).'])
 
   // RELLENAR EL HERO reservado arriba, ahora que las cifras existen. Son REFERENCIAS a las celdas de
   // los bloques (saldo a favor de IVA, de IIBB, deuda de planes, retenciones adelantadas): ni un
