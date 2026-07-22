@@ -47,7 +47,10 @@ export const PESTANAS = [
   { titulo: 'RESUMEN', congeladas: 0, hastaFila: 80, cols: 14 },
   { titulo: 'Compras', congeladas: 3, hastaFila: 1000, cols: 32, carga: true },
   { titulo: 'Cobranzas', congeladas: 4, hastaFila: 400, cols: 60, carga: true },
-  { titulo: 'Cheques Emitidos', congeladas: 2, hastaFila: 200, cols: 14, carga: true },
+  // La formatea su propio agente (cheques-emitidos-tablero.mjs) al estándar minimalista/clase mundial;
+  // el formateador general no la toca para no pisarle la piel. Sigue en la lista para que el censo y el
+  // auditor de pantalla la miren.
+  { titulo: 'Cheques Emitidos', congeladas: 9, hastaFila: 200, cols: 14, carga: true, propio: true },
   { titulo: 'Tarjeta de Credito', congeladas: 2, hastaFila: 120, cols: 14, carga: true },
   { titulo: 'Jornales por Quincena', congeladas: 2, hastaFila: 80, cols: 14 },
   { titulo: 'Cargas Sociales', congeladas: 0, hastaFila: 120, cols: 16 },
@@ -141,8 +144,11 @@ async function main() {
   for (const p of PESTANAS) {
     const hoja = meta.find((h) => h.title === p.titulo)
     if (!hoja) { console.log(`  ${p.titulo.padEnd(26)} no existe`); continue }
+    // Las pestañas con formato PROPIO las gobierna su agente, no el formateador general.
+    if (p.propio) { console.log(`  ${p.titulo.padEnd(26)} — formato propio (su agente)`); continue }
 
-    const f = await google.readSheetFormats(ID, `${p.titulo}!A1:${colLetra(p.cols)}${p.hastaFila}`).catch((e) => {
+    const hasta = (meta.find((h) => h.title === p.titulo)?.rows) || p.hastaFila
+    const f = await google.readSheetFormats(ID, `${p.titulo}!A1:${colLetra(p.cols)}${hasta}`).catch((e) => {
       console.log(`  ${p.titulo.padEnd(26)} no pude leerla (${String(e?.message ?? e).slice(0, 50)})`)
       return null
     })

@@ -48,6 +48,10 @@ export const PASOS = [
   // fórmula a los totales de esas cuatro pestañas, así que necesita que ya existan. Reemplazó dos
   // tablas dinámicas nativas huérfanas que duplicaban Proveedores y que ningún agente mantenía.
   ['resumen-pestana.mjs', 'RESUMEN — el tablero "LO QUE VIENE A PAGAR" (jornales, proveedores, cheques, tarjeta)', ['RESUMEN']],
+  // Registro de cheques emitidos al estándar minimalista/clase mundial: titular de outstanding (no
+  // debitados) + piel de statement. Formato PROPIO — el formateador general la saltea, así que se
+  // re-aplica sola en cada corrida del macro sin que nada la pise.
+  ['cheques-emitidos-tablero.mjs', 'Cheques Emitidos — outstanding no debitado + piel de statement', ['Cheques Emitidos']],
   // Va última: ubica las líneas del Cash Flow por rótulo, así que necesita el cuadro ya escrito.
   ['caja-pestana.mjs', 'CAJA — disponibilidades, cheques emitidos y margen de tarjeta', ['CAJA', 'Caja']],
   // El núcleo Postgres, para que la web y el chat vean lo mismo que la planilla y no un mes atrás.
