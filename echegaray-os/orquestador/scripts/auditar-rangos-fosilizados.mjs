@@ -65,6 +65,35 @@ export function rangosDe(formula, pestanaPropia) {
   return out
 }
 
+/**
+ * NÚCLEO PURO: la última fila de la TABLA DE CARGA, cortando antes del cuadro de control.
+ *
+ * POR QUÉ NO ES "la última fila con datos" (21/07). En Tarjeta de Credito la tabla de consumos
+ * termina en la fila 31 y JUSTO DEBAJO, en las mismas columnas, el OS escribe un cuadro de control
+ * con conceptos, montos y diferencias —filas anchas de verdad—. Medir "hasta dónde hay filas
+ * anchas" contaba el control como tabla y daba la 56: el auditor marcaba el rango $E$3:$E$31 como
+ * fosilizado cuando cubre toda la tabla real. Un auditor que grita por algo correcto se deja de
+ * mirar (regla 11).
+ *
+ * La tabla de carga es CONTIGUA; el cuadro de control está separado por un hueco. Se corta en el
+ * primer hueco de dos o más filas sin ancho suficiente. Los demás Sheets de carga tienen rangos
+ * amplios (390, 400, 800) muy por encima de su tabla, así que este corte no los afecta.
+ *
+ * @param {Array<Array<any>>} filas
+ * @param {number} anchoMin celdas llenas que hacen a una fila "de tabla"
+ * @returns {number} última fila (1-based) de la tabla contigua
+ */
+export function ultimaFilaDeTabla(filas = [], anchoMin = 4) {
+  let u = 0
+  let hueco = 0
+  for (let i = 0; i < filas.length; i++) {
+    const llenas = (filas[i] || []).filter((c) => String(c ?? '').trim()).length
+    if (llenas >= anchoMin) { u = i + 1; hueco = 0 }
+    else if (u > 0 && ++hueco >= 2) break
+  }
+  return u
+}
+
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const meta = await google.getSheetMeta(ID)
@@ -82,12 +111,7 @@ async function main() {
   const ultima = new Map()
   for (const h of meta) {
     const v = await google.readSheetValues(ID, `'${h.title}'!A1:P${Math.min(h.rows ?? 400, 1000)}`).catch(() => [])
-    let u = 0
-    v.forEach((r, i) => {
-      const llenas = (r || []).filter((c) => String(c ?? '').trim()).length
-      if (llenas >= ANCHO_MIN) u = i + 1
-    })
-    ultima.set(h.title, u)
+    ultima.set(h.title, ultimaFilaDeTabla(v, ANCHO_MIN))
   }
 
   const fosilizados = [], sinMargen = []
