@@ -198,7 +198,7 @@ function grilla(iva, planes, iibb, ret) {
   // con ISNUMBER en vez de SUM.
   const retDe = (col) => `=SUMPRODUCT(IF(ISNUMBER(Cobranzas!$${col}$5:$${col}$400);Cobranzas!$${col}$5:$${col}$400;0))`
   const fIva = filas.length + 1
-  push(['IVA', retDe('X'), '', '80,00% del IVA facturado', 'SÍ — resta del "A PAGAR" de arriba, mes a mes', '', '', '', '',
+  push(['IVA', retDe('X'), '', '80% del IVA', 'SÍ — resta del "A PAGAR" de arriba, mes a mes', '', '', '', '',
     'Cobranzas col. X · imputado por fecha de cobro'])
   push(['Ganancias', retDe('Y'), '', '2,00% del neto', 'No: es pago a cuenta de Ganancias, que este cuadro todavía no lleva', '', '', '', '',
     'Cobranzas col. Y'])
@@ -269,7 +269,7 @@ function grilla(iva, planes, iibb, ret) {
     'Si la columna "A PAGAR" da $0 en todo el semestre, la empresa NO paga IIBB: las retenciones que sufre alcanzan y sobran.'])
   push()
   const fIIBB = push(['Alícuota que la empresa DECLARA', al.alicuota ?? '', '', '', '', '', '', '',
-    `Sale de sus propias DDJJ (códigos ${al.codigos.join(' y ')}), no de la ley. NO es 3%: el 3% de la Ley Impositiva es para el código 711001 "Servicios relacionados con la construcción", que Echegaray no usa. Estimar al 3% inflaba el impuesto un 50%.`])
+    `De sus propias DDJJ (cód. ${al.codigos.join(', ')}), no de la ley. El 3% es del 711001, que Echegaray no usa; estimarlo así inflaba el impuesto 50%.`])
   const ultIIBB = iibb[iibb.length - 1]
   push(['⚠ Saldo a favor de IIBB HOY', Math.round(ultIIBB?.a_favor ? ultIIBB.a_ingresar : 0), '', '', '', '', '', '',
     `Plata de la empresa inmovilizada en Rentas, igual que con el IVA. Venía de ${Math.round(iibb[0]?.saldo_favor_anterior ?? 0).toLocaleString('es-AR')} en enero: está BAJANDO, así que en algún momento la empresa va a empezar a pagar IIBB de verdad.`])
