@@ -128,16 +128,16 @@ function grilla(f, desde) {
   const rangoReal = (fila) => `$B$${fila}:$G$${fila}`
 
   push([FIRMA])
-  push(['Cada concepto con SU regla y con la alícuota MEDIDA de los seis meses reales — no traída de una norma que no puedo verificar. La alícuota está a la vista: si el convenio cambia, se corrige ahí y todo el cuadro se mueve. La proyección vieja usaba un solo ratio del 63,6% para todo, no incluía FCL/UOCRA/IERIC/FODECO (~$3,1M por mes) y ponía la carga en el mes en que se devenga, no en el que sale de la caja.'])
+  push(['Cada concepto con su alícuota MEDIDA de los seis meses reales, a la vista: si el convenio cambia se corrige en su fila. Incluye FCL, UOCRA, IERIC y FODECO.'])
   push()
 
   // ── LA BASE ─────────────────────────────────────────────────────────────────────────────────────
   push(['LA BASE DE LA PROYECCIÓN', '', '', '', '', '', '', '', '', 'De dónde sale'])
   const fRelacion = aFila()
-  push(['Remuneración declarada ÷ jornales netos (medido ene–jun)',
+  push(['Remuneración ÷ jornales netos (ene–jun)',
     `=IFERROR(SUM(${rangoReal(f.remuneracion)})/(${[1, 2, 3, 4, 5, 6].map((m) => jornalesDelMes(`DATE(${AÑO};${m};1)`)).join('+')});"")`,
     '', '', '', '', '', '', '',
-    'La remuneración que se declara en el F931 no es el neto que se paga en mano. Esta relación traduce una en otra, medida sobre los seis meses que tienen las dos cosas.'])
+    'Lo declarado en F931 no es el neto pagado en mano: traduce una en otra, medido sobre los 6 meses con ambos datos.'])
   const fEmpleadosProm = aFila()
   push(['Empleados promedio (ene–jun)', `=IFERROR(AVERAGE(${rangoReal(f.empleados)});"")`, '', '', '', '', '', '', '',
     'Base para el Seguro de Vida, que es un costo por persona.'])
@@ -200,12 +200,12 @@ function grilla(f, desde) {
       ? `=IFERROR($G$${f.declarado['__total']};0)`
       : `=${colDe(meses[i - 1])}${fTot}`)),
     `=SUM($C${aFila()}:$${ultimaCol}${aFila()})`,
-    'Es el devengado del mes ANTERIOR. En julio sale lo declarado de junio, que ya es un dato real y no una proyección.'])
+    'El devengado del mes ANTERIOR: en julio sale lo declarado de junio, un dato real.'])
   push(['Deuda previsional (planes de pago)', '', ...meses.map(() => ''), '',
-    '⚠ NO se proyecta acá a propósito: son cuotas CIERTAS y ya están en "Impuestos y Financieros", bloque 3. Proyectarlas otra vez sería el mismo egreso contado dos veces.'])
+    '⚠ No se proyecta acá: son cuotas ciertas, ya están en Impuestos y Financieros (bloque 3). Contarlas otra vez duplicaría el egreso.'])
   push()
   push([CIERRE, '', '', '', '', '', '', '', '',
-    'SAC (se devenga todo el año y se paga en junio y diciembre) y vacaciones: están en el bloque 5, todavía sin conectar a esta proyección. Y la paritaria UOCRA: los jornales proyectados se ajustan por inflación, pero el jornal de convenio sigue a la paritaria, que es otro número y llega en otras fechas.'])
+    'SAC y vacaciones están en el bloque 5, sin conectar aún. El jornal de convenio sigue la paritaria UOCRA, no la inflación.'])
 
   return { filas, fTot, fCaja, cab, fRem, fDot, fEmpleadosProm, fPct, filasPorEmpleado }
 }
