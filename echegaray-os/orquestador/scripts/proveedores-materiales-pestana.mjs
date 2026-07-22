@@ -157,6 +157,43 @@ const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26
  * de preservar-anotaciones.mjs conserva lo que él escribió. Es la misma disciplina que ya se aplica a
  * Compras: nunca por posición, siempre por encabezado.
  */
+/**
+ * LAS NOTAS DE LA PERSONA SE ANCLAN AL PROVEEDOR, NO A LA FILA.
+ *
+ * POR QUÉ (22/07). Preservar por POSICIÓN alcanzaba mientras la lista no cambiaba. Entró un proveedor
+ * nuevo (Mariana SA), la lista se reordenó, y todos los comentarios del dueño quedaron pegados al
+ * proveedor equivocado: "Confirmar trueque con chatarra propia" terminó en La Aguilana cuando era de
+ * La Isla Metal. Una nota vale por la ENTIDAD de la que habla, no por el renglón donde cayó.
+ *
+ * Lee el bloque de deuda que ya está en la pestaña y devuelve, para cada clave de negocio —nombre de
+ * proveedor en las filas-cabecera, N° de comprobante en las de detalle—, lo que la persona escribió en
+ * las columnas que el generador NO llena. Al reconstruir, cada nota vuelve a su proveedor.
+ *
+ * @param {any[][]} bloque filas del bloque de deuda ya escritas (desde la cabecera)
+ * @param {object} L layout de columnas (layoutDeuda)
+ * @returns {{porProveedor: Map<string, Map<number, any>>, porComprobante: Map<string, Map<number, any>>}}
+ */
+export function notasAncladas(bloque = [], L = {}) {
+  const propias = new Set([L.prov, L.fecha, L.comp, L.imp, L.obra, L.pago, L.cat, L.instr].filter((i) => i >= 0))
+  const porProveedor = new Map(); const porComprobante = new Map()
+  const norm = (s) => String(s ?? '').trim().toLowerCase()
+  for (const fila of bloque) {
+    const extra = new Map()
+    for (let j = 0; j < (fila || []).length; j++) {
+      if (propias.has(j)) continue
+      const v = fila[j]
+      if (v !== undefined && v !== null && String(v) !== '') extra.set(j, v)
+    }
+    if (!extra.size) continue
+    const prov = norm(fila?.[L.prov])
+    const comp = norm(fila?.[L.comp])
+    // Una fila-cabecera tiene nombre de proveedor en la primera columna; una de detalle, no.
+    if (prov) porProveedor.set(prov, extra)
+    else if (comp && !/fac\.$/.test(comp)) porComprobante.set(comp, extra)
+  }
+  return { porProveedor, porComprobante }
+}
+
 export function layoutDeuda(headers) {
   const H = (headers || []).map((h) => String(h ?? '').trim())
   const base = ['Proveedor / factura', 'Próximo pago', 'Comprobante', 'Importe', 'Obra', 'Tipo de pago', 'Categoría']
@@ -175,7 +212,7 @@ export function layoutDeuda(headers) {
   }
 }
 
-function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emitidas, notasCredito, anuladasCargadas, cruce, deudaCols }) {
+function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emitidas, notasCredito, anuladasCargadas, cruce, deudaCols, deudaPrevio }) {
   const filas = []
   const push = (c) => { filas.push(c); return filas.length }
   const nombres = FAMILIAS.map(([n]) => n)
@@ -255,7 +292,14 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   push(['La deuda agrupada por proveedor: la fila de cada uno muestra su total y su próximo pago; con el +/- del Sheet (menú Datos → Agrupar) se abren o cierran sus facturas. Todo son fórmulas sobre Compras: se marca una pagada allá y baja acá.'])
   // Las columnas son las que el dueño dejó en la pestaña (nombre y orden). Ver layoutDeuda.
   const L = layoutDeuda(deudaCols)
+  // Las notas del dueño vuelven a SU proveedor / SU comprobante, no a la fila donde estaban.
+  const NOTAS = notasAncladas(deudaPrevio || [], L)
   const celdas = () => new Array(L.cols.length).fill('')
+  const ponerNotas = (arr, mapa, clave) => {
+    const extra = mapa.get(String(clave ?? '').trim().toLowerCase())
+    if (extra) for (const [j, v] of extra) arr[j] = v
+    return arr
+  }
   const cabDoc = push([...L.cols])
   const deudaGrupos = []
   const deudaHeaders = []
@@ -271,6 +315,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
     if (L.fecha >= 0) hCel[L.fecha] = `=IF(COUNTIFS(${conFecha})=0;"sin fecha";MINIFS(${COL_FECHA};${conFecha}))`
     if (L.comp >= 0) hCel[L.comp] = `=COUNTIFS(${COL_PROV};"${key}";${COL_ESTADO};"${ESTADO_DEUDA}";${COL_TOTAL};"<>")&" fac."`
     if (L.imp >= 0) hCel[L.imp] = `=${neta(condProv)}`
+    ponerNotas(hCel, NOTAS.porProveedor, gp.nombre)
     const hRow = push(hCel)
     deudaHeaders.push(hRow)
     const inicio = filas.length + 1
@@ -293,6 +338,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
       // Tipo de pago (Compras col P) y Categoría (Compras col B), de la misma fila de Compras.
       if (L.pago >= 0) c[L.pago] = `=IF(${pend};Compras!$P$${rr}&"";"")`
       if (L.cat >= 0) c[L.cat] = `=IF(${pend};Compras!$B$${rr}&"";"")`
+      ponerNotas(c, NOTAS.porComprobante, inv.comprobante)
       push(c)
     }
     deudaGrupos.push({ inicio, fin: filas.length })
@@ -632,7 +678,7 @@ async function main() {
     const imp = parseMonto(f?.[IDX.total]) - parseMonto(f?.[IDX.pagado])
     const a = deudaMap.get(nombre) ?? { nombre, total: 0, filas: [] }
     a.total += imp
-    a.filas.push({ fila: i + 4 })
+    a.filas.push({ fila: i + 4, comprobante: String(f?.[7] ?? '').trim() })
     deudaMap.set(nombre, a)
   })
   // Sólo grupos con saldo neto a favor del proveedor. Un proveedor cuyas notas de crédito superan sus
@@ -790,13 +836,19 @@ async function main() {
   // LO QUE EDITÓ LA PERSONA MANDA: se leen los encabezados reales del bloque de deuda para escribir
   // cada dato en la columna que el dueño rotuló, y para no pisar las que él agregó (Comentarios).
   let deudaCols = null
+  let deudaPrevio = []
   try {
     const prevP = await google.readSheetValues(ID, `'Proveedores'!A1:AZ80`)
     const iCab = (prevP || []).findIndex((f) => /proveedor\s*\/\s*factura/i.test(String(f?.[0] ?? '')))
-    if (iCab >= 0) deudaCols = prevP[iCab]
+    if (iCab >= 0) {
+      deudaCols = prevP[iCab]
+      // El bloque va desde la cabecera hasta el título de la sección siguiente ("2 · …").
+      const fin = prevP.findIndex((f, k) => k > iCab && /^\s*2\s*·/.test(String(f?.[0] ?? '')))
+      deudaPrevio = prevP.slice(iCab + 1, fin > iCab ? fin : undefined)
+    }
   } catch { /* la pestaña todavía no existe: se usa el layout por defecto */ }
   if (deudaCols) console.log(`  columnas de deuda según la pestaña (las del dueño): ${deudaCols.filter(Boolean).join(' · ')}`)
-  const g = grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emitidas, notasCredito, anuladasCargadas, cruce, deudaCols })
+  const g = grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emitidas, notasCredito, anuladasCargadas, cruce, deudaCols, deudaPrevio })
   const ancho = Math.max(...g.filas.map((f) => f.length))
   const cuadro = g.filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r })
   console.log(`${PESTAÑA}: ${cuadro.length} filas x ${ancho} columnas`)
