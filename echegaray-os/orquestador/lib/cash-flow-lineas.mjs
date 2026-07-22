@@ -375,7 +375,7 @@ export function bloqueControl(filaPrimerEgreso, filaUltimoEgreso, colTotal, fila
       nota: 'Están clasificados y contados en el total, pero no se sabe CUÁNDO salen. Hay que fecharlos.',
     },
     {
-      etiqueta: 'Filas con rubro pero SIN importe (moneda extranjera o vacío)',
+      etiqueta: 'Filas con rubro pero SIN importe',
       formula: `=SUMPRODUCT((${COL_RUBRO}<>"")*(NOT(ISNUMBER(${COL_TOTAL}))))`,
       nota: 'Están clasificadas pero no suman en ningún lado porque su Total no es un número. Hoy son 3 filas de Google en USD 25,20 sin convertir a pesos: la suma del Sheet las ignora y nadie se entera.',
     },
