@@ -977,8 +977,10 @@ async function formatear(google, sheetId, g, ancho, filas) {
   fmt({ ...r(g.p0 - 1, g.fTotProv, 6, 7) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'NUMBER', pattern: '0" d";;""' }, horizontalAlignment: 'CENTER' })
   fmt({ ...r(g.p0 - 1, g.p1, 10, 11) }, 'userEnteredFormat.backgroundColor', { backgroundColor: ROJO })
-  fmt({ ...r(g.p0 - 1, g.p1, 13, 14) }, 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment',
-    { numberFormat: { type: 'TEXT' }, textFormat: { fontSize: 9 }, horizontalAlignment: 'CENTER' })
+  // N° de cheque puede ser una lista larga ("218 · 217 · 221 · …"): en WRAP se envuelve dentro de la
+  // columna y reparar-pantalla le da el alto de fila que necesita, en vez de cortarse a lo ancho.
+  fmt({ ...r(g.p0 - 1, g.p1, 13, 14) }, 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.wrapStrategy',
+    { numberFormat: { type: 'TEXT' }, textFormat: { fontSize: 9 }, horizontalAlignment: 'CENTER', wrapStrategy: 'WRAP' })
   // NOTAS DE CRÉDITO — el formato moneda general de la pestaña convierte una fecha en "$46.119"
   // (el número de serie del 7/4/2026 pintado como pesos). Ya pasó cinco veces en este archivo: un
   // control que suma no ve un defecto de pantalla. Cada columna del bloque dice qué es.
