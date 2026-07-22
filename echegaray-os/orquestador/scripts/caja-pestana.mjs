@@ -234,7 +234,7 @@ function grilla(cargado, refs) {
   push()
 
   // ── 1 · DISPONIBILIDADES ────────────────────────────────────────────────────────────────────────
-  push(['1 · DISPONIBILIDADES — LO QUE HAY HOY'])
+  push(['DISPONIBILIDADES POR CUENTA'])
   const cab1 = push(['Cuenta', 'Moneda', 'Saldo en moneda de origen', 'Tipo de cambio', 'Saldo en pesos', 'Fecha del saldo', 'Antigüedad', 'Origen del dato'])
   const d0 = filas.length + 1
   const amarillas = []
@@ -305,17 +305,16 @@ function grilla(cargado, refs) {
   }
   const d1 = filas.length
 
-  const fTotal = push(['TOTAL DISPONIBILIDADES', '', '', '', `=SUM(${C_PESOS}${d0}:${C_PESOS}${d1})`, '', '', '', 'Es el "Efectivo al inicio" que usan los dos cash flows.'])
+  const fTotal = push(['Total disponibilidades', '', '', '', `=SUM(${C_PESOS}${d0}:${C_PESOS}${d1})`, '', '', '', 'Es el "Efectivo al inicio" que usan los dos cash flows.'])
   // La exposición al tipo de cambio. No es un detalle de presentación: decide si conviene vender o
   // quedarse. Sale de las mismas filas de arriba, no se carga aparte.
 
   // ── 2 · COMPROMISOS YA EMITIDOS ─────────────────────────────────────────────────────────────────
-  push(['2 · COMPROMISOS YA EMITIDOS — plata que sigue en la cuenta pero ya no es tuya'])
-  const fCh = push(['Cheques de pago diferido emitidos, no debitados', 'ARS',
+  const fCh = push(['(−) Cheques emitidos, no debitados', 'ARS',
     // Sale de la propia pestaña de cheques: acá no se copia ningún importe.
     `=SUMPRODUCT((UPPER('${refs.cheques}'!$K$2:$K$400)<>"SI")*IF(ISNUMBER('${refs.cheques}'!$F$2:$F$400);'${refs.cheques}'!$F$2:$F$400;0))`,
     '', `=${C_IMP}${filas.length + 1}`, '', '', `Pestaña ${refs.cheques}, columna DEBITADO distinta de SI`, 'Se calcula solo'])
-  const fNeta = push(['DISPONIBILIDAD NETA', '', '', '', `=${C_PESOS}${fTotal}-${C_PESOS}${fCh}`, '', '', '',
+  const fNeta = push(['Disponibilidad neta', '', '', '', `=${C_PESOS}${fTotal}-${C_PESOS}${fCh}`, '', '', '',
     'Lo que queda después de cubrir los cheques ya firmados. Es el número con el que conviene decidir.'])
   push()
 
@@ -324,10 +323,10 @@ function grilla(cargado, refs) {
   // no efectivo, así que va como resumen de tres líneas; el desglose (consumos, cuotas, controles,
   // costo del descubierto) está abajo, plegado. Las tres cifras se completan más abajo, cuando el
   // bloque de líneas de crédito ya calculó su disponible.
-  push(['MARGEN DE CRÉDITO — capacidad de pago, no es efectivo'])
+  push(['MARGEN DE CRÉDITO — no es efectivo'])
   const fMTar = push(['Tarjeta — disponible para comprar'])
   const fMAcu = push(['Acuerdo en descubierto'])
-  const fMAire = push(['⇒ AIRE TOTAL (tarjeta + acuerdo)'])
+  const fMAire = push(['Aire total'])
   push()
 
   // ═══ DE ACÁ PARA ABAJO: CONTROLES Y CONCILIACIONES, COLAPSADOS ═══════════════════════════════════
