@@ -74,6 +74,8 @@ import { NOMBRES } from '../lib/sheet-pestanas.mjs'
 import { partir, filasHuerfanas, ref as refPestana } from '../lib/partir-pestana.mjs'
 import { anchosSegunContenido } from '../lib/nota-celda.mjs'
 import { ESTADO_DEUDA } from '../lib/cuentas-por-pagar.mjs'
+/** El estado de Compras para lo pactado que todavía no es deuda firme. Convive con "Pendiente". */
+const ESTADO_PROYECTADO = 'Proyectado'
 import { formulaComercial } from '../lib/orden-deuda.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
 import { normComprobante, esLlaveUtil } from '../lib/cheques-cobertura.mjs'
@@ -163,6 +165,11 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // fórmula SUMIFS(Total;cond) − SUMIFS(Monto Pagado;cond) para cualquier juego de condiciones. Es lo
   // que el dueño marcó: un pago parcial baja el saldo, así que sumar el Total entero lo sobreestima.
   const condComercial = `${COL_ESTADO};"${ESTADO_DEUDA}";${COL_COMERCIAL};1`
+  // El otro estado de Compras que corresponde a esta pestaña: "Proyectado" = compras pactadas que
+  // todavía no son deuda firme. Sólo las COMERCIALES entran acá; el estado Proyectado también carga
+  // $137,9M de proyecciones NO comerciales (ARCA/nómina/plan financiero, con fecha en la columna de
+  // rubro) que viven fuera de Proveedores. Por eso se filtra por COL_COMERCIAL=1, igual que la deuda.
+  const condProyectado = `${COL_ESTADO};"${ESTADO_PROYECTADO}";${COL_COMERCIAL};1`
   const neta = (conds) => `SUMIFS(${COL_TOTAL};${conds})-SUMIFS(${COL_PAGADO};${conds})`
   const bPos = push([`POSICIÓN DE PROVEEDORES · al ${hoy} · en pesos`])
   const pos0 = filas.length + 1
@@ -172,6 +179,10 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   const posTotal = push(['DEUDA CON PROVEEDORES COMERCIALES', `=${neta(condComercial)}`, 'Compras — facturas Pendientes, netas de pagos parciales. La deuda con ARCA/impuestos/nómina vive en Impuestos y Financieros.'])
   push(['  · de eso, ya vencida', `=${neta(`${condComercial};${COL_FECHA};">0";${COL_FECHA};"<"&TODAY()`)}`, 'la fecha de pago ya pasó'])
   push(['  · de eso, sin fecha de pago', `=${neta(condComercial)}-${neta(`${condComercial};${COL_FECHA};">0"`)}`, '⚠ no cae en ninguna semana del cash flow'])
+  push([])
+  // Estado "Proyectado" de Compras, sólo comerciales: pactado pero todavía no es deuda firme, así que
+  // va aparte del titular para no inflar la deuda. Las proyecciones no comerciales ($137,9M) no entran.
+  const posProy = push(['Compras comerciales proyectadas', `=${neta(condProyectado)}`, `=COUNTIFS(${condProyectado};${COL_TOTAL};"<>")&" compras estado ""Proyectado"" — pactadas, aún no deuda firme. Excluye proyecciones de ARCA/nómina/financieras."`])
   push([])
   const posPlazo = push(['Plazo de pago promedio', `=IFERROR(SUMPRODUCT(ISNUMBER(${COL_FACTURA})*ISNUMBER(${COL_FECHA})*(IF(ISNUMBER(${COL_FECHA});${COL_FECHA};0)-IF(ISNUMBER(${COL_FACTURA});${COL_FACTURA};0))*IF(ISNUMBER(${COL_TOTAL});${COL_TOTAL};0))/SUMPRODUCT(ISNUMBER(${COL_FACTURA})*ISNUMBER(${COL_FECHA})*IF(ISNUMBER(${COL_TOTAL});${COL_TOTAL};0));"")`, 'días entre factura y pago — casi no se usa el crédito del proveedor, que es gratis'])
   const posFaltan = push(['Facturado por AFIP que Compras no tiene', `=${N_ARCA.faltanMonto}`, `=${N_ARCA.faltanN}&" comprobantes con CAE que ninguna otra pestaña ve"`])
@@ -474,7 +485,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
     ? c.replaceAll('$TOTFAM', String(totFam)).replaceAll('$TOTPROV', String(fTotProv)).replaceAll('$TOTDEUDA', String(fTotProv))
     : c)))
 
-  return { filas: resuelto, cabArca, marcas: { bPos, b1, b2, b3, b4, b5, b6, b7, b8, fin: filas.length }, bPos, pos0, pos1, posTotal, posPlazo, posFaltan, cuentas: [fCuenta1, fCuenta2], fCompFecha, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabDocFin, deudaHeaders, deudaGrupos, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
+  return { filas: resuelto, cabArca, marcas: { bPos, b1, b2, b3, b4, b5, b6, b7, b8, fin: filas.length }, bPos, pos0, pos1, posTotal, posProy, posPlazo, posFaltan, cuentas: [fCuenta1, fCuenta2], fCompFecha, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabDocFin, deudaHeaders, deudaGrupos, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
 }
 
 async function main() {
@@ -1073,6 +1084,7 @@ async function formatear(google, sheetId, g, ancho, filas) {
       hairTop(g.posTotal, 0, 2)
     }
     // El plazo son días, no pesos. Igual que en el control: la columna es de plata y esta celda no.
+    if (g.posProy) hairTop(g.posProy, 0, 2)
     if (g.posPlazo) fmt(r(g.posPlazo - 1, g.posPlazo, 1, 2), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: { type: 'NUMBER', pattern: '0.0" días"' }, horizontalAlignment: 'RIGHT' })
     // Lo de AFIP sin cargar es una alerta suave: es plata facturada que ninguna pestaña más ve.
     if (g.posFaltan) fmt(r(g.posFaltan - 1, g.posFaltan, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: false, fontSize: 11, foregroundColor: E.COLOR.alertaTexto } })
