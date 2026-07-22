@@ -723,6 +723,18 @@ async function main() {
   console.log(`  cierre del Cash Flow en la fila ${refs.cierre ?? '?'} · encabezado en la ${refs.cab ?? '?'}`)
   if (DRY) return console.log('--dry: no escribí nada.')
 
+  // GARANTIZAR EL ALTO DE GRILLA ANTES DE TODO. El layout llega a ~113 filas y la pestaña puede tener
+  // menos: si el rango con nombre del tipo de cambio (al fondo) o el batch de valores apuntan más allá
+  // del alto real, la API ABORTA el write entero y CAJA queda con lo de la corrida anterior — así se
+  // perdían los bloques 5, 6 y 7 (ALERTA, CONCILIACIÓN, EFECTIVO) y saltaba de "4" a "8" sin avisar.
+  // Va ANTES del rango con nombre, que es lo primero que se escribe. El alto se ASEGURA, no se supone.
+  const hasta = Math.max(g.filas.length + 20, hoja.rows ?? 0)
+  if ((hoja.rows ?? 0) < hasta) {
+    await google.spreadsheetBatchUpdate(ID, [{
+      updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { rowCount: hasta } }, fields: 'gridProperties.rowCount' },
+    }])
+  }
+
   // EL RANGO CON NOMBRE VA PRIMERO. Las fórmulas de arriba dicen TIPO_CAMBIO_USD, así que el nombre
   // tiene que existir antes de escribirlas o la pestaña se llena de #NAME? en la primera corrida.
   await rangoConNombre(google, hoja.sheetId, g.fTC)
@@ -748,7 +760,6 @@ async function main() {
   //
   // Es el mismo defecto de ventana fija que ya hizo mentir al censo de números pegados. El alto se
   // pregunta, no se declara.
-  const hasta = Math.max(g.filas.length + 20, hoja.rows ?? 0)
   await google.clearValues(ID, `${tab}!A1:Z${hasta}`)
   await google.batchUpdateValues(ID, [{ range: `${tab}!A1:${letra(ANCHO - 1)}${g.filas.length}`, values: g.filas }])
   await formatear(google, hoja.sheetId, g, tab)
