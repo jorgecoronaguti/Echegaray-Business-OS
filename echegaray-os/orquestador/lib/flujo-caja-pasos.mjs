@@ -69,6 +69,9 @@ export const PASOS = [
   // de que corran no sirve de nada. Lo que este paso arregla es lo que ningún script dueño puede
   // saber solo: si el texto que le tocó a esta corrida entra o no.
   ['reparar-textos.mjs', 'Que todo texto se pueda leer entero (ensancha o manda a nota)', []],
+  // 2ª pasada de clase mundial: una regla condicional por pestaña calculada que pinta en rojo toda
+  // celda con error. Un modelo roto grita en la pantalla en vez de esperar al auditor.
+  ['formato-condicional.mjs', 'formato condicional "error en rojo" en las pestañas calculadas', []],
   ['auditar-pantalla.mjs', 'control de defectos de pantalla en las 14 pestañas', []],
   ['sync-compras.mjs', 'núcleo: Compras → costos_obra', []],
   ['sync-caja-nucleo.mjs', 'núcleo: quincenas de jornales e instrumentos de pago', []],

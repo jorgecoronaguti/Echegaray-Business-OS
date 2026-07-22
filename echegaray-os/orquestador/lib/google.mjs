@@ -1040,6 +1040,17 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       const j = await apiGet(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?fields=namedRanges`)
       return j.namedRanges || []
     },
+    /** Cuántas reglas de formato condicional tiene cada pestaña: [{sheetId, title, reglas}].
+     *  Hace falta para reemplazarlas de forma idempotente (borrar las que hay antes de re-agregar),
+     *  porque addConditionalFormatRule apila y en cada corrida del agente se duplicarían. */
+    async getConditionalFormats(fileId) {
+      const j = await apiGet(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?fields=sheets(properties(sheetId,title),conditionalFormats)`)
+      return (j.sheets || []).map((s) => ({
+        sheetId: s.properties?.sheetId,
+        title: s.properties?.title,
+        reglas: (s.conditionalFormats || []).length,
+      }))
+    },
     /** Operaciones ESTRUCTURALES de un Sheet (insertar/borrar filas o columnas, formato)
      *  vía batchUpdate. `requests` = array de requests de la Sheets API. */
     async spreadsheetBatchUpdate(fileId, requests) {
