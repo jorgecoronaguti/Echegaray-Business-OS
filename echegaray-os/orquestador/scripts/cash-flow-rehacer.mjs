@@ -359,7 +359,7 @@ async function formatear(google, data) {
  */
 async function faltantesDeCompras(google) {
   const hojas = await google.getSheetMeta(ID)
-  const chequesTab = hallarPestana(hojas, 'Cheques').title
+  const chequesTab = hallarPestana(hojas, 'Cheques Emitidos').title
   const compras = await google.readSheetValues(ID, 'Compras!A4:O')
   const enCompras = new Set(
     compras.filter((f) => parseMonto(f?.[14]) > 0).map((f) => normComprobante(f?.[7])).filter(esLlaveUtil),

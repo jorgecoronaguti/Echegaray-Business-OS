@@ -299,6 +299,26 @@ function grilla(cargado, refs) {
     'Lo que queda después de cubrir los cheques ya firmados. Es el número con el que conviene decidir.'])
   push()
 
+  // ── HORIZONTE DE CHEQUES: lo que va a ENTRAR (recibidos) contra lo que va a SALIR (emitidos) ───────
+  // El dueño: "cruzá cheques emitidos y recibidos y que se vea todo reflejado en caja... necesito tener
+  // bien claro el horizonte". Entra = valores recibidos en cartera; sale = cheques emitidos por su fecha
+  // de pago. Todo por fórmula sobre las dos pestañas (una fuente por concepto): ni un importe pegado.
+  push(['HORIZONTE DE CHEQUES — lo que va a entrar y lo que va a salir'])
+  const ch = refs.cheques
+  const F400 = `IF(ISNUMBER('${ch}'!$F$2:$F$400);'${ch}'!$F$2:$F$400;0)`
+  const K400 = `UPPER('${ch}'!$K$2:$K$400)<>"SI"`
+  const I400 = `'${ch}'!$I$2:$I$400`
+  const salida = (cond) => `=SUMPRODUCT((${K400})*(${cond})*${F400})`
+  const hrow = (label, amount, nota) => { const f = filas.length + 1; return push([label, 'ARS', amount, '', `=${C_IMP}${f}`, '', '', nota, '']) }
+  const fHEntra = hrow('Entra — cheques recibidos, en cartera', `=${C_PESOS}${fCartera}`, 'Valores en custodia según el banco (detalle en el bloque 3, más abajo).')
+  const fHSale = hrow('Sale — cheques emitidos, por vencer', `=${C_PESOS}${fCh}`, `Pestaña ${ch}, no debitados (DEBITADO ≠ SI).`)
+  push(['⇒ Neto de cheques en el horizonte', 'ARS', `=${C_IMP}${fHEntra}-${C_IMP}${fHSale}`, '', `=${C_IMP}${filas.length + 1}`, '', '',
+    'Entra menos sale. Negativo = los cheques que ya firmaste superan los que vas a cobrar de cartera.', ''])
+  hrow('   · de eso, sale este mes o ya venció', salida(`${I400}<=EOMONTH(TODAY();0)`), 'Cheques emitidos con fecha de pago hasta fin de este mes.')
+  hrow('   · sale el mes que viene', salida(`(${I400}>EOMONTH(TODAY();0))*(${I400}<=EOMONTH(TODAY();1))`), '')
+  hrow('   · sale más adelante', salida(`${I400}>EOMONTH(TODAY();1)`), 'Los tres tramos suman el total de "Sale".')
+  push()
+
   // ── MARGEN DE CRÉDITO — resumen arriba, el detalle vive abajo en "Líneas de crédito" ──────────────
   // JPMorgan: la posición de arriba se lee en tres segundos. El margen de crédito es capacidad de pago,
   // no efectivo, así que va como resumen de tres líneas; el desglose (consumos, cuotas, controles,
@@ -729,7 +749,9 @@ async function main() {
   // Las referencias a otras pestañas se resuelven por rótulo, no se adivinan.
   const colA = await google.readSheetValues(ID, 'Cash Flow Mensual!A1:A80')
   const refs = {
-    cheques: hallarPestana(hojas, 'Cheques').title,
+    // 'Cheques Emitidos' completo, no 'Cheques' a secas: desde que existe 'Cheques Recibidos' el
+    // nombre corto es ambiguo y hallarPestana corta con error.
+    cheques: hallarPestana(hojas, 'Cheques Emitidos').title,
     tarjeta: hallarPestana(hojas, 'Tarjeta').title,
     // La réplica del extracto. Si no está, el saldo del banco vuelve al número declarado y la línea
     // de movimientos posteriores no se escribe: sin corte confiable, esa ventana no se puede acotar.

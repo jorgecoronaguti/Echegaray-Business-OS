@@ -67,7 +67,11 @@ async function main() {
   const K = `$K$${HDR}:$K` // DEBITADO SI/NO
   const A = `$A$${HDR}:$A` // TIPO (FISICO/ECHEQ)
   const I = `$I$${HDR}:$I` // fecha de pago
-  const outstanding = `SUMIF(${K};"NO";${F})`
+  // NO DEBITADO = todo lo que NO dice "SI", no sólo lo que dice "NO". Un DEBITADO en blanco es un
+  // cheque que todavía no se debitó (default seguro, igual que CAJA): contarlo sólo cuando dice "NO"
+  // sub-contaba $5,18M en 8 cheques con la celda vacía. El IF(ISNUMBER(F)) evita que las filas vacías
+  // del rango abierto sumen. Mismo criterio que la línea de cheques de CAJA (K<>"SI").
+  const outstanding = `SUMPRODUCT((UPPER(${K})<>"SI")*IF(ISNUMBER(${F});${F};0))`
 
   // BANDA-RESUMEN (todo fórmula). Fila 1 eyebrow · 2 título · 3 fecha · 4 hairline · 5 rótulos · 6 números.
   const filas = [
@@ -76,7 +80,10 @@ async function main() {
     [`Al ${hoy} · en pesos · el saldo del banco ya no los tiene descontados`, '', '', '', '', '', '', '', '', '', '', '', ''],
     ['', '', '', '', '', '', '', '', '', '', '', '', ''],
     ['COMPROMETIDO NO DEBITADO', '', '', 'CANTIDAD', '', 'PRÓXIMO A DEBITAR', '', 'ECHEQ / FÍSICO', '', '', '', '', ''],
-    [`=${outstanding}`, '', '', `=COUNTIF(${K};"NO")`, '', `=IFERROR(MINIFS(${I};${K};"NO");"")`, '',
+    // PRÓXIMO A DEBITAR va como TEXTO (TEXT(...)) a propósito: esta celda vive en la columna F, que es
+    // la del IMPORTE en el ledger, y CAJA suma F2:F400. Si el próximo fuera una fecha (número de serie),
+    // CAJA lo sumaría como si fuera plata. Como texto, ISNUMBER=FALSO y CAJA lo saltea. Se ve igual.
+    [`=${outstanding}`, '', '', `=SUMPRODUCT((UPPER(${K})<>"SI")*ISNUMBER(${F}))`, '', `=IFERROR(TEXT(MINIFS(${I};${K};"<>SI";${F};">0");"dd/mm/yy");"")`, '',
       `=IFERROR(SUMIFS(${F};${K};"NO";${A};"ECHEQ")&"  ·  "&SUMIFS(${F};${K};"NO";${A};"FISICO");"")`, '', '', '', '', ''],
     ['', '', '', '', '', '', '', '', '', '', '', '', ''],
     ['', '', '', '', '', '', '', '', '', '', '', '', ''],

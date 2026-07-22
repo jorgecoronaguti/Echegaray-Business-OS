@@ -71,7 +71,7 @@ function leerJornales(filas) {
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const hojas = await google.getSheetMeta(ID)
-  const tabCheques = hallarPestana(hojas, 'Cheques').title
+  const tabCheques = hallarPestana(hojas, 'Cheques Emitidos').title
   const tabTarjeta = hallarPestana(hojas, 'Tarjeta').title
   const tabJornales = hallarPestana(hojas, 'Jornales').title
 

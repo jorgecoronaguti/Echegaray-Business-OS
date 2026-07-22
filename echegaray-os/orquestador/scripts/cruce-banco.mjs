@@ -150,7 +150,7 @@ async function main() {
   // importe — es la forma de verificar que la pestaña esté completa. Sumar las dos era la
   // duplicación que la regla de oro prohíbe, cometida por mí mientras la controlaba.
   const hojas = await google.getSheetMeta(ID)
-  const tabCh = hallarPestana(hojas, 'Cheques').title
+  const tabCh = hallarPestana(hojas, 'Cheques Emitidos').title
   const enPestana = (await google.readSheetValues(ID, `${tabCh}!A2:L400`))
     .filter((f) => parseMonto(f?.[5]) > 0 && String(f?.[10] ?? '').trim().toUpperCase() !== 'SI')
     .map((f) => ({ tipo: f?.[0], numero: String(f?.[1] ?? '').trim(), beneficiario: f?.[4], monto: parseMonto(f?.[5]), pago: f?.[8] }))
