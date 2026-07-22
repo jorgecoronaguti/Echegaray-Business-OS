@@ -95,7 +95,7 @@ function grilla(proveedores) {
   // Se compara contra lo que TIENE FECHA DE CAJA: un gasto sin fecha no cae en ningún mes y por lo
   // tanto no puede estar en este cuadro. Compararlo contra el total entero hacía fallar el control
   // por un motivo que no es un error — y un control que falla por algo que está bien se deja de mirar.
-  c2[0] = `Compras, rubro "${RUBRO}", con fecha de caja`
+  c2[0] = 'Compras del rubro, con fecha de caja'
   // ">0" y no "<>": la columna de fecha de caja la llena un ARRAYFORMULA que devuelve "" en las
   // filas que no son gasto, y para SUMIFS ese "" no es "distinto de vacío" — el criterio "<>" las
   // contaba a todas y el control comparaba contra sí mismo. Una fecha real es un número mayor que 0.
@@ -111,17 +111,17 @@ function grilla(proveedores) {
   c4[2] = 'Distinto de cero = hay un proveedor recurrente que este cuadro no está listando.'
   push(c4)
   const c5 = vacia()
-  c5[0] = `Proveedores que NO se proyectan (aparecieron en menos de ${MIN_MESES} meses)`
+  c5[0] = `Proveedores no proyectados (< ${MIN_MESES} meses)`
   c5[1] = `=COUNTIF(${letra(C_NMESES)}${f0}:${letra(C_NMESES)}${f1};"<${MIN_MESES}")`
   c5[2] = 'No es una tendencia: es un pago suelto. Proyectarlo inventa plata.'
   push(c5)
   const cSF = vacia()
-  cSF[0] = '⚠ Del rubro, sin fecha de caja (no cae en ningún mes)'
+  cSF[0] = '⚠ Del rubro, sin fecha de caja'
   cSF[1] = `=SUMIF(${COL_RUBRO};"${RUBRO}";${COL_TOTAL})-B${ctrl + 1}`
   cSF[2] = 'Está clasificado pero no se sabe CUÁNDO sale. Hay que fecharlo en Compras.'
   push(cSF)
   const c6 = vacia()
-  c6[0] = '⚠ Meses cerrados en $0 (falta cargar la factura)'
+  c6[0] = '⚠ Meses cerrados en $0 (falta factura)'
   c6[1] = `=SUMPRODUCT((${letra(C_AUX0)}${f0}:${letra(C_AUX0 + 11)}${f1}=0)*(${letra(C_MES0)}$${FILA_CAB}:${letra(C_MES0 + 11)}$${FILA_CAB}<=EOMONTH(TODAY();0)))`
   c6[2] = 'Un proveedor que factura todos los meses y un mes aparece en cero: o dejó de facturar, o la factura no se cargó. El cuadro NO lo tapa con una proyección.'
   push(c6)
