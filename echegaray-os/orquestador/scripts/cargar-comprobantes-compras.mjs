@@ -18,10 +18,11 @@ import { readFileSync } from 'node:fs'
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
-import { matchProveedor, valoresInput, validar, aNumero, normalizar, COL_INPUT, COL, GRUPOS_FORMULA } from '../lib/carga-comprobantes.mjs'
+import { matchProveedor, valoresInput, validar, GRUPOS_FORMULA } from '../lib/carga-comprobantes.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
+const ADD_PROV = process.argv.includes('--add-proveedores')
 const fileArg = (process.argv.find((a) => a.startsWith('--file=')) || '').split('=')[1]
   || process.argv[process.argv.indexOf('--file') + 1]
 
@@ -98,13 +99,26 @@ async function main() {
     await google.spreadsheetBatchUpdate(ID, [{ updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { rowCount: hasta + 20 } }, fields: 'gridProperties.rowCount' } }])
   }
 
-  // 1) VALORES de input, una columna por vez (no toca formulas ni derivadas ni las que llena el dueño).
-  const data = []
-  for (const k of COL_INPUT) {
-    const L = COL[k]
-    const col = plan.map((p) => [p.valores[L] ?? ''])
-    data.push({ range: `Compras!${L}${desde}:${L}${hasta}`, values: col })
+  // 0) PROVEEDORES NUEVOS → al desplegable estricto (si se pidió), para que queden fijos y matcheen
+  //    en la próxima carga. Se reescribe la validación de toda la columna E con la lista ampliada.
+  if (ADD_PROV && nuevos.size) {
+    const listaFinal = [...lista, ...nuevos]
+    await google.spreadsheetBatchUpdate(ID, [{
+      setDataValidation: {
+        range: { sheetId: hoja.sheetId, startRowIndex: 3, endRowIndex: Math.max(hoja.rows ?? 0, hasta + 20), startColumnIndex: idx('E'), endColumnIndex: idx('E') + 1 },
+        rule: { condition: { type: 'ONE_OF_LIST', values: listaFinal.map((v) => ({ userEnteredValue: v })) }, strict: true, showCustomUi: true },
+      },
+    }])
+    console.log(`  + ${nuevos.size} proveedor(es) agregado(s) al desplegable: ${[...nuevos].join(' · ')}`)
   }
+
+  // 1) VALORES de input y de imputación (obra), una columna por vez. NO toca fórmulas, derivadas
+  //    (AC/AD/AE/AF/AJ) ni lo que el dueño completa aparte (Unidad de Negocio, Detalle).
+  const letras = [...new Set(plan.flatMap((p) => Object.keys(p.valores)))]
+  const data = letras.map((L) => ({
+    range: `Compras!${L}${desde}:${L}${hasta}`,
+    values: plan.map((p) => [p.valores[L] ?? '']),
+  }))
   await google.batchUpdateValues(ID, data)
 
   // 2) FÓRMULAS por fila: copiar de la última fila con datos a las nuevas (Google reajusta refs).
@@ -126,7 +140,7 @@ async function main() {
     if (!val(28)) sinRubro++
   }
   console.log(`\n✔ Escritas ${plan.length} fila(s). ${errores ? `⚠ ${errores} con #ERROR — revisar.` : 'Sin #ERROR.'}`)
-  if (sinRubro) console.log(`ℹ ${sinRubro} sin Rubro de caja (AC) todavía: se clasifican cuando completes Unidad de Negocio (I) / Obra (J).`)
+  if (sinRubro) console.log(`ℹ ${sinRubro} sin Rubro de caja (AC) todavía: se clasifican cuando completes la Unidad de Negocio (I).`)
   console.log('\nSIGUIENTE: node orquestador/scripts/sync-compras.mjs  (espeja a Supabase, regla #6).')
   await closePool()
 }

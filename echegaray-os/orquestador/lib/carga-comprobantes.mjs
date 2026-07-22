@@ -134,6 +134,11 @@ export function valoresInput(c) {
   set('formaPago', c.formaPago) // sólo si la foto lo dice; si no, vacío (no se inventa)
   set('totalParcial', c.totalParcial ?? pago.totalParcial)
   set('estado', estado)
+  // IMPUTACIÓN: sólo se escribe lo que venga explícito (la anotación del dueño en el comprobante).
+  // Nunca se infiere una obra o una unidad de negocio: si no está, la completa él y AC/AE clasifican.
+  set('unidad', c.unidad)
+  set('obra', c.obra)
+  set('detalle', c.detalle)
   // Si quedó pagada al contado, lo pagado es el total; en cuenta corriente pendiente, no hay pago aún.
   if (estado === 'Pagado' && total != null) set('pagado', total)
   return out
