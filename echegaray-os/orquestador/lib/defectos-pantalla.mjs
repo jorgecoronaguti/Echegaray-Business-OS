@@ -223,8 +223,11 @@ export function detectar(f, { desdeFila = 1, huecoMax = 3 } = {}) {
           if (wrap === 'WRAP') {
             const lineas = Math.ceil(px / anchoCol)
             const alto = altos[i] ?? 21
-            if (alto < lineas * (tam + 5)) {
-              out.push({ tipo: 'texto_apretado', fila: nFila, col, valor: v.slice(0, 40), que: `necesita ${lineas} líneas y la fila mide ${alto}px: se ve la primera y el resto queda cortado abajo` })
+            const altoNecesario = lineas * (tam + 5)
+            if (alto < altoNecesario) {
+              // altoNecesario lo consume reparar-pantalla: es el alto exacto que borra este defecto,
+              // el mismo umbral que se acaba de comparar, así que ponerlo lo deja al borde justo.
+              out.push({ tipo: 'texto_apretado', fila: nFila, col, valor: v.slice(0, 40), altoNecesario, que: `necesita ${lineas} líneas y la fila mide ${alto}px: se ve la primera y el resto queda cortado abajo` })
             }
           } else if (vecinaOcupada || wrap === 'CLIP') {
             out.push({ tipo: 'texto_cortado', fila: nFila, col, valor: v.slice(0, 40), que: `${v.length} caracteres en una columna de ${anchoCol}px: entran ${Math.floor(anchoCol / (tam * 0.57))}` })

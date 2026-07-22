@@ -90,7 +90,14 @@ async function main() {
 
     const d = detectar(f)
     const arreglables = d.filter((x) => x.tipo === 'texto_en_numero')
-    const otros = d.filter((x) => x.tipo !== 'texto_en_numero')
+    // texto_apretado: la celda YA está en WRAP y su contenido es correcto —sólo la fila es más baja
+    // que las líneas que necesita, así que se ve la primera y el resto queda cortado abajo—. Subir el
+    // alto de la fila al que el propio detector calculó (altoNecesario) borra el defecto sin tocar ni
+    // el contenido ni el formato. Es seguro y universal, así se deja de acortar la misma clase de nota
+    // pestaña por pestaña. NO se toca texto_cortado: ese sí exige decidir (ensanchar, envolver o
+    // acortar) y se resuelve en el script que lo escribe.
+    const apretados = d.filter((x) => x.tipo === 'texto_apretado')
+    const otros = d.filter((x) => x.tipo !== 'texto_en_numero' && x.tipo !== 'texto_apretado')
     if (!d.length) { console.log(`  ${p.titulo.padEnd(26)} ✓`); continue }
 
     const cabeceras = filasDeEncabezado(d)
@@ -101,8 +108,15 @@ async function main() {
         fields: 'userEnteredFormat',
       },
     }))
+    // Una fila puede tener varias celdas apretadas: se le pone el alto MÁXIMO que pida cualquiera.
+    const altoPorFila = new Map()
+    for (const x of apretados) altoPorFila.set(x.fila, Math.max(altoPorFila.get(x.fila) ?? 0, x.altoNecesario ?? 0))
+    for (const [fila, alto] of altoPorFila) {
+      if (!alto) continue
+      reqs.push({ updateDimensionProperties: { range: { sheetId: hoja.sheetId, dimension: 'ROWS', startIndex: fila - 1, endIndex: fila }, properties: { pixelSize: alto }, fields: 'pixelSize' } })
+    }
 
-    console.log(`  ${p.titulo.padEnd(26)} ${arreglables.length} reparable(s)${otros.length ? ` · ${otros.length} que NO se tocan` : ''}`)
+    console.log(`  ${p.titulo.padEnd(26)} ${arreglables.length + altoPorFila.size} reparable(s)${otros.length ? ` · ${otros.length} que NO se tocan` : ''}`)
     for (const r of resumen(otros)) console.log(`     ✗ ${String(r.n).padStart(2)}× ${r.tipo} (ej. ${r.ejemplo.col}${r.ejemplo.fila}) — se arregla en el script que lo escribe`)
     sinReparar += otros.length
     if (DRY || !reqs.length) continue
@@ -116,9 +130,9 @@ async function main() {
   let quedan = 0
   for (const p of lista) {
     const f = await google.readSheetFormats(ID, `${p.titulo}!A1:${colLetra(p.cols)}${p.hastaFila}`).catch(() => null)
-    if (f) quedan += detectar(f).filter((x) => x.tipo === 'texto_en_numero').length
+    if (f) quedan += detectar(f).filter((x) => x.tipo === 'texto_en_numero' || x.tipo === 'texto_apretado').length
   }
-  console.log(`\n✓ ${reparadas} celda(s) reparadas · quedan ${quedan} de formato${sinReparar ? ` y ${sinReparar} que necesitan tocar el script` : ''}`)
+  console.log(`\n✓ ${reparadas} celda(s)/fila(s) reparadas · quedan ${quedan} de formato/alto${sinReparar ? ` y ${sinReparar} que necesitan tocar el script` : ''}`)
   if (quedan) process.exitCode = 1
 }
 

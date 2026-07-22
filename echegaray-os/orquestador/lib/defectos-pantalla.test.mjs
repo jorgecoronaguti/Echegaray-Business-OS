@@ -5,6 +5,16 @@ import { detectar, resumen, FECHA_CERO } from './defectos-pantalla.mjs'
 const cel = (valor, type) => ({ valor, formato: type ? { numberFormat: { type } } : null })
 const hoja = (filas) => ({ filas, anchos: [] })
 
+test('un texto en WRAP que no entra en el alto de la fila expone el alto que necesita', () => {
+  // 36 caracteres a 10px ≈ 205px de ancho; la columna mide 100px → 3 líneas. La fila mide 21px, y
+  // 3 líneas necesitan 3×(10+5)=45px. reparar-pantalla consume ese altoNecesario para subir la fila.
+  const celWrap = { valor: 'una nota bastante larga que no entra ahí', formato: { textFormat: { fontSize: 10 }, wrapStrategy: 'WRAP' } }
+  const f = { filas: [[celWrap]], anchos: [100], altos: [21] }
+  const d = detectar(f).filter((x) => x.tipo === 'texto_apretado')
+  assert.equal(d.length, 1)
+  assert.equal(d[0].altoNecesario, 45)
+})
+
 test('la fecha cero se caza: 30/12/99 no es un día, es "no hay fecha"', () => {
   // Un MINIFS sin coincidencias devuelve 0, y 0 con formato de fecha se lee como 1899.
   const d = detectar(hoja([[cel('Proveedor'), cel('30/12/99', 'DATE')]]))
