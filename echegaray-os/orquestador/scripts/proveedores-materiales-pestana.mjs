@@ -579,17 +579,24 @@ async function main() {
   comprasRaw.forEach((f, i) => {
     const nombre = String(f?.[4] ?? '').trim()
     const esPend = String(f?.[23] ?? '').trim().toLowerCase() === ESTADO_DEUDA.toLowerCase()
-    const comercial = RUBROS_COMERCIALES.includes(String(f?.[IDX.rubro] ?? '').trim())
+    // "Comercial" tiene UNA sola definición: la columna materializada ¿Proveedor comercial? (OS), que
+    // es la MISMA que suma el hero por SUMIFS. Re-derivarla acá con RUBROS_COMERCIALES daba un
+    // universo distinto (dependía además de que IDX.rubro estuviera bien resuelto): el hero contaba 13
+    // proveedores y el listado 12, y la suma no cerraba. Una fuente por concepto.
+    const comercial = String(f?.[IDX.comercial] ?? '').trim() === '1'
+    if (!nombre || !esPend || !comercial) return
     // El saldo real: Total menos lo ya pagado. Sólo para ordenar los grupos; los montos que se ven
-    // salen de fórmulas (neta) sobre Compras.
+    // salen de fórmulas (neta) sobre Compras. Se suman TODAS las filas, también las negativas (una
+    // nota de crédito): así el detalle del grupo suma igual que su encabezado.
     const imp = parseMonto(f?.[IDX.total]) - parseMonto(f?.[IDX.pagado])
-    if (!nombre || !esPend || !comercial || imp <= 0) return
     const a = deudaMap.get(nombre) ?? { nombre, total: 0, filas: [] }
     a.total += imp
     a.filas.push({ fila: i + 4 })
     deudaMap.set(nombre, a)
   })
-  const deudaAgrupada = [...deudaMap.values()].sort((a, b) => b.total - a.total)
+  // Sólo grupos con saldo neto a favor del proveedor. Un proveedor cuyas notas de crédito superan sus
+  // facturas pendientes no es una deuda: no va en la lista de "qué se debe".
+  const deudaAgrupada = [...deudaMap.values()].filter((p) => p.total > 0.5).sort((a, b) => b.total - a.total)
 
   // ── AFIP: LA FUENTE FISCAL ─────────────────────────────────────────────────────────────────────
   // comprobantes_arca es el libro de IVA que el OS ya replica. Es la única fuente que dice qué se
