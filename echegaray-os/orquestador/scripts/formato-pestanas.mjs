@@ -54,7 +54,8 @@ export const PESTANAS = [
   { titulo: 'Tarjeta de Credito', congeladas: 2, hastaFila: 120, cols: 14, carga: true },
   { titulo: 'Jornales por Quincena', congeladas: 2, hastaFila: 80, cols: 14 },
   { titulo: 'Cargas Sociales', congeladas: 0, hastaFila: 120, cols: 16 },
-  { titulo: 'Impuestos y Financieros', congeladas: 0, hastaFila: 90, cols: 12 },
+  // Piel de statement PROPIA (su generador aplica estilo-statement); el formateador general la saltea.
+  { titulo: 'Impuestos y Financieros', congeladas: 1, hastaFila: 90, cols: 12, propio: true },
   { titulo: 'Recurrentes', congeladas: 4, hastaFila: 90, cols: 20 },
   { titulo: 'Estructura', congeladas: 6, hastaFila: 90, cols: 20 },
   // La vieja "Proveedores y Materiales" se partió el 21/07: eran ocho tablas sobre las mismas

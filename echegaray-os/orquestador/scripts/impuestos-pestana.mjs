@@ -24,6 +24,7 @@ import { clasificar, mes as mesDe, COLUMNAS } from '../lib/retenciones-sufridas.
 import { query } from '../lib/db.mjs'
 import { parsearDDJJ, alicuotaDeclarada } from '../lib/iibb-ddjj.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
+import { skinRequests } from '../lib/estilo-statement.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Impuestos y Financieros'
@@ -464,6 +465,9 @@ async function formatear(google, sheetId, g) {
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: 8 }, properties: { pixelSize: 130 }, fields: 'pixelSize' } })
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 8, endIndex: 9 }, properties: { pixelSize: 420 }, fields: 'pixelSize' } })
   await google.spreadsheetBatchUpdate(ID, req)
+  // PIEL DE STATEMENT encima del formato de número: sin reja, secciones y encabezados por tipografía
+  // + hairline (no barras rellenas), totales rulados. Deja la pestaña como CAJA y Cheques Emitidos.
+  await google.spreadsheetBatchUpdate(ID, skinRequests({ sheetId, filas: g.filas, cols: ANCHO, congeladas: 1 }))
 }
 
 main().then(() => process.exit(0)).catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
