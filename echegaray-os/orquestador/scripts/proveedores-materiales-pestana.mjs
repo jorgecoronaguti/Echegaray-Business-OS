@@ -158,14 +158,14 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // abajo. Es el layout que el dueño aprobó para Impuestos: resumen vertical arriba, detalle debajo.
   const hoy = new Date().toLocaleDateString('es-AR')
   const soloComercial = `${COL_TOTAL};${COL_ESTADO};"${ESTADO_DEUDA}";${COL_COMERCIAL};1`
-  const deudaTerceros = `${COL_TOTAL};${COL_ESTADO};"${ESTADO_DEUDA}"`
   const bPos = push([`POSICIÓN DE PROVEEDORES · al ${hoy} · en pesos`])
   const pos0 = filas.length + 1
-  push(['Deuda con proveedores comerciales', `=SUMIFS(${soloComercial})`, 'Compras — facturas en estado Pendiente'])
+  // Esta pestaña es SÓLO proveedores comerciales. La deuda con ARCA, impuestos y nómina NO va acá —
+  // vive en "Impuestos y Financieros" (regla 9, no duplicar). Por eso el hero abre con la deuda
+  // comercial como titular y no con un "total con terceros" que mezcle las dos cosas.
+  const posTotal = push(['DEUDA CON PROVEEDORES COMERCIALES', `=SUMIFS(${soloComercial})`, 'Compras — facturas Pendientes. La deuda con ARCA/impuestos/nómina vive en Impuestos y Financieros.'])
   push(['  · de eso, ya vencida', `=SUMIFS(${soloComercial};${COL_FECHA};">0";${COL_FECHA};"<"&TODAY())`, 'la fecha de pago ya pasó'])
   push(['  · de eso, sin fecha de pago', `=SUMIFS(${soloComercial})-SUMIFS(${soloComercial};${COL_FECHA};">0")`, '⚠ no cae en ninguna semana del cash flow'])
-  push(['Deuda con ARCA, impuestos y nómina', `=SUMIFS(${deudaTerceros})-SUMIFS(${soloComercial})`, 'planes de pago — su detalle vive en Impuestos y Financieros'])
-  const posTotal = push(['DEUDA TOTAL CON TERCEROS', `=SUMIFS(${deudaTerceros})`, 'lo que tiene que dar igual que la suma de "Pendiente" de Compras'])
   push([])
   const posPlazo = push(['Plazo de pago promedio', `=IFERROR(SUMPRODUCT(ISNUMBER(${COL_FACTURA})*ISNUMBER(${COL_FECHA})*(IF(ISNUMBER(${COL_FECHA});${COL_FECHA};0)-IF(ISNUMBER(${COL_FACTURA});${COL_FACTURA};0))*IF(ISNUMBER(${COL_TOTAL});${COL_TOTAL};0))/SUMPRODUCT(ISNUMBER(${COL_FACTURA})*ISNUMBER(${COL_FECHA})*IF(ISNUMBER(${COL_TOTAL});${COL_TOTAL};0));"")`, 'días entre factura y pago — casi no se usa el crédito del proveedor, que es gratis'])
   const posFaltan = push(['Facturado por AFIP que Compras no tiene', `=${N_ARCA.faltanMonto}`, `=${N_ARCA.faltanN}&" comprobantes con CAE que ninguna otra pestaña ve"`])
@@ -352,10 +352,8 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // ESTE CONTROL ESTABA MAL Y VALE DEJARLO ESCRITO: la primera versión era =X-Y-(X-Y), que da cero
   // SIEMPRE, mire lo que mire. Un control que no puede fallar no controla nada — es peor que no
   // tenerlo, porque da tranquilidad gratis.
-  push(['Deuda que NO es de un proveedor comercial', `=SUMIFS(${COL_TOTAL};${COL_ESTADO};"${ESTADO_DEUDA}")-$H$${fTotProv}`,
-    'Planes de pago de ARCA, impuestos y nómina. No son alguien a quien pedirle plazo, y por eso no están en la tabla de arriba — pero son plata que se debe igual. Su detalle está en Impuestos y Financieros.'])
-  push(['⇒ Deuda total con terceros', `=SUMIFS(${COL_TOTAL};${COL_ESTADO};"${ESTADO_DEUDA}")`, 'Comercial + no comercial. Es el número que tiene que dar igual que la suma de las filas "Pendiente" de Compras.'])
-  push([])
+  // La deuda con ARCA/impuestos/nómina NO se controla acá: es de la pestaña Impuestos y Financieros
+  // (regla 9). Esta pestaña sólo mira proveedores comerciales.
   push(['Sin describir — plata que no se sabe en qué se gastó', `=SUMIF(${COL_FAMILIA};"${SIN_FAMILIA}";${COL_TOTAL})`, 'Filas que dicen "materiales varios", "???" o están vacías. No se les inventa familia: hay que describirlas en Compras.'])
   const fCuenta1 = push(['Sin describir — cuántas facturas son', `=COUNTIF(${COL_FAMILIA};"${SIN_FAMILIA}")`, ''])
   const fCompFecha = push(['⚠ N° de comprobante que Sheets guardó como FECHA',
@@ -500,7 +498,11 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
-  const compras = (await google.readSheetValues(ID, 'Compras!A4:AK')).filter((f) => parseMonto(f?.[14]))
+  // SIN FILTRAR: `comprasRaw` conserva el índice REAL de cada fila (i → fila i+4 de Compras). La
+  // deuda referencia filas puntuales de Compras, así que necesita el número real; filtrar primero y
+  // usar el índice del array filtrado apunta a la fila equivocada (bug ya documentado en el archivo).
+  const comprasRaw = await google.readSheetValues(ID, 'Compras!A4:AK')
+  const compras = comprasRaw.filter((f) => parseMonto(f?.[14]))
 
   // ═══ UBICAR LAS COLUMNAS DE COMPRAS POR SU ENCABEZADO ═══
   // El dueño edita Compras a mano; borró una columna y todo lo posterior se corrió una posición. Leer
@@ -581,7 +583,7 @@ async function main() {
   // Compras, que es también la clave del SUMIFS), guardando la fila de Compras de cada factura para
   // referenciarla con una fórmula viva. Ordenado por deuda de mayor a menor.
   const deudaMap = new Map()
-  compras.forEach((f, i) => {
+  comprasRaw.forEach((f, i) => {
     const nombre = String(f?.[4] ?? '').trim()
     const esPend = String(f?.[23] ?? '').trim().toLowerCase() === ESTADO_DEUDA.toLowerCase()
     const comercial = RUBROS_COMERCIALES.includes(String(f?.[IDX.rubro] ?? '').trim())
@@ -738,7 +740,10 @@ async function main() {
   // bloque 2. Calcularla en JS obligaba a mapear filas del array a filas del Sheet, que es de donde
   // salió el bug de las referencias corridas.
 
-  const obras = ['LA ESTRELLA', 'San Francisco', 'MESSINAS', 'ARCOR', 'Administracion', 'Almacen', 'Taller', 'SAINT GOBAIN']
+  // Los nombres de obra son EXACTOS a como están en Compras (col J): "MESSINA", no "MESSINAS" —el
+  // dueño lo marcó, esa columna salía vacía—. SUMIFS es insensible a mayúsculas, así que "Taller"
+  // captura también "TALLER".
+  const obras = ['LA ESTRELLA', 'San Francisco', 'MESSINA', 'ARCOR', 'Administracion', 'Almacen', 'Taller', 'SAINT GOBAIN']
   const g = grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emitidas, notasCredito, anuladasCargadas, cruce })
   const ancho = Math.max(...g.filas.map((f) => f.length))
   const cuadro = g.filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r })
