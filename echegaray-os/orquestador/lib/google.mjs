@@ -601,10 +601,18 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       const r = await apiSend('https://www.googleapis.com/calendar/v3/freeBusy', 'POST', { timeMin, timeMax, items: [{ id: 'primary' }] })
       return { ocupado: (r.calendars?.primary?.busy || []).map((b) => ({ desde: b.start, hasta: b.end })), rango: { desde: timeMin, hasta: timeMax } }
     },
-    /** Lee valores de un rango A1 de un Sheet. Devuelve matriz de filas. */
-    async readSheetValues(fileId, range) {
+    /**
+     * Lee valores de un rango A1 de un Sheet. Devuelve matriz de filas.
+     *
+     * `render: 'FORMULA'` devuelve la FÓRMULA de cada celda en vez de su resultado. Hace falta para
+     * preservar lo que el dueño escribió sin degradarlo: si una celda preservada tiene una fórmula y
+     * se la relee como valor, al reescribirla queda un número pegado — justo lo que la regla de oro
+     * prohíbe. Ver lib/preservar-anotaciones.mjs.
+     */
+    async readSheetValues(fileId, range, { render } = {}) {
+      const q = render ? `?valueRenderOption=${encodeURIComponent(render)}` : ''
       const j = await apiGet(
-        `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values/${encodeURIComponent(range)}`,
+        `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values/${encodeURIComponent(range)}${q}`,
       )
       return j.values || []
     },

@@ -73,6 +73,7 @@ import { FAMILIAS, SIN_FAMILIA, formulaFamilia, familiaDeMaterial, RUBROS_CON_FA
 import { NOMBRES } from '../lib/sheet-pestanas.mjs'
 import { partir, filasHuerfanas, ref as refPestana } from '../lib/partir-pestana.mjs'
 import { anchosSegunContenido } from '../lib/nota-celda.mjs'
+import { fusionar, sobrantes } from '../lib/preservar-anotaciones.mjs'
 import { ESTADO_DEUDA } from '../lib/cuentas-por-pagar.mjs'
 /** El estado de Compras para lo pactado que todavía no es deuda firme. Convive con "Pendiente". */
 const ESTADO_PROYECTADO = 'Proyectado'
@@ -143,7 +144,38 @@ const normNombre = (s) => String(s ?? '')
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 
-function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emitidas, notasCredito, anuladasCargadas, cruce }) {
+/**
+ * LAS COLUMNAS DEL BLOQUE DE DEUDA LAS DECIDE EL DUEÑO, NO EL GENERADOR.
+ *
+ * REGLA DE ORO (22/07, textual): "Revisión de lo q la persona haya editado (yo o cualquier otro
+ * usuario) respetarlo". El dueño agregó a mano las columnas "Tipo de Pago", "Categoría" y
+ * "Comentarios" en la sección "qué se debe y cuándo", y el generador —que escribía por POSICIÓN
+ * fija— le metía su "Instrumento" encima de "Tipo de Pago" y su "Categoría" encima de "Comentarios".
+ *
+ * Ahora se leen los encabezados REALES de la pestaña y cada dato va a la columna que el dueño rotuló.
+ * Una columna que el generador no sabe llenar —"Comentarios"— queda VACÍA en la grilla, y la fusión
+ * de preservar-anotaciones.mjs conserva lo que él escribió. Es la misma disciplina que ya se aplica a
+ * Compras: nunca por posición, siempre por encabezado.
+ */
+export function layoutDeuda(headers) {
+  const H = (headers || []).map((h) => String(h ?? '').trim())
+  const base = ['Proveedor / factura', 'Próximo pago', 'Comprobante', 'Importe', 'Obra', 'Tipo de pago', 'Categoría']
+  const cols = H.filter(Boolean).length >= 4 ? H : base
+  const cual = (re) => cols.findIndex((h) => re.test(h))
+  return {
+    cols,
+    prov: 0,
+    fecha: cual(/pr[oó]ximo pago/i),
+    comp: cual(/comprobante/i),
+    imp: cual(/importe/i),
+    obra: cual(/^obra/i),
+    pago: cual(/tipo de pago/i),
+    cat: cual(/categor/i),
+    instr: cual(/instrumento/i),
+  }
+}
+
+function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emitidas, notasCredito, anuladasCargadas, cruce, deudaCols }) {
   const filas = []
   const push = (c) => { filas.push(c); return filas.length }
   const nombres = FAMILIAS.map(([n]) => n)
@@ -221,7 +253,10 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // fórmulas respeta los literales, así que sus comas llegan intactas.
   const b1 = push(['1 · QUÉ SE DEBE Y CUÁNDO'])
   push(['La deuda agrupada por proveedor: la fila de cada uno muestra su total y su próximo pago; con el +/- del Sheet (menú Datos → Agrupar) se abren o cierran sus facturas. Todo son fórmulas sobre Compras: se marca una pagada allá y baja acá.'])
-  const cabDoc = push(['Proveedor / factura', 'Próximo pago', 'Comprobante', 'Importe', 'Obra', 'Instrumento', 'Tipo de pago', 'Categoría'])
+  // Las columnas son las que el dueño dejó en la pestaña (nombre y orden). Ver layoutDeuda.
+  const L = layoutDeuda(deudaCols)
+  const celdas = () => new Array(L.cols.length).fill('')
+  const cabDoc = push([...L.cols])
   const deudaGrupos = []
   const deudaHeaders = []
   const qLit = (s) => String(s ?? '').replace(/"/g, '""')
@@ -231,13 +266,12 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
     const conFecha = `${condProv};${COL_FECHA};">0"`
     // Fila-cabecera del proveedor: total NETO (Total − Monto Pagado) y próximo pago por fórmula viva.
     // Es la que queda a la vista cuando el grupo está colapsado; las facturas se pliegan debajo.
-    const hRow = push([
-      gp.nombre,
-      `=IF(COUNTIFS(${conFecha})=0;"sin fecha";MINIFS(${COL_FECHA};${conFecha}))`,
-      `=COUNTIFS(${COL_PROV};"${key}";${COL_ESTADO};"${ESTADO_DEUDA}";${COL_TOTAL};"<>")&" fac."`,
-      `=${neta(condProv)}`,
-      '', '', '', '',
-    ])
+    const hCel = celdas()
+    hCel[L.prov] = gp.nombre
+    if (L.fecha >= 0) hCel[L.fecha] = `=IF(COUNTIFS(${conFecha})=0;"sin fecha";MINIFS(${COL_FECHA};${conFecha}))`
+    if (L.comp >= 0) hCel[L.comp] = `=COUNTIFS(${COL_PROV};"${key}";${COL_ESTADO};"${ESTADO_DEUDA}";${COL_TOTAL};"<>")&" fac."`
+    if (L.imp >= 0) hCel[L.imp] = `=${neta(condProv)}`
+    const hRow = push(hCel)
     deudaHeaders.push(hRow)
     const inicio = filas.length + 1
     for (const inv of gp.filas) {
@@ -245,17 +279,21 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
       const rowNum = filas.length + 1
       const pend = `Compras!$X$${rr}="${ESTADO_DEUDA}"`
       // Cada factura referencia SU fila de Compras; si allá se marca pagada, la celda se vacía sola.
-      push([
-        '',
-        `=IF(${pend};Compras!$${letra(IDX.fechaCaja)}$${rr};"")`,
-        `=IF(${pend};Compras!$H$${rr}&"";"")`,
-        `=IF(${pend};Compras!$O$${rr}-Compras!$${letra(IDX.pagado)}$${rr};"")`,
-        `=IF(${pend};Compras!$J$${rr};"")`,
-        `=IF(NOT(${pend});"";IF($C${rowNum}="";"—";IFERROR(INDEX(${CH}!$A$2:$A;MATCH($C${rowNum};${CH}!$H$2:$H;0))&" "&INDEX(${CH}!$B$2:$B;MATCH($C${rowNum};${CH}!$H$2:$H;0));"—")))`,
-        // Tipo de pago (Compras col P) y Categoría (Compras col B), traídos de la misma fila de Compras.
-        `=IF(${pend};Compras!$P$${rr}&"";"")`,
-        `=IF(${pend};Compras!$B$${rr}&"";"")`,
-      ])
+      // Cada dato va a LA COLUMNA QUE EL DUEÑO ROTULÓ. Las que él agregó y el generador no llena
+      // —"Comentarios"— quedan vacías: la fusión conserva lo que escribió ahí.
+      const c = celdas()
+      if (L.fecha >= 0) c[L.fecha] = `=IF(${pend};Compras!$${letra(IDX.fechaCaja)}$${rr};"")`
+      if (L.comp >= 0) c[L.comp] = `=IF(${pend};Compras!$H$${rr}&"";"")`
+      if (L.imp >= 0) c[L.imp] = `=IF(${pend};Compras!$O$${rr}-Compras!$${letra(IDX.pagado)}$${rr};"")`
+      if (L.obra >= 0) c[L.obra] = `=IF(${pend};Compras!$J$${rr};"")`
+      if (L.instr >= 0 && L.comp >= 0) {
+        const cc = `$${letra(L.comp)}${rowNum}`
+        c[L.instr] = `=IF(NOT(${pend});"";IF(${cc}="";"—";IFERROR(INDEX(${CH}!$A$2:$A;MATCH(${cc};${CH}!$H$2:$H;0))&" "&INDEX(${CH}!$B$2:$B;MATCH(${cc};${CH}!$H$2:$H;0));"—")))`
+      }
+      // Tipo de pago (Compras col P) y Categoría (Compras col B), de la misma fila de Compras.
+      if (L.pago >= 0) c[L.pago] = `=IF(${pend};Compras!$P$${rr}&"";"")`
+      if (L.cat >= 0) c[L.cat] = `=IF(${pend};Compras!$B$${rr}&"";"")`
+      push(c)
     }
     deudaGrupos.push({ inicio, fin: filas.length })
   }
@@ -488,7 +526,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
     ? c.replaceAll('$TOTFAM', String(totFam)).replaceAll('$TOTPROV', String(fTotProv)).replaceAll('$TOTDEUDA', String(fTotProv))
     : c)))
 
-  return { filas: resuelto, cabArca, marcas: { bPos, b1, b2, b3, b4, b5, b6, b7, b8, fin: filas.length }, bPos, pos0, pos1, posTotal, posProy, posPlazo, posFaltan, cuentas: [fCuenta1, fCuenta2], fCompFecha, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabDocFin, deudaHeaders, deudaGrupos, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
+  return { filas: resuelto, cabArca, marcas: { bPos, b1, b2, b3, b4, b5, b6, b7, b8, fin: filas.length }, bPos, pos0, pos1, posTotal, posProy, posPlazo, posFaltan, cuentas: [fCuenta1, fCuenta2], fCompFecha, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabDocFin, deudaL: L, deudaHeaders, deudaGrupos, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
 }
 
 async function main() {
@@ -749,7 +787,16 @@ async function main() {
   // dueño lo marcó, esa columna salía vacía—. SUMIFS es insensible a mayúsculas, así que "Taller"
   // captura también "TALLER".
   const obras = ['LA ESTRELLA', 'San Francisco', 'MESSINA', 'ARCOR', 'Administracion', 'Almacen', 'Taller', 'SAINT GOBAIN']
-  const g = grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emitidas, notasCredito, anuladasCargadas, cruce })
+  // LO QUE EDITÓ LA PERSONA MANDA: se leen los encabezados reales del bloque de deuda para escribir
+  // cada dato en la columna que el dueño rotuló, y para no pisar las que él agregó (Comentarios).
+  let deudaCols = null
+  try {
+    const prevP = await google.readSheetValues(ID, `'Proveedores'!A1:AZ80`)
+    const iCab = (prevP || []).findIndex((f) => /proveedor\s*\/\s*factura/i.test(String(f?.[0] ?? '')))
+    if (iCab >= 0) deudaCols = prevP[iCab]
+  } catch { /* la pestaña todavía no existe: se usa el layout por defecto */ }
+  if (deudaCols) console.log(`  columnas de deuda según la pestaña (las del dueño): ${deudaCols.filter(Boolean).join(' · ')}`)
+  const g = grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emitidas, notasCredito, anuladasCargadas, cruce, deudaCols })
   const ancho = Math.max(...g.filas.map((f) => f.length))
   const cuadro = g.filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r })
   console.log(`${PESTAÑA}: ${cuadro.length} filas x ${ancho} columnas`)
@@ -862,12 +909,26 @@ async function main() {
     if ((hoja.cols ?? 0) < anchoP) reqG.push({ appendDimension: { sheetId: hoja.sheetId, dimension: 'COLUMNS', length: anchoP - (hoja.cols ?? 0) + 2 } })
     if (reqG.length) await google.spreadsheetBatchUpdate(ID, reqG)
 
-    // SÓLO se limpian las columnas que el generador ESCRIBE (anchoP), nunca hasta la Z. El dueño anota
-    // a mano a la derecha de la tabla ("no borres nada de lo q voy anotando"): esas columnas quedan
-    // intactas. Si en el futuro el generador se angosta, sus propias columnas viejas se reescriben igual
-    // porque batchUpdateValues pisa A1:anchoP; lo que hay MÁS allá de anchoP es del dueño y no se toca.
-    await google.clearValues(ID, `${refPestana(t.titulo)}!A1:${letra(anchoP - 1)}${Math.max(cuadroP.length + 30, 250)}`)
-    await google.batchUpdateValues(ID, [{ range: `${refPestana(t.titulo)}!A1:${letra(anchoP - 1)}${cuadroP.length}`, values: cuadroP }])
+    // ═══ NUNCA SE BORRA NADA DE LO QUE ESCRIBE EL DUEÑO — REGLA ABSOLUTA ═══
+    //
+    // Acá había un `clearValues` que limpiaba el rango entero y reescribía encima. El dueño anota a
+    // mano en la pestaña y cada regeneración —el worker corre solo, 24×7— le borraba el trabajo. Su
+    // instrucción, textual: "nunca podes borrar nada de lo q yo escribo... donde sea q yo haya
+    // editado el sheet".
+    //
+    // Ya no se limpia: se FUSIONA. Se lee lo que hay (con render FORMULA, para no degradar una
+    // fórmula preservada a número pegado), gana el generador donde TIENE contenido y se conserva lo
+    // del dueño donde el generador deja vacío. Se lee el ancho COMPLETO de la hoja, no sólo anchoP,
+    // para capturar lo que anotó a la derecha de la tabla. Y sólo se escriben las filas que el
+    // generador produce: lo que esté MÁS abajo no se toca. Ver lib/preservar-anotaciones.mjs.
+    const anchoLeer = Math.max(anchoP, hoja.cols ?? anchoP)
+    const previo = await google.readSheetValues(
+      ID, `${refPestana(t.titulo)}!A1:${letra(anchoLeer - 1)}${cuadroP.length}`, { render: 'FORMULA' },
+    )
+    const fusion = fusionar(cuadroP, previo)
+    const conservadas = sobrantes(cuadroP, previo)
+    await google.batchUpdateValues(ID, [{ range: `${refPestana(t.titulo)}!A1`, values: fusion }])
+    if (conservadas.length) console.log(`  ✋ ${t.titulo}: ${conservadas.length} celda(s) escritas por el dueño — CONSERVADAS, no se borra nada`)
 
     const gP = { ...traducir(t.titulo), filas: cuadroP }
     await formatear(google, hoja.sheetId, gP, anchoP, cuadroP.length)
@@ -1173,12 +1234,18 @@ async function formatear(google, sheetId, g, ancho, filas) {
   if (g.cabDoc && g.cabDocFin && g.cabDocFin > g.cabDoc) {
     const d0 = g.cabDoc + 1
     const d1 = g.cabDocFin
-    fmt({ ...r(d0 - 1, d1, 1, 2) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.fecha, horizontalAlignment: 'LEFT' })
-    fmt({ ...r(d0 - 1, d1, 2, 3) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' })
-    fmt({ ...r(d0 - 1, d1, 3, 4) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT' })
-    fmt({ ...r(d0 - 1, d1, 4, 8) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.textFormat', { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: { fontSize: 9 } })
+    // El formato sigue LAS COLUMNAS DEL DUEÑO, no posiciones fijas: si él mueve "Categoría" o agrega
+    // "Comentarios", cada formato acompaña. Las columnas que el generador no llena quedan como texto.
+    const L = g.deudaL || {}
+    const col1 = (i, fields, cell) => { if (i >= 0) fmt({ ...r(d0 - 1, d1, i, i + 1) }, fields, cell) }
+    const FTXT = 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.textFormat'
+    const txtChico = { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: { fontSize: 9 } }
+    for (let i = 0; i < (L.cols?.length ?? 0); i++) col1(i, FTXT, txtChico)
+    col1(L.fecha, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.fecha, horizontalAlignment: 'LEFT' })
+    col1(L.comp, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' })
+    col1(L.imp, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT' })
     for (const h of (g.deudaHeaders || [])) {
-      if (h) fmt({ ...r(h - 1, h, 0, 4) }, 'userEnteredFormat.textFormat', { textFormat: { bold: true, foregroundColor: INK, fontSize: 10 } })
+      if (h) fmt({ ...r(h - 1, h, 0, Math.max((L.imp ?? 3) + 1, 4)) }, 'userEnteredFormat.textFormat', { textFormat: { bold: true, foregroundColor: INK, fontSize: 10 } })
     }
   }
 
