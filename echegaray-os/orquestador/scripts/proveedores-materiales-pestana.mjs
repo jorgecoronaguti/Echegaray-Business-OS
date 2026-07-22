@@ -74,10 +74,10 @@ import { NOMBRES } from '../lib/sheet-pestanas.mjs'
 import { partir, filasHuerfanas, ref as refPestana } from '../lib/partir-pestana.mjs'
 import { anchosSegunContenido } from '../lib/nota-celda.mjs'
 import { ESTADO_DEUDA, MODALIDADES } from '../lib/cuentas-por-pagar.mjs'
-import { formulaOrden, formulaOrdenSinFecha, celdaDeuda, formulaComercial, COL as ORDEN } from '../lib/orden-deuda.mjs'
+import { formulaComercial } from '../lib/orden-deuda.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
 import { normComprobante, esLlaveUtil } from '../lib/cheques-cobertura.mjs'
-import { sumar, signo, esNotaDeCredito } from '../lib/comprobante-arca.mjs'
+import { signo, esNotaDeCredito } from '../lib/comprobante-arca.mjs'
 import { analizar as analizarNC, facturasAnuladasCargadas, clave as claveNC } from '../lib/notas-credito.mjs'
 import { cruzar, verificar } from '../lib/cobertura-arca.mjs'
 import { ARCA as N_ARCA, publicar } from '../lib/rangos-nombrados.mjs'
@@ -86,7 +86,6 @@ import * as E from '../lib/estilo-pestana.mjs'
 import { INK, MUTED, HAIR } from '../lib/estilo-statement.mjs'
 import { R, IMPORTE, arcaPorCuit, arcaPorComprobante, arcaPorComprobanteVentas, totalLibro } from '../lib/arca-formula.mjs'
 import { formatear as formatearCuit } from '../lib/cuit.mjs'
-import { pivot, filtroValores, valoresNoCubiertos, plantar, borrar, RESUMEN } from '../lib/pivot-sheets.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = NOMBRES.proveedoresMateriales
@@ -100,24 +99,31 @@ const TOP = 30
 // BAJÓ DE 8 A 2 (21/07): con 8 quedaban once filas en blanco a la vista en el medio de la pestaña, y
 // el dueño lo señaló. El agente redimensiona cada 2 horas y el control del bloque 7 avisa si entre
 // dos corridas entró más deuda de la que entra en la reserva, así que 2 alcanza.
-const COLCHON_DEUDA = 2
 
-const COL_FAMILIA = 'Compras!$AE$4:$AE'
-const COL_RUBRO = 'Compras!$AC$4:$AC'
-const COL_FECHA = 'Compras!$AD$4:$AD'
+// ═══ LAS COLUMNAS DE COMPRAS SE UBICAN POR NOMBRE, NO POR POSICIÓN FIJA ═══════════════════════════
+//
+// POR QUÉ (22/07). El dueño edita Compras a mano. Borró una columna y TODO lo que venía después se
+// corrió una posición: "Rubro de caja" pasó de AC a AB, "Fecha de caja" de AD a AC, etc. El generador
+// leía posiciones fijas (AC, AD, AE), así que empezó a leer FECHAS donde esperaba rubros → 0
+// proveedores comerciales → la deuda y la cuenta corriente salieron VACÍAS. Y peor: al escribir la
+// familia/orden en columnas fijas creó DUPLICADAS. La única defensa contra una planilla que una
+// persona edita es ubicar cada columna por su ENCABEZADO. Estas variables son `let`: arrancan con la
+// posición histórica y `mapearColumnasCompras()` (en main) las corrige según el encabezado real.
+let COL_FAMILIA = 'Compras!$AE$4:$AE'
+let COL_RUBRO = 'Compras!$AC$4:$AC'
+let COL_FECHA = 'Compras!$AD$4:$AD'
+let COL_COMERCIAL = 'Compras!$AJ$4:$AJ'
+let COL_OBRA = 'Compras!$J$4:$J'
 const COL_FACTURA = 'Compras!$C$4:$C'
 const COL_TOTAL = 'Compras!$O$4:$O'
-const COL_OBRA = 'Compras!$J$4:$J'
 const COL_PROV = 'Compras!$E$4:$E'
 const COL_MODAL = 'Compras!$F$4:$F'
 const COL_ESTADO = 'Compras!$X$4:$X'
 const CH = "'Cheques Emitidos'"
 
-/** Qué columna de Compras alimenta cada columna de la tabla de deuda. '' = la calcula otra fórmula.
- *  El orden es el que ve el dueño: fecha de pago, proveedor, comprobante, fecha factura, modalidad,
- *  importe, obra, y las dos últimas que se buscan en Cheques Emitidos. */
-/** Columna de Compras + si el dato es TEXTO (y hay que blindarlo contra la coacción de formato). */
-const COL_DEUDA = [['$E', true], ['$AD', false], ['$H', 'comprobante'], ['$C', false], ['$F', true], ['$O', false], ['$J', true], null, null]
+/** Índices (0-based) de las columnas de Compras que el JS lee de cada fila. Se recalculan por nombre. */
+const IDX = { rubro: 28, fechaCaja: 29, familia: 30, comercial: 35, obra: 9, prov: 4, total: 14, estado: 23, concepto: 11, detalle: 10 }
+
 
 /** Los rubros que hacen que un proveedor sea COMERCIAL. Sueldos, ARCA o el banco no son proveedores
  *  a los que se les pueda pedir plazo, y mezclarlos tapa a los que sí. */
@@ -133,7 +139,7 @@ const normNombre = (s) => String(s ?? '')
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 
-function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, notasCredito, anuladasCargadas, cruce, nDeuda, nSinFecha }) {
+function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emitidas, notasCredito, anuladasCargadas, cruce }) {
   const filas = []
   const push = (c) => { filas.push(c); return filas.length }
   const nombres = FAMILIAS.map(([n]) => n)
@@ -151,7 +157,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   // rango con nombre de ARCA: ni uno pegado, y el que quiera el detalle lo tiene en las tablas de
   // abajo. Es el layout que el dueño aprobó para Impuestos: resumen vertical arriba, detalle debajo.
   const hoy = new Date().toLocaleDateString('es-AR')
-  const soloComercial = `${COL_TOTAL};${COL_ESTADO};"${ESTADO_DEUDA}";Compras!$AJ$4:$AJ;1`
+  const soloComercial = `${COL_TOTAL};${COL_ESTADO};"${ESTADO_DEUDA}";${COL_COMERCIAL};1`
   const deudaTerceros = `${COL_TOTAL};${COL_ESTADO};"${ESTADO_DEUDA}"`
   const bPos = push([`POSICIÓN DE PROVEEDORES · al ${hoy} · en pesos`])
   const pos0 = filas.length + 1
@@ -197,89 +203,43 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   // una vez en esta misma pestaña. El texto del QUERY va entre comillas y el localizador de
   // fórmulas respeta los literales, así que sus comas llegan intactas.
   const b1 = push(['1 · QUÉ SE DEBE Y CUÁNDO'])
-  push(['Cada factura Pendiente de Compras, la más urgente primero. Sin N° de comprobante un pago no se puede imputar nunca.'])
-  // EL TOTAL YA NO VA ACÁ. Estaba arriba de la tabla ("TOTAL ADEUDADO A PROVEEDORES" + "· más ARCA y
-  // nómina"), pero el hero ya abre con exactamente esos dos números —deuda comercial y deuda con ARCA
-  // y nómina— así que repetirlos sería el mismo rubro dos veces, que es lo que la regla 9 prohíbe.
-  // Menos es más: la tabla lista las deudas; el total lo lleva la posición de arriba.
-  // EL ORDEN DE LAS COLUMNAS NO ES ESTÉTICO: las SEIS primeras las derrama el QUERY y tienen que
-  // estar en el mismo orden que el "select". Las dos últimas son búsquedas y van DESPUÉS del
-  // derrame — ponerlas en el medio bloquea el spill entero con un #REF! (pasó, 21/07).
-  // LA PRIMERA COLUMNA ES EL PROVEEDOR EN TODAS LAS TABLAS DE ESTA PESTAÑA. Es lo que hace que un
-  // solo juego de anchos les sirva a las seis: si una arranca con una fecha y otra con un nombre
-  // largo, la columna A no puede tener un ancho que funcione para las dos. El orden de la tabla
-  // sigue siendo por fecha de pago —lo que cambia es qué se lee primero, no cómo se ordena.
-  const cabDoc = push(['Proveedor', 'Fecha de pago', 'Comprobante', 'Fecha factura', 'Modalidad', 'Importe',
-    'Obra', 'Instrumento entregado', 'N° de cheque'])
-  const doc0 = filas.length + 1
-  // La fórmula ocupa UNA celda y derrama hacia abajo. Se reservan filas para que el derrame no pise
-  // el bloque siguiente; el control del bloque 7 avisa si la deuda supera la reserva.
-  // EL ORDEN QUE PIDIÓ EL DUEÑO, Y LA TRAMPA QUE TENÍA.
-  //
-  // "Quiero que se respete algún orden: fecha de pago, monto de deuda." Un `order by AD` a secas
-  // pone los NULOS PRIMERO, así que lo primero que se veía al abrir la pestaña eran las filas sin
-  // fecha. Por eso van dos QUERY: primero lo que tiene fecha, ordenado por fecha; después lo que no
-  // la tiene, ordenado por monto de mayor a menor, con su propio rótulo.
-  //
-  // ═══ UN NÚMERO QUE REPORTÉ MAL Y ACÁ QUEDA CORREGIDO (21/07) ═══
-  //
-  // Al armar la versión con pivots vi que once filas de Compras tienen la palabra "Pendiente"
-  // ESCRITA en la columna Q, "Fecha prevista de pago", y reporté que eran $15.010.639 —el 91% de la
-  // deuda— fuera de toda semana del cash flow. Era falso, y el error fue mío: el cash flow NO usa la
-  // columna Q. Usa AD, "Fecha de caja". Ocho de esas once tienen su fecha de caja cargada, así que
-  // el cuadro sí las espera.
-  //
-  // Lo que de verdad queda fuera de toda semana son TRES facturas por $1.516.755 — el 9,2% de la
-  // deuda, no el 91%. Sigue siendo trabajo pendiente, pero es un orden de magnitud menos.
-  //
-  // POR QUÉ ME PASÓ: vi un total grande y redondo y no lo abrí. Es exactamente el defecto que este
-  // archivo documenta dos veces más arriba, con los $71,19M que tampoco eran $71,19M. La lección no
-  // se aprendió leyéndola: hay que verificar CUÁL columna consume el cuadro antes de decir que un
-  // dato falta.
-  //
-  // (Que la palabra "Pendiente" esté escrita en una columna de fecha sigue siendo un defecto de
-  // carga y por eso el bloque de abajo existe; simplemente no cuesta $15M.)
-  // ═══ UNA FÓRMULA EN CADA CELDA, NO UN QUERY QUE DERRAMA ═══
-  //
-  // Acá había un QUERY que ocupaba UNA celda y llenaba las otras 143 por derrame. Funcionaba y era
-  // vivo, pero el dueño abrió F8, vio "700000" en la barra de fórmulas y marcó el error por segunda
-  // vez. Y tiene razón: Sheets muestra un valor derramado igual que uno tipeado, así que la regla
-  // se cumplía en el modelo pero no se podía VER. Una regla que hay que creer no sirve.
-  //
-  // Ahora cada celda trae su dato con INDEX/MATCH contra la columna de orden que el OS calcula en
-  // Compras (lib/orden-deuda.mjs). Sigue igual de viva —se marca una factura pagada allá y
-  // desaparece de acá sola— y además se puede abrir cualquier celda y ver de dónde sale.
-  const reserva = Math.max(nDeuda - nSinFecha, 1) + COLCHON_DEUDA
-  for (let i = 0; i < reserva; i++) {
-    const r = filas.length + 1
-    push(COL_DEUDA.map((c) => (c ? celdaDeuda(c[0], r, doc0, ORDEN.orden, c[1]) : '')))
+  push(['La deuda agrupada por proveedor: la fila de cada uno muestra su total y su próximo pago; con el +/- del Sheet (menú Datos → Agrupar) se abren o cierran sus facturas. Todo son fórmulas sobre Compras: se marca una pagada allá y baja acá.'])
+  const cabDoc = push(['Proveedor / factura', 'Próximo pago', 'Comprobante', 'Importe', 'Obra', 'Instrumento'])
+  const deudaGrupos = []
+  const deudaHeaders = []
+  const qLit = (s) => String(s ?? '').replace(/"/g, '""')
+  for (const gp of deudaAgrupada) {
+    const key = qLit(gp.nombre)
+    const base = `${COL_TOTAL};${COL_PROV};"${key}";${COL_ESTADO};"${ESTADO_DEUDA}"`
+    const conFecha = `${COL_PROV};"${key}";${COL_ESTADO};"${ESTADO_DEUDA}";${COL_FECHA};">0"`
+    // Fila-cabecera del proveedor: total y próximo pago por fórmula viva. Es la que queda a la vista
+    // cuando el grupo está colapsado; las facturas se pliegan debajo.
+    const hRow = push([
+      gp.nombre,
+      `=IF(COUNTIFS(${conFecha})=0;"sin fecha";MINIFS(${COL_FECHA};${conFecha}))`,
+      `=COUNTIFS(${COL_PROV};"${key}";${COL_ESTADO};"${ESTADO_DEUDA}";${COL_TOTAL};"<>")&" fac."`,
+      `=SUMIFS(${base})`,
+      '', '',
+    ])
+    deudaHeaders.push(hRow)
+    const inicio = filas.length + 1
+    for (const inv of gp.filas) {
+      const rr = inv.fila
+      const rowNum = filas.length + 1
+      const pend = `Compras!$X$${rr}="${ESTADO_DEUDA}"`
+      // Cada factura referencia SU fila de Compras; si allá se marca pagada, la celda se vacía sola.
+      push([
+        '',
+        `=IF(${pend};Compras!$${letra(IDX.fechaCaja)}$${rr};"")`,
+        `=IF(${pend};Compras!$H$${rr}&"";"")`,
+        `=IF(${pend};Compras!$O$${rr};"")`,
+        `=IF(${pend};Compras!$J$${rr};"")`,
+        `=IF(NOT(${pend});"";IF($C${rowNum}="";"—";IFERROR(INDEX(${CH}!$A$2:$A;MATCH($C${rowNum};${CH}!$H$2:$H;0))&" "&INDEX(${CH}!$B$2:$B;MATCH($C${rowNum};${CH}!$H$2:$H;0));"—")))`,
+      ])
+    }
+    deudaGrupos.push({ inicio, fin: filas.length })
   }
-  const doc1 = filas.length
-  // El instrumento no puede salir del QUERY (vive en otra pestaña), así que se busca POR EL
-  // COMPROBANTE que la propia fórmula derramó. Si la fila derramada está vacía, la celda queda vacía.
-  for (let r = doc0; r <= doc1; r++) {
-    filas[r - 1][7] = `=IF($A${r}="";"";IFERROR(INDEX(${CH}!$A$2:$A;MATCH($C${r};${CH}!$H$2:$H;0));IF(COUNTIF(${CH}!$E$2:$E;$A${r})>0;"cheque s/ imputar";"—")))`
-    filas[r - 1][8] = `=IF($A${r}="";"";IFERROR(INDEX(${CH}!$B$2:$B;MATCH($C${r};${CH}!$H$2:$H;0));""))`
-  }
-
-  // ── LO QUE NO TIENE FECHA, DEBAJO Y CON NOMBRE ──────────────────────────────────────────────────
-  // Ordenado por MONTO, que es el otro criterio que pidió el dueño. Va acá y no arriba porque una
-  // factura sin fecha no compite por urgencia con una que vence el martes: compite por tamaño.
-  const fSinFecha = push(['⚠ SIN FECHA DE PAGO — no caen en ninguna semana',
-    `=SUMIFS(${soloComercial})-SUM($F$${doc0}:$F$${doc1})`, '', '', '',
-    'Sin FECHA DE CAJA en Compras (columna AD), el cash flow no las ubica en ninguna semana. Hay que cargarles la fecha.'])
-  const sf0 = filas.length + 1
-  // La reserva es EXACTA: cada fila de más queda vacía a la vista, y cinco filas en blanco en el
-  // medio de una pestaña se leen como si faltara información.
-  for (let i = 0; i < Math.max(nSinFecha, 1); i++) {
-    const r = filas.length + 1
-    push(COL_DEUDA.map((c) => (c ? celdaDeuda(c[0], r, sf0, ORDEN.ordenSinFecha, c[1]) : '')))
-  }
-  // NO SE RESERVAN FILAS VACÍAS ADEMÁS DE ÉSTAS. Cuando la tabla la llenaba un QUERY por derrame
-  // había que dejarle lugar; ahora cada fila es una fórmula que devuelve "" si no le toca factura,
-  // así que la reserva YA ESTÁ en el bucle de arriba. Dejar además filas en blanco producía el
-  // agujero de seis filas que el detector de pantalla marcó como hueco.
-  const sf1 = filas.length
+  const cabDocFin = filas.length
   push([])
 
   // ── 2 · CUENTA CORRIENTE POR PROVEEDOR ──────────────────────────────────────────────────────────
@@ -412,9 +372,6 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
   // empezar a leerlas: NO. Ver lib/consistencia-compras.mjs — 128 filas dicen "Pagado" con el monto
   // pagado vacío. Leer una columna a medio llenar es peor que no leerla; lo que corresponde es
   // mostrar la contradicción para que se resuelva en el origen.
-  push(['⚠ Deudas pendientes que no entran en la tabla de arriba',
-    `=MAX(0;COUNTIFS(${COL_ESTADO};"${ESTADO_DEUDA}";${COL_TOTAL};"<>")-${nDeuda + COLCHON_DEUDA})`,
-    `⚠ La tabla de deuda tiene ${nDeuda + COLCHON_DEUDA} filas reservadas (las ${nDeuda} deudas de hoy más ${COLCHON_DEUDA} de colchón). El agente la redimensiona cada 2 horas; este número avisa si entre dos corridas entró más deuda de la que entra.`])
   push(['⚠ Filas que dicen "Pagado" pero no dicen cuánto se pagó',
     `=SUMPRODUCT((${COL_ESTADO}="Pagado")*(IF(ISNUMBER(${COL_TOTAL});${COL_TOTAL};0)>0)*(NOT(IF(ISNUMBER(Compras!$T$4:$T);Compras!$T$4:$T;0)>0)))`,
     '⚠ Cantidad de filas. La columna "Monto Pagado" está a medio llenar: el cash flow usa el TOTAL (columna O) justamente por eso. Si esta columna se completara, el cuadro podría pasar a lo efectivamente pagado.'])
@@ -538,12 +495,32 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
     ? c.replaceAll('$TOTFAM', String(totFam)).replaceAll('$TOTPROV', String(fTotProv)).replaceAll('$TOTDEUDA', String(fTotProv))
     : c)))
 
-  return { filas: resuelto, cabArca, marcas: { bPos, b1, b2, b3, b4, b5, b6, b7, b8, fin: filas.length }, bPos, pos0, pos1, posTotal, posPlazo, posFaltan, fSinFecha, sf0, sf1, cuentas: [fCuenta1, fCuenta2], fCompFecha, doc0, doc1, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
+  return { filas: resuelto, cabArca, marcas: { bPos, b1, b2, b3, b4, b5, b6, b7, b8, fin: filas.length }, bPos, pos0, pos1, posTotal, posPlazo, posFaltan, cuentas: [fCuenta1, fCuenta2], fCompFecha, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabDocFin, deudaHeaders, deudaGrupos, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
 }
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
-  const compras = (await google.readSheetValues(ID, 'Compras!A4:AE')).filter((f) => parseMonto(f?.[14]))
+  const compras = (await google.readSheetValues(ID, 'Compras!A4:AK')).filter((f) => parseMonto(f?.[14]))
+
+  // ═══ UBICAR LAS COLUMNAS DE COMPRAS POR SU ENCABEZADO ═══
+  // El dueño edita Compras a mano; borró una columna y todo lo posterior se corrió una posición. Leer
+  // por posición fija devolvía fechas donde iban rubros → deuda vacía. Se ubica cada columna que se
+  // corrió (rubro, fecha de caja, familia) por su nombre en el encabezado (fila 3) y se corrigen tanto
+  // la LETRA (para las fórmulas) como el ÍNDICE (para lo que lee el JS). Las columnas anteriores a la
+  // borrada (proveedor, total, estado…) no se movieron, así que su posición histórica sigue firme.
+  const cab = (await google.readSheetValues(ID, 'Compras!A3:BZ3'))[0] || []
+  const buscarCol = (nombre) => cab.findIndex((c) => String(c ?? '').trim().toLowerCase() === nombre.toLowerCase())
+  const fijar = (clave, actual, nombre) => {
+    const i = buscarCol(nombre)
+    if (i < 0) { console.warn(`  ⚠ no encontré "${nombre}" en el encabezado de Compras; uso la posición histórica`); return actual }
+    IDX[clave] = i
+    return `Compras!$${letra(i)}$4:$${letra(i)}`
+  }
+  COL_RUBRO = fijar('rubro', COL_RUBRO, 'Rubro de caja')
+  COL_FECHA = fijar('fechaCaja', COL_FECHA, 'Fecha de caja')
+  COL_FAMILIA = fijar('familia', COL_FAMILIA, 'Familia de material')
+  COL_COMERCIAL = fijar('comercial', COL_COMERCIAL, '¿Proveedor comercial? (OS)')
+  console.log(`  Compras por encabezado: Rubro=${letra(IDX.rubro)} · Fecha de caja=${letra(IDX.fechaCaja)} · Familia=${letra(IDX.familia)} · ¿Comercial?=${letra(IDX.comercial)}`)
 
   // ═══ UN SOLO NOMBRE POR PROVEEDOR EN TODA LA PESTAÑA ═══════════════════════════════════════════
   //
@@ -586,8 +563,8 @@ async function main() {
     // La DEUDA de cada proveedor, para poder ordenar por ella. El importe que se muestra sigue
     // saliendo de una fórmula sobre Compras: esto es sólo el criterio de orden.
     if (String(f?.[23] ?? '').trim().toLowerCase() === ESTADO_DEUDA.toLowerCase()) a.deuda += parseMonto(f?.[14])
-    if (RUBROS_COMERCIALES.includes(String(f?.[28] ?? '').trim())) a.comercial = true
-    const fam = String(f?.[30] ?? '').trim() || familiaDeMaterial({ concepto: f?.[11], detalle: f?.[10], proveedor: nombre })
+    if (RUBROS_COMERCIALES.includes(String(f?.[IDX.rubro] ?? '').trim())) a.comercial = true
+    const fam = String(f?.[IDX.familia] ?? '').trim() || familiaDeMaterial({ concepto: f?.[IDX.concepto], detalle: f?.[IDX.detalle], proveedor: nombre })
     if (fam && fam !== SIN_FAMILIA) a.fam.set(fam, (a.fam.get(fam) ?? 0) + parseMonto(f?.[14]))
     acc.set(nombre, a)
   }
@@ -597,6 +574,25 @@ async function main() {
   // mayor a menor; después los demás por volumen, que ahí sí la pregunta es con quién se gasta.
   const comerciales = [...acc.values()].filter((p) => p.comercial)
     .sort((a, b) => (b.deuda - a.deuda) || (b.total - a.total))
+
+  // ── LA DEUDA AGRUPADA POR PROVEEDOR — para la FUNCIÓN AGRUPAR del Sheet (el +/-) ─────────────────
+  // El dueño pidió la función "agrupar": la deuda listada por proveedor, con el outline +/- del Sheet
+  // para colapsar las facturas de cada uno. Se juntan las filas Pendientes por proveedor (su grafía de
+  // Compras, que es también la clave del SUMIFS), guardando la fila de Compras de cada factura para
+  // referenciarla con una fórmula viva. Ordenado por deuda de mayor a menor.
+  const deudaMap = new Map()
+  compras.forEach((f, i) => {
+    const nombre = String(f?.[4] ?? '').trim()
+    const esPend = String(f?.[23] ?? '').trim().toLowerCase() === ESTADO_DEUDA.toLowerCase()
+    const comercial = RUBROS_COMERCIALES.includes(String(f?.[IDX.rubro] ?? '').trim())
+    const imp = parseMonto(f?.[14])
+    if (!nombre || !esPend || !comercial || !imp) return
+    const a = deudaMap.get(nombre) ?? { nombre, total: 0, filas: [] }
+    a.total += imp
+    a.filas.push({ fila: i + 4 })
+    deudaMap.set(nombre, a)
+  })
+  const deudaAgrupada = [...deudaMap.values()].sort((a, b) => b.total - a.total)
 
   // ── AFIP: LA FUENTE FISCAL ─────────────────────────────────────────────────────────────────────
   // comprobantes_arca es el libro de IVA que el OS ya replica. Es la única fuente que dice qué se
@@ -612,13 +608,6 @@ async function main() {
   const eArca = (await query(
     "select tipo_comprobante, receptor_cuit, punto_venta, numero, fecha_emision, imp_total from comprobantes_arca where tipo_libro='E' order by fecha_emision desc",
   )).rows
-  const totR = sumar(rArca, 'imp_total')
-  const notasCrudas = rArca.filter((r) => esNotaDeCredito(r.tipo_comprobante))
-  const arca = {
-    nR: rArca.length, totalR: totR.neto,
-    nNotas: notasCrudas.length, montoNotas: totR.restan,
-    desconocidos: totR.desconocidos.length,
-  }
 
   // El cruce va por punto de venta + número normalizados: "0038-00025483" y "38-25483" son la misma
   // factura, y cada planilla la escribe a su manera.
@@ -634,12 +623,6 @@ async function main() {
   const filasParaCruce = compras
     .map((f, i) => ({ fila: i + 4, prov: normNombre(f?.[4]), total: parseMonto(f?.[14]) || parseMonto(f?.[12]), comprobante: normComprobante(f?.[7]) }))
     .filter((f) => f.prov && f.total > 0)
-  // Cuántas deudas hay HOY: define cuántas filas reserva la tabla del bloque 1.
-  const esDeuda = (f) => String(f?.[23] ?? '').trim().toLowerCase() === ESTADO_DEUDA.toLowerCase() && parseMonto(f?.[14])
-  const nDeuda = compras.filter(esDeuda).length
-  // Cuántas de esas NO tienen fecha de caja: es la reserva del segundo bloque. Se cuenta en vez de
-  // fijarse un número grande, que es lo que dejaba dieciocho filas en blanco a la vista.
-  const nSinFecha = compras.filter((f) => esDeuda(f) && !String(f?.[29] ?? '').trim()).length
   const cruce = cruzar(rArca, filasParaCruce, { norm: normNombre, clave: (c) => normComprobante(`${c.punto_venta}-${c.numero}`) })
   const chequeo = verificar(cruce)
   if (!chequeo.ok) {
@@ -756,55 +739,38 @@ async function main() {
   // salió el bug de las referencias corridas.
 
   const obras = ['LA ESTRELLA', 'San Francisco', 'MESSINAS', 'ARCOR', 'Administracion', 'Almacen', 'Taller', 'SAINT GOBAIN']
-  const g = grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, notasCredito, anuladasCargadas, cruce, nDeuda, nSinFecha })
+  const g = grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emitidas, notasCredito, anuladasCargadas, cruce })
   const ancho = Math.max(...g.filas.map((f) => f.length))
   const cuadro = g.filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r })
   console.log(`${PESTAÑA}: ${cuadro.length} filas x ${ancho} columnas`)
   console.log(`  ${comerciales.length} proveedores comerciales de ${acc.size} · top ${proveedores.length} listados, ${resto.cantidad} en "resto"`)
   if (DRY) return console.log('--dry: no escribí nada.')
 
-  // La columna de familia en Compras: una sola definición, la misma disciplina que el rubro.
+  // ── LAS COLUMNAS QUE EL OS CALCULA EN COMPRAS: Familia y ¿Comercial? ─────────────────────────────
+  // Se escriben en la MISMA columna que ya existe con ese encabezado (ubicada por nombre), NO en una
+  // posición fija: escribir en posición fija después de que el dueño corrió las columnas es lo que dejó
+  // columnas DUPLICADAS. Sus fórmulas referencian el rubro en su posición REAL. Las viejas columnas de
+  // orden de deuda (AH/AI) ya no se escriben: la deuda se pliega con la función Agrupar del Sheet.
   const meta0 = await google.getSheetMeta(ID)
   const hojaCompras = meta0.find((s) => s.title === 'Compras')
-  const reqC = []
-  if (hojaCompras.cols < 31) reqC.push({ appendDimension: { sheetId: hojaCompras.sheetId, dimension: 'COLUMNS', length: 31 - hojaCompras.cols } })
-  reqC.push({
-    updateCells: {
-      range: { sheetId: hojaCompras.sheetId, startRowIndex: 2, endRowIndex: 4, startColumnIndex: 30, endColumnIndex: 31 },
-      rows: [
-        { values: [{ userEnteredValue: { stringValue: 'Familia de material' }, userEnteredFormat: { backgroundColor: { red: 0.17, green: 0.25, blue: 0.37 }, textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } } } }] },
-        { values: [{ userEnteredValue: { formulaValue: formulaFamilia() } }] },
-      ],
-      fields: 'userEnteredValue,userEnteredFormat',
-    },
-  })
-  reqC.push({ updateDimensionProperties: { range: { sheetId: hojaCompras.sheetId, dimension: 'COLUMNS', startIndex: 30, endIndex: 31 }, properties: { pixelSize: 230 }, fields: 'pixelSize' } })
-  await google.spreadsheetBatchUpdate(ID, reqC)
-
-  // ── LAS DOS COLUMNAS DE ORDEN DE LA DEUDA (AF y AG) ──────────────────────────────────────────
-  //
-  // Son lo que permite que cada celda de la tabla de deuda tenga su propia fórmula en vez de recibir
-  // el derrame de un QUERY. Van fila por fila y no con ARRAYFORMULA porque el desempate necesita un
-  // rango que CRECE con la fila: dos facturas que vencen el mismo día tienen que recibir puestos
-  // distintos, o la tabla mostraría una dos veces y otra ninguna.
-  // Sigue la grilla real de Compras: si la carga masiva de comprobantes crece la hoja, las columnas
-  // de orden de la deuda (AH/AI) tienen que llegar hasta la última fila o la deuda nueva no ordena.
-  const ultimaCompras = hojaCompras.rows ?? 934
-  const orden = []
-  for (let f = 4; f <= ultimaCompras; f++) orden.push([formulaOrden(f, ESTADO_DEUDA), formulaOrdenSinFecha(f, ESTADO_DEUDA)])
-  if ((hojaCompras.cols ?? 0) < 36) await google.spreadsheetBatchUpdate(ID, [{ appendDimension: { sheetId: hojaCompras.sheetId, dimension: 'COLUMNS', length: 36 - (hojaCompras.cols ?? 0) } }])
-  await google.batchUpdateValues(ID, [
-    { range: 'Compras!AH3:AJ3', values: [['Orden de pago (OS)', 'Orden sin fecha (OS)', '¿Proveedor comercial? (OS)']] },
-    { range: 'Compras!AH4', values: orden },
-    // Una sola fórmula que derrama: la definición de "proveedor comercial" vive en la columna donde
-    // vive el dato, no repetida dentro de cada fórmula de orden.
-    { range: 'Compras!AJ4', values: [[formulaComercial(RUBROS_COMERCIALES)]] },
-  ])
-  await google.spreadsheetBatchUpdate(ID, [
-    { repeatCell: { range: { sheetId: hojaCompras.sheetId, startRowIndex: 2, endRowIndex: 3, startColumnIndex: 33, endColumnIndex: 36 }, cell: { userEnteredFormat: E.encabezado() }, fields: 'userEnteredFormat' } },
-    { repeatCell: { range: { sheetId: hojaCompras.sheetId, startRowIndex: 3, endRowIndex: ultimaCompras, startColumnIndex: 33, endColumnIndex: 36 }, cell: { userEnteredFormat: E.celda('cantidad') }, fields: 'userEnteredFormat(numberFormat,textFormat,horizontalAlignment)' } },
-  ])
-  console.log(`  Compras: columnas de orden AH/AI escritas para ${orden.length} filas`)
+  const colRubroRef = `$${letra(IDX.rubro)}$4:$${letra(IDX.rubro)}`
+  const escribirColCompras = async (idx, encabezado, formula, ancho = 200) => {
+    if ((hojaCompras.cols ?? 0) <= idx) await google.spreadsheetBatchUpdate(ID, [{ appendDimension: { sheetId: hojaCompras.sheetId, dimension: 'COLUMNS', length: idx + 1 - (hojaCompras.cols ?? 0) } }])
+    await google.spreadsheetBatchUpdate(ID, [
+      { updateCells: {
+        range: { sheetId: hojaCompras.sheetId, startRowIndex: 2, endRowIndex: 4, startColumnIndex: idx, endColumnIndex: idx + 1 },
+        rows: [
+          { values: [{ userEnteredValue: { stringValue: encabezado }, userEnteredFormat: E.encabezado() }] },
+          { values: [{ userEnteredValue: { formulaValue: formula } }] },
+        ],
+        fields: 'userEnteredValue,userEnteredFormat',
+      } },
+      { updateDimensionProperties: { range: { sheetId: hojaCompras.sheetId, dimension: 'COLUMNS', startIndex: idx, endIndex: idx + 1 }, properties: { pixelSize: ancho }, fields: 'pixelSize' } },
+    ])
+  }
+  await escribirColCompras(IDX.familia, 'Familia de material', formulaFamilia(colRubroRef), 230)
+  await escribirColCompras(IDX.comercial, '¿Proveedor comercial? (OS)', formulaComercial(RUBROS_COMERCIALES, `$${letra(IDX.rubro)}`))
+  console.log(`  Compras: Familia (${letra(IDX.familia)}) y ¿Comercial? (${letra(IDX.comercial)}) reescritas en su columna real por encabezado`)
 
   // ═══ LA PARTICIÓN ═══════════════════════════════════════════════════════════════════════════
   //
@@ -815,7 +781,7 @@ async function main() {
   const M = g.marcas
   const TRAMOS = [
     { titulo: NOMBRES.proveedores, desde: M.bPos, hasta: M.b3 - 1,
-      subtitulo: 'Qué se debe y a quién, con la posición arriba y el detalle debajo: la deuda documento por documento, la cuenta corriente con su plazo, las notas de crédito y lo que AFIP facturó que Compras todavía no tiene. Ni un importe escrito: todo son fórmulas sobre Compras.',
+      subtitulo: 'Qué se debe y a quién: la posición arriba, la deuda agrupada por proveedor (con el +/- para abrir sus facturas), la cuenta corriente con su plazo, las notas de crédito y lo que AFIP facturó que Compras no tiene. Todo son fórmulas sobre Compras y ARCA — ni un importe escrito.',
       anchos: [230, 132, 142, 104, 132, 132, 124, 172, 124, 124, 124, 124, 136, 116, 104, 240] },
     { titulo: NOMBRES.materiales, desde: M.b3, hasta: M.fin,
       subtitulo: 'En qué se va la plata: por familia de material y por mes, y la misma plata abierta por obra. Sale de la columna "Familia de material" de Compras, que el OS calcula con una sola definición.',
@@ -913,6 +879,27 @@ async function main() {
   // proveedores haya, y publicarlos antes los dejaría apuntando a la geometría vieja, en silencio.
   const hojaArca = escritas.find((e) => e.titulo === NOMBRES.proveedores)
   const tArca = traducir(NOMBRES.proveedores)
+
+  // ── LA FUNCIÓN AGRUPAR (el +/-): un grupo de filas por proveedor en la deuda ─────────────────────
+  // El dueño la pidió por nombre: "te pedí la función agrupar". Cada proveedor de la deuda es un grupo
+  // colapsable — la fila-cabecera (total + próximo pago) queda a la vista y sus facturas se pliegan
+  // con el +/-. Primero se BORRAN los grupos viejos (la API los APILA, no los reemplaza; sin esto el
+  // agente que rehace el cuadro cada 2 horas dejaría una escalera de +/- creciendo sola) y recién
+  // después se crean los nuevos, colapsados: la pestaña abre compacta, una fila por proveedor.
+  const gruposPrevios = (await google.getRowGroups(ID)).find((x) => x.sheetId === hojaArca.sheetId)?.grupos ?? []
+  const reqGr = gruposPrevios.map((v) => ({ deleteDimensionGroup: { range: { sheetId: hojaArca.sheetId, dimension: 'ROWS', startIndex: v.startIndex, endIndex: v.endIndex } } }))
+  let nGrupos = 0
+  for (const gp of (g.deudaGrupos || [])) {
+    const ini = donde.get(gp.inicio)?.fila
+    const fin = donde.get(gp.fin)?.fila
+    if (!ini || !fin || fin < ini) continue
+    const range = { sheetId: hojaArca.sheetId, dimension: 'ROWS', startIndex: ini - 1, endIndex: fin }
+    reqGr.push({ addDimensionGroup: { range } })
+    reqGr.push({ updateDimensionGroup: { dimensionGroup: { range, depth: 1, collapsed: true }, fields: 'collapsed' } })
+    nGrupos++
+  }
+  if (reqGr.length) await google.spreadsheetBatchUpdate(ID, reqGr)
+  console.log(`  función agrupar: ${nGrupos} grupos de deuda (uno por proveedor), colapsados`)
   const nombres = await publicar(google, ID, hojaArca.sheetId, [
     { name: N_ARCA.comprobantes, fila: tArca.fArcaN, col: 2 },
     { name: N_ARCA.total, fila: tArca.fArcaN, col: 3 },
@@ -1161,14 +1148,20 @@ async function formatear(google, sheetId, g, ancho, filas) {
   // Ninguno de los dos cambia un total en un peso, y por eso ningún control que suma los ve. Por eso
   // cada columna DECLARA su unidad acá, en el mismo orden que COL_DEUDA, en vez de repartirse en
   // cinco llamadas con índices sueltos.
-  const UNIDAD_DEUDA = ['texto', 'fecha', 'texto', 'fecha', 'texto', 'moneda', 'texto', 'texto', 'texto']
-  for (const [a, b] of [[g.doc0, g.doc1], [g.sf0, g.sf1]]) {
-    UNIDAD_DEUDA.forEach((unidad, j) => {
-      fmt({ ...r(a - 1, b, j, j + 1) }, 'userEnteredFormat(numberFormat,textFormat,horizontalAlignment)',
-        E.celda(unidad, j >= 7 ? { alineacion: 'LEFT' } : {}))
-    })
-    // El proveedor, en negrita: es la primera columna y la que ordena la lectura.
-    fmt({ ...r(a - 1, b, 0, 1) }, 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontFamily: E.FUENTE, fontSize: E.TAM.cuerpo } })
+  // ── BLOQUE 1: DEUDA AGRUPADA POR PROVEEDOR ──────────────────────────────────────────────────────
+  // Columnas: A proveedor/(blanco) · B próximo pago/fecha · C cuenta/comprobante · D total/importe ·
+  // E obra · F instrumento. La fila-cabecera de cada proveedor va en negrita tinta; las facturas de
+  // abajo, normales, y el Sheet las pliega con el +/-.
+  if (g.cabDoc && g.cabDocFin && g.cabDocFin > g.cabDoc) {
+    const d0 = g.cabDoc + 1
+    const d1 = g.cabDocFin
+    fmt({ ...r(d0 - 1, d1, 1, 2) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.fecha, horizontalAlignment: 'LEFT' })
+    fmt({ ...r(d0 - 1, d1, 2, 3) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' })
+    fmt({ ...r(d0 - 1, d1, 3, 4) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT' })
+    fmt({ ...r(d0 - 1, d1, 4, 6) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.textFormat', { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: { fontSize: 9 } })
+    for (const h of (g.deudaHeaders || [])) {
+      if (h) fmt({ ...r(h - 1, h, 0, 4) }, 'userEnteredFormat.textFormat', { textFormat: { bold: true, foregroundColor: INK, fontSize: 10 } })
+    }
   }
 
   // ── LOS DEFECTOS DE PANTALLA QUE ENCONTRÓ auditar-pantalla.mjs (21/07) ───────────────────────
@@ -1186,22 +1179,11 @@ async function formatear(google, sheetId, g, ancho, filas) {
   // UNA CANTIDAD DE COMPROBANTES NO ES PLATA. La columna B del bloque de ARCA mostraba "$16" donde
   // dice cuántas facturas emitidas hay: el formato moneda de la columna entera se lo comía.
   if (g.fArcaN && g.fArcaVentas) fmt({ ...r(g.fArcaN - 1, g.fArcaVentas, 1, 2) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.cantidad, horizontalAlignment: 'CENTER' })
-  // Las notas sueltas que viven al lado de un número. Van en TEXT y con estilo de nota: una
-  // explicación en una celda con formato de plata se lee como si fuera un importe.
-  const fMasArca = g.filas.findIndex((f) => /^ {2}· más ARCA/.test(String(f?.[0] ?? '')))
-  if (fMasArca >= 0) fmt({ ...r(fMasArca, fMasArca + 1, 2, ancho) }, 'userEnteredFormat', E.nota())
-  // La nota que explica el total adeudado. Se busca por su rótulo: estaba clavada en la fila 6 y al
-  // partir la pestaña esa fila pasó a ser otra cosa.
-  const fTotAd = g.filas.findIndex((f) => /^TOTAL ADEUDADO/.test(String(f?.[0] ?? '')))
-  if (fTotAd >= 0) fmt({ ...r(fTotAd, fTotAd + 1, 5, 9) }, 'userEnteredFormat', E.nota())
   fmt({ ...r(g.fSub, g.fSub + 1, 15, 16) }, 'userEnteredFormat', E.nota())
   // La columna de fecha del bloque de ARCA, que mostraba el serial como plata.
   fmt({ ...r(g.afip0 - 1, g.afip1, 3, 4) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: E.NUM.fecha, horizontalAlignment: 'CENTER' })
 
-  // El rótulo del bloque de las sin fecha, en rojo de alerta.
-  fmt({ ...r(g.fSinFecha - 1, g.fSinFecha, 0, 6) }, 'userEnteredFormat', E.alerta())
-  fmt({ ...r(g.fSinFecha - 1, g.fSinFecha, 1, 2) }, 'userEnteredFormat.numberFormat', { numberFormat: E.NUM.moneda })
   for (const [a, b] of [[g.afip0, g.afip1], [g.emi0, g.emi1]]) {
     fmt({ ...r(a - 1, b, 3, 4) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
       { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'CENTER' })

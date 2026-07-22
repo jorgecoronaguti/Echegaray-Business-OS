@@ -112,8 +112,8 @@ export function celdaDeuda(colOrigen, filaTabla, primera, colOrden = COL.orden, 
  * pregunta "¿esto es un proveedor comercial?" tiene que tener una sola definición, y vivir en la
  * columna donde vive el dato. Es la misma disciplina que el rubro de caja y la familia de material.
  */
-export function formulaComercial(rubrosComerciales = []) {
-  const rango = `${COL.rubro}$4:${COL.rubro}`
+export function formulaComercial(rubrosComerciales = [], colRubro = COL.rubro) {
+  const rango = `${colRubro}$4:${colRubro}`
   const suma = rubrosComerciales.map((r) => `(${rango}="${r}")`).join('+')
   return `=ARRAYFORMULA(IF(${rango}="";"";IF((${suma})>0;1;0)))`
 }
