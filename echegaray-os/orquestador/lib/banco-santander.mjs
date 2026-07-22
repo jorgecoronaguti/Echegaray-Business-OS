@@ -41,14 +41,20 @@ export const CUENTA = {
   banco: 'Banco Santander',
   numero: '179-091383/6',
   sucursal: '0179 San Juan',
-  // El saldo que el banco DECLARA al cierre del 22/07. Es el que manda para la disponibilidad.
-  saldoPesos: 5251630.74,
+  // El saldo que el banco DECLARA. Es el que manda para la disponibilidad. Actualizado a la descarga
+  // de las 15:50 del 22/07 (más fresca que la de las 11:20, que declaraba $5.251.630,74): entre las
+  // dos, "Movimientos del Día" agregó dos operaciones nuevas —transf. recibida de Manufacturas
+  // Químicas +$4.267,49 y transf. a Katsuda Gustavo −$270.000— y $5.251.630,74 + $4.267,49 − $270.000
+  // = $4.985.898,23 EXACTO. El intradía cierra al peso contra el declarado anterior.
+  saldoPesos: 4985898.23,
   // Dónde termina la cadena de saldos del detalle transcripto (último movimiento con saldo: la
-  // compra Vono del 22/07). NO coincide con el declarado: entre medio el banco informa el cheque
-  // Nº 221 del día (−$200.000, sin saldo en el detalle) y una diferencia de −$143.500 que el detalle
-  // del día no muestra. Total a conciliar: −$343.500. No se inventa el movimiento faltante.
+  // compra Vono del 22/07). NO coincide con el declarado: contra el detalle, el día tuvo el cheque
+  // Nº 221 (−$200.000), la transf. a Katsuda (−$270.000) y la recibida de Manufacturas (+$4.267,49)
+  // —todos "Movimientos del Día" sin saldo corrido— y queda una diferencia de −$143.500 que ninguna
+  // línea del extracto muestra (retención/hold intradía). Total a conciliar: −$609.232,51. No se
+  // inventa el movimiento faltante: los $143.500 son el único tramo que el banco no explica.
   saldoUltimoMovimiento: 5595130.74,
-  saldoPendienteConciliar: -343500,
+  saldoPendienteConciliar: -609232.51,
   saldoDolares: 581.39, // de la captura del 21/07; no se recapturó el 22/07
 }
 

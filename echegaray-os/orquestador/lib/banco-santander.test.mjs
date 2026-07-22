@@ -10,10 +10,11 @@ test('la transcripción del extracto encadena y termina en el último saldo del 
   const { rotas, saldoFinal } = verificarCadena()
   assert.deepEqual(rotas, [], 'hay filas donde el saldo no cierra: la transcripción tiene un error')
   // El detalle cierra en el saldo del último movimiento (Vono, 22/07). El saldo DECLARADO del día es
-  // menor (cheque Nº 221 del día + $143.500 sin detalle): esos dos números son distintos a propósito.
+  // menor (cheque Nº 221 + transf. a Katsuda + $143.500 sin detalle, neto de la recibida de
+  // Manufacturas): esos dos números son distintos a propósito. Saldo de la descarga de las 15:50.
   assert.equal(saldoFinal, CUENTA.saldoUltimoMovimiento)
-  assert.equal(CUENTA.saldoPesos, 5251630.74)
-  assert.equal(CUENTA.saldoUltimoMovimiento - CUENTA.saldoPesos, -CUENTA.saldoPendienteConciliar)
+  assert.equal(CUENTA.saldoPesos, 4985898.23)
+  assert.ok(Math.abs((CUENTA.saldoUltimoMovimiento - CUENTA.saldoPesos) - -CUENTA.saldoPendienteConciliar) < 0.01)
 })
 
 test('cada movimiento tiene fecha, concepto e importe', () => {
