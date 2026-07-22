@@ -255,13 +255,15 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // dieciséis columnas ilegible. Menos es más: siete columnas, cada una con un trabajo.
   const b2 = push(['2 · CUENTA CORRIENTE POR PROVEEDOR'])
   push(['Con quién se gasta y con qué plazo. El plazo —días entre factura y pago— es el dato clave: pagar a 0 días empuja al descubierto al 62,78% anual cuando el crédito del proveedor es gratis. La deuda de cada uno está arriba, agrupada. Sólo comerciales.'])
-  const cabProv = push(['Proveedor', 'CUIT', `Comprado ${AÑO}`, 'Plazo promedio', 'Qué se le compra'])
+  const cabProv = push(['Proveedor', 'CUIT', 'Comprobantes', `Comprado ${AÑO}`, 'Plazo promedio', 'Qué se le compra'])
   const p0 = filas.length + 1
   for (const p of proveedores) {
     const f = filas.length + 1
     push([
       p.nombre,
       p.cuit ? formatearCuit(p.cuit) : '',
+      // Cuántos comprobantes (facturas) emitió el proveedor en el año — el dueño lo pidió de vuelta.
+      `=COUNTIF(${COL_PROV};$A${f})`,
       `=SUMIF(${COL_PROV};$A${f};${COL_TOTAL})`,
       // EL PLAZO REAL: días entre la fecha de factura y la fecha en que salió la plata, por SUMPRODUCT.
       `=IFERROR(SUMPRODUCT((${COL_PROV}=$A${f})*ISNUMBER(${COL_FACTURA})*ISNUMBER(${COL_FECHA})*(IF(ISNUMBER(${COL_FECHA});${COL_FECHA};0)-IF(ISNUMBER(${COL_FACTURA});${COL_FACTURA};0)))/SUMPRODUCT((${COL_PROV}=$A${f})*ISNUMBER(${COL_FACTURA})*ISNUMBER(${COL_FECHA}));"")`,
@@ -269,9 +271,10 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
     ])
   }
   const p1 = filas.length
-  const fSub = push([`Subtotal de estos ${proveedores.length}`, '', `=SUM($C${p0}:$C${p1})`, '', ''])
-  push([`Resto de proveedores comerciales (${resto.cantidad})`, '', `=$C$TOTPROV-$C${fSub}`, '', 'ninguno llega al 1% del total'])
+  const fSub = push([`Subtotal de estos ${proveedores.length}`, '', `=SUM($C${p0}:$C${p1})`, `=SUM($D${p0}:$D${p1})`, '', ''])
+  push([`Resto de proveedores comerciales (${resto.cantidad})`, '', '', `=$D$TOTPROV-$D${fSub}`, '', 'ninguno llega al 1% del total'])
   const fTotProv = push(['TOTAL PROVEEDORES COMERCIALES', '',
+    `=COUNTIFS(${COL_ESTADO};"<>";${COL_COMERCIAL};1)`,
     RUBROS_COMERCIALES.map((r) => `SUMIF(${COL_RUBRO};"${r}";${COL_TOTAL})`).join('+').replace(/^/, '='),
     '', ''])
   push([])
@@ -874,6 +877,9 @@ async function main() {
   // después se crean los nuevos, colapsados: la pestaña abre compacta, una fila por proveedor.
   const gruposPrevios = (await google.getRowGroups(ID)).find((x) => x.sheetId === hojaArca.sheetId)?.grupos ?? []
   const reqGr = gruposPrevios.map((v) => ({ deleteDimensionGroup: { range: { sheetId: hojaArca.sheetId, dimension: 'ROWS', startIndex: v.startIndex, endIndex: v.endIndex } } }))
+  // MOSTRAR TODAS LAS FILAS primero: borrar un grupo colapsado deja las filas con hiddenByUser=true, y
+  // esas quedan ocultas aunque el grupo nuevo abra expandido. Se limpia toda la pestaña de una.
+  reqGr.push({ updateDimensionProperties: { range: { sheetId: hojaArca.sheetId, dimension: 'ROWS', startIndex: 3, endIndex: hojaArca.filas }, properties: { hiddenByUser: false }, fields: 'hiddenByUser' } })
   let nGrupos = 0
   for (const gp of (g.deudaGrupos || [])) {
     const ini = donde.get(gp.inicio)?.fila
@@ -885,10 +891,13 @@ async function main() {
     // desplegar. El +/- queda igual para plegar el proveedor que no interese. (Antes arrancaban
     // colapsados y parecía que los comprobantes no estaban.)
     reqGr.push({ updateDimensionGroup: { dimensionGroup: { range, depth: 1, collapsed: false }, fields: 'collapsed' } })
+    // FORZAR VISIBLE: borrar un grupo colapsado deja las filas con hiddenByUser=true, y expandir el
+    // grupo nuevo NO las vuelve a mostrar. Sin esto, algunas facturas quedaban ocultas en silencio.
+    reqGr.push({ updateDimensionProperties: { range, properties: { hiddenByUser: false }, fields: 'hiddenByUser' } })
     nGrupos++
   }
   if (reqGr.length) await google.spreadsheetBatchUpdate(ID, reqGr)
-  console.log(`  función agrupar: ${nGrupos} grupos de deuda (uno por proveedor), colapsados`)
+  console.log(`  función agrupar: ${nGrupos} grupos de deuda (uno por proveedor), expandidos`)
   const nombres = await publicar(google, ID, hojaArca.sheetId, [
     { name: N_ARCA.comprobantes, fila: tArca.fArcaN, col: 2 },
     { name: N_ARCA.total, fila: tArca.fArcaN, col: 3 },
@@ -1079,13 +1088,15 @@ async function formatear(google, sheetId, g, ancho, filas) {
   // BLOQUE 2 (perfil de proveedor, 7 columnas): B CUIT (texto centrado) · C-E plata (moneda general) ·
   // F plazo (días) · G qué se le compra (texto). Sin columnas de deuda ni de cheque: la deuda está
   // arriba, agrupada. Menos formato porque hay menos columnas — el objetivo es leerlo de un vistazo.
-  // BLOQUE 2, 5 columnas: A proveedor · B CUIT (texto centrado) · C comprado (moneda general) ·
-  // D plazo (días) · E qué se le compra (texto).
+  // BLOQUE 2, 6 columnas: A proveedor · B CUIT (texto) · C comprobantes (cantidad) · D comprado
+  // (moneda general) · E plazo (días) · F qué se le compra (texto).
   fmt({ ...r(g.p0 - 1, g.fTotProv, 1, 2) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'CENTER' })
-  fmt({ ...r(g.p0 - 1, g.fTotProv, 3, 4) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-    { numberFormat: { type: 'NUMBER', pattern: '0" d";;""' }, horizontalAlignment: 'CENTER' })
+  fmt({ ...r(g.p0 - 1, g.fTotProv, 2, 3) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+    { numberFormat: E.NUM.cantidad, horizontalAlignment: 'CENTER' })
   fmt({ ...r(g.p0 - 1, g.fTotProv, 4, 5) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+    { numberFormat: { type: 'NUMBER', pattern: '0" d";;""' }, horizontalAlignment: 'CENTER' })
+  fmt({ ...r(g.p0 - 1, g.fTotProv, 5, 6) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' })
   // NOTAS DE CRÉDITO — el formato moneda general de la pestaña convierte una fecha en "$46.119"
   // (el número de serie del 7/4/2026 pintado como pesos). Ya pasó cinco veces en este archivo: un
@@ -1160,7 +1171,7 @@ async function formatear(google, sheetId, g, ancho, filas) {
   // UNA CANTIDAD DE COMPROBANTES NO ES PLATA. La columna B del bloque de ARCA mostraba "$16" donde
   // dice cuántas facturas emitidas hay: el formato moneda de la columna entera se lo comía.
   if (g.fArcaN && g.fArcaVentas) fmt({ ...r(g.fArcaN - 1, g.fArcaVentas, 1, 2) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.cantidad, horizontalAlignment: 'CENTER' })
-  fmt({ ...r(g.fSub, g.fSub + 1, 4, 5) }, 'userEnteredFormat', E.nota())
+  fmt({ ...r(g.fSub, g.fSub + 1, 5, 6) }, 'userEnteredFormat', E.nota())
   // La columna de fecha del bloque de ARCA, que mostraba el serial como plata.
   fmt({ ...r(g.afip0 - 1, g.afip1, 3, 4) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: E.NUM.fecha, horizontalAlignment: 'CENTER' })
