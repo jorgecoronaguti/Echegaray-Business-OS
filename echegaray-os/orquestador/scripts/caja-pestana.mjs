@@ -177,7 +177,7 @@ function grilla(cargado, refs) {
   const previo = (cuenta, campo) => cargado.get(cuenta)?.[campo] ?? ''
 
   push(['CAJA Y BANCOS — DISPONIBILIDADES'])
-  push(['Esta es la ÚNICA pestaña del archivo donde se carga un número a mano: cuánta plata hay. Todo lo demás se calcula solo. Las celdas AMARILLAS son para completar; el resto son fórmulas y se pisan en cada corrida del agente. Lo que está en dólares se carga EN DÓLARES: la conversión a pesos la hace la planilla.'])
+  push(['Se carga un solo dato a mano: cuánta plata hay (celdas AMARILLAS). Lo demás se calcula. Lo que está en dólares se carga en dólares.'])
   push()
   // ═══ LOS TRES NÚMEROS QUE CONTESTAN LA PREGUNTA, ARRIBA DE TODO ═══
   //
@@ -213,8 +213,8 @@ function grilla(cargado, refs) {
   // detalle decía "Bloque 6" —hay que buscarlo, contar filas y reconstruir la resta a mano—. Un
   // número que acusa un problema de cuarenta millones tiene que traer su cuenta al lado, o no se
   // puede discutir ni corregir. Ahora dice la RESTA y la FILA exacta.
-  const fAlerta0 = push(['⚠ LO QUE NO CIERRA — mirar esto antes de decidir con los números de arriba'])
-  push(['Cada línea es un problema con nombre y monto. La última columna dice de qué resta sale y en qué fila está la cuenta completa.'])
+  const fAlerta0 = push(['⚠ LO QUE NO CIERRA — mirar antes de decidir con los números de arriba'])
+  push(['Cada línea es un problema con nombre y monto; la última columna dice de qué resta sale.'])
   // ═══ LA EXPLICACIÓN VA EN LA CELDA QUE SE VE ═══
   //
   // Había una columna "Dónde está el detalle" que decía "Bloque 6"… y NADIE PODÍA LEERLA: la celda
