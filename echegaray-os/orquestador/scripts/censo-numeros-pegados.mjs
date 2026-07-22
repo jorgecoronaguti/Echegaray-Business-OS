@@ -49,11 +49,20 @@ function colLetra(n) { let s = ''; for (let i = n - 1; i >= 0; i = Math.floor(i 
  * NÚCLEO PURO: clasifica cada celda de una grilla.
  * @param {{filas:Array}} grid salida de readSheetGrid
  */
+// Una fila DECLARA SU ORIGEN cuando trae, en alguna celda, la leyenda con que el OS marca un dato
+// transcripto o conciliado (regla de oro: "el dato de origen SÍ se pega, y se declara"). Los números
+// de esa fila no son un cálculo pegado a mano: son la base de una DDJJ, un resultado de conciliación
+// o una réplica, con su corte declarado al lado. Disfrazarlos de fórmula daría un número equivocado.
+export const RE_ORIGEN = /ddjj|transcript|conciliaci[oó]n del os|r[eé]plica|extracto del banco|dato de origen/i
+const filaDeclaraOrigen = (fila) => (fila || []).some((c) => c && !c.formula && RE_ORIGEN.test(String(c?.valor ?? '')))
+
 export function censar(grid) {
-  const r = { formula: 0, derramada: 0, pegadoNumero: 0, fecha: 0, texto: 0, pegados: [] }
+  const r = { formula: 0, derramada: 0, pegadoNumero: 0, fecha: 0, texto: 0, origenFila: 0, pegados: [] }
   if (!grid?.filas) return r
   const L = (n) => { let s = ''; for (let i = n; i >= 0; i = Math.floor(i / 26) - 1) s = String.fromCharCode(65 + (i % 26)) + s; return s }
-  grid.filas.forEach((fila, i) => (fila || []).forEach((c, j) => {
+  grid.filas.forEach((fila, i) => {
+    const declara = filaDeclaraOrigen(fila)
+    ;(fila || []).forEach((c, j) => {
     if (!c) return
     if (c.formula) { r.formula++; return }
     if (c.derivada) { r.derramada++; return }
@@ -66,12 +75,16 @@ export function censar(grid) {
       // qué período habla la columna, no pegar un resultado. Contarlas como violación tapaba las
       // que sí lo son: la primera versión de este censo dio 407 y la mitad eran encabezados.
       if (c.formato === 'DATE' || c.formato === 'DATE_TIME') { r.fecha++; return }
+      // La fila declara su origen: es dato transcripto/conciliado, no un cálculo pegado. Se cuenta
+      // aparte para no inflar las violaciones reales.
+      if (declara) { r.origenFila++; return }
       r.pegadoNumero++
       r.pegados.push({ celda: `${L(j)}${i + 1}`, valor: c.numero, formato: c.formato })
       return
     }
     r.texto++
-  }))
+    })
+  })
   return r
 }
 

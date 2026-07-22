@@ -253,17 +253,23 @@ function grilla(iva, planes, iibb, ret) {
   const al = alicuotaDeclarada(iibb)
   const cab2 = push(['Período', 'Base imponible', 'Impuesto determinado', 'Retenciones y percepciones sufridas', 'Saldo a favor que venía', 'A PAGAR', 'Saldo a favor que queda', 'Presentada', 'Origen'])
   const i0 = filas.length + 1
-  for (const d of iibb) {
+  // La celda de la alícuota declarada va DEBAJO del bloque (fila aliRow): el impuesto determinado se
+  // referencia contra ella, no contra un 2% hardcodeado. Forward-reference, válida en Sheets.
+  const aliRow = i0 + iibb.length + 2
+  // SÓLO Base (B) y Retenciones (D) son dato de origen de la DDJJ. El resto es aritmética que TIENE
+  // que ser fórmula (regla de oro): C impuesto = Base × alícuota; E saldo que viene = G del mes
+  // anterior; F a pagar = MAX(0; impuesto − retenciones − saldo); G saldo que queda = MAX(0; lo inverso).
+  iibb.forEach((d, j) => {
     const i = Number((d.periodo ?? '').slice(5, 7)) - 1
+    const r = i0 + j
     push([
-      `${MES[i] ?? d.periodo}-26`, Math.round(d.base_total), Math.round(d.impuesto_determinado),
-      Math.round(d.retenciones), Math.round(d.saldo_favor_anterior),
-      d.a_favor ? 0 : Math.round(d.a_ingresar),
-      d.a_favor ? Math.round(d.a_ingresar) : 0,
+      `${MES[i] ?? d.periodo}-26`, Math.round(d.base_total), `=B${r}*$B$${aliRow}`,
+      Math.round(d.retenciones), j === 0 ? Math.round(d.saldo_favor_anterior) : `=G${r - 1}`,
+      `=MAX(0;C${r}-D${r}-E${r})`, `=MAX(0;E${r}+D${r}-C${r})`,
       d.fecha_presentacion ?? '',
-      `DDJJ Rentas San Juan · control ${d.nro_control ?? '?'}`,
+      `DDJJ Rentas San Juan · control ${d.nro_control ?? '?'} — Base y Retenciones transcriptas; impuesto y saldos calculados`,
     ])
-  }
+  })
   const i1 = filas.length
   push(['TOTAL', `=SUM(B${i0}:B${i1})`, `=SUM(C${i0}:C${i1})`, `=SUM(D${i0}:D${i1})`, '', `=SUM(F${i0}:F${i1})`, '', '',
     'Si la columna "A PAGAR" da $0 en todo el semestre, la empresa NO paga IIBB: las retenciones que sufre alcanzan y sobran.'])
@@ -271,7 +277,7 @@ function grilla(iva, planes, iibb, ret) {
   const fIIBB = push(['Alícuota que la empresa DECLARA', al.alicuota ?? '', '', '', '', '', '', '',
     `De sus propias DDJJ (cód. ${al.codigos.join(', ')}), no de la ley. El 3% es del 711001, que Echegaray no usa; estimarlo así inflaba el impuesto 50%.`])
   const ultIIBB = iibb[iibb.length - 1]
-  push(['⚠ Saldo a favor de IIBB HOY', Math.round(ultIIBB?.a_favor ? ultIIBB.a_ingresar : 0), '', '', '', '', '', '',
+  push(['⚠ Saldo a favor de IIBB HOY', `=G${i1}`, '', '', '', '', '', '',
     `Plata de la empresa inmovilizada en Rentas, igual que con el IVA. Venía de ${Math.round(iibb[0]?.saldo_favor_anterior ?? 0).toLocaleString('es-AR')} en enero: está BAJANDO, así que en algún momento la empresa va a empezar a pagar IIBB de verdad.`])
   push(['Consumo mensual del saldo (impuesto − retenciones)', `=IFERROR((C${i1}-D${i1});0)`, '', '', '', '', '', '',
     'Lo que el último mes se comió del saldo a favor. Dividí el saldo por esto para saber cuántos meses faltan para empezar a pagar.'])
@@ -283,7 +289,9 @@ function grilla(iva, planes, iibb, ret) {
   push(['3. PLANES DE PAGO DE DEUDA PREVISIONAL — F931 viejos financiados'])
   push(['Plan', 'Cuotas cargadas', 'Monto por cuota', 'Total cargado', 'Primera', 'Última', '', '', 'Origen'])
   const p0 = filas.length + 1
-  for (const p of planes) push([p.nombre, p.cuotas, p.monto_cuota, Math.round(p.total), p.primera ?? '', p.ultima ?? '', '', '', 'Compras, rubro "Deuda previsional (planes de pago)"'])
+  // El total por plan es cuotas × monto de cuota: fórmula, no pegado. Cuotas y monto salen del rubro
+  // "Deuda previsional" de Compras (agregación del OS por plan) y se declaran en la columna Origen.
+  planes.forEach((p, k) => push([p.nombre, p.cuotas, p.monto_cuota, `=B${p0 + k}*C${p0 + k}`, p.primera ?? '', p.ultima ?? '', '', '', 'Compras, rubro "Deuda previsional (planes de pago)"']))
   const p1 = filas.length
   push(['TOTAL PLANES', `=SUM(B${p0}:B${p1})`, '', `=SUM(D${p0}:D${p1})`, '', '', '', '', ''])
   const fCtrlP = filas.length + 1
