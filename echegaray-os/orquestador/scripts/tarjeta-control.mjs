@@ -81,7 +81,9 @@ function grilla(filaDatos, desde) {
   push([FIRMA])
   push([`El resumen del Santander al ${CORTE} dice qué queda por pagar. La pestaña dice lo mismo desde el otro lado: sumando las cuotas por mes de pago. Si las dos columnas no coinciden, o falta cargar un consumo o sobra una cuota — y hasta hoy nadie lo podía ver sin rehacer la cuenta a mano.`])
   push()
-  push(['Concepto', 'Según esta pestaña', 'Según el banco', 'Diferencia', 'Qué significa'])
+  // Títulos CORTOS: la columna es angosta (mide para un importe, no para una frase). "Según esta
+  // pestaña" en 76px se cortaba — minimalismo y además legible.
+  const fCab1 = push(['Concepto', 'Pestaña', 'Banco', 'Diferencia', 'Qué significa'])
 
   // TODO ES FÓRMULA del lado de la pestaña. Del lado del banco es una réplica del resumen, con su
   // fecha de corte declarada: no se puede calcular desde el Sheet.
@@ -120,7 +122,7 @@ function grilla(filaDatos, desde) {
   // Es la conexión con CAJA que se pidió: el disponible de la tarjeta es capacidad de pago, y el
   // consumido en cuotas es deuda con fecha cierta. Son dos caras del mismo instrumento.
   push(['LA TARJETA COMO DISPONIBILIDAD — lo que ve CAJA'])
-  push(['Concepto', 'Monto', '', '', 'Origen'])
+  const fCab2 = push(['Concepto', 'Monto', '', '', 'Origen'])
   push(['Límite de compra', '', TARJETA.limite, '', `${TARJETA.cuenta} · resumen al ${CORTE}`])
   push(['Consumido sin debitar (pesos)', '', TARJETA.consumidoPesos, '', 'Resumen del banco'])
   push(['Consumido sin debitar (dólares)', '', TARJETA.consumidoDolares, '', '⚠ Está en U$S: no se suma a los pesos sin tipo de cambio. CAJA lo valúa con el TC del rango con nombre.'])
@@ -130,10 +132,12 @@ function grilla(filaDatos, desde) {
   push(['  · consumido', '', TARJETA.cuotas.consumido, '', ''])
   push(['  · disponible para financiar', '', TARJETA.cuotas.disponible, '', '⚠ Es la capacidad REAL de comprar en cuotas, y es menor que el disponible de arriba. Confundir los dos hace planificar una compra que la tarjeta no va a aprobar.'])
   push()
-  push(['Débito automático', TARJETA.debitoAutomatico, '', '', `Por el TOTAL. No hay opción de pago mínimo: el día ${TARJETA.vence} sale entero de la cuenta.`])
+  // La descripción de la cuenta va en la NOTA (columna E), no en la B, que es de importes: un texto
+  // en una celda con formato moneda es un defecto de pantalla.
+  push(['Débito automático', '', '', '', `${TARJETA.debitoAutomatico}. Por el TOTAL, sin pago mínimo: el día ${TARJETA.vence} sale entero de la cuenta.`])
   push([`Cierra ${TARJETA.cierre ?? TARJETA.cierra} · vence ${TARJETA.vence}`, '', '', '', ORIGEN])
 
-  return { filas, fTotal: f3 }
+  return { filas, fTotal: f3, fCab1, fCab2 }
 }
 
 async function main() {
@@ -175,6 +179,12 @@ async function main() {
     { repeatCell: { range: r(desde - 1, desde + n, 4, 5), cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' }, textFormat: { fontSize: 9, italic: true }, wrapStrategy: 'WRAP' } }, fields: 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat,userEnteredFormat.wrapStrategy' } },
     { repeatCell: { range: r(desde - 1, desde, 0, ANCHO), cell: { userEnteredFormat: { textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } }, backgroundColor: { red: 0.17, green: 0.25, blue: 0.37 } } }, fields: 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor' } },
     { repeatCell: { range: r(desde + g.fTotal - 2, desde + g.fTotal - 1, 0, ANCHO), cell: { userEnteredFormat: { textFormat: { bold: true } } }, fields: 'userEnteredFormat.textFormat' } },
+    // LAS DOS FILAS DE CABECERA llevan texto ("Según esta pestaña", "Según el banco", "Diferencia",
+    // "Monto") en las columnas B/C/D que el bloque formatea como moneda: sin devolverles el formato
+    // TEXT, Google las marca como "texto en celda con formato NUMBER" (el defecto de pantalla que
+    // apareció en D37). Se ubican por variable, no por fila fija.
+    { repeatCell: { range: r(desde + g.fCab1 - 2, desde + g.fCab1 - 1, 1, 4), cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' } } }, fields: 'userEnteredFormat.numberFormat' } },
+    { repeatCell: { range: r(desde + g.fCab2 - 2, desde + g.fCab2 - 1, 1, 4), cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' } } }, fields: 'userEnteredFormat.numberFormat' } },
   ])
   console.log('  ✓ escrito y formateado')
 }
