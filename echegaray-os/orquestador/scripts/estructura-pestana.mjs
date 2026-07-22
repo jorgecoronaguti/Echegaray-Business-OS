@@ -104,13 +104,13 @@ function grilla() {
   const c1 = vacia()
   c1[0] = 'CONTROL — que este cuadro sea exactamente el rubro Estructura de Compras'
   push(c1)
-  const c2 = vacia(); c2[0] = 'Estructura según Compras (rubro de caja)'; c2[1] = '=SUMIF(Compras!$AC$4:$AC;"Estructura";Compras!$O$4:$O)'
+  const c2 = vacia(); c2[0] = 'Estructura según Compras'; c2[1] = '=SUMIF(Compras!$AC$4:$AC;"Estructura";Compras!$O$4:$O)'
   c2[3] = 'Es la misma línea del Cash Flow Mensual.'
   const fc = push(c2)
-  const c3 = vacia(); c3[0] = '⇒ Diferencia contra el Total real de arriba (tiene que ser $0)'; c3[1] = `=$B${fc}-$${letra(C_TOTREAL)}${fTot}`
+  const c3 = vacia(); c3[0] = '⇒ Diferencia (debe ser $0)'; c3[1] = `=$B${fc}-$${letra(C_TOTREAL)}${fTot}`
   c3[3] = 'Distinto de cero = hay gastos de estructura que este cuadro no está mirando.'
   push(c3)
-  const c4 = vacia(); c4[0] = `Rubros que NO se proyectan (aparecieron en menos de ${MIN_MESES} meses)`
+  const c4 = vacia(); c4[0] = `Rubros no proyectados (< ${MIN_MESES} meses)`
   c4[1] = `=COUNTIFS($${letra(C_NMESES)}${f0}:$${letra(C_NMESES)}${f1};"<${MIN_MESES}";$${letra(C_TOTREAL)}${f0}:$${letra(C_TOTREAL)}${f1};">0")`
   c4[3] = 'Un gasto que pasó una o dos veces no es una tendencia. Proyectarlo infló el año a $120,8M contra $33M reales.'
   push(c4)
