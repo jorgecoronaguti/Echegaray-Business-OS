@@ -83,6 +83,7 @@ import { cruzar, verificar } from '../lib/cobertura-arca.mjs'
 import { ARCA as N_ARCA, publicar } from '../lib/rangos-nombrados.mjs'
 import { query } from '../lib/db.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
+import { INK, MUTED, HAIR } from '../lib/estilo-statement.mjs'
 import { R, IMPORTE, arcaPorCuit, arcaPorComprobante, arcaPorComprobanteVentas, totalLibro } from '../lib/arca-formula.mjs'
 import { formatear as formatearCuit } from '../lib/cuit.mjs'
 import { pivot, filtroValores, valoresNoCubiertos, plantar, borrar, RESUMEN } from '../lib/pivot-sheets.mjs'
@@ -471,7 +472,7 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
 
   // ── 9 · LO QUE LA EMPRESA FACTURÓ ───────────────────────────────────────────────────────────────
   push([`9 · FACTURAS EMITIDAS — control cruzado contra Cobranzas (esto es VENTAS, no proveedores)`])
-  push(['Los números de las facturas que emitió la empresa, con su CAE, tal como los tiene AFIP. La última columna cruza contra Cobranzas por número: una factura emitida que Cobranzas no tiene es plata facturada que nadie está siguiendo.'])
+  push(['Las facturas que emitió la empresa según AFIP, con su cliente y su CAE. El cruce contra Cobranzas es por N° de comprobante NORMALIZADO (0001-00000203 = 01-0000203): una emitida que Cobranzas no tiene es plata facturada que nadie sigue.'])
   const cabEmi = push(['Cliente', 'CUIT', 'Comprobante', 'Fecha', 'Importe', '¿Está en Cobranzas?', '', '', ''])
   const emi0 = filas.length + 1
   for (const r of emitidas) {
@@ -479,7 +480,9 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
       // Igual que las compras: el importe sale del libro, no de un número calculado afuera. El
       // signo va en la fórmula porque una nota de crédito emitida también resta.
       arcaPorComprobanteVentas(`$C${filas.length + 1}`),
-      `=IF(COUNTIF(Cobranzas!$E$5:$E$400;"*"&$C${filas.length + 1}&"*")>0;"✓ sí";"⚠ NO está en Cobranzas")`, '', '', ''])
+      // El estado es una CONCILIACIÓN del OS (comprobante normalizado), no un LIKE literal que fallaba
+      // en las 16. Es texto, no un número pegado: dice si esa factura ya está en el ledger de cobros.
+      r.enCobranzas ? '✓ está en Cobranzas' : '⚠ NO está en Cobranzas', '', '', ''])
   }
   const emi1 = filas.length
   push(['TOTAL FACTURADO', '', '', '', `=SUM($E${emi0}:$E${emi1})`, '', '', '', ''])
@@ -541,6 +544,36 @@ function grilla({ obras, proveedores, resto, faltanEnCompras, emitidas, arca, no
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const compras = (await google.readSheetValues(ID, 'Compras!A4:AE')).filter((f) => parseMonto(f?.[14]))
+
+  // ═══ UN SOLO NOMBRE POR PROVEEDOR EN TODA LA PESTAÑA ═══════════════════════════════════════════
+  //
+  // EL DEFECTO (22/07). El dueño: "hay nombres repetidos en lugar de agruparlos". Y tenía razón: la
+  // cuenta corriente mostraba "Alumetal" (como está en Compras) y las notas de crédito y lo facturado
+  // por AFIP mostraban "ALUMETAL S A" (como lo declaró el emisor en su factura). Es la MISMA empresa
+  // con dos nombres en la misma pestaña — 28 casos. Se ve como si fueran proveedores distintos.
+  //
+  // La regla es "no duplicar, un solo juego de rubros": también un solo nombre por entidad. Se arma
+  // un mapa nombre-normalizado → grafía de Compras (la que el dueño lee), y TODO bloque muestra esa.
+  // Los importes de esos bloques salen del libro por CUIT + comprobante, no por el nombre, así que
+  // cambiar la grafía mostrada no mueve un peso — sólo agrupa lo que era la misma empresa.
+  const grafias = new Map() // norm → Map(grafía → veces)
+  for (const f of compras) {
+    const raw = String(f?.[4] ?? '').trim()
+    if (!raw) continue
+    const k = normNombre(raw)
+    if (!grafias.has(k)) grafias.set(k, new Map())
+    const gm = grafias.get(k)
+    gm.set(raw, (gm.get(raw) ?? 0) + 1)
+  }
+  const canonByKey = new Map()
+  for (const [k, gm] of grafias) {
+    // La grafía canónica es la MÁS FRECUENTE en Compras; a igualdad, la más larga (suele ser la más
+    // completa: "Linarc SAS" antes que "Linarc"). Es la que ya usa la cuenta corriente.
+    const mejor = [...gm.entries()].sort((a, b) => (b[1] - a[1]) || (b[0].length - a[0].length))[0][0]
+    canonByKey.set(k, mejor)
+  }
+  /** El nombre único de una entidad: la grafía de Compras si la conocemos, si no la que vino. */
+  const canon = (nombre) => canonByKey.get(normNombre(nombre)) ?? String(nombre ?? '').trim()
 
   // LOS PROVEEDORES SALEN DEL DATO, no de una lista mía: si mañana aparece uno nuevo y grande, entra
   // solo. Comercial = tiene al menos una compra en un rubro al que se le puede pedir plazo.
@@ -617,16 +650,34 @@ async function main() {
 
   const faltanEnCompras = cruce.faltan
     .map((r) => ({
-      nombre: r.emisor_nombre, cuit: r.emisor_cuit,
+      nombre: canon(r.emisor_nombre), cuit: r.emisor_cuit,
       comprobante: `${String(r.punto_venta).padStart(4, '0')}-${String(r.numero).padStart(8, '0')}`,
       fecha: fecha(r.fecha_emision), importe: Number(r.imp_total),
     }))
     .sort((a, b) => b.importe - a.importe)
-  const emitidas = eArca.filter((r) => !esNotaDeCredito(r.tipo_comprobante)).map((r) => ({
-    nombre: r.receptor_cuit ? `CUIT ${r.receptor_cuit}` : '(sin receptor)', cuit: r.receptor_cuit,
-    comprobante: `${String(r.punto_venta).padStart(4, '0')}-${String(r.numero).padStart(8, '0')}`,
-    fecha: fecha(r.fecha_emision), importe: Number(r.imp_total),
-  }))
+  // ═══ EL CRUCE CONTRA COBRANZAS ESTABA ROTO — DABA "NO ESTÁ" EN TODAS ═══════════════════════════
+  //
+  // EL DEFECTO (22/07). La columna "¿Está en Cobranzas?" decía "⚠ NO" en las 16 facturas emitidas,
+  // aunque varias SÍ están. La causa: ARCA escribe el comprobante "0001-00000203" y Cobranzas
+  // "01-0000203" —la misma factura con otro relleno de ceros— y el LIKE literal nunca casaba. Se
+  // normaliza con la misma función que el resto del archivo (normComprobante: 0001-00000203 → 1-203)
+  // y, de paso, se trae el NOMBRE del cliente, que Cobranzas sí tiene y ARCA no (sólo guarda el CUIT).
+  const cobranzas = await google.readSheetValues(ID, 'Cobranzas!A5:G400')
+  const cobranzasPorComp = new Map()
+  for (const c of cobranzas) {
+    const k = normComprobante(c?.[4])
+    if (esLlaveUtil(k) && !cobranzasPorComp.has(k)) cobranzasPorComp.set(k, String(c?.[6] ?? '').trim())
+  }
+  const emitidas = eArca.filter((r) => !esNotaDeCredito(r.tipo_comprobante)).map((r) => {
+    const comprobante = `${String(r.punto_venta).padStart(4, '0')}-${String(r.numero).padStart(8, '0')}`
+    const cliente = cobranzasPorComp.get(normComprobante(comprobante))
+    return {
+      nombre: cliente || (r.receptor_cuit ? `CUIT ${r.receptor_cuit}` : '(sin receptor)'),
+      cuit: r.receptor_cuit, comprobante,
+      fecha: fecha(r.fecha_emision), importe: Number(r.imp_total),
+      enCobranzas: cliente !== undefined,
+    }
+  })
 
   // ── QUÉ HACE CADA NOTA DE CRÉDITO ──────────────────────────────────────────────────────────────
   // Saber que RESTA arregla la aritmética; esto contesta la pregunta de negocio. Ver
@@ -636,7 +687,7 @@ async function main() {
   const QUE = { refacturacion: 'REFACTURACIÓN — el costo sigue', devolucion: 'Devolución — el costo baja', revisar: '⚠ revisar (parcial o descuento)' }
   const comp = (c) => `${String(c.punto_venta).padStart(4, '0')}-${String(c.numero).padStart(8, '0')}`
   const notasCredito = analisisNC.map((a) => ({
-    proveedor: a.nota.emisor_nombre,
+    proveedor: canon(a.nota.emisor_nombre),
     cuit: a.nota.emisor_cuit,
     comprobante: comp(a.nota),
     fecha: fecha(a.nota.fecha_emision),
@@ -647,7 +698,7 @@ async function main() {
   }))
   const anuladasCargadas = facturasAnuladasCargadas(analisisNC, new Set([...enCompras.keys()]), (c) => normComprobante(claveNC(c)))
     .map((m) => ({
-      proveedor: m.anulada.emisor_nombre,
+      proveedor: canon(m.anulada.emisor_nombre),
       cuit: m.anulada.emisor_cuit,
       cargada: comp(m.anulada),
       fechaCargada: fecha(m.anulada.fecha_emision),
@@ -841,9 +892,12 @@ async function main() {
     const gP = { ...traducir(t.titulo), filas: cuadroP }
     await formatear(google, hoja.sheetId, gP, anchoP, cuadroP.length)
 
-    // El título y el subtítulo de la pestaña, con el estándar.
+    // El título y el subtítulo de la pestaña, EN PIEL DE STATEMENT — igual que Impuestos: tinta sobre
+    // blanco con una línea fina abajo, NO la barra teal oscura que usa el estilo de dashboard. La
+    // barra rellena es justo lo que hace ver la pestaña como planilla y no como JPMorgan.
     await google.spreadsheetBatchUpdate(ID, [
-      { repeatCell: { range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: anchoP }, cell: { userEnteredFormat: E.titulo() }, fields: 'userEnteredFormat' } },
+      { repeatCell: { range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: anchoP }, cell: { userEnteredFormat: { backgroundColor: { red: 1, green: 1, blue: 1 }, textFormat: { bold: true, fontSize: 15, foregroundColor: INK, fontFamily: 'Arial' }, horizontalAlignment: 'LEFT', verticalAlignment: 'MIDDLE' } }, fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)' } },
+      { updateBorders: { range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: anchoP }, bottom: { style: 'SOLID', width: 1, color: HAIR } } },
       { repeatCell: { range: { sheetId: hoja.sheetId, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 0, endColumnIndex: anchoP }, cell: { userEnteredFormat: E.nota() }, fields: 'userEnteredFormat' } },
       { updateDimensionProperties: { range: { sheetId: hoja.sheetId, dimension: 'ROWS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: E.ALTO.titulo }, fields: 'pixelSize' } },
       // LOS ANCHOS SON EL MOTIVO DE TODO ESTO. Cada pestaña declara los suyos según lo que lleva su
@@ -899,11 +953,9 @@ async function main() {
 }
 
 async function formatear(google, sheetId, g, ancho, filas) {
-  // LA PALETA SALE DEL ESTÁNDAR ÚNICO (lib/estilo-pestana.mjs), no de tres constantes locales.
-  // Definir colores acá adentro es lo que hizo que cada pestaña terminara con la suya.
-  const AZUL = E.COLOR.encabezado
-  const GRIS = E.COLOR.total
-  const ROJO = E.COLOR.alerta
+  // LA PIEL ES DE STATEMENT: sin barras de color, la estructura se marca con tipografía (tinta INK,
+  // versalita apagada MUTED) y líneas finas (HAIR). Ver lib/estilo-statement.mjs. Las bandas azules
+  // y grises que había antes son justo lo que hace ver una pestaña como planilla y no como JPMorgan.
   const r = (r0, r1, c0 = 0, c1 = ancho) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
   // ═══ PRIMERO SE BORRA TODO, DESPUÉS SE PINTA ═══
   //
@@ -924,8 +976,12 @@ async function formatear(google, sheetId, g, ancho, filas) {
     // entero, las notas viejas se van con él.
     { repeatCell: { range: r(0, filas, 0, Math.max(ancho, 26)), cell: {}, fields: 'note' } },
     {
+      // EL RESET CUBRE LAS COLUMNAS DE SOBRA, no sólo las que tienen dato. La hoja tiene más columnas
+      // que la tabla (Materiales: 19 vs 17), y las de sobra guardaban un relleno oscuro de un layout
+      // viejo —se veía como un rectángulo negro en la esquina del título—. clearValues no lo saca; el
+      // reset de formato sí, pero sólo si llega hasta esas columnas.
       repeatCell: {
-        range: r(0, filas),
+        range: r(0, filas, 0, Math.max(ancho, 26)),
         cell: {
           userEnteredFormat: {
             backgroundColor: { red: 1, green: 1, blue: 1 },
@@ -952,10 +1008,31 @@ async function formatear(google, sheetId, g, ancho, filas) {
   const valido = (rg) => Number.isFinite(rg?.startRowIndex) && Number.isFinite(rg?.endRowIndex)
     && rg.startRowIndex >= 0 && rg.endRowIndex > rg.startRowIndex
   const fmt = (rg, fields, format) => { if (valido(rg)) req.push({ repeatCell: { range: rg, cell: { userEnteredFormat: format }, fields } }) }
+  // ═══ PIEL DE STATEMENT — la estructura se marca con TIPOGRAFÍA y LÍNEAS FINAS, no con barras de
+  // color. Es lo que separa "cómo se ve en JPMorgan" de "una planilla". La reja se apaga; los
+  // encabezados van en versalita apagada con una línea fina abajo; los totales, rulados; las
+  // secciones, en tinta con una línea fina arriba. Ver lib/estilo-statement.mjs. Acá se usan los
+  // MARCADORES conocidos (no la detección por contenido) porque muchos proveedores tienen nombre en
+  // mayúsculas y la detección los confundiría con secciones.
+  const hairBottom = (row, c0 = 0, c1 = ancho) => { if (row >= 1) req.push({ updateBorders: { range: r(row - 1, row, c0, c1), bottom: { style: 'SOLID', width: 1, color: HAIR } } }) }
+  const hairTop = (row, c0 = 0, c1 = ancho) => { if (row >= 1) req.push({ updateBorders: { range: r(row - 1, row, c0, c1), top: { style: 'SOLID', width: 1, color: HAIR } } }) }
+  // Los bordes viejos se limpian ANTES de poner las hairlines nuevas: una línea de un layout anterior
+  // que quedó en el medio se lee como un error, igual que una banda de color huérfana.
+  req.push({ updateBorders: { range: r(0, filas, 0, Math.max(ancho, 26)), top: { style: 'NONE' }, bottom: { style: 'NONE' }, left: { style: 'NONE' }, right: { style: 'NONE' }, innerHorizontal: { style: 'NONE' }, innerVertical: { style: 'NONE' } } })
+  const encabezadoStmt = (row, c0 = 0, c1 = ancho) => {
+    fmt(r(row - 1, row, c0, c1), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor,userEnteredFormat.horizontalAlignment,userEnteredFormat.wrapStrategy',
+      { textFormat: { bold: true, fontSize: 9, foregroundColor: MUTED }, backgroundColor: { red: 1, green: 1, blue: 1 }, horizontalAlignment: 'LEFT', wrapStrategy: 'CLIP' })
+    hairBottom(row, c0, c1)
+  }
+  const totalStmt = (row, c0 = 0, c1 = ancho) => {
+    fmt(r(row - 1, row, c0, c1), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
+      { textFormat: { bold: true, foregroundColor: INK }, backgroundColor: { red: 1, green: 1, blue: 1 } })
+    hairTop(row, c0, c1)
+  }
 
   fmt(r(0, filas, 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }, horizontalAlignment: 'RIGHT' })
-  fmt(r(0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 13 } })
+  fmt(r(0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 15, foregroundColor: INK } })
 
   // ═══ LOS TÍTULOS Y LAS EXPLICACIONES SE DETECTAN, NO SE ADIVINAN ═══
   //
@@ -971,8 +1048,10 @@ async function formatear(google, sheetId, g, ancho, filas) {
   for (let i = 0; i < g.filas.length; i++) if (esTitulo(g.filas[i]?.[0])) titulos.push(i)
 
   for (const i of titulos) {
+    // Sección en tinta con una línea fina arriba — nada de barra celeste.
     fmt(r(i, i + 1), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
-      { textFormat: { bold: true, fontSize: 12 }, backgroundColor: { red: 0.94, green: 0.95, blue: 0.97 } })
+      { textFormat: { bold: true, fontSize: 11, foregroundColor: INK }, backgroundColor: { red: 1, green: 1, blue: 1 } })
+    hairTop(i + 1)
     // La línea de abajo es la explicación del bloque: sólo si tiene texto largo y nada en B.
     const sig = g.filas[i + 1]
     if (sig && String(sig[0] ?? '').length > 40 && !String(sig[1] ?? '').trim()) {
@@ -994,17 +1073,19 @@ async function formatear(google, sheetId, g, ancho, filas) {
   // rulado y en negrita; las sub-líneas ("· de eso, ...") en gris; el plazo, en días, no en pesos.
   // Es el mismo patrón que el dueño aprobó en Impuestos, adaptado a las columnas de esta pestaña.
   if (g.bPos && g.pos0 && g.pos1) {
+    // Título de la posición: tinta, sin barra; una línea fina arriba lo separa del subtítulo.
     fmt(r(g.bPos - 1, g.bPos), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
-      { textFormat: { bold: true, fontSize: 12 }, backgroundColor: { red: 0.94, green: 0.95, blue: 0.97 } })
+      { textFormat: { bold: true, fontSize: 11, foregroundColor: INK }, backgroundColor: { red: 1, green: 1, blue: 1 } })
+    hairTop(g.bPos)
     // Concepto (A) en negrita suave; Monto (B) moneda a la derecha; la nota (C) en gris, sin plata.
-    fmt(r(g.pos0 - 1, g.pos1, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: false, fontSize: 11 } })
+    fmt(r(g.pos0 - 1, g.pos1, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: false, fontSize: 11, foregroundColor: INK } })
     fmt(r(g.pos0 - 1, g.pos1, 1, 2), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.textFormat',
-      { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT', textFormat: { bold: false, fontSize: 11 } })
+      { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT', textFormat: { bold: false, fontSize: 11, foregroundColor: INK } })
     fmt(r(g.pos0 - 1, g.pos1, 2, ancho), 'userEnteredFormat', E.nota())
     // El total con terceros: rulado arriba y en negrita, como un subtotal de statement.
     if (g.posTotal) {
-      fmt(r(g.posTotal - 1, g.posTotal, 0, 2), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 11 } })
-      req.push({ updateBorders: { range: r(g.posTotal - 1, g.posTotal, 0, 2), top: { style: 'SOLID', color: E.COLOR.nota } } })
+      fmt(r(g.posTotal - 1, g.posTotal, 0, 2), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 11, foregroundColor: INK } })
+      hairTop(g.posTotal, 0, 2)
     }
     // El plazo son días, no pesos. Igual que en el control: la columna es de plata y esta celda no.
     if (g.posPlazo) fmt(r(g.posPlazo - 1, g.posPlazo, 1, 2), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: { type: 'NUMBER', pattern: '0.0" días"' }, horizontalAlignment: 'RIGHT' })
@@ -1013,12 +1094,11 @@ async function formatear(google, sheetId, g, ancho, filas) {
   }
 
   for (const f of [g.cabProv, g.cabFam, g.cabObra]) {
-    fmt(r(f - 2, f - 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 11 } })
-    fmt(r(f - 1, f), 'userEnteredFormat', { backgroundColor: AZUL, textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 }, fontSize: 9 }, horizontalAlignment: 'CENTER', wrapStrategy: 'WRAP' })
+    if (f) encabezadoStmt(f)
   }
   fmt({ ...r(g.cabFam - 1, g.cabFam), startColumnIndex: 1, endColumnIndex: 13 }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'DATE', pattern: 'mmm' } })
   for (const f of [g.fSub, g.fTotProv, g.totFam, g.obra1 + 1]) {
-    fmt(r(f - 1, f), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor', { textFormat: { bold: true }, backgroundColor: GRIS })
+    if (f) totalStmt(f)
   }
   // Los porcentajes son porcentajes; el plazo son días; la deuda vencida va en rojo suave.
   // EL BLOQUE 1 SE CORRIÓ DOS COLUMNAS al entrar CUIT y AFIP, y los formatos viejos quedaron
@@ -1029,7 +1109,8 @@ async function formatear(google, sheetId, g, ancho, filas) {
   fmt({ ...r(g.p0 - 1, g.fTotProv, 2, 3) }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '0;;""' } })
   fmt({ ...r(g.p0 - 1, g.fTotProv, 6, 7) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'NUMBER', pattern: '0" d";;""' }, horizontalAlignment: 'CENTER' })
-  fmt({ ...r(g.p0 - 1, g.p1, 10, 11) }, 'userEnteredFormat.backgroundColor', { backgroundColor: ROJO })
+  // La columna "Vencida" ya no lleva relleno rojo: en un statement el dato manda, no la barra. El
+  // importe vencido se lee en su número; el rojo se reserva para los negativos del formato moneda.
   // N° de cheque puede ser una lista larga ("218 · 217 · 221 · …"): en WRAP se envuelve dentro de la
   // columna y reparar-pantalla le da el alto de fila que necesita, en vez de cortarse a lo ancho.
   fmt({ ...r(g.p0 - 1, g.p1, 13, 14) }, 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.wrapStrategy',
@@ -1100,7 +1181,7 @@ async function formatear(google, sheetId, g, ancho, filas) {
   // Los encabezados de las tablas de notas de crédito y de facturas anuladas: mostraban "Fecha",
   // "Importe" y "Qué es" como si fueran importes.
   for (const c of [g.cabNC, g.cabAnu, g.cabArca]) {
-    if (c) fmt({ ...r(c - 1, c, 0, 8) }, 'userEnteredFormat', E.encabezado())
+    if (c) encabezadoStmt(c, 0, 8)
   }
   // UNA CANTIDAD DE COMPROBANTES NO ES PLATA. La columna B del bloque de ARCA mostraba "$16" donde
   // dice cuántas facturas emitidas hay: el formato moneda de la columna entera se lo comía.
@@ -1128,8 +1209,7 @@ async function formatear(google, sheetId, g, ancho, filas) {
   fmt({ ...r(g.emi0 - 1, g.emi1, 5, 6) }, 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'TEXT' }, textFormat: { fontSize: 9 }, horizontalAlignment: 'LEFT' })
   for (const f of [g.cabDoc, g.cabAfip, g.cabEmi]) {
-    fmt(r(f - 2, f - 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 11 } })
-    fmt(r(f - 1, f), 'userEnteredFormat', { backgroundColor: AZUL, textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 }, fontSize: 9 }, horizontalAlignment: 'CENTER', wrapStrategy: 'WRAP' })
+    if (f) encabezadoStmt(f)
   }
   fmt({ ...r(g.fam0 - 1, g.totFam), startColumnIndex: 14, endColumnIndex: 15 }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'PERCENT', pattern: '0.0%' } })
   // El bloque de control lleva explicación en la columna C: que no la formatee como plata.
@@ -1158,7 +1238,8 @@ async function formatear(google, sheetId, g, ancho, filas) {
 
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 250 }, fields: 'pixelSize' } })
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: ancho }, properties: { pixelSize: 108 }, fields: 'pixelSize' } })
-  req.push({ updateSheetProperties: { properties: { sheetId, gridProperties: { frozenColumnCount: 1 } }, fields: 'gridProperties.frozenColumnCount' } })
+  // La reja apagada es el mayor salto de "planilla" a "statement". Va con la columna congelada.
+  req.push({ updateSheetProperties: { properties: { sheetId, gridProperties: { frozenColumnCount: 1, hideGridlines: true } }, fields: 'gridProperties(frozenColumnCount,hideGridlines)' } })
   await google.spreadsheetBatchUpdate(ID, req)
 }
 
