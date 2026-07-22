@@ -25,6 +25,7 @@ import { query } from '../lib/db.mjs'
 import { parsearDDJJ, alicuotaDeclarada } from '../lib/iibb-ddjj.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
+import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Impuestos y Financieros'
@@ -356,11 +357,12 @@ async function main() {
   }
 
   const hoja = (await google.getSheetMeta(ID)).find((s) => s.title === PESTAÑA)
-  await google.clearValues(ID, `${PESTAÑA}!A1:Z200`)
-  // clearValues NO borra las NOTAS de celda: una corrida vieja (o reparar-textos) dejó notas que el
-  // PDF muestra como pies [1][2]. Se limpian a mano para que la pantalla quede sin residuos.
-  await google.spreadsheetBatchUpdate(ID, [{ updateCells: { range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: 200, startColumnIndex: 0, endColumnIndex: 26 }, fields: 'note' } }]).catch(() => {})
-  await google.batchUpdateValues(ID, [{ range: `${PESTAÑA}!A1:${letra(ANCHO - 1)}${g.filas.length}`, values: g.filas }])
+  // NO se borra nada escrito por una persona: se lee, se fusiona y se escribe. Ver lib/preservar-anotaciones.mjs.
+  // Las NOTAS viejas del generador se limpian SÓLO en su propia grilla (antes barría 200x26 y se
+  // llevaba puestos los comentarios de la persona).
+  await google.spreadsheetBatchUpdate(ID, [{ updateCells: { range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: g.filas.length, startColumnIndex: 0, endColumnIndex: ANCHO }, fields: 'note' } }]).catch(() => {})
+  const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, g.filas, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
+  if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
   await formatear(google, hoja.sheetId, g)
 
   const v = await google.readSheetValues(ID, `${PESTAÑA}!A1:I${g.filas.length}`)

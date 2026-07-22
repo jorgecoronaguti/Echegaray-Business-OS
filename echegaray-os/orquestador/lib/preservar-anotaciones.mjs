@@ -47,6 +47,41 @@ export function fusionar(generado = [], existente = []) {
   return out
 }
 
+/** Índice 0 → letra de columna ('A', 'Z', 'AA'…). */
+export function letraCol(i) {
+  let s = ''
+  for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s
+  return s
+}
+
+/**
+ * ESCRIBE UNA GRILLA SIN BORRAR NADA DE LO QUE ESCRIBIÓ UNA PERSONA.
+ *
+ * Reemplaza el par `clearValues(...)` + `batchUpdateValues(...)` que usaban todos los generadores.
+ * Lee lo que hay (con las fórmulas intactas), fusiona y escribe. NO limpia: lo que está fuera de la
+ * grilla —más abajo, más a la derecha— ni se lee ni se toca.
+ *
+ * @param {object} google cliente de google.mjs
+ * @param {string} fileId
+ * @param {string} ref    referencia de la pestaña, ya citada si tiene espacios (ej. "'Cheques Emitidos'")
+ * @param {any[][]} grid  lo que el generador quiere escribir
+ * @param {{fila0?:number, col0?:number, anchoHoja?:number}} opts fila/columna inicial (1-based / 0-based) y
+ *        ancho real de la hoja, para capturar lo que la persona anotó a la derecha de la tabla
+ * @returns {Promise<{conservadas:{fila:number,col:number,valor:any}[]}>}
+ */
+export async function escribirPreservando(google, fileId, ref, grid, { fila0 = 1, col0 = 0, anchoHoja } = {}) {
+  const alto = grid.length
+  if (!alto) return { conservadas: [] }
+  const ancho = Math.max(...grid.map((f) => (f || []).length), 1)
+  const anchoLeer = Math.max(ancho, anchoHoja ?? ancho)
+  const desde = `${letraCol(col0)}${fila0}`
+  const hasta = `${letraCol(col0 + anchoLeer - 1)}${fila0 + alto - 1}`
+  const previo = await google.readSheetValues(fileId, `${ref}!${desde}:${hasta}`, { render: 'FORMULA' })
+  const fusion = fusionar(grid, previo)
+  await google.batchUpdateValues(fileId, [{ range: `${ref}!${desde}`, values: fusion }])
+  return { conservadas: sobrantes(grid, previo) }
+}
+
 /**
  * NÚCLEO PURO: las celdas que quedaron en la pestaña y el generador ya no produce.
  *

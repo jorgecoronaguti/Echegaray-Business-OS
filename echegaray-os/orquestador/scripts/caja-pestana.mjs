@@ -56,6 +56,7 @@ import { CUENTAS, CARGA, ALIAS, TIPO_CAMBIO, RANGO_TC, filaDeCuenta } from '../l
 import * as BANCO from '../lib/banco-santander.mjs'
 import { TASAS, CARGO_VERIFICADO, tasaDiaria, costoConImpuestos, interesDelPeriodo } from '../lib/costo-descubierto.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
+import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 import { CAJA as N_CAJA, publicar } from '../lib/rangos-nombrados.mjs'
 import { esIndistinguible } from '../lib/cobranzas-duplicado.mjs'
 import * as CONC from '../lib/conciliacion-por-naturaleza.mjs'
@@ -793,18 +794,13 @@ async function main() {
   // lo que puede fallar va primero. Acá se valida la forma de la grilla ANTES de tocar nada.
   const malas = g.filas.map((f, i) => (f.length > ANCHO ? i + 1 : 0)).filter(Boolean)
   if (malas.length) throw new Error(`${malas.length} fila(s) más anchas que la tabla (${ANCHO} columnas): ${malas.slice(0, 5).join(', ')}. NO borro nada.`)
-  if (!g.filas.length) throw new Error('la grilla salió vacía: no borro la pestaña')
-  // EL BORRADO CUBRE TODA LA PESTAÑA, NO UNA FILA DECLARADA A MANO.
-  //
-  // Decía A1:Z90 y la grilla ya llega a la 105: las filas de más abajo conservaban lo de la corrida
-  // anterior y la escritura nueva quedaba a medias — el bloque 8 apareció con los rótulos y sin sus
-  // fórmulas, tres grupos en blanco y $731.820 fuera del control. A la segunda corrida se arreglaba
-  // solo, que es la peor forma de fallar: no se puede reproducir mirando.
-  //
-  // Es el mismo defecto de ventana fija que ya hizo mentir al censo de números pegados. El alto se
-  // pregunta, no se declara.
-  await google.clearValues(ID, `${tab}!A1:Z${hasta}`)
-  await google.batchUpdateValues(ID, [{ range: `${tab}!A1:${letra(ANCHO - 1)}${g.filas.length}`, values: g.filas }])
+  if (!g.filas.length) throw new Error('la grilla salió vacía: no escribo la pestaña')
+  // NO SE BORRA NADA DE LO QUE ESCRIBIÓ UNA PERSONA (regla de oro del dueño). Antes había un
+  // clearValues sobre toda la pestaña; ahora se lee lo que hay y se FUSIONA: manda el generador donde
+  // TIENE contenido y se conserva lo de la persona donde el generador deja vacío. Ver
+  // lib/preservar-anotaciones.mjs.
+  const { conservadas } = await escribirPreservando(google, ID, tab, g.filas, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
+  if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) escritas por una persona — CONSERVADAS`)
   await formatear(google, hoja.sheetId, g, tab)
 
   // LOS NOMBRES, DESPUÉS DE ESCRIBIR. El Cash Flow Mensual ancla su saldo inicial en estos dos: con

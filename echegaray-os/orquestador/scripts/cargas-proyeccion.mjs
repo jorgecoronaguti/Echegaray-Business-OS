@@ -48,6 +48,7 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
+import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Cargas Sociales'
@@ -273,8 +274,9 @@ async function main() {
   if (sobra > 0) req.push({ deleteDimension: { range: { sheetId: hoja.sheetId, dimension: 'ROWS', startIndex: hasta - sobra, endIndex: hasta } } })
   if (req.length) await google.spreadsheetBatchUpdate(ID, req)
 
-  await google.clearValues(ID, `${PESTAÑA}!A${ini}:J${ini + g.filas.length}`)
-  await google.batchUpdateValues(ID, [{ range: `${PESTAÑA}!A${ini}`, values: g.filas }])
+  // NO se borra lo que escribió una persona: se lee, se fusiona y se escribe. Ver lib/preservar-anotaciones.mjs.
+  const cp = await escribirPreservando(google, ID, PESTAÑA, g.filas, { fila0: ini })
+  if (cp.conservadas.length) console.log(`  ✋ ${cp.conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
   const r = (r0, r1, c0, c1) => ({ sheetId: hoja.sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
   const n = g.filas.length

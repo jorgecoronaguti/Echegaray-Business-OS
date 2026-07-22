@@ -20,6 +20,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { repartirCobertura, aCubrirPorMes, normComprobante, esLlaveUtil, hallarPestana, MARCAS, marcaDe } from '../lib/cheques-cobertura.mjs'
 import { INSTRUMENTOS, formulasInstrumento } from '../lib/cash-flow-lineas.mjs'
 import { ARCA as N_ARCA } from '../lib/rangos-nombrados.mjs'
+import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Cash Flow Mensual'
@@ -156,7 +157,8 @@ async function main() {
   const actual = await google.readSheetValues(ID, `${PESTAÑA}!A1:${letra(ANCHO - 1)}200`)
   const yaEsta = actual.findIndex((f) => String(f?.[0] ?? '').startsWith('CHEQUES Y TARJETA'))
   let F
-  if (yaEsta >= 0) { F = yaEsta + 1; await google.clearValues(ID, `${PESTAÑA}!A${F}:${letra(ANCHO - 1)}200`) } else {
+  // No se limpia el bloque viejo: se reescribe encima fusionando, para no borrar nada de una persona.
+  if (yaEsta >= 0) { F = yaEsta + 1 } else {
     let fin = 0
     actual.forEach((f, i) => { if ((f || []).some((c) => String(c ?? '').trim())) fin = i + 1 })
     F = fin + 3
@@ -169,7 +171,8 @@ async function main() {
       : c
     return conSum.replace(/#\{(\d+)\}/g, (_, n) => String(Number(n) + F - 1))
   }))
-  await google.batchUpdateValues(ID, [{ range: `${PESTAÑA}!A${F}:${letra(ANCHO - 1)}${F + filas.length - 1}`, values: filas }])
+  const cp = await escribirPreservando(google, ID, PESTAÑA, filas, { fila0: F, anchoHoja: ANCHO })
+  if (cp.conservadas.length) console.log(`  ✋ ${cp.conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
   const hoja = (await google.getSheetMeta(ID)).find((s) => s.title === PESTAÑA)
   const sheetId = hoja.sheetId

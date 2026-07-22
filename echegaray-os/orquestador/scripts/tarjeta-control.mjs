@@ -27,6 +27,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { TARJETA, CORTE, ORIGEN } from '../lib/banco-santander.mjs'
 import { INSTRUMENTOS } from '../lib/cash-flow-lineas.mjs'
+import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = INSTRUMENTOS.tarjeta.pestaña
@@ -166,8 +167,9 @@ async function main() {
 
   // Se limpia una franja generosa: si el bloque anterior era más largo, quedarían filas colgadas
   // debajo del nuevo diciendo otra cosa.
-  await google.clearValues(ID, `${PESTAÑA}!A${desde}:E${desde + 60}`)
-  await google.batchUpdateValues(ID, [{ range: `${PESTAÑA}!A${desde}`, values: g.filas }])
+  // NO se borra lo que escribió una persona: se lee, se fusiona y se escribe. Ver lib/preservar-anotaciones.mjs.
+  const cp = await escribirPreservando(google, ID, PESTAÑA, g.filas, { fila0: desde })
+  if (cp.conservadas.length) console.log(`  ✋ ${cp.conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
   // El formato: la columna A es texto y B/C/D son plata. Sin esto el título del bloque se lee como
   // moneda y los montos como texto — el defecto de pantalla que ya apareció siete veces.

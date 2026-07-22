@@ -17,6 +17,7 @@ import { loadConfig } from '../lib/config.mjs'
 import * as CR from '../lib/cheques-recibidos.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { skinRequests, INK, MUTED } from '../lib/estilo-statement.mjs'
+import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 export const PESTAÑA = 'Cheques Recibidos'
@@ -76,8 +77,10 @@ async function main() {
   const alto = Math.max(filas.length + 20, 60)
   await google.spreadsheetBatchUpdate(ID, [{ updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { rowCount: alto, columnCount: Math.max(ancho + 1, hoja.cols ?? 0) } }, fields: 'gridProperties(rowCount,columnCount)' } }])
 
-  await google.clearValues(ID, `${PESTAÑA}!A1:Z${alto}`)
-  await google.batchUpdateValues(ID, [{ range: `${PESTAÑA}!A1`, values: filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r }) }])
+  // NO se borra nada escrito por una persona: se lee, se fusiona y se escribe. Ver lib/preservar-anotaciones.mjs.
+  const gridCR = filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r })
+  const { conservadas } = await escribirPreservando(google, ID, `'${PESTAÑA}'`, gridCR, { anchoHoja: Math.max(ancho, hoja.cols ?? ancho) })
+  if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
   // ── FORMATO ───────────────────────────────────────────────────────────────────────────────────
   const rg = (r0, r1, c0, c1) => ({ sheetId: hoja.sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })

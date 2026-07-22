@@ -20,6 +20,8 @@
 // coincide, lo dice con el monto. Es el mismo método que encontró los typos del extracto del
 // Santander — dos números que TIENEN que coincidir.
 
+import { escribirPreservando } from './preservar-anotaciones.mjs'
+
 const DESTINO = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const ORIGEN = '1s0KlEURR5Udi7vvy-BmeqAi83lMRyqSCSsRjpiO5aXk'
 
@@ -81,9 +83,9 @@ export async function refrescarEspejo(google, { destino = DESTINO, origen = ORIG
     if (!filas?.length) { hojas.push({ tab: m.tab, filas: 0, aviso: 'el origen vino vacío, no toqué el espejo' }); continue }
     const ancho = Math.max(...filas.map((f) => f.length))
     const norm = filas.map((f) => { const r = f.slice(); while (r.length < ancho) r.push(''); return r })
-    await google.clearValues(destino, `${m.tab}!${m.rango}`)
+    // El espejo se FUSIONA, no se limpia: si alguien anotó algo en la pestaña destino, no se borra.
     for (let i = 0; i < norm.length; i += 200) {
-      await google.batchUpdateValues(destino, [{ range: `${m.tab}!A${i + 1}`, values: norm.slice(i, i + 200) }])
+      await escribirPreservando(google, destino, m.tab, norm.slice(i, i + 200), { fila0: i + 1 })
     }
     // VERIFICAR, no confiar. Se relee el DESTINO —no la matriz que acabamos de mandar— porque lo
     // que importa es qué quedó escrito, no qué quisimos escribir. Una copia que se cree hecha y no

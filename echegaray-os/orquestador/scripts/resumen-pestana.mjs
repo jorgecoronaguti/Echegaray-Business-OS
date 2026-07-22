@@ -32,6 +32,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { borrar } from '../lib/pivot-sheets.mjs'
+import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'RESUMEN'
@@ -132,8 +133,9 @@ async function main() {
       cell: {}, fields: 'userEnteredFormat',
     },
   }])
-  await google.clearValues(ID, `${hoja.title}!A1:Z80`)
-  await google.batchUpdateValues(ID, [{ range: `${hoja.title}!A1:C${g.filas.length}`, values: g.filas }])
+  // NO se borra nada escrito por una persona: se lee, se fusiona y se escribe. Ver lib/preservar-anotaciones.mjs.
+  const { conservadas } = await escribirPreservando(google, ID, hoja.title, g.filas, { anchoHoja: Math.max(3, hoja.cols ?? 3) })
+  if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
   await formatear(google, hoja, g)
 
   // ═══ VERIFICAR CONTRA EL SHEET, NO CONFIAR ═══

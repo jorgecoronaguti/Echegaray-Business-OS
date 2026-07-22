@@ -19,6 +19,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query } from '../lib/db.mjs'
+import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Cargas Sociales'
@@ -100,7 +101,7 @@ async function main() {
   let F
   if (yaEsta >= 0) {
     F = yaEsta + 1
-    await google.clearValues(ID, `${PESTAÑA}!A${F}:${letra(ANCHO - 1)}200`)
+    // No se limpia: se reescribe encima fusionando, para no borrar nada de una persona.
   } else {
     let fin = 0
     actual.forEach((f, i) => { if ((f || []).some((c) => String(c ?? '').trim())) fin = i + 1 })
@@ -123,7 +124,8 @@ async function main() {
   push()
   push(['LO QUE FALTA: de cuántas cuotas es cada plan en total. En Compras están las cuotas cargadas, no el plan original de ARCA — así que "saldo pendiente" es sólo lo que está previsto en la planilla, no necesariamente lo que falta pagar de verdad.'])
 
-  await google.batchUpdateValues(ID, [{ range: `${PESTAÑA}!A${F}:${letra(ANCHO - 1)}${F + filas.length - 1}`, values: filas }])
+  const cp = await escribirPreservando(google, ID, PESTAÑA, filas, { fila0: F, anchoHoja: ANCHO })
+  if (cp.conservadas.length) console.log(`  ✋ ${cp.conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
   const hoja = (await google.getSheetMeta(ID)).find((s) => s.title === PESTAÑA)
   const sheetId = hoja.sheetId

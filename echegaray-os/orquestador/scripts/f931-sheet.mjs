@@ -28,6 +28,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { query } from '../lib/db.mjs'
 import { parseF931, CONCEPTOS_F931 } from '../lib/cargas-sociales.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
+import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 export const PESTAÑA = '_F931_RAW'
@@ -118,13 +119,16 @@ async function main() {
   if ((hoja.rows ?? 0) < alto) {
     await google.spreadsheetBatchUpdate(ID, [{ updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { rowCount: alto } }, fields: 'gridProperties.rowCount' } }])
   }
-  await google.clearValues(ID, `${PESTAÑA}!A1:Z${alto}`)
-  await google.batchUpdateValues(ID, [
-    { range: `${PESTAÑA}!A1`, values: [[`_F931_RAW — las DDJJ F931 leídas de los PDF del data room · corte ${corte}`]] },
-    { range: `${PESTAÑA}!A2`, values: [[`${datos.length} declaración(es) de ${AÑO}, leídas directamente del PDF presentado ante ARCA. NO se carga a mano: la reescribe el agente. Existe para que el cuadro "DECLARADO EN LA DDJJ F931" sea una fórmula y no una transcripción — hasta hoy esos números estaban tipeados y ningún script los actualizaba.${fallidos.length ? ` ⚠ ${fallidos.length} archivo(s) que no pude leer: ${fallidos.join(', ')}.` : ''}`]] },
-    { range: `${PESTAÑA}!A3:${COL.archivo}3`, values: [COLUMNAS.map(([n]) => n)] },
-    { range: `${PESTAÑA}!A${FILA0}`, values: filas },
-  ])
+  // NO se borra nada escrito por una persona (regla de oro): se arma la grilla completa
+  // —título, nota, encabezados y datos— y se FUSIONA con lo que hay. Ver lib/preservar-anotaciones.mjs.
+  const gridRaw = [
+    [`_F931_RAW — las DDJJ F931 leídas de los PDF del data room · corte ${corte}`],
+    [`${datos.length} declaración(es) de ${AÑO}, leídas directamente del PDF presentado ante ARCA. NO se carga a mano: la reescribe el agente. Existe para que el cuadro "DECLARADO EN LA DDJJ F931" sea una fórmula y no una transcripción — hasta hoy esos números estaban tipeados y ningún script los actualizaba.${fallidos.length ? ` ⚠ ${fallidos.length} archivo(s) que no pude leer: ${fallidos.join(', ')}.` : ''}`],
+    COLUMNAS.map(([n]) => n),
+    ...filas,
+  ]
+  const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, gridRaw, { anchoHoja: Math.max(COLUMNAS.length, hoja.cols ?? COLUMNAS.length) })
+  if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
   const rg = (r0, r1, c0, c1) => ({ sheetId: hoja.sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
   const reqs = [

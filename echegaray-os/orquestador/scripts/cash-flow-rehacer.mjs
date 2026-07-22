@@ -459,7 +459,8 @@ async function main() {
     const gid = metaGid.find((s) => s.title === d.pestaña)?.sheetId
     d.values = d.values.map((f) => f.map((c) => (typeof c === 'string' ? c.replace('SEMGID', String(gid)) : c)))
   }
-  for (const p of ['Cash Flow Semanal', 'Cash Flow Mensual']) await google.clearValues(ID, `${p}!A1:BZ200`)
+  // NO se limpia: se escribe sólo sobre los rangos propios. Borrar A1:BZ200 se llevaba puesto todo lo
+  // que el dueño hubiera anotado en esas pestañas (regla de oro: nunca borrar lo que escribe una persona).
   await google.batchUpdateValues(ID, data.map(({ range, values }) => ({ range, values })))
   await formatear(google, data)
   console.log('\nEscrito. Verificando contra el Sheet…')

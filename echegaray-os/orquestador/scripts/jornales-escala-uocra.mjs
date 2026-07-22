@@ -27,6 +27,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { CATEGORIAS, COL, formulaValor, formulaVigencia } from '../lib/uocra-escala.mjs'
+import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Jornales por Quincena'
@@ -91,8 +92,9 @@ async function main() {
   if (DRY) { for (const f of g.filas) console.log('   ', f.filter(Boolean).map((x) => String(x).slice(0, 46)).join('  |  ')); return }
 
   // Limpiar una franja generosa por si el bloque viejo era más largo, después escribir.
-  await google.clearValues(ID, `'${PESTAÑA}'!A${t}:F${t + 15}`)
-  await google.batchUpdateValues(ID, [{ range: `'${PESTAÑA}'!A${t}`, values: g.filas }])
+  // NO se borra lo que escribió una persona: se lee, se fusiona y se escribe. Ver lib/preservar-anotaciones.mjs.
+  const cp = await escribirPreservando(google, ID, `'${PESTAÑA}'`, g.filas, { fila0: t })
+  if (cp.conservadas.length) console.log(`  ✋ ${cp.conservadas.length} celda(s) de una persona — CONSERVADAS`)
   await formatear(google, hoja, t, g)
 
   // VERIFICAR CONTRA EL SHEET: que los básicos den número y no error, y que ninguno quede vacío (=
