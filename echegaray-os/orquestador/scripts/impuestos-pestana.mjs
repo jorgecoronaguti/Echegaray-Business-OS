@@ -98,8 +98,13 @@ function grilla(iva, planes, iibb, ret) {
   const hoy = new Date().toISOString().slice(0, 10)
 
   push(['IMPUESTOS Y FINANCIEROS'])
-  push([`Al ${hoy}. El IVA sale de los comprobantes reales de ARCA (tabla comprobantes_arca del OS), no de una fórmula del Sheet: por eso al lado de cada mes va de cuántos comprobantes salió. Los planes de pago y el financiero son fórmulas contra Compras.`])
+  push([`Al ${hoy} · en pesos · IVA de ARCA · IIBB de las DDJJ de Rentas · planes y financiero de Compras`])
   push()
+  // HERO — la posición fiscal de un vistazo. Se RESERVA acá y se llena al final con las cifras que
+  // calculan los bloques de abajo (referencias, no números pegados). Menos es más: lo primero que se
+  // ve es cuánto se tiene a favor y cuánto se debe, no una tabla de doce meses por diez columnas.
+  const heroBase = filas.length
+  push(); push(); push(); push()
 
   // ── 1. IVA ──────────────────────────────────────────────────────────────────────────────────────
   push(['1. POSICIÓN DE IVA — con el saldo a favor arrastrado, que es lo que se paga de verdad'])
@@ -181,7 +186,7 @@ function grilla(iva, planes, iibb, ret) {
   // EL SALDO A FAVOR ES LA ÚLTIMA FILA DEL CUADRO DE ARRIBA, no un número calculado aparte. Pegarlo
   // significaba que el día que entrara una factura nueva el cuadro se movía y este número no.
   const filaUlt = f0 + iva.findIndex((m) => m === ult)
-  push(['⚠ Saldo técnico a favor HOY', ult ? `=H${filaUlt}` : 0, '', '', '', '', '', '',
+  const fSaldoIVA = push(['⚠ Saldo técnico a favor HOY', ult ? `=H${filaUlt}` : 0, '', '', '', '', '', '',
     'Plata de la empresa adelantada al fisco. Si crece mes a mes, hay que revisar las retenciones que sufre (Cobranzas columnas X a AA).'])
   push(['⚠ IVA pagado que figura en Compras', '=SUMIF(Compras!$AC$4:$AC;"Impuestos";Compras!$O$4:$O)', '', '', '', '', '', '', '',
     'Si esto da $0 y arriba hay meses "A PAGAR", el IVA se está pagando fuera del Sheet y el cash flow miente.'])
@@ -205,34 +210,11 @@ function grilla(iva, planes, iibb, ret) {
     'Cobranzas col. Y'])
   push(['Ingresos Brutos', retDe('Z'), '', '2,50% / 3,50% del neto', 'No: YA vienen en la DDJJ de Rentas del bloque 2 — computarlas acá sería contarlas dos veces', '', '', '', '',
     'Cobranzas col. Z'])
-  push(['TOTAL RETENIDO', `=SUM(B${fIva}:B${fIva + 2})`, '', '', 'Plata de la empresa adelantada al fisco.', '', '', '', '', ''])
-  // LO QUE NO SE PROYECTA, Y POR QUÉ. Los meses futuros van con retención CERO: quién retiene
-  // depende de qué cliente facture cada mes, y hoy sólo ARCOR lo hace. Proyectarla supondría una
-  // mezcla de clientes que no está en ningún dato. La consecuencia se declara en vez de taparse.
-  push(['⚠ Los meses proyectados van SIN retención', '', '', '',
-    'Quién retiene depende de qué cliente se facture, y eso no está proyectado. El "A PAGAR" de agosto a diciembre queda SOBREESTIMADO — es un error conservador, pero es un error.', '', '', '', '', ''])
-  // ── EL ESCENARIO, CON NÚMERO ──────────────────────────────────────────────────────────────────
-  //
-  // "Está sobreestimado" sin una cifra es un aviso que nadie puede usar. Acá va la cifra, y va como
-  // ESCENARIO —afuera del cuadro de arriba, en su propio bloque— porque proyectar retenciones
-  // supone una mezcla de clientes que no está en ningún dato. La regla es no presentar una
-  // inferencia como un hecho; mostrarla con su supuesto explícito es distinto de esconderla.
-  //
-  // TODO SALE DE FÓRMULAS SOBRE LAS PROPIAS FILAS DEL CUADRO: la tasa se mide sola cada vez que
-  // entra un cobro con retención, y el escenario se recalcula. Un porcentaje pegado a mano acá
-  // envejecería el día que cambie la cartera de clientes, que es justo lo que hay que vigilar.
-  push(['ESCENARIO — ¿y si la mezcla de clientes se mantiene?', '', '', '', '', '', '', '', '',
-    'No es una proyección del OS: es qué pasaría SI el mix de clientes de agosto a diciembre se pareciera al de enero a julio.'])
-  const fTasaRet = filas.length + 1
-  const fTasa = push(['Tasa de retención medida sobre el débito real (ene–jul)',
-    `=IFERROR(SUM($E$${f0}:$E$${fReal1})/SUM($B$${f0}:$B$${fReal1});0)`, '', '', '', '', '', '', '',
-    'Lo que efectivamente le retuvieron sobre lo que efectivamente facturó. Se mide, no se supone.'])
-  const fRetEsc = push(['Retención que tendrían ago–dic a esa misma tasa',
-    `=SUM($B$${fProy0}:$B$${f1})*$B$${fTasa}`, '', '', '', '', '', '', '',
-    'ESTIMACIÓN. Depende de a quién se le facture: hoy sólo algunos clientes retienen.'])
-  push(['⇒ "A PAGAR" de ago–dic si eso ocurriera',
-    `=MAX(0;SUM($G$${fProy0}:$G$${f1})-$B$${fRetEsc})`, '', '', '', '', '', '', '',
-    `Contra ${'$'}{SUM(G${fProy0}:G${f1})} que muestra el cuadro. La diferencia es plata que el cash flow está reservando para un impuesto que quizás no salga.`.replace('${SUM(G' + fProy0 + ':G' + f1 + ')}', 'lo que muestra el cuadro')])
+  const fRetTotal = push(['TOTAL RETENIDO', `=SUM(B${fIva}:B${fIva + 2})`, '', '', 'Plata de la empresa adelantada al fisco.', '', '', '', '', ''])
+  // Los meses proyectados van SIN retención: quién retiene depende de qué cliente se facture cada
+  // mes, y eso no se proyecta. El "A PAGAR" de ago–dic queda sobreestimado (error conservador). El
+  // escenario what-if que estimaba la cifra se retiró: menos es más, y era análisis, no posición.
+  push(['⚠ Meses proyectados sin retención — el "A PAGAR" de ago–dic queda sobreestimado'])
   if (ret?.sospechosas?.length) {
     push([`⚠ ${ret.sospechosas.length} retención(es) con alícuota que no encaja`, Math.round(ret.sospechosas.reduce((s, x) => s + x.monto, 0)), '', '', 'NO se computaron: puede ser otro régimen o un error de carga. Filas de Cobranzas: ' + ret.sospechosas.map((x) => x.fila).join(', '), '', '', '', '', ''])
   }
@@ -278,7 +260,7 @@ function grilla(iva, planes, iibb, ret) {
   const fIIBB = push(['Alícuota que la empresa DECLARA', al.alicuota ?? '', '', '', '', '', '', '',
     `De sus propias DDJJ (cód. ${al.codigos.join(', ')}), no de la ley. El 3% es del 711001, que Echegaray no usa; estimarlo así inflaba el impuesto 50%.`])
   const ultIIBB = iibb[iibb.length - 1]
-  push(['⚠ Saldo a favor de IIBB HOY', `=G${i1}`, '', '', '', '', '', '',
+  const fSaldoIIBB = push(['⚠ Saldo a favor de IIBB HOY', `=G${i1}`, '', '', '', '', '', '',
     `Plata de la empresa inmovilizada en Rentas, igual que con el IVA. Venía de ${Math.round(iibb[0]?.saldo_favor_anterior ?? 0).toLocaleString('es-AR')} en enero: está BAJANDO, así que en algún momento la empresa va a empezar a pagar IIBB de verdad.`])
   push(['Consumo mensual del saldo (impuesto − retenciones)', `=IFERROR((C${i1}-D${i1});0)`, '', '', '', '', '', '',
     'Lo que el último mes se comió del saldo a favor. Dividí el saldo por esto para saber cuántos meses faltan para empezar a pagar.'])
@@ -294,7 +276,7 @@ function grilla(iva, planes, iibb, ret) {
   // "Deuda previsional" de Compras (agregación del OS por plan) y se declaran en la columna Origen.
   planes.forEach((p, k) => push([p.nombre, p.cuotas, p.monto_cuota, `=B${p0 + k}*C${p0 + k}`, p.primera ?? '', p.ultima ?? '', '', '', 'Compras, rubro "Deuda previsional (planes de pago)"']))
   const p1 = filas.length
-  push(['TOTAL PLANES', `=SUM(B${p0}:B${p1})`, '', `=SUM(D${p0}:D${p1})`, '', '', '', '', ''])
+  const fTotalPlanes = push(['TOTAL PLANES', `=SUM(B${p0}:B${p1})`, '', `=SUM(D${p0}:D${p1})`, '', '', '', '', ''])
   const fCtrlP = filas.length + 1
   push(['⇒ Control contra Compras', '=SUMIF(Compras!$AC$4:$AC;"Deuda previsional (planes de pago)";Compras!$O$4:$O)', '', `=$B${fCtrlP}-$D${fCtrlP - 1}`, '', '', '', '',
     'La columna D tiene que dar $0: si no, hay cuotas que esta tabla no está viendo.'])
@@ -315,7 +297,20 @@ function grilla(iva, planes, iibb, ret) {
   push(['· La alícuota de IIBB de San Juan para construcción (celda B' + fIIBB + ').'])
   push(['· Cargar en Compras los pagos de IVA y de IIBB que se hayan hecho. Hoy no hay ninguno y el cash flow no los ve.'])
   push(['· Revisar las retenciones de IVA que sufre la empresa (Cobranzas, columnas X a AA): son la causa probable del saldo a favor creciente.'])
-  return { filas, fTasaRet, f0, f1, tot, p0, p1, b0, cab, fIIBB, i0, i1 }
+
+  // RELLENAR EL HERO reservado arriba, ahora que las cifras existen. Son REFERENCIAS a las celdas de
+  // los bloques (saldo a favor de IVA, de IIBB, deuda de planes, retenciones adelantadas): ni un
+  // número pegado, y se recalcula solo cuando cambia cualquiera de esos bloques.
+  const heroRows = [
+    ['POSICIÓN FISCAL — HOY'],
+    ['Saldo a favor de IVA', '', 'Saldo a favor de IIBB', '', 'Deuda en planes de pago', '', 'Retenciones adelantadas'],
+    [`=B${fSaldoIVA}`, '', `=B${fSaldoIIBB}`, '', `=D${fTotalPlanes}`, '', `=B${fRetTotal}`],
+    [],
+  ]
+  heroRows.forEach((c, k) => { const row = [...c]; while (row.length < ANCHO) row.push(''); filas[heroBase + k] = row })
+  const fHeroVal = heroBase + 3 // 1-indexed: la fila de los valores del hero
+
+  return { filas, fHeroVal, f0, f1, tot, p0, p1, b0, cab, fIIBB, i0, i1 }
 }
 
 /** Lee las DDJJ de IIBB desde los PDF originales de Drive. */
@@ -442,14 +437,14 @@ async function formatear(google, sheetId, g) {
     if (/^⚠/.test(String(f[0] ?? ''))) fmt(r(i, i + 1, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, foregroundColor: { red: 0.7, green: 0.2, blue: 0.1 } } })
   })
   // Las cuotas son cantidades.
-  // La tasa de retención medida es un PORCENTAJE, no plata: con formato moneda se mostraba como
-  // "$0" y el escenario entero parecía roto. Es el defecto que caza defectos-pantalla.mjs, cometido
-  // por mí en la misma sesión en que lo construí — el formato lo pone el rectángulo de arriba y hay
-  // que devolvérselo a la celda que no es un importe.
-  if (g.fTasaRet) {
-    fmt({ ...r(g.fTasaRet - 1, g.fTasaRet), startColumnIndex: 1, endColumnIndex: 2 },
-      'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-      { numberFormat: { type: 'PERCENT', pattern: '0.0%' }, horizontalAlignment: 'RIGHT' })
+  // EL HERO: rótulos apagados arriba, las cuatro cifras de posición grandes en acento. Van en las
+  // columnas A/C/E/G (la moneda de arriba sólo cubre B–H, así que acá se pone el formato de nuevo).
+  if (g.fHeroVal) {
+    const MONEDA = { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }
+    fmt(r(g.fHeroVal - 2, g.fHeroVal - 1), 'userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment',
+      { textFormat: { bold: true, fontSize: 9, foregroundColor: { red: 0.53, green: 0.52, blue: 0.49 } }, horizontalAlignment: 'LEFT' })
+    fmt(r(g.fHeroVal - 1, g.fHeroVal), 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment',
+      { numberFormat: MONEDA, textFormat: { bold: true, fontSize: 16, foregroundColor: { red: 0.11, green: 0.23, blue: 0.37 } }, horizontalAlignment: 'LEFT' })
   }
   fmt({ ...r(g.p0 - 1, g.p1 + 1), startColumnIndex: 1, endColumnIndex: 2 }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '0' } })
   fmt({ ...r(g.b0 - 1, g.b0), startColumnIndex: 2, endColumnIndex: 3 }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '0' } })
