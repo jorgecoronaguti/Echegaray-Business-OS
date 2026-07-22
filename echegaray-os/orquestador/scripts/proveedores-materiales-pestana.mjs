@@ -881,7 +881,10 @@ async function main() {
     if (!ini || !fin || fin < ini) continue
     const range = { sheetId: hojaArca.sheetId, dimension: 'ROWS', startIndex: ini - 1, endIndex: fin }
     reqGr.push({ addDimensionGroup: { range } })
-    reqGr.push({ updateDimensionGroup: { dimensionGroup: { range, depth: 1, collapsed: true }, fields: 'collapsed' } })
+    // ABIERTOS por defecto: el dueño quiere VER el N° de comprobante de cada factura sin tener que
+    // desplegar. El +/- queda igual para plegar el proveedor que no interese. (Antes arrancaban
+    // colapsados y parecía que los comprobantes no estaban.)
+    reqGr.push({ updateDimensionGroup: { dimensionGroup: { range, depth: 1, collapsed: false }, fields: 'collapsed' } })
     nGrupos++
   }
   if (reqGr.length) await google.spreadsheetBatchUpdate(ID, reqGr)
