@@ -59,6 +59,7 @@ import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { CAJA as N_CAJA, publicar } from '../lib/rangos-nombrados.mjs'
 import { esIndistinguible } from '../lib/cobranzas-duplicado.mjs'
 import * as CONC from '../lib/conciliacion-por-naturaleza.mjs'
+import { formulaEgresoDiario } from '../lib/egreso-diario.mjs'
 import { formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte } from '../lib/caja-posterior-al-corte.mjs'
 
 // LA MISMA definición de "dos cobros que no se pueden distinguir" que usa el control de la pestaña
@@ -442,9 +443,17 @@ function grilla(cargado, refs) {
   // divididas por 90. No es una proyección ni un presupuesto, es el promedio de lo que pasó. Y se
   // mide contra la DISPONIBILIDAD NETA —descontados los cheques ya firmados— porque esa plata ya
   // tiene dueño.
+  // EL RITMO SALE DE TODO LO QUE SE PAGA, NO SÓLO DE COMPRAS.
+  //
+  // ME CORRIJO SOBRE AYER. La primera versión dividía por Compras/90, y era un ritmo incompleto:
+  // Compras es DEVENGADO (una compra a 60 días entra el día que se carga, no el día que se paga) y
+  // deja afuera los sueldos, las cargas, los impuestos y la deuda financiera —$34M/mes que sí salen
+  // de la cuenta—. Daba $2,3M/día contra un egreso real de $2,4M/día, parecido por casualidad. Ahora
+  // sale del egreso total del Cash Flow Mensual, promediando los meses ya cerrados (reales y
+  // completos). Ver lib/egreso-diario.mjs.
   const egr90 = `SUMIFS(Compras!$O$4:$O;Compras!$AD$4:$AD;">="&TODAY()-90;Compras!$AD$4:$AD;"<="&TODAY())`
-  const fRitmo = push(['Egreso promedio por día (últimos 90 días reales)', 'ARS', `=${egr90}/90`, '',
-    `=${C_IMP}${filas.length + 1}`, '=TODAY()', '', 'Compras, por fecha de caja. Lo que salió de verdad en los últimos 90 días, dividido 90.', ''])
+  const fRitmo = push(['Egreso promedio por día (meses cerrados, todas las fuentes)', 'ARS', `=${formulaEgresoDiario(egr90)}`, '',
+    `=${C_IMP}${filas.length + 1}`, '=TODAY()', '', 'Egreso total del Cash Flow Mensual (personal, proveedores, estructura, impuestos, inversión y deuda) de los meses ya cerrados, ÷ los días del mes. Si todavía no hay meses cerrados, cae a Compras/90.', ''])
   const fDias = push(['⇒ DÍAS DE CAJA, si no entrara nada más', '', `=IF(${C_IMP}${fRitmo}<=0;"";ROUND(${C_PESOS}${fNeta}/${C_IMP}${fRitmo};0))`, '', '', '', '',
     'La disponibilidad neta dividida por el ritmo de egresos. Es el número que dice si hay que salir a cobrar esta semana o no.', 'Se calcula solo'])
   push()
