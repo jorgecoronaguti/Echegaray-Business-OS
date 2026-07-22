@@ -919,6 +919,10 @@ async function formatear(google, sheetId, g, tab) {
   if (g.n0 && g.n1 >= g.n0) {
     fmt(r(g.n0 - 2, g.n1 + 2, 2, 3), 'userEnteredFormat', E.celda('moneda'))
     fmt(r(g.n0 - 2, g.n1 + 2, 4, 5), 'userEnteredFormat', E.celda('moneda'))
+    // Las filas "· cuáles son" ponen en la columna E la lista de cheques/instrumentos que el banco
+    // debitó — puede ser larga. WRAP para que se lea entera y contenida (reparar-pantalla le da el
+    // alto) en vez de cortarse a lo ancho. Menos es más: el dato accionable a la vista, sin desbordar.
+    fmt(r(g.n0 - 1, g.n1, 4, 5), 'userEnteredFormat.wrapStrategy', { wrapStrategy: 'WRAP' })
     fmt(r(g.n0 - 1, g.n1, 5, 6), 'userEnteredFormat', E.celda('moneda'))
     fmt(r(g.n0 - 2, g.n0 - 1, 0, ANCHO), 'userEnteredFormat', E.encabezado())
   }
