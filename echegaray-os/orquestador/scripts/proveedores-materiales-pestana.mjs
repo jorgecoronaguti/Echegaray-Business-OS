@@ -73,7 +73,7 @@ import { FAMILIAS, SIN_FAMILIA, formulaFamilia, familiaDeMaterial, RUBROS_CON_FA
 import { NOMBRES } from '../lib/sheet-pestanas.mjs'
 import { partir, filasHuerfanas, ref as refPestana } from '../lib/partir-pestana.mjs'
 import { anchosSegunContenido } from '../lib/nota-celda.mjs'
-import { ESTADO_DEUDA, MODALIDADES } from '../lib/cuentas-por-pagar.mjs'
+import { ESTADO_DEUDA } from '../lib/cuentas-por-pagar.mjs'
 import { formulaComercial } from '../lib/orden-deuda.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
 import { normComprobante, esLlaveUtil } from '../lib/cheques-cobertura.mjs'
@@ -84,7 +84,7 @@ import { ARCA as N_ARCA, publicar } from '../lib/rangos-nombrados.mjs'
 import { query } from '../lib/db.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { INK, MUTED, HAIR } from '../lib/estilo-statement.mjs'
-import { R, IMPORTE, arcaPorCuit, arcaPorComprobante, arcaPorComprobanteVentas, totalLibro } from '../lib/arca-formula.mjs'
+import { R, IMPORTE, arcaPorComprobante, arcaPorComprobanteVentas, totalLibro } from '../lib/arca-formula.mjs'
 import { formatear as formatearCuit } from '../lib/cuit.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -113,16 +113,18 @@ let COL_FAMILIA = 'Compras!$AE$4:$AE'
 let COL_RUBRO = 'Compras!$AC$4:$AC'
 let COL_FECHA = 'Compras!$AD$4:$AD'
 let COL_COMERCIAL = 'Compras!$AJ$4:$AJ'
-let COL_OBRA = 'Compras!$J$4:$J'
+// COL_PAGADO ("Monto Pagado"): lo YA pagado de cada factura. La DEUDA real es Total − Monto Pagado,
+// no el Total: un pago parcial reduce el saldo. El dueño lo marcó — estaba mostrando el Total entero.
+let COL_PAGADO = 'Compras!$T$4:$T'
+const COL_OBRA = 'Compras!$J$4:$J'
 const COL_FACTURA = 'Compras!$C$4:$C'
 const COL_TOTAL = 'Compras!$O$4:$O'
 const COL_PROV = 'Compras!$E$4:$E'
-const COL_MODAL = 'Compras!$F$4:$F'
 const COL_ESTADO = 'Compras!$X$4:$X'
 const CH = "'Cheques Emitidos'"
 
 /** Índices (0-based) de las columnas de Compras que el JS lee de cada fila. Se recalculan por nombre. */
-const IDX = { rubro: 28, fechaCaja: 29, familia: 30, comercial: 35, obra: 9, prov: 4, total: 14, estado: 23, concepto: 11, detalle: 10 }
+const IDX = { rubro: 28, fechaCaja: 29, familia: 30, comercial: 35, pagado: 19, obra: 9, prov: 4, total: 14, estado: 23, concepto: 11, detalle: 10 }
 
 
 /** Los rubros que hacen que un proveedor sea COMERCIAL. Sueldos, ARCA o el banco no son proveedores
@@ -157,15 +159,19 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // rango con nombre de ARCA: ni uno pegado, y el que quiera el detalle lo tiene en las tablas de
   // abajo. Es el layout que el dueño aprobó para Impuestos: resumen vertical arriba, detalle debajo.
   const hoy = new Date().toLocaleDateString('es-AR')
-  const soloComercial = `${COL_TOTAL};${COL_ESTADO};"${ESTADO_DEUDA}";${COL_COMERCIAL};1`
+  // LA DEUDA ES NETA DE PAGOS PARCIALES: Total menos Monto Pagado. `neta(condiciones)` devuelve la
+  // fórmula SUMIFS(Total;cond) − SUMIFS(Monto Pagado;cond) para cualquier juego de condiciones. Es lo
+  // que el dueño marcó: un pago parcial baja el saldo, así que sumar el Total entero lo sobreestima.
+  const condComercial = `${COL_ESTADO};"${ESTADO_DEUDA}";${COL_COMERCIAL};1`
+  const neta = (conds) => `SUMIFS(${COL_TOTAL};${conds})-SUMIFS(${COL_PAGADO};${conds})`
   const bPos = push([`POSICIÓN DE PROVEEDORES · al ${hoy} · en pesos`])
   const pos0 = filas.length + 1
   // Esta pestaña es SÓLO proveedores comerciales. La deuda con ARCA, impuestos y nómina NO va acá —
   // vive en "Impuestos y Financieros" (regla 9, no duplicar). Por eso el hero abre con la deuda
   // comercial como titular y no con un "total con terceros" que mezcle las dos cosas.
-  const posTotal = push(['DEUDA CON PROVEEDORES COMERCIALES', `=SUMIFS(${soloComercial})`, 'Compras — facturas Pendientes. La deuda con ARCA/impuestos/nómina vive en Impuestos y Financieros.'])
-  push(['  · de eso, ya vencida', `=SUMIFS(${soloComercial};${COL_FECHA};">0";${COL_FECHA};"<"&TODAY())`, 'la fecha de pago ya pasó'])
-  push(['  · de eso, sin fecha de pago', `=SUMIFS(${soloComercial})-SUMIFS(${soloComercial};${COL_FECHA};">0")`, '⚠ no cae en ninguna semana del cash flow'])
+  const posTotal = push(['DEUDA CON PROVEEDORES COMERCIALES', `=${neta(condComercial)}`, 'Compras — facturas Pendientes, netas de pagos parciales. La deuda con ARCA/impuestos/nómina vive en Impuestos y Financieros.'])
+  push(['  · de eso, ya vencida', `=${neta(`${condComercial};${COL_FECHA};">0";${COL_FECHA};"<"&TODAY()`)}`, 'la fecha de pago ya pasó'])
+  push(['  · de eso, sin fecha de pago', `=${neta(condComercial)}-${neta(`${condComercial};${COL_FECHA};">0"`)}`, '⚠ no cae en ninguna semana del cash flow'])
   push([])
   const posPlazo = push(['Plazo de pago promedio', `=IFERROR(SUMPRODUCT(ISNUMBER(${COL_FACTURA})*ISNUMBER(${COL_FECHA})*(IF(ISNUMBER(${COL_FECHA});${COL_FECHA};0)-IF(ISNUMBER(${COL_FACTURA});${COL_FACTURA};0))*IF(ISNUMBER(${COL_TOTAL});${COL_TOTAL};0))/SUMPRODUCT(ISNUMBER(${COL_FACTURA})*ISNUMBER(${COL_FECHA})*IF(ISNUMBER(${COL_TOTAL});${COL_TOTAL};0));"")`, 'días entre factura y pago — casi no se usa el crédito del proveedor, que es gratis'])
   const posFaltan = push(['Facturado por AFIP que Compras no tiene', `=${N_ARCA.faltanMonto}`, `=${N_ARCA.faltanN}&" comprobantes con CAE que ninguna otra pestaña ve"`])
@@ -210,15 +216,15 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   const qLit = (s) => String(s ?? '').replace(/"/g, '""')
   for (const gp of deudaAgrupada) {
     const key = qLit(gp.nombre)
-    const base = `${COL_TOTAL};${COL_PROV};"${key}";${COL_ESTADO};"${ESTADO_DEUDA}"`
-    const conFecha = `${COL_PROV};"${key}";${COL_ESTADO};"${ESTADO_DEUDA}";${COL_FECHA};">0"`
-    // Fila-cabecera del proveedor: total y próximo pago por fórmula viva. Es la que queda a la vista
-    // cuando el grupo está colapsado; las facturas se pliegan debajo.
+    const condProv = `${COL_PROV};"${key}";${COL_ESTADO};"${ESTADO_DEUDA}"`
+    const conFecha = `${condProv};${COL_FECHA};">0"`
+    // Fila-cabecera del proveedor: total NETO (Total − Monto Pagado) y próximo pago por fórmula viva.
+    // Es la que queda a la vista cuando el grupo está colapsado; las facturas se pliegan debajo.
     const hRow = push([
       gp.nombre,
       `=IF(COUNTIFS(${conFecha})=0;"sin fecha";MINIFS(${COL_FECHA};${conFecha}))`,
       `=COUNTIFS(${COL_PROV};"${key}";${COL_ESTADO};"${ESTADO_DEUDA}";${COL_TOTAL};"<>")&" fac."`,
-      `=SUMIFS(${base})`,
+      `=${neta(condProv)}`,
       '', '',
     ])
     deudaHeaders.push(hRow)
@@ -232,7 +238,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
         '',
         `=IF(${pend};Compras!$${letra(IDX.fechaCaja)}$${rr};"")`,
         `=IF(${pend};Compras!$H$${rr}&"";"")`,
-        `=IF(${pend};Compras!$O$${rr};"")`,
+        `=IF(${pend};Compras!$O$${rr}-Compras!$${letra(IDX.pagado)}$${rr};"")`,
         `=IF(${pend};Compras!$J$${rr};"")`,
         `=IF(NOT(${pend});"";IF($C${rowNum}="";"—";IFERROR(INDEX(${CH}!$A$2:$A;MATCH($C${rowNum};${CH}!$H$2:$H;0))&" "&INDEX(${CH}!$B$2:$B;MATCH($C${rowNum};${CH}!$H$2:$H;0));"—")))`,
       ])
@@ -242,60 +248,32 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   const cabDocFin = filas.length
   push([])
 
-  // ── 2 · CUENTA CORRIENTE POR PROVEEDOR ──────────────────────────────────────────────────────────
+  // ── 2 · CUENTA CORRIENTE POR PROVEEDOR — EL PERFIL, NO LA DEUDA ──────────────────────────────────
+  // La DEUDA de cada proveedor está ARRIBA (bloque 1, agrupada con el +/-). Acá va sólo el PERFIL: con
+  // quién se gasta, cuánto, si AFIP tiene más facturado de lo cargado, y con qué plazo paga. Se sacaron
+  // las diez columnas de deuda que repetían el bloque de arriba (regla 9) y hacían de esto una pared de
+  // dieciséis columnas ilegible. Menos es más: siete columnas, cada una con un trabajo.
   const b2 = push(['2 · CUENTA CORRIENTE POR PROVEEDOR'])
-  push(['El plazo —días entre factura y pago— es el dato que no estaba en ninguna parte: pagar a 0 días empuja al descubierto (62,78% anual); el crédito del proveedor es gratis. Sólo proveedores comerciales.'])
-  const cabProv = push(['Proveedor', 'CUIT', 'Facturas', `Comprado ${AÑO}`, 'Facturado según AFIP',
-    '⇒ AFIP menos Compras', 'Plazo promedio', 'DEUDA HOY', 'En cuenta corriente', 'Contra entrega',
-    'Vencida', 'Sin fecha', 'Cheque/echeq emitido', 'N° de cheque', 'Próximo pago', 'Qué se le compra'])
+  push(['Con quién se gasta y con qué plazo. El plazo —días entre factura y pago— es el dato clave: pagar a 0 días empuja al descubierto al 62,78% anual cuando el crédito del proveedor es gratis. La deuda de cada uno está arriba, agrupada. Sólo comerciales.'])
+  const cabProv = push(['Proveedor', 'CUIT', `Comprado ${AÑO}`, 'Plazo promedio', 'Qué se le compra'])
   const p0 = filas.length + 1
   for (const p of proveedores) {
     const f = filas.length + 1
-    const deudaBase = `${COL_TOTAL};${COL_PROV};$A${f};${COL_ESTADO};"${ESTADO_DEUDA}"`
     push([
       p.nombre,
-      // El CUIT con guiones: once dígitos seguidos no se leen. Formato único en lib/cuit.mjs.
       p.cuit ? formatearCuit(p.cuit) : '',
-      `=COUNTIF(${COL_PROV};$A${f})`,
       `=SUMIF(${COL_PROV};$A${f};${COL_TOTAL})`,
-      // AFIP: sale de _ARCA_RAW por CUIT, con el signo de cada comprobante. Antes era un número
-      // pegado porque el libro de IVA no estaba en el archivo; ahora sí lo está.
-      arcaPorCuit(`$B${f}`),
-      `=IF(E${f}="";"";E${f}-D${f})`,
-      // EL PLAZO REAL: días entre la fecha de factura y la fecha en que salió la plata. No se puede
-      // con AVERAGEIFS porque la resta es entre dos columnas, así que va por SUMPRODUCT.
+      // EL PLAZO REAL: días entre la fecha de factura y la fecha en que salió la plata, por SUMPRODUCT.
       `=IFERROR(SUMPRODUCT((${COL_PROV}=$A${f})*ISNUMBER(${COL_FACTURA})*ISNUMBER(${COL_FECHA})*(IF(ISNUMBER(${COL_FECHA});${COL_FECHA};0)-IF(ISNUMBER(${COL_FACTURA});${COL_FACTURA};0)))/SUMPRODUCT((${COL_PROV}=$A${f})*ISNUMBER(${COL_FACTURA})*ISNUMBER(${COL_FECHA}));"")`,
-      `=SUMIFS(${deudaBase})`,
-      `=SUMIFS(${deudaBase};${COL_MODAL};"${MODALIDADES.cuentaCorriente}")`,
-      `=SUMIFS(${deudaBase};${COL_MODAL};"${MODALIDADES.contado}")`,
-      `=SUMIFS(${deudaBase};${COL_FECHA};">0";${COL_FECHA};"<"&TODAY())`,
-      `=$H${f}-$K${f}-SUMIFS(${deudaBase};${COL_FECHA};">="&TODAY())`,
-      // El banco escribe "NEUMAGOM SAS" y Compras "Neumagom": el cruce va por coincidencia parcial.
-      `=SUMPRODUCT((UPPER(${CH}!$K$2:$K$400)<>"SI")*ISNUMBER(SEARCH($A${f};${CH}!$E$2:$E$400&""))*IF(ISNUMBER(${CH}!$F$2:$F$400);${CH}!$F$2:$F$400;0))`,
-      p.cheques || '',
-      // UN MINIFS SIN COINCIDENCIAS DEVUELVE 0, NO UN ERROR — así que el IFERROR no lo atrapa y el 0
-      // con formato de fecha se muestra como "30/12/99". Eran veintidós filas de esta columna
-      // mostrando un día de 1899 donde en realidad no hay ningún pago pendiente. Se corta con un
-      // COUNTIFS previo: si no hay nada que contar, la celda queda vacía.
-      `=IF(COUNTIFS(${COL_PROV};$A${f};${COL_ESTADO};"${ESTADO_DEUDA}";${COL_FECHA};">0")=0;"";MINIFS(${COL_FECHA};${COL_PROV};$A${f};${COL_ESTADO};"${ESTADO_DEUDA}";${COL_FECHA};">0"))`,
       p.familia,
     ])
   }
   const p1 = filas.length
-  const fSub = push([`Subtotal de estos ${proveedores.length}`, '',
-    `=SUM($C${p0}:$C${p1})`, `=SUM($D${p0}:$D${p1})`, `=SUM($E${p0}:$E${p1})`, `=SUM($F${p0}:$F${p1})`, '',
-    ...['H', 'I', 'J', 'K', 'L', 'M'].map((c) => `=SUM(${c}${p0}:${c}${p1})`), '', '', ''])
-  push([`Resto de proveedores comerciales (${resto.cantidad})`, '', '', `=$D$TOTPROV-$D${fSub}`, '', '', '',
-    `=$H$TOTDEUDA-$H${fSub}`, '', '', '', '', '', '', '', 'ninguno llega al 1% del total'])
+  const fSub = push([`Subtotal de estos ${proveedores.length}`, '', `=SUM($C${p0}:$C${p1})`, '', ''])
+  push([`Resto de proveedores comerciales (${resto.cantidad})`, '', `=$C$TOTPROV-$C${fSub}`, '', 'ninguno llega al 1% del total'])
   const fTotProv = push(['TOTAL PROVEEDORES COMERCIALES', '',
-    '', RUBROS_COMERCIALES.map((r) => `SUMIF(${COL_RUBRO};"${r}";${COL_TOTAL})`).join('+').replace(/^/, '='),
-    totalLibro('Compras'), '', '',
-    // LA DEUDA DEL TOTAL TAMBIÉN SE LIMITA A LO COMERCIAL. Con la deuda entera, los $7.484.627 del
-    // plan de pago de ARCA caían en la fila "resto de proveedores comerciales" y la dejaban con más
-    // deuda que los treinta primeros juntos. ARCA no es un proveedor: es un plan de pago de
-    // impuestos y su lugar es la pestaña Impuestos y Financieros.
-    RUBROS_COMERCIALES.map((r) => `SUMIFS(${COL_TOTAL};${COL_ESTADO};"${ESTADO_DEUDA}";${COL_RUBRO};"${r}")`).join('+').replace(/^/, '='),
-    '', '', '', '', '', '', '', ''])
+    RUBROS_COMERCIALES.map((r) => `SUMIF(${COL_RUBRO};"${r}";${COL_TOTAL})`).join('+').replace(/^/, '='),
+    '', ''])
   push([])
 
   // ── 5 · LAS NOTAS DE CRÉDITO ────────────────────────────────────────────────────────────────
@@ -522,6 +500,7 @@ async function main() {
   COL_FECHA = fijar('fechaCaja', COL_FECHA, 'Fecha de caja')
   COL_FAMILIA = fijar('familia', COL_FAMILIA, 'Familia de material')
   COL_COMERCIAL = fijar('comercial', COL_COMERCIAL, '¿Proveedor comercial? (OS)')
+  COL_PAGADO = fijar('pagado', COL_PAGADO, 'Monto Pagado')
   console.log(`  Compras por encabezado: Rubro=${letra(IDX.rubro)} · Fecha de caja=${letra(IDX.fechaCaja)} · Familia=${letra(IDX.familia)} · ¿Comercial?=${letra(IDX.comercial)}`)
 
   // ═══ UN SOLO NOMBRE POR PROVEEDOR EN TODA LA PESTAÑA ═══════════════════════════════════════════
@@ -564,7 +543,7 @@ async function main() {
     a.total += parseMonto(f?.[14]); a.n++
     // La DEUDA de cada proveedor, para poder ordenar por ella. El importe que se muestra sigue
     // saliendo de una fórmula sobre Compras: esto es sólo el criterio de orden.
-    if (String(f?.[23] ?? '').trim().toLowerCase() === ESTADO_DEUDA.toLowerCase()) a.deuda += parseMonto(f?.[14])
+    if (String(f?.[23] ?? '').trim().toLowerCase() === ESTADO_DEUDA.toLowerCase()) a.deuda += parseMonto(f?.[14]) - parseMonto(f?.[IDX.pagado])
     if (RUBROS_COMERCIALES.includes(String(f?.[IDX.rubro] ?? '').trim())) a.comercial = true
     const fam = String(f?.[IDX.familia] ?? '').trim() || familiaDeMaterial({ concepto: f?.[IDX.concepto], detalle: f?.[IDX.detalle], proveedor: nombre })
     if (fam && fam !== SIN_FAMILIA) a.fam.set(fam, (a.fam.get(fam) ?? 0) + parseMonto(f?.[14]))
@@ -587,8 +566,10 @@ async function main() {
     const nombre = String(f?.[4] ?? '').trim()
     const esPend = String(f?.[23] ?? '').trim().toLowerCase() === ESTADO_DEUDA.toLowerCase()
     const comercial = RUBROS_COMERCIALES.includes(String(f?.[IDX.rubro] ?? '').trim())
-    const imp = parseMonto(f?.[14])
-    if (!nombre || !esPend || !comercial || !imp) return
+    // El saldo real: Total menos lo ya pagado. Sólo para ordenar los grupos; los montos que se ven
+    // salen de fórmulas (neta) sobre Compras.
+    const imp = parseMonto(f?.[IDX.total]) - parseMonto(f?.[IDX.pagado])
+    if (!nombre || !esPend || !comercial || imp <= 0) return
     const a = deudaMap.get(nombre) ?? { nombre, total: 0, filas: [] }
     a.total += imp
     a.filas.push({ fila: i + 4 })
@@ -1092,21 +1073,17 @@ async function formatear(google, sheetId, g, ancho, filas) {
   for (const f of [g.fSub, g.fTotProv, g.totFam, g.obra1 + 1]) {
     if (f) totalStmt(f)
   }
-  // Los porcentajes son porcentajes; el plazo son días; la deuda vencida va en rojo suave.
-  // EL BLOQUE 1 SE CORRIÓ DOS COLUMNAS al entrar CUIT y AFIP, y los formatos viejos quedaron
-  // pintando de porcentaje las columnas de plata: "Comprado" mostraba "4839741419,0%". Un formato
-  // que sobrevive a un cambio de layout es tan peligroso como una referencia a la celda equivocada.
+  // BLOQUE 2 (perfil de proveedor, 7 columnas): B CUIT (texto centrado) · C-E plata (moneda general) ·
+  // F plazo (días) · G qué se le compra (texto). Sin columnas de deuda ni de cheque: la deuda está
+  // arriba, agrupada. Menos formato porque hay menos columnas — el objetivo es leerlo de un vistazo.
+  // BLOQUE 2, 5 columnas: A proveedor · B CUIT (texto centrado) · C comprado (moneda general) ·
+  // D plazo (días) · E qué se le compra (texto).
   fmt({ ...r(g.p0 - 1, g.fTotProv, 1, 2) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'CENTER' })
-  fmt({ ...r(g.p0 - 1, g.fTotProv, 2, 3) }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '0;;""' } })
-  fmt({ ...r(g.p0 - 1, g.fTotProv, 6, 7) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+  fmt({ ...r(g.p0 - 1, g.fTotProv, 3, 4) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'NUMBER', pattern: '0" d";;""' }, horizontalAlignment: 'CENTER' })
-  // La columna "Vencida" ya no lleva relleno rojo: en un statement el dato manda, no la barra. El
-  // importe vencido se lee en su número; el rojo se reserva para los negativos del formato moneda.
-  // N° de cheque puede ser una lista larga ("218 · 217 · 221 · …"): en WRAP se envuelve dentro de la
-  // columna y reparar-pantalla le da el alto de fila que necesita, en vez de cortarse a lo ancho.
-  fmt({ ...r(g.p0 - 1, g.p1, 13, 14) }, 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.wrapStrategy',
-    { numberFormat: { type: 'TEXT' }, textFormat: { fontSize: 9 }, horizontalAlignment: 'CENTER', wrapStrategy: 'WRAP' })
+  fmt({ ...r(g.p0 - 1, g.fTotProv, 4, 5) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+    { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' })
   // NOTAS DE CRÉDITO — el formato moneda general de la pestaña convierte una fecha en "$46.119"
   // (el número de serie del 7/4/2026 pintado como pesos). Ya pasó cinco veces en este archivo: un
   // control que suma no ve un defecto de pantalla. Cada columna del bloque dice qué es.
@@ -1125,10 +1102,6 @@ async function formatear(google, sheetId, g, ancho, filas) {
     fmt({ ...r(g.anu0 - 1, g.anu1, 1, 2) }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
     fmt({ ...r(g.anu0 - 1, g.anu1, 4, 5) }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
   }
-  fmt({ ...r(g.p0 - 1, g.p1, 14, 15) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-    { numberFormat: { type: 'DATE', pattern: 'dd/mm/yy' }, horizontalAlignment: 'CENTER' })
-  fmt({ ...r(g.p0 - 1, g.p1, 15, 16) }, 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment',
-    { numberFormat: { type: 'TEXT' }, textFormat: { fontSize: 9, italic: true }, horizontalAlignment: 'LEFT' })
   // Los bloques documentales: comprobante y N° de cheque son TEXTO, y las fechas, fechas.
   for (const [a, b] of [[g.afip0, g.afip1], [g.emi0, g.emi1]]) {
     fmt({ ...r(a - 1, b, 1, 3) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
@@ -1184,7 +1157,7 @@ async function formatear(google, sheetId, g, ancho, filas) {
   // UNA CANTIDAD DE COMPROBANTES NO ES PLATA. La columna B del bloque de ARCA mostraba "$16" donde
   // dice cuántas facturas emitidas hay: el formato moneda de la columna entera se lo comía.
   if (g.fArcaN && g.fArcaVentas) fmt({ ...r(g.fArcaN - 1, g.fArcaVentas, 1, 2) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.cantidad, horizontalAlignment: 'CENTER' })
-  fmt({ ...r(g.fSub, g.fSub + 1, 15, 16) }, 'userEnteredFormat', E.nota())
+  fmt({ ...r(g.fSub, g.fSub + 1, 4, 5) }, 'userEnteredFormat', E.nota())
   // La columna de fecha del bloque de ARCA, que mostraba el serial como plata.
   fmt({ ...r(g.afip0 - 1, g.afip1, 3, 4) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: E.NUM.fecha, horizontalAlignment: 'CENTER' })
