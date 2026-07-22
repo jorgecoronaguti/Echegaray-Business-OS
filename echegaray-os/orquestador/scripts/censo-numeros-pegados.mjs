@@ -94,7 +94,10 @@ async function main() {
   console.log('PESTAÑA'.padEnd(26) + 'FÓRMULAS'.padStart(10) + 'DERRAM.'.padStart(9) + 'FECHAS'.padStart(8) + 'PEGADOS'.padStart(9) + '   QUÉ SIGNIFICA')
   let malos = 0
   for (const p of lista) {
-    const hasta = Math.max(p.hastaFila, alto.get(p.titulo) ?? 0)
+    // La pestaña entera es el rowCount REAL de la grilla: el dato no puede vivir más abajo de las
+    // filas asignadas, y pedir más allá hace fallar la API ("exceeds grid limits"). El hastaFila
+    // declarado es sólo un piso por si la meta no vino.
+    const hasta = alto.get(p.titulo) || p.hastaFila
     const grid = await google.readSheetGrid(ID, `${p.titulo}!A1:${colLetra(p.cols)}${hasta}`).catch(() => null)
     if (!grid) { console.log(`  ${p.titulo.padEnd(24)} no pude leerla`); continue }
     const c = censar(grid)

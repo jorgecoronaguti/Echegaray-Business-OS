@@ -24,10 +24,13 @@ function colLetra(n) { let s = ''; for (let i = n - 1; i >= 0; i = Math.floor(i 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const lista = SOLO ? PESTANAS.filter((p) => p.titulo.toLowerCase().includes(SOLO.toLowerCase())) : PESTANAS
+  // La grilla real acota: pedir más allá de las filas asignadas hace fallar la API. El hastaFila es piso.
+  const alto = new Map((await google.getSheetMeta(ID)).map((h) => [h.title, h.rows ?? 0]))
   let total = 0
 
   for (const p of lista) {
-    const f = await google.readSheetFormats(ID, `${p.titulo}!A1:${colLetra(p.cols)}${p.hastaFila}`).catch(() => null)
+    const hasta = alto.get(p.titulo) || p.hastaFila
+    const f = await google.readSheetFormats(ID, `${p.titulo}!A1:${colLetra(p.cols)}${hasta}`).catch(() => null)
     if (!f) { console.log(`  ${p.titulo.padEnd(26)} no pude leerla`); continue }
     // Las pestañas de CARGA tienen filas vacías al final por diseño (son planillas de entrada):
     // reportarlas como hueco sería ruido en cada corrida y el control dejaría de mirarse.

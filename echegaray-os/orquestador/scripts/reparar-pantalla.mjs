@@ -76,6 +76,8 @@ function colLetra(n) { let s = ''; for (let i = n - 1; i >= 0; i = Math.floor(i 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const meta = await google.getSheetMeta(ID)
+  // La grilla real acota el rango: pedir/escribir más allá de las filas asignadas hace fallar la API.
+  const alto = new Map(meta.map((h) => [h.title, h.rows ?? 0]))
   // Las pestañas de CARGA son del dueño: se auditan, no se reformatean. Cambiarle el formato a una
   // planilla donde alguien carga a mano todos los días es cambiarle el escritorio sin preguntarle.
   const lista = (SOLO ? PESTANAS.filter((p) => p.titulo.toLowerCase().includes(SOLO.toLowerCase())) : PESTANAS)
@@ -85,7 +87,7 @@ async function main() {
   for (const p of lista) {
     const hoja = meta.find((h) => h.title === p.titulo)
     if (!hoja) continue
-    const f = await google.readSheetFormats(ID, `${p.titulo}!A1:${colLetra(p.cols)}${p.hastaFila}`).catch(() => null)
+    const f = await google.readSheetFormats(ID, `${p.titulo}!A1:${colLetra(p.cols)}${alto.get(p.titulo) || p.hastaFila}`).catch(() => null)
     if (!f) { console.log(`  ${p.titulo.padEnd(26)} no pude leerla`); continue }
 
     const d = detectar(f)
@@ -129,7 +131,7 @@ async function main() {
   // VERIFICACIÓN: releer y contar lo que quedó.
   let quedan = 0
   for (const p of lista) {
-    const f = await google.readSheetFormats(ID, `${p.titulo}!A1:${colLetra(p.cols)}${p.hastaFila}`).catch(() => null)
+    const f = await google.readSheetFormats(ID, `${p.titulo}!A1:${colLetra(p.cols)}${alto.get(p.titulo) || p.hastaFila}`).catch(() => null)
     if (f) quedan += detectar(f).filter((x) => x.tipo === 'texto_en_numero' || x.tipo === 'texto_apretado').length
   }
   console.log(`\n✓ ${reparadas} celda(s)/fila(s) reparadas · quedan ${quedan} de formato/alto${sinReparar ? ` y ${sinReparar} que necesitan tocar el script` : ''}`)

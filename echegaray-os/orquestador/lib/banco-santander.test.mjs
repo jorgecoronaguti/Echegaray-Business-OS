@@ -6,10 +6,14 @@ import { MOVIMIENTOS, CUENTA, TARJETA, ACUERDO, verificarCadena, porTipo, ingres
 // importe(n). Si tipeé mal un dígito, la cadena se rompe y esto falla. Sin este test, los 71
 // movimientos serían una lista de números que PARECEN ciertos, que es exactamente lo que la regla
 // de oro prohíbe.
-test('la transcripción del extracto encadena y termina en el saldo del banco', () => {
+test('la transcripción del extracto encadena y termina en el último saldo del detalle', () => {
   const { rotas, saldoFinal } = verificarCadena()
   assert.deepEqual(rotas, [], 'hay filas donde el saldo no cierra: la transcripción tiene un error')
-  assert.equal(saldoFinal, CUENTA.saldoPesos)
+  // El detalle cierra en el saldo del último movimiento (Vono, 22/07). El saldo DECLARADO del día es
+  // menor (cheque Nº 221 del día + $143.500 sin detalle): esos dos números son distintos a propósito.
+  assert.equal(saldoFinal, CUENTA.saldoUltimoMovimiento)
+  assert.equal(CUENTA.saldoPesos, 5251630.74)
+  assert.equal(CUENTA.saldoUltimoMovimiento - CUENTA.saldoPesos, -CUENTA.saldoPendienteConciliar)
 })
 
 test('cada movimiento tiene fecha, concepto e importe', () => {
@@ -40,8 +44,10 @@ test('el rescate de Balanz NO se cuenta como cobranza', () => {
   // empresa que estaba invertida y volvió a la cuenta: contarla como cobro infla el cash flow.
   const i = ingresosPorNaturaleza()
   assert.equal(i.totales.financiero, 11913568.24)
-  assert.equal(i.totales.traslado, 9960000 + 10000000, 'depósitos de efectivo + el echeq acreditado')
-  assert.equal(i.totales.cobranza, 0, 'en los 18 días del extracto no entró un peso por transferencia de un cliente')
+  // Depósitos de efectivo ($9,96M) + dos echeq acreditados ($10M el 16/07 + $15M el 01/07) + la
+  // reversa de impuesto de $294,78 (que el banco generó, no un cliente).
+  assert.equal(i.totales.traslado, 9960000 + 10000000 + 15000000 + 294.78, 'plata propia y ajustes del banco, no cobros')
+  assert.equal(i.totales.cobranza, 0, 'en la ventana del extracto no entró un peso por transferencia de un cliente')
 })
 
 test('un número de once cifras que no es CUIT no identifica a nadie', () => {
@@ -70,6 +76,6 @@ test('el acuerdo y la tarjeta tienen su costo y su vencimiento declarados', () =
 })
 
 test('la foto sabe cuántos días tiene', () => {
-  assert.equal(antiguedadDias(new Date(2026, 6, 21)), 0)
-  assert.equal(antiguedadDias(new Date(2026, 6, 28)), 7)
+  assert.equal(antiguedadDias(new Date(2026, 6, 22)), 0)
+  assert.equal(antiguedadDias(new Date(2026, 6, 29)), 7)
 })
