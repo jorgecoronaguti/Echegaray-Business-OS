@@ -12,7 +12,7 @@ export const PASOS = [
   // PRIMERO DE TODOS: los jornales entran al archivo desde OTRO Sheet (JORNALES). Si el espejo no
   // se refresca, todo lo que sigue calcula sobre una foto vieja y ningún control lo ve — pasó el
   // 21/07: la quincena en curso quedó $1.231.963 por debajo de la real.
-  ['espejar-jornales.mjs', 'espejo del archivo JORNALES (_J_OBREROS y _J_OFICINA) + el bloque de jornales de RESUMEN', ['_J_OBREROS', '_J_OFICINA', 'RESUMEN']],
+  ['espejar-jornales.mjs', 'espejo del archivo JORNALES (_J_OBREROS y _J_OFICINA)', ['_J_OBREROS', '_J_OFICINA']],
   // SEGUNDO: devolver la fórmula a las celdas calculadas que alguien pisó pegando un valor. Va
   // antes de todo cálculo porque una celda pisada no grita: muestra un número creíble que dejó de
   // actualizarse. El 21/07 había cuatro, y dos de ellas hacían que dos cobros de $16.200.000
@@ -41,6 +41,10 @@ export const PASOS = [
   ['cobranzas-control.mjs', 'Cobranzas — detector de duplicados', []],
   ['cheques-cobertura-sheet.mjs', 'Cash Flow Mensual — qué cheques y tarjeta faltan cargar en Compras', []],
   ['tarjeta-control.mjs', 'Tarjeta de Credito — el cruce contra el resumen del banco y la disponibilidad que ve CAJA', []],
+  // RESUMEN va DESPUÉS de proveedores, cheques, jornales y tarjeta: es un tablero que apunta con
+  // fórmula a los totales de esas cuatro pestañas, así que necesita que ya existan. Reemplazó dos
+  // tablas dinámicas nativas huérfanas que duplicaban Proveedores y que ningún agente mantenía.
+  ['resumen-pestana.mjs', 'RESUMEN — el tablero "LO QUE VIENE A PAGAR" (jornales, proveedores, cheques, tarjeta)', ['RESUMEN']],
   // Va última: ubica las líneas del Cash Flow por rótulo, así que necesita el cuadro ya escrito.
   ['caja-pestana.mjs', 'CAJA — disponibilidades, cheques emitidos y margen de tarjeta', ['CAJA', 'Caja']],
   // El núcleo Postgres, para que la web y el chat vean lo mismo que la planilla y no un mes atrás.
