@@ -221,7 +221,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // fórmulas respeta los literales, así que sus comas llegan intactas.
   const b1 = push(['1 · QUÉ SE DEBE Y CUÁNDO'])
   push(['La deuda agrupada por proveedor: la fila de cada uno muestra su total y su próximo pago; con el +/- del Sheet (menú Datos → Agrupar) se abren o cierran sus facturas. Todo son fórmulas sobre Compras: se marca una pagada allá y baja acá.'])
-  const cabDoc = push(['Proveedor / factura', 'Próximo pago', 'Comprobante', 'Importe', 'Obra', 'Instrumento'])
+  const cabDoc = push(['Proveedor / factura', 'Próximo pago', 'Comprobante', 'Importe', 'Obra', 'Instrumento', 'Tipo de pago', 'Categoría'])
   const deudaGrupos = []
   const deudaHeaders = []
   const qLit = (s) => String(s ?? '').replace(/"/g, '""')
@@ -236,7 +236,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
       `=IF(COUNTIFS(${conFecha})=0;"sin fecha";MINIFS(${COL_FECHA};${conFecha}))`,
       `=COUNTIFS(${COL_PROV};"${key}";${COL_ESTADO};"${ESTADO_DEUDA}";${COL_TOTAL};"<>")&" fac."`,
       `=${neta(condProv)}`,
-      '', '',
+      '', '', '', '',
     ])
     deudaHeaders.push(hRow)
     const inicio = filas.length + 1
@@ -252,6 +252,9 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
         `=IF(${pend};Compras!$O$${rr}-Compras!$${letra(IDX.pagado)}$${rr};"")`,
         `=IF(${pend};Compras!$J$${rr};"")`,
         `=IF(NOT(${pend});"";IF($C${rowNum}="";"—";IFERROR(INDEX(${CH}!$A$2:$A;MATCH($C${rowNum};${CH}!$H$2:$H;0))&" "&INDEX(${CH}!$B$2:$B;MATCH($C${rowNum};${CH}!$H$2:$H;0));"—")))`,
+        // Tipo de pago (Compras col P) y Categoría (Compras col B), traídos de la misma fila de Compras.
+        `=IF(${pend};Compras!$P$${rr}&"";"")`,
+        `=IF(${pend};Compras!$B$${rr}&"";"")`,
       ])
     }
     deudaGrupos.push({ inicio, fin: filas.length })
@@ -859,7 +862,11 @@ async function main() {
     if ((hoja.cols ?? 0) < anchoP) reqG.push({ appendDimension: { sheetId: hoja.sheetId, dimension: 'COLUMNS', length: anchoP - (hoja.cols ?? 0) + 2 } })
     if (reqG.length) await google.spreadsheetBatchUpdate(ID, reqG)
 
-    await google.clearValues(ID, `${refPestana(t.titulo)}!A1:Z${Math.max(cuadroP.length + 30, 250)}`)
+    // SÓLO se limpian las columnas que el generador ESCRIBE (anchoP), nunca hasta la Z. El dueño anota
+    // a mano a la derecha de la tabla ("no borres nada de lo q voy anotando"): esas columnas quedan
+    // intactas. Si en el futuro el generador se angosta, sus propias columnas viejas se reescriben igual
+    // porque batchUpdateValues pisa A1:anchoP; lo que hay MÁS allá de anchoP es del dueño y no se toca.
+    await google.clearValues(ID, `${refPestana(t.titulo)}!A1:${letra(anchoP - 1)}${Math.max(cuadroP.length + 30, 250)}`)
     await google.batchUpdateValues(ID, [{ range: `${refPestana(t.titulo)}!A1:${letra(anchoP - 1)}${cuadroP.length}`, values: cuadroP }])
 
     const gP = { ...traducir(t.titulo), filas: cuadroP }
@@ -1169,7 +1176,7 @@ async function formatear(google, sheetId, g, ancho, filas) {
     fmt({ ...r(d0 - 1, d1, 1, 2) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.fecha, horizontalAlignment: 'LEFT' })
     fmt({ ...r(d0 - 1, d1, 2, 3) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' })
     fmt({ ...r(d0 - 1, d1, 3, 4) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT' })
-    fmt({ ...r(d0 - 1, d1, 4, 6) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.textFormat', { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: { fontSize: 9 } })
+    fmt({ ...r(d0 - 1, d1, 4, 8) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.textFormat', { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: { fontSize: 9 } })
     for (const h of (g.deudaHeaders || [])) {
       if (h) fmt({ ...r(h - 1, h, 0, 4) }, 'userEnteredFormat.textFormat', { textFormat: { bold: true, foregroundColor: INK, fontSize: 10 } })
     }
