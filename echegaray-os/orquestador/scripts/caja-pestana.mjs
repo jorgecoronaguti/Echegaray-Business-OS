@@ -78,6 +78,8 @@ const ANCHO = 8
  *  —el texto completo vive en la nota de la celda (lib/nota-celda.mjs)—. */
 const ANCHOS = [400, 64, 148, 96, 152, 104, 96, 300]
 const C_IMP = 'C', C_TC = 'D', C_PESOS = 'E'
+/** El índice 0-based de la columna de pesos, para escribir directo en la matriz de filas. */
+const C_PESOS_I = C_PESOS.charCodeAt(0) - 65
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 
@@ -317,6 +319,23 @@ function grilla(cargado, refs) {
     'Lo que queda después de cubrir los cheques ya firmados. Es el número con el que conviene decidir.'])
   push()
 
+  // ── MARGEN DE CRÉDITO — resumen arriba, el detalle vive abajo en "Líneas de crédito" ──────────────
+  // JPMorgan: la posición de arriba se lee en tres segundos. El margen de crédito es capacidad de pago,
+  // no efectivo, así que va como resumen de tres líneas; el desglose (consumos, cuotas, controles,
+  // costo del descubierto) está abajo, plegado. Las tres cifras se completan más abajo, cuando el
+  // bloque de líneas de crédito ya calculó su disponible.
+  push(['MARGEN DE CRÉDITO — capacidad de pago, no es efectivo'])
+  const fMTar = push(['Tarjeta — disponible para comprar'])
+  const fMAcu = push(['Acuerdo en descubierto'])
+  const fMAire = push(['⇒ AIRE TOTAL (tarjeta + acuerdo)'])
+  push()
+
+  // ═══ DE ACÁ PARA ABAJO: CONTROLES Y CONCILIACIONES, COLAPSADOS ═══════════════════════════════════
+  // Todo lo que sigue —el detalle de cada línea y las verificaciones que prueban que los números son
+  // confiables— vive plegado bajo un "+", para no tapar la posición. Es la regla "nada suelto" sin
+  // sacrificar el minimalismo: está, pero no estorba.
+  const fCtrl0 = push(['CONTROLES Y CONCILIACIONES — el detalle y las verificaciones (desplegar con ▸)'])
+
   // ── 3 · EL DETALLE DE LOS VALORES EN CARTERA ───────────────────────────────────────────────────
   //
   // ESTO ESTABA ADENTRO DE LA TABLA DE SALDOS, y era la razón principal por la que la pestaña no se
@@ -405,6 +424,12 @@ function grilla(cargado, refs) {
     `=${C_PESOS}${fDisp}+${C_PESOS}${fAcu}`, '', '',
     'Cuánto se puede estirar antes de no poder pagar. NO es plata: es deuda que todavía no se tomó, y al 62,78% anual tomarla tiene precio.', 'Se calcula solo'])
   push()
+
+  // Completar el resumen de MARGEN DE CRÉDITO de arriba con las cifras que este bloque acaba de
+  // calcular: un solo lugar donde el disponible existe (regla "no duplicar"); el resumen lo referencia.
+  filas[fMTar - 1][C_PESOS_I] = `=${C_PESOS}${fDisp}`
+  filas[fMAcu - 1][C_PESOS_I] = `=${C_PESOS}${fAcu}`
+  filas[fMAire - 1][C_PESOS_I] = `=${C_PESOS}${fAire}`
 
   // ── QUÉ CUESTA USAR EL DESCUBIERTO ──────────────────────────────────────────────────────────────
   // "Te pasé las tasas para que al momento de utilizarlo el Sheet indique los intereses que va
@@ -693,7 +718,9 @@ function grilla(cargado, refs) {
   }
   for (const f of filas) f.forEach((c, j) => { if (typeof c === 'string' && PANEL[c]) f[j] = PANEL[c] })
 
-  return { filas, n0, n1, usd, fTitulos, fCifras, fAire, fDias, fRitmo, fAlerta0, fAlerta1, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, amarillas }
+  // El grupo colapsable de controles va desde su encabezado hasta la última fila del cuadro.
+  const fCtrl1 = filas.length
+  return { filas, n0, n1, usd, fTitulos, fCifras, fAire, fDias, fRitmo, fAlerta0, fAlerta1, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, fMTar, fMAcu, fMAire, fMargenTit: fMTar - 1, fCtrl0, fCtrl1, amarillas }
 }
 
 async function main() {
@@ -966,8 +993,13 @@ async function formatear(google, sheetId, g, tab) {
   if (g.g1 > g.g0) {
     fmt(r(g.g0 - 1, g.g1, 0, 1), 'userEnteredFormat.textFormat',
       { textFormat: { fontSize: E.TAM.nota, foregroundColor: E.COLOR.nota } })
-    req.push({ addDimensionGroup: { range: { sheetId, dimension: 'ROWS', startIndex: g.g0 - 1, endIndex: g.g1 } } })
-    req.push({ updateDimensionGroup: { dimensionGroup: { range: { sheetId, dimension: 'ROWS', startIndex: g.g0 - 1, endIndex: g.g1 }, depth: 1, collapsed: false }, fields: 'collapsed' } })
+  }
+  // TODO EL DETALLE Y LAS CONCILIACIONES, EN UN GRUPO COLAPSADO. La posición de arriba se lee sola;
+  // esto se despliega con el "+" del margen izquierdo sólo cuando hay que auditar. Es la regla "nada
+  // suelto" servida sin tapar el mensaje — la definición de minimalista del dueño: less is more.
+  if (g.fCtrl1 > g.fCtrl0) {
+    req.push({ addDimensionGroup: { range: { sheetId, dimension: 'ROWS', startIndex: g.fCtrl0, endIndex: g.fCtrl1 } } })
+    req.push({ updateDimensionGroup: { dimensionGroup: { range: { sheetId, dimension: 'ROWS', startIndex: g.fCtrl0, endIndex: g.fCtrl1 }, depth: 1, collapsed: true }, fields: 'collapsed' } })
   }
   fmt(r(g.fTotal - 1, g.fTotal), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
     { textFormat: { bold: true }, backgroundColor: GRIS })
@@ -977,7 +1009,7 @@ async function formatear(google, sheetId, g, tab) {
     const t = String(f[0] ?? '')
     // EL RÓTULO DE UN BLOQUE SE VE COMO UN BLOQUE, con el estilo del archivo y no con una negrita
     // suelta. Y ocupa la fila entera: no compite con ninguna columna.
-    if (/^\d+ · |^CÓMO SE ACTUALIZA|^COSTO DE USAR/.test(t)) fmt(r(i, i + 1), 'userEnteredFormat', E.bloque())
+    if (/^\d+ · |^CÓMO SE ACTUALIZA|^COSTO DE USAR|^MARGEN DE CRÉDITO|^CONTROLES Y CONCILIAC/.test(t)) fmt(r(i, i + 1), 'userEnteredFormat', E.bloque())
     if (/^⇒/.test(t)) fmt(r(i, i + 1, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontFamily: E.FUENTE, fontSize: E.TAM.cuerpo } })
     // ── LOS PÁRRAFOS DE EXPLICACIÓN NECESITAN ALTO ──────────────────────────────────────────────
     // La introducción tiene 307 caracteres y la del bloque de crédito 332, las dos en filas de 20px:
