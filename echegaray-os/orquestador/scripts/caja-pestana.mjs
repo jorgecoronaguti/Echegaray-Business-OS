@@ -663,7 +663,9 @@ function grilla(cargado, refs) {
       gr.pestana ? `${gr.pestana} — ${gr.nota}` : gr.nota])
     // EL DETALLE VA DEBAJO DE SU GRUPO, cuando la diferencia se puede accionar. Un desvío con un
     // total no le sirve a nadie; con el número de cheque y el proveedor se resuelve en dos minutos.
-    if (gr.detalle) push(['   · cuáles son', '', '', '', gr.detalle(), '', '', gr.detalleNota ?? ''])
+    // La lista de cheques/instrumentos va a la columna de origen (col H), que reparar-textos manda a
+    // la NOTA de la celda: el detalle accionable queda a un hover, sin un muro de texto en la vista.
+    if (gr.detalle) push(['   · cuáles son', '', '', '', '', '', '', `${gr.detalle()}${gr.detalleNota ? ` — ${gr.detalleNota}` : ''}`])
   }
   const n1 = filas.length
   push(['⇒ TOTAL QUE SALIÓ DE LA CUENTA', '', `=SUM(${C_IMP}${n0}:${C_IMP}${n1})`, '', '', '', '',
