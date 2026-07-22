@@ -60,8 +60,21 @@ export function censar(grid) {
   const r = { formula: 0, derramada: 0, pegadoNumero: 0, fecha: 0, texto: 0, origenFila: 0, pegados: [] }
   if (!grid?.filas) return r
   const L = (n) => { let s = ''; for (let i = n; i >= 0; i = Math.floor(i / 26) - 1) s = String.fromCharCode(65 + (i % 26)) + s; return s }
+  // ORIGEN DECLARADO POR BLOQUE: un bloque es un run de filas no vacías entre filas vacías. Si
+  // CUALQUIER fila del bloque trae la leyenda de origen (típicamente el encabezado o una advertencia
+  // arriba de la tabla), los números de todo el bloque son dato de origen — no hace falta repetir la
+  // leyenda en cada fila, que es justo lo que ensuciaba la pantalla.
+  const vacia = (f) => !(f || []).some((c) => String(c?.valor ?? '').trim())
+  const origenBloque = new Array(grid.filas.length).fill(false)
+  for (let a = 0, i = 0; i <= grid.filas.length; i++) {
+    if (i === grid.filas.length || vacia(grid.filas[i])) {
+      const decl = grid.filas.slice(a, i).some(filaDeclaraOrigen)
+      for (let k = a; k < i; k++) origenBloque[k] = decl
+      a = i + 1
+    }
+  }
   grid.filas.forEach((fila, i) => {
-    const declara = filaDeclaraOrigen(fila)
+    const declara = origenBloque[i]
     ;(fila || []).forEach((c, j) => {
     if (!c) return
     if (c.formula) { r.formula++; return }
