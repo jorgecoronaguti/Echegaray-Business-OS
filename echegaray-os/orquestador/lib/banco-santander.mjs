@@ -292,6 +292,24 @@ export const MOVIMIENTOS = [
 ]
 
 /**
+ * MOVIMIENTOS DEL DÍA — lo que el extracto lista en "Movimientos del Día" (22/07, sin saldo corrido)
+ * más el tramo que el banco no itemiza. La cadena principal (MOVIMIENTOS) cierra en $5.595.130,74
+ * (Vono); estas cuatro filas la llevan al saldo DECLARADO $4.985.898,23 — el que manda para la
+ * disponibilidad. Existen para que CAJA muestre lo que el banco realmente tiene HOY y no el último
+ * saldo corrido del detalle, sin pegar un número: `_BANCO_RAW` las anexa y `formulaUltimoSaldo` toma
+ * el último saldo. El −$143.500 es el hold intradía que ninguna línea del extracto explica: va
+ * ROTULADO como "sin detalle", no disfrazado de operación real, y clasifica a su propio bucket para
+ * no ensuciar la conciliación por naturaleza. El saldo de cada fila se encadena desde el cierre de
+ * MOVIMIENTOS; sólo el último importa para la disponibilidad.
+ */
+export const MOVIMIENTOS_DIA = [
+  { fecha: '2026-07-22', concepto: 'Transferencia recibida - De manufacturas quimicas', importe: 4267.49, saldo: 5599398.23 },
+  { fecha: '2026-07-22', concepto: 'Transferencia realizada - A katsuda gustavo', importe: -270000, saldo: 5329398.23 },
+  { fecha: '2026-07-22', concepto: 'Cheque debitado - Nº 221', importe: -200000, saldo: 5129398.23 },
+  { fecha: '2026-07-22', concepto: 'Diferencia sin detalle del banco (hold intradia)', importe: -143500, saldo: 4985898.23 },
+]
+
+/**
  * NÚCLEO PURO: recorre la cadena de saldos del extracto. Devuelve las filas donde el saldo no
  * cierra, o sea donde me equivoqué al transcribir. Vacío = la transcripción es exacta.
  */
@@ -333,6 +351,7 @@ export function clasificarMovimiento(concepto = '') {
   }
   if (/tarjeta de debito/i.test(c)) return 'Compras con tarjeta de débito'
   if (/debito automatico/i.test(c)) return 'Débitos automáticos (seguros)'
+  if (/sin detalle/i.test(c)) return 'Ajuste sin detalle del banco'
   return 'Transferencias a proveedores'
 }
 

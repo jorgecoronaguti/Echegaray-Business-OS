@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { MOVIMIENTOS, CUENTA, TARJETA, ACUERDO, verificarCadena, porTipo, ingresosPorNaturaleza, naturalezaIngreso, enCartera, endosados, totalEcheqs, antiguedadDias } from './banco-santander.mjs'
+import { MOVIMIENTOS, MOVIMIENTOS_DIA, CUENTA, TARJETA, ACUERDO, verificarCadena, porTipo, ingresosPorNaturaleza, naturalezaIngreso, enCartera, endosados, totalEcheqs, antiguedadDias, clasificarMovimiento } from './banco-santander.mjs'
 
 // EL TEST QUE HACE CONFIABLE LA TRANSCRIPCIÓN. El extracto es una cadena: saldo(n) = saldo(n−1) +
 // importe(n). Si tipeé mal un dígito, la cadena se rompe y esto falla. Sin este test, los 71
@@ -15,6 +15,20 @@ test('la transcripción del extracto encadena y termina en el último saldo del 
   assert.equal(saldoFinal, CUENTA.saldoUltimoMovimiento)
   assert.equal(CUENTA.saldoPesos, 4985898.23)
   assert.ok(Math.abs((CUENTA.saldoUltimoMovimiento - CUENTA.saldoPesos) - -CUENTA.saldoPendienteConciliar) < 0.01)
+})
+
+test('los movimientos del día encadenan desde el cierre del detalle hasta el saldo declarado', () => {
+  // _BANCO_RAW los anexa después de MOVIMIENTOS; el último saldo tiene que ser el DECLARADO, que es lo
+  // que CAJA muestra como disponibilidad. Sin esto, la caja mostraría el último saldo corrido del
+  // detalle ($5.595.130,74) y no lo que el banco realmente tiene hoy.
+  let saldo = CUENTA.saldoUltimoMovimiento
+  for (const m of MOVIMIENTOS_DIA) {
+    saldo = Math.round((saldo + m.importe) * 100) / 100
+    assert.equal(saldo, m.saldo, `el saldo corrido de "${m.concepto}" no cierra`)
+  }
+  assert.equal(MOVIMIENTOS_DIA.at(-1).saldo, CUENTA.saldoPesos)
+  // El tramo sin detalle tiene su propio bucket, para no ensuciar la conciliación por naturaleza.
+  assert.equal(clasificarMovimiento('Diferencia sin detalle del banco (hold intradia)'), 'Ajuste sin detalle del banco')
 })
 
 test('cada movimiento tiene fecha, concepto e importe', () => {

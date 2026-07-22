@@ -71,7 +71,10 @@ export function fila(m) {
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const movs = [...BANCO.MOVIMIENTOS].sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)))
-  const datos = movs.map(fila)
+  // Los movimientos del día (22/07 sin saldo corrido + el hold sin detalle) van DESPUÉS de la cadena
+  // ordenada, para que el último saldo de la réplica sea el DECLARADO por el banco y CAJA muestre lo
+  // que hay hoy, no el último saldo corrido del detalle. Ver MOVIMIENTOS_DIA en la lib.
+  const datos = [...movs, ...(BANCO.MOVIMIENTOS_DIA ?? [])].map(fila)
   const corte = new Date().toISOString().slice(0, 16).replace('T', ' ')
 
   console.log(`${datos.length} movimientos del extracto · corte del banco ${BANCO.CORTE}`)
@@ -94,7 +97,7 @@ async function main() {
 
   await google.clearValues(ID, `${PESTAÑA}!A1:Z${alto}`)
   await google.batchUpdateValues(ID, [
-    { range: `${PESTAÑA}!A1`, values: [[`_BANCO_RAW — extracto del ${BANCO.CUENTA ?? 'Santander'} · corte del banco ${BANCO.CORTE} · réplica del ${corte}`]] },
+    { range: `${PESTAÑA}!A1`, values: [[`_BANCO_RAW — extracto del ${BANCO.CUENTA?.banco ?? 'Santander'} ${BANCO.CUENTA?.numero ?? ''} · corte del banco ${BANCO.CORTE} · réplica del ${corte}`]] },
     { range: `${PESTAÑA}!A2`, values: [[`${datos.length} movimientos. NO se carga a mano: la reescribe el agente desde la réplica del extracto. Existe para que los números de CAJA que hoy salen del banco sean FÓRMULAS y no valores calculados afuera y pegados. La columna "Naturaleza" NO está en el extracto: la deduce el OS —un depósito de efectivo y un cobro son las dos cosas un ingreso para el banco, y sólo una es plata nueva—.`]] },
     { range: `${PESTAÑA}!A3:${COL.naturaleza}3`, values: [COLUMNAS.map(([n]) => n)] },
     { range: `${PESTAÑA}!A${FILA0}`, values: datos },
