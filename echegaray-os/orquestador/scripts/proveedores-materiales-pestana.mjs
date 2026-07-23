@@ -73,7 +73,7 @@ import { FAMILIAS, SIN_FAMILIA, formulaFamilia, familiaDeMaterial, RUBROS_CON_FA
 import { NOMBRES } from '../lib/sheet-pestanas.mjs'
 import { partir, filasHuerfanas, ref as refPestana } from '../lib/partir-pestana.mjs'
 import { anchosSegunContenido } from '../lib/nota-celda.mjs'
-import { fusionar, sobrantes } from '../lib/preservar-anotaciones.mjs'
+import { fusionar, sobrantes, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { ESTADO_DEUDA } from '../lib/cuentas-por-pagar.mjs'
 /** El estado de Compras para lo pactado que todavía no es deuda firme. Convive con "Pendiente". */
 const ESTADO_PROYECTADO = 'Proyectado'
@@ -289,17 +289,26 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // una vez en esta misma pestaña. El texto del QUERY va entre comillas y el localizador de
   // fórmulas respeta los literales, así que sus comas llegan intactas.
   const b1 = push(['1 · QUÉ SE DEBE Y CUÁNDO'])
+  // AVISO VIVO DE DESFASAJE. El detalle de abajo son filas físicas: existen cuando corre el agente.
+  // Los IMPORTES son fórmulas y se mueven solos, pero una factura de un proveedor NUEVO no tiene fila
+  // hasta la próxima corrida. Esta línea compara —en vivo— el total real contra la suma de lo listado
+  // y avisa el hueco, para que el cuadro nunca engañe aunque esté desactualizado. Se llena más abajo,
+  // cuando el bloque ya tiene coordenadas.
   push(['La deuda agrupada por proveedor: la fila de cada uno muestra su total y su próximo pago; con el +/- del Sheet (menú Datos → Agrupar) se abren o cierran sus facturas. Todo son fórmulas sobre Compras: se marca una pagada allá y baja acá.'])
   // Las columnas son las que el dueño dejó en la pestaña (nombre y orden). Ver layoutDeuda.
   const L = layoutDeuda(deudaCols)
   // Las notas del dueño vuelven a SU proveedor / SU comprobante, no a la fila donde estaban.
   const NOTAS = notasAncladas(deudaPrevio || [], L)
-  const celdas = () => new Array(L.cols.length).fill('')
+  // Las columnas que el generador MAPEA son suyas: si van vacías, se limpian (VACIO). Las que la
+  // persona agregó y el generador no llena —Comentarios— quedan '' y la fusión las conserva.
+  const PROPIAS = new Set([L.prov, L.fecha, L.comp, L.imp, L.obra, L.pago, L.cat, L.instr].filter((i) => i >= 0))
+  const celdas = () => L.cols.map(() => VACIO)
   const ponerNotas = (arr, mapa, clave) => {
     const extra = mapa.get(String(clave ?? '').trim().toLowerCase())
     if (extra) for (const [j, v] of extra) arr[j] = v
     return arr
   }
+  const fAviso = push([])
   const cabDoc = push([...L.cols])
   const deudaGrupos = []
   const deudaHeaders = []
@@ -344,6 +353,20 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
     deudaGrupos.push({ inicio, fin: filas.length })
   }
   const cabDocFin = filas.length
+  // El aviso, ahora que el bloque tiene coordenadas. Todo por fórmula: el hueco se calcula solo.
+  {
+    const cA = `$${letra(L.prov)}$${cabDoc + 1}:$${letra(L.prov)}$${cabDocFin}`
+    const cD = `$${letra(L.imp)}$${cabDoc + 1}:$${letra(L.imp)}$${cabDocFin}`
+    // Sólo las filas-cabecera tienen nombre en la primera columna: SUMIF sobre ellas da lo LISTADO.
+    const falta = `(${neta(condComercial)})-SUMIF(${cA};"?*";${cD})`
+    const listadasN = deudaAgrupada
+      .map((gp) => `COUNTIFS(${COL_PROV};"${qLit(gp.nombre)}";${COL_ESTADO};"${ESTADO_DEUDA}";${COL_TOTAL};"<>")`)
+      .join('+') || '0'
+    const totalN = `COUNTIFS(${COL_ESTADO};"${ESTADO_DEUDA}";${COL_COMERCIAL};1;${COL_TOTAL};"<>")`
+    const avisoFila = L.cols.map(() => VACIO)
+    avisoFila[0] = `=IF(ROUND(${falta};0)=0;"✓ Al día: el listado muestra toda la deuda comercial de Compras.";"⚠ Faltan "&TEXT((${totalN})-(${listadasN});"0")&" factura(s) por "&TEXT(${falta};"$#,##0")&" que este listado todavía no muestra — aparecen cuando corre el agente. El total de arriba ya las cuenta.")`
+    filas[fAviso - 1] = avisoFila
+  }
   push([])
 
   // ── 2 · CUENTA CORRIENTE POR PROVEEDOR — EL PERFIL, NO LA DEUDA ──────────────────────────────────
@@ -571,6 +594,19 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   const resuelto = filas.map((f) => f.map((c) => (typeof c === 'string'
     ? c.replaceAll('$TOTFAM', String(totFam)).replaceAll('$TOTPROV', String(fTotProv)).replaceAll('$TOTDEUDA', String(fTotProv))
     : c)))
+
+  // ═══ EL GENERADOR ES DUEÑO DE SU GRILLA ═══
+  // Sus vacíos se LIMPIAN (VACIO), para que un valor de la corrida anterior no sobreviva — eso ya
+  // ensució el bloque de deuda con nombres de proveedor repetidos y un total al doble. La única
+  // excepción son las columnas que la persona agregó al bloque de deuda y el generador no llena
+  // (Comentarios): ahí el vacío significa "no es mía" y la fusión las conserva.
+  for (let i = 0; i < filas.length; i++) {
+    const f = filas[i]
+    for (let j = 0; j < f.length; j++) {
+      if (f[j] !== '' && f[j] !== undefined && f[j] !== null) continue
+      f[j] = VACIO
+    }
+  }
 
   return { filas: resuelto, cabArca, marcas: { bPos, b1, b2, b3, b4, b5, b6, b7, b8, fin: filas.length }, bPos, pos0, pos1, posTotal, posProy, posPlazo, posFaltan, cuentas: [fCuenta1, fCuenta2], fCompFecha, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabDocFin, deudaL: L, deudaHeaders, deudaGrupos, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
 }
