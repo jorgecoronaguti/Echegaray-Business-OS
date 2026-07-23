@@ -33,7 +33,6 @@ const INK = { red: 0.10, green: 0.13, blue: 0.20 }
 const MUTED = { red: 0.53, green: 0.52, blue: 0.49 }
 const HAIR = { red: 0.82, green: 0.80, blue: 0.76 }
 const ACENTO = { red: 0.11, green: 0.23, blue: 0.37 }
-const NEG = { red: 0.61, green: 0.17, blue: 0.17 }
 
 const hoy = new Date().toLocaleDateString('es-AR')
 
@@ -92,7 +91,15 @@ async function main() {
   const fila13 = (a = '', b = '', c = '') => [a, b, c, '', '', '', '', '', '', '', '', '', '']
   const filas = [
     fila13('Cheques emitidos'),
-    fila13(`Registro de tesorería · al ${hoy} · en pesos. Cada cheque librado por la empresa, con su fecha de pago y si el banco ya lo debitó. Lo que importa es lo NO debitado: plata firmada que todavía no salió de la cuenta y que la disponibilidad neta ya descuenta.`),
+    // ═══ EL SUBTÍTULO ES UNA LÍNEA, NO UN PÁRRAFO ═══
+    //
+    // POR QUÉ (23/07, al VER la pestaña). El subtítulo viejo tenía 290 caracteres y se escribía en
+    // A2 con wrapStrategy WRAP: envuelto dentro de una columna de 200 px daría ocho renglones, y la
+    // fila mide 34 px — o sea que se veían dos y el resto quedaba CORTADO, sin ningún error. Un
+    // texto largo en la grilla se desparrama o se corta; ninguna de las dos cosas se lee.
+    // Ahora dice lo que la gramática pide —qué contesta · de qué fuente sale · a qué fecha— en una
+    // sola línea que desborda sobre las columnas vacías de al lado, como el sumario de un statement.
+    fila13(`Cuánto de lo que la empresa ya firmó todavía no salió de la cuenta · fuente: el registro de abajo, que carga Administración, cruzado con Compras y con el extracto · al ${hoy} · en pesos`),
     fila13(),
     fila13('1 · POSICIÓN DE CHEQUES EMITIDOS — ¿CUÁNTO YA SALIÓ DE TUS MANOS Y TODAVÍA NO SE DEBITÓ?'),
     fila13('Concepto', 'Monto', 'Qué significa'),
@@ -123,10 +130,19 @@ async function main() {
   const txt = (color, { bold = false, size = 10, italic = false } = {}) => ({ foregroundColor: color, bold, fontSize: size, italic, fontFamily: 'Arial' })
   const money = { type: 'NUMBER', pattern: '$#,##0' }
   const reqs = [
-    ...skinRequests({ sheetId, filas, cols: 13, congeladas: HDR }),
-    // La nota bajo el título, gris y chica.
-    { repeatCell: { range: { sheetId, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 0, endColumnIndex: 13 }, cell: { userEnteredFormat: { textFormat: txt(MUTED, { size: 9 }), wrapStrategy: 'WRAP' } }, fields: 'userEnteredFormat(textFormat,wrapStrategy)' } },
-    { updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 1, endIndex: 2 }, properties: { pixelSize: 34 }, fields: 'pixelSize' } },
+    // ═══ LA PIEL LLEGA HASTA EL FINAL DE LA HOJA, NO HASTA DONDE ESCRIBE EL GENERADOR ═══
+    //
+    // POR QUÉ (23/07, al VER la pestaña). skinRequests sin `filasHoja` sólo repinta las filas que el
+    // generador escribe —las 12 de la banda—, y el REGISTRO, que es el 90% de lo que se ve, seguía
+    // con la piel de un formateador anterior: las columnas C, E, I y L en AZUL puro sobre un relleno
+    // celeste (98/99/100) y con borde en los cuatro lados de cada celda. En pantalla eso es un
+    // formulario con reja y con texto que parece hipervínculo, exactamente lo contrario del
+    // statement sin color que pide el estándar — y ningún auditor lo levantaba porque el VALOR de la
+    // celda estaba perfecto. La validación de datos (los desplegables que puso el dueño en E, K, L y
+    // M) NO se toca: acá sólo se cambia fondo, borde y tipografía.
+    ...skinRequests({ sheetId, filas, cols: 13, congeladas: HDR, filasHoja: hoja.rows || 400 }),
+    // La nota bajo el título, gris y chica. OVERFLOW, nunca WRAP: ver el comentario del subtítulo.
+    { repeatCell: { range: { sheetId, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 0, endColumnIndex: 13 }, cell: { userEnteredFormat: { textFormat: txt(MUTED, { size: 9 }), wrapStrategy: 'OVERFLOW_CELL' } }, fields: 'userEnteredFormat(textFormat,wrapStrategy)' } },
     // Los importes de la posición: moneda, a la derecha, tabulares.
     { repeatCell: { range: { sheetId, startRowIndex: 5, endRowIndex: 8, startColumnIndex: 1, endColumnIndex: 2 }, cell: { userEnteredFormat: { numberFormat: money, horizontalAlignment: 'RIGHT', textFormat: txt(INK, { bold: false, size: 11 }) } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment,textFormat)' } },
     // El titular, en acento y grande: es lo que el tesorero mira primero.
@@ -139,6 +155,28 @@ async function main() {
     // Encabezado del registro: versalita apagada con hairline, igual que en Recibidos.
     { repeatCell: { range: { sheetId, startRowIndex: HDR - 1, endRowIndex: HDR, startColumnIndex: 0, endColumnIndex: 13 }, cell: { userEnteredFormat: { backgroundColor: { red: 1, green: 1, blue: 1 }, textFormat: txt(MUTED, { bold: true, size: 9 }), horizontalAlignment: 'LEFT' } }, fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)' } },
     { updateBorders: { range: { sheetId, startRowIndex: HDR - 1, endRowIndex: HDR, startColumnIndex: 0, endColumnIndex: 13 }, bottom: { style: 'SOLID', width: 1, color: HAIR } } },
+    // ═══ LA REGLA DEL TÍTULO DEL REGISTRO, DEL ANCHO DEL REGISTRO ═══
+    //
+    // POR QUÉ (23/07, al VER la pestaña). skinRequests dibuja la regla de una sección del ancho de
+    // "su bloque", y ese ancho lo mide dentro de las filas que le pasa el generador. El título del
+    // registro es la ÚLTIMA fila de la banda: abajo no hay nada que mirar, así que el ancho daba 1 y
+    // la línea salía de una sola columna, colgada sobre la nada arriba de una tabla de trece. Eso es
+    // literalmente lo que el dueño llama "líneas marcadas que se cortan". La sección abre una tabla
+    // de 13 columnas: su regla mide 13.
+    { updateBorders: { range: { sheetId, startRowIndex: BANDA - 1, endRowIndex: BANDA, startColumnIndex: 0, endColumnIndex: 13 }, top: { style: 'SOLID', width: 1, color: HAIR } } },
+    // ═══ ANCHOS: UN RÓTULO QUE NO ENTRA EN SU COLUMNA NO SE LEE, SE ADIVINA ═══
+    //
+    // POR QUÉ (23/07, al VER la pestaña). Con A en 172 px el titular salía "Comprometido, no debitad"
+    // —cortado a mitad de palabra, y encima es EL renglón que la pestaña existe para contestar—; con
+    // el prefijo "⇒" entra todavía menos. Y con D en 76 px la columna "fecha gral" mostraba
+    // "diciembre 2" y "noviembre ¿" en las CIEN filas del registro. Nada de esto levanta un error:
+    // el valor de la celda está intacto, sólo que nadie lo puede leer.
+    // B: 121 px dejaban el titular de 16 pt terminando a cuatro píxeles de la explicación de al lado
+    // ("…$11.076.832Ya salió de tus manos"). El número que la pestaña existe para contestar necesita
+    // aire propio, no encajar por poco.
+    ...[[0, 205], [1, 142], [3, 108]].map(([i, px]) => ({
+      updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: px }, fields: 'pixelSize' },
+    })),
   ]
   await google.spreadsheetBatchUpdate(ID, reqs)
 
