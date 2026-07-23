@@ -6,7 +6,10 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { importe, fecha, campos, parsearExtracto, novedades, verificarCadena, clave } from './banco-importar.mjs'
+import {
+  importe, fecha, campos, parsearExtracto, novedades, verificarCadena, clave,
+  encabezado, emparejar, saldosACorregir, saldoAperturaSegun, sinDuplicadosDelDia,
+} from './banco-importar.mjs'
 
 test('el importe se lee a la argentina: punto de miles, coma decimal', () => {
   assert.equal(importe('1.234,56'), 1234.56)
@@ -169,4 +172,115 @@ test('saltear el movimiento sin saldo sería un falso positivo', () => {
   const r = verificarCadena(m, 1000)
   assert.equal(r.ok, false)
   assert.equal(r.cortes[0].diferencia, -50)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// LO QUE ENSEÑÓ LA DESCARGA REAL DEL 23/07. Los casos de abajo son errores que ESTABAN pasando, no
+// hipótesis: se vieron comparando el CSV del Santander contra los 127 movimientos ya cargados.
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('EL PARÉNTESIS ES UN SIGNO MENOS: el Santander no usa el guión', () => {
+  // El modo de falla más caro de todos: sin esto CADA DÉBITO entraba como crédito. No da error —
+  // da una cuenta que sube cuando en realidad baja.
+  assert.equal(importe('(168.730,09)'), -168730.09)
+  assert.equal(importe('(7.462.120,94)'), -7462120.94)
+  assert.equal(importe('3.940.000,00'), 3940000)
+})
+
+test('el encabezado del export dice dónde está cada columna, y entonces no se adivina', () => {
+  const txt = [
+    'Fecha;Suc. Origen;Desc. Sucursal;Cod. Operativo;Referencia;Concepto;Importe;Saldo',
+    '22/07/2026;0179;San Juan;4633;000008654;Impuesto ley 25.413 debito 0,6%;(3.681,00);4.982.217,23',
+    '23/07/2026;0179;San Juan;3058;000008656;Deposito e-cheq int ots plazas;3.940.000,00;',
+  ].join('\n')
+  const { movimientos, rechazos } = parsearExtracto(txt)
+  assert.equal(rechazos.length, 0)
+  // Sin el encabezado, el concepto se armaba pegando el código operativo y la referencia
+  // ("0179 San Juan 4633 000008654 Impuesto…") y la deduplicación no reconocía el movimiento.
+  assert.deepEqual(movimientos[0], {
+    fecha: '2026-07-22', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -3681, saldo: 4982217.23,
+  })
+  // La columna Saldo vacía es null, nunca cero: el movimiento del día todavía no se liquidó.
+  assert.equal(movimientos[1].saldo, null)
+  assert.equal(movimientos[1].importe, 3940000)
+})
+
+test('encabezado() sólo reconoce el que tiene fecha, concepto e importe', () => {
+  assert.equal(encabezado(['Fecha', 'Concepto', 'Importe', 'Saldo']).importe, 2)
+  assert.equal(encabezado(['Fecha', 'Suc. Origen', 'Concepto', 'Importe']).concepto, 2)
+  assert.equal(encabezado(['Fecha', 'Saldo']), null)
+})
+
+test('EMPAREJAR: el concepto cargado a mano no es el del banco palabra por palabra', () => {
+  // Exigir el texto idéntico dejaba 33 movimientos sin pareja y los reinsertaba: el mismo débito
+  // dos veces. La segunda pasada empareja por fecha+importe.
+  const base = [
+    { id: 1, fecha: '2026-07-22', concepto: 'Cheque debitado - Nº 221', importe: -200000, saldo: 5129398.23 },
+    { id: 2, fecha: '2026-07-22', concepto: 'Transferencia realizada - A katsuda gustavo', importe: -270000, saldo: 5329398.23 },
+  ]
+  const banco = [
+    { fecha: '2026-07-22', concepto: 'Cheque debitado', importe: -200000, saldo: 5251630.74 },
+    { fecha: '2026-07-22', concepto: 'Transferencia realizada - A katsuda gustavo al / - fac / 20085634179', importe: -270000, saldo: 4981630.74 },
+  ]
+  const { pares, soloBase, soloExtracto } = emparejar(base, banco)
+  assert.equal(pares.length, 2)
+  assert.equal(soloBase.length, 0)
+  assert.equal(soloExtracto.length, 0, 'ninguno se reinserta')
+})
+
+test('EMPAREJAR: lo que el banco no lista queda señalado, no se empareja de prepo', () => {
+  // La fila inventada "Diferencia sin detalle del banco (hold intradía)" de −$143.500 tenía que
+  // salir a la luz sola: el extracto real no la lista en ningún lado.
+  const base = [
+    { id: 1, fecha: '2026-07-22', concepto: 'Compra con tarjeta de debito - Vono', importe: -143500, saldo: 5595130.74 },
+    { id: 2, fecha: '2026-07-22', concepto: 'Diferencia sin detalle del banco (hold intradia)', importe: -143500, saldo: 4985898.23 },
+  ]
+  const banco = [{ fecha: '2026-07-22', concepto: 'Compra con tarjeta de debito - Vono - tarj nro. 6077', importe: -143500, saldo: 5451630.74 }]
+  const { pares, soloBase } = emparejar(base, banco)
+  assert.equal(pares.length, 1)
+  assert.equal(soloBase.length, 1)
+  assert.equal(soloBase[0].id, 2)
+})
+
+test('SOBRE EL SALDO GANA EL BANCO — pero sólo cuando el banco lo declara', () => {
+  const pares = [
+    // Los 126 movimientos que tenían el saldo $143.500 más alto que el del extracto.
+    { base: { id: 1, saldo: -399586.65 }, banco: { saldo: -543086.65 } },
+    { base: { id: 2, saldo: 100 }, banco: { saldo: 100 } },
+    // Un movimiento del día no trae saldo: no es motivo para borrar el que ya estaba.
+    { base: { id: 3, saldo: 900 }, banco: { saldo: null } },
+  ]
+  const r = saldosACorregir(pares)
+  assert.equal(r.length, 1)
+  assert.equal(r[0].base.id, 1)
+  assert.equal(r[0].saldoBanco, -543086.65)
+})
+
+test('el saldo de apertura se DERIVA del extracto, no de una constante escrita a mano', () => {
+  // La constante decía −$169.586,65 y el banco dice −$313.086,65. Una constante equivocada no se
+  // puede detectar; un saldo derivado del documento sí.
+  assert.equal(saldoAperturaSegun([{ importe: -230000, saldo: -543086.65 }]), -313086.65)
+  // Si la serie arranca con movimientos sin saldo, sus importes también se descuentan.
+  assert.equal(saldoAperturaSegun([{ importe: -100, saldo: null }, { importe: -50, saldo: 850 }]), 1000)
+  assert.equal(saldoAperturaSegun([]), null)
+})
+
+test('el movimiento que viene en los DOS bloques del archivo entra una sola vez', () => {
+  const m = [
+    { fecha: '2026-07-23', concepto: 'Deposito e-cheq', importe: 3940000, saldo: null },
+    { fecha: '2026-07-23', concepto: 'Deposito e-cheq', importe: 3940000, saldo: 8753461.54 },
+  ]
+  const r = sinDuplicadosDelDia(m)
+  assert.equal(r.length, 1)
+  assert.equal(r[0].saldo, 8753461.54, 'se queda el que el banco ya confirmó')
+})
+
+test('sinDuplicadosDelDia NO colapsa repeticiones legítimas', () => {
+  // Tres cheques de $200.000 el mismo día son tres cheques, y vienen los tres con saldo distinto.
+  const m = [
+    { fecha: '2026-06-25', concepto: 'Cheque debitado', importe: -200000, saldo: -2921608.07 },
+    { fecha: '2026-06-25', concepto: 'Cheque debitado', importe: -200000, saldo: -3121608.07 },
+    { fecha: '2026-06-25', concepto: 'Cheque debitado', importe: -200000, saldo: -3321608.07 },
+  ]
+  assert.equal(sinDuplicadosDelDia(m).length, 3)
 })

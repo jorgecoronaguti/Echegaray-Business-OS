@@ -55,7 +55,22 @@ export function fila(m) {
     String(m.fecha ?? ''),
     String(m.concepto ?? ''),
     Number(m.importe) || 0,
-    Number(m.saldo) || 0,
+    // ═══ UN SALDO QUE FALTA NO ES CERO ═══
+    //
+    // `Number(undefined) || 0` escribía 0 en los movimientos del día, que van al FINAL de la
+    // réplica. Y la disponibilidad de CAJA sale de `formulaUltimoSaldo`, que toma la ÚLTIMA celda
+    // NO VACÍA de esta columna: con un 0 escrito ahí, CAJA mostraba cero pesos en el banco. Hasta
+    // hoy no se veía porque la última fila era una fila inventada ("hold intradía") que sí traía
+    // saldo; en cuanto el 23/07 entraron dos movimientos del día de verdad, quedaba a la vista.
+    //
+    // Vacío significa "el banco todavía no confirmó el saldo después de este movimiento", que es
+    // exactamente lo que pasa: el depósito de e-cheq de otras plazas tarda 48 hs en acreditarse.
+    //
+    // Va el CENTINELA, no una cadena vacía: en la fusión que preserva lo escrito por una persona,
+    // '' significa "no es mi celda, no la toques" —y entonces la celda se quedaría con lo que
+    // hubiera de antes— mientras que VACIO significa "es mi celda y va vacía". Ver
+    // lib/preservar-anotaciones.mjs.
+    m.saldo == null || m.saldo === undefined ? VACIO : Number(m.saldo),
     entra ? 'entra' : 'sale',
     // LA NATURALEZA SE ESCRIBE PARA TODOS, TAMBIÉN PARA LO QUE SALE (21/07).
     //
@@ -176,11 +191,16 @@ async function main() {
   })
   await google.spreadsheetBatchUpdate(ID, reqs)
 
-  // VERIFICACIÓN: el saldo de la última fila del extracto tiene que ser el que declara el banco.
+  // VERIFICACIÓN: hay un saldo escrito por cada movimiento que TRAE saldo.
+  //
+  // No por cada movimiento: los del día vienen sin saldo corrido a propósito, y contarlos como
+  // faltantes convertía el control en una alarma que suena siempre —y una alarma que suena siempre
+  // se apaga—. Lo que sí importa es que ninguno de los que tienen saldo se haya perdido.
+  const conSaldo = datos.filter((f) => typeof f[3] === 'number').length
   const v = await google.readSheetValues(ID, `${PESTAÑA}!${COL.saldo}${FILA0}:${COL.saldo}${FILA0 + datos.length}`)
   const escritas = v.filter((f) => String(f?.[0] ?? '').trim()).length
-  console.log(`${PESTAÑA}: ${datos.length} movimientos · ${escritas} escritos`)
-  if (escritas !== datos.length) { console.log('  ⚠ no coinciden'); process.exitCode = 1 }
+  console.log(`${PESTAÑA}: ${datos.length} movimientos · ${escritas} con saldo escrito (esperados ${conSaldo}; ${datos.length - conSaldo} del día todavía sin saldo corrido)`)
+  if (escritas !== conSaldo) { console.log('  ⚠ no coinciden'); process.exitCode = 1 }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

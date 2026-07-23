@@ -33,28 +33,40 @@
 import { extraer } from './cuit.mjs'
 
 /** El día y la hora de la foto. Todo lo de abajo es verdad A ESTA FECHA, no hoy. */
-export const CORTE = '2026-07-22'
-export const ORIGEN = 'Santander Empresas · extracto 22/06→22/07/2026 (descarga del 22/07 11:20) + captura del 21/07 para tarjeta, acuerdo y saldo USD'
+export const CORTE = '2026-07-23'
+export const ORIGEN = 'Santander Empresas · extracto 22/06→23/07/2026 (descarga del 23/07 11:50) + captura del 21/07 para tarjeta, acuerdo y saldo USD'
 
 /** La cuenta operativa. Es la única del banco. */
 export const CUENTA = {
   banco: 'Banco Santander',
   numero: '179-091383/6',
   sucursal: '0179 San Juan',
-  // El saldo que el banco DECLARA. Es el que manda para la disponibilidad. Actualizado a la descarga
-  // de las 15:50 del 22/07 (más fresca que la de las 11:20, que declaraba $5.251.630,74): entre las
-  // dos, "Movimientos del Día" agregó dos operaciones nuevas —transf. recibida de Manufacturas
-  // Químicas +$4.267,49 y transf. a Katsuda Gustavo −$270.000— y $5.251.630,74 + $4.267,49 − $270.000
-  // = $4.985.898,23 EXACTO. El intradía cierra al peso contra el declarado anterior.
-  saldoPesos: 4985898.23,
-  // Dónde termina la cadena de saldos del detalle transcripto (último movimiento con saldo: la
-  // compra Vono del 22/07). NO coincide con el declarado: contra el detalle, el día tuvo el cheque
-  // Nº 221 (−$200.000), la transf. a Katsuda (−$270.000) y la recibida de Manufacturas (+$4.267,49)
-  // —todos "Movimientos del Día" sin saldo corrido— y queda una diferencia de −$143.500 que ninguna
-  // línea del extracto muestra (retención/hold intradía). Total a conciliar: −$609.232,51. No se
-  // inventa el movimiento faltante: los $143.500 son el único tramo que el banco no explica.
-  saldoUltimoMovimiento: 5595130.74,
-  saldoPendienteConciliar: -609232.51,
+  // El saldo que el banco DECLARA. Es el que manda para la disponibilidad.
+  //
+  // ACTUALIZADO 23/07 CON LA DESCARGA COMPLETA. El extracto declara "Saldo al 23/07/2026
+  // 4.813.461,54", y el OS lo REPRODUCE al centavo: $4.982.191,63 (último saldo confirmado, 22/07)
+  // − $168.730,09 (la compra Appypf del 23/07, que ya impactó). El depósito de e-cheq de otras
+  // plazas por $3.940.000 NO está adentro: es de otras plazas y todavía está en clearing (48 hs).
+  // Contarlo como disponible sería contar plata que el banco todavía no acreditó.
+  saldoPesos: 4813461.54,
+  // El último saldo que el banco CONFIRMA en el detalle (el impuesto al cheque del 22/07). No
+  // coincide con el declarado del 23/07 y no tiene por qué: entre los dos están los movimientos del
+  // día, que el banco lista sin saldo corrido porque todavía los está liquidando.
+  saldoUltimoMovimiento: 4982191.63,
+  // ═══ LOS $143.500 QUE NO EXISTÍAN (23/07) ═══
+  //
+  // Acá decía −$609.232,51 "pendiente de conciliar", de los cuales −$143.500 eran un tramo que
+  // "el banco no explica". La descarga completa del 23/07 mostró que el banco lo explicaba
+  // perfectamente: era la compra con tarjeta "Vono" del 22/07, que ya estaba cargada. Lo que estaba
+  // mal era el SALDO DE APERTURA de la serie transcripta a mano (−$169.586,65 contra los
+  // −$313.086,65 que dice el banco, exactamente $143.500 de diferencia), y para que la cadena
+  // cerrara se había agregado una fila inventada de −$143.500 al final. Dos errores que se tapaban
+  // entre sí y que sólo el documento original podía separar.
+  //
+  // Hoy no queda nada sin conciliar: la cadena cierra de punta a punta y el saldo declarado se
+  // reproduce al centavo. Lo único "pendiente" es plata que el banco todavía no acreditó (el
+  // depósito de e-cheq en clearing), y eso no es una diferencia: es un plazo.
+  saldoPendienteConciliar: 0,
   saldoDolares: 581.39, // de la captura del 21/07; no se recapturó el 22/07
 }
 
@@ -145,168 +157,173 @@ export function antiguedadDias(hoy = new Date(), corte = CORTE) {
 }
 
 /**
- * EL EXTRACTO, MOVIMIENTO POR MOVIMIENTO (03/07 al 21/07/2026).
+ * EL EXTRACTO, MOVIMIENTO POR MOVIMIENTO (22/06 al 23/07/2026) — YA NO ES LA FUENTE.
  *
- * POR QUÉ VALE LA PENA TRANSCRIBIRLO. El extracto es la ÚNICA verdad de lo que se movió de verdad.
- * Compras dice lo que se compró y Cobranzas lo que se facturó; los dos son intenciones hasta que el
- * banco las confirma. Cruzarlos es la forma de encontrar lo que no está cargado en ningún lado.
+ * DEJÓ DE SER UN DATO ESCRITO A MANO (23/07). La fuente es `public.banco_movimientos`, que se carga
+ * con `scripts/importar-banco.mjs` desde el CSV del banco. Este array quedó como RESPALDO de lectura
+ * —si la base no contesta, `_BANCO_RAW` prefiere mostrar el último extracto conocido antes que dejar
+ * la pestaña en cero— y se REGENERA desde la base, no se edita a mano.
  *
- * CÓMO SÉ QUE NO ME EQUIVOQUÉ AL TIPEAR. Cada fila trae su SALDO, y el extracto es una cadena:
- * saldo(n) = saldo(n−1) + importe(n). El test recorre la cadena entera y termina en $5.596.330,74,
- * el saldo que muestra el home del banco. Un dígito mal escrito rompe la cadena y el test falla. Sin
- * eso, esto sería una lista de números que parecen ciertos.
+ * POR QUÉ IMPORTA QUE YA NO SE EDITE A MANO. Hasta hoy estos 127 movimientos eran una transcripción,
+ * y la transcripción arrastraba un error: todos los saldos estaban $143.500 por encima de los que
+ * declara el banco, porque el saldo de apertura se había tomado mal (−$169.586,65 contra los
+ * −$313.086,65 reales). Para que la cadena cerrara igual se había agregado al final una fila que no
+ * existe —"Diferencia sin detalle del banco (hold intradía)", −$143.500—. Dos errores que se
+ * compensaban, invisibles mientras nadie comparara contra el documento original.
  *
- * Están en orden cronológico (el extracto los muestra al revés).
+ * CÓMO SÉ QUE NO HAY UN ERROR ADENTRO. Cada fila trae su SALDO y el extracto es una cadena:
+ * saldo(n) = saldo(n−1) + importe(n). El test la recorre entera desde SALDO_INICIAL. Un dígito mal
+ * escrito la rompe. Están en orden cronológico (el extracto los muestra al revés).
  */
-// EL EXTRACTO, MOVIMIENTO POR MOVIMIENTO (22/06 al 22/07/2026). Reescrito el 22/07 desde el extracto
-// descargado del Santander (reemplaza la transcripción parcial 06→21/07): más largo, más detallado y
-// con la ventana que captura los costos bancarios de fin de junio. Sigue siendo una RÉPLICA con
-// origen y corte. La cadena de saldos (saldo(n)=saldo(n−1)+importe(n)) la verifica el test y termina
-// en $5.595.130,74 — el último saldo que el detalle del extracto muestra.
-export const SALDO_INICIAL = -169586.65
+export const SALDO_INICIAL = -313086.65
 
 export const MOVIMIENTOS = [
-  { fecha: '2026-06-22', concepto: 'Transferencia realizada - A gisela agostina d amico / - fac / 27326890397', importe: -230000, saldo: -399586.65 },
-  { fecha: '2026-06-22', concepto: 'Transferencia realizada - A sanitarios od sas / - fac / 33716650249', importe: -580800, saldo: -980386.65 },
-  { fecha: '2026-06-22', concepto: 'Transferencia realizada - A ac sat srl / - fac / 30710965044', importe: -63503.22, saldo: -1043889.87 },
-  { fecha: '2026-06-22', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -5245.82, saldo: -1049135.69 },
-  { fecha: '2026-06-23', concepto: 'Compra con tarjeta de debito - Merpago*cpcesj - tarj nro. 6077', importe: -865000, saldo: -1914135.69 },
-  { fecha: '2026-06-23', concepto: 'Compra con tarjeta de debito - Merpago*ieric - tarj nro. 6077', importe: -47670, saldo: -1961805.69 },
-  { fecha: '2026-06-23', concepto: 'Transferencia inmediata - A francisco adan alvarez / - var / 20256865913', importe: -55500, saldo: -2017305.69 },
-  { fecha: '2026-06-23', concepto: 'Transferencia inmediata - A matias ivan cobos / - var / 24365438826', importe: -55057.26, saldo: -2072362.95 },
-  { fecha: '2026-06-23', concepto: 'Transferencia realizada - A montoya claudio daniel / - var / 24358530598', importe: -185000, saldo: -2257362.95 },
-  { fecha: '2026-06-23', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -7249.36, saldo: -2264612.31 },
-  { fecha: '2026-06-24', concepto: 'Compra con tarjeta de debito - Appypf 2660 combustibl - tarj nro. 6077', importe: -161626, saldo: -2426238.31 },
-  { fecha: '2026-06-24', concepto: 'Compra con tarjeta de debito - Merpago*esteticaericapala - tarj nro. 2871', importe: -150000, saldo: -2576238.31 },
-  { fecha: '2026-06-24', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -1869.76, saldo: -2578108.07 },
-  { fecha: '2026-06-25', concepto: 'Cheque debitado', importe: -200000, saldo: -2778108.07 },
-  { fecha: '2026-06-25', concepto: 'Cheque debitado', importe: -200000, saldo: -2978108.07 },
-  { fecha: '2026-06-25', concepto: 'Cheque debitado', importe: -200000, saldo: -3178108.07 },
-  { fecha: '2026-06-25', concepto: 'Compra con tarjeta de debito - Appypf 2660 combustibl - tarj nro. 6077', importe: -99999.99, saldo: -3278108.06 },
-  { fecha: '2026-06-25', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -4200, saldo: -3282308.06 },
-  { fecha: '2026-06-29', concepto: 'Echeq clearing recibido 48hs', importe: -3500000, saldo: -6782308.06 },
-  { fecha: '2026-06-29', concepto: 'Comision por servicio de cuenta', importe: -69000, saldo: -6851308.06 },
-  { fecha: '2026-06-29', concepto: 'Iva 21% reg de transfisc ley27743', importe: -14490, saldo: -6865798.06 },
-  { fecha: '2026-06-29', concepto: 'Iva percepcion rg 2408', importe: -2070, saldo: -6867868.06 },
-  { fecha: '2026-06-29', concepto: 'Comision mensual de movs clearing', importe: -8000, saldo: -6875868.06 },
-  { fecha: '2026-06-29', concepto: 'Iva 21% reg de transfisc ley27743', importe: -1680, saldo: -6877548.06 },
-  { fecha: '2026-06-29', concepto: 'Iva percepcion rg 2408', importe: -240, saldo: -6877788.06 },
-  { fecha: '2026-06-29', concepto: 'Comision servicio cuenta dolares', importe: -14770, saldo: -6892558.06 },
-  { fecha: '2026-06-29', concepto: 'Iva 21% reg de transfisc ley27743', importe: -3101.7, saldo: -6895659.76 },
-  { fecha: '2026-06-29', concepto: 'Iva percepcion rg 2408', importe: -443.1, saldo: -6896102.86 },
-  { fecha: '2026-06-29', concepto: 'Transferencia realizada - A ac sat srl / - fac / 30710965044', importe: -54043.44, saldo: -6950146.3 },
-  { fecha: '2026-06-29', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -22007.03, saldo: -6972153.33 },
-  { fecha: '2026-06-30', concepto: 'Pago haberes - 260630507', importe: -344401.2, saldo: -7316554.53 },
-  { fecha: '2026-06-30', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -2066.41, saldo: -7318620.94 },
-  { fecha: '2026-07-01', concepto: 'Deposito e-cheq int misma plaza', importe: 15000000, saldo: 7681379.06 },
-  { fecha: '2026-07-01', concepto: 'Compra con tarjeta de debito - Mercpago*appypfcomb - tarj nro. 6077', importe: -143802.01, saldo: 7537577.05 },
-  { fecha: '2026-07-01', concepto: 'Compra con tarjeta de debito - Appypf 31155 tienda - tarj nro. 6077', importe: -7800, saldo: 7529777.05 },
-  { fecha: '2026-07-01', concepto: 'Transferencia inmediata - A el carpincho construcci / - var / 30716050897', importe: -37000, saldo: 7492777.05 },
-  { fecha: '2026-07-01', concepto: 'Transferencia inmediata - A yuliana cintia fernande / - var / 27484157214', importe: -325000, saldo: 7167777.05 },
-  { fecha: '2026-07-01', concepto: 'Compra en el exterior - Google workspace ecsas.co - tarj nro. 6077', importe: -37926, saldo: 7129851.05 },
-  { fecha: '2026-07-01', concepto: 'Percep perc rg 5617 30% o suj - Google workspace ecsas.co - tarj nro. 6077', importe: -11203.92, saldo: 7118647.13 },
-  { fecha: '2026-07-01', concepto: 'Pago haberes - 260701507', importe: -1807057.16, saldo: 5311589.97 },
-  { fecha: '2026-07-01', concepto: 'Pago haberes - 260701507', importe: -1938254.35, saldo: 3373335.62 },
-  { fecha: '2026-07-01', concepto: 'Anul imp ley 25.413 debito 0,6%', importe: 294.78, saldo: 3373630.4 },
-  { fecha: '2026-07-01', concepto: 'Impuesto ley 25.413 credito 0,6%', importe: -90000, saldo: 3283630.4 },
-  { fecha: '2026-07-01', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -26143.04, saldo: 3257487.36 },
-  { fecha: '2026-07-02', concepto: 'Transferencia realizada - A ac sat srl / - fac / 30710965044', importe: -63503.22, saldo: 3193984.14 },
-  { fecha: '2026-07-02', concepto: 'Debito transf. online banking emp', importe: -1000000, saldo: 2193984.14 },
-  { fecha: '2026-07-02', concepto: 'Pago de honorarios - 260702507', importe: -2000000, saldo: 193984.14 },
-  { fecha: '2026-07-02', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -18381.02, saldo: 175603.12 },
-  { fecha: '2026-07-03', concepto: 'Debito automatico - Sancor cooperati', importe: -31737, saldo: 143866.12 },
-  { fecha: '2026-07-03', concepto: 'Debito automatico - Federacion patro', importe: -536967.83, saldo: -393101.71 },
-  { fecha: '2026-07-03', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -3412.23, saldo: -396513.94 },
-  { fecha: '2026-07-06', concepto: 'Echeq clearing recibido 48hs', importe: -893098.79, saldo: -1289612.73 },
-  { fecha: '2026-07-06', concepto: 'Cheque debitado', importe: -200000, saldo: -1489612.73 },
-  { fecha: '2026-07-06', concepto: 'Compra con tarjeta de debito - Zabala repuestos - tarj nro. 6077', importe: -310000, saldo: -1799612.73 },
-  { fecha: '2026-07-06', concepto: 'Pago tarjeta de credito visa - Deb. automatico 06/07/2026', importe: -1264991.58, saldo: -3064604.31 },
-  { fecha: '2026-07-06', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -16008.54, saldo: -3080612.85 },
-  { fecha: '2026-07-07', concepto: 'Echeq clearing recibido 48hs', importe: -317000, saldo: -3397612.85 },
-  { fecha: '2026-07-07', concepto: 'Echeq clearing recibido 48hs', importe: -383175, saldo: -3780787.85 },
-  { fecha: '2026-07-07', concepto: 'Echeq clearing recibido 48hs', importe: -383175, saldo: -4163962.85 },
-  { fecha: '2026-07-07', concepto: 'Echeq clearing recibido 48hs', importe: -383175, saldo: -4547137.85 },
-  { fecha: '2026-07-07', concepto: 'Echeq clearing recibido 48hs', importe: -383175, saldo: -4930312.85 },
-  { fecha: '2026-07-07', concepto: 'Prestamos prendarios - 0179-039101464204', importe: -1282810.54, saldo: -6213123.39 },
-  { fecha: '2026-07-07', concepto: 'Canje interno recibido 24 hs', importe: -300000, saldo: -6513123.39 },
-  { fecha: '2026-07-07', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -20595.06, saldo: -6533718.45 },
-  { fecha: '2026-07-08', concepto: 'Echeq clearing recibido 48hs', importe: -1854564.14, saldo: -8388282.59 },
-  { fecha: '2026-07-08', concepto: 'Echeq clearing recibido 48hs', importe: -1964635.58, saldo: -10352918.17 },
-  { fecha: '2026-07-08', concepto: 'Debito automatico - Sancor cooperati', importe: -33596, saldo: -10386514.17 },
-  { fecha: '2026-07-08', concepto: 'Compra con tarjeta de debito - Villa del pino sa - tarj nro. 8866', importe: -174000, saldo: -10560514.17 },
-  { fecha: '2026-07-08', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -24160.77, saldo: -10584674.94 },
-  { fecha: '2026-07-13', concepto: 'Compra con tarjeta de debito - Appypf 2660 combustibl - tarj nro. 6077', importe: -99999.96, saldo: -10684674.9 },
-  { fecha: '2026-07-13', concepto: 'Transferencia inmediata - A el carpincho construcci / - var / 30716050897', importe: -69500, saldo: -10754174.9 },
-  { fecha: '2026-07-13', concepto: 'Debito transf. online banking emp - A pedro ward / - var / 23280102199', importe: -62600, saldo: -10816774.9 },
-  { fecha: '2026-07-13', concepto: 'Compra con tarjeta de debito - Merpago*movistarlineam - tarj nro. 6077', importe: -361964.3, saldo: -11178739.2 },
-  { fecha: '2026-07-13', concepto: 'Compra con tarjeta de debito - Merpago*movistarhogar - tarj nro. 6077', importe: -48718.74, saldo: -11227457.94 },
-  { fecha: '2026-07-13', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -3856.7, saldo: -11231314.64 },
-  { fecha: '2026-07-14', concepto: 'Cobro de interes por descubierto - Del 08/06/26 al 07/07/26', importe: -252340.32, saldo: -11483654.96 },
-  { fecha: '2026-07-14', concepto: 'Iva 10,5% reg trans fisc ley 27743', importe: -26495.73, saldo: -11510150.69 },
-  { fecha: '2026-07-14', concepto: 'Iva percep rg 2408 alic reducida', importe: -3785.1, saldo: -11513935.79 },
-  { fecha: '2026-07-14', concepto: 'Debito automatico - Federacion patro', importe: -63853.49, saldo: -11577789.28 },
-  { fecha: '2026-07-14', concepto: 'Transferencia realizada - A david esteban botas mer / - var / 20353186877', importe: -369440, saldo: -11947229.28 },
-  { fecha: '2026-07-14', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -4295.48, saldo: -11951524.76 },
-  { fecha: '2026-07-16', concepto: 'Deposito e-cheq int misma plaza', importe: 10000000, saldo: -1951524.76 },
-  { fecha: '2026-07-16', concepto: 'Cheque debitado', importe: -200000, saldo: -2151524.76 },
-  { fecha: '2026-07-16', concepto: 'Cheque debitado', importe: -200000, saldo: -2351524.76 },
-  { fecha: '2026-07-16', concepto: 'Debito automatico - Afip -30716304643', importe: -1034931.85, saldo: -3386456.61 },
-  { fecha: '2026-07-16', concepto: 'Debito automatico - Afip -30716304643', importe: -473767.08, saldo: -3860223.69 },
-  { fecha: '2026-07-16', concepto: 'Debito automatico - Federacion patro', importe: -9339.75, saldo: -3869563.44 },
-  { fecha: '2026-07-16', concepto: 'Transferencia inmediata - A el carpincho construcci / - var / 30716050897', importe: -26000, saldo: -3895563.44 },
-  { fecha: '2026-07-16', concepto: 'Transferencia recibida - credin - Id debin cuit 30710630670', importe: 11913568.24, saldo: 8018004.8 },
-  { fecha: '2026-07-16', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -11664.23, saldo: 8006340.57 },
-  { fecha: '2026-07-16', concepto: 'Impuesto ley 25.413 credito 0,6%', importe: -131481.41, saldo: 7874859.16 },
-  { fecha: '2026-07-17', concepto: 'Deposito de efectivo', importe: 6440000, saldo: 14314859.16 },
-  { fecha: '2026-07-17', concepto: 'Deposito de efectivo', importe: 1520000, saldo: 15834859.16 },
-  { fecha: '2026-07-17', concepto: 'Deposito de efectivo', importe: 2000000, saldo: 17834859.16 },
-  { fecha: '2026-07-17', concepto: 'Pago de haberes por cci - &&000000000000001', importe: -252200, saldo: 17582659.16 },
-  { fecha: '2026-07-17', concepto: 'Transferencia inmediata - A sanitarios od sas / - alq / 33716650249', importe: -290400, saldo: 17292259.16 },
-  { fecha: '2026-07-17', concepto: 'Transferencia inmediata - A jose maria robles / - hon / 20379240195', importe: -666268.31, saldo: 16625990.85 },
-  { fecha: '2026-07-17', concepto: 'Transferencia inmediata - A gisela agostina d amico / - hon / 27326890397', importe: -230000, saldo: 16395990.85 },
-  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -238600, saldo: 16157390.85 },
-  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -267500, saldo: 15889890.85 },
-  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -256000, saldo: 15633890.85 },
-  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -258000, saldo: 15375890.85 },
-  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -250000, saldo: 15125890.85 },
-  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -256000, saldo: 14869890.85 },
-  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -253400, saldo: 14616490.85 },
-  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -251000, saldo: 14365490.85 },
-  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -277000, saldo: 14088490.85 },
-  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -258000, saldo: 13830490.85 },
-  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -248000, saldo: 13582490.85 },
-  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -240000, saldo: 13342490.85 },
-  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -252350, saldo: 13090140.85 },
-  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -217100, saldo: 12873040.85 },
-  { fecha: '2026-07-17', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -29770.91, saldo: 12843269.94 },
-  { fecha: '2026-07-17', concepto: 'Impuesto ley 25.413 credito 0,6%', importe: -59760, saldo: 12783509.94 },
-  { fecha: '2026-07-20', concepto: 'Pago de servicios - Imp.afip: 3071630464311793242 - tarj nro. 3537', importe: -4859763.28, saldo: 7923746.66 },
-  { fecha: '2026-07-20', concepto: 'Transferencia realizada - A herrajes san juan / - fac / 30718775406', importe: -750000, saldo: 7173746.66 },
-  { fecha: '2026-07-20', concepto: 'Compra con tarjeta de debito - Appypf 2660 combustibl - tarj nro. 6077', importe: -99999.96, saldo: 7073746.7 },
-  { fecha: '2026-07-20', concepto: 'Canje interno recibido 24 hs', importe: -200000, saldo: 6873746.7 },
-  { fecha: '2026-07-20', concepto: 'Echeq canje interno recibido 24hs', importe: -893098.79, saldo: 5980647.91 },
-  { fecha: '2026-07-20', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -40817.17, saldo: 5939830.74 },
-  { fecha: '2026-07-21', concepto: 'Cheque debitado', importe: -200000, saldo: 5739830.74 },
-  { fecha: '2026-07-21', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -1200, saldo: 5738630.74 },
-  { fecha: '2026-07-22', concepto: 'Compra con tarjeta de debito - Vono - tarj nro. 6077', importe: -143500, saldo: 5595130.74 },
+  { fecha: '2026-06-22', concepto: 'Transferencia realizada - A gisela agostina d amico / - fac / 27326890397', importe: -230000, saldo: -543086.65 },
+  { fecha: '2026-06-22', concepto: 'Transferencia realizada - A sanitarios od sas / - fac / 33716650249', importe: -580800, saldo: -1123886.65 },
+  { fecha: '2026-06-22', concepto: 'Transferencia realizada - A ac sat srl / - fac / 30710965044', importe: -63503.22, saldo: -1187389.87 },
+  { fecha: '2026-06-22', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -5245.82, saldo: -1192635.69 },
+  { fecha: '2026-06-23', concepto: 'Compra con tarjeta de debito - Merpago*cpcesj - tarj nro. 6077', importe: -865000, saldo: -2057635.69 },
+  { fecha: '2026-06-23', concepto: 'Compra con tarjeta de debito - Merpago*ieric - tarj nro. 6077', importe: -47670, saldo: -2105305.69 },
+  { fecha: '2026-06-23', concepto: 'Transferencia inmediata - A francisco adan alvarez / - var / 20256865913', importe: -55500, saldo: -2160805.69 },
+  { fecha: '2026-06-23', concepto: 'Transferencia inmediata - A matias ivan cobos / - var / 24365438826', importe: -55057.26, saldo: -2215862.95 },
+  { fecha: '2026-06-23', concepto: 'Transferencia realizada - A montoya claudio daniel / - var / 24358530598', importe: -185000, saldo: -2400862.95 },
+  { fecha: '2026-06-23', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -7249.36, saldo: -2408112.31 },
+  { fecha: '2026-06-24', concepto: 'Compra con tarjeta de debito - Appypf 2660 combustibl - tarj nro. 6077', importe: -161626, saldo: -2569738.31 },
+  { fecha: '2026-06-24', concepto: 'Compra con tarjeta de debito - Merpago*esteticaericapala - tarj nro. 2871', importe: -150000, saldo: -2719738.31 },
+  { fecha: '2026-06-24', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -1869.76, saldo: -2721608.07 },
+  { fecha: '2026-06-25', concepto: 'Cheque debitado', importe: -200000, saldo: -2921608.07 },
+  { fecha: '2026-06-25', concepto: 'Cheque debitado', importe: -200000, saldo: -3121608.07 },
+  { fecha: '2026-06-25', concepto: 'Cheque debitado', importe: -200000, saldo: -3321608.07 },
+  { fecha: '2026-06-25', concepto: 'Compra con tarjeta de debito - Appypf 2660 combustibl - tarj nro. 6077', importe: -99999.99, saldo: -3421608.06 },
+  { fecha: '2026-06-25', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -4200, saldo: -3425808.06 },
+  { fecha: '2026-06-29', concepto: 'Echeq clearing recibido 48hs', importe: -3500000, saldo: -6925808.06 },
+  { fecha: '2026-06-29', concepto: 'Comision por servicio de cuenta', importe: -69000, saldo: -6994808.06 },
+  { fecha: '2026-06-29', concepto: 'Iva 21% reg de transfisc ley27743', importe: -14490, saldo: -7009298.06 },
+  { fecha: '2026-06-29', concepto: 'Iva percepcion rg 2408', importe: -2070, saldo: -7011368.06 },
+  { fecha: '2026-06-29', concepto: 'Comision mensual de movs clearing', importe: -8000, saldo: -7019368.06 },
+  { fecha: '2026-06-29', concepto: 'Iva 21% reg de transfisc ley27743', importe: -1680, saldo: -7021048.06 },
+  { fecha: '2026-06-29', concepto: 'Iva percepcion rg 2408', importe: -240, saldo: -7021288.06 },
+  { fecha: '2026-06-29', concepto: 'Comision servicio cuenta dolares', importe: -14770, saldo: -7036058.06 },
+  { fecha: '2026-06-29', concepto: 'Iva 21% reg de transfisc ley27743', importe: -3101.7, saldo: -7039159.76 },
+  { fecha: '2026-06-29', concepto: 'Iva percepcion rg 2408', importe: -443.1, saldo: -7039602.86 },
+  { fecha: '2026-06-29', concepto: 'Transferencia realizada - A ac sat srl / - fac / 30710965044', importe: -54043.44, saldo: -7093646.3 },
+  { fecha: '2026-06-29', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -22007.03, saldo: -7115653.33 },
+  { fecha: '2026-06-30', concepto: 'Pago haberes - 260630507', importe: -344401.2, saldo: -7460054.53 },
+  { fecha: '2026-06-30', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -2066.41, saldo: -7462120.94 },
+  { fecha: '2026-07-01', concepto: 'Deposito e-cheq int misma plaza', importe: 15000000, saldo: 7537879.06 },
+  { fecha: '2026-07-01', concepto: 'Compra con tarjeta de debito - Mercpago*appypfcomb - tarj nro. 6077', importe: -143802.01, saldo: 7394077.05 },
+  { fecha: '2026-07-01', concepto: 'Compra con tarjeta de debito - Appypf 31155 tienda - tarj nro. 6077', importe: -7800, saldo: 7386277.05 },
+  { fecha: '2026-07-01', concepto: 'Transferencia inmediata - A el carpincho construcci / - var / 30716050897', importe: -37000, saldo: 7349277.05 },
+  { fecha: '2026-07-01', concepto: 'Transferencia inmediata - A yuliana cintia fernande / - var / 27484157214', importe: -325000, saldo: 7024277.05 },
+  { fecha: '2026-07-01', concepto: 'Compra en el exterior - Google workspace ecsas.co - tarj nro. 6077', importe: -37926, saldo: 6986351.05 },
+  { fecha: '2026-07-01', concepto: 'Percep perc rg 5617 30% o suj - Google workspace ecsas.co - tarj nro. 6077', importe: -11203.92, saldo: 6975147.13 },
+  { fecha: '2026-07-01', concepto: 'Pago haberes - 260701507', importe: -1807057.16, saldo: 5168089.97 },
+  { fecha: '2026-07-01', concepto: 'Pago haberes - 260701507', importe: -1938254.35, saldo: 3229835.62 },
+  { fecha: '2026-07-01', concepto: 'Anul imp ley 25.413 debito 0,6%', importe: 294.78, saldo: 3230130.4 },
+  { fecha: '2026-07-01', concepto: 'Impuesto ley 25.413 credito 0,6%', importe: -90000, saldo: 3140130.4 },
+  { fecha: '2026-07-01', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -26143.04, saldo: 3113987.36 },
+  { fecha: '2026-07-02', concepto: 'Transferencia realizada - A ac sat srl / - fac / 30710965044', importe: -63503.22, saldo: 3050484.14 },
+  { fecha: '2026-07-02', concepto: 'Debito transf. online banking emp', importe: -1000000, saldo: 2050484.14 },
+  { fecha: '2026-07-02', concepto: 'Pago de honorarios - 260702507', importe: -2000000, saldo: 50484.14 },
+  { fecha: '2026-07-02', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -18381.02, saldo: 32103.12 },
+  { fecha: '2026-07-03', concepto: 'Debito automatico - Sancor cooperati', importe: -31737, saldo: 366.12 },
+  { fecha: '2026-07-03', concepto: 'Debito automatico - Federacion patro', importe: -536967.83, saldo: -536601.71 },
+  { fecha: '2026-07-03', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -3412.23, saldo: -540013.94 },
+  { fecha: '2026-07-06', concepto: 'Echeq clearing recibido 48hs', importe: -893098.79, saldo: -1433112.73 },
+  { fecha: '2026-07-06', concepto: 'Cheque debitado', importe: -200000, saldo: -1633112.73 },
+  { fecha: '2026-07-06', concepto: 'Compra con tarjeta de debito - Zabala repuestos - tarj nro. 6077', importe: -310000, saldo: -1943112.73 },
+  { fecha: '2026-07-06', concepto: 'Pago tarjeta de credito visa - Deb. automatico 06/07/2026', importe: -1264991.58, saldo: -3208104.31 },
+  { fecha: '2026-07-06', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -16008.54, saldo: -3224112.85 },
+  { fecha: '2026-07-07', concepto: 'Echeq clearing recibido 48hs', importe: -317000, saldo: -3541112.85 },
+  { fecha: '2026-07-07', concepto: 'Echeq clearing recibido 48hs', importe: -383175, saldo: -3924287.85 },
+  { fecha: '2026-07-07', concepto: 'Echeq clearing recibido 48hs', importe: -383175, saldo: -4307462.85 },
+  { fecha: '2026-07-07', concepto: 'Echeq clearing recibido 48hs', importe: -383175, saldo: -4690637.85 },
+  { fecha: '2026-07-07', concepto: 'Echeq clearing recibido 48hs', importe: -383175, saldo: -5073812.85 },
+  { fecha: '2026-07-07', concepto: 'Prestamos prendarios - 0179-039101464204', importe: -1282810.54, saldo: -6356623.39 },
+  { fecha: '2026-07-07', concepto: 'Canje interno recibido 24 hs', importe: -300000, saldo: -6656623.39 },
+  { fecha: '2026-07-07', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -20595.06, saldo: -6677218.45 },
+  { fecha: '2026-07-08', concepto: 'Echeq clearing recibido 48hs', importe: -1854564.14, saldo: -8531782.59 },
+  { fecha: '2026-07-08', concepto: 'Echeq clearing recibido 48hs', importe: -1964635.58, saldo: -10496418.17 },
+  { fecha: '2026-07-08', concepto: 'Debito automatico - Sancor cooperati', importe: -33596, saldo: -10530014.17 },
+  { fecha: '2026-07-08', concepto: 'Compra con tarjeta de debito - Villa del pino sa - tarj nro. 8866', importe: -174000, saldo: -10704014.17 },
+  { fecha: '2026-07-08', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -24160.77, saldo: -10728174.94 },
+  { fecha: '2026-07-13', concepto: 'Compra con tarjeta de debito - Appypf 2660 combustibl - tarj nro. 6077', importe: -99999.96, saldo: -10828174.9 },
+  { fecha: '2026-07-13', concepto: 'Transferencia inmediata - A el carpincho construcci / - var / 30716050897', importe: -69500, saldo: -10897674.9 },
+  { fecha: '2026-07-13', concepto: 'Debito transf. online banking emp - A pedro ward / - var / 23280102199', importe: -62600, saldo: -10960274.9 },
+  { fecha: '2026-07-13', concepto: 'Compra con tarjeta de debito - Merpago*movistarlineam - tarj nro. 6077', importe: -361964.3, saldo: -11322239.2 },
+  { fecha: '2026-07-13', concepto: 'Compra con tarjeta de debito - Merpago*movistarhogar - tarj nro. 6077', importe: -48718.74, saldo: -11370957.94 },
+  { fecha: '2026-07-13', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -3856.7, saldo: -11374814.64 },
+  { fecha: '2026-07-14', concepto: 'Cobro de interes por descubierto - Del 08/06/26 al 07/07/26', importe: -252340.32, saldo: -11627154.96 },
+  { fecha: '2026-07-14', concepto: 'Iva 10,5% reg trans fisc ley 27743', importe: -26495.73, saldo: -11653650.69 },
+  { fecha: '2026-07-14', concepto: 'Iva percep rg 2408 alic reducida', importe: -3785.1, saldo: -11657435.79 },
+  { fecha: '2026-07-14', concepto: 'Debito automatico - Federacion patro', importe: -63853.49, saldo: -11721289.28 },
+  { fecha: '2026-07-14', concepto: 'Transferencia realizada - A david esteban botas mer / - var / 20353186877', importe: -369440, saldo: -12090729.28 },
+  { fecha: '2026-07-14', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -4295.48, saldo: -12095024.76 },
+  { fecha: '2026-07-16', concepto: 'Deposito e-cheq int misma plaza', importe: 10000000, saldo: -2095024.76 },
+  { fecha: '2026-07-16', concepto: 'Cheque debitado', importe: -200000, saldo: -2295024.76 },
+  { fecha: '2026-07-16', concepto: 'Cheque debitado', importe: -200000, saldo: -2495024.76 },
+  { fecha: '2026-07-16', concepto: 'Debito automatico - Afip -30716304643', importe: -1034931.85, saldo: -3529956.61 },
+  { fecha: '2026-07-16', concepto: 'Debito automatico - Afip -30716304643', importe: -473767.08, saldo: -4003723.69 },
+  { fecha: '2026-07-16', concepto: 'Debito automatico - Federacion patro', importe: -9339.75, saldo: -4013063.44 },
+  { fecha: '2026-07-16', concepto: 'Transferencia inmediata - A el carpincho construcci / - var / 30716050897', importe: -26000, saldo: -4039063.44 },
+  { fecha: '2026-07-16', concepto: 'Transferencia recibida - credin - Id debin cuit 30710630670', importe: 11913568.24, saldo: 7874504.8 },
+  { fecha: '2026-07-16', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -11664.23, saldo: 7862840.57 },
+  { fecha: '2026-07-16', concepto: 'Impuesto ley 25.413 credito 0,6%', importe: -131481.41, saldo: 7731359.16 },
+  { fecha: '2026-07-17', concepto: 'Deposito de efectivo', importe: 6440000, saldo: 14171359.16 },
+  { fecha: '2026-07-17', concepto: 'Deposito de efectivo', importe: 1520000, saldo: 15691359.16 },
+  { fecha: '2026-07-17', concepto: 'Deposito de efectivo', importe: 2000000, saldo: 17691359.16 },
+  { fecha: '2026-07-17', concepto: 'Pago de haberes por cci - &&000000000000001', importe: -252200, saldo: 17439159.16 },
+  { fecha: '2026-07-17', concepto: 'Transferencia inmediata - A sanitarios od sas / - alq / 33716650249', importe: -290400, saldo: 17148759.16 },
+  { fecha: '2026-07-17', concepto: 'Transferencia inmediata - A jose maria robles / - hon / 20379240195', importe: -666268.31, saldo: 16482490.85 },
+  { fecha: '2026-07-17', concepto: 'Transferencia inmediata - A gisela agostina d amico / - hon / 27326890397', importe: -230000, saldo: 16252490.85 },
+  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -238600, saldo: 16013890.85 },
+  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -267500, saldo: 15746390.85 },
+  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -256000, saldo: 15490390.85 },
+  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -258000, saldo: 15232390.85 },
+  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -250000, saldo: 14982390.85 },
+  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -256000, saldo: 14726390.85 },
+  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -253400, saldo: 14472990.85 },
+  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -251000, saldo: 14221990.85 },
+  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -277000, saldo: 13944990.85 },
+  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -258000, saldo: 13686990.85 },
+  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -248000, saldo: 13438990.85 },
+  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -240000, saldo: 13198990.85 },
+  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -252350, saldo: 12946640.85 },
+  { fecha: '2026-07-17', concepto: 'Pago haberes - 260717507', importe: -217100, saldo: 12729540.85 },
+  { fecha: '2026-07-17', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -29770.91, saldo: 12699769.94 },
+  { fecha: '2026-07-17', concepto: 'Impuesto ley 25.413 credito 0,6%', importe: -59760, saldo: 12640009.94 },
+  { fecha: '2026-07-20', concepto: 'Pago de servicios - Imp.afip: 3071630464311793242 - tarj nro. 3537', importe: -4859763.28, saldo: 7780246.66 },
+  { fecha: '2026-07-20', concepto: 'Transferencia realizada - A herrajes san juan / - fac / 30718775406', importe: -750000, saldo: 7030246.66 },
+  { fecha: '2026-07-20', concepto: 'Compra con tarjeta de debito - Appypf 2660 combustibl - tarj nro. 6077', importe: -99999.96, saldo: 6930246.7 },
+  { fecha: '2026-07-20', concepto: 'Canje interno recibido 24 hs', importe: -200000, saldo: 6730246.7 },
+  { fecha: '2026-07-20', concepto: 'Echeq canje interno recibido 24hs', importe: -893098.79, saldo: 5837147.91 },
+  { fecha: '2026-07-20', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -40817.17, saldo: 5796330.74 },
+  { fecha: '2026-07-21', concepto: 'Cheque debitado', importe: -200000, saldo: 5596330.74 },
+  { fecha: '2026-07-21', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -1200, saldo: 5595130.74 },
+  { fecha: '2026-07-22', concepto: 'Compra con tarjeta de debito - Vono - tarj nro. 6077', importe: -143500, saldo: 5451630.74 },
+  { fecha: '2026-07-22', concepto: 'Cheque debitado - Nº 221', importe: -200000, saldo: 5251630.74 },
+  { fecha: '2026-07-22', concepto: 'Transferencia realizada - A katsuda gustavo', importe: -270000, saldo: 4981630.74 },
+  { fecha: '2026-07-22', concepto: 'Transferencia recibida - De manufacturas quimicas', importe: 4267.49, saldo: 4985898.23 },
+  { fecha: '2026-07-22', concepto: 'Impuesto ley 25.413 debito 0,6%', importe: -3681, saldo: 4982217.23 },
+  { fecha: '2026-07-22', concepto: 'Impuesto ley 25.413 credito 0,6%', importe: -25.6, saldo: 4982191.63 }
 ]
 
 /**
- * MOVIMIENTOS DEL DÍA — lo que el extracto lista en "Movimientos del Día" (22/07, sin saldo corrido)
- * más el tramo que el banco no itemiza. La cadena principal (MOVIMIENTOS) cierra en $5.595.130,74
- * (Vono); estas cuatro filas la llevan al saldo DECLARADO $4.985.898,23 — el que manda para la
- * disponibilidad. Existen para que CAJA muestre lo que el banco realmente tiene HOY y no el último
- * saldo corrido del detalle, sin pegar un número: `_BANCO_RAW` las anexa y `formulaUltimoSaldo` toma
- * el último saldo. El −$143.500 es el hold intradía que ninguna línea del extracto explica: va
- * ROTULADO como "sin detalle", no disfrazado de operación real, y clasifica a su propio bucket para
- * no ensuciar la conciliación por naturaleza. El saldo de cada fila se encadena desde el cierre de
- * MOVIMIENTOS; sólo el último importa para la disponibilidad.
+ * MOVIMIENTOS DEL DÍA — lo que el extracto lista en "Movimientos del Día", todavía SIN saldo corrido.
+ *
+ * SIN SALDO NO ES CON SALDO CERO. El banco los muestra porque ya ocurrieron, pero no dice cuánto
+ * quedó después: los está liquidando. `_BANCO_RAW` los anexa al final con la celda de saldo VACÍA,
+ * nunca con un cero —un cero ahí haría que `formulaUltimoSaldo` devolviera $0 y CAJA mostrara la
+ * cuenta vacía—.
+ *
+ * Y NO TODOS PESAN IGUAL EN LA DISPONIBILIDAD. Al 23/07 el banco declara $4.813.461,54, que es el
+ * último saldo confirmado MENOS la compra de $168.730,09: el depósito de e-cheq de otras plazas por
+ * $3.940.000 NO está adentro porque está en clearing (48 hs). Quién ya impactó y quién no lo dice
+ * el "Saldo al …" del propio extracto — lo lee `saldoDeclarado()` en lib/banco-importar.mjs.
  */
 export const MOVIMIENTOS_DIA = [
-  { fecha: '2026-07-22', concepto: 'Transferencia recibida - De manufacturas quimicas', importe: 4267.49, saldo: 5599398.23 },
-  { fecha: '2026-07-22', concepto: 'Transferencia realizada - A katsuda gustavo', importe: -270000, saldo: 5329398.23 },
-  { fecha: '2026-07-22', concepto: 'Cheque debitado - Nº 221', importe: -200000, saldo: 5129398.23 },
-  { fecha: '2026-07-22', concepto: 'Diferencia sin detalle del banco (hold intradia)', importe: -143500, saldo: 4985898.23 },
+  { fecha: '2026-07-23', concepto: 'Deposito e-cheq int ots plazas', importe: 3940000, saldo: null },
+  { fecha: '2026-07-23', concepto: 'Compra con tarjeta de debito - Appypf 2660 combustibl - tarj nro. 6077', importe: -168730.09, saldo: null }
 ]
 
 /**

@@ -24,12 +24,21 @@
 // control que ya encontró dos errores de transcripción en este archivo. Se aplica DESPUÉS de mezclar
 // lo nuevo con lo que ya estaba, porque un extracto nuevo puede arrancar a mitad de la serie.
 
-/** El importe a la argentina: "1.234,56" / "-1.234,56" / "$ 1.234,56-" → número. */
+/** El importe a la argentina: "1.234,56" / "-1.234,56" / "$ 1.234,56-" / "(1.234,56)" → número. */
 export function importe(txt) {
   let s = String(txt ?? '').trim()
   if (!s) return null
   // El signo puede venir al final ("1.234,56-"), como en varios exports de homebanking.
   const negativoAlFinal = /-\s*$/.test(s)
+  // ═══ EL PARÉNTESIS ES UN SIGNO MENOS ═══
+  //
+  // La descarga CSV del Santander Empresas NO usa el guión: escribe los débitos y los saldos
+  // negativos entre paréntesis — "(168.730,09)", "(7.462.120,94)". La primera versión de este
+  // archivo limpiaba todo lo que no fuera dígito, coma, punto o guión, así que el paréntesis
+  // desaparecía y CADA DÉBITO ENTRABA COMO CRÉDITO. No da error: da una cuenta que sube cuando
+  // en realidad baja. Se detectó el 23/07 comparando el extracto contra los 127 movimientos ya
+  // cargados: los 128 del archivo daban todos positivos.
+  const entreParentesis = /^\(.*\)$/.test(s)
   s = s.replace(/[^\d,.-]/g, '')
   if (!s || !/\d/.test(s)) return null
   // es-AR: el punto es separador de miles y la coma decimal. Se saca el punto y se cambia la coma.
@@ -37,7 +46,7 @@ export function importe(txt) {
   s = s.replace(/\./g, '').replace(',', '.').replace(/-(?!^)/g, '')
   const n = Number(s)
   if (!Number.isFinite(n)) return null
-  const negativo = negativoAlFinal || /^\s*-/.test(String(txt))
+  const negativo = negativoAlFinal || entreParentesis || /^\s*-/.test(String(txt))
   return negativo ? -Math.abs(n) : n
 }
 
@@ -77,7 +86,31 @@ export function campos(linea) {
 }
 
 /** Las líneas que no son un movimiento: encabezados, totales, cortes de página. */
-const ES_RUIDO = /^(fecha\b|saldo (inicial|final|anterior)|movimientos|cuenta|per[ií]odo|total\b|p[áa]gina|banco santander|consolidado|=+$|-+$)/i
+// `saldo al` se saltea acá porque lo lee `saldoDeclarado()` aparte: es el control final del archivo,
+// no un movimiento. La marca de hora ("23/07/2026 11:50:45") y el rótulo de cada bloque son parte de
+// la estructura del export: informarlos como "líneas que no entendí" en cada corrida es ruido, y el
+// ruido constante hace que nadie mire las líneas que sí importan.
+const ES_RUIDO = /^(fecha\b|saldo (inicial|final|anterior|al)\b|movimientos|[úu]ltimos movimientos|cuenta|per[ií]odo|total\b|p[áa]gina|banco santander|consolidado|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\s+\d{1,2}:\d{2}(:\d{2})?$|=+$|-+$)/i
+
+/**
+ * ¿Esta línea es el ENCABEZADO de columnas del export? Si lo es, devuelve dónde está cada cosa.
+ *
+ * POR QUÉ (23/07). La descarga CSV del Santander trae ocho columnas:
+ *   Fecha;Suc. Origen;Desc. Sucursal;Cod. Operativo;Referencia;Concepto;Importe;Saldo
+ * La heurística de "todo lo del medio es el concepto" pega el código operativo y la referencia
+ * adentro del texto ("0179 San Juan 4633 000008508 Impuesto ley 25.413…"). Eso no da error: da un
+ * concepto distinto del que ya está cargado, la deduplicación no lo reconoce y el movimiento entra
+ * DOS VECES. Cuando el archivo dice dónde está cada columna, no hay nada que adivinar.
+ */
+export function encabezado(c = []) {
+  const norm = c.map((x) => String(x).toLowerCase().replace(/[.\s]/g, ''))
+  const iFecha = norm.indexOf('fecha')
+  const iConcepto = norm.indexOf('concepto')
+  const iImporte = norm.indexOf('importe')
+  const iSaldo = norm.indexOf('saldo')
+  if (iFecha < 0 || iConcepto < 0 || iImporte < 0) return null
+  return { fecha: iFecha, concepto: iConcepto, importe: iImporte, saldo: iSaldo }
+}
 
 /**
  * NÚCLEO PURO: lee un extracto pegado o exportado y devuelve movimientos y rechazos.
@@ -90,12 +123,38 @@ export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {})
   const movimientos = []
   const rechazos = []
   const lineas = String(texto ?? '').split('\n')
+  // El mapa de columnas vale desde el encabezado que lo declaró hasta el próximo. Un mismo archivo
+  // trae dos bloques ("Movimientos del Día" y "Últimos Movimientos"), cada uno con su encabezado.
+  let mapa = null
 
   lineas.forEach((linea, i) => {
     const cruda = linea.trim()
     if (!cruda) return
-    if (ES_RUIDO.test(cruda)) return
     const c = campos(cruda)
+
+    const enc = encabezado(c)
+    if (enc) { mapa = enc; return }
+    if (ES_RUIDO.test(cruda)) return
+
+    // ── Con encabezado: cada columna en su lugar, sin adivinar ──
+    if (mapa && c.length > mapa.importe && c.length > mapa.concepto) {
+      const f = fecha(c[mapa.fecha], anio)
+      if (!f) { rechazos.push({ linea: i + 1, texto: cruda.slice(0, 90), motivo: `"${c[mapa.fecha]}" no es una fecha` }); return }
+      const imp = importe(c[mapa.importe])
+      if (imp === null) { rechazos.push({ linea: i + 1, texto: cruda.slice(0, 90), motivo: 'no encontré el importe' }); return }
+      const concepto = String(c[mapa.concepto] ?? '').replace(/\s+/g, ' ').trim()
+      if (!concepto) { rechazos.push({ linea: i + 1, texto: cruda.slice(0, 90), motivo: 'la fila no tiene concepto' }); return }
+      // La columna Saldo viene VACÍA en los movimientos del día: es null, nunca cero. Un cero
+      // inventado rompería la cadena y haría gritar al control sin motivo.
+      const saldo = mapa.saldo >= 0 ? importe(c[mapa.saldo]) : null
+      movimientos.push({ fecha: f, concepto, importe: imp, saldo })
+      return
+    }
+
+    // ── Sin encabezado (pegado de pantalla, texto de una captura): la heurística ──
+    // Una columna final vacía (el Saldo que todavía no existe) dejaría la búsqueda del importe sin
+    // arrancar: importe('') es null y el barrido corta en el primer campo.
+    while (c.length > 3 && c[c.length - 1] === '') c.pop()
     // Una línea de movimiento tiene, como mínimo, fecha + concepto + importe.
     if (c.length < 3) { rechazos.push({ linea: i + 1, texto: cruda.slice(0, 90), motivo: 'no tiene fecha, concepto e importe' }); return }
     const f = fecha(c[0], anio)
@@ -130,6 +189,159 @@ export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {})
 /** La clave natural de un movimiento. El SALDO entra a propósito: dos transferencias iguales el
  *  mismo día son dos movimientos distintos y sólo el saldo corrido los separa. */
 export const clave = (m) => `${m.fecha}|${String(m.concepto).toLowerCase().replace(/\s+/g, ' ').trim()}|${Number(m.importe).toFixed(2)}|${m.saldo == null ? '' : Number(m.saldo).toFixed(2)}`
+
+/** El movimiento SIN el saldo. Identifica el hecho económico; el saldo es lo que el banco dice que
+ *  quedó después, y eso puede haberse cargado mal sin que el hecho cambie. */
+export const claveSinSaldo = (m) => `${m.fecha}|${String(m.concepto).toLowerCase().replace(/\s+/g, ' ').trim()}|${Number(m.importe).toFixed(2)}`
+
+/**
+ * NÚCLEO PURO: emparejar lo que ya está con lo que dice el extracto, por el hecho económico.
+ *
+ * POR QUÉ EXISTE (23/07). La descarga real del Santander demostró que los 127 movimientos que había
+ * cargados tenían TODOS los saldos $143.500 más altos que los del banco: venían de una transcripción
+ * manual anterior arrastrada desde un saldo de apertura equivocado, y para que la serie cerrara se
+ * había agregado una fila inventada —"Diferencia sin detalle del banco (hold intradía)", −$143.500—
+ * que compensaba el error. Dos errores que se tapaban entre sí.
+ *
+ * Los movimientos eran los correctos: lo que estaba mal era el saldo. Emparejando por
+ * fecha+concepto+importe (el hecho, sin el saldo) se ve exactamente eso, y el banco gana: el saldo
+ * corrido es un dato del banco, no una opinión del OS.
+ *
+ * Las repeticiones se emparejan EN ORDEN (tres "Cheque debitado" de $200.000 el mismo día son tres
+ * movimientos distintos y sólo el saldo los separa), así que ambas listas tienen que venir en el
+ * orden real del extracto.
+ *
+ * @returns {{pares:{base:object,banco:object}[], soloBase:object[], soloExtracto:object[]}}
+ */
+export function emparejar(existentes = [], leidos = []) {
+  const usados = new Set()
+  const pares = []
+
+  // Un índice por clave, con las posiciones en orden. `shift()` consume la primera libre: así las
+  // repeticiones se emparejan en el orden en que ocurrieron.
+  const indexar = (fn) => {
+    const m = new Map()
+    existentes.forEach((x, i) => {
+      if (usados.has(i)) return
+      const k = fn(x)
+      if (!m.has(k)) m.set(k, [])
+      m.get(k).push(i)
+    })
+    return m
+  }
+
+  // ── Pasada 1: el hecho completo (fecha + concepto + importe) ──
+  const porTexto = indexar(claveSinSaldo)
+  const resto = []
+  for (const b of leidos) {
+    const cola = porTexto.get(claveSinSaldo(b))
+    const i = cola && cola.length ? cola.shift() : undefined
+    if (i === undefined) { resto.push(b); continue }
+    usados.add(i)
+    pares.push({ base: existentes[i], banco: b })
+  }
+
+  // ── Pasada 2: fecha + importe, para los que sobraron ──
+  //
+  // POR QUÉ HACE FALTA. El concepto que hay cargado no es el del banco palabra por palabra: se
+  // limpió a mano al transcribirlo ("Pago haberes - 260701507" contra "Pago haberes - 260701507
+  // 260701507", "Cheque debitado - Nº 221" contra "Cheque debitado"). Exigir el texto idéntico
+  // dejaba 33 movimientos sin emparejar y los volvía a insertar: el mismo débito dos veces.
+  // Fecha+importe alcanza porque el emparejamiento es por multiplicidad —si el banco lista tres
+  // débitos de $200.000 ese día, hay exactamente tres cargados— y lo que sobra se informa.
+  const porMonto = indexar((m) => `${m.fecha}|${Number(m.importe).toFixed(2)}`)
+  const soloExtracto = []
+  for (const b of resto) {
+    const cola = porMonto.get(`${b.fecha}|${Number(b.importe).toFixed(2)}`)
+    const i = cola && cola.length ? cola.shift() : undefined
+    if (i === undefined) { soloExtracto.push(b); continue }
+    usados.add(i)
+    pares.push({ base: existentes[i], banco: b })
+  }
+
+  const soloBase = existentes.filter((_, i) => !usados.has(i))
+  return { pares, soloBase, soloExtracto }
+}
+
+/**
+ * NÚCLEO PURO: el "Saldo al DD/MM/AAAA X" que el extracto DECLARA, aparte del corrido de cada fila.
+ *
+ * POR QUÉ IMPORTA (23/07). El extracto de ese día trae dos movimientos sin saldo corrido —una compra
+ * de $168.730,09 y un depósito de e-cheq de $3.940.000— y abajo declara "Saldo al 23/07/2026
+ * 4.813.461,54". Ese número es el control final: cierra con el último saldo confirmado MENOS la
+ * compra, y SIN el depósito. Dicho de otro modo, el banco todavía no acreditó los $3,94M (e-cheq de
+ * otras plazas, 48 hs de clearing). Sin este dato habría que suponer cuál de los dos movimientos del
+ * día ya impactó, y suponer sobre plata es exactamente lo que no se hace.
+ *
+ * @returns {{fecha:string, saldo:number}|null}
+ */
+export function saldoDeclarado(texto, anio = new Date().getFullYear()) {
+  const m = /saldo\s+al\s+(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\s*:?\s*\$?\s*(\(?-?[\d.]+,\d{2}\)?)/i.exec(String(texto ?? ''))
+  if (!m) return null
+  const f = fecha(m[1], anio)
+  const s = importe(m[2])
+  if (!f || s === null) return null
+  return { fecha: f, saldo: s }
+}
+
+/**
+ * NÚCLEO PURO: el mismo movimiento no entra dos veces por venir en los dos bloques del archivo.
+ *
+ * La descarga trae "Movimientos del Día" (sin saldo corrido, porque todavía no se liquidó) y
+ * "Últimos Movimientos" (ya con saldo). Un movimiento que aparece en los dos es UNO SOLO: se queda
+ * el que trae saldo, que es el que el banco ya confirmó.
+ *
+ * Las repeticiones legítimas no se tocan: tres cheques de $200.000 el mismo día vienen los tres con
+ * saldo distinto, así que ninguno tiene saldo nulo y ninguno se descarta.
+ */
+export function sinDuplicadosDelDia(movs = []) {
+  const conSaldo = new Map()
+  for (const m of movs) {
+    if (m.saldo == null) continue
+    const k = claveSinSaldo(m)
+    conSaldo.set(k, (conSaldo.get(k) || 0) + 1)
+  }
+  return movs.filter((m) => {
+    if (m.saldo != null) return true
+    const k = claveSinSaldo(m)
+    const n = conSaldo.get(k) || 0
+    if (n <= 0) return true
+    conSaldo.set(k, n - 1)
+    return false
+  })
+}
+
+/**
+ * NÚCLEO PURO: de los emparejados, cuáles tienen el saldo distinto del que dice el banco.
+ *
+ * Sólo cuenta cuando el banco DECLARA un saldo: los movimientos del día vienen sin saldo corrido y
+ * eso no es motivo para borrar el que ya estaba.
+ */
+export function saldosACorregir(pares = [], tolerancia = 0.005) {
+  const out = []
+  for (const { base, banco } of pares) {
+    if (banco.saldo == null) continue
+    if (base.saldo != null && Math.abs(Number(base.saldo) - Number(banco.saldo)) <= tolerancia) continue
+    out.push({ base, saldoBase: base.saldo == null ? null : Number(base.saldo), saldoBanco: Number(banco.saldo) })
+  }
+  return out
+}
+
+/**
+ * NÚCLEO PURO: el saldo de apertura que el propio extracto implica.
+ *
+ * saldo(1) − importe(1). Preferirlo a una constante escrita a mano es lo que habría evitado el error
+ * de los $143.500: una constante equivocada no se puede detectar, un saldo derivado del banco sí.
+ */
+export function saldoAperturaSegun(movs = []) {
+  const i = movs.findIndex((m) => m.saldo != null)
+  if (i < 0) return null
+  // Si la serie arranca con movimientos sin saldo, sus importes también hay que descontarlos: ya
+  // movieron la plata aunque el banco todavía no muestre el corrido.
+  let s = Number(movs[i].saldo)
+  for (let j = i; j >= 0; j--) s -= Number(movs[j].importe)
+  return s
+}
 
 /**
  * NÚCLEO PURO: qué de lo nuevo NO estaba todavía.

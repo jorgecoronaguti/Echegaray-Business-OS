@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { MOVIMIENTOS, MOVIMIENTOS_DIA, CUENTA, TARJETA, ACUERDO, verificarCadena, porTipo, ingresosPorNaturaleza, naturalezaIngreso, enCartera, endosados, totalEcheqs, antiguedadDias, clasificarMovimiento } from './banco-santander.mjs'
+import { MOVIMIENTOS, MOVIMIENTOS_DIA, CUENTA, TARJETA, ACUERDO, verificarCadena, porTipo, ingresosPorNaturaleza, naturalezaIngreso, enCartera, endosados, totalEcheqs, antiguedadDias } from './banco-santander.mjs'
 
 // EL TEST QUE HACE CONFIABLE LA TRANSCRIPCIÓN. El extracto es una cadena: saldo(n) = saldo(n−1) +
 // importe(n). Si tipeé mal un dígito, la cadena se rompe y esto falla. Sin este test, los 71
@@ -9,26 +9,21 @@ import { MOVIMIENTOS, MOVIMIENTOS_DIA, CUENTA, TARJETA, ACUERDO, verificarCadena
 test('la transcripción del extracto encadena y termina en el último saldo del detalle', () => {
   const { rotas, saldoFinal } = verificarCadena()
   assert.deepEqual(rotas, [], 'hay filas donde el saldo no cierra: la transcripción tiene un error')
-  // El detalle cierra en el saldo del último movimiento (Vono, 22/07). El saldo DECLARADO del día es
-  // menor (cheque Nº 221 + transf. a Katsuda + $143.500 sin detalle, neto de la recibida de
-  // Manufacturas): esos dos números son distintos a propósito. Saldo de la descarga de las 15:50.
+  // El detalle cierra en el último saldo que el banco CONFIRMA (impuesto al cheque del 22/07).
   assert.equal(saldoFinal, CUENTA.saldoUltimoMovimiento)
-  assert.equal(CUENTA.saldoPesos, 4985898.23)
-  assert.ok(Math.abs((CUENTA.saldoUltimoMovimiento - CUENTA.saldoPesos) - -CUENTA.saldoPendienteConciliar) < 0.01)
+  // Y ya no queda nada "sin explicar": los $143.500 que figuraban como pendientes de conciliar eran
+  // un saldo de apertura mal tomado, no un tramo que el banco esconda. Ver banco-importar.test.mjs.
+  assert.equal(CUENTA.saldoPendienteConciliar, 0)
 })
 
-test('los movimientos del día encadenan desde el cierre del detalle hasta el saldo declarado', () => {
-  // _BANCO_RAW los anexa después de MOVIMIENTOS; el último saldo tiene que ser el DECLARADO, que es lo
-  // que CAJA muestra como disponibilidad. Sin esto, la caja mostraría el último saldo corrido del
-  // detalle ($5.595.130,74) y no lo que el banco realmente tiene hoy.
-  let saldo = CUENTA.saldoUltimoMovimiento
-  for (const m of MOVIMIENTOS_DIA) {
-    saldo = Math.round((saldo + m.importe) * 100) / 100
-    assert.equal(saldo, m.saldo, `el saldo corrido de "${m.concepto}" no cierra`)
-  }
-  assert.equal(MOVIMIENTOS_DIA.at(-1).saldo, CUENTA.saldoPesos)
-  // El tramo sin detalle tiene su propio bucket, para no ensuciar la conciliación por naturaleza.
-  assert.equal(clasificarMovimiento('Diferencia sin detalle del banco (hold intradia)'), 'Ajuste sin detalle del banco')
+test('el saldo DECLARADO no incluye lo que el banco todavía no acreditó', () => {
+  // Al 23/07 el banco declara $4.813.461,54 = último confirmado − la compra del día. El depósito de
+  // e-cheq de otras plazas por $3.940.000 está en clearing: contarlo como disponible sería contar
+  // plata que no está. Los movimientos del día van SIN saldo (null), nunca con cero.
+  for (const m of MOVIMIENTOS_DIA) assert.equal(m.saldo, null, `"${m.concepto}" no puede traer saldo corrido`)
+  const yaImpactaron = MOVIMIENTOS_DIA.filter((m) => m.importe < 0).reduce((s, m) => s + m.importe, 0)
+  assert.equal(Math.round((CUENTA.saldoUltimoMovimiento + yaImpactaron) * 100) / 100, CUENTA.saldoPesos)
+  assert.equal(CUENTA.saldoPesos, 4813461.54)
 })
 
 test('cada movimiento tiene fecha, concepto e importe', () => {
@@ -62,7 +57,11 @@ test('el rescate de Balanz NO se cuenta como cobranza', () => {
   // Depósitos de efectivo ($9,96M) + dos echeq acreditados ($10M el 16/07 + $15M el 01/07) + la
   // reversa de impuesto de $294,78 (que el banco generó, no un cliente).
   assert.equal(i.totales.traslado, 9960000 + 10000000 + 15000000 + 294.78, 'plata propia y ajustes del banco, no cobros')
-  assert.equal(i.totales.cobranza, 0, 'en la ventana del extracto no entró un peso por transferencia de un cliente')
+  // Al 23/07 aparece una sola transferencia de un tercero: $4.267,49 de Manufacturas Químicas
+  // (CUIT 30620311703) el 22/07. Antes quedaba fuera de esta cuenta por un motivo que no era
+  // económico —estaba en MOVIMIENTOS_DIA, que este cálculo no mira— y ahora está en la cadena.
+  // Es plata de afuera y se cuenta como cobranza; el tamaño sugiere un reintegro, no una venta.
+  assert.equal(i.totales.cobranza, 4267.49)
 })
 
 test('un número de once cifras que no es CUIT no identifica a nadie', () => {
@@ -91,6 +90,6 @@ test('el acuerdo y la tarjeta tienen su costo y su vencimiento declarados', () =
 })
 
 test('la foto sabe cuántos días tiene', () => {
-  assert.equal(antiguedadDias(new Date(2026, 6, 22)), 0)
-  assert.equal(antiguedadDias(new Date(2026, 6, 29)), 7)
+  assert.equal(antiguedadDias(new Date(2026, 6, 23)), 0)
+  assert.equal(antiguedadDias(new Date(2026, 6, 30)), 7)
 })
