@@ -27,6 +27,7 @@ import { parseMonto } from '../lib/cash-briefing.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
 import { origenANota } from '../lib/nota-celda.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { seccion, sub as subItem, total as rotuloTotal, auditarPatron } from '../lib/patron-pestana.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -405,7 +406,15 @@ async function main() {
     for (let i = g.filas.length; i < ultimaFila; i++) g.filas.push(Array(ANCHO).fill(VACIO))
   }
 
+  // ═══ REGLA 0 — REVISAR LO QUE LA PERSONA EDITÓ, ANTES DE ESCRIBIR ═══
+  // Si el dueño reescribió un rótulo, lo reencuadró o lo borró, gana lo suyo y el generador se
+  // adapta. Se compara contra lo que ESTE generador escribió la última vez, que es la única forma
+  // de distinguir una edición de una versión vieja de sí mismo. Ver lib/respetar-ediciones.mjs.
+  const { grid: gridFinal, respetadas } = await conEdicionesRespetadas(ID, PESTAÑA, g.filas, previoTab)
+  for (const r of respetadas) console.log(`  ✋ fila ${r.fila} col ${r.col}: respeto tu texto ("${r.suyo.slice(0, 48)}") en vez de escribir "${r.mio.slice(0, 48)}"`)
+  g.filas = gridFinal
   const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, g.filas, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
+  await guardarRegistro(ID, PESTAÑA, g.filas).catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
   await formatear(google, hoja.sheetId, g)
 

@@ -48,21 +48,39 @@ export const PASOS = [
   ['cargas-sociales-pestana.mjs', 'Cargas Sociales — la pestaña entera: declarado, pagado, proyección, caja, SAC y planes', ['Cargas Sociales']],
   ['cobranzas-control.mjs', 'Cobranzas — detector de duplicados', []],
   ['cheques-cobertura-sheet.mjs', 'Cash Flow Mensual — qué cheques y tarjeta faltan cargar en Compras', []],
-  ['tarjeta-control.mjs', 'Tarjeta de Credito — el cruce contra el resumen del banco y la disponibilidad que ve CAJA', []],
+  // EL REGISTRO DECLARA LA PESTAÑA QUE ESCRIBE, SIEMPRE. Estos tres pasos la dejaban en blanco, así
+  // que el censo de dueños las daba por HUÉRFANAS aunque un agente las mantenía todos los días. Un
+  // registro incompleto es peor que no tenerlo: contesta que no hay dueño cuando sí lo hay.
+  ['tarjeta-control.mjs', 'Tarjeta de Credito — el cruce contra el resumen del banco y la disponibilidad que ve CAJA', ['Tarjeta de Credito']],
   // RESUMEN va DESPUÉS de proveedores, cheques, jornales y tarjeta: es un tablero que apunta con
   // fórmula a los totales de esas cuatro pestañas, así que necesita que ya existan. Reemplazó dos
   // tablas dinámicas nativas huérfanas que duplicaban Proveedores y que ningún agente mantenía.
-  ['resumen-pestana.mjs', 'RESUMEN — el tablero "LO QUE VIENE A PAGAR" (jornales, proveedores, cheques, tarjeta)', ['RESUMEN']],
+  // ═══ RESUMEN: LA BORRÓ EL DUEÑO Y SE RESPETA (23/07) ═══
+  //
+  // El censo de dueños la reportó como "declarada por un paso pero NO EXISTE en el archivo": el
+  // dueño eliminó la pestaña y el agente venía fallando cada dos horas intentando reescribirla.
+  // La regla es clara —"si yo decido una eliminación, revisar antes de cambiar algo y respetarla"—
+  // así que el paso se retira. El script sigue en el repo por si se decide volver a tenerla.
+  //   ['resumen-pestana.mjs', 'RESUMEN — el tablero "LO QUE VIENE A PAGAR"', ['RESUMEN']],
   // ANTES del tablero: sincronizar el DEBITADO de los echeq contra el banco (fuente única). El banco
   // sabe si un echeq ya se pagó o sigue vivo; la marca a mano se atrasa (tenía el 305 en "No" cuando
   // ya estaba pagado, inflando el outstanding). Idempotente.
-  ['cheques-emitidos-sync-banco.mjs', 'Cheques Emitidos — DEBITADO de los echeq sincronizado con el banco', ['Cheques Emitidos']],
+  // SINCRONIZA UNA COLUMNA, NO ESCRIBE LA PESTAÑA. Declararla lo hacía figurar como segundo dueño de
+  // Cheques Emitidos —y "varios dueños" es justo el defecto que se está persiguiendo—. El dueño del
+  // layout es uno solo: el tablero.
+  ['cheques-emitidos-sync-banco.mjs', 'Cheques Emitidos — DEBITADO de los echeq sincronizado con el banco', []],
   // Registro de cheques emitidos al estándar minimalista/clase mundial: titular de outstanding (no
   // debitados) + piel de statement. Formato PROPIO — el formateador general la saltea, así que se
   // re-aplica sola en cada corrida del macro sin que nada la pise.
+// FALTABA EN EL REGISTRO Y POR ESO NO CORRÍA EN EL AGENTE. La pestaña existía, tenía su generador y
+  // su fuente (la pantalla eCHEQ del Santander), pero nadie la ejecutaba: se actualizaba sólo cuando
+  // alguien corría el script a mano. Es la forma más silenciosa de que una pestaña envejezca.
+  ['cheques-recibidos-pestana.mjs', 'Cheques Recibidos — el registro de operaciones eCHEQ recibidas', ['Cheques Recibidos']],
   ['cheques-emitidos-tablero.mjs', 'Cheques Emitidos — outstanding no debitado + piel de statement', ['Cheques Emitidos']],
   // Va última: ubica las líneas del Cash Flow por rótulo, así que necesita el cuadro ya escrito.
-  ['caja-pestana.mjs', 'CAJA — disponibilidades, cheques emitidos y margen de tarjeta', ['CAJA', 'Caja']],
+  // 'Caja' con minúsculas era el nombre viejo de la pestaña: quedó declarado y el censo lo reportaba
+  // como una pestaña fantasma. Un nombre que sobrevive a su renombre apunta al vacío para siempre.
+  ['caja-pestana.mjs', 'CAJA — disponibilidades, cheques emitidos y margen de tarjeta', ['CAJA']],
   // El núcleo Postgres, para que la web y el chat vean lo mismo que la planilla y no un mes atrás.
   // ÚLTIMO ANTES DEL NÚCLEO: unificar el formato de las catorce pestañas. Va al final porque cada
   // script anterior acaba de reescribir la suya, y una pasada de formato hecha antes se pierde.
