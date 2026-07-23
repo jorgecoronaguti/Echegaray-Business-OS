@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getCalendarioFinanciero } from '@/features/ingenieria-financiera/services/calendarioService'
 import { CalendarioFinancieroView } from '@/features/ingenieria-financiera/components/CalendarioFinancieroView'
+import { fechaHora } from '@/shared/utils/fecha'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,7 +32,7 @@ export default async function Page() {
 
       {generadoEn && (
         <p className="mt-6 text-right text-[11px] text-slate-400">
-          Generado por el motor de Ingeniería Financiera · {new Date(generadoEn).toLocaleString('es-AR')}
+          Generado por el motor de Ingeniería Financiera · {fechaHora(generadoEn)}
         </p>
       )}
     </main>

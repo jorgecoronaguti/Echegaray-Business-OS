@@ -9,6 +9,9 @@ const money0 = (n: number) => (n ? money(n) : '—')
 const parseDia = (iso: string) => new Date(`${iso}T00:00:00`)
 const nombreDia = (iso: string) => parseDia(iso).toLocaleDateString('es-AR', { weekday: 'long', day: '2-digit', month: 'long' })
 const numDia = (iso: string) => parseDia(iso).getDate()
+// `capitalize` de Tailwind capitaliza CADA palabra y dejaba "Jueves, 23 De Julio" y "Julio De
+// 2026". En español va sólo la primera letra: se hace acá, una vez, y ninguna clase lo repite.
+const may = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 // El riesgo se ENCODEA en color y en forma, no sólo en número: un día que cierra en rojo se lee de un
 // vistazo. Los tonos son semánticos (no el acento de marca).
@@ -93,7 +96,7 @@ function VistaMensual({
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="mb-3 flex items-center justify-between">
-        <div className="text-sm font-medium capitalize text-slate-700">{titulo}</div>
+        <div className="text-sm font-medium text-slate-700">{may(titulo)}</div>
         <div className="flex items-center gap-1">
           <Paso etiqueta="Mes anterior" onClick={() => setI(i - 1)} disabled={i <= 0}>‹</Paso>
           <Paso etiqueta="Mes siguiente" onClick={() => setI(i + 1)} disabled={i >= meses.length - 1}>›</Paso>
@@ -184,7 +187,7 @@ function VistaLista({ dias, sel, onSel }: { dias: DiaCalendario[]; sel: string; 
             className={`flex w-full items-center justify-between rounded-xl border bg-white p-4 text-left transition hover:bg-slate-50 ${t.borde} ${d.fecha === sel ? 'ring-2 ring-slate-900' : ''}`}
           >
             <div>
-              <div className="text-sm font-medium capitalize text-slate-800">{nombreDia(d.fecha)}</div>
+              <div className="text-sm font-medium text-slate-800">{may(nombreDia(d.fecha))}</div>
               <div className="mt-1 flex gap-3 text-xs tabular-nums text-slate-500">
                 <span>inicial {money(d.saldo_inicial)}</span>
                 <span className="text-emerald-600">+{money0(d.ingresos)}</span>
@@ -207,7 +210,7 @@ function PanelDia({ dia }: { dia: DiaCalendario }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="mb-3 flex items-center justify-between">
-        <div className="text-sm font-semibold capitalize text-slate-800">{nombreDia(dia.fecha)}</div>
+        <div className="text-sm font-semibold text-slate-800">{may(nombreDia(dia.fecha))}</div>
         <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${t.pill}`}>{dia.riesgo}</span>
       </div>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">

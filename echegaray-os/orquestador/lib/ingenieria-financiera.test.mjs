@@ -93,3 +93,42 @@ test('recomendaciones: cada una cumple el contrato completo', () => {
     }
   }
 })
+
+// ── LO VENCIDO NO ES SÓLO LO FISCAL (QA visual 23/07) ──────────────────────────────────────────────
+// En la pantalla convivían dos cifras del mismo concepto: la recomendación decía $4.700.000 (fiscal)
+// y el calendario mostraba $5.351.225 de Gruas San Blas (comercial). Una sola verdad por concepto.
+test('la recomendación de vencido suma lo fiscal y lo comercial, y lo desglosa', () => {
+  const r = recomendaciones({
+    disponible: { estado: 'ok', caja_hoy: 10_000_000, vencimientos_7dias: 0, cobranzas_por_cobrar_mes: 0 },
+    comprometido: { estado: 'ok', vencido: 4_700_000 },
+    deuda_comercial: { estado: 'ok', vencido: 5_351_225, n: 1 },
+    lineas: { descubierto: { usado_aprox: 0 } },
+  })
+  const v = r.find((x) => /vencido/i.test(x.titulo))
+  assert.ok(v, 'tiene que recomendar regularizar lo vencido')
+  assert.equal(v.impacto_pesos, 10_051_225)
+  assert.match(v.explicacion, /fiscal\/previsional/)
+  assert.match(v.explicacion, /a proveedores/)
+})
+
+test('sin deuda comercial la recomendación sigue funcionando con lo fiscal solo', () => {
+  const r = recomendaciones({
+    disponible: { estado: 'ok', caja_hoy: 10_000_000, vencimientos_7dias: 0, cobranzas_por_cobrar_mes: 0 },
+    comprometido: { estado: 'ok', vencido: 4_700_000 },
+    deuda_comercial: { estado: 'sin dato' },
+    lineas: { descubierto: { usado_aprox: 0 } },
+  })
+  const v = r.find((x) => /vencido/i.test(x.titulo))
+  assert.equal(v.impacto_pesos, 4_700_000)
+  assert.doesNotMatch(v.explicacion, /a proveedores/)
+})
+
+test('sin nada vencido no se inventa una recomendación de vencido', () => {
+  const r = recomendaciones({
+    disponible: { estado: 'ok', caja_hoy: 10_000_000, vencimientos_7dias: 0, cobranzas_por_cobrar_mes: 0 },
+    comprometido: { estado: 'ok', vencido: 0 },
+    deuda_comercial: { estado: 'ok', vencido: 0 },
+    lineas: { descubierto: { usado_aprox: 0 } },
+  })
+  assert.equal(r.filter((x) => /vencido/i.test(x.titulo)).length, 0)
+})

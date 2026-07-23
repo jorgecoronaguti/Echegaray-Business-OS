@@ -17,7 +17,12 @@ const diasArg = Number((process.argv.find((a) => a.startsWith('--dias')) || '').
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const cal = await calendarioDiario({ google }, { dias: diasArg })
-  const modelo = await modeloLiquidez({ google })
+  // El calendario ya leyó Compras: le pasa al modelo lo vencido comercial en vez de que el modelo
+  // vuelva a leer la misma pestaña con otro criterio. Una lectura, una cifra.
+  const vencidoComercial = (cal.dias || [])
+    .flatMap((d) => d.movimientos || []).filter((m) => m.vencida)
+    .reduce((a, m) => ({ n: a.n + 1, monto: a.monto + m.monto }), { n: 0, monto: 0 })
+  const modelo = await modeloLiquidez({ google }, new Date(), { vencidoComercial })
   const recs = recomendaciones(modelo)
 
   const payload = { ...cal, modelo, recomendaciones: recs, generado_en: new Date().toISOString() }

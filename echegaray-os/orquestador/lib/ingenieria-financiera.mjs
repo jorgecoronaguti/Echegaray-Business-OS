@@ -209,22 +209,42 @@ export function priorizarPagos(obligaciones = [], opts = {}) {
  * @param {object} deps {google} el cliente de Sheets (para el briefing de caja)
  * @param {Date} [hoy]
  */
-export async function modeloLiquidez(deps = {}, hoy = new Date()) {
+export async function modeloLiquidez(deps = {}, hoy = new Date(), opts = {}) {
   const { cashBriefing } = await import('./cash-briefing.mjs')
   const { estadoObligaciones } = await import('./obligaciones.mjs')
 
   const disponible = await bloqueCaja(deps.google, cashBriefing, hoy)
   const obligaciones = await bloqueObligaciones(estadoObligaciones, hoy)
   const lineas = bloqueLineas(disponible)
+  // DEUDA COMERCIAL VENCIDA — la que vive en Compras. Se recibe ya calculada por quien lee Compras
+  // (el calendario), para no leer la misma pestaña dos veces con dos criterios distintos.
+  const comercial = bloqueComercial(opts.vencidoComercial)
 
   return {
     fecha: hoy.toLocaleDateString('es-AR'),
     disponible,
     comprometido: obligaciones,
+    deuda_comercial: comercial,
     lineas,
     // El colchón real: lo que hay hoy + lo que puedo pedir prestado − lo que ya vencí y debo.
-    colchon_total: sumaColchon(disponible, lineas, obligaciones),
-    fuentes: 'cash-briefing (caja/cobranzas/vencimientos) · obligacion_resumen (vencido) · banco-santander (líneas)',
+    colchon_total: sumaColchon(disponible, lineas, obligaciones) - (comercial.estado === 'ok' ? comercial.vencido : 0),
+    fuentes: 'cash-briefing (caja/cobranzas/vencimientos) · obligacion_resumen (fiscal vencido) · Compras (comercial vencido) · banco-santander (líneas)',
+  }
+}
+
+/**
+ * LO VENCIDO NO ES SÓLO LO FISCAL (QA 23/07). En pantalla convivían dos cifras de "vencido": la
+ * recomendación decía $4.700.000 (obligacion_resumen) y el calendario mostraba Gruas San Blas por
+ * $5.351.225 (Compras). Dos verdades del mismo concepto en la misma pantalla es exactamente lo que
+ * la realidad única prohíbe. El motor ahora las nombra por separado y las suma para decidir.
+ */
+function bloqueComercial(v) {
+  if (!v || !(Number(v.monto) > 0)) return { estado: 'sin dato', motivo: 'no se recibió la deuda comercial vencida' }
+  return {
+    estado: 'ok',
+    vencido: Math.round(Number(v.monto)),
+    n: Number(v.n) || 0,
+    evidencia: 'real — Compras del Cash Flow, filas "Pendiente" con vencimiento cumplido',
   }
 }
 
@@ -298,11 +318,15 @@ export function recomendaciones(model) {
       d?.motivo || 'el briefing de caja no respondió', 'todo el modelo depende de esta fuente única'))
     return r
   }
-  if (o?.estado === 'ok' && o.vencido > 0) {
-    r.push(rec('alta', 'Regularizar obligaciones vencidas', o.vencido,
-      `hay ${fmt(o.vencido)} vencido corriendo intereses/multas`, 'alto',
-      'una obligación vencida es el peso más caro de la empresa',
-      'priorizar estas por sobre lo que todavía no vence'))
+  const fiscal = o?.estado === 'ok' ? o.vencido : 0
+  const comercial = model?.deuda_comercial?.estado === 'ok' ? model.deuda_comercial.vencido : 0
+  if (fiscal + comercial > 0) {
+    const desglose = [fiscal > 0 ? `${fmt(fiscal)} fiscal/previsional` : null,
+      comercial > 0 ? `${fmt(comercial)} a proveedores` : null].filter(Boolean).join(' + ')
+    r.push(rec('alta', 'Regularizar lo vencido', fiscal + comercial,
+      `hay ${fmt(fiscal + comercial)} vencido (${desglose})`, 'alto',
+      'lo fiscal corre intereses y multas; lo comercial corta la ficha con el proveedor',
+      'priorizar esto por sobre lo que todavía no vence'))
   }
   if (d.vencimientos_7dias > d.caja_hoy) {
     const falta = d.vencimientos_7dias - d.caja_hoy

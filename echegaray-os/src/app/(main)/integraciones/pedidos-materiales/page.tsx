@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getPedidosMateriales } from '@/features/integraciones/services/pedidosMaterialesService'
 import { PedidosManager } from '@/features/integraciones/components/PedidosManager'
+import { fechaHora } from '@/shared/utils/fecha'
 
 export const dynamic = 'force-dynamic'
 
@@ -60,7 +61,7 @@ export default async function PedidosMaterialesPage() {
       )}
 
       {ultimoSync && (
-        <p className="text-xs text-gray-400">Última sincronización desde AppSheet: {new Date(ultimoSync).toLocaleString('es-AR')}</p>
+        <p className="text-xs text-gray-400">Última sincronización desde AppSheet: {fechaHora(ultimoSync)}</p>
       )}
 
       <PedidosManager pedidos={pedidos} obras={obras} />
