@@ -76,6 +76,18 @@ export function esRotulo(v) {
 const clave = (texto) => String(texto ?? '').trim()
 
 /**
+ * ¿Es un texto de ESTRUCTURA de la pestaña —título, subtítulo, encabezado de sección— cuyo borrado
+ * nunca sería una decisión deliberada? Esos no se dan nunca por eliminados.
+ */
+export function esEstructural(t) {
+  const s = String(t ?? '').trim()
+  if (!s) return false
+  if (/^\s*\d+(\.\d+)?\s*·\s/.test(s)) return true          // "1 · SECCIÓN", "4.1 · SUB"
+  if (/^(qué|cuánta|cuánto|de dónde|posición|impuestos|cargas|jornales)/i.test(s) && s.length > 40) return true
+  return false
+}
+
+/**
  * NÚCLEO PURO: aplica las ediciones de la persona sobre la grilla que el generador quiere escribir.
  *
  * @param {any[][]} generado  lo que el generador escribiría hoy
@@ -142,7 +154,19 @@ export function detectarEdiciones(mios = [], actual = [], generado = []) {
     // DESAPARECIÓ UN RÓTULO QUE YO HABÍA ESCRITO. Eso es una eliminación o una reescritura. No se
     // puede saber POR CUÁL texto lo cambió —podría ser cualquiera de los nuevos— así que lo honesto
     // es registrar la eliminación: la próxima corrida no lo vuelve a escribir.
-    if (t && !presentes.has(sinApostrofo(t))) ediciones.set(t, '')
+    if (!t || presentes.has(sinApostrofo(t))) continue
+    // ═══ EL SEGURO: HAY BORRADOS QUE NADIE PIDE ═══
+    //
+    // POR QUÉ (23/07). El registro se enganchó en un estado malo y dejó a CAJA sin subtítulo: una
+    // vez que un texto queda marcado como "lo borró el dueño", el generador no lo vuelve a escribir
+    // nunca, así que sigue ausente y la marca se confirma sola. Un lazo del que sólo se sale
+    // purgando la tabla a mano.
+    //
+    // Contra eso: hay textos cuyo borrado NUNCA es una decisión de negocio plausible. Nadie quiere
+    // una pestaña sin título ni sin la línea que dice de dónde salen sus números. Si desaparecieron,
+    // el que falló fui yo — y ante la duda, se vuelve a escribir.
+    if (esEstructural(m)) continue
+    ediciones.set(t, '')
   }
   return ediciones
 }

@@ -1182,12 +1182,26 @@ async function formatear(google, sheetId, g, tab) {
     fmt(r(g.g0 - 1, g.g1, 0, 1), 'userEnteredFormat.textFormat',
       { textFormat: { fontSize: E.TAM.nota, foregroundColor: E.COLOR.nota } })
   }
-  // TODO EL DETALLE Y LAS CONCILIACIONES, EN UN GRUPO COLAPSADO. La posición de arriba se lee sola;
-  // esto se despliega con el "+" del margen izquierdo sólo cuando hay que auditar. Es la regla "nada
-  // suelto" servida sin tapar el mensaje — la definición de minimalista del dueño: less is more.
+  // ═══ NINGUNA FILA OCULTA. NUNCA. (23/07) ═══
+  //
+  // EL DUEÑO, DOS VECES: "no veo lo solicitado en caja, si se encuentra en filas ocultas, mostrar".
+  // Medido: 115 filas ocultas desde la 18 — el calendario de vencimientos que él había pedido estaba
+  // entre ellas. Y lo peor: el grupo colapsable declaraba las filas 40 a 132, así que las 18 a 39
+  // estaban ocultas SIN PERTENECER A NINGÚN GRUPO. Residuo de un colapso anterior: cuando el bloque
+  // se mueve, el grupo se recrea en sus coordenadas nuevas y las filas del grupo viejo quedan
+  // ocultas para siempre, sin un "+" que las devuelva. No hay forma de encontrarlas mirando.
+  //
+  // Se fuerza TODA la pestaña visible en cada corrida, ANTES de crear el grupo. Una fila que existe
+  // y no se ve es peor que una fila fea: no se puede auditar lo que no se sabe que está.
+  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: Math.max(n + 40, 200) }, properties: { hiddenByUser: false }, fields: 'hiddenByUser' } })
+  // EL ANEXO CONSERVA SU "+" PERO YA NO ARRANCA CERRADO. El plegado era la idea correcta —la posición
+  // se lee sola, el detalle está pero no estorba— y sin embargo dos veces hizo que el dueño no
+  // encontrara lo que había pedido. Entre un cuadro más corto y un cuadro que se puede leer entero,
+  // gana el segundo: el "+" queda disponible para quien quiera plegarlo, pero la pestaña se abre
+  // mostrando todo lo que tiene.
   if (g.fCtrl1 > g.fCtrl0) {
     req.push({ addDimensionGroup: { range: { sheetId, dimension: 'ROWS', startIndex: g.fCtrl0, endIndex: g.fCtrl1 } } })
-    req.push({ updateDimensionGroup: { dimensionGroup: { range: { sheetId, dimension: 'ROWS', startIndex: g.fCtrl0, endIndex: g.fCtrl1 }, depth: 1, collapsed: true }, fields: 'collapsed' } })
+    req.push({ updateDimensionGroup: { dimensionGroup: { range: { sheetId, dimension: 'ROWS', startIndex: g.fCtrl0, endIndex: g.fCtrl1 }, depth: 1, collapsed: false }, fields: 'collapsed' } })
   }
   // Totales RULADOS, no rellenos de color: la línea de subtotal lleva una hairline arriba; la
   // disponibilidad neta —la cifra que se decide— va en acento, en negrita, encerrada entre dos

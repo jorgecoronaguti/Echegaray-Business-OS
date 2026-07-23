@@ -17,6 +17,35 @@ const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1
 // leen por fórmula, no cuadros que se leen con los ojos. Medirlas contra la gramática sería ruido.
 const EXCLUIDAS = /^(_|Compras$|Cobranzas$|02_|Parámetros$|Parametros$)/i
 
+/**
+ * FILAS OCULTAS QUE NO PERTENECEN A NINGÚN GRUPO — invisibles y sin forma de encontrarlas.
+ *
+ * POR QUÉ EXISTE (23/07). El dueño: "no veo lo solicitado en caja, si se encuentra en filas ocultas,
+ * mostrar". Había 115 ocultas desde la fila 18, y el calendario de vencimientos que él había pedido
+ * estaba entre ellas. El grupo colapsable declaraba las filas 40 a 132: las 18 a 39 estaban ocultas
+ * SIN GRUPO. Pasa cuando un bloque se mueve — el grupo se recrea en sus coordenadas nuevas y las
+ * filas del grupo viejo quedan escondidas para siempre, sin un "+" que las devuelva.
+ *
+ * Una fila oculta DENTRO de su grupo está bien: tiene su "+" y se encuentra (es el desplegable por
+ * proveedor, que el dueño pidió). Una fila oculta FUERA de todo grupo no se puede descubrir mirando.
+ */
+async function filasOcultasHuerfanas(g, titulo) {
+  const j = await g.apiGetSheets(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(ID)}`
+    + `?ranges=${encodeURIComponent(`'${titulo}'!A1:A400`)}&fields=sheets(rowGroups,data(rowMetadata(hiddenByUser)))`).catch(() => null)
+  const hoja = j?.sheets?.[0]
+  if (!hoja) return []
+  const grupos = (hoja.rowGroups ?? []).map((x) => [x.range.startIndex, x.range.endIndex])
+  const enGrupo = (i) => grupos.some(([a, b]) => i >= a && i < b)
+  const huerfanas = []
+  ;(hoja.data?.[0]?.rowMetadata ?? []).forEach((m, i) => { if (m.hiddenByUser && !enGrupo(i)) huerfanas.push(i + 1) })
+  if (!huerfanas.length) return []
+  return [{
+    fila: huerfanas[0],
+    regla: 'fila-oculta-huerfana',
+    detalle: `${huerfanas.length} fila(s) ocultas que no pertenecen a ningún grupo desplegable: no hay forma de encontrarlas mirando (${huerfanas.slice(0, 8).join(', ')}${huerfanas.length > 8 ? '…' : ''}).`,
+  }]
+}
+
 async function main() {
   const solo = process.argv[2]
   const g = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
@@ -27,6 +56,7 @@ async function main() {
   for (const h of hojas) {
     const filas = await g.readSheetValues(ID, `'${h.title}'!A1:Z400`).catch(() => [])
     const malos = auditarPatron(filas)
+    malos.push(...await filasOcultasHuerfanas(g, h.title))
     resumen.push({ pestaña: h.title, defectos: malos.length })
     totalDefectos += malos.length
     if (!malos.length) { console.log(`✓ ${h.title}`); continue }

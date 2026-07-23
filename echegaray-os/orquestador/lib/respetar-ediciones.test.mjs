@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { respetarEdiciones, detectarEdiciones, esRotulo } from './respetar-ediciones.mjs'
+import { respetarEdiciones, detectarEdiciones, esRotulo, esEstructural } from './respetar-ediciones.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 
 test('un rótulo es texto: no una fórmula, no un número, no un importe escrito', () => {
@@ -77,4 +77,13 @@ test('el apóstrofo que fuerza texto no cuenta como una edición', () => {
   // Sheets guarda "'ene-26" y devuelve "ene-26": sin normalizarlo, cada encabezado de mes parecería
   // editado en cada corrida y la regla los congelaría.
   assert.equal(detectarEdiciones(["'ene-26"], [['ene-26']], [["'ene-26"]]).size, 0)
+})
+
+test('el borrado de un TÍTULO nunca se da por bueno: es la forma de mi propio error', () => {
+  // El registro se enganchó y dejó a CAJA sin subtítulo: una vez marcado como borrado, el generador
+  // no lo vuelve a escribir, sigue ausente, y la marca se confirma sola. Un lazo del que sólo se
+  // salía purgando la tabla a mano.
+  const mios = ['2 · CALENDARIO DE VENCIMIENTOS', 'Cuánta plata hay de verdad, qué ya está comprometido y hasta cuándo alcanza']
+  const generado = [['2 · CALENDARIO DE VENCIMIENTOS'], ['Cuánta plata hay de verdad, qué ya está comprometido y hasta cuándo alcanza']]
+  assert.equal(detectarEdiciones(mios, [['otra cosa']], generado).size, 0)
 })
