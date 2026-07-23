@@ -625,9 +625,13 @@ function grilla(cargado, refs) {
   // cliente —San Francisco— y eso cambia la lectura: no es plata dispersa, es un solo flujo que
   // entró en efectivo y no llegó al banco. Sale de Cobranzas por fórmula, no pega ningún número.
   const CONEF = `(Cobranzas!$N$5:$N$400="Efectivo")*(Cobranzas!$O$5:$O$400="Cobrado")*(Cobranzas!$Q$5:$Q$400>=${dateF(desdeB)})*(Cobranzas!$Q$5:$Q$400<=${dateF(hastaB)})`
-  push(['  · cuáles fueron', '', '', '',
-    `=IFERROR(TEXTJOIN("   ·   ";1;ARRAYFORMULA(IF(${CONEF};TEXT(Cobranzas!$Q$5:$Q$400;"dd/mm")&"  "&IF(Cobranzas!$G$5:$G$400="";"";Cobranzas!$G$5:$G$400&"  ")&TEXT(Cobranzas!$M$5:$M$400;"$#,##0");"")));"")`,
-    '', '', '',
+  // EL DETALLE NO VA EN LA COLUMNA DEL DINERO. Este TEXTJOIN es una tira larga de cobros; puesto en
+  // la columna de importes rompía la alineación de todo el statement —el ojo recorre una columna de
+  // números y se choca con un párrafo—. Va en la columna del rótulo, que ya tiene overflow, con la
+  // fila más alta: se lee como el pie de página que es, y las columnas de plata quedan limpias.
+  const fDetCob = push([
+    `=IFERROR("   · "&TEXTJOIN("   ·   ";1;ARRAYFORMULA(IF(${CONEF};TEXT(Cobranzas!$Q$5:$Q$400;"dd/mm")&"  "&IF(Cobranzas!$G$5:$G$400="";"";Cobranzas!$G$5:$G$400&"  ")&TEXT(Cobranzas!$M$5:$M$400;"$#,##0");"")));"")`,
+    '', '', '', '', '', '',
     'Cada cobro en efectivo de la ventana, con fecha y cliente. Sale de la misma condición que el total. Si dos tienen el mismo importe, fecha y cliente, ese es el duplicado que descuenta el renglón de arriba.'])
   // ERA EL ÚLTIMO NÚMERO CALCULADO Y PEGADO DE ESTA PESTAÑA. Ahora sale del extracto que vive en
   // _BANCO_RAW: mismo criterio que usaba el código —los créditos cuyo concepto dice "depósito de
@@ -643,9 +647,13 @@ function grilla(cargado, refs) {
   // $15.955.646 sin explicar. La lista sale de la misma fórmula que el total, así que no puede
   // decir algo distinto, y no pega un solo número: es TEXTJOIN sobre la réplica del extracto.
   const CONDEP = '(_BANCO_RAW!$E$4:$E="entra")*ISNUMBER(SEARCH("deposito de efectivo";LOWER(SUBSTITUTE(_BANCO_RAW!$B$4:$B;"ó";"o"))))'
-  push(['  · cuáles fueron', '', '', '',
-    `=IFERROR(TEXTJOIN("   ·   ";1;ARRAYFORMULA(IF(${CONDEP};TEXT(_BANCO_RAW!$A$4:$A;"dd/mm")&"  "&TEXT(_BANCO_RAW!$C$4:$C;"$#,##0");"")));"")`,
-    '', '', '',
+  // EL DETALLE NO VA EN LA COLUMNA DEL DINERO. Este TEXTJOIN es una tira larga de cobros; puesto en
+  // la columna de importes rompía la alineación de todo el statement —el ojo recorre una columna de
+  // números y se choca con un párrafo—. Va en la columna del rótulo, que ya tiene overflow, con la
+  // fila más alta: se lee como el pie de página que es, y las columnas de plata quedan limpias.
+  const fDetDep = push([
+    `=IFERROR("   · "&TEXTJOIN("   ·   ";1;ARRAYFORMULA(IF(${CONDEP};TEXT(_BANCO_RAW!$A$4:$A;"dd/mm")&"  "&TEXT(_BANCO_RAW!$C$4:$C;"$#,##0");"")));"")`,
+    '', '', '', '', '', '',
     'Cada depósito de efectivo del extracto, con su fecha. Sale de la misma condición que el total de arriba: si no coinciden, es que la fórmula cambió en un lado solo.'])
   // LA FILA SE GUARDA, NO SE CUENTA. La resta de abajo la referenciaba como "fEfCobrado + 3": al
   // insertar el detalle de los depósitos habría restado la fila equivocada sin dar error. Es el
@@ -739,7 +747,7 @@ function grilla(cargado, refs) {
 
   // El grupo colapsable de controles va desde su encabezado hasta la última fila del cuadro.
   const fCtrl1 = filas.length
-  return { filas, n0, n1, usd, fTitulos, fCifras, fAire, fDias, fRitmo, fAlerta0, fAlerta1, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, fMTar, fMAcu, fMAire, fMargenTit: fMTar - 1, fCtrl0, fCtrl1, amarillas }
+  return { filas, n0, n1, usd, fTitulos, fCifras, fAire, fDias, fRitmo, fAlerta0, fAlerta1, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, fMTar, fMAcu, fMAire, fMargenTit: fMTar - 1, fCtrl0, fCtrl1, amarillas, fDetCob, fDetDep }
 }
 
 async function main() {
@@ -1081,6 +1089,14 @@ async function formatear(google, sheetId, g, tab) {
 
   const ancho = ANCHOS
   ancho.forEach((px, i) => req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: px }, fields: 'pixelSize' } }))
+  // Las dos filas de detalle (los cobros y los depósitos, uno por uno): gris chico y con ajuste de
+  // texto. Son el pie de página que respalda el total de arriba, no una fila más del cuadro.
+  for (const fd of [g.fDetCob, g.fDetDep]) {
+    if (!fd) continue
+    req.push({ repeatCell: { range: { sheetId, startRowIndex: fd - 1, endRowIndex: fd, startColumnIndex: 0, endColumnIndex: ANCHO }, cell: { userEnteredFormat: { textFormat: { fontSize: 9, foregroundColor: { red: 0.45, green: 0.45, blue: 0.5 } }, wrapStrategy: 'WRAP', numberFormat: { type: 'TEXT' } } }, fields: 'userEnteredFormat(textFormat,wrapStrategy,numberFormat)' } })
+    req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: fd - 1, endIndex: fd }, properties: { pixelSize: 46 }, fields: 'pixelSize' } })
+  }
+
   await google.spreadsheetBatchUpdate(ID, req)
 }
 
