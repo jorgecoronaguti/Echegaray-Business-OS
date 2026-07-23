@@ -71,13 +71,16 @@ export const TIPOS = ['Aceptación', 'Custodia', 'Depósito', 'Endoso', 'Rescate
  * NÚCLEO PURO: qué significa cada tipo de operación para la cartera. Es la columna que hace legible
  * el registro sin que haya que saber la jerga del banco.
  */
+// EL VOCABULARIO ES EL DEL DUEÑO, NO EL DEL HOMEBANKING (23/07). "Custodia", "Aceptación" y
+// "Rescate" son palabras del banco: si aparecen, tienen que venir con QUÉ SIGNIFICAN PARA LA PLATA.
+// Cada lectura dice, en el mismo orden: qué pasó · si es caja o no.
 export function lectura(tipo) {
   switch (tipo) {
-    case 'Aceptación': return 'El valor entró a nuestra cuenta eCHEQ'
-    case 'Custodia': return 'Guardado en custodia en el banco — todavía no depositado'
-    case 'Depósito': return 'Depositado a la cuenta: ya es plata en el banco'
-    case 'Endoso': return 'Endosado a un tercero para pagarle: ya no es nuestro'
-    case 'Rescate': return 'Rescatado de custodia/inversión'
+    case 'Aceptación': return 'ENTRÓ: el valor es nuestro — todavía no es caja'
+    case 'Custodia': return 'GUARDADO en el banco, sin depositar — todavía no es caja'
+    case 'Depósito': return 'ES CAJA: acreditado en la cuenta bancaria'
+    case 'Endoso': return 'SALIÓ: se entregó a un tercero para pagarle — no vuelve'
+    case 'Rescate': return 'Paso interno: se saca de custodia para depositarlo o endosarlo — no mueve plata'
     default: return ''
   }
 }

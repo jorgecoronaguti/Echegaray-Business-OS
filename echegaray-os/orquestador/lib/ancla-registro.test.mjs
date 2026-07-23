@@ -26,9 +26,12 @@ test('el ancla del registro no depende sólo del rótulo TIPO', () => {
 })
 
 test('si no encuentra dónde arranca el registro, aborta en vez de insertar filas', () => {
-  assert.match(SRC, /No encuentro dónde arranca el registro/,
+  // El guard puede estar redactado de dos formas equivalentes (dos versiones del generador lo
+  // reimplementaron por separado): "No encuentro dónde arranca el registro" o "ABORTA: no encuentro
+  // el registro". Lo que importa es que ABORTE, y que lo haga ANTES de cualquier insertDimension.
+  assert.match(SRC, /(No encuentro dónde arranca el registro|ABORTA: no encuentro el registro)/,
     'sin ancla NO se puede deducir "la banda mide 0": eso inserta filas y duplica la banda')
-  const i = SRC.indexOf('No encuentro dónde arranca el registro')
+  const i = SRC.search(/(No encuentro dónde arranca el registro|ABORTA: no encuentro el registro)/)
   const j = SRC.indexOf('insertDimension')
   assert.ok(i > 0 && i < j, 'la salida por error tiene que estar ANTES de cualquier insertDimension')
 })

@@ -1,42 +1,155 @@
 #!/usr/bin/env node
-// "Cheques Emitidos" AL ESTÁNDAR MINIMALISTA + CLASE MUNDIAL (regla del dueño, 22/07).
+// "Cheques Emitidos" — LA PESTAÑA CONTESTA UNA PREGUNTA:
 //
-// QUÉ ES ESTA PESTAÑA. Un registro de cheques emitidos de tesorería: cada cheque/echeq que la empresa
-// libró, con su fecha de pago y si el banco ya lo DEBITÓ. Es pestaña de CARGA manual (columnas A–L las
-// llena el dueño); la columna M es el cruce del OS contra Compras. NO se toca el dato: se le pone una
-// piel de statement y una banda-resumen arriba.
+//        DE LO QUE FIRMÉ, ¿CUÁNTO TODAVÍA NO SALIÓ Y CUÁNDO SALE?
 //
-// QUÉ ES "WORLD CLASS" ACÁ (best practices de registro de cheques de tesorería + búsqueda del 22/07,
-// ver Sources en el commit): lo que un tesorero mira NO es la lista, es el OUTSTANDING — los cheques
-// EMITIDOS Y NO DEBITADOS, que son plata comprometida que todavía no salió de la cuenta y que la
-// disponibilidad neta tiene que descontar. Eso va de titular. La lista es la evidencia, no el héroe.
+// ═══ POR QUÉ SE REHIZO (23/07) ═══
 //
-// MINIMALISMO: sin reja (gridlines off), sin barra de color; jerarquía por tipografía y hairlines;
-// totales rulados; números tabulares; la banda-resumen es TODO fórmula sobre el propio registro
-// (regla de oro: ni un número pegado). Se inserta arriba, así el registro no se desarma y el dueño
-// sigue cargando abajo.
+// El dueño: "no se entiende qué carajo significan las cosas". La banda anterior mostraba
+// "Comprometido no debitado / en echeq / en cheque físico / Cheques pendientes / Próximo a debitar".
+// El número estaba bien y no servía para nada: no contestaba la única pregunta que un tesorero le
+// hace a esta pestaña —¿esto lo puedo pagar?—. Faltaban las dos cosas que la contestan:
+//
+//   1. EL PUENTE contra el banco. El saldo bancario NO descontó los cheques firmados: el cheque
+//      todavía no se presentó. La cifra con la que se decide es
+//         saldo del banco − cheques emitidos no debitados = lo que realmente queda.
+//      Es la "adjusted cash balance" del manual de conciliación bancaria; el saldo del banco es el
+//      "book balance" y engaña (Sage / AccountingTools, ver Fuentes).
+//   2. CUÁNDO sale cada peso. Un total sin fecha no es accionable. Los registros de cheques y las
+//      cuentas por pagar se leen por TRAMOS DE ANTIGÜEDAD (aging buckets) — es la práctica estándar
+//      de un AP aging report. Y el tramo que más importa es el primero: un cheque VENCIDO Y NO
+//      DEBITADO es una alerta, no una línea más (stale-dated check: o el beneficiario no lo
+//      presentó, o se perdió, o hay un problema — y la política es averiguarlo, no esperar).
+//
+// ═══ QUÉ SE ELIMINÓ, Y POR QUÉ (less is more) ═══
+//
+//   · "en echeq" / "en cheque físico" — el instrumento no cambia ninguna decisión de caja.
+//   · "Cheques pendientes" (cantidad) — no es plata; los tramos dicen mucho más con las mismas filas.
+//   · "Próximo a debitar" (una fecha) — la reemplaza el tramo "Vencido" + "Esta semana", que además
+//     dicen CUÁNTO, no sólo cuándo.
+//
+// ═══ FORMATO (banca de inversión) ═══
+// Negrita SÓLO en las líneas clave, sub-ítems indentados, borde arriba de los totales, cifras
+// tabulares alineadas a la derecha, una sola tipografía con jerarquía por tamaño/peso, whitespace
+// estructurado, sin reja ni barras de color. Ver lib/estilo-statement.mjs y la gramática común de
+// lib/patron-pestana.mjs — las dos pestañas de cheques se leen IGUAL, con el mismo vocabulario.
+//
+// ═══ FUENTES (consultadas el 23/07/2026) ═══
+//   · Sage — "Outstanding checks in bank reconciliation": el saldo del banco no refleja los cheques
+//     emitidos que todavía no se presentaron.
+//     https://www.sage.com/en-us/blog/outstanding-checks-bank-reconciliation/
+//   · AccountingTools — bank balance vs book balance; adjusted cash balance =
+//     saldo del extracto + depósitos en tránsito − cheques emitidos no debitados.
+//     https://www.accountingtools.com/articles/the-difference-between-bank-balance-and-book-balance
+//   · Intuit QuickBooks — stale-dated checks: hay que revisarlos, anularlos o reemitirlos.
+//     https://quickbooks.intuit.com/r/accounting/how-to-handle-stale-dated-checks/
+//   · AP aging report — tramos por vencimiento y acción por tramo.
+//     https://invoicedataextraction.com/blog/accounts-payable-aging-report
+//   · Formato de modelos de banca de inversión (negrita en líneas clave, borde sobre subtotales,
+//     negativos entre paréntesis, indentación de sub-ítems).
+//     https://ibinterviewquestions.com/guides/valuation-investment-banking/formatting-standards-color-conventions-ib-models
+//
+// ═══ REGLAS QUE ESTE SCRIPT NO PUEDE ROMPER ═══
+//   · NO toca el registro (columnas A–L): las carga el dueño a mano. Sólo escribe la banda de arriba.
+//   · Ni un número pegado: la banda es TODA fórmula sobre el propio registro. La única cifra que
+//     viene de afuera —la plata disponible— se REFERENCIA a CAJA, que es su dueña (regla 9: un
+//     concepto vive en un solo lugar), y se busca POR RÓTULO, nunca por celda: CAJA se reescribe
+//     entera y sus filas se corren.
+//   · Los valores van en la COLUMNA B. Nunca en la F: CAJA suma 'Cheques Emitidos'!F2:F400 y
+//     cualquier cifra de la banda puesta ahí se sumaría como si fuera un cheque más.
+//   · El ancla es el DATO (FISICO/ECHEQ), no un rótulo que una persona pueda borrar. Si no aparece,
+//     el script ABORTA: insertar filas a ciegas deja la pestaña con dos bandas.
 //
 //   node orquestador/scripts/cheques-emitidos-tablero.mjs [--dry]
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { skinRequests } from '../lib/estilo-statement.mjs'
+import { skinRequests, MUTED, HAIR } from '../lib/estilo-statement.mjs'
+import { seccion, total } from '../lib/patron-pestana.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTANA = 'Cheques Emitidos'
 const DRY = process.argv.includes('--dry')
-const BANDA = 12 // filas de resumen arriba del registro. MISMA estructura que 'Cheques Recibidos':
-// título · nota · aire · SECCIÓN posición (Concepto|Monto|Qué significa) · aire · SECCIÓN registro.
 
-// Paleta sobria de statement (misma identidad que CAJA).
-const INK = { red: 0.10, green: 0.13, blue: 0.20 }
-const MUTED = { red: 0.53, green: 0.52, blue: 0.49 }
-const HAIR = { red: 0.82, green: 0.80, blue: 0.76 }
+/** Alto exacto de la banda. Misma gramática que 'Cheques Recibidos'. */
+const BANDA = 19
+/** La fila del titular dentro de la banda (1-based): la cifra con la que se decide. */
+const TITULAR = 8
+
 const ACENTO = { red: 0.11, green: 0.23, blue: 0.37 }
-const NEG = { red: 0.61, green: 0.17, blue: 0.17 }
-
 const hoy = new Date().toLocaleDateString('es-AR')
+
+/**
+ * NÚCLEO PURO: las filas de la banda, dado dónde arranca el registro.
+ * Devuelve la grilla de 13 columnas lista para escribir. Todo fórmula: 0 números pegados.
+ */
+export function bandaFilas(HDR, fechaCorte = hoy) {
+  const F = `$F$${HDR}:$F` // Monto
+  const K = `$K$${HDR}:$K` // DEBITADO SI/No
+  const I = `$I$${HDR}:$I` // fecha de pago
+  // NO DEBITADO = todo lo que NO dice "SI", no sólo lo que dice "No": un DEBITADO en blanco es un
+  // cheque que todavía no se debitó (default seguro, mismo criterio que CAJA). El IF(ISNUMBER(F))
+  // evita que las filas vacías del rango abierto sumen.
+  const noDeb = `(UPPER(${K})<>"SI")`
+  const num = `IF(ISNUMBER(${F});${F};0)`
+  const outstanding = `SUMPRODUCT(${noDeb}*${num})`
+  // Los cortes de los tramos. EOMONTH(...)+1 para que un cheque fechado el último día del mes caiga
+  // DENTRO de "hasta fin de mes" y no en "más adelante".
+  const finMes = 'MAX(TODAY()+7;EOMONTH(TODAY();0)+1)'
+  // Con el "=" adentro del helper: sin él la celda queda como TEXTO y el tramo muestra la fórmula
+  // en vez del importe, sin dar error (defecto real detectado en el --dry).
+  const tramo = (cond) => `=SUMPRODUCT(${noDeb}*ISNUMBER(${I})*${cond}*${num})`
+
+  const fila = (a = '', b = '', c = '') => [a, b, c, '', '', '', '', '', '', '', '', '', '']
+  return [
+    fila('Cheques emitidos'),
+    // El subtítulo entra en UNA línea que desborda sobre las columnas vacías: envuelto en la
+    // columna A necesitaría cinco renglones y una fila alta, que es lo que hace ver "apretado".
+    fila(`Cuánto de lo firmado todavía no salió de la cuenta, y cuándo sale · registro de tesorería · al ${fechaCorte} · en pesos`),
+    fila(),
+    fila(seccion(1, '¿me alcanza? — lo que firmé contra lo que hay en el banco')),
+    fila('Concepto', 'Monto', 'Qué significa'),
+    // La plata disponible es de CAJA: no se recalcula acá. Se busca POR RÓTULO (CAJA se reescribe
+    // entera y sus filas se mueven); si el rótulo cambia, la celda lo GRITA en vez de mentir.
+    fila('Plata disponible hoy — todas las cuentas',
+      '=IFERROR(INDEX(CAJA!$E$1:$E$200;MATCH("Total disponibilidades";CAJA!$A$1:$A$200;0));"⚠ no está en CAJA")',
+      'Bancos, caja y valores a depositar. Sale de la pestaña CAJA, que es su dueña.'),
+    fila('   · (−) cheques firmados, no debitados', `=${outstanding}`,
+      'Ya lo firmaste y lo entregaste: salió de tus manos, todavía no de la cuenta.'),
+    fila(total('Con esto podés pagar'), `=IF(ISNUMBER(B${TITULAR - 2});B${TITULAR - 2}-B${TITULAR - 1};"⚠ falta el saldo de CAJA")`,
+      'El saldo que muestra el banco todavía no descontó los cheques firmados. Éste sí.'),
+    fila(),
+    fila(seccion(2, '¿cuándo sale? — los cheques no debitados, por su fecha de pago')),
+    fila('Concepto', 'Monto', 'Qué significa'),
+    fila('Vencido — averiguar por qué', tramo(`(${I}<TODAY())`),
+      'Pasó la fecha y el banco no lo debitó: o el proveedor no lo presentó, o se perdió. No es plata que sobra.'),
+    fila('Esta semana — próximos 7 días', tramo(`(${I}>=TODAY())*(${I}<TODAY()+7)`),
+      'Los fondos tienen que estar ahora.'),
+    fila('Hasta fin de este mes', tramo(`(${I}>=TODAY()+7)*(${I}<${finMes})`),
+      ''),
+    fila('Más adelante', tramo(`(${I}>=${finMes})`),
+      'Diferidos: todavía hay tiempo para conseguir los fondos.'),
+    fila('Sin fecha de pago cargada', `=SUMPRODUCT(${noDeb}*(NOT(ISNUMBER(${I})))*${num})`,
+      'No se puede ubicar en ningún tramo: falta completar la fecha en el registro.'),
+    fila(total('Comprometido, no debitado'), '=SUM(B12:B16)',
+      'Control: tiene que dar exactamente igual que la línea de la sección 1.'),
+    fila(),
+    fila(seccion(3, 'el registro, cheque por cheque')),
+  ]
+}
+
+/**
+ * NÚCLEO PURO: dónde arranca el registro. Se ancla en el DATO (FISICO/ECHEQ en la columna A), no en
+ * un rótulo: el dueño ya borró la columna de rótulos una vez y el generador insertó 12 filas a
+ * ciegas, dejando la pestaña con dos bandas superpuestas.
+ * @returns {{primera:number, hdr:number}|null} filas 1-based, o null si no encuentra el registro
+ */
+export function ubicarRegistro(colA = []) {
+  const i = colA.findIndex((f) => /^(FISICO|ECHEQ)$/i.test(String(f?.[0] ?? '').trim()))
+  if (i < 0) return null
+  return { primera: i + 1, hdr: i } // hdr = la fila del encabezado, justo arriba del primer dato
+}
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
@@ -45,42 +158,19 @@ async function main() {
   if (!hoja) { console.error(`No existe la pestaña ${PESTANA}`); process.exit(1) }
   const sheetId = hoja.sheetId
 
-  // ¿Cuántas filas ocupa hoy la banda? Se DEDUCE de dónde está el encabezado del registro (col A =
-  // "TIPO"), no de un flag en A1: así el ancho de la banda puede cambiar sin duplicarla ni romperla.
-  // ═══ NO ANCLAR EN UN RÓTULO QUE EL DUEÑO PUEDE BORRAR (23/07) ═══
-  //
-  // Esto se rompió en vivo el mismo día que se activó la Regla 0. El dueño había borrado la columna
-  // de rótulos de la banda —incluido el "TIPO" del encabezado—; el generador no encontró su ancla,
-  // dedujo `bandaActual = 0` y **insertó 12 filas**: la pestaña quedó con dos bandas, una huérfana
-  // arriba, y el registro corrido doce renglones. Peor: al quedar A1 vacía por el insert, la
-  // detección automática dio por borrados textos que él nunca tocó, y el error se realimentaba.
-  //
-  // La lección es general: **un ancla tiene que ser algo que el generador controla, no un texto que
-  // una persona puede editar legítimamente.** Se ancla en la ESTRUCTURA del registro —la primera
-  // fila que tiene FISICO/ECHEQ en A, o encabezados propios del registro en B/C— y el rótulo queda
-  // sólo como último recurso.
-  const cabecera = (await google.readSheetValues(ID, `${PESTANA}!A1:C40`)) || []
-  let iHdr = cabecera.findIndex((f) => /^TIPO$/i.test(String(f?.[0] ?? '').trim()))
-  if (iHdr < 0) {
-    // El encabezado es la fila JUSTO ANTERIOR al primer cheque del registro.
-    const iPrimerCheque = cabecera.findIndex((f) => /^(FISICO|ECHEQ)$/i.test(String(f?.[0] ?? '').trim()))
-    if (iPrimerCheque > 0) iHdr = iPrimerCheque - 1
-  }
-  if (iHdr < 0) {
-    // Último recurso: la fila que trae los encabezados propios del registro en B/C.
-    iHdr = cabecera.findIndex((f) => /^nro$/i.test(String(f?.[1] ?? '').trim()))
-  }
-  if (iHdr < 0) {
-    console.error(`No encuentro dónde arranca el registro de "${PESTANA}". NO inserto filas a ciegas: `
-      + 'hacerlo duplica la banda y corre el registro entero. Revisá la pestaña.')
+  const colA = await google.readSheetValues(ID, `${PESTANA}!A1:A60`)
+  const ubic = ubicarRegistro(colA)
+  if (!ubic) {
+    console.error(`ABORTA: no encuentro el registro (ninguna fila con FISICO/ECHEQ en la columna A de ${PESTANA}).`)
+    console.error('Sin ancla, insertar filas dejaría la pestaña con dos bandas. Revisar la pestaña a mano.')
     process.exit(1)
   }
-  const bandaActual = iHdr
+  const bandaActual = ubic.hdr - 1 // filas de banda hoy (encabezado del registro no incluido)
   const HDR = BANDA + 1
 
   if (DRY) {
-    console.log(`(--dry) banda actual ${bandaActual} filas → ${BANDA}. Encabezado del registro quedará en la fila ${HDR}.`)
-    console.log('Resumen = SUMIF/COUNTIF/MINIFS sobre la columna K (DEBITADO) — 0 números pegados.')
+    console.log(`(--dry) banda actual ${bandaActual} filas → ${BANDA}. Encabezado del registro: fila ${ubic.hdr} → ${HDR}.`)
+    bandaFilas(HDR).forEach((f, i) => console.log(String(i + 1).padStart(3), JSON.stringify(f.slice(0, 3))))
     return
   }
 
@@ -95,114 +185,84 @@ async function main() {
     }])
   }
 
-  // Rangos abiertos del registro (desde el header). Referencia LOCAL (misma hoja): sin el prefijo
-  // 'Cheques Emitidos'! — el nombre con espacio necesitaría comillas y no hace falta acá.
-  const F = `$F$${HDR}:$F` // Monto
-  const K = `$K$${HDR}:$K` // DEBITADO SI/NO
-  const A = `$A$${HDR}:$A` // TIPO (FISICO/ECHEQ)
-  const I = `$I$${HDR}:$I` // fecha de pago
-  // NO DEBITADO = todo lo que NO dice "SI", no sólo lo que dice "NO". Un DEBITADO en blanco es un
-  // cheque que todavía no se debitó (default seguro, igual que CAJA): contarlo sólo cuando dice "NO"
-  // sub-contaba $5,18M en 8 cheques con la celda vacía. El IF(ISNUMBER(F)) evita que las filas vacías
-  // del rango abierto sumen. Mismo criterio que la línea de cheques de CAJA (K<>"SI").
-  const outstanding = `SUMPRODUCT((UPPER(${K})<>"SI")*IF(ISNUMBER(${F});${F};0))`
+  const filas = bandaFilas(HDR)
 
-  // BANDA-RESUMEN — MISMA ESTRUCTURA QUE "Cheques Recibidos", para que las dos pestañas se lean igual:
-  // título · nota · aire · SECCIÓN (Concepto|Monto|Qué significa) · aire · SECCIÓN del registro.
-  // Todo fórmula sobre el propio registro: ni un número pegado.
-  //
-  // LOS VALORES VAN EN LA COLUMNA B, NUNCA EN LA F. La F es la del IMPORTE del registro y CAJA suma
-  // F2:F400: cualquier cifra de la banda puesta ahí se sumaba a los cheques como si fuera uno más
-  // (ya pasó con la fecha del próximo a debitar, que entraba como su número de serie).
-  const echeq = `SUMPRODUCT((UPPER(${K})<>"SI")*(${A}="ECHEQ")*IF(ISNUMBER(${F});${F};0))`
-  const fisico = `SUMPRODUCT((UPPER(${K})<>"SI")*(${A}="FISICO")*IF(ISNUMBER(${F});${F};0))`
-  const fila13 = (a = '', b = '', c = '') => [a, b, c, '', '', '', '', '', '', '', '', '', '']
-  const filas = [
-    fila13('Cheques emitidos'),
-    fila13(`Registro de tesorería · al ${hoy} · en pesos. Cada cheque librado por la empresa, con su fecha de pago y si el banco ya lo debitó. Lo que importa es lo NO debitado: plata firmada que todavía no salió de la cuenta y que la disponibilidad neta ya descuenta.`),
-    fila13(),
-    fila13('1 · POSICIÓN DE CHEQUES EMITIDOS — ¿CUÁNTO YA SALIÓ DE TUS MANOS Y TODAVÍA NO SE DEBITÓ?'),
-    fila13('Concepto', 'Monto', 'Qué significa'),
-    fila13('⇒ Comprometido, no debitado', `=${outstanding}`, 'Ya salió de tus manos, todavía no de la cuenta'),
-    fila13('   · en echeq', `=${echeq}`, ''),
-    fila13('   · en cheque físico', `=${fisico}`, ''),
-    fila13('Cheques pendientes', `=SUMPRODUCT((UPPER(${K})<>"SI")*ISNUMBER(${F}))`, 'Cantidad, no plata'),
-    // MINIFS con criterio "<>SI" deja la celda VACÍA (no da error, no escribe nada): se usa "NO",
-    // que además es exacto porque todos los DEBITADO en blanco ya se completaron con NO.
-    fila13('Próximo a debitar', `=IFERROR(TEXT(MINIFS(${I};${K};"NO");"dd/mm/yy");"—")`, 'La fecha más cercana de las pendientes'),
-    fila13(),
-    fila13('2 · EL REGISTRO, CHEQUE POR CHEQUE'),
-  ]
   // ═══ DESARMAR LOS MERGES DE LA BANDA ANTES DE ESCRIBIR ═══
-  // Una celda COMBINADA sólo acepta escritura en su ancla: escribir en cualquier otra celda del merge
-  // se ignora EN SILENCIO —sin error, sin valor—. El diseño viejo tenía la banda con títulos
-  // combinados a lo ancho, y por eso la fórmula del próximo a debitar nunca llegaba a B10: no fallaba,
-  // desaparecía. Es la trampa de celdas combinadas que la skill de Sheets marca como "asesino
-  // silencioso" en zonas de datos.
+  // Una celda COMBINADA sólo acepta escritura en su ancla: escribir en cualquier otra celda del
+  // merge se ignora EN SILENCIO —sin error, sin valor—. Es la trampa que la skill de Sheets llama
+  // "el asesino silencioso" en zonas de datos.
   await google.spreadsheetBatchUpdate(ID, [{
     unmergeCells: { range: { sheetId, startRowIndex: 0, endRowIndex: BANDA, startColumnIndex: 0, endColumnIndex: 13 } },
   }]).catch(() => {})
-  // ═══ REGLA 0 — LO QUE EL DUEÑO EDITÓ GANA, Y EL GENERADOR SE ADAPTA ═══
-  //
-  // POR QUÉ ACÁ Y NO EN escribirPreservando (23/07). El dueño: "no estás respetando q yo hago
-  // ediciones en las pestañas y me las ignoras". Esta banda se escribe en CRUDO, no por fusión: no
-  // lleva los centinelas VACIO, así que pasarla por `escribirPreservando` haría revivir los valores
-  // viejos de la propia banda —el defecto que ya se pagó en Proveedores, con proveedores duplicados
-  // y el total al doble—. Se aplica entonces sólo la mitad que corresponde: respetar SUS textos.
-  //
-  // Alcanza a los rótulos: si él reescribió el subtítulo o borró una etiqueta, eso vale. Los importes
-  // y las fórmulas los sigue mandando el generador, que es lo que la pestaña existe para calcular.
-  // El TEXTO QUE SE VE, no la fórmula: ver lib/preservar-anotaciones.mjs.
+
+  // ═══ REGLA 0 — SI EL DUEÑO REESCRIBIÓ O BORRÓ UN RÓTULO, GANA ÉL ═══
+  // La banda se escribe en crudo (no por fusión con VACIO), así que la Regla 0 se aplica acá a mano:
+  // respeta los rótulos que una persona editó, comparando contra el TEXTO QUE SE VE (no la fórmula).
   const previo = await google.readSheetValues(ID, `'${PESTANA}'!A1:M${filas.length}`).catch(() => [])
   const { grid: filasFinal, respetadas, ediciones } = await conEdicionesRespetadas(ID, PESTANA, filas, previo)
-  for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${String(r.suyo).slice(0, 44)}") en vez de escribir "${String(r.mio).slice(0, 44)}"`)
+  for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${String(r.suyo).slice(0, 44)}") en vez de "${String(r.mio).slice(0, 44)}"`)
   await google.batchUpdateValues(ID, [{ range: `${PESTANA}!A1`, values: filasFinal }])
   await guardarRegistro(ID, PESTANA, filasFinal, ediciones, previo)
     .catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
 
-  // ── FORMATO: la misma piel de statement que "Cheques Recibidos" (lib/estilo-statement.mjs) ──────
-  // skinRequests resuelve título, secciones (MAYÚSCULAS), encabezados y totales (⇒) a partir del
-  // contenido: reja apagada, fondo blanco, tinta, hairlines y CERO barras de color.
+  // ── FORMATO ───────────────────────────────────────────────────────────────────────────────────
+  // El formato se calcula sobre la grilla que QUEDÓ ESCRITA (`filas`), no sobre otra: si se le pasa
+  // una grilla distinta de la escrita, las reglas aterrizan una fila corrida.
   const txt = (color, { bold = false, size = 10, italic = false } = {}) => ({ foregroundColor: color, bold, fontSize: size, italic, fontFamily: 'Arial' })
-  const money = { type: 'NUMBER', pattern: '$#,##0' }
-  // ═══ SE FORMATEA LO QUE QUEDÓ ESCRITO, NO LO QUE SE QUISO ESCRIBIR (23/07) ═══
-  //
-  // El dueño: "has dejado roto el formato de la pestaña cheques emitidos". Y lo estaba. Él había
-  // borrado la columna de rótulos de la banda; la Regla 0 respetó esos borrados en los VALORES, pero
-  // al formateador se le seguía pasando la grilla ORIGINAL. Resultado: dibujaba la regla del título
-  // de cada sección —y medía el ancho de cada bloque— como si los rótulos siguieran ahí. En pantalla
-  // quedaban DOS LÍNEAS COLGADAS SOBRE LA NADA, que es justo lo que el minimalismo no perdona: una
-  // regla existe para separar contenido, y ahí no había contenido que separar.
-  //
-  // La clasificación de cada fila (título, sección, encabezado, total) sale de la columna A. Si esa
-  // columna quedó vacía porque una persona la vació, la fila deja de ser una sección — y tiene que
-  // dejar de tener su regla. Pasar la grilla final es lo que hace que el formato siga a la realidad.
+  const money = { type: 'NUMBER', pattern: '$#,##0;($#,##0);"—"' } // negativos entre paréntesis (norma IB)
+  const rg = (r0, r1, c0, c1) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
   const reqs = [
-    ...skinRequests({ sheetId, filas: filasFinal, cols: 13, congeladas: HDR }),
-    // La nota bajo el título, gris y chica.
-    // Si el dueño borró el subtítulo, su fila no lleva alto especial: sería un renglón alto y vacío.
-    ...(String(filasFinal[1]?.[0] ?? '').trim() ? [
-      { repeatCell: { range: { sheetId, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 0, endColumnIndex: 13 }, cell: { userEnteredFormat: { textFormat: txt(MUTED, { size: 9 }), wrapStrategy: 'WRAP' } }, fields: 'userEnteredFormat(textFormat,wrapStrategy)' } },
-      { updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 1, endIndex: 2 }, properties: { pixelSize: 34 }, fields: 'pixelSize' } },
-    ] : []),
-    // Los importes de la posición: moneda, a la derecha, tabulares.
-    { repeatCell: { range: { sheetId, startRowIndex: 5, endRowIndex: 8, startColumnIndex: 1, endColumnIndex: 2 }, cell: { userEnteredFormat: { numberFormat: money, horizontalAlignment: 'RIGHT', textFormat: txt(INK, { bold: false, size: 11 }) } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment,textFormat)' } },
-    // El titular, en acento y grande: es lo que el tesorero mira primero.
-    { repeatCell: { range: { sheetId, startRowIndex: 5, endRowIndex: 6, startColumnIndex: 1, endColumnIndex: 2 }, cell: { userEnteredFormat: { numberFormat: money, horizontalAlignment: 'RIGHT', textFormat: txt(ACENTO, { bold: true, size: 16 }) } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment,textFormat)' } },
-    // Cantidad de cheques: entero, no plata. Y el próximo a debitar: texto.
-    { repeatCell: { range: { sheetId, startRowIndex: 8, endRowIndex: 9, startColumnIndex: 1, endColumnIndex: 2 }, cell: { userEnteredFormat: { numberFormat: { type: 'NUMBER', pattern: '0' }, horizontalAlignment: 'RIGHT', textFormat: txt(INK, { size: 11 }) } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment,textFormat)' } },
-    { repeatCell: { range: { sheetId, startRowIndex: 9, endRowIndex: 10, startColumnIndex: 1, endColumnIndex: 2 }, cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'RIGHT', textFormat: txt(INK, { size: 11 }) } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment,textFormat)' } },
-    // La columna "Qué significa": explicación, nunca plata.
-    { repeatCell: { range: { sheetId, startRowIndex: 5, endRowIndex: 10, startColumnIndex: 2, endColumnIndex: 3 }, cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: txt(MUTED, { size: 9 }) } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment,textFormat)' } },
+    // Las dos pestañas congelan lo mismo: título + subtítulo. Congelar hasta el encabezado del
+    // registro comería media pantalla con una banda de 19 filas.
+    ...skinRequests({ sheetId, filas: filasFinal, cols: 13, congeladas: 2, titular: TITULAR }),
+    // La banda DESBORDA, no se corta: un título de sección o un titular partido al medio no es un
+    // rótulo, es un error de imprenta. Las columnas de la derecha de la banda están vacías.
+    { repeatCell: { range: rg(0, BANDA, 0, 13), cell: { userEnteredFormat: { wrapStrategy: 'OVERFLOW_CELL' } }, fields: 'userEnteredFormat.wrapStrategy' } },
+    // La nota bajo el título: gris, chica, con aire para que respire.
+    { repeatCell: { range: rg(1, 2, 0, 13), cell: { userEnteredFormat: { textFormat: txt(MUTED, { size: 9 }), wrapStrategy: 'OVERFLOW_CELL' } }, fields: 'userEnteredFormat(textFormat,wrapStrategy)' } },
+    // TODOS los importes de la banda: moneda, a la derecha, tabulares. Una sola regla para las dos
+    // secciones — misma columna, mismo significado en toda la pestaña.
+    // Desde la fila del PRIMER encabezado: el rótulo "Monto" se alinea con sus cifras. Empezando una
+    // fila después, el "Monto" de la sección 1 quedaba a la izquierda y el de la sección 2 a la
+    // derecha —dos cuadros que se leen distinto en la misma pestaña— (defecto visto en el render).
+    { repeatCell: { range: rg(4, BANDA, 1, 2), cell: { userEnteredFormat: { numberFormat: money, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } },
+    // La columna "Qué significa": explicación, nunca plata. Desborda sobre las columnas de la
+    // derecha, que en la banda están vacías — así se lee entera sin ensanchar una columna que abajo
+    // el registro necesita angosta. Se aplica SÓLO a las filas de datos: si tocara los encabezados,
+    // "Qué significa" saldría en redonda al lado de "Concepto" y "Monto" en versalita.
+    ...[[5, 8], [11, 17]].map(([r0, r1]) => ({ repeatCell: { range: rg(r0, r1, 2, 3), cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: txt(MUTED, { size: 9 }), wrapStrategy: 'OVERFLOW_CELL' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment,textFormat,wrapStrategy)' } })),
+    // EL TITULAR: la cifra en 16 pt y acento (nadie más usa ese color), y su RÓTULO en 12 pt — no en
+    // los 13 que pone la piel: a 13 el rótulo del titular no entra en su columna y se corta a la
+    // mitad. Un rótulo cortado no es un titular, es un error de imprenta. Mismo criterio en las dos
+    // pestañas, para que se lean igual.
+    { repeatCell: { range: rg(TITULAR - 1, TITULAR, 0, 1), cell: { userEnteredFormat: { textFormat: txt(ACENTO, { bold: true, size: 12 }) } }, fields: 'userEnteredFormat.textFormat' } },
+    { repeatCell: { range: rg(TITULAR - 1, TITULAR, 1, 2), cell: { userEnteredFormat: { numberFormat: money, horizontalAlignment: 'RIGHT', textFormat: txt(ACENTO, { bold: true, size: 16 }) } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment,textFormat)' } },
+    // ANCHOS: la banda y el registro comparten las mismas tres primeras columnas y necesitan cosas
+    // distintas. Gana el compromiso: A y B alcanzan para el concepto y el importe de la banda (que
+    // es lo que se lee primero) sin dejar el registro desparramado, y la explicación desborda.
+    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 270 }, fields: 'pixelSize' } },
+    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: 2 }, properties: { pixelSize: 140 }, fields: 'pixelSize' } },
+    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 2, endIndex: 3 }, properties: { pixelSize: 110 }, fields: 'pixelSize' } },
     // Encabezado del registro: versalita apagada con hairline, igual que en Recibidos.
-    { repeatCell: { range: { sheetId, startRowIndex: HDR - 1, endRowIndex: HDR, startColumnIndex: 0, endColumnIndex: 13 }, cell: { userEnteredFormat: { backgroundColor: { red: 1, green: 1, blue: 1 }, textFormat: txt(MUTED, { bold: true, size: 9 }), horizontalAlignment: 'LEFT' } }, fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)' } },
-    { updateBorders: { range: { sheetId, startRowIndex: HDR - 1, endRowIndex: HDR, startColumnIndex: 0, endColumnIndex: 13 }, bottom: { style: 'SOLID', width: 1, color: HAIR } } },
+    { repeatCell: { range: rg(HDR - 1, HDR, 0, 13), cell: { userEnteredFormat: { backgroundColor: { red: 1, green: 1, blue: 1 }, textFormat: txt(MUTED, { bold: true, size: 9 }), horizontalAlignment: 'LEFT' } }, fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)' } },
+    { updateBorders: { range: rg(HDR - 1, HDR, 0, 13), bottom: { style: 'SOLID', width: 1, color: HAIR } } },
   ]
   await google.spreadsheetBatchUpdate(ID, reqs)
 
-  // Verificar: releer el número héroe y la cuenta.
-  const chk = await google.readSheetValues(ID, `${PESTANA}!B6:B10`)
-  console.log(`✔ ${PESTANA} · comprometido no debitado ${chk?.[0]?.[0]} · echeq ${chk?.[1]?.[0]} · físico ${chk?.[2]?.[0]} · ${chk?.[3]?.[0]} cheques · próximo ${chk?.[4]?.[0]}`)
+  // ── VERIFICACIÓN: releer y probar que el control cierra ────────────────────────────────────────
+  const chk = await google.readSheetValues(ID, `${PESTANA}!A1:C${BANDA}`)
+  const n = (s) => Number(String(s ?? '').replace(/[^\d,-]/g, '').replace(/\./g, '').replace(',', '.'))
+  const errores = (chk || []).flat().filter((c) => /^#(REF|N\/A|VALUE|ERROR|NAME|¿|DIV)/i.test(String(c ?? ''))).length
+  const outstanding = n(chk?.[6]?.[1])
+  const totalTramos = n(chk?.[16]?.[1])
+  console.log(`✔ ${PESTANA}`)
+  console.log(`  disponible ${chk?.[5]?.[1]} · comprometido ${chk?.[6]?.[1]} · ⇒ con esto podés pagar ${chk?.[TITULAR - 1]?.[1]}`)
+  console.log(`  tramos: vencido ${chk?.[11]?.[1]} · esta semana ${chk?.[12]?.[1]} · fin de mes ${chk?.[13]?.[1]} · más adelante ${chk?.[14]?.[1]} · sin fecha ${chk?.[15]?.[1]}`)
+  console.log(`  control tramos vs comprometido: ${totalTramos === outstanding ? '✓ cierra' : `✖ NO cierra (${totalTramos} vs ${outstanding})`}`)
+  console.log(`  ${errores} celda(s) en error`)
+  if (errores || totalTramos !== outstanding) process.exitCode = 1
 }
 
-main().catch((e) => { console.error(e); process.exitCode = 1 })
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((e) => { console.error(e); process.exitCode = 1 })
+}
