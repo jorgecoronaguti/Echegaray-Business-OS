@@ -600,9 +600,13 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // ensució el bloque de deuda con nombres de proveedor repetidos y un total al doble. La única
   // excepción son las columnas que la persona agregó al bloque de deuda y el generador no llena
   // (Comentarios): ahí el vacío significa "no es mía" y la fusión las conserva.
-  for (let i = 0; i < filas.length; i++) {
-    const f = filas[i]
-    for (let j = 0; j < f.length; j++) {
+  // Se RELLENA cada fila hasta el ancho de la grilla, no sólo se recorre lo que tiene. Una fila
+  // separadora es `push([])` —longitud CERO—: recorriéndola no se marca nada, después se rellenaba
+  // con '' (preservar) y sobrevivía el texto viejo. Así reaparecía el título de la sección 2
+  // duplicado en dos filas seguidas cuando el bloque de deuda crecía.
+  const anchoGrilla = Math.max(...filas.map((f) => f.length), 1)
+  for (const f of filas) {
+    for (let j = 0; j < anchoGrilla; j++) {
       if (f[j] !== '' && f[j] !== undefined && f[j] !== null) continue
       f[j] = VACIO
     }
@@ -981,7 +985,7 @@ async function main() {
     // LOS ANCHOS SALEN DEL CONTENIDO, con los declarados como piso: un ancho escrito a mano se queda
     // corto en cuanto cambia un rótulo, y el texto se corta sin que nadie se entere.
     t.anchos = anchosSegunContenido(filasP, { base: t.anchos, max: 300 })
-    const cuadroP = filasP.map((f) => { const r = [...f]; while (r.length < anchoP) r.push(''); return r })
+    const cuadroP = filasP.map((f) => { const r = [...f]; while (r.length < anchoP) r.push(VACIO); return r })
 
     let hoja = hojas.find((h) => h.title === t.titulo)
     if (!hoja) {
