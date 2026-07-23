@@ -126,7 +126,8 @@ async function main() {
   //
   // Alcanza a los rótulos: si él reescribió el subtítulo o borró una etiqueta, eso vale. Los importes
   // y las fórmulas los sigue mandando el generador, que es lo que la pestaña existe para calcular.
-  const previo = await google.readSheetValues(ID, `'${PESTANA}'!A1:M${filas.length}`, { render: 'FORMULA' }).catch(() => [])
+  // El TEXTO QUE SE VE, no la fórmula: ver lib/preservar-anotaciones.mjs.
+  const previo = await google.readSheetValues(ID, `'${PESTANA}'!A1:M${filas.length}`).catch(() => [])
   const { grid: filasFinal, respetadas, ediciones } = await conEdicionesRespetadas(ID, PESTANA, filas, previo)
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${String(r.suyo).slice(0, 44)}") en vez de escribir "${String(r.mio).slice(0, 44)}"`)
   await google.batchUpdateValues(ID, [{ range: `${PESTANA}!A1`, values: filasFinal }])

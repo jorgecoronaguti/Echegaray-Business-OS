@@ -474,7 +474,8 @@ async function main() {
   // registro se lleva por pestaña, y como la Regla 0 ancla al TEXTO y no a la posición, un bloque que
   // se mueve de fila no rompe nada.
   for (const d of data) {
-    const actual = await google.readSheetValues(ID, d.range, { render: 'FORMULA' }).catch(() => [])
+    // El TEXTO QUE SE VE, no la fórmula: ver lib/preservar-anotaciones.mjs.
+    const actual = await google.readSheetValues(ID, d.range).catch(() => [])
     const { grid, respetadas, ediciones } = await conEdicionesRespetadas(ID, d.pestaña, d.values, actual)
     for (const r of respetadas) console.log(`  ✋ ${d.pestaña}: respeto tu texto ("${String(r.suyo).slice(0, 40)}") en vez de "${String(r.mio).slice(0, 40)}"`)
     d.values = grid
