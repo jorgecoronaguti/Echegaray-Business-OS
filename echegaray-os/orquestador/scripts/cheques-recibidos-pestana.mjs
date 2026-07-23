@@ -17,7 +17,7 @@ import { loadConfig } from '../lib/config.mjs'
 import * as CR from '../lib/cheques-recibidos.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { skinRequests, INK, MUTED } from '../lib/estilo-statement.mjs'
-import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 export const PESTAÑA = 'Cheques Recibidos'
@@ -78,7 +78,13 @@ async function main() {
   await google.spreadsheetBatchUpdate(ID, [{ updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { rowCount: alto, columnCount: Math.max(ancho + 1, hoja.cols ?? 0) } }, fields: 'gridProperties(rowCount,columnCount)' } }])
 
   // NO se borra nada escrito por una persona: se lee, se fusiona y se escribe. Ver lib/preservar-anotaciones.mjs.
-  const gridCR = filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r })
+  // El generador es DUEÑO de toda su grilla (esta pestaña no tiene columnas del dueño): sus vacíos se
+  // LIMPIAN. Con '' sobrevivía el texto de la corrida anterior y salían secciones duplicadas.
+  const gridCR = filas.map((f) => {
+    const r = [...f].map((x) => (x === '' || x === undefined || x === null ? VACIO : x))
+    while (r.length < ancho) r.push(VACIO)
+    return r
+  })
   const { conservadas } = await escribirPreservando(google, ID, `'${PESTAÑA}'`, gridCR, { anchoHoja: Math.max(ancho, hoja.cols ?? ancho) })
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
