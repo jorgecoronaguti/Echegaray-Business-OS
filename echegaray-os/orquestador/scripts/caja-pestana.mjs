@@ -311,10 +311,13 @@ function grilla(cargado, refs) {
   const K400 = `UPPER('${ch}'!$K$2:$K$400)<>"SI"`
   const I400 = `'${ch}'!$I$2:$I$400`
   const salida = (cond) => `=SUMPRODUCT((${K400})*(${cond})*${F400})`
-  const hrow = (label, amount, nota) => { const f = filas.length + 1; return push([label, 'ARS', amount, '', `=${C_IMP}${f}`, '', '', nota, '']) }
+  // UN IMPORTE, UNA COLUMNA. Estas filas son todas en pesos: repetir la misma cifra en "moneda de
+  // origen" y en "pesos" es ruido —el ojo lee dos números y busca la diferencia que no existe—.
+  // La columna de origen sólo tiene sentido donde conviven dos monedas (el bloque de cuentas).
+  const hrow = (label, amount, nota) => push([label, 'ARS', '', '', amount, '', '', nota, ''])
   const fHEntra = hrow('Entra — cheques recibidos, en cartera', `=${C_PESOS}${fCartera}`, 'Valores en custodia según el banco (detalle en el bloque 3, más abajo).')
   const fHSale = hrow('Sale — cheques emitidos, por vencer', `=${C_PESOS}${fCh}`, `Pestaña ${ch}, no debitados (DEBITADO ≠ SI).`)
-  push(['⇒ Neto de cheques en el horizonte', 'ARS', `=${C_IMP}${fHEntra}-${C_IMP}${fHSale}`, '', `=${C_IMP}${filas.length + 1}`, '', '',
+  push(['⇒ Neto de cheques en el horizonte', 'ARS', '', '', `=${C_PESOS}${fHEntra}-${C_PESOS}${fHSale}`, '', '',
     'Entra menos sale. Negativo = los cheques que ya firmaste superan los que vas a cobrar de cartera.', ''])
   hrow('   · de eso, sale este mes o ya venció', salida(`${I400}<=EOMONTH(TODAY();0)`), 'Cheques emitidos con fecha de pago hasta fin de este mes.')
   hrow('   · sale el mes que viene', salida(`(${I400}>EOMONTH(TODAY();0))*(${I400}<=EOMONTH(TODAY();1))`), '')
