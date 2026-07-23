@@ -473,9 +473,18 @@ async function main() {
   // {range, values} sueltos—. Cada bloque se compara contra lo que hay hoy EN SU PROPIO RANGO; el
   // registro se lleva por pestaña, y como la Regla 0 ancla al TEXTO y no a la posición, un bloque que
   // se mueve de fila no rompe nada.
+  // LA REGLA 0 MIRA LA PESTAÑA ENTERA, NO EL BLOQUE QUE SE ESCRIBE (23/07). Este generador escribe
+  // por rangos sueltos; comparar contra `d.range` dejaba fuera todo el resto de la pestaña, así que
+  // cada rótulo de OTRO bloque se leía como borrado. De ahí salieron 35 borrados falsos en "Cash
+  // Flow Semanal" — y un falso borrado se confirma solo, porque el generador deja de escribirlo.
+  const vistas = new Map()
+  const verPestana = async (p) => {
+    if (!vistas.has(p)) vistas.set(p, await google.readSheetValues(ID, `${p}!A1:BZ`).catch(() => []))
+    return vistas.get(p)
+  }
   for (const d of data) {
     // El TEXTO QUE SE VE, no la fórmula: ver lib/preservar-anotaciones.mjs.
-    const actual = await google.readSheetValues(ID, d.range).catch(() => [])
+    const actual = await verPestana(d.pestaña)
     const { grid, respetadas, ediciones } = await conEdicionesRespetadas(ID, d.pestaña, d.values, actual)
     for (const r of respetadas) console.log(`  ✋ ${d.pestaña}: respeto tu texto ("${String(r.suyo).slice(0, 40)}") en vez de "${String(r.mio).slice(0, 40)}"`)
     d.values = grid

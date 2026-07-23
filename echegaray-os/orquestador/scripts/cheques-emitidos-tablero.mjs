@@ -198,7 +198,9 @@ async function main() {
   // ═══ REGLA 0 — SI EL DUEÑO REESCRIBIÓ O BORRÓ UN RÓTULO, GANA ÉL ═══
   // La banda se escribe en crudo (no por fusión con VACIO), así que la Regla 0 se aplica acá a mano:
   // respeta los rótulos que una persona editó, comparando contra el TEXTO QUE SE VE (no la fórmula).
-  const previo = await google.readSheetValues(ID, `'${PESTANA}'!A1:M${filas.length}`).catch(() => [])
+  // Sin techo de filas: ver la nota de caja-pestana.mjs. Un rótulo que hoy vive más abajo de la
+  // grilla nueva no está borrado, está fuera de la ventana que yo leí.
+  const previo = await google.readSheetValues(ID, `'${PESTANA}'!A1:M`).catch(() => [])
   const { grid: filasFinal, respetadas, ediciones } = await conEdicionesRespetadas(ID, PESTANA, filas, previo)
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${String(r.suyo).slice(0, 44)}") en vez de "${String(r.mio).slice(0, 44)}"`)
   await google.batchUpdateValues(ID, [{ range: `${PESTANA}!A1`, values: filasFinal }])

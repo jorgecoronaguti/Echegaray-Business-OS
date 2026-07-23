@@ -936,7 +936,10 @@ async function main() {
   await google.spreadsheetBatchUpdate(ID, [{ unmergeCells: { range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: Math.max(g.filas.length, hoja.rows ?? 0), startColumnIndex: 0, endColumnIndex: Math.max(ANCHO, hoja.cols ?? ANCHO) } } }]).catch(() => {})
   // REGLA 0: si reescribiste un título o un rótulo de esta pestaña, gana el tuyo. Se compara contra
   // lo que este generador escribió la última vez. Ver lib/respetar-ediciones.mjs.
-  const actual = await google.readSheetValues(ID, `${tab}!A1:${letra(ANCHO - 1)}${g.filas.length}`).catch(() => [])
+  // LA LECTURA DE LA REGLA 0 NO LLEVA TECHO DE FILAS (23/07). Cortarla a la altura de la grilla NUEVA
+  // deja invisible todo lo que hoy está más abajo, y la Regla 0 lo lee como "el dueño lo borró". Así
+  // se marcaron 74 borrados falsos —14 sólo en Caja—, y un falso borrado se confirma solo.
+  const actual = await google.readSheetValues(ID, `${tab}!A1:${letra(ANCHO - 1)}`).catch(() => [])
   const { grid: gridFinal, respetadas, ediciones } = await conEdicionesRespetadas(ID, PESTAÑA, g.filas, actual)
   g.filas = gridFinal
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)

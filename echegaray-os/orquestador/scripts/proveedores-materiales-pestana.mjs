@@ -1049,7 +1049,9 @@ async function main() {
     // falta así para fusionar sin degradar fórmulas), y con eso una celda que muestra "ARCOR" por
     // fórmula devuelve "=QUERY(…)" y el rótulo parecería borrado. Ver lib/preservar-anotaciones.mjs.
     const visible = await google.readSheetValues(
-      ID, `${refPestana(t.titulo)}!A1:${letra(anchoLeer - 1)}${cuadroP.length}`,
+      // Sin techo de filas: ver la nota de caja-pestana.mjs. "TOTAL FACTURADO" vive en la fila 202 y
+      // toda lectura acotada a la grilla nueva lo daba por borrado.
+      ID, `${refPestana(t.titulo)}!A1:${letra(anchoLeer - 1)}`,
     ).catch(() => previo)
     const { grid: cuadroFinal, respetadas, ediciones } = await conEdicionesRespetadas(ID, t.titulo, cuadroP, visible)
     for (const r of respetadas) console.log(`  ✋ ${t.titulo}: respeto tu texto ("${String(r.suyo).slice(0, 40)}") en vez de "${String(r.mio).slice(0, 40)}"`)
