@@ -25,13 +25,13 @@ import { query } from '../lib/db.mjs'
 import { parsearDDJJ, alicuotaDeclarada } from '../lib/iibb-ddjj.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
-import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Impuestos y Financieros'
 const DRY = process.argv.includes('--dry')
 const AÑO = 2026
-const ANCHO = 10
+const ANCHO = 6
 // Las DDJJ de IIBB de San Juan viven en una CARPETA de Drive (la compartió el dueño). Se LISTA la
 // carpeta y se leen los PDF originales: son la fuente primaria (traen N° de control y fecha de
 // presentación) y, al listar en vez de hardcodear, el mes nuevo aparece solo cuando se sube.
@@ -88,7 +88,11 @@ async function planesDePago() {
 
 function grilla(iva, planes, iibb, ret) {
   const filas = []
-  const push = (c = []) => { const r = [...c]; while (r.length < ANCHO) r.push(''); filas.push(r); return filas.length }
+  const push = (c = []) => {
+    const r = [...c].map((x) => (x === '' || x === undefined || x === null ? VACIO : x))
+    while (r.length < ANCHO) r.push(VACIO)
+    filas.push(r); return filas.length
+  }
   const hoy = new Date().toISOString().slice(0, 10)
 
   push([`IMPUESTOS Y FINANCIERO · al ${hoy} · en pesos`])
@@ -101,7 +105,7 @@ function grilla(iva, planes, iibb, ret) {
   for (let k = 0; k < 11; k++) push()
 
   // ── 1. IVA ──────────────────────────────────────────────────────────────────────────────────────
-  push(['1. IVA — posición mensual, con el saldo a favor arrastrado'])
+  push(['1 · IVA — POSICIÓN MENSUAL, CON EL SALDO A FAVOR ARRASTRADO'])
   // LA COLUMNA DE RETENCIONES ES NUEVA (21/07) y va ENTRE la posición y el saldo previo, porque ése
   // es el orden en que se aplican: la posición del mes se reduce primero por lo que ya se pagó por
   // retención, y recién después se consume el saldo a favor que venía arrastrándose.
@@ -140,11 +144,11 @@ function grilla(iva, planes, iibb, ret) {
     const i = Number(m.periodo.slice(5, 7)) - 1
     const mes = i + 1
     const r = filas.length + 1
-    if (!m.disponible && !m.es_proyeccion) { push([`${MES[i]}-26`, '', '', '', '', '', '', '', '', 'sin comprobantes cargados']); continue }
+    if (!m.disponible && !m.es_proyeccion) { push([`${MES[i]}-26`, '', '', '', '', 'sin comprobantes cargados']); continue }
     // El saldo a favor que venía = el que quedó el mes anterior (columna E). Para el primer mes, 0.
     const prev = r === f0 ? '0' : `$E${r - 1}`
     push([
-      `${MES[i]}-26`,
+      `${MES[i]}-26${m.disponible ? '' : '  · proy.'}`,
       // POSICIÓN = ventas − compras (débito − crédito, fundidos). Proyección: el ritmo real ajustado
       // por inflación (el crédito lleva la misma inflación, así que la resta ya viene ajustada).
       m.disponible
@@ -173,7 +177,7 @@ function grilla(iva, planes, iibb, ret) {
   // ── 1 bis. LAS RETENCIONES QUE LE HACEN A LA EMPRESA ────────────────────────────────────────────
   // No estaban en ningún lado del archivo. Una retención es impuesto YA PAGADO: sin computarla, el
   // cuadro muestra un "A PAGAR" inflado y el cash flow proyecta una salida que no va a ocurrir.
-  push(['1 bis. Retenciones sufridas — impuesto ya pagado por adelantado'])
+  push(['2 · RETENCIONES SUFRIDAS — IMPUESTO YA PAGADO POR ADELANTADO'])
   push(['Régimen', 'Total retenido'])
   // Totales por fórmula sobre Cobranzas (SUMPRODUCT+ISNUMBER porque hay notas de texto en esas cols).
   const retDe = (col) => `=SUMPRODUCT(IF(ISNUMBER(Cobranzas!$${col}$5:$${col}$400);Cobranzas!$${col}$5:$${col}$400;0))`
@@ -185,7 +189,7 @@ function grilla(iva, planes, iibb, ret) {
   push()
 
   // ── 2. IIBB ─────────────────────────────────────────────────────────────────────────────────────
-  push(['2. IIBB — Ingresos Brutos San Juan'])
+  push(['3 · IIBB — INGRESOS BRUTOS SAN JUAN'])
   // ═══ ESTE ES EL ÚNICO BLOQUE DEL ARCHIVO QUE NO SE PUEDE ACTUALIZAR SOLO, Y HAY QUE DECIRLO ═══
   //
   // El IVA sale de _ARCA_RAW, las cargas sociales de _F931_RAW —leídas del PDF de cada DDJJ— y los
@@ -220,14 +224,15 @@ function grilla(iva, planes, iibb, ret) {
   push()
 
   // ── PLANES DE PAGO F931 (detalle) — de acá salen las cifras de la deuda financiera de abajo ──────
-  push(['Planes de pago F931 — detalle'])
-  push(['Plan', 'Cuotas', 'Monto por cuota', 'Total', 'Primera', 'Última', '', '', 'Origen'])
+  push(['4 · PLANES DE PAGO F931 — DETALLE'])
+  push(['Origen: Compras, rubro «Deuda previsional (planes de pago)». El total por plan es cuotas × monto de cuota.'])
+  push(['Plan', 'Cuotas', 'Monto por cuota', 'Total', 'Primera', 'Última'])
   const p0 = filas.length + 1
   // El total por plan es cuotas × monto de cuota: fórmula, no pegado. Cuotas y monto salen del rubro
   // "Deuda previsional" de Compras (agregación del OS por plan) y se declaran en la columna Origen.
-  planes.forEach((p, k) => push([p.nombre, p.cuotas, p.monto_cuota, `=B${p0 + k}*C${p0 + k}`, p.primera ?? '', p.ultima ?? '', '', '', 'Compras, rubro "Deuda previsional (planes de pago)"']))
+  planes.forEach((p, k) => push([p.nombre, p.cuotas, p.monto_cuota, `=B${p0 + k}*C${p0 + k}`, p.primera ?? '', p.ultima ?? '']))
   const p1 = filas.length
-  const fTotalPlanes = push(['TOTAL PLANES', `=SUM(B${p0}:B${p1})`, '', `=SUM(D${p0}:D${p1})`, '', '', '', '', ''])
+  const fTotalPlanes = push(['TOTAL PLANES', `=SUM(B${p0}:B${p1})`, '', `=SUM(D${p0}:D${p1})`, '', ''])
   push()
 
   // ── 3. DEUDA FINANCIERA — planes previsionales + prendario del rodado ────────────────────────────
@@ -235,21 +240,21 @@ function grilla(iva, planes, iibb, ret) {
   // Junta lo que se DEBE con instrumento financiero. El prendario es el punto que faltaba conectar:
   // la CUOTA sale del BANCO (el débito real del extracto, _BANCO_RAW), la DEUDA del año de lo cargado
   // en Compras (rubro Financiero). Los planes, de su detalle de arriba.
-  push(['3. DEUDA FINANCIERA — lo que se debe y con qué cuota'])
-  push(['Concepto', 'Cuotas', 'Cuota', 'Deuda', '', '', '', '', 'Origen'])
-  const fPlanLinea = push([`Planes previsionales F931 (${planes.length})`, `=B${fTotalPlanes}`, '', `=D${fTotalPlanes}`, '', '', '', '',
-    'Detalle arriba · Compras rubro "Deuda previsional"'])
+  push(['5 · DEUDA FINANCIERA — LO QUE SE DEBE Y CON QUÉ CUOTA'])
+  push(['Concepto', 'Cuotas', 'Cuota mensual', 'Deuda', 'Origen', ''])
+  const fPlanLinea = push([`Planes previsionales F931 (${planes.length})`, `=B${fTotalPlanes}`, '', `=D${fTotalPlanes}`,
+    'Detalle arriba · Compras rubro "Deuda previsional"', ''])
   const fPrend = push(['Prendario Ford XLS · Santander',
     '=COUNTIF(Compras!$AC$4:$AC;"Financiero")',
     `=ABS(SUMIF('_BANCO_RAW'!$F$4:$F;"Préstamo prendario";'_BANCO_RAW'!$C$4:$C))`,
-    '=SUMIF(Compras!$AC$4:$AC;"Financiero";Compras!$O$4:$O)', '', '', '', '',
-    'Cuota: extracto Santander · Deuda del año: Compras rubro "Financiero" (cuotas 15–26/2026)'])
-  const fDeudaTot = push(['TOTAL DEUDA FINANCIERA', '', '', `=D${fPlanLinea}+D${fPrend}`, '', '', '', '', ''])
+    '=SUMIF(Compras!$AC$4:$AC;"Financiero";Compras!$O$4:$O)',
+    'Cuota: extracto Santander · Deuda: Compras rubro "Financiero"', ''])
+  const fDeudaTot = push(['TOTAL DEUDA FINANCIERA', '', '', `=D${fPlanLinea}+D${fPrend}`, '', ''])
   const b0 = fPrend // ancla para el formato de "cuotas" (cantidad, no plata)
   push()
 
   // ── 5. LO QUE FALTA ─────────────────────────────────────────────────────────────────────────────
-  push(['LO QUE FALTA'])
+  push(['6 · LO QUE FALTA'])
   push(['· Cargar en Compras los pagos de IVA/IIBB que se hayan hecho — hoy el cash flow no los ve.'])
   push(['· Los PDF de las DDJJ de IIBB de Rentas en el data room (hoy están transcriptas a mano).'])
 
@@ -257,22 +262,26 @@ function grilla(iva, planes, iibb, ret) {
   // los bloques (saldo a favor de IVA, de IIBB, deuda de planes, retenciones adelantadas): ni un
   // número pegado, y se recalcula solo cuando cambia cualquiera de esos bloques.
   const resumenRows = [
-    ['POSICIÓN', 'Monto', 'Fuente'],
-    ['Saldo a favor de IVA', `=${celdaSaldoIVA}`, 'ARCA'],
-    ['Saldo a favor de IIBB', `=${celdaSaldoIIBB}`, 'DGR San Juan'],
-    ['Retenciones sufridas', `=B${fRetTotal}`, 'Cobranzas'],
-    ['A favor del fisco — inmovilizado', `=${celdaSaldoIVA}+${celdaSaldoIIBB}+B${fRetTotal}`, ''],
+    ['POSICIÓN', 'Monto', 'Origen'],
+    ['A FAVOR DEL FISCO — inmovilizado', `=${celdaSaldoIVA}+${celdaSaldoIIBB}+B${fRetTotal}`, 'impuesto ya pagado que no volvió'],
+    ['   · Saldo a favor de IVA', `=${celdaSaldoIVA}`, 'ARCA'],
+    ['   · Saldo a favor de IIBB', `=${celdaSaldoIIBB}`, 'DGR San Juan'],
+    ['   · Retenciones sufridas', `=B${fRetTotal}`, 'Cobranzas'],
     [],
-    ['Deuda en planes F931', `=D${fPlanLinea}`, 'Compras'],
-    ['Prendario del rodado — cuota mensual', `=C${fPrend}`, 'Banco Santander'],
-    ['Prendario del rodado — deuda del año', `=D${fPrend}`, 'Compras'],
-    ['Deuda financiera — total', `=D${fDeudaTot}`, ''],
+    ['DEUDA FINANCIERA — total', `=D${fDeudaTot}`, 'lo que se debe con instrumento'],
+    ['   · Planes de pago F931', `=D${fPlanLinea}`, 'Compras'],
+    ['   · Prendario del rodado', `=D${fPrend}`, 'Compras'],
+    ['   · cuota mensual del prendario', `=C${fPrend}`, 'Banco Santander'],
     [],
   ]
-  resumenRows.forEach((c, k) => { const row = [...c]; while (row.length < ANCHO) row.push(''); filas[resumenBase + k] = row })
+  resumenRows.forEach((c, k) => {
+    const row = [...c].map((x) => (x === '' || x === undefined || x === null ? VACIO : x))
+    while (row.length < ANCHO) row.push(VACIO)
+    filas[resumenBase + k] = row
+  })
   const fResHdr = resumenBase + 1    // 1-indexed: encabezado del resumen
-  const fResAFavor = resumenBase + 5 // total "a favor", rulado
-  const fResDeuda = resumenBase + 10 // total "deuda financiera", rulado
+  const fResAFavor = resumenBase + 2 // total "a favor": va PRIMERO, es el titular
+  const fResDeuda = resumenBase + 7  // total "deuda financiera": también primero de su grupo
 
   return { filas, fResHdr, fResAFavor, fResDeuda, fDeuda: b0, f0, f1, tot, p0, p1, b0, cab, fIIBB, i0, i1 }
 }
@@ -394,8 +403,9 @@ async function formatear(google, sheetId, g) {
   // no se parten en dos líneas (a su derecha no hay dato). En las filas de datos, la B tiene número
   // y el rebalse se corta solo.
   fmt(r(0, n, 0, 1), 'userEnteredFormat.wrapStrategy', { wrapStrategy: 'OVERFLOW_CELL' })
-  // La columna I es siempre explicación: nunca plata.
-  fmt(r(0, n, 8, 9), 'userEnteredFormat',
+  // El "Origen" es siempre explicación, nunca plata: gris chico, alineado a la izquierda. Vive en la
+  // columna E del bloque de deuda financiera (antes colgaba en la I y dejaba un hueco enorme).
+  fmt({ ...r(g.fDeuda - 2, g.fDeuda + 1), startColumnIndex: 4, endColumnIndex: 5 }, 'userEnteredFormat',
     { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: { fontSize: 9, italic: true, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'CLIP' })
   fmt(r(g.cab - 1, g.cab), 'userEnteredFormat',
     { backgroundColor: AZUL, textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 }, fontSize: 9 }, horizontalAlignment: 'CENTER', wrapStrategy: 'WRAP' })
@@ -437,7 +447,6 @@ async function formatear(google, sheetId, g) {
   // "$46.250" — el número de serie de la fecha, pintado de plata. Un cuadro donde una fecha se lee
   // como un importe no se puede revisar: el ojo suma lo que no es.
   const FECHA = { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER' }
-  fmt({ ...r(g.i0 - 1, g.i1), startColumnIndex: 7, endColumnIndex: 8 }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', FECHA)
   fmt({ ...r(g.p0 - 1, g.p1), startColumnIndex: 4, endColumnIndex: 6 }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', FECHA)
 
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 280 }, fields: 'pixelSize' } })
