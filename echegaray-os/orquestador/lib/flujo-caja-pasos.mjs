@@ -72,14 +72,15 @@ export const PASOS = [
   // Cheques Emitidos —y "varios dueños" es justo el defecto que se está persiguiendo—. El dueño del
   // layout es uno solo: el tablero.
   ['cheques-emitidos-sync-banco.mjs', 'Cheques Emitidos — DEBITADO de los echeq sincronizado con el banco', []],
-  // Registro de cheques emitidos al estándar minimalista/clase mundial: titular de outstanding (no
-  // debitados) + piel de statement. Formato PROPIO — el formateador general la saltea, así que se
-  // re-aplica sola en cada corrida del macro sin que nada la pise.
+  // Las DOS pestañas de cheques se rehicieron el 23/07 y se leen igual: son las dos correcciones al
+  // saldo del banco (los emitidos no debitados lo bajan, los valores en cartera lo suben). Las dos
+  // referencian a CAJA por RÓTULO y con fórmula viva, así que NO importa que corran antes que ella.
+  // Formato PROPIO — el formateador general las saltea, así que se re-aplica sola en cada corrida.
 // FALTABA EN EL REGISTRO Y POR ESO NO CORRÍA EN EL AGENTE. La pestaña existía, tenía su generador y
   // su fuente (la pantalla eCHEQ del Santander), pero nadie la ejecutaba: se actualizaba sólo cuando
   // alguien corría el script a mano. Es la forma más silenciosa de que una pestaña envejezca.
-  ['cheques-recibidos-pestana.mjs', 'Cheques Recibidos — el registro de operaciones eCHEQ recibidas', ['Cheques Recibidos']],
-  ['cheques-emitidos-tablero.mjs', 'Cheques Emitidos — outstanding no debitado + piel de statement', ['Cheques Emitidos']],
+  ['cheques-recibidos-pestana.mjs', 'Cheques Recibidos — cuánto valor hay en cartera y cuándo se vuelve caja', ['Cheques Recibidos']],
+  ['cheques-emitidos-tablero.mjs', 'Cheques Emitidos — de lo firmado, cuánto no salió todavía y cuándo sale', ['Cheques Emitidos']],
   // Va última: ubica las líneas del Cash Flow por rótulo, así que necesita el cuadro ya escrito.
   // 'Caja' con minúsculas era el nombre viejo de la pestaña: quedó declarado y el censo lo reportaba
   // como una pestaña fantasma. Un nombre que sobrevive a su renombre apunta al vacío para siempre.
