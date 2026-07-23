@@ -87,6 +87,12 @@ const clave = (texto) => String(texto ?? '').trim()
  * ¿Es un texto de ESTRUCTURA de la pestaña —título, subtítulo, encabezado de sección— cuyo borrado
  * nunca sería una decisión deliberada? Esos no se dan nunca por eliminados.
  */
+/**
+ * Cuántos borrados en UNA corrida siguen siendo creíbles como decisión de una persona. Tres es
+ * generoso: el dueño borra una nota que no le sirve, no vacía media pestaña entre dos corridas.
+ */
+export const MAX_BORRADOS_CREIBLES = 3
+
 export function esEstructural(t) {
   const s = String(t ?? '').trim()
   if (!s) return false
@@ -182,6 +188,20 @@ export function detectarEdiciones(mios = [], actual = [], generado = []) {
     if (esEstructural(m)) continue
     ediciones.set(t, '')
   }
+  // ═══ EL SEGUNDO SEGURO: UNA PERSONA NO BORRA ONCE RÓTULOS ENTRE DOS CORRIDAS ═══
+  //
+  // POR QUÉ (23/07). El registro tenía 13 borrados marcados que el dueño nunca hizo: 11 en
+  // "Recurrentes" —incluidas las notas largas que explican de dónde sale cada cuadro— y 2 en
+  // "Proveedores" ("TOTAL FACTURADO", "Plazo de pago promedio"). Un bloque entero desapareciendo de
+  // golpe no es una decisión de negocio: es que la lectura no alcanzó a ver esa parte de la pestaña
+  // (ventana corta, recálculo en curso, bloque movido). Y como un falso borrado se confirma solo
+  // —el generador deja de escribirlo, así que sigue ausente— el daño es permanente.
+  //
+  // Borrar un rótulo es un acto deliberado y puntual. Si aparecen muchos juntos, la explicación
+  // económica es que fallé yo leyendo, no que el dueño hizo una limpieza. Ante la duda, no se
+  // registra nada: el generador vuelve a escribir y, si el dueño de verdad los borró, los borra otra
+  // vez y la próxima corrida —de a uno— sí lo aprende.
+  if (ediciones.size > MAX_BORRADOS_CREIBLES) return new Map()
   return ediciones
 }
 

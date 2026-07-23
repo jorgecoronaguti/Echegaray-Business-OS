@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { respetarEdiciones, detectarEdiciones, esRotulo, esEstructural, detectarArranqueEnFrio } from './respetar-ediciones.mjs'
+import { respetarEdiciones, detectarEdiciones, esRotulo, esEstructural, detectarArranqueEnFrio, MAX_BORRADOS_CREIBLES } from './respetar-ediciones.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 
 test('un rótulo es texto: no una fórmula, no un número, no un importe escrito', () => {
@@ -128,4 +128,29 @@ test('una fecha NO es un rótulo: congelarla dejaría el cuadro clavado en un a�
   // Un mes escrito como palabra SÍ es un rótulo: ahí hay una decisión de redacción.
   assert.equal(esRotulo('ene-26'), true)
   assert.equal(esRotulo('Enero 2026'), true)
+})
+
+// ── EL SEGURO CONTRA EL BORRADO MASIVO (23/07) ─────────────────────────────────────────────────────
+// El registro tenía 13 borrados que el dueño nunca hizo: un bloque entero de "Recurrentes" y dos
+// rótulos de "Proveedores". Un falso borrado se confirma solo, así que el daño era permanente.
+test('un borrado puntual SÍ se registra: es una decisión creíble de una persona', () => {
+  const mios = ['Nota que no sirve', 'Otro rótulo']
+  const generado = [['Nota que no sirve'], ['Otro rótulo']]
+  const actual = [[''], ['Otro rótulo']]
+  const e = detectarEdiciones(mios, actual, generado)
+  assert.equal(e.get('Nota que no sirve'), '')
+  assert.equal(e.size, 1)
+})
+
+test('un borrado MASIVO no se registra: eso es una lectura que falló, no el dueño limpiando', () => {
+  const mios = Array.from({ length: MAX_BORRADOS_CREIBLES + 1 }, (_, i) => `Rótulo ${i}`)
+  const generado = mios.map((m) => [m])
+  const actual = [['']] // la lectura no vio nada de eso
+  assert.equal(detectarEdiciones(mios, actual, generado).size, 0)
+})
+
+test('justo en el límite todavía se cree: el seguro no es un techo caprichoso', () => {
+  const mios = Array.from({ length: MAX_BORRADOS_CREIBLES }, (_, i) => `Rótulo ${i}`)
+  const generado = mios.map((m) => [m])
+  assert.equal(detectarEdiciones(mios, [['']], generado).size, MAX_BORRADOS_CREIBLES)
 })
