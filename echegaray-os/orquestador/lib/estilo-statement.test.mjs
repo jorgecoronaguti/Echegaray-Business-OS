@@ -27,3 +27,27 @@ test('skinRequests apaga la reja y pinta todo de blanco antes de rular', () => {
   // Hay al menos un borde (hairline) para el total y para la sección.
   assert.ok(reqs.some((r) => r.updateBorders?.top) )
 })
+
+test('un rótulo en versalita con importes al lado es un dato, no un título de sección', () => {
+  const filas = [['Cargas sociales'], ['de dónde sale'], ['1 · DECLARADO'], ['Concepto', 'ene'],
+    ['L.R.T. — ART', 1141733], ['⇒ Total declarado', 4582692]]
+  const reqs = skinRequests({ sheetId: 1, filas, cols: 2 })
+  // La fila del concepto no lleva regla propia: sólo la llevan el encabezado y el total.
+  const reglas = reqs.filter((r) => r.updateBorders && r.updateBorders.range.startRowIndex === 4)
+  assert.equal(reglas.length, 0)
+})
+
+test('una regla se dibuja del ancho del bloque, no de la hoja', () => {
+  const filas = [['T'], ['n'], ['1 · X'], ['Concepto', 'a', 'b'], ['dato', 1, 2], ['⇒ Total', 3, 4]]
+  const reqs = skinRequests({ sheetId: 1, filas, cols: 12 })
+  const regla = reqs.find((r) => r.updateBorders && r.updateBorders.range.startRowIndex === 5)
+  assert.equal(regla.updateBorders.range.endColumnIndex, 3, 'llega hasta donde hay contenido, no hasta la columna 12')
+})
+
+test('el cuerpo se resetea: una itálica del layout anterior no sobrevive', () => {
+  const reqs = skinRequests({ sheetId: 1, filas: [['T'], ['n'], ['dato', 1]], cols: 2 })
+  const reset = reqs.find((r) => r.repeatCell && r.repeatCell.fields === 'userEnteredFormat.textFormat'
+    && r.repeatCell.range.startRowIndex === 0 && r.repeatCell.range.endRowIndex === 3)
+  assert.ok(reset, 'hay un reset tipográfico sobre toda la grilla')
+  assert.equal(reset.repeatCell.cell.userEnteredFormat.textFormat.bold, false)
+})

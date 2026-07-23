@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { partirTexto, notasDeColumna, altoDeParrafo, entranEn } from './nota-celda.mjs'
+import { partirTexto, notasDeColumna, altoDeParrafo, entranEn, origenANota } from './nota-celda.mjs'
 
 test('un texto que entra en la celda no genera nota', () => {
   // Una nota que repite lo que ya se ve es ruido.
@@ -50,4 +50,23 @@ test('una FÓRMULA nunca se acorta: cortarla la deja sin parsear y la celda vac�
   const { corto, nota } = partirTexto(f, 44)
   assert.equal(corto, f)
   assert.equal(nota, null)
+})
+
+test('origenANota saca la procedencia del cuerpo y la cuelga del concepto', () => {
+  const filas = [['Concepto', 'ene', 'Origen'], ['F931', 100, 'Compras · por fecha de caja']]
+  const { requests, conNota } = origenANota(filas, 2, 7)
+  assert.equal(conNota, 1)
+  assert.equal(filas[1][2], '', 'la columna de origen queda vacía: deja de robar ancho')
+  assert.equal(filas[1][1], 100, 'el dato no se toca')
+  const r = requests[0].updateCells
+  assert.equal(r.range.startColumnIndex, 0, 'la nota cuelga del concepto, no del importe')
+  assert.equal(r.range.startRowIndex, 1)
+  assert.equal(r.rows[0].values[0].note, 'Compras · por fecha de caja')
+})
+
+test('origenANota no toca una fórmula ni una celda vacía', () => {
+  const filas = [['x', 1, ''], ['y', 2, '=A1&"algo"']]
+  const { conNota } = origenANota(filas, 2, 7)
+  assert.equal(conNota, 0)
+  assert.equal(filas[1][2], '=A1&"algo"')
 })

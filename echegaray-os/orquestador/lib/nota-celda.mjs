@@ -122,3 +122,46 @@ export function anchosSegunContenido(filas = [], { min = 64, max = 300, tam = 10
   }
   return out
 }
+
+import { ES_ENCABEZADO } from './patron-pestana.mjs'
+
+/**
+ * SACA LA COLUMNA DE PROCEDENCIA DEL CUERPO Y LA PONE EN LA NOTA DEL RÓTULO.
+ *
+ * POR QUÉ EXISTE (23/07). El dueño, mirando Impuestos: "tiene demasiadas cosas escritas que aclaran
+ * cuestiones sin sentido". Y al ver la pestaña renderizada tenía toda la razón: la columna "De dónde
+ * sale" era un muro de párrafos grises de nueve puntos ocupando el margen derecho entero, uno por
+ * fila. Trescientas palabras compitiendo con ochenta números.
+ *
+ * La trazabilidad NO se tira —es media regla de oro— pero no va al lado del dato: va DETRÁS de él.
+ * En la celda del concepto queda un triangulito; el texto completo aparece al pasar el mouse. Es lo
+ * mismo que hace un tearsheet con sus notas al pie: fuera del cuadro, disponibles, sin robar tinta.
+ *
+ * @param {any[][]} filas    la grilla ya armada (se MUTA: la columna de origen queda vacía)
+ * @param {number} colOrigen índice de la columna que trae el texto de procedencia
+ * @param {number} sheetId
+ * @returns {{requests: object[], conNota: number}}
+ */
+export function origenANota(filas, colOrigen, sheetId) {
+  const requests = []
+  let conNota = 0
+  filas.forEach((f, i) => {
+    const texto = String(f?.[colOrigen] ?? '').trim()
+    if (!texto || texto.startsWith('=')) return
+    // El rótulo de la columna ("De dónde sale") no es una procedencia: es el nombre de la columna
+    // que estamos sacando. Se vacía igual, pero no genera una nota que diría una obviedad.
+    if (ES_ENCABEZADO.test(String(f?.[0] ?? '').trim())) { f[colOrigen] = ''; return }
+    // La nota cuelga del CONCEPTO (columna A), que es lo que el lector señala cuando se pregunta de
+    // dónde sale un número. Colgarla del importe la escondería en la celda equivocada.
+    requests.push({
+      updateCells: {
+        range: { sheetId, startRowIndex: i, endRowIndex: i + 1, startColumnIndex: 0, endColumnIndex: 1 },
+        rows: [{ values: [{ note: texto }] }],
+        fields: 'note',
+      },
+    })
+    f[colOrigen] = ''
+    conNota++
+  })
+  return { requests, conNota }
+}

@@ -37,6 +37,7 @@ import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { resolverColumnas, rango } from '../lib/compras-columnas.mjs'
 import { seccion, sub, total as rotuloTotal, auditarPatron } from '../lib/patron-pestana.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
+import { origenANota } from '../lib/nota-celda.mjs'
 import { celdaF931, celdaCabecera, PESTAÑA as RAW } from './f931-sheet.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -336,7 +337,8 @@ export function grilla({ periodos, conceptos, ps, C, corte }) {
   // NO TODO LO QUE ESTÁ EN LA GRILLA ES PLATA. Una dotación de 21 personas mostrada como "$21" y
   // una relación de 0,67 mostrada como "$1" son números que el ojo lee mal y que además hacen dudar
   // del resto del cuadro. Se declaran acá para que el formato las trate por lo que son.
-  return { filas, cantidades: [fEmp, fDot], ratios: [fRelacion] }
+  // El titular de la pestaña: la cifra que contesta la pregunta de arriba de todo.
+  return { filas, cantidades: [fEmp, fDot], ratios: [fRelacion], titular: hCosto }
 }
 
 async function main() {
@@ -369,7 +371,7 @@ async function main() {
   const ps = await planes()
   console.log(`${periodos.length} período(s) F931 · ${conceptos.length} concepto(s) · ${ps.length} plan(es) de pago`)
 
-  const { filas, cantidades, ratios } = grilla({ periodos, conceptos, ps, C, corte: HOY })
+  const { filas, cantidades, ratios, titular } = grilla({ periodos, conceptos, ps, C, corte: HOY })
   console.log(`grilla: ${filas.length} filas × ${ANCHO} columnas — un solo ancho para toda la pestaña`)
   if (DRY) return
 
@@ -404,7 +406,7 @@ async function main() {
   const { conservadas } = await escribirPreservando(google, ID, `'${PESTAÑA}'`, filas, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   if (conservadas.length) console.log(`✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
-  await formatear(google, hoja.sheetId, filas, { cantidades, ratios })
+  await formatear(google, hoja.sheetId, filas, { cantidades, ratios, titular })
 
   // ── VERIFICAR MIRANDO LA PESTAÑA, no confiando en que la escritura salió bien ──
   const v = await google.readSheetValues(ID, `'${PESTAÑA}'!A1:${COL_ORIGEN}${filas.length}`)
@@ -418,20 +420,30 @@ async function main() {
 }
 
 /** El formato: la piel de statement compartida más lo propio de la grilla mensual. */
-async function formatear(google, sheetId, filas, { cantidades = [], ratios = [] } = {}) {
+async function formatear(google, sheetId, filas, { cantidades = [], ratios = [], titular = 0 } = {}) {
+  // LA PROCEDENCIA SALE DEL CUERPO. La columna quedaba como un muro de párrafos grises al costado de
+  // cada fila: el texto pasa a la nota del concepto y la columna deja de robar ancho.
+  const { requests: notas, conNota } = origenANota(filas, ANCHO - 1, sheetId)
+  if (conNota) console.log(`${conNota} procedencias pasaron a la nota del concepto: el cuadro deja de competir con su propia letra chica`)
   const rg = (r0, r1, c0 = 0, c1 = ANCHO) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
   const moneda = { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }
   const reqs = [
-    ...skinRequests({ sheetId, filas, cols: ANCHO, congeladas: 2 }),
+    ...notas,
+    ...skinRequests({ sheetId, filas, cols: ANCHO, congeladas: 2, titular }),
     // Los doce meses más el total: moneda, a la derecha, con cifras tabulares. Es lo que permite
     // comparar hacia abajo sin leer cada número.
     { repeatCell: { range: rg(3, filas.length, 1, 14), cell: { userEnteredFormat: { numberFormat: moneda, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } },
     // La columna de origen: chica, apagada, y que envuelva. Es explicación, no dato.
-    { repeatCell: { range: rg(0, filas.length, 14, 15), cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' }, textFormat: { fontSize: 9, foregroundColor: { red: 0.45, green: 0.45, blue: 0.45 }, fontFamily: 'Arial' }, wrapStrategy: 'WRAP', verticalAlignment: 'TOP' } }, fields: 'userEnteredFormat' } },
+
+    // Las filas vuelven a su altura: al sacar el muro de texto de la derecha quedaron con el alto
+    // que ESE texto necesitaba, y la pestaña medía tres pantallas de aire.
+    { updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: filas.length }, properties: { pixelSize: 21 }, fields: 'pixelSize' } },
     { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 330 }, fields: 'pixelSize' } },
     { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: 13 }, properties: { pixelSize: 108 }, fields: 'pixelSize' } },
     { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 13, endIndex: 14 }, properties: { pixelSize: 124 }, fields: 'pixelSize' } },
-    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 14, endIndex: 15 }, properties: { pixelSize: 420 }, fields: 'pixelSize' } },
+    // La columna de procedencia ya no muestra texto (vive en la nota): angosta, para que no abra un
+    // hueco al costado del cuadro.
+    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 14, endIndex: 15 }, properties: { pixelSize: 24 }, fields: 'pixelSize' } },
   ]
   // Los encabezados de mes: rótulos de columna, no importes — sin formato de moneda encima.
   filas.forEach((f, i) => {

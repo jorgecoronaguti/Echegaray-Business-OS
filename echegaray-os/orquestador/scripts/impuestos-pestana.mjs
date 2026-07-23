@@ -25,6 +25,7 @@ import { query } from '../lib/db.mjs'
 import { parsearDDJJ, alicuotaDeclarada } from '../lib/iibb-ddjj.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
+import { origenANota } from '../lib/nota-celda.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { seccion, sub as subItem, total as rotuloTotal, auditarPatron } from '../lib/patron-pestana.mjs'
 
@@ -229,7 +230,9 @@ function grilla(iva, planes, iibb) {
   const q0 = filas.length + 1
   for (const p of planes) {
     const sinFechas = !p.porMes.some((x) => x)
-    mensual(sinFechas ? `⚠ ${p.nombre}` : p.nombre, (m) => (p.porMes[m] ? p.porMes[m] : VACIO),
+    // Sin fechas cargadas, la fila queda sin un solo importe en los doce meses y se lee como un
+    // error. El rótulo dice por qué está vacía, ahí donde el ojo la busca.
+    mensual(sinFechas ? `${p.nombre}  ⚠ sin fechas de vencimiento cargadas` : p.nombre, (m) => (p.porMes[m] ? p.porMes[m] : VACIO),
       `${p.cuotas} cuota(s) de ${p.monto_cuota.toLocaleString('es-AR')} · total ${Math.round(p.total).toLocaleString('es-AR')} · Compras, rubro "Deuda previsional (planes de pago)"`
       + (sinFechas ? ' · ⚠ SIN FECHAS DE VENCIMIENTO cargadas: por eso la fila está vacía y su plata no aparece en ningún mes.' : ''))
   }
@@ -267,9 +270,12 @@ function grilla(iva, planes, iibb) {
   push()
 
   // ── 6 · LO QUE FALTA ───────────────────────────────────────────────────────────────────────────
+  // EL TEXTO DE ESTAS FILAS VA EN LA COLUMNA A, NO EN LA DE PROCEDENCIA. Cuando la procedencia pasó
+  // a ser una nota, estas dos filas —cuyo contenido vivía SÓLO ahí— quedaron mudas: se veía el
+  // rótulo "⚠ Alícuota de IIBB" y nada más. Una advertencia escondida detrás de un hover no advierte.
   push([seccion(6, 'Lo que falta para que esta pestaña se actualice sola')])
-  push(['⚠ Pagos de IVA e IIBB', ...Array(13).fill(VACIO), 'No están cargados en Compras: hoy el cash flow no ve esas salidas.'])
-  push(['⚠ Alícuota de IIBB', ...Array(13).fill(VACIO), 'Se toma la declarada en las DDJJ leídas. Conviene que la confirme el contador.'])
+  push(['⚠ Los pagos de IVA e IIBB no están cargados en Compras: hoy el cash flow no ve esas salidas.'])
+  push(['⚠ La alícuota de IIBB se toma de las DDJJ leídas. Conviene que la confirme el contador.'])
 
   // ── EL HERO, RECIÉN AHORA: ya se sabe en qué fila quedó cada total ──────────────────────────────
   const saldoIVA = ultReal ? `${cmes(ultReal)}${fSaldo}` : '0'
@@ -293,6 +299,7 @@ function grilla(iva, planes, iibb) {
 
   return {
     filas,
+    titular: heroBase + 2,
     heroTotales: [heroBase + 2, heroBase + 7],
     alicuotas: [fAli],
     textos: [fPos + 4],
@@ -416,6 +423,9 @@ async function main() {
 
 /** El formato: la piel de statement compartida más lo propio de la grilla mensual. */
 async function formatear(google, sheetId, g) {
+  // LA PROCEDENCIA SALE DEL CUERPO: pasa a la nota del concepto (ver lib/nota-celda.mjs).
+  const { requests: notas, conNota } = origenANota(g.filas, ANCHO - 1, sheetId)
+  if (conNota) console.log(`  ${conNota} procedencias pasaron a la nota del concepto`)
   const n = g.filas.length
   const r = (r0, r1, c0 = 0, c1 = ANCHO) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
   const req = [{ unmergeCells: { range: r(0, n) } }]
@@ -428,8 +438,7 @@ async function formatear(google, sheetId, g) {
   fmt(r(3, n, 1, 14), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }, horizontalAlignment: 'RIGHT' })
   // La columna de origen: chica, apagada, y que envuelva. Es explicación, no dato.
-  fmt(r(0, n, 14, 15), 'userEnteredFormat',
-    { numberFormat: { type: 'TEXT' }, textFormat: { fontSize: 9, foregroundColor: MUT, fontFamily: 'Arial' }, horizontalAlignment: 'LEFT', wrapStrategy: 'WRAP', verticalAlignment: 'TOP' })
+
   // La columna A rebalsa sobre las celdas vacías de su derecha: así un título de sección no se parte.
   fmt(r(0, n, 0, 1), 'userEnteredFormat.wrapStrategy', { wrapStrategy: 'OVERFLOW_CELL' })
 
@@ -446,14 +455,21 @@ async function formatear(google, sheetId, g) {
   // COLUMNA, no por fila: en esta grilla el tiempo son las columnas.
   for (const m of g.proyectados ?? []) fmt(r(3, n, m, m + 1), 'userEnteredFormat.backgroundColor', { backgroundColor: AMBAR })
 
+  // ═══ DEVOLVER LAS FILAS A SU ALTURA ═══
+  // Al sacar el muro de texto de la derecha, las filas quedaron con el alto que ese texto necesitaba
+  // para envolver en cuatro líneas: la pestaña medía tres pantallas de aire. Un alto que nadie
+  // resetea es la huella del layout anterior, igual que una itálica heredada.
+  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: n }, properties: { pixelSize: 21 }, fields: 'pixelSize' } })
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 330 }, fields: 'pixelSize' } })
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: 13 }, properties: { pixelSize: 108 }, fields: 'pixelSize' } })
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 13, endIndex: 14 }, properties: { pixelSize: 124 }, fields: 'pixelSize' } })
-  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 14, endIndex: 15 }, properties: { pixelSize: 420 }, fields: 'pixelSize' } })
+  // La columna de procedencia ya no muestra texto (vive en la nota): angosta.
+  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 14, endIndex: 15 }, properties: { pixelSize: 24 }, fields: 'pixelSize' } })
+  req.push(...notas)
   await google.spreadsheetBatchUpdate(ID, req)
   // PIEL DE STATEMENT encima del formato de número: sin reja, secciones y encabezados por tipografía
   // + hairline (no barras rellenas), totales rulados. La misma que CAJA, Cheques y Cargas Sociales.
-  await google.spreadsheetBatchUpdate(ID, skinRequests({ sheetId, filas: g.filas, cols: ANCHO, congeladas: 2 }))
+  await google.spreadsheetBatchUpdate(ID, skinRequests({ sheetId, filas: g.filas, cols: ANCHO, congeladas: 2, titular: g.titular }))
   // Ninguna fila queda OCULTA: un colapso de una versión anterior dejó filas con hiddenByUser=true,
   // y borrar el grupo no las vuelve a mostrar.
   await google.spreadsheetBatchUpdate(ID, [{ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: n + 5 }, properties: { hiddenByUser: false }, fields: 'hiddenByUser' } }]).catch(() => {})
