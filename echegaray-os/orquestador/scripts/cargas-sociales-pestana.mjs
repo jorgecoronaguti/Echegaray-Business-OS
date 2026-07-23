@@ -408,10 +408,10 @@ async function main() {
   // Si el dueño reescribió un rótulo, lo reencuadró o lo borró, gana lo suyo y el generador se
   // adapta. Se compara contra lo que ESTE generador escribió la última vez, que es la única forma
   // de distinguir una edición de una versión vieja de sí mismo. Ver lib/respetar-ediciones.mjs.
-  const { grid: gridFinal, respetadas } = await conEdicionesRespetadas(ID, PESTAÑA, filas, previo)
-  for (const r of respetadas) console.log(`  ✋ fila ${r.fila} col ${r.col}: respeto tu texto ("${r.suyo.slice(0, 48)}") en vez de escribir "${r.mio.slice(0, 48)}"`)
+  const { grid: gridFinal, respetadas, ediciones } = await conEdicionesRespetadas(ID, PESTAÑA, filas, previo)
+  for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)
   const { conservadas } = await escribirPreservando(google, ID, `'${PESTAÑA}'`, gridFinal, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
-  await guardarRegistro(ID, PESTAÑA, gridFinal).catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
+  await guardarRegistro(ID, PESTAÑA, gridFinal, ediciones).catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
   if (conservadas.length) console.log(`✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
   await formatear(google, hoja.sheetId, gridFinal, { cantidades, ratios, titular })

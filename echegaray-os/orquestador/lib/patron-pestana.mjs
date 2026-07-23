@@ -33,8 +33,16 @@
 
 /** Un total: se rula y va en negrita. */
 export const ES_TOTAL = /^\s*(⇒|total\b)/i
-/** Una sección numerada: "1 · TÍTULO". El separador es "·", no punto ni guion. */
-export const ES_SECCION_NUM = /^\s*(\d+)\s*·\s+(\S.*)$/
+/**
+ * Una sección numerada: "1 · TÍTULO", o una SUB-sección: "4.1 · TÍTULO".
+ *
+ * POR QUÉ EXISTEN LAS SUB-SECCIONES (23/07). El dueño, sobre CAJA: "los títulos son confusos".
+ * Tenía trece secciones al mismo nivel, y las últimas nueve eran en realidad el ANEXO de la cuarta
+ * —viven adentro de su grupo desplegable—. Numeradas todas igual, el lector no tiene forma de saber
+ * que las tres primeras contestan la pregunta y el resto es el respaldo. La jerarquía del número
+ * dice lo que el orden solo no puede decir.
+ */
+export const ES_SECCION_NUM = /^\s*(\d+)(?:\.(\d+))?\s*·\s+(\S.*)$/
 /**
  * Un título de bloque sin número: arranca con una tirada larga en versalita. Sólo el hero puede
  * serlo. Se mide la TIRADA INICIAL, no la línea entera, porque estos títulos suelen traer una
@@ -85,6 +93,7 @@ export function auditarPatron(filas = [], { ancho } = {}) {
 
   // ── Secciones: numeradas, corridas, sin repetir, y ningún bloque suelto después del hero. ──
   let esperada = 1
+  let subEsperada = 1
   let vistaPrimeraSeccion = false
   const titulos = new Map()
   filas.forEach((f, i) => {
@@ -94,9 +103,18 @@ export function auditarPatron(filas = [], { ancho } = {}) {
     if (m) {
       vistaPrimeraSeccion = true
       const n = Number(m[1])
-      if (n !== esperada) mal(i + 1, 'seccion-desordenada', `Esperaba la sección ${esperada} y encontré la ${n}: "${a}".`)
-      esperada = n + 1
-      const clave = m[2].toUpperCase()
+      const sub = m[2] === undefined ? null : Number(m[2])
+      if (sub === null) {
+        if (n !== esperada) mal(i + 1, 'seccion-desordenada', `Esperaba la sección ${esperada} y encontré la ${n}: "${a}".`)
+        esperada = n + 1
+        subEsperada = 1
+      } else {
+        // Una sub-sección tiene que colgar de la sección que se acaba de abrir, y correr de a uno.
+        if (n !== esperada - 1) mal(i + 1, 'subseccion-huerfana', `"${a.slice(0, 40)}" cuelga de la sección ${n}, pero la abierta es la ${esperada - 1}.`)
+        else if (sub !== subEsperada) mal(i + 1, 'seccion-desordenada', `Esperaba la ${n}.${subEsperada} y encontré la ${n}.${sub}: "${a}".`)
+        subEsperada = sub + 1
+      }
+      const clave = m[3].toUpperCase()
       if (titulos.has(clave)) mal(i + 1, 'seccion-repetida', `El título ya está en la fila ${titulos.get(clave)} — residuo de una corrida vieja.`)
       else titulos.set(clave, i + 1)
       return

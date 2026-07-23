@@ -59,7 +59,21 @@ export function esRotulo(v) {
   return !/^[-$\s\d.,%]+$/.test(t)
 }
 
-const clave = (fila, col) => `${fila}:${col}`
+/**
+ * LA CLAVE ES EL TEXTO QUE YO ESCRIBÍ, NO LA POSICIÓN.
+ *
+ * POR QUÉ (23/07, el mismo día que se estrenó la regla). La primera versión guardaba el registro por
+ * "fila:columna" y comparaba celda contra celda. Funcionó hasta que una pestaña cambió de alto: al
+ * agregarse una fila de subtítulo, TODO el contenido de abajo quedó corrido un renglón respecto del
+ * registro, así que cada comparación miraba la celda equivocada — y como el registro tenía una
+ * entrada para esa posición, la regla "respetó" basura: metió un importe pegado donde iba el título
+ * "DISPONIBILIDADES" y dejó CAJA rota en dos filas.
+ *
+ * Anclar al TEXTO es además lo que el dueño pidió: "respetá MI texto". Si él cambió "Deuda
+ * previsional en cuotas" por "Plan de pago ARCA", eso vale esté esa fila donde esté. Una pestaña se
+ * reordena; el rótulo que él eligió, no.
+ */
+const clave = (texto) => String(texto ?? '').trim()
 
 /**
  * NÚCLEO PURO: aplica las ediciones de la persona sobre la grilla que el generador quiere escribir.
@@ -71,73 +85,113 @@ const clave = (fila, col) => `${fila}:${col}`
  */
 export function respetarEdiciones(generado = [], actual = [], registro = new Map()) {
   const respetadas = []
-  const grid = generado.map((f, i) => (f || []).map((celda, j) => {
+  // Lo que hay HOY en la pestaña, indexado por texto: sirve para saber si el rótulo que yo escribí
+  // la vez pasada todavía está en algún lado.
+  const presentes = new Set()
+  for (const f of actual || []) for (const c of f || []) { const t = clave(c); if (t) presentes.add(sinApostrofo(t)) }
+
+  const grid = generado.map((f) => (f || []).map((celda) => {
     if (!esRotulo(celda)) return celda
-    const anterior = registro.get(clave(i + 1, j + 1))
-    // Sin memoria de la vez pasada no se puede distinguir una edición de una versión vieja del
-    // propio generador. Ante la duda, escribe: es la primera corrida y todavía no hay nada que
-    // respetar. La memoria se guarda al final de ESTA corrida.
-    if (anterior === undefined) return celda
-    const hoy = String(actual?.[i]?.[j] ?? '')
-    if (sinApostrofo(hoy) === sinApostrofo(anterior)) return celda   // nadie lo tocó
-    if (sinApostrofo(hoy).trim() === sinApostrofo(celda).trim()) return celda // ya dice lo mismo
-    // LO CAMBIÓ UNA PERSONA. Incluye el caso de que lo haya VACIADO: una eliminación también es una
-    // decisión, y la regla la nombra explícitamente.
-    respetadas.push({ fila: i + 1, col: j + 1, mio: String(celda), suyo: hoy })
-    return hoy
+    const reemplazo = registro.get(clave(celda))
+    // Sin una edición registrada para este texto, se escribe lo que corresponde. Es el caso normal.
+    if (reemplazo === undefined) return celda
+    // Si el texto que yo quiero escribir YA está en la pestaña, la edición se deshizo (o el dueño
+    // volvió atrás): se deja de respetar y se vuelve a la versión del generador.
+    if (presentes.has(sinApostrofo(clave(celda)))) return celda
+    respetadas.push({ mio: String(celda), suyo: reemplazo })
+    return reemplazo
   }))
   return { grid, respetadas }
 }
 
-/** Crea la tabla del registro si todavía no está. Barata y idempotente. */
+/**
+ * NÚCLEO PURO: qué rótulos cambió la persona, comparando lo que YO escribí la última vez contra lo
+ * que la pestaña dice hoy. Se busca cada texto propio en TODA la grilla, no en su vieja posición:
+ * una pestaña se reordena y un rótulo se mueve sin que nadie lo haya editado.
+ *
+ * @param {string[]} mios   los rótulos que el generador escribió la última vez
+ * @param {any[][]} actual  la pestaña hoy
+ * @returns {Map<string,string>} texto mío → texto de la persona (cadena vacía = lo borró)
+ */
+export function detectarEdiciones(mios = [], actual = []) {
+  const presentes = new Set()
+  for (const f of actual || []) for (const c of f || []) { const t = clave(c); if (t) presentes.add(sinApostrofo(t)) }
+  const ediciones = new Map()
+  for (const m of mios) {
+    const t = clave(m)
+    // DESAPARECIÓ UN RÓTULO QUE YO HABÍA ESCRITO. Eso es una eliminación o una reescritura. No se
+    // puede saber POR CUÁL texto lo cambió —podría ser cualquiera de los nuevos— así que lo honesto
+    // es registrar la eliminación: la próxima corrida no lo vuelve a escribir.
+    if (t && !presentes.has(sinApostrofo(t))) ediciones.set(t, '')
+  }
+  return ediciones
+}
+
+/**
+ * El registro tiene DOS cosas por pestaña, y hacen falta las dos:
+ *
+ *   `rotulo`     → un texto que ESTE generador escribió la última vez. Sirve para detectar que
+ *                  desapareció, o sea que alguien lo cambió.
+ *   `reemplazo`  → si ya se detectó que la persona lo cambió, con qué. Vacío = lo borró.
+ *
+ * Un registro que sólo guardara lo primero perdería la decisión de la persona en cuanto el generador
+ * dejara de escribir ese texto; uno que sólo guardara lo segundo nunca podría detectar el cambio.
+ */
 async function asegurarTabla() {
   await query(`
     create table if not exists public.sheet_rotulos (
       file_id    text not null,
       pestana    text not null,
-      fila       int  not null,
-      col        int  not null,
-      valor      text not null,
+      rotulo     text not null,
+      reemplazo  text,
       escrito_en timestamptz not null default now(),
-      primary key (file_id, pestana, fila, col)
+      primary key (file_id, pestana, rotulo)
     )`)
+  // Migración desde la primera versión, que guardaba por fila/columna: la posición no sirve —una
+  // pestaña que cambia de alto deja todo el registro apuntando a la celda equivocada, y así se
+  // "respetó" un importe pegado en el lugar de un título.
+  await query(`alter table public.sheet_rotulos add column if not exists rotulo text`)
+  await query(`alter table public.sheet_rotulos add column if not exists reemplazo text`)
+  await query(`delete from public.sheet_rotulos where rotulo is null`)
 }
 
-/** Lo que este generador escribió la última vez en esta pestaña. */
+/** Lo que este generador escribió la última vez, y las ediciones ya detectadas. */
 export async function leerRegistro(fileId, pestana) {
   await asegurarTabla()
-  const r = await query('select fila, col, valor from public.sheet_rotulos where file_id = $1 and pestana = $2', [fileId, pestana])
-  return new Map(r.rows.map((x) => [clave(x.fila, x.col), x.valor]))
+  const r = await query('select rotulo, reemplazo from public.sheet_rotulos where file_id = $1 and pestana = $2', [fileId, pestana])
+  const mios = r.rows.map((x) => x.rotulo)
+  const ediciones = new Map(r.rows.filter((x) => x.reemplazo !== null).map((x) => [x.rotulo, x.reemplazo]))
+  return { mios, ediciones }
 }
 
-/**
- * Guarda lo que el generador acaba de escribir, para poder detectar la próxima edición.
- *
- * Se guarda lo que QUEDÓ escrito (después de respetar), no lo que el generador quería: si no, la
- * corrida siguiente volvería a ver una diferencia y el aviso se repetiría para siempre.
- */
-export async function guardarRegistro(fileId, pestana, grid) {
+/** Guarda los rótulos de esta corrida y las ediciones vigentes. */
+export async function guardarRegistro(fileId, pestana, grid, ediciones = new Map()) {
   await asegurarTabla()
-  const filas = []
-  grid.forEach((f, i) => (f || []).forEach((c, j) => { if (esRotulo(c)) filas.push([i + 1, j + 1, limpio(c)]) }))
+  const rotulos = new Set()
+  for (const f of grid || []) for (const c of f || []) if (esRotulo(c)) rotulos.add(limpio(String(c).trim()))
+  // Las ediciones vigentes se conservan aunque el generador ya no escriba ese texto: si no, la
+  // decisión de la persona duraría una sola corrida.
+  for (const k of ediciones.keys()) rotulos.add(limpio(k))
   await query('delete from public.sheet_rotulos where file_id = $1 and pestana = $2', [fileId, pestana])
+  const filas = [...rotulos].map((r) => [r, ediciones.has(r) ? limpio(ediciones.get(r)) : null])
   if (!filas.length) return 0
-  // Un solo INSERT con todos los valores: una pestaña tiene cientos de rótulos y cientos de viajes
-  // a la base por corrida, cada dos horas, no se justifican.
-  const vals = filas.map((_, k) => `($1,$2,$${k * 3 + 3},$${k * 3 + 4},$${k * 3 + 5})`).join(',')
-  await query(`insert into public.sheet_rotulos (file_id, pestana, fila, col, valor) values ${vals}`,
+  const vals = filas.map((_, k) => `($1,$2,$${k * 2 + 3},$${k * 2 + 4})`).join(',')
+  await query(`insert into public.sheet_rotulos (file_id, pestana, rotulo, reemplazo) values ${vals}`,
     [fileId, pestana, ...filas.flat()])
   return filas.length
 }
 
 /**
- * El ciclo completo, para que un generador lo use en una línea.
+ * El ciclo completo, para que un generador lo use en dos líneas.
  *
- *   const { grid, respetadas } = await conEdicionesRespetadas(fileId, pestana, filas, actual)
+ *   const { grid, respetadas, ediciones } = await conEdicionesRespetadas(ID, PESTAÑA, filas, actual)
  *   … escribir grid …
- *   await guardarRegistro(fileId, pestana, grid)
+ *   await guardarRegistro(ID, PESTAÑA, grid, ediciones)
  */
 export async function conEdicionesRespetadas(fileId, pestana, generado, actual) {
-  const registro = await leerRegistro(fileId, pestana).catch(() => new Map())
-  return respetarEdiciones(generado, actual, registro)
+  const { mios, ediciones } = await leerRegistro(fileId, pestana).catch(() => ({ mios: [], ediciones: new Map() }))
+  // Lo que desapareció desde la última corrida: eso lo cambió una persona.
+  for (const [k, v] of detectarEdiciones(mios, actual)) if (!ediciones.has(k)) ediciones.set(k, v)
+  const r = respetarEdiciones(generado, actual, ediciones)
+  return { ...r, ediciones }
 }

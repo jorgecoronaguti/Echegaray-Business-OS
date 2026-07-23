@@ -28,7 +28,8 @@ test('una pestaña que cumple la gramática no tiene hallazgos', () => {
 test('los helpers producen exactamente lo que las reglas reconocen', () => {
   const m = seccion(3, 'planes de pago').match(ES_SECCION_NUM)
   assert.equal(m[1], '3')
-  assert.equal(m[2], 'PLANES DE PAGO')
+  assert.equal(m[2], undefined, 'una sección de primer nivel no tiene sub-número')
+  assert.equal(m[3], 'PLANES DE PAGO')
   assert.equal(sub('vence'), '   · vence')
   assert.equal(total('Total'), '⇒ Total')
 })
@@ -106,4 +107,16 @@ test('una nota larga en el medio de la grilla desparrama la fila', () => {
 
 test('una pestaña vacía se reporta entera, sin reventar', () => {
   assert.deepEqual(auditarPatron([]), [{ fila: 0, regla: 'vacia', detalle: 'La pestaña no tiene contenido.' }])
+})
+
+test('las sub-secciones cuelgan de su sección y corren de a una', () => {
+  const f = buena()
+  f.push([], [seccion(3, 'Anexo')], [], ['3.1 · PRIMER DETALLE'], [], ['3.2 · SEGUNDO DETALLE'])
+  assert.deepEqual(auditarPatron(f), [])
+  // Saltarse una sub-sección se marca…
+  f[f.length - 1][0] = '3.5 · SEGUNDO DETALLE'
+  assert.ok(auditarPatron(f).some((x) => x.regla === 'seccion-desordenada'))
+  // …y colgar de una sección que no está abierta, también.
+  f[f.length - 1][0] = '9.1 · SEGUNDO DETALLE'
+  assert.ok(auditarPatron(f).some((x) => x.regla === 'subseccion-huerfana'))
 })

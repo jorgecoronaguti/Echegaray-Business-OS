@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { respetarEdiciones, esRotulo } from './respetar-ediciones.mjs'
+import { respetarEdiciones, detectarEdiciones, esRotulo } from './respetar-ediciones.mjs'
+import { VACIO } from './preservar-anotaciones.mjs'
 
 test('un rótulo es texto: no una fórmula, no un número, no un importe escrito', () => {
   assert.ok(esRotulo('Deuda previsional en cuotas'))
@@ -10,60 +11,59 @@ test('un rótulo es texto: no una fórmula, no un número, no un importe escrito
   assert.ok(!esRotulo('$1.234.567'))
   assert.ok(!esRotulo('2,00%'))
   assert.ok(!esRotulo(''))
+  assert.ok(!esRotulo(VACIO), 'el centinela del generador no es un rótulo')
 })
 
-test('si la persona reescribió un rótulo, gana el suyo', () => {
-  const generado = [['Deuda previsional en cuotas', 100]]
-  const actual = [['Plan de pago ARCA', 100]]
-  const registro = new Map([['1:1', 'Deuda previsional en cuotas']])
-  const { grid, respetadas } = respetarEdiciones(generado, actual, registro)
-  assert.equal(grid[0][0], 'Plan de pago ARCA')
+test('detecta la edición porque MI texto ya no está en la pestaña', () => {
+  const mios = ['Deuda previsional en cuotas', 'F931']
+  const actual = [['Plan de pago ARCA', 100], ['F931', 200]]
+  const e = detectarEdiciones(mios, actual)
+  assert.equal(e.size, 1)
+  assert.ok(e.has('Deuda previsional en cuotas'))
+})
+
+test('si mi texto se MOVIÓ de fila, no es una edición', () => {
+  // Es exactamente el caso que rompió la primera versión: comparaba por posición, y una fila de más
+  // corría todo el registro un renglón y "respetaba" la celda equivocada. Dejó CAJA con un importe
+  // pegado donde iba el título "DISPONIBILIDADES".
+  const mios = ['Total pagado']
+  const actual = [['otra cosa'], ['más cosas'], ['Total pagado']]
+  assert.equal(detectarEdiciones(mios, actual).size, 0)
+})
+
+test('respeta la edición esté donde esté la fila', () => {
+  const ediciones = new Map([['Deuda previsional en cuotas', 'Plan de pago ARCA']])
+  const { grid, respetadas } = respetarEdiciones(
+    [['algo'], ['Deuda previsional en cuotas', 100]], [['algo'], ['Plan de pago ARCA', 100]], ediciones)
+  assert.equal(grid[1][0], 'Plan de pago ARCA')
   assert.equal(respetadas.length, 1)
-  assert.deepEqual(respetadas[0], { fila: 1, col: 1, mio: 'Deuda previsional en cuotas', suyo: 'Plan de pago ARCA' })
 })
 
-test('UNA ELIMINACIÓN TAMBIÉN ES UNA DECISIÓN: si la vació, queda vacía', () => {
-  const registro = new Map([['1:1', 'Lo que falta saber']])
-  const { grid, respetadas } = respetarEdiciones([['Lo que falta saber']], [['']], registro)
+test('UNA ELIMINACIÓN TAMBIÉN ES UNA DECISIÓN: vacío gana', () => {
+  const { grid } = respetarEdiciones([['Lo que falta saber']], [['']], new Map([['Lo que falta saber', '']]))
   assert.equal(grid[0][0], '')
-  assert.equal(respetadas.length, 1)
 })
 
-test('si nadie la tocó, el generador escribe su versión nueva', () => {
-  const registro = new Map([['1:1', 'Título viejo']])
-  const { grid, respetadas } = respetarEdiciones([['Título nuevo']], [['Título viejo']], registro)
-  assert.equal(grid[0][0], 'Título nuevo')
+test('si el dueño vuelve atrás, el generador retoma su versión', () => {
+  const ediciones = new Map([['Total pagado', 'Salidas']])
+  const { grid, respetadas } = respetarEdiciones([['Total pagado']], [['Total pagado']], ediciones)
+  assert.equal(grid[0][0], 'Total pagado')
   assert.equal(respetadas.length, 0)
 })
 
-test('el importe y la fórmula NO se respetan: son la respuesta que la pestaña calcula', () => {
-  const registro = new Map([['1:2', '999']])
-  const { grid } = respetarEdiciones([['Total', '=SUM(A1:A9)']], [['Total', '12345']], registro)
-  assert.equal(grid[0][1], '=SUM(A1:A9)', 'una fórmula pisada a mano se devuelve a su fórmula')
-})
-
-test('en la primera corrida no hay memoria, así que escribe y recién después recuerda', () => {
+test('sin nada registrado, el generador escribe lo suyo', () => {
   const { grid, respetadas } = respetarEdiciones([['Concepto']], [['Otra cosa']], new Map())
   assert.equal(grid[0][0], 'Concepto')
   assert.equal(respetadas.length, 0)
 })
 
-test('si la pestaña ya dice lo mismo que voy a escribir, no hay nada que respetar', () => {
-  const registro = new Map([['1:1', 'Viejo']])
-  const { respetadas } = respetarEdiciones([['Nuevo']], [['Nuevo']], registro)
-  assert.equal(respetadas.length, 0)
+test('el importe y la fórmula NO se respetan: son la respuesta que la pestaña calcula', () => {
+  const { grid } = respetarEdiciones([['Total', '=SUM(A1:A9)']], [['Total', '12345']], new Map([['12345', '999']]))
+  assert.equal(grid[0][1], '=SUM(A1:A9)')
 })
 
-test('el centinela del generador no es un rótulo', async () => {
-  const { VACIO } = await import('./preservar-anotaciones.mjs')
-  assert.ok(!esRotulo(VACIO))
-})
-
-test('el apóstrofo que fuerza texto no cuenta como una edición de una persona', () => {
+test('el apóstrofo que fuerza texto no cuenta como una edición', () => {
   // Sheets guarda "'ene-26" y devuelve "ene-26": sin normalizarlo, cada encabezado de mes parecería
   // editado en cada corrida y la regla los congelaría.
-  const registro = new Map([['1:1', "'ene-26"]])
-  const { grid, respetadas } = respetarEdiciones([["'ene-26"]], [['ene-26']], registro)
-  assert.equal(respetadas.length, 0)
-  assert.equal(grid[0][0], "'ene-26")
+  assert.equal(detectarEdiciones(["'ene-26"], [['ene-26']]).size, 0)
 })

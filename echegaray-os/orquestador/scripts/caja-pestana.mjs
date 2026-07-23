@@ -57,6 +57,7 @@ import * as BANCO from '../lib/banco-santander.mjs'
 import { TASAS, CARGO_VERIFICADO, tasaDiaria, costoConImpuestos, interesDelPeriodo } from '../lib/costo-descubierto.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { escribirPreservando, limpiarCentinela, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { CAJA as N_CAJA, publicar } from '../lib/rangos-nombrados.mjs'
 import { esIndistinguible } from '../lib/cobranzas-duplicado.mjs'
 import * as CONC from '../lib/conciliacion-por-naturaleza.mjs'
@@ -195,9 +196,11 @@ function grilla(cargado, refs) {
   // muestran donde se mira. El detalle sigue estando entero, abajo.
   // Cada titular ocupa DOS columnas: con el ancho de una columna de tabla, "$18.180.491" en cuerpo
   // 16 no entra y Sheets lo dibuja como ###.
-  const fTitulos = push(['LA PLATA QUE HAY', '', 'YA COMPROMETIDO', '', 'QUEDA DISPONIBLE', '', 'AIRE', ''])
+  const fTitulos = push(['DISPONIBILIDADES', '', '(−) CHEQUES EMITIDOS', '', 'LIQUIDEZ NETA', '', 'CRÉDITO NO UTILIZADO', ''])
   const fCifras = push(['@TOTAL', '', '@CHEQUES', '', '@NETA', '', '@AIRE', ''])
-  push(['efectivo + bancos + valores', '', 'cheques firmados sin debitar', '', 'con esto se decide', '', 'crédito, no plata propia', ''])
+  // El pie de cada titular dice QUÉ ENTRA en esa cifra, no qué se siente al mirarla. "Con esto se
+  // decide" era un consejo; lo que hace falta es la definición.
+  push(['caja, bancos y valores a depositar', '', 'librados y todavía no debitados', '', 'disponibilidades menos cheques emitidos', '', 'acuerdo y tarjeta sin usar — capacidad de endeudarse', ''])
   push()
 
   // ═══ LO QUE NO CIERRA, ARRIBA Y JUNTO ═══════════════════════════════════════════════════════
@@ -220,6 +223,22 @@ function grilla(cargado, refs) {
   // El bloque "⚠ LO QUE NO CIERRA" se construye MÁS ABAJO, adentro de CONTROLES.
 
   // ── 1 · DISPONIBILIDADES ────────────────────────────────────────────────────────────────────────
+  // ═══ POR QUÉ ESTOS TÍTULOS Y NO LOS DE ANTES (23/07) ═══
+  //
+  // El dueño: "los títulos de la pestaña caja no son los que pondrían en JPMorgan, además de que son
+  // confusos". Las dos cosas eran ciertas, y por dos motivos distintos:
+  //
+  //   EL VOCABULARIO. "LA PLATA QUE HAY", "AIRE", "¿DÓNDE ESTÁ EL EFECTIVO COBRADO?". Un estado de
+  //   liquidez usa los términos que cualquier tesorero y cualquier contador reconocen —
+  //   DISPONIBILIDADES, LIQUIDEZ NETA, LÍNEAS DE CRÉDITO NO UTILIZADAS— y no la forma en que uno se
+  //   lo contaría a un amigo. No es pompa: es que "aire" no significa nada fuera de esta oficina, y
+  //   el día que este cuadro lo mire un banco o un contador, tiene que entenderse solo.
+  //
+  //   LA JERARQUÍA. Había TRECE secciones al mismo nivel, y las últimas nueve eran en realidad el
+  //   anexo de la cuarta: viven adentro de su grupo desplegable. Numeradas todas igual, nada decía
+  //   que las tres primeras contestan la pregunta —cuánta plata hay, qué está comprometido, cuánto
+  //   crédito queda— y que el resto es el respaldo. Ahora el número lo dice: 1, 2, 3 y un 4 con sus
+  //   4.1 a 4.9. Ninguna fila se movió; cambió lo que se lee.
   push(['1 · DISPONIBILIDADES POR CUENTA'])
   const cab1 = push(['Cuenta', 'Moneda', 'Saldo en moneda de origen', 'Tipo de cambio', 'Saldo en pesos', 'Fecha del saldo', 'Antigüedad', 'Origen del dato'])
   const d0 = filas.length + 1
@@ -308,7 +327,7 @@ function grilla(cargado, refs) {
   // El dueño: "cruzá cheques emitidos y recibidos y que se vea todo reflejado en caja... necesito tener
   // bien claro el horizonte". Entra = valores recibidos en cartera; sale = cheques emitidos por su fecha
   // de pago. Todo por fórmula sobre las dos pestañas (una fuente por concepto): ni un importe pegado.
-  push(['2 · HORIZONTE DE CHEQUES — LO QUE VA A ENTRAR Y LO QUE VA A SALIR'])
+  push(['2 · VENCIMIENTOS DE VALORES — LO COMPROMETIDO, POR TRAMO'])
   const ch = refs.cheques
   const F400 = `IF(ISNUMBER('${ch}'!$F$2:$F$400);'${ch}'!$F$2:$F$400;0)`
   const K400 = `UPPER('${ch}'!$K$2:$K$400)<>"SI"`
@@ -342,7 +361,7 @@ function grilla(cargado, refs) {
   // no efectivo, así que va como resumen de tres líneas; el desglose (consumos, cuotas, controles,
   // costo del descubierto) está abajo, plegado. Las tres cifras se completan más abajo, cuando el
   // bloque de líneas de crédito ya calculó su disponible.
-  push(['3 · MARGEN DE CRÉDITO — NO ES EFECTIVO'])
+  push(['3 · LÍNEAS DE CRÉDITO NO UTILIZADAS — NO SON EFECTIVO'])
   const fMTar = push(['Tarjeta — disponible para comprar'])
   const fMAcu = push(['Acuerdo en descubierto'])
   const fMAire = push(['Aire total'])
@@ -355,7 +374,7 @@ function grilla(cargado, refs) {
   // UN BLOQUE SIN NÚMERO NO SE SABE SI ES UNA SECCIÓN, UN SUB-BLOQUE O UN RESTO. Éste, el del costo
   // del descubierto y el de "cómo se actualiza" eran los tres sueltos de la pestaña: el lector no
   // tenía forma de saber dónde terminaba uno y empezaba el otro.
-  const fCtrl0 = push(['4 · CONTROLES Y CONCILIACIONES — EL DETALLE Y LAS VERIFICACIONES'])
+  const fCtrl0 = push(['4 · ANEXO — EL DETALLE Y LAS CONCILIACIONES'])
 
   const fAlerta0 = push(['⚠ LO QUE NO CIERRA — mirar antes de decidir con los números de arriba'])
   push(['Cada línea es un problema con nombre y monto; la última columna dice de qué resta sale.'])
@@ -379,7 +398,7 @@ function grilla(cargado, refs) {
   // endosados, que no son plata— y dos filas de control. Una tabla que dice "acá está lo que tenés"
   // con cinco filas en el medio que no son eso obliga a decidir fila por fila cuál suma. El detalle
   // es valioso y se queda, pero abajo y con su propio título.
-  push(['5 · LOS VALORES EN CARTERA, UNO POR UNO'])
+  push(['4.1 · VALORES EN CARTERA, UNO POR UNO'])
   // EL DETALLE DE LOS CHEQUES EN CARTERA, colapsable. Va DESPUÉS de las cuentas y antes del total,
   // así que no entra en el rango que suma: sumaría dos veces la misma plata.
   const ultima = CUENTAS[CUENTAS.length - 1]
@@ -414,7 +433,7 @@ function grilla(cargado, refs) {
   push()
 
   // ── 4 · LÍNEAS DE CRÉDITO ───────────────────────────────────────────────────────────────────────
-  push(['6 · LÍNEAS DE CRÉDITO — NO SUMAN ARRIBA'])
+  push(['4.2 · LÍNEAS DE CRÉDITO — DETALLE Y CONTROL CONTRA EL RESUMEN DEL BANCO'])
   push(['El margen de una tarjeta es capacidad de endeudarse, no plata propia. Sumarlo a las disponibilidades es el error que hace que una empresa se crea líquida el día antes de no poder pagar sueldos. El límite en pesos y el límite en dólares son dos cupos distintos: mezclarlos daría un margen que no existe en ninguna de las dos monedas.'])
   const cab3 = push(['Línea', 'Moneda', 'Importe en moneda de origen', 'Tipo de cambio', 'Importe en pesos', '', '', 'Origen del dato'])
 
@@ -472,7 +491,7 @@ function grilla(cargado, refs) {
   // generando". El modelo no se estimó: reproduce al centavo el cargo que el banco hizo el 14/07
   // (ver costo-descubierto.mjs). Por eso el bloque muestra la verificación al lado del cálculo: una
   // tasa copiada de una pantalla y una tasa que reproduce un cargo real no valen lo mismo.
-  push(['7 · COSTO DE USAR EL DESCUBIERTO — LO QUE CORRE POR DÍA MIENTRAS LA CUENTA ESTÉ EN ROJO'])
+  push(['4.3 · COSTO DEL DESCUBIERTO — LO QUE CORRE POR DÍA CON LA CUENTA EN ROJO'])
   const saldoBanco = `$${C_PESOS}$${fBancoPesos}`
   const fTasa = push(['Tasa nominal anual del acuerdo', '', TASAS.tna, '', '', '', '',
     `Acuerdo N° ${BANCO.ACUERDO.numero}. Costo financiero total ${(BANCO.ACUERDO.cft * 100).toFixed(2)}% anual.`, 'Réplica del banco'])
@@ -491,7 +510,7 @@ function grilla(cargado, refs) {
   push()
 
   // ── 5 · ALERTA ──────────────────────────────────────────────────────────────────────────────────
-  push(['8 · ALERTA DE CAJA — HASTA CUÁNDO ALCANZA'])
+  push(['4.4 · DÍAS DE LIQUIDEZ — HASTA CUÁNDO ALCANZA'])
 
   // ═══ DÍAS DE CAJA ═══════════════════════════════════════════════════════════════════════════
   //
@@ -558,7 +577,7 @@ function grilla(cargado, refs) {
   push(['Primer mes con caja negativa', '', '', '', primerMes('<0'), '', '', '',
     '⚠ Ojo: los ingresos de octubre en adelante están en $0 porque no hay obra facturada. Esta fecha es un PISO, no un pronóstico.'])
   // ── 4 · CONCILIACIÓN ────────────────────────────────────────────────────────────────────────────
-  push(['9 · CONCILIACIÓN — ¿EL CASH FLOW EXPLICA LA PLATA QUE HAY?'])
+  push(['4.5 · CONCILIACIÓN CONTRA EL CASH FLOW'])
   push(['El control que mide si el archivo sirve. Si la diferencia es chica, el cuadro es confiable. Si es grande, hay plata moviéndose fuera del Sheet y hay que buscarla antes de decidir con estos números.'])
   const fDecl = push(['Disponibilidad declarada (bloque 1)', '', '', '', `=${C_PESOS}${fTotal}`, '', '', '', 'Lo que dicen el extracto y el arqueo.'])
   const fProy = push(['Efectivo al cierre que proyecta el Cash Flow al mes de la fecha del saldo', '', '', '',
@@ -617,7 +636,7 @@ function grilla(cargado, refs) {
   // ES UN CONTROL, NO UNA ACUSACIÓN: puede haber una explicación buena (un depósito posterior a la
   // fecha del extracto, un pago a proveedor hecho en efectivo sin pasar por el banco). Lo que no
   // puede pasar es que nadie lo mire.
-  push(['10 · ¿DÓNDE ESTÁ EL EFECTIVO COBRADO?'])
+  push(['4.6 · TRAZABILIDAD DEL EFECTIVO COBRADO'])
   push(['Un cobro en efectivo que no se depositó tiene que estar en la caja física. Este control resta: lo cobrado en efectivo, menos lo que se depositó, menos lo que se declara en la caja de arriba. Si sobra plata, o no está o el cobro no ocurrió.'])
   // ═══ LA MISMA VENTANA DE TIEMPO DE LOS DOS LADOS ═══
   //
@@ -699,7 +718,7 @@ function grilla(cargado, refs) {
   // explicarlo. DOS NO TIENEN NINGUNA: el impuesto al cheque y el costo del descubierto salen todos
   // los meses y ningún cuadro del archivo los espera. Por eso la proyección muestra un saldo que la
   // cuenta nunca llega a tener.
-  push(['11 · QUÉ SALIÓ DEL BANCO Y DÓNDE ESTÁ REGISTRADO'])
+  push(['4.7 · TRAZABILIDAD DE LO QUE SALIÓ DEL BANCO'])
   push(['Cada peso que salió de la cuenta tiene una pestaña que debería tenerlo. Acá se compara, grupo por grupo, lo que dice el extracto contra lo que dice esa pestaña en los MISMOS días. Una diferencia puede ser carga pendiente o un corte de fechas distinto; lo que no puede pasar es que nadie la mire.'])
   push(['Qué salió', '', 'Según el banco', '', 'Según la pestaña', 'Diferencia', '', 'Qué pestaña lo tiene que tener'])
   const n0 = filas.length + 1
@@ -726,7 +745,7 @@ function grilla(cargado, refs) {
     'Los dos números tienen que ser iguales. Distintos = apareció un concepto nuevo en el banco sin grupo asignado.'])
   push()
 
-  push(['12 · TIPO DE CAMBIO — SÓLO PARA VALUAR LA CUENTA EN DÓLARES'])
+  push(['4.8 · TIPO DE CAMBIO — SÓLO PARA VALUAR LA CUENTA EN DÓLARES'])
   push(['Está al final a propósito: la empresa cobra, paga y decide en pesos. El dólar acá no es una posición, es una cuenta chica que hay que poder sumar al total — y para eso hace falta una cotización con origen.'])
   const cab0 = push(['Concepto', '', 'Cotización', '', '', 'Fecha', '', 'Origen del dato'])
   const fRef = push([TIPO_CAMBIO.referencia.nombre, '', TIPO_CAMBIO.referencia.formula, '', '', '=TODAY()', '', TIPO_CAMBIO.referencia.origen, 'Se calcula solo'])
@@ -741,7 +760,7 @@ function grilla(cargado, refs) {
     `=${C_IMP}${filas.length + 1}*${C_TC}${filas.length + 1}`, '', '',
     'Exposición al tipo de cambio: esta parte de la caja cambia de valor sin que entre ni salga un peso.', 'Se calcula solo'])
   push()
-  push(['13 · CÓMO SE ACTUALIZA ESTO'])
+  push(['4.9 · BASES DE PREPARACIÓN — DE DÓNDE SALE Y CADA CUÁNTO SE ACTUALIZA'])
   push(['· Los saldos (las celdas amarillas) se cargan a mano o pegando el extracto en el chat: el OS lo lee y los completa. Lo que está en dólares se carga en dólares.'])
   push(['· No hay integración con el banco. La API de banca empresa se pide al banco y hoy no está contratada — hasta entonces, el saldo entra por extracto, captura o arqueo.'])
   push(['· El tipo de cambio se actualiza solo con la cotización del día. Si operás a otro (MEP, tarjeta), cargalo en la fila "Dólar declarado" y ése pasa a mandar.'])
@@ -850,7 +869,14 @@ async function main() {
   // antes con la fórmula del "próximo a debitar". Un dato que aparece recién a la segunda corrida
   // es un dato que, si el script se ejecuta una sola vez, no aparece nunca.
   await google.spreadsheetBatchUpdate(ID, [{ unmergeCells: { range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: Math.max(g.filas.length, hoja.rows ?? 0), startColumnIndex: 0, endColumnIndex: Math.max(ANCHO, hoja.cols ?? ANCHO) } } }]).catch(() => {})
+  // REGLA 0: si reescribiste un título o un rótulo de esta pestaña, gana el tuyo. Se compara contra
+  // lo que este generador escribió la última vez. Ver lib/respetar-ediciones.mjs.
+  const actual = await google.readSheetValues(ID, `${tab}!A1:${letra(ANCHO - 1)}${g.filas.length}`).catch(() => [])
+  const { grid: gridFinal, respetadas, ediciones } = await conEdicionesRespetadas(ID, PESTAÑA, g.filas, actual)
+  g.filas = gridFinal
+  for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)
   const { conservadas } = await escribirPreservando(google, ID, tab, g.filas, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
+  await guardarRegistro(ID, PESTAÑA, g.filas, ediciones).catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) escritas por una persona — CONSERVADAS`)
   await formatear(google, hoja.sheetId, g, tab)
 
