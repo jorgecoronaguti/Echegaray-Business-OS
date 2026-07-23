@@ -46,6 +46,7 @@ import { operacionesSheetTools } from './lib/tools/operaciones-sheet-tool.mjs'
 import { reclamoCobranzaTools } from './lib/tools/reclamo-cobranza-tool.mjs'
 import { cotizacionesHistorialTools } from './lib/tools/cotizaciones-historial-tool.mjs'
 import { briefingCajaTools } from './lib/tools/briefing-caja-tool.mjs'
+import { ingenieriaFinancieraTools } from './lib/tools/ingenieria-financiera-tool.mjs'
 import { obraTools } from './lib/tools/obra.mjs'
 import { bibliotecaAreaTools } from './lib/tools/biblioteca-area-tool.mjs'
 import { operatingReviewTools } from './lib/tools/operating-review-tool.mjs'
@@ -78,7 +79,7 @@ async function construirRegistro() {
     ...cotizacionesTools(), ...noConformidadesTools(), ...cajaVencidoTools(),
     ...controlAdministrativoTools(), ...auditarPestanaTools(google), ...estadoEmpresaTools(google),
     ...deshacerSheetTools(google), ...operacionesSheetTools(google), ...reclamoCobranzaTools(google),
-    ...cotizacionesHistorialTools(), ...briefingCajaTools(google), ...obraTools(),
+    ...cotizacionesHistorialTools(), ...briefingCajaTools(google), ...ingenieriaFinancieraTools(google), ...obraTools(),
     ...bibliotecaAreaTools(), ...operatingReviewTools(), ...egresosTools(google), ...cargasSocialesTools(google), ...nominaSyncTools(google), ...sheetRenderTools(google), ...learnTools(), ...sheetsFormatTools(google), ...sheetDropdownTools(google), ...aliasPendientesTools(google), ...indicesTools(),
   }
 }
