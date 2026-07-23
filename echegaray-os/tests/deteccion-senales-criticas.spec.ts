@@ -34,7 +34,7 @@ test.describe('detectar_senales_criticas_transversales', () => {
       .insert({
         origen: 'manual',
         titulo,
-        area: 'direccion',
+        area: 'gestion_general',
         estado: 'pendiente',
         fecha_limite: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
         responsable: 'Test E2E',

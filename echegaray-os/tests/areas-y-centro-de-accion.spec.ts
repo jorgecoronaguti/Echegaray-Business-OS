@@ -32,10 +32,13 @@ test('el Centro de Acción renderiza sin sesión autenticada', async ({ page }) 
   await expect(page.locator('body')).not.toContainText('Application error')
 })
 
-test('la navegación por áreas está disponible desde cualquier página', async ({ page }) => {
+// Los links "Dirección" y "Centro de Acción" salieron del nav el 2026-07-09 (el OS se enfocó en
+// Flujo de Caja); sus páginas siguen accesibles por URL. Lo que este test tiene que seguir
+// garantizando es que el nav ESTÉ en cualquier página, con los links vigentes.
+test('la navegación está disponible desde cualquier página', async ({ page }) => {
   await page.goto('/dashboard')
   const nav = page.getByTestId('nav-areas')
   await expect(nav).toBeVisible()
-  await expect(nav.getByRole('link', { name: 'Dirección' })).toBeVisible()
-  await expect(nav.getByRole('link', { name: 'Centro de Acción' })).toBeVisible()
+  await expect(nav.getByRole('link', { name: 'Centro de Operación' })).toBeVisible()
+  await expect(nav.getByRole('link', { name: 'Flujo de Caja' })).toBeVisible()
 })

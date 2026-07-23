@@ -83,7 +83,7 @@ test.describe.serial('operabilidad real — capacidades nuevas con datos reales'
     const titulo = `Prueba E2E bloqueo ${Date.now()}`
     const { data: accion, error } = await supabase
       .from('acciones')
-      .insert({ origen: 'manual', titulo, area: 'direccion', estado: 'pendiente' })
+      .insert({ origen: 'manual', titulo, area: 'gestion_general', estado: 'pendiente' })
       .select('id')
       .single()
     expect(error).toBeNull()
