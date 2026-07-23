@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { respetarEdiciones, detectarEdiciones, esRotulo, esEstructural } from './respetar-ediciones.mjs'
+import { respetarEdiciones, detectarEdiciones, esRotulo, esEstructural, detectarArranqueEnFrio } from './respetar-ediciones.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 
 test('un rótulo es texto: no una fórmula, no un número, no un importe escrito', () => {
@@ -86,4 +86,46 @@ test('el borrado de un TÍTULO nunca se da por bueno: es la forma de mi propio e
   const mios = ['2 · CALENDARIO DE VENCIMIENTOS', 'Cuánta plata hay de verdad, qué ya está comprometido y hasta cuándo alcanza']
   const generado = [['2 · CALENDARIO DE VENCIMIENTOS'], ['Cuánta plata hay de verdad, qué ya está comprometido y hasta cuándo alcanza']]
   assert.equal(detectarEdiciones(mios, [['otra cosa']], generado).size, 0)
+})
+
+// ── EL ARRANQUE EN FRÍO ────────────────────────────────────────────────────────────────────────
+// Una pestaña que nunca usó la regla no tiene registro, así que la primera corrida pisaría todo lo
+// que el dueño hubiera editado antes. Estos casos cubren el único indicio honesto que hay sin
+// historia: el generador quiere escribir un rótulo que en la pestaña no está en ninguna parte.
+
+test('arranque en frío: detecta el rótulo que el generador escribe y en la pestaña no está', () => {
+  const generado = [['Deuda previsional en cuotas'], ['Saldo'], [1000]]
+  const actual = [['Plan de pago ARCA'], ['Saldo'], [1000]]
+  const r = detectarArranqueEnFrio(generado, actual)
+  assert.deepEqual(r.map((x) => x.mio), ['Deuda previsional en cuotas'])
+})
+
+test('arranque en frío: no marca un rótulo que sigue estando, aunque se haya movido de fila', () => {
+  const generado = [['Saldo'], ['Deuda']]
+  const actual = [[''], ['Deuda'], ['Saldo']]
+  assert.deepEqual(detectarArranqueEnFrio(generado, actual), [])
+})
+
+test('arranque en frío: NUNCA da por borrado un título ni una sección', () => {
+  // Nadie borra a propósito el encabezado de una sección: si desapareció, lo movió el generador.
+  const generado = [['1 · LA POSICIÓN'], ['⇒ Total del año'], ['Un concepto suelto']]
+  const r = detectarArranqueEnFrio(generado, [['']])
+  assert.deepEqual(r.map((x) => x.mio), ['Un concepto suelto'])
+})
+
+test('arranque en frío: ignora números y fórmulas, que no son rótulos', () => {
+  const generado = [['=SUMA(A1:A9)'], [1234], ['12%'], ['Concepto real']]
+  const r = detectarArranqueEnFrio(generado, [['']])
+  assert.deepEqual(r.map((x) => x.mio), ['Concepto real'])
+})
+
+test('una fecha NO es un rótulo: congelarla dejaría el cuadro clavado en un año', () => {
+  // Hallazgo de la primera corrida real (23/07) sobre "Estructura" y "Recurrentes": los doce
+  // encabezados de mes entraban como rótulos porque la barra no es un dígito.
+  for (const f of ['1/1/2026', '01/12/2026', '31-12-2026', '2026-07', '2026-07-23']) {
+    assert.equal(esRotulo(f), false, `"${f}" es una fecha, no un texto que alguien redacte`)
+  }
+  // Un mes escrito como palabra SÍ es un rótulo: ahí hay una decisión de redacción.
+  assert.equal(esRotulo('ene-26'), true)
+  assert.equal(esRotulo('Enero 2026'), true)
 })

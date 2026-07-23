@@ -56,7 +56,15 @@ export function esRotulo(v) {
   const t = v.trim()
   if (!t || t.startsWith('=')) return false
   // Un texto que es sólo un número escrito ("1.234", "12%") es un dato, no un rótulo.
-  return !/^[-$\s\d.,%]+$/.test(t)
+  if (/^[-$\s\d.,%]+$/.test(t)) return false
+  // UNA FECHA TAMPOCO ES UN RÓTULO (23/07). Se vio en la primera corrida real sobre "Estructura" y
+  // "Recurrentes": los doce encabezados de mes —"1/1/2026" … "1/12/2026"— entraban como rótulos
+  // porque la barra no es un dígito. Dos consecuencias, las dos malas: la pestaña avanza de año y
+  // los doce se leen como "el dueño los borró", y si además se respetaran quedarían CONGELADOS en
+  // 2026 para siempre. El encabezado de un mes lo decide el calendario, no una persona.
+  if (/^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$/.test(t)) return false
+  if (/^\d{4}-\d{2}(-\d{2})?$/.test(t)) return false
+  return true
 }
 
 /**
@@ -259,6 +267,56 @@ export async function guardarRegistro(fileId, pestana, grid, ediciones = new Map
  *   … escribir grid …
  *   await guardarRegistro(ID, PESTAÑA, grid, ediciones)
  */
+/**
+ * EL ARRANQUE EN FRÍO: proteger lo que el dueño ya tenía editado ANTES de que existiera la regla.
+ *
+ * POR QUÉ EXISTE (23/07). La Regla 0 compara contra lo que el generador escribió la última vez. Para
+ * una pestaña que nunca la usó, ese registro está vacío — así que la PRIMERA corrida no respeta nada
+ * y le pisa al dueño todo lo que hubiera editado hasta ese momento. Justo lo que vino a evitar.
+ *
+ * El arranque en frío usa el único indicio honesto que hay sin historia: **el generador quiere
+ * escribir un rótulo que en la pestaña no está en ninguna parte.** Si el generador lo escribe hoy y
+ * no aparece, alguien lo cambió o lo borró — porque el generador es determinístico y la corrida
+ * anterior lo puso ahí.
+ *
+ * NO ES INFALIBLE y hay que decirlo: si el rótulo cambió porque yo mismo mejoré el texto del
+ * generador entre dos corridas, esto lo lee como una edición del dueño. Por eso se usa en modo
+ * INFORME —se muestra la lista y él confirma— y no se siembra a ciegas.
+ *
+ * @returns {{fila:number, mio:string}[]} los rótulos que el generador quiere escribir y no están
+ */
+export function detectarArranqueEnFrio(generado = [], actual = []) {
+  const presentes = new Set()
+  for (const f of actual || []) for (const c of f || []) { const t = clave(c); if (t) presentes.add(sinApostrofo(t)) }
+  const out = []
+  const vistos = new Set()
+  ;(generado || []).forEach((f, i) => (f || []).forEach((c) => {
+    if (!esRotulo(c)) return
+    const t = clave(c)
+    // Un título o un encabezado de sección no se da nunca por borrado: ver esEstructural().
+    if (esEstructural(t) || presentes.has(sinApostrofo(t)) || vistos.has(t)) return
+    vistos.add(t)
+    out.push({ fila: i + 1, mio: String(c) })
+  }))
+  return out
+}
+
+/**
+ * Registra, sin escribir en el Sheet, que estos rótulos los cambió el dueño. Es la confirmación
+ * manual del arranque en frío.
+ */
+export async function sembrarEdiciones(fileId, pestana, rotulos = []) {
+  await asegurarTabla()
+  for (const r of rotulos) {
+    await query(
+      `insert into public.sheet_rotulos (file_id, pestana, rotulo, reemplazo) values ($1,$2,$3,'')
+       on conflict (file_id, pestana, rotulo) do update set reemplazo = ''`,
+      [fileId, pestana, limpio(String(r))],
+    )
+  }
+  return rotulos.length
+}
+
 export async function conEdicionesRespetadas(fileId, pestana, generado, actual) {
   const { mios, ediciones } = await leerRegistro(fileId, pestana).catch(() => ({ mios: [], ediciones: new Map() }))
   // Lo que desapareció desde la última corrida: eso lo cambió una persona.

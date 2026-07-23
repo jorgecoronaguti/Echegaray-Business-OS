@@ -471,7 +471,7 @@ async function main() {
 
   const { grid, respetadas, ediciones } = await conEdicionesRespetadas(ID, PESTAÑA, g.filas, previo)
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)
-  const { conservadas } = await escribirPreservando(google, ID, `'${PESTAÑA}'`, grid, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
+  const { conservadas } = await escribirPreservando(google, ID, `'${PESTAÑA}'`, grid, { respetar: false /* la Regla 0 ya se aplicó arriba, a mano: este generador guarda el registro DESPUÉS de releer la pestaña, que es más fiel que hacerlo antes de escribir */, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   if (conservadas.length) console.log(`✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
   await formatear(google, hoja.sheetId, grid, g)

@@ -68,6 +68,10 @@ async function main() {
     const nuevas = agregar.map((e) => ['ECHEQ', norm(e.numero), '', '', e.beneficiario, e.importe, '', '', isoAar(e.pago), '', debitadoDe(e.estado), '', 'agregado del banco'])
     data.push({ range: `${PESTANA}!A${ultima + 1}`, values: nuevas })
   }
+  // REGLA 0 — NO APLICA, Y ESTÁ DECIDIDO: respetar: false.
+  // Sincroniza el estado "debitado" de cada cheque contra el extracto del banco. Escribe un HECHO
+  // verificado contra la fuente, celda por celda, en la columna de estado — no un rótulo redactado
+  // por nadie. Respetar acá sería dejar que una edición a mano contradiga al banco.
   await google.batchUpdateValues(ID, data)
   console.log(`✔ ${updates.length} corregidos + ${agregar.length} agregados`)
 }

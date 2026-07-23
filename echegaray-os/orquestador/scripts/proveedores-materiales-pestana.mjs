@@ -74,6 +74,7 @@ import { NOMBRES } from '../lib/sheet-pestanas.mjs'
 import { partir, filasHuerfanas, ref as refPestana } from '../lib/partir-pestana.mjs'
 import { anchosSegunContenido } from '../lib/nota-celda.mjs'
 import { fusionar, sobrantes, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { ESTADO_DEUDA } from '../lib/cuentas-por-pagar.mjs'
 /** El estado de Compras para lo pactado que todavía no es deuda firme. Convive con "Pendiente". */
 const ESTADO_PROYECTADO = 'Proyectado'
@@ -1019,10 +1020,21 @@ async function main() {
     const previo = await google.readSheetValues(
       ID, `${refPestana(t.titulo)}!A1:${letra(anchoLeer - 1)}${cuadroP.length}`, { render: 'FORMULA' },
     )
-    const fusion = fusionar(cuadroP, previo)
-    const conservadas = sobrantes(cuadroP, previo)
+    // ═══ REGLA 0 — Y SI ADEMÁS REESCRIBIÓ UN TEXTO MÍO, GANA EL SUYO ═══
+    //
+    // POR QUÉ SE AGREGÓ (23/07). El dueño: "no estás respetando q yo hago ediciones en las pestañas
+    // y me las ignoras". PRESERVAR (arriba) protege lo que el generador NO escribe: una nota al
+    // margen, una columna propia. No alcanzaba: si él reescribe un rótulo que el generador SÍ
+    // escribe, la fusión le da la razón al generador y su edición dura una sola corrida.
+    // RESPETAR cubre justamente ese caso. Ver lib/respetar-ediciones.mjs.
+    const { grid: cuadroFinal, respetadas, ediciones } = await conEdicionesRespetadas(ID, t.titulo, cuadroP, previo)
+    for (const r of respetadas) console.log(`  ✋ ${t.titulo}: respeto tu texto ("${String(r.suyo).slice(0, 40)}") en vez de "${String(r.mio).slice(0, 40)}"`)
+    const fusion = fusionar(cuadroFinal, previo)
+    const conservadas = sobrantes(cuadroFinal, previo)
     await google.batchUpdateValues(ID, [{ range: `${refPestana(t.titulo)}!A1`, values: fusion }])
     if (conservadas.length) console.log(`  ✋ ${t.titulo}: ${conservadas.length} celda(s) escritas por el dueño — CONSERVADAS, no se borra nada`)
+    await guardarRegistro(ID, t.titulo, cuadroFinal, ediciones, previo)
+      .catch((e) => console.warn(`  ⚠ ${t.titulo}: no pude guardar el registro de rótulos: ${e.message}`))
 
     const gP = { ...traducir(t.titulo), filas: cuadroP }
     await formatear(google, hoja.sheetId, gP, anchoP, cuadroP.length)

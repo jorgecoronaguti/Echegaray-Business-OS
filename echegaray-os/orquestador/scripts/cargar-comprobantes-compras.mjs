@@ -119,6 +119,10 @@ async function main() {
     range: `Compras!${L}${desde}:${L}${hasta}`,
     values: plan.map((p) => [p.valores[L] ?? '']),
   }))
+  // REGLA 0 — NO APLICA, Y ESTÁ DECIDIDO: respetar: false.
+  // Este cargador AGREGA filas de comprobante al final de "Compras". No escribe un solo rótulo:
+  // escribe datos —CUIT, número, importe, fecha— en filas que antes no existían. No hay texto de
+  // una persona debajo que se pueda pisar, porque debajo no había nada.
   await google.batchUpdateValues(ID, data)
 
   // 2) FÓRMULAS por fila: copiar de la última fila con datos a las nuevas (Google reajusta refs).

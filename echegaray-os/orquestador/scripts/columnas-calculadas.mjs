@@ -72,6 +72,11 @@ async function main() {
   // Se escribe celda por celda con USER_ENTERED, que es quien localiza la fórmula a es-AR
   // (separador `;`). Son poquísimas celdas: no hace falta un batch.
   for (const { v, p } of reparar) {
+    // REGLA 0 — SE APAGA A PROPÓSITO: respetar: false.
+    // Este script existe justamente para DESHACER una edición a mano: devuelve su fórmula a una
+    // celda calculada que alguien pisó con un número pegado. Respetar la edición sería anular el
+    // script entero. La Regla 0 protege los RÓTULOS que el dueño redacta, nunca un número pegado
+    // encima de un cálculo — la distinción está escrita en lib/respetar-ediciones.mjs.
     await google.updateSheetValues(ID, `${v.pestana}!${v.col}${p.fila}`, [[p.deberia]])
   }
   console.log(`\n✓ ${reparar.length} celda(s) devueltas a su fórmula`)

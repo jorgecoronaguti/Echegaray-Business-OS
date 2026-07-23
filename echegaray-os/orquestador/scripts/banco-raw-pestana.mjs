@@ -158,7 +158,7 @@ async function main() {
     console.log(`  cola de una corrida anterior: limpio las filas ${gridRaw.length + 1}–${ultimaConDato}`)
     for (let i = gridRaw.length; i < ultimaConDato; i++) gridRaw.push(Array(COLUMNAS.length).fill(VACIO))
   }
-  const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, gridRaw, { anchoHoja: Math.max(COLUMNAS.length, hoja.cols ?? COLUMNAS.length) })
+  const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, gridRaw, { respetar: false /* espejo de una fuente externa: cada rótulo es el encabezado de la columna de origen, no un texto que alguien redacte. Respetar acá congelaría el nombre de un campo del banco/ARCA si cambiara, y no hay redacción de nadie que proteger */, anchoHoja: Math.max(COLUMNAS.length, hoja.cols ?? COLUMNAS.length) })
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
   const rg = (r0, r1, c0, c1) => ({ sheetId: hoja.sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })

@@ -25,6 +25,7 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
+import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { ECHEQS_TERCEROS, CORTE as BANCO_CORTE } from '../lib/banco-santander.mjs'
 import { MARCA_ENDOSADO } from '../lib/cash-flow-lineas.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
@@ -184,7 +185,13 @@ async function corregirRotuloTotal(google) {
     console.log(`  ⚠ no toco el rótulo de M: esperaba =J+K-L y encontré "${formula || '(sin fórmula)'}"`)
     return
   }
-  await google.batchUpdateValues(ID, [{ range: `${PESTAÑA}!M4`, values: [[CORRECTO]] }])
+  // ═══ REGLA 0 — SI EL DUEÑO YA LO REBAUTIZÓ, GANA ÉL ═══
+  // Éste es el único punto del script que reescribe un RÓTULO que una persona podría haber
+  // redactado. El resto escribe en una zona propia firmada, y se niega a salir de ahí.
+  const { grid: g4, respetadas: r4, ediciones: e4 } = await conEdicionesRespetadas(ID, PESTAÑA, [[CORRECTO]], [[rotulo]])
+  for (const r of r4) console.log(`  ✋ respeto tu rótulo ("${String(r.suyo).slice(0, 44)}") en vez de "${String(r.mio).slice(0, 44)}"`)
+  await google.batchUpdateValues(ID, [{ range: `${PESTAÑA}!M4`, values: g4 }])
+  await guardarRegistro(ID, PESTAÑA, g4, e4, [[rotulo]]).catch((e) => console.warn(`  ⚠ registro de rótulos: ${e.message}`))
   console.log(`  rótulo de M corregido: "${rotulo}" → "${CORRECTO}" (la fórmula es ${formula}: descuenta retenciones)`)
 }
 
@@ -246,6 +253,10 @@ async function main() {
   await corregirRotuloTotal(google)
   await marcarValoresSegunBanco(google)
 
+  // REGLA 0 — NO APLICA EN ESTE BLOQUE, Y ESTÁ DECIDIDO: respetar: false.
+  // Todo lo de abajo cae en la zona propia del control, marcada con FIRMA en su encabezado, y el
+  // script ABORTA más arriba si encuentra ahí contenido que no reconoce. Esa negativa protege
+  // mejor que respetar: no se discute qué texto gana, directamente no se escribe sobre lo ajeno.
   await google.batchUpdateValues(ID, [
     { range: `${PESTAÑA}!${letra(C_FLAG)}4:${letra(C_FLAG)}4`, values: [['⚠ Control automático']] },
     { range: `${PESTAÑA}!${letra(C_FLAG)}${F0}`, values: [[flagPorFila]] },

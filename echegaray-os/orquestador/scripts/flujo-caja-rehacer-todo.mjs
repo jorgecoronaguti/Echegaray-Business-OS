@@ -87,6 +87,9 @@ async function verificarPresentacion() {
     if (i > 0 && j > i) {
       // A200 se usa como celda de apunte. Se GUARDA lo que hubiera y se RESTAURA: si el dueño escribió
       // ahí, no se pierde (regla de oro: nunca borrar lo que escribe una persona).
+      // REGLA 0 — NO APLICA, Y ESTÁ DECIDIDO: respetar: false.
+      // Acá no se escribe contenido: A200 se usa un instante como celda de apunte para resolver a qué
+      // rango apunta un atajo, y se restaura lo que hubiera. Nada queda escrito al terminar.
       const previoA200 = (await google.readSheetValues(ID, `${pestaña}!A200`, { render: 'FORMULA' }))?.[0]?.[0] ?? ''
       await google.batchUpdateValues(ID, [{ range: `${pestaña}!A200`, values: [[`=${f.slice(i + 9, j)}`]] }])
       rango = (await google.readSheetValues(ID, `${pestaña}!A200`))?.[0]?.[0]

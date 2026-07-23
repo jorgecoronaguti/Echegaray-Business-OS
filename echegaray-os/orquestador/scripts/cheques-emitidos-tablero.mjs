@@ -21,6 +21,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
+import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTANA = 'Cheques Emitidos'
@@ -115,7 +116,22 @@ async function main() {
   await google.spreadsheetBatchUpdate(ID, [{
     unmergeCells: { range: { sheetId, startRowIndex: 0, endRowIndex: BANDA, startColumnIndex: 0, endColumnIndex: 13 } },
   }]).catch(() => {})
-  await google.batchUpdateValues(ID, [{ range: `${PESTANA}!A1`, values: filas }])
+  // ═══ REGLA 0 — LO QUE EL DUEÑO EDITÓ GANA, Y EL GENERADOR SE ADAPTA ═══
+  //
+  // POR QUÉ ACÁ Y NO EN escribirPreservando (23/07). El dueño: "no estás respetando q yo hago
+  // ediciones en las pestañas y me las ignoras". Esta banda se escribe en CRUDO, no por fusión: no
+  // lleva los centinelas VACIO, así que pasarla por `escribirPreservando` haría revivir los valores
+  // viejos de la propia banda —el defecto que ya se pagó en Proveedores, con proveedores duplicados
+  // y el total al doble—. Se aplica entonces sólo la mitad que corresponde: respetar SUS textos.
+  //
+  // Alcanza a los rótulos: si él reescribió el subtítulo o borró una etiqueta, eso vale. Los importes
+  // y las fórmulas los sigue mandando el generador, que es lo que la pestaña existe para calcular.
+  const previo = await google.readSheetValues(ID, `'${PESTANA}'!A1:M${filas.length}`, { render: 'FORMULA' }).catch(() => [])
+  const { grid: filasFinal, respetadas, ediciones } = await conEdicionesRespetadas(ID, PESTANA, filas, previo)
+  for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${String(r.suyo).slice(0, 44)}") en vez de escribir "${String(r.mio).slice(0, 44)}"`)
+  await google.batchUpdateValues(ID, [{ range: `${PESTANA}!A1`, values: filasFinal }])
+  await guardarRegistro(ID, PESTANA, filasFinal, ediciones, previo)
+    .catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
 
   // ── FORMATO: la misma piel de statement que "Cheques Recibidos" (lib/estilo-statement.mjs) ──────
   // skinRequests resuelve título, secciones (MAYÚSCULAS), encabezados y totales (⇒) a partir del

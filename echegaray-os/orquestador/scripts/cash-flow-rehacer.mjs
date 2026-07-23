@@ -16,6 +16,7 @@ import {
   tablasDeProyeccion, formulaChequesSinFactura,
 } from '../lib/cash-flow-lineas.mjs'
 import { REGLAS } from '../lib/rubro-caja.mjs'
+import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { CAJA as N_CAJA } from '../lib/rangos-nombrados.mjs'
 import { ubicarCaja } from '../lib/caja-disponibilidades.mjs'
@@ -461,7 +462,30 @@ async function main() {
   }
   // NO se limpia: se escribe sólo sobre los rangos propios. Borrar A1:BZ200 se llevaba puesto todo lo
   // que el dueño hubiera anotado en esas pestañas (regla de oro: nunca borrar lo que escribe una persona).
+  //
+  // ═══ REGLA 0 — Y ADEMÁS, SI REESCRIBIÓ UN TEXTO MÍO, GANA EL SUYO (23/07) ═══
+  //
+  // El dueño: "no estás respetando q yo hago ediciones en las pestañas y me las ignoras". No alcanza
+  // con no borrar: si él rebautiza un rótulo que este generador SÍ escribe, la corrida siguiente se
+  // lo pisa y su cambio dura menos de dos horas, que es cada cuánto corre el worker.
+  //
+  // Se aplica rango por rango porque este generador NO escribe una grilla única —escribe una lista de
+  // {range, values} sueltos—. Cada bloque se compara contra lo que hay hoy EN SU PROPIO RANGO; el
+  // registro se lleva por pestaña, y como la Regla 0 ancla al TEXTO y no a la posición, un bloque que
+  // se mueve de fila no rompe nada.
+  for (const d of data) {
+    const actual = await google.readSheetValues(ID, d.range, { render: 'FORMULA' }).catch(() => [])
+    const { grid, respetadas, ediciones } = await conEdicionesRespetadas(ID, d.pestaña, d.values, actual)
+    for (const r of respetadas) console.log(`  ✋ ${d.pestaña}: respeto tu texto ("${String(r.suyo).slice(0, 40)}") en vez de "${String(r.mio).slice(0, 40)}"`)
+    d.values = grid
+    d._ediciones = ediciones
+    d._actual = actual
+  }
   await google.batchUpdateValues(ID, data.map(({ range, values }) => ({ range, values })))
+  for (const d of data) {
+    await guardarRegistro(ID, d.pestaña, d.values, d._ediciones ?? new Map(), d._actual)
+      .catch((e) => console.warn(`  ⚠ ${d.pestaña}: no pude guardar el registro de rótulos: ${e.message}`))
+  }
   await formatear(google, data)
   console.log('\nEscrito. Verificando contra el Sheet…')
 
