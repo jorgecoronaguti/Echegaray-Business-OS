@@ -27,7 +27,8 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import * as BANCO from '../lib/banco-santander.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
-import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { query } from '../lib/db.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 export const PESTAÑA = '_BANCO_RAW'
@@ -71,11 +72,48 @@ export function fila(m) {
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
-  const movs = [...BANCO.MOVIMIENTOS].sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)))
-  // Los movimientos del día (22/07 sin saldo corrido + el hold sin detalle) van DESPUÉS de la cadena
-  // ordenada, para que el último saldo de la réplica sea el DECLARADO por el banco y CAJA muestre lo
-  // que hay hoy, no el último saldo corrido del detalle. Ver MOVIMIENTOS_DIA en la lib.
-  const datos = [...movs, ...(BANCO.MOVIMIENTOS_DIA ?? [])].map(fila)
+  // ═══ EL EXTRACTO SALE DE LA BASE, NO DEL CÓDIGO ═══
+  //
+  // Hasta hoy los movimientos eran un array escrito a mano en lib/banco-santander.mjs: cargar el
+  // extracto del día significaba editar JavaScript, y un dato operativo que sólo se actualiza
+  // tocando el código no se actualiza — envejece. Ahora entran por
+  // `scripts/importar-banco.mjs` (CSV o pegado), con deduplicación y verificación de la cadena de
+  // saldos, y esta réplica los lee de `public.banco_movimientos`.
+  //
+  // SI LA BASE NO CONTESTA, SE USA EL ARRAY. No es pereza: dejar la pestaña en cero porque falló una
+  // conexión sería mucho peor que mostrar el último extracto conocido — de _BANCO_RAW cuelgan por
+  // fórmula la disponibilidad de CAJA, el impuesto al cheque y el cruce de Cheques.
+  //
+  // El ORDEN es contrato: primero la cadena con saldo corrido, y al final los movimientos del día
+  // (sin saldo), para que el último saldo de la réplica sea el DECLARADO por el banco y CAJA muestre
+  // lo que hay hoy, no el último saldo corrido del detalle.
+  let movs = null
+  try {
+    const { rows } = await query(
+      `select fecha, concepto, importe, saldo_despues as saldo
+         from public.banco_movimientos
+        order by (saldo_despues is null), fecha, id`,
+    )
+    if (rows.length) {
+      movs = rows.map((r) => ({
+        fecha: r.fecha instanceof Date ? r.fecha.toISOString().slice(0, 10) : String(r.fecha).slice(0, 10),
+        concepto: r.concepto,
+        importe: Number(r.importe),
+        saldo: r.saldo == null ? undefined : Number(r.saldo),
+      }))
+      console.log(`fuente: public.banco_movimientos — ${movs.length} movimiento(s)`)
+    }
+  } catch (e) {
+    console.warn(`⚠ no pude leer public.banco_movimientos (${String(e.message).slice(0, 70)}): uso el extracto del código`)
+  }
+  if (!movs) {
+    console.log('fuente: el array del código (la base todavía no tiene movimientos — corré importar-banco.mjs --sembrar)')
+    movs = [
+      ...[...BANCO.MOVIMIENTOS].sort((a, b) => String(a.fecha).localeCompare(String(b.fecha))),
+      ...(BANCO.MOVIMIENTOS_DIA ?? []),
+    ]
+  }
+  const datos = movs.map(fila)
   const corte = new Date().toISOString().slice(0, 16).replace('T', ' ')
 
   console.log(`${datos.length} movimientos del extracto · corte del banco ${BANCO.CORTE}`)
@@ -104,6 +142,22 @@ async function main() {
     COLUMNAS.map(([n]) => n),
     ...datos,
   ]
+  // ═══ LA COLA DE UNA CORRIDA ANTERIOR ═══
+  //
+  // Esta réplica puede ACORTARSE: si un movimiento se borra de la base (una carga equivocada que se
+  // deshace), la grilla nueva tiene menos filas y las de más abajo SOBREVIVEN — el precio declarado
+  // de no borrar nunca. Y sobreviven en silencio: el extracto muestra un movimiento que ya no
+  // existe, la cadena de saldos no cierra, y de acá cuelga la disponibilidad de CAJA.
+  //
+  // Se extiende con el centinela VACIO, que significa "es mi celda y va vacía": limpia lo que dejó
+  // este generador y CONSERVA cualquier anotación de una persona en una columna que no ocupa.
+  const previo = await google.readSheetValues(ID, `${PESTAÑA}!A1:${String.fromCharCode(64 + COLUMNAS.length)}1000`).catch(() => [])
+  let ultimaConDato = 0
+  previo.forEach((f, i) => { if ((f || []).some((c) => String(c ?? '').trim())) ultimaConDato = i + 1 })
+  if (ultimaConDato > gridRaw.length) {
+    console.log(`  cola de una corrida anterior: limpio las filas ${gridRaw.length + 1}–${ultimaConDato}`)
+    for (let i = gridRaw.length; i < ultimaConDato; i++) gridRaw.push(Array(COLUMNAS.length).fill(VACIO))
+  }
   const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, gridRaw, { anchoHoja: Math.max(COLUMNAS.length, hoja.cols ?? COLUMNAS.length) })
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
 

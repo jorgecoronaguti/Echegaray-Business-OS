@@ -163,7 +163,20 @@ export function verificarCadena(movs = [], saldoInicial = null, tolerancia = 0.0
   const cortes = []
   let anterior = saldoInicial
   for (const m of movs) {
-    if (m.saldo == null) continue
+    // ═══ UN MOVIMIENTO SIN SALDO IGUAL MUEVE LA PLATA ═══
+    //
+    // La primera versión los SALTEABA, y eso rompía la cadena en el primer movimiento con saldo que
+    // viniera después: los "Movimientos del Día" (el cheque Nº 221, la transferencia a Katsuda, la
+    // recibida de Manufacturas) suman −$465.732,51 que el arrastre no estaba contando. Contra el
+    // extracto real daba un corte de $-609.232,51 —el saldo pendiente de conciliar entero— cuando la
+    // parte que el banco de verdad no explica es sólo $-143.500. Un control que exagera el problema
+    // es tan inútil como uno que lo tapa: no se sabe cuánto mirar.
+    //
+    // Sin saldo declarado no hay nada que comparar, pero SÍ hay que arrastrar el importe.
+    if (m.saldo == null) {
+      if (anterior != null) anterior += Number(m.importe)
+      continue
+    }
     if (anterior != null) {
       const esperado = anterior + Number(m.importe)
       const dif = esperado - Number(m.saldo)

@@ -145,11 +145,28 @@ test('un typo en un importe se ve porque la cadena deja de cerrar', () => {
   assert.equal(r.cortes[0].diferencia, -450)
 })
 
-test('los movimientos sin saldo no cortan la cadena: arrastran el último conocido', () => {
+test('UN MOVIMIENTO SIN SALDO IGUAL MUEVE LA PLATA: se arrastra, no se saltea', () => {
+  // Los "Movimientos del Día" todavía no traen saldo corrido, pero el dinero ya salió. Salteándolos,
+  // el siguiente movimiento CON saldo parece no cerrar. Contra el extracto real eso exageraba el
+  // corte a $-609.232,51 (el pendiente de conciliar entero) cuando la parte que el banco no explica
+  // es sólo $-143.500.
+  const m = [
+    { fecha: '2026-07-20', concepto: 'a', importe: -100, saldo: 900 },
+    { fecha: '2026-07-21', concepto: 'del día', importe: -50, saldo: null },
+    { fecha: '2026-07-21', concepto: 'c', importe: -100, saldo: 750 },
+  ]
+  assert.equal(verificarCadena(m, 1000).ok, true, '900 − 50 − 100 = 750')
+})
+
+test('saltear el movimiento sin saldo sería un falso positivo', () => {
+  // El mismo caso pero con el saldo que tendría si el del día NO existiera: ahora SÍ tiene que
+  // gritar, porque faltan $50 de verdad.
   const m = [
     { fecha: '2026-07-20', concepto: 'a', importe: -100, saldo: 900 },
     { fecha: '2026-07-21', concepto: 'del día', importe: -50, saldo: null },
     { fecha: '2026-07-21', concepto: 'c', importe: -100, saldo: 800 },
   ]
-  assert.equal(verificarCadena(m, 1000).ok, true)
+  const r = verificarCadena(m, 1000)
+  assert.equal(r.ok, false)
+  assert.equal(r.cortes[0].diferencia, -50)
 })
