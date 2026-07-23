@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { armarCalendario, categoriaEgreso, nivelRiesgo, claveDia } from './calendario-financiero.mjs'
+import { armarCalendario, categoriaEgreso, nivelRiesgo, claveDia, movimientosCompras } from './calendario-financiero.mjs'
 
 const d = (s) => { const [y, m, day] = s.split('-').map(Number); return new Date(y, m - 1, day) }
 
@@ -112,4 +112,74 @@ test('el detalle del día conserva proveedor/cliente/obra/medio/origen para el p
 test('claveDia es local y estable (no se corre por timezone)', () => {
   assert.equal(claveDia(new Date(2026, 6, 5)), '2026-07-05')
   assert.equal(claveDia(new Date(2026, 11, 31)), '2026-12-31')
+})
+
+// ── COMPRAS: la pata que faltaba (23/07) ───────────────────────────────────────────────────────────
+// El calendario leía caja, cheques, cobranzas y obligaciones, pero NO lo que se le debe a
+// proveedores. Consecuencia real: las cuotas del plan de facilidades del F931 —que viven en
+// Compras— y ~$16,4M de deuda comercial no aparecían en ningún día.
+const IDX = { proveedor: 0, concepto: 1, obra: 2, total: 3, vence: 4, estado: 5 }
+const monto = (v) => Number(String(v).replace(/\./g, '').replace(',', '.')) || 0
+const fech = (v) => { const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(v).trim()); return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null }
+const args = { idx: IDX, parseMonto: monto, parseFecha: fech, desde: d('2026-07-23'), hasta: d('2026-09-30') }
+
+test('sólo las filas "Pendiente" son deuda: Pagado y Proyectado no van al calendario', () => {
+  const { movimientos } = movimientosCompras({ ...args, filas: [
+    ['ARCA', 'Plan F931', '', '2494876', '16/08/2026', 'Pendiente'],
+    ['Corralon', 'Materiales', 'LA ESTRELLA', '900000', '20/08/2026', 'Pagado'],
+    ['Otro', 'Obra futura', '', '50000000', '25/08/2026', 'Proyectado'],
+  ] })
+  assert.equal(movimientos.length, 1)
+  assert.equal(movimientos[0].monto, 2494876)
+})
+
+test('una cuota del plan F931 se clasifica como cargas sociales, no como "otra obligación"', () => {
+  const { movimientos } = movimientosCompras({ ...args, filas: [['ARCA', 'Plan de pago F931', '', '2494876', '16/08/2026', 'Pendiente']] })
+  assert.equal(movimientos[0].categoria, 'cargas_sociales')
+  assert.equal(movimientos[0].origen, 'Compras (pendiente de pago)')
+})
+
+test('una factura impaga SIN fecha prevista no se inventa un día: se cuenta aparte', () => {
+  const r = movimientosCompras({ ...args, filas: [['Gerson Castro', 'Mano de obra', '', '700000', 'Pendiente', 'Pendiente']] })
+  assert.equal(r.movimientos.length, 0)
+  assert.equal(r.sinFecha.n, 1)
+  assert.equal(r.sinFecha.monto, 700000)
+})
+
+test('lo que vence fuera de la ventana no entra, y tampoco cuenta como sin fecha', () => {
+  const r = movimientosCompras({ ...args, filas: [['X', 'Materiales', '', '100000', '16/12/2026', 'Pendiente']] })
+  assert.equal(r.movimientos.length, 0)
+  assert.equal(r.sinFecha.n, 0)
+})
+
+test('la deuda a proveedores llega al día y baja el saldo', () => {
+  const { movimientos } = movimientosCompras({ ...args, filas: [['Corralon Progreso', 'Materiales', 'LA ESTRELLA', '500000', '24/07/2026', 'Pendiente']] })
+  const cal = armarCalendario({ cajaInicial: 1000000, movimientos, desde: d('2026-07-24'), hasta: d('2026-07-24') })
+  assert.equal(cal[0].egresos, 500000)
+  assert.equal(cal[0].obligaciones, 500000)
+  assert.equal(cal[0].saldo_final, 500000)
+  assert.equal(cal[0].movimientos[0].obra, 'LA ESTRELLA')
+})
+
+// Hallazgo de la reconciliación real (23/07): Gruas San Blas, $5.351.225, vencida el 24/06. Su fecha
+// caía ANTES del arranque de la ventana, así que el calendario la descartaba en silencio.
+test('una deuda YA VENCIDA se trae al primer día y se marca, no desaparece', () => {
+  const { movimientos } = movimientosCompras({ ...args, filas: [['Gruas San Blas', 'Alquiler', '', '5351225', '24/06/2026', 'Pendiente']] })
+  assert.equal(movimientos.length, 1)
+  assert.equal(claveDia(movimientos[0].fecha), '2026-07-23') // el arranque de la ventana
+  assert.equal(movimientos[0].vencida, true)
+  assert.equal(movimientos[0].vence_original, '2026-06-24')
+})
+
+test('el día conserva la marca de vencida para que el panel no la muestre como un vencimiento de hoy', () => {
+  const { movimientos } = movimientosCompras({ ...args, filas: [['Gruas San Blas', 'Alquiler', '', '5351225', '24/06/2026', 'Pendiente']] })
+  const cal = armarCalendario({ cajaInicial: 0, movimientos, desde: d('2026-07-23'), hasta: d('2026-07-23') })
+  assert.equal(cal[0].movimientos[0].vencida, true)
+  assert.equal(cal[0].movimientos[0].vence_original, '2026-06-24')
+})
+
+test('un vencimiento normal NO lleva la marca de vencida', () => {
+  const { movimientos } = movimientosCompras({ ...args, filas: [['X', 'Materiales', '', '100000', '20/08/2026', 'Pendiente']] })
+  const cal = armarCalendario({ cajaInicial: 0, movimientos, desde: d('2026-08-20'), hasta: d('2026-08-20') })
+  assert.equal(cal[0].movimientos[0].vencida, undefined)
 })

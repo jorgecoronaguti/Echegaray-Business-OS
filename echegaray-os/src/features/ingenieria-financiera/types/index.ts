@@ -15,6 +15,10 @@ export interface MovimientoDia {
   medio: string | null
   origen: string | null
   detalle: string | null
+  // Deuda traída al primer día porque su vencimiento ya pasó. Sin esta marca el panel la mostraría
+  // como un vencimiento de hoy, que es una lectura distinta.
+  vencida?: boolean
+  vence_original?: string
 }
 
 export interface DiaCalendario {
@@ -45,6 +49,14 @@ export interface RecomendacionFinanciera {
   fundamentos: string
 }
 
+// Deuda real que existe pero no pudo ubicarse en ningún día del calendario por falta de fecha
+// prevista de pago (Compras la tiene marcada "Pendiente" en vez de una fecha). Se declara, no se tapa.
+export interface SinFecha {
+  n: number
+  monto: number
+  fuente: string
+}
+
 export interface CalendarioFinanciero {
   desde: string
   hasta: string
@@ -53,4 +65,5 @@ export interface CalendarioFinanciero {
   recomendaciones: RecomendacionFinanciera[]
   generado_en: string
   fuentes?: string
+  sin_fecha?: SinFecha | null
 }

@@ -15,6 +15,7 @@
 // un día es el saldo final del anterior: es aritmética sobre datos ajenos, no un cálculo nuevo.
 
 import { ACUERDO } from './banco-santander.mjs'
+import { ESTADO_DEUDA } from './cuentas-por-pagar.mjs'
 
 const aDia = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
 export const claveDia = (d) => {
@@ -99,10 +100,67 @@ export function armarCalendario({ cajaInicial = 0, movimientos = [], desde, hast
         medio: m.medio || null,
         origen: m.origen || null,
         detalle: m.detalle || null,
+        // Sólo viaja si es cierto: una deuda traída al primer día por estar vencida tiene que
+        // decirlo en el panel, si no parece un vencimiento de hoy.
+        vencida: m.vencida ? true : undefined,
+        vence_original: m.vencida ? m.vence_original : undefined,
       })),
     })
   }
   return dias
+}
+
+/** Los encabezados de Compras que necesita el calendario. Se ubican por NOMBRE, nunca por letra. */
+export const COLUMNAS_COMPRAS = {
+  proveedor: 'Proveedor',
+  concepto: 'Concepto',
+  obra: 'Detalles / Obra',
+  total: 'Total',
+  vence: 'Fecha prevista de pago (día)',
+  estado: 'Estado',
+}
+
+/**
+ * NÚCLEO PURO: convierte las filas de Compras en egresos fechados del calendario.
+ *
+ * QUÉ ES DEUDA Y QUÉ NO lo decide `ESTADO_DEUDA` de cuentas-por-pagar — la misma regla que usa la
+ * pestaña Proveedores. "Proyectado" es un gasto previsto SIN factura: no es deuda y no va al
+ * calendario (contarlo multiplicaría la cifra por diez).
+ *
+ * Las que no tienen fecha usable NO se inventan ni se reparten: se cuentan aparte y se informan.
+ * Una factura impaga sin fecha prevista es un hueco de carga, no un movimiento de un día cualquiera.
+ *
+ * @returns {{movimientos:Array, sinFecha:{n:number, monto:number}}}
+ */
+export function movimientosCompras({ filas = [], idx = {}, parseMonto, parseFecha, desde, hasta } = {}) {
+  const movimientos = []
+  const sinFecha = { n: 0, monto: 0 }
+  for (const f of filas) {
+    const estado = String(f?.[idx.estado] ?? '').trim().toLowerCase()
+    if (estado !== ESTADO_DEUDA.toLowerCase()) continue
+    const monto = parseMonto(f?.[idx.total])
+    if (!(monto > 0)) continue
+    const vence = parseFecha(f?.[idx.vence])
+    if (!vence) { sinFecha.n++; sinFecha.monto += monto; continue }
+    if (vence > hasta) continue
+    // UNA DEUDA VENCIDA SE DEBE HOY, NO AYER (hallazgo 23/07). Gruas San Blas, $5.351.225, vencida
+    // el 24/06: como su fecha cae ANTES del arranque de la ventana, el calendario la descartaba y
+    // $5,35M exigibles desaparecían de la pantalla. Lo correcto en tesorería es traerla al primer
+    // día —es plata que el proveedor puede reclamar ahora— y decir desde cuándo está vencida.
+    const vencida = vence < desde
+    const fecha = vencida ? new Date(desde) : vence
+    const proveedor = String(f?.[idx.proveedor] ?? '').trim()
+    const concepto = String(f?.[idx.concepto] ?? '').trim()
+    movimientos.push({
+      fecha, tipo: 'egreso', monto, vencida, vence_original: claveDia(vence),
+      categoria: categoriaEgreso(`${concepto} ${proveedor}`),
+      proveedor: proveedor || null,
+      obra: String(f?.[idx.obra] ?? '').trim() || null,
+      detalle: concepto || null,
+      origen: 'Compras (pendiente de pago)',
+    })
+  }
+  return { movimientos, sinFecha }
 }
 
 /**
@@ -157,6 +215,21 @@ export async function calendarioDiario(deps = {}, opts = {}) {
     }
   } catch { /* sin cobranzas */ }
 
+  // EGRESOS — LO QUE SE LE DEBE A PROVEEDORES. Es la pata que faltaba: sin ella el calendario no
+  // mostraba ni las cuotas del plan de facilidades (que viven en Compras) ni la deuda comercial.
+  // Las columnas se ubican por ENCABEZADO (el dueño mueve columnas; los nombres no se mueven).
+  let comprasSinFecha = null
+  try {
+    const { resolverColumnas } = await import('./compras-columnas.mjs')
+    const cab = (await google.readSheetValues(CASHFLOW_ID, 'Compras!A3:BZ3'))[0] || []
+    const { idx, faltan } = resolverColumnas(cab, COLUMNAS_COMPRAS)
+    if (faltan.length) throw new Error(`faltan encabezados en Compras: ${faltan.join(', ')}`)
+    const filas = await google.readSheetValues(CASHFLOW_ID, 'Compras!A4:AK')
+    const r = movimientosCompras({ filas, idx, parseMonto, parseFecha, desde, hasta })
+    movimientos.push(...r.movimientos)
+    if (r.sinFecha.n) comprasSinFecha = r.sinFecha
+  } catch { /* sin Compras: el calendario lo declara abajo */ }
+
   // EGRESOS — obligaciones con vencimiento (vista única obligacion_resumen).
   try {
     const { query } = await import('./db.mjs')
@@ -175,6 +248,9 @@ export async function calendarioDiario(deps = {}, opts = {}) {
     hasta: claveDia(hasta),
     caja_inicial: Math.round(cajaInicial),
     dias: diasCal,
-    fuentes: 'cash-briefing (caja) · Cheques y 02_Cobranzas del Cash Flow · obligacion_resumen',
+    fuentes: 'cash-briefing (caja) · Cheques Emitidos, Cobranzas y Compras del Cash Flow · obligacion_resumen',
+    // El hueco se declara, no se tapa: deuda real que no puede ubicarse en ningún día por falta de
+    // fecha prevista de pago. No está en el calendario y hay que saberlo.
+    sin_fecha: comprasSinFecha ? { ...comprasSinFecha, fuente: 'Compras — facturas pendientes sin fecha prevista de pago' } : null,
   }
 }

@@ -48,8 +48,15 @@ export function CalendarioFinancieroView({ cal }: { cal: CalendarioFinanciero })
         </div>
 
         {vista === 'mensual' && <VistaMensual dias={dias} porFecha={porFecha} sel={sel} onSel={setSel} />}
-        {vista === 'semanal' && <VistaLista dias={dias.slice(0, 7)} sel={sel} onSel={setSel} />}
+        {vista === 'semanal' && <VistaSemanal dias={dias} sel={sel} onSel={setSel} />}
         {vista === 'diaria' && diaSel && <VistaLista dias={[diaSel]} sel={sel} onSel={setSel} />}
+
+        {cal.sin_fecha && cal.sin_fecha.n > 0 && (
+          <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            {cal.sin_fecha.n} factura{cal.sin_fecha.n > 1 ? 's' : ''} pendiente{cal.sin_fecha.n > 1 ? 's' : ''} de pago por {money(cal.sin_fecha.monto)}{' '}
+            no aparece{cal.sin_fecha.n > 1 ? 'n' : ''} en ningún día: {cal.sin_fecha.fuente.toLowerCase()}.
+          </div>
+        )}
       </div>
 
       <aside className="space-y-4">
@@ -63,10 +70,18 @@ export function CalendarioFinancieroView({ cal }: { cal: CalendarioFinanciero })
 function VistaMensual({
   dias, porFecha, sel, onSel,
 }: { dias: DiaCalendario[]; porFecha: Map<string, DiaCalendario>; sel: string; onSel: (f: string) => void }) {
+  // Los meses que el calendario realmente cubre. La navegación no inventa meses vacíos: se mueve
+  // entre los que tienen días, y se frena en los extremos.
+  const meses = useMemo(() => {
+    const s = new Set(dias.map((d) => d.fecha.slice(0, 7)))
+    return [...s].sort()
+  }, [dias])
+  const [i, setI] = useState(0)
   if (!dias.length) return null
-  // Grilla del mes del primer día, alineada por día de semana (lunes primero).
-  const primero = parseDia(dias[0].fecha)
-  const anio = primero.getFullYear(); const mes = primero.getMonth()
+  const actual = meses[Math.min(i, meses.length - 1)]
+  const [anio, mesNum] = actual.split('-').map(Number)
+  const mes = mesNum - 1
+  const primero = new Date(anio, mes, 1)
   const finMes = new Date(anio, mes + 1, 0).getDate()
   const offset = (new Date(anio, mes, 1).getDay() + 6) % 7 // lun=0
   const celdas: (DiaCalendario | null)[] = Array.from({ length: offset }, () => null)
@@ -77,7 +92,13 @@ function VistaMensual({
   const titulo = primero.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="mb-3 text-sm font-medium capitalize text-slate-700">{titulo}</div>
+      <div className="mb-3 flex items-center justify-between">
+        <div className="text-sm font-medium capitalize text-slate-700">{titulo}</div>
+        <div className="flex items-center gap-1">
+          <Paso etiqueta="Mes anterior" onClick={() => setI(i - 1)} disabled={i <= 0}>‹</Paso>
+          <Paso etiqueta="Mes siguiente" onClick={() => setI(i + 1)} disabled={i >= meses.length - 1}>›</Paso>
+        </div>
+      </div>
       <div className="grid grid-cols-7 gap-1 text-center text-[11px] uppercase tracking-wide text-slate-400">
         {['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'].map((d) => <div key={d} className="pb-1">{d}</div>)}
       </div>
@@ -112,6 +133,42 @@ function VistaMensual({
         })}
       </div>
     </div>
+  )
+}
+
+function VistaSemanal({ dias, sel, onSel }: { dias: DiaCalendario[]; sel: string; onSel: (f: string) => void }) {
+  const [s, setS] = useState(0)
+  const semanas = Math.max(1, Math.ceil(dias.length / 7))
+  const i = Math.min(s, semanas - 1)
+  const tramo = dias.slice(i * 7, i * 7 + 7)
+  return (
+    <div>
+      <div className="mb-3 flex items-center justify-between">
+        <div className="text-sm font-medium text-slate-700">
+          Semana {i + 1} de {semanas}
+        </div>
+        <div className="flex items-center gap-1">
+          <Paso etiqueta="Semana anterior" onClick={() => setS(i - 1)} disabled={i <= 0}>‹</Paso>
+          <Paso etiqueta="Semana siguiente" onClick={() => setS(i + 1)} disabled={i >= semanas - 1}>›</Paso>
+        </div>
+      </div>
+      <VistaLista dias={tramo} sel={sel} onSel={onSel} />
+    </div>
+  )
+}
+
+function Paso({ etiqueta, onClick, disabled, children }: { etiqueta: string; onClick: () => void; disabled: boolean; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-label={etiqueta}
+      title={etiqueta}
+      onClick={onClick}
+      disabled={disabled}
+      className="h-7 w-7 rounded-md border border-slate-200 text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30"
+    >
+      {children}
+    </button>
   )
 }
 
@@ -185,6 +242,11 @@ function PanelDia({ dia }: { dia: DiaCalendario }) {
                   <div className="truncate text-slate-400">
                     {[m.obra, m.medio, m.origen].filter(Boolean).join(' · ') || m.categoria}
                   </div>
+                  {m.vencida && (
+                    <div className="mt-0.5 text-[11px] font-medium text-red-600">
+                      vencida el {m.vence_original ? parseDia(m.vence_original).toLocaleDateString('es-AR') : '—'}
+                    </div>
+                  )}
                 </div>
                 <span className={`shrink-0 tabular-nums font-medium ${m.tipo === 'ingreso' ? 'text-emerald-600' : 'text-red-500'}`}>
                   {m.tipo === 'ingreso' ? '+' : '−'}{money(m.monto)}
