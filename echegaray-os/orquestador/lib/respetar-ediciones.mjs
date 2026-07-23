@@ -83,6 +83,12 @@ export function esEstructural(t) {
   const s = String(t ?? '').trim()
   if (!s) return false
   if (/^\s*\d+(\.\d+)?\s*·\s/.test(s)) return true          // "1 · SECCIÓN", "4.1 · SUB"
+  // UNA FILA DE TOTAL TAMPOCO SE DA POR BORRADA. Cuando un rediseño mueve los bloques, el rótulo del
+  // total aparece en otra fila y la regla lo lee como "el dueño lo borró": el generador deja de
+  // escribirlo, el cuadro queda sin su total y la marca se confirma sola. Pasó con "⇒ Costo de la
+  // nómina en el año" al incorporar oficina a Jornales. Nadie borra a propósito el total de un
+  // cuadro: si desapareció, lo moví yo.
+  if (/^\s*⇒/.test(s)) return true
   if (/^(qué|cuánta|cuánto|de dónde|posición|impuestos|cargas|jornales)/i.test(s) && s.length > 40) return true
   return false
 }

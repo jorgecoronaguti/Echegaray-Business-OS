@@ -7,7 +7,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { ultimoDiaCargado, quincenasPendientes } from '../scripts/jornales-pestana.mjs'
+import { ultimoDiaCargado, ultimoDiaConHoras, quincenasPendientes } from '../scripts/jornales-pestana.mjs'
 
 const d = (dia, mes) => new Date(2026, mes - 1, dia)
 
@@ -51,4 +51,35 @@ test('febrero cierra el 28 y la proyección llega hasta fin de año, sin pasarse
 
 test('sin fecha de arranque no hay proyección: no se proyecta sobre nada', () => {
   assert.deepEqual(quincenasPendientes(null), [])
+})
+
+test('la quincena en curso se reconoce por sus HORAS, no por sus fechas', () => {
+  // La planilla escribe las catorce fechas el día que abre la quincena, así que el encabezado dice
+  // "31/07" desde el primer día. Lo único que distingue una quincena en curso de una cerrada es
+  // hasta dónde hay horas cargadas — que es lo que el dueño vio y el cuadro no decía.
+  const grid = []
+  // fila 1 (índice 0) = fechas; columnas F..U son los índices 5..20
+  grid[0] = []
+  ;['16/7', '17/7', '18/7', '20/7', '21/7', '22/7', '23/7'].forEach((f, i) => { grid[0][5 + i] = f })
+  // dos personas, con horas sólo en los tres primeros días
+  grid[1] = []; grid[2] = []
+  for (let i = 0; i < 3; i++) { grid[1][5 + i] = 8; grid[2][5 + i] = 8 }
+  const bloque = { inicio: 2, fin: 3, filaFecha: 1 }
+  assert.deepEqual(ultimoDiaConHoras(grid, bloque), new Date(2026, 6, 18))
+  // …mientras que el encabezado, solo, diría el 23.
+  assert.deepEqual(ultimoDiaCargado(grid[0]), new Date(2026, 6, 23))
+})
+
+test('un día con la columna presente pero sin horas no cuenta como trabajado', () => {
+  const grid = [[], [], []]
+  grid[0][5] = '16/7'; grid[0][6] = '17/7'
+  grid[1][5] = 8; grid[2][5] = 8
+  grid[1][6] = 0; grid[2][6] = ''
+  assert.deepEqual(ultimoDiaConHoras(grid, { inicio: 2, fin: 3, filaFecha: 1 }), new Date(2026, 6, 16))
+})
+
+test('un bloque sin ninguna hora cargada no inventa un día', () => {
+  const grid = [[], []]
+  grid[0][5] = '16/7'
+  assert.equal(ultimoDiaConHoras(grid, { inicio: 2, fin: 2, filaFecha: 1 }), null)
 })
