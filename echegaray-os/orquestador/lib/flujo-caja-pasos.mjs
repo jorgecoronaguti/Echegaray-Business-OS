@@ -110,4 +110,8 @@ export const PASOS = [
   ['auditar-pantalla.mjs', 'control de defectos de pantalla en las 14 pestañas', []],
   ['sync-compras.mjs', 'núcleo: Compras → costos_obra', []],
   ['sync-caja-nucleo.mjs', 'núcleo: quincenas de jornales e instrumentos de pago', []],
+  // ÚLTIMO: con el Sheet ya regenerado, el motor de Ingeniería Financiera arma el calendario diario y
+  // lo materializa en public.finanzas_calendario. La Web (Calendario Financiero) lee ESO — nunca el
+  // Sheet ni recalcula. Va al final porque consume las pestañas que los pasos anteriores dejaron al día.
+  ['sync-calendario-financiero.mjs', 'motor: calendario financiero diario → public.finanzas_calendario', []],
 ]
