@@ -4,6 +4,7 @@
 import {
   modeloLiquidez, recomendaciones, compararFinanciamiento, priorizarPagos, fmt,
 } from '../ingenieria-financiera.mjs'
+import { calendarioDiario } from '../calendario-financiero.mjs'
 
 function formatModelo(m, recs) {
   const L = []
@@ -41,6 +42,28 @@ export function ingenieriaFinancieraTools(google) {
           const recs = recomendaciones(m)
           return { modelo: m, recomendaciones: recs, texto: formatModelo(m, recs) }
         } catch (e) { return { error: `no pude armar el modelo de liquidez: ${String(e?.message ?? e).slice(0, 180)}` } }
+      },
+    },
+
+    'finanzas.calendario_diario': {
+      capability: 'os.read',
+      schema: {
+        name: 'calendario_diario',
+        description:
+          'CALENDARIO FINANCIERO — arma el día a día de la tesorería para que una interfaz lo PINTE (no lo calcule). Por cada día: saldo inicial, ingresos, egresos, saldo final, desglose (obligaciones, impuestos, cargas sociales, cheques, cobranzas), descubierto utilizado, crédito disponible, nivel de riesgo, cantidad de recomendaciones, y el detalle de cada movimiento (proveedor/cliente/obra/medio/origen). El saldo arranca de la caja y arrastra día a día. 0 recálculo: consume caja, Cheques, Cobranzas y obligaciones. Devuelve además las recomendaciones globales del motor. Usalo para "calendario financiero", "qué pasa esta semana/mes", "cuándo me quedo corto de caja".',
+        input_schema: {
+          type: 'object',
+          properties: {
+            dias: { type: 'number', description: 'horizonte en días desde hoy (default 60)' },
+          },
+        },
+      },
+      async run(args) {
+        try {
+          const cal = await calendarioDiario({ google }, { dias: args?.dias })
+          const modelo = await modeloLiquidez({ google })
+          return { ...cal, recomendaciones: recomendaciones(modelo) }
+        } catch (e) { return { error: `no pude armar el calendario financiero: ${String(e?.message ?? e).slice(0, 180)}` } }
       },
     },
 
