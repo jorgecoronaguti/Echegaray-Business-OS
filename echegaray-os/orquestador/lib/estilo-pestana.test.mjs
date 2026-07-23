@@ -77,19 +77,25 @@ test('el reset borra formato pero NO contenido', () => {
   assert.match(r.repeatCell.fields, /textFormat/)
 })
 
-test('el auditor detecta las familias que había', () => {
-  // Calibri 12 sin barra de color: exactamente como estaban las nueve pestañas que armé yo.
+test('el auditor detecta la tipografía fuera de estándar', () => {
   const calibri = { congeladas: { filas: 3 }, filas: [[{ formato: { textFormat: { fontFamily: 'Calibri', fontSize: 12, bold: true }, backgroundColor: { red: 1, green: 1, blue: 1 } } }]] }
   const d = auditar(calibri).desvios
   assert.ok(d.some((x) => /Calibri/.test(x)))
   assert.ok(d.some((x) => /12pt/.test(x)))
-  assert.ok(d.some((x) => /barra de color/.test(x)))
+})
+
+test('la BARRA DE COLOR pasó a ser el desvío, no el estándar', () => {
+  // El estándar se dio vuelta el 23/07: el título va en tinta sobre blanco. Mientras el auditor
+  // exigiera la barra, el formateador general se la repintaba a toda pestaña que su generador
+  // dejaba con la piel de statement — y ninguna lograba quedarse bien más de dos horas.
+  const conBarra = { congeladas: { filas: 3 }, filas: [[{ formato: { textFormat: { fontFamily: FUENTE, fontSize: TAM.titulo, bold: true }, backgroundColor: COLOR.titulo } }]] }
+  assert.ok(auditar(conBarra).desvios.some((x) => /barra de color/.test(x)))
 })
 
 test('el auditor aprueba una pestaña que cumple', () => {
   const buena = {
     congeladas: { filas: 3 },
-    filas: [[{ formato: { textFormat: { fontFamily: FUENTE, fontSize: TAM.titulo, bold: true }, backgroundColor: COLOR.titulo } }]],
+    filas: [[{ formato: { textFormat: { fontFamily: FUENTE, fontSize: TAM.titulo, bold: true }, backgroundColor: { red: 1, green: 1, blue: 1 } } }]],
   }
   assert.deepEqual(auditar(buena), { ok: true, desvios: [] })
 })
@@ -97,7 +103,7 @@ test('el auditor aprueba una pestaña que cumple', () => {
 test('el auditor marca las filas congeladas fuera de estándar', () => {
   const buena = {
     congeladas: { filas: 0 },
-    filas: [[{ formato: { textFormat: { fontFamily: FUENTE, fontSize: TAM.titulo, bold: true }, backgroundColor: COLOR.titulo } }]],
+    filas: [[{ formato: { textFormat: { fontFamily: FUENTE, fontSize: TAM.titulo, bold: true }, backgroundColor: { red: 1, green: 1, blue: 1 } } }]],
   }
   assert.match(auditar(buena).desvios.join(' '), /0 fila\(s\) congelada/)
 })

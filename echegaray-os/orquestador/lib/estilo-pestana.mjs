@@ -289,13 +289,19 @@ export function auditar(f, { congeladas = 3 } = {}) {
   const tf = c?.textFormat ?? {}
 
   if (tf.fontFamily !== FUENTE) desvios.push(`el título usa ${tf.fontFamily ?? 'sin declarar'} y el estándar es ${FUENTE}`)
-  if (tf.fontSize !== TAM.titulo) desvios.push(`el título mide ${tf.fontSize ?? '?'}pt y el estándar es ${TAM.titulo}pt`)
+  if (tf.fontSize !== TAM.titulo && tf.fontSize !== 15) desvios.push(`el título mide ${tf.fontSize ?? '?'}pt y el estándar es ${TAM.titulo} o 15pt`)
   if (!tf.bold) desvios.push('el título no está en negrita')
 
+  // ═══ EL ESTÁNDAR CAMBIÓ: EL TÍTULO NO LLEVA BARRA (23/07) ═══
+  //
+  // Este auditor exigía una barra de color rellena en la fila 1. Mientras la exigiera, el formateador
+  // general se la iba a repintar a toda pestaña que su generador dejara con la piel de statement — y
+  // así fue: cada pestaña quedaba bien y volvía a quedar mal dos horas después. Un auditor que mide
+  // contra el estándar viejo no deja avanzar al nuevo. Ahora exige lo contrario: fondo BLANCO.
   const b = c?.backgroundColor
   const cerca = (x, y) => Math.abs((x ?? 0) - y) < 0.02
-  if (!(b && cerca(b.red, COLOR.titulo.red) && cerca(b.green, COLOR.titulo.green) && cerca(b.blue, COLOR.titulo.blue))) {
-    desvios.push('el título no tiene la barra de color del estándar')
+  if (b && !(cerca(b.red, 1) && cerca(b.green, 1) && cerca(b.blue, 1))) {
+    desvios.push('el título tiene una barra de color: el estándar es tinta sobre blanco, con una línea fina abajo')
   }
   if ((f.congeladas?.filas ?? 0) !== congeladas) {
     desvios.push(`tiene ${f.congeladas?.filas ?? 0} fila(s) congelada(s) y el estándar son ${congeladas}`)

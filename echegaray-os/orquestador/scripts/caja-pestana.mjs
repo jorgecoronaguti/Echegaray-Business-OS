@@ -993,9 +993,13 @@ async function formatear(google, sheetId, g, tab) {
       req.push({ mergeCells: { range: r(g.fCifras - 1, g.fCifras, c, c + 2), mergeType: 'MERGE_ROWS' } })
       req.push({ mergeCells: { range: r(g.fCifras, g.fCifras + 1, c, c + 2), mergeType: 'MERGE_ROWS' } })
     }
-    // Lo comprometido se resta: va en el color de alerta. Lo que queda, en el de un total.
-    fmt(r(g.fCifras - 1, g.fCifras, 2, 4), 'userEnteredFormat.backgroundColor', { backgroundColor: E.COLOR.alerta })
-    fmt(r(g.fCifras - 1, g.fCifras, 4, 6), 'userEnteredFormat.backgroundColor', { backgroundColor: E.COLOR.total })
+    // ═══ SIN BARRAS DE COLOR EN EL HERO (23/07) ═══
+    // El dueño: "me son confusas las pestañas de cheques y caja". Al ver la pestaña renderizada al
+    // lado de Impuestos y Cargas Sociales, la diferencia saltaba: CAJA seguía con el título sobre una
+    // barra azul rellena y dos de los cuatro titulares con fondo rosa y celeste. Es el lenguaje viejo
+    // —el que la regla llama "cero barras de color"— y hace que la misma información parezca de otro
+    // sistema. Lo que se resta se distingue por el SIGNO y por la palabra, no por un rectángulo.
+    fmt(r(g.fCifras - 1, g.fCifras, 0, ANCHO), 'userEnteredFormat.backgroundColor', { backgroundColor: { red: 1, green: 1, blue: 1 } })
   }
 
   // ── EL BLOQUE DE ALERTAS SE VE COMO UNA ALERTA ──────────────────────────────────────────────

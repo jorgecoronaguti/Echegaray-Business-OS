@@ -28,12 +28,22 @@ import { loadConfig } from '../lib/config.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { CATEGORIAS, COL, formulaValor, formulaVigencia } from '../lib/uocra-escala.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { skinRequests } from '../lib/estilo-statement.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Jornales por Quincena'
 const DRY = process.argv.includes('--dry')
 const ANCHO = 6 // A..F
 const ROTULO = 'ESCALA UOCRA'
+/**
+ * CÓMO SE RECONOCE EL BLOQUE, CON O SIN SU NÚMERO.
+ *
+ * Un bloque se reconoce por lo que DICE, no por cómo está numerado. Al numerarlo ("3 · ESCALA
+ * UOCRA…") la búsqueda por `startsWith(ROTULO)` dejó de encontrarlo y el script murió con un
+ * "no encontré el rótulo". Es la TERCERA vez que aparece este mismo defecto en el archivo: pasó con
+ * cheques-cobertura (se duplicaba en cada corrida) y con tarjeta-control.
+ */
+const ES_BLOQUE = /^\s*(?:\d+\s*·\s*)?ESCALA UOCRA/i
 // La comparación es contra lo que REALMENTE pagamos por hora, que la proyección deja en $D$21/$B$21
 // (Σ $/hora del plantel ÷ personas). Son celdas del bloque de proyección, que este script NO toca.
 const PAGAMOS = '$D$21/$B$21'
@@ -84,7 +94,7 @@ async function main() {
   // UBICAR EL BLOQUE POR SU RÓTULO, NUNCA POR FILA FIJA. Arriba de la escala están las quincenas
   // reales y la proyección, que crecen; una fila fija terminaría pisándolas.
   const colA = await google.readSheetValues(ID, `'${PESTAÑA}'!A1:A120`)
-  const t = colA.findIndex((f) => String(f?.[0] ?? '').trim().startsWith(ROTULO)) + 1
+  const t = colA.findIndex((f) => ES_BLOQUE.test(String(f?.[0] ?? '').trim())) + 1
   if (!t) throw new Error(`no encontré el rótulo "${ROTULO}" en la columna A de ${PESTAÑA}`)
 
   const g = grilla(t)
@@ -109,6 +119,41 @@ async function main() {
   if (basicos.length < CATEGORIAS.length) { console.log('  ⚠ alguna categoría quedó vacía: la escala del mes no está en _UOCRA_RAW'); process.exitCode = 1 }
 }
 
+/**
+ * LA PESTAÑA ENTERA, CON EL MISMO LENGUAJE QUE CARGAS SOCIALES.
+ *
+ * POR QUÉ (23/07). El dueño: "cargas sociales y jornales por quincena tienen que tener el mismo
+ * diseño". Y no lo tenían: Jornales seguía con las barras azules rellenas del estilo viejo y Cargas
+ * Sociales ya estaba con la piel de statement. Dos pestañas del mismo tema y del mismo interlocutor
+ * —el costo de la nómina— con dos lenguajes visuales distintos.
+ *
+ * LO QUE ESTA FUNCIÓN NO HACE, A PROPÓSITO: no toca una sola fórmula ni mueve una fila. Los cuadros
+ * de quincenas y de proyección referencian filas absolutas ($B$21, $D$21) y una fila insertada los
+ * dejaría apuntando a otra cosa en silencio. Cambia el ASPECTO, no la geometría.
+ */
+async function pielDeLaPestana(google, hoja) {
+  const { sheetId } = hoja
+  const filas = await google.readSheetValues(ID, `'${PESTAÑA}'!A1:N60`)
+  if (!filas.length) return
+  const rotulos = []
+  filas.forEach((f, i) => {
+    const a = String(f?.[0] ?? '').trim()
+    // El título de la pestaña, en oración: una pestaña entera gritando es la marca de una planilla.
+    if (i === 0 && /^JORNALES POR QUINCENA/i.test(a)) rotulos.push({ range: `'${PESTAÑA}'!A1`, values: [['Jornales por quincena']] })
+    // Los dos bloques que ya existen pasan a estar numerados, en su misma fila.
+    if (/^PROYECCIÓN DE LAS PRÓXIMAS QUINCENAS/i.test(a) && !/^\d+ · /.test(a)) {
+      rotulos.push({ range: `'${PESTAÑA}'!A${i + 1}`, values: [['2 · PROYECCIÓN DE LAS PRÓXIMAS QUINCENAS — SOBRE EL PLANTEL Y LOS JORNALES REALES, AJUSTADOS POR INFLACIÓN']] })
+    }
+    if (/^ESCALA UOCRA/i.test(a) && !/^\d+ · /.test(a)) {
+      rotulos.push({ range: `'${PESTAÑA}'!A${i + 1}`, values: [['3 · ESCALA UOCRA — CCT 76/75, ZONA A (SAN JUAN)']] })
+    }
+  })
+  if (rotulos.length) await google.batchUpdateValues(ID, rotulos)
+  const vistas = await google.readSheetValues(ID, `'${PESTAÑA}'!A1:N60`)
+  await google.spreadsheetBatchUpdate(ID, skinRequests({ sheetId, filas: vistas, cols: 14, congeladas: 2 }))
+  console.log(`  piel de statement aplicada a la pestaña entera · ${rotulos.length} rótulo(s) alineados con Cargas Sociales`)
+}
+
 async function formatear(google, hoja, t, g) {
   const { sheetId } = hoja
   const n = g.alto
@@ -123,16 +168,23 @@ async function formatear(google, hoja, t, g) {
   // Título.
   fmt(r(t - 1, t), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 12 } })
   // Vigencia + fuente en gris chico.
+  // REBALSA, NO ENVUELVE. Con WRAP, el texto de la fuente ("_UOCRA_RAW, Acuerdo Mayo 2026…") se
+  // apilaba de a dos palabras dentro de una columna de 110px y ocupaba diez líneas de alto: ilegible
+  // y desprolijo. A su derecha no hay dato, así que puede rebalsar y leerse de corrido en un renglón.
   fmt(r(t, t + 1), 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat,userEnteredFormat.wrapStrategy',
-    { numberFormat: { type: 'TEXT' }, textFormat: { italic: true, fontSize: 9, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'WRAP' })
+    { numberFormat: { type: 'TEXT' }, textFormat: { italic: true, fontSize: 9, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'OVERFLOW_CELL' })
+  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: t, endIndex: t + 1 }, properties: { pixelSize: 21 }, fields: 'pixelSize' } })
   // Cabecera de la tabla (fila t+2, índice t+1).
+  // SIN BARRA DE COLOR: la jerarquía la da la tipografía y una línea fina, igual que en Cargas
+  // Sociales. Un rectángulo azul relleno es el mayor "tell" de planilla que le quedaba a la pestaña.
   fmt(r(t + 1, t + 2), 'userEnteredFormat',
-    { backgroundColor: { red: 0.17, green: 0.25, blue: 0.37 }, textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 }, fontSize: 9 }, horizontalAlignment: 'CENTER' })
+    { backgroundColor: { red: 1, green: 1, blue: 1 }, textFormat: { bold: true, foregroundColor: { red: 0.53, green: 0.52, blue: 0.49 }, fontSize: 9 }, horizontalAlignment: 'LEFT' })
   fmt({ ...r(t + 1, t + 2), startColumnIndex: 0, endColumnIndex: 1 }, 'userEnteredFormat.horizontalAlignment', { horizontalAlignment: 'LEFT' })
   // La nota final del no-remunerativo, en ámbar-texto.
   fmt(r(t + n - 1, t + n, 0, ANCHO), 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat,userEnteredFormat.wrapStrategy',
-    { numberFormat: { type: 'TEXT' }, textFormat: { italic: true, fontSize: 9 }, wrapStrategy: 'WRAP' })
+    { numberFormat: { type: 'TEXT' }, textFormat: { italic: true, fontSize: 9 }, wrapStrategy: 'OVERFLOW_CELL' })
   await google.spreadsheetBatchUpdate(ID, req)
+  await pielDeLaPestana(google, hoja)
 }
 
 main().catch((e) => { console.error('ERROR:', e.message); process.exit(1) })

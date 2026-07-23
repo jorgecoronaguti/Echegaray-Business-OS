@@ -30,7 +30,8 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { FUENTE, FUENTE_NUM, TAM, ALTO, titulo as fmtTitulo, auditar } from '../lib/estilo-pestana.mjs'
+import { FUENTE, FUENTE_NUM, TAM, ALTO, auditar } from '../lib/estilo-pestana.mjs'
+import { INK, HAIR, BLANCO } from '../lib/estilo-statement.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
@@ -189,11 +190,25 @@ async function main() {
       })
     }
 
-    // 2 · LA BARRA DE TÍTULO. Sólo si la fila 1 tiene un título: si está vacía, no se inventa uno.
+    // ═══ 2 · EL TÍTULO, SIN BARRA (23/07) ═══
+    //
+    // ACÁ ESTABA LA CAUSA DE FONDO DE "LAS PESTAÑAS NO RESPETAN UN PATRÓN". Cada generador dejaba su
+    // pestaña con la piel de statement —sin relleno, la jerarquía por tipografía— y DESPUÉS pasaba
+    // este formateador general y le repintaba encima la barra azul del estilo viejo. Dos formateadores
+    // sobre la misma pestaña, con dos lenguajes distintos, y ganaba el último en correr. Por eso dos
+    // pestañas hermanas (Cargas Sociales y Jornales) se veían de sistemas diferentes.
+    //
+    // Ahora el título es UNO SOLO en todo el archivo: tinta sobre blanco, y una línea fina abajo. La
+    // barra rellena era, además, el mayor "tell" de planilla que quedaba.
     if (String(f.filas?.[0]?.[0]?.valor ?? '').trim()) {
       reqs.push({
-        repeatCell: { range: rg(0, 1, 0, p.cols), cell: { userEnteredFormat: fmtTitulo() }, fields: 'userEnteredFormat' },
+        repeatCell: {
+          range: rg(0, 1, 0, p.cols),
+          cell: { userEnteredFormat: { backgroundColor: BLANCO, textFormat: { fontFamily: FUENTE, fontSize: 15, bold: true, foregroundColor: INK }, horizontalAlignment: 'LEFT', verticalAlignment: 'MIDDLE', wrapStrategy: 'OVERFLOW_CELL' } },
+          fields: 'userEnteredFormat',
+        },
       })
+      reqs.push({ updateBorders: { range: rg(0, 1, 0, p.cols), bottom: { style: 'SOLID', width: 1, color: HAIR } } })
       reqs.push({
         updateDimensionProperties: {
           range: { sheetId: hoja.sheetId, dimension: 'ROWS', startIndex: 0, endIndex: 1 },
