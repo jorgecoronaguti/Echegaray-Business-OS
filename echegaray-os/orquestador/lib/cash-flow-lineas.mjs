@@ -195,6 +195,13 @@ const PROYECCION = {
   'Estructura': { tipo: 'tabla', pestaña: 'Estructura', rotulo: 'TOTAL ESTRUCTURA' },
   'Servicios recurrentes': { tipo: 'tabla', pestaña: 'Recurrentes', rotulo: 'TOTAL' },
   'Nómina · Jornales de obra': null,
+  // ── POR QUÉ CADA UNO NO SE PROYECTA, EN TEXTO ────────────────────────────────────────────────
+  // La columna "De dónde sale la proyección" del Mensual explicaba los TRES rubros sin proyección
+  // con la misma frase —"sus quincenas vienen de Jornales por Quincena"— porque el motivo se
+  // deducía de `PROYECCION[rubro] === null` y no estaba escrito en ningún lado. Medido en el
+  // Sheet: Q16 (planes de pago previsionales) y Q35 (crédito prendario) decían que su número sale
+  // de la planilla de jornales, que es falso: salen de Compras. Una explicación equivocada al lado
+  // de un número es peor que ninguna — se lee como origen declarado y nadie la vuelve a chequear.
   // Las cuotas que faltan YA están cargadas en Compras con su fecha de vencimiento (el saldo
   // pendiente es $7.958.394 y se ve en Cargas Sociales). Proyectar encima inventaba $4.355.383 de
   // cuotas que ningún plan tiene: un plan de pago tiene un número de cuotas fijo, no un ritmo.
@@ -204,49 +211,23 @@ const PROYECCION = {
 }
 
 /**
- * NÚCLEO PURO: el monto de un rubro en un MES, con proyección si el mes todavía no pasó.
- * @param {string} rubro nombre exacto
- * @param {string} celdaRubro celda con el nombre (ej. '$A12')
- * @param {string} colMes letra de la columna del mes en el cash flow (ej. 'I')
- * @param {string} colTabla letra de la columna equivalente en la pestaña de detalle
- * @param {number} filaCab fila del encabezado con las fechas
- * @returns {string} fórmula es-AR
+ * QUÉ DICE LA COLUMNA "DE DÓNDE SALE LA PROYECCIÓN" para cada rubro que no se proyecta.
+ * Una frase por rubro, no una sola para los tres: son tres motivos distintos.
+ * Cortas a propósito — entran unos 48 caracteres en esa columna.
  */
-export function formulaMesConProyeccion(rubro, celdaRubro, colMes, colTabla, filaCab) {
-  const mes = `${colMes}$${filaCab}`
-  const real = `SUMIFS(${COL_TOTAL};${COL_RUBRO};${celdaRubro};${COL_FECHA};">="&${mes};${COL_FECHA};"<"&EOMONTH(${mes};0)+1)`
-  const p = PROYECCION[rubro]
-  if (p === null) return `=${real}`
-  let proy
-  if (p?.tipo === 'tabla') {
-    const fila = filasTabla[p.pestaña]
-    if (!fila) throw new Error(`cash-flow-lineas: no sé en qué fila de "${p.pestaña}" está "${p.rotulo}" — sin eso la referencia sería a una fila muerta`)
-    proy = `${p.pestaña}!${colTabla}$${fila}`
-  } else {
-    // Promedio de los 3 meses cerrados anteriores a hoy, ajustado por inflación...
-    const ventana = `SUMIFS(${COL_TOTAL};${COL_RUBRO};${celdaRubro};${COL_FECHA};">="&EOMONTH(TODAY();-4)+1;${COL_FECHA};"<="&EOMONTH(TODAY();0))/3`
-    const factor = `IFERROR(INDEX(Parámetros!$C$74:$C$90;MATCH(EOMONTH(${mes};0);ARRAYFORMULA(EOMONTH(Parámetros!$A$74:$A$90;0));0));1)`
-    // ...PERO SÓLO SI EL GASTO ES MENSUAL DE VERDAD. Sin este guard, el SAC — que se paga en junio y
-    // en diciembre — entraba al promedio móvil de julio y se proyectaba TODOS los meses: $18.777.459
-    // de aguinaldo inventado contra $7.368.710 reales. Es el mismo error que la moto en Estructura,
-    // y la misma regla lo mata: un rubro que no aparece en al menos 4 meses del año no es una
-    // tendencia, es un pago suelto, y proyectarlo es fabricar plata que nadie va a pagar.
-    const mesesConGasto = `SUMPRODUCT(--(COUNTIFS(${COL_RUBRO};${celdaRubro};${COL_FECHA};">="&${MESES_CAB};${COL_FECHA};"<"&EOMONTH(${MESES_CAB};0)+1)>0))`
-    proy = `IF(${mesesConGasto}<${MIN_MESES};0;${ventana}*${factor})`
-  }
-  // Un mes ya cerrado muestra lo que pasó, aunque sea cero. Sólo el futuro se proyecta.
-  //
-  // EN EL FUTURO GANA EL MAYOR, y esto NO es un detalle. La versión anterior decía "si hay algo real
-  // cargado, mostrá eso y no proyectes". Medido en el Sheet: agosto de Materiales Civil mostraba
-  // $203.132 — una sola factura cargada por adelantado — contra $39.936.681 en septiembre. Una
-  // factura suelta con fecha de agosto apagaba la proyección del mes entero y borraba ~$40M de
-  // egresos previstos.
-  //
-  // La lógica correcta es que en un mes que todavía no pasó, lo ya cargado es un PISO, no el total:
-  // faltan cargar las compras que ese mes seguro va a tener. Si lo comprometido supera al ritmo
-  // histórico, entonces sí manda lo comprometido — es un hecho, y un hecho le gana a un promedio.
-  return `=IF(EOMONTH(${mes};0)<=EOMONTH(TODAY();0);${real};MAX(${real};${proy}))`
+const SIN_PROYECCION_PORQUE = {
+  'Nómina · Jornales de obra': 'sus quincenas vienen de Jornales por Quincena',
+  'Deuda previsional (planes de pago)': 'cuotas ya cargadas en Compras: no se proyecta',
+  'Financiero': 'cuotas ya cargadas en Compras: no se proyecta',
 }
+
+// LA VERSIÓN VIEJA DE ESTA FÓRMULA SE BORRÓ (23/07). `formulaMesConProyeccion(rubro, celdaRubro, …)`
+// quedó sin un solo llamador cuando el cuadro pasó a estructura contable y todo el mensual empezó a
+// generarse con `formulaLineaMes(linea, …)`. No era código muerto inofensivo: leía una variable
+// `filasTabla` que no existe en este módulo, así que el día que alguien la reusara para Estructura o
+// Recurrentes iba a romper con un ReferenceError en vez de generar la fórmula. Se saca en vez de
+// arreglarse: dos funciones que calculan el mismo mes son la puerta de entrada a que el Semanal y el
+// Mensual vuelvan a divergir, que es lo que este archivo entero vino a impedir.
 
 /**
  * Los rubros que NO se proyectan por ritmo, y por qué cada uno. Lo consume también el núcleo
@@ -267,7 +248,7 @@ export function origenProyeccion(rubro) {
   // Cortas a propósito: entran unos 48 caracteres en esta columna. El detalle va en la nota.
   if (rubro === LINEA_CHEQUES.rubro) return 'cheques y tarjeta YA emitidos: fecha cierta'
   const p = PROYECCION[rubro]
-  if (p === null) return 'sus quincenas vienen de Jornales por Quincena'
+  if (p === null) return SIN_PROYECCION_PORQUE[rubro] ?? 'no se proyecta'
   if (p?.tipo === 'tabla') return `la calcula la pestaña ${p.pestaña}`
   return 'promedio de 3 meses cerrados + inflación'
 }
