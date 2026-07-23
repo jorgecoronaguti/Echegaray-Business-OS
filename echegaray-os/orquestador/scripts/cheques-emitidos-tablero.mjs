@@ -47,9 +47,35 @@ async function main() {
 
   // ¿Cuántas filas ocupa hoy la banda? Se DEDUCE de dónde está el encabezado del registro (col A =
   // "TIPO"), no de un flag en A1: así el ancho de la banda puede cambiar sin duplicarla ni romperla.
-  const colA = await google.readSheetValues(ID, `${PESTANA}!A1:A40`)
-  const iHdr = (colA || []).findIndex((f) => /^TIPO$/i.test(String(f?.[0] ?? '').trim()))
-  const bandaActual = iHdr >= 0 ? iHdr : 0
+  // ═══ NO ANCLAR EN UN RÓTULO QUE EL DUEÑO PUEDE BORRAR (23/07) ═══
+  //
+  // Esto se rompió en vivo el mismo día que se activó la Regla 0. El dueño había borrado la columna
+  // de rótulos de la banda —incluido el "TIPO" del encabezado—; el generador no encontró su ancla,
+  // dedujo `bandaActual = 0` y **insertó 12 filas**: la pestaña quedó con dos bandas, una huérfana
+  // arriba, y el registro corrido doce renglones. Peor: al quedar A1 vacía por el insert, la
+  // detección automática dio por borrados textos que él nunca tocó, y el error se realimentaba.
+  //
+  // La lección es general: **un ancla tiene que ser algo que el generador controla, no un texto que
+  // una persona puede editar legítimamente.** Se ancla en la ESTRUCTURA del registro —la primera
+  // fila que tiene FISICO/ECHEQ en A, o encabezados propios del registro en B/C— y el rótulo queda
+  // sólo como último recurso.
+  const cabecera = (await google.readSheetValues(ID, `${PESTANA}!A1:C40`)) || []
+  let iHdr = cabecera.findIndex((f) => /^TIPO$/i.test(String(f?.[0] ?? '').trim()))
+  if (iHdr < 0) {
+    // El encabezado es la fila JUSTO ANTERIOR al primer cheque del registro.
+    const iPrimerCheque = cabecera.findIndex((f) => /^(FISICO|ECHEQ)$/i.test(String(f?.[0] ?? '').trim()))
+    if (iPrimerCheque > 0) iHdr = iPrimerCheque - 1
+  }
+  if (iHdr < 0) {
+    // Último recurso: la fila que trae los encabezados propios del registro en B/C.
+    iHdr = cabecera.findIndex((f) => /^nro$/i.test(String(f?.[1] ?? '').trim()))
+  }
+  if (iHdr < 0) {
+    console.error(`No encuentro dónde arranca el registro de "${PESTANA}". NO inserto filas a ciegas: `
+      + 'hacerlo duplica la banda y corre el registro entero. Revisá la pestaña.')
+    process.exit(1)
+  }
+  const bandaActual = iHdr
   const HDR = BANDA + 1
 
   if (DRY) {
