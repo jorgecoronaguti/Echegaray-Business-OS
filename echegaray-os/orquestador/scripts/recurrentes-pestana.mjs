@@ -24,6 +24,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { MIN_MESES, COL_RUBRO, COL_FECHA, COL_TOTAL } from '../lib/cash-flow-lineas.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { TABLAS as N_TABLAS, publicar } from '../lib/rangos-nombrados.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Recurrentes'
@@ -167,6 +168,15 @@ async function main() {
   const { conservadas } = await escribirPreservando(google, ID, hoja.title, gridRec, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
   await formatear(google, hoja, g)
+
+  // ═══ EL TOTAL, POR NOMBRE ═══
+  // El Cash Flow Mensual lee de acá su proyección de servicios recurrentes. La leía por número de
+  // fila, que es el defecto que ya se cobró $157,8M en Jornales y $15,0M en Estructura: el día que
+  // esta pestaña se rediseñe, el nombre se mueve con la fila y la fórmula sigue apuntando bien.
+  await publicar(google, ID, hoja.sheetId, [
+    { name: N_TABLAS.Recurrentes, fila: g.fTot, col: C_MES0 + 1, colFin: C_MES0 + 12 },
+  ])
+  console.log(`  ⇒ ${N_TABLAS.Recurrentes} → fila ${g.fTot}, doce meses`)
 
   const v = await google.readSheetValues(ID, `${hoja.title}!A1:C${g.filas.length}`)
   console.log(`\nCONTROL  Compras ${v[g.ctrl]?.[1]} · cuadro ${v[g.ctrl + 1]?.[1]} · diferencia ${v[g.ctrl + 2]?.[1]}`)

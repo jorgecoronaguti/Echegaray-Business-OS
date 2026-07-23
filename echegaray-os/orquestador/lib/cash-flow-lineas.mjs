@@ -15,6 +15,7 @@
 // (un gasto cae en un solo rubro) y quedar afuera es visible (el control de abajo lo resta).
 
 import { REGLAS, RUBROS } from './rubro-caja.mjs'
+import { TABLAS as N_TABLAS } from './rangos-nombrados.mjs'
 
 /** El sub-rubro de Estructura que NO es gasto del mes sino inversión. Lo escribe estructura-pestana. */
 export const SUB_BIENES_DE_USO = 'Equipos y rodados (inversión)'
@@ -192,8 +193,8 @@ const MESES_CAB = '$B$3:$M$3'
 // el rótulo de la columna A de cada pestaña y se pasa acá; si el rótulo no aparece, el script rompe
 // en vez de escribir una referencia muerta.
 const PROYECCION = {
-  'Estructura': { tipo: 'tabla', pestaña: 'Estructura', rotulo: 'TOTAL ESTRUCTURA' },
-  'Servicios recurrentes': { tipo: 'tabla', pestaña: 'Recurrentes', rotulo: 'TOTAL' },
+  'Estructura': { tipo: 'tabla', pestaña: 'Estructura', rotulo: 'TOTAL ESTRUCTURA', nombre: N_TABLAS.Estructura },
+  'Servicios recurrentes': { tipo: 'tabla', pestaña: 'Recurrentes', rotulo: 'TOTAL', nombre: N_TABLAS.Recurrentes },
   'Nómina · Jornales de obra': null,
   // Las cuotas que faltan YA están cargadas en Compras con su fecha de vencimiento (el saldo
   // pendiente es $7.958.394 y se ve en Cargas Sociales). Proyectar encima inventaba $4.355.383 de
@@ -204,48 +205,34 @@ const PROYECCION = {
 }
 
 /**
- * NÚCLEO PURO: el monto de un rubro en un MES, con proyección si el mes todavía no pasó.
- * @param {string} rubro nombre exacto
- * @param {string} celdaRubro celda con el nombre (ej. '$A12')
- * @param {string} colMes letra de la columna del mes en el cash flow (ej. 'I')
- * @param {string} colTabla letra de la columna equivalente en la pestaña de detalle
- * @param {number} filaCab fila del encabezado con las fechas
- * @returns {string} fórmula es-AR
+ * NÚCLEO PURO: la referencia a la proyección que YA calcula una pestaña de detalle.
+ *
+ * ═══ POR NOMBRE, NO POR NÚMERO DE FILA ═══
+ *
+ * ANTES CREÍAMOS que alcanzaba con buscar la fila del rótulo ("TOTAL ESTRUCTURA") al generar el
+ * cuadro. EVIDENCIA NUEVA (23/07): el cuadro se genera una vez y la fórmula queda con ESE número
+ * escrito adentro. Estructura se rediseñó después, su TOTAL bajó de la fila 13 a la 15, y las cinco
+ * celdas de proyección quedaron leyendo "Ropa y seguridad": agosto mostró $763.365 en vez de
+ * $4.357.648 y de septiembre a diciembre $0 — $15.017.169 sin proyectar, sin un solo error.
+ * CAMBIO DE CRITERIO: la referencia va por RANGO CON NOMBRE, que se mueve con la fila.
+ * NUEVA REGLA: el mes se elige con MONTH() sobre la fecha del encabezado, así tampoco depende de en
+ * qué columna arranca enero en la pestaña de origen.
+ * VALIDACIÓN: el bloque de control del pie compara el cuadro contra el mismo nombre.
+ *
+ * @param {object} p        entrada de PROYECCION de tipo 'tabla'
+ * @param {string} mes      expresión de la fecha del mes (ej. 'I$3')
+ * @param {string} colTabla letra de la columna equivalente en la pestaña de detalle (respaldo)
+ * @param {Record<string,number>} filasTabla fila del total por pestaña (respaldo)
+ * @param {Set<string>|string[]} nombres los rangos con nombre que EXISTEN hoy en el archivo
  */
-export function formulaMesConProyeccion(rubro, celdaRubro, colMes, colTabla, filaCab) {
-  const mes = `${colMes}$${filaCab}`
-  const real = `SUMIFS(${COL_TOTAL};${COL_RUBRO};${celdaRubro};${COL_FECHA};">="&${mes};${COL_FECHA};"<"&EOMONTH(${mes};0)+1)`
-  const p = PROYECCION[rubro]
-  if (p === null) return `=${real}`
-  let proy
-  if (p?.tipo === 'tabla') {
-    const fila = filasTabla[p.pestaña]
-    if (!fila) throw new Error(`cash-flow-lineas: no sé en qué fila de "${p.pestaña}" está "${p.rotulo}" — sin eso la referencia sería a una fila muerta`)
-    proy = `${p.pestaña}!${colTabla}$${fila}`
-  } else {
-    // Promedio de los 3 meses cerrados anteriores a hoy, ajustado por inflación...
-    const ventana = `SUMIFS(${COL_TOTAL};${COL_RUBRO};${celdaRubro};${COL_FECHA};">="&EOMONTH(TODAY();-4)+1;${COL_FECHA};"<="&EOMONTH(TODAY();0))/3`
-    const factor = `IFERROR(INDEX(Parámetros!$C$74:$C$90;MATCH(EOMONTH(${mes};0);ARRAYFORMULA(EOMONTH(Parámetros!$A$74:$A$90;0));0));1)`
-    // ...PERO SÓLO SI EL GASTO ES MENSUAL DE VERDAD. Sin este guard, el SAC — que se paga en junio y
-    // en diciembre — entraba al promedio móvil de julio y se proyectaba TODOS los meses: $18.777.459
-    // de aguinaldo inventado contra $7.368.710 reales. Es el mismo error que la moto en Estructura,
-    // y la misma regla lo mata: un rubro que no aparece en al menos 4 meses del año no es una
-    // tendencia, es un pago suelto, y proyectarlo es fabricar plata que nadie va a pagar.
-    const mesesConGasto = `SUMPRODUCT(--(COUNTIFS(${COL_RUBRO};${celdaRubro};${COL_FECHA};">="&${MESES_CAB};${COL_FECHA};"<"&EOMONTH(${MESES_CAB};0)+1)>0))`
-    proy = `IF(${mesesConGasto}<${MIN_MESES};0;${ventana}*${factor})`
-  }
-  // Un mes ya cerrado muestra lo que pasó, aunque sea cero. Sólo el futuro se proyecta.
-  //
-  // EN EL FUTURO GANA EL MAYOR, y esto NO es un detalle. La versión anterior decía "si hay algo real
-  // cargado, mostrá eso y no proyectes". Medido en el Sheet: agosto de Materiales Civil mostraba
-  // $203.132 — una sola factura cargada por adelantado — contra $39.936.681 en septiembre. Una
-  // factura suelta con fecha de agosto apagaba la proyección del mes entero y borraba ~$40M de
-  // egresos previstos.
-  //
-  // La lógica correcta es que en un mes que todavía no pasó, lo ya cargado es un PISO, no el total:
-  // faltan cargar las compras que ese mes seguro va a tener. Si lo comprometido supera al ritmo
-  // histórico, entonces sí manda lo comprometido — es un hecho, y un hecho le gana a un promedio.
-  return `=IF(EOMONTH(${mes};0)<=EOMONTH(TODAY();0);${real};MAX(${real};${proy}))`
+export function refProyeccionTabla(p, mes, colTabla, filasTabla = {}, nombres = []) {
+  const hay = nombres instanceof Set ? nombres : new Set(nombres)
+  if (p.nombre && hay.has(p.nombre)) return `INDEX(${p.nombre};1;MONTH(${mes}))`
+  // Respaldo para la PRIMERA corrida, cuando el generador de la pestaña de detalle todavía no
+  // publicó su nombre. Se busca por rótulo, nunca escrito a mano.
+  const fila = filasTabla[p.pestaña]
+  if (!fila) throw new Error(`cash-flow-lineas: no sé en qué fila de "${p.pestaña}" está "${p.rotulo}" — sin eso la referencia sería a una fila muerta`)
+  return `${p.pestaña}!${colTabla}$${fila}`
 }
 
 /**
@@ -348,14 +335,44 @@ export function formulaCobranzas(tipo, desde, hasta) {
  * @param {number} filaUltimoEgreso fila del último
  * @param {string} colTotal letra de la columna donde se escriben estos importes (ej. 'B')
  * @param {number} filaControl fila (1-based) donde arranca este bloque
+ * @param {{celdaJornales?:string}} refs celda del total del año de la línea de jornales del cuadro
  * @returns {Array<{etiqueta:string, formula:string, nota?:string}>}
  */
-export function bloqueControl(filaPrimerEgreso, filaUltimoEgreso, colTotal, filaControl) {
+export function bloqueControl(filaPrimerEgreso, filaUltimoEgreso, colTotal, filaControl, refs = {}) {
   // Se suma RUBRO POR RUBRO y no leyendo los rótulos de la columna A. Desde que el cuadro tiene
   // estructura contable, esos rótulos son nombres para el que lee ("Materiales e insumos de obra
   // civil"), no los rubros de Compras — un SUMIF contra ellos daría $0 y el control mentiría
   // diciendo que todo cierra. La lista sale de REGLAS, así que un rubro nuevo entra solo.
   const porRubro = RUBROS.map((r) => formulaTotalRubro(r)).join('+')
+  // ═══ EL CONTROL QUE FALTABA, Y QUE COSTÓ $157.772.297 ═══
+  //
+  // El control de partición de abajo da $0 y es cierto — pero SÓLO prueba que Compras está
+  // particionada. Es CIEGO a las tres líneas que no salen de Compras (jornales, cheques sin factura,
+  // intereses) y a las proyecciones que se leen de otra pestaña. Los jornales estuvieron
+  // $157.772.297 abajo de lo real durante días con este control en verde: el cuadro leía
+  // 'Jornales por Quincena'!$B$3:$B$16 —un bloque que el rediseño dejó sin fechas— y sumaba $0.
+  //
+  // Un control que da verde sobre lo que no mira es peor que no tener control. Éste compara el
+  // número que MUESTRA el cuadro contra las dos únicas fuentes de jornales que existen, por RANGO
+  // CON NOMBRE: si mañana la pestaña se rediseña otra vez, el nombre se mueve y la diferencia sigue
+  // dando $0; si la fórmula del cuadro se desalinea, grita el primer día.
+  const jornales = refs.celdaJornales ? [
+    {
+      etiqueta: 'Jornales · lo que muestra este cuadro (año)',
+      formula: `=${refs.celdaJornales}`,
+      nota: 'El total de la línea "Jornales de obra". No sale de Compras: sale de la planilla de quincenas.',
+    },
+    {
+      etiqueta: 'Jornales · la planilla (JORNALES_REAL_TOTAL + JORNALES_PROY_TOTAL)',
+      formula: '=SUM(JORNALES_REAL_TOTAL)+SUM(JORNALES_PROY_TOTAL)',
+      nota: 'Las quincenas pagadas más las proyectadas, por rango con nombre: sigue a la fila aunque la pestaña se rediseñe.',
+    },
+    {
+      etiqueta: '⇒ Diferencia de jornales (tiene que ser $0)',
+      formula: `=${colTotal}${filaControl + 6}-${colTotal}${filaControl + 7}`,
+      nota: 'Distinto de cero = el cuadro no está viendo quincenas que la planilla sí tiene. Es el defecto que dejó $157.772.297 afuera sin dar un solo error.',
+    },
+  ] : []
   return [
     {
       etiqueta: 'Compras — total cargado',
@@ -383,10 +400,11 @@ export function bloqueControl(filaPrimerEgreso, filaUltimoEgreso, colTotal, fila
       nota: 'Están clasificadas pero no suman en ningún lado porque su Total no es un número. Hoy son 3 filas de Google en USD 25,20 sin convertir a pesos: la suma del Sheet las ignora y nadie se entera.',
     },
     {
-      etiqueta: 'Jornales: Compras (estimado) vs planilla real',
+      etiqueta: 'Jornales · lo que hay tipeado en Compras (estimado, NO se usa)',
       formula: `=SUMIF(${COL_RUBRO};"Nómina · Jornales de obra";${COL_TOTAL})`,
       nota: 'El cash flow NO usa este número: usa el real de Jornales por Quincena. Por eso el total de egresos del año no coincide con el total de Compras, y está bien que no coincida.',
     },
+    ...jornales,
   ]
 }
 
@@ -577,7 +595,7 @@ export function expresionReal(l, desde, hasta) {
  * @param {string} colMes letra de la columna del mes · @param {string} colTabla la equivalente en la pestaña de detalle
  * @param {number} filaCab fila del encabezado con las fechas
  */
-export function formulaLineaMes(l, colMes, colTabla, filaCab, filasTabla = {}) {
+export function formulaLineaMes(l, colMes, colTabla, filaCab, filasTabla = {}, nombres = []) {
   if (l.cheques) return null
   const mes = `${colMes}$${filaCab}`
   const real = expresionReal(l, mes, `EOMONTH(${mes};0)+1`)
@@ -587,9 +605,7 @@ export function formulaLineaMes(l, colMes, colTabla, filaCab, filasTabla = {}) {
   if (p === null || l.cobranzas) return `=${real}`
   let proy
   if (p?.tipo === 'tabla') {
-    const fila = filasTabla[p.pestaña]
-    if (!fila) throw new Error(`cash-flow-lineas: no sé en qué fila de "${p.pestaña}" está "${p.rotulo}" — sin eso la referencia sería a una fila muerta`)
-    proy = `${p.pestaña}!${colTabla}$${fila}`
+    proy = refProyeccionTabla(p, mes, colTabla, filasTabla, nombres)
   } else {
     // LOS TRES MESES CERRADOS, SIN EL MES EN CURSO. La ventana anterior llegaba hasta el fin del
     // mes corriente y dividía por 3: metía un mes a medio transcurrir en el promedio, así que el

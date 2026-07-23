@@ -49,10 +49,15 @@ const fechaAR = (d) => `${d.getUTCDate()}/${d.getUTCMonth() + 1}/${d.getUTCFullY
  * Arma la grilla de una pestaña de cash flow.
  * @param {'semanal'|'mensual'} periodo
  */
-function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, filasTabla = {}) {
+function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, filasTabla = {}, nombres = []) {
   const cols = periodo === 'semanal' ? semanas() : Array.from({ length: 12 }, (_, m) => new Date(Date.UTC(AÑO, m, 1)))
   const n = cols.length
   const colTotal = letra(n + 1) // A + n períodos → la siguiente es el total
+  // LA ÚLTIMA COLUMNA ES LA DE LAS NOTAS, y no es un capricho de estilo: la gramática de
+  // lib/patron-pestana.mjs lo exige y su auditor lo mide. Un párrafo de 500 caracteres en la
+  // columna B —que es enero— desparrama la fila sobre los importes de todo el primer trimestre.
+  // Eran 21 defectos en el Semanal y 16 en el Mensual, todos por el mismo motivo.
+  const C_NOTA = periodo === 'mensual' ? n + 4 : n + 2
   const FILA_CAB = 3
   // Ventana de cada columna: el mes usa el primero del mes siguiente como límite excluyente, así
   // ningún día cae entre dos meses ni se cuenta dos veces (febrero no tiene 30).
@@ -62,6 +67,13 @@ function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, fi
   const filas = []
   const meta = {} // dónde quedó cada cosa, para las fórmulas de totales
   const push = (celdas) => { filas.push(celdas); return filas.length }
+  /** Una fila con el rótulo en A y la nota en la ÚLTIMA columna, sin nada en el medio. */
+  const conNota = (rotulo, nota) => { const f = new Array(C_NOTA + 1).fill(''); f[0] = rotulo; f[C_NOTA] = nota ?? ''; return f }
+  // Las secciones van NUMERADAS Y CORRIDAS (1 ·, 2 ·, 3 ·…). Es la gramática del archivo: sin número,
+  // el lector no sabe si un bloque en versalita es una sección nueva, un sub-bloque o un resto de una
+  // corrida vieja — que es exactamente cómo se coló el bloque duplicado que había acá abajo.
+  let nSeccion = 0
+  const seccion = (texto) => `${++nSeccion} · ${texto}`
 
   push([periodo === 'semanal' ? `Cash Flow Semanal ${AÑO} — cuándo entra y sale la plata` : `Cash Flow Mensual ${AÑO} — cuándo entra y sale la plata`])
   // A2 = el atajo a la semana de hoy.
@@ -79,7 +91,10 @@ function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, fi
   const nota = periodo === 'semanal'
     ? 'Estado de flujo de efectivo por método directo (RT 8/9 · NIC 7): operativas, inversión y financiación. Tocá el + del margen izquierdo para abrir el detalle de cada categoría. ESTE CUADRO MUESTRA LO COMPROMETIDO: sólo cobros y pagos con fecha ya cargada — las proyecciones están en el Mensual, porque a nivel semana una proyección de materiales es ruido, no información.'
     : 'Estado de flujo de efectivo por método directo (RT 8/9 · NIC 7): operativas, inversión y financiación. Tocá el + del margen izquierdo para abrir el detalle de cada categoría. Los meses que todavía no pasaron son PROYECCIÓN: Estructura y Recurrentes traen la suya de su propia pestaña; el resto usa el ritmo de los últimos 3 meses cerrados ajustado por inflación. Los INGRESOS no se proyectan (no hay obra facturada de octubre en adelante), así que el déficit del último trimestre es un piso, no un pronóstico.'
-  push([irASemana, nota])
+  // El atajo va en la fila del TÍTULO; la fila 2 es, por gramática, "qué contesta la pestaña", y va
+  // en la columna A. Estaba en la B —que es enero— con 509 caracteres encima de los importes.
+  filas[0][1] = irASemana
+  push([nota])
   meta.cabFila = push(['Período', ...cols.map(fechaAR), `Total ${AÑO}`])
 
   // ── EL CUERPO DEL ESTADO, POR ACTIVIDAD ────────────────────────────────────────────────────────
@@ -98,7 +113,8 @@ function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, fi
 
   for (const act of CUADRO) {
     push([])
-    push([act.actividad, act.nota])
+    const rotuloAct = seccion(act.actividad)
+    push(conNota(rotuloAct, act.nota))
     const filaAct = filas.length
     const subGrupos = []
     for (const g of act.grupos) {
@@ -107,7 +123,7 @@ function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, fi
       const d0 = filas.length + 1
       for (const l of g.lineas) {
         const f = periodo === 'mensual'
-          ? cols.map((_, i) => formulaLineaMes(l, letra(i + 1), letra(i + 1), FILA_CAB, filasTabla))
+          ? cols.map((_, i) => formulaLineaMes(l, letra(i + 1), letra(i + 1), FILA_CAB, filasTabla, nombres))
           : cols.map((_, i) => `=${expresionReal(l, desde(i), hasta(i))}`)
         // La línea de cheques SUMA las marcas que el OS escribe al lado de cada cheque y de cada
         // consumo de tarjeta. Antes era el único lugar del cuadro con números pegados: el día que se
@@ -148,10 +164,10 @@ function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, fi
       subGrupos.push({ fila: filaGrupo, signo: g.signo })
     }
     const expr = (i) => subGrupos.map((sg) => `${sg.signo > 0 ? '+' : '-'}${letra(i + 1)}${sg.fila}`).join('')
-    const filaSub = push([`FLUJO NETO DE ${act.actividad}`, ...cols.map((_, i) => `=${expr(i)}`)])
+    const filaSub = push([`⇒ FLUJO NETO DE ${act.actividad}`, ...cols.map((_, i) => `=${expr(i)}`)])
     subtotalesAct.push(filaSub)
     meta[`sub_${subtotalesAct.length}`] = filaSub
-    filas[filaAct - 1][0] = act.actividad
+    filas[filaAct - 1][0] = rotuloAct
     meta.actividades.push(filaAct)
   }
   meta.subtotales = subtotalesAct
@@ -160,57 +176,86 @@ function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, fi
   push([])
   meta.variacion = push(['AUMENTO / (DISMINUCIÓN) NETA DEL EFECTIVO',
     ...cols.map((_, i) => `=${subtotalesAct.map((f) => `${letra(i + 1)}${f}`).join('+')}`)])
-  // El efectivo al inicio: el primer período lo toma del único lugar donde puede vivir un saldo
-  // real, y de ahí en adelante encadena. Hoy esa celda está VACÍA y por eso el cuadro arranca en
-  // cero — no es un error de fórmula, es un dato que la empresa todavía no cargó, y así se dice.
-  // El saldo real sale de la pestaña CAJA, que es el único lugar del archivo donde vive un saldo.
-  // Si todavía no hay ninguno cargado da $0 y el cuadro arranca de cero: no es un error de fórmula,
-  // es un dato que la empresa no cargó, y el propio rótulo lo dice para que nadie lea el saldo
-  // proyectado como si fuera plata que hay.
-  // El aviso es una FÓRMULA y no un texto fijo: tiene que aparecer y desaparecer solo según haya o
-  // no un saldo cargado, sin esperar a que el agente vuelva a correr. Un cuadro que arranca de $0
-  // sin decirlo hace leer el saldo proyectado como plata que hay.
+  // ══ EFECTIVO AL INICIO Y AL CIERRE — LA LÍNEA QUE CONTESTA CUÁNDO TE QUEDÁS SIN PLATA ══
+  //
+  // Sin estas dos filas encadenadas el cuadro dice cuánto se mueve pero no cuándo se acaba, que es la
+  // única pregunta por la que alguien abre un cash flow.
+  //
+  // ═══ EL ANCLA ES EL PERÍODO DE LA FECHA DEL SALDO, Y EL PERÍODO NO SIEMPRE ES UN MES ═══
+  //
+  // ANTES CREÍAMOS que alcanzaba con anclar por MES en las dos pestañas. EVIDENCIA (23/07): en el
+  // Semanal las cuatro semanas de julio arrancaban con el MISMO saldo ($17.352.004) —todas caen en
+  // el mes del ancla— así que la cadena no corría nunca y el cierre de cada semana no significaba
+  // nada. La pestaña entera no podía contestar en qué SEMANA se queda sin plata, que es para lo que
+  // existe. CAMBIO DE CRITERIO: el ancla se evalúa sobre la ventana del período (7 días o el mes).
+  //
+  // ═══ Y HACIA ATRÁS SE RECONSTRUYE — PERO SÓLO EN EL SEMANAL ═══
+  //
+  // ANTES CREÍAMOS que antes del saldo cargado no se podía decir nada, y las dos filas quedaban
+  // vacías de enero a junio. EVIDENCIA: en el Semanal sí se puede, y es aritmética, no un supuesto —
+  //     inicio(t) = inicio(t+1) − variación(t)
+  // es la misma identidad que la cadena hacia adelante, leída al revés, apoyada en el único saldo
+  // real que existe. CAMBIO DE CRITERIO: se reconstruye y SE DECLARA en el rótulo.
+  //
+  // POR QUÉ EL MENSUAL NO SE RECONSTRUYE. El Mensual —y sólo él— tiene la línea de intereses del
+  // descubierto, que depende del inicio de SU MISMO mes. Reconstruir hacia atrás haría que
+  // inicio(t) dependa de la variación(t), que incluye ese interés, que depende de inicio(t): una
+  // referencia circular (#REF!/circular) en los seis meses previos al ancla. Medido: 52 celdas en
+  // error. El Semanal no tiene intereses, así que ahí la reconstrucción es limpia — y es justo el
+  // Semanal el que tenía las cuatro semanas de julio arrancando con el mismo saldo. LÍMITE
+  // DECLARADO: lo reconstruido hereda lo que les falte a los movimientos cargados de esos períodos.
   const rotuloInicio = 'Efectivo y equivalentes al inicio del período'
-  // EL SALDO REAL ANCLA EN EL MES DE SU FECHA, NO EN ENERO.
-  //
-  // La primera versión ponía el saldo declarado como inicio de ENERO. El saldo cargado es de JULIO,
-  // así que arrastraba la plata de hoy siete meses hacia atrás y todos los meses cerrados quedaban
-  // mal. Ahora: antes del mes del saldo el cuadro no muestra saldo —no se puede, falta el saldo
-  // inicial de enero y nadie lo cargó— y desde ese mes en adelante encadena.
-  //
-  // APROXIMACIÓN DECLARADA: el saldo es de un día en el medio del mes, y acá se toma como cierre de
-  // ese mes. Los movimientos de los días que faltan de ese mes quedan afuera del arrastre. Es de
-  // orden menor frente a la alternativa, que era mentir en siete meses.
-  const mesAncla = refCajaFecha ? `EOMONTH(${refCajaFecha};0)` : null
+  const rotuloDetalle = periodo === 'semanal'
+    ? ' · desde el saldo real de CAJA: hacia adelante encadena, hacia atrás reconstruye'
+    : ' · desde el saldo real de CAJA: los meses previos al saldo quedan en blanco (no hay saldo inicial de enero cargado)'
+  const fIni = filas.length + 1
+  const fCie = fIni + 1
+  const per = (i) => `${letra(i + 1)}$${FILA_CAB}`
+  // La ventana del período, para saber si la fecha del saldo cae adentro.
+  const esAncla = (i) => (periodo === 'semanal'
+    ? `AND(${per(i)}<=${refCajaFecha};${refCajaFecha}<${per(i)}+7)`
+    : `EOMONTH(${per(i)};0)=EOMONTH(${refCajaFecha};0)`)
+  const esAnterior = (i) => (periodo === 'semanal'
+    ? `${per(i)}+7<=${refCajaFecha}`
+    : `EOMONTH(${per(i)};0)<EOMONTH(${refCajaFecha};0)`)
   meta.inicio = push([refCaja
-    ? `=IF(N(${refCaja})=0;"${rotuloInicio}  ⚠ sin saldo cargado en CAJA — el cuadro no puede decir cuándo se queda sin plata";"${rotuloInicio}")`
+    ? `=IF(N(${refCaja})=0;"${rotuloInicio}  ⚠ sin saldo cargado en CAJA — el cuadro no puede decir cuándo se queda sin plata";"${rotuloInicio}${rotuloDetalle}")`
     : `${rotuloInicio}  ⚠ no encontré la pestaña CAJA`,
     ...cols.map((_, i) => {
-      if (!refCaja || !mesAncla) return i === 0 ? '=0' : `=${letra(i)}${filas.length + 2}`
-      const mes = `${letra(i + 1)}$${FILA_CAB}`
-      const anterior = i === 0 ? '""' : `${letra(i)}${filas.length + 2}`
-      // Antes del mes del saldo: vacío. En el mes del saldo: el saldo declarado. Después: encadena.
-      return `=IF(EOMONTH(${mes};0)<${mesAncla};"";IF(EOMONTH(${mes};0)=${mesAncla};N(${refCaja});IF(N(${anterior})=0;"";${anterior})))`
+      if (!refCaja || !refCajaFecha) return i === 0 ? '=0' : `=${letra(i)}${fCie}`
+      // Hacia adelante: el inicio de este período es el cierre del anterior.
+      const adelante = i === 0 ? `N(${refCaja})` : `${letra(i)}${fCie}`
+      // Antes del ancla: en el Semanal se reconstruye; en el Mensual queda en blanco (ver arriba).
+      const antes = periodo === 'semanal'
+        ? (i < n - 1 ? `${letra(i + 2)}${fIni}-${letra(i + 1)}${meta.variacion}` : '""')
+        : '""'
+      return `=IF(${esAncla(i)};N(${refCaja});IF(${esAnterior(i)};${antes};${adelante}))`
     })])
-  // Un mes anterior al saldo declarado NO tiene cierre: mostrar la variación acumulada como si fuera
-  // un saldo es exactamente el error que este bloque vino a corregir.
-  meta.cierre = push(['Efectivo y equivalentes al cierre del período',
+  meta.cierre = push(['⇒ Efectivo y equivalentes al cierre del período',
     ...cols.map((_, i) => `=IF(${letra(i + 1)}${meta.inicio}="";"";${letra(i + 1)}${meta.inicio}+${letra(i + 1)}${meta.variacion})`)])
   meta.egr0 = meta.detalle[0].fila
   meta.egr1 = meta.detalle[meta.detalle.length - 1].fila
 
   push([])
-  const filaRef = push(['DÓNDE ESTÁ EL DETALLE DE CADA LÍNEA'])
+  const filaRef = push([seccion('DÓNDE ESTÁ EL DETALLE DE CADA LÍNEA')])
   for (const { linea: l } of meta.detalle) {
-    push([l.nombre, l.detalle
+    push(conNota(l.nombre, l.detalle
       ? `Pestaña ${l.detalle}`
-      : `Compras, rubro "${l.rubro}"${l.excluirSub ? ` (sin "${l.excluirSub}", que va a inversión)` : ''} · detalle en la pestaña ${detallePorRubro(l.rubro)}`])
+      : `Compras, rubro "${l.rubro}"${l.excluirSub ? ` (sin "${l.excluirSub}", que va a inversión)` : ''} · detalle en la pestaña ${detallePorRubro(l.rubro)}`))
   }
 
   push([])
-  push(['CONTROL — que no falte ni sobre nada'])
+  push([seccion('CONTROL — QUE NO FALTE NI SOBRE NADA')])
   const filaCtrl = filas.length + 1
-  for (const c of bloqueControl(meta.egr0, meta.egr1, 'B', filaCtrl)) push([c.etiqueta, c.formula, c.nota])
+  // La celda del total del año de la línea de jornales: el control nuevo la compara contra los
+  // rangos con nombre de la planilla de quincenas. Se busca por RUBRO, nunca por número de fila.
+  const filaJornales = meta.detalle.find((d) => d.linea.rubro === 'Nómina · Jornales de obra')?.fila
+  const celdaJornales = filaJornales ? `${colTotal}${filaJornales}` : null
+  for (const c of bloqueControl(meta.egr0, meta.egr1, 'B', filaCtrl, { celdaJornales })) {
+    const f = conNota(c.etiqueta, c.nota)
+    f[1] = c.formula
+    push(f)
+  }
 
   // El total del año para las filas donde tiene sentido: detalle, subtotales y el cierre.
   const conTotal = [...meta.detalle.map((d) => d.fila), ...meta.subtotales, meta.variacion,
@@ -223,6 +268,7 @@ function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, fi
 
   // En el mensual, el total del año mezcla real y proyección: hay que poder separarlos de un vistazo,
   // o un estimado se lee como un hecho.
+  if (periodo === 'semanal') filas[meta.cabFila - 1][C_NOTA] = 'Nota'
   if (periodo === 'mensual') {
     filas[meta.cabFila - 1][n + 2] = 'Real (Compras)'
     filas[meta.cabFila - 1][n + 3] = 'Proyectado'
@@ -274,11 +320,20 @@ async function formatear(google, data) {
     // caen sobre contenido que ahora es otro. El dueño lo vio antes que yo: "quedan descuadradas y
     // con datos viejos". No eran datos viejos: era pintura vieja sobre datos nuevos.
     //
-    // Se limpia la grilla COMPLETA (no sólo lo que se escribe) porque el layout anterior era más
-    // ancho —tenía columnas auxiliares BE/BF— y esas columnas también quedaron pintadas.
+    // Se limpia la grilla COMPLETA a lo ANCHO (no sólo lo que se escribe) porque el layout anterior
+    // tenía columnas auxiliares BE/BF que también quedaron pintadas.
+    //
+    // ═══ PERO SÓLO HASTA DONDE LLEGA ESTE CUADRO, NO HASTA LA 220 ═══
+    //
+    // ANTES CREÍAMOS que había que limpiar el formato hasta la fila 220. EVIDENCIA (23/07): el Cash
+    // Flow Mensual lleva DEBAJO de este cuadro el bloque de cobertura de cheques (filas ~157–193),
+    // que lo escribe y lo pinta OTRO script. Limpiar hasta la 220 le borraba el formato a un bloque
+    // ajeno en cada corrida, y sólo se veía bien porque el otro script corría justo después. Un
+    // generador no pisa el formato de filas que no son suyas. CAMBIO: se limpia hasta el alto real
+    // de la grilla más un pequeño margen para restos de una versión anterior más alta.
     req.push({
       repeatCell: {
-        range: { sheetId, startRowIndex: 0, endRowIndex: Math.min(filasHoja, 220), startColumnIndex: 0, endColumnIndex: colsHoja },
+        range: { sheetId, startRowIndex: 0, endRowIndex: Math.min(filasHoja, filas + 6), startColumnIndex: 0, endColumnIndex: colsHoja },
         cell: {},
         fields: 'userEnteredFormat',
       },
@@ -325,7 +380,7 @@ async function formatear(google, data) {
     // El bloque de referencias y el de control son texto, no plata.
     fmt(rango(g.filaRef - 1, filas, 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
       { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' })
-    fmt({ ...rango(g.filaCtrl - 1, g.filaCtrl + 4), startColumnIndex: 1, endColumnIndex: 2 },
+    fmt({ ...rango(g.filaCtrl - 1, g.filaCtrl + 8), startColumnIndex: 1, endColumnIndex: 2 },
       'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
       { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0' }, horizontalAlignment: 'RIGHT' })
     fmt(rango(g.filaCtrl - 2, g.filaCtrl - 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true } })
@@ -383,6 +438,11 @@ async function main() {
   // Ya no alimenta el cuadro (esa línea es una fórmula), pero se sigue midiendo acá: es el número
   // que tiene que dar igual que la fórmula, y si no da, algo se desalineó entre el código y el Sheet.
   const faltantes = await faltantesDeCompras(google)
+  // LOS RANGOS CON NOMBRE QUE EXISTEN HOY. Es el mecanismo que sobrevive a que una pestaña de origen
+  // se rediseñe: el nombre se mueve con la fila, un número de fila no. Se leen una vez y se pasan a
+  // la grilla, que decide por cada referencia si usa el nombre o su respaldo por rótulo.
+  const nombres = new Set((await google.getNamedRanges(ID).catch(() => [])).map((x) => x.name))
+  console.log(`Rangos con nombre disponibles: ${[...nombres].filter((x) => /^(JORNALES|ESTRUCTURA|RECURRENTES|CAJA)_/.test(x)).sort().join(', ') || '(ninguno)'}`)
   // Dónde está el total de disponibilidades, buscado POR RÓTULO. Si la pestaña todavía no se armó,
   // refCaja queda en null y el cuadro lo dice en vez de referenciar una celda inventada.
   let refCaja = null
@@ -407,10 +467,8 @@ async function main() {
     // Un nombre sigue a la celda aunque se mueva, así que con él el orden de los pasos deja de
     // importar. La referencia por rótulo se conserva como respaldo para la primera corrida, cuando
     // el nombre todavía no existe.
-    const nombres = await google.getNamedRanges(ID).catch(() => [])
-    const tieneNombre = (n) => nombres.some((x) => x.name === n)
-    if (tieneNombre(N_CAJA.total)) refCaja = N_CAJA.total
-    if (tieneNombre(N_CAJA.fecha)) refCajaFecha = N_CAJA.fecha
+    if (nombres.has(N_CAJA.total)) refCaja = N_CAJA.total
+    if (nombres.has(N_CAJA.fecha)) refCajaFecha = N_CAJA.fecha
   } catch { /* la pestaña puede no existir todavía */ }
   console.log(`Efectivo al inicio: ${refCaja ?? '⚠ sin pestaña de saldos'} · ancla en ${refCajaFecha ?? '(sin fecha)'}`)
 
@@ -426,7 +484,7 @@ async function main() {
   }
   const data = []
   for (const [pestaña, periodo] of [['Cash Flow Semanal', 'semanal'], ['Cash Flow Mensual', 'mensual']]) {
-    const g = grilla(periodo, faltantes, refCaja, refCajaFecha, filasTabla)
+    const g = grilla(periodo, faltantes, refCaja, refCajaFecha, filasTabla, nombres)
     // Los marcadores se resuelven acá, cuando el cuadro ya está armado y se sabe en qué fila quedó
     // cada línea. Escribir los números a mano rompería el día que el cuadro crezca una línea.
     const ingreso = g.meta.detalle.filter((d) => d.signo > 0).map((d) => d.fila)

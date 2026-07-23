@@ -174,5 +174,59 @@ export function montoEnVentana(items = [], desde, hasta) {
   return items.reduce((s, i) => (i.fecha >= desde && i.fecha < hasta ? s + i.monto : s), 0)
 }
 
+/**
+ * NÚCLEO PURO: las filas de una versión ANTERIOR de este mismo bloque que quedaron sueltas.
+ *
+ * ═══ POR QUÉ EXISTE (23/07) ═══
+ *
+ * El Cash Flow Mensual tenía DOS copias del bloque de cobertura: un residuo en las filas 131–154 y
+ * el vivo en las 157–193. No leían lo mismo —el residuo `'Cheques Emitidos'!$M$13:$M$401` y
+ * `'Tarjeta de Credito'!$L$3:$L$330`, el vivo `$M$4` y `$L$400`— así que la contradicción iba a
+ * aparecer el día que Cheques escribiera en las filas 4 a 12 o Tarjeta pasara la 330. Encima el
+ * residuo tenía seriales crudos sin formato (46260, 46291, 46321) donde debía decir "agosto 26".
+ *
+ * MECANISMO: el residuo perdió su fila de FIRMA (el título del bloque), así que la búsqueda de
+ * idempotencia no lo encontraba; y la limpieza de colas sólo borra HACIA ABAJO, de modo que un
+ * residuo que quedó ARRIBA del bloque nuevo era inmune y sobrevivía a cada corrida.
+ *
+ * ═══ Y POR QUÉ NO ROMPE LA REGLA DE ORO ═══
+ *
+ * No se borra "todo lo que hay entre A y B": se borran SÓLO las filas que este bloque reconoce como
+ * PROPIAS — su rótulo está en la lista de etiquetas que el generador acaba de producir, o la fila
+ * está vacía, o es una fila de mes (un serial o "agosto 26") dentro del tramo. Cualquier texto que
+ * una persona haya escrito ahí no matchea y se preserva intacto.
+ *
+ * @param {any[][]} actual   la pestaña leída (valores), desde la fila 1
+ * @param {any[][]} generado la grilla que el bloque nuevo produjo (para reconocer sus filas por firma)
+ * @param {{desde:number, hasta:number}} vivo el rango (1-based, inclusive) que ocupa el bloque nuevo
+ * @returns {number[]} filas 1-based a limpiar
+ */
+export function fragmentosViejos(actual = [], generado = [], { desde = 0, hasta = -1 } = {}) {
+  // Los rótulos de la columna A del bloque ("CHEQUES — total emitido", "TOTAL A CUBRIR"…). Cubren las
+  // filas titeadas, incluidas las de dato — que en el residuo traen números pegados en vez de las
+  // fórmulas del bloque nuevo, así que NO se pueden reconocer por su terna B/C.
+  const etiquetas = new Set(generado.map((f) => String(f?.[0] ?? '').trim()).filter(Boolean))
+  // Los sub-encabezados SIN rótulo ("|Cantidad|Monto"): se reconocen por su terma B/C, con A vacía.
+  const firmaBC = (fila) => (fila || []).slice(1, 3).map((c) => String(c ?? '').trim().toLowerCase()).join('|')
+  const subHeaders = new Set(generado.filter((f) => !String(f?.[0] ?? '').trim() && firmaBC(f) !== '|').map(firmaBC))
+  const dentro = (f) => f >= desde && f <= hasta
+  const txt = (f) => String(actual[f - 1]?.[0] ?? '').trim()
+  const vacia = (f) => !(actual[f - 1] || []).some((c) => String(c ?? '').trim())
+  // Una fila de mes: el serial crudo de una fecha, o el mes ya formateado ("agosto 26").
+  const esMes = (t) => /^\d{4,6}$/.test(t) || /^(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)/i.test(t)
+  const propia = (f) => etiquetas.has(txt(f)) || (!txt(f) && subHeaders.has(firmaBC(actual[f - 1]))) || vacia(f) || esMes(txt(f))
+
+  // Sólo se ancla en filas cuyo RÓTULO de columna A pertenece al bloque: un sub-encabezado suelto
+  // aparece en muchos lados y no alcanza para afirmar "acá hay un residuo".
+  const reconocidas = []
+  for (let f = 1; f <= actual.length; f++) if (!dentro(f) && etiquetas.has(txt(f))) reconocidas.push(f)
+  if (!reconocidas.length) return []
+  const min = Math.min(...reconocidas)
+  const max = Math.max(...reconocidas)
+  const out = []
+  for (let f = min; f <= max; f++) if (!dentro(f) && propia(f)) out.push(f)
+  return out
+}
+
 // Se re-exporta para no romper a quien ya la importaba de acá; su casa es sheet-pestanas.mjs.
 export { hallarPestana }

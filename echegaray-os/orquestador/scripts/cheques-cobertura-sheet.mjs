@@ -17,7 +17,7 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { repartirCobertura, aCubrirPorMes, normComprobante, esLlaveUtil, hallarPestana, MARCAS, marcaDe } from '../lib/cheques-cobertura.mjs'
+import { repartirCobertura, aCubrirPorMes, normComprobante, esLlaveUtil, hallarPestana, MARCAS, marcaDe, fragmentosViejos } from '../lib/cheques-cobertura.mjs'
 import { INSTRUMENTOS, formulasInstrumento } from '../lib/cash-flow-lineas.mjs'
 import { ARCA as N_ARCA } from '../lib/rangos-nombrados.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
@@ -195,6 +195,19 @@ async function main() {
       values: Array.from({ length: ultima - finBloque }, () => new Array(ANCHO).fill('')),
     }])
     console.log(`  🧹 ${ultima - finBloque} fila(s) de versiones anteriores del bloque, borradas (${finBloque + 1}–${ultima})`)
+  }
+
+  // ═══ Y LO QUE QUEDÓ ARRIBA ═══
+  // La limpieza de colas de arriba sólo mira HACIA ABAJO. Un residuo de este mismo bloque que quedó
+  // ENCIMA del bloque vivo (le pasó: filas 131–154 mientras el vivo estaba en 157–193, con seriales
+  // crudos y rangos $M$13/$L$330 que no coincidían con el vivo $M$4/$L$400) era inmune. Se borran
+  // sólo las filas que este bloque reconoce como propias; el texto de una persona no matchea.
+  const arriba = fragmentosViejos(actual, g.filas, { desde: F, hasta: finBloque })
+  if (arriba.length) {
+    await google.batchUpdateValues(ID, arriba.map((f) => ({
+      range: `${PESTAÑA}!A${f}:${letra(ANCHO - 1)}${f}`, values: [new Array(ANCHO).fill('')],
+    })))
+    console.log(`  🧹 ${arriba.length} fila(s) de un residuo del bloque que había quedado ARRIBA, borradas (${arriba.join(', ')})`)
   }
 
   const hoja = (await google.getSheetMeta(ID)).find((s) => s.title === PESTAÑA)

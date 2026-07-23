@@ -50,19 +50,44 @@ export const CAJA = {
 }
 
 /**
+ * LA FILA DE TOTAL DE CADA PESTAÑA QUE PROYECTA SU PROPIO GASTO — LOS DOCE MESES, POR NOMBRE.
+ *
+ * POR QUÉ EXISTEN (23/07). El Cash Flow Mensual leía la proyección de Estructura como
+ * `Estructura!I$13`, con el número de fila congelado el día que se generó el cuadro. Estructura se
+ * rediseñó, su TOTAL pasó de la fila 13 a la 15, y la fila 13 quedó siendo "Ropa y seguridad": la
+ * proyección de agosto mostró $763.365 contra $4.357.648 reales, y de septiembre a diciembre —donde
+ * esa fila vale "—"— cayó a CERO. $15.017.169 de egresos que el cuadro dejó de proyectar sin dar un
+ * solo error. Es el mismo defecto que ya se había cobrado $157.772.297 en Jornales.
+ *
+ * Un número de fila escrito en una fórmula es una bomba con temporizador: se arma sola cada vez que
+ * la pestaña de origen se rediseña. El nombre se mueve CON la fila. Jornales y CAJA ya lo tenían;
+ * Estructura y Recurrentes no, y por eso volvió a pasar.
+ *
+ * El rango es la FILA ENTERA de los doce meses (B..M del total), y el consumidor elige el mes con
+ * INDEX(…;1;MONTH(fecha)) — así tampoco depende de en qué COLUMNA arranca enero.
+ */
+export const TABLAS = {
+  Estructura: 'ESTRUCTURA_TOTAL_MESES',
+  Recurrentes: 'RECURRENTES_TOTAL_MESES',
+}
+
+/**
  * NÚCLEO PURO: los pedidos de la API para dejar un conjunto de nombres apuntando donde toca.
  * Actualiza el que ya existe en vez de crear otro — la API no falla al duplicar un nombre, se queda
  * con dos y las fórmulas empiezan a leer el equivocado.
  *
- * @param {Array<{name:string, fila:number, col:number}>} destinos fila y columna 1-indexadas
+ * `filaFin`/`colFin` (1-indexadas, inclusive) son opcionales: sin ellas el nombre apunta a UNA celda,
+ * con ellas a un rango. Hace falta para nombrar la fila de doce meses de una tabla de proyección.
+ *
+ * @param {Array<{name:string, fila:number, col:number, filaFin?:number, colFin?:number}>} destinos
  * @param {Array<{name:string, namedRangeId:string}>} existentes lo que ya hay en el archivo
  */
 export function pedidos(sheetId, destinos = [], existentes = []) {
   return destinos.map((d) => {
     const range = {
       sheetId,
-      startRowIndex: d.fila - 1, endRowIndex: d.fila,
-      startColumnIndex: d.col - 1, endColumnIndex: d.col,
+      startRowIndex: d.fila - 1, endRowIndex: d.filaFin ?? d.fila,
+      startColumnIndex: d.col - 1, endColumnIndex: d.colFin ?? d.col,
     }
     const ya = existentes.find((r) => r.name === d.name)
     return ya

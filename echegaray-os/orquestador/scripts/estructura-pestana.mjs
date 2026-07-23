@@ -22,7 +22,8 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { SUBRUBROS, OTROS } from '../lib/sub-rubro-estructura.mjs'
-import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { TABLAS as N_TABLAS, publicar } from '../lib/rangos-nombrados.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Estructura'
@@ -57,12 +58,24 @@ function grilla() {
   const filas = []
   const push = (c) => { filas.push(c); return filas.length }
   const vacia = () => Array(ANCHO).fill('')
+  /** Una fila que el generador declara SUYA y vacía: limpia su propio residuo, no lo de nadie más. */
+  const vaciaPropia = () => Array(ANCHO).fill(VACIO)
 
   const t = vacia(); t[0] = 'Gastos de estructura'; push(t)
   const s = vacia()
   s[0] = `Sale de Compras, rubro "Estructura" (columna AC). De agosto en adelante son PROYECCIONES: promedio de los meses con gasto, ajustado por la inflación de Parámetros. Sólo se proyecta lo que apareció en ${MIN_MESES} meses o más.`
   push(s)
-  push(vacia()); push(vacia())
+  // ═══ ESTAS DOS FILAS SON MÍAS Y VAN VACÍAS ═══
+  //
+  // POR QUÉ CAMBIÓ (23/07). Iban con cadena vacía, que para `fusionar()` significa "no es mi celda,
+  // preservá lo que haya". Una versión anterior de esta pestaña tenía el título de sección en la
+  // fila 3 y el encabezado de meses en la 4; cuando el bloque bajó dos filas, ESAS DOS FILAS VIEJAS
+  // SOBREVIVIERON a cada regeneración. El auditor las marcó como `seccion-repetida`, pero el daño
+  // real fue otro: el TOTAL corrió de la fila 13 a la 15 y el Cash Flow Mensual —que tenía la 13
+  // escrita a mano— se quedó proyectando "Ropa y seguridad".
+  //
+  // El centinela dice "es mi celda y va vacía": se limpia lo mío, no se toca nada de una persona.
+  push(vaciaPropia()); push(vaciaPropia())
   // EL TÍTULO DE SECCIÓN VA JUSTO ARRIBA DE SU ENCABEZADO. Aprovecha una de las filas en blanco que
   // ya había, así que no corre ninguna fila: las fórmulas de abajo referencian filas absolutas y un
   // desplazamiento las dejaría apuntando a otra cosa, en silencio.
@@ -168,6 +181,15 @@ async function main() {
   const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, g.filas, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
   await formatear(google, sheetId, g)
+
+  // ═══ EL TOTAL, POR NOMBRE ═══
+  // El Cash Flow Mensual lee de acá su proyección de estructura. Tenía la fila escrita a mano y el
+  // día que este cuadro se corrió dos filas quedó leyendo "Ropa y seguridad": $15.017.169 sin
+  // proyectar, sin error. Un nombre se mueve con la fila; un número de fila, no.
+  await publicar(google, ID, sheetId, [
+    { name: N_TABLAS.Estructura, fila: g.fTot, col: C_MES0 + 1, colFin: C_MES0 + 12 },
+  ])
+  console.log(`  ⇒ ${N_TABLAS.Estructura} → ${letra(C_MES0)}${g.fTot}:${letra(C_MES0 + 11)}${g.fTot}`)
 
   const v = await google.readSheetValues(ID, `${PESTAÑA}!A1:${letra(C_PCT)}${g.filas.length}`)
   const err = []
