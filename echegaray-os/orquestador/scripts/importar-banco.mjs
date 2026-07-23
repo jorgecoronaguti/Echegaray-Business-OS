@@ -41,6 +41,7 @@ import { MOVIMIENTOS, MOVIMIENTOS_DIA, SALDO_INICIAL, CUENTA, ORIGEN } from '../
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const MIGRACION = join(RAIZ, 'supabase', 'migrations', '20260723120000_banco_movimientos.sql')
+const MIGRACION_SALDO = join(RAIZ, 'supabase', 'migrations', '20260723180000_banco_saldo_declarado.sql')
 const DRY = process.argv.includes('--dry')
 const IGUAL = process.argv.includes('--igual-cargalo')
 const SOLO_SEMBRAR = process.argv.includes('--sembrar')
@@ -80,7 +81,8 @@ async function main() {
   // ── 1. La tabla, y la semilla ──
   if (!DRY) {
     await query(readFileSync(MIGRACION, 'utf8'))
-    console.log('✓ public.banco_movimientos lista')
+    await query(readFileSync(MIGRACION_SALDO, 'utf8'))
+    console.log('✓ public.banco_movimientos y public.banco_saldo_declarado listas')
   }
 
   const { rows: [{ n: yaHabia }] } = await query('select count(*)::int as n from public.banco_movimientos')
@@ -219,6 +221,33 @@ async function main() {
     console.log(Math.abs(reconstruido - decl.saldo) < 0.005
       ? `   ✓ el OS reproduce el saldo declarado: ${$$(reconstruido)}`
       : `   ⚠ el OS reconstruye ${$$(reconstruido)} y el banco declara ${$$(decl.saldo)} — ${$$(reconstruido - decl.saldo)} sin explicar`)
+
+    // ═══ Y SE GUARDA, QUE ES LO QUE FALTABA (23/07) ═══
+    //
+    // Hasta acá este control se IMPRIMÍA y se perdía. El resultado era que CAJA seguía mostrando el
+    // último saldo confirmado —el de ayer— y los $168.730,09 que ya habían salido de la cuenta no
+    // estaban en ninguna celda. El saldo declarado es un HECHO del banco y necesita un lugar donde
+    // vivir para que el Sheet lo pueda leer por fórmula.
+    //
+    // PISA AL DEL MISMO DÍA: la segunda descarga de la jornada trae el saldo actualizado y es el que
+    // vale. Acumular los dos dejaría dos verdades para la misma fecha.
+    if (!DRY) {
+      await query(
+        `insert into public.banco_saldo_declarado (cuenta, fecha, saldo, origen)
+         values ($1, $2, $3, $4)
+         on conflict (cuenta, fecha) do update
+           set saldo = excluded.saldo, origen = excluded.origen, importado_en = now()`,
+        // EL NOMBRE DEL ARCHIVO, NO SU RUTA. La ruta completa de una descarga temporal es ruido en
+        // una celda que el dueño lee, y encima envejece: el archivo ya no está donde dice.
+        [CUENTA.numero, decl.fecha, decl.saldo,
+          `${ARCHIVO ? `extracto ${ARCHIVO.split('/').pop()}` : 'extracto pegado en la terminal'} · línea "Saldo al ${decl.fecha}" · importado ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`],
+      )
+      console.log('   ✓ guardado en public.banco_saldo_declarado — de ahí lo toma _BANCO_RAW y CAJA muestra la plata de HOY')
+    }
+  } else {
+    // UN EXTRACTO SIN "SALDO AL …" NO ES UN ERROR, PERO SE DICE. Sin esa línea, CAJA se queda con el
+    // último saldo confirmado y los movimientos del día que ya salieron de la cuenta no se ven.
+    console.log('\n⚠ este extracto no trae la línea "Saldo al DD/MM/AAAA": CAJA va a mostrar el último saldo confirmado por el banco, sin los movimientos del día.')
   }
 
   if (!nuevos.length && !correcciones.length && !(SACAR && soloBase.length)) {

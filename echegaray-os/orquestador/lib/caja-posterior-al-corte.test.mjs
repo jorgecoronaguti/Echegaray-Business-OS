@@ -3,7 +3,42 @@ import assert from 'node:assert/strict'
 import {
   formulaCobrosPosteriores, formulaChequesDebitadosPosteriores, formulaNetaPosterior,
   formulaUltimoSaldo, formulaFechaCorte, COB, CHQ,
+  formulaSaldoDelDia, formulaFechaDelDia, formulaFechaConfirmada, formulaMovimientosDelDia, formulaDetalleDelDia,
 } from './caja-posterior-al-corte.mjs'
+
+// ═══ EL SALDO DEL DÍA (23/07) ═══
+//
+// La disponibilidad salía de la última celda NO VACÍA de la columna de saldos, y los movimientos del
+// día llegan sin saldo corrido: CAJA mostraba $4.982.191,63 con $4.813.461,54 en la cuenta.
+test('la disponibilidad del banco es el saldo DECLARADO, con el confirmado de respaldo', () => {
+  const f = formulaSaldoDelDia('SALDO_BANCO_DECLARADO')
+  assert.ok(f.startsWith('=IF(SALDO_BANCO_DECLARADO="";'), f)
+  // El respaldo es el último saldo confirmado, no un número pegado ni un cero.
+  assert.ok(f.includes('INDEX(_BANCO_RAW!$D$4:$D'), f)
+  assert.ok(f.endsWith(';SALDO_BANCO_DECLARADO)'), f)
+  // Y la fecha acompaña al saldo que se muestra: un saldo del 22 rotulado 23 saltea un día de la
+  // ventana de "movimientos posteriores al corte".
+  const g = formulaFechaDelDia('SALDO_BANCO_FECHA')
+  assert.ok(g.startsWith('=IF(SALDO_BANCO_FECHA="";MAX(_BANCO_RAW!$A$4:$A)'), g)
+})
+
+test('la fecha del saldo confirmado ignora los movimientos del día', () => {
+  const f = formulaFechaConfirmada()
+  // No es MAX de la columna de fechas: ésa incluye el día en curso, que es justo lo que no está
+  // confirmado. Sólo cuentan las filas que traen saldo corrido.
+  assert.ok(!/^=MAX\(/.test(f), f)
+  assert.ok(f.includes('_BANCO_RAW!$D$4:$D<>""'), f)
+})
+
+test('los movimientos del día se identifican por NO tener saldo, y con su signo', () => {
+  const f = formulaMovimientosDelDia()
+  assert.ok(f.includes('_BANCO_RAW!$D$4:$D=""'), f)
+  // Con signo: una compra resta y un depósito suma. Un ABS acá haría que todo sume.
+  assert.ok(!f.includes('ABS('), f)
+  // Y sólo filas con fecha real: una celda vacía no es un movimiento.
+  assert.ok(f.includes('ISNUMBER(_BANCO_RAW!$A$4:$A)'), f)
+  assert.ok(formulaDetalleDelDia().includes('TEXTJOIN'))
+})
 
 test('los cobros posteriores miran SÓLO lo que el extracto no cubre', () => {
   const f = formulaCobrosPosteriores('$F$19')

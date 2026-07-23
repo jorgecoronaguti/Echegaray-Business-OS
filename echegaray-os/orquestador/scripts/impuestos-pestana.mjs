@@ -246,11 +246,20 @@ function grilla(iva, planes, iibb, C) {
   push([seccion(4, 'Otros impuestos — ¿qué más se paga y no estaba a la vista?')])
   cabecera()
   const B = '_BANCO_RAW'
+  // ═══ CON EL SIGNO, NO CON EL VALOR ABSOLUTO (23/07) ═══
+  //
+  // Acá había ABS(). Con ABS, una REVERSA del banco —"Anul imp ley 25.413 debito 0,6%", +$294,78 el
+  // 01/07— suma como si fuera un cargo más, en vez de restarse. Una anulación no es un gasto: es la
+  // devolución de uno. Es el mismo error de signo que con las notas de crédito de ARCA, donde costó
+  // $41,9M.
+  //
+  // El extracto trae los débitos en NEGATIVO, así que el costo del mes es −SUMA(importes con signo):
+  // los cargos suman y las reversas restan, solas, sin una lista de excepciones que mantener.
   const porMesBanco = (patron) => (m) =>
-    `=SUMPRODUCT((YEAR(${B}!$A$4:$A)=${AÑO})*(MONTH(${B}!$A$4:$A)=${m})*ISNUMBER(SEARCH("${patron}";${B}!$F$4:$F))*ABS(IF(ISNUMBER(${B}!$C$4:$C);${B}!$C$4:$C;0)))`
+    `=-SUMPRODUCT((YEAR(${B}!$A$4:$A)=${AÑO})*(MONTH(${B}!$A$4:$A)=${m})*ISNUMBER(SEARCH("${patron}";${B}!$F$4:$F))*IF(ISNUMBER(${B}!$C$4:$C);${B}!$C$4:$C;0))`
   const o0 = filas.length + 1
   const fCheque = mensual('Impuesto al cheque (Ley 25.413)', porMesBanco('Impuesto al cheque'),
-    'Extracto Santander · el banco lo debita solo y declara la alícuota en el concepto ("debito 0,6%"). Sólo hay dato en los meses que cubre el extracto.')
+    'Extracto Santander · el banco lo debita solo y declara la alícuota en el concepto ("debito 0,6%"). NETO de las anulaciones que el banco reversa ("Anul imp ley 25.413"): una reversa no es un gasto. Sólo hay dato en los meses que cubre el extracto.')
   // Y EN LA COLUMNA DONDE ESTÁ, NO EN LA QUE PARECE. El texto "Anticipo de Ganancias" no vive en
   // "Concepto" sino en "Detalles / Obra": buscarlo en la columna equivocada daba cero en los doce
   // meses, o sea un impuesto que se paga y el cuadro declaraba inexistente. Se buscó dónde está.

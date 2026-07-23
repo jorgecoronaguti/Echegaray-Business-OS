@@ -121,6 +121,34 @@ export const TARJETA = {
  * "cobrado"   → se acreditó. Ya está adentro del saldo del banco; contarlo otra vez lo duplicaría.
  */
 export const ECHEQS_TERCEROS = [
+  // ═══ UN VALOR QUE ESTÁ, CON MEDIO DATO (23/07) ═══
+  //
+  // El banco lo tiene EN CUSTODIA desde el 22/07 15:46 (operación 7934081, aceptada) y la cartera no
+  // lo incluía: CAJA declaraba $10.000.000 de valores a depositar y el banco tiene $10.290.000.
+  //
+  // LO QUE FALTA NO SE INVENTA. La consulta de operaciones eCHEQ del Santander da id de operación,
+  // tipo, fecha e importe — y nada más. Busqué el número de cheque, el emisor, el CUIT y el
+  // vencimiento en "Cheques Recibidos", en "Cobranzas", en public.banco_movimientos y en el índice
+  // del data room: no están en ninguna parte. Van en null, y `null` se dibuja como DESCONOCIDO en la
+  // pestaña. Poner un emisor plausible sería peor que no tenerlo: un dato inventado no se distingue
+  // de uno medido.
+  //
+  // SIN VENCIMIENTO NO ENTRA AL CALENDARIO. `pago: null` lo deja fuera de los tramos y lo manda a la
+  // fila "sin fecha", que es donde tiene que verse: una fecha vacía comparada como número vale cero
+  // y lo habría metido entero en "Vencido".
+  //
+  // Y ES ADEMÁS UNA COBRANZA QUE NADIE REGISTRÓ: Cobranzas no tiene ninguna fila de $290.000.
+  {
+    operacion: '7934081',
+    numero: null,
+    emisor: null,
+    cuit: null,
+    emision: '2026-07-22',
+    pago: null,
+    importe: 290000,
+    estado: 'custodia',
+    falta: 'número de cheque, emisor, CUIT y fecha de vencimiento',
+  },
   { numero: '90020099', emisor: 'Alimentos Del Sur SA', cuit: '30716490498', emision: '2026-06-11', pago: '2026-07-31', importe: 10000000, estado: 'custodia' },
   { numero: '90020100', emisor: 'Alimentos Del Sur SA', cuit: '30716490498', emision: '2026-06-11', pago: '2026-08-15', importe: 10000000, estado: 'endosado', beneficiario: 'ALUMETAL S.A' },
   { numero: '90020101', emisor: 'Alimentos Del Sur SA', cuit: '30716490498', emision: '2026-06-11', pago: '2026-08-31', importe: 10000000, estado: 'endosado', beneficiario: 'ALUMETAL S.A' },
@@ -353,7 +381,21 @@ export function verificarCadena(movs = MOVIMIENTOS, inicial = SALDO_INICIAL) {
  */
 export function clasificarMovimiento(concepto = '') {
   const c = String(concepto)
-  if (/impuesto ley 25\.413/i.test(c)) return 'Impuesto al cheque (Ley 25.413)'
+  // ═══ LA ANULACIÓN ES DEL MISMO IMPUESTO, Y POR ESO ENTRA POR LA MISMA PUERTA (23/07) ═══
+  //
+  // El patrón anterior era /impuesto ley 25\.413/ y el banco reversa el cargo con OTRO texto: "Anul
+  // imp ley 25.413 debito 0,6%" (+$294,78 el 01/07). "Anul imp" no es "Impuesto", así que la reversa
+  // caía en el cajón de descarte —"Transferencias a proveedores"— y el impuesto al cheque de julio
+  // quedaba en $485.253,16 cuando el costo real del mes es $484.958,38.
+  //
+  // Son $294,78, y no es una cuestión de plata: es EL MISMO ERROR DE SIGNO que con las notas de
+  // crédito de ARCA, donde costó $41,9M. Una anulación no es un gasto: es la devolución de uno. Va
+  // clasificada con el impuesto que anula y RESTANDO — de ahí que la fila del cuadro sume el importe
+  // con su signo (los débitos vienen negativos) en vez de tomarle el valor absoluto.
+  //
+  // Se ancla a "ley 25.413", que es la norma y no la redacción: cubre "Impuesto ley 25.413",
+  // "Anul imp ley 25.413" y cualquier variante futura del banco sobre el mismo tributo.
+  if (/ley 25\.413/i.test(c)) return 'Impuesto al cheque (Ley 25.413)'
   if (/interes por descubierto|iva 10,5%|iva percep/i.test(c)) return 'Costo financiero del descubierto'
   if (/pago haberes|pago de haberes/i.test(c)) return 'Sueldos'
   if (/e-?cheq|cheque debitado|canje interno/i.test(c)) return 'Cheques y echeq'

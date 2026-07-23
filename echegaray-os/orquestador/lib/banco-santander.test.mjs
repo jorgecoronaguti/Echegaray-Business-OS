@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { MOVIMIENTOS, MOVIMIENTOS_DIA, CUENTA, TARJETA, ACUERDO, verificarCadena, porTipo, ingresosPorNaturaleza, naturalezaIngreso, enCartera, endosados, totalEcheqs, antiguedadDias } from './banco-santander.mjs'
+import { MOVIMIENTOS, MOVIMIENTOS_DIA, CUENTA, TARJETA, ACUERDO, verificarCadena, porTipo, ingresosPorNaturaleza, naturalezaIngreso, enCartera, endosados, totalEcheqs, antiguedadDias, clasificarMovimiento } from './banco-santander.mjs'
 
 // EL TEST QUE HACE CONFIABLE LA TRANSCRIPCIÓN. El extracto es una cadena: saldo(n) = saldo(n−1) +
 // importe(n). Si tipeé mal un dígito, la cadena se rompe y esto falla. Sin este test, los 71
@@ -76,9 +76,51 @@ test('el impuesto al cheque y el costo del descubierto salen separados', () => {
 })
 
 test('la cartera de echeqs no mezcla lo entregado con lo propio', () => {
-  assert.equal(totalEcheqs(enCartera()), 10000000)
+  // 23/07: la cartera pasó a $10.290.000 al incorporar el eCheq que el banco tiene en custodia desde
+  // el 22/07 (operación 7934081). Antes decía $10.000.000 y el banco decía $10.290.000.
+  assert.equal(totalEcheqs(enCartera()), 10290000)
   assert.equal(totalEcheqs(endosados()), 20000000)
-  assert.equal(enCartera().length + endosados().length + 5, 8)
+  assert.equal(enCartera().length + endosados().length + 5, 9)
+})
+
+// ═══ LO QUE FALTA SE NOMBRA, NO SE COMPLETA (23/07) ═══
+//
+// El eCheq de $290.000 está en custodia y no hay forma de saber quién lo emitió: la consulta de
+// operaciones del Santander da id, tipo, fecha e importe, y el dato no aparece en Cheques Recibidos,
+// ni en Cobranzas, ni en el extracto, ni en el data room. Un emisor plausible inventado no se
+// distingue de uno medido: por eso va en null y la pestaña lo dibuja DESCONOCIDO.
+test('un valor con medio dato entra a la cartera con el resto DESCONOCIDO', () => {
+  const incompleto = enCartera().find((e) => e.falta)
+  assert.ok(incompleto, 'el eCheq en custodia sin identificar tiene que estar en la cartera')
+  assert.equal(incompleto.importe, 290000)
+  assert.equal(incompleto.operacion, '7934081')
+  // Ni emisor, ni CUIT, ni número, ni vencimiento inventados.
+  for (const k of ['numero', 'emisor', 'cuit', 'pago']) assert.equal(incompleto[k], null, `${k} no se inventa`)
+  // Y el faltante está escrito, para que se pueda ir a buscar.
+  assert.match(incompleto.falta, /emisor/i)
+})
+
+// ═══ UNA ANULACIÓN NO ES UN GASTO (23/07) ═══
+//
+// El banco reversa el impuesto al cheque con OTRO texto: "Anul imp ley 25.413 debito 0,6%". El
+// patrón viejo pedía "Impuesto ley 25.413" y la reversa caía en "Transferencias a proveedores": el
+// impuesto de julio quedaba en $485.253,16 cuando el costo real del mes es $484.958,38. Es el mismo
+// error de signo que con las notas de crédito de ARCA.
+test('la reversa del impuesto al cheque se clasifica con el impuesto que anula', () => {
+  assert.equal(clasificarMovimiento('Anul imp ley 25.413 debito 0,6%'), 'Impuesto al cheque (Ley 25.413)')
+  assert.equal(clasificarMovimiento('Impuesto ley 25.413 debito 0,6%'), 'Impuesto al cheque (Ley 25.413)')
+  assert.equal(clasificarMovimiento('Impuesto ley 25.413 credito 0,6%'), 'Impuesto al cheque (Ley 25.413)')
+})
+
+test('el impuesto al cheque de julio es NETO de la anulación', () => {
+  // El cuadro suma el importe CON SIGNO y lo da vuelta (los débitos vienen negativos), así que la
+  // reversa resta sola. Con ABS —lo que había— la anulación sumaba y daba $485.547,94.
+  const julio = MOVIMIENTOS.filter((m) => m.fecha.startsWith('2026-07')
+    && clasificarMovimiento(m.concepto) === 'Impuesto al cheque (Ley 25.413)')
+  const neto = -julio.reduce((s, m) => s + m.importe, 0)
+  assert.equal(Math.round(neto * 100) / 100, 484958.38)
+  // Y la reversa está adentro del conjunto: si dejara de estarlo, el neto volvería a $485.253,16.
+  assert.ok(julio.some((m) => /^anul/i.test(m.concepto)), 'la anulación del 01/07 tiene que contar')
 })
 
 // El acuerdo y la tarjeta NO son caja. Que estén en el archivo es útil; que sumen sería el error que

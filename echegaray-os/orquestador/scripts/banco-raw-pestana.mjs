@@ -28,6 +28,7 @@ import { loadConfig } from '../lib/config.mjs'
 import * as BANCO from '../lib/banco-santander.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { publicar } from '../lib/rangos-nombrados.mjs'
 import { query } from '../lib/db.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -41,6 +42,47 @@ export const COLUMNAS = [
 ]
 export const COL = { fecha: 'A', concepto: 'B', importe: 'C', saldo: 'D', signo: 'E', naturaleza: 'F' }
 export const FILA0 = 4
+
+/**
+ * EL BLOQUE DEL SALDO DECLARADO — la única celda del archivo que dice cuánta plata hay HOY.
+ *
+ * POR QUÉ VA AL COSTADO Y NO COMO UNA FILA MÁS (23/07). No es un movimiento: es el saldo que el
+ * banco declara al cierre del día, y el detalle no lo puede reproducir solo porque los movimientos
+ * del día llegan SIN saldo corrido. Meterlo como fila rompería la cadena de saldos, que es el
+ * control que hace confiable a toda la réplica.
+ *
+ * Y VA A PARTIR DE LA COLUMNA H, dejando la G libre: de la A a la F cuelgan por fórmula CAJA,
+ * Impuestos y Cheques con rangos abiertos ($A$4:$A). Un bloque metido adentro de esas columnas se
+ * sumaría como si fuera un movimiento.
+ *
+ * SE LEE POR NOMBRE, NO POR CELDA: `SALDO_BANCO_DECLARADO` y `SALDO_BANCO_FECHA`. Es la misma
+ * decisión que TIPO_CAMBIO_USD — una referencia por celda muere en silencio el día que la pestaña
+ * cambia de forma.
+ */
+export const DECL = { col: 'H', colValor: 'I', fila0: 1, iCol: 7, iValor: 8 }
+export const RANGO_SALDO = 'SALDO_BANCO_DECLARADO'
+export const RANGO_SALDO_FECHA = 'SALDO_BANCO_FECHA'
+
+/**
+ * NÚCLEO PURO: las cuatro filas del bloque, a partir de la columna H.
+ *
+ * Devuelve pares [rótulo, valor]. Sin saldo declarado devuelve los rótulos con el valor en el
+ * CENTINELA: así el bloque se limpia solo cuando el extracto nuevo no trae la línea "Saldo al …",
+ * en vez de dejar el saldo de anteayer haciéndose pasar por el de hoy.
+ *
+ * @param {{fecha:string, saldo:number, origen:string}|null} decl
+ */
+export function bloqueDeclarado(decl) {
+  return [
+    // EL RÓTULO TIENE QUE ENTRAR EN SU COLUMNA. "SALDO QUE DECLARA EL BANCO" es más ancho que la H y
+    // el render lo mostraba mutilado ("ALDO QUE DECLARA EL BANCO"): un encabezado al que le falta
+    // una letra se lee como un error del archivo. Se vio mirando el PDF, no leyendo la celda.
+    ['SALDO DECLARADO', ''],
+    ['Fecha', decl ? decl.fecha : VACIO],
+    ['Saldo', decl ? Number(decl.saldo) : VACIO],
+    ['Origen', decl ? String(decl.origen ?? '') : VACIO],
+  ]
+}
 
 /**
  * NÚCLEO PURO: una fila de la réplica.
@@ -128,6 +170,31 @@ async function main() {
       ...(BANCO.MOVIMIENTOS_DIA ?? []),
     ]
   }
+  // ═══ Y EL SALDO QUE EL BANCO DECLARA, QUE NO ES UN MOVIMIENTO ═══
+  //
+  // El detalle termina en el último saldo CONFIRMADO. Los movimientos del día llegan sin saldo
+  // corrido, así que sin este dato CAJA muestra la plata de ayer: al 23/07 mostraba $4.982.191,63
+  // cuando el banco declaraba $4.813.461,54 —los $168.730,09 de la compra con débito ya habían
+  // salido de la cuenta y ninguna celda lo reflejaba—.
+  let decl = null
+  try {
+    const { rows } = await query(
+      `select fecha, saldo, origen from public.banco_saldo_declarado order by fecha desc limit 1`,
+    )
+    if (rows.length) {
+      decl = {
+        fecha: rows[0].fecha instanceof Date ? rows[0].fecha.toISOString().slice(0, 10) : String(rows[0].fecha).slice(0, 10),
+        saldo: Number(rows[0].saldo),
+        origen: rows[0].origen,
+      }
+    }
+  } catch (e) {
+    console.warn(`⚠ no pude leer public.banco_saldo_declarado (${String(e.message).slice(0, 70)})`)
+  }
+  console.log(decl
+    ? `saldo declarado por el banco al ${decl.fecha}: $${decl.saldo.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+    : '⚠ sin saldo declarado cargado: CAJA va a mostrar el último saldo confirmado del detalle (corré importar-banco.mjs con un extracto que traiga la línea "Saldo al …")')
+
   const datos = movs.map(fila)
   const corte = new Date().toISOString().slice(0, 16).replace('T', ' ')
 
@@ -148,6 +215,13 @@ async function main() {
   if ((hoja.rows ?? 0) < alto) {
     await google.spreadsheetBatchUpdate(ID, [{ updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { rowCount: alto } }, fields: 'gridProperties.rowCount' } }])
   }
+  // EL ANCHO TIENE QUE ALCANZAR PARA EL BLOQUE DEL SALDO DECLARADO. Escribir en una columna que no
+  // existe no da un error visible: la API recorta el rango y el bloque desaparece sin avisar.
+  const ancho = DECL.iValor + 1
+  if ((hoja.cols ?? 0) < ancho) {
+    await google.spreadsheetBatchUpdate(ID, [{ updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { columnCount: ancho } }, fields: 'gridProperties.columnCount' } }])
+    hoja = (await google.getSheetMeta(ID)).find((h) => h.title === PESTAÑA)
+  }
 
   // NO se borra nada escrito por una persona (regla de oro): se arma la grilla completa
   // —título, nota, encabezados y datos— y se FUSIONA con lo que hay. Ver lib/preservar-anotaciones.mjs.
@@ -157,6 +231,14 @@ async function main() {
     COLUMNAS.map(([n]) => n),
     ...datos,
   ]
+  // EL BLOQUE DEL SALDO DECLARADO, AL COSTADO. Se pega sobre las cuatro primeras filas de la grilla
+  // —columnas H e I— sin tocar ni una celda de la A a la F.
+  bloqueDeclarado(decl).forEach(([rotulo, valor], i) => {
+    const f = gridRaw[DECL.fila0 - 1 + i] ?? (gridRaw[DECL.fila0 - 1 + i] = [])
+    while (f.length < DECL.iCol) f.push('')
+    f[DECL.iCol] = rotulo
+    f[DECL.iValor] = valor
+  })
   // ═══ LA COLA DE UNA CORRIDA ANTERIOR ═══
   //
   // Esta réplica puede ACORTARSE: si un movimiento se borra de la base (una carga equivocada que se
@@ -178,7 +260,7 @@ async function main() {
 
   const rg = (r0, r1, c0, c1) => ({ sheetId: hoja.sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
   const reqs = [
-    E.reset(hoja.sheetId, alto, COLUMNAS.length + 1),
+    E.reset(hoja.sheetId, alto, ancho),
     { repeatCell: { range: rg(0, 1, 0, COLUMNAS.length), cell: { userEnteredFormat: E.titulo() }, fields: 'userEnteredFormat' } },
     { repeatCell: { range: rg(1, 2, 0, COLUMNAS.length), cell: { userEnteredFormat: E.nota() }, fields: 'userEnteredFormat' } },
     { repeatCell: { range: rg(2, 3, 0, COLUMNAS.length), cell: { userEnteredFormat: E.encabezado() }, fields: 'userEnteredFormat' } },
@@ -189,7 +271,25 @@ async function main() {
     reqs.push({ repeatCell: { range: rg(FILA0 - 1, alto, j, j + 1), cell: { userEnteredFormat: E.celda(unidad) }, fields: 'userEnteredFormat(numberFormat,textFormat,horizontalAlignment)' } })
     reqs.push({ updateDimensionProperties: { range: { sheetId: hoja.sheetId, dimension: 'COLUMNS', startIndex: j, endIndex: j + 1 }, properties: { pixelSize: j === 1 ? 300 : j >= 4 ? 110 : E.ANCHO.numero }, fields: 'pixelSize' } })
   })
+  // EL BLOQUE DEL SALDO DECLARADO: encabezado arriba, rótulos a la izquierda, cifras a la derecha.
+  // OVERFLOW y no WRAP: con ajuste de texto el rótulo se partía en dos renglones ("SALDO QUE DECLARA
+  // EL / BANCO") y el encabezado quedaba el doble de alto que la fila del título de al lado.
+  reqs.push({ repeatCell: { range: rg(0, 1, DECL.iCol, DECL.iValor + 1), cell: { userEnteredFormat: { ...E.encabezado(), wrapStrategy: 'CLIP' } }, fields: 'userEnteredFormat' } })
+  reqs.push({ repeatCell: { range: rg(1, 2, DECL.iValor, DECL.iValor + 1), cell: { userEnteredFormat: E.celda('fecha') }, fields: 'userEnteredFormat(numberFormat,textFormat,horizontalAlignment)' } })
+  reqs.push({ repeatCell: { range: rg(2, 3, DECL.iValor, DECL.iValor + 1), cell: { userEnteredFormat: E.celda('monedaExacta') }, fields: 'userEnteredFormat(numberFormat,textFormat,horizontalAlignment)' } })
+  reqs.push({ repeatCell: { range: rg(3, 4, DECL.iValor, DECL.iValor + 1), cell: { userEnteredFormat: E.nota() }, fields: 'userEnteredFormat' } })
+  reqs.push({ updateDimensionProperties: { range: { sheetId: hoja.sheetId, dimension: 'COLUMNS', startIndex: DECL.iCol, endIndex: DECL.iCol + 1 }, properties: { pixelSize: 200 }, fields: 'pixelSize' } })
+  reqs.push({ updateDimensionProperties: { range: { sheetId: hoja.sheetId, dimension: 'COLUMNS', startIndex: DECL.iValor, endIndex: DECL.iValor + 1 }, properties: { pixelSize: 260 }, fields: 'pixelSize' } })
   await google.spreadsheetBatchUpdate(ID, reqs)
+
+  // LOS NOMBRES. CAJA no cita `_BANCO_RAW!$I$3`: cita SALDO_BANCO_DECLARADO. Una referencia por
+  // celda muere en silencio el día que la pestaña cambia de forma — el defecto que ya dejó las dos
+  // filas más importantes del Cash Flow Mensual en blanco.
+  await publicar(google, ID, hoja.sheetId, [
+    { name: RANGO_SALDO_FECHA, fila: DECL.fila0 + 1, col: DECL.iValor + 1 },
+    { name: RANGO_SALDO, fila: DECL.fila0 + 2, col: DECL.iValor + 1 },
+  ])
+  console.log(`  rangos con nombre: ${RANGO_SALDO_FECHA} → ${PESTAÑA}!${DECL.colValor}${DECL.fila0 + 1} · ${RANGO_SALDO} → ${PESTAÑA}!${DECL.colValor}${DECL.fila0 + 2}`)
 
   // VERIFICACIÓN: hay un saldo escrito por cada movimiento que TRAE saldo.
   //

@@ -92,7 +92,12 @@ test('el saldo se ubica por rótulo y no por letra de columna', () => {
 // Cobranzas registra que se cobró —y es cierto— pero no sabe qué pasó después con el valor.
 test('un echeq endosado ya no es plata de la empresa', async () => {
   const b = await import('./banco-santander.mjs')
-  assert.equal(b.totalEcheqs(b.enCartera()), 10000000)
+  // Los tres echeq de Alimentos Del Sur siguen siendo $10M en custodia y $20M endosados. Los
+  // $290.000 de más son OTRO valor —el que el banco tiene en custodia desde el 22/07 y no estaba en
+  // la cartera—: acá se mide el hallazgo del endoso, así que se aísla el emisor.
+  const alimentos = b.enCartera().filter((e) => e.emisor === 'Alimentos Del Sur SA')
+  assert.equal(b.totalEcheqs(alimentos), 10000000)
+  assert.equal(b.totalEcheqs(b.enCartera()), 10290000)
   assert.equal(b.totalEcheqs(b.endosados()), 20000000)
   assert.deepEqual(b.endosados().map((e) => e.beneficiario), ['ALUMETAL S.A', 'ALUMETAL S.A'])
   // Un cobrado ya está adentro del saldo del banco: contarlo en cartera lo duplicaría.

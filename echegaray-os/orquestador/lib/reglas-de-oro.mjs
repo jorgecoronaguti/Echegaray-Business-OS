@@ -38,7 +38,10 @@ export const TOPE_PEGADOS = {
   Proveedores: 4,
   'Impuestos y Financieros': 47,
   'Cargas Sociales': 18,
-  CAJA: 12,
+  // 12 → 13 el 23/07: entró a la cartera el eCheq de $290.000 que el banco tiene en custodia desde
+  // el 22/07 y no estaba. Su importe es un dato del banco, como el de cada valor en cartera, y no
+  // hay fórmula del archivo que lo pueda calcular. El tope sube UNO, no se abre.
+  CAJA: 13,
 }
 
 export const CON_ORIGEN = {

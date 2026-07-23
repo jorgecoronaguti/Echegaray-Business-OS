@@ -117,3 +117,74 @@ export function formulaUltimoSaldo(hoja = '_BANCO_RAW', col = 'D', desde = 4) {
 export function formulaFechaCorte(hoja = '_BANCO_RAW', col = 'A', desde = 4) {
   return `=MAX(${hoja}!$${col}$${desde}:$${col})`
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// DEL SALDO CONFIRMADO AL SALDO DE HOY (23/07)
+//
+// EL DEFECTO. La disponibilidad del banco salía de `formulaUltimoSaldo`: la última celda NO VACÍA de
+// la columna de saldos. Los movimientos del día llegan SIN saldo corrido —el banco todavía los está
+// liquidando— así que esa fórmula devuelve el último saldo CONFIRMADO, que es el del día anterior.
+// El 23/07 CAJA mostraba $4.982.191,63 y el banco declaraba $4.813.461,54: los $168.730,09 de la
+// compra con tarjeta de débito ya habían salido de la cuenta y ninguna celda del archivo lo decía.
+// Un dueño que mira $4,98M y tiene $4,81M decide con plata que no existe.
+//
+// LA SOLUCIÓN NO ES SUMARLE LOS MOVIMIENTOS DEL DÍA A MANO. El mismo 23/07 entró un depósito de
+// e-cheq de otras plazas por $3.940.000 que el banco NO acreditó (48 hs de clearing): sumarlo haría
+// mentir la caja para arriba, que es peor. Cuál de los dos impactó no se deduce — lo dice el propio
+// extracto en su línea final, "Saldo al 23/07/2026 4.813.461,54", que ahora vive en el archivo
+// (bloque del saldo declarado de _BANCO_RAW, rangos con nombre).
+//
+// Y LOS DOS NÚMEROS SE MUESTRAN, no se funden en uno: el CONFIRMADO por el banco y el DEL DÍA EN
+// CURSO son cosas distintas, y el puente entre los dos —qué del día ya impactó y qué sigue en
+// clearing— es exactamente la información que hace confiable al segundo.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * NÚCLEO PURO: la disponibilidad del banco = el saldo que el banco DECLARA, con el confirmado de
+ * respaldo.
+ *
+ * Si todavía no hay saldo declarado cargado (un extracto sin la línea "Saldo al …"), cae al último
+ * confirmado: mejor el saldo de ayer declarado como tal que una celda vacía en el total de CAJA.
+ *
+ * @param {string} rango nombre del rango con el saldo declarado
+ */
+export function formulaSaldoDelDia(rango, hoja = '_BANCO_RAW', col = 'D', desde = 4) {
+  return `=IF(${rango}="";${formulaUltimoSaldo(hoja, col, desde).slice(1)};${rango})`
+}
+
+/** NÚCLEO PURO: la fecha del saldo que se está mostrando. Misma lógica y mismo respaldo. */
+export function formulaFechaDelDia(rango, hoja = '_BANCO_RAW', col = 'A', desde = 4) {
+  return `=IF(${rango}="";${formulaFechaCorte(hoja, col, desde).slice(1)};${rango})`
+}
+
+/**
+ * NÚCLEO PURO: la fecha del último saldo que el banco CONFIRMA en el detalle.
+ *
+ * No es MAX de la columna de fechas: ésa incluye los movimientos del día, que son justamente los que
+ * el banco todavía no confirmó. Es el máximo de las fechas de las filas que SÍ traen saldo corrido.
+ */
+export function formulaFechaConfirmada(hoja = '_BANCO_RAW', colFecha = 'A', colSaldo = 'D', desde = 4) {
+  return `=SUMPRODUCT(MAX((${hoja}!$${colSaldo}$${desde}:$${colSaldo}<>"")*${hoja}!$${colFecha}$${desde}:$${colFecha}))`
+}
+
+/**
+ * NÚCLEO PURO: lo que se movió hoy y el banco todavía lista sin saldo corrido.
+ *
+ * Son las filas con fecha y SIN saldo. Su suma con signo es todo lo que pasó en el día; cuánto de
+ * eso ya impactó lo dice el saldo declarado, no esta fórmula.
+ */
+export function formulaMovimientosDelDia(hoja = '_BANCO_RAW', colFecha = 'A', colImporte = 'C', colSaldo = 'D', desde = 4) {
+  const f = `${hoja}!$${colFecha}$${desde}:$${colFecha}`
+  const c = `${hoja}!$${colImporte}$${desde}:$${colImporte}`
+  const d = `${hoja}!$${colSaldo}$${desde}:$${colSaldo}`
+  return `=SUMPRODUCT((${d}="")*ISNUMBER(${f})*IF(ISNUMBER(${c});${c};0))`
+}
+
+/** NÚCLEO PURO: el detalle escrito de esos movimientos, para que el puente no sea sólo un número. */
+export function formulaDetalleDelDia(hoja = '_BANCO_RAW', colFecha = 'A', colConcepto = 'B', colImporte = 'C', colSaldo = 'D', desde = 4) {
+  const f = `${hoja}!$${colFecha}$${desde}:$${colFecha}`
+  const b = `${hoja}!$${colConcepto}$${desde}:$${colConcepto}`
+  const c = `${hoja}!$${colImporte}$${desde}:$${colImporte}`
+  const d = `${hoja}!$${colSaldo}$${desde}:$${colSaldo}`
+  return `=IFERROR("   · "&TEXTJOIN("   ·   ";1;ARRAYFORMULA(IF((${d}="")*ISNUMBER(${f});TEXT(${f};"dd/mm")&"  "&LEFT(${b};44)&"  "&TEXT(${c};"$#,##0");"")));"")`
+}
