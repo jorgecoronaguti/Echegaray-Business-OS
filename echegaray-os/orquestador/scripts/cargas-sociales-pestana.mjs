@@ -45,8 +45,21 @@ const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1
 const PESTAÑA = 'Cargas Sociales'
 const DRY = process.argv.includes('--dry')
 const AÑO = 2026
-/** Desde qué mes se proyecta: julio tiene jornales cargados pero todavía no F931 presentado. */
-const DESDE_PROY = 7
+/**
+ * DESDE QUÉ MES SE PROYECTA — SE DEDUCE DEL DATO, NO SE ESCRIBE A MANO.
+ *
+ * POR QUÉ CAMBIÓ (23/07). El dueño: "si tienen proyecciones que dejaron de serlo porque ya estamos
+ * en el momento determinado, ¿se actualiza?". Acá decía `DESDE_PROY = 7`. Una constante no se entera
+ * de que pasó el tiempo: en agosto el cuadro habría seguido proyectando julio aunque el F931 de
+ * julio ya estuviera presentado y leído — una estimación dibujada al lado de un hecho, sin que nada
+ * lo avisara. Es la clase de error que envejece en silencio, igual que un número pegado.
+ *
+ * Ahora la frontera la pone el dato: se proyecta desde el primer mes SIN DDJJ presentada.
+ */
+function desdeQueMesSeProyecta(periodos) {
+  const conDato = periodos.map((p) => Number(p.slice(5, 7))).filter(Boolean)
+  return conDato.length ? Math.max(...conDato) + 1 : 1
+}
 const ANCHO = 15
 const COL_ORIGEN = 'O'
 const MES = ['', 'ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
@@ -138,6 +151,7 @@ async function planes() {
 
 /** NÚCLEO PURO: arma la grilla entera de la pestaña. Devuelve las filas y las marcas que usa el formato. */
 export function grilla({ periodos, conceptos, ps, C, corte }) {
+  const DESDE_PROY = desdeQueMesSeProyecta(periodos)
   const filas = []
   /** Empuja una fila rellenando hasta el ancho de la grilla y devuelve su número de fila real. */
   const push = (c = []) => {
