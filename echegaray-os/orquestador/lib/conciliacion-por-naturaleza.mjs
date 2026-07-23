@@ -29,29 +29,48 @@
 /** La columna de la réplica donde vive cada dato. Es contrato con banco-raw-pestana.mjs. */
 export const RAW = { hoja: '_BANCO_RAW', fecha: 'A', concepto: 'B', importe: 'C', signo: 'E', naturaleza: 'F', desde: 4 }
 
+/** Dónde arranca HOY el registro de cada pestaña citada. Se resuelven por encabezado en caja-pestana
+ *  (lib/anclar-registro.mjs) y se pasan a `grupos()`. Los defaults son sólo de emergencia: desde el
+ *  rediseño de Cheques Emitidos su registro no está en la fila 2. Un rango abierto anclado sigue al
+ *  registro aunque la banda de resumen cambie de alto; un `$2:$400` fijo empezaría a leer la banda. */
+export const ANCLAS_DEFAULT = { chequesDesde: 2, tarjetaDesde: 3 }
+const ab = (hoja, col, d) => `'${hoja}'!$${col}$${d}:$${col}`
+
 /**
  * Los grupos, en el orden en que se muestran, con la pestaña que tiene que explicarlos.
  *
  * `formula` recibe las expresiones de la ventana del extracto y devuelve lo que esa pestaña dice
  * haber pagado en esos mismos días. `null` = no hay pestaña dueña, y eso es el aviso.
+ *
+ * Es una FUNCIÓN de las anclas —no una constante— porque las citas al registro de otra pestaña se
+ * anclan por su encabezado, no por una fila a mano.
  */
-export const GRUPOS = [
+export function grupos({ chequesDesde = ANCLAS_DEFAULT.chequesDesde, tarjetaDesde = ANCLAS_DEFAULT.tarjetaDesde } = {}) {
+  const chF = ab('Cheques Emitidos', 'F', chequesDesde)
+  const chK = ab('Cheques Emitidos', 'K', chequesDesde)
+  const chI = ab('Cheques Emitidos', 'I', chequesDesde)
+  const chB = ab('Cheques Emitidos', 'B', chequesDesde)
+  const chE = ab('Cheques Emitidos', 'E', chequesDesde)
+  const tjE = ab('Tarjeta de Credito', 'E', tarjetaDesde)
+  const tjJ = ab('Tarjeta de Credito', 'J', tarjetaDesde)
+  const tjI = ab('Tarjeta de Credito', 'I', tarjetaDesde)
+  return [
   {
     naturaleza: 'Cheques y echeq',
     pestana: 'Cheques Emitidos',
-    formula: (d, h) => `SUMIFS('Cheques Emitidos'!$F$2:$F$400;'Cheques Emitidos'!$K$2:$K$400;"SI";'Cheques Emitidos'!$I$2:$I$400;">="&${d};'Cheques Emitidos'!$I$2:$I$400;"<="&${h})`,
+    formula: (d, h) => `SUMIFS(${chF};${chK};"SI";${chI};">="&${d};${chI};"<="&${h})`,
     nota: 'Los cheques propios que el banco ya debitó, contra los que la pestaña marca DEBITADO = SI en esos días.',
     // LA DIFERENCIA DE ESTE GRUPO SE PUEDE ACCIONAR, así que se lista. Un desvío de $899.154 no le
     // sirve a nadie; "el cheque 218 de Corralón Progreso, $200.000, con fecha 07/07" sí. Son cheques
     // que el banco ya cobró y la pestaña sigue mostrando pendientes: la disponibilidad neta los
     // resta como compromiso futuro cuando la plata ya salió, así que la caja se ve peor de lo que es.
-    detalle: () => '=IFERROR(TEXTJOIN("   ·   ";1;ARRAYFORMULA(IF((UPPER(\'Cheques Emitidos\'!$K$2:$K$400)<>"SI")*ISNUMBER(\'Cheques Emitidos\'!$I$2:$I$400)*(\'Cheques Emitidos\'!$I$2:$I$400>=' + VENTANA.desde + ')*(\'Cheques Emitidos\'!$I$2:$I$400<=' + VENTANA.hasta + ')*ISNUMBER(\'Cheques Emitidos\'!$F$2:$F$400);"N° "&\'Cheques Emitidos\'!$B$2:$B$400&" "&\'Cheques Emitidos\'!$E$2:$E$400&" "&TEXT(\'Cheques Emitidos\'!$F$2:$F$400;"$#,##0");"")));"")',
+    detalle: () => `=IFERROR(TEXTJOIN("   ·   ";1;ARRAYFORMULA(IF((UPPER(${chK})<>"SI")*ISNUMBER(${chI})*(${chI}>=${VENTANA.desde})*(${chI}<=${VENTANA.hasta})*ISNUMBER(${chF});"N° "&${chB}&" "&${chE}&" "&TEXT(${chF};"$#,##0");"")));"")`,
     detalleNota: 'Cheques con fecha de pago dentro de la ventana del extracto que la pestaña NO marca como debitados. Si el banco ya los cobró, hay que marcarlos: mientras figuren pendientes, la disponibilidad neta los descuenta como si la plata todavía estuviera.',
   },
   {
     naturaleza: 'Pago de la tarjeta',
     pestana: 'Tarjeta de Credito',
-    formula: (d, h) => `SUMIFS('Tarjeta de Credito'!$E$3:$E$400;'Tarjeta de Credito'!$J$3:$J$400;"SI";'Tarjeta de Credito'!$I$3:$I$400;">="&${d};'Tarjeta de Credito'!$I$3:$I$400;"<="&${h})`,
+    formula: (d, h) => `SUMIFS(${tjE};${tjJ};"SI";${tjI};">="&${d};${tjI};"<="&${h})`,
     nota: 'El débito automático del resumen contra los consumos que la pestaña da por debitados.',
   },
   {
@@ -112,7 +131,13 @@ export const GRUPOS = [
     // proyectar mirando una sola foto del último día.
     nota: '⚠ Tiene línea en el Cash Flow Mensual, pero proyecta $0 para julio: su fórmula mira el saldo de CIERRE del mes y la cuenta estuvo en rojo durante el mes aunque cierre en positivo. El interés corre por día, no por cierre.',
   },
-]
+  ]
+}
+
+/** Los grupos con las anclas por defecto. Los importadores que no resuelven el encabezado (tests)
+ *  siguen viendo un array; caja pasa las anclas reales con `grupos({ chequesDesde, tarjetaDesde })`.
+ *  Seguro respecto de VENTANA (definida más abajo): sólo `detalle()` la usa, y es perezosa. */
+export const GRUPOS = grupos()
 
 const r = (col) => `${RAW.hoja}!$${col}$${RAW.desde}:$${col}`
 

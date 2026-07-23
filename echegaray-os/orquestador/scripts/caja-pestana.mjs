@@ -63,6 +63,7 @@ import { esIndistinguible } from '../lib/cobranzas-duplicado.mjs'
 import * as CONC from '../lib/conciliacion-por-naturaleza.mjs'
 import { formulaEgresoDiario } from '../lib/egreso-diario.mjs'
 import { formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte } from '../lib/caja-posterior-al-corte.mjs'
+import { filaEncabezado, rangoAbierto } from '../lib/anclar-registro.mjs'
 
 // LA MISMA definición de "dos cobros que no se pueden distinguir" que usa el control de la pestaña
 // Cobranzas. Antes acá había una segunda basada en el ID, y al reparar la columna A —que se
@@ -161,6 +162,19 @@ function grilla(cargado, refs) {
   // vivir al pie de la pestaña —que es donde corresponde en una empresa que mueve todo en pesos—
   // sin que las filas de arriba dependan de en qué fila quedó.
   const TC = RANGO_TC
+  // ═══ LAS CITAS AL REGISTRO DE OTRA PESTAÑA SE ANCLAN POR ENCABEZADO, NO POR FILA A MANO (23/07) ═══
+  //
+  // El dueño: "¿los cruces con cheques emitidos y recibidos quedaron ok?". Cruzan, pero la cita
+  // arrancaba en una fila escrita a mano ('Cheques Emitidos'!$F$…). Cuando esa pestaña se rediseña y
+  // su banda de resumen cambia de alto —ya pasó: el registro bajó a la fila ~20— la cita empieza a
+  // leer la banda en vez de los cheques, sin dar error. Estos rangos se derivan de dónde está HOY el
+  // encabezado del registro (refs.*Desde), y son ABIERTOS: ni la fila de inicio ni la de fin se fijan.
+  // Ver lib/anclar-registro.mjs.
+  const chF = rangoAbierto(refs.cheques, 'F', refs.chequesDesde) // Monto
+  const chK = rangoAbierto(refs.cheques, 'K', refs.chequesDesde) // DEBITADO SI/NO
+  const chI = rangoAbierto(refs.cheques, 'I', refs.chequesDesde) // fecha de pago
+  const tjJ = rangoAbierto(refs.tarjeta, 'J', refs.tarjetaDesde) // DEBITADO
+  const tjE = rangoAbierto(refs.tarjeta, 'E', refs.tarjetaDesde) // Monto
   const filas = []
   // Las filas en dólares se anotan para pintarlas distinto. Un saldo de U$S 581,39 mostrado como
   // "$581" con signo de peso se lee como 581 pesos: es un error de lectura de tres órdenes de
@@ -303,7 +317,7 @@ function grilla(cargado, refs) {
   const fPost = fBancoPesos && refs.bancoRaw ? filas.length + 1 : 0
   if (fPost) {
     push(['Movimientos posteriores al corte del extracto', 'ARS',
-      formulaNetaPosterior(`$F$${fBancoPesos}`), '', `=${C_IMP}${fPost}`, '=TODAY()',
+      formulaNetaPosterior(`$F$${fBancoPesos}`, { chequesDesde: refs.chequesDesde }), '', `=${C_IMP}${fPost}`, '=TODAY()',
       `=IF(${C_IMP}${fPost}=0;"sin movimientos";"vivo")`,
       'Cobranzas (estado Cobrado, sin echeq) menos cheques debitados, todo con fecha POSTERIOR al corte del extracto. El extracto ya trae lo anterior: contarlo de nuevo duplicaría. Los echeq quedan afuera porque ya están en Valores a depositar.',
       'Se calcula solo'])
@@ -316,8 +330,9 @@ function grilla(cargado, refs) {
 
   // ── 2 · COMPROMISOS YA EMITIDOS ─────────────────────────────────────────────────────────────────
   const fCh = push(['(−) Cheques emitidos, no debitados', 'ARS',
-    // Sale de la propia pestaña de cheques: acá no se copia ningún importe.
-    `=SUMPRODUCT((UPPER('${refs.cheques}'!$K$2:$K$400)<>"SI")*IF(ISNUMBER('${refs.cheques}'!$F$2:$F$400);'${refs.cheques}'!$F$2:$F$400;0))`,
+    // Sale de la propia pestaña de cheques: acá no se copia ningún importe. Rango anclado por
+    // encabezado (chK/chF), no una fila a mano.
+    `=SUMPRODUCT((UPPER(${chK})<>"SI")*IF(ISNUMBER(${chF});${chF};0))`,
     '', `=${C_IMP}${filas.length + 1}`, '', '', `Pestaña ${refs.cheques}, columna DEBITADO distinta de SI`, 'Se calcula solo'])
   const fNeta = push(['Disponibilidad neta', '', '', '', `=${C_PESOS}${fTotal}-${C_PESOS}${fCh}`, '', '', '',
     'Lo que queda después de cubrir los cheques ya firmados. Es el número con el que conviene decidir.'])
@@ -339,10 +354,11 @@ function grilla(cargado, refs) {
   // Los tramos son cortos cerca de hoy y largos lejos: lo que vence esta semana se decide hoy, lo de
   // noviembre no. Doce meses iguales gastarían media pantalla en meses que no cambian una decisión.
   push(['2 · CALENDARIO DE VENCIMIENTOS — CUÁNDO ENTRA Y CUÁNDO SALE'])
-  const ch = refs.cheques
-  const F400 = `IF(ISNUMBER('${ch}'!$F$2:$F$400);'${ch}'!$F$2:$F$400;0)`
-  const K400 = `UPPER('${ch}'!$K$2:$K$400)<>"SI"`
-  const I400 = `'${ch}'!$I$2:$I$400`
+  // Rangos anclados por encabezado (chF/chK/chI), abiertos: siguen al registro aunque la banda de
+  // Cheques Emitidos cambie de alto. Los nombres quedan por continuidad con el resto del bloque.
+  const F400 = `IF(ISNUMBER(${chF});${chF};0)`
+  const K400 = `UPPER(${chK})<>"SI"`
+  const I400 = chI
 
   /**
    * LOS TRAMOS SE DEFINEN POR SUS BORDES, NO POR SEIS CONDICIONES SUELTAS.
@@ -513,7 +529,7 @@ function grilla(cargado, refs) {
   const fDisp = bancario('⇒ Disponible para compras', 'ARS', T.disponible,
     'EL QUE DECLARA EL BANCO, no uno calculado: límite menos consumido daría otro número y no voy a inventar la aritmética del resumen.')
   const fCtrlTar = push(['   Control contra la pestaña Tarjeta de Credito', 'ARS',
-    `=SUMPRODUCT((UPPER('${refs.tarjeta}'!$J$3:$J$400)<>"SI")*IF(ISNUMBER('${refs.tarjeta}'!$E$3:$E$400);'${refs.tarjeta}'!$E$3:$E$400;0))`,
+    `=SUMPRODUCT((UPPER(${tjJ})<>"SI")*IF(ISNUMBER(${tjE});${tjE};0))`,
     '', `=${C_IMP}${filas.length + 1}`, '', '',
     `Pestaña ${refs.tarjeta}, columna DEBITADO distinta de SI. Es otro corte que el del resumen, así que no tienen por qué dar igual — pero una diferencia grande es una compra sin cargar.`, 'Se calcula solo'])
   // UN CONTROL QUE NO CONCLUYE NADA NO ES UN CONTROL.
@@ -781,7 +797,9 @@ function grilla(cargado, refs) {
   push(['Cada peso que salió de la cuenta tiene una pestaña que debería tenerlo. Acá se compara, grupo por grupo, lo que dice el extracto contra lo que dice esa pestaña en los MISMOS días. Una diferencia puede ser carga pendiente o un corte de fechas distinto; lo que no puede pasar es que nadie la mire.'])
   push(['Qué salió', '', 'Según el banco', '', 'Según la pestaña', 'Diferencia', '', 'Qué pestaña lo tiene que tener'])
   const n0 = filas.length + 1
-  for (const gr of CONC.GRUPOS) {
+  // Los grupos se construyen con las MISMAS anclas por encabezado que el resto de la pestaña, para
+  // que la trazabilidad del banco no cite el registro de otra pestaña por una fila a mano.
+  for (const gr of CONC.grupos({ chequesDesde: refs.chequesDesde, tarjetaDesde: refs.tarjetaDesde })) {
     const f = filas.length + 1
     const banco = `=${CONC.segunBanco(gr.naturaleza)}`
     const pest = gr.formula ? `=${gr.formula(CONC.VENTANA.desde, CONC.VENTANA.hasta)}` : ''
@@ -887,6 +905,23 @@ async function main() {
     cierre: ubicarEnCashFlow(colA, 'Efectivo y equivalentes al cierre'),
     cab: ubicarEnCashFlow(colA, 'Período'),
   }
+
+  // ═══ DÓNDE ARRANCA EL REGISTRO DE CADA PESTAÑA QUE CAJA CITA — POR ENCABEZADO ═══
+  //
+  // No se fija a mano la fila donde empiezan los cheques o los consumos de tarjeta: se lee la columna
+  // A de esa pestaña y se ubica su encabezado. Si "Cheques Emitidos" se rediseña y su registro baja,
+  // esta cuenta baja con él y la cita de CAJA sigue leyendo cheques, no la banda de resumen. Si por
+  // lo que sea no se encuentra el encabezado, se cae a un default de emergencia y se avisa por
+  // consola — nunca a una fila silenciosamente equivocada.
+  const filaDatos = async (tabTitle, rotulos, fallback) => {
+    const col = await google.readSheetValues(ID, `${tabTitle}!A1:A40`).catch(() => [])
+    const hdr = filaEncabezado(col, rotulos)
+    if (!hdr) { console.warn(`  ⚠ no encontré el encabezado (${rotulos.join('/')}) en ${tabTitle}: uso la fila ${fallback} por defecto`); return fallback }
+    return hdr + 1
+  }
+  // Cheques Emitidos: el encabezado del registro dice "Tipo". Tarjeta: "Fecha de Compra".
+  refs.chequesDesde = await filaDatos(refs.cheques, ['Tipo'], 2)
+  refs.tarjetaDesde = await filaDatos(refs.tarjeta, ['Fecha de Compra'], 3)
 
   const g = grilla(cargado, refs)
   console.log(`${tab}: ${g.filas.length} filas · ${CUENTAS.length} cuentas · ${cargado.size} con dato ya cargado`)

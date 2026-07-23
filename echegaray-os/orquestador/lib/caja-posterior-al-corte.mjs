@@ -36,10 +36,19 @@
 
 /** Las columnas de Cobranzas. Verificadas contra la fila de encabezado del 21/07. */
 export const COB = { hoja: 'Cobranzas', total: 'M', forma: 'N', estado: 'O', fecha: 'Q', desde: 5, hasta: 400 }
-/** Las columnas de Cheques Emitidos. I es la fecha en que se debita, K el SI/NO. */
-export const CHQ = { hoja: 'Cheques Emitidos', importe: 'F', fechaPago: 'I', debitado: 'K', desde: 2, hasta: 400 }
+/**
+ * Las columnas de Cheques Emitidos. I es la fecha en que se debita, K el SI/NO.
+ *
+ * `desde` es un DEFAULT de emergencia, no la verdad: la fila real del registro se resuelve por
+ * encabezado (lib/anclar-registro.mjs) y se le pasa a `formulaNetaPosterior`. Se deja acotado y sin
+ * fila final porque desde el rediseño de la pestaña (registro en la fila ~20) un `$2` fijo empezaría
+ * a leer la banda de resumen. Ver formulaChequesDebitadosPosteriores.
+ */
+export const CHQ = { hoja: 'Cheques Emitidos', importe: 'F', fechaPago: 'I', debitado: 'K', desde: 2 }
 
-const rango = (h, col, d, f) => `'${h}'!$${col}$${d}:$${col}$${f}`
+/** Rango ABIERTO ('col'!$X$d:$X): sin fila final, para que crecer el registro no deje cheques afuera
+ *  ni un tope viejo cuente de menos. */
+const rango = (h, col, d) => `'${h}'!$${col}$${d}:$${col}`
 
 /**
  * NÚCLEO PURO: lo cobrado DESPUÉS de la fecha de corte del extracto.
@@ -52,10 +61,10 @@ const rango = (h, col, d, f) => `'${h}'!$${col}$${d}:$${col}$${f}`
  * @returns {string} fórmula, separador es-AR
  */
 export function formulaCobrosPosteriores(corte, c = COB) {
-  return `SUMIFS(${rango(c.hoja, c.total, c.desde, c.hasta)};`
-    + `${rango(c.hoja, c.estado, c.desde, c.hasta)};"Cobrado";`
-    + `${rango(c.hoja, c.forma, c.desde, c.hasta)};"<>Echeq";`
-    + `${rango(c.hoja, c.fecha, c.desde, c.hasta)};">"&${corte})`
+  return `SUMIFS(${rango(c.hoja, c.total, c.desde)};`
+    + `${rango(c.hoja, c.estado, c.desde)};"Cobrado";`
+    + `${rango(c.hoja, c.forma, c.desde)};"<>Echeq";`
+    + `${rango(c.hoja, c.fecha, c.desde)};">"&${corte})`
 }
 
 /**
@@ -67,18 +76,21 @@ export function formulaCobrosPosteriores(corte, c = COB) {
  * @returns {string} fórmula
  */
 export function formulaChequesDebitadosPosteriores(corte, c = CHQ) {
-  return `SUMIFS(${rango(c.hoja, c.importe, c.desde, c.hasta)};`
-    + `${rango(c.hoja, c.debitado, c.desde, c.hasta)};"SI";`
-    + `${rango(c.hoja, c.fechaPago, c.desde, c.hasta)};">"&${corte})`
+  return `SUMIFS(${rango(c.hoja, c.importe, c.desde)};`
+    + `${rango(c.hoja, c.debitado, c.desde)};"SI";`
+    + `${rango(c.hoja, c.fechaPago, c.desde)};">"&${corte})`
 }
 
 /**
  * NÚCLEO PURO: la línea neta que va en el bloque de disponibilidades y suma al total.
  * @param {string} corte referencia a la celda con la fecha de corte del extracto
+ * @param {{chequesDesde?:number}} [opts] fila de datos del registro de Cheques Emitidos, resuelta por
+ *        encabezado (lib/anclar-registro.mjs). Sin ella cae al default de CHQ, que es sólo de emergencia.
  * @returns {string} fórmula completa, con el `=` adelante
  */
-export function formulaNetaPosterior(corte) {
-  return `=${formulaCobrosPosteriores(corte)}-${formulaChequesDebitadosPosteriores(corte)}`
+export function formulaNetaPosterior(corte, { chequesDesde } = {}) {
+  const chq = chequesDesde ? { ...CHQ, desde: chequesDesde } : CHQ
+  return `=${formulaCobrosPosteriores(corte)}-${formulaChequesDebitadosPosteriores(corte, chq)}`
 }
 
 /**

@@ -1,7 +1,21 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { GRUPOS, segunBanco, VENTANA, sinPestanaDuena, RAW } from './conciliacion-por-naturaleza.mjs'
+import { GRUPOS, grupos, segunBanco, VENTANA, sinPestanaDuena, RAW } from './conciliacion-por-naturaleza.mjs'
 import { clasificarMovimiento } from './banco-santander.mjs'
+
+test('las citas al registro de Cheques Emitidos y Tarjeta se anclan a la fila que se les pasa, no a una fija', () => {
+  // Con el registro rediseñado (encabezado en la 20, datos en la 21) la cita tiene que arrancar en la
+  // 21 y ser ABIERTA: si quedara en $F$2:$F$400 leería la banda de resumen y perdería los últimos.
+  const g = grupos({ chequesDesde: 21, tarjetaDesde: 3 })
+  const cheques = g.find((x) => x.naturaleza === 'Cheques y echeq')
+  const f = cheques.formula('D1', 'D2')
+  assert.match(f, /'Cheques Emitidos'!\$F\$21:\$F\b/)
+  assert.doesNotMatch(f, /\$F\$2:/)          // ya no la fila 2 a mano
+  assert.doesNotMatch(f, /:\$F\$400/)        // ni un tope fijo
+  assert.match(cheques.detalle(), /'Cheques Emitidos'!\$K\$21:\$K\b/)
+  const tarjeta = g.find((x) => x.naturaleza === 'Pago de la tarjeta')
+  assert.match(tarjeta.formula('D1', 'D2'), /'Tarjeta de Credito'!\$E\$3:\$E\b/)
+})
 
 test('el importe del banco se devuelve en POSITIVO', () => {
   // Los egresos vienen negativos del extracto. Compararlos contra el positivo de una pestaña sin
