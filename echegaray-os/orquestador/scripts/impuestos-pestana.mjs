@@ -26,12 +26,17 @@ import { parsearDDJJ, alicuotaDeclarada } from '../lib/iibb-ddjj.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { seccion, sub as subItem, total as rotuloTotal, auditarPatron } from '../lib/patron-pestana.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Impuestos y Financieros'
 const DRY = process.argv.includes('--dry')
 const AÑO = 2026
-const ANCHO = 6
+const ANCHO = 15
+/** Los doce meses. La grilla es la misma que la de Cargas Sociales: enero es SIEMPRE la columna B. */
+const M12 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+/** La columna del mes N. */
+const cmes = (m) => String.fromCharCode(65 + m)
 // Las DDJJ de IIBB de San Juan viven en una CARPETA de Drive (la compartió el dueño). Se LISTA la
 // carpeta y se leen los PDF originales: son la fuente primaria (traen N° de control y fecha de
 // presentación) y, al listar en vez de hardcodear, el mes nuevo aparece solo cuando se sube.
@@ -81,54 +86,58 @@ async function planesDePago() {
     if (f && (!p.primera || f < p.primera)) p.primera = f
     if (f && (!p.ultima || f > p.ultima)) p.ultima = f
     p.monto_cuota = Math.round(p.total / p.cuotas)
+    // Cuánto cae en cada mes de ESTE año: es lo que permite ponerlas en la misma grilla mensual que
+    // todo el resto de la pestaña, en vez de en una tablita aparte con sus propias columnas.
+    if (f && Number(f.slice(0, 4)) === AÑO) {
+      const mm = Number(f.slice(5, 7))
+      p.porMes = p.porMes ?? Array(13).fill(0)
+      p.porMes[mm] += Number(x.total) || 0
+    }
     planes.set(nombre, p)
   }
-  return [...planes.values()].sort((a, b) => b.total - a.total)
+  return [...planes.values()].map((p) => ({ ...p, porMes: p.porMes ?? Array(13).fill(0) })).sort((a, b) => b.total - a.total)
 }
 
-function grilla(iva, planes, iibb, ret) {
+/**
+ * NÚCLEO PURO: arma la pestaña entera sobre UNA espina de doce meses.
+ *
+ * POR QUÉ CAMBIÓ (23/07). El dueño: "el diseño está totalmente descuadrado, no se entiende la
+ * información". Y era literal: la pestaña apilaba CINCO formas de tabla distintas —el IVA con seis
+ * columnas, las retenciones con dos, los planes con nueve—, así que cada cuadro empezaba y terminaba
+ * en una columna distinta del de arriba y el ojo tenía que recalibrar en cada bloque.
+ *
+ * La grilla es ahora la misma que la de Cargas Sociales: A el concepto, B a M los doce meses, N el
+ * total, O de dónde sale. Las FILAS son las medidas y las COLUMNAS el tiempo — que es como se lee
+ * cualquier cuadro fiscal— y todos los bloques quedan alineados uno debajo del otro.
+ */
+function grilla(iva, planes, iibb) {
   const filas = []
   const push = (c = []) => {
     const r = [...c].map((x) => (x === '' || x === undefined || x === null ? VACIO : x))
     while (r.length < ANCHO) r.push(VACIO)
     filas.push(r); return filas.length
   }
+  /** Una fila de la grilla mensual: rótulo, doce meses, total y origen. */
+  const mensual = (rotulo, celda, origen, { meses = M12, totaliza = true } = {}) => {
+    const f = filas.length + 1
+    return push([rotulo, ...M12.map((m) => (meses.includes(m) ? celda(m) : VACIO)),
+      totaliza ? `=SUM($B${f}:$M${f})` : VACIO, origen])
+  }
+  const cabecera = () => push(['Concepto', ...MES.map((m) => `'${m}-${String(AÑO).slice(2)}`), 'Total', 'De dónde sale'])
   const hoy = new Date().toISOString().slice(0, 10)
 
-  push([`IMPUESTOS Y FINANCIERO · al ${hoy} · en pesos`])
-  push(['Fuentes: IVA de ARCA · IIBB y F931 de las DDJJ de Rentas (Drive) · prendario del extracto Santander · retenciones de Cobranzas'])
+  push(['Impuestos y financiero'])
+  push([`Qué se le debe al fisco, qué está inmovilizado y qué se debe con instrumento · IVA de ARCA · IIBB y F931 de las DDJJ de Rentas (Drive) · prendario del extracto Santander · retenciones de Cobranzas · al ${hoy}`])
   push()
-  // RESUMEN VERTICAL (nativo de planilla, no un "panel" de HTML): Concepto | Monto | Fuente. Se
-  // RESERVA acá y se llena al final con referencias a las celdas de los bloques de abajo — ni un
-  // número pegado. Es lo primero que se ve: la posición, con su origen al lado.
-  const resumenBase = filas.length
-  for (let k = 0; k < 11; k++) push()
+  // EL HERO se RESERVA acá y se llena al final con referencias a las celdas de los bloques de abajo
+  // —ni un número pegado—. Es lo primero que se ve: la posición, con su origen al lado.
+  const heroBase = filas.length
+  for (let k = 0; k < 10; k++) push()
 
-  // ── 1. IVA ──────────────────────────────────────────────────────────────────────────────────────
-  push(['1 · IVA — POSICIÓN MENSUAL, CON EL SALDO A FAVOR ARRASTRADO'])
-  // LA COLUMNA DE RETENCIONES ES NUEVA (21/07) y va ENTRE la posición y el saldo previo, porque ése
-  // es el orden en que se aplican: la posición del mes se reduce primero por lo que ya se pagó por
-  // retención, y recién después se consume el saldo a favor que venía arrastrándose.
-  // MENOS ES MÁS: seis columnas, no diez. Débito y crédito se funden en "Posición del mes"
-  // (ventas − compras); "saldo que venía" es el "saldo a favor" del mes anterior y no se repite.
-  const cab = push(['Mes', 'Posición del mes', 'Retención IVA sufrida', 'A PAGAR', 'Saldo a favor', 'Comprobantes (vta/cpa)'])
-  const f0 = filas.length + 1
-  // ═══ TODO EL CUADRO ES FÓRMULA — NI UN NÚMERO PEGADO (21/07) ═══
-  //
-  // Hasta hoy estas doce filas eran `Math.round(m.debito_fiscal)`: el OS calculaba la posición de
-  // IVA en JavaScript y pegaba el resultado. El dueño lo detectó abriendo una celda: "la pestaña no
-  // es un documento que se actualice de manera automática, esto me genera dudas respecto a TODO el
-  // sheet". El censo le dio la razón — 21 fórmulas contra 136 números pegados en esta sola pestaña.
-  //
-  // La causa era estructural: los comprobantes de ARCA viven en Postgres y el Sheet no los tenía, así
-  // que no había con qué escribir la fórmula. Se resolvió trayendo el INSUMO (la pestaña _ARCA_RAW,
-  // 459 comprobantes con su fecha de corte) en vez de seguir pegando el RESULTADO.
-  //
-  // Ahora cada celda se recalcula sola: se carga un comprobante nuevo en ARCA, el agente refresca
-  // _ARCA_RAW y el cuadro cambia sin que nadie toque nada.
-  const R = "_ARCA_RAW"
-  const nReales0 = iva.filter((m) => m.disponible).length
-  const fReal1 = f0 + nReales0 - 1
+  // ── 1 · IVA ────────────────────────────────────────────────────────────────────────────────────
+  push([seccion(1, 'IVA — ¿cuánto se debe o se tiene a favor cada mes?')])
+  cabecera()
+  const R = '_ARCA_RAW'
   // El signo sale de la columna F de la réplica: una nota de crédito lleva −1 y una factura +1. Si
   // el código no se reconoce, la columna queda vacía y la fila NO se suma — asumir que sumaba fue el
   // error que costó $41,9M.
@@ -139,151 +148,157 @@ function grilla(iva, planes, iibb, ret) {
   // El factor de inflación NO se pega: se busca en el bloque "ÍNDICES PARA PROYECTAR" de Parámetros,
   // que declara su fuente (REM del BCRA). Es el mismo que ya usan Estructura y Recurrentes.
   const factor = (mes) => `IFERROR(INDEX(Parámetros!$C$74:$C$79;MATCH(DATE(${AÑO};${mes};1);Parámetros!$A$74:$A$79;0));1)`
+  const porMesIva = new Map(iva.map((m) => [Number(m.periodo.slice(5, 7)), m]))
+  const reales = M12.filter((m) => porMesIva.get(m)?.disponible)
+  const proyectados = M12.filter((m) => porMesIva.get(m)?.es_proyeccion && !porMesIva.get(m)?.disponible)
+  const conDato = [...reales, ...proyectados].sort((a, b) => a - b)
+  const ultReal = reales[reales.length - 1]
 
-  for (const m of iva) {
-    const i = Number(m.periodo.slice(5, 7)) - 1
-    const mes = i + 1
-    const r = filas.length + 1
-    if (!m.disponible && !m.es_proyeccion) { push([`${MES[i]}-26`, '', '', '', '', 'sin comprobantes cargados']); continue }
-    // El saldo a favor que venía = el que quedó el mes anterior (columna E). Para el primer mes, 0.
-    const prev = r === f0 ? '0' : `$E${r - 1}`
-    push([
-      `${MES[i]}-26${m.disponible ? '' : '  · proy.'}`,
-      // POSICIÓN = ventas − compras (débito − crédito, fundidos). Proyección: el ritmo real ajustado
-      // por inflación (el crédito lleva la misma inflación, así que la resta ya viene ajustada).
-      m.disponible
-        ? `=${sumaArca(m.periodo, 'Ventas', 'L')}-${sumaArca(m.periodo, 'Compras', 'L')}`
-        : `=AVERAGE($B$${f0}:$B$${fReal1})*${factor(mes)}`,
-      // Retención de IVA sufrida (Cobranzas col. X), imputada al mes del COBRO, no al de la factura.
-      `=SUMPRODUCT((YEAR(Cobranzas!$Q$5:$Q$400)=${AÑO})*(MONTH(Cobranzas!$Q$5:$Q$400)=${mes})*IF(ISNUMBER(Cobranzas!$X$5:$X$400);Cobranzas!$X$5:$X$400;0))`,
-      // Primero se descuenta lo pagado por retención, después el saldo a favor que venía.
-      `=MAX(0;$B${r}-$C${r}-${prev})`,
-      `=MAX(0;${prev}+$C${r}-$B${r})`,
-      m.disponible
-        ? `=COUNTIFS(${R}!$A$4:$A;"${m.periodo}";${R}!$B$4:$B;"Ventas")&" / "&COUNTIFS(${R}!$A$4:$A;"${m.periodo}";${R}!$B$4:$B;"Compras")`
-        : '—',
-    ])
-  }
-  const f1 = filas.length
-  const tot = push(['TOTAL 2026', `=SUM(B${f0}:B${f1})`, `=SUM(C${f0}:C${f1})`, `=SUM(D${f0}:D${f1})`, '', ''])
-  push()
-  const ult = [...iva].reverse().find((m) => m.disponible)
-  // El saldo a favor de IVA HOY ya está en el hero (referencia a la última fila real del cuadro): no
-  // se repite en un renglón aparte. Si entra una factura, el cuadro se mueve y el hero también.
-  const filaUlt = f0 + iva.findIndex((m) => m === ult)
-  const celdaSaldoIVA = ult ? `E${filaUlt}` : '0'
+  const fPos = filas.length + 1
+  const fRet = fPos + 1
+  // (fPos + 2 es la fila "a pagar": no hace falta nombrarla, nadie la referencia)
+  const fSaldo = fPos + 3
+  // El saldo a favor que venía es el que quedó el mes anterior. Para el primer mes con dato, cero.
+  const previo = (m) => (m === conDato[0] ? '0' : `${cmes(m - 1)}${fSaldo}`)
+
+  mensual('Posición del mes (ventas − compras)', (m) => (porMesIva.get(m)?.disponible
+    ? `=${sumaArca(porMesIva.get(m).periodo, 'Ventas', 'L')}-${sumaArca(porMesIva.get(m).periodo, 'Compras', 'L')}`
+    // Proyección: el ritmo real de los meses ya cerrados, ajustado por inflación.
+    : `=AVERAGE($B$${fPos}:$${cmes(ultReal)}$${fPos})*${factor(m)}`),
+  'ARCA · réplica _ARCA_RAW. Débito menos crédito fiscal del mes, con el signo de cada comprobante.', { meses: conDato })
+  mensual('Retención de IVA sufrida', (m) =>
+    `=SUMPRODUCT((YEAR(Cobranzas!$Q$5:$Q$400)=${AÑO})*(MONTH(Cobranzas!$Q$5:$Q$400)=${m})*IF(ISNUMBER(Cobranzas!$X$5:$X$400);Cobranzas!$X$5:$X$400;0))`,
+  'Cobranzas · imputada al mes del COBRO, no al de la factura. Es impuesto ya pagado.', { meses: conDato })
+  mensual(rotuloTotal('IVA a pagar en el mes'), (m) => `=MAX(0;${cmes(m)}${fPos}-${cmes(m)}${fRet}-${previo(m)})`,
+    'Primero se descuenta lo pagado por retención y recién después el saldo a favor que venía arrastrándose.', { meses: conDato })
+  mensual('Saldo a favor al cierre del mes', (m) => `=MAX(0;${previo(m)}+${cmes(m)}${fRet}-${cmes(m)}${fPos})`,
+    'No se suma a lo largo del año: es un saldo, se arrastra. El total no aplica.', { meses: conDato, totaliza: false })
+  mensual('Comprobantes cargados (ventas / compras)', (m) => (porMesIva.get(m)?.disponible
+    ? `=COUNTIFS(${R}!$A$4:$A;"${porMesIva.get(m).periodo}";${R}!$B$4:$B;"Ventas")&" / "&COUNTIFS(${R}!$A$4:$A;"${porMesIva.get(m).periodo}";${R}!$B$4:$B;"Compras")`
+    : 'proy.'), 'Cuántos comprobantes respaldan la cifra de arriba. "proy." = no hay comprobantes, es una proyección.', { meses: conDato, totaliza: false })
   push()
 
-  // ── 1 bis. LAS RETENCIONES QUE LE HACEN A LA EMPRESA ────────────────────────────────────────────
-  // No estaban en ningún lado del archivo. Una retención es impuesto YA PAGADO: sin computarla, el
-  // cuadro muestra un "A PAGAR" inflado y el cash flow proyecta una salida que no va a ocurrir.
-  push(['2 · RETENCIONES SUFRIDAS — IMPUESTO YA PAGADO POR ADELANTADO'])
-  push(['Régimen', 'Total retenido'])
-  // Totales por fórmula sobre Cobranzas (SUMPRODUCT+ISNUMBER porque hay notas de texto en esas cols).
-  const retDe = (col) => `=SUMPRODUCT(IF(ISNUMBER(Cobranzas!$${col}$5:$${col}$400);Cobranzas!$${col}$5:$${col}$400;0))`
-  const fIva = filas.length + 1
-  push(['IVA — computado en el A PAGAR de arriba', retDe('X')])
-  push(['Ganancias — pago a cuenta', retDe('Y')])
-  push(['Ingresos Brutos — ya vienen en la DDJJ', retDe('Z')])
-  const fRetTotal = push(['TOTAL RETENIDO', `=SUM(B${fIva}:B${fIva + 2})`])
-  push()
-
-  // ── 2. IIBB ─────────────────────────────────────────────────────────────────────────────────────
-  push(['3 · IIBB — INGRESOS BRUTOS SAN JUAN'])
-  // ═══ ESTE ES EL ÚNICO BLOQUE DEL ARCHIVO QUE NO SE PUEDE ACTUALIZAR SOLO, Y HAY QUE DECIRLO ═══
-  //
-  // El IVA sale de _ARCA_RAW, las cargas sociales de _F931_RAW —leídas del PDF de cada DDJJ— y los
-  // saldos del banco de _BANCO_RAW. Para Ingresos Brutos hice la misma búsqueda en el data room y lo
-  // único que hay es "administracion/ANRs/IIBB.pdf", que es el CERTIFICADO DE INSCRIPCIÓN: no tiene
-  // un solo número de una declaración mensual.
-  //
-  // Así que estos números son una transcripción, y como tal envejecen: cuando se presente la DDJJ de
-  // julio, el cuadro va a seguir mostrando hasta junio sin que nadie se entere. No se inventan y no
-  // se disfrazan de fórmula — se declara qué falta para que dejen de ser una transcripción.
-  push(['Base y Retenciones: leídas de las DDJJ de Rentas (carpeta de Drive) — se actualizan solas al subir el mes nuevo. Impuesto y saldos, calculados.'])
+  // ── 2 · INGRESOS BRUTOS ────────────────────────────────────────────────────────────────────────
+  push([seccion(2, 'Ingresos Brutos San Juan — ¿cuánto se debe cada mes?')])
+  cabecera()
+  const porMesIIBB = new Map(iibb.map((d) => [Number(String(d.periodo ?? '').slice(5, 7)), d]))
+  const mesesIIBB = M12.filter((m) => porMesIIBB.has(m))
   const al = alicuotaDeclarada(iibb)
-  const cab2 = push(['Período', 'Base', 'Impuesto', 'Retención', 'A PAGAR', 'Saldo a favor'])
-  const i0 = filas.length + 1
-  // Alícuota declarada en celda parámetro DEBAJO del bloque (fila aliRow): el impuesto la referencia,
-  // no un 2% hardcodeado. Sólo Base y Retención son transcripción; impuesto y saldos son fórmula.
-  const aliRow = i0 + iibb.length + 2
-  iibb.forEach((d, j) => {
-    const i = Number((d.periodo ?? '').slice(5, 7)) - 1
-    const r = i0 + j
-    const prev = j === 0 ? Math.round(d.saldo_favor_anterior) : `F${r - 1}`
-    push([
-      `${MES[i] ?? d.periodo}-26`, Math.round(d.base_total), `=B${r}*$B$${aliRow}`, Math.round(d.retenciones),
-      `=MAX(0;C${r}-D${r}-${prev})`, `=MAX(0;${prev}+D${r}-C${r})`,
-    ])
-  })
-  const i1 = filas.length
-  push(['TOTAL', `=SUM(B${i0}:B${i1})`, `=SUM(C${i0}:C${i1})`, `=SUM(D${i0}:D${i1})`, `=SUM(E${i0}:E${i1})`, ''])
-  push()
-  const fIIBB = push(['Alícuota declarada · construcción', al.alicuota ?? ''])
-  const celdaSaldoIIBB = `F${i1}` // el saldo a favor de IIBB ya está en el hero: es la última fila del cuadro
+  const fBase = filas.length + 1
+  const fAli = fBase + 1
+  const fImp = fBase + 2
+  const fRetI = fBase + 3
+  // (fBase + 4 es la fila "a pagar" de IIBB: nadie la referencia)
+  const fSaldoI = fBase + 5
+  const prevI = (m) => (m === mesesIIBB[0]
+    ? Math.round(porMesIIBB.get(m)?.saldo_favor_anterior ?? 0) : `${cmes(m - 1)}${fSaldoI}`)
+
+  mensual('Base imponible declarada', (m) => Math.round(porMesIIBB.get(m).base_total),
+    'Leída del PDF de la DDJJ de Rentas (carpeta de Drive): aparece sola cuando se sube el mes nuevo.', { meses: mesesIIBB })
+  // LA ALÍCUOTA POR MES, NO UNA CONSTANTE ENTERRADA. Si Rentas cambia la alícuota de la actividad a
+  // mitad de año, se corrige el mes que corresponde y todo lo de abajo se recalcula solo.
+  mensual('Alícuota de la actividad', () => (al.alicuota ?? ''),
+    'Declarada para construcción. Es un parámetro: se edita acá y el impuesto se recalcula.', { meses: mesesIIBB, totaliza: false })
+  mensual('Impuesto determinado', (m) => `=${cmes(m)}${fBase}*${cmes(m)}${fAli}`, 'Base × alícuota.', { meses: mesesIIBB })
+  mensual('Retenciones sufridas', (m) => Math.round(porMesIIBB.get(m).retenciones),
+    'De la misma DDJJ. Ya vienen computadas ahí: no se vuelven a sumar en la sección 3.', { meses: mesesIIBB })
+  mensual(rotuloTotal('IIBB a pagar en el mes'), (m) => `=MAX(0;${cmes(m)}${fImp}-${cmes(m)}${fRetI}-${prevI(m)})`,
+    'Impuesto menos retenciones menos el saldo a favor que venía.', { meses: mesesIIBB })
+  mensual('Saldo a favor al cierre del mes', (m) => `=MAX(0;${prevI(m)}+${cmes(m)}${fRetI}-${cmes(m)}${fImp})`,
+    'Se arrastra al mes siguiente. El total no aplica.', { meses: mesesIIBB, totaliza: false })
   push()
 
-  // ── PLANES DE PAGO F931 (detalle) — de acá salen las cifras de la deuda financiera de abajo ──────
-  push(['4 · PLANES DE PAGO F931 — DETALLE'])
-  push(['Origen: Compras, rubro «Deuda previsional (planes de pago)». El total por plan es cuotas × monto de cuota.'])
-  push(['Plan', 'Cuotas', 'Monto por cuota', 'Total', 'Primera', 'Última'])
-  const p0 = filas.length + 1
-  // El total por plan es cuotas × monto de cuota: fórmula, no pegado. Cuotas y monto salen del rubro
-  // "Deuda previsional" de Compras (agregación del OS por plan) y se declaran en la columna Origen.
-  planes.forEach((p, k) => push([p.nombre, p.cuotas, p.monto_cuota, `=B${p0 + k}*C${p0 + k}`, p.primera ?? '', p.ultima ?? '']))
-  const p1 = filas.length
-  const fTotalPlanes = push(['TOTAL PLANES', `=SUM(B${p0}:B${p1})`, '', `=SUM(D${p0}:D${p1})`, '', ''])
+  // ── 3 · RETENCIONES SUFRIDAS ───────────────────────────────────────────────────────────────────
+  // No estaban en ningún lado del archivo. Una retención es impuesto YA PAGADO: sin computarla, el
+  // cuadro muestra un "a pagar" inflado y el cash flow proyecta una salida que no va a ocurrir.
+  push([seccion(3, 'Retenciones sufridas — ¿cuánto impuesto ya pagado está inmovilizado?')])
+  cabecera()
+  const retMes = (col) => (m) => `=SUMPRODUCT((YEAR(Cobranzas!$Q$5:$Q$400)=${AÑO})*(MONTH(Cobranzas!$Q$5:$Q$400)=${m})*IF(ISNUMBER(Cobranzas!$${col}$5:$${col}$400);Cobranzas!$${col}$5:$${col}$400;0))`
+  const r0 = filas.length + 1
+  mensual('IVA', retMes('X'), 'Cobranzas · ya computada en el "a pagar" de la sección 1.')
+  mensual('Ganancias', retMes('Y'), 'Cobranzas · es pago a cuenta del impuesto anual: no se recupera hasta la DDJJ.')
+  mensual('Ingresos Brutos', retMes('Z'), 'Cobranzas · ya viene declarada en la DDJJ de Rentas de la sección 2.')
+  const r1 = filas.length
+  const fRetTotal = mensual(rotuloTotal('Total retenido'), (m) => `=SUM(${cmes(m)}${r0}:${cmes(m)}${r1})`,
+    'Plata de la empresa que está en manos del fisco.')
   push()
 
-  // ── 3. DEUDA FINANCIERA — planes previsionales + prendario del rodado ────────────────────────────
+  // ── 4 · PLANES DE PAGO F931 ────────────────────────────────────────────────────────────────────
+  push([seccion(4, 'Planes de pago F931 — ¿qué cuota vence cada mes?')])
+  cabecera()
+  const q0 = filas.length + 1
+  for (const p of planes) {
+    const sinFechas = !p.porMes.some((x) => x)
+    mensual(sinFechas ? `⚠ ${p.nombre}` : p.nombre, (m) => (p.porMes[m] ? p.porMes[m] : VACIO),
+      `${p.cuotas} cuota(s) de ${p.monto_cuota.toLocaleString('es-AR')} · total ${Math.round(p.total).toLocaleString('es-AR')} · Compras, rubro "Deuda previsional (planes de pago)"`
+      + (sinFechas ? ' · ⚠ SIN FECHAS DE VENCIMIENTO cargadas: por eso la fila está vacía y su plata no aparece en ningún mes.' : ''))
+  }
+  const q1 = filas.length
+  const fPlanTot = mensual(rotuloTotal('Cuotas del año'), (m) => `=SUM(${cmes(m)}${q0}:${cmes(m)}${q1})`,
+    'Lo que sale por planes previsionales cada mes.')
+  push()
+
+  // ── 5 · DEUDA FINANCIERA ───────────────────────────────────────────────────────────────────────
   //
   // Junta lo que se DEBE con instrumento financiero. El prendario es el punto que faltaba conectar:
-  // la CUOTA sale del BANCO (el débito real del extracto, _BANCO_RAW), la DEUDA del año de lo cargado
-  // en Compras (rubro Financiero). Los planes, de su detalle de arriba.
-  push(['5 · DEUDA FINANCIERA — LO QUE SE DEBE Y CON QUÉ CUOTA'])
-  push(['Concepto', 'Cuotas', 'Cuota mensual', 'Deuda', 'Origen', ''])
-  const fPlanLinea = push([`Planes previsionales F931 (${planes.length})`, `=B${fTotalPlanes}`, '', `=D${fTotalPlanes}`,
-    'Detalle arriba · Compras rubro "Deuda previsional"', ''])
-  const fPrend = push(['Prendario Ford XLS · Santander',
-    '=COUNTIF(Compras!$AC$4:$AC;"Financiero")',
-    `=ABS(SUMIF('_BANCO_RAW'!$F$4:$F;"Préstamo prendario";'_BANCO_RAW'!$C$4:$C))`,
-    '=SUMIF(Compras!$AC$4:$AC;"Financiero";Compras!$O$4:$O)',
-    'Cuota: extracto Santander · Deuda: Compras rubro "Financiero"', ''])
-  const fDeudaTot = push(['TOTAL DEUDA FINANCIERA', '', '', `=D${fPlanLinea}+D${fPrend}`, '', ''])
-  const b0 = fPrend // ancla para el formato de "cuotas" (cantidad, no plata)
+  // la CUOTA sale del BANCO (el débito real del extracto, _BANCO_RAW), la DEUDA del año de lo
+  // cargado en Compras (rubro Financiero). Los planes, de su detalle de arriba.
+  push([seccion(5, 'Deuda financiera — ¿cuánta plata se va por mes, y cuánto falta')])
+  cabecera()
+  // LA CUOTA DEL PRENDARIO SE MUESTRA HACIA ADELANTE, NO HACIA ATRÁS.
+  //
+  // EL DEFECTO QUE ESTO CORRIGE (23/07). La fórmula suma los débitos de "Préstamo prendario" de TODO
+  // el extracto, o sea una cuota. Repetida en los doce meses, el total del año daba $15.393.726 como
+  // si fueran doce pagos verificados — y son uno solo, proyectado once veces. Lo que ya se pagó vive
+  // en el banco y en Compras; acá va la obligación que VIENE, que es la pregunta que contesta la
+  // sección: cuánta plata se va por mes.
+  const mesActual = new Date().getMonth() + 1
+  const fCuotaPrend = mensual('Prendario Ford XLS · Santander — cuota',
+    () => `=ABS(SUMIF('_BANCO_RAW'!$F$4:$F;"Préstamo prendario";'_BANCO_RAW'!$C$4:$C))`,
+    'La cuota real que debitó el banco (extracto Santander), proyectada a los meses que faltan del año. Los meses ya pagados están en el banco y en Compras, no se repiten acá.',
+    { meses: M12.filter((m) => m >= mesActual) })
+  mensual('Planes previsionales F931 — cuota', (m) => `=${cmes(m)}${fPlanTot}`, 'Traído de la sección 4: un solo cálculo, un solo lugar.')
+  const fSalidaFin = mensual(rotuloTotal('Salida financiera del mes'), (m) => `=${cmes(m)}${fCuotaPrend}+${cmes(m)}${fPlanTot}`,
+    'Todo lo que se va por deuda con instrumento. Es la fila que mira el cash flow.')
+  const fDeudaPrend = push(['Deuda pendiente del prendario', `=SUMIF(Compras!$AC$4:$AC;"Financiero";Compras!$O$4:$O)`,
+    ...Array(11).fill(VACIO), VACIO, 'Compras, rubro "Financiero". Es un saldo, no una serie: por eso va fuera de la grilla mensual.'])
+  const fDeudaPlanes = push(['Deuda pendiente de los planes', Math.round(planes.reduce((s, p) => s + p.total, 0)),
+    ...Array(11).fill(VACIO), VACIO, `Suma de los ${planes.reduce((s, p) => s + p.cuotas, 0)} cuotas cargadas de los ${planes.length} planes.`])
   push()
 
-  // ── 5. LO QUE FALTA ─────────────────────────────────────────────────────────────────────────────
-  push(['6 · LO QUE FALTA'])
-  push(['· Cargar en Compras los pagos de IVA/IIBB que se hayan hecho — hoy el cash flow no los ve.'])
-  push(['· Los PDF de las DDJJ de IIBB de Rentas en el data room (hoy están transcriptas a mano).'])
+  // ── 6 · LO QUE FALTA ───────────────────────────────────────────────────────────────────────────
+  push([seccion(6, 'Lo que falta para que esta pestaña se actualice sola')])
+  push(['⚠ Pagos de IVA e IIBB', ...Array(13).fill(VACIO), 'No están cargados en Compras: hoy el cash flow no ve esas salidas.'])
+  push(['⚠ Alícuota de IIBB', ...Array(13).fill(VACIO), 'Se toma la declarada en las DDJJ leídas. Conviene que la confirme el contador.'])
 
-  // RELLENAR EL HERO reservado arriba, ahora que las cifras existen. Son REFERENCIAS a las celdas de
-  // los bloques (saldo a favor de IVA, de IIBB, deuda de planes, retenciones adelantadas): ni un
-  // número pegado, y se recalcula solo cuando cambia cualquiera de esos bloques.
-  const resumenRows = [
-    ['POSICIÓN', 'Monto', 'Origen'],
-    ['A FAVOR DEL FISCO — inmovilizado', `=${celdaSaldoIVA}+${celdaSaldoIIBB}+B${fRetTotal}`, 'impuesto ya pagado que no volvió'],
-    ['   · Saldo a favor de IVA', `=${celdaSaldoIVA}`, 'ARCA'],
-    ['   · Saldo a favor de IIBB', `=${celdaSaldoIIBB}`, 'DGR San Juan'],
-    ['   · Retenciones sufridas', `=B${fRetTotal}`, 'Cobranzas'],
+  // ── EL HERO, RECIÉN AHORA: ya se sabe en qué fila quedó cada total ──────────────────────────────
+  const saldoIVA = ultReal ? `${cmes(ultReal)}${fSaldo}` : '0'
+  const saldoIIBB = mesesIIBB.length ? `${cmes(mesesIIBB[mesesIIBB.length - 1])}${fSaldoI}` : '0'
+  const hero = [
+    ['LA POSICIÓN', 'Monto', ...Array(11).fill(VACIO), VACIO, 'De dónde sale'],
+    [rotuloTotal('A favor del fisco — plata inmovilizada'), `=${saldoIVA}+${saldoIIBB}+$N$${fRetTotal}`, ...Array(11).fill(VACIO), VACIO, 'Impuesto ya pagado que todavía no volvió.'],
+    [subItem('saldo a favor de IVA'), `=${saldoIVA}`, ...Array(11).fill(VACIO), VACIO, 'ARCA · último mes con comprobantes.'],
+    [subItem('saldo a favor de IIBB'), `=${saldoIIBB}`, ...Array(11).fill(VACIO), VACIO, 'DGR San Juan · última DDJJ presentada.'],
+    [subItem('retenciones sufridas en el año'), `=$N$${fRetTotal}`, ...Array(11).fill(VACIO), VACIO, 'Cobranzas.'],
     [],
-    ['DEUDA FINANCIERA — total', `=D${fDeudaTot}`, 'lo que se debe con instrumento'],
-    ['   · Planes de pago F931', `=D${fPlanLinea}`, 'Compras'],
-    ['   · Prendario del rodado', `=D${fPrend}`, 'Compras'],
-    ['   · cuota mensual del prendario', `=C${fPrend}`, 'Banco Santander'],
-    [],
+    [rotuloTotal('Deuda financiera — lo que se debe'), `=$B$${fDeudaPrend}+$B$${fDeudaPlanes}`, ...Array(11).fill(VACIO), VACIO, 'Con instrumento: prendario y planes de pago.'],
+    [subItem('planes de pago F931'), `=$B$${fDeudaPlanes}`, ...Array(11).fill(VACIO), VACIO, 'Compras.'],
+    [subItem('prendario del rodado'), `=$B$${fDeudaPrend}`, ...Array(11).fill(VACIO), VACIO, 'Compras.'],
   ]
-  resumenRows.forEach((c, k) => {
+  hero.forEach((c, k) => {
     const row = [...c].map((x) => (x === '' || x === undefined || x === null ? VACIO : x))
     while (row.length < ANCHO) row.push(VACIO)
-    filas[resumenBase + k] = row
+    filas[heroBase + k] = row
   })
-  const fResHdr = resumenBase + 1    // 1-indexed: encabezado del resumen
-  const fResAFavor = resumenBase + 2 // total "a favor": va PRIMERO, es el titular
-  const fResDeuda = resumenBase + 7  // total "deuda financiera": también primero de su grupo
 
-  return { filas, fResHdr, fResAFavor, fResDeuda, fDeuda: b0, f0, f1, tot, p0, p1, b0, cab, fIIBB, i0, i1 }
+  return {
+    filas,
+    heroTotales: [heroBase + 2, heroBase + 7],
+    alicuotas: [fAli],
+    textos: [fPos + 4],
+    proyectados: proyectados.map((m) => m),
+    saldos: [fSaldo, fSaldoI, fSalidaFin],
+  }
 }
 
 /** Lee las DDJJ de IIBB desde los PDF originales de Drive. */
@@ -350,7 +365,7 @@ async function main() {
     .filter(([k]) => k.startsWith('iva|')).map(([k, v]) => [k.slice(4), v]))
   const iva = await posicionIvaCompleta(AÑO, ventas, factor, retIva)
   const planes = await planesDePago()
-  const g = grilla(iva, planes, iibb, ret)
+  const g = grilla(iva, planes, iibb)
   if (ret.sospechosas.length) {
     console.error(`  ⚠ ${ret.sospechosas.length} retención(es) con alícuota que no encaja con ningún régimen — NO se computaron:`)
     for (const x of ret.sospechosas) console.error(`     fila ${x.fila} ${x.cliente}: ${x.regimen} ${Math.round(x.monto).toLocaleString('es-AR')} = ${(x.alicuota * 100).toFixed(2)}%`)
@@ -370,102 +385,77 @@ async function main() {
   // Las NOTAS viejas del generador se limpian SÓLO en su propia grilla (antes barría 200x26 y se
   // llevaba puestos los comentarios de la persona).
   await google.spreadsheetBatchUpdate(ID, [{ updateCells: { range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: g.filas.length, startColumnIndex: 0, endColumnIndex: ANCHO }, fields: 'note' } }]).catch(() => {})
+  // ═══ LA COLA DE LA VERSIÓN ANTERIOR ═══
+  // La grilla mensual es más compacta que los cinco cuadros que había antes. Sin esto, las filas de
+  // más abajo sobrevivirían —el precio declarado de no borrar nunca— y quedarían dos cuadros de
+  // planes de pago, uno arriba y otro debajo. VACIO significa "es mi celda y va vacía": limpia lo
+  // que dejó el generador y conserva igual cualquier anotación de una persona.
+  const previoTab = await google.readSheetValues(ID, `${PESTAÑA}!A1:${letra(ANCHO - 1)}400`)
+  let ultimaFila = 0
+  previoTab.forEach((f, i) => { if ((f || []).some((c) => String(c ?? '').trim())) ultimaFila = i + 1 })
+  if (ultimaFila > g.filas.length) {
+    console.log(`  cola de la versión anterior: limpio las filas ${g.filas.length + 1}–${ultimaFila}`)
+    for (let i = g.filas.length; i < ultimaFila; i++) g.filas.push(Array(ANCHO).fill(VACIO))
+  }
+
   const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, g.filas, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
   await formatear(google, hoja.sheetId, g)
 
-  const v = await google.readSheetValues(ID, `${PESTAÑA}!A1:I${g.filas.length}`)
+  // VERIFICAR MIRANDO LA PESTAÑA, no confiando en que la escritura salió bien.
+  const v = await google.readSheetValues(ID, `${PESTAÑA}!A1:${letra(ANCHO - 1)}${g.filas.length}`)
   const err = []
-  v.forEach((f, i) => (f || []).forEach((c, j) => { if (/^#(REF|ERROR|N\/A|VALUE|¡|DIV|NAME|NUM|NULL)/.test(String(c ?? ''))) err.push(`${letra(j)}${i + 1}=${c}`) }))
-  console.log(err.length ? `\n⚠ ${err.length} celdas en error: ${err.slice(0, 6).join(' ')}` : '\n✓ sin errores')
-  console.log('\nMES    DÉBITO         CRÉDITO        A PAGAR        SALDO A FAVOR')
-  for (let i = g.f0; i <= g.tot; i++) {
-    const f = v[i - 1] || []
-    console.log(`${String(f[0] ?? '').padEnd(7)}${String(f[1] ?? '').padStart(14)}${String(f[2] ?? '').padStart(15)}${String(f[5] ?? '').padStart(15)}${String(f[6] ?? '').padStart(16)}`)
-  }
+  v.forEach((f, i) => (f || []).forEach((c, j) => { if (/^#(REF|ERROR|N\/A|VALUE|VALOR|¡|¿|DIV|NAME|NUM|NULL)/i.test(String(c ?? ''))) err.push(`${letra(j)}${i + 1}=${c}`) }))
+  console.log(err.length ? `⚠ ${err.length} celdas en error: ${err.slice(0, 6).join(' ')}` : '✓ ninguna celda en error')
+  const defectos = auditarPatron(v)
+  console.log(defectos.length ? `⚠ ${defectos.length} defecto(s) de patrón:` : '✓ la pestaña cumple el patrón de diseño')
+  for (const d of defectos.slice(0, 10)) console.log(`   fila ${d.fila} · ${d.regla} · ${d.detalle}`)
+  for (const f of v) if (/^(⇒|LA POSICIÓN)/.test(String(f?.[0] ?? ''))) console.log(`  ${String(f[0]).slice(0, 46).padEnd(48)}${String(f[1] ?? '').padStart(16)}${String(f[13] ?? '').padStart(16)}`)
+  if (err.length || defectos.length) process.exitCode = 1
 }
 
+/** El formato: la piel de statement compartida más lo propio de la grilla mensual. */
 async function formatear(google, sheetId, g) {
-  const AZUL = { red: 0.17, green: 0.25, blue: 0.37 }
-  const AMBAR = { red: 1, green: 0.97, blue: 0.88 }
-  const ROJO = { red: 1, green: 0.93, blue: 0.93 }
   const n = g.filas.length
   const r = (r0, r1, c0 = 0, c1 = ANCHO) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
   const req = [{ unmergeCells: { range: r(0, n) } }]
   const fmt = (rg, fields, format) => req.push({ repeatCell: { range: rg, cell: { userEnteredFormat: format }, fields } })
+  const MUT = { red: 0.53, green: 0.52, blue: 0.49 }
+  const AMBAR = { red: 1, green: 0.97, blue: 0.88 }
 
-  fmt(r(0, n, 1, 8), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+  // Los doce meses más el total: moneda, a la derecha. Es lo que permite comparar hacia abajo sin
+  // volver a leer el encabezado en cada bloque.
+  fmt(r(3, n, 1, 14), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }, horizontalAlignment: 'RIGHT' })
-  // Encabezado: título (0) grande en tinta; fuente (1) apagada.
-  fmt(r(0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 16, foregroundColor: { red: 0.10, green: 0.13, blue: 0.20 } } })
-  fmt(r(1, 2), 'userEnteredFormat.textFormat', { textFormat: { fontSize: 9, foregroundColor: { red: 0.53, green: 0.52, blue: 0.49 } } })
-  // La columna A REBALSA a las celdas vacías de la derecha: así el título y los títulos de sección
-  // no se parten en dos líneas (a su derecha no hay dato). En las filas de datos, la B tiene número
-  // y el rebalse se corta solo.
+  // La columna de origen: chica, apagada, y que envuelva. Es explicación, no dato.
+  fmt(r(0, n, 14, 15), 'userEnteredFormat',
+    { numberFormat: { type: 'TEXT' }, textFormat: { fontSize: 9, foregroundColor: MUT, fontFamily: 'Arial' }, horizontalAlignment: 'LEFT', wrapStrategy: 'WRAP', verticalAlignment: 'TOP' })
+  // La columna A rebalsa sobre las celdas vacías de su derecha: así un título de sección no se parte.
   fmt(r(0, n, 0, 1), 'userEnteredFormat.wrapStrategy', { wrapStrategy: 'OVERFLOW_CELL' })
-  // El "Origen" es siempre explicación, nunca plata: gris chico, alineado a la izquierda. Vive en la
-  // columna E del bloque de deuda financiera (antes colgaba en la I y dejaba un hueco enorme).
-  fmt({ ...r(g.fDeuda - 2, g.fDeuda + 1), startColumnIndex: 4, endColumnIndex: 5 }, 'userEnteredFormat',
-    { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: { fontSize: 9, italic: true, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'CLIP' })
-  fmt(r(g.cab - 1, g.cab), 'userEnteredFormat',
-    { backgroundColor: AZUL, textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 }, fontSize: 9 }, horizontalAlignment: 'CENTER', wrapStrategy: 'WRAP' })
-  // Los meses proyectados, en ámbar: nunca confundir con un comprobante real.
-  const primeraProy = g.f0 + 7
-  fmt(r(primeraProy - 1, g.f1), 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat', { backgroundColor: AMBAR, textFormat: { italic: true } })
-  fmt(r(g.tot - 1, g.tot), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
-    { textFormat: { bold: true }, backgroundColor: { red: 0.89, green: 0.91, blue: 0.94 } })
-  // La celda de la alícuota que hay que completar, en rojo suave: es un pedido, no un dato.
-  fmt({ ...r(g.fIIBB - 1, g.fIIBB), startColumnIndex: 1, endColumnIndex: 2 },
-    'userEnteredFormat.backgroundColor,userEnteredFormat.numberFormat',
-    { backgroundColor: ROJO, numberFormat: { type: 'PERCENT', pattern: '0.00%' } })
-  // Los encabezados de sección.
-  g.filas.forEach((f, i) => {
-    if (/^\d\. |^LO QUE FALTA/.test(String(f[0] ?? ''))) fmt(r(i, i + 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 11 } })
-    if (/^(Plan|Concepto)$/.test(String(f[0] ?? ''))) fmt(r(i, i + 1), 'userEnteredFormat', { backgroundColor: AZUL, textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 }, fontSize: 9 }, horizontalAlignment: 'CENTER' })
-    if (/^⚠/.test(String(f[0] ?? ''))) fmt(r(i, i + 1, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, foregroundColor: { red: 0.7, green: 0.2, blue: 0.1 } } })
-  })
-  // Las cuotas son cantidades.
-  // EL HERO: rótulos apagados arriba, las cuatro cifras de posición grandes en acento. Van en las
-  // columnas A/C/E/G (la moneda de arriba sólo cubre B–H, así que acá se pone el formato de nuevo).
-  // EL RESUMEN VERTICAL: Concepto | Monto | Fuente. Encabezado apagado; los dos subtotales (a favor,
-  // deuda) rulados con hairline arriba; la columna Fuente chica, apagada, a la izquierda.
-  if (g.fResHdr) {
-    const MUT = { red: 0.53, green: 0.52, blue: 0.49 }
-    const HAIR = { red: 0.82, green: 0.80, blue: 0.76 }
-    fmt(r(g.fResHdr - 1, g.fResHdr), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 9, foregroundColor: MUT } })
-    for (const ft of [g.fResAFavor, g.fResDeuda]) {
-      fmt(r(ft - 1, ft), 'userEnteredFormat.textFormat', { textFormat: { bold: true } })
-      req.push({ updateBorders: { range: r(ft - 1, ft), top: { style: 'SOLID', width: 1, color: HAIR } } })
-    }
-    fmt({ ...r(g.fResHdr - 1, g.fResDeuda), startColumnIndex: 2, endColumnIndex: 3 }, 'userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment', { textFormat: { fontSize: 9, foregroundColor: MUT }, horizontalAlignment: 'LEFT' })
-  }
-  fmt({ ...r(g.p0 - 1, g.p1 + 1), startColumnIndex: 1, endColumnIndex: 2 }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '0' } })
-  // Las "cuotas" de la deuda financiera (col B de las dos líneas) son cantidad, no plata.
-  fmt({ ...r(g.fDeuda - 2, g.fDeuda), startColumnIndex: 1, endColumnIndex: 2 }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '0' } })
-  // LAS FECHAS NO SON PESOS. El formato de moneda de arriba barre las columnas B a H enteras, así
-  // que la fecha de presentación de cada DDJJ salía "$46.072" y la primera cuota de cada plan
-  // "$46.250" — el número de serie de la fecha, pintado de plata. Un cuadro donde una fecha se lee
-  // como un importe no se puede revisar: el ojo suma lo que no es.
-  const FECHA = { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER' }
-  fmt({ ...r(g.p0 - 1, g.p1), startColumnIndex: 4, endColumnIndex: 6 }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', FECHA)
 
-  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 280 }, fields: 'pixelSize' } })
-  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: 8 }, properties: { pixelSize: 130 }, fields: 'pixelSize' } })
-  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 8, endIndex: 9 }, properties: { pixelSize: 420 }, fields: 'pixelSize' } })
+  g.filas.forEach((f, i) => {
+    const a = String(f?.[0] ?? '')
+    // Los encabezados de mes son rótulos, no importes: sin formato de moneda encima.
+    if (a === 'Concepto') fmt(r(i, i + 1, 1, 14), 'userEnteredFormat(numberFormat,horizontalAlignment)', { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'RIGHT' })
+    if (/^⚠/.test(a)) fmt(r(i, i + 1, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, foregroundColor: { red: 0.7, green: 0.2, blue: 0.1 } } })
+  })
+  // Las filas que no son plata, con el formato de lo que son.
+  for (const f of g.alicuotas ?? []) fmt(r(f - 1, f, 1, 14), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'PERCENT', pattern: '0.00%;;"—"' } })
+  for (const f of g.textos ?? []) fmt(r(f - 1, f, 1, 14), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'RIGHT' })
+  // LOS MESES PROYECTADOS, EN ÁMBAR: nunca confundir una proyección con un comprobante real. Van por
+  // COLUMNA, no por fila: en esta grilla el tiempo son las columnas.
+  for (const m of g.proyectados ?? []) fmt(r(3, n, m, m + 1), 'userEnteredFormat.backgroundColor', { backgroundColor: AMBAR })
+
+  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 330 }, fields: 'pixelSize' } })
+  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: 13 }, properties: { pixelSize: 108 }, fields: 'pixelSize' } })
+  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 13, endIndex: 14 }, properties: { pixelSize: 124 }, fields: 'pixelSize' } })
+  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 14, endIndex: 15 }, properties: { pixelSize: 420 }, fields: 'pixelSize' } })
   await google.spreadsheetBatchUpdate(ID, req)
   // PIEL DE STATEMENT encima del formato de número: sin reja, secciones y encabezados por tipografía
-  // + hairline (no barras rellenas), totales rulados. Deja la pestaña como CAJA y Cheques Emitidos.
-  await google.spreadsheetBatchUpdate(ID, skinRequests({ sheetId, filas: g.filas, cols: ANCHO, congeladas: 1 }))
-  // DESPUÉS del skin: el skin trata la fila 0 como título genérico. El título real (tinta 16) se
-  // re-aplica acá para que gane.
-  await google.spreadsheetBatchUpdate(ID, [
-    { repeatCell: { range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 1 }, cell: { userEnteredFormat: { textFormat: { bold: true, fontSize: 16, foregroundColor: { red: 0.10, green: 0.13, blue: 0.20 } } } }, fields: 'userEnteredFormat.textFormat' } },
-  ])
-  // El layout elegido muestra el detalle completo (resumen vertical arriba + tablas abajo), así que
-  // NO se colapsa nada. Se limpian grupos de filas que hayan quedado de versiones anteriores para que
-  // no escondan filas por accidente.
-  // Ninguna fila queda OCULTA: un colapso de una versión anterior dejó filas con hiddenByUser=true, y
-  // borrar el grupo no las vuelve a mostrar. Se fuerza visible todo el rango de la pestaña.
+  // + hairline (no barras rellenas), totales rulados. La misma que CAJA, Cheques y Cargas Sociales.
+  await google.spreadsheetBatchUpdate(ID, skinRequests({ sheetId, filas: g.filas, cols: ANCHO, congeladas: 2 }))
+  // Ninguna fila queda OCULTA: un colapso de una versión anterior dejó filas con hiddenByUser=true,
+  // y borrar el grupo no las vuelve a mostrar.
   await google.spreadsheetBatchUpdate(ID, [{ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: n + 5 }, properties: { hiddenByUser: false }, fields: 'hiddenByUser' } }]).catch(() => {})
 }
 

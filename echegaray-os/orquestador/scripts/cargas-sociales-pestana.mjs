@@ -443,7 +443,7 @@ async function formatear(google, sheetId, filas, { cantidades = [], ratios = [] 
     reqs.push({ repeatCell: { range: rg(f - 1, f, 1, 14), cell: { userEnteredFormat: { numberFormat: { type: 'NUMBER', pattern: '0;;"—"' } } }, fields: 'userEnteredFormat.numberFormat' } })
   }
   for (const f of ratios) {
-    reqs.push({ repeatCell: { range: rg(f - 1, f, 1, 14), cell: { userEnteredFormat: { numberFormat: { type: 'PERCENT', pattern: '0,0%;;"—"' } } }, fields: 'userEnteredFormat.numberFormat' } })
+    reqs.push({ repeatCell: { range: rg(f - 1, f, 1, 14), cell: { userEnteredFormat: { numberFormat: { type: 'PERCENT', pattern: '0.0%;;"—"' } } }, fields: 'userEnteredFormat.numberFormat' } })
   }
   await google.spreadsheetBatchUpdate(ID, reqs)
 }
