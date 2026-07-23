@@ -29,6 +29,10 @@ import { borrarNotas } from '../lib/nota-celda.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { seccion, sub as subItem, total as rotuloTotal, auditarPatron } from '../lib/patron-pestana.mjs'
+// LAS COLUMNAS DE COMPRAS, POR SU ENCABEZADO. Esta pestaña todavía las referenciaba por su LETRA
+// ($AC, $O): es exactamente lo que dejó el cuadro de "pagado" de Cargas Sociales en #VALUE! durante
+// semanas cuando alguien movió una columna. El nombre no se mueve; la posición sí.
+import { resolverColumnas, rango } from '../lib/compras-columnas.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Impuestos y Financieros'
@@ -112,7 +116,7 @@ async function planesDePago() {
  * total, O de dónde sale. Las FILAS son las medidas y las COLUMNAS el tiempo — que es como se lee
  * cualquier cuadro fiscal— y todos los bloques quedan alineados uno debajo del otro.
  */
-function grilla(iva, planes, iibb) {
+function grilla(iva, planes, iibb, C) {
   const filas = []
   const push = (c = []) => {
     const r = [...c].map((x) => (x === '' || x === undefined || x === null ? VACIO : x))
@@ -225,8 +229,52 @@ function grilla(iva, planes, iibb) {
     'Plata de la empresa que está en manos del fisco.')
   push()
 
-  // ── 4 · PLANES DE PAGO F931 ────────────────────────────────────────────────────────────────────
-  push([seccion(4, 'Planes de pago F931 — ¿qué cuota vence cada mes?')])
+
+  // ── 4 · LOS OTROS IMPUESTOS ────────────────────────────────────────────────────────────────────
+  //
+  // POR QUÉ SE AGREGÓ (23/07). El dueño: "además de IVA e IIBB hay otros impuestos que no se
+  // consideran". Tenía razón, y el más caro estaba a la vista de nadie: el IMPUESTO AL CHEQUE. El
+  // banco lo debita solo, 21 veces en el mes que cubre el extracto, y la pestaña de impuestos no lo
+  // miraba. En un mes son medio millón de pesos que ningún cuadro fiscal mostraba.
+  //
+  // LA ALÍCUOTA NO SE CITA DE MEMORIA — LA DECLARA EL BANCO. El concepto del débito dice literalmente
+  // "Impuesto ley 25.413 debito 0,6%". Ese es el dato, con su fuente; la skill de impuestos prohíbe
+  // afirmar una alícuota vigente sin verificarla, y acá no hace falta: viene escrita en el extracto.
+  //
+  // LO QUE NO ESTÁ, SE DECLARA VACÍO. Tasa municipal de seguridad e higiene y sellos: no hay una sola
+  // fila en Compras ni en el banco. No se estiman — se nombran como gap, que es lo único honesto.
+  push([seccion(4, 'Otros impuestos — ¿qué más se paga y no estaba a la vista?')])
+  cabecera()
+  const B = '_BANCO_RAW'
+  const porMesBanco = (patron) => (m) =>
+    `=SUMPRODUCT((YEAR(${B}!$A$4:$A)=${AÑO})*(MONTH(${B}!$A$4:$A)=${m})*ISNUMBER(SEARCH("${patron}";${B}!$F$4:$F))*ABS(IF(ISNUMBER(${B}!$C$4:$C);${B}!$C$4:$C;0)))`
+  const o0 = filas.length + 1
+  const fCheque = mensual('Impuesto al cheque (Ley 25.413)', porMesBanco('Impuesto al cheque'),
+    'Extracto Santander · el banco lo debita solo y declara la alícuota en el concepto ("debito 0,6%"). Sólo hay dato en los meses que cubre el extracto.')
+  // Y EN LA COLUMNA DONDE ESTÁ, NO EN LA QUE PARECE. El texto "Anticipo de Ganancias" no vive en
+  // "Concepto" sino en "Detalles / Obra": buscarlo en la columna equivocada daba cero en los doce
+  // meses, o sea un impuesto que se paga y el cuadro declaraba inexistente. Se buscó dónde está.
+  //
+  // POR LA FECHA PREVISTA DE PAGO, NO POR LA DE CAJA. Estas cuatro filas de Compras no tienen "Fecha
+  // de caja" cargada, así que filtrando por ahí la fila daba CERO en los doce meses — un impuesto que
+  // se paga y que el cuadro mostraba como inexistente. Se usa la fecha con la que fueron cargadas.
+  mensual('Anticipo de Ganancias', (m) =>
+    `=IFERROR(SUMIFS(${rango(C.total)};${rango(C.detalle)};"*Anticipo de Ganancias*";${rango(C.fechaPrev)};">="&DATE(${AÑO};${m};1);${rango(C.fechaPrev)};"<="&EOMONTH(DATE(${AÑO};${m};1);0));0)`,
+  'Compras · concepto "Anticipo de Ganancias", por su fecha prevista de pago. Es pago a cuenta del impuesto anual: se recupera recién en la DDJJ.')
+  const o1 = filas.length
+  mensual(rotuloTotal('Total otros impuestos'), (m) => `=SUM(${cmes(m)}${o0}:${cmes(m)}${o1})`,
+    'Lo que se paga por fuera de IVA, IIBB y cargas sociales.')
+  push([`   · costo del impuesto al cheque proyectado a los meses sin extracto`, ...M12.map((m) => (m > new Date().getMonth() + 1
+    ? `=IFERROR(AVERAGEIF($B$${fCheque}:$M$${fCheque};">0");0)` : VACIO)), `=SUM($B${filas.length + 1}:$M${filas.length + 1})`,
+  'Promedio de los meses con extracto. El extracto cubre un mes: la base es fina y hay que decirlo.'])
+  push(['⚠ Tasa municipal de seguridad e higiene', ...Array(13).fill(VACIO),
+    'NO hay una sola fila en Compras ni en el banco. Si la obra tributa tasa municipal, hoy ese costo no está en ningún cuadro. No se estima.'])
+  push(['⚠ Impuesto de sellos', ...Array(13).fill(VACIO),
+    'Sin dato. Aplica sobre contratos: si se firmó alguno con sellado, no está registrado.'])
+  push()
+
+  // ── 5 · PLANES DE PAGO F931 ────────────────────────────────────────────────────────────────────
+  push([seccion(5, 'Planes de pago F931 — ¿qué cuota vence cada mes?')])
   cabecera()
   const q0 = filas.length + 1
   for (const p of planes) {
@@ -247,7 +295,7 @@ function grilla(iva, planes, iibb) {
   // Junta lo que se DEBE con instrumento financiero. El prendario es el punto que faltaba conectar:
   // la CUOTA sale del BANCO (el débito real del extracto, _BANCO_RAW), la DEUDA del año de lo
   // cargado en Compras (rubro Financiero). Los planes, de su detalle de arriba.
-  push([seccion(5, 'Deuda financiera — ¿cuánta plata se va por mes, y cuánto falta')])
+  push([seccion(6, 'Deuda financiera — ¿cuánta plata se va por mes, y cuánto falta')])
   cabecera()
   // LA CUOTA DEL PRENDARIO SE MUESTRA HACIA ADELANTE, NO HACIA ATRÁS.
   //
@@ -264,7 +312,7 @@ function grilla(iva, planes, iibb) {
   mensual('Planes previsionales F931 — cuota', (m) => `=${cmes(m)}${fPlanTot}`, 'Traído de la sección 4: un solo cálculo, un solo lugar.')
   const fSalidaFin = mensual(rotuloTotal('Salida financiera del mes'), (m) => `=${cmes(m)}${fCuotaPrend}+${cmes(m)}${fPlanTot}`,
     'Todo lo que se va por deuda con instrumento. Es la fila que mira el cash flow.')
-  const fDeudaPrend = push(['Deuda pendiente del prendario', `=SUMIF(Compras!$AC$4:$AC;"Financiero";Compras!$O$4:$O)`,
+  const fDeudaPrend = push(['Deuda pendiente del prendario', `=SUMIF(${rango(C.rubro)};"Financiero";${rango(C.total)})`,
     ...Array(11).fill(VACIO), VACIO, 'Compras, rubro "Financiero". Es un saldo, no una serie: por eso va fuera de la grilla mensual.'])
   const fDeudaPlanes = push(['Deuda pendiente de los planes', Math.round(planes.reduce((s, p) => s + p.total, 0)),
     ...Array(11).fill(VACIO), VACIO, `Suma de los ${planes.reduce((s, p) => s + p.cuotas, 0)} cuotas cargadas de los ${planes.length} planes.`])
@@ -274,7 +322,7 @@ function grilla(iva, planes, iibb) {
   // EL TEXTO DE ESTAS FILAS VA EN LA COLUMNA A, NO EN LA DE PROCEDENCIA. Cuando la procedencia pasó
   // a ser una nota, estas dos filas —cuyo contenido vivía SÓLO ahí— quedaron mudas: se veía el
   // rótulo "⚠ Alícuota de IIBB" y nada más. Una advertencia escondida detrás de un hover no advierte.
-  push([seccion(6, 'Lo que falta para que esta pestaña se actualice sola')])
+  push([seccion(7, 'Lo que falta para que esta pestaña se actualice sola')])
   push(['⚠ Los pagos de IVA e IIBB no están cargados en Compras: hoy el cash flow no ve esas salidas.'])
   push(['⚠ La alícuota de IIBB se toma de las DDJJ leídas. Conviene que la confirme el contador.'])
 
@@ -373,7 +421,13 @@ async function main() {
     .filter(([k]) => k.startsWith('iva|')).map(([k, v]) => [k.slice(4), v]))
   const iva = await posicionIvaCompleta(AÑO, ventas, factor, retIva)
   const planes = await planesDePago()
-  const g = grilla(iva, planes, iibb)
+  const cabCompras = (await google.readSheetValues(ID, 'Compras!A3:BZ3'))[0] || []
+  const { col: C, faltan } = resolverColumnas(cabCompras, {
+    total: 'Total', concepto: 'Concepto', fecha: 'Fecha de caja', rubro: 'Rubro de caja', fechaPrev: 'Fecha prevista de pago (día)', detalle: 'Detalles / Obra',
+  })
+  if (faltan.length) { console.error(`⚠ faltan columnas en Compras: ${faltan.join(', ')} — no escribo con referencias inventadas`); process.exit(1) }
+  console.log(`  Compras por encabezado: Total=${C.total} · Concepto=${C.concepto} · Fecha de caja=${C.fecha} · Rubro=${C.rubro}`)
+  const g = grilla(iva, planes, iibb, C)
   if (ret.sospechosas.length) {
     console.error(`  ⚠ ${ret.sospechosas.length} retención(es) con alícuota que no encaja con ningún régimen — NO se computaron:`)
     for (const x of ret.sospechosas) console.error(`     fila ${x.fila} ${x.cliente}: ${x.regimen} ${Math.round(x.monto).toLocaleString('es-AR')} = ${(x.alicuota * 100).toFixed(2)}%`)
