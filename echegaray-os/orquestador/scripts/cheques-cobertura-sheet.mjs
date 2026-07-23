@@ -155,7 +155,14 @@ async function main() {
 
   // Idempotente: si el bloque ya está, se rehace en su lugar; si no, va después de lo último.
   const actual = await google.readSheetValues(ID, `${PESTAÑA}!A1:${letra(ANCHO - 1)}200`)
-  const yaEsta = actual.findIndex((f) => String(f?.[0] ?? '').startsWith('CHEQUES Y TARJETA'))
+  // ═══ SE BUSCA LA FIRMA QUE REALMENTE SE ESCRIBE ═══
+  // Acá se buscaba 'CHEQUES Y TARJETA' pero el bloque se titula con FIRMA. Nunca se encontraba a sí
+  // mismo, así que en CADA corrida AGREGABA UNA COPIA NUEVA al final. Con el clearValues puesto el
+  // defecto quedaba tapado; al sacarlo (regla: nunca borrar lo que escribe una persona) aparecieron
+  // dos cuadros 'TOTAL A CUBRIR' idénticos en Cash Flow Mensual, uno con las fechas sin formatear.
+  const copias = []
+  actual.forEach((f, i) => { if (String(f?.[0] ?? '').startsWith(FIRMA)) copias.push(i) })
+  const yaEsta = copias.length ? copias[0] : -1
   let F
   // No se limpia el bloque viejo: se reescribe encima fusionando, para no borrar nada de una persona.
   if (yaEsta >= 0) { F = yaEsta + 1 } else {
@@ -173,6 +180,22 @@ async function main() {
   }))
   const cp = await escribirPreservando(google, ID, PESTAÑA, filas, { fila0: F, anchoHoja: ANCHO })
   if (cp.conservadas.length) console.log(`  ✋ ${cp.conservadas.length} celda(s) de una persona — CONSERVADAS`)
+
+  // ═══ LIMPIAR LAS COLAS DE VERSIONES ANTERIORES ═══
+  // Este bloque es lo ÚLTIMO de la pestaña por diseño (se agrega después del cuadro). Todo lo que
+  // quede DEBAJO es una cola de una versión anterior de este mismo bloque: el defecto de la firma lo
+  // hacía duplicarse, y como el alto cambió entre versiones no alcanza con borrar "filas.length"
+  // filas. Se limpia desde el final del bloque nuevo hasta la última fila con contenido.
+  const finBloque = F + filas.length - 1
+  let ultima = 0
+  actual.forEach((f, i) => { if ((f || []).some((c) => String(c ?? '').trim())) ultima = i + 1 })
+  if (ultima > finBloque) {
+    await google.batchUpdateValues(ID, [{
+      range: `${PESTAÑA}!A${finBloque + 1}:${letra(ANCHO - 1)}${ultima}`,
+      values: Array.from({ length: ultima - finBloque }, () => new Array(ANCHO).fill('')),
+    }])
+    console.log(`  🧹 ${ultima - finBloque} fila(s) de versiones anteriores del bloque, borradas (${finBloque + 1}–${ultima})`)
+  }
 
   const hoja = (await google.getSheetMeta(ID)).find((s) => s.title === PESTAÑA)
   const sheetId = hoja.sheetId
