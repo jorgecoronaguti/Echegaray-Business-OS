@@ -77,6 +77,8 @@ const DRY = process.argv.includes('--dry')
 const AÑO = 2026
 /** El ancho de la pestaña: el registro de abajo es el bloque más ancho y define la grilla. */
 const ANCHO = 12
+/** Los doce meses, para el cuadro de oficina: ahí se cobra por MES, no por quincena. */
+const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 /** Sereno se paga por MES: no entra en la comparación por hora. */
 const ES_MENSUAL = (cat) => cat === 'Sereno'
 
@@ -172,7 +174,7 @@ const fecha = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMont
 /**
  * La grilla entera. `bloques` son las quincenas detectadas en el espejo.
  */
-function grilla({ bloques, pendientes, bloquesOfi, pendientesOfi, cargaAlDia }) {
+function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia }) {
   const filas = []
   /**
    * Agrega una fila rellenada al ancho de la pestaña y devuelve su número (1-based).
@@ -211,8 +213,8 @@ function grilla({ bloques, pendientes, bloquesOfi, pendientesOfi, cargaAlDia }) 
   fHero.cerradas = push([sub('Obra — quincenas cerradas, ya pagadas')])
   fHero.curso = push([sub('Obra — quincena en curso, todavía se está cargando')])
   fHero.falta = push([sub('Obra — falta pagar hasta diciembre')])
-  fHero.ofiPagado = push([sub('Oficina — quincenas cargadas')])
-  fHero.ofiFalta = push([sub('Oficina — falta cargar y pagar hasta diciembre')])
+  fHero.ofiPagado = push([sub('Oficina — meses pagados')])
+  fHero.ofiFalta = push([sub('Oficina — falta pagar hasta diciembre')])
   fHero.plantel = push([sub('Plantel de obra de la última quincena')])
   blanco()
 
@@ -251,52 +253,40 @@ function grilla({ bloques, pendientes, bloquesOfi, pendientesOfi, cargaAlDia }) 
   // ESTA PLANILLA VA ATRASADA, Y ESO SE MUESTRA. Al 23/07 su último bloque cargado es el del
   // 16/06–30/06, un mes detrás del de obra. No se rellena el hueco con una estimación disfrazada de
   // dato: las quincenas sin cargar entran en la proyección, rotuladas como lo que son.
-  push([seccion(2, 'Oficina — sueldos, lo cargado y lo que falta hasta fin de año')])
-  push(['Quincena', 'Hasta', 'Personas', 'Pagado', VACIO, 'Ajuste inflación', 'Proyectado'])
+  push([seccion(2, 'Oficina — sueldos, mes por mes hasta fin de año')])
+  push(['Mes', 'Personas', 'Pagado', VACIO, VACIO, 'Ajuste inflación', 'Proyectado'])
   const o0 = filas.length + 1
-  for (const b of bloquesOfi) {
+  MESES.forEach((nombre, i) => {
     const r = filas.length + 1
-    // Las fechas de esta planilla arrancan en la columna E, no en la F como las de obra: el layout
-    // es parecido pero NO es el mismo, y asumirlo dejaría la fila apuntando a una celda vacía.
-    const ff = b.filaFecha
-    // UNA FECHA QUE LLEGA COMO TEXTO NO ES UNA FECHA. Esta planilla escribe "5/1" —sin año— en unas
-    // filas y una fecha real en otras. Sin normalizar, la columna mezcla "5/1" con 46113 (el número
-    // de serie crudo), no se puede ordenar ni restar, y el formato de fecha no la agarra.
-    const aFecha = (celda) => `IF(ISNUMBER(${celda});${celda};IFERROR(DATEVALUE(${celda}&"/${AÑO}");""))`
-    const ultimaCol = `INDEX('${ESPEJO_OFI}'!E${ff}:T${ff};SUMPRODUCT(MAX(('${ESPEJO_OFI}'!E${ff}:T${ff}<>"")*(COLUMN('${ESPEJO_OFI}'!E${ff}:T${ff})-COLUMN('${ESPEJO_OFI}'!E${ff})+1))))`
-    push([
-      `=${aFecha(`'${ESPEJO_OFI}'!E${ff}`)}`,
-      `=IFERROR(${aFecha(ultimaCol)};"")`,
-      `=COUNT('${ESPEJO_OFI}'!A${b.inicio}:A${b.fin})`,
-      `=SUM('${ESPEJO_OFI}'!Z${b.inicio}:Z${b.fin})`,
-      VACIO, VACIO, VACIO,
-    ])
-    if (r < 0) throw new Error('imposible')
-  }
-  const oLast = o0 + bloquesOfi.length - 1
-  const q0 = filas.length + 1
-  pendientesOfi.forEach((q, i) => {
-    const r = q0 + i
-    push([
-      i === 0 ? fecha(q.desde) : `=B${r - 1}+1`,
-      `=IF(DAY(A${r})<16;DATE(YEAR(A${r});MONTH(A${r});15);EOMONTH(A${r};0))`,
-      `=INDEX($C$${o0}:$C$${oLast};COUNTA($A$${o0}:$A$${oLast}))`,
-      VACIO,
-      VACIO,
-      `=IFERROR(INDEX('Parámetros'!$C$74:$C$90;MATCH(EOMONTH(A${r};0);EOMONTH('Parámetros'!$A$74:$A$90;0);0));1)`,
-      // La base es la última quincena CARGADA, ajustada por inflación. Oficina son dos sueldos fijos:
-      // no hay horas ni jornal que modelar, y estimar por hora sería inventar una precisión que no
-      // existe. La base se ve en pantalla (la última fila del bloque de arriba) y el ajuste también.
-      `=INDEX($D$${o0}:$D$${oLast};COUNTA($A$${o0}:$A$${oLast}))*F${r}`,
-    ])
+    const bs = bloquesOfi.filter((b) => b.mes === i + 1)
+    const pagado = bs.length
+      // Un mes puede venir partido en dos bloques en la planilla (un pago a mitad de mes y otro a
+      // fin): se suman, porque lo que se cobra es el mes.
+      ? `=${bs.map((b) => `SUM('${ESPEJO_OFI}'!Z${b.inicio}:Z${b.fin})`).join('+')}`
+      : VACIO
+    const personas = bs.length ? `=MAX(${bs.map((b) => `COUNT('${ESPEJO_OFI}'!A${b.inicio}:A${b.fin})`).join(';')})` : VACIO
+    // Los meses sin cargar se proyectan sobre el último mes cargado, ajustado por inflación. Son dos
+    // sueldos fijos: no hay horas ni jornal que modelar, y estimarlo por hora sería inventar una
+    // precisión que no existe. La base y el ajuste se ven los dos en pantalla.
+    const ajuste = bs.length ? VACIO : `=IFERROR(INDEX('Parámetros'!$C$74:$C$90;MATCH(EOMONTH(DATE(${AÑO};${i + 1};1);0);EOMONTH('Parámetros'!$A$74:$A$90;0);0));1)`
+    push([nombre, personas, pagado, VACIO, VACIO, ajuste,
+      bs.length ? VACIO : `=$B$${0}*F${r}`]) // la base se completa abajo, cuando se sabe su fila
   })
-  const fTotalOfi = push([rotuloTotal('Oficina — cargado y por cargar en el año'), VACIO, VACIO,
-    `=SUM(D$${o0}:D$${oLast})`, VACIO, VACIO,
-    pendientesOfi.length ? `=SUM(G${q0}:G${q0 + pendientesOfi.length - 1})` : 0])
+  const oFin = o0 + MESES.length - 1
+  const fTotalOfi = push([rotuloTotal('Oficina — pagado y por pagar en el año'), VACIO,
+    `=SUM(C$${o0}:C$${oFin})`, VACIO, VACIO, VACIO, `=SUM(G$${o0}:G$${oFin})`])
+  // La base de la proyección: el último mes con dato. Se resuelve acá porque recién ahora se conocen
+  // las filas del bloque.
+  const baseOfi = `INDEX($C$${o0}:$C$${oFin};MAX(IF($C$${o0}:$C$${oFin}<>"";ROW($C$${o0}:$C$${oFin})-${o0}+1)))`
+  MESES.forEach((_, i) => {
+    const r = o0 + i
+    if (bloquesOfi.some((b) => b.mes === i + 1)) return
+    filas[r - 1][6] = `=ARRAYFORMULA(${baseOfi})*F${r}`
+  })
   blanco()
 
   // ── 3 · CONTROL DE CONVENIO ──
-  push([seccion(3, 'Control de convenio — que ningún jornal quede por debajo de la escala UOCRA')])
+  push([seccion(3, 'Control de convenio — ningún jornal por debajo de la escala UOCRA')])
   // LA RÉPLICA DEL ACUERDO TRAE SALTOS DE LÍNEA ADENTRO DEL RÓTULO ("Julio\n+2%"): sin aplanarlos, la
   // fila crece a dos renglones y el texto queda cortado por la altura fija.
   push([`=SUBSTITUTE(SUBSTITUTE(${formulaVigencia().slice(1)};CHAR(10);" ");CHAR(13);" ")`,
@@ -367,7 +357,7 @@ function grilla({ bloques, pendientes, bloquesOfi, pendientesOfi, cargaAlDia }) 
   // El texto va CORTO: al lado tiene el importe, y uno largo se le monta encima.
   filas[fHero.curso - 1][2] = cargaAlDia ? `cargada hasta el ${cargaAlDia}` : VACIO
   filas[fHero.falta - 1][1] = `=${cel(fTotalProy, 'G')}`
-  filas[fHero.ofiPagado - 1][1] = `=${cel(fTotalOfi, 'D')}`
+  filas[fHero.ofiPagado - 1][1] = `=${cel(fTotalOfi, 'C')}`
   filas[fHero.ofiFalta - 1][1] = `=${cel(fTotalOfi, 'G')}`
   filas[fHero.costo - 1][1] = `=B${fHero.cerradas}+B${fHero.curso}+B${fHero.falta}+B${fHero.ofiPagado}+B${fHero.ofiFalta}`
   filas[fHero.plantel - 1][1] = `=INDEX($D$${f0}:$D$${fLast};COUNTA($A$${f0}:$A$${fLast}))`
@@ -377,7 +367,6 @@ function grilla({ bloques, pendientes, bloquesOfi, pendientesOfi, cargaAlDia }) 
     titular: fHero.costo,
     fechas: [
       ...pendientes.map((_, i) => p0 + i), ...bloques.map((_, i) => f0 + i),
-      ...bloquesOfi.map((_, i) => o0 + i), ...pendientesOfi.map((_, i) => q0 + i),
     ],
     // Horas con un decimal · cantidades enteras · el único porcentaje de la pestaña.
     cantidades: [fHpd],
@@ -387,7 +376,7 @@ function grilla({ bloques, pendientes, bloquesOfi, pendientesOfi, cargaAlDia }) 
     // Las filas de oficina (cargadas + proyectadas) para que reciban el mismo formato que las de
     // obra: sin esto la columna "Hasta" mostraba $46.037 —el número de serie de la fecha con formato
     // de moneda— y el ajuste por inflación salía como "$1".
-    o0, oFin: (q0 + pendientesOfi.length - 1),
+    o0, oFin, fCurso: fHero.curso,
     fMin,
     fTotalProy,
     fTotalReal,
@@ -416,18 +405,25 @@ async function main() {
 
   // ── LA OTRA MITAD DE LA NÓMINA ──
   const espejoOfi = await google.readSheetValues(ID, `${ESPEJO_OFI}!A1:AA990`)
-  const bloquesOfi = detectarQuincenas(espejoOfi ?? [])
-  const ultOfi = bloquesOfi[bloquesOfi.length - 1]
-  // Las fechas de oficina arrancan en la columna E (índice 4), no en la F: mismo espíritu, otro layout.
-  const ultimoDiaOfi = ultOfi ? ultimoDiaCargado((espejoOfi[ultOfi.filaFecha - 1] ?? []).slice(4)) : null
-  const pendientesOfi = quincenasPendientes(ultimoDiaOfi ? new Date(ultimoDiaOfi.getTime() + 86400000) : null)
-  console.log(`oficina: ${bloquesOfi.length} quincena(s) · última cargada hasta ${ultimoDiaOfi ? fecha(ultimoDiaOfi) : '—'} · ${pendientesOfi.length} por proyectar`)
+  // OFICINA SE COBRA POR MES, NO POR QUINCENA. La planilla la lleva en bloques con forma de quincena
+  // —a veces dos por mes—, pero el sueldo es mensual: presentarla quincena por quincena mostraba
+  // veinticuatro filas de algo que se decide doce veces al año. Cada bloque se etiqueta con su mes y
+  // el cuadro agrupa por ahí.
+  // Sus fechas arrancan en la columna E (índice 4), no en la F como las de obra: mismo espíritu,
+  // otro layout, y asumirlo dejaría la fila apuntando a una celda vacía.
+  const bloquesOfi = detectarQuincenas(espejoOfi ?? []).map((b) => {
+    const d = ultimoDiaCargado((espejoOfi[b.filaFecha - 1] ?? []).slice(4))
+    return { ...b, mes: d ? d.getMonth() + 1 : null, hasta: d }
+  }).filter((b) => b.mes)
+  const ultimoDiaOfi = bloquesOfi.length ? bloquesOfi[bloquesOfi.length - 1].hasta : null
+  const mesesCargados = new Set(bloquesOfi.map((b) => b.mes))
+  console.log(`oficina: ${mesesCargados.size} mes(es) cargado(s) · último día ${ultimoDiaOfi ? fecha(ultimoDiaOfi) : '—'} · ${12 - mesesCargados.size} mes(es) por proyectar`)
   if (ultimoDia && ultimoDiaOfi && ultimoDiaOfi < ultimoDia) {
     const dias = Math.round((ultimoDia - ultimoDiaOfi) / 86400000)
     console.log(`  ⚠ la planilla de oficina va ${dias} día(s) detrás de la de obra: esas quincenas entran como proyección, no como pagadas`)
   }
 
-  const g = grilla({ bloques, pendientes, bloquesOfi, pendientesOfi, cargaAlDia })
+  const g = grilla({ bloques, pendientes, bloquesOfi, cargaAlDia })
   console.log(`grilla: ${g.filas.length} filas × ${ANCHO} columnas`)
   if (DRY) { for (const f of g.filas) console.log('   ', f.filter((c) => c && c !== VACIO).map((x) => String(x).slice(0, 34)).join(' | ')); return }
 
@@ -583,10 +579,17 @@ async function formatear(google, sheetId, filas, g) {
   fmt(g.f0 - 1, g.fTotalReal, 2, 4, ENTERO)
   fmt(g.f0 - 1, g.fTotalReal, 4, 6, HORAS)
   // Oficina: personas entera y el ajuste por inflación como coeficiente, no como plata.
-  fmt(g.o0 - 1, g.oFin, 2, 3, ENTERO)
+  fmt(g.o0 - 1, g.oFin, 1, 2, ENTERO)
   fmt(g.o0 - 1, g.oFin, 5, 6, { type: 'NUMBER', pattern: '0.00;-0.00;"—"' })
   for (const f of g.cantidades) fmt(f - 1, f, 1, 2, HORAS)
   for (const f of g.enteros) fmt(f - 1, f, 1, 2, ENTERO)
+  reqs.push({
+    repeatCell: {
+      range: rg(g.fCurso - 1, g.fCurso, 2, 3),
+      cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', wrapStrategy: 'OVERFLOW_CELL' } },
+      fields: 'userEnteredFormat(numberFormat,horizontalAlignment,wrapStrategy)',
+    },
+  })
   for (const f of g.ratios) fmt(f - 1, f, 1, 2, { type: 'PERCENT', pattern: '0.0%;[Red]-0.0%;"—"' })
   await google.spreadsheetBatchUpdate(ID, reqs)
 }
