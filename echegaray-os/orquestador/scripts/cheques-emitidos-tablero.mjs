@@ -94,7 +94,7 @@ async function main() {
     fila13('Cheques emitidos'),
     fila13(`Registro de tesorería · al ${hoy} · en pesos. Cada cheque librado por la empresa, con su fecha de pago y si el banco ya lo debitó. Lo que importa es lo NO debitado: plata firmada que todavía no salió de la cuenta y que la disponibilidad neta ya descuenta.`),
     fila13(),
-    fila13('POSICIÓN DE CHEQUES EMITIDOS'),
+    fila13('1 · POSICIÓN DE CHEQUES EMITIDOS — ¿CUÁNTO YA SALIÓ DE TUS MANOS Y TODAVÍA NO SE DEBITÓ?'),
     fila13('Concepto', 'Monto', 'Qué significa'),
     fila13('⇒ Comprometido, no debitado', `=${outstanding}`, 'Ya salió de tus manos, todavía no de la cuenta'),
     fila13('   · en echeq', `=${echeq}`, ''),
@@ -104,7 +104,7 @@ async function main() {
     // que además es exacto porque todos los DEBITADO en blanco ya se completaron con NO.
     fila13('Próximo a debitar', `=IFERROR(TEXT(MINIFS(${I};${K};"NO");"dd/mm/yy");"—")`, 'La fecha más cercana de las pendientes'),
     fila13(),
-    fila13('EL REGISTRO, CHEQUE POR CHEQUE'),
+    fila13('2 · EL REGISTRO, CHEQUE POR CHEQUE'),
   ]
   // ═══ DESARMAR LOS MERGES DE LA BANDA ANTES DE ESCRIBIR ═══
   // Una celda COMBINADA sólo acepta escritura en su ancla: escribir en cualquier otra celda del merge

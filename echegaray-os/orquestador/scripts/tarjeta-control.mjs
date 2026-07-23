@@ -32,7 +32,16 @@ import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = INSTRUMENTOS.tarjeta.pestaña
 const DRY = process.argv.includes('--dry')
-const FIRMA = 'CONTROL — la tarjeta contra el banco y contra la caja'
+const FIRMA = '1 · CONTROL — LA TARJETA CONTRA EL BANCO Y CONTRA LA CAJA'
+/**
+ * CÓMO SE RECONOCE EL BLOQUE, CON O SIN SU NÚMERO.
+ *
+ * Un bloque se reconoce por lo que DICE, no por cómo está numerado: la numeración es lo que más
+ * cambia cuando se reordena una pestaña. Al numerar este bloque, un `startsWith(FIRMA)` habría
+ * dejado de encontrar la versión sin número que ya estaba en la planilla y habría agregado una
+ * copia nueva en cada corrida — el mismo defecto que ya duplicó el cuadro de cobertura de cheques.
+ */
+const ES_BLOQUE = /^\s*(?:\d+\s*·\s*)?CONTROL\s*—\s*la tarjeta/i
 const ANCHO = 5
 /** Filas en blanco entre la carga y el bloque, para que se lea como algo separado. */
 const AIRE = 2
@@ -122,7 +131,7 @@ function grilla(filaDatos, desde) {
   // ── LA TARJETA COMO DISPONIBILIDAD ──────────────────────────────────────────────────────────────
   // Es la conexión con CAJA que se pidió: el disponible de la tarjeta es capacidad de pago, y el
   // consumido en cuotas es deuda con fecha cierta. Son dos caras del mismo instrumento.
-  push(['LA TARJETA COMO DISPONIBILIDAD — lo que ve CAJA'])
+  push(['2 · LA TARJETA COMO DISPONIBILIDAD — LO QUE VE CAJA'])
   const fCab2 = push(['Concepto', 'Monto', '', '', 'Origen'])
   push(['Límite de compra', '', TARJETA.limite, '', `${TARJETA.cuenta} · resumen al ${CORTE}`])
   push(['Consumido sin debitar (pesos)', '', TARJETA.consumidoPesos, '', 'Resumen del banco'])
@@ -154,7 +163,7 @@ async function main() {
   for (let i = 0; i < v.length; i++) {
     const f = v[i] || []
     // Una fila es de datos si tiene monto: el bloque de control anterior no cuenta.
-    if (String(f?.[0] ?? '').startsWith(FIRMA.slice(0, 20))) break
+    if (ES_BLOQUE.test(String(f?.[0] ?? ''))) break
     if (Number(String(f?.[4] ?? '').replace(/[^0-9,-]/g, '').replace(',', '.')) > 0) ultima = i + 1
   }
   if (!ultima) throw new Error('no encontré filas de datos en la pestaña')

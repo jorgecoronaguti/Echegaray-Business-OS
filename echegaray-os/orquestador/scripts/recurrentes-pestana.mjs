@@ -44,12 +44,15 @@ function grilla(proveedores) {
   const vacia = () => Array(ANCHO).fill('')
   const push = (f) => { filas.push(f); return filas.length }
 
-  const t = vacia(); t[0] = `SERVICIOS RECURRENTES ${AÑO} — lo que se paga todos los meses`
+  const t = vacia(); t[0] = `Servicios recurrentes ${AÑO}`
   push(t)
   const n = vacia()
   n[0] = `Sale de Compras, rubro "${RUBRO}" (columna AC). Un servicio es recurrente cuando lo paga la ESTRUCTURA: los mismos proveedores facturando a una obra son costo de esa obra y están en Materiales. Los meses cerrados muestran lo que REALMENTE se pagó, aunque sea $0 — un cero acá significa que falta cargar una factura, y taparlo con una proyección esconde el problema. De agosto en adelante es PROYECCIÓN: promedio de los meses con gasto × la inflación de Parámetros, y sólo para los proveedores que aparecieron en ${MIN_MESES} meses o más.`
   push(n)
-  push(vacia())
+  // EL TÍTULO DE SECCIÓN VA JUSTO ARRIBA DE SU ENCABEZADO, y ocupa la fila en blanco que ya había:
+  // así no corre ninguna fila. Las fórmulas de abajo referencian filas absolutas y un desplazamiento
+  // las dejaría apuntando a otra cosa, en silencio.
+  const s1 = vacia(); s1[0] = '1 · EL GASTO RECURRENTE, MES A MES'; push(s1)
 
   const cab = vacia()
   cab[0] = 'Proveedor'
@@ -90,7 +93,7 @@ function grilla(proveedores) {
   push(vacia())
   const ctrl = filas.length + 1
   const c1 = vacia()
-  c1[0] = 'CONTROL — el real de esta pestaña contra Compras'
+  c1[0] = '2 · CONTROL — EL REAL DE ESTA PESTAÑA CONTRA COMPRAS'
   push(c1)
   const c2 = vacia()
   // Se compara contra lo que TIENE FECHA DE CAJA: un gasto sin fecha no cae en ningún mes y por lo

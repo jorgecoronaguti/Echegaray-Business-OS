@@ -45,14 +45,14 @@ async function main() {
   // ── 1 · ACTIVIDAD: cuántas veces pasó cada estado. Conteos por fórmula viva (0 pegados). NO se
   //        muestra un importe por tipo: el mismo valor aparece como Aceptación Y Custodia, así que
   //        cualquier suma alarma sin decir nada. La plata real va por fila abajo y la cartera en CAJA.
-  push(['ACTIVIDAD RECIBIDA'])
+  push(['1 · ACTIVIDAD RECIBIDA — ¿QUÉ PASÓ CON LOS VALORES QUE ENTRARON?'])
   push(['Tipo', 'Operaciones', 'Qué significa'])
   const filasResumen = CR.TIPOS.map((t) => ({ tipo: t, fila: push([t, '', CR.lectura(t)]) }))
   const fTotalRes = push(['⇒ Total de operaciones', '', 'Una operación no es un cheque: la cartera vigente HOY la manda CAJA'])
   push([])
 
   // ── 2 · EL REGISTRO, operación por operación ────────────────────────────────────────────────────
-  push(['EL REGISTRO, OPERACIÓN POR OPERACIÓN'])
+  push(['2 · EL REGISTRO, OPERACIÓN POR OPERACIÓN'])
   push(COLUMNAS.map(([n]) => n))
   const det0 = filas.length + 1
   for (const o of ops) push([o.op, o.fecha, o.tipo, o.cheques, o.importe, CR.lectura(o.tipo)])

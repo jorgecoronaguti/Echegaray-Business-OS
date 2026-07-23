@@ -58,11 +58,15 @@ function grilla() {
   const push = (c) => { filas.push(c); return filas.length }
   const vacia = () => Array(ANCHO).fill('')
 
-  const t = vacia(); t[0] = 'GASTOS DE ESTRUCTURA — lo que cuesta que la empresa exista, independientemente de las obras'; push(t)
+  const t = vacia(); t[0] = 'Gastos de estructura'; push(t)
   const s = vacia()
   s[0] = `Sale de Compras, rubro "Estructura" (columna AC). De agosto en adelante son PROYECCIONES: promedio de los meses con gasto, ajustado por la inflación de Parámetros. Sólo se proyecta lo que apareció en ${MIN_MESES} meses o más.`
   push(s)
-  push(vacia()); push(vacia()); push(vacia())
+  push(vacia()); push(vacia())
+  // EL TÍTULO DE SECCIÓN VA JUSTO ARRIBA DE SU ENCABEZADO. Aprovecha una de las filas en blanco que
+  // ya había, así que no corre ninguna fila: las fórmulas de abajo referencian filas absolutas y un
+  // desplazamiento las dejaría apuntando a otra cosa, en silencio.
+  const s1 = vacia(); s1[0] = '1 · EL GASTO DE ESTRUCTURA, MES A MES'; push(s1)
 
   const cab = vacia()
   cab[0] = 'Rubro'
@@ -103,7 +107,7 @@ function grilla() {
 
   push(vacia())
   const c1 = vacia()
-  c1[0] = 'CONTROL — que este cuadro sea exactamente el rubro Estructura de Compras'
+  c1[0] = '2 · CONTROL — QUE ESTE CUADRO SEA EXACTAMENTE EL RUBRO ESTRUCTURA DE COMPRAS'
   push(c1)
   const c2 = vacia(); c2[0] = 'Estructura según Compras'; c2[1] = '=SUMIF(Compras!$AC$4:$AC;"Estructura";Compras!$O$4:$O)'
   c2[3] = 'Es la misma línea del Cash Flow Mensual.'

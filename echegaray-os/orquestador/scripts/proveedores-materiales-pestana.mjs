@@ -980,7 +980,9 @@ async function main() {
   let hojas = await google.getSheetMeta(ID)
   const escritas = []
   for (const [i, t] of TRAMOS.entries()) {
-    const filasP = [[t.titulo.toUpperCase()], [t.subtitulo], [], ...partes[i].filas]
+    // EL TÍTULO VA EN ORACIÓN, NO EN VERSALITA. Una pestaña entera gritando es la marca de una
+    // planilla, no de un statement: la versalita se reserva para los títulos de sección.
+    const filasP = [[t.titulo], [t.subtitulo], [], ...partes[i].filas]
     const anchoP = Math.max(...filasP.map((f) => f.length), t.anchos.length)
     // LOS ANCHOS SALEN DEL CONTENIDO, con los declarados como piso: un ancho escrito a mano se queda
     // corto en cuanto cambia un rótulo, y el texto se corta sin que nadie se entere.
