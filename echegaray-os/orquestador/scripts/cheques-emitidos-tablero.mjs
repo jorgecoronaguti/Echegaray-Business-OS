@@ -165,11 +165,26 @@ async function main() {
   // contenido: reja apagada, fondo blanco, tinta, hairlines y CERO barras de color.
   const txt = (color, { bold = false, size = 10, italic = false } = {}) => ({ foregroundColor: color, bold, fontSize: size, italic, fontFamily: 'Arial' })
   const money = { type: 'NUMBER', pattern: '$#,##0' }
+  // ═══ SE FORMATEA LO QUE QUEDÓ ESCRITO, NO LO QUE SE QUISO ESCRIBIR (23/07) ═══
+  //
+  // El dueño: "has dejado roto el formato de la pestaña cheques emitidos". Y lo estaba. Él había
+  // borrado la columna de rótulos de la banda; la Regla 0 respetó esos borrados en los VALORES, pero
+  // al formateador se le seguía pasando la grilla ORIGINAL. Resultado: dibujaba la regla del título
+  // de cada sección —y medía el ancho de cada bloque— como si los rótulos siguieran ahí. En pantalla
+  // quedaban DOS LÍNEAS COLGADAS SOBRE LA NADA, que es justo lo que el minimalismo no perdona: una
+  // regla existe para separar contenido, y ahí no había contenido que separar.
+  //
+  // La clasificación de cada fila (título, sección, encabezado, total) sale de la columna A. Si esa
+  // columna quedó vacía porque una persona la vació, la fila deja de ser una sección — y tiene que
+  // dejar de tener su regla. Pasar la grilla final es lo que hace que el formato siga a la realidad.
   const reqs = [
-    ...skinRequests({ sheetId, filas, cols: 13, congeladas: HDR }),
+    ...skinRequests({ sheetId, filas: filasFinal, cols: 13, congeladas: HDR }),
     // La nota bajo el título, gris y chica.
-    { repeatCell: { range: { sheetId, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 0, endColumnIndex: 13 }, cell: { userEnteredFormat: { textFormat: txt(MUTED, { size: 9 }), wrapStrategy: 'WRAP' } }, fields: 'userEnteredFormat(textFormat,wrapStrategy)' } },
-    { updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 1, endIndex: 2 }, properties: { pixelSize: 34 }, fields: 'pixelSize' } },
+    // Si el dueño borró el subtítulo, su fila no lleva alto especial: sería un renglón alto y vacío.
+    ...(String(filasFinal[1]?.[0] ?? '').trim() ? [
+      { repeatCell: { range: { sheetId, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 0, endColumnIndex: 13 }, cell: { userEnteredFormat: { textFormat: txt(MUTED, { size: 9 }), wrapStrategy: 'WRAP' } }, fields: 'userEnteredFormat(textFormat,wrapStrategy)' } },
+      { updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 1, endIndex: 2 }, properties: { pixelSize: 34 }, fields: 'pixelSize' } },
+    ] : []),
     // Los importes de la posición: moneda, a la derecha, tabulares.
     { repeatCell: { range: { sheetId, startRowIndex: 5, endRowIndex: 8, startColumnIndex: 1, endColumnIndex: 2 }, cell: { userEnteredFormat: { numberFormat: money, horizontalAlignment: 'RIGHT', textFormat: txt(INK, { bold: false, size: 11 }) } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment,textFormat)' } },
     // El titular, en acento y grande: es lo que el tesorero mira primero.
