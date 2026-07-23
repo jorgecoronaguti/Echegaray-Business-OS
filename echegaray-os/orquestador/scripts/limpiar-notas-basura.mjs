@@ -21,6 +21,23 @@ import { loadConfig } from '../lib/config.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
+/**
+ * BARRIDO EXPLÍCITO DE UNA PESTAÑA: `--barrer "Cash Flow Mensual"` borra TODAS sus notas del medio
+ * de la grilla (columnas A–G), no sólo las de la lista cerrada.
+ *
+ * POR QUÉ HACE FALTA UN MODO ASÍ (23/07). Una nota NO SE MUEVE cuando el generador reescribe la
+ * pestaña: vive fuera del valor de la celda. Cuando un rediseño reordena las filas, cada nota se
+ * queda anclada a su número de fila viejo y pasa a explicar la fila equivocada. Medido en Cash Flow
+ * Mensual: "Cobranzas de obra civil" llevaba la nota de *Total Ingresos*, y "Gastos de estructura"
+ * la de *Flujo neto del mes*. Diecisiete notas, todas corridas, todas mintiendo.
+ *
+ * Eso no lo puede resolver una lista de basura conocida —el texto de cada una es perfectamente
+ * sensato, sólo está en el lugar equivocado—, así que se barre a pedido y se imprime todo lo que se
+ * borra, para que quede auditable.
+ */
+const BARRER = (() => { const i = process.argv.indexOf('--barrer'); return i > 0 ? process.argv[i + 1] : null })()
+/** Hasta qué columna se considera "el medio de la grilla". La de origen declarada va después. */
+const COLS_GRILLA = 7
 
 /**
  * NÚCLEO PURO: ¿esta nota es basura del OS?
@@ -46,6 +63,7 @@ async function main() {
   let total = 0
 
   for (const h of hojas) {
+    if (BARRER && h.title !== BARRER) continue
     // Las notas NO vienen en values: hay que pedirlas por el endpoint de la grilla.
     const j = await g.apiGetSheets(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(ID)}`
       + `?ranges=${encodeURIComponent(`'${h.title}'!A1:Z400`)}&fields=sheets(data(rowData(values(note))))`)
@@ -53,7 +71,14 @@ async function main() {
     const rowData = j?.sheets?.[0]?.data?.[0]?.rowData ?? []
     const aBorrar = []
     rowData.forEach((fila, i) => (fila.values ?? []).forEach((c, jj) => {
-      if (esBasura(c?.note)) aBorrar.push({ fila: i, col: jj })
+      if (!c?.note || !String(c.note).trim()) return
+      // En modo barrido, todo lo que esté en el medio de la grilla se va — y se imprime.
+      if (BARRER && jj < COLS_GRILLA) {
+        console.log(`   f${i + 1} c${jj + 1} · ${String(c.note).replace(/\s+/g, ' ').slice(0, 88)}`)
+        aBorrar.push({ fila: i, col: jj })
+        return
+      }
+      if (esBasura(c.note)) aBorrar.push({ fila: i, col: jj })
     }))
     if (!aBorrar.length) continue
     total += aBorrar.length

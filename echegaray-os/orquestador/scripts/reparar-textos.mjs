@@ -14,19 +14,34 @@
 //
 // 1. ENSANCHAR la columna, cuando el texto es corto y la columna es mezquina. Un encabezado como
 //    "Unidad de Negocio" en 100px se arregla con 20px más, no con ingeniería.
-// 2. ETIQUETA + NOTA, cuando el texto es un párrafo. Ensanchar una columna a 900px para que entre
-//    una explicación de 90 caracteres rompe la tabla entera; el texto completo va a la nota de la
-//    celda, donde no se corta y no ocupa pantalla (lib/nota-celda.mjs).
+// 2. AVISAR, cuando el texto es un párrafo y ningún ancho razonable lo va a contener. El que lo
+//    arregla es el generador dueño de esa pestaña, acortando el rótulo o moviendo la explicación al
+//    subtítulo de la sección.
+//
+// ═══ POR QUÉ ESTE REPARADOR YA NO ESCRIBE NOTAS (23/07) ═══
+//
+// Antes hacía una tercera cosa: cuando el texto no entraba, le colgaba una NOTA a la celda con el
+// párrafo entero. Parecía inofensivo —la nota no pisa nada, está a un click— y fue la causa de que
+// el dueño reclamara TRES VECES por lo mismo: "quitá las notas de impuestos y financieros, son
+// confusas", "está lleno de comentarios en cargas sociales", "vuelve a tener los comentarios de
+// mierda esos en el medio".
+//
+// El mecanismo era este, y es el que importa: él borraba las notas a mano, este script volvía a
+// medir el mismo texto en la misma columna, veía que seguía sin entrar, y las escribía de nuevo. Un
+// reparador que corre sobre TODAS las pestañas siempre le gana a una persona que borra una vez.
+//
+// La regla del dueño es "si yo borro algo, respetar lo hecho". La única forma de garantizarla es que
+// nadie las vuelva a escribir. Este script ahora ensancha y REPORTA; no anota.
 //
 // Lo que NO se hace es acortar el texto tirando información: la explicación de por qué un número es
-// lo que es vale tanto como el número.
+// lo que es vale tanto como el número — pero su lugar es el subtítulo de la sección, una vez, no un
+// triangulito amarillo por fila.
 //
 //   node orquestador/scripts/reparar-textos.mjs [pestaña] [--dry]
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { detectar } from '../lib/defectos-pantalla.mjs'
-import { entranEn } from '../lib/nota-celda.mjs'
 import { PESTANAS } from './formato-pestanas.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -34,7 +49,7 @@ const SOLO = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv
 const DRY = process.argv.includes('--dry')
 
 /**
- * Hasta acá se puede ensanchar una columna sin romper la tabla. Más que esto, va a nota.
+ * Hasta acá se puede ensanchar una columna sin romper la tabla. Más que esto, lo tiene que acortar el generador dueño.
  *
  * SUBIÓ DE 300 A 344 (21/07): cinco rótulos de línea del cash flow —"Intereses del acuerdo en
  * descubierto…", 50 caracteres— necesitaban 301px y quedaban cortados por UN píxel. Un tope redondo
@@ -84,7 +99,7 @@ async function main() {
     if (!defectos.length) { console.log(`  ${p.titulo.padEnd(26)} ✓`); continue }
 
     const { ensanchar, aNota } = planDeReparacion(defectos, f.anchos, f.filas)
-    console.log(`  ${p.titulo.padEnd(26)} ${defectos.length} cortado(s) · ${ensanchar.size} columna(s) a ensanchar · ${aNota.length} a nota`)
+    console.log(`  ${p.titulo.padEnd(26)} ${defectos.length} cortado(s) · ${ensanchar.size} columna(s) a ensanchar · ${aNota.length} a acortar`)
     total += defectos.length
     if (DRY) continue
 
@@ -92,24 +107,15 @@ async function main() {
     for (const [j, px] of ensanchar) {
       reqs.push({ updateDimensionProperties: { range: { sheetId: hoja.sheetId, dimension: 'COLUMNS', startIndex: j, endIndex: j + 1 }, properties: { pixelSize: Math.min(px, ANCHO_MAX) }, fields: 'pixelSize' } })
     }
-    // ═══ EL TEXTO LARGO VA A LA NOTA, Y LA CELDA NO SE TOCA ═══
+    // ═══ EL TEXTO LARGO SE REPORTA, NO SE ANOTA ═══
     //
-    // La tentación es escribir una etiqueta corta en la celda y mandar el texto completo a la nota.
-    // NO SE HACE: muchas de esas celdas son FÓRMULAS, y su texto largo es el RESULTADO. Reemplazarlo
-    // por un literal sería cambiar una fórmula por un número pegado — exactamente lo que la regla de
-    // oro prohíbe, y encima en nombre de la prolijidad.
-    //
-    // Así que este reparador es ADITIVO: ensancha lo que se puede ensanchar y agrega la nota con el
-    // texto entero. La nota no pisa nada, no se corta, y está a un click. Acortar el rótulo cuando
-    // corresponde es trabajo del script dueño de la pestaña, que sabe si puede.
-    for (const n of aNota) {
-      reqs.push({
-        updateCells: {
-          range: { sheetId: hoja.sheetId, startRowIndex: n.fila - 1, endRowIndex: n.fila, startColumnIndex: n.col, endColumnIndex: n.col + 1 },
-          rows: [{ values: [{ note: n.texto }] }],
-          fields: 'note',
-        },
-      })
+    // Acá se colgaba una nota con el párrafo entero. Era el mecanismo que resucitaba las notas que el
+    // dueño borraba (ver la cabecera del archivo). Ahora se nombra el defecto y se deja para el
+    // generador dueño de la pestaña, que es el único que puede acortar el rótulo sin perder el dato
+    // —y que sabe si esa celda es una fórmula, en cuyo caso el texto largo es su RESULTADO y no se
+    // puede reemplazar por una etiqueta sin convertir una fórmula en un número pegado.
+    for (const n of aNota.slice(0, 4)) {
+      console.log(`     ✎ fila ${n.fila} col ${n.col + 1}: ${String(n.texto).slice(0, 64)}… — lo tiene que acortar el generador de "${p.titulo}"`)
     }
     for (let i = 0; i < reqs.length; i += 200) await google.spreadsheetBatchUpdate(ID, reqs.slice(i, i + 200))
   }

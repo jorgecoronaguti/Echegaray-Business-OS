@@ -38,7 +38,7 @@ import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-edicion
 import { resolverColumnas, rango } from '../lib/compras-columnas.mjs'
 import { seccion, sub, total as rotuloTotal, auditarPatron } from '../lib/patron-pestana.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
-import { origenANota } from '../lib/nota-celda.mjs'
+import { borrarNotas } from '../lib/nota-celda.mjs'
 import { celdaF931, celdaCabecera, PESTAÑA as RAW } from './f931-sheet.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -444,10 +444,21 @@ async function main() {
 
 /** El formato: la piel de statement compartida más lo propio de la grilla mensual. */
 async function formatear(google, sheetId, filas, { cantidades = [], ratios = [], titular = 0 } = {}) {
-  // LA PROCEDENCIA SALE DEL CUERPO. La columna quedaba como un muro de párrafos grises al costado de
-  // cada fila: el texto pasa a la nota del concepto y la columna deja de robar ancho.
-  const { requests: notas, conNota } = origenANota(filas, ANCHO - 1, sheetId)
-  if (conNota) console.log(`${conNota} procedencias pasaron a la nota del concepto: el cuadro deja de competir con su propia letra chica`)
+  // ═══ NINGUNA NOTA. NI UNA. ═══
+  //
+  // POR QUÉ (23/07, TERCERA VEZ SOBRE LO MISMO). El dueño: "la pestaña cargas sociales vuelve a
+  // tener los comentarios de mierda esos en el medio" — y antes, sobre Impuestos: "quitá las notas,
+  // son confusas". Él las había BORRADO a mano; este generador se las volvió a escribir en la
+  // corrida siguiente, porque `origenANota` reescribe la nota de cada fila en cada pasada.
+  //
+  // Es la regla 0 aplicada a las NOTAS: si el dueño borró algo, borrado queda. Y la única forma de
+  // garantizarlo es no volver a escribirlas nunca — un generador que reescribe la nota en cada
+  // corrida siempre le va a ganar a la persona que la borró una vez.
+  //
+  // La trazabilidad no se pierde: vive en el subtítulo de la pestaña y en el título de cada sección,
+  // una sola vez, como las notas al pie de un tearsheet.
+  const { requests: notas, borradas } = borrarNotas(filas, ANCHO - 1, sheetId)
+  if (borradas) console.log(`notas: barro las ${borradas} filas — la procedencia va en el subtítulo, no en un triangulito por fila`)
   const rg = (r0, r1, c0 = 0, c1 = ANCHO) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
   const moneda = { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }
   const reqs = [

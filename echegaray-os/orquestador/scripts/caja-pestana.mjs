@@ -1253,6 +1253,24 @@ async function formatear(google, sheetId, g, tab) {
   const COL_ORIGEN = 7
   // SIN EL CENTINELA: esta escritura NO pasa por la fusión, así que mandaría " ::VACIO:: " tal cual
   // a la planilla. Ya lo hizo: 61 celdas de CAJA mostraban el texto del centinela.
+  // ═══ NINGUNA NOTA EN EL MEDIO DE LA GRILLA ═══
+  //
+  // POR QUÉ (23/07). El dueño: "vuelve a tener los comentarios de mierda esos en el medio". En CAJA
+  // quedaban CINCO colgadas de la columna A —residuo de una versión anterior que colgaba la
+  // procedencia del concepto—, y este generador nunca las borraba: una nota vive fuera del valor de
+  // la celda, así que reescribir la pestaña no la toca. Sobrevivían corrida tras corrida.
+  //
+  // La regla queda dicha en el código: la nota SÓLO puede vivir en la columna de origen, que en esta
+  // pestaña está declarada y a la vista. En el medio del cuadro, nunca.
+  req.push({
+    updateCells: {
+      // Hasta donde llega la grilla y NI UNA FILA MÁS: pedir una fila que la hoja no tiene hace
+      // fallar el lote entero ("beyond the last requested row"), y con él toda la corrida.
+      range: { sheetId, startRowIndex: 0, endRowIndex: g.filas.length, startColumnIndex: 0, endColumnIndex: COL_ORIGEN },
+      rows: Array.from({ length: g.filas.length }, () => ({ values: Array.from({ length: COL_ORIGEN }, () => ({ note: '' })) })),
+      fields: 'note',
+    },
+  })
   const { requests: notas, celdas, conNota } = notasDeColumna(limpiarCentinela(g.filas), COL_ORIGEN, sheetId, entranEn(ANCHOS[COL_ORIGEN]))
   if (conNota) {
     await google.batchUpdateValues(ID, [{ range: `'${tab}'!${letra(COL_ORIGEN)}1`, values: celdas.map((f) => [f[COL_ORIGEN] ?? '']) }])
