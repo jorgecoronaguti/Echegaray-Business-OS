@@ -208,14 +208,24 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia }) {
   // horas cargadas hasta el 21 y le faltan nueve días. Presentar una quincena a mitad de camino
   // junto a las cerradas es mezclar un hecho con algo que todavía se está formando.
   const fHero = { costo: 0, cerradas: 0, curso: 0, falta: 0, ofiPagado: 0, ofiFalta: 0, plantel: 0 }
-  push(['COSTO DE LA NÓMINA — jornales de obra y sueldos de oficina, lo pagado y lo que falta'])
-  fHero.costo = push([rotuloTotal('Costo de la nómina en el año')])
+  push(['JORNALES Y SUELDOS — lo pagado en el año y lo que falta hasta diciembre'])
+  fHero.costo = push([rotuloTotal('Jornales de obra y sueldos de oficina en el año')])
   fHero.cerradas = push([sub('Obra — quincenas cerradas, ya pagadas')])
   fHero.curso = push([sub('Obra — quincena en curso, todavía se está cargando')])
   fHero.falta = push([sub('Obra — falta pagar hasta diciembre')])
   fHero.ofiPagado = push([sub('Oficina — meses pagados')])
   fHero.ofiFalta = push([sub('Oficina — falta pagar hasta diciembre')])
   fHero.plantel = push([sub('Plantel de obra de la última quincena')])
+  // QUÉ NO ESTÁ ACÁ ADENTRO, DICHO EN LA PESTAÑA. El dueño: "¿está considerando lo que se le debe
+  // pagar a la nómina en SAC y vacaciones? ¿eso está en cargas sociales?". No y sí: este cuadro es
+  // jornal y sueldo puros, y el aguinaldo vive en Cargas Sociales §6 (pagado real de Compras y
+  // devengado 1/12 de la remuneración). Las vacaciones no están en ninguna parte todavía: falta la
+  // antigüedad por legajo y una provisión inventada es peor que una ausente, porque se usa.
+  //
+  // NO SE COPIA EL NÚMERO ACÁ. Un concepto vive en un solo lugar y se referencia — duplicarlo es lo
+  // que hace que el mismo dato tenga dos versiones distintas en dos pestañas. Lo que sí corresponde
+  // es que el titular no se lea como si fuera el costo total de la nómina, porque no lo es.
+  push([sub('No incluye SAC, vacaciones ni cargas sociales'), VACIO, 'ver Cargas Sociales'])
   blanco()
 
   // ── 1 · LO QUE FALTA PAGAR ──

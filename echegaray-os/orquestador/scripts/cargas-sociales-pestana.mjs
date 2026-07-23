@@ -327,8 +327,34 @@ export function grilla({ periodos, conceptos, ps, C, corte }) {
     'Así se devenga el aguinaldo: un doceavo de la remuneración de cada mes.')
   mensual('Provisión acumulada (devengado − pagado)', (m) => `=SUM($B${fSacDev}:${cm(m)}${fSacDev})-SUM($B${fSacPag}:${cm(m)}${fSacPag})`,
     'Acumulado, no del mes: es cuánto se debe de aguinaldo a esta altura del año.', { totaliza: false })
-  push(['Vacaciones', ...Array(13).fill(VACIO),
-    '⚠ Falta la antigüedad por legajo: sin eso los días que le corresponden a cada uno no se pueden calcular, y no se inventan. Una provisión inventada es peor que una ausente, porque se usa.'])
+  // ═══ VACACIONES: LA ANTIGÜEDAD SÍ ESTÁ, LO QUE FALTA ES LA ESCALA ═══
+  //
+  // Acá decía "falta la antigüedad por legajo" y era FALSO: la columna C del espejo _J_OBREROS trae
+  // la fecha de ingreso de cada persona (26/6/23, 12/8/24, 26/5/25…). El dato estaba en la misma
+  // fuente que ya leemos todos los días.
+  //
+  // Lo que falta es otra cosa, y es normativa: los DÍAS que corresponden por tramo de antigüedad.
+  // Eso no se cita de memoria (la skill laboral lo prohíbe: los valores se verifican, los institutos
+  // se nombran). Va a una celda de Parámetros que confirma el contador, y la provisión se calcula
+  // sola contra las fechas de ingreso reales.
+  push(['Vacaciones — devengan mes a mes, se pagan cuando se toman', ...Array(13).fill(VACIO),
+    '⚠ La antigüedad está (fecha de ingreso en _J_OBREROS). Falta la escala de días por tramo, que confirma el contador y va a Parámetros. No se inventa: una provisión inventada es peor que una ausente, porque se usa.'])
+  // ═══ FONDO DE CESE LABORAL: ESTÁ, PERO NO POR DONDE UNO LO BUSCA ═══
+  //
+  // En la construcción NO existe la indemnización por antigüedad de la LCT: rige la Ley 22.250 y el
+  // costo de la desvinculación se va pagando MES A MES al Fondo de Cese. Por eso NO corresponde
+  // provisionar indemnizaciones al estilo del régimen común — el pasivo explosivo del despido no
+  // existe si los aportes están al día.
+  //
+  // Y no está en el F931: los seis conceptos que declara la DDJJ son Seguridad Social (301/351),
+  // Obra Social (302/352), ART (312) y Seguro de Vida (028). El FCL entra por otro lado, desde lo
+  // efectivamente pagado en Compras (ver CONCEPTOS_PROY, base 'pagado'). O sea que su devengado no
+  // se controla contra una declaración: lo único que se sabe es lo que salió de la caja.
+  //
+  // LA PREGUNTA QUE IMPORTA NO ES CUÁNTO, ES SI ESTÁ AL DÍA. Un Fondo de Cese atrasado es
+  // incumplimiento y habilita reclamos, y este cuadro no lo puede contestar solo.
+  push(['Fondo de Cese Laboral (Ley 22.250)', ...Array(13).fill(VACIO),
+    'Se proyecta desde lo PAGADO (Compras), no desde el F931: no lo declara la DDJJ. Reemplaza a la indemnización por antigüedad — por eso no se provisiona despido. Falta verificar que los aportes estén al día.'])
   push()
 
   // ── 7 · PLANES DE PAGO ─────────────────────────────────────────────────────────────────────────
