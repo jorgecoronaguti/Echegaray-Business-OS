@@ -145,105 +145,18 @@ async function main() {
   })
   await google.spreadsheetBatchUpdate(ID, reqs)
 
-  // ── EL CUADRO, AHORA COMO FÓRMULAS ────────────────────────────────────────────────────────────
-  // Los rótulos se conservan EXACTOS: la proyección del bloque 4 busca sus filas por nombre, y
-  // cambiar un rótulo la dejaría sin encontrar el concepto y proyectando de menos, en silencio.
-  const periodos = datos.map((d) => d.periodo)
-  const v = await google.readSheetValues(ID, `${DESTINO}!A1:A20`)
-  const filaDe = (txt) => { const i = v.findIndex((f) => String(f?.[0] ?? '').trim().startsWith(txt)); return i < 0 ? null : i + 1 }
-  const fCab = filaDe('Concepto')
-  if (!fCab) throw new Error(`no encontré el encabezado del bloque 1 en "${DESTINO}"`)
-
-  // ═══ EL SCRIPT ES DUEÑO DEL BLOQUE: ESCRIBE TAMBIÉN LOS RÓTULOS ═══
+  // ═══ LA PESTAÑA "CARGAS SOCIALES" YA NO SE ESCRIBE DESDE ACÁ (23/07) ═══
   //
-  // La primera versión leía los rótulos que ya estaban y escribía sólo los números. Eso la hacía
-  // depender de un cuadro que nadie mantenía: bastó que un nombre no coincidiera —"Aportes de
-  // Seguridad Social" contra "Aportes Seguridad Social (301)"— para que encontrara 1 de 6 conceptos
-  // y dejara el bloque a medio escribir. Un script que sólo puede reparar lo que ya está bien no
-  // sirve para reparar.
+  // Este script escribía el bloque 1 y el de SAC directamente sobre la pestaña, ubicando sus filas
+  // por rótulo. Otros dos scripts hacían lo mismo con sus propios bloques. Tres dueños sobre la
+  // misma pestaña es lo que la dejó con cinco anchos de grilla distintos y con dos bloques que no
+  // eran de nadie —y que quedaron rotos en #VALUE! durante semanas sin que nadie se enterara—.
   //
-  // LOS RÓTULOS SON CONTRATO: la proyección del bloque 4 busca sus filas por nombre (startsWith).
-  // Si cambian, esa proyección deja de encontrar el concepto y proyecta de menos, en silencio.
-  const ROTULO = {
-    301: 'Aportes Seguridad Social (301)',
-    302: 'Aportes Obra Social (302)',
-    351: 'Contribuciones Seguridad Social (351)',
-    352: 'Contribuciones Obra Social (352)',
-    312: 'L.R.T. — ART (312)',
-    '028': 'Seguro de Vida Obligatorio (028)',
-    360: 'Contribuciones RENATRE (360)',
-    935: 'Seguro Sepelio UATRE (935)',
-  }
-  // Sólo los conceptos que esta empresa declara. Un concepto que nunca apareció en una DDJJ no se
-  // agrega en cero: sería una fila que aparenta un dato que no existe.
-  const conceptos = CONCEPTOS_F931.filter((c) => datos.some((d) => (Number(d.conceptos?.[c.clave]) || 0) > 0))
-
-  const ultimaCol = String.fromCharCode(66 + periodos.length)
-  const r0 = fCab + 1
-  const cuadro = [['Concepto', ...periodos, 'Total']]
-  conceptos.forEach((c, i) => {
-    const f = r0 + i
-    cuadro.push([ROTULO[c.codigo] ?? c.nombre, ...periodos.map((p) => celdaF931(p, c.codigo)), `=SUM(B${f}:${String.fromCharCode(65 + periodos.length)}${f})`])
-  })
-  const rTot = r0 + conceptos.length
-  cuadro.push(['TOTAL DECLARADO', ...periodos.map((_, j) => `=SUM(${String.fromCharCode(66 + j)}${r0}:${String.fromCharCode(66 + j)}${rTot - 1})`), `=SUM(${ultimaCol}${r0}:${ultimaCol}${rTot - 1})`])
-  cuadro.push(['Empleados en nómina', ...periodos.map((p) => celdaCabecera(p, COL.empleados)), ''])
-  cuadro.push(['Remuneración declarada', ...periodos.map((p) => celdaCabecera(p, COL.remuneracion)), ''])
-  cuadro.push(['Archivo de origen', ...periodos.map((p) => celdaCabecera(p, COL.archivo)), ''])
-
-  await google.batchUpdateValues(ID, [{ range: `${DESTINO}!A${fCab}`, values: cuadro }])
-
-  // ═══ EL BLOQUE DE SAC, QUE HASTA HOY NO TENÍA DUEÑO ═════════════════════════════════════════
-  //
-  // Era el único contenido del archivo que NINGÚN script escribía (regla 6: todo se actualiza solo).
-  // Y no era inofensivo: su fórmula del devengado referenciaba `$B$13:$M$13` —la fila de
-  // "Remuneración declarada"— POR NÚMERO. Desde que este script rehace el bloque 1, basta que
-  // aparezca un concepto nuevo en una DDJJ para que esa fila se corra y el SAC empiece a dividir por
-  // doce la fila equivocada, sin error y sin aviso.
-  //
-  // Ahora lo escribe quien sabe dónde quedó cada fila: este mismo script, que acaba de ponerlas.
-  const v2 = await google.readSheetValues(ID, `${DESTINO}!A1:A80`)
-  const filaSac = v2.findIndex((f) => /^SAC pagado/.test(String(f?.[0] ?? '').trim())) + 1
-  // encabezado + conceptos + TOTAL + empleados → recién ahí la remuneración. Se busca por RÓTULO y
-  // no se cuenta a mano: contando me dio 12 y la fila es la 13, o sea el SAC habría devengado un
-  // doceavo de la CANTIDAD DE EMPLEADOS. Un número plausible y absurdo, sin error a la vista.
-  const fRem = v2.findIndex((f) => /^Remuneración declarada/.test(String(f?.[0] ?? '').trim())) + 1
-  if (filaSac && fRem) {
-    const fCabSac = filaSac - 1
-    const colFin = String.fromCharCode(65 + periodos.length)
-    const sac = [
-      ['SAC pagado (real, de Compras)', ...periodos.map((_, j) => {
-        const c = String.fromCharCode(66 + j)
-        return `=SUMPRODUCT((LOWER(Compras!$E$4:$E)="sac")*(YEAR(Compras!$C$4:$C)=YEAR(${c}$${fCabSac}))*(MONTH(Compras!$C$4:$C)=MONTH(${c}$${fCabSac}))*IF(ISNUMBER(Compras!$O$4:$O);Compras!$O$4:$O;0))`
-      })],
-      // UN DOCEAVO DE LA REMUNERACIÓN DEL MES: así se devenga el aguinaldo. La referencia va a la
-      // fila que este script acaba de escribir, no a un número fijo.
-      ['SAC devengado (1/12 de la remuneración declarada)', ...periodos.map((_, j) => `=IFERROR(${String.fromCharCode(66 + j)}$${fRem}/12;"")`)],
-      ['Provisión acumulada (devengado − pagado)', ...periodos.map((_, j) => {
-        const c = String.fromCharCode(66 + j)
-        return `=SUM($B${filaSac + 1}:${c}${filaSac + 1})-SUM($B${filaSac}:${c}${filaSac})`
-      })],
-      // VACACIONES: NO SE INVENTA. Provisionarlas necesita la antigüedad de cada legajo —de eso
-      // dependen los días que le corresponden a cada uno— y esa información no está en ninguna
-      // pestaña de este archivo. Se declara el gap en vez de completar la fila con un número
-      // plausible: una provisión inventada es peor que una provisión ausente, porque se usa.
-      ['Vacaciones', ...periodos.map(() => ''), ],
-    ]
-    await google.batchUpdateValues(ID, [
-      { range: `${DESTINO}!A${filaSac}:${colFin}${filaSac + 3}`, values: sac },
-      { range: `${DESTINO}!${String.fromCharCode(66 + periodos.length + 1)}${filaSac + 3}`, values: [['⚠ falta la antigüedad por legajo: sin eso los días de vacaciones que corresponden a cada uno no se pueden calcular, y no se inventan']] },
-    ])
-    console.log(`  bloque SAC reescrito (filas ${filaSac}–${filaSac + 3}): el devengado ahora referencia la fila ${fRem}, no un número fijo`)
-  }
-  console.log(`  bloque 1 de "${DESTINO}" reescrito con fórmulas: ${conceptos.length} conceptos × ${periodos.length} períodos`)
-
-  // VERIFICACIÓN: el total del cuadro tiene que dar lo mismo que la suma de la réplica.
-  const leido = await google.readSheetValues(ID, `${DESTINO}!A${rTot}:${String.fromCharCode(66 + periodos.length)}${rTot}`)
-  const enSheet = Number(String(leido?.[0]?.[periodos.length + 1] ?? '').replace(/[^\d,-]/g, '').replace(',', '.'))
+  // Ahora este script mantiene una sola cosa, y la mantiene bien: la RÉPLICA del insumo. La pestaña
+  // la arma cargas-sociales-pestana.mjs, leyendo de acá.
   const enPdf = datos.reduce((s, d) => s + d.total, 0)
-  const dif = Math.abs(enSheet - enPdf)
-  console.log(`  total declarado: PDF ${Math.round(enPdf).toLocaleString('es-AR')} · Sheet ${Math.round(enSheet).toLocaleString('es-AR')} · diferencia ${dif.toFixed(2)}`)
-  if (dif > 1) { console.log('  ⚠ no coinciden'); process.exitCode = 1 }
+  console.log(`  réplica escrita · total declarado según los PDF: ${Math.round(enPdf).toLocaleString('es-AR')}`)
+  console.log(`  la pestaña "${DESTINO}" la arma cargas-sociales-pestana.mjs a partir de esta réplica`)
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

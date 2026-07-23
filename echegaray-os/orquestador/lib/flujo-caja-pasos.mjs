@@ -36,11 +36,16 @@ export const PASOS = [
   ['proveedores-materiales-pestana.mjs', 'Proveedores (deuda, cuenta corriente, control y ARCA) + Materiales', ['Proveedores', 'Materiales']],
   ['estructura-pestana.mjs', 'pestaña Estructura con su proyección', ['Estructura']],
   ['impuestos-pestana.mjs', 'Impuestos y Financieros — IVA real de ARCA', ['Impuestos y Financieros']],
-  ['f931-sheet.mjs', 'Cargas Sociales — las DDJJ F931 leídas del PDF (_F931_RAW + bloque 1)', ['Cargas Sociales', '_F931_RAW']],
-  ['cargas-planes.mjs', 'Cargas Sociales — planes de pago', ['Cargas Sociales']],
-  // Va DESPUÉS de los planes: la proyección ubica su bloque por rótulo y necesita la pestaña
-  // ya escrita para no calcular sobre una geometría que está por cambiar.
-  ['cargas-proyeccion.mjs', 'Cargas Sociales — la proyección concepto por concepto', ['Cargas Sociales']],
+  // ═══ CARGAS SOCIALES: UN SOLO DUEÑO (23/07) ═══
+  //
+  // Antes eran TRES scripts escribiendo la misma pestaña —f931-sheet el bloque 1, cargas-planes los
+  // planes, cargas-proyeccion la proyección—, cada uno con su ancho de grilla y ubicando su bloque
+  // por rótulo. De ahí salían los cinco anchos mezclados, los bloques sin número y —lo peor— dos
+  // bloques huérfanos que ningún script reclamaba y que quedaron rotos en #VALUE! sin que nadie se
+  // enterara. Ahora f931-sheet sólo mantiene la réplica _F931_RAW (el insumo) y la PESTAÑA entera
+  // la escribe un único generador.
+  ['f931-sheet.mjs', 'la réplica _F931_RAW — las DDJJ F931 leídas de los PDF del data room', ['_F931_RAW']],
+  ['cargas-sociales-pestana.mjs', 'Cargas Sociales — la pestaña entera: declarado, pagado, proyección, caja, SAC y planes', ['Cargas Sociales']],
   ['cobranzas-control.mjs', 'Cobranzas — detector de duplicados', []],
   ['cheques-cobertura-sheet.mjs', 'Cash Flow Mensual — qué cheques y tarjeta faltan cargar en Compras', []],
   ['tarjeta-control.mjs', 'Tarjeta de Credito — el cruce contra el resumen del banco y la disponibilidad que ve CAJA', []],

@@ -15,7 +15,7 @@
 //   3. materiales-pestana — familias de material (y la columna de familia en Compras).
 //   4. estructura-pestana — el cuadro de estructura con su proyección.
 //   5. impuestos-pestana  — IVA real de ARCA con saldo arrastrado.
-//   6. cargas-planes      — planes de pago de deuda previsional.
+//   6. cargas-sociales-pestana — la pestaña Cargas Sociales entera (un solo dueño).
 //   7. cobranzas-control  — el detector de cobros duplicados.
 //   8. cheques-cobertura   — cuánto de los cheques y la tarjeta todavía no tiene factura en Compras.
 //

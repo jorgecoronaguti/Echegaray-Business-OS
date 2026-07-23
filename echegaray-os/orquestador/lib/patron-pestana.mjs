@@ -117,7 +117,7 @@ export function auditarPatron(filas = [], { ancho } = {}) {
 
   // ── Un solo ancho de grilla. Dos anchos es lo que hace que un cuadro se vea corrido. ──
   const anchos = new Map()
-  filas.forEach((f, i) => {
+  filas.forEach((f) => {
     if (!ES_ENCABEZADO.test(celda(f, 0))) return
     let n = (f || []).length
     while (n > 0 && !celda(f, n - 1)) n--
