@@ -1,0 +1,20 @@
+# Estado de ejecución, no configuración. Se regenera solo y no tiene por qué viajar en un commit
+# ni ensuciar el `git status` mientras se trabaja.
+#
+# El resto de .claude/ SÍ se versiona a propósito —settings.json, hooks/ y skills/ son la
+# configuración compartida del repositorio, y es lo que hace que un worktree la herede—.
+
+# El tablero de una corrida de /backlog.
+#
+# LA BARRA INICIAL NO ES DECORATIVA. Escrito como `backlog/`, el patrón matchea a CUALQUIER
+# profundidad y se llevaba puesta `skills/backlog/` — la propia skill quedaba fuera de git, que es
+# justo lo contrario de lo que hace falta: si no viaja en el commit, el worktree no la hereda.
+# Anclado con `/`, sólo alcanza a `.claude/backlog/`.
+/backlog/
+
+# La huella de la última validación del hook de cierre.
+/.cache/
+
+# Los worktrees que crea EnterWorktree cuelgan de la raíz del repositorio, no de acá,
+# pero se declara igual por si alguna versión los ubica bajo el proyecto.
+/worktrees/

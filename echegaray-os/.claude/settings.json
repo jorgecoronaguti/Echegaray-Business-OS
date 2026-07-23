@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/validar-edicion.sh",
+            "timeout": 15,
+            "statusMessage": "sintaxis"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/validar-cierre.mjs",
+            "timeout": 420,
+            "statusMessage": "validando el cambio antes de cerrar"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/validar-cierre.mjs",
+            "timeout": 420,
+            "statusMessage": "validando la tarea del agente"
+          }
+        ]
+      }
+    ]
+  }
+}
