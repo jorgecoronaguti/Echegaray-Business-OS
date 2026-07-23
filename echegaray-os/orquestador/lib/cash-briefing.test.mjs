@@ -22,7 +22,7 @@ const data = {
     ['002', '17/07/2026', 'Santander', '$17.691.359', 'Confirmado', 'x'],  // más nuevo → gana
     ['003', '17/07/2026', 'Efectivo', '$2.000.000', 'Confirmado', 'x'],
   ],
-  '02_Cobranzas!A5:R2000': [
+  'Cobranzas!A5:R2000': [
     // A..R (18 cols): idx12=M Total, idx14=O Estado, idx16=Q Fecha cobro, idx17=R Mes cobro
     [1, '', '', '', '', '', 'ARCOR', '', '', '', '', '', '$5.000.000', '', 'Cobrado', '', '', 'jul-26'],
     [2, '', '', '', '', '', 'LA ESTRELLA', '', '', '', '', '', '$3.000.000', '', 'Proyectado', '', '', 'jul-26'],
@@ -39,7 +39,7 @@ const data = {
     // ENTRA esta semana: fecha cobro 20/7 (dentro de [17,24]), sin cobrar → suma a proyección
     [9, '', '', '', '', '', 'LA ESTRELLA', '', '', '', '', '', '$2.000.000', '', 'Pendiente', '', '20/7/2026', 'jul-26'],
   ],
-  'Cheques!A2:J997': [
+  'Cheques Emitidos!A1:L997': [
     // idx4=E prov, idx5=F monto, idx8=I fecha pago
     ['FISICO', '1', '', '', 'Corralon', '$470.945', '', '', '18/7/2026', 'julio 26'],  // dentro de 7d
     ['FISICO', '2', '', '', 'Viejo', '$999.999', '', '', '2/1/2026', 'enero 26'],       // fuera

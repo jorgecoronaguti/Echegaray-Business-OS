@@ -14,7 +14,7 @@ const iso = (d) => (d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
 // 11 Retenciones, 12 TOTAL Bruto, 13 Forma de Cobro, 14 Estado, 15 Fecha Venta, 16 Fecha cobro, 17 Mes.
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
-  const rows = await google.readSheetValues(CASHFLOW_ID, '02_Cobranzas!A5:R5000').catch(() => [])
+  const rows = await google.readSheetValues(CASHFLOW_ID, 'Cobranzas!A5:R5000').catch(() => [])
   const cobranzas = []
   for (const r of rows) {
     const id = String(r?.[0] ?? '').trim()
@@ -33,7 +33,7 @@ async function main() {
       fecha_cobro: iso(parseFecha(r?.[16])), mes_cobro: String(r?.[17] ?? '').trim() || null,
     })
   }
-  if (!cobranzas.length) { console.error('no leí filas de 02_Cobranzas — abortando (no toco la tabla)'); await closePool(); process.exit(1) }
+  if (!cobranzas.length) { console.error('no leí filas de Cobranzas — abortando (no toco la tabla)'); await closePool(); process.exit(1) }
 
   await query('begin')
   try {

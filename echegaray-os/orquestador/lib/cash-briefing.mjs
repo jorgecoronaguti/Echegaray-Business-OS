@@ -92,7 +92,7 @@ export async function cashBriefing(google, hoy = new Date()) {
   //    G idx6 Obra/Cliente, Q idx16 "Fecha cobro" fecha real) + VENCIDAS (fecha de cobro ya pasó y
   //    sin cobrar = plata que debería estar y no está). "Vencida" NO interpreta la taxonomía de
   //    estados (Pendiente/Proyectado/Facturado…): solo "no Cobrado" + fecha de cobro < hoy. Honesto.
-  const cob = await google.readSheetValues(ID, '02_Cobranzas!A5:R2000').catch(() => [])
+  const cob = await google.readSheetValues(ID, 'Cobranzas!A5:R2000').catch(() => [])
   let cobrado = 0, porCobrar = 0, entra7 = 0
   const vencidas = []
   for (const r of cob) {
@@ -113,11 +113,17 @@ export async function cashBriefing(google, hoy = new Date()) {
   vencidas.sort((a, z) => z.dias - a.dias)
   const totalVencido = vencidas.reduce((s, v) => s + v.monto, 0)
 
-  // 3) VENCIMIENTOS próximos 7 días — Cheques (I idx8 fecha pago, F idx5 monto) +
-  //    Tarjeta (H idx7 fecha pago, E idx4 monto, J idx9 DEBITADO)
-  const chq = await google.readSheetValues(ID, 'Cheques!A2:J997').catch(() => [])
+  // 3) VENCIMIENTOS próximos 7 días — Cheques Emitidos (registro FISICO/ECHEQ: E idx4 proveedor,
+  //    F idx5 monto, I idx8 fecha pago, K idx10 DEBITADO) + Tarjeta (H idx7 fecha, E idx4 monto,
+  //    J idx9 DEBITADO). La pestaña se llama "Cheques Emitidos" (antes "Cheques", renombrada en el
+  //    rediseño): apuntar al nombre viejo devolvía [] y el briefing informaba $0 de vencimientos.
+  const chq = await google.readSheetValues(ID, 'Cheques Emitidos!A1:L997').catch(() => [])
   const cheques = []
-  for (const r of chq) { const f = parseFecha(r?.[8]); if (dentro7(f)) cheques.push({ proveedor: String(r?.[4] ?? '').trim(), monto: parseMonto(r?.[5]), fecha: String(r?.[8]).trim() }) }
+  for (const r of chq) {
+    if (!/^(fisico|echeq)$/i.test(String(r?.[0] ?? '').trim())) continue // sólo filas del registro
+    if (/^si$/i.test(String(r?.[10] ?? '').trim())) continue // ya debitado: ya salió de la cuenta
+    const f = parseFecha(r?.[8]); if (dentro7(f)) cheques.push({ proveedor: String(r?.[4] ?? '').trim(), monto: parseMonto(r?.[5]), fecha: String(r?.[8]).trim() })
+  }
   const tar = await google.readSheetValues(ID, 'Tarjeta de Credito!A3:J998').catch(() => [])
   const tarjeta = []
   for (const r of tar) { if (/^si$/i.test(String(r?.[9] ?? '').trim())) continue; const f = parseFecha(r?.[7]); if (dentro7(f)) tarjeta.push({ proveedor: String(r?.[2] ?? '').trim(), monto: parseMonto(r?.[4]), fecha: String(r?.[7]).trim() }) }
