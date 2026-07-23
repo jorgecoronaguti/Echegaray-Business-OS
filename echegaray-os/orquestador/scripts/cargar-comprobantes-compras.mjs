@@ -19,6 +19,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { matchProveedor, valoresInput, validar, GRUPOS_FORMULA } from '../lib/carga-comprobantes.mjs'
+import { claveComprobante } from '../lib/compras-duplicados.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
@@ -39,13 +40,19 @@ async function listaProveedores(google) {
   return []
 }
 
-/** Comprobantes de ARCA para detectar duplicados: clave laxa por número y por CUIT. */
+/** Comprobantes de ARCA para detectar duplicados.
+ *
+ *  LA CLAVE ES `claveComprobante` (lib/compras-duplicados.mjs), no una normalización propia. Antes
+ *  acá se indexaba SÓLO por `numero` y del lado del fajo se usaban los dígitos del string completo
+ *  del Sheet ("0008-0000333" → "80000333"): dos normalizaciones distintas del mismo concepto, así
+ *  que el cruce NUNCA podía coincidir y el aviso de duplicado no se disparaba jamás. Una sola
+ *  definición, la misma que usa el auditor de lo ya cargado. */
 async function indiceArca() {
   const { rows } = await query('select emisor_cuit, punto_venta, numero, imp_total::float8 imp_total from comprobantes_arca').catch(() => ({ rows: [] }))
   const porNumero = new Map()
   for (const r of rows) {
-    const num = String(r.numero ?? '').replace(/\D/g, '').replace(/^0+/, '')
-    if (num) porNumero.set(num, r)
+    const k = claveComprobante(r.punto_venta, r.numero)
+    if (k) porNumero.set(k, r)
   }
   return { porNumero, total: rows.length }
 }
@@ -73,7 +80,7 @@ async function main() {
     const problemas = validar(cc)
     if (problemas.length) { rechazos.push({ i, proveedor: c.proveedor, problemas }); continue }
     if (prov.esNuevo) nuevos.add(prov.valor)
-    const num = String(c.numero ?? '').replace(/\D/g, '').replace(/^0+/, '')
+    const num = claveComprobante(c.numero)
     const enArca = num && arca.porNumero.get(num)
     if (enArca) dupes.push({ i, numero: c.numero, arcaTotal: enArca.imp_total })
     plan.push({ valores: valoresInput(cc), nuevo: prov.esNuevo })
