@@ -136,7 +136,12 @@ export async function calendarioDiario(deps = {}, opts = {}) {
       const fecha = parseFecha(r?.[8]); const monto = parseMonto(r?.[5])
       if (!fecha || fecha < desde || fecha > hasta || !(monto > 0)) continue
       const proveedor = String(r?.[4] ?? '').trim()
-      movimientos.push({ fecha, tipo: 'egreso', monto, categoria: categoriaEgreso(proveedor), proveedor, obra: String(r?.[11] ?? '').trim() || null, medio: 'Cheque', origen: 'Cheques Emitidos' })
+      // EL INSTRUMENTO MANDA CUANDO EL CONCEPTO NO DICE NADA (QA 23/07). Clasificar un cheque por el
+      // nombre del proveedor lo mandaba a "obligación": la línea "Cheques" del día daba $0 aunque los
+      // movimientos fueran cheques (Diesel Rodriguez, NEUMAGOM). Si el proveedor SÍ delata un pago
+      // fiscal o previsional (UOCRA, ARCA…), gana ese concepto; si no, es lo que es: un cheque.
+      const cat = categoriaEgreso(proveedor)
+      movimientos.push({ fecha, tipo: 'egreso', monto, categoria: cat === 'obligacion' ? 'cheque' : cat, proveedor, obra: String(r?.[11] ?? '').trim() || null, medio: 'Cheque', origen: 'Cheques Emitidos' })
     }
   } catch { /* sin cheques: el día queda sin ese egreso */ }
 

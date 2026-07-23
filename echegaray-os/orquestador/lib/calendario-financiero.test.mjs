@@ -58,6 +58,27 @@ test('categoriaEgreso reconoce F931/UOCRA como cargas sociales y ARCA/IVA como i
   assert.equal(categoriaEgreso('Proveedor materiales'), 'obligacion')
 })
 
+// QA 23/07: los cheques de "Cheques Emitidos" se clasificaban por el NOMBRE DEL PROVEEDOR, así que
+// "Diesel Rodriguez" caía en 'obligacion' y la línea "Cheques" del día mostraba $0 con movimientos que
+// eran cheques. La regla: si el concepto/proveedor no delata nada fiscal, manda el INSTRUMENTO.
+test('un cheque a un proveedor común cuenta como CHEQUE, no como obligación genérica', () => {
+  const cal = armarCalendario({
+    cajaInicial: 0, desde: d('2026-07-23'), hasta: d('2026-07-23'),
+    movimientos: [{ fecha: d('2026-07-23'), tipo: 'egreso', monto: 500000, categoria: 'cheque', proveedor: 'Diesel Rodriguez' }],
+  })
+  assert.equal(cal[0].cheques, 500000)
+  assert.equal(cal[0].obligaciones, 0)
+})
+
+test('un cheque a un organismo previsional sigue contando como cargas sociales (el concepto gana)', () => {
+  const cal = armarCalendario({
+    cajaInicial: 0, desde: d('2026-07-23'), hasta: d('2026-07-23'),
+    movimientos: [{ fecha: d('2026-07-23'), tipo: 'egreso', monto: 700000, categoria: categoriaEgreso('UOCRA aporte'), proveedor: 'UOCRA' }],
+  })
+  assert.equal(cal[0].cargas_sociales, 700000)
+  assert.equal(cal[0].cheques, 0)
+})
+
 test('el nivel de riesgo: positivo=bajo, cubierto por la línea=medio, supera el acuerdo=alto', () => {
   assert.equal(nivelRiesgo(500000, 18200000), 'bajo')
   assert.equal(nivelRiesgo(-1000000, 18200000), 'medio')
