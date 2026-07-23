@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { fusionar, sobrantes, tiene, letraCol, escribirPreservando } from './preservar-anotaciones.mjs'
+import { fusionar, sobrantes, tiene, letraCol, escribirPreservando, limpiarCentinela, VACIO } from './preservar-anotaciones.mjs'
 
 test('lo que anota el dueño NUNCA se borra, esté en la columna que esté', () => {
   const generado = [['Proveedor', 'Importe'], ['Alumetal', 100]]
@@ -93,4 +93,11 @@ test('una grilla vacía no escribe nada', async () => {
   const { conservadas } = await escribirPreservando(google, 'ID', 'X', [])
   assert.equal(toco, false)
   assert.deepEqual(conservadas, [])
+})
+
+test('limpiarCentinela deja la grilla lista para una escritura que no pasa por la fusión', () => {
+  const g = [['Cuenta', VACIO, 'ARS'], [VACIO, 0, '']]
+  assert.deepEqual(limpiarCentinela(g), [['Cuenta', '', 'ARS'], ['', 0, '']])
+  // No toca el original: el generador puede seguir usándolo para fusionar.
+  assert.equal(g[0][1], VACIO)
 })

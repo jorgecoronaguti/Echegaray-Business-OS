@@ -56,7 +56,7 @@ import { CUENTAS, CARGA, ALIAS, TIPO_CAMBIO, RANGO_TC, filaDeCuenta } from '../l
 import * as BANCO from '../lib/banco-santander.mjs'
 import { TASAS, CARGO_VERIFICADO, tasaDiaria, costoConImpuestos, interesDelPeriodo } from '../lib/costo-descubierto.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
-import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { escribirPreservando, limpiarCentinela, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { CAJA as N_CAJA, publicar } from '../lib/rangos-nombrados.mjs'
 import { esIndistinguible } from '../lib/cobranzas-duplicado.mjs'
 import * as CONC from '../lib/conciliacion-por-naturaleza.mjs'
@@ -179,6 +179,9 @@ function grilla(cargado, refs) {
   const previo = (cuenta, campo) => cargado.get(cuenta)?.[campo] ?? ''
 
   push(['Posición de caja'])
+  // LA FILA 2 DICE QUÉ CONTESTA LA PESTAÑA, DE DÓNDE SALE Y A QUÉ FECHA. Era la única del archivo que
+  // arrancaba en el titular sin decir de qué está hablando ni a qué corte.
+  push([`Cuánta plata hay de verdad, qué ya está comprometido y hasta cuándo alcanza · extracto Santander, Cobranzas, Compras, Cheques Emitidos y Cheques Recibidos · al ${new Date().toLocaleDateString('es-AR')}`])
   push()
   // ═══ LOS TRES NÚMEROS QUE CONTESTAN LA PREGUNTA, ARRIBA DE TODO ═══
   //
@@ -316,6 +319,16 @@ function grilla(cargado, refs) {
   // La columna de origen sólo tiene sentido donde conviven dos monedas (el bloque de cuentas).
   const hrow = (label, amount, nota) => push([label, 'ARS', '', '', amount, '', '', nota, ''])
   const fHEntra = hrow('Entra — cheques recibidos, en cartera', `=${C_PESOS}${fCartera}`, 'Valores en custodia según el banco (detalle en el bloque 3, más abajo).')
+  // ¿SALIÓ ALGO DE LA CARTERA DESPUÉS DE LA FOTO? El saldo de custodia del banco es de una fecha; si
+  // en Cheques Recibidos hay un depósito o un endoso POSTERIOR a esa fecha, esa plata ya no está en
+  // cartera y el "entra" de arriba está inflado. Es la misma trampa que ya costó $20.000.000 de
+  // echeqs endosados que el cash flow seguía esperando.
+  if (refs.recibidos) {
+    const rec = refs.recibidos
+    const salidas = `SUMPRODUCT(('${rec}'!$B$15:$B$400>$F$${fCartera})*(('${rec}'!$C$15:$C$400="Depósito")+('${rec}'!$C$15:$C$400="Endoso"))*IF(ISNUMBER('${rec}'!$E$15:$E$400);'${rec}'!$E$15:$E$400;0))`
+    hrow('   · control: salidas registradas después de la fecha de la cartera', `=${salidas}`,
+      `Pestaña ${rec}: depósitos y endosos con fecha posterior al saldo de custodia. Si no es cero, parte de lo que figura arriba como "entra" ya salió.`)
+  }
   const fHSale = hrow('Sale — cheques emitidos, por vencer', `=${C_PESOS}${fCh}`, `Pestaña ${ch}, no debitados (DEBITADO ≠ SI).`)
   push(['⇒ Neto de cheques en el horizonte', 'ARS', '', '', `=${C_PESOS}${fHEntra}-${C_PESOS}${fHSale}`, '', '',
     'Entra menos sale. Negativo = los cheques que ya firmaste superan los que vas a cobrar de cartera.', ''])
@@ -339,17 +352,23 @@ function grilla(cargado, refs) {
   // Todo lo que sigue —el detalle de cada línea y las verificaciones que prueban que los números son
   // confiables— vive plegado bajo un "+", para no tapar la posición. Es la regla "nada suelto" sin
   // sacrificar el minimalismo: está, pero no estorba.
-  const fCtrl0 = push(['CONTROLES Y CONCILIACIONES — el detalle y las verificaciones (desplegar con ▸)'])
+  // UN BLOQUE SIN NÚMERO NO SE SABE SI ES UNA SECCIÓN, UN SUB-BLOQUE O UN RESTO. Éste, el del costo
+  // del descubierto y el de "cómo se actualiza" eran los tres sueltos de la pestaña: el lector no
+  // tenía forma de saber dónde terminaba uno y empezaba el otro.
+  const fCtrl0 = push(['4 · CONTROLES Y CONCILIACIONES — EL DETALLE Y LAS VERIFICACIONES'])
 
   const fAlerta0 = push(['⚠ LO QUE NO CIERRA — mirar antes de decidir con los números de arriba'])
   push(['Cada línea es un problema con nombre y monto; la última columna dice de qué resta sale.'])
-  push(['Qué pasa', '', 'Cuánto', 'Qué hacer, y de dónde sale el número', '', '', '', ''])
+  // LA EXPLICACIÓN VA EN LA ÚLTIMA COLUMNA, COMO EN TODO EL RESTO DE LA PESTAÑA. Estaba en la
+  // cuarta: doscientos veinte caracteres en el medio de la grilla desparraman la fila y corren de
+  // lugar todo lo que está debajo. Es el defecto que se ve como "descuadrado".
+  push(['Qué pasa', '', 'Cuánto', '', '', '', '', 'Qué hacer, y de dónde sale el número'])
   push(['Cheques de terceros que el cash flow espera y ya se entregaron', '', '@DIFECHEQ',
-    '@ORIGEN_ECHEQ', '', '', '', ''])
+    '', '', '', '', '@ORIGEN_ECHEQ'])
   push(['El cash flow proyecta un efectivo que no está', '', '@DIFCONC',
-    '@ORIGEN_CONC', '', '', '', ''])
+    '', '', '', '', '@ORIGEN_CONC'])
   push(['Efectivo cobrado que no se depositó ni está en la caja física', '', '@SINEXPL',
-    '@ORIGEN_EFVO', '', '', '', ''])
+    '', '', '', '', '@ORIGEN_EFVO'])
   const fAlerta1 = filas.length
   push()
 
@@ -360,7 +379,7 @@ function grilla(cargado, refs) {
   // endosados, que no son plata— y dos filas de control. Una tabla que dice "acá está lo que tenés"
   // con cinco filas en el medio que no son eso obliga a decidir fila por fila cuál suma. El detalle
   // es valioso y se queda, pero abajo y con su propio título.
-  push(['4 · LOS VALORES EN CARTERA, UNO POR UNO'])
+  push(['5 · LOS VALORES EN CARTERA, UNO POR UNO'])
   // EL DETALLE DE LOS CHEQUES EN CARTERA, colapsable. Va DESPUÉS de las cuentas y antes del total,
   // así que no entra en el rango que suma: sumaría dos veces la misma plata.
   const ultima = CUENTAS[CUENTAS.length - 1]
@@ -395,7 +414,7 @@ function grilla(cargado, refs) {
   push()
 
   // ── 4 · LÍNEAS DE CRÉDITO ───────────────────────────────────────────────────────────────────────
-  push(['5 · LÍNEAS DE CRÉDITO — NO SUMAN ARRIBA'])
+  push(['6 · LÍNEAS DE CRÉDITO — NO SUMAN ARRIBA'])
   push(['El margen de una tarjeta es capacidad de endeudarse, no plata propia. Sumarlo a las disponibilidades es el error que hace que una empresa se crea líquida el día antes de no poder pagar sueldos. El límite en pesos y el límite en dólares son dos cupos distintos: mezclarlos daría un margen que no existe en ninguna de las dos monedas.'])
   const cab3 = push(['Línea', 'Moneda', 'Importe en moneda de origen', 'Tipo de cambio', 'Importe en pesos', '', '', 'Origen del dato'])
 
@@ -453,7 +472,7 @@ function grilla(cargado, refs) {
   // generando". El modelo no se estimó: reproduce al centavo el cargo que el banco hizo el 14/07
   // (ver costo-descubierto.mjs). Por eso el bloque muestra la verificación al lado del cálculo: una
   // tasa copiada de una pantalla y una tasa que reproduce un cargo real no valen lo mismo.
-  push(['COSTO DE USAR EL DESCUBIERTO — lo que corre por día mientras la cuenta esté en rojo'])
+  push(['7 · COSTO DE USAR EL DESCUBIERTO — LO QUE CORRE POR DÍA MIENTRAS LA CUENTA ESTÉ EN ROJO'])
   const saldoBanco = `$${C_PESOS}$${fBancoPesos}`
   const fTasa = push(['Tasa nominal anual del acuerdo', '', TASAS.tna, '', '', '', '',
     `Acuerdo N° ${BANCO.ACUERDO.numero}. Costo financiero total ${(BANCO.ACUERDO.cft * 100).toFixed(2)}% anual.`, 'Réplica del banco'])
@@ -472,7 +491,7 @@ function grilla(cargado, refs) {
   push()
 
   // ── 5 · ALERTA ──────────────────────────────────────────────────────────────────────────────────
-  push(['6 · ALERTA DE CAJA — HASTA CUÁNDO ALCANZA'])
+  push(['8 · ALERTA DE CAJA — HASTA CUÁNDO ALCANZA'])
 
   // ═══ DÍAS DE CAJA ═══════════════════════════════════════════════════════════════════════════
   //
@@ -539,7 +558,7 @@ function grilla(cargado, refs) {
   push(['Primer mes con caja negativa', '', '', '', primerMes('<0'), '', '', '',
     '⚠ Ojo: los ingresos de octubre en adelante están en $0 porque no hay obra facturada. Esta fecha es un PISO, no un pronóstico.'])
   // ── 4 · CONCILIACIÓN ────────────────────────────────────────────────────────────────────────────
-  push(['7 · CONCILIACIÓN — ¿EL CASH FLOW EXPLICA LA PLATA QUE HAY?'])
+  push(['9 · CONCILIACIÓN — ¿EL CASH FLOW EXPLICA LA PLATA QUE HAY?'])
   push(['El control que mide si el archivo sirve. Si la diferencia es chica, el cuadro es confiable. Si es grande, hay plata moviéndose fuera del Sheet y hay que buscarla antes de decidir con estos números.'])
   const fDecl = push(['Disponibilidad declarada (bloque 1)', '', '', '', `=${C_PESOS}${fTotal}`, '', '', '', 'Lo que dicen el extracto y el arqueo.'])
   const fProy = push(['Efectivo al cierre que proyecta el Cash Flow al mes de la fecha del saldo', '', '', '',
@@ -598,7 +617,7 @@ function grilla(cargado, refs) {
   // ES UN CONTROL, NO UNA ACUSACIÓN: puede haber una explicación buena (un depósito posterior a la
   // fecha del extracto, un pago a proveedor hecho en efectivo sin pasar por el banco). Lo que no
   // puede pasar es que nadie lo mire.
-  push(['8 · ¿DÓNDE ESTÁ EL EFECTIVO COBRADO?'])
+  push(['10 · ¿DÓNDE ESTÁ EL EFECTIVO COBRADO?'])
   push(['Un cobro en efectivo que no se depositó tiene que estar en la caja física. Este control resta: lo cobrado en efectivo, menos lo que se depositó, menos lo que se declara en la caja de arriba. Si sobra plata, o no está o el cobro no ocurrió.'])
   // ═══ LA MISMA VENTANA DE TIEMPO DE LOS DOS LADOS ═══
   //
@@ -680,7 +699,7 @@ function grilla(cargado, refs) {
   // explicarlo. DOS NO TIENEN NINGUNA: el impuesto al cheque y el costo del descubierto salen todos
   // los meses y ningún cuadro del archivo los espera. Por eso la proyección muestra un saldo que la
   // cuenta nunca llega a tener.
-  push(['9 · QUÉ SALIÓ DEL BANCO Y DÓNDE ESTÁ REGISTRADO'])
+  push(['11 · QUÉ SALIÓ DEL BANCO Y DÓNDE ESTÁ REGISTRADO'])
   push(['Cada peso que salió de la cuenta tiene una pestaña que debería tenerlo. Acá se compara, grupo por grupo, lo que dice el extracto contra lo que dice esa pestaña en los MISMOS días. Una diferencia puede ser carga pendiente o un corte de fechas distinto; lo que no puede pasar es que nadie la mire.'])
   push(['Qué salió', '', 'Según el banco', '', 'Según la pestaña', 'Diferencia', '', 'Qué pestaña lo tiene que tener'])
   const n0 = filas.length + 1
@@ -707,7 +726,7 @@ function grilla(cargado, refs) {
     'Los dos números tienen que ser iguales. Distintos = apareció un concepto nuevo en el banco sin grupo asignado.'])
   push()
 
-  push(['10 · TIPO DE CAMBIO — SÓLO PARA VALUAR LA CUENTA EN DÓLARES'])
+  push(['12 · TIPO DE CAMBIO — SÓLO PARA VALUAR LA CUENTA EN DÓLARES'])
   push(['Está al final a propósito: la empresa cobra, paga y decide en pesos. El dólar acá no es una posición, es una cuenta chica que hay que poder sumar al total — y para eso hace falta una cotización con origen.'])
   const cab0 = push(['Concepto', '', 'Cotización', '', '', 'Fecha', '', 'Origen del dato'])
   const fRef = push([TIPO_CAMBIO.referencia.nombre, '', TIPO_CAMBIO.referencia.formula, '', '', '=TODAY()', '', TIPO_CAMBIO.referencia.origen, 'Se calcula solo'])
@@ -722,7 +741,7 @@ function grilla(cargado, refs) {
     `=${C_IMP}${filas.length + 1}*${C_TC}${filas.length + 1}`, '', '',
     'Exposición al tipo de cambio: esta parte de la caja cambia de valor sin que entre ni salga un peso.', 'Se calcula solo'])
   push()
-  push(['CÓMO SE ACTUALIZA ESTO'])
+  push(['13 · CÓMO SE ACTUALIZA ESTO'])
   push(['· Los saldos (las celdas amarillas) se cargan a mano o pegando el extracto en el chat: el OS lo lee y los completa. Lo que está en dólares se carga en dólares.'])
   push(['· No hay integración con el banco. La API de banca empresa se pide al banco y hoy no está contratada — hasta entonces, el saldo entra por extracto, captura o arqueo.'])
   push(['· El tipo de cambio se actualiza solo con la cotización del día. Si operás a otro (MEP, tarjeta), cargalo en la fila "Dólar declarado" y ése pasa a mandar.'])
@@ -765,6 +784,18 @@ async function main() {
     // 'Cheques Emitidos' completo, no 'Cheques' a secas: desde que existe 'Cheques Recibidos' el
     // nombre corto es ambiguo y hallarPestana corta con error.
     cheques: hallarPestana(hojas, 'Cheques Emitidos').title,
+    // ═══ LA SEGUNDA PESTAÑA DE CHEQUES (23/07) ═══
+    //
+    // EL DUEÑO PREGUNTÓ: "¿caja obtiene los datos de cheques de las dos pestañas?". La respuesta era
+    // NO: el lado que SALE salía de Cheques Emitidos, pero el lado que ENTRA salía del saldo de
+    // custodia del banco, y "Cheques Recibidos" no la miraba nadie desde acá.
+    //
+    // Y NO SE PUEDE SUMAR ESA PESTAÑA PARA OBTENER LA CARTERA: es un libro de OPERACIONES, no de
+    // cheques. Un mismo valor aparece como Aceptación, después Custodia, después Rescate y después
+    // Depósito. Sumar la columna de importes da $100M contra los $10M reales. Lo que esa pestaña sí
+    // sabe, y el saldo del banco no, es si un valor SALIÓ de la cartera después de la foto: eso es
+    // exactamente el riesgo que hay que controlar, y es lo que se trae.
+    recibidos: hallarPestana(hojas, 'Cheques Recibidos')?.title ?? null,
     tarjeta: hallarPestana(hojas, 'Tarjeta').title,
     // La réplica del extracto. Si no está, el saldo del banco vuelve al número declarado y la línea
     // de movimientos posteriores no se escribe: sin corte confiable, esa ventana no se puede acotar.
@@ -811,6 +842,14 @@ async function main() {
   // clearValues sobre toda la pestaña; ahora se lee lo que hay y se FUSIONA: manda el generador donde
   // TIENE contenido y se conserva lo de la persona donde el generador deja vacío. Ver
   // lib/preservar-anotaciones.mjs.
+  // ═══ DESARMAR LAS COMBINACIONES ANTES DE ESCRIBIR, NO DESPUÉS ═══
+  //
+  // El formato ya desarmaba los merges, pero corría DESPUÉS de escribir los valores: en la corrida
+  // en que existe una celda combinada, la escritura se pierde EN SILENCIO —ni error ni valor— y
+  // recién la corrida siguiente deja el dato. Pasó hoy con la explicación de las tres alertas, y
+  // antes con la fórmula del "próximo a debitar". Un dato que aparece recién a la segunda corrida
+  // es un dato que, si el script se ejecuta una sola vez, no aparece nunca.
+  await google.spreadsheetBatchUpdate(ID, [{ unmergeCells: { range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: Math.max(g.filas.length, hoja.rows ?? 0), startColumnIndex: 0, endColumnIndex: Math.max(ANCHO, hoja.cols ?? ANCHO) } } }]).catch(() => {})
   const { conservadas } = await escribirPreservando(google, ID, tab, g.filas, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) escritas por una persona — CONSERVADAS`)
   await formatear(google, hoja.sheetId, g, tab)
@@ -966,13 +1005,22 @@ async function formatear(google, sheetId, g, tab) {
     fmt(r(g.fAlerta0 + 1, g.fAlerta0 + 2), 'userEnteredFormat', E.encabezado())
     fmt(r(g.fAlerta0 + 2, g.fAlerta1, 2, 3), 'userEnteredFormat',
       { numberFormat: E.NUM.moneda, textFormat: { bold: true, fontSize: E.TAM.bloque, fontFamily: E.FUENTE_NUM, foregroundColor: E.COLOR.alertaTexto }, horizontalAlignment: 'RIGHT' })
-    // La columna "qué hacer" son frases de 90 caracteres: se combinan a lo ancho y la fila crece.
-    // Con una sola columna quedaban cortadas justo donde dice qué hay que hacer.
+    // ═══ SIN COMBINAR: EL "QUÉ HACER" VIVE EN LA MISMA COLUMNA QUE TODOS LOS ORÍGENES ═══
+    //
+    // ANTES estas tres filas combinaban D:H y el texto vivía en la D, o sea en el medio de la
+    // grilla. Dos problemas, y el segundo es el que costó encontrar:
+    //
+    //   · Un texto de 220 caracteres en la cuarta columna desparrama la fila y descuadra el bloque
+    //     respecto de todos los demás, que ponen su procedencia en la última columna.
+    //   · Al mover el texto a la H, LA CELDA COMBINADA SE TRAGÓ LA ESCRITURA EN SILENCIO —ni error
+    //     ni valor— y las tres alertas quedaron sin su explicación. Es la misma trampa que ya se
+    //     había documentado con la fórmula del "próximo a debitar".
+    //
+    // Ahora la explicación va en la H, con wrap, como el resto de la pestaña.
     for (let i = g.fAlerta0 + 2; i < g.fAlerta1; i++) {
-      req.push({ mergeCells: { range: r(i, i + 1, 3, ANCHO), mergeType: 'MERGE_ROWS' } })
-      req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: 32 }, fields: 'pixelSize' } })
+      req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: 46 }, fields: 'pixelSize' } })
     }
-    fmt(r(g.fAlerta0 + 2, g.fAlerta1, 3, ANCHO), 'userEnteredFormat', { ...E.nota(), wrapStrategy: 'WRAP', verticalAlignment: 'MIDDLE' })
+    fmt(r(g.fAlerta0 + 2, g.fAlerta1, ANCHO - 1, ANCHO), 'userEnteredFormat', { ...E.nota(), wrapStrategy: 'WRAP', verticalAlignment: 'MIDDLE' })
     fmt(r(g.fAlerta0 + 2, g.fAlerta1, 0, 1), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
   }
 
@@ -1079,7 +1127,9 @@ async function formatear(google, sheetId, g, tab) {
   // Hasta hoy había orígenes de 207 caracteres en una celda donde entran 48. La procedencia de cada
   // saldo —lo que hace que el número sea creíble— estaba escrita y no se podía leer.
   const COL_ORIGEN = 7
-  const { requests: notas, celdas, conNota } = notasDeColumna(g.filas, COL_ORIGEN, sheetId, entranEn(ANCHOS[COL_ORIGEN]))
+  // SIN EL CENTINELA: esta escritura NO pasa por la fusión, así que mandaría " ::VACIO:: " tal cual
+  // a la planilla. Ya lo hizo: 61 celdas de CAJA mostraban el texto del centinela.
+  const { requests: notas, celdas, conNota } = notasDeColumna(limpiarCentinela(g.filas), COL_ORIGEN, sheetId, entranEn(ANCHOS[COL_ORIGEN]))
   if (conNota) {
     await google.batchUpdateValues(ID, [{ range: `'${tab}'!${letra(COL_ORIGEN)}1`, values: celdas.map((f) => [f[COL_ORIGEN] ?? '']) }])
     req.push(...notas)
