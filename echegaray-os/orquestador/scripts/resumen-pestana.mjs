@@ -44,7 +44,6 @@ const ANCHO = 3 // A=Compromiso · B=Cuándo/detalle · C=Monto
 // Los bloques de jornales y cheques ya eran fórmula sobre sus pestañas, pero los había puesto una
 // persona a mano: ningún script los regeneraba (regla 13). Al tomar RESUMEN entero, el agente pasa a
 // ser el dueño. Se reproducen VERIFICADAS contra el Sheet, no reescritas de memoria.
-const JQ = (c) => `'Jornales por Quincena'!${c}`
 const CH = "'Cheques Emitidos'"
 const chFecha = `${CH}!$I$2:$I`, chMonto = `${CH}!$F$2:$F`, chDebito = `${CH}!$K$2:$K`
 // Un cheque cuenta como pendiente si tiene fecha y NO está debitado (K distinto de "SI").
@@ -67,15 +66,19 @@ function grilla() {
   push('Compromiso', 'Cuándo / dónde ver el detalle', 'Monto')
 
   // ── JORNALES ── (fuente: Jornales por Quincena)
-  const fJornalCierre = push('Jornales — quincena en curso (estimado al cierre)',
-    `=TEXT(${JQ('$A$23')};"dd/mm")&" – "&TEXT(${JQ('$B$23')};"dd/mm")&"  ·  ver Jornales por Quincena"`,
-    `=${JQ('$G$23')}`)
-  push('Jornales — próxima quincena',
-    `=TEXT(${JQ('$A$24')};"dd/mm")&" – "&TEXT(${JQ('$B$24')};"dd/mm")&"  ·  proyección"`,
-    `=${JQ('$G$24')}`)
+  // POR RANGO CON NOMBRE, NO POR NÚMERO DE FILA. Estas tres líneas citaban $A$23, $G$24 y $G$24:$G$29
+  // de Jornales; el rediseño del 23/07 movió esos bloques y las tres habrían mostrado la fila
+  // equivocada sin dar error. `INDEX(rango;n)` toma la enésima fila del bloque, esté donde esté.
+  const proy = (col, n) => `INDEX(JORNALES_PROY_${col};${n})`
+  const fJornalCierre = push('Jornales — próxima quincena a pagar',
+    `=TEXT(${proy('DESDE', 1)};"dd/mm")&" – "&TEXT(${proy('HASTA', 1)};"dd/mm")&"  ·  ver Jornales por Quincena"`,
+    `=${proy('TOTAL', 1)}`)
+  push('Jornales — la siguiente',
+    `=TEXT(${proy('DESDE', 2)};"dd/mm")&" – "&TEXT(${proy('HASTA', 2)};"dd/mm")&"  ·  proyección"`,
+    `=${proy('TOTAL', 2)}`)
   push('Jornales — próximos 3 meses',
-    `=TEXT(${JQ('$A$24')};"dd/mm")&" – "&TEXT(${JQ('$B$29')};"dd/mm")&"  ·  proyección"`,
-    `=SUM(${JQ('$G$24:$G$29')})`)
+    `=TEXT(${proy('DESDE', 1)};"dd/mm")&" – "&TEXT(${proy('HASTA', 6)};"dd/mm")&"  ·  proyección"`,
+    `=SUM(INDEX(JORNALES_PROY_TOTAL;1):INDEX(JORNALES_PROY_TOTAL;6))`)
 
   push()
 
@@ -100,7 +103,7 @@ function grilla() {
 
   // ── TOTAL COMPROMETIDO ── stock, no flujo: lo que se debe hoy sin importar la fecha de pago.
   const fTotal = push('⇒ TOTAL COMPROMETIDO (deuda cierta a hoy)',
-    'Quincena en curso + proveedores + cheques + tarjeta. NO incluye proyecciones (próxima quincena, 3 meses): eso mezclaría ventanas de tiempo.',
+    'Próxima quincena + proveedores + cheques + tarjeta. NO incluye el resto de las proyecciones (3 meses): eso mezclaría ventanas de tiempo.',
     `=C${fJornalCierre}+C${fProv}+C${fCheq}+C${fTarj}`)
 
   return { filas, fJornalCierre, fProv, fCheq, fTarj, fTotal, fCab: 4 }

@@ -13,9 +13,12 @@ export const PASOS = [
   // se refresca, todo lo que sigue calcula sobre una foto vieja y ningún control lo ve — pasó el
   // 21/07: la quincena en curso quedó $1.231.963 por debajo de la real.
   ['espejar-jornales.mjs', 'espejo del archivo JORNALES (_J_OBREROS y _J_OFICINA)', ['_J_OBREROS', '_J_OFICINA']],
-  // La escala UOCRA de Jornales leía sus básicos pegados a mano —contenido huérfano que se quedaba un
-  // mes atrás sin avisar—. Ahora los toma de _UOCRA_RAW por fórmula, con alerta de vigencia.
-  ['jornales-escala-uocra.mjs', 'Jornales por Quincena — el bloque ESCALA UOCRA leído de _UOCRA_RAW', ['Jornales por Quincena']],
+  // UN SOLO DUEÑO PARA JORNALES. Antes eran dos: la tool de sincronización de nómina escribía el
+  // cuadro de quincenas y jornales-escala-uocra.mjs el bloque de la escala. Dos escritores sobre una
+  // pestaña es lo que produce anchos de grilla mezclados, bloques huérfanos y —acá— el techo de 14
+  // quincenas, porque la fila que insertaba uno caía fuera del rango que sumaba el otro.
+  // Este generador escribe la pestaña ENTERA y publica sus rangos con nombre para las demás.
+  ['jornales-pestana.mjs', 'Jornales por Quincena — quincenas reales, proyección y control de convenio', ['Jornales por Quincena']],
   // SEGUNDO: devolver la fórmula a las celdas calculadas que alguien pisó pegando un valor. Va
   // antes de todo cálculo porque una celda pisada no grita: muestra un número creíble que dejó de
   // actualizarse. El 21/07 había cuatro, y dos de ellas hacían que dos cobros de $16.200.000

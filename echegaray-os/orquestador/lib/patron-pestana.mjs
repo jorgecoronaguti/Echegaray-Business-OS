@@ -50,7 +50,7 @@ export const ES_SECCION_NUM = /^\s*(\d+)(?:\.(\d+))?\s*·\s+(\S.*)$/
  */
 export const ES_BLOQUE_SIN_NUMERO = /^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9 ,.·/:()%$]{9,}(?:\s*[—–-]|\s*$)/
 /** Encabezado de tabla: la primera palabra nombra la dimensión. */
-export const ES_ENCABEZADO = /^(per[ií]odo|concepto|plan|proveedor|obra|rubro|familia|cuenta|tipo|n[°º]|fecha|mes|semana|l[ií]nea|r[ée]gimen|qu[ée] pasa)\b/i
+export const ES_ENCABEZADO = /^(per[ií]odo|concepto|plan|proveedor|obra|rubro|familia|cuenta|tipo|n[°º]|fecha|mes|semana|quincena|categor[ií]a|l[ií]nea|r[ée]gimen|qu[ée] pasa)\b/i
 /** Un sub-ítem indentado. */
 export const ES_SUBITEM = /^\s{2,}·\s/
 /** Errores de fórmula que nunca deberían quedar vivos en una pestaña. */

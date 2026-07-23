@@ -294,11 +294,14 @@ export function formulaRubroEnVentana(celdaRubro, desde, hasta) {
  * @returns {string} fórmula es-AR
  */
 export function formulaJornales(desde, hasta) {
-  const q = "'Jornales por Quincena'"
-  // Bloque 1: quincenas reales (B3:B16 = desde, J = total pagado).
-  const real = `SUMPRODUCT(ISNUMBER(${q}!$B$3:$B$16)*(${q}!$B$3:$B$16>=${desde})*(${q}!$B$3:$B$16<${hasta})*IF(ISNUMBER(${q}!$J$3:$J$16);${q}!$J$3:$J$16;0))`
-  // Bloque 2: quincenas proyectadas (B24:B33 = desde, G = total estimado).
-  const proy = `SUMPRODUCT(ISNUMBER(${q}!$B$24:$B$33)*(${q}!$B$24:$B$33>=${desde})*(${q}!$B$24:$B$33<${hasta})*IF(ISNUMBER(${q}!$G$24:$G$33);${q}!$G$24:$G$33;0))`
+  // POR RANGO CON NOMBRE, NO POR NÚMERO DE FILA. Decía `$B$3:$B$16` y `$B$24:$B$33`; el rediseño de
+  // Jornales del 23/07 movió las quincenas reales a la fila 41 y estas dos sumas habrían seguido
+  // devolviendo un número —el de las filas equivocadas— sin marcar un solo error. Los nombres los
+  // publica el generador de Jornales y se mueven con la pestaña.
+  // Bloque 1: quincenas reales (HASTA = fecha de pago, TOTAL = lo pagado).
+  const real = `SUMPRODUCT(ISNUMBER(JORNALES_REAL_HASTA)*(JORNALES_REAL_HASTA>=${desde})*(JORNALES_REAL_HASTA<${hasta})*IF(ISNUMBER(JORNALES_REAL_TOTAL);JORNALES_REAL_TOTAL;0))`
+  // Bloque 2: quincenas proyectadas.
+  const proy = `SUMPRODUCT(ISNUMBER(JORNALES_PROY_HASTA)*(JORNALES_PROY_HASTA>=${desde})*(JORNALES_PROY_HASTA<${hasta})*IF(ISNUMBER(JORNALES_PROY_TOTAL);JORNALES_PROY_TOTAL;0))`
   return `=${real}+${proy}`
 }
 

@@ -53,7 +53,10 @@ export const PESTANAS = [
   // auditor de pantalla la miren.
   { titulo: 'Cheques Emitidos', congeladas: 9, hastaFila: 200, cols: 14, carga: true, propio: true },
   { titulo: 'Tarjeta de Credito', congeladas: 2, hastaFila: 120, cols: 14, carga: true },
-  { titulo: 'Jornales por Quincena', congeladas: 2, hastaFila: 80, cols: 14 },
+  // Piel de statement PROPIA (jornales-pestana.mjs la escribe entera); el formateador general la
+  // saltea para no pisarle el estilo — es la causa que ya se pagó una vez, dos formateadores sobre
+  // la misma pestaña y gana el último que corre.
+  { titulo: 'Jornales por Quincena', congeladas: 2, hastaFila: 80, cols: 11, propio: true },
   { titulo: 'Cargas Sociales', congeladas: 0, hastaFila: 120, cols: 16 },
   // Piel de statement PROPIA (su generador aplica estilo-statement); el formateador general la saltea.
   { titulo: 'Impuestos y Financieros', congeladas: 1, hastaFila: 90, cols: 12, propio: true },
