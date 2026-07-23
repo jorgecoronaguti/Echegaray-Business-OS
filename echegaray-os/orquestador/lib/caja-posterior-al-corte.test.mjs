@@ -53,6 +53,17 @@ test('NO usa LOOKUP: la búsqueda binaria devolvió un saldo del medio del extra
   assert.match(f, /^=INDEX\(/)
 })
 
+test('ignora los saldos en 0 de los movimientos del día — el último saldo es el último REAL', () => {
+  // Regresión del bug que dejó la CAJA en liquidez neta falsa −$710.857 (23/07). Los movimientos del
+  // día se anexan sin saldo (el banco no lo publica hasta el cierre) y el importador los escribe con
+  // saldo 0. `<>""` es verdadero para un 0, así que la fórmula tomaba esa fila y devolvía 0: Santander
+  // aparecía en $0. Un saldo bancario de exactamente 0,00 no existe; el último saldo es el último
+  // número distinto de cero.
+  const f = formulaUltimoSaldo()
+  assert.match(f, /ISNUMBER\(/)
+  assert.match(f, /<>0/)
+})
+
 test('el desplazamiento de fila acompaña a la primera fila de datos', () => {
   // INDEX cuenta desde el inicio del rango, no desde la fila 1 de la hoja: si el rango arranca en la
   // 4, hay que restar 3. Un offset fijo devolvería el movimiento equivocado al cambiar el encabezado.

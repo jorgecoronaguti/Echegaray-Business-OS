@@ -94,6 +94,19 @@ export function formulaNetaPosterior(corte) {
  * asume ningún orden y un hueco en el medio no la mueve. Es más cara de calcular y no importa: son
  * mil filas una vez.
  *
+ * ═══ EL ÚLTIMO SALDO ES EL ÚLTIMO NÚMERO DISTINTO DE CERO (23/07) ═══
+ *
+ * Se rompió en vivo y dejó la CAJA con liquidez neta FALSA de −$710.857. Los movimientos del día que
+ * el extracto todavía no confirma —la compra con tarjeta, el depósito en clearing— se anexan a la
+ * réplica SIN saldo corrido: el banco no lo publica hasta el cierre. El importador los escribe con
+ * saldo 0. Y `<>""` es verdadero para un 0 —un cero no es una celda vacía—, así que la fórmula tomaba
+ * esa última fila y devolvía 0: Santander aparecía en $0 y la caja mentía para abajo.
+ *
+ * Un saldo BANCARIO de exactamente 0,00 no existe en la práctica, y aunque existiera no es lo que se
+ * busca: se busca el último saldo REAL que el banco confirmó. Por eso se exige `ISNUMBER` y `<>0`.
+ * Así el arreglo no depende de que el importador escriba vacío en vez de 0 —que también se corrigió,
+ * pero en otra capa—: la fórmula sola ya ignora los placeholders del día.
+ *
  * @param {string} hoja la pestaña réplica
  * @param {string} col columna del saldo
  * @param {number} desde primera fila de datos
@@ -101,7 +114,7 @@ export function formulaNetaPosterior(corte) {
  */
 export function formulaUltimoSaldo(hoja = '_BANCO_RAW', col = 'D', desde = 4) {
   const r = `${hoja}!$${col}$${desde}:$${col}`
-  return `=INDEX(${r};SUMPRODUCT(MAX((${r}<>"")*ROW(${r})))-${desde - 1})`
+  return `=INDEX(${r};SUMPRODUCT(MAX(ISNUMBER(${r})*(${r}<>0)*ROW(${r})))-${desde - 1})`
 }
 
 /**
