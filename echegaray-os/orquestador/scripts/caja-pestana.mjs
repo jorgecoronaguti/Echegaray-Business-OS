@@ -56,7 +56,7 @@ import { CUENTAS, CARGA, ALIAS, TIPO_CAMBIO, RANGO_TC, filaDeCuenta } from '../l
 import * as BANCO from '../lib/banco-santander.mjs'
 import { TASAS, CARGO_VERIFICADO, tasaDiaria, costoConImpuestos, interesDelPeriodo } from '../lib/costo-descubierto.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
-import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { CAJA as N_CAJA, publicar } from '../lib/rangos-nombrados.mjs'
 import { esIndistinguible } from '../lib/cobranzas-duplicado.mjs'
 import * as CONC from '../lib/conciliacion-por-naturaleza.mjs'
@@ -168,7 +168,8 @@ function grilla(cargado, refs) {
   const push = (c = []) => {
     // Se rellena Y SE TRUNCA a lo que mide la tabla: al sacar la columna "Declarado por" quedaron
     // filas de nueve elementos contra una grilla de ocho, y el batch entero falla sin escribir nada.
-    const r = [...c]; while (r.length < ANCHO) r.push('')
+    const r = [...c].map((x) => (x === '' || x === undefined || x === null ? VACIO : x))
+    while (r.length < ANCHO) r.push(VACIO)
     r.length = ANCHO
     filas.push(r)
     if (r[1] === 'USD') usd.push(filas.length)
@@ -216,7 +217,7 @@ function grilla(cargado, refs) {
   // El bloque "⚠ LO QUE NO CIERRA" se construye MÁS ABAJO, adentro de CONTROLES.
 
   // ── 1 · DISPONIBILIDADES ────────────────────────────────────────────────────────────────────────
-  push(['DISPONIBILIDADES POR CUENTA'])
+  push(['1 · DISPONIBILIDADES POR CUENTA'])
   const cab1 = push(['Cuenta', 'Moneda', 'Saldo en moneda de origen', 'Tipo de cambio', 'Saldo en pesos', 'Fecha del saldo', 'Antigüedad', 'Origen del dato'])
   const d0 = filas.length + 1
   const amarillas = []
@@ -304,7 +305,7 @@ function grilla(cargado, refs) {
   // El dueño: "cruzá cheques emitidos y recibidos y que se vea todo reflejado en caja... necesito tener
   // bien claro el horizonte". Entra = valores recibidos en cartera; sale = cheques emitidos por su fecha
   // de pago. Todo por fórmula sobre las dos pestañas (una fuente por concepto): ni un importe pegado.
-  push(['HORIZONTE DE CHEQUES — lo que va a entrar y lo que va a salir'])
+  push(['2 · HORIZONTE DE CHEQUES — LO QUE VA A ENTRAR Y LO QUE VA A SALIR'])
   const ch = refs.cheques
   const F400 = `IF(ISNUMBER('${ch}'!$F$2:$F$400);'${ch}'!$F$2:$F$400;0)`
   const K400 = `UPPER('${ch}'!$K$2:$K$400)<>"SI"`
@@ -325,7 +326,7 @@ function grilla(cargado, refs) {
   // no efectivo, así que va como resumen de tres líneas; el desglose (consumos, cuotas, controles,
   // costo del descubierto) está abajo, plegado. Las tres cifras se completan más abajo, cuando el
   // bloque de líneas de crédito ya calculó su disponible.
-  push(['MARGEN DE CRÉDITO — no es efectivo'])
+  push(['3 · MARGEN DE CRÉDITO — NO ES EFECTIVO'])
   const fMTar = push(['Tarjeta — disponible para comprar'])
   const fMAcu = push(['Acuerdo en descubierto'])
   const fMAire = push(['Aire total'])
@@ -356,7 +357,7 @@ function grilla(cargado, refs) {
   // endosados, que no son plata— y dos filas de control. Una tabla que dice "acá está lo que tenés"
   // con cinco filas en el medio que no son eso obliga a decidir fila por fila cuál suma. El detalle
   // es valioso y se queda, pero abajo y con su propio título.
-  push(['3 · LOS VALORES EN CARTERA, UNO POR UNO — de dónde sale la línea de arriba'])
+  push(['4 · LOS VALORES EN CARTERA, UNO POR UNO'])
   // EL DETALLE DE LOS CHEQUES EN CARTERA, colapsable. Va DESPUÉS de las cuentas y antes del total,
   // así que no entra en el rango que suma: sumaría dos veces la misma plata.
   const ultima = CUENTAS[CUENTAS.length - 1]
@@ -391,7 +392,7 @@ function grilla(cargado, refs) {
   push()
 
   // ── 4 · LÍNEAS DE CRÉDITO ───────────────────────────────────────────────────────────────────────
-  push(['4 · LÍNEAS DE CRÉDITO — NO son efectivo, y por eso no suman arriba'])
+  push(['5 · LÍNEAS DE CRÉDITO — NO SUMAN ARRIBA'])
   push(['El margen de una tarjeta es capacidad de endeudarse, no plata propia. Sumarlo a las disponibilidades es el error que hace que una empresa se crea líquida el día antes de no poder pagar sueldos. El límite en pesos y el límite en dólares son dos cupos distintos: mezclarlos daría un margen que no existe en ninguna de las dos monedas.'])
   const cab3 = push(['Línea', 'Moneda', 'Importe en moneda de origen', 'Tipo de cambio', 'Importe en pesos', '', '', 'Origen del dato'])
 
@@ -468,7 +469,7 @@ function grilla(cargado, refs) {
   push()
 
   // ── 5 · ALERTA ──────────────────────────────────────────────────────────────────────────────────
-  push(['5 · ALERTA DE CAJA — hasta cuándo alcanza'])
+  push(['6 · ALERTA DE CAJA — HASTA CUÁNDO ALCANZA'])
 
   // ═══ DÍAS DE CAJA ═══════════════════════════════════════════════════════════════════════════
   //
@@ -535,7 +536,7 @@ function grilla(cargado, refs) {
   push(['Primer mes con caja negativa', '', '', '', primerMes('<0'), '', '', '',
     '⚠ Ojo: los ingresos de octubre en adelante están en $0 porque no hay obra facturada. Esta fecha es un PISO, no un pronóstico.'])
   // ── 4 · CONCILIACIÓN ────────────────────────────────────────────────────────────────────────────
-  push(['6 · CONCILIACIÓN — ¿el cash flow explica la plata que hay?'])
+  push(['7 · CONCILIACIÓN — ¿EL CASH FLOW EXPLICA LA PLATA QUE HAY?'])
   push(['El control que mide si el archivo sirve. Si la diferencia es chica, el cuadro es confiable. Si es grande, hay plata moviéndose fuera del Sheet y hay que buscarla antes de decidir con estos números.'])
   const fDecl = push(['Disponibilidad declarada (bloque 1)', '', '', '', `=${C_PESOS}${fTotal}`, '', '', '', 'Lo que dicen el extracto y el arqueo.'])
   const fProy = push(['Efectivo al cierre que proyecta el Cash Flow al mes de la fecha del saldo', '', '', '',
@@ -594,7 +595,7 @@ function grilla(cargado, refs) {
   // ES UN CONTROL, NO UNA ACUSACIÓN: puede haber una explicación buena (un depósito posterior a la
   // fecha del extracto, un pago a proveedor hecho en efectivo sin pasar por el banco). Lo que no
   // puede pasar es que nadie lo mire.
-  push(['7 · ¿DÓNDE ESTÁ EL EFECTIVO COBRADO?'])
+  push(['8 · ¿DÓNDE ESTÁ EL EFECTIVO COBRADO?'])
   push(['Un cobro en efectivo que no se depositó tiene que estar en la caja física. Este control resta: lo cobrado en efectivo, menos lo que se depositó, menos lo que se declara en la caja de arriba. Si sobra plata, o no está o el cobro no ocurrió.'])
   // ═══ LA MISMA VENTANA DE TIEMPO DE LOS DOS LADOS ═══
   //
@@ -668,7 +669,7 @@ function grilla(cargado, refs) {
   // explicarlo. DOS NO TIENEN NINGUNA: el impuesto al cheque y el costo del descubierto salen todos
   // los meses y ningún cuadro del archivo los espera. Por eso la proyección muestra un saldo que la
   // cuenta nunca llega a tener.
-  push(['8 · QUÉ SALIÓ DEL BANCO Y DÓNDE ESTÁ REGISTRADO'])
+  push(['9 · QUÉ SALIÓ DEL BANCO Y DÓNDE ESTÁ REGISTRADO'])
   push(['Cada peso que salió de la cuenta tiene una pestaña que debería tenerlo. Acá se compara, grupo por grupo, lo que dice el extracto contra lo que dice esa pestaña en los MISMOS días. Una diferencia puede ser carga pendiente o un corte de fechas distinto; lo que no puede pasar es que nadie la mire.'])
   push(['Qué salió', '', 'Según el banco', '', 'Según la pestaña', 'Diferencia', '', 'Qué pestaña lo tiene que tener'])
   const n0 = filas.length + 1
@@ -695,7 +696,7 @@ function grilla(cargado, refs) {
     'Los dos números tienen que ser iguales. Distintos = apareció un concepto nuevo en el banco sin grupo asignado.'])
   push()
 
-  push(['9 · TIPO DE CAMBIO — sólo se usa para valuar la cuenta en dólares'])
+  push(['10 · TIPO DE CAMBIO — SÓLO PARA VALUAR LA CUENTA EN DÓLARES'])
   push(['Está al final a propósito: la empresa cobra, paga y decide en pesos. El dólar acá no es una posición, es una cuenta chica que hay que poder sumar al total — y para eso hace falta una cotización con origen.'])
   const cab0 = push(['Concepto', '', 'Cotización', '', '', 'Fecha', '', 'Origen del dato'])
   const fRef = push([TIPO_CAMBIO.referencia.nombre, '', TIPO_CAMBIO.referencia.formula, '', '', '=TODAY()', '', TIPO_CAMBIO.referencia.origen, 'Se calcula solo'])
