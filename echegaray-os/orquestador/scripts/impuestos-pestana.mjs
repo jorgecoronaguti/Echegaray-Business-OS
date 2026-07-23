@@ -25,7 +25,7 @@ import { query } from '../lib/db.mjs'
 import { parsearDDJJ, alicuotaDeclarada } from '../lib/iibb-ddjj.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
-import { origenANota } from '../lib/nota-celda.mjs'
+import { borrarNotas } from '../lib/nota-celda.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { seccion, sub as subItem, total as rotuloTotal, auditarPatron } from '../lib/patron-pestana.mjs'
@@ -414,9 +414,8 @@ async function main() {
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)
   g.filas = gridFinal
   const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, g.filas, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
-  await guardarRegistro(ID, PESTAÑA, g.filas, ediciones).catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
-  await formatear(google, hoja.sheetId, g)
+  await formatear(google, hoja.sheetId, g, hoja.rows ?? 0)
 
   // VERIFICAR MIRANDO LA PESTAÑA, no confiando en que la escritura salió bien.
   const v = await google.readSheetValues(ID, `${PESTAÑA}!A1:${letra(ANCHO - 1)}${g.filas.length}`)
@@ -427,14 +426,24 @@ async function main() {
   console.log(defectos.length ? `⚠ ${defectos.length} defecto(s) de patrón:` : '✓ la pestaña cumple el patrón de diseño')
   for (const d of defectos.slice(0, 10)) console.log(`   fila ${d.fila} · ${d.regla} · ${d.detalle}`)
   for (const f of v) if (/^(⇒|LA POSICIÓN)/.test(String(f?.[0] ?? ''))) console.log(`  ${String(f[0]).slice(0, 46).padEnd(48)}${String(f[1] ?? '').padStart(16)}${String(f[13] ?? '').padStart(16)}`)
+  // El registro de rótulos se guarda con lo que QUEDÓ escrito, no con lo que quise escribir.
+  await guardarRegistro(ID, PESTAÑA, g.filas, ediciones, v).catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
   if (err.length || defectos.length) process.exitCode = 1
 }
 
 /** El formato: la piel de statement compartida más lo propio de la grilla mensual. */
-async function formatear(google, sheetId, g) {
-  // LA PROCEDENCIA SALE DEL CUERPO: pasa a la nota del concepto (ver lib/nota-celda.mjs).
-  const { requests: notas, conNota } = origenANota(g.filas, ANCHO - 1, sheetId)
-  if (conNota) console.log(`  ${conNota} procedencias pasaron a la nota del concepto`)
+async function formatear(google, sheetId, g, filasHoja = 0) {
+  // ═══ SIN NOTAS (23/07) ═══
+  //
+  // Primero el texto de procedencia vivía en una columna al costado de cada fila: un muro. Se pasó a
+  // NOTA de celda, y el dueño: "quitá las notas de impuestos y financieros, son confusas". Tiene
+  // razón — veintiocho triangulitos amarillos son veintiocho invitaciones a interrumpir la lectura,
+  // y la mitad decían cosas como "Compras." que no explican nada.
+  //
+  // La trazabilidad NO se pierde: cada sección declara su fuente en su propio título o en su nota de
+  // sección, y el subtítulo de la pestaña lista las cinco fuentes. Eso es lo que hace un tearsheet:
+  // la procedencia al pie, una vez, no ochenta veces al margen.
+  const { requests: notas } = borrarNotas(g.filas, ANCHO - 1, sheetId)
   const n = g.filas.length
   const r = (r0, r1, c0 = 0, c1 = ANCHO) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
   const req = [{ unmergeCells: { range: r(0, n) } }]
@@ -478,7 +487,7 @@ async function formatear(google, sheetId, g) {
   await google.spreadsheetBatchUpdate(ID, req)
   // PIEL DE STATEMENT encima del formato de número: sin reja, secciones y encabezados por tipografía
   // + hairline (no barras rellenas), totales rulados. La misma que CAJA, Cheques y Cargas Sociales.
-  await google.spreadsheetBatchUpdate(ID, skinRequests({ sheetId, filas: g.filas, cols: ANCHO, congeladas: 2, titular: g.titular }))
+  await google.spreadsheetBatchUpdate(ID, skinRequests({ sheetId, filas: g.filas, cols: ANCHO, congeladas: 2, titular: g.titular, filasHoja: filasHoja }))
   // Ninguna fila queda OCULTA: un colapso de una versión anterior dejó filas con hiddenByUser=true,
   // y borrar el grupo no las vuelve a mostrar.
   await google.spreadsheetBatchUpdate(ID, [{ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: n + 5 }, properties: { hiddenByUser: false }, fields: 'hiddenByUser' } }]).catch(() => {})

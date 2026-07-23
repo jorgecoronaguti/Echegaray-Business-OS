@@ -411,7 +411,6 @@ async function main() {
   const { grid: gridFinal, respetadas, ediciones } = await conEdicionesRespetadas(ID, PESTAÑA, filas, previo)
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)
   const { conservadas } = await escribirPreservando(google, ID, `'${PESTAÑA}'`, gridFinal, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
-  await guardarRegistro(ID, PESTAÑA, gridFinal, ediciones).catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
   if (conservadas.length) console.log(`✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
   await formatear(google, hoja.sheetId, gridFinal, { cantidades, ratios, titular })
@@ -424,6 +423,8 @@ async function main() {
   console.log(defectos.length ? `⚠ ${defectos.length} defecto(s) de patrón:` : '✓ la pestaña cumple el patrón de diseño')
   for (const d of defectos.slice(0, 10)) console.log(`   fila ${d.fila} · ${d.regla} · ${d.detalle}`)
   for (const f of v) if (/^(⇒|LA POSICIÓN)/.test(String(f?.[0] ?? ''))) console.log(`  ${String(f[0]).slice(0, 46).padEnd(48)}${String(f[1] ?? '').padStart(16)}${String(f[13] ?? '').padStart(16)}`)
+  // El registro de rótulos se guarda con lo que QUEDÓ escrito, no con lo que quise escribir.
+  await guardarRegistro(ID, PESTAÑA, gridFinal, ediciones, v).catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
   if (errores.length || defectos.length) process.exitCode = 1
 }
 

@@ -17,9 +17,20 @@ test('un rótulo es texto: no una fórmula, no un número, no un importe escrito
 test('detecta la edición porque MI texto ya no está en la pestaña', () => {
   const mios = ['Deuda previsional en cuotas', 'F931']
   const actual = [['Plan de pago ARCA', 100], ['F931', 200]]
-  const e = detectarEdiciones(mios, actual)
+  const generado = [['Deuda previsional en cuotas'], ['F931']]
+  const e = detectarEdiciones(mios, actual, generado)
   assert.equal(e.size, 1)
   assert.ok(e.has('Deuda previsional en cuotas'))
+})
+
+test('si YO dejé de escribir un texto, no es una edición del dueño', () => {
+  // Se comió el subtítulo de Impuestos: lo reescribí, el anterior desapareció, y la regla lo
+  // registró como "el dueño lo borró". Desde entonces respetaba vacío y la pestaña quedaba sin
+  // subtítulo para siempre.
+  const mios = ['Subtítulo viejo']
+  const actual = [['Subtítulo nuevo']]
+  const generado = [['Subtítulo nuevo']]
+  assert.equal(detectarEdiciones(mios, actual, generado).size, 0)
 })
 
 test('si mi texto se MOVIÓ de fila, no es una edición', () => {
@@ -28,7 +39,7 @@ test('si mi texto se MOVIÓ de fila, no es una edición', () => {
   // pegado donde iba el título "DISPONIBILIDADES".
   const mios = ['Total pagado']
   const actual = [['otra cosa'], ['más cosas'], ['Total pagado']]
-  assert.equal(detectarEdiciones(mios, actual).size, 0)
+  assert.equal(detectarEdiciones(mios, actual, [['Total pagado']]).size, 0)
 })
 
 test('respeta la edición esté donde esté la fila', () => {
@@ -65,5 +76,5 @@ test('el importe y la fórmula NO se respetan: son la respuesta que la pestaña 
 test('el apóstrofo que fuerza texto no cuenta como una edición', () => {
   // Sheets guarda "'ene-26" y devuelve "ene-26": sin normalizarlo, cada encabezado de mes parecería
   // editado en cada corrida y la regla los congelaría.
-  assert.equal(detectarEdiciones(["'ene-26"], [['ene-26']]).size, 0)
+  assert.equal(detectarEdiciones(["'ene-26"], [['ene-26']], [["'ene-26"]]).size, 0)
 })

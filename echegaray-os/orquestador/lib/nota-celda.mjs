@@ -179,3 +179,34 @@ export function origenANota(filas, colOrigen, sheetId) {
   })
   return { requests, conNota }
 }
+
+/**
+ * SACA LA COLUMNA DE PROCEDENCIA Y NO DEJA NINGUNA NOTA.
+ *
+ * POR QUÉ (23/07). `origenANota` movió el muro de texto a las notas de celda, y el dueño: "quitá las
+ * notas, son confusas". Veintiocho triangulitos amarillos son veintiocho invitaciones a interrumpir
+ * la lectura, y muchas decían apenas "Compras." — que no explica nada.
+ *
+ * La trazabilidad no se pierde: vive en el título de cada sección y en el subtítulo de la pestaña,
+ * una vez, como las notas al pie de un tearsheet. Esta función además BORRA las notas que puedan
+ * haber quedado de la versión anterior: una nota vive fuera del valor de la celda, así que
+ * reescribir la pestaña no la toca.
+ *
+ * @returns {{requests: object[], borradas: number}}
+ */
+export function borrarNotas(filas, colOrigen, sheetId) {
+  const requests = []
+  let borradas = 0
+  filas.forEach((f, i) => {
+    if (f && f.length > colOrigen) f[colOrigen] = ''
+    requests.push({
+      updateCells: {
+        range: { sheetId, startRowIndex: i, endRowIndex: i + 1, startColumnIndex: 0, endColumnIndex: Math.max(colOrigen + 1, 1) },
+        rows: [{ values: Array.from({ length: Math.max(colOrigen + 1, 1) }, () => ({ note: '' })) }],
+        fields: 'note',
+      },
+    })
+    borradas++
+  })
+  return { requests, borradas }
+}

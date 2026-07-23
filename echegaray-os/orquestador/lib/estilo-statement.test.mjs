@@ -51,3 +51,13 @@ test('el cuerpo se resetea: una itálica del layout anterior no sobrevive', () =
   assert.ok(reset, 'hay un reset tipográfico sobre toda la grilla')
   assert.equal(reset.repeatCell.cell.userEnteredFormat.textFormat.bold, false)
 })
+
+test('la limpieza llega hasta el final de la HOJA, no de la grilla', () => {
+  // Una pestaña que se acorta deja bordes y altos colgando debajo del contenido: se ven como reglas
+  // grises flotando sobre la nada. Es lo que el dueño llamó "se corrompe de la fila 53 en adelante".
+  const reqs = skinRequests({ sheetId: 1, filas: [['T'], ['n'], ['x', 1]], cols: 3, filasHoja: 80 })
+  const limpieza = reqs.find((r) => r.updateBorders && r.updateBorders.range.endRowIndex === 80)
+  assert.ok(limpieza, 'los bordes se borran hasta la fila 80')
+  const altos = reqs.find((r) => r.updateDimensionProperties?.properties?.pixelSize === 21)
+  assert.equal(altos.updateDimensionProperties.range.endIndex, 80)
+})

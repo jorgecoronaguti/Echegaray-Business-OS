@@ -109,16 +109,36 @@ export function respetarEdiciones(generado = [], actual = [], registro = new Map
  * que la pestaña dice hoy. Se busca cada texto propio en TODA la grilla, no en su vieja posición:
  * una pestaña se reordena y un rótulo se mueve sin que nadie lo haya editado.
  *
- * @param {string[]} mios   los rótulos que el generador escribió la última vez
- * @param {any[][]} actual  la pestaña hoy
+ * ═══ LA DISTINCIÓN QUE FALTABA (23/07) ═══
+ *
+ * "Desapareció un texto mío" tiene DOS causas, y confundirlas rompe la pestaña:
+ *
+ *   · lo borró el DUEÑO            → hay que respetarlo
+ *   · dejé de escribirlo YO        → no hay nada que respetar; es un cambio del generador
+ *
+ * La primera versión no las distinguía, así que cada vez que yo mejoraba un rótulo la versión vieja
+ * "desaparecía" y quedaba registrada como borrada por el dueño. Se comió el SUBTÍTULO de Impuestos:
+ * lo reescribí, el texto anterior desapareció, y desde entonces la regla respetaba "vacío" y la
+ * pestaña quedaba sin subtítulo para siempre.
+ *
+ * El desempate es simple: sólo cuenta como edición del dueño si el generador SIGUE QUERIENDO
+ * escribir ese texto hoy. Si ya no está en mi grilla, el que lo sacó fui yo.
+ *
+ * @param {string[]} mios     los rótulos que el generador escribió la última vez
+ * @param {any[][]} actual    la pestaña hoy
+ * @param {any[][]} generado  lo que el generador quiere escribir AHORA
  * @returns {Map<string,string>} texto mío → texto de la persona (cadena vacía = lo borró)
  */
-export function detectarEdiciones(mios = [], actual = []) {
+export function detectarEdiciones(mios = [], actual = [], generado = []) {
   const presentes = new Set()
   for (const f of actual || []) for (const c of f || []) { const t = clave(c); if (t) presentes.add(sinApostrofo(t)) }
+  const quiereEscribir = new Set()
+  for (const f of generado || []) for (const c of f || []) { const t = clave(c); if (t) quiereEscribir.add(sinApostrofo(t)) }
   const ediciones = new Map()
   for (const m of mios) {
     const t = clave(m)
+    // Si el generador ya no escribe este texto, el que lo sacó fui yo: no es una edición del dueño.
+    if (!quiereEscribir.has(sinApostrofo(t))) continue
     // DESAPARECIÓ UN RÓTULO QUE YO HABÍA ESCRITO. Eso es una eliminación o una reescritura. No se
     // puede saber POR CUÁL texto lo cambió —podría ser cualquiera de los nuevos— así que lo honesto
     // es registrar la eliminación: la próxima corrida no lo vuelve a escribir.
@@ -164,11 +184,32 @@ export async function leerRegistro(fileId, pestana) {
   return { mios, ediciones }
 }
 
-/** Guarda los rótulos de esta corrida y las ediciones vigentes. */
-export async function guardarRegistro(fileId, pestana, grid, ediciones = new Map()) {
+/**
+ * Guarda los rótulos de esta corrida y las ediciones vigentes.
+ *
+ * SE REGISTRA LO QUE QUEDÓ EN LA PESTAÑA, NO LO QUE EL GENERADOR QUISO ESCRIBIR (23/07). Entre una
+ * cosa y la otra hay un paso más: el formato. En CAJA los orígenes largos se acortan y el texto
+ * completo pasa a una nota; en Impuestos la columna de procedencia se vacía entera. Registrar el
+ * texto que el generador produjo hacía que, a la corrida siguiente, "no está en la pestaña" fuera
+ * cierto para noventa rótulos — y la regla los daba por borrados por el dueño. Noventa avisos falsos
+ * por corrida, y peor: la regla dejaba de escribirlos.
+ *
+ * @param {any[][]} [enLaPestana] lo que quedó escrito, releído después de formatear
+ */
+export async function guardarRegistro(fileId, pestana, grid, ediciones = new Map(), enLaPestana = null) {
   await asegurarTabla()
+  let presentes = null
+  if (enLaPestana) {
+    presentes = new Set()
+    for (const f of enLaPestana) for (const c of f || []) { const t = clave(c); if (t) presentes.add(sinApostrofo(t)) }
+  }
   const rotulos = new Set()
-  for (const f of grid || []) for (const c of f || []) if (esRotulo(c)) rotulos.add(limpio(String(c).trim()))
+  for (const f of grid || []) for (const c of f || []) {
+    if (!esRotulo(c)) continue
+    const t = limpio(String(c).trim())
+    if (presentes && !presentes.has(sinApostrofo(t))) continue
+    rotulos.add(t)
+  }
   // Las ediciones vigentes se conservan aunque el generador ya no escriba ese texto: si no, la
   // decisión de la persona duraría una sola corrida.
   for (const k of ediciones.keys()) rotulos.add(limpio(k))
@@ -191,7 +232,7 @@ export async function guardarRegistro(fileId, pestana, grid, ediciones = new Map
 export async function conEdicionesRespetadas(fileId, pestana, generado, actual) {
   const { mios, ediciones } = await leerRegistro(fileId, pestana).catch(() => ({ mios: [], ediciones: new Map() }))
   // Lo que desapareció desde la última corrida: eso lo cambió una persona.
-  for (const [k, v] of detectarEdiciones(mios, actual)) if (!ediciones.has(k)) ediciones.set(k, v)
+  for (const [k, v] of detectarEdiciones(mios, actual, generado)) if (!ediciones.has(k)) ediciones.set(k, v)
   const r = respetarEdiciones(generado, actual, ediciones)
   return { ...r, ediciones }
 }

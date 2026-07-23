@@ -876,9 +876,13 @@ async function main() {
   g.filas = gridFinal
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)
   const { conservadas } = await escribirPreservando(google, ID, tab, g.filas, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
-  await guardarRegistro(ID, PESTAÑA, g.filas, ediciones).catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) escritas por una persona — CONSERVADAS`)
   await formatear(google, hoja.sheetId, g, tab)
+
+  // El registro de rótulos se guarda con lo que QUEDÓ escrito en la pestaña, no con lo que el
+  // generador quiso escribir: el formato acorta los orígenes largos y pasa el texto a una nota.
+  const quedo = await google.readSheetValues(ID, `${tab}!A1:${letra(ANCHO - 1)}${g.filas.length}`).catch(() => [])
+  await guardarRegistro(ID, PESTAÑA, g.filas, ediciones, quedo).catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
 
   // LOS NOMBRES, DESPUÉS DE ESCRIBIR. El Cash Flow Mensual ancla su saldo inicial en estos dos: con
   // referencias por celda, insertar un bloque acá arriba dejaba sus dos filas de efectivo vacías y

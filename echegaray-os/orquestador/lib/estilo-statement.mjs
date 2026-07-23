@@ -32,7 +32,7 @@ export const ES_ENCABEZADO = /^(per[ií]odo|concepto|plan|proveedor|obra|rubro|f
  * @param {{sheetId:number, filas:string[][], cols:number, congeladas?:number}} p
  * @returns {object[]} requests para spreadsheetBatchUpdate
  */
-export function skinRequests({ sheetId, filas, cols, congeladas = 0, titular = 0 }) {
+export function skinRequests({ sheetId, filas, cols, congeladas = 0, titular = 0, filasHoja = 0 }) {
   const rango = (r0, r1, c0, c1) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
   const fmt = (r, fields, cell) => ({ repeatCell: { range: rango(r, r + 1, 0, cols), cell, fields } })
   const bg = (color) => ({ userEnteredFormat: { backgroundColor: color } })
@@ -71,8 +71,19 @@ export function skinRequests({ sheetId, filas, cols, congeladas = 0, titular = 0
     // sin ninguna regla detrás. Eso es exactamente lo que hace que un cuadro se lea desprolijo y no
     // se pueda seguir con el ojo. El cuerpo arranca parejo y después se marcan las excepciones.
     { repeatCell: { range: rango(0, filas.length, 0, cols), cell: { userEnteredFormat: { textFormat: txt(INK, { bold: false, size: 10 }) } }, fields: 'userEnteredFormat.textFormat' } },
-    // Y ninguna regla heredada de un layout viejo: se borran todas antes de dibujar las nuevas.
-    { updateBorders: { range: rango(0, filas.length, 0, cols), top: { style: 'NONE' }, bottom: { style: 'NONE' }, left: { style: 'NONE' }, right: { style: 'NONE' }, innerHorizontal: { style: 'NONE' }, innerVertical: { style: 'NONE' } } },
+    // ═══ SE LIMPIA MÁS ALLÁ DE DONDE LLEGA LA GRILLA ═══
+    //
+    // POR QUÉ (23/07). El dueño: "el diseño se corrompe desde la celda 53 en adelante, queda
+    // impresentable". Y era exacto: debajo del contenido flotaban cuatro reglas grises sobre la nada.
+    // La limpieza de bordes iba de la fila 1 a la última de la grilla, así que TODO lo que la versión
+    // anterior había formateado más abajo sobrevivía. Una pestaña que se acorta deja su huella
+    // colgando, y el ojo la lee como una tabla que empieza y no tiene contenido.
+    //
+    // Se limpia hasta el final de la HOJA, no de la grilla. Es el mismo defecto que dejó las filas
+    // altísimas cuando se sacó el muro de texto: resetear sólo lo que uno escribe no alcanza.
+    { updateBorders: { range: rango(0, Math.max(filas.length, filasHoja), 0, cols), top: { style: 'NONE' }, bottom: { style: 'NONE' }, left: { style: 'NONE' }, right: { style: 'NONE' }, innerHorizontal: { style: 'NONE' }, innerVertical: { style: 'NONE' } } },
+    { repeatCell: { range: rango(filas.length, Math.max(filas.length, filasHoja), 0, cols), cell: { userEnteredFormat: { backgroundColor: BLANCO, textFormat: txt(INK, { bold: false, size: 10 }) } }, fields: 'userEnteredFormat(backgroundColor,textFormat)' } },
+    { updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: Math.max(filas.length, filasHoja) }, properties: { pixelSize: 21 }, fields: 'pixelSize' } },
   ]
 
   filas.forEach((fila, i) => {
