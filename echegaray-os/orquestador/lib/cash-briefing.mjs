@@ -52,12 +52,28 @@ export async function cashBriefing(google, hoy = new Date()) {
   const hIdx = cajaRaw.findIndex((r) => (r || []).some((c) => /^\s*cuenta\s*$/i.test(String(c ?? ''))))
   const head = (cajaRaw[hIdx] || []).map((c) => String(c ?? '').trim().toLowerCase())
   const col = (re, def) => { const i = head.findIndex((h) => re.test(h)); return i >= 0 ? i : def }
-  const iFecha = col(/^fecha/, 0)
+  const iFecha = col(/^fecha del saldo/, col(/^fecha/, 0))
   const iCuenta = col(/^cuenta/, 1)
-  const iSaldo = col(/^saldo/, 2)
-  const caja = hIdx >= 0 ? cajaRaw.slice(hIdx + 1) : cajaRaw.slice(4)
+  // "Saldo en pesos" (con la USD ya convertida por la pestaña), NUNCA "Saldo en moneda de origen":
+  // el regex viejo /^saldo/ tomaba la columna de ORIGEN y la cuenta en dólares entraba como U$S 581
+  // en vez de ~$865.000 → la caja quedaba subcontada. Bug real 23/07 (con el rediseño de CAJA).
+  const iSaldo = col(/^saldo en pesos/, col(/^saldo/, 2))
+  // ═══ EL TOTAL SALE DE LA FILA "TOTAL DISPONIBILIDADES" DE LA PESTAÑA — UNA FUENTE ═══
+  //
+  // POR QUÉ (23/07). La pestaña CAJA se rediseñó en secciones (1..10). Este parseo sumaba TODA fila
+  // con un rótulo y un número, así que levantaba filas de sección y control —"⇒ TOTAL QUE SALIÓ DE
+  // LA CUENTA", "Control: lo que el extracto dice", "Costo financiero del descubierto"— y daba una
+  // caja de $384.000.000 falsa (la real es ~$17M). El motor de Ingeniería Financiera lo mostró.
+  //
+  // La pestaña YA computa su propio "Total disponibilidades" (con la USD convertida): es la fuente
+  // única del total, y además MARCA dónde terminan las cuentas. Debajo viven las secciones que no son
+  // disponibilidades. Se lee ese total y se cortan las cuentas ahí; nada de re-sumar a mano.
+  const iTotal = cajaRaw.findIndex((r, i) => i > hIdx && /^total disponibilidades/i.test(String(r?.[0] ?? '').trim()))
+  const desde = hIdx >= 0 ? hIdx + 1 : 4
+  const hasta = iTotal > hIdx ? iTotal : cajaRaw.length
   const saldos = new Map()
-  for (const r of caja) {
+  for (let i = desde; i < hasta; i++) {
+    const r = cajaRaw[i]
     const cuenta = String(r?.[iCuenta] ?? '').trim()
     if (!cuenta || r?.[iSaldo] == null || String(r?.[iSaldo]).trim() === '') continue
     const monto = parseMonto(r?.[iSaldo])
@@ -66,7 +82,11 @@ export async function cashBriefing(google, hoy = new Date()) {
     const f = parseFecha(r?.[iFecha]); const prev = saldos.get(cuenta)
     if (!prev || (f && (!prev.f || f >= prev.f))) saldos.set(cuenta, { saldo: monto, f, fecha: String(r?.[iFecha] ?? '').trim() })
   }
-  const cajaTotal = [...saldos.values()].reduce((s, v) => s + v.saldo, 0)
+  // El total autoritativo es el de la pestaña cuando existe (una fuente); si no —esquema simple, como
+  // el mock del test—, se suma lo detectado.
+  const cajaTotal = iTotal > hIdx
+    ? parseMonto(cajaRaw[iTotal]?.[iSaldo])
+    : [...saldos.values()].reduce((s, v) => s + v.saldo, 0)
 
   // 2) COBRANZAS del mes en curso (02_Cobranzas: R idx17 "Mes cobro", O idx14 Estado, M idx12 Total,
   //    G idx6 Obra/Cliente, Q idx16 "Fecha cobro" fecha real) + VENCIDAS (fecha de cobro ya pasó y

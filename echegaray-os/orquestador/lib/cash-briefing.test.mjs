@@ -82,6 +82,30 @@ async function main() {
   check('proyección: sale = vencimientos 7d', b.proyeccion_7dias.sale === 826358)
   check('proyección: proyectado = caja + entra − sale', b.proyeccion_7dias.proyectado === 19691359 + 2000000 - 826358)
 
+  // ═══ CANDADO: la pestaña CAJA rediseñada en secciones NO puede inflar la caja ═══
+  //
+  // Bug real (23/07): con el rediseño en secciones (1..10), el parseo sumaba filas de sección y
+  // control ("⇒ TOTAL QUE SALIÓ", "Costo financiero del descubierto") y daba caja $384M falsa; y leía
+  // "Saldo en moneda de origen" en vez de "Saldo en pesos", así que la cuenta USD entraba sin
+  // convertir. Este mock reproduce el esquema real y exige: total = fila "Total disponibilidades",
+  // USD convertida, y CERO filas de sección adentro.
+  const cajaReal = [
+    ['Cuenta', 'Moneda', 'Saldo en moneda de origen', 'Tipo de cambio', 'Saldo en pesos', 'Fecha del saldo', 'Antigüedad'],
+    ['Caja en pesos', 'ARS', '$1.500.000', '', '$1.500.000', '23/07/2026', ''],
+    ['Santander · cta cte USD', 'USD', '581,39', '1488,99', '$865.682', '23/07/2026', ''],
+    ['Valores a depositar', 'ARS', '$10.000.000', '', '$10.000.000', '23/07/2026', ''],
+    ['Total disponibilidades', '', '', '', '$12.365.682', '', ''],
+    ['(−) Cheques emitidos, no debitados', 'ARS', '', '', '$13.076.832', '', ''],
+    ['⇒ TOTAL QUE SALIÓ DE LA CUENTA', '', '', '', '$41.751.582', '', ''],
+    ['Costo financiero del descubierto', '', '', '', '$285.374', '', ''],
+  ]
+  const google2 = { async readSheetValues(id, range) { return range.startsWith('Caja!') ? cajaReal : [] } }
+  const b2 = await cashBriefing(google2, HOY)
+  check('CAJA secciones: total = "Total disponibilidades" ($12.365.682), NO la suma de secciones', b2.caja.total === 12365682)
+  check('CAJA secciones: la cuenta USD entra CONVERTIDA a pesos ($865.682), no en dólares', b2.caja.cuentas.find((c) => /usd/i.test(c.cuenta))?.saldo === 865682)
+  check('CAJA secciones: NO se cuela ninguna fila de sección/control como cuenta', !b2.caja.cuentas.some((c) => /TOTAL QUE SALIÓ|Costo financiero|Cheques emitidos/i.test(c.cuenta)))
+  check('CAJA secciones: sólo las 3 cuentas antes del total', b2.caja.cuentas.length === 3)
+
   console.log(`\ncash-briefing.test: ${ok} OK, ${fail} FALLA`)
   process.exit(fail ? 1 : 0)
 }
