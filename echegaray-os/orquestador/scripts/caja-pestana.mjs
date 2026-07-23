@@ -323,37 +323,96 @@ function grilla(cargado, refs) {
     'Lo que queda después de cubrir los cheques ya firmados. Es el número con el que conviene decidir.'])
   push()
 
-  // ── HORIZONTE DE CHEQUES: lo que va a ENTRAR (recibidos) contra lo que va a SALIR (emitidos) ───────
-  // El dueño: "cruzá cheques emitidos y recibidos y que se vea todo reflejado en caja... necesito tener
-  // bien claro el horizonte". Entra = valores recibidos en cartera; sale = cheques emitidos por su fecha
-  // de pago. Todo por fórmula sobre las dos pestañas (una fuente por concepto): ni un importe pegado.
-  push(['2 · VENCIMIENTOS DE VALORES — LO COMPROMETIDO, POR TRAMO'])
+  // ══ 2 · EL CALENDARIO DE VENCIMIENTOS ═══════════════════════════════════════════════════════════
+  //
+  // POR QUÉ SE REHIZO (23/07). El dueño: "quisiera que quede con mayor claridad los momentos en los
+  // que va a ingresar dinero y va a salir, producto de los movimientos con cheques; esto no está
+  // claro en ninguna parte". Y era cierto: había un "entra" y un "sale" en total, y tres tramos
+  // sueltos SÓLO del lado de las salidas. Un total no contesta CUÁNDO, y con las entradas sin abrir
+  // por fecha no se puede saber si la plata llega antes o después de que haya que pagar.
+  //
+  // ESTO ES UNA ESCALERA DE VENCIMIENTOS (maturity ladder), que es como un banco mira su liquidez.
+  // Cada tramo dice qué entra, qué sale, cuál es el neto y —lo que la hace útil— con cuánta plata
+  // queda la empresa DESPUÉS de ese tramo. La pregunta no es "cuánto debo" sino "en qué semana me
+  // quedo corto", y eso sólo se ve acumulando.
+  //
+  // Los tramos son cortos cerca de hoy y largos lejos: lo que vence esta semana se decide hoy, lo de
+  // noviembre no. Doce meses iguales gastarían media pantalla en meses que no cambian una decisión.
+  push(['2 · CALENDARIO DE VENCIMIENTOS — CUÁNDO ENTRA Y CUÁNDO SALE'])
   const ch = refs.cheques
   const F400 = `IF(ISNUMBER('${ch}'!$F$2:$F$400);'${ch}'!$F$2:$F$400;0)`
   const K400 = `UPPER('${ch}'!$K$2:$K$400)<>"SI"`
   const I400 = `'${ch}'!$I$2:$I$400`
-  const salida = (cond) => `=SUMPRODUCT((${K400})*(${cond})*${F400})`
-  // UN IMPORTE, UNA COLUMNA. Estas filas son todas en pesos: repetir la misma cifra en "moneda de
-  // origen" y en "pesos" es ruido —el ojo lee dos números y busca la diferencia que no existe—.
-  // La columna de origen sólo tiene sentido donde conviven dos monedas (el bloque de cuentas).
-  const hrow = (label, amount, nota) => push([label, 'ARS', '', '', amount, '', '', nota, ''])
-  const fHEntra = hrow('Entra — cheques recibidos, en cartera', `=${C_PESOS}${fCartera}`, 'Valores en custodia según el banco (detalle en el bloque 3, más abajo).')
-  // ¿SALIÓ ALGO DE LA CARTERA DESPUÉS DE LA FOTO? El saldo de custodia del banco es de una fecha; si
-  // en Cheques Recibidos hay un depósito o un endoso POSTERIOR a esa fecha, esa plata ya no está en
-  // cartera y el "entra" de arriba está inflado. Es la misma trampa que ya costó $20.000.000 de
-  // echeqs endosados que el cash flow seguía esperando.
-  if (refs.recibidos) {
-    const rec = refs.recibidos
-    const salidas = `SUMPRODUCT(('${rec}'!$B$15:$B$400>$F$${fCartera})*(('${rec}'!$C$15:$C$400="Depósito")+('${rec}'!$C$15:$C$400="Endoso"))*IF(ISNUMBER('${rec}'!$E$15:$E$400);'${rec}'!$E$15:$E$400;0))`
-    hrow('   · control: salidas registradas después de la fecha de la cartera', `=${salidas}`,
-      `Pestaña ${rec}: depósitos y endosos con fecha posterior al saldo de custodia. Si no es cero, parte de lo que figura arriba como "entra" ya salió.`)
+
+  /**
+   * LOS TRAMOS SE DEFINEN POR SUS BORDES, NO POR SEIS CONDICIONES SUELTAS.
+   *
+   * EL ERROR QUE ESTO CORRIGE (23/07). La primera versión escribía la condición de cada tramo a mano
+   * —"esta semana", "el mes que viene"— y mezclaba tramos por SEMANA con tramos por MES. En cuanto
+   * la ventana de catorce días cruza el fin de mes (hoy: 06/08 contra 31/07), un cheque del 1° de
+   * agosto cumple a la vez "semana que viene" y "el mes que viene": se cuenta dos veces. El
+   * calendario sumaba $11.733.832 contra los $11.076.832 reales.
+   *
+   * Con BORDES ORDENADOS el problema no puede existir: cada tramo es (borde anterior, borde], y los
+   * bordes se fuerzan crecientes con MAX. Si un borde queda antes que el anterior —el fin de mes que
+   * ya pasó dentro de los catorce días— su tramo queda vacío, que es exactamente lo correcto.
+   */
+  const BORDES = [
+    ['Vencido — ya pasó la fecha', 'TODAY()'],
+    ['Esta semana', 'TODAY()+7'],
+    ['Semana que viene', 'TODAY()+14'],
+    ['Resto de este mes', 'MAX(TODAY()+14;EOMONTH(TODAY();0))'],
+    ['El mes que viene', 'MAX(TODAY()+14;EOMONTH(TODAY();1))'],
+    ['Más adelante', ''],
+  ]
+  /** La condición del tramo k sobre una columna de fechas: (borde anterior, borde k]. */
+  const tramo = (k, col) => {
+    const desde = k === 0 ? null : BORDES[k - 1][1]
+    const hasta = BORDES[k][1]
+    if (k === 0) return `(${col}<${hasta})`
+    const arriba = `(${col}>=${desde})`
+    return hasta ? `${arriba}*(${col}<${hasta})` : arriba
   }
-  const fHSale = hrow('Sale — cheques emitidos, por vencer', `=${C_PESOS}${fCh}`, `Pestaña ${ch}, no debitados (DEBITADO ≠ SI).`)
-  push(['⇒ Neto de cheques en el horizonte', 'ARS', '', '', `=${C_PESOS}${fHEntra}-${C_PESOS}${fHSale}`, '', '',
-    'Entra menos sale. Negativo = los cheques que ya firmaste superan los que vas a cobrar de cartera.', ''])
-  hrow('   · de eso, sale este mes o ya venció', salida(`${I400}<=EOMONTH(TODAY();0)`), 'Cheques emitidos con fecha de pago hasta fin de este mes.')
-  hrow('   · sale el mes que viene', salida(`(${I400}>EOMONTH(TODAY();0))*(${I400}<=EOMONTH(TODAY();1))`), '')
-  hrow('   · sale más adelante', salida(`${I400}>EOMONTH(TODAY();1)`), 'Los tres tramos suman el total de "Sale".')
+  const TRAMOS = BORDES
+
+  push(['Tramo', '', 'Entra', 'Sale', 'Neto del tramo', 'Queda después', 'Fin del tramo',
+    'Entra: valores en cartera por su fecha de acreditación (detalle en 4.1). Sale: cheques emitidos no debitados, por su fecha de pago.', ''])
+  const cal0 = filas.length + 1
+  TRAMOS.forEach(([rotulo], k) => {
+    const f = cal0 + k
+    push([rotulo, '',
+      // Lo que ENTRA se resuelve al final, cuando se sabe en qué filas quedó el detalle de la
+      // cartera: es el mismo mecanismo de marcadores que ya usa el panel de arriba.
+      `@ENTRA${k}`,
+      // ISNUMBER SOBRE LA FECHA, SIEMPRE. Una fecha guardada como TEXTO compara como mayor que
+      // cualquier número, así que satisface a la vez "después de esta semana" y "después del mes que
+      // viene": el mismo cheque se cuenta en varios tramos y el total del calendario se pasa del
+      // total real. Acá se pasaba $657.000. Lo que no tiene fecha válida no se reparte: se aísla.
+      `=SUMPRODUCT((${K400})*ISNUMBER(${I400})*${tramo(k, I400)}*${F400})`,
+      `=$C${f}-$D${f}`,
+      // La posición acumulada arranca en la disponibilidad neta: de nada sirve un neto de tramo si no
+      // se ve contra la plata que hay.
+      k === 0 ? `=$E$${fNeta}+$E${f}` : `=$F${f - 1}+$E${f}`,
+      // LA FECHA DE CORTE, ESCRITA. "Esta semana" y "el mes que viene" son rótulos relativos: sin la
+      // fecha al lado, el lector tiene que hacer la cuenta mentalmente cada vez que abre la pestaña.
+      BORDES[k][1] ? `=TEXT(${BORDES[k][1]};"dd/mm")` : '', '', ''])
+  })
+  // Lo que no se pudo ubicar en el tiempo tiene que verse, no desaparecer del calendario.
+  push(['Sin fecha de pago cargada', '',
+    '', `=SUMPRODUCT((${K400})*(NOT(ISNUMBER(${I400})))*${F400})`, '', '', '', '',
+    'Cheques firmados a los que nadie les puso fecha de pago, o cuya fecha quedó como texto. No se pueden ubicar en ningún tramo: hasta que se corrijan, el calendario no los ve.'])
+  const cal1 = filas.length
+  push(['⇒ Total del horizonte', '', `=SUM($C${cal0}:$C${cal1})`, `=SUM($D${cal0}:$D${cal1})`, `=SUM($E${cal0}:$E${cal1})`,
+    `=$F${cal1}`, '', 'La última "Queda después" es la posición al final del horizonte.', ''])
+  push(['   · control: tiene que dar lo mismo que "Cheques emitidos, no debitados"', '', '',
+    `=$D${filas.length}-$E$${fCh}`, '', '', '', '',
+    'Si no da cero, hay cheques que el calendario cuenta de más o de menos — casi siempre una fecha guardada como texto.'])
+  const fPeor = push(['   · el punto más bajo del horizonte', '', '', '', '', `=MIN($F${cal0}:$F${cal1})`, '', '', ''])
+  push(['   · cuándo ocurre', '', '', '', '', `=IFERROR(INDEX($A$${cal0}:$A$${cal1};MATCH($F${fPeor};$F$${cal0}:$F$${cal1};0));"")`, '', '',
+    'Si el punto más bajo es negativo, ése es el tramo en el que la caja no alcanza — y es la fecha en la que hay que actuar, no el total.', ''])
+  // El rango de moneda tiene que llegar hasta ACÁ: las dos filas de cierre están debajo del último
+  // tramo, y sin incluirlas "el punto más bajo" se dibujaba como una fecha (29/11/13049).
+  const calFin = filas.length - 1
   push()
 
   // ── MARGEN DE CRÉDITO — resumen arriba, el detalle vive abajo en "Líneas de crédito" ──────────────
@@ -774,6 +833,12 @@ function grilla(cargado, refs) {
     // Si el banco no reporta ningún echeq en custodia, la cartera es cero y hay que decirlo con un
     // cero: un rango vacío daría #REF! y un total en blanco se leería como "falta cargar".
     '@CARTERA': cust1 >= cust0 ? `=SUM(${C_IMP}${cust0}:${C_IMP}${cust1})` : '0',
+    // EL CALENDARIO: lo que ENTRA en cada tramo sale del detalle de la cartera, cuyas filas recién
+    // se conocen acá. Cada valor tiene su fecha de acreditación en la columna F de su propia fila.
+    ...Object.fromEntries(TRAMOS.map((_, k) => [`@ENTRA${k}`,
+      cust1 >= cust0
+        ? `=SUMPRODUCT(${tramo(k, `$F$${cust0}:$F$${cust1}`)}*IF(ISNUMBER($C$${cust0}:$C$${cust1});$C$${cust0}:$C$${cust1};0))`
+        : '0'])),
     // La cuenta escrita, con las filas reales. Se arma acá porque recién ahora se sabe dónde quedó
     // cada bloque: escribirla a mano en el texto de arriba la dejaría vieja en la primera corrida
     // que mueva una fila — que es exactamente lo que ya pasó con "Bloque 6".
@@ -785,7 +850,7 @@ function grilla(cargado, refs) {
 
   // El grupo colapsable de controles va desde su encabezado hasta la última fila del cuadro.
   const fCtrl1 = filas.length
-  return { filas, n0, n1, usd, fTitulos, fCifras, fAire, fDias, fRitmo, fAlerta0, fAlerta1, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, fMTar, fMAcu, fMAire, fMargenTit: fMTar - 1, fCtrl0, fCtrl1, amarillas, fDetCob, fDetDep }
+  return { filas, cal0, calFin, n0, n1, usd, fTitulos, fCifras, fAire, fDias, fRitmo, fAlerta0, fAlerta1, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, fMTar, fMAcu, fMAire, fMargenTit: fMTar - 1, fCtrl0, fCtrl1, amarillas, fDetCob, fDetDep }
 }
 
 async function main() {
@@ -1156,6 +1221,17 @@ async function formatear(google, sheetId, g, tab) {
       req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: altoDeParrafo(t, ANCHOS.reduce((a, b) => a + b, 0)) }, fields: 'pixelSize' } })
     }
   })
+
+  // ═══ EL CALENDARIO ES PLATA EN CUATRO COLUMNAS ═══
+  //
+  // La grilla la comparte con el bloque de cuentas, donde la D es "Tipo de cambio" y la F "Fecha del
+  // saldo". Sin decirlo explícitamente, el calendario heredaba esos formatos: la posición acumulada
+  // se leía "14/12/15787" —el número de serie de la fecha— y lo que sale salía sin el signo pesos.
+  // Un cuadro donde un saldo se dibuja como una fecha no se puede revisar: el ojo no suma lo que ve.
+  if (g.cal0 && g.calFin) {
+    fmt(r(g.cal0 - 1, g.calFin, 2, 6), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+      { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT' })
+  }
 
   // ── EL ORIGEN DEL DATO: ETIQUETA EN LA CELDA, TEXTO COMPLETO EN LA NOTA ────────────────────────
   // Hasta hoy había orígenes de 207 caracteres en una celda donde entran 48. La procedencia de cada
