@@ -70,3 +70,12 @@ test('origenANota no toca una fórmula ni una celda vacía', () => {
   assert.equal(conNota, 0)
   assert.equal(filas[1][2], '=A1&"algo"')
 })
+
+test('el centinela del generador NUNCA se convierte en una nota', async () => {
+  const { VACIO } = await import('./preservar-anotaciones.mjs')
+  const filas = [['Vacaciones', '', VACIO]]
+  const { requests, conNota } = origenANota(filas, 2, 7)
+  assert.equal(conNota, 0, 'no crea una nota que diga "::VACIO::"')
+  assert.equal(requests.length, 0)
+  assert.equal(filas[0][2], '', 'y además limpia la celda')
+})

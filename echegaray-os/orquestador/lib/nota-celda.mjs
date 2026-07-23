@@ -124,6 +124,7 @@ export function anchosSegunContenido(filas = [], { min = 64, max = 300, tam = 10
 }
 
 import { ES_ENCABEZADO } from './patron-pestana.mjs'
+import { VACIO } from './preservar-anotaciones.mjs'
 
 /**
  * SACA LA COLUMNA DE PROCEDENCIA DEL CUERPO Y LA PONE EN LA NOTA DEL RÓTULO.
@@ -148,6 +149,19 @@ export function origenANota(filas, colOrigen, sheetId) {
   filas.forEach((f, i) => {
     const texto = String(f?.[colOrigen] ?? '').trim()
     if (!texto || texto.startsWith('=')) return
+    // ═══ EL CENTINELA NO ES UNA PROCEDENCIA ═══
+    //
+    // EL DEFECTO (23/07). El dueño: "está lleno de comentarios 'vacío' en cargas sociales". Y era
+    // literal: esta función tomaba el contenido de la columna de origen TAL CUAL, y en las filas que
+    // el generador deja vacías ese contenido es el centinela ` ::VACIO:: ` — plomería interna. Cada
+    // una de esas filas terminó con una nota amarilla que decía "::VACIO::". Es la segunda vez que
+    // el centinela se escapa por una escritura que no pasa por la fusión; la primera fueron 61
+    // celdas de CAJA. Toda función que lea una grilla CRUDA tiene que descartarlo.
+    if (texto === VACIO.trim() || texto.includes('::VACIO::')) { f[colOrigen] = ''; return }
+    // El rótulo de la propia columna tampoco es una procedencia. En el bloque del hero la columna A
+    // dice "LA POSICIÓN" —que no es un encabezado de tabla— así que la regla de abajo no lo agarra
+    // y quedaba una nota que sólo decía "De dónde sale".
+    if (/^(de dónde sale|origen( del dato)?|fuente)$/i.test(texto)) { f[colOrigen] = ''; return }
     // El rótulo de la columna ("De dónde sale") no es una procedencia: es el nombre de la columna
     // que estamos sacando. Se vacía igual, pero no genera una nota que diría una obviedad.
     if (ES_ENCABEZADO.test(String(f?.[0] ?? '').trim())) { f[colOrigen] = ''; return }

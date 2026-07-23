@@ -976,6 +976,13 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     },
     /** Propiedades de las pestañas: [{ sheetId, title }]. El sheetId numérico hace falta
      *  para operaciones estructurales (insertar/borrar filas, formato). */
+    /**
+     * Un GET crudo contra la API de Sheets, para los campos que no tienen método propio.
+     *
+     * Hizo falta para leer las NOTAS de las celdas: no vienen en `values` —viven fuera del valor— y
+     * por eso una nota mal escrita sobrevive a que se reescriba la pestaña entera.
+     */
+    async apiGetSheets(url) { return apiGet(url) },
     async getSheetMeta(fileId) {
       const j = await apiGet(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?fields=sheets.properties(sheetId,title,gridProperties)`)
       return (j.sheets || []).map((s) => ({ sheetId: s.properties?.sheetId, title: s.properties?.title, rows: s.properties?.gridProperties?.rowCount, cols: s.properties?.gridProperties?.columnCount }))
