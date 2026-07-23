@@ -8,6 +8,12 @@
 // bloquea el derrame. Como los cruces del Sheet (Cash Flow, Proveedores, CAJA, Cheques) ya son
 // fórmulas ABIERTAS sobre Compras, un comprobante bien cargado se propaga solo.
 //
+// EL CRUCE DE DUPLICADOS ES LA MITAD DEL TRABAJO, NO UN EXTRA (23/07). Cruzar sólo contra ARCA no
+// alcanza: ARCA se sincroniza con retraso (al 23/07 llegaba hasta el 15/07), así que un comprobante
+// de esta semana da "no está en ARCA" y se cargaría de nuevo aunque YA esté en la pestaña. Por eso
+// el cruce contra la propia pestaña "Compras" es BLOQUEANTE (se saltea la fila y se informa dónde
+// está), y el de ARCA es informativo. Este repo ya pagó el error de contar dos veces.
+//
 // FLUJO: cruza contra ARCA (duplicados) → matchea proveedor contra el desplegable estricto → asegura
 // la grilla → escribe input → estampa fórmulas → verifica (sin #ERROR, totales) → reporta nuevos
 // proveedores y duplicados. Después conviene: node scripts/sync-compras.mjs (→ Supabase, regla #6).
@@ -18,7 +24,7 @@ import { readFileSync } from 'node:fs'
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
-import { matchProveedor, valoresInput, validar, GRUPOS_FORMULA } from '../lib/carga-comprobantes.mjs'
+import { matchProveedor, valoresInput, validar, indiceCompras, GRUPOS_FORMULA } from '../lib/carga-comprobantes.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
@@ -58,20 +64,25 @@ async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const meta = await google.getSheetMeta(ID)
   const hoja = meta.find((h) => h.title === 'Compras')
-  const [lista, arca, colE] = await Promise.all([
-    listaProveedores(google), indiceArca(), google.readSheetValues(ID, 'Compras!E1:E'),
+  const [lista, arca, grilla] = await Promise.all([
+    listaProveedores(google), indiceArca(), google.readSheetValues(ID, 'Compras!A1:AN'),
   ])
   let ultima = 0
-  colE.forEach((r, i) => { if (r[0] != null && r[0] !== '') ultima = i + 1 })
+  grilla.forEach((r, i) => { if (r[4] != null && r[4] !== '') ultima = i + 1 })
+  const yaEn = indiceCompras(grilla)
 
-  // Preparar cada fila: validar, matchear proveedor, cruzar ARCA.
+  // Preparar cada fila: validar, matchear proveedor, cruzar la PESTAÑA (bloqueante) y ARCA (informativo).
   const plan = []
-  const nuevos = new Set(); const dupes = []; const rechazos = []
+  const nuevos = new Set(); const dupes = []; const rechazos = []; const yaCargados = []
   for (const [i, c] of comprobantes.entries()) {
     const prov = matchProveedor(c.proveedor, lista)
     const cc = { ...c, proveedor: prov.valor }
     const problemas = validar(cc)
     if (problemas.length) { rechazos.push({ i, proveedor: c.proveedor, problemas }); continue }
+    // ANTES DE CARGAR: ¿ya está en la pestaña? Un duplicado acá no es un detalle administrativo,
+    // es plata contada dos veces (costo, IVA y cuenta corriente del proveedor).
+    const repetido = yaEn.buscar(cc)
+    if (repetido) { yaCargados.push({ i, numero: c.numero, ...repetido }); continue }
     if (prov.esNuevo) nuevos.add(prov.valor)
     const num = String(c.numero ?? '').replace(/\D/g, '').replace(/^0+/, '')
     const enArca = num && arca.porNumero.get(num)
@@ -83,6 +94,10 @@ async function main() {
   const hasta = ultima + plan.length
   console.log(`Compras: última fila con datos = ${ultima}. Se cargan ${plan.length} comprobante(s) → filas ${desde}..${hasta}.`)
   if (rechazos.length) { console.log(`\n⚠ ${rechazos.length} NO se cargan (dato insuficiente, no se inventa):`); rechazos.forEach((r) => console.log(`   #${r.i} ${r.proveedor || '(sin proveedor)'}: ${r.problemas.join('; ')}`)) }
+  if (yaCargados.length) {
+    console.log(`\n⛔ ${yaCargados.length} YA ESTABA(N) en la pestaña — NO se vuelven a cargar:`)
+    yaCargados.forEach((d) => console.log(`   #${d.i} ${d.numero} → fila ${d.fila} (${d.proveedor} · ${d.fecha} · $${(d.total ?? 0).toLocaleString('es-AR')}) — ${d.motivo}`))
+  }
   if (nuevos.size) console.log(`\n⚠ Proveedores NUEVOS (no están en el desplegable estricto — confirmá antes de fijarlos): ${[...nuevos].join(' · ')}`)
   if (dupes.length) console.log(`\nℹ Ya figuran en ARCA (posible duplicado, revisá): ${dupes.map((d) => `${d.numero} ($${Math.round(d.arcaTotal).toLocaleString('es-AR')})`).join(' · ')}`)
   if (!plan.length) { console.log('\nNada cargable.'); await closePool(); return }
