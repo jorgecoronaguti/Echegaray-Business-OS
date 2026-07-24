@@ -30,6 +30,16 @@ export const TERMINALES = ['COMPLETADA', 'CANCELADA']
 
 const leer = () => { try { return JSON.parse(readFileSync(ARCHIVO, 'utf8')) } catch { return { creado: null, tareas: [] } } }
 const guardar = (d) => { mkdirSync(DIR, { recursive: true }); writeFileSync(ARCHIVO, JSON.stringify(d, null, 2)) }
+// Antes de tocar el tablero se guarda una copia del estado actual. Si algo sale mal, el estado
+// previo —tareas, estados, ramas, worktrees, resultados, bloqueos— se puede recuperar. Nunca se
+// pisa un tablero existente sin dejar respaldo.
+const respaldar = () => {
+  try {
+    mkdirSync(DIR, { recursive: true })
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    writeFileSync(join(DIR, `estado.backup-${stamp}.json`), readFileSync(ARCHIVO, 'utf8'))
+  } catch { /* no había estado.json todavía: no hay nada que respaldar */ }
+}
 
 /**
  * NÚCLEO PURO: qué tareas pueden arrancar ahora.
@@ -96,17 +106,37 @@ const [, , cmd, ...args] = process.argv
 const d = leer()
 
 if (cmd === 'init') {
-  const tareas = JSON.parse(args[0] ?? '[]').map((t, i) => ({
-    id: t.id ?? `T${String(i + 1).padStart(2, '0')}`,
-    titulo: t.titulo,
-    criterio: t.criterio ?? null,          // cómo se sabe que está terminada
-    estado: 'PENDIENTE',
-    depende_de: t.depende_de ?? [],
-    recursos: t.recursos ?? [],            // archivos/pestañas/tablas que toca
-    agente: null, rama: null, worktree: null,
-    inicio: null, ultimo_avance: null, validaciones: null, bloqueo: null, resultado: null,
-  }))
-  guardar({ creado: new Date().toISOString(), tope: Number(args[1]) || 3, tareas })
+  // INIT IDEMPOTENTE Y ADITIVO (24/07). Antes `init` PISABA el tablero entero: dos /backlog seguidos
+  // borraban las tareas del primero (estados, ramas, worktrees, resultados, bloqueos). Regla del dueño:
+  // un tablero existente es la FUENTE DE VERDAD y no se reemplaza por inferencias. `init` sólo AGREGA lo
+  // que falta —por id— y CONSERVA intacta cualquier tarea que ya exista. Correr `init` dos veces con el
+  // mismo set no cambia ni borra nada.
+  const hayTablero = Boolean(d.creado) || d.tareas.length > 0
+  const yaExiste = new Map(d.tareas.map((t) => [t.id, t]))
+  const nuevas = []
+  const conservadas = []
+  JSON.parse(args[0] ?? '[]').forEach((t, i) => {
+    const id = t.id ?? `T${String(i + 1).padStart(2, '0')}`
+    if (yaExiste.has(id)) { conservadas.push(id); return } // ya existe: NO se toca (su estado manda)
+    nuevas.push({
+      id,
+      titulo: t.titulo,
+      criterio: t.criterio ?? null,          // cómo se sabe que está terminada
+      estado: 'PENDIENTE',
+      depende_de: t.depende_de ?? [],
+      recursos: t.recursos ?? [],            // archivos/pestañas/tablas que toca
+      agente: null, rama: null, worktree: null,
+      inicio: null, ultimo_avance: null, validaciones: null, bloqueo: null, resultado: null,
+    })
+  })
+  if (hayTablero) respaldar()               // nunca se toca un tablero existente sin respaldo
+  guardar({
+    creado: d.creado ?? new Date().toISOString(),                       // se conserva la fecha original
+    tope: hayTablero ? (d.tope ?? (Number(args[1]) || 3)) : (Number(args[1]) || 3), // el tope existente manda
+    tareas: [...d.tareas, ...nuevas],                                    // se AGREGA, nunca se reemplaza
+  })
+  console.log(`init idempotente: ${nuevas.length} tarea(s) nueva(s)${nuevas.length ? ' (' + nuevas.map((t) => t.id).join(', ') + ')' : ''}` +
+    `${conservadas.length ? ` · ${conservadas.length} ya existían y se conservaron (${conservadas.join(', ')})` : ''}.`)
   console.log(tablero(leer()))
 } else if (cmd === 'estado') {
   const [id, nuevo] = args
