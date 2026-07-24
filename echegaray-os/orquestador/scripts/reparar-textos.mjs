@@ -85,7 +85,10 @@ export function planDeReparacion(defectos, anchos = [], filas = []) {
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const meta = await google.getSheetMeta(ID)
-  const lista = SOLO ? PESTANAS.filter((p) => p.titulo.toLowerCase().includes(SOLO.toLowerCase())) : PESTANAS
+  // EL CANDADO (24/07): una pestaña que el dueño tomó no se toca, ni para ensanchar una columna.
+  const bloqueadas = await import('../lib/pestana-bloqueada.mjs').then((m) => m.pestanasBloqueadas({}, ID)).catch(() => new Set())
+  const lista = (SOLO ? PESTANAS.filter((p) => p.titulo.toLowerCase().includes(SOLO.toLowerCase())) : PESTANAS)
+    .filter((p) => { if (bloqueadas.has(p.titulo)) { console.log(`🔒 ${p.titulo}: bajo tu control, no la toco.`); return false } return true })
   let total = 0
 
   for (const p of lista) {

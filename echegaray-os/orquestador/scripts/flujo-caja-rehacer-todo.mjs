@@ -50,7 +50,7 @@ const DRY = process.argv.includes('--dry')
  *
  * Un defecto que sólo se ve mirando la pantalla vuelve. Por eso se mide.
  */
-async function verificarPresentacion() {
+async function verificarPresentacion(bloqueadas = new Set()) {
   const { makeGoogleClient, WRITE_SCOPES } = await import('../lib/google.mjs')
   const { loadConfig } = await import('../lib/config.mjs')
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
@@ -58,7 +58,12 @@ async function verificarPresentacion() {
   const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
   const hojas = await google.getSheetMeta(ID)
   let hubo = false
+  // EL CANDADO TAMBIÉN ACÁ (24/07). Esta verificación ESCRIBE (usa A200 como celda de apunte para
+  // probar el atajo "IR A HOY"). Si el dueño tomó una pestaña, NO se la toca ni para verificarla:
+  // saltó justo el candado y, sobre una pestaña que él restauró más corta, el A200 se salía de la
+  // grilla y tiraba la corrida entera. La pestaña del dueño es suya: no se lee ni se escribe.
   for (const [pestaña, hasta] of [['Cash Flow Mensual', 13], ['Cash Flow Semanal', 54]]) {
+    if (bloqueadas.has(pestaña)) { console.log(`   🔒 ${pestaña}: bajo tu control, no la verifico ni la toco.`); continue }
     const w = await google.getColumnWidths(ID, pestaña).catch(() => [])
     // Las columnas de período tienen que medir todas lo mismo. Una distinta = alguien la tocó.
     const raras = w.slice(1, hasta).map((px, i) => ({ col: letra(i + 1), px })).filter((c) => c.px !== 96)
@@ -78,6 +83,7 @@ async function verificarPresentacion() {
   // descarte del propio Sheet y se comprueba que dé una referencia válida y que el gid sea el de la
   // pestaña. Leer la fórmula y "ver que está bien" no es verificar.
   for (const pestaña of ['Cash Flow Semanal', 'Cash Flow Mensual']) {
+    if (bloqueadas.has(pestaña)) continue // pestaña del dueño: no se escribe A200 ni se verifica el atajo
     const gidReal = hojas.find((h) => h.title === pestaña)?.sheetId
     const f = (await google.readSheetGrid(ID, `${pestaña}!A2`)).filas?.[0]?.[0]?.formula ?? ''
     const gid = /#gid=(\d+)/.exec(f)?.[1]
@@ -154,7 +160,7 @@ async function main() {
   }
 
   if (DRY) return
-  await verificarPresentacion()
+  await verificarPresentacion(bloqueadas)
 
   console.log(`\n${ok.length}/${PASOS.length} pestañas rehechas en ${((Date.now() - t0) / 1000).toFixed(1)}s`)
   if (saltados.length) console.log(`🔒 ${saltados.length} paso(s) salteado(s) por tu candado: ${saltados.map((s) => s.pestañas.join('/')).join(', ')}`)

@@ -145,10 +145,15 @@ async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const meta = await google.getSheetMeta(ID)
   let desviadas = 0, tocadas = 0
+  // EL CANDADO (24/07): una pestaña que el dueño tomó no la formatea NADIE — ni la tipografía ni las
+  // filas congeladas. Sin esto, este formateador escribía hasta la fila 90 de 'Cash Flow Semanal' y,
+  // como el dueño la restauró más corta, se salía de la grilla y tiraba TODA la corrida del pipeline.
+  const bloqueadas = await import('../lib/pestana-bloqueada.mjs').then((m) => m.pestanasBloqueadas({}, ID)).catch(() => new Set())
 
   for (const p of PESTANAS) {
     const hoja = meta.find((h) => h.title === p.titulo)
     if (!hoja) { console.log(`  ${p.titulo.padEnd(26)} no existe`); continue }
+    if (bloqueadas.has(p.titulo)) { console.log(`  🔒 ${p.titulo.padEnd(26)} — bajo tu control, no la formateo.`); continue }
     // Las pestañas con formato PROPIO las gobierna su agente, no el formateador general.
     if (p.propio) { console.log(`  ${p.titulo.padEnd(26)} — formato propio (su agente)`); continue }
 
@@ -244,6 +249,7 @@ async function main() {
   if (!DRY && !SOLO_AUDITAR && tocadas) {
     let quedan = 0
     for (const p of PESTANAS) {
+      if (bloqueadas.has(p.titulo)) continue // pestaña del dueño: ni se verifica
       const f = await google.readSheetFormats(ID, `${p.titulo}!A1:D3`).catch(() => null)
       if (f && !auditar(f, { congeladas: p.congeladas }).ok) quedan++
     }

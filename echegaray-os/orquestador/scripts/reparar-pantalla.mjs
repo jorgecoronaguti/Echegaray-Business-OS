@@ -80,8 +80,13 @@ async function main() {
   const alto = new Map(meta.map((h) => [h.title, h.rows ?? 0]))
   // Las pestañas de CARGA son del dueño: se auditan, no se reformatean. Cambiarle el formato a una
   // planilla donde alguien carga a mano todos los días es cambiarle el escritorio sin preguntarle.
+  // Y EL CANDADO (24/07): una pestaña que el dueño tomó no se reformatea NI un ancho de columna —
+  // "ningún agente la toca" incluye este reparador. Sin esto, se le cambiaba altos/anchos/formatos a
+  // la pestaña que él acababa de restaurar.
+  const bloqueadas = await import('../lib/pestana-bloqueada.mjs').then((m) => m.pestanasBloqueadas({}, ID)).catch(() => new Set())
   const lista = (SOLO ? PESTANAS.filter((p) => p.titulo.toLowerCase().includes(SOLO.toLowerCase())) : PESTANAS)
     .filter((p) => !p.carga)
+    .filter((p) => { if (bloqueadas.has(p.titulo)) { console.log(`🔒 ${p.titulo}: bajo tu control, no la reformateo.`); return false } return true })
   let reparadas = 0, sinReparar = 0
 
   for (const p of lista) {
