@@ -129,9 +129,13 @@ function comoObligacion(mov, fecha, hoy) {
  * @param {object} [p.paramsFin] tasas para compararFinanciamiento (préstamo, descuento de cheque)
  * @param {Array<object>} [p.accionesAnteriores] acciones del mismo horizonte del plan anterior — para
  *   decir, por acción y por horizonte, qué cambió. Sin ellas, el plan lo declara honestamente.
+ * @param {object} [p.politica] palancas de la ESTRATEGIA que gobierna este plan (las fija el diseñador de
+ *   estrategias). Hoy sólo `financiarNoCriticos`: si es true, un egreso NO crítico que la caja no cubre se
+ *   paga financiándolo con la línea SIEMPRE QUE haya margen real —nunca excede el límite—, en lugar de
+ *   postergarlo. Es la diferencia entre "priorizar cumplimiento" y "priorizar costo financiero mínimo".
  * @returns {{acciones:Array, resumen:object, resumen_estrategico:object}}
  */
-export function construirPlan({ dias = [], cajaInicial = 0, liquidezMinima = 0, limiteDescubierto = ACUERDO.importe, hoy = new Date(), paramsFin = {}, accionesAnteriores = null } = {}) {
+export function construirPlan({ dias = [], cajaInicial = 0, liquidezMinima = 0, limiteDescubierto = ACUERDO.importe, hoy = new Date(), paramsFin = {}, accionesAnteriores = null, politica = {} } = {}) {
   const acciones = []
   const est = {
     saldo: Number(cajaInicial) || 0,
@@ -139,6 +143,7 @@ export function construirPlan({ dias = [], cajaInicial = 0, liquidezMinima = 0, 
     costoFinanciero: 0,
     peorLinea: 0,
     excedeLinea: false,
+    financiarNoCriticos: !!politica.financiarNoCriticos,
     liquidezMinima, limiteDescubierto, hoy, paramsFin,
   }
   let seq = 0
@@ -212,9 +217,19 @@ function procesarPagos(est, dia, movs, acciones, nid) {
     const monto = round(it.monto)
     const disponible = Math.max(0, est.saldo - est.liquidezMinima)
     if (monto <= disponible) { pagarConCaja(est, fecha, it, monto, acciones, nid); continue }
-    if (esCritico(it)) financiarYpagar(est, fecha, it, monto, disponible, acciones, nid)
+    if (esCritico(it) || financiaNoCritico(est, monto, disponible)) financiarYpagar(est, fecha, it, monto, disponible, acciones, nid)
     else postergar(est, fecha, it, monto, acciones, nid)
   }
+}
+
+/**
+ * ¿La estrategia elige financiar un NO crítico en vez de postergarlo? Sólo si su palanca lo pide Y hay
+ * margen REAL de línea para el faltante: honrar al proveedor nunca justifica exceder el límite del acuerdo.
+ */
+function financiaNoCritico(est, monto, disponible) {
+  if (!est.financiarNoCriticos) return false
+  const faltante = monto - disponible
+  return (est.limiteDescubierto - est.lineaUsada) >= faltante
 }
 
 /** Paga con caja propia: no consume línea, preserva la relación y no cuesta financieramente. */
@@ -368,12 +383,20 @@ export async function planTesoreria(deps = {}, opts = {}) {
   // Sin él, el contrato lo declara honestamente — nunca inventa una comparación.
   const planAnterior = opts.planAnterior || null
 
+  // EL DISEÑADOR DE ESTRATEGIAS (estrategias-tesoreria.mjs) es quien piensa como CFO: por cada horizonte
+  // genera VARIAS estrategias completas (posturas distintas sobre la MISMA data), las compara y elige una;
+  // el plan operativo es la CONSECUENCIA de la elegida. Import perezoso: evita cualquier ciclo de carga.
+  const { disenarEstrategias } = await import('./estrategias-tesoreria.mjs')
+
   const horizontes = {}
   for (const h of HORIZONTES) {
     const dias = (calendario.dias || []).slice(0, h.dias)
     const accionesAnteriores = planAnterior?.horizontes?.[h.clave]?.acciones || null
-    const { acciones, resumen, resumen_estrategico } = construirPlan({ dias, cajaInicial, liquidezMinima, limiteDescubierto, hoy, paramsFin, accionesAnteriores })
-    horizontes[h.clave] = { titulo: h.titulo, dias: h.dias, resumen, resumen_estrategico, acciones }
+    const dis = disenarEstrategias({ dias, cajaInicial, liquidezMinima, limiteDescubierto, hoy, paramsFin, accionesAnteriores })
+    // Retrocompat: la web sigue leyendo resumen/resumen_estrategico/acciones — ahora son los de la
+    // estrategia ELEGIDA. `estrategias` es la capa nueva: las generadas, cuál se eligió y por qué.
+    const { acciones, resumen, resumen_estrategico } = dis.plan_elegido
+    horizontes[h.clave] = { titulo: h.titulo, dias: h.dias, resumen, resumen_estrategico, acciones, estrategias: dis.estrategias }
   }
 
   return {

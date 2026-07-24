@@ -21,6 +21,71 @@ export interface AccionPlan {
   requiere_aprobacion: boolean
 }
 
+// La capa de ESTRATEGIA (24/07): el motor piensa como CFO. Por cada horizonte genera varias estrategias
+// completas (posturas sobre la MISMA data), las compara con un objetivo CFO explícito y elige una; el plan
+// operativo (resumen/acciones del horizonte) es la CONSECUENCIA de la elegida. La web puede pintar esta
+// capa; los campos ya existentes del horizonte siguen intactos (retrocompat).
+export interface EstrategiaGenerada {
+  clave: string
+  nombre: string
+  objetivo: string
+  razonamiento: string
+  palancas: { financiar_no_criticos: boolean; piso_liquidez: number; colchon_defensivo: number }
+  metricas: {
+    costo_financiero: number
+    postergados: number
+    financiados: number
+    pagos_en_fecha: number
+    cobros: number
+    saldo_final: number
+    linea_maxima: number
+    limite_linea: number
+    excede_limite: boolean
+    piso_liquidez: number
+    colchon_defensivo: number
+  }
+  beneficios: string[]
+  riesgos: string[]
+  impacto: {
+    caja: string
+    liquidez: string
+    costo_financiero: string
+    obras: string
+    proveedores: string
+    clientes: string
+    obligaciones: string
+  }
+  alternativas_descartadas: {
+    clave: string
+    nombre: string
+    objetivo: string
+    diferencia_vs_esta: string
+    es_la_elegida: boolean
+  }[]
+}
+
+export interface ComparacionEstrategias {
+  objetivo_cfo: string
+  criterio_decisivo: string
+  ranking: {
+    puesto: number
+    clave: string
+    nombre: string
+    costo_financiero: number
+    postergados: number
+    saldo_final: number
+    linea_maxima: number
+    excede_limite: boolean
+  }[]
+  justificacion: string
+}
+
+export interface EstrategiasHorizonte {
+  generadas: EstrategiaGenerada[]
+  elegida: string
+  comparacion: ComparacionEstrategias
+}
+
 export interface HorizontePlan {
   titulo: string
   dias: number
@@ -31,6 +96,8 @@ export interface HorizontePlan {
     excede_limite_linea: boolean
   }
   acciones: AccionPlan[]
+  // Nueva capa CFO: las estrategias que el motor contrastó antes de derivar el plan de arriba.
+  estrategias?: EstrategiasHorizonte
 }
 
 export interface PlanTesoreria {
