@@ -31,9 +31,14 @@ Toda la lógica vive **dentro del Business OS**:
 - **`orquestador/lib/ingenieria-financiera.mjs`** — el motor determinista (núcleo puro + ensamblador).
 - **`orquestador/lib/tools/ingenieria-financiera-tool.mjs`** — el contrato único que expone el motor:
   `finanzas.modelo_liquidez`, `finanzas.comparar_financiamiento`, `finanzas.priorizar_pagos`,
-  `finanzas.calendario_diario`, `finanzas.condiciones_financieras`, `finanzas.plan_tesoreria`.
+  `finanzas.calendario_diario`, `finanzas.condiciones_financieras`, `finanzas.plan_tesoreria`,
+  `finanzas.plan_ejecutar`.
 - **`orquestador/lib/plan-tesoreria.mjs`** — el Motor de Estrategia de Tesorería: NO reimplementa nada,
   ORQUESTA las primitivas de arriba en un plan cronológico ejecutable.
+- **`orquestador/lib/plan-ejecucion.mjs`** — el Financial Execution Orchestrator: convierte el plan en
+  TAREAS del Work Fabric para los especialistas (Comercial/Compras/Administración/CFO). NO decide ni
+  recalcula: reusa `orq.enqueue_task` (idempotente), `orq.task_deps` (dependencias), `pending_operations`
+  (aprobación Nivel E). El paso con plata nunca se ejecuta solo.
 
 **Nunca** en React. **Nunca** en Google Sheets. **Nunca** duplicando lógica. La Web, el Director IA,
 el CFO IA, el Flujo de Fondos, las APIs y futuras interfaces **sólo consumen** el resultado de este

@@ -7,6 +7,7 @@ import {
 import { calendarioDiario } from '../calendario-financiero.mjs'
 import { condicionesVigentes, paramsParaMotor, costoEfectivo } from '../condiciones-financieras.mjs'
 import { planTesoreria } from '../plan-tesoreria.mjs'
+import { sincronizarEjecucion } from '../plan-ejecucion.mjs'
 
 function formatModelo(m, recs) {
   const L = []
@@ -72,6 +73,29 @@ export function ingenieriaFinancieraTools(google) {
           const plan = await planTesoreria({ google }, args || {})
           return { ...plan, texto: formatPlan(plan) }
         } catch (e) { return { error: `no pude armar el plan de tesorería: ${String(e?.message ?? e).slice(0, 180)}` } }
+      },
+    },
+
+    'finanzas.plan_ejecutar': {
+      capability: 'tasks.write',
+      schema: {
+        name: 'plan_ejecutar',
+        description:
+          'FINANCIAL EXECUTION ORCHESTRATOR — convierte el Plan de Tesorería (finanzas.plan_tesoreria) en trabajo ejecutable para los especialistas del OS. NO vuelve a decidir ni recalcula: toma el plan y crea tareas coordinadas (Comercial IA cobra, Compras IA negocia, Administración IA prepara pagos, CFO IA usa/cancela líneas), respetando las dependencias del plan (una tarea no arranca hasta que su dependencia esté completada), las aprobaciones Nivel E (el paso con plata queda para aprobación humana, nunca se ejecuta solo), la idempotencia (correr dos veces no duplica) y la trazabilidad (cada tarea guarda el plan y la acción origen). Reconstruye sólo lo pendiente cuando el plan cambia. Usalo cuando el dueño pida "poné el plan en marcha", "asigná el trabajo del plan", "que los especialistas ejecuten el plan de tesorería". Pasá dry:true para ver qué tareas crearía sin crearlas.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            horizonte: { type: 'string', enum: ['hoy', 'dias_7', 'dias_30', 'dias_90'], description: 'qué ventana del plan ejecutar (default dias_7)' },
+            liquidezMinima: { type: 'number', description: 'piso de caja que el plan no perfora (opcional)' },
+            dry: { type: 'boolean', description: 'true = mostrar qué tareas crearía sin crearlas' },
+          },
+        },
+      },
+      async run(args) {
+        try {
+          const r = await sincronizarEjecucion({ google }, args || {})
+          return r
+        } catch (e) { return { error: `no pude orquestar la ejecución del plan: ${String(e?.message ?? e).slice(0, 180)}` } }
       },
     },
 
