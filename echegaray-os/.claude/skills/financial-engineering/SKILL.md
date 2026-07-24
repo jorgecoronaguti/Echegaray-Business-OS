@@ -67,6 +67,28 @@ skill es el **cerebro que decide**, no otra copia de los datos.
 Antes de agregar cualquier cálculo nuevo, la pregunta es **¿qué fuente ya lo tiene?** Si existe, se
 consume. Sólo se construye lógica nueva cuando es genuinamente de DECISIÓN, no de dato.
 
+## El universo de conocimiento (considerar TODO lo disponible)
+
+El razonamiento financiero **no se limita al Flujo de Caja ni a Supabase**. Toda decisión debe
+considerar automáticamente **todas las fuentes ya integradas** del Business OS que puedan afectarla:
+caja, banco, obligaciones, descubierto, créditos, cheques, compras, ARCA, facturas, certificaciones,
+obras, cronogramas, contratos y documentación técnica. El catálogo vive en
+`orquestador/lib/fuentes-conocimiento-financiero.mjs` y se expone con `finanzas.fuentes_conocimiento`
+(pasá una decisión —pagar/cobrar/financiar/plan/liquidez— para saber qué mirar).
+
+Reglas que gobiernan el universo (no negociables):
+
+- **No se duplica ninguna fuente.** El catálogo son PUNTEROS a la fuente única que ya es dueña del
+  dato — no otra copia. Nada se recalcula acá.
+- **Drive es CONOCIMIENTO, nunca VERDAD.** Las fuentes estructuradas (Supabase/Sheets/banco/ARCA) son
+  verdad conciliable y se consumen directo. Cuando una decisión necesita algo que **todavía no está
+  estructurado** —un plazo de pago pactado en un contrato, una condición de un anticipo—, se consulta
+  en Drive con el **conector existente** (`lectura-drive-documentos-multiformato`) como conocimiento
+  para razonar. Si ese dato debe persistirse, se ingiere por el **camino normal del OS**, no se
+  atajea. No se crean integraciones nuevas ni se tocan los conectores.
+- El objetivo permanente: **decidir con el máximo conocimiento disponible de la empresa**, no con la
+  porción que ya está en una tabla.
+
 ## El modelo único de liquidez
 
 `finanzas.modelo_liquidez` arma, ensamblando las fuentes de arriba, una sola representación de la

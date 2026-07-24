@@ -9,6 +9,7 @@ import { condicionesVigentes, paramsParaMotor, costoEfectivo } from '../condicio
 import { planTesoreria } from '../plan-tesoreria.mjs'
 import { sincronizarEjecucion } from '../plan-ejecucion.mjs'
 import { planVigente } from '../plan-vigente.mjs'
+import { coberturaDeFuentes, fuentesParaDecision } from '../fuentes-conocimiento-financiero.mjs'
 
 function formatModelo(m, recs) {
   const L = []
@@ -74,6 +75,27 @@ export function ingenieriaFinancieraTools(google) {
           const plan = await planTesoreria({ google }, args || {})
           return { ...plan, texto: formatPlan(plan) }
         } catch (e) { return { error: `no pude armar el plan de tesorería: ${String(e?.message ?? e).slice(0, 180)}` } }
+      },
+    },
+
+    'finanzas.fuentes_conocimiento': {
+      capability: 'os.read',
+      schema: {
+        name: 'fuentes_conocimiento',
+        description:
+          'EL UNIVERSO DE CONOCIMIENTO DEL FINANCIAL ENGINEERING — el catálogo de TODAS las fuentes del Business OS que pueden afectar una decisión financiera (caja, banco, obligaciones, descubierto, créditos, cheques, compras, ARCA, facturas, certificaciones, obras, cronogramas, contratos, documentación técnica), cada una con qué aporta y su naturaleza: VERDAD estructurada (Supabase/Sheets/banco/ARCA, se consume directo) o CONOCIMIENTO en Drive (se consulta con el conector cuando una decisión lo necesita — Drive NO es fuente de verdad). No trae datos ni duplica fuentes: son punteros a lo que ya existe. Usalo para asegurar que una decisión financiera consideró todo lo disponible, o pasá una decisión (pagar/cobrar/financiar/plan/liquidez) para ver qué fuentes mirar.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            decision: { type: 'string', enum: ['liquidez', 'pagar', 'cobrar', 'financiar', 'plan'], description: 'qué fuentes considerar para esta decisión (opcional; si no, el catálogo completo con su cobertura)' },
+          },
+        },
+      },
+      async run(args) {
+        try {
+          if (args?.decision) return { decision: args.decision, fuentes: fuentesParaDecision(args.decision) }
+          return coberturaDeFuentes()
+        } catch (e) { return { error: String(e?.message ?? e).slice(0, 180) } }
       },
     },
 
