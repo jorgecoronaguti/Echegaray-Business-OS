@@ -23,6 +23,17 @@
 // secuencia. El ensamblador `planTesoreria` trae las fuentes y arma los horizontes. Ningún número de
 // plata se recalcula acá; si uno no coincide con su fuente, es un bug de arquitectura.
 //
+// ═══ EL CONTRATO ESTRATÉGICO (24/07) — DE "LISTA DE TAREAS" A "PLAN DE COORDINACIÓN" ═══
+//
+// El plan no es una lista de "cobrar/pagar": es una ESTRATEGIA de coordinación financiera. Por eso cada
+// decisión, además de su contrato operativo (motivo, impacto, costo, efecto en liquidez, riesgos,
+// dependencias), expone una capa `estrategia` que responde POR QUÉ es la mejor jugada: qué coordina,
+// qué optimiza, qué alternativas había, por qué se eligió esa, el beneficio esperado, y su impacto sobre
+// la liquidez futura, el costo financiero, y las relaciones (proveedores/clientes/obras), más qué cambia
+// respecto del plan anterior. Y cada horizonte lleva un `resumen_estrategico`: qué coordina el CONJUNTO,
+// qué optimiza y qué cambió. TODO se DERIVA de números que los motores ya calcularon —ni un peso se
+// recalcula acá—; es una capa de sentido sobre decisiones ya tomadas, no un cálculo nuevo.
+//
 // ═══ POLÍTICA DE RIESGO (NO NEGOCIABLE) ═══
 //
 // El plan DECIDE y ORDENA; ejecutar (pagar, firmar, tomar deuda) es Nivel E y requiere aprobación
@@ -33,6 +44,12 @@
 import { costoDelDinero, compararFinanciamiento, priorizarPagos, modeloLiquidez, fmt } from './ingenieria-financiera.mjs'
 import { calendarioDiario, categoriaEgreso } from './calendario-financiero.mjs'
 import { ACUERDO } from './banco-santander.mjs'
+// LA CAPA ESTRATÉGICA vive en su propio módulo (plan-estrategia.mjs): narra qué coordina/optimiza cada
+// decisión y qué cambió vs el plan anterior. Deriva de lo que este núcleo ya decidió — no recalcula.
+import {
+  estrategiaCobro, estrategiaCancelar, estrategiaPagarCaja, estrategiaFinanciar,
+  estrategiaPagarCritico, estrategiaPostergar, marcarCambios, cambiosVsAnterior, resumenEstrategico,
+} from './plan-estrategia.mjs'
 
 // Horizonte estándar para ELEGIR el instrumento más barato en compararFinanciamiento. El costo real
 // diario se acumula aparte (costoDelDinero sobre la línea usada cada día); estos 30 días son sólo la
@@ -110,9 +127,11 @@ function comoObligacion(mov, fecha, hoy) {
  * @param {number} [p.limiteDescubierto] techo de la línea (restricción bancaria)
  * @param {Date} p.hoy
  * @param {object} [p.paramsFin] tasas para compararFinanciamiento (préstamo, descuento de cheque)
- * @returns {{acciones:Array, resumen:object}}
+ * @param {Array<object>} [p.accionesAnteriores] acciones del mismo horizonte del plan anterior — para
+ *   decir, por acción y por horizonte, qué cambió. Sin ellas, el plan lo declara honestamente.
+ * @returns {{acciones:Array, resumen:object, resumen_estrategico:object}}
  */
-export function construirPlan({ dias = [], cajaInicial = 0, liquidezMinima = 0, limiteDescubierto = ACUERDO.importe, hoy = new Date(), paramsFin = {} } = {}) {
+export function construirPlan({ dias = [], cajaInicial = 0, liquidezMinima = 0, limiteDescubierto = ACUERDO.importe, hoy = new Date(), paramsFin = {}, accionesAnteriores = null } = {}) {
   const acciones = []
   const est = {
     saldo: Number(cajaInicial) || 0,
@@ -141,6 +160,7 @@ export function construirPlan({ dias = [], cajaInicial = 0, liquidezMinima = 0, 
         impacto_pesos: monto, costo_financiero: 0, efecto_liquidez: +monto,
         riesgos: 'depende de que el cliente pague en fecha; si no entra, el resto del plan se recalcula',
         dependencias: [], requiere_aprobacion: false,
+        estrategia: estrategiaCobro(m, monto, est),
       }))
     }
     // 2 · CANCELAR/REDUCIR LÍNEA con la caja fresca por encima del piso.
@@ -153,7 +173,12 @@ export function construirPlan({ dias = [], cajaInicial = 0, liquidezMinima = 0, 
     if (est.lineaUsada > est.limiteDescubierto + 1) est.excedeLinea = true
   }
 
-  return { acciones, resumen: resumenPlan(est, acciones, cajaInicial) }
+  // Capa estratégica FINAL: qué cambió por acción y por horizonte respecto del plan anterior. Se calcula
+  // una vez, al cierre, comparando contra las acciones previas (si se pasaron) — no recalcula plata.
+  marcarCambios(acciones, accionesAnteriores)
+  const resumen = resumenPlan(est, acciones, cajaInicial)
+  const cambios = cambiosVsAnterior(acciones, accionesAnteriores)
+  return { acciones, resumen, resumen_estrategico: resumenEstrategico(resumen, cambios) }
 }
 
 /** Repaga la línea con la caja que quedó por encima del piso. Emite "cancelar" dependiendo del cobro. */
@@ -170,6 +195,7 @@ function cancelarLinea(est, fecha, idsCobros, acciones, nid) {
       impacto_pesos: repago, costo_financiero: 0, efecto_liquidez: -repago,
       riesgos: est.lineaUsada > 0 ? `quedan ${fmt(est.lineaUsada)} de línea sin cancelar` : 'ninguno: la línea queda en cero',
       dependencias: idsCobros, requiere_aprobacion: true,
+      estrategia: estrategiaCancelar(repago, est),
     }))
 }
 
@@ -199,13 +225,15 @@ function pagarConCaja(est, fecha, it, monto, acciones, nid) {
     impacto_pesos: monto, costo_financiero: 0, efecto_liquidez: -monto,
     medio: medioSugerido(it), riesgos: 'ninguno relevante: sale de caja propia',
     dependencias: [], requiere_aprobacion: true,
+    estrategia: estrategiaPagarCaja(it, monto),
   }))
 }
 
 /** Un crítico que la caja no cubre: se paga financiando el faltante con la línea más barata. */
 function financiarYpagar(est, fecha, it, monto, disponible, acciones, nid) {
   const faltante = round(monto - disponible)
-  const via = elegirLinea(est, faltante)
+  const { via, cmp } = elegirLinea(est, faltante)
+  const costoFin = round(costoDelDinero(faltante, DIAS_COMPARACION))
   // Se GIRA la línea al saldo (entra la plata prestada) y luego se paga: el neto sobre la caja propia
   // es −disponible, y queda `faltante` de deuda de línea que se cancelará cuando entre caja.
   est.saldo += faltante
@@ -215,16 +243,18 @@ function financiarYpagar(est, fecha, it, monto, disponible, acciones, nid) {
   const excede = est.lineaUsada > est.limiteDescubierto + 1
   acciones.push(accion(idFin, fecha, 'financiar', `Usar ${via.nombre.toLowerCase()} por ${fmt(faltante)}`, {
     motivo: `${it.proveedor} es ${it.vencida ? 'deuda vencida' : it.obra ? 'de una obra en marcha' : 'crítico'}: se paga aunque la caja no alcance`,
-    impacto_pesos: faltante, costo_financiero: round(costoDelDinero(faltante, DIAS_COMPARACION)),
+    impacto_pesos: faltante, costo_financiero: costoFin,
     efecto_liquidez: +faltante, linea: via.via,
     riesgos: excede ? `EXCEDE el límite de la línea (${fmt(est.limiteDescubierto)}): requiere aprobación y otra fuente de fondos` : `suma ${fmt(faltante)} de deuda de línea al ${(ACUERDO.cft * 100).toFixed(1)}% CFT — cancelar apenas entre caja`,
     dependencias: [], requiere_aprobacion: true, excede_limite: excede,
+    estrategia: estrategiaFinanciar(it, faltante, via, cmp, costoFin, excede),
   }))
   acciones.push(accion(nid(fecha, 'pagar'), fecha, 'pagar', `Pagar ${it.proveedor} ${fmt(monto)}`, {
     motivo: `crítico: ${fmt(disponible)} de caja + ${fmt(faltante)} financiado`,
     impacto_pesos: monto, costo_financiero: 0, efecto_liquidez: -monto,
     medio: medioSugerido(it), riesgos: 'usa la línea de crédito: encarece el período hasta que se cancele',
     dependencias: [idFin], requiere_aprobacion: true,
+    estrategia: estrategiaPagarCritico(it, monto, disponible, faltante),
   }))
 }
 
@@ -235,6 +265,7 @@ function postergar(est, fecha, it, monto, acciones, nid) {
     impacto_pesos: monto, costo_financiero: 0, efecto_liquidez: 0, sugerir_negociar: true,
     riesgos: 'postergar puede afectar la relación con el proveedor: negociar el nuevo plazo, no faltar sin avisar',
     dependencias: [], requiere_aprobacion: true,
+    estrategia: estrategiaPostergar(it, monto, est),
   }))
 }
 
@@ -242,6 +273,8 @@ function postergar(est, fecha, it, monto, acciones, nid) {
  * Elige la línea para financiar un faltante: delega en compararFinanciamiento (no reimplementa la
  * comparación). Le pasa el margen de descubierto que queda y las tasas conocidas; toma la recomendada.
  * Si no hay recomendada factible (p.ej. el descubierto ya está al tope), cae al descubierto nombrándolo.
+ * Devuelve la comparación COMPLETA (`cmp`) además de la vía elegida, para que la capa estratégica pueda
+ * mostrar QUÉ alternativas se evaluaron y por qué ganó esta — sin volver a comparar.
  */
 function elegirLinea(est, faltante) {
   const cmp = compararFinanciamiento({
@@ -251,7 +284,7 @@ function elegirLinea(est, faltante) {
     tasaPrestamoTNA: est.paramsFin.tasaPrestamoTNA,
     tasaDescuentoChequeTNA: est.paramsFin.tasaDescuentoChequeTNA,
   })
-  return cmp.recomendada || { via: 'descubierto', nombre: 'Entrar al descubierto' }
+  return { via: cmp.recomendada || { via: 'descubierto', nombre: 'Entrar al descubierto' }, cmp }
 }
 
 function resumenPlan(est, acciones, cajaInicial) {
@@ -288,6 +321,9 @@ function accion(id, fecha, tipo, descripcion, campos) {
     sugerir_negociar: campos.sugerir_negociar || false,
     excede_limite: campos.excede_limite || false,
     requiere_aprobacion: campos.requiere_aprobacion !== false,
+    // La capa estratégica: los 9 puntos que convierten la acción en una decisión de coordinación, no una
+    // tarea suelta. `cambio_vs_plan_anterior` lo completa marcarCambios al cierre del plan.
+    estrategia: campos.estrategia || null,
   }
 }
 
@@ -328,11 +364,16 @@ export async function planTesoreria(deps = {}, opts = {}) {
   const limiteDescubierto = ACUERDO.importe
   const cajaInicial = calendario.caja_inicial
 
+  // El plan anterior (si el caller lo pasa) habilita el punto "qué cambió" por acción y por horizonte.
+  // Sin él, el contrato lo declara honestamente — nunca inventa una comparación.
+  const planAnterior = opts.planAnterior || null
+
   const horizontes = {}
   for (const h of HORIZONTES) {
     const dias = (calendario.dias || []).slice(0, h.dias)
-    const { acciones, resumen } = construirPlan({ dias, cajaInicial, liquidezMinima, limiteDescubierto, hoy, paramsFin })
-    horizontes[h.clave] = { titulo: h.titulo, dias: h.dias, resumen, acciones }
+    const accionesAnteriores = planAnterior?.horizontes?.[h.clave]?.acciones || null
+    const { acciones, resumen, resumen_estrategico } = construirPlan({ dias, cajaInicial, liquidezMinima, limiteDescubierto, hoy, paramsFin, accionesAnteriores })
+    horizontes[h.clave] = { titulo: h.titulo, dias: h.dias, resumen, resumen_estrategico, acciones }
   }
 
   return {
