@@ -43,17 +43,22 @@ const SEED = [
     fuente: ORIGEN, nivel_confianza: 'verificado',
     observaciones: `Cargo reproducido al centavo contra el extracto (interés × ${(1 + TASAS.iva + TASAS.percepcion).toFixed(2)}). El límite es el del acuerdo; el saldo utilizado sale del saldo negativo de la cuenta en el momento.`,
   },
-  // TARJETA — límite y disponible REALES del resumen; la TNA de financiación de cuotas NO la publica
-  // el resumen, así que va en NULL (pendiente). No se inventa.
+  // TARJETA — cupos REALES del resumen (banco-santander.mjs); la TASA de financiación NO viene en el
+  // "Detalle de tarjeta", así que se toma de la tasa PUBLICADA por Santander para financiación de
+  // saldo Visa, con su fuente y fecha. Va como 'informado' (dato de la web, no del resumen del cliente)
+  // hasta que el dueño aporte el resumen de cuenta mensual con la CFT/TNA de SU liquidación.
+  // El CFT queda en null a propósito: la fuente publica TNA y TEA, no el CFT; el costo se calcula con
+  // TNA + IVA sobre intereses (21%), no con un CFT inventado.
   {
     entidad: 'Banco Santander', producto: `Tarjeta ${TARJETA.cuenta}`,
     tipo_financiacion: 'tarjeta', moneda: 'ARS',
     vigencia_desde: CORTE, vigencia_hasta: TARJETA.vence,
-    tna: null, tea: null, cft: null,
+    tna: 0.779, tea: 1.1277, cft: null, iva_sobre_intereses: 0.21,
     limite_disponible: TARJETA.disponible, saldo_utilizado: TARJETA.consumidoPesos,
     fecha_debito: TARJETA.debitoAutomatico, amortizacion: 'revolving',
-    fuente: `${ORIGEN} — resumen tarjeta`, nivel_confianza: 'informado',
-    observaciones: `Cupo de cuotas: límite $${TARJETA.cuotas.limite.toLocaleString('es-AR')}, disponible $${TARJETA.cuotas.disponible.toLocaleString('es-AR')}. FALTA la TNA de financiación de cuotas — está en el resumen mensual o se pide al banco; sin ella no se calcula el costo de financiar con tarjeta.`,
+    fuente: `${ORIGEN} — resumen tarjeta; TASA de financiación: Santander Visa publicada TNA 77,90% / TEA 112,77%, vigencia 01/07→08/08/2026 (santander.com.ar, consultado 24/07/2026)`,
+    nivel_confianza: 'informado',
+    observaciones: `Cupo de cuotas: límite $${TARJETA.cuotas.limite.toLocaleString('es-AR')}, disponible $${TARJETA.cuotas.disponible.toLocaleString('es-AR')}; cuotas pendientes próximo período $${TARJETA.cuotasPendientes.proximoPeriodo.toLocaleString('es-AR')}. TASA: TNA 77,90% · TEA 112,77% (Santander Visa, financiación de saldo, vigencia 01/07→08/08/2026, consultado 24/07/2026 — INFORMADO, dato de la web). CFT no publicado en la fuente: el costo se calcula con TNA + IVA 21% sobre intereses. Nota BCRA: la financiación de resúmenes de hasta $200.000/mes tiene tope 62%; el consumo de Echegaray ($998k) supera ese piso, aplica la TNA plena. Reemplazar por la CFT/TNA del resumen de cuenta mensual del cliente cuando esté disponible (pasa a 'verificado').`,
   },
   // PRÉSTAMO PRENDARIO — datos REALES de la liquidación oficial del banco (Drive:
   // "48599_0179_ECHEGARAY CONSTRUCCIONES SAS_30716304643.pdf", Aviso de Liquidación del 07/10/2024).

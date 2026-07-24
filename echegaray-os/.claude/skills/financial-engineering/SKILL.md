@@ -162,8 +162,12 @@ Construido y operativo:
 Pendiente (real, no reimplementa nada de lo anterior):
 - **Ingeniería de cobranzas** con probabilidad de cobro y retraso histórico por cliente.
 - **Simulador** de escenarios/sensibilidad — la arquitectura ya separa núcleo puro de datos.
-- **Dato faltante (no capacidad)**: la TNA de financiación de cuotas de la tarjeta — no la publica el
-  resumen; se pide al banco. La capacidad la espera; falta el dato.
+- **Tarjeta — tasa cargada como `informado` (24/07)**: el "Detalle de tarjeta" no publica la tasa, así
+  que se cargó la **tasa publicada por Santander para financiación de saldo Visa** (TNA 77,90% / TEA
+  112,77%, vigencia 01/07→08/08/2026, santander.com.ar) con IVA 21% sobre intereses. El motor ya
+  calcula el costo de financiar con tarjeta (~7,7%/mes efectivo) y la incluye en `comparar_financiamiento`.
+  Pendiente: reemplazar por la CFT/TNA del **resumen de cuenta mensual del cliente** para pasar a
+  `verificado`.
 - **Superficie API/Web**: el tool YA es el contrato; una interfaz sólo lo consume.
 
 ## Criterios de aceptación (estado)
