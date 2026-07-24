@@ -60,9 +60,17 @@ test('un tipo de acción desconocido no inventa especialista: devuelve null', ()
 
 test('construirTareas traduce las dependencias del plan a claves estables', () => {
   const { tareas } = construirTareas(planFake(), { horizonte: 'dias_7' })
-  const cancelar = tareas.find((t) => t.type === 'tesoreria_cancelar_linea')
-  const cobrar = tareas.find((t) => t.type === 'tesoreria_cobrar')
+  const cancelar = tareas.find((t) => t.inputs.subtipo === 'tesoreria_cancelar_linea')
+  const cobrar = tareas.find((t) => t.inputs.subtipo === 'tesoreria_cobrar')
   assert.deepEqual(cancelar._depsClaves, [cobrar.dedupe_key]) // a4 dependía de a1
+})
+
+test('la tarea se despacha como type=specialist (handler existente), no como un tipo tesoreria_* sin handler', () => {
+  // REGRESIÓN (24/07): las tareas se creaban con type='tesoreria_pagar' y el worker las cancelaba
+  // ('sin handler para type=...'). El tipo de HANDLER es 'specialist'; el subtipo de tesorería va en inputs.
+  const t = tareaDeAccion({ fecha: '2026-07-24', tipo: 'pagar', descripcion: 'Pagar X $1' }, {})
+  assert.equal(t.type, 'specialist')
+  assert.equal(t.inputs.subtipo, 'tesoreria_pagar')
 })
 
 test('construirTareas arma una tarea por acción del horizonte', () => {

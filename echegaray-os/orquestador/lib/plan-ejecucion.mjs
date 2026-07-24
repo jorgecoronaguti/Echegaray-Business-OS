@@ -93,7 +93,11 @@ export function tareaDeAccion(accion = {}, ctx = {}) {
     dedupe_key: dedupe,
     subject_type: SUBJECT_TYPE,
     subject_id: ctx.subjectId ?? null,
-    type: m.tipo,
+    // El TIPO DE HANDLER es 'specialist' — el trabajo de preparación (Nivel C) que el Work Fabric ya
+    // sabe correr (handlers/specialist.mjs). El subtipo de tesorería (tesoreria_pagar/cobrar/…) NO es
+    // un tipo de handler: ningún handler lo sirve y las tareas morían 'cancelled'. Se conserva en
+    // inputs.subtipo para trazabilidad. La semántica del trabajo viaja en goal/capability/agent/inputs.
+    type: 'specialist',
     title: accion.descripcion,
     goal: m.objetivo,
     success_criteria: criterio(accion, m),
@@ -103,6 +107,7 @@ export function tareaDeAccion(accion = {}, ctx = {}) {
     deadline: accion.fecha ? `${accion.fecha}T23:59:59-03:00` : null,
     inputs: {
       origen: 'finanzas.plan_tesoreria',
+      subtipo: m.tipo, // tesoreria_pagar/cobrar/negociar/financiar/cancelar_linea — para trazar el trabajo
       plan_fecha: ctx.planFecha ?? null,
       horizonte: ctx.horizonte ?? null,
       accion, // la acción ORIGEN completa: motivo, impacto, costo financiero, efecto liquidez, riesgos
