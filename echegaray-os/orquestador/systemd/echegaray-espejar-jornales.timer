@@ -1,0 +1,22 @@
+[Unit]
+Description=Echegaray OS — refresca el espejo de JORNALES cada 3h (camino autónomo, independiente del pipeline del Flujo de Caja)
+
+[Timer]
+# POR QUÉ UN TIMER PROPIO. Hasta ahora espejar-jornales.mjs SOLO corría como un paso dentro de
+# flujo-caja-rehacer-todo.mjs (cada 2h). Si ese pipeline estaba apagado o fallaba, el espejo quedaba
+# viejo y "Jornales por Quincena" mostraba números atrasados SIN GRITAR. Este timer le da un camino
+# dedicado: el espejo se refresca aunque el pipeline grande no corra.
+#
+# VISIBILIDAD DEL DESFASE (no silencioso). Cada corrida exitosa registra la lectura del archivo
+# JORNALES (registrar-sincronizacion.mjs) y mueve su fecha de sincronización. Si el timer deja de
+# tener éxito (OAuth caído, JORNALES inaccesible, espejo desfasado -> el script sale != 0 y NO
+# registra), la fecha se congela y recalcular_frescura_fuentes() marca la fuente 'atrasado' sola al
+# salirse de su ventana. Cuando vuelve a leer dentro de ventana, la misma función la devuelve a
+# 'actualizado' (trinquete de doble vía): la alerta se apaga sola, no se queda pegada.
+OnBootSec=9min
+OnUnitActiveSec=3h
+Persistent=true
+RandomizedDelaySec=90
+
+[Install]
+WantedBy=timers.target
