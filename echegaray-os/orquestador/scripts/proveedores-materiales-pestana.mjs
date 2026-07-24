@@ -74,7 +74,7 @@ import { NOMBRES } from '../lib/sheet-pestanas.mjs'
 import { partir, filasHuerfanas, ref as refPestana } from '../lib/partir-pestana.mjs'
 import { anchosSegunContenido } from '../lib/nota-celda.mjs'
 import { fusionar, sobrantes, VACIO } from '../lib/preservar-anotaciones.mjs'
-import { conEdicionesRespetadas, guardarRegistro, detectarArranqueEnFrio } from '../lib/respetar-ediciones.mjs'
+import { conEdicionesRespetadas, guardarRegistro, detectarArranqueEnFrio, autoRespetarReescritura } from '../lib/respetar-ediciones.mjs'
 import { ESTADO_DEUDA } from '../lib/cuentas-por-pagar.mjs'
 /** El estado de Compras para lo pactado que todavía no es deuda firme. Convive con "Pendiente". */
 const ESTADO_PROYECTADO = 'Proyectado'
@@ -1053,6 +1053,9 @@ async function main() {
       // toda lectura acotada a la grilla nueva lo daba por borrado.
       ID, `${refPestana(t.titulo)}!A1:${letra(anchoLeer - 1)}`,
     ).catch(() => previo)
+    // AUTO-RESPETO (24/07): si reescribiste esta pestaña entera con otra estructura, la tomo como tuya
+    // y no la piso — sin que tengas que candar nada.
+    if ((await autoRespetarReescritura(ID, t.titulo, cuadroP, visible)).reescrita) continue
     const { grid: cuadroFinal, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, t.titulo, cuadroP, visible)
     for (const r of respetadas) console.log(`  ✋ ${t.titulo}: respeto tu texto ("${String(r.suyo).slice(0, 40)}") en vez de "${String(r.mio).slice(0, 40)}"`)
     const fusion = fusionar(cuadroFinal, previo)

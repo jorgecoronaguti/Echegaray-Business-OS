@@ -452,3 +452,25 @@ export function duenoReescribioLaPestana(generado = [], actual = [], { umbralPre
     motivo: reescrita ? `sólo ${hay} de ${quiere.size} de mis rótulos siguen en la pestaña` : `${hay} de ${quiere.size} de mis rótulos siguen`,
   }
 }
+
+/**
+ * Helper de un solo llamado para los generadores que escriben por su propio camino (no por
+ * escribirPreservando): si el dueño reescribió la pestaña entera, la auto-canda (por='auto') y avisa.
+ * Devuelve {reescrita:true} para que el generador SALTE esa pestaña y no la toque. DRY: la lógica de
+ * detección + candado vive en un solo lugar.
+ *
+ * @param {string} fileId  id del Sheet
+ * @param {string} pestana nombre de la pestaña
+ * @param {any[][]} generado lo que el generador quiere escribir
+ * @param {any[][]} actual   el texto visible que HAY hoy en la pestaña
+ */
+export async function autoRespetarReescritura(fileId, pestana, generado, actual) {
+  const rew = duenoReescribioLaPestana(generado, actual)
+  if (!rew.reescrita) return { reescrita: false }
+  try {
+    const { bloquear } = await import('./pestana-bloqueada.mjs')
+    await bloquear({}, fileId, pestana, { motivo: `auto: detecté que la reescribiste (${rew.motivo})`, por: 'auto' })
+    console.log(`  🔒 detecté que reescribiste "${pestana}" (${rew.motivo}): la tomo como tuya, no la toco.`)
+  } catch { /* sin base no se puede candar; la Regla 0 celda a celda sigue activa */ }
+  return { reescrita: true }
+}

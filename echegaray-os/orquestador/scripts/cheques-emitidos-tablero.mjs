@@ -66,7 +66,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { skinRequests, MUTED, HAIR } from '../lib/estilo-statement.mjs'
 import { seccion, total } from '../lib/patron-pestana.mjs'
-import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
+import { conEdicionesRespetadas, guardarRegistro, autoRespetarReescritura } from '../lib/respetar-ediciones.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTANA = 'Cheques Emitidos'
@@ -201,6 +201,8 @@ async function main() {
   // Sin techo de filas: ver la nota de caja-pestana.mjs. Un rótulo que hoy vive más abajo de la
   // grilla nueva no está borrado, está fuera de la ventana que yo leí.
   const previo = await google.readSheetValues(ID, `'${PESTANA}'!A1:M`).catch(() => [])
+  // AUTO-RESPETO (24/07): si reescribiste esta pestaña entera, la tomo como tuya y no la piso.
+  if ((await autoRespetarReescritura(ID, PESTANA, filas, previo)).reescrita) return
   const { grid: filasFinal, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, PESTANA, filas, previo)
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${String(r.suyo).slice(0, 44)}") en vez de "${String(r.mio).slice(0, 44)}"`)
   await google.batchUpdateValues(ID, [{ range: `${PESTANA}!A1`, values: filasFinal }])
