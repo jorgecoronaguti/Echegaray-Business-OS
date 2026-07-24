@@ -133,7 +133,22 @@ async function main() {
       pasteType: 'PASTE_FORMULA', pasteOrientation: 'NORMAL',
     },
   }))
-  await google.spreadsheetBatchUpdate(ID, reqs)
+  // EL DUEÑO TRABAJA CON UN FILTRO ACTIVO EN COMPRAS (23/07). Con un filtro puesto, copyPaste
+  // revienta con "This operation is not supported on a range with a filtered out row" y, peor, el
+  // batch es atómico: si tiraba la excepción, el script salía con error dejando las filas a medias.
+  // Pero al AGREGAR datos debajo de columnas con fórmula consistente, Google AUTO-EXTIENDE esas
+  // fórmulas por-fila solo. Entonces: si el copyPaste falla por el filtro, se verifica que la fórmula
+  // clave (O = total) haya bajado sola a todas las filas nuevas. Si bajó, se sigue; si no, se falla
+  // fuerte. No se toca el filtro del dueño (Regla 0: su vista es suya).
+  try {
+    await google.spreadsheetBatchUpdate(ID, reqs)
+  } catch (e) {
+    if (!/filtered out row/i.test(String(e?.message ?? e))) throw e
+    const g = await google.readSheetGrid(ID, `Compras!O${desde}:O${hasta}`)
+    const todasConFormula = g.filas.length === plan.length && g.filas.every((f) => f[0]?.formula)
+    if (!todasConFormula) throw new Error('hay un filtro activo en Compras y la fórmula de Total (O) no se auto-extendió a todas las filas nuevas — quitá el filtro y volvé a correr')
+    console.log('ℹ Compras tiene un filtro activo: copyPaste no aplica sobre filas filtradas, pero Google auto-extendió las fórmulas por fila (verificado en la columna O = Total). No se tocó tu filtro.')
+  }
 
   // 3) VERIFICAR: releer id (A), total (O) y rubro de caja (AC) de las filas nuevas.
   const check = await google.readSheetGrid(ID, `Compras!A${desde}:AD${hasta}`)
