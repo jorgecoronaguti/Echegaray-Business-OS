@@ -1,9 +1,34 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  formulaCobrosPosteriores, formulaChequesDebitadosPosteriores, formulaNetaPosterior,
-  formulaUltimoSaldo, formulaFechaCorte, COB, CHQ,
+  formulaCobrosPosteriores, formulaChequesDebitadosPosteriores, formulaComprasPagadasPosteriores,
+  formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte, COB, CHQ, CMP,
 } from './caja-posterior-al-corte.mjs'
+
+test('las compras pagadas posteriores restan sólo Transferencia y Débito, después del corte', () => {
+  const f = formulaComprasPagadasPosteriores('$F$19')
+  assert.match(f, /'Compras'!\$X\$4:\$X\$1200;"Pagado"/) // estado
+  assert.match(f, /"Transferencia"/)
+  assert.match(f, /"Débito"/)
+  assert.match(f, /'Compras'!\$AD\$4:\$AD\$1200;">"&\$F\$19/) // ventana posterior al corte
+  // NO se cuentan los medios ya cubiertos por otra línea (doble conteo).
+  assert.doesNotMatch(f, /"Efectivo"|"Cheque"|"Echeq"|"Tarjeta/)
+  assert.doesNotMatch(f, />=/)
+})
+
+test('la línea neta ahora también resta las compras pagadas por banco', () => {
+  const f = formulaNetaPosterior('$F$19')
+  // cobros − cheques debitados − compras (transferencia/débito)
+  assert.match(f, /-\(SUMIFS\('Compras'/)
+  assert.match(f, /"Pagado"/)
+  // sigue siendo neta de los tres, no sólo cobros
+  assert.ok(f.includes('Cobranzas') && f.includes('Cheques Emitidos') && f.includes('Compras'))
+})
+
+test('CMP excluye los medios que ya cuenta otra línea (no doble conteo)', () => {
+  assert.deepEqual(CMP.tiposBanco, ['Transferencia', 'Débito'])
+  assert.ok(!CMP.tiposBanco.includes('Cheque') && !CMP.tiposBanco.includes('Efectivo') && !CMP.tiposBanco.includes('Tarjeta Crédito'))
+})
 
 test('los cobros posteriores miran SÓLO lo que el extracto no cubre', () => {
   const f = formulaCobrosPosteriores('$F$19')
@@ -31,7 +56,8 @@ test('la línea es NETA: un solo lado inflaría la caja para siempre', () => {
   const f = formulaNetaPosterior('$F$19')
   assert.ok(f.startsWith('='))
   assert.ok(f.includes('-SUMIFS'), 'tiene que restar los cheques debitados')
-  assert.equal(f.split('SUMIFS').length - 1, 2)
+  // 4 SUMIFS: cobros + cheques debitados + compras (transferencia) + compras (débito).
+  assert.equal(f.split('SUMIFS').length - 1, 4)
 })
 
 test('las fórmulas van en es-AR: separador ; y nunca ,', () => {

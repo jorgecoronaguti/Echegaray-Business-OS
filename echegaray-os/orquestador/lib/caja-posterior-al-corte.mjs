@@ -38,6 +38,13 @@
 export const COB = { hoja: 'Cobranzas', total: 'M', forma: 'N', estado: 'O', fecha: 'Q', desde: 5, hasta: 400 }
 /** Las columnas de Cheques Emitidos. I es la fecha en que se debita, K el SI/NO. */
 export const CHQ = { hoja: 'Cheques Emitidos', importe: 'F', fechaPago: 'I', debitado: 'K', desde: 2, hasta: 400 }
+/**
+ * Las columnas de Compras. O=Total, P=Tipo pago, X=Estado, AD=Fecha de caja. Verificadas 24/07.
+ * `tiposBanco`: los medios que pegan al banco EN EL DÍA y todavía no están cubiertos por otra línea —
+ * Cheque ya lo resta "Cheques Emitidos", la Tarjeta de Crédito consume el cupo (no la cuenta), el
+ * Efectivo no toca el banco (sale de la caja física). Sólo Transferencia y Débito faltan.
+ */
+export const CMP = { hoja: 'Compras', total: 'O', tipoPago: 'P', estado: 'X', fecha: 'AD', desde: 4, hasta: 1200, tiposBanco: ['Transferencia', 'Débito'] }
 
 const rango = (h, col, d, f) => `'${h}'!$${col}$${d}:$${col}$${f}`
 
@@ -73,12 +80,36 @@ export function formulaChequesDebitadosPosteriores(corte, c = CHQ) {
 }
 
 /**
+ * NÚCLEO PURO: las compras PAGADAS por transferencia o débito DESPUÉS del corte.
+ *
+ * Cuando el dueño marca una compra como Pagada por un medio que sale del banco en el día
+ * (transferencia, débito), la plata ya no está pero el extracto —anterior al corte— todavía no lo
+ * muestra. Sin esta resta, la disponibilidad de CAJA queda inflada hasta la próxima carga del banco.
+ * NO se cuentan Cheque (lo resta "Cheques Emitidos"), Tarjeta de Crédito (consume el cupo, se paga
+ * después) ni Efectivo (sale de la caja física, no del banco): incluirlos sería doble conteo.
+ * Un SUMIFS por tipo, porque SUMIFS no hace OR.
+ *
+ * @param {string} corte referencia a la celda con la fecha de corte del extracto
+ * @param {object} c columnas de Compras
+ * @returns {string} fórmula (sin `=`)
+ */
+export function formulaComprasPagadasPosteriores(corte, c = CMP) {
+  return c.tiposBanco.map((tipo) => `SUMIFS(${rango(c.hoja, c.total, c.desde, c.hasta)};`
+    + `${rango(c.hoja, c.estado, c.desde, c.hasta)};"Pagado";`
+    + `${rango(c.hoja, c.tipoPago, c.desde, c.hasta)};"${tipo}";`
+    + `${rango(c.hoja, c.fecha, c.desde, c.hasta)};">"&${corte})`).join('+')
+}
+
+/**
  * NÚCLEO PURO: la línea neta que va en el bloque de disponibilidades y suma al total.
+ * Cobros posteriores al corte, menos cheques propios debitados, menos compras pagadas por
+ * transferencia/débito — todo en la ventana que el extracto todavía no cubre.
  * @param {string} corte referencia a la celda con la fecha de corte del extracto
  * @returns {string} fórmula completa, con el `=` adelante
  */
 export function formulaNetaPosterior(corte) {
   return `=${formulaCobrosPosteriores(corte)}-${formulaChequesDebitadosPosteriores(corte)}`
+    + `-(${formulaComprasPagadasPosteriores(corte)})`
 }
 
 /**
