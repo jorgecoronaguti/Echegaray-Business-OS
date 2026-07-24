@@ -93,6 +93,55 @@ const clave = (texto) => String(texto ?? '').trim()
  */
 export const MAX_BORRADOS_CREIBLES = 3
 
+/** El marcador de un borrado CANDIDATO: ausente una corrida, todavía sin confirmar. No es '' (borrado
+ *  confirmado) ni null (normal): es "lo estoy vigilando". Se guarda en reemplazo. */
+export const PENDIENTE = '::PENDIENTE::'
+
+/**
+ * NÚCLEO PURO: los rótulos que YO escribo hoy y que NO están en la pestaña — los candidatos a borrado,
+ * SIN los seguros de MAX ni estructural. La decisión de confirmarlos la toma la persistencia, no el
+ * conteo. "Desapareció y lo sigo queriendo escribir" = alguien lo sacó; si dejé de escribirlo yo, no
+ * cuenta (igual que detectarEdiciones).
+ *
+ * @returns {Set<string>} claves (texto) de los candidatos de esta corrida
+ */
+export function deteccionCruda(mios = [], actual = [], generado = []) {
+  const presentes = new Set()
+  for (const f of actual || []) for (const c of f || []) { const t = clave(c); if (t) presentes.add(sinApostrofo(t)) }
+  const quiere = new Set()
+  for (const f of generado || []) for (const c of f || []) { const t = clave(c); if (t) quiere.add(sinApostrofo(t)) }
+  const out = new Set()
+  for (const m of mios) {
+    const t = clave(m); const norm = sinApostrofo(t)
+    if (!t || !quiere.has(norm) || presentes.has(norm)) continue
+    out.add(t)
+  }
+  return out
+}
+
+/**
+ * NÚCLEO PURO: decide, con los candidatos de HOY y los que ya estaban pendientes de la corrida
+ * anterior, cuáles borrados se CONFIRMAN (persistieron dos lecturas) y cuáles quedan pendientes.
+ *
+ * Un candidato que YA era candidato antes → se confirma (es un borrado real, persistió). Uno nuevo →
+ * queda pendiente para la próxima. Así una lectura fallida transitoria nunca borra: no llega a
+ * persistir. No hay techo por cantidad: la persistencia reemplaza al viejo MAX_BORRADOS, y por eso un
+ * borrado masivo o de un título —si es real y persiste— ahora SÍ se respeta.
+ *
+ * @param {Set<string>} cruda candidatos de esta corrida
+ * @param {Set<string>} previos candidatos de la corrida anterior (del registro)
+ * @returns {{confirmados:string[], candidatos:string[]}}
+ */
+export function resolverPersistencia(cruda = new Set(), previos = new Set()) {
+  const confirmados = []
+  const candidatos = []
+  for (const t of cruda) {
+    if (previos.has(t)) confirmados.push(t)
+    else candidatos.push(t)
+  }
+  return { confirmados, candidatos }
+}
+
 export function esEstructural(t) {
   const s = String(t ?? '').trim()
   if (!s) return false
@@ -237,9 +286,12 @@ async function asegurarTabla() {
 export async function leerRegistro(fileId, pestana) {
   await asegurarTabla()
   const r = await query('select rotulo, reemplazo from public.sheet_rotulos where file_id = $1 and pestana = $2', [fileId, pestana])
-  const mios = r.rows.map((x) => x.rotulo)
-  const ediciones = new Map(r.rows.filter((x) => x.reemplazo !== null).map((x) => [x.rotulo, x.reemplazo]))
-  return { mios, ediciones }
+  const mios = r.rows.filter((x) => x.reemplazo !== PENDIENTE).map((x) => x.rotulo)
+  // Una edición confirmada tiene reemplazo real ('' = borrado, o el texto nuevo). El candidato lleva
+  // el marcador PENDIENTE y NO es una edición todavía: es lo que se vigila para la próxima corrida.
+  const ediciones = new Map(r.rows.filter((x) => x.reemplazo !== null && x.reemplazo !== PENDIENTE).map((x) => [x.rotulo, x.reemplazo]))
+  const candidatos = new Set(r.rows.filter((x) => x.reemplazo === PENDIENTE).map((x) => x.rotulo))
+  return { mios, ediciones, candidatos }
 }
 
 /**
@@ -254,7 +306,7 @@ export async function leerRegistro(fileId, pestana) {
  *
  * @param {any[][]} [enLaPestana] lo que quedó escrito, releído después de formatear
  */
-export async function guardarRegistro(fileId, pestana, grid, ediciones = new Map(), enLaPestana = null) {
+export async function guardarRegistro(fileId, pestana, grid, ediciones = new Map(), enLaPestana = null, candidatos = new Set()) {
   await asegurarTabla()
   let presentes = null
   if (enLaPestana) {
@@ -271,8 +323,12 @@ export async function guardarRegistro(fileId, pestana, grid, ediciones = new Map
   // Las ediciones vigentes se conservan aunque el generador ya no escriba ese texto: si no, la
   // decisión de la persona duraría una sola corrida.
   for (const k of ediciones.keys()) rotulos.add(limpio(k))
+  // Los candidatos a borrado también se guardan: son la memoria de "esto estaba ausente la corrida
+  // pasada" que permite confirmar el borrado si sigue ausente. Se guardan con el marcador PENDIENTE.
+  const candSet = new Set([...candidatos].map((c) => limpio(String(c))))
+  for (const k of candSet) rotulos.add(k)
   await query('delete from public.sheet_rotulos where file_id = $1 and pestana = $2', [fileId, pestana])
-  const filas = [...rotulos].map((r) => [r, ediciones.has(r) ? limpio(ediciones.get(r)) : null])
+  const filas = [...rotulos].map((r) => [r, ediciones.has(r) ? limpio(ediciones.get(r)) : (candSet.has(r) ? PENDIENTE : null)])
   if (!filas.length) return 0
   const vals = filas.map((_, k) => `($1,$2,$${k * 2 + 3},$${k * 2 + 4})`).join(',')
   await query(`insert into public.sheet_rotulos (file_id, pestana, rotulo, reemplazo) values ${vals}`,
@@ -338,9 +394,23 @@ export async function sembrarEdiciones(fileId, pestana, rotulos = []) {
 }
 
 export async function conEdicionesRespetadas(fileId, pestana, generado, actual) {
-  const { mios, ediciones } = await leerRegistro(fileId, pestana).catch(() => ({ mios: [], ediciones: new Map() }))
-  // Lo que desapareció desde la última corrida: eso lo cambió una persona.
-  for (const [k, v] of detectarEdiciones(mios, actual, generado)) if (!ediciones.has(k)) ediciones.set(k, v)
+  const { mios, ediciones, candidatos } = await leerRegistro(fileId, pestana)
+    .catch(() => ({ mios: [], ediciones: new Map(), candidatos: new Set() }))
+  // ═══ PERSISTENCIA ENTRE CORRIDAS (24/07) — "siempre respetar lo que hago" ═══
+  //
+  // El dueño: "la indicación es que SIEMPRE se respete lo que yo hago". Los dos seguros viejos
+  // (MAX_BORRADOS y esEstructural) protegían contra una lectura fallida que se confirma sola, pero al
+  // precio de RESUCITAR borrados reales del dueño: si borraba una sección entera o un título, volvía.
+  //
+  // El discriminador correcto no es "cuántos" ni "es un título", es EL TIEMPO: un borrado que persiste
+  // DOS lecturas seguidas es una decisión; una lectura que falló una vez no persiste. Un borrado se
+  // confirma sólo si YA era candidato la corrida anterior. Así se respeta cualquier borrado real
+  // —masivo o estructural— sin morder una lectura transitoria.
+  const cruda = deteccionCruda(mios, actual, generado)
+  const { confirmados, candidatos: nuevosCandidatos } = resolverPersistencia(cruda, candidatos)
+  for (const t of confirmados) if (!ediciones.has(t)) ediciones.set(t, '')
   const r = respetarEdiciones(generado, actual, ediciones)
-  return { ...r, ediciones }
+  // Los candidatos viajan para que guardarRegistro los persista: la próxima corrida sabrá que ya
+  // estaban pendientes y —si siguen ausentes— los confirmará.
+  return { ...r, ediciones, candidatos: nuevosCandidatos }
 }

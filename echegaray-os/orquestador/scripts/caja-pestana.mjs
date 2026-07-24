@@ -940,7 +940,7 @@ async function main() {
   // deja invisible todo lo que hoy está más abajo, y la Regla 0 lo lee como "el dueño lo borró". Así
   // se marcaron 74 borrados falsos —14 sólo en Caja—, y un falso borrado se confirma solo.
   const actual = await google.readSheetValues(ID, `${tab}!A1:${letra(ANCHO - 1)}`).catch(() => [])
-  const { grid: gridFinal, respetadas, ediciones } = await conEdicionesRespetadas(ID, PESTAÑA, g.filas, actual)
+  const { grid: gridFinal, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, PESTAÑA, g.filas, actual)
   g.filas = gridFinal
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)
   const { conservadas } = await escribirPreservando(google, ID, tab, g.filas, { respetar: false /* la Regla 0 ya se aplicó arriba, a mano: este generador guarda el registro DESPUÉS de releer la pestaña, que es más fiel que hacerlo antes de escribir */, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
@@ -950,7 +950,7 @@ async function main() {
   // El registro de rótulos se guarda con lo que QUEDÓ escrito en la pestaña, no con lo que el
   // generador quiso escribir: el formato acorta los orígenes largos y pasa el texto a una nota.
   const quedo = await google.readSheetValues(ID, `${tab}!A1:${letra(ANCHO - 1)}${g.filas.length}`).catch(() => [])
-  await guardarRegistro(ID, PESTAÑA, g.filas, ediciones, quedo).catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
+  await guardarRegistro(ID, PESTAÑA, g.filas, ediciones, quedo, candidatos).catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
 
   // LOS NOMBRES, DESPUÉS DE ESCRIBIR. El Cash Flow Mensual ancla su saldo inicial en estos dos: con
   // referencias por celda, insertar un bloque acá arriba dejaba sus dos filas de efectivo vacías y

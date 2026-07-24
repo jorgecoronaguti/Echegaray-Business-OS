@@ -471,7 +471,7 @@ async function main() {
     { unmergeCells: { range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: Math.max(g.filas.length + 20, hoja.rows ?? 0), startColumnIndex: 0, endColumnIndex: Math.max(ANCHO, hoja.cols ?? ANCHO) } } },
   ]).catch(() => {})
 
-  const { grid, respetadas, ediciones } = await conEdicionesRespetadas(ID, PESTAÑA, g.filas, previo)
+  const { grid, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, PESTAÑA, g.filas, previo)
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)
   const { conservadas } = await escribirPreservando(google, ID, `'${PESTAÑA}'`, grid, { respetar: false /* la Regla 0 ya se aplicó arriba, a mano: este generador guarda el registro DESPUÉS de releer la pestaña, que es más fiel que hacerlo antes de escribir */, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   if (conservadas.length) console.log(`✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
@@ -488,7 +488,7 @@ async function main() {
   for (const d of defectos.slice(0, 8)) console.log(`   fila ${d.fila} · ${d.regla} · ${d.detalle.slice(0, 110)}`)
   for (const f of v) if (/^(⇒|COSTO DE LA)/.test(String(f?.[0] ?? ''))) console.log(`  ${String(f[0]).slice(0, 46).padEnd(48)}${String(f[1] ?? '').padStart(16)}${String(f[6] ?? '').padStart(16)}${String(f[9] ?? '').padStart(16)}`)
 
-  await guardarRegistro(ID, PESTAÑA, grid, ediciones, v).catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
+  await guardarRegistro(ID, PESTAÑA, grid, ediciones, v, candidatos).catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
 
   // COBERTURA REAL DE JORNALES (24/07). La frescura de la fuente marcaba "cargada hasta el 08/07":
   // un valor manual viejo que hacía ver atrasada una planilla que SÍ tiene la 2da quincena de julio.

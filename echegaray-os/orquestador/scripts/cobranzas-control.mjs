@@ -188,10 +188,10 @@ async function corregirRotuloTotal(google) {
   // ═══ REGLA 0 — SI EL DUEÑO YA LO REBAUTIZÓ, GANA ÉL ═══
   // Éste es el único punto del script que reescribe un RÓTULO que una persona podría haber
   // redactado. El resto escribe en una zona propia firmada, y se niega a salir de ahí.
-  const { grid: g4, respetadas: r4, ediciones: e4 } = await conEdicionesRespetadas(ID, PESTAÑA, [[CORRECTO]], [[rotulo]])
+  const { grid: g4, respetadas: r4, ediciones: e4, candidatos: c4 } = await conEdicionesRespetadas(ID, PESTAÑA, [[CORRECTO]], [[rotulo]])
   for (const r of r4) console.log(`  ✋ respeto tu rótulo ("${String(r.suyo).slice(0, 44)}") en vez de "${String(r.mio).slice(0, 44)}"`)
   await google.batchUpdateValues(ID, [{ range: `${PESTAÑA}!M4`, values: g4 }])
-  await guardarRegistro(ID, PESTAÑA, g4, e4, [[rotulo]]).catch((e) => console.warn(`  ⚠ registro de rótulos: ${e.message}`))
+  await guardarRegistro(ID, PESTAÑA, g4, e4, [[rotulo]], c4).catch((e) => console.warn(`  ⚠ registro de rótulos: ${e.message}`))
   console.log(`  rótulo de M corregido: "${rotulo}" → "${CORRECTO}" (la fórmula es ${formula}: descuenta retenciones)`)
 }
 

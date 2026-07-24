@@ -154,3 +154,54 @@ test('justo en el límite todavía se cree: el seguro no es un techo caprichoso'
   const generado = mios.map((m) => [m])
   assert.equal(detectarEdiciones(mios, [['']], generado).size, MAX_BORRADOS_CREIBLES)
 })
+
+// ═══ PERSISTENCIA: "siempre respetar lo que hago" (24/07) ═══
+
+import { deteccionCruda, resolverPersistencia, PENDIENTE } from './respetar-ediciones.mjs'
+
+test('deteccionCruda: un rótulo que escribo y ya no está es candidato — sin techo ni excepción estructural', () => {
+  const mios = ['Cobros por ventas', 'DISPONIBILIDADES', 'A', 'B', 'C', 'D']
+  const actual = [['otra cosa']] // se borró TODO lo mío (masivo + un título)
+  const generado = mios.map((m) => [m])
+  const cruda = deteccionCruda(mios, actual, generado)
+  // los seis son candidatos, incluido el título: la decisión la toma la persistencia, no el conteo
+  assert.equal(cruda.size, 6)
+  assert.ok(cruda.has('DISPONIBILIDADES'))
+})
+
+test('persistencia: un borrado NUEVO no se confirma; queda candidato para la próxima', () => {
+  const cruda = new Set(['Sección X'])
+  const { confirmados, candidatos } = resolverPersistencia(cruda, new Set())
+  assert.deepEqual(confirmados, [])
+  assert.deepEqual(candidatos, ['Sección X'])
+})
+
+test('persistencia: un borrado que YA era candidato se confirma — se respeta lo que borré', () => {
+  const cruda = new Set(['Sección X', 'Sección Y'])
+  const previos = new Set(['Sección X']) // X ya estaba pendiente de antes
+  const { confirmados, candidatos } = resolverPersistencia(cruda, previos)
+  assert.deepEqual(confirmados, ['Sección X']) // persistió dos lecturas → es real
+  assert.deepEqual(candidatos, ['Sección Y']) // Y recién aparece → todavía candidato
+})
+
+test('persistencia: una lectura fallida transitoria NO borra (no llega a persistir)', () => {
+  // corrida 1: la lectura falló y "desaparecieron" 5 rótulos → candidatos, nada confirmado
+  const r1 = resolverPersistencia(new Set(['a', 'b', 'c', 'd', 'e']), new Set())
+  assert.equal(r1.confirmados.length, 0)
+  // corrida 2: la lectura vuelve a estar bien, los rótulos están de nuevo → cruda vacía, no se confirma nada
+  const r2 = resolverPersistencia(new Set(), new Set(r1.candidatos))
+  assert.equal(r2.confirmados.length, 0)
+  assert.equal(r2.candidatos.length, 0)
+})
+
+test('un borrado MASIVO real y PERSISTENTE ahora SÍ se respeta (el viejo MAX ya no lo resucita)', () => {
+  const muchos = Array.from({ length: 10 }, (_, i) => `Rótulo ${i}`)
+  const previos = new Set(muchos) // ya eran candidatos la corrida pasada
+  const { confirmados } = resolverPersistencia(new Set(muchos), previos)
+  assert.equal(confirmados.length, 10) // los diez se respetan: persistieron
+})
+
+test('el marcador PENDIENTE no se confunde con un borrado ni con un texto', () => {
+  assert.equal(PENDIENTE, '::PENDIENTE::')
+  assert.notEqual(PENDIENTE, '')
+})

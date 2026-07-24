@@ -1053,13 +1053,13 @@ async function main() {
       // toda lectura acotada a la grilla nueva lo daba por borrado.
       ID, `${refPestana(t.titulo)}!A1:${letra(anchoLeer - 1)}`,
     ).catch(() => previo)
-    const { grid: cuadroFinal, respetadas, ediciones } = await conEdicionesRespetadas(ID, t.titulo, cuadroP, visible)
+    const { grid: cuadroFinal, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, t.titulo, cuadroP, visible)
     for (const r of respetadas) console.log(`  ✋ ${t.titulo}: respeto tu texto ("${String(r.suyo).slice(0, 40)}") en vez de "${String(r.mio).slice(0, 40)}"`)
     const fusion = fusionar(cuadroFinal, previo)
     const conservadas = sobrantes(cuadroFinal, previo)
     await google.batchUpdateValues(ID, [{ range: `${refPestana(t.titulo)}!A1`, values: fusion }])
     if (conservadas.length) console.log(`  ✋ ${t.titulo}: ${conservadas.length} celda(s) escritas por el dueño — CONSERVADAS, no se borra nada`)
-    await guardarRegistro(ID, t.titulo, cuadroFinal, ediciones, visible)
+    await guardarRegistro(ID, t.titulo, cuadroFinal, ediciones, visible, candidatos)
       .catch((e) => console.warn(`  ⚠ ${t.titulo}: no pude guardar el registro de rótulos: ${e.message}`))
 
     const gP = { ...traducir(t.titulo), filas: cuadroP }

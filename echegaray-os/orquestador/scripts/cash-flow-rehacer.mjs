@@ -498,15 +498,16 @@ async function main() {
   for (const d of data) {
     // El TEXTO QUE SE VE, no la fórmula: ver lib/preservar-anotaciones.mjs.
     const actual = await verPestana(d.pestaña)
-    const { grid, respetadas, ediciones } = await conEdicionesRespetadas(ID, d.pestaña, d.values, actual)
+    const { grid, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, d.pestaña, d.values, actual)
     for (const r of respetadas) console.log(`  ✋ ${d.pestaña}: respeto tu texto ("${String(r.suyo).slice(0, 40)}") en vez de "${String(r.mio).slice(0, 40)}"`)
     d.values = grid
     d._ediciones = ediciones
+    d._candidatos = candidatos
     d._actual = actual
   }
   await google.batchUpdateValues(ID, data.map(({ range, values }) => ({ range, values })))
   for (const d of data) {
-    await guardarRegistro(ID, d.pestaña, d.values, d._ediciones ?? new Map(), d._actual)
+    await guardarRegistro(ID, d.pestaña, d.values, d._ediciones ?? new Map(), d._actual, d._candidatos ?? new Set())
       .catch((e) => console.warn(`  ⚠ ${d.pestaña}: no pude guardar el registro de rótulos: ${e.message}`))
   }
   await formatear(google, data)

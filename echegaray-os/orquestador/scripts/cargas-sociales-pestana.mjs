@@ -457,7 +457,7 @@ async function main() {
   // Si el dueño reescribió un rótulo, lo reencuadró o lo borró, gana lo suyo y el generador se
   // adapta. Se compara contra lo que ESTE generador escribió la última vez, que es la única forma
   // de distinguir una edición de una versión vieja de sí mismo. Ver lib/respetar-ediciones.mjs.
-  const { grid: gridFinal, respetadas, ediciones } = await conEdicionesRespetadas(ID, PESTAÑA, filas, previo)
+  const { grid: gridFinal, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, PESTAÑA, filas, previo)
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)
   const { conservadas } = await escribirPreservando(google, ID, `'${PESTAÑA}'`, gridFinal, { respetar: false /* la Regla 0 ya se aplicó arriba, a mano: este generador guarda el registro DESPUÉS de releer la pestaña, que es más fiel que hacerlo antes de escribir */, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   if (conservadas.length) console.log(`✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
@@ -473,7 +473,7 @@ async function main() {
   for (const d of defectos.slice(0, 10)) console.log(`   fila ${d.fila} · ${d.regla} · ${d.detalle}`)
   for (const f of v) if (/^(⇒|LA POSICIÓN)/.test(String(f?.[0] ?? ''))) console.log(`  ${String(f[0]).slice(0, 46).padEnd(48)}${String(f[1] ?? '').padStart(16)}${String(f[13] ?? '').padStart(16)}`)
   // El registro de rótulos se guarda con lo que QUEDÓ escrito, no con lo que quise escribir.
-  await guardarRegistro(ID, PESTAÑA, gridFinal, ediciones, v).catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
+  await guardarRegistro(ID, PESTAÑA, gridFinal, ediciones, v, candidatos).catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
   if (errores.length || defectos.length) process.exitCode = 1
 }
 
