@@ -67,6 +67,8 @@ import { skinRequests } from '../lib/estilo-statement.mjs'
 import { borrarNotas } from '../lib/nota-celda.mjs'
 import { detectarQuincenas, filasQuincenas } from '../lib/nomina-sync.mjs'
 import { CATEGORIAS, COL, formulaValor, formulaVigencia } from '../lib/uocra-escala.mjs'
+import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
+import { JORNALES_FILE_ID } from '../lib/espejo-jornales.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Jornales por Quincena'
@@ -487,6 +489,20 @@ async function main() {
   for (const f of v) if (/^(⇒|COSTO DE LA)/.test(String(f?.[0] ?? ''))) console.log(`  ${String(f[0]).slice(0, 46).padEnd(48)}${String(f[1] ?? '').padStart(16)}${String(f[6] ?? '').padStart(16)}${String(f[9] ?? '').padStart(16)}`)
 
   await guardarRegistro(ID, PESTAÑA, grid, ediciones, v).catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
+
+  // COBERTURA REAL DE JORNALES (24/07). La frescura de la fuente marcaba "cargada hasta el 08/07":
+  // un valor manual viejo que hacía ver atrasada una planilla que SÍ tiene la 2da quincena de julio.
+  // El dato honesto ya está calculado acá: `conHoras` es el último día con HORAS de verdad en obra
+  // (no la fecha del encabezado, que declara hasta el 31/07 desde el día que se abre el bloque), y
+  // `ultimoDiaOfi` el de oficina. La cobertura es el más reciente de los dos: hasta ahí llega el dato.
+  // No se inventa: sale de las horas efectivamente cargadas en el espejo que se acaba de leer.
+  const cobertura = [conHoras, ultimoDiaOfi].filter(Boolean).sort((a, b) => b - a)[0] ?? null
+  if (cobertura) {
+    const iso = `${cobertura.getFullYear()}-${String(cobertura.getMonth() + 1).padStart(2, '0')}-${String(cobertura.getDate()).padStart(2, '0')}`
+    const fr = await registrarSincronizacion({}, { driveFileId: JORNALES_FILE_ID, coberturaHasta: iso })
+    console.log(fr.ok ? `frescura JORNALES: cobertura hasta ${iso} → ${fr.estado}` : `frescura no registrada: ${fr.motivo}`)
+  }
+
   if (errores.length || defectos.length) process.exitCode = 1
 }
 
