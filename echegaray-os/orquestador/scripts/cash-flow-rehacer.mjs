@@ -503,18 +503,25 @@ async function main() {
   // saco sus rangos de `data` para no tocar ni una celda. Mismo criterio conservador que el portón.
   try {
     const { duenoReescribioLaPestana } = await import('../lib/respetar-ediciones.mjs')
+    const { firmaGuardia } = await import('../lib/firma-tab.mjs')
     const porPestana = new Map()
     for (const d of data) { if (!porPestana.has(d.pestaña)) porPestana.set(d.pestaña, []); porPestana.get(d.pestaña).push(...d.values) }
     for (const [pest, generado] of porPestana) {
-      const rew = duenoReescribioLaPestana(generado, await verPestana(pest))
-      if (rew.reescrita) {
-        const { bloquear } = await import('../lib/pestana-bloqueada.mjs')
-        await bloquear({}, ID, pest, { motivo: `auto: detecté que la reescribiste (${rew.motivo})`, por: 'auto' })
-        console.log(`  🔒 detecté que reescribiste "${pest}" (${rew.motivo}): la tomo como tuya, no la toco.`)
-        for (let i = data.length - 1; i >= 0; i--) if (data[i].pestaña === pest) data.splice(i, 1)
+      // LA FIRMA primero (respeto más fuerte: cualquier edición tuya desde mi última escritura). Si no,
+      // la detección de reescritura total (cubre la primera corrida, cuando todavía no hay firma).
+      let saltar = (await firmaGuardia(google, ID, pest, refPestana(pest))).editada
+      if (!saltar) {
+        const rew = duenoReescribioLaPestana(generado, await verPestana(pest))
+        if (rew.reescrita) {
+          const { bloquear } = await import('../lib/pestana-bloqueada.mjs')
+          await bloquear({}, ID, pest, { motivo: `auto: detecté que la reescribiste (${rew.motivo})`, por: 'auto' })
+          console.log(`  🔒 detecté que reescribiste "${pest}" (${rew.motivo}): la tomo como tuya, no la toco.`)
+          saltar = true
+        }
       }
+      if (saltar) for (let i = data.length - 1; i >= 0; i--) if (data[i].pestaña === pest) data.splice(i, 1)
     }
-    if (!data.length) { console.log('Reescribiste ambas pestañas: no hay nada que rehacer.'); return }
+    if (!data.length) { console.log('Reescribiste/editaste ambas pestañas: no hay nada que rehacer.'); return }
   } catch { /* sin base no se puede consultar; sigue la Regla 0 celda a celda */ }
 
   for (const d of data) {
@@ -528,6 +535,9 @@ async function main() {
     d._actual = actual
   }
   await google.batchUpdateValues(ID, data.map(({ range, values }) => ({ range, values })))
+  // Sellar la firma de lo que dejé (re-lectura), así la próxima corrida detecta cualquier edición tuya.
+  const { sellarFirma } = await import('../lib/firma-tab.mjs')
+  for (const pest of new Set(data.map((d) => d.pestaña))) await sellarFirma(google, ID, pest, refPestana(pest))
   for (const d of data) {
     await guardarRegistro(ID, d.pestaña, d.values, d._ediciones ?? new Map(), d._actual, d._candidatos ?? new Set())
       .catch((e) => console.warn(`  ⚠ ${d.pestaña}: no pude guardar el registro de rótulos: ${e.message}`))

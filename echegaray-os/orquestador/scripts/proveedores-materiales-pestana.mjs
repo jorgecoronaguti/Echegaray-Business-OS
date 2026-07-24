@@ -75,6 +75,7 @@ import { partir, filasHuerfanas, ref as refPestana } from '../lib/partir-pestana
 import { anchosSegunContenido } from '../lib/nota-celda.mjs'
 import { fusionar, sobrantes, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { conEdicionesRespetadas, guardarRegistro, detectarArranqueEnFrio, autoRespetarReescritura } from '../lib/respetar-ediciones.mjs'
+import { firmaGuardia, sellarFirma } from '../lib/firma-tab.mjs'
 import { ESTADO_DEUDA } from '../lib/cuentas-por-pagar.mjs'
 /** El estado de Compras para lo pactado que todavía no es deuda firme. Convive con "Pendiente". */
 const ESTADO_PROYECTADO = 'Proyectado'
@@ -1053,6 +1054,8 @@ async function main() {
       // toda lectura acotada a la grilla nueva lo daba por borrado.
       ID, `${refPestana(t.titulo)}!A1:${letra(anchoLeer - 1)}`,
     ).catch(() => previo)
+    // LA FIRMA primero (respeto más fuerte: cualquier edición tuya). Después, la reescritura total.
+    if ((await firmaGuardia(google, ID, t.titulo, refPestana(t.titulo))).editada) continue
     // AUTO-RESPETO (24/07): si reescribiste esta pestaña entera con otra estructura, la tomo como tuya
     // y no la piso — sin que tengas que candar nada.
     if ((await autoRespetarReescritura(ID, t.titulo, cuadroP, visible)).reescrita) continue
@@ -1062,6 +1065,7 @@ async function main() {
     const conservadas = sobrantes(cuadroFinal, previo)
     await google.batchUpdateValues(ID, [{ range: `${refPestana(t.titulo)}!A1`, values: fusion }])
     if (conservadas.length) console.log(`  ✋ ${t.titulo}: ${conservadas.length} celda(s) escritas por el dueño — CONSERVADAS, no se borra nada`)
+    await sellarFirma(google, ID, t.titulo, refPestana(t.titulo))
     await guardarRegistro(ID, t.titulo, cuadroFinal, ediciones, visible, candidatos)
       .catch((e) => console.warn(`  ⚠ ${t.titulo}: no pude guardar el registro de rótulos: ${e.message}`))
 
