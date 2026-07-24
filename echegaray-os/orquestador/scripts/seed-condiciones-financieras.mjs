@@ -62,15 +62,16 @@ const SEED = [
   // pueda sacar plata nueva → la capa NO lo ofrece como alternativa para un bache (ver paramsParaMotor).
   // Su tasa real sí sirve como referencia de costo (es más barato que el descubierto).
   {
-    entidad: 'Banco Santander', producto: 'Préstamo prendario 0179039101464204',
+    entidad: 'Banco Santander', producto: 'Préstamo prendario 039101464204',
     tipo_financiacion: 'prestamo', moneda: 'ARS',
     vigencia_desde: '2024-10-07', vigencia_hasta: '2029-10-07',
-    tna: 0.389, tea: null, cft: null, amortizacion: 'francés',
+    tna: 0.389, tea: 0.4664, cft: 0.651, amortizacion: 'francés',
     plazo_dias: null, limite_disponible: 0, saldo_utilizado: null,
+    fecha_debito: '2024-11-07',
     garantias: 'Prenda sobre Ford Ranger 3.0 TDI DC 4x4 XLS 2023 (motor BF2SRJ382607, carrocería 8AFBR01J8RJ382607)',
-    fuente: 'Aviso de Liquidación del Préstamo — Banco Santander, 07/10/2024 (Drive: 48599_0179_ECHEGARAY CONSTRUCCIONES SAS_30716304643.pdf)',
+    fuente: 'Comprobante del préstamo — Banco Santander, N°039101464204, emitido 24/07/2026 (aportado por el dueño)',
     nivel_confianza: 'verificado',
-    observaciones: 'Capital $25.000.000 · desembolso neto $23.953.674,25 (impuestos al alta: Sellos SJ $747.375,53 + Acción Social SJ $149.475,11 + Lote Hogar SJ $149.475,11 = $1.046.325,75). Sistema francés, 60 cuotas mensuales de $950.600,38, débito el día 7 (1ra cuota 07/11/2024). Monto del mutuo prendario inscripto $57.051.566,94. Al 07/2026 hay ~21 cuotas pagadas. Es una obligación en curso, NO una línea disponible: no se puede tomar plata nueva de este préstamo.',
+    observaciones: 'Datos OFICIALES del comprobante: TNA 38,90% · TEA 46,64% · CFTEA 65,10% (el costo real, más caro que el descubierto 62,78%). Capital $25.000.000, neto acreditado $23.953.674,25, sistema francés, 60 cuotas, débito. Acreditación 07/10/2024, vencimiento 07/10/2029. La cuota francesa pura es ~$950.600, pero el DÉBITO REAL en el extracto es ~$1.282.810 (07/07 $1.282.810,54 · 08/06 $1.284.505,37): la diferencia (~$332k) es seguro + IVA sobre intereses, y por eso el CFTEA (65,10%) supera a la TNA. Es una obligación en curso, NO una línea disponible: no se puede tomar plata nueva.',
   },
   // IMPUESTO AL CHEQUE — Ley 25.413 (débitos y créditos). 0,6% cada lado. Es un costo cierto que
   // afecta a cheques/eCheq/transferencias, no una línea de financiación. Verificar vigencia de la
