@@ -5,6 +5,7 @@ import {
   modeloLiquidez, recomendaciones, compararFinanciamiento, priorizarPagos, fmt,
 } from '../ingenieria-financiera.mjs'
 import { calendarioDiario } from '../calendario-financiero.mjs'
+import { condicionesVigentes, paramsParaMotor, costoEfectivo } from '../condiciones-financieras.mjs'
 
 function formatModelo(m, recs) {
   const L = []
@@ -72,7 +73,7 @@ export function ingenieriaFinancieraTools(google) {
       schema: {
         name: 'comparar_financiamiento',
         description:
-          'INGENIERÍA DE FINANCIAMIENTO — ante una necesidad de fondos, compara TODAS las alternativas (caja propia, descubierto, descuento de cheque, préstamo, esperar, pronto pago) y elige la más barata factible, con la justificación económica. Usalo cuando el dueño pregunte "¿me conviene el descubierto o esperar?", "¿descuento el cheque?", "¿pago ya para ganar el descuento?", "¿cómo financio este pago?". Las tasas que el OS no tiene cargadas (descuento de cheque, préstamo) se pasan por parámetro; sin ellas la alternativa se marca "falta la tasa", nunca se inventa.',
+          'INGENIERÍA DE FINANCIAMIENTO — ante una necesidad de fondos, compara TODAS las alternativas (caja propia, descubierto, descuento de cheque, préstamo, esperar, pronto pago) y elige la más barata factible, con la justificación económica. Usalo cuando el dueño pregunte "¿me conviene el descubierto o esperar?", "¿descuento el cheque?", "¿pago ya para ganar el descuento?", "¿cómo financio este pago?". Las tasas y límites REALES se cargan solos desde la fuente única de condiciones financieras (descubierto Santander verificado, etc.); lo que todavía no tiene tasa cargada se informa en "faltan_datos" con de dónde sacarlo, nunca se inventa. Podés pasar una tasa por parámetro para pisar la cargada o probar un escenario.',
         input_schema: {
           type: 'object',
           properties: {
@@ -89,7 +90,48 @@ export function ingenieriaFinancieraTools(google) {
         },
       },
       async run(args) {
-        try { return compararFinanciamiento(args || {}) } catch (e) { return { error: String(e?.message ?? e).slice(0, 180) } }
+        try {
+          const a = args || {}
+          // LA CAPA DE CONDICIONES ALIMENTA AL MOTOR (24/07). Se leen las condiciones vigentes de la
+          // fuente única y se arman los parámetros de tasa/límite. Los args EXPLÍCITOS pisan lo
+          // cargado (para probar un escenario o corregir): merge con args al final.
+          let condiciones = []
+          try { condiciones = await condicionesVigentes({}) } catch { condiciones = [] }
+          const { params, faltan } = paramsParaMotor(condiciones)
+          const merged = { ...params, ...a }
+          const resultado = compararFinanciamiento(merged)
+          // Desglose de CFT total efectivo por condición real, para la necesidad concreta (lo que el
+          // motor puro no detalla). No reemplaza el ranking del motor: lo enriquece.
+          const detalle = condiciones
+            .filter((c) => ['descubierto', 'prestamo', 'descuento_cheque', 'tarjeta'].includes(c.tipo_financiacion))
+            .map((c) => costoEfectivo(c, { monto: a.monto, dias: a.dias }))
+          return { ...resultado, condiciones: detalle, faltan_datos: faltan }
+        } catch (e) { return { error: String(e?.message ?? e).slice(0, 180) } }
+      },
+    },
+
+    'finanzas.condiciones_financieras': {
+      capability: 'os.read',
+      schema: {
+        name: 'condiciones_financieras',
+        description:
+          'CONDICIONES DE FINANCIAMIENTO — muestra la fuente única de tasas, costos y límites vigentes (descubierto, préstamos, descuento de cheque, tarjeta, financiación de proveedores) con su fuente, vigencia y nivel de confianza, y qué condiciones existen pero todavía NO tienen tasa cargada (con de dónde sacarla). Usalo cuando el dueño pregunte "¿qué tasas tenemos?", "¿qué me falta para comparar?", "¿cuánto disponible me queda del acuerdo?".',
+        input_schema: { type: 'object', properties: {} },
+      },
+      async run() {
+        try {
+          const conds = await condicionesVigentes({})
+          const { faltan } = paramsParaMotor(conds)
+          return {
+            condiciones: conds.map((c) => ({
+              entidad: c.entidad, producto: c.producto, tipo: c.tipo_financiacion, moneda: c.moneda,
+              tna: c.tna, cft: c.cft, limite_disponible: c.limite_disponible, saldo_utilizado: c.saldo_utilizado,
+              vigencia_hasta: c.vigencia_hasta, nivel_confianza: c.nivel_confianza, fuente: c.fuente, observaciones: c.observaciones,
+            })),
+            faltan_datos: faltan,
+            nota: 'Toda condición tiene fuente y nivel de confianza. Las tasas en null NO están inventadas: falta conseguirlas (ver faltan_datos).',
+          }
+        } catch (e) { return { error: String(e?.message ?? e).slice(0, 180) } }
       },
     },
 
