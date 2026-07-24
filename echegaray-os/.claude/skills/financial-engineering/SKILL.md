@@ -145,18 +145,25 @@ cobranza adelantar o reclamar. **Siempre con la explicación económica, nunca s
 el motor que ejecuta ese criterio sobre los datos reales** y produce la decisión. No se pisan: una
 piensa el marco, la otra lo opera y lo mide.
 
-## Roadmap (arquitectura preparada, fases siguientes)
+## Roadmap (estado real, auditado 24/07)
 
-Construido (Increment 1, 23/07): el modelo único de liquidez, la ingeniería de financiamiento, la
-ingeniería de pagos, las recomendaciones, el tool/contrato y los tests. Preparado para, sin
-reimplementar nada:
+Construido y operativo:
+- **Modelo único de liquidez**, ingeniería de financiamiento, ingeniería de pagos, recomendaciones,
+  tool/contrato y tests (Increment 1, 23/07).
+- **Calendario financiero diario** (`calendario-financiero.mjs` + tool `finanzas.calendario_diario` +
+  vista Web + tests) — saldo inicial → ingresos/egresos/obligaciones/cheques/impuestos/cobranzas →
+  saldo final por día. **YA construido**, incluye la deuda a proveedores de Compras.
+- **Comparador de créditos / fuente única de condiciones** (`condiciones-financieras.mjs` +
+  `public.condiciones_financieras` + tool `finanzas.condiciones_financieras`) — descubierto (CFT
+  62,8% verificado), préstamo prendario (CFTEA 65,1% verificado desde el comprobante), impuesto al
+  cheque, tarjeta. `comparar_financiamiento` AUTO-CARGA las tasas reales; lo que no tiene tasa se
+  informa en `faltan_datos`, nunca se inventa. **YA construido**.
 
-- **Calendario financiero diario** (saldo inicial → ingresos/egresos/obligaciones/cheques/impuestos →
-  saldo final por día) — se ensambla de las mismas fuentes; lo consumirá la Web.
+Pendiente (real, no reimplementa nada de lo anterior):
 - **Ingeniería de cobranzas** con probabilidad de cobro y retraso histórico por cliente.
-- **Comparador de créditos** multi-línea (costo/plazo/liquidez/riesgo).
-- **Simulador** de escenarios/sensibilidad — la arquitectura ya separa núcleo puro de datos, que es
-  lo que un simulador necesita. No implementado todavía.
+- **Simulador** de escenarios/sensibilidad — la arquitectura ya separa núcleo puro de datos.
+- **Dato faltante (no capacidad)**: la TNA de financiación de cuotas de la tarjeta — no la publica el
+  resumen; se pide al banco. La capacidad la espera; falta el dato.
 - **Superficie API/Web**: el tool YA es el contrato; una interfaz sólo lo consume.
 
 ## Criterios de aceptación (estado)
@@ -164,8 +171,8 @@ reimplementar nada:
 Integrado al Business OS ✓ · reutiliza la arquitectura y las fuentes únicas existentes ✓ · reutiliza
 el CFO IA (persona `advise.finance`) ✓ · no duplica lógica ni datos ✓ · expone un modelo financiero
 reutilizable (tool) ✓ · responde decisiones reales de tesorería con justificación económica ✓ ·
-validado contra datos reales ✓. Pendiente de fases: calendario diario, cobranzas con probabilidad,
-comparador de créditos, simulador.
+validado contra datos reales ✓ · calendario diario ✓ · fuente única de condiciones con tasas reales
+verificadas ✓. Pendiente: cobranzas con probabilidad, simulador, y la TNA de cuotas de la tarjeta.
 
 ## Mecanismo de aprendizaje continuo
 
