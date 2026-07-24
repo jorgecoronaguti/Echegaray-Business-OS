@@ -33,7 +33,7 @@ export function huellaPlan(plan = {}, horizonte = 'dias_7') {
 }
 
 /** Identidad de una acción para comparar planes: qué se hace y a quién, sin el importe exacto. */
-const idAccion = (a) => `${a.tipo}|${(a.descripcion || '').replace(/\$[\d.,]+/g, '').trim()}`
+export const idAccion = (a) => `${a.tipo}|${(a.descripcion || '').replace(/\$[\d.,]+/g, '').trim()}`
 
 /**
  * NÚCLEO PURO: qué cambió entre el plan nuevo y el anterior. Lo calcula el Business OS —no React— para

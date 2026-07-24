@@ -195,6 +195,20 @@ Construido y operativo:
   calendario: los ORQUESTA (calendario → trayectoria, priorizarPagos → orden, compararFinanciamiento →
   línea, costoDelDinero → costo). Respeta liquidez mínima, límite de línea y vencimientos; nunca ejecuta
   (Nivel E). Validado contra el Sheet real. **YA construido (24/07)**.
+- **Contrato estratégico del plan — de "lista de tareas" a "plan de coordinación" (`plan-estrategia.mjs`
+  + 12 tests, 24/07)**. El plan dejó de devolver acciones operativas sueltas (cobrar/pagar) para exponer,
+  por CADA decisión, una capa `estrategia` con los 9 puntos: qué coordina · qué optimiza · qué
+  alternativas evaluó (las del comparador, reusadas, no recalculadas) · por qué eligió esa estrategia ·
+  el beneficio esperado · su impacto sobre la liquidez futura · sobre el costo financiero · sobre
+  proveedores/clientes/obras · y qué cambia vs el plan anterior. Cada horizonte suma un
+  `resumen_estrategico` (qué coordina y optimiza el CONJUNTO, la estrategia global según la restricción
+  que gobierna el horizonte, y qué cambió). NO reimplementa cálculos: DERIVA de lo que ya decidieron
+  `construirPlan`, `compararFinanciamiento` (alternativas) y `compararPlanes`/`idAccion` de
+  `plan-vigente` (qué cambió, reusados) — ni un peso nuevo. Es aditivo: los campos que ya lee la Web
+  (`AccionPlan`, `HorizontePlan.resumen`) siguen intactos, y `huellaPlan`/`compararPlanes` no se
+  alteran. El "qué cambió por acción" se activa cuando el caller pasa `opts.planAnterior` a
+  `planTesoreria`; sin plan anterior, se declara honestamente en vez de inventar una comparación.
+  **YA construido (24/07)**.
 
 Pendiente (real, no reimplementa nada de lo anterior):
 - **Ingeniería de cobranzas** con probabilidad de cobro y retraso histórico por cliente.
