@@ -66,6 +66,33 @@ export function humanoEdito(firmaActual, firmaGuardada) {
 }
 
 /**
+ * NÚCLEO PURO: la decisión de la firma, con el bootstrap resuelto del lado SEGURO.
+ *
+ * POR QUÉ (24/07). El dueño perdió su trabajo una vez más y pidió arreglar "el problema general".
+ * El hueco era el ARRANQUE EN FRÍO: cuando una pestaña todavía no tiene firma baseline, `humanoEdito`
+ * devolvía editado:false y el generador escribía ENCIMA de la edición del dueño (y recién después
+ * sellaba). Eso es fallar hacia el lado abierto: justo lo contrario de lo que el dueño pide.
+ *
+ * Acá se falla hacia el lado CERRADO. Sin baseline no se puede comparar firma contra firma, pero sí
+ * hay otra señal honesta: el historial de revisiones de Drive dice si una PERSONA tocó el archivo
+ * después de la última escritura del OS. Si la tocó (o no se pudo verificar), la pestaña se toma como
+ * suya y NO se pisa. Sólo si consta que el único que escribió fue el OS se adopta y se sella.
+ *
+ * @param {{firmaActual:string, firmaGuardada:string|null, hayEdicionHumana?:boolean}} p
+ * @returns {{editada:boolean, motivo:string}}
+ */
+export function evaluarFirma({ firmaActual, firmaGuardada, hayEdicionHumana = false }) {
+  if (firmaGuardada) {
+    return firmaActual === firmaGuardada
+      ? { editada: false, motivo: 'coincide con mi última escritura' }
+      : { editada: true, motivo: 'la firma difiere de mi última escritura: la editaste' }
+  }
+  // Sin baseline: no puedo comparar. Fail-closed con el historial de Drive.
+  if (hayEdicionHumana) return { editada: true, motivo: 'sin baseline y una persona tocó el archivo: la tomo como tuya' }
+  return { editada: false, motivo: 'sin baseline y sólo el OS tocó el archivo: la adopto y sello' }
+}
+
+/**
  * Guardia de firma para generadores que escriben por su PROPIO camino (no por escribirPreservando).
  * Lee el estado actual de la pestaña (FORMULA) y, si difiere de la firma que guardó el OS, la auto-canda
  * y devuelve editada:true — el generador debe SALTAR esa pestaña. Rango A1:BZ (toda la pestaña), así
@@ -75,11 +102,23 @@ export async function firmaGuardia(google, fileId, pestana, ref = pestana) {
   try {
     const actual = await google.readSheetValues(fileId, `${ref}!A1:BZ`, { render: 'FORMULA' }).catch(() => null)
     if (!actual) return { editada: false }
-    const { editado } = humanoEdito(firmaDeGrid(actual), await leerFirma({}, fileId, pestana))
-    if (editado) {
+    const firmaGuardada = await leerFirma({}, fileId, pestana)
+    // ARRANQUE EN FRÍO (sin baseline): la firma no alcanza para decidir, así que se mira el historial
+    // de Drive. Si una persona tocó el archivo después del OS —o no se pudo verificar— se falla del
+    // lado seguro: la pestaña se toma como suya. Sólo se consulta cuando NO hay baseline (barato).
+    let hayEdicionHumana = false
+    if (!firmaGuardada) {
+      try {
+        const { historialEdiciones } = await import('./historial-ediciones.mjs')
+        const h = await historialEdiciones(google, fileId)
+        hayEdicionHumana = Boolean(h?.hubo || h?.desconocido)
+      } catch { hayEdicionHumana = true /* no se pudo verificar: lado seguro */ }
+    }
+    const { editada, motivo } = evaluarFirma({ firmaActual: firmaDeGrid(actual), firmaGuardada, hayEdicionHumana })
+    if (editada) {
       const { bloquear } = await import('./pestana-bloqueada.mjs')
-      await bloquear({}, fileId, pestana, { motivo: 'auto: detecté que editaste esta pestaña después de mi última escritura', por: 'auto' })
-      console.log(`  🔒 detecté que editaste "${pestana}" desde mi última escritura: la tomo como tuya, no la piso.`)
+      await bloquear({}, fileId, pestana, { motivo: `auto: ${motivo}`, por: 'auto' })
+      console.log(`  🔒 "${pestana}": ${motivo} — la tomo como tuya, no la piso.`)
       return { editada: true }
     }
   } catch { /* no crítico: sin firma, el resto de la preservación sigue activa */ }

@@ -131,6 +131,28 @@ async function main() {
 
   const { pasoTotalmenteBloqueado } = await import('../lib/pestana-bloqueada.mjs').catch(() => ({ pasoTotalmenteBloqueado: () => false }))
 
+  // ── LA FIRMA, EN EL PORTÓN DEL PIPELINE, ANTES DE TOCAR NADA (24/07) ──
+  // POR QUÉ ACÁ Y NO SÓLO ADENTRO DE CADA GENERADOR (el defecto que el dueño sufrió otra vez). La
+  // protección por firma vivía dentro de escribirPreservando, así que un generador que escribe por
+  // otro camino la esquivaba, y aun los que la usan alcanzaban a formatear la pestaña antes de darse
+  // cuenta. Movida acá, se compara la firma de CADA pestaña de contenido contra la que dejó el OS la
+  // última vez ANTES de correr un solo paso: si la editaste, se auto-canda y el paso que la escribe ni
+  // se ejecuta. Uniforme para TODOS los generadores. Los espejos _RAW (empiezan con "_") no llevan firma.
+  try {
+    const { makeGoogleClient, WRITE_SCOPES } = await import('../lib/google.mjs')
+    const { loadConfig } = await import('../lib/config.mjs')
+    const { firmaGuardia } = await import('../lib/firma-tab.mjs')
+    const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
+    const tabs = [...new Set(PASOS.flatMap(([, , t = []]) => t))].filter((t) => t && !t.startsWith('_') && !bloqueadas.has(t))
+    let candadas = 0
+    for (const t of tabs) {
+      const ref = /[^A-Za-z0-9_]/.test(t) ? `'${t}'` : t
+      const { editada } = await firmaGuardia(google, ID, t, ref).catch(() => ({ editada: false }))
+      if (editada) { bloqueadas.add(t); candadas++ }
+    }
+    if (candadas) console.log(`🔒 ${candadas} pestaña(s) que editaste desde mi última escritura: las candé — el paso que las escribe no corre.\n`)
+  } catch (e) { console.log(`· pre-pasada de firma no disponible (${e.message}) — sigue el candado por paso\n`) }
+
   for (const [script, que, pestañas = []] of PASOS) {
     const inicio = Date.now()
     if (pasoTotalmenteBloqueado(pestañas, bloqueadas)) {

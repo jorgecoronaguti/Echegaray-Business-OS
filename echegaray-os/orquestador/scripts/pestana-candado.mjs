@@ -10,6 +10,9 @@
 //   node orquestador/scripts/pestana-candado.mjs desbloquear "Cash Flow Semanal"
 
 import { bloquear, desbloquear, listar } from '../lib/pestana-bloqueada.mjs'
+import { sellarFirma } from '../lib/firma-tab.mjs'
+import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
+import { loadConfig } from '../lib/config.mjs'
 import { closePool } from '../lib/db.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -23,7 +26,19 @@ async function main() {
   } else if (accion === 'desbloquear') {
     if (!pestana) throw new Error('falta el nombre de la pestaña')
     await desbloquear({}, ID, pestana)
-    console.log(`🔓 "${pestana}" devuelta al OS: vuelve a mantenerse sola.`)
+    // SELLAR LA FIRMA AL DEVOLVER LA PESTAÑA (24/07). Sin esto, una pestaña que se auto-candó por no
+    // tener baseline (y una edición humana en el archivo) se re-candaría sola en la próxima corrida:
+    // el desbloqueo no duraría nada. Al sellar su estado actual como baseline, firmaGuardia ve
+    // "coincide con mi última escritura" y el OS la retoma de verdad. Best-effort: si Google falla,
+    // igual queda desbloqueada (la firma se establecerá en la primera escritura del OS).
+    const ref = /[^A-Za-z0-9_]/.test(pestana) ? `'${pestana}'` : pestana
+    try {
+      const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
+      await sellarFirma(google, ID, pestana, ref)
+      console.log(`🔓 "${pestana}" devuelta al OS: vuelve a mantenerse sola (firma sellada, no se re-canda).`)
+    } catch (e) {
+      console.log(`🔓 "${pestana}" devuelta al OS. ⚠ no pude sellar la firma ahora (${e.message}); se sellará en la próxima escritura.`)
+    }
   } else {
     const rows = await listar({}, ID)
     if (!rows.length) console.log('No hay pestañas bajo candado: el OS mantiene todo.')

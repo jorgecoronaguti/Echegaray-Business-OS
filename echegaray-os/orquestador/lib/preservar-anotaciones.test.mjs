@@ -70,11 +70,39 @@ test('escribirPreservando NO borra: lee, fusiona y escribe sin clearValues', asy
     async batchUpdateValues(_id, payload) { escritos.push(payload[0]) },
   }
   const { conservadas } = await escribirPreservando(google, 'ID', 'CAJA', [['nuevo', 'x', '']], { anchoHoja: 4 })
-  assert.equal(leidos[0].opts.render, 'FORMULA', 'tiene que leer fórmulas, no valores')
-  assert.equal(leidos[0].rango, 'CAJA!A1:D1', 'lee el ancho real de la hoja, no sólo el de la grilla')
+  // La firma agrega una lectura de la pestaña entera (A1:BZ) antes de fusionar; la lectura que importa
+  // para la fusión sigue siendo el ancho real de la hoja (A1:D1) con fórmulas, para no degradarlas.
+  const lecturaTabla = leidos.find((l) => l.rango === 'CAJA!A1:D1' && l.opts?.render === 'FORMULA')
+  assert.ok(lecturaTabla, 'lee el ancho real de la hoja con fórmulas (para fusionar sin degradar)')
   assert.deepEqual(escritos[0].values, [['nuevo', 'x', '', 'MI NOTA']], 'la nota de la persona sobrevive')
   assert.equal(conservadas.length, 1)
   assert.equal(conservadas[0].valor, 'MI NOTA')
+})
+
+// ═══ EL FLAG `espejo` SEPARA candado+firma DE la Regla 0 (24/07) ═══
+// El defecto general que el dueño sufrió: CAJA/Impuestos/Cargas Sociales/Jornales pasan respetar:false
+// para aplicar la Regla 0 a mano, y ANTES eso también apagaba candado y firma → sus ediciones se
+// perdían. Ahora candado+firma valen SIEMPRE salvo espejos _RAW reales (espejo:true).
+
+test('contenido con respetar:false SÍ consulta la firma (A1:BZ) — el arreglo del defecto', async () => {
+  const leidos = []
+  const google = {
+    async readSheetValues(_id, rango) { leidos.push(rango); return [['viejo']] },
+    async batchUpdateValues() {},
+  }
+  await escribirPreservando(google, 'ID', 'CAJA', [['nuevo']], { respetar: false })
+  assert.ok(leidos.some((r) => /A1:BZ/.test(r)), 'una pestaña de contenido consulta la firma aunque respetar:false')
+})
+
+test('espejo:true salta candado y firma (no lee A1:BZ): un espejo _RAW se escribe directo', async () => {
+  const leidos = []; const escritos = []
+  const google = {
+    async readSheetValues(_id, rango) { leidos.push(rango); return [['viejo']] },
+    async batchUpdateValues(_id, p) { escritos.push(p[0]) },
+  }
+  await escribirPreservando(google, 'ID', '_ARCA_RAW', [['nuevo']], { respetar: false, espejo: true })
+  assert.ok(!leidos.some((r) => /A1:BZ/.test(r)), 'un espejo NO consulta la firma (A1:BZ)')
+  assert.equal(escritos.length, 1, 'el espejo se escribe directo')
 })
 
 test('escribirPreservando respeta fila y columna de arranque', async () => {

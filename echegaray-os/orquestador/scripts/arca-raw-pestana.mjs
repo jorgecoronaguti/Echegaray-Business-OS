@@ -137,7 +137,7 @@ async function main() {
     COLUMNAS.map(([n]) => n),
     ...datos,
   ]
-  const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, gridRaw, { respetar: false /* espejo de una fuente externa: cada rótulo es el encabezado de la columna de origen, no un texto que alguien redacte. Respetar acá congelaría el nombre de un campo del banco/ARCA si cambiara, y no hay redacción de nadie que proteger */, anchoHoja: Math.max(COLUMNAS.length, hoja.cols ?? COLUMNAS.length) })
+  const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, gridRaw, { respetar: false, espejo: true /* espejo de una fuente externa (ARCA): copia byte a byte, sin candado ni firma ni Regla 0 — no hay nada del dueño que proteger, y respetar congelaría el nombre de un campo de ARCA si cambiara */, anchoHoja: Math.max(COLUMNAS.length, hoja.cols ?? COLUMNAS.length) })
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
   const rg = (r0, r1, c0, c1) => ({ sheetId: hoja.sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
