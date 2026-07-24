@@ -22,6 +22,7 @@
 // aprobación humana, exactamente como el resto del OS.
 
 import { randomUUID } from 'node:crypto'
+import { esAutorizacionValida } from './plan-vigente.mjs'
 
 /** El origen de todas las tareas del plan: permite reconstruir y reconciliar (replanificación). */
 export const SUBJECT_TYPE = 'finanzas.plan_tesoreria'
@@ -186,6 +187,17 @@ export async function sincronizarEjecucion(deps = {}, opts = {}) {
       por_especialista: contarPorAgente(tareas), tareas: tareas.map(resumenTarea) }
   }
 
+  // ═══ AUTORIZACIÓN OBLIGATORIA PARA EJECUTAR (24/07) ═══
+  //
+  // El dueño: "no crear tareas operativas hasta recibir autorización". Sin una autoridad explícita
+  // —dueño, Director IA, CFO IA o aprobación desde la interfaz— este componente NO crea nada: muestra
+  // el plan y lo marca pendiente de ejecución. El recálculo del plan es automático; la ejecución no.
+  if (!esAutorizacionValida(opts.autorizadoPor)) {
+    return { estado: 'pendiente_ejecucion', planFecha, horizonte, total: tareas.length, ignoradas,
+      por_especialista: contarPorAgente(tareas), tareas: tareas.map(resumenTarea),
+      nota: 'El plan está listo pero requiere autorización para ejecutarse (dueño / Director IA / CFO IA / interfaz). No se creó ninguna tarea.' }
+  }
+
   const correlationId = randomUUID()
   const resultado = await withTx(async (client) => {
     const claveAId = {}
@@ -217,7 +229,13 @@ export async function sincronizarEjecucion(deps = {}, opts = {}) {
     return { creadas: Object.keys(claveAId).length, dependencias: deps2, canceladas: canc.length, correlationId }
   })
 
-  return { estado: 'ok', planFecha, horizonte, ...resultado, ignoradas, por_especialista: contarPorAgente(tareas) }
+  // El plan vigente queda marcado como ejecutado por quien autorizó (trazabilidad de la decisión).
+  try {
+    const { marcarEjecutado } = await import('./plan-vigente.mjs')
+    await marcarEjecutado(deps, opts.autorizadoPor)
+  } catch { /* el snapshot es informativo: si no está, la ejecución igual quedó registrada en orq.* */ }
+
+  return { estado: 'ok', autorizado_por: opts.autorizadoPor, planFecha, horizonte, ...resultado, ignoradas, por_especialista: contarPorAgente(tareas) }
 }
 
 function contarPorAgente(tareas) {

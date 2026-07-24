@@ -8,6 +8,7 @@ import { calendarioDiario } from '../calendario-financiero.mjs'
 import { condicionesVigentes, paramsParaMotor, costoEfectivo } from '../condiciones-financieras.mjs'
 import { planTesoreria } from '../plan-tesoreria.mjs'
 import { sincronizarEjecucion } from '../plan-ejecucion.mjs'
+import { planVigente } from '../plan-vigente.mjs'
 
 function formatModelo(m, recs) {
   const L = []
@@ -76,15 +77,34 @@ export function ingenieriaFinancieraTools(google) {
       },
     },
 
+    'finanzas.plan_vigente': {
+      capability: 'os.read',
+      schema: {
+        name: 'plan_vigente',
+        description:
+          'EL PLAN DE TESORERÍA VIGENTE — muestra el plan optimizado que el Financial Engineering recalcula solo, con su ESTADO (pendiente_ejecucion / autorizado / ejecutado) y QUÉ CAMBIÓ respecto del plan anterior (acciones agregadas, eliminadas, reprogramadas). El recálculo es automático; la ejecución NO: un plan nuevo queda pendiente de autorización y no crea tareas hasta que alguien lo apruebe. Usalo para "mostrame el plan", "¿qué cambió en el plan?", "¿está aprobado el plan?". No recalcula: lee el snapshot que ya dejó el motor.',
+        input_schema: { type: 'object', properties: {} },
+      },
+      async run() {
+        try {
+          const v = await planVigente({})
+          if (!v) return { estado: 'sin_plan', nota: 'todavía no hay un plan vigente calculado' }
+          return { estado: v.estado, horizonte: v.horizonte, calculado_en: v.calculado_en,
+            autorizado_por: v.autorizado_por, cambios: v.cambios, plan: v.plan }
+        } catch (e) { return { error: String(e?.message ?? e).slice(0, 180) } }
+      },
+    },
+
     'finanzas.plan_ejecutar': {
       capability: 'tasks.write',
       schema: {
         name: 'plan_ejecutar',
         description:
-          'FINANCIAL EXECUTION ORCHESTRATOR — convierte el Plan de Tesorería (finanzas.plan_tesoreria) en trabajo ejecutable para los especialistas del OS. NO vuelve a decidir ni recalcula: toma el plan y crea tareas coordinadas (Comercial IA cobra, Compras IA negocia, Administración IA prepara pagos, CFO IA usa/cancela líneas), respetando las dependencias del plan (una tarea no arranca hasta que su dependencia esté completada), las aprobaciones Nivel E (el paso con plata queda para aprobación humana, nunca se ejecuta solo), la idempotencia (correr dos veces no duplica) y la trazabilidad (cada tarea guarda el plan y la acción origen). Reconstruye sólo lo pendiente cuando el plan cambia. Usalo cuando el dueño pida "poné el plan en marcha", "asigná el trabajo del plan", "que los especialistas ejecuten el plan de tesorería". Pasá dry:true para ver qué tareas crearía sin crearlas.',
+          'FINANCIAL EXECUTION ORCHESTRATOR — convierte el Plan de Tesorería (finanzas.plan_tesoreria) en trabajo ejecutable para los especialistas del OS. NO vuelve a decidir ni recalcula: toma el plan y crea tareas coordinadas (Comercial IA cobra, Compras IA negocia, Administración IA prepara pagos, CFO IA usa/cancela líneas), respetando las dependencias del plan (una tarea no arranca hasta que su dependencia esté completada), las aprobaciones Nivel E (el paso con plata queda para aprobación humana, nunca se ejecuta solo), la idempotencia (correr dos veces no duplica) y la trazabilidad (cada tarea guarda el plan y la acción origen). REQUIERE AUTORIZACIÓN EXPLÍCITA: sin autorizadoPor no crea nada, sólo devuelve el plan como pendiente_ejecucion. La autoriza el dueño, el Director IA, el CFO IA o la interfaz. Usalo cuando el dueño pida "aprobá y convertí en trabajo", "poné el plan en marcha". Pasá dry:true para previsualizar.',
         input_schema: {
           type: 'object',
           properties: {
+            autorizadoPor: { type: 'string', description: 'quién autoriza la ejecución: dueño / director / cfo / interfaz. SIN esto no se crea ninguna tarea.' },
             horizonte: { type: 'string', enum: ['hoy', 'dias_7', 'dias_30', 'dias_90'], description: 'qué ventana del plan ejecutar (default dias_7)' },
             liquidezMinima: { type: 'number', description: 'piso de caja que el plan no perfora (opcional)' },
             dry: { type: 'boolean', description: 'true = mostrar qué tareas crearía sin crearlas' },

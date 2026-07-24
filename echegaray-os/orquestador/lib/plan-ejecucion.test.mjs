@@ -106,8 +106,9 @@ test('el enqueue usa dedupe_key y comparte un correlation_id; las deps van a orq
   const deps = {
     planTesoreria: async () => planFake(),
     withTx: async (fn) => fn(fakeClient),
+    query: async () => ({ rows: [] }), // para marcarEjecutado (no toca la base real en el test)
   }
-  const r = await sincronizarEjecucion(deps, { horizonte: 'dias_7' })
+  const r = await sincronizarEjecucion(deps, { horizonte: 'dias_7', autorizadoPor: 'director' })
   assert.equal(r.estado, 'ok')
   assert.equal(r.creadas, 5)
   assert.ok(enqueued.every((p) => p.dedupe_key && p.dedupe_key.startsWith('plan-tesoreria:')), 'cada tarea con dedupe_key estable')
@@ -121,4 +122,34 @@ test('idempotencia: dos corridas del mismo plan producen las mismas claves (enqu
   const uno = construirTareas(planFake(), {}).tareas.map((t) => t.dedupe_key).sort()
   const dos = construirTareas(planFake(), {}).tareas.map((t) => t.dedupe_key).sort()
   assert.deepEqual(uno, dos)
+})
+
+// ═══ CANDADO DE AUTORIZACIÓN (24/07) — no crear tareas sin autoridad explícita ═══
+
+test('sin autorizadoPor NO crea tareas: devuelve el plan como pendiente_ejecucion', async () => {
+  let tocoBase = false
+  const deps = {
+    planTesoreria: async () => planFake(),
+    withTx: async () => { tocoBase = true; return {} },
+  }
+  const r = await sincronizarEjecucion(deps, { horizonte: 'dias_7' }) // sin autorizadoPor
+  assert.equal(r.estado, 'pendiente_ejecucion')
+  assert.equal(tocoBase, false, 'no debe abrir transacción ni crear tareas')
+  assert.equal(r.total, 5)
+  assert.match(r.nota, /autorización/)
+})
+
+test('con autorizadoPor válido SÍ crea tareas', async () => {
+  const deps = {
+    planTesoreria: async () => planFake(),
+    query: async () => ({ rows: [] }), // para marcarEjecutado
+    withTx: async (fn) => fn({ query: async (sql, p) => {
+      if (/enqueue_task/.test(sql)) { return { rows: [{ id: `id-${JSON.parse(p[0]).dedupe_key}` }] } }
+      return { rows: [] }
+    } }),
+  }
+  const r = await sincronizarEjecucion(deps, { horizonte: 'dias_7', autorizadoPor: 'director' })
+  assert.equal(r.estado, 'ok')
+  assert.equal(r.autorizado_por, 'director')
+  assert.equal(r.creadas, 5)
 })

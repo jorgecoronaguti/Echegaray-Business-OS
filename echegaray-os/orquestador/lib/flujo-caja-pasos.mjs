@@ -114,4 +114,9 @@ export const PASOS = [
   // lo materializa en public.finanzas_calendario. La Web (Calendario Financiero) lee ESO — nunca el
   // Sheet ni recalcula. Va al final porque consume las pestañas que los pasos anteriores dejaron al día.
   ['sync-calendario-financiero.mjs', 'motor: calendario financiero diario → public.finanzas_calendario', []],
+  // RECÁLCULO AUTOMÁTICO DEL PLAN — lo ÚNICO automático de la ejecución financiera (decisión del dueño,
+  // 24/07). Recalcula finanzas.plan_tesoreria y guarda el snapshot vigente; si cambió, lo deja
+  // 'pendiente_ejecucion' con el detalle. NO crea tareas: la ejecución (FEO) sólo la dispara una
+  // autoridad (dueño / Director IA / CFO IA / interfaz). Barato y sin efectos: sólo lee y calcula.
+  ['sync-plan-tesoreria.mjs', 'motor: recálculo del Plan de Tesorería → public.finanzas_plan_vigente (pendiente de ejecución, sin crear tareas)', []],
 ]
