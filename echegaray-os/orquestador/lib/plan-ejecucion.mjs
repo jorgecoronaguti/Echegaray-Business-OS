@@ -234,7 +234,7 @@ export async function sincronizarEjecucion(deps = {}, opts = {}) {
   // El plan vigente queda marcado como ejecutado por quien autorizó (trazabilidad de la decisión).
   try {
     const { marcarEjecutado } = await import('./plan-vigente.mjs')
-    await marcarEjecutado(deps, opts.autorizadoPor)
+    await marcarEjecutado(deps, opts.autorizadoPor, resultado.correlationId)
   } catch { /* el snapshot es informativo: si no está, la ejecución igual quedó registrada en orq.* */ }
 
   return { estado: 'ok', autorizado_por: opts.autorizadoPor, planFecha, horizonte, ...resultado, ignoradas, por_especialista: contarPorAgente(tareas) }

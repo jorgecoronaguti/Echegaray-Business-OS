@@ -90,3 +90,19 @@ test('las recomendaciones del motor se muestran (la pantalla no decide nada por 
   await expect(page.getByText(/caja inicial/i)).toBeVisible({ timeout: 15000 })
   await expect(page.getByText('Acciones recomendadas')).toBeVisible()
 })
+
+// QA del Plan de ejecución (24/07). El calendario sigue central; debajo aparece el Plan de Tesorería
+// optimizado con su estado, y la acción única "Aprobar y convertir en trabajo". Nada financiero se
+// calcula en React: todo sale de public.finanzas_plan_vigente (el motor lo dejó ahí).
+test('el Plan de ejecución aparece bajo el calendario con su estado y las acciones', async ({ page }) => {
+  await entrar(page)
+  await expect(page.getByRole('heading', { name: 'Plan de ejecución' })).toBeVisible({ timeout: 15000 })
+  // El estado del plan es visible (pendiente / aprobado / en ejecución).
+  await expect(page.getByText(/Pendiente de aprobación|Aprobado|En ejecución/).first()).toBeVisible()
+})
+
+test('sin sesión, el Plan de ejecución no filtra ninguna acción (RLS)', async ({ page }) => {
+  await page.goto('/calendario-financiero')
+  // La sección no debería mostrar acciones ni el botón de aprobación sin sesión.
+  await expect(page.getByRole('button', { name: /Aprobar y convertir en trabajo/ })).toHaveCount(0)
+})

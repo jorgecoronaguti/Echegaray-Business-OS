@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { getCalendarioFinanciero } from '@/features/ingenieria-financiera/services/calendarioService'
+import { getPlanVigente, getSeguimiento } from '@/features/ingenieria-financiera/services/planService'
 import { CalendarioFinancieroView } from '@/features/ingenieria-financiera/components/CalendarioFinancieroView'
+import { PlanEjecucionView } from '@/features/ingenieria-financiera/components/PlanEjecucionView'
 import { fechaHora } from '@/shared/utils/fecha'
 
 export const dynamic = 'force-dynamic'
@@ -13,6 +15,11 @@ export const dynamic = 'force-dynamic'
 export default async function Page() {
   const supabase = await createClient()
   const { data, error, generadoEn } = await getCalendarioFinanciero(supabase)
+  // El Plan de ejecución y el estado real de sus tareas — ya calculados por el motor, la Web sólo lee.
+  const { data: vigente } = await getPlanVigente(supabase)
+  const { data: seguimiento } = vigente?.correlation_id
+    ? await getSeguimiento(supabase, vigente.correlation_id)
+    : { data: [] }
 
   return (
     <main className="mx-auto max-w-6xl p-6">
@@ -29,6 +36,8 @@ export default async function Page() {
       )}
 
       {data && <CalendarioFinancieroView cal={data} />}
+
+      {vigente && <PlanEjecucionView vigente={vigente} seguimiento={seguimiento} />}
 
       {generadoEn && (
         <p className="mt-6 text-right text-[11px] text-slate-400">

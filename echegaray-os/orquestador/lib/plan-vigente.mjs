@@ -69,9 +69,11 @@ async function asegurarTabla(query) {
         check (estado in ('pendiente_ejecucion','autorizado','ejecutado')),
       calculado_en timestamptz not null default now(),
       autorizado_por text, autorizado_en timestamptz, ejecutado_en timestamptz,
+      correlation_id uuid,
       actualizado_en timestamptz not null default now()
     )`)
   await query('alter table public.finanzas_plan_vigente add column if not exists cambios jsonb')
+  await query('alter table public.finanzas_plan_vigente add column if not exists correlation_id uuid')
 }
 
 /**
@@ -121,13 +123,13 @@ export async function autorizarEjecucion(deps, quien) {
   return { ok: true }
 }
 
-/** Marca el plan vigente como ejecutado (lo llama el orquestador después de crear las tareas). */
-export async function marcarEjecutado(deps, quien) {
+/** Marca el plan vigente como ejecutado y guarda el correlation_id de sus tareas (para el seguimiento). */
+export async function marcarEjecutado(deps, quien, correlationId = null) {
   const query = await q(deps)
   await asegurarTabla(query)
   await query(
     `update public.finanzas_plan_vigente set estado='ejecutado', autorizado_por=coalesce(autorizado_por,$1),
-       autorizado_en=coalesce(autorizado_en,now()), ejecutado_en=now(), actualizado_en=now() where id = 1`,
-    [String(quien)])
+       autorizado_en=coalesce(autorizado_en,now()), ejecutado_en=now(), correlation_id=$2, actualizado_en=now() where id = 1`,
+    [String(quien), correlationId])
   return { ok: true }
 }

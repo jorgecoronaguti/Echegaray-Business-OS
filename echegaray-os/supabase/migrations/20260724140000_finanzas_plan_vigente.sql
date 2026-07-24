@@ -19,6 +19,7 @@ create table if not exists public.finanzas_plan_vigente (
   autorizado_por text,                                    -- quién autorizó la ejecución (dueño/director/cfo/interfaz)
   autorizado_en  timestamptz,
   ejecutado_en   timestamptz,
+  correlation_id uuid,                                    -- las tareas del Work Fabric de esta ejecución (para el seguimiento)
   actualizado_en timestamptz not null default now()
 );
 
@@ -29,3 +30,8 @@ alter table public.finanzas_plan_vigente enable row level security;
 drop policy if exists finanzas_plan_vigente_service on public.finanzas_plan_vigente;
 create policy finanzas_plan_vigente_service
   on public.finanzas_plan_vigente for all to service_role using (true) with check (true);
+-- La Web (Dirección autenticada) LEE el plan vigente para revisarlo/aprobarlo. Escribir (autorizar,
+-- ejecutar) es del servidor con service_role, nunca del cliente.
+drop policy if exists finanzas_plan_vigente_read on public.finanzas_plan_vigente;
+create policy finanzas_plan_vigente_read on public.finanzas_plan_vigente for select to authenticated using (true);
+grant select on public.finanzas_plan_vigente to authenticated;
