@@ -170,3 +170,72 @@ test('saltear el movimiento sin saldo sería un falso positivo', () => {
   assert.equal(r.ok, false)
   assert.equal(r.cortes[0].diferencia, -50)
 })
+
+// ── EL CSV DESCARGADO DEL SANTANDER ("descargaUltimosMovimientos") ──────────────────────────────────
+// Formato distinto del pegado: 8 columnas con Suc/Desc/Cod/Referencia entre fecha y concepto, débitos
+// entre paréntesis, y filas en orden del MÁS NUEVO al más viejo. Cada uno rompía la carga en silencio.
+
+test('paréntesis = débito negativo (formato del CSV del banco)', () => {
+  assert.equal(importe('(500.000,00)'), -500000)
+  assert.equal(importe('(1.282.810,54)'), -1282810.54)
+  assert.equal(importe('(6.356.623,39)'), -6356623.39)
+})
+
+test('CSV del banco: el concepto sale de su columna, no arrastra Suc/Cod/Referencia', () => {
+  const txt = [
+    'Fecha;Suc. Origen;Desc. Sucursal;Cod. Operativo;Referencia;Concepto;Importe;Saldo',
+    '07/07/2026;0179;San Juan;0557;01464204;Prestamos prendarios - 0179-039101464204;(1.282.810,54);(6.356.623,39)',
+  ].join('\n')
+  const { movimientos } = parsearExtracto(txt)
+  assert.equal(movimientos.length, 1)
+  assert.equal(movimientos[0].concepto, 'Prestamos prendarios - 0179-039101464204')
+  assert.equal(movimientos[0].importe, -1282810.54)
+  assert.equal(movimientos[0].saldo, -6356623.39)
+})
+
+test('CSV del banco: un concepto con espacios largos adentro no se parte en columnas', () => {
+  const txt = [
+    'Fecha;Suc. Origen;Desc. Sucursal;Cod. Operativo;Referencia;Concepto;Importe;Saldo',
+    '17/07/2026;0179;San Juan;1862;33983818;Pago haberes - 260717507                     260717507;(217.100,00);12.729.540,85',
+  ].join('\n')
+  const { movimientos } = parsearExtracto(txt)
+  assert.equal(movimientos[0].concepto, 'Pago haberes - 260717507 260717507')
+  assert.equal(movimientos[0].importe, -217100)
+})
+
+test('CSV del banco: viene del más nuevo al más viejo → se endereza a orden cronológico', () => {
+  const txt = [
+    'Fecha;Suc. Origen;Desc. Sucursal;Cod. Operativo;Referencia;Concepto;Importe;Saldo',
+    '08/07/2026;0179;San Juan;3043;299;Echeq clearing;(1.000,00);(2.000,00)',
+    '07/07/2026;0179;San Juan;3043;298;Deposito;3.000,00;(1.000,00)',
+  ].join('\n')
+  const { movimientos } = parsearExtracto(txt)
+  assert.equal(movimientos[0].fecha, '2026-07-07') // el más viejo primero
+  assert.equal(movimientos[1].fecha, '2026-07-08')
+  // y así la cadena propia cierra: -4.000 + 3.000 = -1.000 ; -1.000 + (-1.000) = -2.000
+  const { ok } = verificarCadena(movimientos, movimientos[0].saldo - movimientos[0].importe)
+  assert.equal(ok, true)
+})
+
+test('CSV del banco: una fila de "Movimientos del Día" sin saldo entra con saldo null, no 0', () => {
+  const txt = [
+    'Fecha;Suc. Origen;Desc. Sucursal;Cod. Operativo;Referencia;Concepto;Importe;Saldo',
+    '24/07/2026;0179;San Juan;0133;000000315;Cheque debitado;(500.000,00);',
+  ].join('\n')
+  const { movimientos } = parsearExtracto(txt)
+  assert.equal(movimientos[0].importe, -500000)
+  assert.equal(movimientos[0].saldo, null)
+})
+
+test('CSV del banco: el saldo intradía se DEDUCE de la cadena (no queda inflado en el saldo de ayer)', () => {
+  const txt = [
+    'Fecha;Suc. Origen;Desc. Sucursal;Cod. Operativo;Referencia;Concepto;Importe;Saldo',
+    '24/07/2026;0179;San Juan;0133;315;Cheque debitado;(500.000,00);',
+    '24/07/2026;0179;San Juan;0133;314;Cheque debitado;(500.000,00);',
+    '23/07/2026;0179;San Juan;3058;8656;Deposito e-cheq;3.940.000,00;8.714.485,73',
+  ].join('\n')
+  const { movimientos } = parsearExtracto(txt)
+  // cronológico: [23/07 depósito 8.714.485,73] → [cheque -500k → 8.214.485,73] → [cheque -500k → 7.714.485,73]
+  assert.equal(movimientos.at(-1).saldo, 7714485.73)
+  assert.equal(movimientos.at(-2).saldo, 8214485.73)
+})

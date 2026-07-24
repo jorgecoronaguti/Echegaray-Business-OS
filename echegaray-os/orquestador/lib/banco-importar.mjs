@@ -30,6 +30,9 @@ export function importe(txt) {
   if (!s) return null
   // El signo puede venir al final ("1.234,56-"), como en varios exports de homebanking.
   const negativoAlFinal = /-\s*$/.test(s)
+  // El CSV descargado del Santander marca los débitos ENTRE PARÉNTESIS: "(1.234,56)" = -1.234,56.
+  // Sin esto, el débito entra POSITIVO y el saldo no cierra (además de invertir cada egreso).
+  const entreParentesis = /^\(.*\d.*\)$/.test(s)
   s = s.replace(/[^\d,.-]/g, '')
   if (!s || !/\d/.test(s)) return null
   // es-AR: el punto es separador de miles y la coma decimal. Se saca el punto y se cambia la coma.
@@ -37,7 +40,7 @@ export function importe(txt) {
   s = s.replace(/\./g, '').replace(',', '.').replace(/-(?!^)/g, '')
   const n = Number(s)
   if (!Number.isFinite(n)) return null
-  const negativo = negativoAlFinal || /^\s*-/.test(String(txt))
+  const negativo = negativoAlFinal || entreParentesis || /^\s*-/.test(String(txt))
   return negativo ? -Math.abs(n) : n
 }
 
@@ -77,7 +80,7 @@ export function campos(linea) {
 }
 
 /** Las líneas que no son un movimiento: encabezados, totales, cortes de página. */
-const ES_RUIDO = /^(fecha\b|saldo (inicial|final|anterior)|movimientos|cuenta|per[ií]odo|total\b|p[áa]gina|banco santander|consolidado|=+$|-+$)/i
+const ES_RUIDO = /^(fecha\b|saldo (inicial|final|anterior|al\b)|[úu]ltimos movimientos|movimientos|cuenta|per[ií]odo|total\b|p[áa]gina|banco santander|consolidado|=+$|-+$)/i
 
 /**
  * NÚCLEO PURO: lee un extracto pegado o exportado y devuelve movimientos y rechazos.
@@ -86,15 +89,59 @@ const ES_RUIDO = /^(fecha\b|saldo (inicial|final|anterior)|movimientos|cuenta|pe
  * @param {{anio?:number}} opts
  * @returns {{movimientos:{fecha:string,concepto:string,importe:number,saldo:number|null}[], rechazos:{linea:number,texto:string,motivo:string}[]}}
  */
+/**
+ * El CSV que descarga el homebanking del Santander ("descargaUltimosMovimientos") NO es el formato
+ * de pegado. Trae 8 columnas separadas por `;` —Fecha;Suc. Origen;Desc. Sucursal;Cod. Operativo;
+ * Referencia;Concepto;Importe;Saldo— con los débitos entre paréntesis. Dos trampas que rompían todo:
+ * las columnas Suc/Desc/Cod/Referencia se metían adentro del concepto (y así ningún movimiento
+ * deduplicaba contra la base), y varios conceptos tienen espacios largos adentro ("Pago haberes -
+ * 260717507        260717507") que `campos()` —que parte por 2+ espacios— cortaba en pedazos,
+ * corriendo las columnas. La solución es leer la LÍNEA DE ENCABEZADO, fijar la posición de cada
+ * columna, y para las filas de datos partir SÓLO por `;`.
+ *
+ * @returns {{fecha:number, concepto:number, importe:number, saldo:number|null}|null}
+ */
+function encabezadoCsvBanco(linea) {
+  if (!linea.includes(';')) return null
+  const partes = linea.split(';').map((s) => s.toLowerCase().trim())
+  if (partes[0] !== 'fecha') return null
+  const iConcepto = partes.indexOf('concepto')
+  const iImporte = partes.indexOf('importe')
+  const iSaldo = partes.indexOf('saldo')
+  // Sólo el formato con columnas EXTRA entre fecha y concepto (concepto no es la columna 1): ése es el
+  // que el parseo genérico no sabe leer. Un "fecha;concepto;importe" común sigue por la vía de siempre.
+  if (iConcepto < 2 || iImporte < 2) return null
+  return { fecha: 0, concepto: iConcepto, importe: iImporte, saldo: iSaldo >= 0 ? iSaldo : null }
+}
+
 export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {}) {
   const movimientos = []
   const rechazos = []
   const lineas = String(texto ?? '').split('\n')
+  let cols = null // mapeo posicional, si apareció un encabezado del CSV del banco
 
   lineas.forEach((linea, i) => {
     const cruda = linea.trim()
     if (!cruda) return
+    // Un encabezado del CSV del banco fija el mapeo de columnas y no es un movimiento en sí.
+    const cab = encabezadoCsvBanco(cruda)
+    if (cab) { cols = cab; return }
     if (ES_RUIDO.test(cruda)) return
+
+    // ── Vía CSV del banco: columnas fijas, se parte SÓLO por `;` (los conceptos tienen espacios) ──
+    if (cols) {
+      const p = cruda.split(';').map((s) => s.trim())
+      const f = fecha(p[cols.fecha], anio)
+      if (!f) { rechazos.push({ linea: i + 1, texto: cruda.slice(0, 90), motivo: `"${p[cols.fecha]}" no es una fecha` }); return }
+      const imp = importe(p[cols.importe])
+      if (imp === null) { rechazos.push({ linea: i + 1, texto: cruda.slice(0, 90), motivo: 'no encontré el importe' }); return }
+      const concepto = String(p[cols.concepto] ?? '').replace(/\s+/g, ' ').trim()
+      if (!concepto) { rechazos.push({ linea: i + 1, texto: cruda.slice(0, 90), motivo: 'la fila no tiene concepto' }); return }
+      const saldo = cols.saldo != null ? importe(p[cols.saldo]) : null
+      movimientos.push({ fecha: f, concepto, importe: imp, saldo })
+      return
+    }
+
     const c = campos(cruda)
     // Una línea de movimiento tiene, como mínimo, fecha + concepto + importe.
     if (c.length < 3) { rechazos.push({ linea: i + 1, texto: cruda.slice(0, 90), motivo: 'no tiene fecha, concepto e importe' }); return }
@@ -123,6 +170,28 @@ export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {})
     const saldo = numericos.length >= 2 ? numericos[numericos.length - 1].n : null
     movimientos.push({ fecha: f, concepto, importe: imp, saldo })
   })
+
+  // EL HOMEBANKING DESCARGA DEL MÁS NUEVO AL MÁS VIEJO. La cadena de saldos —saldo(n)=saldo(n−1)+
+  // importe(n)— sólo cierra en orden CRONOLÓGICO. Si el extracto viene en fechas descendentes, se
+  // invierte entero (invertir también corrige el orden DENTRO de cada día, que también viene al revés).
+  // Un pegado ya cronológico o de un solo movimiento no se toca.
+  if (movimientos.length > 1) {
+    const conFecha = movimientos.filter((m) => m.fecha)
+    if (conFecha.length > 1 && conFecha[0].fecha > conFecha[conFecha.length - 1].fecha) movimientos.reverse()
+  }
+
+  // BACK-FILL DEL SALDO INTRADÍA. Las filas de "Movimientos del Día" (los cheques debitados HOY) vienen
+  // sin saldo declarado, pero su saldo corrido se DEDUCE de la cadena: saldo anterior + importe. No es
+  // inventar un número —es el mismo que el banco imprime en "Saldo al DD/MM"—. Sin esto, CAJA toma el
+  // último saldo POSTEADO (el de ayer) e ignora los débitos de hoy: el saldo queda inflado. Sólo se
+  // completa cuando hay un saldo previo con qué encadenar; si arranca en null, se respeta el null.
+  let corrido = null
+  for (const m of movimientos) {
+    if (m.saldo != null) { corrido = Number(m.saldo); continue }
+    if (corrido == null) continue
+    corrido = Number((corrido + Number(m.importe)).toFixed(2))
+    m.saldo = corrido
+  }
 
   return { movimientos, rechazos }
 }

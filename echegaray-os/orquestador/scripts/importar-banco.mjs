@@ -37,7 +37,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { query } from '../lib/db.mjs'
 import { parsearExtracto, novedades, verificarCadena, clave } from '../lib/banco-importar.mjs'
-import { MOVIMIENTOS, MOVIMIENTOS_DIA, SALDO_INICIAL, CUENTA, ORIGEN } from '../lib/banco-santander.mjs'
+import { MOVIMIENTOS, MOVIMIENTOS_DIA, CUENTA, ORIGEN } from '../lib/banco-santander.mjs'
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const MIGRACION = join(RAIZ, 'supabase', 'migrations', '20260723120000_banco_movimientos.sql')
@@ -121,14 +121,15 @@ async function main() {
   console.log(`${nuevos.length} nuevo(s) · ${movimientos.length - nuevos.length} ya estaban (las ventanas del extracto se superponen)`)
   if (!nuevos.length) { console.log('\n✓ nada que cargar: el extracto ya estaba entero en la base'); return }
 
-  // ── 4. La cadena de saldos, sobre el conjunto MEZCLADO ──
+  // ── 4. La cadena de saldos, sobre el PROPIO extracto ──
   //
-  // No se verifica lo nuevo suelto: un extracto que arranca a mitad de la serie no tiene con qué
-  // comparar su primer saldo. Se ordena todo junto y se mide de punta a punta.
-  // `sort` de JS es ESTABLE: los del mismo día conservan su orden relativo —los de la base primero,
-  // en el orden en que se cargaron, y detrás los nuevos—, que es el orden real del extracto.
-  const todo = [...norm, ...nuevos].sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0))
-  const { ok, cortes } = verificarCadena(todo, SALDO_INICIAL)
+  // El extracto trae su propio saldo corrido y ya viene en orden cronológico (el parser lo endereza),
+  // así que se verifica solo, de punta a punta, sin depender de mezclarlo con la base. Mezclar fallaba
+  // en la re-descarga AMPLIA que se superpone con lo ya cargado: al intercalar los de la base con los
+  // nuevos del mismo día, el orden real se perdía y la cadena "no cerraba" por un motivo inventado.
+  // Para un pegado chico igual sirve: cada movimiento se compara con el anterior del propio pegado; el
+  // primero sólo fija el ancla (no hay con qué compararlo, y verificarCadena lo tolera).
+  const { ok, cortes } = verificarCadena(movimientos, null)
   if (ok) console.log('✓ la cadena de saldos cierra de punta a punta')
   else {
     console.log(`\n⚠ la cadena de saldos NO cierra en ${cortes.length} punto(s):`)
