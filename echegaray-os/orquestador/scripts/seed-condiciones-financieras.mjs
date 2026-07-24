@@ -55,15 +55,22 @@ const SEED = [
     fuente: `${ORIGEN} — resumen tarjeta`, nivel_confianza: 'informado',
     observaciones: `Cupo de cuotas: límite $${TARJETA.cuotas.limite.toLocaleString('es-AR')}, disponible $${TARJETA.cuotas.disponible.toLocaleString('es-AR')}. FALTA la TNA de financiación de cuotas — está en el resumen mensual o se pide al banco; sin ella no se calcula el costo de financiar con tarjeta.`,
   },
-  // PRÉSTAMO PRENDARIO — existe (débito real en el extracto: "Prestamos prendarios 0179-039101464204"),
-  // pero sus términos (tasa, sistema, cuotas, seguro) NO están en el extracto. Fila 'pendiente'.
+  // PRÉSTAMO PRENDARIO — datos REALES de la liquidación oficial del banco (Drive:
+  // "48599_0179_ECHEGARAY CONSTRUCCIONES SAS_30716304643.pdf", Aviso de Liquidación del 07/10/2024).
+  // Verificado: capital $25M al 38,9% francés a 60 meses reproduce la cuota del banco ($950.600,38).
+  // limite_disponible = 0 A PROPÓSITO: es un préstamo YA DESEMBOLSADO, no una línea de la que se
+  // pueda sacar plata nueva → la capa NO lo ofrece como alternativa para un bache (ver paramsParaMotor).
+  // Su tasa real sí sirve como referencia de costo (es más barato que el descubierto).
   {
-    entidad: 'Banco Santander', producto: 'Préstamo prendario 0179-039101464204',
+    entidad: 'Banco Santander', producto: 'Préstamo prendario 0179039101464204',
     tipo_financiacion: 'prestamo', moneda: 'ARS',
-    vigencia_desde: null, vigencia_hasta: null,
-    tna: null, tea: null, cft: null, amortizacion: null,
-    fuente: `${ORIGEN} — débito de cuota en el extracto`, nivel_confianza: 'pendiente',
-    observaciones: 'Cuota debitada el 07/07 por $1.282.810,54. FALTAN tasa, sistema de amortización, cuotas restantes y seguro — están en el contrato/liquidación del préstamo (pedir al banco o buscar en Drive). Sin eso no se compara su costo total.',
+    vigencia_desde: '2024-10-07', vigencia_hasta: '2029-10-07',
+    tna: 0.389, tea: null, cft: null, amortizacion: 'francés',
+    plazo_dias: null, limite_disponible: 0, saldo_utilizado: null,
+    garantias: 'Prenda sobre Ford Ranger 3.0 TDI DC 4x4 XLS 2023 (motor BF2SRJ382607, carrocería 8AFBR01J8RJ382607)',
+    fuente: 'Aviso de Liquidación del Préstamo — Banco Santander, 07/10/2024 (Drive: 48599_0179_ECHEGARAY CONSTRUCCIONES SAS_30716304643.pdf)',
+    nivel_confianza: 'verificado',
+    observaciones: 'Capital $25.000.000 · desembolso neto $23.953.674,25 (impuestos al alta: Sellos SJ $747.375,53 + Acción Social SJ $149.475,11 + Lote Hogar SJ $149.475,11 = $1.046.325,75). Sistema francés, 60 cuotas mensuales de $950.600,38, débito el día 7 (1ra cuota 07/11/2024). Monto del mutuo prendario inscripto $57.051.566,94. Al 07/2026 hay ~21 cuotas pagadas. Es una obligación en curso, NO una línea disponible: no se puede tomar plata nueva de este préstamo.',
   },
   // IMPUESTO AL CHEQUE — Ley 25.413 (débitos y créditos). 0,6% cada lado. Es un costo cierto que
   // afecta a cheques/eCheq/transferencias, no una línea de financiación. Verificar vigencia de la

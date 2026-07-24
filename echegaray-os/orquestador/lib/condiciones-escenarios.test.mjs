@@ -10,7 +10,9 @@ import { paramsParaMotor } from './condiciones-financieras.mjs'
 // Réplica de la fuente única sembrada (valores reales verificados).
 const CONDICIONES = [
   { entidad: 'Banco Santander', producto: 'Acuerdo N°00007', tipo_financiacion: 'descubierto', tna: 0.55, iva_sobre_intereses: 0.12, limite_disponible: 18200000, saldo_utilizado: 0 },
-  { entidad: 'Banco Santander', producto: 'Préstamo prendario', tipo_financiacion: 'prestamo', tna: null, observaciones: 'pedir liquidación al banco' },
+  // Prendario REAL: tasa verificada 38,9% pero YA DESEMBOLSADO (limite_disponible 0) → se registra,
+  // no se ofrece como línea nueva.
+  { entidad: 'Banco Santander', producto: 'Préstamo prendario', tipo_financiacion: 'prestamo', tna: 0.389, limite_disponible: 0, observaciones: 'obligación en curso, no una línea disponible' },
   { entidad: 'Banco Santander', producto: 'Tarjeta', tipo_financiacion: 'tarjeta', tna: null, observaciones: 'TNA de cuotas en el resumen' },
 ]
 const base = () => paramsParaMotor(CONDICIONES).params
@@ -45,9 +47,9 @@ test('2b · con la tasa del cheque cargada, el motor la compara de verdad', () =
   assert.equal(r.recomendada.via, 'descuento_cheque')
 })
 
-test('3 · préstamo vs descubierto para un bache breve: sin tasa de préstamo, no se recomienda a ciegas', () => {
+test('3 · préstamo vs descubierto para un bache breve: el prendario está desembolsado, no se ofrece', () => {
   const r = compararFinanciamiento({ ...base(), monto: 5000000, dias: 7, cajaLibre: 0 })
-  // no hay alternativa "prestamo" con costo (falta la tasa) → no puede ganar
+  // el único préstamo es una obligación en curso (sin línea disponible) → no es alternativa para el bache
   assert.notEqual(r.recomendada?.via, 'prestamo')
 })
 
@@ -71,7 +73,8 @@ test('5 · proveedor crítico que admite pago parcial: priorizar reparte la caja
 
 test('6 · alternativa sin tasa: se compara lo que sí tiene dato y se declara lo que falta', () => {
   const { faltan } = paramsParaMotor(CONDICIONES)
-  assert.ok(faltan.length >= 2) // préstamo y tarjeta sin tasa
+  assert.ok(faltan.length >= 1) // la tarjeta sigue sin TNA de cuotas
+  assert.ok(faltan.some((f) => f.tipo === 'tarjeta'))
   for (const f of faltan) assert.ok(f.para_conseguirlo, 'cada faltante dice de dónde sacarlo')
 })
 

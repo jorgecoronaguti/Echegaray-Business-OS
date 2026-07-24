@@ -79,7 +79,6 @@ const round = (n) => (n == null ? null : Math.round(n))
 export function paramsParaMotor(conds = []) {
   const params = {}
   const faltan = []
-  const primeraConTasa = (tipo) => conds.find((c) => c.tipo_financiacion === tipo && c.tna != null)
   const primeraDelTipo = (tipo) => conds.find((c) => c.tipo_financiacion === tipo)
 
   const desc = primeraDelTipo('descubierto')
@@ -87,15 +86,22 @@ export function paramsParaMotor(conds = []) {
     const usado = Number(desc.saldo_utilizado) || 0
     params.limiteDescubiertoDisp = Math.max(0, Number(desc.limite_disponible) - usado)
   }
-  const prest = primeraConTasa('prestamo')
+  // UN PRÉSTAMO SÓLO SE OFRECE COMO FINANCIACIÓN NUEVA SI ES UNA LÍNEA DE LA QUE SE PUEDE SACAR PLATA
+  // (limite_disponible > 0). Un préstamo YA DESEMBOLSADO (ej. el prendario del Ranger: capital ya
+  // acreditado, cuotas en curso) tiene su tasa real y sirve de referencia de costo, pero NO es una
+  // alternativa para cubrir un bache — no se puede volver a tomar. Ofrecerlo engañaría al motor.
+  const disponible = (c) => c.tna != null && Number(c.limite_disponible) > 0
+  const prest = conds.find((c) => c.tipo_financiacion === 'prestamo' && disponible(c))
   if (prest) params.tasaPrestamoTNA = Number(prest.tna)
-  const chq = primeraConTasa('descuento_cheque')
+  const chq = conds.find((c) => c.tipo_financiacion === 'descuento_cheque' && c.tna != null)
   if (chq) params.tasaDescuentoChequeTNA = Number(chq.tna)
 
-  // Lo que EXISTE como producto pero no tiene tasa cargada: es lo que hay que conseguir.
+  // Lo que EXISTE como producto pero no tiene con qué operar: sin tasa (hay que conseguirla) o, en el
+  // caso de un préstamo, sin línea disponible para tomar plata nueva. Es lo que le falta al motor.
   for (const tipo of ['prestamo', 'descuento_cheque', 'tarjeta']) {
     const c = primeraDelTipo(tipo)
-    if (c && c.tna == null) faltan.push({ tipo, producto: c.producto, entidad: c.entidad, para_conseguirlo: c.observaciones ?? null })
+    if (!c) continue
+    if (c.tna == null) faltan.push({ tipo, producto: c.producto, entidad: c.entidad, para_conseguirlo: c.observaciones ?? null })
   }
   return { params, faltan }
 }

@@ -51,6 +51,23 @@ test('paramsParaMotor: una tasa conocida se pasa; una que falta se lista para co
   assert.ok(faltan.some((f) => f.tipo === 'prestamo' && /liquidaci/.test(f.para_conseguirlo)))
 })
 
+test('un préstamo YA DESEMBOLSADO (sin línea disponible) no se ofrece como financiación nueva, aunque tenga tasa', () => {
+  // El prendario real: tasa verificada 38,9% pero limite_disponible 0 (capital ya acreditado, cuotas
+  // en curso). Se registra, pero el motor NO debe ofrecerlo para cubrir un bache: no se puede tomar.
+  const { params, faltan } = paramsParaMotor([
+    { entidad: 'Santander', producto: 'Prendario Ranger', tipo_financiacion: 'prestamo', tna: 0.389, limite_disponible: 0 },
+  ])
+  assert.equal(params.tasaPrestamoTNA, undefined) // no se ofrece
+  assert.equal(faltan.length, 0) // tampoco es un "faltante de dato": la tasa está, sólo que no es una línea
+})
+
+test('un préstamo con LÍNEA disponible sí se ofrece como financiación nueva', () => {
+  const { params } = paramsParaMotor([
+    { entidad: 'X', producto: 'Línea', tipo_financiacion: 'prestamo', tna: 0.5, limite_disponible: 10000000 },
+  ])
+  assert.equal(params.tasaPrestamoTNA, 0.5)
+})
+
 test('registrarCondicion exige fuente: no se carga una tasa sin decir de dónde salió', async () => {
   const r = await registrarCondicion({ query: async () => ({ rows: [] }) },
     { entidad: 'X', producto: 'Y', tipo_financiacion: 'prestamo', tna: 0.7 }) // sin fuente
