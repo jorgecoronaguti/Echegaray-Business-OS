@@ -23,7 +23,10 @@
 import { escribirPreservando } from './preservar-anotaciones.mjs'
 
 const DESTINO = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
-const ORIGEN = '1s0KlEURR5Udi7vvy-BmeqAi83lMRyqSCSsRjpiO5aXk'
+// El archivo JORNALES real. Se exporta para que el que lo lee pueda registrar su frescura con el
+// MISMO drive_file_id que la fila de fuentes_datos (ver registrar-sincronizacion.mjs).
+export const JORNALES_FILE_ID = '1s0KlEURR5Udi7vvy-BmeqAi83lMRyqSCSsRjpiO5aXk'
+const ORIGEN = JORNALES_FILE_ID
 
 // `col` es la columna del NETO a pagar, la que tiene que dar igual de los dos lados (0-indexada).
 // Obreros AA=26 · Oficina Z=25. Está verificada en lib/jornales.mjs y no se adivina.
