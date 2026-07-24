@@ -30,7 +30,10 @@ Toda la lógica vive **dentro del Business OS**:
 
 - **`orquestador/lib/ingenieria-financiera.mjs`** — el motor determinista (núcleo puro + ensamblador).
 - **`orquestador/lib/tools/ingenieria-financiera-tool.mjs`** — el contrato único que expone el motor:
-  `finanzas.modelo_liquidez`, `finanzas.comparar_financiamiento`, `finanzas.priorizar_pagos`.
+  `finanzas.modelo_liquidez`, `finanzas.comparar_financiamiento`, `finanzas.priorizar_pagos`,
+  `finanzas.calendario_diario`, `finanzas.condiciones_financieras`, `finanzas.plan_tesoreria`.
+- **`orquestador/lib/plan-tesoreria.mjs`** — el Motor de Estrategia de Tesorería: NO reimplementa nada,
+  ORQUESTA las primitivas de arriba en un plan cronológico ejecutable.
 
 **Nunca** en React. **Nunca** en Google Sheets. **Nunca** duplicando lógica. La Web, el Director IA,
 el CFO IA, el Flujo de Fondos, las APIs y futuras interfaces **sólo consumen** el resultado de este
@@ -158,6 +161,13 @@ Construido y operativo:
   62,8% verificado), préstamo prendario (CFTEA 65,1% verificado desde el comprobante), impuesto al
   cheque, tarjeta. `comparar_financiamiento` AUTO-CARGA las tasas reales; lo que no tiene tasa se
   informa en `faltan_datos`, nunca se inventa. **YA construido**.
+- **Motor de Estrategia de Tesorería** (`plan-tesoreria.mjs` + tool `finanzas.plan_tesoreria` + 13 tests)
+  — dada la situación de hoy, construye el PLAN cronológico ejecutable (qué cobrar/pagar/postergar/
+  negociar, qué medio, qué línea, cuándo usarla y cuándo cancelarla) para hoy/7/30/90 días, cada acción
+  con motivo/impacto/costo financiero/efecto en liquidez/riesgos/dependencias. NO toca el motor ni el
+  calendario: los ORQUESTA (calendario → trayectoria, priorizarPagos → orden, compararFinanciamiento →
+  línea, costoDelDinero → costo). Respeta liquidez mínima, límite de línea y vencimientos; nunca ejecuta
+  (Nivel E). Validado contra el Sheet real. **YA construido (24/07)**.
 
 Pendiente (real, no reimplementa nada de lo anterior):
 - **Ingeniería de cobranzas** con probabilidad de cobro y retraso histórico por cliente.

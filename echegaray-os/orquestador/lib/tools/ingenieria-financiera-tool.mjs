@@ -6,6 +6,7 @@ import {
 } from '../ingenieria-financiera.mjs'
 import { calendarioDiario } from '../calendario-financiero.mjs'
 import { condicionesVigentes, paramsParaMotor, costoEfectivo } from '../condiciones-financieras.mjs'
+import { planTesoreria } from '../plan-tesoreria.mjs'
 
 function formatModelo(m, recs) {
   const L = []
@@ -27,8 +28,53 @@ function formatModelo(m, recs) {
   return L.join('\n')
 }
 
+const ICONO_ACCION = { cobrar: '↓', pagar: '↑', postergar: '⏸', financiar: '⊕', cancelar_financiacion: '⊖' }
+
+/** Texto ejecutivo de un horizonte del plan: el resumen y la secuencia cronológica de acciones. */
+function formatPlan(plan) {
+  if (plan?.estado !== 'ok') return `📋 *Plan de tesorería* — sin dato: ${plan?.motivo || 'no se pudo armar'}`
+  const L = []
+  L.push(`📋 *Plan de tesorería · ${plan.fecha}*`)
+  L.push(`Caja inicial ${fmt(plan.caja_inicial)} · piso de liquidez ${fmt(plan.liquidez_minima)} · línea ${fmt(plan.limite_linea)}`)
+  const h = plan.horizontes?.dias_7
+  if (h) {
+    const r = h.resumen
+    L.push(`\n*${h.titulo}* — saldo proyectado ${fmt(r.saldo_proyectado_final)} · costo financiero ${fmt(r.costo_financiero_total)}${r.excede_limite_linea ? ' · ⚠ EXCEDE la línea' : ''}`)
+    for (const a of h.acciones.slice(0, 12)) {
+      L.push(`${a.fecha} ${ICONO_ACCION[a.tipo] || '·'} ${a.descripcion} — ${a.motivo}${a.costo_financiero ? ` (cuesta ${fmt(a.costo_financiero)})` : ''}`)
+    }
+    if (h.acciones.length > 12) L.push(`… y ${h.acciones.length - 12} acciones más en los 7 días`)
+  }
+  if (plan.tasas_faltantes?.length) L.push(`\nFaltan tasas para comparar mejor: ${plan.tasas_faltantes.map((f) => f.producto).join(', ')}`)
+  L.push('\n_Toda acción con efecto externo requiere tu aprobación (Nivel E). El plan prepara la decisión; no ejecuta pagos._')
+  return L.join('\n')
+}
+
 export function ingenieriaFinancieraTools(google) {
   return {
+    'finanzas.plan_tesoreria': {
+      capability: 'os.read',
+      schema: {
+        name: 'plan_tesoreria',
+        description:
+          'MOTOR DE ESTRATEGIA DE TESORERÍA — dada la situación financiera actual, construye el mejor PLAN completo y ejecutable, no recomendaciones sueltas. Devuelve una secuencia CRONOLÓGICA de acciones (qué cobrar, qué pagar, qué postergar, qué negociar, con qué medio, qué línea usar, cuándo usarla y cuándo cancelarla) para cuatro horizontes: hoy, 7, 30 y 90 días. Cada acción trae motivo, impacto en pesos, costo financiero, efecto sobre la liquidez, riesgos y dependencias de las acciones anteriores. Respeta solo la liquidez mínima, el límite de la línea y los vencimientos; nunca ejecuta pagos (Nivel E, requiere aprobación humana). Orquesta el calendario, el modelo de liquidez, la priorización de pagos y el comparador de financiamiento ya existentes — 0 recálculo. Usalo cuando el dueño pida "armame un plan", "qué hago con la plata esta semana/mes", "cómo ordeno los pagos y cobros", "estrategia de tesorería", "cómo cubro el mes".',
+        input_schema: {
+          type: 'object',
+          properties: {
+            liquidezMinima: { type: 'number', description: 'piso de caja que el plan no perfora voluntariamente (default 0)' },
+            tasaPrestamoTNA: { type: 'number', description: 'TNA de un préstamo puntual para comparar líneas (opcional; si no, sale de condiciones)' },
+            tasaDescuentoChequeTNA: { type: 'number', description: 'TNA de descuento de cheque (opcional; si no, sale de condiciones)' },
+          },
+        },
+      },
+      async run(args) {
+        try {
+          const plan = await planTesoreria({ google }, args || {})
+          return { ...plan, texto: formatPlan(plan) }
+        } catch (e) { return { error: `no pude armar el plan de tesorería: ${String(e?.message ?? e).slice(0, 180)}` } }
+      },
+    },
+
     'finanzas.modelo_liquidez': {
       capability: 'os.read',
       schema: {
