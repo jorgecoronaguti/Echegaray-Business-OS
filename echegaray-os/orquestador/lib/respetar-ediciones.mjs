@@ -103,12 +103,6 @@ export function esEstructural(t) {
   // nómina en el año" al incorporar oficina a Jornales. Nadie borra a propósito el total de un
   // cuadro: si desapareció, lo moví yo.
   if (/^\s*⇒/.test(s)) return true
-  // UN AVISO ⚠ TAMPOCO SE DA POR BORRADO. Es un caveat que el generador escribe sobre la procedencia
-  // o la calidad de sus propios números ("la alícuota conviene que la confirme el contador", "estos
-  // pagos no están cargados en Compras"). Nadie borra a propósito la advertencia que dice de dónde
-  // sale —o qué le falta a— un dato: si desapareció, es que la lectura no la vio. Ante la duda, se
-  // reescribe. (24/07: 2 de estos avisos habían quedado marcados como borrados por el dueño.)
-  if (/^\s*⚠/.test(s)) return true
   if (/^(qué|cuánta|cuánto|de dónde|posición|impuestos|cargas|jornales)/i.test(s) && s.length > 40) return true
   return false
 }

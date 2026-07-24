@@ -113,12 +113,6 @@ test('arranque en frío: NUNCA da por borrado un título ni una sección', () =>
   assert.deepEqual(r.map((x) => x.mio), ['Un concepto suelto'])
 })
 
-test('un aviso ⚠ es estructural: es un caveat del generador, no un borrado del dueño', () => {
-  // 24/07: 2 avisos ⚠ de "Impuestos y Financieros" habían quedado marcados como borrados por el dueño.
-  assert.equal(esEstructural('⚠ La alícuota de IIBB se toma de las DDJJ leídas. Conviene que la confirme el contador.'), true)
-  assert.equal(esEstructural('⚠ Los pagos de IVA e IIBB no están cargados en Compras: hoy el cash flow no ve esas salidas.'), true)
-})
-
 test('arranque en frío: ignora números y fórmulas, que no son rótulos', () => {
   const generado = [['=SUMA(A1:A9)'], [1234], ['12%'], ['Concepto real']]
   const r = detectarArranqueEnFrio(generado, [['']])
