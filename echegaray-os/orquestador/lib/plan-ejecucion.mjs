@@ -176,7 +176,9 @@ export async function sincronizarEjecucion(deps = {}, opts = {}) {
   const withTx = deps.withTx || (await import('./db.mjs')).withTx
   const planTes = deps.planTesoreria || (await import('./plan-tesoreria.mjs')).planTesoreria
 
-  const plan = await planTes({ google: deps.google }, opts)
+  // El plan puede venir YA calculado (el snapshot vigente que aprobó la interfaz): así ejecutar desde
+  // una autorización NO vuelve a leer el Sheet — usa exactamente el plan que el dueño vio y aprobó.
+  const plan = opts.planPreCalculado || await planTes({ google: deps.google }, opts)
   if (plan?.estado !== 'ok') return { estado: 'sin dato', motivo: plan?.motivo || 'el plan no está disponible', creadas: 0 }
 
   const { tareas, ignoradas, planFecha, horizonte } = construirTareas(plan, opts)
