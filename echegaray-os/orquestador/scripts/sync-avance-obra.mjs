@@ -4,7 +4,8 @@
 // Account (0 API del modelo). Idempotente por obra (upsert). Honesto: las hojas sin % quedan
 // estructurado=false con motivo, nunca inventa avance.
 //   node orquestador/scripts/sync-avance-obra.mjs
-import { avanceTodasLasObras } from '../lib/avance-fisico.mjs'
+import { avanceTodasLasObras, AVANCE_FILE_ID } from '../lib/avance-fisico.mjs'
+import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
 import { query, closePool } from '../lib/db.mjs'
 
 async function main() {
@@ -33,6 +34,10 @@ async function main() {
     n++; if (o.estructurado) conDato++
   }
   console.log(`sincronizadas ${n} obras (${conDato} con avance cargado)`)
+  // Se leyó el archivo real de Avances de Obra: se registra para que la frescura no lo dé por
+  // atrasado cuando el OS lo sincroniza. Mismo drive_file_id que la fila de fuentes_datos.
+  const fr = await registrarSincronizacion({ query }, { driveFileId: AVANCE_FILE_ID })
+  console.log(fr.ok ? `frescura: "${fr.nombre}" → ${fr.estado}` : `frescura no registrada: ${fr.motivo}`)
   await closePool()
 }
 main().catch((e) => { console.error('sync avance-obra falló:', e.message); process.exit(1) })

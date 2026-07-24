@@ -142,6 +142,19 @@ async function main() {
     console.log(`\n${conAlerta.length} con avisos (la pestaña se rehizo, pero algo no cierra):`)
     for (const r of conAlerta) console.log(`  · ${r.script}: ${r.alerta.slice(0, 200)}`)
   }
+  // REGISTRAR QUE EL OS INGIRIÓ EL CASH FLOW (23/07). Este pipeline es, por definición, "el OS acaba
+  // de leer el Cash Flow entero y reconstruir sus derivadas". Si no falló ningún paso, esa lectura
+  // fue exitosa: se marca la fuente para que la alerta de frescura no siga diciendo que está atrasada
+  // cuando la reconstruyo todos los días. Sólo si 0 fallos: una corrida a medias no es una ingesta.
+  if (fallaron.length === 0) {
+    const { registrarSincronizacion } = await import('../lib/registrar-sincronizacion.mjs')
+    const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
+    const r = await registrarSincronizacion({}, { driveFileId: ID })
+    console.log(r.ok
+      ? `\n✓ frescura: "${r.nombre}" marcada sincronizada → ${r.estado}`
+      : `\n· frescura no registrada: ${r.motivo}`)
+  }
+
   if (fallaron.length) {
     console.log(`\n${fallaron.length} FALLARON:`)
     for (const r of fallaron) console.log(`  · ${r.script}: ${r.error}`)
