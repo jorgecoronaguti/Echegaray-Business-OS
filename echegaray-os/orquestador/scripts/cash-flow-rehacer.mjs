@@ -452,6 +452,19 @@ async function main() {
     return
   }
 
+  // ── EL CANDADO DEL DUEÑO, POR PESTAÑA (24/07) ──
+  // Este generador escribe DOS pestañas y no pasa por el portón `escribirPreservando`, así que el
+  // candado se aplica acá: si el dueño tomó 'Cash Flow Semanal' o 'Cash Flow Mensual', esa pestaña se
+  // saca de `data` y no se toca ni una celda. La otra, si está libre, se rehace normal.
+  try {
+    const { pestanasBloqueadas, filtrarBloqueadas } = await import('../lib/pestana-bloqueada.mjs')
+    const set = await pestanasBloqueadas({}, ID)
+    const { bloqueadas } = filtrarBloqueadas(data.map((d) => d.pestaña), set)
+    for (const p of bloqueadas) console.log(`  🔒 "${p}" está bajo tu control (candado): no la toco.`)
+    for (let i = data.length - 1; i >= 0; i--) if (set.has(data[i].pestaña)) data.splice(i, 1)
+    if (!data.length) { console.log('Ambas pestañas están bajo tu control: no hay nada que rehacer.'); return }
+  } catch { /* sin base: se sigue, la Regla 0 celda a celda sigue activa abajo */ }
+
   // Limpiar primero lo viejo: la grilla nueva es más corta que la que había y quedarían restos
   // (incluidas las columnas auxiliares BE/BF, que ahora viven en Compras).
   // El HYPERLINK necesita el gid REAL de la pestaña: se resuelve acá, no se adivina.

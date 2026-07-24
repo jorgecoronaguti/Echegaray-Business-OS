@@ -109,9 +109,29 @@ async function main() {
   const t0 = Date.now()
   const ok = []
   const fallaron = []
+  const saltados = []
 
-  for (const [script, que] of PASOS) {
+  // ── EL CANDADO DEL DUEÑO, ANTES DE CORRER NADA (24/07) ──
+  // Se lee UNA vez qué pestañas tomó el dueño. Un paso cuyas pestañas están TODAS bloqueadas ni se
+  // ejecuta: su pestaña queda intacta y —si tiene fórmulas— sigue actualizándose sola por el Sheet.
+  // El resto del pipeline corre normal: autónomo Y respetando sus reglas.
+  const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
+  let bloqueadas = new Set()
+  try {
+    const { pestanasBloqueadas } = await import('../lib/pestana-bloqueada.mjs')
+    bloqueadas = await pestanasBloqueadas({}, ID)
+    if (bloqueadas.size) console.log(`🔒 pestañas bajo tu control (no se tocan): ${[...bloqueadas].join(', ')}\n`)
+  } catch { /* sin base: se corre todo, la preservación celda a celda sigue activa */ }
+
+  const { pasoTotalmenteBloqueado } = await import('../lib/pestana-bloqueada.mjs').catch(() => ({ pasoTotalmenteBloqueado: () => false }))
+
+  for (const [script, que, pestañas = []] of PASOS) {
     const inicio = Date.now()
+    if (pasoTotalmenteBloqueado(pestañas, bloqueadas)) {
+      saltados.push({ script, pestañas })
+      console.log(`🔒 ${script.padEnd(26)} salteado — ${pestañas.join(', ')} bajo tu control`)
+      continue
+    }
     if (DRY) { console.log(`(dry) ${script.padEnd(26)} ${que}`); continue }
     try {
       // process.execPath, NO 'node': bajo systemd el PATH no incluye el node de nvm y los hijos
@@ -137,6 +157,7 @@ async function main() {
   await verificarPresentacion()
 
   console.log(`\n${ok.length}/${PASOS.length} pestañas rehechas en ${((Date.now() - t0) / 1000).toFixed(1)}s`)
+  if (saltados.length) console.log(`🔒 ${saltados.length} paso(s) salteado(s) por tu candado: ${saltados.map((s) => s.pestañas.join('/')).join(', ')}`)
   const conAlerta = ok.filter((r) => r.alerta)
   if (conAlerta.length) {
     console.log(`\n${conAlerta.length} con avisos (la pestaña se rehizo, pero algo no cierra):`)
