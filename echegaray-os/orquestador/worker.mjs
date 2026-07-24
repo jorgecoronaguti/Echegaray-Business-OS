@@ -15,14 +15,20 @@ import { ping, closePool } from './lib/db.mjs'
 import { esperarDb } from './lib/db-espera.mjs'
 import { resolveContext } from './lib/identity.mjs'
 import {
-  claimTask, heartbeat, transition, failTask, reapExpiredLeases, queueSnapshot,
+  claimTask, heartbeat, transition, failTask, parkTask, reapExpiredLeases, queueSnapshot,
 } from './lib/ledger.mjs'
 import { resolveHandler } from './handlers/index.mjs'
 import { capturePostMortem } from './lib/learning.mjs'
+import { cerebroDisponible } from './lib/estado-cerebro.mjs'
 
 const cfg = loadConfig()
 const log = createLogger({ component: 'worker', worker_id: cfg.WORKER_ID })
 const MODE = process.argv.includes('--health') ? 'health' : process.argv.includes('--once') ? 'once' : 'daemon'
+
+// Tareas que NECESITAN el razonador (Anthropic). Si el crédito se agota, se PARKEAN (no se matan):
+// se reanudan solas cuando vuelve el crédito. El resto (operation_execute, scheduled_directive,
+// noop…) no toca la API y corre siempre.
+const TIPOS_IA = new Set(['specialist', 'direction', 'direction_consolidate', 'plan', 'code_change'])
 
 let accepting = true
 const inFlight = new Map() // taskId -> promise
@@ -41,6 +47,13 @@ async function processTask(task) {
 
   const ctx = { logger: tlog, config: cfg, context: await resolveContext() }
   try {
+    // RAZONADOR SIN CRÉDITO: si esta tarea necesita la IA y el flag dice que no hay crédito, la
+    // PARKEAMOS antes de gastar un intento. Se reanuda sola cuando vuelve el crédito (no dead_letter).
+    if (TIPOS_IA.has(task.type) && !(await cerebroDisponible()).disponible) {
+      await parkTask(task.id, cfg.WORKER_ID, 'razonador sin crédito')
+      tlog.warn('tarea IA parkeada: razonador sin crédito; se reintentará cuando vuelva')
+      return
+    }
     await transition(task.id, cfg.WORKER_ID, 'running')
     const handler = resolveHandler(task.type)
     if (!handler) throw new Error(`sin handler para type='${task.type}'`)
@@ -55,6 +68,16 @@ async function processTask(task) {
     tlog.info('tarea completada')
   } catch (err) {
     if (lost) return
+    // Si el fallo fue porque el razonador se quedó SIN CRÉDITO a mitad de camino, no la matamos:
+    // la parkeamos para reintentar sola cuando vuelva. err.kind lo propaga el engine anthropic-api.
+    const sinCredito = err.kind === 'credit' || err.kind === 'auth' || /sin\s+cr[eé]dito/i.test(err.message || '')
+    if (sinCredito && TIPOS_IA.has(task.type)) {
+      try {
+        await parkTask(task.id, cfg.WORKER_ID, `razonador sin crédito: ${err.message}`.slice(0, 400))
+        tlog.warn('tarea IA parkeada tras fallo de crédito; se reintentará cuando vuelva')
+        return
+      } catch (e) { tlog.warn('no se pudo parkear; sigue el flujo de fallo normal', { error: e.message }) }
+    }
     const next = await failTask(task.id, cfg.WORKER_ID, err.message, cfg.BACKOFF_BASE_MS)
     tlog.error('tarea falló', { error: err.message, next_state: next })
     // Aprendizaje (Fase 4): sin más reintentos -> post-mortem con causa + recomendación.

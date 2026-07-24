@@ -31,6 +31,15 @@ export async function transition(taskId, workerId, toState, patch = {}) {
   return rows[0].state
 }
 
+/** Parkea una tarea IA (razonador sin crédito): la devuelve a 'retrying' con run_after futuro SIN
+ *  consumir intento. Se reanuda sola cuando vuelve el crédito, en vez de ir a dead_letter. */
+export async function parkTask(taskId, workerId, reason = 'razonador sin crédito', delaySeconds = 600) {
+  const { rows } = await query('select orq.park_task($1, $2, $3, $4) as state', [
+    taskId, workerId, String(reason).slice(0, 500), delaySeconds,
+  ])
+  return rows[0].state
+}
+
 /** Marca fallo: reintenta con backoff o va a dead_letter. */
 export async function failTask(taskId, workerId, error, backoffMs) {
   const { rows } = await query('select state from orq.fail_task($1, $2, $3, $4)', [
