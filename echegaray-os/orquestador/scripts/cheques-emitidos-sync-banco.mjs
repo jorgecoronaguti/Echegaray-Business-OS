@@ -32,6 +32,14 @@ const debitadoDe = (estado) => (estado === 'Pagado' ? 'SI' : estado === 'Aceptad
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
+  // EL CANDADO TAMBIÉN ACÁ (24/07). Sincroniza la columna DEBITADO de "Cheques Emitidos" por rango
+  // suelto (no pasa por escribirPreservando): en la corrida reactivada escribió sobre la pestaña
+  // aunque estaba candada. Si el dueño la tomó, no se le toca ninguna columna hasta que la devuelva.
+  const { estaBloqueada } = await import('../lib/pestana-bloqueada.mjs')
+  if (await estaBloqueada({}, ID, PESTANA).catch(() => false)) {
+    console.log(`🔒 "${PESTANA}" está bajo tu control (candado): no la toco.`)
+    return
+  }
   const banco = new Map(ECHEQS_EMITIDOS.map((e) => [norm(e.numero), e]))
 
   // El registro empieza después de la banda-resumen. Se ubica el encabezado por su rótulo "TIPO",

@@ -22,6 +22,13 @@ const COL_FECHA = 29 // 0-based → AD
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
+  // EL CANDADO TAMBIÉN ACÁ (24/07). Escribe columnas de "Compras" por rango suelto (no pasa por
+  // escribirPreservando). Compras es fuente y rara vez se canda, pero si el dueño la tomó, se respeta.
+  const { estaBloqueada } = await import('../lib/pestana-bloqueada.mjs')
+  if (await estaBloqueada({}, ID, 'Compras').catch(() => false)) {
+    console.log('🔒 "Compras" está bajo tu control (candado): no la toco.')
+    return
+  }
   const meta = await google.getSheetMeta(ID)
   const hoja = meta.find((s) => s.title === 'Compras')
   if (!hoja) throw new Error('no encontré la pestaña Compras')

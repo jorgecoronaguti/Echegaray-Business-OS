@@ -197,6 +197,15 @@ async function corregirRotuloTotal(google) {
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
+  // EL CANDADO TAMBIÉN ACÁ (24/07). Este control escribe en su zona propia de "Cobranzas", pero es un
+  // escritor por rango suelto (no pasa por escribirPreservando), así que el candado no lo cubría solo:
+  // en la corrida reactivada tocó Cobranzas aunque estaba bajo candado. Si el dueño tomó la pestaña, no
+  // se la toca —ni la zona de control— hasta que la devuelva.
+  const { estaBloqueada } = await import('../lib/pestana-bloqueada.mjs')
+  if (await estaBloqueada({}, ID, PESTAÑA).catch(() => false)) {
+    console.log(`🔒 "${PESTAÑA}" está bajo tu control (candado): no la toco.`)
+    return
+  }
   const b = bloque()
   console.log(`${PESTAÑA}: marca por fila en ${letra(C_FLAG)}, control en ${letra(C_CTRL)}1:${letra(C_CTRL + 2)}${b.length}`)
   if (DRY) { for (const f of b) console.log('  ', f[0], '|', String(f[1]).slice(0, 50)); return }

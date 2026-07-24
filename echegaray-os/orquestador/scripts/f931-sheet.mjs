@@ -127,7 +127,7 @@ async function main() {
     COLUMNAS.map(([n]) => n),
     ...filas,
   ]
-  const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, gridRaw, { anchoHoja: Math.max(COLUMNAS.length, hoja.cols ?? COLUMNAS.length) })
+  const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, gridRaw, { espejo: true /* _F931_RAW es un espejo de los PDF F931 del data room, no una pestaña que el dueño edite: sin candado ni firma, para que refresque siempre (misma razón que _J_*, _BANCO_RAW, _ARCA_RAW) */, anchoHoja: Math.max(COLUMNAS.length, hoja.cols ?? COLUMNAS.length) })
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
   const rg = (r0, r1, c0, c1) => ({ sheetId: hoja.sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
