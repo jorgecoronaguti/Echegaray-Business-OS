@@ -36,4 +36,24 @@ try {
   console.error('[arca-sync] ingest falló:', String(e?.stderr || e?.message).slice(0, 200))
   process.exit(1)
 }
+
+// FRESCURA DE "IVA 2026" DESDE AFIPSDK (24/07). El dueño: "si tenemos afipsdk usalo". La fuente
+// "IVA 2026 (Libro IVA Ventas mensual)" apunta a una carpeta de Drive con los libros en PDF, que
+// frena en Mayo. Pero AfipSDK ya trajo las VENTAS (libro E) hasta mediados de julio. Entonces la
+// cobertura honesta de los datos de ventas que el OS TIENE es la última emisión del libro E — no la
+// fecha del PDF viejo. Se registra por nombre; recalcular_frescura_fuentes decide el estado.
+try {
+  const { query, closePool } = await import('../../orquestador/lib/db.mjs')
+  const { registrarSincronizacion } = await import('../../orquestador/lib/registrar-sincronizacion.mjs')
+  const { rows } = await query("select max(fecha_emision) mx from public.comprobantes_arca where tipo_libro = 'E'")
+  const mx = rows?.[0]?.mx
+  if (mx) {
+    const iso = new Date(mx).toISOString().slice(0, 10)
+    const fr = await registrarSincronizacion({ query }, { nombre: 'IVA 2026 (Libro IVA Ventas mensual)', coberturaHasta: iso })
+    console.log(fr.ok ? `[arca-sync] frescura IVA 2026: ventas hasta ${iso} → ${fr.estado}` : `[arca-sync] frescura no registrada: ${fr.motivo}`)
+  }
+  await closePool()
+} catch (e) {
+  console.error('[arca-sync] frescura IVA no registrada:', String(e?.message ?? e).slice(0, 160))
+}
 console.log('[arca-sync] listo')
