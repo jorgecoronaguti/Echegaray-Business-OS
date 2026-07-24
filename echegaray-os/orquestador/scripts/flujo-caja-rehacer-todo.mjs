@@ -31,7 +31,7 @@
 
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { PASOS } from '../lib/flujo-caja-pasos.mjs'
+import { PASOS, esReporte } from '../lib/flujo-caja-pasos.mjs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -115,6 +115,7 @@ async function main() {
   const t0 = Date.now()
   const ok = []
   const fallaron = []
+  const reportes = []
   const saltados = []
 
   // ── EL CANDADO DEL DUEÑO, ANTES DE CORRER NADA (24/07) ──
@@ -176,7 +177,7 @@ async function main() {
       console.log(`✓ ${script.padEnd(26)} ${((Date.now() - inicio) / 1000).toFixed(1)}s  ${que}`)
       if (alerta) console.log(`   ⚠ ${alerta.slice(0, 220)}`)
     } catch (e) {
-      fallaron.push({ script, que, error: String(e.stderr || e.message).split('\n')[0].slice(0, 220) })
+      ;(esReporte(script) ? reportes : fallaron).push({ script, que, error: String(e.stderr || e.message).split('\n')[0].slice(0, 220) })
       console.error(`✗ ${script.padEnd(26)} ${que}\n   ${String(e.stderr || e.message).split('\n')[0].slice(0, 220)}`)
     }
   }
@@ -204,6 +205,7 @@ async function main() {
       : `\n· frescura no registrada: ${r.motivo}`)
   }
 
+  if (reportes.length) console.log(`${reportes.length} paso(s) de presentacion con defectos a la vista (datos OK, cosmetico/auditoria): ${reportes.map((r) => r.script).join(', ')}`)
   if (fallaron.length) {
     console.log(`\n${fallaron.length} FALLARON:`)
     for (const r of fallaron) console.log(`  · ${r.script}: ${r.error}`)

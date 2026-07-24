@@ -120,3 +120,21 @@ export const PASOS = [
   // autoridad (dueño / Director IA / CFO IA / interfaz). Barato y sin efectos: sólo lee y calcula.
   ['sync-plan-tesoreria.mjs', 'motor: recálculo del Plan de Tesorería → public.finanzas_plan_vigente (pendiente de ejecución, sin crear tareas)', []],
 ]
+
+// PASOS DE PRESENTACIÓN Y AUDITORÍA — su salida ≠0 es un DEFECTO A LA VISTA, no un fallo de datos.
+//
+// POR QUÉ (24/07). Estos pasos no generan datos: formatean, reparan la pantalla o AUDITAN. Un auditor
+// que encuentra defectos sale con código ≠0 —es su forma de avisar—, y un formateador puede terminar
+// con un residuo cosmético. El orquestador los contaba como "FALLARON", con dos consecuencias malas:
+// el servicio de systemd quedaba SIEMPRE en rojo aunque los datos estuvieran perfectos, y —peor— la
+// frescura del Cash Flow sólo se registra si `fallaron.length === 0`, así que NUNCA se registraba y la
+// planilla figuraba desactualizada aunque se reconstruye en cada corrida. Separar presentación de datos
+// arregla las dos: un fallo real (un generador que crashea) sigue siendo un fallo; un defecto de
+// pantalla o de auditoría es un REPORTE visible que no bloquea ni la frescura ni el estado del servicio.
+export const REPORTES = new Set([
+  'formato-pestanas.mjs', 'reparar-pantalla.mjs', 'censo-numeros-pegados.mjs',
+  'reparar-textos.mjs', 'formato-condicional.mjs', 'auditar-pantalla.mjs',
+])
+
+/** NÚCLEO PURO: ¿este paso es de presentación/auditoría (su ≠0 es un reporte, no un fallo de datos)? */
+export function esReporte(script) { return REPORTES.has(script) }
