@@ -495,6 +495,28 @@ async function main() {
     if (!vistas.has(p)) vistas.set(p, await google.readSheetValues(ID, `${p}!A1:BZ`).catch(() => []))
     return vistas.get(p)
   }
+
+  // ── AUTO-RESPETO: ¿reescribiste una de estas pestañas ENTERA? (24/07) ──
+  // Este generador escribe por rangos sueltos y no pasa por escribirPreservando, así que la detección
+  // va acá también: junto todos los rótulos que quiero escribir en cada pestaña y, si la gran mayoría
+  // ya no está en la pestaña (la reescribiste con otra estructura), la tomo como tuya: la auto-cando y
+  // saco sus rangos de `data` para no tocar ni una celda. Mismo criterio conservador que el portón.
+  try {
+    const { duenoReescribioLaPestana } = await import('../lib/respetar-ediciones.mjs')
+    const porPestana = new Map()
+    for (const d of data) { if (!porPestana.has(d.pestaña)) porPestana.set(d.pestaña, []); porPestana.get(d.pestaña).push(...d.values) }
+    for (const [pest, generado] of porPestana) {
+      const rew = duenoReescribioLaPestana(generado, await verPestana(pest))
+      if (rew.reescrita) {
+        const { bloquear } = await import('../lib/pestana-bloqueada.mjs')
+        await bloquear({}, ID, pest, { motivo: `auto: detecté que la reescribiste (${rew.motivo})`, por: 'auto' })
+        console.log(`  🔒 detecté que reescribiste "${pest}" (${rew.motivo}): la tomo como tuya, no la toco.`)
+        for (let i = data.length - 1; i >= 0; i--) if (data[i].pestaña === pest) data.splice(i, 1)
+      }
+    }
+    if (!data.length) { console.log('Reescribiste ambas pestañas: no hay nada que rehacer.'); return }
+  } catch { /* sin base no se puede consultar; sigue la Regla 0 celda a celda */ }
+
   for (const d of data) {
     // El TEXTO QUE SE VE, no la fórmula: ver lib/preservar-anotaciones.mjs.
     const actual = await verPestana(d.pestaña)

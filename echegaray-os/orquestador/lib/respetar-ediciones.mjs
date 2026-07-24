@@ -414,3 +414,41 @@ export async function conEdicionesRespetadas(fileId, pestana, generado, actual) 
   // estaban pendientes y —si siguen ausentes— los confirmará.
   return { ...r, ediciones, candidatos: nuevosCandidatos }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// AUTO-DETECCIÓN DE "EL DUEÑO REESCRIBIÓ LA PESTAÑA ENTERA" (24/07)
+//
+// El dueño: "no quiero un fix que me bloquee agentes, quiero un fix en los agentes que respeten mis
+// modificaciones". La Regla 0 respeta ediciones rótulo por rótulo, pero NO ve el caso en que él
+// reescribe la pestaña COMPLETA con otra estructura (como Cash Flow Semanal → flujo indirecto, más
+// corto). Ahí desaparecen la mayoría de los rótulos del generador. Esta señal, agregada, detecta ese
+// caso — sin que el dueño tenga que candar nada.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * NÚCLEO PURO: ¿el dueño reescribió la pestaña ENTERA con otra estructura? Señal: de los rótulos que
+ * el generador quiere escribir (sus anclas), la GRAN MAYORÍA ya no está en la pestaña. Conservador a
+ * propósito, para no auto-candar de más: exige suficientes anclas y una pestaña con contenido real
+ * (una lectura vacía/parcial transitoria NO cuenta como reescritura).
+ *
+ * @param {any[][]} generado lo que el generador quiere escribir
+ * @param {any[][]} actual   lo que HAY hoy en la pestaña (texto visible)
+ */
+export function duenoReescribioLaPestana(generado = [], actual = [], { umbralPresencia = 0.35, minAnclas = 8 } = {}) {
+  const quiere = new Set()
+  for (const f of generado || []) for (const c of f || []) { const t = sinApostrofo(clave(c)); if (t) quiere.add(t) }
+  if (quiere.size < minAnclas) return { reescrita: false, fraccion: 1, motivo: 'pocas anclas para juzgar' }
+  const presentes = new Set()
+  for (const f of actual || []) for (const c of f || []) { const t = sinApostrofo(clave(c)); if (t) presentes.add(t) }
+  // Una pestaña casi vacía NO es una reescritura: es una lectura transitoria fallida o una pestaña
+  // nueva que el generador debe llenar. No auto-candar por eso.
+  if (presentes.size < Math.max(3, Math.floor(minAnclas * 0.4))) return { reescrita: false, fraccion: 0, motivo: 'pestaña vacía o lectura parcial' }
+  let hay = 0
+  for (const q of quiere) if (presentes.has(q)) hay++
+  const fraccion = hay / quiere.size
+  const reescrita = fraccion < umbralPresencia
+  return {
+    reescrita, fraccion: Math.round(fraccion * 100) / 100, anclas: quiere.size, presentes: hay,
+    motivo: reescrita ? `sólo ${hay} de ${quiere.size} de mis rótulos siguen en la pestaña` : `${hay} de ${quiere.size} de mis rótulos siguen`,
+  }
+}
