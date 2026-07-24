@@ -54,6 +54,7 @@ import { obraTools } from './lib/tools/obra.mjs'
 import { workspaceTools } from './lib/tools/workspace.mjs'
 import { proposeSkillImprovement } from './lib/skill-proposals.mjs'
 import { briefingEjecutivo } from './lib/briefing.mjs'
+import { cerebroDisponible } from './lib/estado-cerebro.mjs'
 import { recallResumen } from './lib/memory.mjs'
 import { priorizarCajaResumen, proyeccionCajaResumen } from './lib/caja-alertas.mjs'
 import { registerChatGap, registerRespuestaFallida } from './lib/emergence.mjs'
@@ -611,6 +612,15 @@ async function ask({ directive, fileId, fast, attachments, attachment, history, 
           : budgetingKw ? 'presupuesto' : asesoriaProfunda ? 'criterio' : mailComposeIntent ? 'mail'
             : teachingIntent ? 'ensenar' : researchLearnIntent ? 'investigar' : scheduleCreateIntent ? 'agenda'
               : fast === false ? 'fast_off' : 'otro'
+  // DEGRADACIÓN CON GRACIA (24/07): si el razonador está SIN CRÉDITO, no tiramos un error — llegamos
+  // acá sólo cuando el pedido necesita el LLM (las capacidades 0-API ya respondieron antes). Le damos
+  // lo mejor que se puede calcular solo (el briefing ejecutivo determinístico) con un aviso claro. El
+  // OS sigue operando; el razonamiento libre vuelve solo cuando vuelve el crédito. Ver estado-cerebro.
+  if (!(await cerebroDisponible()).disponible) {
+    const brief = await briefingEjecutivo().catch(() => '')
+    const aviso = '⚠️ **El razonador está sin crédito ahora**, así que no puedo redactar/analizar libremente en este momento. Te dejo lo que el OS calcula solo — la caja, los vencimientos y lo que detectó — y el razonamiento vuelve apenas se reponga el crédito.'
+    return { answer: brief ? `${aviso}\n\n---\n\n${brief}` : aviso, model: 'sin-credito', capability: 'general', skills: [], navigate: null }
+  }
   const engine = resolveEngine('anthropic-api')
 
   // Fase 3: rutear al especialista correcto. Clasificamos la directiva a un dominio

@@ -18,6 +18,7 @@
 // ledger o va a dead-letter con post-mortem.
 import Anthropic from '@anthropic-ai/sdk'
 import { createBreaker, createSemaphore, BreakerOpenError } from '../lib/breaker.mjs'
+import { marcarSinCredito, marcarCerebroOk } from '../lib/estado-cerebro.mjs'
 
 /** Falta la credencial. Tipado para fallar claro y NO reintentar en vano. */
 export class MissingSecretError extends Error {
@@ -94,9 +95,14 @@ export function totalCostUsd(usages, modelId) {
   return known ? Math.round(usd * 1e6) / 1e6 : null
 }
 
-/** Clasifica un error del SDK por status HTTP. `hard` = credencial (no reintentar). */
+/** Clasifica un error del SDK por status HTTP. `hard` = credencial (no reintentar).
+ *  `kind:'credit'` = la cuenta se quedó SIN CRÉDITO/saldo: no reintentar y el OS degrada a
+ *  determinístico (estado-cerebro.mjs). Anthropic lo devuelve como 402, o 400 con mensaje de saldo. */
 export function classifyError(err) {
   const status = err?.status ?? err?.statusCode ?? null
+  const msg = String(err?.message ?? err?.error?.message ?? '').toLowerCase()
+  const esSaldo = /credit balance|insufficient|billing|quota|out of credit|payment/.test(msg)
+  if (status === 402 || (status === 400 && esSaldo)) return { kind: 'credit', hard: true, status }
   if (status === 401) return { kind: 'auth', hard: true, status }
   if (status === 403) return { kind: 'permission', hard: true, status }
   if (status === 429) return { kind: 'rate_limit', hard: false, status }
@@ -194,6 +200,9 @@ export function makeAnthropicEngine({ config, client, breaker, semaphore }) {
         } catch (err) {
           const c = classifyError(err)
           brk.onFailure({ hard: c.hard })
+          // SIN CRÉDITO / credencial inválida: prender el flag para que TODO el OS degrade a
+          // determinístico (fire-and-forget; no bloquea ni cambia el flujo de error).
+          if (c.kind === 'credit' || c.kind === 'auth') marcarSinCredito(`${c.kind} ${c.status ?? ''}`).catch(() => {})
           // El mensaje del SDK no contiene la key; igual acotamos por prudencia.
           const detail = String(err?.message ?? err).slice(0, 300)
           const wrapped = new Error(`anthropic-api: ${c.kind}${c.status ? ` (${c.status})` : ''}: ${detail}`)
@@ -205,6 +214,9 @@ export function makeAnthropicEngine({ config, client, breaker, semaphore }) {
           throw wrapped
         }
         brk.onSuccess()
+        // El razonador respondió: si venía marcado sin crédito, lo vuelve a OK (transición; en el
+        // camino feliz es un no-op sin costo de base).
+        marcarCerebroOk().catch(() => {})
         return response
       }
 
