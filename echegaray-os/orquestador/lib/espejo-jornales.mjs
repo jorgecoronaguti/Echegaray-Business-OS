@@ -87,8 +87,11 @@ export async function refrescarEspejo(google, { destino = DESTINO, origen = ORIG
     const ancho = Math.max(...filas.map((f) => f.length))
     const norm = filas.map((f) => { const r = f.slice(); while (r.length < ancho) r.push(''); return r })
     // El espejo se FUSIONA, no se limpia: si alguien anotó algo en la pestaña destino, no se borra.
+    // ESPEJO:TRUE — los _J_* son copias byte a byte de JORNALES, no pestañas que el dueño edite. Sin
+    // esto, la firma auto-candaba _J_OBREROS y el espejo dejaba de refrescar (verify $4,78M desfasado);
+    // el candado y la firma son para el contenido del dueño, no para un mirror de una fuente externa.
     for (let i = 0; i < norm.length; i += 200) {
-      await escribirPreservando(google, destino, m.tab, norm.slice(i, i + 200), { fila0: i + 1 })
+      await escribirPreservando(google, destino, m.tab, norm.slice(i, i + 200), { fila0: i + 1, espejo: true })
     }
     // VERIFICAR, no confiar. Se relee el DESTINO —no la matriz que acabamos de mandar— porque lo
     // que importa es qué quedó escrito, no qué quisimos escribir. Una copia que se cree hecha y no
