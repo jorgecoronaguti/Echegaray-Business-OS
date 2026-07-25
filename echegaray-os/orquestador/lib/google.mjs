@@ -131,6 +131,19 @@ export function normalizarDestinatarios(raw) {
  * @param {string}  [deps.impersonate] cuenta @ecsas a impersonar (domain-wide delegation)
  */
 export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes, getToken } = {}) {
+  // POR DEFECTO EL OS ACTÚA COMO EL DUEÑO (25/07). Si no se pasa getToken/auth explícito y hay un token
+  // OAuth guardado para ORQ_GOOGLE_IMPERSONATE (jorge@ecsas.com.ar), el cliente usa ESE token: así
+  // crea/copia archivos en SU Drive con SU cuota, en vez de la cuenta de servicio —que no tiene storage
+  // y tiraba 403 "quota exceeded" al crear cualquier archivo—. Es OAuth real (no delegación de dominio,
+  // que sigue sin habilitarse), verificado: lee y CREA como el dueño. Si no hay token, cae al Service
+  // Account (que igual escribe el Sheet compartido). getToken/auth explícitos siguen mandando.
+  if (!getToken && !auth) {
+    const dueno = process.env.ORQ_GOOGLE_IMPERSONATE
+    if (dueno) getToken = async () => {
+      try { const { getTokenFor } = await import('./google-oauth.mjs'); return await getTokenFor(dueno)() }
+      catch { return null }
+    }
+  }
   const rawFetch = fetchImpl || globalThis.fetch
   // Toda llamada a Google se acota en el tiempo (AbortController): una llamada colgada (red,
   // API que no responde) falla RÁPIDO y claro en vez de colgar la tarea entera del dueño.
