@@ -62,15 +62,23 @@ const tokRes = await fetch('https://oauth2.googleapis.com/token', {
 })
 const { access_token } = await tokRes.json()
 
-const rangos = ['02_Cobranzas!A5:Q200', 'Compras!A5:Y940', 'Cheques!A2:L997', "'Tarjeta de Credito'!A3:K200", 'Caja!I7', 'RESUMEN!A1:F15']
+// Rangos alineados a la estructura REAL del Sheet (25/07). El rediseño de las pestañas del Flujo de
+// Caja renombró/partió varias: 02_Cobranzas→Cobranzas, Cheques→Cheques Emitidos/Recibidos, Caja→CAJA,
+// y RESUMEN dejó de existir. Un solo rango a una pestaña inexistente tira 400 en TODO el batchGet y la
+// web se queda sin calendario — por eso este script quedó fallando. El saldo de arranque ahora sale de
+// CAJA!A5 (DISPONIBILIDADES). Cheques Emitidos tiene banda-resumen arriba: se lee desde A1 y el filtro
+// por tipo (ECHEQ/CHEQUE) del loop saltea el encabezado.
+const rangos = ['Cobranzas!A5:Q200', 'Compras!A5:Y940', 'Cheques Emitidos!A1:N997', "'Tarjeta de Credito'!A3:K200", 'CAJA!A5']
 const params = rangos.map((r) => `ranges=${encodeURIComponent(r)}`).join('&')
 const res = await fetch(
   `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values:batchGet?${params}&valueRenderOption=UNFORMATTED_VALUE`,
   { headers: { Authorization: `Bearer ${access_token}` } },
 )
-if (!res.ok) throw new Error(`sheets: ${res.status}`)
+// El cuerpo del 400 nombra el rango culpable ("Unable to parse range: …"): incluirlo hace que la
+// próxima vez que una pestaña se renombre, el error diga cuál, en vez de un "sheets: 400" mudo.
+if (!res.ok) throw new Error(`sheets: ${res.status} — ${(await res.text()).slice(0, 300)}`)
 const data = await res.json()
-const [cobranzas, compras, cheques, tarjeta, caja, resumen] = data.valueRanges.map((v) => v.values ?? [])
+const [cobranzas, compras, cheques, tarjeta, caja] = data.valueRanges.map((v) => v.values ?? [])
 
 const texto = (r, i) => String((r.length > i ? r[i] : null) ?? '').trim()
 const numero = (r, i) => (typeof r[i] === 'number' ? r[i] : null)
@@ -92,7 +100,10 @@ for (const r of cobranzas) {
 }
 const MEDIOS_APARTE = new Set(['cheque', 'echeq', 'tarjeta crédito'])
 for (const r of compras) {
-  const estado = texto(r, 24)
+  // Estado vive en X(23). Antes se leía col 24, pero se insertó una columna y Y(24) hoy es
+  // "Tipo de Costo" (Directo/Indirecto): leer 24 hacía que el filtro NUNCA diera true y Compras
+  // aportara CERO pagos al calendario, incluso con el 400 ya resuelto.
+  const estado = texto(r, 23)
   if (estado !== 'Pendiente' && estado !== 'Proyectado') continue
   if (MEDIOS_APARTE.has(texto(r, 15).toLowerCase())) continue
   const fecha = numero(r, 16)
@@ -109,7 +120,9 @@ for (const r of compras) {
   })
 }
 for (const r of cheques) {
-  if (texto(r, 10).toUpperCase() === 'SI') continue
+  const tipo = texto(r, 0).toUpperCase()
+  if (tipo !== 'ECHEQ' && tipo !== 'CHEQUE') continue // saltea la banda-resumen y el encabezado
+  if (texto(r, 10).toUpperCase() === 'SI') continue // K = DEBITADO: ya salió de la cuenta
   const fecha = numero(r, 8)
   const monto = numero(r, 5)
   if (fecha === null || !monto) continue
@@ -138,19 +151,11 @@ for (const r of tarjeta) {
 const hoyIso = new Date().toISOString().slice(0, 10)
 const vencidos = movimientos.filter((m) => m.fecha < hoyIso).sort((a, b) => a.fecha.localeCompare(b.fecha))
 const futuros = movimientos.filter((m) => m.fecha >= hoyIso).sort((a, b) => a.fecha.localeCompare(b.fecha))
-// Saldo = "SALDO TOTAL DISPONIBLE" del RESUMEN (banco + efectivo), congruente con
-// la pestaña. Fallback a Caja!I7 (solo banco) si no se encuentra.
-const cajaBanco = caja.length && typeof caja[0][0] === 'number' ? caja[0][0] : null
-const saldoTotalResumen = (() => {
-  for (const r of resumen) {
-    if (String((r.length > 0 ? r[0] : null) ?? '').toUpperCase().includes('SALDO TOTAL DISPONIBLE')) {
-      const n = r.find((c, i) => i > 0 && typeof c === 'number')
-      if (typeof n === 'number') return n
-    }
-  }
-  return cajaBanco
-})()
-const saldoHoy = saldoTotalResumen
+// Saldo de arranque = DISPONIBILIDADES de la pestaña CAJA (CAJA!A5): bancos + caja + valores, BRUTO
+// (antes de restar los cheques emitidos). Es el mismo número que "Plata disponible hoy". A partir de
+// acá el calendario resta día a día los cheques/pagos futuros — por eso el arranque debe ser el bruto
+// y no la LIQUIDEZ NETA (que ya descuenta los cheques emitidos), o se contarían dos veces.
+const saldoHoy = caja.length && typeof caja[0][0] === 'number' ? caja[0][0] : null
 
 const porDia = new Map()
 for (const m of futuros) {

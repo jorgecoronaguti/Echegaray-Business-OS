@@ -76,18 +76,6 @@ function serialAIso(serial: number): string {
   return new Date(Math.round((serial - 25569) * 86400 * 1000)).toISOString().slice(0, 10)
 }
 
-// Ubica "SALDO TOTAL DISPONIBLE" en el RESUMEN y devuelve su valor numérico (el
-// primero de la fila). Fallback al saldo de banco si no lo encuentra.
-function saldoTotalDeResumen(resumen: Fila[], fallback: number | null): number | null {
-  for (const r of resumen) {
-    if (String(celda(r, 0) ?? '').toUpperCase().includes('SALDO TOTAL DISPONIBLE')) {
-      const n = r.find((c, i) => i > 0 && typeof c === 'number')
-      if (typeof n === 'number') return n
-    }
-  }
-  return fallback
-}
-
 export async function leerCalendario(): Promise<Calendario | { error: string }> {
   const saJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
   if (!saJson) {
@@ -100,15 +88,19 @@ export async function leerCalendario(): Promise<Calendario | { error: string }> 
   }
   try {
     const token = await getAccessToken(saJson)
-    const rangos = ['02_Cobranzas!A5:Q200', 'Compras!A5:Y940', 'Cheques!A2:L997', "'Tarjeta de Credito'!A3:K200", 'Caja!I7', 'RESUMEN!A1:F15']
+    // Rangos alineados a la estructura REAL del Sheet (25/07): el rediseño de las pestañas renombró/
+    // partió varias (02_Cobranzas→Cobranzas, Cheques→Cheques Emitidos, Caja→CAJA, RESUMEN eliminada).
+    // Un rango a una pestaña inexistente tira 400 en TODO el batchGet. Gemelo de scripts/sync-calendario.mjs.
+    const rangos = ['Cobranzas!A5:Q200', 'Compras!A5:Y940', 'Cheques Emitidos!A1:N997', "'Tarjeta de Credito'!A3:K200", 'CAJA!A5']
     const params = rangos.map((r) => `ranges=${encodeURIComponent(r)}`).join('&')
     const res = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values:batchGet?${params}&valueRenderOption=UNFORMATTED_VALUE`,
       { headers: { Authorization: `Bearer ${token}` }, next: { revalidate: 60 } },
     )
-    if (!res.ok) throw new Error(`sheets: ${res.status}`)
+    // El cuerpo del 400 nombra el rango culpable: incluirlo evita un "sheets: 400" mudo si una pestaña se renombra.
+    if (!res.ok) throw new Error(`sheets: ${res.status} — ${(await res.text()).slice(0, 300)}`)
     const data = (await res.json()) as { valueRanges: { values?: Fila[] }[] }
-    const [cobranzas, compras, cheques, tarjeta, caja, resumen] = data.valueRanges.map((v) => v.values ?? [])
+    const [cobranzas, compras, cheques, tarjeta, caja] = data.valueRanges.map((v) => v.values ?? [])
 
     const movimientos: Movimiento[] = []
 
@@ -127,11 +119,13 @@ export async function leerCalendario(): Promise<Calendario | { error: string }> 
       })
     }
 
-    // Pagos: Estado(Y=24) Pendiente/Proyectado, fecha pago(Q=16), Total(O=14),
-    // excluyendo medios que debitan por su propia pestaña (Tipo pago P=15)
+    // Pagos: Estado(X=23) Pendiente/Proyectado, fecha pago(Q=16), Total(O=14),
+    // excluyendo medios que debitan por su propia pestaña (Tipo pago P=15).
+    // Estado pasó de col 24 a 23 (se insertó una columna; Y=24 hoy es "Tipo de Costo"): leer 24
+    // hacía que el filtro nunca diera true y Compras aportara CERO pagos al calendario.
     const MEDIOS_APARTE = new Set(['cheque', 'echeq', 'tarjeta crédito'])
     for (const r of compras) {
-      const estado = texto(r, 24)
+      const estado = texto(r, 23)
       if (estado !== 'Pendiente' && estado !== 'Proyectado') continue
       if (MEDIOS_APARTE.has(texto(r, 15).toLowerCase())) continue
       const fecha = numero(r, 16)
@@ -148,8 +142,11 @@ export async function leerCalendario(): Promise<Calendario | { error: string }> 
       })
     }
 
-    // Cheques no debitados: DEBITADO(K=10) != SI, fecha de pago(I=8), monto(F=5)
+    // Cheques no debitados: Tipo(A=0) ECHEQ/CHEQUE (saltea banda-resumen/encabezado),
+    // DEBITADO(K=10) != SI, fecha de pago(I=8), monto(F=5)
     for (const r of cheques) {
+      const tipoCheque = texto(r, 0).toUpperCase()
+      if (tipoCheque !== 'ECHEQ' && tipoCheque !== 'CHEQUE') continue
       if (texto(r, 10).toUpperCase() === 'SI') continue
       const fecha = numero(r, 8)
       const monto = numero(r, 5)
@@ -182,11 +179,11 @@ export async function leerCalendario(): Promise<Calendario | { error: string }> 
     const vencidos = movimientos.filter((m) => m.fecha < hoyIso).sort((a, b) => a.fecha.localeCompare(b.fecha))
     const futuros = movimientos.filter((m) => m.fecha >= hoyIso).sort((a, b) => a.fecha.localeCompare(b.fecha))
 
-    // Saldo = "SALDO TOTAL DISPONIBLE" del RESUMEN (banco + efectivo), la MISMA
-    // cifra que ve el usuario en la pestaña. Antes se usaba Caja!I7 (solo banco),
-    // que omitía el efectivo y generaba incongruencia con el RESUMEN.
-    const cajaBanco = caja.length && typeof caja[0][0] === 'number' ? caja[0][0] : null
-    const saldoHoy = saldoTotalDeResumen(resumen, cajaBanco)
+    // Saldo de arranque = DISPONIBILIDADES de la pestaña CAJA (CAJA!A5): bancos + caja + valores,
+    // BRUTO (antes de restar cheques emitidos), la MISMA cifra de "Plata disponible hoy". El
+    // calendario resta día a día los cheques/pagos futuros, así que el arranque debe ser el bruto
+    // y no la LIQUIDEZ NETA (que ya descuenta los cheques emitidos), o se contarían dos veces.
+    const saldoHoy = caja.length && typeof caja[0][0] === 'number' ? caja[0][0] : null
 
     const porDia = new Map<string, Movimiento[]>()
     for (const m of futuros) {
