@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { nombreTab, esProtegible, tabsProtegibles, separarPermitido } from './guarda-escritura.mjs'
+import { nombreTab, esProtegible, tabsProtegibles, separarPermitido, sheetIdDeRequestContenido, separarRequests } from './guarda-escritura.mjs'
 
 test('nombreTab: saca la pestaña de un rango A1', () => {
   assert.equal(nombreTab('Compras!A1:B2'), 'Compras')
@@ -55,4 +55,38 @@ test('separarPermitido: sin bloqueadas, pasa todo tal cual', () => {
   const { permitido, bloqueado } = separarPermitido(data, new Set())
   assert.equal(permitido.length, 2)
   assert.equal(bloqueado.length, 0)
+})
+
+test('sheetIdDeRequestContenido: sólo los requests que escriben VALORES cuentan', () => {
+  // updateCells con userEnteredValue → contenido
+  assert.equal(sheetIdDeRequestContenido({ updateCells: { range: { sheetId: 7 }, fields: 'userEnteredValue,userEnteredFormat' } }), 7)
+  // updateCells sólo formato o sólo nota → NO es contenido
+  assert.equal(sheetIdDeRequestContenido({ updateCells: { range: { sheetId: 7 }, fields: 'userEnteredFormat.textFormat' } }), null)
+  assert.equal(sheetIdDeRequestContenido({ updateCells: { range: { sheetId: 7 }, fields: 'note' } }), null)
+  // updateCells con start (no range) igual cuenta
+  assert.equal(sheetIdDeRequestContenido({ updateCells: { start: { sheetId: 9 }, fields: 'userEnteredValue' } }), 9)
+  // copyPaste de fórmula/valor → contenido; de formato → no
+  assert.equal(sheetIdDeRequestContenido({ copyPaste: { destination: { sheetId: 3 }, pasteType: 'PASTE_FORMULA' } }), 3)
+  assert.equal(sheetIdDeRequestContenido({ copyPaste: { destination: { sheetId: 3 }, pasteType: 'PASTE_FORMAT' } }), null)
+  // pasteData / appendCells → contenido
+  assert.equal(sheetIdDeRequestContenido({ pasteData: { coordinate: { sheetId: 4 } } }), 4)
+  assert.equal(sheetIdDeRequestContenido({ appendCells: { sheetId: 5 } }), 5)
+  // formato/estructura puros → null (nunca se bloquean)
+  assert.equal(sheetIdDeRequestContenido({ repeatCell: { range: { sheetId: 1 } } }), null)
+  assert.equal(sheetIdDeRequestContenido({ mergeCells: { range: { sheetId: 1 } } }), null)
+  assert.equal(sheetIdDeRequestContenido({ deleteDimension: { range: { sheetId: 1 } } }), null)
+  assert.equal(sheetIdDeRequestContenido({ updateSheetProperties: { properties: { sheetId: 1 } } }), null)
+  assert.equal(sheetIdDeRequestContenido(null), null)
+})
+
+test('separarRequests: descarta sólo los requests de contenido a sheetIds bloqueados, deja el formato', () => {
+  const reqs = [
+    { updateCells: { range: { sheetId: 7 }, fields: 'userEnteredValue' } }, // contenido a 7 (bloqueado)
+    { repeatCell: { range: { sheetId: 7 } } },                              // formato a 7 → pasa
+    { updateCells: { range: { sheetId: 8 }, fields: 'userEnteredValue' } }, // contenido a 8 (libre) → pasa
+  ]
+  const { permitidos, bloqueados } = separarRequests(reqs, new Set([7]))
+  assert.equal(permitidos.length, 2)
+  assert.equal(bloqueados.length, 1)
+  assert.ok(bloqueados[0].updateCells.range.sheetId === 7)
 })

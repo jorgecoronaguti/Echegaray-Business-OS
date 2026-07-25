@@ -134,7 +134,9 @@ export function sheetRenderTools(google) {
           }
         })
         // 3) ESCRIBIR el contenido (valores+formato) — atómico y OBLIGATORIO.
-        await google.spreadsheetBatchUpdate(input.file_id, requests)
+        // yaGuardado: drive_render_tabla es una tool que el dueño APRUEBA (renderiza una pestaña que él
+        // pidió). No la bloquea la guarda central — bloquear un render que aprobó sería el error opuesto.
+        await google.spreadsheetBatchUpdate(input.file_id, requests, { yaGuardado: true })
         // 3b) aplicar las combinaciones de títulos — best-effort (una tabla dinámica no las deja).
         let mergeNota = ''
         if (mergeReqs.length) {

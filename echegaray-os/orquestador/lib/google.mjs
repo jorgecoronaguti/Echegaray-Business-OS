@@ -919,13 +919,26 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     },
     /** Agrega filas al final de la tabla que arranca en `range` (INSERT_ROWS: no pisa
      *  lo que haya debajo). Devuelve el rango efectivamente escrito. */
-    async appendSheetValues(fileId, range, values) {
+    async appendSheetValues(fileId, range, values, { espejo = false, yaGuardado = false } = {}) {
+      // Guarda central: aunque append no PISA (inserta filas), respeta un candado — si tomaste la
+      // pestaña, no le agrego filas hasta que la devuelvas.
+      let sellar = async () => {}
+      if (!espejo && !yaGuardado) {
+        try {
+          const { guardarEscritura } = await import('./guarda-escritura.mjs')
+          const g = await guardarEscritura(cliente, fileId, [{ range, values }])
+          if (!g.data.length) return { protegido: true, bloqueadas: g.bloqueadas }
+          sellar = g.sellar
+        } catch { /* fail-open */ }
+      }
       values = await localizeValues(fileId, values)
-      return apiSend(
+      const res = await apiSend(
         `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
         'POST',
         { range, majorDimension: 'ROWS', values },
       )
+      await sellar()
+      return res
     },
     /** Crea un archivo propio del OS (Doc/Sheet nativo o carpeta) vía Drive metadata.
      *  Con `parents` lo ubica en una carpeta. Devuelve {id,name,mimeType,webViewLink}. */
@@ -997,7 +1010,16 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       return res
     },
     /** Limpia (vacía) el contenido de un rango sin borrar formato. */
-    async clearValues(fileId, range) {
+    async clearValues(fileId, range, { espejo = false, yaGuardado = false } = {}) {
+      // Guarda central: clearValues BORRA. No vaciar una pestaña candada ni una que editaste — sería la
+      // forma más directa del bug. Bypass explícito para la tool drive.clear (el dueño la aprueba).
+      if (!espejo && !yaGuardado) {
+        try {
+          const { guardarEscritura } = await import('./guarda-escritura.mjs')
+          const g = await guardarEscritura(cliente, fileId, [{ range, values: [] }])
+          if (!g.data.length) return { protegido: true, bloqueadas: g.bloqueadas }
+        } catch { /* fail-open */ }
+      }
       return apiSend(
         `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values/${encodeURIComponent(range)}:clear`,
         'POST',
@@ -1098,12 +1120,28 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     },
     /** Operaciones ESTRUCTURALES de un Sheet (insertar/borrar filas o columnas, formato)
      *  vía batchUpdate. `requests` = array de requests de la Sheets API. */
-    async spreadsheetBatchUpdate(fileId, requests) {
-      return apiSend(
+    async spreadsheetBatchUpdate(fileId, requests, { espejo = false, yaGuardado = false } = {}) {
+      // Guarda central para el batch estructural: descarta SÓLO los requests que escriben CONTENIDO
+      // (updateCells con valor, copyPaste/pasteData/appendCells) sobre pestañas candadas/editadas; el
+      // formato y la estructura pasan siempre. Un batch puramente de formato no paga nada (sin sheetIds
+      // de contenido, la guarda es no-op). Ver guarda-escritura.mjs.
+      let sellar = async () => {}
+      if (!espejo && !yaGuardado) {
+        try {
+          const { guardarRequests } = await import('./guarda-escritura.mjs')
+          const g = await guardarRequests(cliente, fileId, requests)
+          if (!g.requests.length) return { protegido: true, bloqueadas: g.bloqueadas }
+          requests = g.requests
+          sellar = g.sellar
+        } catch { /* fail-open */ }
+      }
+      const res = await apiSend(
         `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}:batchUpdate`,
         'POST',
         { requests },
       )
+      await sellar()
+      return res
     },
     /** Copia/duplica un archivo (para partir de una plantilla o de un presupuesto previo). */
     async copyFile(fileId, name, parents) {

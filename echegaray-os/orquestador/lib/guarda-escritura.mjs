@@ -111,3 +111,62 @@ export async function guardarEscritura(cliente, fileId, data) {
   const escritos = tabsProtegibles(permitido)
   return { data: permitido, bloqueadas: [...bloqueadas], sellar: () => sellarTabs(cliente, fileId, escritos) }
 }
+
+// ═══ EL MISMO CANDADO, PARA spreadsheetBatchUpdate (updateCells/copyPaste/pasteData/appendCells) ═══
+//
+// spreadsheetBatchUpdate mezcla FORMATO/estructura (que no pisa datos de nadie) con requests que SÍ
+// escriben CONTENIDO. Sólo esos últimos pueden pisar lo que editaste. Se los identifica por tipo y se
+// saca su sheetId; el resto (colores, anchos, merges, dimensiones) pasa siempre — nunca se bloquea un
+// formateo, sólo una escritura de contenido a una pestaña que tomaste.
+
+/** sheetId del request SI escribe CONTENIDO (no formato). null si es formato/estructura puro. Puro. */
+export function sheetIdDeRequestContenido(req) {
+  if (!req || typeof req !== 'object') return null
+  if (req.updateCells) {
+    const f = String(req.updateCells.fields ?? '')
+    // Escribe valores sólo si toca userEnteredValue (o todo con '*'). Formato o nota puros no pisan datos.
+    if (f === '*' || /userEnteredValue/.test(f)) return req.updateCells.range?.sheetId ?? req.updateCells.start?.sheetId ?? null
+    return null
+  }
+  if (req.copyPaste) {
+    const pt = String(req.copyPaste.pasteType ?? 'PASTE_NORMAL')
+    // Pegar SÓLO formato/validación/condicional no pisa el valor de una celda.
+    if (/^PASTE_(FORMAT|DATA_VALIDATION|CONDITIONAL_FORMATTING)$/.test(pt)) return null
+    return req.copyPaste.destination?.sheetId ?? null
+  }
+  if (req.pasteData) return req.pasteData.coordinate?.sheetId ?? null
+  if (req.appendCells) return req.appendCells.sheetId ?? null
+  if (req.cutPaste) return req.cutPaste.destination?.sheetId ?? null
+  return null
+}
+
+/** Parte los requests en permitidos y bloqueados según los sheetId protegidos. Puro. */
+export function separarRequests(requests = [], sheetIdsBloqueados = new Set()) {
+  const permitidos = []; const bloqueados = []
+  for (const r of requests) {
+    const sid = sheetIdDeRequestContenido(r)
+    ;(sid != null && sheetIdsBloqueados.has(sid) ? bloqueados : permitidos).push(r)
+  }
+  return { permitidos, bloqueados }
+}
+
+/**
+ * Guarda para spreadsheetBatchUpdate: descarta los requests que escriben contenido sobre pestañas
+ * candadas/editadas, deja pasar formato y estructura. Necesita mapear sheetId→pestaña (getSheetMeta).
+ * @returns {Promise<{requests:any[], bloqueadas:string[], sellar:() => Promise<void>}>}
+ */
+export async function guardarRequests(cliente, fileId, requests) {
+  const sids = [...new Set((requests || []).map(sheetIdDeRequestContenido).filter((s) => s != null))]
+  if (!sids.length) return { requests, bloqueadas: [], sellar: async () => {} }
+  const meta = await cliente.getSheetMeta(fileId)
+  const id2tab = new Map(meta.map((m) => [m.sheetId, m.title]))
+  const tabsContenido = sids.map((s) => id2tab.get(s)).filter(esProtegible)
+  const bloqTabs = await evaluarBloqueadas(cliente, fileId, tabsContenido)
+  const escritos = [...new Set(tabsContenido)].filter((t) => !bloqTabs.has(t))
+  if (!bloqTabs.size) return { requests, bloqueadas: [], sellar: () => sellarTabs(cliente, fileId, escritos) }
+  const bloqSids = new Set([...id2tab].filter(([, t]) => bloqTabs.has(t)).map(([s]) => s))
+  const { permitidos, bloqueados } = separarRequests(requests, bloqSids)
+  for (const t of bloqTabs) console.log(`  🔒 "${t}" bajo tu control (candado/edición): salteo escritura(s) de contenido, dejo el formato.`)
+  void bloqueados
+  return { requests: permitidos, bloqueadas: [...bloqTabs], sellar: () => sellarTabs(cliente, fileId, escritos) }
+}

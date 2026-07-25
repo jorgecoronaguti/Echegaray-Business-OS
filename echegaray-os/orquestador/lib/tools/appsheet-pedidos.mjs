@@ -91,7 +91,7 @@ export function appsheetPedidosTools({ google } = {}) {
           if (Number.isFinite(n) && n > maxId) maxId = n
         }
         const nuevoId = String(maxId + 1)
-        await google.appendSheetValues(SHEET_ID, `${TAB}!A1:F1`, [[nuevoId, obra, fecha, material, cantidad, estado]])
+        await google.appendSheetValues(SHEET_ID, `${TAB}!A1:F1`, [[nuevoId, obra, fecha, material, cantidad, estado]], { yaGuardado: true }) // alta aprobada; el Sheet lo edita AppSheet
         return { ok: true, id_pedido: nuevoId, obra, material, cantidad, estado, fecha }
       },
     },

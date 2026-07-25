@@ -86,6 +86,23 @@ if (!pendientes?.length) {
   process.exit(0)
 }
 
+// GUARDA (25/07). Este script escribe CAJA con fetch DIRECTO —no pasa por google.mjs ni por su guarda
+// central—, así que respeta el candado acá, con el mismo supabase que ya tiene. Si tomaste CAJA a mano
+// (candado), no le transcribo saldos hasta que la devuelvas: quedan encolados para la próxima corrida.
+// El candado explícito manda incluso sobre tu propio saldo cargado en la web: si estás trabajando la
+// pestaña, espera. (La firma no se consulta acá: este script no tiene cliente de lectura del Sheet; el
+// candado explícito es la señal fuerte y suficiente para un write de baja frecuencia como éste.)
+const { data: candada } = await supabase
+  .from('sheet_pestanas_bloqueadas')
+  .select('pestana')
+  .eq('file_id', SPREADSHEET_ID)
+  .eq('pestana', 'CAJA')
+  .maybeSingle()
+if (candada) {
+  console.log('🔒 CAJA está bajo tu control (candado): dejo los saldos encolados para después.')
+  process.exit(0)
+}
+
 const sa = cargarServiceAccount()
 const now = Math.floor(Date.now() / 1000)
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url')

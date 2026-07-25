@@ -155,7 +155,7 @@ export function driveWriteTools(google) {
         const values = normalizeValues(input?.values)
         if (!input?.file_id || !input?.range || !values) return { error: 'faltan file_id, range o values (matriz de filas)' }
         return conPestanasSiFalla(google, input.file_id, async () => {
-          const r = await google.appendSheetValues(input.file_id, input.range, values)
+          const r = await google.appendSheetValues(input.file_id, input.range, values, { yaGuardado: true }) // tool aprobada por el dueño
           return { ok: true, updated_range: r.updates?.updatedRange ?? null, appended_rows: r.updates?.updatedRows ?? values.length }
         })
       },
@@ -346,7 +346,7 @@ export function driveWriteTools(google) {
       },
       async run(input) {
         if (!input?.file_id || !input?.range) return { error: 'faltan file_id o range' }
-        const r = await google.clearValues(input.file_id, input.range)
+        const r = await google.clearValues(input.file_id, input.range, { yaGuardado: true }) // drive.clear: el dueño la aprueba
         return { ok: true, cleared_range: r.clearedRange ?? input.range }
       },
     },
