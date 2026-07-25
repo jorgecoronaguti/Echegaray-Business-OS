@@ -45,7 +45,9 @@ const SOLO_AUDITAR = process.argv.includes('--auditar')
  * `hastaFila` acota la pasada: recorrer 1000 filas de una pestaña que usa 90 es gastar cuota.
  */
 export const PESTANAS = [
-  { titulo: 'RESUMEN', congeladas: 0, hastaFila: 80, cols: 14 },
+  // RESUMEN se retiró (el dueño la borró el 23/07 y su generador está comentado en flujo-caja-pasos):
+  // ya no se lista acá. El formateador la saltaba con "no existe", pero listar una pestaña muerta es la
+  // misma trampa que ocultó el 400 del calendario — mejor no dejar el fantasma.
   { titulo: 'Compras', congeladas: 3, hastaFila: 1000, cols: 32, carga: true },
   { titulo: 'Cobranzas', congeladas: 4, hastaFila: 400, cols: 60, carga: true },
   // La formatea su propio agente (cheques-emitidos-tablero.mjs) al estándar minimalista/clase mundial;
