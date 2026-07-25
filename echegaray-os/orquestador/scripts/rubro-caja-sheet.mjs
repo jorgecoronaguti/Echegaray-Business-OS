@@ -98,7 +98,13 @@ async function main() {
   const sc = acc.get('SIN CLASIFICAR') ?? 0
   console.log(`\n  sin clasificar: ${sc}${sc ? '  ⚠ HAY GASTOS QUE NO CAEN EN NINGÚN RUBRO' : '  ✓'}`)
   console.log(`  sin fecha de caja: ${vacias}${vacias ? '  ⚠ esos gastos no aparecen en ninguna semana' : '  ✓'}`)
-  if (sc) process.exitCode = 1
+  // NO se sale con código de error por "sin clasificar" (25/07). La escritura ya fue exitosa: que
+  // algunos gastos no caigan en un rubro es un HALLAZGO de calidad de dato, no una falla del pipeline.
+  // El ⚠ de arriba viaja por sí solo al orquestador, que lo levanta como AVISO ("la pestaña se rehizo
+  // pero algo no cierra") — igual que "sin fecha de caja", que nunca setea exit. Salir 1 acá pintaba de
+  // rojo toda la unidad systemd, enmascaraba fallas reales y BLOQUEABA el registro de frescura del Cash
+  // Flow (el mismo cry-wolf que arregló 9af2cee, filtrándose por este script). Un exit≠0 queda sólo
+  // para una excepción real: la atrapa el main().catch de abajo.
 }
 
 main().catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
