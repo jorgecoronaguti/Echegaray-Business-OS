@@ -18,7 +18,7 @@ import { readFileSync } from 'node:fs'
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
-import { matchProveedor, valoresInput, validar, GRUPOS_FORMULA } from '../lib/carga-comprobantes.mjs'
+import { matchProveedor, valoresInput, validar, discrepanciaNeto, GRUPOS_FORMULA } from '../lib/carga-comprobantes.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
@@ -66,7 +66,7 @@ async function main() {
 
   // Preparar cada fila: validar, matchear proveedor, cruzar ARCA.
   const plan = []
-  const nuevos = new Set(); const dupes = []; const rechazos = []
+  const nuevos = new Set(); const dupes = []; const rechazos = []; const percep = []
   for (const [i, c] of comprobantes.entries()) {
     const prov = matchProveedor(c.proveedor, lista)
     const cc = { ...c, proveedor: prov.valor }
@@ -76,6 +76,8 @@ async function main() {
     const num = String(c.numero ?? '').replace(/\D/g, '').replace(/^0+/, '')
     const enArca = num && arca.porNumero.get(num)
     if (enArca) dupes.push({ i, numero: c.numero, arcaTotal: enArca.imp_total })
+    const dif = discrepanciaNeto(c)
+    if (dif) percep.push({ i, proveedor: prov.valor, dif })
     plan.push({ valores: valoresInput(cc), nuevo: prov.esNuevo })
   }
 
@@ -84,6 +86,7 @@ async function main() {
   console.log(`Compras: última fila con datos = ${ultima}. Se cargan ${plan.length} comprobante(s) → filas ${desde}..${hasta}.`)
   if (rechazos.length) { console.log(`\n⚠ ${rechazos.length} NO se cargan (dato insuficiente, no se inventa):`); rechazos.forEach((r) => console.log(`   #${r.i} ${r.proveedor || '(sin proveedor)'}: ${r.problemas.join('; ')}`)) }
   if (nuevos.size) console.log(`\n⚠ Proveedores NUEVOS (no están en el desplegable estricto — confirmá antes de fijarlos): ${[...nuevos].join(' · ')}`)
+  if (percep.length) console.log(`\nℹ Percepción/impuesto interno absorbido en Importe (M = Total − IVA, para que el Total cierre): ${percep.map((p) => `${p.proveedor} (+$${Math.round(p.dif).toLocaleString('es-AR')})`).join(' · ')}`)
   if (dupes.length) console.log(`\nℹ Ya figuran en ARCA (posible duplicado, revisá): ${dupes.map((d) => `${d.numero} ($${Math.round(d.arcaTotal).toLocaleString('es-AR')})`).join(' · ')}`)
   if (!plan.length) { console.log('\nNada cargable.'); await closePool(); return }
 

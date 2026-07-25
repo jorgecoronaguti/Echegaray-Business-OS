@@ -82,6 +82,28 @@ export function aNumero(v) {
   return Number.isFinite(n) ? n : null
 }
 
+/** Redondea a 2 decimales sin arrastrar el error binario de la resta Total−IVA (28479.30 - 5981). */
+export function redondear2(n) {
+  return n == null ? null : Math.round((n + Number.EPSILON) * 100) / 100
+}
+
+/**
+ * Diferencia (en $) entre lo que dice el comprobante (Total) y lo que sumaría el neto declarado por la
+ * foto (Neto Gravado + IVA). Distinta de 0 ⇒ hay una PERCEPCIÓN (IIBB, SUSS) o un IMPUESTO INTERNO
+ * (combustible) que la foto no absorbió en el "neto gravado": son costo real, parte del Total, pero no
+ * son IVA. Es exactamente la causa de la carga MAL hecha: si M se cargara con ese neto crudo, O = M+N
+ * quedaría corto y el total del Sheet no cerraría con la plata que salió. Devuelve null si no se puede
+ * comparar (falta el neto o el total declarados). El loader la usa para AVISAR; valoresInput ya corrige
+ * derivando M = Total − IVA cuando la foto trae el total. */
+export function discrepanciaNeto(c) {
+  const neto = aNumero(c?.neto)
+  const total = aNumero(c?.total)
+  if (neto == null || total == null) return null
+  const iva = aNumero(c?.iva) ?? 0
+  const dif = redondear2(total - iva - neto)
+  return Math.abs(dif) >= 0.5 ? dif : null // < $0,50 = redondeo del comprobante, no una percepción
+}
+
 /** Fecha a "DD/MM/YYYY" (lo que un sheet es-AR parsea a fecha con USER_ENTERED). Acepta Date o
  *  string dd/mm/aaaa o aaaa-mm-dd. null si no la puede interpretar. */
 export function aFechaAR(v) {
@@ -116,9 +138,15 @@ export function validar(c) {
  */
 export function valoresInput(c) {
   const pago = condicionAPago(c.condicion)
-  const neto = aNumero(c.neto)
   const iva = aNumero(c.iva)
-  const total = aNumero(c.total) ?? (neto != null ? neto + (iva ?? 0) : null)
+  const totalDeclarado = aNumero(c.total)
+  // M (columna Importe) POR CONTRATO = Total − IVA. Absorbe percepción IIBB/SUSS e impuestos internos
+  // de combustible para que O = M+N sea el Total REAL del comprobante. Si la foto trae el total —el
+  // número más grande y prominente del ticket, el que tiene que cerrar con la plata que salió— M se
+  // DERIVA de él; sólo si no hay total se usa el neto crudo de la foto. Así un "neto gravado" que no
+  // incluye la percepción no rompe el total (era la causa de las cargas MAL hechas).
+  const neto = totalDeclarado != null ? redondear2(totalDeclarado - (iva ?? 0)) : aNumero(c.neto)
+  const total = totalDeclarado ?? (neto != null ? redondear2(neto + (iva ?? 0)) : null)
   const estado = c.estado ?? pago.estado
   const out = {}
   const set = (k, v) => { if (v != null && v !== '') out[COL[k]] = v }

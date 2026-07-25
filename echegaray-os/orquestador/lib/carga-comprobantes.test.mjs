@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { tipoComprobante, condicionAPago, matchProveedor, aNumero, aFechaAR, validar, valoresInput, COL } from './carga-comprobantes.mjs'
+import { tipoComprobante, condicionAPago, matchProveedor, aNumero, aFechaAR, validar, valoresInput, discrepanciaNeto, redondear2, COL } from './carga-comprobantes.mjs'
 
 test('el tipo de comprobante se normaliza al valor exacto del desplegable', () => {
   assert.equal(tipoComprobante('A'), 'F A')
@@ -69,4 +69,40 @@ test('cuenta corriente entra pendiente y sin pago', () => {
   assert.equal(v[COL.modalidad], 'Cuenta Corriente')
   assert.equal(v[COL.estado], 'Pendiente')
   assert.equal(v[COL.pagado], undefined) // no se pagó todavía
+})
+
+// EL CORAZÓN DE LA FIABILIDAD: M tiene que ser Total − IVA para que O = M+N cierre con la plata que
+// salió. Cuando la foto trae el TOTAL, M se deriva de él y absorbe la percepción/impuesto interno que
+// el "neto gravado" del comprobante no incluía. Sin esto, O quedaría corto: la carga MAL hecha.
+test('cuando hay total, M se deriva como Total − IVA y absorbe la percepción', () => {
+  // Factura con percepción IIBB: neto gravado 100.000, IVA 21.000, percepción 3.500, total 124.500.
+  const v = valoresInput({ fecha: '5/1/2026', proveedor: 'Robles Jose Maria', neto: 100000, iva: 21000, total: 124500, condicion: 'Contado' })
+  assert.equal(v[COL.neto], 103500) // 124.500 − 21.000 = M absorbe los 3.500 de percepción
+  assert.equal(v[COL.iva], 21000) // N = IVA discriminado, intacto
+  // O es fórmula (=M+N) ⇒ 103.500 + 21.000 = 124.500 = total real. Contado ⇒ pagado = ese total.
+  assert.equal(v[COL.pagado], 124500)
+  assert.equal(v[COL.total], undefined) // O nunca se escribe
+})
+
+test('sin total declarado, M usa el neto crudo de la foto (comportamiento previo intacto)', () => {
+  const v = valoresInput({ fecha: '5/1/2026', proveedor: 'Combustibles Barcelo', neto: '$28.479,30', iva: '$5.981', condicion: 'Contado' })
+  assert.equal(v[COL.neto], 28479.30)
+  assert.equal(v[COL.pagado], 28479.30 + 5981)
+})
+
+// discrepanciaNeto avisa cuando el neto crudo no cierra con el total: hay una percepción/impuesto
+// interno que hay que revisar. Es la alarma que el loader muestra.
+test('discrepanciaNeto detecta la percepción no absorbida y tolera el redondeo', () => {
+  assert.equal(discrepanciaNeto({ neto: 100000, iva: 21000, total: 124500 }), 3500)
+  assert.equal(discrepanciaNeto({ neto: 100000, iva: 21000, total: 121000 }), null) // cierra: sin percepción
+  assert.equal(discrepanciaNeto({ neto: 100000, iva: 21000, total: 121000.30 }), null) // < $0,50 = redondeo
+  assert.equal(discrepanciaNeto({ neto: 100000, iva: 0, total: 100000 }), null)
+  assert.equal(discrepanciaNeto({ total: 124500 }), null) // sin neto no se compara
+  assert.equal(discrepanciaNeto({ neto: 100000 }), null) // sin total no se compara
+})
+
+test('redondear2 no arrastra el error binario de la resta', () => {
+  assert.equal(redondear2(124500 - 21000), 103500)
+  assert.equal(redondear2(0.1 + 0.2), 0.3)
+  assert.equal(redondear2(null), null)
 })
