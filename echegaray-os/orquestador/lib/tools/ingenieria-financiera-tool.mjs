@@ -7,6 +7,7 @@ import {
 import { calendarioDiario } from '../calendario-financiero.mjs'
 import { condicionesVigentes, paramsParaMotor, costoEfectivo } from '../condiciones-financieras.mjs'
 import { planTesoreria } from '../plan-tesoreria.mjs'
+import { estrategiaFinanciera } from '../estrategia-financiera.mjs'
 import { sincronizarEjecucion } from '../plan-ejecucion.mjs'
 import { planVigente } from '../plan-vigente.mjs'
 import { coberturaDeFuentes, fuentesParaDecision } from '../fuentes-conocimiento-financiero.mjs'
@@ -75,6 +76,28 @@ export function ingenieriaFinancieraTools(google) {
           const plan = await planTesoreria({ google }, args || {})
           return { ...plan, texto: formatPlan(plan) }
         } catch (e) { return { error: `no pude armar el plan de tesorería: ${String(e?.message ?? e).slice(0, 180)}` } }
+      },
+    },
+
+    'finanzas.estrategia_financiera': {
+      capability: 'os.read',
+      schema: {
+        name: 'estrategia_financiera',
+        description:
+          'LA SALIDA ESTRATÉGICA del Financial Engineering — NO una lista de cobros y pagos, sino una ESTRATEGIA FINANCIERA COMPLETA de nivel CFO. Evalúa varias estrategias completas y elige una, y devuelve: objetivo estratégico, diagnóstico de liquidez, problema principal a resolver, estrategia recomendada, alternativas evaluadas, alternativa elegida y por qué, coordinaciones de ingresos/egresos, pagos a mover/dividir/postergar/priorizar, cobranzas a adelantar/gestionar, financiamiento a usar/evitar, costo financiero esperado, ahorro frente a la 2da mejor, impacto en caja a 7/30/90 días, impacto por obra/proveedor/cliente/banco/impuestos, riesgos, supuestos, datos faltantes, nivel de confianza y cambios respecto de la estrategia anterior. Optimiza SIMULTÁNEAMENTE liquidez, costo financiero, continuidad de obras, riesgo fiscal/bancario y relación con proveedores/clientes. No inventa tasas ni datos: si falta info crítica lo declara y degrada la confianza. El plan_tesoreria es la CONSECUENCIA operativa de la estrategia elegida, no la estrategia. Usalo cuando el dueño pida "qué estrategia financiera conviene", "cómo ordeno la tesorería estratégicamente", "qué problema financiero tengo y cómo lo resuelvo". 0 recálculo: ensambla plan_tesoreria + modelo_liquidez + calendario.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            liquidezMinima: { type: 'number', description: 'piso de caja que la estrategia no perfora voluntariamente (default 0)' },
+            tasaPrestamoTNA: { type: 'number', description: 'TNA de un préstamo puntual para comparar líneas (opcional; si no, sale de condiciones)' },
+            tasaDescuentoChequeTNA: { type: 'number', description: 'TNA de descuento de cheque (opcional; si no, sale de condiciones)' },
+          },
+        },
+      },
+      async run(args) {
+        try {
+          return await estrategiaFinanciera({ google }, args || {})
+        } catch (e) { return { error: `no pude armar la estrategia financiera: ${String(e?.message ?? e).slice(0, 180)}` } }
       },
     },
 
