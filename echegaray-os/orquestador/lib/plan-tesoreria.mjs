@@ -41,8 +41,8 @@
 // decisión; nunca la ejecuta solo. Respeta automáticamente la liquidez mínima, el límite de la línea,
 // los vencimientos y la criticidad — y cuando una restricción no se puede cumplir, lo DICE, no la tapa.
 
-import { costoDelDinero, compararFinanciamiento, priorizarPagos, modeloLiquidez, fmt } from './ingenieria-financiera.mjs'
-import { calendarioDiario, categoriaEgreso } from './calendario-financiero.mjs'
+import { costoDelDinero, compararFinanciamiento, priorizarPagos, fmt } from './ingenieria-financiera.mjs'
+import { categoriaEgreso } from './calendario-financiero.mjs'
 import { ACUERDO } from './banco-santander.mjs'
 // LA CAPA ESTRATÉGICA vive en su propio módulo (plan-estrategia.mjs): narra qué coordina/optimiza cada
 // decisión y qué cambió vs el plan anterior. Deriva de lo que este núcleo ya decidió — no recalcula.
@@ -50,6 +50,10 @@ import {
   estrategiaCobro, estrategiaCancelar, estrategiaPagarCaja, estrategiaFinanciar,
   estrategiaPagarCritico, estrategiaPostergar, marcarCambios, cambiosVsAnterior, resumenEstrategico,
 } from './plan-estrategia.mjs'
+// LAS PALANCAS OPCIONALES (orden por obra, división de pago, descuento de cheque, negociación de plazo)
+// viven en su propio módulo. Cada una tiene default = comportamiento actual. Import circular seguro:
+// palancas usa `accion`/`medioSugerido` en runtime, no al evaluar el módulo.
+import { reordenarPorObra, dividirPago, cubrirConChequeDescuento, aplicarNegociacion, emitirNegociacion } from './plan-tesoreria-palancas.mjs'
 
 // Horizonte estándar para ELEGIR el instrumento más barato en compararFinanciamiento. El costo real
 // diario se acumula aparte (costoDelDinero sobre la línea usada cada día); estos 30 días son sólo la
@@ -130,9 +134,17 @@ function comoObligacion(mov, fecha, hoy) {
  * @param {Array<object>} [p.accionesAnteriores] acciones del mismo horizonte del plan anterior — para
  *   decir, por acción y por horizonte, qué cambió. Sin ellas, el plan lo declara honestamente.
  * @param {object} [p.politica] palancas de la ESTRATEGIA que gobierna este plan (las fija el diseñador de
- *   estrategias). Hoy sólo `financiarNoCriticos`: si es true, un egreso NO crítico que la caja no cubre se
- *   paga financiándolo con la línea SIEMPRE QUE haya margen real —nunca excede el límite—, en lugar de
- *   postergarlo. Es la diferencia entre "priorizar cumplimiento" y "priorizar costo financiero mínimo".
+ *   estrategias). Todas con default = comportamiento actual (retrocompat total):
+ *   • `financiarNoCriticos` (bool): financia con la línea un NO crítico que la caja no cubre —si hay margen
+ *     real, nunca excede el límite— en lugar de postergarlo. Cumplimiento vs. costo financiero mínimo.
+ *   • `priorizarObra` (string): pone primero los pagos de esa obra (sin romper el orden multicriterio dentro
+ *     de cada grupo) — proteger la obra de mayor exposición antes de agotar la caja.
+ *   • `dividirPagos` (bool): un NO crítico que la caja cubre en parte se paga PARCIAL (lo disponible) y se
+ *     posterga el resto, en vez de postergar el pago entero.
+ *   • `viaCobertura` ('descubierto'|'descuento_cheque'): con qué se cubre el faltante de un crítico. Con
+ *     'descuento_cheque' se adelanta un cheque en cartera (costo único, no toca la línea) si es factible.
+ *   • `negociar` ({proveedor, monto, dias, fechaNueva}): mueve ese egreso a una fecha cierta acordada dentro
+ *     del horizonte y emite una acción explícita `negociar_plazo` (no es un "postergar" a ciegas).
  * @returns {{acciones:Array, resumen:object, resumen_estrategico:object}}
  */
 export function construirPlan({ dias = [], cajaInicial = 0, liquidezMinima = 0, limiteDescubierto = ACUERDO.importe, hoy = new Date(), paramsFin = {}, accionesAnteriores = null, politica = {} } = {}) {
@@ -144,12 +156,21 @@ export function construirPlan({ dias = [], cajaInicial = 0, liquidezMinima = 0, 
     peorLinea: 0,
     excedeLinea: false,
     financiarNoCriticos: !!politica.financiarNoCriticos,
+    priorizarObra: politica.priorizarObra || null,
+    dividirPagos: !!politica.dividirPagos,
+    viaCobertura: politica.viaCobertura || 'descubierto',
     liquidezMinima, limiteDescubierto, hoy, paramsFin,
   }
   let seq = 0
   const nid = (fecha, tipo) => `${fecha}-${tipo}-${++seq}`
 
-  for (const dia of dias) {
+  // PALANCA 4: si la estrategia negoció un plazo, se reubica ese egreso ANTES de recorrer los días y se
+  // prepara la acción explícita para emitirla en su fecha original. Sin `negociar`, `dias` queda intacto.
+  const { dias: diasPlan, negociaciones } = aplicarNegociacion(dias, politica.negociar)
+  const negPorFecha = new Map()
+  for (const n of negociaciones) negPorFecha.set(n.fechaOrig, n)
+
+  for (const dia of diasPlan) {
     const fecha = dia.fecha
     const movs = dia.movimientos || []
     // 1 · COBROS del día — entran primero: pueden habilitar pagos y cancelar línea.
@@ -170,6 +191,9 @@ export function construirPlan({ dias = [], cajaInicial = 0, liquidezMinima = 0, 
     }
     // 2 · CANCELAR/REDUCIR LÍNEA con la caja fresca por encima del piso.
     cancelarLinea(est, fecha, idsCobros, acciones, nid)
+    // 2b · NEGOCIACIÓN DE PLAZO (palanca 4): la decisión explícita se registra en su fecha original; el
+    //      egreso ya fue reubicado a su fecha nueva por aplicarNegociacion.
+    if (negPorFecha.has(fecha)) emitirNegociacion(negPorFecha.get(fecha), acciones, nid)
     // 3 · PAGOS del día — orden multicriterio de priorizarPagos, asignación con conciencia de la línea.
     procesarPagos(est, dia, movs, acciones, nid)
     // 4 · COSTO del día: lo que cuesta tener la línea usada un día más.
@@ -212,12 +236,16 @@ function procesarPagos(est, dia, movs, acciones, nid) {
   // priorizarPagos SIN cajaDisponible: se usa por su ORDEN multicriterio (urgencia × criticidad), no
   // por su asignación de caja — la asignación con conciencia de la línea la hace este módulo.
   const obligs = egresos.map((m) => comoObligacion(m, parseFechaClave(fecha, est.hoy), est.hoy))
-  const ordenados = priorizarPagos(obligs, {})
+  // PALANCA 1: si la estrategia protege una obra, sus pagos van primero (dentro de cada grupo se respeta
+  // el orden multicriterio de priorizarPagos). Sin `priorizarObra`, el orden queda intacto.
+  const ordenados = reordenarPorObra(priorizarPagos(obligs, {}), est.priorizarObra)
   for (const it of ordenados) {
     const monto = round(it.monto)
     const disponible = Math.max(0, est.saldo - est.liquidezMinima)
     if (monto <= disponible) { pagarConCaja(est, fecha, it, monto, acciones, nid); continue }
     if (esCritico(it) || financiaNoCritico(est, monto, disponible)) financiarYpagar(est, fecha, it, monto, disponible, acciones, nid)
+    // PALANCA 2: dividir el pago no crítico — pagar lo que la caja cubre y negociar el resto.
+    else if (est.dividirPagos && disponible > 0) dividirPago(est, fecha, it, monto, disponible, acciones, nid)
     else postergar(est, fecha, it, monto, acciones, nid)
   }
 }
@@ -248,6 +276,9 @@ function pagarConCaja(est, fecha, it, monto, acciones, nid) {
 function financiarYpagar(est, fecha, it, monto, disponible, acciones, nid) {
   const faltante = round(monto - disponible)
   const { via, cmp } = elegirLinea(est, faltante)
+  // PALANCA 3: si la estrategia elige cubrir con descuento de cheque y es factible, se adelanta el cheque
+  // (costo único, sin tocar la línea) y no se sigue con el descubierto. Si no es factible, cae acá abajo.
+  if (est.viaCobertura === 'descuento_cheque' && cubrirConChequeDescuento(est, fecha, it, monto, disponible, faltante, cmp, acciones, nid)) return
   const costoFin = round(costoDelDinero(faltante, DIAS_COMPARACION))
   // Se GIRA la línea al saldo (entra la plata prestada) y luego se paga: el neto sobre la caja propia
   // es −disponible, y queda `faltante` de deuda de línea que se cancelará cuando entre caja.
@@ -317,12 +348,13 @@ function resumenPlan(est, acciones, cajaInicial) {
     por_tipo: {
       cobrar: cuenta('cobrar'), pagar: cuenta('pagar'), postergar: cuenta('postergar'),
       financiar: cuenta('financiar'), cancelar_financiacion: cuenta('cancelar_financiacion'),
+      negociar_plazo: cuenta('negociar_plazo'),
     },
   }
 }
 
-/** Una acción del plan, con el contrato completo que pide el spec. */
-function accion(id, fecha, tipo, descripcion, campos) {
+/** Una acción del plan, con el contrato completo que pide el spec. Exportada para las palancas. */
+export function accion(id, fecha, tipo, descripcion, campos) {
   return {
     id, fecha, tipo, descripcion,
     motivo: campos.motivo,
@@ -333,6 +365,7 @@ function accion(id, fecha, tipo, descripcion, campos) {
     dependencias: campos.dependencias || [],
     medio: campos.medio || null,
     linea: campos.linea || null,
+    nueva_fecha: campos.nueva_fecha || null,
     sugerir_negociar: campos.sugerir_negociar || false,
     excede_limite: campos.excede_limite || false,
     requiere_aprobacion: campos.requiere_aprobacion !== false,
@@ -350,79 +383,7 @@ function parseFechaClave(clave, fallback) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// ENSAMBLADOR — trae las fuentes reales y arma los cuatro horizontes
+// ENSAMBLADOR — vive en plan-tesoreria-ensamblador.mjs (I/O + armado de horizontes)
 // ════════════════════════════════════════════════════════════════════════════
-
-/**
- * Arma el plan de tesorería para hoy / 7 / 30 / 90 días. Trae UNA vez el calendario de 90 días y el
- * modelo de liquidez (para las líneas y la posición), y construye cada horizonte cortando la ventana.
- * Cada bloque degrada con honestidad si su fuente no responde — nunca inventa un movimiento ni una tasa.
- *
- * @param {object} deps {google}
- * @param {object} [opts] {hoy, liquidezMinima, tasaPrestamoTNA, tasaDescuentoChequeTNA}
- */
-export async function planTesoreria(deps = {}, opts = {}) {
-  const hoy = opts.hoy ? new Date(opts.hoy) : new Date()
-  const liquidezMinima = Math.max(0, Number(opts.liquidezMinima) || 0)
-
-  // Las tasas de las líneas alternativas salen de la fuente única de condiciones; lo que no tiene tasa
-  // no entra (compararFinanciamiento lo excluye), nunca se inventa.
-  const paramsFin = await tasasDeCondiciones(opts)
-
-  let calendario = null
-  try { calendario = await calendarioDiario(deps, { hoy, dias: 90 }) } catch (e) {
-    return { fecha: hoy.toLocaleDateString('es-AR'), estado: 'sin dato', motivo: `no se pudo armar el calendario: ${String(e?.message ?? e).slice(0, 120)}`, horizontes: {} }
-  }
-
-  let modelo = null
-  try { modelo = await modeloLiquidez(deps, hoy) } catch { modelo = null }
-  const limiteDescubierto = ACUERDO.importe
-  const cajaInicial = calendario.caja_inicial
-
-  // El plan anterior (si el caller lo pasa) habilita el punto "qué cambió" por acción y por horizonte.
-  // Sin él, el contrato lo declara honestamente — nunca inventa una comparación.
-  const planAnterior = opts.planAnterior || null
-
-  // EL DISEÑADOR DE ESTRATEGIAS (estrategias-tesoreria.mjs) es quien piensa como CFO: por cada horizonte
-  // genera VARIAS estrategias completas (posturas distintas sobre la MISMA data), las compara y elige una;
-  // el plan operativo es la CONSECUENCIA de la elegida. Import perezoso: evita cualquier ciclo de carga.
-  const { disenarEstrategias } = await import('./estrategias-tesoreria.mjs')
-
-  const horizontes = {}
-  for (const h of HORIZONTES) {
-    const dias = (calendario.dias || []).slice(0, h.dias)
-    const accionesAnteriores = planAnterior?.horizontes?.[h.clave]?.acciones || null
-    const dis = disenarEstrategias({ dias, cajaInicial, liquidezMinima, limiteDescubierto, hoy, paramsFin, accionesAnteriores })
-    // Retrocompat: la web sigue leyendo resumen/resumen_estrategico/acciones — ahora son los de la
-    // estrategia ELEGIDA. `estrategias` es la capa nueva: las generadas, cuál se eligió y por qué.
-    const { acciones, resumen, resumen_estrategico } = dis.plan_elegido
-    horizontes[h.clave] = { titulo: h.titulo, dias: h.dias, resumen, resumen_estrategico, acciones, estrategias: dis.estrategias }
-  }
-
-  return {
-    fecha: hoy.toLocaleDateString('es-AR'),
-    estado: 'ok',
-    caja_inicial: cajaInicial,
-    liquidez_minima: liquidezMinima,
-    limite_linea: limiteDescubierto,
-    posicion: modelo ? { colchon_total: modelo.colchon_total, vencido_fiscal: modelo.comprometido?.vencido ?? null, vencido_comercial: modelo.deuda_comercial?.vencido ?? null } : { estado: 'sin dato' },
-    horizontes,
-    tasas_faltantes: paramsFin.faltan,
-    fuentes: `${calendario.fuentes} · condiciones_financieras (tasas de líneas) · el motor de ingeniería financiera orquestado (no recalcula)`,
-    sin_fecha: calendario.sin_fecha || null,
-  }
-}
-
-/** Lee las tasas de las líneas alternativas de la fuente única, sin inventar ninguna. */
-async function tasasDeCondiciones(opts = {}) {
-  const out = { tasaPrestamoTNA: opts.tasaPrestamoTNA, tasaDescuentoChequeTNA: opts.tasaDescuentoChequeTNA, faltan: [] }
-  try {
-    const { condicionesVigentes, paramsParaMotor } = await import('./condiciones-financieras.mjs')
-    const conds = await condicionesVigentes({})
-    const { params, faltan } = paramsParaMotor(conds)
-    if (out.tasaPrestamoTNA == null && params.tasaPrestamoTNA != null) out.tasaPrestamoTNA = params.tasaPrestamoTNA
-    if (out.tasaDescuentoChequeTNA == null && params.tasaDescuentoChequeTNA != null) out.tasaDescuentoChequeTNA = params.tasaDescuentoChequeTNA
-    out.faltan = faltan
-  } catch { /* sin la fuente de condiciones: sólo se compara con el descubierto verificado */ }
-  return out
-}
+// Se re-exporta desde acá para no romper a quien importaba `planTesoreria` de este módulo.
+export { planTesoreria } from './plan-tesoreria-ensamblador.mjs'

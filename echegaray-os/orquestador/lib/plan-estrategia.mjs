@@ -128,6 +128,43 @@ export function estrategiaPostergar(it, monto, est) {
   }
 }
 
+/** Descontar un cheque: coordina Tesorería; optimiza el uso de la línea; su costo es ÚNICO, no diario. */
+export function estrategiaChequeDescuento(it, faltante, costoUnico, cmp) {
+  const alternativas = (cmp?.alternativas || []).map((a) => ({
+    opcion: a.nombre, elegida: a.via === 'descuento_cheque',
+    costo_economico: a.costoEconomico == null ? null : round(a.costoEconomico),
+    factible: a.factible, nota: a.nota,
+  }))
+  return {
+    coordina: `CFO/Tesorería adelanta un cheque en cartera para que Administración pague a ${it.proveedor} sin tocar la línea`,
+    optimiza: 'uso de línea — libera el margen del descubierto convirtiendo un valor a cobrar en caja HOY',
+    alternativas: alternativas.length ? alternativas : `Descontar un cheque: cubre el faltante con costo único`,
+    por_que: 'cubrir el bache con un cheque descontado deja la línea intacta para una urgencia y no arrastra interés diario',
+    beneficio_esperado: `paga un crítico sin sumar deuda de línea; costo ÚNICO ${fmt(costoUnico)} en vez de interés que corre día a día`,
+    impacto_liquidez_futura: `entra ${fmt(faltante)} de caja hoy; el banco cobra el cheque al librador (no hay repago propio)`,
+    impacto_costo_financiero: `${fmt(costoUnico)} de descuento, UNA vez — no crece con los días como el descubierto`,
+    impacto_relaciones: `${it.obra ? `obra ${it.obra}` : `proveedor crítico ${it.proveedor}`} cobra en fecha; ASUME un cheque en cartera ≥ ${fmt(faltante)} (verificar)`,
+  }
+}
+
+/** Negociar plazo: coordina Compras con el proveedor; optimiza liquidez difiriendo un egreso a fecha cierta. */
+export function estrategiaNegociarPlazo(it, monto, fechaOrig, fechaNueva, dias) {
+  return {
+    coordina: `Compras/Administración acuerda con ${it.proveedor} correr el vencimiento ${dias} día(s): de ${fechaOrig} a ${fechaNueva}`,
+    optimiza: 'liquidez — mueve la salida a una fecha con más holgura (típicamente después de un cobro), sin costo financiero',
+    alternativas: [
+      { opcion: 'pagar en la fecha original', elegida: false, nota: 'comprometería el piso de caja o forzaría usar la línea' },
+      { opcion: 'postergar sin fecha', elegida: false, nota: 'daña la relación: postergar a ciegas no es un acuerdo' },
+      { opcion: `negociar nuevo vencimiento (+${dias} día/s)`, elegida: true, nota: 'decisión explícita y acordada, no una demora unilateral' },
+    ],
+    por_que: 'diferir a una fecha cierta y acordada preserva caja hoy y sostiene la relación, a diferencia de postergar sin plazo',
+    beneficio_esperado: `preserva ${fmt(monto)} de caja hasta ${fechaNueva} sin costo financiero ni fricción con el proveedor`,
+    impacto_liquidez_futura: `la salida de ${fmt(monto)} se corre a ${fechaNueva}; la caja de hoy queda protegida`,
+    impacto_costo_financiero: 'nulo: evita usar la línea para algo negociable',
+    impacto_relaciones: `proveedor ${it.proveedor} — acuerdo formal de plazo; requiere su conformidad`,
+  }
+}
+
 /** Completa `estrategia.cambio_vs_plan_anterior` por acción, comparando contra el plan previo si lo hay. */
 export function marcarCambios(acciones, anteriores) {
   const nota = (a, txt) => { if (a.estrategia) a.estrategia.cambio_vs_plan_anterior = txt }

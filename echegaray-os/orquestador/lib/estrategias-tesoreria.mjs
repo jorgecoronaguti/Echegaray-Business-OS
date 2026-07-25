@@ -34,6 +34,9 @@
 
 import { construirPlan, esCritico } from './plan-tesoreria.mjs'
 import { fmt } from './ingenieria-financiera.mjs'
+// Las posturas AVANZADAS (proteger obra, descontar cheque, dividir pago, negociar plazo) y la SENSIBILIDAD
+// de cobros viven en su propio módulo: se proponen sólo cuando la data del horizonte las hace reales.
+import { posturasCondicionales, sensibilidadCobros } from './estrategias-tesoreria-avanzadas.mjs'
 
 const round = (n) => Math.round(Number(n) || 0)
 
@@ -105,10 +108,15 @@ function metricas(resumen, cushion) {
   }
 }
 
+/** El piso de liquidez efectivo de una postura: el base del contexto + su colchón defensivo (si lo pide). */
+function pisoDe(pol, ctx) {
+  const cushion = pol.cushionModo === 'criticos_horizonte' ? cushionCriticos(ctx.dias) : 0
+  return { cushion, liquidezMinima: (Number(ctx.liquidezMinima) || 0) + cushion }
+}
+
 /** Construye una estrategia completa: corre el núcleo con la postura y narra su lectura de CFO. */
 function construirEstrategia(pol, ctx) {
-  const cushion = pol.cushionModo === 'criticos_horizonte' ? cushionCriticos(ctx.dias) : 0
-  const liquidezMinima = (Number(ctx.liquidezMinima) || 0) + cushion
+  const { cushion, liquidezMinima } = pisoDe(pol, ctx)
   const plan = construirPlan({ ...ctx, liquidezMinima, politica: pol.palancas })
   const m = metricas(plan.resumen, cushion)
   return {
@@ -116,14 +124,26 @@ function construirEstrategia(pol, ctx) {
     nombre: pol.nombre,
     objetivo: pol.objetivo,
     razonamiento: pol.razonamiento,
-    palancas: { financiar_no_criticos: !!pol.palancas.financiarNoCriticos, piso_liquidez: liquidezMinima, colchon_defensivo: cushion },
+    // Las tres palancas base siempre visibles; las avanzadas suman su config real (obra, vía, negociación).
+    palancas: { financiar_no_criticos: !!pol.palancas.financiarNoCriticos, piso_liquidez: liquidezMinima, colchon_defensivo: cushion, ...palancasAvanzadas(pol.palancas) },
     metricas: m,
-    beneficios: beneficios(pol, m),
-    riesgos: riesgos(pol, m),
+    // Las posturas avanzadas traen su propia lectura; las base usan la narración genérica por clave.
+    beneficios: pol.beneficios ? pol.beneficios(m) : beneficios(pol, m),
+    riesgos: pol.riesgos ? pol.riesgos(m) : riesgos(pol, m),
     impacto: impacto(m),
     plan, // {acciones, resumen, resumen_estrategico} — el plan operativo derivado de ESTA estrategia
     alternativas_descartadas: [], // se completa tras la comparación
   }
+}
+
+/** Expone las palancas avanzadas efectivamente usadas por la postura (sin ruido de las que no aplican). */
+function palancasAvanzadas(p = {}) {
+  const out = {}
+  if (p.priorizarObra) out.priorizar_obra = p.priorizarObra
+  if (p.dividirPagos) out.dividir_pagos = true
+  if (p.viaCobertura && p.viaCobertura !== 'descubierto') out.via_cobertura = p.viaCobertura
+  if (p.negociar) out.negociar = { proveedor: p.negociar.proveedor, monto: p.negociar.monto, dias: p.negociar.dias, fecha_nueva: p.negociar.fechaNueva }
+  return out
 }
 
 /** Beneficios derivados de la postura + sus métricas. Sin números nuevos. */
@@ -248,13 +268,19 @@ function compararTexto(orden, criterio) {
  *
  * @param {object} ctx el mismo contexto que recibe construirPlan {dias, cajaInicial, liquidezMinima,
  *   limiteDescubierto, hoy, paramsFin, accionesAnteriores}
- * @returns {{plan_elegido:object, estrategias:{generadas:Array, elegida:string, comparacion:object}}}
+ * @returns {{plan_elegido:object, estrategias:{generadas, elegida, comparacion}, sensibilidad:object}}
  */
 export function disenarEstrategias(ctx = {}) {
-  const generadas = POLITICAS.map((pol) => construirEstrategia(pol, ctx))
+  // Base (siempre) + avanzadas (sólo las que la data hace reales). Las EJECUTABLES compiten en el ranking.
+  const posturas = [...POLITICAS, ...posturasCondicionales(ctx)]
+  const generadas = posturas.map((pol) => construirEstrategia(pol, ctx))
   const { orden, criterio } = rankear(generadas)
   const elegida = orden[0]
   atarAlternativas(generadas, elegida.clave)
+  // La SENSIBILIDAD de cobros NO compite (el OS no fuerza a un cliente a pagar antes): informa sobre el
+  // plan de la ELEGIDA cuánto se ganaría gestionando la cobranza más grande.
+  const elegidaPostura = posturas.find((p) => p.clave === elegida.clave)
+  const { liquidezMinima } = pisoDe(elegidaPostura, ctx)
   return {
     plan_elegido: elegida.plan,
     estrategias: {
@@ -262,5 +288,6 @@ export function disenarEstrategias(ctx = {}) {
       elegida: elegida.clave,
       comparacion: compararTexto(orden, criterio),
     },
+    sensibilidad: { cobros: sensibilidadCobros(ctx, elegidaPostura, liquidezMinima) },
   }
 }
