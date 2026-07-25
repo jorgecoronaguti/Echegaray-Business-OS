@@ -123,7 +123,9 @@ export function driveWriteTools(google) {
         return conPestanasSiFalla(google, input.file_id, async () => {
           // Escribir desde la celda inicial: Sheets dimensiona según la matriz, evitando el 400
           // "tried writing to column/row X" que hacía loopear al modelo hasta agotar iteraciones.
-          const r = await google.updateSheetValues(input.file_id, startCell(input.range), values)
+          // yaGuardado: es una escritura que el dueño APROBÓ (esta tool pasa por la cola de aprobación).
+          // No la bloquea la guarda central — bloquear algo que el dueño pidió sería el error opuesto.
+          const r = await google.updateSheetValues(input.file_id, startCell(input.range), values, { yaGuardado: true })
           const errs = await verificarErrores(google, input.file_id, r.updatedRange ?? input.range, values)
           return {
             ok: errs.length === 0, updated_range: r.updatedRange ?? input.range, updated_cells: r.updatedCells ?? null,

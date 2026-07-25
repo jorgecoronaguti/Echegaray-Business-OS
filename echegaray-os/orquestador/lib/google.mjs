@@ -394,7 +394,9 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     return values.map((r) => (Array.isArray(r) ? r.map(convertFormula) : r))
   }
 
-  return {
+  // El cliente se nombra (en vez de `return {…}` directo) para que un método —batchUpdateValues— pueda
+  // pasar el cliente mismo a la guarda de escritura (firma/candado), que necesita leer la pestaña.
+  const cliente = {
     /** Convierte una fórmula al separador del sheet (coma→; en es_AR). Expuesto para tests
      *  y para que las tools puedan localizar antes de mostrar/escribir. */
     _convertFormula: convertFormula,
@@ -895,13 +897,25 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
 
     /** Sobrescribe un rango A1 de un Sheet con `values` (matriz de filas).
      *  USER_ENTERED: respeta fórmulas y formatos de número como si lo tipearas. */
-    async updateSheetValues(fileId, range, values) {
+    async updateSheetValues(fileId, range, values, { espejo = false, yaGuardado = false } = {}) {
+      // Mismo choke point que batchUpdateValues: no piso una pestaña candada ni una que editaste.
+      let sellar = async () => {}
+      if (!espejo && !yaGuardado) {
+        try {
+          const { guardarEscritura } = await import('./guarda-escritura.mjs')
+          const g = await guardarEscritura(cliente, fileId, [{ range, values }])
+          if (!g.data.length) return { protegido: true, bloqueadas: g.bloqueadas }
+          sellar = g.sellar
+        } catch { /* sin base: se escribe (disponibilidad) */ }
+      }
       values = await localizeValues(fileId, values)
-      return apiSend(
+      const res = await apiSend(
         `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
         'PUT',
         { range, majorDimension: 'ROWS', values },
       )
+      await sellar()
+      return res
     },
     /** Agrega filas al final de la tabla que arranca en `range` (INSERT_ROWS: no pisa
      *  lo que haya debajo). Devuelve el rango efectivamente escrito. */
@@ -957,14 +971,30 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
 
     /** Escribe VARIOS rangos de un Sheet en UNA sola operación (batch). `data` = matriz de
      *  { range, values }. Mucho más rápido y menos "escueto" que una celda por vez. */
-    async batchUpdateValues(fileId, data) {
+    async batchUpdateValues(fileId, data, { espejo = false, yaGuardado = false } = {}) {
+      // ── GUARDA CENTRAL (25/07): el choke point que hace que NINGÚN escritor —crudo o no— pueda pisar
+      // una pestaña candada o que el dueño editó (firma). Se saltea sólo con bandera explícita: `espejo`
+      // (mirrors _RAW) o `yaGuardado` (lo llama escribirPreservando, que ya verificó y sella él mismo).
+      // Falla ABIERTO: sin base para consultar, se escribe igual (disponibilidad). Ver guarda-escritura.mjs.
+      let sellar = async () => {}
+      if (!espejo && !yaGuardado) {
+        try {
+          const { guardarEscritura } = await import('./guarda-escritura.mjs')
+          const g = await guardarEscritura(cliente, fileId, data)
+          if (!g.data.length) return { protegido: true, bloqueadas: g.bloqueadas }
+          data = g.data
+          sellar = g.sellar
+        } catch { /* sin base: se escribe (la preservación celda a celda sigue para quien use el portón) */ }
+      }
       const loc = []
       for (const d of data) loc.push({ ...d, values: await localizeValues(fileId, d.values) })
-      return apiSend(
+      const res = await apiSend(
         `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values:batchUpdate`,
         'POST',
         { valueInputOption: 'USER_ENTERED', data: loc },
       )
+      await sellar()
+      return res
     },
     /** Limpia (vacía) el contenido de un rango sin borrar formato. */
     async clearValues(fileId, range) {
@@ -1123,4 +1153,5 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       )
     },
   }
+  return cliente
 }

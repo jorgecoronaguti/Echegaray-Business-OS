@@ -77,7 +77,7 @@ export function operacionesSheetTools(google) {
 
           // USER_ENTERED: respeta fórmulas y el formato es-AR, como si se tipeara.
           for (const c of r.cambios) {
-            await google.updateSheetValues(input.archivo_id, `${input.pestana}!${c.celda}`, [[c.a]])
+            await google.updateSheetValues(input.archivo_id, `${input.pestana}!${c.celda}`, [[c.a]], { yaGuardado: true }) // corrección aprobada por el dueño: no la bloquea la guarda
           }
           return {
             ...r,

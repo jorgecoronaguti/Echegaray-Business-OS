@@ -97,9 +97,11 @@ async function verificarPresentacion(bloqueadas = new Set()) {
       // Acá no se escribe contenido: A200 se usa un instante como celda de apunte para resolver a qué
       // rango apunta un atajo, y se restaura lo que hubiera. Nada queda escrito al terminar.
       const previoA200 = (await google.readSheetValues(ID, `${pestaña}!A200`, { render: 'FORMULA' }))?.[0]?.[0] ?? ''
-      await google.batchUpdateValues(ID, [{ range: `${pestaña}!A200`, values: [[`=${f.slice(i + 9, j)}`]] }])
+      // yaGuardado: A200 es celda de apunte transitoria; se lee y RESTAURA acá mismo (su propia
+      // preservación). No debe pasar por la guarda central ni disparar sello de firma.
+      await google.batchUpdateValues(ID, [{ range: `${pestaña}!A200`, values: [[`=${f.slice(i + 9, j)}`]] }], { yaGuardado: true })
       rango = (await google.readSheetValues(ID, `${pestaña}!A200`))?.[0]?.[0]
-      await google.batchUpdateValues(ID, [{ range: `${pestaña}!A200`, values: [[previoA200]] }])
+      await google.batchUpdateValues(ID, [{ range: `${pestaña}!A200`, values: [[previoA200]] }], { yaGuardado: true })
     }
     if (/^[A-Z]+\d+$/.test(String(rango)) && String(gid) === String(gidReal)) {
       console.log(`   ✓ atajo de ${pestaña}: lleva a ${rango}`)

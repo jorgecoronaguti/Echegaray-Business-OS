@@ -91,6 +91,7 @@ const TOOLS = new URL('./tools/', import.meta.url).pathname
 
 const ESCRITORES_NO_GENERADORES = new Map([
   ['google.mjs', 'es el CLIENTE que DEFINE batchUpdateValues/updateSheetValues — la primitiva de escritura, no un escritor de contenido de negocio'],
+  ['guarda-escritura.mjs', 'es la GUARDA CENTRAL del choke point: decide si CUALQUIER escritor puede escribir (candado+firma), no escribe contenido de negocio. Es la que hace cumplir la Regla 0/candado para todos, incluidos los crudos'],
   ['sheet-snapshot.mjs', 'red de DESHACER: restaura un snapshot guardado — sobrescritura intencional, es la marcha atrás'],
   ['drive-write.mjs', 'escritura que PIDE el usuario (drive.write, requires_approval): el dueño ES el editor, no hay edición ajena que preservar'],
   ['operaciones-sheet-tool.mjs', 'operaciones con nombre que el usuario pide y aprueba primero: edición dirigida por él, no regeneración de una pestaña'],

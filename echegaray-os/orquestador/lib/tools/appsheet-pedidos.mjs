@@ -51,7 +51,9 @@ export function appsheetPedidosTools({ google } = {}) {
         if (idx < 0) return { error: `no encontré el pedido ${id} en la app` }
         const fila = idx + 1 // 1-based en el Sheet
         const anterior = rows[idx][5] ?? ''
-        await google.updateSheetValues(SHEET_ID, `${TAB}!F${fila}`, [[estado]])
+        // yaGuardado: el Sheet de pedidos lo edita el equipo de campo por AppSheet; la guarda central
+        // (firma) lo detectaría como "editado" y bloquearía este write-back de estado, rompiendo el sync.
+        await google.updateSheetValues(SHEET_ID, `${TAB}!F${fila}`, [[estado]], { yaGuardado: true })
         return { ok: true, id_pedido: id, estado, estado_anterior: anterior, fila, material: rows[idx][3] ?? null, obra: rows[idx][1] ?? null }
       },
     },
