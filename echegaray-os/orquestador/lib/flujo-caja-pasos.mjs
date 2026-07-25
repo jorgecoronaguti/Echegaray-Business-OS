@@ -119,6 +119,11 @@ export const PASOS = [
   // 'pendiente_ejecucion' con el detalle. NO crea tareas: la ejecución (FEO) sólo la dispara una
   // autoridad (dueño / Director IA / CFO IA / interfaz). Barato y sin efectos: sólo lee y calcula.
   ['sync-plan-tesoreria.mjs', 'motor: recálculo del Plan de Tesorería → public.finanzas_plan_vigente (pendiente de ejecución, sin crear tareas)', []],
+  // RECÁLCULO DE LA ESTRATEGIA FINANCIERA (25/07) — la salida de nivel CFO que gobierna el Calendario.
+  // ENSAMBLA lo que el plan/modelo ya decidieron en un documento estratégico y lo materializa en
+  // public.finanzas_estrategia_vigente para que la Web haga de la ESTRATEGIA la protagonista del día.
+  // No recalcula un peso ni crea tareas: consume y guarda. Va después del plan porque lo consume.
+  ['sync-estrategia-financiera.mjs', 'motor: recálculo de la Estrategia Financiera → public.finanzas_estrategia_vigente (consumo, sin crear tareas)', []],
 ]
 
 // PASOS DE PRESENTACIÓN Y AUDITORÍA — su salida ≠0 es un DEFECTO A LA VISTA, no un fallo de datos.
