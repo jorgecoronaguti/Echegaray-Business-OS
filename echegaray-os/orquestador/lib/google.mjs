@@ -131,19 +131,13 @@ export function normalizarDestinatarios(raw) {
  * @param {string}  [deps.impersonate] cuenta @ecsas a impersonar (domain-wide delegation)
  */
 export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes, getToken } = {}) {
-  // POR DEFECTO EL OS ACTÚA COMO EL DUEÑO (25/07). Si no se pasa getToken/auth explícito y hay un token
-  // OAuth guardado para ORQ_GOOGLE_IMPERSONATE (jorge@ecsas.com.ar), el cliente usa ESE token: así
-  // crea/copia archivos en SU Drive con SU cuota, en vez de la cuenta de servicio —que no tiene storage
-  // y tiraba 403 "quota exceeded" al crear cualquier archivo—. Es OAuth real (no delegación de dominio,
-  // que sigue sin habilitarse), verificado: lee y CREA como el dueño. Si no hay token, cae al Service
-  // Account (que igual escribe el Sheet compartido). getToken/auth explícitos siguen mandando.
-  if (!getToken && !auth) {
-    const dueno = process.env.ORQ_GOOGLE_IMPERSONATE
-    if (dueno) getToken = async () => {
-      try { const { getTokenFor } = await import('./google-oauth.mjs'); return await getTokenFor(dueno)() }
-      catch { return null }
-    }
-  }
+  // IDENTIDAD (25/07): por defecto el cliente actúa como la CUENTA DE SERVICIO (el robot). Es a
+  // propósito y NO se cambia a "actuar como el dueño" globalmente: la protección de ediciones distingue
+  // al OS de una persona por el email `gserviceaccount.com` en el historial de Drive (ver
+  // historial-ediciones.mjs / firma-tab.mjs). Si el OS escribiera el Sheet COMO el dueño, la firma no
+  // podría distinguir su propia escritura de una edición del dueño y auto-candaría todo. El Sheet real
+  // está compartido con el robot, así que escribirlo como robot funciona y preserva esa distinción.
+  // Para CREAR archivos (que sí necesita cuota real), createFile/copyFile usan el token del dueño abajo.
   const rawFetch = fetchImpl || globalThis.fetch
   // Toda llamada a Google se acota en el tiempo (AbortController): una llamada colgada (red,
   // API que no responde) falla RÁPIDO y claro en vez de colgar la tarea entera del dueño.
@@ -206,8 +200,20 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     }
   }
 
-  async function apiSend(url, method, body) {
-    const token = await accessToken()
+  // CREAR archivos necesita cuota real: la cuenta de servicio no tiene storage propio (403 "quota
+  // exceeded"). Este token usa el OAuth del dueño (ORQ_GOOGLE_IMPERSONATE) SÓLO para createFile/copyFile,
+  // así los archivos nacen en SU Drive con SU cuota — sin cambiar la identidad con la que se ESCRIBE el
+  // Sheet (que sigue siendo el robot, para que la firma distinga al OS del dueño). Cae al robot si no hay
+  // token del dueño. Verificado: crea/copia como el dueño.
+  async function ownerToken() {
+    const dueno = process.env.ORQ_GOOGLE_IMPERSONATE
+    if (dueno) {
+      try { const { getTokenFor } = await import('./google-oauth.mjs'); const t = await getTokenFor(dueno)(); if (t) return t } catch { /* cae al robot */ }
+    }
+    return accessToken()
+  }
+  async function apiSend(url, method, body, tokenOverride) {
+    const token = tokenOverride || await accessToken()
     const res = await withRetry(() => doFetch(url, {
       method,
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -222,8 +228,8 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     return res.json()
   }
 
-  async function apiGet(url) {
-    const token = await accessToken()
+  async function apiGet(url, tokenOverride) {
+    const token = tokenOverride || await accessToken()
     const res = await withRetry(() => doFetch(url, { headers: { Authorization: `Bearer ${token}` } }))
     if (!res.ok) {
       const body = String(await res.text()).slice(0, 200)
@@ -957,10 +963,12 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
      *  Con `parents` lo ubica en una carpeta. Devuelve {id,name,mimeType,webViewLink}. */
     async createFile({ name, mimeType, parents } = {}) {
       if (!name || !mimeType) throw new Error('createFile: faltan name o mimeType')
+      const tok = await ownerToken() // crear en el Drive del dueño (cuota real), no en el del robot
       const f = await apiSend(
         'https://www.googleapis.com/drive/v3/files?fields=id,name,mimeType,webViewLink&supportsAllDrives=true',
         'POST',
         { name, mimeType, ...(parents ? { parents } : {}) },
+        tok,
       )
       // Un Sheet creado por API nace en_US (formato inglés: coma decimal, fechas MM/DD, fórmulas
       // con coma). Todo el Drive de la empresa es es_AR → lo fijamos para que nazca en el
@@ -970,7 +978,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         const timeZone = process.env.ORQ_SHEET_TZ || 'America/Argentina/San_Juan'
         try {
           await apiSend(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(f.id)}:batchUpdate`, 'POST',
-            { requests: [{ updateSpreadsheetProperties: { properties: { locale, timeZone }, fields: 'locale,timeZone' } }] })
+            { requests: [{ updateSpreadsheetProperties: { properties: { locale, timeZone }, fields: 'locale,timeZone' } }] }, tok)
           _sepCache.set(f.id, /^en[_-]/i.test(locale) ? ',' : ';')
         } catch { /* si falla, la localización al escribir igual detecta el locale */ }
       }
@@ -982,15 +990,17 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name&supportsAllDrives=true`,
         'PATCH',
         { name },
+        await ownerToken(), // op a nivel-archivo: la hace el dueño del archivo, no el robot
       )
     },
     /** Mueve un archivo/carpeta a otra carpeta (saca de sus padres actuales). */
     async moveFile(fileId, folderId) {
-      const meta = await apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=parents&supportsAllDrives=true`)
+      const tok = await ownerToken() // op a nivel-archivo: la hace el dueño del archivo, no el robot
+      const meta = await apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=parents&supportsAllDrives=true`, tok)
       const remove = (meta.parents || []).join(',')
       const url = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?addParents=${encodeURIComponent(folderId)}` +
         (remove ? `&removeParents=${encodeURIComponent(remove)}` : '') + '&fields=id,name,parents&supportsAllDrives=true'
-      return apiSend(url, 'PATCH', {})
+      return apiSend(url, 'PATCH', {}, tok)
     },
 
     // ---- ABM POTENTE de Sheets/Drive (todas pasan por aprobación vía la policy) ----
@@ -1162,6 +1172,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/copy?fields=id,name,webViewLink,mimeType&supportsAllDrives=true`,
         'POST',
         { ...(name ? { name } : {}), ...(parents ? { parents } : {}) },
+        await ownerToken(), // la copia nace en el Drive del dueño (cuota real), no en el del robot
       )
     },
     /** Comparte un archivo con un email (rol reader por defecto), para que el destinatario de
@@ -1173,6 +1184,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/permissions?sendNotificationEmail=false&supportsAllDrives=true`,
         'POST',
         { type: 'user', role, emailAddress: String(email) },
+        await ownerToken(), // op a nivel-archivo: la hace el dueño del archivo, no el robot
       )
     },
     /** Prepara los adjuntos de un mail RESPETANDO el formato: un archivo NATIVO de Google
@@ -1201,6 +1213,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,trashed&supportsAllDrives=true`,
         'PATCH',
         { trashed: true },
+        await ownerToken(), // el robot no puede borrar un archivo del dueño: lo borra el dueño
       )
     },
   }
