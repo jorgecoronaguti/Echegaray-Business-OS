@@ -306,7 +306,7 @@ export function EstrategiaResumenSection({ e }: { e: EstrategiaFinanciera }) {
           <Eyebrow>Estrategia elegida</Eyebrow>
           <p className="mt-0.5 text-[13px] font-semibold text-ink">{e.eleccion?.elegida ?? rec.clave}</p>
           <p className="mt-1 text-[13px] text-muted">{rec.razonamiento}</p>
-          {e.eleccion?.por_que && <p className="mt-1 text-[13px] text-faint"><span className="font-medium">Por qué:</span> {e.eleccion.por_que}</p>}
+          {typeof e.eleccion?.por_que === 'string' && e.eleccion.por_que && <p className="mt-1 text-[13px] text-faint"><span className="font-medium">Por qué:</span> {e.eleccion.por_que}</p>}
         </div>
       )}
       <div className="mt-3 grid gap-3 sm:grid-cols-3">

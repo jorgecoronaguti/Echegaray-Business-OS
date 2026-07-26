@@ -136,7 +136,9 @@ function ImpactoCajaFila({
 export function EstrategiaDetalle({ e }: { e: EstrategiaFinanciera }) {
   if (e.estado === 'sin dato') return null
   const rec = e.estrategia_recomendada
-  const porQue = e.eleccion?.por_que ?? null
+  // por_que puede venir string (contrato T07) u OBJETO (dato viejo materializado antes de T07). La UI
+  // nunca debe renderizar un objeto —React tira 500—: sólo se usa si es string. El sync lo refresca a string.
+  const porQue = typeof e.eleccion?.por_que === 'string' ? e.eleccion.por_que : null
   const hayPorQue = Boolean(porQue || rec?.razonamiento)
   const hayBeneficio = Boolean(rec?.beneficios?.length || e.eleccion?.ahorro_vs_segunda)
   const hayAlt = Boolean(e.alternativas_evaluadas && e.alternativas_evaluadas.length > 0)
