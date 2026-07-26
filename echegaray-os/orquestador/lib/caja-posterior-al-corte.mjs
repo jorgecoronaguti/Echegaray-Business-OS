@@ -34,6 +34,11 @@
 // el error que este archivo ya cometió al revés, cuando la cartera decía $30.000.000 y el banco
 // $10.000.000 porque dos estaban endosados.
 
+// La columna "Fecha de caja" NO se tipea acá: se importa de rubro-caja.mjs, que es quien la ESCRIBE
+// en Compras. Escritor y lector comparten una sola definición, así el efecto Compras→CAJA no se
+// rompe en silencio si la columna se mueve (lo verifica caja-posterior-al-corte.test.mjs).
+import { COL_FECHA_CAJA } from './rubro-caja.mjs'
+
 /** Las columnas de Cobranzas. Verificadas contra la fila de encabezado del 21/07. */
 export const COB = { hoja: 'Cobranzas', total: 'M', forma: 'N', estado: 'O', fecha: 'Q', desde: 5, hasta: 400 }
 /** Las columnas de Cheques Emitidos. I es la fecha en que se debita, K el SI/NO. */
@@ -44,7 +49,7 @@ export const CHQ = { hoja: 'Cheques Emitidos', importe: 'F', fechaPago: 'I', deb
  * Cheque ya lo resta "Cheques Emitidos", la Tarjeta de Crédito consume el cupo (no la cuenta), el
  * Efectivo no toca el banco (sale de la caja física). Sólo Transferencia y Débito faltan.
  */
-export const CMP = { hoja: 'Compras', total: 'O', tipoPago: 'P', estado: 'X', fecha: 'AD', desde: 4, hasta: 1200, tiposBanco: ['Transferencia', 'Débito'] }
+export const CMP = { hoja: 'Compras', total: 'O', tipoPago: 'P', estado: 'X', fecha: COL_FECHA_CAJA, desde: 4, hasta: 1200, tiposBanco: ['Transferencia', 'Débito'] }
 
 const rango = (h, col, d, f) => `'${h}'!$${col}$${d}:$${col}$${f}`
 

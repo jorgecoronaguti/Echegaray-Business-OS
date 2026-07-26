@@ -29,6 +29,26 @@ import { NOMBRES } from './sheet-pestanas.mjs'
 /** Normaliza para comparar: sin espacios de más, en minúsculas. PURA. */
 export const norm = (s) => String(s ?? '').trim().toLowerCase()
 
+// ═══ LAS DOS COLUMNAS DE COMPRAS QUE MANDAN EN CAJA — UNA SOLA DEFINICIÓN ═══
+//
+// POR QUÉ VIVEN ACÁ (25/07). "Rubro de caja" (qué es cada gasto) y "Fecha de caja" (cuándo sale la
+// plata) son las dos columnas que rubro-caja-sheet.mjs ESCRIBE en Compras y de las que cuelga todo
+// el cash flow. Pero la "Fecha de caja" no la lee sólo el cash flow: la pestaña CAJA la lee para
+// DESCARGAR de su saldo las compras ya pagadas por transferencia/débito que el extracto todavía no
+// muestra (lib/caja-posterior-al-corte.mjs, CMP.fecha). Ese es el efecto directo de un pago en
+// Compras sobre CAJA, y depende de que ESCRITOR y LECTOR apunten a la MISMA columna.
+//
+// Antes la letra estaba tipeada por separado en los dos archivos (COL_FECHA=29 en el script, 'AD' en
+// CMP). Si alguien mueve una y no la otra, el pago deja de descargar de la caja sin dar un solo
+// error — el patrón "una fuente que se congela sin gritar" que este repo ya pagó caro. Por eso la
+// identidad de la columna se define UNA vez, acá, los dos la importan, y un test verifica que
+// coinciden. Cambiar la columna es cambiar esta línea; el resto sigue solo.
+export const COL_RUBRO_CAJA = 'AC' // 0-based 28 — la escribe rubro-caja-sheet.mjs
+export const COL_FECHA_CAJA = 'AD' // 0-based 29 — la escribe rubro-caja-sheet.mjs y la lee CAJA (CMP.fecha)
+
+/** NÚCLEO PURO: el índice 0-based de una columna en letras de Sheet (A=0, AA=26, AD=29). */
+export const colIndex = (letras) => [...String(letras).toUpperCase()].reduce((n, c) => n * 26 + (c.charCodeAt(0) - 64), 0) - 1
+
 // Los proveedores que facturan TODOS los meses el mismo servicio. Sale de la pestaña Recurrentes.
 const RECURRENTES = ['robles jose maria', 'movistar', 'meglioli facundo fabian', 'sanitarios od s.a.s.', 'ruviño matias esteban', 'rsv']
 // Los clientes/obras que identifican una obra real: "Sueldos" contra uno de estos son JORNALES.

@@ -4,6 +4,7 @@ import {
   formulaCobrosPosteriores, formulaChequesDebitadosPosteriores, formulaComprasPagadasPosteriores,
   formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte, COB, CHQ, CMP,
 } from './caja-posterior-al-corte.mjs'
+import { COL_FECHA_CAJA, colIndex } from './rubro-caja.mjs'
 
 test('las compras pagadas posteriores restan sólo Transferencia y Débito, después del corte', () => {
   const f = formulaComprasPagadasPosteriores('$F$19')
@@ -14,6 +15,34 @@ test('las compras pagadas posteriores restan sólo Transferencia y Débito, desp
   // NO se cuentan los medios ya cubiertos por otra línea (doble conteo).
   assert.doesNotMatch(f, /"Efectivo"|"Cheque"|"Echeq"|"Tarjeta/)
   assert.doesNotMatch(f, />=/)
+})
+
+// ═══ EL CONTRATO ESCRITOR↔LECTOR DE LA COLUMNA "FECHA DE CAJA" ═══
+//
+// El efecto directo de un pago en Compras sobre CAJA depende de que la columna que rubro-caja-sheet
+// ESCRIBE ("Fecha de caja") sea EXACTAMENTE la que esta lib LEE (CMP.fecha). Antes cada archivo tenía
+// su propia letra tipeada a mano; si una se movía y la otra no, el pago dejaba de descargar de la
+// caja sin dar error. Ahora la letra es una sola constante importada, y esto lo verifica.
+test('CAJA lee la MISMA columna "Fecha de caja" que rubro-caja-sheet escribe (una sola definición)', () => {
+  assert.equal(CMP.fecha, COL_FECHA_CAJA)
+})
+
+test('colIndex traduce letras de Sheet a 0-based: la "Fecha de caja" es la AD (29)', () => {
+  assert.equal(colIndex('A'), 0)
+  assert.equal(colIndex('AA'), 26)
+  assert.equal(colIndex(COL_FECHA_CAJA), 29) // AD
+  assert.equal(colIndex(CMP.total), 14)      // O = Total
+})
+
+test('el escritor NO vuelve a hardcodear la columna: la toma de la constante compartida', async () => {
+  // Si mañana alguien pone `const COL_FECHA = 29` de nuevo en el script, el contrato se puede
+  // desincronizar en silencio. El generador tiene que derivar la columna de COL_FECHA_CAJA.
+  const { readFile } = await import('node:fs/promises')
+  const src = await readFile('orquestador/scripts/rubro-caja-sheet.mjs', 'utf8')
+  assert.match(src, /colIndex\(COL_FECHA_CAJA\)/)
+  assert.match(src, /colIndex\(COL_RUBRO_CAJA\)/)
+  assert.doesNotMatch(src, /const COL_FECHA = \d/)
+  assert.doesNotMatch(src, /const COL_RUBRO = \d/)
 })
 
 test('la línea neta ahora también resta las compras pagadas por banco', () => {
