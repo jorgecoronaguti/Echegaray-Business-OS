@@ -212,6 +212,7 @@ function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, fi
   push(['CONTROL — que no falte ni sobre nada'])
   const filaCtrl = filas.length + 1
   for (const c of bloqueControl(meta.egr0, meta.egr1, 'B', filaCtrl)) push([c.etiqueta, c.formula, c.nota])
+  const filaCtrlFin = filas.length // última fila del bloque de control (1-based), para formatear en moneda
 
   // El total del año para las filas donde tiene sentido: detalle, subtotales y el cierre.
   const conTotal = [...meta.detalle.map((d) => d.fila), ...meta.subtotales, meta.variacion,
@@ -239,7 +240,7 @@ function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, fi
     }
   }
 
-  return { filas, meta, n, colTotal, filaCtrl, filaRef }
+  return { filas, meta, n, colTotal, filaCtrl, filaCtrlFin, filaRef }
 }
 
 // clearValues borra el contenido pero NO el formato: la grilla nueva cae sobre celdas que tenían el
@@ -326,7 +327,9 @@ async function formatear(google, data) {
     // El bloque de referencias y el de control son texto, no plata.
     fmt(rango(g.filaRef - 1, filas, 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
       { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' })
-    fmt({ ...rango(g.filaCtrl - 1, g.filaCtrl + 4), startColumnIndex: 1, endColumnIndex: 2 },
+    // Toda la columna B del bloque de control en moneda, hasta su última fila real (el bloque creció
+    // con los dos espejos del ingreso de T04: usar filaCtrlFin en vez de un +4 fijo que se quedaba corto).
+    fmt({ ...rango(g.filaCtrl - 1, g.filaCtrlFin), startColumnIndex: 1, endColumnIndex: 2 },
       'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
       { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0' }, horizontalAlignment: 'RIGHT' })
     fmt(rango(g.filaCtrl - 2, g.filaCtrl - 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true } })

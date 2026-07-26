@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { CUADRO, verificarCuadro, expresionReal, formulaLineaMes, SUB_BIENES_DE_USO, formulaChequesSinFactura, INSTRUMENTOS } from './cash-flow-lineas.mjs'
+import { CUADRO, verificarCuadro, expresionReal, formulaLineaMes, SUB_BIENES_DE_USO, formulaChequesSinFactura, INSTRUMENTOS, bloqueControl } from './cash-flow-lineas.mjs'
 import { MARCAS } from './cheques-cobertura.mjs'
 import { RUBROS } from './rubro-caja.mjs'
 
@@ -71,6 +71,18 @@ test('la línea de cheques sin factura es una fórmula que suma las marcas del O
   assert.ok(f.includes('>=B$3') && f.includes('<EOMONTH(B$3;0)+1'))
   // Un importe que no es número no rompe la suma (hay celdas con "-" en esas columnas).
   assert.ok(f.includes('IF(ISNUMBER('))
+})
+
+// EL LADO DEL INGRESO TAMBIÉN SE AUDITA (T04). Antes el control del pie sólo miraba el egreso
+// (Compras): un cobro sin unidad o sin fecha se caía del cuadro sin que nada avisara. Ahora el bloque
+// de control incluye sus dos espejos del ingreso.
+test('el bloque de control incluye los dos espejos del ingreso (sin unidad, sin fecha)', () => {
+  const ctrl = bloqueControl(10, 20, 'B', 40)
+  const etiquetas = ctrl.map((c) => c.etiqueta)
+  assert.ok(etiquetas.some((e) => e.startsWith('Cobros sin unidad de negocio')), 'está el control de cobros sin unidad')
+  assert.ok(etiquetas.some((e) => e.startsWith('Cobros sin fecha')), 'está el control de cobros sin fecha')
+  // Cada fila de control trae fórmula: ninguna es un número pegado (regla de oro).
+  for (const c of ctrl) assert.ok(String(c.formula).startsWith('='), `${c.etiqueta} es una fórmula`)
 })
 
 // La columna de marcas tiene que caer DESPUÉS de la última columna de datos de cada pestaña, o el
