@@ -4,10 +4,9 @@ import { useMemo, useState } from 'react'
 import type { CalendarioFinanciero, DiaCalendario, NivelRiesgo } from '../types'
 import type { EstrategiaFinanciera } from '../types/estrategia'
 import { EstrategiaHero, EstrategiaDetalle, AccionesDelDia, accionesDeEstrategia } from './EstrategiaFinancieraPanel'
+import { money, money0, moneyK } from '@/shared/utils/format'
+import { Card, Eyebrow, Badge, SegmentedControl, StepNav, Callout, type Tono } from '@/shared/components/ui'
 
-const money = (n: number) =>
-  new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n || 0)
-const money0 = (n: number) => (n ? money(n) : '—')
 const parseDia = (iso: string) => new Date(`${iso}T00:00:00`)
 const nombreDia = (iso: string) => parseDia(iso).toLocaleDateString('es-AR', { weekday: 'long', day: '2-digit', month: 'long' })
 const numDia = (iso: string) => parseDia(iso).getDate()
@@ -15,15 +14,20 @@ const numDia = (iso: string) => parseDia(iso).getDate()
 // 2026". En español va sólo la primera letra: se hace acá, una vez, y ninguna clase lo repite.
 const may = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
-// El riesgo se ENCODEA en color y en forma, no sólo en número: un día que cierra en rojo se lee de un
-// vistazo. Los tonos son semánticos (no el acento de marca).
-const TONO: Record<NivelRiesgo, { pill: string; borde: string; texto: string }> = {
-  bajo: { pill: 'bg-emerald-100 text-emerald-800', borde: 'border-slate-200', texto: 'text-slate-900' },
-  medio: { pill: 'bg-amber-100 text-amber-800', borde: 'border-amber-300', texto: 'text-amber-800' },
-  alto: { pill: 'bg-red-100 text-red-800', borde: 'border-red-400', texto: 'text-red-700' },
+// El riesgo se ENCODEA en color y forma, no sólo en número: un día que cierra en rojo se lee de un
+// vistazo. Tonos semánticos del sistema visual (no el acento de marca).
+const RIESGO: Record<NivelRiesgo, { tono: Tono; borde: string; valor: string }> = {
+  bajo: { tono: 'pos', borde: 'border-line', valor: 'text-ink' },
+  medio: { tono: 'warn', borde: 'border-warn/40', valor: 'text-warn' },
+  alto: { tono: 'neg', borde: 'border-neg/50', valor: 'text-neg' },
 }
 
 type Vista = 'mensual' | 'semanal' | 'diaria'
+const VISTAS = [
+  { value: 'mensual' as const, label: 'Mensual' },
+  { value: 'semanal' as const, label: 'Semanal' },
+  { value: 'diaria' as const, label: 'Diaria' },
+]
 
 export function CalendarioFinancieroView({
   cal,
@@ -38,40 +42,27 @@ export function CalendarioFinancieroView({
   const [sel, setSel] = useState<string>(dias[0]?.fecha ?? '')
   const diaSel = porFecha.get(sel) ?? dias[0]
 
-  // La MANIFESTACIÓN de la estrategia en el día: las acciones de la estrategia cuya fecha == el día
-  // seleccionado. El motor da UNA estrategia global; el día sólo filtra qué hace hoy. No inventa nada.
+  // La MANIFESTACIÓN de la estrategia en el día: las acciones cuya fecha == el día seleccionado.
+  // El motor da UNA estrategia global; el día sólo filtra qué hace hoy. No inventa nada.
   const todasLasAcciones = useMemo(
     () => (estrategia?.estado === 'ok' ? accionesDeEstrategia(estrategia) : []),
     [estrategia],
   )
-  const accionesDelDia = useMemo(
-    () => todasLasAcciones.filter((a) => a.fecha === sel),
-    [todasLasAcciones, sel],
-  )
+  const accionesDelDia = useMemo(() => todasLasAcciones.filter((a) => a.fecha === sel), [todasLasAcciones, sel])
   const hayEstrategia = estrategia && estrategia.estado === 'ok'
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* PROTAGONISTA: la estrategia que el OS está ejecutando, de un vistazo. */}
       {estrategia && <EstrategiaHero e={estrategia} />}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_384px]">
         {/* EL CALENDARIO sigue siendo la interfaz principal de navegación. */}
         <div className="min-w-0">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1 text-sm">
-              {(['mensual', 'semanal', 'diaria'] as Vista[]).map((v) => (
-                <button
-                  key={v}
-                  onClick={() => setVista(v)}
-                  className={`rounded-md px-3 py-1 capitalize transition ${vista === v ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
-            <div className="text-xs text-slate-400">
-              {dias.length} días · caja inicial {money(cal.caja_inicial)}
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <SegmentedControl options={VISTAS} value={vista} onChange={setVista} ariaLabel="Vista del calendario" />
+            <div className="text-[11px] text-faint">
+              {dias.length} días · caja inicial <span className="tabular-nums">{money(cal.caja_inicial)}</span>
             </div>
           </div>
 
@@ -80,10 +71,11 @@ export function CalendarioFinancieroView({
           {vista === 'diaria' && diaSel && <VistaLista dias={[diaSel]} sel={sel} onSel={setSel} />}
 
           {cal.sin_fecha && cal.sin_fecha.n > 0 && (
-            <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              {cal.sin_fecha.n} factura{cal.sin_fecha.n > 1 ? 's' : ''} pendiente{cal.sin_fecha.n > 1 ? 's' : ''} de pago por {money(cal.sin_fecha.monto)}{' '}
-              no aparece{cal.sin_fecha.n > 1 ? 'n' : ''} en ningún día: {cal.sin_fecha.fuente.toLowerCase()}.
-            </div>
+            <Callout tono="warn" className="mt-3">
+              {cal.sin_fecha.n} factura{cal.sin_fecha.n > 1 ? 's' : ''} pendiente{cal.sin_fecha.n > 1 ? 's' : ''} de pago por{' '}
+              <span className="tabular-nums">{money(cal.sin_fecha.monto)}</span> no aparece{cal.sin_fecha.n > 1 ? 'n' : ''} en ningún día:{' '}
+              {cal.sin_fecha.fuente.toLowerCase()}.
+            </Callout>
           )}
         </div>
 
@@ -96,7 +88,7 @@ export function CalendarioFinancieroView({
         </aside>
       </div>
 
-      {/* LA ESTRATEGIA EN DETALLE: por qué se eligió, alternativas, beneficio, riesgos (global). */}
+      {/* LA ESTRATEGIA EN DETALLE (progresivo): por qué, alternativas, beneficio, riesgos (global). */}
       {estrategia && <EstrategiaDetalle e={estrategia} />}
     </div>
   )
@@ -126,48 +118,52 @@ function VistaMensual({
   }
   const titulo = primero.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
+    <Card padding="md">
       <div className="mb-3 flex items-center justify-between">
-        <div className="text-sm font-medium text-slate-700">{may(titulo)}</div>
-        <div className="flex items-center gap-1">
-          <Paso etiqueta="Mes anterior" onClick={() => setI(i - 1)} disabled={i <= 0}>‹</Paso>
-          <Paso etiqueta="Mes siguiente" onClick={() => setI(i + 1)} disabled={i >= meses.length - 1}>›</Paso>
-        </div>
+        <div className="text-[13px] font-semibold text-ink">{may(titulo)}</div>
+        <StepNav
+          prevLabel="Mes anterior"
+          nextLabel="Mes siguiente"
+          onPrev={() => setI(i - 1)}
+          onNext={() => setI(i + 1)}
+          prevDisabled={i <= 0}
+          nextDisabled={i >= meses.length - 1}
+        />
       </div>
-      <div className="grid grid-cols-7 gap-1 text-center text-[11px] uppercase tracking-wide text-slate-400">
+      <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-medium uppercase tracking-wide text-faint">
         {['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'].map((d) => <div key={d} className="pb-1">{d}</div>)}
       </div>
       <div className="grid grid-cols-7 gap-1">
-        {celdas.map((c, i) => {
-          if (!c) return <div key={i} />
+        {celdas.map((c, idx) => {
+          if (!c) return <div key={idx} />
           const activo = typeof c.saldo_final === 'number'
-          const t = activo ? TONO[c.riesgo] : { pill: '', borde: 'border-slate-100', texto: 'text-slate-300' }
+          const r = activo ? RIESGO[c.riesgo] : { tono: 'neutral' as Tono, borde: 'border-line', valor: 'text-faint' }
           const seleccionado = c.fecha === sel
           return (
             <button
               key={c.fecha}
               disabled={!activo}
               onClick={() => onSel(c.fecha)}
-              className={`min-h-[68px] rounded-lg border p-1.5 text-left transition ${t.borde} ${seleccionado ? 'ring-2 ring-slate-900' : ''} ${activo ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/50'}`}
+              className={`min-h-[66px] rounded-control border p-1.5 text-left transition ${r.borde} ${
+                seleccionado ? 'ring-2 ring-accent ring-offset-1' : ''
+              } ${activo ? 'bg-surface hover:border-line-strong hover:bg-surface-quiet' : 'bg-surface-quiet/50'}`}
             >
               <div className="flex items-center justify-between">
-                <span className={`text-xs font-medium ${activo ? 'text-slate-500' : 'text-slate-300'}`}>{numDia(c.fecha)}</span>
-                {activo && c.recomendaciones > 0 && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
+                <span className={`text-[11px] font-medium ${activo ? 'text-muted' : 'text-faint/60'}`}>{numDia(c.fecha)}</span>
+                {activo && c.recomendaciones > 0 && <span className="h-1.5 w-1.5 rounded-full bg-warn" />}
               </div>
-              {activo && (
-                <div className={`mt-1 text-[12px] font-semibold tabular-nums ${t.texto}`}>{money(c.saldo_final)}</div>
-              )}
+              {activo && <div className={`mt-1 text-[12px] font-semibold tabular-nums ${r.valor}`}>{money(c.saldo_final)}</div>}
               {activo && (c.ingresos > 0 || c.egresos > 0) && (
-                <div className="mt-0.5 flex gap-1 text-[10px] tabular-nums">
-                  {c.ingresos > 0 && <span className="text-emerald-600">+{Math.round(c.ingresos / 1000)}k</span>}
-                  {c.egresos > 0 && <span className="text-red-500">−{Math.round(c.egresos / 1000)}k</span>}
+                <div className="mt-0.5 flex flex-wrap gap-x-1 text-[10px] tabular-nums">
+                  {c.ingresos > 0 && <span className="text-pos">{moneyK(c.ingresos)}</span>}
+                  {c.egresos > 0 && <span className="text-neg">{moneyK(-c.egresos)}</span>}
                 </div>
               )}
             </button>
           )
         })}
       </div>
-    </div>
+    </Card>
   )
 }
 
@@ -179,31 +175,18 @@ function VistaSemanal({ dias, sel, onSel }: { dias: DiaCalendario[]; sel: string
   return (
     <div>
       <div className="mb-3 flex items-center justify-between">
-        <div className="text-sm font-medium text-slate-700">
-          Semana {i + 1} de {semanas}
-        </div>
-        <div className="flex items-center gap-1">
-          <Paso etiqueta="Semana anterior" onClick={() => setS(i - 1)} disabled={i <= 0}>‹</Paso>
-          <Paso etiqueta="Semana siguiente" onClick={() => setS(i + 1)} disabled={i >= semanas - 1}>›</Paso>
-        </div>
+        <div className="text-[13px] font-semibold text-ink">Semana {i + 1} de {semanas}</div>
+        <StepNav
+          prevLabel="Semana anterior"
+          nextLabel="Semana siguiente"
+          onPrev={() => setS(i - 1)}
+          onNext={() => setS(i + 1)}
+          prevDisabled={i <= 0}
+          nextDisabled={i >= semanas - 1}
+        />
       </div>
       <VistaLista dias={tramo} sel={sel} onSel={onSel} />
     </div>
-  )
-}
-
-function Paso({ etiqueta, onClick, disabled, children }: { etiqueta: string; onClick: () => void; disabled: boolean; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      aria-label={etiqueta}
-      title={etiqueta}
-      onClick={onClick}
-      disabled={disabled}
-      className="h-7 w-7 rounded-md border border-slate-200 text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30"
-    >
-      {children}
-    </button>
   )
 }
 
@@ -211,24 +194,26 @@ function VistaLista({ dias, sel, onSel }: { dias: DiaCalendario[]; sel: string; 
   return (
     <div className="space-y-2">
       {dias.map((d) => {
-        const t = TONO[d.riesgo]
+        const r = RIESGO[d.riesgo]
         return (
           <button
             key={d.fecha}
             onClick={() => onSel(d.fecha)}
-            className={`flex w-full items-center justify-between rounded-xl border bg-white p-4 text-left transition hover:bg-slate-50 ${t.borde} ${d.fecha === sel ? 'ring-2 ring-slate-900' : ''}`}
+            className={`flex w-full items-center justify-between rounded-card border bg-surface p-4 text-left shadow-card transition hover:bg-surface-quiet ${r.borde} ${
+              d.fecha === sel ? 'ring-2 ring-accent ring-offset-1' : ''
+            }`}
           >
             <div>
-              <div className="text-sm font-medium text-slate-800">{may(nombreDia(d.fecha))}</div>
-              <div className="mt-1 flex gap-3 text-xs tabular-nums text-slate-500">
+              <div className="text-[13px] font-medium text-ink">{may(nombreDia(d.fecha))}</div>
+              <div className="mt-1 flex gap-3 text-[12px] tabular-nums text-muted">
                 <span>inicial {money(d.saldo_inicial)}</span>
-                <span className="text-emerald-600">+{money0(d.ingresos)}</span>
-                <span className="text-red-500">−{money0(d.egresos)}</span>
+                <span className="text-pos">+{money0(d.ingresos)}</span>
+                <span className="text-neg">−{money0(d.egresos)}</span>
               </div>
             </div>
             <div className="text-right">
-              <div className={`text-lg font-semibold tabular-nums ${t.texto}`}>{money(d.saldo_final)}</div>
-              <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${t.pill}`}>{d.riesgo}</span>
+              <div className={`text-lg font-semibold tabular-nums ${r.valor}`}>{money(d.saldo_final)}</div>
+              <Badge tono={r.tono} uppercase className="mt-1">{d.riesgo}</Badge>
             </div>
           </button>
         )
@@ -241,66 +226,64 @@ function VistaLista({ dias, sel, onSel }: { dias: DiaCalendario[]; sel: string; 
 // cuando hay estrategia (el foco es "qué hace hoy la estrategia", no el flujo de fondos crudo). Sin
 // estrategia disponible, se abre por defecto para no ocultar la única lectura del día.
 function PanelDiaSecundario({ dia, abiertoPorDefecto }: { dia: DiaCalendario; abiertoPorDefecto: boolean }) {
-  const t = TONO[dia.riesgo]
+  const r = RIESGO[dia.riesgo]
   return (
-    <details open={abiertoPorDefecto} className="group rounded-xl border border-slate-200 bg-white [&_summary]:list-none">
-      <summary className="flex cursor-pointer items-center justify-between gap-2 p-4 text-slate-600 transition hover:bg-slate-50">
+    <details open={abiertoPorDefecto} className="group rounded-card border border-line bg-surface shadow-card [&_summary]:list-none">
+      <summary className="flex cursor-pointer items-center justify-between gap-2 p-4 transition hover:bg-surface-quiet">
         <div className="min-w-0">
-          <div className="text-[11px] uppercase tracking-wide text-slate-400">Movimientos y saldo del día</div>
-          <div className="mt-0.5 truncate text-sm font-medium text-slate-700">{may(nombreDia(dia.fecha))}</div>
+          <Eyebrow>Movimientos y saldo del día</Eyebrow>
+          <div className="mt-0.5 truncate text-[13px] font-medium text-ink-soft">{may(nombreDia(dia.fecha))}</div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <span className={`tabular-nums text-sm font-semibold ${t.texto}`}>{money(dia.saldo_final)}</span>
-          <span className="text-slate-400 transition group-open:rotate-180">⌄</span>
+          <span className={`text-[13px] font-semibold tabular-nums ${r.valor}`}>{money(dia.saldo_final)}</span>
+          <span className="text-faint transition group-open:rotate-180">⌄</span>
         </div>
       </summary>
-      <div className="border-t border-slate-100 p-4 pt-3">
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-        <Fila k="Saldo inicial" v={money(dia.saldo_inicial)} />
-        <Fila k="Saldo final" v={money(dia.saldo_final)} destacado tono={t.texto} />
-        <Fila k="Ingresos" v={money0(dia.ingresos)} tono="text-emerald-600" />
-        <Fila k="Egresos" v={money0(dia.egresos)} tono="text-red-500" />
-      </dl>
+      <div className="border-t border-line p-4 pt-3">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+          <Fila k="Saldo inicial" v={money(dia.saldo_inicial)} />
+          <Fila k="Saldo final" v={money(dia.saldo_final)} destacado tono={r.valor} />
+          <Fila k="Ingresos" v={money0(dia.ingresos)} tono="text-pos" />
+          <Fila k="Egresos" v={money0(dia.egresos)} tono="text-neg" />
+        </dl>
 
-      {(dia.cheques > 0 || dia.impuestos > 0 || dia.cargas_sociales > 0 || dia.obligaciones > 0 || dia.cobranzas > 0) && (
-        <div className="mt-3 border-t border-slate-100 pt-3">
-          <div className="mb-2 text-[11px] uppercase tracking-wide text-slate-400">Composición del día</div>
-          <div className="space-y-1 text-xs">
-            {dia.cobranzas > 0 && <Renglon k="Cobranzas" v={money(dia.cobranzas)} tono="text-emerald-600" />}
-            {dia.cheques > 0 && <Renglon k="Cheques" v={money(dia.cheques)} />}
-            {dia.cargas_sociales > 0 && <Renglon k="Cargas sociales" v={money(dia.cargas_sociales)} />}
-            {dia.impuestos > 0 && <Renglon k="Impuestos" v={money(dia.impuestos)} />}
-            {dia.obligaciones > 0 && <Renglon k="Otras obligaciones" v={money(dia.obligaciones)} />}
-            {dia.descubierto_utilizado > 0 && <Renglon k="Descubierto usado" v={money(dia.descubierto_utilizado)} tono="text-red-600" />}
+        {(dia.cheques > 0 || dia.impuestos > 0 || dia.cargas_sociales > 0 || dia.obligaciones > 0 || dia.cobranzas > 0) && (
+          <div className="mt-3 border-t border-line pt-3">
+            <Eyebrow className="mb-2">Composición del día</Eyebrow>
+            <div className="space-y-1">
+              {dia.cobranzas > 0 && <Renglon k="Cobranzas" v={money(dia.cobranzas)} tono="text-pos" />}
+              {dia.cheques > 0 && <Renglon k="Cheques" v={money(dia.cheques)} />}
+              {dia.cargas_sociales > 0 && <Renglon k="Cargas sociales" v={money(dia.cargas_sociales)} />}
+              {dia.impuestos > 0 && <Renglon k="Impuestos" v={money(dia.impuestos)} />}
+              {dia.obligaciones > 0 && <Renglon k="Otras obligaciones" v={money(dia.obligaciones)} />}
+              {dia.descubierto_utilizado > 0 && <Renglon k="Descubierto usado" v={money(dia.descubierto_utilizado)} tono="text-neg" />}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {dia.movimientos.length > 0 && (
-        <div className="mt-3 border-t border-slate-100 pt-3">
-          <div className="mb-2 text-[11px] uppercase tracking-wide text-slate-400">Movimientos</div>
-          <ul className="space-y-2">
-            {dia.movimientos.map((m, i) => (
-              <li key={i} className="flex items-start justify-between gap-2 text-xs">
-                <div className="min-w-0">
-                  <div className="truncate font-medium text-slate-700">{m.proveedor || m.cliente || m.detalle || m.categoria}</div>
-                  <div className="truncate text-slate-400">
-                    {[m.obra, m.medio, m.origen].filter(Boolean).join(' · ') || m.categoria}
+        {dia.movimientos.length > 0 && (
+          <div className="mt-3 border-t border-line pt-3">
+            <Eyebrow className="mb-2">Movimientos</Eyebrow>
+            <ul className="space-y-2">
+              {dia.movimientos.map((m, i) => (
+                <li key={i} className="flex items-start justify-between gap-2 text-[12px]">
+                  <div className="min-w-0">
+                    <div className="truncate font-medium text-ink-soft">{m.proveedor || m.cliente || m.detalle || m.categoria}</div>
+                    <div className="truncate text-faint">{[m.obra, m.medio, m.origen].filter(Boolean).join(' · ') || m.categoria}</div>
+                    {m.vencida && (
+                      <div className="mt-0.5 text-[11px] font-medium text-neg">
+                        vencida el {m.vence_original ? parseDia(m.vence_original).toLocaleDateString('es-AR') : '—'}
+                      </div>
+                    )}
                   </div>
-                  {m.vencida && (
-                    <div className="mt-0.5 text-[11px] font-medium text-red-600">
-                      vencida el {m.vence_original ? parseDia(m.vence_original).toLocaleDateString('es-AR') : '—'}
-                    </div>
-                  )}
-                </div>
-                <span className={`shrink-0 tabular-nums font-medium ${m.tipo === 'ingreso' ? 'text-emerald-600' : 'text-red-500'}`}>
-                  {m.tipo === 'ingreso' ? '+' : '−'}{money(m.monto)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+                  <span className={`shrink-0 font-medium tabular-nums ${m.tipo === 'ingreso' ? 'text-pos' : 'text-neg'}`}>
+                    {m.tipo === 'ingreso' ? '+' : '−'}{money(m.monto)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </details>
   )
@@ -310,42 +293,42 @@ function Recomendaciones({ cal }: { cal: CalendarioFinanciero }) {
   const recs = cal.recomendaciones || []
   if (!recs.length) return null
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="mb-3 text-[11px] uppercase tracking-wide text-slate-400">Acciones recomendadas</div>
-      <ul className="space-y-3">
+    <Card padding="md">
+      <Eyebrow>Acciones recomendadas</Eyebrow>
+      <ul className="mt-3 space-y-3">
         {recs.map((r, i) => (
-          <li key={i} className="border-l-2 border-slate-900 pl-3">
+          <li key={i} className="border-l-2 border-accent pl-3">
             <div className="flex items-center gap-2">
-              <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${r.prioridad === 'alta' ? 'bg-red-100 text-red-800' : 'bg-slate-100 text-slate-600'}`}>{r.prioridad}</span>
-              <span className="text-sm font-medium text-slate-800">{r.titulo}</span>
+              <Badge tono={r.prioridad === 'alta' ? 'neg' : 'neutral'} uppercase>{r.prioridad}</Badge>
+              <span className="text-[13px] font-medium text-ink-soft">{r.titulo}</span>
             </div>
-            <p className="mt-1 text-xs text-slate-500">{r.explicacion}</p>
-            <p className="mt-1 text-xs text-slate-400">{r.fundamentos}</p>
-            <div className="mt-1 flex gap-3 text-[11px] text-slate-400">
+            <p className="mt-1 text-[12px] text-muted">{r.explicacion}</p>
+            <p className="mt-0.5 text-[12px] text-faint">{r.fundamentos}</p>
+            <div className="mt-1 flex gap-3 text-[11px] text-faint">
               {r.impacto_pesos > 0 && <span className="tabular-nums">Impacto {money(r.impacto_pesos)}</span>}
               <span>Riesgo {r.riesgo}</span>
             </div>
           </li>
         ))}
       </ul>
-    </div>
+    </Card>
   )
 }
 
 function Fila({ k, v, destacado, tono }: { k: string; v: string; destacado?: boolean; tono?: string }) {
   return (
     <div>
-      <dt className="text-[11px] uppercase tracking-wide text-slate-400">{k}</dt>
-      <dd className={`tabular-nums ${destacado ? `text-lg font-semibold ${tono ?? ''}` : 'text-slate-800'}`}>{v}</dd>
+      <dt className="text-[10px] font-medium uppercase tracking-wide text-faint">{k}</dt>
+      <dd className={`tabular-nums ${destacado ? `text-lg font-semibold ${tono ?? ''}` : 'text-[13px] text-ink-soft'}`}>{v}</dd>
     </div>
   )
 }
 
 function Renglon({ k, v, tono }: { k: string; v: string; tono?: string }) {
   return (
-    <div className="flex justify-between">
-      <span className="text-slate-500">{k}</span>
-      <span className={`tabular-nums font-medium ${tono ?? 'text-slate-700'}`}>{v}</span>
+    <div className="flex justify-between text-[12px]">
+      <span className="text-muted">{k}</span>
+      <span className={`font-medium tabular-nums ${tono ?? 'text-ink-soft'}`}>{v}</span>
     </div>
   )
 }

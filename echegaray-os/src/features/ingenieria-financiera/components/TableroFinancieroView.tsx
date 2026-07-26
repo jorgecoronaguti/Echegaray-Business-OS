@@ -2,55 +2,48 @@
 //
 // Cada sección lee una tabla singleton public.finanzas_* que un sync materializó desde el tool del
 // motor. La Web NO calcula un peso: sólo jerarquiza y muestra lo que el motor decidió. Si un número
-// está mal, se arregla en el motor (orquestador/lib/*), nunca acá.
+// está mal, se arregla en el motor (orquestador/lib/*), nunca acá. Presentación con el sistema visual
+// del OS (src/shared/components/ui): tablas densas con hairlines, sin estética de planilla.
 
 import type {
   ModeloLiquidez, RecomendacionModelo, CondicionesDoc, CompararDoc, PriorizarDoc, PagoPriorizado,
 } from '../types/tablero'
 import type { EstrategiaFinanciera } from '../types/estrategia'
+import { money, pct } from '@/shared/utils/format'
+import { Card, SectionHeader, Eyebrow, Badge, StatTile, KeyValue, Callout, type Tono } from '@/shared/components/ui'
 
-const money = (n: number | null | undefined) =>
-  typeof n === 'number' && Number.isFinite(n)
-    ? new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n)
-    : '—'
-
-const pct = (n: number | null | undefined) =>
-  typeof n === 'number' && Number.isFinite(n) ? `${(n * 100).toFixed(1)}%` : '—'
-
-const PRIORIDAD: Record<string, string> = {
-  alta: 'bg-red-100 text-red-800',
-  media: 'bg-amber-100 text-amber-800',
-  baja: 'bg-emerald-100 text-emerald-800',
-}
+const PRIORIDAD: Record<string, Tono> = { alta: 'neg', media: 'warn', baja: 'pos' }
 
 function Seccion({ n, titulo, subtitulo, children }: {
   n: number; titulo: string; subtitulo: string; children: React.ReactNode
 }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <header className="mb-4 flex items-baseline gap-2">
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">{n}</span>
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900">{titulo}</h2>
-          <p className="text-xs text-slate-500">{subtitulo}</p>
-        </div>
-      </header>
+    <Card as="section" padding="lg">
+      <SectionHeader
+        title={
+          <span className="flex items-center gap-2.5">
+            <span className="flex h-6 w-6 items-center justify-center rounded-control bg-accent text-[11px] font-semibold text-white">{n}</span>
+            {titulo}
+          </span>
+        }
+        subtitle={subtitulo}
+        className="mb-4"
+      />
       {children}
-    </section>
+    </Card>
   )
 }
 
 function SinDato({ children }: { children: React.ReactNode }) {
-  return <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{children}</p>
+  return <Callout tono="warn">{children}</Callout>
 }
 
-function Dato({ k, v, tono }: { k: string; v: string; tono?: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 py-1.5 last:border-0">
-      <span className="text-sm text-slate-500">{k}</span>
-      <span className={`text-sm font-medium tabular-nums ${tono ?? 'text-slate-900'}`}>{v}</span>
-    </div>
-  )
+// ── Encabezado y celdas de tabla densas, tokenizadas ─────────────────────────
+function Th({ children, right }: { children: React.ReactNode; right?: boolean }) {
+  return <th className={`py-2 pr-3 text-[11px] font-medium uppercase tracking-wide text-faint ${right ? 'text-right' : 'text-left'}`}>{children}</th>
+}
+function Tr({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return <tr className={`border-b border-line last:border-0 ${className}`}>{children}</tr>
 }
 
 // ── 1 · Modelo único de liquidez ─────────────────────────────────────────────
@@ -65,67 +58,68 @@ export function ModeloLiquidezSection({ modelo, recomendaciones }: {
     <Seccion n={1} titulo="Modelo único de liquidez" subtitulo="Disponible, comprometido, líneas y colchón — ensamblado de las fuentes únicas del OS.">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Disponible</h3>
+          <Eyebrow className="mb-1">Disponible</Eyebrow>
           {d.estado === 'ok' ? (
             <>
-              <Dato k="Caja hoy" v={money(d.caja_hoy)} tono={(d.caja_hoy ?? 0) < 0 ? 'text-red-600' : 'text-emerald-700'} />
-              <Dato k="Por cobrar del mes" v={money(d.cobranzas_por_cobrar_mes)} />
-              {(d.cobranzas_vencidas ?? 0) > 0 && <Dato k="Cobranzas vencidas" v={money(d.cobranzas_vencidas)} tono="text-amber-700" />}
-              <Dato k="Vencimientos 7 días" v={money(d.vencimientos_7dias)} />
-              <Dato k="Proyección 7 días" v={money(d.proyeccion_7dias)} />
+              <KeyValue k="Caja hoy" v={money(d.caja_hoy)} tono={(d.caja_hoy ?? 0) < 0 ? 'neg' : 'pos'} />
+              <KeyValue k="Por cobrar del mes" v={money(d.cobranzas_por_cobrar_mes)} />
+              {(d.cobranzas_vencidas ?? 0) > 0 && <KeyValue k="Cobranzas vencidas" v={money(d.cobranzas_vencidas)} tono="warn" />}
+              <KeyValue k="Vencimientos 7 días" v={money(d.vencimientos_7dias)} />
+              <KeyValue k="Proyección 7 días" v={money(d.proyeccion_7dias)} />
             </>
           ) : <SinDato>Caja sin dato: {d.motivo}</SinDato>}
         </div>
         <div>
-          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Comprometido</h3>
+          <Eyebrow className="mb-1">Comprometido</Eyebrow>
           {o.estado === 'ok' ? (
             <>
-              <Dato k="Obligaciones (saldo)" v={money(o.saldo_total)} />
-              {(o.vencido ?? 0) > 0 && <Dato k="Vencido fiscal/previsional" v={money(o.vencido)} tono="text-red-600" />}
-              <Dato k="Entra en 30 días" v={money(o.entra_30_dias)} />
+              <KeyValue k="Obligaciones (saldo)" v={money(o.saldo_total)} />
+              {(o.vencido ?? 0) > 0 && <KeyValue k="Vencido fiscal/previsional" v={money(o.vencido)} tono="neg" />}
+              <KeyValue k="Entra en 30 días" v={money(o.entra_30_dias)} />
             </>
           ) : <SinDato>Obligaciones sin dato: {o.motivo}</SinDato>}
           {c.estado === 'ok' && (c.vencido ?? 0) > 0 && (
-            <Dato k={`Vencido a proveedores${c.n ? ` (${c.n})` : ''}`} v={money(c.vencido)} tono="text-red-600" />
+            <KeyValue k={`Vencido a proveedores${c.n ? ` (${c.n})` : ''}`} v={money(c.vencido)} tono="neg" />
           )}
         </div>
       </div>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <div>
-          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Líneas de crédito</h3>
-          <Dato k={`Descubierto${l.descubierto.tna != null ? ` (TNA ${pct(l.descubierto.tna)})` : ''}`} v={money(l.descubierto.limite)} />
-          <Dato k="Usado ~" v={l.descubierto.usado_aprox == null ? 's/d' : money(l.descubierto.usado_aprox)} />
-          <Dato k="Disponible ~" v={l.descubierto.disponible_aprox == null ? 's/d' : money(l.descubierto.disponible_aprox)} tono="text-emerald-700" />
-          <p className="mt-1 text-xs text-slate-400">{l.costo_marginal}</p>
+          <Eyebrow className="mb-1">Líneas de crédito</Eyebrow>
+          <KeyValue k={`Descubierto${l.descubierto.tna != null ? ` (TNA ${pct(l.descubierto.tna)})` : ''}`} v={money(l.descubierto.limite)} />
+          <KeyValue k="Usado ~" v={l.descubierto.usado_aprox == null ? 's/d' : money(l.descubierto.usado_aprox)} />
+          <KeyValue k="Disponible ~" v={l.descubierto.disponible_aprox == null ? 's/d' : money(l.descubierto.disponible_aprox)} tono="pos" />
+          <p className="mt-1 text-[11px] text-faint">{l.costo_marginal}</p>
         </div>
-        <div className="flex flex-col justify-center rounded-lg bg-slate-50 p-4">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Colchón total</span>
-          <span className={`text-2xl font-bold tabular-nums ${(modelo.colchon_total ?? 0) < 0 ? 'text-red-600' : 'text-slate-900'}`}>
-            {modelo.colchon_total == null ? 'sin dato' : money(modelo.colchon_total)}
-          </span>
-          <span className="text-xs text-slate-500">caja + línea disponible − vencido</span>
-        </div>
+        <StatTile
+          label="Colchón total"
+          size="lg"
+          tono={(modelo.colchon_total ?? 0) < 0 ? 'neg' : 'ink'}
+          value={modelo.colchon_total == null ? 'sin dato' : money(modelo.colchon_total)}
+          hint="caja + línea disponible − vencido"
+          className="flex flex-col justify-center"
+        />
       </div>
 
       {recomendaciones.length > 0 && (
         <div className="mt-4">
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Recomendaciones del motor</h3>
+          <Eyebrow className="mb-2">Recomendaciones del motor</Eyebrow>
           <ul className="space-y-2">
             {recomendaciones.map((r, i) => (
-              <li key={i} className="rounded-lg border border-slate-100 p-3">
+              <li key={i} className="rounded-control border border-line p-3">
                 <div className="flex items-center gap-2">
-                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${PRIORIDAD[r.prioridad] ?? 'bg-slate-100 text-slate-700'}`}>{r.prioridad}</span>
-                  <span className="text-sm font-semibold text-slate-900">{r.titulo}</span>
-                  {r.impacto_pesos > 0 && <span className="ml-auto text-sm font-medium tabular-nums text-slate-700">{money(r.impacto_pesos)}</span>}
+                  <Badge tono={PRIORIDAD[r.prioridad] ?? 'neutral'} uppercase>{r.prioridad}</Badge>
+                  <span className="text-[13px] font-semibold text-ink">{r.titulo}</span>
+                  {r.impacto_pesos > 0 && <span className="ml-auto text-[13px] font-medium tabular-nums text-ink-soft">{money(r.impacto_pesos)}</span>}
                 </div>
-                <p className="mt-1 text-sm text-slate-600">{r.explicacion}. <span className="text-slate-500">{r.fundamentos}.</span></p>
+                <p className="mt-1 text-[13px] text-muted">{r.explicacion}. <span className="text-faint">{r.fundamentos}.</span></p>
               </li>
             ))}
           </ul>
         </div>
       )}
-      {modelo.fuentes && <p className="mt-3 text-[11px] text-slate-400">Fuentes: {modelo.fuentes}</p>}
+      {modelo.fuentes && <p className="mt-3 text-[11px] text-faint">Fuentes: {modelo.fuentes}</p>}
     </Seccion>
   )
 }
@@ -138,45 +132,45 @@ export function CondicionesSection({ doc }: { doc: CondicionesDoc }) {
         <SinDato>No hay condiciones vigentes cargadas.</SinDato>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-[13px]">
             <thead>
-              <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-400">
-                <th className="py-2 pr-3">Producto</th>
-                <th className="py-2 pr-3">Tipo</th>
-                <th className="py-2 pr-3 text-right">TNA</th>
-                <th className="py-2 pr-3 text-right">CFT</th>
-                <th className="py-2 pr-3 text-right">Disponible</th>
-                <th className="py-2 pr-3">Confianza</th>
-                <th className="py-2">Fuente</th>
+              <tr className="border-b border-line-strong">
+                <Th>Producto</Th>
+                <Th>Tipo</Th>
+                <Th right>TNA</Th>
+                <Th right>CFT</Th>
+                <Th right>Disponible</Th>
+                <Th>Confianza</Th>
+                <Th>Fuente</Th>
               </tr>
             </thead>
             <tbody>
               {doc.condiciones.map((c, i) => (
-                <tr key={i} className="border-b border-slate-100 last:border-0">
-                  <td className="py-2 pr-3 font-medium text-slate-900">{c.producto}<div className="text-xs text-slate-400">{c.entidad}</div></td>
-                  <td className="py-2 pr-3 text-slate-600">{c.tipo}</td>
-                  <td className="py-2 pr-3 text-right tabular-nums">{pct(c.tna)}</td>
-                  <td className="py-2 pr-3 text-right tabular-nums">{pct(c.cft)}</td>
-                  <td className="py-2 pr-3 text-right tabular-nums">{c.limite_disponible == null ? '—' : money(c.limite_disponible)}</td>
-                  <td className="py-2 pr-3 text-xs text-slate-500">{c.nivel_confianza ?? '—'}</td>
-                  <td className="py-2 text-xs text-slate-400">{c.fuente ?? '—'}</td>
-                </tr>
+                <Tr key={i}>
+                  <td className="py-2 pr-3 font-medium text-ink">{c.producto}<div className="text-[11px] text-faint">{c.entidad}</div></td>
+                  <td className="py-2 pr-3 text-muted">{c.tipo}</td>
+                  <td className="py-2 pr-3 text-right tabular-nums text-ink-soft">{pct(c.tna)}</td>
+                  <td className="py-2 pr-3 text-right tabular-nums text-ink-soft">{pct(c.cft)}</td>
+                  <td className="py-2 pr-3 text-right tabular-nums text-ink-soft">{c.limite_disponible == null ? '—' : money(c.limite_disponible)}</td>
+                  <td className="py-2 pr-3 text-[12px] text-muted">{c.nivel_confianza ?? '—'}</td>
+                  <td className="py-2 text-[11px] text-faint">{c.fuente ?? '—'}</td>
+                </Tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
       {doc.faltan_datos.length > 0 && (
-        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+        <Callout tono="warn" className="mt-3">
           <span className="font-semibold">Falta cargar la tasa de:</span>
           <ul className="mt-1 list-disc pl-5">
             {doc.faltan_datos.map((f, i) => (
               <li key={i}>{f.producto} ({f.tipo}){f.para_conseguirlo ? ` — ${f.para_conseguirlo}` : ''}</li>
             ))}
           </ul>
-        </div>
+        </Callout>
       )}
-      {doc.nota && <p className="mt-2 text-[11px] text-slate-400">{doc.nota}</p>}
+      {doc.nota && <p className="mt-2 text-[11px] text-faint">{doc.nota}</p>}
     </Seccion>
   )
 }
@@ -186,63 +180,59 @@ export function CompararSection({ doc }: { doc: CompararDoc }) {
   if (doc.estado !== 'ok') {
     return (
       <Seccion n={3} titulo="Ingeniería de financiamiento" subtitulo="Ante una necesidad de fondos, compara todas las alternativas y elige la más barata factible.">
-        <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{doc.nota}</p>
+        <Callout tono="pos">{doc.nota}</Callout>
       </Seccion>
     )
   }
   return (
     <Seccion n={3} titulo="Ingeniería de financiamiento" subtitulo="Ante una necesidad de fondos, compara todas las alternativas y elige la más barata factible.">
       {doc.escenario && (
-        <p className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
-          Escenario real: cubrir <span className="font-semibold text-slate-900">{money(doc.escenario.monto)}</span> por <span className="font-semibold text-slate-900">{doc.escenario.dias} día/s</span>.
-          <span className="block text-xs text-slate-400">{doc.escenario.origen}</span>
+        <p className="mb-3 rounded-control bg-surface-quiet px-3 py-2 text-[13px] text-muted">
+          Escenario real: cubrir <span className="font-semibold text-ink">{money(doc.escenario.monto)}</span> por <span className="font-semibold text-ink">{doc.escenario.dias} día/s</span>.
+          <span className="block text-[11px] text-faint">{doc.escenario.origen}</span>
         </p>
       )}
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-[13px]">
           <thead>
-            <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-400">
-              <th className="py-2 pr-3">Alternativa</th>
-              <th className="py-2 pr-3 text-right">Costo económico</th>
-              <th className="py-2 pr-3">Factible</th>
-              <th className="py-2">Nota</th>
+            <tr className="border-b border-line-strong">
+              <Th>Alternativa</Th>
+              <Th right>Costo económico</Th>
+              <Th>Factible</Th>
+              <Th>Nota</Th>
             </tr>
           </thead>
           <tbody>
             {(doc.alternativas ?? []).map((a, i) => {
               const esRec = doc.recomendada?.via === a.via
               return (
-                <tr key={i} className={`border-b border-slate-100 last:border-0 ${esRec ? 'bg-emerald-50' : ''}`}>
-                  <td className="py-2 pr-3 font-medium text-slate-900">
-                    {esRec && <span className="mr-1 text-emerald-600">★</span>}{a.nombre}
+                <Tr key={i} className={esRec ? 'bg-pos-soft' : ''}>
+                  <td className="py-2 pr-3 font-medium text-ink">
+                    {esRec && <span className="mr-1 text-pos">★</span>}{a.nombre}
                   </td>
-                  <td className={`py-2 pr-3 text-right tabular-nums ${a.costoEconomico == null ? 'text-slate-400' : a.costoEconomico < 0 ? 'text-emerald-700' : 'text-slate-900'}`}>
+                  <td className={`py-2 pr-3 text-right tabular-nums ${a.costoEconomico == null ? 'text-faint' : a.costoEconomico < 0 ? 'text-pos' : 'text-ink'}`}>
                     {a.costoEconomico == null ? 'falta tasa' : money(a.costoEconomico)}
                   </td>
-                  <td className="py-2 pr-3 text-xs">{a.factible === false ? <span className="text-red-600">no</span> : a.factible === true ? <span className="text-emerald-700">sí</span> : <span className="text-slate-400">—</span>}</td>
-                  <td className="py-2 text-xs text-slate-500">{a.nota}</td>
-                </tr>
+                  <td className="py-2 pr-3 text-[12px]">{a.factible === false ? <span className="text-neg">no</span> : a.factible === true ? <span className="text-pos">sí</span> : <span className="text-faint">—</span>}</td>
+                  <td className="py-2 text-[12px] text-muted">{a.nota}</td>
+                </Tr>
               )
             })}
           </tbody>
         </table>
       </div>
       {doc.justificacion && (
-        <p className="mt-3 rounded-lg border border-slate-100 p-3 text-sm text-slate-700"><span className="font-semibold">Recomendación:</span> {doc.justificacion}</p>
+        <p className="mt-3 rounded-control border border-line p-3 text-[13px] text-ink-soft"><span className="font-semibold">Recomendación:</span> {doc.justificacion}</p>
       )}
       {(doc.faltan_datos?.length ?? 0) > 0 && (
-        <p className="mt-2 text-[11px] text-amber-700">Sin tasa cargada (excluidas del ranking): {doc.faltan_datos!.map((f) => f.producto).join(', ')}.</p>
+        <p className="mt-2 text-[11px] text-warn">Sin tasa cargada (excluidas del ranking): {doc.faltan_datos!.map((f) => f.producto).join(', ')}.</p>
       )}
     </Seccion>
   )
 }
 
 // ── 4 · Priorizar pagos ──────────────────────────────────────────────────────
-const DECISION: Record<PagoPriorizado['decision'], string> = {
-  pagar: 'bg-emerald-100 text-emerald-800',
-  parcial: 'bg-amber-100 text-amber-800',
-  esperar: 'bg-slate-100 text-slate-600',
-}
+const DECISION: Record<PagoPriorizado['decision'], Tono> = { pagar: 'pos', parcial: 'warn', esperar: 'neutral' }
 
 export function PriorizarSection({ doc }: { doc: PriorizarDoc }) {
   return (
@@ -251,43 +241,43 @@ export function PriorizarSection({ doc }: { doc: PriorizarDoc }) {
         <SinDato>No hay egresos a priorizar en los próximos {doc.ventana_dias} días.</SinDato>
       ) : (
         <>
-          <div className="mb-3 flex flex-wrap gap-4 text-sm">
-            <span className="text-slate-500">Caja disponible: <span className="font-semibold text-slate-900">{doc.caja_disponible == null ? 's/d' : money(doc.caja_disponible)}</span></span>
-            <span className="text-slate-500">A pagar: <span className="font-semibold text-emerald-700">{money(doc.total_a_pagar)}</span></span>
-            <span className="text-slate-500">Total en ventana: <span className="font-semibold text-slate-900">{money(doc.total)}</span></span>
+          <div className="mb-3 flex flex-wrap gap-4 text-[13px]">
+            <span className="text-muted">Caja disponible: <span className="font-semibold text-ink tabular-nums">{doc.caja_disponible == null ? 's/d' : money(doc.caja_disponible)}</span></span>
+            <span className="text-muted">A pagar: <span className="font-semibold text-pos tabular-nums">{money(doc.total_a_pagar)}</span></span>
+            <span className="text-muted">Total en ventana: <span className="font-semibold text-ink tabular-nums">{money(doc.total)}</span></span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-[13px]">
               <thead>
-                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-400">
-                  <th className="py-2 pr-2 text-right">#</th>
-                  <th className="py-2 pr-3">Proveedor</th>
-                  <th className="py-2 pr-3 text-right">Monto</th>
-                  <th className="py-2 pr-3">Decisión</th>
-                  <th className="py-2">Motivo</th>
+                <tr className="border-b border-line-strong">
+                  <Th right>#</Th>
+                  <Th>Proveedor</Th>
+                  <Th right>Monto</Th>
+                  <Th>Decisión</Th>
+                  <Th>Motivo</Th>
                 </tr>
               </thead>
               <tbody>
                 {doc.pagos.slice(0, 25).map((p, i) => (
-                  <tr key={i} className="border-b border-slate-100 last:border-0">
-                    <td className="py-2 pr-2 text-right tabular-nums text-slate-400">{p.orden}</td>
-                    <td className="py-2 pr-3 font-medium text-slate-900">
+                  <Tr key={i}>
+                    <td className="py-2 pr-2 text-right tabular-nums text-faint">{p.orden}</td>
+                    <td className="py-2 pr-3 font-medium text-ink">
                       {p.proveedor}
-                      {(p.vencido || p.vencida) && <span className="ml-1 rounded bg-red-100 px-1 text-[10px] font-semibold text-red-700">vencido</span>}
-                      {p.obra && <div className="text-xs text-slate-400">{p.obra}</div>}
+                      {(p.vencido || p.vencida) && <Badge tono="neg" className="ml-1">vencido</Badge>}
+                      {p.obra && <div className="text-[11px] text-faint">{p.obra}</div>}
                     </td>
-                    <td className="py-2 pr-3 text-right tabular-nums">{money(p.monto)}</td>
-                    <td className="py-2 pr-3"><span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${DECISION[p.decision]}`}>{p.decision}</span></td>
-                    <td className="py-2 text-xs text-slate-500">{p.motivo}</td>
-                  </tr>
+                    <td className="py-2 pr-3 text-right tabular-nums text-ink-soft">{money(p.monto)}</td>
+                    <td className="py-2 pr-3"><Badge tono={DECISION[p.decision]} uppercase>{p.decision}</Badge></td>
+                    <td className="py-2 text-[12px] text-muted">{p.motivo}</td>
+                  </Tr>
                 ))}
               </tbody>
             </table>
           </div>
-          {doc.pagos.length > 25 && <p className="mt-2 text-xs text-slate-400">… y {doc.pagos.length - 25} pagos más.</p>}
+          {doc.pagos.length > 25 && <p className="mt-2 text-[11px] text-faint">… y {doc.pagos.length - 25} pagos más.</p>}
         </>
       )}
-      {doc.nota && <p className="mt-2 text-[11px] text-slate-400">{doc.nota}</p>}
+      {doc.nota && <p className="mt-2 text-[11px] text-faint">{doc.nota}</p>}
     </Seccion>
   )
 }
@@ -306,34 +296,34 @@ export function EstrategiaResumenSection({ e }: { e: EstrategiaFinanciera }) {
     <Seccion n={7} titulo="Estrategia financiera (CFO)" subtitulo="La estrategia completa que el OS está ejecutando y por qué — no una lista de pagos.">
       {e.problema_principal && (
         <div className="mb-3">
-          <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${PRIORIDAD[e.problema_principal.severidad] ?? 'bg-slate-100'}`}>problema {e.problema_principal.severidad}</span>
-          <p className="mt-1 text-sm font-semibold text-slate-900">{e.problema_principal.titulo}</p>
-          <p className="text-sm text-slate-600">{e.problema_principal.detalle}</p>
+          <Badge tono={PRIORIDAD[e.problema_principal.severidad] ?? 'neutral'} uppercase>problema {e.problema_principal.severidad}</Badge>
+          <p className="mt-1 text-[13px] font-semibold text-ink">{e.problema_principal.titulo}</p>
+          <p className="text-[13px] text-muted">{e.problema_principal.detalle}</p>
         </div>
       )}
       {rec && (
-        <div className="rounded-lg border border-slate-100 p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Estrategia elegida</p>
-          <p className="text-sm font-semibold text-slate-900">{e.eleccion?.elegida ?? rec.clave}</p>
-          <p className="mt-1 text-sm text-slate-600">{rec.razonamiento}</p>
-          {e.eleccion?.por_que && <p className="mt-1 text-sm text-slate-500"><span className="font-medium">Por qué:</span> {e.eleccion.por_que}</p>}
+        <div className="rounded-control border border-line p-3">
+          <Eyebrow>Estrategia elegida</Eyebrow>
+          <p className="mt-0.5 text-[13px] font-semibold text-ink">{e.eleccion?.elegida ?? rec.clave}</p>
+          <p className="mt-1 text-[13px] text-muted">{rec.razonamiento}</p>
+          {e.eleccion?.por_que && <p className="mt-1 text-[13px] text-faint"><span className="font-medium">Por qué:</span> {e.eleccion.por_que}</p>}
         </div>
       )}
-      <div className="mt-3 grid gap-3 sm:grid-cols-3 text-sm">
+      <div className="mt-3 grid gap-3 sm:grid-cols-3">
         {typeof e.costo_financiero_esperado === 'number' && (
-          <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-400">Costo financiero esperado</div><div className="font-semibold text-slate-900 tabular-nums">{money(e.costo_financiero_esperado)}</div></div>
+          <StatTile label="Costo financiero esperado" value={money(e.costo_financiero_esperado)} />
         )}
         {e.impacto_caja?.dias_30 && e.impacto_caja.dias_30.estado !== 'sin dato' && (
-          <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-400">Saldo proyectado 30 días</div><div className="font-semibold text-slate-900 tabular-nums">{money(e.impacto_caja.dias_30.saldo_proyectado)}</div></div>
+          <StatTile label="Saldo proyectado 30 días" value={money(e.impacto_caja.dias_30.saldo_proyectado)} />
         )}
         {e.nivel_confianza && (
-          <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-400">Confianza</div><div className="font-semibold text-slate-900">{e.nivel_confianza.nivel}</div></div>
+          <StatTile label="Confianza" value={e.nivel_confianza.nivel} />
         )}
       </div>
       {(e.datos_faltantes?.length ?? 0) > 0 && (
-        <p className="mt-2 text-[11px] text-amber-700">Datos faltantes: {e.datos_faltantes!.join(' · ')}.</p>
+        <p className="mt-2 text-[11px] text-warn">Datos faltantes: {e.datos_faltantes!.join(' · ')}.</p>
       )}
-      <p className="mt-3 text-[11px] text-slate-400">Toda acción con efecto externo requiere aprobación humana (Nivel E). Esta pantalla es de lectura: prepara la decisión, no ejecuta pagos.</p>
+      <p className="mt-3 text-[11px] text-faint">Toda acción con efecto externo requiere aprobación humana (Nivel E). Esta pantalla es de lectura: prepara la decisión, no ejecuta pagos.</p>
     </Seccion>
   )
 }
