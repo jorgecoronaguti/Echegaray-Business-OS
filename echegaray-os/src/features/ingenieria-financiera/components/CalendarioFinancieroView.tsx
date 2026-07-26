@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import type { CalendarioFinanciero, DiaCalendario, NivelRiesgo } from '../types'
+import type { EstrategiaFinanciera } from '../types/estrategia'
+import { EstrategiaHero, EstrategiaDetalle, AccionesDelDia, accionesDeEstrategia } from './EstrategiaFinancieraPanel'
 
 const money = (n: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n || 0)
@@ -23,49 +25,79 @@ const TONO: Record<NivelRiesgo, { pill: string; borde: string; texto: string }> 
 
 type Vista = 'mensual' | 'semanal' | 'diaria'
 
-export function CalendarioFinancieroView({ cal }: { cal: CalendarioFinanciero }) {
+export function CalendarioFinancieroView({
+  cal,
+  estrategia,
+}: {
+  cal: CalendarioFinanciero
+  estrategia?: EstrategiaFinanciera
+}) {
   const dias = useMemo(() => cal.dias || [], [cal.dias])
   const porFecha = useMemo(() => new Map(dias.map((d) => [d.fecha, d])), [dias])
   const [vista, setVista] = useState<Vista>('mensual')
   const [sel, setSel] = useState<string>(dias[0]?.fecha ?? '')
   const diaSel = porFecha.get(sel) ?? dias[0]
 
+  // La MANIFESTACIÓN de la estrategia en el día: las acciones de la estrategia cuya fecha == el día
+  // seleccionado. El motor da UNA estrategia global; el día sólo filtra qué hace hoy. No inventa nada.
+  const todasLasAcciones = useMemo(
+    () => (estrategia?.estado === 'ok' ? accionesDeEstrategia(estrategia) : []),
+    [estrategia],
+  )
+  const accionesDelDia = useMemo(
+    () => todasLasAcciones.filter((a) => a.fecha === sel),
+    [todasLasAcciones, sel],
+  )
+  const hayEstrategia = estrategia && estrategia.estado === 'ok'
+
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
-      <div className="min-w-0">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1 text-sm">
-            {(['mensual', 'semanal', 'diaria'] as Vista[]).map((v) => (
-              <button
-                key={v}
-                onClick={() => setVista(v)}
-                className={`rounded-md px-3 py-1 capitalize transition ${vista === v ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
-              >
-                {v}
-              </button>
-            ))}
+    <div className="space-y-6">
+      {/* PROTAGONISTA: la estrategia que el OS está ejecutando, de un vistazo. */}
+      {estrategia && <EstrategiaHero e={estrategia} />}
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
+        {/* EL CALENDARIO sigue siendo la interfaz principal de navegación. */}
+        <div className="min-w-0">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1 text-sm">
+              {(['mensual', 'semanal', 'diaria'] as Vista[]).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setVista(v)}
+                  className={`rounded-md px-3 py-1 capitalize transition ${vista === v ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+            <div className="text-xs text-slate-400">
+              {dias.length} días · caja inicial {money(cal.caja_inicial)}
+            </div>
           </div>
-          <div className="text-xs text-slate-400">
-            {dias.length} días · caja inicial {money(cal.caja_inicial)}
-          </div>
+
+          {vista === 'mensual' && <VistaMensual dias={dias} porFecha={porFecha} sel={sel} onSel={setSel} />}
+          {vista === 'semanal' && <VistaSemanal dias={dias} sel={sel} onSel={setSel} />}
+          {vista === 'diaria' && diaSel && <VistaLista dias={[diaSel]} sel={sel} onSel={setSel} />}
+
+          {cal.sin_fecha && cal.sin_fecha.n > 0 && (
+            <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {cal.sin_fecha.n} factura{cal.sin_fecha.n > 1 ? 's' : ''} pendiente{cal.sin_fecha.n > 1 ? 's' : ''} de pago por {money(cal.sin_fecha.monto)}{' '}
+              no aparece{cal.sin_fecha.n > 1 ? 'n' : ''} en ningún día: {cal.sin_fecha.fuente.toLowerCase()}.
+            </div>
+          )}
         </div>
 
-        {vista === 'mensual' && <VistaMensual dias={dias} porFecha={porFecha} sel={sel} onSel={setSel} />}
-        {vista === 'semanal' && <VistaSemanal dias={dias} sel={sel} onSel={setSel} />}
-        {vista === 'diaria' && diaSel && <VistaLista dias={[diaSel]} sel={sel} onSel={setSel} />}
-
-        {cal.sin_fecha && cal.sin_fecha.n > 0 && (
-          <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            {cal.sin_fecha.n} factura{cal.sin_fecha.n > 1 ? 's' : ''} pendiente{cal.sin_fecha.n > 1 ? 's' : ''} de pago por {money(cal.sin_fecha.monto)}{' '}
-            no aparece{cal.sin_fecha.n > 1 ? 'n' : ''} en ningún día: {cal.sin_fecha.fuente.toLowerCase()}.
-          </div>
-        )}
+        <aside className="space-y-4">
+          {/* PRINCIPAL del día seleccionado: qué hace hoy la estrategia. */}
+          {hayEstrategia && <AccionesDelDia acciones={accionesDelDia} />}
+          {/* SECUNDARIO: los movimientos, saldo y composición del día — demotados y colapsados. */}
+          {diaSel && <PanelDiaSecundario dia={diaSel} abiertoPorDefecto={!hayEstrategia} />}
+          <Recomendaciones cal={cal} />
+        </aside>
       </div>
 
-      <aside className="space-y-4">
-        <Recomendaciones cal={cal} />
-        {diaSel && <PanelDia dia={diaSel} />}
-      </aside>
+      {/* LA ESTRATEGIA EN DETALLE: por qué se eligió, alternativas, beneficio, riesgos (global). */}
+      {estrategia && <EstrategiaDetalle e={estrategia} />}
     </div>
   )
 }
@@ -205,14 +237,24 @@ function VistaLista({ dias, sel, onSel }: { dias: DiaCalendario[]; sel: string; 
   )
 }
 
-function PanelDia({ dia }: { dia: DiaCalendario }) {
+// Los movimientos y saldo del día son SECUNDARIOS frente a la estrategia: van colapsados por defecto
+// cuando hay estrategia (el foco es "qué hace hoy la estrategia", no el flujo de fondos crudo). Sin
+// estrategia disponible, se abre por defecto para no ocultar la única lectura del día.
+function PanelDiaSecundario({ dia, abiertoPorDefecto }: { dia: DiaCalendario; abiertoPorDefecto: boolean }) {
   const t = TONO[dia.riesgo]
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <div className="text-sm font-semibold text-slate-800">{may(nombreDia(dia.fecha))}</div>
-        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${t.pill}`}>{dia.riesgo}</span>
-      </div>
+    <details open={abiertoPorDefecto} className="group rounded-xl border border-slate-200 bg-white [&_summary]:list-none">
+      <summary className="flex cursor-pointer items-center justify-between gap-2 p-4 text-slate-600 transition hover:bg-slate-50">
+        <div className="min-w-0">
+          <div className="text-[11px] uppercase tracking-wide text-slate-400">Movimientos y saldo del día</div>
+          <div className="mt-0.5 truncate text-sm font-medium text-slate-700">{may(nombreDia(dia.fecha))}</div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className={`tabular-nums text-sm font-semibold ${t.texto}`}>{money(dia.saldo_final)}</span>
+          <span className="text-slate-400 transition group-open:rotate-180">⌄</span>
+        </div>
+      </summary>
+      <div className="border-t border-slate-100 p-4 pt-3">
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
         <Fila k="Saldo inicial" v={money(dia.saldo_inicial)} />
         <Fila k="Saldo final" v={money(dia.saldo_final)} destacado tono={t.texto} />
@@ -259,7 +301,8 @@ function PanelDia({ dia }: { dia: DiaCalendario }) {
           </ul>
         </div>
       )}
-    </div>
+      </div>
+    </details>
   )
 }
 
