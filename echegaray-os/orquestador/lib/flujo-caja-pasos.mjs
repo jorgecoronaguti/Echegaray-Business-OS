@@ -114,11 +114,28 @@ export const PASOS = [
   // lo materializa en public.finanzas_calendario. La Web (Calendario Financiero) lee ESO — nunca el
   // Sheet ni recalcula. Va al final porque consume las pestañas que los pasos anteriores dejaron al día.
   ['sync-calendario-financiero.mjs', 'motor: calendario financiero diario → public.finanzas_calendario', []],
+  // MATERIALIZACIÓN DE LAS SALIDAS DEL MOTOR PARA LA WEB (25/07). El Financial Engineering completo se
+  // prueba desde la web: cada salida del motor tiene su tabla singleton que la Web LEE (0 recálculo en
+  // React). Estos tres PROYECTAN lo que el calendario ya dejó materializado —no re-leen el Sheet ni
+  // llaman a Google—: el modelo único de liquidez, el comparador de financiamiento sobre el bache real
+  // que proyecta el calendario, y la priorización de los egresos reales de los próximos 30 días. Van
+  // JUSTO después del calendario porque consumen su payload.
+  ['sync-modelo-liquidez.mjs', 'motor: modelo único de liquidez → public.finanzas_modelo_liquidez (proyecta el calendario, sin re-leer)', []],
+  ['sync-comparar-financiamiento.mjs', 'motor: comparador de financiamiento sobre el bache real → public.finanzas_comparar_financiamiento', []],
+  ['sync-priorizar-pagos.mjs', 'motor: priorización de los egresos reales → public.finanzas_priorizar_pagos', []],
+  // Las condiciones de financiamiento vigentes (tasas/límites con fuente) salen de Supabase, no del
+  // Sheet — pero se materializan acá para que la Web las lea como una salida más del motor.
+  ['sync-condiciones-financieras.mjs', 'motor: condiciones de financiamiento vigentes → public.finanzas_condiciones_vigentes', []],
   // RECÁLCULO AUTOMÁTICO DEL PLAN — lo ÚNICO automático de la ejecución financiera (decisión del dueño,
   // 24/07). Recalcula finanzas.plan_tesoreria y guarda el snapshot vigente; si cambió, lo deja
   // 'pendiente_ejecucion' con el detalle. NO crea tareas: la ejecución (FEO) sólo la dispara una
   // autoridad (dueño / Director IA / CFO IA / interfaz). Barato y sin efectos: sólo lee y calcula.
   ['sync-plan-tesoreria.mjs', 'motor: recálculo del Plan de Tesorería → public.finanzas_plan_vigente (pendiente de ejecución, sin crear tareas)', []],
+  // RECÁLCULO DE LA ESTRATEGIA FINANCIERA (25/07) — la salida de nivel CFO que gobierna el Calendario.
+  // ENSAMBLA lo que el plan/modelo ya decidieron en un documento estratégico y lo materializa en
+  // public.finanzas_estrategia_vigente para que la Web haga de la ESTRATEGIA la protagonista del día.
+  // No recalcula un peso ni crea tareas: consume y guarda. Va después del plan porque lo consume.
+  ['sync-estrategia-financiera.mjs', 'motor: recálculo de la Estrategia Financiera → public.finanzas_estrategia_vigente (consumo, sin crear tareas)', []],
 ]
 
 // PASOS DE PRESENTACIÓN Y AUDITORÍA — su salida ≠0 es un DEFECTO A LA VISTA, no un fallo de datos.
