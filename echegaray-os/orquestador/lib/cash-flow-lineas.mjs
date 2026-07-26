@@ -341,6 +341,52 @@ export function formulaCobranzas(tipo, desde, hasta) {
   return `=SUMPRODUCT(${filtro}*${noEndosado}*(${fecha}>=${desde})*(${fecha}<${hasta})*${monto})`
 }
 
+// ── LA COBERTURA DEL LADO DEL INGRESO (Cobranzas) ─────────────────────────────────────────────────
+//
+// POR QUÉ EXISTE (T04, 25/07). El lado del EGRESO es una partición de Compras con su control al pie:
+// si un gasto queda sin rubro (SIN CLASIFICAR) o sin fecha de pago, el control lo grita. El lado del
+// INGRESO no tenía nada equivalente, y tiene DOS formas de que un cobro real desaparezca del cuadro
+// SIN QUE NADA AVISE — el hueco que este bloque cierra:
+//
+//   1. Sin UNIDAD DE NEGOCIO (columna F vacía). Las tres líneas de ingreso son civil, mantenimiento y
+//      "otras", y "otras" exige F<>"". Un cobro con unidad en blanco no cae en ninguna de las tres:
+//      es plata que entra a la cuenta y el cash flow no la ve.
+//   2. Sin FECHA de cobro (ni Q real ni P de vencimiento). Cada línea filtra por una ventana de
+//      fechas; un cobro sin fecha no cae en ninguna semana ni mes, y como el total del año es la suma
+//      de las columnas, tampoco aparece ahí. Es el espejo exacto de "Gastos sin fecha de pago".
+//
+// Son DIAGNÓSTICOS —lo ideal es que den $0—, igual que "Gastos sin fecha de pago" y "Filas con rubro
+// pero sin importe" del lado del egreso. No reclasifican nada: sólo hacen visible el cobro que se cae
+// del cuadro, para que el dueño le asigne unidad o fecha. Un endoso NO cuenta (esa plata no entra a
+// la cuenta), con el mismo criterio que las líneas de ingreso.
+
+/** Columnas de Cobranzas que miran los controles de cobertura del ingreso: F=unidad, M=monto, P=venc, Q=cobro. */
+const COB_COBERTURA = { unidad: 'F', monto: 'M', venc: 'P', cobro: 'Q' }
+const cobRango = (col) => `Cobranzas!$${col}$5:$${col}$${FIN_COB}`
+/** El mismo filtro anti-endoso que usan las líneas de ingreso: un valor endosado no va a entrar. */
+const cobNoEndosado = () => `(LEFT(Cobranzas!${COL_VALOR_BANCO}&"";${MARCA_ENDOSADO.length})<>"${MARCA_ENDOSADO}")`
+/** El monto, tratando el no-número como 0 (hay celdas con "-"). */
+const cobMontoNum = () => `IF(ISNUMBER(${cobRango(COB_COBERTURA.monto)});${cobRango(COB_COBERTURA.monto)};0)`
+
+/**
+ * NÚCLEO PURO: los cobros CON plata pero SIN unidad de negocio — no caen en ninguna línea de ingreso.
+ * @returns {string} fórmula es-AR
+ */
+export function formulaCobranzasSinUnidad() {
+  const sinUnidad = `(${cobRango(COB_COBERTURA.unidad)}="")`
+  return `=SUMPRODUCT(${sinUnidad}*${cobNoEndosado()}*${cobMontoNum()})`
+}
+
+/**
+ * NÚCLEO PURO: los cobros CON plata pero SIN fecha (ni cobro real Q ni vencimiento P) — no caen en
+ * ninguna semana ni mes. (1-ISNUMBER) y no NOT(), que no es array-safe en Sheets.
+ * @returns {string} fórmula es-AR
+ */
+export function formulaCobranzasSinFecha() {
+  const sinFecha = `(1-ISNUMBER(${cobRango(COB_COBERTURA.cobro)}))*(1-ISNUMBER(${cobRango(COB_COBERTURA.venc)}))`
+  return `=SUMPRODUCT(${sinFecha}*${cobNoEndosado()}*${cobMontoNum()})`
+}
+
 /**
  * NÚCLEO PURO: el bloque de control que prueba que no falta ni sobra nada.
  * Va escrito en la propia pestaña y a la vista: un control que hay que salir a buscar no se mira.
@@ -386,6 +432,17 @@ export function bloqueControl(filaPrimerEgreso, filaUltimoEgreso, colTotal, fila
       etiqueta: 'Jornales: Compras (estimado) vs planilla real',
       formula: `=SUMIF(${COL_RUBRO};"Nómina · Jornales de obra";${COL_TOTAL})`,
       nota: 'El cash flow NO usa este número: usa el real de Jornales por Quincena. Por eso el total de egresos del año no coincide con el total de Compras, y está bien que no coincida.',
+    },
+    // LOS DOS ESPEJOS DEL LADO DEL INGRESO (T04): que ningún cobro real se caiga del cuadro en silencio.
+    {
+      etiqueta: 'Cobros sin unidad de negocio (no caen en ninguna línea de ingreso)',
+      formula: formulaCobranzasSinUnidad(),
+      nota: 'Cobros con plata pero con la unidad (columna F de Cobranzas) vacía: no son civil ni mantenimiento ni "otras", así que ninguna de las tres líneas de ingreso los ve. Hay que asignarles unidad. Los endosos no cuentan.',
+    },
+    {
+      etiqueta: 'Cobros sin fecha (no caen en ninguna semana)',
+      formula: formulaCobranzasSinFecha(),
+      nota: 'Cobros con plata pero sin fecha de cobro ni de vencimiento: no caen en ninguna columna del cuadro. Espejo de "Gastos sin fecha de pago". Hay que fecharlos.',
     },
   ]
 }
