@@ -11,14 +11,16 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { formulaRubro, formulaFechaCaja, RUBROS } from '../lib/rubro-caja.mjs'
+import { formulaRubro, formulaFechaCaja, RUBROS, COL_RUBRO_CAJA, COL_FECHA_CAJA, colIndex } from '../lib/rubro-caja.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
 
-// AC y AD: las dos primeras columnas libres después de "Estado Carga" (AB).
-const COL_RUBRO = 28 // 0-based → AC
-const COL_FECHA = 29 // 0-based → AD
+// AC y AD: las dos primeras columnas libres después de "Estado Carga" (AB). La identidad de estas
+// columnas vive en rubro-caja.mjs (COL_RUBRO_CAJA/COL_FECHA_CAJA) porque la "Fecha de caja" también
+// la lee la pestaña CAJA para descargar los pagos: escritor y lector tienen que coincidir.
+const COL_RUBRO = colIndex(COL_RUBRO_CAJA) // 0-based → AC
+const COL_FECHA = colIndex(COL_FECHA_CAJA) // 0-based → AD
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
