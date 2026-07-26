@@ -67,11 +67,7 @@ export function ensamblarEstrategia({ plan, modelo = null, movimientos = [], opt
     problema_principal: problemaPrincipal(modelo, plan, elegida, acciones),
     estrategia_recomendada: elegida ? estrategiaRecomendada(elegida, H) : null,
     alternativas_evaluadas: generadas.map((g) => resumirAlternativa(g, g.clave === estr.elegida)),
-    eleccion: {
-      elegida: estr.elegida,
-      por_que: estr.comparacion || 'una sola estrategia factible en este horizonte',
-      ahorro_vs_segunda: ahorroVsSegunda(generadas, estr.elegida),
-    },
+    eleccion: eleccionDe(estr, generadas),
     coordinaciones: coordinaciones(acciones),
     pagos: clasificarPagos(acciones),
     cobranzas: clasificarCobranzas(acciones, H.sensibilidad),
@@ -172,6 +168,34 @@ export function ahorroVsSegunda(generadas = [], claveElegida) {
   if (!elegida || !segunda) return { monto: null, nota: 'falta la elegida o la segunda para comparar' }
   const dif = segunda.impacto.costo_financiero_total - elegida.impacto.costo_financiero_total
   return { monto: round(dif), segunda: segunda.clave, nota: dif >= 0 ? `la elegida ahorra ${fmt(dif)} de costo financiero frente a "${segunda.clave}"` : `la elegida cuesta ${fmt(-dif)} MÁS que "${segunda.clave}", pero gana por factibilidad/cumplimiento/liquidez (criterio lexicográfico, el costo no es lo único)` }
+}
+
+/**
+ * CONTRATO ÚNICO de `eleccion`. El motor de estrategias (compararTexto en estrategias-tesoreria.mjs)
+ * materializa `estr.comparacion` como un OBJETO {objetivo_cfo, criterio_decisivo, ranking, justificacion};
+ * en fixtures o fallback puede llegar como string o faltar. Acá se normaliza UNA sola vez en la fuente:
+ *   - `por_que`      → SIEMPRE la frase humana (string). La Web la renderiza sin coerción.
+ *   - `comparacion`  → el detalle estructurado del ranking cuando existió (objeto tipado), o null.
+ * Así el tipo TypeScript de la Web refleja fielmente el contrato y React nunca recibe un objeto donde
+ * espera texto.
+ */
+export function eleccionDe(estr = {}, generadas = []) {
+  const FALLBACK = 'una sola estrategia factible en este horizonte'
+  const comp = estr.comparacion
+  let por_que, comparacion
+  if (comp && typeof comp === 'object') {
+    por_que = (typeof comp.justificacion === 'string' && comp.justificacion.trim()) || FALLBACK
+    comparacion = comp
+  } else {
+    por_que = (typeof comp === 'string' && comp.trim()) || FALLBACK
+    comparacion = null
+  }
+  return {
+    elegida: estr.elegida ?? null,
+    por_que,
+    comparacion,
+    ahorro_vs_segunda: ahorroVsSegunda(generadas, estr.elegida),
+  }
 }
 
 /** Coordinaciones de ingresos y egresos que la estrategia propone (agrupa las acciones por naturaleza). */
