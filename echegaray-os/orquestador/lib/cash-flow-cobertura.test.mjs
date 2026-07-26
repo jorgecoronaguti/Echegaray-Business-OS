@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   MAPA, fuentesSumadas, pestanasSumadasSegunMapa, verificarCobertura, ROLES_SUMADOS,
 } from './cash-flow-cobertura.mjs'
-import { formulaCobranzasSinUnidad, formulaCobranzasSinFecha, FIN_COB } from './cash-flow-lineas.mjs'
+import { formulaCobranzasSinUnidad, formulaCobranzasSinFecha, formulaCobranzas, FIN_COB } from './cash-flow-lineas.mjs'
 
 // LAS 13 PESTAÑAS DEL FLUJO DE FONDOS QUE T04 NOMBRA. El mapa tiene que contemplarlas TODAS, cada
 // una con exactamente un rol: ninguna pestaña puede quedar sin decir si alimenta el cuadro o no.
@@ -67,6 +67,17 @@ test('el control "cobros sin unidad" suma Cobranzas con F vacía, sin endosos', 
   assert.ok(f.includes('ENDOSADO'))
   // El monto es M, con guard de no-número (hay celdas con "-").
   assert.ok(f.includes(`Cobranzas!$M$5:$M$${FIN_COB}`) && f.includes('IF(ISNUMBER('))
+})
+
+test('"Otras cobranzas" incluye los cobros SIN unidad (decisión del dueño: default a otras + visibilidad)', () => {
+  const otras = formulaCobranzas('otras', 1, 2)
+  // "otras" = todo lo que no es civil ni mantenimiento…
+  assert.ok(otras.includes('<>"civil"') && otras.includes('<>"mantenimiento"'))
+  // …SIN exigir F<>"": un cobro con la unidad vacía cae acá, no se pierde del cuadro.
+  assert.ok(!otras.includes(`Cobranzas!$F$5:$F$${FIN_COB}<>""`))
+  // civil y mantenimiento siguen filtrando por su unidad exacta (no cambian).
+  assert.ok(formulaCobranzas('civil', 1, 2).includes('="civil"'))
+  assert.ok(formulaCobranzas('mantenimiento', 1, 2).includes('="mantenimiento"'))
 })
 
 test('el control "cobros sin fecha" exige que NO haya ni Q ni P, array-safe', () => {

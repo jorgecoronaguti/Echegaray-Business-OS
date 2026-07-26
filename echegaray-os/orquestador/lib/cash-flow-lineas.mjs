@@ -329,8 +329,12 @@ export function formulaCobranzas(tipo, desde, hasta) {
   const fecha = `IF(ISNUMBER(${C}!$Q$5:$Q$${F});${C}!$Q$5:$Q$${F};IF(ISNUMBER(${C}!$P$5:$P$${F});${C}!$P$5:$P$${F};0))`
   const monto = `IF(ISNUMBER(${C}!$M$5:$M$${F});${C}!$M$5:$M$${F};0)`
   const uni = `LOWER(${C}!$F$5:$F$${F})`
+  // DECISIÓN DEL DUEÑO (25/07): un cobro SIN unidad de negocio (columna F vacía) va por defecto a
+  // "Otras cobranzas" —no se cae del cuadro— y además se lo hace visible con el diagnóstico de abajo
+  // para que se le asigne la unidad real. Por eso "otras" es TODO lo que no es civil ni mantenimiento,
+  // SIN exigir F<>"": la plata se cuenta una sola vez (acá) y el diagnóstico sólo la señala.
   const filtro = tipo === 'otras'
-    ? `(${uni}<>"civil")*(${uni}<>"mantenimiento")*(${C}!$F$5:$F$${F}<>"")`
+    ? `(${uni}<>"civil")*(${uni}<>"mantenimiento")`
     : `(${uni}="${tipo}")`
   // UN VALOR ENDOSADO NO VA A ENTRAR. El banco dice que dos echeq de LA ESTRELLA por $10.000.000
   // cada uno se entregaron a Alumetal para pagarle. Cobranzas los muestra con fecha de cobro 15/08 y
@@ -348,9 +352,9 @@ export function formulaCobranzas(tipo, desde, hasta) {
 // INGRESO no tenía nada equivalente, y tiene DOS formas de que un cobro real desaparezca del cuadro
 // SIN QUE NADA AVISE — el hueco que este bloque cierra:
 //
-//   1. Sin UNIDAD DE NEGOCIO (columna F vacía). Las tres líneas de ingreso son civil, mantenimiento y
-//      "otras", y "otras" exige F<>"". Un cobro con unidad en blanco no cae en ninguna de las tres:
-//      es plata que entra a la cuenta y el cash flow no la ve.
+//   1. Sin UNIDAD DE NEGOCIO (columna F vacía). Por decisión del dueño (25/07) estos cobros ya NO se
+//      caen: "otras" los cuenta por defecto (no exige F<>""). El diagnóstico de abajo NO reclasifica —
+//      sólo los señala para que se les asigne la unidad real (civil/mantenimiento) si corresponde.
 //   2. Sin FECHA de cobro (ni Q real ni P de vencimiento). Cada línea filtra por una ventana de
 //      fechas; un cobro sin fecha no cae en ninguna semana ni mes, y como el total del año es la suma
 //      de las columnas, tampoco aparece ahí. Es el espejo exacto de "Gastos sin fecha de pago".
@@ -435,9 +439,9 @@ export function bloqueControl(filaPrimerEgreso, filaUltimoEgreso, colTotal, fila
     },
     // LOS DOS ESPEJOS DEL LADO DEL INGRESO (T04): que ningún cobro real se caiga del cuadro en silencio.
     {
-      etiqueta: 'Cobros sin unidad de negocio (no caen en ninguna línea de ingreso)',
+      etiqueta: 'Cobros sin unidad de negocio (van a "Otras cobranzas" — asignarles unidad)',
       formula: formulaCobranzasSinUnidad(),
-      nota: 'Cobros con plata pero con la unidad (columna F de Cobranzas) vacía: no son civil ni mantenimiento ni "otras", así que ninguna de las tres líneas de ingreso los ve. Hay que asignarles unidad. Los endosos no cuentan.',
+      nota: 'Cobros con plata pero con la unidad (columna F de Cobranzas) vacía. Por decisión del dueño se cuentan en "Otras cobranzas" para que no se caigan del cuadro, y acá quedan visibles para asignarles la unidad real (civil/mantenimiento) si corresponde. No se cuentan dos veces: esta línea es diagnóstico, no suma. Los endosos no cuentan.',
     },
     {
       etiqueta: 'Cobros sin fecha (no caen en ninguna semana)',
