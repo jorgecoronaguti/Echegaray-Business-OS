@@ -42,15 +42,44 @@ export async function leerFirma(deps, fileId, pestana) {
   } catch { return null }
 }
 
-/** Guarda la firma de lo que el OS dejó en la pestaña (idempotente por pestaña). */
-export async function guardarFirma(deps, fileId, pestana, firma) {
+/**
+ * Guarda la firma de lo que el OS dejó en la pestaña (idempotente por pestaña). Guarda TAMBIÉN el grid
+ * (opcional): la firma (hash) alcanza para DETECTAR una edición, pero para ENTENDERLA celda por celda
+ * la capa de reconciliación necesita el contenido previo. El grid se persiste como jsonb; si la columna
+ * no existe (base sin migrar) el insert con grid falla y se cae al insert sin grid — la detección sigue.
+ */
+export async function guardarFirma(deps, fileId, pestana, firma, grid = null) {
   try {
     const query = await q(deps)
+    if (grid != null) {
+      try {
+        await query(
+          `insert into public.sheet_tab_firma (file_id, pestana, firma, grid, escrito_en) values ($1, $2, $3, $4, now())
+             on conflict (file_id, pestana) do update set firma = excluded.firma, grid = excluded.grid, escrito_en = now()`,
+          [fileId, pestana, firma, JSON.stringify(grid)])
+        return
+      } catch { /* columna grid ausente (base sin migrar): se guarda sólo la firma, abajo */ }
+    }
     await query(
       `insert into public.sheet_tab_firma (file_id, pestana, firma, escrito_en) values ($1, $2, $3, now())
          on conflict (file_id, pestana) do update set firma = excluded.firma, escrito_en = now()`,
       [fileId, pestana, firma])
   } catch { /* sin base no se puede guardar; la próxima corrida no tendrá baseline y escribirá normal */ }
+}
+
+/**
+ * El grid que el OS dejó escrito la última vez (o null si nunca lo guardó / base sin migrar). Es el
+ * insumo para diffear celda por celda en la reconciliación. Sin él, la reconciliación no puede
+ * entender el cambio y se queda con el candado (fail-closed).
+ */
+export async function leerGridGuardado(deps, fileId, pestana) {
+  try {
+    const query = await q(deps)
+    const r = await query('select grid from public.sheet_tab_firma where file_id = $1 and pestana = $2', [fileId, pestana])
+    const g = r.rows[0]?.grid ?? null
+    if (g == null) return null
+    return typeof g === 'string' ? JSON.parse(g) : g
+  } catch { return null }
 }
 
 /**
@@ -125,10 +154,15 @@ export async function firmaGuardia(google, fileId, pestana, ref = pestana) {
   return { editada: false }
 }
 
-/** Sella la firma de lo que el OS dejó en la pestaña, desde una RE-LECTURA (A1:BZ, FORMULA). */
+/**
+ * Sella la firma de lo que el OS dejó en la pestaña, desde una RE-LECTURA (A1:BZ, FORMULA). Guarda
+ * también el grid re-leído: es el baseline que la reconciliación diffea la próxima vez que el dueño
+ * edite. Sellar el grid re-leído (no el que se pretendía escribir) evita falsos diffs por la
+ * normalización de Google en el ida y vuelta, igual que con la firma.
+ */
 export async function sellarFirma(google, fileId, pestana, ref = pestana) {
   try {
     const readback = await google.readSheetValues(fileId, `${ref}!A1:BZ`, { render: 'FORMULA' }).catch(() => null)
-    if (readback) await guardarFirma({}, fileId, pestana, firmaDeGrid(readback))
+    if (readback) await guardarFirma({}, fileId, pestana, firmaDeGrid(readback), readback)
   } catch { /* no crítico */ }
 }
