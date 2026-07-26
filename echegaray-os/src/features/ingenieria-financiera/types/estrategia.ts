@@ -73,9 +73,33 @@ export interface AlternativaEvaluada {
   por_que_descartada: string
 }
 
+// Una fila del ranking con que el motor comparó las estrategias (compararTexto en el motor). Es el
+// detalle estructurado de la ELECCIÓN; la Web puede pintarlo como tabla, pero nunca es `por_que`.
+export interface ComparacionRanking {
+  puesto: number
+  clave: string
+  nombre: string
+  costo_financiero: number | null
+  postergados: number | null
+  saldo_final: number | null
+  linea_maxima: number | null
+  excede_limite: boolean
+}
+
+export interface ComparacionEstrategias {
+  objetivo_cfo: string
+  criterio_decisivo: string
+  ranking: ComparacionRanking[]
+  justificacion: string
+}
+
+// CONTRATO ÚNICO (lo fija el motor en eleccionDe): `por_que` es SIEMPRE la frase humana (string);
+// el detalle estructurado del ranking vive en `comparacion` (objeto tipado) o es null. La Web consume
+// `por_que` sin ninguna coerción de presentación.
 export interface Eleccion {
-  elegida: string
+  elegida: string | null
   por_que: string
+  comparacion?: ComparacionEstrategias | null
   ahorro_vs_segunda: { monto: number | null; segunda?: string; nota: string }
 }
 

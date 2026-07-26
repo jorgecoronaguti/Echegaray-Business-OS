@@ -17,7 +17,6 @@ import type {
   ImpactoHorizonte,
 } from '../types/estrategia'
 import { money } from '@/shared/utils/format'
-import { textoPorQue } from '../lib/estrategiaFormat'
 import { Card, Eyebrow, Badge, Dot, type Tono } from '@/shared/components/ui'
 
 const SEV_TONO: Record<Severidad, Tono> = { alta: 'neg', media: 'warn', baja: 'pos' }
@@ -137,7 +136,7 @@ function ImpactoCajaFila({
 export function EstrategiaDetalle({ e }: { e: EstrategiaFinanciera }) {
   if (e.estado === 'sin dato') return null
   const rec = e.estrategia_recomendada
-  const porQue = textoPorQue(e.eleccion?.por_que)
+  const porQue = e.eleccion?.por_que ?? null
   const hayPorQue = Boolean(porQue || rec?.razonamiento)
   const hayBeneficio = Boolean(rec?.beneficios?.length || e.eleccion?.ahorro_vs_segunda)
   const hayAlt = Boolean(e.alternativas_evaluadas && e.alternativas_evaluadas.length > 0)

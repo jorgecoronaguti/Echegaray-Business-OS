@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   ensamblarEstrategia, horizonteGobernante, problemaPrincipal, ahorroVsSegunda,
   clasificarPagos, clasificarCobranzas, clasificarFinanciamiento, impactoPorDimension,
-  nivelConfianza, diagnosticoLiquidez,
+  nivelConfianza, diagnosticoLiquidez, eleccionDe,
 } from './estrategia-financiera.mjs'
 
 function planFixture(over = {}) {
@@ -63,6 +63,41 @@ test('ensamblarEstrategia: arma el documento con las 19 caras clave', () => {
   assert.ok(d.alternativas_evaluadas.find((a) => !a.es_elegida).por_que_descartada)
   assert.equal(d.impacto_caja.dias_30.saldo_proyectado, 2000000)
   assert.ok(d.cambios_vs_anterior)
+})
+
+test('eleccionDe: comparacion OBJETO (producción) → por_que string + comparacion tipada', () => {
+  // Lo que compararTexto materializa en producción: un objeto, NO un string.
+  const comparacion = {
+    objetivo_cfo: 'prioridad CFO: factibilidad → costo',
+    criterio_decisivo: 'costo_financiero',
+    ranking: [{ puesto: 1, clave: 'costo_minimo', nombre: 'Costo mínimo', costo_financiero: 100000, postergados: 0, saldo_final: 1200000, linea_maxima: 0, excede_limite: false }],
+    justificacion: 'Costo mínimo gana por menor costo financiero: 100000 vs 250000.',
+  }
+  const e = eleccionDe({ elegida: 'costo_minimo', comparacion, generadas: [] }, [])
+  assert.equal(typeof e.por_que, 'string')
+  assert.equal(e.por_que, comparacion.justificacion)
+  assert.deepEqual(e.comparacion, comparacion) // el detalle estructurado se conserva, NO en por_que
+  assert.equal(e.elegida, 'costo_minimo')
+})
+
+test('eleccionDe: comparacion string/ausente → por_que string y comparacion null', () => {
+  const conString = eleccionDe({ elegida: 'x', comparacion: 'x gana' }, [])
+  assert.equal(conString.por_que, 'x gana')
+  assert.equal(conString.comparacion, null)
+  const vacia = eleccionDe({ elegida: 'x' }, [])
+  assert.equal(typeof vacia.por_que, 'string') // fallback, nunca objeto ni undefined
+  assert.ok(vacia.por_que.length > 0)
+  assert.equal(vacia.comparacion, null)
+})
+
+test('ensamblarEstrategia: eleccion.por_que es SIEMPRE string (contrato con la Web)', () => {
+  const plan = planFixture()
+  // Reemplaza el string del fixture por el objeto real que produce el motor de estrategias.
+  plan.horizontes.dias_7.estrategias.comparacion = { objetivo_cfo: 'o', criterio_decisivo: 'costo_financiero', ranking: [], justificacion: 'la elegida gana por costo.' }
+  const d = ensamblarEstrategia({ plan, modelo: null, movimientos: MOVS, opts: {} })
+  assert.equal(typeof d.eleccion.por_que, 'string')
+  assert.equal(d.eleccion.por_que, 'la elegida gana por costo.')
+  assert.equal(d.eleccion.comparacion.criterio_decisivo, 'costo_financiero')
 })
 
 test('problemaPrincipal: colchón negativo manda sobre todo', () => {
