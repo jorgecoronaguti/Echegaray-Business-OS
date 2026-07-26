@@ -3,6 +3,67 @@
 @tailwind utilities;
 
 /*
- * Personaliza tu tema aquí
- * Documentación: https://tailwindcss.com/docs/theme
+ * ─────────────────────────────────────────────────────────────────────────────
+ * SISTEMA VISUAL DEL BUSINESS OS  ·  tokens únicos, reutilizables por todo el OS
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Filosofía de producto financiero de primer nivel: superficies neutras, hairlines
+ * azuladas (frost), tinta navy profunda para jerarquía, una sola tinta de acento
+ * (identidad Echegaray, no una marca ajena), color semántico reservado para estado.
+ * Alta densidad sin saturación. Cada token vive UNA vez acá y se consume vía Tailwind
+ * (bg-surface, text-ink, border-line, shadow-card, rounded-card…). No hex sueltos en
+ * los componentes: si un color aparece, salió de un token.
  */
+:root {
+  /* Superficies */
+  --os-canvas: #f6f8fb; /* fondo de la aplicación (azulado muy claro) */
+  --os-surface: #ffffff; /* tarjetas y contenedores elevados */
+  --os-surface-quiet: #f7f9fc; /* superficie interior sutil (bloques dentro de cards) */
+  --os-surface-sunken: #eef2f7; /* pistas / hover apagados */
+
+  /* Hairlines (frost) */
+  --os-line: #e6ebf1; /* borde por defecto, divisor de contenido */
+  --os-line-strong: #d5dde7; /* borde con más presencia (encabezado de tabla) */
+
+  /* Tinta / texto (navy profundo, no negro puro) */
+  --os-ink: #0a2540; /* títulos y valores primarios */
+  --os-ink-soft: #35485d; /* etiquetas fuertes */
+  --os-muted: #64748b; /* texto secundario / cuerpo */
+  --os-faint: #8a97a6; /* captions, eyebrows, metadatos */
+
+  /* Acento — identidad Echegaray (tinta oscura propia, no una marca ajena) */
+  --os-accent: #10233a; /* acciones primarias, selección, superficie oscura */
+  --os-accent-hover: #1d3452;
+
+  /* Semántico — reservado para estado, con tinte tenue de fondo */
+  --os-pos: #067647;
+  --os-pos-soft: #e7f6ee;
+  --os-neg: #b42318;
+  --os-neg-soft: #fbeae8;
+  --os-warn: #93591b;
+  --os-warn-soft: #fbf1e0;
+  --os-info: #175cd3;
+  --os-info-soft: #e9f0fd;
+  --os-focus: #2f6df6; /* anillo de foco accesible */
+}
+
+@layer base {
+  body {
+    color: var(--os-ink);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  /* Números tabulares para todo dato financiero marcado con .tnum o tabular-nums. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+  /* Foco de teclado visible y consistente (accesibilidad, heurística #11). */
+  :where(a, button, [role='button'], input, select, textarea, summary):focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 2px var(--os-surface),
+      0 0 0 4px color-mix(in srgb, var(--os-focus) 55%, transparent);
+    border-radius: 6px;
+  }
+}
