@@ -95,9 +95,37 @@ export async function sellarTabs(cliente, fileId, tabs = []) {
 }
 
 /**
+ * RE-INYECCIÓN DE CELDAS APRENDIDAS (la otra mitad de "entender+reconciliar"). Una pestaña que la
+ * reconciliación entendió vuelve a mantenerse sola (descandada), pero las celdas que el dueño corrigió
+ * o cargó quedaron registradas como 'activa'. Acá, en el ÚNICO punto por el que pasa toda escritura de
+ * valores, se estampa el valor del dueño sobre lo que produjo el generador: el generador regenera TODO,
+ * esas celdas conservan lo del dueño. Es el mecanismo que hace que "el generador respete la celda
+ * aprendida" sin que cada generador tenga que saber nada — igual que la guarda, choke point, no
+ * disciplina de cada autor. Falla ABIERTO: sin base o sin celdas aprendidas, `data` pasa igual.
+ */
+async function reInyectarAprendidas(fileId, data) {
+  try {
+    const tabs = tabsProtegibles(data)
+    if (!tabs.length) return data
+    const { celdasActivas, reInyectarEntrada } = await import('./reconciliacion-firma.mjs')
+    const porTab = new Map()
+    for (const t of tabs) {
+      const m = await celdasActivas({}, fileId, t).catch(() => null)
+      if (m && m.size) porTab.set(t, m)
+    }
+    if (!porTab.size) return data
+    return data.map((entrada) => {
+      const t = nombreTab(entrada?.range)
+      const m = t && porTab.get(t)
+      return m ? reInyectarEntrada(entrada, m) : entrada
+    })
+  } catch { return data }
+}
+
+/**
  * LA GUARDA COMPLETA, para un choke point de escritura de valores. Devuelve el `data` filtrado a lo que
- * se puede escribir y una función `sellar()` para llamar DESPUÉS de escribir. Un solo lugar: lo usan
- * batchUpdateValues y updateSheetValues.
+ * se puede escribir (y con las celdas aprendidas del dueño re-inyectadas) y una función `sellar()` para
+ * llamar DESPUÉS de escribir. Un solo lugar: lo usan batchUpdateValues y updateSheetValues.
  *
  * @returns {Promise<{data:any[], bloqueadas:string[], sellar:() => Promise<void>}>}
  */
@@ -105,11 +133,15 @@ export async function guardarEscritura(cliente, fileId, data) {
   const tabs = tabsProtegibles(data)
   if (!tabs.length) return { data, bloqueadas: [], sellar: async () => {} }
   const bloqueadas = await evaluarBloqueadas(cliente, fileId, tabs)
-  if (!bloqueadas.size) return { data, bloqueadas: [], sellar: () => sellarTabs(cliente, fileId, tabs) }
+  if (!bloqueadas.size) {
+    const conAprendidas = await reInyectarAprendidas(fileId, data)
+    return { data: conAprendidas, bloqueadas: [], sellar: () => sellarTabs(cliente, fileId, tabs) }
+  }
   const { permitido } = separarPermitido(data, bloqueadas)
   for (const t of bloqueadas) console.log(`  🔒 "${t}" bajo tu control (candado/edición): no la piso — escritura protegida en el portón.`)
   const escritos = tabsProtegibles(permitido)
-  return { data: permitido, bloqueadas: [...bloqueadas], sellar: () => sellarTabs(cliente, fileId, escritos) }
+  const conAprendidas = await reInyectarAprendidas(fileId, permitido)
+  return { data: conAprendidas, bloqueadas: [...bloqueadas], sellar: () => sellarTabs(cliente, fileId, escritos) }
 }
 
 // ═══ EL MISMO CANDADO, PARA spreadsheetBatchUpdate (updateCells/copyPaste/pasteData/appendCells) ═══

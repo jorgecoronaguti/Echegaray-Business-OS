@@ -141,20 +141,48 @@ async function main() {
   // cuenta. Movida acá, se compara la firma de CADA pestaña de contenido contra la que dejó el OS la
   // última vez ANTES de correr un solo paso: si la editaste, se auto-canda y el paso que la escribe ni
   // se ejecuta. Uniforme para TODOS los generadores. Los espejos _RAW (empiezan con "_") no llevan firma.
+  //
+  // ── Y ARRIBA DE LA DETECCIÓN, LA RECONCILIACIÓN (25/07) ──
+  // El fusible (firmaGuardia) sigue tonto: detecta la edición y auto-canda. Pero en vez de dejar la
+  // pestaña congelada y pedirte "elegí qué clavar", el OS la ENTIENDE celda por celda (reconciliar):
+  //   · si TODO lo que cambiaste es dato nuevo o corrección de fórmula → lo aprende, resella y DESCANDA:
+  //     la pestaña vuelve a mantenerse sola y el choke point re-inyecta tus celdas sobre lo que genera;
+  //   · si hay un conflicto real (pisaste un cálculo, borraste algo) → la deja candada y te hace UNA
+  //     pregunta puntual por celda. Sin grid previo para diffear, cae al viejo comportamiento (candado).
   try {
     const { makeGoogleClient, WRITE_SCOPES } = await import('../lib/google.mjs')
     const { loadConfig } = await import('../lib/config.mjs')
     const { firmaGuardia } = await import('../lib/firma-tab.mjs')
+    const { reconciliar } = await import('../lib/reconciliacion-firma.mjs')
     const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
     const tabs = [...new Set(PASOS.flatMap(([, , t = []]) => t))].filter((t) => t && !t.startsWith('_') && !bloqueadas.has(t))
     let candadas = 0
+    let reconciliadas = 0
+    const preguntas = []
     for (const t of tabs) {
       const ref = /[^A-Za-z0-9_]/.test(t) ? `'${t}'` : t
       const { editada } = await firmaGuardia(google, ID, t, ref).catch(() => ({ editada: false }))
-      if (editada) { bloqueadas.add(t); candadas++ }
+      if (!editada) continue
+      // La firma detectó tu edición y auto-candó. Intento entenderla antes de resignarme a congelar.
+      const rec = await reconciliar(google, {}, ID, t, { ref }).catch(() => ({ resuelto: false, preguntas: [] }))
+      if (rec.resuelto) {
+        // Entendida del todo: reconciliar ya reselló y descandó. El paso corre y protejo tus celdas.
+        reconciliadas++
+        const aprend = (rec.aprendidas?.length || 0) + (rec.adoptadas?.length || 0)
+        console.log(`  ✓ "${t}": entendí tu edición (${aprend} celda[s] adoptada[s]/aprendida[s]) — la mantengo sola y respeto lo tuyo.`)
+      } else {
+        // Queda candada (fail-closed). Junto las preguntas puntuales para avisarte.
+        bloqueadas.add(t); candadas++
+        for (const p of rec.preguntas || []) preguntas.push(p.pregunta)
+      }
     }
-    if (candadas) console.log(`🔒 ${candadas} pestaña(s) que editaste desde mi última escritura: las candé — el paso que las escribe no corre.\n`)
-  } catch (e) { console.log(`· pre-pasada de firma no disponible (${e.message}) — sigue el candado por paso\n`) }
+    if (reconciliadas) console.log(`✓ ${reconciliadas} pestaña(s) que editaste: entendidas y reconciliadas — siguen automáticas, con tus correcciones protegidas.`)
+    if (candadas) {
+      console.log(`🔒 ${candadas} pestaña(s) con un conflicto real: las dejo bajo tu control hasta que decidas. Preguntas puntuales:`)
+      for (const p of preguntas) console.log(`   · ${p}`)
+      console.log('')
+    }
+  } catch (e) { console.log(`· pre-pasada de firma/reconciliación no disponible (${e.message}) — sigue el candado por paso\n`) }
 
   for (const [script, que, pestañas = []] of PASOS) {
     const inicio = Date.now()
