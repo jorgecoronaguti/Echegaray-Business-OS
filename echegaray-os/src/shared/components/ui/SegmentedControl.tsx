@@ -17,18 +17,20 @@ export function SegmentedControl<T extends string>({
   ariaLabel?: string
 }) {
   const pad = size === 'sm' ? 'px-2.5 py-1 text-[12px]' : 'px-3 py-1.5 text-[13px]'
+  // Botones simples (no role=tab): quedan descubribles como `button` por su nombre accesible, y el
+  // estado activo se expone con aria-pressed. Un patrón ARIA tabs completo exigiría manejo de flechas
+  // del teclado que este conmutador no necesita.
   return (
-    <div role="tablist" aria-label={ariaLabel} className="inline-flex gap-0.5 rounded-control border border-line bg-surface p-0.5">
+    <div role="group" aria-label={ariaLabel} className="inline-flex gap-0.5 rounded-control border border-line bg-surface p-0.5">
       {options.map((o) => {
         const active = o.value === value
         return (
           <button
             key={o.value}
-            role="tab"
-            aria-selected={active}
+            aria-pressed={active}
             type="button"
             onClick={() => onChange(o.value)}
-            className={`rounded-[5px] font-medium transition ${pad} ${
+            className={`rounded-[5px] font-medium capitalize transition ${pad} ${
               active ? 'bg-accent text-white shadow-card' : 'text-muted hover:bg-surface-sunken hover:text-ink'
             }`}
           >

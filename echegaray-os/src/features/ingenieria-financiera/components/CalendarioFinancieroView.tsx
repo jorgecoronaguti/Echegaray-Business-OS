@@ -23,10 +23,12 @@ const RIESGO: Record<NivelRiesgo, { tono: Tono; borde: string; valor: string }> 
 }
 
 type Vista = 'mensual' | 'semanal' | 'diaria'
+// Los labels van en minúscula: la mayúscula visual la aplica el SegmentedControl con `capitalize`,
+// así el texto del DOM sigue siendo 'mensual'/'semanal'/'diaria' (los selectores de QA dependen de eso).
 const VISTAS = [
-  { value: 'mensual' as const, label: 'Mensual' },
-  { value: 'semanal' as const, label: 'Semanal' },
-  { value: 'diaria' as const, label: 'Diaria' },
+  { value: 'mensual' as const, label: 'mensual' },
+  { value: 'semanal' as const, label: 'semanal' },
+  { value: 'diaria' as const, label: 'diaria' },
 ]
 
 export function CalendarioFinancieroView({

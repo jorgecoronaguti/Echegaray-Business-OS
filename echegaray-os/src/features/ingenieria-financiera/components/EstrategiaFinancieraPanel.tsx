@@ -17,6 +17,7 @@ import type {
   ImpactoHorizonte,
 } from '../types/estrategia'
 import { money } from '@/shared/utils/format'
+import { textoPorQue } from '../lib/estrategiaFormat'
 import { Card, Eyebrow, Badge, Dot, type Tono } from '@/shared/components/ui'
 
 const SEV_TONO: Record<Severidad, Tono> = { alta: 'neg', media: 'warn', baja: 'pos' }
@@ -136,7 +137,8 @@ function ImpactoCajaFila({
 export function EstrategiaDetalle({ e }: { e: EstrategiaFinanciera }) {
   if (e.estado === 'sin dato') return null
   const rec = e.estrategia_recomendada
-  const hayPorQue = Boolean(e.eleccion?.por_que || rec?.razonamiento)
+  const porQue = textoPorQue(e.eleccion?.por_que)
+  const hayPorQue = Boolean(porQue || rec?.razonamiento)
   const hayBeneficio = Boolean(rec?.beneficios?.length || e.eleccion?.ahorro_vs_segunda)
   const hayAlt = Boolean(e.alternativas_evaluadas && e.alternativas_evaluadas.length > 0)
   const hayRiesgo = Boolean(e.riesgos?.length || e.datos_faltantes?.length || e.nivel_confianza?.degradada_por?.length)
@@ -155,8 +157,8 @@ export function EstrategiaDetalle({ e }: { e: EstrategiaFinanciera }) {
         {hayPorQue && (
           <Bloque titulo="Por qué esta estrategia">
             {rec?.razonamiento && <p className="text-[13px] leading-relaxed text-muted">{rec.razonamiento}</p>}
-            {e.eleccion?.por_que && e.eleccion.por_que !== rec?.razonamiento && (
-              <p className="mt-2 text-[12px] leading-relaxed text-faint">{e.eleccion.por_que}</p>
+            {porQue && porQue !== rec?.razonamiento && (
+              <p className="mt-2 text-[12px] leading-relaxed text-faint">{porQue}</p>
             )}
           </Bloque>
         )}
