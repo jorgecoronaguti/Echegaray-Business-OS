@@ -33,6 +33,22 @@
 // (cheques de terceros en cartera)". Sumarlo otra vez acá sería contar el mismo cheque dos veces —
 // el error que este archivo ya cometió al revés, cuando la cartera decía $30.000.000 y el banco
 // $10.000.000 porque dos estaban endosados.
+//
+// ═══ POR QUÉ SE EXCLUYE TAMBIÉN EL EFECTIVO — LA PARTICIÓN POR CANAL (T06) ═══
+//
+// Un cobro en efectivo NO entra al banco: entra a la caja física (el cajón). Si esta línea —que
+// alimenta el saldo BANCARIO— lo contara, y además la caja física lo contara por su lado, el mismo
+// peso quedaría dos veces en el total de disponibilidades. Por eso cada cobro cae en EXACTAMENTE UN
+// canal según su forma de cobro, y los tres canales son una PARTICIÓN sin intersección:
+//
+//     Echeq       → "Valores a depositar" (cartera)        · excluido acá
+//     Efectivo    → "Movimientos de efectivo posteriores al arqueo" (caja física, T06) · excluido acá
+//     el resto    → esta línea (transferencia, depósito, débito: pegan al banco)
+//
+// La partición es la garantía anti-doble-conteo POR CONSTRUCCIÓN: no hay forma de cobro que caiga en
+// dos canales, así que ningún cobro puede sumarse dos veces, sin importar en qué ventana esté cada
+// uno. El lado de los PAGOS ya estaba particionado igual: formulaComprasPagadasPosteriores cuenta
+// sólo Transferencia/Débito (banco) y deja el Efectivo para la caja física.
 
 // La columna "Fecha de caja" NO se tipea acá: se importa de rubro-caja.mjs, que es quien la ESCRIBE
 // en Compras. Escritor y lector comparten una sola definición, así el efecto Compras→CAJA no se
@@ -67,6 +83,9 @@ export function formulaCobrosPosteriores(corte, c = COB) {
   return `SUMIFS(${rango(c.hoja, c.total, c.desde, c.hasta)};`
     + `${rango(c.hoja, c.estado, c.desde, c.hasta)};"Cobrado";`
     + `${rango(c.hoja, c.forma, c.desde, c.hasta)};"<>Echeq";`
+    // El efectivo va a la caja física (T06), no al banco: se excluye para que la partición por canal
+    // no deje ningún cobro contado dos veces. Ver el encabezado de este archivo.
+    + `${rango(c.hoja, c.forma, c.desde, c.hasta)};"<>Efectivo";`
     + `${rango(c.hoja, c.fecha, c.desde, c.hasta)};">"&${corte})`
 }
 
@@ -115,6 +134,106 @@ export function formulaComprasPagadasPosteriores(corte, c = CMP) {
 export function formulaNetaPosterior(corte) {
   return `=${formulaCobrosPosteriores(corte)}-${formulaChequesDebitadosPosteriores(corte)}`
     + `-(${formulaComprasPagadasPosteriores(corte)})`
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA CAJA FÍSICA (EFECTIVO): EL ARQUEO MANUAL COMO ANCLA + CARGA/DESCARGA AUTOMÁTICA (T06)
+//
+// DECISIÓN DEL DUEÑO: "permitir carga manual de efectivo, pero de ahí mismo se tiene que hacer carga
+// y descarga de manera automática también". El arqueo manual de "Caja en pesos" es el ANCLA — el
+// "corte" de la caja física, exactamente como el extracto es el corte del saldo bancario. De ese
+// corte para adelante, el efectivo se mueve solo: se CARGAN los cobros en efectivo y se DESCARGAN los
+// pagos en efectivo y los depósitos al banco.
+//
+// ES EL ESPEJO EXACTO DEL BANCO, DEL OTRO LADO DE LA PARTICIÓN. El banco excluye el efectivo (arriba);
+// la caja física cuenta SÓLO el efectivo. Un cobro/pago cae en un único canal según su forma, así que
+// el mismo peso no puede estar en el banco y en la caja a la vez: no hay doble conteo, por construcción.
+//
+// LA VENTANA ES EXCLUSIVA COMO LA DEL BANCO: fecha > arqueo. Un movimiento de efectivo está o DENTRO
+// del arqueo (fecha ≤ arqueo, ya contado en el número que el dueño tipeó) o en la ventana posterior
+// (fecha > arqueo), NUNCA en ambos. Cuando el dueño registra un arqueo NUEVO —con fecha más reciente—
+// ese arqueo pasa a ser el corte y todo lo anterior COLAPSA dentro de él: sale de la ventana ">"
+// automáticamente. El arqueo manual NUNCA se pisa: es la verdad ancla.
+//
+// POR QUÉ TAMBIÉN SE RESTAN LOS DEPÓSITOS. Un depósito de efectivo mueve plata del cajón al banco:
+// baja la caja física y sube el saldo bancario (que el extracto ya trae, o traerá al actualizarse).
+// Si el cobro en efectivo se sumó acá y después se deposita, sin restar el depósito el mismo peso
+// quedaría en la caja física Y en el saldo del banco. Restarlo cierra la partición también cuando la
+// plata cruza de canal. Es la misma "deposito de efectivo" que ya mira la alerta de CAJA (bloque 4.6).
+
+/** La réplica del extracto y sus columnas para detectar depósitos de efectivo (mismo criterio que la
+ *  alerta de trazabilidad del efectivo en CAJA): A=fecha, B=concepto, C=importe, E=entra/sale. */
+export const DEP = { hoja: '_BANCO_RAW', fecha: 'A', concepto: 'B', importe: 'C', flujo: 'E', desde: 4 }
+
+/**
+ * NÚCLEO PURO: los cobros en EFECTIVO posteriores al arqueo. Auto-CARGA de la caja física.
+ * El espejo de formulaCobrosPosteriores del lado del efectivo: acá se cuenta SÓLO "Efectivo" (que el
+ * banco excluye), estado "Cobrado" (un proyectado no es plata que esté), y fecha POSTERIOR al arqueo.
+ * @param {string} arqueo referencia a la celda con la fecha del arqueo (ej. '$F$4')
+ * @param {object} c columnas de Cobranzas
+ * @returns {string} fórmula, separador es-AR
+ */
+export function formulaCobrosEfectivoPosteriores(arqueo, c = COB) {
+  return `SUMIFS(${rango(c.hoja, c.total, c.desde, c.hasta)};`
+    + `${rango(c.hoja, c.estado, c.desde, c.hasta)};"Cobrado";`
+    + `${rango(c.hoja, c.forma, c.desde, c.hasta)};"Efectivo";`
+    + `${rango(c.hoja, c.fecha, c.desde, c.hasta)};">"&${arqueo})`
+}
+
+/**
+ * NÚCLEO PURO: los pagos en EFECTIVO posteriores al arqueo. Auto-DESCARGA de la caja física.
+ * El espejo de formulaComprasPagadasPosteriores del lado del efectivo: cuenta el tipo de pago que
+ * aquélla deja afuera a propósito ("Efectivo"), con estado "Pagado" y fecha de caja POSTERIOR al
+ * arqueo. Un solo SUMIFS: acá el medio es uno solo.
+ * @param {string} arqueo referencia a la celda con la fecha del arqueo
+ * @param {object} c columnas de Compras
+ * @returns {string} fórmula
+ */
+export function formulaComprasEfectivoPosteriores(arqueo, c = CMP) {
+  return `SUMIFS(${rango(c.hoja, c.total, c.desde, c.hasta)};`
+    + `${rango(c.hoja, c.estado, c.desde, c.hasta)};"Pagado";`
+    + `${rango(c.hoja, c.tipoPago, c.desde, c.hasta)};"Efectivo";`
+    + `${rango(c.hoja, c.fecha, c.desde, c.hasta)};">"&${arqueo})`
+}
+
+/**
+ * NÚCLEO PURO: los depósitos de efectivo al banco posteriores al arqueo. Auto-DESCARGA de la caja
+ * física (la plata dejó el cajón). Sale de la réplica del extracto, con el MISMO criterio que la
+ * alerta "efectivo cobrado que no se depositó" de CAJA: crédito ("entra") cuyo concepto dice
+ * "deposito de efectivo" (tolerando la tilde). SUMPRODUCT porque necesita SEARCH sobre el texto.
+ * ISNUMBER sobre la fecha: una fecha guardada como TEXTO compararía como mayor que cualquier arqueo
+ * y metería un depósito viejo en la ventana — el mismo tropiezo que ya rompió el calendario de CAJA.
+ * @param {string} arqueo referencia a la celda con la fecha del arqueo
+ * @param {object} c columnas de la réplica del extracto
+ * @returns {string} fórmula
+ */
+export function formulaDepositosEfectivoPosteriores(arqueo, c = DEP) {
+  const col = (x) => `${c.hoja}!$${x}$${c.desde}:$${x}`
+  return `SUMPRODUCT((${col(c.flujo)}="entra")`
+    + `*ISNUMBER(SEARCH("deposito de efectivo";LOWER(SUBSTITUTE(${col(c.concepto)};"ó";"o"))))`
+    + `*ISNUMBER(${col(c.fecha)})*(${col(c.fecha)}>${arqueo})`
+    + `*IF(ISNUMBER(${col(c.importe)});${col(c.importe)};0))`
+}
+
+/**
+ * NÚCLEO PURO: la línea neta de la caja física que va en el bloque de disponibilidades y suma al total.
+ * Cobros en efectivo, menos pagos en efectivo, menos depósitos al banco — todo con fecha POSTERIOR al
+ * arqueo. Si no hay arqueo con fecha, devuelve 0: sin ancla no hay ventana que acotar, y asumir que
+ * todo el efectivo cobrado sigue en el cajón sería inventar plata que nadie contó. En ese caso la
+ * pestaña pide un arqueo (y la alerta 4.6 marca el efectivo sin explicar).
+ *
+ * Los depósitos sólo se restan si hay réplica del extracto: sin _BANCO_RAW no se pueden detectar, y
+ * mejor no restar que restar un cero disfrazado.
+ * @param {string} arqueo referencia a la celda con la fecha del arqueo (ej. '$F$4')
+ * @param {{bancoRaw?:string|null}} [opts]
+ * @returns {string} fórmula completa, con el `=` adelante
+ */
+export function formulaNetaEfectivoPosterior(arqueo, { bancoRaw = DEP.hoja } = {}) {
+  const depositos = bancoRaw
+    ? `-${formulaDepositosEfectivoPosteriores(arqueo, { ...DEP, hoja: bancoRaw })}`
+    : ''
+  return `=IF(NOT(ISNUMBER(${arqueo}));0;`
+    + `${formulaCobrosEfectivoPosteriores(arqueo)}-${formulaComprasEfectivoPosteriores(arqueo)}${depositos})`
 }
 
 /**

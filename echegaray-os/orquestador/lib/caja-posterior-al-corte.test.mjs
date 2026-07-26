@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import {
   formulaCobrosPosteriores, formulaChequesDebitadosPosteriores, formulaComprasPagadasPosteriores,
   formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte, COB, CHQ, CMP,
+  formulaCobrosEfectivoPosteriores, formulaComprasEfectivoPosteriores,
+  formulaDepositosEfectivoPosteriores, formulaNetaEfectivoPosterior, DEP,
 } from './caja-posterior-al-corte.mjs'
 import { COL_FECHA_CAJA, colIndex } from './rubro-caja.mjs'
 
@@ -73,6 +75,113 @@ test('sólo suma lo COBRADO: un proyectado no es plata que esté', () => {
 
 test('excluye los echeq, que ya están contados en la cartera', () => {
   assert.match(formulaCobrosPosteriores('$F$19'), /"<>Echeq"/)
+})
+
+// ═══ LA PARTICIÓN POR CANAL: EL EFECTIVO NO ESTÁ EN EL BANCO, ESTÁ EN LA CAJA FÍSICA (T06) ═══
+
+test('el banco NO cuenta el efectivo: va a la caja física, no duplicar', () => {
+  // Si el banco contara el efectivo y la caja física también, el mismo peso quedaría dos veces en el
+  // total. La partición por canal (echeq/efectivo/banco) lo impide por construcción.
+  const f = formulaCobrosPosteriores('$F$19')
+  assert.match(f, /"<>Efectivo"/)
+  assert.match(f, /"<>Echeq"/)
+})
+
+test('la línea del banco sigue teniendo 4 SUMIFS aunque el cobro excluya el efectivo', () => {
+  // Excluir el efectivo es un criterio MÁS dentro del mismo SUMIFS de cobros, no un SUMIFS nuevo:
+  // cobros + cheques debitados + compras (transferencia) + compras (débito) = 4.
+  assert.equal(formulaNetaPosterior('$F$19').split('SUMIFS').length - 1, 4)
+})
+
+test('cobros en efectivo posteriores: SÓLO Efectivo, SÓLO Cobrado, DESPUÉS del arqueo', () => {
+  const f = formulaCobrosEfectivoPosteriores('$F$4')
+  assert.match(f, /'Cobranzas'!\$O\$5:\$O\$400;"Cobrado"/) // estado
+  assert.match(f, /'Cobranzas'!\$N\$5:\$N\$400;"Efectivo"/) // forma de cobro
+  assert.match(f, /'Cobranzas'!\$Q\$5:\$Q\$400;">"&\$F\$4/) // ventana posterior al arqueo
+  // La ventana es EXCLUSIVA: con ">=" un cobro del día del arqueo se contaría de nuevo (ya está en él).
+  assert.doesNotMatch(f, />=/)
+})
+
+test('pagos en efectivo posteriores: Compras Pagado/Efectivo por Fecha de caja, DESPUÉS del arqueo', () => {
+  const f = formulaComprasEfectivoPosteriores('$F$4')
+  assert.match(f, /'Compras'!\$X\$4:\$X\$1200;"Pagado"/) // estado
+  assert.match(f, /'Compras'!\$P\$4:\$P\$1200;"Efectivo"/) // tipo de pago
+  assert.match(f, new RegExp(`'Compras'!\\$${CMP.fecha}\\$4:\\$${CMP.fecha}\\$1200;">"&\\$F\\$4`)) // Fecha de caja
+  assert.doesNotMatch(f, />=/)
+})
+
+test('el pago en efectivo usa el MISMO medio que el banco deja afuera (partición del lado de los pagos)', () => {
+  // El banco cuenta Transferencia/Débito; la caja física cuenta Efectivo. Sin intersección.
+  assert.ok(!CMP.tiposBanco.includes('Efectivo'))
+  assert.match(formulaComprasEfectivoPosteriores('$F$4'), /"Efectivo"/)
+})
+
+test('los depósitos de efectivo se detectan como en la alerta 4.6 y sólo los posteriores al arqueo', () => {
+  const f = formulaDepositosEfectivoPosteriores('$F$4')
+  assert.match(f, /_BANCO_RAW!\$E\$4:\$E="entra"/) // es un crédito
+  assert.match(f, /deposito de efectivo/) // el concepto del banco
+  assert.match(f, /_BANCO_RAW!\$A\$4:\$A>\$F\$4/) // ventana posterior al arqueo
+  // ISNUMBER sobre la fecha: una fecha guardada como texto metería un depósito viejo en la ventana.
+  assert.match(f, /ISNUMBER\(_BANCO_RAW!\$A\$4:\$A\)/)
+})
+
+test('la línea neta de la caja física: cobros − pagos − depósitos, guardada por el arqueo', () => {
+  const f = formulaNetaEfectivoPosterior('$F$4')
+  assert.ok(f.startsWith('='))
+  // Sin arqueo con fecha no hay ventana: da 0 en vez de inventar plata en el cajón.
+  assert.match(f, /^=IF\(NOT\(ISNUMBER\(\$F\$4\)\);0;/)
+  // 2 SUMIFS (cobros efectivo + pagos efectivo) + 1 SUMPRODUCT (depósitos).
+  assert.equal(f.split('SUMIFS').length - 1, 2)
+  assert.equal(f.split('SUMPRODUCT').length - 1, 1)
+  // Cobros suman, pagos y depósitos restan.
+  assert.match(f, /;"Cobrado";.*"Efectivo".*\)-SUMIFS/) // cobros, luego resta el pago
+  assert.match(f, /\)-SUMPRODUCT/) // resta el depósito
+})
+
+test('sin réplica del extracto, la caja física no resta depósitos (no restar un cero disfrazado)', () => {
+  const f = formulaNetaEfectivoPosterior('$F$4', { bancoRaw: null })
+  assert.doesNotMatch(f, /SUMPRODUCT/)
+  assert.equal(f.split('SUMIFS').length - 1, 2) // sólo cobros − pagos
+})
+
+test('las fórmulas de efectivo van en es-AR: separador ; y nunca ,', () => {
+  assert.ok(!formulaNetaEfectivoPosterior('$F$4').includes(','))
+  assert.ok(!formulaCobrosEfectivoPosteriores('$F$4').includes(','))
+  assert.ok(!formulaComprasEfectivoPosteriores('$F$4').includes(','))
+  assert.ok(!formulaDepositosEfectivoPosteriores('$F$4').includes(','))
+})
+
+// ═══ EL COLAPSO CONTRA UN ARQUEO NUEVO Y LA EXCLUSIVIDAD DE VENTANA ═══
+//
+// No hay motor de cálculo de Sheets acá, así que se prueba la PROPIEDAD ESTRUCTURAL que garantiza el
+// colapso: la ventana de cada canal está anclada a la referencia de SU corte y usa ">" (estricto).
+// Un arqueo nuevo es una fecha mayor en esa misma celda ancla; todo lo de fecha ≤ arqueo cae fuera de
+// ">" — colapsa dentro del arqueo — sin tocar ninguna otra fórmula.
+test('la ventana de efectivo cuelga del arqueo que se le pase: cambiar el ancla mueve el corte entero', () => {
+  const viejo = formulaNetaEfectivoPosterior('$F$4')
+  const nuevo = formulaNetaEfectivoPosterior('$F$99')
+  // Toda referencia al ancla vieja desaparece cuando el arqueo se registra en otra celda.
+  assert.ok(!viejo.includes('$F$99') && !nuevo.includes('$F$4'))
+  // El ancla aparece en la guarda ISNUMBER y en los TRES términos (cobros, pagos, depósitos): al
+  // registrar un arqueo nuevo, la ventana ">" de los tres se corre junta y lo viejo colapsa.
+  assert.equal((nuevo.match(/\$F\$99/g) || []).length, 4)
+})
+
+test('la exclusividad es por construcción: efectivo y banco no comparten ninguna forma de cobro', () => {
+  // El banco: forma <> Echeq y <> Efectivo. La caja física: forma = Efectivo. La cartera: Echeq.
+  // Los tres conjuntos de "forma de cobro" son disjuntos, así que ningún cobro se cuenta dos veces.
+  const banco = formulaCobrosPosteriores('$F$19')
+  const caja = formulaCobrosEfectivoPosteriores('$F$4')
+  assert.match(banco, /"<>Efectivo"/) // el banco deja el efectivo afuera
+  assert.match(caja, /"Efectivo"/) // la caja física lo toma
+  assert.doesNotMatch(caja, /"<>Echeq"|Transferencia|Débito/) // y no toma nada del canal bancario
+})
+
+test('DEP apunta a la réplica del extracto con las columnas verificadas', () => {
+  assert.deepEqual(
+    { hoja: DEP.hoja, fecha: DEP.fecha, concepto: DEP.concepto, importe: DEP.importe, flujo: DEP.flujo },
+    { hoja: '_BANCO_RAW', fecha: 'A', concepto: 'B', importe: 'C', flujo: 'E' },
+  )
 })
 
 test('la resta de cheques usa la fecha de DÉBITO, no la de emisión', () => {

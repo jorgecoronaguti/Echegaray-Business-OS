@@ -62,7 +62,7 @@ import { CAJA as N_CAJA, publicar } from '../lib/rangos-nombrados.mjs'
 import { esIndistinguible } from '../lib/cobranzas-duplicado.mjs'
 import * as CONC from '../lib/conciliacion-por-naturaleza.mjs'
 import { formulaEgresoDiario } from '../lib/egreso-diario.mjs'
-import { formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte } from '../lib/caja-posterior-al-corte.mjs'
+import { formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte, formulaNetaEfectivoPosterior } from '../lib/caja-posterior-al-corte.mjs'
 
 // LA MISMA definición de "dos cobros que no se pueden distinguir" que usa el control de la pestaña
 // Cobranzas. Antes acá había una segunda basada en el ID, y al reparar la columna A —que se
@@ -308,6 +308,23 @@ function grilla(cargado, refs) {
       'Cobranzas (estado Cobrado, sin echeq) menos cheques debitados, todo con fecha POSTERIOR al corte del extracto. El extracto ya trae lo anterior: contarlo de nuevo duplicaría. Los echeq quedan afuera porque ya están en Valores a depositar.',
       'Se calcula solo'])
   }
+  // ═══ LA LÍNEA QUE HACE QUE LA CAJA FÍSICA SE MUEVA SOLA — EL ESPEJO DE EFECTIVO DEL BANCO (T06) ═══
+  //
+  // Decisión del dueño: "permitir carga manual de efectivo, pero de ahí mismo se tiene que hacer carga
+  // y descarga de manera automática". El arqueo manual de "Caja en pesos" (la fila d0, y su fecha en la
+  // columna F) es el ANCLA — el corte de la caja física, igual que el extracto es el corte del banco.
+  // De ese corte para adelante esta fila carga los cobros en efectivo y descarga los pagos en efectivo
+  // y los depósitos al banco. El número que el dueño tipeó NO se pisa: esta línea es aparte y suma.
+  //
+  // NO DUPLICA NADA, POR CONSTRUCCIÓN: el banco excluye el efectivo y la caja física cuenta sólo el
+  // efectivo (partición por canal, ver lib/caja-posterior-al-corte.mjs). Y la ventana es ">" arqueo:
+  // lo anterior ya está DENTRO del arqueo. Un arqueo nuevo, con fecha más reciente, colapsa lo viejo.
+  const fPostEf = filas.length + 1
+  push(['Movimientos de efectivo posteriores al arqueo', 'ARS',
+    formulaNetaEfectivoPosterior(`$F$${d0}`, { bancoRaw: refs.bancoRaw }), '', `=${C_IMP}${fPostEf}`, '=TODAY()',
+    `=IF($F$${d0}="";"⚠ cargá un arqueo con fecha";IF(${C_IMP}${fPostEf}=0;"sin movimientos";"vivo"))`,
+    'Cobros en efectivo (Cobranzas, estado Cobrado) menos pagos en efectivo (Compras, Pagado/Efectivo) menos depósitos de efectivo al banco, todos con fecha POSTERIOR al arqueo de "Caja en pesos". El arqueo es el corte: lo anterior ya está contado dentro del saldo tipeado. Sin arqueo con fecha no hay ventana y da 0.',
+    'Se calcula solo'])
   const d1 = filas.length
 
   const fTotal = push(['Total disponibilidades', '', '', '', `=SUM(${C_PESOS}${d0}:${C_PESOS}${d1})`, '', '', '', 'Es el "Efectivo al inicio" que usan los dos cash flows.'])
@@ -695,6 +712,15 @@ function grilla(cargado, refs) {
   // ES UN CONTROL, NO UNA ACUSACIÓN: puede haber una explicación buena (un depósito posterior a la
   // fecha del extracto, un pago a proveedor hecho en efectivo sin pasar por el banco). Lo que no
   // puede pasar es que nadie lo mire.
+  //
+  // CÓMO SE RELACIONA CON LA CARGA AUTOMÁTICA DE EFECTIVO (T06). Este control y la línea "Movimientos
+  // de efectivo posteriores al arqueo" son COMPLEMENTARIOS, no redundantes. La línea T06 CARGA el
+  // efectivo cobrado después del arqueo como plata que DEBERÍA estar en el cajón (una proyección de la
+  // caja física). Este control mira lo mismo contra el ÚLTIMO ARQUEO VERIFICADO: si el efectivo cobrado
+  // no está depositado ni aparece en ese arqueo, lo marca "sin explicar" — es el aviso de "andá a
+  // contar el cajón / tomá un arqueo nuevo". Cuando el dueño registra ese arqueo, las dos cosas se
+  // cierran a la vez: la línea T06 colapsa (la ventana ">" arqueo se corre) y este residuo baja. Por
+  // eso el control se queda como está: la carga automática no lo reemplaza, lo dispara.
   push(['4.6 · TRAZABILIDAD DEL EFECTIVO COBRADO'])
   push(['Un cobro en efectivo que no se depositó tiene que estar en la caja física. Este control resta: lo cobrado en efectivo, menos lo que se depositó, menos lo que se declara en la caja de arriba. Si sobra plata, o no está o el cobro no ocurrió.'])
   // ═══ LA MISMA VENTANA DE TIEMPO DE LOS DOS LADOS ═══
