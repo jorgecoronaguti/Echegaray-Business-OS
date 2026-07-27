@@ -242,7 +242,6 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // facturó AFIP que Compras todavía no tiene—. Cada número es una fórmula viva sobre Compras o un
   // rango con nombre de ARCA: ni uno pegado, y el que quiera el detalle lo tiene en las tablas de
   // abajo. Es el layout que el dueño aprobó para Impuestos: resumen vertical arriba, detalle debajo.
-  const hoy = new Date().toLocaleDateString('es-AR')
   // LA DEUDA ES NETA DE PAGOS PARCIALES: Total menos Monto Pagado. `neta(condiciones)` devuelve la
   // fórmula SUMIFS(Total;cond) − SUMIFS(Monto Pagado;cond) para cualquier juego de condiciones. Es lo
   // que el dueño marcó: un pago parcial baja el saldo, así que sumar el Total entero lo sobreestima.
@@ -255,7 +254,10 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // Total − (T + positivos de U + positivos de W). El filtro ">0" excluye los saldos negativos/entre
   // paréntesis de U/W, que son "lo que falta", no pagos (regla confirmada por el dueño el 27/07).
   const neta = (conds) => `SUMIFS(${COL_TOTAL};${conds})-SUMIFS(${COL_PAGADO};${conds})-SUMIFS(${COL_PARCIAL1};${conds};${COL_PARCIAL1};">0")-SUMIFS(${COL_PARCIAL2};${conds};${COL_PARCIAL2};">0")`
-  const bPos = push([`POSICIÓN DE PROVEEDORES · al ${hoy} · en pesos`])
+  // EL SELLO ES VIVO, NO UN TEXTO CONGELADO: los importes de esta pestaña son fórmulas sobre Compras,
+  // así que la posición está "en vivo al" día en que se abre. El listado de facturas de abajo se
+  // reconstruye cuando corre el agente, y el aviso "⚠ Faltan N facturas" (más abajo) cubre ese desfase.
+  const bPos = push(['="POSICIÓN DE PROVEEDORES · importes en vivo al "&TEXT(TODAY();"dd/mm/yyyy")&" · en pesos"'])
   const pos0 = filas.length + 1
   // Esta pestaña es SÓLO proveedores comerciales. La deuda con ARCA, impuestos y nómina NO va acá —
   // vive en "Impuestos y Financieros" (regla 9, no duplicar). Por eso el hero abre con la deuda
@@ -1194,6 +1196,10 @@ async function formatear(google, sheetId, g, ancho, filas) {
   // versalita apagada MUTED) y líneas finas (HAIR). Ver lib/estilo-statement.mjs. Las bandas azules
   // y grises que había antes son justo lo que hace ver una pestaña como planilla y no como JPMorgan.
   const r = (r0, r1, c0 = 0, c1 = ancho) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
+  // La columna "Comentarios" del dueño (la que agregó a la derecha del todo): nunca se trunca. Se deja
+  // DERRAMAR sobre las columnas vacías de la derecha, como la nota al margen de un statement, en vez de
+  // cortarla en el borde de la celda. Antes quedaba en CLIP a 108px y se comía media frase.
+  const iComent = ((g.deudaL || {}).cols || []).findIndex((h) => /coment/i.test(String(h ?? '')))
   // ═══ PRIMERO SE BORRA TODO, DESPUÉS SE PINTA ═══
   //
   // POR QUÉ (21/07). Este formateador sólo APLICABA formatos, nunca los sacaba. Mientras el layout
@@ -1311,8 +1317,10 @@ async function formatear(google, sheetId, g, ancho, filas) {
   // Es el mismo patrón que el dueño aprobó en Impuestos, adaptado a las columnas de esta pestaña.
   if (g.bPos && g.pos0 && g.pos1) {
     // Título de la posición: tinta, sin barra; una línea fina arriba lo separa del subtítulo.
-    fmt(r(g.bPos - 1, g.bPos), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
-      { textFormat: { bold: true, fontSize: 11, foregroundColor: INK }, backgroundColor: { red: 1, green: 1, blue: 1 } })
+    // Derrama a la derecha (OVERFLOW): el sello "importes en vivo al dd/mm/yyyy" es más largo que la
+    // columna A y sin esto se corta en "al 2…".
+    fmt(r(g.bPos - 1, g.bPos), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor,userEnteredFormat.wrapStrategy',
+      { textFormat: { bold: true, fontSize: 11, foregroundColor: INK }, backgroundColor: { red: 1, green: 1, blue: 1 }, wrapStrategy: 'OVERFLOW_CELL' })
     hairTop(g.bPos)
     // Concepto (A) en negrita suave; Monto (B) moneda a la derecha; la nota (C) en gris, sin plata.
     fmt(r(g.pos0 - 1, g.pos1, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: false, fontSize: 11, foregroundColor: INK } })
@@ -1410,6 +1418,9 @@ async function formatear(google, sheetId, g, ancho, filas) {
     col1(L.fecha, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.fecha, horizontalAlignment: 'LEFT' })
     col1(L.comp, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' })
     col1(L.imp, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT' })
+    // Comentarios: nota al margen en gris, que derrama a la derecha (OVERFLOW) en vez de truncarse.
+    if (iComent >= 0) col1(iComent, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.wrapStrategy,userEnteredFormat.textFormat',
+      { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', wrapStrategy: 'OVERFLOW_CELL', textFormat: { fontSize: 9, italic: true, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } } })
     for (const h of (g.deudaHeaders || [])) {
       if (h) fmt({ ...r(h - 1, h, 0, Math.max((L.imp ?? 3) + 1, 4)) }, 'userEnteredFormat.textFormat', { textFormat: { bold: true, foregroundColor: INK, fontSize: 10 } })
     }
