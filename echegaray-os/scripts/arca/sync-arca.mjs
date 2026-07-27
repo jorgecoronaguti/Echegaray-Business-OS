@@ -44,7 +44,7 @@ try {
 // fecha del PDF viejo. Se registra por nombre; recalcular_frescura_fuentes decide el estado.
 try {
   const { query, closePool } = await import('../../orquestador/lib/db.mjs')
-  const { registrarSincronizacion } = await import('../../orquestador/lib/registrar-sincronizacion.mjs')
+  const { registrarSincronizacion, registrarIngesta, FUENTES_INGESTA } = await import('../../orquestador/lib/registrar-sincronizacion.mjs')
   const { rows } = await query("select max(fecha_emision) mx from public.comprobantes_arca where tipo_libro = 'E'")
   const mx = rows?.[0]?.mx
   if (mx) {
@@ -52,8 +52,19 @@ try {
     const fr = await registrarSincronizacion({ query }, { nombre: 'IVA 2026 (Libro IVA Ventas mensual)', coberturaHasta: iso })
     console.log(fr.ok ? `[arca-sync] frescura IVA 2026: ventas hasta ${iso} → ${fr.estado}` : `[arca-sync] frescura no registrada: ${fr.motivo}`)
   }
+  // FRESCURA DEL LADO COMPRAS (26/07). Hasta ahora sólo se registraba la frescura de VENTAS (libro E).
+  // Pero los comprobantes RECIBIDOS (libro R) son los que alimentan costo y crédito fiscal — el feed
+  // más importante para caja y margen — y no estaba catalogado como fuente. Se asegura la fila y se
+  // declara la cobertura real (última emisión de un comprobante de compras que el OS tiene).
+  const { rows: rc } = await query("select max(fecha_emision) mx from public.comprobantes_arca where tipo_libro = 'R'")
+  const mxc = rc?.[0]?.mx
+  const isoC = mxc ? new Date(mxc).toISOString().slice(0, 10) : undefined
+  const frc = await registrarIngesta({ query }, { declaracion: FUENTES_INGESTA.arcaCompras, coberturaHasta: isoC })
+  console.log(frc.ok
+    ? `[arca-sync] frescura ARCA compras: ${isoC ? `hasta ${isoC} ` : ''}→ ${frc.estado}${frc.creada ? ' (fuente catalogada por primera vez)' : ''}`
+    : `[arca-sync] frescura ARCA compras no registrada: ${frc.motivo}`)
   await closePool()
 } catch (e) {
-  console.error('[arca-sync] frescura IVA no registrada:', String(e?.message ?? e).slice(0, 160))
+  console.error('[arca-sync] frescura no registrada:', String(e?.message ?? e).slice(0, 160))
 }
 console.log('[arca-sync] listo')

@@ -77,3 +77,114 @@ export async function registrarSincronizacion(deps = {}, opts = {}) {
     return { ok: false, motivo: String(e?.message ?? e).slice(0, 160) }
   }
 }
+
+// ═══ ASEGURAR QUE LA FUENTE EXISTE PARA QUE LA ALERTA LA CUBRA (26/07) ═══
+//
+// La frescura sólo grita por lo que está CATALOGADO en fuentes_datos. Las 23 filas se sembraron el
+// 08/07 (discovery). Pero dos ingestas financieras críticas NACIERON DESPUÉS y nadie las catalogó:
+// el extracto del banco (`banco_movimientos`, 23/07) y el lado COMPRAS de ARCA (libro R). Sin fila,
+// esos feeds se pueden congelar semanas sin que nada avise — el peor silencio, porque son los que
+// alimentan caja y costo.
+//
+// `asegurarFuente` DECLARA la fuente (no fabrica ningún dato de negocio: registra que el OS ingiere
+// este feed y con qué cadencia se lo espera). Es idempotente por `nombre` (ON CONFLICT DO NOTHING):
+// si la fila ya existe —creada por el discovery o curada a mano— no la pisa. Se inserta con estado
+// 'actualizado' + ultima_sincronizacion_exitosa=now() a propósito: `recalcular_frescura_fuentes()`
+// SÓLO mueve entre 'actualizado'↔'atrasado' y jamás rescata un 'fuente_no_disponible'; si naciera en
+// ese estado quedaría muda para siempre. Al momento de crearla acabamos de sincronizar con éxito, así
+// que 'actualizado' es el hecho, no un supuesto.
+
+/** Columnas mínimas NOT NULL de una declaración de fuente, con defaults conservadores. */
+function normalizarDeclaracion(decl = {}) {
+  return {
+    nombre: decl.nombre,
+    tipo_archivo: decl.tipo_archivo ?? 'externo_no_conectado',
+    proceso_negocio: decl.proceso_negocio ?? 'Ingesta del Business OS',
+    area: decl.area ?? 'Administración',
+    frecuencia_actualizacion: decl.frecuencia_actualizacion ?? 'por_evento',
+    vigencia: decl.vigencia ?? 'vigente',
+    fuente_primaria: decl.fuente_primaria ?? true,
+    naturaleza_dato: decl.naturaleza_dato ?? 'confirmado',
+    criticidad: decl.criticidad ?? 'alta',
+    mecanismo_integracion: decl.mecanismo_integracion ?? 'ingesta_incremental',
+    drive_file_id: decl.drive_file_id ?? null,
+    destino_supabase: decl.destino_supabase ?? null,
+    capability_dependiente: decl.capability_dependiente ?? null,
+    notas: decl.notas ?? null,
+  }
+}
+
+/**
+ * Asegura (idempotente) que exista la fila de fuentes_datos de un feed de ingesta.
+ * Nunca pisa una fila existente ni rompe el proceso que la llama.
+ * @returns {Promise<{ok:boolean, creada?:boolean, nombre?:string, motivo?:string}>}
+ */
+export async function asegurarFuente(deps = {}, decl = {}) {
+  const query = deps.query || (await import('./db.mjs')).query
+  const d = normalizarDeclaracion(decl)
+  if (!d.nombre) return { ok: false, motivo: 'falta nombre en la declaración de fuente' }
+  try {
+    const r = await query(
+      `insert into public.fuentes_datos
+         (nombre, tipo_archivo, proceso_negocio, area, frecuencia_actualizacion, vigencia,
+          fuente_primaria, naturaleza_dato, criticidad, mecanismo_integracion,
+          drive_file_id, destino_supabase, capability_dependiente, notas,
+          estado, ultima_sincronizacion_exitosa)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'actualizado', now())
+       on conflict (nombre) do nothing
+       returning id`,
+      [d.nombre, d.tipo_archivo, d.proceso_negocio, d.area, d.frecuencia_actualizacion, d.vigencia,
+       d.fuente_primaria, d.naturaleza_dato, d.criticidad, d.mecanismo_integracion,
+       d.drive_file_id, d.destino_supabase, d.capability_dependiente, d.notas])
+    return { ok: true, creada: r.rowCount > 0, nombre: d.nombre }
+  } catch (e) {
+    return { ok: false, motivo: String(e?.message ?? e).slice(0, 160) }
+  }
+}
+
+/**
+ * Ingesta = asegurar la fuente + registrar la sincronización, en un solo paso.
+ * Es lo que llaman los ingesters (banco, ARCA compras): garantiza que la alerta de frescura los
+ * cubra desde la PRIMERA corrida, sin depender de que el discovery los hubiera catalogado.
+ * @param {{declaracion:object, coberturaHasta?:string|Date|null}} opts
+ * @returns {Promise<{ok:boolean, nombre?:string, estado?:string, creada?:boolean, motivo?:string}>}
+ */
+export async function registrarIngesta(deps = {}, opts = {}) {
+  const { declaracion = {}, coberturaHasta } = opts
+  const a = await asegurarFuente(deps, declaracion)
+  if (!a.ok) return a
+  const r = await registrarSincronizacion(deps, { nombre: declaracion.nombre, coberturaHasta })
+  return { ...r, creada: a.creada }
+}
+
+// CATÁLOGO ÚNICO de las fuentes de ingesta que el OS mantiene frescas por sí mismo. Vive acá, en un
+// solo lugar, para que el nombre exacto no se repita (y no se desincronice) entre el ingester y la
+// alerta. Cambiar un nombre acá es cambiar la fila que la frescura vigila.
+export const FUENTES_INGESTA = {
+  banco: {
+    nombre: 'Extracto bancario Santander (movimientos)',
+    tipo_archivo: 'externo_no_conectado',
+    proceso_negocio: 'Tesorería — movimientos y disponibilidades de la cuenta corriente',
+    area: 'Finanzas',
+    frecuencia_actualizacion: 'diaria',
+    naturaleza_dato: 'confirmado',
+    criticidad: 'alta',
+    mecanismo_integracion: 'ingesta_incremental',
+    destino_supabase: 'banco_movimientos',
+    capability_dependiente: 'posicion_financiera',
+    notas: 'Entra por importar-banco.mjs (CSV o pegado). No hay API de banca empresa: el dato entra a mano.',
+  },
+  arcaCompras: {
+    nombre: 'Comprobantes ARCA — Compras (Libro IVA Compras)',
+    tipo_archivo: 'externo_no_conectado',
+    proceso_negocio: 'Fiscal/Contable — comprobantes recibidos (gastos y crédito fiscal)',
+    area: 'Administración',
+    frecuencia_actualizacion: 'mensual',
+    naturaleza_dato: 'confirmado',
+    criticidad: 'alta',
+    mecanismo_integracion: 'api',
+    destino_supabase: 'comprobantes_arca',
+    capability_dependiente: 'situacion_fiscal',
+    notas: 'Baja por AfipSDK (clave fiscal), tipo_libro=R. Sync mensual (echegaray-arca-sync.timer).',
+  },
+}
