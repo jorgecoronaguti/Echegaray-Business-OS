@@ -118,9 +118,15 @@ let COL_FAMILIA = 'Compras!$AE$4:$AE'
 let COL_RUBRO = 'Compras!$AC$4:$AC'
 let COL_FECHA = 'Compras!$AD$4:$AD'
 let COL_COMERCIAL = 'Compras!$AJ$4:$AJ'
-// COL_PAGADO ("Monto Pagado"): lo YA pagado de cada factura. La DEUDA real es Total − Monto Pagado,
-// no el Total: un pago parcial reduce el saldo. El dueño lo marcó — estaba mostrando el Total entero.
+// COL_PAGADO ("Monto Pagado"): lo YA pagado de cada factura. La DEUDA real es Total − pagado, no el
+// Total: un pago parcial reduce el saldo. El dueño lo marcó — estaba mostrando el Total entero.
 let COL_PAGADO = 'Compras!$T$4:$T'
+// LO PAGADO NO ESTÁ SÓLO EN T (27/07). El dueño confirmó: el pago de una factura puede estar en
+// "Monto Pagado" (T), "Monto Parcial 1" (U) o "Monto Parcial 2" (W) — a veces T=0 y el pago entero
+// está en U. Y un valor NEGATIVO/entre paréntesis en U o W NO es un pago: es el saldo que falta. Por
+// eso `neta()` suma T + los positivos de U + los positivos de W. Restar sólo T inflaba la deuda.
+let COL_PARCIAL1 = 'Compras!$U$4:$U'
+let COL_PARCIAL2 = 'Compras!$W$4:$W'
 const COL_OBRA = 'Compras!$J$4:$J'
 const COL_FACTURA = 'Compras!$C$4:$C'
 const COL_TOTAL = 'Compras!$O$4:$O'
@@ -129,7 +135,7 @@ const COL_ESTADO = 'Compras!$X$4:$X'
 const CH = "'Cheques Emitidos'"
 
 /** Índices (0-based) de las columnas de Compras que el JS lee de cada fila. Se recalculan por nombre. */
-const IDX = { rubro: 28, fechaCaja: 29, familia: 30, comercial: 35, pagado: 19, obra: 9, prov: 4, total: 14, estado: 23, concepto: 11, detalle: 10 }
+const IDX = { rubro: 28, fechaCaja: 29, familia: 30, comercial: 35, pagado: 19, parcial1: 20, parcial2: 22, obra: 9, prov: 4, total: 14, estado: 23, concepto: 11, detalle: 10 }
 
 
 /** Los rubros que hacen que un proveedor sea COMERCIAL. Sueldos, ARCA o el banco no son proveedores
@@ -241,7 +247,9 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // $137,9M de proyecciones NO comerciales (ARCA/nómina/plan financiero, con fecha en la columna de
   // rubro) que viven fuera de Proveedores. Por eso se filtra por COL_COMERCIAL=1, igual que la deuda.
   const condProyectado = `${COL_ESTADO};"${ESTADO_PROYECTADO}";${COL_COMERCIAL};1`
-  const neta = (conds) => `SUMIFS(${COL_TOTAL};${conds})-SUMIFS(${COL_PAGADO};${conds})`
+  // Total − (T + positivos de U + positivos de W). El filtro ">0" excluye los saldos negativos/entre
+  // paréntesis de U/W, que son "lo que falta", no pagos (regla confirmada por el dueño el 27/07).
+  const neta = (conds) => `SUMIFS(${COL_TOTAL};${conds})-SUMIFS(${COL_PAGADO};${conds})-SUMIFS(${COL_PARCIAL1};${conds};${COL_PARCIAL1};">0")-SUMIFS(${COL_PARCIAL2};${conds};${COL_PARCIAL2};">0")`
   const bPos = push([`POSICIÓN DE PROVEEDORES · al ${hoy} · en pesos`])
   const pos0 = filas.length + 1
   // Esta pestaña es SÓLO proveedores comerciales. La deuda con ARCA, impuestos y nómina NO va acá —
@@ -340,7 +348,9 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
       const c = celdas()
       if (L.fecha >= 0) c[L.fecha] = `=IF(${pend};Compras!$${letra(IDX.fechaCaja)}$${rr};"")`
       if (L.comp >= 0) c[L.comp] = `=IF(${pend};Compras!$H$${rr}&"";"")`
-      if (L.imp >= 0) c[L.imp] = `=IF(${pend};Compras!$O$${rr}-Compras!$${letra(IDX.pagado)}$${rr};"")`
+      // Saldo de ESTA factura = Total − pagado. Pagado = T + los positivos de U y W (MAX(0;·) descarta
+      // el saldo negativo/entre paréntesis, que no es un pago). Misma regla que neta(), fila a fila.
+      if (L.imp >= 0) c[L.imp] = `=IF(${pend};Compras!$O$${rr}-Compras!$${letra(IDX.pagado)}$${rr}-MAX(0;Compras!$${letra(IDX.parcial1)}$${rr})-MAX(0;Compras!$${letra(IDX.parcial2)}$${rr});"")`
       if (L.obra >= 0) c[L.obra] = `=IF(${pend};Compras!$J$${rr};"")`
       if (L.instr >= 0 && L.comp >= 0) {
         const cc = `$${letra(L.comp)}${rowNum}`
@@ -644,7 +654,9 @@ async function main() {
   COL_FAMILIA = fijar('familia', COL_FAMILIA, 'Familia de material')
   COL_COMERCIAL = fijar('comercial', COL_COMERCIAL, '¿Proveedor comercial? (OS)')
   COL_PAGADO = fijar('pagado', COL_PAGADO, 'Monto Pagado')
-  console.log(`  Compras por encabezado: Rubro=${letra(IDX.rubro)} · Fecha de caja=${letra(IDX.fechaCaja)} · Familia=${letra(IDX.familia)} · ¿Comercial?=${letra(IDX.comercial)}`)
+  COL_PARCIAL1 = fijar('parcial1', COL_PARCIAL1, 'Monto Parcial 1')
+  COL_PARCIAL2 = fijar('parcial2', COL_PARCIAL2, 'Monto Parcial 2')
+  console.log(`  Compras por encabezado: Rubro=${letra(IDX.rubro)} · Fecha de caja=${letra(IDX.fechaCaja)} · Familia=${letra(IDX.familia)} · ¿Comercial?=${letra(IDX.comercial)} · Pagado=${letra(IDX.pagado)} · Parcial1=${letra(IDX.parcial1)} · Parcial2=${letra(IDX.parcial2)}`)
 
   // ═══ UN SOLO NOMBRE POR PROVEEDOR EN TODA LA PESTAÑA ═══════════════════════════════════════════
   //
