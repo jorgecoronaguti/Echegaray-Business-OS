@@ -12,6 +12,7 @@
 //
 //   node orquestador/scripts/sync-modelo-liquidez.mjs
 import { query, closePool } from '../lib/db.mjs'
+import { registrarFotoSeguro } from '../lib/registro-aprendizaje.mjs'
 
 async function main() {
   const { rows } = await query(
@@ -43,6 +44,9 @@ async function main() {
        actualizado_en = now()`,
     [JSON.stringify(modelo), JSON.stringify(recomendaciones), calculadoEn],
   )
+
+  // CAJA NEGRA (F0): congela el modelo append-only, con la misma marca de cálculo que la foto vigente.
+  await registrarFotoSeguro({}, { fuente: 'modelo', foto: modelo, calculadoEn })
 
   const caja = modelo.disponible?.estado === 'ok' ? modelo.disponible.caja_hoy : null
   const colchon = modelo.colchon_total
