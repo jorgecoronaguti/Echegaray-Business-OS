@@ -387,3 +387,11 @@ function parseFechaClave(clave, fallback) {
 // ════════════════════════════════════════════════════════════════════════════
 // Se re-exporta desde acá para no romper a quien importaba `planTesoreria` de este módulo.
 export { planTesoreria } from './plan-tesoreria-ensamblador.mjs'
+
+// ════════════════════════════════════════════════════════════════════════════
+// APRENDIZAJE DEL FORECAST (F2) — la precisión del plan se mide, no se supone
+// ════════════════════════════════════════════════════════════════════════════
+// El plan de tesorería predice el saldo proyectado por horizonte (dias_7 / dias_30 …). Su PRECISIÓN se
+// contrasta después contra la caja real vía la caja negra. Se expone acá para que quien consume el plan
+// tenga a mano la medición de su propio acierto — sin recalcular plata (todo vive en aprendizaje-forecast).
+export { precisionForecast, evaluarAjuste } from './aprendizaje-forecast.mjs'
