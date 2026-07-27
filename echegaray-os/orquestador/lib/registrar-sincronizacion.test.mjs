@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { elegirFuente, registrarSincronizacion } from './registrar-sincronizacion.mjs'
+import { elegirFuente, registrarSincronizacion, asegurarFuente, registrarIngesta, FUENTES_INGESTA } from './registrar-sincronizacion.mjs'
 
 const FUENTES = [
   { id: 1, nombre: 'Flujo de Caja - Cash Flow (Sheet)', drive_file_id: '1SR6HY5' },
@@ -74,4 +74,71 @@ test('registrar: un error de DB se devuelve, no se propaga', async () => {
   const query = async () => { throw new Error('conexión caída') }
   const r = await registrarSincronizacion({ query }, { nombre: 'X' })
   assert.equal(r.ok, false); assert.match(r.motivo, /conexión caída/)
+})
+
+// ── asegurarFuente: declarar la fuente para que la alerta la cubra ──
+
+test('asegurarFuente: inserta como actualizado (recalcular NO rescata fuente_no_disponible)', async () => {
+  let sql = ''
+  const query = async (q, params) => { sql = q.replace(/\s+/g, ' ').trim(); return { rowCount: 1, rows: [{ id: 9 }] , params } }
+  const r = await asegurarFuente({ query }, FUENTES_INGESTA.banco)
+  assert.equal(r.ok, true); assert.equal(r.creada, true)
+  // Nace fresca: si naciera 'fuente_no_disponible' la frescura no la movería nunca.
+  assert.match(sql, /'actualizado', now\(\)/)
+  assert.match(sql, /on conflict \(nombre\) do nothing/)
+})
+
+test('asegurarFuente: si la fila ya existe NO la pisa (creada=false)', async () => {
+  const query = async () => ({ rowCount: 0, rows: [] })   // ON CONFLICT DO NOTHING no devuelve fila
+  const r = await asegurarFuente({ query }, FUENTES_INGESTA.arcaCompras)
+  assert.equal(r.ok, true); assert.equal(r.creada, false)
+})
+
+test('asegurarFuente: sin nombre se niega (no inventa una fuente anónima)', async () => {
+  const r = await asegurarFuente({ query: async () => ({ rowCount: 0, rows: [] }) }, { area: 'X' })
+  assert.equal(r.ok, false); assert.match(r.motivo, /falta nombre/)
+})
+
+test('asegurarFuente: un error de DB no rompe al ingester', async () => {
+  const query = async () => { throw new Error('tabla bloqueada') }
+  const r = await asegurarFuente({ query }, FUENTES_INGESTA.banco)
+  assert.equal(r.ok, false); assert.match(r.motivo, /tabla bloqueada/)
+})
+
+// ── registrarIngesta: asegurar + registrar en un paso ──
+
+test('registrarIngesta: asegura la fuente y después registra su sincronización', async () => {
+  const qs = []
+  const query = async (q, params) => {
+    const norm = q.replace(/\s+/g, ' ').trim()
+    qs.push(norm)
+    if (/^insert into public\.fuentes_datos/.test(norm)) return { rowCount: 1, rows: [{ id: 5 }] }
+    if (/from public\.fuentes_datos$/.test(norm)) return { rows: [{ id: 5, nombre: FUENTES_INGESTA.banco.nombre, drive_file_id: null }] }
+    if (/select estado/.test(norm)) return { rows: [{ estado: 'actualizado' }] }
+    return { rows: [], params }
+  }
+  const r = await registrarIngesta({ query }, { declaracion: FUENTES_INGESTA.banco, coberturaHasta: '2026-07-25' })
+  assert.equal(r.ok, true); assert.equal(r.estado, 'actualizado'); assert.equal(r.creada, true)
+  // Orden: primero el insert idempotente, después el recalculador de frescura.
+  assert.ok(qs.some((q) => /^insert into public\.fuentes_datos/.test(q)))
+  assert.ok(qs.some((q) => /recalcular_frescura_fuentes/.test(q)))
+})
+
+test('registrarIngesta: si asegurar falla, no intenta registrar', async () => {
+  const query = async () => { throw new Error('sin conexión') }
+  const r = await registrarIngesta({ query }, { declaracion: FUENTES_INGESTA.arcaCompras })
+  assert.equal(r.ok, false); assert.match(r.motivo, /sin conexión/)
+})
+
+test('FUENTES_INGESTA: las declaraciones usan valores válidos de los CHECK de fuentes_datos', () => {
+  const frecuencias = ['diaria', 'semanal', 'quincenal', 'mensual', 'por_evento', 'esporadica', 'desconocida']
+  const criticidades = ['alta', 'media', 'baja']
+  for (const f of Object.values(FUENTES_INGESTA)) {
+    assert.ok(f.nombre && f.nombre.length > 0)
+    assert.ok(frecuencias.includes(f.frecuencia_actualizacion), `frecuencia inválida: ${f.frecuencia_actualizacion}`)
+    assert.ok(criticidades.includes(f.criticidad), `criticidad inválida: ${f.criticidad}`)
+  }
+  // El banco es diario (alertable): un feed diario que se congela se debe gritar.
+  assert.equal(FUENTES_INGESTA.banco.frecuencia_actualizacion, 'diaria')
+  assert.equal(FUENTES_INGESTA.arcaCompras.frecuencia_actualizacion, 'mensual')
 })

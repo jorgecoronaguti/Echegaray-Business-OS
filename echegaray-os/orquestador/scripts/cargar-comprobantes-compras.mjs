@@ -19,6 +19,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { matchProveedor, valoresInput, validar, discrepanciaNeto, GRUPOS_FORMULA } from '../lib/carga-comprobantes.mjs'
+import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
@@ -163,6 +164,16 @@ async function main() {
   }
   console.log(`\n✔ Escritas ${plan.length} fila(s). ${errores ? `⚠ ${errores} con #ERROR — revisar.` : 'Sin #ERROR.'}`)
   if (sinRubro) console.log(`ℹ ${sinRubro} sin Rubro de caja (AC) todavía: se clasifican cuando completes la Unidad de Negocio (I).`)
+  // FRESCURA (26/07). Cargar comprobantes a mano ES una ingesta de gastos sobre el Cash Flow: el OS
+  // acaba de escribir ese Sheet. Se registra por drive_file_id (la misma fila que mantiene el
+  // pipeline) para que la alerta no lo dé por atrasado. No se declara coberturaHasta: un fajo suelto
+  // no define hasta qué fecha llega el gasto de la empresa — eso lo fija el sync periódico de ARCA.
+  try {
+    const fr = await registrarSincronizacion({ query }, { driveFileId: ID })
+    console.log(fr.ok ? `✓ frescura: "${fr.nombre}" → ${fr.estado}` : `· frescura no registrada: ${fr.motivo}`)
+  } catch (e) {
+    console.log(`· frescura no registrada: ${String(e?.message ?? e).slice(0, 120)}`)
+  }
   console.log('\nSIGUIENTE: node orquestador/scripts/sync-compras.mjs  (espeja a Supabase, regla #6).')
   await closePool()
 }

@@ -35,16 +35,42 @@
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { query } from '../lib/db.mjs'
 import { parsearExtracto, novedades, verificarCadena, clave } from '../lib/banco-importar.mjs'
 import { MOVIMIENTOS, MOVIMIENTOS_DIA, CUENTA, ORIGEN } from '../lib/banco-santander.mjs'
+import { registrarIngesta, FUENTES_INGESTA } from '../lib/registrar-sincronizacion.mjs'
 
+const run = promisify(execFile)
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
+const AQUI = dirname(fileURLToPath(import.meta.url))
 const MIGRACION = join(RAIZ, 'supabase', 'migrations', '20260723120000_banco_movimientos.sql')
 const DRY = process.argv.includes('--dry')
 const IGUAL = process.argv.includes('--igual-cargalo')
 const SOLO_SEMBRAR = process.argv.includes('--sembrar')
+// --sheet: además de escribir en la base, corre banco-raw-pestana.mjs para que la réplica _BANCO_RAW
+// del Sheet tome lo cargado (y detrás CAJA/Impuestos/Cheques se recalculan solos por fórmula). Es
+// OPT-IN a propósito: escribe el Sheet real, así que sólo corre cuando lo pedís explícito.
+const CON_SHEET = process.argv.includes('--sheet')
 const ARCHIVO = process.argv.slice(2).find((a) => !a.startsWith('--'))
+
+// FRESCURA DEL BANCO (26/07). El extracto es un feed diario crítico que NO estaba catalogado en
+// fuentes_datos (banco_movimientos nació el 23/07, después del discovery del 08/07): sin fila, se
+// podía congelar días sin que la alerta dijera nada. Se registra la ingesta y se declara la cobertura
+// REAL (hasta qué fecha llega el extracto en la base), nunca una inventada. No rompe la carga si falla.
+async function registrarFrescuraBanco() {
+  try {
+    const { rows: [{ mx }] } = await query(
+      'select max(fecha) mx from public.banco_movimientos where cuenta = $1', [CUENTA.numero])
+    const coberturaHasta = mx ? new Date(mx).toISOString().slice(0, 10) : undefined
+    const fr = await registrarIngesta({ query }, { declaracion: FUENTES_INGESTA.banco, coberturaHasta })
+    if (fr.ok) console.log(`✓ frescura banco: "${fr.nombre}"${coberturaHasta ? ` hasta ${coberturaHasta}` : ''} → ${fr.estado}${fr.creada ? ' (fuente catalogada por primera vez)' : ''}`)
+    else console.log(`· frescura banco no registrada: ${fr.motivo}`)
+  } catch (e) {
+    console.log(`· frescura banco no registrada: ${String(e?.message ?? e).slice(0, 120)}`)
+  }
+}
 
 const $ = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
 
@@ -119,7 +145,12 @@ async function main() {
   }))
   const nuevos = novedades(movimientos, norm)
   console.log(`${nuevos.length} nuevo(s) · ${movimientos.length - nuevos.length} ya estaban (las ventanas del extracto se superponen)`)
-  if (!nuevos.length) { console.log('\n✓ nada que cargar: el extracto ya estaba entero en la base'); return }
+  if (!nuevos.length) {
+    console.log('\n✓ nada que cargar: el extracto ya estaba entero en la base')
+    // Igual es una lectura exitosa del extracto: el dato está al día. Marcar la frescura (no --dry).
+    if (!DRY) await registrarFrescuraBanco()
+    return
+  }
 
   // ── 4. La cadena de saldos, sobre el PROPIO extracto ──
   //
@@ -156,8 +187,27 @@ async function main() {
   const origen = `${ARCHIVO ? `archivo ${ARCHIVO}` : 'pegado en la terminal'} · importado ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`
   const n = await insertar(nuevos, origen)
   console.log(`\n✓ ${n} movimiento(s) cargados${n !== nuevaClave.size ? ` (${nuevaClave.size - n} los rechazó el índice único: ya estaban)` : ''}`)
-  console.log('\nAhora corré  node orquestador/scripts/banco-raw-pestana.mjs  para que el Sheet lo tome,')
-  console.log('y detrás de eso CAJA, Impuestos y Cheques se recalculan solos porque leen esa réplica.')
+
+  // La ingesta cerró bien: se registra la frescura con la cobertura real del extracto en la base.
+  await registrarFrescuraBanco()
+
+  if (CON_SHEET) {
+    // Cierra el paso manual: lleva lo cargado a la réplica _BANCO_RAW del Sheet. Escribe el Sheet real,
+    // por eso es opt-in. Si falla, no rompe la carga a la base (que ya está hecha): sólo avisa.
+    console.log('\n--sheet: llevo lo cargado a _BANCO_RAW (banco-raw-pestana.mjs)…')
+    try {
+      const { stdout } = await run(process.execPath, [join(AQUI, 'banco-raw-pestana.mjs')], { timeout: 180000 })
+      console.log(stdout.trim().split('\n').slice(-3).join('\n'))
+      console.log('✓ _BANCO_RAW actualizada. CAJA, Impuestos y Cheques se recalculan solos (leen esa réplica).')
+    } catch (e) {
+      console.error(`⚠ no pude actualizar _BANCO_RAW: ${String(e?.stderr || e?.message).slice(0, 200)}`)
+      console.error('  Lo cargado en la base está OK. Corré  node orquestador/scripts/banco-raw-pestana.mjs  a mano.')
+    }
+  } else {
+    console.log('\nAhora corré  node orquestador/scripts/banco-raw-pestana.mjs  para que el Sheet lo tome,')
+    console.log('y detrás de eso CAJA, Impuestos y Cheques se recalculan solos porque leen esa réplica.')
+    console.log('(o volvé a correr este importador con --sheet para que lo haga solo).')
+  }
 }
 
 main()
