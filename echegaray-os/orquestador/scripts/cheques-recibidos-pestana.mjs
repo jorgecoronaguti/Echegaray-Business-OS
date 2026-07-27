@@ -61,6 +61,11 @@ const DRY = process.argv.includes('--dry')
 
 const ACENTO = { red: 0.11, green: 0.23, blue: 0.37 }
 
+// LAS DOS COLUMNAS "Fecha de cobro" y "Días a vencer" (¿cuándo se vuelve caja este cheque?) NO viven
+// acá: el dueño rediseñó esta pestaña a mano (agregó Librador/CUIT) y la candó, así que regenerarla la
+// rompería. Se agregan de forma ADITIVA con orquestador/scripts/cheques-recibidos-cobro.mjs, que
+// preserva todo lo existente. La fecha de cobro sale de `fechaPago` en lib/cheques-recibidos.mjs.
+
 /** Columnas del detalle: [encabezado, unidad de formato]. Mínimas, en el orden en que se lee. */
 const COLUMNAS = [
   ['N° operación', 'texto'], ['Fecha', 'fecha'], ['Operación', 'texto'],
