@@ -156,12 +156,26 @@ async function main() {
     const { reconciliar } = await import('../lib/reconciliacion-firma.mjs')
     const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
     const tabs = [...new Set(PASOS.flatMap(([, , t = []]) => t))].filter((t) => t && !t.startsWith('_') && !bloqueadas.has(t))
+
+    // ── RED DE SEGURIDAD (26/07): snapshot ANTES de tocar una sola celda ──
+    // El dueño perdió su versión y no había marcha atrás del lado del OS (sólo el historial de Google).
+    // Antes de que el pipeline reescriba nada, guardo el estado ACTUAL de cada pestaña de contenido que
+    // puede tocar, en orq.sheet_snapshots (append-only). Si algo sale mal —o si más tarde querés volver
+    // a tu versión— hay deshacer real. Nunca frena el trabajo: si un snapshot falla, se registra y sigue.
+    if (!DRY) {
+      const { tomarSnapshot } = await import('../lib/sheet-snapshot.mjs')
+      let snaps = 0
+      for (const t of tabs) { if (await tomarSnapshot({ google, fileId: ID, pestana: t, tool: 'flujo-caja-rehacer' }).catch(() => null)) snaps++ }
+      if (snaps) console.log(`🧷 snapshot previo de ${snaps} pestaña(s) — marcha atrás disponible en orq.sheet_snapshots\n`)
+    }
+
     let candadas = 0
     let reconciliadas = 0
     const preguntas = []
     for (const t of tabs) {
       const ref = /[^A-Za-z0-9_]/.test(t) ? `'${t}'` : t
-      const { editada } = await firmaGuardia(google, ID, t, ref).catch(() => ({ editada: false }))
+      const { editada, noVerificable } = await firmaGuardia(google, ID, t, ref).catch(() => ({ editada: false, noVerificable: true }))
+      if (noVerificable) { bloqueadas.add(t); candadas++; console.log(`  🔒 "${t}": no pude verificar si la editaste — la dejo bajo tu control (fail-closed).`); continue }
       if (!editada) continue
       // La firma detectó tu edición y auto-candó. Intento entenderla antes de resignarme a congelar.
       const rec = await reconciliar(google, {}, ID, t, { ref }).catch(() => ({ resuelto: false, preguntas: [] }))

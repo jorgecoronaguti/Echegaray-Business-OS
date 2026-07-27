@@ -169,7 +169,7 @@ function fakeMundo({ gridPrev = null, gridActual = [], lockPor = 'auto' } = {}) 
 
 test('reconciliar FAIL-CLOSED: sin grid previo no diffea, deja candada y no resella', async () => {
   const m = fakeMundo({ gridPrev: null, gridActual: [['x']] })
-  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn })
+  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn, permitirDescandar: true })
   assert.equal(r.entendido, false)
   assert.equal(r.resuelto, false)
   assert.equal(m.locks.has('T'), true)     // sigue candada
@@ -180,7 +180,7 @@ test('reconciliar ADOPTA + APRENDE: dato nuevo y fórmula corregida → resuelta
   const prev = [['Cabecera', '=B1*2'], ['', '=SUM(A1:A2)']]
   const curr = [['Cabecera', '=B1*3'], ['Dato nuevo', '=SUM(A1:A2)']]
   const m = fakeMundo({ gridPrev: JSON.stringify(prev), gridActual: curr })
-  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn })
+  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn, permitirDescandar: true })
   assert.equal(r.resuelto, true)
   assert.equal(r.aprendidas.length, 1)     // B1
   assert.equal(r.adoptadas.length, 1)      // A2
@@ -191,11 +191,35 @@ test('reconciliar ADOPTA + APRENDE: dato nuevo y fórmula corregida → resuelta
   assert.equal(m.sellado.length, 1)        // reselló el baseline
 })
 
+// ── LA GARANTÍA (26/07): por DEFECTO nunca se descanda solo ──────────────────────────────────────
+// Es EXACTAMENTE el escenario del test de arriba (edición 100% "entendible": dato nuevo + fórmula
+// corregida), pero SIN la bandera. Antes esto resellaba y descandaba solo, y en un timer reescribía la
+// versión del dueño en loop. Ahora la deja bajo su control: no resella, no descanda, no la toca.
+test('reconciliar POR DEFECTO no descanda solo aunque entienda todo (el bug que costó la versión del dueño)', async () => {
+  const prev = [['Cabecera', '=B1*2'], ['', '=SUM(A1:A2)']]
+  const curr = [['Cabecera', '=B1*3'], ['Dato nuevo', '=SUM(A1:A2)']]
+  const m = fakeMundo({ gridPrev: JSON.stringify(prev), gridActual: curr })
+  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn }) // sin permitirDescandar
+  assert.equal(r.resuelto, false)          // NO se resuelve sola
+  assert.equal(m.locks.has('T'), true)     // sigue candada: la versión del dueño intacta
+  assert.equal(m.sellado.length, 0)        // NO reselló (no adoptó su edición como nuevo baseline)
+  assert.match(r.motivo, /bajo tu control/)
+})
+
+test('reconciliar POR DEFECTO: cualquier edición de contenido queda bajo control del dueño', async () => {
+  const m = fakeMundo({ gridPrev: JSON.stringify([['100']]), gridActual: [['200']] })
+  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn })
+  assert.equal(r.resuelto, false)
+  assert.equal(r.preguntas.length, 1)
+  assert.equal(m.locks.has('T'), true)
+  assert.equal(m.sellado.length, 0)
+})
+
 test('reconciliar PREGUNTA: override deliberado → queda candada, pregunta puntual, NO resella', async () => {
   const prev = [['Cabecera', '=SUM(A1:A5)']]
   const curr = [['Cabecera', '9999']]      // pisó la fórmula con un número a mano
   const m = fakeMundo({ gridPrev: JSON.stringify(prev), gridActual: curr })
-  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn })
+  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn, permitirDescandar: true })
   assert.equal(r.resuelto, false)
   assert.equal(r.preguntas.length, 1)
   assert.match(r.preguntas[0].pregunta, /9999/)
@@ -209,7 +233,7 @@ test('reconciliar con CEREBRO: resuelve un conflicto literal→literal ambiguo y
   const curr = [['200']]                   // literal→literal: ambiguo
   const m = fakeMundo({ gridPrev: JSON.stringify(prev), gridActual: curr })
   const clasificadorCerebro = async () => ({ accion: ACCIONES.ADOPTAR, causa: CAUSAS.DATO_NUEVO })
-  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn, clasificadorCerebro })
+  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn, clasificadorCerebro, permitirDescandar: true })
   assert.equal(r.resuelto, true)           // el cerebro lo sacó de 'preguntar'
   assert.equal(r.adoptadas.length, 1)
   assert.equal(m.locks.has('T'), false)
@@ -217,7 +241,7 @@ test('reconciliar con CEREBRO: resuelve un conflicto literal→literal ambiguo y
 
 test('reconciliar SIN cerebro: el mismo conflicto ambiguo queda como pregunta (lado seguro)', async () => {
   const m = fakeMundo({ gridPrev: JSON.stringify([['100']]), gridActual: [['200']] })
-  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn })
+  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn, permitirDescandar: true })
   assert.equal(r.resuelto, false)
   assert.equal(r.preguntas.length, 1)
 })

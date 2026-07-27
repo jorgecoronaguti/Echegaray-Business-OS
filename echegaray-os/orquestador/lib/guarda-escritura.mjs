@@ -19,9 +19,9 @@
 // libres se escriben normal, y después se SELLA su firma (así la propia escritura cruda del OS no se
 // confunde con una edición humana en la próxima corrida). Las pestañas espejo (nombre con prefijo `_`,
 // p.ej. _BANCO_RAW / _J_OBREROS) NUNCA se guardan ni se sellan: son copias byte a byte de una fuente
-// externa, sin nada del dueño que proteger — y candar un espejo lo congelaría. Falla ABIERTO: si no hay
-// base para consultar, se escribe igual (disponibilidad); la preservación celda a celda de
-// escribirPreservando sigue como segunda línea para los que lo usan.
+// externa, sin nada del dueño que proteger — y candar un espejo lo congelaría. Falla CERRADO (26/07):
+// si no se puede consultar la base o releer una pestaña, NO se pisa contenido — respetar la edición del
+// dueño vale más que la disponibilidad de la escritura. Ver evaluarBloqueadas.
 
 /** Nombre de pestaña de un rango A1 ("Compras!A1:B2" → "Compras"; "'Cheques Emitidos'!A5" → "Cheques Emitidos"). */
 export function nombreTab(range) {
@@ -60,27 +60,42 @@ function refDeTab(tab) {
 
 /**
  * Evalúa qué pestañas de contenido están protegidas (candada o editada por humano). Impura (base + Sheet).
- * Falla ABIERTO: ante cualquier error devuelve las que pudo confirmar (nunca bloquea de más), y si no
- * hay base no bloquea nada — la disponibilidad manda y escribirPreservando protege celda a celda.
- * firmaGuardia, además de detectar la edición, AUTO-CANDA la pestaña: la próxima vez se bloquea por
- * candado barato, sin releerla entera.
+ *
+ * Falla CERRADO (26/07, tras perder la versión del dueño otra vez). La regla del dueño es explícita:
+ * respetar sus ediciones vale MÁS que la disponibilidad de la escritura. Por eso:
+ *  · Si la BASE no responde, no se puede saber qué pestañas tomó ni cuáles editó → se protegen TODAS
+ *    las de contenido (mejor un Sheet desactualizado que una edición destruida; la base se recupera
+ *    sola y el próximo ciclo escribe).
+ *  · Si no se puede RELEER una pestaña para comparar su firma (`noVerificable`), se protege esa pestaña.
+ * Antes fallaba ABIERTO (ante duda, escribía) — que es justo lo contrario de lo que el dueño pide.
+ * firmaGuardia, además de detectar la edición, AUTO-CANDA la pestaña: la próxima vez se bloquea barato.
  */
 export async function evaluarBloqueadas(cliente, fileId, tabs = []) {
   const bloqueadas = new Set()
   const protegibles = tabs.filter(esProtegible)
   if (!protegibles.length) return bloqueadas
+  // ¿La base responde? Sin ella no hay forma de conocer candado ni firma → fail-closed total.
+  try {
+    const { query } = await import('./db.mjs')
+    await query('select 1')
+  } catch {
+    for (const t of protegibles) bloqueadas.add(t)
+    console.log('  🔒 base no accesible: no puedo verificar tus ediciones → no piso ninguna pestaña de contenido (fail-closed).')
+    return bloqueadas
+  }
   try {
     const { estaBloqueada } = await import('./pestana-bloqueada.mjs')
     for (const t of protegibles) { if (await estaBloqueada({}, fileId, t).catch(() => false)) bloqueadas.add(t) }
-  } catch { /* sin base: no se puede consultar el candado */ }
+  } catch { /* la base respondió el probe; un fallo puntual acá no habilita a pisar */ }
   try {
     const { firmaGuardia } = await import('./firma-tab.mjs')
     for (const t of protegibles) {
       if (bloqueadas.has(t)) continue
-      const { editada } = await firmaGuardia(cliente, fileId, t, refDeTab(t)).catch(() => ({ editada: false }))
-      if (editada) bloqueadas.add(t)
+      const { editada, noVerificable } = await firmaGuardia(cliente, fileId, t, refDeTab(t)).catch(() => ({ editada: false, noVerificable: true }))
+      // editada = la tocaste; noVerificable = no pude confirmar que está intacta. En ambos casos, no piso.
+      if (editada || noVerificable) bloqueadas.add(t)
     }
-  } catch { /* sin base: la firma no está disponible */ }
+  } catch { /* fail-closed: ante un fallo del subsistema de firma, no se libera nada nuevo */ }
   return bloqueadas
 }
 

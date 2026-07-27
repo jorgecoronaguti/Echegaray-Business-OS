@@ -130,7 +130,11 @@ export function evaluarFirma({ firmaActual, firmaGuardada, hayEdicionHumana = fa
 export async function firmaGuardia(google, fileId, pestana, ref = pestana) {
   try {
     const actual = await google.readSheetValues(fileId, `${ref}!A1:BZ`, { render: 'FORMULA' }).catch(() => null)
-    if (!actual) return { editada: false }
+    // No pude releer la pestaña: NO puedo afirmar que está intacta. Antes esto devolvía editada:false
+    // y el generador la pisaba (fail-OPEN). Ahora se marca NO VERIFICABLE → el portón la trata como
+    // tuya y no la toca (fail-closed). Un error transitorio de lectura sólo posterga un regen; nunca
+    // destruye una edición.
+    if (!actual) return { editada: false, noVerificable: true }
     const firmaGuardada = await leerFirma({}, fileId, pestana)
     // ARRANQUE EN FRÍO (sin baseline): la firma no alcanza para decidir, así que se mira el historial
     // de Drive. Si una persona tocó el archivo después del OS —o no se pudo verificar— se falla del
@@ -150,7 +154,7 @@ export async function firmaGuardia(google, fileId, pestana, ref = pestana) {
       console.log(`  🔒 "${pestana}": ${motivo} — la tomo como tuya, no la piso.`)
       return { editada: true }
     }
-  } catch { /* no crítico: sin firma, el resto de la preservación sigue activa */ }
+  } catch { return { editada: false, noVerificable: true } /* no pude verificar (base/lectura caída): lado seguro — el portón la trata como tuya */ }
   return { editada: false }
 }
 

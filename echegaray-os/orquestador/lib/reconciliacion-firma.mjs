@@ -257,7 +257,7 @@ async function candadaPorAuto(deps, fileId, pestana) {
  *
  * @returns {Promise<{entendido:boolean, resuelto:boolean, motivo?:string, aprendidas:object[], adoptadas:object[], preguntas:object[]}>}
  */
-export async function reconciliar(google, deps, fileId, pestana, { ref = pestana, clasificadorCerebro = null, sellarFn = sellarFirma } = {}) {
+export async function reconciliar(google, deps, fileId, pestana, { ref = pestana, clasificadorCerebro = null, sellarFn = sellarFirma, permitirDescandar = process.env.ORQ_RECONCILIACION_AUTODESCANDA === '1' } = {}) {
   const sinDatos = { aprendidas: [], adoptadas: [], preguntas: [] }
   const previo = await leerGridGuardado(deps, fileId, pestana)
   if (!previo) {
@@ -267,6 +267,23 @@ export async function reconciliar(google, deps, fileId, pestana, { ref = pestana
   if (!actual) return { entendido: false, resuelto: false, motivo: 'no pude releer la pestaña', ...sinDatos }
 
   const diffs = diffGrids(previo, actual)
+
+  // ── LA GUARDA QUE FALTABA (26/07). El dueño perdió su versión OTRA VEZ. Causa: cuando la
+  // reconciliación clasificaba TODAS las celdas editadas como "las entiendo", RESELLABA y DESCANDABA
+  // sola, y el generador volvía a reescribir la pestaña — en un timer, sin nadie, en loop. Entender una
+  // edición y decidir devolverle el control al generador es una decisión del DUEÑO, no de un cron.
+  // Por defecto (ORQ_RECONCILIACION_AUTODESCANDA sin poner) NUNCA se descanda solo: si editaste
+  // contenido, la pestaña queda EXACTAMENTE como la dejaste (candada por firmaGuardia), no se toca, y
+  // se avisa. La reconciliación automática sólo se habilita con la bandera explícita, que hoy no está
+  // puesta en ningún lado. La verdad del dueño es definitiva.
+  if (diffs.length && !permitirDescandar) {
+    return {
+      entendido: false, resuelto: false,
+      motivo: `editaste ${diffs.length} celda(s): la dejo bajo tu control, no la toco (auto-descanda deshabilitado)`,
+      aprendidas: [], adoptadas: [],
+      preguntas: [{ celda: diffs[0].celda, pregunta: `Editaste ${diffs.length} celda(s) en "${pestana}". La dejo tal cual y bajo tu control; se regenera sólo si vos la liberás.` }],
+    }
+  }
   if (!diffs.length) {
     // La firma difería por algo que no es contenido de celda (formato/estructura). Nada que reconciliar:
     // se resella para no arrastrar el mismatch y se descanda si era auto.
