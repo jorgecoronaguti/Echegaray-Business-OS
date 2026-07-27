@@ -127,6 +127,11 @@ let COL_PAGADO = 'Compras!$T$4:$T'
 // eso `neta()` suma T + los positivos de U + los positivos de W. Restar sólo T inflaba la deuda.
 let COL_PARCIAL1 = 'Compras!$U$4:$U'
 let COL_PARCIAL2 = 'Compras!$W$4:$W'
+// TIPO DE PAGO ("Tipo pago", col P): decide si la deuda todavía es del PROVEEDOR o ya se movió a un
+// INSTRUMENTO. Una factura pagada con cheque o tarjeta ya no se le debe al proveedor (se la debés al
+// cheque/tarjeta, que se cuentan en Cheques Emitidos, Tarjeta y CAJA). Contarla también acá es doble
+// conteo — el "proveedor con deuda a quien ya pagaste". Por eso el hero desglosa directa/cheque/tarjeta.
+let COL_TIPOPAGO = 'Compras!$P$4:$P'
 const COL_OBRA = 'Compras!$J$4:$J'
 const COL_FACTURA = 'Compras!$C$4:$C'
 const COL_TOTAL = 'Compras!$O$4:$O'
@@ -135,7 +140,7 @@ const COL_ESTADO = 'Compras!$X$4:$X'
 const CH = "'Cheques Emitidos'"
 
 /** Índices (0-based) de las columnas de Compras que el JS lee de cada fila. Se recalculan por nombre. */
-const IDX = { rubro: 28, fechaCaja: 29, familia: 30, comercial: 35, pagado: 19, parcial1: 20, parcial2: 22, obra: 9, prov: 4, total: 14, estado: 23, concepto: 11, detalle: 10 }
+const IDX = { rubro: 28, fechaCaja: 29, familia: 30, comercial: 35, pagado: 19, parcial1: 20, parcial2: 22, tipoPago: 15, obra: 9, prov: 4, total: 14, estado: 23, concepto: 11, detalle: 10 }
 
 
 /** Los rubros que hacen que un proveedor sea COMERCIAL. Sueldos, ARCA o el banco no son proveedores
@@ -255,9 +260,18 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // Esta pestaña es SÓLO proveedores comerciales. La deuda con ARCA, impuestos y nómina NO va acá —
   // vive en "Impuestos y Financieros" (regla 9, no duplicar). Por eso el hero abre con la deuda
   // comercial como titular y no con un "total con terceros" que mezcle las dos cosas.
-  const posTotal = push(['DEUDA CON PROVEEDORES COMERCIALES', `=${neta(condComercial)}`, 'Compras — facturas Pendientes, netas de pagos parciales. La deuda con ARCA/impuestos/nómina vive en Impuestos y Financieros.'])
-  push(['  · de eso, ya vencida', `=${neta(`${condComercial};${COL_FECHA};">0";${COL_FECHA};"<"&TODAY()`)}`, 'la fecha de pago ya pasó'])
-  push(['  · de eso, sin fecha de pago', `=${neta(condComercial)}-${neta(`${condComercial};${COL_FECHA};">0"`)}`, '⚠ no cae en ninguna semana del cash flow'])
+  // DESGLOSE POR TIPO DE PAGO (27/07, regla confirmada por el dueño). El titular sigue siendo el total,
+  // pero abajo se parte en: directa (efectivo/transferencia sin pagar — la única que todavía se le paga
+  // al proveedor) + comprometido vía cheque + vía tarjeta. Cheque y tarjeta ya no son deuda del
+  // proveedor: el instrumento las cuenta en Cheques Emitidos / Tarjeta / CAJA. Sin este desglose, una
+  // factura pagada con cheque figura como "proveedor con deuda a quien ya pagaste".
+  const condDirecta = `${condComercial};${COL_TIPOPAGO};"<>Cheque";${COL_TIPOPAGO};"<>Tarjeta Crédito"`
+  const condCheque = `${condComercial};${COL_TIPOPAGO};"Cheque"`
+  const condTarjeta = `${condComercial};${COL_TIPOPAGO};"Tarjeta Crédito"`
+  const posTotal = push(['DEUDA CON PROVEEDORES COMERCIALES', `=${neta(condComercial)}`, 'El total. Abajo, cuánto es deuda directa y cuánto ya tiene instrumento asignado (cheque/tarjeta), que se paga por esa vía, no al proveedor. La deuda con ARCA/impuestos/nómina vive en Impuestos y Financieros.'])
+  push(['  · directa — efectivo/transferencia sin pagar', `=${neta(condDirecta)}`, 'Lo único que todavía se le paga DIRECTO al proveedor. Es la deuda real de esta pestaña.'])
+  push(['  · comprometido vía cheque', `=${neta(condCheque)}`, '⚠ Factura con cheque asignado: al proveedor ya le diste el cheque. Registrar ese cheque en Cheques Emitidos cierra el circuito (la caja baja por ahí).'])
+  push(['  · comprometido vía tarjeta', `=${neta(condTarjeta)}`, '⚠ Factura cargada a la tarjeta. Debería estar en Tarjeta de Credito.'])
   push([])
   // Estado "Proyectado" de Compras, sólo comerciales: pactado pero todavía no es deuda firme, así que
   // va aparte del titular para no inflar la deuda. Las proyecciones no comerciales ($137,9M) no entran.
@@ -656,6 +670,7 @@ async function main() {
   COL_PAGADO = fijar('pagado', COL_PAGADO, 'Monto Pagado')
   COL_PARCIAL1 = fijar('parcial1', COL_PARCIAL1, 'Monto Parcial 1')
   COL_PARCIAL2 = fijar('parcial2', COL_PARCIAL2, 'Monto Parcial 2')
+  COL_TIPOPAGO = fijar('tipoPago', COL_TIPOPAGO, 'Tipo pago')
   console.log(`  Compras por encabezado: Rubro=${letra(IDX.rubro)} · Fecha de caja=${letra(IDX.fechaCaja)} · Familia=${letra(IDX.familia)} · ¿Comercial?=${letra(IDX.comercial)} · Pagado=${letra(IDX.pagado)} · Parcial1=${letra(IDX.parcial1)} · Parcial2=${letra(IDX.parcial2)}`)
 
   // ═══ UN SOLO NOMBRE POR PROVEEDOR EN TODA LA PESTAÑA ═══════════════════════════════════════════
