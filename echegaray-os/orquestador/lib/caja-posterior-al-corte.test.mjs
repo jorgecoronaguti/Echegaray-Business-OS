@@ -10,10 +10,16 @@ import { COL_FECHA_CAJA, colIndex } from './rubro-caja.mjs'
 
 test('las compras pagadas posteriores restan sólo Transferencia y Débito, después del corte', () => {
   const f = formulaComprasPagadasPosteriores('$F$19')
-  assert.match(f, /'Compras'!\$X\$4:\$X\$1200;"Pagado"/) // estado
+  // SUMPRODUCT, no SUMIFS: la "Fecha de caja" viene en formato mixto serie/texto y SUMIFS perdía las de texto.
+  assert.match(f, /^SUMPRODUCT\(/)
+  assert.doesNotMatch(f, /SUMIFS/)
+  assert.match(f, /'Compras'!\$X\$4:\$X\$1200="Pagado"/) // estado
   assert.match(f, /"Transferencia"/)
   assert.match(f, /"Débito"/)
-  assert.match(f, /'Compras'!\$AD\$4:\$AD\$1200;">"&\$F\$19/) // ventana posterior al corte
+  // ventana posterior al corte, con la fecha COACCIONADA (DATEVALUE del texto, N() del serial)
+  assert.match(f, /IFERROR\(DATEVALUE\('Compras'!\$AD\$4:\$AD\$1200&""\);N\('Compras'!\$AD\$4:\$AD\$1200\)\)>\$F\$19/)
+  // el total se coacciona con N(): SUMPRODUCT no tolera texto en la columna que suma
+  assert.match(f, /N\('Compras'!\$O\$4:\$O\$1200\)/)
   // NO se cuentan los medios ya cubiertos por otra línea (doble conteo).
   assert.doesNotMatch(f, /"Efectivo"|"Cheque"|"Echeq"|"Tarjeta/)
   assert.doesNotMatch(f, />=/)
@@ -49,8 +55,8 @@ test('el escritor NO vuelve a hardcodear la columna: la toma de la constante com
 
 test('la línea neta ahora también resta las compras pagadas por banco', () => {
   const f = formulaNetaPosterior('$F$19')
-  // cobros − cheques debitados − compras (transferencia/débito)
-  assert.match(f, /-\(SUMIFS\('Compras'/)
+  // cobros − cheques debitados − compras (transferencia/débito), estas últimas por SUMPRODUCT tolerante a texto
+  assert.match(f, /-\(SUMPRODUCT\(\('Compras'/)
   assert.match(f, /"Pagado"/)
   // sigue siendo neta de los tres, no sólo cobros
   assert.ok(f.includes('Cobranzas') && f.includes('Cheques Emitidos') && f.includes('Compras'))
@@ -87,10 +93,12 @@ test('el banco NO cuenta el efectivo: va a la caja física, no duplicar', () => 
   assert.match(f, /"<>Echeq"/)
 })
 
-test('la línea del banco sigue teniendo 4 SUMIFS aunque el cobro excluya el efectivo', () => {
-  // Excluir el efectivo es un criterio MÁS dentro del mismo SUMIFS de cobros, no un SUMIFS nuevo:
-  // cobros + cheques debitados + compras (transferencia) + compras (débito) = 4.
-  assert.equal(formulaNetaPosterior('$F$19').split('SUMIFS').length - 1, 4)
+test('la línea del banco: 2 SUMIFS (cobros, cheques) + 1 SUMPRODUCT (compras, tolerante a fecha-texto)', () => {
+  // Excluir el efectivo es un criterio MÁS dentro del mismo SUMIFS de cobros, no un SUMIFS nuevo.
+  // Compras pasó a un SOLO SUMPRODUCT (transferencia+débito juntos), no dos SUMIFS.
+  const f = formulaNetaPosterior('$F$19')
+  assert.equal(f.split('SUMIFS').length - 1, 2)
+  assert.equal(f.split('SUMPRODUCT').length - 1, 1)
 })
 
 test('cobros en efectivo posteriores: SÓLO Efectivo, SÓLO Cobrado, DESPUÉS del arqueo', () => {
@@ -102,11 +110,15 @@ test('cobros en efectivo posteriores: SÓLO Efectivo, SÓLO Cobrado, DESPUÉS de
   assert.doesNotMatch(f, />=/)
 })
 
-test('pagos en efectivo posteriores: Compras Pagado/Efectivo por Fecha de caja, DESPUÉS del arqueo', () => {
+test('pagos en efectivo posteriores: Compras Pagado/Efectivo por Fecha de caja (tolerante a texto), DESPUÉS del arqueo', () => {
   const f = formulaComprasEfectivoPosteriores('$F$4')
-  assert.match(f, /'Compras'!\$X\$4:\$X\$1200;"Pagado"/) // estado
-  assert.match(f, /'Compras'!\$P\$4:\$P\$1200;"Efectivo"/) // tipo de pago
-  assert.match(f, new RegExp(`'Compras'!\\$${CMP.fecha}\\$4:\\$${CMP.fecha}\\$1200;">"&\\$F\\$4`)) // Fecha de caja
+  assert.match(f, /^SUMPRODUCT\(/)
+  assert.doesNotMatch(f, /SUMIFS/)
+  assert.match(f, /'Compras'!\$X\$4:\$X\$1200="Pagado"/) // estado
+  assert.match(f, /'Compras'!\$P\$4:\$P\$1200="Efectivo"/) // tipo de pago
+  // Fecha de caja coaccionada, ventana posterior al arqueo
+  assert.match(f, new RegExp(`IFERROR\\(DATEVALUE\\('Compras'!\\$${CMP.fecha}\\$4:\\$${CMP.fecha}\\$1200&""\\);N\\('Compras'!\\$${CMP.fecha}\\$4:\\$${CMP.fecha}\\$1200\\)\\)>\\$F\\$4`))
+  assert.match(f, /N\('Compras'!\$O\$4:\$O\$1200\)/) // total coaccionado
   assert.doesNotMatch(f, />=/)
 })
 
@@ -130,18 +142,20 @@ test('la línea neta de la caja física: cobros − pagos − depósitos, guarda
   assert.ok(f.startsWith('='))
   // Sin arqueo con fecha no hay ventana: da 0 en vez de inventar plata en el cajón.
   assert.match(f, /^=IF\(NOT\(ISNUMBER\(\$F\$4\)\);0;/)
-  // 2 SUMIFS (cobros efectivo + pagos efectivo) + 1 SUMPRODUCT (depósitos).
-  assert.equal(f.split('SUMIFS').length - 1, 2)
-  assert.equal(f.split('SUMPRODUCT').length - 1, 1)
+  // 1 SUMIFS (cobros efectivo) + 2 SUMPRODUCT (pagos efectivo tolerante a texto + depósitos).
+  assert.equal(f.split('SUMIFS').length - 1, 1)
+  assert.equal(f.split('SUMPRODUCT').length - 1, 2)
   // Cobros suman, pagos y depósitos restan.
-  assert.match(f, /;"Cobrado";.*"Efectivo".*\)-SUMIFS/) // cobros, luego resta el pago
+  assert.match(f, /;"Cobrado";.*"Efectivo".*\)-SUMPRODUCT/) // cobros, luego resta el pago
   assert.match(f, /\)-SUMPRODUCT/) // resta el depósito
 })
 
 test('sin réplica del extracto, la caja física no resta depósitos (no restar un cero disfrazado)', () => {
   const f = formulaNetaEfectivoPosterior('$F$4', { bancoRaw: null })
-  assert.doesNotMatch(f, /SUMPRODUCT/)
-  assert.equal(f.split('SUMIFS').length - 1, 2) // sólo cobros − pagos
+  // Sigue el pago en efectivo (1 SUMPRODUCT tolerante a texto) pero YA NO el depósito: sin _BANCO_RAW no se detecta.
+  assert.equal(f.split('SUMPRODUCT').length - 1, 1)
+  assert.doesNotMatch(f, /deposito de efectivo/)
+  assert.equal(f.split('SUMIFS').length - 1, 1) // sólo cobros (efectivo)
 })
 
 test('las fórmulas de efectivo van en es-AR: separador ; y nunca ,', () => {
@@ -194,8 +208,9 @@ test('la línea es NETA: un solo lado inflaría la caja para siempre', () => {
   const f = formulaNetaPosterior('$F$19')
   assert.ok(f.startsWith('='))
   assert.ok(f.includes('-SUMIFS'), 'tiene que restar los cheques debitados')
-  // 4 SUMIFS: cobros + cheques debitados + compras (transferencia) + compras (débito).
-  assert.equal(f.split('SUMIFS').length - 1, 4)
+  // 2 SUMIFS (cobros, cheques debitados) + 1 SUMPRODUCT (compras transferencia/débito, tolerante a texto).
+  assert.equal(f.split('SUMIFS').length - 1, 2)
+  assert.equal(f.split('SUMPRODUCT').length - 1, 1)
 })
 
 test('las fórmulas van en es-AR: separador ; y nunca ,', () => {
