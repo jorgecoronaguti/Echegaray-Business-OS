@@ -120,6 +120,12 @@ export function tareaDeAccion(accion = {}, ctx = {}) {
         nota: 'NUNCA ejecutar el paso externo automáticamente: prepararlo y enviarlo a aprobación humana.',
       },
       evidencia_requerida: m.evidencia,
+      // CAPA CFO PROACTIVO (F9, aditiva): cuando el CFO enriqueció la acción, su borrador, su justificación
+      // económica y el tipo de trabajo viajan en inputs para que el especialista los tenga a mano. Ausentes
+      // (plan sin enriquecer) → null: comportamiento idéntico al previo.
+      borrador: accion.borrador ?? null,
+      justificacion_economica: accion.justificacion_economica ?? null,
+      tipo_cfo: accion.tipo_cfo ?? null,
     },
     _depsPlan: accion.dependencias || [], // ids del plan; se traducen a task_deps al enqueue
     _claveEstable: dedupe,
