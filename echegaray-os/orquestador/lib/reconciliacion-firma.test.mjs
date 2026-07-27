@@ -169,79 +169,76 @@ function fakeMundo({ gridPrev = null, gridActual = [], lockPor = 'auto' } = {}) 
 
 test('reconciliar FAIL-CLOSED: sin grid previo no diffea, deja candada y no resella', async () => {
   const m = fakeMundo({ gridPrev: null, gridActual: [['x']] })
-  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn, permitirDescandar: true })
+  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn })
   assert.equal(r.entendido, false)
   assert.equal(r.resuelto, false)
   assert.equal(m.locks.has('T'), true)     // sigue candada
   assert.equal(m.sellado.length, 0)        // no reselló
 })
 
-test('reconciliar ADOPTA + APRENDE: dato nuevo y fórmula corregida → resuelta, sella y descanda', async () => {
+// ── EL COMPORTAMIENTO CORRECTO (27/07): respetar tus ediciones SIN congelar ──────────────────────
+// Editaste algunas celdas → esas celdas se PRESERVAN (tu valor gana) y el resto vuelve al generador
+// (se regenera fresco). No se congela la pestaña entera. El choke point re-inyecta tus celdas en cada
+// regeneración, así tu cambio sobrevive Y los datos se mantienen al día.
+test('reconciliar PRESERVA tus celdas y regenera el resto (dato nuevo + fórmula corregida)', async () => {
   const prev = [['Cabecera', '=B1*2'], ['', '=SUM(A1:A2)']]
   const curr = [['Cabecera', '=B1*3'], ['Dato nuevo', '=SUM(A1:A2)']]
   const m = fakeMundo({ gridPrev: JSON.stringify(prev), gridActual: curr })
-  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn, permitirDescandar: true })
+  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn })
   assert.equal(r.resuelto, true)
-  assert.equal(r.aprendidas.length, 1)     // B1
-  assert.equal(r.adoptadas.length, 1)      // A2
+  assert.equal(r.adoptadas.length, 2)      // B1 y A2: TODAS tus celdas cambiadas, preservadas
   assert.equal(r.preguntas.length, 0)
-  // las dos celdas quedaron 'activa' (se re-inyectarán)
-  assert.equal([...m.cells.values()].filter((c) => c.estado === 'activa').length, 2)
-  assert.equal(m.locks.has('T'), false)    // descandada: vuelve a mantenerse sola
+  assert.equal([...m.cells.values()].filter((c) => c.estado === 'activa').length, 2) // se re-inyectan
+  assert.equal(m.locks.has('T'), false)    // descandada: vuelve a mantenerse sola y refresca
   assert.equal(m.sellado.length, 1)        // reselló el baseline
 })
 
-// ── LA GARANTÍA (26/07): por DEFECTO nunca se descanda solo ──────────────────────────────────────
-// Es EXACTAMENTE el escenario del test de arriba (edición 100% "entendible": dato nuevo + fórmula
-// corregida), pero SIN la bandera. Antes esto resellaba y descandaba solo, y en un timer reescribía la
-// versión del dueño en loop. Ahora la deja bajo su control: no resella, no descanda, no la toca.
-test('reconciliar POR DEFECTO no descanda solo aunque entienda todo (el bug que costó la versión del dueño)', async () => {
-  const prev = [['Cabecera', '=B1*2'], ['', '=SUM(A1:A2)']]
-  const curr = [['Cabecera', '=B1*3'], ['Dato nuevo', '=SUM(A1:A2)']]
-  const m = fakeMundo({ gridPrev: JSON.stringify(prev), gridActual: curr })
-  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn }) // sin permitirDescandar
-  assert.equal(r.resuelto, false)          // NO se resuelve sola
-  assert.equal(m.locks.has('T'), true)     // sigue candada: la versión del dueño intacta
-  assert.equal(m.sellado.length, 0)        // NO reselló (no adoptó su edición como nuevo baseline)
-  assert.match(r.motivo, /bajo tu control/)
-})
-
-test('reconciliar POR DEFECTO: cualquier edición de contenido queda bajo control del dueño', async () => {
-  const m = fakeMundo({ gridPrev: JSON.stringify([['100']]), gridActual: [['200']] })
-  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn })
-  assert.equal(r.resuelto, false)
-  assert.equal(r.preguntas.length, 1)
-  assert.equal(m.locks.has('T'), true)
-  assert.equal(m.sellado.length, 0)
-})
-
-test('reconciliar PREGUNTA: override deliberado → queda candada, pregunta puntual, NO resella', async () => {
+// El caso que ANTES se congelaba y frustraba al dueño: pisaste una fórmula con un número a mano.
+// Ahora tu número GANA (se preserva) y la pestaña sigue viva — no se congela ni se te pregunta.
+test('reconciliar PRESERVA un override (pisaste una fórmula con un valor): tu valor gana, sin congelar', async () => {
   const prev = [['Cabecera', '=SUM(A1:A5)']]
-  const curr = [['Cabecera', '9999']]      // pisó la fórmula con un número a mano
+  const curr = [['Cabecera', '9999']]
   const m = fakeMundo({ gridPrev: JSON.stringify(prev), gridActual: curr })
-  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn, permitirDescandar: true })
-  assert.equal(r.resuelto, false)
-  assert.equal(r.preguntas.length, 1)
-  assert.match(r.preguntas[0].pregunta, /9999/)
-  assert.equal([...m.cells.values()][0].estado, 'pendiente')
-  assert.equal(m.locks.has('T'), true)     // sigue candada (fail-closed)
-  assert.equal(m.sellado.length, 0)
+  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn })
+  assert.equal(r.resuelto, true)
+  assert.equal(r.preguntas.length, 0)
+  const celda = [...m.cells.values()][0]
+  assert.equal(celda.estado, 'activa')
+  assert.equal(celda.valor_dueno, '9999')  // tu valor, no el que calculaba el OS
+  assert.equal(m.locks.has('T'), false)    // NO se congela
+  assert.equal(m.sellado.length, 1)
 })
 
-test('reconciliar con CEREBRO: resuelve un conflicto literal→literal ambiguo y lo adopta', async () => {
-  const prev = [['100']]
-  const curr = [['200']]                   // literal→literal: ambiguo
+// Borraste una celda a propósito → tu vacío se preserva (no se re-calcula en silencio).
+test('reconciliar PRESERVA un borrado deliberado (tu celda queda vacía)', async () => {
+  const prev = [['dato', '100']]
+  const curr = [['dato', '']]
   const m = fakeMundo({ gridPrev: JSON.stringify(prev), gridActual: curr })
-  const clasificadorCerebro = async () => ({ accion: ACCIONES.ADOPTAR, causa: CAUSAS.DATO_NUEVO })
-  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn, clasificadorCerebro, permitirDescandar: true })
-  assert.equal(r.resuelto, true)           // el cerebro lo sacó de 'preguntar'
-  assert.equal(r.adoptadas.length, 1)
+  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn })
+  assert.equal(r.resuelto, true)
+  assert.equal([...m.cells.values()][0].valor_dueno, '')  // preserva tu vacío
   assert.equal(m.locks.has('T'), false)
 })
 
-test('reconciliar SIN cerebro: el mismo conflicto ambiguo queda como pregunta (lado seguro)', async () => {
-  const m = fakeMundo({ gridPrev: JSON.stringify([['100']]), gridActual: [['200']] })
-  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn, permitirDescandar: true })
-  assert.equal(r.resuelto, false)
-  assert.equal(r.preguntas.length, 1)
+// EL ÚNICO caso que se protege: cambio ESTRUCTURAL (insertaste/borraste filas). Re-inyectar por A1
+// desalinearía todo, así que no se adivina: se deja bajo tu control y se pregunta.
+test('reconciliar CONGELA sólo si cambió la estructura (cantidad de filas)', async () => {
+  const prev = [['a'], ['b'], ['c']]       // 3 filas con contenido
+  const curr = [['a'], ['b']]              // 2: borraste una fila
+  const m = fakeMundo({ gridPrev: JSON.stringify(prev), gridActual: curr })
+  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn })
+  assert.equal(r.resuelto, false)          // no se toca
+  assert.equal(m.locks.has('T'), true)     // sigue bajo tu control
+  assert.equal(m.sellado.length, 0)        // no reselló
+  assert.match(r.motivo, /estructura/)
+})
+
+// Sin cambio de contenido (sólo difería el formato): se resella y descanda, nada que preservar.
+test('reconciliar sin cambio de contenido: resella y descanda (era sólo formato)', async () => {
+  const grid = [['a', 'b'], ['c', 'd']]
+  const m = fakeMundo({ gridPrev: JSON.stringify(grid), gridActual: grid })
+  const r = await reconciliar(m.google, m.deps, 'F', 'T', { sellarFn: m.sellarFn })
+  assert.equal(r.resuelto, true)
+  assert.equal(m.locks.has('T'), false)
+  assert.equal(m.sellado.length, 1)
 })
