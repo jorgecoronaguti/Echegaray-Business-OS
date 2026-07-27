@@ -395,3 +395,13 @@ export { planTesoreria } from './plan-tesoreria-ensamblador.mjs'
 // contrasta después contra la caja real vía la caja negra. Se expone acá para que quien consume el plan
 // tenga a mano la medición de su propio acierto — sin recalcular plata (todo vive en aprendizaje-forecast).
 export { precisionForecast, evaluarAjuste } from './aprendizaje-forecast.mjs'
+
+// ════════════════════════════════════════════════════════════════════════════
+// ESCENARIO DE COBRO REALISTA (F3) — el plan puede consumir fechas de cobro APRENDIDAS
+// ════════════════════════════════════════════════════════════════════════════
+// El plan proyecta cada cobro por su fecha nominal. aprendizaje-cobranzas aprende cuánto se atrasa cada
+// cliente y ofrece una fecha esperada AJUSTADA (declarada inferida). Un consumidor arma los perfiles con
+// perfilesDeCobroDesdeDB(...) y se los pasa a calendarioDiario({...}, { perfilesCobro }): la trayectoria
+// resultante ya trae los cobros en su día realista, y construirPlan la consume tal cual — sin recalcular
+// cobranzas ni tocar la fuente. Aditivo: sin perfiles, el plan sigue proyectando por la fecha nominal.
+export { perfilesDeCobroDesdeDB, proyectarCobro, ajustarMovimientosCobranza } from './aprendizaje-cobranzas.mjs'
