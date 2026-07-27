@@ -204,14 +204,16 @@ export async function calendarioDiario(deps = {}, opts = {}) {
   } catch { /* sin cheques: el día queda sin ese egreso */ }
 
   // INGRESOS — cobranzas no cobradas con fecha de cobro. La pestaña real es "Cobranzas": cliente
-  // idx6, monto idx12, estado idx14, fecha cobro idx16.
+  // idx6, monto idx12, estado idx14, fecha esperada idx15 (P), fecha cobro idx16 (Q).
   try {
     const cob = await google.readSheetValues(CASHFLOW_ID, 'Cobranzas!A5:R2000').catch(() => [])
     for (const r of cob) {
       if (/cobrado/i.test(String(r?.[14] ?? ''))) continue
       const fecha = parseFecha(r?.[16]); const monto = parseMonto(r?.[12])
       if (!fecha || fecha < desde || fecha > hasta || !(monto > 0)) continue
-      movimientos.push({ fecha, tipo: 'ingreso', monto, categoria: 'cobranza', cliente: String(r?.[6] ?? '').trim(), origen: 'Cobranzas (Cash Flow)' })
+      // fecha_esperada (P) es aditivo: no cambia dónde cae el cobro hoy, pero deja que la capa de
+      // aprendizaje-cobranzas proyecte un día realista si el consumidor pide ese escenario.
+      movimientos.push({ fecha, fecha_esperada: parseFecha(r?.[15]) || fecha, tipo: 'ingreso', monto, categoria: 'cobranza', cliente: String(r?.[6] ?? '').trim(), origen: 'Cobranzas (Cash Flow)' })
     }
   } catch { /* sin cobranzas */ }
 
@@ -242,13 +244,33 @@ export async function calendarioDiario(deps = {}, opts = {}) {
     }
   } catch { /* sin obligaciones */ }
 
-  const diasCal = armarCalendario({ cajaInicial, movimientos, desde, hasta, limiteDescubierto: ACUERDO.importe })
+  // ESCENARIO REALISTA DE COBRO (F3, opt-in y aditivo). Si el consumidor pasa `opts.perfilesCobro`
+  // (de aprendizaje-cobranzas), cada cobro se reproyecta a su fecha esperada AJUSTADA por el atraso
+  // típico del cliente — declarada como inferida, sin pisar la fecha nominal. Sin ese opt, todo queda
+  // exactamente igual que antes (default = comportamiento nominal).
+  let movsCal = movimientos
+  let escenario = null
+  if (opts.perfilesCobro) {
+    const { ajustarMovimientosCobranza } = await import('./aprendizaje-cobranzas.mjs')
+    movsCal = ajustarMovimientosCobranza(movimientos, opts.perfilesCobro)
+    const reproyectados = movsCal.filter((m) => m._proyeccion_cobro?.fecha_ajustada && m.fecha_nominal)
+    escenario = {
+      tipo: 'INFERIDO',
+      criterio: 'fecha esperada ajustada por el atraso típico de cada cliente (aprendizaje-cobranzas)',
+      cobros_reproyectados: reproyectados.length,
+      fuente_atraso: opts.perfilesCobro.fuente ?? 'aprendizaje-cobranzas',
+    }
+  }
+
+  const diasCal = armarCalendario({ cajaInicial, movimientos: movsCal, desde, hasta, limiteDescubierto: ACUERDO.importe })
   return {
     desde: claveDia(desde),
     hasta: claveDia(hasta),
     caja_inicial: Math.round(cajaInicial),
     dias: diasCal,
     fuentes: 'cash-briefing (caja) · Cheques Emitidos, Cobranzas y Compras del Cash Flow · obligacion_resumen',
+    // Escenario de cobro realista (null salvo que el consumidor lo pida): capa de proyección inferida.
+    escenario_cobro: escenario,
     // El hueco se declara, no se tapa: deuda real que no puede ubicarse en ningún día por falta de
     // fecha prevista de pago. No está en el calendario y hay que saberlo.
     sin_fecha: comprasSinFecha ? { ...comprasSinFecha, fuente: 'Compras — facturas pendientes sin fecha prevista de pago' } : null,
