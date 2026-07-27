@@ -16,6 +16,7 @@ const GRUPOS_NAV = [
     grupo: 'OS',
     links: [
       { href: '/os', label: 'Centro de Operación' },
+      { href: '/chat', label: 'Chat del OS' },
       { href: '/aprobaciones', label: 'Aprobaciones' },
     ],
   },

@@ -2,7 +2,7 @@
 // Test de detección de intención del chat (lib/chat-intents.mjs). Fija que un pedido de ACCIÓN
 // (mandar mail, agendar) NO se confunda con una LECTURA. Cubre las frases REALES que le
 // fallaron al dueño (voseo/subjuntivo). Hermético, 0 API. exit 0 = OK, 1 = falla.
-import { isMailComposeIntent, isCalendarWriteIntent, isMailReadIntent } from './chat-intents.mjs'
+import { isMailComposeIntent, isCalendarWriteIntent, isMailReadIntent, routeConsulta } from './chat-intents.mjs'
 
 let ok = 0, fail = 0
 const check = (n, c) => { if (c) ok++; else { fail++; console.error(`FALLA: ${n}`) } }
@@ -36,6 +36,29 @@ check('“anotá una tarea” → calendar write', isCalendarWriteIntent('anotá
 check('“marcá la tarea como completa” → calendar write', isCalendarWriteIntent('marcá la tarea 3 como completa'))
 check('“qué tengo en la agenda” → NO write', !isCalendarWriteIntent('qué tengo en la agenda hoy'))
 check('“mostrame el calendario” → NO write', !isCalendarWriteIntent('mostrame el calendario de esta semana'))
+
+// ── F7 · Ruteo de CONSULTAS del chat interno a capacidades determinísticas (voseo/es-AR) ──
+check('“cuánto tengo en caja” → caja', routeConsulta('cuánto tengo en caja hoy') === 'caja')
+check('“cómo está la liquidez” → caja', routeConsulta('cómo está la liquidez') === 'caja')
+check('“cuánta plata hay” → caja', routeConsulta('cuánta plata hay') === 'caja')
+check('“cuál es la posición financiera” → caja', routeConsulta('cuál es la posición financiera') === 'caja')
+check('“cuánto me deben” → cobranzas', routeConsulta('cuánto me deben') === 'cobranzas')
+check('“cobranzas vencidas” → cobranzas', routeConsulta('mostrame las cobranzas vencidas') === 'cobranzas')
+check('“qué tengo por cobrar” → cobranzas', routeConsulta('qué tengo por cobrar este mes') === 'cobranzas')
+check('“cuánto tengo que pagar” → obligaciones', routeConsulta('cuánto tengo que pagar') === 'obligaciones')
+check('“obligaciones vencidas” → obligaciones', routeConsulta('hay obligaciones vencidas?') === 'obligaciones')
+check('“cuánta deuda tengo” → obligaciones', routeConsulta('cuánta deuda tengo') === 'obligaciones')
+check('“cómo va la obra Estrella” → obra', routeConsulta('cómo va la obra Estrella') === 'obra')
+check('“avance de las obras” → obra', routeConsulta('mostrame el avance de las obras') === 'obra')
+check('“dame el scorecard” → scorecard', routeConsulta('dame el scorecard de finanzas') === 'scorecard')
+check('“cómo vamos” → scorecard', routeConsulta('cómo vamos') === 'scorecard')
+check('“precisión del forecast” → scorecard', routeConsulta('cuál es la precisión del forecast') === 'scorecard')
+check('“resumen de la situación financiera” → scorecard', routeConsulta('dame un resumen de la situación financiera') === 'scorecard')
+// Regla dura: lo NO cubierto devuelve null (el backend responde honesto, no inventa un número)
+check('“cuántos adicionales detecté” → null (no cubierto)', routeConsulta('cuántos adicionales detecté') === null)
+check('“qué jornales pagué la quincena” → null (no cubierto)', routeConsulta('qué jornales pagué la última quincena') === null)
+check('“hola” → null', routeConsulta('hola, cómo andás?') === null)
+check('texto vacío → null', routeConsulta('') === null)
 
 console.log(`\nchat-intents.test: ${ok} OK, ${fail} FALLA`)
 process.exit(fail ? 1 : 0)
