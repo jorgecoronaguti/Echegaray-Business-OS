@@ -353,3 +353,12 @@ export function recomendaciones(model) {
 function rec(prioridad, titulo, impacto, explicacion, riesgo, ahorro, fundamentos) {
   return { prioridad, titulo, impacto_pesos: Math.round(Number(impacto) || 0), explicacion, riesgo, ahorro, fundamentos }
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// 6 · APRENDIZAJE DEL FORECAST (F2) — el motor mide su propia puntería
+// ════════════════════════════════════════════════════════════════════════════
+// El motor no sólo predice: aprende de cuánto le erró. La precisión de sus predicciones (saldo a 7/30
+// días) se contrasta contra la caja real observada, se detecta el sesgo sistemático y se PROPONE (no se
+// aplica) el ajuste del supuesto. Toda esa lógica vive en aprendizaje-forecast (no recalcula un peso);
+// se expone desde el motor para que el CFO IA / la Web consuman la medición junto con el resto del modelo.
+export { precisionForecast, cuadroPrecision, proponerAjustes, evaluarAjuste, registrarPropuestaAjuste } from './aprendizaje-forecast.mjs'
