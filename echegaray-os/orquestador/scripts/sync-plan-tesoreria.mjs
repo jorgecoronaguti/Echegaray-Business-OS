@@ -15,6 +15,7 @@
 import { makeGoogleClient } from '../lib/google.mjs'
 import { planTesoreria } from '../lib/plan-tesoreria.mjs'
 import { snapshotPlan } from '../lib/plan-vigente.mjs'
+import { registrarFotoSeguro } from '../lib/registro-aprendizaje.mjs'
 import { closePool } from '../lib/db.mjs'
 
 const HORIZONTE = process.env.ORQ_PLAN_HORIZONTE || 'dias_7'
@@ -22,6 +23,9 @@ const HORIZONTE = process.env.ORQ_PLAN_HORIZONTE || 'dias_7'
 async function main() {
   const google = makeGoogleClient({})
   const plan = await planTesoreria({ google }, { horizonte: HORIZONTE })
+  // CAJA NEGRA (F0): se congela SIEMPRE, incluso un plan 'sin dato' — que un día no haya plan también
+  // es historia que F2 necesita. Va antes del snapshot vigente para no depender de que éste corra.
+  await registrarFotoSeguro({}, { fuente: 'plan', foto: plan, horizonte: HORIZONTE })
   if (plan?.estado !== 'ok') { console.log(`plan de tesorería: sin dato (${plan?.motivo || 'no disponible'}) — no se actualiza el snapshot`); return }
   const { cambio, estado, cambios } = await snapshotPlan({}, plan, HORIZONTE)
   if (cambio) {

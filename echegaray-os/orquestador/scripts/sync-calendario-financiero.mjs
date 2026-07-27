@@ -11,6 +11,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { calendarioDiario } from '../lib/calendario-financiero.mjs'
 import { modeloLiquidez, recomendaciones } from '../lib/ingenieria-financiera.mjs'
+import { registrarFotoSeguro } from '../lib/registro-aprendizaje.mjs'
 
 const diasArg = Number((process.argv.find((a) => a.startsWith('--dias')) || '').split(/[ =]/)[1]) || 60
 
@@ -29,6 +30,10 @@ async function main() {
   // Se guarda un snapshot nuevo y se conservan sólo los últimos 5 (histórico corto para depurar).
   await query('insert into public.finanzas_calendario (payload) values ($1::jsonb)', [JSON.stringify(payload)])
   await query('delete from public.finanzas_calendario where id not in (select id from public.finanzas_calendario order by generado_en desc limit 5)')
+
+  // CAJA NEGRA (F0): además de materializar la foto vigente (que se pisa), se congela append-only para
+  // que F2 pueda medir después el forecast contra la realidad. No falla el ciclo si el registro falla.
+  await registrarFotoSeguro({}, { fuente: 'calendario', foto: cal, calculadoEn: payload.generado_en })
 
   const conMov = cal.dias.filter((d) => d.movimientos.length > 0).length
   console.log(`calendario materializado: ${cal.dias.length} días (${conMov} con movimientos), ${recs.length} recomendaciones, caja inicial $${Math.round(cal.caja_inicial).toLocaleString('es-AR')}`)

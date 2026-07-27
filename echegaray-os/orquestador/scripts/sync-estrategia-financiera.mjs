@@ -16,6 +16,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { estrategiaFinanciera } from '../lib/estrategia-financiera.mjs'
+import { registrarFotoSeguro } from '../lib/registro-aprendizaje.mjs'
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
@@ -37,6 +38,10 @@ async function main() {
        actualizado_en = now()`,
     [JSON.stringify(estrategia)],
   )
+
+  // CAJA NEGRA (F0): congela la foto de la estrategia append-only, ok o 'sin dato' — el gap también es
+  // historia. Va después de materializar la vigente: la caja negra es aditiva, no la reemplaza.
+  await registrarFotoSeguro({}, { fuente: 'estrategia', foto: estrategia })
 
   if (estrategia?.estado === 'ok') {
     const gob = estrategia.horizonte_gobernante?.titulo || estrategia.horizonte_gobernante?.clave || 's/d'
