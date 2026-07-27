@@ -20,6 +20,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { matchProveedor, valoresInput, validar, discrepanciaNeto, GRUPOS_FORMULA } from '../lib/carga-comprobantes.mjs'
 import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
+import { perfilesDeImputacionDesdeDB, sugerirImputacion } from '../lib/imputacion-aprendida.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
@@ -59,8 +60,11 @@ async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const meta = await google.getSheetMeta(ID)
   const hoja = meta.find((h) => h.title === 'Compras')
-  const [lista, arca, colE] = await Promise.all([
+  const [lista, arca, colE, perfiles] = await Promise.all([
     listaProveedores(google), indiceArca(), google.readSheetValues(ID, 'Compras!E1:E'),
+    // IMPUTACIÓN QUE APRENDE (F8): perfiles de cómo el dueño imputó comprobantes parecidos. Sólo LEE
+    // (public.costos_obra, Nivel D reversible); si no hay historia, degrada y la sugerencia lo dice.
+    perfilesDeImputacionDesdeDB({ query }).catch(() => null),
   ])
   let ultima = 0
   colE.forEach((r, i) => { if (r[0] != null && r[0] !== '') ultima = i + 1 })
@@ -79,7 +83,12 @@ async function main() {
     if (enArca) dupes.push({ i, numero: c.numero, arcaTotal: enArca.imp_total })
     const dif = discrepanciaNeto(c)
     if (dif) percep.push({ i, proveedor: prov.valor, dif })
-    plan.push({ valores: valoresInput(cc), nuevo: prov.esNuevo })
+    // SUGERENCIA de imputación (F8): aparece para que el dueño la vea; NO cambia lo que se escribe.
+    // Sólo si el comprobante no trae la imputación explícita (no pisamos lo que el dueño ya anotó).
+    const sug = perfiles && !cc.unidad && !cc.obra
+      ? sugerirImputacion({ proveedor: prov.valor, concepto: c.concepto, monto: c.total ?? c.neto }, perfiles)
+      : null
+    plan.push({ valores: valoresInput(cc), nuevo: prov.esNuevo, proveedor: prov.valor, sug })
   }
 
   const desde = ultima + 1
@@ -89,6 +98,24 @@ async function main() {
   if (nuevos.size) console.log(`\n⚠ Proveedores NUEVOS (no están en el desplegable estricto — confirmá antes de fijarlos): ${[...nuevos].join(' · ')}`)
   if (percep.length) console.log(`\nℹ Percepción/impuesto interno absorbido en Importe (M = Total − IVA, para que el Total cierre): ${percep.map((p) => `${p.proveedor} (+$${Math.round(p.dif).toLocaleString('es-AR')})`).join(' · ')}`)
   if (dupes.length) console.log(`\nℹ Ya figuran en ARCA (posible duplicado, revisá): ${dupes.map((d) => `${d.numero} ($${Math.round(d.arcaTotal).toLocaleString('es-AR')})`).join(' · ')}`)
+
+  // SUGERENCIA DE IMPUTACIÓN (F8) — el OS SUGIERE, el dueño CONFIRMA. Nunca imputa solo: estas filas se
+  // escriben con Unidad/Obra VACÍAS igual que siempre (las completa el dueño, y ahí el rubro reclasifica).
+  // Acá sólo mostramos, por comprobante, qué imputó históricamente a proveedores parecidos, para que el
+  // dueño complete más rápido y corrija si hace falta — esa corrección re-alimenta el aprendizaje.
+  const conSug = plan.map((p, k) => ({ k, p })).filter((x) => x.p.sug)
+  if (!perfiles?.disponible) {
+    console.log('\nℹ Imputación aprendida: sin historia espejada todavía (public.costos_obra). La máquina mide; la historia recién arranca.')
+  } else if (conSug.length) {
+    console.log('\n💡 Sugerencia de imputación (aprendida de cómo imputaste comprobantes parecidos — SUGIERE, no impone; completá/corregí vos):')
+    for (const { p } of conSug) {
+      const s = p.sug
+      const dim = (d) => d.sugerido ? `${d.sugerido}${d.pide_confirmacion ? ' (?)' : ' ✓'}` : '—'
+      console.log(`   ${p.proveedor}: unidad ${dim(s.unidad)} · obra ${dim(s.obra)} · rubro ${dim(s.rubro)}  [${s.pide_confirmacion ? 'confirmá' : 'alta confianza'}]`)
+      console.log(`      ↳ ${s.nota}`)
+    }
+    console.log('   (✓ = alta confianza · (?) = necesita tu confirmación)')
+  }
   if (!plan.length) { console.log('\nNada cargable.'); await closePool(); return }
 
   if (DRY) {
