@@ -28,6 +28,7 @@ const GRUPOS_NAV = [
     grupo: 'Finanzas',
     links: [
       { href: '/ingenieria-financiera', label: 'Ingeniería Financiera' },
+      { href: '/financial-engineering-chat', label: 'FE Multi-experto' },
       { href: '/calendario-financiero', label: 'Calendario Financiero' },
       { href: '/scorecard-finanzas', label: 'Scorecard Admin/Finanzas' },
       { href: '/calendario-caja', label: 'Scorecard' },
