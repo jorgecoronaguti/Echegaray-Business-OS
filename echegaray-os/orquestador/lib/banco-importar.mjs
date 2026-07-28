@@ -87,7 +87,7 @@ const ES_RUIDO = /^(fecha\b|saldo (inicial|final|anterior|al\b)|[úu]ltimos movi
  *
  * @param {string} texto  el extracto tal cual, con sus saltos de línea
  * @param {{anio?:number}} opts
- * @returns {{movimientos:{fecha:string,concepto:string,importe:number,saldo:number|null}[], rechazos:{linea:number,texto:string,motivo:string}[]}}
+ * @returns {{movimientos:{fecha:string,concepto:string,importe:number,saldo:number|null}[], rechazos:{linea:number,texto:string,motivo:string}[], duplicados:{fecha:string,concepto:string,importe:number,saldo:number|null,motivo:string}[]}}
  */
 /**
  * El CSV que descarga el homebanking del Santander ("descargaUltimosMovimientos") NO es el formato
@@ -112,6 +112,100 @@ function encabezadoCsvBanco(linea) {
   // que el parseo genérico no sabe leer. Un "fecha;concepto;importe" común sigue por la vía de siempre.
   if (iConcepto < 2 || iImporte < 2) return null
   return { fecha: 0, concepto: iConcepto, importe: iImporte, saldo: iSaldo >= 0 ? iSaldo : null }
+}
+
+/**
+ * NÚCLEO PURO: descarta los duplicados FANTASMA que la clave natural no atrapa, usando la CADENA DE
+ * SALDOS. Entra la lista de movimientos (en orden cronológico y ANTES del back-fill de saldos), sale
+ * la lista conservada y la lista de descartados con su motivo.
+ *
+ * POR QUÉ EXISTE. El dedup por clave (`clave()` = fecha|concepto|importe|saldo) se le escapan dos
+ * duplicados reales del extracto del Santander:
+ *   · el concepto trae un identificador que VARÍA ("...Id debin cu" vs "...Id debin z0") → la clave
+ *     difiere aunque sea el mismo movimiento;
+ *   · la copia reimpresa a veces viene con SALDO NULL → la clave difiere.
+ * La cadena de saldos no mira el concepto ni necesita que el saldo esté: es una identidad del extracto.
+ *
+ * LAS DOS SEÑALES DE FANTASMA, las dos inequívocas:
+ *   1. SALDO QUIETO. saldo(n) = saldo(n−1) + importe(n). Un movimiento que dice mover plata (importe
+ *      ≠ 0) pero deja el saldo DONDE ESTABA —saldo declarado == saldo anterior— no movió la cuenta:
+ *      es el mismo evento reimpreso. (Ej.: 16/07, dos créditos de +$11.913.568,24 que terminan los
+ *      dos en $7.874.504,8; el segundo no sumó nada a la cuenta.)
+ *   2. COPIA SIN SALDO CON HERMANO QUE SÍ LO TIENE. Una fila sin saldo cuyo gemelo idéntico en
+ *      fecha+importe SÍ trae saldo es la misma fila reimpresa antes de postear. (Ej.: 23/07, un
+ *      "Deposito e-cheq $3.940.000" que aparece dos veces, una con saldo y otra en null.)
+ *
+ * CONSERVADOR A PROPÓSITO — sólo descarta lo inequívoco:
+ *   · dos movimientos legítimos del MISMO importe el MISMO día con saldos DISTINTOS y consistentes con
+ *     la cadena NO son duplicados: cada uno avanza el saldo, ninguno lo deja quieto;
+ *   · un corte de cadena que NO es "saldo quieto" (un typo, un movimiento faltante, el arranque de otra
+ *     ventana) NO se descarta acá: eso lo MARCA verificarCadena, que avisa sin borrar. Tirar un
+ *     movimiento real en silencio sería peor que el duplicado.
+ *
+ * Corre ANTES del back-fill porque el back-fill completa los saldos null por arrastre y borraría la
+ * señal 2 (la copia sin saldo pasaría a tener un saldo deducido que aparenta avanzar la cadena).
+ *
+ * @param {{fecha:string,concepto:string,importe:number,saldo:number|null}[]} movs orden cronológico
+ * @param {{saldoInicial?:number|null, tolerancia?:number}} [opts]
+ * @returns {{conservados:object[], descartados:{fecha:string,concepto:string,importe:number,saldo:number|null,motivo:string}[]}}
+ */
+export function deduplicarPorCadena(movs = [], { saldoInicial = null, tolerancia = 0.005 } = {}) {
+  // Qué combinaciones fecha+importe tienen AL MENOS un movimiento con saldo declarado: contra eso se
+  // reconoce la copia sin saldo (señal 2). El importe se redondea igual que en clave() para comparar.
+  const claveFI = (m) => `${m.fecha}|${Number(m.importe).toFixed(2)}`
+  const conSaldoPorFI = new Set()
+  for (const m of movs) if (m.saldo != null) conSaldoPorFI.add(claveFI(m))
+
+  const conservados = []
+  const descartados = []
+  let corrido = saldoInicial == null ? null : Number(saldoInicial)
+
+  for (const m of movs) {
+    const imp = Number(m.importe)
+    // ── SEÑAL 2: copia sin saldo cuyo hermano idéntico en fecha+importe SÍ trae saldo → fantasma ──
+    if (m.saldo == null) {
+      if (conSaldoPorFI.has(claveFI(m))) {
+        descartados.push({ ...m, motivo: 'duplicado: un movimiento idéntico en fecha e importe ya trae saldo; esta copia vino sin saldo (reimpresión antes de postear)' })
+        continue
+      }
+      // Movimiento del día legítimo (todavía sin saldo): se arrastra el corrido, como verificarCadena.
+      if (corrido != null) corrido = Number((corrido + imp).toFixed(2))
+      conservados.push(m)
+      continue
+    }
+    const saldo = Number(m.saldo)
+    // ── SEÑAL 1: el saldo declarado es igual al anterior pese a un importe ≠ 0 → no movió la cuenta ──
+    if (corrido != null && Math.abs(imp) > tolerancia && Math.abs(saldo - corrido) <= tolerancia) {
+      descartados.push({ ...m, motivo: `duplicado: el saldo declarado (${saldo}) es igual al anterior pese a un importe de ${imp}; el movimiento no movió la cuenta (evento reimpreso)` })
+      continue
+    }
+    // Todo lo demás avanza el saldo y se conserva. Si avanzó a un valor INESPERADO (no == corrido pero
+    // tampoco == corrido+importe) es un typo/faltante: no se descarta acá, lo audita verificarCadena.
+    conservados.push(m)
+    corrido = saldo
+  }
+  return { conservados, descartados }
+}
+
+/**
+ * NÚCLEO PURO: completa el saldo corrido de los movimientos del día que vienen sin saldo declarado.
+ *
+ * BACK-FILL DEL SALDO INTRADÍA. Las filas de "Movimientos del Día" (los cheques debitados HOY) vienen
+ * sin saldo, pero su saldo corrido se DEDUCE de la cadena: saldo anterior + importe. No es inventar un
+ * número —es el mismo que el banco imprime en "Saldo al DD/MM"—. Sin esto, CAJA toma el último saldo
+ * POSTEADO (el de ayer) e ignora los débitos de hoy: el saldo queda inflado. Sólo se completa cuando
+ * hay un saldo previo con qué encadenar; si arranca en null, se respeta el null. MUTA la lista (mismo
+ * comportamiento que antes vivía inline en parsearExtracto).
+ */
+export function completarSaldoIntradia(movs = []) {
+  let corrido = null
+  for (const m of movs) {
+    if (m.saldo != null) { corrido = Number(m.saldo); continue }
+    if (corrido == null) continue
+    corrido = Number((corrido + Number(m.importe)).toFixed(2))
+    m.saldo = corrido
+  }
+  return movs
 }
 
 export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {}) {
@@ -180,20 +274,19 @@ export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {})
     if (conFecha.length > 1 && conFecha[0].fecha > conFecha[conFecha.length - 1].fecha) movimientos.reverse()
   }
 
-  // BACK-FILL DEL SALDO INTRADÍA. Las filas de "Movimientos del Día" (los cheques debitados HOY) vienen
-  // sin saldo declarado, pero su saldo corrido se DEDUCE de la cadena: saldo anterior + importe. No es
-  // inventar un número —es el mismo que el banco imprime en "Saldo al DD/MM"—. Sin esto, CAJA toma el
-  // último saldo POSTEADO (el de ayer) e ignora los débitos de hoy: el saldo queda inflado. Sólo se
-  // completa cuando hay un saldo previo con qué encadenar; si arranca en null, se respeta el null.
-  let corrido = null
-  for (const m of movimientos) {
-    if (m.saldo != null) { corrido = Number(m.saldo); continue }
-    if (corrido == null) continue
-    corrido = Number((corrido + Number(m.importe)).toFixed(2))
-    m.saldo = corrido
-  }
+  // DEDUP DE FANTASMAS POR CADENA DE SALDOS, ANTES DEL BACK-FILL. Un extracto reimprime a veces el
+  // mismo movimiento dos veces —con un id distinto en el concepto, o con el saldo en null— y la clave
+  // natural no lo caza. La cadena de saldos sí: un movimiento que no mueve la cuenta, o una copia sin
+  // saldo cuyo gemelo sí lo trae, es un fantasma. Corre ANTES del back-fill porque el back-fill
+  // completaría el saldo null de la copia y borraría la señal. Ver deduplicarPorCadena.
+  const { conservados, descartados } = deduplicarPorCadena(movimientos)
+  movimientos.length = 0
+  movimientos.push(...conservados)
 
-  return { movimientos, rechazos }
+  // BACK-FILL DEL SALDO INTRADÍA (ver completarSaldoIntradia): recién ahora, sobre lo ya deduplicado.
+  completarSaldoIntradia(movimientos)
+
+  return { movimientos, rechazos, duplicados: descartados }
 }
 
 /** La clave natural de un movimiento. El SALDO entra a propósito: dos transferencias iguales el
