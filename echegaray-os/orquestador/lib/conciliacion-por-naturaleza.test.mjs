@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { GRUPOS, segunBanco, VENTANA, sinPestanaDuena, RAW } from './conciliacion-por-naturaleza.mjs'
-import { clasificarMovimiento } from './banco-santander.mjs'
+import { clasificarMovimiento, COBERTURA_NATURALEZA } from './banco-santander.mjs'
 
 test('el importe del banco se devuelve en POSITIVO', () => {
   // Los egresos vienen negativos del extracto. Compararlos contra el positivo de una pestaña sin
@@ -26,18 +26,32 @@ test('las fórmulas van en es-AR', () => {
   }
 })
 
-test('toda naturaleza que el clasificador produce tiene su grupo', () => {
-  // Si el banco trae un concepto nuevo y el clasificador inventa una naturaleza que el cuadro no
-  // conoce, esa plata desaparece del control sin que nada avise.
+test('toda naturaleza que DEBE reconciliarse contra una pestaña tiene su grupo', () => {
+  // ESTE TEST DABA FALSA CONFIANZA (28/07). Probaba una lista CURADA de 12 conceptos que —sin
+  // querer— esquivaba justo las naturalezas sin grupo ("Ajuste sin detalle", los créditos). Ahora
+  // itera la declaración canónica de cobertura: cada naturaleza marcada `grupoConciliacion` TIENE
+  // que estar en GRUPOS. Si el clasificador aprende una naturaleza de egreso nueva y se olvida el
+  // grupo, esto se rompe en vez de pasar por no haberla puesto en la lista de prueba.
+  const conocidas = new Set(GRUPOS.map((g) => g.naturaleza))
+  for (const cob of COBERTURA_NATURALEZA.filter((x) => x.grupoConciliacion)) {
+    assert.ok(conocidas.has(cob.naturaleza), `"${cob.naturaleza}" debe reconciliarse pero no tiene grupo en GRUPOS`)
+  }
+})
+
+test('el clasificador NUNCA produce una naturaleza sin declaración de cobertura', () => {
+  // El puente entre lo que el banco puede decir y lo que el cash flow contempla. Un concepto real
+  // que caiga en una naturaleza no declarada sería plata suelta sin que nada avise.
+  const declaradas = new Set(COBERTURA_NATURALEZA.map((x) => x.naturaleza))
   const conceptos = [
     'Pago Haberes - 123', 'Impuesto Ley 25.413 Debito 0,6%', 'Transferencia Realizada - A Herrajes',
     'Echeq Clearing Recibido 24hs', 'Compra Con Tarjeta De Debito - Merpago', 'Pago De Servicios - Imp.afip',
     'Prestamos Prendarios - -', 'Pago Tarjeta De Credito Visa', 'Debito Automatico - Sancor',
     'Cobro De Interes Por Descubierto', 'Cheque Debitado', 'Canje Interno Recibido 24 Hs',
+    'Ajuste Sin Detalle', 'Deposito De Efectivo - Sucursal', 'Transferencia Recibida - De Cliente',
+    'Transferencia Recibida - De 30710630670',
   ]
-  const conocidas = new Set(GRUPOS.map((g) => g.naturaleza))
   for (const c of conceptos) {
-    assert.ok(conocidas.has(clasificarMovimiento(c)), `"${c}" → "${clasificarMovimiento(c)}" no tiene grupo en el cuadro`)
+    assert.ok(declaradas.has(clasificarMovimiento(c)), `"${c}" → "${clasificarMovimiento(c)}" sin declaración de cobertura`)
   }
 })
 
