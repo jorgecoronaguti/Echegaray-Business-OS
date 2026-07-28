@@ -684,3 +684,80 @@ export function origenLinea(l) {
   if (l.soloSub) return 'no se proyecta: es una decisión, no un ritmo'
   return origenProyeccion(l.rubro)
 }
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// TRAZABILIDAD DE UN CLICK — LA ETIQUETA DE CADA SUBCONCEPTO A SU ORIGEN
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// POR QUÉ EXISTE (27/07). El dueño pidió "la mayor certeza": que al abrir el +/- de una categoría, la
+// ETIQUETA de cada subconcepto (columna A) sea un vínculo que lleve exactamente a la pestaña!rango de
+// donde sale ese número. El VALOR de la línea sigue siendo fórmula viva —regla de oro, nunca un número
+// pegado—: el HYPERLINK envuelve SÓLO la etiqueta, el segundo argumento es el texto del rótulo, no un
+// importe. Los importes de las columnas B..N no se tocan.
+//
+// EL GID NO SE ADIVINA. La fórmula lleva un placeholder GID{Nombre de la pestaña} que el script
+// (cash-flow-rehacer) reemplaza por el sheetId real leído de getSheetMeta. Es la misma mecánica del
+// atajo "IR A LA SEMANA DE HOY" (que usa el placeholder SEMGID para su propia pestaña), extendida a
+// OTRAS pestañas destino. Si la pestaña destino no existe en getSheetMeta, la línea NO se hiperlinkea
+// —queda etiqueta simple— y el script lo reporta. Nunca un gid ni un range inventado.
+
+/** En qué pestaña vive el detalle de un rubro. Sale de REGLAS: una sola definición (la misma que usa
+ * la sección "DÓNDE ESTÁ EL DETALLE" del Sheet, para no duplicar el criterio). PURA. */
+export const detalleDeRubro = (rubro) => REGLAS.find((x) => x.rubro === rubro)?.detalle ?? 'Compras'
+
+/** La sangría con la que se escribe un subconcepto en la columna A. Una sola definición para que la
+ * etiqueta sea idéntica quede como texto simple (fallback) o envuelta en HYPERLINK. */
+export const SANGRIA_DETALLE = '    '
+
+/** Un rango "'Pestaña'!$C$1:$C$9" → "C1:C9" (sin pestaña ni $), para el fragmento range= del HYPERLINK. PURA. */
+const soloRango = (r) => String(r).split('!')[1].replace(/\$/g, '')
+
+/**
+ * NÚCLEO PURO: a qué pestaña!rango apunta el vínculo de trazabilidad de una línea de detalle.
+ * Devuelve el destino MÁS específico que se puede garantizar CON CERTEZA, o null si la línea no tiene
+ * pestaña de origen (las que el propio cuadro calcula sobre sus celdas —intereses del descubierto,
+ * impuesto al cheque— no salen de ninguna pestaña, así que no se hiperlinkean).
+ * @param {object} l línea del CUADRO
+ * @param {Object<string,number>} filasTabla {pestaña: filaDelTotal} ubicada por rótulo (Estructura/Recurrentes)
+ * @returns {{pestaña:string, rango:string}|null}
+ */
+export function destinoDetalle(l, filasTabla = {}) {
+  // Las que el cuadro calcula sobre sus propias celdas: no hay pestaña de origen que mostrar.
+  if (l.descubierto || l.impuestoCheque) return null
+  // Cheques y tarjeta: el detalle vive en DOS pestañas; se apunta a la columna de monto de Cheques Emitidos.
+  if (l.cheques) {
+    const inst = INSTRUMENTOS.cheques
+    return { pestaña: inst.pestaña, rango: soloRango(rangoInstrumento(inst, inst.colMonto)) }
+  }
+  // Cobranzas: la columna de monto (M) de la pestaña Cobranzas — la fuente exacta de las tres líneas de ingreso.
+  if (l.cobranzas) return { pestaña: 'Cobranzas', rango: soloRango(cobRango(COB_COBERTURA.monto)) }
+  // Bienes de uso (equipos y rodados): su monto sale del sub-rubro de Compras (columna AF).
+  if (l.soloSub) return { pestaña: 'Compras', rango: soloRango(COL_SUB) }
+  // Rubros cuya proyección la calcula su propia pestaña con una fila de TOTAL ubicada por rótulo: se
+  // apunta a esa fila (el número de esta línea ES ese total). Sin la fila ubicada no se inventa una
+  // celda: se cae a la columna fuente de Compras, abajo.
+  const p = PROYECCION[l.rubro]
+  if (p?.tipo === 'tabla' && filasTabla[p.pestaña]) return { pestaña: p.pestaña, rango: `A${filasTabla[p.pestaña]}` }
+  // Resto de rubros: la pestaña de detalle de REGLAS si es específica (Proveedores y Materiales, Cargas
+  // Sociales, Jornales por Quincena, Impuestos y Financieros…); si el detalle es la propia Compras, la
+  // columna fuente del monto (O). Nunca un destino adivinado.
+  const tab = detalleDeRubro(l.rubro)
+  if (tab && tab !== 'Compras') return { pestaña: tab, rango: 'A1' }
+  return { pestaña: 'Compras', rango: soloRango(COL_TOTAL) }
+}
+
+/**
+ * NÚCLEO PURO: la fórmula HYPERLINK de la ETIQUETA de un subconcepto → su origen. El gid queda como
+ * placeholder GID{pestaña} para que el script lo resuelva contra getSheetMeta (nunca se adivina).
+ * Devuelve null cuando la línea no tiene pestaña de origen (ver destinoDetalle).
+ * @param {object} l línea del CUADRO · @param {Object<string,number>} filasTabla
+ * @returns {{formula:string, destino:string, rango:string}|null}
+ */
+export function hipervinculoDetalle(l, filasTabla = {}) {
+  const dest = destinoDetalle(l, filasTabla)
+  if (!dest) return null
+  // Las comillas del rótulo se duplican: si un nombre trajera una, cerraría la cadena de la fórmula.
+  const etiqueta = `${SANGRIA_DETALLE}${l.nombre}`.replace(/"/g, '""')
+  const formula = `=HYPERLINK("#gid=GID{${dest.pestaña}}&range=${dest.rango}";"${etiqueta}")`
+  return { formula, destino: dest.pestaña, rango: dest.rango }
+}
