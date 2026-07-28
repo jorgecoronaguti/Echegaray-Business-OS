@@ -146,6 +146,9 @@ export const DERIVADA_DE = {
   'Tarjeta de Credito!I': 'H — es =H, una copia de la fecha de pago',
   'Jornales por Quincena!E': 'C, D y Parámetros!B43 — horas × dotación × jornal',
   'Jornales por Quincena!K': '_J_OBREROS — suma del espejo que el OS refresca',
+  // La columna Estado del registro: =IF(B<=TODAY();"cerrada";"en curso"). Deriva de B (Hasta) y se
+  // recalcula sola; es la que distingue la quincena en curso de las cerradas. No es un hueco.
+  'Jornales por Quincena!L': 'B — "cerrada"/"en curso" según si el último día de la quincena ya pasó (=B<=TODAY())',
 }
 
 /**

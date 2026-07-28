@@ -211,7 +211,10 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia }) {
   // junto a las cerradas es mezclar un hecho con algo que todavía se está formando.
   const fHero = { costo: 0, cerradas: 0, curso: 0, falta: 0, ofiPagado: 0, ofiFalta: 0, plantel: 0 }
   push(['JORNALES Y SUELDOS — lo pagado en el año y lo que falta hasta diciembre'])
-  fHero.costo = push([rotuloTotal('Jornales de obra y sueldos de oficina en el año')])
+  // EL TITULAR ENTRA EN SU COLUMNA. Con la fuente grande del hero, "…de oficina en el año" medía 49
+  // caracteres en una columna de 330px que muestra 44, y a su derecha está el importe: se cortaba en
+  // vez de derramar. El detalle Obra/Oficina ya está en los sub-ítems de abajo; el titular es la suma.
+  fHero.costo = push([rotuloTotal('Jornales de obra y sueldos del año')])
   fHero.cerradas = push([sub('Obra — quincenas cerradas, ya pagadas')])
   fHero.curso = push([sub('Obra — quincena en curso, todavía se está cargando')])
   fHero.falta = push([sub('Obra — falta pagar hasta diciembre')])
@@ -301,7 +304,7 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia }) {
   push([seccion(3, 'Control de convenio — ningún jornal por debajo de la escala UOCRA')])
   // LA RÉPLICA DEL ACUERDO TRAE SALTOS DE LÍNEA ADENTRO DEL RÓTULO ("Julio\n+2%"): sin aplanarlos, la
   // fila crece a dos renglones y el texto queda cortado por la altura fija.
-  push([`=SUBSTITUTE(SUBSTITUTE(${formulaVigencia().slice(1)};CHAR(10);" ");CHAR(13);" ")`,
+  const fVig = push([`=SUBSTITUTE(SUBSTITUTE(${formulaVigencia().slice(1)};CHAR(10);" ");CHAR(13);" ")`,
     ...Array(5).fill(VACIO), 'CCT 76/75, Zona A (San Juan)'])
   const ult = bloques[bloques.length - 1]
   const rangoW = ult ? `'${ESPEJO}'!W${ult.inicio}:W${ult.fin}` : null
@@ -311,16 +314,22 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia }) {
   ])
   const fPiso = push([sub('Básico de Ayudante — el piso del convenio'), formulaValor('Ayudante', COL.basico)])
   push([sub('Margen sobre el piso — negativo = deuda laboral'), `=IF(N(B${fPiso})=0;"";B${fMin}/B${fPiso}-1)`])
-  const fJornada = push([sub('Jornada del convenio (horas)'), 8])
+  // LA ESCALA DEL CONVENIO, TODA EN LA MISMA UNIDAD QUE LO QUE PAGAMOS: $/hora. Antes cada categoría
+  // traía además su jornal diario (= básico × 8), y ese 8 era el único número PEGADO de la pestaña:
+  // una "Jornada del convenio (horas)" escrita a mano que ninguna otra celda leía y que sólo servía
+  // para una columna decorativa. Mezclar $/hora (el control de arriba) con $/día (la columna) en el
+  // mismo bloque es exactamente el defecto de unidad que arruina una planilla financiera. Se deja el
+  // básico por hora —comparable de un vistazo contra "el jornal por hora más bajo que pagamos"— y se
+  // borra el multiplicador pegado de raíz, en vez de esconderlo en un parámetro que nadie mira.
+  push([sub('Escala del convenio, por hora:')])
   for (const cat of CATEGORIAS) {
-    const r = filas.length + 1
     push(ES_MENSUAL(cat)
       ? [sub(`${cat} — se paga por mes`), formulaValor(cat, COL.basico)]
-      : [sub(cat), formulaValor(cat, COL.basico), `=IF(N(B${r})=0;"";B${r}*$B$${fJornada})`])
+      : [sub(cat), formulaValor(cat, COL.basico)])
   }
   blanco()
 
-  // ── 3 · EL REGISTRO ──
+  // ── 4 · EL REGISTRO ──
   push([seccion(4, 'Obra — el registro, quincena por quincena')])
   push(['Quincena', 'Hasta', 'Días hábiles', 'Personas', 'Hs previstas', 'Hs reales', 'Banco', 'Adelanto', 'Total recibo', 'TOTAL', 'Σ $/hora', 'Estado'])
   const f0 = filas.length + 1
@@ -382,7 +391,7 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia }) {
     ],
     // Horas con un decimal · cantidades enteras · el único porcentaje de la pestaña.
     cantidades: [fHpd],
-    enteros: [fHero.plantel, fJornada],
+    enteros: [fHero.plantel],
     ratios: [fMin + 2],
     nProy: pendientes.length,
     // Las filas de oficina (cargadas + proyectadas) para que reciban el mismo formato que las de
@@ -394,6 +403,12 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia }) {
     fTotalReal,
     f0,
     p0,
+    // LOS ENCABEZADOS DE TABLA Y LA NOTA DE VIGENCIA SON TEXTO, NO PLATA. El formato de moneda cubre
+    // toda la grilla de la B a la L, y donde el hero deja un número más arriba en la misma columna, el
+    // detector deja de leer "Hasta"/"Personas"/"Banco" como encabezado y los marca como texto en una
+    // celda de moneda (12 casos). Se les devuelve el formato de texto DESPUÉS de la moneda.
+    encabezados: [p0 - 1, o0 - 1, f0 - 1],
+    fVig,
   }
 }
 
@@ -617,6 +632,21 @@ async function formatear(google, sheetId, filas, g) {
     },
   })
   for (const f of g.ratios) fmt(f - 1, f, 1, 2, { type: 'PERCENT', pattern: '0.0%;[Red]-0.0%;"—"' })
+  // LOS ENCABEZADOS DE TABLA Y LA NOTA DE VIGENCIA VAN COMO TEXTO. La moneda de arriba pinta toda la
+  // grilla; sobre estas cuatro filas —"Hasta", "Personas", "Banco"…, y "CCT 76/75, Zona A"— eso deja
+  // texto en una celda de moneda, que con un número del hero más arriba en la misma columna el
+  // detector ya no reconoce como encabezado. Se les devuelve el formato de texto al final, después
+  // de la moneda. Sólo el numberFormat: la alineación a la derecha, que acompaña a los números de
+  // abajo, se conserva.
+  for (const f of [...g.encabezados, g.fVig]) {
+    reqs.push({
+      repeatCell: {
+        range: rg(f - 1, f, 1, ANCHO),
+        cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' } } },
+        fields: 'userEnteredFormat.numberFormat',
+      },
+    })
+  }
   await google.spreadsheetBatchUpdate(ID, reqs)
 }
 
