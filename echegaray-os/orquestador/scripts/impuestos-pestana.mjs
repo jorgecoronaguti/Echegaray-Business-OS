@@ -19,6 +19,7 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
+import * as E from '../lib/estilo-pestana.mjs'
 import { posicionIvaCompleta } from '../lib/posicion-iva.mjs'
 import { clasificar, mes as mesDe, COLUMNAS } from '../lib/retenciones-sufridas.mjs'
 import { query } from '../lib/db.mjs'
@@ -48,6 +49,31 @@ const cmes = (m) => String.fromCharCode(65 + m)
 // presentación) y, al listar en vez de hardcodear, el mes nuevo aparece solo cuando se sube.
 // Carpeta: .../Impuestos y Financiero/2026/IIBB
 const CARPETA_IIBB = '1R0kTgCE35Q6AlLhjr0VB2ZAtusK1eO1W'
+
+// ═══ LA RÉPLICA DE LAS DDJJ DE IIBB ═══
+//
+// POR QUÉ EXISTE (27/07). El censo daba 34 números pegados en esta pestaña y la mitad eran los datos
+// de la DDJJ de Ingresos Brutos —base imponible, alícuota, retenciones, saldo a favor— que se leen
+// del PDF de Rentas y se PEGABAN como valor en el cuadro. Se veían bien y no se actualizaban solos:
+// exactamente lo que ya había pasado con el IVA, y se resolvió igual (_ARCA_RAW). Si el insumo no
+// está en el Sheet, se trae el INSUMO —una réplica que declara su corte y su fuente— y el cuadro de
+// IIBB se escribe entero con fórmulas que la referencian.
+export const IIBB_RAW = '_IIBB_RAW'
+/** Las columnas de la réplica. El orden es contrato: las fórmulas de la sección 2 lo referencian. */
+const IIBB_COLS = [
+  ['Período', 'texto'],
+  ['Base imponible', 'moneda'],
+  ['Alícuota', 'porcentaje'],
+  ['Impuesto determinado', 'moneda'],
+  ['Retenciones y percep.', 'moneda'],
+  ['Saldo a favor anterior', 'moneda'],
+  ['Fecha present.', 'texto'],
+  ['N° control', 'texto'],
+  ['Leído de', 'texto'],
+]
+/** Dónde vive cada columna de _IIBB_RAW, para no buscarla por posición a ojo. */
+const IIBB_COL = { periodo: 'A', base: 'B', alicuota: 'C', impuesto: 'D', retenciones: 'E', saldoAnt: 'F' }
+const IIBB_FILA0 = 4  // primera fila de datos (título, nota, encabezados, datos)
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
@@ -81,11 +107,16 @@ async function planesDePago() {
   const planes = new Map()
   for (const x of r.rows) {
     const c = String(x.concepto ?? '')
-    const nombre = /w303094/i.test(c) ? 'Plan F931 W303094 (financiación junio)'
-      : /dic\s*25/i.test(c) ? 'Deuda previsional F931 Diciembre 2025'
-        : /enero\s*26/i.test(c) ? 'Deuda previsional F931 Enero 2026'
-          : 'Otro plan'
-    const p = planes.get(nombre) ?? { nombre, cuotas: 0, total: 0, primera: null, ultima: null, monto_cuota: 0 }
+    // nombre = cómo se muestra; patron = el fragmento que la SUMIFS de la sección 5 usa para sumar las
+    // cuotas desde el Sheet (no se pega el importe, se referencia Compras); campo = EN QUÉ columna de
+    // Compras vive ese fragmento — verificado leyendo las 15 filas reales: el W303094 se identifica por
+    // "Concepto", y los dos planes de deuda previsional por "Detalles / Obra". Buscar en la columna
+    // equivocada daría cero, o sea una cuota que se paga y el cuadro declararía inexistente.
+    const [nombre, patron, campo] = /w303094/i.test(c) ? ['Plan F931 W303094 (financiación junio)', 'W303094', 'concepto']
+      : /dic\s*25/i.test(c) ? ['Deuda previsional F931 Diciembre 2025', '931 Dic 25', 'detalle']
+        : /enero\s*26/i.test(c) ? ['Deuda previsional F931 Enero 2026', '931 Enero 26', 'detalle']
+          : ['Otro plan', null, null]
+    const p = planes.get(nombre) ?? { nombre, patron, campo, cuotas: 0, total: 0, primera: null, ultima: null, monto_cuota: 0 }
     p.cuotas++
     p.total += Number(x.total) || 0
     const f = x.fecha_pago ? new Date(x.fecha_pago).toISOString().slice(0, 10) : null
@@ -189,25 +220,29 @@ function grilla(iva, planes, iibb, C) {
   cabecera()
   const porMesIIBB = new Map(iibb.map((d) => [Number(String(d.periodo ?? '').slice(5, 7)), d]))
   const mesesIIBB = M12.filter((m) => porMesIIBB.has(m))
-  const al = alicuotaDeclarada(iibb)
   const fBase = filas.length + 1
   const fAli = fBase + 1
   const fImp = fBase + 2
   const fRetI = fBase + 3
   // (fBase + 4 es la fila "a pagar" de IIBB: nadie la referencia)
   const fSaldoI = fBase + 5
-  const prevI = (m) => (m === mesesIIBB[0]
-    ? Math.round(porMesIIBB.get(m)?.saldo_favor_anterior ?? 0) : `${cmes(m - 1)}${fSaldoI}`)
+  // CADA DATO DE LA DDJJ SE REFERENCIA DESDE _IIBB_RAW, NO SE PEGA. Antes base, alícuota, retenciones
+  // y saldo a favor se escribían como valor —34 números pegados que el censo marcaba— y no se
+  // actualizaban solos. Ahora salen del PDF de Rentas replicado en _IIBB_RAW por su período (rango
+  // cerrado, INDEX+MATCH), igual que el IVA sale de _ARCA_RAW.
+  const rangoIIBB = (col) => `${IIBB_RAW}!$${col}$${IIBB_FILA0}:$${col}$40`
+  const refIIBB = (m, col) => `IFERROR(INDEX(${rangoIIBB(col)};MATCH("${porMesIIBB.get(m).periodo}";${rangoIIBB(IIBB_COL.periodo)};0));0)`
+  const prevI = (m) => (m === mesesIIBB[0] ? refIIBB(m, IIBB_COL.saldoAnt) : `${cmes(m - 1)}${fSaldoI}`)
 
-  mensual('Base imponible declarada', (m) => Math.round(porMesIIBB.get(m).base_total),
-    'Leída del PDF de la DDJJ de Rentas (carpeta de Drive): aparece sola cuando se sube el mes nuevo.', { meses: mesesIIBB })
+  mensual('Base imponible declarada', (m) => `=${refIIBB(m, IIBB_COL.base)}`,
+    'DDJJ de Rentas · réplica _IIBB_RAW. Leída del PDF: aparece sola cuando se sube el mes nuevo a la carpeta de Drive.', { meses: mesesIIBB })
   // LA ALÍCUOTA POR MES, NO UNA CONSTANTE ENTERRADA. Si Rentas cambia la alícuota de la actividad a
-  // mitad de año, se corrige el mes que corresponde y todo lo de abajo se recalcula solo.
-  mensual('Alícuota de la actividad', () => (al.alicuota ?? ''),
-    'Declarada para construcción. Es un parámetro: se edita acá y el impuesto se recalcula.', { meses: mesesIIBB, totaliza: false })
+  // mitad de año, la nueva DDJJ la trae y _IIBB_RAW la refleja: todo lo de abajo se recalcula solo.
+  mensual('Alícuota de la actividad', (m) => `=${refIIBB(m, IIBB_COL.alicuota)}`,
+    'DDJJ de Rentas · réplica _IIBB_RAW. Es la que la empresa declara (base ponderada), no la de la ley.', { meses: mesesIIBB, totaliza: false })
   mensual('Impuesto determinado', (m) => `=${cmes(m)}${fBase}*${cmes(m)}${fAli}`, 'Base × alícuota.', { meses: mesesIIBB })
-  mensual('Retenciones sufridas', (m) => Math.round(porMesIIBB.get(m).retenciones),
-    'De la misma DDJJ. Ya vienen computadas ahí: no se vuelven a sumar en la sección 3.', { meses: mesesIIBB })
+  mensual('Retenciones sufridas', (m) => `=${refIIBB(m, IIBB_COL.retenciones)}`,
+    'DDJJ de Rentas · réplica _IIBB_RAW. Ya vienen computadas ahí: no se vuelven a sumar en la sección 3.', { meses: mesesIIBB })
   mensual(rotuloTotal('IIBB a pagar en el mes'), (m) => `=MAX(0;${cmes(m)}${fImp}-${cmes(m)}${fRetI}-${prevI(m)})`,
     'Impuesto menos retenciones menos el saldo a favor que venía.', { meses: mesesIIBB })
   mensual('Saldo a favor al cierre del mes', (m) => `=MAX(0;${prevI(m)}+${cmes(m)}${fRetI}-${cmes(m)}${fImp})`,
@@ -277,13 +312,24 @@ function grilla(iva, planes, iibb, C) {
   push([seccion(5, 'Planes de pago F931 — ¿qué cuota vence cada mes?')])
   cabecera()
   const q0 = filas.length + 1
+  // CADA CUOTA SE SUMA DESDE COMPRAS, NO SE PEGA. Antes cada importe mensual del plan se escribía como
+  // valor (catorce números pegados que el censo marcaba). Ahora se referencian las filas reales de
+  // Compras por su concepto y su fecha prevista de pago — el mismo patrón que "Anticipo de Ganancias"
+  // de la sección 4, y por la misma razón: estas filas no tienen "Fecha de caja" cargada.
+  // EN QUÉ columna de Compras vive el identificador de cada plan lo decidió planesDePago tras leer las
+  // 15 filas reales: W303094 por "Concepto", los dos de deuda previsional por "Detalles / Obra".
+  const colPlan = (campo) => (campo === 'concepto' ? C.concepto : C.detalle)
+  const cuotaPlan = (p) => (m) => `=IFERROR(SUMIFS(${rango(C.total)};${rango(colPlan(p.campo))};"*${p.patron}*";${rango(C.fechaPrev)};">="&DATE(${AÑO};${m};1);${rango(C.fechaPrev)};"<="&EOMONTH(DATE(${AÑO};${m};1);0));0)`
   for (const p of planes) {
     const sinFechas = !p.porMes.some((x) => x)
-    // Sin fechas cargadas, la fila queda sin un solo importe en los doce meses y se lee como un
-    // error. El rótulo dice por qué está vacía, ahí donde el ojo la busca.
-    mensual(sinFechas ? `${p.nombre}  ⚠ sin fechas de vencimiento cargadas` : p.nombre, (m) => (p.porMes[m] ? p.porMes[m] : VACIO),
-      `${p.cuotas} cuota(s) de ${p.monto_cuota.toLocaleString('es-AR')} · total ${Math.round(p.total).toLocaleString('es-AR')} · Compras, rubro "Deuda previsional (planes de pago)"`
-      + (sinFechas ? ' · ⚠ SIN FECHAS DE VENCIMIENTO cargadas: por eso la fila está vacía y su plata no aparece en ningún mes.' : ''))
+    const meses = M12.filter((m) => p.porMes[m])
+    // Sin fechas cargadas (o sin patrón reconocido), la fila queda sin un solo importe en los doce
+    // meses y se lee como un error. El rótulo dice por qué está vacía, ahí donde el ojo la busca.
+    mensual(sinFechas || !p.patron ? `${p.nombre}  ⚠ sin fechas de vencimiento cargadas` : p.nombre,
+      cuotaPlan(p),
+      `${p.cuotas} cuota(s) de ${p.monto_cuota.toLocaleString('es-AR')} · total ${Math.round(p.total).toLocaleString('es-AR')} · Compras, concepto "${p.patron ?? p.nombre}", por su fecha prevista de pago`
+      + (sinFechas ? ' · ⚠ SIN FECHAS DE VENCIMIENTO cargadas: por eso la fila está vacía y su plata no aparece en ningún mes.' : ''),
+      { meses })
   }
   const q1 = filas.length
   const fPlanTot = mensual(rotuloTotal('Cuotas del año'), (m) => `=SUM(${cmes(m)}${q0}:${cmes(m)}${q1})`,
@@ -314,8 +360,8 @@ function grilla(iva, planes, iibb, C) {
     'Todo lo que se va por deuda con instrumento. Es la fila que mira el cash flow.')
   const fDeudaPrend = push(['Deuda pendiente del prendario', `=SUMIF(${rango(C.rubro)};"Financiero";${rango(C.total)})`,
     ...Array(11).fill(VACIO), VACIO, 'Compras, rubro "Financiero". Es un saldo, no una serie: por eso va fuera de la grilla mensual.'])
-  const fDeudaPlanes = push(['Deuda pendiente de los planes', Math.round(planes.reduce((s, p) => s + p.total, 0)),
-    ...Array(11).fill(VACIO), VACIO, `Suma de los ${planes.reduce((s, p) => s + p.cuotas, 0)} cuotas cargadas de los ${planes.length} planes.`])
+  const fDeudaPlanes = push(['Deuda pendiente de los planes', `=$N$${fPlanTot}`,
+    ...Array(11).fill(VACIO), VACIO, `Total de las ${planes.reduce((s, p) => s + p.cuotas, 0)} cuotas de los ${planes.length} planes cargadas en Compras (todas caen en ${AÑO}): es el total del año de arriba.`])
   push()
 
   // ── 6 · LO QUE FALTA ───────────────────────────────────────────────────────────────────────────
@@ -370,13 +416,86 @@ async function leerIIBB(google) {
     try {
       const pdf = await google.readPdfText(f.id, { maxChars: 8000 })
       const d = parsearDDJJ(pdf?.text ?? '')
-      out.push({ ...d, periodo: d.periodo ?? periodo })
+      // La alícuota de ESTE mes, ponderada por su base — no el promedio de todo el año. Es lo que
+      // deja que _IIBB_RAW guarde la alícuota mes a mes y que Rentas la cambie sin romper el cuadro.
+      const alic = alicuotaDeclarada([d]).alicuota
+      out.push({ ...d, periodo: d.periodo ?? periodo, alicuota: alic, fuente: f.name })
     } catch (e) {
       // Un PDF que no se puede leer NO se rellena con ceros: se omite y se avisa.
       console.error(`  ⚠ no pude leer la DDJJ de ${periodo}: ${e.message}`)
     }
   }
   return out
+}
+
+/**
+ * Escribe la réplica _IIBB_RAW: las DDJJ de Ingresos Brutos leídas del PDF, adentro del Sheet, con su
+ * corte y su fuente declarados. Es una COPIA de lo que dice el PDF de Rentas al momento del corte —no
+ * "el dato"—, por eso la fila 1 dice cuándo se sacó y de qué carpeta. Mismo patrón que _ARCA_RAW.
+ */
+async function escribirIIBBRaw(google, iibb) {
+  const corte = new Date().toISOString().slice(0, 16).replace('T', ' ')
+  const datos = [...iibb]
+    .filter((d) => d.periodo)
+    .sort((a, b) => String(a.periodo).localeCompare(String(b.periodo)))
+    .map((d) => [
+      // Apóstrofo: sin él USER_ENTERED parsea "2026-06" como fecha y los MATCH de la sección 2 fallan
+      // en silencio (el mismo bug que _ARCA_RAW documenta en su columna Período).
+      `'${d.periodo}`,
+      Number(d.base_total) || 0,
+      Number(d.alicuota) || 0,
+      Number(d.impuesto_determinado) || 0,
+      Number(d.retenciones) || 0,
+      Number(d.saldo_favor_anterior) || 0,
+      // Apóstrofo: "13/01/2026" sin él lo parsea USER_ENTERED como fecha y queda el serial 46072, no
+      // la fecha que trae el PDF. Es el mismo cuidado que la columna Período.
+      d.fecha_presentacion ? `'${d.fecha_presentacion}` : '',
+      d.nro_control ? `'${d.nro_control}` : '',
+      String(d.fuente ?? ''),
+    ])
+
+  let meta = await google.getSheetMeta(ID)
+  let hoja = meta.find((h) => h.title === IIBB_RAW)
+  const filasNecesarias = Math.max(datos.length + IIBB_FILA0 + 20, 40)
+  if (!hoja) {
+    await google.spreadsheetBatchUpdate(ID, [{
+      addSheet: { properties: { title: IIBB_RAW, gridProperties: { rowCount: filasNecesarias, columnCount: IIBB_COLS.length + 1, frozenRowCount: 3 } } },
+    }])
+    meta = await google.getSheetMeta(ID)
+    hoja = meta.find((h) => h.title === IIBB_RAW)
+    console.log(`  pestaña ${IIBB_RAW} creada`)
+  } else if ((hoja.rows ?? 0) < filasNecesarias) {
+    await google.spreadsheetBatchUpdate(ID, [{
+      updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { rowCount: filasNecesarias } }, fields: 'gridProperties.rowCount' },
+    }])
+  }
+
+  const gridRaw = [
+    [`${IIBB_RAW} — réplica de las DDJJ de Ingresos Brutos de la DGR San Juan · corte ${corte}`],
+    [`${datos.length} DDJJ. NO se carga a mano: el agente la reescribe en cada corrida leyendo los PDF originales de Rentas (carpeta de Drive). Existe para que el cuadro de IIBB de "Impuestos y Financieros" sea una fórmula sobre datos que están en el archivo, y no un número calculado afuera y pegado. La alícuota es la que la empresa declara (base ponderada), no la de la ley.`],
+    IIBB_COLS.map(([n]) => n),
+    ...datos,
+  ]
+  // Espejo de una fuente externa (Rentas): copia byte a byte, sin candado ni Regla 0 —no hay nada del
+  // dueño que proteger y "respetar" congelaría un campo si la DDJJ cambiara.
+  await escribirPreservando(google, ID, IIBB_RAW, gridRaw, { respetar: false, espejo: true, anchoHoja: Math.max(IIBB_COLS.length, hoja.cols ?? IIBB_COLS.length) })
+
+  const rg = (r0, r1, c0, c1) => ({ sheetId: hoja.sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
+  const reqs = [
+    E.reset(hoja.sheetId, filasNecesarias, IIBB_COLS.length + 1),
+    { repeatCell: { range: rg(0, 1, 0, IIBB_COLS.length), cell: { userEnteredFormat: E.titulo() }, fields: 'userEnteredFormat' } },
+    { repeatCell: { range: rg(1, 2, 0, IIBB_COLS.length), cell: { userEnteredFormat: E.nota() }, fields: 'userEnteredFormat' } },
+    { repeatCell: { range: rg(2, 3, 0, IIBB_COLS.length), cell: { userEnteredFormat: E.encabezado() }, fields: 'userEnteredFormat' } },
+    { updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { frozenRowCount: 3 } }, fields: 'gridProperties.frozenRowCount' } },
+    { updateDimensionProperties: { range: { sheetId: hoja.sheetId, dimension: 'ROWS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: E.ALTO.titulo }, fields: 'pixelSize' } },
+  ]
+  IIBB_COLS.forEach(([, unidad], j) => {
+    reqs.push({ repeatCell: { range: rg(IIBB_FILA0 - 1, filasNecesarias, j, j + 1), cell: { userEnteredFormat: E.celda(unidad) }, fields: 'userEnteredFormat(numberFormat,textFormat,horizontalAlignment)' } })
+    const ancho = unidad === 'moneda' ? E.ANCHO.numero : unidad === 'porcentaje' ? E.ANCHO.fecha : j === 0 ? E.ANCHO.fecha : E.ANCHO.texto
+    reqs.push({ updateDimensionProperties: { range: { sheetId: hoja.sheetId, dimension: 'COLUMNS', startIndex: j, endIndex: j + 1 }, properties: { pixelSize: ancho }, fields: 'pixelSize' } })
+  })
+  for (let i = 0; i < reqs.length; i += 300) await google.spreadsheetBatchUpdate(ID, reqs.slice(i, i + 300))
+  console.log(`  ${IIBB_RAW}: ${datos.length} DDJJ escritas`)
 }
 
 
@@ -441,6 +560,10 @@ async function main() {
     for (const p of planes) console.log(`  ${p.nombre.padEnd(42)} ${p.cuotas} cuotas x ${p.monto_cuota.toLocaleString('es-AR')} = ${Math.round(p.total).toLocaleString('es-AR')}`)
     return
   }
+
+  // PRIMERO la réplica _IIBB_RAW: las fórmulas de la sección 2 la referencian, así que tiene que
+  // existir con sus datos ANTES de escribir el cuadro que la lee.
+  await escribirIIBBRaw(google, iibb)
 
   const hoja = (await google.getSheetMeta(ID)).find((s) => s.title === PESTAÑA)
   // NO se borra nada escrito por una persona: se lee, se fusiona y se escribe. Ver lib/preservar-anotaciones.mjs.

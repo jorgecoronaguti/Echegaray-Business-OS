@@ -45,6 +45,7 @@ export const CON_ORIGEN = {
   'Impuestos y Financieros': 'réplica de los comprobantes de ARCA: el importe es de AFIP, no se calcula acá',
   Proveedores: 'el cruce de ARCA contra Compras: la normalización de números escritos de seis formas distintas no se puede hacer en una fórmula de Sheets sin dar un número DISTINTO al real, y uno parecido pero equivocado es peor que uno declarado',
   _ARCA_RAW: 'los 459 comprobantes del libro de IVA, tal como los devuelve ARCA. La pestaña declara su fecha de corte en la fila 1',
+  _IIBB_RAW: 'las DDJJ de Ingresos Brutos de la DGR San Juan leídas del PDF original de Rentas (carpeta de Drive), con su fecha de corte declarada en la fila 1. Base, alícuota, retenciones y saldo a favor son el hecho primario que la sección 2 de Impuestos referencia por fórmula',
   _F931_RAW: 'las DDJJ de cargas sociales leídas del PDF del data room, concepto por concepto y por código',
   _BANCO_RAW: 'los movimientos del extracto del Santander, con su fecha de corte declarada. La columna "Naturaleza" la deduce el OS y va aparte, sin tocar el concepto original',
   'Cargas Sociales': 'réplica de los F931 y de los planes de pago presentados',
@@ -91,6 +92,7 @@ export const CLASE = {
   // de corte: el libro de IVA de ARCA, las DDJJ de cargas sociales leídas del PDF y el extracto del
   // Santander. Sus números son el hecho primario traído de afuera, no un cálculo del archivo.
   _ARCA_RAW: 'replica',
+  _IIBB_RAW: 'replica',
   _F931_RAW: 'replica',
   _BANCO_RAW: 'replica',
   'Cargas Sociales': 'replica',

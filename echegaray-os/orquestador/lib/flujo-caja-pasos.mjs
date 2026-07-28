@@ -38,7 +38,10 @@ export const PASOS = [
   // solo" daba a Proveedores por huérfana aunque este script la rehaga en cada corrida.
   ['proveedores-materiales-pestana.mjs', 'Proveedores (deuda, cuenta corriente, control y ARCA) + Materiales', ['Proveedores', 'Materiales']],
   ['estructura-pestana.mjs', 'pestaña Estructura con su proyección', ['Estructura']],
-  ['impuestos-pestana.mjs', 'Impuestos y Financieros — IVA real de ARCA', ['Impuestos y Financieros']],
+  // Escribe DOS pestañas: primero la réplica _IIBB_RAW (las DDJJ de Ingresos Brutos leídas del PDF de
+  // Rentas, el insumo) y después el cuadro que la referencia. Declarar la réplica evita que el censo
+  // de dueños la dé por huérfana aunque este mismo script la rehace en cada corrida.
+  ['impuestos-pestana.mjs', 'Impuestos y Financieros — IVA real de ARCA + IIBB de las DDJJ (réplica _IIBB_RAW)', ['_IIBB_RAW', 'Impuestos y Financieros']],
   // ═══ CARGAS SOCIALES: UN SOLO DUEÑO (23/07) ═══
   //
   // Antes eran TRES scripts escribiendo la misma pestaña —f931-sheet el bloque 1, cargas-planes los
