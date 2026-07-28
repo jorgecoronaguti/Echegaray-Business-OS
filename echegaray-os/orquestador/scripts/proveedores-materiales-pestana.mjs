@@ -207,6 +207,20 @@ export function notasAncladas(bloque = [], L = {}) {
   return { porProveedor, porComprobante }
 }
 
+/**
+ * LIMPIA EL FOOTPRINT DE UNA FILA ESTRUCTURAL — la que el generador es dueño de punta a punta
+ * (los TOTALES y el encabezado/conteos de ARCA). En esas filas una celda vacía es SUYA y va vacía:
+ * se marca cada '' con el centinela VACIO para que la FUSIÓN la BORRE de verdad, en vez de dejar ''
+ * —que la fusión preserva— y así revivir el fantasma de una versión más ancha (seriales de fecha
+ * pintados como moneda "$46.162", rótulos viejos "Fecha correcta"/"Tipo"/"Factura A" en las columnas
+ * D–I). Sólo toca los '': un valor —o una NOTA legítima del generador, como la conciliación en la
+ * col I de los cruces ARCA— es no-vacío y queda intacto. NO se usa en filas de detalle ni en el
+ * bloque de deuda: ahí puede haber notas del dueño, preservadas por otra vía (celdas()/VACIO +
+ * notasAncladas). El resto del footprint —más allá del ancho de cada fila— ya lo limpia el relleno
+ * con VACIO al partir la pestaña (cuadroP).
+ */
+export const estructural = (arr = []) => arr.map((c) => (c === '' ? VACIO : c))
+
 export function layoutDeuda(headers) {
   const H = (headers || []).map((h) => String(h ?? '').trim())
   const base = ['Proveedor / factura', 'Próximo pago', 'Comprobante', 'Importe', 'Obra', 'Tipo de pago', 'Categoría']
@@ -443,7 +457,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
     push([n.proveedor, n.comprobante, n.fecha, arcaPorComprobante(`"${n.cuit ?? ''}"`, `$B${f}`, '-1'), n.que, n.anula, n.reemplaza, '', ''])
   }
   const nc1 = filas.length
-  push(['TOTAL ACREDITADO', '', '', `=SUM($D${nc0}:$D${nc1})`, '', '', '', '', ''])
+  push(estructural(['TOTAL ACREDITADO', '', '', `=SUM($D${nc0}:$D${nc1})`, '', '', '', '', '']))
   push([])
   let cabAnu = 0, anu0 = 0, anu1 = 0
   if (anuladasCargadas.length) {
@@ -470,7 +484,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
       r.cuit ? arcaPorComprobante(`$B${f}`, `$C${f}`, '1') : r.importe, '', '', '', ''])
   }
   const afip1 = filas.length
-  push(['TOTAL SIN CARGAR', '', '', '', `=SUM($E${afip0}:$E${afip1})`, '', '', '', ''])
+  push(estructural(['TOTAL SIN CARGAR', '', '', '', `=SUM($E${afip0}:$E${afip1})`, '', '', '', '']))
   push([])
 
   // ── 7 · CONTROL Y AUDITORÍA DE CARGA ────────────────────────────────────────────────────────────
@@ -526,14 +540,14 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // Mensual los mira por RANGO CON NOMBRE en vez de tenerlos pegados. Ver lib/rangos-nombrados.mjs.
   const b8 = push(['8 · LO QUE ARCA REGISTRÓ — la plomería, no es para leer'])
   push(['Cualquier pestaña que necesite estas cifras las referencia por nombre (ARCA_COMPRAS_TOTAL, ARCA_FALTAN_MONTO…). Si se copiaran, el día que ARCA traiga un comprobante nuevo habría dos verdades en el archivo y nadie sabría cuál mirar.'])
-  const cabArca = push(['Concepto', 'Cantidad', 'Monto', '', '', '', '', '', ''])
+  const cabArca = push(estructural(['Concepto', 'Cantidad', 'Monto', '', '', '', '', '', '']))
   // LOS QUE SALEN DEL LIBRO VAN COMO FÓRMULA sobre _ARCA_RAW: se carga un comprobante en ARCA, el
   // agente refresca la réplica y estos números se mueven solos.
   const cuentaArca = (libro, signo) => `=SUMPRODUCT((${R}!$B$4:$B="${libro}")*(${R}!$F$4:$F=${signo}))`
-  const fArcaN = push(['Comprobantes de compra (neto de notas de crédito)',
-    cuentaArca('Compras', 1), totalLibro('Compras'), '', '', '', '', '', ''])
-  const fArcaNotas = push(['  · notas de crédito (restan)',
-    cuentaArca('Compras', -1), `=SUMPRODUCT((${R}!$B$4:$B="Compras")*(${R}!$F$4:$F=-1)*${IMPORTE})`, '', '', '', '', '', ''])
+  const fArcaN = push(estructural(['Comprobantes de compra (neto de notas de crédito)',
+    cuentaArca('Compras', 1), totalLibro('Compras'), '', '', '', '', '', '']))
+  const fArcaNotas = push(estructural(['  · notas de crédito (restan)',
+    cuentaArca('Compras', -1), `=SUMPRODUCT((${R}!$B$4:$B="Compras")*(${R}!$F$4:$F=-1)*${IMPORTE})`, '', '', '', '', '', '']))
   // ═══ ESTOS DOS NO PUEDEN SER UNA FÓRMULA, Y ES IMPORTANTE DECIRLO ═══
   //
   // Salen del algoritmo de conciliación del OS (lib/cobertura-arca.mjs): cruza cada comprobante de
@@ -544,15 +558,17 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   //
   // Así que se pegan, y se declaran: son un resultado de conciliación, con su fecha de corte, igual
   // que el dato de origen de una réplica. Lo que NO se hace es disfrazarlos de fórmula.
-  const fArcaEn = push(['  · cargados en Compras, por N° de comprobante', cruce.porNumero.length, cruce.totales.porNumero, '', '', '', '', '',
-    `Conciliación del OS al ${new Date().toISOString().slice(0, 10)} — no es una fórmula: el cruce normaliza números escritos de seis formas distintas.`])
-  const fArcaSinNum = push(['  · cargados SIN su N° de comprobante', cruce.porImporte.length, cruce.totales.porImporte, '', '', '', '', '',
-    'Conciliación del OS: se encontraron por proveedor + importe porque el N° de comprobante no está cargado en Compras.'])
+  // La col I lleva una NOTA de conciliación LEGÍTIMA (no una fórmula, no basura): estructural() sólo
+  // convierte los '' en VACIO, así que esa nota —al ser no-vacía— se conserva y sólo se limpian D–H.
+  const fArcaEn = push(estructural(['  · cargados en Compras, por N° de comprobante', cruce.porNumero.length, cruce.totales.porNumero, '', '', '', '', '',
+    `Conciliación del OS al ${new Date().toISOString().slice(0, 10)} — no es una fórmula: el cruce normaliza números escritos de seis formas distintas.`]))
+  const fArcaSinNum = push(estructural(['  · cargados SIN su N° de comprobante', cruce.porImporte.length, cruce.totales.porImporte, '', '', '', '', '',
+    'Conciliación del OS: se encontraron por proveedor + importe porque el N° de comprobante no está cargado en Compras.']))
   // Los que faltan sí tienen fórmula: son exactamente las filas de la tabla de arriba.
-  const fArcaFaltan = push(['  · ⚠ sin cargar en Compras',
-    `=COUNTIF($A$${afip0}:$A$${afip1};"<>")`, `=SUM($E$${afip0}:$E$${afip1})`, '', '', '', '', '', ''])
-  const fArcaVentas = push(['Comprobantes emitidos (ventas)',
-    cuentaArca('Ventas', 1), totalLibro('Ventas'), '', '', '', '', '', ''])
+  const fArcaFaltan = push(estructural(['  · ⚠ sin cargar en Compras',
+    `=COUNTIF($A$${afip0}:$A$${afip1};"<>")`, `=SUM($E$${afip0}:$E$${afip1})`, '', '', '', '', '', '']))
+  const fArcaVentas = push(estructural(['Comprobantes emitidos (ventas)',
+    cuentaArca('Ventas', 1), totalLibro('Ventas'), '', '', '', '', '', '']))
   push([])
 
   // ── 9 · LO QUE LA EMPRESA FACTURÓ ───────────────────────────────────────────────────────────────
@@ -570,7 +586,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
       r.enCobranzas ? '✓ está en Cobranzas' : '⚠ NO está en Cobranzas', '', '', ''])
   }
   const emi1 = filas.length
-  push(['TOTAL FACTURADO', '', '', '', `=SUM($E${emi0}:$E${emi1})`, '', '', '', ''])
+  push(estructural(['TOTAL FACTURADO', '', '', '', `=SUM($E${emi0}:$E${emi1})`, '', '', '', '']))
   push([])
 
   // ── 3 · FAMILIA × MES ───────────────────────────────────────────────────────────────────────────
@@ -623,22 +639,17 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
     ? c.replaceAll('$TOTFAM', String(totFam)).replaceAll('$TOTPROV', String(fTotProv)).replaceAll('$TOTDEUDA', String(fTotProv))
     : c)))
 
-  // ═══ EL GENERADOR ES DUEÑO DE SU GRILLA ═══
-  // Sus vacíos se LIMPIAN (VACIO), para que un valor de la corrida anterior no sobreviva — eso ya
-  // ensució el bloque de deuda con nombres de proveedor repetidos y un total al doble. La única
-  // excepción son las columnas que la persona agregó al bloque de deuda y el generador no llena
-  // (Comentarios): ahí el vacío significa "no es mía" y la fusión las conserva.
-  // Se RELLENA cada fila hasta el ancho de la grilla, no sólo se recorre lo que tiene. Una fila
-  // separadora es `push([])` —longitud CERO—: recorriéndola no se marca nada, después se rellenaba
-  // con '' (preservar) y sobrevivía el texto viejo. Así reaparecía el título de la sección 2
-  // duplicado en dos filas seguidas cuando el bloque de deuda crecía.
-  const anchoGrilla = Math.max(...filas.map((f) => f.length), 1)
-  for (const f of filas) {
-    for (let j = 0; j < anchoGrilla; j++) {
-      if (f[j] !== '' && f[j] !== undefined && f[j] !== null) continue
-      f[j] = VACIO
-    }
-  }
+  // ═══ EL GENERADOR ES DUEÑO DE SU GRILLA — CÓMO SE LIMPIA SU FOOTPRINT ═══
+  // El vacío del generador se LIMPIA (VACIO), para que un valor de una corrida más ancha no sobreviva.
+  // Se resuelve en TRES lugares, cada uno donde corresponde, sin barrer rangos a ciegas:
+  //   1. BLOQUE DE DEUDA: cada fila arranca all-VACIO (celdas()); las columnas que el dueño agregó y
+  //      el generador no llena (Comentarios) recuperan su contenido por notasAncladas.
+  //   2. FILAS ESTRUCTURALES (totales + encabezado/conteos de ARCA): estructural() marca sus ''
+  //      internos como VACIO en el punto de creación, conservando notas legítimas (col I de ARCA).
+  //   3. MÁS ALLÁ DEL ANCHO DE CADA FILA (incluidas las separadoras push([])): el relleno con VACIO
+  //      al partir la pestaña (cuadroP, más abajo en main) lo limpia. Antes rellenaba con '' y
+  //      sobrevivía texto viejo —p. ej. el título de la sección 2 duplicado.
+  // Un barrido global aquí borraría notas del dueño en las filas de detalle: por eso NO se hace.
 
   return { filas: resuelto, cabArca, marcas: { bPos, b1, b2, b3, b4, b5, b6, b7, b8, fin: filas.length }, bPos, pos0, pos1, posTotal, posProy, posPlazo, posFaltan, cuentas: [fCuenta1, fCuenta2], fCompFecha, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabDocFin, deudaL: L, deudaHeaders, deudaGrupos, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
 }
@@ -1487,4 +1498,8 @@ async function formatear(google, sheetId, g, ancho, filas) {
   await google.spreadsheetBatchUpdate(ID, req)
 }
 
-main().catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+// Sólo corre cuando se invoca directo (node …/proveedores-materiales-pestana.mjs). Importarlo desde
+// un test NO dispara main() —que toca Google y la base—: así el test puede probar los helpers puros.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+}
