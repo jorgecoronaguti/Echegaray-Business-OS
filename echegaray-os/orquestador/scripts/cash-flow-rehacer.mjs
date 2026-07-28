@@ -350,6 +350,11 @@ async function formatear(google, data) {
     // Congelar el encabezado y la columna de rubros: sin esto, en la semana 40 no se sabe qué se está mirando.
     req.push({ updateSheetProperties: { properties: { sheetId, gridProperties: { frozenRowCount: 3, frozenColumnCount: 1 } }, fields: 'gridProperties.frozenRowCount,gridProperties.frozenColumnCount' } })
 
+    // NUNCA DEJAR FILAS OCULTAS (decisión del dueño 28/07: "agrupadas pero no ocultas"). `collapsed:false`
+    // en los grupos no limpia el `hiddenByUser` que dejó un colapso anterior, así que se fuerza acá:
+    // todas las filas del cuadro quedan VISIBLES, y el +/- sólo sirve para plegar a mano si él quiere.
+    req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: g.filas.length + 5 }, properties: { hiddenByUser: false }, fields: 'hiddenByUser' } })
+
     // ── LOS +/- ────────────────────────────────────────────────────────────────────────────────
     // Primero se BORRAN los grupos que había. La API no reemplaza un grupo: lo apila. Sin esto, el
     // agente que rehace el cuadro cada 2 horas dejaría una escalera de +/- creciendo sola.
