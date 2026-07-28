@@ -15,6 +15,7 @@
 // (un gasto cae en un solo rubro) y quedar afuera es visible (el control de abajo lo resta).
 
 import { REGLAS, RUBROS } from './rubro-caja.mjs'
+import { TASAS, REAL as REAL_DESCUBIERTO } from './costo-descubierto.mjs'
 
 /** El sub-rubro de Estructura que NO es gasto del mes sino inversión. Lo escribe estructura-pestana. */
 export const SUB_BIENES_DE_USO = 'Equipos y rodados (inversión)'
@@ -323,7 +324,7 @@ export const FIN_COB = 400
 export const COL_VALOR_BANCO = `$BB$5:$BB$${FIN_COB}`
 export const MARCA_ENDOSADO = 'ENDOSADO'
 
-export function formulaCobranzas(tipo, desde, hasta, modo = 'cobrado') {
+export function formulaCobranzas(tipo, desde, hasta) {
   const C = 'Cobranzas'
   const F = FIN_COB
   const fecha = `IF(ISNUMBER(${C}!$Q$5:$Q$${F});${C}!$Q$5:$Q$${F};IF(ISNUMBER(${C}!$P$5:$P$${F});${C}!$P$5:$P$${F};0))`
@@ -342,16 +343,7 @@ export function formulaCobranzas(tipo, desde, hasta, modo = 'cobrado') {
   // por la cuenta corriente nunca. Sin este filtro el cuadro esperaba $20.000.000 de ingreso en
   // agosto que ya se habían entregado.
   const noEndosado = `(LEFT(${C}!${COL_VALOR_BANCO}&"";${MARCA_ENDOSADO.length})<>"${MARCA_ENDOSADO}")`
-  // EL ESTADO (columna O) MANDA EL CRITERIO — decisión del dueño (28/07). Cash flow es percibido:
-  // "Cobrado" es plata que YA entró (un HECHO) y va en el bloque de cobros reales; todo lo demás
-  // —Pendiente, Proyectado, Facturado, Vencido— es un cobro ESPERADO, todavía no percibido, y va en
-  // un bloque aparte que NO suma al flujo, para no mezclar caja con proyección. "Endosado" no entra
-  // por ninguno de los dos: esa plata se entregó a un tercero (ya lo excluye noEndosado).
-  const est = `LOWER(${C}!$O$5:$O$${F})`
-  const estado = modo === 'esperado'
-    ? `(${est}<>"cobrado")*(${est}<>"endosado")`
-    : `(${est}="cobrado")`
-  return `=SUMPRODUCT(${filtro}*${noEndosado}*${estado}*(${fecha}>=${desde})*(${fecha}<${hasta})*${monto})`
+  return `=SUMPRODUCT(${filtro}*${noEndosado}*(${fecha}>=${desde})*(${fecha}<${hasta})*${monto})`
 }
 
 // ── LA COBERTURA DEL LADO DEL INGRESO (Cobranzas) ─────────────────────────────────────────────────
@@ -500,23 +492,11 @@ export const CUADRO = [
     nota: 'Lo que genera y consume la operación: cobrar obras, pagar gente, materiales, estructura e impuestos. Si esta sección da negativo de forma sostenida, la operación se está financiando con deuda o con capital de trabajo.',
     grupos: [
       {
-        nombre: 'Cobros por ventas y servicios (ya cobrado)', signo: 1,
+        nombre: 'Cobros por ventas y servicios', signo: 1,
         lineas: [
-          { nombre: 'Cobranzas de obra civil', cobranzas: 'civil', modo: 'cobrado', detalle: 'Cobranzas' },
-          { nombre: 'Cobranzas de mantenimiento', cobranzas: 'mantenimiento', modo: 'cobrado', detalle: 'Cobranzas' },
-          { nombre: 'Otras cobranzas', cobranzas: 'otras', modo: 'cobrado', detalle: 'Cobranzas' },
-        ],
-      },
-      {
-        // MEMO, NO CAJA — signo 0: se muestra al lado del cobro real para poder planificar, pero NO
-        // suma al flujo neto (decisión del dueño 28/07: percibido y proyectado separados, sin
-        // mezclar). Son cobros ESPERADOS —Pendiente/Proyectado/Facturado/Vencido, nunca Endosado—
-        // ubicados en su fecha de cobro (o de venta si aún no tienen fecha de cobro).
-        nombre: 'Cobranzas esperadas — aún no cobradas (proyección, no suma al flujo)', signo: 0,
-        lineas: [
-          { nombre: 'Esperado · obra civil', cobranzas: 'civil', modo: 'esperado', detalle: 'Cobranzas' },
-          { nombre: 'Esperado · mantenimiento', cobranzas: 'mantenimiento', modo: 'esperado', detalle: 'Cobranzas' },
-          { nombre: 'Esperado · otras', cobranzas: 'otras', modo: 'esperado', detalle: 'Cobranzas' },
+          { nombre: 'Cobranzas de obra civil', cobranzas: 'civil', detalle: 'Cobranzas' },
+          { nombre: 'Cobranzas de mantenimiento', cobranzas: 'mantenimiento', detalle: 'Cobranzas' },
+          { nombre: 'Otras cobranzas', cobranzas: 'otras', detalle: 'Cobranzas' },
         ],
       },
       {
@@ -640,7 +620,7 @@ export function expresionReal(l, desde, hasta) {
   // normalizarlo de los dos lados ("0001-000036" vs "1-36") y eso en fórmula sería ilegible. La
   // llena el script con VALORES y el agente la reescribe cada 2 horas. Devolver null es la señal.
   if (l.cheques) return null
-  if (l.cobranzas) return formulaCobranzas(l.cobranzas, desde, hasta, l.modo).slice(1)
+  if (l.cobranzas) return formulaCobranzas(l.cobranzas, desde, hasta).slice(1)
   if (l.rubro === 'Nómina · Jornales de obra') return formulaJornales(desde, hasta).slice(1)
   const ventana = `${COL_FECHA};">="&${desde};${COL_FECHA};"<"&${hasta}`
   // Los bienes de uso salen por su SUB-rubro (columna AF), no por el rubro: son una parte de
@@ -684,6 +664,39 @@ export function formulaLineaMes(l, colMes, colTabla, filaCab, filasTabla = {}) {
     proy = `IF(${mesesConGasto}<${MIN_MESES};0;${ventana}*${factor})`
   }
   return `=IF(EOMONTH(${mes};0)<=EOMONTH(TODAY();0);${real};MAX(${real};${proy}))`
+}
+
+/**
+ * NÚCLEO PURO: el interés del descubierto de UNA SEMANA, para las columnas del Cash Flow Semanal.
+ *
+ * POR QUÉ EXISTE (item del dueño). El mensual ya calcula el interés del descubierto (formulaInteresMes,
+ * en costo-descubierto.mjs) pero el semanal lo dejaba VACÍO. El dueño pidió que también se calcule por
+ * semana. Esta función NO inventa un cálculo nuevo: es el MISMO modelo verificado del mensual —importa
+ * TASAS y el contrato REAL de costo-descubierto.mjs, no los redefine— con la ÚNICA diferencia de la
+ * VENTANA: siete días en vez de DAY(EOMONTH(...)), y el rango del interés ya cobrado acotado a la semana.
+ *
+ * SOBRE EL SALDO CON EL QUE ARRANCA LA SEMANA. El interés se proyecta sobre "Efectivo al inicio" de esa
+ * misma columna, que es el cierre de la semana anterior —ya resuelto cuando le toca el turno a esta—:
+ * no hay circularidad (el interés no referencia el cierre de su propia semana). Es un PISO, igual que el
+ * mensual: no cobra la deuda que se toma dentro de la misma semana, y lo que el banco YA cobró en la
+ * semana manda (MAX contra el real de _BANCO_RAW).
+ *
+ * @param {string} saldoInicial celda "Efectivo al inicio" de la columna de la semana (cierre de la anterior)
+ * @param {string} desde expresión de la fecha del lunes de la semana (ej. 'B$3')
+ * @param {string} hasta expresión del límite superior EXCLUYENTE (ej. 'B$3+7')
+ * @returns {string} fórmula es-AR
+ */
+export function formulaInteresSemana(saldoInicial, desde, hasta) {
+  const diaria = `${TASAS.tna}/${TASAS.base}`
+  const conImp = `*(1+${TASAS.iva}+${TASAS.percepcion})`
+  const DIAS = 7 // una semana; el mensual usa DAY(EOMONTH(mes;0)). Es la única diferencia con el modelo mensual.
+  const proyectado = `IF(N(${saldoInicial})>=0;0;-${saldoInicial}*${diaria}*${DIAS}${conImp})`
+  const R = REAL_DESCUBIERTO
+  const rango = (c) => `${R.hoja}!$${c}$4:$${c}`
+  // Lo que el banco YA cobró DENTRO de la semana [desde, hasta): ventana semi-abierta, igual que las
+  // demás columnas del semanal. En el mensual la ventana es del mes; acá, de la semana. Mismo dato.
+  const real = `SUMIFS(${rango(R.importe)};${rango(R.naturaleza)};"${R.marca}";${rango(R.fecha)};">="&${desde};${rango(R.fecha)};"<"&${hasta})`
+  return `=MAX(${proyectado};IFERROR(-${real};0))`
 }
 
 /**
@@ -789,4 +802,32 @@ export function hipervinculoDetalle(l, filasTabla = {}) {
   const etiqueta = `${SANGRIA_DETALLE}${l.nombre}`.replace(/"/g, '""')
   const formula = `=HYPERLINK("#gid=GID{${dest.pestaña}}&range=${dest.rango}";"${etiqueta}")`
   return { formula, destino: dest.pestaña, rango: dest.rango }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// --force NO DESTRUCTIVO — LA FUSIÓN QUE PRESERVA LO DEL DUEÑO SIGUE SIEMPRE ACTIVA
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// POR QUÉ EXISTE. Para aplicar un cambio de ESTRUCTURA (mover filas, agregar/quitar líneas), el
+// generador corre con --force. La tentación era que --force escribiera la grilla CRUDA, salteando la
+// fusión celda a celda —y con eso pisaba ediciones del dueño—. El problema real que motivaba el atajo
+// NO era la fusión en sí (que ancla al TEXTO del rótulo, no a la posición), sino un caso puntual: un
+// BORRADO registrado (reemplazo vacío) —posiblemente falso o viejo— que, al cambiar el tamaño de la
+// grilla, terminaba borrando un header que el generador SÍ quiere escribir.
+//
+// LA SOLUCIÓN, SIN APAGAR LA FUSIÓN. Bajo --force la fusión sigue, pero sólo se aplican las ediciones
+// del dueño con CONTENIDO REAL (un renombre: "Jornales" → "Jornales LA ESTRELLA"). Los borrados
+// (reemplazo vacío) NO se aplican en la corrida forzada: así un cambio de estructura no puede perder un
+// header del generador por un borrado que apunta a texto vacío. El borrado real del dueño no se olvida
+// —se sigue persistiendo el registro completo— y se re-detecta en la próxima corrida NORMAL, de a uno.
+
+/**
+ * NÚCLEO PURO: se queda sólo con las ediciones del dueño que tienen CONTENIDO REAL (renombres), y
+ * descarta los borrados (reemplazo vacío o sólo espacios). Se usa en la corrida --force para que un
+ * cambio de tamaño de la grilla no borre un header del generador vía un borrado falso/viejo.
+ * @param {Map<string,string>} ediciones texto mío → texto del dueño ('' = borrado)
+ * @returns {Map<string,string>} el subconjunto con reemplazo no vacío
+ */
+export function edicionesConContenidoReal(ediciones = new Map()) {
+  return new Map([...ediciones].filter(([, v]) => String(v ?? '').trim() !== ''))
 }
