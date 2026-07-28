@@ -359,9 +359,9 @@ async function formatear(google, data) {
     for (const gr of g.meta.grupos) {
       const range = { sheetId, dimension: 'ROWS', startIndex: gr.fila0 - 1, endIndex: gr.fila1 }
       req.push({ addDimensionGroup: { range } })
-      // Arranca CERRADO. El cuadro se abre para decidir con los subtotales; el detalle se despliega
-      // sólo cuando algo no cierra. Un estado de flujo con 17 renglones abiertos no se lee.
-      req.push({ updateDimensionGroup: { dimensionGroup: { range, depth: 1, collapsed: true }, fields: 'collapsed' } })
+      // Arranca ABIERTO (decisión del dueño 28/07: "no me ocultes filas, sólo agrupalas"). El +/-
+      // queda para que él pliegue lo que quiera, pero el detalle se VE por defecto — nada oculto.
+      req.push({ updateDimensionGroup: { dimensionGroup: { range, depth: 1, collapsed: false }, fields: 'collapsed' } })
     }
   }
   await google.spreadsheetBatchUpdate(ID, req)
