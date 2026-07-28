@@ -923,7 +923,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         try {
           const { guardarEscritura } = await import('./guarda-escritura.mjs')
           const g = await guardarEscritura(cliente, fileId, [{ range, values }])
-          if (!g.data.length) return { protegido: true, bloqueadas: g.bloqueadas }
+          if (!g.data.length) return { protegido: true, bloqueadas: g.bloqueadas, motivo: g.motivo }
           sellar = g.sellar
         } catch { /* sin base: se escribe (disponibilidad) */ }
       }
@@ -945,7 +945,8 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       if (!espejo && !yaGuardado) {
         try {
           const { guardarEscritura } = await import('./guarda-escritura.mjs')
-          const g = await guardarEscritura(cliente, fileId, [{ range, values }])
+          // append INSERTA filas (INSERT_ROWS): nunca pisa contenido → el cinturón vacío-sobre-lleno no aplica.
+          const g = await guardarEscritura(cliente, fileId, [{ range, values }], { chequearVacio: false })
           if (!g.data.length) return { protegido: true, bloqueadas: g.bloqueadas }
           sellar = g.sellar
         } catch { /* fail-open */ }
@@ -1017,7 +1018,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         try {
           const { guardarEscritura } = await import('./guarda-escritura.mjs')
           const g = await guardarEscritura(cliente, fileId, data)
-          if (!g.data.length) return { protegido: true, bloqueadas: g.bloqueadas }
+          if (!g.data.length) return { protegido: true, bloqueadas: g.bloqueadas, motivo: g.motivo }
           data = g.data
           sellar = g.sellar
         } catch { /* sin base: se escribe (la preservación celda a celda sigue para quien use el portón) */ }
@@ -1039,7 +1040,9 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       if (!espejo && !yaGuardado) {
         try {
           const { guardarEscritura } = await import('./guarda-escritura.mjs')
-          const g = await guardarEscritura(cliente, fileId, [{ range, values: [] }])
+          // clearValues es un BORRADO intencional (su autor lo protege con su propia firma): el cinturón
+          // vacío-sobre-lleno lo apagaría siempre, así que sólo aplica candado/firma (chequearVacio:false).
+          const g = await guardarEscritura(cliente, fileId, [{ range, values: [] }], { chequearVacio: false })
           if (!g.data.length) return { protegido: true, bloqueadas: g.bloqueadas }
         } catch { /* fail-open */ }
       }

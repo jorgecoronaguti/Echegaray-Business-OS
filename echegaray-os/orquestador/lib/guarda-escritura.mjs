@@ -23,6 +23,55 @@
 // si no se puede consultar la base o releer una pestaña, NO se pisa contenido — respetar la edición del
 // dueño vale más que la disponibilidad de la escritura. Ver evaluarBloqueadas.
 
+import { tiene } from './preservar-anotaciones.mjs'
+
+// ═══ CINTURÓN "VACÍO SOBRE LLENO" (28/07, TGUARD) — defensa en profundidad, INDEPENDIENTE de la base ═══
+//
+// POR QUÉ. La causa del super-bug histórico (un agente en worktree SIN DATABASE_URL) tenía dos mitades:
+// (1) la guarda de candado/firma fallaba abierto sin base —ya resuelto: hoy evaluarBloqueadas falla
+// CERRADO—, y (2) el generador, también sin base, producía una grilla VACÍA que terminaba BORRANDO la
+// pestaña. Esta segunda mitad no la cubre candado/firma: si la pestaña no está candada y su firma es la
+// del propio OS (la escribió el OS la vez anterior), una grilla vacía cruzaría el portón y la vaciaría.
+//
+// LA REGLA, DURA. Una escritura de VALORES cuya grilla no tiene ninguna celda con contenido NO puede
+// reemplazar un destino que HOY sí tiene contenido. Se relee el destino (sólo con el cliente de Sheets,
+// sin tocar Postgres): si tiene contenido, o si no se puede releer para confirmarlo, se ABORTA ese
+// rango (fail-closed). Sólo "vacío sobre vacío" —inofensivo— pasa. Una escritura con contenido nunca se
+// relee: cero costo y comportamiento idéntico para el camino feliz. Se aplica a batchUpdateValues y
+// updateSheetValues (los que PISAN); clearValues (borrado intencional, con su propia firma en el autor)
+// y appendSheetValues (inserta, no pisa) quedan fuera vía `chequearVacio:false`.
+
+/** ¿La grilla no tiene NINGUNA celda con contenido? (vacía, o todo blanco/null/centinela VACIO). Puro. */
+export function gridVacia(values) {
+  return !Array.isArray(values) || !values.some((fila) => Array.isArray(fila) && fila.some((c) => tiene(c)))
+}
+
+/**
+ * Filtra de `data` los rangos que dejarían un destino CON CONTENIDO reemplazado por una grilla VACÍA.
+ * Impura sólo del lado Sheets (relee el destino); NO consulta la base — funciona aun sin DATABASE_URL.
+ * Un rango con grilla no vacía pasa sin releer nada. Un rango con grilla vacía se permite únicamente si
+ * el destino ya está vacío; si tiene contenido o no se puede releer, se protege (fail-closed).
+ * @returns {Promise<{data:any[], protegidos:{range:string, motivo:string}[]}>}
+ */
+export async function protegerVacioSobreLleno(cliente, fileId, data = []) {
+  const permitido = []; const protegidos = []
+  for (const d of data) {
+    if (!gridVacia(d?.values)) { permitido.push(d); continue } // escritura con contenido: camino feliz, no se relee
+    let previo
+    try { previo = await cliente.readSheetValues(fileId, d.range) } catch { previo = undefined }
+    if (previo === undefined) {
+      protegidos.push({ range: d.range, motivo: 'grilla vacía y no pude releer el destino para confirmar que estaba vacío (fail-closed)' })
+      continue
+    }
+    if (!gridVacia(previo)) {
+      protegidos.push({ range: d.range, motivo: 'grilla vacía sobre un destino con contenido (probable grilla rota, p.ej. generador sin base)' })
+      continue
+    }
+    permitido.push(d) // vacío sobre vacío: inofensivo
+  }
+  return { data: permitido, protegidos }
+}
+
 /** Nombre de pestaña de un rango A1 ("Compras!A1:B2" → "Compras"; "'Cheques Emitidos'!A5" → "Cheques Emitidos"). */
 export function nombreTab(range) {
   const s = String(range ?? '')
@@ -142,9 +191,19 @@ async function reInyectarAprendidas(fileId, data) {
  * se puede escribir (y con las celdas aprendidas del dueño re-inyectadas) y una función `sellar()` para
  * llamar DESPUÉS de escribir. Un solo lugar: lo usan batchUpdateValues y updateSheetValues.
  *
- * @returns {Promise<{data:any[], bloqueadas:string[], sellar:() => Promise<void>}>}
+ * @returns {Promise<{data:any[], bloqueadas:string[], motivo?:string, sellar:() => Promise<void>}>}
  */
-export async function guardarEscritura(cliente, fileId, data) {
+export async function guardarEscritura(cliente, fileId, data, { chequearVacio = true } = {}) {
+  // CINTURÓN 1 — "vacío sobre lleno". Corre PRIMERO y sin base: aunque candado/firma no puedan
+  // consultarse, una grilla vacía nunca reemplaza contenido. clearValues/append lo apagan (chequearVacio:false).
+  if (chequearVacio) {
+    const v = await protegerVacioSobreLleno(cliente, fileId, data)
+    for (const p of v.protegidos) console.log(`  🛡 "${p.range}": no piso contenido con una grilla vacía — ${p.motivo}.`)
+    data = v.data
+    if (!data.length && v.protegidos.length) {
+      return { data: [], bloqueadas: v.protegidos.map((p) => p.range), motivo: v.protegidos[0].motivo, sellar: async () => {} }
+    }
+  }
   const tabs = tabsProtegibles(data)
   if (!tabs.length) return { data, bloqueadas: [], sellar: async () => {} }
   const bloqueadas = await evaluarBloqueadas(cliente, fileId, tabs)

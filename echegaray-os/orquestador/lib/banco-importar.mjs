@@ -87,7 +87,7 @@ const ES_RUIDO = /^(fecha\b|saldo (inicial|final|anterior|al\b)|[úu]ltimos movi
  *
  * @param {string} texto  el extracto tal cual, con sus saltos de línea
  * @param {{anio?:number}} opts
- * @returns {{movimientos:{fecha:string,concepto:string,importe:number,saldo:number|null}[], rechazos:{linea:number,texto:string,motivo:string}[], duplicados:{fecha:string,concepto:string,importe:number,saldo:number|null,motivo:string}[]}}
+ * @returns {{movimientos:{fecha:string,concepto:string,importe:number,saldo:number|null}[], rechazos:{linea:number,texto:string,motivo:string}[]}}
  */
 /**
  * El CSV que descarga el homebanking del Santander ("descargaUltimosMovimientos") NO es el formato
@@ -114,98 +114,33 @@ function encabezadoCsvBanco(linea) {
   return { fecha: 0, concepto: iConcepto, importe: iImporte, saldo: iSaldo >= 0 ? iSaldo : null }
 }
 
-/**
- * NÚCLEO PURO: descarta los duplicados FANTASMA que la clave natural no atrapa, usando la CADENA DE
- * SALDOS. Entra la lista de movimientos (en orden cronológico y ANTES del back-fill de saldos), sale
- * la lista conservada y la lista de descartados con su motivo.
- *
- * POR QUÉ EXISTE. El dedup por clave (`clave()` = fecha|concepto|importe|saldo) se le escapan dos
- * duplicados reales del extracto del Santander:
- *   · el concepto trae un identificador que VARÍA ("...Id debin cu" vs "...Id debin z0") → la clave
- *     difiere aunque sea el mismo movimiento;
- *   · la copia reimpresa a veces viene con SALDO NULL → la clave difiere.
- * La cadena de saldos no mira el concepto ni necesita que el saldo esté: es una identidad del extracto.
- *
- * LAS DOS SEÑALES DE FANTASMA, las dos inequívocas:
- *   1. SALDO QUIETO. saldo(n) = saldo(n−1) + importe(n). Un movimiento que dice mover plata (importe
- *      ≠ 0) pero deja el saldo DONDE ESTABA —saldo declarado == saldo anterior— no movió la cuenta:
- *      es el mismo evento reimpreso. (Ej.: 16/07, dos créditos de +$11.913.568,24 que terminan los
- *      dos en $7.874.504,8; el segundo no sumó nada a la cuenta.)
- *   2. COPIA SIN SALDO CON HERMANO QUE SÍ LO TIENE. Una fila sin saldo cuyo gemelo idéntico en
- *      fecha+importe SÍ trae saldo es la misma fila reimpresa antes de postear. (Ej.: 23/07, un
- *      "Deposito e-cheq $3.940.000" que aparece dos veces, una con saldo y otra en null.)
- *
- * CONSERVADOR A PROPÓSITO — sólo descarta lo inequívoco:
- *   · dos movimientos legítimos del MISMO importe el MISMO día con saldos DISTINTOS y consistentes con
- *     la cadena NO son duplicados: cada uno avanza el saldo, ninguno lo deja quieto;
- *   · un corte de cadena que NO es "saldo quieto" (un typo, un movimiento faltante, el arranque de otra
- *     ventana) NO se descarta acá: eso lo MARCA verificarCadena, que avisa sin borrar. Tirar un
- *     movimiento real en silencio sería peor que el duplicado.
- *
- * Corre ANTES del back-fill porque el back-fill completa los saldos null por arrastre y borraría la
- * señal 2 (la copia sin saldo pasaría a tener un saldo deducido que aparenta avanzar la cadena).
- *
- * @param {{fecha:string,concepto:string,importe:number,saldo:number|null}[]} movs orden cronológico
- * @param {{saldoInicial?:number|null, tolerancia?:number}} [opts]
- * @returns {{conservados:object[], descartados:{fecha:string,concepto:string,importe:number,saldo:number|null,motivo:string}[]}}
- */
-export function deduplicarPorCadena(movs = [], { saldoInicial = null, tolerancia = 0.005 } = {}) {
-  // Qué combinaciones fecha+importe tienen AL MENOS un movimiento con saldo declarado: contra eso se
-  // reconoce la copia sin saldo (señal 2). El importe se redondea igual que en clave() para comparar.
-  const claveFI = (m) => `${m.fecha}|${Number(m.importe).toFixed(2)}`
-  const conSaldoPorFI = new Set()
-  for (const m of movs) if (m.saldo != null) conSaldoPorFI.add(claveFI(m))
-
-  const conservados = []
-  const descartados = []
-  let corrido = saldoInicial == null ? null : Number(saldoInicial)
-
-  for (const m of movs) {
-    const imp = Number(m.importe)
-    // ── SEÑAL 2: copia sin saldo cuyo hermano idéntico en fecha+importe SÍ trae saldo → fantasma ──
-    if (m.saldo == null) {
-      if (conSaldoPorFI.has(claveFI(m))) {
-        descartados.push({ ...m, motivo: 'duplicado: un movimiento idéntico en fecha e importe ya trae saldo; esta copia vino sin saldo (reimpresión antes de postear)' })
-        continue
-      }
-      // Movimiento del día legítimo (todavía sin saldo): se arrastra el corrido, como verificarCadena.
-      if (corrido != null) corrido = Number((corrido + imp).toFixed(2))
-      conservados.push(m)
-      continue
-    }
-    const saldo = Number(m.saldo)
-    // ── SEÑAL 1: el saldo declarado es igual al anterior pese a un importe ≠ 0 → no movió la cuenta ──
-    if (corrido != null && Math.abs(imp) > tolerancia && Math.abs(saldo - corrido) <= tolerancia) {
-      descartados.push({ ...m, motivo: `duplicado: el saldo declarado (${saldo}) es igual al anterior pese a un importe de ${imp}; el movimiento no movió la cuenta (evento reimpreso)` })
-      continue
-    }
-    // Todo lo demás avanza el saldo y se conserva. Si avanzó a un valor INESPERADO (no == corrido pero
-    // tampoco == corrido+importe) es un typo/faltante: no se descarta acá, lo audita verificarCadena.
-    conservados.push(m)
-    corrido = saldo
-  }
-  return { conservados, descartados }
+/** El primer campo de la línea. Sirve para ver si la línea ABRE una fila (arranca con una fecha). */
+function empiezaConFecha(linea) {
+  const primero = linea.includes(';') ? linea.split(';')[0].trim() : (campos(linea)[0] ?? '')
+  return fecha(primero) !== null
 }
 
+/** Un token que es un importe DE VERDAD y no un número escondido en el concepto (CUIT, nº de tarjeta,
+ *  Id debin): tiene dígitos, no tiene letras, y parsea a la argentina. */
+const esNumeroPuro = (t) => t !== '' && !/[a-záéíóúñ]/i.test(t) && importe(t) !== null
+
 /**
- * NÚCLEO PURO: completa el saldo corrido de los movimientos del día que vienen sin saldo declarado.
+ * ¿La línea CIERRA una fila? Una fila del extracto termina en el par final `importe;saldo` —o sólo en
+ * el importe, en los "Movimientos del Día" que aún no traen saldo—. Su último campo no vacío es un
+ * número puro.
  *
- * BACK-FILL DEL SALDO INTRADÍA. Las filas de "Movimientos del Día" (los cheques debitados HOY) vienen
- * sin saldo, pero su saldo corrido se DEDUCE de la cadena: saldo anterior + importe. No es inventar un
- * número —es el mismo que el banco imprime en "Saldo al DD/MM"—. Sin esto, CAJA toma el último saldo
- * POSTEADO (el de ayer) e ignora los débitos de hoy: el saldo queda inflado. Sólo se completa cuando
- * hay un saldo previo con qué encadenar; si arranca en null, se respeta el null. MUTA la lista (mismo
- * comportamiento que antes vivía inline en parsearExtracto).
+ * POR QUÉ EXISTE (28/07). El dueño pega el listado de la banca online y, cuando el concepto es largo
+ * ("Transferencia recibida - credin - Id debin <id> cuit <cuit>"), la pantalla lo ENVUELVE y el pegado
+ * mete un salto de línea en medio del concepto. La primera mitad arranca con fecha pero su último
+ * campo es TEXTO (parte del concepto), así que no cierra: la fila sigue en la línea de abajo. Sin
+ * re-unirlas, esos movimientos —entre ellos $30.000.000 y $35.000.000 del cobro de Quattropani— se
+ * descartaban y banco_movimientos cortaba en el 24/07.
  */
-export function completarSaldoIntradia(movs = []) {
-  let corrido = null
-  for (const m of movs) {
-    if (m.saldo != null) { corrido = Number(m.saldo); continue }
-    if (corrido == null) continue
-    corrido = Number((corrido + Number(m.importe)).toFixed(2))
-    m.saldo = corrido
-  }
-  return movs
+function cierraFila(linea) {
+  const f = linea.includes(';') ? linea.split(';').map((s) => s.trim()) : campos(linea)
+  let k = f.length - 1
+  while (k >= 0 && f[k] === '') k-- // el saldo puede venir vacío (movimiento del día): no invalida
+  return k >= 1 && esNumeroPuro(f[k])
 }
 
 export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {}) {
@@ -214,33 +149,55 @@ export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {})
   const lineas = String(texto ?? '').split('\n')
   let cols = null // mapeo posicional, si apareció un encabezado del CSV del banco
 
-  lineas.forEach((linea, i) => {
-    const cruda = linea.trim()
-    if (!cruda) return
+  for (let i = 0; i < lineas.length; i++) {
+    let cruda = lineas[i].trim()
+    if (!cruda) continue
     // Un encabezado del CSV del banco fija el mapeo de columnas y no es un movimiento en sí.
     const cab = encabezadoCsvBanco(cruda)
-    if (cab) { cols = cab; return }
-    if (ES_RUIDO.test(cruda)) return
+    if (cab) { cols = cab; continue }
+    if (ES_RUIDO.test(cruda)) continue
+
+    // ── RE-UNIR UNA FILA ENVUELTA POR UN SALTO DE LÍNEA ──
+    // Si la línea ABRE una fila (arranca con fecha) pero NO cierra (su último campo es texto del
+    // concepto, no un importe), el pegado partió el concepto en dos. Se pegan las líneas siguientes
+    // —que no abren su propia fila ni son ruido/encabezado— hasta que cierre. Se unen con un espacio:
+    // el corte cae dentro de un campo (el concepto), y ese campo se normaliza igual más abajo. Las
+    // filas normales de una sola línea ya cierran, así que este bloque ni las toca.
+    const numLinea = i + 1
+    if (empiezaConFecha(cruda) && !cierraFila(cruda)) {
+      let j = i + 1
+      while (j < lineas.length) {
+        const sig = lineas[j].trim()
+        if (encabezadoCsvBanco(sig) || ES_RUIDO.test(sig) || empiezaConFecha(sig)) break
+        if (sig) cruda = `${cruda} ${sig}`
+        j++
+        if (cierraFila(cruda)) break
+      }
+      // Consumimos sólo las líneas de continuación (el while corta ANTES de una fecha/ruido/encabezado,
+      // así que nunca nos comemos la fila siguiente). Si aun así no cerró, la fila unida se parsea igual
+      // y caerá en `rechazos` una sola vez, visible, en lugar de desaparecer en silencio.
+      i = j - 1
+    }
 
     // ── Vía CSV del banco: columnas fijas, se parte SÓLO por `;` (los conceptos tienen espacios) ──
     if (cols) {
       const p = cruda.split(';').map((s) => s.trim())
       const f = fecha(p[cols.fecha], anio)
-      if (!f) { rechazos.push({ linea: i + 1, texto: cruda.slice(0, 90), motivo: `"${p[cols.fecha]}" no es una fecha` }); return }
+      if (!f) { rechazos.push({ linea: numLinea, texto: cruda.slice(0, 90), motivo: `"${p[cols.fecha]}" no es una fecha` }); continue }
       const imp = importe(p[cols.importe])
-      if (imp === null) { rechazos.push({ linea: i + 1, texto: cruda.slice(0, 90), motivo: 'no encontré el importe' }); return }
+      if (imp === null) { rechazos.push({ linea: numLinea, texto: cruda.slice(0, 90), motivo: 'no encontré el importe' }); continue }
       const concepto = String(p[cols.concepto] ?? '').replace(/\s+/g, ' ').trim()
-      if (!concepto) { rechazos.push({ linea: i + 1, texto: cruda.slice(0, 90), motivo: 'la fila no tiene concepto' }); return }
+      if (!concepto) { rechazos.push({ linea: numLinea, texto: cruda.slice(0, 90), motivo: 'la fila no tiene concepto' }); continue }
       const saldo = cols.saldo != null ? importe(p[cols.saldo]) : null
       movimientos.push({ fecha: f, concepto, importe: imp, saldo })
-      return
+      continue
     }
 
     const c = campos(cruda)
     // Una línea de movimiento tiene, como mínimo, fecha + concepto + importe.
-    if (c.length < 3) { rechazos.push({ linea: i + 1, texto: cruda.slice(0, 90), motivo: 'no tiene fecha, concepto e importe' }); return }
+    if (c.length < 3) { rechazos.push({ linea: numLinea, texto: cruda.slice(0, 90), motivo: 'no tiene fecha, concepto e importe' }); continue }
     const f = fecha(c[0], anio)
-    if (!f) { rechazos.push({ linea: i + 1, texto: cruda.slice(0, 90), motivo: `"${c[0]}" no es una fecha` }); return }
+    if (!f) { rechazos.push({ linea: numLinea, texto: cruda.slice(0, 90), motivo: `"${c[0]}" no es una fecha` }); continue }
 
     // El IMPORTE es el último campo numérico, o el anteúltimo si además viene el saldo. Se busca de
     // atrás para adelante porque el concepto puede tener números adentro (el CUIT, el nº de tarjeta)
@@ -252,10 +209,10 @@ export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {})
       if (n === null || /[a-záéíóúñ]/i.test(c[j])) break
       numericos.unshift({ j, n })
     }
-    if (!numericos.length) { rechazos.push({ linea: i + 1, texto: cruda.slice(0, 90), motivo: 'no encontré el importe' }); return }
+    if (!numericos.length) { rechazos.push({ linea: numLinea, texto: cruda.slice(0, 90), motivo: 'no encontré el importe' }); continue }
 
     const concepto = c.slice(1, numericos[0].j).join(' ').replace(/\s+/g, ' ').trim()
-    if (!concepto) { rechazos.push({ linea: i + 1, texto: cruda.slice(0, 90), motivo: 'la fila no tiene concepto' }); return }
+    if (!concepto) { rechazos.push({ linea: numLinea, texto: cruda.slice(0, 90), motivo: 'la fila no tiene concepto' }); continue }
 
     // Con dos números, el primero es el importe y el segundo el saldo corrido. Con uno solo —típico
     // de los "Movimientos del Día"— hay importe y todavía no hay saldo: se guarda en null, no en 0.
@@ -263,7 +220,7 @@ export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {})
     const imp = numericos[0].n
     const saldo = numericos.length >= 2 ? numericos[numericos.length - 1].n : null
     movimientos.push({ fecha: f, concepto, importe: imp, saldo })
-  })
+  }
 
   // EL HOMEBANKING DESCARGA DEL MÁS NUEVO AL MÁS VIEJO. La cadena de saldos —saldo(n)=saldo(n−1)+
   // importe(n)— sólo cierra en orden CRONOLÓGICO. Si el extracto viene en fechas descendentes, se
@@ -274,19 +231,20 @@ export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {})
     if (conFecha.length > 1 && conFecha[0].fecha > conFecha[conFecha.length - 1].fecha) movimientos.reverse()
   }
 
-  // DEDUP DE FANTASMAS POR CADENA DE SALDOS, ANTES DEL BACK-FILL. Un extracto reimprime a veces el
-  // mismo movimiento dos veces —con un id distinto en el concepto, o con el saldo en null— y la clave
-  // natural no lo caza. La cadena de saldos sí: un movimiento que no mueve la cuenta, o una copia sin
-  // saldo cuyo gemelo sí lo trae, es un fantasma. Corre ANTES del back-fill porque el back-fill
-  // completaría el saldo null de la copia y borraría la señal. Ver deduplicarPorCadena.
-  const { conservados, descartados } = deduplicarPorCadena(movimientos)
-  movimientos.length = 0
-  movimientos.push(...conservados)
+  // BACK-FILL DEL SALDO INTRADÍA. Las filas de "Movimientos del Día" (los cheques debitados HOY) vienen
+  // sin saldo declarado, pero su saldo corrido se DEDUCE de la cadena: saldo anterior + importe. No es
+  // inventar un número —es el mismo que el banco imprime en "Saldo al DD/MM"—. Sin esto, CAJA toma el
+  // último saldo POSTEADO (el de ayer) e ignora los débitos de hoy: el saldo queda inflado. Sólo se
+  // completa cuando hay un saldo previo con qué encadenar; si arranca en null, se respeta el null.
+  let corrido = null
+  for (const m of movimientos) {
+    if (m.saldo != null) { corrido = Number(m.saldo); continue }
+    if (corrido == null) continue
+    corrido = Number((corrido + Number(m.importe)).toFixed(2))
+    m.saldo = corrido
+  }
 
-  // BACK-FILL DEL SALDO INTRADÍA (ver completarSaldoIntradia): recién ahora, sobre lo ya deduplicado.
-  completarSaldoIntradia(movimientos)
-
-  return { movimientos, rechazos, duplicados: descartados }
+  return { movimientos, rechazos }
 }
 
 /** La clave natural de un movimiento. El SALDO entra a propósito: dos transferencias iguales el
@@ -349,4 +307,49 @@ export function verificarCadena(movs = [], saldoInicial = null, tolerancia = 0.0
     anterior = Number(m.saldo)
   }
   return { ok: cortes.length === 0, cortes }
+}
+
+/**
+ * DRY-RUN: parsea un texto de extracto y devuelve las filas + el veredicto de la cadena de saldos.
+ * NO toca red ni base — es sólo el núcleo puro encadenado, para mirar un extracto antes de importarlo.
+ *
+ * @param {string} texto
+ * @param {{anio?:number, saldoInicial?:number|null}} opts
+ */
+export function dryRun(texto, { anio, saldoInicial = null } = {}) {
+  const { movimientos, rechazos } = parsearExtracto(texto, anio != null ? { anio } : {})
+  const cadena = verificarCadena(movimientos, saldoInicial)
+  return { movimientos, rechazos, cadena }
+}
+
+// ── CLI DE DRY-RUN (sin red ni base) ────────────────────────────────────────────────────────────
+// Para que main mire el extracto 25-28/07 real ANTES de importar nada:
+//   node orquestador/lib/banco-importar.mjs --dry-run < extracto.txt
+//   node orquestador/lib/banco-importar.mjs --dry-run extracto.txt [saldoInicial]
+// Imprime cada fila parseada, los rechazos, y si la cadena de saldos cierra. No escribe nada.
+if (import.meta.url === `file://${process.argv[1]}` && process.argv.includes('--dry-run')) {
+  const { readFileSync } = await import('node:fs')
+  const args = process.argv.slice(2).filter((a) => a !== '--dry-run')
+  const posiblePath = args.find((a) => !/^-?[\d.,]+$/.test(a))
+  const saldoInicial = (() => {
+    const s = args.find((a) => /^-?[\d.,]+$/.test(a))
+    return s == null ? null : importe(s)
+  })()
+  const texto = posiblePath ? readFileSync(posiblePath, 'utf8') : readFileSync(0, 'utf8')
+  const { movimientos, rechazos, cadena } = dryRun(texto, { saldoInicial })
+
+  const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
+  console.log(`\nMOVIMIENTOS PARSEADOS: ${movimientos.length}`)
+  for (const m of movimientos) {
+    console.log(`  ${m.fecha}  imp ${fmt(m.importe).padStart(18)}  saldo ${fmt(m.saldo).padStart(18)}  ${m.concepto.slice(0, 70)}`)
+  }
+  if (rechazos.length) {
+    console.log(`\nRECHAZOS: ${rechazos.length}`)
+    for (const r of rechazos) console.log(`  línea ${r.linea}: ${r.motivo} — ${r.texto}`)
+  }
+  console.log(`\nCADENA DE SALDOS: ${cadena.ok ? 'CIERRA ✓' : `NO CIERRA — ${cadena.cortes.length} corte(s)`}`)
+  for (const c of cadena.cortes) {
+    console.log(`  ${c.fecha} ${c.concepto.slice(0, 40)}: esperado ${fmt(c.esperado)} vs declarado ${fmt(c.declarado)} (dif ${fmt(c.diferencia)})`)
+  }
+  console.log('')
 }
