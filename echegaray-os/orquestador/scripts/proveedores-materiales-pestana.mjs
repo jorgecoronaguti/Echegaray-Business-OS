@@ -245,6 +245,44 @@ export function layoutDeuda(headers) {
   }
 }
 
+/**
+ * PREDICADO VIVO DE DEUDA — HACE QUE LA FILA-CABECERA DE UN PROVEEDOR DESAPAREZCA SOLA CUANDO SE LO PAGA.
+ *
+ * EL BUG QUE ARREGLA (28/07). La fila-cabecera de cada proveedor se materializa en JS: su NOMBRE era un
+ * texto fijo y sólo el importe una fórmula. Al pasar el proveedor a estado "Pagado" en Compras, el
+ * importe caía a 0 —se veía "−"— pero el nombre seguía escrito, así que el proveedor ya pagado quedaba
+ * LISTADO igual, con un guión. El dueño lo marcó: "un proveedor sin deuda pendiente NO se lista".
+ *
+ * La cura es envolver cada celda de la cabecera en IF(hayDeuda; valor; "") con este predicado, de modo
+ * que la fila entera quede VACÍA en el mismo instante en que cambia el estado en Compras —sin esperar a
+ * que corra el agente cada 2 h—. `estado ≠ Pagado` ya lo garantiza condProv (filtra ESTADO_DEUDA =
+ * "Pendiente"); esto agrega `saldo > 0` sobre el saldo NETO (Total − pagos), que es exactamente el mismo
+ * número que suma el importe de la fila. Así el cuadro lista SÓLO proveedores con saldo pendiente > 0.
+ *
+ * @param {string} netaExpr saldo neto del proveedor (sin el `=`), tal como lo arma neta()
+ * @returns {string} un predicado booleano para usar dentro de un IF de Sheets
+ */
+export const predicadoConDeuda = (netaExpr) => `ROUND(${netaExpr};0)>0`
+
+/**
+ * ENVUELVE EL VALOR DE UNA CELDA-CABECERA para que quede VACÍA cuando el proveedor no tiene deuda
+ * pendiente. Con `texto:true` el valor es el NOMBRE del proveedor y entra como literal de cadena
+ * (comillas escapadas); si no, es una subexpresión de fórmula (próximo pago, conteo de facturas,
+ * importe), a la que se le quita el `=` inicial para anidarla dentro del IF.
+ *
+ * Es-AR: usa `;` como separador de argumentos y `""` como valor vacío — ninguna coma nueva, para que
+ * el localizador de fórmulas no la confunda con un decimal.
+ *
+ * @param {string} pred predicado de predicadoConDeuda()
+ * @param {string} valor el nombre (texto) o la subexpresión de fórmula
+ * @param {{texto?:boolean}} [opts]
+ * @returns {string} una fórmula `=IF(pred; valor; "")`
+ */
+export const soloConDeuda = (pred, valor, { texto = false } = {}) =>
+  texto
+    ? `=IF(${pred};"${String(valor).replace(/"/g, '""')}";"")`
+    : `=IF(${pred};${String(valor).replace(/^=/, '')};"")`
+
 function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emitidas, notasCredito, anuladasCargadas, cruce, deudaCols, deudaPrevio }) {
   const filas = []
   const push = (c) => { filas.push(c); return filas.length }
@@ -366,11 +404,16 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
     const conFecha = `${condProv};${COL_FECHA};">0"`
     // Fila-cabecera del proveedor: total NETO (Total − Monto Pagado) y próximo pago por fórmula viva.
     // Es la que queda a la vista cuando el grupo está colapsado; las facturas se pliegan debajo.
+    // CADA CELDA SE GATEA CON `predicadoConDeuda`: si el saldo neto del proveedor no es > 0 (lo pagaron,
+    // o sus notas de crédito lo cubren), la fila-cabecera queda VACÍA sola. Sin esto el proveedor pagado
+    // seguía listado con un "−". La lista muestra SÓLO proveedores con saldo pendiente > 0, en vivo.
+    const netaProv = neta(condProv)
+    const pred = predicadoConDeuda(netaProv)
     const hCel = celdas()
-    hCel[L.prov] = gp.nombre
-    if (L.fecha >= 0) hCel[L.fecha] = `=IF(COUNTIFS(${conFecha})=0;"sin fecha";MINIFS(${COL_FECHA};${conFecha}))`
-    if (L.comp >= 0) hCel[L.comp] = `=COUNTIFS(${COL_PROV};"${key}";${COL_ESTADO};"${ESTADO_DEUDA}";${COL_TOTAL};"<>")&" fac."`
-    if (L.imp >= 0) hCel[L.imp] = `=${neta(condProv)}`
+    hCel[L.prov] = soloConDeuda(pred, gp.nombre, { texto: true })
+    if (L.fecha >= 0) hCel[L.fecha] = soloConDeuda(pred, `IF(COUNTIFS(${conFecha})=0;"sin fecha";MINIFS(${COL_FECHA};${conFecha}))`)
+    if (L.comp >= 0) hCel[L.comp] = soloConDeuda(pred, `COUNTIFS(${COL_PROV};"${key}";${COL_ESTADO};"${ESTADO_DEUDA}";${COL_TOTAL};"<>")&" fac."`)
+    if (L.imp >= 0) hCel[L.imp] = soloConDeuda(pred, netaProv)
     ponerNotas(hCel, NOTAS.porProveedor, gp.nombre)
     const hRow = push(hCel)
     deudaHeaders.push(hRow)
@@ -914,9 +957,10 @@ async function main() {
   })
   const resto = { cantidad: Math.max(0, comerciales.length - TOP) }
 
-  // La lista de deuda ya NO se calcula acá: es una fórmula QUERY viva en la propia pestaña. Ver el
-  // bloque 2. Calcularla en JS obligaba a mapear filas del array a filas del Sheet, que es de donde
-  // salió el bug de las referencias corridas.
+  // La lista de deuda se AGRUPA por proveedor en JS (para el +/- y para re-anclar las notas del dueño a
+  // SU proveedor), pero NINGÚN importe ni estado se materializa: cada celda de la fila es una fórmula
+  // VIVA sobre Compras, y la cabecera se gatea con predicadoConDeuda para que el proveedor que se paga
+  // desaparezca solo. Los grupos salen de deudaAgrupada, calculado más abajo.
 
   // Los nombres de obra son EXACTOS a como están en Compras (col J): "MESSINA", no "MESSINAS" —el
   // dueño lo marcó, esa columna salía vacía—. SUMIFS es insensible a mayúsculas, así que "Taller"
@@ -927,7 +971,13 @@ async function main() {
   let deudaCols = null
   let deudaPrevio = []
   try {
-    const prevP = await google.readSheetValues(ID, `'Proveedores'!A1:AZ80`)
+    // SIN TECHO DE FILAS (28/07). Antes se leía `A1:AZ80`: con 80 filas el bloque de deuda —que puede
+    // pasar de 100 filas cuando hay muchos proveedores— quedaba CORTADO, y las notas del dueño en los
+    // proveedores de abajo no las capturaba `notasAncladas`. Como cada fila de deuda se genera con el
+    // centinela VACIO en las columnas del dueño (que la fusión BORRA salvo que la nota se re-ancle), una
+    // nota que no se leyó se PERDÍA en cada corrida — el "no respeta mis ediciones" que marcó el dueño.
+    // Se lee el bloque entero (todas las filas) para que ninguna nota quede fuera de la re-ancla.
+    const prevP = await google.readSheetValues(ID, `'Proveedores'!A1:BZ`)
     const iCab = (prevP || []).findIndex((f) => /proveedor\s*\/\s*factura/i.test(String(f?.[0] ?? '')))
     if (iCab >= 0) {
       deudaCols = prevP[iCab]
