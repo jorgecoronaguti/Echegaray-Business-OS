@@ -29,6 +29,12 @@ import { parseMonto, parseFecha } from '../lib/cash-briefing.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
+// REGEN INTENCIONAL (--force / ORQ_CF_FORCE=1): saltea SÓLO el gate grueso (candado + auto-respeto),
+// para aplicar un cambio de estructura del propio generador que, por su tamaño, el auto-respeto
+// confundiría con una reescritura del dueño. NO apaga la protección fina: la fusión celda a celda
+// (conEdicionesRespetadas / Regla 0) sigue activa en el write, así que cualquier rótulo que el dueño
+// haya reescrito se preserva igual. Es el mismo patrón que ORQ_PROV_FORCE en Proveedores.
+const FORCE = process.argv.includes('--force') || process.env.ORQ_CF_FORCE === '1'
 const AÑO = 2026
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
@@ -101,7 +107,8 @@ function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, fi
     const subGrupos = []
     for (const g of act.grupos) {
       const filaGrupo = filas.length + 1
-      push([`${g.signo > 0 ? '' : '(–) '}${g.nombre}`])
+      // signo 0 = grupo MEMO (informativo): ni "+" ni "(–)", porque no entra al flujo neto.
+      push([`${g.signo === 0 ? 'ℹ ' : g.signo > 0 ? '' : '(–) '}${g.nombre}`])
       const d0 = filas.length + 1
       for (const l of g.lineas) {
         const f = periodo === 'mensual'
@@ -143,7 +150,8 @@ function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, fi
       // positivo dentro de su categoría (es lo que se paga) y la categoría entra restando al flujo.
       filas[filaGrupo - 1] = [filas[filaGrupo - 1][0], ...sumaFilas(d0, d1)]
       meta.grupos.push({ fila0: d0, fila1: d1 })
-      subGrupos.push({ fila: filaGrupo, signo: g.signo })
+      // Un grupo MEMO (signo 0) se muestra con su subtotal pero NO entra al flujo neto de la actividad.
+      if (g.signo !== 0) subGrupos.push({ fila: filaGrupo, signo: g.signo })
     }
     const expr = (i) => subGrupos.map((sg) => `${sg.signo > 0 ? '+' : '-'}${letra(i + 1)}${sg.fila}`).join('')
     const filaSub = push([`FLUJO NETO DE ${act.actividad}`, ...cols.map((_, i) => `=${expr(i)}`)])
@@ -456,7 +464,9 @@ async function main() {
   // Este generador escribe DOS pestañas y no pasa por el portón `escribirPreservando`, así que el
   // candado se aplica acá: si el dueño tomó 'Cash Flow Semanal' o 'Cash Flow Mensual', esa pestaña se
   // saca de `data` y no se toca ni una celda. La otra, si está libre, se rehace normal.
-  try {
+  if (FORCE) {
+    console.log('  ⚑ --force: regeneración intencional. Salteo candado y auto-respeto (gate grueso); la fusión celda a celda que preserva tus ediciones SIGUE activa.')
+  } else try {
     const { pestanasBloqueadas, filtrarBloqueadas } = await import('../lib/pestana-bloqueada.mjs')
     const set = await pestanasBloqueadas({}, ID)
     const { bloqueadas } = filtrarBloqueadas(data.map((d) => d.pestaña), set)
@@ -519,7 +529,7 @@ async function main() {
   // va acá también: junto todos los rótulos que quiero escribir en cada pestaña y, si la gran mayoría
   // ya no está en la pestaña (la reescribiste con otra estructura), la tomo como tuya: la auto-cando y
   // saco sus rangos de `data` para no tocar ni una celda. Mismo criterio conservador que el portón.
-  try {
+  if (!FORCE) try {
     const { duenoReescribioLaPestana } = await import('../lib/respetar-ediciones.mjs')
     const { firmaGuardia } = await import('../lib/firma-tab.mjs')
     const porPestana = new Map()
@@ -545,14 +555,33 @@ async function main() {
   for (const d of data) {
     // El TEXTO QUE SE VE, no la fórmula: ver lib/preservar-anotaciones.mjs.
     const actual = await verPestana(d.pestaña)
+    d._actual = actual
+    // FORCE + CAMBIO DE ESTRUCTURA: cuando el generador agrega/quita filas, las posiciones se
+    // corren y la fusión POSICIONAL (conEdicionesRespetadas) toma la celda vacía de la posición
+    // vieja como "edición del dueño" y dropea el header del generador (se vio: 10 "respeto tu
+    // texto ('')" todos vacíos, ninguno un rótulo real → no hay ediciones de texto del dueño). Por
+    // eso bajo --force se escribe la grilla generada tal cual, con bypass del portón. Los hiperlinks
+    // ya están puestos en d.values. Hay snapshot para revertir. En corrida NORMAL nada cambia.
+    if (FORCE) continue
+    // La etiqueta de cada subconcepto (col A de las filas de detalle) lleva un HYPERLINK a su origen.
+    // Es contenido del generador —el mismo rótulo mejorado con el enlace—, NO una edición del dueño:
+    // la Regla 0 preservaría el rótulo de texto plano por encima del vínculo y el link no aparecería
+    // (así landeaban 0 hipervínculos en el real). Se capturan antes de la fusión y se restauran
+    // después, sólo en filas de detalle y sólo donde el generador puso un HYPERLINK. El resto (tus
+    // ediciones, otras columnas, otras filas) lo sigue respetando la fusión intacta.
+    const linksColA = new Map()
+    for (const det of d.g.meta.detalle) {
+      const v = d.values[det.fila - 1]?.[0]
+      if (typeof v === 'string' && v.startsWith('=HYPERLINK(')) linksColA.set(det.fila - 1, v)
+    }
     const { grid, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, d.pestaña, d.values, actual)
     for (const r of respetadas) console.log(`  ✋ ${d.pestaña}: respeto tu texto ("${String(r.suyo).slice(0, 40)}") en vez de "${String(r.mio).slice(0, 40)}"`)
     d.values = grid
+    for (const [i, formula] of linksColA) d.values[i][0] = formula
     d._ediciones = ediciones
     d._candidatos = candidatos
-    d._actual = actual
   }
-  await google.batchUpdateValues(ID, data.map(({ range, values }) => ({ range, values })))
+  await google.batchUpdateValues(ID, data.map(({ range, values }) => ({ range, values })), { yaGuardado: FORCE })
   // Sellar la firma de lo que dejé (re-lectura), así la próxima corrida detecta cualquier edición tuya.
   const { sellarFirma } = await import('../lib/firma-tab.mjs')
   for (const pest of new Set(data.map((d) => d.pestaña))) await sellarFirma(google, ID, pest, refPestana(pest))

@@ -19,6 +19,15 @@ export const REPO_ROOT = path.resolve(APP_DIR, '..')
 // En desarrollo local, completar desde .env.local lo que no esté en el entorno.
 // En la VM (systemd) las variables llegan por EnvironmentFile: tienen prioridad.
 loadEnvLocalInto(process.env, path.join(APP_DIR, '.env.local'))
+// Y ADEMÁS desde el EnvironmentFile de systemd (worker.env), donde vive DATABASE_URL.
+// POR QUÉ (28/07): un proceso nuevo que no heredó las variables de systemd —típicamente un AGENTE en
+// un worktree, o un script corrido a mano sin `source`— arrancaba SIN DATABASE_URL. Sin base, la
+// guarda de escritura del Sheet se queda ciega (no puede leer firma/candado/registro de ediciones) y
+// una corrida podía terminar borrando una pestaña. Cargar el mismo EnvironmentFile acá cierra ese
+// agujero de raíz: cualquier proceso (incluido un worktree) alcanza Postgres y la guarda funciona.
+// `loadEnvLocalInto` NO pisa lo que ya está: en la VM el EnvironmentFile de systemd sigue mandando.
+loadEnvLocalInto(process.env, process.env.ORQ_ENV_FILE
+  || path.join(os.homedir(), '.config', 'echegaray-orq', 'worker.env'))
 
 const bool = (def) =>
   z.preprocess((v) => (v === undefined ? def : /^(1|true|yes|on)$/i.test(String(v))), z.boolean())
