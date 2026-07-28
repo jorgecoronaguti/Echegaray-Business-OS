@@ -74,6 +74,31 @@ test('los cobros posteriores miran SÓLO lo que el extracto no cubre', () => {
   assert.doesNotMatch(f, />=/)
 })
 
+// ═══ ANTI-DOBLE-CONTEO: LA VENTANA ES ESTRICTAMENTE POSTERIOR AL CORTE, EN LOS TRES LADOS ═══
+//
+// El riesgo que hay que descartar: un movimiento cuya plata YA figura en el extracto (fecha ≤ corte)
+// no debe volver a sumarse/restarse en la línea "posterior". La garantía es de CONSTRUCCIÓN: corte =
+// MAX(fecha del extracto), y las tres patas filtran con ">" ESTRICTO contra ese mismo corte. Un
+// movimiento con fecha ≤ corte cae DENTRO del extracto (ya está en el saldo) y queda FUERA de ">";
+// uno con fecha > corte es, por definición, algo que el extracto todavía no cubre. No hay solape.
+// Cuando se carga un extracto más nuevo, corte avanza y lo que estaba en la ventana COLAPSA dentro
+// del saldo automáticamente — la misma exclusividad que la caja física tiene contra el arqueo.
+test('las tres patas de la línea posterior filtran con ">" estricto contra el MISMO corte (sin solape con el extracto)', () => {
+  const corte = '$F$19'
+  const cobros = formulaCobrosPosteriores(corte)
+  const cheques = formulaChequesDebitadosPosteriores(corte)
+  const compras = formulaComprasPagadasPosteriores(corte)
+  // Cobros y cheques: ">"&corte (SUMIFS). Compras: fechaCoercionada>corte (SUMPRODUCT).
+  assert.match(cobros, /">"&\$F\$19/)
+  assert.match(cheques, /">"&\$F\$19/)
+  assert.match(compras, />\$F\$19/)
+  // Ninguna usa ">=" : con el igual, un movimiento del propio día del corte (que el extracto ya trae)
+  // se contaría DOS veces.
+  for (const f of [cobros, cheques, compras]) assert.doesNotMatch(f, />=/)
+  // El corte es el mismo literal en las tres: si una mirara otra celda, la ventana se desalinearía.
+  for (const f of [cobros, cheques, compras]) assert.ok(f.includes('$F$19'))
+})
+
 test('sólo suma lo COBRADO: un proyectado no es plata que esté', () => {
   const f = formulaCobrosPosteriores('$F$19')
   assert.match(f, /"Cobrado"/)

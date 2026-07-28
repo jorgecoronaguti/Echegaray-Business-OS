@@ -6,7 +6,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { importe, fecha, campos, parsearExtracto, novedades, verificarCadena, clave } from './banco-importar.mjs'
+import { importe, fecha, campos, parsearExtracto, novedades, verificarCadena, clave, deduplicarPorCadena, completarSaldoIntradia } from './banco-importar.mjs'
 
 test('el importe se lee a la argentina: punto de miles, coma decimal', () => {
   assert.equal(importe('1.234,56'), 1234.56)
@@ -225,6 +225,141 @@ test('CSV del banco: una fila de "Movimientos del Día" sin saldo entra con sald
   const { movimientos } = parsearExtracto(txt)
   assert.equal(movimientos[0].importe, -500000)
   assert.equal(movimientos[0].saldo, null)
+})
+
+// ── DEDUP DE FANTASMAS POR CADENA DE SALDOS (deduplicarPorCadena) ────────────────────────────────
+// El dedup por clave (fecha|concepto|importe|saldo) se le escapan duplicados reales del Santander: el
+// concepto trae un id que varía, y a veces la copia viene con saldo null. La cadena de saldos los caza.
+
+test('SEÑAL 1 · dos créditos que terminan en el MISMO saldo: el segundo no movió la cuenta → fantasma', () => {
+  // Caso real 16/07: dos "+$11.913.568,24" que terminan los dos en $7.874.504,8. Matemáticamente el
+  // segundo no sumó nada a la cuenta: es el mismo evento reimpreso. La clave natural NO lo caza si el
+  // concepto cambió (id de debin distinto), pero la cadena sí.
+  const movs = [
+    { fecha: '2026-07-16', concepto: 'Transferencia recibida - credin - Id debin cu', importe: 11913568.24, saldo: 7874504.8 },
+    { fecha: '2026-07-16', concepto: 'Transferencia recibida - credin - Id debin z0', importe: 11913568.24, saldo: 7874504.8 },
+  ]
+  const { conservados, descartados } = deduplicarPorCadena(movs, { saldoInicial: -4039063.44 })
+  assert.equal(conservados.length, 1)
+  assert.equal(descartados.length, 1)
+  assert.match(descartados[0].motivo, /no movió la cuenta/)
+})
+
+test('SEÑAL 2 · copia sin saldo cuyo gemelo idéntico en fecha+importe SÍ trae saldo → fantasma', () => {
+  // Caso real 23/07: un "Deposito e-cheq $3.940.000" aparece dos veces, una con saldo y otra en null.
+  const movs = [
+    { fecha: '2026-07-23', concepto: 'Deposito e-cheq', importe: 3940000, saldo: 8714485.73 },
+    { fecha: '2026-07-23', concepto: 'Deposito e-cheq', importe: 3940000, saldo: null },
+  ]
+  const { conservados, descartados } = deduplicarPorCadena(movs)
+  assert.equal(conservados.length, 1)
+  assert.equal(conservados[0].saldo, 8714485.73)
+  assert.equal(descartados.length, 1)
+  assert.match(descartados[0].motivo, /ya trae saldo/)
+})
+
+test('un duplicado EXACTO (todos los campos iguales) también lo caza la cadena', () => {
+  const movs = [
+    { fecha: '2026-07-20', concepto: 'Pago A', importe: -100, saldo: 900 },
+    { fecha: '2026-07-20', concepto: 'Pago A', importe: -100, saldo: 900 },
+  ]
+  const { conservados, descartados } = deduplicarPorCadena(movs, { saldoInicial: 1000 })
+  assert.equal(conservados.length, 1)
+  assert.equal(descartados.length, 1)
+})
+
+test('BORDE · dos movimientos legítimos del mismo importe el mismo día con saldos DISTINTOS NO son duplicados', () => {
+  // Cada uno avanza el saldo de forma consistente con la cadena: los dos se conservan.
+  const movs = [
+    { fecha: '2026-07-20', concepto: 'Transf a Juan', importe: -100, saldo: 900 },
+    { fecha: '2026-07-20', concepto: 'Transf a Juan', importe: -100, saldo: 800 },
+  ]
+  const { conservados, descartados } = deduplicarPorCadena(movs, { saldoInicial: 1000 })
+  assert.equal(conservados.length, 2)
+  assert.equal(descartados.length, 0)
+})
+
+test('BORDE · dos cheques del día sin saldo (ambos null, sin gemelo con saldo) NO se descartan', () => {
+  // Es el caso legítimo de dos "Cheque debitado" del mismo importe hoy: ninguno tiene saldo todavía y
+  // ninguno tiene un gemelo posteado. Los dos son reales.
+  const movs = [
+    { fecha: '2026-07-24', concepto: 'Deposito', importe: 1000, saldo: 5000 },
+    { fecha: '2026-07-24', concepto: 'Cheque debitado', importe: -500, saldo: null },
+    { fecha: '2026-07-24', concepto: 'Cheque debitado', importe: -500, saldo: null },
+  ]
+  const { conservados, descartados } = deduplicarPorCadena(movs)
+  assert.equal(conservados.length, 3)
+  assert.equal(descartados.length, 0)
+})
+
+test('BORDE · un typo (saldo avanza a un valor inesperado) NO se descarta: lo audita verificarCadena', () => {
+  // El dedup es conservador: sólo tira lo inequívoco. Un saldo que avanza mal es un typo o un faltante,
+  // no un fantasma — tirarlo en silencio sería peor. Se conserva y lo marca la cadena.
+  const movs = [
+    { fecha: '2026-07-20', concepto: 'a', importe: -100, saldo: 900 },
+    { fecha: '2026-07-21', concepto: 'b', importe: -50, saldo: 850 },  // ok
+    { fecha: '2026-07-22', concepto: 'c', importe: -100, saldo: 700 },  // debería ser 750: typo
+  ]
+  const { conservados, descartados } = deduplicarPorCadena(movs, { saldoInicial: 1000 })
+  assert.equal(conservados.length, 3)
+  assert.equal(descartados.length, 0)
+  // y la cadena lo delata sobre lo conservado
+  assert.equal(verificarCadena(conservados, 1000).ok, false)
+})
+
+test('BORDE · un importe 0 que deja el saldo igual NO es fantasma (no movió la cuenta a propósito)', () => {
+  const movs = [
+    { fecha: '2026-07-20', concepto: 'a', importe: -100, saldo: 900 },
+    { fecha: '2026-07-20', concepto: 'ajuste', importe: 0, saldo: 900 },
+  ]
+  const { conservados, descartados } = deduplicarPorCadena(movs, { saldoInicial: 1000 })
+  assert.equal(conservados.length, 2)
+  assert.equal(descartados.length, 0)
+})
+
+test('BORDE · una reversión (+X y −X que vuelve al saldo previo) NO es fantasma: el saldo se movió y volvió', () => {
+  const movs = [
+    { fecha: '2026-07-20', concepto: 'debito X', importe: -100, saldo: 900 },
+    { fecha: '2026-07-20', concepto: 'reverso X', importe: 100, saldo: 1000 },
+  ]
+  const { conservados, descartados } = deduplicarPorCadena(movs, { saldoInicial: 1000 })
+  assert.equal(conservados.length, 2)
+  assert.equal(descartados.length, 0)
+})
+
+test('el primer movimiento nunca se descarta: fija el ancla de la cadena', () => {
+  const movs = [{ fecha: '2026-07-20', concepto: 'a', importe: 500, saldo: 500 }]
+  const { conservados, descartados } = deduplicarPorCadena(movs)  // sin saldoInicial
+  assert.equal(conservados.length, 1)
+  assert.equal(descartados.length, 0)
+})
+
+test('parsearExtracto integra el dedup: el fantasma sale por `duplicados`, no por `movimientos`', () => {
+  // El mismo evento reimpreso con el saldo en null dentro de un pegado real: la copia se va a
+  // `duplicados` y NO llega a la base ni a _BANCO_RAW (de donde cuelgan tarjeta, cheques e impuestos).
+  const txt = [
+    'Fecha\tConcepto\tImporte\tSaldo',
+    '2026-07-23\tDeposito e-cheq\t3.940.000,00\t8.714.485,73',
+    '2026-07-23\tDeposito e-cheq\t3.940.000,00\t',
+    '2026-07-24\tCheque debitado\t-500.000,00\t8.214.485,73',
+  ].join('\n')
+  const { movimientos, duplicados } = parsearExtracto(txt)
+  assert.equal(movimientos.length, 2)
+  assert.equal(duplicados.length, 1)
+  assert.match(duplicados[0].motivo, /ya trae saldo/)
+  // y la cadena de lo conservado cierra
+  assert.equal(verificarCadena(movimientos, 8714485.73 - 3940000).ok, true)
+})
+
+test('completarSaldoIntradia deduce el saldo del movimiento del día por arrastre, y respeta el null inicial', () => {
+  const movs = [
+    { fecha: '2026-07-24', concepto: 'del día sin ancla', importe: -100, saldo: null }, // arranca en null → se respeta
+    { fecha: '2026-07-24', concepto: 'posteado', importe: 1000, saldo: 5000 },
+    { fecha: '2026-07-24', concepto: 'cheque del día', importe: -500, saldo: null },     // 5000 − 500
+  ]
+  completarSaldoIntradia(movs)
+  assert.equal(movs[0].saldo, null)
+  assert.equal(movs[2].saldo, 4500)
 })
 
 test('CSV del banco: el saldo intradía se DEDUCE de la cadena (no queda inflado en el saldo de ayer)', () => {
