@@ -82,7 +82,7 @@ function grilla({ enCompras, cheques, tarjeta }) {
   push([FIRMA])
   push(['"Los cash flows deben reflejar todo, todo el tiempo, y cada gasto o ingreso debe estar en algún concepto." El control de partición del pie ya prueba que TODO lo que está en Compras está en una línea del cuadro. Este bloque contesta la otra mitad, que es la que duele: qué existe FUERA de Compras y por lo tanto el cuadro no puede ver.'])
   push()
-  push(['FUENTE', 'Cantidad', 'Monto', '', '', 'Qué significa'])
+  const fHdr1 = push(['FUENTE', 'Cantidad', 'Monto', '', '', 'Qué significa'])
   push(['AFIP — libro de IVA compras (neto de notas de crédito)', ref(N_ARCA.comprobantes), ref(N_ARCA.total), '', '', 'Lo que le facturaron a la empresa con CAE. Es la única fuente fiscal: Compras es lo que alguien cargó. El número vive en Proveedores y Materiales; acá se referencia.'])
   push(['  · de los cuales, notas de crédito', ref(N_ARCA.notasN), ref(N_ARCA.notasMonto), '', '',
     'RESTAN: es plata que el proveedor devolvió, no una compra. Cuáles anulan una factura y cuáles son una refacturación está en Proveedores y Materiales, bloque 3 bis.'])
@@ -99,7 +99,7 @@ function grilla({ enCompras, cheques, tarjeta }) {
   push(['Compras con rubro pero sin importe numérico', '', `=SUMPRODUCT((Compras!$AC$4:$AC<>"")*(NOT(ISNUMBER(Compras!$O$4:$O))))`, '', '',
     '⚠ Cantidad de filas, no pesos: su Total no es un número (moneda extranjera o texto), así que no suman en ningún lado.'])
   push([])
-  push(['', 'Cantidad', 'Monto', '', '', 'Qué significa'])
+  const fHdr2 = push(['', 'Cantidad', 'Monto', '', '', 'Qué significa'])
   // TODO ESTE BLOQUE ES FÓRMULA. Antes eran veinte números calculados acá y pegados: el día que se
   // cargaba una factura que faltaba, el bloque seguía acusando el faltante hasta la próxima corrida
   // del agente. Ahora cuenta las marcas que el OS escribe al lado de cada cheque, así que se mueve
@@ -124,7 +124,7 @@ function grilla({ enCompras, cheques, tarjeta }) {
   push()
   push(['CHEQUES A CUBRIR — los que todavía no se debitaron'])
   push(['Otra pregunta, y es de tesorería: no importa si la factura está registrada, importa cuánta plata tiene que haber en la cuenta y cuándo. Un cheque emitido es un compromiso más firme que una factura con fecha prevista.'])
-  push(['Mes de pago', 'Cantidad', 'Monto', '', '', ''])
+  const fHdr3 = push(['Mes de pago', 'Cantidad', 'Monto', '', '', ''])
   const c0 = filas.length + 1
   // El mes es el que escribe la propia pestaña en su columna de mes: no se recalcula acá.
   for (const m of cubrir.por_mes) {
@@ -141,7 +141,7 @@ function grilla({ enCompras, cheques, tarjeta }) {
   }
   const c1 = filas.length
   push(['TOTAL A CUBRIR', `=SUM(B${c0}:B${c1})`, `=SUM(C${c0}:C${c1})`, '', '', 'Compromiso en firme ya emitido.'])
-  return { filas, fFalta, c0, c1, ch, tj, cubrir }
+  return { filas, fFalta, c0, c1, ch, tj, cubrir, headersCM: [fHdr1, fHdr2, fHdr3] }
 }
 
 async function main() {
@@ -204,6 +204,10 @@ async function main() {
     { repeatCell: { range: { ...rg(F - 1, F + filas.length - 1), startColumnIndex: 2, endColumnIndex: 3 }, cell: { userEnteredFormat: { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment' } },
     { repeatCell: { range: { ...rg(F - 1, F + filas.length - 1), startColumnIndex: 1, endColumnIndex: 2 }, cell: { userEnteredFormat: { numberFormat: { type: 'NUMBER', pattern: '0' }, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment' } },
     { repeatCell: { range: { ...rg(F - 1, F + filas.length - 1), startColumnIndex: 5, endColumnIndex: 6 }, cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: { fontSize: 9, italic: true, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } } } }, fields: 'userEnteredFormat' } },
+    // Los encabezados "Cantidad/Monto" de los 3 sub-cuadros son TEXTO: caen dentro del rango que arriba
+    // formatea B y C como número, así que sin esto se leen como "texto en celda numérica" (el hallazgo
+    // del auditor de pantalla). Va DESPUÉS del formato numérico para pisarlo sólo en esas filas.
+    ...(g.headersCM || []).map((fh) => ({ repeatCell: { range: rg(F + fh - 2, F + fh - 1, 1, 3), cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment' } })),
     // LA COLUMNA DE MESES, CON SU FORMATO. Sin esto la celda muestra el serial de la fecha y el
     // auditor de reglas la cuenta —con razón— como un número pegado donde todo tiene que ser fórmula.
     { repeatCell: { range: { ...rg(F + g.c0 - 2, F + g.c1 - 1), startColumnIndex: 0, endColumnIndex: 1 }, cell: { userEnteredFormat: { numberFormat: { type: 'DATE', pattern: 'mmmm yy' } } }, fields: 'userEnteredFormat.numberFormat' } },
