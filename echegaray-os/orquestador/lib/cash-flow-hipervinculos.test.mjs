@@ -70,21 +70,29 @@ test('el destino de cada tipo de línea es el más específico y cierto', () => 
   assert.deepEqual(dest(buscar((l) => l.rubro === 'Nómina · Jornales de obra')), { pestaña: 'Jornales por Quincena', rango: 'A1' })
   // Cargas sociales → la pestaña Cargas Sociales.
   assert.deepEqual(dest(buscar((l) => l.rubro === 'Nómina · Cargas sociales')), { pestaña: 'Cargas Sociales', rango: 'A1' })
-  // Materiales → la pestaña Proveedores y Materiales.
-  assert.deepEqual(dest(buscar((l) => l.rubro === 'Materiales Civil')), { pestaña: 'Proveedores y Materiales', rango: 'A1' })
+  // Materiales → su número sale de Compras por rubro (SUMIF sobre la columna O), así que el vínculo
+  // apunta a la columna fuente del monto. "Proveedores y Materiales" es prosa que nombra DOS pestañas,
+  // no un tab único: no se hiperlinkea a una pestaña inexistente.
+  assert.deepEqual(dest(buscar((l) => l.rubro === 'Materiales Civil')), { pestaña: 'Compras', rango: 'O4:O' })
   // Sueldos de administración → su detalle es la propia Compras: cae a la columna fuente del monto (O).
   assert.deepEqual(dest(buscar((l) => l.rubro === 'Nómina · Sueldos administración')), { pestaña: 'Compras', rango: 'O4:O' })
 })
 
 test('el destino usa la MISMA lógica de origen que la sección "DÓNDE ESTÁ" (no se duplica)', () => {
   const { lineas } = verificarCuadro()
-  // Para los rubros sin pestaña de proyección ni detalle propio en el CUADRO, el destino cae en la
-  // pestaña que da detalleDeRubro — exactamente la que muestra la sección textual de respaldo.
+  // Una sola fuente de criterio (REGLAS→detalleDeRubro). Para una pestaña DEDICADA real, el destino
+  // del vínculo coincide con lo que muestra la sección textual de respaldo — no hay dos lógicas.
+  const cargas = lineas.find((l) => l.rubro === 'Nómina · Cargas sociales')
+  assert.equal(detalleDeRubro(cargas.rubro), 'Cargas Sociales')
+  assert.equal(destinoDetalle(cargas, FILAS_TABLA).pestaña, detalleDeRubro(cargas.rubro))
+  // Divergencia intencional: cuando detalleDeRubro es PROSA de dos pestañas ("Proveedores y
+  // Materiales"), el TEXTO la muestra tal cual pero el VÍNCULO cae al origen cierto (Compras), porque
+  // no se puede hiperlinkear a un tab que no existe.
   const sueldos = lineas.find((l) => l.rubro === 'Nómina · Sueldos administración')
   assert.equal(detalleDeRubro(sueldos.rubro), 'Compras')
   const materiales = lineas.find((l) => l.rubro === 'Materiales Mantenimiento')
   assert.equal(detalleDeRubro(materiales.rubro), 'Proveedores y Materiales')
-  assert.equal(destinoDetalle(materiales, FILAS_TABLA).pestaña, detalleDeRubro(materiales.rubro))
+  assert.equal(destinoDetalle(materiales, FILAS_TABLA).pestaña, 'Compras')
 })
 
 test('sin la fila del total ubicada, un rubro de tabla NO inventa la celda del total', () => {

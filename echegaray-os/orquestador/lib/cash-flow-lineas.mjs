@@ -705,6 +705,12 @@ export function origenLinea(l) {
  * la sección "DÓNDE ESTÁ EL DETALLE" del Sheet, para no duplicar el criterio). PURA. */
 export const detalleDeRubro = (rubro) => REGLAS.find((x) => x.rubro === rubro)?.detalle ?? 'Compras'
 
+/** Valores de `detalle` que NO son un tab único: prosa que nombra DOS pestañas. Un HYPERLINK necesita
+ * un destino único, así que estas líneas (materiales, que salen de Compras por rubro) caen a su origen
+ * cierto en Compras. El resto de los `detalle` (Estructura, Recurrentes, Cargas Sociales, Jornales por
+ * Quincena, Impuestos y Financieros) SÍ son pestañas reales y se hiperlinkean a ellas. */
+const DETALLE_MULTI_PESTAÑA = new Set(['Proveedores y Materiales'])
+
 /** La sangría con la que se escribe un subconcepto en la columna A. Una sola definición para que la
  * etiqueta sea idéntica quede como texto simple (fallback) o envuelta en HYPERLINK. */
 export const SANGRIA_DETALLE = '    '
@@ -738,11 +744,13 @@ export function destinoDetalle(l, filasTabla = {}) {
   // celda: se cae a la columna fuente de Compras, abajo.
   const p = PROYECCION[l.rubro]
   if (p?.tipo === 'tabla' && filasTabla[p.pestaña]) return { pestaña: p.pestaña, rango: `A${filasTabla[p.pestaña]}` }
-  // Resto de rubros: la pestaña de detalle de REGLAS si es específica (Proveedores y Materiales, Cargas
-  // Sociales, Jornales por Quincena, Impuestos y Financieros…); si el detalle es la propia Compras, la
-  // columna fuente del monto (O). Nunca un destino adivinado.
+  // Resto de rubros: si el detalle es una pestaña DEDICADA real (una sola, que existe y de donde SALE
+  // el número —nómina/cargas/impuestos referencian su propia pestaña), se apunta ahí. "Proveedores y
+  // Materiales" NO es una pestaña: es prosa que nombra DOS (Proveedores y Materiales); esas líneas
+  // salen de Compras por rubro, así que su origen cierto es la columna fuente del monto (O), igual que
+  // SAC/sueldos y el fallback genérico. Nunca un destino adivinado ni un tab inexistente.
   const tab = detalleDeRubro(l.rubro)
-  if (tab && tab !== 'Compras') return { pestaña: tab, rango: 'A1' }
+  if (tab && tab !== 'Compras' && !DETALLE_MULTI_PESTAÑA.has(tab)) return { pestaña: tab, rango: 'A1' }
   return { pestaña: 'Compras', rango: soloRango(COL_TOTAL) }
 }
 

@@ -17,6 +17,7 @@ import {
 } from '../lib/cash-flow-lineas.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
+import { ref as refPestana } from '../lib/partir-pestana.mjs'
 import { CAJA as N_CAJA } from '../lib/rangos-nombrados.mjs'
 import { ubicarCaja } from '../lib/caja-disponibilidades.mjs'
 import { formulaInteresMes } from '../lib/costo-descubierto.mjs'
