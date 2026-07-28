@@ -3,8 +3,11 @@ export const dynamic = 'force-dynamic'
 // Página de DESCARGAS: la extensión de Chrome del OS, servida desde la web (Vercel), no
 // desde un link crudo de la VM. El .zip lo entrega la propia VM a través del proxy
 // (/api/os/extension.zip, mismo dominio), así el dueño siempre lo baja desde acá.
+import { siteUrl } from '@/lib/site-url'
+
 const ZIP_URL = '/api/os/extension.zip'
-const VERSION_URL = 'https://echegaray-business-os.vercel.app/api/os/version'
+// Dominio canónico (env NEXT_PUBLIC_SITE_URL → app.ecsas.com.ar cuando el DNS esté listo).
+const VERSION_URL = `${siteUrl()}/api/os/version`
 
 async function versionActual(): Promise<string | null> {
   try {
