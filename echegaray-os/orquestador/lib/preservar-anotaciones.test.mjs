@@ -2,6 +2,21 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { fusionar, sobrantes, tiene, letraCol, escribirPreservando, limpiarCentinela, VACIO } from './preservar-anotaciones.mjs'
 
+// ═══ POR QUÉ ESTOS DOBLES (test hermético) ═══
+// `escribirPreservando`, para toda pestaña de contenido, consulta el candado (sheet_pestanas_bloqueadas)
+// y la firma (sheet_tab_firma) en Postgres. Con el entorno sourceado esas consultas son REALES: CAJA y
+// "Cheques Emitidos" están candadas de verdad en producción, así que la función —correctamente— NO
+// escribe, y las aserciones del mock fallaban. No es una regresión del código de preservación: es que el
+// test dependía del estado real de la base. Inyectando `guardas` (el punto de inyección retrocompatible
+// de escribirPreservando) el test ejercita la fusión/preservación sin tocar la base ni depender de qué
+// pestañas estén candadas hoy. Cada doble es no-op salvo que el test necesite observar una llamada.
+const guardasStub = (overrides = {}) => ({
+  estaBloqueada: async () => false,
+  firmaGuardia: async () => ({ editada: false }),
+  sellarFirma: async () => {},
+  ...overrides,
+})
+
 test('lo que anota el dueño NUNCA se borra, esté en la columna que esté', () => {
   const generado = [['Proveedor', 'Importe'], ['Alumetal', 100]]
   // El dueño anotó en la columna E (índice 4), muy a la derecha de la tabla.
@@ -69,9 +84,11 @@ test('escribirPreservando NO borra: lee, fusiona y escribe sin clearValues', asy
     },
     async batchUpdateValues(_id, payload) { escritos.push(payload[0]) },
   }
-  const { conservadas } = await escribirPreservando(google, 'ID', 'CAJA', [['nuevo', 'x', '']], { anchoHoja: 4 })
-  // La firma agrega una lectura de la pestaña entera (A1:BZ) antes de fusionar; la lectura que importa
-  // para la fusión sigue siendo el ancho real de la hoja (A1:D1) con fórmulas, para no degradarlas.
+  // guardas: candado/firma mockeados (no tocan Postgres). respetar:false: la Regla 0 escribe en
+  // sheet_rotulos con el entorno sourceado; este test es sobre la FUSIÓN, que corre igual sin ella.
+  const { conservadas } = await escribirPreservando(google, 'ID', 'CAJA', [['nuevo', 'x', '']], { anchoHoja: 4, respetar: false, guardas: guardasStub() })
+  // La lectura que importa para la fusión es el ancho real de la hoja (A1:D1) con fórmulas, para no
+  // degradarlas a número pegado.
   const lecturaTabla = leidos.find((l) => l.rango === 'CAJA!A1:D1' && l.opts?.render === 'FORMULA')
   assert.ok(lecturaTabla, 'lee el ancho real de la hoja con fórmulas (para fusionar sin degradar)')
   assert.deepEqual(escritos[0].values, [['nuevo', 'x', '', 'MI NOTA']], 'la nota de la persona sobrevive')
@@ -86,12 +103,24 @@ test('escribirPreservando NO borra: lee, fusiona y escribe sin clearValues', asy
 
 test('contenido con respetar:false SÍ consulta la firma (A1:BZ) — el arreglo del defecto', async () => {
   const leidos = []
+  let firmaConsultada = false
   const google = {
     async readSheetValues(_id, rango) { leidos.push(rango); return [['viejo']] },
     async batchUpdateValues() {},
   }
-  await escribirPreservando(google, 'ID', 'CAJA', [['nuevo']], { respetar: false })
-  assert.ok(leidos.some((r) => /A1:BZ/.test(r)), 'una pestaña de contenido consulta la firma aunque respetar:false')
+  // El doble de firma modela lo que hace la firma real: leer la pestaña entera (A1:BZ) antes de decidir.
+  // Así se prueba el invariante que importa —que escribirPreservando SÍ enruta por la firma aun con
+  // respetar:false, por ser pestaña de contenido— sin depender de la firma real (Postgres).
+  const guardas = guardasStub({
+    firmaGuardia: async (g, id, _tab, ref) => {
+      firmaConsultada = true
+      await g.readSheetValues(id, `${ref}!A1:BZ`, { render: 'FORMULA' })
+      return { editada: false }
+    },
+  })
+  await escribirPreservando(google, 'ID', 'CAJA', [['nuevo']], { respetar: false, guardas })
+  assert.ok(firmaConsultada, 'una pestaña de contenido consulta la firma aunque respetar:false')
+  assert.ok(leidos.some((r) => /A1:BZ/.test(r)), 'la firma lee la pestaña entera (A1:BZ)')
 })
 
 test('espejo:true salta candado y firma (no lee A1:BZ): un espejo _RAW se escribe directo', async () => {
@@ -111,7 +140,9 @@ test('escribirPreservando respeta fila y columna de arranque', async () => {
     async readSheetValues() { return [['a']] },
     async batchUpdateValues(_id, p) { escritos.push(p[0].range) },
   }
-  await escribirPreservando(google, 'ID', "'Cheques Emitidos'", [['x']], { fila0: 10, col0: 2 })
+  // guardas mockeados + respetar:false: sin depender del candado real de "Cheques Emitidos" ni escribir
+  // en Postgres; este test es sólo sobre el cálculo del rango de arranque (fila/columna).
+  await escribirPreservando(google, 'ID', "'Cheques Emitidos'", [['x']], { fila0: 10, col0: 2, respetar: false, guardas: guardasStub() })
   assert.equal(escritos[0], "'Cheques Emitidos'!C10")
 })
 
