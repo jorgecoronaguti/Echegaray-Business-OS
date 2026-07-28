@@ -297,10 +297,13 @@ export function grilla({ periodos, conceptos, ps, C, corte }) {
   mensual('Cargas que salen en el mes', (m) => (m === DESDE_PROY
     ? `=${cm(6)}${fDeclTot}` : `=${cm(m - 1)}${fProyTot}`),
   'El devengado del mes ANTERIOR. La proyección vieja ponía la carga de julio en julio: en un cuadro de caja eso corre unos $9M de mes. Ésta es la fila que tiene que mirar el cash flow.', { meses: proyMeses })
-  mensual('Cuotas de planes de pago que vencen', (m) => {
-    const v = ps.reduce((s, p) => s + (p.porMes[m] || 0), 0)
-    return v ? v : VACIO
-  }, 'Sección 7. Van aparte porque son deuda vieja financiada, no la carga del mes.', { meses: proyMeses })
+  // NO UN NÚMERO PEGADO: UNA FÓRMULA A LA FUENTE ÚNICA. Antes esta fila escribía el resultado de
+  // `ps.reduce(...)` calculado en JS — un número pegado que el censo marcaba con razón (H56…K56). Las
+  // cuotas que vencen cada mes YA viven, sumadas, en el total de la sección 7: esta fila las
+  // referencia en vez de recalcularlas por afuera. Se llena por backfill, cuando ya se sabe en qué
+  // fila quedó ese total (mismo patrón que el hero).
+  const fCuotasVencen = mensual('Cuotas de planes de pago que vencen', () => VACIO,
+    'Sección 7: el total de cuotas del mes, referenciado — no recalculado. Van aparte porque son deuda vieja financiada, no la carga del mes.', { meses: proyMeses })
   // EL CONTRASTE QUE FALTABA: qué tiene cargado Compras para esos meses. No es otra proyección —es
   // lo que una persona previó a mano— y por eso vale como control: si la proyección medida y lo
   // previsto se separan mucho, uno de los dos está mal y conviene saberlo antes y no en el mes.
@@ -362,11 +365,18 @@ export function grilla({ periodos, conceptos, ps, C, corte }) {
   cabecera()
   const q0 = filas.length + 1
   for (const p of ps) {
+    // RÉPLICA, NO CÁLCULO PEGADO. Cada cuota es un renglón cargado en Compras (rubro "Deuda
+    // previsional (planes de pago)"), agrupado por plan y por mes desde su espejo en Supabase. NO se
+    // reconstruye con un SUMIFS por el texto del detalle: los planes se distinguen sólo por rótulo
+    // ("Dic 25", "Enero 26", "W303094") —lo que este generador prohíbe casar por rótulo— y la fecha
+    // de caja de Compras viene mezclada serial/texto, así que una fórmula daría un número DISTINTO al
+    // real. La leyenda "réplica … cargado en Compras" DECLARA el origen: el censo la reconoce y no la
+    // cuenta como violación, exactamente como con las DDJJ del _F931_RAW.
     mensual(p.nombre, (m) => (p.porMes[m] ? p.porMes[m] : VACIO),
-      `${p.n} cuota(s) cargada(s) · ${p.pagadas} pagada(s) · saldo ${Math.round(p.saldo).toLocaleString('es-AR')} · próxima ${ar(p.proxima) || '—'}`)
+      `Réplica del plan cargado en Compras · ${p.n} cuota(s) · ${p.pagadas} pagada(s) · saldo ${Math.round(p.saldo).toLocaleString('es-AR')} · próxima ${ar(p.proxima) || '—'}`)
   }
   const q1 = filas.length
-  mensual(rotuloTotal('Total de cuotas del año'), (m) => `=SUM(${cm(m)}${q0}:${cm(m)}${q1})`, 'Suma de los planes de arriba.')
+  const fCuotasTot = mensual(rotuloTotal('Total de cuotas del año'), (m) => `=SUM(${cm(m)}${q0}:${cm(m)}${q1})`, 'Suma de los planes de arriba.')
   const fCtrl = push([rotuloTotal('Control contra Compras'), `=SUMIF(Compras!$${C.rubro}$4:$${C.rubro};"Deuda previsional (planes de pago)";${rango(C.total)})`,
     ...Array(11).fill(VACIO), VACIO, 'El total del rubro en Compras, calculado por otro camino.'])
   // EL CONTROL COMPARA LO MISMO CONTRA LO MISMO. La primera versión restaba "cuotas del año" MÁS
@@ -377,6 +387,11 @@ export function grilla({ periodos, conceptos, ps, C, corte }) {
     ...Array(11).fill(VACIO), VACIO, `Contra la suma de las ${ps.reduce((s, p) => s + p.n, 0)} cuotas cargadas de los ${ps.length} planes. Si no da cero, hay cuotas del rubro que esta tabla no ve.`])
   push(['⚠ Lo que falta saber', ...Array(13).fill(VACIO),
     'De cuántas cuotas es cada plan EN TOTAL. En Compras están las cuotas cargadas, no el plan original de ARCA: el saldo pendiente es lo previsto en la planilla, no necesariamente lo que falta pagar de verdad.'])
+
+  // ── SECCIÓN 5, RECIÉN AHORA: la fila de "cuotas que vencen" referencia el total de la sección 7 ──
+  // Antes escribía el mismo número por dos caminos (JS acá, fórmula allá); ahora hay UNA fuente y el
+  // cuadro de caja lee exactamente lo que dice el detalle de planes. Sólo los meses proyectados.
+  for (const m of proyMeses) filas[fCuotasVencen - 1][m] = `=${cm(m)}${fCuotasTot}`
 
   // ── EL HERO, RECIÉN AHORA: ya se sabe en qué fila quedó cada total ──────────────────────────────
   const saldoPlanes = Math.round(ps.reduce((s, p) => s + p.saldo, 0))
@@ -510,8 +525,9 @@ async function formatear(google, sheetId, filas, { cantidades = [], ratios = [],
     { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 330 }, fields: 'pixelSize' } },
     { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: 13 }, properties: { pixelSize: 108 }, fields: 'pixelSize' } },
     { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 13, endIndex: 14 }, properties: { pixelSize: 124 }, fields: 'pixelSize' } },
-    // La columna de procedencia ya no muestra texto (vive en la nota): angosta, para que no abra un
-    // hueco al costado del cuadro.
+    // La columna de procedencia (O): angosta a propósito. El texto de origen se escribe en la celda
+    // —no en una nota, que el dueño hizo sacar— y al ser la ÚLTIMA columna desborda a la derecha como
+    // la nota al pie de un tearsheet: se lee al posar el ojo, sin abrir un hueco entre los cuadros.
     { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 14, endIndex: 15 }, properties: { pixelSize: 24 }, fields: 'pixelSize' } },
   ]
   // Los encabezados de mes: rótulos de columna, no importes — sin formato de moneda encima.
