@@ -1,0 +1,7 @@
+# Secretos y estado de runtime — nunca al repo.
+.env
+*.env
+# Backups locales (se generan en runtime; no viven en git).
+backup/dumps/
+# Pero sí conservar la plantilla.
+!.env.example
