@@ -196,11 +196,19 @@ function grilla(cargado, refs) {
   // muestran donde se mira. El detalle sigue estando entero, abajo.
   // Cada titular ocupa DOS columnas: con el ancho de una columna de tabla, "$18.180.491" en cuerpo
   // 16 no entra y Sheets lo dibuja como ###.
-  const fTitulos = push(['DISPONIBILIDADES', '', '(−) CHEQUES EMITIDOS', '', 'LIQUIDEZ NETA', '', 'CRÉDITO NO UTILIZADO', ''])
+  // CRITERIO PERCIBIDO (27/07). El dueño: "es criterio del percibido, o sea si yo marco q la plata
+  // salió ahí recién sale". Bajo percibido la posición de hoy es la plata que REALMENTE hay: los
+  // cheques emitidos no debitados TODAVÍA no salieron (salen en el calendario cuando se debitan), y
+  // los valores a depositar (echeq en custodia, confirmado por el dueño el 27/07) TODAVÍA no entraron
+  // (entran en el calendario al acreditarse). Restar los cheques de la posición o contar el echeq como
+  // caja de hoy los contaba DOS VECES (una en la posición y otra en el calendario). Por eso el titular
+  // ya no es "liquidez neta" (que restaba cheques no salidos) sino el PISO PROYECTADO: lo más bajo que
+  // llega la caja proyectando todo — el número que de verdad dice si la caja alcanza.
+  const fTitulos = push(['DISPONIBILIDADES', '', 'CHEQUES POR DEBITAR', '', 'PISO PROYECTADO DE CAJA', '', 'CRÉDITO NO UTILIZADO', ''])
   const fCifras = push(['@TOTAL', '', '@CHEQUES', '', '@NETA', '', '@AIRE', ''])
   // El pie de cada titular dice QUÉ ENTRA en esa cifra, no qué se siente al mirarla. "Con esto se
   // decide" era un consejo; lo que hace falta es la definición.
-  push(['caja, bancos y valores a depositar', '', 'librados y todavía no debitados', '', 'disponibilidades menos cheques emitidos', '', 'acuerdo y tarjeta sin usar — capacidad de endeudarse', ''])
+  push(['caja y bancos disponibles hoy (percibido)', '', 'librados, salen cuando se debitan', '', 'lo más bajo que llega la caja en el horizonte', '', 'acuerdo y tarjeta sin usar — capacidad de endeudarse', ''])
   push()
 
   // ═══ LO QUE NO CIERRA, ARRIBA Y JUNTO ═══════════════════════════════════════════════════════
@@ -327,17 +335,22 @@ function grilla(cargado, refs) {
     'Se calcula solo'])
   const d1 = filas.length
 
-  const fTotal = push(['Total disponibilidades', '', '', '', `=SUM(${C_PESOS}${d0}:${C_PESOS}${d1})`, '', '', '', 'Es el "Efectivo al inicio" que usan los dos cash flows.'])
+  // PERCIBIDO: el total excluye los Valores a depositar (echeq en custodia, sin acreditar). No son
+  // caja de hoy — entran en el calendario cuando se acreditan. Es también el "Efectivo al inicio" que
+  // usan los dos cash flows (CAJA_TOTAL_DISPONIBLE), así que su apertura queda percibida, sin el echeq.
+  const fTotal = push(['Total disponibilidades', '', '', '', `=SUM(${C_PESOS}${d0}:${C_PESOS}${d1})${fCartera ? `-${C_PESOS}${fCartera}` : ''}`, '', '', '', 'Efectivo al inicio (percibido) que usan los dos cash flows: caja + bancos + movimientos posteriores, SIN los valores a depositar, que entran en el calendario al acreditarse.'])
   // La exposición al tipo de cambio. No es un detalle de presentación: decide si conviene vender o
   // quedarse. Sale de las mismas filas de arriba, no se carga aparte.
 
   // ── 2 · COMPROMISOS YA EMITIDOS ─────────────────────────────────────────────────────────────────
-  const fCh = push(['(−) Cheques emitidos, no debitados', 'ARS',
+  const fCh = push(['Cheques emitidos pendientes de debitar', 'ARS',
     // Sale de la propia pestaña de cheques: acá no se copia ningún importe.
     `=SUMPRODUCT((UPPER('${refs.cheques}'!$K$2:$K$400)<>"SI")*IF(ISNUMBER('${refs.cheques}'!$F$2:$F$400);'${refs.cheques}'!$F$2:$F$400;0))`,
-    '', `=${C_IMP}${filas.length + 1}`, '', '', `Pestaña ${refs.cheques}, columna DEBITADO distinta de SI`, 'Se calcula solo'])
-  const fNeta = push(['Disponibilidad neta', '', '', '', `=${C_PESOS}${fTotal}-${C_PESOS}${fCh}`, '', '', '',
-    'Lo que queda después de cubrir los cheques ya firmados. Es el número con el que conviene decidir.'])
+    '', `=${C_IMP}${filas.length + 1}`, '', '', `Pestaña ${refs.cheques}, columna DEBITADO distinta de SI — salida futura, no resta hasta que se debita`, 'Se calcula solo'])
+  // PERCIBIDO: la disponibilidad de hoy NO resta los cheques emitidos (todavía no salieron). Los
+  // cheques salen en el calendario cuando se debitan. Restarlos acá los contaba dos veces.
+  const fNeta = push(['Disponibilidad percibida hoy', '', '', '', `=${C_PESOS}${fTotal}`, '', '', '',
+    'La plata que realmente hay hoy (percibido). Los cheques emitidos salen cuando se debitan (calendario), no restan acá.'])
   push()
 
   // ══ 2 · EL CALENDARIO DE VENCIMIENTOS ═══════════════════════════════════════════════════════════
@@ -510,7 +523,7 @@ function grilla(cargado, refs) {
 
   // ── 4 · LÍNEAS DE CRÉDITO ───────────────────────────────────────────────────────────────────────
   push(['4.2 · LÍNEAS DE CRÉDITO — DETALLE Y CONTROL CONTRA EL RESUMEN DEL BANCO'])
-  push(['El margen de una tarjeta es capacidad de endeudarse, no plata propia. Sumarlo a las disponibilidades es el error que hace que una empresa se crea líquida el día antes de no poder pagar sueldos. El límite en pesos y el límite en dólares son dos cupos distintos: mezclarlos daría un margen que no existe en ninguna de las dos monedas.'])
+  push(['El margen de tarjeta es capacidad de endeudarse, no plata propia: sumarlo a las disponibilidades hace creer líquida a la empresa justo antes de no poder pagar. Los cupos en pesos y en dólares son distintos, no se mezclan.'])
   const cab3 = push(['Línea', 'Moneda', 'Importe en moneda de origen', 'Tipo de cambio', 'Importe en pesos', '', '', 'Origen del dato'])
 
   const bancario = (nombre, moneda, importe, origen, fecha = BANCO.CORTE) => {
@@ -804,7 +817,7 @@ function grilla(cargado, refs) {
   // los meses y ningún cuadro del archivo los espera. Por eso la proyección muestra un saldo que la
   // cuenta nunca llega a tener.
   push(['4.7 · TRAZABILIDAD DE LO QUE SALIÓ DEL BANCO'])
-  push(['Cada peso que salió de la cuenta tiene una pestaña que debería tenerlo. Acá se compara, grupo por grupo, lo que dice el extracto contra lo que dice esa pestaña en los MISMOS días. Una diferencia puede ser carga pendiente o un corte de fechas distinto; lo que no puede pasar es que nadie la mire.'])
+  push(['Cada peso que salió de la cuenta tiene una pestaña que debería tenerlo. Acá se compara el extracto contra esa pestaña en los MISMOS días. Una diferencia es carga pendiente o un corte de fechas — lo que no puede pasar es que nadie la mire.'])
   push(['Qué salió', '', 'Según el banco', '', 'Según la pestaña', 'Diferencia', '', 'Qué pestaña lo tiene que tener'])
   const n0 = filas.length + 1
   for (const gr of CONC.GRUPOS) {
@@ -854,7 +867,7 @@ function grilla(cargado, refs) {
   // El panel de arriba se resuelve acá, cuando ya se sabe en qué fila quedó cada total. Son
   // referencias, no copias: si el detalle cambia, el titular cambia con él.
   const PANEL = {
-    '@TOTAL': `=${C_PESOS}${fTotal}`, '@CHEQUES': `=${C_PESOS}${fCh}`, '@NETA': `=${C_PESOS}${fNeta}`, '@AIRE': `=${C_PESOS}${fAire}`,
+    '@TOTAL': `=${C_PESOS}${fTotal}`, '@CHEQUES': `=${C_PESOS}${fCh}`, '@NETA': `=$F$${fPeor}`, '@AIRE': `=${C_PESOS}${fAire}`,
     '@DIFECHEQ': `=${C_IMP}${gDif}`, '@DIFCONC': `=ABS(${C_PESOS}${fDifConc})`, '@SINEXPL': `=${C_PESOS}${fSinExpl}`,
     // Si el banco no reporta ningún echeq en custodia, la cartera es cero y hay que decirlo con un
     // cero: un rango vacío daría #REF! y un total en blanco se leería como "falta cargar".
