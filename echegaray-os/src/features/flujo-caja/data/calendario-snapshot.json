@@ -56,13 +56,6 @@
    "quien": "ARCA",
    "detalle": "Impuestos · Deuda Previcional - 931 Enero 26 · proyectado",
    "monto": -473767.08
-  },
-  {
-   "fecha": "2026-07-17",
-   "tipo": "pago",
-   "quien": "SINDICATOS",
-   "detalle": "Impuestos · Junio · proyectado",
-   "monto": -700000
   }
  ],
  "dias": [
@@ -1097,6 +1090,6 @@
   }
  ],
  "totalCobros": 147094863.2783,
- "totalPagos": -157661889.22333983,
- "leidoEn": "28/7/2026, 04:30:53"
+ "totalPagos": -156961889.22333983,
+ "leidoEn": "28/7/2026, 08:31:56"
 }
