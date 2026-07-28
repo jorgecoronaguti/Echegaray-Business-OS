@@ -60,9 +60,16 @@ test('separarPermitido: sin bloqueadas, pasa todo tal cual', () => {
 test('sheetIdDeRequestContenido: sólo los requests que escriben VALORES cuentan', () => {
   // updateCells con userEnteredValue → contenido
   assert.equal(sheetIdDeRequestContenido({ updateCells: { range: { sheetId: 7 }, fields: 'userEnteredValue,userEnteredFormat' } }), 7)
-  // updateCells sólo formato o sólo nota → NO es contenido
+  // updateCells sólo formato → NO es contenido (nunca destruye datos del dueño)
   assert.equal(sheetIdDeRequestContenido({ updateCells: { range: { sheetId: 7 }, fields: 'userEnteredFormat.textFormat' } }), null)
-  assert.equal(sheetIdDeRequestContenido({ updateCells: { range: { sheetId: 7 }, fields: 'note' } }), null)
+  // updateCells que toca la NOTA → SÍ es contenido (RESPETO-NOTAS): una nota es del dueño y no se pisa
+  // en pestaña candada/editada. Cubre escritura, borrado (rows:[{values:[{note:''}]}]) y note combinada.
+  assert.equal(sheetIdDeRequestContenido({ updateCells: { range: { sheetId: 7 }, fields: 'note' } }), 7)
+  assert.equal(sheetIdDeRequestContenido({ updateCells: { range: { sheetId: 7 }, rows: [{ values: [{ note: '' }] }], fields: 'note' } }), 7)
+  assert.equal(sheetIdDeRequestContenido({ updateCells: { start: { sheetId: 8 }, fields: 'note' } }), 8)
+  assert.equal(sheetIdDeRequestContenido({ updateCells: { range: { sheetId: 7 }, fields: 'userEnteredFormat,note' } }), 7)
+  // La palabra "note" no puede colarse por un nombre de campo que la contenga como subcadena.
+  assert.equal(sheetIdDeRequestContenido({ updateCells: { range: { sheetId: 7 }, fields: 'footnotes' } }), null)
   // updateCells con start (no range) igual cuenta
   assert.equal(sheetIdDeRequestContenido({ updateCells: { start: { sheetId: 9 }, fields: 'userEnteredValue' } }), 9)
   // copyPaste de fórmula/valor → contenido; de formato → no
@@ -89,4 +96,23 @@ test('separarRequests: descarta sólo los requests de contenido a sheetIds bloqu
   assert.equal(permitidos.length, 2)
   assert.equal(bloqueados.length, 1)
   assert.ok(bloqueados[0].updateCells.range.sheetId === 7)
+})
+
+test('RESPETO-NOTAS: borrar/escribir una NOTA sobre una pestaña candada se frena; el formato pasa', () => {
+  // Reproduce el hueco cerrado (27/07): sheetId 7 está bajo control del dueño (candada o editada).
+  // El limpiador de notas basura manda un updateCells{fields:'note', rows:[{values:[{note:''}]}]} que
+  // borraría una nota humana. Antes cruzaba el portón (fields:'note' se clasificaba como no-contenido);
+  // ahora es contenido y, sobre una pestaña bloqueada, se descarta. El formato a la misma pestaña pasa.
+  const reqs = [
+    { updateCells: { range: { sheetId: 7 }, rows: [{ values: [{ note: '' }] }], fields: 'note' } }, // borrado de nota a 7 (bloqueada)
+    { updateCells: { range: { sheetId: 7 }, rows: [{ values: [{ note: 'nota del OS' }] }], fields: 'note' } }, // escritura de nota a 7 (bloqueada)
+    { repeatCell: { range: { sheetId: 7 }, fields: 'userEnteredFormat.backgroundColor' } }, // formato a 7 → pasa
+    { updateCells: { range: { sheetId: 8 }, fields: 'note' } }, // nota a 8 (pestaña libre) → pasa
+  ]
+  const { permitidos, bloqueados } = separarRequests(reqs, new Set([7]))
+  assert.equal(bloqueados.length, 2)
+  assert.ok(bloqueados.every((r) => r.updateCells.range.sheetId === 7 && /\bnote\b/.test(r.updateCells.fields)))
+  assert.equal(permitidos.length, 2)
+  assert.ok(permitidos.some((r) => r.repeatCell))                         // el formato de la pestaña candada pasa
+  assert.ok(permitidos.some((r) => r.updateCells?.range.sheetId === 8))   // la nota a la pestaña libre pasa
 })
