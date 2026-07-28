@@ -171,8 +171,18 @@ export function sheetIdDeRequestContenido(req) {
   if (!req || typeof req !== 'object') return null
   if (req.updateCells) {
     const f = String(req.updateCells.fields ?? '')
-    // Escribe valores sólo si toca userEnteredValue (o todo con '*'). Formato o nota puros no pisan datos.
-    if (f === '*' || /userEnteredValue/.test(f)) return req.updateCells.range?.sheetId ?? req.updateCells.start?.sheetId ?? null
+    // CONTENIDO = todo lo que puede pisar lo que dejó una persona en una celda: su VALOR
+    // (userEnteredValue) o su NOTA (RESPETO-NOTAS, 27/07). Una nota vive FUERA del valor de la celda,
+    // así que reescribir la pestaña no la toca — pero un `updateCells{fields:'note'}` (p.ej. el
+    // limpiador de notas basura, o un clear-all de generador) SÍ la borra. Antes `fields:'note'` no se
+    // clasificaba como contenido → cruzaba el portón aun con la pestaña candada/editada y borraba una
+    // nota humana. Regla de Oro #1: si una persona tocó la pestaña, no se pisa NADA suyo — valor O nota.
+    // Con esto la nota sigue EXACTAMENTE el mismo camino que el valor (evaluarBloqueadas): en pestaña
+    // libre pasa y se re-sella; en candada/editada se frena. Ningún flujo legítimo escribe notas
+    // saltando el candado (la política del repo es que los generadores no escriben notas de procedencia
+    // —sin-notas-generadas.test.mjs—; sólo las CLAREAN, y siempre al regenerar una pestaña libre).
+    // El FORMATO puro (userEnteredFormat, textFormat…) sigue pasando: nunca destruye datos del dueño.
+    if (f === '*' || /userEnteredValue/.test(f) || /\bnote\b/.test(f)) return req.updateCells.range?.sheetId ?? req.updateCells.start?.sheetId ?? null
     return null
   }
   if (req.copyPaste) {
