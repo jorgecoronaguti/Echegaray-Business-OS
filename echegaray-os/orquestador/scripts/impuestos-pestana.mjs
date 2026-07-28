@@ -625,7 +625,6 @@ async function formatear(google, sheetId, g, filasHoja = 0) {
   const r = (r0, r1, c0 = 0, c1 = ANCHO) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
   const req = [{ unmergeCells: { range: r(0, n) } }]
   const fmt = (rg, fields, format) => req.push({ repeatCell: { range: rg, cell: { userEnteredFormat: format }, fields } })
-  const MUT = { red: 0.53, green: 0.52, blue: 0.49 }
   const AMBAR = { red: 1, green: 0.97, blue: 0.88 }
 
   // Los doce meses más el total: moneda, a la derecha. Es lo que permite comparar hacia abajo sin
