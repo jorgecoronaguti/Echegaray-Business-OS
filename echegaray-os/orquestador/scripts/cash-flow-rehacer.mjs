@@ -13,18 +13,14 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import {
   bloqueControl, CUADRO, verificarCuadro, formulaLineaMes, expresionReal, formulaTotalRubro, origenLinea,
-  tablasDeProyeccion, formulaChequesSinFactura,
+  tablasDeProyeccion, formulaChequesSinFactura, hipervinculoDetalle, detalleDeRubro, SANGRIA_DETALLE,
 } from '../lib/cash-flow-lineas.mjs'
-import { REGLAS } from '../lib/rubro-caja.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { CAJA as N_CAJA } from '../lib/rangos-nombrados.mjs'
 import { ubicarCaja } from '../lib/caja-disponibilidades.mjs'
 import { formulaInteresMes } from '../lib/costo-descubierto.mjs'
 import { formulaImpuesto } from '../lib/impuesto-cheque.mjs'
-
-/** En qué pestaña está el detalle de un rubro. Sale de REGLAS: una sola definición. */
-const detallePorRubro = (r) => REGLAS.find((x) => x.rubro === r)?.detalle ?? 'Compras'
 import {
   normComprobante, esLlaveUtil, faltaFacturaConFecha, montoEnVentana, MARCAS,
 } from '../lib/cheques-cobertura.mjs'
@@ -138,7 +134,7 @@ function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, fi
               // existen. Referenciar el total de egresos sería circular — esta línea es un egreso.
               ? cols.map((_, i) => (periodo === 'mensual' ? `#{IMP:${letra(i + 1)}}` : ''))
               : f
-        push([`    ${l.nombre}`, ...celdas])
+        push([`${SANGRIA_DETALLE}${l.nombre}`, ...celdas])
         meta.detalle.push({ fila: filas.length, linea: l, signo: g.signo })
       }
       const d1 = filas.length
@@ -205,7 +201,7 @@ function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, fi
   for (const { linea: l } of meta.detalle) {
     push([l.nombre, l.detalle
       ? `Pestaña ${l.detalle}`
-      : `Compras, rubro "${l.rubro}"${l.excluirSub ? ` (sin "${l.excluirSub}", que va a inversión)` : ''} · detalle en la pestaña ${detallePorRubro(l.rubro)}`])
+      : `Compras, rubro "${l.rubro}"${l.excluirSub ? ` (sin "${l.excluirSub}", que va a inversión)` : ''} · detalle en la pestaña ${detalleDeRubro(l.rubro)}`])
   }
 
   push([])
@@ -472,9 +468,27 @@ async function main() {
   // (incluidas las columnas auxiliares BE/BF, que ahora viven en Compras).
   // El HYPERLINK necesita el gid REAL de la pestaña: se resuelve acá, no se adivina.
   const metaGid = await google.getSheetMeta(ID)
+  const gidPorPestana = new Map(metaGid.map((s) => [s.title, s.sheetId]))
+  // TRAZABILIDAD: la etiqueta de cada subconcepto → hyperlink a la pestaña!rango de su origen. El gid
+  // de la pestaña DESTINO se resuelve acá contra getSheetMeta (misma mecánica que SEMGID, extendida a
+  // otras pestañas). Si la pestaña no existe, la línea queda etiqueta simple y se reporta — nunca un gid
+  // inventado. El VALOR de la línea (columnas B..N) no se toca: el vínculo va sólo en la columna A.
+  const sinDestino = []
   for (const d of data) {
-    const gid = metaGid.find((s) => s.title === d.pestaña)?.sheetId
+    const gid = gidPorPestana.get(d.pestaña)
+    // El atajo "IR A LA SEMANA / MES DE HOY" apunta a la propia pestaña (placeholder SEMGID).
     d.values = d.values.map((f) => f.map((c) => (typeof c === 'string' ? c.replace('SEMGID', String(gid)) : c)))
+    for (const det of d.g.meta.detalle) {
+      const h = hipervinculoDetalle(det.linea, filasTabla)
+      if (!h) continue
+      const gidDestino = gidPorPestana.get(h.destino)
+      if (gidDestino == null) { sinDestino.push(`${d.pestaña}: "${det.linea.nombre}" → no encontré la pestaña "${h.destino}"`); continue }
+      d.values[det.fila - 1][0] = h.formula.replace(`GID{${h.destino}}`, String(gidDestino))
+    }
+  }
+  if (sinDestino.length) {
+    console.log('Subconceptos sin hyperlink (quedan etiqueta simple):')
+    for (const s of sinDestino) console.log(`  ⚠ ${s}`)
   }
   // NO se limpia: se escribe sólo sobre los rangos propios. Borrar A1:BZ200 se llevaba puesto todo lo
   // que el dueño hubiera anotado en esas pestañas (regla de oro: nunca borrar lo que escribe una persona).
