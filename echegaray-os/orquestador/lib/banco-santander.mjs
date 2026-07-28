@@ -576,3 +576,95 @@ export function ingresosPorNaturaleza(movs = MOVIMIENTOS) {
     totales: { cobranza: tot(out.cobranza), traslado: tot(out.traslado), financiero: tot(out.financiero) },
   }
 }
+
+
+// ── Restaurado (28/07): NAT + COBERTURA_NATURALEZA + naturalezas* (TCAJA los quitó de más;
+//    los usan conciliacion-por-naturaleza y cash-flow-cobertura-naturalezas). ──
+export const NAT = {
+  impuestoCheque: 'Impuesto al cheque (Ley 25.413)',
+  descubierto: 'Costo financiero del descubierto',
+  sueldos: 'Sueldos',
+  cheques: 'Cheques y echeq',
+  afip: 'AFIP',
+  prendario: 'Préstamo prendario',
+  tarjeta: 'Pago de la tarjeta',
+  tarjetaDebito: 'Compras con tarjeta de débito',
+  debitosAuto: 'Débitos automáticos (seguros)',
+  transferencias: 'Transferencias a proveedores',
+  ajusteSinDetalle: 'Ajuste sin detalle del banco',
+  cobranzas: 'Cobranzas de clientes',
+  rescates: 'Rescates de inversión y financiero',
+  traslados: 'Traslados de fondos propios (no es ingreso)',
+}
+
+/**
+ * LA COBERTURA DE CADA NATURALEZA EN EL CASH FLOW — UNA SOLA DECLARACIÓN, VERIFICABLE.
+ *
+ * Para CADA naturaleza que el banco puede producir, dice qué la contempla:
+ *   lado       — 'egreso' | 'ingreso' | 'traslado' (qué sentido tiene en la cuenta).
+ *   destino    — la pestaña/línea del cash flow que la captura, o null si NINGUNA la espera.
+ *   alCashFlow — true si termina sumada en el cuadro; false si por definición no va (traslado propio)
+ *                o si es un gap declarado sin resolver.
+ *   grupoConciliacion — true si además la reconcilia `conciliacion-por-naturaleza.GRUPOS` (egresos que
+ *                se comparan banco-vs-pestaña). El test exige que estos SÍ estén en GRUPOS.
+ *   nota       — el porqué, en una línea.
+ * @type {Array<{naturaleza:string, lado:'egreso'|'ingreso'|'traslado', destino:string|null, alCashFlow:boolean, grupoConciliacion:boolean, nota:string}>}
+ */
+export const COBERTURA_NATURALEZA = [
+  { naturaleza: NAT.impuestoCheque, lado: 'egreso', destino: 'Cash Flow — línea "Impuesto al cheque (Ley 25.413)"', alCashFlow: true, grupoConciliacion: true, nota: 'Se calcula sobre el movimiento proyectado (0,6% de cada lado); línea propia en Financiación del cuadro.' },
+  { naturaleza: NAT.descubierto, lado: 'egreso', destino: 'Cash Flow — línea "Intereses del acuerdo en descubierto"', alCashFlow: true, grupoConciliacion: true, nota: 'Se calcula con la tasa del acuerdo (costo-descubierto.mjs); línea propia en Financiación.' },
+  { naturaleza: NAT.sueldos, lado: 'egreso', destino: 'Jornales por Quincena → línea "Jornales de obra"', alCashFlow: true, grupoConciliacion: true, nota: 'La acreditación de haberes; el dato real vive en Jornales por Quincena.' },
+  { naturaleza: NAT.cheques, lado: 'egreso', destino: 'Cheques Emitidos (rubro de su factura si está en Compras; si no, línea "Cheques y tarjeta sin factura")', alCashFlow: true, grupoConciliacion: true, nota: 'Cheque propio ya debitado; se concilia contra Cheques Emitidos DEBITADO=SI.' },
+  { naturaleza: NAT.afip, lado: 'egreso', destino: 'Compras rubro Impuestos → línea "Impuestos nacionales y provinciales"', alCashFlow: true, grupoConciliacion: true, nota: 'Pago a AFIP; su detalle vive en Impuestos y Financieros.' },
+  { naturaleza: NAT.prendario, lado: 'egreso', destino: 'Compras rubro Financiero / Recurrentes → línea "Cuotas de crédito prendario"', alCashFlow: true, grupoConciliacion: true, nota: 'Cuota del prendario; línea propia en Financiación.' },
+  { naturaleza: NAT.tarjeta, lado: 'egreso', destino: 'Tarjeta de Credito (rubro de su factura si está; si no, línea "Cheques y tarjeta sin factura")', alCashFlow: true, grupoConciliacion: true, nota: 'Débito del resumen; se concilia contra Tarjeta de Credito DEBITADO=SI.' },
+  { naturaleza: NAT.tarjetaDebito, lado: 'egreso', destino: 'Compras (por fecha de caja)', alCashFlow: true, grupoConciliacion: true, nota: 'Compra de mostrador con débito; si no está cargada en Compras, es costo invisible (lo grita la conciliación).' },
+  { naturaleza: NAT.debitosAuto, lado: 'egreso', destino: 'Compras (seguros y coberturas)', alCashFlow: true, grupoConciliacion: true, nota: 'Seguros que se debitan solos; si no están en Compras, no están en ningún rubro (lo grita la conciliación).' },
+  { naturaleza: NAT.transferencias, lado: 'egreso', destino: 'Compras (por fecha de caja)', alCashFlow: true, grupoConciliacion: true, nota: 'Pago a proveedor por transferencia; es el rubro de su factura en Compras.' },
+  // ── LOS CUATRO QUE ESTABAN SUELTOS (28/07) ──────────────────────────────────────────────────────
+  {
+    naturaleza: NAT.ajusteSinDetalle, lado: 'egreso', destino: null, alCashFlow: false, grupoConciliacion: false,
+    nota: 'El banco movió plata SIN dar concepto: por definición no se le puede atribuir una pestaña ni una línea. NO se inventa un rubro; se declara sin destino para que el control lo haga visible y se lo investigue (nunca debe ser un monto material recurrente).',
+  },
+  {
+    naturaleza: NAT.cobranzas, lado: 'ingreso', destino: 'Cobranzas → líneas de ingreso del cuadro', alCashFlow: true, grupoConciliacion: false,
+    nota: 'Un cliente pagó por transferencia/depósito: el ingreso ya está en Cobranzas y las tres líneas de ingreso lo suman por unidad. No se reconcilia como egreso (grupoConciliacion=false).',
+  },
+  {
+    naturaleza: NAT.rescates, lado: 'ingreso', destino: null, alCashFlow: false, grupoConciliacion: false,
+    nota: 'GAP DECLARADO. Rescate de una inversión propia (ej. Balanz $11,9M) o desembolso de préstamo: es un flujo de INVERSIÓN/FINANCIACIÓN real, pero el cuadro sólo lee ingresos de Cobranzas y no tiene línea para un ingreso financiero. Requiere decisión del dueño y el dato de la cuenta de inversión (no se inventa). Ver banco-santander.mjs CONTRAPARTES.',
+  },
+  {
+    naturaleza: NAT.traslados, lado: 'traslado', destino: null, alCashFlow: false, grupoConciliacion: false,
+    nota: 'Plata propia cambiando de lugar (depósito de efectivo, acreditación de un echeq ya en cartera): por definición NO es un flujo nuevo; contarlo inflaría la caja con plata que ya estaba. Correcto que no vaya al cuadro.',
+  },
+]
+
+/** NÚCLEO PURO: el universo de naturalezas, como Set. Es `Object.values(NAT)`. */
+export function naturalezasPosibles() {
+  return new Set(Object.values(NAT))
+}
+
+/** NÚCLEO PURO: las naturalezas que la declaración de cobertura cubre. */
+export function naturalezasDeclaradas() {
+  return new Set(COBERTURA_NATURALEZA.map((x) => x.naturaleza))
+}
+
+/**
+ * NÚCLEO PURO: las naturalezas que el banco puede producir y que NINGUNA declaración contempla.
+ * Vacío = cada naturaleza tiene una decisión explícita (destino o "no va al cuadro, con razón").
+ * @returns {string[]}
+ */
+export function naturalezasSinDeclarar() {
+  const dec = naturalezasDeclaradas()
+  return [...naturalezasPosibles()].filter((n) => !dec.has(n))
+}
+
+/**
+ * NÚCLEO PURO: las naturalezas cuya plata SÍ tiene que estar en el cash flow pero cuyo destino quedó
+ * en null (un hueco de verdad, distinto del traslado que legítimamente no va). Vacío = ningún hueco.
+ * @returns {Array<{naturaleza:string, nota:string}>}
+ */
+export function naturalezasHueco() {
+  return COBERTURA_NATURALEZA.filter((x) => x.alCashFlow && !x.destino)
+}
