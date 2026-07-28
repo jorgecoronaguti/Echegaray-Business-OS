@@ -8,13 +8,14 @@ import {
   type OperarioActionState,
 } from '../services/operariosActions'
 import type { Operario } from '../services/operariosService'
+import { siteUrl } from '@/lib/site-url'
 
 const initial: OperarioActionState = { error: null }
 
 // Muestra la credencial recién generada (una sola vez) con botón para copiar.
 function Credencial({ email, password }: { email: string; password: string }) {
   const [copiado, setCopiado] = useState(false)
-  const texto = `Echegaray OS — acceso\nWeb: https://echegaray-business-os.vercel.app/login\nUsuario: ${email}\nClave: ${password}`
+  const texto = `Echegaray OS — acceso\nWeb: ${siteUrl()}/login\nUsuario: ${email}\nClave: ${password}`
   return (
     <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm">
       <p className="font-medium text-emerald-800">Cuenta creada — pasale estos datos al operario:</p>

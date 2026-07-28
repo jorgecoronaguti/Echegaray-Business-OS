@@ -4,7 +4,9 @@
 // plano ni el server acepta tráfico entrante salvo SSH. Este proxy en Vercel es
 // la URL fija y pública: descubre dónde está hoy el OS (túnel saliente, cuya URL
 // se publica en `os_runtime`) y reenvía la directiva. Así la extensión apunta
-// siempre a `https://<app>.vercel.app/api/os/*`, pase lo que pase con el túnel.
+// siempre al frente estable `/api/os/*` — hoy `https://echegaray-business-os.vercel.app`
+// y, tras la migración de dominio, también `https://app.ecsas.com.ar` (Vercel sirve
+// ambos), pase lo que pase con el túnel saliente.
 import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
