@@ -109,7 +109,8 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
     const subGrupos = []
     for (const g of act.grupos) {
       const filaGrupo = filas.length + 1
-      push([`${g.signo > 0 ? '' : '(–) '}${g.nombre}`])
+      // signo 0 = grupo MEMO (informativo, ej. Cobranzas esperadas): ni "+" ni "(–)", no entra al flujo.
+      push([`${g.signo === 0 ? 'ℹ ' : g.signo > 0 ? '' : '(–) '}${g.nombre}`])
       const d0 = filas.length + 1
       for (const l of g.lineas) {
         const f = periodo === 'mensual'
@@ -155,7 +156,8 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
       // positivo dentro de su categoría (es lo que se paga) y la categoría entra restando al flujo.
       filas[filaGrupo - 1] = [filas[filaGrupo - 1][0], ...sumaFilas(d0, d1)]
       meta.grupos.push({ fila0: d0, fila1: d1 })
-      subGrupos.push({ fila: filaGrupo, signo: g.signo })
+      // Un grupo MEMO (signo 0) muestra su subtotal pero NO entra al flujo neto de la actividad.
+      if (g.signo !== 0) subGrupos.push({ fila: filaGrupo, signo: g.signo })
     }
     const expr = (i) => subGrupos.map((sg) => `${sg.signo > 0 ? '+' : '-'}${letra(i + 1)}${sg.fila}`).join('')
     const filaSub = push([`FLUJO NETO DE ${act.actividad}`, ...cols.map((_, i) => `=${expr(i)}`)])

@@ -324,7 +324,7 @@ export const FIN_COB = 400
 export const COL_VALOR_BANCO = `$BB$5:$BB$${FIN_COB}`
 export const MARCA_ENDOSADO = 'ENDOSADO'
 
-export function formulaCobranzas(tipo, desde, hasta) {
+export function formulaCobranzas(tipo, desde, hasta, modo = 'cobrado') {
   const C = 'Cobranzas'
   const F = FIN_COB
   const fecha = `IF(ISNUMBER(${C}!$Q$5:$Q$${F});${C}!$Q$5:$Q$${F};IF(ISNUMBER(${C}!$P$5:$P$${F});${C}!$P$5:$P$${F};0))`
@@ -343,7 +343,16 @@ export function formulaCobranzas(tipo, desde, hasta) {
   // por la cuenta corriente nunca. Sin este filtro el cuadro esperaba $20.000.000 de ingreso en
   // agosto que ya se habían entregado.
   const noEndosado = `(LEFT(${C}!${COL_VALOR_BANCO}&"";${MARCA_ENDOSADO.length})<>"${MARCA_ENDOSADO}")`
-  return `=SUMPRODUCT(${filtro}*${noEndosado}*(${fecha}>=${desde})*(${fecha}<${hasta})*${monto})`
+  // EL ESTADO (columna O) MANDA EL CRITERIO — decisión del dueño (28/07). Cash flow es percibido:
+  // "Cobrado" es plata que YA entró (un HECHO) y va en el bloque de cobros reales; todo lo demás
+  // —Pendiente, Proyectado, Facturado, Vencido— es un cobro ESPERADO, todavía no percibido, y va en
+  // un bloque aparte que NO suma al flujo, para no mezclar caja con proyección. "Endosado" no entra
+  // por ninguno de los dos: esa plata se entregó a un tercero (ya lo excluye noEndosado).
+  const est = `LOWER(${C}!$O$5:$O$${F})`
+  const estado = modo === 'esperado'
+    ? `(${est}<>"cobrado")*(${est}<>"endosado")`
+    : `(${est}="cobrado")`
+  return `=SUMPRODUCT(${filtro}*${noEndosado}*${estado}*(${fecha}>=${desde})*(${fecha}<${hasta})*${monto})`
 }
 
 // ── LA COBERTURA DEL LADO DEL INGRESO (Cobranzas) ─────────────────────────────────────────────────
@@ -492,11 +501,23 @@ export const CUADRO = [
     nota: 'Lo que genera y consume la operación: cobrar obras, pagar gente, materiales, estructura e impuestos. Si esta sección da negativo de forma sostenida, la operación se está financiando con deuda o con capital de trabajo.',
     grupos: [
       {
-        nombre: 'Cobros por ventas y servicios', signo: 1,
+        nombre: 'Cobros por ventas y servicios (ya cobrado)', signo: 1,
         lineas: [
-          { nombre: 'Cobranzas de obra civil', cobranzas: 'civil', detalle: 'Cobranzas' },
-          { nombre: 'Cobranzas de mantenimiento', cobranzas: 'mantenimiento', detalle: 'Cobranzas' },
-          { nombre: 'Otras cobranzas', cobranzas: 'otras', detalle: 'Cobranzas' },
+          { nombre: 'Cobranzas de obra civil', cobranzas: 'civil', modo: 'cobrado', detalle: 'Cobranzas' },
+          { nombre: 'Cobranzas de mantenimiento', cobranzas: 'mantenimiento', modo: 'cobrado', detalle: 'Cobranzas' },
+          { nombre: 'Otras cobranzas', cobranzas: 'otras', modo: 'cobrado', detalle: 'Cobranzas' },
+        ],
+      },
+      {
+        // MEMO, NO CAJA — signo 0: se muestra al lado del cobro real para poder planificar, pero NO
+        // suma al flujo neto (decisión del dueño 28/07: percibido y proyectado separados, sin
+        // mezclar). Son cobros ESPERADOS —Pendiente/Proyectado/Facturado/Vencido, nunca Endosado—
+        // ubicados en su fecha de cobro (o de venta si aún no tienen fecha de cobro).
+        nombre: 'Cobranzas esperadas — aún no cobradas (proyección, no suma al flujo)', signo: 0,
+        lineas: [
+          { nombre: 'Esperado · obra civil', cobranzas: 'civil', modo: 'esperado', detalle: 'Cobranzas' },
+          { nombre: 'Esperado · mantenimiento', cobranzas: 'mantenimiento', modo: 'esperado', detalle: 'Cobranzas' },
+          { nombre: 'Esperado · otras', cobranzas: 'otras', modo: 'esperado', detalle: 'Cobranzas' },
         ],
       },
       {
@@ -620,7 +641,7 @@ export function expresionReal(l, desde, hasta) {
   // normalizarlo de los dos lados ("0001-000036" vs "1-36") y eso en fórmula sería ilegible. La
   // llena el script con VALORES y el agente la reescribe cada 2 horas. Devolver null es la señal.
   if (l.cheques) return null
-  if (l.cobranzas) return formulaCobranzas(l.cobranzas, desde, hasta).slice(1)
+  if (l.cobranzas) return formulaCobranzas(l.cobranzas, desde, hasta, l.modo).slice(1)
   if (l.rubro === 'Nómina · Jornales de obra') return formulaJornales(desde, hasta).slice(1)
   const ventana = `${COL_FECHA};">="&${desde};${COL_FECHA};"<"&${hasta}`
   // Los bienes de uso salen por su SUB-rubro (columna AF), no por el rubro: son una parte de
