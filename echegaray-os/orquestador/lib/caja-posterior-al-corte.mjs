@@ -69,6 +69,29 @@ export const CMP = { hoja: 'Compras', total: 'O', tipoPago: 'P', estado: 'X', fe
 
 const rango = (h, col, d, f) => `'${h}'!$${col}$${d}:$${col}$${f}`
 
+// ═══ LA COLUMNA "FECHA DE CAJA" DE COMPRAS VIENE EN FORMATO MIXTO — POR QUÉ ESTAS FÓRMULAS NO USAN SUMIFS ═══
+//
+// EL BUG (verificado en vivo en la celda C13 de CAJA). La "Fecha de caja" (col AD de Compras) tiene
+// unos valores como NÚMERO DE SERIE y otros como TEXTO "dd/mm/aaaa" —los que se cargaron tipeando la
+// fecha—. Un SUMIFS con la condición ">"&corte compara numéricamente contra un texto y NO matchea:
+// ignora en SILENCIO todos los pagos con fecha de texto. Efecto medido: los pagos por transferencia,
+// débito y efectivo posteriores al corte NO restaban de la caja, y la disponibilidad quedaba inflada
+// (transferencia+débito $217.370 + efectivo $1.104.000 que la SUMIFS vieja perdía).
+//
+// LA SOLUCIÓN. SUMPRODUCT con la fecha COACCIONADA a número: DATEVALUE parsea el texto (locale es-AR ⇒
+// dd/mm/aaaa) y, para los que ya son serie, DATEVALUE("46000") falla y IFERROR cae a N() que devuelve
+// el propio serial. Así los dos formatos entran en la misma comparación. El TOTAL también se envuelve
+// en N(): SUMPRODUCT no tolera texto en la columna que suma (daría #VALUE! y tumbaría toda la fórmula),
+// mientras que SUMIFS sí lo toleraba — por eso el cambio de función obliga a coaccionar el importe.
+
+/** La "Fecha de caja" de Compras coaccionada a número, tolerante al formato mixto serie/texto. */
+const fechaCajaCoerc = (c) => {
+  const r = rango(c.hoja, c.fecha, c.desde, c.hasta)
+  return `IFERROR(DATEVALUE(${r}&"");N(${r}))`
+}
+/** El total de Compras coaccionado con N(): SUMPRODUCT no suma texto, N() lo lleva a 0. */
+const totalCoerc = (c) => `N(${rango(c.hoja, c.total, c.desde, c.hasta)})`
+
 /**
  * NÚCLEO PURO: lo cobrado DESPUÉS de la fecha de corte del extracto.
  *
@@ -111,17 +134,19 @@ export function formulaChequesDebitadosPosteriores(corte, c = CHQ) {
  * muestra. Sin esta resta, la disponibilidad de CAJA queda inflada hasta la próxima carga del banco.
  * NO se cuentan Cheque (lo resta "Cheques Emitidos"), Tarjeta de Crédito (consume el cupo, se paga
  * después) ni Efectivo (sale de la caja física, no del banco): incluirlos sería doble conteo.
- * Un SUMIFS por tipo, porque SUMIFS no hace OR.
+ * Un solo SUMPRODUCT con los dos tipos sumados —(Transferencia)+(Débito)—, porque SUMPRODUCT sí hace
+ * OR entre condiciones y además tolera la "Fecha de caja" guardada como texto (ver fechaCajaCoerc).
  *
  * @param {string} corte referencia a la celda con la fecha de corte del extracto
  * @param {object} c columnas de Compras
  * @returns {string} fórmula (sin `=`)
  */
 export function formulaComprasPagadasPosteriores(corte, c = CMP) {
-  return c.tiposBanco.map((tipo) => `SUMIFS(${rango(c.hoja, c.total, c.desde, c.hasta)};`
-    + `${rango(c.hoja, c.estado, c.desde, c.hasta)};"Pagado";`
-    + `${rango(c.hoja, c.tipoPago, c.desde, c.hasta)};"${tipo}";`
-    + `${rango(c.hoja, c.fecha, c.desde, c.hasta)};">"&${corte})`).join('+')
+  const tipos = c.tiposBanco.map((t) => `(${rango(c.hoja, c.tipoPago, c.desde, c.hasta)}="${t}")`).join('+')
+  return `SUMPRODUCT((${rango(c.hoja, c.estado, c.desde, c.hasta)}="Pagado")`
+    + `*(${tipos})`
+    + `*(${fechaCajaCoerc(c)}>${corte})`
+    + `*${totalCoerc(c)})`
 }
 
 /**
@@ -184,16 +209,17 @@ export function formulaCobrosEfectivoPosteriores(arqueo, c = COB) {
  * NÚCLEO PURO: los pagos en EFECTIVO posteriores al arqueo. Auto-DESCARGA de la caja física.
  * El espejo de formulaComprasPagadasPosteriores del lado del efectivo: cuenta el tipo de pago que
  * aquélla deja afuera a propósito ("Efectivo"), con estado "Pagado" y fecha de caja POSTERIOR al
- * arqueo. Un solo SUMIFS: acá el medio es uno solo.
+ * arqueo. SUMPRODUCT, no SUMIFS, por el mismo formato mixto de la "Fecha de caja" (ver fechaCajaCoerc):
+ * un SUMIFS perdía en silencio los pagos en efectivo con fecha tipeada y la caja física no bajaba.
  * @param {string} arqueo referencia a la celda con la fecha del arqueo
  * @param {object} c columnas de Compras
  * @returns {string} fórmula
  */
 export function formulaComprasEfectivoPosteriores(arqueo, c = CMP) {
-  return `SUMIFS(${rango(c.hoja, c.total, c.desde, c.hasta)};`
-    + `${rango(c.hoja, c.estado, c.desde, c.hasta)};"Pagado";`
-    + `${rango(c.hoja, c.tipoPago, c.desde, c.hasta)};"Efectivo";`
-    + `${rango(c.hoja, c.fecha, c.desde, c.hasta)};">"&${arqueo})`
+  return `SUMPRODUCT((${rango(c.hoja, c.estado, c.desde, c.hasta)}="Pagado")`
+    + `*(${rango(c.hoja, c.tipoPago, c.desde, c.hasta)}="Efectivo")`
+    + `*(${fechaCajaCoerc(c)}>${arqueo})`
+    + `*${totalCoerc(c)})`
 }
 
 /**

@@ -95,6 +95,12 @@ import { formatear as formatearCuit } from '../lib/cuit.mjs'
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = NOMBRES.proveedoresMateriales
 const DRY = process.argv.includes('--dry')
+// REGENERACIÓN INTENCIONAL (opt-in, apagado por defecto). Cuando el dueño pide explícitamente
+// "regenerá esta pestaña", este flag saltea las dos guardas de SKIP (firma editada / auto-respeto de
+// reescritura) que están para el worker autónomo 24×7. NO afecta la preservación: la fusión y
+// notasAncladas siguen re-anclando los comentarios del dueño por proveedor/comprobante. Nunca se
+// activa solo: hace falta --force en la línea de comandos o ORQ_PROV_FORCE=1 en el entorno.
+const FORCE = process.argv.includes('--force') || process.env.ORQ_PROV_FORCE === '1'
 const AÑO = 2026
 const TOP = 30
 /** Colchón de filas sobre la deuda actual, para que la tabla derrame sin pisar el bloque siguiente.
@@ -320,7 +326,8 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // hasta la próxima corrida. Esta línea compara —en vivo— el total real contra la suma de lo listado
   // y avisa el hueco, para que el cuadro nunca engañe aunque esté desactualizado. Se llena más abajo,
   // cuando el bloque ya tiene coordenadas.
-  push(['La deuda agrupada por proveedor: la fila de cada uno muestra su total y su próximo pago; con el +/- del Sheet (menú Datos → Agrupar) se abren o cierran sus facturas. Todo son fórmulas sobre Compras: se marca una pagada allá y baja acá.'])
+  // Sin subtítulo de prosa: la tabla se explica sola (menos es más). Fila en blanco de respiro.
+  push([])
   // Las columnas son las que el dueño dejó en la pestaña (nombre y orden). Ver layoutDeuda.
   const L = layoutDeuda(deudaCols)
   // Las notas del dueño vuelven a SU proveedor / SU comprobante, no a la fila donde estaban.
@@ -392,7 +399,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
       .join('+') || '0'
     const totalN = `COUNTIFS(${COL_ESTADO};"${ESTADO_DEUDA}";${COL_COMERCIAL};1;${COL_TOTAL};"<>")`
     const avisoFila = L.cols.map(() => VACIO)
-    avisoFila[0] = `=IF(ROUND(${falta};0)=0;"✓ Al día: el listado muestra toda la deuda comercial de Compras.";"⚠ Faltan "&TEXT((${totalN})-(${listadasN});"0")&" factura(s) por "&TEXT(${falta};"$#,##0")&" que este listado todavía no muestra — aparecen cuando corre el agente. El total de arriba ya las cuenta.")`
+    avisoFila[0] = `=IF(ROUND(${falta};0)=0;"";"⚠ Faltan "&TEXT((${totalN})-(${listadasN});"0")&" factura(s) por "&TEXT(${falta};"$#,##0")&" que este listado todavía no muestra — aparecen cuando corre el agente. El total de arriba ya las cuenta.")`
     filas[fAviso - 1] = avisoFila
   }
   push([])
@@ -1084,15 +1091,20 @@ async function main() {
       ID, `${refPestana(t.titulo)}!A1:${letra(anchoLeer - 1)}`,
     ).catch(() => previo)
     // LA FIRMA primero (respeto más fuerte: cualquier edición tuya). Después, la reescritura total.
-    if ((await firmaGuardia(google, ID, t.titulo, refPestana(t.titulo))).editada) continue
+    if (!FORCE && (await firmaGuardia(google, ID, t.titulo, refPestana(t.titulo))).editada) continue
     // AUTO-RESPETO (24/07): si reescribiste esta pestaña entera con otra estructura, la tomo como tuya
-    // y no la piso — sin que tengas que candar nada.
-    if ((await autoRespetarReescritura(ID, t.titulo, cuadroP, visible)).reescrita) continue
+    // y no la piso — sin que tengas que candar nada. --force la salta (regeneración pedida a mano).
+    if (!FORCE && (await autoRespetarReescritura(ID, t.titulo, cuadroP, visible)).reescrita) continue
+    if (FORCE) console.log(`  ⚡ ${t.titulo}: --force, regeneración intencional (guardas de skip omitidas; comentarios re-anclados igual)`)
     const { grid: cuadroFinal, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, t.titulo, cuadroP, visible)
     for (const r of respetadas) console.log(`  ✋ ${t.titulo}: respeto tu texto ("${String(r.suyo).slice(0, 40)}") en vez de "${String(r.mio).slice(0, 40)}"`)
     const fusion = fusionar(cuadroFinal, previo)
     const conservadas = sobrantes(cuadroFinal, previo)
-    await google.batchUpdateValues(ID, [{ range: `${refPestana(t.titulo)}!A1`, values: fusion }])
+    // En --force el write también pasa el portón (yaGuardado): es una regeneración intencional de ESTA
+    // pestaña (Proveedores/Materiales), pedida a mano. La fusión ya preservó lo del dueño, así que el
+    // portón sólo estaría bloqueando la actualización que justamente se pidió. No afecta a Compras (su
+    // contenido se escribe por otro camino y sigue protegido).
+    await google.batchUpdateValues(ID, [{ range: `${refPestana(t.titulo)}!A1`, values: fusion }], { yaGuardado: FORCE })
     if (conservadas.length) console.log(`  ✋ ${t.titulo}: ${conservadas.length} celda(s) escritas por el dueño — CONSERVADAS, no se borra nada`)
     await sellarFirma(google, ID, t.titulo, refPestana(t.titulo))
     await guardarRegistro(ID, t.titulo, cuadroFinal, ediciones, visible, candidatos)
