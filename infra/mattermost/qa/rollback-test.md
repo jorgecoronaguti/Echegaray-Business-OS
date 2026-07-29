@@ -1,8 +1,8 @@
 # Prueba de rollback — PR-2 (verificación segura)
 
 Este documento **no** es el procedimiento de rollback: ese lo produce **WT1** (Cloudflare
-Tunnel) en su `ROLLBACK.md`, junto a la config del túnel (ubicación esperada:
-`infra/mattermost/cloudflared/ROLLBACK.md`). Acá está la parte de **VERIFICACIÓN**:
+Tunnel) en su `ROLLBACK.md`, en la raíz de la infra de Mattermost (ubicación real:
+`infra/mattermost/ROLLBACK.md`). Acá está la parte de **VERIFICACIÓN**:
 cómo confirmar, de forma segura y read-only, que el rollback deja el sistema en un estado
 correcto y sin exposición residual.
 
