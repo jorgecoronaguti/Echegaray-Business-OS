@@ -543,7 +543,13 @@ async function main() {
       if (!h) continue
       const gidDestino = gidPorPestana.get(h.destino)
       if (gidDestino == null) { sinDestino.push(`${d.pestaña}: "${det.linea.nombre}" → no encontré la pestaña "${h.destino}"`); continue }
-      d.values[det.fila - 1][0] = h.formula.replace('URLID{}', URL_BASE).replace(`GID{${h.destino}}`, String(gidDestino))
+      let formulaH = h.formula.replace('URLID{}', URL_BASE).replace(`GID{${h.destino}}`, String(gidDestino))
+      // Topar la fila final del rango al tamaño REAL de la pestaña destino: Google da "El rango no es
+      // válido" si el rango excede la grilla (Cobranzas: 358 filas, un M5:M400 se pasaba) y un rango
+      // abierto (O4:O) tampoco navega. O4:O → O4:O<rows>; M5:M400 → M5:M358 si la pestaña tiene 358.
+      const filasDest = metaGid.find((s) => s.title === h.destino)?.rows
+      if (filasDest) formulaH = formulaH.replace(/(&range=[A-Z]+\d+:[A-Z]+)(\d*)/, (m, pre, r2) => `${pre}${r2 ? Math.min(Number(r2), filasDest) : filasDest}`)
+      d.values[det.fila - 1][0] = formulaH
     }
   }
   if (sinDestino.length) {

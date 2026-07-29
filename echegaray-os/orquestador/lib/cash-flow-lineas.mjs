@@ -929,12 +929,12 @@ export function hipervinculoDetalle(l, filasTabla = {}, filasCal = {}) {
   if (!dest) return null
   // Las comillas del rótulo se duplican: si un nombre trajera una, cerraría la cadena de la fórmula.
   const etiqueta = `${SANGRIA_DETALLE}${l.nombre}`.replace(/"/g, '""')
-  // URL COMPLETA, no fragmento suelto: "#gid=…&range=…" solo da "El rango no es válido" en el chip de
-  // Google y no navega. URLID{} (fileId) y GID{} (getSheetMeta) los resuelve el script. Un rango
-  // ABIERTO (O4:O) se bordea a O4:O1000: Google rechaza el rango sin fila final en un vínculo.
-  const rango = /:[A-Z]+$/.test(dest.rango) ? `${dest.rango}1000` : dest.rango
-  const formula = `=HYPERLINK("URLID{}#gid=GID{${dest.pestaña}}&range=${rango}";"${etiqueta}")`
-  return { formula, destino: dest.pestaña, rango }
+  // URL COMPLETA (URLID{} = fileId, GID{} = getSheetMeta, los resuelve el script). La fila final del
+  // rango la TOPA el script al tamaño real de la pestaña destino: Google da "El rango no es válido" si
+  // el rango excede la grilla (Cobranzas tiene 358 filas y un M5:M400 se pasaba) y un rango abierto
+  // (O4:O) tampoco navega. La función pura deja el rango tal cual; el resolver lo acota con getSheetMeta.
+  const formula = `=HYPERLINK("URLID{}#gid=GID{${dest.pestaña}}&range=${dest.rango}";"${etiqueta}")`
+  return { formula, destino: dest.pestaña, rango: dest.rango }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
