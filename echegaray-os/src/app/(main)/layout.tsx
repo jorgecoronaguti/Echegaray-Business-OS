@@ -39,6 +39,10 @@ const GRUPOS_NAV = [
     links: [{ href: '/reportes', label: 'Reportes' }],
   },
   {
+    grupo: 'Comunicación',
+    links: [{ href: '/comunicacion', label: 'Comunicación' }],
+  },
+  {
     grupo: 'Conexiones',
     links: [
       { href: '/integraciones', label: 'Integraciones' },
