@@ -130,8 +130,8 @@ test('11 · una tarea de Work Fabric que falla se reintenta y luego se completa'
   const { payload, seguridad } = firmado('@os estado del sistema')
   await con.recibir(payload, { seguridad })
   await con.procesarInbox()
-  // Simular caída del WF: claim + fail (mecanismo real de orq).
-  const t = await claimTask('pr4', 30)
+  // Simular caída del WF: claim (lane de comunicación) + fail (mecanismo real de orq).
+  const t = await claimTask('pr4', 30, 'comunicacion')
   const next = await failTask(t.id, 'pr4', 'WF caído (simulado)', 1)
   assert.notEqual(next, 'dead')
   await query(`update orq.tasks set run_after = now() - interval '1 second' where id=$1`, [t.id])
@@ -243,4 +243,61 @@ async function flujoParcialHastaOutbox(con) {
   await con.procesarInbox()
   await con.procesarWorkFabric()
 }
+// ── PR-4.1 · aislamiento de worker por lane ──
+import { claimTask as _claim } from '../lib/ledger.mjs'
+
+async function encolar(type, dedupe) {
+  const { rows } = await query('select orq.enqueue_task($1::jsonb) as id',
+    [JSON.stringify({ type, dedupe_key: dedupe, title: type, inputs: {} })])
+  return rows[0].id
+}
+
+// 15b · una tarea comunicacion.responder cae en la lane 'comunicacion'
+test('L1 · las tareas comunicacion.* se rutean a la lane comunicacion', opts, async () => {
+  await encolar('comunicacion.responder', 'L1')
+  const { rows } = await query(`select queue from orq.tasks where dedupe_key='L1'`)
+  assert.equal(rows[0].queue, 'comunicacion')
+})
+
+// 16b · el worker de comunicación reclama comunicacion.responder…
+test('L2 · el worker de comunicación reclama SÓLO su lane', opts, async () => {
+  await encolar('comunicacion.responder', 'L2')
+  const t = await _claim('comm-w', 30, 'comunicacion')
+  assert.ok(t && t.type === 'comunicacion.responder')
+})
+
+// …y NO reclama una tarea financiera ni de otro especialista (quedan en 'default')
+test('L3 · el worker de comunicación NO reclama tareas ajenas (finanzas/especialista)', opts, async () => {
+  await encolar('finanzas.plan', 'L3a')
+  await encolar('specialist', 'L3b')
+  const t = await _claim('comm-w', 30, 'comunicacion')
+  assert.equal(t, null, 'no ve tareas de la lane default')
+  const fin = await query(`select queue from orq.tasks where dedupe_key='L3a'`)
+  assert.equal(fin.rows[0].queue, 'default')
+})
+
+// L4 · el worker general (lane default) NO reclama tareas de comunicación
+test('L4 · el worker general no roba tareas de comunicación', opts, async () => {
+  await encolar('comunicacion.responder', 'L4')
+  const g = await _claim('general-w', 30) // default
+  assert.equal(g, null, 'el general no ve la lane comunicacion')
+})
+
+// L5 · el worker general SÍ sigue reclamando su lane (no se rompió)
+test('L5 · el worker general sigue funcionando en su lane', opts, async () => {
+  await encolar('specialist', 'L5')
+  const g = await _claim('general-w', 30)
+  assert.ok(g && g.type === 'specialist')
+})
+
+// L6 · dos workers de comunicación no reclaman la misma tarea (concurrencia)
+test('L6 · dos workers de comunicación concurrentes no toman la misma tarea', opts, async () => {
+  await encolar('comunicacion.responder', 'L6')
+  const [a, b] = await Promise.all([
+    _claim('comm-A', 30, 'comunicacion'),
+    _claim('comm-B', 30, 'comunicacion'),
+  ])
+  assert.equal([a, b].filter(Boolean).length, 1)
+})
+
 after(async () => { if (!salta) await closePool() })

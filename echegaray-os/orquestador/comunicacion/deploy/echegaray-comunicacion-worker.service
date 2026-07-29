@@ -1,0 +1,26 @@
+# PR-4.1 · Worker del enlace comunicación ↔ Work Fabric (lane 'comunicacion').
+# PLANTILLA systemd — NO instalar sin autorización. Colocar en /etc/systemd/system/.
+[Unit]
+Description=Echegaray · Worker de comunicación (Communication Service <-> Work Fabric)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=echegaray
+WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+EnvironmentFile=/etc/echegaray/comunicacion.env
+ExecStart=/usr/bin/node orquestador/comunicacion/worker-comunicacion.mjs
+Restart=on-failure
+RestartSec=5
+# Endurecimiento mínimo
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+# Shutdown limpio (el worker atiende SIGTERM)
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

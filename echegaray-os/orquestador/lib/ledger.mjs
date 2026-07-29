@@ -8,9 +8,11 @@ export async function enqueueTask(task) {
   return rows[0].id
 }
 
-/** Reclama UNA tarea elegible (FOR UPDATE SKIP LOCKED). null si no hay. */
-export async function claimTask(workerId, leaseSeconds) {
-  const { rows } = await query('select * from orq.claim_task($1, $2)', [workerId, leaseSeconds])
+/** Reclama UNA tarea elegible de una LANE (FOR UPDATE SKIP LOCKED). null si no hay.
+ *  `queue` default 'default' = worker general (comportamiento previo, retrocompatible);
+ *  'comunicacion' = worker de comunicación (PR-4.1, aislamiento por lane). */
+export async function claimTask(workerId, leaseSeconds, queue = 'default') {
+  const { rows } = await query('select * from orq.claim_task($1, $2, $3)', [workerId, leaseSeconds, queue])
   return rows[0] ?? null
 }
 

@@ -15,12 +15,33 @@
 import { query } from '../lib/db.mjs'
 import { estadoSistema } from '../comunicacion/estado-sistema.mjs'
 
+// Reconocimiento de comando para la prueba inicial: SÓLO "@os estado del sistema".
+// No es un catálogo — cualquier otra cosa responde "no soportado" de forma segura.
+function normalizar(texto) {
+  return String(texto ?? '')
+    .replace(/@os\b/gi, '') // saca la mención al bot
+    .toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '') // sin tildes
+    .replace(/\s+/g, ' ').trim()
+}
+function esEstadoDelSistema(comando) {
+  const n = normalizar(comando)
+  return n === 'estado del sistema' || n === 'estado' || n === 'status'
+}
+
 export async function comunicacionResponderHandler(task, ctx) {
   const inp = task.inputs ?? {}
   ctx.logger?.info?.('comunicacion.responder: ejecutando', { task_id: task.id, comm_event_id: inp.comm_event_id })
 
-  // Trabajo real del OS: leer el estado del sistema desde la base del Work Fabric.
-  const estado = await estadoSistema({ query })
+  // Contrato de la prueba inicial: sólo "estado del sistema". Otro comando → no soportado.
+  let texto
+  let datos = {}
+  if (esEstadoDelSistema(inp.comando)) {
+    const estado = await estadoSistema({ query }) // trabajo real: datos reales de orq
+    texto = estado.texto
+    datos = estado.datos
+  } else {
+    texto = 'Comando no soportado todavía. Probá: @os estado del sistema'
+  }
 
   const respuesta = {
     comm_event_id: inp.comm_event_id,
@@ -28,7 +49,7 @@ export async function comunicacionResponderHandler(task, ctx) {
     causation_id: inp.comm_event_id, // la respuesta la causa el evento de comunicación
     channel_id: inp.channel_id,
     root_post_id: inp.root_post_id, // hilo: se responde en el mismo post
-    texto: estado.texto,
+    texto,
     task_id: task.id,
   }
 
@@ -40,7 +61,7 @@ export async function comunicacionResponderHandler(task, ctx) {
   await ctx.responderComunicacion(respuesta)
 
   return {
-    result: { handler: 'comunicacion.responder', comm_event_id: inp.comm_event_id, texto: estado.texto },
-    evidence: { kind: 'comunicacion', at: new Date().toISOString(), correlation_id: task.correlation_id, datos: estado.datos },
+    result: { handler: 'comunicacion.responder', comm_event_id: inp.comm_event_id, texto },
+    evidence: { kind: 'comunicacion', at: new Date().toISOString(), correlation_id: task.correlation_id, datos },
   }
 }

@@ -1,0 +1,20 @@
+# PR-4.1 · Fragmento Caddy para publicar el endpoint entrante detrás del reverse
+# proxy YA existente de chat.ecsas.com.ar (ver infra/mattermost/caddy/Caddyfile).
+# NO modificar el Caddyfile productivo sin autorización: esto es una PLANTILLA.
+#
+# El endpoint NO abre puerto público: Caddy termina TLS y proxya SOLO esta ruta al
+# servidor local 127.0.0.1:8791. Mattermost (mismo VM) puede postear por red privada
+# directamente a 127.0.0.1:8791 SIN pasar por Caddy; este bloque es para el caso en
+# que se prefiera exponerlo por HTTPS con la misma terminación TLS.
+#
+# Dentro del bloque de sitio correspondiente:
+#
+#   @mm_events path /integrations/mattermost/events
+#   handle @mm_events {
+#     reverse_proxy 127.0.0.1:8791 {
+#       header_up X-Forwarded-For {remote_host}
+#     }
+#   }
+#
+# Recomendado además: limitar por IP de origen a nivel Caddy o firewall a la IP del
+# proceso de Mattermost, y mantener la allowlist del verificador (MM_INCOMING_ALLOWLIST).

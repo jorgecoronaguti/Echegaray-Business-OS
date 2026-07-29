@@ -16,6 +16,7 @@ const MIGR_COMM = join(AQUI, '..', '..', '..', 'communication-service', 'db', 'm
 const ARCHIVOS = [
   join(MIGR_ORQ, '20260711120000_orq_fundacion_work_fabric.sql'),
   join(MIGR_ORQ, '20260711121000_orq_ledger.sql'),
+  join(MIGR_ORQ, '20260729180000_orq_comunicacion_lane.sql'), // PR-4.1: lane de comunicación
   join(MIGR_COMM, '0001_comunicacion.sql'),
 ]
 
