@@ -68,15 +68,23 @@ services:
         condition: service_healthy
     security_opt:
       - no-new-privileges:true
-    # SÓLO loopback. NO 0.0.0.0. La exposición pública estable (Cloudflare named tunnel) es PR-2.
+    # SÓLO loopback. NO 0.0.0.0. La exposición pública estable la da el Cloudflare Tunnel
+    # SALIENTE de PR-2 (ver ./cloudflared/): el edge de Cloudflare termina TLS y publica
+    # https://chat.ecsas.com.ar, y cloudflared alcanza este puerto por 127.0.0.1:8065.
+    # El binding sigue en loopback: NO se abre ningún puerto entrante.
     ports:
       - "127.0.0.1:8065:8065"
     environment:
       # Conexión a su propio Postgres por la red interna (sslmode=disable: tráfico interno del compose).
       MM_SQLSETTINGS_DRIVERNAME: postgres
       MM_SQLSETTINGS_DATASOURCE: "postgres://${MM_DB_USER}:${MM_DB_PASSWORD}@mattermost-db:5432/${MM_DB_NAME}?sslmode=disable&connect_timeout=10"
-      # SiteURL local por ahora; en PR-2 pasa al hostname público estable.
-      MM_SERVICESETTINGS_SITEURL: ${MM_SITE_URL:-http://localhost:8065}
+      # SiteURL PÚBLICO (PR-2): imprescindible detrás del túnel — Mattermost lo usa para el
+      # chequeo de origen del WebSocket (wss://chat.ecsas.com.ar/api/v4/websocket), CSRF y
+      # los enlaces que genera. El edge de Cloudflare hace la terminación TLS; cloudflared
+      # entrega HTTP plano a :8065 y Mattermost resuelve el upgrade a WebSocket él mismo.
+      # Se mantiene parametrizado por ${MM_SITE_URL} para poder correr local con .env
+      # (MM_SITE_URL=http://localhost:8065); el default post-PR2 es el hostname público.
+      MM_SERVICESETTINGS_SITEURL: ${MM_SITE_URL:-https://chat.ecsas.com.ar}
       MM_SERVICESETTINGS_LISTENADDRESS: ":8065"
       # Endurecimiento base: sin registro abierto, sin telemetría de diagnóstico.
       MM_TEAMSETTINGS_ENABLEOPENSERVER: "false"

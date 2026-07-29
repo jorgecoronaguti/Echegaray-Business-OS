@@ -3,5 +3,8 @@
 *.env
 # Backups locales (se generan en runtime; no viven en git).
 backup/dumps/
+# Credenciales del Cloudflare Tunnel — NUNCA al repo (viven en /etc/cloudflared/).
+cloudflared/*.json
+cloudflared/cert.pem
 # Pero sí conservar la plantilla.
 !.env.example

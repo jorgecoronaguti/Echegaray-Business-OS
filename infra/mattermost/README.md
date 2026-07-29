@@ -1,9 +1,30 @@
-# Mattermost — Infraestructura (PR-1)
+# Mattermost — Infraestructura (PR-1 + PR-2)
 
 Plataforma oficial de comunicación interna del Echegaray Business OS, autohospedada en la VM.
 
-> **Alcance de PR-1:** sólo infraestructura local. **No** expuesto a Internet, **no** integrado con
-> Google Drive, Supabase ni el Work Fabric, y **sin** lógica de negocio. Esos pasos son PR-2 en adelante.
+> **Alcance de PR-1:** infraestructura local. **PR-2** agrega la **exposición pública estable**
+> vía Cloudflare Tunnel saliente (`https://chat.ecsas.com.ar`), sin abrir puertos y sin mover la
+> zona DNS. Sigue **sin** integración con Google Drive, Supabase ni el Work Fabric (PR-4 en adelante)
+> y **sin** lógica de negocio.
+
+## Topología de exposición (PR-2)
+
+```
+navegador ──HTTPS/WSS──▶ edge Cloudflare ──túnel saliente──▶ cloudflared (esta VM)
+                                                          └──HTTP──▶ 127.0.0.1:8065 (Mattermost)
+```
+
+- **Mattermost sigue en loopback** (`127.0.0.1:8065`): no se abre ningún puerto entrante.
+- **Cloudflare Tunnel saliente** (`cloudflared`, servicio systemd `restart=always`) publica
+  `chat.ecsas.com.ar` con HTTPS + WebSocket terminados en el edge de Cloudflare.
+- **La zona `ecsas.com.ar` se queda en DonWeb.** No se mueven nameservers ni MX/SPF/DKIM/DMARC:
+  solo se agrega **un** CNAME `chat → <TUNNEL_UUID>.cfargotunnel.com` (TTL 3600).
+- `MM_SERVICESETTINGS_SITEURL=https://chat.ecsas.com.ar` (parametrizado por `${MM_SITE_URL}`)
+  para el origen del WebSocket, CSRF y los enlaces que genera Mattermost.
+
+Activación reproducible y los 2 pasos que requieren al dueño (login de Cloudflare + CNAME en
+DonWeb): **`cloudflared/README.md`**. Reversión al estado pre-PR2: **`ROLLBACK.md`**.
+Verificación de puertos/firewall: **`ufw/README.md`**.
 
 ## Principios de arquitectura (no negociables)
 
@@ -12,7 +33,8 @@ Plataforma oficial de comunicación interna del Echegaray Business OS, autohospe
   puerto publicado). La verdad estructurada del OS sigue en **Supabase Cloud** (remota) — este stack no la toca.
 - **Google Drive** sigue siendo el repositorio documental oficial (integración en PR-6).
 - **Exposición mínima.** Mattermost escucha sólo en `127.0.0.1:8065`. La exposición pública estable
-  (Cloudflare named tunnel + cierre de puertos) es **PR-2**.
+  es el **Cloudflare Tunnel saliente** de PR-2 (ver *Topología de exposición* arriba y `cloudflared/`):
+  publica `chat.ecsas.com.ar` **sin abrir puertos entrantes**.
 
 ## Componentes
 
@@ -69,14 +91,16 @@ cd app/infra/mattermost/backup && ./backup.sh     # escribe en ./dumps/ (gitigno
 
 ## Qué NO hace este stack todavía
 
-- No se expone a Internet (PR-2).
 - No integra Google Drive (PR-6) ni Supabase (PR-6) ni el Work Fabric (PR-4/5).
 - No corre el Communication Service (ver `../../communication-service/`), que es el servicio
   desacoplado y event-driven que traducirá los canales hacia el OS en PRs posteriores.
 
-## Seguridad (base de PR-1, se refuerza en PR-2/PR-8)
+## Seguridad (base de PR-1, reforzada en PR-2, se completa en PR-8)
 
 - Postgres sin puerto publicado; sólo alcanzable por la red interna del compose.
+- Mattermost atado a `127.0.0.1:8065`; **cero puertos entrantes** para exponerlo (túnel saliente).
 - `no-new-privileges` en ambos contenedores.
 - Registro de servidor cerrado (`ENABLEOPENSERVER=false`) y diagnóstico remoto apagado.
-- Secretos sólo en `.env` (gitignoreado). Nunca en el compose ni en el repo.
+- Secretos sólo en `.env` (gitignoreado) y, para el túnel, el credentials-file `<UUID>.json`
+  en `/etc/cloudflared/` (fuera del repo). Nunca en el compose ni en el repo.
+- Verificación de firewall/puertos documentada en `ufw/README.md` (chequeos read-only + comandos UFW).
