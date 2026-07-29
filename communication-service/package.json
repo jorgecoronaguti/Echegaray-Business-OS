@@ -1,0 +1,14 @@
+{
+  "name": "@echegaray/communication-service",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "Capa de comunicación multicanal, desacoplada y event-driven del Echegaray Business OS (PR-3: esqueleto Mattermost + evento canónico).",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test 'src/**/*.test.mjs'",
+    "demo": "node scripts/demo-e2e.mjs"
+  }
+}
