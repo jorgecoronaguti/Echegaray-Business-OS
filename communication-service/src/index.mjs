@@ -24,12 +24,16 @@ export { crearLog, crearMetricas, iniciarSpan } from './core/observabilidad.mjs'
 export { MattermostAdapter } from './channels/mattermost/mattermost-adapter.mjs'
 export { MattermostCliente, FakeMattermost, esReintentable } from './channels/mattermost/mattermost-cliente.mjs'
 
-// ── events: persistencia (puerto + implementaciones) ──
+// ── events: persistencia (puerto + implementaciones + colas con lease) ──
 export { RepositorioMemoria } from './events/repositorio-memoria.mjs'
 export { RepositorioPostgres, crearRepositorioPostgres } from './events/repositorio-postgres.mjs'
+export { ColaMemoria } from './events/cola-memoria.mjs'
+export { ColaPostgres } from './events/cola-postgres.mjs'
 
 // ── integrations: puentes hacia el OS ──
 export { deepLink, esEnlazable, RECURSOS } from './integrations/deep-links.mjs'
 export { ResolutorIdentidad, IdentidadesMemoria, CONFIANZA } from './integrations/identidad.mjs'
 export { RegistroComandos } from './integrations/slash-commands.mjs'
 export { configBotOs, botListo } from './integrations/bot-os.mjs'
+export { VerificadorEntrante, MOTIVO, firmar } from './integrations/seguridad-entrante.mjs'
+export { PuenteOrqEvents, PuenteMemoria, aEventoOrq, SUBJECT_COMUNICACION } from './integrations/puente-eventos.mjs'

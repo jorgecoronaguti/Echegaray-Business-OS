@@ -69,9 +69,14 @@ export function direccionDe(tipo) {
   return null
 }
 
-/** Deriva una idempotency_key estable a partir de campos naturales del hecho.
- *  Misma entrada ⇒ misma clave ⇒ el mismo hecho no se procesa dos veces, sin
- *  importar cuántas veces la plataforma lo reintente. Determinística (sha256). */
+/** Deriva una idempotency_key estable a partir de la IDENTIDAD NATURAL de un
+ *  hecho externo (p.ej. el `post_id`/`trigger_id` de Mattermost). Es identidad,
+ *  no contenido: dos posts distintos con el mismo texto tienen post_id distinto
+ *  ⇒ claves distintas. Se usa SÓLO para eventos ENTRANTES, donde la plataforma
+ *  provee un identificador natural del hecho. Determinística (sha256).
+ *
+ *  Para eventos SALIENTES NO se usa esto: la identidad es la INTENCIÓN de emisión
+ *  (ver `construirEvento` / M1), no un hash del payload. */
 export function claveIdempotencia(partes) {
   const norm = Object.keys(partes)
     .sort()
@@ -83,10 +88,21 @@ export function claveIdempotencia(partes) {
 /** Construye un evento canónico validado. Único punto de creación: nadie arma un
  *  evento a mano, así el sobre queda garantizado en todo el sistema.
  *
+ *  IDEMPOTENCIA POR INTENCIÓN (M1). La identidad de un evento NUNCA es su
+ *  contenido. La clave se resuelve en este orden:
+ *    1. `spec.idempotency_key` explícita (clave de negocio del emisor) — gana.
+ *    2. `spec.intent_id` (una intención de negocio: "certificado-4-aprobado")
+ *       ⇒ `intent:<intent_id>`.
+ *    3. el `id` del evento (único por emisión) ⇒ dos mensajes idénticos con
+ *       `id` distinto SÍ se envían los dos; un reintento reusa el MISMO objeto
+ *       evento (mismo `id`) ⇒ se deduplica.
+ *  Nunca se deriva de texto/canal/payload: eso suprimía avisos legítimos (B1).
+ *
  *  @param {object} spec
  *  @param {string} spec.type       - uno de TIPOS
  *  @param {object} spec.data       - carga específica del tipo (abierta, extensible)
- *  @param {string} [spec.idempotency_key] - si no se pasa, se deriva de type+data
+ *  @param {string} [spec.idempotency_key] - clave de negocio explícita (prioridad 1)
+ *  @param {string} [spec.intent_id]       - id de intención de negocio (prioridad 2)
  *  @param {string} [spec.correlation_id]  - hilo causal; se hereda o se genera
  *  @param {string} [spec.causation_id]    - id del evento que causó éste
  *  @param {object} [spec.actor]    - quién lo originó { tipo, id, display }
@@ -102,7 +118,7 @@ export function construirEvento(spec) {
   }
   const id = spec.id ?? randomUUID()
   const idempotency_key =
-    spec.idempotency_key ?? claveIdempotencia({ type, ...aplanarClave(data) })
+    spec.idempotency_key ?? (spec.intent_id ? `intent:${spec.intent_id}` : id)
   return Object.freeze({
     schema_version: SCHEMA_VERSION,
     id,
@@ -115,18 +131,6 @@ export function construirEvento(spec) {
     occurred_at: spec.occurred_at ?? new Date().toISOString(),
     data: Object.freeze({ ...data }),
   })
-}
-
-/** Toma los campos "naturales" y estables de data para la clave idempotente.
- *  Sólo escalares — un objeto anidado no es clave natural. Evita que un timestamp
- *  volátil en data cambie la clave del mismo hecho. */
-function aplanarClave(data) {
-  const out = {}
-  for (const [k, v] of Object.entries(data)) {
-    if (v == null || typeof v === 'object') continue
-    out[k] = v
-  }
-  return out
 }
 
 /** Valida un evento ya construido (p.ej. leído de la base o de otro servicio).
@@ -147,4 +151,4 @@ export function validarEvento(ev) {
   return { ok: true }
 }
 
-export const _internos = { aplanarClave, TIPOS_SALIENTES, TIPOS_ENTRANTES }
+export const _internos = { TIPOS_SALIENTES, TIPOS_ENTRANTES }

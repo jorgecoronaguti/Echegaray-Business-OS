@@ -51,8 +51,12 @@ export class PuertoAdapter {
    * Convierte un payload crudo entrante de la plataforma (webhook / outgoing
    * hook / slash command / evento de websocket) en un evento canónico, o null
    * si ese payload no corresponde traducir (ej. eco de un mensaje propio).
+   *
+   * PUEDE ser async: el servicio hace `await adapter.aCanonico(...)`, así un
+   * adapter futuro (Email/IMAP, WhatsApp con descarga de media) que necesite
+   * normalización asíncrona encaja sin romper el contrato.
    * @param {object} _payload
-   * @returns {object|null}  evento canónico entrante o null
+   * @returns {object|null|Promise<object|null>}  evento canónico entrante o null
    */
   aCanonico(_payload) {
     throw new Error(`${this.plataforma}: aCanonico() no implementado`)

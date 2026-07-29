@@ -9,6 +9,7 @@
   },
   "scripts": {
     "test": "node --test 'src/**/*.test.mjs'",
+    "test:pg": "node scripts/test-postgres.mjs",
     "demo": "node scripts/demo-e2e.mjs"
   }
 }

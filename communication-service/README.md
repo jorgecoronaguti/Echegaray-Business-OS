@@ -5,21 +5,26 @@ Capa de comunicación **multicanal, desacoplada y event-driven** del Echegaray B
 Soporta hoy **Mattermost** y está diseñado para sumar **WhatsApp Business, Email, Teams, Telegram** u
 otros canales **sin modificar el núcleo del OS**.
 
-> **Estado: PR-3 — esqueleto del servicio implementado.** Evento canónico, Communication Service
-> desacoplado, adapter Mattermost, outbox/reintentos/DLQ, deep links, identidad, slash commands y bot
-> @os (diseño), observabilidad, persistencia (puerto + memoria + Postgres), 41 tests y demo end-to-end.
-> **Todavía NO conectado a los especialistas / Work Fabric — eso es PR-4.**
+> **Estado: PR-3 — esqueleto implementado + ajustes bloqueantes de la auditoría cerrados.** Evento
+> canónico con idempotencia por intención (M1), dedup entrante atómico (M2), colas salida/entrada con
+> lease durable y DLQ (M3/M4), seguridad de borde HMAC + anti-replay + auditoría (M7), puente explícito
+> con `orq.events` (M10), persistencia memoria + Postgres con tests reales (M11), observabilidad, deep
+> links, identidad, slash commands y bot @os (diseño). **Todavía NO conectado a los especialistas /
+> Work Fabric — eso es PR-4.**
 > La infraestructura de Mattermost vive en [`../infra/mattermost/`](../infra/mattermost/).
-> Diseño general: [`ARCHITECTURE.md`](./ARCHITECTURE.md) · Implementación PR-3:
-> [`docs/PR-3-IMPLEMENTACION.md`](./docs/PR-3-IMPLEMENTACION.md) · Operación:
+> Diseño general: [`ARCHITECTURE.md`](./ARCHITECTURE.md) · Implementación:
+> [`docs/PR-3-IMPLEMENTACION.md`](./docs/PR-3-IMPLEMENTACION.md) · Auditoría:
+> [`docs/AUDITORIA-PR3.md`](./docs/AUDITORIA-PR3.md) · Cierre de bloqueantes:
+> [`docs/CIERRE-BLOQUEANTES-PR3.md`](./docs/CIERRE-BLOQUEANTES-PR3.md) · Operación:
 > [`docs/OPERACION.md`](./docs/OPERACION.md).
 
-## Correr (0 red, 0 base de datos)
+## Correr
 
 ```bash
 cd communication-service
-npm test          # 41 tests unit + integración (node --test, sin dependencias)
-npm run demo      # demostración extremo a extremo de los 5 criterios del PR-3
+npm test          # 65 tests unit + integración en memoria (hermético; 11 PG se saltean sin base)
+npm run test:pg   # 11 tests de integración contra un Postgres efímero en Docker (descartable)
+npm run demo      # demostración end-to-end (7/7 criterios), 0 red / 0 DB
 ```
 
 ## Reglas que gobiernan este servicio
