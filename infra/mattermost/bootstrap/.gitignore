@@ -1,0 +1,6 @@
+# El bootstrap real con secretos NUNCA se commitea. Solo el .example viaja al repo.
+.env.bootstrap
+
+# El .gitignore de infra/mattermost/ ignora `.env*` (regla de PR-1). La plantilla
+# .example SÍ debe versionarse: la re-incluimos explícitamente acá.
+!.env.bootstrap.example
