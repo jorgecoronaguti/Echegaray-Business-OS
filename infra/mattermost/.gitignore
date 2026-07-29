@@ -3,8 +3,7 @@
 *.env
 # Backups locales (se generan en runtime; no viven en git).
 backup/dumps/
-# Credenciales del Cloudflare Tunnel — NUNCA al repo (viven en /etc/cloudflared/).
-cloudflared/*.json
-cloudflared/cert.pem
+# Caddy: los certificados y el estado de ACME viven en el volumen Docker `caddy_data`,
+# NO en el repo. No hay estado de runtime de Caddy que ignorar acá.
 # Pero sí conservar la plantilla.
 !.env.example
