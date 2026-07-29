@@ -1,0 +1,30 @@
+# Caddy — reverse proxy público de Mattermost (PR-2, Path B)
+#
+# Publica https://chat.ecsas.com.ar hacia el Mattermost que corre SOLO en la red interna
+# del compose (servicio `mattermost:8065`). Caddy es el ÚNICO servicio que mira a Internet
+# (puertos 80/443). Mattermost nunca se expone directo.
+#
+# - HTTPS/ACME automático: Caddy obtiene y renueva el certificado solo (Let's Encrypt/ZeroSSL)
+#   usando el desafío HTTP-01 (puerto 80) o TLS-ALPN-01 (puerto 443). Requiere que el A record
+#   `chat -> 64.176.22.159` esté propagado y que 80/443 entrantes estén habilitados en el firewall.
+# - HTTP->HTTPS: Caddy agrega la redirección automáticamente (no hace falta declararla).
+# - WebSocket: `reverse_proxy` de Caddy v2 hace el upgrade y el túnel bidireccional de forma
+#   transparente (verificado contra la doc oficial). NO se agrega configuración especial de WS.
+# - Certificados: persisten en el volumen Docker `caddy_data` para que la renovación automática
+#   sobreviva reinicios del contenedor. No viven en el repo.
+#
+# Parametrización (sustituida por Caddy ANTES de parsear, desde el entorno del contenedor;
+# ambas variables se inyectan en docker-compose.yml):
+#   {$ACME_EMAIL}   -> email de contacto de ACME (avisos de expiración). Default de placeholder
+#                      admin@example.com (dominio RFC reservado, NO es un mailbox real): setear
+#                      ACME_EMAIL en .env con un correo real antes de exponer a producción.
+#   {$CHAT_DOMAIN}  -> hostname público. Default chat.ecsas.com.ar.
+
+{
+	email {$ACME_EMAIL:admin@example.com}
+}
+
+{$CHAT_DOMAIN:chat.ecsas.com.ar} {
+	reverse_proxy mattermost:8065
+	encode gzip
+}
