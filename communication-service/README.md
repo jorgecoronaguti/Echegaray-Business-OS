@@ -5,9 +5,22 @@ Capa de comunicación **multicanal, desacoplada y event-driven** del Echegaray B
 Soporta hoy **Mattermost** y está diseñado para sumar **WhatsApp Business, Email, Teams, Telegram** u
 otros canales **sin modificar el núcleo del OS**.
 
-> **Estado: estructura reservada (PR-1). Sin lógica implementada.**
+> **Estado: PR-3 — esqueleto del servicio implementado.** Evento canónico, Communication Service
+> desacoplado, adapter Mattermost, outbox/reintentos/DLQ, deep links, identidad, slash commands y bot
+> @os (diseño), observabilidad, persistencia (puerto + memoria + Postgres), 41 tests y demo end-to-end.
+> **Todavía NO conectado a los especialistas / Work Fabric — eso es PR-4.**
 > La infraestructura de Mattermost vive en [`../infra/mattermost/`](../infra/mattermost/).
-> El diseño completo está en [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+> Diseño general: [`ARCHITECTURE.md`](./ARCHITECTURE.md) · Implementación PR-3:
+> [`docs/PR-3-IMPLEMENTACION.md`](./docs/PR-3-IMPLEMENTACION.md) · Operación:
+> [`docs/OPERACION.md`](./docs/OPERACION.md).
+
+## Correr (0 red, 0 base de datos)
+
+```bash
+cd communication-service
+npm test          # 41 tests unit + integración (node --test, sin dependencias)
+npm run demo      # demostración extremo a extremo de los 5 criterios del PR-3
+```
 
 ## Reglas que gobiernan este servicio
 
