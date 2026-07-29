@@ -17,7 +17,7 @@ La app **oficial de Mattermost** (Google Play / App Store) recibe avisos con la 
 App oficial (celular)                    Instancia Echegaray                 Push proxy
 ─────────────────────                    ───────────────────                 ──────────
 1. Se conecta a SiteURL público   ───►   chat.ecsas.com.ar (HTTPS)
-   (dominio + túnel Cloudflare,          [otro tramo del PR-2]
+   (dominio + reverse proxy Caddy,       [otro tramo del PR-2]
     NO lo toca este bootstrap)
 
 2. Registra su device-token       ───►   Mattermost server
@@ -32,7 +32,7 @@ App oficial (celular)                    Instancia Echegaray                 Pus
 Dos condiciones **independientes**, ambas necesarias:
 
 1. **Conexión** — la app apunta al **`SiteURL` público** por HTTPS con certificado válido
-   (`chat.ecsas.com.ar` + túnel Cloudflare). Lo provee **otro tramo del PR-2**; este bootstrap no lo toca.
+   (`chat.ecsas.com.ar` + reverse proxy Caddy). Lo provee **otro tramo del PR-2**; este bootstrap no lo toca.
    Sin esto la app ni siquiera entra.
 2. **Push con la app cerrada** — requiere un **push proxy** (TPNS o HPNS). Es lo que configura este
    bootstrap vía `PushNotificationServer`.
