@@ -77,12 +77,15 @@ export function crearConector(opts = {}) {
     })
   }
 
-  // Paso REAL del Work Fabric: claim oficial → handler registrado → transición.
-  // Reproduce el núcleo de worker.mjs (sin IA) para las tareas de comunicación.
+  // Paso REAL del Work Fabric: claim oficial FILTRADO POR LANE 'comunicacion'
+  // (PR-4.1) → handler registrado → transición. Reclama SÓLO tareas de la lane de
+  // comunicación; nunca roba tareas del worker general (aislamiento atómico en el
+  // claim). Reproduce el núcleo de worker.mjs (sin IA).
+  const LANE = 'comunicacion'
   async function procesarWorkFabric({ lote = 10, leaseSeconds = 30 } = {}) {
     const resumen = { intentados: 0, ok: 0, fallidos: 0 }
     for (let i = 0; i < lote; i++) {
-      const task = await claimTask(process.env.WORKER_ID ?? 'comm-wf-1', leaseSeconds)
+      const task = await claimTask(process.env.WORKER_ID ?? 'comm-wf-1', leaseSeconds, LANE)
       if (!task) break
       resumen.intentados++
       const handler = resolveHandler(task.type)
