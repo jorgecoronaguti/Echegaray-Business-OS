@@ -156,3 +156,14 @@ Suites verdes tras el cambio: comm-service 64 (53 + 11 skip PG) · auth+endpoint
 **Sin cambios** en Communication Service, contratos, inbox/outbox/DLQ/dedup, bridge, Work Fabric, worker,
 lane ni migraciones. El endpoint HTTP y su auth por token/HMAC quedan en el repo como capacidad latente,
 **no se despliegan**.
+
+### Cierre PR-4.2 — guarda fail-fast + operación
+
+- **Guarda fail-fast del cliente Mattermost** (`resolverCliente` en `conector.mjs`): elimina el fallback
+  silencioso a `FakeMattermost`. En producción, sin `MM_BOT_TOKEN`, los procesos **no arrancan**;
+  `FakeMattermost` sólo con `opts.cliente` (tests) o `COMM_DEV=1` (dev). El conector loguea `tipo:
+  real|fake` sin exponer el token. Tests: `conector-guarda.test.mjs` (7). `worker` y `ws-consumer`
+  delegan la construcción del cliente en la guarda (fail-fast claro al iniciar).
+- **Runbook operativo**: `docs/OPERACION-BOT-WEBSOCKET.md` (arquitectura, variables, secretos, servicios,
+  comandos, rollback, rotación de token, alta de canales, diagnóstico recibe-pero-no-responde / outbox
+  pendiente, prohibición de fallback falso, riesgo de desconexión WS).
