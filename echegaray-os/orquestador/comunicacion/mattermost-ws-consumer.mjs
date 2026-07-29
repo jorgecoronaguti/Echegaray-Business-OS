@@ -21,7 +21,7 @@
 //     node orquestador/comunicacion/mattermost-ws-consumer.mjs
 
 import { crearConector } from './conector.mjs'
-import { MattermostCliente, crearLog } from '../../../communication-service/src/index.mjs'
+import { crearLog } from '../../../communication-service/src/index.mjs'
 
 const PLATAFORMA = 'mattermost'
 
@@ -199,13 +199,19 @@ async function main() {
   const token = process.env.MM_BOT_TOKEN
   const botUserId = process.env.MM_BOT_USER_ID ?? null
   const botUsername = process.env.MM_BOT_USERNAME ?? 'os'
+  // El token es imprescindible para el handshake WS (authentication_challenge).
   if (!token) { console.error('mattermost-ws-consumer: falta MM_BOT_TOKEN (fail-closed)'); process.exit(1) }
 
-  // Cliente real para que el conector pueda publicar (aunque el drenaje lo hace el
-  // worker, el conector se construye completo). Auth de ENTRADA la da la conexión
-  // WS autenticada ⇒ conector SIN verificador.
-  const cliente = new MattermostCliente({ baseUrl: process.env.MM_BASE_URL ?? 'http://127.0.0.1:8065', token })
-  const con = crearConector({ cliente, log, verificador: null, botUserId })
+  // El conector resuelve el cliente REAL desde MM_BOT_TOKEN (FAIL-FAST, sin Fake en
+  // producción). El consumidor sólo INGRESA (recibir); la auth de ENTRADA la da la
+  // conexión WS autenticada ⇒ conector SIN verificador.
+  let con
+  try {
+    con = crearConector({ log, verificador: null, botUserId })
+  } catch (e) {
+    console.error('mattermost-ws-consumer: no arranca —', String(e?.message ?? e))
+    process.exit(1)
+  }
 
   const consumidor = crearConsumidorWS({ con, wsUrl, token, botUserId, botUsername, log })
   for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => { log.info('shutdown pedido', { señal: s }); consumidor.cerrar(); process.exit(0) })

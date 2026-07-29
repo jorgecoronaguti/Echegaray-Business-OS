@@ -15,7 +15,7 @@
 // Work Fabric: usa orq.emit_event / orq.enqueue_task / orq.claim_task / transition.
 
 import {
-  CommunicationService, RepositorioPostgres, MattermostAdapter, FakeMattermost,
+  CommunicationService, RepositorioPostgres, MattermostAdapter, MattermostCliente, FakeMattermost,
   VerificadorEntrante, PuenteOrqEvents, crearLog, crearMetricas, TIPOS,
 } from '../../../communication-service/src/index.mjs'
 import { query, withTx } from '../lib/db.mjs'
@@ -26,7 +26,8 @@ import { crearEmitEventOS } from './ingesta-os.mjs'
 /**
  * Construye el conector cableado.
  * @param {object} opts
- * @param {object} [opts.cliente]   cliente Mattermost (real) o FakeMattermost (tests/demo)
+ * @param {object} [opts.cliente]   cliente Mattermost (real o FakeMattermost) INYECTADO (tests/demo)
+ * @param {boolean} [opts.permitirFake] habilita FakeMattermost por defecto sin token (dev controlado)
  * @param {object} [opts.verificador] VerificadorEntrante (si no, se arma desde env / se exige en prod)
  * @param {object} [opts.port]      { query, withTx } (default: el pool del OS)
  * @param {string} [opts.botUserId] @param {string} [opts.tokenEntrante]
@@ -37,7 +38,9 @@ export function crearConector(opts = {}) {
   const port = opts.port ?? { query, withTx }
   const log = opts.log ?? crearLog()
   const metricas = opts.metricas ?? crearMetricas()
-  const cliente = opts.cliente ?? new FakeMattermost()
+  // FAIL-FAST: nunca un Fake silencioso en producción (ver resolverCliente).
+  const { cliente, tipoCliente } = resolverCliente(opts)
+  log.info('cliente Mattermost activo', { tipo: tipoCliente, base_url: tipoCliente === 'real' ? (process.env.MM_BASE_URL ?? 'http://127.0.0.1:8065') : null })
   // `verificador: null` explícito = la auth vive en el endpoint (comm-service sin
   // verificador). Si no se pasa la clave, se arma desde el entorno (modo legado).
   const verificador = ('verificador' in opts) ? opts.verificador : verificadorDesdeEnv(opts.ahora)
@@ -120,6 +123,32 @@ export function crearConector(opts = {}) {
     recuperarLeasesComm: () => svc.recuperarLeases(),
     recuperarLeasesWorkFabric: () => reapExpiredLeases(),
   }
+}
+
+/**
+ * Resuelve el cliente Mattermost con política FAIL-FAST. NUNCA cae en silencio a
+ * un Fake en producción — el incidente del 29/07 (outbox "publicado" contra un
+ * FakeMattermost, respuesta perdida) demostró por qué. Prioridad:
+ *   1) `opts.cliente` INYECTADO (tests/demo lo pasan explícito) → se usa tal cual.
+ *   2) cliente REAL desde el entorno si hay `MM_BOT_TOKEN`.
+ *   3) FakeMattermost SÓLO si se habilita EXPLÍCITAMENTE (`opts.permitirFake` o
+ *      `COMM_DEV=1`) — dev/test controlado.
+ *   4) En cualquier otro caso (producción sin token) → LANZA: el proceso no arranca.
+ * Devuelve `{ cliente, tipoCliente: 'real' | 'fake' }`. El token nunca se loguea.
+ */
+export function resolverCliente(opts = {}) {
+  if (opts.cliente) {
+    return { cliente: opts.cliente, tipoCliente: opts.cliente instanceof FakeMattermost ? 'fake' : 'real' }
+  }
+  const token = process.env.MM_BOT_TOKEN
+  if (token) {
+    const baseUrl = process.env.MM_BASE_URL ?? 'http://127.0.0.1:8065'
+    return { cliente: new MattermostCliente({ baseUrl, token }), tipoCliente: 'real' }
+  }
+  if (opts.permitirFake === true || process.env.COMM_DEV === '1') {
+    return { cliente: new FakeMattermost(), tipoCliente: 'fake' }
+  }
+  throw new Error('conector: cliente Mattermost REAL requerido — falta MM_BOT_TOKEN (fail-closed). Para tests/dev pasá opts.cliente o COMM_DEV=1; nunca hay fallback silencioso a FakeMattermost en producción.')
 }
 
 /** Arma el verificador HMAC desde el entorno. Fail-closed: sin secreto y sin

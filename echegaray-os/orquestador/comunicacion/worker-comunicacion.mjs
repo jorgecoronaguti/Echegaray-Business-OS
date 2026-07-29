@@ -12,7 +12,7 @@
 // Uso (staging / entorno de prueba, NO producción sin autorización):
 //   DATABASE_URL=… MM_INCOMING_SECRET=… MM_BOT_TOKEN=… node orquestador/comunicacion/worker-comunicacion.mjs
 import { crearConector } from './conector.mjs'
-import { crearLog, MattermostCliente } from '../../../communication-service/src/index.mjs'
+import { crearLog } from '../../../communication-service/src/index.mjs'
 
 const IDLE_MS = Number(process.env.COMM_WORKER_IDLE_MS ?? 2000)
 const BUSY_MS = Number(process.env.COMM_WORKER_BUSY_MS ?? 200)
@@ -33,13 +33,16 @@ async function tick(con) {
 }
 
 async function main() {
-  // Cliente REAL de Mattermost para publicar las respuestas (outbox → @os). Sin
-  // token, fail-closed: el drenaje del outbox no puede publicar contra un Fake en
-  // producción. La auth de ENTRADA la da el consumidor WS ⇒ conector sin verificador.
-  const token = process.env.MM_BOT_TOKEN
-  if (!token) { console.error('worker-comunicacion: falta MM_BOT_TOKEN (fail-closed)'); process.exit(1) }
-  const cliente = new MattermostCliente({ baseUrl: process.env.MM_BASE_URL ?? 'http://127.0.0.1:8065', token })
-  const con = crearConector({ cliente, log, verificador: null, botUserId: process.env.MM_BOT_USER_ID ?? null })
+  // FAIL-FAST: el conector exige un cliente REAL de Mattermost (MM_BOT_TOKEN) para
+  // que el outbox publique de verdad; sin token no arranca (nunca FakeMattermost en
+  // producción). La auth de ENTRADA la da el consumidor WS ⇒ conector sin verificador.
+  let con
+  try {
+    con = crearConector({ log, verificador: null, botUserId: process.env.MM_BOT_USER_ID ?? null })
+  } catch (e) {
+    console.error('worker-comunicacion: no arranca —', String(e?.message ?? e))
+    process.exit(1)
+  }
   log.info('worker-comunicacion arrancado', {})
   for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => { log.info('shutdown pedido', { señal: s }); parar = true })
 
