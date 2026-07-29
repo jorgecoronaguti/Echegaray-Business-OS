@@ -20,6 +20,9 @@ const LIMITE_BYTES_DEFAULT = 64 * 1024 // 64 KB: un webhook de chat es chico
 /**
  * @param {object} con  conector (o cualquier objeto con `recibir(payload,{seguridad,plataforma})`)
  * @param {object} [opts]
+ * @param {object} [opts.autenticador]     autenticador del endpoint (HMAC-o-token). Si se pasa, la AUTH
+ *                                         vive acá y `con.recibir` se llama sin verificador (comm-service sin auth).
+ *                                         Si no se pasa, se delega la seguridad a `con.recibir` (modo legado HMAC).
  * @param {number} [opts.maxBytes]        límite de tamaño del body
  * @param {string} [opts.headerFirma]     header de la firma HMAC (default 'x-mm-signature')
  * @param {string} [opts.headerTimestamp] header del timestamp (default 'x-mm-timestamp')
@@ -30,6 +33,7 @@ export function crearManejadorWebhook(con, opts = {}) {
   const headerFirma = (opts.headerFirma ?? 'x-mm-signature').toLowerCase()
   const headerTs = (opts.headerTimestamp ?? 'x-mm-timestamp').toLowerCase()
   const plataforma = opts.plataforma ?? 'mattermost'
+  const autenticador = opts.autenticador ?? null
 
   return async function manejar(peticion) {
     try {
@@ -53,9 +57,18 @@ export function crearManejadorWebhook(con, opts = {}) {
         // timestamp del header (ingreso firmado) o, si no, el del propio webhook.
         timestamp: cabecera(peticion, headerTs) ?? mm.timestamp,
         ip: peticion.ip ?? null,
+        token: mm.token ?? null,
       }
 
-      const r = await con.recibir(payload, { seguridad, plataforma })
+      // Auth ENCAPSULADA en el endpoint (HMAC-o-token). Si no hay autenticador, se
+      // delega a con.recibir (modo legado). En ambos casos la diferencia no se
+      // propaga: recibir persiste igual.
+      if (autenticador) {
+        const auth = autenticador.verificar(seguridad)
+        if (!auth.ok) return http(401, { error: 'unauthorized', motivo: auth.motivo })
+      }
+
+      const r = await con.recibir(payload, { seguridad: autenticador ? undefined : seguridad, plataforma })
       if (r && r.rechazado) return http(401, { error: 'unauthorized', motivo: r.motivo })
       if (!r) return http(200, { estado: 'ignorado' }) // eco del bot / nada que procesar
       return http(202, { estado: 'aceptado' }) // encolado; el worker lo procesa
