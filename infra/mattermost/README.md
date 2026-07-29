@@ -2,29 +2,32 @@
 
 Plataforma oficial de comunicación interna del Echegaray Business OS, autohospedada en la VM.
 
-> **Alcance de PR-1:** infraestructura local. **PR-2** agrega la **exposición pública estable**
-> vía Cloudflare Tunnel saliente (`https://chat.ecsas.com.ar`), sin abrir puertos y sin mover la
-> zona DNS. Sigue **sin** integración con Google Drive, Supabase ni el Work Fabric (PR-4 en adelante)
-> y **sin** lógica de negocio.
+> **Alcance de PR-1:** infraestructura local. **PR-2 (Path B)** agrega la **exposición pública
+> estable** vía **reverse proxy Caddy** (`https://chat.ecsas.com.ar`), con un A record en DonWeb
+> apuntando a la IP pública de la VM. Sigue **sin** integración con Google Drive, Supabase ni el
+> Work Fabric (PR-4 en adelante) y **sin** lógica de negocio.
 
-## Topología de exposición (PR-2)
+## Topología de exposición (PR-2, Path B)
 
 ```
-navegador ──HTTPS/WSS──▶ edge Cloudflare ──túnel saliente──▶ cloudflared (esta VM)
-                                                          └──HTTP──▶ 127.0.0.1:8065 (Mattermost)
+navegador ──HTTPS/WSS (443)──▶ echegaray-mm-caddy ──HTTP (red interna)──▶ mattermost:8065
+                                (TLS + ACME auto)                          (loopback + interna)
 ```
 
-- **Mattermost sigue en loopback** (`127.0.0.1:8065`): no se abre ningún puerto entrante.
-- **Cloudflare Tunnel saliente** (`cloudflared`, servicio systemd `restart=always`) publica
-  `chat.ecsas.com.ar` con HTTPS + WebSocket terminados en el edge de Cloudflare.
-- **La zona `ecsas.com.ar` se queda en DonWeb.** No se mueven nameservers ni MX/SPF/DKIM/DMARC:
-  solo se agrega **un** CNAME `chat → <TUNNEL_UUID>.cfargotunnel.com` (TTL 3600).
+- **Caddy** (`echegaray-mm-caddy`, servicio del mismo compose) es el **único** que mira a
+  Internet: publica **80/443**, termina TLS con **ACME automático** y proxya a `mattermost:8065`
+  por la red interna. HTTP→HTTPS y WebSocket los maneja Caddy de forma transparente.
+- **Mattermost sigue en loopback** (`127.0.0.1:8065`), solo para health/mmctl locales: **no** se
+  expone directo a Internet.
+- **La zona `ecsas.com.ar` se queda en DonWeb.** No se mueven nameservers ni MX/SPF/DKIM/DMARC ni
+  Google Workspace: solo se agrega **un** A record `chat → 64.176.22.159` (TTL 3600).
+- Se deben **habilitar 80/443 entrantes** en el firewall de Vultr (y en UFW si aplica). Caddy los
+  necesita: 80 para el desafío ACME HTTP-01 + redirect, 443 para HTTPS (y TLS-ALPN-01 alternativo).
 - `MM_SERVICESETTINGS_SITEURL=https://chat.ecsas.com.ar` (parametrizado por `${MM_SITE_URL}`)
   para el origen del WebSocket, CSRF y los enlaces que genera Mattermost.
 
-Activación reproducible y los 2 pasos que requieren al dueño (login de Cloudflare + CNAME en
-DonWeb): **`cloudflared/README.md`**. Reversión al estado pre-PR2: **`ROLLBACK.md`**.
-Verificación de puertos/firewall: **`ufw/README.md`**.
+Arranque/parada del proxy, prerrequisitos y verificación: **`caddy/README.md`**. Reversión al
+estado pre-PR2: **`ROLLBACK.md`**. Verificación de puertos/firewall: **`ufw/README.md`**.
 
 ## Principios de arquitectura (no negociables)
 
@@ -33,22 +36,24 @@ Verificación de puertos/firewall: **`ufw/README.md`**.
   puerto publicado). La verdad estructurada del OS sigue en **Supabase Cloud** (remota) — este stack no la toca.
 - **Google Drive** sigue siendo el repositorio documental oficial (integración en PR-6).
 - **Exposición mínima.** Mattermost escucha sólo en `127.0.0.1:8065`. La exposición pública estable
-  es el **Cloudflare Tunnel saliente** de PR-2 (ver *Topología de exposición* arriba y `cloudflared/`):
-  publica `chat.ecsas.com.ar` **sin abrir puertos entrantes**.
+  la da el **reverse proxy Caddy** de PR-2 (ver *Topología de exposición* arriba y `caddy/`):
+  Caddy es el único con puertos entrantes (80/443) y sirve `chat.ecsas.com.ar` con HTTPS automático.
 
 ## Componentes
 
 | Servicio | Contenedor | Imagen | Puerto | Red |
 |---|---|---|---|---|
-| Mattermost TE | `echegaray-mm-app` | `mattermost/mattermost-team-edition:<tag>` | `127.0.0.1:8065` | `echegaray-mattermost-net` |
+| Caddy (reverse proxy) | `echegaray-mm-caddy` | `caddy:2-alpine` | `80`, `443` (público) | `echegaray-mattermost-net` |
+| Mattermost TE | `echegaray-mm-app` | `mattermost/mattermost-team-edition:<tag>` | `127.0.0.1:8065` (loopback) | `echegaray-mattermost-net` |
 | PostgreSQL | `echegaray-mm-db` | `postgres:16-alpine` | (ninguno, interno) | `echegaray-mattermost-net` |
 
 Volúmenes con nombre (persistentes, fuera del repo): `echegaray-mm-db-data`, `echegaray-mm-config`,
 `echegaray-mm-data`, `echegaray-mm-logs`, `echegaray-mm-plugins`, `echegaray-mm-client-plugins`,
-`echegaray-mm-bleve`.
+`echegaray-mm-bleve`, y para Caddy `echegaray-mm-caddy-data` (certs/ACME — crítico para la
+renovación automática) y `echegaray-mm-caddy-config`.
 
-Límites de recursos: Mattermost `1.5 CPU / 1536 MB`, PostgreSQL `1.0 CPU / 512 MB`. Reinicio automático
-`unless-stopped`. Logs rotados (10 MB × 3).
+Límites de recursos: Mattermost `1.5 CPU / 1536 MB`, PostgreSQL `1.0 CPU / 512 MB`, Caddy
+`0.5 CPU / 256 MB`. Reinicio automático `unless-stopped`. Logs rotados (10 MB × 3).
 
 ## Puesta en marcha
 
@@ -57,19 +62,22 @@ cd app/infra/mattermost
 cp .env.example .env
 # editar .env: generar MM_DB_PASSWORD fuerte, p.ej.:
 #   openssl rand -base64 32 | tr -d '/+=' | cut -c1-40
-docker compose up -d
+# y setear ACME_EMAIL (correo real para avisos de certificado) + confirmar CHAT_DOMAIN.
+docker compose up -d          # levanta db + mattermost + caddy (caddy espera a MM healthy)
 ```
 
 Verificar:
 
 ```bash
 docker compose ps
-curl -f http://127.0.0.1:8065/api/v4/system/ping    # -> {"status":"OK"}
-docker stats --no-stream echegaray-mm-app echegaray-mm-db
+curl -f http://127.0.0.1:8065/api/v4/system/ping    # -> {"status":"OK"} (origen loopback)
+docker stats --no-stream echegaray-mm-caddy echegaray-mm-app echegaray-mm-db
 ```
 
-Primera cuenta (system admin) se crea en el primer acceso web a `http://127.0.0.1:8065` (por túnel SSH
-o desde la propia VM, ya que no está expuesto).
+Primera cuenta (system admin) se crea en el primer acceso web. Antes de que el A record esté
+propagado y 80/443 abiertos, se accede a `http://127.0.0.1:8065` (por túnel SSH o desde la VM).
+La exposición pública en `https://chat.ecsas.com.ar` la sirve Caddy — ver `caddy/README.md` para
+prerrequisitos (A record + puertos) y verificación.
 
 ## Operación
 
@@ -98,9 +106,12 @@ cd app/infra/mattermost/backup && ./backup.sh     # escribe en ./dumps/ (gitigno
 ## Seguridad (base de PR-1, reforzada en PR-2, se completa en PR-8)
 
 - Postgres sin puerto publicado; sólo alcanzable por la red interna del compose.
-- Mattermost atado a `127.0.0.1:8065`; **cero puertos entrantes** para exponerlo (túnel saliente).
-- `no-new-privileges` en ambos contenedores.
+- Mattermost atado a `127.0.0.1:8065`; **no** se expone directo — el único borde público es Caddy.
+- `no-new-privileges` en los tres contenedores (Caddy, Mattermost, Postgres).
+- TLS terminado en Caddy con certificado ACME automático y **renovación automática** (certs en el
+  volumen `echegaray-mm-caddy-data`, fuera del repo).
 - Registro de servidor cerrado (`ENABLEOPENSERVER=false`) y diagnóstico remoto apagado.
-- Secretos sólo en `.env` (gitignoreado) y, para el túnel, el credentials-file `<UUID>.json`
-  en `/etc/cloudflared/` (fuera del repo). Nunca en el compose ni en el repo.
-- Verificación de firewall/puertos documentada en `ufw/README.md` (chequeos read-only + comandos UFW).
+- Secretos sólo en `.env` (gitignoreado). `ACME_EMAIL` y `CHAT_DOMAIN` no son secretos, pero se
+  parametrizan por entorno. No hay credenciales de túnel: el certificado lo gestiona Caddy solo.
+- Verificación de firewall/puertos documentada en `ufw/README.md` (80/443 entrantes para Caddy;
+  8065 nunca al exterior).
