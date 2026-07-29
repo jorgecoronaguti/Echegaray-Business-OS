@@ -1,19 +1,23 @@
-// PR-3 · Política de entrega: reintentos, backoff y Dead Letter — pura.
+// PR-3 · Política de cola con reintentos, backoff y Dead Letter — pura.
 //
-// El patrón es Transactional Outbox: el evento saliente se persiste en la MISMA
-// transacción que lo generó, y un proceso aparte lo entrega con garantía
-// at-least-once. La idempotencia (clave del evento + platform_ref) hace que
-// at-least-once no signifique "duplicado en el chat".
+// El patrón es Transactional Outbox: el evento se persiste en la MISMA operación
+// que lo generó, y un proceso aparte lo entrega/procesa con garantía at-least-once.
+// La idempotencia (clave del evento) hace que at-least-once no signifique
+// "duplicado". La MISMA política gobierna las dos colas del servicio:
+//   - SALIDA  (outbox):  publicar el evento en la plataforma. Terminal ok = 'publicado'.
+//   - ENTRADA (inbox):   procesar el evento con los handlers del OS. Terminal ok = 'procesado'.
 //
 // Este módulo NO toca la base ni la red: son funciones puras que deciden el
-// próximo estado de un ítem de outbox dado el resultado de un intento. Así se
-// testea la política sin infraestructura, y el repositorio (memoria/postgres)
-// sólo persiste lo que estas funciones deciden.
+// próximo estado de un ítem dado el resultado de un intento. Así se testea la
+// política sin infraestructura, y el repositorio (memoria/postgres) sólo persiste
+// lo que estas funciones deciden.
 
-/** Estados de un ítem de outbox. */
+/** Estados de un ítem de cola (salida o entrada). */
 export const ESTADO = Object.freeze({
   PENDIENTE: 'pendiente', // esperando primer intento o reintento
-  PUBLICADO: 'publicado', // entregado a la plataforma con éxito (terminal feliz)
+  EN_PROCESO: 'en_proceso', // reclamado por un worker (lease vigente) — M4
+  PUBLICADO: 'publicado', // salida: entregado a la plataforma (terminal feliz)
+  PROCESADO: 'procesado', // entrada: procesado por los handlers (terminal feliz)
   DEAD: 'dead', // agotó reintentos o error permanente (terminal, va a DLQ)
 })
 
@@ -29,18 +33,20 @@ export function backoffMs(intento, techoMs = 5 * 60_000) {
 }
 
 /**
- * Decide el próximo estado de un ítem tras un intento de publicación.
+ * Decide el próximo estado de un ítem tras un intento.
  * @param {{intentos:number}} item     estado previo (intentos ya realizados)
  * @param {{ok:boolean, platform_ref?:string, error?:string, reintentable?:boolean}} resultado
  * @param {number} [ahora]  epoch ms (inyectable para tests)
+ * @param {{estadoOk?:string}} [opts]  terminal feliz según la cola ('publicado'|'procesado')
  * @returns {{estado:string, intentos:number, next_attempt_at:number|null, platform_ref:string|null, last_error:string|null, a_dlq:boolean}}
  */
-export function decidirProximo(item, resultado, ahora = Date.now()) {
+export function decidirProximo(item, resultado, ahora = Date.now(), opts = {}) {
+  const estadoOk = opts.estadoOk ?? ESTADO.PUBLICADO
   const intentos = (item?.intentos ?? 0) + 1
 
   if (resultado?.ok) {
     return {
-      estado: ESTADO.PUBLICADO,
+      estado: estadoOk,
       intentos,
       next_attempt_at: null,
       platform_ref: resultado.platform_ref ?? null,

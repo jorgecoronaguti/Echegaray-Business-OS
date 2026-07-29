@@ -1,30 +1,32 @@
 // PR-3 · Repositorio en memoria — implementación del puerto de persistencia.
 //
 // El Communication Service depende de un PUERTO de repositorio, no de Postgres.
-// Esta implementación en memoria cumple ese puerto para tests y para la demo
-// end-to-end sin base de datos. El repositorio Postgres (repositorio-postgres.mjs)
-// cumple el mismo puerto contra el schema `comunicacion`. Cambiar de uno a otro
-// no toca ni el servicio ni el contrato de eventos.
+// Esta implementación en memoria cumple ese puerto para tests y demo sin base de
+// datos. El repositorio Postgres (repositorio-postgres.mjs) cumple EXACTAMENTE el
+// mismo puerto contra el schema `comunicacion`. Cambiar de uno a otro no toca ni
+// el servicio ni el contrato de eventos (consistencia exigida por la auditoría).
 //
-// Responsabilidades del puerto:
-//   - registrarEvento(ev)        → guarda el evento canónico (auditable, append-only)
-//   - vistoAntes(idempotencyKey) → idempotencia: ¿ya procesamos este hecho?
-//   - encolarSalida(ev)          → mete el evento saliente en el outbox
-//   - tomarPendientes(n, ahora)  → saca ítems de outbox listos para intentar
-//   - actualizarSalida(id, next) → persiste la decisión de outbox.js
-//   - aDeadLetter(item)          → copia el ítem a la DLQ
+// Puerto (idéntico en memoria y Postgres):
+//   - registrarEvento(ev)   → { insertado }   (audita; dedup ATÓMICO por idempotency_key — M2)
+//   - salida  : cola con lease (outbox)        → encolar/reclamar/resolver/aDeadLetter/recuperarLeases/reencolar
+//   - entrada : cola con lease (inbox)         → idem (M3)
+//   - registrarRechazo(info) → auditoría de rechazos entrantes (M7)
+
+import { ColaMemoria } from './cola-memoria.mjs'
 
 export class RepositorioMemoria {
   constructor() {
     this.eventos = [] // log append-only de todos los eventos (in/out)
-    this.porClave = new Map() // idempotency_key → evento (idempotencia)
-    this.outbox = new Map() // id → item { id, evento, estado, intentos, next_attempt_at, ... }
-    this.deadLetter = [] // ítems muertos, para inspección
-    this._seq = 0
+    this.porClave = new Map() // idempotency_key → evento (dedup atómico)
+    this.salida = new ColaMemoria('salida')
+    this.entrada = new ColaMemoria('entrada')
+    this.rechazos = [] // auditoría de rechazos entrantes (M7)
   }
 
+  /** Audita un evento de forma ATÓMICA. Devuelve insertado:false si la
+   *  idempotency_key ya existía. No hay `await` entre el check y el set, así que
+   *  es atómico dentro del event loop (equivale al ON CONFLICT del Postgres). */
   async registrarEvento(ev) {
-    // Append-only + idempotente: el mismo hecho no se guarda dos veces.
     if (this.porClave.has(ev.idempotency_key)) {
       return { insertado: false, evento: this.porClave.get(ev.idempotency_key) }
     }
@@ -33,52 +35,26 @@ export class RepositorioMemoria {
     return { insertado: true, evento: ev }
   }
 
-  async vistoAntes(idempotencyKey) {
-    return this.porClave.has(idempotencyKey)
-  }
-
-  async encolarSalida(ev) {
-    const id = `ob_${++this._seq}`
-    const item = { id, evento: ev, estado: 'pendiente', intentos: 0, next_attempt_at: 0, platform_ref: null, last_error: null }
-    this.outbox.set(id, item)
-    return item
-  }
-
-  async tomarPendientes(n, ahora = Date.now()) {
-    const listos = []
-    for (const item of this.outbox.values()) {
-      if (item.estado === 'pendiente' && (item.next_attempt_at ?? 0) <= ahora) {
-        listos.push(item)
-        if (listos.length >= n) break
-      }
-    }
-    return listos
-  }
-
-  async actualizarSalida(id, next) {
-    const item = this.outbox.get(id)
-    if (!item) return null
-    Object.assign(item, {
-      estado: next.estado,
-      intentos: next.intentos,
-      next_attempt_at: next.next_attempt_at,
-      platform_ref: next.platform_ref ?? item.platform_ref,
-      last_error: next.last_error,
+  /** Auditoría de un rechazo de seguridad entrante (M7). Nunca guarda la firma
+   *  completa ni el secreto: sólo un prefijo corto de la firma. */
+  async registrarRechazo({ plataforma = null, motivo, ip = null, firma = null, detalle = null }) {
+    this.rechazos.push({
+      plataforma, motivo, ip,
+      firma_prefijo: firma ? String(firma).slice(0, 8) : null,
+      detalle, at: Date.now(),
     })
-    return item
-  }
-
-  async aDeadLetter(item) {
-    this.deadLetter.push({ ...item, muerto_at: Date.now() })
     return true
   }
 
-  // — helpers de inspección para tests/demo (no son parte del puerto) —
+  /** Snapshot para tests/demo (no es parte del puerto). */
   snapshot() {
     return {
       eventos: this.eventos.length,
-      outbox: [...this.outbox.values()].map((i) => ({ id: i.id, estado: i.estado, intentos: i.intentos })),
-      dead: this.deadLetter.length,
+      salida: this.salida.listar(),
+      entrada: this.entrada.listar(),
+      deadSalida: this.salida.deadLetter.length,
+      deadEntrada: this.entrada.deadLetter.length,
+      rechazos: this.rechazos.length,
     }
   }
 }
