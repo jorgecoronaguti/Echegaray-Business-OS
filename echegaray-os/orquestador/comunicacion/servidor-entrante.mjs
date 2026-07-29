@@ -13,6 +13,7 @@
 import http from 'node:http'
 import { crearConector } from './conector.mjs'
 import { crearManejadorWebhook } from './endpoint-entrante.mjs'
+import { crearAutenticadorEndpoint } from './auth-endpoint.mjs'
 import { MattermostCliente, crearLog } from '../../../communication-service/src/index.mjs'
 
 const HOST = process.env.COMM_HTTP_HOST ?? '127.0.0.1' // nunca 0.0.0.0 por defecto
@@ -50,8 +51,15 @@ async function main() {
   const cliente = process.env.MM_BOT_TOKEN
     ? new MattermostCliente({ baseUrl: process.env.MM_BASE_URL ?? 'http://mattermost:8065', token: process.env.MM_BOT_TOKEN })
     : undefined // el conector arma un Fake sólo si no hay token (dev)
-  const con = crearConector({ cliente, log })
-  const manejar = crearManejadorWebhook(con, { maxBytes: MAX_BYTES })
+  // La auth vive en el ENDPOINT (HMAC-o-token): el conector va SIN verificador.
+  const con = crearConector({ cliente, log, verificador: null })
+  const autenticador = crearAutenticadorEndpoint({
+    secretoHmac: process.env.MM_INCOMING_SECRET || null,       // camino firmado (opcional en esta etapa)
+    tokenMattermost: process.env.MM_INCOMING_TOKEN || null,    // camino nativo del outgoing webhook
+    ventanaSegundos: Number(process.env.MM_INCOMING_WINDOW ?? 300),
+    allowlist: (process.env.MM_INCOMING_ALLOWLIST || '').split(',').map((s) => s.trim()).filter(Boolean),
+  })
+  const manejar = crearManejadorWebhook(con, { maxBytes: MAX_BYTES, autenticador })
 
   const server = http.createServer(async (req, res) => {
     if (req.url !== RUTA) return responder(res, 404, { error: 'not_found' })

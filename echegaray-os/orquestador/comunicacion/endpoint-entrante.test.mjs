@@ -4,6 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { crearManejadorWebhook, _internos } from './endpoint-entrante.mjs'
+import { crearAutenticadorEndpoint } from './auth-endpoint.mjs'
 import {
   CommunicationService, RepositorioMemoria, MattermostAdapter, FakeMattermost,
   VerificadorEntrante, firmar, crearLog, crearMetricas,
@@ -151,4 +152,34 @@ test('16 · parsea x-www-form-urlencoded y JSON', () => {
   assert.equal(form.b, 'hola mundo')
   const json = _internos.parsearPayload('{"a":1}', 'application/json')
   assert.equal(json.a, 1)
+})
+
+// ── endpoint con autenticador HMAC-o-token (auth en el endpoint; comm-service SIN verificador) ──
+const TOKEN_MM = 'token-webhook-mm'
+function armarConAuth() {
+  const cliente = new FakeMattermost()
+  const repo = new RepositorioMemoria()
+  const svc = new CommunicationService({ repositorio: repo, log: crearLog(() => {}), metricas: crearMetricas() }) // SIN verificador
+  svc.registrarAdapter(new MattermostAdapter({ cliente, botUserId: 'bot_os', tokenEntrante: null }))
+  const autenticador = crearAutenticadorEndpoint({ tokenMattermost: TOKEN_MM, allowlist: ['10.0.0.'] })
+  const manejar = crearManejadorWebhook(svc, { maxBytes: 1024, autenticador })
+  return { manejar, repo }
+}
+function reqToken(campos, { token = TOKEN_MM, ts = Date.now(), ip = '10.0.0.5' } = {}) {
+  const rawBody = new URLSearchParams({ ...campos, token }).toString()
+  return { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-mm-timestamp': String(ts) }, rawBody, ip }
+}
+
+test('17 · token de Mattermost válido ⇒ 202 (auth en el endpoint, sin HMAC)', async () => {
+  const { manejar, repo } = armarConAuth()
+  const r = await manejar(reqToken({ channel_id: 'c1', user_id: 'u', post_id: 'p1', text: '@os estado del sistema' }))
+  assert.equal(r.status, 202)
+  assert.equal(repo.eventos.length, 1)
+})
+
+test('18 · token inválido ⇒ 401', async () => {
+  const { manejar } = armarConAuth()
+  const r = await manejar(reqToken({ channel_id: 'c1', post_id: 'p1', text: 'x' }, { token: 'FALSO' }))
+  assert.equal(r.status, 401)
+  assert.equal(r.body.motivo, 'token_invalido')
 })

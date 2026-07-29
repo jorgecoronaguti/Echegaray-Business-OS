@@ -38,7 +38,9 @@ export function crearConector(opts = {}) {
   const log = opts.log ?? crearLog()
   const metricas = opts.metricas ?? crearMetricas()
   const cliente = opts.cliente ?? new FakeMattermost()
-  const verificador = opts.verificador ?? verificadorDesdeEnv(opts.ahora)
+  // `verificador: null` explícito = la auth vive en el endpoint (comm-service sin
+  // verificador). Si no se pasa la clave, se arma desde el entorno (modo legado).
+  const verificador = ('verificador' in opts) ? opts.verificador : verificadorDesdeEnv(opts.ahora)
 
   const repositorio = new RepositorioPostgres(port)
   const svc = new CommunicationService({
