@@ -152,19 +152,109 @@ export function formulasInstrumento(inst, marcas) {
  * @param {string} hasta expresión de la fecha de fin, EXCLUYENTE
  * @param {string} marcaFalta el texto exacto que el OS escribe cuando la factura no está
  */
-export function formulaChequesSinFactura(desde, hasta, marcaFalta) {
+export function formulaChequesSinFactura(desde, hasta, marcaFalta, instrumentos = Object.values(INSTRUMENTOS)) {
   const trozo = ({ pestaña, filaCab, colMonto, colFecha, colMarca }) => {
     const col = (n) => { let s = ''; for (let x = n; x >= 0; x = Math.floor(x / 26) - 1) s = String.fromCharCode(65 + (x % 26)) + s; return s }
     const r = (c) => `'${pestaña}'!$${c}$${filaCab + 1}:$${c}$${FILA_FIN}`
     return `SUMPRODUCT((${r(col(colMarca))}="${marcaFalta}")*(${r(colFecha)}>=${desde})*(${r(colFecha)}<${hasta})*IF(ISNUMBER(${r(colMonto)});${r(colMonto)};0))`
   }
-  return `=${Object.values(INSTRUMENTOS).map(trozo).join('+')}`
+  return `=${instrumentos.map(trozo).join('+')}`
+}
+
+/** El subconjunto de instrumentos de una línea de "sin factura": 'cheques' o 'tarjeta' abre UNO solo;
+ * sin `inst` van los dos (compatibilidad). Con esto la misma fórmula anti-doble-conteo alimenta dos
+ * líneas separadas sin sumar plata nueva: la partición cheques/tarjeta es de PRESENTACIÓN, no de monto. */
+export function instrumentosDeLinea(inst) {
+  return inst ? [INSTRUMENTOS[inst]] : Object.values(INSTRUMENTOS)
 }
 
 export const LINEA_CHEQUES = {
   rubro: 'Cheques y tarjeta sin factura cargada',
   detalle: 'Cheques Emitidos y Tarjeta de Credito',
   paga: 'Cheques Emitidos',
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL CALENDARIO FISCAL — IVA e IIBB A PAGAR, LA SALIDA QUE EL CUADRO NO PROYECTABA
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// POR QUÉ EXISTE (28/07). Auditoría TAUDIT: los dos cash flow no proyectaban hacia adelante el IVA ni
+// el IIBB a pagar (~$13,18M/año sólo de IVA). La línea de "Impuestos" del cuadro sólo ve
+// Compras!AC="Impuestos" —pagos YA hechos de OTROS impuestos— y el IVA/IIBB NO viven en Compras (lo
+// dice impuestos-pestana.mjs: "En Compras no hay UNA SOLA fila de IVA ni de IIBB"). El dato ya está
+// calculado, mes a mes, en la pestaña "Impuestos y Financieros": la fila "⇒ IVA a pagar en el mes" y
+// la fila "⇒ IIBB a pagar en el mes". Esta línea LEE esas filas; no recalcula nada (una sola fuente).
+//
+// NO DUPLICA. El IVA/IIBB neto a pagar no está en Compras, así que la línea de "Impuestos" (rubro de
+// Compras) y ésta miran plata distinta. Por eso "Impuestos y Financieros" pasa de DERIVADA a FUENTE en
+// el mapa de cobertura (cash-flow-cobertura.mjs) SÓLO por estas dos filas; el resto de la pestaña
+// (prendario, planes) sigue siendo vista de Compras y NO se suma.
+//
+// LAS FILAS NO SE HARDCODEAN (misma lección que Estructura!$15). Se ubican por su rótulo en la columna
+// A, igual que Estructura/Recurrentes; si el rótulo no aparece, el generador rompe en vez de escribir
+// una referencia muerta que devolvería $0 en silencio.
+export const CALENDARIO_IMPUESTOS = {
+  pestaña: 'Impuestos y Financieros',
+  // Los rótulos EXACTOS que escribe impuestos-pestana.mjs (total() antepone "⇒ ").
+  rotulos: { iva: '⇒ IVA a pagar en el mes', iibb: '⇒ IIBB a pagar en el mes' },
+}
+
+/** Los rótulos a ubicar por su fila en "Impuestos y Financieros", para que el generador los resuelva
+ * (mismo mecanismo que tablasDeProyeccion). PURA. */
+export function rotulosCalendarioImpuestos() {
+  return Object.entries(CALENDARIO_IMPUESTOS.rotulos).map(([clave, rotulo]) => ({ clave, rotulo }))
+}
+
+/** Exige que las filas del calendario estén ubicadas: una referencia a una fila muerta da $0 sin avisar. */
+function filasCalendarioOk(filasCal) {
+  const { iva, iibb } = filasCal ?? {}
+  if (!iva || !iibb) throw new Error('cash-flow-lineas: no sé en qué filas de "Impuestos y Financieros" están "IVA a pagar"/"IIBB a pagar" — sin eso la línea apuntaría a una fila muerta')
+  return { iva, iibb }
+}
+
+/** La columna del mes N (1=enero) en la grilla mensual: enero es SIEMPRE la columna B, igual que en
+ * "Impuestos y Financieros" (A=concepto, B..M=doce meses, N=total). PURA. */
+export const colMesDelAnio = (m) => String.fromCharCode(65 + m)
+
+/**
+ * NÚCLEO PURO: el IVA + IIBB a pagar de un MES, leído del calendario. La columna del cash flow y la de
+ * "Impuestos y Financieros" están alineadas (B=enero…M=diciembre), así que se referencia la misma
+ * letra. El calendario YA trae real (ARCA/DDJJ) y proyección; esta línea sólo lo lee, no lo recalcula.
+ * N() convierte una celda vacía o "—" en 0 sin romper.
+ * @param {string} colTabla letra de la columna del mes (ej. 'D')
+ * @param {{iva:number,iibb:number}} filasCal filas ubicadas por rótulo
+ * @returns {string} fórmula es-AR
+ */
+export function formulaCalendarioImpuestosMes(colTabla, filasCal) {
+  const { iva, iibb } = filasCalendarioOk(filasCal)
+  const P = CALENDARIO_IMPUESTOS.pestaña
+  return `=N('${P}'!${colTabla}$${iva})+N('${P}'!${colTabla}$${iibb})`
+}
+
+/**
+ * NÚCLEO PURO: el IVA + IIBB imputado a una VENTANA SEMANAL. El calendario es mensual (no hay una
+ * fecha de vencimiento por día en la pestaña), así que el total del mes cae en la semana que contiene
+ * el fin de ese mes de vencimiento — aproximación DECLARADA de la timing intra-mes; el monto es exacto.
+ * Se recorre los doce meses y se queda con los que vencen dentro de [desde, hasta) (límite superior
+ * EXCLUYENTE, como el resto del cuadro, para que ningún mes caiga en dos semanas).
+ * @param {string} desde expresión de inicio (ej. 'B$3') · @param {string} hasta límite EXCLUYENTE
+ * @param {number} anio el año de la grilla (para construir la fecha de vencimiento del mes)
+ * @param {{iva:number,iibb:number}} filasCal filas ubicadas por rótulo
+ * @returns {string} fórmula es-AR
+ */
+export function formulaCalendarioImpuestosSemana(desde, hasta, anio, filasCal) {
+  const { iva, iibb } = filasCalendarioOk(filasCal)
+  const P = CALENDARIO_IMPUESTOS.pestaña
+  const term = (m) => {
+    const c = colMesDelAnio(m)
+    // PERCIBIDO (+1): el IVA/IIBB del período de un mes se PAGA al mes siguiente. El vencimiento real
+    // de AFIP cae alrededor del día 20 del mes siguiente → fin del mes del período + 20 días. Así el
+    // egreso semanal cae en la semana en que efectivamente sale la plata, no en la del período.
+    const venc = `EOMONTH(DATE(${anio};${m};1);0)+20`
+    const monto = `(N('${P}'!${c}$${iva})+N('${P}'!${c}$${iibb}))`
+    return `${monto}*(${venc}>=${desde})*(${venc}<${hasta})`
+  }
+  return `=${Array.from({ length: 12 }, (_, i) => term(i + 1)).join('+')}`
 }
 
 // De dónde sale la PROYECCIÓN de cada rubro para los meses que todavía no pasaron.
@@ -536,7 +626,12 @@ export const CUADRO = [
         lineas: [
           { nombre: 'Materiales e insumos de obra civil', rubro: 'Materiales Civil' },
           { nombre: 'Materiales de mantenimiento', rubro: 'Materiales Mantenimiento' },
-          { nombre: 'Cheques y tarjeta sin factura cargada', cheques: true, detalle: 'Cheques Emitidos y Tarjeta de Credito' },
+          // Se abre en dos: mismo criterio anti-doble-conteo (sólo lo que NO está en Compras), misma
+          // fórmula (formulaChequesSinFactura por instrumento), pero el dueño ve el cheque y la cuota
+          // de tarjeta por separado. La suma de las dos = lo que antes era una sola línea: no hay plata
+          // nueva. La de tarjeta lee "Tarjeta de Credito" col E (monto) por col H (fecha de pago).
+          { nombre: 'Cheques sin factura cargada', cheques: true, inst: 'cheques', detalle: 'Cheques Emitidos' },
+          { nombre: 'Cuotas de tarjeta sin factura cargada', cheques: true, inst: 'tarjeta', detalle: 'Tarjeta de Credito' },
         ],
       },
       {
@@ -552,6 +647,14 @@ export const CUADRO = [
         nombre: 'Pagos de impuestos', signo: -1,
         lineas: [
           { nombre: 'Impuestos nacionales y provinciales', rubro: 'Impuestos' },
+          // NO sale de Compras: el IVA/IIBB neto a pagar no está cargado ahí. Lo trae el calendario
+          // de "Impuestos y Financieros" (fila "⇒ IVA a pagar" + "⇒ IIBB a pagar"), imputado al mes.
+          {
+            nombre: 'IVA e Ingresos Brutos a pagar',
+            calendarioImpuestos: true,
+            detalle: 'Impuestos y Financieros',
+            nota: 'IVA e IIBB del calendario fiscal, no de Compras',
+          },
         ],
       },
     ],
@@ -640,7 +743,8 @@ export function expresionReal(l, desde, hasta) {
   // La línea de cheques y tarjeta NO tiene fórmula: el cruce por número de comprobante hay que
   // normalizarlo de los dos lados ("0001-000036" vs "1-36") y eso en fórmula sería ilegible. La
   // llena el script con VALORES y el agente la reescribe cada 2 horas. Devolver null es la señal.
-  if (l.cheques) return null
+  // La de IVA/IIBB tampoco: su fórmula (mensual/semanal) la arma el generador con las filas ubicadas.
+  if (l.cheques || l.calendarioImpuestos) return null
   if (l.cobranzas) return formulaCobranzas(l.cobranzas, desde, hasta, l.modo).slice(1)
   if (l.rubro === 'Nómina · Jornales de obra') return formulaJornales(desde, hasta).slice(1)
   const ventana = `${COL_FECHA};">="&${desde};${COL_FECHA};"<"&${hasta}`
@@ -661,7 +765,7 @@ export function expresionReal(l, desde, hasta) {
  * @param {number} filaCab fila del encabezado con las fechas
  */
 export function formulaLineaMes(l, colMes, colTabla, filaCab, filasTabla = {}) {
-  if (l.cheques) return null
+  if (l.cheques || l.calendarioImpuestos) return null
   const mes = `${colMes}$${filaCab}`
   const real = expresionReal(l, mes, `EOMONTH(${mes};0)+1`)
   // Un bien de uso no tiene ritmo: comprar una moto en enero no significa comprar una por mes. Es
@@ -782,12 +886,16 @@ const soloRango = (r) => String(r).split('!')[1].replace(/\$/g, '')
  * @param {Object<string,number>} filasTabla {pestaña: filaDelTotal} ubicada por rótulo (Estructura/Recurrentes)
  * @returns {{pestaña:string, rango:string}|null}
  */
-export function destinoDetalle(l, filasTabla = {}) {
+export function destinoDetalle(l, filasTabla = {}, filasCal = {}) {
   // Las que el cuadro calcula sobre sus propias celdas: no hay pestaña de origen que mostrar.
   if (l.descubierto || l.impuestoCheque) return null
-  // Cheques y tarjeta: el detalle vive en DOS pestañas; se apunta a la columna de monto de Cheques Emitidos.
+  // IVA/IIBB: apunta a la fila "⇒ IVA a pagar" del calendario si ya se ubicó; si no, a la pestaña.
+  if (l.calendarioImpuestos) {
+    return { pestaña: CALENDARIO_IMPUESTOS.pestaña, rango: filasCal?.iva ? `A${filasCal.iva}` : 'A1' }
+  }
+  // Cheques y tarjeta (abiertas en dos líneas): cada una a la columna de monto de SU pestaña.
   if (l.cheques) {
-    const inst = INSTRUMENTOS.cheques
+    const inst = INSTRUMENTOS[l.inst] ?? INSTRUMENTOS.cheques
     return { pestaña: inst.pestaña, rango: soloRango(rangoInstrumento(inst, inst.colMonto)) }
   }
   // Cobranzas: la columna de monto (M) de la pestaña Cobranzas — la fuente exacta de las tres líneas de ingreso.
@@ -816,13 +924,17 @@ export function destinoDetalle(l, filasTabla = {}) {
  * @param {object} l línea del CUADRO · @param {Object<string,number>} filasTabla
  * @returns {{formula:string, destino:string, rango:string}|null}
  */
-export function hipervinculoDetalle(l, filasTabla = {}) {
-  const dest = destinoDetalle(l, filasTabla)
+export function hipervinculoDetalle(l, filasTabla = {}, filasCal = {}) {
+  const dest = destinoDetalle(l, filasTabla, filasCal)
   if (!dest) return null
   // Las comillas del rótulo se duplican: si un nombre trajera una, cerraría la cadena de la fórmula.
   const etiqueta = `${SANGRIA_DETALLE}${l.nombre}`.replace(/"/g, '""')
-  const formula = `=HYPERLINK("#gid=GID{${dest.pestaña}}&range=${dest.rango}";"${etiqueta}")`
-  return { formula, destino: dest.pestaña, rango: dest.rango }
+  // URL COMPLETA, no fragmento suelto: "#gid=…&range=…" solo da "El rango no es válido" en el chip de
+  // Google y no navega. URLID{} (fileId) y GID{} (getSheetMeta) los resuelve el script. Un rango
+  // ABIERTO (O4:O) se bordea a O4:O1000: Google rechaza el rango sin fila final en un vínculo.
+  const rango = /:[A-Z]+$/.test(dest.rango) ? `${dest.rango}1000` : dest.rango
+  const formula = `=HYPERLINK("URLID{}#gid=GID{${dest.pestaña}}&range=${rango}";"${etiqueta}")`
+  return { formula, destino: dest.pestaña, rango }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════

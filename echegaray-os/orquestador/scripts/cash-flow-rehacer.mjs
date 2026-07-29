@@ -16,6 +16,8 @@ import {
   bloqueControl, CUADRO, verificarCuadro, formulaLineaMes, expresionReal, formulaTotalRubro, origenLinea,
   tablasDeProyeccion, formulaChequesSinFactura, hipervinculoDetalle, detalleDeRubro, SANGRIA_DETALLE,
   formulaInteresSemana, edicionesConContenidoReal,
+  instrumentosDeLinea, formulaCalendarioImpuestosMes, formulaCalendarioImpuestosSemana,
+  rotulosCalendarioImpuestos, CALENDARIO_IMPUESTOS,
 } from '../lib/cash-flow-lineas.mjs'
 import { conEdicionesRespetadas, guardarRegistro, respetarEdiciones } from '../lib/respetar-ediciones.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
@@ -30,6 +32,9 @@ import {
 import { parseMonto, parseFecha } from '../lib/cash-briefing.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
+// Base de la URL para hipervínculos internos: el fragmento suelto "#gid=…" da "El rango no es válido"
+// en Google y no navega; la URL completa sí. El placeholder URLID{} de las etiquetas se resuelve acá.
+const URL_BASE = `https://docs.google.com/spreadsheets/d/${ID}/edit`
 const DRY = process.argv.includes('--dry')
 // --force / ORQ_CF_FORCE: aplicar un cambio de ESTRUCTURA intencional. Saltea SÓLO el gate grueso
 // (candado + auto-respeto de reescritura, que confunde un cambio estructural grande con una reescritura
@@ -55,7 +60,7 @@ const fechaAR = (d) => `${d.getUTCDate()}/${d.getUTCMonth() + 1}/${d.getUTCFullY
  * Arma la grilla de una pestaña de cash flow.
  * @param {'semanal'|'mensual'} periodo
  */
-export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, filasTabla = {}) {
+export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, filasTabla = {}, filasCalendario = {}) {
   const cols = periodo === 'semanal' ? semanas() : Array.from({ length: 12 }, (_, m) => new Date(Date.UTC(AÑO, m, 1)))
   const n = cols.length
   const colTotal = letra(n + 1) // A + n períodos → la siguiente es el total
@@ -80,8 +85,8 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   // dónde estamos cada vez que se abre la pestaña. El dueño lo pidió de vuelta después de que se lo
   // borré al rehacer el cuadro. HYPERLINK a la celda de la columna cuya semana contiene HOY.
   const irASemana = periodo === 'semanal'
-    ? `=HYPERLINK("#gid=SEMGID&range="&ADDRESS(${FILA_CAB};MATCH(1;ARRAYFORMULA((${letra(1)}$${FILA_CAB}:${letra(n)}$${FILA_CAB}<=TODAY())*(${letra(1)}$${FILA_CAB}:${letra(n)}$${FILA_CAB}+7>TODAY()));0)+1;4);"📅 IR A LA SEMANA DE HOY — "&TEXT(TODAY();"dd/mm/yyyy"))`
-    : `=HYPERLINK("#gid=SEMGID&range="&ADDRESS(${FILA_CAB};MONTH(TODAY())+1;4);"📅 IR AL MES DE HOY — "&TEXT(TODAY();"mmmm yyyy"))`
+    ? `=HYPERLINK("${URL_BASE}#gid=SEMGID&range="&ADDRESS(${FILA_CAB};MATCH(1;ARRAYFORMULA((${letra(1)}$${FILA_CAB}:${letra(n)}$${FILA_CAB}<=TODAY())*(${letra(1)}$${FILA_CAB}:${letra(n)}$${FILA_CAB}+7>TODAY()));0)+1;4);"📅 IR A LA SEMANA DE HOY — "&TEXT(TODAY();"dd/mm/yyyy"))`
+    : `=HYPERLINK("${URL_BASE}#gid=SEMGID&range="&ADDRESS(${FILA_CAB};MONTH(TODAY())+1;4);"📅 IR AL MES DE HOY — "&TEXT(TODAY();"mmmm yyyy"))`
   const nota = periodo === 'semanal'
     ? 'Estado de flujo de efectivo por método directo (RT 8/9 · NIC 7): operativas, inversión y financiación. Tocá el + del margen izquierdo para abrir el detalle de cada categoría. ESTE CUADRO MUESTRA LO COMPROMETIDO: sólo cobros y pagos con fecha ya cargada — las proyecciones están en el Mensual, porque a nivel semana una proyección de materiales es ruido, no información.'
     : 'Estado de flujo de efectivo por método directo (RT 8/9 · NIC 7): operativas, inversión y financiación. Tocá el + del margen izquierdo para abrir el detalle de cada categoría. Los meses que todavía no pasaron son PROYECCIÓN: Estructura y Recurrentes traen la suya de su propia pestaña; el resto usa el ritmo de los últimos 3 meses cerrados ajustado por inflación. Los INGRESOS no se proyectan (no hay obra facturada de octubre en adelante), así que el déficit del último trimestre es un piso, no un pronóstico.'
@@ -134,8 +139,19 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
         // anterior). El interés semanal usa ese mismo saldo con la ventana de 7 días (formulaInteresSemana,
         // el MISMO modelo verificado que el mensual, sólo cambia la ventana). Es un PISO declarado: no
         // cobra la deuda que se toma dentro de la misma semana.
+        // La de IVA/IIBB NO sale de Compras: la mensual lee la celda del mes del calendario; la semanal
+        // reparte el total del mes a la semana que contiene su vencimiento (fin de mes). El monto es
+        // exacto; sólo la timing intra-mes es aproximada (declarado en cash-flow-lineas.mjs).
         const celdas = l.cheques
-          ? cols.map((_, i) => formulaChequesSinFactura(desde(i), hasta(i), MARCAS.falta))
+          ? cols.map((_, i) => formulaChequesSinFactura(desde(i), hasta(i), MARCAS.falta, instrumentosDeLinea(l.inst)))
+          : l.calendarioImpuestos
+            // PERCIBIDO (+1): el IVA/IIBB de un período se PAGA al mes siguiente (vto AFIP ~día 20).
+            // Por eso el mes del cash flow referencia la columna del mes ANTERIOR de la pestaña (abril
+            // muestra el IVA del período marzo). Enero no tiene fuente en la tabla (sería el período de
+            // diciembre del año anterior) → 0. El semanal corre el vencimiento adentro de su fórmula.
+            ? cols.map((_, i) => (periodo === 'mensual'
+              ? (i === 0 ? '0' : formulaCalendarioImpuestosMes(letra(i), filasCalendario))
+              : formulaCalendarioImpuestosSemana(desde(i), hasta(i), AÑO, filasCalendario)))
           : l.descubierto
             ? cols.map((_, i) => (periodo === 'mensual'
               ? formulaInteresMes(`${letra(i + 1)}#{INICIO}`, `${letra(i + 1)}$${FILA_CAB}`)
@@ -303,11 +319,12 @@ async function formatear(google, data) {
     // Título y subtítulo.
     fmt(rango(0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 13 } })
     fmt(rango(1, 2), 'userEnteredFormat.textFormat', { textFormat: { italic: true, fontSize: 9, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } } })
-    // Fila de períodos: fecha corta y fondo oscuro.
+    // Fila de períodos: fondo oscuro. El MENSUAL rotula el mes ("ene-26"), no una fecha suelta
+    // ("01/01") que se lee como día; el SEMANAL sí usa la fecha de inicio de semana (dd/mm).
     fmt(rango(2, 3), 'userEnteredFormat', {
       backgroundColor: AZUL,
       textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 }, fontSize: 9 },
-      numberFormat: { type: 'DATE', pattern: 'dd/mm' },
+      numberFormat: { type: 'DATE', pattern: p.includes('Mensual') ? 'mmm-yy' : 'dd/mm' },
       horizontalAlignment: 'CENTER',
     })
     fmt({ ...rango(2, 3), startColumnIndex: cols - 1, endColumnIndex: cols }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
@@ -444,9 +461,24 @@ async function main() {
     filasTabla[pestaña] = i + 1
     console.log(`  proyección de ${pestaña}: fila ${i + 1}`)
   }
+
+  // Las filas "⇒ IVA a pagar" / "⇒ IIBB a pagar" del calendario fiscal, ubicadas POR RÓTULO (no
+  // hardcodeadas: la pestaña se arma con filas dinámicas). Si un rótulo no aparece, se rompe en vez de
+  // escribir una referencia muerta que devolvería $0 en silencio.
+  const filasCalendario = {}
+  {
+    const colA = await google.readSheetValues(ID, `${CALENDARIO_IMPUESTOS.pestaña}!A1:A120`)
+    for (const { clave, rotulo } of rotulosCalendarioImpuestos()) {
+      const i = colA.findIndex((f) => String(f?.[0] ?? '').trim() === rotulo)
+      if (i < 0) throw new Error(`no encontré la fila "${rotulo}" en "${CALENDARIO_IMPUESTOS.pestaña}" — la línea de IVA/IIBB apuntaría a la nada`)
+      filasCalendario[clave] = i + 1
+      console.log(`  calendario fiscal ${clave.toUpperCase()}: fila ${i + 1}`)
+    }
+  }
+
   const data = []
   for (const [pestaña, periodo] of [['Cash Flow Semanal', 'semanal'], ['Cash Flow Mensual', 'mensual']]) {
-    const g = grilla(periodo, faltantes, refCaja, refCajaFecha, filasTabla)
+    const g = grilla(periodo, faltantes, refCaja, refCajaFecha, filasTabla, filasCalendario)
     // Los marcadores se resuelven acá, cuando el cuadro ya está armado y se sabe en qué fila quedó
     // cada línea. Escribir los números a mano rompería el día que el cuadro crezca una línea.
     const ingreso = g.meta.detalle.filter((d) => d.signo > 0).map((d) => d.fila)
@@ -504,14 +536,14 @@ async function main() {
   const sinDestino = []
   for (const d of data) {
     const gid = gidPorPestana.get(d.pestaña)
-    // El atajo "IR A LA SEMANA / MES DE HOY" apunta a la propia pestaña (placeholder SEMGID).
-    d.values = d.values.map((f) => f.map((c) => (typeof c === 'string' ? c.replace('SEMGID', String(gid)) : c)))
+    // El atajo "IR A LA SEMANA / MES DE HOY" apunta a la propia pestaña (placeholder SEMGID) y usa la URL completa (URLID{}).
+    d.values = d.values.map((f) => f.map((c) => (typeof c === 'string' ? c.replace('URLID{}', URL_BASE).replace('SEMGID', String(gid)) : c)))
     for (const det of d.g.meta.detalle) {
-      const h = hipervinculoDetalle(det.linea, filasTabla)
+      const h = hipervinculoDetalle(det.linea, filasTabla, filasCalendario)
       if (!h) continue
       const gidDestino = gidPorPestana.get(h.destino)
       if (gidDestino == null) { sinDestino.push(`${d.pestaña}: "${det.linea.nombre}" → no encontré la pestaña "${h.destino}"`); continue }
-      d.values[det.fila - 1][0] = h.formula.replace(`GID{${h.destino}}`, String(gidDestino))
+      d.values[det.fila - 1][0] = h.formula.replace('URLID{}', URL_BASE).replace(`GID{${h.destino}}`, String(gidDestino))
     }
   }
   if (sinDestino.length) {
@@ -599,7 +631,11 @@ async function main() {
     d._candidatos = candidatos
     d._actual = actual
   }
-  await google.batchUpdateValues(ID, data.map(({ range, values }) => ({ range, values })))
+  // --force es el override INTENCIONAL de estructura: acá la fusión celda-a-celda (respetarEdiciones
+  // con edicionesConContenidoReal) YA corrió y preservó tus ediciones reales, así que el portón
+  // (candado/firma) es una segunda capa redundante que hay que saltear para poder aplicar el cambio.
+  // Sin --force NUNCA se saltea. Después se re-sella la firma (abajo), así el freeze sigue vigente.
+  await google.batchUpdateValues(ID, data.map(({ range, values }) => ({ range, values })), { yaGuardado: FORCE })
   // Sellar la firma de lo que dejé (re-lectura), así la próxima corrida detecta cualquier edición tuya.
   const { sellarFirma } = await import('../lib/firma-tab.mjs')
   for (const pest of new Set(data.map((d) => d.pestaña))) await sellarFirma(google, ID, pest, refPestana(pest))
