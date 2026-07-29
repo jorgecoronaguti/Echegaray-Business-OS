@@ -1,0 +1,27 @@
+{
+  "TeamSettings": {
+    "SiteName": "Echegaray Construcciones"
+  },
+  "PasswordSettings": {
+    "MinimumLength": 10,
+    "Lowercase": true,
+    "Uppercase": true,
+    "Number": true,
+    "Symbol": false
+  },
+  "ServiceSettings": {
+    "ExtendSessionLengthWithActivity": true,
+    "SessionLengthWebInHours": 720,
+    "SessionLengthMobileInHours": 8760,
+    "SessionLengthSSOInHours": 720
+  },
+  "FileSettings": {
+    "EnableFileAttachments": true,
+    "MaxFileSize": 104857600
+  },
+  "EmailSettings": {
+    "SendPushNotifications": true,
+    "PushNotificationServer": "https://push-test.mattermost.com",
+    "PushNotificationContents": "generic"
+  }
+}

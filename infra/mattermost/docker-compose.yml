@@ -1,0 +1,212 @@
+# Echegaray Business OS — Mattermost Team Edition (PR-1: Infraestructura Base)
+#
+# QUÉ ES: la plataforma oficial de comunicación interna del Business OS, autohospedada.
+# ESTADO PR-1: sólo infraestructura local. NO expuesto a Internet. NO integrado con
+#              Drive, Supabase ni el Work Fabric. NO contiene lógica de negocio.
+#
+# AISLAMIENTO: Mattermost usa su PROPIO PostgreSQL en un contenedor dedicado, en una red
+#              interna sin puertos publicados. La base del Business OS es Supabase Cloud
+#              (remota) — este stack no la toca ni la comparte.
+#
+# EXPOSICIÓN: Mattermost publica SÓLO en 127.0.0.1:8065 (loopback), para health/mmctl
+#             locales. El PostgreSQL no publica ningún puerto al host. La exposición pública
+#             estable (PR-2, Path B) la da el reverse proxy Caddy (servicio `caddy` de este
+#             mismo compose): Caddy es el ÚNICO que mira a Internet (80/443) y hace de
+#             terminación TLS + proxy hacia `mattermost:8065` por la red interna.
+#
+# Uso:
+#   cd app/infra/mattermost && cp .env.example .env  (editar secretos)
+#   docker compose up -d
+#   curl -f http://127.0.0.1:8065/api/v4/system/ping   -> {"status":"OK"}
+
+name: echegaray-mattermost
+
+services:
+  # ── PostgreSQL DEDICADO de Mattermost (aislado del Business OS) ──────────────────────
+  mattermost-db:
+    image: postgres:16-alpine
+    container_name: echegaray-mm-db
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    # Sin `ports:` — la base NO es alcanzable desde el host ni desde Internet.
+    # Sólo la ve Mattermost por la red interna del compose.
+    environment:
+      POSTGRES_USER: ${MM_DB_USER}
+      POSTGRES_PASSWORD: ${MM_DB_PASSWORD}
+      POSTGRES_DB: ${MM_DB_NAME}
+      # Locale/timezone coherente con la operación en San Juan.
+      TZ: ${TZ:-America/Argentina/San_Juan}
+    volumes:
+      - mm-db-data:/var/lib/postgresql/data
+    networks:
+      - mattermost-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${MM_DB_USER} -d ${MM_DB_NAME} -h 127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          memory: 128M
+
+  # ── Mattermost Team Edition ──────────────────────────────────────────────────────────
+  mattermost:
+    image: mattermost/mattermost-team-edition:${MM_IMAGE_TAG}
+    container_name: echegaray-mm-app
+    restart: unless-stopped
+    depends_on:
+      mattermost-db:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    # SÓLO loopback. NO 0.0.0.0. La exposición pública estable la da el reverse proxy Caddy
+    # (servicio `caddy` de este compose, ver ./caddy/): Caddy termina TLS, publica
+    # https://chat.ecsas.com.ar en 80/443 y proxya a `mattermost:8065` por la red interna.
+    # Este publish 127.0.0.1:8065 se mantiene SÓLO para health/mmctl locales: NO se abre
+    # ningún puerto entrante de Mattermost. El único que mira a Internet es Caddy.
+    ports:
+      - "127.0.0.1:8065:8065"
+    environment:
+      # Conexión a su propio Postgres por la red interna (sslmode=disable: tráfico interno del compose).
+      MM_SQLSETTINGS_DRIVERNAME: postgres
+      MM_SQLSETTINGS_DATASOURCE: "postgres://${MM_DB_USER}:${MM_DB_PASSWORD}@mattermost-db:5432/${MM_DB_NAME}?sslmode=disable&connect_timeout=10"
+      # SiteURL PÚBLICO (PR-2): imprescindible detrás del proxy — Mattermost lo usa para el
+      # chequeo de origen del WebSocket (wss://chat.ecsas.com.ar/api/v4/websocket), CSRF y
+      # los enlaces que genera. Caddy hace la terminación TLS y entrega HTTP plano a :8065;
+      # el upgrade a WebSocket lo maneja Caddy de forma transparente (reverse_proxy v2).
+      # Se mantiene parametrizado por ${MM_SITE_URL} para poder correr local con .env
+      # (MM_SITE_URL=http://localhost:8065); el default post-PR2 es el hostname público.
+      MM_SERVICESETTINGS_SITEURL: ${MM_SITE_URL:-https://chat.ecsas.com.ar}
+      MM_SERVICESETTINGS_LISTENADDRESS: ":8065"
+      # Endurecimiento base: sin registro abierto, sin telemetría de diagnóstico.
+      MM_TEAMSETTINGS_ENABLEOPENSERVER: "false"
+      MM_LOGSETTINGS_ENABLEDIAGNOSTICS: "false"
+      # Local mode: socket unix INTERNO del contenedor (no expuesto al host ni a la red).
+      # Habilita el healthcheck con mmctl (la imagen es distroless: no trae sh ni curl).
+      MM_SERVICESETTINGS_ENABLELOCALMODE: "true"
+      TZ: ${TZ:-America/Argentina/San_Juan}
+    volumes:
+      - mm-config:/mattermost/config
+      - mm-data:/mattermost/data
+      - mm-logs:/mattermost/logs
+      - mm-plugins:/mattermost/plugins
+      - mm-client-plugins:/mattermost/client/plugins
+      - mm-bleve:/mattermost/bleve-indexes
+    networks:
+      - mattermost-net
+    # La imagen de Mattermost es distroless (sin sh/curl): el healthcheck usa el propio
+    # binario mmctl contra el socket local interno.
+    healthcheck:
+      test: ["CMD", "/mattermost/bin/mmctl", "--local", "system", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 4
+      start_period: 90s
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1536M
+        reservations:
+          memory: 256M
+
+  # ── Caddy — reverse proxy público (PR-2, Path B) ─────────────────────────────────────
+  # ÚNICO servicio expuesto a Internet (80/443). Termina TLS con ACME automático y proxya a
+  # `mattermost:8065` por la red interna. Config declarativa en ./caddy/Caddyfile. Los certs
+  # persisten en el volumen `caddy_data` para que la renovación automática sobreviva reinicios.
+  caddy:
+    image: caddy:2-alpine
+    container_name: echegaray-mm-caddy
+    restart: unless-stopped
+    depends_on:
+      mattermost:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    # Único punto de entrada desde Internet. Requiere 80/443 entrantes habilitados en el
+    # firewall de Vultr (ver ./ufw/README.md). Puerto 80 = desafío ACME HTTP-01 + redirect a HTTPS.
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Sustituidas por Caddy al parsear el Caddyfile (ver ./caddy/Caddyfile). Sin valor por
+      # defecto acá para que `docker compose config` no falle si no hay .env; el Caddyfile
+      # aporta sus propios defaults de placeholder ({$CHAT_DOMAIN:...} / {$ACME_EMAIL:...}).
+      CHAT_DOMAIN: ${CHAT_DOMAIN:-chat.ecsas.com.ar}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+      TZ: ${TZ:-America/Argentina/San_Juan}
+    volumes:
+      # Config declarativa (read-only): el Caddyfile del repo.
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certs y estado de ACME — DEBE persistir para la renovación automática.
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - mattermost-net
+    healthcheck:
+      # Caddy trae `caddy` en el PATH; `caddy version` confirma que el binario responde.
+      test: ["CMD", "caddy", "version"]
+      interval: 30s
+      timeout: 10s
+      retries: 4
+      start_period: 20s
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          memory: 32M
+
+# Red interna aislada: el Postgres vive acá y no se publica al host.
+networks:
+  mattermost-net:
+    name: echegaray-mattermost-net
+    driver: bridge
+
+# Volúmenes con nombre explícito y estable: sobreviven aunque el compose se mueva de ruta
+# (p. ej. al integrarse a main desde una rama). Los datos NO viven en el repo.
+volumes:
+  mm-db-data:
+    name: echegaray-mm-db-data
+  mm-config:
+    name: echegaray-mm-config
+  mm-data:
+    name: echegaray-mm-data
+  mm-logs:
+    name: echegaray-mm-logs
+  mm-plugins:
+    name: echegaray-mm-plugins
+  mm-client-plugins:
+    name: echegaray-mm-client-plugins
+  mm-bleve:
+    name: echegaray-mm-bleve
+  # Caddy: certs/estado de ACME (persistente, crítico para renovación) y config runtime.
+  caddy_data:
+    name: echegaray-mm-caddy-data
+  caddy_config:
+    name: echegaray-mm-caddy-config

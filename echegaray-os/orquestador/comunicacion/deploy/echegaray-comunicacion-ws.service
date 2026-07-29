@@ -1,0 +1,25 @@
+[Unit]
+# PR-4.2 · Consumidor WebSocket del bot @os (transporte de ENTRADA, 24x7).
+# USER-UNIT (systemd --user, sin sudo). Copiar a ~/.config/systemd/user/.
+# NO carga anthropic.env a propósito: este proceso JAMÁS invoca razonamiento.
+Description=Echegaray OS - Consumidor WebSocket del bot @os (Mattermost -> Communication Service)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Checkout de DESPLIEGUE dedicado (worktree), no el árbol de trabajo.
+WorkingDirectory=/home/jorge/echegaray-os/app/.claude/worktrees/deploy-comunicacion/echegaray-os
+EnvironmentFile=%h/.config/echegaray-orq/comunicacion.env
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/comunicacion/mattermost-ws-consumer.mjs
+Restart=always
+RestartSec=5
+# Shutdown limpio: el consumidor atiende SIGTERM y cierra el socket.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=comunicacion-ws
+
+[Install]
+WantedBy=default.target
