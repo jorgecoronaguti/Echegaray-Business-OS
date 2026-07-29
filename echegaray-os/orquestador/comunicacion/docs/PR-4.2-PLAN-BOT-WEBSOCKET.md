@@ -136,3 +136,23 @@ Todo lo demás (mapeo canónico, inbox, bridge, WF, outbox, publicación) ya exi
 lane aplicadas y verificadas (retro-compatibles); canal privado `os-pruebas` creado; flags de bot/token
 habilitados; **sin bot, sin webhook, sin servicios levantados**. Nada degradado. Esperando autorización
 para implementar el plan.
+
+---
+
+## 10. Estado de IMPLEMENTACIÓN (autorizado)
+
+Implementado exactamente según este plan (ver commit):
+- `mattermost-ws-consumer.mjs` — WS nativo de Node v24 (sin dependencia nueva), `authentication_challenge`
+  con el token del bot, guardas (eco propio / DM o mención / sistema), dedup por `post.id`, mapeo →
+  `con.recibir`, reconexión con backoff, keep-alive por app-ping, shutdown limpio. Conector `verificador: null`.
+- `mattermost-ws-consumer.test.mjs` — 18 tests herméticos (parser, guardas, dedup, mapeo→inbox, auth
+  challenge, hello, reconexión con backoff, shutdown limpio) con WebSocket falso inyectado.
+- `deploy/echegaray-comunicacion-ws.service` y `…-worker.service` — user-units (systemd --user), **sin
+  `anthropic.env`** (refuerza cero-Anthropic); `deploy/env.example` — camino Bot+WS (sin `MM_INCOMING_*`/`COMM_HTTP_*`).
+
+Suites verdes tras el cambio: comm-service 64 (53 + 11 skip PG) · auth+endpoint+ws 46 · integración PR4
+(vertical + lane) 20 · nuevo WS 18. Lint 0/0 en los archivos nuevos.
+
+**Sin cambios** en Communication Service, contratos, inbox/outbox/DLQ/dedup, bridge, Work Fabric, worker,
+lane ni migraciones. El endpoint HTTP y su auth por token/HMAC quedan en el repo como capacidad latente,
+**no se despliegan**.

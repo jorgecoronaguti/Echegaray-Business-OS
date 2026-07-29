@@ -1,26 +1,24 @@
-# PR-4.1 · Worker del enlace comunicación ↔ Work Fabric (lane 'comunicacion').
-# PLANTILLA systemd — NO instalar sin autorización. Colocar en /etc/systemd/system/.
 [Unit]
-Description=Echegaray · Worker de comunicación (Communication Service <-> Work Fabric)
+# PR-4.2 · Worker del enlace comunicación (inbox -> Work Fabric lane 'comunicacion'
+# -> outbox -> publicar), 24x7. USER-UNIT (systemd --user, sin sudo). Copiar a
+# ~/.config/systemd/user/. NO carga anthropic.env: la lane 'comunicacion' sólo
+# corre el handler determinístico comunicacion.responder; nunca handlers IA.
+Description=Echegaray OS - Worker de comunicación (Communication Service <-> Work Fabric)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=echegaray
-WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
-EnvironmentFile=/etc/echegaray/comunicacion.env
-ExecStart=/usr/bin/node orquestador/comunicacion/worker-comunicacion.mjs
-Restart=on-failure
+WorkingDirectory=/home/jorge/echegaray-os/app/.claude/worktrees/deploy-comunicacion/echegaray-os
+EnvironmentFile=%h/.config/echegaray-orq/comunicacion.env
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/comunicacion/worker-comunicacion.mjs
+Restart=always
 RestartSec=5
-# Endurecimiento mínimo
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=read-only
-PrivateTmp=true
-# Shutdown limpio (el worker atiende SIGTERM)
 KillSignal=SIGTERM
 TimeoutStopSec=20
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=comunicacion-worker
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
