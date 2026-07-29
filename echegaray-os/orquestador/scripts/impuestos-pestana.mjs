@@ -195,12 +195,14 @@ function grilla(iva, planes, iibb, ivaOficial, C) {
     'F.2051 · IVA generado por las ventas del mes.', { meses: mesesOf })
   mensual('Crédito fiscal del período', (m) => of(m, 'credito'),
     'F.2051 · IVA de las compras computable del mes.', { meses: mesesOf })
+  // "IVA a pagar en efectivo" queda en la MISMA fila (18) que leía el cash flow, y el bloque conserva
+  // 5 filas mensuales para no correr la fila de "IIBB a pagar" (28) que también referencia el cash
+  // flow. La posición técnica del mes es derivable de débito − crédito + arrastre, así que no ocupa
+  // una fila propia; su único mes relevante (marzo, a favor de ARCA) se ve en la libre disponibilidad.
   mensual(rotuloTotal('IVA a pagar en efectivo'), (m) => of(m, 'a_pagar_efectivo'),
     'Lo absorbe el crédito de libre disponibilidad. En 2026 no salió plata por IVA — no es un egreso del cash flow.', { meses: mesesOf })
-  mensual('Posición técnica del mes (+ debe ARCA / − a favor)', (m) => of(m, 'posicion_tecnica'),
-    'F.2051 · positivo = a favor de ARCA (sólo marzo); negativo = a favor del contribuyente.', { meses: mesesOf, totaliza: false })
   const fLibre = mensual('Saldo de libre disponibilidad (acumulado)', (m) => of(m, 'libre_disp'),
-    'F.2051 · crédito de la empresa inmovilizado en ARCA. Se arrastra; el total no aplica.', { meses: mesesOf, totaliza: false })
+    'F.2051 · crédito de la empresa inmovilizado en ARCA (marzo: se consumió parte para la posición a favor de ARCA). Se arrastra; el total no aplica.', { meses: mesesOf, totaliza: false })
   const fDDJJ = mensual('DDJJ presentada', (m) => (porMesOf.has(m) ? `${porMesOf.get(m).fecha_presentacion} · N°${porMesOf.get(m).nro_transaccion}` : VACIO),
     'F.2051 presentada ante ARCA. Fuente primaria, verificable por N° de transacción.', { meses: mesesOf, totaliza: false })
   push()
