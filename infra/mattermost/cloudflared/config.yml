@@ -1,0 +1,44 @@
+# Echegaray Business OS — Cloudflare Tunnel (PR-2: exposición pública de Mattermost)
+#
+# QUÉ HACE: publica https://chat.ecsas.com.ar hacia el Mattermost que corre SOLO en
+#           loopback (127.0.0.1:8065), mediante un túnel SALIENTE hacia el edge de
+#           Cloudflare. NO se abre ningún puerto entrante en la VM.
+#
+# TOPOLOGÍA (definitiva):
+#   navegador ──HTTPS/WSS──> edge Cloudflare ──túnel saliente──> cloudflared (esta VM)
+#                                                              └─HTTP──> 127.0.0.1:8065 (MM)
+#   La zona ecsas.com.ar sigue en DonWeb. NO se mueven nameservers ni MX/SPF/DKIM/DMARC.
+#   En DonWeb se agrega UN solo CNAME:  chat -> <TUNNEL_UUID>.cfargotunnel.com
+#
+# CÓMO SE COMPLETAN LOS PLACEHOLDERS (ver ./README.md, pasos reproducibles):
+#   1. `cloudflared tunnel login`                 (PASO DEL DUEÑO — abre navegador/credenciales)
+#   2. `cloudflared tunnel create echegaray-mm`   -> imprime el TUNNEL_UUID y crea el
+#                                                    credentials-file ~/.cloudflared/<UUID>.json
+#   3. Reemplazar <TUNNEL_UUID> abajo por el UUID real (2 lugares) y copiar este archivo +
+#      el credentials-file a /etc/cloudflared/ (ver README).
+
+# UUID del túnel (lo imprime `cloudflared tunnel create echegaray-mm`).
+tunnel: <TUNNEL_UUID>
+
+# Credenciales del túnel. Ruta canónica del servicio systemd (correlativa con cloudflared.service).
+# El .json lo genera Cloudflare y NUNCA se commitea al repo (contiene el secreto del túnel).
+credentials-file: /etc/cloudflared/<TUNNEL_UUID>.json
+
+# No auto-actualizar el binario desde un servicio no supervisado.
+no-autoupdate: true
+# (Métricas: se deja sin `metrics:` para que cloudflared elija un puerto efímero en loopback
+#  y no colisione con nada; si se quiere fijo para monitoreo, agregar `metrics: 127.0.0.1:<puerto libre>`.)
+
+# Reglas de ingreso: se evalúan en orden; la última (sin hostname) es el catch-all obligatorio.
+ingress:
+  # chat.ecsas.com.ar -> Mattermost en loopback. cloudflared soporta WebSocket nativamente,
+  # así que wss://chat.ecsas.com.ar/api/v4/websocket funciona sin configuración extra.
+  - hostname: chat.ecsas.com.ar
+    service: http://localhost:8065
+    originRequest:
+      # Timeout de conexión al origen (MM local: generoso pero acotado).
+      connectTimeout: 30s
+      # No hay TLS entre cloudflared y MM (ambos en la VM); tráfico HTTP de loopback.
+      noTLSVerify: false
+  # Fallback obligatorio: cualquier hostname no declarado devuelve 404 (no filtra a MM).
+  - service: http_status:404
