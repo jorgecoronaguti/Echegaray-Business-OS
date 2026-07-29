@@ -1,0 +1,20 @@
+# Canales iniciales de Echegaray Construcciones — declarativos.
+#
+# Formato por línea:  name|display-name|visibility|purpose
+#   name        -> slug (minúsculas, sin espacios; es el identificador estable del canal)
+#   display-name-> nombre visible en la app
+#   visibility  -> public | private
+#   purpose     -> descripción corta que Mattermost muestra en el canal
+#
+# Las líneas que empiezan con '#' y las vacías se ignoran.
+#
+# NOTA: al crear el equipo, Mattermost crea SOLO por defecto "Town Square" (canal
+# de toda la empresa, obligatorio, nadie lo puede abandonar) y "Off-Topic".
+# Por eso NO declaramos un canal "general": Town Square ya cumple ese rol de anuncios
+# de toda la empresa (evitamos duplicar). Acá declaramos únicamente los canales
+# operativos mínimos de una constructora chica de San Juan.
+
+direccion|Dirección|private|Estrategia, decisiones y temas confidenciales de Dirección
+obras|Obras|public|Coordinación de obras en ejecución (jefes de obra + Dirección)
+administracion|Administración|public|Comprobantes, pagos, cobranzas, impuestos y trámites
+compras|Compras|public|Pedidos de materiales, proveedores y subcontratos
