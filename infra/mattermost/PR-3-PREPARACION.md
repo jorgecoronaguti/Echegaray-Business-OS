@@ -40,18 +40,21 @@ la costura `POST /ask`, que siguen válidos.
   persona (navegador / app móvil Mattermost)
       │  HTTPS + WSS
       ▼
-  edge Cloudflare  ── túnel SALIENTE ──►  cloudflared (VM, systemd restart=always)
-                                              │  HTTP (loopback)
-                                              ▼
+  echegaray-mm-caddy (VM, Docker, 80/443, ACME Let's Encrypt)
+              │  HTTP reverse_proxy → mattermost:8065 (red interna)
+              ▼
                                     127.0.0.1:8065  Mattermost TE  ◄─┐ red Docker aislada
                                               │                      │ echegaray-mattermost-net
                                               ▼                      │
                                     echegaray-mm-db (postgres:16)  ──┘  (SIN puerto publicado)
 ```
 
-- Exposición real = **Cloudflare Tunnel saliente** a `https://chat.ecsas.com.ar`. **No hay Caddy ni
-  nginx** en esta VM (auditoría §1.3). Mattermost escucha **solo en loopback**; cero puertos entrantes.
-  La zona `ecsas.com.ar` queda en DonWeb (un solo CNAME `chat → <UUID>.cfargotunnel.com`).
+- Exposición real = **reverse proxy Caddy (Path B)** a `https://chat.ecsas.com.ar`, con HTTPS
+  automático Let's Encrypt y WebSocket transparente. Mattermost escucha **solo en loopback**
+  (`127.0.0.1:8065`); Caddy es el único servicio que mira a internet (80/443).
+  La zona `ecsas.com.ar` queda en DonWeb (un solo **A record** `chat → 64.176.22.159`); NO se
+  tocan NS/MX/SPF/DKIM/DMARC/Google Workspace. Cloudflare Tunnel fue descartado por no ser viable
+  gratis sin mover la zona (ver `infra/mattermost/README.md`).
 - Base de Mattermost **aislada** (su propio Postgres, sin puerto). La verdad estructurada del OS sigue
   en **Supabase Cloud** (remota). Mattermost **no comparte base** con el OS.
 - La web del OS ya tiene el módulo **`/comunicacion`** (`echegaray-os/src/app/(main)/comunicacion/page.tsx`):
@@ -100,7 +103,7 @@ La regla es que el cerebro **no se entera de que existe Mattermost**: recibe eve
 |---|---|---|---|
 | **Mattermost TE** | `infra/mattermost/docker-compose.yml` (`echegaray-mm-app`, `127.0.0.1:8065`) | **Operativo.** TE, loopback, `restart: unless-stopped`, cap CPU/mem, logs rotados. | Fuente de eventos y destino de respuestas. **No cambia.** |
 | **Postgres de MM** | `echegaray-mm-db` (`postgres:16-alpine`, sin puerto) | **Operativo, aislado.** Red `echegaray-mattermost-net`. | Interno a MM. El PR-3 **no lo toca**. |
-| **Exposición pública** | `infra/mattermost/cloudflared/` (config.yml, service) | **Operativo.** Túnel saliente → `chat.ecsas.com.ar`, HTTPS+WSS. **No es Caddy: es Cloudflare Tunnel.** | Transporte. Habilita webhooks entrantes de MM al servicio (ver §3). |
+| **Exposición pública** | `infra/mattermost/caddy/` (Caddyfile) + servicio `echegaray-mm-caddy` en el compose | **Listo (Path B).** Reverse proxy Caddy 80/443 → `mattermost:8065`, HTTPS Let's Encrypt automático, WSS transparente. A record `chat → 64.176.22.159` en DonWeb. | Transporte. Habilita webhooks entrantes de MM al servicio (ver §3). |
 | **Bootstrap declarativo** | `infra/mattermost/bootstrap/` (bootstrap.sh, config.patch.json, channels.txt) | **Operativo, idempotente** vía `mmctl --local`. Crea admin, equipo, canales. | Base para declarar bots/webhooks/tokens del PR-3 (extender, no reinventar). |
 | **Canales iniciales** | `bootstrap/channels.txt` | **Declarados:** `direccion` (priv), `obras`, `administracion`, `compras`. Town Square = anuncios. | Destinos de eventos y de posteo proactivo (PR-7). |
 | **QA read-only** | `infra/mattermost/qa/` (CHECKLIST-PRODUCCION, pruebas.sh, rollback-test) | **Operativo.** Verificación sin efectos. | Patrón a replicar para QA del servicio. |
@@ -119,8 +122,8 @@ MM apuntando al servicio. El PR-3 los crea; hoy son cero.
 
 Precondiciones que el PR-3 asume resueltas o debe resolver antes de codificar:
 
-1. **PR-2 estable en producción.** Túnel `chat.ecsas.com.ar` levantado (requiere los 2 pasos del dueño:
-   `cloudflared tunnel login` + CNAME en DonWeb) y bootstrap corrido. Sin esto no hay a qué conectar.
+1. **PR-2 estable en producción.** Caddy publicando `chat.ecsas.com.ar` (requiere los pasos del dueño:
+   A record en DonWeb + 80/443 en Vultr + `docker compose up -d caddy`) y bootstrap corrido. Sin esto no hay a qué conectar.
 2. **Identidad del OS dentro de Mattermost.** Crear un **bot account + Personal Access Token** (estándar
    MM para integraciones) vía extensión del bootstrap. El token es secreto — nunca al repo.
 3. **Ruta entrante hacia el servicio.** El servicio escucha en **loopback**; los outgoing webhooks/slash
@@ -241,7 +244,7 @@ ni `echegaray-os/src/` (desacople demostrado); (c) health disponible; (d) cero s
 cerebro; su ejecución requiere **aprobación explícita del dueño** sobre, como mínimo:
 
 1. **Alcance del PR-3:** ¿esqueleto B1–B4 solamente, o se incluye B5 (identidad→rol)?
-2. **Confirmar PR-2 estable** en producción (túnel + bootstrap corridos) antes de empezar.
+2. **Confirmar PR-2 estable** en producción (Caddy publicando + bootstrap corridos) antes de empezar.
 3. **Identidad del bot:** ¿se crea ya el bot account + PAT en el bootstrap (B7), o se difiere a PR-4?
 4. **Piloto:** ¿qué canal se usa para las primeras pruebas de traducción (sugerido: uno de prueba, no
    `direccion`)?
@@ -258,7 +261,7 @@ humana explícita.**
 `communication-service/ARCHITECTURE.md` · `communication-service/README.md` ·
 `communication-service/src/` (árbol: core, channels/{mattermost,whatsapp,email,teams,telegram}, events,
 integrations — solo `.gitkeep`) · `infra/mattermost/README.md` ·
-`infra/mattermost/cloudflared/config.yml` · `infra/mattermost/bootstrap/{README.md,channels.txt}` ·
+`infra/mattermost/caddy/Caddyfile` · `infra/mattermost/bootstrap/{README.md,channels.txt}` ·
 `infra/mattermost/qa/` · `echegaray-os/src/app/(main)/comunicacion/page.tsx` ·
 `echegaray-os/docs/mattermost-integracion-auditoria.md` (análisis de infra + costura `POST /ask`;
 su ubicación del gateway fue superada por el diseño desacoplado del PR-1).
