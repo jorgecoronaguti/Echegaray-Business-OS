@@ -21,7 +21,7 @@
   },
   "EmailSettings": {
     "SendPushNotifications": true,
-    "PushNotificationServer": "https://global.push.mattermost.com",
+    "PushNotificationServer": "https://push-test.mattermost.com",
     "PushNotificationContents": "generic"
   }
 }
