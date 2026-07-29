@@ -24,6 +24,7 @@ Requiere que PR-1 ya haya dejado `MM_SERVICESETTINGS_ENABLELOCALMODE=true` (así
 | `bootstrap.sh` | Script idempotente. Aplica config, crea admin, equipo, canales y membresías. |
 | `config.patch.json` | Configuración server-side declarativa, aplicada con `mmctl config patch`. |
 | `channels.txt` | Lista declarativa de canales (`name\|display-name\|visibility\|purpose`). |
+| `PUSH-MOVIL.md` | Push móvil: cómo conectan Android/iPhone, qué es TPNS y sus límites, cuándo y cómo migrar a HPNS. |
 | `.env.bootstrap.example` | Plantilla de variables (admin, equipo, rutas). Copiar a `.env.bootstrap`. |
 | `.gitignore` | Evita commitear `.env.bootstrap` (contiene la contraseña del admin). |
 
@@ -65,7 +66,7 @@ Todos los nombres de clave verificados contra el código fuente de Mattermost **
 | Archivos | `FileSettings.EnableFileAttachments` | `true` | Fotos de obra, PDFs de planos y comprobantes. |
 | Archivos | `FileSettings.MaxFileSize` | `104857600` (100 MB) | Suficiente para planos/fotos pesadas. |
 | Push móvil | `EmailSettings.SendPushNotifications` | `true` | Ver más abajo. |
-| Push móvil | `EmailSettings.PushNotificationServer` | `https://global.push.mattermost.com` | HPNS oficial (balanceado). |
+| Push móvil | `EmailSettings.PushNotificationServer` | `https://push-test.mattermost.com` | **TPNS** — servicio de push de prueba oficial, gratis, para Team Edition. Detalle y límites en `PUSH-MOVIL.md`. |
 | Push móvil | `EmailSettings.PushNotificationContents` | `generic` | La notificación muestra quién/dónde, **no** el texto del mensaje (privacidad). |
 
 > Mattermost **no** filtra adjuntos por extensión desde el server: los controles disponibles son
@@ -78,23 +79,26 @@ Para que la **app oficial de Mattermost** (App Store / Google Play) funcione hac
 1. **Conectarse** → la app apunta al `SiteURL` público por HTTPS con certificado válido. Eso lo provee
    el **otro tramo del PR-2** (`chat.ecsas.com.ar` + túnel Cloudflare). Este bootstrap no lo toca.
 2. **Recibir push (avisos con la app cerrada)** → requiere un *push proxy*. Este bootstrap deja
-   configurado el **servicio oficial HPNS** (`global.push.mattermost.com`), que es el que usan las apps
-   oficiales de las tiendas.
+   configurado el **TPNS** (`https://push-test.mattermost.com`), el servicio de push de **prueba**
+   oficial de Mattermost, que es **gratis** y funciona con las apps oficiales de las tiendas.
 
-> **⚠️ Decisión del dueño — restricción real de licenciamiento.** El acceso **soportado** a HPNS es de
-> los planes **pagos** de Mattermost (Professional/Enterprise). Esta instancia corre **Team Edition
-> (gratis)**. Las opciones honestas son:
+> **Decisión tomada: TPNS como estado inicial (costo cero).** El acceso **soportado y con SLA** a push
+> es el **HPNS** (`global.push.mattermost.com`), reservado a los planes **pagos** (Professional /
+> Enterprise / Cloud). Esta instancia corre **Team Edition (gratis)**, así que arrancamos con **TPNS**:
+> las apps **oficiales** de Android e iPhone reciben push sin compilar nada propio ni pagar licencia.
 >
-> | Opción | Qué implica |
-> |---|---|
-> | **A. Contratar un plan** que incluya HPNS | Push oficial soportado, sin infra extra. Ya queda apuntado en el patch. |
-> | **B. Autohospedar el push proxy (MPNS)** | Gratis, pero hay que desplegar el proxy y **compilar apps móviles propias** con sus claves. Más trabajo. |
-> | **C. TPNS de prueba** (`test`) | Servicio de test gratuito de Mattermost, **no** para producción (sin SLA). Solo para validar. |
+> **TPNS es un servicio de prueba, no de producción sostenida** (sin SLA, con límites). El detalle
+> completo — qué es, límites reales, cuándo y cómo migrar a HPNS — está en **`PUSH-MOVIL.md`**.
 >
-> Sin una de estas, la app **igual conecta y funciona en primer plano**; lo que no llega es el push con
-> la app cerrada. Dejar `config.patch.json` apuntando a HPNS es lo correcto para la opción A (la más
-> simple); si el dueño elige B o C, se cambia `PushNotificationServer` en el patch y se re-corre el
-> bootstrap.
+> | Opción | Estado | Qué implica |
+> |---|---|---|
+> | **TPNS** (`push-test`) | **Elegida (actual)** | Gratis, apps oficiales, sin licencia. Servicio de prueba, sin SLA. |
+> | **HPNS** (`global.push`) | Migración futura | Push soportado con SLA; requiere plan pago. Migración documentada en `PUSH-MOVIL.md`. |
+> | Push proxy autohospedado | Descartada por ahora | Gratis, pero exige desplegar el proxy y **compilar apps propias** con sus claves. Más trabajo. |
+>
+> Sin push, la app **igual conecta y funciona en primer plano**; lo que TPNS habilita es el aviso con la
+> app cerrada. Para migrar a HPNS se cambia `PushNotificationServer` en el patch y se re-corre el
+> bootstrap (ver `PUSH-MOVIL.md`).
 
 ## Canales elegidos (y por qué mínimos)
 
@@ -118,7 +122,7 @@ editá `channels.txt` y re-corré el bootstrap (crea solo los que falten).
 2. Copiar `.env.bootstrap.example` → `.env.bootstrap` y poner **email, usuario y una contraseña fuerte**
    del admin inicial.
 3. Correr `./bootstrap.sh`.
-4. **Decidir el camino de push móvil** (A/B/C de arriba). Por defecto queda apuntado a HPNS (opción A).
+4. **Push móvil ya resuelto con TPNS** (gratis, apps oficiales). Cuando el volumen/criticidad lo justifique, migrar a HPNS siguiendo `PUSH-MOVIL.md`.
 5. Entrar por primera vez con ese admin desde la app oficial apuntando al dominio público.
 
 ## Verificación (sin tocar la instancia)
