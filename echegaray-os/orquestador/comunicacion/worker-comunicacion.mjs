@@ -2,7 +2,8 @@
 // PR-4 · Worker del enlace Communication Service ↔ Work Fabric.
 //
 // Proceso de larga duración, apto para systemd (no activa producción todavía).
-// Cada tick, en orden: recupera leases vencidos → procesa inbox (bridge → orq) →
+// Cada tick, en orden: recupera leases vencidos → vence formularios de asistencia
+// abandonados (con su propio intervalo) → procesa inbox (bridge → orq) →
 // procesa el Work Fabric (claim oficial + handler + respuesta) → procesa outbox
 // (publica en Mattermost). Idempotente y tolerante a reinicios: todo el estado
 // vive en la base (colas con lease + orq.tasks); un reinicio reanuda sin perder
@@ -13,18 +14,26 @@
 //   DATABASE_URL=… MM_INCOMING_SECRET=… MM_BOT_TOKEN=… node orquestador/comunicacion/worker-comunicacion.mjs
 import { crearConector } from './conector.mjs'
 import { crearLog } from '../../../communication-service/src/index.mjs'
+import { SesionesPostgres, crearVencedorPeriodico, VENCER_INTERVALO_MS_DEFAULT } from './asistencia-sesion.mjs'
+import { query, withTx } from '../lib/db.mjs'
 
 const IDLE_MS = Number(process.env.COMM_WORKER_IDLE_MS ?? 2000)
 const BUSY_MS = Number(process.env.COMM_WORKER_BUSY_MS ?? 200)
 const MAX_IDLE_MS = 15_000
+// Cada cuánto se barren los formularios de asistencia vencidos. Ver crearVencedorPeriodico.
+const VENCER_MS = Number(process.env.COMM_WORKER_VENCER_MS ?? VENCER_INTERVALO_MS_DEFAULT)
 
 const log = crearLog()
 let parar = false
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-async function tick(con) {
+async function tick(con, vencerSesiones) {
   await con.recuperarLeasesWorkFabric()
   await con.recuperarLeasesComm()
+  // Barrido de formularios de asistencia abandonados. Tiene su PROPIO intervalo (este loop
+  // puede girar cada 200 ms) y no suma a `trabajo`: no debe mantener el loop en modo busy.
+  // Se loguea solo cuando cierra algo, y nunca propaga error (ver crearVencedorPeriodico).
+  await vencerSesiones()
   const inbox = await con.procesarInbox({ lote: 20 })
   const wf = await con.procesarWorkFabric({ lote: 20 })
   const outbox = await con.procesarOutbox({ lote: 20 })
@@ -43,14 +52,19 @@ async function main() {
     console.error('worker-comunicacion: no arranca —', String(e?.message ?? e))
     process.exit(1)
   }
-  log.info('worker-comunicacion arrancado', {})
+  // El vencimiento de sesiones de asistencia corre ACÁ y no en un scheduler aparte: este
+  // worker ya es el proceso de larga duración del canal y ya tiene el pool de la base.
+  const vencerSesiones = crearVencedorPeriodico({
+    sesiones: new SesionesPostgres({ query, withTx }), intervaloMs: VENCER_MS, log,
+  })
+  log.info('worker-comunicacion arrancado', { vencer_sesiones_ms: VENCER_MS })
   for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => { log.info('shutdown pedido', { señal: s }); parar = true })
 
   let espera = IDLE_MS
   while (!parar) {
     let r
     try {
-      r = await tick(con)
+      r = await tick(con, vencerSesiones)
     } catch (e) {
       log.error('tick falló (se reintenta el próximo ciclo)', { error: String(e?.message ?? e) })
       await sleep(Math.min(espera, MAX_IDLE_MS))

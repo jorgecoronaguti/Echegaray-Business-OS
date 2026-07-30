@@ -97,6 +97,8 @@ const ESCRITORES_NO_GENERADORES = new Map([
   ['operaciones-sheet-tool.mjs', 'operaciones con nombre que el usuario pide y aprueba primero: edición dirigida por él, no regeneración de una pestaña'],
   ['appsheet-pedidos.mjs', 'escribe estado/alta puntual (con aprobación) en otro Sheet: write dirigido por celda, no reescribe la pestaña'],
   ['sheets-format.mjs', 'sólo FORMATO (colores/bordes/anchos), no valores: no hay rótulo que pisar'],
+  ['jornales-asistencia.mjs', 'asistencia: escribe UNA celda diaria por trabajador, dirigida por el jefe de obra y confirmada por él. No regenera ninguna pestaña. Trae su propia protección, más estricta que la preservación de rótulos: relee y compara la HUELLA de cada celda antes de escribir (conflicto de concurrencia → no escribe nada), y bloquea la celda si tiene fórmula o texto. No hay rótulo ajeno que preservar: el destino es una celda numérica de horas'],
+  ['jornales-fixture.mjs', 'FIXTURE de tests: su batchUpdateValues es el cliente Google FALSO en memoria (no toca ningún Sheet). Aparece acá porque el candado mira el nombre del símbolo, no si es real'],
 ])
 
 test('ningún escritor de Sheets fuera de scripts/ (lib, tools) pisa ediciones sin decidirlo', () => {

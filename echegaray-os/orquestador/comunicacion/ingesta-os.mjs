@@ -52,7 +52,12 @@ export function crearEmitEventOS(port) {
       )
 
       // 2) Crear la TAREA del Work Fabric (idempotente por dedupe_key = comm_event_id).
-      const comando = p.data?.comando ?? p.data?.texto ?? ''
+      // Un slash command llega partido: `comando` es el trigger ("asistencia") y
+      // `argumentos` el resto ("29/07"). Si se toma sólo `comando`, el skill recibe el
+      // nombre del comando sin sus argumentos y pierde la fecha. Se reúne el texto
+      // completo. Por WebSocket no hay `comando`: el texto ya viene entero.
+      const partes = [p.data?.comando, p.data?.argumentos].filter((x) => x != null && String(x).trim() !== '')
+      const comando = partes.length ? partes.join(' ') : (p.data?.texto ?? '')
       const tarea = {
         type: 'comunicacion.responder',
         dedupe_key: dedupeKey,

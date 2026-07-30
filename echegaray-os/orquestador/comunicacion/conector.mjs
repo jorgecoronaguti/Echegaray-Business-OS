@@ -94,7 +94,20 @@ export function crearConector(opts = {}) {
       if (!task) break
       resumen.intentados++
       const handler = resolveHandler(task.type)
-      const ctx = { logger: log, config: { WORKER_ID: process.env.WORKER_ID ?? 'comm-wf-1' }, responderComunicacion }
+      const ctx = {
+        logger: log,
+        config: { WORKER_ID: process.env.WORKER_ID ?? 'comm-wf-1' },
+        responderComunicacion,
+        // Canal PRIVADO (DM bot↔persona) para las respuestas que no pueden salir en un
+        // canal compartido. Se inyecta acá porque el conector es el único que conoce el
+        // cliente de la plataforma; el handler pide "privado" y no sabe cómo se logra.
+        canalPrivadoPara: async (userId) => {
+          const bot = opts.botUserId ?? process.env.MM_BOT_USER_ID ?? null
+          if (!bot || !userId) return null
+          const canal = await cliente.canalDirecto({ usuarioA: bot, usuarioB: userId })
+          return canal?.id ?? null
+        },
+      }
       try {
         if (!handler) throw new Error(`sin handler para ${task.type}`)
         await transition(task.id, ctx.config.WORKER_ID, 'running')
