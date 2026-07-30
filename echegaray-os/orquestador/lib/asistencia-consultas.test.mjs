@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  parsearConsulta, responderConsulta, interpretarFecha, elegirCandidato,
+  parsearConsulta, responderConsulta, renderConsulta, interpretarFecha, elegirCandidato,
   MOTIVO_CONSULTA, MAX_DIAS,
 } from './asistencia-consultas.mjs'
 import {
@@ -400,4 +400,28 @@ test('las fechas que SÍ se entienden siguen funcionando igual (sin falsos posit
 test('el 31 de un mes de 30 días no se acepta en silencio', () => {
   assert.equal(interpretarFecha('31/04', FECHA_HOY), null)
   assert.ok(parsear('asistencia del 31/04')?.fecha_ilegible)
+})
+
+// ── CORRECCIONES DE PRODUCCIÓN ──────────────────────────────────────────────
+
+test('una fórmula CON ERROR no se informa como ausencia ni como cero', async () => {
+  const g = fakeGoogleJornales({ alLeer(grid) { grid.filas[20][idxCol('R')] = { valor: '#REF!', numero: null, formula: '=A1', derivada: false } } })
+  const { r } = await responder('asistencia de hoy', { google: g })
+  assert.equal(r.ok, true)
+  assert.equal(r.datos.resumen.con_error, 1)
+  assert.equal(r.datos.resumen.ausentes, 0, 'no se cuenta como ausencia')
+  // La celda en error no aporta ni resta: el total del día es el mismo que sin ella.
+  const base = await responder('asistencia de hoy')
+  assert.equal(r.datos.resumen.horas_total, base.r.datos.resumen.horas_total)
+  assert.equal(base.r.datos.resumen.con_error, 0)
+  const t = renderConsulta({ consulta: parsear('asistencia de hoy'), datos: r.datos })
+  assert.match(t, /VALOR NO INTERPRETABLE/)
+  assert.doesNotMatch(t, /ausente \(0\)/)
+})
+
+test('las cargas normales siguen contándose igual con una celda en error al lado', async () => {
+  const g = fakeGoogleJornales({ alLeer(grid) { grid.filas[20][idxCol('R')] = { valor: '#REF!', numero: null, formula: '=A1', derivada: false } } })
+  const { r } = await responder('asistencia de hoy', { google: g })
+  assert.ok(r.datos.resumen.personas >= 1)
+  assert.equal(typeof r.datos.resumen.horas_normales, 'number')
 })

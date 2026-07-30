@@ -31,7 +31,7 @@
 //
 // Todo acá es PURO: no hay red, ni base, ni fecha del sistema.
 
-import { parseHoras } from './jornales-estructura.mjs'
+import { parseHoras, RE_NUM_HORAS, DECIMALES_HORAS } from './jornales-estructura.mjs'
 
 /** Forma reconocida del contenido de una celda diaria. */
 export const FORMA = Object.freeze({
@@ -40,6 +40,10 @@ export const FORMA = Object.freeze({
   SUMA: 'suma', // =9+2     → normal 9, extras 2
   SUMA_COEF: 'suma_coef', // =4+3*1,5 → normal 4, extras 4,5 (3 h al 1,5)
   NO_INTERPRETABLE: 'no_interpretable', // =9-2,5+2 → total sí, descomposición no
+  // Fórmula cuyo valor efectivo NO es un número: #REF!, #DIV/0!, #VALUE!, o una que
+  // devuelve texto. No es una ausencia y no es un cero: es un valor que no se puede
+  // interpretar. Se protege, no se pisa, y se declara como tal en preview y consultas.
+  ERROR: 'error',
   TEXTO: 'texto', // cualquier cosa que no sea un número de horas
 })
 
@@ -55,15 +59,19 @@ export const ESTADO = Object.freeze({
 export const HORAS_MAX = Number(process.env.ORQ_ASISTENCIA_HORAS_MAX ?? 24)
 export const HORAS_MIN = 0
 
-/** Un token numérico de fórmula: acepta coma o punto decimal (el archivo usa coma). */
-const NUM = String.raw`\d{1,3}(?:[.,]\d{1,3})?`
+/** Un token numérico de fórmula: acepta coma o punto decimal (el archivo usa coma).
+ *  Comparte la precisión con `parseHoras` a través de RE_NUM_HORAS: si los dos regex no
+ *  son el mismo, `=8+4,125` deja un lado en null y se pierden 4,125 horas en silencio. */
+const NUM = RE_NUM_HORAS
 const RE_SOLO_NUM = new RegExp(`^=\\s*(${NUM})\\s*$`)
 const RE_SUMA = new RegExp(`^=\\s*(${NUM})\\s*\\+\\s*(${NUM})\\s*$`)
 const RE_SUMA_COEF = new RegExp(`^=\\s*(${NUM})\\s*\\+\\s*(${NUM})\\s*\\*\\s*(${NUM})\\s*$`)
 
 const n = (s) => parseHoras(s)
-/** Redondeo a 2 decimales: 3*1,3 en binario da 3.9000000000000004. */
-const r2 = (x) => Math.round(x * 100) / 100
+/** Redondeo a la precisión declarada: 3*1,3 en binario da 3.9000000000000004. Usa
+ *  DECIMALES_HORAS para no recortar un decimal que el archivo sí acepta. */
+const ESCALA = 10 ** DECIMALES_HORAS
+const r2 = (x) => Math.round(x * ESCALA) / ESCALA
 
 /**
  * Interpreta el contenido de una celda diaria y separa jornada normal de horas extra.
@@ -115,10 +123,21 @@ export function interpretarCarga(celda = {}) {
     const h = n(m[1])
     return { ...base, forma: FORMA.NUMERO, total: h, normales: h, extras: 0, cantidad_extra: null, coeficiente: null, inequivoca: true, editable: true }
   }
+  // Fórmula con error o que no devuelve un número (#REF!, #DIV/0!, texto calculado): no
+  // hay total que mostrar. Antes caía en NO_INTERPRETABLE con total null, y el consumidor
+  // lo leía como 0 → informaba "ausente" a alguien que trabajó. Ahora es su propia forma,
+  // protegida y excluida de toda escritura.
+  if (efectivo == null) {
+    return {
+      ...base, forma: FORMA.ERROR, total: null,
+      normales: null, extras: null, cantidad_extra: null, coeficiente: null,
+      inequivoca: false, editable: false,
+    }
+  }
   // Fórmula real pero fuera de la gramática (`=9-2,5+2`). El TOTAL se conoce (lo calculó
   // el Sheet), la composición no. Se muestra y se pide confirmación para reemplazarla.
   return {
-    ...base, forma: FORMA.NO_INTERPRETABLE, total: efectivo ?? null,
+    ...base, forma: FORMA.NO_INTERPRETABLE, total: efectivo,
     normales: null, extras: null, cantidad_extra: null, coeficiente: null,
     inequivoca: false, editable: false,
   }

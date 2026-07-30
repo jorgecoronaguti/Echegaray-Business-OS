@@ -110,10 +110,29 @@ export function parseHoras(v) {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
   const t = String(v).trim()
   if (t === '') return null
-  if (!/^-?\d{1,3}(?:[.,]\d{1,2})?$/.test(t)) return null
+  if (!RE_HORAS.test(t)) return null
   const n = Number(t.replace(',', '.'))
   return Number.isFinite(n) ? n : null
 }
+
+/**
+ * DECIMALES: uno y el mismo para todo el camino (fórmula, valor de celda, preview,
+ * escritura, auditoría). Antes el regex de fórmulas aceptaba 3 y éste 2: `=8+4,125`
+ * dejaba un lado en null y la aritmética lo tomaba como 0, declarándolo inequívoco.
+ * Se pierden 4,125 horas en silencio. Un solo lugar define la precisión.
+ */
+export const DECIMALES_HORAS = 3
+export const RE_NUM_HORAS = String.raw`\d{1,3}(?:[.,]\d{1,${DECIMALES_HORAS}})?`
+const RE_HORAS = new RegExp(`^-?${RE_NUM_HORAS}$`)
+
+/**
+ * OFFSET DEL RANGO. `readSheetGrid` devuelve `offset.fila`/`offset.col` porque el rango
+ * leído no arranca necesariamente en A1. El parser trabaja con índices de la grilla; la
+ * fila y la columna REALES de la hoja son el índice más el offset. Sin esto, leer con un
+ * rango desplazado escribe una fila más arriba — en la persona equivocada, sin error.
+ */
+export const filaSheet = (grid, i) => i + 1 + (grid?.offset?.fila ?? 0)
+export const colSheet = (grid, j) => j + (grid?.offset?.col ?? 0)
 
 /** ¿La celda tiene contenido escrito por alguien (valor o fórmula)? Una celda vacía
  *  NO es 0 — esta distinción es la que evita inventar ausencias. */
@@ -187,7 +206,7 @@ export function detectarBloques(grid, { anio, minFechas = 3, filaRotulos = 0 } =
     if (fechas.length < minFechas) continue
     bloques.push({
       fila: i, // 0-based
-      fila1: i + 1, // 1-based (A1)
+      fila1: filaSheet(grid, i), // fila REAL de la hoja (índice + 1 + offset del rango)
       fechas,
       col_desde: fechas[0].col,
       col_hasta: fechas[fechas.length - 1].col,
@@ -229,7 +248,12 @@ export function trabajadoresDeBloque(grid, bloque, { hastaFila } = {}) {
     const obraOrig = cols.obra == null ? '' : crudo(celda(grid, i, cols.obra))
     out.push({
       fila: i,
-      fila1: i + 1,
+      fila1: filaSheet(grid, i), // fila REAL de la hoja; `fila` sigue siendo el índice de grilla
+      // IDENTIDAD DE ESCRITURA. El nombre normalizado NO identifica: dos homónimos en la
+      // misma obra colapsaban en una sola clave y la escritura iba a una sola fila, dejando
+      // a la otra persona sin cargar y la auditoría a nombre del equivocado. La identidad
+      // es estructural (bloque + fila real); el nombre sigue siendo lo que se muestra.
+      ref: `b${bloque.fila1}f${filaSheet(grid, i)}`,
       nombre_original: crudo(celda(grid, i, cols.nombre)),
       nombre_clave: normalizarClave(nombre),
       cliente_original: clienteOrig,

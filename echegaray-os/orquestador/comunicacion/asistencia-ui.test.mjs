@@ -305,3 +305,27 @@ test('sin parser de consultas inyectado, todo cae al registro (degradación hone
   const r = clasificar('asistencia de hoy', { isoContexto: '2026-07-30' })
   assert.equal(r.destino, 'registro')
 })
+
+// ── CORRECCIONES DE PRODUCCIÓN ──────────────────────────────────────────────
+
+test('«no canceles» NO cancela: cancelar exige la intención sola', () => {
+  for (const t of ['no canceles, 3 ausente', 'no cancelar', 'antes de cancelar mirá', 'cancelame la duda']) {
+    const c = parsearComando(t)
+    assert.notEqual(c?.tipo, 'cancelar', `«${t}» no puede cancelar`)
+  }
+  for (const t of ['cancelar', 'cancelo', 'salir', 'abortar', '@os cancelar', 'cancelar.']) {
+    assert.equal(parsearComando(t)?.tipo, 'cancelar', `«${t}» sí cancela`)
+  }
+})
+
+test('«volver a marcar a todos presentes» marca, no vuelve', () => {
+  assert.equal(parsearComando('volver a marcar a todos presentes')?.tipo, 'todos_presentes')
+  assert.equal(parsearComando('volver')?.tipo, 'volver')
+  assert.equal(parsearComando('atras')?.tipo, 'volver')
+})
+
+test('un número inválido llega ENTERO al validador: no se recorta el signo ni los decimales', () => {
+  assert.equal(parsearComando('1 parcial -5')?.normales, '-5', 'antes llegaba "5"')
+  assert.equal(parsearComando('3 parcial 5,555')?.normales, '5,555', 'antes llegaba "5,55"')
+  assert.equal(parsearComando('1 extra -2')?.extras, '-2')
+})

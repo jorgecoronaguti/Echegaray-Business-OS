@@ -17,7 +17,7 @@
 
 import {
   contextoParaFecha, listarObrasPorFecha, listarPersonalPorObraYFecha, planificarAsistencia,
-  registrarAsistencia, MOTIVO,
+  registrarAsistencia, MOTIVO, SIN_CAMBIO,
 } from '../lib/tools/jornales-asistencia.mjs'
 import { tienePermiso, PERMISO_ASISTENCIA_WRITE } from '../lib/asistencia-permisos.mjs'
 import { crearAuditor, EVENTO, payloadConfirmacion, sanitizarError } from '../lib/asistencia-auditoria.mjs'
@@ -165,7 +165,7 @@ async function elegirObra(d, indice) {
     status: 'ok', fecha_operativa: fechaIso(sesion), obra_normalizada: clave, sheet_name: r.pestana,
   })
   await d.sesiones.guardarContexto(sesion.id, { claveObra: clave, pestana: r.pestana, spreadsheetId: r.ctx.spreadsheet_id })
-  await d.sesiones.guardarMarcas(sesion.id, { ...estado, personal: r.personal.map((p) => p.nombre_clave), marcas: {} })
+  await d.sesiones.guardarMarcas(sesion.id, { ...estado, personal: r.personal.map((p) => p.ref), marcas: {} })
   return resp(cuadrilla(r, {}), 'cuadrilla')
 }
 
@@ -176,9 +176,17 @@ async function marcarTodos(d) {
   if (!sesion.clave_obra) return faltaObra()
   const r = await cuadrillaDe(d, sesion)
   if (!r.ok) return respuestaLectura(r, fechaIso(sesion))
+  // REGLA: una celda YA CARGADA no se pisa por defecto. `todos presentes` precarga como
+  // presente SÓLO las celdas vacías; las que ya tienen algo (un número, un 0, `=8+6`)
+  // quedan en SIN CAMBIO y sólo se mueven si el jefe las marca una por una. Antes esto
+  // proponía reemplazar `=4+3*1,5` (8,5 h con 4,5 extra) por la jornada del día.
   const marcas = {}
-  for (const p of r.personal) marcas[p.nombre_clave] = { estado: ESTADO.PRESENTE, normales: null, extras: null }
-  await d.sesiones.guardarMarcas(sesion.id, { ...estado, personal: r.personal.map((p) => p.nombre_clave), marcas })
+  for (const p of r.personal) {
+    marcas[p.ref] = p.cargada
+      ? { ref: p.ref, estado: SIN_CAMBIO, normales: null, extras: null }
+      : { ref: p.ref, estado: ESTADO.PRESENTE, normales: null, extras: null }
+  }
+  await d.sesiones.guardarMarcas(sesion.id, { ...estado, personal: r.personal.map((p) => p.ref), marcas })
   return resp(cuadrilla(r, marcas), 'cuadrilla')
 }
 
@@ -200,7 +208,7 @@ async function marcarUno(d, intencion) {
     if (!previa) return resp(`Primero marcá el estado del ${intencion.indice} (por ejemplo \`${intencion.indice} presente\`).`, 'sin_estado_previo')
     const v = normalizarHoras(intencion.extras, { permitirVacio: true })
     if (!v.ok) return resp('Las horas extra tienen que ser un número (ej. `1 extra 2` o `1 extra 1,5`).', 'extras_invalidas')
-    return guardarYMostrar(d, sesion, estado, { ...estado.marcas, [clave]: { ...previa, extras: v.horas } })
+    return guardarYMostrar(d, sesion, estado, { ...estado.marcas, [clave]: { ...previa, ref: clave, extras: v.horas } })
   }
 
   let normales = intencion.normales ?? null
@@ -221,7 +229,7 @@ async function marcarUno(d, intencion) {
   }
   if (intencion.estado === ESTADO.AUSENTE) extras = null // un ausente no lleva extras
   return guardarYMostrar(d, sesion, estado, {
-    ...estado.marcas, [clave]: { estado: intencion.estado, normales, extras },
+    ...estado.marcas, [clave]: { ref: clave, estado: intencion.estado, normales, extras },
   })
 }
 
@@ -241,8 +249,12 @@ async function planDe(d, sesion, estado) {
     fecha: fechaIso(sesion),
   })
   if (!ctx.ok) return { fallo: respuestaLectura(ctx, fechaIso(sesion)) }
-  const marcas = Object.entries(estado.marcas ?? {}).map(([nombre_clave, m]) => ({
-    nombre_clave, estado: m.estado, normales: m.normales, extras: m.extras,
+  // La clave del mapa es la REF estructural (bloque + fila real) que emitió el servidor al
+  // listar la cuadrilla. Va tal cual al planificador: es lo que hace que dos homónimos
+  // apunten a filas distintas.
+  const marcas = Object.entries(estado.marcas ?? {}).map(([ref, m]) => ({
+    ref: m.ref ?? ref, nombre_clave: m.nombre_clave ?? null,
+    estado: m.estado, normales: m.normales, extras: m.extras,
   }))
   if (!marcas.length) return { fallo: resp('Todavía no marcaste a nadie. `todos presentes` o `3 ausente`.', 'sin_marcas') }
   const plan = planificarAsistencia(ctx, { claveObra: sesion.clave_obra, marcas, actor: d.actor })

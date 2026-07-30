@@ -380,9 +380,9 @@ function falla(motivo, mensaje, opciones = []) {
 /** Recorre día por día y persona por persona las celdas reales y suma. */
 function agregar({ dias, sel, desde, hasta, sinDatos }) {
   const ceros = { presentes: 0, ausentes: 0, sin_cargar: 0, horas_normales: 0, horas_extra: 0, horas_total: 0 }
-  const resumen = { ...ceros, personas: 0, con_texto: 0, no_separables: 0 }
+  const resumen = { ...ceros, personas: 0, con_texto: 0, no_separables: 0, con_error: 0 }
   const porFecha = []; const porPersona = new Map()
-  const acc = { extras: [], noSeparables: [], conTexto: [], sinPersonal: [] }
+  const acc = { extras: [], noSeparables: [], conTexto: [], conError: [], sinPersonal: [] }
 
   for (const d of dias) {
     const elegidos = seleccionar(d.trabajadores, sel)
@@ -406,6 +406,7 @@ function agregar({ dias, sel, desde, hasta, sinDatos }) {
     horas_extra_detalle: acc.extras,
     no_separables_detalle: acc.noSeparables,
     con_texto_detalle: acc.conTexto,
+    con_error_detalle: acc.conError,
     fechas_sin_datos: sinDatos,
     fechas_sin_personal: acc.sinPersonal,
   }
@@ -418,6 +419,14 @@ function contar(carga, item, { dia, resumen, p, fecha, nombre, acc }) {
   // cargar" (no una ausencia) y el texto es un dato que no entendemos.
   if (carga.forma === FORMA.VACIA) { dia.sin_cargar++; resumen.sin_cargar++; p.dias_sin_cargar++; return }
   if (carga.forma === FORMA.TEXTO) { resumen.con_texto++; acc.conTexto.push({ fecha, nombre }); return }
+  // Fórmula con error (#REF!, #DIV/0!): NO es una ausencia ni un cero. Antes caía en el
+  // `?? 0` de abajo y el informe decía "ausente (0)" de alguien que trabajó. Se cuenta
+  // aparte, se declara, y no entra en ningún total.
+  if (carga.forma === FORMA.ERROR) {
+    resumen.con_error++
+    acc.conError.push({ fecha, nombre, formula: carga.formula_original ?? null })
+    return
+  }
 
   item.total = Number(carga.total ?? 0)
   sumar('horas_total', item.total)
@@ -520,6 +529,7 @@ function advertencias(datos, r) {
   if (!r.presentes && !r.ausentes && r.sin_cargar) l.push('', '_Todavía no hay nada cargado para eso._')
   if (r.no_separables) l.push('', `⚠️ ${pl(r.no_separables, 'carga', 'cargas')} con un cálculo que no se puede separar en normal y extra: ${quienes(datos.no_separables_detalle)}. El total sí está contado; el desglose de esas horas no.`)
   if (r.con_texto) l.push('', `⚠️ ${r.con_texto} ${r.con_texto === 1 ? 'celda tiene' : 'celdas tienen'} texto en lugar de horas: ${quienes(datos.con_texto_detalle)}. No entra en ningún total.`)
+  if (r.con_error) l.push('', `⚠️ ${r.con_error} ${r.con_error === 1 ? 'celda tiene un VALOR NO INTERPRETABLE' : 'celdas tienen un VALOR NO INTERPRETABLE'} (la planilla devuelve un error): ${quienes(datos.con_error_detalle)}. No cuentan como ausencia ni como cero — hay que mirarlas en la planilla.`)
   if (faltantes.length) l.push('', `_Sin columna en la planilla (no se informan): ${faltantes.slice(0, 10).join(', ')}${faltantes.length > 10 ? '…' : ''}._`)
   if (datos.fechas_sin_personal.length) l.push('', `_Sin personal asignado: ${datos.fechas_sin_personal.map(dm).slice(0, 10).join(', ')}._`)
   return l

@@ -19,6 +19,7 @@ import { createHash } from 'node:crypto'
 import {
   detectarBloques, bloquePorFecha, columnaDeFecha, trabajadoresDeBloque, obrasDeBloque,
   personalDeObra, leerCeldaDiaria, celdaA1, letraColumna, diaSemanaIso, normalizarClave,
+  colSheet,
 } from '../jornales-estructura.mjs'
 import { calibrarJornada, horasJornadaCompleta } from '../jornada-politica.mjs'
 import { interpretarCarga, componerCarga, resolverCarga, estadoDeCarga, FORMA } from '../horas-extra.mjs'
@@ -34,6 +35,10 @@ export const PESTANA_PREFIJO = process.env.GOOGLE_JORNALES_PESTANA_PREFIJO || 'O
 /** Rango de lectura. Amplio a propósito: los bloques crecen hacia abajo durante el año. */
 const RANGO = process.env.GOOGLE_JORNALES_RANGO || 'A1:BB800'
 
+/** Marca que dice EXPLÍCITAMENTE "no toques esta celda". Es el estado por defecto de una
+ *  celda ya cargada: quedarse quieto es la opción segura sobre el jornal de una persona. */
+export const SIN_CAMBIO = 'sin_cambio'
+
 export const MOTIVO = Object.freeze({
   FECHA_NO_EN_JORNALES: 'fecha_no_en_jornales',
   PESTANA_NO_ENCONTRADA: 'pestana_no_encontrada',
@@ -41,6 +46,8 @@ export const MOTIVO = Object.freeze({
   OBRA_DESCONOCIDA: 'obra_desconocida',
   FORMULA_NO_INTERPRETABLE: 'formula_no_interpretable',
   TEXTO_NO_NUMERICO: 'texto_no_numerico',
+  FORMULA_CON_ERROR: 'formula_con_error',
+  TRABAJADOR_AMBIGUO: 'trabajador_ambiguo',
   TRABAJADOR_NO_EN_BLOQUE: 'trabajador_no_en_bloque',
   OBRA_NO_COINCIDE: 'obra_no_coincide',
   CONFLICTO_CONCURRENCIA: 'conflicto_concurrencia',
@@ -116,7 +123,8 @@ export async function contextoParaFecha(google, { spreadsheetId, pestana, fecha 
     grid: est.grid,
     bloque,
     columna: col.col,
-    columna_letra: letraColumna(col.col),
+    columna_letra: letraColumna(colSheet(est.grid, col.col)),
+    columna_sheet: colSheet(est.grid, col.col),
     fecha,
     dia_semana: dia,
     trabajadores,
@@ -147,7 +155,7 @@ function estadoActual(ctx, t) {
   return {
     ...cel,
     carga,
-    celda_a1: celdaA1(ctx.pestana, t.fila1, ctx.columna),
+    celda_a1: celdaA1(ctx.pestana, t.fila1, ctx.columna_sheet ?? ctx.columna),
     fila1: t.fila1,
     estado_equivalente: estadoDeCarga(carga, { jornada: ctx.jornada }),
     huella: huellaCelda(cel),
@@ -167,9 +175,13 @@ export async function listarPersonalPorObraYFecha(google, { claveObra, ...opts }
   if (!obra) return { ok: false, motivo: MOTIVO.OBRA_DESCONOCIDA, obras_validas: obras.map((o) => o.clave) }
   const personal = personalDeObra(ctx.grid, ctx.bloque, claveObra).map((t) => ({
     nombre_original: t.nombre_original,
+    ref: t.ref,
     nombre_clave: t.nombre_clave,
     categoria: t.categoria,
     actual: estadoActual(ctx, t),
+    // ¿La celda del día ya tiene algo escrito? Lo decide el default: una celda cargada
+    // arranca en SIN CAMBIO, una vacía puede precargarse como presente.
+    get cargada() { return this.actual.escrita === true },
   }))
   if (!personal.length) return { ok: false, motivo: MOTIVO.SIN_PERSONAL, obra, fecha: ctx.fecha }
   return {
@@ -185,14 +197,18 @@ export async function listarPersonalPorObraYFecha(google, { claveObra, ...opts }
  * después se vuelve a verificar contra la planilla.
  */
 export function planificarAsistencia(ctx, { claveObra, marcas, actor } = {}) {
-  const dePlanilla = new Map(personalDeObra(ctx.grid, ctx.bloque, claveObra).map((t) => [t.nombre_clave, t]))
+  const cuadrilla = personalDeObra(ctx.grid, ctx.bloque, claveObra)
   const items = []
   for (const m of marcas || []) {
-    const t = dePlanilla.get(m.nombre_clave)
-    // El cliente NUNCA elige una fila ni un nombre libre: si la clave no está en la
-    // cuadrilla que la planilla declara para esta obra y fecha, se rechaza.
-    if (!t) { items.push({ nombre_clave: m.nombre_clave, bloqueada: MOTIVO.TRABAJADOR_NO_EN_BLOQUE }); continue }
-    items.push(planificarUno(ctx, t, m))
+    const res = resolverTrabajador(cuadrilla, m)
+    // El cliente NUNCA elige una fila. La `ref` la emitió el servidor al listar la
+    // cuadrilla; si sólo llega un nombre, se acepta únicamente cuando identifica a UNA
+    // fila. Dos homónimos ya no colapsan en una escritura a la fila equivocada.
+    if (!res.ok) {
+      items.push({ ref: m.ref ?? null, nombre_clave: m.nombre_clave ?? null, bloqueada: res.motivo })
+      continue
+    }
+    items.push(planificarUno(ctx, res.t, m))
   }
   const por = (f) => items.filter(f).length
   const suma = (campo) => items.filter((i) => !i.bloqueada && i.accion !== 'sin_cambio')
@@ -213,6 +229,10 @@ export function planificarAsistencia(ctx, { claveObra, marcas, actor } = {}) {
     sin_cambio: por((i) => i.accion === 'sin_cambio'),
     bloqueadas: por((i) => i.bloqueada),
     reemplazan_formula: por((i) => i.reemplaza_formula_no_interpretable),
+    pierden_extras: por((i) => i.pierde_extras && i.accion !== 'sin_cambio'),
+    horas_extra_borradas: Math.round(items
+      .filter((i) => !i.bloqueada && i.accion !== 'sin_cambio' && i.pierde_extras)
+      .reduce((a, i) => a + (i.extras_borradas ?? 0), 0) * 1000) / 1000,
     a_escribir: escribibles.length,
   }
   return {
@@ -221,11 +241,32 @@ export function planificarAsistencia(ctx, { claveObra, marcas, actor } = {}) {
     clave_obra: claveObra, jornada: ctx.jornada, items, escribibles, resumen,
     // Sobrescribir un dato existente y distinto exige un sí explícito del jefe.
     requiere_confirmacion_sobrescritura: resumen.celdas_modificadas > 0,
+    // Borrar horas extra ya cargadas exige un sí explícito: tiene efecto sobre el jornal.
+    pierde_horas_extra: resumen.pierden_extras > 0,
     // Reemplazar una fórmula que NO se pudo descomponer exige un sí aparte: no es lo
     // mismo cambiar un 9 por un 8 que borrar `=9-2,5+2` sin saber qué representaba.
     requiere_confirmacion_formula: resumen.reemplazan_formula > 0,
     idempotency_key: claveIdempotencia({ ctx, claveObra, items, actor }),
   }
+}
+
+/**
+ * Resuelve la marca a UNA fila de la cuadrilla. Preferencia: `ref` estructural (bloque +
+ * fila real), que es lo que el servidor emitió al listar. El nombre normalizado se acepta
+ * como compatibilidad, pero SÓLO si identifica a una sola persona: si hay homónimos en la
+ * misma obra, se rechaza en vez de elegir por azar — antes ganaba la última fila y la otra
+ * persona quedaba sin cargar, con la auditoría a nombre del equivocado.
+ */
+function resolverTrabajador(cuadrilla, m) {
+  if (m?.ref) {
+    const t = cuadrilla.find((x) => x.ref === m.ref)
+    return t ? { ok: true, t } : { ok: false, motivo: MOTIVO.TRABAJADOR_NO_EN_BLOQUE }
+  }
+  const clave = m?.nombre_clave ?? null
+  if (!clave) return { ok: false, motivo: MOTIVO.TRABAJADOR_NO_EN_BLOQUE }
+  const hits = cuadrilla.filter((x) => x.nombre_clave === clave)
+  if (hits.length === 1) return { ok: true, t: hits[0] }
+  return { ok: false, motivo: hits.length ? MOTIVO.TRABAJADOR_AMBIGUO : MOTIVO.TRABAJADOR_NO_EN_BLOQUE }
 }
 
 /**
@@ -242,7 +283,8 @@ function planificarUno(ctx, t, m) {
   const act = estadoActual(ctx, t)
   const carga = act.carga
   const base = {
-    nombre_original: t.nombre_original, nombre_clave: t.nombre_clave, fila1: t.fila1,
+    ref: t.ref, nombre_original: t.nombre_original, nombre_clave: t.nombre_clave,
+    fila1: t.fila1, fila: t.fila,
     col: ctx.columna, celda_a1: act.celda_a1, estado: m.estado,
     // Estado ANTERIOR, ya desglosado (es lo que se muestra y lo que se audita).
     valor_actual: act.valor_crudo, formula_actual: act.formula,
@@ -250,8 +292,23 @@ function planificarUno(ctx, t, m) {
     forma_actual: carga.forma, huella: act.huella,
   }
 
+  // SIN CAMBIO explícito: la celda ya está cargada y el jefe no pidió tocarla. No se
+  // compone nada, no se escribe nada, y el preview la muestra como está. Es el estado
+  // por defecto de toda celda ya cargada — antes el default proponía pisarla.
+  if (m.estado === SIN_CAMBIO) {
+    return {
+      ...base, accion: 'sin_cambio', bloqueada: null,
+      normales_nuevas: carga.normales, extras_nuevas: carga.extras, total_nuevo: carga.total,
+      escribir: null, es_formula: false, formula_nueva: act.formula ?? null,
+      reemplaza_formula_no_interpretable: false, pierde_extras: false,
+    }
+  }
+
   // Texto libre: no se toca nunca.
   if (carga.forma === FORMA.TEXTO) return { ...base, bloqueada: MOTIVO.TEXTO_NO_NUMERICO }
+  // Fórmula con error (#REF!, #DIV/0!): sin valor interpretable. No se pisa ni se
+  // reemplaza con confirmación: no se sabe qué se estaría destruyendo.
+  if (carga.forma === FORMA.ERROR) return { ...base, bloqueada: MOTIVO.FORMULA_CON_ERROR }
 
   const r = resolverCarga({ estado: m.estado, normales: m.normales, extras: m.extras, jornada: ctx.jornada })
   if (!r.ok) return { ...base, bloqueada: r.motivo, detalle: r }
@@ -267,8 +324,13 @@ function planificarUno(ctx, t, m) {
     coeficiente: mismasExtras ? carga.coeficiente : null,
   })
 
+  // ¿Esta operación BORRA horas extra que ya estaban cargadas? Es la diferencia entre
+  // "no hubo extras" y "estás borrando 6 h extra", que el resumen no distinguía.
+  const extrasAntes = carga.extras ?? 0
   const item = {
     ...base,
+    pierde_extras: extrasAntes > 0 && (r.extras ?? 0) < extrasAntes,
+    extras_borradas: extrasAntes > 0 ? Math.round((extrasAntes - (r.extras ?? 0)) * 1000) / 1000 : 0,
     normales_nuevas: r.normales, extras_nuevas: r.extras, total_nuevo: r.total,
     escribir: comp.escribir, es_formula: comp.es_formula, formula_nueva: comp.formula,
     reemplaza_formula_no_interpretable: carga.forma === FORMA.NO_INTERPRETABLE,
@@ -293,7 +355,7 @@ export function claveIdempotencia({ ctx, claveObra, items, actor } = {}) {
   // como duplicado.
   const payload = (items || [])
     .filter((i) => !i.bloqueada)
-    .map((i) => `${i.nombre_clave}=${i.normales_nuevas}+${i.extras_nuevas}`)
+    .map((i) => `${i.ref}=${i.normales_nuevas}+${i.extras_nuevas}`)
     .sort()
     .join(';')
   const material = [
@@ -328,14 +390,15 @@ export async function registrarAsistencia(google, { plan, confirmarSobrescritura
     spreadsheetId: plan.spreadsheet_id, pestana: plan.pestana, fecha: plan.fecha,
   })
   if (!ctx.ok) return ctx
-  const ahora = new Map(personalDeObra(ctx.grid, ctx.bloque, plan.clave_obra).map((t) => [t.nombre_clave, t]))
+  const cuadrillaAhora = personalDeObra(ctx.grid, ctx.bloque, plan.clave_obra)
 
   const data = []
   const celdas = []
   const conflictos = []
   for (const item of plan.escribibles) {
-    const t = ahora.get(item.nombre_clave)
-    if (!t) { conflictos.push({ ...item, motivo: MOTIVO.TRABAJADOR_NO_EN_BLOQUE }); continue }
+    const res = resolverTrabajador(cuadrillaAhora, item)
+    if (!res.ok) { conflictos.push({ ...item, motivo: res.motivo }); continue }
+    const t = res.t
     const act = estadoActual(ctx, t)
     // 2) Control de concurrencia: la celda tiene que estar como cuando se planificó.
     if (act.huella !== item.huella) {
@@ -346,12 +409,14 @@ export async function registrarAsistencia(google, { plan, confirmarSobrescritura
       continue
     }
     if (act.carga?.forma === FORMA.TEXTO) { conflictos.push({ ...item, motivo: MOTIVO.TEXTO_NO_NUMERICO }); continue }
-    const rango = celdaA1(ctx.pestana, t.fila1, ctx.columna)
+    if (act.carga?.forma === FORMA.ERROR) { conflictos.push({ ...item, motivo: MOTIVO.FORMULA_CON_ERROR }); continue }
+    const rango = celdaA1(ctx.pestana, t.fila1, ctx.columna_sheet ?? ctx.columna)
     // Lo que se escribe es un NÚMERO o una FÓRMULA compuesta sólo con números validados
     // en servidor (ver componerCarga). Nada de esto viene del cliente como texto.
     data.push({ range: rango, values: [[item.escribir]] })
     celdas.push({
-      nombre_original: t.nombre_original, celda_a1: rango, fila1: t.fila1, estado: item.estado,
+      nombre_original: t.nombre_original, celda_a1: rango, fila1: t.fila1, fila: t.fila,
+      ref: t.ref, estado: item.estado,
       // Evidencia completa del cambio, con el desglose de los dos lados.
       old_value: act.valor_crudo,
       old_formula: act.formula ?? null,
@@ -399,7 +464,7 @@ async function verificarPersistencia(google, { plan, ctx, celdas }) {
     // Se verifica el TOTAL interpretado, no el texto: si se escribió `=9+2`, la celda
     // vuelve con la fórmula y con 11 calculado. Comparar contra el texto daría un falso
     // negativo en toda escritura con horas extra.
-    const carga = interpretarCarga(leerCeldaDiaria(est.grid, c.fila1 - 1, ctx.columna))
+    const carga = interpretarCarga(leerCeldaDiaria(est.grid, c.fila, ctx.columna))
     if (carga.total !== c.new_total_hours) {
       diferencias.push({ celda_a1: c.celda_a1, esperado: c.new_total_hours, leido: carga.total })
     }

@@ -580,3 +580,128 @@ test('la verificación posterior compara el TOTAL interpretado, no el texto', as
   assert.equal(r.ok, true, 'una escritura con fórmula no debe dar verificación fallida')
   assert.equal(r.escritas, 1)
 })
+
+// ── CORRECCIONES DE PRODUCCIÓN ──────────────────────────────────────────────
+// Cada uno reproduce un defecto que se encontró antes de desplegar.
+
+test('la celda YA CARGADA queda SIN CAMBIO por defecto: no se propone pisarla', async () => {
+  const g = fakeGoogle({ alLeer(grid) { grid.filas[20][idxCol('R')] = { valor: '8,5', numero: 8.5, formula: '=4+3*1,5', derivada: false } } })
+  const personal = await listarPersonalPorObraYFecha(g, { fecha: FECHA_HOY, claveObra: OBRA_JS })
+  const cargados = personal.personal.filter((p) => p.cargada)
+  assert.equal(cargados.length, 1, 'el fixture tiene exactamente una celda cargada')
+
+  const ctx = await contextoParaFecha(g, { fecha: FECHA_HOY })
+  const plan = planificarAsistencia(ctx, {
+    claveObra: OBRA_JS, actor: ACTOR,
+    marcas: personal.personal.map((p) => ({ ref: p.ref, estado: p.cargada ? 'sin_cambio' : 'presente' })),
+  })
+  const i = plan.items.find((x) => x.ref === cargados[0].ref)
+  assert.equal(i.accion, 'sin_cambio')
+  assert.equal(i.escribir, null, 'no se compone ningún valor para escribir')
+  assert.equal(plan.escribibles.some((e) => e.ref === i.ref), false, 'no entra en el batch')
+  assert.equal(i.formula_actual, '=4+3*1,5', 'la fórmula original queda intacta')
+})
+
+test('marcar EXPLÍCITAMENTE esa misma celda sí la actualiza', async () => {
+  const g = fakeGoogle({ alLeer(grid) { grid.filas[20][idxCol('R')] = { valor: '8,5', numero: 8.5, formula: '=4+3*1,5', derivada: false } } })
+  const personal = await listarPersonalPorObraYFecha(g, { fecha: FECHA_HOY, claveObra: OBRA_JS })
+  const ctx = await contextoParaFecha(g, { fecha: FECHA_HOY })
+  const cargado = personal.personal.find((p) => p.cargada)
+  const plan = planificarAsistencia(ctx, {
+    claveObra: OBRA_JS, actor: ACTOR,
+    marcas: [{ ref: cargado.ref, estado: 'presente', extras: 2 }],
+  })
+  const i = plan.items[0]
+  assert.equal(i.accion, 'modifica')
+  assert.equal(i.extras_nuevas, 2)
+  assert.equal(plan.requiere_confirmacion_sobrescritura, true)
+})
+
+test('el plan DECLARA cuántas horas extra se borran (no las esconde en un 0)', async () => {
+  const g = fakeGoogle({ alLeer(grid) { grid.filas[20][idxCol('R')] = { valor: '14', numero: 14, formula: '=8+6', derivada: false } } })
+  const personal = await listarPersonalPorObraYFecha(g, { fecha: FECHA_HOY, claveObra: OBRA_JS })
+  const ctx = await contextoParaFecha(g, { fecha: FECHA_HOY })
+  const cargado = personal.personal.find((p) => p.cargada)
+  const plan = planificarAsistencia(ctx, {
+    claveObra: OBRA_JS, actor: ACTOR, marcas: [{ ref: cargado.ref, estado: 'presente' }],
+  })
+  assert.equal(plan.items[0].pierde_extras, true)
+  assert.equal(plan.items[0].extras_borradas, 6)
+  assert.equal(plan.resumen.pierden_extras, 1)
+  assert.equal(plan.resumen.horas_extra_borradas, 6)
+  assert.equal(plan.pierde_horas_extra, true)
+})
+
+test('dos HOMÓNIMOS en la misma obra van a filas distintas', async () => {
+  // Dos filas con el mismo nombre: antes colapsaban en una clave y se escribía UNA sola.
+  const g = fakeGoogle({
+    alLeer(grid) {
+      const c = idxCol('B')
+      grid.filas[21][c] = { valor: 'Aguero Cristian', numero: null, formula: null, derivada: false }
+    },
+  })
+  const personal = await listarPersonalPorObraYFecha(g, { fecha: FECHA_HOY, claveObra: OBRA_JS })
+  const homonimos = personal.personal.filter((p) => p.nombre_clave === 'AGUERO CRISTIAN')
+  assert.equal(homonimos.length, 2, 'hay dos personas con el mismo nombre')
+  assert.notEqual(homonimos[0].ref, homonimos[1].ref, 'la identidad estructural los distingue')
+
+  const ctx = await contextoParaFecha(g, { fecha: FECHA_HOY })
+  const plan = planificarAsistencia(ctx, {
+    claveObra: OBRA_JS, actor: ACTOR,
+    marcas: [
+      { ref: homonimos[0].ref, estado: 'presente' },
+      { ref: homonimos[1].ref, estado: 'ausente' },
+    ],
+  })
+  assert.equal(plan.items.length, 2)
+  const celdas = plan.items.map((i) => i.celda_a1)
+  assert.notEqual(celdas[0], celdas[1], 'dos celdas distintas')
+  assert.equal(plan.items[0].total_nuevo, 9)
+  assert.equal(plan.items[1].total_nuevo, 0)
+})
+
+test('un nombre AMBIGUO (sin ref) se rechaza en vez de elegir una fila al azar', async () => {
+  const g = fakeGoogle({
+    alLeer(grid) {
+      grid.filas[21][idxCol('B')] = { valor: 'Aguero Cristian', numero: null, formula: null, derivada: false }
+    },
+  })
+  const ctx = await contextoParaFecha(g, { fecha: FECHA_HOY })
+  const plan = planificarAsistencia(ctx, {
+    claveObra: OBRA_JS, actor: ACTOR, marcas: [{ nombre_clave: 'AGUERO CRISTIAN', estado: 'presente' }],
+  })
+  assert.equal(plan.items[0].bloqueada, MOTIVO.TRABAJADOR_AMBIGUO)
+  assert.equal(plan.escribibles.length, 0)
+})
+
+test('una fórmula CON ERROR queda protegida: ni se pisa ni se ofrece reemplazar', async () => {
+  const g = fakeGoogle({ alLeer(grid) { grid.filas[20][idxCol('R')] = { valor: '#REF!', numero: null, formula: '=F20/0', derivada: false } } })
+  const personal = await listarPersonalPorObraYFecha(g, { fecha: FECHA_HOY, claveObra: OBRA_JS })
+  const ctx = await contextoParaFecha(g, { fecha: FECHA_HOY })
+  const conError = personal.personal.find((p) => p.actual.carga.forma === 'error')
+  assert.ok(conError, 'la celda se clasifica como ERROR, no como no_interpretable')
+  const plan = planificarAsistencia(ctx, {
+    claveObra: OBRA_JS, actor: ACTOR, marcas: [{ ref: conError.ref, estado: 'presente' }],
+  })
+  assert.equal(plan.items[0].bloqueada, MOTIVO.FORMULA_CON_ERROR)
+  assert.equal(plan.escribibles.length, 0)
+  assert.equal(plan.requiere_confirmacion_formula, false, 'no se ofrece reemplazarla con un sí')
+})
+
+test('el RANGO DESPLAZADO no corre las filas: la celda es la de la persona', async () => {
+  const g = fakeGoogle()
+  const sinOffset = await contextoParaFecha(g, { fecha: FECHA_HOY })
+  const filaSin = sinOffset.trabajadores[0].fila1
+  const a1Sin = celdaDe(sinOffset)
+
+  const g2 = fakeGoogle({ alLeer(grid) { grid.offset = { fila: 5, col: 0 } } })
+  const conOffset = await contextoParaFecha(g2, { fecha: FECHA_HOY })
+  assert.equal(conOffset.trabajadores[0].fila1, filaSin + 5, 'la fila real sube con el offset')
+  assert.notEqual(celdaDe(conOffset), a1Sin, 'la coordenada A1 cambia con el rango')
+  assert.match(celdaDe(conOffset), new RegExp(`${filaSin + 5}$`))
+})
+
+function celdaDe(ctx) {
+  const t = ctx.trabajadores[0]
+  return `${ctx.columna_letra}${t.fila1}`
+}

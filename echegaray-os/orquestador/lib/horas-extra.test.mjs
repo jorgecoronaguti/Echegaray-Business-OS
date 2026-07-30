@@ -259,3 +259,43 @@ test('fmt muestra coma decimal', () => {
   assert.equal(fmt(9), '9')
   assert.equal(fmt(null), '—')
 })
+
+// ── CORRECCIONES DE PRODUCCIÓN ──────────────────────────────────────────────
+
+test('los decimales son los MISMOS en la fórmula y en el valor: nada se pierde en silencio', () => {
+  const c = interpretarCarga(celda('=8+4,125', '12,125', 12.125))
+  assert.equal(c.forma, FORMA.SUMA)
+  assert.deepEqual({ n: c.normales, e: c.extras, t: c.total }, { n: 8, e: 4.125, t: 12.125 })
+  assert.equal(c.inequivoca, true, 'antes daba 8 + 0 y se declaraba inequívoco')
+
+  const d = interpretarCarga(celda('=9,125+2', '11,125', 11.125))
+  assert.deepEqual({ n: d.normales, e: d.extras, t: d.total }, { n: 9.125, e: 2, t: 11.125 })
+})
+
+test('una fórmula CON ERROR es su propia forma, no un cero ni una ausencia', () => {
+  for (const [f, v] of [['=F26/0', '#DIV/0!'], ['=A1', '#REF!'], ['=SI(1;"x";"y")', 'x']]) {
+    const c = interpretarCarga({ formula: f, valor_crudo: v, numero: null })
+    assert.equal(c.forma, FORMA.ERROR, `${f} → ${v}`)
+    assert.equal(c.total, null, 'no hay total que sumar')
+    assert.equal(c.editable, false)
+    assert.equal(c.inequivoca, false)
+  }
+})
+
+test('una fórmula fuera de gramática PERO con total sigue siendo no_interpretable', () => {
+  const c = interpretarCarga(celda('=9-2,5+2', '8,5', 8.5))
+  assert.equal(c.forma, FORMA.NO_INTERPRETABLE)
+  assert.equal(c.total, 8.5)
+})
+
+test('un valor inválido se RECHAZA con su rango, no se recorta', () => {
+  assert.equal(normalizarHoras('-5').ok, false)
+  assert.equal(normalizarHoras('-5').motivo, 'negativo')
+  assert.equal(normalizarHoras('99').ok, false)
+  assert.equal(normalizarHoras('99').motivo, 'mayor_al_maximo')
+  assert.equal(normalizarHoras('abc').ok, false)
+  assert.equal(normalizarHoras(Infinity).ok, false)
+  assert.equal(normalizarHoras(NaN).ok, false)
+  // válido con decimales del archivo
+  assert.deepEqual(normalizarHoras('5,555'), { ok: true, horas: 5.555 })
+})

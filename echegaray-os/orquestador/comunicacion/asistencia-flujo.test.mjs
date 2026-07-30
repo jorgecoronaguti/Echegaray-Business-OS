@@ -446,7 +446,16 @@ test('reemplazar una fórmula NO interpretable exige `confirmar formula`', async
   b.g.grid.filas[20][idxCol('R')] = { valor: '8,5', numero: 8.5, formula: '=9-2,5+2', derivada: false }
   await b.decir('@os asistencia')
   await b.decir('obra 1')
-  await b.decir('todos presentes')
+  // `todos presentes` YA NO la propone: esa celda está cargada, queda sin cambio. Sí
+  // precarga a los otros dos, que tienen la celda vacía.
+  const cuad = await b.decir('todos presentes')
+  assert.match(cuad.texto, /sin cambio \(queda como está\)/)
+  const sinTocar = await b.decir('revisar')
+  assert.doesNotMatch(sinTocar.texto, /=9-2,5\+2/, 'la fórmula cargada no entra en el plan')
+  assert.match(sinTocar.texto, /Celdas que se modifican: \*\*0\*\*/)
+  assert.equal(b.g.escrituras.length, 0)
+  // Hay que pedirlo explícitamente para que entre en juego.
+  await b.decir('1 presente')
   const prev = await b.decir('revisar')
   assert.match(prev.texto, /no se puede separar en normal\/extra/)
   assert.match(prev.texto, /=9-2,5\+2/)

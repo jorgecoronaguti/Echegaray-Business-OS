@@ -19,6 +19,10 @@
 // contra la planilla recién leída.
 
 import { ESTADO, fmt } from '../lib/horas-extra.mjs'
+import { RE_NUM_HORAS } from '../lib/jornales-estructura.mjs'
+/** Igual que RE_NUM_HORAS pero sin tope de decimales: se captura TODO lo que el jefe
+ *  escribió, para poder rechazarlo con su valor real en vez de truncarlo. */
+const RE_NUM_HORAS_LARGO = String.raw`\d{1,3}(?:[.,]\d+)?`
 // Los helpers de fecha/texto viven en lib/ porque los comparte con las consultas. Se
 // re-exportan para que la superficie de este módulo no cambie.
 import { TIMEZONE, fechaOperativaSanJuan, fechaAr, nombreDia, fechaDesdeTexto, limpiar } from '../lib/fecha-operativa.mjs'
@@ -26,20 +30,28 @@ import { TIMEZONE, fechaOperativaSanJuan, fechaAr, nombreDia, fechaDesdeTexto, l
 export { TIMEZONE, fechaOperativaSanJuan, fechaAr, nombreDia, fechaDesdeTexto, limpiar }
 export const COMANDO = 'asistencia'
 
-const ICONO = { presente: '✓', ausente: '✕', tarde: '◔', parcial: '◐' }
+const ICONO = { presente: '✓', ausente: '✕', tarde: '◔', parcial: '◐', sin_cambio: '=' }
 
 /**
  * Parsea la intención. Se matchea por RAÍCES, no por conjugación: el dueño escribe con
  * voseo ("confirmá", "cancelá", "marcá") y un verbo exacto no alcanza.
  * Devuelve `{ tipo, ... }`; `null` si el texto no es para este skill.
  */
+/** Cancelar/volver son destructivos para el formulario: sólo el comando SOLO los dispara.
+ *  Se admite la mención al bot y un signo final, nada más. */
+const RE_CANCELAR = /^(?:@[\w.-]+\s+)?(cancelar|cancelo|cancela|salir|abortar|aborta)[.!]?$/
+const RE_VOLVER = /^(?:@[\w.-]+\s+)?(volver|volve|atras|back)[.!]?$/
+
 export function parsearComando(texto, { isoContexto } = {}) {
   const t = limpiar(texto)
   if (!t) return null
 
   // Cierre y navegación primero: son cortos y no deben quedar tapados por otra regla.
-  if (/\bcancel/.test(t)) return { tipo: 'cancelar' }
-  if (/\b(volv|atras|back)/.test(t)) return { tipo: 'volver' }
+  // PERO por coincidencia INEQUÍVOCA, no por subcadena: `/\bcancel/` hacía que
+  // "no canceles, 3 ausente" cancelara el formulario, y "volver a marcar a todos
+  // presentes" no marcara a nadie. Se exige el comando solo, sin nada más alrededor.
+  if (RE_CANCELAR.test(t)) return { tipo: 'cancelar' }
+  if (RE_VOLVER.test(t)) return { tipo: 'volver' }
   // OJO con el \b: un `\b` DESPUÉS de un grupo de prefijos exige que la palabra termine
   // ahí, y entonces "revisá"/"presente" no matchean. Los prefijos van sin cierre; las
   // palabras que sí son completas ("ver", "ok") se piden aparte.
@@ -130,7 +142,7 @@ export function clasificar(texto, { parsearConsulta, isoContexto } = {}) {
 function parsearMarca(t) {
   let extras = null
   let resto = t
-  const mExtra = /\bextra\w*\s*:?\s*(\d{1,3}(?:[.,]\d{1,2})?)/.exec(t)
+  const mExtra = new RegExp(`\\bextra\\w*\\s*:?\\s*(-?${RE_NUM_HORAS_LARGO})`).exec(t)
   if (mExtra) { extras = mExtra[1]; resto = t.replace(mExtra[0], ' ') }
 
   const estado = /\b(ausent|falt|no vino|no fue)/.test(resto) ? ESTADO.AUSENTE
@@ -138,7 +150,10 @@ function parsearMarca(t) {
       : /\b(parcial|medi)/.test(resto) ? ESTADO.PARCIAL
         : (/\b(present|vino)/.test(resto) || /\bok\b/.test(resto)) ? ESTADO.PRESENTE : null
 
-  const nums = [...resto.matchAll(/(\d{1,3}(?:[.,]\d{1,2})?)/g)].map((m) => m[1])
+  // Se capturan los números COMPLETOS, con signo y con todos sus decimales. Antes el
+  // regex recortaba: "1 parcial -5" daba normales "5" (se comía el menos) y "3 parcial
+  // 5,555" daba "5,55". Un valor inválido tiene que rechazarse, no achicarse en silencio.
+  const nums = [...resto.matchAll(new RegExp(`(-?${RE_NUM_HORAS_LARGO})`, 'g'))].map((m) => m[1])
   if (!nums.length) return null
   const indice = Number(String(nums[0]).replace(',', '.'))
   if (!Number.isInteger(indice)) return null
@@ -197,8 +212,9 @@ export function renderCuadrilla({ fecha, diaSemana, obra, personal, marcas, jorn
     '',
   ]
   personal.forEach((p, i) => {
-    const m = marcas?.[p.nombre_clave]
+    const m = marcas?.[p.ref] ?? marcas?.[p.nombre_clave]
     const marcado = m ? `${ICONO[m.estado] ?? '·'} ${etiquetaEstado(m, jornada)}` : '· sin marcar'
+    // Una celda ya cargada arranca en SIN CAMBIO: se dice, no se disfraza de "sin marcar".
     const ya = p.actual?.carga && p.actual.escrita ? `  _(cargado: ${cargaCorta(p.actual.carga)})_` : ''
     l.push(`${i + 1}. ${p.nombre_original.trim()} — ${marcado}${ya}`)
   })
@@ -210,6 +226,7 @@ export function renderCuadrilla({ fecha, diaSemana, obra, personal, marcas, jorn
 function cargaCorta(carga) {
   if (!carga) return '—'
   if (carga.forma === 'no_interpretable') return `${fmt(carga.total)} h · ${carga.formula_original}`
+  if (carga.forma === 'error') return `valor no interpretable · ${carga.formula_original}`
   if (carga.forma === 'texto') return `texto: ${String(carga.valor_original).slice(0, 20)}`
   if (!carga.extras) return `${fmt(carga.total)} h`
   return `${fmt(carga.normales)} + ${fmt(carga.extras)} extra = ${fmt(carga.total)} h`
@@ -218,6 +235,9 @@ function cargaCorta(carga) {
 /** `presente (9 h)` · `presente (9 + 2 extra = 11 h)` · `tarde (7 h)` · `ausente (0)`.
  *  Cuando hay extras se muestra siempre el TOTAL: es el número que va a la planilla. */
 function etiquetaEstado(m, jornada) {
+  // Lo que ya estaba cargado y nadie pidió tocar. No es "presente" ni "sin marcar": es
+  // una celda que se deja como está, y decirlo es la mitad de la protección.
+  if (m.estado === 'sin_cambio') return 'sin cambio (queda como está)'
   if (m.estado === ESTADO.AUSENTE) return 'ausente (0)'
   const nor = Number(String(m.normales ?? jornada?.horas ?? '').replace(',', '.'))
   const ex = Number(String(m.extras ?? 0).replace(',', '.')) || 0
@@ -241,13 +261,24 @@ export function renderPreview(plan) {
     `Horas normales: **${fmt(r.horas_normales)}** · Horas extra: **${fmt(r.horas_extra)}** · Total: **${fmt(r.horas_total)}**`,
     `Celdas nuevas: **${r.celdas_nuevas}** · Celdas que se modifican: **${r.celdas_modificadas}**`,
   ]
-  if (r.sin_cambio) l.push(`Sin cambio (ya estaban igual): ${r.sin_cambio}`)
+  if (r.sin_cambio) l.push(`Sin cambio (quedan como están): ${r.sin_cambio}`)
+  // "Horas extra: 0" se lee como "no hubo extras". Si la operación las está BORRANDO hay
+  // que decirlo con esas palabras: es plata del jornal de alguien.
+  if (r.pierden_extras) {
+    l.push('', `🛑 **Se van a BORRAR ${fmt(r.horas_extra_borradas)} h extra ya cargadas** (${r.pierden_extras} ${r.pierden_extras === 1 ? 'persona' : 'personas'}):`)
+    for (const i of plan.items.filter((x) => x.pierde_extras && x.accion !== 'sin_cambio' && !x.bloqueada)) {
+      l.push(`· ${i.nombre_original.trim()}: tenía **${fmt(i.extras_actuales)} h extra**, queda con **${fmt(i.extras_nuevas)}**`)
+    }
+  }
 
   const modifica = plan.items.filter((i) => i.accion === 'modifica')
   if (modifica.length) {
     l.push('', '⚠️ **Estas celdas YA tenían otro valor:**')
     for (const i of modifica) {
-      l.push(`· ${i.nombre_original.trim()}: ${detalleAnterior(i)} → **${detalleNuevo(i)}**`)
+      // Diferencia explícita: el jefe no tiene que restar de cabeza para ver qué pierde.
+      const dif = (i.total_nuevo ?? 0) - (i.total_actual ?? 0)
+      const signo = dif > 0 ? `+${fmt(dif)}` : fmt(dif)
+      l.push(`· ${i.nombre_original.trim()}: ${detalleAnterior(i)} → **${detalleNuevo(i)}** (${signo} h)`)
     }
   }
   const conFormula = plan.items.filter((i) => i.reemplaza_formula_no_interpretable && !i.bloqueada)
