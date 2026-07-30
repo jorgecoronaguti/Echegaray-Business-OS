@@ -19,6 +19,7 @@ import {
   VerificadorEntrante, PuenteOrqEvents, crearLog, crearMetricas, TIPOS,
 } from '../../../communication-service/src/index.mjs'
 import { query, withTx } from '../lib/db.mjs'
+import { crearRazonadorDeRuteo } from './razonar-ruteo.mjs'
 import { claimTask, transition, failTask, reapExpiredLeases } from '../lib/ledger.mjs'
 import { resolveHandler } from '../handlers/index.mjs'
 import { crearEmitEventOS } from './ingesta-os.mjs'
@@ -34,6 +35,8 @@ import { crearEmitEventOS } from './ingesta-os.mjs'
  * @param {object} [opts.log] @param {object} [opts.metricas] @param {()=>number} [opts.ahora]
  * @param {string} [opts.workerId] @param {number} [opts.leaseMs]
  */
+const razonarRuteo = crearRazonadorDeRuteo()
+
 export function crearConector(opts = {}) {
   const port = opts.port ?? { query, withTx }
   const log = opts.log ?? crearLog()
@@ -98,6 +101,10 @@ export function crearConector(opts = {}) {
         logger: log,
         config: { WORKER_ID: process.env.WORKER_ID ?? 'comm-wf-1' },
         responderComunicacion,
+        // Razonamiento de RUTEO del Director: elegir especialista cuando el camino
+        // determinístico no alcanzó. Puede ser null (sin clave, sin crédito): el Director
+        // degrada al catálogo en vez de adivinar un destino.
+        razonarRuteo,
         // Canal PRIVADO (DM bot↔persona) para las respuestas que no pueden salir en un
         // canal compartido. Se inyecta acá porque el conector es el único que conoce el
         // cliente de la plataforma; el handler pide "privado" y no sabe cómo se logra.
