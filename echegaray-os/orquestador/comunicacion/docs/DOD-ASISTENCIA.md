@@ -1,6 +1,10 @@
 # Definition of Done — Módulo Asistencia
 
-Fecha de cierre: **30/07/2026** · Versión: **`asistencia-v1.0`** · SHA `e7c72a7`
+Fecha de cierre v1: **30/07/2026** · `asistencia-v1.0` · SHA `e7c72a7`
+Fecha de cierre v2 (pantalla web): **30/07/2026** · `asistencia-v2.0` · SHA `639abbb`
+
+> **v2** reemplazó la conversación por una pantalla. Los 10 criterios de abajo siguen
+> valiendo y se re-verificaron sobre la v2; lo específico de la pantalla está en §11.
 
 Este documento demuestra objetivamente que el módulo está terminado. Cada criterio tiene
 **evidencia ejecutada**, no una afirmación. Todo lo verificado abajo se comprobó contra el
@@ -158,3 +162,44 @@ escribe, audita, es idempotente, es reversible, está probado, está documentado
 modelo ninguna decisión con efecto sobre la planilla.
 
 **MÓDULO ASISTENCIA — CERRADO.**
+
+
+---
+
+## 11. v2 — la pantalla, verificada en producción
+
+| # | Criterio | Evidencia | ✔ |
+|---|---|---|---|
+| 11.1 | La pantalla se sirve por HTTPS público | `GET https://chat.ecsas.com.ar/asistencia` → 200 con enlace válido, 401 sin él (nunca una página en blanco) | ✔ |
+| 11.2 | Mattermost no se rompió al publicarla | `/api/v4/system/ping` → 200 después de recrear Caddy | ✔ |
+| 11.3 | El enlace se emite por el circuito real | `@os asistencia` en el canal → enlace firmado publicado, de un solo uso, 10 min | ✔ |
+| 11.4 | La pantalla lee JORNALES de verdad | 6 obras reales del día, cuadrilla con categorías (`OF M`, `OF`), jornada **calibrada en 9 h sobre 33 muestras** | ✔ |
+| 11.5 | Precarga correcta | Todos presentes con la jornada; chip `Ya cargado: 9 h` en la celda que ya tenía valor | ✔ |
+| 11.6 | El caso normal son 3 acciones | abrir → elegir obra → Registrar | ✔ |
+| 11.7 | Nada superfluo a la vista | 0 selectores de motivo con todos presentes; aparecen al desmarcar | ✔ |
+| 11.8 | El registro funciona de punta a punta | `POST /api/registrar` → 200, `correlation_id` emitido, **`a_escribir: 0` · `celdas: []`** | ✔ |
+| 11.9 | La prueba no modificó la planilla | Se eligió a propósito una obra con todas las celdas ya cargadas: el plan dio `sin_cambio: 1` | ✔ |
+| 11.10 | El jefe ve qué pasó | `No había nada para cambiar: la planilla ya decía lo mismo.` | ✔ |
+| 11.11 | Sin errores de navegador | 0 mensajes de consola en todo el recorrido | ✔ |
+| 11.12 | El flujo por chat no se rompió | `quién faltó ayer` → 15 presentes, 1 ausente, 144 h | ✔ |
+
+### Lo que la v2 NO probó
+
+**No se escribió ninguna celda nueva en JORNALES desde la pantalla.** La prueba se diseñó
+para tener efecto cero: se eligió una obra donde todas las celdas ya tenían su valor, y el
+plan lo confirmó antes de enviar (`a_escribir: 0`). Eso ejercita validación, resolución de
+celda, permisos, idempotencia, auditoría y confirmación — todo menos el byte final.
+
+La escritura real ya está probada desde la v1 (celda `'Obreros 26'!R464`, §3), y el camino
+de escritura **no se modificó** en la v2: la pantalla llama exactamente a `registrarAsistencia`.
+Aun así, la primera carga real desde la pantalla conviene mirarla con los ojos.
+
+### Defectos encontrados mirando, no leyendo
+
+Tres, ninguno visible para los tests estáticos:
+
+1. **`hidden` perdía contra `display`**: los 48 campos condicionales aparecían abiertos.
+2. **Se le ofrecía "trabajó en otra obra" a quien no trabajó**, y el núcleo siempre lo rechaza.
+3. **El "Listo" se borraba solo**: se mostraba antes de recargar, y la recarga limpia la pantalla.
+
+Los tres tienen ahora test de regresión que ataca la causa (verificado: fallan si se revierte el arreglo).

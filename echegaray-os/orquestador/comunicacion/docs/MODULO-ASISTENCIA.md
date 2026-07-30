@@ -1,6 +1,7 @@
 # Módulo Asistencia — documentación definitiva
 
-> Estado: **CERRADO** en `main` (tag `asistencia-v1.0`). En producción desde el 30/07/2026.
+> Estado: **v2 en producción** desde el 30/07/2026 (tag `asistencia-v1.0` marca la v1 conversacional).
+> **La interfaz principal es una pantalla web**; el flujo por chat quedó como respaldo.
 > Este documento reemplaza a cualquier descripción anterior del módulo. Los documentos
 > `PR-4.1-*`, `PR-4.2-*` y `PR-4-ARQUITECTURA.md` son **histórico de construcción**: describen
 > cómo se llegó acá, no cómo funciona hoy.
@@ -99,6 +100,46 @@ fuente del Director y del handler y **fallan si vuelven a nombrar un dominio** o
 `switch`.
 
 ---
+
+## 3bis. Las dos puertas — y por qué hay dos
+
+Desde la v2 la carga NO se conversa: se hace en una pantalla. Mattermost sólo **dispara**.
+
+| Puerta | Cómo | Estado |
+|---|---|---|
+| `/asistencia` | Slash command → respuesta ephemeral con el enlace | **Requiere que un administrador de Mattermost cree el comando.** El bot es `system_user` y no puede |
+| `@os asistencia` | WebSocket ya probado en producción | **Funcionando hoy.** Devuelve el mismo enlace |
+| `asistencia por chat` | Salida de emergencia | Abre el formulario conversacional de la v1 |
+
+El enlace es **firmado, de un solo uso y vence en 10 minutos**. No lleva permisos: la identidad
+sale de Mattermost y el permiso se verifica en cada pedido contra `asistencia-permisos.mjs`.
+
+### La pantalla
+
+`https://chat.ecsas.com.ar/asistencia?t=<token>` — el mismo dominio y el mismo Caddy que ya
+sirve Mattermost. **No está en Vercel**: la web de Vercel no puede alcanzar Google Sheets ni
+Postgres, que viven en la VM.
+
+- Fecha con tope en hoy; al cambiarla se recarga todo.
+- Obra desde la planilla (nunca escrita a mano); al cambiarla llega la cuadrilla.
+- Toda la cuadrilla precargada **presente, con la jornada del día**. Sólo se tocan las excepciones.
+- Por persona: presente · horas · motivo · obra realizada · aclaración. Nada más.
+- El motivo aparece sólo cuando hace falta; la aclaración sólo si el motivo la exige; la obra
+  realizada sólo si la persona trabajó.
+- **No hay campo de horas extra**: se cargan las horas trabajadas y el excedente lo separa el
+  núcleo, que lo escribe con su fórmula.
+- Caso normal: **abrir → elegir obra → Registrar**. Con una sola obra en el día, dos pasos.
+
+### Cómo llega Caddy al servicio — la parte que cuesta una tarde
+
+Caddy corre en un contenedor. `host.docker.internal` resuelve a `172.17.0.1` (bridge por
+defecto), no al de esta red; y **el firewall del host descarta lo que llega desde los bridges
+de Docker**, por cualquier dirección. Por eso el servicio escucha en un **socket unix**
+(`ASISTENCIA_HTTP_SOCKET`) que se bind-montea en el contenedor: no viaja por la red, así que el
+firewall no interviene, y no queda ningún puerto nuevo escuchando.
+
+Se monta el **directorio**, no el archivo: montando el socket, un reinicio del servicio lo
+recrea y el contenedor sigue viendo el inode viejo — 502 permanente sin síntoma claro.
 
 ## 4. Flujo completo de un mensaje
 
@@ -235,6 +276,7 @@ WorkingDirectory=/home/jorge/echegaray-os/app/.claude/worktrees/deploy-comunicac
 |---|---|---|
 | `echegaray-comunicacion-ws.service` | consumidor WebSocket | **NO** (verificado en `/proc/<pid>/environ`) |
 | `echegaray-comunicacion-worker.service` | worker del lane | Sí, sólo para el ruteo del Director |
+| `echegaray-asistencia-http.service` | slash command + pantalla | **NO** |
 
 ```bash
 # desplegar una versión nueva
@@ -303,6 +345,19 @@ especialista operativo**.
    (`comunicacion.identidades` vacía). Inventarlos habría sido peor.
 9. **`asistencia-consultas.mjs` tiene 553 líneas**, por encima del límite de 500 del CLAUDE.md.
    Partirlo es un refactor con riesgo de comportamiento; queda registrado, no forzado.
+10. **`/asistencia` todavía no existe en Mattermost.** El bot no puede crearlo (rol
+    `system_user`). Hasta que un administrador lo cree, la puerta es `@os asistencia`, que
+    entrega el mismo enlace.
+11. **Motivo, aclaración y obra realizada viven en Postgres, no en la planilla**
+    (`comunicacion.asistencia_novedades`). La celda de JORNALES sigue recibiendo sólo horas:
+    escribir texto ahí rompería las sumas de la quincena. Quien mire la planilla ve las horas,
+    no el porqué. Reflejarlos en el Sheet exige antes averiguar cómo lo codifica hoy la leyenda
+    (FALTA / TARDANZA / ENFERMEDAD), y eso no se adivina.
+12. **La idempotencia de la pantalla es en memoria.** Si el proceso reinicia entre dos envíos
+    idénticos, queda la del núcleo (que replanifica y da `sin_cambio`), no la de la clave.
+13. **Feriados 2026 cargados: 14.** Güemes (17/06) y Soberanía Nacional (20/11) quedaron fuera
+    a propósito: son trasladables y las fuentes discrepan por el Decreto 614/2025. Hay un test
+    que falla si alguien los siembra sin verificarlos. Faltan los provinciales de San Juan.
 
 ## 15. Mantenimiento
 
