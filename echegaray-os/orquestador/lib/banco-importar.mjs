@@ -108,10 +108,29 @@ function encabezadoCsvBanco(linea) {
   const iConcepto = partes.indexOf('concepto')
   const iImporte = partes.indexOf('importe')
   const iSaldo = partes.indexOf('saldo')
+  // LA REFERENCIA ES LA CLAVE DEL MOVIMIENTO Y SE VENÍA TIRANDO (30/07). Es el identificador del banco:
+  // no cambia entre descargas, al contrario del saldo corrido —que depende de la ventana y por eso dejó
+  // entrar 62 movimientos duplicados—. Y para los cheques ES el número de cheque ("0133;000000315;
+  // Cheque debitado" → físico 315), así que el cruce contra el extracto pasa a ser una identidad.
+  const iRef = partes.indexOf('referencia')
   // Sólo el formato con columnas EXTRA entre fecha y concepto (concepto no es la columna 1): ése es el
   // que el parseo genérico no sabe leer. Un "fecha;concepto;importe" común sigue por la vía de siempre.
   if (iConcepto < 2 || iImporte < 2) return null
-  return { fecha: 0, concepto: iConcepto, importe: iImporte, saldo: iSaldo >= 0 ? iSaldo : null }
+  return { fecha: 0, concepto: iConcepto, importe: iImporte, saldo: iSaldo >= 0 ? iSaldo : null, referencia: iRef >= 0 ? iRef : null }
+}
+
+/**
+ * La referencia, normalizada: sólo dígitos y sin ceros a la izquierda.
+ *
+ * POR QUÉ NORMALIZAR. El banco la escribe con relleno ("000000315") y en otras filas sin él
+ * ("16862006"). Como clave única el relleno da igual, pero para cruzar contra un cheque —cuyo número
+ * el OS guarda como "00000315" o "315" según de dónde salió— hay que compararlos en la misma forma.
+ * Se conserva '' → null: una referencia vacía NO es una referencia, y guardarla como cadena vacía
+ * haría que dos movimientos sin referencia choquen contra el índice único.
+ */
+export function normalizarReferencia(v) {
+  const s = String(v ?? '').replace(/\D/g, '').replace(/^0+/, '')
+  return s === '' ? null : s
 }
 
 /** El primer campo de la línea. Sirve para ver si la línea ABRE una fila (arranca con una fecha). */
@@ -189,7 +208,8 @@ export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {})
       const concepto = String(p[cols.concepto] ?? '').replace(/\s+/g, ' ').trim()
       if (!concepto) { rechazos.push({ linea: numLinea, texto: cruda.slice(0, 90), motivo: 'la fila no tiene concepto' }); continue }
       const saldo = cols.saldo != null ? importe(p[cols.saldo]) : null
-      movimientos.push({ fecha: f, concepto, importe: imp, saldo })
+      const referencia = cols.referencia != null ? normalizarReferencia(p[cols.referencia]) : null
+      movimientos.push({ fecha: f, concepto, importe: imp, saldo, referencia })
       continue
     }
 
