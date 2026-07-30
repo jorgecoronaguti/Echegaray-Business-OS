@@ -19,12 +19,12 @@
 // contra la planilla recién leída.
 
 import { normalizarClave } from '../lib/jornales-estructura.mjs'
-import { ESTADO } from '../lib/jornada-politica.mjs'
+import { ESTADO, fmt } from '../lib/horas-extra.mjs'
 
 export const TIMEZONE = 'America/Argentina/San_Juan'
 export const COMANDO = 'asistencia'
 
-const ICONO = { presente: '✓', ausente: '✕', parcial: '◐' }
+const ICONO = { presente: '✓', ausente: '✕', tarde: '◔', parcial: '◐' }
 
 /**
  * FECHA OPERATIVA en la zona de la empresa. Nunca UTC: a las 21:30 de San Juan, UTC ya
@@ -79,7 +79,14 @@ export function parsearComando(texto, { isoContexto } = {}) {
   // palabras que sí son completas ("ver", "ok") se piden aparte.
   if (/\b(revis|previ|resum)/.test(t) || /\bver\b/.test(t)) return { tipo: 'revisar' }
   if (/\bconfirm/.test(t)) {
-    return { tipo: 'confirmar', sobrescribir: /\b(sobrescrib|sobreescrib|pisa|igual)/.test(t) }
+    const todo = /\btodo\b/.test(t)
+    return {
+      tipo: 'confirmar',
+      sobrescribir: todo || /\b(sobrescrib|sobreescrib|pisa|igual)/.test(t),
+      // Reemplazar una fórmula que no se pudo descomponer es un sí APARTE del de
+      // sobrescribir: no es lo mismo cambiar un 9 por un 8 que borrar `=9-2,5+2`.
+      reemplazar_formula: todo || /\bformula/.test(t),
+    }
   }
   if (/\btod\w*\s+(present|vinieron)/.test(t) || /\btod\w*\s+ok\b/.test(t) || /\bpresente\s+tod/.test(t)) {
     return { tipo: 'todos_presentes' }
@@ -101,20 +108,44 @@ export function parsearComando(texto, { isoContexto } = {}) {
   return null
 }
 
-/** Marca de un trabajador por NÚMERO de la lista mostrada. */
+/**
+ * Marca de un trabajador por NÚMERO de la lista mostrada.
+ *
+ * Gramática:
+ *   `3 ausente`                    · `3 tarde 7`         (7 = horas normales trabajadas)
+ *   `5 parcial 5,5`                · `5 parcial 5,5 extra 2`
+ *   `1 presente extra 2`           · `1 extra 2`         (sólo cambia las extras)
+ *
+ * Las extras se separan ANTES de leer el resto de los números: si no, "extra 2" se comía
+ * el lugar de las horas normales.
+ */
 function parsearMarca(t) {
-  const estado = /\b(ausent|falt|no vino|no fue)/.test(t) ? ESTADO.AUSENTE
-    : /\b(parcial|medi|hora)/.test(t) ? ESTADO.PARCIAL
-      : (/\b(present|vino)/.test(t) || /\bok\b/.test(t)) ? ESTADO.PRESENTE : null
-  if (!estado) return null
-  const nums = [...t.matchAll(/(\d{1,3}(?:[.,]\d{1,2})?)/g)].map((m) => m[1])
+  let extras = null
+  let resto = t
+  const mExtra = /\bextra\w*\s*:?\s*(\d{1,3}(?:[.,]\d{1,2})?)/.exec(t)
+  if (mExtra) { extras = mExtra[1]; resto = t.replace(mExtra[0], ' ') }
+
+  const estado = /\b(ausent|falt|no vino|no fue)/.test(resto) ? ESTADO.AUSENTE
+    : /\b(tard|llego)/.test(resto) ? ESTADO.TARDE
+      : /\b(parcial|medi)/.test(resto) ? ESTADO.PARCIAL
+        : (/\b(present|vino)/.test(resto) || /\bok\b/.test(resto)) ? ESTADO.PRESENTE : null
+
+  const nums = [...resto.matchAll(/(\d{1,3}(?:[.,]\d{1,2})?)/g)].map((m) => m[1])
   if (!nums.length) return null
-  // El primer entero es el número de la lista; si es parcial, el siguiente son las horas.
   const indice = Number(String(nums[0]).replace(',', '.'))
   if (!Number.isInteger(indice)) return null
-  const horas = estado === ESTADO.PARCIAL ? (nums[1] ?? null) : null
-  if (estado === ESTADO.PARCIAL && horas == null) return { tipo: 'marcar', indice, estado, faltan_horas: true }
-  return { tipo: 'marcar', indice, estado, horas }
+  const normales = nums[1] ?? null
+
+  if (!estado) {
+    // `1 extra 2`: no cambia el estado, sólo agrega/corrige las horas extra.
+    if (extras != null) return { tipo: 'marcar', indice, extras, solo_extras: true }
+    return null
+  }
+  // Tarde y parcial NECESITAN las horas normales: no se inventan.
+  if ((estado === ESTADO.TARDE || estado === ESTADO.PARCIAL) && normales == null) {
+    return { tipo: 'marcar', indice, estado, normales: null, extras, faltan_horas: true }
+  }
+  return { tipo: 'marcar', indice, estado, normales, extras }
 }
 
 // ── RENDER ──────────────────────────────────────────────────────────────────
@@ -130,7 +161,9 @@ export function renderAyuda() {
     '`obra 2` — elegís la obra de la lista',
     '`todos presentes` — marca toda la cuadrilla',
     '`3 ausente` — corrige sólo la excepción',
+    '`3 tarde 7` — llegó tarde: 7 horas trabajadas',
     '`5 parcial 5,5` — jornada parcial en horas',
+    '`1 extra 2` — 2 horas extra (se suman a las normales)',
     '`revisar` · `confirmar` · `volver` · `cancelar`',
   ].join('\n')
 }
@@ -157,18 +190,33 @@ export function renderCuadrilla({ fecha, diaSemana, obra, personal, marcas, jorn
   ]
   personal.forEach((p, i) => {
     const m = marcas?.[p.nombre_clave]
-    const marcado = m ? `${ICONO[m.estado] ?? ''} ${etiquetaEstado(m, jornada)}` : '· sin marcar'
-    const ya = p.actual?.escrita ? `  _(cargado: ${p.actual.valor_crudo})_` : ''
+    const marcado = m ? `${ICONO[m.estado] ?? '·'} ${etiquetaEstado(m, jornada)}` : '· sin marcar'
+    const ya = p.actual?.carga && p.actual.escrita ? `  _(cargado: ${cargaCorta(p.actual.carga)})_` : ''
     l.push(`${i + 1}. ${p.nombre_original.trim()} — ${marcado}${ya}`)
   })
-  l.push('', '`todos presentes` · `3 ausente` · `5 parcial 5,5` · `revisar` · `cancelar`')
+  l.push('', '`todos presentes` · `3 ausente` · `3 tarde 7` · `5 parcial 5,5` · `1 extra 2` · `revisar` · `cancelar`')
   return l.join('\n')
 }
 
+/** Carga existente en una línea: siempre distingue normal, extra y total. */
+function cargaCorta(carga) {
+  if (!carga) return '—'
+  if (carga.forma === 'no_interpretable') return `${fmt(carga.total)} h · ${carga.formula_original}`
+  if (carga.forma === 'texto') return `texto: ${String(carga.valor_original).slice(0, 20)}`
+  if (!carga.extras) return `${fmt(carga.total)} h`
+  return `${fmt(carga.normales)} + ${fmt(carga.extras)} extra = ${fmt(carga.total)} h`
+}
+
+/** `presente (9 h)` · `presente (9 + 2 extra = 11 h)` · `tarde (7 h)` · `ausente (0)`.
+ *  Cuando hay extras se muestra siempre el TOTAL: es el número que va a la planilla. */
 function etiquetaEstado(m, jornada) {
   if (m.estado === ESTADO.AUSENTE) return 'ausente (0)'
-  if (m.estado === ESTADO.PARCIAL) return `parcial (${String(m.horas ?? '?').replace('.', ',')} h)`
-  return `presente (${jornada?.horas ?? '?'} h)`
+  const nor = Number(String(m.normales ?? jornada?.horas ?? '').replace(',', '.'))
+  const ex = Number(String(m.extras ?? 0).replace(',', '.')) || 0
+  const horas = ex > 0
+    ? `${fmt(nor)} + ${fmt(ex)} extra = ${fmt(nor + ex)} h`
+    : `${fmt(nor)} h`
+  return `${m.estado} (${horas})`
 }
 
 export function renderPreview(plan) {
@@ -180,7 +228,9 @@ export function renderPreview(plan) {
     `Obra: **${plan.obra_etiqueta ?? plan.clave_obra}**`,
     `Planilla: ${plan.pestana} · columna ${plan.columna_letra}`,
     '',
-    `Presentes: **${r.presentes}** · Ausentes: **${r.ausentes}** · Parciales: **${r.parciales}**`,
+    `Presentes: **${r.presentes}** · Ausentes: **${r.ausentes}**`
+      + `${r.tardes ? ` · Tarde: **${r.tardes}**` : ''} · Parciales: **${r.parciales}**`,
+    `Horas normales: **${fmt(r.horas_normales)}** · Horas extra: **${fmt(r.horas_extra)}** · Total: **${fmt(r.horas_total)}**`,
     `Celdas nuevas: **${r.celdas_nuevas}** · Celdas que se modifican: **${r.celdas_modificadas}**`,
   ]
   if (r.sin_cambio) l.push(`Sin cambio (ya estaban igual): ${r.sin_cambio}`)
@@ -189,28 +239,56 @@ export function renderPreview(plan) {
   if (modifica.length) {
     l.push('', '⚠️ **Estas celdas YA tenían otro valor:**')
     for (const i of modifica) {
-      l.push(`· ${i.nombre_original.trim()} — ${i.celda_a1.split('!')[1]}: \`${i.valor_actual}\` → \`${String(i.horas_nuevas).replace('.', ',')}\``)
+      l.push(`· ${i.nombre_original.trim()}: ${detalleAnterior(i)} → **${detalleNuevo(i)}**`)
     }
+  }
+  const conFormula = plan.items.filter((i) => i.reemplaza_formula_no_interpretable && !i.bloqueada)
+  if (conFormula.length) {
+    l.push('', '🔶 **Estas tienen una fórmula que no se puede separar en normal/extra:**')
+    for (const i of conFormula) {
+      l.push(`· ${i.nombre_original.trim()}: \`${i.formula_actual}\` (= ${fmt(i.total_actual)} h) → **${detalleNuevo(i)}**`)
+    }
+    l.push('_Reemplazarlas borra esa fórmula._')
   }
   const bloq = plan.items.filter((i) => i.bloqueada)
   if (bloq.length) {
     l.push('', '🚫 **No se van a tocar** (y hay que resolverlas a mano en la planilla):')
     for (const i of bloq) l.push(`· ${(i.nombre_original ?? i.nombre_clave).trim()} — ${motivoLegible(i)}`)
   }
-  l.push('', r.a_escribir === 0
-    ? '_No hay nada para escribir._ `cancelar` para cerrar.'
-    : (plan.requiere_confirmacion_sobrescritura
-      ? 'Escribí `confirmar sobrescribir` para pisar los valores existentes, `volver` para corregir o `cancelar`.'
-      : 'Escribí `confirmar`, `volver` para corregir o `cancelar`.'))
+  l.push('', instruccionConfirmar(plan))
   return l.join('\n')
+}
+
+const detalleAnterior = (i) => (i.formula_actual
+  ? `\`${i.formula_actual}\` (${fmt(i.total_actual)} h)`
+  : `${fmt(i.total_actual)} h`)
+
+function detalleNuevo(i) {
+  if (!i.extras_nuevas) return `${fmt(i.normales_nuevas)} h`
+  return `${fmt(i.normales_nuevas)} + ${fmt(i.extras_nuevas)} extra = ${fmt(i.total_nuevo)} h`
+}
+
+/** Qué exactamente tiene que escribir el jefe para confirmar. */
+function instruccionConfirmar(plan) {
+  if (plan.resumen.a_escribir === 0) return '_No hay nada para escribir._ `cancelar` para cerrar.'
+  const falta = []
+  if (plan.requiere_confirmacion_sobrescritura) falta.push('sobrescribir')
+  if (plan.requiere_confirmacion_formula) falta.push('formula')
+  if (!falta.length) return 'Escribí `confirmar`, `volver` para corregir o `cancelar`.'
+  return `Escribí \`confirmar ${falta.join(' ')}\` (o \`confirmar todo\`) para aceptar esos cambios, `
+    + '`volver` para corregir o `cancelar`.'
 }
 
 function motivoLegible(i) {
   switch (i.bloqueada) {
-    case 'celda_con_formula': return `la celda tiene una fórmula (\`${i.formula_actual}\`): son horas extra calculadas`
     case 'texto_no_numerico': return `la celda tiene texto (\`${i.valor_actual}\`), no un número de horas`
-    case 'jornada_requiere_manual': return 'este día no tiene jornada completa de referencia: cargá horas con `parcial`'
+    case 'jornada_requiere_manual': return 'este día no tiene jornada completa de referencia: cargá las horas con `parcial`'
     case 'trabajador_no_en_bloque': return 'no figura en esta obra para esta fecha en JORNALES'
+    case 'ausente_con_extras': return 'un ausente no puede tener horas extra'
+    case 'faltan_horas_normales': return 'faltan las horas normales trabajadas'
+    case 'negativo': return 'las horas no pueden ser negativas'
+    case 'no_numerico': return 'las horas tienen que ser un número'
+    case 'total_mayor_al_maximo': return `el total supera el máximo permitido (${i.detalle?.max ?? 24} h)`
     default: return String(i.bloqueada)
   }
 }
@@ -222,9 +300,8 @@ export function renderExito({ plan, resultado, actor }) {
     '',
     `Fecha: ${fechaAr(plan.fecha)}`,
     `Obra: ${plan.obra_etiqueta ?? plan.clave_obra}`,
-    `Presentes: ${r.presentes}`,
-    `Ausentes: ${r.ausentes}`,
-    `Jornada parcial: ${r.parciales}`,
+    `Presentes: ${r.presentes} · Ausentes: ${r.ausentes}${r.tardes ? ` · Tarde: ${r.tardes}` : ''} · Parciales: ${r.parciales}`,
+    `Horas normales: ${fmt(r.horas_normales)} · Horas extra: ${fmt(r.horas_extra)} · Total: ${fmt(r.horas_total)}`,
     `Celdas actualizadas: ${resultado.escritas}`,
     `Registrado por: ${actor?.plataforma_username ?? actor?.plataforma_user_id ?? '—'}`,
   ].join('\n')
@@ -268,7 +345,14 @@ export function renderSinPersonal({ obra, fecha }) {
   return `No se encontró personal asignado a **${obra?.etiqueta ?? 'esa obra'}** en JORNALES para el ${fechaAr(fecha)}.`
 }
 
-export function renderDenegado() {
+/**
+ * Acceso denegado. En el MVP el modo es ABIERTO, así que el único rechazo real es no
+ * tener identidad (un pedido sin usuario de Mattermost, que no se puede auditar).
+ */
+export function renderDenegado(motivo) {
+  if (motivo === 'sin_identidad') {
+    return '🔒 No pude identificarte. La asistencia se registra desde tu cuenta de Mattermost, porque queda a tu nombre.'
+  }
   return '🔒 No tenés permiso para registrar asistencia. Si corresponde, pedíselo a Dirección.'
 }
 

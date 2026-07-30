@@ -333,3 +333,159 @@ test('el día que se escribe es el que se mostró (columna R = 30/07)', async ()
   assert.deepEqual(filas.sort((a, c) => a - c), [21, 22, 23])
   assert.equal(FECHA_HOY, '2026-07-30')
 })
+
+// ── MVP: PERMISOS ABIERTOS ──────────────────────────────────────────────────
+
+/** Banco con el verificador REAL de permisos (modo del entorno), sin base. */
+function bancoPermisosReales({ ahora } = {}) {
+  const eventos = []
+  const g = fakeGoogleJornales()
+  const sesiones = new SesionesMemoria()
+  const decir = (texto, actor) => manejarAsistencia({
+    google: g, sesiones, auditar: async (e, dd) => { eventos.push({ evento: e, datos: dd }); return { ok: true } },
+    // sin `permisos` inyectado: usa tienePermiso() real. `port` no se toca en modo abierto.
+    port: { query: async () => { throw new Error('la base NO debe consultarse en modo abierto') } },
+    actor, texto, ahora: ahora ?? new Date('2026-07-30T14:00:00Z'),
+  })
+  return { g, sesiones, eventos, decir }
+}
+
+test('MVP: cualquier usuario AUTENTICADO puede registrar, sin permisos cargados', async () => {
+  const b = bancoPermisosReales()
+  const r = await b.decir('asistencia', { plataforma_user_id: 'mm-cualquiera', plataforma_username: 'pepe' })
+  assert.equal(r.estado, 'obras', 'la tabla de permisos vacía NO bloquea el skill')
+  assert.equal(b.eventos[0].datos.modo_permisos, 'abierto')
+})
+
+test('MVP: sin identidad se rechaza — no por permisos, sino porque no hay a quién auditar', async () => {
+  const b = bancoPermisosReales()
+  const r = await b.decir('asistencia', { plataforma_username: 'anonimo' })
+  assert.equal(r.estado, 'denegado')
+  assert.match(r.texto, /No pude identificarte/)
+  assert.equal(b.eventos[0].datos.error_code, 'sin_identidad')
+  assert.equal(b.g.lecturas, 0)
+})
+
+test('la identidad real del usuario queda en la auditoría de la escritura', async () => {
+  const b = bancoPermisosReales()
+  const yo = { plataforma_user_id: 'mm-u7', plataforma_username: 'rodrigo' }
+  await b.decir('asistencia', yo)
+  await b.decir('obra 1', yo)
+  await b.decir('todos presentes', yo)
+  await b.decir('revisar', yo)
+  const r = await b.decir('confirmar', yo)
+  assert.equal(r.estado, 'escrito')
+  const w = b.eventos.find((e) => e.evento === EVENTO.WRITTEN).datos
+  assert.equal(w.mattermost_user_id, 'mm-u7')
+  assert.equal(w.mattermost_username, 'rodrigo')
+})
+
+// ── HORAS EXTRA Y LLEGADA TARDE EN EL FLUJO ─────────────────────────────────
+
+test('marcar horas extra sobre un presente y verlo en la cuadrilla', async () => {
+  const b = banco()
+  await b.decir('@os asistencia')
+  await b.decir('obra 1')
+  await b.decir('todos presentes')
+  const r = await b.decir('1 extra 2')
+  assert.match(r.texto, /1\. Aguero Cristian — ✓ presente \(9 \+ 2 extra = 11 h\)/)
+  assert.match(r.texto, /2\. Quiroga Sebastian — ✓ presente \(9 h\)/)
+})
+
+test('`1 extra 2` sin haber marcado el estado antes pide marcarlo', async () => {
+  const b = banco()
+  await b.decir('@os asistencia')
+  await b.decir('obra 1')
+  const r = await b.decir('1 extra 2')
+  assert.equal(r.estado, 'sin_estado_previo')
+})
+
+test('llegada tarde con horas, y sin horas se piden', async () => {
+  const b = banco()
+  await b.decir('@os asistencia')
+  await b.decir('obra 1')
+  const sin = await b.decir('2 tarde')
+  assert.equal(sin.estado, 'faltan_horas')
+  const con = await b.decir('2 tarde 7')
+  assert.match(con.texto, /2\. Quiroga Sebastian — ◔ tarde \(7 h\)/)
+})
+
+test('el preview y el éxito informan normales, extra y total', async () => {
+  const b = banco()
+  await b.decir('@os asistencia')
+  await b.decir('obra 1')
+  await b.decir('todos presentes')
+  await b.decir('1 extra 2')
+  const prev = await b.decir('revisar')
+  assert.match(prev.texto, /Horas normales: \*\*27\*\*/)
+  assert.match(prev.texto, /Horas extra: \*\*2\*\*/)
+  assert.match(prev.texto, /Total: \*\*29\*\*/)
+  const ok = await b.decir('confirmar')
+  assert.equal(ok.estado, 'escrito')
+  assert.match(ok.texto, /Horas normales: 27 · Horas extra: 2 · Total: 29/)
+  // la celda con extras se escribió como fórmula, preservando la separación
+  const valores = b.g.escrituras[0].data.map((d) => d.values[0][0])
+  assert.ok(valores.includes('=9+2'), JSON.stringify(valores))
+  assert.equal(valores.filter((v) => v === 9).length, 2)
+})
+
+test('un ausente con horas extra queda bloqueado y se explica en el preview', async () => {
+  const b = banco()
+  await b.decir('@os asistencia')
+  await b.decir('obra 1')
+  await b.decir('1 ausente')
+  await b.decir('1 extra 2')
+  const r = await b.decir('revisar')
+  assert.match(r.texto, /No se van a tocar/)
+  assert.match(r.texto, /un ausente no puede tener horas extra/)
+})
+
+test('reemplazar una fórmula NO interpretable exige `confirmar formula`', async () => {
+  const b = banco()
+  // la celda de hoy de Aguero tiene una fórmula que no se puede descomponer
+  b.g.grid.filas[20][idxCol('R')] = { valor: '8,5', numero: 8.5, formula: '=9-2,5+2', derivada: false }
+  await b.decir('@os asistencia')
+  await b.decir('obra 1')
+  await b.decir('todos presentes')
+  const prev = await b.decir('revisar')
+  assert.match(prev.texto, /no se puede separar en normal\/extra/)
+  assert.match(prev.texto, /=9-2,5\+2/)
+
+  const sin = await b.decir('confirmar sobrescribir')
+  assert.equal(sin.estado, 'requiere_confirmacion_formula')
+  assert.equal(b.g.escrituras.length, 0, 'no se pisa una fórmula desconocida con un solo sí')
+
+  const ok = await b.decir('confirmar todo')
+  assert.equal(ok.estado, 'escrito')
+  const w = b.eventos.find((e) => e.evento === EVENTO.WRITTEN).datos
+  const celda = w.celdas_modificadas.find((c) => /Aguero/.test(c.trabajador))
+  assert.equal(celda.old_value, '8,5')
+  assert.equal(celda.new_value, 9)
+})
+
+test('la auditoría de la escritura guarda el desglose viejo y nuevo', async () => {
+  const b = banco()
+  b.g.grid.filas[20][idxCol('R')] = { valor: '11', numero: 11, formula: '=9+2', derivada: false }
+  await b.decir('@os asistencia')
+  await b.decir('obra 1')
+  await b.decir('1 presente extra 3')
+  await b.decir('revisar')
+  const r = await b.decir('confirmar sobrescribir')
+  assert.equal(r.estado, 'escrito')
+  const c = b.eventos.find((e) => e.evento === EVENTO.WRITTEN).datos.celdas_modificadas[0]
+  assert.equal(c.old_formula, '=9+2')
+  assert.equal(c.old_normal_hours, 9)
+  assert.equal(c.old_extra_hours, 2)
+  assert.equal(c.new_normal_hours, 9)
+  assert.equal(c.new_extra_hours, 3)
+  assert.equal(c.new_total_hours, 12)
+  assert.equal(c.new_formula, '=9+3')
+})
+
+test('una carga existente con extras se PRECARGA en la cuadrilla, no se reinicia', async () => {
+  const b = banco()
+  b.g.grid.filas[20][idxCol('R')] = { valor: '11', numero: 11, formula: '=9+2', derivada: false }
+  await b.decir('@os asistencia')
+  const r = await b.decir('obra 1')
+  assert.match(r.texto, /1\. Aguero Cristian — · sin marcar\s+_\(cargado: 9 \+ 2 extra = 11 h\)_/)
+})

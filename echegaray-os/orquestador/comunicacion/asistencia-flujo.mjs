@@ -21,7 +21,7 @@ import {
 } from '../lib/tools/jornales-asistencia.mjs'
 import { tienePermiso, PERMISO_ASISTENCIA_WRITE } from '../lib/asistencia-permisos.mjs'
 import { crearAuditor, EVENTO, payloadConfirmacion, sanitizarError } from '../lib/asistencia-auditoria.mjs'
-import { ESTADO, normalizarHorasManuales } from '../lib/jornada-politica.mjs'
+import { ESTADO, normalizarHoras } from '../lib/horas-extra.mjs'
 import { SesionesPostgres, ESTADO_SESION, RECHAZO } from './asistencia-sesion.mjs'
 import * as ui from './asistencia-ui.mjs'
 
@@ -62,10 +62,12 @@ export async function manejarAsistencia(o = {}) {
   if (!permiso.ok) {
     await d.auditar(EVENTO.DENIED, {
       status: 'denied', mattermost_user_id: actor?.plataforma_user_id ?? null,
-      mattermost_username: actor?.plataforma_username ?? null, error_code: permiso.motivo,
+      mattermost_username: actor?.plataforma_username ?? null,
+      error_code: permiso.motivo, modo_permisos: permiso.modo ?? null,
     })
-    return resp(ui.renderDenegado(), 'denegado')
+    return resp(ui.renderDenegado(permiso.motivo), 'denegado')
   }
+  d.modo_permisos = permiso.modo ?? null
 
   try {
     switch (intencion.tipo) {
@@ -75,7 +77,7 @@ export async function manejarAsistencia(o = {}) {
       case 'todos_presentes': return await marcarTodos(d)
       case 'marcar': return await marcarUno(d, intencion)
       case 'revisar': return await revisar(d)
-      case 'confirmar': return await confirmar(d, intencion.sobrescribir)
+      case 'confirmar': return await confirmar(d, intencion)
       case 'volver': return await volver(d)
       case 'cancelar': return await cancelar(d)
       default: return resp(ui.renderAyuda(), 'ayuda')
@@ -102,7 +104,7 @@ function respuestaLectura(r, fecha) {
 /** Abre (o reabre) el formulario para una fecha y muestra las obras de ese bloque. */
 async function iniciar(d, fecha) {
   await d.auditar(EVENTO.STARTED, {
-    status: 'started', fecha_operativa: fecha,
+    status: 'started', fecha_operativa: fecha, modo_permisos: d.modo_permisos ?? null,
     mattermost_user_id: d.actor?.plataforma_user_id, mattermost_username: d.actor?.plataforma_username,
   })
   const obras = await listarObrasPorFecha(d.google, { fecha })
@@ -172,27 +174,58 @@ async function marcarTodos(d) {
   const r = await cuadrillaDe(d, sesion)
   if (!r.ok) return respuestaLectura(r, fechaIso(sesion))
   const marcas = {}
-  for (const p of r.personal) marcas[p.nombre_clave] = { estado: ESTADO.PRESENTE }
+  for (const p of r.personal) marcas[p.nombre_clave] = { estado: ESTADO.PRESENTE, normales: null, extras: null }
   await d.sesiones.guardarMarcas(sesion.id, { ...estado, personal: r.personal.map((p) => p.nombre_clave), marcas })
   return resp(cuadrilla(r, marcas), 'cuadrilla')
 }
 
-/** Marca UNO por número de lista (`3 ausente`, `5 parcial 5,5`). */
+/**
+ * Marca UNO por número de lista: `3 ausente`, `3 tarde 7`, `5 parcial 5,5 extra 2`,
+ * `1 extra 2`. Las horas normales de `tarde` y `parcial` son obligatorias: el sistema no
+ * tiene forma de saber cuántas horas trabajó alguien que llegó tarde.
+ */
 async function marcarUno(d, intencion) {
   const { fallo, sesion, estado } = await conSesion(d)
   if (fallo) return fallo
   if (!sesion.clave_obra) return faltaObra()
   const clave = estado.personal[intencion.indice - 1]
   if (!clave) return resp(`No existe el número ${intencion.indice} en la lista.`, 'indice_invalido')
-  let horas = intencion.horas ?? null
-  if (intencion.estado === ESTADO.PARCIAL) {
-    const v = normalizarHorasManuales(horas)
-    if (!v.ok) return resp(`Para jornada parcial necesito las horas: \`${intencion.indice} parcial 5,5\`.`, 'faltan_horas')
-    horas = v.horas
+  const previa = estado.marcas?.[clave] ?? null
+
+  // `1 extra 2`: sólo cambia las horas extra de una marca que ya existe.
+  if (intencion.solo_extras) {
+    if (!previa) return resp(`Primero marcá el estado del ${intencion.indice} (por ejemplo \`${intencion.indice} presente\`).`, 'sin_estado_previo')
+    const v = normalizarHoras(intencion.extras, { permitirVacio: true })
+    if (!v.ok) return resp('Las horas extra tienen que ser un número (ej. `1 extra 2` o `1 extra 1,5`).', 'extras_invalidas')
+    return guardarYMostrar(d, sesion, estado, { ...estado.marcas, [clave]: { ...previa, extras: v.horas } })
   }
+
+  let normales = intencion.normales ?? null
+  if (intencion.estado === ESTADO.TARDE || intencion.estado === ESTADO.PARCIAL) {
+    const v = normalizarHoras(normales)
+    if (!v.ok) {
+      const ej = intencion.estado === ESTADO.TARDE ? `${intencion.indice} tarde 7` : `${intencion.indice} parcial 5,5`
+      return resp(`Necesito las horas trabajadas: \`${ej}\`.`, 'faltan_horas')
+    }
+    normales = v.horas
+  }
+  // Las extras se conservan si ya estaban marcadas y el mensaje no las menciona.
+  let extras = previa?.extras ?? null
+  if (intencion.extras != null) {
+    const v = normalizarHoras(intencion.extras, { permitirVacio: true })
+    if (!v.ok) return resp('Las horas extra tienen que ser un número (ej. `1 extra 2`).', 'extras_invalidas')
+    extras = v.horas
+  }
+  if (intencion.estado === ESTADO.AUSENTE) extras = null // un ausente no lleva extras
+  return guardarYMostrar(d, sesion, estado, {
+    ...estado.marcas, [clave]: { estado: intencion.estado, normales, extras },
+  })
+}
+
+/** Guarda las marcas y vuelve a mostrar la cuadrilla releída de la planilla. */
+async function guardarYMostrar(d, sesion, estado, marcas) {
   const r = await cuadrillaDe(d, sesion)
   if (!r.ok) return respuestaLectura(r, fechaIso(sesion))
-  const marcas = { ...estado.marcas, [clave]: { estado: intencion.estado, horas } }
   await d.sesiones.guardarMarcas(sesion.id, { ...estado, marcas })
   return resp(cuadrilla(r, marcas), 'cuadrilla')
 }
@@ -206,7 +239,7 @@ async function planDe(d, sesion, estado) {
   })
   if (!ctx.ok) return { fallo: respuestaLectura(ctx, fechaIso(sesion)) }
   const marcas = Object.entries(estado.marcas ?? {}).map(([nombre_clave, m]) => ({
-    nombre_clave, estado: m.estado, horas: m.horas,
+    nombre_clave, estado: m.estado, normales: m.normales, extras: m.extras,
   }))
   if (!marcas.length) return { fallo: resp('Todavía no marcaste a nadie. `todos presentes` o `3 ausente`.', 'sin_marcas') }
   const plan = planificarAsistencia(ctx, { claveObra: sesion.clave_obra, marcas, actor: d.actor })
@@ -252,7 +285,7 @@ async function volver(d) {
  * CONFIRMAR. Recalcula el plan contra la planilla fresca (el preview pudo quedar viejo),
  * cierra la sesión de forma atómica y de un solo uso, escribe en batch y audita.
  */
-async function confirmar(d, sobrescribir) {
+async function confirmar(d, { sobrescribir, reemplazar_formula } = {}) {
   const { fallo, sesion, estado } = await conSesion(d)
   if (fallo) return fallo
   if (!sesion.clave_obra) return faltaObra()
@@ -271,6 +304,10 @@ async function confirmar(d, sobrescribir) {
   if (plan.requiere_confirmacion_sobrescritura && !sobrescribir) {
     return resp(ui.renderPreview(plan), 'requiere_sobrescritura')
   }
+  // Reemplazar una fórmula que no se pudo descomponer necesita su propio sí.
+  if (plan.requiere_confirmacion_formula && !reemplazar_formula) {
+    return resp(ui.renderPreview(plan), 'requiere_confirmacion_formula')
+  }
 
   // Un solo uso: si esta misma confirmación ya se ejecutó, no vuelve a mutar.
   const cierre = await d.sesiones.confirmar(sesion.id, { idempotencyKey: plan.idempotency_key })
@@ -282,7 +319,11 @@ async function confirmar(d, sobrescribir) {
     obra_normalizada: plan.clave_obra, idempotency_key: plan.idempotency_key, sesion_id: sesion.id,
   })
 
-  const resultado = await registrarAsistencia(d.google, { plan, confirmarSobrescritura: Boolean(sobrescribir) })
+  const resultado = await registrarAsistencia(d.google, {
+    plan,
+    confirmarSobrescritura: Boolean(sobrescribir),
+    confirmarReemplazoFormula: Boolean(reemplazar_formula),
+  })
   const base = { actor: d.actor, plan, sesion, iniciadoEn: sesion.creado_at, confirmadoEn: new Date().toISOString() }
   if (!resultado.ok) return await fallaEscritura(d, { resultado, base, sesion, plan })
 
