@@ -95,15 +95,30 @@ psql "$DATABASE_URL" -f orquestador/db/rollback/20260730130000_asistencia_matter
 Aditiva y aislada en el schema `comunicacion` (ya existente). Crea sólo permisos, estado
 de formulario y una vista de auditoría. **No crea ninguna tabla de asistencia.**
 
-### 2.4 Secreto de firma
+### 2.4 Secreto de firma — opcional, no protege el flujo actual
 
 ```bash
 # en el EnvironmentFile de systemd, chmod 600, NUNCA en git
 ORQ_ASISTENCIA_SECRET=$(openssl rand -hex 32)
 ```
 
-Sin este valor (y sin `MM_INCOMING_SECRET`) las acciones firmadas se rechazan —
-fail-closed. El flujo de texto funciona igual; la firma protege el front-end de botones.
+**No hace falta configurarlo para poner el skill en producción.** La firma HMAC
+(`firmarAccion`/`verificarAccion`) es código reservado: hoy no la llama ningún borde del
+flujo, y su ausencia no degrada nada. Con o sin secreto, el bot por DM se comporta igual.
+
+El motivo es que no hay nada que firmar. El bot entra por WebSocket **saliente**, la
+interfaz es texto (sin botones ni diálogos), el `sesionId` nunca viaja al cliente — el
+servidor resuelve la sesión desde el usuario autenticado — y lo que la persona manda es un
+número de fila que se traduce contra la planilla recién leída. No existe un payload
+controlado por el cliente que pueda alterarse.
+
+**Lo que sí protege una confirmación hoy:** el TTL de 20 min, la propiedad de la sesión
+(sólo quien la abrió puede operarla o confirmarla, con la identidad tomada del evento
+autenticado de Mattermost) y la idempotencia de un solo uso.
+
+**Qué activaría la firma:** pasar a botones o diálogos interactivos. Eso obliga a publicar
+un endpoint HTTP entrante con su ruta en Caddy, y recién ahí aparece un `context` que va y
+vuelve por el cliente. Es infraestructura nueva y una decisión de Nivel E.
 
 ---
 
@@ -305,9 +320,11 @@ fila revocada queda con `activo=false`: la traza de que existió no se borra.
 
 ### Rotar secretos
 
-`ORQ_ASISTENCIA_SECRET` se puede rotar en cualquier momento: invalida los formularios a
-medio llenar (vencen igual a los 20 min) y no afecta nada persistido. `MM_BOT_TOKEN` se
-rota con el procedimiento del bot (`OPERACION-BOT-WEBSOCKET.md`).
+`ORQ_ASISTENCIA_SECRET` se puede rotar en cualquier momento y **no tiene ningún efecto
+observable** mientras la interfaz sea texto por DM: hoy nada lo verifica (ver 2.4). No
+invalida los formularios a medio llenar — esos vencen por TTL a los 20 min, no por firma.
+`MM_BOT_TOKEN` se rota con el procedimiento del bot (`OPERACION-BOT-WEBSOCKET.md`) y ése
+sí corta el bot.
 
 ---
 

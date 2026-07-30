@@ -42,9 +42,11 @@ comment on table comunicacion.permisos_skill is
   'Autorización de skills por identidad de plataforma (Mattermost). Sólo se consulta en modo estricto (ORQ_ASISTENCIA_PERMISOS=estricto), donde es fail-closed: sin fila activa, no se ejecuta. En el MVP el modo es abierto y esta tabla no se consulta. No duplica usuarios del OS: es un grant sobre una identidad.';
 
 -- ── 2. ESTADO DEL FORMULARIO (server-side, efímero) ──────────────────────────
--- El cliente sólo manda un id de sesión y un token firmado. Nada de spreadsheet_id,
--- pestaña, coordenadas ni nombres: todo eso se resuelve y valida en el servidor y
--- vive acá mientras el jefe completa la carga.
+-- El cliente no manda estado: en el flujo por DM manda un NÚMERO de fila y nada más —
+-- ni siquiera el id de sesión, que nunca viaja (el servidor la resuelve desde el usuario
+-- autenticado del evento de Mattermost). Nada de spreadsheet_id, pestaña, coordenadas ni
+-- nombres: todo eso se resuelve y valida en el servidor y vive acá mientras el jefe
+-- completa la carga.
 create table if not exists comunicacion.asistencia_sesiones (
   id                 uuid primary key default gen_random_uuid(),
   plataforma         text not null,

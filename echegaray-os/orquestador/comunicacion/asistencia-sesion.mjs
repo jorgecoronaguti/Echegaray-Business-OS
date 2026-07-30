@@ -1,5 +1,5 @@
 // ESTADO DEL FORMULARIO DE ASISTENCIA — server-side, con dueño, con vencimiento y con
-// acciones firmadas.
+// confirmación de un solo uso.
 //
 // POR QUÉ VIVE EN LA BASE Y NO EN MEMORIA DEL PROCESO. El bot son DOS procesos: el
 // consumidor WebSocket sólo ingiere el mensaje, y el worker de comunicación es el que lo
@@ -11,12 +11,37 @@
 // para producción y `SesionesMemoria` para tests. La máquina de estados del flujo se
 // prueba entera sin base, que es la única forma de que esté realmente probada.
 //
-// Reglas que hace cumplir este módulo:
+// Reglas que hace cumplir este módulo, y que son las que protegen el flujo por DM:
 //   · una sola sesión abierta por persona;
-//   · sólo el que la abrió puede operarla o confirmarla;
+//   · sólo el que la abrió puede operarla o confirmarla (propiedad);
 //   · vence (TTL configurable) y una sesión vencida no se puede confirmar;
-//   · las acciones van FIRMADAS (HMAC): un callback alterado no se ejecuta;
 //   · la confirmación es de un solo uso: el replay no vuelve a mutar.
+//
+// FIRMA HMAC (firmarAccion / verificarAccion): CÓDIGO RESERVADO, HOY NO APORTA SEGURIDAD.
+// Se deja escrito y probado, pero no está conectado a nada y no debe leerse como si el
+// flujo actual estuviera firmado. Los hechos, para que nadie tenga que deducirlos:
+//
+//   · El bot entra por una conexión WebSocket SALIENTE (PR-4.2). No hay endpoint HTTP
+//     entrante publicado para este skill, y la interfaz es texto por DM: `asistencia-ui.mjs`
+//     renderiza sólo texto, sin attachments, botones ni diálogos interactivos.
+//   · Por lo tanto NO existe un payload controlado por el cliente que haya que verificar.
+//     La identidad (`plataforma_user_id`) viene del actor del evento autenticado de
+//     Mattermost, no de lo que la persona escribe.
+//   · Y el `sesionId` NUNCA viaja al cliente: el flujo encuentra la sesión con
+//     `abiertaDe({ plataformaUserId })` a partir del actor autenticado. No hay nada
+//     dando la vuelta por el cliente que se pueda alterar, así que no hay nada que firmar.
+//     Lo que la persona manda es un NÚMERO de fila, que el servidor traduce contra la
+//     planilla recién leída.
+//
+// QUÉ LA ACTIVARÍA: botones o diálogos interactivos de Mattermost. Eso exige que el
+// servidor de MM haga POST a una URL nuestra — endpoint HTTP entrante publicado + ruta en
+// Caddy + integración configurada. Recién ahí aparece un `context` que viaja al cliente y
+// vuelve, es decir manipulable, y recién ahí la firma pasa a proteger algo real. Es
+// infraestructura nueva y una decisión de Nivel E: no se activa sola.
+//
+// Hasta entonces, lo que protege una confirmación es TTL + propiedad de la sesión +
+// idempotencia de un solo uso. Nada más. Los tests de firma de este módulo prueban la
+// primitiva criptográfica, no una defensa en producción.
 
 import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto'
 
@@ -44,8 +69,10 @@ export const RECHAZO = Object.freeze({
   SIN_SECRETO: 'sin_secreto',
 })
 
-/** Secreto de firma de acciones. Fail-closed: sin secreto no se firma ni se acepta nada,
- *  salvo modo dev EXPLÍCITO (mismo criterio que el borde entrante del PR-3). */
+/** Secreto de firma de acciones RESERVADAS (ver el encabezado: hoy no las usa el flujo).
+ *  Fail-closed: sin secreto no se firma ni se acepta nada, salvo modo dev EXPLÍCITO
+ *  (mismo criterio que el borde entrante del PR-3). Que falte NO degrada el flujo por DM,
+ *  porque el flujo por DM no verifica firmas. */
 function secretoDelEntorno() {
   const s = process.env.ORQ_ASISTENCIA_SECRET || process.env.MM_INCOMING_SECRET || null
   if (s) return s
@@ -54,10 +81,14 @@ function secretoDelEntorno() {
 }
 
 /**
- * Firma una acción de la interfaz. El token ata la acción a la sesión Y a su dueño: un
- * token de otra sesión, de otra acción o de otro usuario no valida. Lo usa el front-end
- * de botones (cuando se habilite el endpoint entrante); el flujo de texto no lo necesita,
- * pero la garantía tiene que existir antes de que haya callbacks.
+ * RESERVADO — no lo llama el flujo productivo (ver el encabezado del archivo). Hoy sus
+ * únicos llamadores son los tests.
+ *
+ * Firma una acción de la interfaz: el token ata la acción a la sesión Y a su dueño, de modo
+ * que un token de otra sesión, de otra acción o de otro usuario no valida. Está escrito de
+ * antemano para el día que se habilite el endpoint entrante y la interfaz pase a botones —
+ * ahí el `context` del callback sí es manipulable por el cliente y hay algo que firmar.
+ * Mientras la interfaz sea texto por DM, nada de esto se ejecuta.
  */
 export function firmarAccion({ sesionId, accion, dato = '', plataformaUserId }, sec = secretoDelEntorno()) {
   if (!sec) return null
@@ -66,7 +97,8 @@ export function firmarAccion({ sesionId, accion, dato = '', plataformaUserId }, 
     .digest('hex').slice(0, 32)
 }
 
-/** Verifica un token de acción en tiempo constante. */
+/** RESERVADO, como firmarAccion: ningún borde del flujo actual llama a esta función.
+ *  Verifica un token de acción en tiempo constante. */
 export function verificarAccion({ token, sesionId, accion, dato = '', plataformaUserId }, sec = secretoDelEntorno()) {
   if (!sec) return { ok: false, motivo: RECHAZO.SIN_SECRETO }
   const esperado = firmarAccion({ sesionId, accion, dato, plataformaUserId }, sec)

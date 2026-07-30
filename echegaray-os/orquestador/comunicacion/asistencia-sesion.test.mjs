@@ -11,6 +11,13 @@ const U2 = 'mm-jefe-2'
 
 const abrir = (r, u = U1) => r.abrir({ plataformaUserId: u, plataformaUsername: 'jefe', fechaOperativa: '2026-07-30' })
 
+// ── FIRMA HMAC — primitiva RESERVADA, no una defensa del flujo actual ───────────
+// Estos 4 tests prueban la primitiva criptográfica, NO que el flujo por DM esté firmado:
+// no lo está, y no tiene qué firmar (el sesionId nunca viaja al cliente y la identidad
+// sale del evento autenticado de Mattermost). Ver el encabezado de asistencia-sesion.mjs.
+// Lo que protege una confirmación hoy es TTL + propiedad + idempotencia, y eso lo cubren
+// los tests de más abajo.
+
 test('firmar/verificar una acción: el token válido pasa', () => {
   const t = firmarAccion({ sesionId: 's1', accion: 'confirmar', plataformaUserId: U1 }, SEC)
   assert.equal(verificarAccion({ token: t, sesionId: 's1', accion: 'confirmar', plataformaUserId: U1 }, SEC).ok, true)
@@ -213,4 +220,51 @@ test('un intervalo inválido (env mal escrito ⇒ NaN) cae al default, no a cada
 
 test('el barrido exige un repositorio de verdad', () => {
   assert.throws(() => crearVencedorPeriodico({ sesiones: null }), /falta el repositorio/)
+})
+
+// ── LO QUE DE VERDAD PROTEGE LA CONFIRMACIÓN ────────────────────────────────────
+
+test('el flujo NO depende de la firma: sin secreto, abrir/operar/confirmar funciona igual', async () => {
+  // Si algún día alguien conecta verificarAccion al flujo por DM, este test se cae y
+  // obliga a actualizar el encabezado de asistencia-sesion.mjs en vez de dejarlo mintiendo.
+  const previo = { a: process.env.ORQ_ASISTENCIA_SECRET, b: process.env.MM_INCOMING_SECRET, c: process.env.COMM_DEV }
+  delete process.env.ORQ_ASISTENCIA_SECRET; delete process.env.MM_INCOMING_SECRET; delete process.env.COMM_DEV
+  try {
+    assert.equal(firmarAccion({ sesionId: 's1', accion: 'confirmar', plataformaUserId: U1 }), null,
+      'sin secreto no se puede ni firmar')
+    const r = new SesionesMemoria()
+    const a = await abrir(r)
+    await r.guardarMarcas(a.id, { marcas: { A: { estado: 'presente' } } })
+    await r.guardarPlan(a.id, { idempotency_key: 'k-sin-secreto' })
+    const ok = await r.confirmar(a.id, { idempotencyKey: 'k-sin-secreto' })
+    assert.equal(ok.ok, true, 'la confirmación no verifica ninguna firma')
+  } finally {
+    for (const [k, v] of [['ORQ_ASISTENCIA_SECRET', previo.a], ['MM_INCOMING_SECRET', previo.b], ['COMM_DEV', previo.c]]) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v
+    }
+  }
+})
+
+test('la firma sigue SIN llamadores productivos (si se conecta, hay que corregir el encabezado)', async () => {
+  const { readdir, readFile } = await import('node:fs/promises')
+  const { join, dirname } = await import('node:path')
+  const { fileURLToPath } = await import('node:url')
+  const aca = dirname(fileURLToPath(import.meta.url))
+  const raiz = join(aca, '..') // orquestador/
+
+  const llamadores = []
+  for (const d of ['comunicacion', 'handlers', 'lib', 'scripts']) {
+    let entradas
+    try { entradas = await readdir(join(raiz, d), { recursive: true, withFileTypes: true }) } catch { continue }
+    for (const e of entradas) {
+      if (!e.isFile() || !e.name.endsWith('.mjs') || e.name.endsWith('.test.mjs')) continue
+      const ruta = join(e.parentPath ?? e.path, e.name)
+      const src = await readFile(ruta, 'utf8')
+      // La definición vive en asistencia-sesion.mjs; lo que se busca es un USO externo.
+      if (ruta.endsWith('asistencia-sesion.mjs')) continue
+      if (/\b(firmarAccion|verificarAccion)\s*\(/.test(src)) llamadores.push(ruta)
+    }
+  }
+  assert.deepEqual(llamadores, [],
+    'la firma dejó de ser código reservado: actualizá el encabezado de asistencia-sesion.mjs y la sección 2.4 de OPERACION-ASISTENCIA.md')
 })
