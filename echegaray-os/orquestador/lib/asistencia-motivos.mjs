@@ -11,10 +11,35 @@
 // casos que la empresa vive todos los meses y que la leyenda no cubre: accidente (ART),
 // vacaciones, suspensión y franco.
 //
+// Y a esos, seis casos de OBRA que ninguna leyenda de planilla contempla y que hoy se estaban
+// escondiendo dentro de `franco` o de `otro` —es decir, dentro de un texto libre que nadie
+// puede sumar. Cada uno se agrega porque cambia una decisión distinta:
+//
+//   · LLUVIA — la obra para por clima. No es responsabilidad del trabajador, se presentó y el
+//     jornal se paga. Es la causa de desvío de plazo más frecuente de una constructora, y
+//     mientras viva dentro de "otro" nadie puede contestar cuántos días de obra costó el
+//     invierno ni cargarlo a una ampliación de plazo.
+//   · SIN TAREA (obra parada / sin material) — el trabajador vino y no había qué hacer. Se
+//     paga igual. La diferencia con la lluvia es de quién es la culpa: acá es NUESTRA, y cada
+//     hora es una falla de compras o de planificación que se está pagando en efectivo.
+//   · PARO — medida gremial. Ausencia colectiva, no imputable a la persona y con tratamiento de
+//     haberes propio. Contarla como falta injustificada mancharía el legajo de toda la cuadrilla
+//     el mismo día.
+//   · ACCIDENTE IN ITINERE — accidente yendo o volviendo del trabajo. Es ART igual que el de
+//     obra, pero NO ocurrió en obra: no entra en el índice de siniestralidad del obrador ni
+//     dispara la misma investigación interna. Sumarlos juntos falsea las dos lecturas.
+//   · LICENCIA ESPECIAL — fallecimiento, matrimonio, nacimiento, examen (LCT art. 158). Es
+//     licencia PAGA y OBLIGATORIA por ley, con plazos tasados. No es un permiso que la empresa
+//     concede: es un derecho que la empresa no puede negar, y confundirlos es un riesgo legal.
+//   · FALTA CON AVISO — sigue siendo injustificada, pero avisar cambia lo que el jefe puede
+//     hacer esa mañana: mover gente, reprogramar la tarea, llamar a un reemplazo. Sin el dato,
+//     la planificación del día siguiente no puede aprender nada.
+//
 // DÓNDE VIVE EL DATO. El motivo y la aclaración se guardan en Postgres
 // (`comunicacion.asistencia_novedades`), NO en la planilla: la celda de JORNALES sigue
 // recibiendo sólo horas. Escribir texto ahí rompería las fórmulas de suma de la quincena y
-// el camino de escritura ya validado. Ver la migración 20260731090000 para el detalle.
+// el camino de escritura ya validado. Ver las migraciones 20260731090000 (la tabla) y
+// 20260731120000 (la marca de obra parada) para el detalle.
 //
 // NADA DE ESTO TOCA red, base ni fecha del sistema: es puro. Los dos flujos (pantalla web y
 // conversación en Mattermost) llaman a estas mismas funciones — la regla se escribe una vez.
@@ -24,12 +49,18 @@ import { normalizarHoras } from './horas-extra.mjs'
 /** Claves estables del motivo. Es lo que se guarda en la base; las etiquetas pueden cambiar. */
 export const MOTIVO = Object.freeze({
   FALTA: 'falta',
+  FALTA_CON_AVISO: 'falta_con_aviso',
   ENFERMEDAD: 'enfermedad',
   PERMISO: 'permiso',
+  LICENCIA_ESPECIAL: 'licencia_especial',
   ACCIDENTE: 'accidente',
+  ACCIDENTE_IN_ITINERE: 'accidente_in_itinere',
   VACACIONES: 'vacaciones',
   SUSPENSION: 'suspension',
   FRANCO: 'franco',
+  LLUVIA: 'lluvia',
+  SIN_TAREA: 'sin_tarea',
+  PARO: 'paro',
   LLEGO_TARDE: 'llego_tarde',
   SE_RETIRO_ANTES: 'se_retiro_antes',
   OTRO: 'otro',
@@ -43,50 +74,111 @@ export const AMBITO = Object.freeze({
 
 /**
  * El catálogo. Campos del contrato congelado (`clave`, `etiqueta`, `requiere_aclaracion`,
- * `implica_horas_cero`, `orden`) más tres que necesita la auditoría y que no se pueden
+ * `implica_horas_cero`, `orden`) más cuatro que necesita la auditoría y que no se pueden
  * derivar del resto:
  *
  *  - `ambitos`: en qué contexto se ofrece. Un "llegó tarde" con 0 horas no es tarde, es falta.
- *  - `falta_injustificada`: SÓLO `falta` lo es. Franco, vacaciones y suspensión también dan
- *    0 horas y NO son faltas: contarlas juntas inflaría el ausentismo y castigaría a alguien
- *    por estar de licencia. Enfermedad y accidente tampoco (tienen su propio tratamiento).
- *  - `art`: el accidente de trabajo dispara denuncia a la ART y plazos que no dependen de
- *    esta planilla. Queda marcado para poder aislarlo en la auditoría sin buscar por texto.
+ *  - `falta_injustificada`: sólo las dos formas de faltar lo son —con aviso y sin aviso—.
+ *    Franco, vacaciones y suspensión también dan 0 horas y NO son faltas: contarlas juntas
+ *    inflaría el ausentismo y castigaría a alguien por estar de licencia. Enfermedad,
+ *    accidente, licencia especial, lluvia, obra parada y paro tampoco: cada una tiene su
+ *    propio tratamiento y ninguna es responsabilidad de la persona.
+ *  - `art`: el accidente —de obra o in itinere— dispara denuncia a la ART y plazos que no
+ *    dependen de esta planilla. Queda marcado para poder aislarlo sin buscar por texto.
+ *  - `paraliza_obra`: la obra no produjo, y no porque faltara la persona: estaba, y no hubo
+ *    trabajo. Separa la lectura de RECURSOS HUMANOS (¿quién falta?) de la de PRODUCCIÓN
+ *    (¿cuántos días perdimos y por culpa de quién?). Mezcladas, el ausentismo miente hacia
+ *    arriba y el desvío de plazo queda sin causa.
  *
  * `orden` es el orden de presentación en pantalla, elegido para que las dos listas que
  * devuelve `motivosPara` se lean naturales: en una ausencia arranca por "faltó", en una
- * jornada parcial por "llegó tarde".
+ * jornada parcial por "llegó tarde", y en las dos las causas de obra parada quedan juntas y
+ * arriba, porque un día de lluvia se carga cuarenta veces seguidas.
  */
 export const CATALOGO = Object.freeze([
   {
     clave: MOTIVO.FALTA,
-    etiqueta: 'Faltó',
+    etiqueta: 'Faltó sin avisar',
     requiere_aclaracion: false,
     implica_horas_cero: true,
     orden: 1,
     ambitos: [AMBITO.AUSENCIA],
     falta_injustificada: true,
     art: false,
+    paraliza_obra: false,
+  },
+  {
+    // Avisar no justifica la falta: sigue siendo injustificada. Lo que cambia es lo que el
+    // jefe pudo hacer esa mañana —mover gente, reprogramar— y eso es lo que hay que poder
+    // separar después para saber si la planificación del día reacciona o no.
+    clave: MOTIVO.FALTA_CON_AVISO,
+    etiqueta: 'Faltó con aviso',
+    requiere_aclaracion: false,
+    implica_horas_cero: true,
+    orden: 2,
+    ambitos: [AMBITO.AUSENCIA],
+    falta_injustificada: true,
+    art: false,
+    paraliza_obra: false,
   },
   {
     clave: MOTIVO.LLEGO_TARDE,
     etiqueta: 'Llegó tarde',
     requiere_aclaracion: false,
     implica_horas_cero: false,
-    orden: 2,
+    orden: 3,
     ambitos: [AMBITO.PARCIAL],
     falta_injustificada: false,
     art: false,
+    paraliza_obra: false,
   },
   {
     clave: MOTIVO.SE_RETIRO_ANTES,
     etiqueta: 'Se retiró antes',
     requiere_aclaracion: false,
     implica_horas_cero: false,
-    orden: 3,
+    orden: 4,
     ambitos: [AMBITO.PARCIAL],
     falta_injustificada: false,
     art: false,
+    paraliza_obra: false,
+  },
+  {
+    // Puede parar el día entero o a media mañana: por eso NO implica 0. El jornal se paga —el
+    // trabajador se presentó— y el día perdido es insumo de ampliación de plazo.
+    clave: MOTIVO.LLUVIA,
+    etiqueta: 'Lluvia · obra parada',
+    requiere_aclaracion: false,
+    implica_horas_cero: false,
+    orden: 5,
+    ambitos: [AMBITO.AUSENCIA, AMBITO.PARCIAL],
+    falta_injustificada: false,
+    art: false,
+    paraliza_obra: true,
+  },
+  {
+    // La diferencia con la lluvia es de quién es la culpa: acá es nuestra. Cada hora es una
+    // falla de compras o de planificación que se está pagando en efectivo.
+    clave: MOTIVO.SIN_TAREA,
+    etiqueta: 'Obra parada · sin material o sin frente',
+    requiere_aclaracion: false,
+    implica_horas_cero: false,
+    orden: 6,
+    ambitos: [AMBITO.AUSENCIA, AMBITO.PARCIAL],
+    falta_injustificada: false,
+    art: false,
+    paraliza_obra: true,
+  },
+  {
+    clave: MOTIVO.PARO,
+    etiqueta: 'Paro gremial',
+    requiere_aclaracion: false,
+    implica_horas_cero: false,
+    orden: 7,
+    ambitos: [AMBITO.AUSENCIA, AMBITO.PARCIAL],
+    falta_injustificada: false,
+    art: false,
+    paraliza_obra: true,
   },
   {
     // Puede ser el día entero o media jornada (se descompuso y se fue): por eso NO implica 0.
@@ -94,72 +186,108 @@ export const CATALOGO = Object.freeze([
     etiqueta: 'Enfermedad',
     requiere_aclaracion: false,
     implica_horas_cero: false,
-    orden: 4,
+    orden: 8,
     ambitos: [AMBITO.AUSENCIA, AMBITO.PARCIAL],
     falta_injustificada: false,
     art: false,
+    paraliza_obra: false,
   },
   {
     // Aclaración OBLIGATORIA: un accidente sin una línea de qué pasó no sirve para la
     // denuncia a la ART, y esa línea se escribe el mismo día o no se escribe nunca.
     clave: MOTIVO.ACCIDENTE,
-    etiqueta: 'Accidente de trabajo',
+    etiqueta: 'Accidente de trabajo (en obra)',
     requiere_aclaracion: true,
     implica_horas_cero: false,
-    orden: 5,
+    orden: 9,
     ambitos: [AMBITO.AUSENCIA, AMBITO.PARCIAL],
     falta_injustificada: false,
     art: true,
+    paraliza_obra: false,
+  },
+  {
+    // Cubierto por la ART igual que el de obra, pero NO ocurrió en el obrador: no entra en el
+    // índice de siniestralidad de la obra ni dispara la misma investigación interna.
+    clave: MOTIVO.ACCIDENTE_IN_ITINERE,
+    etiqueta: 'Accidente in itinere (yendo o volviendo)',
+    requiere_aclaracion: true,
+    implica_horas_cero: false,
+    orden: 10,
+    ambitos: [AMBITO.AUSENCIA, AMBITO.PARCIAL],
+    falta_injustificada: false,
+    art: true,
+    paraliza_obra: false,
   },
   {
     clave: MOTIVO.PERMISO,
     etiqueta: 'Permiso',
     requiere_aclaracion: false,
     implica_horas_cero: false,
-    orden: 6,
+    orden: 11,
     ambitos: [AMBITO.AUSENCIA, AMBITO.PARCIAL],
     falta_injustificada: false,
     art: false,
+    paraliza_obra: false,
+  },
+  {
+    // Fallecimiento, matrimonio, nacimiento, examen (LCT art. 158). NO es un permiso que la
+    // empresa concede: es un derecho que no puede negar, es paga y tiene plazos tasados. La
+    // aclaración es obligatoria porque de CUÁL sea depende cuántos días corresponden.
+    clave: MOTIVO.LICENCIA_ESPECIAL,
+    etiqueta: 'Licencia especial (fallecimiento, matrimonio, examen…)',
+    requiere_aclaracion: true,
+    implica_horas_cero: true,
+    orden: 12,
+    ambitos: [AMBITO.AUSENCIA],
+    falta_injustificada: false,
+    art: false,
+    paraliza_obra: false,
   },
   {
     clave: MOTIVO.VACACIONES,
     etiqueta: 'Vacaciones',
     requiere_aclaracion: false,
     implica_horas_cero: true,
-    orden: 7,
+    orden: 13,
     ambitos: [AMBITO.AUSENCIA],
     falta_injustificada: false,
     art: false,
+    paraliza_obra: false,
   },
   {
     clave: MOTIVO.SUSPENSION,
     etiqueta: 'Suspensión',
     requiere_aclaracion: false,
     implica_horas_cero: true,
-    orden: 8,
+    orden: 14,
     ambitos: [AMBITO.AUSENCIA],
     falta_injustificada: false,
     art: false,
+    paraliza_obra: false,
   },
   {
+    // "Día no laborable" salió de la etiqueta a propósito: desde el calendario completo esa es
+    // otra figura —turísticos, Jueves Santo, día del gremio— donde la obra SÍ trabaja.
     clave: MOTIVO.FRANCO,
-    etiqueta: 'Franco / día no laborable',
+    etiqueta: 'Franco / feriado',
     requiere_aclaracion: false,
     implica_horas_cero: true,
-    orden: 9,
+    orden: 15,
     ambitos: [AMBITO.AUSENCIA],
     falta_injustificada: false,
     art: false,
+    paraliza_obra: false,
   },
   {
     clave: MOTIVO.OTRO,
     etiqueta: 'Otro',
     requiere_aclaracion: true,
     implica_horas_cero: false,
-    orden: 10,
+    orden: 16,
     ambitos: [AMBITO.AUSENCIA, AMBITO.PARCIAL],
     falta_injustificada: false,
     art: false,
+    paraliza_obra: false,
   },
 ].map(Object.freeze))
 
@@ -281,7 +409,13 @@ function validarMotivo({ ficha, ambito, horas, aclaracion }) {
  *   - vino e hizo la jornada       → motivo VACÍO
  *   - vino e hizo de más           → motivo VACÍO: son horas extra, las calcula el núcleo
  *   - motivo «otro»                → aclaración obligatoria
+ *   - accidente y licencia especial→ aclaración obligatoria
  *   - franco / vacaciones / susp.  → 0 horas, y NO cuentan como falta injustificada
+ *   - lluvia / sin tarea / paro    → la obra no produjo con la gente presente: no es ausentismo
+ *
+ * NO MIRA LA FECHA. Cargar un día de la semana pasada valida exactamente igual que cargar hoy:
+ * la edición histórica es un caso normal (el jefe carga el lunes lo que pasó el viernes) y la
+ * ventana de fechas permitida es una decisión de la pantalla, no de las reglas del motivo.
  *
  * Nunca lanza. Devuelve `{ok:true, novedad}` o `{ok:false, error}` con un mensaje que se le
  * puede mostrar tal cual al jefe de obra.
@@ -351,5 +485,6 @@ function armar({ presente, horas, jornada, ficha, aclaracion, obra_realizada }) 
     obra_realizada: vacio(obra_realizada) ? null : texto(obra_realizada).slice(0, 200),
     falta_injustificada: ficha?.falta_injustificada ?? false,
     art: ficha?.art ?? false,
+    paraliza_obra: ficha?.paraliza_obra ?? false,
   }
 }
