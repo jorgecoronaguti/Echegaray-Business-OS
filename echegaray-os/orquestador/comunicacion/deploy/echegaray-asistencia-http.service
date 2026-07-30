@@ -1,0 +1,28 @@
+[Unit]
+# Asistencia v2 · Servidor HTTP local: slash command /asistencia + pantalla web de carga.
+# USER-UNIT (systemd --user, sin sudo). Copiar a ~/.config/systemd/user/.
+# NO carga anthropic.env a propósito: este proceso JAMÁS invoca razonamiento — reparte
+# enlaces firmados y sirve una pantalla, y tiene que seguir funcionando un día sin crédito.
+# NO abre puerto público: lo publica Caddy en la ruta /asistencia* de chat.ecsas.com.ar
+# (ver infra/mattermost/caddy/Caddyfile).
+Description=Echegaray OS - Asistencia HTTP (slash command + pantalla de carga)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Checkout de DESPLIEGUE dedicado (worktree), no el árbol de trabajo.
+WorkingDirectory=/home/jorge/echegaray-os/app/.claude/worktrees/deploy-comunicacion/echegaray-os
+EnvironmentFile=%h/.config/echegaray-orq/asistencia-http.env
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/comunicacion/servidor-asistencia.mjs
+Restart=always
+RestartSec=5
+# Shutdown limpio: el servidor atiende SIGTERM y cierra las conexiones abiertas.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=asistencia-http
+
+[Install]
+WantedBy=default.target
