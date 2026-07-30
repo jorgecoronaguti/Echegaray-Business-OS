@@ -43,6 +43,7 @@ export async function comunicacionResponderHandler(task, ctx) {
 
   let texto
   let privado = false
+  let salida = null
   let datos = { via: ruta.via, area: ruta.area ?? null }
 
   if (!ruta.especialista) {
@@ -58,6 +59,7 @@ export async function comunicacionResponderHandler(task, ctx) {
       actor,
       correlationId: inp.correlation_id,
     })
+    salida = r
     texto = r.texto
     privado = r.privado === true
     datos = {
@@ -99,6 +101,8 @@ export async function comunicacionResponderHandler(task, ctx) {
     channel_id: channelId,
     root_post_id: rootPostId,
     texto,
+    // Un especialista puede responder con una UI interactiva en vez de sólo texto.
+    ...(Array.isArray(salida?.attachments) && salida.attachments.length ? { attachments: salida.attachments } : {}),
     task_id: task.id,
   }
 

@@ -80,6 +80,9 @@ export function crearConector(opts = {}) {
         channel_id: r.channel_id,
         root_id: r.root_post_id, // mismo hilo
         texto: r.texto,
+        // Mensaje INTERACTIVO: botones y desplegables nativos de Mattermost. Viaja opcional
+        // para que una respuesta de texto común siga siendo exactamente lo que era.
+        ...(Array.isArray(r.attachments) && r.attachments.length ? { attachments: r.attachments } : {}),
         comm_event_id: r.comm_event_id,
       },
     })

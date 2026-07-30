@@ -23,8 +23,8 @@
 import { EVENTO, sanitizarError } from '../../lib/asistencia-auditoria.mjs'
 import { MOTIVO as MOTIVO_NUCLEO } from '../../lib/tools/jornales-asistencia.mjs'
 import { ESTADO_SESION, RECHAZO } from '../asistencia-sesion.mjs'
-import { diaAnterior, hoyIso, validarFecha } from './fechas.mjs'
-import { resumirCuadrilla } from './mapeo.mjs'
+import { diaAnterior, hoyIso, validarFecha } from '../../lib/asistencia-servicio/fechas.mjs'
+import { resumirCuadrilla } from '../../lib/asistencia-servicio/mapeo.mjs'
 import {
   URL_ACCION_DEFAULT, dialogoExcepcion, dialogoFecha,
   mensajeCancelado, mensajeConfirmado, mensajeCuadrilla, mensajeInicial,

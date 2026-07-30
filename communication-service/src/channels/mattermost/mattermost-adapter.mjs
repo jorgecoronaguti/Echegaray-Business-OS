@@ -65,8 +65,15 @@ export class MattermostAdapter extends PuertoAdapter {
       message,
       root_id: root_id ?? undefined,
       file_ids: d.file_ids ?? undefined,
-      // trazabilidad: dejamos el correlation_id en props para poder auditar el hilo end-to-end
-      props: { os_correlation_id: evento.correlation_id, os_event_id: evento.id },
+      // trazabilidad: dejamos el correlation_id en props para poder auditar el hilo end-to-end.
+      // `attachments` viaja acá cuando el mensaje es INTERACTIVO (botones y desplegables):
+      // es la vía nativa de Mattermost para una UI dentro del chat, y el OS la usa para que
+      // el jefe de obra no tenga que salir a ningún lado a cargar la asistencia.
+      props: {
+        os_correlation_id: evento.correlation_id,
+        os_event_id: evento.id,
+        ...(Array.isArray(d.attachments) && d.attachments.length ? { attachments: d.attachments } : {}),
+      },
     })
     return { ok: true, platform_ref: post.id }
   }

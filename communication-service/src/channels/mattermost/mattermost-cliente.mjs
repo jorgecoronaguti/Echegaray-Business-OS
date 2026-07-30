@@ -72,6 +72,23 @@ export class MattermostCliente {
   canalDirecto({ usuarioA, usuarioB }) {
     return this._req('POST', '/channels/direct', [usuarioA, usuarioB])
   }
+
+  /**
+   * Abre un diálogo modal. `trigger_id` viene del click y **vence en pocos segundos**: si se
+   * hace trabajo lento antes de llamar acá, Mattermost lo rechaza por vencido.
+   */
+  async abrirDialogo({ trigger_id, url, dialog }) {
+    return this._req('POST', '/actions/dialogs/open', { trigger_id, url, dialog })
+  }
+
+  /**
+   * Reescribe un post ya publicado. Es lo que permite que la carga ocurra en UN mensaje que
+   * se va actualizando, en vez de una conversación que crece hacia abajo.
+   * `PUT` (no `PATCH`): reemplaza el post entero, que es lo que se quiere acá.
+   */
+  async actualizarPost({ id, message, props }) {
+    return this._req('PUT', `/posts/${id}`, { id, message, props: props ?? {} })
+  }
 }
 
 function safeJson(t) {
@@ -91,6 +108,7 @@ export class FakeMattermost {
   constructor() {
     this.posts = []
     this.reacciones = []
+    this.dialogos = []
     this._fallo = null // { veces, status } → falla las próximas N llamadas
     this._seq = 0
   }
@@ -114,6 +132,24 @@ export class FakeMattermost {
     this._maybeFail('crearPost')
     const post = { id: `post_${++this._seq}`, channel_id, message, root_id: root_id ?? '', file_ids: file_ids ?? [], props: props ?? {}, create_at: Date.now() }
     this.posts.push(post)
+    return post
+  }
+
+
+  async abrirDialogo({ trigger_id, url, dialog }) {
+    this._maybeFail('abrirDialogo')
+    const d = { trigger_id, url, dialog, create_at: Date.now() }
+    this.dialogos.push(d)
+    return { ok: true, ...d }
+  }
+
+  async actualizarPost({ id, message, props }) {
+    this._maybeFail('actualizarPost')
+    const post = this.posts.find((p) => p.id === id)
+    if (!post) { const e = new Error(`fake mattermost: no existe el post ${id}`); e.status = 404; throw e }
+    post.message = message ?? post.message
+    post.props = props ?? post.props
+    post.update_at = Date.now()
     return post
   }
 

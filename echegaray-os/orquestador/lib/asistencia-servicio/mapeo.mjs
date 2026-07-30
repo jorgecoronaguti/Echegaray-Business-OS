@@ -1,12 +1,12 @@
-// TRADUCCIÓN entre el núcleo y la pantalla. Sin red, sin base: todo puro y testeable.
+// TRADUCCIÓN entre el núcleo y la interfaz de Mattermost. Sin red, sin base: puro.
 //
 // El núcleo habla de bloques, celdas, formas de fórmula y estados (`presente`, `parcial`,
-// `tarde`, `ausente`). La pantalla habla de personas, un tilde y un número de horas.
-// Esta es la única capa donde se cruzan los dos idiomas — y NO agrega reglas: no decide
-// horas, no decide motivos, no decide filas. Sólo traduce.
+// `tarde`, `ausente`). El mensaje de Mattermost habla de personas, una jornada y una
+// excepción. Esta es la única capa donde se cruzan los dos idiomas — y NO agrega reglas:
+// no decide horas, no decide motivos, no decide filas. Sólo traduce.
 
-import { ESTADO, FORMA, describirCarga } from '../horas-extra.mjs'
-import { SIN_CAMBIO, MOTIVO as MOTIVO_NUCLEO } from '../tools/jornales-asistencia.mjs'
+import { ESTADO, FORMA, describirCarga } from '../../lib/horas-extra.mjs'
+import { SIN_CAMBIO, MOTIVO as MOTIVO_NUCLEO } from '../../lib/tools/jornales-asistencia.mjs'
 import { fechaLegible } from './fechas.mjs'
 
 /** Motivos del núcleo → castellano, para que el jefe lea una frase y no un código. */
@@ -15,13 +15,13 @@ const MENSAJE = Object.freeze({
   [MOTIVO_NUCLEO.PESTANA_NO_ENCONTRADA]: 'No encontré la pestaña de JORNALES para ese año.',
   [MOTIVO_NUCLEO.SIN_PERSONAL]: 'Esa obra no tiene personal cargado en la planilla para el {fecha}.',
   [MOTIVO_NUCLEO.OBRA_DESCONOCIDA]: 'Esa obra no figura en la planilla para el {fecha}.',
-  [MOTIVO_NUCLEO.CONFLICTO_CONCURRENCIA]: 'Alguien cambió la planilla mientras cargabas. No se escribió nada: recargá y revisá.',
+  [MOTIVO_NUCLEO.CONFLICTO_CONCURRENCIA]: 'Alguien cambió la planilla mientras cargabas. No se escribió nada: volvé a abrir la obra y revisá.',
   [MOTIVO_NUCLEO.PESTANA_PROTEGIDA]: 'La pestaña de JORNALES está tomada y no se puede escribir ahora.',
   [MOTIVO_NUCLEO.VERIFICACION_FALLIDA]: 'La planilla no quedó con los valores enviados. Revisala antes de volver a cargar.',
   [MOTIVO_NUCLEO.TEXTO_NO_NUMERICO]: 'Hay una celda con texto escrito a mano. No se toca.',
   [MOTIVO_NUCLEO.FORMULA_CON_ERROR]: 'Hay una celda con una fórmula con error. No se toca.',
-  [MOTIVO_NUCLEO.TRABAJADOR_AMBIGUO]: 'Hay dos personas con el mismo nombre en la obra. Recargá la pantalla.',
-  [MOTIVO_NUCLEO.TRABAJADOR_NO_EN_BLOQUE]: 'Esa persona ya no figura en la obra. Recargá la pantalla.',
+  [MOTIVO_NUCLEO.TRABAJADOR_AMBIGUO]: 'Hay dos personas con el mismo nombre en la obra. Volvé a abrir la obra.',
+  [MOTIVO_NUCLEO.TRABAJADOR_NO_EN_BLOQUE]: 'Esa persona ya no figura en la obra. Volvé a abrir la obra.',
   sobrescritura_no_confirmada: 'Hay cargas anteriores que se estarían pisando.',
   reemplazo_formula_no_confirmado: 'Hay una fórmula que no se puede separar en normal y extra.',
 })
@@ -33,7 +33,7 @@ export function mensajeDeMotivo(motivo, { fecha } = {}) {
   return base.replace('{fecha}', fechaLegible(fecha))
 }
 
-/** Obras del día tal como las espera la pantalla. */
+/** Obras del día tal como las espera el desplegable. */
 export function mapearObras(obras) {
   return (obras || []).map((o) => ({
     clave: o.clave,
@@ -68,8 +68,8 @@ export function resolverJornada({ config, planilla } = {}) {
 
 /** ¿La celda actual prohíbe toda escritura? Texto a mano y fórmulas con error, sí. */
 function bloqueoDe(carga) {
-  if (carga?.forma === FORMA.TEXTO) return 'La celda tiene texto escrito a mano. No se toca.'
-  if (carga?.forma === FORMA.ERROR) return 'La celda tiene una fórmula con error. No se toca.'
+  if (carga?.forma === FORMA.TEXTO) return 'texto escrito a mano, no se toca'
+  if (carga?.forma === FORMA.ERROR) return 'fórmula con error, no se toca'
   return null
 }
 
@@ -94,7 +94,7 @@ export function mapearPersona(p, { jornada } = {}) {
     ya_cargado: cargado,
     bloqueado,
     revisar: carga?.forma === FORMA.NO_INTERPRETABLE
-      ? 'La fórmula de la celda no se puede separar en jornada normal y horas extra.'
+      ? 'la fórmula de la celda no se puede separar en jornada normal y horas extra'
       : null,
     motivo: null,
     aclaracion: null,
@@ -111,8 +111,25 @@ export function mapearPersona(p, { jornada } = {}) {
   return { ...base, sin_cambio: false, presente: true, horas: jornada?.horas ?? null }
 }
 
+/** Lo que se guarda en la sesión por persona: la novedad, sin los datos de presentación. */
+export function novedadPorDefecto(persona) {
+  return {
+    presente: persona.presente === true,
+    horas: persona.horas ?? null,
+    motivo: persona.motivo ?? null,
+    aclaracion: persona.aclaracion ?? null,
+    obra_realizada: persona.obra_realizada ?? null,
+    sin_cambio: persona.sin_cambio === true,
+  }
+}
+
+/** La novedad vigente de una persona: la excepción marcada, o el default de la planilla. */
+export function novedadDe(persona, marcas = {}) {
+  return marcas?.[persona.ref] ?? novedadPorDefecto(persona)
+}
+
 /**
- * Novedad de la pantalla → marca del núcleo.
+ * Novedad de la interfaz → marca del núcleo.
  *
  * Acá vive la decisión de producto de que NO EXISTE un campo de horas extra: si las horas
  * superan la jornada, el excedente se manda como `extras` y el núcleo lo escribe con su
@@ -136,4 +153,28 @@ export function extrasDe({ horas, jornada } = {}) {
   const jn = jornada?.requiere_manual ? null : jornada?.horas
   if (jn == null || horas == null) return 0
   return horas > jn ? redondear(horas - jn) : 0
+}
+
+/**
+ * Resumen de lo que se va a escribir. Cuenta lo que SE ESCRIBE, no lo que hay en la
+ * planilla: quien queda en "sin cambio" no suma horas porque no se le toca la celda.
+ */
+export function resumirCuadrilla({ personal = [], marcas = {}, jornada } = {}) {
+  const r = {
+    trabajadores: personal.length,
+    presentes: 0, ausentes: 0, horas: 0, extra: 0,
+    sin_horas: 0, bloqueadas: 0, sin_cambio: 0, excepciones: 0,
+  }
+  for (const p of personal) {
+    const n = novedadDe(p, marcas)
+    if (p.bloqueado) { r.bloqueadas++; continue }
+    if (marcas?.[p.ref]) r.excepciones++
+    if (n.sin_cambio) { r.sin_cambio++; continue }
+    if (n.presente !== true) { r.ausentes++; continue }
+    if (n.horas == null) { r.sin_horas++; continue }
+    r.presentes++
+    r.horas = redondear(r.horas + Number(n.horas))
+    r.extra = redondear(r.extra + extrasDe({ horas: n.horas, jornada }))
+  }
+  return r
 }

@@ -17,29 +17,22 @@
 //   · responder errores sin stacks y en castellano
 //   · apagarse limpio con SIGTERM
 //
-// ── PUNTO DE MONTAJE DE LA PANTALLA ─────────────────────────────────────────────
-// La pantalla web (`GET /asistencia`, `GET /asistencia/api/contexto`,
-// `GET /asistencia/api/cuadrilla`, `POST /asistencia/api/registrar`) la construye otro frente
-// en `orquestador/asistencia-web/`. Este archivo NO la importa a propósito: recibe su
-// manejador por parámetro (`manejarPantalla`) y lo monta.
+// ── QUÉ ATIENDE ────────────────────────────────────────────────────────────────
+// `POST /asistencia/accion`: los clicks de los botones y desplegables del mensaje
+// interactivo, y el envío de los diálogos. Mattermost exige una URL de callback para su
+// UI nativa — no es una pantalla web: nadie abre un navegador, el jefe de obra ve el
+// mensaje en el canal y toca ahí.
 //
-//   manejarPantalla(req, res) → Promise<boolean|undefined>
-//     · devolvé `true` (o respondé vos y devolvé cualquier cosa habiendo escrito la
-//       respuesta) si atendiste el pedido
-//     · devolvé `false`/`undefined` sin escribir nada si la ruta no es tuya: el servidor
-//       responde 404
-//
-// El cableado final (pasarle el manejador real) lo hace el orquestador de la integración, no
-// este archivo ni el del otro frente. Mientras no exista, `/asistencia` responde un mensaje
-// honesto en castellano en vez de una pantalla en blanco.
+// La lógica de cada click vive en `asistencia-mm/acciones.mjs`; el cableado con la guarda,
+// el núcleo y el cliente de Mattermost, en `asistencia-accion.mjs`. Este archivo es
+// transporte: leer el body con límite y timeout, y responder sin stacks.
 
 import http from 'node:http'
 import net from 'node:net'
 import { fileURLToPath } from 'node:url'
-import { crearComandoAsistencia } from './comando-asistencia.mjs'
+import { crearManejadorAccion } from './asistencia-accion.mjs'
 
-export const RUTA_COMANDO_DEFAULT = '/asistencia/comando'
-export const RUTA_PANTALLA_DEFAULT = '/asistencia'
+export const RUTA_ACCION_DEFAULT = '/asistencia/accion'
 const MAX_BYTES_DEFAULT = 16 * 1024 // un slash command de Mattermost son ~1 KB
 const BODY_TIMEOUT_MS_DEFAULT = 5000
 
@@ -50,7 +43,6 @@ const TEXTO = Object.freeze({
   GRANDE: 'El pedido es demasiado grande.',
   LENTO: 'El pedido tardó demasiado.',
   INTERNO: 'Hubo un problema y no pude atenderte. Probá de nuevo en un minuto.',
-  PANTALLA_NO_MONTADA: 'La pantalla de asistencia todavía no está disponible. Mientras tanto podés cargar la asistencia escribiéndole a @os en el chat.',
 })
 
 /**
@@ -58,42 +50,27 @@ const TEXTO = Object.freeze({
  * el puerto 0 y nunca tocan el 8792 real).
  *
  * @param {object} o
- * @param {Function} o.manejarComando        async ({campos, ip}) => {status, body}
- * @param {Function|null} [o.manejarPantalla] punto de montaje del frente web (ver arriba)
+ * @param {Function} o.manejarAccion         async (payload) => {status, body}
  * @param {string} [o.rutaComando]
- * @param {string} [o.rutaPantalla]
  * @param {number} [o.maxBytes]
  * @param {number} [o.bodyTimeoutMs]
  * @param {object} [o.log]
  * @returns {import('node:http').Server}
  */
 export function crearServidorAsistencia({
-  manejarComando,
-  manejarPantalla = null,
-  rutaComando = RUTA_COMANDO_DEFAULT,
-  rutaPantalla = RUTA_PANTALLA_DEFAULT,
+  manejarAccion,
+  rutaAccion = RUTA_ACCION_DEFAULT,
   maxBytes = MAX_BYTES_DEFAULT,
   bodyTimeoutMs = BODY_TIMEOUT_MS_DEFAULT,
   log = null,
 } = {}) {
-  if (typeof manejarComando !== 'function') throw new Error('crearServidorAsistencia: falta manejarComando')
+  if (typeof manejarAccion !== 'function') throw new Error('crearServidorAsistencia: falta manejarAccion')
 
   return http.createServer(async (req, res) => {
     try {
       const ruta = soloRuta(req.url)
 
-      if (ruta === rutaComando) return await atenderComando(req, res, { manejarComando, maxBytes, bodyTimeoutMs })
-
-      if (ruta === rutaPantalla || ruta.startsWith(`${rutaPantalla}/`)) {
-        if (typeof manejarPantalla === 'function') {
-          const atendido = await manejarPantalla(req, res)
-          if (res.writableEnded || res.headersSent) return undefined
-          if (atendido) return undefined
-        } else {
-          // Sin la pantalla montada, se dice qué pasa y qué hacer. Nunca una página en blanco.
-          return responder(res, 503, { error: TEXTO.PANTALLA_NO_MONTADA })
-        }
-      }
+      if (ruta === rutaAccion) return await atenderAccion(req, res, { manejarAccion, maxBytes, bodyTimeoutMs })
 
       return responder(res, 404, { error: TEXTO.NO_ENCONTRADO })
     } catch (e) {
@@ -104,7 +81,7 @@ export function crearServidorAsistencia({
   })
 }
 
-async function atenderComando(req, res, { manejarComando, maxBytes, bodyTimeoutMs }) {
+async function atenderAccion(req, res, { manejarAccion, maxBytes, bodyTimeoutMs }) {
   if (req.method !== 'POST') return responder(res, 405, { error: TEXTO.METODO })
   const ct = String(req.headers['content-type'] ?? '')
   if (!/application\/x-www-form-urlencoded|application\/json/i.test(ct)) {
@@ -122,7 +99,7 @@ async function atenderComando(req, res, { manejarComando, maxBytes, bodyTimeoutM
   }
   const campos = parsear(raw, ct)
   if (!campos) return responder(res, 400, { error: TEXTO.TIPO })
-  const r = await manejarComando({ campos, ip: ipReal(req) })
+  const r = await manejarAccion({ ...campos, _ip: ipReal(req) })
   return responder(res, r.status, r.body)
 }
 
@@ -211,21 +188,22 @@ async function main() {
     pool = null
   }
 
-  const manejarComando = crearComandoAsistencia({
-    tokenComando: process.env.MM_SLASH_TOKEN_ASISTENCIA || null,
-    secretoEnlace: process.env.ASISTENCIA_ENLACE_SECRETO || null,
-    urlBase: process.env.ASISTENCIA_URL_BASE || null,
-    ttlSegundos: process.env.ASISTENCIA_ENLACE_TTL ? Number(process.env.ASISTENCIA_ENLACE_TTL) : undefined,
+  // Cliente de Mattermost: abre el diálogo y reescribe el post. Sin él la carga no puede
+  // avanzar, así que se falla al arrancar y no en el primer click del jefe de obra.
+  const { MattermostCliente } = await import('../../../communication-service/src/index.mjs')
+  const mattermost = new MattermostCliente({
+    baseUrl: process.env.MM_BASE_URL,
+    token: process.env.MM_BOT_TOKEN,
+  })
+
+  const manejarAccion = crearManejadorAccion({
     port: pool,
+    mattermost,
+    url: process.env.ASISTENCIA_ACCION_URL || null,
     log,
   })
 
-  // LA PANTALLA VIVE EN ESTE MISMO PROCESO. Podría ser un segundo servicio en otro puerto,
-  // pero serían dos units, dos puertos en Caddy y dos lugares donde mirar cuando algo falla,
-  // para dos superficies que sólo tienen sentido juntas: el comando entrega el enlace que
-  // abre la pantalla. Si el módulo de la pantalla no está, el comando sigue funcionando y
-  // `/asistencia` responde su aviso — no se cae el proceso entero por eso.
-  const server = crearServidorAsistencia({ manejarComando, manejarPantalla: null, log })
+  const server = crearServidorAsistencia({ manejarAccion, log })
 
   const cerrar = (s) => { log.info('shutdown', { señal: s }); server.close(() => process.exit(0)) }
   for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => cerrar(s))
@@ -253,12 +231,12 @@ async function main() {
       // 0660: lo abre el dueño y su grupo. El contenedor de Caddy entra como root, que no
       // necesita permiso; nadie más en la máquina lo alcanza.
       try { fs.chmodSync(socket, 0o660) } catch { /* el bind ya ocurrió: no se aborta por esto */ }
-      log.info('servidor de asistencia escuchando', { socket, ruta_comando: RUTA_COMANDO_DEFAULT })
+      log.info('servidor de asistencia escuchando', { socket, ruta_accion: RUTA_ACCION_DEFAULT })
     })
     return
   }
 
-  server.listen(port, host, () => log.info('servidor de asistencia escuchando', { host, port, ruta_comando: RUTA_COMANDO_DEFAULT }))
+  server.listen(port, host, () => log.info('servidor de asistencia escuchando', { host, port, ruta_accion: RUTA_ACCION_DEFAULT }))
 }
 
 // Sólo arranca si se ejecuta directo. Importarlo (tests, integración) no levanta nada.

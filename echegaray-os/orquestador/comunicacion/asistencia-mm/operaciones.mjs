@@ -18,7 +18,7 @@ import { SIN_CAMBIO } from '../../lib/tools/jornales-asistencia.mjs'
 import { sanitizarError } from '../../lib/asistencia-auditoria.mjs'
 import {
   mapearObras, mapearPersona, marcaDe, mensajeDeMotivo, novedadDe, resolverJornada,
-} from './mapeo.mjs'
+} from '../../lib/asistencia-servicio/mapeo.mjs'
 
 /** Horas de jornada como NÚMERO, que es lo que espera el validador de motivos.
  *  Pasarle el objeto entero lo deja siempre en `null` y deja de exigir motivo en una

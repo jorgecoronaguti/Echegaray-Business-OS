@@ -11,7 +11,7 @@
 // Puro: sin red, sin base.
 
 import { normalizarHoras } from '../../lib/horas-extra.mjs'
-import { interpretarFechaEscrita, validarFecha } from './fechas.mjs'
+import { interpretarFechaEscrita, validarFecha } from '../../lib/asistencia-servicio/fechas.mjs'
 import { jornadaNumero } from './operaciones.mjs'
 
 const texto = (v) => (v == null ? '' : String(v).trim())

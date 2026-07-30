@@ -29,8 +29,8 @@
 // Los tres se recortan acá, no se confía en que el dato de origen sea corto.
 
 import { fmt } from '../../lib/horas-extra.mjs'
-import { fechaEnPalabras, fechaLegible } from './fechas.mjs'
-import { extrasDe, novedadDe } from './mapeo.mjs'
+import { fechaEnPalabras, fechaLegible } from '../../lib/asistencia-servicio/fechas.mjs'
+import { extrasDe, novedadDe } from '../../lib/asistencia-servicio/mapeo.mjs'
 
 /** URL pública que Mattermost llama al apretar una acción. Configurable por entorno. */
 export const URL_ACCION_DEFAULT =

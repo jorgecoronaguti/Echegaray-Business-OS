@@ -12,9 +12,13 @@
 // el especialista decide QUÉ hace. Un modelo eligiendo celdas sería más caro y peor.
 
 import { manejarAsistencia, consultarAsistencia } from '../asistencia-flujo.mjs'
+import { iniciarAsistencia } from '../asistencia-inicio.mjs'
 import { clasificar } from '../asistencia-ui.mjs'
 import { parsearConsulta } from '../../lib/asistencia-consultas.mjs'
 import { fechaOperativaSanJuan } from '../../lib/fecha-operativa.mjs'
+
+/** Pedido explícito de cargar conversando, para quien no puede usar los botones. */
+const RE_POR_CHAT = /\bpor\s+(chat|mensaje|acá|aca|aquí|aqui|texto)\b/i
 
 export const especialista = {
   slug: 'personal',
@@ -38,9 +42,19 @@ export const especialista = {
    * Ejecuta. `intencion` es lo que devolvió `reconoce`; si viene null (llegó por área de
    * canal o por razonamiento) se resuelve acá, que es donde vive el conocimiento.
    */
-  async atender({ texto, intencion, port, google, actor, correlationId }) {
+  async atender({ texto, intencion, port, google, actor, correlationId, iniciar = iniciarAsistencia }) {
     const ruta = intencion ?? this.reconoce(texto)
     const comun = { port, google, actor, texto, correlationId }
+
+    // ARRANCAR UNA CARGA abre el mensaje interactivo: la carga ocurre a clicks sobre un
+    // mensaje que se reescribe, no conversando. `asistencia por chat` sigue existiendo como
+    // respaldo para el que no puede tocar botones, y un paso intermedio del formulario viejo
+    // (`obra 1`, `confirmar`) NUNCA cae acá: ya tiene una sesión y sigue por donde venía.
+    const arranca = ruta?.destino === 'registro' && ruta.intencion?.tipo === 'iniciar'
+    if (arranca && !RE_POR_CHAT.test(texto ?? '')) {
+      return iniciar({ port, google, actor, correlationId, url: process.env.ASISTENCIA_ACCION_URL || null })
+    }
+
     // Sin intención reconocible pero en el canal correcto: se ofrece el arranque del flujo.
     if (!ruta) return manejarAsistencia({ ...comun, texto: 'asistencia' })
     return ruta.destino === 'consulta'
