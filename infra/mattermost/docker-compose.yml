@@ -146,6 +146,15 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    # Caddy también publica la pantalla de asistencia del Business OS (ruta /asistencia*),
+    # que la atiende un proceso del HOST, no un contenedor. Desde adentro del contenedor
+    # `127.0.0.1` es el propio Caddy: la única forma correcta de llegar al host es este alias,
+    # que Docker resuelve a la IP del host en el bridge de esta red. Sin esta línea, el
+    # `reverse_proxy host.docker.internal:8792` del Caddyfile no resuelve y da 502.
+    # El servicio del host se liga a esa misma dirección del bridge (privada, no enrutable
+    # desde Internet); Caddy sigue siendo lo único expuesto en 80/443.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       # Sustituidas por Caddy al parsear el Caddyfile (ver ./caddy/Caddyfile). Sin valor por
       # defecto acá para que `docker compose config` no falle si no hay .env; el Caddyfile

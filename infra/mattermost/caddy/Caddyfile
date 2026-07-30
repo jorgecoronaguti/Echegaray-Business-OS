@@ -19,12 +19,71 @@
 #                      admin@example.com (dominio RFC reservado, NO es un mailbox real): setear
 #                      ACME_EMAIL en .env con un correo real antes de exponer a producción.
 #   {$CHAT_DOMAIN}  -> hostname público. Default chat.ecsas.com.ar.
-
+#   {$OS_ASISTENCIA_UPSTREAM} -> dónde escucha el servicio de asistencia del HOST (ver abajo).
+#
+# (Sin línea en blanco antes del bloque global: `caddy fmt` lo pide y si no queda un warning
+#  en cada arranque.)
 {
 	email {$ACME_EMAIL:admin@example.com}
 }
 
 {$CHAT_DOMAIN:chat.ecsas.com.ar} {
-	reverse_proxy mattermost:8065
 	encode gzip
+
+	# ── ASISTENCIA (Business OS) — pantalla de carga + slash command ────────────────
+	#
+	# QUÉ PUBLICA:
+	#   GET  /asistencia?t=<token>          la pantalla que abre el jefe desde el celular
+	#   GET  /asistencia/api/*              contexto y cuadrilla que consume esa pantalla
+	#   POST /asistencia/api/registrar      el registro (escribe en JORNALES)
+	#   POST /asistencia/comando            el slash command /asistencia de Mattermost
+	#
+	# Todo eso lo atiende UN proceso del host (`orquestador/comunicacion/servidor-asistencia.mjs`,
+	# user-unit `echegaray-asistencia-http.service`). Ese proceso NO abre ningún puerto público:
+	# Caddy sigue siendo lo único que mira a Internet.
+	#
+	# CÓMO LLEGA CADDY AL HOST — la parte que no es obvia:
+	# Caddy corre DENTRO del contenedor `echegaray-mm-caddy`. Ahí `127.0.0.1` es el propio
+	# contenedor, no la VM: un `reverse_proxy 127.0.0.1:8792` se proxyaría a sí mismo y daría
+	# 502 para siempre. El mecanismo correcto es `host.docker.internal`, que Docker resuelve a
+	# la IP del host en la red del contenedor gracias a
+	#   extra_hosts: ["host.docker.internal:host-gateway"]
+	# agregado al servicio `caddy` en ../docker-compose.yml.
+	#
+	# Consecuencia sobre el bind del servicio: `host-gateway` apunta al HOST por su dirección
+	# en el bridge (172.18.0.1 hoy, ver `docker network inspect echegaray-mattermost-net`), NO
+	# a 127.0.0.1 — un proceso ligado sólo a loopback NO es alcanzable desde el contenedor. Por
+	# eso el servicio se liga a esa dirección del bridge en producción (ASISTENCIA_HTTP_HOST en
+	# el env file de la unit), que es privada y NO enrutable desde Internet: sólo la alcanzan el
+	# propio host y los contenedores de esta red. El default del código sigue siendo 127.0.0.1
+	# para que nada quede escuchando de más por accidente.
+	#
+	# POR QUÉ EL PREFIJO /asistencia Y NO OTRO: Mattermost usa `/<nombre-del-equipo>/…` para su
+	# webapp. `asistencia` queda RESERVADO como nombre de equipo en este Mattermost — el canal
+	# se llama así, el equipo no, y no debe llamarse así.
+	@asistencia path /asistencia /asistencia/*
+	handle @asistencia {
+		# X-Forwarded-For lo agrega `reverse_proxy` solo: el servidor lee de ahí la IP real
+		# del visitante. Declararlo a mano es redundante y Caddy lo avisa por log.
+		reverse_proxy {$OS_ASISTENCIA_UPSTREAM:host.docker.internal:8792}
+	}
+
+	# Todo lo demás sigue siendo Mattermost, exactamente como antes.
+	handle {
+		reverse_proxy mattermost:8065
+	}
+
+	# El token del enlace viaja en `?t=` porque tiene que poder abrirse desde un click en el
+	# celular. Es de un solo uso y dura 10 minutos, pero igual no tiene por qué quedar escrito
+	# en el log de acceso: se borra del registro. El resto de la URL se loguea normal.
+	log {
+		format filter {
+			wrap console
+			fields {
+				request>uri query {
+					delete t
+				}
+			}
+		}
+	}
 }
