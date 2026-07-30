@@ -13,7 +13,7 @@
 // del propio generador (la col I de los cruces ARCA, que es no-vacía y por eso se conserva).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { estructural, predicadoConDeuda, soloConDeuda, layoutDeuda, notasAncladas } from './proveedores-materiales-pestana.mjs'
+import { estructural, predicadoConDeuda, soloConDeuda, layoutDeuda, notasAncladas, anchoBloque } from './proveedores-materiales-pestana.mjs'
 import { fusionar, VACIO } from '../lib/preservar-anotaciones.mjs'
 
 test('estructural: convierte los \'\' en VACIO y deja intacto todo lo no-vacío', () => {
@@ -147,4 +147,123 @@ test('con la nota re-anclada, la fusión la conserva pese a que la celda del gen
   const out = fusionar([generada], [enPestana])[0]
   assert.equal(out[7], 'reclamar remito 1234', 'la nota del dueño sobrevive la corrida')
   assert.equal(out[4], '', 'la columna Obra propia del generador, VACIA, se limpia (no arrastra basura vieja)')
+})
+
+// ═══ BUG 3 (30/07): ENTRA UN PROVEEDOR NUEVO Y UNA FILA SE QUEDA CON LOS NÚMEROS DE OTRO ═══
+//
+// EL INCIDENTE, TAL CUAL PASÓ. El dueño rotuló OCHO columnas en el bloque de deuda (A–H, hasta
+// "Comentarios") pero escribe a mano hasta la Q (índice 16): al lado de Hormiserv y de Alumetal tenía
+// su propia hoja de cálculo —el nombre otra vez, los importes, "cheque a 4 dias"—. Se cargaron dos
+// facturas nuevas, entró un proveedor nuevo, la lista se reordenó, y la pestaña quedó con la fila de
+// HORMISERV mostrando los importes de ALUMETAL, una fila huérfana con números y sin proveedor, y notas
+// que el dueño había borrado de vuelta a la vista.
+//
+// LA CAUSA. `celdas()` generaba filas del ancho de los RÓTULOS (8). Todo lo que el dueño escribió de la
+// columna 8 en adelante quedaba fuera del footprint del generador: nunca se marcaba con VACIO, y la
+// fusión —que por diseño preserva lo que no es suyo— lo dejaba clavado EN SU FILA FÍSICA. Las notas se
+// re-anclaban bien al proveedor; los restos anchos se quedaban quietos mientras los proveedores se
+// movían. Con la lista reordenada, cada fila terminaba mezclando su nota con el residuo del anterior.
+//
+// EL FIX. anchoBloque(): el bloque se limpia hasta donde REALMENTE llega, y las notas se re-anclan a su
+// proveedor. Lo que se respeta es la NOTA —que habla de un proveedor— no el renglón donde cayó.
+
+const COLS_DUEÑO = ['Proveedor / factura', 'Próximo pago', 'Comprobante', 'Importe', 'Obra', 'Tipo de Pago', 'Categoría', 'Comentarios']
+
+/** El bloque REAL leído de la pestaña el 30/07 (columnas 10–16 = la hoja de cálculo a mano del dueño). */
+function bloqueReal() {
+  const f = (n) => Array.from({ length: n }, () => '')
+  const hormiserv = [...f(8)]; const alumetal = [...f(8)]
+  hormiserv[0] = 'Hormiserv'; hormiserv[2] = '1 fac.'; hormiserv[3] = 10719777
+  hormiserv[7] = 'Esperar a q escriba el cobrador para confirmar'
+  hormiserv[10] = 'hormiserv'; hormiserv[11] = 10719777; hormiserv[12] = 'preguntar por cheque en base a ppto. h21'
+  alumetal[0] = 'Alumetal'; alumetal[2] = '4 fac.'; alumetal[3] = 34644339
+  alumetal[10] = 'Alumetal'; alumetal[11] = 34644339; alumetal[12] = 32219236
+  alumetal[13] = 'cheque a 4 dias'; alumetal[14] = 2425104; alumetal[15] = 16109618; alumetal[16] = 16109618
+  return [hormiserv, alumetal]
+}
+
+/** Arma la fila-cabecera de un proveedor como lo hace grilla(), con el ancho que se le indique. */
+function cabecera(nombre, notas, ancho) {
+  const c = Array.from({ length: ancho }, () => VACIO)
+  c[0] = `=IF(ROUND(S;0)>0;"${nombre}";"")`
+  c[1] = '=IF(...)'; c[2] = '=IF(...)'; c[3] = '=IF(...)'
+  const extra = notas.porProveedor.get(nombre.trim().toLowerCase())
+  if (extra) for (const [j, v] of extra) c[j] = v
+  return c
+}
+
+test('anchoBloque: el ancho real es el mayor entre los rótulos y lo que el dueño escribió', () => {
+  assert.equal(anchoBloque(COLS_DUEÑO, bloqueReal()), 17, 'el dueño rotuló 8 pero llega hasta el índice 16')
+  assert.equal(anchoBloque(COLS_DUEÑO, []), 8, 'sin bloque previo, manda el rótulo')
+  assert.equal(anchoBloque(COLS_DUEÑO, [[], ['x']]), 8, 'si el dueño no pasó el rótulo, el ancho no crece')
+  assert.equal(anchoBloque([], []), 0)
+})
+
+test('EL BUG: con el ancho de los rótulos, Hormiserv se queda con los importes de Alumetal', () => {
+  const L = layoutDeuda(COLS_DUEÑO)
+  const previo = bloqueReal()
+  const NOTAS = notasAncladas(previo, L)
+  // Entra un proveedor nuevo: la lista se reordena y HORMISERV cae en la fila física que era de ALUMETAL.
+  const nuevas = [cabecera('Alumetal', NOTAS, 8), cabecera('Hormiserv', NOTAS, 8)]
+  const out = fusionar(nuevas, previo)
+  // Hormiserv (ahora en la 2ª fila física, la que era de Alumetal) hereda lo que Hormiserv no llena.
+  assert.equal(out[1][13], 'cheque a 4 dias', 'REPRODUCIDO: el residuo de Alumetal sobrevive en la fila de Hormiserv')
+  assert.equal(out[1][15], 16109618, 'REPRODUCIDO: y sus importes también')
+})
+
+test('EL FIX: con el ancho real, cada proveedor se lleva SUS notas y no hereda las del anterior', () => {
+  const L = layoutDeuda(COLS_DUEÑO)
+  const previo = bloqueReal()
+  const NOTAS = notasAncladas(previo, L)
+  const ancho = anchoBloque(COLS_DUEÑO, previo)
+  const nuevas = [cabecera('Alumetal', NOTAS, ancho), cabecera('Hormiserv', NOTAS, ancho)]
+  const out = fusionar(nuevas, previo)
+
+  // Alumetal, que ahora está en la fila que era de Hormiserv, tiene lo suyo y nada de Hormiserv.
+  assert.equal(out[0][13], 'cheque a 4 dias', 'Alumetal se llevó su "cheque a 4 dias" a su fila nueva')
+  assert.equal(out[0][11], 34644339)
+  assert.equal(out[0][16], 16109618)
+  assert.equal(out[0][7], '', 'y NO heredó la nota de Hormiserv que estaba en esta fila física')
+
+  // Hormiserv, en la fila que era de Alumetal, tiene lo suyo y NADA del residuo ancho de Alumetal.
+  assert.equal(out[1][7], 'Esperar a q escriba el cobrador para confirmar', 'su nota viajó con él')
+  assert.equal(out[1][12], 'preguntar por cheque en base a ppto. h21')
+  assert.equal(out[1][13], '', 'EL FIX: el "cheque a 4 dias" de Alumetal YA NO está en la fila de Hormiserv')
+  assert.equal(out[1][14], '', 'ni sus importes')
+  assert.equal(out[1][15], '')
+  assert.equal(out[1][16], '')
+})
+
+test('EL FIX: la lista se ACORTA y no queda una fila huérfana con importes sin proveedor', () => {
+  const L = layoutDeuda(COLS_DUEÑO)
+  const previo = bloqueReal()
+  const NOTAS = notasAncladas(previo, L)
+  const ancho = anchoBloque(COLS_DUEÑO, previo)
+  // A Alumetal le pagaron: su grupo desaparece y esa fila física pasa a ser una fila en blanco del
+  // generador (una de detalle cuya fórmula da ""). Antes su residuo ancho sobrevivía sin dueño.
+  const nuevas = [cabecera('Hormiserv', NOTAS, ancho), Array.from({ length: ancho }, () => VACIO)]
+  const out = fusionar(nuevas, previo)
+  assert.deepEqual(out[1].filter((c) => String(c ?? '') !== ''), [], 'la fila queda LIMPIA: ni importes ni nombre huérfanos')
+})
+
+test('EL FIX: una nota que el dueño BORRÓ no resucita', () => {
+  const L = layoutDeuda(COLS_DUEÑO)
+  // El dueño borró su nota de Hormiserv: en la pestaña la celda está vacía.
+  const previo = bloqueReal()
+  previo[0][7] = ''
+  const NOTAS = notasAncladas(previo, L)
+  assert.equal(NOTAS.porProveedor.get('hormiserv')?.get(7), undefined, 'no hay nada que re-anclar en la col 7')
+  const ancho = anchoBloque(COLS_DUEÑO, previo)
+  const out = fusionar([cabecera('Hormiserv', NOTAS, ancho)], previo)
+  assert.equal(out[0][7], '', 'la celda que el dueño vació sigue vacía — su borrado manda')
+  assert.equal(out[0][12], 'preguntar por cheque en base a ppto. h21', 'y lo que NO borró sigue ahí')
+})
+
+test('EL FIX no rompe el caso simple: sin columnas de más, el ancho y el comportamiento son los de antes', () => {
+  const L = layoutDeuda(COLS_DUEÑO)
+  const previo = [['ACME', 'sin fecha', '2 fac.', 1000, '', '', '', 'reclamar remito 1234']]
+  const NOTAS = notasAncladas(previo, L)
+  assert.equal(anchoBloque(COLS_DUEÑO, previo), 8)
+  const out = fusionar([cabecera('ACME', NOTAS, 8)], previo)
+  assert.equal(out[0][7], 'reclamar remito 1234', 'la nota se conserva igual que siempre')
 })
