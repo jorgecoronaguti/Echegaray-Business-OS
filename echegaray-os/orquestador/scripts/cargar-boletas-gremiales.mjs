@@ -43,6 +43,19 @@ const PESTAÑA = 'Compras'
 const APLICAR = process.argv.includes('--aplicar')
 const iJ = process.argv.indexOf('--json')
 const JSON_PATH = iJ >= 0 ? process.argv[iJ + 1] : null
+// ═══ --proyectar: LA PROYECCIÓN DEL MES QUE VIENE SALE DEL ÚLTIMO PAGO REAL (30/07) ═══
+//
+// El dueño, al ver la diferencia: "reemplaza esa proyeccion con lo real". Las filas de JULIO seguían
+// proyectadas en $7.300 con el pago real en $15.092,62 — el default viejo iba a quedar corto otra vez.
+//
+// LA PROYECCIÓN NO SE PEGA, SE REFERENCIA. Queda como una fórmula que busca POR CONTENIDO el último
+// pago real de esa entidad (entidad + mes base + estado Pagado), así que: si se corrige el mes base,
+// la proyección se corrige sola; si alguien mueve filas, la fórmula sigue encontrándolo; y el origen
+// del número se lee en la propia celda en vez de haber que preguntar de dónde salió.
+const iPr = process.argv.indexOf('--proyectar')
+const PROYECTAR = iPr >= 0 ? String(process.argv[iPr + 1] ?? '').trim().toUpperCase() : null
+const iBa = process.argv.indexOf('--base')
+const MES_BASE = iBa >= 0 ? String(process.argv[iBa + 1] ?? '').trim().toUpperCase() : null
 
 /** El contrato de columnas de "Compras" que este script usa. Índices 0-based. */
 export const COL = {
@@ -168,7 +181,51 @@ export function planBoleta(destino, boleta) {
   }
 }
 
+/**
+ * NÚCLEO PURO: la fórmula que trae el último pago real de una entidad, buscándolo POR CONTENIDO.
+ *
+ * Un `=O460` funcionaría hoy y sería una referencia a una POSICIÓN. Esto busca la fila por lo que dice
+ * —entidad, mes del período y estado Pagado—, que es lo único que no se mueve.
+ */
+export function formulaUltimoPago(entidad, mesBase, hasta = 1200) {
+  return `=SUMIFS($O$4:$O$${hasta};$J$4:$J$${hasta};"${entidad}";$K$4:$K$${hasta};"${mesBase}";$X$4:$X$${hasta};"Pagado")`
+}
+
+/**
+ * NÚCLEO PURO: el plan para reemplazar una proyección por el último pago real.
+ *
+ * NO TOCA UNA FILA PAGADA: si el mes que se quiere proyectar ya se pagó, no hay nada que proyectar y
+ * pisarlo destruiría un hecho con una estimación. Y exige que el mes base esté REALMENTE pagado: una
+ * proyección construida sobre otra proyección es la forma más rápida de propagar un número inventado.
+ */
+export function planProyeccion(destino, base, { entidad, mes, mesBase, importeBase }) {
+  const avisos = []
+  const f = destino.fila
+  if (destino.estado === 'Pagado') {
+    return { celdas: [], avisos: [`${entidad} ${mes} (fila ${f}) ya está PAGADA: no se proyecta lo que ya ocurrió`] }
+  }
+  if (base.estado !== 'Pagado') {
+    return { celdas: [], avisos: [`⚠ ${entidad} ${mesBase} (fila ${base.fila}) no está Pagada: no proyecto sobre otra proyección`] }
+  }
+  const proyectado = aNumeroAR(destino.total)
+  const real = aNumeroAR(importeBase)
+  if (Number.isFinite(proyectado) && Number.isFinite(real) && Math.abs(real - proyectado) > 1) {
+    avisos.push(`${entidad} ${mes}: la proyección pasa de ${$(proyectado)} a ${$(real)} (${real > proyectado ? '+' : ''}${$(real - proyectado)})`)
+  }
+  return {
+    avisos,
+    celdas: [
+      { a1: `O${f}`, formula: formulaUltimoPago(entidad, mesBase), que: `proyección = el último pago real (${mesBase}), por fórmula` },
+      { a1: `L${f}`, valor: `Proyección: el último pago real de ${entidad} (período ${mesBase}). Se reemplaza por la boleta cuando llegue.`, que: 'de dónde sale el número' },
+    ],
+  }
+}
+
+/** Las dos entidades de la Ley 22.250 que el archivo lleva por separado. */
+export const ENTIDADES = ['IERIC', 'FODECO']
+
 async function main() {
+  if (PROYECTAR) return proyectar()
   if (!JSON_PATH) throw new Error('falta --json <archivo>: los datos de las boletas no van hardcodeados')
   const boletas = JSON.parse(readFileSync(JSON_PATH, 'utf8'))
   console.log(`${boletas.length} boleta(s) a cargar · total ${$(boletas.reduce((s, b) => s + b.importe, 0))}`)
@@ -252,6 +309,84 @@ async function main() {
   }
 
   await verificar(google, boletas)
+}
+
+/** REEMPLAZAR LA PROYECCIÓN DE UN MES POR EL ÚLTIMO PAGO REAL. Mismas guardas que la carga. */
+async function proyectar() {
+  if (!MES_BASE) throw new Error('falta --base <MES>: sobre qué pago real se proyecta')
+  const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
+  const filas = await google.readSheetValues(ID, `${PESTAÑA}!A1:AJ1200`)
+  console.log(`proyectar ${PROYECTAR} con el último pago real de ${MES_BASE}`)
+
+  const plan = []
+  for (const entidad of ENTIDADES) {
+    const dest = ubicarFila(filas, { entidad, mes: PROYECTAR })
+    const base = ubicarFila(filas, { entidad, mes: MES_BASE })
+    if (dest.length !== 1) throw new Error(`${entidad} ${PROYECTAR}: encontré ${dest.length} fila(s) (espero exactamente 1). NO escribo nada.`)
+    if (base.length !== 1) throw new Error(`${entidad} ${MES_BASE}: encontré ${base.length} fila(s) (espero exactamente 1). NO escribo nada.`)
+    const p = planProyeccion(dest[0], base[0], { entidad, mes: PROYECTAR, mesBase: MES_BASE, importeBase: base[0].total })
+    console.log(`\n${entidad} → fila ${dest[0].fila} (${dest[0].estado || 'sin estado'}) · base: fila ${base[0].fila} (${base[0].estado}, ${base[0].total})`)
+    p.avisos.forEach((a) => console.log(`   ${a}`))
+    p.celdas.forEach((c) => console.log(`   ${c.a1.padEnd(6)} ${c.que.padEnd(52)} ${String(c.formula ?? c.valor).slice(0, 76)}`))
+    plan.push(...p.celdas)
+  }
+  if (!plan.length) return console.log('\nno hay nada que proyectar.')
+  if (!APLICAR) return console.log(`\nEN SECO: ${plan.length} celda(s). Corré con --aplicar.`)
+
+  const respaldo = `/tmp/Compras-antes-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.json`
+  writeFileSync(respaldo, JSON.stringify(filas, null, 1))
+  console.log(`\nrespaldo → ${respaldo}`)
+  const { tomarSnapshot } = await import('../lib/sheet-snapshot.mjs')
+  console.log(`snapshot → ${await tomarSnapshot({ google, fileId: ID, pestana: PESTAÑA, tool: 'proyectar-gremiales', directive: `el dueño pidió reemplazar la proyección de ${PROYECTAR} por lo real` }) ?? 'no se pudo'}`)
+
+  const meta = await google.getSheetMeta(ID)
+  const hoja = meta.find((h) => h.title === PESTAÑA)
+  const deps = { query }
+  await desbloquear(deps, ID, PESTAÑA)
+  try {
+    const res = await google.spreadsheetBatchUpdate(ID, plan.map((c) => celdaARequest(c, hoja.sheetId)), { yaGuardado: true })
+    if (res?.protegido) throw new Error('el portón descartó la escritura: no se escribió nada')
+    console.log(`  ✔ ${plan.length} celda(s) escritas`)
+  } finally {
+    await bloquear(deps, ID, PESTAÑA, { motivo: `el dueño edita — re-candada tras proyectar ${PROYECTAR} con el pago real de ${MES_BASE}`, por: 'OS' })
+    console.log('  🔒 Compras vuelve a estar candada')
+  }
+
+  await new Promise((r) => setTimeout(r, 4000))
+  const v = await google.readSheetValues(ID, `${PESTAÑA}!A1:AJ1200`)
+  console.log('\n── VERIFICACIÓN ─────────────────────────────────────────')
+  let ok = true
+  for (const entidad of ENTIDADES) {
+    const d = ubicarFila(v, { entidad, mes: PROYECTAR })[0]
+    const b = ubicarFila(v, { entidad, mes: MES_BASE })[0]
+    const iguales = aNumeroAR(d.total) === aNumeroAR(b.total)
+    if (!iguales || d.estado === 'Pagado') ok = false
+    console.log(`  ${entidad.padEnd(7)} ${PROYECTAR} f${d.fila} ${String(d.total).padStart(14)} · real de ${MES_BASE} ${String(b.total).padStart(14)}  ${iguales ? '✓' : '✖'} · estado ${d.estado}`)
+  }
+  for (const r of ['Compras!A1:AJ1200', 'CAJA!A1:I145', 'Cargas Sociales!A1:R60', 'Cash Flow Mensual!A1:R60', 'Cash Flow Semanal!A1:R60']) {
+    const e = (await google.readSheetValues(ID, r)).flat().filter((c) => /#(REF|VALUE|ERROR|N\/A|NAME|DIV)/i.test(String(c ?? ''))).length
+    console.log(`  ${r.split('!')[0].padEnd(20)} ${e} celda(s) en error`)
+    if (e) ok = false
+  }
+  console.log(ok ? '\n✔ la proyección sale del último pago real, por fórmula.' : '\n✖ revisá el respaldo.')
+  if (!ok) process.exitCode = 1
+}
+
+/** Una celda del plan → el request de la API. Una sola definición para los dos modos. */
+function celdaARequest(c, sheetId) {
+  const m = /^([A-Z]+)(\d+)$/.exec(c.a1)
+  const j = m[1].split('').reduce((a, ch) => a * 26 + (ch.charCodeAt(0) - 64), 0) - 1
+  const i = Number(m[2]) - 1
+  const valor = c.formula ? { formulaValue: c.formula }
+    : typeof c.valor === 'number' ? { numberValue: c.valor }
+      : { stringValue: String(c.valor) }
+  return {
+    updateCells: {
+      range: { sheetId, startRowIndex: i, endRowIndex: i + 1, startColumnIndex: j, endColumnIndex: j + 1 },
+      rows: [{ values: [{ userEnteredValue: valor }] }],
+      fields: 'userEnteredValue',
+    },
+  }
 }
 
 /** La verificación: la fila, la fecha de caja (que es lo que mueve el cash flow) y los controles. */

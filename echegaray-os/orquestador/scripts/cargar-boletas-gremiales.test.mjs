@@ -6,7 +6,7 @@
 // y que no toque ni una de las columnas calculadas.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ubicarFila, planBoleta, aFechaAR, aNumeroAR, mismaFecha, PROHIBIDAS, VOCABULARIO, COL } from './cargar-boletas-gremiales.mjs'
+import { ubicarFila, planBoleta, planProyeccion, formulaUltimoPago, ENTIDADES, aFechaAR, aNumeroAR, mismaFecha, PROHIBIDAS, VOCABULARIO, COL } from './cargar-boletas-gremiales.mjs'
 
 /** La forma REAL de Compras al 30/07, recortada a las filas de gremiales. */
 const COMPRAS = () => {
@@ -148,4 +148,54 @@ test('LA VERIFICACIÓN COMPARA FECHAS, NO CADENAS: Sheets devuelve "30/7/2026" s
   assert.ok(!mismaFecha('7/30/2026', '30/07/2026'), 'mes y día no se intercambian: el archivo es es-AR')
   assert.ok(!mismaFecha('', '30/07/2026'), 'una fecha de caja vacía es un hallazgo, no una coincidencia')
   assert.ok(!mismaFecha(null, null))
+})
+
+// ── LA PROYECCIÓN DEL MES QUE VIENE ─────────────────────────────────────────────────────────────────
+// El dueño, al ver que lo proyectado era menos de la mitad de lo real: "reemplaza esa proyeccion con
+// lo real". La proyección no se pega: se referencia el último pago real, POR CONTENIDO.
+
+const pagadaJunio = { fila: 460, estado: 'Pagado', total: '$15.092,62', comprobante: '5715127' }
+const proyJulio = { fila: 475, estado: 'Proyectado', total: '$7.300,00', comprobante: '' }
+
+test('LA PROYECCIÓN ES UNA FÓRMULA que busca el último pago real por CONTENIDO, no una copia', () => {
+  const p = planProyeccion(proyJulio, pagadaJunio, { entidad: 'IERIC', mes: 'JULIO', mesBase: 'JUNIO', importeBase: '$15.092,62' })
+  const o = p.celdas.find((c) => c.a1 === 'O475')
+  // Un "=O460" apuntaría a una POSICIÓN; esto busca por entidad + período + estado Pagado.
+  assert.match(o.formula, /^=SUMIFS\(\$O\$4:\$O\$1200;/)
+  assert.match(o.formula, /"IERIC"/)
+  assert.match(o.formula, /"JUNIO"/)
+  assert.match(o.formula, /"Pagado"/)
+  assert.ok(!/O460/.test(o.formula), 'no puede depender de un número de fila')
+  // Y la celda de al lado dice de dónde sale, para no tener que preguntar.
+  assert.match(p.celdas.find((c) => c.a1 === 'L475').valor, /último pago real de IERIC \(período JUNIO\)/)
+  assert.ok(p.avisos.some((a) => /7\.300,00.*15\.092,62/.test(a)), `tiene que declarar el salto: ${p.avisos.join(' | ')}`)
+})
+
+test('NO PISA UN MES YA PAGADO: no se proyecta lo que ya ocurrió', () => {
+  const p = planProyeccion(pagadaJunio, pagadaJunio, { entidad: 'IERIC', mes: 'JUNIO', mesBase: 'MAYO', importeBase: '$14.097,19' })
+  assert.deepEqual(p.celdas, [])
+  assert.match(p.avisos[0], /ya está PAGADA/)
+})
+
+test('NO PROYECTA SOBRE OTRA PROYECCIÓN: el mes base tiene que estar pagado de verdad', () => {
+  // Sin esto se propaga un número inventado de mes en mes y parece un dato.
+  const baseProyectada = { fila: 475, estado: 'Proyectado', total: '$7.300,00', comprobante: '' }
+  const p = planProyeccion({ fila: 490, estado: 'Proyectado', total: '$7.300,00' }, baseProyectada,
+    { entidad: 'IERIC', mes: 'AGOSTO', mesBase: 'JULIO', importeBase: '$7.300,00' })
+  assert.deepEqual(p.celdas, [])
+  assert.match(p.avisos[0], /no proyecto sobre otra proyección/)
+})
+
+test('la proyección tampoco toca columnas calculadas, ni el estado', () => {
+  const p = planProyeccion(proyJulio, pagadaJunio, { entidad: 'FODECO', mes: 'JULIO', mesBase: 'JUNIO', importeBase: '$15.092,62' })
+  for (const c of p.celdas) assert.ok(!PROHIBIDAS.includes(/^[A-Z]+/.exec(c.a1)[0]), `${c.a1} es calculada`)
+  // El estado sigue siendo Proyectado: no se pagó todavía. Tocarlo diría que salió plata que no salió.
+  assert.ok(!p.celdas.some((c) => /^X\d+$/.test(c.a1)), 'el estado no se toca: sigue proyectado')
+  assert.ok(!p.celdas.some((c) => /^(Q|C|H|T|P|G)\d+$/.test(c.a1)), 'ni la fecha, ni el comprobante, ni el pago')
+})
+
+test('formulaUltimoPago va en locale es-AR y las dos entidades están declaradas', () => {
+  const f = formulaUltimoPago('FODECO', 'JUNIO')
+  assert.ok(!f.replace(/"[^"]*"/g, '""').includes(','), `separador con coma: ${f}`)
+  assert.deepEqual(ENTIDADES, ['IERIC', 'FODECO'])
 })
