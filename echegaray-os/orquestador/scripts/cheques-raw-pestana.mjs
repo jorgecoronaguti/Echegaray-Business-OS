@@ -44,6 +44,38 @@ export const COL = {
 }
 export const FILA0 = 4
 
+/**
+ * UNA FECHA DE POSTGRES → "YYYY-MM-DD", venga como texto o como objeto Date.
+ *
+ * ═══ EL DEFECTO QUE ESTO ARREGLA (30/07, mismo día que se creó la réplica) ═══
+ *
+ * Era `String(c.fecha_pago).slice(0, 10)`. El driver de Postgres devuelve una columna `date` como
+ * objeto **Date**, no como texto, así que `String(fecha)` daba "Fri Jul 31 2026 00:00:00 GMT-0300…"
+ * y el `slice(0,10)` se quedaba con **"Fri Jul 31"** — SIN EL AÑO. La réplica escribía eso en la
+ * columna de fecha de pago de los nueve cheques.
+ *
+ * Y NO DABA ERROR. La celda quedaba como TEXTO con pinta de fecha: se veía "Fri Jul 31", no había
+ * un solo `#VALUE!`, y la verificación de la réplica —que contaba filas y buscaba celdas en error—
+ * la daba por buena. El daño apareció recién dos pasos después: toda fórmula que compara fechas
+ * sobre la réplica devolvía cero. La banda "¿cuándo se vuelve caja?" mostraba "—" en los cuatro
+ * tramos teniendo $10.290.000 en cartera con fecha 31/07. Se cazó preguntándole a la planilla:
+ * `ISNUMBER(_CHEQUES_RAW!F9)` → FALSE.
+ *
+ * LA LECCIÓN: una fecha mal escrita no grita, calla. Por eso además se pide `fecha_pago::text` en el
+ * SELECT (que es lo que ya hacían los otros scripts) y hay un test con un Date real.
+ */
+export function fechaISO(v) {
+  if (v == null || v === '') return ''
+  if (v instanceof Date) {
+    if (Number.isNaN(v.getTime())) return ''
+    // En UTC: una columna `date` viene a medianoche y el desplazamiento local restaría un día.
+    return v.toISOString().slice(0, 10)
+  }
+  const s = String(v)
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s)
+  return m ? m[0] : ''
+}
+
 /** NÚCLEO PURO: una fila de la réplica. Sin red ni base. */
 export function fila(c) {
   return [
@@ -52,7 +84,7 @@ export function fila(c) {
     String(c.banco ?? ''),
     String(c.librador ?? ''),
     String(c.contraparte ?? ''),
-    c.fecha_pago ? String(c.fecha_pago).slice(0, 10) : '',
+    fechaISO(c.fecha_pago),
     Number(c.importe) || 0,
     String(c.estado ?? ''),
     String(c.cuenta ?? ''),
@@ -67,7 +99,9 @@ async function main() {
   // ORDEN CONTRATO: recibidos primero (la cartera que se vuelve caja), después emitidos (lo que sale),
   // y dentro de cada uno por fecha de pago — que es cuándo el valor se convierte en plata.
   const { rows } = await query(
-    `select tipo, numero, banco, librador, contraparte, fecha_pago, importe, estado,
+    // fecha_pago::text — que el driver no la convierta en Date. Ver fechaISO(): así llegó a escribirse
+    // "Fri Jul 31" (sin año) en la columna de fechas, sin dar un solo error.
+    `select tipo, numero, banco, librador, contraparte, fecha_pago::text, importe, estado,
             cuenta, orden_pago, obra, corte
        from public.cheques
       order by tipo desc, (fecha_pago is null), fecha_pago, numero`)
