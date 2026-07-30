@@ -14,8 +14,9 @@
 
 import { query, withTx } from '../lib/db.mjs'
 import { estadoSistema } from '../comunicacion/estado-sistema.mjs'
-import { manejarAsistencia } from '../comunicacion/asistencia-flujo.mjs'
-import { parsearComando, COMANDO } from '../comunicacion/asistencia-ui.mjs'
+import { manejarAsistencia, consultarAsistencia } from '../comunicacion/asistencia-flujo.mjs'
+import { clasificar, COMANDO } from '../comunicacion/asistencia-ui.mjs'
+import { parsearConsulta } from '../lib/asistencia-consultas.mjs'
 import { makeGoogleClient, WORKSPACE_SCOPES } from '../lib/google.mjs'
 import { operadorEmail, getTokenFor } from '../lib/google-oauth.mjs'
 
@@ -37,22 +38,24 @@ function esEstadoDelSistema(comando) {
  * se duplica la gramática acá) y se exige que la intención sea de INICIO: `asistencia`.
  * Los pasos siguientes del flujo se atienden porque el jefe ya tiene sesión abierta.
  */
-async function esAsistencia(comando, port, plataformaUserId) {
-  const i = parsearComando(comando)
-  if (!i) return false
-  if (i.tipo === 'iniciar') return true
+async function rutearAsistencia(comando, port, plataformaUserId) {
+  const r = clasificar(comando, { parsearConsulta })
+  if (!r.destino) return null
+  // Una CONSULTA se atiende siempre: no necesita formulario abierto.
+  if (r.destino === 'consulta') return r
+  if (r.intencion?.tipo === 'iniciar') return r
   // Un `confirmar` / `obra 2` sueltos sólo son de este skill si ESTA persona tiene una
   // sesión abierta. Acotado al usuario a propósito: sin el filtro, el `confirmar` de
   // cualquiera se rutearía al skill porque otro tenía un formulario abierto.
-  if (!plataformaUserId) return false
+  if (!plataformaUserId) return null
   try {
     const { rows } = await port.query(
       `select 1 from comunicacion.asistencia_sesiones
         where plataforma = 'mattermost' and plataforma_user_id = $1
           and estado = 'abierta' and expira_at > now() limit 1`,
       [plataformaUserId])
-    return rows.length > 0
-  } catch { return false }
+    return rows.length > 0 ? r : null
+  } catch { return null }
 }
 
 /** Cliente de Google para el skill: actúa como la operadora del OS (misma identidad
@@ -72,9 +75,12 @@ export async function comunicacionResponderHandler(task, ctx) {
   let texto
   let datos = {}
   let privado = false
-  if (await esAsistencia(inp.comando, port, inp.actor?.id)) {
-    // Operación DETERMINÍSTICA: no interviene el Director IA ni un especialista.
-    const r = await manejarAsistencia({
+  const ruta = await rutearAsistencia(inp.comando, port, inp.actor?.id)
+  if (ruta) {
+    // Operación DETERMINÍSTICA en los dos caminos: no interviene el Director IA ni un
+    // especialista. Qué fila, qué columna y qué número se leen o se escriben lo decide
+    // código sobre la planilla.
+    const comun = {
       port,
       google: ctx.google ?? googleParaAsistencia(ctx),
       actor: {
@@ -85,10 +91,13 @@ export async function comunicacionResponderHandler(task, ctx) {
       },
       texto: inp.comando,
       correlationId: inp.correlation_id,
-    })
+    }
+    const r = ruta.destino === 'consulta'
+      ? await consultarAsistencia({ ...comun, consulta: ruta.consulta })
+      : await manejarAsistencia(comun)
     texto = r.texto
     privado = r.privado === true
-    datos = { skill: 'personal.registrar_asistencia', estado: r.estado }
+    datos = { skill: `personal.${ruta.destino === 'consulta' ? 'consultar' : 'registrar'}_asistencia`, estado: r.estado }
   } else if (esEstadoDelSistema(inp.comando)) {
     const estado = await estadoSistema({ query }) // trabajo real: datos reales de orq
     texto = estado.texto

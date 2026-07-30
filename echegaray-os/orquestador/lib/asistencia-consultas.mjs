@@ -23,7 +23,7 @@ import {
 } from './jornales-estructura.mjs'
 import { interpretarCarga, FORMA, fmt } from './horas-extra.mjs'
 import { leerEstructuraJornales, pestanaOperativaPara, JORNALES_SPREADSHEET_ID, MOTIVO } from './tools/jornales-asistencia.mjs'
-import { fechaOperativaSanJuan, fechaAr, nombreDia, limpiar, fechaDesdeTexto } from '../comunicacion/asistencia-ui.mjs'
+import { fechaOperativaSanJuan, fechaAr, nombreDia, limpiar, fechaDesdeTexto } from './fecha-operativa.mjs'
 
 /** Techo del período consultado. Un rango enorme no es una consulta útil: es una
  *  exportación, y además obligaría a leer varias pestañas de años distintos. */

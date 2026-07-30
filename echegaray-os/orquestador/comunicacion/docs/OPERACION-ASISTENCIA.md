@@ -132,6 +132,52 @@ recibe "no tenés permiso" y queda auditado en `personal.asistencia.denied`.
 
 ---
 
+## 3bis. Consultar (sólo lectura)
+
+Se responde leyendo JORNALES; no abre formulario y no escribe nada. También por DM: la
+asistencia del personal no sale en un canal compartido ni cuando se consulta.
+
+```
+asistencia de hoy                        quién trabajó hoy
+asistencia del 29/07                     asistencia del 29 de julio
+asistencia de la obra Messinas           asistencia en Taller
+asistencia de Aguero                     cuánto trabajó Aguero Cristian
+asistencia de Aguero del 16/07 al 30/07  entre el 16/7 y el 30/7
+horas extra de hoy                       horas extra del 29/07
+horas extra de Messinas                  horas extra de Aguero
+horas extra de julio                     horas extra del 16/7 al 31/7
+```
+
+Toda respuesta distingue **horas normales · horas extra · total**, y las cargas que no se
+pueden separar en normal/extra se cuentan aparte en vez de mentir el desglose.
+
+### El ruteo entre cargar y consultar
+
+Las dos cosas empiezan con la misma palabra, así que hay una regla explícita:
+
+| Escribís | Va a |
+|---|---|
+| `asistencia` (sola) | **cargar** |
+| `cargar/registrar/corregir asistencia [del 29/07]` | **cargar** |
+| `obra 2`, `3 ausente`, `1 extra 2`, `revisar`, `confirmar`… | **cargar** (paso del formulario) |
+| `asistencia de hoy`, `asistencia del 29/07`, `horas extra de…` | **consultar** |
+
+Es decir: para cargar OTRA fecha se escribe `cargar asistencia del 29/07`, porque
+`asistencia del 29/07` a secas es la consulta de ese día.
+
+### Límites conocidos de las consultas
+
+- Sin fecha ni período (`cuánto trabajó Aguero`) responde **sólo el día de hoy**, no la
+  quincena. No se inventa una ventana por defecto.
+- Máximo **62 días** por consulta (`ORQ_CONSULTA_MAX_DIAS`). Más que eso es una exportación.
+- No entiende todavía "esta quincena", "esta semana", "el mes pasado".
+- `horas extra 29/07` (fecha sin preposición) no se toma como consulta, para no pisar el
+  comando de carga con fecha.
+- Un rango que cruza el 1 de enero necesita la pestaña del otro año; si no existe se
+  informa, no se adivina.
+
+---
+
 ## 4. Operación diaria
 
 ### Corregir una carga
@@ -201,6 +247,9 @@ La fórmula se compone sólo con números validados en servidor. No hay forma de
 fórmula desde el chat: cualquier cosa que no sea un número se rechaza antes.
 
 ### Consultar la auditoría
+
+La auditoría cubre también las consultas (`operacion: 'consulta'`), así que queda registro
+de quién preguntó qué y cuándo.
 
 ```sql
 select ocurrido_at, evento, mattermost_username, fecha_operativa, obra_normalizada,

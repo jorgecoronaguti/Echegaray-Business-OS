@@ -22,6 +22,7 @@ import {
 import { tienePermiso, PERMISO_ASISTENCIA_WRITE } from '../lib/asistencia-permisos.mjs'
 import { crearAuditor, EVENTO, payloadConfirmacion, sanitizarError } from '../lib/asistencia-auditoria.mjs'
 import { ESTADO, normalizarHoras } from '../lib/horas-extra.mjs'
+import { responderConsulta, renderConsulta } from '../lib/asistencia-consultas.mjs'
 import { SesionesPostgres, ESTADO_SESION, RECHAZO } from './asistencia-sesion.mjs'
 import * as ui from './asistencia-ui.mjs'
 
@@ -356,4 +357,49 @@ async function cancelar(d) {
     })
   }
   return resp(ui.renderCancelada(), 'cancelado')
+}
+
+/**
+ * CONSULTAR asistencia u horas extra. Camino de sólo LECTURA: no abre sesión, no planifica
+ * y no escribe nada — por eso no comparte la máquina de estados del registro.
+ *
+ * Sigue exigiendo identidad (queda auditado quién preguntó) y sigue respondiendo en
+ * privado: la asistencia del personal no sale en un canal compartido ni cuando se consulta.
+ */
+export async function consultarAsistencia(o = {}) {
+  const { port, google, actor, consulta, correlationId, ahora = new Date() } = o
+  const permisos = o.permisos ?? ((a) => tienePermiso(port, { plataformaUserId: a, permiso: PERMISO_ASISTENCIA_WRITE }))
+  const auditar = o.auditar ?? crearAuditor(port, { correlationId })
+
+  const permiso = await permisos(actor?.plataforma_user_id)
+  if (!permiso.ok) {
+    await auditar(EVENTO.DENIED, {
+      status: 'denied', operacion: 'consulta',
+      mattermost_user_id: actor?.plataforma_user_id ?? null,
+      mattermost_username: actor?.plataforma_username ?? null,
+      error_code: permiso.motivo, modo_permisos: permiso.modo ?? null,
+    })
+    return resp(ui.renderDenegado(permiso.motivo), 'denegado')
+  }
+
+  try {
+    const r = await responderConsulta(google, consulta, { ahora })
+    await auditar(EVENTO.SHEET_READ, {
+      status: r.ok ? 'ok' : 'sin_datos', operacion: 'consulta',
+      tipo_consulta: consulta?.tipo ?? null, alcance: consulta?.alcance ?? null,
+      fecha_operativa: r.datos?.desde ?? consulta?.fecha ?? null,
+      sheet_name: r.datos?.pestana ?? null,
+      modo_permisos: permiso.modo ?? null,
+      mattermost_user_id: actor?.plataforma_user_id ?? null,
+      mattermost_username: actor?.plataforma_username ?? null,
+      error_code: r.ok ? null : r.motivo,
+    })
+    // El módulo de consultas ya trae el texto para los casos de error; el render completo
+    // se arma sólo cuando hay datos.
+    const texto = r.ok ? renderConsulta({ consulta, datos: r.datos }) : r.texto
+    return resp(texto, r.ok ? 'consulta' : `consulta_${r.motivo}`)
+  } catch (e) {
+    await auditar(EVENTO.FAILED, { status: 'failed', operacion: 'consulta', error_message_sanitized: sanitizarError(e) })
+    return resp(ui.renderError({ mensaje: sanitizarError(e) }), 'error')
+  }
 }
