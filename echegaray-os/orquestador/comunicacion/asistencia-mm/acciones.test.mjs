@@ -1,0 +1,405 @@
+// TESTS DEL RUTEADOR. Sin red y sin base: el único doble es el cliente de Google
+// (`lib/jornales-fixture.mjs`) y el cliente de Mattermost. El núcleo de JORNALES, el
+// catálogo de motivos y el repositorio de sesiones son los REALES — probar contra una
+// imitación del núcleo habría dejado probada la imitación.
+//
+// Regla de oro respetada: NUNCA se corre el pipeline real ni se toca la planilla productiva.
+
+import test from 'node:test'
+import assert from 'node:assert/strict'
+
+import { fakeGoogleJornales, idxCol } from '../../lib/jornales-fixture.mjs'
+import { ESTADO_SESION } from '../asistencia-sesion.mjs'
+import { validarDialogo, validarMensaje } from './contrato-mattermost.mjs'
+import { PASO, crearRuteadorAcciones } from './acciones.mjs'
+import {
+  FECHA_HOY, OBRA, USUARIO, accionesDe, attachmentsDe, crearEntorno, googleQueFalla,
+  jornadaConfigDoble, mattermostDoble, motivosReales, nucleoReal, permisosDoble, textoDe,
+} from './dobles-de-prueba.mjs'
+
+/** Toda respuesta que re-renderiza el post tiene que ser un mensaje válido de Mattermost. */
+function respuestaValida(r) {
+  assert.equal(r.status, 200)
+  if (r.body?.update) {
+    const v = validarMensaje(r.body.update)
+    assert.equal(v.ok, true, `update inválido: ${v.fallas.join(' | ')}`)
+  }
+  return r
+}
+
+const elegirObra = (e, clave = OBRA.REVOQUE) => e.accion({ paso: PASO.OBRA, selected_option: clave })
+const registrar = (e, extra = {}) => e.accion({ paso: PASO.REGISTRAR, ...extra })
+
+// ── CONSTRUCCIÓN ────────────────────────────────────────────────────────────────
+
+test('el ruteador exige sus dependencias al construirse, no al primer click', () => {
+  assert.throws(() => crearRuteadorAcciones({}), /faltan dependencias/)
+  assert.throws(
+    () => crearRuteadorAcciones({
+      google: {}, nucleo: { listarObrasPorFecha() {} }, sesiones: {}, permisos: {},
+      motivos: motivosReales, mattermost: {},
+    }),
+    /nucleo\.registrarAsistencia/,
+  )
+  assert.doesNotThrow(() => crearRuteadorAcciones({
+    google: {}, nucleo: nucleoReal, sesiones: {}, permisos: permisosDoble(),
+    motivos: motivosReales, mattermost: mattermostDoble(),
+  }))
+})
+
+// ── FECHA ───────────────────────────────────────────────────────────────────────
+
+test('Hoy: publica la fecha del día con las obras de la planilla', async () => {
+  const e = await crearEntorno()
+  const r = respuestaValida(await e.accion({ paso: PASO.FECHA, valor: 'hoy' }))
+  assert.match(textoDe(r), /jueves 30\/07\/2026/)
+  const select = accionesDe(r).find((a) => a.type === 'select')
+  assert.deepEqual(select.options.map((o) => o.value).sort(),
+    [OBRA.ESTRELLA, OBRA.MESSINAS, OBRA.REVOQUE].sort())
+})
+
+test('Ayer: retrocede un día y vuelve a leer la planilla', async () => {
+  const e = await crearEntorno()
+  const r = respuestaValida(await e.accion({ paso: PASO.FECHA, valor: 'ayer' }))
+  assert.match(textoDe(r), /miércoles 29\/07\/2026/)
+})
+
+test('Otra fecha…: abre el diálogo y no toca el post', async () => {
+  const e = await crearEntorno()
+  const r = await e.accion({ paso: PASO.FECHA, valor: 'otra' })
+  assert.equal(e.mattermost.dialogos.length, 1)
+  assert.equal(validarDialogo(e.mattermost.dialogos[0]).ok, true)
+  assert.equal(r.body.update, undefined)
+})
+
+test('fecha futura: se rechaza con una frase clara y no se lee la planilla', async () => {
+  const e = await crearEntorno()
+  const r = await e.dialogo('asistencia.fecha', { fecha: '31/07/2026' })
+  assert.deepEqual(r.body.errors, { fecha: 'No se puede cargar asistencia de una fecha futura.' })
+  assert.equal(e.mattermost.posts.length, 0)
+})
+
+test('fecha escrita a mano: se acepta 29/07/2026 y se actualiza el post por la API', async () => {
+  const e = await crearEntorno()
+  const r = await e.dialogo('asistencia.fecha', { fecha: '29/07/2026' })
+  assert.deepEqual(r.body, {})
+  assert.equal(e.mattermost.posts.length, 1)
+  assert.match(JSON.stringify(e.mattermost.posts[0].props), /miércoles 29\/07\/2026/)
+})
+
+test('fecha que no existe en JORNALES: se declara, no se inventa una columna', async () => {
+  // El 26/07 es domingo y el bloque de julio no tiene esa columna.
+  const e = await crearEntorno({ hoy: () => '2026-07-26' })
+  const r = respuestaValida(await e.accion({ paso: PASO.FECHA, valor: 'hoy' }))
+  assert.match(textoDe(r), /todavía no tiene la columna del 26\/07\/2026/)
+  assert.equal(accionesDe(r).some((a) => a.type === 'select'), false)
+})
+
+// ── OBRA Y CUADRILLA ────────────────────────────────────────────────────────────
+
+test('elegir la obra: llega la cuadrilla entera, presente con la jornada del día', async () => {
+  const e = await crearEntorno()
+  const r = respuestaValida(await elegirObra(e))
+  const texto = textoDe(r)
+  for (const n of ['Aguero Cristian', 'Quiroga Sebastian', 'Emanuel Alaniz']) {
+    assert.match(texto, new RegExp(n))
+  }
+  assert.match(texto, /9 h/)
+  assert.deepEqual(accionesDe(r).map((a) => a.name), ['Marcar excepción', 'Registrar', 'Cancelar'])
+  assert.equal(e.eventos.some((x) => x.evento.endsWith('sheet_read')), true)
+})
+
+test('obra que no está en la planilla: lo dice y vuelve a la lista de obras', async () => {
+  const e = await crearEntorno()
+  const r = respuestaValida(await elegirObra(e, OBRA.INEXISTENTE))
+  assert.match(textoDe(r), /no figura en la planilla/)
+  assert.equal(accionesDe(r).some((a) => a.id === 'registrar'), false)
+})
+
+test('sin elegir obra no se puede registrar', async () => {
+  const e = await crearEntorno()
+  const r = await registrar(e)
+  assert.match(r.body.ephemeral_text, /Primero elegí la obra/)
+})
+
+test('la obra ya cargada arranca en «sin cambio»: no se pisa lo que alguien cargó', async () => {
+  const e = await crearEntorno()
+  const r = respuestaValida(await elegirObra(e, OBRA.MESSINAS))
+  assert.match(textoDe(r), /ya cargado/)
+  const confirmada = respuestaValida(await registrar(e))
+  assert.match(textoDe(confirmada), /ya decía lo mismo/)
+  assert.equal(e.google.escrituras.length, 0, 'no se escribe una celda que no cambia')
+})
+
+// ── EXCEPCIONES ─────────────────────────────────────────────────────────────────
+
+test('marcar excepción: abre el diálogo de esa persona, con sus datos precargados', async () => {
+  const e = await crearEntorno()
+  await elegirObra(e)
+  const cuadrilla = await elegirObra(e)
+  const ref = accionesDe(cuadrilla).find((a) => a.id === 'excepcion')
+    .options.find((o) => o.text.includes('Quiroga')).value
+  const r = respuestaValida(await e.accion({ paso: PASO.EXCEPCION, selected_option: ref }))
+  const d = e.mattermost.dialogos.at(-1)
+  assert.equal(validarDialogo(d).ok, true)
+  assert.match(d.dialog.title, /Quiroga/)
+  assert.equal(JSON.parse(d.dialog.state).ref, ref)
+  assert.equal(r.body.update !== undefined, true, 'el desplegable se limpia re-renderizando')
+})
+
+test('aplicar la excepción: se guarda, se ve en el post y se resume distinto', async () => {
+  const e = await crearEntorno()
+  const cuadrilla = await elegirObra(e)
+  const ref = accionesDe(cuadrilla).find((a) => a.id === 'excepcion')
+    .options.find((o) => o.text.includes('Quiroga')).value
+  const r = await e.dialogo('asistencia.excepcion', { presente: 'no', horas: '0', motivo: 'falta' }, { ref })
+  assert.deepEqual(r.body, {})
+  const post = e.mattermost.posts.at(-1)
+  assert.equal(validarMensaje(post).ok, true)
+  const texto = JSON.stringify(post.props)
+  assert.match(texto, /Quiroga Sebastian — no vino/)
+  assert.match(texto, /"title":"Ausentes","value":"1"/)
+  assert.match(texto, /"title":"Horas","value":"18 h"/)
+})
+
+test('la excepción sin motivo se rechaza en el campo, no con un banner genérico', async () => {
+  const e = await crearEntorno()
+  const cuadrilla = await elegirObra(e)
+  const ref = accionesDe(cuadrilla).find((a) => a.id === 'excepcion').options[0].value
+  const r = await e.dialogo('asistencia.excepcion', { presente: 'no', horas: '0' }, { ref })
+  assert.equal(r.body.errors?.motivo !== undefined, true, JSON.stringify(r.body))
+  assert.match(r.body.errors.motivo, /motivo/i)
+})
+
+test('el accidente de trabajo exige la línea que después necesita la ART', async () => {
+  const e = await crearEntorno()
+  const cuadrilla = await elegirObra(e)
+  const ref = accionesDe(cuadrilla).find((a) => a.id === 'excepcion').options[0].value
+  const mal = await e.dialogo('asistencia.excepcion', { presente: 'no', horas: '0', motivo: 'accidente' }, { ref })
+  assert.match(JSON.stringify(mal.body), /ART/)
+  const bien = await e.dialogo('asistencia.excepcion',
+    { presente: 'no', horas: '0', motivo: 'accidente', aclaracion: 'se cortó la mano cortando hierro' }, { ref })
+  assert.deepEqual(bien.body, {})
+})
+
+test('horas por encima de la jornada: se cargan como total y el núcleo separa el extra', async () => {
+  const e = await crearEntorno()
+  const cuadrilla = await elegirObra(e)
+  const ref = accionesDe(cuadrilla).find((a) => a.id === 'excepcion').options[0].value
+  await e.dialogo('asistencia.excepcion', { presente: 'si', horas: '11' }, { ref })
+  const r = respuestaValida(await registrar(e))
+  assert.match(textoDe(r), /11 h \(2 extra\)/)
+  const escrito = e.google.escrituras[0].data.map((d) => d.values[0][0])
+  assert.equal(escrito.includes('=9+2'), true, `se esperaba la fórmula de horas extra: ${escrito}`)
+})
+
+// ── REGISTRAR ───────────────────────────────────────────────────────────────────
+
+test('el caso normal son DOS interacciones: elegir la obra y apretar Registrar', async () => {
+  const e = await crearEntorno()
+  const uno = respuestaValida(await elegirObra(e))
+  const dos = respuestaValida(await registrar(e))
+  assert.equal(accionesDe(uno).some((a) => a.id === 'registrar'), true)
+  assert.match(textoDe(dos), /Asistencia registrada/)
+  assert.match(textoDe(dos), /3 celdas escritas en Obreros 26/)
+  assert.match(textoDe(dos), /Cargó @jefe\.obra/)
+  assert.equal(accionesDe(dos).length, 0, 'el post confirmado no se vuelve a apretar')
+  assert.equal(e.google.escrituras.length, 1, 'una sola escritura, en batch')
+  assert.equal(e.google.escrituras[0].data.length, 3)
+  assert.equal(e.sesiones.filas[0].estado, ESTADO_SESION.CONFIRMADA)
+  assert.equal(e.eventos.filter((x) => x.evento.endsWith('written')).length, 1)
+})
+
+test('doble clic en Registrar a la vez: gana uno solo y no se escribe dos veces', async () => {
+  const e = await crearEntorno()
+  await elegirObra(e)
+  const [a, b] = await Promise.all([registrar(e), registrar(e)])
+  const textos = [textoDe(a), textoDe(b)]
+  assert.equal(textos.filter((t) => /Asistencia registrada/.test(t)).length, 1)
+  assert.equal(textos.filter((t) => /ya se registró/.test(t)).length, 1)
+  assert.equal(e.google.escrituras.length, 1)
+})
+
+test('doble clic en Registrar, uno después del otro: el segundo no escribe nada', async () => {
+  const e = await crearEntorno()
+  await elegirObra(e)
+  await registrar(e)
+  const segundo = await registrar(e)
+  assert.match(segundo.body.ephemeral_text, /ya se cerró/)
+  assert.equal(e.google.escrituras.length, 1)
+})
+
+test('pisar una carga previa exige un sí aparte antes de escribir', async () => {
+  const e = await crearEntorno()
+  const cuadrilla = await elegirObra(e, OBRA.MESSINAS)
+  const ref = accionesDe(cuadrilla).find((a) => a.id === 'excepcion').options[0].value
+  await e.dialogo('asistencia.excepcion', { presente: 'si', horas: '6', motivo: 'se_retiro_antes' }, { ref })
+  const pide = respuestaValida(await registrar(e))
+  assert.match(textoDe(pide), /Se pisan 1 carga/)
+  assert.equal(accionesDe(pide).find((a) => a.id === 'registrar').name, 'Registrar igual')
+  assert.equal(e.google.escrituras.length, 0)
+  const listo = respuestaValida(await registrar(e, { confirmar: true }))
+  assert.match(textoDe(listo), /Asistencia registrada/)
+  assert.equal(e.google.escrituras.length, 1)
+})
+
+test('si la cuadrilla cambió en la planilla, se avisa y NO se escribe', async () => {
+  const e = await crearEntorno()
+  await elegirObra(e)
+  // Alguien mueve a una persona de obra mientras el jefe mira la lista.
+  e.google.grid.filas[22][idxCol('AB')] = { valor: 'MESSINAS', numero: null, formula: null, derivada: false }
+  const r = respuestaValida(await registrar(e))
+  assert.match(textoDe(r), /cuadrilla de la obra cambió/)
+  assert.equal(e.google.escrituras.length, 0)
+  const listo = respuestaValida(await registrar(e))
+  assert.match(textoDe(listo), /Asistencia registrada/)
+  assert.equal(listo.body.update.props.attachments[0].text.includes('Emanuel Alaniz'), false)
+})
+
+test('alguien tocó la celda entre el plan y la escritura: se corta todo, no se escribe a medias', async () => {
+  let lecturas = 0
+  const google = fakeGoogleJornales({
+    alLeer(grid) {
+      lecturas++
+      // La 3ª lectura es la que hace `registrarAsistencia` antes de escribir.
+      if (lecturas === 3) grid.filas[20][idxCol('R')] = { valor: '4', numero: 4, formula: null, derivada: false }
+    },
+  })
+  const e = await crearEntorno({ google })
+  await elegirObra(e)
+  const r = respuestaValida(await registrar(e))
+  assert.match(textoDe(r), /Alguien cambió la planilla/)
+  assert.equal(e.google.escrituras.length, 0)
+  assert.equal(e.sesiones.filas[0].estado, ESTADO_SESION.FALLIDA,
+    'la sesión queda fallida para que la clave de idempotencia no quede quemada')
+})
+
+test('sin jornada del día (sábado) no se registra: faltan las horas y no se inventan', async () => {
+  const e = await crearEntorno({ hoy: () => '2026-07-25' })
+  const cuadrilla = respuestaValida(await elegirObra(e))
+  assert.match(textoDe(cuadrilla), /Falta indicar las horas/)
+  const r = await registrar(e)
+  assert.match(textoDe(r), /faltan las horas/i)
+  assert.equal(e.google.escrituras.length, 0)
+})
+
+test('feriado: la cuadrilla arranca en franco con 0 h, no presente', async () => {
+  const e = await crearEntorno({
+    jornadaConfig: jornadaConfigDoble({ horas: 0, origen: 'feriado', etiqueta: 'Día de prueba' }),
+  })
+  const r = respuestaValida(await elegirObra(e))
+  assert.match(textoDe(r), /feriado/)
+  assert.match(textoDe(r), /no vino · franco/)
+})
+
+// ── CANCELAR, PERMISOS Y SESIÓN ─────────────────────────────────────────────────
+
+test('cancelar: cierra la sesión y deja dicho que no se escribió nada', async () => {
+  const e = await crearEntorno()
+  await elegirObra(e)
+  const r = respuestaValida(await e.accion({ paso: PASO.CANCELAR }))
+  assert.match(textoDe(r), /No se escribió nada/)
+  assert.equal(e.sesiones.filas[0].estado, ESTADO_SESION.CANCELADA)
+  assert.equal(e.google.escrituras.length, 0)
+  const despues = await elegirObra(e)
+  assert.match(despues.body.ephemeral_text, /ya se cerró/)
+})
+
+test('sin formulario abierto: se explica cómo abrir uno, sin tocar la planilla', async () => {
+  const e = await crearEntorno({ abrirSesion: false })
+  const r = await elegirObra(e)
+  assert.match(r.body.ephemeral_text, /escribí «asistencia»/i)
+  assert.equal(e.google.lecturas, 0)
+})
+
+test('sin permiso: se niega antes de leer la planilla y queda auditado', async () => {
+  const e = await crearEntorno({ permisos: permisosDoble(false) })
+  const r = await elegirObra(e)
+  assert.match(r.body.ephemeral_text, /No tenés habilitada/)
+  assert.equal(e.google.lecturas, 0, 'nada de leer la planilla para después negar')
+  assert.equal(e.eventos.some((x) => x.evento.endsWith('denied')), true)
+})
+
+test('un pedido sin identidad no se atiende', async () => {
+  const e = await crearEntorno()
+  for (const payload of [null, {}, { context: { paso: 'obra' } }, 'texto']) {
+    const r = await e.rutear({ payload })
+    assert.equal(r.status, 400)
+    assert.match(r.body.ephemeral_text, /No entendí esa acción/)
+  }
+})
+
+test('un paso desconocido no rompe nada', async () => {
+  const e = await crearEntorno()
+  const r = await e.accion({ paso: 'borrar_todo' })
+  assert.equal(r.status, 200)
+  assert.match(r.body.ephemeral_text, /No entendí esa acción/)
+  assert.equal(e.google.escrituras.length, 0)
+})
+
+// ── ERRORES: NUNCA UN STACK, UNA RUTA NI UN SECRETO ─────────────────────────────
+
+const FILTRACIONES = [/Bearer/i, /sk-/, /\/home\//, /\.mjs/, /at .*\(/, /Error:/, /secret/i, /token/i]
+
+function sinFiltraciones(texto) {
+  for (const re of FILTRACIONES) {
+    assert.doesNotMatch(texto, re, `la respuesta filtró algo técnico: ${texto}`)
+  }
+}
+
+test('si la planilla revienta, el jefe lee una frase y nadie ve un stack', async () => {
+  const e = await crearEntorno({ google: googleQueFalla() })
+  for (const r of [await e.accion({ paso: PASO.FECHA, valor: 'hoy' }), await elegirObra(e), await registrar(e)]) {
+    assert.equal(r.status, 200)
+    sinFiltraciones(textoDe(r))
+  }
+})
+
+test('si la escritura falla, tampoco se filtra nada y la sesión queda reintentable', async () => {
+  const google = fakeGoogleJornales({
+    alEscribir() { throw new Error('Bearer sk-SECRETO falló en /home/jorge/orquestador/lib/google.mjs:42') },
+  })
+  const e = await crearEntorno({ google })
+  await elegirObra(e)
+  const r = respuestaValida(await registrar(e))
+  sinFiltraciones(textoDe(r))
+  assert.match(textoDe(r), /No se pudo escribir en la planilla/)
+  assert.equal(e.sesiones.filas[0].estado, ESTADO_SESION.FALLIDA)
+})
+
+test('si no se puede abrir el diálogo, se avisa y el post queda como estaba', async () => {
+  const e = await crearEntorno({ mattermost: mattermostDoble({ abre: false }) })
+  const cuadrilla = await elegirObra(e)
+  const ref = accionesDe(cuadrilla).find((a) => a.id === 'excepcion').options[0].value
+  const r = await e.accion({ paso: PASO.EXCEPCION, selected_option: ref })
+  assert.match(r.body.ephemeral_text, /No se pudo abrir el formulario/)
+  sinFiltraciones(textoDe(r))
+})
+
+test('la pestaña candada por el dueño no se fuerza: se informa y se corta', async () => {
+  const e = await crearEntorno({ google: fakeGoogleJornales({ protegido: true }) })
+  await elegirObra(e)
+  const r = respuestaValida(await registrar(e))
+  assert.match(textoDe(r), /está tomada/)
+  sinFiltraciones(textoDe(r))
+})
+
+// ── EL CONTRATO, A LO LARGO DEL RECORRIDO ───────────────────────────────────────────
+
+test('todo lo que se publica en el recorrido completo es JSON válido de Mattermost', async () => {
+  const e = await crearEntorno()
+  const pasos = [
+    await e.accion({ paso: PASO.FECHA, valor: 'hoy' }),
+    await elegirObra(e),
+    await e.accion({ paso: PASO.EXCEPCION, selected_option: 'inexistente' }),
+    await registrar(e),
+  ]
+  for (const r of pasos) {
+    respuestaValida(r)
+    for (const a of attachmentsDe(r)) assert.equal(typeof a.fallback, 'string')
+  }
+  for (const d of e.mattermost.dialogos) assert.equal(validarDialogo(d).ok, true)
+  for (const p of e.mattermost.posts) assert.equal(validarMensaje(p).ok, true)
+  assert.equal(e.sesion.plataforma_user_id, USUARIO.id)
+  assert.equal(e.sesion.fecha_operativa, FECHA_HOY)
+})
