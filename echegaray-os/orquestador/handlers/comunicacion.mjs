@@ -17,7 +17,7 @@
 // `comunicacion/especialistas/` y una fila en `comunicacion.canales_area`.
 
 import { query, withTx } from '../lib/db.mjs'
-import { resolver, renderCatalogo, VIA } from '../comunicacion/director.mjs'
+import { resolver, renderCatalogo, areaDelCanal, VIA } from '../comunicacion/director.mjs'
 import { makeGoogleClient, WORKSPACE_SCOPES } from '../lib/google.mjs'
 import { operadorEmail, getTokenFor } from '../lib/google-oauth.mjs'
 
@@ -78,12 +78,21 @@ export async function comunicacionResponderHandler(task, ctx) {
     }
   }
 
-  // PRIVACIDAD. Un especialista puede declarar que su respuesta no sale en un canal
-  // compartido (datos de personas, de sueldos). Se responde por DM con el bot; si el DM no
-  // se puede resolver, se falla cerrado: mejor no responder que publicar el dato.
+  // PRIVACIDAD, resuelta por CONTEXTO y no por reflejo.
+  //
+  // Un especialista declara `privado: true` cuando su respuesta lleva datos reservados
+  // (personas, horas, sueldos). Eso NO significa "siempre por DM": significa "no en
+  // cualquier lado". Si el mensaje nació en un canal PRIVADO que el OS tiene atado a esa
+  // misma área, ese canal ES el lugar correcto — es el espacio operativo que la empresa
+  // eligió para el tema, y desviar a DM ahí rompe la conversación de equipo: el resto del
+  // canal ve la pregunta y no la respuesta. Sólo cuando el origen no es un canal atado al
+  // área se responde por DM.
   let channelId = inp.channel_id
   let rootPostId = inp.root_post_id
-  if (privado && typeof ctx.canalPrivadoPara === 'function') {
+  const canalPropio = Boolean(ruta.area) && ruta.area === (await areaDelCanal(port, inp.channel_id))?.area
+  if (privado && canalPropio) {
+    ctx.logger?.info?.('comunicacion: respuesta reservada en su canal operativo', { area: ruta.area })
+  } else if (privado && typeof ctx.canalPrivadoPara === 'function') {
     const dm = await ctx.canalPrivadoPara(inp.actor?.id)
     if (!dm) throw new Error('comunicacion: no pude resolver el canal privado — no publico un dato reservado en un canal compartido')
     if (dm !== channelId) rootPostId = null // hilo propio del DM

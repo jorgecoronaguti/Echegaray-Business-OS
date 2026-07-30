@@ -16,16 +16,28 @@ const DRY = process.argv.includes('--dry-run')
 
 /** Canal → área canónica (public.area_canonica). Es la ÚNICA lista, y es de instalación:
  *  el runtime la lee de la base, no de acá. */
+/** Canales operativos a instalar. HOY hay uno solo: el de asistencia, que es la única
+ *  capacidad con especialista operativo. Agregar Compras el día que exista su especialista
+ *  es sumar una entrada acá — no tocar el Director ni el handler. */
 const CANALES = [
-  { nombre: 'Asistencia', slug: 'asistencia', area: 'personas', proposito: 'Carga y consulta de asistencia diaria de obreros.' },
-  { nombre: 'Personal', slug: 'personal', area: 'personas', proposito: 'Legajos, jornales, altas y bajas.' },
-  { nombre: 'Compras', slug: 'compras', area: 'compras', proposito: 'Pedidos, órdenes de compra y proveedores.' },
-  { nombre: 'Administración y Finanzas', slug: 'administracion-finanzas', area: 'administracion_finanzas', proposito: 'Caja, cobranzas, pagos y posición financiera.' },
-  { nombre: 'Obras', slug: 'obras', area: 'obras', proposito: 'Avance, producción, certificaciones y adicionales.' },
-  { nombre: 'Calidad', slug: 'calidad', area: 'calidad', proposito: 'No conformidades, controles y ensayos.' },
-  { nombre: 'Comercial', slug: 'comercial', area: 'comercial', proposito: 'Cotizaciones, licitaciones y clientes.' },
-  { nombre: 'Gestión General', slug: 'gestion-general', area: 'gestion_general', proposito: 'Estado del OS, tablero y decisiones de dirección.' },
-  { nombre: 'Contabilidad y Legales', slug: 'contabilidad-legales', area: 'contabilidad_legales', proposito: 'Impuestos, contratos y obligaciones.' },
+  {
+    nombre: 'Asistencia',
+    slug: 'asistencia',
+    area: 'personas',
+    proposito: 'Registro, corrección y consulta de la asistencia diaria de obreros (JORNALES).',
+    fijado: [
+      'Canal operativo de asistencia de Echegaray Construcciones.',
+      '',
+      'Usá @os para registrar, corregir o consultar JORNALES.',
+      '',
+      'Ejemplos:',
+      '@os asistencia',
+      '@os registrar asistencia de hoy',
+      '@os editar asistencia de ayer',
+      '@os quién faltó ayer',
+      '@os horas extra del 17/01',
+    ].join('\n'),
+  },
 ]
 
 const api = async (ruta, opt = {}) => {
@@ -69,7 +81,21 @@ async function main() {
                          activo = true, actualizado_at = now()`,
         [canal.id, c.nombre, c.area])
     }
-    console.log(`  ${existia ? 'reutilizado' : 'creado    '} #${c.slug.padEnd(24)} → área ${c.area.padEnd(24)} ${miembro ? '· @os ya estaba' : '· @os agregado'}`)
+    // MENSAJE FIJADO, idempotente: si ya hay uno fijado del bot con el mismo texto, no se
+    // publica otro. Correr el instalador dos veces no llena el canal de mensajes iguales.
+    let fijado = 'sin mensaje'
+    if (c.fijado && !DRY) {
+      const pins = await api(`/channels/${canal.id}/pinned`)
+      const ya = Object.values(pins.posts ?? {}).find((p) => p.user_id === BOT && p.message.trim() === c.fijado.trim())
+      if (ya) fijado = `ya fijado (${ya.id})`
+      else {
+        const post = await api('/posts', { method: 'POST', body: JSON.stringify({ channel_id: canal.id, message: c.fijado }) })
+        await api(`/posts/${post.id}/pin`, { method: 'POST' })
+        fijado = `fijado ahora (${post.id})`
+      }
+    }
+    console.log(`  ${existia ? 'reutilizado' : 'creado    '} #${c.slug.padEnd(20)} → área ${c.area.padEnd(12)} · tipo ${canal.type} · ${miembro ? '@os ya estaba' : '@os agregado'} · ${fijado}`)
+    console.log(`     channel_id ${canal.id} · team ${canal.team_id}`)
   }
 
   const { rows } = await query(
