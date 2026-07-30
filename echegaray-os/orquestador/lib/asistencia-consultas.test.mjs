@@ -51,7 +51,7 @@ test('«de hoy», «de ayer» y una pregunta suelta se entienden como consulta d
     parsear('asistencia de hoy'),
     {
       tipo: 'asistencia', alcance: 'todo', fecha: FECHA_HOY, desde: null, hasta: null,
-      obra: null, trabajador: null, alcance_ambiguo: false,
+      obra: null, trabajador: null, alcance_ambiguo: false, fecha_ilegible: null,
     },
   )
   assert.equal(parsear('quién trabajó hoy').fecha, FECHA_HOY)
@@ -355,4 +355,49 @@ test('sin una consulta reconocible se devuelve la ayuda, no un error técnico', 
   assert.equal(r.motivo, MOTIVO_CONSULTA.NO_ES_CONSULTA)
   assert.match(r.texto, /Consultar asistencia/)
   assert.match(r.texto, /horas extra de hoy/)
+})
+
+// ── FECHA PEDIDA QUE NO SE ENTIENDE ─────────────────────────────────────────
+// Encontrado validando contra el archivo real: "asistencia del 32/13" contestaba los
+// números de HOY. Datos reales, día equivocado — el peor tipo de respuesta.
+
+test('una fecha imposible NO se contesta por hoy: se dice que no se entendió', async () => {
+  for (const texto of ['asistencia del 32/13', 'asistencia del 30/02', 'horas extra del 00/00']) {
+    const q = parsear(texto)
+    assert.ok(q, `${texto} sigue siendo una consulta`)
+    assert.ok(q.fecha_ilegible, `${texto} marca la fecha como ilegible`)
+    const r = await responderConsulta(fakeGoogleJornales(), q, { ahora: AHORA })
+    assert.equal(r.ok, false, texto)
+    assert.equal(r.motivo, MOTIVO_CONSULTA.FECHA_ILEGIBLE, texto)
+    assert.match(r.texto, /No entend/)
+    assert.doesNotMatch(r.texto, /Presentes:/, 'no puede colarse el resumen de otro día')
+  }
+})
+
+test('la respuesta enseña el formato correcto y no filtra internals', async () => {
+  const { r } = await responder('asistencia del 32/13')
+  assert.match(r.texto, /29\/07|29 de julio|hoy/)
+  assert.ok(!/1s0KlEURR5Udi7vvy|\.mjs|Obreros/.test(r.texto))
+  assert.ok(r.texto.length < 200, 'breve, usable en el celular')
+})
+
+test('un rango con una punta ilegible tampoco se completa solo', async () => {
+  const q = parsear('asistencia del 32/13 al 45/99')
+  assert.ok(q?.fecha_ilegible)
+  const r = await responderConsulta(fakeGoogleJornales(), q, { ahora: AHORA })
+  assert.equal(r.motivo, MOTIVO_CONSULTA.FECHA_ILEGIBLE)
+})
+
+test('las fechas que SÍ se entienden siguen funcionando igual (sin falsos positivos)', async () => {
+  for (const texto of ['asistencia de hoy', 'asistencia de ayer', 'asistencia del 29/07',
+    'asistencia del 29 de julio', 'horas extra de julio', 'asistencia del 15/07 al 29/07']) {
+    const q = parsear(texto)
+    assert.ok(q, texto)
+    assert.equal(q.fecha_ilegible, null, `${texto} NO debe marcarse ilegible`)
+  }
+})
+
+test('el 31 de un mes de 30 días no se acepta en silencio', () => {
+  assert.equal(interpretarFecha('31/04', FECHA_HOY), null)
+  assert.ok(parsear('asistencia del 31/04')?.fecha_ilegible)
 })

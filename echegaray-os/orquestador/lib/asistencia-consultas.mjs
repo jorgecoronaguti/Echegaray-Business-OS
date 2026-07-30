@@ -35,6 +35,7 @@ export const MOTIVO_CONSULTA = Object.freeze({
   OBRA_DESCONOCIDA: 'obra_desconocida', OBRA_AMBIGUA: 'obra_ambigua',
   TRABAJADOR_DESCONOCIDO: 'trabajador_desconocido', TRABAJADOR_AMBIGUO: 'trabajador_ambiguo',
   SIN_COINCIDENCIA: 'sin_coincidencia', PESTANA_NO_ENCONTRADA: MOTIVO.PESTANA_NO_ENCONTRADA,
+  FECHA_ILEGIBLE: 'fecha_ilegible',
 })
 
 // ── FECHAS ──────────────────────────────────────────────────────────────────
@@ -74,8 +75,20 @@ export function interpretarFecha(expr, isoContexto) {
   const t = String(expr ?? '').trim()
   if (t in RELATIVAS) return isoContexto ? sumarDias(isoContexto, RELATIVAS[t]) : null
   const dm = new RegExp(`^(\\d{1,2})\\s+de\\s+(${NOMBRES_MES})(?:\\s+del?\\s+(\\d{4}))?$`).exec(t)
-  if (dm) return armarIso(+dm[1], MESES[dm[2]], dm[3] ? +dm[3] : anioDe(isoContexto))
-  return fechaDesdeTexto(t, isoContexto)
+  if (dm) return existe(armarIso(+dm[1], MESES[dm[2]], dm[3] ? +dm[3] : anioDe(isoContexto)))
+  return existe(fechaDesdeTexto(t, isoContexto))
+}
+
+/**
+ * Un ISO que además existe en el calendario. "31/04" y "30/02" pasan los rangos sueltos
+ * (día ≤ 31, mes ≤ 12) y producen 2026-04-31 / 2026-02-30, que después la aritmética de
+ * días corre solita al 1/5 y al 2/3: la consulta contestaría por un día que nadie pidió.
+ */
+function existe(iso) {
+  const m = RE_ISO.exec(String(iso ?? ''))
+  if (!m) return null
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]))
+  return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3] ? iso : null
 }
 
 // ── PARSEO DE LA INTENCIÓN ──────────────────────────────────────────────────
@@ -139,28 +152,42 @@ export function parsearConsulta(texto, { isoContexto } = {}) {
     obra: alcance === 'obra' || ambiguo ? ent.texto : null,
     trabajador: alcance === 'trabajador' ? ent.texto : null,
     alcance_ambiguo: ambiguo,
+    fecha_ilegible: f.ilegible ?? null,
   }
 }
 
-/** Saca del texto la fecha o el período y devuelve lo que queda para buscar la entidad.
- *  Un período gana a una fecha suelta, y una fecha suelta gana a un mes completo. */
+/**
+ * Saca del texto la fecha o el período y devuelve lo que queda para buscar la entidad.
+ * Un período gana a una fecha suelta, y una fecha suelta gana a un mes completo.
+ *
+ * `ilegible`: el texto SÍ traía una expresión con forma de fecha pero no se pudo resolver
+ * ("del 32/13", "del 30/02"). No es lo mismo que no haber pedido fecha: si se confundieran,
+ * la consulta contestaría por HOY y el jefe leería números de otro día creyendo que son los
+ * que pidió. Se marca acá y el que responde corta con un error explícito.
+ */
 function extraerFechas(t, isoContexto) {
+  const r = extraerFechasBase(t, isoContexto)
+  if (r.conFecha && r.fecha == null && r.desde == null && r.hasta == null) r.ilegible = r.expr ?? null
+  return r
+}
+
+function extraerFechasBase(t, isoContexto) {
   const per = RE_ENTRE.exec(t) ?? RE_DEL_AL.exec(t)
   if (per) {
     let desde = interpretarFecha(per[1], isoContexto)
     let hasta = interpretarFecha(per[2], isoContexto)
     if (desde && hasta && desde > hasta) [desde, hasta] = [hasta, desde]
-    return { resto: t.replace(per[0], ' '), fecha: null, desde, hasta, conFecha: true }
+    return { resto: t.replace(per[0], ' '), fecha: null, desde, hasta, conFecha: true, expr: `${per[1]} a ${per[2]}` }
   }
   const una = RE_FECHA_MARCADA.exec(t) ?? RE_REL_SUELTA.exec(t)
-  if (una) return { resto: t.replace(una[0], ' '), fecha: interpretarFecha(una[1], isoContexto), desde: null, hasta: null, conFecha: true }
+  if (una) return { resto: t.replace(una[0], ' '), fecha: interpretarFecha(una[1], isoContexto), desde: null, hasta: null, conFecha: true, expr: una[1] }
   const mes = RE_MES_SOLO.exec(t)
   if (!mes) return { resto: t, fecha: null, desde: null, hasta: null, conFecha: false }
   const a = mes[2] ? +mes[2] : anioDe(isoContexto)
   const m = MESES[mes[1]]
   const hay = Number.isFinite(a)
   return {
-    resto: t.replace(mes[0], ' '), fecha: null, conFecha: true,
+    resto: t.replace(mes[0], ' '), fecha: null, conFecha: true, expr: mes[1],
     desde: hay ? armarIso(1, m, a) : null, hasta: hay ? armarIso(ultimoDiaMes(a, m), m, a) : null,
   }
 }
@@ -243,6 +270,15 @@ export async function responderConsulta(google, consulta, {
 } = {}) {
   const ayuda = { ok: false, motivo: MOTIVO_CONSULTA.NO_ES_CONSULTA, texto: renderAyudaConsultas() }
   if (!consulta) return ayuda
+  // Pidió una fecha que no se entiende. Contestar por HOY sería peor que no contestar: los
+  // números serían reales, pero de otro día que el jefe no pidió.
+  if (consulta.fecha_ilegible) {
+    return {
+      ok: false,
+      motivo: MOTIVO_CONSULTA.FECHA_ILEGIBLE,
+      texto: `No entendí la fecha «${String(consulta.fecha_ilegible).slice(0, 30)}». Escribila como 29/07, "29 de julio", o decime "hoy".`,
+    }
+  }
   const hoy = fechaOperativaSanJuan(ahora)
   let desde = consulta.desde ?? consulta.fecha ?? hoy
   let hasta = consulta.hasta ?? consulta.fecha ?? hoy
