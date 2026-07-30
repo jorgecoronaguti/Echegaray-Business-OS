@@ -67,12 +67,26 @@ test('fila: el importe es NÚMERO (la banda lo suma con SUMIFS) y los nulos son 
 test('el contrato de columnas es el que referencian las pestañas visibles', () => {
   // Si este orden cambia, las fórmulas de "Cheques Recibidos"/"Cheques Emitidos" apuntan a otra cosa
   // EN SILENCIO. El mapa COL y el orden de COLUMNAS tienen que seguir de acuerdo.
-  assert.equal(COLUMNAS.length, 11)
+  assert.equal(COLUMNAS.length, 12)
   assert.equal(FILA0, 4)
   const letra = (i) => String.fromCharCode(65 + i)
-  const esperado = { tipo: 0, numero: 1, banco: 2, librador: 3, contraparte: 4, fechaPago: 5, importe: 6, estado: 7, cuenta: 8, ordenPago: 9, obra: 10 }
+  const esperado = { tipo: 0, numero: 1, banco: 2, librador: 3, contraparte: 4, fechaPago: 5, importe: 6, estado: 7, cuenta: 8, ordenPago: 9, obra: 10, libradorCuit: 11 }
   for (const [k, i] of Object.entries(esperado)) assert.equal(COL[k], letra(i), `${k} va en la columna ${letra(i)}`)
   assert.equal(COLUMNAS[esperado.fechaPago][0], 'Fecha de pago')
   assert.equal(COLUMNAS[esperado.importe][0], 'Importe')
   assert.equal(COLUMNAS[esperado.estado][0], 'Estado')
+  // EL CUIT SE AGREGÓ AL FINAL, A PROPÓSITO. Insertarlo al lado del Librador (columna E) habría
+  // corrido importe, estado y fecha una letra: la cartera de CAJA pasaría a sumar texto EN SILENCIO.
+  assert.equal(COLUMNAS[11][0], 'CUIT del librador')
+  assert.equal(COL.libradorCuit, 'L')
+})
+
+test('el CUIT que el dueño tipeó a mano viaja en la réplica', () => {
+  // Él completó Librador y CUIT en la pestaña vieja porque el registro por operación no los traía.
+  // Los dos datos están hoy en public.cheques: reemplazar esa pestaña hereda su trabajo, no lo borra.
+  const f = fila({ tipo: 'recibido', numero: '00000514', librador: 'Mineral Del Rio SA', librador_cuit: '33710848659', importe: 290000 })
+  assert.equal(f[3], 'Mineral Del Rio SA')
+  // CON GUIONES: es como se lee un CUIT y como el dueño lo había tipeado. Lo formatea lib/cuit.mjs.
+  assert.equal(f[11], '33-71084865-9')
+  assert.equal(fila({ tipo: 'recibido' })[11], '', 'sin CUIT → vacío, no "null"')
 })

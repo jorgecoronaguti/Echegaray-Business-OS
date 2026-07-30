@@ -59,7 +59,19 @@ const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1
 const DRY = process.argv.includes('--dry')
 const iP = process.argv.indexOf('--pestana')
 export const DESTINO_POR_DEFECTO = 'Cheques Recibidos (nuevo)'
-const PESTAÑA = iP >= 0 ? String(process.argv[iP + 1] ?? '').trim() : DESTINO_POR_DEFECTO
+export const PESTAÑA_REAL = 'Cheques Recibidos'
+// ═══ --reemplazar: LA REGENERACIÓN INTENCIONAL DE LA PESTAÑA REAL (30/07) ═══
+//
+// El dueño: "reemplaza cheques recibidos". Sin este flag no se puede hacer, y con razón: la pestaña
+// está AUTO-CANDADA porque él la reescribió (agregó Librador y CUIT), y el portón descarta toda
+// escritura de contenido sobre una pestaña suya. Ese portón está bien y no se toca.
+//
+// Lo que hace el flag es acotar la excepción: escribe SÓLO esta pestaña, deja antes un snapshot y un
+// respaldo a disco del registro viejo, y verifica los controles después. Es la misma figura que el
+// `--force` de Proveedores. El trabajo del dueño no se pierde: Librador y CUIT ya están en
+// public.cheques y vuelven a la pestaña como columnas vivas.
+const REEMPLAZAR = process.argv.includes('--reemplazar')
+const PESTAÑA = iP >= 0 ? String(process.argv[iP + 1] ?? '').trim() : (REEMPLAZAR ? PESTAÑA_REAL : DESTINO_POR_DEFECTO)
 
 const ACENTO = { red: 0.11, green: 0.23, blue: 0.37 }
 
@@ -82,6 +94,10 @@ export const ESTADOS = [
 /** Columnas del registro: [encabezado, unidad]. UNA FILA ES UN CHEQUE. */
 export const COLUMNAS = [
   ['N° de cheque', 'texto'], ['Banco', 'texto'], ['Librador', 'texto'],
+  // EL CUIT ESTÁ ACÁ PORQUE ERA EL TRABAJO DEL DUEÑO. En la pestaña vieja él completó Librador y CUIT
+  // a mano, columna por columna, porque el registro por operación no los traía. Ese dato hoy vive en
+  // public.cheques y llega por la réplica: el rediseño lo HEREDA en vez de borrárselo.
+  ['CUIT del librador', 'texto'],
   ['Fecha de pago', 'fecha'], ['Importe', 'monedaExacta'], ['Estado', 'texto'],
   ['Obra', 'texto'], ['Orden de pago', 'texto'],
 ]
@@ -89,7 +105,7 @@ export const COLUMNAS = [
 // banda, que es lo que se lee primero. Con 116px salían cortados —"⇒ Total de la carte", "Control —
 // contra la"— y un rótulo cortado no es un rótulo, es un error de imprenta (se vio en el render).
 // Mismo criterio y mismo ancho que "Cheques Emitidos", para que las dos se lean igual.
-const ANCHO = { 0: 270, 1: 152, 2: 240, 3: 116, 4: 152, 5: 116, 6: 128, 7: 140 }
+const ANCHO = { 0: 270, 1: 152, 2: 240, 3: 128, 4: 116, 5: 152, 6: 116, 7: 128, 8: 140 }
 
 /** NÚCLEO PURO: la grilla entera. Sin red ni base — todo fórmula sobre la réplica. */
 export function grilla({ corte = '', replica = '' } = {}) {
@@ -135,25 +151,30 @@ export function grilla({ corte = '', replica = '' } = {}) {
     'Diferidos: entran, pero no sirven para pagar hoy.'])
   push([])
 
-  // ── 3 · EL PUENTE CON CAJA. La posición la manda CAJA (que la toma del extracto): acá se
-  //        REFERENCIA por RÓTULO, nunca por celda —CAJA se reescribe entera y sus filas se corren—.
-  push([seccion(3, 'el puente con caja — lo que el banco todavía no acreditó')])
+  // ── 3 · EL PUENTE CON CAJA — HOY ES UN CONTROL DE CABLEADO, Y SE DICE ─────────────────────────────
+  //
+  // CAMBIÓ DE SIGNIFICADO EL 30/07, así que cambia el rótulo. Antes CAJA traía la cartera de otro lado
+  // (un importe pegado desde las pantallas del banco) y esta línea comparaba DOS FUENTES: valía como
+  // control de fondo. Desde que CAJA lee la misma réplica, las dos pestañas beben del mismo lugar y la
+  // diferencia SÓLO puede ser cero. Dejarle el rótulo de antes sería vender como control de plata algo
+  // que ya no lo es — y un control que no puede fallar es peor que ninguno: da confianza falsa.
+  //
+  // Sigue valiendo, pero por otra razón: si acá aparece un número distinto de cero, es que CAJA dejó de
+  // leer la fuente (alguien le pegó un valor encima, o su fila quedó fosilizada). Es un CANARIO DE
+  // CABLEADO, y como tal se nombra. La verificación contra el banco de verdad vive en el corte de la
+  // réplica y en el control contra Cobranzas que tiene CAJA.
+  push([seccion(3, 'el puente con caja')])
   push(['Concepto', 'Monto', '', 'Qué significa'])
-  const fCaja = push(['Valores a depositar según CAJA (el extracto)',
+  const fCaja = push(['Valores a depositar, según CAJA',
     '=IFERROR(INDEX(CAJA!$E$1:$E$200;MATCH("Valores a depositar";CAJA!$A$1:$A$200;0));"⚠ no está en CAJA")', '',
-    'La posición la manda el extracto, que es la fuente. Esta pestaña no la recalcula.'])
-  const fReg = push([sub('la misma cartera según este registro'), `=${cartera}`, '',
-    'Lo que suman los cheques en custodia cargados en el OS.'])
-  // EL SIGNO IMPORTA Y VA EN LOS DOS SENTIDOS. El primer render dio ($290.000) —negativo—: el OS tenía
-  // un cheque MÁS que el extracto (el 514 de Mineral Del Río, $290.000). Un rótulo que sólo contempla
-  // "lo que el OS no cargó" describe mal la mitad de los casos, y describir mal una diferencia es peor
-  // que no mostrarla. El rótulo se arma con el signo, así que dice siempre lo que está pasando.
+    `Se referencia por RÓTULO, no por celda: CAJA se reescribe entera. Esa fila también sale de ${RAW}.`])
+  const fReg = push([sub('la misma cartera, según este registro'), `=${cartera}`, '',
+    'Lo que suman los cheques en custodia de la réplica.'])
   // El rótulo lo arma la fórmula, así que NO pasa por total(): ese helper prefija texto y convertiría
   // la fórmula en una cadena. El "⇒ " que marca la línea clave va adentro de cada rama.
-  push([`=IF(NOT(ISNUMBER($B$${fCaja}));"⇒ Diferencia con el extracto";IF(ROUND($B$${fCaja}-$B$${fReg};0)=0;"⇒ Coincide con el extracto";IF($B$${fCaja}>$B$${fReg};"⇒ Falta cargar en el OS";"⇒ El OS tiene un valor que el extracto no")))`,
+  push([`=IF(NOT(ISNUMBER($B$${fCaja}));"⇒ Falta el rótulo en CAJA";IF(ROUND($B$${fCaja}-$B$${fReg};0)=0;"⇒ CAJA y este registro coinciden";"⚠ CAJA dejó de leer la fuente"))`,
     `=IF(ISNUMBER($B$${fCaja});$B$${fCaja}-$B$${fReg};"⚠ falta el rótulo en CAJA")`, '',
-    'POSITIVO: el extracto ve cartera que el OS todavía no cargó — es trabajo de carga, no plata que aparezca. '
-    + 'NEGATIVO: el OS tiene un cheque que la cartera del extracto no incluye — o ya se depositó y CAJA no se actualizó, o se cargó de más.'])
+    'Las dos leen la misma réplica: tiene que dar $0. Si no da cero, la cartera de CAJA volvió a ser un número pegado.'])
   push([])
 
   // ── 4 · EL REGISTRO, CHEQUE POR CHEQUE. Por QUERY sobre la réplica: si entra un cheque, aparece.
@@ -162,7 +183,7 @@ export function grilla({ corte = '', replica = '' } = {}) {
   // QUERY y no SORT(FILTER(…)): armar las columnas con un literal de array NO es portable al separador
   // es-AR ({"a"\"b"} vs {"a";"b"}) y ya rompió una pestaña. El texto del QUERY va entre comillas y el
   // localizador de fórmulas respeta los literales, así que sus comas llegan intactas.
-  const fQuery = push([`=IFERROR(QUERY(${RAW}!$A$${RAW0}:$K;"select B, C, D, F, G, H, K, J where LOWER(A) = 'recibido' order by H, F";0);"sin cheques recibidos cargados")`])
+  const fQuery = push([`=IFERROR(QUERY(${RAW}!$A$${RAW0}:$L;"select B, C, D, L, F, G, H, K, J where LOWER(A) = 'recibido' order by H, F";0);"sin cheques recibidos cargados")`])
   return { filas, marcas: { f0, f1, fTot, fCtrl, fQuery, cab: fQuery - 1 } }
 }
 
@@ -204,20 +225,67 @@ async function main() {
 
   // Se fusiona (no se limpia): si el dueño anotó al costado, se conserva. Ver preservar-anotaciones.
   const grid = filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(VACIO); return r })
-  const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, grid, { anchoHoja: Math.max(ancho, hoja.cols ?? ancho) })
-  if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) tuyas — CONSERVADAS`)
+  if (REEMPLAZAR) {
+    // ── EL REGISTRO VIEJO SE GUARDA ANTES DE REEMPLAZARLO ─────────────────────────────────────────
+    // Son 30 operaciones de homebanking con corte 22/07. Su información ya está en public.cheques —de
+    // ahí salen las filas nuevas—, pero un rediseño destructivo sin respaldo es irreversible, y esta
+    // pestaña ya se destruyó una vez en este proyecto. Snapshot en la base + JSON a disco.
+    const viejo = await google.readSheetGrid(ID, `${PESTAÑA}!A1:Z80`).catch(() => null)
+    const dest = `/tmp/${PESTAÑA.replace(/\W+/g, '-')}-antes-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.json`
+    if (viejo) { (await import('node:fs')).writeFileSync(dest, JSON.stringify(viejo, null, 1)); console.log(`  respaldo del registro viejo → ${dest}`) }
+    const { tomarSnapshot } = await import('../lib/sheet-snapshot.mjs')
+    const snap = await tomarSnapshot({ google, fileId: ID, pestana: PESTAÑA, tool: 'cheques-recibidos-tablero', directive: 'el dueño pidió reemplazar la pestaña (30/07)' })
+    console.log(`  snapshot → ${snap ?? 'no se pudo (queda el respaldo a disco)'}`)
+
+    // LA HUELLA VIEJA SE LIMPIA, PORQUE CAMBIA LA UNIDAD DE LA PESTAÑA. El registro viejo era por
+    // OPERACIÓN (47 filas x 10 columnas) y el nuevo es por CHEQUE: dejar la cola de abajo mezclaría
+    // dos unidades en la misma pestaña, que es exactamente el defecto que se está corrigiendo. Se
+    // rellena con vacío EXACTAMENTE hasta donde llegaba lo viejo, ni una celda más.
+    const altoViejo = (viejo?.filas ?? []).reduce((mx, f, i) => ((f || []).some((c) => String(c?.formula ?? c?.valor ?? '').trim()) ? i + 1 : mx), 0)
+    const anchoViejo = (viejo?.filas ?? []).reduce((mx, f) => Math.max(mx, (f || []).length), 0)
+    const ancho2 = Math.max(ancho, anchoViejo)
+    const gridReemplazo = grid.map((f) => { const r = f.map((c) => (c === VACIO ? '' : c)); while (r.length < ancho2) r.push(''); return r })
+    for (let i = grid.length; i < altoViejo; i++) gridReemplazo.push(Array(ancho2).fill(''))
+    console.log(`  reemplazo: ${gridReemplazo.length} filas x ${ancho2} columnas (lo viejo llegaba a ${altoViejo} x ${anchoViejo})`)
+    const res = await google.batchUpdateValues(ID, [{ range: `${PESTAÑA}!A1`, values: gridReemplazo }], { yaGuardado: true })
+    if (res?.protegido) throw new Error('el portón descartó la escritura: no se escribió nada')
+    // LA PESTAÑA VUELVE A SER DEL GENERADOR. Queda 100% fórmula —no hay nada del dueño adentro que
+    // proteger— así que se le saca el candado y se sella la firma: de acá en adelante se actualiza
+    // sola con la réplica, que es lo que él pidió cuando dijo "pestañas vivas".
+    const { desbloquear } = await import('../lib/pestana-bloqueada.mjs')
+    const { sellarFirma } = await import('../lib/firma-tab.mjs')
+    await desbloquear({ query }, ID, PESTAÑA).catch(() => {})
+    await sellarFirma(google, ID, PESTAÑA)
+    console.log('  🔓 candado liberado y firma sellada: la pestaña vuelve a actualizarse sola')
+  } else {
+    const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, grid, { anchoHoja: Math.max(ancho, hoja.cols ?? ancho) })
+    if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) tuyas — CONSERVADAS`)
+  }
 
   const R2 = (r0, r1, c0, c1) => ({ sheetId: hoja.sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
   const txt = (color, { bold = false, size = 10 } = {}) => ({ foregroundColor: color, bold, fontSize: size, fontFamily: 'Arial' })
   const money = { type: 'NUMBER', pattern: '$#,##0;($#,##0);"—"' }
   const reqs = [
+    // ═══ EL FORMATO VIEJO NO SE HEREDA (30/07) ═══
+    //
+    // Se vio en el render, no leyendo celdas: al reemplazar la pestaña, los formatos de la versión
+    // anterior sobrevivieron donde el generador no los pisaba. Resultado: el título de la sección 3
+    // aparecía CORTADO y tres glosas mostraban sólo el final del texto ("tran, pero no sirven para
+    // pagar hoy" en vez de "Diferidos: entran, …"), porque esas celdas tenían alineación y wrap de la
+    // pestaña vieja. Un reset de toda la grilla ANTES de la piel: el generador es dueño de su formato.
+    E.reset(hoja.sheetId, alto, Math.max(ancho, hoja.cols ?? ancho)),
     ...skinRequests({ sheetId: hoja.sheetId, filas: grid, cols: ancho, congeladas: 2, titular: marcas.f0 }),
     // La banda DESBORDA, no se corta: un titular partido al medio no es un rótulo, es un error de imprenta.
     { repeatCell: { range: R2(0, marcas.cab, 0, ancho), cell: { userEnteredFormat: { wrapStrategy: 'OVERFLOW_CELL' } }, fields: 'userEnteredFormat.wrapStrategy' } },
     { repeatCell: { range: R2(1, 2, 0, ancho), cell: { userEnteredFormat: { textFormat: txt(MUTED, { size: 9 }), wrapStrategy: 'OVERFLOW_CELL' } }, fields: 'userEnteredFormat(textFormat,wrapStrategy)' } },
     { repeatCell: { range: R2(4, marcas.cab, 1, 2), cell: { userEnteredFormat: { numberFormat: money, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } },
     { repeatCell: { range: R2(4, marcas.cab, 2, 3), cell: { userEnteredFormat: { numberFormat: { type: 'NUMBER', pattern: '0;;"—"' }, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } },
-    { repeatCell: { range: R2(4, marcas.cab, 3, 4), cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' }, textFormat: txt(MUTED, { size: 9 }), wrapStrategy: 'OVERFLOW_CELL' } }, fields: 'userEnteredFormat(numberFormat,textFormat,wrapStrategy)' } },
+    // LA ALINEACIÓN VA EXPLÍCITA: sin esto, una glosa larga heredaba la alineación de la pestaña vieja
+    // y se dibujaba desbordando HACIA LA IZQUIERDA — se perdía el principio de la frase, que es donde
+    // está el sujeto. Lo cazó el render, no la lectura de celdas.
+    { repeatCell: { range: R2(4, marcas.cab, 3, 4), cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' }, textFormat: txt(MUTED, { size: 9 }), wrapStrategy: 'OVERFLOW_CELL', horizontalAlignment: 'LEFT' } }, fields: 'userEnteredFormat(numberFormat,textFormat,wrapStrategy,horizontalAlignment)' } },
+    // Los títulos de sección y los rótulos de la columna A, también: un título cortado no es un título.
+    { repeatCell: { range: R2(0, marcas.cab, 0, 1), cell: { userEnteredFormat: { horizontalAlignment: 'LEFT' } }, fields: 'userEnteredFormat.horizontalAlignment' } },
     // EL TITULAR: la cifra de la cartera, que es con la que se decide.
     { repeatCell: { range: R2(marcas.f0 - 1, marcas.f0, 1, 2), cell: { userEnteredFormat: { numberFormat: money, horizontalAlignment: 'RIGHT', textFormat: txt(ACENTO, { bold: true, size: 16 }) } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment,textFormat)' } },
     { repeatCell: { range: R2(marcas.f0 - 1, marcas.f0, 0, 1), cell: { userEnteredFormat: { textFormat: txt(ACENTO, { bold: true, size: 12 }) } }, fields: 'userEnteredFormat.textFormat' } },

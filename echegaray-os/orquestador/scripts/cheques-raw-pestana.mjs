@@ -27,6 +27,7 @@ import { loadConfig } from '../lib/config.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { query, closePool } from '../lib/db.mjs'
+import { formatear as formatearCuit } from '../lib/cuit.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 export const PESTAÑA = '_CHEQUES_RAW'
@@ -37,10 +38,16 @@ export const COLUMNAS = [
   ['Tipo', 'texto'], ['Número', 'texto'], ['Banco', 'texto'], ['Librador', 'texto'],
   ['Contraparte', 'texto'], ['Fecha de pago', 'fecha'], ['Importe', 'monedaExacta'],
   ['Estado', 'texto'], ['Cuenta', 'texto'], ['Orden de pago', 'texto'], ['Obra', 'texto'],
+  // EL CUIT VA AL FINAL, NO AL LADO DEL LIBRADOR (30/07). El orden de las columnas es CONTRATO: las
+  // fórmulas de CAJA y de "Cheques Recibidos" referencian $G (importe), $H (estado), $F (fecha) por
+  // LETRA. Insertar una columna en el medio les cambiaría el significado a todas de golpe y en
+  // silencio: la cartera pasaría a sumar una columna de texto. Se agrega al final y listo.
+  ['CUIT del librador', 'texto'],
 ]
 export const COL = {
   tipo: 'A', numero: 'B', banco: 'C', librador: 'D', contraparte: 'E',
   fechaPago: 'F', importe: 'G', estado: 'H', cuenta: 'I', ordenPago: 'J', obra: 'K',
+  libradorCuit: 'L',
 }
 export const FILA0 = 4
 
@@ -90,6 +97,14 @@ export function fila(c) {
     String(c.cuenta ?? ''),
     String(c.orden_pago ?? ''),
     String(c.obra ?? ''),
+    // LO QUE EL DUEÑO TIPEÓ A MANO, TRAÍDO A LA FUENTE. En la pestaña vieja de Cheques Recibidos él
+    // había completado Librador y CUIT columna por columna, porque el registro por operación no los
+    // traía. Los dos datos ya están en public.cheques (los cargó importar-cheques.mjs desde las
+    // pantallas del banco), así que reemplazar esa pestaña NO pierde su trabajo: lo hereda y lo pone
+    // a trabajar. Sin esta columna, el rediseño sí le habría borrado los CUIT.
+    // CON GUIONES, como se lee y como el dueño lo había tipeado a mano ("33-71084865-9"). El formateo lo
+    // hace lib/cuit.mjs, que ya existe y valida el dígito verificador: acá no se reimplementa nada.
+    formatearCuit(c.librador_cuit) || String(c.librador_cuit ?? ''),
   ]
 }
 
@@ -101,7 +116,7 @@ async function main() {
   const { rows } = await query(
     // fecha_pago::text — que el driver no la convierta en Date. Ver fechaISO(): así llegó a escribirse
     // "Fri Jul 31" (sin año) en la columna de fechas, sin dar un solo error.
-    `select tipo, numero, banco, librador, contraparte, fecha_pago::text, importe, estado,
+    `select tipo, numero, banco, librador, librador_cuit, contraparte, fecha_pago::text, importe, estado,
             cuenta, orden_pago, obra, corte
        from public.cheques
       order by tipo desc, (fecha_pago is null), fecha_pago, numero`)
