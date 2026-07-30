@@ -14,7 +14,7 @@ import { mensajeInicial } from './asistencia-mm/mensaje.mjs'
 import { SesionesPostgres } from './asistencia-sesion.mjs'
 import { listarObrasPorFecha } from '../lib/tools/jornales-asistencia.mjs'
 import { jornadaConfigurada } from '../lib/jornada-config.mjs'
-import { resolverJornada } from '../lib/asistencia-servicio/mapeo.mjs'
+import { mapearObras, resolverJornada } from '../lib/asistencia-servicio/mapeo.mjs'
 import { hoyIso } from '../lib/asistencia-servicio/fechas.mjs'
 
 /** Texto de respaldo para clientes que no dibujan attachments (notificaciones, móvil viejo). */
@@ -45,7 +45,10 @@ export async function iniciarAsistencia({ port, google, actor, correlationId = n
   try {
     const r = await listarObrasPorFecha(google, { fecha })
     if (!r.ok) return { texto: avisoDe(r.motivo, fecha), estado: 'sin_planilla' }
-    obras = r.obras ?? []
+    // TRADUCIR, no pasar crudo: el núcleo devuelve `etiqueta`/`personas` y la UI necesita
+    // `nombre`/`cantidad`. Pasarlas sin traducir dejaba el desplegable con seis opciones
+    // SIN TEXTO — Mattermost lo avisa por log y el jefe ve una lista en blanco.
+    obras = mapearObras(r.obras ?? [])
     const config = await jornadaConfigurada(port, { fecha }).catch(() => null)
     jornada = resolverJornada({ config, planilla: r.jornada })
   } catch {
