@@ -108,6 +108,48 @@ export function parsearComando(texto, { isoContexto } = {}) {
   return null
 }
 
+/** Verbos que dicen explícitamente "quiero CARGAR", no "quiero VER". */
+const RE_VERBO_REGISTRO = /\b(carg|registr|corrig|corregi|modific|anot|complet)\w*\s+(la\s+|el\s+)?(asistencia|presentism)/
+
+/**
+ * CLASIFICADOR de ruteo entre registrar y consultar. Existe porque las dos cosas empiezan
+ * con la misma palabra y se pisaban: `asistencia de hoy` arrancaba el formulario de carga
+ * en vez de responder quién trabajó hoy.
+ *
+ * La regla, en este orden — y el orden es la parte que importa:
+ *   1. un verbo explícito de carga ("cargar/registrar/corregir asistencia") → REGISTRO;
+ *   2. un PASO DEL FORMULARIO (`obra 2`, `3 ausente`, `1 extra 2`, `revisar`, `confirmar`,
+ *      `volver`, `cancelar`, `todos presentes`) → REGISTRO. Son inequívocos y sólo tienen
+ *      sentido dentro de un formulario abierto. Si esto se evaluara DESPUÉS de las
+ *      consultas, `1 extra 2` (marcar 2 horas extra) se confundía con una consulta de
+ *      horas extra;
+ *   3. si el parser de consultas lo reconoce → CONSULTA;
+ *   4. `asistencia` sola → REGISTRO (es el único caso que quedaba ambiguo);
+ *   5. si no → no es de este skill.
+ *
+ * `parsearConsulta` entra INYECTADO para que este módulo no dependa del de consultas (y
+ * para poder testear el ruteo sin él).
+ */
+export function clasificar(texto, { parsearConsulta, isoContexto } = {}) {
+  const t = limpiar(texto)
+  if (!t) return { destino: null }
+  const cmd = parsearComando(texto, { isoContexto })
+
+  if (RE_VERBO_REGISTRO.test(t)) {
+    return { destino: 'registro', intencion: cmd ?? { tipo: 'iniciar', fecha: fechaDesdeTexto(t, isoContexto) } }
+  }
+  // Un paso del formulario es cualquier intención que NO sea "arrancar".
+  if (cmd && cmd.tipo !== 'iniciar' && cmd.tipo !== 'fecha') {
+    return { destino: 'registro', intencion: cmd }
+  }
+  if (typeof parsearConsulta === 'function') {
+    const c = parsearConsulta(texto, { isoContexto })
+    if (c) return { destino: 'consulta', consulta: c }
+  }
+  if (cmd) return { destino: 'registro', intencion: cmd }
+  return { destino: null }
+}
+
 /**
  * Marca de un trabajador por NÚMERO de la lista mostrada.
  *

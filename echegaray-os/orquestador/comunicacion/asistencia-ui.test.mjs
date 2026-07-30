@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   fechaOperativaSanJuan, fechaAr, fechaDesdeTexto, parsearComando, nombreDia,
   renderObras, renderCuadrilla, renderPreview, renderExito, renderConflicto,
-  renderFechaInexistente, renderSinPersonal, renderDenegado, renderAyuda,
+  renderFechaInexistente, renderSinPersonal, renderDenegado, renderAyuda, clasificar,
 } from './asistencia-ui.mjs'
 
 test('la fecha operativa es la de SAN JUAN, no UTC', () => {
@@ -249,4 +249,59 @@ test('sin personal y sin permiso tienen mensajes propios', () => {
   assert.match(renderSinPersonal({ obra: obras[0], fecha: '2026-07-30' }), /No se encontró personal asignado/)
   assert.match(renderDenegado(), /No tenés permiso/)
   assert.match(renderAyuda(), /todos presentes/)
+})
+
+// ── RUTEO entre registrar y consultar ───────────────────────────────────────
+// Las dos cosas empiezan con la misma palabra. Sin clasificador, `asistencia de hoy`
+// arrancaba el formulario de carga en vez de responder quién trabajó.
+
+/** Parser de consultas de juguete: reconoce lo que tenga un calificador. */
+const parsearConsultaFake = (texto) => {
+  const t = texto.toLowerCase()
+  if (/^\s*@?\w*\s*asistencia\s*$/.test(t)) return null // `asistencia` sola es REGISTRO
+  if (!/\b(asistencia|presentism|horas?\s+extra|trabaj)/.test(t)) return null
+  if (/\b(hoy|ayer|quien|cuanto|cuánto|\d{1,2}\/\d{1,2}|messinas|aguero)/.test(t)) {
+    return { tipo: /extra/.test(t) ? 'horas_extra' : 'asistencia' }
+  }
+  return null
+}
+const rutear = (texto) => clasificar(texto, { parsearConsulta: parsearConsultaFake, isoContexto: '2026-07-30' })
+
+test('`asistencia` sola arranca el REGISTRO', () => {
+  const r = rutear('@os asistencia')
+  assert.equal(r.destino, 'registro')
+  assert.equal(r.intencion.tipo, 'iniciar')
+})
+
+test('`asistencia de hoy` es una CONSULTA, no el formulario de carga', () => {
+  assert.equal(rutear('@os asistencia de hoy').destino, 'consulta')
+  assert.equal(rutear('asistencia del 29/07').destino, 'consulta')
+  assert.equal(rutear('asistencia de Messinas').destino, 'consulta')
+  assert.equal(rutear('quien trabajo hoy').destino, 'consulta')
+  assert.equal(rutear('horas extra de hoy').destino, 'consulta')
+})
+
+test('un verbo explícito de carga MANDA sobre el parser de consultas', () => {
+  for (const t of ['cargar asistencia del 29/07', 'registrar asistencia de hoy', 'corregí la asistencia del 29/07']) {
+    const r = rutear(t)
+    assert.equal(r.destino, 'registro', t)
+  }
+  assert.equal(rutear('cargar asistencia del 29/07').intencion.fecha, '2026-07-29')
+})
+
+test('los pasos del formulario siguen yendo al REGISTRO', () => {
+  for (const t of ['obra 2', 'todos presentes', '3 ausente', '3 tarde 7', '1 extra 2', 'revisar', 'confirmar', 'cancelar']) {
+    assert.equal(rutear(t).destino, 'registro', t)
+  }
+})
+
+test('texto ajeno al skill no se rutea a ningún lado', () => {
+  for (const t of ['hola', 'estado del sistema', 'cuánto pagamos la quincena']) {
+    assert.equal(rutear(t).destino, null, t)
+  }
+})
+
+test('sin parser de consultas inyectado, todo cae al registro (degradación honesta)', () => {
+  const r = clasificar('asistencia de hoy', { isoContexto: '2026-07-30' })
+  assert.equal(r.destino, 'registro')
 })
