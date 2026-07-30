@@ -156,3 +156,53 @@ test('el handler de comunicación tampoco conoce dominios', async () => {
   }
   assert.doesNotMatch(cuerpo, /switch\s*\(/, 'no hay switch de ruteo')
 })
+
+// ── PRIVACIDAD POR CONTEXTO ─────────────────────────────────────────────────
+// La conversación del canal tiene que quedarse en el canal: si la respuesta reservada
+// se desviara a DM, el equipo vería la pregunta y no la respuesta.
+
+test('un canal privado atado al área es destino válido para un dato reservado', async () => {
+  const { comunicacionResponderHandler } = await import('../handlers/comunicacion.mjs')
+  const publicado = []
+  const port = puerto({ 'canal-asistencia': { area: 'personas', canal: 'Asistencia' } })
+  await comunicacionResponderHandler(
+    { id: 't1', inputs: { comando: 'asistencia de hoy', channel_id: 'canal-asistencia', root_post_id: 'post-1', actor: { id: 'u1', display: 'jorge' }, correlation_id: 'c1', comm_event_id: 'e1' } },
+    {
+      port,
+      google: { async listTabs() { return [] }, async readSheetGrid() { return { filas: [] } } },
+      responderComunicacion: async (r) => publicado.push(r),
+      canalPrivadoPara: async () => 'canal-dm',
+      logger: {},
+    },
+  )
+  assert.equal(publicado.length, 1)
+  assert.equal(publicado[0].channel_id, 'canal-asistencia', 'la respuesta NO se desvía a DM')
+  assert.equal(publicado[0].root_post_id, 'post-1', 'se conserva el hilo')
+  assert.equal(publicado[0].correlation_id, 'c1')
+  assert.equal(publicado[0].causation_id, 'e1')
+})
+
+test('fuera de un canal atado, el dato reservado sí sale por DM', async () => {
+  const { comunicacionResponderHandler } = await import('../handlers/comunicacion.mjs')
+  const publicado = []
+  await comunicacionResponderHandler(
+    { id: 't2', inputs: { comando: 'asistencia de hoy', channel_id: 'canal-cualquiera', root_post_id: 'post-9', actor: { id: 'u1' }, correlation_id: 'c2', comm_event_id: 'e2' } },
+    {
+      port: puerto(),
+      google: { async listTabs() { return [] }, async readSheetGrid() { return { filas: [] } } },
+      responderComunicacion: async (r) => publicado.push(r),
+      canalPrivadoPara: async () => 'canal-dm',
+      logger: {},
+    },
+  )
+  assert.equal(publicado[0].channel_id, 'canal-dm')
+  assert.equal(publicado[0].root_post_id, null, 'hilo propio del DM')
+})
+
+test('el channel_id no está escrito en el código: sale del binding', async () => {
+  const { readFileSync } = await import('node:fs')
+  for (const f of ['./director.mjs', '../handlers/comunicacion.mjs', './especialistas/personal.mjs']) {
+    const src = readFileSync(new URL(f, import.meta.url), 'utf8')
+    assert.doesNotMatch(src, /\b[a-z0-9]{26}\b/, `${f} tiene algo con forma de id de Mattermost`)
+  }
+})

@@ -1,8 +1,8 @@
 [Unit]
 # PR-4.2 · Worker del enlace comunicación (inbox -> Work Fabric lane 'comunicacion'
 # -> outbox -> publicar), 24x7. USER-UNIT (systemd --user, sin sudo). Copiar a
-# ~/.config/systemd/user/. NO carga anthropic.env: la lane 'comunicacion' sólo
-# corre el handler determinístico comunicacion.responder; nunca handlers IA.
+# ~/.config/systemd/user/. Carga anthropic.env SÓLO para el ruteo del Director (elegir
+# especialista); la ejecución de cada especialista sigue siendo determinística.
 Description=Echegaray OS - Worker de comunicación (Communication Service <-> Work Fabric)
 After=network-online.target
 Wants=network-online.target
@@ -10,6 +10,15 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/home/jorge/echegaray-os/app/.claude/worktrees/deploy-comunicacion/echegaray-os
+# Google: el especialista de personal lee y escribe JORNALES como la operadora del OS. El
+# refresh_token vive en orq.google_tokens, pero refrescarlo necesita GOOGLE_OAUTH_CLIENT_ID
+# y SECRET, que están en worker.env. Va PRIMERO: comunicacion.env gana en lo superpuesto.
+EnvironmentFile=%h/.config/echegaray-orq/worker.env
+# Anthropic SÓLO acá, y sólo para el RUTEO del Director: elegir un especialista de una lista
+# cerrada cuando el camino determinístico no alcanzó. El consumidor WebSocket NO lo carga y
+# nunca razona. El camino masivo (el jefe escribiendo `3 ausente`) no gasta un token: lo
+# reclama el especialista con su propia gramática, antes de que intervenga ningún modelo.
+EnvironmentFile=-%h/.config/echegaray-orq/anthropic.env
 EnvironmentFile=%h/.config/echegaray-orq/comunicacion.env
 ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/comunicacion/worker-comunicacion.mjs
 Restart=always
