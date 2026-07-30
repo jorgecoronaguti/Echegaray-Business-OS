@@ -71,7 +71,9 @@ export const DESTINOS = {
   'Cheques y echeq': {
     pestaña: 'Cheques Emitidos',
     seccion: 'Columna DEBITADO (K): SI cuando el banco lo pagó',
-    mecanismo: 'cheques-emitidos-sync-banco.mjs marca DEBITADO por número de echeq (fuente: lista ECHEQS_EMITIDOS). '
+    mecanismo: 'cheques-emitidos-sync-banco.mjs marca DEBITADO cruzando por (instrumento, número) — la '
+      + 'chequera física y la electrónica numeran por separado y el registro tiene el 313 en las dos. '
+      + 'Fuente: public.cheques (desde el 30/07; antes era la lista a mano ECHEQS_EMITIDOS, con corte congelado). '
       + 'Los debitados DESPUÉS del corte restan en la línea neta de CAJA (formulaChequesDebitadosPosteriores)',
     fuente: 'scripts/cheques-emitidos-sync-banco.mjs · lib/caja-posterior-al-corte.mjs',
     escribe: 'columna DEBITADO',
