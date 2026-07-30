@@ -1,0 +1,335 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { manejarAsistencia } from './asistencia-flujo.mjs'
+import { SesionesMemoria, ESTADO_SESION, TTL_MINUTOS } from './asistencia-sesion.mjs'
+import { fakeGoogleJornales, idxCol, FECHA_HOY, FECHA_INEXISTENTE } from '../lib/jornales-fixture.mjs'
+import { EVENTO } from '../lib/asistencia-auditoria.mjs'
+import { DENEGADO } from '../lib/asistencia-permisos.mjs'
+
+const JEFE = { plataforma_user_id: 'mm-jefe-1', plataforma_username: 'rodrigo' }
+const OTRO = { plataforma_user_id: 'mm-peon-9', plataforma_username: 'ajeno' }
+
+/** Banco de pruebas: google falso + sesiones en memoria + auditoría capturada. */
+function banco({ permitir = true, google, ahora } = {}) {
+  const eventos = []
+  const g = google ?? fakeGoogleJornales()
+  const sesiones = new SesionesMemoria(ahora ? { ahora } : {})
+  const deps = {
+    google: g,
+    sesiones,
+    permisos: async (u) => (permitir && u === JEFE.plataforma_user_id
+      ? { ok: true, display: 'Jefe de obra' }
+      : { ok: false, motivo: DENEGADO.SIN_PERMISO }),
+    auditar: async (evento, datos) => { eventos.push({ evento, datos }); return { ok: true } },
+  }
+  const decir = (texto, actor = JEFE) => manejarAsistencia({ ...deps, actor, texto, ahora: ahora ? new Date(ahora()) : new Date('2026-07-30T14:00:00Z') })
+  return { g, sesiones, eventos, decir, tipos: () => eventos.map((e) => e.evento) }
+}
+
+/** Conversación completa hasta el preview, sobre la obra 1 del bloque de hoy. */
+async function hastaPreview(b) {
+  await b.decir('@os asistencia')
+  await b.decir('obra 1')
+  await b.decir('todos presentes')
+  return b.decir('revisar')
+}
+
+test('el flujo arranca listando las obras del bloque de HOY con la jornada calibrada', async () => {
+  const b = banco()
+  const r = await b.decir('@os asistencia')
+  assert.equal(r.estado, 'obras')
+  assert.equal(r.privado, true)
+  assert.match(r.texto, /30\/07\/2026/)
+  assert.match(r.texto, /\*\*9 h\*\*/)
+  assert.match(r.texto, /Obreros 26/)
+  assert.deepEqual(b.tipos(), [EVENTO.STARTED, EVENTO.SHEET_READ])
+})
+
+test('un usuario SIN permiso no llega a leer nada y queda auditado', async () => {
+  const b = banco()
+  const r = await b.decir('@os asistencia', OTRO)
+  assert.equal(r.estado, 'denegado')
+  assert.match(r.texto, /No tenés permiso/)
+  assert.deepEqual(b.tipos(), [EVENTO.DENIED])
+  assert.equal(b.eventos[0].datos.error_code, DENEGADO.SIN_PERMISO)
+  assert.equal(b.g.lecturas, 0, 'ni siquiera leyó la planilla')
+  assert.equal(b.sesiones.filas.length, 0, 'no abrió sesión')
+})
+
+test('TODA respuesta del skill es privada', async () => {
+  const b = banco()
+  for (const t of ['@os asistencia', 'obra 1', 'todos presentes', 'revisar', 'cancelar']) {
+    const r = await b.decir(t)
+    assert.equal(r.privado, true, t)
+  }
+})
+
+test('una fecha que no existe en JORNALES corta el flujo sin abrir sesión', async () => {
+  const b = banco()
+  const r = await b.decir('asistencia 10/08')
+  assert.equal(r.estado, 'fecha_inexistente')
+  assert.match(r.texto, /No se creó ninguna columna/)
+  assert.equal(b.sesiones.filas.length, 0)
+  assert.equal(b.g.escrituras.length, 0)
+})
+
+test('elegir obra muestra la cuadrilla leída de JORNALES para esa obra y fecha', async () => {
+  const b = banco()
+  await b.decir('@os asistencia')
+  const r = await b.decir('obra 1')
+  assert.equal(r.estado, 'cuadrilla')
+  assert.match(r.texto, /1\. Aguero Cristian/)
+  assert.match(r.texto, /3\. Emanuel Alaniz/)
+  assert.ok(!/Pastran/.test(r.texto), 'no mezcla gente de otra obra')
+})
+
+test('un número de obra que no está en la lista se rechaza', async () => {
+  const b = banco()
+  await b.decir('@os asistencia')
+  const r = await b.decir('obra 99')
+  assert.equal(r.estado, 'obra_invalida')
+})
+
+test('marcar exige haber elegido obra primero', async () => {
+  const b = banco()
+  await b.decir('@os asistencia')
+  const r = await b.decir('todos presentes')
+  assert.equal(r.estado, 'falta_obra')
+})
+
+test('todos presentes + corregir sólo la excepción', async () => {
+  const b = banco()
+  await b.decir('@os asistencia')
+  await b.decir('obra 1')
+  await b.decir('todos presentes')
+  const r = await b.decir('2 ausente')
+  assert.equal(r.estado, 'cuadrilla')
+  assert.match(r.texto, /1\. Aguero Cristian — ✓ presente \(9 h\)/)
+  assert.match(r.texto, /2\. Quiroga Sebastian — ✕ ausente \(0\)/)
+  assert.match(r.texto, /3\. Emanuel Alaniz — ✓ presente \(9 h\)/)
+})
+
+test('jornada parcial sin horas pide las horas y no marca nada', async () => {
+  const b = banco()
+  await b.decir('@os asistencia')
+  await b.decir('obra 1')
+  const r = await b.decir('2 parcial')
+  assert.equal(r.estado, 'faltan_horas')
+  const s = b.sesiones.filas.at(-1)
+  assert.deepEqual(s.marcas.marcas, {})
+})
+
+test('jornada parcial con coma decimal queda en 5,5', async () => {
+  const b = banco()
+  await b.decir('@os asistencia')
+  await b.decir('obra 1')
+  const r = await b.decir('1 parcial 5,5')
+  assert.match(r.texto, /1\. Aguero Cristian — ◐ parcial \(5,5 h\)/)
+})
+
+test('el preview muestra el resumen y no escribe nada', async () => {
+  const b = banco()
+  const r = await hastaPreview(b)
+  assert.equal(r.estado, 'preview')
+  assert.match(r.texto, /Presentes: \*\*3\*\*/)
+  assert.match(r.texto, /Celdas nuevas: \*\*3\*\*/)
+  assert.match(r.texto, /columna R/)
+  assert.equal(b.g.escrituras.length, 0)
+  assert.ok(b.tipos().includes(EVENTO.PREVIEWED))
+})
+
+test('revisar sin marcar a nadie no arma un plan vacío', async () => {
+  const b = banco()
+  await b.decir('@os asistencia')
+  await b.decir('obra 1')
+  const r = await b.decir('revisar')
+  assert.equal(r.estado, 'sin_marcas')
+})
+
+test('CONFIRMAR escribe en batch, informa y audita written', async () => {
+  const b = banco()
+  await hastaPreview(b)
+  const r = await b.decir('confirmar')
+  assert.equal(r.estado, 'escrito')
+  assert.match(r.texto, /✅ \*\*Asistencia registrada\*\*/)
+  assert.match(r.texto, /Celdas actualizadas: 3/)
+  assert.match(r.texto, /Registrado por: rodrigo/)
+  assert.equal(b.g.escrituras.length, 1, 'una sola operación batch')
+  assert.equal(b.g.escrituras[0].data.length, 3)
+  assert.ok(b.tipos().includes(EVENTO.CONFIRMED))
+  assert.ok(b.tipos().includes(EVENTO.WRITTEN))
+  const w = b.eventos.find((e) => e.evento === EVENTO.WRITTEN).datos
+  assert.equal(w.cantidad_presentes, 3)
+  assert.equal(w.sheet_name, 'Obreros 26')
+  assert.equal(w.celdas_modificadas.length, 3)
+  assert.equal(w.celdas_modificadas[0].new_value, 9)
+})
+
+test('la escritura sólo toca la columna del día', async () => {
+  const b = banco()
+  await hastaPreview(b)
+  await b.decir('confirmar')
+  for (const d of b.g.escrituras[0].data) {
+    assert.match(d.range, /^'Obreros 26'!R\d+$/)
+    assert.equal(typeof d.values[0][0], 'number')
+  }
+})
+
+test('REPLAY de confirmar: no vuelve a escribir', async () => {
+  const b = banco()
+  await hastaPreview(b)
+  await b.decir('confirmar')
+  const r = await b.decir('confirmar')
+  // La sesión ya está cerrada: el skill pide arrancar de nuevo y NO muta.
+  assert.ok(['duplicado', 'sesion_cerrada', 'sesion_no_existe'].includes(r.estado), r.estado)
+  assert.equal(b.g.escrituras.length, 1, 'una sola mutación')
+})
+
+test('sobrescribir un valor existente exige confirmación explícita', async () => {
+  const b = banco()
+  await b.decir('@os asistencia')
+  // obra de Messinas: Reta ya tiene 9 cargado hoy
+  const obras = b.sesiones.filas.at(-1).marcas.obras
+  const iMessinas = obras.indexOf('MESSINAS|BASES DE TANQUE') + 1
+  await b.decir(`obra ${iMessinas}`)
+  await b.decir('todos presentes')
+  await b.decir('1 ausente') // Reta es el único de esa cuadrilla, y hoy ya tiene 9
+  const prev = await b.decir('confirmar')
+  assert.equal(prev.estado, 'requiere_sobrescritura')
+  assert.match(prev.texto, /YA tenían otro valor/)
+  assert.equal(b.g.escrituras.length, 0, 'no escribió sin el sí explícito')
+
+  const ok = await b.decir('confirmar sobrescribir')
+  assert.equal(ok.estado, 'escrito')
+  assert.equal(b.g.escrituras.length, 1)
+})
+
+test('CONFLICTO concurrente: no escribe nada, informa y cierra la sesión en conflicto', async () => {
+  const b = banco()
+  await hastaPreview(b)
+  // Entre el preview y el confirmar, alguien carga la celda A MANO en la planilla.
+  b.g.grid.filas[20][idxCol('R')] = { valor: '8', numero: 8, formula: null }
+  const r = await b.decir('confirmar')
+  assert.equal(r.estado, 'conflicto')
+  assert.match(r.texto, /no fue guardada/)
+  assert.equal(b.g.escrituras.length, 0)
+  assert.ok(b.tipos().includes(EVENTO.CONFLICT))
+  assert.equal(b.sesiones.filas.at(-1).estado, ESTADO_SESION.CONFLICTO)
+})
+
+test('pestaña protegida por el dueño: no se reporta éxito', async () => {
+  const b = banco({ google: fakeGoogleJornales({ protegido: true }) })
+  await hastaPreview(b)
+  const r = await b.decir('confirmar')
+  assert.equal(r.estado, 'protegida')
+  assert.match(r.texto, /está tomada/)
+  assert.ok(b.tipos().includes(EVENTO.FAILED))
+})
+
+test('cancelar cierra la sesión y no escribe', async () => {
+  const b = banco()
+  await hastaPreview(b)
+  const r = await b.decir('cancelar')
+  assert.equal(r.estado, 'cancelado')
+  assert.match(r.texto, /No se escribió nada/)
+  assert.equal(b.g.escrituras.length, 0)
+  assert.equal(b.sesiones.filas.at(-1).estado, ESTADO_SESION.CANCELADA)
+  assert.ok(b.tipos().includes(EVENTO.CANCELLED))
+})
+
+test('volver desde el preview vuelve a la cuadrilla conservando las marcas', async () => {
+  const b = banco()
+  await hastaPreview(b)
+  const r = await b.decir('volver')
+  assert.equal(r.estado, 'cuadrilla')
+  assert.match(r.texto, /✓ presente/)
+})
+
+test('un formulario VENCIDO no se puede confirmar', async () => {
+  let t = Date.parse('2026-07-30T14:00:00Z')
+  const b = banco({ ahora: () => t })
+  await hastaPreview(b)
+  t += (TTL_MINUTOS + 1) * 60000
+  const r = await b.decir('confirmar')
+  assert.equal(r.estado, 'sesion_vencida')
+  assert.match(r.texto, /venció/)
+  assert.equal(b.g.escrituras.length, 0)
+})
+
+test('otro usuario no puede continuar ni confirmar el formulario ajeno', async () => {
+  const b = banco()
+  await hastaPreview(b)
+  // el otro no tiene permiso: se corta antes incluso de mirar la sesión
+  const r = await b.decir('confirmar', OTRO)
+  assert.equal(r.estado, 'denegado')
+  assert.equal(b.g.escrituras.length, 0)
+  // y el jefe sigue con SU formulario intacto
+  const suyo = await b.decir('confirmar')
+  assert.equal(suyo.estado, 'escrito')
+})
+
+test('un jefe autorizado distinto tiene su propio formulario, no el del otro', async () => {
+  const eventos = []
+  const g = fakeGoogleJornales()
+  const sesiones = new SesionesMemoria()
+  const comun = {
+    google: g, sesiones, auditar: async () => ({ ok: true }),
+    permisos: async () => ({ ok: true }),
+  }
+  const di = (actor, texto) => manejarAsistencia({ ...comun, actor, texto, ahora: new Date('2026-07-30T14:00:00Z') })
+  await di(JEFE, 'asistencia')
+  await di(JEFE, 'obra 1')
+  await di(OTRO, 'asistencia')
+  const r = await di(OTRO, 'confirmar')
+  assert.equal(r.estado, 'falta_obra', 'el segundo jefe no hereda la obra del primero')
+  assert.equal(sesiones.filas.filter((f) => f.estado === 'abierta').length, 2)
+  assert.equal(eventos.length, 0)
+})
+
+test('sin sesión abierta, un confirmar suelto no hace nada', async () => {
+  const b = banco()
+  const r = await b.decir('confirmar')
+  assert.equal(r.estado, 'sesion_no_existe')
+  assert.equal(b.g.escrituras.length, 0)
+})
+
+test('texto que no es del skill devuelve la ayuda, no un error', async () => {
+  const b = banco()
+  const r = await b.decir('hola')
+  assert.equal(r.estado, 'ayuda')
+  assert.match(r.texto, /Registrar asistencia/)
+})
+
+test('un fallo inesperado se audita y NO se reporta como éxito', async () => {
+  const google = fakeGoogleJornales()
+  google.readSheetGrid = async () => { throw new Error('google api 503: Bearer abc123 cayó') }
+  const b = banco({ google })
+  const r = await b.decir('asistencia')
+  assert.equal(r.estado, 'error')
+  assert.match(r.texto, /No se escribió nada en JORNALES/)
+  const f = b.eventos.find((e) => e.evento === EVENTO.FAILED)
+  assert.ok(f)
+  assert.match(f.datos.error_message_sanitized, /Bearer \*\*\*/, 'el token no queda en el log')
+})
+
+test('la fecha operativa sale de San Juan: a las 01:30 UTC del 31 todavía es el 30', async () => {
+  const b = banco({ ahora: () => Date.parse('2026-07-31T01:30:00Z') })
+  const r = await b.decir('asistencia')
+  assert.match(r.texto, /30\/07\/2026/)
+  assert.equal(r.estado, 'obras')
+})
+
+test('FECHA_INEXISTENTE es el caso real de una quincena no preparada', async () => {
+  const b = banco()
+  const r = await b.decir(`asistencia ${FECHA_INEXISTENTE.slice(8)}/${FECHA_INEXISTENTE.slice(5, 7)}`)
+  assert.equal(r.estado, 'fecha_inexistente')
+})
+
+test('el día que se escribe es el que se mostró (columna R = 30/07)', async () => {
+  const b = banco()
+  await hastaPreview(b)
+  await b.decir('confirmar')
+  const filas = b.g.escrituras[0].data.map((d) => Number(/R(\d+)/.exec(d.range)[1]))
+  assert.deepEqual(filas.sort((a, c) => a - c), [21, 22, 23])
+  assert.equal(FECHA_HOY, '2026-07-30')
+})

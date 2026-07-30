@@ -63,6 +63,15 @@ export class MattermostCliente {
   canalPorNombre({ team_id, nombre }) {
     return this._req('GET', `/teams/${team_id}/channels/name/${encodeURIComponent(nombre)}`)
   }
+
+  /**
+   * Canal DIRECTO (1 a 1) entre dos usuarios. Idempotente en Mattermost: si el DM ya
+   * existe devuelve el mismo canal. Hace falta para los skills cuya respuesta NO puede
+   * salir en un canal donde hay más gente — asistencia del personal, por ejemplo.
+   */
+  canalDirecto({ usuarioA, usuarioB }) {
+    return this._req('POST', '/channels/direct', [usuarioA, usuarioB])
+  }
 }
 
 function safeJson(t) {
@@ -118,5 +127,12 @@ export class FakeMattermost {
   async canalPorNombre({ team_id, nombre }) {
     this._maybeFail('canalPorNombre')
     return { id: `canal_${nombre}`, team_id, name: nombre }
+  }
+
+  async canalDirecto({ usuarioA, usuarioB }) {
+    this._maybeFail('canalDirecto')
+    // Mismo criterio que Mattermost: el id del DM es estable para el par de usuarios.
+    const par = [usuarioA, usuarioB].sort().join('__')
+    return { id: `dm_${par}`, type: 'D', name: par }
   }
 }
