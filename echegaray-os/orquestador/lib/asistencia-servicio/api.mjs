@@ -126,6 +126,9 @@ function mensajeHoras(h) {
  * Valida cada persona y arma las marcas del núcleo.
  * La validación del motivo la hace el catálogo del frente A: acá no se replica la regla.
  */
+/** Horas de la jornada como NÚMERO. `requiere_manual` significa "no hay número que valer". */
+const jornadaHoras = (j) => (j && !j.requiere_manual && Number.isFinite(Number(j.horas)) ? Number(j.horas) : null)
+
 function armarMarcas({ items, jornada, motivos, obrasValidas }) {
   const marcas = []
   const novedades = []
@@ -149,7 +152,11 @@ function armarMarcas({ items, jornada, motivos, obrasValidas }) {
       return { ok: false, error: `${quien}: esa obra no figura en la planilla para esa fecha.` }
     }
     const v = motivos.validarNovedad({
-      presente, horas, jornada,
+      // El catálogo espera un NÚMERO de horas, no el objeto de jornada. Pasarle el objeto
+      // hacía `Number.isFinite(objeto) === false`, la jornada quedaba en null y NUNCA se
+      // exigía motivo en una jornada parcial: 6 horas sobre 9 pasaban sin explicación, que
+      // es justo el dato por el que existe todo esto.
+      presente, horas, jornada: jornadaHoras(jornada),
       motivo: it?.motivo ? String(it.motivo) : null,
       aclaracion: it?.aclaracion ? String(it.aclaracion) : null,
       obra_realizada: obraRealizada,

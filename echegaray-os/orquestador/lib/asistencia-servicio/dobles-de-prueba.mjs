@@ -22,13 +22,21 @@ export const CATALOGO = Object.freeze([
   { clave: 'otro', etiqueta: 'Otro', requiere_aclaracion: true, implica_horas_cero: false, orden: 9 },
 ])
 
-/** Doble de `lib/asistencia-motivos.mjs` (frente A), con sus reglas del contrato. */
+/**
+ * Doble de `lib/asistencia-motivos.mjs`, con sus reglas.
+ *
+ * EL CONTRATO ES EL DEL MÓDULO REAL, y esto no es una formalidad: este doble leía
+ * `jornada.horas` (el objeto) mientras el catálogo real espera un NÚMERO. Como el llamador
+ * le pasaba el objeto, el doble validaba bien y el real no validaba nada — la jornada
+ * quedaba en null y NUNCA se exigía motivo en una jornada parcial. El test pasaba en verde
+ * sobre un defecto vivo. Un doble que no respeta el contrato del original no prueba: tapa.
+ */
 export function motivosDoble() {
   return {
     CATALOGO,
     motivosPara: ({ presente }) => CATALOGO.filter((m) => (presente ? !m.implica_horas_cero : m.implica_horas_cero)),
     validarNovedad({ presente, horas, jornada, motivo, aclaracion, obra_realizada }) {
-      const jn = jornada?.requiere_manual ? null : jornada?.horas
+      const jn = Number.isFinite(Number(jornada)) ? Number(jornada) : null // NÚMERO, igual que el real
       const conocido = motivo == null || CATALOGO.some((m) => m.clave === motivo)
       if (!conocido) return { ok: false, error: 'ese motivo no existe.' }
       if (!presente && !motivo) return { ok: false, error: 'falta el motivo de la ausencia.' }
