@@ -180,8 +180,12 @@ const idxCol = (letra) => {
  *
  * `alLeer(grid, nroDeLectura)` permite simular que alguien tocó la planilla entre el
  * plan y la escritura — así se ejercita el control de concurrencia de verdad.
+ *
+ * `alEscribir(data)` permite simular que la API de Google falla en la escritura (un 503,
+ * un token vencido). Sin este seam no se podía probar qué pasa DESPUÉS de confirmar y
+ * ANTES de que la celda entre: exactamente donde vivía el bloqueo de idempotencia.
  */
-export function fakeGoogleJornales({ tabs = PESTANAS, protegido = false, alLeer } = {}) {
+export function fakeGoogleJornales({ tabs = PESTANAS, protegido = false, alLeer, alEscribir } = {}) {
   const grid = gridJornales()
   const escrituras = []
   let lecturas = 0
@@ -197,6 +201,7 @@ export function fakeGoogleJornales({ tabs = PESTANAS, protegido = false, alLeer 
     },
     async batchUpdateValues(id, data) {
       escrituras.push({ id, data })
+      if (alEscribir) alEscribir(data)
       if (protegido) return { protegido: true, bloqueadas: ['Obreros 26'] }
       for (const d of data) {
         const m = /!([A-Z]+)(\d+)$/.exec(d.range)

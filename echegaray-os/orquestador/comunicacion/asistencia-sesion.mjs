@@ -29,6 +29,10 @@ export const ESTADO_SESION = Object.freeze({
   CANCELADA: 'cancelada',
   VENCIDA: 'vencida',
   CONFLICTO: 'conflicto',
+  // La escritura se intentó y falló. Existe para que la clave de idempotencia NO quede
+  // quemada: el índice único cuenta sólo las 'confirmada', así que un reintento del jefe
+  // vuelve a poder escribir. Una carga que no entró no está registrada.
+  FALLIDA: 'fallida',
 })
 
 export const RECHAZO = Object.freeze({

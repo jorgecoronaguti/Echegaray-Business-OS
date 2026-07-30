@@ -489,3 +489,66 @@ test('una carga existente con extras se PRECARGA en la cuadrilla, no se reinicia
   const r = await b.decir('obra 1')
   assert.match(r.texto, /1\. Aguero Cristian — · sin marcar\s+_\(cargado: 9 \+ 2 extra = 11 h\)_/)
 })
+
+// ── LA CARGA QUE NO ENTRÓ NO ESTÁ REGISTRADA ────────────────────────────────
+// Dos defectos que encontró la auditoría, con el mismo origen: la sesión se cerraba como
+// confirmada y la clave de idempotencia se quemaba ANTES de saber si la celda entró.
+
+test('si la escritura falla, el reintento del jefe puede volver a cargar (la clave se libera)', async () => {
+  let falla = true
+  const g = fakeGoogleJornales({ alEscribir() { if (falla) throw new Error('503 backend error') } })
+  const b = banco({ google: g })
+
+  await b.decir('@os asistencia')
+  await b.decir('obra 1')
+  await b.decir('todos presentes')
+  const r1 = await b.decir('confirmar')
+  assert.equal(r1.estado, 'fallo', 'la falla se informa como falla')
+  assert.ok(!/registrada/i.test(r1.texto), 'no puede decir que quedó registrada')
+  assert.equal(b.sesiones.filas.at(-1).estado, ESTADO_SESION.FALLIDA)
+
+  // Mismo jefe, misma obra, mismas marcas ⇒ MISMA clave de idempotencia.
+  falla = false
+  await b.decir('@os asistencia')
+  await b.decir('obra 1')
+  await b.decir('todos presentes')
+  const r2 = await b.decir('confirmar')
+  assert.equal(r2.estado, 'escrito', `el reintento tiene que escribir, no dar duplicado (dio ${r2.estado})`)
+  assert.ok(g.escrituras.length >= 2)
+})
+
+test('una carga que SÍ entró sigue siendo de un solo uso', async () => {
+  const b = banco()
+  await b.decir('@os asistencia')
+  await b.decir('obra 1')
+  await b.decir('todos presentes')
+  assert.equal((await b.decir('confirmar')).estado, 'escrito')
+  // Reintento exacto: ya está cargado, no se vuelve a escribir.
+  await b.decir('@os asistencia')
+  await b.decir('obra 1')
+  await b.decir('todos presentes')
+  const r = await b.decir('confirmar')
+  assert.ok(['duplicado', 'sin_cambios'].includes(r.estado), `no puede volver a escribir (dio ${r.estado})`)
+})
+
+test('sin nada para escribir no se declara un registro ni se quema la clave', async () => {
+  const b = banco()
+  await b.decir('@os asistencia')
+  await b.decir('obra 1')
+  await b.decir('todos presentes')
+  await b.decir('confirmar')          // primera carga real
+  const escritasAntes = b.g.escrituras.length
+
+  await b.decir('@os asistencia')     // segunda vuelta: ya está todo cargado igual
+  await b.decir('obra 1')
+  await b.decir('todos presentes')
+  const r = await b.decir('confirmar')
+  assert.ok(!/✅|registrada/i.test(r.texto) || r.estado !== 'escrito',
+    'no puede contestar "registrada" sin escribir una celda')
+  if (r.estado === 'sin_cambios') {
+    assert.match(r.texto, /No hay nada para escribir|sin cambio/i)
+    assert.equal(b.g.escrituras.length, escritasAntes, 'no mandó una escritura vacía')
+    assert.ok(!b.tipos().includes(EVENTO.WRITTEN) || b.eventos.filter((e) => e.evento === EVENTO.WRITTEN).length === 1,
+      'no hay un segundo evento written por una carga que no ocurrió')
+  }
+})

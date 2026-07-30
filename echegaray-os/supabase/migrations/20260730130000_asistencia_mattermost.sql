@@ -53,7 +53,10 @@ create table if not exists comunicacion.asistencia_sesiones (
   channel_id         text,                                -- canal privado/DM donde se responde
   root_post_id       text,                                -- hilo
   estado             text not null default 'abierta'
-                     check (estado in ('abierta','confirmada','cancelada','vencida','conflicto')),
+                     -- 'fallida': se intentó escribir y no entró. Estado propio para que la
+                     -- clave de idempotencia (índice de abajo, sólo 'confirmada') se libere y
+                     -- el jefe pueda reintentar: una carga que no entró no está registrada.
+                     check (estado in ('abierta','confirmada','cancelada','vencida','conflicto','fallida')),
   fecha_operativa    date,                                -- día que se está cargando (tz San Juan)
   clave_obra         text,
   spreadsheet_id     text,

@@ -84,8 +84,10 @@ export async function manejarAsistencia(o = {}) {
       default: return resp(ui.renderAyuda(), 'ayuda')
     }
   } catch (e) {
+    // El detalle va a la auditoría, NUNCA al chat: un error del driver de Postgres publicaría
+    // nombres de tablas internas en Mattermost. El jefe necesita saber que no se hizo, no por qué.
     await d.auditar(EVENTO.FAILED, { status: 'failed', error_message_sanitized: sanitizarError(e) })
-    return resp(ui.renderError({ mensaje: sanitizarError(e) }), 'error')
+    return resp(ui.renderError({ mensaje: 'hubo un problema del lado del sistema. No se escribió nada' }), 'error')
   }
 }
 
@@ -310,6 +312,11 @@ async function confirmar(d, { sobrescribir, reemplazar_formula } = {}) {
     return resp(ui.renderPreview(plan), 'requiere_confirmacion_formula')
   }
 
+  // Nada que escribir NO es un registro. Antes se cerraba la sesión, se quemaba la clave y
+  // se contestaba "✅ Asistencia registrada · Celdas actualizadas: 0" — un éxito por una
+  // carga que nunca ocurrió, y de paso la clave quedaba bloqueada para el intento de verdad.
+  if (!plan.escribibles?.length) return resp(ui.renderPreview(plan), 'sin_cambios')
+
   // Un solo uso: si esta misma confirmación ya se ejecutó, no vuelve a mutar.
   const cierre = await d.sesiones.confirmar(sesion.id, { idempotencyKey: plan.idempotency_key })
   if (cierre.duplicado) return resp(ui.renderDuplicado({ plan }), 'duplicado')
@@ -320,11 +327,19 @@ async function confirmar(d, { sobrescribir, reemplazar_formula } = {}) {
     obra_normalizada: plan.clave_obra, idempotency_key: plan.idempotency_key, sesion_id: sesion.id,
   })
 
-  const resultado = await registrarAsistencia(d.google, {
-    plan,
-    confirmarSobrescritura: Boolean(sobrescribir),
-    confirmarReemplazoFormula: Boolean(reemplazar_formula),
-  })
+  // La API de Google no siempre devuelve un fallo: a veces TIRA (503, token vencido). Si esa
+  // excepción subiera al catch general, la sesión quedaría 'confirmada' con la clave tomada y
+  // la planilla vacía. Se convierte en el mismo fallo controlado que cierra la sesión.
+  let resultado
+  try {
+    resultado = await registrarAsistencia(d.google, {
+      plan,
+      confirmarSobrescritura: Boolean(sobrescribir),
+      confirmarReemplazoFormula: Boolean(reemplazar_formula),
+    })
+  } catch (e) {
+    resultado = { ok: false, motivo: 'error_escribiendo', error: sanitizarError(e), celdas: [] }
+  }
   const base = { actor: d.actor, plan, sesion, iniciadoEn: sesion.creado_at, confirmadoEn: new Date().toISOString() }
   if (!resultado.ok) return await fallaEscritura(d, { resultado, base, sesion, plan })
 
@@ -340,10 +355,15 @@ async function fallaEscritura(d, { resultado, base, sesion, plan }) {
     await d.auditar(EVENTO.CONFLICT, payloadConfirmacion({ ...base, resultado, status: 'conflict' }))
     return resp(ui.renderConflicto({ conflictos: resultado.conflictos }), 'conflicto')
   }
+  // La escritura no entró: se cierra como FALLIDA, no como confirmada. Si quedara
+  // 'confirmada', la clave de idempotencia seguiría tomada y el reintento del jefe recibiría
+  // "esa carga ya estaba registrada" con las celdas de JORNALES vacías — para siempre.
   if (resultado.motivo === MOTIVO.PESTANA_PROTEGIDA) {
+    await d.sesiones.cerrar(sesion.id, ESTADO_SESION.FALLIDA)
     await d.auditar(EVENTO.FAILED, payloadConfirmacion({ ...base, resultado, status: 'pestana_protegida' }))
     return resp(ui.renderPestanaProtegida({ pestana: plan.pestana }), 'protegida')
   }
+  await d.sesiones.cerrar(sesion.id, ESTADO_SESION.FALLIDA)
   await d.auditar(EVENTO.FAILED, payloadConfirmacion({ ...base, resultado, status: 'failed' }))
   return resp(ui.renderError({ mensaje: String(resultado.motivo ?? 'error desconocido') }), 'fallo')
 }
