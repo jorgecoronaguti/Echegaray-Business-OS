@@ -225,19 +225,7 @@ async function main() {
   // para dos superficies que sólo tienen sentido juntas: el comando entrega el enlace que
   // abre la pantalla. Si el módulo de la pantalla no está, el comando sigue funcionando y
   // `/asistencia` responde su aviso — no se cae el proceso entero por eso.
-  let manejarPantalla = null
-  try {
-    const web = await import('../asistencia-web/servidor.mjs')
-    const { googleDelOs } = await import('../lib/google-os.mjs')
-    const google = googleDelOs()
-    manejarPantalla = web.crearManejadorPantalla({ google, port: pool, log })
-  } catch (e) {
-    log.warn('la pantalla no se pudo montar: queda sólo el flujo por chat', {
-      detalle: String(e?.message ?? e).slice(0, 200),
-    })
-  }
-
-  const server = crearServidorAsistencia({ manejarComando, manejarPantalla, log })
+  const server = crearServidorAsistencia({ manejarComando, manejarPantalla: null, log })
 
   const cerrar = (s) => { log.info('shutdown', { señal: s }); server.close(() => process.exit(0)) }
   for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => cerrar(s))

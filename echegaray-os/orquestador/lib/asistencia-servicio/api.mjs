@@ -15,11 +15,11 @@ import { createHash, randomUUID } from 'node:crypto'
 import {
   contextoParaFecha, listarObrasPorFecha, listarPersonalPorObraYFecha,
   planificarAsistencia, registrarAsistencia, SIN_CAMBIO, MOTIVO as MOTIVO_NUCLEO,
-} from '../lib/tools/jornales-asistencia.mjs'
-import { obrasDeBloque } from '../lib/jornales-estructura.mjs'
-import { normalizarHoras } from '../lib/horas-extra.mjs'
-import { tienePermiso } from '../lib/asistencia-permisos.mjs'
-import { crearAuditor, EVENTO, payloadConfirmacion, sanitizarError } from '../lib/asistencia-auditoria.mjs'
+} from '../tools/jornales-asistencia.mjs'
+import { obrasDeBloque } from '../jornales-estructura.mjs'
+import { normalizarHoras } from '../horas-extra.mjs'
+import { tienePermiso } from '../asistencia-permisos.mjs'
+import { crearAuditor, EVENTO, payloadConfirmacion, sanitizarError } from '../asistencia-auditoria.mjs'
 import { validarFecha, hoyIso } from './fechas.mjs'
 import { mapearObras, mapearPersona, marcaDe, mensajeDeMotivo, resolverJornada } from './mapeo.mjs'
 import { crearRegistroMemoria } from './idempotencia.mjs'

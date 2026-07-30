@@ -4,7 +4,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { fakeGoogleJornales, construirGrid, fecha, txt } from '../lib/jornales-fixture.mjs'
+import { fakeGoogleJornales, construirGrid, fecha, txt } from '../jornales-fixture.mjs'
 import { BASE, FECHA_HOY, levantarServidor } from './dobles-de-prueba.mjs'
 
 /** Columna del 30/07/2026 en el bloque de julio del fixture (F..S ⇒ índice 17). */

@@ -2,8 +2,8 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { ESTADO } from '../lib/horas-extra.mjs'
-import { SIN_CAMBIO, MOTIVO } from '../lib/tools/jornales-asistencia.mjs'
+import { ESTADO } from '../horas-extra.mjs'
+import { SIN_CAMBIO, MOTIVO } from '../tools/jornales-asistencia.mjs'
 import { mensajeDeMotivo, mapearObras, resolverJornada, mapearPersona, marcaDe, extrasDe } from './mapeo.mjs'
 import { crearRegistroMemoria } from './idempotencia.mjs'
 

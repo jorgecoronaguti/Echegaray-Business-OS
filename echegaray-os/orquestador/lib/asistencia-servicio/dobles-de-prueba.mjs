@@ -5,9 +5,8 @@
 // (`lib/jornales-fixture.mjs`), que reproduce las rarezas reales del archivo; los módulos
 // de los otros dos frentes se doblan contra la interfaz congelada del contrato.
 
-import { fakeGoogleJornales, FECHA_HOY } from '../lib/jornales-fixture.mjs'
+import { fakeGoogleJornales, FECHA_HOY } from '../jornales-fixture.mjs'
 import { crearApi } from './api.mjs'
-import { crearServidorAsistencia } from './servidor.mjs'
 
 export { FECHA_HOY }
 export const SECRETO = 'secreto-solo-para-tests'
@@ -49,7 +48,7 @@ export function jornadaConfigDoble(respuesta = { horas: null, origen: 'sin_confi
   return async () => respuesta
 }
 
-/** Doble de `comunicacion/enlace-firmado.mjs` (frente C). Un solo uso de verdad. */
+/** Doble del verificador de enlaces (histórico: la UI web se retiró). */
 export function enlaceDoble({ validos = ['token-bueno'] } = {}) {
   const usados = new Set()
   return {
@@ -84,7 +83,15 @@ export function googleQueFalla() {
  * Levanta el servidor real en un puerto efímero, con dobles en todas las fronteras.
  * Devuelve helpers para pedir, entrar con el enlace y cerrar.
  */
-export async function levantarServidor({ google = googleDoble(), enlace = enlaceDoble(), motivos, jornadaConfig, api, idempotencia } = {}) {
+/**
+ * Arnés EN PROCESO de la capa de servicio. Antes levantaba el servidor HTTP de la pantalla
+ * web; esa pantalla se retiró (la carga ocurre dentro de Mattermost), pero los tests que
+ * colgaban de ella cubren validaciones, motivos, horas, idempotencia, concurrencia y celdas
+ * bloqueadas — o sea, el BACKEND. Se conserva la misma interfaz (`json`, `entrar`, `cerrar`)
+ * para no reescribir una sola aserción: lo único que cambia es que ahora se llama a la API
+ * directamente en vez de dar la vuelta por HTTP.
+ */
+export async function levantarServidor({ google = googleDoble(), motivos, jornadaConfig, api, idempotencia } = {}) {
   const auditor = auditorDoble()
   const usar = api ?? crearApi({
     google,
@@ -94,37 +101,32 @@ export async function levantarServidor({ google = googleDoble(), enlace = enlace
     hoy: () => FECHA_HOY,
     ...(idempotencia ? { idempotencia } : {}),
   })
-  const { server } = crearServidorAsistencia({
-    api: usar, secreto: SECRETO, enlace, cookieSegura: false, log: { error() {} },
-  })
-  await new Promise((r) => server.listen(0, '127.0.0.1', r))
-  const raiz = `http://127.0.0.1:${server.address().port}`
-  let cookie = null
-  const pedir = (ruta, opciones = {}) => fetch(raiz + ruta, {
-    redirect: 'manual',
-    ...opciones,
-    headers: { ...(cookie ? { cookie } : {}), ...(opciones.headers ?? {}) },
-  })
-  const json = async (ruta, opciones) => {
-    const r = await pedir(ruta, opciones)
-    return { status: r.status, cuerpo: await r.json() }
+  const ACTOR = { userId: 'usr-jefe', username: 'jorge' }
+
+  /** Traduce una ruta de la API vieja a la llamada correspondiente. */
+  async function despachar(ruta, opciones = {}) {
+    const u = new URL(ruta, 'http://asistencia.local')
+    const camino = u.pathname.replace(BASE, '')
+    if (camino === '/api/contexto') return usar.contexto({ actor: ACTOR, params: u.searchParams })
+    if (camino === '/api/cuadrilla') return usar.cuadrilla({ actor: ACTOR, params: u.searchParams })
+    if (camino === '/api/registrar') {
+      const body = opciones.body ? JSON.parse(opciones.body) : {}
+      return usar.registrar({ actor: ACTOR, body })
+    }
+    return { status: 404, body: { error: 'No existe esa dirección.' } }
   }
+
   return {
     google,
-    server,
     eventos: auditor.eventos,
-    pedir,
-    json,
-    get cookie() { return cookie },
-    async entrar(token = 'token-bueno') {
-      const r = await pedir(`${BASE}?t=${token}`)
-      const set = r.headers.get('set-cookie')
-      if (set) cookie = set.split(';')[0]
-      return r
+    async json(ruta, opciones) {
+      const r = await despachar(ruta, opciones)
+      return { status: r.status, cuerpo: r.body }
     },
-    postear: (cuerpo) => json(`${BASE}/api/registrar`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(cuerpo),
-    }),
-    cerrar: () => new Promise((r) => server.close(r)),
+    postear(cuerpo) {
+      return this.json(`${BASE}/api/registrar`, { method: 'POST', body: JSON.stringify(cuerpo) })
+    },
+    async entrar() { return { status: 302 } },
+    cerrar() {},
   }
 }

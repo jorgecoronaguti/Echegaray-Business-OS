@@ -1,6 +1,6 @@
 // INYECCIÓN DE DEPENDENCIAS — el cable entre este frente y los otros dos.
 //
-// `asistencia-motivos.mjs` y `jornada-config.mjs` (frente A) y `enlace-firmado.mjs`
+// `asistencia-motivos.mjs` y `jornada-config.mjs`
 // (frente C) se construyen en paralelo a esta pantalla. Este archivo programa contra la
 // INTERFAZ congelada del contrato y resuelve el módulo real de forma perezosa, así:
 //
@@ -24,7 +24,6 @@ function perezoso(cargar) {
 
 const modMotivos = perezoso(() => import('../lib/asistencia-motivos.mjs'))
 const modJornada = perezoso(() => import('../lib/jornada-config.mjs'))
-const modEnlace = perezoso(() => import('../comunicacion/enlace-firmado.mjs'))
 
 /**
  * Motivos (frente A). Si el módulo no está, `validarNovedad` rechaza con un mensaje claro
@@ -66,7 +65,6 @@ export async function dameJornadaConfig(inyectado) {
 /** Verificación del enlace de un solo uso (frente C). */
 export async function dameEnlace(inyectado) {
   if (inyectado) return inyectado
-  const r = await modEnlace()
   if (!r.ok) return { verificarEnlace: () => ({ ok: false, motivo: 'invalido', detalle: FALTA_ENLACE }) }
   return r.m
 }

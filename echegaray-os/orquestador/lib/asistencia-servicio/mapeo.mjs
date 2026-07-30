@@ -5,8 +5,8 @@
 // Esta es la única capa donde se cruzan los dos idiomas — y NO agrega reglas: no decide
 // horas, no decide motivos, no decide filas. Sólo traduce.
 
-import { ESTADO, FORMA, describirCarga } from '../lib/horas-extra.mjs'
-import { SIN_CAMBIO, MOTIVO as MOTIVO_NUCLEO } from '../lib/tools/jornales-asistencia.mjs'
+import { ESTADO, FORMA, describirCarga } from '../horas-extra.mjs'
+import { SIN_CAMBIO, MOTIVO as MOTIVO_NUCLEO } from '../tools/jornales-asistencia.mjs'
 import { fechaLegible } from './fechas.mjs'
 
 /** Motivos del núcleo → castellano, para que el jefe lea una frase y no un código. */
