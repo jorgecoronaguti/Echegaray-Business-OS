@@ -45,7 +45,11 @@ function existe(iso) {
  * @returns {{ok:true, fecha:string}|{ok:false, error:string}}
  */
 export function validarFecha(entrada, { hoy = hoyIso() } = {}) {
-  const v = entrada == null ? '' : String(entrada).trim()
+  // Postgres devuelve las columnas `date` como objeto Date, no como texto. Sin esta línea,
+  // una fecha que viene de la base cae en `String(Date)` ("Thu Jul 30 2026 …") y se rechaza
+  // como inexistente: el jefe elegía la obra y le respondían que la fecha no existe.
+  const crudo = entrada instanceof Date ? entrada.toISOString().slice(0, 10) : entrada
+  const v = crudo == null ? '' : String(crudo).trim()
   if (!v) return { ok: true, fecha: hoy }
   if (!RE_ISO.test(v) || !existe(v)) {
     return { ok: false, error: 'Esa fecha no existe. Escribila como 30/07/2026.' }

@@ -35,3 +35,17 @@ test('una fecha que no existe se rechaza', () => {
 test('fechaLegible muestra el formato argentino', () => {
   assert.equal(fechaLegible('2026-07-30'), '30/07/2026')
 })
+
+test('una fecha que viene de Postgres (objeto Date) se acepta', () => {
+  // La sesión guarda `fecha_operativa` como columna `date`; el driver la devuelve como Date.
+  // Sin tolerarlo, el jefe elegía la obra y le respondían que la fecha no existe.
+  const r = validarFecha(new Date('2026-07-30T03:00:00Z'), { hoy: '2026-07-30' })
+  assert.equal(r.ok, true)
+  assert.equal(r.fecha, '2026-07-30')
+})
+
+test('un Date futuro se sigue rechazando', () => {
+  const r = validarFecha(new Date('2026-08-05T03:00:00Z'), { hoy: '2026-07-30' })
+  assert.equal(r.ok, false)
+  assert.match(r.error, /futura/i)
+})
