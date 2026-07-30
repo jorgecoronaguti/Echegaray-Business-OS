@@ -357,9 +357,13 @@ cash flow.
 
 ---
 
-## 6. Prueba controlada de escritura (pendiente de tu autorización)
+## 6. Prueba controlada de escritura — EJECUTADA el 30/07/2026
 
-Todavía **no se escribió nunca** en JORNALES desde este skill. La prueba real:
+La primera escritura real ya ocurrió: celda `'Obreros 26'!R464` (Navarro Matias), de vacía a `9`,
+`correlation_id 836bf225-1c7a-4923-925a-7e658aee8c37`, verificada releyendo la planilla. El
+detalle está en [`DOD-ASISTENCIA.md`](./DOD-ASISTENCIA.md) §3.
+
+El procedimiento queda documentado para repetirlo ante un cambio de estructura de la planilla:
 
 ```bash
 # 1. dry-run del día — muestra celda, valor actual y propuesto. NO escribe.
@@ -368,7 +372,7 @@ node orquestador/scripts/asistencia-dry-run.mjs
 
 # 2. (en modo ABIERTO no hace falta autorizar a nadie)
 
-# 3. desde Mattermost, por DM al bot:
+# 3. desde Mattermost, en el canal #asistencia (o por DM al bot):
 #      @os asistencia
 #      obra <n>            ← elegí una obra de UNA sola persona
 #      1 parcial 9         ← el mismo valor que ya tendría, o el real del día

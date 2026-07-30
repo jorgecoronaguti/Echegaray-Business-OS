@@ -144,3 +144,10 @@ usa su propio reintento oficial (`fail_task` → backoff → re-claim). Replay m
 Comandos determinísticos de dominio (`/os caja`, `/os obra`) apoyados en los **tools existentes** del OS
 (sin especialistas todavía), identidad→rol real para autorizar comandos, y el binding del endpoint HTTP
 entrante. La expansión a especialistas (CFO/Compras/RRHH) y multimedia→Drive es posterior.
+
+---
+
+> **Histórico.** Este documento describe el estado de PR-4 y ya no refleja la arquitectura vigente.
+> El paso a especialistas registrados ocurrió antes de lo previsto acá: el Director y el registro
+> por descubrimiento están en producción desde el 30/07/2026, con Personal/RRHH como primer
+> especialista. La arquitectura actual está en [`MODULO-ASISTENCIA.md`](./MODULO-ASISTENCIA.md).

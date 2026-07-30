@@ -1,5 +1,13 @@
 # PR-4 · Checklist de prueba controlada en producción
 
+> **HISTÓRICO — checklist completado y superado.** La prueba se ejecutó y el sistema está en
+> producción desde el 30/07/2026. Además, la topología de transporte cambió: el flujo NO usa el
+> outgoing webhook HTTP que se describe abajo, sino un **bot con WebSocket saliente** (PR-4.2),
+> que no expone ningún endpoint entrante. Los ítems de webhook/HMAC/endpoint de este checklist ya
+> no aplican. Se conserva como registro de la puesta en marcha.
+> Para operar hoy: [`MODULO-ASISTENCIA.md`](./MODULO-ASISTENCIA.md) §11–13 y
+> [`OPERACION-BOT-WEBSOCKET.md`](./OPERACION-BOT-WEBSOCKET.md).
+
 > **No ejecutar sin autorización expresa del dueño.** Este checklist prepara una prueba acotada del flujo
 > `@os estado del sistema` contra el Mattermost productivo. Todo lo anterior (test vertical + demo) corre
 > en Postgres descartable, sin tocar producción.
