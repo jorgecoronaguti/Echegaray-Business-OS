@@ -1,11 +1,18 @@
-// PERMISOS DEL SKILL DE ASISTENCIA — fail-closed, sin nombres en el código.
+// PERMISOS DEL SKILL DE ASISTENCIA — dos modos, uno solo activo.
 //
-// Sólo dos jefes de obra pueden registrar asistencia. Ese "quiénes" es CONFIGURACIÓN,
-// no código: vive en `comunicacion.permisos_skill`, se otorga con el script
-// `asistencia-permiso.mjs` y se puede revocar en un segundo sin desplegar nada.
+// MVP APROBADO (default): modo ABIERTO. Cualquier usuario AUTENTICADO de Mattermost
+// registra y consulta. No hay roles, ni aprobaciones, ni lista de habilitados, y la
+// tabla `comunicacion.permisos_skill` vacía NO bloquea nada — ni se consulta.
+// Lo único no negociable es la identidad real: todo queda auditado con ella.
 //
-// Sin fila activa no se ejecuta. Si la consulta a la base falla, TAMPOCO se ejecuta:
-// un permiso que se relaja cuando la base no responde no es un permiso.
+// MODO ESTRICTO (`ORQ_ASISTENCIA_PERMISOS=estricto`): sólo opera quien tenga un grant
+// activo en `comunicacion.permisos_skill`. El "quiénes" es CONFIGURACIÓN, no código: se
+// otorga con el script `asistencia-permiso.mjs` y se revoca en un segundo sin desplegar.
+// Ahí sí es fail-closed: sin fila activa no se ejecuta, y si la base no responde tampoco
+// — un permiso que se relaja cuando la base se cae no es un permiso.
+//
+// La infraestructura del modo estricto queda escrita y probada a propósito: endurecer
+// es cambiar una variable de entorno, no volver a construir esto.
 
 export const PERMISO_ASISTENCIA_WRITE = 'personal.asistencia.write'
 
