@@ -101,6 +101,14 @@ const DRY = process.argv.includes('--dry')
 // notasAncladas siguen re-anclando los comentarios del dueño por proveedor/comprobante. Nunca se
 // activa solo: hace falta --force en la línea de comandos o ORQ_PROV_FORCE=1 en el entorno.
 const FORCE = process.argv.includes('--force') || process.env.ORQ_PROV_FORCE === '1'
+// ALCANCE DE LA REGENERACIÓN (30/07). `--force` era GLOBAL: saltaba las guardas de skip de LAS DOS
+// pestañas que este script escribe. Pero el dueño reescribió "Materiales" entera a mano (de 518
+// rótulos míos quedan 38), así que un --force para arreglar el cuadro de deuda de "Proveedores" le
+// habría pasado por encima a un trabajo que no tiene nada que ver con lo que se pidió. Una
+// regeneración intencional tiene que poder apuntar a UNA pestaña.
+//   --solo Proveedores   → sólo esa pestaña se escribe; la otra no se toca ni con --force
+const iSolo = process.argv.indexOf('--solo')
+const SOLO = iSolo >= 0 ? String(process.argv[iSolo + 1] ?? '').trim() : ''
 const AÑO = 2026
 const TOP = 30
 /** Colchón de filas sobre la deuda actual, para que la tabla derrame sin pisar el bloque siguiente.
@@ -1148,6 +1156,10 @@ async function main() {
   let hojas = await google.getSheetMeta(ID)
   const escritas = []
   for (const [i, t] of TRAMOS.entries()) {
+    // EL ALCANCE, ANTES DE CUALQUIER LECTURA O ESCRITURA DE ESTA PESTAÑA. Con --solo, la que no fue
+    // nombrada no se toca ni con --force: es la diferencia entre "regenerá el cuadro de deuda" y
+    // "regenerá las dos pestañas", que no es lo mismo cuando el dueño reescribió una de las dos.
+    if (SOLO && t.titulo !== SOLO) { console.log(`  ⏭ ${t.titulo}: fuera del alcance (--solo ${SOLO}), no la toco`); continue }
     // EL TÍTULO VA EN ORACIÓN, NO EN VERSALITA. Una pestaña entera gritando es la marca de una
     // planilla, no de un statement: la versalita se reserva para los títulos de sección.
     const filasP = [[t.titulo], [t.subtitulo], [], ...partes[i].filas]
