@@ -85,7 +85,7 @@ test('plan de presentes: 3 celdas nuevas, jornada 9h, nada bloqueado', async () 
   assert.equal(plan.resumen.celdas_modificadas, 0)
   assert.equal(plan.resumen.bloqueadas, 0)
   assert.equal(plan.requiere_confirmacion_sobrescritura, false)
-  assert.ok(plan.items.every((i) => i.horas_nuevas === 9))
+  assert.ok(plan.items.every((i) => i.normales_nuevas === 9 && i.extras_nuevas === 0))
   assert.equal(plan.columna_letra, 'R')
 })
 
@@ -99,11 +99,11 @@ test('ausente planifica 0 y parcial planifica las horas dadas', async () => {
     marcas: [
       { nombre_clave: a, estado: 'presente' },
       { nombre_clave: b, estado: 'ausente' },
-      { nombre_clave: c, estado: 'parcial', horas: '5,5' },
+      { nombre_clave: c, estado: 'parcial', normales: '5,5' },
     ],
     actor: ACTOR,
   })
-  const h = Object.fromEntries(plan.items.map((i) => [i.nombre_clave, i.horas_nuevas]))
+  const h = Object.fromEntries(plan.items.map((i) => [i.nombre_clave, i.total_nuevo]))
   assert.equal(h[a], 9)
   assert.equal(h[b], 0)
   assert.equal(h[c], 5.5)
@@ -111,17 +111,25 @@ test('ausente planifica 0 y parcial planifica las horas dadas', async () => {
   assert.equal(plan.resumen.parciales, 1)
 })
 
-test('una celda con FÓRMULA queda bloqueada: no se pisan las horas extra', async () => {
+test('una celda con =8+6 se INTERPRETA como 8 normales + 6 extra, no se bloquea', async () => {
   const g = fakeGoogle()
   const ctx = await contextoParaFecha(g, { fecha: '2026-07-16' })
   const plan = planificarAsistencia(ctx, {
     claveObra: OBRA_JS,
-    marcas: [{ nombre_clave: 'QUIROGA SEBASTIAN', estado: 'presente' }],
+    marcas: [{ nombre_clave: 'QUIROGA SEBASTIAN', estado: 'presente', extras: 6 }],
     actor: ACTOR,
   })
-  assert.equal(plan.items[0].bloqueada, MOTIVO.CELDA_CON_FORMULA)
-  assert.equal(plan.items[0].formula_actual, '=8+6')
-  assert.equal(plan.escribibles.length, 0)
+  const i = plan.items[0]
+  assert.equal(i.bloqueada, null, 'una fórmula de horas extra es una carga válida')
+  assert.equal(i.formula_actual, '=8+6')
+  assert.deepEqual(
+    { n: i.normales_actuales, e: i.extras_actuales, t: i.total_actual },
+    { n: 8, e: 6, t: 14 },
+    'el estado anterior viene desglosado',
+  )
+  // el jueves calibra 9: pasar de 8+6 a 9+6 es una modificación real
+  assert.equal(i.accion, 'modifica')
+  assert.equal(i.escribir, '=9+6')
 })
 
 test('una celda con TEXTO no numérico queda bloqueada', async () => {
@@ -175,8 +183,8 @@ test('celda existente DISTINTA → modifica y exige confirmación explícita', a
     claveObra: OBRA_MESSINAS, marcas: [{ nombre_clave: 'RETA SEBASTIAN', estado: 'ausente' }], actor: ACTOR,
   })
   assert.equal(plan.items[0].accion, 'modifica')
-  assert.equal(plan.items[0].horas_actuales, 9)
-  assert.equal(plan.items[0].horas_nuevas, 0)
+  assert.equal(plan.items[0].total_actual, 9)
+  assert.equal(plan.items[0].total_nuevo, 0)
   assert.equal(plan.requiere_confirmacion_sobrescritura, true)
 
   const sin = await registrarAsistencia(g, { plan })
@@ -349,8 +357,10 @@ test('dry-run muestra sheet, fecha, obra, celda, valor actual y propuesto sin es
   assert.equal(d.sheet, 'Obreros 26')
   assert.equal(d.fecha, FECHA_HOY)
   assert.equal(d.filas.length, 3)
-  assert.deepEqual(Object.keys(d.filas[0]).sort(), ['accion', 'celda', 'trabajador', 'valor_actual', 'valor_propuesto'])
+  assert.ok(['accion', 'celda', 'trabajador', 'valor_actual', 'valor_propuesto',
+    'normales_nuevas', 'extras_nuevas', 'total_nuevo'].every((k) => k in d.filas[0]))
   assert.equal(d.filas[0].valor_propuesto, 9)
+  assert.equal(d.filas[0].total_nuevo, 9)
   assert.equal(g.escrituras.length, 0, 'dry-run no escribe')
 })
 
@@ -361,4 +371,212 @@ test('obra sin personal en esa fecha se informa (no se inventa cuadrilla)', asyn
   const r = await listarPersonalPorObraYFecha(g, { fecha: FECHA_HOY, claveObra: 'TALLER|NADIE' })
   assert.equal(r.ok, false)
   assert.equal(r.motivo, MOTIVO.OBRA_DESCONOCIDA)
+})
+
+// ── HORAS EXTRA en el plan y en la escritura ────────────────────────────────
+// Los casos se inyectan MUTANDO la grilla del fake, no tocando el fixture compartido:
+// así estos tests son independientes de lo que el fixture traiga por defecto.
+
+/** Pone una celda en la columna del día `iso` para la fila 1-based dada. */
+function ponerCelda(g, fila1, col, { formula = null, valor, numero }) {
+  g.grid.filas[fila1 - 1][idxCol(col)] = { valor: String(valor), numero, formula, derivada: false }
+}
+
+test('presente CON horas extra escribe una fórmula que preserva la separación', async () => {
+  const g = fakeGoogle()
+  const ctx = await contextoParaFecha(g, { fecha: FECHA_HOY })
+  const plan = planificarAsistencia(ctx, {
+    claveObra: OBRA_JS, marcas: [{ nombre_clave: 'AGUERO CRISTIAN', estado: 'presente', extras: 2 }], actor: ACTOR,
+  })
+  const i = plan.items[0]
+  assert.deepEqual({ n: i.normales_nuevas, e: i.extras_nuevas, t: i.total_nuevo }, { n: 9, e: 2, t: 11 })
+  assert.equal(i.escribir, '=9+2')
+  const r = await registrarAsistencia(g, { plan })
+  assert.equal(r.ok, true)
+  assert.equal(g.escrituras[0].data[0].values[0][0], '=9+2')
+  assert.equal(r.celdas[0].new_total_hours, 11)
+  assert.equal(r.celdas[0].new_formula, '=9+2')
+})
+
+test('el resumen agrega horas normales, extra y total', async () => {
+  const g = fakeGoogle()
+  const ctx = await contextoParaFecha(g, { fecha: FECHA_HOY })
+  const plan = planificarAsistencia(ctx, {
+    claveObra: OBRA_JS,
+    marcas: [
+      { nombre_clave: 'AGUERO CRISTIAN', estado: 'presente', extras: 2 },
+      { nombre_clave: 'QUIROGA SEBASTIAN', estado: 'presente' },
+      { nombre_clave: 'EMANUEL ALANIZ', estado: 'ausente' },
+    ],
+    actor: ACTOR,
+  })
+  assert.equal(plan.resumen.horas_normales, 18)
+  assert.equal(plan.resumen.horas_extra, 2)
+  assert.equal(plan.resumen.horas_total, 20)
+  assert.equal(plan.resumen.con_extras, 1)
+  assert.equal(plan.resumen.ausentes, 1)
+})
+
+test('editar una carga existente =9+2 precarga el desglose y no lo reinicia', async () => {
+  const g = fakeGoogle()
+  ponerCelda(g, 21, 'R', { formula: '=9+2', valor: '11', numero: 11 })
+  const p = await listarPersonalPorObraYFecha(g, { fecha: FECHA_HOY, claveObra: OBRA_JS })
+  const a = p.personal.find((x) => x.nombre_clave === 'AGUERO CRISTIAN').actual
+  assert.deepEqual({ n: a.carga.normales, e: a.carga.extras, t: a.carga.total }, { n: 9, e: 2, t: 11 })
+  assert.equal(a.carga.inequivoca, true)
+})
+
+test('cambiar sólo las normales PRESERVA la forma =4+3*1,5 de las extras', async () => {
+  const g = fakeGoogle()
+  ponerCelda(g, 21, 'R', { formula: '=4+3*1,5', valor: '8,5', numero: 8.5 })
+  const ctx = await contextoParaFecha(g, { fecha: FECHA_HOY })
+  const plan = planificarAsistencia(ctx, {
+    claveObra: OBRA_JS, marcas: [{ nombre_clave: 'AGUERO CRISTIAN', estado: 'presente', extras: 4.5 }], actor: ACTOR,
+  })
+  const i = plan.items[0]
+  assert.equal(i.escribir, '=9+3*1.5', 'no se destruye que eran 3 h al 1,5')
+  assert.equal(i.total_nuevo, 13.5)
+})
+
+test('pasar de =9+2 a un 11 pelado NO es "sin cambio": cambia el archivo', async () => {
+  const g = fakeGoogle()
+  ponerCelda(g, 21, 'R', { formula: '=9+2', valor: '11', numero: 11 })
+  const ctx = await contextoParaFecha(g, { fecha: FECHA_HOY })
+  const plan = planificarAsistencia(ctx, {
+    claveObra: OBRA_JS, marcas: [{ nombre_clave: 'AGUERO CRISTIAN', estado: 'parcial', normales: 11 }], actor: ACTOR,
+  })
+  assert.equal(plan.items[0].total_nuevo, 11)
+  assert.equal(plan.items[0].accion, 'modifica', 'mismo total, otra representación')
+})
+
+test('una carga IDÉNTICA con extras queda sin_cambio y no se reescribe', async () => {
+  const g = fakeGoogle()
+  ponerCelda(g, 21, 'R', { formula: '=9+2', valor: '11', numero: 11 })
+  const ctx = await contextoParaFecha(g, { fecha: FECHA_HOY })
+  const plan = planificarAsistencia(ctx, {
+    claveObra: OBRA_JS, marcas: [{ nombre_clave: 'AGUERO CRISTIAN', estado: 'presente', extras: 2 }], actor: ACTOR,
+  })
+  assert.equal(plan.items[0].accion, 'sin_cambio')
+  assert.equal(plan.resumen.a_escribir, 0)
+})
+
+test('una fórmula NO interpretable exige una confirmación aparte para reemplazarla', async () => {
+  const g = fakeGoogle()
+  ponerCelda(g, 21, 'R', { formula: '=9-2,5+2', valor: '8,5', numero: 8.5 })
+  const ctx = await contextoParaFecha(g, { fecha: FECHA_HOY })
+  const plan = planificarAsistencia(ctx, {
+    claveObra: OBRA_JS, marcas: [{ nombre_clave: 'AGUERO CRISTIAN', estado: 'presente' }], actor: ACTOR,
+  })
+  const i = plan.items[0]
+  assert.equal(i.bloqueada, null, 'no está bloqueada: se puede reemplazar CON confirmación')
+  assert.equal(i.reemplaza_formula_no_interpretable, true)
+  assert.equal(i.total_actual, 8.5, 'el total anterior se conoce')
+  assert.equal(i.normales_actuales, null, 'la composición anterior NO se inventa')
+  assert.equal(plan.requiere_confirmacion_formula, true)
+
+  const sin = await registrarAsistencia(g, { plan, confirmarSobrescritura: true })
+  assert.equal(sin.ok, false)
+  assert.equal(sin.motivo, 'reemplazo_formula_no_confirmado')
+  assert.equal(g.escrituras.length, 0)
+
+  const con = await registrarAsistencia(g, { plan, confirmarSobrescritura: true, confirmarReemplazoFormula: true })
+  assert.equal(con.ok, true)
+  assert.equal(con.celdas[0].old_formula, '=9-2,5+2')
+  assert.equal(con.celdas[0].old_effective_value, 8.5)
+  assert.equal(con.celdas[0].new_total_hours, 9)
+})
+
+test('llegada tarde con horas extra: normales trabajadas + extras', async () => {
+  const g = fakeGoogle()
+  const ctx = await contextoParaFecha(g, { fecha: FECHA_HOY })
+  const plan = planificarAsistencia(ctx, {
+    claveObra: OBRA_JS, marcas: [{ nombre_clave: 'AGUERO CRISTIAN', estado: 'tarde', normales: 7, extras: 2 }], actor: ACTOR,
+  })
+  const i = plan.items[0]
+  assert.deepEqual({ n: i.normales_nuevas, e: i.extras_nuevas, t: i.total_nuevo }, { n: 7, e: 2, t: 9 })
+  assert.equal(i.escribir, '=7+2')
+  assert.equal(plan.resumen.tardes, 1)
+})
+
+test('un ausente con horas extra se bloquea (incoherente)', async () => {
+  const g = fakeGoogle()
+  const ctx = await contextoParaFecha(g, { fecha: FECHA_HOY })
+  const plan = planificarAsistencia(ctx, {
+    claveObra: OBRA_JS, marcas: [{ nombre_clave: 'AGUERO CRISTIAN', estado: 'ausente', extras: 2 }], actor: ACTOR,
+  })
+  assert.equal(plan.items[0].bloqueada, 'ausente_con_extras')
+  assert.equal(plan.escribibles.length, 0)
+})
+
+test('horas negativas y texto en las extras se bloquean', async () => {
+  const g = fakeGoogle()
+  const ctx = await contextoParaFecha(g, { fecha: FECHA_HOY })
+  for (const [marca, motivo] of [
+    [{ nombre_clave: 'AGUERO CRISTIAN', estado: 'presente', extras: -2 }, 'negativo'],
+    [{ nombre_clave: 'AGUERO CRISTIAN', estado: 'presente', extras: 'A1' }, 'no_numerico'],
+    [{ nombre_clave: 'AGUERO CRISTIAN', estado: 'parcial', normales: '=1+1' }, 'no_numerico'],
+    [{ nombre_clave: 'AGUERO CRISTIAN', estado: 'parcial', normales: 20, extras: 8 }, 'total_mayor_al_maximo'],
+  ]) {
+    const plan = planificarAsistencia(ctx, { claveObra: OBRA_JS, marcas: [marca], actor: ACTOR })
+    assert.equal(plan.items[0].bloqueada, motivo, JSON.stringify(marca))
+  }
+})
+
+test('INYECCIÓN de fórmula: lo que manda el cliente nunca llega a la celda', async () => {
+  const g = fakeGoogle()
+  const ctx = await contextoParaFecha(g, { fecha: FECHA_HOY })
+  for (const veneno of ['=IMPORTRANGE("x","y")', '9;DELETE', '=A1+1', '8)+SUM(A:A']) {
+    const plan = planificarAsistencia(ctx, {
+      claveObra: OBRA_JS, marcas: [{ nombre_clave: 'AGUERO CRISTIAN', estado: 'parcial', normales: veneno }], actor: ACTOR,
+    })
+    assert.equal(plan.items[0].bloqueada, 'no_numerico', veneno)
+    assert.equal(plan.escribibles.length, 0)
+  }
+  assert.equal(g.escrituras.length, 0)
+})
+
+test('la idempotencia distingue 9+2 de 11: no es la misma carga', async () => {
+  const g = fakeGoogle()
+  const ctx = await contextoParaFecha(g, { fecha: FECHA_HOY })
+  const conExtras = planificarAsistencia(ctx, {
+    claveObra: OBRA_JS, marcas: [{ nombre_clave: 'AGUERO CRISTIAN', estado: 'presente', extras: 2 }], actor: ACTOR,
+  })
+  const soloTotal = planificarAsistencia(ctx, {
+    claveObra: OBRA_JS, marcas: [{ nombre_clave: 'AGUERO CRISTIAN', estado: 'parcial', normales: 11 }], actor: ACTOR,
+  })
+  assert.equal(conExtras.items[0].total_nuevo, soloTotal.items[0].total_nuevo)
+  assert.notEqual(conExtras.idempotency_key, soloTotal.idempotency_key)
+})
+
+test('CONCURRENCIA: si cambia la FÓRMULA manteniendo el total, igual es conflicto', async () => {
+  const g = fakeGoogle()
+  ponerCelda(g, 21, 'R', { formula: '=9+2', valor: '11', numero: 11 })
+  const ctx = await contextoParaFecha(g, { fecha: FECHA_HOY })
+  const plan = planificarAsistencia(ctx, {
+    claveObra: OBRA_JS, marcas: [{ nombre_clave: 'AGUERO CRISTIAN', estado: 'presente', extras: 3 }], actor: ACTOR,
+  })
+  // alguien reescribe la celda con otra fórmula que da el MISMO total
+  ponerCelda(g, 21, 'R', { formula: '=8+3', valor: '11', numero: 11 })
+  const r = await registrarAsistencia(g, { plan, confirmarSobrescritura: true })
+  assert.equal(r.ok, false)
+  assert.equal(r.motivo, MOTIVO.CONFLICTO_CONCURRENCIA)
+  assert.equal(g.escrituras.length, 0)
+})
+
+test('la verificación posterior compara el TOTAL interpretado, no el texto', async () => {
+  const g = fakeGoogle()
+  const ctx = await contextoParaFecha(g, { fecha: FECHA_HOY })
+  const plan = planificarAsistencia(ctx, {
+    claveObra: OBRA_JS, marcas: [{ nombre_clave: 'AGUERO CRISTIAN', estado: 'presente', extras: 2 }], actor: ACTOR,
+  })
+  // el fake guarda la fórmula y su valor calculado, como haría el Sheet
+  const orig = g.batchUpdateValues.bind(g)
+  g.batchUpdateValues = async (id, data) => {
+    const res = await orig(id, data)
+    g.grid.filas[20][idxCol('R')] = { valor: '11', numero: 11, formula: '=9+2', derivada: false }
+    return res
+  }
+  const r = await registrarAsistencia(g, { plan })
+  assert.equal(r.ok, true, 'una escritura con fórmula no debe dar verificación fallida')
+  assert.equal(r.escritas, 1)
 })

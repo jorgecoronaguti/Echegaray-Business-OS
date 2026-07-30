@@ -105,10 +105,27 @@ export function payloadConfirmacion({
     cantidad_ausentes: plan?.resumen?.ausentes ?? 0,
     cantidad_parciales: plan?.resumen?.parciales ?? 0,
     cantidad_bloqueadas: plan?.resumen?.bloqueadas ?? 0,
-    // EVIDENCIA del cambio (no fuente de verdad): qué celda, de qué a qué.
+    cantidad_tarde: plan?.resumen?.tardes ?? 0,
+    cantidad_con_extras: plan?.resumen?.con_extras ?? 0,
+    horas_normales: plan?.resumen?.horas_normales ?? 0,
+    horas_extra: plan?.resumen?.horas_extra ?? 0,
+    horas_total: plan?.resumen?.horas_total ?? 0,
+    // EVIDENCIA del cambio (no fuente de verdad): qué celda, de qué a qué, con el
+    // desglose normal/extra de LOS DOS lados. Sin el desglose, la auditoría de una carga
+    // con horas extra decía "de 11 a 12" y no se podía saber si cambió la jornada o las
+    // extras — que es justo la distinción que hay que poder controlar.
     celdas_modificadas: celdas.map((c) => ({
-      celda: c.celda_a1, trabajador: c.nombre_original,
-      old_value: c.old_value ?? null, new_value: c.new_value, estado: c.estado,
+      celda: c.celda_a1, trabajador: c.nombre_original, estado: c.estado,
+      old_value: c.old_value ?? null,
+      old_formula: c.old_formula ?? null,
+      old_effective_value: c.old_effective_value ?? null,
+      old_normal_hours: c.old_normal_hours ?? null,
+      old_extra_hours: c.old_extra_hours ?? null,
+      new_normal_hours: c.new_normal_hours ?? null,
+      new_extra_hours: c.new_extra_hours ?? null,
+      new_total_hours: c.new_total_hours ?? null,
+      new_formula: c.new_formula ?? null,
+      new_value: c.new_value,
     })),
     old_values: celdas.map((c) => c.old_value ?? null),
     new_values: celdas.map((c) => c.new_value),

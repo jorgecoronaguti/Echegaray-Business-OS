@@ -1,11 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { detectarBloques, bloquePorFecha, trabajadoresDeBloque, diaSemanaIso } from './jornales-estructura.mjs'
-import {
-  calibrarJornada, horasJornadaCompleta, normalizarHorasManuales, horasDeEstado, estadoDeHoras,
-  JORNADA_PISO, HORAS_AUSENTE, ESTADO,
-} from './jornada-politica.mjs'
-import { gridJornales, FECHA_HOY, FECHA_SABADO } from './jornales-fixture.mjs'
+import { detectarBloques, bloquePorFecha, trabajadoresDeBloque } from './jornales-estructura.mjs'
+import { calibrarJornada, horasJornadaCompleta, JORNADA_PISO } from './jornada-politica.mjs'
+import { gridJornales, FECHA_HOY } from './jornales-fixture.mjs'
 
 const grid = gridJornales()
 const bloques = detectarBloques(grid, { anio: 2026 })
@@ -57,59 +54,5 @@ test('horasJornadaCompleta marca requiere_manual cuando no hay número defendibl
   assert.equal(sabado.horas, null)
 })
 
-test('normalizarHorasManuales acepta coma y punto y acota el rango', () => {
-  assert.deepEqual(normalizarHorasManuales('5,5'), { ok: true, horas: 5.5 })
-  assert.deepEqual(normalizarHorasManuales('4.25'), { ok: true, horas: 4.25 })
-  assert.deepEqual(normalizarHorasManuales(0), { ok: true, horas: 0 })
-  assert.equal(normalizarHorasManuales('').ok, false)
-  assert.equal(normalizarHorasManuales('ocho').motivo, 'no_numerico')
-  assert.equal(normalizarHorasManuales(NaN).motivo, 'no_numerico')
-  assert.equal(normalizarHorasManuales('25').motivo, 'mayor_al_maximo')
-  assert.equal(normalizarHorasManuales('-1').motivo, 'menor_al_minimo')
-})
-
-test('presente de lunes a viernes usa la jornada calibrada de ESE día', () => {
-  const lun = horasDeEstado('presente', { diaSemana: 1, calibracion: calJulio })
-  assert.deepEqual({ ok: lun.ok, horas: lun.horas }, { ok: true, horas: 9 })
-  const vie = horasDeEstado('presente', { diaSemana: 5, calibracion: calJulio })
-  assert.equal(vie.horas, 8)
-})
-
-test('presente en sábado NO se resuelve solo: pide horas', () => {
-  const sab = horasDeEstado('presente', { diaSemana: 6, calibracion: calJulio })
-  assert.equal(sab.ok, false)
-  assert.equal(sab.motivo, 'jornada_requiere_manual')
-})
-
-test('ausente escribe 0 — nunca deja la celda vacía', () => {
-  const a = horasDeEstado('ausente', { diaSemana: 4, calibracion: calJulio })
-  assert.deepEqual({ ok: a.ok, horas: a.horas }, { ok: true, horas: 0 })
-  assert.equal(HORAS_AUSENTE, 0)
-})
-
-test('jornada parcial toma las horas manuales normalizadas', () => {
-  const p = horasDeEstado('parcial', { diaSemana: 4, calibracion: calJulio, horasManuales: '5,5' })
-  assert.equal(p.horas, 5.5)
-  const mal = horasDeEstado('parcial', { diaSemana: 4, calibracion: calJulio, horasManuales: '99' })
-  assert.equal(mal.ok, false)
-  assert.equal(mal.motivo, 'mayor_al_maximo')
-})
-
-test('un estado desconocido se rechaza (no cae en un default silencioso)', () => {
-  assert.equal(horasDeEstado('P', { diaSemana: 4, calibracion: calJulio }).motivo, 'estado_desconocido')
-  assert.equal(horasDeEstado('', {}).motivo, 'estado_desconocido')
-})
-
-test('estadoDeHoras precarga la interfaz sin reinterpretar el dato', () => {
-  const d = diaSemanaIso(FECHA_HOY)
-  assert.equal(estadoDeHoras(9, { diaSemana: d, calibracion: calJulio }), ESTADO.PRESENTE)
-  assert.equal(estadoDeHoras(0, { diaSemana: d, calibracion: calJulio }), ESTADO.AUSENTE)
-  assert.equal(estadoDeHoras(5.5, { diaSemana: d, calibracion: calJulio }), ESTADO.PARCIAL)
-  assert.equal(estadoDeHoras(null, { diaSemana: d, calibracion: calJulio }), null, 'vacía no es un estado')
-})
-
-test('en sábado, 8h no se toma como "presente" porque no hay jornada de referencia', () => {
-  const d = diaSemanaIso(FECHA_SABADO)
-  assert.equal(d, 6)
-  assert.equal(estadoDeHoras(8, { diaSemana: d, calibracion: calJulio }), ESTADO.PARCIAL)
-})
+// Los tests de estado→horas, validación de horas manuales y separación normal/extra
+// viven ahora en horas-extra.test.mjs: esa capacidad se movió entera a ese módulo.

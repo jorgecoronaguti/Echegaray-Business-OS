@@ -1,4 +1,9 @@
-// POLÍTICA DE JORNADA — un solo lugar decide cuántas horas vale "presente".
+// POLÍTICA DE JORNADA — cuántas horas vale una jornada completa, por día de la semana.
+//
+// SÓLO CALIBRACIÓN. La traducción estado→horas, la validación de horas manuales y la
+// separación normal/extra viven en `horas-extra.mjs`: una capacidad, una sola fuente.
+// Estaban acá y se movieron cuando aparecieron las horas extra, para no terminar con dos
+// implementaciones de "cuántas horas escribo" que se pudieran contradecir.
 //
 // POR QUÉ NO ES UNA CONSTANTE EN LA INTERFAZ. "Presente = 8" es falso en este
 // archivo. Medido sobre los 14 bloques de "Obreros 26" (30/07/2026), la moda real por
@@ -20,7 +25,7 @@
 // única (4; 5,5 —hay una nota del propio dueño "5,5 es el dia sabado"—; 6; 8). Un
 // sábado se carga a mano. Inventar un default ahí sería precisión falsa.
 
-import { parseHoras, celdaEscrita, normalizarClave } from './jornales-estructura.mjs'
+import { parseHoras, celdaEscrita } from './jornales-estructura.mjs'
 
 /** Piso por día de la semana (0=domingo … 6=sábado). `null` = requiere valor manual. */
 export const JORNADA_PISO = Object.freeze({
@@ -33,22 +38,8 @@ export const JORNADA_PISO = Object.freeze({
   6: null, // sábado: sin regla única en el archivo → manual
 })
 
-/** Límites de una carga manual. Configurables por entorno, nunca dispersos en la UI. */
-export const HORAS_MIN = Number(process.env.ORQ_ASISTENCIA_HORAS_MIN ?? 0)
-export const HORAS_MAX = Number(process.env.ORQ_ASISTENCIA_HORAS_MAX ?? 24)
-
 /** Muestras mínimas de un día para creerle a la evidencia del bloque. */
 const MUESTRAS_MIN = Number(process.env.ORQ_ASISTENCIA_MUESTRAS_MIN ?? 3)
-
-/** Valor que escribe un ausente. Explícito y numérico: 0, nunca celda vacía (vacío
- *  significa "no hay dato", que es otra cosa). */
-export const HORAS_AUSENTE = 0
-
-export const ESTADO = Object.freeze({
-  PRESENTE: 'presente',
-  AUSENTE: 'ausente',
-  PARCIAL: 'parcial',
-})
 
 /**
  * Calibra la jornada completa por día de la semana leyendo el bloque real.
@@ -98,48 +89,4 @@ export function horasJornadaCompleta(diaSemana, calibracion) {
     return { horas: null, origen: c?.origen ?? 'piso', requiere_manual: true, dia_semana: diaSemana }
   }
   return { horas: c.horas, origen: c.origen, muestras: c.muestras ?? 0, requiere_manual: false, dia_semana: diaSemana }
-}
-
-/**
- * Valida y normaliza horas ingresadas a mano (jornada parcial). Acepta coma o punto,
- * rechaza texto libre y NaN, acota al rango configurado. Devuelve `{ok, horas}` o
- * `{ok:false, motivo}` — nunca lanza, porque el llamador es una interfaz de chat.
- */
-export function normalizarHorasManuales(entrada, { min = HORAS_MIN, max = HORAS_MAX } = {}) {
-  if (entrada == null || String(entrada).trim() === '') return { ok: false, motivo: 'vacio' }
-  const h = parseHoras(entrada)
-  if (h == null) return { ok: false, motivo: 'no_numerico' }
-  if (h < min) return { ok: false, motivo: 'menor_al_minimo', min }
-  if (h > max) return { ok: false, motivo: 'mayor_al_maximo', max }
-  return { ok: true, horas: h }
-}
-
-/**
- * Traduce un estado de asistencia a las horas que se van a ESCRIBIR en la celda.
- * Es la única traducción estado→número del sistema: la interfaz no calcula horas.
- */
-export function horasDeEstado(estado, { diaSemana, calibracion, horasManuales } = {}) {
-  const e = normalizarClave(estado).toLowerCase()
-  if (e === ESTADO.AUSENTE) return { ok: true, horas: HORAS_AUSENTE, estado: ESTADO.AUSENTE }
-  if (e === ESTADO.PARCIAL) {
-    const v = normalizarHorasManuales(horasManuales)
-    if (!v.ok) return { ok: false, motivo: v.motivo, min: v.min, max: v.max }
-    return { ok: true, horas: v.horas, estado: ESTADO.PARCIAL }
-  }
-  if (e === ESTADO.PRESENTE) {
-    const j = horasJornadaCompleta(diaSemana, calibracion)
-    if (j.requiere_manual) return { ok: false, motivo: 'jornada_requiere_manual', dia_semana: diaSemana }
-    return { ok: true, horas: j.horas, estado: ESTADO.PRESENTE, origen_jornada: j.origen }
-  }
-  return { ok: false, motivo: 'estado_desconocido' }
-}
-
-/** Estado que ya representa una celda con valor (para precargar la interfaz sin
- *  reinterpretar: 0 es ausente, la jornada completa es presente, el resto parcial). */
-export function estadoDeHoras(horas, { diaSemana, calibracion } = {}) {
-  if (horas == null) return null
-  if (horas === 0) return ESTADO.AUSENTE
-  const j = horasJornadaCompleta(diaSemana, calibracion)
-  if (!j.requiere_manual && horas === j.horas) return ESTADO.PRESENTE
-  return ESTADO.PARCIAL
 }

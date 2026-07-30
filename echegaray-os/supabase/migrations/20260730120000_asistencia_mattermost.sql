@@ -12,11 +12,16 @@
 --   3. v_asistencia_auditoria → vista de lectura sobre orq.events (el ledger oficial,
 --      append-only). La auditoría NO tiene tabla propia: reusa el ledger que ya existe.
 
--- ── 1. PERMISOS POR IDENTIDAD DE PLATAFORMA ──────────────────────────────────
--- Deliberadamente NO hay nombres ni user_ids en esta migración: se otorgan con
--- `orquestador/scripts/asistencia-permiso.mjs` (documentado en el runbook). Una
--- migración con los user_ids de los jefes adentro sería configuración hardcodeada
--- en git, que es justo lo que hay que evitar.
+-- ── 1. PERMISOS POR IDENTIDAD DE PLATAFORMA (infraestructura, DESACTIVADA en el MVP) ──
+-- El MVP aprobado corre en modo ABIERTO: cualquier usuario AUTENTICADO de Mattermost
+-- registra y consulta asistencia, sin roles ni aprobaciones, y todo queda auditado con
+-- su identidad real. Esta tabla queda creada y vacía a propósito: es la infraestructura
+-- para endurecer más adelante con ORQ_ASISTENCIA_PERMISOS=estricto, sin desplegar código.
+-- Estando en modo abierto, esta tabla NI SE CONSULTA, y por lo tanto estar vacía no
+-- bloquea nada.
+-- Deliberadamente NO hay nombres ni user_ids acá: se otorgan con
+-- `orquestador/scripts/asistencia-permiso.mjs`. Una migración con user_ids adentro sería
+-- configuración hardcodeada en git, que es justo lo que hay que evitar.
 create table if not exists comunicacion.permisos_skill (
   id                 bigint generated always as identity primary key,
   plataforma         text not null,                       -- 'mattermost'
@@ -34,7 +39,7 @@ create index if not exists permisos_skill_lookup_idx
   on comunicacion.permisos_skill (plataforma, plataforma_user_id, permiso) where activo;
 
 comment on table comunicacion.permisos_skill is
-  'Autorización de skills por identidad de plataforma (Mattermost). Fail-closed: sin fila activa, no se ejecuta. No duplica usuarios del OS: es un grant sobre una identidad.';
+  'Autorización de skills por identidad de plataforma (Mattermost). Sólo se consulta en modo estricto (ORQ_ASISTENCIA_PERMISOS=estricto), donde es fail-closed: sin fila activa, no se ejecuta. En el MVP el modo es abierto y esta tabla no se consulta. No duplica usuarios del OS: es un grant sobre una identidad.';
 
 -- ── 2. ESTADO DEL FORMULARIO (server-side, efímero) ──────────────────────────
 -- El cliente sólo manda un id de sesión y un token firmado. Nada de spreadsheet_id,
@@ -53,7 +58,7 @@ create table if not exists comunicacion.asistencia_sesiones (
   clave_obra         text,
   spreadsheet_id     text,
   pestana            text,
-  marcas             jsonb not null default '{}'::jsonb,  -- nombre_clave → {estado, horas}
+  marcas             jsonb not null default '{}'::jsonb,  -- nombre_clave → {estado, normales, extras}
   plan               jsonb,                               -- último plan calculado (evidencia del preview)
   idempotency_key    text,
   correlation_id     uuid,
@@ -113,6 +118,13 @@ select
   (e.payload->>'cantidad_presentes')::int       as cantidad_presentes,
   (e.payload->>'cantidad_ausentes')::int        as cantidad_ausentes,
   (e.payload->>'cantidad_parciales')::int       as cantidad_parciales,
+  (e.payload->>'cantidad_tarde')::int           as cantidad_tarde,
+  (e.payload->>'horas_normales')::numeric       as horas_normales,
+  (e.payload->>'horas_extra')::numeric          as horas_extra,
+  (e.payload->>'horas_total')::numeric          as horas_total,
+  e.payload->>'modo_permisos'                   as modo_permisos,
+  -- Por celda: old_value / old_formula / old_effective_value / old_normal_hours /
+  -- old_extra_hours / new_normal_hours / new_extra_hours / new_total_hours / new_formula.
   e.payload->'celdas_modificadas'               as celdas_modificadas,
   e.payload->>'error_code'                      as error_code,
   e.payload->>'error_message_sanitized'         as error_message_sanitized,

@@ -20,7 +20,8 @@ import {
   detectarBloques, bloquePorFecha, columnaDeFecha, trabajadoresDeBloque, obrasDeBloque,
   personalDeObra, leerCeldaDiaria, celdaA1, letraColumna, diaSemanaIso, normalizarClave,
 } from '../jornales-estructura.mjs'
-import { calibrarJornada, horasJornadaCompleta, horasDeEstado, estadoDeHoras } from '../jornada-politica.mjs'
+import { calibrarJornada, horasJornadaCompleta } from '../jornada-politica.mjs'
+import { interpretarCarga, componerCarga, resolverCarga, estadoDeCarga, FORMA } from '../horas-extra.mjs'
 
 /** Archivo JORNALES. Configurable por entorno; el default es el archivo real vigente. */
 export const JORNALES_SPREADSHEET_ID =
@@ -38,7 +39,7 @@ export const MOTIVO = Object.freeze({
   PESTANA_NO_ENCONTRADA: 'pestana_no_encontrada',
   SIN_PERSONAL: 'sin_personal',
   OBRA_DESCONOCIDA: 'obra_desconocida',
-  CELDA_CON_FORMULA: 'celda_con_formula',
+  FORMULA_NO_INTERPRETABLE: 'formula_no_interpretable',
   TEXTO_NO_NUMERICO: 'texto_no_numerico',
   TRABAJADOR_NO_EN_BLOQUE: 'trabajador_no_en_bloque',
   OBRA_NO_COINCIDE: 'obra_no_coincide',
@@ -135,14 +136,20 @@ export async function listarObrasPorFecha(google, opts) {
   }
 }
 
-/** Estado actual de la celda de un trabajador para la fecha del contexto. */
+/**
+ * Estado actual de la celda de un trabajador para la fecha del contexto, YA interpretado
+ * en jornada normal + horas extra. Es lo que se precarga en la edición: si la celda dice
+ * `=9+2`, el formulario arranca con 9 normales y 2 extra, no con una celda intocable.
+ */
 function estadoActual(ctx, t) {
   const cel = leerCeldaDiaria(ctx.grid, t.fila, ctx.columna)
+  const carga = interpretarCarga(cel)
   return {
     ...cel,
+    carga,
     celda_a1: celdaA1(ctx.pestana, t.fila1, ctx.columna),
     fila1: t.fila1,
-    estado_equivalente: estadoDeHoras(cel.horas, { diaSemana: ctx.dia_semana, calibracion: ctx.calibracion }),
+    estado_equivalente: estadoDeCarga(carga, { jornada: ctx.jornada }),
     huella: huellaCelda(cel),
   }
 }
@@ -185,33 +192,27 @@ export function planificarAsistencia(ctx, { claveObra, marcas, actor } = {}) {
     // El cliente NUNCA elige una fila ni un nombre libre: si la clave no está en la
     // cuadrilla que la planilla declara para esta obra y fecha, se rechaza.
     if (!t) { items.push({ nombre_clave: m.nombre_clave, bloqueada: MOTIVO.TRABAJADOR_NO_EN_BLOQUE }); continue }
-    const act = estadoActual(ctx, t)
-    const h = horasDeEstado(m.estado, {
-      diaSemana: ctx.dia_semana, calibracion: ctx.calibracion, horasManuales: m.horas,
-    })
-    const base = {
-      nombre_original: t.nombre_original, nombre_clave: t.nombre_clave, fila1: t.fila1,
-      col: ctx.columna, celda_a1: act.celda_a1, estado: m.estado,
-      horas_actuales: act.horas, valor_actual: act.valor_crudo, formula_actual: act.formula,
-      huella: act.huella,
-    }
-    if (!h.ok) { items.push({ ...base, bloqueada: h.motivo, detalle: h }); continue }
-    if (act.formula) { items.push({ ...base, horas_nuevas: h.horas, bloqueada: MOTIVO.CELDA_CON_FORMULA }); continue }
-    if (act.texto_no_numerico) { items.push({ ...base, horas_nuevas: h.horas, bloqueada: MOTIVO.TEXTO_NO_NUMERICO }); continue }
-    const accion = !act.escrita ? 'nueva' : (act.horas === h.horas ? 'sin_cambio' : 'modifica')
-    items.push({ ...base, horas_nuevas: h.horas, accion, bloqueada: null })
+    items.push(planificarUno(ctx, t, m))
   }
   const por = (f) => items.filter(f).length
+  const suma = (campo) => items.filter((i) => !i.bloqueada && i.accion !== 'sin_cambio')
+    .reduce((a, i) => a + (i[campo] ?? 0), 0)
   const escribibles = items.filter((i) => !i.bloqueada && i.accion !== 'sin_cambio')
   const resumen = {
     trabajadores: items.length,
     presentes: por((i) => i.estado === 'presente' && !i.bloqueada),
     ausentes: por((i) => i.estado === 'ausente' && !i.bloqueada),
+    tardes: por((i) => i.estado === 'tarde' && !i.bloqueada),
     parciales: por((i) => i.estado === 'parcial' && !i.bloqueada),
+    con_extras: por((i) => !i.bloqueada && (i.extras_nuevas ?? 0) > 0),
+    horas_normales: Math.round(suma('normales_nuevas') * 100) / 100,
+    horas_extra: Math.round(suma('extras_nuevas') * 100) / 100,
+    horas_total: Math.round(suma('total_nuevo') * 100) / 100,
     celdas_nuevas: por((i) => i.accion === 'nueva'),
     celdas_modificadas: por((i) => i.accion === 'modifica'),
     sin_cambio: por((i) => i.accion === 'sin_cambio'),
     bloqueadas: por((i) => i.bloqueada),
+    reemplazan_formula: por((i) => i.reemplaza_formula_no_interpretable),
     a_escribir: escribibles.length,
   }
   return {
@@ -220,8 +221,65 @@ export function planificarAsistencia(ctx, { claveObra, marcas, actor } = {}) {
     clave_obra: claveObra, jornada: ctx.jornada, items, escribibles, resumen,
     // Sobrescribir un dato existente y distinto exige un sí explícito del jefe.
     requiere_confirmacion_sobrescritura: resumen.celdas_modificadas > 0,
+    // Reemplazar una fórmula que NO se pudo descomponer exige un sí aparte: no es lo
+    // mismo cambiar un 9 por un 8 que borrar `=9-2,5+2` sin saber qué representaba.
+    requiere_confirmacion_formula: resumen.reemplazan_formula > 0,
     idempotency_key: claveIdempotencia({ ctx, claveObra, items, actor }),
   }
+}
+
+/**
+ * Planifica UN trabajador: resuelve horas normales + extras, decide si la celda actual se
+ * puede reemplazar, y compone exactamente lo que se escribiría.
+ *
+ * La distinción que hace este cuerpo es la que cambió respecto de la primera versión:
+ * una celda con fórmula ya NO está bloqueada por el hecho de tener una fórmula. Está
+ * bloqueada si es TEXTO, y necesita confirmación aparte si la fórmula no se pudo
+ * descomponer en normal + extra. Una `=9+2` es una carga de asistencia normal y se edita
+ * como cualquier otra.
+ */
+function planificarUno(ctx, t, m) {
+  const act = estadoActual(ctx, t)
+  const carga = act.carga
+  const base = {
+    nombre_original: t.nombre_original, nombre_clave: t.nombre_clave, fila1: t.fila1,
+    col: ctx.columna, celda_a1: act.celda_a1, estado: m.estado,
+    // Estado ANTERIOR, ya desglosado (es lo que se muestra y lo que se audita).
+    valor_actual: act.valor_crudo, formula_actual: act.formula,
+    normales_actuales: carga.normales, extras_actuales: carga.extras, total_actual: carga.total,
+    forma_actual: carga.forma, huella: act.huella,
+  }
+
+  // Texto libre: no se toca nunca.
+  if (carga.forma === FORMA.TEXTO) return { ...base, bloqueada: MOTIVO.TEXTO_NO_NUMERICO }
+
+  const r = resolverCarga({ estado: m.estado, normales: m.normales, extras: m.extras, jornada: ctx.jornada })
+  if (!r.ok) return { ...base, bloqueada: r.motivo, detalle: r }
+
+  // Preservar la forma con coeficiente (`=4+3*1,5`) cuando el jefe no cambió las extras:
+  // así una corrección de la jornada normal no destruye la información de que esas horas
+  // extra eran 3 al 1,5.
+  const mismasExtras = carga.inequivoca && carga.extras === r.extras
+  const comp = componerCarga({
+    normales: r.normales,
+    extras: r.extras,
+    cantidad_extra: mismasExtras ? carga.cantidad_extra : null,
+    coeficiente: mismasExtras ? carga.coeficiente : null,
+  })
+
+  const item = {
+    ...base,
+    normales_nuevas: r.normales, extras_nuevas: r.extras, total_nuevo: r.total,
+    escribir: comp.escribir, es_formula: comp.es_formula, formula_nueva: comp.formula,
+    reemplaza_formula_no_interpretable: carga.forma === FORMA.NO_INTERPRETABLE,
+    bloqueada: null,
+  }
+  if (!act.escrita) return { ...item, accion: 'nueva' }
+  // "Sin cambio" se decide por la REPRESENTACIÓN, no sólo por el total: pasar de
+  // `=9+2` a un 11 pelado cambia el archivo aunque el total sea el mismo.
+  const igual = carga.total === r.total
+    && (act.formula ?? null) === (comp.formula ?? null)
+  return { ...item, accion: igual ? 'sin_cambio' : 'modifica' }
 }
 
 /**
@@ -230,9 +288,12 @@ export function planificarAsistencia(ctx, { claveObra, marcas, actor } = {}) {
  * segunda mutación ni una segunda auditoría.
  */
 export function claveIdempotencia({ ctx, claveObra, items, actor } = {}) {
+  // El payload incluye normal y extra por separado: cargar 9+2 no es lo mismo que cargar
+  // 11, y una repetición "idéntica" que en realidad cambia el desglose no puede colar
+  // como duplicado.
   const payload = (items || [])
     .filter((i) => !i.bloqueada)
-    .map((i) => `${i.nombre_clave}=${i.horas_nuevas}`)
+    .map((i) => `${i.nombre_clave}=${i.normales_nuevas}+${i.extras_nuevas}`)
     .sort()
     .join(';')
   const material = [
@@ -251,12 +312,15 @@ export function claveIdempotencia({ ctx, claveObra, items, actor } = {}) {
  * NADA y devuelve conflicto. La escritura es UNA sola operación batch, y al final se
  * relee para verificar que lo persistido es lo enviado.
  */
-export async function registrarAsistencia(google, { plan, confirmarSobrescritura = false } = {}) {
+export async function registrarAsistencia(google, { plan, confirmarSobrescritura = false, confirmarReemplazoFormula = false } = {}) {
   if (!plan?.escribibles?.length) {
     return { ok: true, escritas: 0, celdas: [], nota: 'nada que escribir' }
   }
   if (plan.requiere_confirmacion_sobrescritura && !confirmarSobrescritura) {
     return { ok: false, motivo: 'sobrescritura_no_confirmada', celdas_modificadas: plan.resumen.celdas_modificadas }
+  }
+  if (plan.requiere_confirmacion_formula && !confirmarReemplazoFormula) {
+    return { ok: false, motivo: 'reemplazo_formula_no_confirmado', celdas: plan.resumen.reemplazan_formula }
   }
 
   // 1) Relectura fresca + re-resolución por nombre.
@@ -281,12 +345,24 @@ export async function registrarAsistencia(google, { plan, confirmarSobrescritura
       })
       continue
     }
-    if (act.formula) { conflictos.push({ ...item, motivo: MOTIVO.CELDA_CON_FORMULA }); continue }
+    if (act.carga?.forma === FORMA.TEXTO) { conflictos.push({ ...item, motivo: MOTIVO.TEXTO_NO_NUMERICO }); continue }
     const rango = celdaA1(ctx.pestana, t.fila1, ctx.columna)
-    data.push({ range: rango, values: [[item.horas_nuevas]] })
+    // Lo que se escribe es un NÚMERO o una FÓRMULA compuesta sólo con números validados
+    // en servidor (ver componerCarga). Nada de esto viene del cliente como texto.
+    data.push({ range: rango, values: [[item.escribir]] })
     celdas.push({
-      nombre_original: t.nombre_original, celda_a1: rango, fila1: t.fila1,
-      old_value: act.valor_crudo, new_value: item.horas_nuevas, estado: item.estado,
+      nombre_original: t.nombre_original, celda_a1: rango, fila1: t.fila1, estado: item.estado,
+      // Evidencia completa del cambio, con el desglose de los dos lados.
+      old_value: act.valor_crudo,
+      old_formula: act.formula ?? null,
+      old_effective_value: act.carga?.total ?? null,
+      old_normal_hours: act.carga?.normales ?? null,
+      old_extra_hours: act.carga?.extras ?? null,
+      new_normal_hours: item.normales_nuevas,
+      new_extra_hours: item.extras_nuevas,
+      new_total_hours: item.total_nuevo,
+      new_formula: item.formula_nueva ?? null,
+      new_value: item.escribir,
     })
   }
   // Conflicto funcional: se corta TODA la operación. No se escribe a medias ni se
@@ -320,9 +396,12 @@ async function verificarPersistencia(google, { plan, ctx, celdas }) {
   if (!est.ok) return { ok: false, motivo: est.motivo }
   const diferencias = []
   for (const c of celdas) {
-    const cel = leerCeldaDiaria(est.grid, c.fila1 - 1, ctx.columna)
-    if (cel.horas !== c.new_value) {
-      diferencias.push({ celda_a1: c.celda_a1, esperado: c.new_value, leido: cel.horas })
+    // Se verifica el TOTAL interpretado, no el texto: si se escribió `=9+2`, la celda
+    // vuelve con la fórmula y con 11 calculado. Comparar contra el texto daría un falso
+    // negativo en toda escritura con horas extra.
+    const carga = interpretarCarga(leerCeldaDiaria(est.grid, c.fila1 - 1, ctx.columna))
+    if (carga.total !== c.new_total_hours) {
+      diferencias.push({ celda_a1: c.celda_a1, esperado: c.new_total_hours, leido: carga.total })
     }
   }
   return diferencias.length ? { ok: false, diferencias } : { ok: true, verificadas: celdas.length }
@@ -339,7 +418,13 @@ export function dryRun(plan) {
       trabajador: i.nombre_original ?? i.nombre_clave,
       celda: i.celda_a1 ?? null,
       valor_actual: i.formula_actual ?? i.valor_actual ?? null,
-      valor_propuesto: i.bloqueada ? null : i.horas_nuevas,
+      normales_actuales: i.normales_actuales ?? null,
+      extras_actuales: i.extras_actuales ?? null,
+      total_actual: i.total_actual ?? null,
+      valor_propuesto: i.bloqueada ? null : i.escribir,
+      normales_nuevas: i.bloqueada ? null : i.normales_nuevas,
+      extras_nuevas: i.bloqueada ? null : i.extras_nuevas,
+      total_nuevo: i.bloqueada ? null : i.total_nuevo,
       accion: i.bloqueada ? `BLOQUEADA: ${i.bloqueada}` : i.accion,
     })),
     resumen: plan.resumen,

@@ -20,6 +20,8 @@
 // Se usa en los tests del parser, de la política de jornada y del planificador, para
 // que se ejerciten contra la forma real del archivo sin tocar la red ni el Sheet.
 
+import { interpretarCarga } from './horas-extra.mjs'
+
 const IDX = (letra) => {
   let n = 0
   for (const ch of String(letra).toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64)
@@ -202,7 +204,18 @@ export function fakeGoogleJornales({ tabs = PESTANAS, protegido = false, alLeer 
         const col = idxCol(m[1])
         const v = d.values[0][0]
         while (grid.filas[fila].length <= col) grid.filas[fila].push(null)
-        grid.filas[fila][col] = { valor: String(v).replace('.', ','), numero: v, formula: null, derivada: false }
+        // El Sheet EVALÚA una fórmula al escribirla: guarda la fórmula Y su valor
+        // calculado. Sin emular eso, una escritura con horas extra (`=9+2`) volvía de la
+        // relectura como el texto "=9+2" y la verificación posterior fallaba siempre.
+        if (typeof v === 'string' && v.startsWith('=')) {
+          const total = interpretarCarga({ formula: v }).total
+          grid.filas[fila][col] = {
+            valor: total == null ? v : String(total).replace('.', ','),
+            numero: total, formula: v, derivada: false,
+          }
+        } else {
+          grid.filas[fila][col] = { valor: String(v).replace('.', ','), numero: v, formula: null, derivada: false }
+        }
       }
       return { totalUpdatedCells: data.length, totalUpdatedRanges: data.length }
     },
