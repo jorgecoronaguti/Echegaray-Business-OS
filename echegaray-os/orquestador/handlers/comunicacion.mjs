@@ -28,6 +28,7 @@ export async function comunicacionResponderHandler(task, ctx) {
   const actor = {
     plataforma_user_id: inp.actor?.id ?? null,
     plataforma_username: inp.actor?.display ?? null,
+    channel_type: inp.channel_type ?? null,
     channel_id: inp.channel_id ?? null,
     root_post_id: inp.root_post_id ?? null,
   }

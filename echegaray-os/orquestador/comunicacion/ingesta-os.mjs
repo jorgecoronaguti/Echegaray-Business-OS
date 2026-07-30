@@ -69,6 +69,9 @@ export function crearEmitEventOS(port) {
           correlation_id: params.correlation_id,
           channel_id: p.canal ?? p.data?.channel_id ?? null,
           root_post_id: p.data?.post_id ?? null, // hilo: se responde en el mismo post
+          // Tipo de canal (D directo · G grupo · P privado · O abierto). Hay capacidades que
+          // sólo operan desde su canal oficial: con esto descartan un DM sin ir a la base.
+          channel_type: p.data?.channel_type ?? p.canal_tipo ?? null,
           comando,
           actor: p.actor ?? null,
         },

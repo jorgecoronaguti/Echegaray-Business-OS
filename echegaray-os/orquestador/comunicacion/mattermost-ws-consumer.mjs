@@ -78,6 +78,10 @@ export function mapearAPayload(post, info = {}) {
     post_id: post.id,
     text: post.message ?? '',
     root_id: post.root_id || post.id, // hilo preservado (raíz real del thread)
+    // Tipo de canal (D directo · G grupo · P privado · O abierto). Viaja porque hay
+    // capacidades que sólo pueden operar desde su canal oficial y necesitan descartar un
+    // DM sin ir a preguntarle a la base de qué canal se trata.
+    channel_type: info.channelType ?? null,
   }
 }
 

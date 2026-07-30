@@ -310,5 +310,5 @@ test('la obra realizada y la aclaración quedan en la auditoría (JORNALES no ti
   const escrito = s.eventos.find((e) => e.evento.endsWith('written'))
   const nov = escrito.datos.novedades.find((n) => n.nombre === nombre)
   assert.equal(nov.obra_realizada, otra)
-  assert.equal(escrito.datos.origen, 'web')
+  assert.equal(escrito.datos.origen, 'mattermost', 'la carga entra por Mattermost: la pantalla web se retiró')
 })

@@ -24,6 +24,7 @@ import { validarFecha, hoyIso } from './fechas.mjs'
 import { mapearObras, mapearPersona, marcaDe, mensajeDeMotivo, resolverJornada } from './mapeo.mjs'
 import { crearRegistroMemoria } from './idempotencia.mjs'
 import { dameMotivos, dameJornadaConfig } from './dependencias.mjs'
+import { guardarNovedades } from '../asistencia-novedades.mjs'
 
 const MAX_ITEMS = 300
 
@@ -34,8 +35,12 @@ const ok = (body) => ({ status: 200, body })
 export function crearApi({
   google, port = null, motivos = null, jornadaConfig = null,
   idempotencia = crearRegistroMemoria(), crearAuditorFn = crearAuditor, hoy = hoyIso,
+  // De dónde viene la carga. Queda en la auditoría y en la proyección de novedades: cuando
+  // mañana haya dos vías, saber por cuál entró cada carga es la diferencia entre poder
+  // diagnosticar un problema y adivinarlo.
+  origen = 'mattermost', log = null,
 } = {}) {
-  const dep = { google, port, idempotencia, crearAuditorFn, hoy }
+  const dep = { google, port, idempotencia, crearAuditorFn, hoy, origen, log }
   const cargar = async () => {
     dep.motivos ??= await dameMotivos(motivos)
     dep.jornadaConfig ??= await dameJornadaConfig(jornadaConfig)
@@ -98,7 +103,7 @@ async function cuadrilla(dep, { actor, params, correlationId } = {}) {
   }
   const jornada = await jornadaDe(dep, { fecha: f.fecha, planilla: r.jornada })
   await auditar(EVENTO.SHEET_READ, {
-    status: 'read', origen: 'web', fecha_operativa: f.fecha, sheet_name: r.pestana,
+    status: 'read', origen: dep.origen, fecha_operativa: f.fecha, sheet_name: r.pestana,
     obra_normalizada: clave, mattermost_user_id: actor.userId, cantidad_trabajadores: r.personal.length,
   })
   return ok({
@@ -242,7 +247,7 @@ async function escribir(dep, { plan, clave, actor, novedades, body, auditar, cor
     })
   }
   await auditar(EVENTO.CONFIRMED, {
-    status: 'confirmed', origen: 'web', fecha_operativa: plan.fecha, sheet_name: plan.pestana,
+    status: 'confirmed', origen: dep.origen, fecha_operativa: plan.fecha, sheet_name: plan.pestana,
     obra_normalizada: plan.clave_obra, idempotency_key: plan.idempotency_key,
     mattermost_user_id: actor.plataforma_user_id,
   })
@@ -258,12 +263,21 @@ async function escribir(dep, { plan, clave, actor, novedades, body, auditar, cor
   }
   if (!resultado.ok) {
     const evento = resultado.motivo === MOTIVO_NUCLEO.CONFLICTO_CONCURRENCIA ? EVENTO.CONFLICT : EVENTO.FAILED
-    await auditar(evento, { ...payloadConfirmacion({ ...base, resultado, status: 'failed' }), origen: 'web', novedades })
+    await auditar(evento, { ...payloadConfirmacion({ ...base, resultado, status: 'failed' }), origen: dep.origen, novedades })
     return err(409, mensajeDeMotivo(resultado.motivo, { fecha: plan.fecha }))
   }
   // El motivo, la aclaración y la obra realizada NO tienen columna en JORNALES: viven en
   // la auditoría, que es donde se pueden leer después sin fabricar un dato en la planilla.
-  await auditar(EVENTO.WRITTEN, { ...payloadConfirmacion({ ...base, resultado, status: 'written' }), origen: 'web', novedades })
+  await auditar(EVENTO.WRITTEN, { ...payloadConfirmacion({ ...base, resultado, status: 'written' }), origen: dep.origen, novedades })
+  // Proyección consultable del PORQUÉ. La auditoría ya guardó el hecho; esto lo deja
+  // indexado por (fecha, obra, trabajador) para poder preguntar "¿cuántos días paró la obra
+  // y por culpa de quién?" sin abrir evento por evento. Si falla, la carga NO se cae: la
+  // celda ya está escrita y el hecho ya está auditado.
+  const proy = await guardarNovedades(dep.port, {
+    fecha: plan.fecha, claveObra: plan.clave_obra, novedades, jornada: plan.jornada?.horas ?? null,
+    actor, origen: dep.origen, correlationId,
+  })
+  if (proy.error) dep.log?.warn?.('no se pudo indexar la novedad (la carga sí quedó)', { detalle: proy.error })
   const respuesta = {
     ok: true,
     celdas: resultado.celdas.map((c) => ({
