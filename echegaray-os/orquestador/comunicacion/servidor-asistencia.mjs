@@ -34,6 +34,7 @@
 // honesto en castellano en vez de una pantalla en blanco.
 
 import http from 'node:http'
+import net from 'node:net'
 import { fileURLToPath } from 'node:url'
 import { crearComandoAsistencia } from './comando-asistencia.mjs'
 
@@ -240,6 +241,34 @@ async function main() {
 
   const cerrar = (s) => { log.info('shutdown', { señal: s }); server.close(() => process.exit(0)) }
   for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => cerrar(s))
+
+  // SOCKET UNIX antes que TCP, y no por gusto: en esta VM el firewall del host descarta las
+  // conexiones que vienen de los bridges de Docker, así que Caddy —que corre en un
+  // contenedor— no puede alcanzar un puerto TCP del host por ninguna de sus direcciones.
+  // Abrir ese puerto en el firewall pide root y expone un puerto más. Un socket no viaja por
+  // la red: se bind-montea en el contenedor y el problema desaparece. El TCP queda para
+  // desarrollo local, donde no hay contenedor de por medio.
+  const socket = process.env.ASISTENCIA_HTTP_SOCKET
+  if (socket) {
+    const fs = await import('node:fs')
+    // Un socket viejo de una corrida anterior impide el bind (EADDRINUSE) aunque no haya
+    // nadie escuchando. Se borra sólo si NO responde: si responde, hay otra instancia viva
+    // y hay que fallar, no pisarla.
+    if (fs.existsSync(socket)) {
+      const vivo = await new Promise((r) => {
+        const s = net.connect(socket).on('connect', () => { s.end(); r(true) }).on('error', () => r(false))
+      })
+      if (vivo) throw new Error(`ya hay un servidor de asistencia escuchando en ${socket}`)
+      fs.unlinkSync(socket)
+    }
+    server.listen(socket, () => {
+      // 0660: lo abre el dueño y su grupo. El contenedor de Caddy entra como root, que no
+      // necesita permiso; nadie más en la máquina lo alcanza.
+      try { fs.chmodSync(socket, 0o660) } catch { /* el bind ya ocurrió: no se aborta por esto */ }
+      log.info('servidor de asistencia escuchando', { socket, ruta_comando: RUTA_COMANDO_DEFAULT })
+    })
+    return
+  }
 
   server.listen(port, host, () => log.info('servidor de asistencia escuchando', { host, port, ruta_comando: RUTA_COMANDO_DEFAULT }))
 }

@@ -42,21 +42,22 @@
 	# user-unit `echegaray-asistencia-http.service`). Ese proceso NO abre ningún puerto público:
 	# Caddy sigue siendo lo único que mira a Internet.
 	#
-	# CÓMO LLEGA CADDY AL HOST — la parte que no es obvia:
+	# CÓMO LLEGA CADDY AL HOST — la parte que no es obvia, y que costó una vuelta:
 	# Caddy corre DENTRO del contenedor `echegaray-mm-caddy`. Ahí `127.0.0.1` es el propio
-	# contenedor, no la VM: un `reverse_proxy 127.0.0.1:8792` se proxyaría a sí mismo y daría
-	# 502 para siempre. El mecanismo correcto es `host.docker.internal`, que Docker resuelve a
-	# la IP del host en la red del contenedor gracias a
-	#   extra_hosts: ["host.docker.internal:host-gateway"]
-	# agregado al servicio `caddy` en ../docker-compose.yml.
+	# contenedor, no la VM. El camino "natural" sería `host.docker.internal` con
+	# `extra_hosts: ["host.docker.internal:host-gateway"]`, PERO en esta VM no funciona, y
+	# conviene saber por qué antes de volver a intentarlo:
+	#   · `host-gateway` resuelve a 172.17.0.1 (el bridge POR DEFECTO de Docker), no al de
+	#     esta red, que es 172.18.0.1;
+	#   · y sobre todo, el firewall del host DESCARTA las conexiones que llegan desde los
+	#     bridges de Docker a cualquier puerto del host. Verificado: desde el host el puerto
+	#     responde, desde el contenedor da timeout, por las dos direcciones.
+	# Abrir ese puerto en el firewall pide root y suma un puerto escuchando.
 	#
-	# Consecuencia sobre el bind del servicio: `host-gateway` apunta al HOST por su dirección
-	# en el bridge (172.18.0.1 hoy, ver `docker network inspect echegaray-mattermost-net`), NO
-	# a 127.0.0.1 — un proceso ligado sólo a loopback NO es alcanzable desde el contenedor. Por
-	# eso el servicio se liga a esa dirección del bridge en producción (ASISTENCIA_HTTP_HOST en
-	# el env file de la unit), que es privada y NO enrutable desde Internet: sólo la alcanzan el
-	# propio host y los contenedores de esta red. El default del código sigue siendo 127.0.0.1
-	# para que nada quede escuchando de más por accidente.
+	# POR ESO: SOCKET UNIX. No viaja por la red, así que el firewall no interviene. El
+	# servicio del host lo crea en un directorio que se bind-montea en el contenedor (ver
+	# ../docker-compose.yml), con permisos 0660; Caddy entra como root y lo abre sin problema.
+	# Nada nuevo queda escuchando en ninguna interfaz de red.
 	#
 	# POR QUÉ EL PREFIJO /asistencia Y NO OTRO: Mattermost usa `/<nombre-del-equipo>/…` para su
 	# webapp. `asistencia` queda RESERVADO como nombre de equipo en este Mattermost — el canal
@@ -65,7 +66,7 @@
 	handle @asistencia {
 		# X-Forwarded-For lo agrega `reverse_proxy` solo: el servidor lee de ahí la IP real
 		# del visitante. Declararlo a mano es redundante y Caddy lo avisa por log.
-		reverse_proxy {$OS_ASISTENCIA_UPSTREAM:host.docker.internal:8792}
+		reverse_proxy {$OS_ASISTENCIA_UPSTREAM:unix//sockets/asistencia.sock}
 	}
 
 	# Todo lo demás sigue siendo Mattermost, exactamente como antes.
