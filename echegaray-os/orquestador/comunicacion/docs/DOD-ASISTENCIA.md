@@ -1,7 +1,8 @@
 # Definition of Done — Módulo Asistencia
 
 Fecha de cierre v1: **30/07/2026** · `asistencia-v1.0` · SHA `e7c72a7`
-Fecha de cierre v2 (pantalla web): **30/07/2026** · `asistencia-v2.0` · SHA `639abbb`
+Fecha de cierre v2 (pantalla web): **30/07/2026** · `asistencia-v2.0` — **RETIRADA**
+Fecha de cierre v3 (todo en Mattermost): **30/07/2026** · `asistencia-v3.0`
 
 > **v2** reemplazó la conversación por una pantalla. Los 10 criterios de abajo siguen
 > valiendo y se re-verificaron sobre la v2; lo específico de la pantalla está en §11.
@@ -203,3 +204,47 @@ Tres, ninguno visible para los tests estáticos:
 3. **El "Listo" se borraba solo**: se mostraba antes de recargar, y la recarga limpia la pantalla.
 
 Los tres tienen ahora test de regresión que ataca la causa (verificado: fallan si se revierte el arreglo).
+
+
+---
+
+## 12. v3 — la carga vuelve a Mattermost
+
+La pantalla web de la v2 fue una dirección equivocada y se eliminó por completo (2.042 líneas).
+Se conservó el backend: lo que estaba en `asistencia-web/` no era todo pantalla — adentro vivía
+la capa que resuelve permiso, jornada, validación, plan, escritura y auditoría. Vive en
+`lib/asistencia-servicio/` y ahora la consume la UI de Mattermost.
+
+| # | Criterio | Evidencia | ✔ |
+|---|---|---|---|
+| 12.1 | Todo ocurre dentro de Mattermost | `@os asistencia` publica un mensaje con 2 attachments: fecha (3 botones) y obra (desplegable + Cancelar) | ✔ |
+| 12.2 | Mattermost alcanza el callback | `DoActionRequest` a `https://chat.ecsas.com.ar/asistencia/accion`; Caddy registra **200** | ✔ |
+| 12.3 | Elegir la obra reescribe el mensaje | Respuesta `update` con la cuadrilla real: `MESSINAS · BASES DE TANQUE — jueves 30/07/2026`, jornada 9 h, 3 personas, resumen (2 presentes · 0 ausentes · 18 h · 1 sin cambio) | ✔ |
+| 12.4 | Caso normal en 2 clicks | Elegir obra → Registrar | ✔ |
+| 12.5 | La guarda corre primero | Un click desde un DM no abre sesión ni lee la planilla | ✔ |
+| 12.6 | El canal no está en el código | Sale de `comunicacion.canales_area`; test que prohíbe ids literales | ✔ |
+| 12.7 | Calendario completo | 16 feriados + 6 días no laborables en producción, cada uno con su fundamento | ✔ |
+| 12.8 | El porqué es consultable | `asistencia_novedades` se escribe interceptando el evento `written` | ✔ |
+| 12.9 | Sin rastros de la web | 0 referencias a la pantalla, los enlaces firmados o su tabla | ✔ |
+| 12.10 | Tests | **1.460 pass · 0 fail** · typecheck 0 · ESLint 0 errores | ✔ |
+
+### Cuatro defectos encontrados mirando producción, no leyendo código
+
+1. **La jornada parcial nunca exigía motivo.** `validarNovedad` espera un número y recibía el
+   objeto de jornada: 6 horas sobre 9 pasaban sin explicación. Lo grave es por qué era
+   invisible: el doble de los tests leía `jornada.horas` mientras el real espera el número, así
+   que el test quedaba en verde sobre un defecto vivo. **No alcanzó datos reales** (2 escrituras
+   en producción, ambas de jornada completa).
+2. **El desplegable de obras salía sin texto.** Se pasaban crudas del núcleo (`etiqueta`/
+   `personas`) donde la UI espera `nombre`/`cantidad`. Mattermost lo avisa por log y dibuja una
+   lista en blanco.
+3. **La fecha de la sesión venía de Postgres como `Date`** y `validarFecha` la rechazaba: el
+   jefe elegía la obra y le respondían "esa fecha no existe".
+4. **Dos copias de `fechas.mjs` y `mapeo.mjs`** tras la fusión de frentes. Consolidadas en una
+   sola fuente antes de integrar.
+
+### La primera carga real sigue pendiente
+
+**No se escribió ninguna celda en JORNALES en esta etapa.** El circuito está probado hasta el
+paso previo a la escritura. La auditoría confirma que el OS escribió exactamente 2 celdas hoy,
+ambas con valor 9, y ninguna en esta ronda.

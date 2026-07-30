@@ -8,7 +8,7 @@ construcción** y describe estados que ya no son los vigentes.
 | Documento | Para qué |
 |---|---|
 | [`MODULO-ASISTENCIA.md`](./MODULO-ASISTENCIA.md) | **Arranca acá.** Arquitectura vigente, flujo, componentes, integraciones (Mattermost / Work Fabric / Sheets / JORNALES), despliegue, rollback, troubleshooting, límites conocidos y mantenimiento |
-| [`DOD-ASISTENCIA.md`](./DOD-ASISTENCIA.md) | Definition of Done del módulo: los 10 criterios de cierre con su evidencia ejecutada |
+| [`DOD-ASISTENCIA.md`](./DOD-ASISTENCIA.md) | Definition of Done del módulo: los criterios de cierre con su evidencia ejecutada |
 | [`OPERACION-ASISTENCIA.md`](./OPERACION-ASISTENCIA.md) | Runbook del día a día: permisos, corregir una carga, conflictos, horas extra, auditoría |
 | [`OPERACION-BOT-WEBSOCKET.md`](./OPERACION-BOT-WEBSOCKET.md) | Operación del transporte: bot `@os`, WebSocket saliente, tokens |
 

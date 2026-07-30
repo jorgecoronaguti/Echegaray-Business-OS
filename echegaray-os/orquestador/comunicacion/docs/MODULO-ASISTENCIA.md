@@ -1,7 +1,8 @@
 # Módulo Asistencia — documentación definitiva
 
-> Estado: **v2 en producción** desde el 30/07/2026 (tag `asistencia-v1.0` marca la v1 conversacional).
-> **La interfaz principal es una pantalla web**; el flujo por chat quedó como respaldo.
+> Estado: **v3 en producción** desde el 30/07/2026.
+> **Todo ocurre dentro de Mattermost.** La v2 tuvo una pantalla web: fue una dirección
+> equivocada y se retiró por completo. Un supervisor no sale de Mattermost para cargar.
 > Este documento reemplaza a cualquier descripción anterior del módulo. Los documentos
 > `PR-4.1-*`, `PR-4.2-*` y `PR-4-ARQUITECTURA.md` son **histórico de construcción**: describen
 > cómo se llegó acá, no cómo funciona hoy.
@@ -101,45 +102,51 @@ fuente del Director y del handler y **fallan si vuelven a nombrar un dominio** o
 
 ---
 
-## 3bis. Las dos puertas — y por qué hay dos
+## 3bis. La carga, dentro de Mattermost
 
-Desde la v2 la carga NO se conversa: se hace en una pantalla. Mattermost sólo **dispara**.
+`@os asistencia` **en el canal #asistencia** publica UN mensaje interactivo. Elegir la obra
+**reescribe ese mismo mensaje** con la cuadrilla. Registrar escribe. No hay conversación que
+crezca hacia abajo: hay un mensaje que cambia.
 
-| Puerta | Cómo | Estado |
+**Caso normal: dos clicks.** Elegir la obra → Registrar.
+
+| Paso | Qué ve el jefe |
+|---|---|
+| `@os asistencia` | Fecha (hoy) con `Hoy` / `Ayer` / `Otra fecha…`, y el desplegable de obras |
+| Elige la obra | La cuadrilla entera, presente con la jornada del día, con su resumen |
+| `Marcar excepción` | Un **diálogo** de esa persona: presente · horas · motivo · otra obra · aclaración |
+| `Registrar` | Se escribe, se audita y el mensaje queda confirmado |
+
+Las excepciones son lo único que se toca: el default es el caso normal, y el default es
+silencioso — presente completo lleva un guion al margen, la excepción grita.
+
+### Lo que Mattermost permite y lo que no (auditado en 11.8.4, no supuesto)
+
+| Capacidad | Estado | Consecuencia |
 |---|---|---|
-| `/asistencia` | Slash command → respuesta ephemeral con el enlace | **Requiere que un administrador de Mattermost cree el comando.** El bot es `system_user` y no puede |
-| `@os asistencia` | WebSocket ya probado en producción | **Funcionando hoy.** Devuelve el mismo enlace |
-| `asistencia por chat` | Salida de emergencia | Abre el formulario conversacional de la v1 |
+| Attachments con acciones | **SÍ** | Es la UI |
+| Actualizar el post desde una acción | **SÍ** | El mensaje se reescribe |
+| Diálogo modal (`trigger_id`) | **SÍ**, tope **5 elementos** | Los 5 campos entran exactos; no hay margen para un sexto |
+| Actualizar el post desde un `dialog_submission` | **NO** | Tras el diálogo, el post se refresca por API |
+| `POST /posts/ephemeral` | **NO — 403** | El bot no es admin; los avisos salen por `ephemeral_text` de la acción |
+| Crear `/asistencia` | **NO** | El bot es `system_user`. La puerta es `@os asistencia` |
+| Markdown en el texto del attachment | **NO fiable** | La jerarquía se hace con `title` y `fields` |
 
-El enlace es **firmado, de un solo uso y vence en 10 minutos**. No lleva permisos: la identidad
-sale de Mattermost y el permiso se verifica en cada pedido contra `asistencia-permisos.mjs`.
+### La ruta HTTP no es una pantalla
 
-### La pantalla
+Mattermost **exige** una URL de callback para sus botones: `POST /asistencia/accion`. Nadie
+abre un navegador — el jefe toca el mensaje en el canal y Mattermost llama al OS. El servicio
+escucha en un **socket unix** (el firewall del host descarta lo que viene de los bridges de
+Docker) y Caddy lo publica bajo el dominio que ya sirve Mattermost.
 
-`https://chat.ecsas.com.ar/asistencia?t=<token>` — el mismo dominio y el mismo Caddy que ya
-sirve Mattermost. **No está en Vercel**: la web de Vercel no puede alcanzar Google Sheets ni
-Postgres, que viven en la VM.
+### La puerta
 
-- Fecha con tope en hoy; al cambiarla se recarga todo.
-- Obra desde la planilla (nunca escrita a mano); al cambiarla llega la cuadrilla.
-- Toda la cuadrilla precargada **presente, con la jornada del día**. Sólo se tocan las excepciones.
-- Por persona: presente · horas · motivo · obra realizada · aclaración. Nada más.
-- El motivo aparece sólo cuando hace falta; la aclaración sólo si el motivo la exige; la obra
-  realizada sólo si la persona trabajó.
-- **No hay campo de horas extra**: se cargan las horas trabajadas y el excedente lo separa el
-  núcleo, que lo escribe con su fórmula.
-- Caso normal: **abrir → elegir obra → Registrar**. Con una sola obra en el día, dos pasos.
+`asistencia-guarda.mjs` corre **antes que nada**: antes de abrir sesión, de leer la planilla y
+de gastar una consulta de permisos. Rechaza DM, grupos, otros canales y los pedidos que traen
+dos versiones del canal. El canal oficial sale de `comunicacion.canales_area` — no está en el
+código, y hay un test que falla si aparece un id de Mattermost literal.
 
-### Cómo llega Caddy al servicio — la parte que cuesta una tarde
-
-Caddy corre en un contenedor. `host.docker.internal` resuelve a `172.17.0.1` (bridge por
-defecto), no al de esta red; y **el firewall del host descarta lo que llega desde los bridges
-de Docker**, por cualquier dirección. Por eso el servicio escucha en un **socket unix**
-(`ASISTENCIA_HTTP_SOCKET`) que se bind-montea en el contenedor: no viaja por la red, así que el
-firewall no interviene, y no queda ningún puerto nuevo escuchando.
-
-Se monta el **directorio**, no el archivo: montando el socket, un reinicio del servicio lo
-recrea y el contenedor sigue viendo el inode viejo — 502 permanente sin síntoma claro.
+Desactivar el binding apaga la carga sin desplegar código.
 
 ## 4. Flujo completo de un mensaje
 
@@ -276,7 +283,7 @@ WorkingDirectory=/home/jorge/echegaray-os/app/.claude/worktrees/deploy-comunicac
 |---|---|---|
 | `echegaray-comunicacion-ws.service` | consumidor WebSocket | **NO** (verificado en `/proc/<pid>/environ`) |
 | `echegaray-comunicacion-worker.service` | worker del lane | Sí, sólo para el ruteo del Director |
-| `echegaray-asistencia-http.service` | slash command + pantalla | **NO** |
+| `echegaray-asistencia-http.service` | callback de las acciones de Mattermost | **NO** |
 
 ```bash
 # desplegar una versión nueva
@@ -346,16 +353,17 @@ especialista operativo**.
 9. **`asistencia-consultas.mjs` tiene 553 líneas**, por encima del límite de 500 del CLAUDE.md.
    Partirlo es un refactor con riesgo de comportamiento; queda registrado, no forzado.
 10. **`/asistencia` todavía no existe en Mattermost.** El bot no puede crearlo (rol
-    `system_user`). Hasta que un administrador lo cree, la puerta es `@os asistencia`, que
-    entrega el mismo enlace.
+    `system_user`). La puerta es `@os asistencia`, que hace exactamente lo mismo. Crear el
+    comando es un clic de un administrador y sólo agrega el autocompletado.
 11. **Motivo, aclaración y obra realizada viven en Postgres, no en la planilla**
     (`comunicacion.asistencia_novedades`). La celda de JORNALES sigue recibiendo sólo horas:
     escribir texto ahí rompería las sumas de la quincena. Quien mire la planilla ve las horas,
     no el porqué. Reflejarlos en el Sheet exige antes averiguar cómo lo codifica hoy la leyenda
     (FALTA / TARDANZA / ENFERMEDAD), y eso no se adivina.
-12. **La idempotencia de la pantalla es en memoria.** Si el proceso reinicia entre dos envíos
-    idénticos, queda la del núcleo (que replanifica y da `sin_cambio`), no la de la clave.
-13. **Feriados 2026 cargados: 14.** Güemes (17/06) y Soberanía Nacional (20/11) quedaron fuera
+12. **La confirmación de sobrescritura viaja por el `context` del cliente.** Es una
+    salvaguarda de UX, no una frontera de seguridad: la misma persona puede apretar el botón
+    igual. Lo que sí es frontera es la guarda de canal y permisos, que corre en el servidor.
+13. **Feriados 2026 cargados: 16 + 6 días no laborables.** Güemes (17/06) y Soberanía Nacional (20/11) quedaron fuera
     a propósito: son trasladables y las fuentes discrepan por el Decreto 614/2025. Hay un test
     que falla si alguien los siembra sin verificarlos. Faltan los provinciales de San Juan.
 
