@@ -47,13 +47,32 @@ const AÑO = 2026
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 
 // ── Las 53 semanas del año, arrancando el lunes ───────────────────────────────────────────────────
-function semanas() {
+//
+// SE EXPORTA (30/07) porque la grilla de períodos tiene que tener UNA SOLA definición. La fila 3 de las
+// dos pestañas de cash flow ES el contrato: cada columna suma [encabezado, encabezado+7) en la semanal
+// y [encabezado, fin de mes] en la mensual. Si el encabezado no es el lunes / el primero del mes, la
+// ventana se corre y la columna suma otra cosa — sin dar ningún error.
+//
+// Y eso es exactamente lo que estaba pasando: la Mensual tenía el DÍA 26 de cada mes en la fila 3, así
+// que cada columna sumaba sólo del 26 a fin de mes (5 o 6 días) y la proyección de egresos perdía
+// $293M del año. La Semanal tenía 29/12/2026 en su primera semana, un año adelantado. Los dos valores
+// estaban en la PESTAÑA, no en el código: este generador siempre escribió bien, pero las pestañas están
+// candadas y nunca los recibieron. scripts/cash-flow-encabezados.mjs las corrige contra esta función.
+export function semanas() {
   const d = new Date(Date.UTC(AÑO, 0, 1))
   while (d.getUTCDay() !== 1) d.setUTCDate(d.getUTCDate() - 1) // retroceder al lunes
   const out = []
   for (let i = 0; i < 53; i++) { out.push(new Date(d)); d.setUTCDate(d.getUTCDate() + 7) }
   return out
 }
+/** Los 12 PRIMEROS-DE-MES del año. Es lo que la fila 3 de la Mensual tiene que decir. */
+export function meses() {
+  return Array.from({ length: 12 }, (_, m) => new Date(Date.UTC(AÑO, m, 1)))
+}
+
+/** El año del cuadro, para que el corrector no lo repita por su cuenta. */
+export const ANIO = AÑO
+
 const fechaAR = (d) => `${d.getUTCDate()}/${d.getUTCMonth() + 1}/${d.getUTCFullYear()}`
 
 /**
@@ -61,7 +80,7 @@ const fechaAR = (d) => `${d.getUTCDate()}/${d.getUTCMonth() + 1}/${d.getUTCFullY
  * @param {'semanal'|'mensual'} periodo
  */
 export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = null, filasTabla = {}, filasCalendario = {}) {
-  const cols = periodo === 'semanal' ? semanas() : Array.from({ length: 12 }, (_, m) => new Date(Date.UTC(AÑO, m, 1)))
+  const cols = periodo === 'semanal' ? semanas() : meses()
   const n = cols.length
   const colTotal = letra(n + 1) // A + n períodos → la siguiente es el total
   const FILA_CAB = 3

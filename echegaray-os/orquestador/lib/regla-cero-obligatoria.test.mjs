@@ -55,6 +55,7 @@ const EDICIONES_PUNTUALES = new Map([
   // Éste ya decidía —consulta el candado de Compras y se va si está tomada— pero lo hacía de una forma
   // que el test no reconocía. Al cerrar el agujero de updateCells apareció, y su decisión quedó escrita.
   ['rubro-caja-sheet.mjs', 'escribe SÓLO las dos celdas ancla de las ARRAYFORMULA de "Rubro de caja" y "Fecha de caja" (AC3/AD3), y antes consulta el candado de Compras: si el dueño la tomó, no la toca'],
+  ['cash-flow-encabezados.mjs', 'corrige la fila 3 de los dos cash flow (los períodos, que son el CONTRATO de la ventana de cada columna) y cuatro celdas de control; compara contra la grilla que define el generador, y si una fila ya no es la línea que dice su rótulo, aborta sin escribir'],
 ])
 
 test('todo generador que escribe una pestaña decide explícitamente qué hace con las ediciones del dueño', () => {
