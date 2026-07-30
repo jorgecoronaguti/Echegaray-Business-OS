@@ -21,6 +21,7 @@ const AQUI = dirname(fileURLToPath(import.meta.url))
 const leer = (n) => readFileSync(join(AQUI, 'publico', n), 'utf8')
 const CSS = leer('pantalla.css')
 const JS = leer('pantalla.js')
+const JS_SRC = JS
 const HTML = leer('pantalla.html')
 
 test('el CSS declara que [hidden] gana: sin esto la pantalla muestra TODO', () => {
@@ -71,4 +72,11 @@ test('ningún campo oculto manda su valor viejo', () => {
 test('no hay horas extra como campo: se calculan', () => {
   assert.ok(!/name=["']extra|id=["']extra["']|class=["'][^"']*horas-extra/.test(HTML),
     'las horas extra no se cargan a mano: las separa el núcleo')
+})
+
+test('el "Listo" se muestra DESPUÉS de recargar, o se borra solo', () => {
+  // `cargarCuadrilla` arranca con `avisar('')`. Si el aviso de éxito se pone antes, el jefe
+  // aprieta Registrar y no ve nada — y lo lógico es apretar de nuevo.
+  const i = JS_SRC.indexOf('await cargarCuadrilla()\n      avisar(')
+  assert.ok(i > 0, 'el aviso de éxito tiene que ir después de await cargarCuadrilla()')
 })

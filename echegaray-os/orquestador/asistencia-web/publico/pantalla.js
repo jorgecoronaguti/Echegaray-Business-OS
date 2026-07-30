@@ -285,9 +285,13 @@
       }
       if (d.error) { avisar(d.error, 'error'); return }
       var n = (d.celdas || []).length
-      avisar(d.nota ? d.nota : 'Listo: ' + n + (n === 1 ? ' carga registrada' : ' cargas registradas') + ' en la planilla.', 'ok')
+      var listo = d.nota ? d.nota : 'Listo: ' + n + (n === 1 ? ' carga registrada' : ' cargas registradas') + ' en la planilla.'
       estado.clave = nuevaClave()
+      // El aviso va DESPUÉS de recargar, no antes: `cargarCuadrilla` arranca limpiando la
+      // pantalla, así que un "Listo" puesto acá arriba se borraba solo a los milisegundos.
+      // El jefe apretaba Registrar, no veía nada, y lo lógico era apretar de nuevo.
       await cargarCuadrilla()
+      avisar(listo, 'ok')
     } catch {
       avisar('No se pudo registrar. Probá de nuevo en unos segundos.', 'error')
     } finally {
