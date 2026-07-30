@@ -214,6 +214,36 @@ export function notasAncladas(bloque = [], L = {}) {
 }
 
 /**
+ * EL ANCHO QUE EL BLOQUE DE DEUDA REALMENTE OCUPA — no el que el dueño rotuló.
+ *
+ * ═══ EL INCIDENTE DEL 30/07, Y POR QUÉ ESTA FUNCIÓN EXISTE ═══
+ *
+ * El dueño rotuló OCHO columnas (A–H: hasta "Comentarios"), pero escribe hasta la Q (índice 16): al
+ * lado de Hormiserv y de Alumetal tenía su propia hoja de cálculo a mano —el nombre otra vez, los
+ * importes, "cheque a 4 dias"—. `celdas()` generaba filas del ancho de los RÓTULOS, así que todo lo
+ * que estaba de la columna 8 en adelante quedaba FUERA del footprint del generador: nunca se marcaba
+ * con VACIO, y la fusión —que por diseño preserva lo que no es suyo— lo dejaba clavado EN SU FILA
+ * FÍSICA. Las notas se re-anclaban bien al proveedor (notasAncladas hacía su trabajo), pero los restos
+ * anchos se quedaban quietos mientras los proveedores se movían. Resultado, con la lista reordenada:
+ *
+ *   · la fila de Hormiserv mostrando los números de Alumetal (el residuo de las columnas 13–16, que
+ *     Hormiserv no llena y por lo tanto no tapaba);
+ *   · una fila huérfana con importes y sin proveedor al lado;
+ *   · notas que el dueño había BORRADO reapareciendo, porque su residuo nunca se limpió.
+ *
+ * LA REGLA. Un generador tiene que ser dueño de TODO lo que su bloque ocupa. Si preserva por fila
+ * física una zona donde las filas se reordenan, no está respetando al dueño: está mezclando su trabajo.
+ * Lo que se respeta es la NOTA —anclada a su proveedor, que es de lo que habla— no el renglón.
+ *
+ * No agranda la pestaña ni cambia el formato: sólo declara hasta dónde llega el bloque para poder
+ * limpiarlo. Si el dueño estrecha su zona, el ancho se estrecha con ella en la corrida siguiente.
+ */
+export function anchoBloque(cols = [], previo = []) {
+  const anchoPrevio = (previo || []).reduce((mx, f) => Math.max(mx, (f || []).length), 0)
+  return Math.max((cols || []).length, anchoPrevio)
+}
+
+/**
  * LIMPIA EL FOOTPRINT DE UNA FILA ESTRUCTURAL — la que el generador es dueño de punta a punta
  * (los TOTALES y el encabezado/conteos de ARCA). En esas filas una celda vacía es SUYA y va vacía:
  * se marca cada '' con el centinela VACIO para que la FUSIÓN la BORRE de verdad, en vez de dejar ''
@@ -384,13 +414,20 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   const L = layoutDeuda(deudaCols)
   // Las notas del dueño vuelven a SU proveedor / SU comprobante, no a la fila donde estaban.
   const NOTAS = notasAncladas(deudaPrevio || [], L)
-  // Las columnas que el generador MAPEA son suyas: si van vacías, se limpian (VACIO). Las que la
-  // persona agregó y el generador no llena —Comentarios— quedan '' y la fusión las conserva.
-  const PROPIAS = new Set([L.prov, L.fecha, L.comp, L.imp, L.obra, L.pago, L.cat, L.instr].filter((i) => i >= 0))
-  const celdas = () => L.cols.map(() => VACIO)
+  // EL BLOQUE ES DUEÑO DE TODO SU ANCHO, no sólo de las columnas rotuladas. Ver anchoBloque(): el dueño
+  // escribe más a la derecha de lo que rotuló, y lo que el generador no marca con VACIO la fusión lo deja
+  // clavado en la FILA FÍSICA — con la lista reordenada eso le pone a un proveedor los números de otro
+  // (incidente del 30/07). Cada celda del bloque nace VACIO y sólo sobrevive lo que se RE-ANCLA a su
+  // proveedor / comprobante: así una nota viaja con la entidad de la que habla, y un residuo no viaja.
+  const ANCHO = anchoBloque(L.cols, deudaPrevio)
+  const celdas = () => Array.from({ length: ANCHO }, () => VACIO)
+  // Toda nota re-anclada se marca como USADA: la que no encuentra a su proveedor se reporta al final en
+  // vez de desaparecer sin decirlo. Un dato del dueño no se pierde en silencio.
+  const usadas = new Set()
   const ponerNotas = (arr, mapa, clave) => {
-    const extra = mapa.get(String(clave ?? '').trim().toLowerCase())
-    if (extra) for (const [j, v] of extra) arr[j] = v
+    const k = String(clave ?? '').trim().toLowerCase()
+    const extra = mapa.get(k)
+    if (extra) { usadas.add(`${mapa === NOTAS.porProveedor ? 'p' : 'c'}|${k}`); for (const [j, v] of extra) arr[j] = v }
     return arr
   }
   const fAviso = push([])
@@ -701,7 +738,15 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   //      sobrevivía texto viejo —p. ej. el título de la sección 2 duplicado.
   // Un barrido global aquí borraría notas del dueño en las filas de detalle: por eso NO se hace.
 
-  return { filas: resuelto, cabArca, marcas: { bPos, b1, b2, b3, b4, b5, b6, b7, b8, fin: filas.length }, bPos, pos0, pos1, posTotal, posProy, posPlazo, posFaltan, cuentas: [fCuenta1, fCuenta2], fCompFecha, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabDocFin, deudaL: L, deudaHeaders, deudaGrupos, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
+  // Las notas que no encontraron a su proveedor en la lista nueva (le pagaron, o cambió de nombre en
+  // Compras). Se DEVUELVEN para reportarlas: el bloque ya se limpia a su ancho real, así que sin este
+  // aviso el dato del dueño se iría sin dejar rastro. Queda en el log de la corrida, y el snapshot
+  // previo del pipeline lo tiene entero.
+  const notasHuerfanas = [
+    ...[...NOTAS.porProveedor.entries()].filter(([k]) => !usadas.has(`p|${k}`)).map(([k, m]) => ({ tipo: 'proveedor', clave: k, texto: [...m.values()].map(String).join(' · ') })),
+    ...[...NOTAS.porComprobante.entries()].filter(([k]) => !usadas.has(`c|${k}`)).map(([k, m]) => ({ tipo: 'comprobante', clave: k, texto: [...m.values()].map(String).join(' · ') })),
+  ]
+  return { filas: resuelto, notasHuerfanas, anchoDeuda: ANCHO, cabArca, marcas: { bPos, b1, b2, b3, b4, b5, b6, b7, b8, fin: filas.length }, bPos, pos0, pos1, posTotal, posProy, posPlazo, posFaltan, cuentas: [fCuenta1, fCuenta2], fCompFecha, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabDocFin, deudaL: L, deudaHeaders, deudaGrupos, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
 }
 
 async function main() {
@@ -991,6 +1036,12 @@ async function main() {
   const ancho = Math.max(...g.filas.map((f) => f.length))
   const cuadro = g.filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r })
   console.log(`${PESTAÑA}: ${cuadro.length} filas x ${ancho} columnas`)
+  console.log(`  bloque de deuda: ${g.anchoDeuda} columnas de ancho real (los rótulos son ${g.deudaL?.cols?.length ?? '?'}) — se limpia todo ese ancho y las notas se re-anclan a su proveedor`)
+  if (g.notasHuerfanas?.length) {
+    // NO se pierde en silencio: queda en el log, textual, y el snapshot previo lo conserva entero.
+    console.log(`  ⚠ ${g.notasHuerfanas.length} nota(s) del dueño SIN proveedor en la lista nueva (le pagaron, o cambió el nombre en Compras):`)
+    for (const n of g.notasHuerfanas) console.log(`     ${n.tipo} "${n.clave}": ${n.texto}`)
+  }
   console.log(`  ${comerciales.length} proveedores comerciales de ${acc.size} · top ${proveedores.length} listados, ${resto.cantidad} en "resto"`)
   if (DRY) {
     // ═══ EN SECO, LA PREGUNTA ÚTIL NO ES "CUÁNTAS FILAS" SINO "QUÉ TE VOY A PISAR" ═══
