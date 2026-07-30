@@ -19,7 +19,6 @@
 // contra la planilla recién leída.
 
 import { ESTADO, fmt } from '../lib/horas-extra.mjs'
-import { RE_NUM_HORAS } from '../lib/jornales-estructura.mjs'
 /** Igual que RE_NUM_HORAS pero sin tope de decimales: se captura TODO lo que el jefe
  *  escribió, para poder rechazarlo con su valor real en vez de truncarlo. */
 const RE_NUM_HORAS_LARGO = String.raw`\d{1,3}(?:[.,]\d+)?`
