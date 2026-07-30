@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   SesionesMemoria, ESTADO_SESION, RECHAZO, firmarAccion, verificarAccion, TTL_MINUTOS,
+  crearVencedorPeriodico, VENCER_INTERVALO_MS_DEFAULT,
 } from './asistencia-sesion.mjs'
 
 const SEC = 'secreto-de-prueba'
@@ -125,4 +126,91 @@ test('sin sesión, abiertaDe dice que no existe', async () => {
   const r = new SesionesMemoria()
   assert.equal((await r.abiertaDe({ plataformaUserId: U1 })).motivo, RECHAZO.NO_EXISTE)
   assert.equal((await r.cargar({ id: null, plataformaUserId: U1 })).motivo, RECHAZO.NO_EXISTE)
+})
+
+// ── BARRIDO PERIÓDICO (lo que corre el worker en cada tick) ─────────────────────
+
+test('EL AGUJERO QUE CIERRA: una sesión abandonada se vence SIN que su dueño vuelva', async () => {
+  let t = Date.parse('2026-07-30T12:00:00Z')
+  const r = new SesionesMemoria({ ahora: () => t })
+  const a = await abrir(r) // el jefe abre el formulario y no vuelve nunca
+  const barrer = crearVencedorPeriodico({ sesiones: r, intervaloMs: 60_000, ahora: () => t })
+
+  t += (TTL_MINUTOS + 1) * 60000
+  const res = await barrer()
+
+  assert.deepEqual({ corrio: res.corrio, vencidas: res.vencidas }, { corrio: true, vencidas: 1 })
+  assert.equal(r.filas.find((f) => f.id === a.id).estado, ESTADO_SESION.VENCIDA,
+    'se cerró sola: nadie llamó a abiertaDe/cargar')
+  // Y por eso el índice "una sola sesión abierta por persona" queda libre.
+  assert.equal(r.filas.filter((f) => f.estado === ESTADO_SESION.ABIERTA).length, 0)
+})
+
+test('el barrido NO corre en cada vuelta del loop: respeta su intervalo', async () => {
+  let t = 1_000_000
+  let llamadas = 0
+  const sesiones = { vencer: async () => { llamadas++; return 0 } }
+  const barrer = crearVencedorPeriodico({ sesiones, intervaloMs: 60_000, ahora: () => t })
+
+  await barrer()                 // primer tick: barre al arrancar
+  assert.equal(llamadas, 1)
+  for (let i = 0; i < 50; i++) { t += 200; await barrer() } // 50 vueltas de 200 ms = 10 s
+  assert.equal(llamadas, 1, 'no volvió a tocar la base antes del intervalo')
+
+  t += 60_000
+  const res = await barrer()
+  assert.deepEqual({ llamadas, corrio: res.corrio }, { llamadas: 2, corrio: true })
+})
+
+test('sólo loguea cuando cerró algo: un barrido en cero no hace ruido', async () => {
+  let t = 0
+  let n = 0
+  const infos = []
+  const log = { info: (msg, meta) => infos.push({ msg, meta }), error: () => {} }
+  const barrer = crearVencedorPeriodico({ sesiones: { vencer: async () => n }, intervaloMs: 10, ahora: () => t, log })
+
+  await barrer()
+  assert.deepEqual(infos, [], 'cero vencidas ⇒ cero líneas de log')
+
+  n = 3; t += 10
+  await barrer()
+  assert.equal(infos.length, 1)
+  assert.deepEqual(infos[0].meta, { vencidas: 3 }, 'formato JSON del logger, sin secretos')
+})
+
+test('un fallo del barrido NO voltea el tick ni se reintenta en loop', async () => {
+  let t = 0
+  let llamadas = 0
+  const errores = []
+  const log = { info: () => {}, error: (msg, meta) => errores.push(meta) }
+  const sesiones = { vencer: async () => { llamadas++; throw new Error('base caída') } }
+  const barrer = crearVencedorPeriodico({ sesiones, intervaloMs: 60_000, ahora: () => t, log })
+
+  const res = await barrer() // no tira: el tick sigue procesando inbox/outbox
+  assert.deepEqual({ error: res.error, vencidas: res.vencidas }, { error: true, vencidas: 0 })
+  assert.equal(errores[0].error, 'base caída')
+
+  t += 200
+  await barrer()
+  assert.equal(llamadas, 1, 'reprograma igual: una base caída no se martilla cada 200 ms')
+})
+
+test('un intervalo inválido (env mal escrito ⇒ NaN) cae al default, no a cada tick', async () => {
+  let t = 0
+  let llamadas = 0
+  const sesiones = { vencer: async () => { llamadas++; return 0 } }
+  const barrer = crearVencedorPeriodico({ sesiones, intervaloMs: Number('no-es-un-numero'), ahora: () => t })
+
+  await barrer()
+  t += VENCER_INTERVALO_MS_DEFAULT - 1
+  await barrer()
+  assert.equal(llamadas, 1, 'NaN habría hecho fallar toda comparación y barrer siempre')
+
+  t += 1
+  await barrer()
+  assert.equal(llamadas, 2)
+})
+
+test('el barrido exige un repositorio de verdad', () => {
+  assert.throws(() => crearVencedorPeriodico({ sesiones: null }), /falta el repositorio/)
 })

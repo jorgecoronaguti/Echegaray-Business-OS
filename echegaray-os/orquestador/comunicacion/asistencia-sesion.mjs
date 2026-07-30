@@ -296,3 +296,54 @@ export class SesionesPostgres {
     return rows[0]?.n ?? 0
   }
 }
+
+// ── BARRIDO PERIÓDICO DE VENCIMIENTO ────────────────────────────────────────────
+// POR QUÉ EXISTE. `abiertaDe`/`cargar` vencen la sesión de forma PEREZOSA: recién cuando
+// su dueño vuelve a escribir. Una sesión abandonada (el jefe abre el formulario y se va)
+// queda entonces en estado 'abierta' indefinidamente, ocupando el índice único
+// `asistencia_sesiones_una_abierta_idx` — "una sola sesión abierta por persona" — hasta
+// que esa misma persona reaparezca. El barrido cierra esas sesiones sin depender de que
+// nadie escriba.
+//
+// POR QUÉ CON SU PROPIO INTERVALO Y NO EN CADA TICK. El loop del worker gira cada ~200 ms
+// cuando hay trabajo; esto es un UPDATE contra la base y no corresponde hacerlo en cada
+// vuelta. Un intervalo propio, holgado frente al TTL, alcanza: el costo de que una sesión
+// muerta sobreviva un minuto extra es nulo.
+
+/** Intervalo por defecto del barrido. Holgado frente al TTL (minutos): no hace falta
+ *  precisión al segundo para cerrar un formulario que ya nadie va a usar. */
+export const VENCER_INTERVALO_MS_DEFAULT = 60_000
+
+/**
+ * Devuelve una función para llamar en cada tick del worker: corre el barrido sólo si pasó
+ * el intervalo, y NUNCA propaga el error (un fallo de este barrido no debe voltear el tick
+ * que procesa inbox/outbox). Cero red extra, cero llamadas a Anthropic: es un UPDATE.
+ *
+ * @param {object} o
+ * @param {{vencer:Function}} o.sesiones repositorio de sesiones (Postgres o Memoria)
+ * @param {number} [o.intervaloMs]  ms entre barridos; valor inválido ⇒ el default
+ * @param {()=>number} [o.ahora]    reloj inyectable (tests)
+ * @param {object} [o.log]          logger del worker (mismo formato JSON)
+ */
+export function crearVencedorPeriodico({ sesiones, intervaloMs = VENCER_INTERVALO_MS_DEFAULT, ahora = () => Date.now(), log = null } = {}) {
+  if (!sesiones?.vencer) throw new Error('crearVencedorPeriodico: falta el repositorio de sesiones')
+  // Un env mal escrito da NaN y NaN rompe TODA comparación: sin esta guarda el barrido
+  // correría en cada vuelta del loop en vez de una vez por minuto.
+  const iv = Number.isFinite(intervaloMs) && intervaloMs > 0 ? intervaloMs : VENCER_INTERVALO_MS_DEFAULT
+  let proximo = ahora() // el primer tick barre: al arrancar puede haber sesiones colgadas
+
+  return async function vencerSiCorresponde() {
+    const t = ahora()
+    if (t < proximo) return { corrio: false, vencidas: 0 }
+    proximo = t + iv // se reprograma ANTES de correr: si falla, no se reintenta en loop
+    try {
+      const vencidas = Number(await sesiones.vencer()) || 0
+      // Sólo se loguea cuando hubo algo que cerrar: un "0 vencidas" por minuto es ruido.
+      if (vencidas > 0) log?.info?.('sesiones de asistencia vencidas', { vencidas })
+      return { corrio: true, vencidas }
+    } catch (e) {
+      log?.error?.('vencer sesiones de asistencia falló (se reintenta al próximo intervalo)', { error: String(e?.message ?? e) })
+      return { corrio: true, vencidas: 0, error: true }
+    }
+  }
+}

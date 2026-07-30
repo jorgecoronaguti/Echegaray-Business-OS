@@ -193,6 +193,28 @@ Si alguien editó la planilla entre el `revisar` y el `confirmar`, **no se escri
 el bot muestra celda por celda qué había cuando empezaste y qué hay ahora. No se
 reintenta solo: es un conflicto funcional, lo resuelve la persona.
 
+### Formularios abandonados
+
+Un formulario a medio llenar vive **20 min** (`ORQ_ASISTENCIA_TTL_MIN`) y sólo puede haber
+**uno abierto por persona**. Si el jefe abre uno y no vuelve, el worker de comunicación lo
+cierra solo: barre las sesiones vencidas dentro de su loop, con intervalo propio.
+
+```bash
+COMM_WORKER_VENCER_MS=60000   # default 60 s; en el EnvironmentFile + restart del worker
+```
+
+Es un `UPDATE` contra la base (`comunicacion.vencer_sesiones_asistencia()`), sin red extra
+ni llamadas a Anthropic. Sólo escribe en el log cuando cerró algo:
+
+```json
+{"level":"info","msg":"sesiones de asistencia vencidas","vencidas":2}
+```
+
+No hace falta tocarlo. Si el worker está caído, las sesiones igual vencen en cuanto su
+dueño vuelve a escribir (verificación perezosa) — el barrido cubre justamente al que **no**
+vuelve. Nada de esto afecta lo ya escrito en JORNALES: la sesión es estado del formulario,
+no la asistencia.
+
 ### Celdas bloqueadas
 
 El preview las lista con el motivo. Se resuelven **a mano en la planilla**:

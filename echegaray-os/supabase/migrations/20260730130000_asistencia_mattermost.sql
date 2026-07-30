@@ -86,8 +86,11 @@ create unique index if not exists asistencia_sesiones_idem_idx
 comment on table comunicacion.asistencia_sesiones is
   'Estado server-side del formulario de asistencia (TTL). Evidencia del preview y de la confirmación; NO es fuente de verdad de la asistencia (eso es el Sheet JORNALES).';
 
--- Vence las sesiones abiertas pasadas de hora. La llama el worker; también sirve
--- suelta para limpieza manual.
+-- Vence las sesiones abiertas pasadas de hora. La llama el worker de comunicación en
+-- su loop, con intervalo propio (COMM_WORKER_VENCER_MS, default 60 s) — ver
+-- crearVencedorPeriodico en orquestador/comunicacion/asistencia-sesion.mjs. Sin este
+-- barrido una sesión ABANDONADA seguiría ocupando asistencia_sesiones_una_abierta_idx
+-- hasta que su dueño volviera a escribir. También sirve suelta para limpieza manual.
 create or replace function comunicacion.vencer_sesiones_asistencia()
 returns integer language sql as $$
   with v as (
