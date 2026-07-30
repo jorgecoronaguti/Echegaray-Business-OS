@@ -17,6 +17,7 @@ import { estadoSistema } from '../comunicacion/estado-sistema.mjs'
 import { manejarAsistencia, consultarAsistencia } from '../comunicacion/asistencia-flujo.mjs'
 import { clasificar, COMANDO } from '../comunicacion/asistencia-ui.mjs'
 import { parsearConsulta } from '../lib/asistencia-consultas.mjs'
+import { fechaOperativaSanJuan } from '../lib/fecha-operativa.mjs'
 import { makeGoogleClient, WORKSPACE_SCOPES } from '../lib/google.mjs'
 import { operadorEmail, getTokenFor } from '../lib/google-oauth.mjs'
 
@@ -39,7 +40,12 @@ function esEstadoDelSistema(comando) {
  * Los pasos siguientes del flujo se atienden porque el jefe ya tiene sesión abierta.
  */
 async function rutearAsistencia(comando, port, plataformaUserId) {
-  const r = clasificar(comando, { parsearConsulta })
+  // `isoContexto` NO es opcional: sin él, una consulta con fecha relativa ("ayer") queda sin
+  // fecha y se responde con la de HOY, y una fecha sin año ("del 29/07") se resuelve al año
+  // 2000 (`Number('')` es 0 → +2000) y devuelve "no existe la hoja del año 2000". El flujo de
+  // REGISTRO no lo sufría porque `manejarAsistencia` vuelve a parsear con la fecha operativa;
+  // la consulta usa la intención que se parsea ACÁ, así que acá tiene que entrar el contexto.
+  const r = clasificar(comando, { parsearConsulta, isoContexto: fechaOperativaSanJuan() })
   if (!r.destino) return null
   // Una CONSULTA se atiende siempre: no necesita formulario abierto.
   if (r.destino === 'consulta') return r
