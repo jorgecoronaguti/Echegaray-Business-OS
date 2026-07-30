@@ -87,9 +87,9 @@ revisar `GOOGLE_JORNALES_PESTANA_PREFIJO`.
 ### 2.3 Migración
 
 ```bash
-psql "$DATABASE_URL" -f supabase/migrations/20260730120000_asistencia_mattermost.sql
+psql "$DATABASE_URL" -f supabase/migrations/20260730130000_asistencia_mattermost.sql
 # rollback:
-psql "$DATABASE_URL" -f orquestador/db/rollback/20260730120000_asistencia_mattermost_down.sql
+psql "$DATABASE_URL" -f orquestador/db/rollback/20260730130000_asistencia_mattermost_down.sql
 ```
 
 Aditiva y aislada en el schema `comunicacion` (ya existente). Crea sólo permisos, estado
