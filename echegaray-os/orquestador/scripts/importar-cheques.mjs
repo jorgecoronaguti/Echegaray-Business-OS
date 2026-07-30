@@ -31,7 +31,7 @@
 
 import { readFileSync } from 'node:fs'
 import { query, closePool } from '../lib/db.mjs'
-import { validar, aFila, novedades, verificarOrdenPago, cartera, importe } from '../lib/cheques-importar.mjs'
+import { validar, aFila, novedades, verificarOrdenPago } from '../lib/cheques-importar.mjs'
 
 const DRY = process.argv.includes('--dry')
 const SOLO_CARTERA = process.argv.includes('--cartera')
