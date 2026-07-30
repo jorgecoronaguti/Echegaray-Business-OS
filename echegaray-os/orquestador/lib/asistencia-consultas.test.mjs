@@ -431,6 +431,10 @@ test('«quién faltó ayer» es una CONSULTA, no el comando de registro', () => 
     const q = parsear(t)
     assert.ok(q, `${t} tiene que reconocerse como consulta`)
     assert.equal(q.tipo, 'asistencia')
+    // el verbo de la pregunta NO puede leerse como el nombre de una persona
+    assert.equal(q.trabajador, null, `${t} → buscó a alguien llamado "${q.trabajador}"`)
+    assert.equal(q.obra, null, t)
+    assert.equal(q.alcance, 'todo', t)
   }
   // y el comando de registro sigue siendo del otro flujo
   assert.equal(parsear('asistencia'), null)
