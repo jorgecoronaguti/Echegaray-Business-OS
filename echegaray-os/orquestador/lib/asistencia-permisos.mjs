@@ -15,13 +15,51 @@ export const DENEGADO = Object.freeze({
   ERROR_VERIFICANDO: 'error_verificando',
 })
 
+export const MODO = Object.freeze({
+  ABIERTO: 'abierto', // MVP: cualquier usuario AUTENTICADO de Mattermost
+  ESTRICTO: 'estricto', // sólo quien tenga el grant en comunicacion.permisos_skill
+})
+
 /**
- * ¿Esta identidad de plataforma tiene este permiso?
- * @param {{query:Function}} port  pool del OS
- * @returns {Promise<{ok:boolean, motivo?:string, display?:string|null}>}
+ * Modo de autorización vigente. El MVP aprobado es ABIERTO: cualquier usuario
+ * autenticado de Mattermost puede registrar y consultar asistencia, sin roles ni
+ * aprobaciones. Se endurece con `ORQ_ASISTENCIA_PERMISOS=estricto`, sin desplegar código.
+ *
+ * Por qué el default es abierto y no lo contrario: en modo estricto, la tabla vacía
+ * apagaba el skill entero. Eso es lo correcto para una capacidad con efecto económico
+ * externo, y es lo INcorrecto para el MVP de una carga operativa que hoy se hace en
+ * papel — el costo de que el jefe no pueda cargar es mayor que el de que cargue alguien
+ * que no debía, sobre todo estando TODO auditado con la identidad real.
+ */
+export function modoVigente() {
+  return String(process.env.ORQ_ASISTENCIA_PERMISOS ?? '').toLowerCase() === MODO.ESTRICTO
+    ? MODO.ESTRICTO
+    : MODO.ABIERTO
+}
+
+/**
+ * ¿Esta identidad de plataforma puede operar el skill?
+ *
+ * En modo ABIERTO alcanza con estar AUTENTICADO: tiene que haber una identidad real de
+ * Mattermost. Un pedido sin `plataforma_user_id` se rechaza igual — no por permisos, sino
+ * porque sin identidad no hay a quién auditar, y la trazabilidad no es opcional.
+ *
+ * La ausencia de filas en `comunicacion.permisos_skill` NO bloquea el skill en modo
+ * abierto, y ni siquiera se consulta la base: es una decisión de configuración, no un
+ * dato a buscar.
+ *
+ * @param {{query:Function}} port  pool del OS (sólo se usa en modo estricto)
+ * @returns {Promise<{ok:boolean, motivo?:string, modo:string, display?:string|null}>}
  */
 export async function tienePermiso(port, { plataforma = 'mattermost', plataformaUserId, permiso = PERMISO_ASISTENCIA_WRITE } = {}) {
-  if (!plataformaUserId) return { ok: false, motivo: DENEGADO.SIN_IDENTIDAD }
+  const modo = modoVigente()
+  if (!plataformaUserId) return { ok: false, motivo: DENEGADO.SIN_IDENTIDAD, modo }
+  if (modo === MODO.ABIERTO) return { ok: true, modo, display: null }
+  return permisoEstricto(port, { plataforma, plataformaUserId, permiso, modo })
+}
+
+/** Verificación por grant explícito. Fail-closed, incluso si la base no responde. */
+async function permisoEstricto(port, { plataforma, plataformaUserId, permiso, modo }) {
   try {
     const { rows } = await port.query(
       `select display from comunicacion.permisos_skill
@@ -29,11 +67,11 @@ export async function tienePermiso(port, { plataforma = 'mattermost', plataforma
         limit 1`,
       [plataforma, plataformaUserId, permiso],
     )
-    if (!rows.length) return { ok: false, motivo: DENEGADO.SIN_PERMISO }
-    return { ok: true, display: rows[0].display ?? null }
+    if (!rows.length) return { ok: false, motivo: DENEGADO.SIN_PERMISO, modo }
+    return { ok: true, display: rows[0].display ?? null, modo }
   } catch (e) {
     // Fail-closed explícito: se registra el motivo, no se concede.
-    return { ok: false, motivo: DENEGADO.ERROR_VERIFICANDO, error: String(e?.message ?? e).slice(0, 200) }
+    return { ok: false, motivo: DENEGADO.ERROR_VERIFICANDO, modo, error: String(e?.message ?? e).slice(0, 200) }
   }
 }
 

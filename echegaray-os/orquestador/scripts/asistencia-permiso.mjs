@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-// AUTORIZAR / REVOCAR / LISTAR los jefes de obra que pueden registrar asistencia.
+// AUTORIZAR / REVOCAR / LISTAR quién puede registrar asistencia (modo ESTRICTO).
 //
-// Los user_ids NO viven en el código ni en una migración: se otorgan con este script y se
-// pueden revocar en un segundo sin desplegar nada. Es la única forma de habilitar el skill.
+// OJO: en el MVP el modo es ABIERTO — cualquier usuario autenticado de Mattermost puede
+// registrar y consultar, y esta tabla NI SE CONSULTA. Este script sirve para preparar o
+// operar el modo estricto, que se activa con ORQ_ASISTENCIA_PERMISOS=estricto sin
+// desplegar código. Los user_ids no viven en el código ni en una migración.
 //
 // Uso:
 //   node orquestador/scripts/asistencia-permiso.mjs listar
@@ -14,7 +16,7 @@
 // Mattermost: System Console → Users → el id de la ficha.
 
 import { query, closePool } from '../lib/db.mjs'
-import { otorgarPermiso, revocarPermiso, listarAutorizados, PERMISO_ASISTENCIA_WRITE } from '../lib/asistencia-permisos.mjs'
+import { otorgarPermiso, revocarPermiso, listarAutorizados, modoVigente, PERMISO_ASISTENCIA_WRITE } from '../lib/asistencia-permisos.mjs'
 
 const [accion, valor, display] = process.argv.slice(2)
 const port = { query }
@@ -24,9 +26,15 @@ async function main() {
   switch (accion) {
     case 'listar': {
       const filas = await listarAutorizados(port)
+      console.log(`\nmodo vigente: ${modoVigente().toUpperCase()}`
+        + (modoVigente() === 'abierto'
+          ? '  → cualquier usuario AUTENTICADO puede operar; esta lista no se consulta.'
+          : '  → sólo los de esta lista pueden operar (fail-closed).'))
       if (!filas.length) {
-        console.log(`\nNADIE autorizado para ${PERMISO_ASISTENCIA_WRITE}.`)
-        console.log('El skill está efectivamente apagado (fail-closed).\n')
+        console.log(`\nNadie con grant explícito de ${PERMISO_ASISTENCIA_WRITE}.`)
+        console.log(modoVigente() === 'abierto'
+          ? 'En modo abierto eso es lo esperado y NO apaga el skill.\n'
+          : 'En modo estricto, el skill está efectivamente apagado.\n')
         return
       }
       console.log(`\nAutorizados para ${PERMISO_ASISTENCIA_WRITE}:\n`)
@@ -34,8 +42,7 @@ async function main() {
         console.log(`  ${f.activo ? '✓' : '✗'} ${f.plataforma_user_id}  ${f.display ?? '(sin nombre)'}`
           + `  · otorgó ${f.otorgado_por} · ${new Date(f.creado_at).toISOString().slice(0, 10)}${f.nota ? ` · ${f.nota}` : ''}`)
       }
-      const activos = filas.filter((f) => f.activo).length
-      console.log(`\n${activos} activo(s).${activos > 2 ? '  ⚠️ Se esperaban 2 jefes de obra: revisá si sobra alguien.' : ''}\n`)
+      console.log(`\n${filas.filter((f) => f.activo).length} con grant activo.\n`)
       return
     }
     case 'otorgar': {
