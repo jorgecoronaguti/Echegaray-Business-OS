@@ -31,8 +31,10 @@ import http from 'node:http'
 import net from 'node:net'
 import { fileURLToPath } from 'node:url'
 import { crearManejadorAccion } from './asistencia-accion.mjs'
+import { crearComandoAsistencia } from './comando-asistencia.mjs'
 
 export const RUTA_ACCION_DEFAULT = '/asistencia/accion'
+export const RUTA_COMANDO_DEFAULT = '/asistencia/comando'
 const MAX_BYTES_DEFAULT = 16 * 1024 // un slash command de Mattermost son ~1 KB
 const BODY_TIMEOUT_MS_DEFAULT = 5000
 
@@ -59,7 +61,9 @@ const TEXTO = Object.freeze({
  */
 export function crearServidorAsistencia({
   manejarAccion,
+  manejarComando = null,
   rutaAccion = RUTA_ACCION_DEFAULT,
+  rutaComando = RUTA_COMANDO_DEFAULT,
   maxBytes = MAX_BYTES_DEFAULT,
   bodyTimeoutMs = BODY_TIMEOUT_MS_DEFAULT,
   log = null,
@@ -72,6 +76,12 @@ export function crearServidorAsistencia({
 
       if (ruta === rutaAccion) return await atenderAccion(req, res, { manejarAccion, maxBytes, bodyTimeoutMs })
 
+      // El slash command llega como form-urlencoded; la acción, como JSON. Los dos se leen
+      // igual y se responden igual: cambia sólo a quién se le entrega el cuerpo.
+      if (ruta === rutaComando && typeof manejarComando === 'function') {
+        return await atenderComando(req, res, { manejarComando, maxBytes, bodyTimeoutMs })
+      }
+
       return responder(res, 404, { error: TEXTO.NO_ENCONTRADO })
     } catch (e) {
       log?.warn?.('error atendiendo un pedido de asistencia', { detalle: String(e?.message ?? e).slice(0, 200) })
@@ -81,11 +91,17 @@ export function crearServidorAsistencia({
   })
 }
 
-async function atenderAccion(req, res, { manejarAccion, maxBytes, bodyTimeoutMs }) {
-  if (req.method !== 'POST') return responder(res, 405, { error: TEXTO.METODO })
+/**
+ * Lee y parsea el cuerpo. Lo comparten la acción (JSON) y el comando (form-urlencoded):
+ * los dos tienen el mismo techo de tamaño, el mismo timeout y los mismos errores. Duplicarlo
+ * era garantizar que algún día uno de los dos quedara sin uno de esos tres límites.
+ * @returns {{ok:true, campos:object} | {ok:false, respuesta:*}}
+ */
+async function leerCampos(req, res, { maxBytes, bodyTimeoutMs }) {
+  if (req.method !== 'POST') return { ok: false, respuesta: responder(res, 405, { error: TEXTO.METODO }) }
   const ct = String(req.headers['content-type'] ?? '')
   if (!/application\/x-www-form-urlencoded|application\/json/i.test(ct)) {
-    return responder(res, 415, { error: TEXTO.TIPO })
+    return { ok: false, respuesta: responder(res, 415, { error: TEXTO.TIPO }) }
   }
   let raw
   try {
@@ -93,13 +109,27 @@ async function atenderAccion(req, res, { manejarAccion, maxBytes, bodyTimeoutMs 
   } catch (e) {
     // Se responde ANTES de cortar: un 413 mudo (socket destruido de golpe) se ve del otro
     // lado como "el servidor se cayó", y manda a mirar el lugar equivocado.
-    return e.message === 'too_large'
+    const r = e.message === 'too_large'
       ? responderYCortar(req, res, 413, { error: TEXTO.GRANDE })
       : responderYCortar(req, res, 408, { error: TEXTO.LENTO })
+    return { ok: false, respuesta: r }
   }
   const campos = parsear(raw, ct)
-  if (!campos) return responder(res, 400, { error: TEXTO.TIPO })
-  const r = await manejarAccion({ ...campos, _ip: ipReal(req) })
+  if (!campos) return { ok: false, respuesta: responder(res, 400, { error: TEXTO.TIPO }) }
+  return { ok: true, campos }
+}
+
+async function atenderComando(req, res, { manejarComando, maxBytes, bodyTimeoutMs }) {
+  const c = await leerCampos(req, res, { maxBytes, bodyTimeoutMs })
+  if (!c.ok) return c.respuesta
+  const r = await manejarComando({ campos: c.campos, ip: ipReal(req) })
+  return responder(res, r.status, r.body)
+}
+
+async function atenderAccion(req, res, { manejarAccion, maxBytes, bodyTimeoutMs }) {
+  const c = await leerCampos(req, res, { maxBytes, bodyTimeoutMs })
+  if (!c.ok) return c.respuesta
+  const r = await manejarAccion({ ...c.campos, _ip: ipReal(req) })
   return responder(res, r.status, r.body)
 }
 
@@ -203,7 +233,15 @@ async function main() {
     log,
   })
 
-  const server = crearServidorAsistencia({ manejarAccion, log })
+  const manejarComando = crearComandoAsistencia({
+    tokenComando: process.env.MM_SLASH_TOKEN_ASISTENCIA || null,
+    port: pool,
+    google: (await import('../lib/google-os.mjs')).googleDelOs(),
+    url: process.env.ASISTENCIA_ACCION_URL || null,
+    log,
+  })
+
+  const server = crearServidorAsistencia({ manejarAccion, manejarComando, log })
 
   const cerrar = (s) => { log.info('shutdown', { señal: s }); server.close(() => process.exit(0)) }
   for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => cerrar(s))
@@ -231,12 +269,12 @@ async function main() {
       // 0660: lo abre el dueño y su grupo. El contenedor de Caddy entra como root, que no
       // necesita permiso; nadie más en la máquina lo alcanza.
       try { fs.chmodSync(socket, 0o660) } catch { /* el bind ya ocurrió: no se aborta por esto */ }
-      log.info('servidor de asistencia escuchando', { socket, ruta_accion: RUTA_ACCION_DEFAULT })
+      log.info('servidor de asistencia escuchando', { socket, ruta_accion: RUTA_ACCION_DEFAULT, ruta_comando: RUTA_COMANDO_DEFAULT })
     })
     return
   }
 
-  server.listen(port, host, () => log.info('servidor de asistencia escuchando', { host, port, ruta_accion: RUTA_ACCION_DEFAULT }))
+  server.listen(port, host, () => log.info('servidor de asistencia escuchando', { host, port, ruta_accion: RUTA_ACCION_DEFAULT, ruta_comando: RUTA_COMANDO_DEFAULT }))
 }
 
 // Sólo arranca si se ejecuta directo. Importarlo (tests, integración) no levanta nada.
