@@ -4,7 +4,7 @@
 // Se saltea si no hay PG_TEST_URL (lo setea test-pr4.mjs). Correr: node orquestador/comunicacion/test-pr4.mjs
 import { test, beforeEach, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { query, withTx, closePool } from '../lib/db.mjs'
+import { query, closePool } from '../lib/db.mjs'
 import { claimTask, failTask } from '../lib/ledger.mjs'
 import { crearConector } from './conector.mjs'
 import {
