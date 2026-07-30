@@ -177,6 +177,10 @@
     var motivo = elegido(f)
     var campoAcl = q(nodo, '.aclaracion-campo')
     campoAcl.hidden = !(necesitaMotivo && motivo && motivo.requiere_aclaracion)
+    // "Trabajó en otra obra" sólo tiene sentido si TRABAJÓ. Ofrecérselo a un ausente es
+    // ofrecer un campo que el núcleo rechaza siempre ("si no trabajó, no corresponde indicar
+    // en qué obra estuvo"): el jefe lo completa y recién ahí se entera de que no iba.
+    q(nodo, '.obra-campo').hidden = !presente || horas <= 0
     q(nodo, '.detalle').hidden = p.bloqueado || !(necesitaMotivo || f.abierto)
     q(nodo, '.mas').setAttribute('aria-expanded', String(!q(nodo, '.detalle').hidden))
     nodo.classList.toggle('excepcion', !p.bloqueado && (necesitaMotivo || extra > 0))
@@ -243,6 +247,7 @@
       var presente = q(f.nodo, '.presente').checked
       var visibleMotivo = !q(f.nodo, '.motivo-campo').hidden
       var visibleAcl = !q(f.nodo, '.aclaracion-campo').hidden
+      var visibleObra = !q(f.nodo, '.obra-campo').hidden
       return {
         ref: p.ref,
         nombre: p.nombre,
@@ -250,7 +255,9 @@
         horas: presente ? numero(q(f.nodo, '.hs').value) : 0,
         motivo: visibleMotivo ? (q(f.nodo, '.motivo').value || null) : null,
         aclaracion: visibleAcl ? (q(f.nodo, '.aclaracion').value.trim() || null) : null,
-        obra_realizada: q(f.nodo, '.obra-realizada').value || null,
+        // Igual que motivo y aclaración: un campo OCULTO no manda su valor viejo. Si el jefe
+        // eligió otra obra y después lo marcó ausente, ese valor ya no corresponde.
+        obra_realizada: visibleObra ? (q(f.nodo, '.obra-realizada').value || null) : null,
       }
     })
   }

@@ -18,17 +18,7 @@
 
 import { query, withTx } from '../lib/db.mjs'
 import { resolver, renderCatalogo, areaDelCanal, VIA } from '../comunicacion/director.mjs'
-import { makeGoogleClient, WORKSPACE_SCOPES } from '../lib/google.mjs'
-import { operadorEmail, getTokenFor } from '../lib/google-oauth.mjs'
-
-/** Cliente de Google del OS: actúa como la operadora con la que ya lee y escribe los Sheets
- *  de la empresa. Se arma una vez y lo comparten todos los especialistas. */
-function googleDelOs(ctx) {
-  const op = operadorEmail()
-  return op
-    ? makeGoogleClient({ config: ctx.config, scopes: WORKSPACE_SCOPES, getToken: getTokenFor(op) })
-    : makeGoogleClient({ config: ctx.config, scopes: WORKSPACE_SCOPES })
-}
+import { googleDelOs } from '../lib/google-os.mjs'
 
 export async function comunicacionResponderHandler(task, ctx) {
   const inp = task.inputs ?? {}
@@ -63,7 +53,7 @@ export async function comunicacionResponderHandler(task, ctx) {
       texto: inp.comando,
       intencion: ruta.intencion,
       port,
-      google: ctx.google ?? googleDelOs(ctx),
+      google: ctx.google ?? googleDelOs({ config: ctx.config }),
       actor,
       correlationId: inp.correlation_id,
     })

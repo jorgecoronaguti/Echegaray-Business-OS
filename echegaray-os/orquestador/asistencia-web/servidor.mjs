@@ -112,20 +112,35 @@ function leerBody(req, maxBytes, timeoutMs) {
 }
 
 /**
- * Crea el servidor. Todo lo externo se inyecta: en los tests entran dobles del núcleo,
- * del cliente de Google y del verificador de enlaces — nunca la planilla real.
+ * Arma el contenedor de dependencias que comparten el servidor propio y el manejador
+ * montable. Todo lo externo se inyecta: en los tests entran dobles del núcleo, del cliente
+ * de Google y del verificador de enlaces — nunca la planilla real.
  */
-export function crearServidorAsistencia({
+function prepararDependencias({
   api, google, port = null, motivos = null, jornadaConfig = null,
   secreto = process.env.ORQ_ASISTENCIA_WEB_SECRETO,
-  secretoEnlace = process.env.ORQ_ASISTENCIA_ENLACE_SECRETO || process.env.ORQ_ASISTENCIA_WEB_SECRETO,
+  // El secreto del ENLACE tiene que ser EL MISMO con el que se firma del otro lado
+  // (`comunicacion/enlace-firmado.mjs`), o la pantalla rechaza todo enlace válido. El nombre
+  // canónico es el que usa quien emite; los otros dos quedan como respaldo para no romper
+  // una instalación a medio migrar.
+  secretoEnlace = process.env.ASISTENCIA_ENLACE_SECRETO
+    || process.env.ORQ_ASISTENCIA_ENLACE_SECRETO
+    || process.env.ORQ_ASISTENCIA_WEB_SECRETO,
   enlace = null, base = process.env.ORQ_ASISTENCIA_WEB_BASE || '/asistencia',
   cookieSegura = process.env.ORQ_ASISTENCIA_WEB_COOKIE_INSEGURA !== '1',
   log = console,
 } = {}) {
   if (!secreto) throw new Error('asistencia-web: falta ORQ_ASISTENCIA_WEB_SECRETO')
   const usar = api ?? crearApi({ google, port, motivos, jornadaConfig })
-  const dep = { usar, secreto, secretoEnlace, enlace, base, cookieSegura, log }
+  return { dep: { usar, secreto, secretoEnlace, enlace, base, cookieSegura, log }, base }
+}
+
+/**
+ * Crea el servidor. Todo lo externo se inyecta: en los tests entran dobles del núcleo,
+ * del cliente de Google y del verificador de enlaces — nunca la planilla real.
+ */
+export function crearServidorAsistencia(opciones = {}) {
+  const { dep, base } = prepararDependencias(opciones)
   const server = http.createServer((req, res) => {
     manejar(dep, req, res).catch((e) => {
       dep.log?.error?.('asistencia-web: fallo no controlado', { error: String(e?.message ?? e) })
@@ -143,15 +158,46 @@ function actorDe(dep, req) {
 }
 
 async function manejar(dep, req, res) {
+  const atendido = await enrutar(dep, req, res)
+  if (!atendido) responderJson(res, 404, { error: 'No existe esa dirección.' })
+}
+
+/**
+ * Ruteo puro: devuelve `true` si la pantalla atendió el pedido y falsy si la ruta no es suya.
+ * Separado de `manejar` para poder MONTAR la pantalla dentro de otro servidor (el del slash
+ * command) en vez de levantar un segundo proceso escuchando en otro puerto: dos servidores
+ * son dos units, dos puertos y dos lugares donde mirar cuando algo falla.
+ */
+async function enrutar(dep, req, res) {
   const url = new URL(req.url ?? '/', 'http://asistencia.local')
   const ruta = url.pathname.replace(/\/+$/, '') || '/'
-  if (ruta === dep.base) return paginaPrincipal(dep, req, res, url)
+  if (ruta === dep.base) { await paginaPrincipal(dep, req, res, url); return true }
   const estatico = ruta.startsWith(`${dep.base}/`) ? ruta.slice(dep.base.length + 1) : null
   if (estatico && ESTATICOS[estatico]) {
-    return responderTexto(res, 200, await archivo(estatico), ESTATICOS[estatico])
+    await responderTexto(res, 200, await archivo(estatico), ESTATICOS[estatico])
+    return true
   }
-  if (ruta.startsWith(`${dep.base}/api/`)) return rutaApi(dep, req, res, url, ruta)
-  return responderJson(res, 404, { error: 'No existe esa dirección.' })
+  if (ruta.startsWith(`${dep.base}/api/`)) { await rutaApi(dep, req, res, url, ruta); return true }
+  return false
+}
+
+/**
+ * Manejador montable: `(req, res) => Promise<boolean>`. Es el contrato que espera el punto de
+ * montaje de `comunicacion/servidor-asistencia.mjs`. Devolver falsy sin escribir deja que el
+ * servidor anfitrión responda su propio 404.
+ */
+export function crearManejadorPantalla(opciones = {}) {
+  const { dep } = prepararDependencias(opciones)
+  return async (req, res) => {
+    try {
+      return await enrutar(dep, req, res)
+    } catch (e) {
+      dep.log?.error?.('asistencia-web: fallo no controlado', { error: String(e?.message ?? e) })
+      if (!res.headersSent) responderJson(res, 500, { error: 'No se pudo completar la operación.' })
+      else res.end()
+      return true
+    }
+  }
 }
 
 /** GET base: canjea el token de un solo uso por sesión, o sirve la pantalla. */

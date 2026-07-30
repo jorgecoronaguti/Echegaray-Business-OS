@@ -61,6 +61,14 @@ body {
   padding: 0 1rem .75rem;
 }
 
+/* `hidden` TIENE QUE GANARLE A `display`.
+   El atributo `hidden` sólo trae `display:none` de la hoja del navegador, con especificidad
+   mínima: cualquier `.clase { display: … }` de acá abajo lo pisa. Sin esta regla, la pantalla
+   mostraba MOTIVO, ACLARACIÓN y TRABAJÓ EN OTRA OBRA en las 16 filas aunque el JS las marcara
+   como ocultas — 48 controles a la vista cuando el caso normal no necesita ninguno. La lógica
+   estaba bien; lo que fallaba era esta línea que no existía. */
+[hidden] { display: none !important; }
+
 .campo { display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
 .campo > span { font-size: .78rem; color: var(--tenue); text-transform: uppercase; letter-spacing: .04em; }
 
