@@ -37,6 +37,26 @@ const NO_SON_GENERADORES = new Set([
   'formato-pestanas.mjs',
 ])
 
+/**
+ * EDICIONES PUNTUALES QUE PIDE EL DUEÑO — con su motivo, igual que ESCRITORES_NO_GENERADORES de abajo.
+ *
+ * No regeneran una pestaña: escriben un puñado de celdas nombradas una por una, sobre filas que YA
+ * existen en el archivo del dueño, porque él lo pidió. La Regla 0 no aplica —no hay grilla propia que
+ * comparar contra sus rótulos— pero la protección tiene que existir igual, y en estos casos es más
+ * fuerte que la Regla 0: ubican su destino POR RÓTULO o POR CONTENIDO, y si no lo encuentran ABORTAN
+ * sin escribir, en vez de escribir en el lugar equivocado.
+ *
+ * Cada uno tiene sus tests probando que no toca las celdas del dueño. Esta lista NO es una exención
+ * por comodidad: un script nuevo que escriba en crudo y no esté acá con su motivo hace fallar el test.
+ */
+const EDICIONES_PUNTUALES = new Map([
+  ['caja-cartera-viva.mjs', 'cablea 22 celdas nombradas de CAJA (cartera y calendario) a la réplica de cheques, a pedido del dueño; ubica por rótulo, aborta si falta un ancla, y sus tests prueban que NO toca las celdas que él carga a mano'],
+  ['cargar-boletas-gremiales.mjs', 'carga una boleta pagada (IERIC/FODECO) sobre la fila que YA existe en Compras: ubica por entidad+período, no agrega filas, y se niega a pisar una fila ya pagada con otro comprobante'],
+  // Éste ya decidía —consulta el candado de Compras y se va si está tomada— pero lo hacía de una forma
+  // que el test no reconocía. Al cerrar el agujero de updateCells apareció, y su decisión quedó escrita.
+  ['rubro-caja-sheet.mjs', 'escribe SÓLO las dos celdas ancla de las ARRAYFORMULA de "Rubro de caja" y "Fecha de caja" (AC3/AD3), y antes consulta el candado de Compras: si el dueño la tomó, no la toca'],
+])
+
 test('todo generador que escribe una pestaña decide explícitamente qué hace con las ediciones del dueño', () => {
   const culpables = []
   for (const f of readdirSync(SCRIPTS)) {
@@ -44,7 +64,13 @@ test('todo generador que escribe una pestaña decide explícitamente qué hace c
     const src = readFileSync(join(SCRIPTS, f), 'utf8')
 
     // ¿Escribe VALORES en el Sheet? El formato y los merges no cuentan: no pisan texto de nadie.
-    const escribe = /\b(batchUpdateValues|updateSheetValues|appendSheetValues|escribirPreservando)\s*\(/.test(src)
+    //
+    // `updateCells` CON `userEnteredValue` también escribe contenido (30/07). Antes el test sólo miraba
+    // las tres APIs de values, así que un escritor que usara el batch ESTRUCTURAL se salteaba el
+    // candado completo. Al cerrarlo aparecieron exactamente dos scripts sin declarar —los dos de ese
+    // día— y los otros cuatro que usan updateCells ya declaraban su postura.
+    const escribeCeldas = /updateCells/.test(src) && /userEnteredValue/.test(src)
+    const escribe = /\b(batchUpdateValues|updateSheetValues|appendSheetValues|escribirPreservando)\s*\(/.test(src) || escribeCeldas
     if (!escribe) continue
 
     // Salida 1: aplica la Regla 0 a mano (o la hereda del portón, que la aplica por defecto).
@@ -53,9 +79,9 @@ test('todo generador que escribe una pestaña decide explícitamente qué hace c
     // Salida 2: la apagó a propósito. Se exige que esté escrito, no que se deduzca.
     const laApago = /respetar:\s*false/.test(src)
     // Escribir en crudo SIN pasar por el portón y SIN respetar a mano es el defecto que se persigue.
-    const escribeEnCrudo = /\b(batchUpdateValues|updateSheetValues|appendSheetValues)\s*\(/.test(src)
+    const escribeEnCrudo = /\b(batchUpdateValues|updateSheetValues|appendSheetValues)\s*\(/.test(src) || escribeCeldas
 
-    if (respetaAMano || laApago) continue
+    if (respetaAMano || laApago || EDICIONES_PUNTUALES.has(f)) continue
     if (usaElPorton && !escribeEnCrudo) continue   // sólo el portón: ya respeta por defecto
     if (!usaElPorton && escribeEnCrudo) culpables.push(f)
   }
@@ -64,6 +90,21 @@ test('todo generador que escribe una pestaña decide explícitamente qué hace c
     `estos generadores escriben en el Sheet sin decidir qué pasa con lo que el dueño editó: ${culpables.join(', ')}. `
     + 'Pasá la grilla por escribirPreservando(), o llamá a conEdicionesRespetadas() antes de escribir, '
     + 'o declará respetar:false con el motivo si esa pestaña de verdad no lleva texto de una persona.')
+})
+
+test('las ediciones puntuales declaradas ABORTAN si no encuentran su destino (no es un cheque en blanco)', () => {
+  // La exención se justifica en que ubican por rótulo/contenido y no escriben a ciegas. Si un día uno
+  // de estos pierde esa propiedad, la exención deja de valer y este test lo dice.
+  for (const [f, motivo] of EDICIONES_PUNTUALES) {
+    const src = readFileSync(join(SCRIPTS, f), 'utf8')
+    assert.ok(motivo.length > 40, `${f}: el motivo tiene que explicar por qué, no ser una etiqueta`)
+    // La propiedad que justifica la exención: o ABORTA cuando no puede ubicar su destino, o consulta
+    // el candado antes de escribir. Escribir a ciegas en una planilla de plata no está permitido.
+    const aborta = /NO escribo nada|no escribo nada|NO la sobrescribo/.test(src)
+    const miraElCandado = /estaBloqueada|pestanasBloqueadas/.test(src)
+    assert.ok(aborta || miraElCandado,
+      `${f}: para estar exceptuado tiene que abortar si no ubica su destino, o consultar el candado antes de escribir`)
+  }
 })
 
 test('la Regla 0 viene activa por defecto: apagarla exige escribirlo', () => {
