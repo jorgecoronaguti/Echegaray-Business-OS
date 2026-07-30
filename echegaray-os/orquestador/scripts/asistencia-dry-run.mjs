@@ -74,15 +74,19 @@ for (const o of objetivo) {
   // Simula "todos presentes", que es el caso de uso dominante.
   const plan = planificarAsistencia(p.ctx, {
     claveObra: o.clave,
+    // Simula "todos presentes" SIN horas extra (el caso dominante). Las extras se cargan
+    // por excepción desde el chat; acá interesa ver la celda y el desglose.
     marcas: p.personal.map((x) => ({ nombre_clave: x.nombre_clave, estado: 'presente' })),
     actor: { plataforma_user_id: 'dry-run' },
   })
   const d = dryRun(plan)
   console.log(`── ${o.etiqueta}   [${o.clave}]`)
-  console.log(`   ${'trabajador'.padEnd(24)} ${'celda'.padEnd(10)} ${'actual'.padEnd(12)} ${'propuesto'.padEnd(10)} acción`)
+  console.log(`   ${'trabajador'.padEnd(22)} ${'celda'.padEnd(7)} ${'actual'.padEnd(12)} ${'nor'.padEnd(5)}${'ext'.padEnd(5)}${'tot'.padEnd(6)} ${'propuesto'.padEnd(10)} acción`)
   for (const f of d.filas) {
-    console.log(`   ${String(f.trabajador).trim().padEnd(24)} ${String(f.celda ?? '—').split('!')[1]?.padEnd(10) ?? '—'.padEnd(10)}`
-      + ` ${String(f.valor_actual ?? '(vacía)').padEnd(12)} ${String(f.valor_propuesto ?? '—').padEnd(10)} ${f.accion}`)
+    console.log(`   ${String(f.trabajador).trim().padEnd(22)} ${(String(f.celda ?? '—').split('!')[1] ?? '—').padEnd(7)}`
+      + ` ${String(f.valor_actual ?? '(vacía)').padEnd(12)}`
+      + ` ${String(f.normales_nuevas ?? '—').padEnd(5)}${String(f.extras_nuevas ?? '—').padEnd(5)}${String(f.total_nuevo ?? '—').padEnd(6)}`
+      + ` ${String(f.valor_propuesto ?? '—').padEnd(10)} ${f.accion}`)
   }
   console.log(`   resumen: ${JSON.stringify(d.resumen)}\n`)
   totalEscribibles += d.resumen.a_escribir
