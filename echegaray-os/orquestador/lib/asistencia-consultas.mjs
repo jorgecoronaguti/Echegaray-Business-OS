@@ -94,7 +94,10 @@ function existe(iso) {
 // ── PARSEO DE LA INTENCIÓN ──────────────────────────────────────────────────
 /** El texto habla de asistencia/jornales/horas. Sin esto, no es una consulta nuestra.
  *  `\bhora` y no `hora`: si no, "ahora" activaría el skill. */
-const RE_TEMA = /\b(asistenc|presentism|jornal|trabaj|hora)/
+// `falt`/`vino`/`ausent` estaban afuera: "quién faltó ayer" no era tema de consulta y caía
+// en el flujo de REGISTRO, abriendo el formulario en vez de contestar. Es de las formas más
+// naturales de preguntar y la usa el dueño.
+const RE_TEMA = /\b(asistenc|presentism|jornal|trabaj|hora|falt|ausent|vino|presente)/
 /** Marcas de PREGUNTA: sin una de estas (o una fecha, o una entidad) el texto es el
  *  comando de REGISTRO y no se le roba al otro flujo. */
 const RE_PREGUNTA = /\b(quien|quienes|cuant|cuanto|como viene|detalle|resumen de)/

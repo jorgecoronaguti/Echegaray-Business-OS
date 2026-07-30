@@ -425,3 +425,14 @@ test('las cargas normales siguen contándose igual con una celda en error al lad
   assert.ok(r.datos.resumen.personas >= 1)
   assert.equal(typeof r.datos.resumen.horas_normales, 'number')
 })
+
+test('«quién faltó ayer» es una CONSULTA, no el comando de registro', () => {
+  for (const t of ['quién faltó ayer', 'quien falto ayer', 'quiénes faltaron hoy', 'quién vino ayer']) {
+    const q = parsear(t)
+    assert.ok(q, `${t} tiene que reconocerse como consulta`)
+    assert.equal(q.tipo, 'asistencia')
+  }
+  // y el comando de registro sigue siendo del otro flujo
+  assert.equal(parsear('asistencia'), null)
+  assert.equal(parsear('3 ausente'), null, 'una marca del formulario no es una consulta')
+})
