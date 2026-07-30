@@ -120,7 +120,12 @@ const STOP = new Set([
   'ver', 'sobre', 'para', 'desde', 'hasta', 'entre', 'durante', 'hizo', 'hicieron',
   'tiene', 'tuvo', 'total', 'totales', 'me', 'mi', 'que', 'se', 'personal', 'plantel',
   'cuadrilla', 'gente', 'detalle', 'resumen', 'hay', 'hubo', 'estuvo', 'estuvieron',
-  'hoy', 'ayer', 'anteayer', ...Object.keys(MESES),
+  'hoy', 'ayer', 'anteayer',
+  // Los verbos de la propia pregunta NO son el nombre de una persona ni de una obra.
+  // Sin esto "quién faltó ayer" buscaba a alguien llamado "falto".
+  'falto', 'falta', 'faltaron', 'faltan', 'ausente', 'ausentes', 'ausencia', 'ausencias',
+  'vino', 'vinieron', 'presente', 'presentes', 'trabajaba', 'trabajando',
+  ...Object.keys(MESES),
 ])
 /** Un token que es una fecha ("29/07") NUNCA es el nombre de una obra ni de una persona.
  *  Sin esta guarda, "asistencia 29/07" —que es el comando de REGISTRO con fecha— se leía
