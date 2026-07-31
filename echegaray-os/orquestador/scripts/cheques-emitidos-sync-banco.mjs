@@ -29,10 +29,17 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { planSync, filaRegistro, verificarEncabezado, COL, norm } from '../lib/cheques-emitidos-sync.mjs'
+import { bloquear, desbloquear } from '../lib/pestana-bloqueada.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTANA = 'Cheques Emitidos'
 const DRY = process.argv.includes('--dry')
+// --forzar-candado: intención explícita del dueño. "Cheques Emitidos" está candada y la firma difiere,
+// así que el portón descarta el contenido y los cheques nuevos no entran: el 31/07 quedaron 4 eCheqs por
+// $34.307.410 afuera del registro, y con eso la propia pestaña afirmaba "con esto podés pagar
+// $74.870.956" cuando el comprometido real dejaba ~$40,6M. Un número de decisión equivocado por $34,3M.
+// Deja snapshot, destraba, escribe con yaGuardado y vuelve a candar SIEMPRE.
+const FORZAR = process.argv.includes('--forzar-candado')
 const $ = (n) => `$${Number(n ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
 
 async function main() {
@@ -41,8 +48,9 @@ async function main() {
   // escribirPreservando): en la corrida reactivada escribió sobre la pestaña aunque estaba candada.
   // Si el dueño la tomó, no se le toca ninguna columna hasta que la devuelva.
   const { estaBloqueada } = await import('../lib/pestana-bloqueada.mjs')
-  if (await estaBloqueada({}, ID, PESTANA).catch(() => false)) {
+  if (await estaBloqueada({}, ID, PESTANA).catch(() => false) && !FORZAR) {
     console.log(`🔒 "${PESTANA}" está bajo tu control (candado): no la toco.`)
+    console.log('   Si querés que agregue igual los cheques que faltan: --forzar-candado (deja snapshot y vuelve a candar).')
     return
   }
 
@@ -112,7 +120,20 @@ async function main() {
   // REGLA 0 — NO APLICA, Y ESTÁ DECIDIDO: respetar: false.
   // Escribe un HECHO verificado contra el banco, celda por celda, en la columna de estado — no un
   // rótulo redactado por nadie. Respetar acá sería dejar que una edición a mano contradiga al banco.
-  await google.batchUpdateValues(ID, data)
+  if (FORZAR) {
+    const { tomarSnapshot } = await import('../lib/sheet-snapshot.mjs')
+    console.log(`snapshot → ${await tomarSnapshot({ google, fileId: ID, pestana: PESTANA, tool: 'cheques-emitidos-sync-banco', directive: 'agregar al registro los eCheqs emitidos que la pestaña no tiene, por pedido explícito' }) ?? 'no se pudo'}`)
+    await desbloquear({ query }, ID, PESTANA)
+  }
+  try {
+    const res = await google.batchUpdateValues(ID, data, FORZAR ? { yaGuardado: true } : {})
+    if (res?.protegido) {
+      console.error('\n⚠ el portón descartó la escritura: la pestaña está candada o la editaste. Repetilo con --forzar-candado.')
+      process.exitCode = 1
+    }
+  } finally {
+    if (FORZAR) await bloquear({ query }, ID, PESTANA, { motivo: 'el dueño edita — re-candada tras agregar los cheques emitidos que faltaban', por: 'OS' })
+  }
   console.log(`\n✔ ${p.updates.length} corregido(s) + ${p.agregar.length} agregado(s)`)
 
   // ── VERIFICACIÓN: releer y probar que quedó como el plan decía ───────────────────────────────────
