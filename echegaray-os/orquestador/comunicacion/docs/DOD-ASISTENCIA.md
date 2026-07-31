@@ -72,6 +72,9 @@ modo de permisos y `correlation_id`.
 
 Se puede reconstruir **quién escribió qué celda, cuándo, y qué había antes**. ✔
 
+Este criterio cubría lo que **sí** se escribió. Lo que la guarda rechaza se audita desde el
+incremento descrito en §13, por el mismo ledger y la misma vista.
+
 ## 5. Es idempotente — repetir no duplica
 
 Flujo repetido idéntico tras la escritura → respuesta `Sin cambio (quedan como están): 1` ·
@@ -248,3 +251,36 @@ la capa que resuelve permiso, jornada, validación, plan, escritura y auditoría
 **No se escribió ninguna celda en JORNALES en esta etapa.** El circuito está probado hasta el
 paso previo a la escritura. La auditoría confirma que el OS escribió exactamente 2 celdas hoy,
 ambas con valor 9, y ninguna en esta ronda.
+
+
+---
+
+## 13. Los rechazos también quedan auditados
+
+Hasta acá se auditaba lo que el módulo escribía. Lo que la guarda **negaba** no dejaba rastro:
+si el jefe de obra decía "no me deja cargar", la única forma de saber por qué era pedirle una
+captura. Un intento sin permiso, o desde un canal que no corresponde, es exactamente el tipo de
+hecho que Dirección tiene que poder mirar después, sin depender de la memoria de nadie.
+
+El incremento **no agrega ninguna pieza**: usa el auditor que ya existía
+(`asistencia-auditoria.mjs` → `crearAuditor` → `orq.emit_event`) para emitir
+`personal.asistencia.denied`, y se lee por `comunicacion.v_asistencia_auditoria`, que ya toma
+todos los eventos `personal.asistencia.%`. Sin tabla nueva, sin vista nueva, sin migración.
+
+| # | Criterio | Cómo se verifica |
+|---|---|---|
+| 13.1 | Todo rechazo emite `personal.asistencia.denied` | Los once casos de §13.2 pasan por el auditor; los tests del módulo fallan si un camino de rechazo no emite |
+| 13.2 | Están cubiertos los once casos | Sin permiso · canal que no es el oficial · mensaje privado o grupo · token del slash command ausente · token inválido · sin identidad · payload inválido · sesión inexistente · sesión vencida · sesión de otra persona · formulario (diálogo) inválido |
+| 13.3 | El evento dice qué pasó, no sólo que pasó | `status='denied'`, `origen` (`slash_command`/`accion`/`dialogo`), `motivo` (la familia) y `error_code` (el detalle exacto: `sin_permiso`, `canal_no_es_el_oficial`, `token_invalido`, `sesion_vencida`…) |
+| 13.4 | Se puede reconstruir quién y desde dónde | `mattermost_user_id` y `mattermost_username` cuando existan, `channel_id`, `team_id`, `correlation_id` y `request_id` cuando existan, más el timestamp |
+| 13.5 | No se filtra nada sensible | Ni tokens, ni secretos, ni el payload completo, ni datos sensibles — la misma regla que ya regía la auditoría de escritura |
+| 13.6 | El comportamiento no cambió | Los mensajes al usuario, los permisos y el flujo son los mismos: la única diferencia observable es que ahora el rechazo queda anotado |
+| 13.7 | Se consulta sin herramienta nueva | `select * from comunicacion.v_asistencia_auditoria where status='denied' order by ocurrido_at desc` |
+
+### Lo que este incremento todavía no probó
+
+**No hay evidencia de producción para los once casos.** El criterio de honestidad del §2 vale
+también acá: mientras no haya rechazos reales anotados en la vista, esto es un contrato
+implementado y probado, no un hecho verificado en producción. La verificación se cierra con el
+primer rechazo real — el más barato de provocar es un `@os asistencia` desde un mensaje
+privado, que la guarda niega sin tocar la planilla.
