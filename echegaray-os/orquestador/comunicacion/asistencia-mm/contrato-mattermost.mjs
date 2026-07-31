@@ -23,6 +23,16 @@ export const TOPE = Object.freeze({
   ACCIONES_POR_ATTACHMENT: 5, // presupuesto propio de legibilidad, no un límite de MM
 })
 
+/**
+ * El `id` de una acción NO es una etiqueta interna: viaja adentro de la URL de la API de
+ * Mattermost — `POST /api/v4/posts/{post_id}/actions/{action_id}`— y ese segmento sólo
+ * acepta alfanuméricos. Un id con guión bajo (`fecha_hoy`) hace que la ruta no matchee: el
+ * cliente muestra "Sorry, we could not find the page" y el pedido NUNCA llega al OS, así que
+ * tampoco deja rastro en nuestros logs. Pasó en producción el 30/07 con los tres botones de
+ * fecha. El alfabeto de este campo lo decide Mattermost, no nosotros.
+ */
+const ID_ACCION = /^[A-Za-z0-9]+$/
+
 const TIPOS_ACCION = new Set(['button', 'select'])
 const ESTILOS = new Set(['default', 'primary', 'success', 'good', 'warning', 'danger'])
 const TIPOS_ELEMENTO = new Set(['text', 'textarea', 'select', 'bool', 'radio'])
@@ -58,7 +68,9 @@ function validarOpciones(opciones, ruta, fallas) {
 function validarAccion(a, ruta, fallas, ids) {
   if (!esTexto(a?.id)) fallas.push(`${ruta}.id vacío`)
   else if (ids.has(a.id)) fallas.push(`${ruta}.id repetido: ${a.id}`)
-  else ids.add(a.id)
+  else if (!ID_ACCION.test(a.id)) {
+    fallas.push(`${ruta}.id tiene que ser alfanumérico (Mattermost lo mete en la URL): ${a.id}`)
+  } else ids.add(a.id)
   if (!esTexto(a?.name)) fallas.push(`${ruta}.name vacío`)
   if (!TIPOS_ACCION.has(a?.type)) fallas.push(`${ruta}.type inválido: ${a?.type}`)
   if (a?.style != null && !ESTILOS.has(a.style)) fallas.push(`${ruta}.style inválido: ${a.style}`)

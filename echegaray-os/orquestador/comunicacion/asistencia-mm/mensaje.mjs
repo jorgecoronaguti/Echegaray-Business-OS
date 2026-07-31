@@ -101,9 +101,13 @@ export function mensajeInicial({ fecha, obras = [], jornada, url, aviso = null }
     title: 'Asistencia',
     text: `${fechaEnPalabras(fecha)} · ${textoJornada(jornada)}`,
     actions: [
-      boton('fecha_hoy', 'Hoy', { paso: 'fecha', valor: 'hoy' }, { url }),
-      boton('fecha_ayer', 'Ayer', { paso: 'fecha', valor: 'ayer' }, { url }),
-      boton('fecha_otra', 'Otra fecha…', { paso: 'fecha', valor: 'otra' }, { url }),
+      // Los ids van SIN guión bajo a propósito: viajan dentro de la URL de la API de
+      // Mattermost (`/api/v4/posts/{post}/actions/{id}`) y ese segmento sólo acepta
+      // alfanuméricos. Con `fecha_hoy` la ruta no matcheaba y el cliente mostraba
+      // "Sorry, we could not find the page" sin que el pedido llegara nunca acá.
+      boton('fechahoy', 'Hoy', { paso: 'fecha', valor: 'hoy' }, { url }),
+      boton('fechaayer', 'Ayer', { paso: 'fecha', valor: 'ayer' }, { url }),
+      boton('fechaotra', 'Otra fecha…', { paso: 'fecha', valor: 'otra' }, { url }),
     ],
   }, attachmentObras(obras, { url, aviso })]
   if (aviso && obras.length) attachments.push(attachmentAviso(aviso))
