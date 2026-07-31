@@ -15,6 +15,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { estructural, predicadoConDeuda, soloConDeuda, layoutDeuda, notasAncladas, anchoBloque } from './proveedores-materiales-pestana.mjs'
 import { fusionar, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { readFileSync } from 'node:fs'
 
 test('estructural: convierte los \'\' en VACIO y deja intacto todo lo no-vacío', () => {
   const out = estructural(['TOTAL', '', 0, '=SUM(A1:A2)', '', 'nota'])
@@ -266,4 +267,47 @@ test('EL FIX no rompe el caso simple: sin columnas de más, el ancho y el compor
   assert.equal(anchoBloque(COLS_DUEÑO, previo), 8)
   const out = fusionar([cabecera('ACME', NOTAS, 8)], previo)
   assert.equal(out[0][7], 'reclamar remito 1234', 'la nota se conserva igual que siempre')
+})
+
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA CUENTA CORRIENTE NO PUEDE EMPUJAR '' — TIENE QUE EMPUJAR EL CENTINELA (31/07)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Un rediseño escribió otra estructura sobre esta pestaña y, al volver atrás, en la fila de Mariana SA
+// y en la del subtotal quedó el texto "CUIT" —el encabezado de la tabla— metido como dato. La causa:
+// el generador empujaba '' donde no conoce el CUIT, y `fusionar` interpreta '' como "el generador no
+// tiene nada en esta celda" y CONSERVA lo que hubiera antes. Las seis columnas de la cuenta corriente
+// son todas del generador: sus celdas vacías tienen que decir "es mía y va vacía", que es VACIO.
+test('el bloque de cuenta corriente no empuja ningún \'\' — sus vacíos llevan centinela', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  const desde = src.indexOf("const cabProv = push(['Proveedor', 'CUIT'")
+  const hasta = src.indexOf("const fTotProv = push(")
+  assert.ok(desde > 0 && hasta > desde, 'encontré el bloque de la cuenta corriente en el fuente')
+  const bloque = src.slice(desde, hasta)
+  // Las cadenas vacías literales que se empujan como CELDA. Se buscan en posición de argumento.
+  const vacias = bloque.match(/(?:,|\[)\s*''\s*(?=,|\])/g) ?? []
+  assert.equal(vacias.length, 0,
+    `hay ${vacias.length} celda(s) empujadas como '' en la cuenta corriente. fusionar las lee como `
+    + `"no tengo nada acá" y conserva el dato viejo: así sobrevivió el texto "CUIT" dentro de una fila `
+    + `de datos. Van con VACIO.`)
+  assert.match(bloque, /p\.cuit \? formatearCuit\(p\.cuit\) : VACIO/, 'el CUIT desconocido va con centinela')
+})
+
+test('layoutDeuda ubica la columna de Comentarios, y NO la trata como propia del generador', () => {
+  // El índice hace falta para rellenar la nota desde el respaldo cuando la celda quedó vacía. Pero la
+  // columna sigue siendo del dueño: `notasAncladas` la re-ancla, no la sobreescribe.
+  const L = layoutDeuda(['Proveedor / factura', 'Próximo pago', 'Comprobante', 'Importe', 'Obra', 'Tipo de Pago', 'Categoría', 'Comentarios'])
+  assert.equal(L.nota, 7, 'Comentarios es la octava columna')
+  // notasAncladas considera "propias" a las que el generador llena; Comentarios NO está entre ellas.
+  const bloque = [['Hormiserv', '', '', '', '', '', '', 'mi nota']]
+  const { porProveedor } = notasAncladas(bloque, L)
+  assert.equal(porProveedor.get('hormiserv')?.get(7), 'mi nota', 'la nota se re-ancla por proveedor')
+})
+
+test('sin columna de Comentarios, el relleno desde el respaldo no puede escribir en ningún lado', () => {
+  // Defensa: si el dueño borra la columna, `nota` es -1 y ponerDelRespaldo tiene que no hacer nada en
+  // vez de escribir en la columna 0 (que es el nombre del proveedor).
+  const L = layoutDeuda(['Proveedor / factura', 'Próximo pago', 'Comprobante', 'Importe'])
+  assert.equal(L.nota, -1)
 })
