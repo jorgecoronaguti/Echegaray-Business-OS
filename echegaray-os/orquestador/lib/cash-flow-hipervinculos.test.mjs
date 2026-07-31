@@ -13,8 +13,9 @@ import {
 const FILAS_TABLA = { Estructura: 15, Recurrentes: 24 }
 
 // Las líneas que el propio cuadro calcula sobre sus celdas (intereses del descubierto, impuesto al
-// cheque) NO tienen pestaña de origen: no se hiperlinkean.
-const SIN_ORIGEN = (l) => l.descubierto || l.impuestoCheque
+// cheque) NO tienen pestaña de origen: no se hiperlinkean. Las comisiones bancarias (31/07) tampoco:
+// su origen es _BANCO_RAW, una réplica técnica del extracto y no una pestaña de trabajo del dueño.
+const SIN_ORIGEN = (l) => l.descubierto || l.impuestoCheque || l.comisionesBancarias
 
 test('cada subconcepto con origen produce un HYPERLINK con placeholder de gid y range no vacío', () => {
   const { lineas } = verificarCuadro()

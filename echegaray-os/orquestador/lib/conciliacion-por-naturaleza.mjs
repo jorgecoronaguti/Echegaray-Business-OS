@@ -102,6 +102,19 @@ export const GRUPOS = [
     nota: 'Tiene su línea en el Cash Flow Mensual, dentro de Actividades de Financiación. La alícuota no se inventó: el propio extracto la declara (0,6%) y medida sobre estos movimientos da 0,595% sobre los débitos y 0,600% sobre los créditos.',
   },
   {
+    naturaleza: 'Comisiones y gastos bancarios',
+    pestana: 'Cash Flow Mensual',
+    formula: null,
+    // EL GRUPO QUE FALTABA (31/07). Estos movimientos estaban dentro de "Transferencias a proveedores",
+    // así que la fila de Compras de arriba los reclamaba como pagos a proveedor y el desvío de ese
+    // grupo salía $381.649,64 más grande de lo que era. Sin fórmula de contraste a propósito: NO hay
+    // pestaña que los pueda tener. El banco los debita sin factura, así que no existen en Compras y
+    // nunca van a existir — el único registro es el extracto, y por eso la línea del Cash Flow los lee
+    // de _BANCO_RAW. La columna "Según la pestaña" se deja vacía en vez de escribir un 0, que se leería
+    // como "cuadra" cuando lo correcto es "no hay nada del otro lado".
+    nota: 'Comisión de cuenta, de clearing, de cuenta en dólares y de compensación de cheques, con su IVA 21% y su percepción RG 2408 al 3%. Tienen línea propia en Actividades de Financiación del Cash Flow, que las lee de acá: el banco las debita sin factura y NUNCA van a estar en Compras. Medido: $113.794,80 en junio y $267.854,84 en julio.',
+  },
+  {
     naturaleza: 'Costo financiero del descubierto',
     pestana: 'Cash Flow Mensual',
     formula: null,
