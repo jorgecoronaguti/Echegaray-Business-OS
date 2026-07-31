@@ -352,7 +352,12 @@ async function main() {
   // con =IF(A..="";"";TEXT(...)) que evalúan a "" en toda la columna: contarlas como contenido hacía
   // que "la cola" llegara hasta el fondo de la hoja (fila 330) y el formateo se saliera de la grilla.
   const previo = await google.readSheetValues(ID, `${hoja.title}!A1:${letra(anchoTotal - 1)}400`, { render: 'FORMULA' })
-  const previoVis = await google.readSheetValues(ID, `${hoja.title}!A1:${letra(anchoTotal - 1)}400`).catch(() => previo)
+  // MISMO CRITERIO QUE EN PROVEEDORES Y CAJA (31/07): esta lectura decide hasta qué fila hay contenido
+  // del dueño y alimenta la Regla 0. Caer al render FORMULA cuando la API falla cambia la SEMÁNTICA del
+  // dato (compara "=IF(…)" contra el texto que se ve) y la pestaña sale mezclada. Falla cerrado.
+  const previoVis = await google.readSheetValues(ID, `${hoja.title}!A1:${letra(anchoTotal - 1)}400`).catch((e) => {
+    throw new Error(`no pude leer el texto visible de "${hoja.title}" (${e.message}). NO escribo: sin esa lectura la Regla 0 decide a ciegas.`)
+  })
   let ultimaFila = 0
   previoVis.forEach((f, i) => { if ((f || []).some((c) => String(c ?? '').trim())) ultimaFila = i + 1 })
   if (ultimaFila > g.filas.length) {

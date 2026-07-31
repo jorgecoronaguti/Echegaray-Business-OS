@@ -105,3 +105,29 @@ test('ningún generador formatea ni publica nombres después de una escritura sa
   }
   assert.deepEqual(fallas, [], `generadores que pueden repetir el desastre de CAJA:\n  ${fallas.join('\n  ')}`)
 })
+
+// ═══ UNA LECTURA QUE FALLA NO PUEDE VOLVERSE UN DATO ═══
+//
+// El dueño: "me rompiste proveedores nuevamente". La pestaña salió con filas entrelazadas —dos
+// "Gerson Castro", dos "Alumetal", fechas dibujadas "$46.234"—. La causa fue un 429 de la API sobre la
+// lectura del TEXTO VISIBLE, que un `.catch(() => previo)` convirtió en la lectura con FÓRMULAS: la
+// Regla 0 comparó "=IF(…)" donde tenía que leer "Gerson Castro" y decidió mal celda por celda.
+//
+// Las lecturas que DECIDEN qué se escribe (las que alimentan la Regla 0 y la fusión) tienen que fallar
+// cerrado. Un fallback que cambia la semántica del dato es peor que un error: el error se ve, el
+// fallback escribe.
+test('las lecturas que deciden qué escribir fallan cerrado, no se degradan en un dato falso', () => {
+  const dir = new URL('../scripts/', import.meta.url)
+  const fallas = []
+  for (const f of readdirSync(dir)) {
+    if (!f.endsWith('.mjs') || f.endsWith('.test.mjs')) continue
+    const src = readFileSync(new URL(f, dir), 'utf8')
+    // Sólo interesan los generadores que aplican la Regla 0 o fusionan sobre lo leído.
+    if (!/conEdicionesRespetadas|fusionar\(/.test(src)) continue
+    // Un fallback silencioso: la lectura de la pestaña cae a [] o a la OTRA lectura.
+    for (const m of src.matchAll(/const (previo|visible|actual)\s*=\s*await google\.readSheetValues\([\s\S]{0,400}?\)\s*\.catch\(\(\)\s*=>\s*([^)]*)\)/g)) {
+      fallas.push(`${f}: "${m[1]}" se degrada a ${m[2].trim() || '[]'} si la API falla`)
+    }
+  }
+  assert.deepEqual(fallas, [], `lecturas que pueden mentirle al generador:\n  ${fallas.join('\n  ')}`)
+})
