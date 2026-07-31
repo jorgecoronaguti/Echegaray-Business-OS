@@ -59,7 +59,9 @@ export const PALABRA_TIPO = Object.freeze({
  */
 export const SINONIMOS = Object.freeze({
   flujo: ['flujo', 'flujos', 'cashflow', 'cash', 'cf'],
-  caja: ['caja', 'tesoreria'],
+  // "flujo de fondos" y "flujo de caja" son EL MISMO concepto en finanzas: cash flow. No es
+  // una licencia para que el buscador encuentre más — es que quien pide uno pide el otro.
+  caja: ['caja', 'tesoreria', 'fondo', 'fondos'],
   vision: ['vision', 'visión'],
   traccion: ['traccion', 'tracción'],
   estrategia: ['estrategia', 'estrategico', 'estrategica', 'strategy'],

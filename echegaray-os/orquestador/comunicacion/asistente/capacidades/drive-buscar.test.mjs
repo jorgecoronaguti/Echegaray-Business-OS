@@ -23,13 +23,14 @@ const INDICE = [
 const AHORA = new Date('2026-07-31T13:00:00Z')
 
 /** Port de mentira: el índice, y un registro de todo lo que se escribió. */
-function portDe({ filas = INDICE, usos = [] } = {}) {
+function portDe({ filas = INDICE, usos = [], fuentes = [] } = {}) {
   const escrituras = []
   return {
     escrituras,
     query: async (sql, params) => {
       if (sql.includes('insert into public.drive_busqueda_uso')) { escrituras.push(params); return { rows: [] } }
       if (sql.includes('drive_index')) return { rows: filas }
+      if (sql.includes('fuentes_datos')) return { rows: fuentes }
       if (sql.includes('drive_busqueda_uso')) return { rows: usos }
       if (sql.includes('drive_alias')) return { rows: [] }
       return { rows: [] }
@@ -53,7 +54,7 @@ const correr = async (params, extra = {}) => {
   const google = 'google' in extra ? extra.google : googleFalso()
   const r = await capacidad.ejecutar(
     { tipo: 'cualquiera', ...params },
-    { port, google, ahora: () => AHORA },
+    { port, google, ahora: () => AHORA, identidad: extra.identidad ?? { plataformaUserId: 'u-jorge' } },
   )
   return { ...r, port, google }
 }
@@ -165,6 +166,48 @@ test('la opción dice dónde está cada uno: si no, elegir es tirar una moneda',
   assert.notEqual(a.etiqueta, b.etiqueta, 'dos opciones idénticas no se pueden elegir')
 })
 
+// ── Proponer: hay un favorito, pero el otro también existe ───────────────────
+//
+// El caso del dueño: "pasame el flujo de fondos". El archivo que se llama EXACTAMENTE así es
+// de 2025 y vive en una carpeta de archivo; el documento que la empresa usa es el Sheet vivo.
+// El OS elige, pero tiene que decir contra qué eligió.
+
+const FLUJOS = [
+  { drive_file_id: 'f-cash', name: 'Flujo de Caja - Cash Flow ECSAS', path: `${A}/Flujo de Caja - Cash Flow ECSAS`, tipo: 'planilla', mime_type: 'application/vnd.google-apps.spreadsheet', is_folder: false, modified_time: '2026-07-31T09:00:00Z', depth: 1 },
+  { drive_file_id: 'f-fondos', name: 'Flujo de Fondos.xlsx', path: `${A}/AÑO 2025/Flujo de Fondos.xlsx`, tipo: 'planilla', mime_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', is_folder: false, modified_time: '2026-01-15T09:00:00Z', depth: 2 },
+]
+const FUENTE_CASH = [{
+  drive_file_id: 'f-cash', nombre: 'Flujo de Caja - Cash Flow (Sheet)', area: 'Tesorería',
+  proceso_negocio: 'Flujo de caja proyectado y real', vigencia: 'vigente', estado: 'actualizado',
+  criticidad: 'alta', ultima_lectura: '2026-07-31T08:00:00Z',
+}]
+
+test('"pasame el flujo de fondos" abre el documento vivo, no el de AÑO 2025', async () => {
+  const r = await correr({ terminos: 'flujo de fondos' }, { filas: FLUJOS, fuentes: FUENTE_CASH })
+  assert.equal(r.ok, true)
+  assert.equal(r.evidencia.archivo.nombre, 'Flujo de Caja - Cash Flow ECSAS')
+})
+
+test('…y le muestra el archivo viejo como alternativa, con su enlace', async () => {
+  const r = await correr({ terminos: 'flujo de fondos' }, { filas: FLUJOS, fuentes: FUENTE_CASH })
+  assert.match(r.texto, /Creo que te referís a: \*\*Flujo de Caja - Cash Flow ECSAS\*\*/)
+  assert.match(r.texto, /También encontré:/)
+  assert.match(r.texto, /• Flujo de Fondos\.xlsx.*\[abrir\]\(https:\/\/drive\.google\.com\/file\/d\/f-fondos\/view\)/)
+})
+
+test('la evidencia dice con cuánta seguridad eligió y por qué señales', async () => {
+  const r = await correr({ terminos: 'flujo de fondos' }, { filas: FLUJOS, fuentes: FUENTE_CASH })
+  assert.equal(r.evidencia.confianza, 'alta')
+  assert.ok(r.evidencia.senales.fuente_operativa > 0)
+  assert.equal(r.evidencia.alternativas.length, 1)
+})
+
+test('sin competencia no hay ruido: un solo resultado se responde limpio', async () => {
+  const r = await correr({ terminos: 'vision' })
+  assert.match(r.texto, /^Encontré: /)
+  assert.doesNotMatch(r.texto, /También encontré/)
+})
+
 // ── Aprender ─────────────────────────────────────────────────────────────────
 
 test('elegir una opción devuelve ESE archivo y lo aprende', async () => {
@@ -174,7 +217,8 @@ test('elegir una opción devuelve ESE archivo y lo aprende', async () => {
   assert.equal(r.evidencia.archivo.id, 'f-av2')
   assert.equal(r.evidencia.aprendido, true)
   assert.equal(port.escrituras.length, 1)
-  assert.deepEqual(port.escrituras[0], ['avance obra', 'f-av2'])
+  // Se aprende PARA QUIÉN eligió: la preferencia de una persona no es la de la empresa.
+  assert.deepEqual(port.escrituras[0], ['avance obra', 'f-av2', 'u-jorge'])
 })
 
 test('lo aceptado antes para esta consulta pasa a ganar', async () => {
@@ -184,10 +228,18 @@ test('lo aceptado antes para esta consulta pasa a ganar', async () => {
   assert.equal(r.evidencia.archivo.id, 'f-av2')
 })
 
+test('cuando sólo PROPONE no aprende: sería fabricar una preferencia y reforzarla sola', async () => {
+  const port = portDe({ usos: [{ consulta_norm: 'avance obra', drive_file_id: 'f-av2', veces: 2 }] })
+  const r = await correr({ terminos: 'avances de obra' }, { port })
+  assert.equal(r.ok, true)
+  assert.equal(r.evidencia.confianza, 'media', 'el caso elegido tiene que ser de confianza media')
+  assert.equal(port.escrituras.length, 0, 'anotó como elección algo que la persona nunca confirmó')
+})
+
 test('un resultado dominante también se aprende', async () => {
   const port = portDe()
   await correr({ terminos: 'vision' }, { port })
-  assert.deepEqual(port.escrituras[0], ['vision', 'f-vision'])
+  assert.deepEqual(port.escrituras[0], ['vision', 'f-vision', 'u-jorge'])
 })
 
 test('elegir un id que ya no está en el índice se dice, no se rellena con otro', async () => {

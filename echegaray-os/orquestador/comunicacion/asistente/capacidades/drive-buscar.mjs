@@ -16,6 +16,23 @@
 // (`public.drive_index`, 2.465 archivos que un timer refresca cada 6 h), con un pipeline de
 // cinco etapas y un ranking explicable. Ver `lib/drive-busqueda/`.
 //
+// ── Y DESPUÉS: PARECERSE DE NOMBRE NO ALCANZA ───────────────────────────────────────
+//
+// "pasame el flujo de fondos" devolvía `Flujo de Fondos.xlsx`, en la carpeta AÑO 2025, sin
+// tocar desde enero. El nombre coincidía perfecto y la respuesta era inútil: el documento que
+// la empresa usa todos los días es el Sheet `Flujo de Caja - Cash Flow ECSAS`. El ranking pasó
+// a mirar también qué CLASE de documento es cada candidato —vivo o archivado, registrado como
+// fuente del negocio o no, copia o original, usado ayer o hace dos años—, y esta capacidad
+// pasó a tener tres respuestas en vez de dos:
+//
+//   confianza alta   se abre y listo
+//   confianza media  "Creo que te referís a…" + el enlace + las alternativas
+//   confianza baja   se pregunta, con la lista numerada
+//
+// Las alternativas no son una duda disfrazada: son el derecho a desmentir al OS. Si el OS
+// decide que "flujo de fondos" es el Cash Flow vivo, quien preguntó tiene que ver que el
+// archivo que se llama así también existe. Una decisión invisible no se audita.
+//
 // ── CERO MODELO ─────────────────────────────────────────────────────────────────────
 // Buscar es determinístico de punta a punta: normalizar, tokenizar, sinónimos, cinco etapas
 // y puntaje. Ni una llamada a Anthropic, ni siquiera como último recurso. Hay un test que
@@ -81,12 +98,30 @@ function aArchivo(e, ahora) {
 }
 
 /** Un resultado dominante: nombre, dónde está, cuándo se tocó y el enlace. */
-function textoUno(a) {
-  const partes = [`Encontré: **${a.nombre}**`]
+function textoUno(a, { creo = false } = {}) {
+  const partes = [`${creo ? 'Creo que te referís a' : 'Encontré'}: **${a.nombre}**`]
   if (a.ubicacion) partes.push(`Carpeta: ${a.ubicacion}`)
   if (a.fecha) partes.push(`Última modificación: ${a.fecha}`)
   partes.push(`[Abrir](${a.enlace})`)
   return partes.join('\n')
+}
+
+/**
+ * El resultado elegido MÁS lo que quedó cerca.
+ *
+ * Las alternativas no son una duda disfrazada: son el derecho a desmentir al OS. Cuando
+ * alguien pide "el flujo de fondos" y el OS le contesta con el Cash Flow vivo porque el que se
+ * llama así está en una carpeta de 2025, tiene que poder ver que ese archivo también existe.
+ * Sin esto, la decisión del ranking sería invisible — y una decisión invisible no se audita.
+ */
+function textoConAlternativas(a, otros) {
+  if (!otros.length) return textoUno(a)
+  return [
+    textoUno(a, { creo: true }),
+    '',
+    'También encontré:',
+    ...otros.map((o) => `• ${lineaOpcion(o)} — [abrir](${o.enlace})`),
+  ].join('\n')
 }
 
 const lineaOpcion = (a) => [a.nombre, a.ubicacion ? `en ${a.ubicacion}` : null, a.fecha].filter(Boolean).join(' — ')
@@ -142,6 +177,9 @@ export const capacidad = {
     const { terminos, tipo, archivoId } = p.data
     const ahora = ctx.ahora?.() ?? new Date()
     const port = ctx.port
+    // Quién pregunta. El aprendizaje es por persona: lo que Jorge eligió diez veces dice más
+    // sobre lo que Jorge quiere que lo que eligió cualquier otro.
+    const usuario = ctx.identidad?.plataformaUserId ?? ''
     if (!port?.query) {
       return resultadoError(CAPACIDAD.DRIVE_BUSCAR, errorAsistente(
         ERROR.TEMPORAL, 'No puedo buscar en este momento. Probá de nuevo en un minuto.', 'sin port',
@@ -160,15 +198,17 @@ export const capacidad = {
         ))
       }
       const { norm } = analizarConsulta(terminos, { tipo })
-      await registrarAceptacion(port, norm, archivoId)
-      indice.anotarAceptacion(norm, archivoId)
+      await registrarAceptacion(port, norm, archivoId, usuario)
+      indice.anotarAceptacion(norm, archivoId, usuario)
       const a = aArchivo(e, ahora)
       return resultadoOk(CAPACIDAD.DRIVE_BUSCAR, textoUno(a), { archivo: a, aprendido: true })
     }
 
     let r
     try {
-      r = await buscar({ indice, port, texto: terminos, tipo, ahora: ahora.getTime(), limite: MAX_OPCIONES })
+      r = await buscar({
+        indice, port, texto: terminos, tipo, ahora: ahora.getTime(), limite: MAX_OPCIONES, usuario,
+      })
     } catch (e) {
       return resultadoError(CAPACIDAD.DRIVE_BUSCAR, errorAsistente(
         ERROR.TEMPORAL, 'No pude buscar en el Drive ahora. Probá de nuevo en un rato.',
@@ -176,13 +216,27 @@ export const capacidad = {
       ))
     }
 
-    // ── Un ganador claro ──
+    // ── Hay un elegido: se abre, y se muestra contra qué compitió ──
+    //
+    // Sólo se APRENDE cuando ganó por dominio (confianza alta). Con confianza media el OS está
+    // proponiendo, no sabiendo: registrar esa elección como si la persona la hubiera hecho
+    // sería fabricar una preferencia y después reforzarla sola.
     if (r.ganador) {
       const a = aArchivo(r.ganador, ahora)
-      await registrarAceptacion(port, r.consulta.norm, a.id)
-      indice.anotarAceptacion(r.consulta.norm, a.id)
-      return resultadoOk(CAPACIDAD.DRIVE_BUSCAR, textoUno(a), {
-        archivo: a, etapa: r.etapa, evaluados: r.evaluados, ms: r.ms,
+      const otros = (r.alternativas ?? []).map((e) => aArchivo(e, ahora))
+      if (r.confianza === 'alta') {
+        await registrarAceptacion(port, r.consulta.norm, a.id, usuario)
+        indice.anotarAceptacion(r.consulta.norm, a.id, usuario)
+      }
+      return resultadoOk(CAPACIDAD.DRIVE_BUSCAR, textoConAlternativas(a, otros), {
+        archivo: a,
+        alternativas: otros,
+        confianza: r.confianza,
+        etapa: r.etapa,
+        rescatado: Boolean(r.ganador.rescatado),
+        senales: r.ganador.senales ?? null,
+        evaluados: r.evaluados,
+        ms: r.ms,
       })
     }
 

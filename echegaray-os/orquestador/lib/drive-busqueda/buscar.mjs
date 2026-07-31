@@ -20,13 +20,28 @@
 // candidatos en la mano sería cambiar precisión por cantidad: si el nombre exacto existe, lo
 // que apenas comparte una palabra no compite.
 //
+// ── EL PASE DE RESCATE, Y POR QUÉ HIZO FALTA ──────────────────────────────────────────
+// Parar en la primera etapa es correcto para precisión y era, a la vez, el segundo problema.
+// "pasame el flujo de fondos" calzaba EXACTO con `Flujo de Fondos.xlsx` —etapa 2, carpeta AÑO
+// 2025, sin tocar desde enero— y el Sheet que la empresa usa todos los días ni llegaba a
+// competir: coincidía una etapa más abajo. El nombre era perfecto y la respuesta, inútil.
+//
+// Después de elegir la etapa se suben a la ronda las fuentes que el OS tiene declaradas en
+// `public.fuentes_datos` y que nombran algo de lo pedido. Son 25 documentos: no pueden inundar
+// nada. El ranking sigue decidiendo — lo que cambia es que ahora COMPITEN.
+//
+// ── TRES RESPUESTAS, NO DOS ───────────────────────────────────────────────────────────
+// Antes había "gana uno" o "pregunto". Ahora `resolver` distingue abrir (confianza alta),
+// proponer mostrando contra qué se eligió (media) y preguntar (baja). Ver ranking.mjs.
+//
 // ── CERO IA, Y ES VERIFICABLE ─────────────────────────────────────────────────────────
 // Este módulo no importa el cliente de Anthropic ni nada que llegue a él, ni directa ni
 // transitivamente: sólo el normalizador y el ranking, que son funciones puras. Hay un test
 // que recorre el árbol de imports y falla si alguna vez aparece uno.
 
 import { plano, sinExtension, tokenizar, tipoPedido, cargarSinonimos } from './normalizar.mjs'
-import { rankear, hayGanador, rutaLegible } from './ranking.mjs'
+import { rankear, resolver, rutaLegible } from './ranking.mjs'
+import { crearRegistro, fuenteCoincide, SQL_FUENTES } from './senales.mjs'
 
 /** Cuánto vale el índice cargado en memoria antes de volver a leerlo de Postgres. El timer
  *  de Drive corre cada 6 h: cinco minutos de desfasaje no pierde nada y ahorra 2.465 filas
@@ -52,6 +67,7 @@ const COLUMNAS = 'drive_file_id, name, path, tipo, mime_type, is_folder, modifie
 export function crearIndice({ port, ttlMs = TTL_INDICE_MS, ahora = () => Date.now() } = {}) {
   let filas = null
   let usos = new Map()
+  let registro = new Map()
   let cargadoEn = 0
   let sinonimosCargados = false
 
@@ -71,15 +87,34 @@ export function crearIndice({ port, ttlMs = TTL_INDICE_MS, ahora = () => Date.no
   // junto, y por una tabla que hoy pesa nada. Se carga entera con el índice y la búsqueda
   // queda en memoria pura.
   async function cargarUsos() {
+    // Se pide `usuario` y, si la columna todavía no está, se pide sin ella: el buscador tiene
+    // que andar igual antes y después de la migración.
+    for (const sql of [
+      'select consulta_norm, drive_file_id, usuario, veces from public.drive_busqueda_uso',
+      'select consulta_norm, drive_file_id, veces from public.drive_busqueda_uso',
+    ]) {
+      try {
+        const { rows } = await port.query(sql)
+        const m = new Map()
+        for (const r of rows ?? []) {
+          if (!m.has(r.consulta_norm)) m.set(r.consulta_norm, [])
+          m.get(r.consulta_norm).push({ id: r.drive_file_id, usuario: r.usuario ?? '', veces: Number(r.veces) || 0 })
+        }
+        usos = m
+        return
+      } catch { /* se prueba la forma anterior */ }
+    }
+    usos = new Map() // la tabla puede no existir: el aprendizaje suma, no es requisito
+  }
+
+  // EL REGISTRO DE FUENTES DEL OS: 25 filas que dicen cuál es el documento que se usa.
+  // Viaja con el índice por lo mismo que el aprendizaje — una consulta por búsqueda para una
+  // tabla que pesa nada era el costo más caro de todo el algoritmo.
+  async function cargarRegistro() {
     try {
-      const { rows } = await port.query('select consulta_norm, drive_file_id, veces from public.drive_busqueda_uso')
-      const m = new Map()
-      for (const r of rows ?? []) {
-        if (!m.has(r.consulta_norm)) m.set(r.consulta_norm, new Map())
-        m.get(r.consulta_norm).set(r.drive_file_id, Number(r.veces) || 0)
-      }
-      usos = m
-    } catch { usos = new Map() /* la tabla puede no existir: el aprendizaje suma, no es requisito */ }
+      const { rows } = await port.query(SQL_FUENTES)
+      registro = crearRegistro(rows)
+    } catch { registro = new Map() /* sin registro se rankea sólo por texto, como antes */ }
   }
 
   return {
@@ -99,19 +134,40 @@ export function crearIndice({ port, ttlMs = TTL_INDICE_MS, ahora = () => Date.no
         filas = rows ?? []
       } catch { filas = [] }
       await cargarUsos()
+      await cargarRegistro()
       cargadoEn = t
       return filas
     },
-    /** Aceptaciones de esta consulta, ya en memoria. */
-    aceptaciones(consultaNorm) { return usos.get(consultaNorm) ?? new Map() },
-    /** Suma una aceptación al mapa vivo, para que la MISMA sesión ya la vea. */
-    anotarAceptacion(consultaNorm, driveFileId) {
-      if (!usos.has(consultaNorm)) usos.set(consultaNorm, new Map())
-      const m = usos.get(consultaNorm)
-      m.set(driveFileId, (m.get(driveFileId) ?? 0) + 1)
+    /**
+     * Aceptaciones de esta consulta, separadas en PROPIAS y AJENAS.
+     *
+     * La distinción no es un adorno: que Jorge haya elegido este archivo diez veces dice
+     * mucho más sobre lo que Jorge quiere que diez elecciones de otra persona.
+     */
+    aceptaciones(consultaNorm, usuario = '') {
+      const m = new Map()
+      for (const u of usos.get(consultaNorm) ?? []) {
+        const a = m.get(u.id) ?? { propias: 0, ajenas: 0 }
+        if (usuario && u.usuario === usuario) a.propias += u.veces
+        else a.ajenas += u.veces
+        m.set(u.id, a)
+      }
+      return m
+    },
+    /** El registro de fuentes del OS, ya interpretado. */
+    fuentes() { return registro },
+    /** Suma una aceptación a la memoria viva, para que la MISMA sesión ya la vea. */
+    anotarAceptacion(consultaNorm, driveFileId, usuario = '') {
+      if (!usos.has(consultaNorm)) usos.set(consultaNorm, [])
+      const lista = usos.get(consultaNorm)
+      const previo = lista.find((u) => u.id === driveFileId && u.usuario === usuario)
+      if (previo) previo.veces += 1
+      else lista.push({ id: driveFileId, usuario, veces: 1 })
     },
     /** Sólo para tests y para el cierre de una corrida: obliga a releer. */
-    invalidar() { filas = null; usos = new Map(); cargadoEn = 0; sinonimosCargados = false },
+    invalidar() {
+      filas = null; usos = new Map(); registro = new Map(); cargadoEn = 0; sinonimosCargados = false
+    },
     get cargado() { return Boolean(filas) },
   }
 }
@@ -124,16 +180,27 @@ export function crearIndice({ port, ttlMs = TTL_INDICE_MS, ahora = () => Date.no
  *
  * No tira nunca: que el aprendizaje falle no puede romper una búsqueda que ya salió bien.
  */
-export async function registrarAceptacion(port, consultaNorm, driveFileId) {
+export async function registrarAceptacion(port, consultaNorm, driveFileId, usuario = '') {
   if (!port?.query || !consultaNorm || !driveFileId) return false
+  const CON_USUARIO = `insert into public.drive_busqueda_uso (consulta_norm, drive_file_id, usuario, veces, ultima_at)
+     values ($1, $2, $3, 1, now())
+     on conflict (consulta_norm, drive_file_id, usuario)
+     do update set veces = public.drive_busqueda_uso.veces + 1, ultima_at = now()`
+  // LA FORMA ANTERIOR, PARA QUE EL CÓDIGO PUEDA SALIR ANTES QUE LA MIGRACIÓN.
+  //
+  // Sin esto, un deploy sin migrar apagaba el aprendizaje entero y en silencio: el insert
+  // fallaba por una clave que todavía no existe y el catch se lo tragaba. El buscador seguía
+  // andando y nadie se enteraba de que había dejado de aprender.
+  const SIN_USUARIO = `insert into public.drive_busqueda_uso (consulta_norm, drive_file_id, veces, ultima_at)
+     values ($1, $2, 1, now())
+     on conflict (consulta_norm, drive_file_id)
+     do update set veces = public.drive_busqueda_uso.veces + 1, ultima_at = now()`
   try {
-    await port.query(
-      `insert into public.drive_busqueda_uso (consulta_norm, drive_file_id, veces, ultima_at)
-       values ($1, $2, 1, now())
-       on conflict (consulta_norm, drive_file_id)
-       do update set veces = public.drive_busqueda_uso.veces + 1, ultima_at = now()`,
-      [consultaNorm, driveFileId],
-    )
+    await port.query(CON_USUARIO, [consultaNorm, driveFileId, usuario ?? ''])
+    return true
+  } catch { /* se prueba la forma anterior */ }
+  try {
+    await port.query(SIN_USUARIO, [consultaNorm, driveFileId])
     return true
   } catch { return false }
 }
@@ -190,18 +257,48 @@ export function analizarConsulta(texto, { tipo = null } = {}) {
 }
 
 /**
+ * EL PASE DE RESCATE — un documento operativo no queda afuera por la etapa.
+ *
+ * Acá estaba el problema de fondo. Las etapas paran en la primera que devuelve algo, y eso es
+ * correcto para precisión… hasta que la etapa estricta la gana un archivo muerto. "flujo de
+ * fondos" calzaba EXACTO con `Flujo de Fondos.xlsx` (etapa 2, carpeta AÑO 2025) y el Sheet que
+ * la empresa usa todos los días ni siquiera llegaba a competir: coincidía una etapa más abajo.
+ *
+ * El rescate sube a la ronda a las fuentes que el OS tiene declaradas y que nombran algo de lo
+ * pedido. Son 25 documentos: no pueden inundar la lista, y el ranking sigue decidiendo. Lo que
+ * cambia es que ahora COMPITEN.
+ */
+function rescatarOperativos(filas, registro, consulta, yaEstan) {
+  if (!registro?.size || !consulta.tokens.length) return []
+  const rescatados = []
+  for (const e of filas) {
+    if (yaEstan.has(e.drive_file_id)) continue
+    const fuente = registro.get(e.drive_file_id)
+    if (!fuente || fuente.reemplazada) continue
+    const suyos = tokenizar(`${sinExtension(e.name)} ${e.path ?? ''}`)
+    const nombra = consulta.tokens.some((t) => suyos.includes(t))
+    if (nombra || fuenteCoincide(fuente, consulta.tokens)) rescatados.push({ ...e, rescatado: true })
+  }
+  return rescatados
+}
+
+/**
  * Busca. Devuelve SIEMPRE la misma forma, gane uno o haya que preguntar.
  *
- * No recibe `port`: todo lo que necesita —el índice, los sinónimos y el aprendizaje— ya está
- * en memoria. Una búsqueda no toca la base, y por eso tarda milisegundos.
+ * No recibe `port`: todo lo que necesita —el índice, los sinónimos, el registro de fuentes y
+ * el aprendizaje— ya está en memoria. Una búsqueda no toca la base, y por eso tarda
+ * milisegundos. Y no llama a ningún modelo: ni una vez, ni como último recurso.
  *
- * @returns {Promise<{etapa:string|null, ganador:object|null, opciones:object[], consulta:object, evaluados:number, ms:number}>}
+ * @returns {Promise<{etapa:string|null, ganador:object|null, confianza:string, alternativas:object[], opciones:object[], consulta:object, evaluados:number, ms:number}>}
  */
-export async function buscar({ indice, texto, tipo = null, ahora = Date.now(), limite = MAX_OPCIONES }) {
+export async function buscar({
+  indice, texto, tipo = null, ahora = Date.now(), limite = MAX_OPCIONES, usuario = '',
+}) {
   const t0 = Date.now()
   const consulta = analizarConsulta(texto, { tipo })
   const filas = await indice.filasVigentes()
-  const aceptacionesPor = indice.aceptaciones(consulta.norm)
+  const aceptacionesPor = indice.aceptaciones(consulta.norm, usuario)
+  const registro = indice.fuentes?.() ?? new Map()
 
   // La frase se prueba primero como la escribió la persona y después ya tokenizada: "vision
   // traccion" y "vision/traccion" tienen que llegar al mismo lado.
@@ -216,14 +313,18 @@ export async function buscar({ indice, texto, tipo = null, ahora = Date.now(), l
     // puede terminar en "no hay nada" si existe el documento.
     const porTipo = consulta.tipo ? candidatos.filter((e) => e.tipo === consulta.tipo) : []
     const usar = porTipo.length ? porTipo : candidatos
-    const unicos = Array.from(new Map(usar.map((e) => [e.drive_file_id, e])).values())
-    if (!unicos.length) continue
+    const unicos = new Map(usar.map((e) => [e.drive_file_id, e]))
+    if (!unicos.size) continue
+    for (const r of rescatarOperativos(filas, registro, consulta, unicos)) unicos.set(r.drive_file_id, r)
 
-    const rankeados = rankear(unicos, consulta, { ahora, aceptacionesPor })
+    const rankeados = rankear(Array.from(unicos.values()), consulta, { ahora, aceptacionesPor, registro })
     if (!rankeados.length) continue
+    const { confianza, ganador, alternativas } = resolver(rankeados)
     return {
       etapa: etapa.nombre,
-      ganador: hayGanador(rankeados) ? rankeados[0] : null,
+      ganador,
+      confianza,
+      alternativas,
       opciones: rankeados.slice(0, limite),
       consulta,
       evaluados: filas.length,
@@ -231,7 +332,16 @@ export async function buscar({ indice, texto, tipo = null, ahora = Date.now(), l
     }
   }
 
-  return { etapa: null, ganador: null, opciones: [], consulta, evaluados: filas.length, ms: Date.now() - t0 }
+  return {
+    etapa: null,
+    ganador: null,
+    confianza: 'baja',
+    alternativas: [],
+    opciones: [],
+    consulta,
+    evaluados: filas.length,
+    ms: Date.now() - t0,
+  }
 }
 
 export { rutaLegible }
