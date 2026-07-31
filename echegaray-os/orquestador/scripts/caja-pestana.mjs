@@ -808,6 +808,10 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   //
   // Un aviso a futuro no reemplaza al del presente. Éste va PRIMERO y compara la disponibilidad
   // neta —la de verdad, la que queda después de los cheques ya firmados— contra el mínimo.
+  // ESTA FILA RESPONDE CON UNA FRASE, NO CON UN IMPORTE, y por eso se anota para que el formateador le
+  // dé TEXTO: la columna es de plata y dibujaba "no, hay $68.709.996 de sobra" con formato de moneda.
+  // La pasada por contenido no la alcanza (el valor lo produce una fórmula), así que se declara acá.
+  const fRespuesta = filas.length + 1
   push(['⇒ ¿HOY estamos por debajo de la caja mínima?', '', '', '',
     `=IF(${C_PESOS}${fMin}=0;"⚠ falta cargar la caja mínima";IF(${C_PESOS}${fNeta}<${C_PESOS}${fMin};"⚠ SÍ — faltan "&TEXT(${C_PESOS}${fMin}-${C_PESOS}${fNeta};"$#,##0");"no, hay "&TEXT(${C_PESOS}${fNeta}-${C_PESOS}${fMin};"$#,##0")&" de sobra"))`,
     '', '', '',
@@ -1091,7 +1095,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
 
   // El grupo colapsable de controles va desde su encabezado hasta la última fila del cuadro.
   const fCtrl1 = filas.length
-  return { filas, cal0, calFin, calTotal, gCanario, n0, n1, usd, fTitulos, fCifras, fAire, fDias, fRitmo, fAlerta0, fAlerta1, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, fMTar, fMAcu, fMAire, fMargenTit: fMTar - 1, fCtrl0, fCtrl1, amarillas, fDetCob, fDetDep }
+  return { filas, fRespuesta, cal0, calFin, calTotal, gCanario, n0, n1, usd, fTitulos, fCifras, fAire, fDias, fRitmo, fAlerta0, fAlerta1, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, fMTar, fMAcu, fMAire, fMargenTit: fMTar - 1, fCtrl0, fCtrl1, amarillas, fDetCob, fDetDep }
 }
 
 /**
@@ -1470,6 +1474,10 @@ async function formatear(google, sheetId, g, tab) {
     fmt(r(g.n0 - 1, g.n1, 5, 6), 'userEnteredFormat', E.celda('moneda'))
     fmt(r(g.n0 - 2, g.n0 - 1, 0, ANCHO), 'userEnteredFormat', E.encabezado())
   }
+
+  // La fila que contesta con una FRASE ("no, hay $X de sobra") es texto, no un importe.
+  if (g.fRespuesta) fmt(r(g.fRespuesta - 1, g.fRespuesta, 4, 5), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+    { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' })
 
   // LOS DÍAS DE CAJA SON DÍAS. Con el formato moneda de la columna, "2 días" se dibujaba como "$2":
   // el número más importante de la pestaña leído como dos pesos.
