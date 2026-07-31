@@ -222,3 +222,70 @@ test('las filas "· cuáles son" ponen la lista en la columna E, donde el format
     assert.ok(!String(f[7] ?? '').startsWith('='), 'la explicación va aparte, como texto')
   }
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL CALENDARIO VE LAS OBLIGACIONES DE NÓMINA, NO SÓLO LOS CHEQUES (31/07)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El dueño: "necesito q resuelvas lo q te pedi de lo q se paga en jornales por quincena... cdo se
+// efectiviza el pago, necesito marcarlo y q haga las descargas correspondientes".
+//
+// El calendario de vencimientos leía UNA sola fuente: "Cheques Emitidos". Medido: el "piso proyectado
+// de caja" daba $70.643.236 ignorando los ~$14M por mes de jornales, que es el egreso más grande de la
+// empresa. Con el egreso más grande afuera, el piso no es un piso.
+test('cada tramo del calendario suma los jornales, no sólo los cheques', () => {
+  const g = construir()
+  // Los SEIS tramos con borde temporal. Se excluye "Sin fecha de pago cargada", que por diseño es sólo
+  // de cheques: un jornal siempre tiene fecha de pago calculada (el lote del banco o el parámetro), así
+  // que no puede caer en el cajón de los que no tienen fecha.
+  // Los seis primeros del calendario son los tramos con borde temporal. Después vienen "Sin fecha",
+  // el total del horizonte y su control, que tienen fórmula pero no son tramos.
+  const conSale = g.filas.slice(g.cal0 - 1, g.cal0 - 1 + 6)
+  assert.equal(conSale.length, 6, 'los seis tramos con borde temporal')
+  for (const f of conSale) {
+    const sale = String(f[3])
+    assert.match(sale, /JORNALES_REAL_PAGO/, 'el tramo tiene que ver la quincena cerrada sin pagar')
+    assert.match(sale, /JORNALES_PROY_PAGO/, 'y la proyectada')
+    assert.match(sale, /Cheques Emitidos|K\$2|I\$2/, 'sin perder los cheques, que ya estaban')
+  }
+})
+
+test('LA DESCARGA: una quincena con fecha en "Pagado el" sale del calendario', () => {
+  // Es el mecanismo entero en una condición. Mientras "Pagado el" esté vacía la quincena PESA; cuando
+  // el dueño escribe la fecha, deja de pesar — su salida ya está en el extracto del banco, y sumarla
+  // otra vez la contaría dos veces.
+  const g = construir()
+  const sale = String(g.filas[g.cal0 - 1]?.[3] ?? '')
+  assert.match(sale, /\(JORNALES_REAL_PAGADO=""\)/,
+    'sólo pesa la que NO tiene fecha de pago real: eso es la descarga y el anti-doble-conteo')
+  // La proyección no lleva esa condición: una quincena que todavía no existe no puede estar pagada.
+  const proy = sale.slice(sale.indexOf('JORNALES_PROY_PAGO'))
+  assert.ok(!proy.includes('PAGADO'), 'la proyección no se filtra por pagada: no tiene sentido')
+})
+
+test('la fecha que ubica el jornal en el tramo es la de PAGO, nunca la de cierre', () => {
+  const g = construir()
+  const sale = String(g.filas[g.cal0 - 1]?.[3] ?? '')
+  assert.ok(!sale.includes('JORNALES_REAL_HASTA'), 'HASTA es el devengamiento, no la caja')
+  assert.ok(!sale.includes('JORNALES_REAL_DESDE'))
+})
+
+test('la fila "Sin fecha de pago cargada" queda sólo para los cheques, y eso es correcto', () => {
+  // Un jornal siempre tiene fecha de pago: sale del lote del banco si ya pasó, o del parámetro si no.
+  // Meterlo en el cajón de "sin fecha" sería inventar un caso que no existe.
+  const g = construir()
+  const fila = g.filas.slice(g.cal0 - 1, g.calFin).find((f) => /Sin fecha de pago/.test(String(f?.[0] ?? '')))
+  assert.ok(fila, 'la fila existe')
+  assert.ok(!String(fila[3]).includes('JORNALES'), 'no se le agregan jornales')
+})
+
+test('el control del horizonte mide las DOS fuentes, o daría rojo para siempre', () => {
+  // Al sumar los jornales al calendario, un control que resta sólo los cheques queda en rojo por una
+  // diferencia CORRECTA. Un control que da rojo siempre es un control que nadie lee.
+  const g = construir()
+  const fila = g.filas.slice(g.cal0 - 1, g.calFin + 4).find((f) => /control: tiene que dar lo mismo/.test(String(f?.[0] ?? '')))
+  assert.ok(fila, 'el control existe')
+  assert.match(String(fila[3]), /JORNALES_REAL_TOTAL/, 'resta la nómina cerrada sin pagar')
+  assert.match(String(fila[3]), /JORNALES_PROY_TOTAL/, 'y la proyectada')
+  assert.match(String(fila[0]), /MÁS la nómina sin pagar/, 'y el rótulo dice qué mide')
+})

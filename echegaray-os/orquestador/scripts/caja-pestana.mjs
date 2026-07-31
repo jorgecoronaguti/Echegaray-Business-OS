@@ -475,7 +475,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   const TRAMOS = BORDES
 
   push(['Tramo', '', 'Entra', 'Sale', 'Neto del tramo', 'Queda después', 'Fin del tramo',
-    'Entra: valores en cartera por su fecha de acreditación (detalle en 4.1). Sale: cheques emitidos no debitados, por su fecha de pago.', ''])
+    'Entra: valores en cartera por su fecha de acreditación (detalle en 4.1). Sale: cheques emitidos no debitados por su fecha de pago, MÁS los jornales cerrados sin pagar y los proyectados, por su fecha de pago. Una quincena sale del calendario cuando le escribís la fecha en "Pagado el": ahí su salida ya está en el extracto.', ''])
   const cal0 = filas.length + 1
   TRAMOS.forEach(([rotulo], k) => {
     const f = cal0 + k
@@ -487,7 +487,19 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
       // cualquier número, así que satisface a la vez "después de esta semana" y "después del mes que
       // viene": el mismo cheque se cuenta en varios tramos y el total del calendario se pasa del
       // total real. Acá se pasaba $657.000. Lo que no tiene fecha válida no se reparte: se aísla.
-      `=SUMPRODUCT((${K400})*ISNUMBER(${I400})*${tramo(k, I400)}*${F400})`,
+      // ═══ DOS FUENTES EN LA MISMA COLUMNA: LOS CHEQUES Y LAS OBLIGACIONES DE NÓMINA (31/07) ═══
+      //
+      // El calendario leía UNA sola fuente: "Cheques Emitidos". Por eso el "piso proyectado de caja"
+      // ignoraba los ~$14M por mes de jornales, que es el egreso más grande de la empresa. El dueño lo
+      // pidió: "necesito marcar cuándo se efectiviza el pago y que haga las descargas correspondientes".
+      //
+      // Se suma la quincena CERRADA Y SIN PAGAR (columna "Pagado el" vacía), imputada a su fecha de
+      // pago; y la PROYECTADA, que por definición no está pagada. En cuanto el dueño escribe la fecha
+      // en "Pagado el", la quincena sale del calendario: eso es la descarga, y evita contarla dos veces
+      // porque su salida ya está en el extracto del banco.
+      `=SUMPRODUCT((${K400})*ISNUMBER(${I400})*${tramo(k, I400)}*${F400})`
+        + `+SUMPRODUCT(ISNUMBER(JORNALES_REAL_PAGO)*(JORNALES_REAL_PAGADO="")*${tramo(k, 'JORNALES_REAL_PAGO')}*N(JORNALES_REAL_TOTAL))`
+        + `+SUMPRODUCT(ISNUMBER(JORNALES_PROY_PAGO)*${tramo(k, 'JORNALES_PROY_PAGO')}*N(JORNALES_PROY_TOTAL))`,
       `=$C${f}-$D${f}`,
       // La posición acumulada arranca en la disponibilidad neta: de nada sirve un neto de tramo si no
       // se ve contra la plata que hay.
@@ -503,9 +515,15 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   const cal1 = filas.length
   const calTotal = push(['⇒ Total del horizonte', '', `=SUM($C${cal0}:$C${cal1})`, `=SUM($D${cal0}:$D${cal1})`, `=SUM($E${cal0}:$E${cal1})`,
     `=$F${cal1}`, '', 'La última "Queda después" es la posición al final del horizonte.', ''])
-  push(['   · control: tiene que dar lo mismo que "Cheques emitidos, no debitados"', '', '',
-    `=$D${filas.length}-$E$${fCh}`, '', '', '', '',
-    'Si no da cero, hay cheques que el calendario cuenta de más o de menos — casi siempre una fecha guardada como texto.'])
+  // EL CONTROL TIENE QUE MEDIR LAS DOS FUENTES (31/07). Comparaba el horizonte SÓLO contra "Cheques
+  // emitidos no debitados". Al sumar los jornales al calendario, ese control quedaría en rojo para
+  // siempre por una diferencia que es correcta — y un control que da rojo siempre es un control que
+  // nadie lee. Ahora resta las dos fuentes: cheques + nómina cerrada sin pagar + nómina proyectada.
+  const nominaEnCalendario = 'SUMPRODUCT(ISNUMBER(JORNALES_REAL_PAGO)*(JORNALES_REAL_PAGADO="")*N(JORNALES_REAL_TOTAL))'
+    + '+SUMPRODUCT(ISNUMBER(JORNALES_PROY_PAGO)*N(JORNALES_PROY_TOTAL))'
+  push(['   · control: tiene que dar lo mismo que los cheques no debitados MÁS la nómina sin pagar', '', '',
+    `=$D${filas.length}-$E$${fCh}-(${nominaEnCalendario})`, '', '', '', '',
+    'Si no da cero, el calendario cuenta de más o de menos — casi siempre una fecha guardada como texto. Ahora mide las DOS fuentes: los cheques emitidos y las obligaciones de nómina (cerradas sin pagar + proyectadas).'])
   const fPeor = push(['   · el punto más bajo del horizonte', '', '', '', '', `=MIN($F${cal0}:$F${cal1})`, '', '', ''])
   push(['   · cuándo ocurre', '', '', '', '', `=IFERROR(INDEX($A$${cal0}:$A$${cal1};MATCH($F${fPeor};$F$${cal0}:$F$${cal1};0));"")`, '', '',
     'Si el punto más bajo es negativo, ése es el tramo en el que la caja no alcanza — y es la fecha en la que hay que actuar, no el total.', ''])

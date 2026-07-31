@@ -709,6 +709,10 @@ async function publicarRangos(google, sheetId, g) {
     // fallback y como la fecha del DEVENGAMIENTO, que es otra pregunta y otra pestaña.
     JORNALES_REAL_PAGO: rango(2, g.f0, g.fTotalReal - 1),
     JORNALES_REAL_TOTAL: rango(10, g.f0, g.fTotalReal - 1),
+    // CUÁNDO SALIÓ LA PLATA DE VERDAD (31/07). Es lo que descarga la obligación: mientras esta celda
+    // esté vacía, la quincena cerrada PESA en el calendario de CAJA. En cuanto el dueño escribe la
+    // fecha, deja de pesar — la salida ya está en el extracto del banco.
+    JORNALES_REAL_PAGADO: rango(13, g.f0, g.fTotalReal - 1),
     JORNALES_PROY_DESDE: rango(0, g.p0, finProy),
     JORNALES_PROY_HASTA: rango(1, g.p0, finProy),
     JORNALES_PROY_PAGO: rango(2, g.p0, finProy),
