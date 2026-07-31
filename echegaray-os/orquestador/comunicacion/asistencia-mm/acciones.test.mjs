@@ -498,3 +498,13 @@ test('la escritura queda auditada con la evidencia celda por celda, no con un re
   assert.ok(d.spreadsheet_id, 'sin la planilla no se sabe dónde se escribió')
   assert.ok(d.horas_total > 0, 'el resumen de horas viajaba en null')
 })
+
+test('los botones de un mensaje viejo no manejan el formulario nuevo', async () => {
+  const e = await crearEntorno()
+  await elegirObra(e)                                   // ata la sesión al post-1
+  const r = await e.accion({ paso: PASO.OBRA, selected_option: OBRA.REVOQUE }, { post_id: 'post-VIEJO' })
+  assert.match(r.body.ephemeral_text ?? '', /mensaje de asistencia anterior/,
+    'un click del mensaje viejo tiene que rebotar, no manejar la sesión nueva')
+  const ev = e.eventos.filter((x) => String(x.evento).endsWith('denied'))
+  assert.equal(ev.at(-1)?.datos?.error_code, 'post_viejo', 'y queda auditado con su motivo')
+})

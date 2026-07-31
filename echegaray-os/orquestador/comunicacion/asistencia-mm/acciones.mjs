@@ -53,6 +53,7 @@ export const TEXTO = Object.freeze({
   SIN_PERMISO: 'No tenés habilitada la carga de asistencia. Pedísela a Dirección.',
   SIN_SESION: 'Este formulario ya se cerró. Escribí «asistencia» para abrir uno nuevo.',
   SESION_AJENA: 'Ese formulario lo abrió otra persona. Escribí «asistencia» para abrir el tuyo.',
+  MENSAJE_VIEJO: 'Ese es un mensaje de asistencia anterior. Usá el último que se publicó en el canal, o escribí «asistencia» para abrir uno nuevo.',
   SESION_VENCIDA: 'El formulario venció. Escribí «asistencia» para abrir uno nuevo.',
   ELEGI_OBRA: 'Primero elegí la obra.',
   PERSONA_DESCONOCIDA: 'Esa persona ya no figura en la obra. Volvé a elegir la obra.',
@@ -206,6 +207,12 @@ function normalizarPayload(payload) {
 async function recordarPost(d, p, sesion) {
   if (p.dialogo || !p.postId || postDe(sesion) === p.postId) return sesion
   const meta = metaDe(sesion)
+  // UN FORMULARIO POR SESIÓN. Si la sesión YA está atada a otro post, este click viene de un
+  // mensaje viejo: abrir una carga nueva cancela la anterior, pero el mensaje anterior se
+  // queda en el canal con sus botones vivos. Sin esta guarda, esos botones manejaban la
+  // sesión NUEVA y encima le reapuntaban el post, así que los refrescos posteriores
+  // aterrizaban en el mensaje equivocado. Se rechaza y se dice cuál es el bueno.
+  if (meta.post_id && meta.post_id !== p.postId) return { ...sesion, __postAjeno: true }
   await guardar(d, sesion, {
     marcas: marcasDe(sesion), fecha: meta.fecha, obra: meta.obra ?? null,
     refs: meta.refs ?? [], postId: p.postId,
@@ -215,6 +222,11 @@ async function recordarPost(d, p, sesion) {
 
 async function atender(d, p, sesionCruda) {
   const sesion = await recordarPost(d, p, sesionCruda)
+  if (sesion.__postAjeno) {
+    await anotarRechazo(d, { user_id: p.userId, user_name: p.username, channel_id: p.channelId, team_id: p.teamId },
+      { motivo: 'sesion', detalle: 'post_viejo', dialogo: false })
+    return efimero(TEXTO.MENSAJE_VIEJO)
+  }
   const anotar = (detalle) => anotarRechazo(d, {
     user_id: p.userId, user_name: p.username, channel_id: p.channelId, team_id: p.teamId,
   }, { motivo: 'payload', detalle, dialogo: p.dialogo })
