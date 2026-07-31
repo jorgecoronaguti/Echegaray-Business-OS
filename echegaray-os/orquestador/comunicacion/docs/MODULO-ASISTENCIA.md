@@ -292,6 +292,52 @@ Persona inexistente → lista los trabajadores reales, no inventa.
 - **Regla 0 / candado de pestaña**: si la pestaña está tomada por `sheet_pestanas_bloqueadas`, la
   escritura se rechaza con el motivo visible. El módulo no desactiva la protección.
 
+### La unidad protegida es la celda, no la pestaña
+
+Toda escritura del OS sobre un Sheet pasa por el portón central de escritura
+(`lib/guarda-escritura.mjs` → `guardarEscritura` → `evaluarBloqueadas`), que protege dos cosas
+distintas: el **candado** explícito (`sheet_pestanas_bloqueadas`) y la **firma de pestaña**
+(`lib/firma-tab.mjs` → `firmaGuardia`), que compara la firma de **toda** la pestaña (`A1:BZ`)
+contra la última que selló el OS.
+
+La firma está pensada para las pestañas que el OS **genera enteras** — las del Flujo de Caja.
+Ahí, que la firma difiera significa exactamente una cosa: el dueño la editó, no la pises.
+
+`Obreros 26` de JORNALES no es una de ésas. Es una pestaña que **las personas editan todos los
+días por diseño**, y donde el OS sólo escribe celdas sueltas. Su firma **siempre** difiere, y
+esa diferencia no es evidencia de conflicto: es el estado normal de la pestaña.
+
+Por eso `registrarAsistencia` le pasa al portón la bandera explícita **`compartida: true`** —
+escritura quirúrgica celda a celda sobre una pestaña que el OS no genera. Con esa bandera el
+portón sigue aplicando el cinturón **"vacío sobre lleno"** y el **candado explícito** (la
+voluntad del dueño manda siempre), pero **no** aplica la firma de pestaña, **no** auto-canda y
+**no** sella. Para todos los demás escritores el comportamiento no cambió en absoluto.
+
+Lo que protege la escritura de asistencia es más fuerte y más fino que la firma: antes de
+escribir se **relee la celda destino** y se compara su huella con la que tenía al planificar
+(concurrencia optimista, §4.1). Si cambió, se aborta **toda** la operación y se le muestran al
+jefe de obra los valores actuales. Protege la celda, que es lo que importa, en vez de la
+pestaña entera.
+
+**Cómo se descubrió.** En la primera prueba real desde Mattermost (30/07/2026), con fecha, obra,
+cuadrilla y excepciones ya elegidas, apretar Registrar respondía «La pestaña de JORNALES está
+tomada y no se puede escribir ahora», y no se escribía ninguna celda. La secuencia, con horas
+reales de San Juan: a las **14:13:15** el OS escribió una celda y **selló** la firma de
+`Obreros 26`; entre las 14:13 y las 22:26 una persona editó la planilla (entre otras cosas,
+`R477` pasó de `9` a vacía y `R464` quedó en `"0"`) y la firma divergió; a las **22:26:24**
+`firmaGuardia` recalculó la firma, vio que difería, concluyó "la editaste", **auto-candó la
+pestaña** (fila en `sheet_pestanas_bloqueadas` con `bloqueada_por: 'auto'`) y el portón descartó
+la escritura. Desde ese momento el candado automático bloqueaba **todo** intento siguiente: la
+asistencia quedaba muerta de forma permanente, sin que nadie hubiera candado nada a propósito.
+El candado automático falso que el defecto dejó sobre `Obreros 26` se borró.
+
+Dos lecciones, que valen para cualquier escritor futuro:
+
+- Una protección pensada para una pestaña **de la que el OS es dueño** no se puede aplicar tal
+  cual a una pestaña **compartida con personas**: ahí la unidad que se protege es la **celda**.
+- Una protección que **se auto-canda** convierte un falso positivo en una **falla permanente**,
+  no en una molestia pasajera.
+
 ## 9. JORNALES
 
 - Estructura por bloques (obra) × filas (trabajador) × columnas (fecha). La resolución es
@@ -367,7 +413,8 @@ volviendo a cargar el valor correcto (el módulo escribe el valor final, no un d
 | Entra pero no contesta | `select * from orq.tasks where queue='comunicacion' order by id desc` | Worker parado, o tarea en `failed` |
 | `Invalid RootId parameter` en outbox | `comunicacion.outbox`, `last_error` | Se respondió en el hilo de un post que no existe |
 | Responde el catálogo en vez de atender | tabla `comunicacion.canales_area` | Binding del canal inactivo o ausente |
-| `⚠️ La pestaña … está tomada` | `sheet_pestanas_bloqueadas` | Candado de la Regla 0. **No desactivarlo**: sellar la firma por el mecanismo oficial |
+| `⚠️ La pestaña … está tomada` | `sheet_pestanas_bloqueadas` | Candado **explícito** de la Regla 0. **No desactivarlo**: es la voluntad del dueño |
+| Lo mismo, pero la fila dice `bloqueada_por='auto'` | idem, y §8 | Candado **automático** de la firma de pestaña. Sobre una pestaña compartida como `Obreros 26` es un falso positivo: la escritura de asistencia va con `compartida: true` y no debería llegar ahí. Si aparece, hay un escritor que no pasa la bandera |
 | Escribe pero no aparece | `comunicacion.v_asistencia_auditoria` | Mirar `old_value`/`new_value` y la celda exacta |
 | "Ya hay una carga abierta" | `comunicacion.asistencia_sesiones` | Sesión previa sin cerrar; expira sola por TTL o `cancelar` |
 | "No me deja cargar" y no se sabe por qué | `comunicacion.v_asistencia_auditoria` con `status='denied'` | El `error_code` dice el motivo exacto: `sin_permiso`, `canal_no_es_el_oficial`, `token_invalido`, `sesion_vencida`… |

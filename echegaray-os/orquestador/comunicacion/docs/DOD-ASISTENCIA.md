@@ -293,3 +293,77 @@ la carga para todos), `sesion_vencida` (hay que esperar el TTL) y `sesion_ajena`
 un segundo usuario autorizado). `payload_invalido` sólo aparece cuando el pedido llega con
 identidad pero sin forma reconocible: en producción, un payload sin identidad muere antes, en
 la puerta, y se anota como `sin_identidad` — que es el motivo verdadero.
+
+
+---
+
+## 14. El defecto que impedía la primera carga real — 30/07/2026
+
+§12 cerró con la primera carga real pendiente. Al intentarla apareció un defecto que ningún test
+del módulo podía ver, porque no estaba en el módulo: estaba en el portón central de escritura,
+que el módulo consume como cualquier otro escritor del OS.
+
+### Síntoma
+
+En la primera prueba real desde Mattermost, con fecha, obra, cuadrilla y excepciones ya
+elegidas, apretar **Registrar** respondía «La pestaña de JORNALES está tomada y no se puede
+escribir ahora». **No se escribió ninguna celda.**
+
+### Causa raíz
+
+La escritura de asistencia pasa por el portón central (`orquestador/lib/guarda-escritura.mjs` →
+`guardarEscritura` → `evaluarBloqueadas`), que protege dos cosas: el **candado** explícito y la
+**firma de la pestaña** (`firma-tab.mjs` → `firmaGuardia`), que compara la firma de **toda** la
+pestaña `A1:BZ` contra la última que selló el OS.
+
+Esa protección está diseñada para las pestañas que el OS **genera enteras** — las del Flujo de
+Caja. Ahí, que la firma difiera significa "el dueño la editó, no la pises". Pero `Obreros 26` de
+JORNALES es una pestaña que **las personas editan todos los días por diseño**, y donde el OS
+sólo escribe celdas sueltas: su firma **siempre** difiere, y eso no es evidencia de conflicto,
+es el estado normal.
+
+### La secuencia exacta, con horas reales (30/07/2026, hora de San Juan)
+
+| Hora | Qué pasó |
+|---|---|
+| 14:13:15 | El OS escribe una celda y **sella** la firma de `Obreros 26` (fila única en `sheet_tab_firma`) |
+| entre 14:13 y 22:26 | Una persona edita la planilla: entre otras cosas, `R477` pasa de `9` a vacía y `R464` queda en `"0"`. La firma diverge |
+| 22:26:24 | El dueño aprieta **Registrar**. `firmaGuardia` recalcula la firma, ve que difiere, concluye "la editaste", **auto-canda la pestaña** (fila en `sheet_pestanas_bloqueadas`, `bloqueada_por: 'auto'`, motivo `auto: la firma difiere de mi última escritura: la editaste`) y el portón descarta la escritura |
+| desde entonces | El candado automático bloqueaba **todo** intento siguiente: la asistencia quedaba muerta de forma permanente, sin que nadie hubiera candado nada a propósito |
+
+### Por qué la protección de firma sobraba justo acá
+
+El núcleo de asistencia ya tiene una protección **más fuerte y más fina**: antes de escribir
+relee la celda destino y compara su huella con la que tenía al planificar (control de
+concurrencia optimista); si cambió, aborta **toda** la operación y le muestra al jefe de obra
+los valores actuales. Protege **la celda**, que es lo que importa, en vez de la pestaña entera.
+
+### La corrección
+
+El portón acepta una bandera explícita **`compartida: true`** para escrituras quirúrgicas celda
+a celda sobre pestañas que el OS no genera:
+
+| Qué sigue aplicando | Qué deja de aplicar |
+|---|---|
+| El cinturón **"vacío sobre lleno"** | La **firma de pestaña** |
+| El **candado explícito** — la voluntad del dueño manda siempre | El **auto-candado** |
+| | El **sellado** de la firma |
+
+`registrarAsistencia` la pasa. Para todos los demás escritores el comportamiento **no cambió en
+absoluto**. Además se borró el candado automático falso que el defecto había dejado sobre
+`Obreros 26`.
+
+### Qué queda verificado
+
+El síntoma, la fila de auto-candado con su motivo, las horas de la secuencia y los valores de
+`R477` y `R464` se leyeron **contra producción y contra la base**, no contra mocks. Lo que este
+apartado documenta es el defecto, su causa y su corrección: **no incluye una carga real exitosa
+posterior** — la primera escritura en JORNALES desde Mattermost sigue sin quedar registrada acá.
+
+### La lección
+
+- Una protección pensada para una pestaña **de la que el OS es dueño** no se puede aplicar tal
+  cual a una pestaña **compartida con personas**: ahí la unidad que se protege es la **celda**,
+  no la pestaña.
+- Una protección que **se auto-canda** convierte un falso positivo en una **falla permanente**,
+  no en una molestia pasajera.
