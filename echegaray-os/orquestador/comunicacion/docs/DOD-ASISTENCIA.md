@@ -428,3 +428,70 @@ ocurrió.
   API de Mattermost, y por eso **su alfabeto lo decide Mattermost, no nosotros**.
 - Un defecto que **no deja rastro en los logs del propio sistema** es señal de que la falla ocurre
   **antes** de llegar: hay que ir a mirar los logs del otro lado.
+
+
+---
+
+## 16. El formulario que dejaba elegir lo inválido — 30/07/2026
+
+No es un defecto de corrección: es una mejora de **experiencia**. El módulo nunca escribió una
+combinación inválida. El problema era que dejaba **elegirla**, y recién la rechazaba al guardar.
+
+### Síntoma
+
+El diálogo de excepción se abría con **un solo** formulario: «¿Trabajó? Sí/No», «Horas» y
+«Motivo». El desplegable de motivos traía el **catálogo entero** (`motivos: d.motivos.CATALOGO`),
+sin filtrar por contexto. Se podía elegir «Trabajó: Sí · Horas: 5 · Motivo: Faltó con aviso»,
+apretar guardar, y ahí enterarse de que no se puede. La validación era correcta; la experiencia,
+no: corregía **después** en vez de prevenir **antes**.
+
+### Por qué no se resuelve refrescando el formulario
+
+Los diálogos interactivos de Mattermost son **estáticos**: no hay evento de cambio ni forma de
+re-renderizar el formulario cuando el usuario toca un campo. No existe "actualizar los motivos al
+cambiar Trabajó". La única manera nativa de que no se pueda elegir una combinación inválida es
+decidir el **tipo** de excepción **antes** de abrir el diálogo, y abrir un formulario que ya sólo
+contenga lo compatible.
+
+### La corrección
+
+El desplegable único `Marcar excepción` se reemplaza por **tres**, uno por cada ámbito que el
+backend ya distingue:
+
+| Botón | Campos del diálogo | Motivos |
+|---|---|---|
+| **No vino** | Motivo + Aclaración. Las horas son 0: no se preguntan | Sólo ausencia (13): Faltó sin avisar, Faltó con aviso, Enfermedad, Accidente, Permiso, Licencia especial, Vacaciones, Suspensión, Franco/feriado, Lluvia, Obra parada, Paro, Otro |
+| **Hizo menos horas** | Horas (desplegable con los valores por **debajo** de la jornada del día) + Motivo + Estuvo en otra obra + Aclaración | Sólo jornada parcial (10): Llegó tarde, Se retiró antes, Lluvia, Obra parada, Paro, Enfermedad, Accidente de trabajo, Accidente in itinere, Permiso, Otro |
+| **Hizo horas extra** | Horas (desplegable con los valores por **encima** de la jornada) + Aclaración | Ninguno: las horas extra las calcula el núcleo y el catálogo no ofrece ningún motivo para ellas |
+
+Además, **el texto en inglés desaparece**: cuando el diálogo devolvía sólo errores por campo
+(`errors`), Mattermost mostraba su default «Submission failed with validation errors». Se
+verificó leyendo el propio cliente de Mattermost: si la respuesta trae un `error` de primer
+nivel, muestra **ese** texto; si no, usa el default en inglés. Ahora toda respuesta de error del
+diálogo lleva también una frase en castellano.
+
+| # | Criterio | Cómo se verifica |
+|---|---|---|
+| 16.1 | Ninguna combinación producible por el formulario es inválida | No se puede elegir un motivo de ausencia con horas trabajadas, ni un motivo de jornada parcial con la jornada completa o con horas extra: cada diálogo trae sólo los campos y motivos de su ámbito |
+| 16.2 | Los motivos ya no salen del catálogo entero | El desplegable de cada diálogo se arma por ámbito, no con `CATALOGO` |
+| 16.3 | «No vino» no pregunta horas | Las horas son 0 por definición del ámbito |
+| 16.4 | «Hizo horas extra» no pregunta motivo | El catálogo no ofrece ningún motivo para horas extra |
+| 16.5 | El error del diálogo se lee en castellano | Toda respuesta de error lleva un `error` de primer nivel, que es el que Mattermost muestra |
+| 16.6 | La validación del backend no cambió | `lib/asistencia-motivos.mjs` → `validarNovedad` quedó exactamente igual: sigue siendo la última palabra y sigue rechazando cualquier combinación inválida que llegue por otro camino |
+| 16.7 | El resto del módulo no cambió | La escritura en JORNALES, los permisos, la auditoría y la idempotencia son los mismos |
+
+### Qué queda verificado y qué no
+
+La conducta estática de los diálogos y el origen del texto en inglés se comprobaron **contra el
+código y contra el Mattermost real**, no contra mocks. Lo que este apartado documenta es el
+cambio de experiencia y su alcance: **no incluye la prueba humana desde el celular**, que todavía
+no ocurrió.
+
+### La lección
+
+- Cuando la interfaz **no puede reaccionar** a lo que el usuario elige —y un diálogo de Mattermost
+  no puede—, hay que partir la pregunta en **antes**: elegir primero el tipo de novedad y abrir un
+  formulario que ya sólo pueda producir combinaciones válidas. **Prevenir antes en vez de corregir
+  después.**
+- Una validación correcta no vuelve buena una experiencia: rechazar al guardar es contarle al
+  usuario, tarde, algo que el formulario podía no haberle ofrecido nunca.
