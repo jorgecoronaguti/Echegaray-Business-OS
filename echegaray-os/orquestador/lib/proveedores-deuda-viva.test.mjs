@@ -20,7 +20,7 @@ import {
   rangosCompras, esRangoAbierto, referenciasCompras,
   formulaPorProveedor, formulaPorFactura, formulaControl,
   saldoNetoProveedor, deudaComercialTotal, reservaPara,
-  filasLibreta, verificarMigracionNotas,
+  filasLibreta, verificarMigracionNotas, esNombreSeguro,
 } from './proveedores-deuda-viva.mjs'
 
 /** Las columnas reales de Compras, tal como las resuelve el generador por encabezado. */
@@ -265,4 +265,68 @@ test('los rótulos son el contrato del ancho de cada bloque', () => {
   assert.equal(COLS_FACTURA.length, 7)
   assert.equal(COLS_PROVEEDOR[3], 'Saldo pendiente', 'la columna 4 es la que ordena y la que suma el control')
   assert.equal(COLS_FACTURA[1], 'Próximo pago', 'la columna 2 es la que ordena el detalle')
+})
+
+// ── 6 · LOS NOMBRES DE LAS VARIABLES DE `LET` ───────────────────────────────────────────────────
+//
+// EL TEST QUE NO EXISTÍA, Y POR ESO EL BLOQUE SALIÓ VACÍO EN PRODUCCIÓN.
+//
+// La primera corrida real dejó "factura por factura" sin una sola fila, con los 12 tests de este
+// archivo en verde. Sheets devolvía `#NAME?` y el IFERROR que envuelve la fórmula se lo tragaba: cero
+// filas y cero avisos. Dos variables se llamaban `nPa1` y `nPa2`, y `NPA1` ES una referencia de celda
+// válida —columna NPA, fila 1—. Comprobado en el archivo real: `=ISREF(NPA1)` devuelve TRUE, y
+// `=LET(nPa1;7;nPa1)` devuelve `#NAME?` mientras `=LET(nPag;7;nPag)` devuelve 7 (cuatro letras no
+// forman una columna: el máximo es tres).
+//
+// Los tests de acá miraban el TEXTO de la fórmula —separadores, rangos abiertos, literales de array— y
+// ninguno preguntaba si Sheets iba a poder LEER los nombres. Este sí, y es puro: no necesita el Sheet.
+test('esNombreSeguro rechaza exactamente la forma A1 (1-3 letras + dígitos)', () => {
+  for (const malo of ['nPa1', 'nPa2', 'A1', 'zz9', 'NPA1', 'abc123', 'r1']) {
+    assert.equal(esNombreSeguro(malo), false, `"${malo}" se puede leer como referencia de celda`)
+  }
+  for (const bueno of ['nTot', 'nPag', 'saldo', 'cond', 'base', 'n_parcial1', 'r_prov', 'prov1_', 'a_1']) {
+    assert.equal(esNombreSeguro(bueno), true, `"${bueno}" no es una referencia: tiene que servir`)
+  }
+})
+
+test('NINGUNA variable de LET de la sección puede leerse como una referencia de celda', () => {
+  // Se extraen los nombres declarados de las fórmulas de verdad: `LET(nombre;…;nombre;…)`, tomando el
+  // token que está en posición de nombre (después de `LET(` o de un `;` que cierra un valor).
+  for (const [que, f] of FORMULAS()) {
+    const cuerpo = sinLiterales(f)
+    const nombres = [...cuerpo.matchAll(/(?:LET\(|;)\s*([A-Za-z_][A-Za-z0-9_]*)\s*;/g)].map((m) => m[1])
+    assert.ok(nombres.length > 0, `${que}: no encontré ninguna declaración de LET`)
+    for (const n of nombres) {
+      assert.ok(esNombreSeguro(n),
+        `${que}: la variable "${n}" se puede leer como referencia de celda (columna+fila). Sheets la `
+        + `rechaza con #NAME? y el IFERROR de la fórmula lo esconde: el bloque queda VACÍO en silencio.`)
+    }
+  }
+})
+
+// ── 7 · LA ENVOLTURA QUE HACE QUE EL BLOQUE DEVUELVA FILAS ──────────────────────────────────────
+//
+// SEGUNDO defecto de la misma corrida, y el que quedaba después de arreglar los nombres: el bloque
+// "factura por factura" seguía vacío. Medido en el archivo real, con la fórmula ya escrita en la celda:
+// `SUMPRODUCT(cond)` daba 0 —siendo que hay 14 facturas pendientes— y `SUM(saldo)` colapsaba a un
+// escalar. Una variable de LET que guarda un RANGO pierde la expansión a array en cuanto se la usa en
+// una comparación o en aritmética elemento por elemento. Envuelta en ARRAYFORMULA: cond = 14 y el
+// bloque derrama 14 renglones ordenados por fecha de pago.
+//
+// El bloque por proveedor NO la necesita: sus rangos viajan como argumentos de SUMIFS/COUNTIFS/MINIFS
+// y dentro de MAP/LAMBDA, que ya evalúan por elemento. Por eso uno vivía y el otro no.
+test('el bloque FACTURA POR FACTURA va envuelto en ARRAYFORMULA, o devuelve vacío en silencio', () => {
+  const f = formulaPorFactura({ rangos: R, reserva: 30 })
+  assert.match(f, /^=IFERROR\(ARRAYFORMULA\(LET\(/,
+    'sin ARRAYFORMULA, `cond` colapsa a un escalar, FILTER da #N/A y el IFERROR lo deja en blanco')
+  // Y el IFERROR sigue afuera: es lo que evita que un archivo recién armado muestre #N/A. Pero es
+  // también lo que escondió el defecto durante toda una corrida — de ahí los dos tests de arriba.
+  assert.ok(f.endsWith(`${SEP}"")`), 'el IFERROR envuelve todo, ARRAYFORMULA va adentro')
+})
+
+test('el bloque POR PROVEEDOR no necesita ARRAYFORMULA y no se la agrega de más', () => {
+  // No es simetría por prolijidad: envolver un MAP/LAMBDA en ARRAYFORMULA cambia cómo se evalúa y no
+  // hay ninguna medición que respalde hacerlo. Se deja como está, que es lo que funciona.
+  const f = formulaPorProveedor({ rangos: R, libreta: LIBRETA, reserva: 40 })
+  assert.doesNotMatch(f, /ARRAYFORMULA/, 'este bloque funciona sin envoltura: no se toca lo que anda')
 })

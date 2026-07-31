@@ -159,6 +159,25 @@ function declaraciones(R, claves) {
 const nombreVar = (k) => `r_${k}`
 
 /**
+ * UN NOMBRE DE VARIABLE DE `LET` NO PUEDE PARECERSE A UNA REFERENCIA DE CELDA (31/07).
+ *
+ * El bloque "factura por factura" salió VACÍO en la primera corrida real, y sus tests pasaban. Sheets
+ * devolvía `#NAME?` y el `IFERROR` que envuelve la fórmula —puesto para que un archivo recién armado no
+ * muestre errores— se lo tragaba entero: cero filas, cero avisos, y el control del bloque cantando
+ * "falta $10.335.466" sin decir por qué.
+ *
+ * La causa: dos variables se llamaban `nPa1` y `nPa2`. `NPA1` ES una referencia válida —columna NPA,
+ * fila 1— y Sheets lo comprobó en el archivo: `=ISREF(NPA1)` devuelve TRUE. Un nombre que Sheets puede
+ * leer como celda queda rechazado como variable. `nTot` y `nPag` sobrevivieron de casualidad: cuatro
+ * letras no forman una columna (el máximo es tres).
+ *
+ * La forma A1 es "una a tres letras seguidas de dígitos". Cualquier `_` la rompe, y por eso los nombres
+ * llevan guión bajo. `esNombreSeguro` existe para que un test lo verifique sin tocar el Sheet: el
+ * defecto era invisible en frío y sólo aparecía escribiendo en el archivo real.
+ */
+export const esNombreSeguro = (n) => !/^[A-Za-z]{1,3}\d+$/.test(String(n ?? ''))
+
+/**
  * BLOQUE 1A — LA DEUDA POR PROVEEDOR, VIVA.
  *
  * Una sola celda. El derrame es la tabla: proveedor · próximo pago · cuántas facturas · saldo neto ·
@@ -229,17 +248,28 @@ export function formulaPorFactura({ rangos, reserva }) {
     dec,
     `nTot${SEP}${num('total')}`,
     `nPag${SEP}${num('pagado')}`,
-    `nPa1${SEP}${num('parcial1')}`,
-    `nPa2${SEP}${num('parcial2')}`,
+    `n_parcial1${SEP}${num('parcial1')}`,
+    `n_parcial2${SEP}${num('parcial2')}`,
     // Mismo saldo neto que el bloque por proveedor, fila por fila: los negativos de los parciales no
     // son pagos, así que se descartan con un IF elementwise en vez de restarse.
-    `saldo${SEP}nTot-nPag-IF(nPa1>0${SEP}nPa1${SEP}0)-IF(nPa2>0${SEP}nPa2${SEP}0)`,
+    `saldo${SEP}nTot-nPag-IF(n_parcial1>0${SEP}n_parcial1${SEP}0)-IF(n_parcial2>0${SEP}n_parcial2${SEP}0)`,
     // EL CRITERIO ES EL ESTADO. La fecha no decide nada acá: sólo ordena.
     `cond${SEP}(${V('estado')}="${PENDIENTE}")*(${V('comercial')}=1)*(${V('prov')}<>"")`,
     `base${SEP}FILTER(HSTACK(${V('prov')}${SEP}${V('fecha')}${SEP}${V('comprobante')}&""${SEP}saldo${SEP}${V('obra')}&""${SEP}${V('tipoPago')}&""${SEP}${V('categoria')}&"")${SEP}cond)`,
     `ARRAY_CONSTRAIN(SORT(base${SEP}2${SEP}TRUE${SEP}1${SEP}TRUE)${SEP}${reserva}${SEP}${COLS_FACTURA.length})`,
   ].join(SEP)
-  return `=IFERROR(LET(${cuerpo})${SEP}"")`
+  // ARRAYFORMULA NO ES DECORACIÓN ACÁ — ES LO QUE HACE QUE EL BLOQUE DEVUELVA ALGO (31/07).
+  //
+  // Una variable de LET que guarda un RANGO pierde la expansión implícita a array cuando se la usa en
+  // aritmética o en una comparación elemento por elemento. Medido en el archivo real: con la fórmula
+  // envuelta, `SUMPRODUCT(cond)` da 14 (las filas pendientes) y el bloque derrama 14 renglones; sin
+  // envolver, la MISMA expresión da 0 y `saldo` colapsa a un escalar, así que FILTER devuelve #N/A y el
+  // IFERROR de afuera lo convierte en una celda vacía. Cero filas, cero avisos.
+  //
+  // El bloque POR PROVEEDOR no lo necesita, y eso explica por qué uno funcionaba y el otro no: sus
+  // variables de rango sólo viajan como ARGUMENTOS de funciones que esperan rangos (SUMIFS, COUNTIFS,
+  // MINIFS, el primer argumento de FILTER) o dentro de un MAP/LAMBDA, que ya evalúa por elemento.
+  return `=IFERROR(ARRAYFORMULA(LET(${cuerpo}))${SEP}"")`
 }
 
 /**
