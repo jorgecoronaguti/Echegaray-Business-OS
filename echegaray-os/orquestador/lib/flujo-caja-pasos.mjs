@@ -103,6 +103,11 @@ export const PASOS = [
   // PEGADOS en vez de ser fórmula o celda derramada. Sin este censo, la única forma de enterarse era
   // que el dueño abriera una celda y mirara la barra de fórmulas — que es exactamente lo que pasó.
   ['censo-numeros-pegados.mjs', 'regla de oro: cuántos números están pegados en vez de calculados', []],
+  // EL SALDO DEL BANCO CONTRA SUS PROPIOS MOVIMIENTOS (31/07). El dueño: "está mal el saldo de caja en
+  // todos lados". De ese saldo cuelgan CAJA_TOTAL_DISPONIBLE, el efectivo inicial de los dos cash flow y
+  // el piso proyectado: un agujero en el extracto cargado se propaga a todas las pantallas en silencio,
+  // y no había ningún control que lo mirara. Medido la primera vez que corrió: faltaba $113.314,76.
+  ['auditar-saldo-banco.mjs', 'el saldo del banco contra la suma de sus movimientos (el número del que cuelga todo)', []],
   // ÚLTIMO ENTRE LOS QUE ESCRIBEN: cada script pone los anchos que declara, así que ensanchar antes
   // de que corran no sirve de nada. Lo que este paso arregla es lo que ningún script dueño puede
   // saber solo: si el texto que le tocó a esta corrida entra o no.
@@ -152,7 +157,7 @@ export const PASOS = [
 // arregla las dos: un fallo real (un generador que crashea) sigue siendo un fallo; un defecto de
 // pantalla o de auditoría es un REPORTE visible que no bloquea ni la frescura ni el estado del servicio.
 export const REPORTES = new Set([
-  'formato-pestanas.mjs', 'reparar-pantalla.mjs', 'censo-numeros-pegados.mjs',
+  'formato-pestanas.mjs', 'reparar-pantalla.mjs', 'censo-numeros-pegados.mjs', 'auditar-saldo-banco.mjs',
   'reparar-textos.mjs', 'formato-condicional.mjs', 'auditar-pantalla.mjs',
 ])
 
