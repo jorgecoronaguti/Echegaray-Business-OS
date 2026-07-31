@@ -92,7 +92,10 @@ const DRY = process.argv.includes('--dry')
 const AÑO = 2026
 /** El ancho de la pestaña: el registro de abajo es el bloque más ancho y define la grilla.
  *  Pasó de 12 a 13 el 31/07 al entrar la columna "Se paga el" al lado de Hasta. */
-const ANCHO = 13
+// CATORCE COLUMNAS DESDE EL 31/07: la última es "Pagado el", donde el dueño marca cuándo salió la
+// plata de verdad. Si este número no acompaña a la fila del registro, la columna nueva queda fuera del
+// footprint del generador y lo que haya debajo no se limpia nunca.
+const ANCHO = 14
 /** Los doce meses, para el cuadro de oficina: ahí se cobra por MES, no por quincena. */
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 /** Sereno se paga por MES: no entra en la comparación por hora. */
@@ -250,13 +253,18 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [] }
   // la quincena en curso como si estuviera pagada. No lo está: al 23/07 la del 16/07–31/07 tiene
   // horas cargadas hasta el 21 y le faltan nueve días. Presentar una quincena a mitad de camino
   // junto a las cerradas es mezclar un hecho con algo que todavía se está formando.
-  const fHero = { costo: 0, cerradas: 0, curso: 0, falta: 0, ofiPagado: 0, ofiFalta: 0, plantel: 0 }
+  const fHero = { costo: 0, cerradas: 0, sinPagar: 0, curso: 0, falta: 0, ofiPagado: 0, ofiFalta: 0, plantel: 0 }
   push(['JORNALES Y SUELDOS — lo pagado en el año y lo que falta hasta diciembre'])
   // EL TITULAR ENTRA EN SU COLUMNA. Con la fuente grande del hero, "…de oficina en el año" medía 49
   // caracteres en una columna de 330px que muestra 44, y a su derecha está el importe: se cortaba en
   // vez de derramar. El detalle Obra/Oficina ya está en los sub-ítems de abajo; el titular es la suma.
   fHero.costo = push([rotuloTotal('Jornales de obra y sueldos del año')])
-  fHero.cerradas = push([sub('Obra — quincenas cerradas, ya pagadas')])
+  // EL RÓTULO DECÍA "ya pagadas" Y NO LO MIRABA (31/07). La línea mide `Hasta <= HOY` —cuánto trabajo
+  // está terminado— y eso está bien y es útil. Lo que estaba mal era el TEXTO: la quincena que cerró
+  // el 31/07 se paga el 03/08, así que $7.675.588 figuraban como pagados con la plata en la cuenta.
+  // Se dice lo que mide, y la pregunta del pago pasa a tener su propia línea abajo.
+  fHero.cerradas = push([sub('Obra — quincenas cerradas (trabajo terminado)')])
+  fHero.sinPagar = push([sub('   de eso, todavía SIN PAGAR')])
   fHero.curso = push([sub('Obra — quincena en curso, todavía se está cargando')])
   fHero.falta = push([sub('Obra — falta pagar hasta diciembre')])
   fHero.ofiPagado = push([sub('Oficina — meses pagados')])
@@ -382,7 +390,11 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [] }
   // que poder saber de dónde salió esa fecha y que puede cambiarla, sin preguntarle a nadie.
   push([sub('"Se paga el" = el lote de haberes del banco; si todavía no salió, Hasta + Parámetros'),
     VACIO, VACIO, 'escribí una fecha a mano y manda la tuya'])
-  push(['Quincena', 'Hasta', 'Se paga el', 'Días hábiles', 'Personas', 'Hs previstas', 'Hs reales', 'Banco', 'Adelanto', 'Total recibo', 'TOTAL', 'Σ $/hora', 'Estado'])
+  // "Pagado el" VA AL FINAL, no intercalada. Insertarla al lado de "Se paga el" correría los índices de
+  // las once columnas que produce nomina-sync, y eso ya rompió el registro una vez hoy (la columna "Se
+  // paga el" se emitió dos veces y desplazó todo). Al final es segura; si el dueño la quiere en otro
+  // lugar la mueve y su edición manda.
+  push(['Quincena', 'Hasta', 'Se paga el', 'Días hábiles', 'Personas', 'Hs previstas', 'Hs reales', 'Banco', 'Adelanto', 'Total recibo', 'TOTAL', 'Σ $/hora', 'Estado', 'Pagado el'])
   const f0 = filas.length + 1
   // LA COLUMNA QUE FALTABA. Sin ella la última fila se lee igual que las trece de arriba —cerrada y
   // pagada— cuando en realidad la quincena está a mitad de camino. Es una fórmula con TODAY(): se da
@@ -394,7 +406,11 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [] }
     // proyección saca su base: sin ella esa columna pasaba a ser texto y toda la proyección daba
     // #VALUE!.
     const [colA, colB, ...resto] = fila.map((c) => c.f)
-    push([colA, colB, pago(r), ...resto, `=IF(N(B${r})=0;"";IF(B${r}<=TODAY();"cerrada";"en curso"))`])
+    // EL ESTADO DISTINGUE LAS TRES COSAS QUE ANTES ERAN UNA. Cerrada no es pagada: la quincena que
+    // cerró el 31/07 se paga el 03/08. Y "Pagado el" (N) es un hecho que gana sobre cualquier previsión.
+    push([colA, colB, pago(r), ...resto,
+      `=IF(N(B${r})=0;"";IF(N(N${r})>0;"pagada el "&TEXT(N${r};"d/m");IF(B${r}<=TODAY();"cerrada · a pagar";"en curso")))`,
+      VACIO])
   })
   const fLast = f0 + bloques.length - 1
   const fTotalReal = push([
@@ -429,6 +445,14 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [] }
   const cerrada = `($B$${f0}:$B$${fLast}<=TODAY())`
   filas[fHero.cerradas - 1][1] = `=SUMPRODUCT(ISNUMBER($B$${f0}:$B$${fLast})*${cerrada}*IF(ISNUMBER($K$${f0}:$K$${fLast});$K$${f0}:$K$${fLast};0))`
   filas[fHero.curso - 1][1] = `=SUMPRODUCT(ISNUMBER($B$${f0}:$B$${fLast})*NOT(${cerrada})*IF(ISNUMBER($K$${f0}:$K$${fLast});$K$${f0}:$K$${fLast};0))`
+  // ── LO CERRADO QUE TODAVÍA NO SE PAGÓ: la obligación ──
+  //
+  // Una quincena está SIN PAGAR si cerró (B <= HOY) y no tiene fecha de pago real cargada (N vacía).
+  // Es la plata que se debe a la gente hoy mismo, y es el número que el calendario de CAJA tiene que
+  // ver. Antes no existía: estaba sumado dentro de "ya pagadas", que es donde no se ve.
+  const sinPagar = `(${cerrada}*($N$${f0}:$N$${fLast}=""))`
+  filas[fHero.sinPagar - 1][1] = `=SUMPRODUCT(ISNUMBER($B$${f0}:$B$${fLast})*${sinPagar}*IF(ISNUMBER($K$${f0}:$K$${fLast});$K$${f0}:$K$${fLast};0))`
+  filas[fHero.sinPagar - 1][2] = 'marcá la fecha en "Pagado el" cuando salga la plata y esta línea baja sola'
   // Y al lado, qué quincena es y HASTA QUÉ DÍA está cargada de verdad. Medido sobre las horas del
   // espejo, no sobre las fechas del encabezado: la planilla escribe los catorce días el día que abre
   // la quincena, así que las fechas dicen "31/07" desde el primer día y no distinguen nada.
