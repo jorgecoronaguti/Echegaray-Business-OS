@@ -11,6 +11,12 @@ const ERROR_TOKENS = /#(REF|ERROR|N\/A|VALUE|DIV|NAME|NUM|NULL|¡)/
 const balanceada = (s) => { let n = 0; for (const c of String(s)) { if (c === '(') n++; if (c === ')') n--; if (n < 0) return false } return n === 0 }
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 
+// Las filas del calendario de impuestos en "Impuestos y Financieros". El script las ubica POR RÓTULO en
+// el archivo real; acá se simulan, igual que `filasTabla` (Estructura/Recurrentes) más abajo. No se
+// puede omitir: `filasCalendarioOk` exige que estén, porque una referencia a una fila muerta devolvería
+// $0 en silencio — y un test que pasa `{}` estaría probando el caso que el guardián prohíbe.
+const FILAS_CAL = { iva: 30, iibb: 31 }
+
 // ── CAMBIO 1 · las líneas 40/41 (descubierto e impuesto al cheque) ahora SE CALCULAN por semana ──
 
 test('formulaInteresSemana: mismo modelo verificado que el mensual, ventana de 7 días, sin inventar tasa', () => {
@@ -33,7 +39,7 @@ test('formulaInteresSemana: mismo modelo verificado que el mensual, ventana de 7
 })
 
 test("grilla semanal: las líneas del descubierto e impuesto al cheque NO quedan vacías en ninguna semana", () => {
-  const g = grilla('semanal', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", {})
+  const g = grilla('semanal', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", {}, FILAS_CAL)
   const desc = g.meta.detalle.find((d) => d.linea.descubierto)
   const imp = g.meta.detalle.find((d) => d.linea.impuestoCheque)
   assert.ok(desc && imp, 'existen ambas líneas en el semanal')
@@ -52,7 +58,7 @@ test("grilla semanal: las líneas del descubierto e impuesto al cheque NO quedan
 })
 
 test('impuesto al cheque semanal resuelto = 0,6% de entradas + 0,6% de salidas de la semana', () => {
-  const g = grilla('semanal', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", {})
+  const g = grilla('semanal', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", {}, FILAS_CAL)
   const ingreso = g.meta.detalle.filter((d) => d.signo > 0).map((d) => d.fila)
   const egreso = g.meta.detalle.filter((d) => d.signo < 0 && !d.linea.impuestoCheque).map((d) => d.fila)
   const imp = g.meta.detalle.find((d) => d.linea.impuestoCheque)
@@ -69,7 +75,7 @@ test('impuesto al cheque semanal resuelto = 0,6% de entradas + 0,6% de salidas d
 test('regresión: el MENSUAL sigue calculando descubierto e impuesto como antes', () => {
   // El mensual proyecta desde las pestañas de detalle: necesita la fila del total (la ubica el script
   // por rótulo; acá se simula). El semanal no las usa (muestra sólo lo comprometido).
-  const g = grilla('mensual', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", { Estructura: 15, Recurrentes: 24 })
+  const g = grilla('mensual', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", { Estructura: 15, Recurrentes: 24 }, FILAS_CAL)
   const desc = g.meta.detalle.find((d) => d.linea.descubierto)
   const imp = g.meta.detalle.find((d) => d.linea.impuestoCheque)
   const rowDesc = g.filas[desc.fila - 1]
