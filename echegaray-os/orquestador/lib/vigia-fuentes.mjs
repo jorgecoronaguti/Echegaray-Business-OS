@@ -656,7 +656,12 @@ export function novedadesCct(f, { guardada = [], referencia = null, ahora = new 
   // Días que faltan para que empiece el mes que viene: cerca de fin de mes, la escala del mes
   // siguiente ya tiene que estar cargada (los jornales de la primera quincena se liquidan con ella).
   const diasAlCambio = Math.ceil((mesQueViene.getTime() - d.getTime()) / 86400000)
-  if (mesEscala < mesEnCurso || diasAlCambio <= 7) {
+  // NO SE AVISA DE ALGO QUE YA ESTÁ RESUELTO (31/07). La condición era "faltan pocos días para el mes
+  // que viene" sin mirar si la escala del mes que viene YA está cargada: con agosto cargado el vigía
+  // seguía pidiendo cargar agosto. Un aviso que no se apaga cuando el problema se soluciona es un aviso
+  // que se deja de leer — el mismo criterio que se aplicó al freno de los timers.
+  const faltaLaDelMesQueViene = mesEscala < mesQueVieneTxt
+  if (mesEscala < mesEnCurso || (diasAlCambio <= 7 && faltaLaDelMesQueViene)) {
     const vencida = mesEscala < mesEnCurso
     out.push(novedad(f, {
       tipo: 'valor_cambiado',

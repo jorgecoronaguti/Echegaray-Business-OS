@@ -500,3 +500,21 @@ test('el aviso dice DESDE CUÁNDO, con fecha o con el relativo de systemd', () =
   assert.equal(desdeCuando('-'), 'no se sabe cuándo')
   assert.equal(desdeCuando(null), 'no se sabe cuándo')
 })
+
+test('el aviso del CCT SE APAGA cuando la escala del mes que viene ya está cargada', () => {
+  // El 31/07, con agosto ya cargado, el vigía seguía diciendo "faltan 1 día para 2026-08 y la escala
+  // más nueva es la de 2026-08". Un aviso que no se apaga cuando el problema se resolvió es un aviso
+  // que se deja de leer.
+  const F = fuente('uocra_cct')
+  const AHORA = new Date(Date.UTC(2026, 6, 31))
+  const conAgosto = novedadesCct(F, { guardada: [{ zona: 'A', vigencia_desde: '2026-08-01', categoria: 'Ayudante', basico_hora: 5399 }], ahora: AHORA })
+  assert.equal(conAgosto.length, 0, 'con la escala del mes que viene cargada, no hay novedad')
+  // Y sigue avisando si SÓLO está julio: ahí sí falta cargar.
+  const soloJulio = novedadesCct(F, { guardada: [{ zona: 'A', vigencia_desde: '2026-07-01', categoria: 'Ayudante', basico_hora: 4948 }], ahora: AHORA })
+  assert.equal(soloJulio.length, 1)
+  assert.match(soloJulio[0].titulo, /faltan 1 día/)
+  // Y una escala VENCIDA (anterior al mes en curso) avisa siempre, falten días o no.
+  const vencida = novedadesCct(F, { guardada: [{ zona: 'A', vigencia_desde: '2026-05-01', categoria: 'Ayudante', basico_hora: 4452 }], ahora: new Date(Date.UTC(2026, 6, 10)) })
+  assert.equal(vencida.length, 1)
+  assert.match(vencida[0].titulo, /escala vencida/)
+})

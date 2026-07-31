@@ -888,10 +888,25 @@ async function main() {
     // proveedores y el listado 12, y la suma no cerraba. Una fuente por concepto.
     const comercial = String(f?.[IDX.comercial] ?? '').trim() === '1'
     if (!nombre || !esPend || !comercial) return
-    // El saldo real: Total menos lo ya pagado. Sólo para ordenar los grupos; los montos que se ven
-    // salen de fórmulas (neta) sobre Compras. Se suman TODAS las filas, también las negativas (una
-    // nota de crédito): así el detalle del grupo suma igual que su encabezado.
-    const imp = parseMonto(f?.[IDX.total]) - parseMonto(f?.[IDX.pagado])
+    // ═══ EL MISMO SALDO QUE LA FÓRMULA, NO OTRO (31/07) ═══
+    //
+    // El dueño: "la pestaña de proveedores no es una pestaña viva y no esta contemplando el estado
+    // actual de los proveedores a los q se les adeuda en su cuadro 1, no me da confianza".
+    //
+    // Medido: el titular decía $13.715.178 y la lista sumaba $8.046.266. La diferencia, $5.668.912, era
+    // Angel Fernandez y Gruas San Blas — dos proveedores a los que se les debe y que NO estaban
+    // cableados en el cuadro. Dos definiciones del mismo saldo:
+    //
+    //   · el titular (fórmula viva):  Total − Pagado − Parcial1(>0) − Parcial2(>0)
+    //   · quién aparece (este JS):    Total − Pagado, IGNORANDO los parciales
+    //
+    // Y el dueño escribe el saldo que falta en Parcial 1 como NEGATIVO entre paréntesis —"($ 544.500)",
+    // su convención confirmada el 27/07—. Con el importe en "Monto Pagado" esas dos filas daban saldo
+    // cero y quedaban afuera; él lo movió a Parcial 1, el titular se actualizó solo, y la lista no
+    // podía sumar un proveedor hasta la corrida siguiente.
+    const saldoDeFila = (fila) => parseMonto(fila?.[IDX.total]) - parseMonto(fila?.[IDX.pagado])
+      - Math.max(0, parseMonto(fila?.[IDX.parcial1])) - Math.max(0, parseMonto(fila?.[IDX.parcial2]))
+    const imp = saldoDeFila(f)
     const a = deudaMap.get(nombre) ?? { nombre, total: 0, filas: [] }
     a.total += imp
     a.filas.push({ fila: i + 4, comprobante: String(f?.[7] ?? '').trim() })
@@ -899,7 +914,17 @@ async function main() {
   })
   // Sólo grupos con saldo neto a favor del proveedor. Un proveedor cuyas notas de crédito superan sus
   // facturas pendientes no es una deuda: no va en la lista de "qué se debe".
-  const deudaAgrupada = [...deudaMap.values()].filter((p) => p.total > 0.5).sort((a, b) => b.total - a.total)
+  // ═══ SE CABLEA A TODO EL QUE TENGA UNA FILA PENDIENTE — NO SÓLO AL QUE HOY DEBE ═══
+  //
+  // Cada fila del cuadro está gateada por un predicado VIVO (`soloConDeuda`): si el saldo no es > 0, la
+  // fila se vacía sola. Entonces sobre-incluir es GRATIS y sub-incluir es el defecto: un proveedor que
+  // no está cableado no puede aparecer aunque se le empiece a deber, y hay que esperar al generador.
+  //
+  // Con esto, el cuadro reacciona en el momento en que él toca Compras: la fila ya existe y su fórmula
+  // la muestra o la esconde. Eso es lo que hace la pestaña VIVA, y es lo que faltaba.
+  const deudaAgrupada = [...deudaMap.values()]
+    .filter((p) => p.total > 0.5 || p.filas.length > 0)
+    .sort((a, b) => b.total - a.total)
 
   // ── AFIP: LA FUENTE FISCAL ─────────────────────────────────────────────────────────────────────
   // comprobantes_arca es el libro de IVA que el OS ya replica. Es la única fuente que dice qué se

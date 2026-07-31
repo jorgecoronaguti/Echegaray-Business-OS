@@ -16,6 +16,7 @@ import assert from 'node:assert/strict'
 import { estructural, predicadoConDeuda, soloConDeuda, layoutDeuda, notasAncladas, anchoBloque } from './proveedores-materiales-pestana.mjs'
 import { fusionar, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { readFileSync } from 'node:fs'
+import { parseMonto } from '../lib/cash-briefing.mjs'
 
 test('estructural: convierte los \'\' en VACIO y deja intacto todo lo no-vacío', () => {
   const out = estructural(['TOTAL', '', 0, '=SUM(A1:A2)', '', 'nota'])
@@ -310,4 +311,47 @@ test('sin columna de Comentarios, el relleno desde el respaldo no puede escribir
   // vez de escribir en la columna 0 (que es el nombre del proveedor).
   const L = layoutDeuda(['Proveedor / factura', 'Próximo pago', 'Comprobante', 'Importe'])
   assert.equal(L.nota, -1)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL TITULAR Y LA LISTA TIENEN QUE USAR EL MISMO SALDO (31/07)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El dueño: "la pestaña de proveedores no es una pestaña viva y no esta contemplando el estado actual de
+// los proveedores a los q se les adeuda en su cuadro 1, no me da confianza".
+//
+// Medido en el archivo: el titular decía $13.715.178 y la lista sumaba $8.046.266. La diferencia,
+// $5.668.912, eran DOS proveedores a los que se les debe y que no estaban cableados en el cuadro:
+// Angel Fernandez ($544.500) y Gruas San Blas ($5.124.412).
+//
+// La causa: dos definiciones del mismo número. El titular resta los parciales positivos; el JS que
+// decide QUIÉN APARECE restaba sólo "Monto Pagado". Y el dueño escribe el saldo que falta en Parcial 1
+// como NEGATIVO ENTRE PARÉNTESIS —"($ 544.500)"—, su convención del 27/07.
+test('el saldo del JS es el MISMO que el de la fórmula, incluidos los paréntesis del dueño', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  // El JS tiene que restar los parciales positivos, igual que la fórmula que muestra el número.
+  assert.match(src, /const saldoDeFila = \(fila\) =>/, 'hay una sola definición del saldo por fila')
+  assert.match(src, /Math\.max\(0, parseMonto\(fila\?\.\[IDX\.parcial1\]\)\)/, 'resta Parcial 1 sólo si es positivo')
+  assert.match(src, /Math\.max\(0, parseMonto\(fila\?\.\[IDX\.parcial2\]\)\)/, 'y Parcial 2 igual')
+  // Y la fórmula que se escribe en la celda usa exactamente el mismo criterio.
+  assert.match(src, /MAX\(0;Compras!\$\$\{letra\(IDX\.parcial1\)\}/, 'la fórmula de la celda hace lo mismo')
+})
+
+test('SE CABLEA A TODO EL QUE TENGA UNA FILA PENDIENTE, no sólo al que hoy debe', () => {
+  // Cada fila está gateada por un predicado vivo: si no debe, se vacía sola. Sobre-incluir es gratis;
+  // sub-incluir es el defecto, porque un proveedor no cableado NO PUEDE aparecer aunque se le empiece a
+  // deber — hay que esperar a que corra el generador. Eso es lo que hacía que la pestaña no fuera viva.
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  assert.match(src, /p\.total > 0\.5 \|\| p\.filas\.length > 0/,
+    'entra el que tiene saldo O el que tiene alguna fila pendiente')
+  assert.match(src, /sobre-incluir es GRATIS y sub-incluir es el defecto/i, 'y se explica por qué')
+})
+
+test('la convención del dueño: un negativo entre paréntesis en Parcial es el saldo que FALTA', () => {
+  // Si esto se leyera como un pago, el saldo daría cero y el proveedor desaparecería de la lista
+  // teniendo deuda — que es exactamente lo que pasó con Angel Fernandez y Gruas San Blas.
+  assert.equal(parseMonto('($ 544.500)'), -544500)
+  assert.equal(parseMonto('($ 5.124.412)'), -5124412)
+  assert.equal(Math.max(0, parseMonto('($ 544.500)')), 0, 'un negativo NO resta: no es un pago')
+  assert.equal(Math.max(0, parseMonto('$ 300.000')), 300000, 'un positivo sí es un pago parcial y resta')
 })
