@@ -96,6 +96,7 @@ export const capacidad = {
   nombre: 'Crear un evento en el calendario',
   descripcion: 'agendarte una reunión en tu Google Calendar (con invitados si querés)',
   version: '1.0.0',
+  orden: 30,
   permisos: ['calendar.write'],
   efectoExterno: true,
   ejemplos: ['agendame reunión con Rodrigo mañana a las 9', 'poneme visita a la obra el jueves 15hs'],

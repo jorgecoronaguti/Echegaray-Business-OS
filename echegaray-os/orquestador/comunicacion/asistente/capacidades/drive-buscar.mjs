@@ -180,6 +180,7 @@ export const capacidad = {
   nombre: 'Buscar un archivo en Drive',
   descripcion: 'buscarte un archivo en el Drive y pasarte el enlace para abrirlo',
   version: '1.0.0',
+  orden: 10,
   permisos: ['drive.read'],
   efectoExterno: false,
   ejemplos: ['pasame el contrato de Quattropani', 'buscame el flujo de caja', '¿dónde está el presupuesto de Messina?'],

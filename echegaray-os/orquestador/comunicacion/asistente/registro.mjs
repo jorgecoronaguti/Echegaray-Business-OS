@@ -38,11 +38,15 @@ export async function capacidades({ recargar = false } = {}) {
     if (!c) throw new Error(`capacidades/${f}: falta el export \`capacidad\``)
     const faltan = OBLIGATORIOS.filter((k) => c[k] == null)
     if (faltan.length) throw new Error(`capacidades/${f}: faltan campos ${faltan.join(', ')}`)
-    out.push({ permisos: [], ejemplos: [], efectoExterno: false, habilitada: async () => true, ...c, archivo: f })
+    out.push({ permisos: [], ejemplos: [], efectoExterno: false, orden: 100, habilitada: async () => true, ...c, archivo: f })
   }
   const ids = out.map((c) => c.id)
   const dup = ids.find((id, i) => ids.indexOf(id) !== i)
   if (dup) throw new Error(`registro de capacidades: id duplicado "${dup}"`)
+  // El orden es DECLARADO, no alfabético por nombre de archivo. La ayuda es lo primero que
+  // lee alguien que no conoce el OS: que empiece por "agendar" en vez de por "buscar" sólo
+  // porque `calendar-` va antes que `drive-` es dejar que el orden lo decida un accidente.
+  out.sort((a, b) => (a.orden - b.orden) || a.id.localeCompare(b.id))
   cache = out
   return out
 }

@@ -68,6 +68,7 @@ export const capacidad = {
   nombre: 'Crear una tarea en Google Tasks',
   descripcion: 'anotarte un pendiente en tus tareas de Google, con vencimiento si me lo decís',
   version: '1.0.0',
+  orden: 40,
   permisos: ['tasks.write'],
   efectoExterno: true,
   ejemplos: ['anotame llamar al contador el viernes', 'agregá a mis tareas pedir el certificado de obra'],
