@@ -358,7 +358,10 @@ export const capacidad = {
       const { norm } = analizarConsulta(terminos, { tipo })
       await aprender(port, indice, { consultaNorm: norm, archivoId, usuario, eventoId })
       const a = aArchivo(e, ahora)
-      return resultadoOk(CAPACIDAD.DRIVE_BUSCAR, textoUno(a), { archivo: a, aprendido: true })
+      // Elegir de la lista tampoco cierra la conversación: después de "el segundo" alguien
+      // dice "gracias", y sin dejar la puerta abierta ese gracias vuelve a caer en el catálogo.
+      return resultadoOk(CAPACIDAD.DRIVE_BUSCAR, textoUno(a), { archivo: a, aprendido: true },
+        seguimientoDe({ ganador: a, alternativas: [], terminos, tipo, eventoId }))
     }
 
     let r

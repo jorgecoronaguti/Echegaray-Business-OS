@@ -379,6 +379,14 @@ test('CONTESTAR UN FEEDBACK NO TERMINA LA CONVERSACIÓN', async () => {
   }
 })
 
+test('elegir de la lista tampoco cierra la conversación', async () => {
+  // Después de "el segundo" alguien dice "gracias". Sin dejar la puerta abierta, ese gracias
+  // vuelve a caer en el catálogo — que es exactamente lo que se estaba arreglando.
+  const r = await correr({ terminos: 'avances de obra', archivoId: 'f-av2' })
+  assert.equal(r.ok, true)
+  assert.equal(r.seguimiento?.parcial?.feedback, true)
+})
+
 test('cerrar SÍ termina la conversación: para eso se dijo "gracias"', async () => {
   const r = await correr({ terminos: 'flujo de fondos', feedback: 'cierre', eventoId: 77 }, { port: portDe({ eventos: [EVENTO] }) })
   assert.equal(r.seguimiento, null)
