@@ -57,6 +57,7 @@ import * as BANCO from '../lib/banco-santander.mjs'
 import { TASAS, CARGO_VERIFICADO, tasaDiaria, costoConImpuestos, interesDelPeriodo } from '../lib/costo-descubierto.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { escribirPreservando, limpiarCentinela, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { CAJA as N_CAJA, publicar } from '../lib/rangos-nombrados.mjs'
 import { esIndistinguible } from '../lib/cobranzas-duplicado.mjs'
@@ -1624,6 +1625,14 @@ async function formatear(google, sheetId, g, tab) {
     req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: fd - 1, endIndex: fd }, properties: { pixelSize: 46 }, fields: 'pixelSize' } })
   }
 
+  // LA MISMA CURA QUE EN PROVEEDORES: un texto se dibuja como texto, decidido por contenido y no por
+  // rangos que hay que mantener. Acá quedaban "no, hay $68.709.996 de sobra" y el detalle de un cheque
+  // con formato de moneda. Ver lib/formato-texto-por-contenido.mjs.
+  {
+    const { requests: rTxt, celdas } = requestsTextoPorContenido(sheetId, g.filas || [])
+    req.push(...rTxt)
+    if (celdas) console.log(`  ${celdas} celda(s) de TEXTO con su formato de texto (no de plata)`)
+  }
   await google.spreadsheetBatchUpdate(ID, req)
 }
 
