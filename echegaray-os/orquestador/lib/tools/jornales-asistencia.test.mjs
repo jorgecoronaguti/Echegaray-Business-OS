@@ -211,6 +211,20 @@ test('la escritura es UNA sola operación batch con todas las celdas', async () 
   ])
 })
 
+test('la escritura se declara COMPARTIDA: JORNALES la editan personas y la firma no puede frenarla', async () => {
+  // EL BUG (30/07, en producción). `Obreros 26` no la genera el OS: la editan personas todos los días.
+  // Sin declarar la escritura como compartida, el portón comparaba la firma de toda la pestaña contra la
+  // última que selló el OS, la encontraba distinta SIEMPRE, la auto-candaba y descartaba la marcada: el
+  // jefe de obra veía "la pestaña está tomada" y la asistencia quedaba muerta para siempre.
+  // Lo que protege esta escritura no es la firma sino el control de concurrencia POR CELDA de acá arriba
+  // (relee la celda, compara la huella con la del plan y aborta todo si cambió) — más fuerte, no más
+  // débil. El candado explícito del dueño sigue frenándola: eso se prueba en guarda-escritura.test.mjs.
+  const g = fakeGoogle()
+  const { plan } = await planPara(g)
+  await registrarAsistencia(g, { plan })
+  assert.equal(g.escrituras[0].opts?.compartida, true, 'sin esta bandera la asistencia no entra nunca')
+})
+
 test('escribe NÚMEROS, no texto ni letras de asistencia', async () => {
   const g = fakeGoogle()
   const { plan } = await planPara(g)

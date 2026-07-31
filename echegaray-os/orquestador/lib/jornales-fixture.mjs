@@ -199,8 +199,10 @@ export function fakeGoogleJornales({ tabs = PESTANAS, protegido = false, alLeer,
       if (alLeer) alLeer(grid, lecturas)
       return grid
     },
-    async batchUpdateValues(id, data) {
-      escrituras.push({ id, data })
+    async batchUpdateValues(id, data, opts) {
+      // `opts` se registra porque una bandera de escritura (p.ej. `compartida`, que decide si el portón
+      // aplica la firma de pestaña) es parte del contrato del llamador, no un detalle interno.
+      escrituras.push({ id, data, opts })
       if (alEscribir) alEscribir(data)
       if (protegido) return { protegido: true, bloqueadas: ['Obreros 26'] }
       for (const d of data) {
