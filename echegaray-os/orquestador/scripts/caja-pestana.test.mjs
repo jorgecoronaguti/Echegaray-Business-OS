@@ -173,3 +173,52 @@ test('la última fila del bloque NO sirve como ancla de fecha — por eso ya no 
     'la última fila del bloque no lleva fecha: cualquier nombre anclado ahí queda apuntando a una celda vacía')
   assert.notEqual(g.fTotal, g.d1, 'el total está DEBAJO del bloque, no es su última fila')
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// UNA FÓRMULA NO PUEDE VIVIR EN LA COLUMNA DE PROSA (31/07)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// H114 quedó en #ERROR! y el generador había dicho "✓ ninguna celda en error". La celda tenía la
+// fórmula del detalle Y su explicación pegadas: `=IFERROR(TEXTJOIN(…);"") — Cheques con fecha de pago
+// dentro de la ventana…`. Eso no parsea. Y como la columna de origen es la que el localizador es-AR
+// recorre cambiando comas por punto y coma, la prosa terminó escrita "Si el banco ya los cobró; hay
+// que marcarlos": los punto y coma se comieron las comas del castellano, que era la pista de que algo
+// se estaba tratando como fórmula sin serlo.
+//
+// El invariante NO es "sin fórmulas en la columna de prosa": la fila 49 tiene un `=CONCATENATE(…)`
+// legítimo que CONSTRUYE la prosa con un número vivo, y eso es exactamente lo que se quiere. Lo que
+// no puede pasar es que haya TEXTO SUELTO DESPUÉS de que la fórmula cierra: ahí ya no hay una fórmula,
+// hay dos cosas pegadas, y Sheets no parsea ninguna.
+
+/** Saca los literales de texto de una fórmula: lo de adentro es prosa legítima y no se audita. */
+const sinLits = (s) => String(s).replace(/"(?:[^"]|"")*"/g, '«»')
+
+test('NINGUNA fórmula lleva su explicación PEGADA con " — " fuera de un literal', () => {
+  // Ésa es la firma exacta del defecto: el generador arma sus notas con `\`${algo} — ${nota}\``, y el
+  // día que ese idioma se aplicó sobre una FÓRMULA en vez de sobre un texto, la celda quedó con
+  // `=IFERROR(TEXTJOIN(…);"") — Cheques con fecha de pago…` y Sheets no pudo parsear nada.
+  //
+  // Un `—` DENTRO de comillas es prosa que la fórmula devuelve, y es correcto (la fila 49 construye su
+  // explicación con CONCATENATE). Afuera de comillas, en una fórmula, no puede haber prosa.
+  const g = construir()
+  for (const [i, fila] of (g.filas || []).entries()) {
+    for (const [j, c] of (fila || []).entries()) {
+      const s = String(c ?? '')
+      if (!s.startsWith('=')) continue
+      assert.ok(!/\s—\s/.test(sinLits(s)),
+        `fila ${i + 1} col ${j}: la fórmula tiene una explicación pegada con " — " fuera de comillas. `
+        + `La celda queda en #ERROR!, y en una columna de prosa el localizador es-AR además le cambia `
+        + `las comas del castellano por ";".\n  ${s.slice(0, 140)}`)
+    }
+  }
+})
+
+test('las filas "· cuáles son" ponen la lista en la columna E, donde el formateador le da WRAP', () => {
+  const g = construir()
+  const filas = g.filas.filter((f) => /· cuáles son/.test(String(f?.[0] ?? '')))
+  assert.ok(filas.length > 0, 'la pestaña tiene al menos un detalle accionable de conciliación')
+  for (const f of filas) {
+    assert.match(String(f[4] ?? ''), /^=/, 'la lista de cheques es una FÓRMULA y va en la columna E')
+    assert.ok(!String(f[7] ?? '').startsWith('='), 'la explicación va aparte, como texto')
+  }
+})

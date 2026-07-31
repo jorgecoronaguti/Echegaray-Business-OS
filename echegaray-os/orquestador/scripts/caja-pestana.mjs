@@ -928,7 +928,18 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
     // total no le sirve a nadie; con el número de cheque y el proveedor se resuelve en dos minutos.
     // La lista de cheques/instrumentos va a la columna de origen (col H), que reparar-textos manda a
     // la NOTA de la celda: el detalle accionable queda a un hover, sin un muro de texto en la vista.
-    if (gr.detalle) push(['   · cuáles son', '', '', '', '', '', '', `${gr.detalle()}${gr.detalleNota ? ` — ${gr.detalleNota}` : ''}`])
+    // LA FÓRMULA VA EN UNA COLUMNA DE DATO; LA EXPLICACIÓN, EN LA DE ORIGEN (31/07).
+    //
+    // Estaban las dos pegadas en la MISMA celda de la columna H —`=IFERROR(TEXTJOIN(…);"") — Cheques
+    // con fecha de pago…`— y eso no es una fórmula: Sheets no lo puede parsear y la celda quedaba en
+    // #ERROR!. Encima H es la columna de prosa, que el localizador es-AR recorre cambiando comas por
+    // punto y coma: la nota terminó escrita "Si el banco ya los cobró; hay que marcarlos", con los
+    // punto y coma comiéndose las comas del castellano. La pista de que algo se estaba tratando como
+    // fórmula cuando era texto.
+    //
+    // Y el formateador YA esperaba la lista en la columna E (ver el bloque de `· cuáles son` más
+    // abajo, que le pone WRAP a esa columna): el push y el formato se contradecían.
+    if (gr.detalle) push(['   · cuáles son', '', '', '', gr.detalle(), '', '', gr.detalleNota || ''])
   }
   const n1 = filas.length
   push(['⇒ TOTAL QUE SALIÓ DE LA CUENTA', '', `=SUM(${C_IMP}${n0}:${C_IMP}${n1})`, '', '', '', '',
