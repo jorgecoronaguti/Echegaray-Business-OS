@@ -17,7 +17,6 @@
 // Es idempotente: si no cambió nada, reescribe lo mismo. No toca ninguna fórmula ni Compras.
 
 import { cargasSocialesDeclaradas } from './cargas-sociales.mjs'
-import { formulaSePagaEl } from './jornales-fecha-pago.mjs'
 
 /**
  * NÚCLEO PURO: detecta los bloques de quincena en la grilla del espejo de jornales.
@@ -49,6 +48,13 @@ export function detectarQuincenas(filas = []) {
  * Antes devolvía 7 columnas de un layout anterior. Nunca se notó porque sólo escribe cuando algo
  * cambia y nada había cambiado — pero la primera quincena nueva habría reescrito el cuadro con las
  * columnas corridas. Un agente que "no escribe todavía" no está probado: está esperando.
+ *
+ * NO EMITE "Se paga el" A PROPÓSITO. Esa columna la INTERCALA `jornales-pestana.mjs` después de Hasta
+ * (es su único consumidor), porque tiene que preservar una fecha que el dueño haya escrito a mano y eso
+ * requiere leer la pestaña. Si esta función también la emitiera, la columna saldría DOS VECES y todo el
+ * registro quedaría corrido una a la derecha respecto de su encabezado — medido en el dry del 31/07.
+ * Las fórmulas de acá SÍ referencian el layout final (D = días hábiles, E = personas), que ya cuenta
+ * con la columna intercalada.
  *
  * @param {Array} bloques salida de detectarQuincenas
  * @param {number} filaInicio primera fila del cuerpo en la pestaña (las fórmulas se autorreferencian)
@@ -85,11 +91,6 @@ export function filasQuincenas(bloques, filaInicio = 6, hoja = '_J_OBREROS') {
       // día está en la posición 14 → la celda quedaba VACÍA. Hay que buscar la POSICIÓN del último
       // no vacío, no contar cuántos hay.
       { f: `=IFERROR(INDEX(${H}!F${ff}:U${ff},SUMPRODUCT(MAX((${H}!F${ff}:U${ff}<>"")*(COLUMN(${H}!F${ff}:U${ff})-COLUMN(${H}!F${ff})+1)))),"")` },
-      // SE PAGA EL — la fecha que decide en qué mes y en qué semana cae la quincena (31/07). Sale del
-      // lote de "Pago haberes" del extracto cuando el banco ya lo probó, y si no, del desfase que vive
-      // en Parámetros. NO es el cierre: el extracto muestra que la quincena que cerró el 15/07 se pagó
-      // el 17/07 y la que cerró el 30/06 se pagó el 01/07.
-      { f: formulaSePagaEl(`B${r}`), estilo: 'fecha' },
       { f: `=COUNTA(${H}!F${ff}:U${ff})` },
       { f: `=COUNT(${H}!A${b.inicio}:A${b.fin})` },
       // D = días hábiles, E = personas. Eran C y D hasta el 31/07: entró "Se paga el" en la columna C
