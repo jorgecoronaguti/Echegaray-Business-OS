@@ -474,8 +474,29 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   }
   const TRAMOS = BORDES
 
+  /**
+   * Las cobranzas ESPERADAS de un tramo: todo lo que Cobranzas no marca como cobrado ni endosado, por su
+   * fecha de cobro. Mismo criterio que la línea "Cobranzas esperadas" del cash flow —una sola definición
+   * de "esperado" en el archivo— y mismos bordes que el lado que sale, así que nada cae en dos tramos.
+   *
+   * ISNUMBER sobre la fecha, SIEMPRE: una fecha guardada como TEXTO compara como mayor que cualquier
+   * número y el mismo cobro entraría en varios tramos. Es el defecto que ya costó $657.000 del lado de
+   * los cheques.
+   */
+  function cobranzasEsperadasTramo(desde, hasta) {
+    const F = 400
+    const est = `LOWER(Cobranzas!$O$5:$O$${F})`
+    const fecha = `Cobranzas!$Q$5:$Q$${F}`
+    const monto = `IF(ISNUMBER(Cobranzas!$M$5:$M$${F});Cobranzas!$M$5:$M$${F};0)`
+    const cond = [`(${est}<>"cobrado")`, `(${est}<>"endosado")`, `ISNUMBER(${fecha})`]
+    if (desde) cond.push(`(${fecha}>=${desde})`)
+    if (hasta) cond.push(`(${fecha}<${hasta})`)
+    else if (!desde) cond.push(`(${fecha}<TODAY())`)   // el tramo "Vencido": fecha de cobro ya pasada
+    return `SUMPRODUCT(${cond.join('*')}*${monto})`
+  }
+
   push(['Tramo', '', 'Entra', 'Sale', 'Neto del tramo', 'Queda después', 'Fin del tramo',
-    'Entra: valores en cartera por su fecha de acreditación (detalle en 4.1). Sale: cheques emitidos no debitados por su fecha de pago, MÁS los jornales cerrados sin pagar y los proyectados, por su fecha de pago. Una quincena sale del calendario cuando le escribís la fecha en "Pagado el": ahí su salida ya está en el extracto.', ''])
+    'Entra: valores en cartera por su fecha de acreditación (detalle en 4.1) MÁS las cobranzas esperadas de Cobranzas (todo lo que no está cobrado ni endosado, por su fecha de cobro). Sale: cheques emitidos no debitados por su fecha de pago, MÁS los jornales cerrados sin pagar y los proyectados, por su fecha de pago. Una quincena sale del calendario cuando le escribís la fecha en "Pagado el": ahí su salida ya está en el extracto.', ''])
   const cal0 = filas.length + 1
   TRAMOS.forEach(([rotulo], k) => {
     const f = cal0 + k
@@ -1013,8 +1034,25 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
     // CELDAS FIJAS: con un solo cheque en cartera funcionaba de casualidad, y con dos el segundo no
     // caía en ningún tramo — el piso proyectado de caja quedaba mal sin que se rompiera ninguna suma.
     // Los bordes son los MISMOS que usa el lado que sale, así que ningún valor cae en dos tramos.
+    // ═══ LO QUE ENTRA TAMBIÉN INCLUYE LAS COBRANZAS ESPERADAS (31/07) ═══
+    //
+    // El dueño: "la pestaña caja esta mal deben haber valores q se estan tomando duplicado o mal o no
+    // considerados esos de 727k no es real". Y el problema era NO CONSIDERADOS, del lado del ingreso.
+    //
+    // El calendario proyectaba la nómina hasta diciembre del lado que SALE ($69,3M en "Más adelante") y
+    // del lado que ENTRA sólo miraba la cartera de cheques recibidos ($10,29M). Con la proyección de
+    // egresos completa y la de ingresos vacía, el "piso proyectado de caja" daba $727.278 — un número
+    // que no es un piso: es "si no entra nada más en cinco meses".
+    //
+    // Ahora entra también lo ESPERADO de Cobranzas, con el MISMO criterio que el cash flow: todo lo que
+    // no está "cobrado" ni "endosado", por su fecha de cobro. No es optimismo: es simetría. Proyectar un
+    // lado y no el otro no es prudencia, es un cuadro desbalanceado que asusta con un número falso.
+    //
+    // Lo COBRADO no entra: ya está en el saldo del banco. Lo endosado tampoco: esa plata se le entregó a
+    // un tercero. Las dos exclusiones son las que evitan contar dos veces.
     ...Object.fromEntries(TRAMOS.map((_, k) => [`@ENTRA${k}`,
-      formulaCarteraTramo(k === 0 ? null : BORDES[k - 1][1], BORDES[k][1] || null)])),
+      `${formulaCarteraTramo(k === 0 ? null : BORDES[k - 1][1], BORDES[k][1] || null)}`
+        + `+${cobranzasEsperadasTramo(k === 0 ? null : BORDES[k - 1][1], BORDES[k][1] || null)}`])),
     // El canario compara el detalle (filas escritas) contra la réplica (la fuente), y el total del
     // calendario contra el total: un valor sin fecha de pago no cae en ningún tramo y se perdería.
     '@CANARIO': formulaCanarioDetalle(cust1 >= cust0 ? cust1 - cust0 + 1 : 0,

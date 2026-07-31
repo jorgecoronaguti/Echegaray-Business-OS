@@ -215,7 +215,7 @@ export function esFechaAMano(v) {
  * `pagoPrevio` es la columna C tal como está hoy en la pestaña (render FORMULA), para no pisar una
  * fecha de pago escrita a mano.
  */
-function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [] }) {
+function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [], ultimoDiaOfi = null }) {
   const filas = []
   /**
    * La celda "Se paga el" de la fila `r`: mi fórmula, o vacío para que la fusión preserve la fecha que
@@ -341,6 +341,19 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [] }
   // 16/06–30/06, un mes detrás del de obra. No se rellena el hueco con una estimación disfrazada de
   // dato: las quincenas sin cargar entran en la proyección, rotuladas como lo que son.
   push([seccion(2, 'Oficina — sueldos, mes por mes hasta fin de año')])
+  // ═══ EL HUECO SE DECLARA, NO SE DEJA EN BLANCO (31/07) ═══
+  //
+  // El dueño: "esta sin atender el cuadro de jornales de oficina, dato q se obtiene del sheet jornales".
+  // Verificado: la pestaña "Oficina 26" de la planilla JORNALES —la fuente— termina el 30/06. Julio no
+  // está cargado ahí, así que el OS no tiene de dónde sacarlo: la celda "Pagado" de julio va vacía
+  // porque el dato NO EXISTE, no porque el cuadro esté roto.
+  //
+  // Pero una celda vacía sin explicación se lee como un error. Se dice en la pestaña hasta qué día llega
+  // la planilla y desde qué mes lo que se ve es PROYECCIÓN. Es la regla del archivo: nunca ocultar un
+  // gap, nunca presentar una proyección como un hecho.
+  push([ultimoDiaOfi
+    ? `   · la planilla de Oficina llega al ${fecha(ultimoDiaOfi)} — de ahí en adelante es PROYECCIÓN sobre el último mes pagado, ajustada por inflación. No es un dato: cargá el mes en la planilla y aparece solo.`
+    : '   · la planilla de Oficina no tiene ningún mes cargado: todo lo de abajo es proyección.'])
   // "Proyectado" va en la MISMA columna que el "Proyectado" de la proyección de obra (H): dos totales
   // del mismo concepto en columnas distintas se leen como dos conceptos distintos.
   push(['Mes', 'Personas', 'Pagado', VACIO, VACIO, VACIO, 'Ajuste inflación', 'Proyectado'])
@@ -358,7 +371,8 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [] }
     // sueldos fijos: no hay horas ni jornal que modelar, y estimarlo por hora sería inventar una
     // precisión que no existe. La base y el ajuste se ven los dos en pantalla.
     const ajuste = bs.length ? VACIO : `=IFERROR(INDEX('Parámetros'!$C$74:$C$90;MATCH(EOMONTH(DATE(${AÑO};${i + 1};1);0);EOMONTH('Parámetros'!$A$74:$A$90;0);0));1)`
-    push([nombre, personas, pagado, VACIO, VACIO, VACIO, ajuste,
+    // La palabra en la fila: cada mes sin cargar dice que es proyección, ahí donde se lo lee.
+    push([nombre, personas, pagado, bs.length ? VACIO : 'proyección', VACIO, VACIO, ajuste,
       bs.length ? VACIO : `=$B$${0}*G${r}`]) // la base se completa abajo, cuando se sabe su fila
   })
   const oFin = o0 + MESES.length - 1
@@ -582,7 +596,7 @@ async function main() {
   const colC = await google.readSheetValues(ID, `'${PESTAÑA}'!C1:C400`, { render: 'FORMULA' }).catch(() => [])
   colC.forEach((f, i) => { pagoPrevio[i] = f?.[0] })
 
-  const g = grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio })
+  const g = grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio, ultimoDiaOfi })
   console.log(`grilla: ${g.filas.length} filas × ${ANCHO} columnas`)
   const aMano = g.filas.filter((f) => f[2] === '').length
   if (aMano) console.log(`  ✋ ${aMano} fecha(s) de pago escrita(s) a mano: no las toco`)

@@ -300,3 +300,21 @@ test('ANTES DEL CORTE MANDA EL BANCO: las quincenas viejas sin marcar NO son deu
       'sólo entra la nómina cuyo pago cae en o después del corte del extracto')
   }
 })
+
+test('EL CALENDARIO PROYECTA LOS DOS LADOS, o su piso es falso', () => {
+  // El dueño: "esos de 727k no es real". El calendario proyectaba la nómina hasta diciembre del lado que
+  // SALE y del lado que ENTRA sólo miraba la cartera de cheques. Proyectar un lado y no el otro no es
+  // prudencia: es un cuadro desbalanceado que asusta con un número que no es un piso.
+  const g = construir()
+  for (const f of g.filas.slice(g.cal0 - 1, g.cal0 - 1 + 6)) {
+    const entra = String(f[2] ?? '')
+    assert.match(entra, /Cobranzas!\$O\$5/, 'el tramo mira el estado de Cobranzas')
+    assert.match(entra, /Cobranzas!\$Q\$5/, 'y la fecha de cobro')
+    assert.match(entra, /_CHEQUES_RAW/, 'sin perder la cartera, que ya estaba')
+    // Lo COBRADO no entra (ya está en el banco) y lo ENDOSADO tampoco (se le dio a un tercero).
+    assert.match(entra, /<>"cobrado"/)
+    assert.match(entra, /<>"endosado"/)
+    // ISNUMBER sobre la fecha: una fecha como TEXTO caería en varios tramos.
+    assert.match(entra, /ISNUMBER\(Cobranzas!\$Q\$5/)
+  }
+})
