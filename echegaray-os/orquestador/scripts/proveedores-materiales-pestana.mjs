@@ -1386,7 +1386,22 @@ async function main() {
       // La grafía que se guarda es la que él usa hoy en Compras.
       const grafia = new Map(deudaAgrupada.map((gp) => [claveProv(gp.nombre), gp.nombre]))
       if (guardar.length) { await guardarNotas(ID, guardar.map((x) => ({ ...x, proveedor: grafia.get(x.clave) ?? x.clave }))); console.log(`  📓 respaldo de notas: ${guardar.length} guardada(s)`) }
-      if (borrar.length) { await borrarNotas(ID, borrar); console.log(`  🗑 respaldo de notas: ${borrar.length} borrada(s) porque las borraste a mano (${borrar.join(', ')})`) }
+      // ═══ EL BORRADO AUTOMÁTICO ESTÁ APAGADO (31/07) ═══
+      //
+      // La conciliación borró 10 de las 14 notas del dueño en una corrida del pipeline: leyó "celda
+      // vacía" donde las notas SÍ estaban en la pestaña (11 visibles), así que el discriminador falló y
+      // el mecanismo destruyó dato suyo. No pude reproducirlo en el momento, y un mecanismo que borra
+      // trabajo del dueño y no se puede verificar NO PUEDE ESTAR ACTIVO: se reporta y no se ejecuta.
+      //
+      // Con --borrar-notas se ejecuta, para cuando se pueda probar en frío qué lo disparó.
+      if (borrar.length) {
+        if (process.argv.includes('--borrar-notas')) {
+          await borrarNotas(ID, borrar)
+          console.log(`  🗑 respaldo de notas: ${borrar.length} borrada(s) por --borrar-notas (${borrar.join(', ')})`)
+        } else {
+          console.log(`  ⚠ la conciliación cree que borraste ${borrar.length} nota(s) (${borrar.join(', ')}) — NO las borro: este discriminador ya destruyó 10 notas tuyas una vez. Con --borrar-notas se aplica.`)
+        }
+      }
       if (g.notasPuestas?.size) { await marcarEscritas(ID, [...g.notasPuestas]); console.log(`  📓 ${g.notasPuestas.size} nota(s) devueltas desde el respaldo a su proveedor`) }
     }
   } catch (e) { console.warn(`  ⚠ no pude conciliar el respaldo de notas: ${e.message}`) }

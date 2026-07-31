@@ -6,6 +6,7 @@
 // perdió así de verdad, y la de Hormiserv sobrevivió por casualidad en una fila huérfana.
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { claveProv, conciliarNotas, yaEscritas } from './proveedor-notas.mjs'
 
 test('la clave normaliza tildes, mayúsculas y espacios de más', () => {
@@ -76,4 +77,17 @@ test('EL BORRADO REAL exige las tres condiciones: en la lista, vacía, y escrita
   assert.deepEqual(conciliarNotas(new Map([['p', '']]), base, new Set(), new Set(['p'])).borrar, [], 'no está en la lista')
   assert.deepEqual(conciliarNotas(new Map([['p', '']]), base, new Set(['p']), new Set()).borrar, [], 'nunca la escribí')
   assert.deepEqual(conciliarNotas(new Map([['p', 'sigue ahí']]), base, new Set(['p']), new Set(['p'])).borrar, [], 'no está vacía')
+})
+
+test('EL BORRADO NO SE EJECUTA SOLO — el discriminador ya falló una vez', () => {
+  // La conciliación borró 10 de las 14 notas del dueño en una corrida del pipeline, leyendo "celda
+  // vacía" donde las notas SÍ estaban en la pestaña. `conciliarNotas` sigue CALCULANDO el borrado
+  // —es información— pero el generador no lo aplica sin la bandera. Un mecanismo que destruye dato del
+  // dueño y no se puede reproducir no puede estar activo.
+  const src = readFileSync(new URL('../scripts/proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  assert.match(src, /process\.argv\.includes\('--borrar-notas'\)/, 'el borrado exige una bandera explícita')
+  assert.match(src, /NO las borro/, 'y si no está, lo dice en vez de ejecutarlo')
+  // El núcleo sigue siendo puro y sigue reportando: apagar la ejecución no es apagar la detección.
+  const enBase = new Map([['x', { proveedor: 'X', nota: 'algo', escritaEn: new Date() }]])
+  assert.deepEqual(conciliarNotas(new Map([['x', '']]), enBase, new Set(['x']), new Set(['x'])).borrar, ['x'])
 })
