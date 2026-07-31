@@ -55,7 +55,7 @@ export async function comunicacionResponderHandler(task, ctx) {
       texto: inp.comando,
       intencion: ruta.intencion,
       port,
-      google: ctx.google ?? googleDelOs({ config: ctx.config }),
+      google: ctx.google ?? googleDelOs({ config: ctx.config, log: ctx.logger }),
       actor,
       correlationId: inp.correlation_id,
       // El mensaje que originó el pedido. Viaja porque es la CLAVE DE IDEMPOTENCIA del
