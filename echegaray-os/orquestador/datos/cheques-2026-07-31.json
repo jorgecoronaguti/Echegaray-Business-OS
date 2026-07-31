@@ -1,0 +1,163 @@
+{
+  "_fuente": "Santander Empresas · Resumen de Operaciones y eCheqs (PDF del 31/07/2026)",
+  "_corte": "2026-07-31",
+  "_lo_que_dice_el_documento": {
+    "historial": [
+      {
+        "id": 8213450,
+        "tipo": "Rescate",
+        "cant": 2,
+        "fecha": "31/07/26",
+        "importe": 10290000
+      },
+      {
+        "id": 8188891,
+        "tipo": "Emisión",
+        "cant": 1,
+        "fecha": "30/07/26",
+        "importe": 1306000
+      },
+      {
+        "id": 8188889,
+        "tipo": "Emisión",
+        "cant": 1,
+        "fecha": "30/07/26",
+        "importe": 16649000
+      },
+      {
+        "id": 8188888,
+        "tipo": "Emisión",
+        "cant": 1,
+        "fecha": "30/07/26",
+        "importe": 1839200
+      },
+      {
+        "id": 8188887,
+        "tipo": "Emisión",
+        "cant": 1,
+        "fecha": "30/07/26",
+        "importe": 837210
+      },
+      {
+        "id": 8188886,
+        "tipo": "Emisión",
+        "cant": 1,
+        "fecha": "30/07/26",
+        "importe": 14982000
+      },
+      {
+        "id": 8116232,
+        "tipo": "Depósito",
+        "cant": 1,
+        "fecha": "28/07/26",
+        "importe": 5176500
+      },
+      {
+        "id": 8116231,
+        "tipo": "Depósito",
+        "cant": 1,
+        "fecha": "28/07/26",
+        "importe": 4632663.5
+      },
+      {
+        "id": 8116230,
+        "tipo": "Depósito",
+        "cant": 1,
+        "fecha": "28/07/26",
+        "importe": 4632663.5
+      }
+    ],
+    "_leido_asi": [
+      "El HISTORIAL registra OPERACIONES, no cheques: no se suma. Sirve para saber QUÉ pasó y CUÁNDO, y para cruzar.",
+      "Los 3 Depósitos del 28/07 son los cheques de la O/P 4865 de Messina que ya están en la base como Depositado; el banco los acreditó el 29/07 en un solo crédito de $16.807.425,92 (= los 5 cheques de la orden).",
+      "El Rescate del 31/07 (2 cheques por $10.290.000) es exactamente la cartera en custodia: #00000514 Mineral Del Rio $290.000 + #90020099 Alimentos Del Sur $10.000.000, las dos con fecha de pago 31/07.",
+      "Las 5 Emisiones del 30/07 suman $35.613.410. El listado de emitidos vigentes identifica CUATRO por número; la de $1.306.000 no aparece con número en el extracto del listado y por eso NO se carga: la clave del cheque es (tipo, banco, número) y un número inventado es peor que un cheque faltante."
+    ]
+  },
+  "cheques": [
+    {
+      "tipo": "emitido",
+      "numero": "00000367",
+      "banco": "Santander",
+      "contraparte": "ALUMETAL S.A",
+      "contraparte_cuit": "30567363372",
+      "fecha_pago": "2026-08-05",
+      "importe": 14982000,
+      "estado": "Aceptado",
+      "cuenta": "CC - 00000913836",
+      "origen": "Santander Empresas · Resumen de Operaciones y eCheqs (PDF 31/07/2026) · emitido el 30/07 (op. 8188886)",
+      "corte": "2026-07-31"
+    },
+    {
+      "tipo": "emitido",
+      "numero": "00000370",
+      "banco": "Santander",
+      "contraparte": "ALUMETAL S.A",
+      "contraparte_cuit": "30567363372",
+      "fecha_pago": "2026-08-05",
+      "importe": 16649000,
+      "estado": "Aceptado",
+      "cuenta": "CC - 00000913836",
+      "origen": "Santander Empresas · Resumen de Operaciones y eCheqs (PDF 31/07/2026) · emitido el 30/07 (op. 8188889)",
+      "corte": "2026-07-31"
+    },
+    {
+      "tipo": "emitido",
+      "numero": "00000368",
+      "banco": "Santander",
+      "contraparte": "ALUMETAL S.A",
+      "contraparte_cuit": "30567363372",
+      "fecha_pago": "2026-08-30",
+      "importe": 837210,
+      "estado": "Aceptado",
+      "cuenta": "CC - 00000913836",
+      "origen": "Santander Empresas · Resumen de Operaciones y eCheqs (PDF 31/07/2026) · emitido el 30/07 (op. 8188887)",
+      "corte": "2026-07-31"
+    },
+    {
+      "tipo": "emitido",
+      "numero": "00000369",
+      "banco": "Santander",
+      "contraparte": "FEMENIA CONSTRUCCIONES",
+      "contraparte_cuit": null,
+      "fecha_pago": "2026-08-30",
+      "importe": 1839200,
+      "estado": "Aceptado",
+      "cuenta": "CC - 00000913836",
+      "origen": "Santander Empresas · Resumen de Operaciones y eCheqs (PDF 31/07/2026) · emitido el 30/07 (op. 8188888)",
+      "corte": "2026-07-31"
+    },
+    {
+      "tipo": "recibido",
+      "numero": "00000514",
+      "banco": "Santander",
+      "librador": "Mineral Del Rio SA",
+      "librador_cuit": "33710848659",
+      "contraparte": "Manufacturas Quimicas Juan Messina SA",
+      "contraparte_cuit": "30620311703",
+      "caracter": "A la orden",
+      "fecha_pago": "2026-07-31",
+      "importe": 290000,
+      "estado": "En custodia",
+      "origen": "Santander Empresas · Resumen de Operaciones y eCheqs (PDF 31/07/2026) · rescatado de custodia el 31/07 (op. 8213450), crédito en la cuenta todavía NO confirmado por el extracto",
+      "corte": "2026-07-31"
+    },
+    {
+      "tipo": "recibido",
+      "numero": "90020099",
+      "banco": "Santander",
+      "librador": "Alimentos Del Sur SA",
+      "librador_cuit": "30716490498",
+      "contraparte": "Alimentos Del Sur SA",
+      "contraparte_cuit": "30716490498",
+      "caracter": "A la orden",
+      "fecha_pago": "2026-07-31",
+      "importe": 10000000,
+      "estado": "En custodia",
+      "origen": "Santander Empresas · Resumen de Operaciones y eCheqs (PDF 31/07/2026) · rescatado de custodia el 31/07 (op. 8213450), crédito en la cuenta todavía NO confirmado por el extracto",
+      "corte": "2026-07-31"
+    }
+  ],
+  "_por_que_las_dos_recibidas_siguen_EN_CUSTODIA": "Porque la plata todavía no está en la cuenta. El extracto del 31/07 (descarga 09:12) llega hasta un saldo de $87.913.839,27 y NO tiene ningún crédito por $10.290.000. Un valor que sale de la cartera antes de que el banco lo acredite desaparece de los dos lados: no está en 'Valores a depositar' y no está en el saldo. Se mantiene contado hasta que el extracto lo confirme, y ese cruce es el control.",
+  "_gap_declarado": "eCheq emitido el 30/07 por $1.306.000 (operación 8188891): el resumen no expone su número ni su beneficiario. Falta cargarlo. Se necesita la pantalla de eCheqs emitidos completa (no el extracto) o el detalle de esa operación."
+}
