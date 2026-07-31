@@ -271,6 +271,115 @@ test('el validador de contrato detecta lo que Mattermost rompe en silencio', () 
   assert.match(validarDialogo(largo).fallas.join(' '), /tope de Mattermost es 5/)
 })
 
+// ── EL ID DE LA ACCIÓN ES PARTE DE LA URL ───────────────────────────────────────
+//
+// Al apretar un botón, el cliente llama a POST /api/v4/posts/{post_id}/actions/{action_id}
+// y el router de Mattermost sólo matchea ids ALFANUMÉRICOS en ese segmento. Un id con
+// guión bajo ("fecha_hoy") no llega nunca al servidor: Mattermost devuelve su 404 de router
+// ("Sorry, we could not find the page") y el botón queda muerto sin una sola línea de log
+// nuestra. Verificado contra el Mattermost real, mismo post y mismo token:
+//   · id=obra          (alfanumérico, existe)    → 200 {"status":"OK"}
+//   · id=noexisteaqui  (alfanumérico, no existe) → 404 api.post.do_action.action_id.app_error
+//   · id=fecha_hoy     (guión bajo)              → 404 api.context.404.app_error  ← ni matcheó
+//   · id=fecha-hoy     (guión medio)             → 404 api.context.404.app_error  ← ni matcheó
+//
+// El ruteo del servidor se hace por `context.paso`, NO por el id: el id sólo tiene que
+// sobrevivir a la URL.
+
+/** Lo único que el router de Mattermost acepta en el segmento {action_id}. */
+const ID_ACCION = /^[A-Za-z0-9]+$/
+
+/** Todos los mensajes reales que produce el módulo, con nombre para que la falla diga cuál. */
+const todosLosMensajes = () => [
+  ['inicial', mensajeInicial({ fecha: '2026-07-30', obras: OBRAS, jornada: JORNADA, url: URL })],
+  ['inicial sin obras', mensajeInicial({ fecha: '2026-07-26', obras: [], jornada: JORNADA, url: URL })],
+  ['cuadrilla', mensajeCuadrilla({
+    fecha: '2026-07-30', obra: { clave: 'x', nombre: 'JAVIER SANCHEZ · Revoque' }, jornada: JORNADA,
+    personal: CUADRILLA, marcas: {}, url: URL,
+    resumen: { presentes: 3, ausentes: 0, horas: 27, extra: 0 },
+  })],
+  ['cuadrilla a confirmar', mensajeCuadrilla({
+    fecha: '2026-07-30', obra: { nombre: 'Revoque' }, jornada: JORNADA, personal: CUADRILLA,
+    marcas: {}, url: URL, resumen: { presentes: 3, ausentes: 0, horas: 27, extra: 0 },
+    confirmacion: { texto: 'Se pisan 2 cargas.' }, aviso: 'Se pisan 2 cargas.',
+  })],
+  ['cuadrilla toda bloqueada', mensajeCuadrilla({
+    fecha: '2026-07-30', obra: { nombre: 'Revoque' }, jornada: JORNADA, marcas: {}, url: URL,
+    personal: CUADRILLA.map((p) => ({ ...p, bloqueado: 'escrito a mano', sin_cambio: true })),
+    resumen: { presentes: 0, ausentes: 0, horas: 0, extra: 0, bloqueadas: 3 },
+  })],
+  ['confirmado', mensajeConfirmado({
+    resumen: { presentes: 3, ausentes: 0, horas_total: 27, horas_extra: 0 },
+    celdas: [{ celda: 'Obreros 26!R21', nombre: 'Aguero Cristian', horas: 9, normales: 9, extra: 0 }],
+    actor: { username: 'jefe.obra' }, fecha: '2026-07-30', obra: { nombre: 'Revoque' },
+    pestana: 'Obreros 26', columna: 'R',
+  })],
+  ['cancelado', mensajeCancelado()],
+]
+
+test('toda acción de todo mensaje lleva un id alfanumérico: con guión bajo el router de Mattermost tira 404 y el botón no hace nada', () => {
+  let total = 0
+  for (const [cual, msg] of todosLosMensajes()) {
+    valido(msg)
+    for (const a of acciones(msg)) {
+      total += 1
+      assert.match(a.id, ID_ACCION,
+        `${cual}: el id «${a.id}» no entra en /posts/{id}/actions/{action_id} — el click muere en el router`)
+    }
+  }
+  assert.ok(total >= 6, `el barrido tiene que ver acciones reales, vio ${total}`)
+})
+
+test('los tres botones de fecha apuntan al endpoint de acciones con el paso y el valor que rutea el servidor', () => {
+  const msg = valido(mensajeInicial({ fecha: '2026-07-30', obras: OBRAS, jornada: JORNADA, url: URL }))
+  for (const [nombre, valor] of [['Hoy', 'hoy'], ['Ayer', 'ayer'], ['Otra fecha…', 'otra']]) {
+    const a = acciones(msg).find((x) => x.name === nombre)
+    assert.ok(a, `falta el botón ${nombre}`)
+    assert.equal(a.type, 'button', `${nombre}: tiene que ser un botón`)
+    assert.equal(a.integration.url, URL, `${nombre}: apunta a otra URL que la de acciones`)
+    assert.equal(a.integration.context.paso, 'fecha', `${nombre}: el servidor rutea por context.paso`)
+    assert.equal(a.integration.context.valor, valor, `${nombre}: valor equivocado`)
+    assert.match(a.id, ID_ACCION, `${nombre}: id «${a.id}» inalcanzable por la ruta de Mattermost`)
+  }
+})
+
+test('ningún mensaje arrastra la interfaz web eliminada: la única URL es la del endpoint de acciones', () => {
+  const rastros = [/\/asistencia\/pantalla/, /sesion-web/, /enlace/i, /token=/, /\?t=/]
+  for (const [cual, msg] of todosLosMensajes()) {
+    const json = JSON.stringify(msg)
+    for (const r of rastros) assert.doesNotMatch(json, r, `${cual}: rastro de la pantalla web rechazada`)
+    for (const u of json.match(/https?:\/\/[^"\s\\]+/g) ?? []) {
+      assert.ok(u.endsWith('/asistencia/accion'), `${cual}: URL que no es el endpoint de acciones: ${u}`)
+    }
+  }
+})
+
+/** Un mensaje mínimo y válido salvo por el id, para probar el candado en los dos sentidos. */
+const mensajeConId = (id) => ({
+  message: '',
+  props: {
+    attachments: [{
+      fallback: 'Asistencia',
+      actions: [{
+        id, name: 'Hoy', type: 'button',
+        integration: { url: URL, context: { paso: 'fecha', valor: 'hoy' } },
+      }],
+    }],
+  },
+})
+
+test('el contrato rechaza un id no alfanumérico: es el candado que impide volver a publicar un botón muerto', () => {
+  for (const malo of ['fecha_hoy', 'fecha-hoy', 'Fecha Hoy', 'fecha.hoy']) {
+    const r = validarMensaje(mensajeConId(malo))
+    assert.equal(r.ok, false, `«${malo}» tendría que rechazarse antes de publicarse`)
+    assert.match(r.fallas.join(' | '), /id/, `«${malo}»: la falla tiene que nombrar el id`)
+  }
+  for (const bueno of ['fechahoy', 'fechaayer', 'fechaotra', 'obra', 'excepcion', 'registrar', 'cancelar']) {
+    const r = validarMensaje(mensajeConId(bueno))
+    assert.equal(r.ok, true, `«${bueno}» es alfanumérico y tiene que pasar: ${r.fallas.join(' | ')}`)
+  }
+})
+
 test('nada de asteriscos en el texto: Mattermost le aplica la conversión de Slack', () => {
   const msgs = [
     mensajeInicial({ fecha: '2026-07-30', obras: OBRAS, jornada: JORNADA, url: URL }),
