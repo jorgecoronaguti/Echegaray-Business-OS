@@ -34,9 +34,11 @@ import {
 } from './operaciones.mjs'
 import { fechaDeDialogo, leerEstado, novedadDeDialogo } from './dialogos.mjs'
 
+// Un paso existe si y sólo si está en el mapa de rutas de abajo: un botón que emite un paso
+// sin ruta cae en "acción desconocida" y el jefe de obra se come un error mudo.
 export const PASO = Object.freeze({
   FECHA: 'fecha', OBRA: 'obra', EXCEPCION: 'excepcion',
-  APLICAR: 'aplicar', REGISTRAR: 'registrar', CANCELAR: 'cancelar',
+  REGISTRAR: 'registrar', CANCELAR: 'cancelar',
 })
 
 /** Diálogos: el `callback_id` es lo que dice de qué formulario vuelve la respuesta. */
