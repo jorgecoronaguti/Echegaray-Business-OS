@@ -6,14 +6,15 @@
 // https://chat.ecsas.com.ar contra este proceso en el host. Ver `infra/mattermost/caddy/Caddyfile`.
 //
 // Este proceso NO razona: no carga anthropic.env, no invoca ningún modelo, y no tiene por qué.
-// Reparte enlaces firmados y sirve una pantalla. Igual que el consumidor WebSocket, tiene que
-// poder seguir funcionando un día sin crédito de API.
+// Atiende dos rutas y responde JSON. Igual que el consumidor WebSocket, tiene que poder
+// seguir funcionando un día sin crédito de API.
 //
 // Responsabilidades (y sólo estas):
 //   · leer el body con LÍMITE de tamaño y TIMEOUT (nadie deja una conexión colgada)
 //   · extraer la IP real detrás del proxy (X-Forwarded-For lo setea Caddy)
 //   · rutear `/asistencia/comando` al manejador del slash command
-//   · delegar todo el resto de `/asistencia*` al PUNTO DE MONTAJE de la pantalla
+//   · rutear `/asistencia/accion` al manejador de los clicks y los diálogos
+//   · responder 404 a todo lo demás — no hay pantalla: la interfaz vive dentro de Mattermost
 //   · responder errores sin stacks y en castellano
 //   · apagarse limpio con SIGTERM
 //
@@ -143,7 +144,8 @@ export function ipReal(req) {
   return req?.socket?.remoteAddress ?? null
 }
 
-/** Ruta sin query string. El token viaja en `?t=`: no forma parte del ruteo. */
+/** Ruta sin query string. El SECRETO DE LA INTEGRACIÓN viaja en `?t=`: lo verifica el
+ *  manejador de acciones, no forma parte del ruteo. */
 export function soloRuta(url) {
   const u = String(url ?? '/')
   const q = u.indexOf('?')

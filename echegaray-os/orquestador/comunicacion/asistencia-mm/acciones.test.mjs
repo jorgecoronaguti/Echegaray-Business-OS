@@ -508,3 +508,20 @@ test('los botones de un mensaje viejo no manejan el formulario nuevo', async () 
   const ev = e.eventos.filter((x) => String(x.evento).endsWith('denied'))
   assert.equal(ev.at(-1)?.datos?.error_code, 'post_viejo', 'y queda auditado con su motivo')
 })
+
+test('un mensaje fuera del contrato de Mattermost deja rastro en el log', async () => {
+  // `validarMensaje` es quien conoce el alfabeto de los `action_id` — el defecto que dejó
+  // los botones de fecha en «Sorry, we could not find the page» — y durante todo el módulo
+  // corrió SÓLO dentro de los tests. Un validador que sólo corre en los tests no defiende.
+  const fallas = []
+  const e = await crearEntorno({ log: { error: (m, d) => fallas.push({ m, d }), warn() {}, info() {} } })
+  await elegirObra(e)
+  assert.equal(fallas.length, 0, 'un mensaje bien formado no debe ensuciar el log')
+
+  // Y con un mensaje roto, avisa: se rompe el contrato desde el propio constructor.
+  const { validarMensaje } = await import('./contrato-mattermost.mjs')
+  const roto = { message: '', props: { attachments: [{ actions: [{ id: 'fecha_hoy', name: 'Hoy', type: 'button', integration: { url: 'https://x' } }] }] } }
+  const v = validarMensaje(roto)
+  assert.equal(v.ok, false, 'un id con guión bajo tiene que ser rechazado por el contrato')
+  assert.ok(v.fallas.some((f) => /fecha_hoy|alfanum/i.test(f)), `el contrato no nombró el problema: ${JSON.stringify(v.fallas)}`)
+})

@@ -34,6 +34,7 @@ import {
 } from './operaciones.mjs'
 import { errorDeFormulario, fechaDeDialogo, leerEstado, motivosDelTipo, novedadDeDialogo } from './dialogos.mjs'
 import { abrirDialogo, actualizarPost } from './cliente.mjs'
+import { validarMensaje } from './contrato-mattermost.mjs'
 
 // Un paso existe si y sólo si está en el mapa de rutas de abajo: un botón que emite un paso
 // sin ruta cae en "acción desconocida" y el jefe de obra se come un error mudo.
@@ -68,10 +69,27 @@ export const TEXTO = Object.freeze({
 
 const efimero = (texto) => ({ status: 200, body: { ephemeral_text: texto } })
 
-const actualizar = (msg, extra = {}) => ({
-  status: 200,
-  body: { update: { message: msg.message, props: msg.props }, skip_slack_parsing: true, ...extra },
-})
+/**
+ * La respuesta que re-renderiza el mensaje.
+ *
+ * VALIDA EL CONTRATO ANTES DE MANDARLO. Un attachment mal formado no da error del otro
+ * lado: Mattermost publica el post y el bloque interactivo simplemente NO APARECE — el
+ * jefe se queda mirando un mensaje sin botones y sin ninguna explicación. `validarMensaje`
+ * existía para atajar justo eso (es quien conoce el alfabeto de los `action_id`, el defecto
+ * que dejó los botones de fecha en «Sorry, we could not find the page») y hasta acá corría
+ * SÓLO dentro de los tests. Un validador que sólo corre en los tests no es una defensa.
+ *
+ * Se avisa y se manda igual: un mensaje incompleto le sirve más al jefe de obra que ninguno,
+ * y lo que hacía falta era que el defecto dejara rastro en vez de desaparecer en silencio.
+ */
+const actualizar = (msg, extra = {}, log = null) => {
+  const v = validarMensaje(msg)
+  if (!v.ok) log?.error?.('asistencia-mm: mensaje fuera del contrato de Mattermost', { fallas: v.fallas })
+  return {
+    status: 200,
+    body: { update: { message: msg.message, props: msg.props }, skip_slack_parsing: true, ...extra },
+  }
+}
 
 /**
  * Crea el ruteador. Todo lo externo se inyecta, para poder probar el flujo entero sin red
@@ -310,7 +328,7 @@ async function irAInicial(d, p, sesion, fecha) {
   const obras = ctx.ok ? ctx.obras : []
   await d.sesiones.guardarContexto(sesion.id, { fechaOperativa: v.fecha })
   await guardar(d, sesion, { marcas: {}, fecha: v.fecha, obra: null, refs: [], postId: p.postId })
-  return actualizar(mensajeInicial({
+  return actualizarCon(d, mensajeInicial({
     fecha: v.fecha, obras, jornada: ctx.ok ? ctx.jornada : null, url: d.url,
     aviso: ctx.ok ? null : ctx.texto,
   }))
@@ -325,7 +343,7 @@ async function pasoObra(d, p, sesion) {
   const c = await leerCuadrilla(d, { fecha: v.fecha, claveObra: clave })
   if (!c.ok) {
     const ctx = await contextoDelDia(d, { fecha: v.fecha })
-    return actualizar(mensajeInicial({
+    return actualizarCon(d, mensajeInicial({
       fecha: v.fecha, obras: ctx.ok ? ctx.obras : [], jornada: ctx.ok ? ctx.jornada : null,
       url: d.url, aviso: c.texto,
     }))
@@ -343,7 +361,7 @@ async function pasoObra(d, p, sesion) {
     status: 'read', origen: 'mattermost', fecha_operativa: v.fecha, sheet_name: c.ctx.pestana,
     obra_normalizada: clave, mattermost_user_id: p.userId, cantidad_trabajadores: c.personal.length,
   })
-  return actualizar(renderCuadrilla(d, c, { marcas: {}, aviso: habia ? TEXTO.OBRA_CAMBIADA : null }))
+  return actualizarCon(d, renderCuadrilla(d, c, { marcas: {}, aviso: habia ? TEXTO.OBRA_CAMBIADA : null }))
 }
 
 const refsDe = (c) => c.personal.map((x) => x.ref)
@@ -372,7 +390,7 @@ async function pasoExcepcion(d, p, sesion) {
     estado: { sesion_id: sesion.id, ref: persona.ref, tipo },
   }))
   if (!abierto) return efimero(TEXTO.SIN_DIALOGO)
-  return actualizar(renderCuadrilla(d, c, { marcas }))
+  return actualizarCon(d, renderCuadrilla(d, c, { marcas }))
 }
 
 /** El diálogo de excepción, ya enviado: se valida, se guarda y se re-renderiza el post. */
@@ -396,6 +414,8 @@ async function pasoAplicar(d, p, sesion) {
   return { status: 200, body: {} }
 }
 
+const actualizarCon = (d, msg, extra = {}) => actualizar(msg, extra, d?.log)
+
 /** Registrar: planifica, pide el sí que falte, cierra la sesión y recién ahí escribe. */
 async function pasoRegistrar(d, p, sesion) {
   const meta = metaDe(sesion)
@@ -407,18 +427,18 @@ async function pasoRegistrar(d, p, sesion) {
   const r = await planDe(d, { fecha: v.fecha, claveObra: meta.obra, marcas, actor })
   if (!r.ok) {
     return r.cuadrilla
-      ? actualizar(renderCuadrilla(d, r.cuadrilla, { marcas, aviso: r.texto }), { ephemeral_text: r.texto })
+      ? actualizarCon(d, renderCuadrilla(d, r.cuadrilla, { marcas, aviso: r.texto }), { ephemeral_text: r.texto })
       : efimero(r.texto)
   }
   const c = r.cuadrilla
   if (cambio(meta.refs, refsDe(c))) {
     await guardar(d, sesion, { marcas, fecha: v.fecha, obra: meta.obra, refs: refsDe(c), postId: p.postId })
-    return actualizar(renderCuadrilla(d, c, { marcas, aviso: TEXTO.CUADRILLA_CAMBIO }),
+    return actualizarCon(d, renderCuadrilla(d, c, { marcas, aviso: TEXTO.CUADRILLA_CAMBIO }),
       { ephemeral_text: TEXTO.CUADRILLA_CAMBIO })
   }
   const razones = razonesDeConfirmacion(r.plan)
   if (razones.length && !p.confirmar) {
-    return actualizar(renderCuadrilla(d, c, {
+    return actualizarCon(d, renderCuadrilla(d, c, {
       marcas, confirmacion: { texto: razones.join(' ') }, aviso: `${razones.join(' ')} Apretá «Registrar igual» si querés seguir.`,
     }))
   }
@@ -478,7 +498,7 @@ async function confirmarYEscribir(d, p, sesion, { plan, cuadrilla, novedades, ma
     ...payloadConfirmacion({ actor, plan, resultado: r, sesion, status: 'written' }),
     origen: 'mattermost', novedades,
   })
-  return actualizar(mensajeConfirmado({
+  return actualizarCon(d, mensajeConfirmado({
     resumen: plan.resumen, celdas: celdasParaMostrar(r), actor: { username: p.username, userId: p.userId },
     fecha: plan.fecha, obra: cuadrilla.obra, pestana: plan.pestana, columna: plan.columna_letra,
   }))
@@ -491,5 +511,5 @@ async function pasoCancelar(d, p, sesion) {
     status: 'cancelled', origen: 'mattermost', mattermost_user_id: p.userId,
     fecha_operativa: metaDe(sesion).fecha ?? null,
   })
-  return actualizar(mensajeCancelado())
+  return actualizarCon(d, mensajeCancelado())
 }

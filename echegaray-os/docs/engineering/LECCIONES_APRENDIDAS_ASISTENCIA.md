@@ -1,501 +1,481 @@
 # Lecciones Aprendidas — Módulo Asistencia
 
-> **Documento vivo.** Es lectura obligatoria antes de construir cualquier módulo del Business OS.
-> No es un changelog ni documentación funcional: eso vive en `orquestador/comunicacion/docs/`.
-> Acá vive **por qué fallamos y qué regla nace de cada falla**.
+> **Lectura obligatoria antes de construir cualquier módulo del Business OS.**
+> Se actualiza después de cada incidente. Si leés esto y encontraste uno nuevo, agregalo.
 >
-> Última actualización: 31/07/2026 · Módulo de origen: Asistencia (carga de jornales en Mattermost)
+> No es un changelog ni documentación funcional — eso vive en `orquestador/comunicacion/docs/`.
+> Acá vive **por qué fallamos, cuántas veces fallamos igual, y qué regla nace de cada falla**.
+>
+> Base factual: 86 commits, 44 incidentes reconstruidos del historial, los comentarios del código, los dos documentos del módulo y la auditoría independiente del 30–31/07/2026.
 
 ---
 
 ## Resumen ejecutivo
 
-El módulo Asistencia se construyó, se probó, se documentó, pasó un DOD firmado con ✔ en cada fila… y una auditoría independiente posterior encontró **un agujero de seguridad crítico y explotable, y un bug que rompía la función principal mientras el dueño la estaba usando**.
+**El módulo lo construyó una IA, lo probó la misma IA, escribió su propio DOD y se puso los ✔ a sí misma.** Después una auditoría independiente le encontró un agujero de seguridad explotable —un `curl` anónimo desde Internet pasaba el control de canal y el de permisos— y un bug que rompía la función principal mientras el dueño la usaba y la daba por buena.
 
-Esa frase es la razón de este documento.
+Ese es el hallazgo estructural, y explica los 44 incidentes mejor que cualquier regla técnica de las que siguen: **no hubo ningún par de ojos que no tuviera interés en que el módulo estuviera terminado.**
 
-No falló por falta de esfuerzo ni de tests: el módulo tenía 569 tests propios. Falló por **patrones de ingeniería que se repiten**, y que van a volver a aparecer en Compras, en RRHH, en Finanzas y en Obras si no quedan escritos:
+El segundo dato es igual de incómodo: **de los defectos graves, los que encontró un test son cero.** Los encontró el dueño usando el sistema, o una auditoría atacándolo. La suite tenía 448 tests propios (los archivos de prueba del módulo, medidos con `node --test` sobre ellos) y 1.568 en total, todos en verde. El número de tests no fue una defensa: fue lo que sostuvo el ✔.
 
-1. **La verificación se hizo contra la misma información que el sistema generaba.** El control decía «se puede reconstruir quién escribió qué celda ✔» — y estuvo ciego justo para la interfaz que la gente usa. Es el mismo defecto que en el Flujo de Fondos hizo perder $292,8M invisibles: *un control que se compara contra sí mismo no es un control*.
-2. **Los dobles de prueba eran más permisivos que la realidad.** El cliente real exigía `id`; el doble aceptaba cualquier cosa. Los tests pasaban en verde mientras producción tiraba `400` en cada uso.
-3. **Una protección puede convertir un falso positivo en una falla permanente.** Pasó tres veces distintas, con tres mecanismos distintos.
-4. **La seguridad de un borde no se ve leyendo el borde.** Se ve cruzando la configuración del proxy con el manejador. Nadie que lea sólo el código de la aplicación va a encontrar que la ruta está publicada en Internet.
+**Qué está en juego.** La asistencia es la entrada de las horas hombre, que es una de las diez capacidades centrales de la empresa. Un jornal mal cargado no es un error de pantalla: es salario UOCRA mal liquidado, costo mal imputado a la obra, y margen de obra falso. Contamina la cadena PRODUCCIÓN → COSTO → RESULTADO → CAJA completa, y lo hace en silencio, porque nadie audita a mano una planilla de jornales.
 
-Las secciones siguientes documentan **19 incidentes reales, con su evidencia**, y los convierten en reglas y en un checklist reutilizable.
+**Qué costó equivocarse.** La función principal estuvo caída dos veces la misma noche. Una pantalla web se construyó y se descartó en 45 minutos (2.042 líneas), y 981 líneas suyas —con un camino de escritura vivo— sobrevivieron 7 horas 20 más. El endpoint estuvo abierto a Internet desde que existieron los botones hasta que lo cerró la auditoría.
+
+**Lo que se repite.** Doce patrones, con su frecuencia medida. Los seis peores:
+
+| Patrón | Veces | Qué produce |
+|---|---|---|
+| Un mensaje al usuario afirma algo que no pasó | **6** | El operador se va convencido de que cargó, y no cargó |
+| La documentación afirma un control que no existe | **5** | Un ✔ que nadie puede desmentir hasta que se rompe |
+| El defecto está una o dos capas más abajo (o afuera) que el síntoma | **5** | Horas buscando en el archivo equivocado |
+| Un doble de prueba más permisivo que el original | **4** | La suite en verde sobre un defecto vivo |
+| Una protección que convierte un falso positivo en una falla permanente | **4** | El sistema se autobloquea y no se destraba solo |
+| Un camino nuevo no hereda las defensas del viejo | **4** | La puerta nueva entra sin control |
+
+Ninguno es un error de programación. Todos son errores de método, y por eso cruzan de módulo: van a reaparecer en Compras, RRHH, Finanzas y Obras.
+
+**Si sólo hay tiempo para cinco reglas**, son estas: R1 (quién cierra), R2 (autenticar el origen), R3 (el efecto verificado en el destino, no el OK del usuario), R4 (medir el control en el camino real), R5 (el doble no más permisivo que el original).
+
+---
+
+## Los patrones
+
+Esta es la parte reutilizable. Los incidentes son la evidencia.
+
+### P1 · Un mensaje que afirma algo que no pasó — 6 veces
+
+«✅ Asistencia registrada · Celdas actualizadas: 0» sin haber escrito nada. «Esta carga ya se registró» con la celda vacía. Un obrero que trabajó mostrado como «ausente (0)» porque la celda tenía `#REF!`. Un resumen con **datos verdaderos del día equivocado** —se preguntó por el 32/13 y contestó el 30/07—, que es la peor variante porque el jefe no tiene forma de sospechar. Un HTTP 200 mientras el mensaje quedaba sin actualizar.
+
+El sistema no falla: **miente con confianza**. En un módulo con dinero de por medio, una mentira tranquila es peor que un error ruidoso.
+
+### P2 · La documentación afirmaba un control que no existía — 5 veces
+
+Un encabezado declaraba «sólo dos jefes de obra pueden cargar» treinta líneas arriba del código que dejaba pasar a cualquiera. Una migración decía que el worker vencía las sesiones: **no la llamaba nadie**, y el caso que el TTL tenía que cubrir —el jefe que se va y no vuelve— era exactamente el que no cubría. Dos archivos distintos, con doce horas de diferencia, declaraban que las acciones viajaban firmadas cuando la función de firma no tenía un solo llamador. El DOD daba por cumplidos tres controles falsos.
+
+La documentación que miente es peor que la ausente: **impide que alguien vaya a mirar**.
+
+El proyecto inventó la contramedida correcta y hay que generalizarla: un **guard-test cuyo objeto es la veracidad de un documento** — falla si aparece un llamador productivo de una primitiva declarada inactiva, *para que activarla obligue a corregir el texto en vez de dejarlo mintiendo*. Probado contra un canario.
+
+### P3 · El defecto está una o dos capas más abajo, o afuera — 5 veces
+
+El error estaba en los logs de Mattermost, no en los nuestros. Estaba en el portón central de escritura, no en el módulo — «un defecto que ningún test del módulo podía ver, porque no estaba en el módulo». Estaba en el driver de Postgres, que devolvía una fecha como objeto. Estaba en el firewall del host, no en la configuración de Docker que se había culpado primero — y esa hipótesis falsa había durado 23 minutos como solución adoptada.
+
+De acá salió la herramienta de diagnóstico más útil del proyecto: **que un pedido no aparezca en nuestros logs es un dato, no una falta de datos.** En el incidente de los botones de fecha, esa sola observación descartó tres hipótesis.
+
+### P4 · Un doble de prueba más permisivo que el original — 4 veces
+
+El proyecto lo escribió con sus palabras —**«Un doble que no respeta el contrato del original no prueba, tapa»**— y volvió a pasar tres veces después de escribirlo. Un fake que no evaluaba fórmulas. Un doble que leía un objeto donde el real espera un número, con lo cual **la jornada parcial nunca exigía motivo**: seis horas sobre nueve pasaban sin explicación, que es justo el dato por el que existe el módulo. Un cliente falso que aceptaba cualquier forma de parámetro mientras producción tiraba `PUT /posts/undefined → 400` durante horas.
+
+El caso más sutil: el doble abría sesiones con el id del mensaje **ya puesto**, algo que producción nunca hace porque ese id recién se conoce en el primer click. Ese detalle del estado inicial tapaba un bug entero.
+
+### P5 · Una protección que se vuelve una falla permanente — 4 veces
+
+También lo nombró el proyecto, en una migración: **«una protección que convierte un falso positivo en una falla PERMANENTE en vez de una molestia pasajera»**. La firma de pestaña auto-candó JORNALES. Una clave de idempotencia bloqueó una carga legítima *para siempre*. Un índice único reforzaba lo mismo desde la base. Y una clave quemada antes de saber si la celda entró producía «esa carga ya estaba registrada» con las celdas vacías.
+
+Lo más instructivo: **la misma protección se corrigió tres veces en doce horas, en tres capas distintas** (estado de sesión → alcance de la búsqueda → índice de la base). Arreglarla arriba no cerró nada porque la de abajo lo reforzaba.
+
+### P6 · Un camino nuevo no hereda las defensas del viejo — 4 veces
+
+**«Un camino nuevo hacia el mismo efecto no hereda las defensas del viejo: hay que ir a buscarlas una por una. Las tres cosas que faltaban existían y estaban a un import de distancia.»**
+
+La interfaz de botones no autenticaba, y el slash command sí. El flujo conversacional era la única de las tres puertas sin guarda de canal. La interfaz de botones armaba la auditoría a mano mientras el camino viejo usaba el constructor completo. El servidor HTTP era el único lugar que pasaba el pool crudo de Postgres, cuando el worker, el conector y los handlers ya lo armaban bien.
+
+### P7 · Defectos que sólo aparecen mirando, no leyendo — 7 en 2 bloques
+
+Dos secciones del DOD se titulan así. En la pantalla web, un atributo `hidden` perdía contra una regla de CSS y dejaba **48 controles a la vista** en una cuadrilla de 16. Un «Listo» se borraba solo, y la pantalla muda significa en uso diario **apretar Registrar dos veces**. Un desplegable salía sin texto. Ninguna suite estática los vio.
+
+La contramedida adoptada es la correcta: los tests que nacen de un defecto visual **atacan la causa —que sí es texto— en vez de renderizar**, y se verifica que fallan al sacar la regla que los provoca.
+
+### P8 · La interfaz le discute a la regla de negocio — 2 veces
+
+El formulario ofrecía combinaciones que el núcleo siempre rechaza: corregía después en vez de prevenir antes. Y exigía motivo un sábado, cuando el catálogo —la autoridad— no lo exige sin jornada conocida; el jefe elegía uno falso, y eso quedaba guardado como falta injustificada o ART en la única tabla que responde POR QUÉ.
+
+### P9 · Un test que codificaba el diseño viejo — 2 veces
+
+Un test protegía el comportamiento defectuoso de la idempotencia y hubo que reemplazarlo. Y el código muerto de la pantalla web **tenía tests propios**: eso es lo que lo mantenía verde en cada corrida sin que nadie notara que ya no lo importaba nadie.
+
+### P10 · Configuración que apaga el sistema en silencio — 4 veces
+
+Cuatro variables de entorno faltantes o mal documentadas, todas con el mismo síntoma: **el sistema arranca, publica, responde 200 — y no hace nada**. El jefe escribe el comando y no pasa nada, sin ningún error que explique por qué. Ninguna es detectable por un test: viven en plantillas `.env.example`.
+
+### P11 · Regresión introducida por la corrección anterior — 2 veces
+
+Un defecto se introdujo **once minutos** después de la corrección que lo causó. Otra corrección revirtió una solución adoptada **veintitrés minutos antes** — con la justificación escrita en los dos commits, que es lo que hay que hacer. La velocidad de corrección es una ventaja hasta que se vuelve la fuente de los defectos siguientes.
+
+### P12 · Nunca inventar el dato que falta — 6 veces, y salió bien
+
+El único patrón positivo. Se sembraron 14 feriados **sólo donde dos fuentes coinciden**, porque «una fecha equivocada precargaría a toda la empresa en franco un día laborable», y hay un test que falla si alguien agrega los que faltan sin verificar. Una fórmula como `=9-2,5+2` no se descompone: «inventar una descomposición ahí sería precisión falsa». Con homónimos, «se rechaza en vez de elegir por azar». Una celda vacía no es un 0: contarla como ausencia «inventaría faltas que nadie registró». Sin jornada conocida el campo vuelve a texto libre. Y no se agregaron jefes de obra al canal porque no hay fuente confiable de identidades: «inventarlos habría sido peor».
+
+Es el patrón que más incidentes evitó y el más fácil de erosionar cuando aprieta el plazo.
 
 ---
 
 ## Línea de tiempo
 
-Sin commits: síntoma → causa raíz → solución.
+Numeración canónica: las reglas y los incidentes citan **estos** números. `[✱]` marca los que tienen sección desarrollada.
 
-| # | Síntoma observado | Causa raíz | Solución |
+| # | Síntoma | Causa raíz | Lo detectó |
 |---|---|---|---|
-| 1 | Se construyó una pantalla web de carga que nadie iba a abrir | Se diseñó la interfaz antes de mirar dónde trabaja la gente: el jefe de obra ya vive en Mattermost | Se descartó la pantalla; el módulo pasó a vivir dentro del chat |
-| 2 | «No pude abrir la carga» al primer click | El servidor HTTP le pasaba el `Pool` pelado de `pg`, que sabe `query` pero no `withTx`; la sesión abre y confirma dentro de una transacción | Se arma el port `{query, withTx}` y el repositorio **exige las dos capacidades al construirse**, no al usarse |
-| 3 | «Sorry, we could not find the page» al tocar cualquier botón de fecha | El `action_id` viaja como segmento de la URL de la API de Mattermost; con guión bajo la ruta no matchea y el 404 lo tira el **router**, antes de llegar a nosotros | Ids alfanuméricos + un validador de contrato que falla si aparece otro carácter |
-| 4 | «La pestaña de JORNALES está tomada y no se puede escribir ahora» | La firma de pestaña —pensada para detectar que alguien reescribió una pestaña **nuestra**— se aplicó a una pestaña que mantienen personas, y al no coincidir la auto-candó de forma permanente | Marca `compartida: true`: la firma y el auto-candado no aplican. El candado explícito del dueño sigue aplicando |
-| 5 | «Esta carga ya se registró. No se escribió dos veces» — sin haber registrado nada | La clave de idempotencia es función pura de (planilla, pestaña, fecha, obra, actor, payload) y se buscaba entre **todas** las sesiones confirmadas: dos cargas legítimamente idénticas colisionaban para siempre | Se acotó la búsqueda a la misma sesión y se quitó el índice único que además la reforzaba en la base |
-| 6 | El formulario aceptaba «Trabajó: Sí · Horas: 5 · Motivo: Faltó con aviso» y lo rechazaba al guardar | Al diálogo se le pasaba el catálogo entero de motivos, sin filtrar por contexto | El tipo de excepción se elige **antes** de abrir el formulario: la combinación imposible no tiene dónde seleccionarse |
-| 7 | «Submission failed with validation errors», en inglés | El cliente de Mattermost pone ese encabezado de su cosecha cuando la respuesta trae sólo `errors` por campo | Toda respuesta de error lleva además un `error` de primer nivel, en castellano |
-| 8 | Un `curl` anónimo desde Internet pasaba el control de canal **y** el de permisos | La ruta de acciones la publica el proxy y no autenticaba nada: la identidad salía del payload | Secreto de integración en la query de la URL de callback, que Mattermost guarda y no le muestra al cliente |
-| 9 | Se guardaba la excepción, el sistema decía OK y la lista seguía vieja | El ruteador mandaba `postId` y el cliente espera `id`: salía `PUT /posts/undefined → 400`, el error iba al log y la respuesta igual era 200 | Se corrigió el nombre y **el doble de prueba pasó a exigir `id`**, como el cliente real |
-| 10 | Se podía cargar asistencia por mensaje privado al bot | La guarda de canal corría en dos de las tres vías que llegan a JORNALES | La guarda corre en las tres |
-| 11 | La auditoría de una carga real no decía qué celda se tocó | El camino de botones armaba el evento a mano con cuatro campos, teniendo al lado el constructor completo | Usa `payloadConfirmacion`, el mismo que el otro camino |
-| 12 | Un feriado (jornada 0 h) no dejaba abrir el formulario | Un desplegable con lista vacía; y un valor precargado que no estaba entre las opciones | Se cae a campo a mano; el `default` sólo se pone si pertenece a las opciones |
-| 13 | Con la base caída el servicio se reiniciaba en bucle | El repositorio de sesiones se construía con un port nulo y tiraba en el arranque | El servicio sigue de pie y deniega; la guarda ya denegaba sola |
-| 14 | Los botones de un mensaje viejo manejaban el formulario nuevo | La sesión se resuelve sólo por `user_id`; el post no se comparaba nunca | La sesión se ata al primer post que la toca; un click de otro mensaje rebota |
-| 15 | Una marca de «Accidente de trabajo» quedaba para siempre | La proyección de novedades sólo hacía upsert de las que **tenían** motivo | Una carga posterior borra las de los trabajadores de esa carga que ya no tienen motivo |
-| 16 | Un sábado obligaba a elegir un motivo falso | El formulario exigía motivo aunque el catálogo —la autoridad— no lo exige sin jornada conocida | El formulario coincide con el catálogo en vez de discutirle |
-| 17 | Una llamada a Mattermost podía colgar el pedido para siempre | El cliente hacía `fetch` sin `AbortController` | Timeout explícito, con el patrón que ya existía en el cliente de Google |
-| 18 | Si el ledger de auditoría dejaba de escribir, nadie se enteraba | El resultado del auditor se descartaba en todos los llamadores | Se avisa por log; el veredicto no cambia |
-| 19 | 981 líneas de una pantalla borrada seguían en el árbol | Se eliminó la pantalla pero no lo que colgaba de ella | Se eliminaron, incluido un camino de escritura dormido |
+| 1 | Escribir 8 h un martes: 1 h por persona por día de error silencioso, que la planilla arrastra hasta el cash flow | La jornada completa se trató como constante y no lo es (9 h lun–jue, 8 h vie, sábado sin moda) | Censo del archivo real |
+| 2 | La huella de celda habría reventado al persistirse | El separador era un byte NUL y Postgres lo rechaza en `jsonb` | Revisión previa al deploy |
+| 3 | Las horas extra quedaban fuera del sistema | Criterio «prudente y falso»: se trató toda fórmula como intocable, cuando de 3.415 celdas sólo 27 tienen fórmula y casi todas son horas extra | Censo del archivo real |
+| 4 | El módulo entero se apagaba | Permisos estrictos + tabla vacía se leyó como denegación total | Revisión |
+| 5 | Una fecha imposible se contestaba con los números de hoy | El parser marcaba «tiene fecha» al ver algo con forma de fecha y la dejaba nula | Validación contra el archivo real |
+| 6 | Toda consulta con fecha caía en el año 2000; «ayer» contestaba con los datos de hoy | Faltaba pasar el contexto ISO entre capas | Revisión |
+| 7 | «✅ Asistencia registrada · Celdas actualizadas: 0» y el reintento bloqueado para siempre **[✱4]** | La clave se quemaba antes de saber si la celda entró | Auditoría interna |
+| 8 | Las sesiones abandonadas no vencían nunca | La migración decía que el worker lo hacía; no lo hacía **(P2)** | Revisión |
+| 9 | Preguntar en el canal devolvía la respuesta por privado | «Privado» se leyó como «siempre por DM» | Prueba en el canal |
+| 10 | «quién faltó ayer» abría el formulario de carga | Esas palabras no estaban entre los temas de pregunta | Prueba en el canal |
+| 11 | Y después buscó a una persona llamada «falto» | Regresión de 10, once minutos después **(P11)** | Prueba en el canal |
+| 12 | Se construyó una pantalla web que nadie iba a abrir **[✱13]** | Se diseñó la interfaz antes de mirar dónde trabaja la gente | Decisión del dueño |
+| 13 | 48 controles a la vista en una cuadrilla de 16; el «Listo» se borraba solo **(P7)** | `hidden` perdía contra una regla de CSS; el aviso se ponía antes de recargar | **Mirando** una captura real |
+| 14 | Caddy no alcanzaba al servidor del host | El firewall descartaba lo que venía de los bridges de Docker; la primera causa culpada era falsa **(P3)** | Medición en las dos direcciones |
+| 15 | La jornada parcial nunca exigía motivo: 6 h sobre 9 sin explicación | El doble leía un objeto donde el real espera un número **(P4)** | Auditoría |
+| 16 | El desplegable de obras salía sin texto | El núcleo devuelve `etiqueta`/`personas` y la UI necesita `nombre`/`cantidad` | **Los logs de Mattermost** |
+| 17 | «Esa fecha no existe» al elegir obra | Postgres devuelve la fecha como objeto y se la pasaba por `String()` | Llamando al endpoint real |
+| 18 | «No pude abrir la carga» al primer click | El servidor pasaba el pool pelado, sin `withTx` **(P6)** | Validación previa a la primera escritura |
+| 19 | «La pestaña de JORNALES está tomada» **[✱3]** | La firma de pestaña se aplicó a una pestaña de propiedad humana y la auto-candó **(P5)** | **El dueño, en la primera carga real** |
+| 20 | «Esta carga ya se registró» sin haber registrado **[✱4]** | Clave de idempotencia buscada en toda la historia **(P5)** | El dueño |
+| 21 | Y el UPDATE moría con violación de clave única | El índice reforzaba lo mismo desde la base **(P5)** | El dueño |
+| 22 | «Sorry, we could not find the page» **[✱9]** | El identificador de acción con guión bajo no matchea la ruta de la API **(P3)** | Prueba manual; **la ausencia de logs** |
+| 23 | Combinaciones inválidas aceptadas hasta el Guardar **[✱7]** | Se pasaba el catálogo entero de motivos **(P8)** | El dueño |
+| 24 | «Submission failed with validation errors» **[✱8]** | Texto del cliente de Mattermost, no nuestro | El dueño |
+| 25 | Una marca de ART quedaba para siempre | La proyección sólo hacía upsert de lo que tenía motivo | Auditoría |
+| 26 | 981 líneas de la pantalla borrada seguían vivas, con un camino de escritura **[✱13]** | Se eliminó la decisión, no lo que colgaba de ella **(P9)** | Auditoría |
+| 27 | Un `curl` anónimo pasaba canal y permisos **[✱1]** | La ruta es pública y la identidad salía del payload **(P6)** | **Auditoría atacando producción** |
+| 28 | Se guardaba la excepción y la lista seguía vieja **[✱2]** | `postId` contra `id`: `PUT /posts/undefined` **(P1, P4)** | Auditoría + log de producción |
+| 29 | Se podía cargar por mensaje privado al bot **[✱10]** | La guarda corría en dos de las tres puertas **(P6)** | Auditoría |
+| 30 | La auditoría real no decía qué celda se tocó **[✱11]** | Evento armado a mano teniendo el constructor al lado **(P6)** | Auditoría + datos de producción |
+| 31 | Un feriado no dejaba abrir el formulario | Desplegable vacío y valor precargado fuera de opciones | Auditoría |
+| 32 | Crash-loop con la base caída | El repositorio se construía con un port nulo | Auditoría |
+| 33 | Los botones de un mensaje viejo manejaban el nuevo **[✱5]** | La sesión se resuelve sólo por usuario | Auditoría |
+| 34 | Un sábado obligaba a inventar un motivo **(P8)** | El formulario exigía lo que el catálogo no exige | Auditoría |
+| 35 | Una llamada a Mattermost podía colgar el pedido **[✱12]** | `fetch` sin `AbortController` **(P6)** | Auditoría |
+| 36 | Si el ledger dejaba de escribir, nadie se enteraba | El resultado del auditor se descartaba en todos los llamadores | Auditoría |
+| 37 | Cuatro variables que apagaban el módulo en silencio **(P10)** | Plantillas de deploy incompletas o mentirosas | Auditoría |
+| 38 | El validador que conoce el alfabeto de los `action_id` **seguía sin correr en producción** | Se conectó la mitad: el de diálogos sí, el de mensajes no **(P2)** | **Verificar este documento** |
+
+El 38 lo encontró la verificación cruzada de **este mismo documento** contra el código: la regla R32 estaba incumplida en el momento de escribirla. Se corrigió con el documento — el único cambio de código de este trabajo.
+
+**Detectados por un test: ninguno.** Nueve por el dueño usándolo, catorce por auditorías, el resto por censos del archivo real, revisión o mediciones.
+
+> **Fechas.** Los commits del bloque nocturno están fechados 30/07; varios comentarios del código fechan los mismos hechos el 31/07. La sesión cruzó la medianoche. Donde importe, manda `git log`.
 
 ---
 
 ## Incidentes
 
-### 1 · Autenticación insuficiente del endpoint
+Sólo los que dejan una lección no obvia. Los demás viven en la tabla y ahí alcanzan.
 
-**Problema.** `POST /asistencia/accion` —la ruta que ejecuta cada botón y termina escribiendo en la planilla de jornales— no verificaba **nada**. La identidad, el canal y el equipo salían del cuerpo del pedido, que lo escribe quien llama. El proxy publica el prefijo `/asistencia*` en Internet sin allowlist ni autenticación.
+### ✱1 · Autenticación insuficiente del endpoint *(línea 27)*
 
-**Impacto.** Un pedido anónimo desde cualquier parte, con el `user_id` de una persona habilitada y el `channel_id` del canal de asistencia, pasaba el control de canal **y** el de permisos. Lo único que lo frenaba era que hubiera un formulario abierto: durante los 20 minutos en que alguien está cargando, un tercero podía elegir obra, marcar gente y escribir jornales **a nombre de esa persona**. Además, la auditoría registraba `identidad_verificada: true` para una identidad que nadie había verificado: el ledger afirmaba una comprobación que no ocurrió.
+`orquestador/comunicacion/asistencia-accion.mjs` · `servidor-asistencia.mjs` · `secreto-compartido.mjs`
 
-**Causa raíz.** No es que faltara una validación: es que **el modelo de amenazas se razonó sobre el código de la aplicación y no sobre el despliegue**. El módulo tenía una guarda de canal excelente, permisos, auditoría y fail-closed en todos lados — todo eso protege *a quién deja pasar*, y ninguno protege *que el que golpea la puerta sea quien dice*. La pregunta «¿qué prueba que esto viene de Mattermost?» no se había hecho para esta puerta, aunque sí para el slash command, que sí verifica su token en tiempo constante.
+**Problema.** `POST /asistencia/accion` —la ruta que ejecuta cada botón y termina escribiendo jornales— no verificaba nada. Identidad, canal y equipo salían del cuerpo del pedido. El proxy publica ese prefijo en Internet sin autenticación.
 
-Contribuyó un detalle histórico: cuando se escribió la capa de sesiones, alguien previó exactamente esto y dejó escrita la primitiva criptográfica y este comentario:
+**Impacto.** Un pedido anónimo con el identificador de una persona habilitada pasaba el control de canal **y** el de permisos. Durante los 20 minutos que vive un formulario abierto, un tercero podía escribir jornales a nombre de esa persona.
 
-> *«QUÉ LA ACTIVARÍA: botones o diálogos interactivos de Mattermost. […] recién ahí la firma pasa a proteger algo real.»*
+**Causa raíz.** El modelo de amenazas se razonó sobre el código de la aplicación, no sobre el despliegue. Guarda de canal, permisos, auditoría y fail-closed deciden *a quién se deja pasar*; ninguno verifica *que el que golpea sea quien dice*. La pregunta se había hecho para el slash command —que sí valida su token— y no para esta puerta **(P6)**.
 
-Los botones se activaron. La firma no. **El propio código había predicho el agujero y nadie releyó esa nota al activar la condición que la disparaba.**
+Lo más incómodo: al escribir la capa de sesiones alguien previó esto, dejó la primitiva criptográfica lista y anotó *«QUÉ LA ACTIVARÍA: botones o diálogos interactivos de Mattermost […] recién ahí la firma pasa a proteger algo real»*. Los botones se activaron. La firma no. **El código predijo el agujero y nadie releyó la nota al cumplirse su condición.**
 
-**Cómo se detectó.** Auditoría independiente, atacando el sistema vivo. No lo encontró un test ni una revisión de código: lo encontró un `curl` contra producción. La cadena de razonamiento fue: leer el manejador → ver que la identidad sale del payload → ir a buscar el archivo del proxy → descubrir que la ruta es pública → probarla.
+**Y una consecuencia peor que el agujero.** La auditoría registraba `identidad_verificada: true` para una identidad que nadie había verificado. **Un campo del ledger afirmaba una comprobación que el código no hacía.**
 
-**Corrección.** Un secreto compartido viaja en la query de la URL de callback (`?t=…`). Se verifica en tiempo constante, antes de la guarda de canal, y **falla cerrado en los dos sentidos**: sin secreto configurado tampoco se atiende. Se comprobó contra el servidor real que Mattermost **guarda** esa URL y **no** le manda el bloque `integration` al cliente —un GET del post con token de API devuelve las acciones sin él—, así que sólo el servidor de Mattermost puede presentarlo. Un solo lugar arma la URL, para que no pueda quedar el servidor exigiendo un secreto que los botones no llevan.
+**Corrección.** Un secreto compartido viaja en la query de la URL de callback, se compara en tiempo constante antes de la guarda de canal, y falla cerrado también cuando falta la configuración. Se comprobó contra el servidor real que Mattermost guarda esa URL y **no** le manda el bloque de integración al cliente, así que sólo su servidor puede presentarlo. Un solo lugar arma la URL: si cada puerta armara la suya, alcanzaría con que una se olvidara el secreto para que sus botones murieran **en producción y en ningún test**.
 
-**Regla permanente.**
-> **Todo borde entrante se audita contra su despliegue, no contra su código.** Antes de razonar permisos, responder: *¿qué prueba que este pedido viene de quien dice?* Si la respuesta está en el cuerpo del pedido, no hay respuesta. Y cuando un comentario del código declare una condición futura que activaría una defensa, esa condición es un ítem de checklist: al cumplirse, se relee.
+### ✱2 · El post no se refrescaba *(línea 28)*
 
----
+`asistencia-mm/cliente.mjs` · `asistencia-mm/dobles-de-prueba.mjs`
 
-### 2 · El post no se refrescaba (contrato roto con el cliente)
+El ruteador llamaba `actualizarPost({ postId, … })` y el cliente declara `{ id, … }`. Salía `PUT /api/v4/posts/undefined → 400`. **El error se capturaba, se logueaba, y la respuesta HTTP igual era 200.** El jefe guardaba «no vino», el sistema decía OK, la lista seguía igual — y la reacción natural es volver a cargarlo.
 
-**Problema.** Después de enviar un formulario de excepción, el mensaje de la cuadrilla no se actualizaba. El jefe de obra guardaba «no vino», el sistema respondía OK, y la lista seguía mostrando el estado anterior.
+El log de producción tiene un `400` a las 23:17 de esa noche, **mientras el dueño probaba el módulo y lo daba por bueno**. De acá sale la regla R3: el OK del usuario no prueba nada.
 
-**Impacto.** El operador pierde la única realimentación que tiene. No sabe si lo que cargó entró. La reacción natural —volver a cargarlo— es exactamente lo que un sistema con dinero de por medio no quiere provocar.
+Se corrigió el nombre, y sobre todo **el doble pasó a exigir `id`** y a abrir sesiones sin el id del mensaje, como hace producción **(P4)**.
 
-**Causa raíz.** El ruteador llamaba `actualizarPost({ postId, message, props })` y el cliente declara `actualizarPost({ id, message, props })`. En producción salía `PUT /api/v4/posts/undefined → 400`. **El error se capturaba, se logueaba y la respuesta HTTP igual era 200**: un fallo silencioso perfecto.
+### ✱3 · Locks de Sheets: la protección que se volvió la falla *(línea 19)*
 
-**Cómo se detectó.** La auditoría técnica lo encontró leyendo las dos firmas, y el log de producción lo confirmó — incluido un `400` a las 23:17 de esa misma noche, mientras el dueño probaba el módulo y lo daba por bueno.
+`orquestador/lib/guarda-escritura.mjs` · `lib/tools/jornales-asistencia.mjs`
 
-**Corrección.** Se corrigió el nombre del parámetro. Y lo más importante: **el doble de prueba pasó a exigir `id`**. Antes hacía `async actualizarPost(p) { posts.push(p); return {ok:true} }` — aceptaba cualquier forma.
+Al apretar Registrar: *«La pestaña de JORNALES está tomada y no se puede escribir ahora»*. Ninguna celda se escribía, y el mensaje sugería algo transitorio cuando el estado era permanente.
 
-**Regla permanente.**
-> **Un doble de prueba nunca puede ser más permisivo que el original.** Si el real desestructura un campo, el doble tiene que fallar cuando ese campo no está. Un doble laxo no prueba la frontera: la tapa. Corolario: **un fallo de una llamada externa no puede terminar en una respuesta de éxito**; o se propaga, o se le dice al usuario que no se pudo.
+La secuencia real, leída contra producción y contra la base: a las 14:13 el OS escribe y **sella** la firma de la pestaña. Entre las 14:13 y las 22:26 una persona edita la planilla —vacía una celda, pone otra en `"0"`— y la firma diverge. A las 22:26 el dueño aprieta Registrar: la guarda ve la diferencia y **auto-canda** la pestaña. Desde ese momento bloqueaba todo intento siguiente.
 
----
+La guarda funcionó. **El error fue no preguntarse de quién es la pestaña antes de apuntársela**: `Obreros 26` la editan personas todos los días por diseño, así que su firma siempre difiere, y eso no es evidencia de conflicto: es el estado normal.
 
-### 3 · Locks de Sheets: la protección que se volvió la falla
+El defecto vivía **fuera del módulo**, en el portón central de escritura: ningún test del módulo podía verlo **(P3)**. Se corrigió con una marca `compartida` que apaga la firma y el auto-candado —**no** el candado explícito del dueño— y los tests nuevos interceptan sólo la base y corren el candado y la firma **reales**: no se simula la decisión, se simula la base.
 
-**Problema.** Al apretar Registrar: *«La pestaña de JORNALES está tomada y no se puede escribir ahora»*. Ninguna celda se escribía. El módulo quedó inutilizable.
+> Lección del DOD: *«una protección de pestaña propia no sirve para una pestaña compartida — ahí se protege la CELDA»*.
 
-**Impacto.** Función principal caída. Y peor: el mensaje sugería un problema transitorio («ahora»), cuando en realidad el estado era permanente y se agravaba solo.
+### ✱4 · Idempotencia demasiado global *(líneas 7, 20, 21)*
 
-**Causa raíz.** El OS tiene una firma de pestaña que detecta si alguien reescribió una pestaña **que el OS mantiene**, y ante la discrepancia la candó automáticamente. JORNALES **no** es una pestaña del OS: la mantienen personas, cambia todo el tiempo, y su firma nunca iba a coincidir. La guarda hizo exactamente lo que debía; se la había apuntado al objeto equivocado. Y el auto-candado convirtió un falso positivo en una falla que ya no se resolvía sola.
+`orquestador/comunicacion/asistencia-sesion.mjs` · migración `20260731020000`
 
-**Cómo se detectó.** El usuario, en producción, con la función principal caída.
+*«Esta carga ya se registró. No se escribió dos veces»* — sin haber registrado nada.
 
-**Corrección.** Una marca `compartida: true` en la escritura: para una pestaña de propiedad humana no se evalúa la firma ni se auto-canda. **El candado explícito del dueño sigue aplicando** — se apagó el mecanismo automático, no el control.
+La clave es función pura de (planilla, pestaña, fecha, obra, actor, horas) y se buscaba entre **todas** las sesiones confirmadas de la historia. Evidencia de producción: una sesión de las 11:51 dejó la clave tomada, después **una persona vació la celda a mano**, y la carga nueva caía como duplicada.
 
-**Regla permanente.**
-> **Toda protección automática necesita una respuesta escrita a: ¿qué pasa si se dispara por error?** Si la respuesta es «el sistema queda inutilizable hasta que alguien lo destrabe a mano», la protección está mal diseñada. Y antes de aplicar una guarda de integridad a un recurso, declarar **de quién es ese recurso**: lo que mantiene una persona no se protege igual que lo que mantiene el OS.
+Se corrigió **tres veces en doce horas, en tres capas** —estado `fallida` para que lo que no entró no cuente; alcance acotado a la misma sesión; migración que quitó la unicidad del índice— porque cada capa reforzaba la anterior **(P5)**. La migración se auto-diagnosticó: *«es la misma familia de defecto que el auto-candado de pestaña»*.
 
----
+El principio que quedó: **quien decide si hay que escribir es la planilla**, no la memoria de una clave.
 
-### 4 · Idempotencia demasiado global
+### ✱5 · Sesiones compartidas entre dos mensajes *(línea 33)*
 
-**Problema.** *«Esta carga ya se registró. No se escribió dos veces»* — cuando no se había registrado nada.
+La sesión se resuelve sólo por usuario. Abrir una carga nueva cancela la anterior, pero el mensaje anterior se queda en el canal con sus botones vivos: operaban sobre la sesión nueva y **le reapuntaban el mensaje**, así que los refrescos posteriores aterrizaban en el equivocado.
 
-**Impacto.** El operador se va convencido de que la asistencia quedó cargada. Es la peor clase de bug: **el sistema miente con confianza sobre un dato económico**.
+Faltaba atar el estado del servidor **al mensaje concreto que la persona está mirando**. Ahora la sesión se ata al primero que la toca y un click de otro rebota diciendo cuál es el bueno.
 
-**Causa raíz.** La clave de idempotencia es una función pura de (planilla, pestaña, fecha, obra, actor, desglose de horas) y se buscaba **entre todas las sesiones confirmadas de la historia**. Dos cargas legítimamente idénticas —la misma cuadrilla, las mismas horas, el mismo día— producen la misma clave. La primera quemaba la clave para siempre. Un índice único parcial en la base reforzaba la misma regla, así que el bug tenía dos capas.
+### ✱7 · Validaciones que llegan tarde *(línea 23)*
 
-**Cómo se detectó.** El usuario, en producción, intentando cargar.
+`asistencia-mm/mensaje.mjs` · `lib/asistencia-motivos.mjs`
 
-**Corrección.** El alcance de la clave se acotó a la **misma sesión** —«duplicado» significa el segundo click sobre *este* formulario— y una migración quitó la unicidad del índice. Quien decide si hay que escribir no es la memoria de una clave: es la planilla releída, celda por celda. Se agregó además el estado `fallida`, para que una escritura que no entró no queme la clave.
+El formulario aceptaba «Trabajó: Sí · Horas: 5 · Motivo: Faltó con aviso» y lo rechazaba recién al guardar. La causa concreta: al diálogo se le pasaba `motivos: d.motivos.CATALOGO` — el catálogo entero, sin filtrar por contexto.
 
-**Regla permanente.**
-> **La idempotencia protege un reintento, no la historia.** Su alcance es la unidad de trabajo (la sesión, el pedido), nunca «todo lo que pasó alguna vez». Antes de definir una clave de idempotencia, escribir el caso legítimo que produce la misma clave dos veces — si existe, el alcance está mal. Y la fuente de verdad sobre si algo hay que escribir es **el destino releído**, no un registro nuestro.
+**No se arregla refrescando**: un diálogo de Mattermost es estático, no hay evento de cambio ni forma de re-renderizarlo. Se diseñó la interacción sin leer qué permite la plataforma; el requerimiento era razonable, el error fue prometerlo. La respuesta correcta no era simular la corrección sino **rediseñar para que el estado inválido no sea representable**: el tipo de excepción se elige *antes* del formulario, y las horas pasaron de texto libre a un desplegable de valores válidos — así tampoco existe el 26 de un dedazo.
 
----
+**El backend quedó exactamente igual**, y se verificó: su diff estaba vacío y sigue rechazando la combinación inválida.
 
-### 5 · Sesiones compartidas entre dos mensajes
+### ✱8 · Textos técnicos en inglés *(línea 24)*
 
-**Problema.** Con dos mensajes de asistencia abiertos en el canal, los botones del mensaje viejo operaban sobre la sesión nueva, y encima le reapuntaban el post — con lo cual los refrescos posteriores aterrizaban en el mensaje equivocado.
+*«Submission failed with validation errors»* no era nuestro texto. El cliente de Mattermost, cuando la respuesta trae **sólo** errores por campo, pone ese encabezado; si viene un error de primer nivel, muestra ese. Se confirmó **leyendo el código del propio cliente** **(P3)**.
 
-**Impacto.** Dos formularios visibles, una sola realidad detrás, y el que se actualiza es el que se tocó último. El operador puede estar mirando una lista que no corresponde a lo que va a escribir.
+### ✱9 · El identificador de acción como segmento de URL *(línea 22)*
 
-**Causa raíz.** La sesión se resuelve **sólo por `user_id`**. Abrir una carga nueva cancela la anterior, pero el mensaje anterior se queda en el canal con sus botones vivos, y nunca se comparaba de qué post venía el click. El estado del servidor estaba bien protegido; lo que faltaba era atar ese estado a **la superficie visible** que lo representa.
+Los botones de fecha mostraban *«Sorry, we could not find the page»* — y el selector de obra, **en el mismo mensaje**, andaba.
 
-**Cómo se detectó.** Auditoría funcional, reproduciéndolo en frío con los dobles del módulo.
+El identificador viaja como segmento de la URL de la API de Mattermost y ese segmento sólo acepta alfanuméricos. Con guión bajo la ruta no matchea. La evidencia decisiva fueron cuatro llamadas al mismo mensaje con el mismo token: un id válido devuelve 200; uno inexistente devuelve el 404 **del manejador**; uno con guión bajo devuelve el 404 **del router**. Dos 404 distintos prueban que el problema es el carácter.
 
-**Corrección.** La sesión se ata al primer post que la toca. Un click de otro mensaje rebota con un texto que dice cuál es el bueno, y queda auditado.
+**La pista inicial fue la ausencia de logs**, que descartó de un saque las tres hipótesis equivocadas: no era el backend, ni el ruteo del proxy, ni una URL vieja de la pantalla eliminada **(P3)**.
 
-**Regla permanente.**
-> **Si una interfaz puede quedar duplicada en pantalla, el estado del servidor tiene que estar atado a una de esas copias.** Toda superficie que puede existir dos veces (un mensaje, una pestaña del navegador, un enlace) necesita identidad propia y la verificación de que es la vigente.
+### ✱10 · La guarda que no corría en todas las puertas *(línea 29)*
 
----
+`orquestador/comunicacion/asistencia-guarda.mjs`
 
-### 6 · Formularios estáticos de Mattermost
+El conteo exacto importa: **cuatro puertas de entrada** (comando, mención, botones y `asistencia por chat`), **tres lugares donde corre la guarda** (el comando y la mención comparten uno) y **dos caminos que escriben**. La guarda corría en dos de los tres lugares, así que por el camino conversacional se podía cargar por mensaje privado al bot — exactamente lo que existe para impedir: *«por privado no hay testigo»*.
 
-**Problema.** El pedido era: «cuando cambie Trabajó u Horas, actualizar los motivos disponibles y limpiar el que dejó de ser válido, sin esperar a Guardar». **Eso es imposible en un diálogo de Mattermost**: son estáticos, no hay evento de cambio ni forma de re-renderizarlos.
+Es una defensa implementada **en los llamadores** en vez de en el recurso: cada puerta nueva tiene que acordarse de invocarla, y una se olvidó **(P6)**.
 
-**Impacto.** Un requerimiento razonable que la plataforma no soporta. El riesgo real es aceptar el pedido, construir algo que lo simule a medias y entregar una experiencia peor que la honesta.
+### ✱11 · Auditoría insuficiente *(línea 30)*
 
-**Causa raíz.** Se había diseñado el formulario asumiendo interactividad que la plataforma no tiene.
+`orquestador/lib/asistencia-auditoria.mjs` (`payloadConfirmacion`) · `asistencia-mm/acciones.mjs`
 
-**Cómo se detectó.** Leyendo el bundle del cliente de Mattermost y su documentación, al buscar cómo implementar el cambio.
+El evento de escritura del camino de botones —el que usa la gente— se armaba a mano, campo por campo. Quedaban en `null` la evidencia celda por celda, el nombre de quien cargó, la planilla y los totales de horas. El constructor que lo hace bien existía y lo usaba el otro camino **(P6)**.
 
-**Corrección.** Se movió la decisión **antes** del formulario: en vez de un desplegable «Marcar excepción» que abre un formulario genérico, hay tres —«No vino», «Hizo menos horas», «Hizo horas extra»— y cada uno abre un formulario distinto, con sólo los motivos de su ámbito. La combinación inválida deja de existir porque no hay dónde elegirla.
+Es el incidente más difícil de ver del proyecto. El DOD afirmaba *«se puede reconstruir quién escribió qué celda, cuándo, y qué había antes ✔»* y la rutina semanal decía *«mirar `old_value`/`new_value` y la celda exacta»*. **Ese control estuvo ciego justo para la interfaz real**, y el ✔ se había tomado midiendo el otro camino. En palabras del DOD: *«la rutina semanal controlaba un campo que para esas cargas siempre estaba vacío, y nadie lo notó porque el control se comparaba contra sí mismo»*.
 
-**Regla permanente.**
-> **Antes de diseñar una interacción, verificar qué permite la plataforma — leyendo su código o su contrato, no suponiendo.** Y cuando una plataforma no permite corregir al vuelo, la respuesta correcta no es simular la corrección: es **rediseñar para que el estado inválido no sea representable**. Prevenir por estructura le gana a validar por reglas.
+Es el mismo defecto que en el Flujo de Fondos hizo perder $292,8M invisibles. **Los eventos anteriores a la corrección no se pueden reconstruir.**
 
----
+Se detectó **consultando la tabla en producción y comparando filas**: las cargas del camino viejo tenían la evidencia; las del nuevo, `null`. El test que quedó falla con el evento armado a mano y pasa con el constructor.
 
-### 7 · Validaciones que llegan tarde
+### ✱12 · Timeout con Mattermost *(línea 35)*
 
-**Problema.** El formulario dejaba elegir «Trabajó: Sí · Horas: 5 · Motivo: Faltó con aviso» y recién lo rechazaba al guardar.
+`communication-service/src/channels/mattermost/mattermost-cliente.mjs`
 
-**Impacto.** El operador descubre el error después de completar todo. En un celular, parado en la obra, eso es abandono.
+`fetch` sin `AbortController`, dentro del manejador HTTP: si Mattermost no responde, el pedido del jefe queda colgado indefinidamente. **El patrón correcto ya existía en la casa** —el cliente de Google usa `AbortController` con su variable de entorno y devuelve un error legible— y no se aplicó **(P6)**.
 
-**Causa raíz.** Al diálogo se le pasaba `motivos: CATALOGO` — el catálogo entero, sin filtrar por contexto. La validación de fondo era correcta; lo que faltaba era que la interfaz **conociera la misma regla** que el validador.
+La lectura del cuerpo quedó **dentro** del mismo techo: un servidor que manda headers y después nada cuelga igual.
 
-**Cómo se detectó.** El usuario, usándolo.
+### ✱13 · La pantalla web: construida, descartada, y su cadáver *(líneas 12, 26)*
 
-**Corrección.** La interfaz le pregunta al catálogo qué motivos corresponden a este contexto, en vez de tener una lista propia. Las horas dejaron de ser texto libre y pasaron a ser un desplegable de valores válidos: en «hizo menos», de 0,5 hasta media hora antes de la jornada; en «hizo extra», de media hora después en adelante. Así tampoco existe el 26 de un dedazo.
+Se construyó una pantalla web de carga con 73 tests, se probó en producción y se descartó en **45 minutos**, con esta razón: *«Un supervisor no tiene que salir de Mattermost para registrar asistencia»*. Se borraron 2.042 líneas, y también la tabla en producción — *«sin dueño, una tabla vacía sólo confunde al próximo»*.
 
-**Regla permanente.**
-> **La interfaz no reimplementa las reglas: se las pide a la autoridad.** Una lista de opciones escrita a mano en la pantalla es una segunda fuente de verdad que va a divergir. Y **el backend nunca se relaja porque la interfaz mejoró**: la validación de fondo queda igual, la interfaz sólo deja de ofrecer lo que igual iba a ser rechazado.
+Bien hecho: los 44 tests que cubrían validaciones, motivos, horas, idempotencia y concurrencia **no colgaban de la pantalla sino del servicio**, y el arnés pasó a llamarlo en proceso sin reescribir una sola aserción.
 
-*(Corolario, incidente 16: cuando la interfaz y la autoridad no coinciden, **manda la autoridad**. El formulario exigía motivo un sábado; el catálogo no lo exige sin jornada conocida. El resultado era que el jefe elegía un motivo falso, y eso quedaba guardado como falta injustificada o ART en la única tabla que responde POR QUÉ. Ensuciar el dato es peor que no exigirlo.)*
+Mal hecho: sobrevivieron **981 líneas durante 7 horas 20**, incluyendo un camino de escritura a la planilla **sin ninguna puerta viva delante** y una función con un error garantizado si alguien la llamaba. Código muerto con acceso a la fuente de verdad es *«una trampa esperando que alguien lo reconecte porque ya estaba»*. Y **tenía tests propios: eso es lo que lo mantenía verde** en cada corrida **(P9)**.
 
----
+**La lección más cara es anterior a todo esto**: se diseñó la interfaz antes de preguntar dónde trabaja la gente. La respuesta estaba disponible desde el primer día.
 
-### 8 · Textos técnicos en inglés
+### ✱14 · Concurrencia: lo que funcionó
 
-**Problema.** Al rechazar un formulario, Mattermost mostraba *«Submission failed with validation errors»*.
+Se documenta porque hay que **preservarlo**, y porque es lo que hay que traducir a otros módulos.
 
-**Impacto.** El operador no lee inglés y el mensaje no dice qué corregir. Rompe la regla de que todo mensaje del OS está en castellano rioplatense, sin jerga.
+- **Huella por celda.** Antes de escribir se relee cada celda y se compara una huella que incluye la fórmula y el valor crudo. Cortó cargas simultáneas de dos personas sobre la misma obra sin perder una escritura, y `9` → `=9` también cuenta como conflicto.
+- **Confirmación de un solo uso.** Confirmar es un `UPDATE … WHERE estado = 'abierta'`: el segundo click pierde la carrera **en la base**, no en la aplicación.
+- **Identidad estructural.** El cliente nunca elige una fila: manda una referencia que el servidor traduce contra la planilla recién leída. Un nombre ambiguo **se rechaza en vez de adivinar** **(P12)**.
 
-**Causa raíz.** No era nuestro texto. El cliente de Mattermost, cuando la respuesta trae **sólo** `errors` por campo, pone ese encabezado de su cosecha; si viene un `error` de primer nivel, muestra ese. Se confirmó extrayendo el bundle del cliente y leyendo la función que lo decide.
-
-**Cómo se detectó.** El usuario lo reportó como texto técnico inaceptable.
-
-**Corrección.** Toda respuesta de error de un diálogo lleva siempre un `error` de primer nivel en castellano, además de los errores por campo.
-
-**Regla permanente.**
-> **Un texto que el usuario ve y que nosotros no escribimos es un defecto.** Cuando aparezca uno, hay que encontrar quién lo genera —hasta leer el código del cliente si hace falta— y tomar el control, no taparlo.
-
----
-
-### 9 · El `action_id` como segmento de URL
-
-**Problema.** Los botones de fecha mostraban *«Sorry, we could not find the page»*. El pedido no llegaba nunca a nuestro servidor.
-
-**Impacto.** Función principal inutilizable, y un síntoma que apunta al lugar equivocado: parece un problema de ruteo del proxy o de nuestro servidor.
-
-**Causa raíz.** El `action_id` viaja como segmento de la URL de la API de Mattermost (`/api/v4/posts/{post}/actions/{action_id}`) y ese segmento sólo acepta alfanuméricos. Con `fecha_hoy` la ruta no matcheaba: el 404 lo tiraba el **router de Mattermost**, no el manejador. La pista decisiva fue distinguir los dos 404 de Mattermost — el de router y el de manejador tienen códigos distintos.
-
-**Cómo se detectó.** Ausencia total del pedido en nuestros logs. **Que un pedido no aparezca en nuestros registros es un dato, no una falta de datos**: significa que falló antes de llegar, y manda a leer los logs del otro lado.
-
-**Corrección.** Ids alfanuméricos, y un validador de contrato que falla si aparece cualquier otro carácter.
-
-**Regla permanente.**
-> **Cuando un pedido no aparece en nuestros logs, el problema está antes de nosotros: hay que ir a leer los logs del otro lado.** Y todo identificador que viaje dentro de una URL tiene que declarar su alfabeto en un test, no confiarse.
-
----
-
-### 10 · La guarda que no corría en todas las puertas
-
-**Problema.** Tres vías distintas llegan a escribir en JORNALES (el comando, los botones y el flujo conversacional). La guarda de canal corría en dos.
-
-**Impacto.** Se podía cargar la asistencia por mensaje privado al bot — exactamente lo que la guarda existe para impedir: *«por privado no hay testigo, y en un canal cualquiera el dato de las personas queda donde no corresponde»*.
-
-**Causa raíz.** Una defensa que se implementa **en los llamadores** en vez de en el recurso protegido. Cada puerta nueva tiene que acordarse de invocarla, y una se olvidó.
-
-**Cómo se detectó.** Auditoría de seguridad, buscando todos los llamadores de la guarda y cruzándolos con todos los caminos que llegan a la escritura.
-
-**Corrección.** La guarda corre en las tres.
-
-**Regla permanente.**
-> **Cuando existan varias puertas a la misma escritura, enumerarlas explícitamente y verificar una por una que todas pasen por el mismo control.** El test correcto no es «la guarda funciona», es **«no existe ningún camino a la escritura que la esquive»**.
-
----
-
-### 11 · Auditoría insuficiente
-
-**Problema.** El evento `written` del camino de botones —el que usa la gente— guardaba cuatro campos armados a mano. Quedaban en `null`: `celdas_modificadas` (qué celda, de qué valor a cuál, con el desglose normal/extra), `mattermost_username`, `spreadsheet_id` y todos los totales de horas. El constructor que lo hace bien existía y estaba al lado; lo usaba el otro camino.
-
-**Impacto.** Es el incidente más grave del documento después del de seguridad, y el más difícil de ver. La documentación afirmaba como control vigente *«se puede reconstruir quién escribió qué celda, cuándo, y qué había antes ✔»*, y la rutina semanal decía *«verificar que cada escritura tenga old_value/new_value y celda»*. **Ese control estuvo ciego justo para la interfaz real**, y el ✔ se había tomado midiendo el otro camino.
-
-**Causa raíz.** Se duplicó la construcción del evento en vez de reutilizar la existente. La duplicación no divergió con el tiempo: **nació divergente**.
-
-**Cómo se detectó.** Consultando la tabla de auditoría real en producción y comparando filas: las cargas del camino viejo tenían `celdas_modificadas`; las del camino nuevo, `null`. Lo encontraron las dos auditorías por separado, una leyendo el código y otra mirando los datos.
-
-**Corrección.** Se usa `payloadConfirmacion` en los dos caminos. Se agregó un test que **falla con el evento armado a mano** y pasa con el constructor. Además, los rechazos del ruteador ahora llevan `request_id`, y un fallo del propio ledger deja rastro en el log en vez de pasar inadvertido.
-
-**Regla permanente.**
-> **Un control se verifica sobre el camino que la gente usa, no sobre el que es más fácil de probar.** Si un módulo tiene dos caminos al mismo efecto, el control se mide en los dos o no está medido. Y **el registro de una operación crítica se construye en un solo lugar**: si hay dos constructores del mismo evento, uno va a quedar pobre.
-
----
-
-### 12 · Timeout con Mattermost
-
-**Problema.** El cliente hacía `fetch` sin `AbortController`, sin `signal` y sin timeout. Esas llamadas ocurren **dentro** del manejador HTTP: si Mattermost no responde, el pedido del jefe de obra queda colgado indefinidamente.
-
-**Impacto.** Un servicio externo lento se convierte en un servicio nuestro caído, y en conexiones que nunca se liberan.
-
-**Causa raíz.** El patrón correcto **ya existía en la casa**: el cliente de Google usa `AbortController` con su variable de entorno y devuelve un error legible. No se aplicó al cliente de Mattermost.
-
-**Cómo se detectó.** Auditoría técnica, revisando todas las llamadas salientes desde un manejador de pedidos.
-
-**Corrección.** Timeout explícito y configurable, con el mismo estilo que el cliente de Google. La lectura del cuerpo quedó **dentro** del mismo techo —un servidor que manda headers y después nada cuelga igual— y el timer se limpia en los tres caminos: éxito, error HTTP y excepción.
-
-**Regla permanente.**
-> **Toda llamada saliente lleva timeout explícito, y el timeout cubre también la lectura del cuerpo.** Ningún pedido de un usuario puede quedar esperando indefinidamente por un tercero. Antes de escribir un cliente nuevo, buscar el que ya existe en la casa y copiarle el patrón.
-
----
-
-### 13 · Código muerto de la UI web
-
-**Problema.** Se construyó una pantalla web de carga y después se descartó, porque la gente ya trabaja dentro de Mattermost. Sobrevivieron 981 líneas: la API de esa pantalla —**incluyendo un camino de escritura a JORNALES**—, sus dependencias, sus dobles y sus tests. Entre ellas, una función con un `ReferenceError` garantizado si alguien la llamaba.
-
-**Impacto.** Un camino de escritura dormido es superficie de ataque y una trampa de mantenimiento. Y el DOD afirmaba *«sin rastros de la web ✔»*: la documentación decía que no estaban.
-
-**Causa raíz.** Se eliminó la decisión (la pantalla) pero no lo que colgaba de ella. Nadie corrió la pregunta «¿quién importa esto?» sobre los archivos huérfanos.
-
-**Cómo se detectó.** Auditoría técnica, con `grep` de importadores sobre todo el repositorio.
-
-**Corrección.** Se eliminaron. Se conservaron a propósito los dos módulos que sí seguían vivos, y la primitiva criptográfica reservada, que está declarada como tal.
-
-**Regla permanente.**
-> **Cuando se descarta una decisión de producto, se elimina en el mismo movimiento todo lo que existía sólo para ella**, verificando con `grep` de importadores. Un camino de escritura sin llamadores no es código inofensivo: es una puerta sin vigilancia. Y **un ✔ en un DOD se toma sobre el estado real, no sobre la intención**.
-
----
-
-### 14 · Concurrencia: lo que funcionó y lo que no
-
-**Lo que funcionó** —y hay que preservarlo, porque es el mejor diseño del módulo:
-
-- **Huella por celda.** Antes de escribir, se relee cada celda y se compara una huella que incluye **la fórmula y el valor crudo**. Si algo cambió desde que se armó el plan, se corta la operación entera. Dos personas cargando la misma obra no se pisan, y `9` → `=9` también cuenta como conflicto.
-- **Confirmación de un solo uso.** `confirmar` es un `UPDATE … WHERE estado = 'abierta'`: si el jefe aprieta Registrar dos veces, la segunda pierde la carrera en la base y no escribe. No hay lógica de aplicación decidiendo esto.
-- **Identidad estructural.** El cliente nunca elige una fila: manda una referencia estructural que el servidor traduce contra la planilla recién leída. Un nombre ambiguo se rechaza en vez de adivinar.
-
-**Lo que no** — y quedó documentado como límite, no corregido:
-
-- Entre que la sesión se marca confirmada y que la escritura ocurre hay una ventana: si el proceso muere ahí, el ledger dice `confirmed` y no se escribió nada.
-- Si la verificación posterior a la escritura falla, **las celdas ya están escritas** pero el evento se audita como `failed`.
-
-**Regla permanente.**
-> **La concurrencia se resuelve en el recurso, no en la aplicación.** Comparar contra el destino releído (huella) y condicionar la transición de estado en la base (`WHERE estado = …`) es lo que funciona; coordinar con banderas en memoria, no. Y **el orden entre confirmar, auditar y escribir es una decisión de diseño que hay que escribir**: si no se puede hacer atómico, hay que declarar qué queda inconsistente y en qué ventana.
-
----
-
-### 15 · Pruebas insuficientes descubiertas por la auditoría
-
-El módulo tenía 569 tests propios y una suite de 1.565 en verde. Aun así, **ninguno de los defectos graves lo encontró un test**. Los tres motivos, todos sistemáticos:
-
-1. **Dobles más permisivos que el original** (incidente 2). Además, el doble abría sesiones con el id del post ya puesto — algo que producción nunca hace, porque ese id recién se conoce en el primer click. Ese detalle tapaba un bug entero.
-2. **Tests que codificaban el diseño viejo.** Al rediseñar el formulario, varios tests seguían afirmando el contrato anterior. Un test que hay que reescribir en cada cambio de diseño no está protegiendo el comportamiento: está congelando la implementación.
-3. **Una red de seguridad desconectada.** El validador de contrato de Mattermost —que ataja exactamente los diálogos que la plataforma va a rechazar— existía, estaba bien escrito, y **sólo corría dentro de los tests**. Nunca en producción.
-
-**Regla permanente.**
-> **La cobertura no se mide en cantidad de tests sino en cuántos defectos reales podrían haber pasado igual.** Al cerrar un módulo, tomar los tres o cuatro bugs más caros y preguntar: *¿qué test habría fallado?* Si la respuesta es «ninguno», la suite mide otra cosa. Y **un validador que sólo corre en los tests no es una defensa**: si vale la pena validarlo, corre en producción.
+**Lo que quedó abierto y hay que saber:** entre que la sesión se marca confirmada y que la escritura ocurre hay una ventana en la que el ledger dice `confirmed` sin que se haya escrito; y **si la verificación posterior falla, las celdas ya están escritas** pero el evento se audita como `failed` — el jefe lee que no se pudo y la celda está cargada.
 
 ---
 
 ## Reglas permanentes del Business OS
 
-Cada una nace de un incidente real de arriba.
+Clasificadas según el estándar del `CLAUDE.md` raíz: **C** patrón probable · **D** conocimiento interno validado · **E** regla operativa aprobada. Una **A** (observación aislada) no entra acá. El número entre paréntesis remite a la línea de tiempo; la P, al patrón.
 
-### Seguridad y confianza
+### Quién y cómo se cierra
 
-1. **Nunca confiar en datos que vienen del cliente.** Del payload se lee la *intención*; la identidad, los permisos y el estado se leen del servidor. *(1)*
-2. **Toda ruta que escriba datos autentica su origen antes de mirar permisos.** Si el que llama puede escribir su propia identidad, el control de permisos no controla nada. *(1)*
-3. **Todo borde entrante se audita contra su despliegue**, cruzando la configuración del proxy con el manejador. La superficie pública no se ve leyendo la aplicación. *(1)*
-4. **Fail-closed sin excepciones, y también cuando falta la configuración.** Un endpoint que escribe y no verifica nada es peor que uno apagado: apagado se nota enseguida. *(1)*
-5. **Enumerar todas las puertas al mismo recurso** y verificar una por una que pasen por el mismo control. El test es «no existe camino que lo esquive». *(10)*
-6. **Un secreto no se compara con `===`.** Tiempo constante, siempre. *(1)*
+**R1 — Ningún módulo lo cierra quien lo construyó.** El cierre lo firma alguien —persona o agente— que no escribió el código y que ataca el sistema vivo, no que lee. Sin eso, el DOD es una autoevaluación. `D` *(hallazgo estructural)*
 
-### Datos y verdad
+**R2 — Toda ruta que escriba datos autentica su origen antes de mirar permisos.** Operable: abrir la configuración del proxy, listar todos los prefijos publicados, y para cada uno escribir el archivo y la línea del manejador que autentica el origen. **Un prefijo sin línea es un hallazgo, no una pendiente.** `E` *(27)*
 
-7. **Los controles críticos no pueden validarse contra la misma información que generan.** Si el control y el dato salen del mismo camino, no hay control. *(11, y el precedente del Flujo de Fondos)*
-8. **Un control se verifica sobre el camino que la gente usa**, no sobre el más fácil de probar. Dos caminos al mismo efecto: se miden los dos. *(11)*
-9. **El registro de una operación crítica se construye en un solo lugar.** Dos constructores del mismo evento garantizan que uno quede pobre. *(11)*
-10. **Nunca decirle al usuario que algo se guardó si no se guardó.** Distinguir «ya estaba» de «no se pudo» de «se canceló». *(4)*
-11. **La fuente de verdad sobre si hay que escribir es el destino releído**, nunca un registro nuestro de lo que creemos haber hecho. *(4, 14)*
-12. **Un dato que se corrige tiene que poder corregirse hacia abajo.** Si sólo se hace upsert de lo que existe, una marca falsa queda para siempre. *(15)*
-13. **Nunca forzar al usuario a inventar un dato para poder avanzar.** Un campo obligatorio que no corresponde exigir ensucia la tabla que después se usa para decidir. *(16)*
+**R3 — Que el usuario diga que anduvo no prueba que anduvo.** La prueba es el efecto verificado en el destino: la celda escrita, la fila en la base, el evento con evidencia. Toda validación en producción se cierra **mirando el destino, no la pantalla**. `E` *(28)*
 
-### Diseño de interacción
+**R4 — Un control se verifica sobre el camino que usa la gente.** Si hay dos caminos al mismo efecto, se miden los dos o no está medido. `E` *(30, P6)*
 
-14. **Ningún formulario debe permitir estados imposibles.** Prevenir por estructura le gana a validar por reglas: si la combinación inválida no se puede seleccionar, no hay que rechazarla. *(6, 7)*
-15. **La interfaz no reimplementa las reglas: se las pide a la autoridad.** Una lista escrita a mano en la pantalla es una segunda fuente de verdad. *(7)*
-16. **Cuando la interfaz y la autoridad no coinciden, manda la autoridad** — y la diferencia es un bug, no una preferencia. *(16)*
-17. **El backend no se relaja porque la interfaz mejoró.** *(7)*
-18. **Verificar qué permite la plataforma leyendo su contrato o su código, no suponiendo.** *(6, 9)*
-19. **Todo texto que el usuario ve y que nosotros no escribimos es un defecto.** *(8)*
-20. **Si una interfaz puede quedar duplicada en pantalla, el estado del servidor tiene que estar atado a una de esas copias.** *(5)*
+**R5 — Un doble nunca es más permisivo que el original, ni parte de un estado inicial que producción no produce.** Si el real desestructura un campo, el doble falla cuando falta. Y toda corrección se valida **por mutación**: revertirla tiene que hacer fallar el test. `E` *(P4, cuatro apariciones)*
+
+### Verdad del dato
+
+**R6 — El control de una escritura se corre con una herramienta que no comparte código con el que escribió.** Si el control usa la misma función que generó el dato, no es control: es un eco. Concreto: si el módulo escribe con `X`, el control lee el destino con una consulta independiente y compara. `E` *(30; precedente Flujo de Fondos)*
+
+**R7 — Ningún campo de auditoría afirma una verificación que el código no hace.** Si el ledger dice `verificada`, hay una línea que la verificó. `E` *(27)*
+
+**R8 — Un mensaje de éxito se emite después de comprobar el efecto y describe lo que pasó.** «Ya estaba», «no se pudo» y «se canceló» nunca comparten texto, y un fallo de una llamada externa **nunca** termina en una respuesta de éxito. `E` *(P1, seis apariciones)*
+
+**R9 — El registro de una operación crítica se construye en un solo lugar.** Verificable con `grep` del nombre del constructor. `E` *(30)*
+
+**R10 — La fuente de verdad sobre si hay que escribir es el destino releído**, no un registro nuestro de lo que creemos haber hecho. `E` *(20, ✱14)*
+
+**R11 — Todo dato derivado se puede corregir hacia abajo**: una carga posterior borra lo que dejó de aplicar, no sólo agrega. `D` *(25)*
+
+**R12 — Nunca inventar el dato que falta**: declararlo, rechazar antes que adivinar, y nunca forzar al usuario a inventarlo para poder avanzar. `E` *(P12, seis apariciones)*
+
+### Diseño
+
+**R13 — Antes de construir una interfaz, preguntar dónde trabaja hoy quien la va a usar**, y llevar el sistema ahí. `D` *(12)*
+
+**R14 — Ningún formulario permite estados imposibles.** Cuando la plataforma no deja corregir al vuelo, la respuesta no es simular la corrección: es rediseñar para que el estado inválido **no sea representable**. `E` *(23)*
+
+**R15 — La interfaz le pide las reglas a la autoridad del dominio; cuando no coinciden, manda la autoridad** y la diferencia es un bug, no una preferencia. El backend no se relaja porque la interfaz mejoró. `E` *(23, 34, P8)*
+
+**R16 — Verificar qué permite la plataforma leyendo su contrato o su código.** Todo identificador que viaje en una URL declara su alfabeto en un test. `E` *(22, 23)*
+
+**R17 — Todo texto que el usuario ve y que nosotros no escribimos es un defecto.** `E` *(24)*
+
+**R18 — Si una interfaz puede quedar duplicada en pantalla, el estado del servidor se ata a una copia** y verifica que es la vigente. `D` *(33)*
+
+**R19 — Una interfaz se mira antes de darla por buena**, y el test que nace de un defecto visual ataca la causa —que sí es texto— en vez de renderizar. `E` *(13, P7)*
 
 ### Robustez
 
-21. **Toda protección automática declara qué pasa si se dispara por error.** Si la respuesta es «el sistema queda inutilizable», está mal diseñada. *(3)*
-22. **Antes de proteger un recurso, declarar de quién es.** Lo que mantiene una persona no se protege como lo que mantiene el OS. *(3)*
-23. **La idempotencia protege un reintento, no la historia.** Su alcance es la unidad de trabajo. Escribir el caso legítimo que repite la clave: si existe, el alcance está mal. *(4)*
-24. **La concurrencia se resuelve en el recurso**: huella contra el destino releído y transiciones condicionadas en la base. *(14)*
-25. **Todo endpoint externo lleva timeout explícito**, que cubre también la lectura del cuerpo, y limpia su timer en todos los caminos. *(12)*
-26. **Un servicio degrada, no entra en crash-loop.** Si una dependencia falta, se sigue de pie denegando. *(13)*
-27. **Un fallo de una llamada externa no puede terminar en una respuesta de éxito.** *(2)*
-28. **Un fallo del sistema de auditoría deja rastro.** Nunca cambia el veredicto, pero nunca es invisible. *(11)*
+**R20 — Cada guarda automática tiene escrita una fila: falso positivo → qué queda roto → cómo se destraba → quién puede destrabarlo.** Si el destrabe requiere un deploy o una migración, la guarda no se activa automáticamente. `E` *(19, P5)*
 
-### Proceso
+**R21 — Antes de proteger un recurso, declarar de quién es.** Lo que mantiene una persona no se protege como lo que mantiene el OS: ahí se protege la unidad mínima (la celda, la fila), no el contenedor. `E` *(19)*
 
-29. **Toda auditoría intenta romper el sistema deliberadamente**, contra el sistema vivo, no leyendo código. *(1)*
-30. **Ningún bug crítico se considera cerrado sin reproducirlo primero** y sin un test que falle con el código viejo. *(2, 11)*
-31. **Toda mejora se valida en producción antes del cierre**, por el camino real del usuario. *(2)*
-32. **Cuando un pedido no aparece en nuestros logs, el problema está antes de nosotros.** Ir a leer los logs del otro lado. *(9)*
-33. **Un doble de prueba nunca es más permisivo que el original.** *(2, 15)*
-34. **Un validador que sólo corre en los tests no es una defensa.** *(15)*
-35. **Eliminar el código muerto en el mismo movimiento en que se descarta la decisión que lo justificaba**, verificando con `grep` de importadores. *(13)*
-36. **Un ✔ en un DOD se toma sobre el estado real medido, no sobre la intención.** *(11, 13)*
-37. **Cuando un comentario declara una condición futura que activaría una defensa, esa condición es un ítem de checklist.** *(1)*
-38. **Antes de escribir un cliente nuevo, buscar el que ya existe en la casa y copiarle el patrón.** *(12)*
+**R22 — Si una regla vive en varias capas, se corrige en todas a la vez.** Una sobreviviente reinstala el defecto. `E` *(7, 20, 21)*
+
+**R23 — La idempotencia protege un reintento, no la historia.** Su alcance es la unidad de trabajo; antes de definir una clave, escribir el caso legítimo que la repite. Si existe, el alcance está mal. `E` *(20)*
+
+**R24 — La concurrencia se resuelve en el recurso**: comparar contra el destino releído y condicionar la transición de estado en la base. Coordinar con banderas en memoria, no. `E` *(✱14)*
+
+**R25 — Toda llamada saliente lleva timeout explícito que cubre la lectura del cuerpo** y limpia su timer en todos los caminos. Todo cliente nuevo se escribe listando primero los que ya hay: si el nuevo no tiene timeout, reintento o log y el viejo sí, es un bug, no una decisión de diseño. `E` *(35)*
+
+**R26 — Un servicio degrada, no entra en crash-loop.** Si una dependencia falta, sigue de pie denegando. `E` *(32)*
+
+**R27 — Un fallo del sistema de auditoría deja rastro**, aunque no cambie el veredicto. `D` *(36)*
+
+### Proceso y memoria
+
+**R28 — Al agregar una puerta a un efecto existente, listar las defensas del camino viejo una por una.** El test correcto no es «la guarda funciona»: es **«no existe camino al efecto que la esquive»**, con la lista de caminos escrita. `E` *(P6, cuatro apariciones)*
+
+**R29 — Cuando un pedido no aparece en nuestros logs, el problema está antes de nosotros**: ir a leer los logs del otro lado. `E` *(22, P3)*
+
+**R30 — Toda afirmación de control en la documentación necesita un comando que la verifique o un guard-test que la sostenga.** Un ✔ se toma sobre el estado real medido. `E` *(P2, cinco apariciones)*
+
+**R31 — Cuando un comentario declara la condición futura que activaría una defensa, esa condición es un ítem de checklist.** `D` *(27)*
+
+**R32 — Un validador que sólo corre en los tests no es una defensa.** Y un test verde sobre código que nadie importa es señal de **código muerto**, no de cobertura. `E` *(26, 31)*
+
+**R33 — Eliminar el código muerto en el mismo movimiento en que se descarta lo que lo justificaba**, verificando importadores con `grep`. `E` *(26)*
+
+**R34 — Después de corregir algo, revisar en la misma sesión qué depende de lo que se tocó.** `D` *(11, 14, P11)*
+
+**R35 — Cuando un commit nombra un patrón, ese patrón sale del mensaje de commit y entra acá o en un test el mismo día.** «Un doble que tapa» estaba escrito y volvió a pasar tres veces. `E` *(P4)*
+
+**R36 — Antes de habilitar una escritura, escribir cómo se revierte y quién puede hacerlo.** `D` *(faltante detectado en la revisión)*
+
+> **Cuándo NO aplican.** «Fail-closed» (R2, R26) vale para todo lo que **escribe**; en un módulo de sólo lectura, negar por una variable faltante deja al dueño sin datos y es peor que degradar avisando. R19 no aplica a módulos sin interfaz. Toda excepción se escribe con su motivo.
 
 ---
 
-## Checklist de cierre de un módulo
+## Traducción a otros destinos
 
-Reutilizable para Compras, RRHH, Finanzas, Obras y cualquier módulo nuevo. Un módulo **no se cierra** con ítems sin marcar; los que no apliquen se marcan como no aplicables **con el motivo escrito**.
+El módulo escribe en una planilla que mantienen personas. Casi todo lo de arriba se traduce, pero no solo:
 
-### Seguridad
-- [ ] Enumeradas **todas** las puertas que llegan a la escritura, y verificado camino por camino que pasan por el mismo control.
-- [ ] Cada borde entrante autentica su **origen** antes de evaluar permisos.
-- [ ] Revisada la configuración del **proxy/despliegue**, no sólo el código: ¿qué quedó publicado?
-- [ ] Listados los campos del pedido que se usan **sin re-verificar** contra el servidor. Para cada uno: ¿qué pasa si el que llama lo cambia?
-- [ ] Comprobado el comportamiento **sin la configuración** (variable faltante): ¿falla abierto o cerrado?
-- [ ] Secretos comparados en tiempo constante y ausentes de logs, mensajes y auditoría.
-- [ ] Probados: usuario sin permiso, canal incorrecto, payload manipulado, reenvío del mismo pedido, formulario vencido.
+| En Asistencia (Google Sheets) | En Postgres | En una API externa |
+|---|---|---|
+| Huella por celda antes de escribir | Columna de versión: `UPDATE … WHERE actualizado_at = $1` | ETag / `If-Match` |
+| Pestaña compartida con personas | Tabla con filas de origen humano y filas generadas: la marca de origen decide qué se puede pisar | Recursos que el tercero también modifica |
+| El destino releído decide si hay que escribir | `SELECT` antes del `INSERT`, no memoria de la aplicación | `GET` antes del `PUT` |
+| «De quién es la pestaña» | «De quién es la fila» | «De quién es el recurso» |
+| Auto-candado de pestaña | Cualquier bloqueo que se tome solo y no se libere solo | Circuit breaker que no se cierra |
 
-### Datos y auditoría
-- [ ] La operación crítica deja registro **con evidencia**, no con un resumen: qué se tocó, qué había antes, qué quedó.
-- [ ] Ese registro se construye en **un solo lugar** y se verificó **en el camino que usa la gente**.
-- [ ] Los rechazos se auditan con su motivo distinguible y su identificador de pedido.
-- [ ] Un fallo del propio ledger deja rastro.
-- [ ] Un dato derivado se puede **corregir hacia abajo** (borrar lo que dejó de aplicar), no sólo hacia arriba.
-- [ ] Ningún mensaje afirma un resultado económico que no ocurrió.
-
-### Concurrencia e idempotencia
-- [ ] Escrito el caso legítimo que produce **la misma clave de idempotencia dos veces**. Si existe, el alcance está mal.
-- [ ] Doble click y ráfaga de acciones probados: una sola mutación.
-- [ ] Dos usuarios sobre el mismo recurso probados.
-- [ ] La decisión de escribir se toma contra el **destino releído**.
-- [ ] Escrito qué queda inconsistente si el proceso muere entre confirmar, auditar y escribir.
-
-### Robustez
-- [ ] Toda llamada saliente con timeout explícito, que cubre la lectura del cuerpo y limpia su timer.
-- [ ] Probado el arranque **sin la base** y sin cada dependencia: ¿degrada o entra en crash-loop?
-- [ ] Ninguna protección automática puede dejar el sistema inutilizable ante un falso positivo.
-- [ ] Ningún error de una llamada externa termina en una respuesta de éxito.
-- [ ] Revisados los `catch`: ninguno se traga algo que el usuario necesitaría saber.
-
-### Interacción
-- [ ] Ningún formulario permite seleccionar una combinación que después se rechaza.
-- [ ] Las opciones que ofrece la interfaz salen de la autoridad del dominio, no de una lista propia.
-- [ ] Todos los textos son nuestros y están en castellano rioplatense: buscado explícitamente texto en inglés del cliente/plataforma.
-- [ ] Probados los casos de borde reales del negocio: feriado, sábado, día sin calibrar, cuadrilla vacía, fecha futura.
-- [ ] Probado desde celular y desde escritorio.
-
-### Código
-- [ ] `grep` de importadores sobre todo lo que quedó huérfano al descartar una decisión; eliminado.
-- [ ] Sin caminos de escritura sin llamadores.
-- [ ] Límites del proyecto respetados (archivos ≤500 líneas, funciones ≤50) o justificados por escrito.
-- [ ] Sin utilidades duplicadas; si una validación se repite en capas, escrito cuál es la autoritativa y por qué la repetición es deliberada.
-
-### Pruebas
-- [ ] Cada doble de prueba es **al menos tan estricto** como el original que reemplaza, y refleja el estado inicial real de producción.
-- [ ] Los tres bugs más caros del módulo tienen un test que **falla con el código viejo** — verificado revirtiendo.
-- [ ] Todo validador de contrato corre también en producción.
-- [ ] Suite completa, typecheck y lint en verde.
-
-### Cierre
-- [ ] Flujo completo validado **en producción**, por el camino real del usuario.
-- [ ] Logs revisados después del despliegue: sin errores nuevos, y con lo necesario para diagnosticar (identificador de pedido y de correlación).
-- [ ] Servicios reiniciados verificados: activos y sin reinicios.
-- [ ] Documentación actualizada, incluidas **las limitaciones que no se corrigieron**, sin disfrazarlas.
-- [ ] Plantillas de entorno declaran **todas** las variables nuevas, incluidas las que hacen fallar en silencio si faltan.
-- [ ] Este documento actualizado con lo que se aprendió.
+Los estados de borde también se traducen. En Asistencia son feriado, sábado, día sin calibrar, cuadrilla vacía y fecha futura. En **Compras**: nota de crédito con signo negativo, comprobante sin CUIT, proveedor nuevo, duplicado del mismo número, período fiscal cerrado. En **Finanzas**: saldo negativo, dos monedas, cheque endosado, mes cerrado. En **RRHH**: alta a mitad de quincena, baja, categoría sin convenio.
 
 ---
 
-## Auditoría del proceso
+## Checklist de cierre
 
-### ¿Qué hicimos bien?
+**Un ítem no se marca con ✔: se marca con la evidencia que lo prueba** — el nombre del test, la consulta contra producción, la línea de log, el `curl` que rebotó. Un ítem sin evidencia escrita cuenta como no cumplido. Esta es la corrección directa al DOD anterior, que estaba 100% marcado y era falso.
 
-- **El núcleo de escritura.** La huella por celda, la identidad estructural en vez de coordenadas y la confirmación condicionada en la base son diseño de primer nivel. Ninguna auditoría les encontró un agujero, y resolvieron problemas que la mayoría de los sistemas resuelven mal.
-- **Fail-closed como criterio, no como excepción.** Canal, permiso e identidad deniegan cuando no se pueden verificar. Eso limitó el daño de varios incidentes.
-- **Comentarios que explican el porqué.** Buena parte de la reconstrucción de este documento salió de comentarios del propio código. Es una inversión que se pagó sola.
-- **Auditar con dos ojos independientes, uno funcional y otro técnico.** Convergieron en el mismo hallazgo por caminos distintos, lo que le dio confianza al diagnóstico.
-- **Reproducir antes de corregir.** Ningún bug se dio por entendido sin verlo fallar primero.
+### Bloqueantes — sin estos ocho no se cierra nada
 
-### ¿Qué hicimos mal?
+| # | Ítem | Evidencia | Fecha |
+|---|---|---|---|
+| 1 | El cierre lo firma alguien que **no construyó** el módulo *(R1)* | | |
+| 2 | Cada prefijo publicado por el proxy tiene archivo:línea que **autentica el origen** *(R2)* | | |
+| 3 | Lista escrita de **todos los caminos al efecto crítico**, y cada uno pasa por la guarda *(R28)* | | |
+| 4 | El registro de la escritura, **medido en el camino que usa la gente**, trae la evidencia mínima *(R4, R6)* | | |
+| 5 | Los dobles **exigen el contrato del original** y parten del estado inicial real *(R5)* | | |
+| 6 | Probado el comportamiento **sin la configuración**: falla cerrado *(R2, P10)* | | |
+| 7 | Flujo validado en producción **mirando el destino**, no la pantalla *(R3)* | | |
+| 8 | Escrito **cómo se revierte** una escritura mal hecha y quién puede hacerlo *(R36)* | | |
 
-- **Dimos por cerrado un módulo con un agujero crítico y una función principal rota.** El DOD tenía ✔ en filas que no se habían medido sobre el camino real.
-- **Construimos una pantalla web antes de preguntar dónde trabaja la gente.** Costó el desarrollo, el descarte y 981 líneas de código muerto que sobrevivieron meses.
-- **Duplicamos la construcción del evento de auditoría** teniendo el constructor correcto al lado.
-- **Escribimos dobles de prueba a la medida de lo que queríamos probar**, no de lo que hace el original.
-- **Dejamos una defensa escrita y desconectada** (el validador de contrato) y una primitiva criptográfica con una nota que decía exactamente cuándo había que activarla. Se cumplió la condición y nadie la releyó.
+### Si aplica — y si no, con el motivo escrito
 
-### ¿Qué podríamos haber detectado antes?
+**Seguridad.** Campos del pedido usados sin re-verificar, listados con qué pasa si el que llama los cambia · secretos ausentes de logs, mensajes y auditoría · probados: usuario sin permiso, ámbito incorrecto, payload manipulado, reenvío, formulario vencido.
 
-Casi todo, con dos preguntas hechas al empezar:
+**Datos.** Rechazos auditados con motivo distinguible e identificador de pedido · un fallo del ledger deja rastro · todo derivado se corrige hacia abajo · **revisados uno por uno los textos de éxito**: ninguno afirma algo que puede no haber pasado.
 
-1. **«¿Qué prueba que este pedido viene de quien dice?»** — encontraba el incidente crítico el primer día.
-2. **«Si este módulo tiene dos caminos al mismo efecto, ¿medí los dos?»** — encontraba la auditoría pobre y la guarda faltante.
+**Concurrencia.** Escrito el caso legítimo que repite la clave de idempotencia · verificado que la regla **no está reforzada en otra capa** (índice, restricción, caché) · doble click y ráfaga: una sola mutación · dos usuarios sobre el mismo recurso · escrito qué queda inconsistente si el proceso muere entre confirmar, auditar y escribir.
 
-Y con una tercera al cerrar: **«¿qué test habría fallado?»** para cada bug encontrado.
+**Robustez.** Timeout en toda llamada saliente, que cubre la lectura del cuerpo · arranque probado sin cada dependencia · cada guarda automática con su fila de destrabe *(R20)* · cada `catch` hace una de tres: re-lanza, cambia la respuesta al usuario, o lleva un comentario que explica por qué es seguro tragárselo — no hay una cuarta.
 
-### ¿Qué proceso faltó?
+**Interacción.** Verificado dónde trabaja hoy quien lo va a usar · ningún formulario ofrece lo que después se rechaza · las opciones salen de la autoridad del dominio · textos nuestros y en castellano, buscado explícitamente texto de la plataforma · listados y probados los **5 estados de borde del negocio de este módulo** · la interfaz se miró, en celular y escritorio.
 
-- Una **auditoría adversaria obligatoria antes del cierre**, hecha por alguien que no construyó el módulo y que ataca el sistema vivo. Fue lo que encontró todo lo grave, y llegó tarde.
-- Un **inventario explícito de las puertas** a cada escritura, mantenido en la documentación del módulo.
-- Una **revisión del despliegue** —qué quedó publicado, con qué autenticación— como paso separado de la revisión del código.
+**Código.** `grep` de importadores sobre lo huérfano; eliminado · sin caminos al efecto crítico sin llamadores · el evento de auditoría, la validación de entrada y el cliente externo tienen **exactamente un constructor cada uno**, verificado con `grep`.
 
-### ¿Qué automatización conviene crear?
+**Pruebas.** Los tres bugs más caros tienen un test que **falla al revertir la corrección** — verificado, no supuesto · todo validador de contrato corre también en producción. *(Suite, typecheck y lint en verde son dato administrativo: la evidencia son los dos ítems anteriores.)*
 
-Por orden de valor:
+**Cierre.** Logs revisados post-deploy, con identificadores de pedido y correlación · servicios activos sin reinicios · documentación actualizada **incluidas las limitaciones no corregidas** · plantillas de entorno con todas las variables nuevas y qué se rompe si faltan · este documento actualizado.
 
-1. **Un test que enumere los caminos a la escritura** y falle si alguno no invoca la guarda. Convierte la regla 5 en algo que no se puede olvidar.
-2. **Un chequeo de que todo endpoint publicado por el proxy tiene autenticación declarada** — cruzar la configuración del proxy con los manejadores registrados.
-3. **Un test que compare los dobles con las firmas reales** que reemplazan: si el original desestructura un campo que el doble ignora, falla.
-4. **Un auditor de completitud del ledger**: dado un evento de escritura, verificar que trae la evidencia mínima (celda, valor anterior, valor nuevo, autor). Corriendo periódicamente sobre datos reales, habría gritado la misma noche.
-5. **Un chequeo de código muerto** que liste exports sin importadores en los módulos del OS.
-6. **Un chequeo de que toda variable de entorno leída está declarada en la plantilla de deploy**, y viceversa.
+---
 
-### ¿Qué test debería existir para que este tipo de bug nunca vuelva a producción?
+## Lo que hay que construir
 
-Uno por familia, y los cuatro son baratos:
+Backlog real, priorizado. Cada ítem convierte una regla en algo que no se puede olvidar.
 
-- **Suplantación**: un pedido con la identidad de un usuario habilitado, **sin credencial de origen**, tiene que ser rechazado. Si pasa, falla el test.
-- **Evidencia de la escritura**: el evento de una carga real tiene que traer celda, valor anterior y valor nuevo. Este test se escribió y **falla con el código que estaba en producción**.
-- **Fidelidad de los dobles**: el doble del cliente externo exige exactamente los campos que el original desestructura.
-- **Inventario de puertas**: la lista de caminos que llegan a la escritura es explícita, y cada uno pasa por la guarda.
+1. **Test de inventario de puertas** — la lista de caminos al efecto crítico es explícita y falla si alguno no pasa por la guarda. *(R28)*
+2. **Auditor de completitud del ledger** — dado un evento de escritura, verificar que trae la evidencia mínima. Corriendo sobre datos reales, habría gritado la misma noche. *(R4, R6)*
+3. **Test de suplantación** — un pedido con la identidad de un usuario habilitado **sin credencial de origen** tiene que ser rechazado. *(R2)*
+4. **Chequeo de endpoints publicados** — cruzar la configuración del proxy con los manejadores; falla si hay ruta pública sin autenticación declarada. *(R2)*
+5. **Test de fidelidad de dobles** — si el original desestructura un campo que el doble ignora, falla. *(R5)*
+6. **Guard-tests de veracidad documental**, generalizando el que ya existe. *(R30)*
+7. **Chequeo de código muerto** — exports sin importadores. *(R33)*
+8. **Chequeo de variables de entorno** — toda variable leída está en la plantilla y viceversa. *(P10)*
+
+---
+
+## Qué hicimos mal
+
+- **Dimos por cerrado un módulo con un agujero crítico y la función principal rota**, con un DOD que se puso los ✔ a sí mismo.
+- **Construimos una pantalla web antes de preguntar dónde trabaja la gente**, y dejamos su cadáver con un camino de escritura vivo durante siete horas.
+- **Repetimos patrones que ya habíamos escrito.** «Un doble que no respeta el contrato del original no prueba, tapa» estaba en un commit **y volvió a pasar tres veces después**. Escribir la lección no alcanza si no se convierte en checklist o en test — de ahí R35.
+- **Duplicamos el constructor del evento de auditoría** teniendo el correcto a un import de distancia.
+- **Dejamos una defensa escrita y desconectada**, con una nota que decía exactamente cuándo activarla. Se cumplió la condición y nadie la releyó.
+- **Documentamos dos veces el mismo control inexistente**, con doce horas y dos archivos de diferencia.
+
+**¿Qué podríamos haber detectado antes?** Cinco de los treinta y siete, con dos preguntas hechas al empezar: *«¿qué prueba que este pedido viene de quien dice?»* y *«¿este módulo tiene dos caminos al mismo efecto? ¿medí los dos?»*. **Los otros treinta y dos necesitaban a alguien atacando el sistema vivo, o mirando el archivo real.** Esa es la conclusión honesta: no había forma de razonarlos desde el escritorio.
+
+Lo único del proceso que hay que preservar deliberadamente: **los comentarios que explican el porqué**. Este documento se reconstruyó casi entero de ellos.
 
 ---
 
 ## Cómo usar este documento
 
-- **Antes de empezar un módulo**: leer las *Reglas permanentes*. Son 38 y se leen en diez minutos.
-- **Durante**: cuando aparezca una decisión parecida a un incidente de acá, seguir la regla y no volver a razonarla de cero.
-- **Al cerrar**: correr el *Checklist de cierre* entero, con nombre y fecha.
-- **Después de cada incidente nuevo**, en cualquier módulo: agregarlo con la misma estructura (problema, impacto, causa raíz, cómo se detectó, corrección, regla permanente). Un incidente que no deja una regla se va a repetir.
+- **Antes de empezar un módulo**: leé *Los patrones* y las reglas R1 a R5. Quince minutos.
+- **Durante**: cuando una decisión se parezca a un patrón de acá, seguí la regla en vez de volver a razonarla.
+- **Al cerrar**: corré el checklist, **con evidencia escrita en cada fila**, y que lo firme alguien que no lo construyó.
+- **Después de cada incidente nuevo**, en cualquier módulo: agregalo a la línea de tiempo y, si repite un patrón, **subile el contador**. Un patrón que sube de 4 a 5 es la señal de que hace falta una automatización, no otra lección escrita.
+
+> Un incidente que no deja una regla se va a repetir. Una regla que no deja un test o un ítem de checklist, también.

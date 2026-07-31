@@ -32,11 +32,11 @@
 
 	# ── ASISTENCIA (Business OS) — pantalla de carga + slash command ────────────────
 	#
-	# QUÉ PUBLICA:
-	#   GET  /asistencia?t=<token>          la pantalla que abre el jefe desde el celular
-	#   GET  /asistencia/api/*              contexto y cuadrilla que consume esa pantalla
-	#   POST /asistencia/api/registrar      el registro (escribe en JORNALES)
+	# QUÉ PUBLICA (y nada más — la pantalla web se descartó el 30/07/2026: la interfaz vive
+	# adentro de Mattermost y nadie abre un navegador para cargar asistencia):
 	#   POST /asistencia/comando            el slash command /asistencia de Mattermost
+	#   POST /asistencia/accion?t=<secreto> los clicks de los botones y el envío de diálogos
+	# Todo lo demás bajo /asistencia* recibe 404 del propio servicio.
 	#
 	# Todo eso lo atiende UN proceso del host (`orquestador/comunicacion/servidor-asistencia.mjs`,
 	# user-unit `echegaray-asistencia-http.service`). Ese proceso NO abre ningún puerto público:
@@ -74,9 +74,9 @@
 		reverse_proxy mattermost:8065
 	}
 
-	# El token del enlace viaja en `?t=` porque tiene que poder abrirse desde un click en el
-	# celular. Es de un solo uso y dura 10 minutos, pero igual no tiene por qué quedar escrito
-	# en el log de acceso: se borra del registro. El resto de la URL se loguea normal.
+	# El SECRETO DE LA INTEGRACIÓN viaja en `?t=` de la URL de callback que Mattermost tiene
+	# guardada. No tiene por qué quedar escrito en el log de acceso: se borra del registro.
+	# El resto de la URL se loguea normal.
 	log {
 		format filter {
 			wrap console
