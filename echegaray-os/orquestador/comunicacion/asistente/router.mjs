@@ -116,17 +116,47 @@ async function guardarPendiente(port, identidad, ctx, { capacidad, parcial, preg
 }
 
 const norm = (t) => plano(t).replace(/[¿?¡!.]/g, '').trim()
-const ORDINALES = { 1: ['1', 'el primero', 'la primera', 'primero', 'primera'], 2: ['2', 'el segundo', 'la segunda', 'segundo', 'segunda'], 3: ['3', 'el tercero', 'la tercera', 'tercero', 'tercera'] }
+const ORDINALES = {
+  1: ['1', 'el primero', 'la primera', 'primero', 'primera', 'el 1', 'la 1'],
+  2: ['2', 'el segundo', 'la segunda', 'segundo', 'segunda', 'el 2', 'la 2'],
+  3: ['3', 'el tercero', 'la tercera', 'tercero', 'tercera', 'el 3', 'la 3'],
+  4: ['4', 'el cuarto', 'la cuarta', 'cuarto', 'cuarta', 'el 4', 'la 4'],
+  5: ['5', 'el quinto', 'la quinta', 'quinto', 'quinta', 'el 5', 'la 5'],
+}
+/** "ese", "ese mismo": señalan lo que se acaba de mostrar. En una lista ordenada por
+ *  relevancia, eso es el primero — que es el que el buscador puso arriba justamente porque
+ *  es el más probable. */
+const DEICTICOS = new Set([
+  'ese', 'esa', 'este', 'esta', 'ese mismo', 'esa misma', 'este mismo', 'esta misma',
+  'el mismo', 'la misma', 'ese si', 'esa si', 'dale ese', 'ese dale', 'el de arriba', 'el primero si',
+])
+/** Un pedazo de texto tan corto que puede aparecer por casualidad dentro de una etiqueta
+ *  (una fecha, un número de orden) no alcanza para elegir un archivo. */
+const MIN_SUBSTRING = 4
 
-/** ¿La respuesta es una de las opciones que se ofrecieron? Valor, etiqueta o el número. */
+/**
+ * ¿La respuesta es una de las opciones que se ofrecieron? Valor, etiqueta, ordinal o deíctico.
+ *
+ * EL ORDEN DE LAS COMPARACIONES ES EL ARREGLO. Antes el substring se probaba ANTES que el
+ * ordinal, y contra etiquetas que llevan la fecha del archivo: escribir "2" matcheaba el
+ * "2" de "15/07/2026" en la PRIMERA opción y devolvía el archivo equivocado. La persona pedía
+ * el segundo, recibía el primero, y nada fallaba. Ahora el ordinal manda, y el substring
+ * exige cuatro caracteres para no volver a ganar por casualidad.
+ */
 function elegirOpcion(opciones, texto) {
   const t = norm(texto)
   if (!t || !opciones?.length) return null
+  if (DEICTICOS.has(t)) return opciones[0]
+  // 1) Ordinal y valor exacto: lo que la persona escribe para elegir, sin ambigüedad.
   for (const [i, o] of opciones.entries()) {
+    if ((ORDINALES[i + 1] ?? []).includes(t) || t === norm(o.valor)) return o
+  }
+  // 2) La etiqueta, entera o en un pedazo suficientemente largo para identificar algo.
+  for (const o of opciones) {
     const etiqueta = norm(o.etiqueta)
-    if (t === norm(o.valor) || t === etiqueta) return o
-    if (etiqueta && (etiqueta.includes(t) || t.includes(etiqueta))) return o
-    if ((ORDINALES[i + 1] ?? []).includes(t)) return o
+    if (!etiqueta) continue
+    if (t === etiqueta) return o
+    if (t.length >= MIN_SUBSTRING && (etiqueta.includes(t) || t.includes(etiqueta))) return o
   }
   return null
 }
@@ -420,6 +450,24 @@ async function ejecutar({ capacidad, parametros, base, port, identidad, via }) {
   }
   if (capacidad.efectoExterno) await registrarEjecucion(port, base, identidad, capacidad.id, resultado)
   await base.auditar?.({ evento: 'asistente.ejecucion', capacidad: capacidad.id, ok: resultado.ok, via })
+
+  // UNA PREGUNTA DE LA CAPACIDAD TAMBIÉN ES UNA PREGUNTA.
+  //
+  // El router persistía como pendiente sólo lo que preguntaba ÉL (un parámetro que faltaba).
+  // Cuando la que preguntaba era la capacidad —"encontré varios, ¿cuál te paso?"— no se
+  // guardaba nada: la lista se mostraba, la persona contestaba "el segundo", y ese mensaje se
+  // interpretaba desde cero como si fuera un pedido nuevo. La pregunta era decorativa.
+  //
+  // Se guarda acá, en un solo lugar, para cualquier capacidad que pregunte. `parcial` viene
+  // de la propia capacidad y trae el `faltante` que su respuesta va a completar.
+  if (resultado.aclaracion?.opciones?.length && resultado.aclaracion.parcial?.faltante) {
+    await guardarPendiente(port, identidad, base, {
+      capacidad: capacidad.id,
+      parcial: resultado.aclaracion.parcial,
+      pregunta: resultado.texto,
+      opciones: resultado.aclaracion.opciones,
+    })
+  }
   return final(resultado, via, capacidad.id)
 }
 

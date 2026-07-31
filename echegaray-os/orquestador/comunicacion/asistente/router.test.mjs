@@ -252,3 +252,136 @@ test('la auditoría es un hook opcional: se avisa qué pasó sin que el router s
   await e.pedir('recordame comprar cemento')
   assert.ok(e.auditados.some((a) => a.evento === 'asistente.aclaracion'))
 })
+
+// ── Cuando la que pregunta es la CAPACIDAD ───────────────────────────────────
+//
+// El router persistía como pendiente sólo lo que preguntaba ÉL (un parámetro que faltaba).
+// La pregunta de una capacidad —"encontré varios archivos, ¿cuál te paso?"— no se guardaba:
+// la lista se mostraba, la persona contestaba "el segundo", y ese mensaje se interpretaba
+// desde cero como un pedido nuevo. La pregunta era decorativa y nadie lo notaba, porque el
+// asistente igual contestaba ALGO.
+
+test('una pregunta de la capacidad se guarda como pendiente y se puede contestar', async () => {
+  const preguntona = capacidadFalsa({
+    id: CAPACIDAD.DRIVE_BUSCAR,
+    entrada: zDriveBuscar,
+    ejecutar: ({ archivoId }) => (archivoId
+      ? resultadoOk(CAPACIDAD.DRIVE_BUSCAR, `Acá está: ${archivoId}`, { archivo: { id: archivoId } })
+      : {
+        ok: false, capacidad: CAPACIDAD.DRIVE_BUSCAR, evidencia: null, error: null,
+        texto: 'Encontré varios. ¿Cuál te paso?\n1. Avances de Obra — en administracion\n2. Avances de Obra — en administracion > Estrategia',
+        aclaracion: {
+          pregunta: 'Encontré varios. ¿Cuál te paso?',
+          opciones: [{ valor: 'f-av1', etiqueta: 'Avances de Obra — en administracion' },
+            { valor: 'f-av2', etiqueta: 'Avances de Obra — en administracion > Estrategia' }],
+          parcial: { intencion: CAPACIDAD.DRIVE_BUSCAR, parametros: { terminos: 'avances de obra', tipo: 'cualquiera' }, faltante: 'archivoId' },
+        },
+      }),
+  })
+  const e = entorno({ lista: [capacidadAyuda, preguntona] })
+
+  const pregunta = await e.pedir('pasame el archivo avances de obra')
+  assert.equal(pregunta.ok, false)
+  assert.match(pregunta.texto, /Encontré varios/)
+  const abiertas = e.db.pendientes.filter((p) => p.estado === 'abierta')
+  assert.equal(abiertas.length, 1, 'la pregunta de la capacidad no quedó registrada: la respuesta se perdería')
+  assert.equal(abiertas[0].opciones.length, 2)
+
+  // Y ahora la persona contesta "el segundo".
+  const elegida = await e.pedir('el segundo', { fetchImpl: fetchProhibido })
+  assert.equal(elegida.ok, true, 'la respuesta a la pregunta no llegó a la capacidad')
+  assert.equal(elegida.evidencia.archivo.id, 'f-av2')
+  assert.equal(e.db.pendientes[0].estado, 'resuelta')
+  const ultima = preguntona.llamadas.at(-1)
+  assert.equal(ultima.parametros.archivoId, 'f-av2')
+  assert.equal(ultima.parametros.terminos, 'avances de obra', 'se perdió qué se había buscado')
+})
+
+test('contestar con el NÚMERO de la opción también sirve', async () => {
+  const preguntona = capacidadFalsa({
+    id: CAPACIDAD.DRIVE_BUSCAR,
+    entrada: zDriveBuscar,
+    ejecutar: ({ archivoId }) => (archivoId
+      ? resultadoOk(CAPACIDAD.DRIVE_BUSCAR, 'ok', { archivo: { id: archivoId } })
+      : {
+        ok: false, capacidad: CAPACIDAD.DRIVE_BUSCAR, evidencia: null, error: null, texto: 'Encontré varios.',
+        aclaracion: {
+          pregunta: 'Encontré varios.',
+          opciones: [{ valor: 'a', etiqueta: 'Uno' }, { valor: 'b', etiqueta: 'Dos' }],
+          parcial: { intencion: CAPACIDAD.DRIVE_BUSCAR, parametros: { terminos: 'x', tipo: 'cualquiera' }, faltante: 'archivoId' },
+        },
+      }),
+  })
+  const e = entorno({ lista: [capacidadAyuda, preguntona] })
+  await e.pedir('pasame el archivo x')
+  const r = await e.pedir('2', { fetchImpl: fetchProhibido })
+  assert.equal(r.evidencia.archivo.id, 'b')
+})
+
+test('una capacidad que pregunta SIN declarar el faltante no abre un pendiente que nadie podría cerrar', async () => {
+  const vaga = capacidadFalsa({
+    id: CAPACIDAD.DRIVE_BUSCAR,
+    entrada: zDriveBuscar,
+    ejecutar: () => ({
+      ok: false, capacidad: CAPACIDAD.DRIVE_BUSCAR, evidencia: null, error: null, texto: '¿Cuál?',
+      aclaracion: { pregunta: '¿Cuál?', opciones: [{ valor: 'a', etiqueta: 'Uno' }], parcial: {} },
+    }),
+  })
+  const e = entorno({ lista: [capacidadAyuda, vaga] })
+  await e.pedir('pasame el archivo x')
+  assert.equal(e.db.pendientes.filter((p) => p.estado === 'abierta').length, 0)
+})
+
+test('ELEGIR: el ordinal manda sobre la etiqueta (la fecha traía un "2" que ganaba)', async () => {
+  const conFecha = capacidadFalsa({
+    id: CAPACIDAD.DRIVE_BUSCAR,
+    entrada: zDriveBuscar,
+    ejecutar: ({ archivoId }) => (archivoId
+      ? resultadoOk(CAPACIDAD.DRIVE_BUSCAR, 'ok', { archivo: { id: archivoId } })
+      : {
+        ok: false, capacidad: CAPACIDAD.DRIVE_BUSCAR, evidencia: null, error: null, texto: 'Encontré varios.',
+        aclaracion: {
+          pregunta: 'Encontré varios.',
+          // Las etiquetas REALES llevan la fecha: es donde estaba el "2" que se colaba.
+          opciones: [
+            { valor: 'f-av1', etiqueta: 'Avances de Obra — en administracion — 15/07/2026' },
+            { valor: 'f-av2', etiqueta: 'Avances de Obra — en administracion > Estrategia — 15/06/2026' },
+          ],
+          parcial: { intencion: CAPACIDAD.DRIVE_BUSCAR, parametros: { terminos: 'avances', tipo: 'cualquiera' }, faltante: 'archivoId' },
+        },
+      }),
+  })
+  const elegir = async (respuesta) => {
+    const e = entorno({ lista: [capacidadAyuda, conFecha] })
+    await e.pedir('pasame el archivo avances')
+    const r = await e.pedir(respuesta, { fetchImpl: fetchProhibido })
+    return r.evidencia?.archivo?.id ?? null
+  }
+  assert.equal(await elegir('2'), 'f-av2', 'pidió el segundo y le dieron el primero')
+  assert.equal(await elegir('el segundo'), 'f-av2')
+  assert.equal(await elegir('1'), 'f-av1')
+  assert.equal(await elegir('el primero'), 'f-av1')
+})
+
+test('ELEGIR: "ese" y "ese mismo" señalan lo que se acaba de mostrar', async () => {
+  const dos = capacidadFalsa({
+    id: CAPACIDAD.DRIVE_BUSCAR,
+    entrada: zDriveBuscar,
+    ejecutar: ({ archivoId }) => (archivoId
+      ? resultadoOk(CAPACIDAD.DRIVE_BUSCAR, 'ok', { archivo: { id: archivoId } })
+      : {
+        ok: false, capacidad: CAPACIDAD.DRIVE_BUSCAR, evidencia: null, error: null, texto: 'Encontré varios.',
+        aclaracion: {
+          pregunta: 'Encontré varios.',
+          opciones: [{ valor: 'top', etiqueta: 'El más probable — en administracion' }, { valor: 'otro', etiqueta: 'Otro — en administracion' }],
+          parcial: { intencion: CAPACIDAD.DRIVE_BUSCAR, parametros: { terminos: 'x', tipo: 'cualquiera' }, faltante: 'archivoId' },
+        },
+      }),
+  })
+  for (const respuesta of ['ese', 'ese mismo', 'esa', 'el mismo', 'este']) {
+    const e = entorno({ lista: [capacidadAyuda, dos] })
+    await e.pedir('pasame el archivo x')
+    const r = await e.pedir(respuesta, { fetchImpl: fetchProhibido })
+    assert.equal(r.evidencia?.archivo?.id, 'top', respuesta)
+  }
+})
