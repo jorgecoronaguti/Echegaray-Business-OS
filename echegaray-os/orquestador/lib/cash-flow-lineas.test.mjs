@@ -15,11 +15,17 @@ const ERROR_TOKENS = /#(REF|ERROR|N\/A|VALUE|DIV|NAME|NUM|NULL|¡)/
 const balanceada = (s) => { let n = 0; for (const c of String(s)) { if (c === '(') n++; if (c === ')') n--; if (n < 0) return false } return n === 0 }
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 
-// LAS FILAS DEL CALENDARIO DE IMPUESTOS, QUE `grilla` EXIGE (arreglado el 31/07). En el generador real
-// las ubica getSheetMeta por rótulo; acá se simulan, igual que FILAS_TABLA. Faltaban desde que se
-// agregó la línea de IVA/IIBB: los tres tests de abajo venían tirando "no sé en qué filas están IVA a
-// pagar/IIBB a pagar" y por lo tanto NINGUNO probaba nada. Un test que tira antes de la primera
-// aserción es peor que no tenerlo: figura en la suite y no defiende la grilla.
+// LAS FILAS DEL CALENDARIO DE IMPUESTOS, QUE `grilla` EXIGE (arreglado el 31/07 en dos frentes a la vez).
+//
+// En el generador real las ubica getSheetMeta POR RÓTULO; acá se simulan, igual que FILAS_TABLA. No se
+// pueden omitir: `filasCalendarioOk` exige que estén, porque una referencia a una fila muerta devolvería
+// $0 en silencio — así que un test que pasara `{}` estaría probando justo el caso que el guardián
+// prohíbe. Y faltaban desde que se agregó la línea de IVA/IIBB: los tres tests de abajo venían tirando
+// "no sé en qué filas están IVA a pagar/IIBB a pagar" y por lo tanto NINGUNO probaba nada. Un test que
+// tira antes de la primera aserción es peor que no tenerlo: figura en la suite y no defiende la grilla.
+//
+// Los números son los REALES de "Impuestos y Financieros" (leídos del archivo: IVA en la 18, IIBB en la
+// 28), no dos cualquiera: si algún día el simulacro y la pestaña se separan, que se note acá.
 const FILAS_CAL = { iva: 18, iibb: 28 }
 
 // ── CAMBIO 1 · las líneas 40/41 (descubierto e impuesto al cheque) ahora SE CALCULAN por semana ──
