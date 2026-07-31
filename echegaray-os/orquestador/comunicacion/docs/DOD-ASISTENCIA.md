@@ -277,10 +277,19 @@ todos los eventos `personal.asistencia.%`. Sin tabla nueva, sin vista nueva, sin
 | 13.6 | El comportamiento no cambió | Los mensajes al usuario, los permisos y el flujo son los mismos: la única diferencia observable es que ahora el rechazo queda anotado |
 | 13.7 | Se consulta sin herramienta nueva | `select * from comunicacion.v_asistencia_auditoria where status='denied' order by ocurrido_at desc` |
 
-### Lo que este incremento todavía no probó
+### Verificado en producción — 30/07/2026
 
-**No hay evidencia de producción para los once casos.** El criterio de honestidad del §2 vale
-también acá: mientras no haya rechazos reales anotados en la vista, esto es un contrato
-implementado y probado, no un hecho verificado en producción. La verificación se cierra con el
-primer rechazo real — el más barato de provocar es un `@os asistencia` desde un mensaje
-privado, que la guarda niega sin tocar la planilla.
+**11 rechazos reales anotados en la vista**, provocados contra el endpoint público, el mismo
+que llama Mattermost. Los códigos que quedaron registrados: `sin_permiso` (comando y acción),
+`canal_no_es_el_oficial` (otro canal y mensaje directo), `token_invalido`, `sin_identidad`,
+`sesion_inexistente` (acción y diálogo), `formulario_invalido` y `paso_desconocido`. El intento
+del usuario autorizado no generó ningún rechazo, y ningún evento contiene un token: los dos
+que la búsqueda de secretos marca son el literal `"motivo": "token"`, que es la familia del
+rechazo, no un valor.
+
+Tres casos quedan cubiertos por test y no por producción, porque exigen un estado que no se
+puede fabricar sin ensuciar datos: `token_sin_configurar` (el servidor sin token, que apagaría
+la carga para todos), `sesion_vencida` (hay que esperar el TTL) y `sesion_ajena` (haría falta
+un segundo usuario autorizado). `payload_invalido` sólo aparece cuando el pedido llega con
+identidad pero sin forma reconocible: en producción, un payload sin identidad muere antes, en
+la puerta, y se anota como `sin_identidad` — que es el motivo verdadero.
