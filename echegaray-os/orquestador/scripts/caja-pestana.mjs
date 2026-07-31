@@ -355,7 +355,10 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
     // queda como el DESGLOSE de cómo llegó ahí. Su columna de pesos tiene que quedar vacía o el mismo
     // efectivo entraría dos veces en `SUM(E7:E13)`. Ver lib/caja-efectivo-fisico.mjs.
     '', NETO_NO_SUMA_EN_PESOS, '=TODAY()',
-    `=IF($F$${d0}="";"⚠ cargá un arqueo con fecha";IF(${C_IMP}${fPostEf}=0;"sin movimientos";"vivo"))`,
+    // LA COLUMNA "ANTIGÜEDAD" MIDE 96px: "⚠ cargá un arqueo con fecha" entraba cortado y se leía
+    // "gá un arqueo cor", que parece basura y hace desconfiar de toda la fila. El aviso va CORTO acá
+    // —cabe— y la instrucción completa vive en la nota de la fila, como el resto de esta pestaña.
+    `=IF($F$${d0}="";"⚠ sin arqueo";IF(${C_IMP}${fPostEf}=0;"sin movimientos";"vivo"))`,
     `Ya está sumado arriba, en "Caja en pesos" — acá se muestra abierto, no se cuenta de nuevo. ${IDENTIDAD}. Cobros en efectivo (Cobranzas, estado Cobrado) menos pagos en efectivo (Compras, Pagado/Efectivo) menos depósitos de efectivo al banco. Sin arqueo con fecha no hay ventana y da 0.`,
     'Se calcula solo'])
   // LOS TRES SUMANDOS, UNO POR UNO. Un total solo no se puede discutir: $19,7 millones de efectivo en
@@ -418,7 +421,14 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
     '', `=${C_IMP}${filas.length + 1}`, '', '', `Pestaña ${refs.cheques}, columna DEBITADO distinta de SI — salida futura, no resta hasta que se debita`, 'Se calcula solo'])
   // PERCIBIDO: la disponibilidad de hoy NO resta los cheques emitidos (todavía no salieron). Los
   // cheques salen en el calendario cuando se debitan. Restarlos acá los contaba dos veces.
-  const fNeta = push(['Disponibilidad percibida hoy', '', '', '', `=${C_PESOS}${fTotal}`, '', '', '',
+  // ═══ EL RÓTULO QUE SE LEÍA COMO UNA RESTA QUE NO RESTA (31/07) ═══
+  //
+  // El dueño: "caja me da desconfianza". Y con razón en este punto: "Total disponibilidades" y
+  // "Disponibilidad percibida hoy" daban el MISMO número, con la línea "Cheques emitidos pendientes de
+  // debitar" en el medio. Cualquiera lee que esa línea se resta — y no se resta, porque un cheque
+  // librado que el banco todavía no debitó NO salió de la cuenta: la plata está. Que no se reste es
+  // correcto; que no se DIGA es lo que hace desconfiar. El rótulo ahora lo dice.
+  const fNeta = push(['Disponibilidad percibida hoy — los cheques de arriba no se restan hasta que el banco los debita', '', '', '', `=${C_PESOS}${fTotal}`, '', '', '',
     'La plata que realmente hay hoy (percibido). Los cheques emitidos salen cuando se debitan (calendario), no restan acá.'])
   push()
 
