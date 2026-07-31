@@ -114,11 +114,55 @@ crezca hacia abajo: hay un mensaje que cambia.
 |---|---|
 | `@os asistencia` | Fecha (hoy) con `Hoy` / `Ayer` / `Otra fecha…`, y el desplegable de obras |
 | Elige la obra | La cuadrilla entera, presente con la jornada del día, con su resumen |
-| `Marcar excepción` | Un **diálogo** de esa persona: presente · horas · motivo · otra obra · aclaración |
+| `No vino` · `Hizo menos horas` · `Hizo horas extra` | Un **diálogo** de esa persona con **sólo** los campos y los motivos que ese tipo de novedad admite |
 | `Registrar` | Se escribe, se audita y el mensaje queda confirmado |
 
 Las excepciones son lo único que se toca: el default es el caso normal, y el default es
 silencioso — presente completo lleva un guion al margen, la excepción grita.
+
+### El tipo de excepción se elige ANTES de abrir el formulario
+
+Antes había **un solo** botón, `Marcar excepción`, que abría **un solo** formulario con
+«¿Trabajó? Sí/No», «Horas» y «Motivo» — y el desplegable de motivos traía el **catálogo entero**
+(`motivos: d.motivos.CATALOGO`), sin filtrar por contexto. Se podía elegir
+«Trabajó: Sí · Horas: 5 · Motivo: Faltó con aviso», y la combinación **recién se rechazaba al
+guardar**. La validación era correcta; la experiencia, no: corregía después en vez de prevenir
+antes.
+
+**Por qué no se arregla refrescando el formulario.** Los diálogos interactivos de Mattermost son
+**estáticos**: no hay evento de cambio ni forma de re-renderizar el formulario cuando el usuario
+toca un campo. No existe "actualizar los motivos al cambiar Trabajó". La única manera nativa de
+que no se pueda elegir una combinación inválida es decidir el **tipo** de excepción **antes** de
+abrir el diálogo, y abrir un formulario que ya sólo contenga lo compatible.
+
+Por eso el desplegable único se reemplaza por **tres**, uno por cada ámbito que el backend ya
+distingue:
+
+| Botón | Qué pregunta el diálogo | Motivos que ofrece |
+|---|---|---|
+| **No vino** | Motivo + Aclaración. Las horas son 0: **no se preguntan** | Sólo los de ausencia: Faltó sin avisar, Faltó con aviso, Enfermedad, Accidente, Permiso, Licencia especial, Vacaciones, Suspensión, Franco/feriado, Lluvia, Obra parada, Paro, Otro |
+| **Hizo menos horas** | Horas (desplegable con los valores **por debajo** de la jornada del día) + Motivo + Estuvo en otra obra + Aclaración | Sólo los de jornada parcial: Llegó tarde, Se retiró antes, Lluvia, Obra parada, Paro, Enfermedad, Accidente de trabajo, Accidente in itinere, Permiso, Otro |
+| **Hizo horas extra** | Horas (desplegable con los valores **por encima** de la jornada) + Aclaración | **Ninguno**: las horas extra las calcula el núcleo y el catálogo no ofrece ningún motivo para ellas |
+
+Con eso, **ninguna combinación que el formulario puede producir es inválida**: no se puede elegir
+un motivo de ausencia con horas trabajadas, ni un motivo de jornada parcial con la jornada
+completa o con horas extra.
+
+**El texto en inglés.** Cuando el diálogo devolvía sólo errores por campo (`errors`), Mattermost
+mostraba su texto por defecto, «Submission failed with validation errors». Se verificó leyendo el
+propio cliente de Mattermost: si la respuesta trae un `error` de primer nivel, muestra **ese**
+texto; si no, usa el default en inglés. Ahora toda respuesta de error del diálogo lleva también
+una frase en castellano, así que el texto en inglés ya no aparece.
+
+**Lo que no cambió, a propósito.** La validación del backend
+(`lib/asistencia-motivos.mjs` → `validarNovedad`) quedó **exactamente igual**: sigue siendo la
+última palabra y sigue rechazando cualquier combinación inválida que llegue por otro camino.
+Tampoco cambiaron la escritura en JORNALES, los permisos, la auditoría ni la idempotencia.
+
+**La lección, que vale para cualquier UI interactiva futura.** Cuando la interfaz no puede
+reaccionar a lo que el usuario elige —y un diálogo de Mattermost no puede—, hay que partir la
+pregunta en **antes**: elegir primero el tipo de novedad y abrir un formulario que ya sólo pueda
+producir combinaciones válidas. Prevenir antes en vez de corregir después.
 
 ### Lo que Mattermost permite y lo que no (auditado en 11.8.4, no supuesto)
 
@@ -127,6 +171,8 @@ silencioso — presente completo lleva un guion al margen, la excepción grita.
 | Attachments con acciones | **SÍ** | Es la UI |
 | Actualizar el post desde una acción | **SÍ** | El mensaje se reescribe |
 | Diálogo modal (`trigger_id`) | **SÍ**, tope **5 elementos** | Los 5 campos entran exactos; no hay margen para un sexto |
+| Reaccionar dentro del diálogo a un cambio de campo | **NO** | El diálogo es **estático**: no hay evento de cambio ni re-render. El tipo de excepción se elige **antes** de abrirlo, y cada diálogo trae sólo lo compatible |
+| Texto propio de error al rechazar un `dialog_submission` | **SÍ**, con un `error` de primer nivel | Sólo con `errors` por campo, Mattermost muestra su default en inglés «Submission failed with validation errors» |
 | Actualizar el post desde un `dialog_submission` | **NO** | Tras el diálogo, el post se refresca por API |
 | `POST /posts/ephemeral` | **NO — 403** | El bot no es admin; los avisos salen por `ephemeral_text` de la acción |
 | Crear `/asistencia` | **NO** | El bot es `system_user`. La puerta es `@os asistencia` |
@@ -458,6 +504,8 @@ volviendo a cargar el valor correcto (el módulo escribe el valor final, no un d
 | `Invalid RootId parameter` en outbox | `comunicacion.outbox`, `last_error` | Se respondió en el hilo de un post que no existe |
 | Responde el catálogo en vez de atender | tabla `comunicacion.canales_area` | Binding del canal inactivo o ausente |
 | Un botón dice «Sorry, we could not find the page» y **no hay nada en los logs del OS** | El `id` de esa acción, y los logs de Mattermost | El `id` no es alfanumérico: el router de Mattermost descarta la petición antes de que llegue al OS. Ver §3bis |
+| El diálogo rechaza en inglés: «Submission failed with validation errors» | La respuesta del `dialog_submission` | Volvió sólo con `errors` por campo y sin `error` de primer nivel: Mattermost usa su texto por defecto. Toda respuesta de error del diálogo debe llevar también la frase en castellano. Ver §3bis |
+| El diálogo ofrece un motivo que no corresponde al tipo de excepción | El botón que lo abrió y los motivos que se le pasan | Un diálogo tiene que traer **sólo** los motivos de su ámbito (`No vino` → ausencia, `Hizo menos horas` → parcial, `Hizo horas extra` → ninguno). Ver §3bis |
 | `⚠️ La pestaña … está tomada` | `sheet_pestanas_bloqueadas` | Candado **explícito** de la Regla 0. **No desactivarlo**: es la voluntad del dueño |
 | Lo mismo, pero la fila dice `bloqueada_por='auto'` | idem, y §8 | Candado **automático** de la firma de pestaña. Sobre una pestaña compartida como `Obreros 26` es un falso positivo: la escritura de asistencia va con `compartida: true` y no debería llegar ahí. Si aparece, hay un escritor que no pasa la bandera |
 | Escribe pero no aparece | `comunicacion.v_asistencia_auditoria` | Mirar `old_value`/`new_value` y la celda exacta |
