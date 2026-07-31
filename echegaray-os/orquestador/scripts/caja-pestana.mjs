@@ -1461,7 +1461,12 @@ async function formatear(google, sheetId, g, tab) {
     // Las filas "· cuáles son" ponen en la columna E la lista de cheques/instrumentos que el banco
     // debitó — puede ser larga. WRAP para que se lea entera y contenida (reparar-pantalla le da el
     // alto) en vez de cortarse a lo ancho. Menos es más: el dato accionable a la vista, sin desbordar.
-    fmt(r(g.n0 - 1, g.n1, 4, 5), 'userEnteredFormat.wrapStrategy', { wrapStrategy: 'WRAP' })
+    // Y TEXTO, no moneda (31/07). Estas celdas las produce una FÓRMULA que devuelve una FRASE —"no, hay
+    // $68.709.996 de sobra", "N° 223 Corralon Progreso $200.000"—, así que la pasada por contenido no
+    // las puede clasificar (no se sabe el tipo sin evaluarla) y la columna les dejaba formato de plata.
+    // Acá SÍ se sabe: esta columna, en estas filas, es una explicación. Se declara.
+    fmt(r(g.n0 - 1, g.n1, 4, 5), 'userEnteredFormat.wrapStrategy,userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+      { wrapStrategy: 'WRAP', numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' })
     fmt(r(g.n0 - 1, g.n1, 5, 6), 'userEnteredFormat', E.celda('moneda'))
     fmt(r(g.n0 - 2, g.n0 - 1, 0, ANCHO), 'userEnteredFormat', E.encabezado())
   }
