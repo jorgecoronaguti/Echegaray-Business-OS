@@ -164,28 +164,81 @@ Las verticales levantan un Postgres efímero en Docker, le aplican los esquemas 
 (`orq` + `comunicacion` + esta migración) y recorren el camino completo. Es lo que destapó
 que `comunicacion.identidades` ya existía: contra dobles, todo pasaba.
 
-## Un defecto ajeno, confirmado y NO corregido
+## Las tres identidades de Google del OS
 
-`orquestador/lib/google-os.mjs:21` llama `operadorEmail()` **sin `await`**. Como es `async`,
-`op` es una Promise siempre verdadera, `accessTokenFor` termina consultando la base por el
-literal `"[object promise]"`, no encuentra fila, devuelve `null` y `makeGoogleClient` cae en
-silencio al Service Account. O sea: **`googleDelOs()` nunca actúa como la cuenta operadora
-OAuth**, que es exactamente lo que el comentario de cabecera de ese archivo dice querer
-evitar.
+El OS no tiene una cuenta de Google: tiene tres, y cada flujo usa la que le corresponde.
+Mezclarlas no rompe nada de forma visible — sigue funcionando, con la cuenta equivocada.
 
-Se confirmó en producción el 31/07/2026 con una consecuencia concreta: en la primera prueba
-real, "creame una tarea para llamar a Santander" **creó la tarea de verdad, con id y todo, en
-la lista de la cuenta de servicio**. El asistente contestó "Listo" y en las tareas de Jorge no
-había nada. Un efecto en la cuenta equivocada es peor que un fallo, porque no se nota.
+| Identidad | Valor | Con qué se arma | Quién la usa |
+|---|---|---|---|
+| **Institucional** | `service_account` | `googleDelOs()` | escritura de JORNALES, lectura de Drive, pipeline de Sheets |
+| **Operadora** | `operator_oauth` | `getTokenFor(await operadorEmail())` | especialistas, `operation_execute`, scripts de fondo |
+| **Personal** | `user_oauth` | `googleDe({identidad})` del asistente | Calendar y Tasks de cada persona |
 
-**No se corrigió a propósito**, y no por prudencia genérica: la protección de ediciones de
-Drive reconoce al OS por el `gserviceaccount.com` del historial. Arreglar el `await` cambia la
-identidad con la que el OS escribe JORNALES y toca el candado. Eso necesita su propio cambio y
-su propia verificación.
+La institucional es **el Service Account, explícito**. No es una preferencia estética: la
+protección de ediciones de Drive reconoce al OS por el `gserviceaccount.com` del historial
+(`lib/historial-ediciones.mjs`). Si JORNALES se escribiera como `jorge@ecsas.com.ar`, el OS
+dejaría de reconocer su propia escritura, la leería como edición del dueño y auto-candaría la
+pestaña. Sin error y sin log.
 
-Lo que sí se corrigió es el asistente: **resuelve su propia cuenta de Google desde la identidad
-de quien pide** (`router.mjs` → `googleDe`) y ya no hereda el cliente del handler. Personal IA
-sigue recibiendo el cliente operador, que para escribir JORNADAS *como el OS* es lo correcto.
+La personal **nunca cae al Service Account**. Cuando la persona no conectó su Google, el
+cliente queda marcado `propia:false` y `permiteEfectoExterno()` bloquea la acción. Crear el
+evento de Rodrigo con la cuenta de servicio "funciona" —devuelve id y todo— y Rodrigo no ve
+nada: un efecto en la cuenta equivocada es peor que un fallo, porque no se nota. Pasó de
+verdad el 31/07/2026, con "creame una tarea para llamar a Santander".
+
+### El defecto que lo destapó, y cómo quedó arreglado
+
+`googleDelOs()` llamaba `operadorEmail()` **sin `await`**. Como es `async`, `op` era una
+Promise siempre verdadera; `accessTokenFor` consultaba la base por el literal
+`"[object promise]"`, no encontraba fila, devolvía `null` y `makeGoogleClient` caía en
+silencio al Service Account. Un defecto escrito mal cuyo resultado era, por accidente, el
+correcto para JORNALES — la peor clase de código sano: el día que alguien agregara el `await`
+"obvio", el candado se rompía.
+
+El arreglo **no fue agregar el `await`**: fue volver la identidad institucional explícita.
+`googleDelOs()` construye el cliente de Service Account a propósito, sin `getToken`, y lo
+marca con `IDENTIDAD_OS` para que cualquiera pueda preguntarle con qué cuenta quedó
+(`identidadDe`, `describirIdentidad`). Lo que antes dependía de que un bug se mantuviera
+intacto, ahora es un contrato con pruebas.
+
+### Cómo se verifica
+
+```bash
+# regresión pura (sin base, sin red): fija la identidad de cada flujo
+node --test 'orquestador/lib/google-identidad*.test.mjs'
+
+# la resolución de cuenta contra un Postgres REAL y descartable
+docker run -d --rm --name pg-goo -e POSTGRES_PASSWORD=x -p 55443:5432 postgres:16-alpine
+PG_TEST_URL=postgres://postgres:x@127.0.0.1:55443/postgres \
+  node --test orquestador/lib/google-identidad.integracion.test.mjs
+docker rm -f pg-goo
+```
+
+Sin `PG_TEST_URL`, la de integración se saltea; y si la URL huele a producción, se niega a
+correr. La prueba que importa se llama *"googleDelOs() escribe como la cuenta institucional
+(service_account) — JORNALES depende de esto"*: si alguien cambia sin querer la identidad con
+la que el OS escribe asistencia, esa se pone en rojo antes de que el candado se entere.
+
+### El inspector
+
+Para mirar el estado real —qué cuenta usaría hoy cada flujo, en el entorno que sea— hay un
+script de **sólo lectura**, que no escribe ni crea nada en Google y no imprime ningún token:
+
+```bash
+node orquestador/scripts/auditar-identidad-google.mjs
+node orquestador/scripts/auditar-identidad-google.mjs --personas jorge@ecsas.com.ar,rodrigo@ecsas.com.ar
+```
+
+Devuelve una tabla con la lectura institucional de Drive, la escritura de JORNALES, el
+Calendar y las Tasks de cada persona, el caso de quien no conectó su Google, y la cuenta
+operadora resuelta — más el aviso explícito si la escritura institucional dejó de ser la
+cuenta de servicio.
+
+Del lado del asistente, lo que ya estaba resuelto sigue igual: **resuelve su propia cuenta de
+Google desde la identidad de quien pide** (`router.mjs` → `googleDe`) y no hereda el cliente
+del handler. Personal IA sigue recibiendo el cliente institucional, que para escribir jornadas
+*como el OS* es exactamente lo correcto.
 
 ## Lo que este módulo NO resuelve todavía
 
