@@ -91,3 +91,4 @@ check('formato: error se declara', formatSync({ error: 'x' }).includes('No pude'
 
 console.log(`nomina-sync.test: ${ok} OK, ${falla} FALLA`)
 if (falla) process.exit(1)
+

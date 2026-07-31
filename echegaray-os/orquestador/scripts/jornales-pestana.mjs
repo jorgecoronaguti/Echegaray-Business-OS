@@ -427,9 +427,19 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [] }
     const [colA, colB, ...resto] = fila.map((c) => c.f)
     // EL ESTADO DISTINGUE LAS TRES COSAS QUE ANTES ERAN UNA. Cerrada no es pagada: la quincena que
     // cerró el 31/07 se paga el 03/08. Y "Pagado el" (N) es un hecho que gana sobre cualquier previsión.
+    // ═══ "Pagado el" NO SE ESCRIBE. NUNCA. ES LA CELDA DEL DUEÑO ═══
+    //
+    // La primera versión emitía VACIO en esa columna —el centinela que significa "es mía y va vacía"— y
+    // la fusión hizo exactamente lo que le pedí: BORRÓ LAS 14 FECHAS que el dueño acababa de cargar a
+    // mano. Es la violación de su regla de oro y fue mía. Se restauraron desde el snapshot,
+    // emparejando por la fecha de cierre de cada quincena (el registro se había corrido tres filas, así
+    // que restaurar por posición le habría puesto a cada una la fecha de otra).
+    //
+    // La fila se emite SIN la celda 14: una fila más corta deja esa columna fuera del footprint del
+    // generador, y `fusionar` preserva lo que haya. Es el mismo trato que la columna de Comentarios en
+    // Proveedores: si la escribe una persona, el generador no la toca ni para vaciarla.
     push([colA, colB, pago(r), ...resto,
-      `=IF(N(B${r})=0;"";IF(N(N${r})>0;"pagada el "&TEXT(N${r};"d/m");IF(B${r}<=TODAY();"cerrada · a pagar";"en curso")))`,
-      VACIO])
+      `=IF(N(B${r})=0;"";IF(N(N${r})>0;"pagada el "&TEXT(N${r};"d/m");IF(B${r}<=TODAY();"cerrada · a pagar";"en curso")))`])
   })
   const fLast = f0 + bloques.length - 1
   const fTotalReal = push([

@@ -9,6 +9,7 @@
 // sin que nada se rompa.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import {
   aFecha, iso, sumarDiasHabiles, diasHabilesEntre, lotesDeHaberes, pagoDeQuincena,
   desfaseObservado, mesDe, semanaDe, formulaSePagaEl, fechaDeCajaDeQuincena,
@@ -163,4 +164,29 @@ test('sin columna de pagado sigue funcionando igual — la proyección no puede 
   // propósito: agregar una referencia a una columna que no existe daría #NAME? en toda la línea.
   assert.equal(fechaDeCajaDeQuincena('PAGO', 'HASTA'), 'IF(ISNUMBER(PAGO);PAGO;HASTA)')
   assert.equal(fechaDeCajaDeQuincena('PAGO', 'HASTA', null), 'IF(ISNUMBER(PAGO);PAGO;HASTA)')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA COLUMNA "Pagado el" ES DEL DUEÑO — EL GENERADOR NO LA ESCRIBE NI PARA VACIARLA (31/07)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// QUÉ PASÓ. Se agregó "Pagado el" como 14ª columna del registro para que él marque cuándo salió la
+// plata. Él cargó las 14 fechas a mano. La corrida siguiente emitía VACIO en esa celda —el centinela
+// que significa "es mía y va vacía"— y la fusión hizo lo que se le pidió: LAS BORRÓ TODAS.
+//
+// Se restauraron desde el snapshot emparejando por la fecha de cierre de cada quincena, no por número
+// de fila: el registro se había corrido tres filas y restaurar por posición le habría puesto a cada
+// quincena la fecha de otra.
+//
+// La regla, y no admite excepción: si una columna la escribe una persona, el generador la deja FUERA
+// de su footprint. Una fila más corta es la forma de decir "de acá en adelante no es mío".
+test('la fila del registro NO llega a la columna 14: "Pagado el" queda fuera del footprint', () => {
+  const src = readFileSync(new URL('../scripts/jornales-pestana.mjs', import.meta.url), 'utf8')
+  const i = src.indexOf('push([colA, colB, pago(r), ...resto,')
+  assert.ok(i > 0, 'encontré el push de la fila del registro')
+  const bloque = src.slice(i, src.indexOf('])', i) + 2)
+  assert.ok(!/,\s*VACIO\s*\]/.test(bloque),
+    'la fila NO puede terminar con VACIO: ese centinela le dice a la fusión que borre la celda, y ahí '
+    + 'vive la fecha que el dueño carga a mano. Ya borró las 14 una vez.')
+  assert.match(bloque, /pagada el /, 'y el Estado sigue leyendo N para saber si está pagada')
 })
