@@ -475,3 +475,26 @@ test('el rechazo sigue diciendo lo mismo al usuario', async () => {
   assert.match(textoDe(r), /formulario/i)
   assert.equal(r.status, 200)
 })
+
+// ── LO QUE QUEDA REGISTRADO CUANDO SE ESCRIBE ───────────────────────────────────
+// El evento `written` del camino de botones se armaba a mano y guardaba cuatro campos:
+// en producción quedaba sin `celdas_modificadas` —qué celda, de qué valor a cuál— que es
+// justo lo que hay que mirar para auditar una carga, y sin el nombre de quien cargó.
+
+test('la escritura queda auditada con la evidencia celda por celda, no con un resumen', async () => {
+  const e = await crearEntorno()
+  await elegirObra(e)
+  respuestaValida(await registrar(e))
+  const w = e.eventos.find((x) => String(x.evento).endsWith('written'))
+  assert.ok(w, 'no se auditó la escritura')
+  const d = w.datos
+  assert.ok(Array.isArray(d.celdas_modificadas) && d.celdas_modificadas.length > 0,
+    'sin `celdas_modificadas` no se puede reconstruir qué se escribió')
+  const c = d.celdas_modificadas[0]
+  for (const campo of ['celda', 'trabajador', 'old_value', 'new_value']) {
+    assert.ok(campo in c, `a la evidencia le falta «${campo}»: ${JSON.stringify(c)}`)
+  }
+  assert.equal(d.mattermost_username, 'jefe.obra', 'la carga tiene que quedar a nombre de alguien')
+  assert.ok(d.spreadsheet_id, 'sin la planilla no se sabe dónde se escribió')
+  assert.ok(d.horas_total > 0, 'el resumen de horas viajaba en null')
+})
