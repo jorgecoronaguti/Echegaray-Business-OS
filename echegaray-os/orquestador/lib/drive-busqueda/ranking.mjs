@@ -49,7 +49,28 @@ export const PESOS = Object.freeze({
   COPIA: -120,              // "Copia de …", "algo (1)"
   REEMPLAZADO: -150,        // el propio registro dice que otra fuente lo reemplazó
   ANTIGUEDAD_MAX: -150,     // sin tocar hace mucho; escala, no es un escalón
-})
+
+  // ── Lo que la empresa declara (drive_documento_estado) ──
+  ESTADO_CANONICO: 260,     // "éste es EL documento de esto"
+  ESTADO_OPERATIVO: 130,    // se usa, sin ser el único
+  ESTADO_ARCHIVADO: -260,   // dado de baja a mano: más fuerte que inferirlo por la carpeta
+  ESTADO_DUPLICADO: -320,   // es una copia de otro, declarada
+  SUCESOR: 240,             // es el documento que reemplazó a otro de esta misma búsqueda
+
+  // ── Alias aprendido (drive_alias_documento) ──
+  ALIAS_DOCUMENTO: 320,     // "cuando pedís esto, querés este documento" — se multiplica por
+})                          // la confianza del alias, así que un alias flojo pesa poco
+
+/** Cuánto vale cada estado declarado. Fuera de esta tabla no hay estados: agregar uno es
+ *  agregar una fila acá y la constante correspondiente. */
+const PESO_ESTADO = {
+  canonico: 'ESTADO_CANONICO',
+  operativo: 'ESTADO_OPERATIVO',
+  historico: 'ESTADO_ARCHIVADO',
+  archivado: 'ESTADO_ARCHIVADO',
+  reemplazado: 'ESTADO_ARCHIVADO',
+  duplicado: 'ESTADO_DUPLICADO',
+}
 
 /** Desde cuándo empieza a pesar la antigüedad y cuándo llega a su techo. Medio año sin tocar
  *  un documento no dice nada; dos años sí. */
@@ -151,18 +172,38 @@ function puntuarNaturaleza(nat, sumar, ahora) {
   sumar('fuente_operativa', puntajeFuente(nat.fuente, ahora))
   if (nat.fuente?.reemplazada) sumar('reemplazado', PESOS.REEMPLAZADO)
   if (nat.vivo) sumar('documento_vivo', PESOS.DOC_VIVO)
-  if (nat.historico) sumar('historico', PESOS.HISTORICO)
   if (nat.copia) sumar('copia', PESOS.COPIA)
   sumar('antiguedad', puntajeAntiguedad(nat.dias))
+
+  // LO DECLARADO REEMPLAZA A LO INFERIDO, NO SE SUMA A ELLO.
+  //
+  // Se cobraba dos veces: un archivo marcado "archivado" se llevaba el castigo por estar
+  // declarado Y el castigo por parecer viejo, y en el desglose aparecían las dos líneas como
+  // si fueran dos razones distintas. Es una sola. Y en el otro sentido importa más todavía:
+  // un documento declarado canónico no puede seguir arrastrando la penalización de la carpeta
+  // donde alguien lo guardó — decir "éste es EL documento" tiene que alcanzar.
+  if (nat.declarado && PESO_ESTADO[nat.declarado]) {
+    sumar(`estado_${nat.declarado}`, PESOS[PESO_ESTADO[nat.declarado]])
+  } else if (nat.historico) {
+    sumar('historico', PESOS.HISTORICO)
+  }
 }
 
-/** El aprendizaje: lo que ESTA persona eligió antes pesa más que lo que eligió el resto. */
+/**
+ * El aprendizaje: lo que ESTA persona eligió antes pesa más que lo que eligió el resto.
+ *
+ * Puede ser negativo. "No era ese" resta una aceptación: la corrección de una persona vale lo
+ * mismo que su elección, en la dirección contraria. Con el mismo techo, para que diez rechazos
+ * no puedan hundir un resultado que de verdad coincide.
+ */
 function puntuarAprendizaje(aceptaciones, sumar) {
   const { propias = 0, ajenas = 0 } = typeof aceptaciones === 'number'
     ? { ajenas: aceptaciones }
     : (aceptaciones ?? {})
   const p = (propias * PESOS.APRENDIZAJE_PROPIO) + (ajenas * PESOS.APRENDIZAJE)
-  if (p > 0) sumar('aprendizaje', Math.min(p, PESOS.APRENDIZAJE_TOPE))
+  if (p === 0) return
+  const tope = PESOS.APRENDIZAJE_TOPE
+  sumar('aprendizaje', Math.max(-tope, Math.min(p, tope)))
 }
 
 /**
@@ -176,6 +217,7 @@ function puntuarAprendizaje(aceptaciones, sumar) {
 export function puntuar(e, consulta, opts = {}) {
   const ahora = opts.ahora ?? Date.now()
   const fuente = opts.fuente ?? null
+  const aliasDoc = opts.alias ?? null
 
   const nombrePlano = plano(sinExtension(e.name))
   const rutaPlana = plano(e.path ?? '')
@@ -231,6 +273,16 @@ export function puntuar(e, consulta, opts = {}) {
   if (e.is_folder) sumar('es_carpeta', PESOS.ES_CARPETA)
   if (Number.isFinite(e.depth)) sumar('profundidad', PESOS.PROFUNDIDAD * Number(e.depth))
 
+  // ── El alias aprendido ──
+  //
+  // Cuenta como PARECIDO, no como bonificación de naturaleza, y la diferencia es deliberada:
+  // un alias es la forma más fuerte de "este texto significa este documento". Si contara
+  // aparte, el filtro de parecido lo descartaría justo en el caso donde el alias sirve —
+  // cuando la gente le dice a un documento algo que no se parece a su nombre.
+  if (aliasDoc?.confianza > 0) {
+    sumar('alias_documento', Math.round(PESOS.ALIAS_DOCUMENTO * Number(aliasDoc.confianza)))
+  }
+
   // TODO LO DE ARRIBA ES PARECIDO DE TEXTO, Y SE GUARDA APARTE.
   //
   // Sirve para dos cosas que el score total no puede: filtrar lo que no se parece en nada
@@ -240,7 +292,13 @@ export function puntuar(e, consulta, opts = {}) {
   const texto = score
 
   // ── Qué clase de documento es ──
-  puntuarNaturaleza(naturalezaDe(e, { ahora, fuente }), sumar, ahora)
+  puntuarNaturaleza(naturalezaDe(e, { ahora, fuente, estado: opts.estado ?? null }), sumar, ahora)
+
+  // MARCAR ALGO COMO REEMPLAZADO SIRVE PARA MANDAR A LA GENTE AL REEMPLAZO.
+  //
+  // Sin esto, `reemplazado_por` era una columna decorativa: se bajaba el viejo y nadie subía
+  // el nuevo, así que el resultado quedaba a merced de qué otra cosa hubiera cerca.
+  if (opts.sucesor) sumar('sucesor', PESOS.SUCESOR)
 
   // ── Desempates ──
   sumar('frescura', puntajeFrescura(e.modified_time, ahora))
@@ -259,12 +317,24 @@ export function puntuar(e, consulta, opts = {}) {
 export function rankear(candidatos, consulta, opts = {}) {
   const aceptacionesPor = opts.aceptacionesPor ?? new Map()
   const registro = opts.registro ?? new Map()
+  const estados = opts.estados ?? new Map()
+  const alias = opts.alias ?? null
+  // Los reemplazos declarados de los candidatos de ESTA búsqueda. Se arma acá y no afuera
+  // porque sólo tiene sentido dentro de una comparación: ser el sucesor de algo que nadie
+  // pidió no es un mérito.
+  const sucesores = new Set(candidatos
+    .map((e) => estados.get(e.drive_file_id))
+    .filter((s) => s?.estado === 'reemplazado' && s.reemplazadoPor)
+    .map((s) => s.reemplazadoPor))
   const puntuados = candidatos
     .map((e) => {
       const { score, texto, senales } = puntuar(e, consulta, {
         ahora: opts.ahora,
         aceptaciones: aceptacionesPor.get(e.drive_file_id) ?? 0,
         fuente: registro.get(e.drive_file_id) ?? null,
+        estado: estados.get(e.drive_file_id) ?? null,
+        alias: alias?.drive_file_id === e.drive_file_id ? alias : null,
+        sucesor: sucesores.has(e.drive_file_id),
       })
       return { ...e, score, texto, senales }
     })
@@ -348,7 +418,19 @@ export function resolver(rankeados = [], opts = {}) {
   const [a, b] = rankeados
   const alternativas = rankeados.slice(1, 1 + max)
 
-  if (rankeados.length === 1) return { confianza: 'alta', ganador: a, alternativas: [] }
+  // NO SE AFIRMA CON MEDIA CONSULTA SIN ENCONTRAR.
+  //
+  // Medido contra el índice real: "zzz-no-existe" devolvía con CONFIANZA ALTA un pliego de
+  // demolición, porque "existe" es prefijo de "EXISTENTE". La palabra que identificaba algo
+  // —"zzz"— no había aparecido en ninguna parte. Ser el único candidato no es ser el correcto;
+  // sin cubrir todo lo que la persona escribió, el OS propone, no afirma.
+  const cubreTodo = (e) => !opts.exigeCobertura
+    || Boolean(e?.senales?.nombre_exacto)
+    || Number(e?.senales?.cobertura ?? 0) >= PESOS.COBERTURA
+
+  if (rankeados.length === 1) {
+    return { confianza: cubreTodo(a) ? 'alta' : 'media', ganador: a, alternativas: [] }
+  }
 
   // "COINCIDE EXACTO DE NOMBRE" SE MIRA EN LA SEÑAL, NO EN EL PUNTAJE TOTAL.
   //
@@ -359,7 +441,7 @@ export function resolver(rankeados = [], opts = {}) {
   const exacto = (e) => Boolean(e?.senales?.nombre_exacto)
   const dominaPorNombre = exacto(a) && !exacto(b)
   if (dominaPorNombre || a.score >= b.score * (1 + MARGEN.ALTA)) {
-    return { confianza: 'alta', ganador: a, alternativas }
+    return { confianza: cubreTodo(a) ? 'alta' : 'media', ganador: a, alternativas }
   }
   if (a.score >= b.score * (1 + MARGEN.MEDIA)) return { confianza: 'media', ganador: a, alternativas }
   return { confianza: 'baja', ganador: null, alternativas: [] }

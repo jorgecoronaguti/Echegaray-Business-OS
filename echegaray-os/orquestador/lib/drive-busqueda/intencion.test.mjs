@@ -40,6 +40,11 @@ const FILAS = [
   { drive_file_id: 'f-balance-copia', name: 'Copia de BALANCE ECSAS - 2023.pdf', path: `${A}/BALANCES/Copia de BALANCE ECSAS - 2023.pdf`, tipo: 'pdf', mime_type: 'application/pdf', is_folder: false, modified_time: hace(400), depth: 2 },
   { drive_file_id: 'f-presu-vivo', name: 'PRESUPUESTO ARCOR COCHERAS.xlsx', path: `${A}/PRESUPUESTOS/ARCOR - SAN JUAN/COCHERAS/PRESUPUESTO ARCOR COCHERAS.xlsx`, tipo: 'planilla', mime_type: XLSX, is_folder: false, modified_time: hace(30), depth: 4 },
   { drive_file_id: 'f-presu-viejo', name: 'PRESUPUESTO ARCOR COCHERAS.xlsx', path: `${A}/PRESUPUESTOS/ARCOR - SAN JUAN/COCHERAS/ARCHIVOS VIEJOS/PRESUPUESTO ARCOR COCHERAS.xlsx`, tipo: 'planilla', mime_type: XLSX, is_folder: false, modified_time: hace(120), depth: 5 },
+  { drive_file_id: 'f-vehiculos', name: 'VEHICULOS', path: `${A}/VEHICULOS`, tipo: 'carpeta', mime_type: CARPETA, is_folder: true, modified_time: hace(105), depth: 1 },
+  { drive_file_id: 'f-facturas', name: 'FACTURAS A', path: `${A}/FACTURAS A`, tipo: 'carpeta', mime_type: CARPETA, is_folder: true, modified_time: hace(1), depth: 1 },
+  { drive_file_id: 'f-cese', name: 'FONDO DE CESE', path: `${A}/FONDO DE CESE`, tipo: 'carpeta', mime_type: CARPETA, is_folder: true, modified_time: hace(0), depth: 1 },
+  { drive_file_id: 'f-orden-compra', name: 'ORDEN DE COMPRA ECSAS.pdf', path: `${A}/PRESUPUESTOS/ARCOR - SAN JUAN/COCHERAS/ORDEN DE COMPRA ECSAS.pdf`, tipo: 'pdf', mime_type: 'application/pdf', is_folder: false, modified_time: hace(60), depth: 4 },
+  { drive_file_id: 'f-compra-mat', name: 'compra de materiales.xlsx', path: `${A}/PRESUPUESTOS/GALPON ROSAS/compra de materiales.xlsx`, tipo: 'planilla', mime_type: XLSX, is_folder: false, modified_time: hace(45), depth: 3 },
 ]
 
 /** El registro real del OS, recortado a lo que estos casos necesitan. */
@@ -48,9 +53,12 @@ const FUENTES = [
   { drive_file_id: 'f-daily', nombre: 'Daily Meeting - Echegaray Construcciones', area: 'Obras', proceso_negocio: 'Reunión diaria de obra', vigencia: 'vigente', estado: 'actualizado', criticidad: 'media', ultima_lectura: hace(23) },
   { drive_file_id: 'f-gastos', nombre: 'CONTROL DE GASTOS.xlsx', area: 'Tesorería', proceso_negocio: 'Ledger diario de caja + cronograma de cobro por certificado + compras/gastos', vigencia: 'vigente', estado: 'atrasado', criticidad: 'alta', ultima_lectura: hace(23) },
   { drive_file_id: 'f-iva-2026', nombre: 'IVA 2026 (Libro IVA Ventas mensual)', area: 'Fiscal', proceso_negocio: 'Libro IVA Ventas', vigencia: 'vigente', estado: 'actualizado', criticidad: 'alta', ultima_lectura: hace(0) },
+  { drive_file_id: 'f-vehiculos', nombre: 'VEHICULOS (padrón de flota)', area: 'Equipos y Vehículos', proceso_negocio: 'Padrón de flota', vigencia: 'vigente', estado: 'actualizado', criticidad: 'media', ultima_lectura: hace(23) },
+  { drive_file_id: 'f-facturas', nombre: 'FACTURAS A/B/C', area: 'Fiscal', proceso_negocio: 'Comprobantes fiscales emitidos (AFIP)', vigencia: 'vigente', estado: 'actualizado', criticidad: 'alta', ultima_lectura: hace(23) },
+  { drive_file_id: 'f-cese', nombre: 'FONDO DE CESE (UOCRA)', area: 'Personas', proceso_negocio: 'Aportes al fondo de cese laboral', vigencia: 'vigente', estado: 'atrasado', criticidad: 'alta', ultima_lectura: hace(23) },
 ]
 
-function portDe({ filas = FILAS, fuentes = FUENTES, usos = [] } = {}) {
+function portDe({ filas = FILAS, fuentes = FUENTES, usos = [], estados = [], alias = [] } = {}) {
   const consultas = []
   return {
     consultas,
@@ -58,6 +66,8 @@ function portDe({ filas = FILAS, fuentes = FUENTES, usos = [] } = {}) {
       consultas.push(sql.replace(/\s+/g, ' ').trim())
       if (sql.includes('drive_index')) return { rows: filas }
       if (sql.includes('fuentes_datos')) return { rows: fuentes }
+      if (sql.includes('drive_documento_estado')) return { rows: estados }
+      if (sql.includes('drive_alias_documento')) return { rows: alias }
       if (sql.includes('drive_busqueda_uso')) return { rows: usos }
       return { rows: [] }
     },
@@ -117,12 +127,20 @@ test('todas las maneras de pedir el cash flow caen en el mismo documento', async
 
 // ── El motor sirve para cualquier documento, no para este caso ────────────────
 
-test('el mismo motor ordena bien Daily, IVA, Gastos y Presupuestos', async () => {
+test('el mismo motor ordena bien todos los documentos que la empresa pide', async () => {
   const casos = [
+    ['flujo de fondos', 'Flujo de Caja - Cash Flow ECSAS'],
+    ['flujo', 'Flujo de Caja - Cash Flow ECSAS'],
+    ['cashflow', 'Flujo de Caja - Cash Flow ECSAS'],
     ['daily', 'Daily Meeting - Echegaray Construcciones'],
     ['reunion diaria', 'Daily Meeting - Echegaray Construcciones'],
     ['iva', 'IVA 2026'],
+    ['jornales', 'JORNALES'],
     ['control de gastos', 'CONTROL DE GASTOS.xlsx'],
+    ['vehiculos', 'VEHICULOS'],
+    ['padron de flota', 'VEHICULOS'],
+    ['fondo de cese', 'FONDO DE CESE'],
+    ['facturas', 'FACTURAS A'],
     ['presupuesto arcor cocheras', 'PRESUPUESTO ARCOR COCHERAS.xlsx'],
   ]
   for (const [q, esperado] of casos) {
@@ -130,6 +148,17 @@ test('el mismo motor ordena bien Daily, IVA, Gastos y Presupuestos', async () =>
     const primero = r.ganador ?? r.opciones[0]
     assert.equal(primero?.name, esperado, q)
   }
+})
+
+test('"compras": declarar cuál es EL documento le gana al parecido de nombre', async () => {
+  // Sin nada declarado gana el que más se parece, que es lo correcto cuando el OS no sabe más.
+  const sin = await buscarCon('compras')
+  assert.equal((sin.ganador ?? sin.opciones[0]).drive_file_id, 'f-compra-mat')
+
+  // Con la empresa diciendo cuál es, gana ese — sin tocar una línea de código.
+  const estados = [{ drive_file_id: 'f-orden-compra', estado: 'canonico' }]
+  const con = await buscarCon('compras', { estados })
+  assert.equal((con.ganador ?? con.opciones[0]).drive_file_id, 'f-orden-compra')
 })
 
 test('entre dos presupuestos iguales gana el que NO está en ARCHIVOS VIEJOS', async () => {

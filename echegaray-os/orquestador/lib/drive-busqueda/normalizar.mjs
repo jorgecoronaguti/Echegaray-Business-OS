@@ -41,6 +41,10 @@ export const STOPWORDS = new Set([
   // conectores
   'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas', 'de', 'del', 'al', 'a', 'en', 'con',
   'para', 'por', 'y', 'o', 'que', 'me', 'mi', 'su', 'lo', 'se', 'es', 'son',
+  // "no" y "si" no identifican ningún archivo, y sí aparecen en nombres de carpetas reales
+  // ("ECHEGARAY CONTRUCCIONES SAS - NO TOCAR"): dejarlos como término de búsqueda hacía que
+  // cualquier frase con un "no" enganchara media empresa.
+  'no', 'si', 'sin', 'las', 'los', 'del',
 ])
 
 /** Las que son stopword pero DICEN el tipo: no entran a la búsqueda por texto, pero sirven

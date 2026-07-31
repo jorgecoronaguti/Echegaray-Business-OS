@@ -122,15 +122,59 @@ export function crearRegistro(filas = []) {
  * @param {{name:string, path?:string, mime_type?:string, modified_time?:string}} e
  * @param {{ahora?:number, fuente?:object|null}} [opts]
  */
-export function naturalezaDe(e, { ahora = Date.now(), fuente = null } = {}) {
+export function naturalezaDe(e, { ahora = Date.now(), fuente = null, estado = null } = {}) {
+  const declarado = estado?.estado ?? null
   return {
+    // `historico` es SIEMPRE la inferencia por carpeta. Quien decide si se aplica es el
+    // ranking: cuando hay estado declarado, ese reemplaza a la inferencia (ver puntuarNaturaleza).
     historico: esHistorico(e.path, ahora),
     copia: esCopia(e.name),
     vivo: esDocumentoVivo(e.mime_type),
     dias: diasSinTocar(e.modified_time, ahora),
     fuente: fuente ?? null,
+    declarado,
   }
 }
+
+// ── LO QUE LA EMPRESA DECLARA ────────────────────────────────────────────────
+//
+// Todo lo de arriba es INFERENCIA: que un archivo cuelgue de "AÑO 2025" sugiere que está
+// archivado, no lo demuestra. `drive_documento_estado` existe para que una persona pueda
+// decirlo y que su palabra gane — sin tocar código, y sin que el buscador tenga una lista de
+// documentos especiales escrita adentro.
+
+/** Los seis estados que el negocio puede declarar. El orden no es alfabético: va de "este es
+ *  EL documento" a "esto ya no se usa". */
+export const ESTADO = Object.freeze({
+  CANONICO: 'canonico',
+  OPERATIVO: 'operativo',
+  HISTORICO: 'historico',
+  ARCHIVADO: 'archivado',
+  REEMPLAZADO: 'reemplazado',
+  DUPLICADO: 'duplicado',
+})
+
+/** Los que dicen "esto ya no es lo que buscás". */
+const APAGADOS = new Set([ESTADO.HISTORICO, ESTADO.ARCHIVADO, ESTADO.REEMPLAZADO, ESTADO.DUPLICADO])
+
+export const SQL_ESTADOS = `select drive_file_id, estado, motivo, reemplazado_por
+  from public.drive_documento_estado`
+
+/** Filas de `drive_documento_estado` → mapa por archivo. */
+export function crearEstados(filas = []) {
+  const m = new Map()
+  for (const f of filas ?? []) {
+    if (!f?.drive_file_id || !f?.estado) continue
+    m.set(f.drive_file_id, {
+      estado: String(f.estado).toLowerCase(),
+      motivo: f.motivo ?? null,
+      reemplazadoPor: f.reemplazado_por ?? null,
+    })
+  }
+  return m
+}
+
+export const estaApagado = (estado) => APAGADOS.has(String(estado ?? '').toLowerCase())
 
 /** ¿Alguno de los tokens pedidos aparece en el texto del registro? Es lo que habilita el pase
  *  de rescate: un documento operativo no puede quedar afuera por la etapa. */
