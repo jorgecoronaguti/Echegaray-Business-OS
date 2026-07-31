@@ -131,8 +131,11 @@ function elegirOpcion(opciones, texto) {
 }
 
 /**
- * El mensaje siguiente a una pregunta, leído COMO RESPUESTA (0 API).
- * Devuelve la solicitud completa, o null si en realidad la persona cambió de tema.
+ * El mensaje siguiente a una pregunta, leído COMO RESPUESTA (0 API). Tres desenlaces:
+ *   {solicitud}      → respondió y se puede seguir
+ *   {nuevoTema:true} → escribió otro pedido reconocible; la pregunta vieja se descarta
+ *   {sinDato:true}   → contestó, pero lo que dijo no trae el dato ("cuando puedas")
+ * El tercero existe para no responder "no entendí nada" a alguien que SÍ estaba contestando.
  */
 function respuestaAPendiente(pendiente, texto, ahora) {
   const parcial = pendiente.parcial ?? {}
@@ -143,24 +146,25 @@ function respuestaAPendiente(pendiente, texto, ahora) {
   // Cambió de tema: si el texto es un pedido reconocible POR SÍ MISMO, no es una respuesta a
   // la pregunta anterior. "el jueves a las 10" no se reconoce solo — y por eso es respuesta.
   const otroPedido = interpretarDeterministico(texto, { ahora })
-  if (!elegida && otroPedido && otroPedido.intencion !== INTENCION.DESCONOCIDO) return null
+  if (!elegida && otroPedido && otroPedido.intencion !== INTENCION.DESCONOCIDO) return { nuevoTema: true }
 
   if (faltante === 'capacidad') {
-    if (!elegida) return null // sin opción elegida no se adivina entre recordatorio, evento y tarea
-    const base = { contenido: parametros.contenido ?? '', titulo: parametros.contenido ?? '', terminos: parametros.contenido ?? '', cuando: parametros.cuando ?? null, cadencia: parametros.cadencia ?? null }
-    return solicitudDeAclaracion(elegida.valor, parametrosPorIntencion(elegida.valor, base, parametros.destinatario ?? null))
+    // Sin una opción elegida no se adivina entre recordatorio, evento y tarea.
+    if (!elegida) return { sinDato: true, faltante }
+    const b = { contenido: parametros.contenido ?? '', titulo: parametros.contenido ?? '', terminos: parametros.contenido ?? '', cuando: parametros.cuando ?? null, cadencia: parametros.cadencia ?? null }
+    return { solicitud: solicitudDeAclaracion(elegida.valor, parametrosPorIntencion(elegida.valor, b, parametros.destinatario ?? null)) }
   }
 
   const intencion = parcial.intencion ?? pendiente.capacidad
-  if (elegida) return solicitudDeAclaracion(intencion, { ...parametros, [faltante]: elegida.valor })
+  if (elegida) return { solicitud: solicitudDeAclaracion(intencion, { ...parametros, [faltante]: elegida.valor }) }
+  if (!faltante) return { nuevoTema: true }
 
-  if (!faltante) return null
   if (CAMPOS_TIEMPO.has(faltante)) {
     const t = parseCuando(texto, { ahora })
-    if (!t) return null
-    return solicitudDeAclaracion(intencion, { ...parametros, [faltante]: t.instante })
+    if (!t) return { sinDato: true, faltante }
+    return { solicitud: solicitudDeAclaracion(intencion, { ...parametros, [faltante]: t.instante }) }
   }
-  return solicitudDeAclaracion(intencion, { ...parametros, [faltante]: String(texto).trim() })
+  return { solicitud: solicitudDeAclaracion(intencion, { ...parametros, [faltante]: String(texto).trim() }) }
 }
 
 const solicitudDeAclaracion = (intencion, parametros) =>
@@ -260,7 +264,9 @@ export async function atenderPedido({ texto, ctx = {}, deps = {} } = {}) {
   if (!identidad) {
     return final(resultadoError('asistente', errorAsistente(ERROR.USUARIO_INEXISTENTE, 'No pude identificar quién me está escribiendo.')), 'sin_identidad', null)
   }
-  const base = { ...ctx, port, identidad, ahora: () => ahora }
+  // `registro` viaja en el contexto para que la AYUDA se arme con la MISMA lista con la que
+  // el router decide. Si cada uno leyera la suya, volvería a existir la segunda lista.
+  const base = { ...ctx, port, identidad, registro, ahora: () => ahora }
   const habilitadas = await registro.capacidadesHabilitadas(base)
 
   // 1) ¿Esto es la respuesta a algo que pregunté?
@@ -269,14 +275,21 @@ export async function atenderPedido({ texto, ctx = {}, deps = {} } = {}) {
   const pendiente = await pendienteVigente(port, identidad, ahora)
   if (pendiente) {
     const r = respuestaAPendiente(pendiente, texto, ahora)
-    await cerrarPendiente(port, pendiente.id, r ? 'resuelta' : 'cancelada')
-    if (r) { solicitud = r; veniaDePendiente = true }
+    await cerrarPendiente(port, pendiente.id, r.solicitud ? 'resuelta' : 'cancelada')
+    if (r.sinDato) {
+      const err = errorAsistente(ERROR.DATO_FALTANTE, `Sigo sin saber ${etiquetaCampo(r.faltante)}. Pedímelo de nuevo con ese dato incluido.`)
+      return final(resultadoError(pendiente.capacidad, err), 'aclaracion', pendiente.parcial?.intencion ?? null)
+    }
+    if (r.solicitud) { solicitud = r.solicitud; veniaDePendiente = true }
   }
 
   // 2) Interpretar (gratis primero; el modelo sólo si hizo falta).
   if (!solicitud) {
     solicitud = await interpretarFn(texto, {
       ...base,
+      // El intérprete espera un INSTANTE; las capacidades reciben un reloj (`() => Date`).
+      // Se traduce acá, en el único lugar donde se cruzan las dos convenciones.
+      ahora,
       catalogo: catalogoCompacto(habilitadas),
       idsHabilitados: habilitadas.map((c) => c.id),
       quienPide: nombreCorto(identidad),
@@ -287,33 +300,43 @@ export async function atenderPedido({ texto, ctx = {}, deps = {} } = {}) {
   return resolverSolicitud({ solicitud, base, habilitadas, registro, preguntar, identidad, port })
 }
 
-/** El pedido ya interpretado: capacidad, permisos, personas, validación y ejecución. */
-async function resolverSolicitud({ solicitud, base, habilitadas, registro, preguntar, identidad, port }) {
-  const { intencion } = solicitud
-
-  if (intencion === INTENCION.DESCONOCIDO) {
-    if (solicitud.ambiguedad === PREGUNTA_TIPO) {
-      const opciones = OPCIONES_TIPO.filter((o) => habilitadas.some((c) => c.id === o.valor))
-      if (opciones.length > 1) {
-        return preguntar({
-          capacidad: INTENCION.DESCONOCIDO, intencion, parametros: solicitud.parametros,
-          faltante: 'capacidad', pregunta: PREGUNTA_TIPO, opciones,
-        })
-      }
+/** Lo que no se entendió: se pregunta el tipo si esa era la única duda, o se ofrece la ayuda. */
+async function sinIntencion({ solicitud, habilitadas, preguntar }) {
+  if (solicitud.ambiguedad === PREGUNTA_TIPO) {
+    const opciones = OPCIONES_TIPO.filter((o) => habilitadas.some((c) => c.id === o.valor))
+    if (opciones.length > 1) {
+      return preguntar({
+        capacidad: INTENCION.DESCONOCIDO, intencion: INTENCION.DESCONOCIDO,
+        parametros: solicitud.parametros, faltante: 'capacidad', pregunta: PREGUNTA_TIPO, opciones,
+      })
     }
-    const err = errorAsistente(ERROR.INTERPRETACION, `No entendí qué necesitás.\n\n${renderAyuda(habilitadas)}`)
-    return final(resultadoError('asistente', err), solicitud.via, intencion)
   }
+  const err = errorAsistente(ERROR.INTERPRETACION, `No entendí qué necesitás.\n\n${renderAyuda(habilitadas)}`)
+  return final(resultadoError('asistente', err), solicitud.via, INTENCION.DESCONOCIDO)
+}
 
+/** La capacidad que corresponde, sólo si existe Y está habilitada para esta persona. */
+async function capacidadPara(intencion, { registro, habilitadas, via }) {
   const capacidad = await registro.capacidadPorId(intencion)
   if (!capacidad) {
     const err = errorAsistente(ERROR.DEFINITIVO, `Eso todavía no lo sé hacer.\n\n${renderAyuda(habilitadas)}`)
-    return final(resultadoError(intencion, err), solicitud.via, intencion)
+    return { fallo: final(resultadoError(intencion, err), via, intencion) }
   }
   if (!habilitadas.some((c) => c.id === capacidad.id)) {
     const err = errorAsistente(ERROR.CAPACIDAD_DESHABILITADA, `Entendí lo que pedís, pero ahora mismo no tengo habilitado "${capacidad.nombre}" para vos.`)
-    return final(resultadoError(capacidad.id, err), solicitud.via, intencion)
+    return { fallo: final(resultadoError(capacidad.id, err), via, intencion) }
   }
+  return { capacidad }
+}
+
+/** El pedido ya interpretado: capacidad, permisos, personas, validación y ejecución. */
+async function resolverSolicitud({ solicitud, base, habilitadas, registro, preguntar, identidad, port }) {
+  const { intencion } = solicitud
+  if (intencion === INTENCION.DESCONOCIDO) return sinIntencion({ solicitud, habilitadas, preguntar })
+
+  const elegida = await capacidadPara(intencion, { registro, habilitadas, via: solicitud.via })
+  if (elegida.fallo) return elegida.fallo
+  const { capacidad } = elegida
 
   // Personas nombradas: se resuelven ANTES de validar, porque el schema pide ids y emails.
   const personas = await resolverPersonasDelPedido(port, solicitud, identidad)

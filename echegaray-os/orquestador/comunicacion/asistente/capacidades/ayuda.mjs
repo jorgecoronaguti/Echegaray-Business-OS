@@ -33,7 +33,10 @@ export const capacidad = {
    * @param {import('../contratos.mjs').ContextoAsistente} ctx
    */
   async ejecutar(_parametros, ctx) {
-    const lista = await capacidadesHabilitadas(ctx)
+    // El registro llega por contexto cuando quien orquesta usa uno propio (tests, o un
+    // registro acotado a un canal). Si no viene, el del OS. Nunca una lista escrita acá.
+    const listar = ctx?.registro?.capacidadesHabilitadas ?? capacidadesHabilitadas
+    const lista = await listar(ctx)
     const texto = renderAyuda(lista)
     // La evidencia es la lista real que se ofreció: permite auditar después qué vio esa
     // persona, que es lo único que hace verificable una respuesta de ayuda.
