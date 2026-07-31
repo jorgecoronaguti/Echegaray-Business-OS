@@ -36,7 +36,7 @@ export function baseFalsa({ identidades = [], pendientes = [], ejecuciones = [],
     if (s.startsWith('insert into comunicacion.identidades')) {
       const [plataforma, userId, username, nombre, alias, email, tz, activo] = params
       const previa = db.identidades.find((i) => i.plataforma === plataforma && i.plataforma_user_id === userId)
-      const fila = { plataforma, plataforma_user_id: userId, plataforma_username: username, nombre_visible: nombre, alias, email, zona_horaria: tz, activo }
+      const fila = { plataforma, plataforma_user_id: userId, plataforma_username: username, display: nombre, alias, email, zona_horaria: tz, activo }
       if (previa) Object.assign(previa, fila)
       else db.identidades.push(fila)
       return { rows: [{ ...fila, insertada: !previa }] }
@@ -88,7 +88,7 @@ export function baseFalsa({ identidades = [], pendientes = [], ejecuciones = [],
 export function filaIdentidad({ id, username = null, nombre, alias = [], email = null, activo = true }) {
   return {
     plataforma: 'mattermost', plataforma_user_id: String(id), plataforma_username: username,
-    nombre_visible: nombre, alias, email, zona_horaria: 'America/Argentina/San_Juan', activo,
+    display: nombre, alias, email, zona_horaria: 'America/Argentina/San_Juan', activo,
   }
 }
 

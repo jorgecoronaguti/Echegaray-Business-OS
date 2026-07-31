@@ -181,7 +181,14 @@ async function resolverPersonasDelPedido(port, solicitud, identidad) {
   if (solicitud.intencion === CAPACIDAD.RECORDATORIO_CREAR && !p.destinatarioUserId) {
     if (!p.destinatario) { p.destinatarioUserId = identidad.plataformaUserId; return { ok: true } }
     const r = await resolverPersona(port, p.destinatario, { plataforma: identidad.plataforma })
-    if (r.unica) { p.destinatarioUserId = r.unica.plataformaUserId; p.destinatario = nombreCorto(r.unica); return { ok: true } }
+    if (r.unica) {
+      p.destinatarioUserId = r.unica.plataformaUserId
+      p.destinatario = nombreCorto(r.unica)
+      // Lo que se había tomado por nombre y era el pedido vuelve al contenido: sin esto,
+      // "recordale a Rodrigo BUSCAR las llaves" le llegaba a Rodrigo como "las llaves".
+      if (r.sobrante) p.contenido = `${r.sobrante} ${p.contenido ?? ''}`.trim()
+      return { ok: true }
+    }
     if (r.ambiguas) {
       return {
         aclaracion: {

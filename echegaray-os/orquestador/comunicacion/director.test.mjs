@@ -222,3 +222,22 @@ test('el channel_id no está escrito en el código: sale del binding', async () 
     assert.doesNotMatch(src, /\b[a-z0-9]{26}\b/, `${f} tiene algo con forma de id de Mattermost`)
   }
 })
+
+test('empate en un DM: gana el que declaró más confianza, sin consultar al modelo', async () => {
+  // Caso REAL, con los especialistas de verdad: "recordame llamar al banco dentro de dos
+  // horas" lo reclaman el asistente (intención concreta, confianza 1) y Personal IA (su
+  // gramática ve "horas" y piensa en jornada). Sin canal que desempate, esto se iba al
+  // modelo — y ya estaba resuelto.
+  const razonar = async () => { throw new Error('no se consulta al modelo: el empate ya se resolvió') }
+  const r = await resolver({ texto: 'recordame llamar al banco dentro de dos horas', port: puerto(), razonar })
+  assert.equal(r.especialista?.slug ?? '(ninguno)', 'asistente')
+  assert.equal(r.via, VIA.RECLAMO)
+})
+
+test('el desempate por confianza no le saca a Personal IA lo que es suyo', async () => {
+  const razonar = async () => { throw new Error('no debería hacer falta') }
+  for (const t of ['asistencia', '3 ausente', 'quién trabajó ayer', 'horas extra del 17/01']) {
+    const r = await resolver({ texto: t, port: puerto(), razonar })
+    assert.equal(r.especialista?.slug, 'personal', t)
+  }
+})

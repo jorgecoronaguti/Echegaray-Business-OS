@@ -120,6 +120,12 @@ export function crearConector(opts = {}) {
         // degrada al catálogo en vez de adivinar un destino.
         razonarRuteo,
         canalPrivadoPara,
+        // Cliente de Google INYECTABLE. En producción es undefined y el handler arma el que
+        // corresponde. Existe para que el test vertical pueda recorrer el camino completo
+        // —mensaje → Director → asistente → capacidad → outbox— sin llamar a Google: sin
+        // esta costura, las únicas capacidades verificables de punta a punta serían las que
+        // no tocan Google, que son justo las que menos pueden romperse.
+        ...(opts.google ? { google: opts.google } : {}),
       }
       try {
         if (!handler) throw new Error(`sin handler para ${task.type}`)

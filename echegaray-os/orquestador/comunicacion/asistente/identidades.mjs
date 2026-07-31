@@ -35,7 +35,7 @@ function aIdentidad(row) {
     plataforma: row.plataforma ?? PLATAFORMA,
     plataformaUserId: row.plataforma_user_id,
     plataformaUsername: row.plataforma_username ?? null,
-    nombreVisible: row.nombre_visible,
+    nombreVisible: row.display,
     alias: Array.isArray(row.alias) ? row.alias : [],
     email: row.email ?? null,
     zonaHoraria: row.zona_horaria ?? TZ_EMPRESA,
@@ -43,7 +43,7 @@ function aIdentidad(row) {
   })
 }
 
-const COLUMNAS = `plataforma, plataforma_user_id, plataforma_username, nombre_visible,
+const COLUMNAS = `plataforma, plataforma_user_id, plataforma_username, display,
                   alias, email, zona_horaria, activo`
 
 /**
@@ -66,7 +66,7 @@ export async function listarIdentidades(port, { plataforma = PLATAFORMA } = {}) 
   if (!port?.query) return []
   const { rows } = await port.query(
     `select ${COLUMNAS} from comunicacion.identidades
-      where plataforma = $1 and activo order by nombre_visible`, [plataforma],
+      where plataforma = $1 and activo order by display`, [plataforma],
   )
   return rows.map(aIdentidad)
 }
@@ -82,11 +82,11 @@ export async function registrarIdentidad(port, datos) {
   // informe "3 nuevas, 12 actualizadas" sin hacer una consulta previa por cada persona.
   const { rows } = await port.query(
     `insert into comunicacion.identidades
-       (plataforma, plataforma_user_id, plataforma_username, nombre_visible, alias, email, zona_horaria, activo)
+       (plataforma, plataforma_user_id, plataforma_username, display, alias, email, zona_horaria, activo)
      values ($1,$2,$3,$4,$5,$6,$7,$8)
      on conflict (plataforma, plataforma_user_id) do update set
        plataforma_username = excluded.plataforma_username,
-       nombre_visible      = excluded.nombre_visible,
+       display      = excluded.display,
        alias               = excluded.alias,
        email               = excluded.email,
        zona_horaria        = excluded.zona_horaria,
@@ -117,10 +117,28 @@ const CRITERIOS = [
   (i, q) => palabras(i.nombreVisible).includes(q),           // el apellido suelto
 ]
 
+/** Una sola pasada de criterios sobre un texto ya normalizado. */
+function buscar(lista, q) {
+  for (const cumple of CRITERIOS) {
+    const hits = lista.filter((i) => cumple(i, q))
+    if (hits.length === 1) return { unica: hits[0] }
+    if (hits.length > 1) return { ambiguas: hits }
+  }
+  return null
+}
+
 /**
  * Un nombre libre del chat → la persona real, o la ambigüedad declarada.
  *
- * @returns {Promise<{unica:object} | {ambiguas:Array<object>} | {ninguna:true}>}
+ * NOMBRE DE UNA O DOS PALABRAS. El intérprete no puede saber cuál de las dos es: en
+ * "recordale a Juan Pablo revisar los certificados" el nombre son dos palabras, y en
+ * "recordale a Rodrigo buscar las llaves" la segunda ya es el pedido. Distinguirlo por
+ * mayúsculas no sirve —en el chat nadie las usa— así que decide QUIÉN SABE: se prueba el
+ * texto entero y, si no resuelve, se recorta la última palabra y se vuelve a probar. Lo
+ * recortado se devuelve en `sobrante` para que quien llama lo reponga en el contenido; si
+ * no, "buscar" se perdía y el recordatorio llegaba mutilado.
+ *
+ * @returns {Promise<{unica:object, sobrante?:string} | {ambiguas:Array<object>, sobrante?:string} | {ninguna:true}>}
  *   `ambiguas` es una respuesta CORRECTA, no un fallo: dos Rodrigos son dos Rodrigos y el
  *   asistente pregunta cuál. `ninguna` tampoco se rellena con el más parecido — si la
  *   persona no está en la tabla, para el OS no existe.
@@ -129,10 +147,12 @@ export async function resolverPersona(port, texto, { plataforma = PLATAFORMA, ca
   const q = normalizar(texto)
   if (!q) return { ninguna: true }
   const lista = candidatos ?? await listarIdentidades(port, { plataforma })
-  for (const cumple of CRITERIOS) {
-    const hits = lista.filter((i) => cumple(i, q))
-    if (hits.length === 1) return { unica: hits[0] }
-    if (hits.length > 1) return { ambiguas: hits }
+  const tokens = String(texto).trim().split(/\s+/)
+  for (let corte = tokens.length; corte >= 1; corte--) {
+    const r = buscar(lista, normalizar(tokens.slice(0, corte).join(' ')))
+    if (!r) continue
+    const sobrante = tokens.slice(corte).join(' ')
+    return sobrante ? { ...r, sobrante } : r
   }
   return { ninguna: true }
 }

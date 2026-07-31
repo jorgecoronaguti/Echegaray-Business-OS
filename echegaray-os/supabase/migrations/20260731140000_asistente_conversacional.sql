@@ -16,35 +16,33 @@
 -- una policy, porque no hay un `auth.uid()` del lado del chat: la identidad la trae
 -- Mattermost.
 
--- ── 1. IDENTIDADES ───────────────────────────────────────────────────────────
--- El puente estable entre las tres identidades de una misma persona: quién es en
--- Mattermost (lo único que trae el evento), quién es en el OS (email de public.usuarios_os)
--- y con qué cuenta de Google actúa (orq.google_tokens, por email).
+-- ── 1. IDENTIDADES — se EXTIENDE la tabla que ya existe ──────────────────────
+-- `comunicacion.identidades` ya existe desde PR-3 y ya es, textualmente, "el puente OS ↔
+-- plataforma". Crear una segunda tabla de identidades habría sido exactamente lo que la
+-- regla contra la duplicación prohíbe: dos lugares donde vive quién es cada persona, que
+-- tarde o temprano dicen cosas distintas. Se le agregan las columnas que faltaban.
 --
--- Existe porque sin él un recordatorio cruzado se resolvería por texto libre — "Rodrigo" —
--- y el texto libre no es una identidad: hay dos Rodrigos. Acá el nombre resuelve a un
--- user_id REAL o no resuelve, y entonces se pregunta.
-create table if not exists comunicacion.identidades (
-  id                  bigint generated always as identity primary key,
-  plataforma          text not null default 'mattermost',
-  plataforma_user_id  text not null,
-  plataforma_username text,                       -- @rodrigo
-  nombre_visible      text not null,              -- "Rodrigo Bronia"
-  alias               text[] not null default '{}',-- otras formas de nombrarlo en el chat
-  email               text,                       -- cuenta del OS / Google (puede faltar)
-  zona_horaria        text not null default 'America/Argentina/San_Juan',
-  activo              boolean not null default true,
-  creado_at           timestamptz not null default now(),
-  actualizado_at      timestamptz not null default now(),
-  unique (plataforma, plataforma_user_id)
-);
+-- El nombre visible sigue siendo `display` (la columna que ya estaba). No se agrega un
+-- `nombre_visible` al lado: dos columnas de nombre es la duplicación en chiquito.
+--
+-- Para qué hacen falta las nuevas: sin ellas un recordatorio cruzado se resolvería por
+-- texto libre — "Rodrigo" — y el texto libre no es una identidad. Con ellas, el nombre
+-- resuelve a un user_id REAL o no resuelve, y entonces se pregunta.
+alter table comunicacion.identidades
+  add column if not exists plataforma_username text,                        -- @rodrigo
+  add column if not exists alias               text[] not null default '{}',-- otras formas de nombrarlo
+  add column if not exists email               text,                        -- cuenta del OS / Google
+  add column if not exists zona_horaria        text not null default 'America/Argentina/San_Juan',
+  add column if not exists activo              boolean not null default true,
+  add column if not exists actualizado_at      timestamptz not null default now();
+
 create index if not exists identidades_username_idx
   on comunicacion.identidades (plataforma, lower(plataforma_username)) where activo;
 create index if not exists identidades_email_idx
   on comunicacion.identidades (lower(email)) where activo;
 
 comment on table comunicacion.identidades is
-  'Mapeo estable Mattermost ↔ OS ↔ Google de una misma persona. No duplica public.usuarios_os (que gobierna el acceso web por email): la liga por email. Se puebla desde Mattermost con orquestador/scripts/asistente-identidades.mjs.';
+  'Puente Mattermost ↔ OS ↔ Google de una misma persona (PR-3, extendida por el asistente). No duplica public.usuarios_os (que gobierna el acceso web por email): la liga por email. Se puebla desde Mattermost con orquestador/scripts/asistente-identidades.mjs.';
 
 -- ── 2. RECORDATORIOS INTERNOS ────────────────────────────────────────────────
 -- Son DEL OS a propósito: no se crean en Calendar ni en Tasks. Un recordatorio no es un

@@ -30,6 +30,10 @@
 
 import { especialistas, especialistaDeArea, catalogo } from './registro-especialistas.mjs'
 
+/** Confianza de un reclamo que no la declara. Neutra a propósito: no premia ni castiga al
+ *  especialista que todavía no expresa cuán seguro está. */
+export const CONFIANZA_NEUTRA = 0.5
+
 export const VIA = Object.freeze({
   RECLAMO: 'reclamo_especialista', // el especialista reconoció su propia gramática
   AREA_CANAL: 'area_del_canal', // el canal declara el contexto operativo
@@ -83,6 +87,22 @@ export async function resolver({ texto, port, channelId, razonar } = {}) {
     const propio = reclamos.find((r) => r.especialista.area === area)
     if (propio) {
       return { especialista: propio.especialista, intencion: propio.intencion, via: VIA.AREA_CANAL, area, candidatos: reclamos.map((r) => r.especialista.slug) }
+    }
+  }
+  // Empate SIN canal (un DM). Antes esto iba derecho al modelo, y el caso real que lo
+  // destapó no lo justificaba: "recordame llamar al banco dentro de dos horas" lo reclamaba
+  // también Personal IA, porque su gramática ve "horas" y piensa en jornada. Uno de los dos
+  // reconoció una intención CONCRETA y el otro rozó una palabra. Cuando exactamente uno
+  // declara la confianza más alta, gana él: es determinístico, cuesta cero y evita mandar al
+  // modelo un mensaje que ya estaba resuelto. Si empatan en confianza, sigue decidiendo el
+  // modelo — que es lo correcto cuando de verdad no se sabe.
+  if (reclamos.length > 1) {
+    const conf = (r) => (typeof r.intencion?.confianza === 'number' ? r.intencion.confianza : CONFIANZA_NEUTRA)
+    const max = Math.max(...reclamos.map(conf))
+    const mejores = reclamos.filter((r) => conf(r) === max)
+    if (mejores.length === 1) {
+      const [g] = mejores
+      return { especialista: g.especialista, intencion: g.intencion, via: VIA.RECLAMO, area: g.especialista.area, candidatos: reclamos.map((r) => r.especialista.slug) }
     }
   }
 

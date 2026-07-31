@@ -13,11 +13,16 @@ const MIGR_COMM = join(AQUI, '..', '..', '..', 'communication-service', 'db', 'm
 //   fundacion (schema orq, tenants/projects/repos/principals, events, emit_event)
 //   ledger    (tasks, enqueue_task, claim_task, transition_task, fail_task, reap)
 //   comunicacion (schema comunicacion del comm-service)
+//   asistente    (identidades, recordatorios, entregas, aclaraciones, ejecuciones)
 const ARCHIVOS = [
   join(MIGR_ORQ, '20260711120000_orq_fundacion_work_fabric.sql'),
   join(MIGR_ORQ, '20260711121000_orq_ledger.sql'),
   join(MIGR_ORQ, '20260729180000_orq_comunicacion_lane.sql'), // PR-4.1: lane de comunicación
   join(MIGR_COMM, '0001_comunicacion.sql'),
+  // Sin esto el test vertical del asistente correría contra tablas inexistentes y "pasaría"
+  // por no llegar nunca a tocarlas.
+  join(MIGR_ORQ, '20260715170000_google_tokens_oauth.sql'), // quién autorizó su Google
+  join(MIGR_ORQ, '20260731140000_asistente_conversacional.sql'),
 ]
 
 // Roles de Supabase que las migraciones usan en sus GRANT. En un Postgres
