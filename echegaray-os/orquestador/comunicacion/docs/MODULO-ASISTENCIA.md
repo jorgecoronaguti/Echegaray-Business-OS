@@ -148,6 +148,51 @@ código, y hay un test que falla si aparece un id de Mattermost literal.
 
 Desactivar el binding apaga la carga sin desplegar código.
 
+### Lo que la puerta rechaza también queda anotado
+
+Un rechazo silencioso es un problema que nadie ve: el jefe de obra queda con la sensación de
+que "el bot no anda", Dirección no se entera de que alguien intentó cargar sin permiso, y si
+mañana aparece un intento desde un canal que no corresponde no hay con qué reconstruirlo.
+Por eso **todo intento rechazado emite el evento `personal.asistencia.denied`**.
+
+No hay tabla nueva ni sistema nuevo: se usa el auditor que ya existe
+(`asistencia-auditoria.mjs` → `crearAuditor` → `orq.emit_event`, el ledger append-only del
+Work Fabric), y se consulta por la misma vista de siempre,
+`comunicacion.v_asistencia_auditoria`. La vista toma todo lo que empieza con
+`personal.asistencia.`, así que el rechazo entra sin tocarla: `evento`, `status`,
+`error_code`, `mattermost_user_id`, `mattermost_username` y `correlation_id` ya son columnas;
+el resto se lee del `payload`.
+
+Casos que quedan auditados:
+
+| Familia | Qué pasó |
+|---|---|
+| Permiso | Intento sin permiso de carga |
+| Canal | Intento desde un canal que no es el oficial |
+| Canal | Intento desde un mensaje privado o desde un grupo |
+| Token | Falta el token del slash command |
+| Token | El token no es válido |
+| Identidad | El pedido llegó sin identidad de plataforma |
+| Payload | El payload es inválido |
+| Sesión | La sesión no existe |
+| Sesión | La sesión venció |
+| Sesión | La sesión es de otra persona |
+| Formulario | El diálogo llegó inválido |
+
+Qué queda registrado en cada uno: timestamp, tipo de evento, `status: "denied"`, `origen`
+(`slash_command` · `accion` · `dialogo`), `motivo` — la familia del rechazo —, `error_code`
+con el detalle exacto (`sin_permiso`, `canal_no_es_el_oficial`, `token_invalido`,
+`sesion_vencida`…), `mattermost_user_id` y `mattermost_username` cuando existan, `channel_id`,
+`team_id`, y `correlation_id` / `request_id` cuando existan.
+
+Qué **nunca** se registra: tokens, secretos, el contenido completo del payload, ni datos
+sensibles. Vale acá la misma regla que en el resto de la auditoría — se guarda la evidencia de
+qué pasó, no una copia de lo que entró.
+
+La única diferencia observable es la auditoría. Los mensajes que ve el jefe de obra, los
+permisos y el flujo **no cambian**: quien podía cargar sigue cargando igual, y quien no podía
+lee exactamente el mismo texto que antes.
+
 ## 4. Flujo completo de un mensaje
 
 ### 4.1 Registrar asistencia (escritura)
@@ -203,7 +248,7 @@ Persona inexistente → lista los trabajadores reales, no inventa.
 | `asistencia-ui.mjs` | Parsing de comandos y render de las respuestas |
 | `asistencia-consultas.mjs` | Consultas de sólo lectura (gramática + render) |
 | `asistencia-permisos.mjs` | Modo abierto/estricto, `PERMISO_ASISTENCIA_WRITE` |
-| `asistencia-auditoria.mjs` | Eventos, payload de confirmación, sanitización de errores |
+| `asistencia-auditoria.mjs` | Eventos (incluido el rechazo), payload de confirmación, sanitización de errores |
 
 ### Adaptador a JORNALES
 
@@ -325,6 +370,7 @@ volviendo a cargar el valor correcto (el módulo escribe el valor final, no un d
 | `⚠️ La pestaña … está tomada` | `sheet_pestanas_bloqueadas` | Candado de la Regla 0. **No desactivarlo**: sellar la firma por el mecanismo oficial |
 | Escribe pero no aparece | `comunicacion.v_asistencia_auditoria` | Mirar `old_value`/`new_value` y la celda exacta |
 | "Ya hay una carga abierta" | `comunicacion.asistencia_sesiones` | Sesión previa sin cerrar; expira sola por TTL o `cancelar` |
+| "No me deja cargar" y no se sabe por qué | `comunicacion.v_asistencia_auditoria` con `status='denied'` | El `error_code` dice el motivo exacto: `sin_permiso`, `canal_no_es_el_oficial`, `token_invalido`, `sesion_vencida`… |
 | Ruteo raro en DM | — | Sin binding de canal, decide el modelo; si no hay crédito, catálogo |
 
 Diagnóstico sin tocar producción: `node orquestador/scripts/asistencia-dry-run.mjs` (no escribe).
@@ -374,6 +420,9 @@ especialista operativo**.
 - Semanal: revisar `comunicacion.outbox` en estado `dead` y el DLQ del lane.
 - Semanal: `select * from comunicacion.v_asistencia_auditoria order by ts desc limit 50` — que
   cada escritura tenga `old_value`/`new_value` y celda.
+- Semanal: la misma vista con `status='denied'` — un rechazo repetido de la misma persona es
+  un permiso que falta, y un rechazo por canal que se repite es alguien cargando donde no va.
+  Se mira para actuar, no para archivar.
 - Mensual: verificar que las sesiones expiradas se estén venciendo
   (`comunicacion.vencer_sesiones_asistencia()`).
 
