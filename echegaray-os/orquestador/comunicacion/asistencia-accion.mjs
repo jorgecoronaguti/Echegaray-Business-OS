@@ -59,7 +59,13 @@ function verificarSecreto(esperado, presentado) {
  * distintas para cada uno; se normaliza acá una sola vez.
  */
 function normalizar(payload = {}) {
-  const esDialogo = typeof payload.submission === 'object' && payload.submission !== null
+  // LA MISMA DEFINICIÓN QUE EL RUTEADOR (`asistencia-mm/acciones.mjs`). Había dos criterios
+  // distintos: acá alcanzaba con que hubiera `submission`, allá con `type` o `callback_id`.
+  // Un envío de formulario sin campos (todos opcionales) entraba como "acción" y el rechazo
+  // salía con `ephemeral_text`, que un diálogo no muestra — y el jefe se quedaba mirando un
+  // formulario abierto sin saber por qué no pasó nada.
+  const esDialogo = payload.type === 'dialog_submission' || Boolean(payload.callback_id)
+    || (typeof payload.submission === 'object' && payload.submission !== null)
   return {
     esDialogo,
     userId: payload.user_id ?? null,
@@ -105,6 +111,12 @@ export function crearManejadorAccion({ port, mattermost, google = null, log = nu
     const registrar = crearAuditor(port, { correlationId })
     return async function auditar(evento, datos = {}) {
       const r = await registrar(evento, datos)
+      // SI EL LEDGER DEJA DE ESCRIBIR, QUE SE SEPA. `crearAuditor` nunca tira: devuelve
+      // `{ok:false}`. Ese resultado se descartaba en todos lados, así que la asistencia
+      // podía seguir escribiéndose en la planilla sin dejar UN SOLO rastro y sin una línea
+      // de log. Para un módulo cuya seguridad se apoya en la auditoría, eso es quedarse
+      // ciego en silencio. No cambia el veredicto: sólo deja de ser invisible.
+      if (r?.ok === false) log?.warn?.('asistencia: no se pudo registrar el evento de auditoría', { evento, detalle: String(r.error ?? '').slice(0, 200) })
       if (evento === EVENTO.WRITTEN && Array.isArray(datos.novedades) && datos.novedades.length) {
         const proy = await guardarNovedades(port, {
           fecha: datos.fecha_operativa,
