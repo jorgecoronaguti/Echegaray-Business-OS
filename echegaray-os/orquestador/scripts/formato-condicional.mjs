@@ -23,7 +23,16 @@ async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const meta = await google.getSheetMeta(ID)
   // Las de CARGA son del dueño: no se les toca el formato (misma disciplina que reparar-pantalla).
+  //
+  // ═══ Y LAS CANDADAS TAMPOCO (31/07) ═══
+  //
+  // El dueño: "no me estás respetando la regla de oro de no tocar lo que yo modifico". Auditados los
+  // pasos del pipeline: reparar-pantalla y reparar-textos ya consultaban el candado, pero ESTE no —
+  // corría cada 2 horas y le agregaba reglas de formato condicional a pestañas que él había tomado.
+  // Un candado que vale para el contenido y no para el formato no es un candado.
+  const bloqueadas = await import('../lib/pestana-bloqueada.mjs').then((m) => m.pestanasBloqueadas({}, ID)).catch(() => new Set())
   const calculadas = PESTANAS.filter((p) => !p.carga)
+    .filter((p) => { if (bloqueadas.has(p.titulo)) { console.log(`🔒 ${p.titulo}: bajo tu control, no le toco el formato condicional.`); return false } return true })
   const condActual = await google.getConditionalFormats(ID)
 
   const requests = []

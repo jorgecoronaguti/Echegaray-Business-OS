@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { CATEGORIAS, COL, offsetCategoria, expresionFilaDelMes, formulaValor, formulaVigencia } from './uocra-escala.mjs'
+import { CATEGORIAS, COL, offsetCategoria, expresionFilaDelMes, formulaValor, formulaVigencia, MES_SIGUIENTE } from './uocra-escala.mjs'
 
 test('el orden de categorías es el del convenio y Sereno va último', () => {
   assert.deepEqual(CATEGORIAS, ['Oficial Especializado', 'Oficial', 'Medio Oficial', 'Ayudante', 'Sereno'])
@@ -44,4 +44,25 @@ test('las fórmulas usan el separador es-AR (";") y no la coma', () => {
     // No debe haber ";," ni argumentos separados por coma fuera de un literal.
     assert.ok(!/,/.test(f.replace(/"[^"]*"/g, '')), `coma fuera de literal en: ${f}`)
   }
+})
+
+test('MES_SIGUIENTE es el 1° del mes que viene, en es-AR', () => {
+  assert.equal(MES_SIGUIENTE, 'EOMONTH(TODAY();0)+1')
+  assert.ok(!/,/.test(MES_SIGUIENTE), 'separador es-AR')
+})
+
+test('el escalón que viene se puede consultar con la MISMA fórmula, cambiando la fecha', () => {
+  // Es la prueba de que no hace falta una segunda implementación para el mes próximo: el defecto del
+  // 31/07 era que nadie la llamaba con otra fecha, no que faltara la capacidad.
+  const hoy = formulaValor('Ayudante', COL.basico)
+  const prox = formulaValor('Ayudante', COL.basico, MES_SIGUIENTE)
+  assert.notEqual(hoy, prox)
+  assert.match(prox, /EOMONTH\(TODAY\(\);0\)\+1/)
+  assert.match(prox, /\+3\)/, 'sigue bajando por el offset de Ayudante')
+})
+
+test('la vigencia del mes próximo grita si ese mes NO está cargado en la réplica', () => {
+  const v = formulaVigencia(MES_SIGUIENTE)
+  assert.match(v, /⚠ el mes en curso NO está/)
+  assert.match(v, /EOMONTH\(TODAY\(\);0\)\+1/)
 })

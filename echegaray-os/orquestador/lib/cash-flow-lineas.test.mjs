@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   formulaInteresSemana, edicionesConContenidoReal,
   formulaComisionesMes, formulaComisionesSemana, expresionComisionesPromedio, COMISIONES,
+  formulaOficina, formulaLineaMes, CUADRO,
 } from './cash-flow-lineas.mjs'
 import { NAT } from './banco-santander.mjs'
 import { TASAS } from './costo-descubierto.mjs'
@@ -226,4 +227,34 @@ test('bajo --force la fusión preserva un renombre REAL del dueño Y no pierde u
   const rNormal = respetarEdiciones(generado, actual, registro)
   assert.equal(rNormal.grid[1][0], `${S}Jornales de obra de LA ESTRELLA`, 'el renombre también se respeta normal')
   assert.equal(rNormal.grid[3][0], '', 'en modo normal el borrado del dueño SÍ se aplica (no se rompe la feature)')
+})
+
+test('OFICINA: la línea de la planilla de sueldos lee los rangos con nombre, no Compras', () => {
+  const f = formulaOficina('$C$3', '$D$3')
+  assert.match(f, /OFICINA_PAGO/)
+  assert.match(f, /OFICINA_PAGADO/)
+  assert.match(f, /OFICINA_PROYECTADO/)
+  assert.ok(!/Compras!/.test(f), 'la nómina sale de la planilla de sueldos, no de Compras')
+  assert.ok(!/,/.test(f.replace(/"[^"]*"/g, '')), 'separador es-AR')
+})
+
+test('OFICINA: un mes pagado y un mes proyectado se suman, y el mes de otra ventana no entra', () => {
+  const f = formulaOficina('$C$3', '$D$3')
+  assert.match(f, /ISNUMBER\(OFICINA_PAGO\)\*\(OFICINA_PAGO>=\$C\$3\)\*\(OFICINA_PAGO<\$D\$3\)/)
+})
+
+test('OFICINA: NO se vuelve a proyectar en el mensual — su bloque ya proyecta hasta diciembre', () => {
+  const l = { nombre: 'Oficina', oficina: true }
+  const f = formulaLineaMes(l, 'C', 'C', 3, {})
+  assert.ok(!/EOMONTH\(TODAY\(\);-4\)/.test(f), 'no debe entrar en el promedio de los últimos 3 meses')
+  assert.match(f, /OFICINA_PAGO/)
+})
+
+test('OFICINA: el memo no suma al flujo (signo 0) y el sueldo de Compras sigue siendo el que sale de caja', () => {
+  const grupos = CUADRO.flatMap((a) => a.grupos)
+  const memo = grupos.find((g) => /planilla de sueldos/.test(g.nombre))
+  assert.ok(memo, 'existe el grupo memo de la planilla')
+  assert.equal(memo.signo, 0, 'un memo NUNCA suma: contaría dos veces el mismo sueldo')
+  const caja = grupos.flatMap((g) => g.lineas).find((l) => l.rubro === 'Nómina · Sueldos administración')
+  assert.ok(caja, 'lo que efectivamente salió de caja sigue mostrándose y sumando')
 })

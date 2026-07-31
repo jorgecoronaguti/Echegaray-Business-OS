@@ -524,7 +524,16 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
         // deuda que no existe: la columna "Pagado el" es nueva y no tener el dato no es deber la plata.
         // La plata de una quincena pagada antes del corte YA ESTÁ en el saldo del banco.
         + `+SUMPRODUCT(ISNUMBER(JORNALES_REAL_PAGO)*(JORNALES_REAL_PAGADO="")*(JORNALES_REAL_PAGO>=CAJA_FECHA_SALDO)*${tramo(k, 'JORNALES_REAL_PAGO')}*N(JORNALES_REAL_TOTAL))`
-        + `+SUMPRODUCT(ISNUMBER(JORNALES_PROY_PAGO)*${tramo(k, 'JORNALES_PROY_PAGO')}*N(JORNALES_PROY_TOTAL))`,
+        + `+SUMPRODUCT(ISNUMBER(JORNALES_PROY_PAGO)*${tramo(k, 'JORNALES_PROY_PAGO')}*N(JORNALES_PROY_TOTAL))`
+        // ═══ Y LA OFICINA, QUE TAMPOCO ESTABA (31/07) ═══
+        //
+        // El dueño: "no estás considerando oficina... se ve mal todo en cashflow y por ende podría estar
+        // mal en caja". Tenía razón las dos veces. Este calendario sumaba la nómina de OBRA y no la de
+        // OFICINA: ~$3,4M por mes que salen de la misma caja y que el piso proyectado no veía.
+        //
+        // Sale del MISMO bloque que ahora lee el cash flow (OFICINA_*, publicados por la pestaña
+        // Jornales): una capacidad, una fuente. Un mes está pagado o proyectado, nunca los dos.
+        + `+SUMPRODUCT(ISNUMBER(OFICINA_PAGO)*(OFICINA_PAGO>=CAJA_FECHA_SALDO)*${tramo(k, 'OFICINA_PAGO')}*(N(OFICINA_PAGADO)+N(OFICINA_PROYECTADO)))`,
       `=$C${f}-$D${f}`,
       // La posición acumulada arranca en la disponibilidad neta: de nada sirve un neto de tramo si no
       // se ve contra la plata que hay.
@@ -546,7 +555,10 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // nadie lee. Ahora resta las dos fuentes: cheques + nómina cerrada sin pagar + nómina proyectada.
   const nominaEnCalendario = 'SUMPRODUCT(ISNUMBER(JORNALES_REAL_PAGO)*(JORNALES_REAL_PAGADO="")*(JORNALES_REAL_PAGO>=CAJA_FECHA_SALDO)*N(JORNALES_REAL_TOTAL))'
     + '+SUMPRODUCT(ISNUMBER(JORNALES_PROY_PAGO)*N(JORNALES_PROY_TOTAL))'
-  push(['   · control: tiene que dar lo mismo que los cheques no debitados MÁS la nómina sin pagar', '', '',
+    // La oficina entra al calendario, así que el control tiene que restarla también: si no, quedaría en
+    // rojo permanente por una diferencia correcta, y un control que siempre da rojo no lo mira nadie.
+    + '+SUMPRODUCT(ISNUMBER(OFICINA_PAGO)*(OFICINA_PAGO>=CAJA_FECHA_SALDO)*(N(OFICINA_PAGADO)+N(OFICINA_PROYECTADO)))'
+  push(['   · control: cheques no debitados + nómina de obra sin pagar + oficina', '', '',
     `=$D${filas.length}-$E$${fCh}-(${nominaEnCalendario})`, '', '', '', '',
     'Si no da cero, el calendario cuenta de más o de menos — casi siempre una fecha guardada como texto. Ahora mide las DOS fuentes: los cheques emitidos y las obligaciones de nómina (cerradas sin pagar + proyectadas).'])
   const fPeor = push(['   · el punto más bajo del horizonte', '', '', '', '', `=MIN($F${cal0}:$F${cal1})`, '', '', ''])

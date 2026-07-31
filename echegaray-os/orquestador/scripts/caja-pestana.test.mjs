@@ -259,8 +259,24 @@ test('LA DESCARGA: una quincena con fecha en "Pagado el" sale del calendario', (
   assert.match(sale, /\(JORNALES_REAL_PAGADO=""\)/,
     'sólo pesa la que NO tiene fecha de pago real: eso es la descarga y el anti-doble-conteo')
   // La proyección no lleva esa condición: una quincena que todavía no existe no puede estar pagada.
-  const proy = sale.slice(sale.indexOf('JORNALES_PROY_PAGO'))
-  assert.ok(!proy.includes('PAGADO'), 'la proyección no se filtra por pagada: no tiene sentido')
+  // SE AÍSLA SU TÉRMINO, no "todo lo que sigue": el corte hasta el final de la fórmula daba falso
+  // positivo en cuanto se sumó un tercer término (la oficina, que sí tiene una columna PAGADO). Mirar
+  // "de acá hasta el final" es la misma trampa que anclar en la posición.
+  const termino = (nombre) => sale.split('+SUMPRODUCT(').find((t) => t.includes(nombre)) ?? ''
+  const proy = termino('JORNALES_PROY_PAGO')
+  assert.ok(proy.includes('JORNALES_PROY_PAGO'), 'el término de la proyección se pudo aislar')
+  assert.ok(!proy.includes('JORNALES_REAL_PAGADO'), 'la proyección no se filtra por pagada: no tiene sentido')
+})
+
+test('LA OFICINA TAMBIÉN SALE DE ESTA CAJA: el calendario la suma, y de la misma fuente que el cash flow', () => {
+  // El dueño: "no estás considerando oficina... por ende podría estar mal en caja". Eran ~$3,4M por mes
+  // que salen del mismo banco y que el piso proyectado no veía.
+  const g = construir()
+  const sale = String(g.filas[g.cal0 - 1]?.[3] ?? '')
+  assert.match(sale, /OFICINA_PAGO/, 'la oficina entra al calendario')
+  assert.match(sale, /N\(OFICINA_PAGADO\)\+N\(OFICINA_PROYECTADO\)/, 'un mes está pagado o proyectado, nunca los dos')
+  assert.match(sale, /OFICINA_PAGO>=CAJA_FECHA_SALDO/, 'antes del corte del extracto manda el banco, igual que la obra')
+  assert.ok(!/Compras!/.test(sale.slice(sale.indexOf('OFICINA_PAGO'))), 'la nómina sale de la planilla de sueldos, no de Compras')
 })
 
 test('la fecha que ubica el jornal en el tramo es la de PAGO, nunca la de cierre', () => {
@@ -283,11 +299,12 @@ test('el control del horizonte mide las DOS fuentes, o daría rojo para siempre'
   // Al sumar los jornales al calendario, un control que resta sólo los cheques queda en rojo por una
   // diferencia CORRECTA. Un control que da rojo siempre es un control que nadie lee.
   const g = construir()
-  const fila = g.filas.slice(g.cal0 - 1, g.calFin + 4).find((f) => /control: tiene que dar lo mismo/.test(String(f?.[0] ?? '')))
+  const fila = g.filas.slice(g.cal0 - 1, g.calFin + 4).find((f) => /^ +· control:/.test(String(f?.[0] ?? '')))
   assert.ok(fila, 'el control existe')
   assert.match(String(fila[3]), /JORNALES_REAL_TOTAL/, 'resta la nómina cerrada sin pagar')
   assert.match(String(fila[3]), /JORNALES_PROY_TOTAL/, 'y la proyectada')
-  assert.match(String(fila[0]), /MÁS la nómina sin pagar/, 'y el rótulo dice qué mide')
+  assert.match(String(fila[3]), /OFICINA_PROYECTADO/, 'y la oficina, que también entra al calendario')
+  assert.match(String(fila[0]), /cheques.*nómina.*oficina/i, 'y el rótulo dice las tres cosas que mide')
 })
 
 test('ANTES DEL CORTE MANDA EL BANCO: las quincenas viejas sin marcar NO son deuda', () => {

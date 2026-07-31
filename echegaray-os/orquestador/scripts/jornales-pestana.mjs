@@ -78,7 +78,7 @@ import { seccion, sub, total as rotuloTotal, auditarPatron } from '../lib/patron
 import { skinRequests } from '../lib/estilo-statement.mjs'
 import { borrarNotas } from '../lib/nota-celda.mjs'
 import { detectarQuincenas, filasQuincenas } from '../lib/nomina-sync.mjs'
-import { CATEGORIAS, COL, formulaValor, formulaVigencia } from '../lib/uocra-escala.mjs'
+import { CATEGORIAS, COL, formulaValor, formulaVigencia, MES_SIGUIENTE } from '../lib/uocra-escala.mjs'
 import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
 import { JORNALES_FILE_ID } from '../lib/espejo-jornales.mjs'
 import { formulaSePagaEl, PARAMETROS } from '../lib/jornales-fecha-pago.mjs'
@@ -356,7 +356,19 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [], 
     : '   · la planilla de Oficina no tiene ningún mes cargado: todo lo de abajo es proyección.'])
   // "Proyectado" va en la MISMA columna que el "Proyectado" de la proyección de obra (H): dos totales
   // del mismo concepto en columnas distintas se leen como dos conceptos distintos.
-  push(['Mes', 'Personas', 'Pagado', VACIO, VACIO, VACIO, 'Ajuste inflación', 'Proyectado'])
+  // ═══ "SE PAGA EL": LA FECHA DE CAJA DE LA OFICINA (31/07) ═══
+  //
+  // POR QUÉ (31/07). El dueño: "no estás considerando oficina... se ve mal todo en cashflow". Medido:
+  // este bloque leía la planilla y quedaba en pantalla, pero NINGUNA fórmula del libro lo consumía —
+  // la línea "Sueldos de administración" del cash flow salía de Compras ($51,0M) y este bloque decía
+  // otra cosa ($19,9M pagados + $21,4M proyectados). Dos definiciones del mismo sueldo, y la que
+  // sumaba era la que no viene de la planilla de sueldos. Es la regla 9: un solo juego de rubros.
+  //
+  // Para que el cash flow lo pueda ubicar hace falta una FECHA, y la oficina se liquida por MES. El
+  // criterio queda ESCRITO en la pestaña, no escondido en el código: cierre de mes + el mismo desfase
+  // de pago que la obra (JORNALES_DESFASE_PAGO, el parámetro que el dueño puede corregir). Si mañana
+  // se paga otro día, se cambia el parámetro y se mueven las dos cosas juntas.
+  push(['Mes', 'Personas', 'Pagado', VACIO, 'Se paga el', VACIO, 'Ajuste inflación', 'Proyectado'])
   const o0 = filas.length + 1
   MESES.forEach((nombre, i) => {
     const r = filas.length + 1
@@ -372,12 +384,18 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [], 
     // precisión que no existe. La base y el ajuste se ven los dos en pantalla.
     const ajuste = bs.length ? VACIO : `=IFERROR(INDEX('Parámetros'!$C$74:$C$90;MATCH(EOMONTH(DATE(${AÑO};${i + 1};1);0);EOMONTH('Parámetros'!$A$74:$A$90;0);0));1)`
     // La palabra en la fila: cada mes sin cargar dice que es proyección, ahí donde se lo lee.
-    push([nombre, personas, pagado, bs.length ? VACIO : 'proyección', VACIO, VACIO, ajuste,
+    // La fecha de caja del mes: fin de mes + el desfase de pago de la obra. Por fórmula, para que se
+    // mueva sola si se corrige el parámetro — y visible, para que el criterio se pueda discutir.
+    const pago = `=EOMONTH(DATE(${AÑO};${i + 1};1);0)+JORNALES_DESFASE_PAGO`
+    push([nombre, personas, pagado, bs.length ? VACIO : 'proyección', pago, VACIO, ajuste,
       bs.length ? VACIO : `=$B$${0}*G${r}`]) // la base se completa abajo, cuando se sabe su fila
   })
   const oFin = o0 + MESES.length - 1
   const fTotalOfi = push([rotuloTotal('Oficina — pagado y por pagar en el año'), VACIO,
     `=SUM(C$${o0}:C$${oFin})`, VACIO, VACIO, VACIO, VACIO, `=SUM(H$${o0}:H$${oFin})`])
+  // La línea del cash flow lee ESTAS celdas por rango con nombre. Se declara acá, al lado del total,
+  // para que quien mire la pestaña sepa que este bloque ya no es decorativo: es la fuente.
+  push([sub('el cash flow lee este bloque por rango con nombre: OFICINA_PAGO · OFICINA_PAGADO · OFICINA_PROYECTADO')])
   // La base de la proyección: el último mes con dato. Se resuelve acá porque recién ahora se conocen
   // las filas del bloque.
   const baseOfi = `INDEX($C$${o0}:$C$${oFin};MAX(IF($C$${o0}:$C$${oFin}<>"";ROW($C$${o0}:$C$${oFin})-${o0}+1)))`
@@ -401,7 +419,19 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [], 
     rangoW ? `=IFERROR(MINIFS(${rangoW};${rangoW};">0");"")` : '',
   ])
   const fPiso = push([sub('Básico de Ayudante — el piso del convenio'), formulaValor('Ayudante', COL.basico)])
-  push([sub('Margen sobre el piso — negativo = deuda laboral'), `=IF(N(B${fPiso})=0;"";B${fMin}/B${fPiso}-1)`])
+  const fMargen = push([sub('Margen sobre el piso — negativo = deuda laboral'), `=IF(N(B${fPiso})=0;"";B${fMin}/B${fPiso}-1)`])
+  // ═══ EL ESCALÓN QUE VIENE, NO SÓLO EL QUE SE VA (31/07) ═══
+  //
+  // El dueño, dos veces: "uocra desactualizado". Y el cuadro mostraba bien el mes EN CURSO. El defecto
+  // era otro: la réplica ya tiene agosto (+1,9%, Ayudante $5.399) y la pestaña no lo mostraba en
+  // ninguna parte, así que el control sólo podía avisar de un incumplimiento cuando ya era pasado.
+  // Con el escalón siguiente al lado, el margen del mes que viene se ve HOY — y si ese mes no está en
+  // la réplica, la vigencia lo grita en vez de mostrar una escala vencida como si estuviera al día.
+  const fVigProx = push([sub('El escalón que viene — desde el mes próximo'),
+    VACIO, VACIO, VACIO, VACIO, VACIO,
+    `=SUBSTITUTE(SUBSTITUTE(${formulaVigencia(MES_SIGUIENTE).slice(1)};CHAR(10);" ");CHAR(13);" ")`])
+  const fPisoProx = push([sub('Básico de Ayudante desde ese mes'), formulaValor('Ayudante', COL.basico, MES_SIGUIENTE)])
+  const fMargenProx = push([sub('Margen contra ese piso — lo que falta corregir'), `=IF(N(B${fPisoProx})=0;"";B${fMin}/B${fPisoProx}-1)`])
   // LA ESCALA DEL CONVENIO, TODA EN LA MISMA UNIDAD QUE LO QUE PAGAMOS: $/hora. Antes cada categoría
   // traía además su jornal diario (= básico × 8), y ese 8 era el único número PEGADO de la pestaña:
   // una "Jornada del convenio (horas)" escrita a mano que ninguna otra celda leía y que sólo servía
@@ -530,7 +560,10 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [], 
     // Horas con un decimal · cantidades enteras · el único porcentaje de la pestaña.
     cantidades: [fHpd],
     enteros: [fHero.plantel],
-    ratios: [fMin + 2],
+    // POR NOMBRE, NO POR OFFSET. Decía `[fMin + 2]`: al agregar el escalón del mes que viene, el margen
+    // nuevo quedó fuera de la lista y un -16,7% se dibujó como "-$0". Es el mismo defecto que ya rompió
+    // tres enlaces en este libro — anclar en la posición.
+    ratios: [fMargen, fMargenProx],
     nProy: pendientes.length,
     // Las filas de oficina (cargadas + proyectadas) para que reciban el mismo formato que las de
     // obra: sin esto la columna "Hasta" mostraba $46.037 —el número de serie de la fecha con formato
@@ -819,6 +852,13 @@ async function publicarRangos(google, sheetId, g) {
     JORNALES_PROY_HASTA: rango(1, g.p0, finProy),
     JORNALES_PROY_PAGO: rango(2, g.p0, finProy),
     JORNALES_PROY_TOTAL: rango(7, g.p0, finProy),
+    // ═══ LA OFICINA, PUBLICADA (31/07) ═══
+    // Sin estos tres nombres el bloque de oficina era decorativo: la línea "Sueldos de administración"
+    // del cash flow salía de Compras y decía otro número que la planilla de sueldos. Ahora la fuente
+    // es una sola y el cash flow la referencia, no la copia.
+    OFICINA_PAGO: rango(4, g.o0, g.oFin),
+    OFICINA_PAGADO: rango(2, g.o0, g.oFin),
+    OFICINA_PROYECTADO: rango(7, g.o0, g.oFin),
   }
   const existentes = new Map((await google.getNamedRanges(ID)).map((r) => [r.name, r.namedRangeId]))
   const reqs = Object.entries(quiero).map(([name, range]) => (existentes.has(name)
@@ -908,6 +948,8 @@ async function formatear(google, sheetId, filas, g) {
   fmt(g.f0 - 1, g.fTotalReal, 5, 7, HORAS)
   // Oficina: personas entera y el ajuste por inflación como coeficiente, no como plata.
   fmt(g.o0 - 1, g.oFin, 1, 2, ENTERO)
+  // "Se paga el" es una FECHA, no plata: sin esto el formato moneda de todo el ancho la dibuja "$46.235".
+  fmt(g.o0 - 1, g.oFin, 4, 5, { type: 'DATE', pattern: 'dd/mm/yyyy' })
   fmt(g.o0 - 1, g.oFin, 6, 7, { type: 'NUMBER', pattern: '0.00;-0.00;"—"' })
   for (const f of g.cantidades) fmt(f - 1, f, 1, 2, HORAS)
   for (const f of g.enteros) fmt(f - 1, f, 1, 2, ENTERO)
