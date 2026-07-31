@@ -1223,7 +1223,14 @@ async function main() {
   // LA LECTURA DE LA REGLA 0 NO LLEVA TECHO DE FILAS (23/07). Cortarla a la altura de la grilla NUEVA
   // deja invisible todo lo que hoy está más abajo, y la Regla 0 lo lee como "el dueño lo borró". Así
   // se marcaron 74 borrados falsos —14 sólo en Caja—, y un falso borrado se confirma solo.
-  const actual = await google.readSheetValues(ID, `${tab}!A1:${letra(ANCHO - 1)}`).catch(() => [])
+  // UNA LECTURA QUE FALLA NO ES UNA PESTAÑA VACÍA (31/07). Con `.catch(() => [])` un 429 de la API se
+  // convertía en "la pestaña está vacía": la Regla 0 daba TODOS mis rótulos por borrados por el dueño y
+  // la fusión escribía encima de lo que él tenía. Es el mismo defecto que dejó Proveedores con las filas
+  // entrelazadas. Si no se puede leer, no se puede decidir: falla cerrado y la corrida siguiente lo hace
+  // bien. Ver lib/google.mjs, donde el 429 ahora espera la ventana del minuto antes de rendirse.
+  const actual = await google.readSheetValues(ID, `${tab}!A1:${letra(ANCHO - 1)}`).catch((e) => {
+    throw new Error(`no pude leer "${PESTAÑA}" (${e.message}). NO escribo: sin esa lectura la Regla 0 decide a ciegas.`)
+  })
   const { grid: gridFinal, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, PESTAÑA, g.filas, actual)
   g.filas = gridFinal
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)

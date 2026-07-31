@@ -1283,11 +1283,26 @@ async function main() {
     // La Regla 0 mira el TEXTO QUE SE VE, no la fórmula: `previo` viene con render FORMULA (hace
     // falta así para fusionar sin degradar fórmulas), y con eso una celda que muestra "ARCOR" por
     // fórmula devuelve "=QUERY(…)" y el rótulo parecería borrado. Ver lib/preservar-anotaciones.mjs.
+    // ═══ ESTA LECTURA NO PUEDE FALLAR EN SILENCIO (31/07) ═══
+    //
+    // El dueño: "me rompiste proveedores nuevamente". La pestaña quedó con filas ENTRELAZADAS: dos
+    // "Gerson Castro", dos "Alumetal", fechas dibujadas "$46.234" y su propio aviso avisando que
+    // faltaban 2 facturas. La causa fue este `.catch(() => previo)`: cuando la API contestó 429, la
+    // lectura del TEXTO VISIBLE se reemplazó por `previo`, que viene con render FORMULA. La Regla 0
+    // compara rótulo por rótulo contra ese texto, así que juzgó "=IF(...)" donde tenía que leer "Gerson
+    // Castro": decidió mal celda por celda y la grilla salió mezclada — la mitad del bloque nuevo y la
+    // mitad del viejo.
+    //
+    // Un fallback que cambia la SEMÁNTICA del dato es peor que un error: el error se ve, el fallback
+    // escribe. Si no se puede leer lo que la pestaña muestra, no se puede decidir qué es del dueño, y
+    // entonces NO SE ESCRIBE. Falla cerrado y la corrida siguiente lo hace bien.
     const visible = await google.readSheetValues(
       // Sin techo de filas: ver la nota de caja-pestana.mjs. "TOTAL FACTURADO" vive en la fila 202 y
       // toda lectura acotada a la grilla nueva lo daba por borrado.
       ID, `${refPestana(t.titulo)}!A1:${letra(anchoLeer - 1)}`,
-    ).catch(() => previo)
+    ).catch((e) => {
+      throw new Error(`no pude leer el texto visible de "${t.titulo}" (${e.message}). NO escribo: sin esa lectura la Regla 0 decide a ciegas y la pestaña sale mezclada.`)
+    })
     // LA FIRMA primero (respeto más fuerte: cualquier edición tuya). Después, la reescritura total.
     if (!FORCE && (await firmaGuardia(google, ID, t.titulo, refPestana(t.titulo))).editada) continue
     // AUTO-RESPETO (24/07): si reescribiste esta pestaña entera con otra estructura, la tomo como tuya

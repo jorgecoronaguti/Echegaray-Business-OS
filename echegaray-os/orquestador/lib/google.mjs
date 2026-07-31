@@ -189,13 +189,31 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
   // "Read requests per minute per user", que salta cuando el agente lee muchos rangos
   // seguidos al reconstruir una planilla) y 5xx. Sin esto, una ráfaga de lecturas rompe
   // toda la tarea a mitad. Hasta 4 intentos, espera creciente (0.6s, 1.4s, 3s, 6s).
+  // ═══ EL 429 NO SE ESPERA COMO UN 500: SE ESPERA UN MINUTO (31/07) ═══
+  //
+  // POR QUÉ. El dueño: "me rompiste proveedores nuevamente". La pestaña quedó con filas ENTRELAZADAS —
+  // "Gerson Castro" y "Alumetal" dos veces, fechas dibujadas "$46.234", y su propio aviso diciendo
+  // "faltan 2 facturas por -$468.542"—. La causa no fue el generador: fue un 429 de la API en el medio
+  // de la corrida. La cuota de Sheets que se agota es "read requests per MINUTE per user", y el backoff
+  // sumaba 11 segundos: los cuatro reintentos se consumían dentro del mismo minuto agotado y la lectura
+  // fallaba igual. Con una lectura fallida el generador siguió con datos parciales y dejó la pestaña
+  // partida — que es el peor resultado posible: no es un error visible, es una pestaña que MIENTE.
+  //
+  // Un 429 por cuota-por-minuto se espera en la escala de un minuto; un 5xx es otra cosa y se reintenta
+  // rápido. Y la última espera cruza el minuto completo, que es lo que hace falta para que la ventana se
+  // renueve. Total en el peor caso: ~105s, contra 11s. Un agente que corre cada 2 horas puede esperar
+  // dos minutos; lo que no puede es escribir una pestaña con la mitad de los datos.
+  const ESPERAS_CUOTA = [5_000, 15_000, 30_000, 60_000]
+  const ESPERAS_5XX = [600, 1400, 3000, 6000]
   async function withRetry(doer) {
-    const esperas = [600, 1400, 3000, 6000]
     for (let intento = 0; ; intento++) {
       const res = await doer()
       if (res.ok || res.status === 204) return res
-      const transitorio = res.status === 429 || (res.status >= 500 && res.status < 600)
+      const cuota = res.status === 429
+      const transitorio = cuota || (res.status >= 500 && res.status < 600)
+      const esperas = cuota ? ESPERAS_CUOTA : ESPERAS_5XX
       if (!transitorio || intento >= esperas.length) return res
+      if (cuota) console.warn(`  ⏳ la API dijo 429 (cuota por minuto): espero ${esperas[intento] / 1000}s y reintento (${intento + 1}/${esperas.length})`)
       await new Promise((r) => setTimeout(r, esperas[intento]))
     }
   }
