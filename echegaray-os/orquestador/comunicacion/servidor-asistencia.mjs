@@ -207,12 +207,16 @@ async function main() {
   const host = process.env.ASISTENCIA_HTTP_HOST ?? '127.0.0.1' // nunca 0.0.0.0: publica Caddy
   const port = Number(process.env.ASISTENCIA_HTTP_PORT ?? 8792)
 
-  // Pool del OS sólo para permisos y consumo de enlaces. Si no hay DATABASE_URL, el
-  // comando falla cerrado (deniega) en vez de repartir enlaces sin control.
+  // Port del OS: `{query, withTx}`, NO el Pool pelado. El Pool sabe hacer `query` pero no
+  // `withTx`, y la sesión de carga abre y confirma DENTRO de una transacción — con el Pool
+  // crudo el jefe de obra recibía "no pude abrir la carga" y, peor, la confirmación habría
+  // fallado recién al apretar Registrar. Es la misma forma que arma el worker.
+  // Si no hay DATABASE_URL se falla cerrado: se deniega, no se abre nada sin control.
   let pool = null
   try {
     const db = await import('../lib/db.mjs')
-    pool = db.getPool()
+    db.getPool() // valida la conexión acá y no en el primer click
+    pool = { query: db.query, withTx: db.withTx }
   } catch (e) {
     log.warn('sin acceso a la base: los pedidos se van a denegar', { detalle: String(e?.message ?? e).slice(0, 200) })
     pool = null

@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  SesionesMemoria, ESTADO_SESION, RECHAZO, firmarAccion, verificarAccion, TTL_MINUTOS,
+  SesionesMemoria, SesionesPostgres, ESTADO_SESION, RECHAZO, firmarAccion, verificarAccion, TTL_MINUTOS,
   crearVencedorPeriodico, VENCER_INTERVALO_MS_DEFAULT,
 } from './asistencia-sesion.mjs'
 
@@ -10,6 +10,20 @@ const U1 = 'mm-jefe-1'
 const U2 = 'mm-jefe-2'
 
 const abrir = (r, u = U1) => r.abrir({ plataformaUserId: u, plataformaUsername: 'jefe', fechaOperativa: '2026-07-30' })
+
+// ── EL PORT: se exige entero al construir, no a mitad de la carga ───────────────
+//
+// Esto salió de un defecto real: el servidor HTTP le pasaba el Pool de `pg` pelado, que
+// sabe `query` pero no `withTx`. Nada falló al arrancar; falló cuando el jefe de obra
+// escribió `/asistencia` — y habría vuelto a fallar, peor, al apretar Registrar.
+
+test('un port sin withTx se rechaza al construir: abrir y confirmar son transaccionales', () => {
+  assert.throws(() => new SesionesPostgres({ query: async () => ({ rows: [] }) }), /withTx/)
+})
+
+test('un port completo se acepta', () => {
+  assert.doesNotThrow(() => new SesionesPostgres({ query: async () => ({ rows: [] }), withTx: async (f) => f() }))
+})
 
 // ── FIRMA HMAC — primitiva RESERVADA, no una defensa del flujo actual ───────────
 // Estos 4 tests prueban la primitiva criptográfica, NO que el flujo por DM esté firmado:

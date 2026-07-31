@@ -222,9 +222,19 @@ export class SesionesMemoria {
 
 /** Implementación en POSTGRES (producción), sobre `comunicacion.asistencia_sesiones`. */
 export class SesionesPostgres {
-  /** @param {{query:Function, withTx:Function}} port */
+  /**
+   * @param {{query:Function, withTx:Function}} port
+   *
+   * Exige las DOS capacidades al construirse, no al usarse: abrir y confirmar una sesión
+   * viven dentro de una transacción, así que un port sin `withTx` (el Pool de `pg` pelado,
+   * por ejemplo) no falla al arrancar sino en la cara del jefe de obra, y en el peor
+   * momento posible — al confirmar la carga.
+   */
   constructor(port) {
     if (!port?.query) throw new Error('SesionesPostgres: falta el port')
+    if (typeof port.withTx !== 'function') {
+      throw new Error('SesionesPostgres: el port no sabe abrir transacciones (falta withTx)')
+    }
     this.port = port
   }
 
