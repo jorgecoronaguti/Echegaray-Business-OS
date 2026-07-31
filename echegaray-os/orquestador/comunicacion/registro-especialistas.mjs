@@ -16,6 +16,7 @@
 //     reconoce(texto, ctx) -> null | { intencion, confianza }   ← la GRAMÁTICA es suya
 //     atender({ texto, actor, ... })      -> { texto, estado, privado }
 //     operativo: true                     // false = declarado pero sin capacidad todavía
+//     preferidoDeArea: true               // false = sólo atiende por reclamo, no por canal
 //   }
 //
 // `reconoce` vive en el especialista y no en el router a propósito: "3 ausente" es
@@ -60,10 +61,28 @@ export async function especialistas({ recargar = false } = {}) {
   return out
 }
 
-/** El especialista de un área canónica, o null. Un área tiene a lo sumo uno. */
+/**
+ * El especialista al que se rutea un canal de esta área, o null.
+ *
+ * Un área puede tener MÁS de un especialista declarado: el asistente conversacional
+ * (buscar un archivo, recordar algo) comparte `gestion_general` con el estado del sistema,
+ * y son dos cosas distintas. Lo que no puede haber es ambigüedad al rutear un canal, y
+ * antes se resolvía por orden alfabético de archivo — o sea, por accidente: renombrar un
+ * archivo cambiaba a dónde va el canal.
+ *
+ * `preferidoDeArea: false` significa "atiendo por reclamo, no por pertenecer al área". Es
+ * lo correcto para un especialista transversal: que alguien escriba en el canal de
+ * Personal no convierte su mensaje en un pedido de asistente.
+ */
 export async function especialistaDeArea(area) {
   const todos = await especialistas()
-  return todos.find((e) => e.area === area) ?? null
+  const delArea = todos.filter((e) => e.area === area)
+  if (!delArea.length) return null
+  const preferidos = delArea.filter((e) => e.preferidoDeArea !== false)
+  if (preferidos.length > 1) {
+    throw new Error(`registro de especialistas: el área "${area}" tiene más de un preferido (${preferidos.map((e) => e.slug).join(', ')}); exactamente uno debe quedar como preferido`)
+  }
+  return preferidos[0] ?? null
 }
 
 /** Especialista por slug. */

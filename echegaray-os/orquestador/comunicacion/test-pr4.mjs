@@ -38,7 +38,10 @@ async function main() {
     await aplicarEsquemaPR4(c)
     await c.end()
     console.log('→ esquemas orq + comunicacion aplicados\n')
-    const run = spawnSync('node', ['--test', 'orquestador/comunicacion/*.pr4.test.mjs'], {
+    // `--test-concurrency=1`: los archivos .pr4 comparten UNA base y cada uno hace `truncate`
+    // en su beforeEach. En paralelo se pisan entre sí y fallan por una razón que no tiene
+    // nada que ver con lo que prueban — que es la peor clase de test rojo.
+    const run = spawnSync('node', ['--test', '--test-concurrency=1', 'orquestador/comunicacion/*.pr4.test.mjs'], {
       cwd: RAIZ, stdio: 'inherit',
       env: { ...process.env, DATABASE_URL: URL, ORQ_DB_SSL: '0', ORQ_CONCURRENCY: '8',
         PG_TEST_URL: URL, MM_INCOMING_SECRET: 'secreto-pr4-test', WORKER_ID: 'pr4-test' },

@@ -37,11 +37,27 @@ test('cada especialista declara un ÁREA CANÓNICA del OS, no una taxonomía pro
   }
 })
 
-test('un área tiene a lo sumo UN especialista (si no, el canal no podría decidir)', async () => {
-  const vistas = new Map()
+test('un área tiene a lo sumo UN especialista PREFERIDO (si no, el canal no podría decidir)', async () => {
+  // La regla original era "un área, un especialista". Se aflojó exactamente lo necesario
+  // cuando apareció el primer especialista TRANSVERSAL (el asistente: recordar, buscar un
+  // archivo, agendar — pedidos que no son de ningún área). Obligarlo a ser dueño de un área
+  // cualquiera para pasar esta prueba tenía una consecuencia silenciosa: se quedaba con
+  // todos los mensajes no reclamados de ESE canal. Lo que el canal necesita no es que haya
+  // un solo especialista por área, es que haya un solo DUEÑO.
+  const dueños = new Map()
   for (const e of await especialistas()) {
-    assert.equal(vistas.has(e.area), false, `${e.area} tiene dos: ${vistas.get(e.area)} y ${e.slug}`)
-    vistas.set(e.area, e.slug)
+    if (e.preferidoDeArea === false) continue
+    assert.equal(dueños.has(e.area), false, `${e.area} tiene dos dueños: ${dueños.get(e.area)} y ${e.slug}`)
+    dueños.set(e.area, e.slug)
+  }
+})
+
+test('el asistente transversal no le roba el canal a nadie', async () => {
+  const transversales = (await especialistas()).filter((e) => e.preferidoDeArea === false)
+  for (const t of transversales) {
+    const dueño = await especialistaDeArea(t.area)
+    assert.ok(dueño, `${t.area} se quedó sin dueño`)
+    assert.notEqual(dueño.slug, t.slug, `${t.slug} terminó siendo el dueño de ${t.area}`)
   }
 })
 
@@ -204,5 +220,24 @@ test('el channel_id no está escrito en el código: sale del binding', async () 
   for (const f of ['./director.mjs', '../handlers/comunicacion.mjs', './especialistas/personal.mjs']) {
     const src = readFileSync(new URL(f, import.meta.url), 'utf8')
     assert.doesNotMatch(src, /\b[a-z0-9]{26}\b/, `${f} tiene algo con forma de id de Mattermost`)
+  }
+})
+
+test('empate en un DM: gana el que declaró más confianza, sin consultar al modelo', async () => {
+  // Caso REAL, con los especialistas de verdad: "recordame llamar al banco dentro de dos
+  // horas" lo reclaman el asistente (intención concreta, confianza 1) y Personal IA (su
+  // gramática ve "horas" y piensa en jornada). Sin canal que desempate, esto se iba al
+  // modelo — y ya estaba resuelto.
+  const razonar = async () => { throw new Error('no se consulta al modelo: el empate ya se resolvió') }
+  const r = await resolver({ texto: 'recordame llamar al banco dentro de dos horas', port: puerto(), razonar })
+  assert.equal(r.especialista?.slug ?? '(ninguno)', 'asistente')
+  assert.equal(r.via, VIA.RECLAMO)
+})
+
+test('el desempate por confianza no le saca a Personal IA lo que es suyo', async () => {
+  const razonar = async () => { throw new Error('no debería hacer falta') }
+  for (const t of ['asistencia', '3 ausente', 'quién trabajó ayer', 'horas extra del 17/01']) {
+    const r = await resolver({ texto: t, port: puerto(), razonar })
+    assert.equal(r.especialista?.slug, 'personal', t)
   }
 })

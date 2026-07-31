@@ -88,6 +88,17 @@ export function crearConector(opts = {}) {
     })
   }
 
+  // Canal PRIVADO (DM bot↔persona) para lo que no puede salir en un canal compartido. Vive
+  // acá porque el conector es el único que conoce el cliente de la plataforma; quien lo usa
+  // pide "privado" y no sabe cómo se logra. Se declara una sola vez y se comparte: lo usan el
+  // ctx del Work Fabric (asistencia) y la entrega de recordatorios del worker.
+  const canalPrivadoPara = async (userId) => {
+    const bot = opts.botUserId ?? process.env.MM_BOT_USER_ID ?? null
+    if (!bot || !userId) return null
+    const canal = await cliente.canalDirecto({ usuarioA: bot, usuarioB: userId })
+    return canal?.id ?? null
+  }
+
   // Paso REAL del Work Fabric: claim oficial FILTRADO POR LANE 'comunicacion'
   // (PR-4.1) → handler registrado → transición. Reclama SÓLO tareas de la lane de
   // comunicación; nunca roba tareas del worker general (aislamiento atómico en el
@@ -108,15 +119,13 @@ export function crearConector(opts = {}) {
         // determinístico no alcanzó. Puede ser null (sin clave, sin crédito): el Director
         // degrada al catálogo en vez de adivinar un destino.
         razonarRuteo,
-        // Canal PRIVADO (DM bot↔persona) para las respuestas que no pueden salir en un
-        // canal compartido. Se inyecta acá porque el conector es el único que conoce el
-        // cliente de la plataforma; el handler pide "privado" y no sabe cómo se logra.
-        canalPrivadoPara: async (userId) => {
-          const bot = opts.botUserId ?? process.env.MM_BOT_USER_ID ?? null
-          if (!bot || !userId) return null
-          const canal = await cliente.canalDirecto({ usuarioA: bot, usuarioB: userId })
-          return canal?.id ?? null
-        },
+        canalPrivadoPara,
+        // Cliente de Google INYECTABLE. En producción es undefined y el handler arma el que
+        // corresponde. Existe para que el test vertical pueda recorrer el camino completo
+        // —mensaje → Director → asistente → capacidad → outbox— sin llamar a Google: sin
+        // esta costura, las únicas capacidades verificables de punta a punta serían las que
+        // no tocan Google, que son justo las que menos pueden romperse.
+        ...(opts.google ? { google: opts.google } : {}),
       }
       try {
         if (!handler) throw new Error(`sin handler para ${task.type}`)
@@ -143,6 +152,7 @@ export function crearConector(opts = {}) {
     procesarInbox: (o) => svc.procesarInbox(o), // corre el puente → ingesta OS
     procesarWorkFabric, // claim + handler real + transición + salida
     procesarOutbox: (o) => svc.procesarOutbox(o), // publica en Mattermost
+    canalPrivadoPara, // DM bot↔persona (asistencia, recordatorios)
     recuperarLeasesComm: () => svc.recuperarLeases(),
     recuperarLeasesWorkFabric: () => reapExpiredLeases(),
   }

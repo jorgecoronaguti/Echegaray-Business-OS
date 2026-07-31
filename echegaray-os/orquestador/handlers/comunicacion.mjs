@@ -58,6 +58,19 @@ export async function comunicacionResponderHandler(task, ctx) {
       google: ctx.google ?? googleDelOs({ config: ctx.config }),
       actor,
       correlationId: inp.correlation_id,
+      // El mensaje que originó el pedido. Viaja porque es la CLAVE DE IDEMPOTENCIA del
+      // efecto externo: un especialista que crea un evento de Calendar necesita poder
+      // preguntar "¿este mensaje ya se ejecutó?" antes de crear el segundo. Sin esto, un
+      // lease vencido y reclamado por otro worker duplica el efecto en silencio.
+      commEventId: inp.comm_event_id ?? null,
+      config: ctx.config ?? null,
+      // `google` (arriba) es el cliente de la cuenta OPERADORA del OS: es lo correcto para
+      // Personal IA, que escribe JORNALES *como el OS*. Un especialista que actúa POR una
+      // persona (su Drive, su agenda, sus tareas) tiene que resolver su propia cuenta y no
+      // usar esta. Se distingue acá lo que alguien INYECTÓ (tests) de lo que armó este
+      // handler por defecto: sin esa distinción, el especialista no puede saber si el
+      // cliente que recibió es el que le corresponde.
+      googleInyectado: ctx.google ?? null,
     })
     salida = r
     texto = r.texto
