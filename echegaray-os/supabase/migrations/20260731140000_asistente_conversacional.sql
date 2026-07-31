@@ -113,7 +113,7 @@ create index if not exists recordatorio_entregas_rec_idx
   on comunicacion.recordatorio_entregas (recordatorio_id, creado_at desc);
 
 comment on table comunicacion.recordatorio_entregas is
-  'Historial de entregas y llave de idempotencia por OCURRENCIA (recordatorio, momento programado). Registra si Mattermost aceptó o rechazó la entrega.';
+  'Estado FINAL de cada ocurrencia (recordatorio, momento programado) y llave de no-duplicación. El unique deja UNA fila por ocurrencia a propósito: no es el log de los intentos (eso es `intento` y `ultimo_error` del recordatorio), es la respuesta a "¿esta ocurrencia ya se entregó?". Registra si Mattermost aceptó o rechazó.';
 
 -- ── 4. ACLARACIONES PENDIENTES ───────────────────────────────────────────────
 -- Cuando falta un dato IMPRESCINDIBLE (dos Rodrigos, "el jueves" ambiguo), el asistente

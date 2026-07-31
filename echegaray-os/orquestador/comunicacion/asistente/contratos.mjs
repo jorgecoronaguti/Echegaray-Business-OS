@@ -94,7 +94,11 @@ export const zIdentidad = z.object({
 // zona de la empresa. Ninguna capa aguas abajo vuelve a interpretar "mañana": si el
 // intérprete no pudo resolverlo, `cuando` es null y falta un dato.
 
-const ISO_INSTANTE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?([+-]\d{2}:\d{2}|Z)$/
+// Los milisegundos van incluidos porque `Date#toISOString()` los pone SIEMPRE: sin ellos,
+// cualquier instante calculado con `computeNextRun` y pasado por el contrato explotaba con
+// un ZodError a tres capas de distancia de donde estaba el error. Lo destapó la primera
+// capacidad que calculó una recurrencia.
+const ISO_INSTANTE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?([+-]\d{2}:\d{2}|Z)$/
 
 export const zInstante = z.string().regex(ISO_INSTANTE, 'instante ISO-8601 con offset')
 
@@ -135,6 +139,12 @@ export const zParametrosTiempo = z.object({
  * `habilitada` es una FUNCIÓN y no un booleano a propósito: una capacidad que depende de
  * Google está habilitada sólo si esa cuenta está conectada. Así la ayuda dinámica no puede
  * ofrecer algo que va a fallar, que es la forma más común de mentirle al usuario.
+ *
+ * FIRMAS, fijadas acá porque Zod sólo puede decir "es una función" y el router las invoca a
+ * todas igual. Que cada capacidad eligiera su forma se habría notado recién al cablear:
+ *   habilitada(ctx)          -> Promise<boolean> | boolean
+ *   ejecutar(parametros, ctx) -> Promise<zResultado>
+ * `orden` gobierna en qué orden aparecen en la ayuda (menor primero); no es alfabético.
  */
 export const zCapacidad = z.object({
   id: z.string(),
@@ -143,6 +153,7 @@ export const zCapacidad = z.object({
   version: z.string(),
   permisos: z.array(z.string()).default([]),
   ejemplos: z.array(z.string()).default([]),
+  orden: z.number().int().default(100),
   // Efecto externo (Google) ⇒ pasa por la barrera de idempotencia de ejecuciones.
   efectoExterno: z.boolean().default(false),
   habilitada: z.function().optional(),
@@ -202,7 +213,9 @@ export const ESTADO_RECORDATORIO = Object.freeze({
 })
 
 export const zRecordatorioCrear = zParametrosTiempo.extend({
-  contenido: z.string().min(1),
+  // `.trim()` antes del `.min(1)`: sin eso, "   " es un contenido válido y el OS te entrega
+  // a las 8 de la mañana un recordatorio en blanco.
+  contenido: z.string().trim().min(1),
   destinatario: z.string().nullable().default(null), // texto como lo dijo la persona
   destinatarioUserId: z.string().nullable().default(null), // ya resuelto a identidad real
 })
@@ -268,6 +281,8 @@ export const zGoogleTareaResultado = z.object({
  * @property {string|null} correlationId
  * @property {string|null} channelId
  * @property {string|null} rootPostId
+ * @property {object} [recordatorios]                     repositorio de recordatorios (inyectable)
+ * @property {object} [googleDeps]                        puerta de inyección de `habilitada`
  * @property {object} [log]
  * @property {() => Date} [ahora]
  */

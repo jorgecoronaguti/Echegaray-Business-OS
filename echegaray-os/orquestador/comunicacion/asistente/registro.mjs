@@ -29,7 +29,11 @@ export async function capacidades({ recargar = false } = {}) {
   if (cache && !recargar) return cache
   let archivos = []
   try {
-    archivos = readdirSync(DIR).filter((f) => f.endsWith('.mjs') && !f.endsWith('.test.mjs')).sort()
+    // `_algo.mjs` queda fuera: la carpeta también tiene que poder alojar un helper compartido
+    // entre capacidades sin que el registro le exija exportar una capacidad.
+    archivos = readdirSync(DIR)
+      .filter((f) => f.endsWith('.mjs') && !f.endsWith('.test.mjs') && !f.startsWith('_'))
+      .sort()
   } catch { archivos = [] }
   const out = []
   for (const f of archivos) {
@@ -52,8 +56,8 @@ export async function capacidades({ recargar = false } = {}) {
 }
 
 /** Una capacidad por id, o null. */
-export async function capacidadPorId(id) {
-  return (await capacidades()).find((c) => c.id === id) ?? null
+export async function capacidadPorId(id, o) {
+  return (await capacidades(o)).find((c) => c.id === id) ?? null
 }
 
 /**
