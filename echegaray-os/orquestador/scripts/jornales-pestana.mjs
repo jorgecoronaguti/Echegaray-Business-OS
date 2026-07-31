@@ -653,14 +653,39 @@ async function main() {
   // La cura es explícita y local: antes de escribir, se COPIA lo que hay en la pestaña a la grilla. La
   // escritura queda siendo un no-op sobre esa columna, pase lo que pase con el ancho. Y si él carga una
   // fecha nueva, la corrida siguiente la lee y la vuelve a escribir igual.
+  // SE EMPAREJA POR LA POSICIÓN EN EL REGISTRO, NO POR NÚMERO DE FILA. La primera versión copiaba
+  // `previo[i]` a `grid[i]`: el día que la pestaña creció una fila —entró el subtítulo del bloque de
+  // oficina— el registro se corrió de la 66 a la 67 y la fecha de la última quincena se perdió. Es el
+  // mismo error que cometí al restaurarlas: anclar en la fila cuando el bloque se mueve.
+  //
+  // El ancla es la CABECERA del registro ("Quincena" en la columna A y "Pagado el" en la última): desde
+  // ahí, la k-ésima quincena de antes es la k-ésima de ahora, porque el registro sólo crece por el final.
   const iPagado = ANCHO - 1
+  const cabeceraDe = (filas) => filas.findIndex((f) => String(f?.[0] ?? '').trim() === 'Quincena'
+    && String(f?.[iPagado] ?? '').trim() === 'Pagado el')
+  const viejo = cabeceraDe(previo ?? [])
+  const nuevo = cabeceraDe(grid)
   let copiadas = 0
-  for (let i = 0; i < grid.length; i++) {
-    const suyo = previo?.[i]?.[iPagado]
-    if (suyo === undefined || suyo === null || String(suyo) === '') { grid[i][iPagado] = VACIO; continue }
-    grid[i][iPagado] = suyo
-    if (/\d/.test(String(suyo))) copiadas++
+  // Primero: TODA la columna es del dueño, así que nace vacía y sólo se llena con lo que él escribió.
+  for (let i = 0; i < grid.length; i++) grid[i][iPagado] = VACIO
+  if (viejo >= 0 && nuevo >= 0) {
+    for (let k = 1; nuevo + k < grid.length; k++) {
+      const suyo = previo?.[viejo + k]?.[iPagado]
+      if (suyo === undefined || suyo === null || String(suyo) === '') continue
+      grid[nuevo + k][iPagado] = suyo
+      if (/\d/.test(String(suyo))) copiadas++
+    }
+  } else if (previo?.length) {
+    // Sin cabecera reconocible no se adivina el desplazamiento: se copia por fila y se avisa. Perder una
+    // fecha en silencio es peor que copiar de más — el portón preserva lo que el generador no escribe.
+    console.log('  ⚠ no encontré la cabecera del registro: copio "Pagado el" por número de fila (puede desalinearse si la pestaña creció)')
+    for (let i = 0; i < grid.length; i++) {
+      const suyo = previo?.[i]?.[iPagado]
+      if (suyo !== undefined && suyo !== null && String(suyo) !== '') { grid[i][iPagado] = suyo; if (/\d/.test(String(suyo))) copiadas++ }
+    }
   }
+  // Y la cabecera, que sí es mía.
+  if (nuevo >= 0) grid[nuevo][iPagado] = 'Pagado el'
   if (copiadas) console.log(`  ✋ ${copiadas} fecha(s) de "Pagado el" copiadas de la pestaña: esa columna es TUYA, el generador no la escribe`)
   const { conservadas } = await escribirPreservando(google, ID, `'${PESTAÑA}'`, grid, { respetar: false /* la Regla 0 ya se aplicó arriba, a mano: este generador guarda el registro DESPUÉS de releer la pestaña, que es más fiel que hacerlo antes de escribir */, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   if (conservadas.length) console.log(`✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
@@ -857,6 +882,17 @@ async function formatear(google, sheetId, filas, g) {
       repeatCell: {
         range: rg(f - 1, f, 0, 3),
         cell: { userEnteredFormat: { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'LEFT' } },
+        fields: 'userEnteredFormat(numberFormat,horizontalAlignment)',
+      },
+    })
+    // Y LA CUARTA FECHA: "Pagado el", que es la última columna. Se le da formato de FECHA aunque el
+    // contenido sea del dueño —el formato es del generador, el dato es suyo—. Sin esto sus fechas se
+    // dibujaban "$46.055": el serial con el formato de moneda de la columna de al lado, que es el mismo
+    // defecto que este bloque vino a arreglar dos veces (para "Hasta" y para "Se paga el").
+    reqs.push({
+      repeatCell: {
+        range: rg(f - 1, f, ANCHO - 1, ANCHO),
+        cell: { userEnteredFormat: { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER' } },
         fields: 'userEnteredFormat(numberFormat,horizontalAlignment)',
       },
     })

@@ -204,3 +204,16 @@ test('y la columna se COPIA de la pestaña antes de escribir — sacar la celda 
   assert.ok(src.indexOf('conEdicionesRespetadas(ID, PESTAÑA') < iCopia, 'después de la Regla 0')
   assert.ok(iCopia < src.indexOf('escribirPreservando(google, ID'), 'y antes de escribir')
 })
+
+test('la copia de "Pagado el" se ancla en la CABECERA del registro, no en el número de fila', () => {
+  // Tercera vez que esta columna se rompe. La segunda versión copiaba previo[i] → grid[i]: el día que la
+  // pestaña creció una fila (entró el subtítulo del bloque de oficina) el registro se corrió de la 66 a
+  // la 67 y la fecha de la última quincena se perdió. Anclar en la fila cuando el bloque se mueve es el
+  // mismo error que restaurar por posición.
+  const src = readFileSync(new URL('../scripts/jornales-pestana.mjs', import.meta.url), 'utf8')
+  assert.match(src, /const cabeceraDe = \(filas\) =>/, 'se ubica la cabecera del registro')
+  assert.match(src, /String\(f\?\.\[0\] \?\? ''\)\.trim\(\) === 'Quincena'/, 'por su rótulo, no por su fila')
+  assert.match(src, /previo\?\.\[viejo \+ k\]\?\.\[iPagado\]/, 'y la k-ésima quincena de antes va a la k-ésima de ahora')
+  // Y si la cabecera no aparece, avisa en vez de desalinear en silencio.
+  assert.match(src, /no encontré la cabecera del registro/, 'sin ancla, lo dice')
+})
