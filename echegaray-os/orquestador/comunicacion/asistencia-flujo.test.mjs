@@ -343,7 +343,10 @@ function bancoPermisosReales({ ahora } = {}) {
   const sesiones = new SesionesMemoria()
   const decir = (texto, actor) => manejarAsistencia({
     google: g, sesiones, auditar: async (e, dd) => { eventos.push({ evento: e, datos: dd }); return { ok: true } },
-    // sin `permisos` inyectado: usa tienePermiso() real. `port` no se toca en modo abierto.
+    // sin `permisos` inyectado: usa tienePermiso() real. `port` no se toca para EL PERMISO
+    // en modo abierto; la guarda de canal sí consultaría el binding, y acá se la dobla
+    // porque estos casos son sobre permisos, no sobre desde dónde se escribe.
+    guarda: async () => ({ ok: true }),
     port: { query: async () => { throw new Error('la base NO debe consultarse en modo abierto') } },
     actor, texto, ahora: ahora ?? new Date('2026-07-30T14:00:00Z'),
   })
@@ -560,4 +563,42 @@ test('sin nada para escribir no se declara un registro ni se quema la clave', as
     assert.ok(!b.tipos().includes(EVENTO.WRITTEN) || b.eventos.filter((e) => e.evento === EVENTO.WRITTEN).length === 1,
       'no hay un segundo evento written por una carga que no ocurrió')
   }
+})
+
+// ── LA GUARDA DE CANAL, TAMBIÉN EN ESTA PUERTA ──────────────────────────────────
+// Era la única de las tres vías a JORNALES que no la consultaba: se podía cargar la
+// asistencia por mensaje privado al bot, justo lo que la guarda existe para impedir.
+
+test('por privado NO se carga: la guarda de canal corre antes que el permiso', async () => {
+  const eventos = []
+  const g = fakeGoogleJornales()
+  const r = await manejarAsistencia({
+    google: g,
+    sesiones: new SesionesMemoria(),
+    auditar: async (e, dd) => { eventos.push({ evento: e, datos: dd }); return { ok: true } },
+    guarda: async () => ({ ok: false, motivo: 'canal', detalle: 'canal_directo', texto: 'La asistencia se carga sólo en el canal de asistencia del equipo.' }),
+    port: { query: async () => ({ rows: [] }) },
+    actor: { plataforma_user_id: 'mm-cualquiera', plataforma_username: 'pepe', channel_id: 'un-dm', channel_type: 'D' },
+    texto: 'asistencia',
+    ahora: new Date('2026-07-30T14:00:00Z'),
+  })
+  assert.equal(r.estado, 'denegado')
+  assert.match(r.texto, /canal de asistencia/)
+  assert.equal(g.lecturas, 0, 'ni siquiera se leyó la planilla')
+  assert.equal(eventos[0].datos.error_code, 'canal_directo', 'el rechazo queda auditado con su motivo')
+})
+
+test('sin `port` la guarda no corre: los tests inyectan sus propios dobles', async () => {
+  // No es una excepción de seguridad: sin base tampoco hay binding que consultar, y el
+  // resto de las defensas de este archivo se comportan igual.
+  const r = await manejarAsistencia({
+    google: fakeGoogleJornales(),
+    sesiones: new SesionesMemoria(),
+    auditar: async () => ({ ok: true }),
+    permisos: async () => ({ ok: true, modo: 'abierto' }),
+    actor: { plataforma_user_id: 'mm-1', plataforma_username: 'pepe' },
+    texto: 'asistencia',
+    ahora: new Date('2026-07-30T14:00:00Z'),
+  })
+  assert.notEqual(r.estado, 'denegado')
 })

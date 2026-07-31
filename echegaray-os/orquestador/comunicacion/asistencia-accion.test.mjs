@@ -11,6 +11,10 @@ import { EVENTO } from '../lib/asistencia-auditoria.mjs'
 
 const CANAL_OFICIAL = 'canal-oficial-de-asistencia'
 
+/** El secreto de la integración. Sin él el endpoint deniega TODO antes de mirar el canal:
+ *  es la puerta de la puerta, y por eso todos los dobles de acá lo presentan. */
+const SECRETO = 'secreto-de-prueba'
+
 /** Doble del pool: responde el binding y registra TODAS las consultas. */
 function portDoble({ bindingActivo = true, conPermiso = true } = {}) {
   const consultas = []
@@ -38,12 +42,13 @@ const googleDoble = () => ({ listTabs: async () => [], readSheetGrid: async () =
 
 const payloadAccion = (extra = {}) => ({
   user_id: 'usr-jefe', channel_id: CANAL_OFICIAL, post_id: 'post-1',
+  _secreto: SECRETO, // lo pone el transporte desde la query de la URL, no el cuerpo
   context: { paso: 'obra', valor: 'x' }, ...extra,
 })
 
 test('un click desde un DM NO se procesa: la guarda corre primero', async () => {
   const port = portDoble()
-  const manejar = crearManejadorAccion({ port, mattermost: mattermostDoble(), google: googleDoble() })
+  const manejar = crearManejadorAccion({ port, mattermost: mattermostDoble(), google: googleDoble(), secreto: SECRETO })
   const r = await manejar(payloadAccion({ channel_id: 'un-dm-cualquiera', channel_type: 'D' }))
   assert.equal(r.status, 200, 'Mattermost espera 200 con cuerpo, no un código de error')
   assert.ok(r.body.ephemeral_text, 'se le explica al que tocó, sin ensuciar el canal')
@@ -55,7 +60,7 @@ test('el rechazo de un DIÁLOGO usa `error`, no `ephemeral_text`', async () => {
   // Un dialog_submission sólo admite errors/error: mandar ephemeral_text deja al jefe sin
   // ver nada y con el diálogo abierto.
   const port = portDoble()
-  const manejar = crearManejadorAccion({ port, mattermost: mattermostDoble(), google: googleDoble() })
+  const manejar = crearManejadorAccion({ port, mattermost: mattermostDoble(), google: googleDoble(), secreto: SECRETO })
   const r = await manejar(payloadAccion({ channel_id: 'otro', submission: { horas: '9' } }))
   assert.ok(r.body.error, 'el diálogo necesita `error`')
   assert.ok(!r.body.ephemeral_text)
@@ -65,7 +70,7 @@ test('sin permiso tampoco se procesa, aunque el canal sea el correcto', async ()
   const port = portDoble({ conPermiso: false })
   process.env.ORQ_ASISTENCIA_PERMISOS = 'estricto'
   try {
-    const manejar = crearManejadorAccion({ port, mattermost: mattermostDoble(), google: googleDoble() })
+    const manejar = crearManejadorAccion({ port, mattermost: mattermostDoble(), google: googleDoble(), secreto: SECRETO })
     const r = await manejar(payloadAccion())
     assert.ok(r.body.ephemeral_text, 'se le dice que no puede')
     assert.ok(!port.consultas.some((c) => /asistencia_sesiones/.test(c.sql)))
@@ -76,7 +81,7 @@ test('sin permiso tampoco se procesa, aunque el canal sea el correcto', async ()
 
 test('el binding desactivado apaga la carga sin desplegar código', async () => {
   const port = portDoble({ bindingActivo: false })
-  const manejar = crearManejadorAccion({ port, mattermost: mattermostDoble(), google: googleDoble() })
+  const manejar = crearManejadorAccion({ port, mattermost: mattermostDoble(), google: googleDoble(), secreto: SECRETO })
   const r = await manejar(payloadAccion())
   assert.ok(r.body.ephemeral_text)
 })
@@ -84,7 +89,7 @@ test('el binding desactivado apaga la carga sin desplegar código', async () => 
 test('un fallo interno no filtra el stack al canal', async () => {
   const port = portDoble()
   const manejar = crearManejadorAccion({
-    port, google: googleDoble(),
+    port, google: googleDoble(), secreto: SECRETO,
     mattermost: { abrirDialogo() { throw new Error('boom en /var/secreto/token=abc') }, actualizarPost() { throw new Error('boom') } },
   })
   const r = await manejar(payloadAccion({ context: { paso: 'excepcion' } }))
@@ -94,7 +99,7 @@ test('un fallo interno no filtra el stack al canal', async () => {
 
 test('el evento `written` lleva el porqué a la tabla consultable', async () => {
   const port = portDoble()
-  const manejar = crearManejadorAccion({ port, mattermost: mattermostDoble(), google: googleDoble() })
+  const manejar = crearManejadorAccion({ port, mattermost: mattermostDoble(), google: googleDoble(), secreto: SECRETO })
   // Se ejercita el auditor que arma el manejador, que es el puente real.
   const { crearAuditor } = await import('../lib/asistencia-auditoria.mjs')
   assert.equal(typeof crearAuditor, 'function')
@@ -123,7 +128,7 @@ function eventosEmitidos(port) {
 
 test('un click desde un DM queda AUDITADO como rechazo', async () => {
   const port = portDoble()
-  const manejar = crearManejadorAccion({ port, mattermost: mattermostDoble(), google: googleDoble() })
+  const manejar = crearManejadorAccion({ port, mattermost: mattermostDoble(), google: googleDoble(), secreto: SECRETO })
   await manejar(payloadAccion({ channel_id: 'un-dm-cualquiera', channel_type: 'D', team_id: 'equipo-1', user_name: 'jefe' }))
   const negados = eventosEmitidos(port).filter((e) => e.evento === EVENTO.DENIED)
   assert.equal(negados.length, 1)
@@ -141,7 +146,7 @@ test('un click desde un DM queda AUDITADO como rechazo', async () => {
 
 test('un click desde otro canal queda auditado con SU motivo', async () => {
   const port = portDoble()
-  const manejar = crearManejadorAccion({ port, mattermost: mattermostDoble(), google: googleDoble() })
+  const manejar = crearManejadorAccion({ port, mattermost: mattermostDoble(), google: googleDoble(), secreto: SECRETO })
   await manejar(payloadAccion({ channel_id: 'canal-de-obras' }))
   const d = eventosEmitidos(port).find((e) => e.evento === EVENTO.DENIED).datos
   assert.equal(d.error_code, 'canal_no_es_el_oficial')
@@ -149,7 +154,7 @@ test('un click desde otro canal queda auditado con SU motivo', async () => {
 
 test('la auditoría del rechazo no lleva el payload ni nada sensible', async () => {
   const port = portDoble()
-  const manejar = crearManejadorAccion({ port, mattermost: mattermostDoble(), google: googleDoble() })
+  const manejar = crearManejadorAccion({ port, mattermost: mattermostDoble(), google: googleDoble(), secreto: SECRETO })
   await manejar(payloadAccion({
     channel_id: 'un-dm-cualquiera', channel_type: 'D',
     context: { paso: 'obra', token: 'zx9-secreto', texto_privado: 'lo que escribió el jefe' },

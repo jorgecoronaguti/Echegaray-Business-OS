@@ -31,10 +31,14 @@
 import { fmt } from '../../lib/horas-extra.mjs'
 import { fechaEnPalabras, fechaLegible } from '../../lib/asistencia-servicio/fechas.mjs'
 import { extrasDe, novedadDe } from '../../lib/asistencia-servicio/mapeo.mjs'
+import { urlAccionDeEntorno } from '../secreto-compartido.mjs'
 
-/** URL pública que Mattermost llama al apretar una acción. Configurable por entorno. */
-export const URL_ACCION_DEFAULT =
-  process.env.ASISTENCIA_ACCION_URL || 'https://chat.ecsas.com.ar/asistencia/accion'
+/**
+ * URL pública que Mattermost llama al apretar una acción, CON el secreto de la integración.
+ * Configurable por entorno. Sin el secreto los botones existen pero el servidor los deniega:
+ * por eso lo arma `urlAccionDeEntorno` y no una concatenación suelta acá.
+ */
+export const URL_ACCION_DEFAULT = urlAccionDeEntorno()
 
 /** Barra de color del attachment: es el estado del formulario de un vistazo. */
 export const COLOR = Object.freeze({
@@ -202,7 +206,7 @@ function camposResumen(resumen) {
  */
 export function mensajeCuadrilla({
   fecha, obra, jornada, personal = [], marcas = {}, resumen = {}, url,
-  aviso = null, confirmacion = null,
+  aviso = null, confirmacion = null, sinAcciones = false,
 } = {}) {
   const lineas = personal.map((p) => lineaPersona(p, novedadDe(p, marcas), jornada))
   const principal = {
@@ -211,7 +215,9 @@ export function mensajeCuadrilla({
     title: `${obra?.nombre ?? 'Obra'} — ${fechaEnPalabras(fecha)}`,
     text: [`${textoJornada(jornada)}`, '', ...lineas].join('\n'),
     fields: camposResumen(resumen),
-    actions: accionesCuadrilla({ personal, url, confirmacion }),
+    // Sin acciones cuando el formulario ya no existe: un botón que el post sigue mostrando y
+    // que sólo puede contestar «este formulario ya se cerró» es peor que ningún botón.
+    actions: sinAcciones ? [] : accionesCuadrilla({ personal, url, confirmacion }),
   }
   const attachments = [principal]
   if (resumen.sin_horas > 0) {
@@ -355,7 +361,7 @@ export function dialogoExcepcion({
         nombre: 'motivo', etiqueta: 'Motivo de la falta', valor: n.motivo, opciones: opcionesMotivo,
         ayuda: 'Por qué no vino. Las horas del día quedan en 0.', obligatorio: true,
       }),
-      aclaracion('Una línea. Obligatoria en accidente y licencia especial.'),
+      aclaracion('Una línea. Obligatoria en accidente, accidente in itinere, licencia especial y «Otro».'),
     ]
     : tipo === TIPO.EXTRA
       ? [
@@ -373,7 +379,7 @@ export function dialogoExcepcion({
           opciones: (obras || []).map((o) => ({ text: recortar(o.nombre, TOPE.OPCION), value: o.clave })),
           ayuda: 'Sólo si esas horas las hizo en otra obra de la planilla.',
         }),
-        aclaracion('Una línea. Obligatoria en accidente y licencia especial.'),
+        aclaracion('Una línea. Obligatoria en accidente, accidente in itinere, licencia especial y «Otro».'),
       ]
 
   return armarDialogo({
@@ -399,19 +405,23 @@ export function dialogoExcepcion({
 function elementoHoras({ n, jornada, tipo }) {
   const j = Number.isFinite(jornada?.horas) && !jornada?.requiere_manual ? Number(jornada.horas) : null
   const esExtra = tipo === TIPO.EXTRA
-  if (j == null) {
-    return {
-      display_name: recortar('Horas', TOPE.NOMBRE_ELEMENTO),
-      name: 'horas', type: 'text',
-      default: n.horas == null ? '' : fmt(n.horas),
-      placeholder: recortar('8', TOPE.PLACEHOLDER),
-      help_text: recortar('Horas trabajadas. Ese día la planilla no define la jornada.', TOPE.AYUDA),
-    }
-  }
+  const aMano = (ayuda) => ({
+    display_name: recortar('Horas', TOPE.NOMBRE_ELEMENTO),
+    name: 'horas', type: 'text',
+    default: n.horas == null ? '' : fmt(n.horas),
+    placeholder: recortar('8', TOPE.PLACEHOLDER),
+    help_text: recortar(ayuda, TOPE.AYUDA),
+  })
+  if (j == null) return aMano('Horas trabajadas. Ese día la planilla no define la jornada.')
   const valores = []
   if (esExtra) for (let h = j + 0.5; h <= j + 6; h += 0.5) valores.push(h)
   else for (let h = 0.5; h < j; h += 0.5) valores.push(h)
   const opciones = valores.map((h) => ({ text: `${fmt(h)} h`, value: fmt(h) }))
+  // JORNADA 0 h —un feriado en el que igual se trabajó— deja la lista VACÍA, y un `select`
+  // sin opciones no lo publica Mattermost: el diálogo entero no abría y el jefe leía «no se
+  // pudo abrir el formulario», sin manera de cargar ese día. Se cae al campo a mano, que es
+  // lo mismo que se hace cuando la jornada no se conoce.
+  if (!opciones.length) return aMano('Horas trabajadas. La jornada de ese día es 0 h.')
   const previo = n.horas == null ? null : fmt(n.horas)
   return {
     display_name: recortar('Horas trabajadas', TOPE.NOMBRE_ELEMENTO),
@@ -447,11 +457,15 @@ export function dialogoFecha({ fecha, triggerId, url, estado = {}, contexto = nu
  */
 function elementoSelect({ nombre, etiqueta, valor, opciones, ayuda, obligatorio = false }) {
   if (!opciones?.length) return null
+  // El `default` tiene que ESTAR entre las opciones: uno que no está invalida el diálogo
+  // entero y no abre. Pasaba con la novedad precargada de un feriado («franco»), que no
+  // pertenece a la lista de una jornada parcial.
+  const previo = valor == null ? null : String(valor)
   return {
     display_name: recortar(etiqueta, TOPE.NOMBRE_ELEMENTO),
     name: nombre, type: 'select', optional: !obligatorio,
     options: opciones,
-    ...(valor ? { default: String(valor) } : {}),
+    ...(previo && opciones.some((o) => String(o.value) === previo) ? { default: previo } : {}),
     help_text: recortar(ayuda, TOPE.AYUDA),
   }
 }

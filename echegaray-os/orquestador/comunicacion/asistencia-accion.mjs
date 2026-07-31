@@ -17,6 +17,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { puedeCargar } from './asistencia-guarda.mjs'
+import { igualEnTiempoConstante } from './secreto-compartido.mjs'
 import { crearRuteadorAcciones } from './asistencia-mm/acciones.mjs'
 import * as nucleo from '../lib/tools/jornales-asistencia.mjs'
 import * as motivos from '../lib/asistencia-motivos.mjs'
@@ -29,6 +30,29 @@ import { googleDelOs } from '../lib/google-os.mjs'
 
 /** Respuesta uniforme: Mattermost espera 200 con cuerpo, no un código de error HTTP. */
 const responder = (body) => ({ status: 200, body })
+
+/** Lo que ve quien no presenta el secreto. Sin decir si existe, si venció o si es otro. */
+const TEXTO_SECRETO = Object.freeze({
+  SIN_CONFIGURAR: 'La carga de asistencia todavía no está configurada. Avisale a Dirección.',
+  NO_AUTORIZADO: 'No pude verificar que este pedido venga de Mattermost.',
+})
+
+/**
+ * ¿El pedido presenta el secreto de la integración?
+ *
+ * FALLA CERRADO EN LOS DOS SENTIDOS: sin secreto configurado tampoco se atiende. Un endpoint
+ * que escribe jornales y no verifica nada es peor que un endpoint apagado — apagado se nota
+ * enseguida; abierto, recién cuando aparece una carga que nadie hizo.
+ */
+function verificarSecreto(esperado, presentado) {
+  if (typeof esperado !== 'string' || !esperado) {
+    return { ok: false, detalle: 'secreto_sin_configurar', texto: TEXTO_SECRETO.SIN_CONFIGURAR }
+  }
+  if (!igualEnTiempoConstante(esperado, presentado)) {
+    return { ok: false, detalle: 'secreto_invalido', texto: TEXTO_SECRETO.NO_AUTORIZADO }
+  }
+  return { ok: true }
+}
 
 /**
  * Payload de una acción interactiva o de un envío de diálogo. Mattermost manda formas
@@ -60,9 +84,14 @@ function normalizar(payload = {}) {
  * @param {object} [o.log]
  * @returns {(payload:object) => Promise<{status:number, body:object}>}
  */
-export function crearManejadorAccion({ port, mattermost, google = null, log = null, url = null } = {}) {
+export function crearManejadorAccion({ port, mattermost, google = null, log = null, url = null, secreto = null } = {}) {
   const g = google ?? googleDelOs()
-  const sesiones = new SesionesPostgres(port)
+  // SIN BASE, EL SERVICIO SIGUE DE PIE Y DENIEGA. Construir el repositorio de sesiones con
+  // un port nulo tiraba en el arranque, `main()` moría y systemd reiniciaba: un rato sin
+  // Postgres se volvía un crash-loop, cuando lo que corresponde es contestar «probá en un
+  // minuto». No se afloja nada: la guarda deniega igual (`base_indisponible`) antes de que
+  // nadie necesite una sesión, así que este `null` nunca se usa.
+  const sesiones = port?.query ? new SesionesPostgres(port) : null
 
   /**
    * Auditor de UN pedido, con la proyección de novedades colgada del evento `written`.
@@ -100,6 +129,31 @@ export function crearManejadorAccion({ port, mattermost, google = null, log = nu
     const requestId = randomUUID()
     const auditar = auditorDe(correlationId)
 
+    // 0) ¿ESTE PEDIDO VIENE DE MATTERMOST? Antes de la puerta, porque la puerta le cree la
+    //    identidad al payload — y el payload lo escribe quien llama.
+    //
+    //    LO QUE PASABA SIN ESTO (31/07, verificado contra producción): esta ruta la publica
+    //    Caddy en Internet. Un `curl` anónimo con el `user_id` de alguien habilitado y el
+    //    `channel_id` del canal de asistencia pasaba el control de canal Y el de permisos, y
+    //    quedaba a un paso de escribir jornales a nombre de esa persona. Ni el canal ni el
+    //    permiso pueden defender nada si la identidad la pone el atacante.
+    //
+    //    EL SECRETO viaja en la query de la URL de callback. Mattermost guarda esa URL y no
+    //    se la manda al cliente (verificado: los posts llegan sin el bloque `integration`),
+    //    así que sólo su servidor puede presentarlo. Es lo mismo que ya hace el slash
+    //    command con su token, por la única puerta que no lo tenía.
+    const s = verificarSecreto(secreto, payload._secreto)
+    if (!s.ok) {
+      log?.warn?.('asistencia: acción sin secreto válido', { motivo: s.detalle, ip: payload._ip ?? null })
+      await auditar(EVENTO.DENIED, payloadRechazo({
+        origen: p.esDialogo ? ORIGEN.DIALOGO : ORIGEN.ACCION,
+        motivo: 'token', detalle: s.detalle, identidadVerificada: false,
+        actor: { plataforma_user_id: p.userId, plataforma_username: p.username },
+        channelId: p.channelId, teamId: p.teamId, requestId, correlationId,
+      })).catch(() => {})
+      return responder(p.esDialogo ? { error: s.texto } : { ephemeral_text: s.texto })
+    }
+
     // 1) LA PUERTA. Antes de cualquier otra cosa.
     const permitido = await puedeCargar({
       port,
@@ -132,6 +186,7 @@ export function crearManejadorAccion({ port, mattermost, google = null, log = nu
       jornadaConfig: jornadaConfigurada,
       permisos: { tienePermiso },
       auditar: auditorDe(correlationId),
+      requestId,
       ...(url ? { url } : {}),
     })
     try {

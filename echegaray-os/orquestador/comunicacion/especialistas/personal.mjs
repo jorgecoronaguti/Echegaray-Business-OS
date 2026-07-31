@@ -14,6 +14,7 @@
 import { manejarAsistencia, consultarAsistencia } from '../asistencia-flujo.mjs'
 import { iniciarAsistencia } from '../asistencia-inicio.mjs'
 import { clasificar } from '../asistencia-ui.mjs'
+import { urlAccionDeEntorno } from '../secreto-compartido.mjs'
 import { parsearConsulta } from '../../lib/asistencia-consultas.mjs'
 import { fechaOperativaSanJuan } from '../../lib/fecha-operativa.mjs'
 
@@ -52,7 +53,9 @@ export const especialista = {
     // (`obra 1`, `confirmar`) NUNCA cae acá: ya tiene una sesión y sigue por donde venía.
     const arranca = ruta?.destino === 'registro' && ruta.intencion?.tipo === 'iniciar'
     if (arranca && !RE_POR_CHAT.test(texto ?? '')) {
-      return iniciar({ port, google, actor, correlationId, url: process.env.ASISTENCIA_ACCION_URL || null })
+      // La URL lleva el secreto de la integración: sin él, los botones de la mención salen
+      // publicados pero el servidor los deniega. La arma un solo lugar, para las tres puertas.
+      return iniciar({ port, google, actor, correlationId, url: urlAccionDeEntorno() })
     }
 
     // Sin intención reconocible pero en el canal correcto: se ofrece el arranque del flujo.

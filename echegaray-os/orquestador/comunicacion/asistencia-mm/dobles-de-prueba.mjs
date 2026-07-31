@@ -61,7 +61,14 @@ export function mattermostDoble({ abre = true, actualiza = true } = {}) {
     dialogos,
     posts,
     async abrirDialogo(d) { dialogos.push(d); return { ok: abre } },
-    async actualizarPost(p) { posts.push(p); return { ok: actualiza } },
+    // EXIGE `id`, igual que el cliente real. Este doble aceptaba cualquier forma, y por eso
+    // nadie vio que el ruteador mandaba `postId`: en producción salía `PUT /posts/undefined`.
+    // Un doble más permisivo que el original no prueba la frontera: la tapa.
+    async actualizarPost(p) {
+      if (!p?.id) throw new Error('actualizarPost: falta `id` (así se llama en el cliente real)')
+      posts.push(p)
+      return { ok: actualiza }
+    },
   }
 }
 
@@ -99,7 +106,10 @@ export async function crearEntorno({
   if (abrirSesion) {
     sesion = await sesiones.abrir({
       plataformaUserId: USUARIO.id, plataformaUsername: USUARIO.nombre,
-      channelId: 'canal-1', rootPostId: 'post-1', fechaOperativa: hoy(),
+      // SIN `rootPostId`, como en producción: el slash command publica por respuesta, así
+      // que el OS no conoce el id del post hasta el primer click. El doble lo traía puesto
+      // y por eso tapaba el defecto de «Otra fecha…» como primer toque.
+      channelId: 'canal-1', rootPostId: null, fechaOperativa: hoy(),
     })
   }
   const base = { user_id: USUARIO.id, user_name: USUARIO.nombre, channel_id: 'canal-1', post_id: 'post-1' }

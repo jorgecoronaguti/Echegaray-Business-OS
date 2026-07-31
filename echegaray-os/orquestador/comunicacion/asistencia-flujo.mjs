@@ -20,7 +20,8 @@ import {
   registrarAsistencia, MOTIVO, SIN_CAMBIO,
 } from '../lib/tools/jornales-asistencia.mjs'
 import { tienePermiso, PERMISO_ASISTENCIA_WRITE } from '../lib/asistencia-permisos.mjs'
-import { crearAuditor, EVENTO, payloadConfirmacion, sanitizarError } from '../lib/asistencia-auditoria.mjs'
+import { crearAuditor, EVENTO, ORIGEN, payloadConfirmacion, payloadRechazo, sanitizarError } from '../lib/asistencia-auditoria.mjs'
+import { puedeCargar } from './asistencia-guarda.mjs'
 import { ESTADO, normalizarHoras } from '../lib/horas-extra.mjs'
 import { responderConsulta, renderConsulta } from '../lib/asistencia-consultas.mjs'
 import { SesionesPostgres, ESTADO_SESION, RECHAZO } from './asistencia-sesion.mjs'
@@ -58,6 +59,24 @@ export async function manejarAsistencia(o = {}) {
   const hoy = ui.fechaOperativaSanJuan(ahora)
   const intencion = ui.parsearComando(texto, { isoContexto: hoy })
   if (!intencion) return resp(ui.renderAyuda(), 'ayuda')
+
+  // LA PUERTA, TAMBIÉN ACÁ. Esta es la tercera vía que llega a JORNALES —la conversacional,
+  // `asistencia por chat`— y era la única que no consultaba la guarda de canal: se podía
+  // cargar la asistencia por mensaje privado al bot, justo lo que la guarda existe para
+  // impedir («por privado no hay testigo»). El permiso solo no alcanza: dice QUIÉN puede,
+  // no DESDE DÓNDE. Se salta cuando no hay `port` (los tests inyectan sus propios dobles y
+  // no tienen binding que consultar), igual que el resto de las defensas de este archivo.
+  const guarda = o.guarda ?? (port ? puedeCargar : null)
+  if (guarda) {
+    const permitido = await guarda({ port, actor, channelId: actor?.channel_id ?? null, plataforma: 'mattermost' })
+    if (!permitido.ok) {
+      await d.auditar(EVENTO.DENIED, payloadRechazo({
+        origen: ORIGEN.MENCION, motivo: permitido.motivo, detalle: permitido.detalle,
+        actor, channelId: actor?.channel_id ?? null, teamId: actor?.team_id ?? null, correlationId,
+      }))
+      return resp(permitido.texto, 'denegado')
+    }
+  }
 
   const permiso = await d.permisos(actor?.plataforma_user_id)
   if (!permiso.ok) {

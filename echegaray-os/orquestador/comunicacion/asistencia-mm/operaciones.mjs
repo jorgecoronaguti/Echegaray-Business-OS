@@ -81,7 +81,7 @@ export function armarMarcas(deps, { personal, marcas, jornada, obrasValidas }) {
     const n = novedadDe(p, marcas)
     if (n.sin_cambio) { salida.push({ ref: p.ref, estado: SIN_CAMBIO }); continue }
     if (n.horas == null) {
-      return { ok: false, texto: `${p.nombre}: faltan las horas. Marcalo con «Marcar excepción».` }
+      return { ok: false, texto: `${p.nombre}: faltan las horas. Marcalo con «Hizo menos horas» o «Hizo horas extra».` }
     }
     if (n.obra_realizada && !obrasValidas.has(n.obra_realizada)) {
       return { ok: false, texto: `${p.nombre}: esa obra no figura en la planilla para esa fecha.` }

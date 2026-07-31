@@ -15,8 +15,9 @@
 // publicarlos (403). Los RECHAZOS sí van efímeros: que te digan que no podés cargar es
 // asunto tuyo, no del canal.
 
-import { randomUUID, timingSafeEqual } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { iniciarAsistencia } from './asistencia-inicio.mjs'
+import { igualEnTiempoConstante } from './secreto-compartido.mjs'
 import { crearAuditor, EVENTO, ORIGEN, payloadRechazo } from '../lib/asistencia-auditoria.mjs'
 
 export const RESPUESTA = Object.freeze({ CANAL: 'in_channel', PRIVADA: 'ephemeral' })
@@ -29,15 +30,6 @@ const TEXTO = Object.freeze({
 })
 
 const esTexto = (v) => typeof v === 'string' && v.length > 0
-
-/** Comparación en tiempo constante: un token no se compara con `===`. */
-function igualEnTiempoConstante(a, b) {
-  if (!esTexto(a) || !esTexto(b)) return false
-  const x = Buffer.from(a)
-  const y = Buffer.from(b)
-  if (x.length !== y.length) return false
-  return timingSafeEqual(x, y)
-}
 
 const efimero = (texto) => ({ status: 200, body: { response_type: RESPUESTA.PRIVADA, text: texto } })
 

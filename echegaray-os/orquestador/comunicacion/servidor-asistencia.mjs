@@ -32,6 +32,7 @@ import net from 'node:net'
 import { fileURLToPath } from 'node:url'
 import { crearManejadorAccion } from './asistencia-accion.mjs'
 import { crearComandoAsistencia } from './comando-asistencia.mjs'
+import { secretoDeUrl, urlConSecreto } from './secreto-compartido.mjs'
 
 export const RUTA_ACCION_DEFAULT = '/asistencia/accion'
 export const RUTA_COMANDO_DEFAULT = '/asistencia/comando'
@@ -129,7 +130,9 @@ async function atenderComando(req, res, { manejarComando, maxBytes, bodyTimeoutM
 async function atenderAccion(req, res, { manejarAccion, maxBytes, bodyTimeoutMs }) {
   const c = await leerCampos(req, res, { maxBytes, bodyTimeoutMs })
   if (!c.ok) return c.respuesta
-  const r = await manejarAccion({ ...c.campos, _ip: ipReal(req) })
+  // El secreto sale de la QUERY, no del cuerpo, y se pone DESPUÉS del spread: si el cuerpo
+  // trae un `_secreto` propio (lo escribe quien llama), el de la URL lo pisa. Igual que `_ip`.
+  const r = await manejarAccion({ ...c.campos, _ip: ipReal(req), _secreto: secretoDeUrl(req.url) })
   return responder(res, r.status, r.body)
 }
 
@@ -215,7 +218,10 @@ async function main() {
   let pool = null
   try {
     const db = await import('../lib/db.mjs')
-    db.getPool() // valida la conexión acá y no en el primer click
+    // `getPool()` NO abre una conexión: el pool de `pg` es perezoso. Lo que se valida acá es
+    // la CONFIGURACIÓN (que exista DATABASE_URL y sea legible), que es lo que se puede saber
+    // sin red. Si la base está caída, se descubre en la primera consulta y la guarda deniega.
+    db.getPool()
     pool = { query: db.query, withTx: db.withTx }
   } catch (e) {
     log.warn('sin acceso a la base: los pedidos se van a denegar', { detalle: String(e?.message ?? e).slice(0, 200) })
@@ -230,10 +236,19 @@ async function main() {
     token: process.env.MM_BOT_TOKEN,
   })
 
+  // EL SECRETO DE LA INTEGRACIÓN. Un solo lugar lo lee y un solo lugar arma la URL que se
+  // guarda en los botones, así que no puede quedar el servidor exigiendo un secreto que los
+  // mensajes no llevan. Si falta, el endpoint de acciones deniega todo (falla cerrado) y acá
+  // queda dicho por qué, para que no se diagnostique como "los botones dejaron de andar".
+  const secreto = process.env.ASISTENCIA_ACCION_SECRETO || null
+  if (!secreto) log.warn('sin ASISTENCIA_ACCION_SECRETO: las acciones interactivas se van a denegar')
+  const urlAccion = urlConSecreto(process.env.ASISTENCIA_ACCION_URL || '', secreto) || null
+
   const manejarAccion = crearManejadorAccion({
     port: pool,
     mattermost,
-    url: process.env.ASISTENCIA_ACCION_URL || null,
+    url: urlAccion,
+    secreto,
     log,
   })
 
@@ -241,7 +256,7 @@ async function main() {
     tokenComando: process.env.MM_SLASH_TOKEN_ASISTENCIA || null,
     port: pool,
     google: (await import('../lib/google-os.mjs')).googleDelOs(),
-    url: process.env.ASISTENCIA_ACCION_URL || null,
+    url: urlAccion,
     log,
   })
 

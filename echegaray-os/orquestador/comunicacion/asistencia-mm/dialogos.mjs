@@ -13,6 +13,10 @@
 import { normalizarHoras } from '../../lib/horas-extra.mjs'
 import { interpretarFechaEscrita, validarFecha } from '../../lib/asistencia-servicio/fechas.mjs'
 import { jornadaNumero } from './operaciones.mjs'
+import { TIPO } from './mensaje.mjs'
+
+/** Lo que se dice cuando el formulario tiene algo mal y ningún campo lo explica solo. */
+export const REVISAR_FORMULARIO = 'Revisá los campos marcados y volvé a guardar.'
 
 const texto = (v) => (v == null ? '' : String(v).trim())
 
@@ -120,4 +124,35 @@ export function leerEstado(crudo) {
   } catch {
     return {}
   }
+}
+
+/**
+ * La respuesta de error de un diálogo, SIEMPRE con una frase en castellano arriba.
+ *
+ * POR QUÉ (31/07). El cliente de Mattermost, cuando la respuesta trae sólo `errors` por campo,
+ * pone de su cosecha un encabezado en inglés: "Submission failed with validation errors". Si en
+ * cambio viene un `error` de primer nivel, muestra ESE texto. Así que se manda siempre uno: el
+ * jefe de obra no tiene por qué leer inglés para entender qué corregir.
+ */
+export function errorDeFormulario(n) {
+  const campos = n?.errors && Object.keys(n.errors).length ? n.errors : null
+  const arriba = n?.error
+    ?? (campos ? Object.values(n.errors).find((v) => typeof v === 'string') : null)
+    ?? REVISAR_FORMULARIO
+  return { ...(campos ? { errors: campos } : {}), error: arriba }
+}
+
+/**
+ * Los motivos que corresponden a ESTE tipo, pedidos al catálogo — nunca una lista escrita acá.
+ *
+ * · ausencia → los de "no vino"
+ * · parcial  → los de jornada incompleta (se pregunta por media hora menos que la jornada, que
+ *              es la forma de decirle al catálogo "esto es una jornada parcial")
+ * · extra    → NINGUNO: el núcleo calcula el extra y no hay novedad que explicar
+ */
+export function motivosDelTipo(d, tipo, jornada) {
+  if (tipo === TIPO.EXTRA) return []
+  if (tipo === TIPO.AUSENCIA) return d.motivos.motivosPara({ presente: false, horas: 0 })
+  const j = Number.isFinite(jornada?.horas) && !jornada?.requiere_manual ? Number(jornada.horas) : null
+  return d.motivos.motivosPara({ presente: true, horas: j == null ? null : j - 0.5, jornada: j })
 }

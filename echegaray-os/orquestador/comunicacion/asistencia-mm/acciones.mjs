@@ -20,7 +20,7 @@
 // ERRORES. Siempre `ephemeral_text` en castellano, con la frase que le sirve al jefe de
 // obra. Nunca un stack, una ruta, un id interno ni un secreto: lo técnico va al log.
 
-import { EVENTO, ORIGEN, payloadRechazo, sanitizarError } from '../../lib/asistencia-auditoria.mjs'
+import { EVENTO, ORIGEN, payloadConfirmacion, payloadRechazo, sanitizarError } from '../../lib/asistencia-auditoria.mjs'
 import { MOTIVO as MOTIVO_NUCLEO } from '../../lib/tools/jornales-asistencia.mjs'
 import { ESTADO_SESION, RECHAZO } from '../asistencia-sesion.mjs'
 import { diaAnterior, hoyIso, validarFecha } from '../../lib/asistencia-servicio/fechas.mjs'
@@ -32,7 +32,8 @@ import {
 import {
   celdasParaMostrar, contextoDelDia, escribir, leerCuadrilla, planDe, razonesDeConfirmacion,
 } from './operaciones.mjs'
-import { fechaDeDialogo, leerEstado, novedadDeDialogo } from './dialogos.mjs'
+import { errorDeFormulario, fechaDeDialogo, leerEstado, motivosDelTipo, novedadDeDialogo } from './dialogos.mjs'
+import { abrirDialogo, actualizarPost } from './cliente.mjs'
 
 export const PASO = Object.freeze({
   FECHA: 'fecha', OBRA: 'obra', EXCEPCION: 'excepcion',
@@ -55,7 +56,9 @@ export const TEXTO = Object.freeze({
   PERSONA_DESCONOCIDA: 'Esa persona ya no figura en la obra. Volvé a elegir la obra.',
   SIN_DIALOGO: 'No se pudo abrir el formulario. Probá de nuevo desde el celular.',
   YA_REGISTRADA: 'Esta carga ya se registró. No se escribió dos veces.',
-  REVISAR_FORMULARIO: 'Revisá los campos marcados y volvé a guardar.',
+  SESION_CERRADA_SIN_ESCRIBIR: 'El formulario se cerró antes de registrar, así que NO se escribió nada. Escribí «asistencia» y cargá de nuevo.',
+  ESCRITURA_FALLIDA: 'Escribí «asistencia» para volver a cargar: este formulario ya no sirve.',
+  OBRA_CAMBIADA: 'Cambiaste de obra: las excepciones que habías marcado se borraron.',
   CUADRILLA_CAMBIO: 'La cuadrilla de la obra cambió en la planilla. Revisá la lista y volvé a apretar Registrar.',
   ERROR: 'No se pudo completar la acción. Probá de nuevo; si sigue igual, avisá a Dirección.',
 })
@@ -84,6 +87,7 @@ export function crearRuteadorAcciones(deps = {}) {
     hoy: deps.hoy ?? (() => hoyIso()),
     auditar: deps.auditar ?? (async () => ({ ok: true })),
     port: deps.port ?? null,
+    requestId: deps.requestId ?? null,
   }
   return async function rutear({ payload } = {}) {
     try {
@@ -123,6 +127,9 @@ async function anotarRechazo(d, payload, { motivo, detalle, dialogo = false }) {
     actor: { plataforma_user_id: payload?.user_id ?? null, plataforma_username: payload?.user_name ?? null },
     channelId: payload?.channel_id ?? null,
     teamId: payload?.team_id ?? null,
+    // Sin esto, un rechazo del ruteador quedaba anotado sin `request_id` mientras el de la
+    // puerta sí lo tenía: dos rechazos del mismo pedido que no se podían atar entre sí.
+    requestId: d.requestId ?? null,
   }))).catch(() => {})
 }
 
@@ -185,7 +192,27 @@ function normalizarPayload(payload) {
   }
 }
 
-async function atender(d, p, sesion) {
+/**
+ * Ata el post a la sesión apenas se sabe cuál es.
+ *
+ * El id del post SÓLO llega en los clicks: un `dialog_submission` no lo trae, y la sesión
+ * nace sin él (el slash command publica por respuesta, así que el OS no se entera del id
+ * hasta el primer toque). Si el primer click es «Otra fecha…» —que abre un diálogo y no
+ * guardaba nada— la respuesta del formulario no tenía a qué post volver: la fecha cambiaba
+ * en la sesión y el mensaje seguía mostrando la vieja, con las obras del día viejo.
+ */
+async function recordarPost(d, p, sesion) {
+  if (p.dialogo || !p.postId || postDe(sesion) === p.postId) return sesion
+  const meta = metaDe(sesion)
+  await guardar(d, sesion, {
+    marcas: marcasDe(sesion), fecha: meta.fecha, obra: meta.obra ?? null,
+    refs: meta.refs ?? [], postId: p.postId,
+  })
+  return { ...sesion, marcas: { ...(sesion.marcas ?? {}), [META]: { ...meta, post_id: p.postId } } }
+}
+
+async function atender(d, p, sesionCruda) {
+  const sesion = await recordarPost(d, p, sesionCruda)
   const anotar = (detalle) => anotarRechazo(d, {
     user_id: p.userId, user_name: p.username, channel_id: p.channelId, team_id: p.teamId,
   }, { motivo: 'payload', detalle, dialogo: p.dialogo })
@@ -229,11 +256,11 @@ function guardar(d, sesion, { marcas = {}, fecha, obra = null, refs = [], postId
   })
 }
 
-function renderCuadrilla(d, c, { marcas, aviso = null, confirmacion = null }) {
+function renderCuadrilla(d, c, { marcas, aviso = null, confirmacion = null, sinAcciones = false }) {
   return mensajeCuadrilla({
     fecha: c.fecha, obra: c.obra, jornada: c.jornada, personal: c.personal, marcas,
     resumen: resumirCuadrilla({ personal: c.personal, marcas, jornada: c.jornada }),
-    url: d.url, aviso, confirmacion,
+    url: d.url, aviso, confirmacion, sinAcciones,
   })
 }
 
@@ -257,7 +284,7 @@ async function pasoFechaEscrita(d, p, sesion) {
   const f = fechaDeDialogo({ submission: p.submission, hoy: d.hoy() })
   if (!f.ok) return { status: 200, body: { errors: f.errors } }
   const r = await irAInicial(d, p, sesion, f.fecha)
-  if (r.body?.update) await actualizarPost(d, sesion, r.body.update)
+  if (r.body?.update) await actualizarPost(d, postDe(sesion), r.body.update)
   return { status: 200, body: r.body?.ephemeral_text ? { error: r.body.ephemeral_text } : {} }
 }
 
@@ -293,49 +320,22 @@ async function pasoObra(d, p, sesion) {
     fechaOperativa: v.fecha, claveObra: clave,
     spreadsheetId: c.ctx.spreadsheet_id, pestana: c.ctx.pestana,
   })
+  // Cambiar de obra borra las excepciones ya marcadas, igual que cambiar de fecha. Antes se
+  // hacía en silencio: elegir la obra equivocada y corregir es el error típico, y el jefe
+  // rehacía el trabajo sin enterarse de que lo había perdido. Sólo se avisa si había algo.
+  const habia = Object.keys(marcasDe(sesion)).length > 0 && (metaDe(sesion).obra ?? null) !== clave
   await guardar(d, sesion, { marcas: {}, fecha: v.fecha, obra: clave, refs: refsDe(c), postId: p.postId })
   await d.auditar(EVENTO.SHEET_READ, {
     status: 'read', origen: 'mattermost', fecha_operativa: v.fecha, sheet_name: c.ctx.pestana,
     obra_normalizada: clave, mattermost_user_id: p.userId, cantidad_trabajadores: c.personal.length,
   })
-  return actualizar(renderCuadrilla(d, c, { marcas: {} }))
+  return actualizar(renderCuadrilla(d, c, { marcas: {}, aviso: habia ? TEXTO.OBRA_CAMBIADA : null }))
 }
 
 const refsDe = (c) => c.personal.map((x) => x.ref)
 
 /** "Marcar excepción": abre el diálogo de UNA persona y deja el desplegable limpio. */
 const TIPOS_EXCEPCION = new Set([TIPO.AUSENCIA, TIPO.PARCIAL, TIPO.EXTRA])
-
-/**
- * La respuesta de error de un diálogo, SIEMPRE con una frase en castellano arriba.
- *
- * POR QUÉ (31/07). El cliente de Mattermost, cuando la respuesta trae sólo `errors` por campo,
- * pone de su cosecha un encabezado en inglés: "Submission failed with validation errors". Si en
- * cambio viene un `error` de primer nivel, muestra ESE texto. Así que se manda siempre uno: el
- * jefe de obra no tiene por qué leer inglés para entender qué corregir.
- */
-function errorDeFormulario(n) {
-  const campos = n?.errors && Object.keys(n.errors).length ? n.errors : null
-  const arriba = n?.error
-    ?? (campos ? Object.values(n.errors).find((v) => typeof v === 'string') : null)
-    ?? TEXTO.REVISAR_FORMULARIO
-  return { ...(campos ? { errors: campos } : {}), error: arriba }
-}
-
-/**
- * Los motivos que corresponden a ESTE tipo, pedidos al catálogo — nunca una lista escrita acá.
- *
- * · ausencia → los de "no vino"
- * · parcial  → los de jornada incompleta (se pregunta por media hora menos que la jornada, que
- *              es la forma de decirle al catálogo "esto es una jornada parcial")
- * · extra    → NINGUNO: el núcleo calcula el extra y no hay novedad que explicar
- */
-function motivosDelTipo(d, tipo, jornada) {
-  if (tipo === TIPO.EXTRA) return []
-  if (tipo === TIPO.AUSENCIA) return d.motivos.motivosPara({ presente: false, horas: 0 })
-  const j = Number.isFinite(jornada?.horas) && !jornada?.requiere_manual ? Number(jornada.horas) : null
-  return d.motivos.motivosPara({ presente: true, horas: j == null ? null : j - 0.5, jornada: j })
-}
 
 async function pasoExcepcion(d, p, sesion) {
   const meta = metaDe(sesion)
@@ -378,7 +378,7 @@ async function pasoAplicar(d, p, sesion) {
   if (!n.ok) return { status: 200, body: errorDeFormulario(n) }
   const marcas = { ...marcasDe(sesion), [ref]: n.novedad }
   await guardar(d, sesion, { marcas, fecha: c.fecha, obra: meta.obra, refs: refsDe(c), postId: p.postId })
-  await actualizarPost(d, sesion, renderCuadrilla(d, c, { marcas }))
+  await actualizarPost(d, postDe(sesion), renderCuadrilla(d, c, { marcas }))
   return { status: 200, body: {} }
 }
 
@@ -426,25 +426,43 @@ function cambio(antes, ahora) {
  */
 async function confirmarYEscribir(d, p, sesion, { plan, cuadrilla, novedades, marcas }) {
   const c = await d.sesiones.confirmar(sesion.id, { idempotencyKey: plan.idempotency_key })
-  if (!c.ok || c.duplicado) return efimero(TEXTO.YA_REGISTRADA)
+  // DOS COSAS DISTINTAS que decían lo mismo. `duplicado` es el segundo click sobre ESTE
+  // formulario: la carga entró y no se repitió. `!ok` es que la sesión se cerró entre que se
+  // leyó y que se quiso confirmar (un Cancelar desde otro dispositivo, un vencimiento): ahí
+  // NO se escribió nada, y decirle al jefe «ya se registró» es mentirle sobre un dato
+  // económico — se va convencido de que la asistencia quedó cargada.
+  if (c.duplicado) return efimero(TEXTO.YA_REGISTRADA)
+  if (!c.ok) return efimero(TEXTO.SESION_CERRADA_SIN_ESCRIBIR)
+  const actor = { plataforma_user_id: p.userId, plataforma_username: p.username }
   await d.auditar(EVENTO.CONFIRMED, {
     status: 'confirmed', origen: 'mattermost', fecha_operativa: plan.fecha, sheet_name: plan.pestana,
     obra_normalizada: plan.clave_obra, idempotency_key: plan.idempotency_key,
-    mattermost_user_id: p.userId,
+    mattermost_user_id: p.userId, mattermost_username: p.username,
   })
   const r = await escribir(d, { plan, confirmar: true })
   if (!r.ok) {
     await d.sesiones.cerrar(sesion.id, ESTADO_SESION.FALLIDA)
     await d.auditar(r.motivo === MOTIVO_NUCLEO.CONFLICTO_CONCURRENCIA ? EVENTO.CONFLICT : EVENTO.FAILED, {
       status: 'failed', origen: 'mattermost', fecha_operativa: plan.fecha,
-      obra_normalizada: plan.clave_obra, error_code: r.motivo ?? null, mattermost_user_id: p.userId,
+      obra_normalizada: plan.clave_obra, error_code: r.motivo ?? null,
+      mattermost_user_id: p.userId, mattermost_username: p.username,
     })
-    return actualizar(renderCuadrilla(d, cuadrilla, { marcas, aviso: r.texto }), { ephemeral_text: r.texto })
+    // SIN BOTONES: la sesión quedó cerrada como fallida, así que el «Registrar» que el post
+    // seguía mostrando sólo podía contestar «este formulario ya se cerró» — justo después de
+    // haberle dicho al jefe que volviera a intentar. Se le dice cómo reintentar de verdad.
+    return actualizar(
+      renderCuadrilla(d, cuadrilla, { marcas, aviso: `${r.texto} ${TEXTO.ESCRITURA_FALLIDA}`, sinAcciones: true }),
+      { ephemeral_text: r.texto },
+    )
   }
+  // EL MISMO REGISTRO QUE EL OTRO CAMINO, con el constructor que ya existía. A mano, este
+  // evento guardaba cuatro campos: quedaba sin `celdas_modificadas` —qué celda, de qué valor
+  // a cuál— que es exactamente lo que hay que mirar para auditar una carga, y sin el nombre
+  // de quien cargó. Verificado en producción: los `written` del camino de botones tenían
+  // `celdas_modificadas` en null y los del camino viejo, no.
   await d.auditar(EVENTO.WRITTEN, {
-    status: 'written', origen: 'mattermost', fecha_operativa: plan.fecha, sheet_name: plan.pestana,
-    obra_normalizada: plan.clave_obra, idempotency_key: plan.idempotency_key,
-    mattermost_user_id: p.userId, cantidad_trabajadores: plan.resumen?.trabajadores ?? 0, novedades,
+    ...payloadConfirmacion({ actor, plan, resultado: r, sesion, status: 'written' }),
+    origen: 'mattermost', novedades,
   })
   return actualizar(mensajeConfirmado({
     resumen: plan.resumen, celdas: celdasParaMostrar(r), actor: { username: p.username, userId: p.userId },
@@ -460,34 +478,4 @@ async function pasoCancelar(d, p, sesion) {
     fecha_operativa: metaDe(sesion).fecha ?? null,
   })
   return actualizar(mensajeCancelado())
-}
-
-// ── CLIENTE DE MATTERMOST (inyectado) ───────────────────────────────────────────
-
-/** Abre un diálogo. Un fallo acá NO tumba la acción: se avisa y el post queda como estaba. */
-async function abrirDialogo(d, dialogo) {
-  if (!dialogo.trigger_id || typeof d.mattermost?.abrirDialogo !== 'function') return false
-  try {
-    const r = await d.mattermost.abrirDialogo(dialogo)
-    return r?.ok !== false
-  } catch (e) {
-    d.log?.error?.('asistencia-mm: no se pudo abrir el diálogo', { error: sanitizarError(e) })
-    return false
-  }
-}
-
-/** La respuesta de un diálogo no puede re-renderizar el post: eso se hace por la API. */
-async function actualizarPost(d, sesion, { message, props }) {
-  const postId = postDe(sesion)
-  if (!postId || typeof d.mattermost?.actualizarPost !== 'function') {
-    d.log?.warn?.('asistencia-mm: sin post que actualizar tras el diálogo')
-    return false
-  }
-  try {
-    const r = await d.mattermost.actualizarPost({ postId, message, props })
-    return r?.ok !== false
-  } catch (e) {
-    d.log?.error?.('asistencia-mm: no se pudo actualizar el post', { error: sanitizarError(e) })
-    return false
-  }
 }
