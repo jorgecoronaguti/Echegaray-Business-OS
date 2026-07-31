@@ -927,8 +927,25 @@ async function main() {
   //
   // Con esto, el cuadro reacciona en el momento en que él toca Compras: la fila ya existe y su fórmula
   // la muestra o la esconde. Eso es lo que hace la pestaña VIVA, y es lo que faltaba.
+  // ═══ SOBRE-INCLUIR NO ERA GRATIS (31/07) ═══
+  //
+  // Acá estaba escrito que cablear a todo el que tenga una fila Pendiente es GRATIS, porque el predicado
+  // vivo vacía la fila del que no debe. NO es gratis, y el dueño lo vio cuatro veces: "proveedores es
+  // una vergüenza", "me rompiste proveedores nuevamente".
+  //
+  // Lo que producía: por cada proveedor ya pagado quedaba un par de filas con el nombre y el comentario
+  // del dueño (que SÍ se escribe, viene del respaldo) pero con "0 fac." y "—" en el importe. Cuatro de
+  // esas —Con-Sec, DUPEC, Angel Fernandez, Leandro Rojas— quedaban intercaladas entre los proveedores
+  // reales, y el cuadro se leía como si estuviera corrupto. Peor: dos de ellas sumaban $468.542 que el
+  // titular no cuenta (el titular filtra por ¿Comercial?=1) y el aviso "⚠ Faltan 2 facturas" quedaba
+  // encendido para siempre, apuntando a una diferencia que era del propio listado.
+  //
+  // El cuadro contesta UNA pregunta: a quién le debo HOY. Un proveedor al que no se le debe no va, y su
+  // comentario no se pierde: vive en public.proveedor_notas y vuelve solo el día que reaparezca (es
+  // exactamente para eso que existe el respaldo). El precio es que un proveedor nuevo con deuda entra en
+  // la corrida siguiente, no al instante. Barato al lado de un cuadro que no se puede leer.
   const deudaAgrupada = [...deudaMap.values()]
-    .filter((p) => p.total > 0.5 || p.filas.length > 0)
+    .filter((p) => p.total > 0.5)
     .sort((a, b) => b.total - a.total)
 
   // ── AFIP: LA FUENTE FISCAL ─────────────────────────────────────────────────────────────────────
