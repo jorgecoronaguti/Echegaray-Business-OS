@@ -58,6 +58,12 @@ export async function comunicacionResponderHandler(task, ctx) {
       google: ctx.google ?? googleDelOs({ config: ctx.config }),
       actor,
       correlationId: inp.correlation_id,
+      // El mensaje que originó el pedido. Viaja porque es la CLAVE DE IDEMPOTENCIA del
+      // efecto externo: un especialista que crea un evento de Calendar necesita poder
+      // preguntar "¿este mensaje ya se ejecutó?" antes de crear el segundo. Sin esto, un
+      // lease vencido y reclamado por otro worker duplica el efecto en silencio.
+      commEventId: inp.comm_event_id ?? null,
+      config: ctx.config ?? null,
     })
     salida = r
     texto = r.texto
