@@ -247,14 +247,13 @@ function armar(r, tiempo) {
   const ambiguedad = tiempo.ambiguo && r.intencion !== CAPACIDAD.AYUDA
     ? `Ese día tiene dos lecturas. ¿Cuál es?`
     : null
-  const sol = zSolicitud.parse({
+  return zSolicitud.parse({
     intencion: r.intencion, via: 'deterministico', confianza: 1,
     parametros: r.parametros, faltantes: r.faltantes ?? [], ambiguedad,
+    // Las dos lecturas del día son la materia prima de la pregunta que hace el router. Van
+    // DENTRO del contrato: colgadas del objeto, el `parse()` de cualquier capa las tiraba.
+    opcionesTiempo: ambiguedad ? tiempo.opciones : [],
   })
-  // Las dos lecturas del día viajan APARTE del contrato: son la materia prima de la
-  // pregunta que hace el router, no un parámetro de la capacidad.
-  if (ambiguedad) sol.opcionesTiempo = tiempo.opciones
-  return sol
 }
 
 // ── Camino con modelo (una llamada, sólo si hizo falta) ──────────────────────

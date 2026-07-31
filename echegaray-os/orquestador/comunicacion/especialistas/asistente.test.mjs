@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { especialista } from './asistente.mjs'
-import { especialistas } from '../registro-especialistas.mjs'
+import { especialistas, especialistaDeArea } from '../registro-especialistas.mjs'
 import { resolver, VIA } from '../director.mjs'
 import { CAPACIDAD } from '../asistente/contratos.mjs'
 import { baseFalsa, filaIdentidad } from '../asistente/dobles-de-prueba.mjs'
@@ -21,9 +21,12 @@ test('se declara como un especialista más, con área canónica y agente real', 
   const todos = await especialistas({ recargar: true })
   const yo = todos.filter((e) => e.slug === 'asistente')
   assert.equal(yo.length, 1)
-  // Un área tiene a lo sumo un especialista: si no, el canal no podría decidir.
-  const porArea = todos.filter((e) => e.area === especialista.area)
-  assert.equal(porArea.length, 1, `${especialista.area} tiene más de un especialista`)
+  // Es TRANSVERSAL: comparte área con Gestión General pero no es su dueño. Lo que el canal
+  // necesita es un solo DUEÑO por área — si el asistente lo fuera, se quedaría con todos los
+  // mensajes no reclamados de ese canal en vez de dejárselos al especialista del tema.
+  assert.equal(especialista.preferidoDeArea, false)
+  const dueño = await especialistaDeArea(especialista.area)
+  assert.ok(dueño && dueño.slug !== 'asistente', `el asistente terminó siendo dueño de ${especialista.area}`)
 })
 
 test('el Director le entrega los pedidos del asistente sin consultar al modelo', async () => {

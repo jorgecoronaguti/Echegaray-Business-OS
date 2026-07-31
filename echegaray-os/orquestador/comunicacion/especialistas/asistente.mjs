@@ -12,11 +12,16 @@
 // secuestraría el mensaje a Personal IA en el canal de Asistencia. Un asistente que se cree
 // dueño de todo lo que suena a pedido es peor que uno que atiende menos.
 //
-// ÁREA. El registro exige un área canónica y `gestion_general` ya es de Gestión General (un
-// área tiene a lo sumo un especialista, si no el canal no podría decidir). Se declara
-// `administracion_finanzas`, que es donde caen de hecho los pedidos administrativos
-// transversales de este asistente. Está anotado en el reporte del módulo: el día que exista
-// un "Administración y Finanzas IA" hay que revisar este binding.
+// ÁREA, Y POR QUÉ NO ES DUEÑO DE NINGUNA. Este asistente es TRANSVERSAL: "recordame llamar
+// al contador" no pertenece a Compras ni a Obras ni a Finanzas, y buscar un archivo tampoco.
+// Declararlo dueño de un área cualquiera para satisfacer el registro tendría una consecuencia
+// concreta y silenciosa: cuando alguien escriba algo que nadie reclama en el canal de esa
+// área, el Director se lo daría A ÉL en vez de al especialista del tema. Sería peor que no
+// tener asistente.
+//
+// Por eso declara `gestion_general` —el área del propio OS, que es lo que este asistente es—
+// con `preferidoDeArea: false`: participa del catálogo y atiende POR RECLAMO, y ningún canal
+// se le rutea por pertenencia. El dueño del área sigue siendo Gestión General.
 
 import { INTENCION } from '../asistente/contratos.mjs'
 import { interpretarDeterministico } from '../asistente/interpretar.mjs'
@@ -25,7 +30,8 @@ import { atenderPedido } from '../asistente/router.mjs'
 export const especialista = {
   slug: 'asistente',
   agentSlug: 'director-planner',
-  area: 'administracion_finanzas',
+  area: 'gestion_general',
+  preferidoDeArea: false, // transversal: atiende por reclamo, nunca por pertenecer al canal
   titulo: 'Asistente del OS',
   descripcion: 'Pedidos personales del día a día: buscar un archivo en Drive, recordarte (o recordarle a otro) algo, agendar un evento en Calendar, anotar una tarea. También responde qué sabe hacer el OS y las repreguntas del propio asistente.',
   ejemplos: ['recordame el lunes pagar IERIC', 'buscame el contrato de la Estrella', 'agendá reunión con Rodrigo el jueves a las 10'],

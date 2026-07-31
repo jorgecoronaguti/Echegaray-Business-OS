@@ -37,11 +37,27 @@ test('cada especialista declara un ÁREA CANÓNICA del OS, no una taxonomía pro
   }
 })
 
-test('un área tiene a lo sumo UN especialista (si no, el canal no podría decidir)', async () => {
-  const vistas = new Map()
+test('un área tiene a lo sumo UN especialista PREFERIDO (si no, el canal no podría decidir)', async () => {
+  // La regla original era "un área, un especialista". Se aflojó exactamente lo necesario
+  // cuando apareció el primer especialista TRANSVERSAL (el asistente: recordar, buscar un
+  // archivo, agendar — pedidos que no son de ningún área). Obligarlo a ser dueño de un área
+  // cualquiera para pasar esta prueba tenía una consecuencia silenciosa: se quedaba con
+  // todos los mensajes no reclamados de ESE canal. Lo que el canal necesita no es que haya
+  // un solo especialista por área, es que haya un solo DUEÑO.
+  const dueños = new Map()
   for (const e of await especialistas()) {
-    assert.equal(vistas.has(e.area), false, `${e.area} tiene dos: ${vistas.get(e.area)} y ${e.slug}`)
-    vistas.set(e.area, e.slug)
+    if (e.preferidoDeArea === false) continue
+    assert.equal(dueños.has(e.area), false, `${e.area} tiene dos dueños: ${dueños.get(e.area)} y ${e.slug}`)
+    dueños.set(e.area, e.slug)
+  }
+})
+
+test('el asistente transversal no le roba el canal a nadie', async () => {
+  const transversales = (await especialistas()).filter((e) => e.preferidoDeArea === false)
+  for (const t of transversales) {
+    const dueño = await especialistaDeArea(t.area)
+    assert.ok(dueño, `${t.area} se quedó sin dueño`)
+    assert.notEqual(dueño.slug, t.slug, `${t.slug} terminó siendo el dueño de ${t.area}`)
   }
 })
 

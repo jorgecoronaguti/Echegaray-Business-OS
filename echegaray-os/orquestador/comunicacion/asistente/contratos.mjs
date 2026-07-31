@@ -121,6 +121,10 @@ export const zSolicitud = z.object({
   // se pregunta. Una sola vez.
   faltantes: z.array(z.string()).default([]),
   ambiguedad: z.string().nullable().default(null),
+  // Las lecturas posibles cuando la ambigüedad es de FECHA ("el jueves que viene" dicho un
+  // lunes). Viajan en el contrato y no colgadas del objeto porque son la materia prima de la
+  // pregunta que hace el router: fuera del schema, un `parse()` las tiraba en silencio.
+  opcionesTiempo: z.array(z.object({ valor: z.string(), etiqueta: z.string() })).default([]),
 })
 
 /** Parámetros comunes a lo que se agenda/recuerda/anota. Cada capacidad extiende lo suyo. */
@@ -284,5 +288,8 @@ export const zGoogleTareaResultado = z.object({
  * @property {object} [recordatorios]                     repositorio de recordatorios (inyectable)
  * @property {object} [googleDeps]                        puerta de inyección de `habilitada`
  * @property {object} [log]
- * @property {() => Date} [ahora]
+ * @property {() => Date} [ahora]  RELOJ (se invoca): `ctx.ahora?.() ?? new Date()`.
+ *   Ojo con la trampa: `tiempo.mjs` recibe `{ahora: Date}` — una FECHA, no el reloj. Quien
+ *   cruza las dos capas traduce (`{ahora: ctx.ahora?.() ?? new Date()}`); pasar el reloj
+ *   crudo revienta con "fecha.getTime is not a function", que ya pasó una vez.
  */
