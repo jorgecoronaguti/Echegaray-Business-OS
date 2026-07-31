@@ -118,8 +118,24 @@ function refDeTab(tab) {
  *  · Si no se puede RELEER una pestaña para comparar su firma (`noVerificable`), se protege esa pestaña.
  * Antes fallaba ABIERTO (ante duda, escribía) — que es justo lo contrario de lo que el dueño pide.
  * firmaGuardia, además de detectar la edición, AUTO-CANDA la pestaña: la próxima vez se bloquea barato.
+ *
+ * ── `compartida` (31/07): PESTAÑAS QUE EL OS **NO** GENERA ──────────────────────────────────────
+ *
+ * La firma responde "¿alguien tocó esta pestaña desde que la escribí?". Eso es evidencia de conflicto
+ * SÓLO si el OS es dueño de la pestaña entera (las del Flujo de Caja: las regenera y las sella). En una
+ * pestaña COMPARTIDA —`Obreros 26` de JORNALES, que administración carga todos los días y donde el OS
+ * sólo pone celdas sueltas— la respuesta es siempre "sí", y no significa conflicto: significa que la
+ * planilla se está usando. Aplicarle la firma tenía dos consecuencias, las dos vistas en producción el
+ * 30/07: la escritura se descartaba SIEMPRE, y —peor— `firmaGuardia` AUTO-CANDABA la pestaña, así que
+ * un falso positivo se convertía en una falla permanente.
+ *
+ * Con `compartida:true` se sigue aplicando lo que sí protege al dueño —el cinturón vacío-sobre-lleno y
+ * el CANDADO explícito, que es su voluntad declarada— y se saltea la firma. Quien la use tiene que
+ * traer su propia protección, y más fina: `registrarAsistencia` relee la celda destino y compara su
+ * huella justo antes de escribir, y aborta toda la operación si cambió. Se protege la CELDA, que es la
+ * unidad que se comparte, en vez de la pestaña.
  */
-export async function evaluarBloqueadas(cliente, fileId, tabs = []) {
+export async function evaluarBloqueadas(cliente, fileId, tabs = [], { compartida = false } = {}) {
   const bloqueadas = new Set()
   const protegibles = tabs.filter(esProtegible)
   if (!protegibles.length) return bloqueadas
@@ -136,6 +152,8 @@ export async function evaluarBloqueadas(cliente, fileId, tabs = []) {
     const { estaBloqueada } = await import('./pestana-bloqueada.mjs')
     for (const t of protegibles) { if (await estaBloqueada({}, fileId, t).catch(() => false)) bloqueadas.add(t) }
   } catch { /* la base respondió el probe; un fallo puntual acá no habilita a pisar */ }
+  // Pestaña compartida: la firma no aplica (y por lo tanto tampoco el auto-candado). Ver el encabezado.
+  if (compartida) return bloqueadas
   try {
     const { firmaGuardia } = await import('./firma-tab.mjs')
     for (const t of protegibles) {
@@ -193,7 +211,7 @@ async function reInyectarAprendidas(fileId, data) {
  *
  * @returns {Promise<{data:any[], bloqueadas:string[], motivo?:string, sellar:() => Promise<void>}>}
  */
-export async function guardarEscritura(cliente, fileId, data, { chequearVacio = true } = {}) {
+export async function guardarEscritura(cliente, fileId, data, { chequearVacio = true, compartida = false } = {}) {
   // CINTURÓN 1 — "vacío sobre lleno". Corre PRIMERO y sin base: aunque candado/firma no puedan
   // consultarse, una grilla vacía nunca reemplaza contenido. clearValues/append lo apagan (chequearVacio:false).
   if (chequearVacio) {
@@ -206,16 +224,19 @@ export async function guardarEscritura(cliente, fileId, data, { chequearVacio = 
   }
   const tabs = tabsProtegibles(data)
   if (!tabs.length) return { data, bloqueadas: [], sellar: async () => {} }
-  const bloqueadas = await evaluarBloqueadas(cliente, fileId, tabs)
+  const bloqueadas = await evaluarBloqueadas(cliente, fileId, tabs, { compartida })
+  // En una pestaña compartida el OS no es dueño de nada: sellar una firma que la próxima edición de
+  // administración va a invalidar sólo fabrica un baseline falso. No se sella.
+  const sellarSi = (t) => (compartida ? async () => {} : () => sellarTabs(cliente, fileId, t))
   if (!bloqueadas.size) {
     const conAprendidas = await reInyectarAprendidas(fileId, data)
-    return { data: conAprendidas, bloqueadas: [], sellar: () => sellarTabs(cliente, fileId, tabs) }
+    return { data: conAprendidas, bloqueadas: [], sellar: sellarSi(tabs) }
   }
   const { permitido } = separarPermitido(data, bloqueadas)
   for (const t of bloqueadas) console.log(`  🔒 "${t}" bajo tu control (candado/edición): no la piso — escritura protegida en el portón.`)
   const escritos = tabsProtegibles(permitido)
   const conAprendidas = await reInyectarAprendidas(fileId, permitido)
-  return { data: conAprendidas, bloqueadas: [...bloqueadas], sellar: () => sellarTabs(cliente, fileId, escritos) }
+  return { data: conAprendidas, bloqueadas: [...bloqueadas], sellar: sellarSi(escritos) }
 }
 
 // ═══ EL MISMO CANDADO, PARA spreadsheetBatchUpdate (updateCells/copyPaste/pasteData/appendCells) ═══

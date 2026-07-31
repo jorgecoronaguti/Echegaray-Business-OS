@@ -1008,7 +1008,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
 
     /** Escribe VARIOS rangos de un Sheet en UNA sola operación (batch). `data` = matriz de
      *  { range, values }. Mucho más rápido y menos "escueto" que una celda por vez. */
-    async batchUpdateValues(fileId, data, { espejo = false, yaGuardado = false } = {}) {
+    async batchUpdateValues(fileId, data, { espejo = false, yaGuardado = false, compartida = false } = {}) {
       // ── GUARDA CENTRAL (25/07): el choke point que hace que NINGÚN escritor —crudo o no— pueda pisar
       // una pestaña candada o que el dueño editó (firma). Se saltea sólo con bandera explícita: `espejo`
       // (mirrors _RAW) o `yaGuardado` (lo llama escribirPreservando, que ya verificó y sella él mismo).
@@ -1017,7 +1017,9 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       if (!espejo && !yaGuardado) {
         try {
           const { guardarEscritura } = await import('./guarda-escritura.mjs')
-          const g = await guardarEscritura(cliente, fileId, data)
+          // `compartida`: pestaña que el OS no genera (JORNALES). Mantiene candado y vacío-sobre-lleno,
+          // saltea la FIRMA — que ahí siempre difiere y no significa conflicto. Ver guarda-escritura.mjs.
+          const g = await guardarEscritura(cliente, fileId, data, { compartida })
           if (!g.data.length) return { protegido: true, bloqueadas: g.bloqueadas, motivo: g.motivo }
           data = g.data
           sellar = g.sellar

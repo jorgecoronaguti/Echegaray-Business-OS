@@ -436,7 +436,14 @@ export async function registrarAsistencia(google, { plan, confirmarSobrescritura
   if (!data.length) return { ok: true, escritas: 0, celdas: [], nota: 'nada que escribir tras la relectura' }
 
   // 3) UNA sola operación batch para todas las celdas.
-  const res = await google.batchUpdateValues(plan.spreadsheet_id, data)
+  //
+  // `compartida: true` — JORNALES no es una pestaña del OS: administración la carga todos los días y
+  // acá sólo se ponen celdas sueltas. La guarda por FIRMA de pestaña (¿alguien tocó algo en A1:BZ?)
+  // ahí da que sí SIEMPRE, y el 30/07 eso no sólo descartó la carga: auto-candó la pestaña y dejó la
+  // asistencia muerta. La protección que corresponde es la de arriba y es más fuerte: se releyó cada
+  // celda destino y se comparó su huella; si algo cambió, no se escribe NADA. El candado explícito del
+  // dueño sigue mandando: si él toma la pestaña, esto se corta igual.
+  const res = await google.batchUpdateValues(plan.spreadsheet_id, data, { compartida: true })
   // La guarda central del cliente puede negar la escritura (pestaña candada por el
   // dueño o editada a mano). Eso NO es éxito: se informa tal cual.
   if (res?.protegido) {
