@@ -396,7 +396,18 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // PERCIBIDO: el total excluye los Valores a depositar (echeq en custodia, sin acreditar). No son
   // caja de hoy — entran en el calendario cuando se acreditan. Es también el "Efectivo al inicio" que
   // usan los dos cash flows (CAJA_TOTAL_DISPONIBLE), así que su apertura queda percibida, sin el echeq.
-  const fTotal = push(['Total disponibilidades', '', '', '', `=SUM(${C_PESOS}${d0}:${C_PESOS}${d1})${fCartera ? `-${C_PESOS}${fCartera}` : ''}`, '', '', '', 'Efectivo al inicio (percibido) que usan los dos cash flows: caja + bancos + movimientos posteriores, SIN los valores a depositar, que entran en el calendario al acreditarse.'])
+  // LA FECHA DE LA POSICIÓN VIVE EN LA MISMA FILA QUE EL MONTO (31/07). CAJA_FECHA_SALDO apuntaba a
+  // "la última fila del bloque, columna F" — que tenía fecha sólo porque la cartera estaba última. Es
+  // el mismo defecto que ya arruinó la alerta de echeqs (ver el comentario de `d1` más arriba): al
+  // agregar las tres filas de efectivo posteriores al arqueo, la última pasó a ser "(−) depositado en
+  // el banco", que NO lleva fecha. EOMONTH de una celda vacía da 31/12/1899, así que las dos filas más
+  // importantes de los dos cash flow —"Efectivo al inicio" y "al cierre"— quedaron VACÍAS en los doce
+  // meses, sin error y sin aviso. CAJA lo veía y lo cantaba en "lo que no cierra" por $108,5M.
+  //
+  // Ahora la fecha es la MÁS RECIENTE del bloque, calculada (mismo criterio que ya usa el tramo del
+  // calendario), y el nombre se ancla a esta fila: el monto y su fecha no se pueden separar.
+  const fTotal = push(['Total disponibilidades', '', '', '', `=SUM(${C_PESOS}${d0}:${C_PESOS}${d1})${fCartera ? `-${C_PESOS}${fCartera}` : ''}`,
+    `=IFERROR(MAX($F$${d0}:$F$${d1});"")`, '', '', 'Efectivo al inicio (percibido) que usan los dos cash flows: caja + bancos + movimientos posteriores, SIN los valores a depositar, que entran en el calendario al acreditarse. La fecha de al lado es la del dato más reciente del bloque: es la que los dos cash flow usan para saber en qué mes abrir.'])
   // La exposición al tipo de cambio. No es un detalle de presentación: decide si conviene vender o
   // quedarse. Sale de las mismas filas de arriba, no se carga aparte.
 
@@ -1146,9 +1157,11 @@ async function main() {
   // referencias por celda, insertar un bloque acá arriba dejaba sus dos filas de efectivo vacías y
   // sin avisar. Un nombre sigue a la celda aunque se mueva, y por eso el orden de los pasos del
   // agente deja de importar.
+  // LOS DOS NOMBRES EN LA MISMA FILA. La fecha ya no es "la última del bloque" (que dejó de tener
+  // fecha el día que el bloque creció): es la celda calculada que está al lado del total.
   await publicar(google, ID, hoja.sheetId, [
     { name: N_CAJA.total, fila: g.fTotal, col: 5 },
-    { name: N_CAJA.fecha, fila: g.d1, col: 6 },
+    { name: N_CAJA.fecha, fila: g.fTotal, col: 6 },
   ])
 
   const v = await google.readSheetValues(ID, `${tab}!A1:I${g.filas.length}`)

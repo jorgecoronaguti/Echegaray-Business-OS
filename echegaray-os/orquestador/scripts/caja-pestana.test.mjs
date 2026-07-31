@@ -140,3 +140,36 @@ test('las cuentas del bloque siguen siendo las del plan de cuentas (el rótulo e
   for (const c of CUENTAS) assert.ok(filaDe(g, new RegExp(`^${c.nombre.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')) > 0,
     `falta la cuenta "${c.nombre}": CAJA ubica por RÓTULO, si cambia se rompe todo lo que la lee`)
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL MONTO Y SU FECHA NO SE PUEDEN SEPARAR (31/07)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// QUÉ PASÓ. Los dos cash flow abren su saldo con dos nombres de CAJA: CAJA_TOTAL_DISPONIBLE (cuánto) y
+// CAJA_FECHA_SALDO (a qué fecha). El segundo se publicaba apuntando a "la última fila del bloque,
+// columna F" — que tenía fecha sólo porque la cartera estaba última. Al agregar las tres filas de
+// efectivo posteriores al arqueo, la última pasó a ser "(−) depositado en el banco", que no lleva
+// fecha. EOMONTH de una celda vacía da 31/12/1899, así que la comparación por mes nunca acertaba y las
+// dos filas más importantes del cuadro —"Efectivo al inicio" y "al cierre"— quedaron VACÍAS los doce
+// meses. Sin error. CAJA lo cantaba en "lo que no cierra" por $108,5M y nadie lo había leído.
+//
+// Es la SEGUNDA vez que `d1` ("la última fila") rompe algo por crecer el bloque: la primera fue la
+// alerta de echeqs. Por eso la fecha pasa a ser un dato CALCULADO en la fila del total.
+test('LA FECHA DE LA POSICIÓN VIVE EN LA FILA DEL TOTAL, y es la más reciente del bloque', () => {
+  const g = construir()
+  const fecha = celda(g, g.fTotal, 5)
+  assert.match(fecha, /^=/, 'la fecha de la posición tiene que ser CALCULADA, no un día pegado a mano')
+  assert.ok(fecha.includes(`$F$${g.d0}:$F$${g.d1}`),
+    `tiene que ser el MAX de las fechas del bloque ($F$${g.d0}:$F$${g.d1}); dice: ${fecha}`)
+  assert.ok(/MAX\(/.test(fecha), 'la posición vale a la fecha del dato MÁS RECIENTE que la compone')
+})
+
+test('la última fila del bloque NO sirve como ancla de fecha — por eso ya no se usa', () => {
+  const g = construir()
+  // La prueba de que el ancla vieja estaba podrida: hoy la última fila del bloque no tiene fecha.
+  // Si alguien reordena el bloque y vuelve a poner una fila con fecha al final, este test seguiría
+  // pasando; lo que garantiza el arreglo es el test de arriba (la fecha vive en la fila del total).
+  assert.ok(vacia(celda(g, g.d1, 5)),
+    'la última fila del bloque no lleva fecha: cualquier nombre anclado ahí queda apuntando a una celda vacía')
+  assert.notEqual(g.fTotal, g.d1, 'el total está DEBAJO del bloque, no es su última fila')
+})
