@@ -28,9 +28,15 @@
 // La tentación es agregar el `await`. Sería peor que el bug: la cuenta operadora hoy
 // resuelve a una persona real (`ORQ_GOOGLE_IMPERSONATE`), y este cliente es con el que se
 // ESCRIBE JORNALES. Escribir la planilla como esa persona hace que el historial de Drive
-// deje de decir `gserviceaccount.com`, y entonces `ES_CUENTA_OS` (historial-ediciones.mjs)
-// pasa a leer las escrituras del propio OS como ediciones humanas. El candado automático se
-// cerraría solo sobre las pestañas que el OS acaba de escribir.
+// deje de decir `gserviceaccount.com`, y `ES_CUENTA_OS` (historial-ediciones.mjs) es
+// justamente cómo el OS distingue su propia escritura de una edición del dueño.
+//
+// Siendo exactos, porque exagerar un riesgo también es fabricar: JORNALES se escribe con
+// `compartida: true` y `evaluarBloqueadas` sale antes de la firma con ese flag, así que hoy
+// el auto-candado NO se dispararía sobre esa planilla. Lo que sí cambiaría es el actor en el
+// historial de Drive de un archivo que administración mira todos los días, y cualquier
+// pestaña futura que este cliente escriba SIN `compartida` sí se auto-candaría. Ninguna de
+// las dos cosas avisa: sólo pasan.
 //
 // El arreglo real es hacer la identidad EXPLÍCITA en vez de derivarla de un ternario que
 // nadie podía leer: este cliente es el INSTITUCIONAL del OS, es el Service Account, y se

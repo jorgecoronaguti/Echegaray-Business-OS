@@ -171,15 +171,27 @@ Mezclarlas no rompe nada de forma visible — sigue funcionando, con la cuenta e
 
 | Identidad | Valor | Con qué se arma | Quién la usa |
 |---|---|---|---|
-| **Institucional** | `service_account` | `googleDelOs()` | escritura de JORNALES, lectura de Drive, pipeline de Sheets |
-| **Operadora** | `operator_oauth` | `getTokenFor(await operadorEmail())` | especialistas, `operation_execute`, scripts de fondo |
+| **Institucional** | `service_account` | `googleDelOs()` | asistencia: lectura y escritura de JORNALES |
+| **Institucional** | `service_account` | `makeGoogleClient({scopes: WRITE_SCOPES})` | el pipeline de Sheets (Flujo de Fondos, Proveedores, Caja…) |
+| **Operadora** | `operator_oauth` | `getTokenFor(await operadorEmail())` | `specialist`, `operation_execute`, `interactive-server`, scripts de sync |
 | **Personal** | `user_oauth` | `googleDe({identidad})` del asistente | Calendar y Tasks de cada persona |
+
+Las dos primeras filas son la misma identidad armada por dos caminos: el pipeline no pasa por
+`googleDelOs()`, construye su cliente directo. Coinciden en la cuenta, que es lo que importa.
 
 La institucional es **el Service Account, explícito**. No es una preferencia estética: la
 protección de ediciones de Drive reconoce al OS por el `gserviceaccount.com` del historial
-(`lib/historial-ediciones.mjs`). Si JORNALES se escribiera como `jorge@ecsas.com.ar`, el OS
-dejaría de reconocer su propia escritura, la leería como edición del dueño y auto-candaría la
-pestaña. Sin error y sin log.
+(`lib/historial-ediciones.mjs`), así que la cuenta con la que el OS escribe es lo que le
+permite distinguir su propia escritura de una edición del dueño.
+
+Para JORNALES en particular hay que ser exacto, porque es fácil exagerar el riesgo: la
+asistencia escribe con `compartida: true`, y `evaluarBloqueadas` sale antes de llegar a la
+firma cuando ese flag está puesto — así que hoy **el auto-candado no se dispara sobre
+JORNALES aunque cambiara la identidad**. Lo que sí cambiaría, y alcanza para no tocarlo sin
+autorización, es que el historial de Drive de una planilla que administración mira todos los
+días pasaría a decir el nombre de una persona en vez del robot, y que cualquier pestaña que
+este cliente escriba en el futuro **sin** `compartida` sí se auto-candaría. Sin error y sin
+log, en los dos casos.
 
 La personal **nunca cae al Service Account**. Cuando la persona no conectó su Google, el
 cliente queda marcado `propia:false` y `permiteEfectoExterno()` bloquea la acción. Crear el
