@@ -273,8 +273,15 @@ function grilla(iva, planes, iibb, ivaOficial, C) {
   push([seccion(4, 'Otros impuestos — ¿qué más se paga y no estaba a la vista?')])
   cabecera()
   const B = '_BANCO_RAW'
+  // −IMPORTE, NO ABS(IMPORTE) (31/07). El extracto trae los débitos en negativo, así que ABS y "−" dan
+  // lo mismo… salvo cuando el banco DEVUELVE el impuesto. "Anul imp ley 25.413 debito 0,6%" es un
+  // crédito de +$294,78: con ABS se sumaba como si fuera un impuesto MÁS, o sea el cuadro declaraba
+  // $589,56 de impuesto que no se pagó (el que no se cobró, más el que se devolvió). Con "−" la reversa
+  // resta y la fila muestra el impuesto NETO, que es lo que la empresa efectivamente pagó. El defecto
+  // no se veía porque hasta hoy la reversa no llegaba a este bucket: caía en el cajón de sastre de
+  // clasificarMovimiento. Arreglar la clasificación sin arreglar esto habría empeorado el número.
   const porMesBanco = (patron) => (m) =>
-    `=SUMPRODUCT((YEAR(${B}!$A$4:$A)=${AÑO})*(MONTH(${B}!$A$4:$A)=${m})*ISNUMBER(SEARCH("${patron}";${B}!$F$4:$F))*ABS(IF(ISNUMBER(${B}!$C$4:$C);${B}!$C$4:$C;0)))`
+    `=SUMPRODUCT((YEAR(${B}!$A$4:$A)=${AÑO})*(MONTH(${B}!$A$4:$A)=${m})*ISNUMBER(SEARCH("${patron}";${B}!$F$4:$F))*-IF(ISNUMBER(${B}!$C$4:$C);${B}!$C$4:$C;0))`
   const o0 = filas.length + 1
   const fCheque = mensual('Impuesto al cheque (Ley 25.413)', porMesBanco('Impuesto al cheque'),
     'Extracto Santander · el banco lo debita solo y declara la alícuota en el concepto ("debito 0,6%"). Sólo hay dato en los meses que cubre el extracto.')
