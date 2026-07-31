@@ -139,6 +139,50 @@ abre un navegador — el jefe toca el mensaje en el canal y Mattermost llama al 
 escucha en un **socket unix** (el firewall del host descarta lo que viene de los bridges de
 Docker) y Caddy lo publica bajo el dominio que ya sirve Mattermost.
 
+### El `id` de una acción viaja dentro de una URL de Mattermost
+
+Cuando el jefe toca un botón, el cliente llama a
+`POST /api/v4/posts/{post_id}/actions/{action_id}`. El `id` de la acción **no es una etiqueta
+interna nuestra**: es un segmento de esa URL, y **el router de Mattermost sólo acepta ids
+alfanuméricos** en ese lugar. Un id con guión bajo (o con guión medio) no matchea la ruta:
+Mattermost contesta su propio 404 de router y **la petición nunca llega al Business OS**.
+
+Por eso todo id de acción del módulo es alfanumérico (`fechahoy`, `fechaayer`, `fechaotra`,
+`obra`, …). El servidor **nunca rutea por el `id`**: rutea por `context.paso`. El id existe para
+Mattermost, no para nosotros. `contrato-mattermost.mjs` exige que todo id de acción sea
+alfanumérico, y hay un test que recorre todos los mensajes del módulo: un botón nuevo con guión
+bajo no puede volver a llegar a producción.
+
+**Cómo se descubrió (30/07/2026).** El mensaje se publicaba bien, pero apretar cualquiera de los
+tres botones de fecha (`Hoy`, `Ayer`, `Otra fecha…`) mostraba «Sorry, we could not find the
+page.», mientras que el desplegable de obra y el botón `Registrar`, **en el mismo mensaje**,
+funcionaban. Los tres botones de fecha tenían el id con guión bajo: `fecha_hoy`, `fecha_ayer`,
+`fecha_otra`. En los logs del servicio no había **una sola línea** — y esa ausencia era la pista:
+no era el backend, ni el ruteo de Caddy, ni una URL vieja de la pantalla web eliminada.
+
+Cuatro llamadas al mismo post, con el mismo token, lo probaron:
+
+| `id` enviado | Respuesta | Qué significa |
+|---|---|---|
+| `obra` — alfanumérico, existe en el post | HTTP 200 `{"status":"OK"}` | La ruta matchea y la acción existe |
+| `noexisteaqui` — alfanumérico, no existe | HTTP 404 `api.post.do_action.action_id.app_error` | La ruta matchea: **el handler corrió** y dijo "esa acción no está" |
+| `fecha_hoy` — guión bajo | HTTP 404 `api.context.404.app_error` | «Sorry, we could not find the page»: **el router ni matcheó** |
+| `fecha-hoy` — guión medio | HTTP 404 `api.context.404.app_error` | Lo mismo |
+
+El contraste entre los **dos 404 distintos** es lo que prueba que el problema es el **carácter**
+del id y no la existencia de la acción.
+
+La corrección fue cambiar los tres ids a `fechahoy`, `fechaayer` y `fechaotra`. No cambió nada
+más: mismo tipo de botón, mismo endpoint `/asistencia/accion`, mismo `context`, misma sesión,
+mismo backend.
+
+Dos lecciones, que valen para cualquier UI interactiva futura:
+
+- El alfabeto de un identificador que viaja dentro de una URL ajena **lo decide el dueño de esa
+  URL**, no nosotros.
+- Un defecto que **no deja rastro en los logs del propio sistema** es señal de que la falla
+  ocurre **antes** de llegar: hay que ir a mirar los logs del otro lado.
+
 ### La puerta
 
 `asistencia-guarda.mjs` corre **antes que nada**: antes de abrir sesión, de leer la planilla y
@@ -413,6 +457,7 @@ volviendo a cargar el valor correcto (el módulo escribe el valor final, no un d
 | Entra pero no contesta | `select * from orq.tasks where queue='comunicacion' order by id desc` | Worker parado, o tarea en `failed` |
 | `Invalid RootId parameter` en outbox | `comunicacion.outbox`, `last_error` | Se respondió en el hilo de un post que no existe |
 | Responde el catálogo en vez de atender | tabla `comunicacion.canales_area` | Binding del canal inactivo o ausente |
+| Un botón dice «Sorry, we could not find the page» y **no hay nada en los logs del OS** | El `id` de esa acción, y los logs de Mattermost | El `id` no es alfanumérico: el router de Mattermost descarta la petición antes de que llegue al OS. Ver §3bis |
 | `⚠️ La pestaña … está tomada` | `sheet_pestanas_bloqueadas` | Candado **explícito** de la Regla 0. **No desactivarlo**: es la voluntad del dueño |
 | Lo mismo, pero la fila dice `bloqueada_por='auto'` | idem, y §8 | Candado **automático** de la firma de pestaña. Sobre una pestaña compartida como `Obreros 26` es un falso positivo: la escritura de asistencia va con `compartida: true` y no debería llegar ahí. Si aparece, hay un escritor que no pasa la bandera |
 | Escribe pero no aparece | `comunicacion.v_asistencia_auditoria` | Mirar `old_value`/`new_value` y la celda exacta |
