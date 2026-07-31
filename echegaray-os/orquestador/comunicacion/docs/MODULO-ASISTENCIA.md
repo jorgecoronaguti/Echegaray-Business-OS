@@ -34,7 +34,7 @@ Es la regla que gobierna todo el módulo y la razón de su arquitectura:
 | Cuántas horas se guardan | **Código** (`horas-extra.mjs`, normalización + validación) |
 | Cómo se conserva una fórmula | **Código** (fingerprint de celda + fórmula preservada) |
 | Cómo se resuelve una colisión | **Código** (concurrencia optimista, re-lectura + re-resolución) |
-| Cómo se aplica la idempotencia | **Código** (clave estable SHA-256 de un solo uso) |
+| Cómo se aplica la idempotencia | **Código** (clave estable SHA-256, acotada a la sesión; quién decide si hay que escribir es la planilla releída) |
 
 **Ningún modelo se interpone entre una marca del jefe y la modificación de una celda.** El modelo,
 cuando interviene, sólo elige destinatario dentro de una lista cerrada de especialistas
@@ -90,6 +90,25 @@ registrados; si no hay motor disponible no adivina, responde el catálogo.
       │
       ▼
    comunicacion.outbox ──▶ respuesta EN EL MISMO CANAL, en el hilo del post
+```
+
+Ese es el camino del **texto**. Los **clicks** del mensaje interactivo entran por otro proceso
+y no pasan por el Director ni por el worker:
+
+```
+  Jefe de obra toca un botón
+      │  POST /api/v4/posts/{post_id}/actions/{action_id}   (cliente → Mattermost)
+      ▼
+  Mattermost llama la URL de callback que guardó, con su secreto en la query
+      │  POST https://chat.ecsas.com.ar/asistencia/accion?t=…   (Caddy → socket unix)
+      ▼
+  servidor-asistencia.mjs → asistencia-accion.mjs
+      │  SECRETO → GUARDA DE CANAL → ruteador (asistencia-mm/acciones.mjs)
+      ▼
+  núcleo (jornales-asistencia.mjs) ──▶ JORNALES + auditoría
+      │
+      ▼
+  el MISMO post, reescrito (`update`, o `PUT /posts/{id}` tras un diálogo)
 ```
 
 ### Por qué el Director no sabe de asistencia
@@ -170,7 +189,7 @@ producir combinaciones válidas. Prevenir antes en vez de corregir después.
 |---|---|---|
 | Attachments con acciones | **SÍ** | Es la UI |
 | Actualizar el post desde una acción | **SÍ** | El mensaje se reescribe |
-| Diálogo modal (`trigger_id`) | **SÍ**, tope **5 elementos** | Los 5 campos entran exactos; no hay margen para un sexto |
+| Diálogo modal (`trigger_id`) | **SÍ**, tope **5 elementos** | Desde que hay un formulario por tipo, el más largo («Hizo menos horas») usa **4**: horas, motivo, otra obra y aclaración. Queda un lugar libre, no cinco |
 | Reaccionar dentro del diálogo a un cambio de campo | **NO** | El diálogo es **estático**: no hay evento de cambio ni re-render. El tipo de excepción se elige **antes** de abrirlo, y cada diálogo trae sólo lo compatible |
 | Texto propio de error al rechazar un `dialog_submission` | **SÍ**, con un `error` de primer nivel | Sólo con `errors` por campo, Mattermost muestra su default en inglés «Submission failed with validation errors» |
 | Actualizar el post desde un `dialog_submission` | **NO** | Tras el diálogo, el post se refresca por API |
@@ -184,6 +203,41 @@ Mattermost **exige** una URL de callback para sus botones: `POST /asistencia/acc
 abre un navegador — el jefe toca el mensaje en el canal y Mattermost llama al OS. El servicio
 escucha en un **socket unix** (el firewall del host descarta lo que viene de los bridges de
 Docker) y Caddy lo publica bajo el dominio que ya sirve Mattermost.
+
+### Esa ruta está en Internet: el secreto de la integración
+
+Caddy publica `/asistencia/accion` en el dominio público, y **la identidad del que carga sale
+del payload** (`user_id`, `channel_id`), que lo escribe quien llama. Mientras el endpoint no
+verificó nada, un `curl` anónimo con el `user_id` de alguien habilitado y el `channel_id` del
+canal de asistencia **pasaba el control de canal y el de permisos** y quedaba a un paso de
+escribir jornales a nombre de esa persona. Ni el canal ni el permiso defienden nada si la
+identidad la pone el atacante: era la única de las puertas que no presentaba credencial — el
+slash command ya presentaba su token.
+
+Hoy el pedido tiene que presentar un **secreto de integración** (`ASISTENCIA_ACCION_SECRETO`),
+y la verificación corre **antes** que la guarda de canal:
+
+- **Dónde viaja**: en la query (`?t=…`) de la URL de callback. Mattermost guarda esa URL en su
+  base y **no se la manda al cliente** — verificado contra el servidor real: los posts llegan
+  sin el bloque `integration`, ni siquiera pidiéndolos con un token de API. Sólo el servidor de
+  Mattermost la conoce.
+- **Un solo lugar la arma** (`secreto-compartido.mjs` → `urlAccionDeEntorno`), y lo usan las
+  tres puertas que publican botones: el slash command, la mención `@os asistencia` y el
+  re-render de cada click. Si cada una armara la suya, alcanzaría con que una se olvidara el
+  secreto para que sus botones murieran en producción y en ningún test.
+- **Se compara en tiempo constante** (`timingSafeEqual`), no con `===`: el tiempo de respuesta
+  de una comparación que corta en el primer byte distinto permite adivinar el secreto de a un
+  carácter.
+- **Falla cerrado en los dos sentidos**: sin la variable configurada el endpoint **deniega
+  todo**. Un endpoint que escribe jornales sin verificar nada es peor que uno apagado —
+  apagado se nota enseguida; abierto, recién cuando aparece una carga que nadie hizo.
+
+La variable es **obligatoria en los dos entornos**: en `asistencia-http.env` (el servicio que
+atiende los clicks) y en `comunicacion.env` (el worker, que publica los botones de la mención).
+Si están distintas, el mensaje se publica y **ningún botón responde**. Ver §11.
+
+El rechazo queda auditado como cualquier otro: familia `token`, con `error_code`
+`secreto_sin_configurar` o `secreto_invalido`. Al usuario no se le dice cuál de los dos.
 
 ### El `id` de una acción viaja dentro de una URL de Mattermost
 
@@ -229,12 +283,47 @@ Dos lecciones, que valen para cualquier UI interactiva futura:
 - Un defecto que **no deja rastro en los logs del propio sistema** es señal de que la falla
   ocurre **antes** de llegar: hay que ir a mirar los logs del otro lado.
 
+### Lo que el camino de botones hacía distinto del camino viejo
+
+La UI de Mattermost llegó después que el flujo conversacional y, sin proponérselo, se
+construyó tres cosas propias donde ya había una. Ninguna se veía desde afuera:
+
+**El post no se refrescaba después de un diálogo.** El ruteador le pasaba al cliente `postId` y
+el cliente espera `id`: salía `PUT /posts/undefined → 400`, el error quedaba en el log y la
+respuesta al jefe era 200 igual. El jefe guardaba la excepción, el sistema decía OK y **la
+lista seguía mostrando lo viejo**. Ahora el nombre es el que el cliente espera, y el id del
+post se guarda en la sesión **apenas se conoce** — así «Otra fecha…» como primer click (un
+diálogo, que no trae `post_id`) también deja el mensaje al día en vez de mostrar las obras del
+día anterior.
+
+**La auditoría de la escritura se armaba a mano.** El evento `written` del camino de botones
+guardaba cuatro campos, mientras el camino conversacional usaba `payloadConfirmacion`. Toda
+carga hecha desde la UI real quedaba **sin `celdas_modificadas`** —qué celda, de qué valor a
+cuál, cuánto normal y cuánto extra— y sin `mattermost_username`: justo lo que hay que mirar
+para auditar una carga. Hoy los dos caminos usan el mismo constructor. Los rechazos del
+ruteador, además, llevan `request_id`, que antes sólo llevaban los de la puerta.
+
+**Tres mensajes decían algo que no había pasado.** «Esta carga ya se registró» salía también
+cuando la sesión se había cerrado entre que se leyó y que se quiso confirmar —un Cancelar desde
+otro dispositivo, un vencimiento—: ahí **no se escribió nada** y el jefe se iba convencido de
+que la asistencia estaba cargada. Ahora ese caso dice que no se escribió y cómo volver a
+cargar. Tras un fallo de escritura el post ya **no ofrece «Registrar»** (la sesión quedó
+cerrada como fallida: el botón sólo podía contestar «este formulario ya se cerró»). Y cambiar
+de obra avisa que **se borraron las excepciones marcadas**, que es lo que siempre hizo.
+
 ### La puerta
 
 `asistencia-guarda.mjs` corre **antes que nada**: antes de abrir sesión, de leer la planilla y
 de gastar una consulta de permisos. Rechaza DM, grupos, otros canales y los pedidos que traen
 dos versiones del canal. El canal oficial sale de `comunicacion.canales_area` — no está en el
 código, y hay un test que falla si aparece un id de Mattermost literal.
+
+Corre en **las tres vías que llegan a JORNALES**: el slash command / la mención
+(`asistencia-inicio.mjs`), cada click del mensaje interactivo (`asistencia-accion.mjs`) y el
+flujo conversacional (`asistencia-flujo.mjs`). La conversacional era la única que no la
+consultaba: se podía cargar la asistencia por **mensaje privado al bot**, justo lo que la
+guarda existe para impedir. El permiso solo no alcanza — dice **quién** puede, no **desde
+dónde**.
 
 Desactivar el binding apaga la carga sin desplegar código.
 
@@ -333,12 +422,32 @@ Persona inexistente → lista los trabajadores reales, no inventa.
 | Archivo | Responsabilidad |
 |---|---|
 | `especialistas/personal.mjs` | Contrato: `slug personal`, `agentSlug rrhh`, `area personas`. Gramática y despacho |
-| `asistencia-flujo.mjs` | Máquina de estados del registro |
+| `asistencia-guarda.mjs` | La puerta: de qué canal se puede cargar. Corre primero en las tres vías |
+| `asistencia-inicio.mjs` | Abre la sesión y devuelve el mensaje interactivo (`@os asistencia`) |
+| `asistencia-flujo.mjs` | Máquina de estados del registro **por conversación** |
 | `asistencia-sesion.mjs` | Sesiones en Postgres, TTL, una abierta por persona, idempotencia |
-| `asistencia-ui.mjs` | Parsing de comandos y render de las respuestas |
+| `asistencia-ui.mjs` | Parsing de comandos y render de las respuestas de la vía conversacional |
 | `asistencia-consultas.mjs` | Consultas de sólo lectura (gramática + render) |
 | `asistencia-permisos.mjs` | Modo abierto/estricto, `PERMISO_ASISTENCIA_WRITE` |
 | `asistencia-auditoria.mjs` | Eventos (incluido el rechazo), payload de confirmación, sanitización de errores |
+| `lib/asistencia-motivos.mjs` | Catálogo de motivos y `validarNovedad` — la última palabra |
+| `lib/asistencia-novedades.mjs` | Proyección consultable del porqué (`comunicacion.asistencia_novedades`) |
+| `lib/asistencia-servicio/fechas.mjs` · `mapeo.mjs` | Fechas operativas y traducción núcleo ↔ UI. Es lo único que sobrevivió de la pantalla web |
+
+### UI dentro de Mattermost
+
+| Archivo | Responsabilidad |
+|---|---|
+| `servidor-asistencia.mjs` | El servicio HTTP: socket unix, lectura del entorno, armado del secreto y de la URL de callback |
+| `comando-asistencia.mjs` | Puerta del slash command (verifica su token) |
+| `asistencia-accion.mjs` | Cableado de `POST /asistencia/accion`: **secreto → guarda → ruteador**, y el gancho que proyecta las novedades |
+| `secreto-compartido.mjs` | Comparación en tiempo constante y la única URL de callback con secreto |
+| `asistencia-mm/acciones.mjs` | El ruteador: qué hace cada click. Se prueba entero sin red ni base |
+| `asistencia-mm/mensaje.mjs` | Los attachments y los diálogos (uno por tipo de excepción) |
+| `asistencia-mm/dialogos.mjs` | Lo que vuelve de un diálogo → novedad válida; motivos por tipo; error en castellano |
+| `asistencia-mm/operaciones.mjs` | Traducción de la intención de la UI a las funciones del núcleo. Único camino de escritura |
+| `asistencia-mm/cliente.mjs` | **La frontera**: los dos únicos pedidos que salen a Mattermost (abrir diálogo, reescribir el post) |
+| `asistencia-mm/contrato-mattermost.mjs` | Valida el mensaje y el diálogo antes de mandarlos (ids alfanuméricos, topes, opciones) |
 
 ### Adaptador a JORNALES
 
@@ -354,7 +463,9 @@ Persona inexistente → lista los trabajadores reales, no inventa.
 ## 6. Integración con Mattermost
 
 - Bot **`@os`**, un solo bot general para todo el OS. No hay un bot de asistencia.
-- Transporte **WebSocket saliente**: no hay endpoint HTTP entrante publicado para este flujo.
+- Transporte de **mensajes**: WebSocket **saliente**, sin endpoint HTTP entrante. Los **clicks**
+  sí llegan por HTTP: `POST /asistencia/accion`, publicado en Internet por Caddy y autenticado
+  con `ASISTENCIA_ACCION_SECRETO`. Mattermost no ofrece otra forma de atender un botón.
 - Canal operativo: **`#asistencia`**, privado (`type P`).
   - `channel_id` `md5677yrtidztd7453rj6hxxmc` · `team_id` `51cbwfboatbudgk36cqdug8oor`.
   - **El `channel_id` no está en el código.** Vive en `comunicacion.canales_area`, atado al área
@@ -471,11 +582,29 @@ WorkingDirectory=/home/jorge/echegaray-os/app/.claude/worktrees/deploy-comunicac
 git -C .claude/worktrees/deploy-comunicacion/echegaray-os fetch origin && \
 git -C .claude/worktrees/deploy-comunicacion/echegaray-os checkout <sha>
 systemctl --user daemon-reload
-systemctl --user restart echegaray-comunicacion-worker echegaray-comunicacion-ws
+systemctl --user restart echegaray-comunicacion-worker echegaray-comunicacion-ws \
+                        echegaray-asistencia-http
 systemctl --user status echegaray-comunicacion-ws --no-pager | head -5
 ```
 
 Secretos en `~/.config/echegaray-orq/*.env`, `chmod 600`, **nunca en git**.
+
+### Variables que no pueden faltar ni diferir
+
+| Variable | Dónde | Si falta |
+|---|---|---|
+| `ASISTENCIA_ACCION_SECRETO` | **`asistencia-http.env` Y `comunicacion.env`**, con el **mismo valor** | Falla cerrado: el mensaje se publica y **ningún botón responde**. Si están distintas, igual. El servicio lo avisa al arrancar (`sin ASISTENCIA_ACCION_SECRETO: las acciones interactivas se van a denegar`) |
+| `ASISTENCIA_ACCION_URL` | ídem | Se cae al default `https://chat.ecsas.com.ar/asistencia/accion` |
+| `MM_SLASH_TOKEN_ASISTENCIA` | `asistencia-http.env` | El slash command queda apagado y no pasa nada al escribirlo |
+| `MM_FETCH_TIMEOUT_MS` | opcional, donde corra el cliente de Mattermost | Default **30 s**. Es un techo por llamada: sin él, un Mattermost que no contesta dejaba colgado el pedido del jefe para siempre |
+
+Las dos primeras van en los dos archivos porque son **dos procesos distintos**: el worker
+publica los botones de la mención `@os asistencia` y el servicio HTTP atiende el click. El
+worker arma la URL con su copia del secreto; el servicio la verifica con la suya.
+
+⚠️ `orquestador/comunicacion/deploy/env.example` —la plantilla de `comunicacion.env`— todavía
+**no declara** `ASISTENCIA_ACCION_SECRETO` ni `ASISTENCIA_ACCION_URL`. Quien arme un
+`comunicacion.env` desde esa plantilla se queda sin botones y sin pista de por qué.
 
 ## 12. Rollback
 
@@ -508,17 +637,23 @@ volviendo a cargar el valor correcto (el módulo escribe el valor final, no un d
 | El diálogo ofrece un motivo que no corresponde al tipo de excepción | El botón que lo abrió y los motivos que se le pasan | Un diálogo tiene que traer **sólo** los motivos de su ámbito (`No vino` → ausencia, `Hizo menos horas` → parcial, `Hizo horas extra` → ninguno). Ver §3bis |
 | `⚠️ La pestaña … está tomada` | `sheet_pestanas_bloqueadas` | Candado **explícito** de la Regla 0. **No desactivarlo**: es la voluntad del dueño |
 | Lo mismo, pero la fila dice `bloqueada_por='auto'` | idem, y §8 | Candado **automático** de la firma de pestaña. Sobre una pestaña compartida como `Obreros 26` es un falso positivo: la escritura de asistencia va con `compartida: true` y no debería llegar ahí. Si aparece, hay un escritor que no pasa la bandera |
-| Escribe pero no aparece | `comunicacion.v_asistencia_auditoria` | Mirar `old_value`/`new_value` y la celda exacta |
+| Escribe pero no aparece | `comunicacion.v_asistencia_auditoria` | Mirar `celdas_modificadas` (`old_value`/`new_value`) y la celda exacta. Si el evento es de una carga hecha por botones **anterior al 30/07/2026**, ese campo está en `null` y no hay nada que mirar: el camino de botones no lo llenaba |
+| El mensaje se publica pero **ningún botón hace nada** (ni error visible) | `journalctl --user -u echegaray-asistencia-http`, y los dos `.env` | Falta `ASISTENCIA_ACCION_SECRETO`, o el del worker y el del servicio no coinciden. Falla cerrado a propósito. Ver §11 |
+| Guardó la excepción en el diálogo pero **el mensaje sigue mostrando lo viejo** | Log del servicio: `no se pudo actualizar el post` | La reescritura del post falló (Mattermost caído, post borrado, token sin permiso). La carga **no se pierde** por eso; el refresco no tumba la acción |
+| El diálogo no abre y no hay error del lado del jefe | Log del servicio: `diálogo inválido, no se manda` | `contrato-mattermost.mjs` lo atajó (un desplegable sin opciones, un `default` fuera de la lista). Mattermost no da error útil: no abre y listo |
 | "Ya hay una carga abierta" | `comunicacion.asistencia_sesiones` | Sesión previa sin cerrar; expira sola por TTL o `cancelar` |
-| "No me deja cargar" y no se sabe por qué | `comunicacion.v_asistencia_auditoria` con `status='denied'` | El `error_code` dice el motivo exacto: `sin_permiso`, `canal_no_es_el_oficial`, `token_invalido`, `sesion_vencida`… |
+| "No me deja cargar" y no se sabe por qué | `comunicacion.v_asistencia_auditoria` con `status='denied'` | El `error_code` dice el motivo exacto: `sin_permiso`, `canal_no_es_el_oficial`, `token_invalido`, `secreto_invalido`, `secreto_sin_configurar`, `sesion_vencida`… |
+| Los botones de un mensaje viejo cambian la carga **del mensaje nuevo** | `comunicacion.asistencia_sesiones` | No hay vínculo post↔sesión: la sesión se resuelve por `user_id`. Ver límite #14 |
 | Ruteo raro en DM | — | Sin binding de canal, decide el modelo; si no hay crédito, catálogo |
 
 Diagnóstico sin tocar producción: `node orquestador/scripts/asistencia-dry-run.mjs` (no escribe).
 
 ## 14. Límites conocidos
 
-Son deliberados y están medidos. Ninguno bloquea hoy; los tres primeros bloquean **al segundo
-especialista operativo**.
+Los 1–13 son **deliberados** y están medidos; los tres primeros bloquean **al segundo
+especialista operativo**. Los 14–17 **no son elecciones**: son agujeros reales que la auditoría
+del 30/07/2026 encontró y **no** corrigió. Ninguno bloquea la operación de hoy, pero los 14 y
+16 pueden hacer que el jefe de obra vea una cosa y la planilla diga otra.
 
 1. **Sesiones con nombre de asistencia.** `comunicacion.asistencia_sesiones` es del módulo, no
    genérica. El índice "una sesión abierta por persona" es **global**: dos especialistas con
@@ -546,12 +681,43 @@ especialista operativo**.
     escribir texto ahí rompería las sumas de la quincena. Quien mire la planilla ve las horas,
     no el porqué. Reflejarlos en el Sheet exige antes averiguar cómo lo codifica hoy la leyenda
     (FALTA / TARDANZA / ENFERMEDAD), y eso no se adivina.
-12. **La confirmación de sobrescritura viaja por el `context` del cliente.** Es una
-    salvaguarda de UX, no una frontera de seguridad: la misma persona puede apretar el botón
-    igual. Lo que sí es frontera es la guarda de canal y permisos, que corre en el servidor.
+    La proyección **se corrige hacia abajo**: una carga posterior borra las novedades de los
+    trabajadores **de esa carga** que ya no tienen motivo. Antes una marca de ART quedaba para
+    siempre aunque la carga se corrigiera. El alcance es sólo las personas que vinieron en esa
+    carga: cargar 3 de una cuadrilla de 12 no dice nada sobre las otras 9.
+12. **La confirmación viaja por el `context` del cliente.** Es una salvaguarda de UX, no una
+    frontera de seguridad: la misma persona puede apretar el botón igual. Y es **una sola**:
+    ese `confirmar` concede a la vez **sobrescribir** una carga existente y **reemplazar una
+    fórmula** que no se pudo interpretar — dos permisos distintos que el jefe no puede dar por
+    separado. Lo que sí es frontera es el secreto de la integración, la guarda de canal y los
+    permisos, que corren en el servidor.
 13. **Feriados 2026 cargados: 16 + 6 días no laborables.** Güemes (17/06) y Soberanía Nacional (20/11) quedaron fuera
     a propósito: son trasladables y las fuentes discrepan por el Decreto 614/2025. Hay un test
     que falla si alguien los siembra sin verificarlos. Faltan los provinciales de San Juan.
+14. **No hay vínculo post↔sesión.** La sesión se resuelve **sólo por `user_id`**: el `post_id`
+    se guarda, pero para saber a qué post volver, no para decidir sobre qué sesión opera el
+    click. Con dos mensajes de asistencia abiertos de la misma persona, **los botones del viejo
+    operan sobre la sesión nueva** — y el mensaje viejo puede llegar a mostrar una obra que ya
+    no es la de la carga en curso. El índice "una sesión abierta por persona" reduce el daño,
+    no lo elimina: el mensaje viejo sigue en el canal con sus botones vivos.
+15. **Un día sin jornada calibrada obliga a cargar a mano.** Un sábado, o cualquier día que la
+    planilla no defina, no da contra qué armar el desplegable de horas: cada persona que no
+    hizo la jornada normal hay que marcarla una por una y escribirle las horas a mano
+    (inventar una jornada para poder ofrecer opciones sería fabricar el dato). Además el
+    formulario de «Hizo menos horas» **exige motivo siempre**, aunque sin jornada conocida el
+    catálogo no lo exigiría: es un campo obligatorio del diálogo, no una regla del catálogo.
+    Un feriado (jornada 0 h) cae en lo mismo: el campo de horas se vuelve texto libre — antes
+    de eso el desplegable quedaba vacío y **el formulario no abría**.
+16. **Si la verificación posterior a la escritura falla, las celdas ya se escribieron.**
+    `registrarAsistencia` escribe en batch y después relee para verificar. Si esa relectura no
+    coincide, devuelve `verificacion_fallida` y el evento se audita como `failed` — pero **la
+    planilla ya tiene los valores**. El jefe lee que no se pudo y la celda está cargada. Ante
+    ese código hay que mirar la planilla antes de volver a cargar.
+17. **El resultado de la auditoría no se mira.** Todos los `auditar(...)` son fire-and-forget
+    (`.catch(() => {})` o sin await del resultado), por diseño: la auditoría no puede voltear
+    una carga ni un rechazo. La contracara es que si el ledger dejara de escribir, la carga
+    seguiría funcionando y **nadie se enteraría** hasta que alguien buscara un evento y no
+    estuviera. No hay alarma sobre eso.
 
 ## 15. Mantenimiento
 
@@ -559,7 +725,11 @@ especialista operativo**.
 
 - Semanal: revisar `comunicacion.outbox` en estado `dead` y el DLQ del lane.
 - Semanal: `select * from comunicacion.v_asistencia_auditoria order by ts desc limit 50` — que
-  cada escritura tenga `old_value`/`new_value` y celda.
+  cada escritura tenga `old_value`/`new_value` y celda. Este control **estuvo ciego** para todo
+  lo cargado por la UI de botones hasta el 30/07/2026: ese camino armaba el evento a mano y
+  dejaba `celdas_modificadas` en `null` (ver §3bis). Los eventos anteriores a esa fecha no se
+  pueden reconstruir; de acá en adelante, un `written` sin celdas es un defecto, no un vacío
+  esperable.
 - Semanal: la misma vista con `status='denied'` — un rechazo repetido de la misma persona es
   un permiso que falta, y un rechazo por canal que se repite es alguien cargando donde no va.
   Se mira para actuar, no para archivar.
@@ -581,7 +751,11 @@ contrato, se le crea su canal con `scripts-canales.mjs`, y se resuelven antes lo
 **Tests**
 
 ```bash
-node --test orquestador/comunicacion/*.test.mjs orquestador/lib/asistencia-*.test.mjs \
+node --test orquestador/comunicacion/*.test.mjs orquestador/comunicacion/asistencia-mm/*.test.mjs \
+     orquestador/lib/asistencia-*.test.mjs orquestador/lib/asistencia-servicio/*.test.mjs \
      orquestador/lib/jornales*.test.mjs orquestador/lib/tools/jornales-asistencia.test.mjs
 node orquestador/comunicacion/test-pr4.mjs   # integración, Postgres efímero en Docker
 ```
+
+Sin `orquestador/comunicacion/asistencia-mm/*.test.mjs` el comando **no prueba la UI de
+Mattermost**, que es por donde carga el jefe de obra.

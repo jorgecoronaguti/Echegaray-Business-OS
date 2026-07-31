@@ -11,6 +11,11 @@ Este documento demuestra objetivamente que el módulo está terminado. Cada crit
 **evidencia ejecutada**, no una afirmación. Todo lo verificado abajo se comprobó contra el
 sistema real, no contra mocks.
 
+> **Auditoría funcional del 30/07/2026 (§17).** Recorrió el módulo entero ya en producción y
+> encontró un agujero de seguridad en el endpoint de acciones, una guarda de canal que faltaba
+> en la vía conversacional, dos defectos silenciosos y código muerto. **Corrige los ✔ de §4 y
+> §12.9**, que estaban puestos de más o mal fechados. Leer §17 antes que el veredicto.
+
 ---
 
 ## 1. Funciona en producción — no en un entorno de prueba
@@ -70,7 +75,14 @@ alterada. ✔
 `new_normal_hours`, `new_extra_hours`, `new_total_hours`, identidad, fecha operativa, pestaña,
 modo de permisos y `correlation_id`.
 
-Se puede reconstruir **quién escribió qué celda, cuándo, y qué había antes**. ✔
+Se puede reconstruir **quién escribió qué celda, cuándo, y qué había antes**. ✔ para el camino
+conversacional desde el cierre v1 · ✔ para el camino de botones **recién desde el 30/07/2026**.
+
+⚠️ El ✔ estuvo mal puesto entre la v3 y el 30/07/2026. El camino de botones —la UI real por
+donde carga el jefe de obra— armaba el evento `written` a mano y dejaba `celdas_modificadas` y
+`mattermost_username` en `null`: de toda carga hecha desde el mensaje interactivo en esa
+ventana **no se puede reconstruir qué celda cambió ni de qué valor a cuál**. Los eventos
+viejos no se recuperan. Corregido en §17.
 
 Este criterio cubría lo que **sí** se escribió. Lo que la guarda rechaza se audita desde el
 incremento descrito en §13, por el mismo ledger y la misma vista.
@@ -91,7 +103,7 @@ sin falso éxito. ✔
 | Cuántas horas se guardan | `horas-extra.mjs` + tests de normalización |
 | Cómo se conserva una fórmula | Fingerprint de celda + test de fórmula con error |
 | Cómo se resuelve una colisión | Concurrencia optimista + test |
-| Cómo se aplica la idempotencia | Clave estable de un solo uso + test |
+| Cómo se aplica la idempotencia | Clave estable acotada a la sesión + test. Quién decide si hay que escribir es la planilla releída, no la memoria de una clave |
 
 El modelo interviene **sólo** para elegir especialista dentro de una lista cerrada, y si no hay
 motor disponible **no adivina**: responde el catálogo. ✔
@@ -108,9 +120,9 @@ motor disponible **no adivina**: responde el catálogo. ✔
 
 ## 8. Está probado
 
-| Suite | Resultado |
+| Suite | Resultado (30/07/2026) |
 |---|---|
-| Unitarios del módulo (comunicación + asistencia + jornales) | **334 tests · 314 pass · 0 fail · 20 skipped** |
+| Unitarios del módulo (comunicación + `asistencia-mm` + asistencia + jornales) | **569 tests · 549 pass · 0 fail · 20 skipped** |
 | Los 20 skipped, con Postgres real efímero (`test-pr4.mjs`) | **20 pass · 0 fail** |
 | ESLint sobre todo el módulo | **0 errores, 0 warnings** |
 | `npm run typecheck` | **exit 0** |
@@ -135,7 +147,7 @@ Las tres migraciones son aditivas y cada una tiene rollback escrito. ✔
 |---|---|---|
 | Documentación definitiva | [`MODULO-ASISTENCIA.md`](./MODULO-ASISTENCIA.md) — arquitectura, flujo, componentes, integraciones, despliegue, rollback, troubleshooting, límites, mantenimiento | ✔ |
 | Runbook operativo | [`OPERACION-ASISTENCIA.md`](./OPERACION-ASISTENCIA.md) | ✔ |
-| Sin `TODO`/`FIXME`/`HACK`/`WIP` | Grep sobre los 30 archivos del módulo: 0 marcadores (3 coincidencias son la palabra española "todo") | ✔ |
+| Sin `TODO`/`FIXME`/`HACK`/`WIP` | Grep sobre los 37 archivos del módulo (sin tests): 0 marcadores — las coincidencias son la palabra española "todo" y una aserción de test | ✔ |
 | Sin `console.log` de debug | Grep: 0 fuera de los scripts CLI, donde es su salida | ✔ |
 | Sin `@ts-ignore` ni `eslint-disable` | Grep: 0 | ✔ |
 | Sin código temporal huérfano | `demo-pr4.mjs`, `test-pr4.mjs` y `aplicar-esquema.mjs` son infraestructura de test con Postgres efímero, documentada | ✔ |
@@ -149,9 +161,12 @@ No se ocultan. Están medidas y ninguna bloquea la operación de hoy.
 1. **`asistencia-consultas.mjs` tiene 553 líneas**, por encima del límite de 500 del CLAUDE.md.
    Partirlo es un refactor con riesgo de comportamiento sobre un módulo recién validado en
    producción. Registrado, no forzado.
-2. **9 límites conocidos** documentados en §14 de `MODULO-ASISTENCIA.md`. Los tres primeros
-   (sesiones genéricas, permisos por capability, respuesta diferida) **bloquean al segundo
-   especialista operativo**, no a éste.
+2. **17 límites conocidos** documentados en §14 de `MODULO-ASISTENCIA.md`. Los 1–13 son
+   deliberados; los tres primeros (sesiones genéricas, permisos por capability, respuesta
+   diferida) **bloquean al segundo especialista operativo**, no a éste. Los **14–17 no son
+   elecciones**: son agujeros que la auditoría del 30/07/2026 encontró y no corrigió — sin
+   vínculo post↔sesión, día sin jornada calibrada, verificación posterior fallida sobre celdas
+   ya escritas, y auditoría fire-and-forget sin alarma.
 3. **2 registros en el DLQ** (`Invalid RootId parameter`) provenientes del arnés de prueba usado
    durante la validación, no del flujo productivo. Documentados, no purgados.
 4. **Miembros del canal pendientes**: hoy `@os` y `jorge`. Falta que el dueño defina qué jefes de
@@ -215,8 +230,10 @@ Los tres tienen ahora test de regresión que ataca la causa (verificado: fallan 
 
 La pantalla web de la v2 fue una dirección equivocada y se eliminó por completo (2.042 líneas).
 Se conservó el backend: lo que estaba en `asistencia-web/` no era todo pantalla — adentro vivía
-la capa que resuelve permiso, jornada, validación, plan, escritura y auditoría. Vive en
-`lib/asistencia-servicio/` y ahora la consume la UI de Mattermost.
+la capa que resuelve permiso, jornada, validación, plan, escritura y auditoría. Esa capa vive
+hoy en `asistencia-mm/operaciones.mjs` (la traducción a las funciones del núcleo) y en
+`lib/asistencia-servicio/fechas.mjs` + `mapeo.mjs`. Su envoltorio HTTP —`api.mjs` y compañía—
+sobrevivió sin usuarios hasta el 30/07/2026; ver 12.9.
 
 | # | Criterio | Evidencia | ✔ |
 |---|---|---|---|
@@ -228,8 +245,15 @@ la capa que resuelve permiso, jornada, validación, plan, escritura y auditoría
 | 12.6 | El canal no está en el código | Sale de `comunicacion.canales_area`; test que prohíbe ids literales | ✔ |
 | 12.7 | Calendario completo | 16 feriados + 6 días no laborables en producción, cada uno con su fundamento | ✔ |
 | 12.8 | El porqué es consultable | `asistencia_novedades` se escribe interceptando el evento `written` | ✔ |
-| 12.9 | Sin rastros de la web | 0 referencias a la pantalla, los enlaces firmados o su tabla | ✔ |
-| 12.10 | Tests | **1.460 pass · 0 fail** · typecheck 0 · ESLint 0 errores | ✔ |
+| 12.9 | Sin rastros de la web | 0 referencias a la pantalla, los enlaces firmados o su tabla | ✔ **desde el 30/07/2026**, no desde el cierre v3 (ver abajo) |
+| 12.10 | Tests | Al cierre v3: **1.460 pass · 0 fail** · typecheck 0 · ESLint 0 errores. Hoy: **1.565 tests · 1.545 pass · 0 fail · 20 skipped** | ✔ |
+
+⚠️ **12.9 estuvo mal fechado.** Se eliminó la *pantalla*, no todo lo que la servía: quedaron
+vivas `lib/asistencia-servicio/api.mjs`, `dependencias.mjs`, `idempotencia.mjs` y
+`dobles-de-prueba.mjs` con sus tests — la API HTTP de una interfaz que ya no existía, que nadie
+importaba y que igual se probaba en cada corrida. Se borraron el 30/07/2026 (ver §17). De
+`asistencia-servicio/` sobreviven `fechas.mjs` y `mapeo.mjs`, que sí consume la UI de
+Mattermost.
 
 ### Cuatro defectos encontrados mirando producción, no leyendo código
 
@@ -495,3 +519,61 @@ no ocurrió.
   después.**
 - Una validación correcta no vuelve buena una experiencia: rechazar al guardar es contarle al
   usuario, tarde, algo que el formulario podía no haberle ofrecido nunca.
+
+
+---
+
+## 17. La auditoría funcional del módulo — 30/07/2026
+
+Los apartados anteriores cerraron el módulo criterio por criterio. Esta auditoría lo recorrió
+entero de nuevo, ya en producción, buscando lo que ningún criterio había mirado: qué pasa si el
+pedido no viene de Mattermost, qué diferencia hay entre la vía conversacional y la de botones, y
+qué queda escrito cuando algo falla a mitad de camino. Encontró **un agujero de seguridad, una
+guarda faltante, dos defectos silenciosos y código muerto**. El detalle está en
+[`MODULO-ASISTENCIA.md`](./MODULO-ASISTENCIA.md); acá está el checklist.
+
+| # | Criterio | Cómo se verifica | ✔ |
+|---|---|---|---|
+| 17.1 | El endpoint de acciones exige credencial | `POST /asistencia/accion` verifica `ASISTENCIA_ACCION_SECRETO` **antes** de la guarda de canal. Sin secreto válido, deniega y audita `token` / `secreto_invalido` | ✔ |
+| 17.2 | Falla cerrado también sin configurar | Sin la variable, el endpoint deniega todo (`secreto_sin_configurar`) y el servicio lo avisa al arrancar | ✔ |
+| 17.3 | El secreto no llega al cliente | Viaja en la query de la URL de callback; verificado contra el servidor real: los posts llegan **sin** el bloque `integration`, ni con token de API | ✔ |
+| 17.4 | Se compara sin filtrar el tiempo | `timingSafeEqual`, nunca `===` | ✔ |
+| 17.5 | Una sola URL para las tres puertas | `secreto-compartido.mjs` → `urlAccionDeEntorno`: slash command, mención y re-render de cada click usan la misma | ✔ |
+| 17.6 | La guarda de canal corre en **las tres** vías | `asistencia-inicio.mjs`, `asistencia-accion.mjs` y ahora también `asistencia-flujo.mjs`: ya no se puede cargar por mensaje privado al bot | ✔ |
+| 17.7 | El post se refresca después de un diálogo | El cliente recibe `id` (esperaba eso; se le mandaba `postId` → `PUT /posts/undefined → 400` con respuesta 200 al jefe). El `post_id` se guarda apenas se conoce, así «Otra fecha…» como primer click también refresca | ✔ |
+| 17.8 | Los dos caminos auditan igual | El `written` de la UI de botones usa `payloadConfirmacion`: vuelve a llevar `celdas_modificadas` (celda, valor viejo, valor nuevo, normal/extra) y `mattermost_username`. Los rechazos del ruteador llevan `request_id` | ✔ |
+| 17.9 | Ningún mensaje afirma algo que no pasó | «Esta carga ya se registró» sólo si se registró; si la sesión se cerró sin escribir, lo dice. Tras un fallo de escritura el post no ofrece «Registrar». Cambiar de obra avisa que se borraron las excepciones | ✔ |
+| 17.10 | Un feriado no rompe el formulario | Jornada 0 h ⇒ el campo de horas cae a texto libre en vez de un desplegable vacío, que no abre | ✔ |
+| 17.11 | El validador de contrato corre de verdad | `contrato-mattermost.mjs` se ejecuta antes de mandar el diálogo, no sólo en los tests | ✔ |
+| 17.12 | Las novedades se corrigen hacia abajo | Una carga posterior borra las novedades **de los trabajadores de esa carga** que ya no tienen motivo: una marca de ART deja de ser eterna | ✔ |
+| 17.13 | Ninguna llamada a Mattermost cuelga | Techo por llamada, `MM_FETCH_TIMEOUT_MS` (default 30 s), cuerpo incluido | ✔ |
+| 17.14 | No queda código muerto de la web | Se borran `lib/asistencia-servicio/api.mjs`, `dependencias.mjs`, `idempotencia.mjs`, `dobles-de-prueba.mjs` y sus tests. Recién ahora 12.9 es cierto | ✔ |
+| 17.15 | La suite sigue verde | **1.565 tests · 1.545 pass · 0 fail · 20 skipped** · ESLint 0 · typecheck 0 | ✔ |
+
+### Lo que esta auditoría NO corrigió
+
+Se documenta como límite (§14 de `MODULO-ASISTENCIA.md`, puntos 14–17) en vez de dejarlo
+implícito:
+
+| Qué | Por qué importa |
+|---|---|
+| **No hay vínculo post↔sesión** (#14) | La sesión se resuelve sólo por `user_id`: con dos mensajes de asistencia abiertos de la misma persona, los botones del viejo operan sobre la sesión nueva |
+| **Día sin jornada calibrada** (#15) | Un sábado obliga a cargar las horas a mano persona por persona, y «Hizo menos horas» exige motivo aunque sin jornada conocida el catálogo no lo exigiría |
+| **Verificación posterior fallida** (#16) | Si la relectura no coincide, las celdas **ya se escribieron** pero el evento se audita como `failed` y el jefe lee que no se pudo |
+| **La auditoría es fire-and-forget** (#17) | Por diseño no puede voltear una carga; la contracara es que si el ledger dejara de escribir, la carga seguiría y no quedaría log ni alarma |
+| **`confirmar` concede dos cosas a la vez** (#12) | El mismo click habilita sobrescribir una carga existente y reemplazar una fórmula no interpretable |
+
+### Lo que queda pendiente de configuración, no de código
+
+`orquestador/comunicacion/deploy/env.example` —la plantilla de `comunicacion.env`— **no declara**
+`ASISTENCIA_ACCION_SECRETO` ni `ASISTENCIA_ACCION_URL`, y el worker las necesita para publicar
+los botones de la mención. Quien arme ese `.env` desde la plantilla se queda sin botones.
+
+### La lección
+
+- Una guarda de canal y un control de permisos **no defienden nada** si la identidad la escribe
+  quien llama. Antes de preguntar "¿puede esta persona?", hay que poder responder "¿es esta
+  persona?".
+- Un camino nuevo hacia el mismo efecto (la UI de botones junto a la conversación) no hereda las
+  defensas del viejo: hay que ir a buscarlas una por una. Las tres cosas que faltaban —la guarda,
+  el payload de auditoría, el constructor de la URL— existían y estaban a un import de distancia.
