@@ -264,10 +264,10 @@ function accionesCuadrilla({ personal, url, confirmacion }) {
 /**
  * @param {{resumen:object, celdas:Array<object>, actor:{username?:string,userId?:string},
  *          fecha?:string, obra?:{nombre?:string}, pestana?:string|null,
- *          columna?:string|null, nota?:string|null}} o
+ *          columna?:string|null}} o
  */
 export function mensajeConfirmado({
-  resumen = {}, celdas = [], actor = {}, fecha, obra, pestana = null, columna = null, nota = null,
+  resumen = {}, celdas = [], actor = {}, fecha, obra, pestana = null, columna = null,
 } = {}) {
   const quien = actor?.username ? `@${actor.username}` : (actor?.userId ?? 'alguien')
   const donde = [pestana, columna ? `columna ${columna}` : null].filter(Boolean).join(' · ')
@@ -275,7 +275,7 @@ export function mensajeConfirmado({
     `${obra?.nombre ?? 'Obra'} — ${fechaEnPalabras(fecha)}`,
     celdas.length
       ? `${celdas.length} ${celdas.length === 1 ? 'celda escrita' : 'celdas escritas'}${donde ? ` en ${donde}` : ''}.`
-      : (nota ?? 'No había nada para cambiar: la planilla ya decía lo mismo.'),
+      : 'No había nada para cambiar: la planilla ya decía lo mismo.',
     '',
     ...detalleCeldas(celdas),
     '',
@@ -338,7 +338,7 @@ export function mensajeCancelado({ motivo = 'Carga cancelada. No se escribió na
  *          `/api/v4/actions/dialogs/open`
  */
 export function dialogoExcepcion({
-  persona = {}, motivos = [], obras = [], jornada, triggerId, url, estado = {}, contexto = null,
+  persona = {}, motivos = [], obras = [], jornada, triggerId, url, estado = {},
   tipo = TIPO.PARCIAL,
 } = {}) {
   const n = persona.novedad ?? persona
@@ -383,7 +383,7 @@ export function dialogoExcepcion({
       ]
 
   return armarDialogo({
-    triggerId, url, callbackId: 'asistencia.excepcion', estado: { ...estado, tipo }, contexto,
+    triggerId, url, callbackId: 'asistencia.excepcion', estado: { ...estado, tipo },
     titulo: recortar(persona.nombre ?? 'Excepción', TOPE.TITULO_DIALOGO),
     intro: `${persona.nombre ?? ''} · ${textoJornada(jornada)}`.trim(),
     elementos: elementos.filter(Boolean),
@@ -434,9 +434,9 @@ function elementoHoras({ n, jornada, tipo }) {
 }
 
 /** Diálogo de "Otra fecha…". Un solo campo, en el formato que la gente escribe acá. */
-export function dialogoFecha({ fecha, triggerId, url, estado = {}, contexto = null } = {}) {
+export function dialogoFecha({ fecha, triggerId, url, estado = {} } = {}) {
   return armarDialogo({
-    triggerId, url, callbackId: 'asistencia.fecha', estado, contexto,
+    triggerId, url, callbackId: 'asistencia.fecha', estado,
     titulo: 'Otra fecha',
     intro: 'No se puede cargar una fecha futura.',
     submit: 'Usar esta fecha',
@@ -471,7 +471,7 @@ function elementoSelect({ nombre, etiqueta, valor, opciones, ayuda, obligatorio 
 }
 
 /** Casco común de los diálogos: recorta el título y sella el tope de 5 elementos. */
-function armarDialogo({ triggerId, url, callbackId, estado, contexto, titulo, intro, elementos, submit }) {
+function armarDialogo({ triggerId, url, callbackId, estado, titulo, intro, elementos, submit }) {
   if (elementos.length > TOPE.ELEMENTOS_DIALOGO) {
     throw new Error(`dialogo ${callbackId}: Mattermost admite ${TOPE.ELEMENTOS_DIALOGO} elementos y llegaron ${elementos.length}`)
   }
@@ -485,7 +485,7 @@ function armarDialogo({ triggerId, url, callbackId, estado, contexto, titulo, in
       elements: elementos,
       submit_label: submit,
       notify_on_cancel: false,
-      state: JSON.stringify({ ...estado, ...(contexto ? { contexto } : {}) }),
+      state: JSON.stringify(estado),
     },
   }
 }

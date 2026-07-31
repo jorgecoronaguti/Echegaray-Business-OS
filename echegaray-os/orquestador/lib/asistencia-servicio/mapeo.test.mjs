@@ -1,11 +1,10 @@
-// Traducción núcleo ↔ pantalla y registro de idempotencia. Todo puro.
+// Traducción núcleo ↔ UI de Mattermost. Todo puro.
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { ESTADO } from '../horas-extra.mjs'
 import { SIN_CAMBIO, MOTIVO } from '../tools/jornales-asistencia.mjs'
 import { mensajeDeMotivo, mapearObras, resolverJornada, mapearPersona, marcaDe, extrasDe } from './mapeo.mjs'
-import { crearRegistroMemoria } from './idempotencia.mjs'
 
 const J9 = { horas: 9, origen: 'calibrado', requiere_manual: false, feriado: false }
 
@@ -87,19 +86,4 @@ test('las horas extra se calculan, no se piden', () => {
   assert.equal(extrasDe({ horas: 11, jornada: J9 }), 2)
   assert.equal(extrasDe({ horas: 9, jornada: J9 }), 0)
   assert.equal(extrasDe({ horas: 4, jornada: J9 }), 0)
-})
-
-test('el registro de idempotencia recuerda dentro de la ventana y olvida después', async () => {
-  let t = 0
-  const reg = crearRegistroMemoria({ ttlMs: 1000, ahora: () => t })
-  await reg.guardar('k', { ok: true })
-  assert.deepEqual(await reg.ver('k'), { hit: true, valor: { ok: true } })
-  t = 2000
-  assert.deepEqual(await reg.ver('k'), { hit: false })
-})
-
-test('el registro no crece sin límite', async () => {
-  const reg = crearRegistroMemoria({ max: 3, ahora: () => 0 })
-  for (let i = 0; i < 10; i++) await reg.guardar(`k${i}`, i)
-  assert.ok(reg.tamano() <= 3)
 })

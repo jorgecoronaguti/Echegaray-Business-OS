@@ -181,9 +181,9 @@ test('confirmado: dice qué se escribió, en qué obra y fecha, y quién lo hizo
 test('confirmado: sin celdas lo declara en vez de fingir que escribió', () => {
   const msg = valido(mensajeConfirmado({
     resumen: {}, celdas: [], actor: { username: 'jefe.obra' },
-    fecha: '2026-07-30', obra: { nombre: 'Messinas' }, nota: 'nada que escribir',
+    fecha: '2026-07-30', obra: { nombre: 'Messinas' },
   }))
-  assert.match(textoTodo(msg), /ya decía lo mismo|nada que escribir/)
+  assert.match(textoTodo(msg), /ya decía lo mismo/)
 })
 
 test('cancelado: no escribió nada y no deja botones', () => {
