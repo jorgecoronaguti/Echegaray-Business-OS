@@ -628,6 +628,26 @@ async function main() {
 
   const { grid, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, PESTAÑA, g.filas, previo)
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)
+
+  // ═══ LA COLUMNA "Pagado el" ES DEL DUEÑO: SE COPIA DE LA PESTAÑA, NO SE GENERA (31/07) ═══
+  //
+  // Le borré las 14 fechas DOS VECES el mismo día. La primera porque emitía VACIO ahí. La segunda
+  // porque sacar la celda de la fila NO alcanza: `escribirPreservando` recibe
+  // `anchoHoja: max(ANCHO, hoja.cols)` —el generador es dueño de TODO su ancho, que es la regla
+  // correcta para el resto— y rellena la fila hasta ese ancho, borrando lo que hubiera.
+  //
+  // La cura es explícita y local: antes de escribir, se COPIA lo que hay en la pestaña a la grilla. La
+  // escritura queda siendo un no-op sobre esa columna, pase lo que pase con el ancho. Y si él carga una
+  // fecha nueva, la corrida siguiente la lee y la vuelve a escribir igual.
+  const iPagado = ANCHO - 1
+  let copiadas = 0
+  for (let i = 0; i < grid.length; i++) {
+    const suyo = previo?.[i]?.[iPagado]
+    if (suyo === undefined || suyo === null || String(suyo) === '') { grid[i][iPagado] = VACIO; continue }
+    grid[i][iPagado] = suyo
+    if (/\d/.test(String(suyo))) copiadas++
+  }
+  if (copiadas) console.log(`  ✋ ${copiadas} fecha(s) de "Pagado el" copiadas de la pestaña: esa columna es TUYA, el generador no la escribe`)
   const { conservadas } = await escribirPreservando(google, ID, `'${PESTAÑA}'`, grid, { respetar: false /* la Regla 0 ya se aplicó arriba, a mano: este generador guarda el registro DESPUÉS de releer la pestaña, que es más fiel que hacerlo antes de escribir */, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   if (conservadas.length) console.log(`✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
 

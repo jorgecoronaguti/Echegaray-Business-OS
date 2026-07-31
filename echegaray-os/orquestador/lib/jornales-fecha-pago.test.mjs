@@ -190,3 +190,17 @@ test('la fila del registro NO llega a la columna 14: "Pagado el" queda fuera del
     + 'vive la fecha que el dueño carga a mano. Ya borró las 14 una vez.')
   assert.match(bloque, /pagada el /, 'y el Estado sigue leyendo N para saber si está pagada')
 })
+
+test('y la columna se COPIA de la pestaña antes de escribir — sacar la celda no alcanzaba', () => {
+  // Sacar la celda de la fila no evitó la segunda pérdida: `escribirPreservando` recibe
+  // `anchoHoja: max(ANCHO, hoja.cols)` y rellena la fila hasta ese ancho. La única defensa que no
+  // depende del ancho es copiar explícitamente lo que hay en la pestaña a la grilla.
+  const src = readFileSync(new URL('../scripts/jornales-pestana.mjs', import.meta.url), 'utf8')
+  assert.match(src, /const iPagado = ANCHO - 1/, 'se ubica la columna del dueño')
+  assert.match(src, /grid\[i\]\[iPagado\] = suyo/, 'y se copia lo que hay en la pestaña')
+  assert.match(src, /esa columna es TUYA, el generador no la escribe/, 'y se dice en el log')
+  // El orden importa: la copia va DESPUÉS de conEdicionesRespetadas y ANTES de escribirPreservando.
+  const iCopia = src.indexOf('const iPagado = ANCHO - 1')
+  assert.ok(src.indexOf('conEdicionesRespetadas(ID, PESTAÑA') < iCopia, 'después de la Regla 0')
+  assert.ok(iCopia < src.indexOf('escribirPreservando(google, ID'), 'y antes de escribir')
+})
