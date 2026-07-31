@@ -1,189 +1,134 @@
-// "PASAME EL CONTRATO DE QUATTROPANI" → el enlace del archivo, no su contenido.
+// "PASAME EL ARCHIVO VISION/TRACCIÓN" → el enlace del archivo, no su contenido.
 //
 // La capacidad es TRAER EL ARCHIVO. No lo lee, no lo resume, no lo interpreta: devuelve
-// nombre, tipo, fecha y enlace. Leer un Sheet de finanzas para contestar un "pasámelo" sería
-// gastar API y, peor, meter en el chat datos que la persona no pidió.
+// nombre, carpeta, fecha y enlace. Leer un Sheet de finanzas para contestar un "pasámelo"
+// sería gastar API y, peor, meter en el chat datos que la persona no pidió.
 //
-// PERMISOS. No hay un modelo de permisos propio acá: el archivo se ve si la cuenta de Google
-// con la que se busca lo ve. Duplicar el compartir de Drive en una tabla del OS sería crear
-// una segunda verdad que envejece sola.
+// ── QUÉ CAMBIÓ, Y POR QUÉ NO ALCANZABA CON RETOCAR ──────────────────────────────────
 //
-// ELEGIR ENTRE VARIOS. Drive devuelve todo lo que "contiene" el texto. Si uno gana claro
-// (nombre exacto, o empieza con lo pedido y ningún otro lo hace) se devuelve directo; si hay
-// empate se pregunta UNA vez con cinco opciones como máximo. Adivinar acá es mandar el
-// presupuesto de otra obra.
+// Antes esto le preguntaba a Drive `name contains '<lo que escribió la persona>'`. Con
+// "vision/traccion" Drive contestaba que no había nada, y el archivo —"Vision / Tracción"—
+// estaba ahí: mismas letras, otra puntuación, otros acentos. El "no encontré" era cierto y
+// completamente inútil. Ese modo de buscar no se arregla con una regex más: obliga a la
+// persona a recordar el nombre exacto, que es justo lo que nadie hace.
+//
+// Ahora la búsqueda ocurre contra el ÍNDICE que el OS ya mantenía y nunca usaba
+// (`public.drive_index`, 2.465 archivos que un timer refresca cada 6 h), con un pipeline de
+// cinco etapas y un ranking explicable. Ver `lib/drive-busqueda/`.
+//
+// ── CERO MODELO ─────────────────────────────────────────────────────────────────────
+// Buscar es determinístico de punta a punta: normalizar, tokenizar, sinónimos, cinco etapas
+// y puntaje. Ni una llamada a Anthropic, ni siquiera como último recurso. Hay un test que
+// recorre el árbol de imports de este archivo y falla si alguna vez aparece una.
+//
+// ── PERMISOS ────────────────────────────────────────────────────────────────────────
+// El índice lo arma la cuenta de servicio, así que lista lo que ella ve. El ENLACE lo abre
+// la persona con su propia cuenta: si no tiene acceso, Google se lo dice. No hay un modelo de
+// permisos propio acá — duplicar el compartir de Drive en una tabla del OS sería crear una
+// segunda verdad que envejece sola.
 
-import { CAPACIDAD, ERROR, errorAsistente, resultadoOk, resultadoError, resultadoAclaracion, zDriveBuscar } from '../contratos.mjs'
+import {
+  CAPACIDAD, ERROR, errorAsistente, resultadoOk, resultadoError, resultadoAclaracion, zDriveBuscar,
+} from '../contratos.mjs'
 import { paredAR } from '../tiempo.mjs'
 import { clasificarErrorGoogle, googleDisponible, errorSinCuenta } from '../google-cliente.mjs'
+import { crearIndice, buscar, registrarAceptacion, analizarConsulta } from '../../../lib/drive-busqueda/buscar.mjs'
+import { rutaLegible } from '../../../lib/drive-busqueda/ranking.mjs'
 
 const MAX_OPCIONES = 5
-/** Techo de archivos que se enriquecen con una llamada a Drive cada uno (searchFile trae 10). */
-const MAX_CANDIDATOS = 10
-const VENTANA_CACHE_MS = 60_000
-const MAX_CACHE = 60
-
 const CARPETA = 'application/vnd.google-apps.folder'
 
-/** Tipo legible desde el mimeType (mismo criterio que las tools de Drive del motor). */
-function tipoLegible(mime = '') {
-  const m = String(mime)
-  if (m === CARPETA) return 'carpeta'
-  if (m.includes('spreadsheet') || m.includes('excel')) return 'planilla'
-  if (m.includes('document') || m.includes('word')) return 'documento'
-  if (m.includes('pdf')) return 'pdf'
-  if (m.includes('image')) return 'imagen'
-  if (m.includes('presentation')) return 'presentación'
-  return 'archivo'
+/** El índice vive en el PROCESO, no en el pedido: cargarlo por mensaje sería leer 2.465
+ *  filas cada vez que alguien escribe. Se comparte entre búsquedas y se refresca solo. */
+let _indice = null
+function indiceDe(port) {
+  if (!_indice) _indice = crearIndice({ port })
+  return _indice
 }
+/** Sólo para tests: el índice es del proceso y no debe filtrarse entre casos. */
+export function _reiniciarIndice() { _indice = null }
 
-const norm = (s) => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
-const sinExtension = (s) => String(s ?? '').replace(/\.[a-z0-9]{2,5}$/i, '')
 const dosDig = (n) => String(n).padStart(2, '0')
 
-/** ISO de Drive → "27/07/2026" en hora de la empresa. null si Drive no dio la fecha: se
- *  muestra el archivo sin fecha antes que con una fecha inventada. */
-function fechaCorta(iso) {
+/** ISO → "hoy 10:13" o "31/07/2026", en hora de la empresa. null si no hay fecha: se muestra
+ *  el archivo sin fecha antes que con una fecha inventada. */
+function fechaLegible(iso, ahora = new Date()) {
   if (!iso) return null
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return null
   const p = paredAR(d)
+  const h = paredAR(ahora)
+  if (p.y === h.y && p.m === h.m && p.d === h.d) return `hoy ${dosDig(p.hh)}:${dosDig(p.mm)}`
   return `${dosDig(p.d)}/${dosDig(p.m)}/${p.y}`
 }
 
-/** 3 = el nombre ES lo pedido, 2 = empieza con lo pedido, 1 = lo contiene, 0 = ni eso. */
-function puntaje(nombre, terminos) {
-  const t = norm(terminos)
-  const candidatos = [norm(nombre), norm(sinExtension(nombre))]
-  if (candidatos.includes(t)) return 3
-  if (candidatos.some((c) => c.startsWith(t))) return 2
-  if (candidatos.some((c) => c.includes(t))) return 1
-  return 0
-}
+const enlaceDe = (e) => (e.is_folder || e.mime_type === CARPETA
+  ? `https://drive.google.com/drive/folders/${e.drive_file_id}`
+  : `https://drive.google.com/file/d/${e.drive_file_id}/view`)
 
-function coincideTipo(mime, tipo) {
-  if (tipo === 'cualquiera') return true
-  return tipoLegible(mime) === tipo
-}
-
-// ── Anti-ruido ───────────────────────────────────────────────────────────────
-// La misma pregunta dos veces seguidas (el pedido que se reenvía, el "¿lo encontraste?")
-// no vuelve a pegarle a Drive. Cache en memoria del proceso: si el worker se reinicia se
-// pierde y no pasa nada — no es un dato, es un eco.
-
-const cache = new Map()
-
-function deCache(clave, ahora) {
-  const hit = cache.get(clave)
-  if (!hit) return null
-  if (ahora - hit.t > VENTANA_CACHE_MS) { cache.delete(clave); return null }
-  return hit.valor
-}
-
-function aCache(clave, valor, ahora) {
-  if (cache.size >= MAX_CACHE) cache.delete(cache.keys().next().value)
-  cache.set(clave, { t: ahora, valor })
-}
-
-/** Sólo para tests: la cache es del proceso y no debe filtrarse entre casos. */
-export function _limpiarCache() { cache.clear() }
-
-// ── Búsqueda ─────────────────────────────────────────────────────────────────
-
-/**
- * Metadata completa de un archivo. `searchFile` devuelve id/nombre/mime y `getMeta` no pide
- * `modifiedTime`, así que la fecha se lee por el GET crudo del cliente (mismo auth, una sola
- * llamada). Si esa puerta no existe se cae a `getMeta`: queda sin fecha, nunca con una falsa.
- */
-async function metaCompleta(google, id) {
-  const url = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}`
-    + '?fields=id,name,mimeType,modifiedTime,webViewLink&supportsAllDrives=true'
-  if (typeof google.apiGetSheets === 'function') {
-    try {
-      const j = await google.apiGetSheets(url)
-      if (j?.id) return j
-    } catch { /* la puerta cruda puede no estar habilitada: se intenta la formal */ }
+/** Una entrada del índice → la forma que viaja al chat y a la evidencia. */
+function aArchivo(e, ahora) {
+  return {
+    id: e.drive_file_id,
+    nombre: e.name,
+    tipo: e.tipo ?? 'archivo',
+    ubicacion: rutaLegible(e.path),
+    modificado: e.modified_time ?? null,
+    fecha: fechaLegible(e.modified_time, ahora),
+    enlace: e.enlace ?? enlaceDe(e),
+    score: e.score ?? null,
   }
-  return google.getMeta(id)
 }
 
-const enlaceDe = (meta) => meta.webViewLink
-  || (String(meta.mimeType ?? '').includes('folder')
-    ? `https://drive.google.com/drive/folders/${meta.id}`
-    : `https://drive.google.com/file/d/${meta.id}/view`)
-
-/**
- * Los candidatos que REALMENTE compiten, ya con enlace y fecha.
- *
- * Sólo se enriquece el grupo del mejor puntaje: si "Contrato Quattropani" existe exacto, los
- * que apenas lo contienen no entran a la elección y no vale una llamada a Drive por cada uno.
- * Y el desempate por fecha se hace DESPUÉS de tener a todos los empatados: recortar a cinco
- * antes de mirar las fechas dejaba afuera al archivo más reciente sin que nadie lo notara.
- */
-async function candidatos(google, { terminos, tipo }) {
-  const crudos = (await google.searchFile(terminos)) || []
-  const puntuados = crudos
-    .filter((f) => f?.id && coincideTipo(f.mimeType, tipo))
-    .map((f) => ({ ...f, score: puntaje(f.name, terminos) }))
-    .filter((f) => f.score > 0)
-  if (!puntuados.length) return []
-  const mejor = Math.max(...puntuados.map((f) => f.score))
-  const compiten = puntuados.filter((f) => f.score === mejor).slice(0, MAX_CANDIDATOS)
-  const out = []
-  for (const f of compiten) {
-    const meta = await metaCompleta(google, f.id).catch(() => null)
-    out.push({
-      id: f.id,
-      nombre: meta?.name ?? f.name,
-      tipo: tipoLegible(meta?.mimeType ?? f.mimeType),
-      modificado: meta?.modifiedTime ?? null,
-      enlace: enlaceDe({ ...f, ...(meta ?? {}) }),
-    })
-  }
-  // Manda el más reciente: entre dos "Contrato Quattropani" el que se tocó la semana pasada
-  // es casi siempre el que están pidiendo.
-  return out.sort((a, b) => String(b.modificado ?? '').localeCompare(String(a.modificado ?? '')))
-}
-
-const lineaArchivo = (a) => {
-  const f = fechaCorta(a.modificado)
-  return `${a.nombre} (${a.tipo})${f ? ` — ${f}` : ''}`
-}
-
+/** Un resultado dominante: nombre, dónde está, cuándo se tocó y el enlace. */
 function textoUno(a) {
-  const f = fechaCorta(a.modificado)
-  return `Encontré este archivo: ${a.nombre}${f ? ` — modificado el ${f}` : ''}. [Abrir archivo](${a.enlace})`
+  const partes = [`Encontré: **${a.nombre}**`]
+  if (a.ubicacion) partes.push(`Carpeta: ${a.ubicacion}`)
+  if (a.fecha) partes.push(`Última modificación: ${a.fecha}`)
+  partes.push(`[Abrir](${a.enlace})`)
+  return partes.join('\n')
 }
 
-function respuestaDesde(lista, terminos) {
-  if (!lista.length) {
-    return resultadoError(CAPACIDAD.DRIVE_BUSCAR, errorAsistente(
-      ERROR.NO_ENCONTRADO,
-      `No encontré ningún archivo que se llame "${terminos}" en el Drive.`,
-    ))
-  }
-  // Uno solo en el grupo del mejor puntaje = ganador claro. Si quedaron varios empatados,
-  // ninguno es "el" archivo: se pregunta antes que mandar el presupuesto de otra obra.
-  if (lista.length === 1) {
-    const a = lista[0]
-    return resultadoOk(CAPACIDAD.DRIVE_BUSCAR, textoUno(a), {
-      archivo: { id: a.id, nombre: a.nombre, tipo: a.tipo, modificado: a.modificado, enlace: a.enlace, ubicacion: null },
-    })
-  }
-  const opciones = lista.slice(0, MAX_OPCIONES).map((a) => ({ valor: a.id, etiqueta: lineaArchivo(a) }))
-  const pregunta = ['Encontré varios. ¿Cuál te paso?', ...opciones.map((o, i) => `${i + 1}. ${o.etiqueta}`)].join('\n')
-  return resultadoAclaracion(CAPACIDAD.DRIVE_BUSCAR, pregunta, opciones, { terminos })
+const lineaOpcion = (a) => [a.nombre, a.ubicacion ? `en ${a.ubicacion}` : null, a.fecha].filter(Boolean).join(' — ')
+
+/** La pregunta, con la lista numerada ADENTRO del texto: es lo único que la persona ve. */
+function preguntar(archivos, terminos, tipo) {
+  const opciones = archivos.map((a) => ({ valor: a.id, etiqueta: lineaOpcion(a) }))
+  const texto = ['Encontré varios. ¿Cuál te paso?', ...opciones.map((o, i) => `${i + 1}. ${o.etiqueta}`)].join('\n')
+  return resultadoAclaracion(
+    CAPACIDAD.DRIVE_BUSCAR, texto, opciones,
+    // `faltante` es lo que hace que la respuesta de la persona vuelva ACÁ con el id elegido.
+    // Sin esto la lista era decorativa: se ofrecía, y "el segundo" no llegaba a ningún lado.
+    { intencion: CAPACIDAD.DRIVE_BUSCAR, parametros: { terminos, tipo }, faltante: 'archivoId' },
+  )
+}
+
+// ── El último recurso: Drive en vivo ─────────────────────────────────────────
+//
+// El índice se refresca cada 6 h. Un archivo creado hace diez minutos no está — y quien lo
+// acaba de subir es exactamente quien lo va a pedir. Sólo cuando el índice no trajo NADA se
+// le pregunta a Drive, con la cuenta de la persona. Es una llamada a Google, no a un modelo.
+async function fallbackDrive(google, consulta, ahora) {
+  if (typeof google?.searchFile !== 'function' || !consulta.tokens.length) return []
+  const crudos = (await google.searchFile(consulta.tokens[0])) || []
+  return crudos
+    .filter((f) => f?.id)
+    .slice(0, MAX_OPCIONES)
+    .map((f) => aArchivo({
+      drive_file_id: f.id, name: f.name, path: '', tipo: null,
+      mime_type: f.mimeType, is_folder: f.mimeType === CARPETA, modified_time: null,
+    }, ahora))
 }
 
 export const capacidad = {
   id: CAPACIDAD.DRIVE_BUSCAR,
   nombre: 'Buscar un archivo en Drive',
   descripcion: 'buscarte un archivo en el Drive y pasarte el enlace para abrirlo',
-  version: '1.0.0',
+  version: '2.0.0',
   orden: 10,
   permisos: ['drive.read'],
   efectoExterno: false,
-  ejemplos: ['pasame el contrato de Quattropani', 'buscame el flujo de caja', '¿dónde está el presupuesto de Messina?'],
+  ejemplos: ['pasame el contrato de Quattropani', 'buscame el flujo de caja', 'vision/traccion'],
   entrada: zDriveBuscar,
   habilitada: (ctx) => googleDisponible(ctx, ctx?.googleDeps),
 
@@ -194,24 +139,74 @@ export const capacidad = {
         ERROR.DATO_FALTANTE, '¿Qué archivo busco? Decime el nombre o parte del nombre.', p.error.message,
       ))
     }
-    const { terminos, tipo } = p.data
-    if (!ctx.google) return resultadoError(CAPACIDAD.DRIVE_BUSCAR, errorSinCuenta())
+    const { terminos, tipo, archivoId } = p.data
+    const ahora = ctx.ahora?.() ?? new Date()
+    const port = ctx.port
+    if (!port?.query) {
+      return resultadoError(CAPACIDAD.DRIVE_BUSCAR, errorAsistente(
+        ERROR.TEMPORAL, 'No puedo buscar en este momento. Probá de nuevo en un minuto.', 'sin port',
+      ))
+    }
+    const indice = indiceDe(port)
 
-    const ahora = (ctx.ahora?.() ?? new Date()).getTime()
-    const quien = ctx.identidad?.plataformaUserId ?? ctx.identidad?.email ?? 'anon'
-    const clave = `${quien}|${norm(terminos)}|${tipo}`
+    // ── La persona ELIGIÓ una de las opciones que le ofrecí ──
+    // Es el único momento en que sé con certeza cuál era: se devuelve y se aprende.
+    if (archivoId) {
+      const filas = await indice.filasVigentes()
+      const e = filas.find((f) => f.drive_file_id === archivoId)
+      if (!e) {
+        return resultadoError(CAPACIDAD.DRIVE_BUSCAR, errorAsistente(
+          ERROR.NO_ENCONTRADO, 'Ese archivo ya no está en el índice. Pedímelo de nuevo por el nombre.',
+        ))
+      }
+      const { norm } = analizarConsulta(terminos, { tipo })
+      await registrarAceptacion(port, norm, archivoId)
+      indice.anotarAceptacion(norm, archivoId)
+      const a = aArchivo(e, ahora)
+      return resultadoOk(CAPACIDAD.DRIVE_BUSCAR, textoUno(a), { archivo: a, aprendido: true })
+    }
 
-    const cacheado = deCache(clave, ahora)
-    if (cacheado) return respuestaDesde(cacheado, terminos)
-
-    let lista
+    let r
     try {
-      lista = await candidatos(ctx.google, { terminos, tipo })
+      r = await buscar({ indice, port, texto: terminos, tipo, ahora: ahora.getTime(), limite: MAX_OPCIONES })
+    } catch (e) {
+      return resultadoError(CAPACIDAD.DRIVE_BUSCAR, errorAsistente(
+        ERROR.TEMPORAL, 'No pude buscar en el Drive ahora. Probá de nuevo en un rato.',
+        String(e?.message ?? e).slice(0, 200),
+      ))
+    }
+
+    // ── Un ganador claro ──
+    if (r.ganador) {
+      const a = aArchivo(r.ganador, ahora)
+      await registrarAceptacion(port, r.consulta.norm, a.id)
+      indice.anotarAceptacion(r.consulta.norm, a.id)
+      return resultadoOk(CAPACIDAD.DRIVE_BUSCAR, textoUno(a), {
+        archivo: a, etapa: r.etapa, evaluados: r.evaluados, ms: r.ms,
+      })
+    }
+
+    // ── Varios: se pregunta UNA vez, con cinco como techo ──
+    if (r.opciones.length) {
+      return preguntar(r.opciones.map((e) => aArchivo(e, ahora)), terminos, tipo)
+    }
+
+    // ── El índice no tuvo nada: recién ahí, Drive en vivo ──
+    if (!ctx.google) return resultadoError(CAPACIDAD.DRIVE_BUSCAR, errorSinCuenta())
+    try {
+      const vivos = await fallbackDrive(ctx.google, r.consulta, ahora)
+      if (vivos.length === 1) {
+        return resultadoOk(CAPACIDAD.DRIVE_BUSCAR, textoUno(vivos[0]), { archivo: vivos[0], via: 'drive_vivo' })
+      }
+      if (vivos.length > 1) return preguntar(vivos, terminos, tipo)
     } catch (e) {
       return resultadoError(CAPACIDAD.DRIVE_BUSCAR, clasificarErrorGoogle(e, { que: `"${terminos}" en el Drive` }))
     }
-    // También se cachea el "no hay nada": repetir el pedido no cambia el Drive en 60 segundos.
-    aCache(clave, lista, ahora)
-    return respuestaDesde(lista, terminos)
+
+    return resultadoError(CAPACIDAD.DRIVE_BUSCAR, errorAsistente(
+      ERROR.NO_ENCONTRADO,
+      `No encontré nada parecido a "${terminos}" en el Drive. Probá con otra palabra del nombre o de la carpeta.`,
+      `etapas agotadas sobre ${r.evaluados} archivos indexados`,
+    ))
   },
 }

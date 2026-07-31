@@ -21,6 +21,7 @@
 import { INTENCION, CAPACIDAD, zSolicitud, TZ_EMPRESA } from './contratos.mjs'
 import { parseCuando, quitarTiempo } from './tiempo.mjs'
 import { parseCadence } from '../../lib/schedule-intent.mjs'
+import { tokenizar } from '../../lib/drive-busqueda/normalizar.mjs'
 
 const MODELO = process.env.ORQ_ASISTENTE_MODELO || 'claude-haiku-4-5-20251001'
 const MAX_TOKENS = 300
@@ -52,7 +53,13 @@ const RE_CANCELAR_FRASE = /\b(cancel|borr|elimin|anul|sac)[a-zá]*\s+(el|los|mi|
 const RE_TAREA = /\b(cre|agreg|anot|sum|pon|met|carg)[a-z]* ?(me|le)? ?(un[ao]? |la |como |a mis |en mis )?tareas?\b|\bnueva tarea\b|\bgoogle tasks\b|\ben (mis|las) tareas\b/
 const RE_EVENTO = /\b(agend|(cre|arm|pon|met)[a-z]* (me |le )?(un[ao]? |el |la )?(evento|reunion|meeting|junta)|reunion (con|el|a las|mañana|manana)|en (el|mi) calendario|\bal calendario\b)/
 
-const RE_DRIVE_VERBO = /\b(busc|trae|traeme|pasame|mandame|encontr|consegu|necesito|donde esta|donde queda|donde tenemos|tenes (el|la|los|las)|mostr|abri|mand)/
+const RE_DRIVE_VERBO = /\b(busc|trae|traeme|pasame|mandame|encontr|consegu|necesito|necesitaria|quiero|queria|dame|donde esta|donde queda|donde tenemos|tenes (el|la|los|las)|mostr|abri|mand)/
+// Los verbos que en esta empresa NO significan otra cosa: pedir un archivo. Alcanzan solos,
+// sin que la persona nombre el sustantivo. "pasame vision" es un pedido de archivo tanto como
+// "pasame el archivo vision", y obligar a decir "archivo" era pedirle a la gente que hable
+// como la base de datos. Va ÚLTIMO entre los clasificadores: si el mensaje era un
+// recordatorio, una tarea o un evento, esos ya se lo llevaron.
+const RE_DRIVE_VERBO_SOLO = /\b(pasame|abrime|mostrame|traeme|mandame|buscame|encontrame|conseguime|donde esta|donde queda|donde tenemos)\b/
 const RE_DRIVE_OBJETO = /\b(archivo|carpeta|contrato|factura|planilla|sheet|excel|documento|doc\b|pdf|presupuesto|remito|comprobante|flujo de caja|cash flow|p&l|p y l|informe|acta|plano|certificado|recibo|boleta)/
 
 // "Creá algo para el jueves" sin decir QUÉ tipo de cosa: es el caso que se pregunta.
@@ -151,7 +158,52 @@ const CLASIFICADORES = [
   (p, texto, tiempo) => (RE_TAREA.test(p) ? tarea(texto, tiempo) : null),
   (p, texto, tiempo) => (RE_EVENTO.test(p) ? evento(texto, tiempo) : null),
   (p, texto) => (RE_DRIVE_VERBO.test(p) && RE_DRIVE_OBJETO.test(p) ? drive(texto) : null),
+  // Sin el sustantivo: alcanza el verbo de pedir un archivo, o el sustantivo sin verbo
+  // ("archivo vision"). Siempre que quede ALGO para buscar además de la palabra que disparó
+  // la regla — "pasame" a secas no es una búsqueda, es una frase a medias.
+  (p, texto) => ((RE_DRIVE_VERBO_SOLO.test(p) || RE_DRIVE_OBJETO.test(p)) && hayQueBuscar(texto) ? drive(texto) : null),
+  // EL SUSTANTIVO SOLO: "vision", "cash flow", "avances obra".
+  //
+  // Es cómo pide la gente cuando ya sabe qué quiere, y mandarlo al modelo para que dictamine
+  // lo obvio es gastar plata en adivinar. Pero un mensaje corto sin verbo es también la forma
+  // de TODO lo demás, así que esta regla reclama con confianza BAJA (`floja`): si otro
+  // especialista también lo reclama —"jornales" es de Personal IA— el Director desempata por
+  // confianza declarada y gana el otro. Reclamar fuerte acá sería quedarse con media empresa.
+  (p, texto, tiempo) => (esSustantivoSuelto(p, tiempo) ? { ...drive(texto), floja: true } : null),
 ]
+
+/** ¿Queda algo que buscar una vez sacadas las muletillas del pedido? Usa el MISMO
+ *  tokenizador que el buscador: si él no va a encontrar términos, esto no es una búsqueda. */
+function hayQueBuscar(texto) {
+  return tokenizar(texto).length > 0
+}
+
+/** Lo que la gente escribe para saludar o asentir. No es una búsqueda de nada. */
+const RE_SOCIAL = /^(hola|buenas|buen dia|buenas tardes|buenas noches|gracias|ok|oka|dale|listo|perfecto|barbaro|si|no|chau|nos vemos|como estas|que tal|dsp|despues)\b/
+/** Una pregunta abierta ("cuánto llevamos gastado") pide un análisis, no un archivo. */
+const RE_PREGUNTA = /^(cuant|cuand|cual|que |qué |quien|quién|como|cómo|por que|por qué|donde no)/
+/** Empieza con un número: es la taquigrafía de la carga de asistencia ("3 ausente"), no un
+ *  nombre de archivo. Reclamarla sería quitarle a Personal IA su forma de trabajo diaria. */
+const RE_EMPIEZA_NUMERO = /^\d/
+/** Verbos de OPERACIÓN: quien escribe "cargar asistencia" quiere hacer algo, no leer algo. */
+const RE_VERBO_OPERAR = /\b(cargar|carga|registrar|registra|anotar|anota|marcar|marca|actualizar|actualiza|corregir|corrige|cerrar|cierra|aprobar|aprueba)\b/
+
+/**
+ * ¿Es un pedido de archivo escrito como un sustantivo suelto?
+ *
+ * Corto (hasta cuatro palabras útiles), sin fecha, sin pregunta abierta, sin verbo de
+ * operación y sin arrancar con un número. Los límites son a propósito: cuanto más larga o
+ * más verbal la frase, más probable que sea trabajo de otro dominio y no el nombre de un
+ * archivo. Y aun pasando todos los filtros, reclama flojo — el desempate lo hace el Director.
+ */
+function esSustantivoSuelto(p, tiempo) {
+  if (!p || RE_SOCIAL.test(p) || RE_PREGUNTA.test(p)) return false
+  if (RE_EMPIEZA_NUMERO.test(p) || RE_VERBO_OPERAR.test(p)) return false
+  if (tiempo?.cuando || tiempo?.cadencia) return false
+  if (/[¿?]/.test(p)) return false
+  const t = tokenizar(p)
+  return t.length >= 1 && t.length <= 4 && p.split(' ').filter(Boolean).length <= 5
+}
 
 function recordatorio(texto, tiempo) {
   const destinatario = destinatarioDe(texto)
@@ -248,7 +300,10 @@ function armar(r, tiempo) {
     ? `Ese día tiene dos lecturas. ¿Cuál es?`
     : null
   return zSolicitud.parse({
-    intencion: r.intencion, via: 'deterministico', confianza: 1,
+    // `floja` = lo reconoció una regla laxa (el sustantivo suelto). Por debajo de la
+    // confianza neutra con la que el Director trata a un especialista que no declara la
+    // suya: ante un empate, el del dominio gana y el asistente se corre.
+    intencion: r.intencion, via: 'deterministico', confianza: r.floja ? 0.4 : 1,
     parametros: r.parametros, faltantes: r.faltantes ?? [], ambiguedad,
     // Las dos lecturas del día son la materia prima de la pregunta que hace el router. Van
     // DENTRO del contrato: colgadas del objeto, el `parse()` de cualquier capa las tiraba.

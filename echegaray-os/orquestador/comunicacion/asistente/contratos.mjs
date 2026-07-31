@@ -198,6 +198,10 @@ export function resultadoAclaracion(capacidad, pregunta, opciones = [], parcial 
 export const zDriveBuscar = z.object({
   terminos: z.string().min(1),
   tipo: z.enum(['cualquiera', 'planilla', 'documento', 'pdf', 'carpeta']).default('cualquiera'),
+  // El id que la persona ELIGIÓ de la lista que se le ofreció. Llega sólo en la segunda
+  // vuelta, cuando contesta "el segundo": es el momento en que se sabe con certeza cuál era,
+  // y por eso es también lo único que el buscador toma como aprendizaje.
+  archivoId: z.string().min(1).optional(),
 })
 
 export const zDriveArchivo = z.object({

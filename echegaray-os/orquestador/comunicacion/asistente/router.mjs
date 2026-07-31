@@ -420,6 +420,24 @@ async function ejecutar({ capacidad, parametros, base, port, identidad, via }) {
   }
   if (capacidad.efectoExterno) await registrarEjecucion(port, base, identidad, capacidad.id, resultado)
   await base.auditar?.({ evento: 'asistente.ejecucion', capacidad: capacidad.id, ok: resultado.ok, via })
+
+  // UNA PREGUNTA DE LA CAPACIDAD TAMBIÉN ES UNA PREGUNTA.
+  //
+  // El router persistía como pendiente sólo lo que preguntaba ÉL (un parámetro que faltaba).
+  // Cuando la que preguntaba era la capacidad —"encontré varios, ¿cuál te paso?"— no se
+  // guardaba nada: la lista se mostraba, la persona contestaba "el segundo", y ese mensaje se
+  // interpretaba desde cero como si fuera un pedido nuevo. La pregunta era decorativa.
+  //
+  // Se guarda acá, en un solo lugar, para cualquier capacidad que pregunte. `parcial` viene
+  // de la propia capacidad y trae el `faltante` que su respuesta va a completar.
+  if (resultado.aclaracion?.opciones?.length && resultado.aclaracion.parcial?.faltante) {
+    await guardarPendiente(port, identidad, base, {
+      capacidad: capacidad.id,
+      parcial: resultado.aclaracion.parcial,
+      pregunta: resultado.texto,
+      opciones: resultado.aclaracion.opciones,
+    })
+  }
   return final(resultado, via, capacidad.id)
 }
 
