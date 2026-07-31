@@ -1,5 +1,8 @@
 # Definition of Done — Módulo Asistencia
 
+> **SUPERADO — 31/07/2026.** Este documento se conserva como evidencia histórica: su §3, §13 y §17 tienen evidencia genuina. **Su veredicto «CERRADO» no vale**: lo firmó quien construyó el módulo, y la auditoría posterior encontró un agujero de seguridad explotable y la función principal rota. El estándar vigente es `docs/engineering/DEFINITION_OF_DONE.md`.
+
+
 Fecha de cierre v1: **30/07/2026** · `asistencia-v1.0` · SHA `e7c72a7`
 Fecha de cierre v2 (pantalla web): **30/07/2026** · `asistencia-v2.0` — **RETIRADA**
 Fecha de cierre v3 (todo en Mattermost): **30/07/2026** · `asistencia-v3.0`

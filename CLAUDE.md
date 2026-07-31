@@ -204,6 +204,46 @@ Debe intentar, dentro de sus permisos:
 7. declarar la confianza;
 8. convertir el gap relevante en trabajo.
 
+## PRINCIPIO DE CIERRE
+
+Los principios anteriores gobiernan lo que el OS afirma sobre la empresa.
+
+Este gobierna lo que el OS afirma sobre su propio trabajo.
+
+Un trabajo no está terminado porque compile, porque pasen las pruebas, porque tenga documentación o porque su lista de control esté marcada.
+
+Está terminado cuando existe evidencia verificable por un tercero de que puede operar correctamente en producción.
+
+**LA EVIDENCIA ES DEL EFECTO, NO DEL INTENTO.**
+
+Lo que prueba una escritura es el dato leído en su destino, nunca la pantalla que respondió que sí.
+
+Que el usuario diga que anduvo no prueba que anduvo.
+
+**UN CONTROL NUNCA SE VALIDA CONTRA LA MISMA INFORMACIÓN QUE PRODUCE.**
+
+Un control que se compara contra sí mismo no es un control.
+
+**NINGÚN TRABAJO LO CIERRA QUIEN LO CONSTRUYÓ.**
+
+El cierre lo firma quien no escribió el trabajo y probó el sistema vivo intentando romperlo.
+
+Cuando el trabajo alcanza el Nivel E, la firma es del dueño.
+
+Una afirmación sin evidencia adjunta no está pendiente: está incumplida.
+
+Una limitación declarada bloquea el criterio que toca.
+
+Declarar la limitación al lado del criterio cumplido no lo salva: lo anula.
+
+Cerrar sin límites conocidos es sospechoso.
+
+Casi siempre significa que no se buscaron.
+
+La pregunta permanente antes de dar algo por terminado es:
+
+**¿QUÉ EVIDENCIA TENGO DEL EFECTO, Y QUIÉN QUE NO LO CONSTRUYÓ LA MIRÓ?**
+
 ## PRINCIPIO FINAL DE LA MISIÓN
 
 El éxito del Business OS no se mide por:
@@ -1294,5 +1334,6 @@ Una observación aislada (A) nunca se convierte automáticamente en regla genera
 - **`.claude/skills/[dominio]/SKILL.md`**: las 19 skills expertas (ingeniería civil, dirección de obra, planificación/producción, costos/presupuestación, derecho de la construcción/contratos, contabilidad de constructoras, impuestos, finanzas/tesorería, derecho laboral de la construcción, seguridad e higiene/ART, calidad de obra, compras/abastecimiento/subcontratación, gestión empresarial y riesgos, **administración operativa de la construcción**, integraciones/APIs/sistemas externos, lectura de Drive/documentos multiformato, web/UX/deploy/operación de producto, **Google Sheets como sistemas de negocio**, y **arquitectura de integración finanzas-obras**). Cada una declara su propia política de fuentes, vigencia y aprendizaje. `arquitectura-integracion-finanzas-obras` es la guardiana de coherencia entre Flujo de Fondos, P&L, Avance de Obras, Supabase y el OS: decide dónde vive cada cálculo y evita que un mismo concepto (margen, cuentas por pagar, caja) tenga versiones distintas en cinco sistemas — no reemplaza el criterio de negocio de cada skill de dominio, lo arbitra cuando cruza más de una. Las cuatro anteriores son de naturaleza técnica, no profesional-normativa: `integraciones-apis-sistemas-externos` decide *cómo* conectar el OS con un sistema externo una vez que el dato ya está validado; `lectura-drive-documentos-multiformato` decide *cómo* inspeccionar, leer y extraer un dato desde una fuente legacy/documental; `web-ux-deploy-operacion-producto` decide *cómo* se presenta y opera esa información en pantalla y dónde corre el sistema; `google-sheets-business-systems` decide *cómo* se construye, audita y corrige un Google Sheet real tratado como sistema de negocio. Ninguna de las cuatro decide *qué* dato capturar ni cuál es la fuente de verdad de fondo — eso lo sigue decidiendo la skill de dominio dueña del dato (o `arquitectura-integracion-finanzas-obras` cuando el dato cruza más de un sistema).
 - **`.claude/skills/orquestador-de-razonamiento-y-skills/`**: la capa meta que gobierna a todas las anteriores — protocolo obligatorio de razonamiento (problema → dominios → skills → gaps → investigación → integración → ejecución → validación → aprendizaje), inventario automático desde el filesystem, detector de gaps, creación/mejora autónoma de skills y tests de comportamiento profesional. No contiene conocimiento de dominio: decide *qué capacidades* se necesitan y *si existen*.
 - **`.claude/memory/`**: aprendizaje acumulado específico de Echegaray (decisiones, hallazgos de discovery, patrones validados).
+- **`docs/engineering/`**: el estándar de ingeniería del OS — lecciones aprendidas de cada módulo, el proceso de auditoría final y el Definition of Done. No contiene conocimiento de dominio ni reglas de negocio: define cuándo un trabajo está terminado y con qué evidencia.
 
 La jurisdicción operativa principal de todo el conocimiento normativo es **San Juan, Argentina** — distinguiendo siempre normativa nacional, provincial (San Juan), municipal según ubicación concreta, contractual específica del cliente, y normas técnicas aplicables.

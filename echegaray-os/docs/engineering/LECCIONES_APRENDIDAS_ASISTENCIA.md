@@ -6,7 +6,7 @@
 > No es un changelog ni documentación funcional — eso vive en `orquestador/comunicacion/docs/`.
 > Acá vive **por qué fallamos, cuántas veces fallamos igual, y qué regla nace de cada falla**.
 >
-> Base factual: 86 commits, 44 incidentes reconstruidos del historial, los comentarios del código, los dos documentos del módulo y la auditoría independiente del 30–31/07/2026.
+> Base factual: 44 incidentes reconstruidos del historial del repositorio, **38 de ellos registrados en la línea de tiempo de abajo** — que es la numeración canónica que citan los otros documentos, los comentarios del código, los dos documentos del módulo y la auditoría independiente del 30–31/07/2026.
 
 ---
 
@@ -14,7 +14,7 @@
 
 **El módulo lo construyó una IA, lo probó la misma IA, escribió su propio DOD y se puso los ✔ a sí misma.** Después una auditoría independiente le encontró un agujero de seguridad explotable —un `curl` anónimo desde Internet pasaba el control de canal y el de permisos— y un bug que rompía la función principal mientras el dueño la usaba y la daba por buena.
 
-Ese es el hallazgo estructural, y explica los 44 incidentes mejor que cualquier regla técnica de las que siguen: **no hubo ningún par de ojos que no tuviera interés en que el módulo estuviera terminado.**
+Ese es el hallazgo estructural, y explica los 38 incidentes mejor que cualquier regla técnica de las que siguen: **no hubo ningún par de ojos que no tuviera interés en que el módulo estuviera terminado.**
 
 El segundo dato es igual de incómodo: **de los defectos graves, los que encontró un test son cero.** Los encontró el dueño usando el sistema, o una auditoría atacándolo. La suite tenía 448 tests propios (los archivos de prueba del módulo, medidos con `node --test` sobre ellos) y 1.568 en total, todos en verde. El número de tests no fue una defensa: fue lo que sostuvo el ✔.
 
@@ -108,6 +108,22 @@ Un defecto se introdujo **once minutos** después de la corrección que lo caus�
 El único patrón positivo. Se sembraron 14 feriados **sólo donde dos fuentes coinciden**, porque «una fecha equivocada precargaría a toda la empresa en franco un día laborable», y hay un test que falla si alguien agrega los que faltan sin verificar. Una fórmula como `=9-2,5+2` no se descompone: «inventar una descomposición ahí sería precisión falsa». Con homónimos, «se rechaza en vez de elegir por azar». Una celda vacía no es un 0: contarla como ausencia «inventaría faltas que nadie registró». Sin jornada conocida el campo vuelve a texto libre. Y no se agregaron jefes de obra al canal porque no hay fuente confiable de identidades: «inventarlos habría sido peor».
 
 Es el patrón que más incidentes evitó y el más fácil de erosionar cuando aprieta el plazo.
+
+### P13 · Un control se compara contra sí mismo — 2 veces
+
+El control de la escritura se producía con el mismo código que escribía, así que confirmaba lo que fuera. En Asistencia dejó ciega la evidencia celda por celda `[30]`; en el Flujo de Fondos costó $292,8M invisibles. **Cómo detectarlo:** preguntar con qué código se produce la evidencia de cada control; si es el mismo que genera el dato, es un eco. **Cómo prevenirlo:** el control lee el destino con otra herramienta. **Automatización:** auditor de completitud del registro, corriendo sobre datos reales.
+
+### P14 · Escribir sobre un recurso que mantienen personas — 4 veces (contando fuera del módulo)
+
+El auto-candado de JORNALES `[19]`, la pestaña de Proveedores borrada por un `clearValues`, el worktree que borró una pestaña, las pérdidas de trabajo del dueño en el Flujo de Caja. **Cómo detectarlo:** por cada destino de escritura, preguntar quién más lo edita. **Cómo prevenirlo:** declarar de quién es el recurso; proteger la unidad mínima (celda, fila), no el contenedor; el generador fusiona, no borra. **Automatización:** prueba de que una edición humana sobrevive a una corrida del generador.
+
+### P15 · Publicar una superficie sin compuerta propia — 1 vez, 6 h 55 min de exposición
+
+El prefijo se publicó en Internet antes de que existiera el endpoint, y el endpoint vivió seis horas y cincuenta y cinco minutos sin autenticar `[27]`. **Cómo detectarlo:** listar las rutas que publica el proxy y, para cada una, el archivo y la línea que autentica el origen. **Cómo prevenirlo:** una ruta sin línea es un hallazgo, no una pendiente. **Automatización:** cruce entre rutas publicadas y manejadores con autenticación declarada.
+
+### P16 · El ✔ y la limitación que lo anula, en la misma página — 3 veces
+
+El módulo se declaró terminado tres veces en dos horas y diecisiete minutos, y las tres veces el propio documento escribió al lado *«no se escribió ninguna celda nueva en JORNALES»*. **Cómo detectarlo:** leer la sección de límites contra la lista de criterios cumplidos. **Cómo prevenirlo:** una limitación declarada bloquea el criterio que toca; es el resultado, no una nota al pie. **Automatización:** sin detección automática — se busca a mano al firmar el DoD.
 
 ---
 
@@ -300,89 +316,93 @@ Se documenta porque hay que **preservarlo**, y porque es lo que hay que traducir
 
 ## Reglas permanentes del Business OS
 
-Clasificadas según el estándar del `CLAUDE.md` raíz: **C** patrón probable · **D** conocimiento interno validado · **E** regla operativa aprobada. Una **A** (observación aislada) no entra acá. El número entre paréntesis remite a la línea de tiempo; la P, al patrón.
+Clasificadas por **grado de aprendizaje** según el estándar del `CLAUDE.md` raíz: **A** observación aislada · **B** recurrencia · **C** patrón probable · **D** conocimiento interno validado · **E** regla operativa aprobada.
+
+> **Corrección del 31/07/2026.** La primera versión de este documento se auto-asignó 28 grados `E` y 8 `D`. El raíz define `E` como *«regla operativa **aprobada**»* y exige validación explícita del dueño para llegar a D o E — así que **este documento estaba incumpliendo, en su propia clasificación, la regla R1 que él mismo enuncia**. Corregido: un agente propone **hasta C**; **`B` es recurrencia medida** —el grado que corresponde a un patrón con frecuencia contada, y que no se había usado ni una vez—; **`D` y `E` los concede el dueño**. Lo que sigue es la propuesta, no el veredicto.
+
+El número entre paréntesis remite a la línea de tiempo; la P, al patrón.
 
 ### Quién y cómo se cierra
 
-**R1 — Ningún módulo lo cierra quien lo construyó.** El cierre lo firma alguien —persona o agente— que no escribió el código y que ataca el sistema vivo, no que lee. Sin eso, el DOD es una autoevaluación. `D` *(hallazgo estructural)*
+**R1 — Ningún módulo lo cierra quien lo construyó.** El cierre lo firma alguien —persona o agente— que no escribió el código y que ataca el sistema vivo, no que lee. Sin eso, el DOD es una autoevaluación. `C` *(hallazgo estructural, propuesto por quien construyó — que es lo que esta misma regla prohíbe; sube a D o E sólo con la aprobación del dueño)*
 
-**R2 — Toda ruta que escriba datos autentica su origen antes de mirar permisos.** Operable: abrir la configuración del proxy, listar todos los prefijos publicados, y para cada uno escribir el archivo y la línea del manejador que autentica el origen. **Un prefijo sin línea es un hallazgo, no una pendiente.** `E` *(27)*
+**R2 — Toda ruta que escriba datos autentica su origen antes de mirar permisos.** Operable: abrir la configuración del proxy, listar todos los prefijos publicados, y para cada uno escribir el archivo y la línea del manejador que autentica el origen. **Un prefijo sin línea es un hallazgo, no una pendiente.** `C` *(27)*
 
-**R3 — Que el usuario diga que anduvo no prueba que anduvo.** La prueba es el efecto verificado en el destino: la celda escrita, la fila en la base, el evento con evidencia. Toda validación en producción se cierra **mirando el destino, no la pantalla**. `E` *(28)*
+**R3 — Que el usuario diga que anduvo no prueba que anduvo.** La prueba es el efecto verificado en el destino: la celda escrita, la fila en la base, el evento con evidencia. Toda validación en producción se cierra **mirando el destino, no la pantalla**. `C` *(28)*
 
-**R4 — Un control se verifica sobre el camino que usa la gente.** Si hay dos caminos al mismo efecto, se miden los dos o no está medido. `E` *(30, P6)*
+**R4 — Un control se verifica sobre el camino que usa la gente.** Si hay dos caminos al mismo efecto, se miden los dos o no está medido. `B` *(30, P6)*
 
-**R5 — Un doble nunca es más permisivo que el original, ni parte de un estado inicial que producción no produce.** Si el real desestructura un campo, el doble falla cuando falta. Y toda corrección se valida **por mutación**: revertirla tiene que hacer fallar el test. `E` *(P4, cuatro apariciones)*
+**R5 — Un doble nunca es más permisivo que el original, ni parte de un estado inicial que producción no produce.** Si el real desestructura un campo, el doble falla cuando falta. Y toda corrección se valida **por mutación**: revertirla tiene que hacer fallar el test. `B` *(P4, cuatro apariciones)*
 
 ### Verdad del dato
 
-**R6 — El control de una escritura se corre con una herramienta que no comparte código con el que escribió.** Si el control usa la misma función que generó el dato, no es control: es un eco. Concreto: si el módulo escribe con `X`, el control lee el destino con una consulta independiente y compara. `E` *(30; precedente Flujo de Fondos)*
+**R6 — El control de una escritura se corre con una herramienta que no comparte código con el que escribió.** Si el control usa la misma función que generó el dato, no es control: es un eco. Concreto: si el módulo escribe con `X`, el control lee el destino con una consulta independiente y compara. `B` *(30; precedente Flujo de Fondos)*
 
-**R7 — Ningún campo de auditoría afirma una verificación que el código no hace.** Si el ledger dice `verificada`, hay una línea que la verificó. `E` *(27)*
+**R7 — Ningún campo de auditoría afirma una verificación que el código no hace.** Si el ledger dice `verificada`, hay una línea que la verificó. `C` *(27)*
 
-**R8 — Un mensaje de éxito se emite después de comprobar el efecto y describe lo que pasó.** «Ya estaba», «no se pudo» y «se canceló» nunca comparten texto, y un fallo de una llamada externa **nunca** termina en una respuesta de éxito. `E` *(P1, seis apariciones)*
+**R8 — Un mensaje de éxito se emite después de comprobar el efecto y describe lo que pasó.** «Ya estaba», «no se pudo» y «se canceló» nunca comparten texto, y un fallo de una llamada externa **nunca** termina en una respuesta de éxito. `B` *(P1, seis apariciones)*
 
-**R9 — El registro de una operación crítica se construye en un solo lugar.** Verificable con `grep` del nombre del constructor. `E` *(30)*
+**R9 — El registro de una operación crítica se construye en un solo lugar.** Verificable con `grep` del nombre del constructor. `C` *(30)*
 
-**R10 — La fuente de verdad sobre si hay que escribir es el destino releído**, no un registro nuestro de lo que creemos haber hecho. `E` *(20, ✱14)*
+**R10 — La fuente de verdad sobre si hay que escribir es el destino releído**, no un registro nuestro de lo que creemos haber hecho. `B` *(20, ✱14)*
 
-**R11 — Todo dato derivado se puede corregir hacia abajo**: una carga posterior borra lo que dejó de aplicar, no sólo agrega. `D` *(25)*
+**R11 — Todo dato derivado se puede corregir hacia abajo**: una carga posterior borra lo que dejó de aplicar, no sólo agrega. `C` *(25)*
 
 **R12 — Nunca inventar el dato que falta**: declararlo, rechazar antes que adivinar, y nunca forzar al usuario a inventarlo para poder avanzar. `E` *(P12, seis apariciones)*
 
 ### Diseño
 
-**R13 — Antes de construir una interfaz, preguntar dónde trabaja hoy quien la va a usar**, y llevar el sistema ahí. `D` *(12)*
+**R13 — Antes de construir una interfaz, preguntar dónde trabaja hoy quien la va a usar**, y llevar el sistema ahí. `E` *(ya normada en el CLAUDE.md técnico: la regla existía y se incumplió igual — el gap era de control, no de conocimiento)* *(12)*
 
-**R14 — Ningún formulario permite estados imposibles.** Cuando la plataforma no deja corregir al vuelo, la respuesta no es simular la corrección: es rediseñar para que el estado inválido **no sea representable**. `E` *(23)*
+**R14 — Ningún formulario permite estados imposibles.** Cuando la plataforma no deja corregir al vuelo, la respuesta no es simular la corrección: es rediseñar para que el estado inválido **no sea representable**. `C` *(23)*
 
-**R15 — La interfaz le pide las reglas a la autoridad del dominio; cuando no coinciden, manda la autoridad** y la diferencia es un bug, no una preferencia. El backend no se relaja porque la interfaz mejoró. `E` *(23, 34, P8)*
+**R15 — La interfaz le pide las reglas a la autoridad del dominio; cuando no coinciden, manda la autoridad** y la diferencia es un bug, no una preferencia. El backend no se relaja porque la interfaz mejoró. `B` *(23, 34, P8)*
 
-**R16 — Verificar qué permite la plataforma leyendo su contrato o su código.** Todo identificador que viaje en una URL declara su alfabeto en un test. `E` *(22, 23)*
+**R16 — Verificar qué permite la plataforma leyendo su contrato o su código.** Todo identificador que viaje en una URL declara su alfabeto en un test. `B` *(22, 23)*
 
-**R17 — Todo texto que el usuario ve y que nosotros no escribimos es un defecto.** `E` *(24)*
+**R17 — Todo texto que el usuario ve y que nosotros no escribimos es un defecto.** `C` *(24)*
 
-**R18 — Si una interfaz puede quedar duplicada en pantalla, el estado del servidor se ata a una copia** y verifica que es la vigente. `D` *(33)*
+**R18 — Si una interfaz puede quedar duplicada en pantalla, el estado del servidor se ata a una copia** y verifica que es la vigente. `C` *(33)*
 
-**R19 — Una interfaz se mira antes de darla por buena**, y el test que nace de un defecto visual ataca la causa —que sí es texto— en vez de renderizar. `E` *(13, P7)*
+**R19 — Una interfaz se mira antes de darla por buena**, y el test que nace de un defecto visual ataca la causa —que sí es texto— en vez de renderizar. `B` *(13, P7)*
 
 ### Robustez
 
-**R20 — Cada guarda automática tiene escrita una fila: falso positivo → qué queda roto → cómo se destraba → quién puede destrabarlo.** Si el destrabe requiere un deploy o una migración, la guarda no se activa automáticamente. `E` *(19, P5)*
+**R20 — Cada guarda automática tiene escrita una fila: falso positivo → qué queda roto → cómo se destraba → quién puede destrabarlo.** Si el destrabe requiere un deploy o una migración, la guarda no se activa automáticamente. `C` *(19, P5)*
 
-**R21 — Antes de proteger un recurso, declarar de quién es.** Lo que mantiene una persona no se protege como lo que mantiene el OS: ahí se protege la unidad mínima (la celda, la fila), no el contenedor. `E` *(19)*
+**R21 — Antes de proteger un recurso, declarar de quién es.** Lo que mantiene una persona no se protege como lo que mantiene el OS: ahí se protege la unidad mínima (la celda, la fila), no el contenedor. `C` *(19)*
 
-**R22 — Si una regla vive en varias capas, se corrige en todas a la vez.** Una sobreviviente reinstala el defecto. `E` *(7, 20, 21)*
+**R22 — Si una regla vive en varias capas, se corrige en todas a la vez.** Una sobreviviente reinstala el defecto. `B` *(7, 20, 21)*
 
-**R23 — La idempotencia protege un reintento, no la historia.** Su alcance es la unidad de trabajo; antes de definir una clave, escribir el caso legítimo que la repite. Si existe, el alcance está mal. `E` *(20)*
+**R23 — La idempotencia protege un reintento, no la historia.** Su alcance es la unidad de trabajo; antes de definir una clave, escribir el caso legítimo que la repite. Si existe, el alcance está mal. `C` *(20)*
 
-**R24 — La concurrencia se resuelve en el recurso**: comparar contra el destino releído y condicionar la transición de estado en la base. Coordinar con banderas en memoria, no. `E` *(✱14)*
+**R24 — La concurrencia se resuelve en el recurso**: comparar contra el destino releído y condicionar la transición de estado en la base. Coordinar con banderas en memoria, no. `B` *(✱14)*
 
-**R25 — Toda llamada saliente lleva timeout explícito que cubre la lectura del cuerpo** y limpia su timer en todos los caminos. Todo cliente nuevo se escribe listando primero los que ya hay: si el nuevo no tiene timeout, reintento o log y el viejo sí, es un bug, no una decisión de diseño. `E` *(35)*
+**R25 — Toda llamada saliente lleva timeout explícito que cubre la lectura del cuerpo** y limpia su timer en todos los caminos. Todo cliente nuevo se escribe listando primero los que ya hay: si el nuevo no tiene timeout, reintento o log y el viejo sí, es un bug, no una decisión de diseño. `C` *(35)*
 
-**R26 — Un servicio degrada, no entra en crash-loop.** Si una dependencia falta, sigue de pie denegando. `E` *(32)*
+**R26 — Un servicio degrada, no entra en crash-loop.** Si una dependencia falta, sigue de pie denegando. `C` *(32)*
 
-**R27 — Un fallo del sistema de auditoría deja rastro**, aunque no cambie el veredicto. `D` *(36)*
+**R27 — Un fallo del sistema de auditoría deja rastro**, aunque no cambie el veredicto. `C` *(36)*
 
 ### Proceso y memoria
 
-**R28 — Al agregar una puerta a un efecto existente, listar las defensas del camino viejo una por una.** El test correcto no es «la guarda funciona»: es **«no existe camino al efecto que la esquive»**, con la lista de caminos escrita. `E` *(P6, cuatro apariciones)*
+**R28 — Al agregar una puerta a un efecto existente, listar las defensas del camino viejo una por una.** El test correcto no es «la guarda funciona»: es **«no existe camino al efecto que la esquive»**, con la lista de caminos escrita. `B` *(P6, cuatro apariciones)*
 
-**R29 — Cuando un pedido no aparece en nuestros logs, el problema está antes de nosotros**: ir a leer los logs del otro lado. `E` *(22, P3)*
+**R29 — Cuando un pedido no aparece en nuestros logs, el problema está antes de nosotros**: ir a leer los logs del otro lado. `C` *(22, P3)*
 
-**R30 — Toda afirmación de control en la documentación necesita un comando que la verifique o un guard-test que la sostenga.** Un ✔ se toma sobre el estado real medido. `E` *(P2, cinco apariciones)*
+**R30 — Toda afirmación de control en la documentación necesita un comando que la verifique o un guard-test que la sostenga.** Un ✔ se toma sobre el estado real medido. `B` *(P2, cinco apariciones)*
 
-**R31 — Cuando un comentario declara la condición futura que activaría una defensa, esa condición es un ítem de checklist.** `D` *(27)*
+**R31 — Cuando un comentario declara la condición futura que activaría una defensa, esa condición es un ítem de checklist.** `A` *(27)*
 
-**R32 — Un validador que sólo corre en los tests no es una defensa.** Y un test verde sobre código que nadie importa es señal de **código muerto**, no de cobertura. `E` *(26, 31)*
+**R32 — Un validador que sólo corre en los tests no es una defensa.** Y un test verde sobre código que nadie importa es señal de **código muerto**, no de cobertura. `B` *(26, 31)*
 
-**R33 — Eliminar el código muerto en el mismo movimiento en que se descarta lo que lo justificaba**, verificando importadores con `grep`. `E` *(26)*
+**R33 — Eliminar el código muerto en el mismo movimiento en que se descarta lo que lo justificaba**, verificando importadores con `grep`. `C` *(26)*
 
-**R34 — Después de corregir algo, revisar en la misma sesión qué depende de lo que se tocó.** `D` *(11, 14, P11)*
+**R34 — Después de corregir algo, revisar en la misma sesión qué depende de lo que se tocó.** `B` *(11, 14, P11)*
 
-**R35 — Cuando un commit nombra un patrón, ese patrón sale del mensaje de commit y entra acá o en un test el mismo día.** «Un doble que tapa» estaba escrito y volvió a pasar tres veces. `E` *(P4)*
+**R35 — Cuando un commit nombra un patrón, ese patrón sale del mensaje de commit y entra acá o en un test el mismo día.** «Un doble que tapa» estaba escrito y volvió a pasar tres veces. `C` *(P4)*
 
-**R36 — Antes de habilitar una escritura, escribir cómo se revierte y quién puede hacerlo.** `D` *(faltante detectado en la revisión)*
+**R36 — Antes de habilitar una escritura, escribir cómo se revierte y quién puede hacerlo.** `GAP` *(sin incidente: es una carencia detectada, no una lección — se declara, no se promueve)*
 
 > **Cuándo NO aplican.** «Fail-closed» (R2, R26) vale para todo lo que **escribe**; en un módulo de sólo lectura, negar por una variable faltante deja al dueño sin datos y es peor que degradar avisando. R19 no aplica a módulos sin interfaz. Toda excepción se escribe con su motivo.
 
@@ -465,7 +485,7 @@ Backlog real, priorizado. Cada ítem convierte una regla en algo que no se puede
 - **Dejamos una defensa escrita y desconectada**, con una nota que decía exactamente cuándo activarla. Se cumplió la condición y nadie la releyó.
 - **Documentamos dos veces el mismo control inexistente**, con doce horas y dos archivos de diferencia.
 
-**¿Qué podríamos haber detectado antes?** Cinco de los treinta y siete, con dos preguntas hechas al empezar: *«¿qué prueba que este pedido viene de quien dice?»* y *«¿este módulo tiene dos caminos al mismo efecto? ¿medí los dos?»*. **Los otros treinta y dos necesitaban a alguien atacando el sistema vivo, o mirando el archivo real.** Esa es la conclusión honesta: no había forma de razonarlos desde el escritorio.
+**¿Qué podríamos haber detectado antes?** Cinco de los treinta y ocho, con dos preguntas hechas al empezar: *«¿qué prueba que este pedido viene de quien dice?»* y *«¿este módulo tiene dos caminos al mismo efecto? ¿medí los dos?»*. **Los otros treinta y tres necesitaban a alguien atacando el sistema vivo, o mirando el archivo real.** Esa es la conclusión honesta: no había forma de razonarlos desde el escritorio.
 
 Lo único del proceso que hay que preservar deliberadamente: **los comentarios que explican el porqué**. Este documento se reconstruyó casi entero de ellos.
 

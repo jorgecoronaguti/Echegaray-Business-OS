@@ -26,6 +26,12 @@ Antes de escribir código para un módulo (presupuestos, cobranza, HH, adicional
 
 Esto aplica el principio del `CLAUDE.md` raíz: *"No digitalizar caos. No automatizar procesos rotos. No construir software antes de entender el proceso."*
 
+## Regla posterior a construir cualquier funcionalidad
+
+Existía la regla previa (entender el proceso, ubicar las fuentes, no fabricar estructura sin evidencia). Faltaba la de después, y su ausencia costó un módulo cerrado tres veces con un agujero abierto.
+
+Antes de dar por terminado un módulo se corre el proceso de `docs/engineering/AUDITORIA_FINAL_MODULOS.md` y se completa `docs/engineering/DEFINITION_OF_DONE.md` con evidencia, no con casillas. **Ningún módulo lo cierra quien lo construyó.**
+
 ## Regla contra la duplicación
 
 No crear una tabla, un flujo o una pantalla que ya exista en otro lado (Google Sheets, sistema contable, otra feature de este mismo proyecto) sin justificación explícita. Si dos features necesitan el mismo dato, ese dato vive en un solo lugar y se referencia — no se copia.
@@ -41,7 +47,7 @@ Antes de proponer un sistema nuevo o paralelo, preguntar: **¿qué ya existe que
 | Framework | Next.js (App Router) + React + TypeScript |
 | Estilos | Tailwind CSS |
 | Backend | Supabase (Auth + Postgres + RLS) |
-| Testing | Playwright CLI |
+| Testing | `node --test` para el núcleo (es el runner que produce la evidencia de cierre) · Playwright CLI para el recorrido por navegador |
 
 No hay decisiones de stack pendientes. No se agregan librerías nuevas sin justificación ligada a una necesidad real del negocio.
 
