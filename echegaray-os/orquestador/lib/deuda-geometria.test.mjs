@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { bloqueDeDeuda, clasificarDeuda, celdaVacia } from './deuda-geometria.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
+import { readFileSync, readdirSync } from 'node:fs'
 
 /** Una grilla como la que escribe el generador: título, encabezado, N proveedores con sus facturas. */
 const grilla = () => [
@@ -73,4 +74,34 @@ test('el centinela del generador cuenta como celda VACÍA, no como dato', () => 
   assert.equal(celdaVacia('   '), true)
   assert.equal(celdaVacia(0), false, 'un cero es un dato')
   assert.equal(celdaVacia('=IF(x;"";"")'), false, 'una fórmula es contenido, aunque muestre vacío')
+})
+
+// ═══ LA GUARDA EN TODOS LOS GENERADORES QUE FORMATEAN ═══
+//
+// El desastre de CAJA no fue de CAJA: fue del PATRÓN. `escribirPreservando` devuelve `bloqueada` /
+// `editadaPorHumano` cuando no escribió, y seis generadores descartaban ese resultado y formateaban
+// igual — pintando la geometría de la grilla nueva sobre los valores viejos, y reapuntando rangos con
+// nombre a filas sin dato. Este test recorre el FUENTE de todos: si mañana alguien agrega un generador
+// que formatea sin consultar el skip, falla acá y no en la planilla del dueño.
+test('ningún generador formatea ni publica nombres después de una escritura salteada', () => {
+  const dir = new URL('../scripts/', import.meta.url)
+  const fallas = []
+  for (const f of readdirSync(dir)) {
+    if (!f.endsWith('.mjs') || f.endsWith('.test.mjs')) continue
+    const src = readFileSync(new URL(f, dir), 'utf8')
+    if (!src.includes('escribirPreservando')) continue
+    const formatea = /\bawait formatear\(/.test(src)
+    const publica = /\bawait publicar(Rangos)?\(/.test(src)
+    if (!formatea && !publica) continue
+    // Tres formas VÁLIDAS de gobernarlo, las tres en uso en el repo:
+    //   a) `if (!salteada) await formatear(...)`  — la guarda por bandera
+    //   b) desestructurar `{ bloqueada, editadaPorHumano }` y `return` antes de formatear
+    //   c) SACAR la pestaña candada de la lista de trabajo antes de formatearla (cash-flow-rehacer:
+    //      escribe dos pestañas y formatea sólo las que quedaron en `data`)
+    const gobierna = /if \(!salteada\) await (formatear|publicar)/.test(src)
+      || /(bloqueada|editadaPorHumano)[\s\S]{0,300}?\breturn\b/.test(src)
+      || /filtrarBloqueadas/.test(src)
+    if (!gobierna) fallas.push(`${f}: formatea o publica nombres SIN mirar si la escritura se salteó`)
+  }
+  assert.deepEqual(fallas, [], `generadores que pueden repetir el desastre de CAJA:\n  ${fallas.join('\n  ')}`)
 })

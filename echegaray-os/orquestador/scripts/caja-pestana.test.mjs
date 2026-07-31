@@ -10,6 +10,7 @@
 // REAL. Ahora `grilla` se exporta y `main()` corre sólo si se invoca el archivo.
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { grilla } from './caja-pestana.mjs'
 import { CUENTAS } from '../lib/caja-disponibilidades.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
@@ -334,4 +335,26 @@ test('EL CALENDARIO PROYECTA LOS DOS LADOS, o su piso es falso', () => {
     // ISNUMBER sobre la fecha: una fecha como TEXTO caería en varios tramos.
     assert.match(entra, /ISNUMBER\(Cobranzas!\$Q\$5/)
   }
+})
+
+test('EL DESASTRE DEL 31/07: si la escritura se saltea, NO se formatea ni se mueven los nombres', () => {
+  // El dueño: "desastre lo q estás haciendo en caja". La guarda hacía bien su trabajo —con la pestaña
+  // candada no se escribe— pero el resultado se ignoraba y la corrida seguía: `formatear` pintaba la
+  // geometría de la grilla NUEVA sobre los valores VIEJOS (cuatro filas de corrimiento: "Sale" con
+  // formato de número, "Queda después" con formato de FECHA) y `publicar` reapuntaba
+  // CAJA_TOTAL_DISPONIBLE y CAJA_FECHA_SALDO a dos celdas VACÍAS. Con el total y la fecha de corte en
+  // cero, todo cheque y toda quincena pasan el filtro ">=CAJA_FECHA_SALDO" y el calendario infla.
+  //
+  // Se verifica sobre el FUENTE porque es una secuencia de efectos sobre Google, no una función pura:
+  // un test que llamara a las mismas funciones mockeadas probaría el mock, no el orden.
+  const src = readFileSync(new URL('./caja-pestana.mjs', import.meta.url), 'utf8')
+  const i = src.indexOf('const escritura = await escribirPreservando')
+  assert.ok(i > 0, 'el resultado de la escritura se guarda en una variable, no se descarta')
+  const corte = src.indexOf('await formatear(', i)
+  assert.ok(corte > i, 'formatear viene después de escribir')
+  const entre = src.slice(i, corte)
+  assert.match(entre, /escritura\?\.bloqueada \|\| escritura\?\.editadaPorHumano/, 'se consulta el skip')
+  assert.match(entre, /\n\s+return\n/, 'y se CORTA la corrida antes de formatear')
+  // Y los nombres se publican después de formatear, así que el mismo return los cubre.
+  assert.ok(src.indexOf('await publicar(', corte) > corte, 'publicar queda del lado protegido por el return')
 })

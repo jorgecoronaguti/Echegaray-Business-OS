@@ -1227,7 +1227,29 @@ async function main() {
   const { grid: gridFinal, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, PESTAÑA, g.filas, actual)
   g.filas = gridFinal
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)
-  const { conservadas } = await escribirPreservando(google, ID, tab, g.filas, { respetar: false /* la Regla 0 ya se aplicó arriba, a mano: este generador guarda el registro DESPUÉS de releer la pestaña, que es más fiel que hacerlo antes de escribir */, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
+  const escritura = await escribirPreservando(google, ID, tab, g.filas, { respetar: false /* la Regla 0 ya se aplicó arriba, a mano: este generador guarda el registro DESPUÉS de releer la pestaña, que es más fiel que hacerlo antes de escribir */, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
+  // ═══ SI NO SE ESCRIBIÓ, NO SE FORMATEA NI SE MUEVEN LOS NOMBRES (31/07) ═══
+  //
+  // ESTE ERA EL DESASTRE. El dueño: "desastre lo q estás haciendo en caja". La guarda hacía bien su
+  // trabajo —con la pestaña candada, `escribirPreservando` NO escribe— pero el resultado se ignoraba y
+  // la corrida seguía como si hubiera escrito:
+  //
+  //   · `formatear` pintaba la geometría de la grilla NUEVA sobre los valores VIEJOS. Cuatro filas de
+  //     corrimiento: la columna "Sale" del calendario quedó con formato de número ("32.288.000,00"),
+  //     "Queda después" con formato de FECHA, y la fila "Semana que viene" sin ningún formato
+  //     ("3488735"). Eso es exactamente lo que se ve en pantalla.
+  //   · `publicar` reapuntaba CAJA_TOTAL_DISPONIBLE y CAJA_FECHA_SALDO a las filas de la grilla nueva:
+  //     quedaron en E22 y F22, dos celdas VACÍAS. El total real seguía en la fila 18. Con el total en
+  //     cero y la fecha de corte en cero, TODO cheque y TODA quincena pasan el filtro ">=fecha de
+  //     saldo" y el calendario de vencimientos infla sus tramos. Sin un solo #ERROR, sin un aviso.
+  //
+  // Una pestaña que no se escribió no cambió de forma: su formato y sus nombres son los de su última
+  // escritura y así tienen que quedar. El skip es una decisión correcta; lo que estaba mal era seguir.
+  if (escritura?.bloqueada || escritura?.editadaPorHumano) {
+    console.log(`  🔒 "${PESTAÑA}" bajo tu control: no escribí, y por lo tanto NO le toco el formato, NI muevo sus rangos con nombre, NI reescribo su registro de rótulos. La pestaña queda exactamente como la dejaste.`)
+    return
+  }
+  const { conservadas } = escritura
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) escritas por una persona — CONSERVADAS`)
   await formatear(google, hoja.sheetId, g, tab)
 
@@ -1451,7 +1473,14 @@ async function formatear(google, sheetId, g, tab) {
 
   // Encabezados de columna al estilo statement: sin fondo, texto chico y apagado, alineado como su
   // dato (los importes a la derecha), y una hairline abajo que separa el título de las filas.
-  for (const c of [g.cab0, g.cab1, g.cab3]) {
+  // EL ENCABEZADO DEL CALENDARIO FALTABA EN ESTA LISTA (31/07). "Tramo · Entra · Sale · Neto · Queda
+  // después · Fin del tramo" se quedaba con el formato de SU COLUMNA: "Sale" dibujado como número
+  // suelto y "Queda después" con formato de FECHA. Se ubica por su rótulo, no por su número de fila.
+  const cabCal = g.filas.findIndex((f) => String(f?.[0] ?? '').trim() === 'Tramo') + 1
+  for (const c of [g.cab0, g.cab1, g.cab3, cabCal].filter((x) => x > 0)) {
+    // UN ENCABEZADO ES TEXTO, NUNCA PLATA NI FECHA: se le devuelve el formato de número junto con la
+    // tipografía. Sin esto gana el formato que se aplicó a la columna entera más arriba.
+    fmt(r(c - 1, c), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
     fmt(r(c - 1, c), 'userEnteredFormat',
       { textFormat: { bold: true, foregroundColor: MUTED, fontSize: E.TAM.nota }, horizontalAlignment: 'LEFT', wrapStrategy: 'CLIP' })
     fmt(r(c - 1, c, 2, 3), 'userEnteredFormat.horizontalAlignment', { horizontalAlignment: 'RIGHT' })
