@@ -190,7 +190,9 @@ export class SesionesMemoria {
   async guardarPlan(id, plan) { return this._set(id, { plan: plan ?? null, idempotency_key: plan?.idempotency_key ?? null }) }
 
   async confirmar(id, { idempotencyKey } = {}) {
-    const ya = this.filas.find((f) => f.idempotency_key === idempotencyKey && f.estado === ESTADO_SESION.CONFIRMADA && idempotencyKey)
+    // Acotado a ESTA sesión, igual que la implementación en Postgres: "duplicado" es el segundo
+    // click en Registrar, no una carga parecida de otro día. Ver el porqué en SesionesPostgres.
+    const ya = this.filas.find((f) => f.id === id && f.idempotency_key === idempotencyKey && f.estado === ESTADO_SESION.CONFIRMADA && idempotencyKey)
     if (ya) return { ok: true, duplicado: true, sesion_id: ya.id }
     const s = this.filas.find((f) => f.id === id)
     if (!s || s.estado !== ESTADO_SESION.ABIERTA) return { ok: false, motivo: RECHAZO.CERRADA }
@@ -306,12 +308,29 @@ export class SesionesPostgres {
     return rows[0] ?? null
   }
 
+  /**
+   * Confirma ESTA sesión. `duplicado:true` significa "este mismo formulario ya se confirmó"
+   * (el segundo click en Registrar), no "alguna vez se cargó algo parecido".
+   *
+   * POR QUÉ ESTÁ ACOTADO A LA SESIÓN (31/07). La clave de idempotencia es una función pura de
+   * archivo + pestaña + fecha + obra + quién + horas: para la misma obra y el mismo día da
+   * SIEMPRE lo mismo. Buscándola en TODAS las sesiones confirmadas, una carga legítima quedaba
+   * bloqueada para siempre: pasó en producción — a la mañana se cargó Taller, después una
+   * persona borró la celda a mano, y al volver a cargar el sistema contestaba "esta carga ya se
+   * registró" mientras la planilla seguía vacía. La memoria de una clave le ganaba a la planilla.
+   *
+   * Quién decide si hay que escribir es la PLANILLA, no una clave: el núcleo relee cada celda y
+   * compara su huella, así que una carga repetida de verdad no escribe nada (queda `sin_cambio`)
+   * y una carga sobre una celda que alguien vació sí escribe, que es lo correcto. El doble click
+   * sobre el mismo formulario lo siguen atajando esta condición y el `where estado = 'abierta'`
+   * del UPDATE: el segundo pierde la carrera.
+   */
   async confirmar(id, { idempotencyKey } = {}) {
     return this.port.withTx(async (client) => {
       const ya = await client.query(
         `select id from comunicacion.asistencia_sesiones
-          where idempotency_key = $1 and estado = $2 limit 1`,
-        [idempotencyKey ?? null, ESTADO_SESION.CONFIRMADA])
+          where id = $1 and idempotency_key = $2 and estado = $3 limit 1`,
+        [id, idempotencyKey ?? null, ESTADO_SESION.CONFIRMADA])
       if (ya.rows.length) return { ok: true, duplicado: true, sesion_id: ya.rows[0].id }
       const { rows } = await client.query(
         `update comunicacion.asistencia_sesiones

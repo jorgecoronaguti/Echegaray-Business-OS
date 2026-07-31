@@ -125,14 +125,31 @@ test('CONFIRMAR es de un solo uso: el replay devuelve duplicado y no vuelve a ha
   assert.equal(r.filas.find((f) => f.id === a.id).intentos_confirmacion, 1)
 })
 
-test('una sesión NUEVA con la MISMA clave de idempotencia se detecta como duplicada', async () => {
+// LA CLAVE NO PUEDE GANARLE A LA PLANILLA (31/07, defecto de producción).
+//
+// La clave de idempotencia es una función pura de archivo + pestaña + fecha + obra + quién +
+// horas: para la misma obra y el mismo día da SIEMPRE la misma. Buscarla en TODAS las sesiones
+// confirmadas dejaba una carga legítima bloqueada para siempre: a la mañana se cargó Taller,
+// después una persona borró la celda a mano, y al volver a cargar el sistema contestaba "esta
+// carga ya se registró" mientras la planilla seguía vacía. Quien decide si hay que escribir es
+// la planilla —el núcleo relee cada celda y compara su huella—, no la memoria de una clave.
+
+test('un formulario NUEVO con la misma clave NO es un duplicado: la planilla decide, no la clave', async () => {
   const r = new SesionesMemoria()
   const a = await abrir(r)
   await r.confirmar(a.id, { idempotencyKey: 'k-igual' })
   const b = await abrir(r)
-  const dup = await r.confirmar(b.id, { idempotencyKey: 'k-igual' })
-  assert.equal(dup.duplicado, true)
-  assert.equal(dup.sesion_id, a.id)
+  const segunda = await r.confirmar(b.id, { idempotencyKey: 'k-igual' })
+  assert.equal(segunda.duplicado, false, 'si la celda se vació, la carga tiene que poder rehacerse')
+  assert.equal(segunda.ok, true)
+})
+
+test('el segundo click sobre el MISMO formulario sigue siendo duplicado', async () => {
+  const r = new SesionesMemoria()
+  const a = await abrir(r)
+  await r.confirmar(a.id, { idempotencyKey: 'k-abc' })
+  const otra = await r.confirmar(a.id, { idempotencyKey: 'k-abc' })
+  assert.equal(otra.duplicado, true, 'apretar Registrar dos veces no escribe dos veces')
 })
 
 test('cerrar con conflicto / cancelada deja el estado terminal', async () => {
