@@ -46,12 +46,33 @@ test('la ayuda se pide de muchas formas y todas caen en la misma capacidad', () 
   }
 })
 
-test('NO reclama lo que es de otro especialista', () => {
-  // Vocabulario real de Personal IA y de consultas de dominio: si el asistente los reclamara,
-  // le secuestraría el mensaje a quien sí sabe atenderlo.
-  for (const t of ['3 ausente', 'quién trabajó ayer', 'horas extra del 17/01', 'asistencia',
-    'cuánta caja tengo hoy', 'estado del sistema', 'qué sabés de la obra La Estrella']) {
+test('NO reclama NADA de lo que tiene forma de trabajo ajeno', () => {
+  // Un pedido con verbo de operación, una pregunta abierta o la taquigrafía de la carga de
+  // asistencia no son el nombre de un archivo. Acá el asistente no reclama, punto.
+  for (const t of ['3 ausente', 'quién trabajó ayer', 'horas extra del 17/01',
+    'cuánta caja tengo hoy', 'qué sabés de la obra La Estrella', 'cargar asistencia',
+    '2 presente 1 ausente', 'cuánto llevamos gastado en Messina']) {
     assert.equal(leer(t), null, t)
+  }
+})
+
+test('un SUSTANTIVO SUELTO se reclama, pero flojo: el dueño del dominio le gana', () => {
+  // "vision" o "daily" son la forma en que alguien pide un archivo cuando ya sabe cuál
+  // quiere, y mandarlo al modelo para que dictamine lo obvio es gastar plata en adivinar.
+  // Pero un mensaje corto sin verbo es también la forma de TODO lo demás: "asistencia" es de
+  // Personal IA. No hay manera léxica de distinguirlos, así que no se intenta — se reclama
+  // con confianza 0.4, POR DEBAJO de la neutra con la que el Director trata a un especialista
+  // que no declara la suya, y el desempate se lo lleva el del dominio.
+  // La otra mitad de esta garantía vive en director.test.mjs, contra los especialistas reales.
+  for (const t of ['vision', 'daily', 'avances obra', 'estrategia', 'asistencia', 'control gastos']) {
+    const r = leer(t)
+    assert.equal(r?.intencion, CAPACIDAD.DRIVE_BUSCAR, t)
+    assert.ok(r.confianza < 0.5, `${t} reclamó fuerte (${r.confianza}) y le sacaría el mensaje a otro`)
+  }
+  // Con verbo o con sustantivo genérico, en cambio, no hay duda de que es un archivo.
+  // 'cash flow' está nombrado en la lista de objetos: es un documento con nombre propio.
+  for (const t of ['pasame vision', 'archivo vision', 'buscame el flujo de caja', 'cash flow']) {
+    assert.equal(leer(t)?.confianza, 1, t)
   }
 })
 
@@ -145,9 +166,13 @@ test('cuando el modelo interviene, la fecha la sigue calculando el OS', async ()
   assert.equal(fetchImpl.llamadas.length, 1, 'una sola llamada')
 })
 
+// Una frase que NINGUNA regla reconoce: larga, con verbo y sin forma de nada conocido. Si
+// alguna vez la gramática la levanta, estos tests van a avisar quedándose sin llamada.
+const NI_IDEA = 'che fijate si el tema aquel del otro dia quedo resuelto por favor'
+
 test('al modelo se le manda el mensaje y el catálogo, nunca el historial ni datos de la empresa', async () => {
   const fetchImpl = fetchAnthropic('{"intencion":"desconocido"}')
-  await interpretar('algo raro', {
+  await interpretar(NI_IDEA, {
     ahora: AHORA, apiKey: 'sk-test', fetchImpl, quienPide: 'Jorge',
     catalogo: 'ayuda: decirte qué sé hacer', idsHabilitados: ['ayuda'],
     // Ruido que NO tiene que viajar aunque venga en el contexto.
@@ -155,7 +180,7 @@ test('al modelo se le manda el mensaje y el catálogo, nunca el historial ni dat
   })
   const { body } = fetchImpl.llamadas[0]
   const prompt = body.messages[0].content
-  assert.ok(prompt.includes('algo raro') && prompt.includes('ayuda: decirte qué sé hacer'))
+  assert.ok(prompt.includes(NI_IDEA) && prompt.includes('ayuda: decirte qué sé hacer'))
   assert.equal(prompt.includes('mensaje viejo del canal'), false)
   assert.equal(prompt.includes('17690000'), false)
   assert.ok(body.max_tokens <= 300 && body.temperature === 0)
@@ -164,7 +189,7 @@ test('al modelo se le manda el mensaje y el catálogo, nunca el historial ni dat
 
 test('una salida del modelo que no valida NO se convierte en una capacidad adivinada', async () => {
   for (const salida of ['no es json', '{"intencion":"borrar_todo"}', '{"intencion":"drive.buscar"}']) {
-    const r = await interpretar('algo raro', {
+    const r = await interpretar(NI_IDEA, {
       ahora: AHORA, apiKey: 'sk-test', fetchImpl: fetchAnthropic(salida),
       catalogo: 'ayuda: x', idsHabilitados: ['ayuda'],
     })

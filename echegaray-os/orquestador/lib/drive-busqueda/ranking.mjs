@@ -12,7 +12,7 @@
 // frescura: un archivo que se llama como lo pedido gana siempre contra uno que apenas lo
 // menciona en la carpeta, por más nuevo que sea. La frescura desempata, no decide.
 
-import { plano, sinExtension, tokenizar, canonico } from './normalizar.mjs'
+import { plano, sinExtension, canonico } from './normalizar.mjs'
 
 /** Los pesos, en un solo lugar y con nombre. Cambiar el orden de los resultados es cambiar
  *  un número de acá, no leer trescientas líneas. */
@@ -60,10 +60,19 @@ export function carpetaDe(path = '') {
   return partes.length ? partes[partes.length - 1] : null
 }
 
-/** La ruta legible para mostrarle a una persona: "Administración > Estrategia". */
-export function rutaLegible(path = '', { max = 3 } = {}) {
+/**
+ * La ruta legible para mostrarle a una persona: "administracion > Estrategia".
+ *
+ * Recibe el NOMBRE del archivo y no sólo la ruta, y no por comodidad: hay archivos cuyo
+ * nombre lleva una barra —"Vision / Tracción"— y partir la ruta a ciegas los cuenta como dos
+ * tramos. Sacando "un" tramo quedaba "… > Vision > Vision": la carpeta repetida, que es
+ * justo el tipo de detalle que hace desconfiar de todo lo demás. Con el nombre se puede
+ * cortar por donde de verdad termina la carpeta.
+ */
+export function rutaLegible(path = '', { max = 3, name = null } = {}) {
   const partes = segmentos(path)
-  partes.pop()
+  const delNombre = name ? segmentos(name).length : 1
+  partes.splice(-Math.min(delNombre, partes.length))
   if (!partes.length) return null
   const visibles = partes.length > max ? ['…', ...partes.slice(-max)] : partes
   return visibles.join(' > ')

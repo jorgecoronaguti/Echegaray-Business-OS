@@ -136,7 +136,8 @@ test('si el modelo elige algo que no existe, NO se inventa un destino', async ()
 })
 
 test('sin motor de razonamiento se degrada al catálogo, no a un destino adivinado', async () => {
-  const r = await resolver({ texto: 'algo raro', port: puerto() })
+  // Frase que ninguna gramática reconoce: ni el asistente la reclama flojo.
+  const r = await resolver({ texto: 'che fijate si el tema aquel quedo resuelto por favor', port: puerto() })
   assert.equal(r.especialista, null)
   assert.equal(r.via, VIA.SIN_DESTINO)
   assert.ok(r.catalogo.length >= 2)

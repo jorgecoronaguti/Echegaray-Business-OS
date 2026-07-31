@@ -8,7 +8,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { crearIndice, buscar, analizarConsulta, ETAPAS } from './buscar.mjs'
-import { puntuar, rankear, hayGanador, rutaLegible, carpetaDe, puntajeFrescura, PESOS } from './ranking.mjs'
+import { puntuar, hayGanador, rutaLegible, carpetaDe, puntajeFrescura, PESOS } from './ranking.mjs'
 import { _reiniciarSinonimos } from './normalizar.mjs'
 
 const A = 'administracion'
@@ -238,4 +238,14 @@ test('sin las tablas nuevas el buscador funciona igual (la migración es una mej
   const indice = crearIndice({ port })
   const r = await buscar({ indice, port, texto: 'vision', ahora: AHORA })
   assert.equal(r.ganador?.name, 'Vision / Tracción')
+})
+
+test('si el índice no se puede leer, la búsqueda NO se muere: queda vacía y cae al fallback', async () => {
+  _reiniciarSinonimos()
+  const port = { query: async () => { throw new Error('relation "public.drive_index" does not exist') } }
+  const indice = crearIndice({ port })
+  const r = await buscar({ indice, texto: 'vision', ahora: AHORA })
+  assert.equal(r.evaluados, 0)
+  assert.equal(r.etapa, null)
+  assert.deepEqual(r.opciones, [], 'sin índice no hay candidatos, pero tampoco una excepción')
 })

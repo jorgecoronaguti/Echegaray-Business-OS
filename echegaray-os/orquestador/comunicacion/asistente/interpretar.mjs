@@ -21,7 +21,7 @@
 import { INTENCION, CAPACIDAD, zSolicitud, TZ_EMPRESA } from './contratos.mjs'
 import { parseCuando, quitarTiempo } from './tiempo.mjs'
 import { parseCadence } from '../../lib/schedule-intent.mjs'
-import { tokenizar } from '../../lib/drive-busqueda/normalizar.mjs'
+import { tokenizar, VERBOS_PEDIDO } from '../../lib/drive-busqueda/normalizar.mjs'
 
 const MODELO = process.env.ORQ_ASISTENTE_MODELO || 'claude-haiku-4-5-20251001'
 const MAX_TOKENS = 300
@@ -201,8 +201,15 @@ function esSustantivoSuelto(p, tiempo) {
   if (RE_EMPIEZA_NUMERO.test(p) || RE_VERBO_OPERAR.test(p)) return false
   if (tiempo?.cuando || tiempo?.cadencia) return false
   if (/[¿?]/.test(p)) return false
+  const palabras = p.split(' ').filter(Boolean)
+  // SIN VERBO. Es lo que separa un nombre de archivo de una orden: "vision" es un sustantivo
+  // suelto; "buscá a Juan" tiene verbo y es un pedido —de lo que sea— que no me toca a mí
+  // reclamar por las dudas. Los pedidos CON verbo ya los tomó la regla de arriba, que para
+  // eso lista los verbos que sólo significan "dame un archivo".
+  if (palabras.some((w) => VERBOS_PEDIDO.has(w))) return false
+  if (palabras.length > 3) return false
   const t = tokenizar(p)
-  return t.length >= 1 && t.length <= 4 && p.split(' ').filter(Boolean).length <= 5
+  return t.length >= 1 && t.length <= 3
 }
 
 function recordatorio(texto, tiempo) {

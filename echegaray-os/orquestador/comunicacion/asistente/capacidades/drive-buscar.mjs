@@ -72,7 +72,7 @@ function aArchivo(e, ahora) {
     id: e.drive_file_id,
     nombre: e.name,
     tipo: e.tipo ?? 'archivo',
-    ubicacion: rutaLegible(e.path),
+    ubicacion: rutaLegible(e.path, { name: e.name }),
     modificado: e.modified_time ?? null,
     fecha: fechaLegible(e.modified_time, ahora),
     enlace: e.enlace ?? enlaceDe(e),

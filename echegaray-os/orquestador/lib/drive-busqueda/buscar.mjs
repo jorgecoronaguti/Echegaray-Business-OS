@@ -87,8 +87,17 @@ export function crearIndice({ port, ttlMs = TTL_INDICE_MS, ahora = () => Date.no
       const t = ahora()
       if (filas && t - cargadoEn < ttlMs) return filas
       await cargarAlias()
-      const { rows } = await port.query(`select ${COLUMNAS} from public.drive_index`)
-      filas = rows ?? []
+      // SI EL ÍNDICE NO SE PUEDE LEER, NO SE MUERE LA BÚSQUEDA.
+      //
+      // La tabla puede no existir (un entorno nuevo, la vertical contra un Postgres
+      // desechable) o la base puede estar caída un minuto. Tirar acá dejaba a la persona con
+      // un "no puedo buscar" teniendo a Drive a un llamado de distancia. Un índice vacío es
+      // una respuesta válida: el pipeline se queda sin candidatos y cae al Drive en vivo, que
+      // es exactamente el camino previsto para lo que el índice todavía no tiene.
+      try {
+        const { rows } = await port.query(`select ${COLUMNAS} from public.drive_index`)
+        filas = rows ?? []
+      } catch { filas = [] }
       await cargarUsos()
       cargadoEn = t
       return filas
@@ -183,9 +192,12 @@ export function analizarConsulta(texto, { tipo = null } = {}) {
 /**
  * Busca. Devuelve SIEMPRE la misma forma, gane uno o haya que preguntar.
  *
+ * No recibe `port`: todo lo que necesita —el índice, los sinónimos y el aprendizaje— ya está
+ * en memoria. Una búsqueda no toca la base, y por eso tarda milisegundos.
+ *
  * @returns {Promise<{etapa:string|null, ganador:object|null, opciones:object[], consulta:object, evaluados:number, ms:number}>}
  */
-export async function buscar({ indice, port, texto, tipo = null, ahora = Date.now(), limite = MAX_OPCIONES }) {
+export async function buscar({ indice, texto, tipo = null, ahora = Date.now(), limite = MAX_OPCIONES }) {
   const t0 = Date.now()
   const consulta = analizarConsulta(texto, { tipo })
   const filas = await indice.filasVigentes()

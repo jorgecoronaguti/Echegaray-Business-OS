@@ -23,12 +23,18 @@ const MARCA_ENIE = '\u0001'
 /** Palabras que la persona escribe para pedir, no para identificar. "pasame el archivo del
  *  flujo de caja" busca "flujo caja": lo demás es cortesía. Si una de estas fuera lo ÚNICO
  *  que quedó, no se descarta (ver `tokenizar`) — "pasame el excel" al menos dice "planilla". */
-export const STOPWORDS = new Set([
-  // el pedido
+/** Los VERBOS del pedido. Se separan del resto porque, además de no aportar a la búsqueda,
+ *  son la señal de que el mensaje NO es un sustantivo suelto: "buscá a Juan" tiene verbo y
+ *  por lo tanto es una orden, no el nombre de un archivo. Ver `esSustantivoSuelto`. */
+export const VERBOS_PEDIDO = new Set([
   'pasame', 'pasa', 'pasar', 'buscame', 'busca', 'buscar', 'busque', 'encontrame', 'encontra',
   'mostrame', 'mostra', 'mostrar', 'abrime', 'abri', 'abrir', 'traeme', 'trae', 'traer',
   'dame', 'da', 'quiero', 'necesito', 'necesitaria', 'podes', 'puedo', 'dale', 'porfa',
   'donde', 'esta', 'estan', 'tenes', 'tengo', 'hay', 'ver', 'veo', 'mandame', 'manda',
+])
+
+export const STOPWORDS = new Set([
+  ...VERBOS_PEDIDO,
   // el sustantivo genérico
   'archivo', 'archivos', 'planilla', 'planillas', 'excel', 'documento', 'documentos', 'doc',
   'pdf', 'drive', 'carpeta', 'carpetas', 'file', 'sheet', 'link', 'enlace',
