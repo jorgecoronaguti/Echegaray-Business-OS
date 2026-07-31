@@ -66,16 +66,21 @@ export async function areaDelCanal(port, channelId) {
  * @returns {Promise<{especialista:object|null, via:string, area:string|null,
  *                    intencion:object|null, candidatos:Array, catalogo?:Array}>}
  */
-export async function resolver({ texto, port, channelId, razonar } = {}) {
+export async function resolver({ texto, port, channelId, actor, razonar } = {}) {
   const todos = await especialistas()
   const ctxCanal = await areaDelCanal(port, channelId)
   const area = ctxCanal?.area ?? null
 
   // 1) ¿Algún especialista reconoce el texto con su propia gramática?
+  //
+  // `port` y `actor` viajan porque hay reclamos que dependen del CONTEXTO de quien escribe y
+  // no sólo de las palabras: "no era ese" es una respuesta si esa persona tiene una pregunta
+  // abierta, y no es nada si no la tiene. Sin esto, el Director sólo podía preguntar por
+  // gramática y las respuestas cortas terminaban en el catálogo.
   const reclamos = []
   for (const e of todos) {
     let r = null
-    try { r = await e.reconoce(texto, { area, canal: ctxCanal?.canal ?? null }) } catch { r = null }
+    try { r = await e.reconoce(texto, { area, canal: ctxCanal?.canal ?? null, port, actor }) } catch { r = null }
     if (r) reclamos.push({ especialista: e, intencion: r })
   }
   if (reclamos.length === 1) {
