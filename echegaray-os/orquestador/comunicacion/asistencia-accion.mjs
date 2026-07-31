@@ -91,7 +91,9 @@ function normalizar(payload = {}) {
  * @returns {(payload:object) => Promise<{status:number, body:object}>}
  */
 export function crearManejadorAccion({ port, mattermost, google = null, log = null, url = null, secreto = null } = {}) {
-  const g = google ?? googleDelOs()
+  // Cliente INSTITUCIONAL a propósito: la asistencia escribe JORNALES *como el OS*, y el
+  // candado de ediciones reconoce al OS por la cuenta de servicio en el historial de Drive.
+  const g = google ?? googleDelOs({ log })
   // SIN BASE, EL SERVICIO SIGUE DE PIE Y DENIEGA. Construir el repositorio de sesiones con
   // un port nulo tiraba en el arranque, `main()` moría y systemd reiniciaba: un rato sin
   // Postgres se volvía un crash-loop, cuando lo que corresponde es contestar «probá en un

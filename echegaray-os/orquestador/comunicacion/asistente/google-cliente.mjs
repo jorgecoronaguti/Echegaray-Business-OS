@@ -16,6 +16,7 @@
 
 import { makeGoogleClient, WORKSPACE_SCOPES } from '../../lib/google.mjs'
 import { operadorPara, tieneToken, getTokenFor, hayCuentaAutorizada } from '../../lib/google-oauth.mjs'
+import { identidadDe, IDENTIDAD } from '../../lib/google-os.mjs'
 import { loadConfig } from '../../lib/config.mjs'
 import { ERROR, errorAsistente } from './contratos.mjs'
 
@@ -59,8 +60,15 @@ export function cuentaDe(google) {
  * Sólo se niega cuando SABEMOS que la cuenta resuelta es de otro. Si el cliente vino armado
  * por otra capa y no trae marca, no se bloquea: la decisión de identidad es de quien la
  * conoce, y adivinar acá dejaría capacidades muertas sin que nadie entienda por qué.
+ *
+ * El cliente INSTITUCIONAL (la cuenta de servicio) sí se niega, y explícitamente. Esto ya
+ * pasó de verdad: el router heredaba el cliente del OS y la tarea "llamar a Santander"
+ * terminó creada en la lista del robot, con un "listo" en el chat. Nadie se entera de un
+ * efecto que ocurre en la cuenta equivocada — sólo se nota cuando la persona no encuentra
+ * lo que le confirmaron. Que el cliente diga quién es, y que acá se lo mire, es la red.
  */
 export function permiteEfectoExterno(google) {
+  if (identidadDe(google)?.tipo === IDENTIDAD.INSTITUCIONAL) return false
   const c = cuentaDe(google)
   return c ? c.propia === true : true
 }

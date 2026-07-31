@@ -257,7 +257,7 @@ async function main() {
   const manejarComando = crearComandoAsistencia({
     tokenComando: process.env.MM_SLASH_TOKEN_ASISTENCIA || null,
     port: pool,
-    google: (await import('../lib/google-os.mjs')).googleDelOs(),
+    google: (await import('../lib/google-os.mjs')).googleDelOs({ log }),
     url: urlAccion,
     log,
   })
