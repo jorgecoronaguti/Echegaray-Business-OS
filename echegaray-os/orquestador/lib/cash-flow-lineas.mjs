@@ -417,7 +417,8 @@ export function formulaJornales(desde, hasta) {
   // EL FALLBACK A `HASTA` NO ES OPCIONAL. Si la celda de pago quedara vacía —una quincena vieja, una
   // fórmula borrada a mano— la línea devolvería cero para esa quincena y el cuadro seguiría cuadrando
   // con menos plata. Una línea en cero sin avisar es el peor resultado posible de este archivo.
-  const fReal = fechaDeCajaDeQuincena('JORNALES_REAL_PAGO', 'JORNALES_REAL_HASTA')
+  // La REAL mira primero lo que el dueño marcó como pagado: si se pagó, se pagó.
+  const fReal = fechaDeCajaDeQuincena('JORNALES_REAL_PAGO', 'JORNALES_REAL_HASTA', 'JORNALES_REAL_PAGADO')
   const fProy = fechaDeCajaDeQuincena('JORNALES_PROY_PAGO', 'JORNALES_PROY_HASTA')
   // Bloque 1: quincenas reales (TOTAL = lo pagado).
   const real = `SUMPRODUCT(ISNUMBER(${fReal})*(${fReal}>=${desde})*(${fReal}<${hasta})*IF(ISNUMBER(JORNALES_REAL_TOTAL);JORNALES_REAL_TOTAL;0))`

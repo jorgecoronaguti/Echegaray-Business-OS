@@ -260,7 +260,26 @@ export function formulaSePagaEl(celdaHasta) {
  * @param {string} pago  rango con nombre de la fecha de pago
  * @param {string} cierre rango con nombre de la fecha de cierre
  */
-export const fechaDeCajaDeQuincena = (pago, cierre) => `IF(ISNUMBER(${pago});${pago};${cierre})`
+// ═══ LA JERARQUÍA DE LAS TRES FECHAS, EN LA FÓRMULA (31/07) ═══
+//
+// El dueño, después de marcar los pagos: "jornales de obra aparece a pagarse la semana que viene cdo
+// marque que hoy ya lo pagué... si se pago, se pagó".
+//
+// Tenía razón y era un error mío: agregué la columna "Pagado el", cablée CAJA para que la mire, y
+// la línea del CASH FLOW se quedó mirando la fecha PREVISTA. Marcó el pago el 31/07 y el cuadro
+// seguía poniendo los $8.227.000 en la semana del 03/08 — la semana que viene, plata que ya salió.
+//
+// El orden es el mismo en todo el archivo y no admite excepciones:
+//
+//   1. PAGADO   — salió de verdad. Es un HECHO. Gana siempre.
+//   2. PREVISTA — el lote del banco si ya pasó, o el parámetro. Es una estimación.
+//   3. CIERRE   — último recurso, para que una quincena sin ninguna fecha no desaparezca del cuadro.
+//
+// `pagado` es opcional para no romper a los llamadores que no lo tienen (la proyección: una quincena
+// que todavía no existe no puede estar pagada).
+export const fechaDeCajaDeQuincena = (pago, cierre, pagado = null) => (pagado
+  ? `IF(ISNUMBER(${pagado});${pagado};IF(ISNUMBER(${pago});${pago};${cierre}))`
+  : `IF(ISNUMBER(${pago});${pago};${cierre})`)
 
 /** Los dos parámetros que viven en Parámetros, con su rótulo exacto, su default y su por qué. */
 export const PARAMETROS = [

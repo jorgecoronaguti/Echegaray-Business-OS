@@ -253,7 +253,7 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [] }
   // la quincena en curso como si estuviera pagada. No lo está: al 23/07 la del 16/07–31/07 tiene
   // horas cargadas hasta el 21 y le faltan nueve días. Presentar una quincena a mitad de camino
   // junto a las cerradas es mezclar un hecho con algo que todavía se está formando.
-  const fHero = { costo: 0, cerradas: 0, aPagar: 0, sinRegistrar: 0, curso: 0, falta: 0, ofiPagado: 0, ofiFalta: 0, plantel: 0 }
+  const fHero = { costo: 0, cerradas: 0, aPagar: 0, sinRegistrar: 0, porBanco: 0, porAdelanto: 0, porRecibo: 0, curso: 0, falta: 0, ofiPagado: 0, ofiFalta: 0, plantel: 0 }
   push(['JORNALES Y SUELDOS — lo pagado en el año y lo que falta hasta diciembre'])
   // EL TITULAR ENTRA EN SU COLUMNA. Con la fuente grande del hero, "…de oficina en el año" medía 49
   // caracteres en una columna de 330px que muestra 44, y a su derecha está el importe: se cortaba en
@@ -271,6 +271,19 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [] }
   //   · SIN REGISTRAR — la fecha de pago ya pasó y nadie marcó el pago. Es un dato que falta, no plata.
   fHero.aPagar = push([sub('   de eso, A PAGAR (cerró y la fecha todavía no llegó)')])
   fHero.sinRegistrar = push([sub('   de eso, sin registrar el pago (la fecha ya pasó)')])
+  // ═══ Y DE QUÉ MANERA SE PAGÓ (31/07) ═══
+  //
+  // El dueño, después de marcar los pagos: "si se pago, se pagó y deberia decir qué montos y de que
+  // manera para q haga los descuentos de caja". Y con todo marcado, las dos líneas de arriba quedaron
+  // en cero: correctas y mudas. Una línea que no dice nada es una celda sin contenido.
+  //
+  // El desglose YA ESTABA en el registro (columnas Banco / Adelanto / Total recibo) y no subía al
+  // titular, que es donde se lee. Cada sub-línea suma SU columna: son tres formas distintas de que la
+  // plata salga y cada una descuenta de un lugar distinto de la caja — el banco del saldo bancario, el
+  // adelanto y el recibo del efectivo.
+  fHero.porBanco = push([sub('   · de eso se pagó por banco (baja el saldo bancario)')])
+  fHero.porAdelanto = push([sub('   · en adelantos (efectivo, antes del cierre)')])
+  fHero.porRecibo = push([sub('   · contra recibo (efectivo, al cobrar la quincena)')])
   fHero.curso = push([sub('Obra — quincena en curso, todavía se está cargando')])
   fHero.falta = push([sub('Obra — falta pagar hasta diciembre')])
   fHero.ofiPagado = push([sub('Oficina — meses pagados')])
@@ -461,9 +474,18 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [] }
   const futura = `($C$${f0}:$C$${fLast}>=TODAY())`
   filas[fHero.aPagar - 1][1] = `=SUMPRODUCT(ISNUMBER($B$${f0}:$B$${fLast})*${sinMarcar}*${futura}*${K})`
   filas[fHero.sinRegistrar - 1][1] = `=SUMPRODUCT(ISNUMBER($B$${f0}:$B$${fLast})*${sinMarcar}*NOT(${futura})*${K})`
+  // Cada forma de pago suma SU columna del registro, sólo de las quincenas con pago marcado: es lo que
+  // efectivamente salió, no lo que se estimó. Las tres tienen que sumar lo pagado.
+  const pagada = `($N$${f0}:$N$${fLast}<>"")`
+  const porCol = (col) => `=SUMPRODUCT(${pagada}*IF(ISNUMBER($${col}$${f0}:$${col}$${fLast});$${col}$${f0}:$${col}$${fLast};0))`
+  filas[fHero.porBanco - 1][1] = porCol('H')
+  filas[fHero.porAdelanto - 1][1] = porCol('I')
+  filas[fHero.porRecibo - 1][1] = porCol('J')
+  // EL CONTROL AL LADO: si las tres formas no suman lo pagado, falta registrar cómo salió una quincena.
+  filas[fHero.porRecibo - 1][2] = `=IF(ROUND(B${fHero.porBanco}+B${fHero.porAdelanto}+B${fHero.porRecibo}-SUMPRODUCT(${pagada}*${K});0)=0;"✓ las tres formas suman lo pagado";"⚠ faltan $"&TEXT(SUMPRODUCT(${pagada}*${K})-B${fHero.porBanco}-B${fHero.porAdelanto}-B${fHero.porRecibo};"#,##0")&" sin forma de pago")`
   // LA NOTA VA EN LA ÚLTIMA COLUMNA, no en la del medio. El auditor de patrón de la pestaña lo exige y
   // tiene razón: un texto de 74 caracteres en la columna C se desparrama sobre el importe de al lado.
-  filas[fHero.sinRegistrar - 1][ANCHO - 1] = 'Marcá la fecha en "Pagado el" (última columna del registro) cuando salga la plata: esta línea baja sola y la quincena sale del calendario de CAJA.'
+  filas[fHero.sinRegistrar - 1][ANCHO - 1] = 'Marcá la fecha en "Pagado el" (última columna del registro) cuando salga la plata: la quincena pasa a las tres líneas de abajo, sale del calendario de CAJA y el cash flow la imputa a ESA fecha, no a la prevista.'
   // Y al lado, qué quincena es y HASTA QUÉ DÍA está cargada de verdad. Medido sobre las horas del
   // espejo, no sobre las fechas del encabezado: la planilla escribe los catorce días el día que abre
   // la quincena, así que las fechas dicen "31/07" desde el primer día y no distinguen nada.

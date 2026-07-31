@@ -146,3 +146,21 @@ test('una fecha ilegible no inventa un pago', () => {
   assert.equal(mesDe(null), null)
   assert.equal(semanaDe(null), null)
 })
+
+test('EL CASO DEL DUEÑO: si lo marcó pagado, la plata va a ESA semana', () => {
+  // "jornales de obra aparece a pagarse la semana que viene cdo marque que hoy ya lo pagué". La
+  // columna "Pagado el" existía y la línea del cash flow seguía mirando la PREVISTA: marcó el 31/07 y
+  // el cuadro ponía los $8.227.000 en la semana del 03/08 — plata que ya había salido.
+  const con = fechaDeCajaDeQuincena('PAGO', 'HASTA', 'PAGADO')
+  assert.equal(con, 'IF(ISNUMBER(PAGADO);PAGADO;IF(ISNUMBER(PAGO);PAGO;HASTA))')
+  // El orden es el que importa: PAGADO se evalúa PRIMERO.
+  assert.ok(con.indexOf('PAGADO') < con.indexOf('PAGO;'), 'lo pagado gana sobre lo previsto')
+  assert.ok(con.indexOf('PAGO;') < con.indexOf('HASTA'), 'y lo previsto sobre el cierre')
+})
+
+test('sin columna de pagado sigue funcionando igual — la proyección no puede estar pagada', () => {
+  // Una quincena que todavía no existe no tiene "Pagado el". El tercer argumento es opcional a
+  // propósito: agregar una referencia a una columna que no existe daría #NAME? en toda la línea.
+  assert.equal(fechaDeCajaDeQuincena('PAGO', 'HASTA'), 'IF(ISNUMBER(PAGO);PAGO;HASTA)')
+  assert.equal(fechaDeCajaDeQuincena('PAGO', 'HASTA', null), 'IF(ISNUMBER(PAGO);PAGO;HASTA)')
+})
