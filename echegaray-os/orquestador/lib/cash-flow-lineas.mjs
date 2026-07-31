@@ -19,6 +19,8 @@ import { TASAS, REAL as REAL_DESCUBIERTO } from './costo-descubierto.mjs'
 // La fecha de caja de una quincena vive en un solo lugar: ni el cash flow ni la pestaña de Jornales
 // la definen por su cuenta. Ver lib/jornales-fecha-pago.mjs.
 import { fechaDeCajaDeQuincena } from './jornales-fecha-pago.mjs'
+// El "⇒ " de los rótulos de total sale de una sola función, la misma que usan los generadores.
+import { total } from './patron-pestana.mjs'
 
 /** El sub-rubro de Estructura que NO es gasto del mes sino inversión. Lo escribe estructura-pestana. */
 export const SUB_BIENES_DE_USO = 'Equipos y rodados (inversión)'
@@ -196,10 +198,17 @@ export const LINEA_CHEQUES = {
 // LAS FILAS NO SE HARDCODEAN (misma lección que Estructura!$15). Se ubican por su rótulo en la columna
 // A, igual que Estructura/Recurrentes; si el rótulo no aparece, el generador rompe en vez de escribir
 // una referencia muerta que devolvería $0 en silencio.
+// EL CONTRATO SE DEFINE UNA VEZ, Y EL PRODUCTOR LO IMPORTA (31/07). Estaba escrito dos veces —acá el
+// texto a buscar, allá el texto a escribir— y el 30/07 impuestos-pestana.mjs renombró su fila a "IVA a
+// pagar en efectivo" razonando sobre el NÚMERO DE FILA ("queda en la misma fila 18 que leía el cash
+// flow"), que es justo lo que este lado NO usa. Desde entonces los dos cash flow no se podían
+// regenerar: el generador fallaba cerrado, que es lo correcto, pero el archivo quedó sin recibir nada.
+// Ahora impuestos-pestana.mjs escribe ESTAS constantes: renombrar de un solo lado ya no es posible.
+export const ROTULOS_CALENDARIO = { iva: 'IVA a pagar en efectivo', iibb: 'IIBB a pagar en el mes' }
 export const CALENDARIO_IMPUESTOS = {
   pestaña: 'Impuestos y Financieros',
-  // Los rótulos EXACTOS que escribe impuestos-pestana.mjs (total() antepone "⇒ ").
-  rotulos: { iva: '⇒ IVA a pagar en el mes', iibb: '⇒ IIBB a pagar en el mes' },
+  // Los rótulos EXACTOS que escribe impuestos-pestana.mjs — con el "⇒ " que le antepone total().
+  rotulos: { iva: total(ROTULOS_CALENDARIO.iva), iibb: total(ROTULOS_CALENDARIO.iibb) },
 }
 
 /** Los rótulos a ubicar por su fila en "Impuestos y Financieros", para que el generador los resuelva

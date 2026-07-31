@@ -35,6 +35,10 @@ import { seccion, sub as subItem, total as rotuloTotal, auditarPatron } from '..
 // ($AC, $O): es exactamente lo que dejó el cuadro de "pagado" de Cargas Sociales en #VALUE! durante
 // semanas cuando alguien movió una columna. El nombre no se mueve; la posición sí.
 import { resolverColumnas, rango } from '../lib/compras-columnas.mjs'
+// LOS DOS RÓTULOS QUE EL CASH FLOW BUSCA EN ESTA PESTAÑA. No se escriben a mano acá: el consumidor los
+// ubica POR TEXTO en la columna A, así que el texto es el contrato entre las dos pestañas y tiene una
+// sola definición. Ver el bloque "EL CALENDARIO FISCAL" en lib/cash-flow-lineas.mjs.
+import { CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Impuestos y Financieros'
@@ -195,11 +199,13 @@ function grilla(iva, planes, iibb, ivaOficial, C) {
     'F.2051 · IVA generado por las ventas del mes.', { meses: mesesOf })
   mensual('Crédito fiscal del período', (m) => of(m, 'credito'),
     'F.2051 · IVA de las compras computable del mes.', { meses: mesesOf })
-  // "IVA a pagar en efectivo" queda en la MISMA fila (18) que leía el cash flow, y el bloque conserva
-  // 5 filas mensuales para no correr la fila de "IIBB a pagar" (28) que también referencia el cash
-  // flow. La posición técnica del mes es derivable de débito − crédito + arrastre, así que no ocupa
-  // una fila propia; su único mes relevante (marzo, a favor de ARCA) se ve en la libre disponibilidad.
-  mensual(rotuloTotal('IVA a pagar en efectivo'), (m) => of(m, 'a_pagar_efectivo'),
+  // EL RÓTULO NO SE ESCRIBE ACÁ: sale de ROTULOS_CALENDARIO, que es lo que el cash flow BUSCA. Este
+  // bloque conserva 5 filas mensuales para no correr la fila de "IIBB a pagar" (28); pero la fila que
+  // el cash flow encuentra la define el TEXTO, no la posición — el 30/07 se renombró esta fila
+  // razonando sobre la fila 18 y los dos cash flow quedaron sin poder regenerarse.
+  // La posición técnica del mes es derivable de débito − crédito + arrastre, así que no ocupa una fila
+  // propia; su único mes relevante (marzo, a favor de ARCA) se ve en la libre disponibilidad.
+  mensual(CALENDARIO_IMPUESTOS.rotulos.iva, (m) => of(m, 'a_pagar_efectivo'),
     'Lo absorbe el crédito de libre disponibilidad. En 2026 no salió plata por IVA — no es un egreso del cash flow.', { meses: mesesOf })
   const fLibre = mensual('Saldo de libre disponibilidad (acumulado)', (m) => of(m, 'libre_disp'),
     'F.2051 · crédito de la empresa inmovilizado en ARCA (marzo: se consumió parte para la posición a favor de ARCA). Se arrastra; el total no aplica.', { meses: mesesOf, totaliza: false })
@@ -235,7 +241,7 @@ function grilla(iva, planes, iibb, ivaOficial, C) {
   mensual('Impuesto determinado', (m) => `=${cmes(m)}${fBase}*${cmes(m)}${fAli}`, 'Base × alícuota.', { meses: mesesIIBB })
   mensual('Retenciones sufridas', (m) => `=${refIIBB(m, IIBB_COL.retenciones)}`,
     'DDJJ de Rentas · réplica _IIBB_RAW. Ya vienen computadas ahí: no se vuelven a sumar en la sección 3.', { meses: mesesIIBB })
-  mensual(rotuloTotal('IIBB a pagar en el mes'), (m) => `=MAX(0;${cmes(m)}${fImp}-${cmes(m)}${fRetI}-${prevI(m)})`,
+  mensual(CALENDARIO_IMPUESTOS.rotulos.iibb, (m) => `=MAX(0;${cmes(m)}${fImp}-${cmes(m)}${fRetI}-${prevI(m)})`,
     'Impuesto menos retenciones menos el saldo a favor que venía.', { meses: mesesIIBB })
   mensual('Saldo a favor al cierre del mes', (m) => `=MAX(0;${prevI(m)}+${cmes(m)}${fRetI}-${cmes(m)}${fImp})`,
     'Se arrastra al mes siguiente. El total no aplica.', { meses: mesesIIBB, totaliza: false })
