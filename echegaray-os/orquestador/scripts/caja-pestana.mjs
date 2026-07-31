@@ -890,7 +890,8 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // cierran a la vez: la línea T06 colapsa (la ventana ">" arqueo se corre) y este residuo baja. Por
   // eso el control se queda como está: la carga automática no lo reemplaza, lo dispara.
   push(['4.6 · TRAZABILIDAD DEL EFECTIVO COBRADO'])
-  push(['Un cobro en efectivo que no se depositó tiene que estar en la caja física. Este control resta: lo cobrado en efectivo, menos lo que se depositó, menos lo que se declara en la caja de arriba. Si sobra plata, o no está o el cobro no ocurrió.'])
+  // 239 caracteres en una columna donde entran 238: el auditor lo medía cortado por UN carácter.
+  push(['Un cobro en efectivo que no se depositó tiene que estar en la caja física. Este control resta lo cobrado en efectivo, menos lo depositado, menos lo declarado en la caja de arriba. Si sobra plata, o no está o el cobro no ocurrió.'])
   // ═══ LA MISMA VENTANA DE TIEMPO DE LOS DOS LADOS ═══
   //
   // La primera versión sumaba el efectivo de TODO EL AÑO ($173.434.381) y lo restaba contra 16 días
