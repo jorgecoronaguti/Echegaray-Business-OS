@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 
 import { validarDialogo, validarMensaje } from './contrato-mattermost.mjs'
 import {
-  MARCA, dialogoExcepcion, dialogoFecha, mensajeCancelado, mensajeConfirmado,
+  MARCA, TIPO, dialogoExcepcion, dialogoFecha, mensajeCancelado, mensajeConfirmado,
   mensajeCuadrilla, mensajeInicial,
 } from './mensaje.mjs'
 
@@ -432,4 +432,24 @@ test('nada de asteriscos en el texto: Mattermost le aplica la conversión de Sla
     mensajeConfirmado({ resumen: {}, celdas: [], actor: {}, fecha: '2026-07-30', obra: { nombre: 'Revoque' } }),
   ]
   for (const m of msgs) assert.doesNotMatch(textoTodo(m), /[*_~]/, 'sin marcas de formato en el texto')
+})
+
+test('un día sin jornada calibrada no obliga a inventar un motivo', async () => {
+  // El catálogo (la autoridad) no exige motivo cuando no hay jornada contra la cual medir
+  // "menos". El formulario lo exigía igual, y el jefe terminaba eligiendo uno falso que
+  // después queda en asistencia_novedades como falta o ART.
+  const { exigeMotivo } = await import('../../lib/asistencia-motivos.mjs')
+  const arma = (jornada) => dialogoExcepcion({
+    tipo: TIPO.PARCIAL, persona: { ref: 'b1', nombre: 'X', novedad: {} },
+    motivos: [{ clave: 'llego_tarde', etiqueta: 'Llegó tarde' }], obras: [],
+    jornada, triggerId: 't', url: 'https://x', estado: {},
+  }).dialog.elements.find((e) => e.name === 'motivo')
+
+  const sabado = arma({ horas: null, requiere_manual: true })
+  assert.equal(sabado.optional, true, 'sin jornada el motivo no puede ser obligatorio')
+  assert.equal(exigeMotivo({ presente: true, horas: 6, jornada: null }), false,
+    'el formulario tiene que coincidir con el catálogo, no discutirle')
+
+  const normal = arma({ horas: 9 })
+  assert.equal(normal.optional, false, 'con jornada conocida sí se pide el porqué')
 })

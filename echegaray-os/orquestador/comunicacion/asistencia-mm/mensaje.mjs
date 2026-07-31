@@ -372,7 +372,16 @@ export function dialogoExcepcion({
         elementoHoras({ n, jornada, tipo }),
         elementoSelect({
           nombre: 'motivo', etiqueta: 'Motivo', valor: n.motivo, opciones: opcionesMotivo,
-          ayuda: 'Por qué hizo menos que la jornada.', obligatorio: true,
+          // OBLIGATORIO SÓLO CUANDO EL CATÁLOGO LO EXIGE, que es la autoridad. Un día sin
+          // jornada calibrada (un sábado) no tiene contra qué medir "menos", así que el
+          // catálogo no pide explicación — pero el formulario la exigía igual, y el jefe
+          // terminaba eligiendo un motivo falso («Se retiró antes») que se guarda en
+          // asistencia_novedades como falta o ART. Ensuciar la única tabla que responde
+          // POR QUÉ es peor que no exigir nada.
+          ayuda: jornadaConocida(jornada)
+            ? 'Por qué hizo menos que la jornada.'
+            : 'Opcional: ese día la planilla no define la jornada.',
+          obligatorio: jornadaConocida(jornada),
         }),
         elementoSelect({
           nombre: 'obra_realizada', etiqueta: 'Estuvo en otra obra', valor: n.obra_realizada,
@@ -402,6 +411,9 @@ export function dialogoExcepcion({
  * qué armar la lista: se cae a un campo de texto. Inventar una jornada para poder ofrecer
  * opciones sería fabricar el dato que falta.
  */
+/** ¿La planilla define la jornada de ese día? Sin eso no hay "menos" que explicar. */
+const jornadaConocida = (j) => Number.isFinite(j?.horas) && !j?.requiere_manual
+
 function elementoHoras({ n, jornada, tipo }) {
   const j = Number.isFinite(jornada?.horas) && !jornada?.requiere_manual ? Number(jornada.horas) : null
   const esExtra = tipo === TIPO.EXTRA
