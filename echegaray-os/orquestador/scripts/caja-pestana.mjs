@@ -63,6 +63,7 @@ import { esIndistinguible } from '../lib/cobranzas-duplicado.mjs'
 import * as CONC from '../lib/conciliacion-por-naturaleza.mjs'
 import { formulaEgresoDiario } from '../lib/egreso-diario.mjs'
 import { formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte, formulaNetaEfectivoPosterior, formulaCobrosPosteriores, formulaChequesDebitadosPosteriores, formulaComprasPagadasPosteriores } from '../lib/caja-posterior-al-corte.mjs'
+import { formulaCajaEnPesos, celdaCobrosEfectivo, celdaPagosEfectivo, celdaDepositosEfectivo, NETO_NO_SUMA_EN_PESOS, origenCajaEnPesos, IDENTIDAD } from '../lib/caja-efectivo-fisico.mjs'
 // LA CARTERA DE VALORES SALE DE LA RÉPLICA DE CHEQUES, NO DE UN ARRAY DE JAVASCRIPT (30/07). Ver
 // lib/cartera-cheques.mjs: es el arreglo del "$10.000.000 en CAJA con $10.290.000 en cartera" y del
 // calendario de vencimientos que leía DOS CELDAS FIJAS.
@@ -160,7 +161,7 @@ function rescatar(previo) {
   return cargado
 }
 
-function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
+export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // El tipo de cambio se referencia por su RANGO CON NOMBRE. Así el bloque que lo calcula puede
   // vivir al pie de la pestaña —que es donde corresponde en una empresa que mueve todo en pesos—
   // sin que las filas de arriba dependan de en qué fila quedó.
@@ -341,11 +342,56 @@ function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // lo anterior ya está DENTRO del arqueo. Un arqueo nuevo, con fecha más reciente, colapsa lo viejo.
   const fPostEf = filas.length + 1
   push(['Movimientos de efectivo posteriores al arqueo', 'ARS',
-    formulaNetaEfectivoPosterior(`$F$${d0}`, { bancoRaw: refs.bancoRaw }), '', `=${C_IMP}${fPostEf}`, '=TODAY()',
+    formulaNetaEfectivoPosterior(`$F$${d0}`, { bancoRaw: refs.bancoRaw }),
+    // ═══ ESTA FILA YA NO APORTA VALOR EN PESOS (31/07) ═══
+    //
+    // El dueño: "se realiza una cobranza marcada en esa pestaña como en 'efectivo', ese valor tiene q
+    // cargarse en 'caja' directamente. ahora lo suma pero no carga en la celda de 'caja en pesos' como
+    // corresponde". Tenía razón en las dos mitades: el neto se calculaba bien y el total lo sumaba
+    // bien, pero la celda que él mira —"Caja en pesos"— decía $0. Medido el 31/07: $19.789.659,73 en
+    // esta fila y cero arriba.
+    //
+    // Ahora el neto va A "Caja en pesos" (ver abajo, donde se reescribe su celda de pesos) y esta fila
+    // queda como el DESGLOSE de cómo llegó ahí. Su columna de pesos tiene que quedar vacía o el mismo
+    // efectivo entraría dos veces en `SUM(E7:E13)`. Ver lib/caja-efectivo-fisico.mjs.
+    '', NETO_NO_SUMA_EN_PESOS, '=TODAY()',
     `=IF($F$${d0}="";"⚠ cargá un arqueo con fecha";IF(${C_IMP}${fPostEf}=0;"sin movimientos";"vivo"))`,
-    'Cobros en efectivo (Cobranzas, estado Cobrado) menos pagos en efectivo (Compras, Pagado/Efectivo) menos depósitos de efectivo al banco, todos con fecha POSTERIOR al arqueo de "Caja en pesos". El arqueo es el corte: lo anterior ya está contado dentro del saldo tipeado. Sin arqueo con fecha no hay ventana y da 0.',
+    `Ya está sumado arriba, en "Caja en pesos" — acá se muestra abierto, no se cuenta de nuevo. ${IDENTIDAD}. Cobros en efectivo (Cobranzas, estado Cobrado) menos pagos en efectivo (Compras, Pagado/Efectivo) menos depósitos de efectivo al banco. Sin arqueo con fecha no hay ventana y da 0.`,
     'Se calcula solo'])
+  // LOS TRES SUMANDOS, UNO POR UNO. Un total solo no se puede discutir: $19,7 millones de efectivo en
+  // un cajón es un número que hay que poder abrir. Las tres fórmulas son LAS MISMAS que arma la línea
+  // neta (se importan de la lib, no se copian), así que el desglose no puede decir otra cosa que el
+  // total. Van con el valor en la columna de origen y SIN valor en pesos: se ven y no se suman.
+  push(['   · (+) cobrado en efectivo después del arqueo', 'ARS',
+    celdaCobrosEfectivo(`$F$${d0}`), '', '', '', '',
+    'Cobranzas: forma de cobro "Efectivo" Y estado "Cobrado", con fecha de cobro posterior al arqueo. Un proyectado no es plata que esté en el cajón.', ''])
+  push(['   · (−) pagado en efectivo después del arqueo', 'ARS',
+    celdaPagosEfectivo(`$F$${d0}`), '', '', '', '',
+    'Compras: estado "Pagado" y tipo de pago "Efectivo", por su Fecha de caja. Es el billete que salió del cajón sin pasar por el banco — sin esta resta la caja crecería para siempre.', ''])
+  if (refs.bancoRaw) {
+    push(['   · (−) depositado en el banco después del arqueo', 'ARS',
+      celdaDepositosEfectivo(`$F$${d0}`), '', '', '', '',
+      'Réplica del extracto: los créditos cuyo concepto dice "depósito de efectivo". El billete dejó el cajón y entró a la cuenta: baja acá y sube en el saldo del banco.', ''])
+  }
   const d1 = filas.length
+
+  // ═══ Y ACÁ LLEGA EL EFECTIVO A LA CELDA QUE EL DUEÑO MIRA ═══
+  //
+  // Se reescribe la columna de pesos de la fila del arqueo. No se hace dentro del bucle de CUENTAS
+  // porque en ese momento todavía no se sabe en qué fila quedó el neto, y la fila del neto NO se puede
+  // deducir por posición: eso es exactamente lo que ya rompió la alerta de echeqs en esta pestaña.
+  //
+  // LA COLUMNA DE ORIGEN (C) NO SE TOCA: ahí vive el ARQUEO, que lo tipea el dueño y es verdad
+  // definitiva. Un conteo físico no se pisa con una suma automática. Lo que cambia es el SALDO EN
+  // PESOS: pasa de ser "el importe de al lado" a ser "el arqueo más lo que se movió desde entonces",
+  // que es lo que de verdad hay en el cajón.
+  filas[d0 - 1][4] = formulaCajaEnPesos({
+    arqueo: `$${C_IMP}$${d0}`, tc: `$${C_TC}$${d0}`, neta: `$${C_IMP}$${fPostEf}`,
+  })
+  // LA COLUMNA DE ORIGEN SÓLO SE EXPLICA SI ES LA MÍA. Si el dueño escribió ahí su propio texto, manda
+  // el suyo: su edición es verdad definitiva y "mejorarle" la redacción es la forma más fácil de
+  // perderla. Se reemplaza únicamente el `origenSugerido` que puso este mismo generador.
+  if ([CUENTAS[0].origenSugerido, VACIO, ''].includes(filas[d0 - 1][7])) filas[d0 - 1][7] = origenCajaEnPesos()
 
   // PERCIBIDO: el total excluye los Valores a depositar (echeq en custodia, sin acreditar). No son
   // caja de hoy — entran en el calendario cuando se acreditan. Es también el "Efectivo al inicio" que
@@ -822,8 +868,18 @@ function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // LA FILA SE GUARDA, NO SE CUENTA. La resta de abajo la referenciaba como "fEfCobrado + 3": al
   // insertar el detalle de los depósitos habría restado la fila equivocada sin dar error. Es el
   // mismo defecto que ya rompió la alerta de echeqs esta misma tarde.
-  const fCajaFisica = push(['Declarado hoy en caja física', '', '', '', `=${C_PESOS}${d0}`, '', '', '',
-    'La primera fila del bloque 1: la carga a mano.'])
+  // ═══ APUNTA AL ARQUEO CRUDO, NO AL SALDO EN PESOS (31/07) ═══
+  //
+  // Era `=E7`, el saldo en pesos de "Caja en pesos". Desde este cambio esa celda vale arqueo + los
+  // movimientos POSTERIORES al arqueo, y esta alerta mide una ventana distinta (la del extracto). Si
+  // siguiera leyendo E7 restaría movimientos que no pertenecen a su ventana: es exactamente la mezcla
+  // de períodos que la regla de oro prohíbe, y habría hecho bajar el faltante con plata de otro mes.
+  //
+  // Lo que esta alerta necesita es el CONTEO FÍSICO puro, que vive en la columna de origen (C) y lo
+  // tipea el dueño. Se lee de ahí, y el rótulo dice la fecha del arqueo para que no se compare a ciegas.
+  const fCajaFisica = push([`Arqueo declarado de caja física`, '', '', '',
+    `=N($${C_IMP}$${d0})`, `=$F$${d0}`, '', '',
+    'El conteo físico que el dueño tipeó en la primera fila del bloque 1, a SU fecha (columna de al lado). NO incluye los movimientos posteriores al arqueo: esta alerta mide la ventana del extracto, y mezclar las dos ventanas daría un faltante falso.'])
   const fSinExpl = push(['⇒ EFECTIVO SIN EXPLICAR', '', '', '',
     `=${C_PESOS}${fEfCobrado}-${C_PESOS}${fDup}-${C_PESOS}${fEfDepos}-${C_PESOS}${fCajaFisica}`, '', '', '',
     '⚠ Es el efectivo cobrado en la ventana que no se depositó NI aparece en la caja física. Puede tener explicación —un depósito posterior al corte, un pago a proveedor hecho en efectivo sin pasar por el banco— pero no puede quedar sin mirar. Al 21/07: dos filas de Cobranzas por $16.200.000 cada una, el mismo día y del mismo cliente, que el detector de duplicados ya venía marcando.'])
@@ -1429,8 +1485,16 @@ async function formatear(google, sheetId, g, tab) {
   await google.spreadsheetBatchUpdate(ID, req)
 }
 
-main()
-  .catch((e) => { console.error('ERROR:', e.message); process.exitCode = 1 })
-  // El pool de Postgres se abre sólo si la cartera salió de la base; cerrarlo siempre es inofensivo y
-  // sin esto el proceso queda colgado después de escribir la pestaña.
-  .finally(async () => { await import('../lib/db.mjs').then((m) => m.closePool()).catch(() => {}) })
+// ═══ SÓLO ESCRIBE SI SE LO CORRE A PROPÓSITO (31/07) ═══
+//
+// Antes `main()` se ejecutaba con el solo hecho de IMPORTAR el archivo. Eso hacía imposible testear la
+// grilla —cualquier test que importara `grilla` habría reescrito la pestaña real— y en un proyecto que
+// ya perdió trabajo del dueño seis veces eso no es un detalle de estilo. Ahora `grilla` se puede
+// importar y verificar en frío, y escribir sigue requiriendo correr el archivo.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main()
+    .catch((e) => { console.error('ERROR:', e.message); process.exitCode = 1 })
+    // El pool de Postgres se abre sólo si la cartera salió de la base; cerrarlo siempre es inofensivo y
+    // sin esto el proceso queda colgado después de escribir la pestaña.
+    .finally(async () => { await import('../lib/db.mjs').then((m) => m.closePool()).catch(() => {}) })
+}

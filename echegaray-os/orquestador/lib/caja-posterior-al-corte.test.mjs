@@ -13,13 +13,13 @@ test('las compras pagadas posteriores restan sólo Transferencia y Débito, desp
   // SUMPRODUCT, no SUMIFS: la "Fecha de caja" viene en formato mixto serie/texto y SUMIFS perdía las de texto.
   assert.match(f, /^SUMPRODUCT\(/)
   assert.doesNotMatch(f, /SUMIFS/)
-  assert.match(f, /'Compras'!\$X\$4:\$X\$1200="Pagado"/) // estado
+  assert.match(f, /'Compras'!\$X\$4:\$X="Pagado"/) // estado
   assert.match(f, /"Transferencia"/)
   assert.match(f, /"Débito"/)
   // ventana posterior al corte, con la fecha COACCIONADA (DATEVALUE del texto, N() del serial)
-  assert.match(f, /IFERROR\(DATEVALUE\('Compras'!\$AD\$4:\$AD\$1200&""\);N\('Compras'!\$AD\$4:\$AD\$1200\)\)>\$F\$19/)
+  assert.match(f, /IFERROR\(DATEVALUE\('Compras'!\$AD\$4:\$AD&""\);N\('Compras'!\$AD\$4:\$AD\)\)>\$F\$19/)
   // el total se coacciona con N(): SUMPRODUCT no tolera texto en la columna que suma
-  assert.match(f, /N\('Compras'!\$O\$4:\$O\$1200\)/)
+  assert.match(f, /N\('Compras'!\$O\$4:\$O\)/)
   // NO se cuentan los medios ya cubiertos por otra línea (doble conteo).
   assert.doesNotMatch(f, /"Efectivo"|"Cheque"|"Echeq"|"Tarjeta/)
   assert.doesNotMatch(f, />=/)
@@ -128,9 +128,9 @@ test('la línea del banco: 2 SUMIFS (cobros, cheques) + 1 SUMPRODUCT (compras, t
 
 test('cobros en efectivo posteriores: SÓLO Efectivo, SÓLO Cobrado, DESPUÉS del arqueo', () => {
   const f = formulaCobrosEfectivoPosteriores('$F$4')
-  assert.match(f, /'Cobranzas'!\$O\$5:\$O\$400;"Cobrado"/) // estado
-  assert.match(f, /'Cobranzas'!\$N\$5:\$N\$400;"Efectivo"/) // forma de cobro
-  assert.match(f, /'Cobranzas'!\$Q\$5:\$Q\$400;">"&\$F\$4/) // ventana posterior al arqueo
+  assert.match(f, /'Cobranzas'!\$O\$5:\$O;"Cobrado"/) // estado
+  assert.match(f, /'Cobranzas'!\$N\$5:\$N;"Efectivo"/) // forma de cobro
+  assert.match(f, /'Cobranzas'!\$Q\$5:\$Q;">"&\$F\$4/) // ventana posterior al arqueo
   // La ventana es EXCLUSIVA: con ">=" un cobro del día del arqueo se contaría de nuevo (ya está en él).
   assert.doesNotMatch(f, />=/)
 })
@@ -139,11 +139,11 @@ test('pagos en efectivo posteriores: Compras Pagado/Efectivo por Fecha de caja (
   const f = formulaComprasEfectivoPosteriores('$F$4')
   assert.match(f, /^SUMPRODUCT\(/)
   assert.doesNotMatch(f, /SUMIFS/)
-  assert.match(f, /'Compras'!\$X\$4:\$X\$1200="Pagado"/) // estado
-  assert.match(f, /'Compras'!\$P\$4:\$P\$1200="Efectivo"/) // tipo de pago
+  assert.match(f, /'Compras'!\$X\$4:\$X="Pagado"/) // estado
+  assert.match(f, /'Compras'!\$P\$4:\$P="Efectivo"/) // tipo de pago
   // Fecha de caja coaccionada, ventana posterior al arqueo
-  assert.match(f, new RegExp(`IFERROR\\(DATEVALUE\\('Compras'!\\$${CMP.fecha}\\$4:\\$${CMP.fecha}\\$1200&""\\);N\\('Compras'!\\$${CMP.fecha}\\$4:\\$${CMP.fecha}\\$1200\\)\\)>\\$F\\$4`))
-  assert.match(f, /N\('Compras'!\$O\$4:\$O\$1200\)/) // total coaccionado
+  assert.match(f, new RegExp(`IFERROR\\(DATEVALUE\\('Compras'!\\$${CMP.fecha}\\$4:\\$${CMP.fecha}&""\\);N\\('Compras'!\\$${CMP.fecha}\\$4:\\$${CMP.fecha}\\)\\)>\\$F\\$4`))
+  assert.match(f, /N\('Compras'!\$O\$4:\$O\)/) // total coaccionado
   assert.doesNotMatch(f, />=/)
 })
 
