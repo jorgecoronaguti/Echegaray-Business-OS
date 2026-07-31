@@ -16,6 +16,7 @@ import {
   FUENTES, fuente, CUIT_PROPIO, numeroFiscal, cambiosEnCarpeta, sinCorrelatoFiscal,
   novedadesDrive, novedadesSheetVinculado, novedadesArca, novedadesCct, novedadesSilencio,
   novedadCiega, clasificar, huella, resumen, formatNovedades, avisoTexto, corteMaximo, dias,
+  novedadesTimers, fechaDeSystemd, desdeCuando,
 } from './vigia-fuentes.mjs'
 
 // ═══ EL REGISTRO ═══
@@ -408,4 +409,94 @@ test('corteMaximo ignora lo que no es fecha, y dias cuenta pisos', () => {
     '2026-07-30T18:00:00.000Z')
   assert.equal(corteMaximo([]), null)
   assert.equal(dias('2026-07-25T00:00:00Z', '2026-07-31T12:00:00Z'), 6)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LOS TIMERS: LA CAPACIDAD QUE SE MUERE SIN AVISAR (31/07)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL CASO REAL. El dueño: "proveedores sigue sin ser una pestaña viva... la seccion 1 no se actualiza".
+// Se rediseñó la pestaña entera. La causa era otra: `echegaray-proveedores.timer`, `enabled` y
+// **detenido el 27/07 a las 16:48**. Refrescaba cada 2h y dejó de hacerlo, sin un solo aviso. Cuando se
+// volvió a arrancar, la misma pestaña de siempre se refrescó sola y sin errores.
+//
+// Y había CINCO más iguales, incluido `echegaray-orq-health.timer`: el que avisaría estaba entre los
+// muertos. Eso es lo que este detector cierra.
+const F_TIMERS = fuente('timers_del_flujo')
+
+test('un timer ENABLED pero INACTIVE es una capacidad muerta, y se reporta', () => {
+  const ns = novedadesTimers(F_TIMERS, { timers: [
+    { unidad: 'echegaray-proveedores.timer', enabled: true, active: false, proxima: null, ultima: 'Mon 2026-07-27 15:45:32' },
+    { unidad: 'echegaray-vigia-fuentes.timer', enabled: true, active: true, proxima: 'Fri 2026-07-31 16:42:20', ultima: 'Fri 2026-07-31 12:42:20' },
+  ] })
+  assert.equal(ns.length, 1, 'sólo el muerto genera novedad; el vivo no ensucia')
+  assert.match(ns[0].titulo, /echegaray-proveedores\.timer/)
+  assert.match(ns[0].titulo, /DETENIDO/)
+  assert.match(ns[0].titulo, /2026-07-27/, 'dice desde cuándo no corre: es el dato que faltaba')
+  assert.equal(ns[0].tipo, 'capacidad_muerta')
+  assert.equal(ns[0].evidencia.enabled, true)
+  assert.equal(ns[0].evidencia.active, false)
+  assert.equal(ns.senal.muertos, 1)
+  assert.equal(ns.senal.vigilados, 2)
+})
+
+test('NO propone arrancarlo solo: varios están parados a propósito', () => {
+  // La autonomía se congeló por decisión del dueño, y caja-sync está detenido porque su sync daba una
+  // caja falsa (−$3,18M contra +$17,69M real). Un vigía que reactive timers solo puede volver a meter
+  // datos malos en el archivo, así que sólo REPORTA.
+  const ns = novedadesTimers(F_TIMERS, { timers: [{ unidad: 'echegaray-espejos.timer', enabled: true, active: false, ultima: null }] })
+  assert.equal(ns[0].clasificacion, 'requiere_dueno', 'reactivar un timer es del dueño, nunca automático')
+  assert.match(ns[0].accion, /A PROPÓSITO/)
+  assert.match(ns[0].accion, /NO se arranca solo/)
+})
+
+test('ACTIVE sin próxima corrida también es no correr', () => {
+  // Pasó al arrancar el timer de proveedores: quedó active y sin NEXT hasta que el service terminó.
+  // Si eso persiste, la unidad está viva y no hace nada — el peor de los dos estados, porque parece bien.
+  const ns = novedadesTimers(F_TIMERS, { timers: [{ unidad: 'echegaray-espejos.timer', enabled: true, active: true, proxima: null }] })
+  assert.equal(ns.length, 1)
+  assert.match(ns[0].titulo, /sin próxima corrida/)
+  assert.equal(ns.senal.sin_agenda, 1)
+})
+
+test('la lista de unidades vigiladas es la que deja el Flujo desactualizado si se detiene', () => {
+  // No se vigilan todas las del sistema: sólo aquellas cuyo silencio se VE en el archivo. Y el propio
+  // vigía está en la lista, porque un vigía muerto no puede avisar de sí mismo.
+  assert.ok(F_TIMERS.unidades.includes('echegaray-proveedores.timer'), 'el que falló tiene que estar')
+  assert.ok(F_TIMERS.unidades.includes('echegaray-orq-health.timer'), 'el que avisaría y estaba muerto')
+  assert.ok(F_TIMERS.unidades.includes('echegaray-vigia-fuentes.timer'), 'y este vigía')
+  assert.equal(F_TIMERS.nivel, 'requiere_dueno')
+  // Y los que están parados A PROPÓSITO quedan FUERA: reportarlos cada 4 horas sería ruido permanente,
+  // y el ruido permanente es cómo una alerta deja de leerse. caja-sync (caja falsa) y los de autonomía
+  // congelada no están en la lista.
+  assert.ok(!F_TIMERS.unidades.includes('echegaray-caja-sync.timer'), 'caja-sync está detenido a propósito')
+  assert.ok(!F_TIMERS.unidades.includes('echegaray-plan-ejecutar.timer'), 'la autonomía está congelada por decisión del dueño')
+})
+
+test('todo vivo → ninguna novedad (no genera ruido cada 4 horas)', () => {
+  const ns = novedadesTimers(F_TIMERS, { timers: [
+    { unidad: 'echegaray-proveedores.timer', enabled: true, active: true, proxima: 'Fri 2026-07-31 13:46:28' },
+    { unidad: 'echegaray-compras-sync.timer', enabled: true, active: true, proxima: 'Fri 2026-07-31 13:18:51' },
+  ] })
+  assert.equal(ns.length, 0)
+  assert.equal(ns.senal.muertos, 0)
+})
+
+test('la fecha de un sello de systemd se EXTRAE, no se corta', () => {
+  // systemd escribe el día de la semana adelante. slice(0,10) devolvía "Mon 2026-0" justo en el aviso
+  // que tiene que decir desde cuándo no corre — lo atrapó el test, no el archivo.
+  assert.equal(fechaDeSystemd('Mon 2026-07-27 15:45:32 -03'), '2026-07-27')
+  assert.equal(fechaDeSystemd('Fri 2026-07-31 13:46:28 -03'), '2026-07-31')
+  assert.equal(fechaDeSystemd('-'), null)
+  assert.equal(fechaDeSystemd(null), null)
+})
+
+test('el aviso dice DESDE CUÁNDO, con fecha o con el relativo de systemd', () => {
+  // `list-timers` da la fecha absoluta o el relativo según cómo se lo invoque. La primera corrida real
+  // del detector decía "no se actualiza desde no se sabe cuándo" mientras su propia evidencia decía
+  // "3 days ago": el dato estaba y el aviso lo tiraba.
+  assert.equal(desdeCuando('Mon 2026-07-27 15:45:32 -03'), 'el 2026-07-27')
+  assert.equal(desdeCuando('3 days ago'), '3 days ago')
+  assert.equal(desdeCuando('-'), 'no se sabe cuándo')
+  assert.equal(desdeCuando(null), 'no se sabe cuándo')
 })

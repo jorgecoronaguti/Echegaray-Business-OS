@@ -59,6 +59,35 @@ export const CUIT_PROPIO = '30716304643'
 
 export const FUENTES = [
   {
+    // LA PRIMERA FUENTE ES EL OS MISMO. Si el timer que mantiene una pestaña está muerto, esa pestaña
+    // miente sin dar error — y es lo que pasó con Proveedores del 27/07 al 31/07. Vigilar los datos y
+    // no vigilar lo que los trae deja el agujero exactamente donde nadie mira.
+    clave: 'timers_del_flujo',
+    tipo: 'capacidad_timer',
+    nombre: 'Los timers que mantienen vivo el Flujo de Fondos',
+    // Las unidades cuyo silencio se ve en el archivo. No se vigilan todas las del sistema: sólo las
+    // que, si se detienen, dejan una pestaña del Flujo desactualizada sin avisar.
+    unidades: [
+      'echegaray-proveedores.timer',      // sección 1 de Proveedores: la deuda por proveedor
+      'echegaray-compras-sync.timer',     // el espejo de Compras en la base
+      'echegaray-cobranzas-sync.timer',   // el espejo de Cobranzas
+      'echegaray-espejar-jornales.timer', // _JORNALES_RAW: el egreso más grande del Flujo
+      'echegaray-drive-index.timer',      // el índice del data room, del que depende este mismo vigía
+      'echegaray-espejos.timer',          // los espejos _RAW en general
+      'echegaray-orq-health.timer',       // el chequeo de salud: si está muerto, nada avisa
+      'echegaray-vigia-fuentes.timer',    // este vigía
+    ],
+    // LOS QUE ESTÁN PARADOS A PROPÓSITO NO SE VIGILAN. `echegaray-caja-sync.timer` está detenido porque
+    // su sync daba una caja falsa (−$3,18M contra +$17,69M real), y los de autonomía
+    // (`plan-ejecutar`, `os-schedules`) están congelados por decisión del dueño. Reportarlos cada 4
+    // horas sería ruido permanente, y el ruido permanente es cómo una alerta deja de leerse.
+    que_decide: 'Todo el Flujo: una pestaña cuyo refrescador está detenido muestra el pasado como si fuera hoy',
+    cadencia_horas: 4,
+    fuente_datos_nombre: 'systemd --user (estado de las unidades)',
+    ruta_carga: 'Decisión del dueño: reactivar el timer que corresponda. Varios están parados a propósito.',
+    nivel: 'requiere_dueno',
+  },
+  {
     clave: 'facturas_emitidas',
     tipo: 'drive_carpeta',
     nombre: 'Facturas emitidas (PDF en Drive)',
@@ -686,6 +715,84 @@ export function novedadesSilencio(f, { ultimaFecha = null, filas = 0, ahora = ne
     }))
   }
   out.senal = senalNueva
+  return out
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// DETECTOR — LAS CAPACIDADES QUE DEPENDEN DE UN TIMER
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// POR QUÉ EXISTE (31/07). El dueño: "proveedores sigue sin ser una pestaña viva, se siguen cargando
+// compras y la seccion 1 de proveedores y deuda no se actualiza". La causa NO era el diseño de la
+// pestaña: `echegaray-proveedores.timer` estaba `enabled` y **detenido el 27/07 a las 16:48**. La
+// pestaña se refrescaba sola cada 2h y dejó de hacerlo sin que nada avisara. Se rediseñó una pestaña
+// que no estaba rota.
+//
+// Y al mirar el resto aparecieron CINCO timers más en el mismo estado, uno de ellos
+// `echegaray-orq-health.timer`: el que avisaría que los timers se murieron estaba entre los muertos.
+// Eso explica el silencio completo.
+//
+// `enabled` NO significa que corra: significa que arrancaría en el próximo arranque de la sesión. Un
+// timer `enabled` + `inactive` es una capacidad muerta que se ve viva en la lista de unidades. El
+// único estado que importa es ACTIVE con un NEXT agendado.
+//
+// ESTO NO ARRANCA NADA. Varios timers están parados a propósito (la autonomía se congeló, y
+// `caja-sync` está detenido porque su sync daba una caja falsa). Reactivar es del dueño; el vigía sólo
+// hace visible lo que está muerto, que es lo que faltaba.
+
+/**
+ * La fecha de un sello de systemd. `list-timers` los escribe con el día de la semana adelante
+ * ("Mon 2026-07-27 15:45:32"), así que cortar los primeros 10 caracteres devuelve "Mon 2026-0" — un
+ * dato ilegible en el aviso que justamente tiene que decir DESDE CUÁNDO no corre. Se extrae la fecha.
+ */
+export const fechaDeSystemd = (s) => String(s ?? '').match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? null
+
+/**
+ * Desde cuándo no corre, en palabras. `list-timers` a veces da la fecha absoluta ("Mon 2026-07-27
+ * 15:45:32") y a veces el tiempo relativo ("3 days ago") según cómo se lo invoque. Si hay fecha, se
+ * usa; si no, se usa el texto tal cual — que es información. "No se sabe cuándo" sólo cuando de
+ * verdad no vino nada: un aviso vago vale la mitad que uno que dice desde cuándo.
+ */
+export function desdeCuando(ultima) {
+  const iso = fechaDeSystemd(ultima)
+  if (iso) return `el ${iso}`
+  const t = String(ultima ?? '').trim()
+  return t && t !== '-' ? t : 'no se sabe cuándo'
+}
+
+/**
+ * NÚCLEO PURO: qué timers de los que sostienen el Flujo están muertos.
+ *
+ * @param {object} f la fuente del registro
+ * @param {{timers?: Array<{unidad:string, enabled:boolean, active:boolean, proxima?:string|null, ultima?:string|null}>}} datos
+ */
+export function novedadesTimers(f, { timers = [] } = {}) {
+  const out = []
+  const vigilados = f.unidades?.length ? timers.filter((t) => f.unidades.includes(t.unidad)) : timers
+  const muertos = vigilados.filter((t) => t.enabled && !t.active)
+  const sinAgenda = vigilados.filter((t) => t.active && !t.proxima)
+  for (const t of muertos) {
+    out.push(novedad(f, {
+      tipo: 'capacidad_muerta',
+      id_hecho: `timer_detenido:${t.unidad}`,
+      titulo: `${t.unidad} está habilitado pero DETENIDO: lo que mantiene no se actualiza desde ${desdeCuando(t.ultima)}`,
+      evidencia: { unidad: t.unidad, enabled: true, active: false, ultima_corrida: t.ultima ?? null, ultima_fecha: fechaDeSystemd(t.ultima) },
+      // Reactivar un timer es del dueño: varios están parados a propósito.
+      requiere_dueno: true,
+      accion: `Decidir si se reactiva: systemctl --user start ${t.unidad}. Varios timers están parados A PROPÓSITO (la autonomía congelada, caja-sync con una caja falsa), así que esto NO se arranca solo.`,
+    }))
+  }
+  for (const t of sinAgenda) {
+    out.push(novedad(f, {
+      tipo: 'capacidad_muerta',
+      id_hecho: `timer_sin_agenda:${t.unidad}`,
+      titulo: `${t.unidad} está activo pero sin próxima corrida agendada`,
+      evidencia: { unidad: t.unidad, active: true, proxima: null },
+      requiere_dueno: true,
+      accion: `Revisar el OnCalendar/OnUnitActiveSec de la unidad: activa sin NEXT es activa sin efecto.`,
+    }))
+  }
+  out.senal = { vigilados: vigilados.length, muertos: muertos.length, sin_agenda: sinAgenda.length }
   return out
 }
 

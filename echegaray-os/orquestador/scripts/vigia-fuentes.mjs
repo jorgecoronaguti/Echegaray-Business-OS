@@ -42,7 +42,7 @@ import { createLogger } from '../lib/logger.mjs'
 import { makeGoogleClient, MissingGoogleCredential } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import {
-  FUENTES, novedadesDrive, novedadesSheetVinculado, novedadesArca, novedadesCct,
+  FUENTES, novedadesDrive, novedadesSheetVinculado, novedadesArca, novedadesCct, novedadesTimers,
   novedadesSilencio, novedadCiega, formatNovedades, resumen, avisoTexto,
 } from '../lib/vigia-fuentes.mjs'
 
@@ -60,6 +60,40 @@ const SOLO = iSolo >= 0 ? String(process.argv[iSolo + 1] || '').split(',').map((
 const AHORA = new Date()
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL ESTADO DE LOS TIMERS, LEÍDO DE SYSTEMD
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// `enabled` NO es "corre": es "arrancaría en el próximo arranque". Un timer enabled + inactive es una
+// capacidad muerta que se ve viva. Se leen los TRES datos que hacen falta: enabled, active y si tiene
+// una próxima corrida agendada. Sin systemd (contenedor, otra máquina) devuelve lista vacía y la fuente
+// queda declarada ciega, que es honesto: no se sabe.
+async function estadoDeTimers(unidades = []) {
+  const { execFile } = await import('node:child_process')
+  const { promisify } = await import('node:util')
+  const run = promisify(execFile)
+  const salida = async (args) => { try { return (await run('systemctl', args, { timeout: 20_000 })).stdout } catch (e) { return e?.stdout ?? '' } }
+  // NEXT/LAST de las que están activas. `--all` incluye las que no tienen próxima corrida.
+  const listado = await salida(['--user', 'list-timers', '--all', '--no-pager', '--no-legend'])
+  const agenda = new Map()
+  for (const linea of listado.split('\n')) {
+    const m = linea.trim().match(/^(.*?)\s+(\S+\.timer)\s+(\S+\.service)\s*$/)
+    if (!m) continue
+    // Las columnas de fecha vienen separadas por espacios; "-" significa "sin dato".
+    const campos = m[1].trim().split(/\s{2,}/)
+    agenda.set(m[2], { proxima: campos[0] === '-' ? null : campos[0], ultima: campos[2] === '-' ? null : campos[2] })
+  }
+  const out = []
+  for (const unidad of unidades) {
+    const enabled = (await salida(['--user', 'is-enabled', unidad])).trim() === 'enabled'
+    const active = (await salida(['--user', 'is-active', unidad])).trim() === 'active'
+    const a = agenda.get(unidad) ?? {}
+    if (!enabled && !active && !agenda.has(unidad)) continue // la unidad no existe en esta máquina
+    out.push({ unidad, enabled, active, proxima: a.proxima ?? null, ultima: a.ultima ?? null })
+  }
+  return out
+}
+
 // PERSISTENCIA DEL REGISTRO DE FUENTES (el puntero de lectura)
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -292,6 +326,14 @@ async function ronda() {
 
       else if (f.tipo === 'uocra_cct') {
         const ns = novedadesCct(f, { guardada: await escalaGuardada(), ahora: AHORA })
+        novedades.push(...ns)
+        await guardarSenal(f.clave, ns.senal)
+      }
+
+      else if (f.tipo === 'capacidad_timer') {
+        const timers = await estadoDeTimers(f.unidades ?? [])
+        if (!timers.length) { novedades.push(novedadCiega(f, 'no pude leer el estado de systemd --user')); await guardarSenal(f.clave, null, 'systemd ilegible').catch(() => {}); continue }
+        const ns = novedadesTimers(f, { timers })
         novedades.push(...ns)
         await guardarSenal(f.clave, ns.senal)
       }
