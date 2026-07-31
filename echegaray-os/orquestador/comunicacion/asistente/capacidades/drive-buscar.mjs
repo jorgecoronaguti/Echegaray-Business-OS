@@ -49,8 +49,13 @@ import {
 } from '../contratos.mjs'
 import { paredAR } from '../tiempo.mjs'
 import { clasificarErrorGoogle, googleDisponible, errorSinCuenta } from '../google-cliente.mjs'
-import { crearIndice, buscar, registrarAceptacion, analizarConsulta } from '../../../lib/drive-busqueda/buscar.mjs'
+import { crearIndice, buscar, registrarAceptacion, registrarRechazo, analizarConsulta } from '../../../lib/drive-busqueda/buscar.mjs'
 import { rutaLegible } from '../../../lib/drive-busqueda/ranking.mjs'
+import {
+  registrarBusqueda, leerEvento, ultimoEvento, marcarConfirmado, marcarRechazado, promoverAlias,
+} from '../../../lib/drive-busqueda/registro.mjs'
+import { explicarEvento } from '../../../lib/drive-busqueda/explicar.mjs'
+import { FEEDBACK } from '../../../lib/drive-busqueda/feedback.mjs'
 
 const MAX_OPCIONES = 5
 const CARPETA = 'application/vnd.google-apps.folder'
@@ -127,15 +132,112 @@ function textoConAlternativas(a, otros) {
 const lineaOpcion = (a) => [a.nombre, a.ubicacion ? `en ${a.ubicacion}` : null, a.fecha].filter(Boolean).join(' — ')
 
 /** La pregunta, con la lista numerada ADENTRO del texto: es lo único que la persona ve. */
-function preguntar(archivos, terminos, tipo) {
+function preguntar(archivos, terminos, tipo, eventoId = null) {
   const opciones = archivos.map((a) => ({ valor: a.id, etiqueta: lineaOpcion(a) }))
   const texto = ['Encontré varios. ¿Cuál te paso?', ...opciones.map((o, i) => `${i + 1}. ${o.etiqueta}`)].join('\n')
   return resultadoAclaracion(
     CAPACIDAD.DRIVE_BUSCAR, texto, opciones,
     // `faltante` es lo que hace que la respuesta de la persona vuelva ACÁ con el id elegido.
     // Sin esto la lista era decorativa: se ofrecía, y "el segundo" no llegaba a ningún lado.
-    { intencion: CAPACIDAD.DRIVE_BUSCAR, parametros: { terminos, tipo }, faltante: 'archivoId' },
+    {
+      intencion: CAPACIDAD.DRIVE_BUSCAR,
+      parametros: { terminos, tipo, eventoId },
+      faltante: 'archivoId',
+      feedback: true,
+    },
   )
+}
+
+/**
+ * Lo que esta respuesta deja abierto: la persona puede confirmarla, desmentirla, pedir el otro
+ * o preguntar por qué. Sin esta fila, su "no era ese" se lee como un pedido nuevo y se pierde.
+ */
+function seguimientoDe({ ganador, alternativas, terminos, tipo, eventoId }) {
+  return {
+    parcial: {
+      intencion: CAPACIDAD.DRIVE_BUSCAR,
+      parametros: { terminos, tipo, eventoId },
+      faltante: 'archivoId',
+      feedback: true,
+    },
+    opciones: [ganador, ...alternativas].map((a) => ({ valor: a.id, etiqueta: lineaOpcion(a) })),
+  }
+}
+
+// ── Aprender: sólo lo confirmado ─────────────────────────────────────────────
+//
+// PROPONER NO ES APRENDER. Antes, un resultado dominante se anotaba solo como si alguien lo
+// hubiera elegido; eso es inventar una preferencia y después reforzarla con su propio eco.
+// Ahora el aprendizaje tiene exactamente dos puertas: la persona eligió de la lista, o dijo
+// que sí. Todo lo demás queda registrado como propuesta sin respuesta.
+
+async function aprender(port, indice, { consultaNorm, archivoId, usuario, eventoId }) {
+  await registrarAceptacion(port, consultaNorm, archivoId, usuario)
+  indice.anotarAceptacion(consultaNorm, archivoId, usuario)
+  if (eventoId) await marcarConfirmado(port, eventoId, archivoId)
+  // Con esta confirmación, ¿la consulta ya se ganó ser un alias? Es una consulta chica y
+  // acotada a esta frase; hacerlo acá evita un proceso aparte que nadie recuerda correr.
+  await promoverAlias(port, consultaNorm)
+}
+
+/** El evento al que se refiere el feedback: el que se declaró, o la última búsqueda suya. */
+async function eventoDelFeedback(port, eventoId, usuario) {
+  const e = eventoId ? await leerEvento(port, eventoId) : null
+  return e ?? (await ultimoEvento(port, usuario))
+}
+
+/** "Correcto" / "no era ese" / "por qué ese". */
+async function atenderFeedback(port, indice, { feedback, eventoId, usuario, terminos, tipo, ahora }) {
+  const evento = await eventoDelFeedback(port, eventoId, usuario)
+  if (!evento) {
+    return resultadoError(CAPACIDAD.DRIVE_BUSCAR, errorAsistente(
+      ERROR.NO_ENCONTRADO, 'No tengo a mano cuál fue la última búsqueda. Pedímelo de nuevo por el nombre.',
+    ))
+  }
+  if (feedback === FEEDBACK.EXPLICA) {
+    return resultadoOk(CAPACIDAD.DRIVE_BUSCAR, explicarEvento(evento), { evento: evento.id, explicado: true })
+  }
+  if (feedback === FEEDBACK.CONFIRMA) {
+    if (!evento.elegido) {
+      return resultadoError(CAPACIDAD.DRIVE_BUSCAR, errorAsistente(
+        ERROR.NO_ENCONTRADO, 'No te propuse ningún archivo todavía, así que no sé qué confirmar.',
+      ))
+    }
+    await aprender(port, indice, {
+      consultaNorm: evento.consulta_norm, archivoId: evento.elegido, usuario, eventoId: evento.id,
+    })
+    return resultadoOk(CAPACIDAD.DRIVE_BUSCAR, 'Listo, lo anoto: la próxima que pidas eso, te paso ese.',
+      { evento: evento.id, aprendido: true, archivo: evento.elegido })
+  }
+  return rechazarResultado(port, indice, evento, { usuario, terminos, tipo, ahora })
+}
+
+/**
+ * "No era ese". Se descuenta lo propuesto y se ofrecen los que habían quedado atrás.
+ *
+ * El descuento importa tanto como la lista: una corrección que sólo cambia la respuesta de hoy
+ * obliga a la persona a corregir lo mismo mañana.
+ */
+async function rechazarResultado(port, indice, evento, { usuario, terminos, tipo, ahora }) {
+  await marcarRechazado(port, evento.id)
+  if (evento.elegido) {
+    await registrarRechazo(port, evento.consulta_norm, evento.elegido, usuario)
+    indice.anotarRechazo(evento.consulta_norm, evento.elegido, usuario)
+  }
+  const filas = await indice.filasVigentes()
+  const otros = (Array.isArray(evento.candidatos) ? evento.candidatos : [])
+    .filter((c) => c.id !== evento.elegido)
+    .map((c) => filas.find((f) => f.drive_file_id === c.id))
+    .filter(Boolean)
+    .slice(0, MAX_OPCIONES)
+    .map((f) => aArchivo(f, ahora))
+  if (!otros.length) {
+    return resultadoError(CAPACIDAD.DRIVE_BUSCAR, errorAsistente(
+      ERROR.NO_ENCONTRADO,
+      'Anotado, ese no era. No tengo otro parecido: probá con otra palabra del nombre o de la carpeta.',
+    ))
+  }
+  return preguntar(otros, terminos ?? evento.consulta, tipo, evento.id)
 }
 
 // ── El último recurso: Drive en vivo ─────────────────────────────────────────
@@ -174,7 +276,7 @@ export const capacidad = {
         ERROR.DATO_FALTANTE, '¿Qué archivo busco? Decime el nombre o parte del nombre.', p.error.message,
       ))
     }
-    const { terminos, tipo, archivoId } = p.data
+    const { terminos, tipo, archivoId, feedback, eventoId } = p.data
     const ahora = ctx.ahora?.() ?? new Date()
     const port = ctx.port
     // Quién pregunta. El aprendizaje es por persona: lo que Jorge eligió diez veces dice más
@@ -186,6 +288,12 @@ export const capacidad = {
       ))
     }
     const indice = indiceDe(port)
+    const canal = ctx.identidad?.plataforma ?? 'desconocido'
+
+    // ── La persona dijo algo SOBRE el resultado anterior ──
+    if (feedback) {
+      return atenderFeedback(port, indice, { feedback, eventoId, usuario, terminos, tipo, ahora })
+    }
 
     // ── La persona ELIGIÓ una de las opciones que le ofrecí ──
     // Es el único momento en que sé con certeza cuál era: se devuelve y se aprende.
@@ -198,8 +306,7 @@ export const capacidad = {
         ))
       }
       const { norm } = analizarConsulta(terminos, { tipo })
-      await registrarAceptacion(port, norm, archivoId, usuario)
-      indice.anotarAceptacion(norm, archivoId, usuario)
+      await aprender(port, indice, { consultaNorm: norm, archivoId, usuario, eventoId })
       const a = aArchivo(e, ahora)
       return resultadoOk(CAPACIDAD.DRIVE_BUSCAR, textoUno(a), { archivo: a, aprendido: true })
     }
@@ -216,33 +323,34 @@ export const capacidad = {
       ))
     }
 
-    // ── Hay un elegido: se abre, y se muestra contra qué compitió ──
+    // TODA BÚSQUEDA DEJA RASTRO, HAYA ACERTADO O NO.
     //
-    // Sólo se APRENDE cuando ganó por dominio (confianza alta). Con confianza media el OS está
-    // proponiendo, no sabiendo: registrar esa elección como si la persona la hubiera hecho
-    // sería fabricar una preferencia y después reforzarla sola.
+    // Es lo que después permite contestar "¿por qué ese?", medir si el buscador mejora y saber
+    // qué se pidió y no existía. Registrar no es aprender: esta fila dice qué propuse, no qué
+    // era correcto. Si el registro falla, la búsqueda sigue igual.
+    const evento = await registrarBusqueda(port, { usuario, canal, resultado: r })
+
+    // ── Hay un elegido: se abre, y se muestra contra qué compitió ──
     if (r.ganador) {
       const a = aArchivo(r.ganador, ahora)
       const otros = (r.alternativas ?? []).map((e) => aArchivo(e, ahora))
-      if (r.confianza === 'alta') {
-        await registrarAceptacion(port, r.consulta.norm, a.id, usuario)
-        indice.anotarAceptacion(r.consulta.norm, a.id, usuario)
-      }
       return resultadoOk(CAPACIDAD.DRIVE_BUSCAR, textoConAlternativas(a, otros), {
         archivo: a,
         alternativas: otros,
         confianza: r.confianza,
         etapa: r.etapa,
         rescatado: Boolean(r.ganador.rescatado),
+        alias: r.alias?.drive_file_id === a.id ? r.alias : null,
         senales: r.ganador.senales ?? null,
+        evento,
         evaluados: r.evaluados,
         ms: r.ms,
-      })
+      }, seguimientoDe({ ganador: a, alternativas: otros, terminos, tipo, eventoId: evento }))
     }
 
     // ── Varios: se pregunta UNA vez, con cinco como techo ──
     if (r.opciones.length) {
-      return preguntar(r.opciones.map((e) => aArchivo(e, ahora)), terminos, tipo)
+      return preguntar(r.opciones.map((e) => aArchivo(e, ahora)), terminos, tipo, evento)
     }
 
     // ── El índice no tuvo nada: recién ahí, Drive en vivo ──

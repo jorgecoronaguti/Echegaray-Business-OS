@@ -23,19 +23,38 @@ const INDICE = [
 const AHORA = new Date('2026-07-31T13:00:00Z')
 
 /** Port de mentira: el índice, y un registro de todo lo que se escribió. */
-function portDe({ filas = INDICE, usos = [], fuentes = [] } = {}) {
+function portDe({ filas = INDICE, usos = [], fuentes = [], eventos = [] } = {}) {
   const escrituras = []
+  const sql = []
   return {
     escrituras,
-    query: async (sql, params) => {
-      if (sql.includes('insert into public.drive_busqueda_uso')) { escrituras.push(params); return { rows: [] } }
-      if (sql.includes('drive_index')) return { rows: filas }
-      if (sql.includes('fuentes_datos')) return { rows: fuentes }
-      if (sql.includes('drive_busqueda_uso')) return { rows: usos }
-      if (sql.includes('drive_alias')) return { rows: [] }
+    sql,
+    query: async (q, params) => {
+      sql.push({ q: q.replace(/\s+/g, ' ').trim(), params })
+      if (q.includes('insert into public.drive_busqueda_uso')) { escrituras.push(params); return { rows: [] } }
+      if (q.includes('insert into public.drive_busqueda_evento')) return { rows: [{ id: 77 }] }
+      if (q.includes('from public.drive_busqueda_evento')) return { rows: eventos }
+      if (q.includes('drive_index')) return { rows: filas }
+      if (q.includes('fuentes_datos')) return { rows: fuentes }
+      if (q.includes('drive_busqueda_uso')) return { rows: usos }
+      if (q.includes('drive_alias')) return { rows: [] }
       return { rows: [] }
     },
   }
+}
+
+/** Un evento ya guardado: lo que el buscador propuso la vez anterior. */
+const EVENTO = {
+  id: 77,
+  consulta: 'flujo de fondos',
+  consulta_norm: 'flujo caja',
+  confianza: 'alta',
+  etapa: 'normalizada',
+  elegido: 'f-cash',
+  candidatos: [
+    { id: 'f-cash', name: 'Flujo de Caja - Cash Flow ECSAS', score: 1146, senales: { fuente_operativa: 300 } },
+    { id: 'f-vision', name: 'Vision / Tracción', score: 455, senales: { historico: -200 } },
+  ],
 }
 
 /** Doble del cliente Google. Cuenta las llamadas: el índice tiene que alcanzar solo. */
@@ -217,8 +236,9 @@ test('elegir una opción devuelve ESE archivo y lo aprende', async () => {
   assert.equal(r.evidencia.archivo.id, 'f-av2')
   assert.equal(r.evidencia.aprendido, true)
   assert.equal(port.escrituras.length, 1)
-  // Se aprende PARA QUIÉN eligió: la preferencia de una persona no es la de la empresa.
-  assert.deepEqual(port.escrituras[0], ['avance obra', 'f-av2', 'u-jorge'])
+  // Se aprende PARA QUIÉN eligió, y cuánto suma: la preferencia de una persona no es la de la
+  // empresa, y un "no era ese" resta con el mismo peso (ver el test de rechazo).
+  assert.deepEqual(port.escrituras[0], ['avance obra', 'f-av2', 'u-jorge', 1])
 })
 
 test('lo aceptado antes para esta consulta pasa a ganar', async () => {
@@ -236,10 +256,67 @@ test('cuando sólo PROPONE no aprende: sería fabricar una preferencia y reforza
   assert.equal(port.escrituras.length, 0, 'anotó como elección algo que la persona nunca confirmó')
 })
 
-test('un resultado dominante también se aprende', async () => {
+test('NI SIQUIERA un resultado dominante se aprende solo: proponer no es aprender', async () => {
+  // Antes esto se anotaba como si la persona lo hubiera elegido. Un resultado que nadie
+  // confirmó, reforzándose con su propio eco, es una preferencia fabricada: a los diez usos
+  // el buscador está seguro de algo que nadie le dijo nunca.
   const port = portDe()
-  await correr({ terminos: 'vision' }, { port })
-  assert.deepEqual(port.escrituras[0], ['vision', 'f-vision', 'u-jorge'])
+  const r = await correr({ terminos: 'vision' }, { port })
+  assert.equal(r.ok, true)
+  assert.equal(port.escrituras.length, 0)
+})
+
+// ── Feedback: la corrección más barata que existe ────────────────────────────
+
+test('toda búsqueda queda registrada, acierte o no', async () => {
+  const port = portDe()
+  const r = await correr({ terminos: 'vision' }, { port })
+  assert.equal(r.evidencia.evento, 77)
+  const ins = port.sql.filter((s) => s.q.startsWith('insert into public.drive_busqueda_evento'))
+  assert.equal(ins.length, 1)
+  assert.equal(ins[0].params[0], 'u-jorge')
+})
+
+test('la respuesta deja abierto el seguimiento: se puede desmentir, confirmar o preguntar', async () => {
+  const r = await correr({ terminos: 'vision' })
+  assert.equal(r.seguimiento.parcial.feedback, true)
+  assert.equal(r.seguimiento.parcial.parametros.eventoId, 77)
+  assert.ok(r.seguimiento.opciones.length >= 1)
+})
+
+test('"correcto" es lo que dispara el aprendizaje, y recién ahí', async () => {
+  const port = portDe({ eventos: [EVENTO] })
+  const r = await correr({ terminos: 'flujo de fondos', feedback: 'confirma', eventoId: 77 }, { port })
+  assert.equal(r.ok, true)
+  assert.equal(r.evidencia.aprendido, true)
+  assert.deepEqual(port.escrituras[0], ['flujo caja', 'f-cash', 'u-jorge', 1])
+  assert.ok(port.sql.some((s) => s.q.includes('confirmado_at = now()')))
+})
+
+test('"no era ese" descuenta y ofrece los que habían quedado atrás', async () => {
+  const port = portDe({ eventos: [EVENTO] })
+  const r = await correr({ terminos: 'flujo de fondos', feedback: 'rechaza', eventoId: 77 }, { port })
+  assert.deepEqual(port.escrituras[0], ['flujo caja', 'f-cash', 'u-jorge', -1],
+    'sin el descuento, mañana hay que corregir lo mismo otra vez')
+  assert.ok(port.sql.some((s) => s.q.includes('rechazado_at = now()')))
+  assert.equal(r.aclaracion.opciones.length, 1)
+  assert.equal(r.aclaracion.opciones[0].valor, 'f-vision')
+})
+
+test('"¿por qué ese?" contesta con el desglose, sin volver a buscar', async () => {
+  const port = portDe({ eventos: [EVENTO] })
+  const r = await correr({ terminos: 'flujo de fondos', feedback: 'explica', eventoId: 77 }, { port })
+  assert.equal(r.ok, true)
+  assert.match(r.texto, /Ganó: Flujo de Caja/)
+  assert.match(r.texto, /fuente de negocio/)
+  assert.match(r.texto, /Le ganó a "Vision \/ Tracción"/)
+  assert.equal(port.escrituras.length, 0, 'explicar no puede cambiar lo que explica')
+})
+
+test('feedback sin una búsqueda previa se dice, no se inventa una', async () => {
+  const r = await correr({ terminos: 'x', feedback: 'confirma' }, { port: portDe({ eventos: [] }) })
+  assert.equal(r.ok, false)
+  assert.equal(r.error.codigo, ERROR.NO_ENCONTRADO)
 })
 
 test('elegir un id que ya no está en el índice se dice, no se rellena con otro', async () => {
