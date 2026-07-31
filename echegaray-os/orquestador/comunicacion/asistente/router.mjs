@@ -71,23 +71,60 @@ async function identidadDeQuienPide(port, ctx) {
 
 // ── Aclaraciones pendientes ──────────────────────────────────────────────────
 
-/** La pregunta abierta de esta persona. Una vencida no contamina el pedido nuevo: se cierra. */
-async function pendienteVigente(port, identidad, ahora) {
-  if (!port?.query || !identidad) return null
+/**
+ * LEE la pregunta abierta de esta persona, sin tocarla.
+ *
+ * Se separó de `pendienteVigente` porque hay un lector de afuera: el especialista, cuando el
+ * Director le pregunta si reconoce el mensaje, necesita saber si hay algo abierto ANTES de
+ * reclamarlo. Ese lector no puede cerrar ni vencer nada — si consumiera el pendiente, el
+ * router lo encontraría vacío un instante después y la respuesta de la persona se perdería
+ * igual que antes, sólo que por otro motivo.
+ *
+ * @returns {Promise<object|null>} la fila cruda, incluso si ya venció (lo evalúa quien llama)
+ */
+export async function leerPendienteAbierto(port, identidad) {
+  if (!port?.query || !identidad?.plataformaUserId) return null
   const { rows } = await port.query(
     `select id, capacidad, parcial, pregunta, opciones, expira_at
        from comunicacion.asistente_pendientes
       where plataforma = $1 and plataforma_user_id = $2 and estado = 'abierta'
       order by creado_at desc limit 1`,
-    [identidad.plataforma, identidad.plataformaUserId],
+    [identidad.plataforma ?? 'mattermost', identidad.plataformaUserId],
   )
   if (!rows.length) return null
-  const p = rows[0]
+  return { ...rows[0], parcial: rows[0].parcial ?? {}, opciones: rows[0].opciones ?? [] }
+}
+
+/** La pregunta abierta de esta persona. Una vencida no contamina el pedido nuevo: se cierra. */
+async function pendienteVigente(port, identidad, ahora) {
+  const p = await leerPendienteAbierto(port, identidad)
+  if (!p) return null
   if (new Date(p.expira_at).getTime() <= ahora.getTime()) {
     await cerrarPendiente(port, p.id, 'vencida')
     return null
   }
-  return { ...p, parcial: p.parcial ?? {}, opciones: p.opciones ?? [] }
+  return p
+}
+
+/**
+ * ¿Este mensaje es una respuesta a algo que el asistente dejó abierto?
+ *
+ * La usa el especialista para decidir si RECLAMA el mensaje ante el Director. Devuelve el tipo
+ * de respuesta o `null`, y `null` es la mitad importante: sin nada abierto, "no era ese" no es
+ * feedback de nada y tiene que seguir su camino normal.
+ *
+ * No duplica vocabulario ni criterios: usa `interpretarFeedback` y `elegirOpcion`, las mismas
+ * funciones con las que después el router va a resolver la respuesta. Si algún día una de las
+ * dos cambia, esto cambia con ella.
+ */
+export async function respuestaPendiente(port, identidad, texto, ahora = new Date()) {
+  const p = await leerPendienteAbierto(port, identidad)
+  if (!p) return null
+  if (new Date(p.expira_at).getTime() <= ahora.getTime()) return null
+  if (elegirOpcion(p.opciones, texto)) return { tipo: 'opcion', capacidad: p.capacidad }
+  if (!p.parcial?.feedback) return null
+  const f = interpretarFeedback(texto)
+  return f ? { tipo: f, capacidad: p.capacidad } : null
 }
 
 async function cerrarPendiente(port, id, estado) {

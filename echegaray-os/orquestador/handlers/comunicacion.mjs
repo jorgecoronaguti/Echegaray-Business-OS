@@ -35,7 +35,7 @@ export async function comunicacionResponderHandler(task, ctx) {
 
   // EL DIRECTOR DECIDE. Esta capa no elige destino ni conoce gramáticas de dominio.
   const ruta = await resolver({
-    texto: inp.comando, port, channelId: inp.channel_id, razonar: ctx.razonarRuteo,
+    texto: inp.comando, port, channelId: inp.channel_id, actor, razonar: ctx.razonarRuteo,
   })
   ctx.logger?.info?.('director: ruteo resuelto', {
     via: ruta.via, area: ruta.area ?? null, especialista: ruta.especialista?.slug ?? null,

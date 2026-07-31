@@ -25,7 +25,7 @@
 
 import { INTENCION } from '../asistente/contratos.mjs'
 import { interpretarDeterministico } from '../asistente/interpretar.mjs'
-import { atenderPedido } from '../asistente/router.mjs'
+import { atenderPedido, respuestaPendiente } from '../asistente/router.mjs'
 
 export const especialista = {
   slug: 'asistente',
@@ -37,11 +37,35 @@ export const especialista = {
   ejemplos: ['recordame el lunes pagar IERIC', 'buscame el contrato de la Estrella', 'agendá reunión con Rodrigo el jueves a las 10'],
   operativo: true,
 
-  /** Sólo lo que la gramática reconoce SIN ambigüedad. Ver el comentario de arriba. */
-  reconoce(texto) {
+  /**
+   * Sólo lo que la gramática reconoce SIN ambigüedad, MÁS las respuestas a lo que él mismo
+   * dejó abierto. Ver el comentario de arriba.
+   *
+   * ── POR QUÉ HIZO FALTA LA SEGUNDA MITAD ────────────────────────────────────────────
+   *
+   * El router ya sabía leer "no era ese", "¿por qué ese?" y "el segundo" — y en producción no
+   * servía de nada, porque el Director decide ANTES a quién darle el mensaje y preguntaba
+   * sólo por la gramática. "no era ese" no es un pedido reconocible, así que nadie lo
+   * reclamaba y la persona recibía el catálogo de lo que el OS sabe hacer. La corrección más
+   * barata que existe se perdía a un paso de llegar.
+   *
+   * ── POR QUÉ EXIGE UN PENDIENTE ─────────────────────────────────────────────────────
+   *
+   * Sin contexto, "no" y "gracias" no son feedback de nada: son palabras sueltas que pueden
+   * ser para cualquiera. El reclamo pide que haya una búsqueda abierta DE ESTA PERSONA, y
+   * sólo se evalúa cuando la gramática no reconoció nada — así, cualquier mensaje que otro
+   * especialista entienda sigue siendo suyo.
+   */
+  async reconoce(texto, ctx = {}) {
     const r = interpretarDeterministico(texto)
-    if (!r || r.intencion === INTENCION.DESCONOCIDO) return null
-    return { destino: 'asistente', intencion: r.intencion, confianza: r.confianza }
+    if (r && r.intencion !== INTENCION.DESCONOCIDO) {
+      return { destino: 'asistente', intencion: r.intencion, confianza: r.confianza }
+    }
+    const identidad = { plataforma: 'mattermost', plataformaUserId: ctx.actor?.plataforma_user_id ?? null }
+    const respuesta = await respuestaPendiente(ctx.port, identidad, texto)
+    if (!respuesta) return null
+    // Alta: contestar una pregunta abierta propia es lo menos ambiguo que hay en el sistema.
+    return { destino: 'asistente', intencion: respuesta.capacidad, confianza: 0.95, respuesta: respuesta.tipo }
   },
 
   /**

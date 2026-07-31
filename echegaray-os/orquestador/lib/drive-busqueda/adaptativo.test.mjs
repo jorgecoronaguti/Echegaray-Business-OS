@@ -107,6 +107,17 @@ test('lo que NO es feedback devuelve null, para que el router siga su camino', (
   }
 })
 
+test('"gracias" cierra la conversación: no es una confirmación disfrazada', () => {
+  for (const t of ['gracias', '¡gracias!', 'muchas gracias', 'genial', 'buenisimo', 'excelente']) {
+    assert.equal(interpretarFeedback(t), FEEDBACK.CIERRE, t)
+  }
+  // "perfecto" y "listo" SÍ confirman: sobre un archivo propuesto significan "ese era", y
+  // tratarlos como cortesía tiraría a la basura la señal más barata que da el buscador.
+  for (const t of ['perfecto', 'listo']) {
+    assert.equal(interpretarFeedback(t), FEEDBACK.CONFIRMA, t)
+  }
+})
+
 test('"no era ese" resta lo mismo que suma un acierto: corrige, no borra', async () => {
   const port = portDe()
   await registrarAceptacion(port, 'flujo caja', 'f-cash', 'u-jorge')

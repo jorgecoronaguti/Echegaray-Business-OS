@@ -214,7 +214,7 @@ export const zDriveBuscar = z.object({
   archivoId: z.string().min(1).optional(),
   // Lo que la persona dijo SOBRE el resultado anterior: "correcto", "no era ese", "por qué".
   // Es la otra mitad del aprendizaje — sin esto, una corrección gratis se perdía entera.
-  feedback: z.enum(['confirma', 'rechaza', 'explica']).optional(),
+  feedback: z.enum(['confirma', 'rechaza', 'explica', 'cierre']).optional(),
   // La búsqueda a la que se refiere ese feedback, para no adivinar cuál era.
   eventoId: z.union([z.number(), z.string()]).optional(),
 })
