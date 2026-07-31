@@ -19,6 +19,8 @@ export const capacidad = {
   nombre: 'Ayuda',
   descripcion: 'decirte qué sé hacer y cómo pedírmelo',
   version: '1.0.0',
+  orden: 90,
+  enAyuda: false, // no se enumera a sí misma: quien pregunta ya la encontró
   permisos: [],
   ejemplos: ['¿qué sabés hacer?', '¿en qué me podés ayudar?'],
   efectoExterno: false,

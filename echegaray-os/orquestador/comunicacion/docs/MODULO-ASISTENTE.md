@@ -96,7 +96,7 @@ accede sólo desde el worker por `DATABASE_URL`.
 
 | Tabla | Para qué |
 |---|---|
-| `identidades` | Mattermost ↔ OS ↔ Google de una misma persona. Sin esto, "Rodrigo" es texto libre, y hay dos. |
+| `identidades` **(ya existía, se extendió)** | Mattermost ↔ OS ↔ Google de una misma persona. Sin esto, "Rodrigo" es texto libre, y hay dos. |
 | `recordatorios` | Los recordatorios internos. Cadencia en el mismo formato que `orq.schedules`. |
 | `recordatorio_entregas` | Historial **y** llave de no-duplicación por ocurrencia `(recordatorio, momento)`. |
 | `asistente_pendientes` | La aclaración a medio camino. Como máximo una abierta por persona. |
@@ -155,5 +155,26 @@ node orquestador/scripts/asistente-identidades.mjs             # aplica
 ### Verificar sin tocar producción
 
 ```bash
-node --test 'orquestador/comunicacion/**/*.test.mjs'
+node --test 'orquestador/**/*.test.mjs'      # 1.784 pruebas, sin base ni red
+node orquestador/comunicacion/test-pr4.mjs   # las verticales, contra un Postgres descartable
 ```
+
+Las verticales levantan un Postgres efímero en Docker, le aplican los esquemas reales
+(`orq` + `comunicacion` + esta migración) y recorren el camino completo. Es lo que destapó
+que `comunicacion.identidades` ya existía: contra dobles, todo pasaba.
+
+## Lo que este módulo NO resuelve todavía
+
+Dicho acá para que no haya que descubrirlo usándolo:
+
+- **Sólo hay dos personas en Mattermost** (jorge y rodrigo). Un recordatorio cruzado a
+  cualquier otro nombre responde "no lo tengo registrado" — que es lo correcto, pero
+  significa que el equipo de campo todavía no está en el chat.
+- **Calendar y Tasks exigen que cada uno conecte SU cuenta.** Si no, la capacidad no se
+  ofrece: crear el evento con la cuenta operadora del OS le confirmaría a alguien una
+  reunión que no va a ver.
+- **Un evento con invitados manda invitaciones reales por mail.** Es la única superficie del
+  módulo con efecto hacia afuera de la empresa.
+- **Los recordatorios se publican directo por el cliente de Mattermost**, no por el outbox:
+  tienen su propio ledger de entregas y su propio reintento. No son la respuesta a un
+  mensaje, así que no tienen un `comm_event_id` con el que entrar al outbox.

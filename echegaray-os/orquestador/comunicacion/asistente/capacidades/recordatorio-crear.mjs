@@ -40,6 +40,7 @@ export const capacidad = {
   nombre: 'Crear recordatorio',
   descripcion: 'recordarte algo a vos, o a otra persona, en un momento o de forma recurrente',
   version: '1.0.0',
+  orden: 20,
   permisos: [],
   ejemplos: [
     'recordame cargar saldos todos los lunes a las 8',

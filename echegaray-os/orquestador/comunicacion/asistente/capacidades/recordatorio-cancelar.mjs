@@ -47,6 +47,7 @@ export const capacidad = {
   nombre: 'Cancelar recordatorio',
   descripcion: 'cancelar un recordatorio que ya no querés que suene',
   version: '1.0.0',
+  orden: 60,
   permisos: [],
   ejemplos: ['cancelá el recordatorio de los saldos', 'ya no me recuerdes lo del contador'],
   efectoExterno: false,

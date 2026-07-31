@@ -34,6 +34,7 @@ export const capacidad = {
   nombre: 'Listar recordatorios',
   descripcion: 'decirte qué recordatorios tenés programados',
   version: '1.0.0',
+  orden: 50,
   permisos: [],
   ejemplos: ['qué recordatorios tengo', 'mostrame mis recordatorios'],
   efectoExterno: false,

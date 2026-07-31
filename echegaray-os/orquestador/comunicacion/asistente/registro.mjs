@@ -42,7 +42,7 @@ export async function capacidades({ recargar = false } = {}) {
     if (!c) throw new Error(`capacidades/${f}: falta el export \`capacidad\``)
     const faltan = OBLIGATORIOS.filter((k) => c[k] == null)
     if (faltan.length) throw new Error(`capacidades/${f}: faltan campos ${faltan.join(', ')}`)
-    out.push({ permisos: [], ejemplos: [], efectoExterno: false, orden: 100, habilitada: async () => true, ...c, archivo: f })
+    out.push({ permisos: [], ejemplos: [], efectoExterno: false, orden: 100, enAyuda: true, habilitada: async () => true, ...c, archivo: f })
   }
   const ids = out.map((c) => c.id)
   const dup = ids.find((id, i) => ids.indexOf(id) !== i)
@@ -86,10 +86,13 @@ export function catalogoCompacto(lista) {
   return lista.map((c) => `${c.id}: ${c.descripcion}`).join('\n')
 }
 
-/** Texto de la ayuda dinámica, armado desde el registro. No hay lista escrita a mano. */
+/** Texto de la ayuda dinámica, armado desde el registro. No hay lista escrita a mano.
+ *  `enAyuda: false` deja afuera a la propia capacidad de ayuda: enumerarse a sí misma no le
+ *  dice nada a quien acaba de encontrarla. */
 export function renderAyuda(lista) {
-  if (!lista.length) {
+  const visibles = lista.filter((c) => c.enAyuda !== false)
+  if (!visibles.length) {
     return 'Ahora mismo no tengo ninguna capacidad habilitada para vos. Avisale a Jorge.'
   }
-  return ['Puedo:', ...lista.map((c) => `• ${c.descripcion};`)].join('\n').replace(/;$/, '.')
+  return ['Puedo:', ...visibles.map((c) => `• ${c.descripcion};`)].join('\n').replace(/;$/, '.')
 }
