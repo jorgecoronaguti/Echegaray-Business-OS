@@ -362,6 +362,24 @@ test('"abrí el otro" elige el segundo, que es el que NO era', async () => {
   assert.equal(cap.llamadas.at(-1).parametros.archivoId, 'f-fondos')
 })
 
+test('"gracias" llega como cierre, no como búsqueda ni como confirmación', async () => {
+  const cap = capacidadConSeguimiento()
+  const e = entorno({ lista: [capacidadAyuda, cap] })
+  await e.pedir('pasame el flujo de fondos')
+  const r = await e.pedir('gracias', { fetchImpl: fetchProhibido })
+  assert.equal(r.ok, true)
+  assert.equal(cap.llamadas.at(-1).parametros.feedback, 'cierre')
+})
+
+test('"¿por qué ese?" llega como pedido de explicación', async () => {
+  const cap = capacidadConSeguimiento()
+  const e = entorno({ lista: [capacidadAyuda, cap] })
+  await e.pedir('pasame el flujo de fondos')
+  const r = await e.pedir('¿por qué ese?', { fetchImpl: fetchProhibido })
+  assert.equal(r.ok, true)
+  assert.equal(cap.llamadas.at(-1).parametros.feedback, 'explica')
+})
+
 test('decir "gracias" después de un resultado no se lee como el nombre de un archivo', async () => {
   // Un seguimiento deja la puerta abierta; no pregunta nada. Forzar cualquier mensaje al campo
   // que falta —como sí corresponde cuando el asistente PREGUNTÓ— hacía que agradecer terminara

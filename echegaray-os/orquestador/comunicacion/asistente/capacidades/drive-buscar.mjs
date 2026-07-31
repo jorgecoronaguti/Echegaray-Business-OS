@@ -102,9 +102,20 @@ function aArchivo(e, ahora) {
   }
 }
 
-/** Un resultado dominante: nombre, dónde está, cuándo se tocó y el enlace. */
-function textoUno(a, { creo = false } = {}) {
-  const partes = [`${creo ? 'Creo que te referís a' : 'Encontré'}: **${a.nombre}**`]
+/**
+ * Cómo se anuncia un resultado, según cuánta seguridad hay de verdad.
+ *
+ * LA REDACCIÓN LA DECIDE LA CONFIANZA, NO SI HAY ALTERNATIVAS. Antes dependía de si había con
+ * qué comparar, y eso producía el peor error posible en un buscador: "zzz-no-existe" —donde la
+ * palabra que identificaba algo no apareció en ninguna parte y el ranking lo marcó como
+ * confianza media— se anunciaba con un "Encontré:" que no admitía duda. Un sistema que afirma
+ * con la misma cara cuando sabe y cuando sospecha enseña a desconfiar también de cuando sabe.
+ */
+const ENCABEZADO = { alta: 'Encontré', media: 'Puede que te refieras a' }
+
+/** Un resultado: nombre, dónde está, cuándo se tocó y el enlace. */
+function textoUno(a, { confianza = 'alta' } = {}) {
+  const partes = [`${ENCABEZADO[confianza] ?? ENCABEZADO.media}: **${a.nombre}**`]
   if (a.ubicacion) partes.push(`Carpeta: ${a.ubicacion}`)
   if (a.fecha) partes.push(`Última modificación: ${a.fecha}`)
   partes.push(`[Abrir](${a.enlace})`)
@@ -119,10 +130,10 @@ function textoUno(a, { creo = false } = {}) {
  * llama así está en una carpeta de 2025, tiene que poder ver que ese archivo también existe.
  * Sin esto, la decisión del ranking sería invisible — y una decisión invisible no se audita.
  */
-function textoConAlternativas(a, otros) {
-  if (!otros.length) return textoUno(a)
+function textoConAlternativas(a, otros, confianza = 'alta') {
+  if (!otros.length) return textoUno(a, { confianza })
   return [
-    textoUno(a, { creo: true }),
+    textoUno(a, { confianza }),
     '',
     'También encontré:',
     ...otros.map((o) => `• ${lineaOpcion(o)} — [abrir](${o.enlace})`),
@@ -188,8 +199,16 @@ async function eventoDelFeedback(port, eventoId, usuario) {
   return e ?? (await ultimoEvento(port, usuario))
 }
 
-/** "Correcto" / "no era ese" / "por qué ese". */
+/** "Correcto" / "no era ese" / "por qué ese" / "gracias". */
 async function atenderFeedback(port, indice, { feedback, eventoId, usuario, terminos, tipo, ahora }) {
+  // "GRACIAS" NO PREGUNTA NADA, Y SE CONTESTA COMO TAL.
+  //
+  // Antes devolvía el catálogo entero de lo que el OS sabe hacer, que es lo más parecido a no
+  // escuchar. Se responde primero y sin tocar la base: cerrar una conversación no confirma
+  // ningún documento, no aprende nada y no necesita saber cuál fue la búsqueda.
+  if (feedback === FEEDBACK.CIERRE) {
+    return resultadoOk(CAPACIDAD.DRIVE_BUSCAR, 'De nada. Cualquier cosa, acá estoy.', { cierre: true })
+  }
   const evento = await eventoDelFeedback(port, eventoId, usuario)
   if (!evento) {
     return resultadoError(CAPACIDAD.DRIVE_BUSCAR, errorAsistente(
@@ -336,7 +355,7 @@ export const capacidad = {
     if (r.ganador) {
       const a = aArchivo(r.ganador, ahora)
       const otros = (r.alternativas ?? []).map((e) => aArchivo(e, ahora))
-      return resultadoOk(CAPACIDAD.DRIVE_BUSCAR, textoConAlternativas(a, otros), {
+      return resultadoOk(CAPACIDAD.DRIVE_BUSCAR, textoConAlternativas(a, otros, r.confianza), {
         archivo: a,
         alternativas: otros,
         confianza: r.confianza,

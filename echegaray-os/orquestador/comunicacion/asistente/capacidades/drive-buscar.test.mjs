@@ -209,7 +209,8 @@ test('"pasame el flujo de fondos" abre el documento vivo, no el de AÑO 2025', a
 
 test('…y le muestra el archivo viejo como alternativa, con su enlace', async () => {
   const r = await correr({ terminos: 'flujo de fondos' }, { filas: FLUJOS, fuentes: FUENTE_CASH })
-  assert.match(r.texto, /Creo que te referís a: \*\*Flujo de Caja - Cash Flow ECSAS\*\*/)
+  // Confianza alta: se afirma. Las alternativas se muestran igual — son transparencia, no duda.
+  assert.match(r.texto, /^Encontré: \*\*Flujo de Caja - Cash Flow ECSAS\*\*/)
   assert.match(r.texto, /También encontré:/)
   assert.match(r.texto, /• Flujo de Fondos\.xlsx.*\[abrir\]\(https:\/\/drive\.google\.com\/file\/d\/f-fondos\/view\)/)
 })
@@ -225,6 +226,59 @@ test('sin competencia no hay ruido: un solo resultado se responde limpio', async
   const r = await correr({ terminos: 'vision' })
   assert.match(r.texto, /^Encontré: /)
   assert.doesNotMatch(r.texto, /También encontré/)
+})
+
+// ── Lo que se sabe y lo que se sospecha no se dicen igual ────────────────────
+
+test('UNA COINCIDENCIA PARCIAL NUNCA SE REDACTA COMO CERTEZA', async () => {
+  // "vision zzzz": la palabra que identificaba algo no aparece por ningún lado. El ranking ya
+  // lo marcaba como confianza media y la respuesta igual arrancaba con "Encontré:", que no
+  // admite duda. Un sistema que afirma con la misma cara cuando sabe y cuando sospecha enseña
+  // a desconfiar también de cuando sabe.
+  const r = await correr({ terminos: 'vision zzzz' })
+  assert.equal(r.ok, true)
+  assert.equal(r.evidencia.confianza, 'media')
+  assert.match(r.texto, /^Puede que te refieras a: \*\*Vision \/ Tracción\*\*/)
+  assert.doesNotMatch(r.texto, /^Encontré/)
+})
+
+test('la redacción la decide la confianza, no si hay alternativas', async () => {
+  // Confianza alta CON alternativas: se afirma igual, y las alternativas se muestran.
+  const conAlternativas = await correr({ terminos: 'flujo de fondos' }, { filas: FLUJOS, fuentes: FUENTE_CASH })
+  assert.equal(conAlternativas.evidencia.confianza, 'alta')
+  assert.match(conAlternativas.texto, /^Encontré: /)
+  assert.match(conAlternativas.texto, /También encontré:/)
+
+  // Confianza media SIN alternativas: no se afirma, aunque no haya con qué comparar.
+  const sinAlternativas = await correr({ terminos: 'vision zzzz' })
+  assert.match(sinAlternativas.texto, /^Puede que te refieras a: /)
+  assert.doesNotMatch(sinAlternativas.texto, /También encontré/)
+})
+
+test('confianza baja no afirma nada: pregunta', async () => {
+  const r = await correr({ terminos: 'avances de obra' })
+  assert.equal(r.ok, false)
+  assert.match(r.texto, /Encontré varios\. ¿Cuál te paso\?/)
+  assert.doesNotMatch(r.texto, /Encontré: /)
+})
+
+// ── Cerrar la conversación ───────────────────────────────────────────────────
+
+test('"gracias" cierra: no busca, no aprende, no muestra catálogo ni alternativas', async () => {
+  const port = portDe({ eventos: [EVENTO] })
+  const r = await correr({ terminos: 'flujo de fondos', feedback: 'cierre', eventoId: 77 }, { port })
+  assert.equal(r.ok, true)
+  assert.equal(r.evidencia.cierre, true)
+  assert.equal(port.escrituras.length, 0, 'agradecer no puede generar aprendizaje')
+  assert.doesNotMatch(r.texto, /Encontré|También encontré|Abrir/)
+  assert.ok(r.texto.length < 80, 'un cierre es una línea, no una pantalla')
+})
+
+test('cerrar no necesita saber cuál fue la búsqueda: no toca la base', async () => {
+  const port = portDe({ eventos: [] })
+  const r = await correr({ terminos: 'x', feedback: 'cierre' }, { port })
+  assert.equal(r.ok, true)
+  assert.equal(port.sql.filter((s) => s.q.includes('drive_busqueda_evento')).length, 0)
 })
 
 // ── Aprender ─────────────────────────────────────────────────────────────────
