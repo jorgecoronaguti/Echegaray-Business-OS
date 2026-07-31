@@ -18,35 +18,68 @@ export function esReintentable(status) {
   return false // 4xx (salvo 429) es del emisor: reintentar no ayuda
 }
 
+/**
+ * Techo de tiempo de CADA llamada a Mattermost, en ms.
+ *
+ * `abrirDialogo` y `actualizarPost` se llaman DENTRO del manejador HTTP de asistencia: sin
+ * techo, un Mattermost que no responde deja colgado el pedido del jefe de obra para siempre.
+ * El default es holgado a propósito — este cliente también lo usan el worker de comunicación
+ * y el bot, y ahí una llamada lenta es normal: el timeout está para cortar lo colgado, no
+ * para apurar lo lento.
+ */
+const TIMEOUT_MS = Number(process.env.MM_FETCH_TIMEOUT_MS || 30000)
+
 /** Cliente real contra la API v4 de Mattermost. */
 export class MattermostCliente {
-  /** @param {{ baseUrl:string, token:string, fetch?:Function }} cfg */
+  /** @param {{ baseUrl:string, token:string, fetch?:Function, timeoutMs?:number }} cfg */
   constructor(cfg) {
     if (!cfg?.baseUrl) throw new Error('MattermostCliente: falta baseUrl')
     if (!cfg?.token) throw new Error('MattermostCliente: falta token')
     this.baseUrl = cfg.baseUrl.replace(/\/+$/, '')
     this.token = cfg.token
     this._fetch = cfg.fetch ?? globalThis.fetch
+    this.timeoutMs = Number.isFinite(Number(cfg.timeoutMs)) ? Number(cfg.timeoutMs) : TIMEOUT_MS
   }
 
   async _req(metodo, ruta, cuerpo) {
-    const res = await this._fetch(`${this.baseUrl}/api/v4${ruta}`, {
-      method: metodo,
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-        'Content-Type': 'application/json',
-      },
-      body: cuerpo == null ? undefined : JSON.stringify(cuerpo),
-    })
-    const texto = await res.text()
-    const json = texto ? safeJson(texto) : null
-    if (!res.ok) {
-      const err = new Error(`mattermost ${metodo} ${ruta} → ${res.status}: ${json?.message ?? texto}`)
-      err.status = res.status
-      err.reintentable = esReintentable(res.status)
-      throw err
+    const ac = new AbortController()
+    const t = setTimeout(() => ac.abort(), this.timeoutMs)
+    try {
+      const res = await this._fetch(`${this.baseUrl}/api/v4${ruta}`, {
+        method: metodo,
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: cuerpo == null ? undefined : JSON.stringify(cuerpo),
+        signal: ac.signal,
+      })
+      // La lectura del cuerpo va DENTRO del mismo techo: un servidor que manda los headers y
+      // después no manda el cuerpo cuelga igual de fuerte que uno que no contesta nunca.
+      const texto = await res.text()
+      const json = texto ? safeJson(texto) : null
+      if (!res.ok) {
+        const err = new Error(`mattermost ${metodo} ${ruta} → ${res.status}: ${json?.message ?? texto}`)
+        err.status = res.status
+        err.reintentable = esReintentable(res.status)
+        throw err
+      }
+      return json
+    } catch (e) {
+      // Un `AbortError` pelado no le dice nada a nadie: se traduce a "Mattermost no respondió",
+      // reintentable como cualquier fallo transitorio de red.
+      if (e?.name === 'AbortError') {
+        const err = new Error(`mattermost ${metodo} ${ruta} → Mattermost no respondió en ${this.timeoutMs}ms`)
+        err.status = 504
+        err.reintentable = true
+        throw err
+      }
+      throw e
+    } finally {
+      // Éxito, error HTTP o excepción: el timer siempre se limpia. Uno vivo por llamada
+      // mantendría despierto al proceso del worker sin que nada lo esté esperando.
+      clearTimeout(t)
     }
-    return json
   }
 
   /** Crea un post (mensaje) en un canal, opcionalmente en un hilo (root_id). */
