@@ -367,6 +367,23 @@ test('"¿por qué ese?" contesta con el desglose, sin volver a buscar', async ()
   assert.equal(port.escrituras.length, 0, 'explicar no puede cambiar lo que explica')
 })
 
+test('CONTESTAR UN FEEDBACK NO TERMINA LA CONVERSACIÓN', async () => {
+  // El pendiente se consume al resolverlo. Sin reponerlo, la charla real moría en el primer
+  // paso: "¿por qué ese?" se comía el contexto y el "no era ese" siguiente caía en el catálogo.
+  for (const f of ['explica', 'confirma']) {
+    const r = await correr({ terminos: 'flujo de fondos', feedback: f, eventoId: 77 }, { port: portDe({ eventos: [EVENTO] }) })
+    assert.equal(r.ok, true, f)
+    assert.equal(r.seguimiento?.parcial?.feedback, true, `"${f}" cerró la puerta`)
+    assert.equal(r.seguimiento.opciones.length, 2, f)
+    assert.equal(r.seguimiento.parcial.parametros.eventoId, 77, f)
+  }
+})
+
+test('cerrar SÍ termina la conversación: para eso se dijo "gracias"', async () => {
+  const r = await correr({ terminos: 'flujo de fondos', feedback: 'cierre', eventoId: 77 }, { port: portDe({ eventos: [EVENTO] }) })
+  assert.equal(r.seguimiento, null)
+})
+
 test('feedback sin una búsqueda previa se dice, no se inventa una', async () => {
   const r = await correr({ terminos: 'x', feedback: 'confirma' }, { port: portDe({ eventos: [] }) })
   assert.equal(r.ok, false)

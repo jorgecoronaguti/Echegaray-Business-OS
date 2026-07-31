@@ -193,6 +193,33 @@ async function aprender(port, indice, { consultaNorm, archivoId, usuario, evento
   await promoverAlias(port, consultaNorm)
 }
 
+/**
+ * CONTESTAR UN FEEDBACK NO PUEDE TERMINAR LA CONVERSACIÓN.
+ *
+ * El pendiente se consume cuando se resuelve. Sin reponerlo, la charla real —"¿por qué ese?",
+ * "no era ese", "el segundo", "correcto", "gracias"— moría en el primer paso: el segundo
+ * mensaje ya no tenía contexto y volvía a caer en el catálogo. Se rearma desde el evento que
+ * ya está guardado, así que no hace falta volver a buscar nada.
+ *
+ * Explicar y confirmar dejan la puerta abierta; cerrar, no — para eso se dijo "gracias".
+ */
+function seguimientoDeEvento(evento, terminos, tipo) {
+  const opciones = (Array.isArray(evento.candidatos) ? evento.candidatos : [])
+    .map((c) => ({ valor: c.id, etiqueta: c.name ?? c.id }))
+    .filter((o) => o.valor)
+  if (!opciones.length) return null
+  return {
+    parcial: {
+      intencion: CAPACIDAD.DRIVE_BUSCAR,
+      parametros: { terminos: terminos ?? evento.consulta, tipo, eventoId: evento.id },
+      faltante: 'archivoId',
+      feedback: true,
+      opcional: true,
+    },
+    opciones,
+  }
+}
+
 /** El evento al que se refiere el feedback: el que se declaró, o la última búsqueda suya. */
 async function eventoDelFeedback(port, eventoId, usuario) {
   const e = eventoId ? await leerEvento(port, eventoId) : null
@@ -216,7 +243,8 @@ async function atenderFeedback(port, indice, { feedback, eventoId, usuario, term
     ))
   }
   if (feedback === FEEDBACK.EXPLICA) {
-    return resultadoOk(CAPACIDAD.DRIVE_BUSCAR, explicarEvento(evento), { evento: evento.id, explicado: true })
+    return resultadoOk(CAPACIDAD.DRIVE_BUSCAR, explicarEvento(evento), { evento: evento.id, explicado: true },
+      seguimientoDeEvento(evento, terminos, tipo))
   }
   if (feedback === FEEDBACK.CONFIRMA) {
     if (!evento.elegido) {
@@ -228,7 +256,8 @@ async function atenderFeedback(port, indice, { feedback, eventoId, usuario, term
       consultaNorm: evento.consulta_norm, archivoId: evento.elegido, usuario, eventoId: evento.id,
     })
     return resultadoOk(CAPACIDAD.DRIVE_BUSCAR, 'Listo, lo anoto: la próxima que pidas eso, te paso ese.',
-      { evento: evento.id, aprendido: true, archivo: evento.elegido })
+      { evento: evento.id, aprendido: true, archivo: evento.elegido },
+      seguimientoDeEvento(evento, terminos, tipo))
   }
   return rechazarResultado(port, indice, evento, { usuario, terminos, tipo, ahora })
 }
