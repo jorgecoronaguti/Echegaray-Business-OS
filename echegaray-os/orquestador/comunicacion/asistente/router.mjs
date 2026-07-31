@@ -193,6 +193,15 @@ function respuestaAPendiente(pendiente, texto, ahora) {
     if (f) return { solicitud: solicitudDeAclaracion(parcial.intencion ?? pendiente.capacidad, { ...parametros, feedback: f }) }
   }
 
+  // UN SEGUIMIENTO NO ES UNA PREGUNTA, Y NO SE PUEDE COMPORTAR COMO SI LO FUERA.
+  //
+  // Cuando el asistente PREGUNTA, cualquier cosa que la persona conteste es un intento de
+  // respuesta y forzarla al campo que falta tiene sentido. Cuando sólo dejó abierta la puerta
+  // por si querían corregirlo, no: un "gracias por todo" terminaba entrando como nombre de
+  // archivo y devolvía "ese archivo ya no está en el índice". Si no es una opción ni un
+  // feedback, la puerta se cierra sola y el mensaje sigue su camino normal.
+  if (!elegida && parcial.opcional) return { nuevoTema: true }
+
   // Cambió de tema: si el texto es un pedido reconocible POR SÍ MISMO, no es una respuesta a
   // la pregunta anterior. "el jueves a las 10" no se reconoce solo — y por eso es respuesta.
   const otroPedido = interpretarDeterministico(texto, { ahora })

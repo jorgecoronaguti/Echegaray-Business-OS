@@ -159,6 +159,8 @@ function seguimientoDe({ ganador, alternativas, terminos, tipo, eventoId }) {
       parametros: { terminos, tipo, eventoId },
       faltante: 'archivoId',
       feedback: true,
+      // Nadie preguntó nada: si lo que sigue no es una corrección, no es una respuesta.
+      opcional: true,
     },
     opciones: [ganador, ...alternativas].map((a) => ({ valor: a.id, etiqueta: lineaOpcion(a) })),
   }

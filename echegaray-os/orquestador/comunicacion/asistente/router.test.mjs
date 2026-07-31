@@ -317,6 +317,7 @@ const capacidadConSeguimiento = () => capacidadFalsa({
         parametros: { terminos: 'flujo de fondos', tipo: 'cualquiera', eventoId: 77 },
         faltante: 'archivoId',
         feedback: true,
+        opcional: true,
       },
       opciones: [{ valor: 'f-cash', etiqueta: 'Flujo de Caja - Cash Flow' },
         { valor: 'f-fondos', etiqueta: 'Flujo de Fondos.xlsx — en administracion > AÑO 2025' }],
@@ -359,6 +360,18 @@ test('"abrí el otro" elige el segundo, que es el que NO era', async () => {
   const r = await e.pedir('abri el otro', { fetchImpl: fetchProhibido })
   assert.equal(r.ok, true)
   assert.equal(cap.llamadas.at(-1).parametros.archivoId, 'f-fondos')
+})
+
+test('decir "gracias" después de un resultado no se lee como el nombre de un archivo', async () => {
+  // Un seguimiento deja la puerta abierta; no pregunta nada. Forzar cualquier mensaje al campo
+  // que falta —como sí corresponde cuando el asistente PREGUNTÓ— hacía que agradecer terminara
+  // en "ese archivo ya no está en el índice".
+  const cap = capacidadConSeguimiento()
+  const e = entorno({ lista: [capacidadAyuda, cap] })
+  await e.pedir('pasame el flujo de fondos')
+  const r = await e.pedir('gracias por todo')
+  assert.notEqual(cap.llamadas.at(-1).parametros.archivoId, 'gracias por todo')
+  assert.equal(/ya no está en el índice/.test(r.texto ?? ''), false)
 })
 
 test('un pedido nuevo después de una respuesta sigue siendo un pedido nuevo', async () => {
