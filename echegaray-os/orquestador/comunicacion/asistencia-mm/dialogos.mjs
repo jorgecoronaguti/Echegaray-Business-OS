@@ -65,9 +65,15 @@ function leerHoras({ presente, crudo, jornada }) {
  * @param {{submission:object, jornada:object, obrasValidas:Set<string>}} o
  * @returns {{ok:true, novedad:object}|{ok:false, errors?:object, error?:string}}
  */
-export function novedadDeDialogo(deps, { submission = {}, jornada, obrasValidas } = {}) {
-  const presente = texto(submission.presente).toLowerCase() !== 'no'
-  const h = leerHoras({ presente, crudo: submission.horas, jornada })
+export function novedadDeDialogo(deps, { submission = {}, jornada, obrasValidas, tipo = null } = {}) {
+  // El TIPO viene del desplegable que abrió el formulario ("No vino" / "Hizo menos horas" /
+  // "Hizo horas extra"), no de un campo que el jefe pueda contradecir. Por eso el formulario
+  // de ausencia ni siquiera pregunta las horas: son 0 y punto.
+  // Sin tipo (camino viejo, y los tests que lo ejercen) se sigue leyendo `presente`.
+  const presente = tipo ? tipo !== 'ausencia' : texto(submission.presente).toLowerCase() !== 'no'
+  const h = tipo === 'ausencia'
+    ? { ok: true, horas: 0 }
+    : leerHoras({ presente, crudo: submission.horas, jornada })
   if (!h.ok) return h
   const obra = texto(submission.obra_realizada) || null
   if (obra && obrasValidas && !obrasValidas.has(obra)) {

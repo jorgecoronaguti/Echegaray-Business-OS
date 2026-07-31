@@ -105,7 +105,9 @@ test('elegir la obra: llega la cuadrilla entera, presente con la jornada del dí
     assert.match(texto, new RegExp(n))
   }
   assert.match(texto, /9 h/)
-  assert.deepEqual(accionesDe(r).map((a) => a.name), ['Marcar excepción', 'Registrar', 'Cancelar'])
+  assert.deepEqual(accionesDe(r).map((a) => a.name),
+    ['No vino', 'Hizo menos horas', 'Hizo horas extra', 'Registrar', 'Cancelar'],
+    'el tipo de novedad se elige ANTES del formulario: por eso son tres desplegables')
   assert.equal(e.eventos.some((x) => x.evento.endsWith('sheet_read')), true)
 })
 
@@ -137,9 +139,9 @@ test('marcar excepción: abre el diálogo de esa persona, con sus datos precarga
   const e = await crearEntorno()
   await elegirObra(e)
   const cuadrilla = await elegirObra(e)
-  const ref = accionesDe(cuadrilla).find((a) => a.id === 'excepcion')
+  const ref = accionesDe(cuadrilla).find((a) => a.id === 'novino')
     .options.find((o) => o.text.includes('Quiroga')).value
-  const r = respuestaValida(await e.accion({ paso: PASO.EXCEPCION, selected_option: ref }))
+  const r = respuestaValida(await e.accion({ paso: PASO.EXCEPCION, tipo: 'ausencia', selected_option: ref }))
   const d = e.mattermost.dialogos.at(-1)
   assert.equal(validarDialogo(d).ok, true)
   assert.match(d.dialog.title, /Quiroga/)
@@ -150,9 +152,9 @@ test('marcar excepción: abre el diálogo de esa persona, con sus datos precarga
 test('aplicar la excepción: se guarda, se ve en el post y se resume distinto', async () => {
   const e = await crearEntorno()
   const cuadrilla = await elegirObra(e)
-  const ref = accionesDe(cuadrilla).find((a) => a.id === 'excepcion')
+  const ref = accionesDe(cuadrilla).find((a) => a.id === 'novino')
     .options.find((o) => o.text.includes('Quiroga')).value
-  const r = await e.dialogo('asistencia.excepcion', { presente: 'no', horas: '0', motivo: 'falta' }, { ref })
+  const r = await e.dialogo('asistencia.excepcion', { motivo: 'falta' }, { ref, tipo: 'ausencia' })
   assert.deepEqual(r.body, {})
   const post = e.mattermost.posts.at(-1)
   assert.equal(validarMensaje(post).ok, true)
@@ -165,8 +167,8 @@ test('aplicar la excepción: se guarda, se ve en el post y se resume distinto', 
 test('la excepción sin motivo se rechaza en el campo, no con un banner genérico', async () => {
   const e = await crearEntorno()
   const cuadrilla = await elegirObra(e)
-  const ref = accionesDe(cuadrilla).find((a) => a.id === 'excepcion').options[0].value
-  const r = await e.dialogo('asistencia.excepcion', { presente: 'no', horas: '0' }, { ref })
+  const ref = accionesDe(cuadrilla).find((a) => a.id === 'novino').options[0].value
+  const r = await e.dialogo('asistencia.excepcion', {}, { ref, tipo: 'ausencia' })
   assert.equal(r.body.errors?.motivo !== undefined, true, JSON.stringify(r.body))
   assert.match(r.body.errors.motivo, /motivo/i)
 })
@@ -174,19 +176,19 @@ test('la excepción sin motivo se rechaza en el campo, no con un banner genéric
 test('el accidente de trabajo exige la línea que después necesita la ART', async () => {
   const e = await crearEntorno()
   const cuadrilla = await elegirObra(e)
-  const ref = accionesDe(cuadrilla).find((a) => a.id === 'excepcion').options[0].value
-  const mal = await e.dialogo('asistencia.excepcion', { presente: 'no', horas: '0', motivo: 'accidente' }, { ref })
+  const ref = accionesDe(cuadrilla).find((a) => a.id === 'novino').options[0].value
+  const mal = await e.dialogo('asistencia.excepcion', { motivo: 'accidente' }, { ref, tipo: 'ausencia' })
   assert.match(JSON.stringify(mal.body), /ART/)
   const bien = await e.dialogo('asistencia.excepcion',
-    { presente: 'no', horas: '0', motivo: 'accidente', aclaracion: 'se cortó la mano cortando hierro' }, { ref })
+    { motivo: 'accidente', aclaracion: 'se cortó la mano cortando hierro' }, { ref, tipo: 'ausencia' })
   assert.deepEqual(bien.body, {})
 })
 
 test('horas por encima de la jornada: se cargan como total y el núcleo separa el extra', async () => {
   const e = await crearEntorno()
   const cuadrilla = await elegirObra(e)
-  const ref = accionesDe(cuadrilla).find((a) => a.id === 'excepcion').options[0].value
-  await e.dialogo('asistencia.excepcion', { presente: 'si', horas: '11' }, { ref })
+  const ref = accionesDe(cuadrilla).find((a) => a.id === 'horasextra').options[0].value
+  await e.dialogo('asistencia.excepcion', { horas: '11' }, { ref, tipo: 'extra' })
   const r = respuestaValida(await registrar(e))
   assert.match(textoDe(r), /11 h \(2 extra\)/)
   const escrito = e.google.escrituras[0].data.map((d) => d.values[0][0])
@@ -232,8 +234,8 @@ test('doble clic en Registrar, uno después del otro: el segundo no escribe nada
 test('pisar una carga previa exige un sí aparte antes de escribir', async () => {
   const e = await crearEntorno()
   const cuadrilla = await elegirObra(e, OBRA.MESSINAS)
-  const ref = accionesDe(cuadrilla).find((a) => a.id === 'excepcion').options[0].value
-  await e.dialogo('asistencia.excepcion', { presente: 'si', horas: '6', motivo: 'se_retiro_antes' }, { ref })
+  const ref = accionesDe(cuadrilla).find((a) => a.id === 'menoshoras').options[0].value
+  await e.dialogo('asistencia.excepcion', { horas: '6', motivo: 'se_retiro_antes' }, { ref, tipo: 'parcial' })
   const pide = respuestaValida(await registrar(e))
   assert.match(textoDe(pide), /Se pisan 1 carga/)
   assert.equal(accionesDe(pide).find((a) => a.id === 'registrar').name, 'Registrar igual')
@@ -370,7 +372,7 @@ test('si la escritura falla, tampoco se filtra nada y la sesión queda reintenta
 test('si no se puede abrir el diálogo, se avisa y el post queda como estaba', async () => {
   const e = await crearEntorno({ mattermost: mattermostDoble({ abre: false }) })
   const cuadrilla = await elegirObra(e)
-  const ref = accionesDe(cuadrilla).find((a) => a.id === 'excepcion').options[0].value
+  const ref = accionesDe(cuadrilla).find((a) => a.id === 'novino').options[0].value
   const r = await e.accion({ paso: PASO.EXCEPCION, selected_option: ref })
   assert.match(r.body.ephemeral_text, /No se pudo abrir el formulario/)
   sinFiltraciones(textoDe(r))

@@ -26,7 +26,7 @@ import { ESTADO_SESION, RECHAZO } from '../asistencia-sesion.mjs'
 import { diaAnterior, hoyIso, validarFecha } from '../../lib/asistencia-servicio/fechas.mjs'
 import { resumirCuadrilla } from '../../lib/asistencia-servicio/mapeo.mjs'
 import {
-  URL_ACCION_DEFAULT, dialogoExcepcion, dialogoFecha,
+  TIPO, URL_ACCION_DEFAULT, dialogoExcepcion, dialogoFecha,
   mensajeCancelado, mensajeConfirmado, mensajeCuadrilla, mensajeInicial,
 } from './mensaje.mjs'
 import {
@@ -55,6 +55,7 @@ export const TEXTO = Object.freeze({
   PERSONA_DESCONOCIDA: 'Esa persona ya no figura en la obra. Volvé a elegir la obra.',
   SIN_DIALOGO: 'No se pudo abrir el formulario. Probá de nuevo desde el celular.',
   YA_REGISTRADA: 'Esta carga ya se registró. No se escribió dos veces.',
+  REVISAR_FORMULARIO: 'Revisá los campos marcados y volvé a guardar.',
   CUADRILLA_CAMBIO: 'La cuadrilla de la obra cambió en la planilla. Revisá la lista y volvé a apretar Registrar.',
   ERROR: 'No se pudo completar la acción. Probá de nuevo; si sigue igual, avisá a Dirección.',
 })
@@ -178,6 +179,7 @@ function normalizarPayload(payload) {
   return {
     ...comun, dialogo: false, paso: String(ctx.paso ?? ''),
     valor: ctx.valor ?? null,
+    tipo: ctx.tipo ?? null, // qué clase de excepción: la eligió el desplegable, no un campo
     seleccion: ctx.selected_option ?? null,
     confirmar: ctx.confirmar === true,
   }
@@ -302,6 +304,39 @@ async function pasoObra(d, p, sesion) {
 const refsDe = (c) => c.personal.map((x) => x.ref)
 
 /** "Marcar excepción": abre el diálogo de UNA persona y deja el desplegable limpio. */
+const TIPOS_EXCEPCION = new Set([TIPO.AUSENCIA, TIPO.PARCIAL, TIPO.EXTRA])
+
+/**
+ * La respuesta de error de un diálogo, SIEMPRE con una frase en castellano arriba.
+ *
+ * POR QUÉ (31/07). El cliente de Mattermost, cuando la respuesta trae sólo `errors` por campo,
+ * pone de su cosecha un encabezado en inglés: "Submission failed with validation errors". Si en
+ * cambio viene un `error` de primer nivel, muestra ESE texto. Así que se manda siempre uno: el
+ * jefe de obra no tiene por qué leer inglés para entender qué corregir.
+ */
+function errorDeFormulario(n) {
+  const campos = n?.errors && Object.keys(n.errors).length ? n.errors : null
+  const arriba = n?.error
+    ?? (campos ? Object.values(n.errors).find((v) => typeof v === 'string') : null)
+    ?? TEXTO.REVISAR_FORMULARIO
+  return { ...(campos ? { errors: campos } : {}), error: arriba }
+}
+
+/**
+ * Los motivos que corresponden a ESTE tipo, pedidos al catálogo — nunca una lista escrita acá.
+ *
+ * · ausencia → los de "no vino"
+ * · parcial  → los de jornada incompleta (se pregunta por media hora menos que la jornada, que
+ *              es la forma de decirle al catálogo "esto es una jornada parcial")
+ * · extra    → NINGUNO: el núcleo calcula el extra y no hay novedad que explicar
+ */
+function motivosDelTipo(d, tipo, jornada) {
+  if (tipo === TIPO.EXTRA) return []
+  if (tipo === TIPO.AUSENCIA) return d.motivos.motivosPara({ presente: false, horas: 0 })
+  const j = Number.isFinite(jornada?.horas) && !jornada?.requiere_manual ? Number(jornada.horas) : null
+  return d.motivos.motivosPara({ presente: true, horas: j == null ? null : j - 0.5, jornada: j })
+}
+
 async function pasoExcepcion(d, p, sesion) {
   const meta = metaDe(sesion)
   if (!meta.obra) return efimero(TEXTO.ELEGI_OBRA)
@@ -311,12 +346,16 @@ async function pasoExcepcion(d, p, sesion) {
   const persona = c.personal.find((x) => x.ref === String(p.seleccion ?? ''))
   if (!persona) return efimero(TEXTO.PERSONA_DESCONOCIDA)
   if (persona.bloqueado) return efimero(`${persona.nombre}: ${persona.bloqueado}.`)
+  // El TIPO decide qué formulario se abre y, sobre todo, QUÉ MOTIVOS entran en él. Antes se
+  // pasaba el catálogo entero y por eso se podía elegir "trabajó 5 h · Faltó con aviso".
+  const tipo = TIPOS_EXCEPCION.has(p.tipo) ? p.tipo : TIPO.PARCIAL
   const abierto = await abrirDialogo(d, dialogoExcepcion({
+    tipo,
     persona: { ...persona, novedad: marcas[persona.ref] ?? persona },
-    motivos: d.motivos.CATALOGO ?? [],
+    motivos: motivosDelTipo(d, tipo, c.jornada),
     obras: c.obras.filter((o) => o.clave !== meta.obra),
     jornada: c.jornada, triggerId: p.triggerId, url: d.url,
-    estado: { sesion_id: sesion.id, ref: persona.ref },
+    estado: { sesion_id: sesion.id, ref: persona.ref, tipo },
   }))
   if (!abierto) return efimero(TEXTO.SIN_DIALOGO)
   return actualizar(renderCuadrilla(d, c, { marcas }))
@@ -334,8 +373,9 @@ async function pasoAplicar(d, p, sesion) {
   const n = novedadDeDialogo(d, {
     submission: p.submission, jornada: c.jornada,
     obrasValidas: new Set(c.obras.map((o) => o.clave)),
+    tipo: TIPOS_EXCEPCION.has(p.estado?.tipo) ? p.estado.tipo : null,
   })
-  if (!n.ok) return { status: 200, body: { ...(n.errors ? { errors: n.errors } : {}), ...(n.error ? { error: n.error } : {}) } }
+  if (!n.ok) return { status: 200, body: errorDeFormulario(n) }
   const marcas = { ...marcasDe(sesion), [ref]: n.novedad }
   await guardar(d, sesion, { marcas, fecha: c.fecha, obra: meta.obra, refs: refsDe(c), postId: p.postId })
   await actualizarPost(d, sesion, renderCuadrilla(d, c, { marcas }))

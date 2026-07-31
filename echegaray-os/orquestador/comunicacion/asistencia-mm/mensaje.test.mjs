@@ -81,7 +81,7 @@ test('mensaje inicial: sin jornada conocida se declara, no se inventa un número
 
 // ── MENSAJE DE CUADRILLA ────────────────────────────────────────────────────────
 
-test('cuadrilla: toda la gente presente con la jornada, resumen y los dos botones', () => {
+test('cuadrilla: toda la gente presente con la jornada, resumen y los tres tipos de novedad', () => {
   const resumen = { presentes: 3, ausentes: 0, horas: 27, extra: 0, sin_cambio: 0, bloqueadas: 0 }
   const msg = valido(mensajeCuadrilla({
     fecha: '2026-07-30', obra: { clave: 'x', nombre: 'JAVIER SANCHEZ · Revoque' },
@@ -91,7 +91,8 @@ test('cuadrilla: toda la gente presente con la jornada, resumen y los dos botone
   for (const p of CUADRILLA) assert.match(texto, new RegExp(p.nombre))
   assert.equal((texto.match(new RegExp(MARCA.NORMAL, 'g')) ?? []).length >= 3, true)
   const nombres = acciones(msg).map((a) => a.name)
-  assert.deepEqual(nombres, ['Marcar excepción', 'Registrar', 'Cancelar'])
+  assert.deepEqual(nombres, ['No vino', 'Hizo menos horas', 'Hizo horas extra', 'Registrar', 'Cancelar'],
+    'el tipo de novedad se elige antes de abrir el formulario, no adentro')
   const campos = msg.props.attachments[0].fields.map((f) => f.title)
   assert.deepEqual(campos, ['Presentes', 'Ausentes', 'Horas'])
 })
@@ -199,37 +200,78 @@ const MOTIVOS = [
   { clave: 'accidente', etiqueta: 'Accidente de trabajo' },
 ]
 
-test('diálogo de excepción: los 5 campos del pedido, y son exactamente el tope de Mattermost', () => {
+test('diálogo de jornada parcial: horas, motivo, otra obra y aclaración — sin «¿Trabajó?»', () => {
   const d = dialogoExcepcion({
+    tipo: 'parcial',
     persona: { ...CUADRILLA[0], novedad: { presente: true, horas: 9, motivo: null, aclaracion: null, obra_realizada: null } },
     motivos: MOTIVOS, obras: OBRAS, jornada: JORNADA, triggerId: 'trig-1', url: URL,
     estado: { sesion_id: 's1', ref: CUADRILLA[0].ref },
   })
   const r = validarDialogo(d)
   assert.equal(r.ok, true, `diálogo inválido: ${r.fallas.join(' | ')}`)
-  assert.deepEqual(d.dialog.elements.map((e) => e.name),
-    ['presente', 'horas', 'motivo', 'obra_realizada', 'aclaracion'])
-  assert.equal(d.dialog.elements.length, 5)
+  assert.deepEqual(d.dialog.elements.map((e) => e.name), ['horas', 'motivo', 'obra_realizada', 'aclaracion'],
+    'ya no se pregunta si trabajó: eso lo eligió el desplegable que abrió este formulario')
   assert.equal(d.dialog.callback_id, 'asistencia.excepcion')
-  assert.deepEqual(JSON.parse(d.dialog.state), { sesion_id: 's1', ref: CUADRILLA[0].ref })
+  assert.deepEqual(JSON.parse(d.dialog.state), { sesion_id: 's1', ref: CUADRILLA[0].ref, tipo: 'parcial' })
+})
+
+test('diálogo de ausencia: sólo el motivo y la aclaración — las horas son 0, no se preguntan', () => {
+  const d = dialogoExcepcion({
+    tipo: 'ausencia', persona: { nombre: 'Aguero Cristian', novedad: {} },
+    motivos: MOTIVOS, obras: OBRAS, jornada: JORNADA, triggerId: 'trig-1', url: URL,
+  })
+  assert.equal(validarDialogo(d).ok, true)
+  assert.deepEqual(d.dialog.elements.map((e) => e.name), ['motivo', 'aclaracion'])
+  assert.equal(d.dialog.elements.find((e) => e.name === 'motivo').optional, false, 'sin motivo no hay ausencia')
+})
+
+test('diálogo de horas extra: no hay campo motivo, y las horas ofrecidas superan la jornada', () => {
+  const d = dialogoExcepcion({
+    tipo: 'extra', persona: { nombre: 'Aguero Cristian', novedad: {} },
+    motivos: [], obras: OBRAS, jornada: JORNADA, triggerId: 'trig-1', url: URL,
+  })
+  assert.equal(validarDialogo(d).ok, true)
+  assert.equal(d.dialog.elements.some((e) => e.name === 'motivo'), false,
+    'las horas extra las calcula el núcleo: no hay novedad que explicar')
+  const horas = d.dialog.elements.find((e) => e.name === 'horas')
+  assert.equal(horas.type, 'select')
+  for (const o of horas.options) assert.ok(Number(String(o.value).replace(',', '.')) > 9, `${o.value} no es extra`)
+})
+
+test('en «hizo menos horas» ninguna opción llega a la jornada: no se puede pedir motivo por un día completo', () => {
+  const d = dialogoExcepcion({
+    tipo: 'parcial', persona: { nombre: 'Aguero Cristian', novedad: {} },
+    motivos: MOTIVOS, obras: OBRAS, jornada: JORNADA, triggerId: 'trig-1', url: URL,
+  })
+  const horas = d.dialog.elements.find((e) => e.name === 'horas')
+  assert.equal(horas.type, 'select')
+  for (const o of horas.options) assert.ok(Number(String(o.value).replace(',', '.')) < 9, `${o.value} no es parcial`)
+})
+
+test('sin jornada conocida las horas vuelven a ser texto: no se inventa una lista', () => {
+  const d = dialogoExcepcion({
+    tipo: 'parcial', persona: { nombre: 'Aguero Cristian', novedad: {} },
+    motivos: MOTIVOS, obras: OBRAS, jornada: { horas: null, requiere_manual: true },
+    triggerId: 'trig-1', url: URL,
+  })
+  assert.equal(d.dialog.elements.find((e) => e.name === 'horas').type, 'text')
 })
 
 test('diálogo de excepción: precarga lo que ya tiene la persona', () => {
   const d = dialogoExcepcion({
+    tipo: 'ausencia',
     persona: { nombre: 'Quiroga Sebastian', novedad: { presente: false, horas: 0, motivo: 'falta', aclaracion: 'avisó', obra_realizada: null } },
     motivos: MOTIVOS, obras: OBRAS, jornada: JORNADA, triggerId: 'trig-1', url: URL,
   })
   assert.equal(validarDialogo(d).ok, true)
   const por = (n) => d.dialog.elements.find((e) => e.name === n)
-  assert.equal(por('presente').default, 'no')
-  assert.equal(por('horas').default, '0')
   assert.equal(por('motivo').default, 'falta')
   assert.equal(por('aclaracion').default, 'avisó')
 })
 
 test('diálogo de excepción: un nombre largo no rompe el título de 24 caracteres', () => {
   const d = dialogoExcepcion({
-    persona: { nombre: 'Rodriguez Villanueva de los Santos Juan Carlos', novedad: {} },
+    tipo: 'parcial', persona: { nombre: 'Rodriguez Villanueva de los Santos Juan Carlos', novedad: {} },
     motivos: MOTIVOS, obras: OBRAS, jornada: JORNADA, triggerId: 'trig-1', url: URL,
   })
   assert.equal(validarDialogo(d).ok, true)
@@ -238,12 +280,12 @@ test('diálogo de excepción: un nombre largo no rompe el título de 24 caracter
 
 test('diálogo de excepción: sin otras obras el campo desaparece en vez de mandarse vacío', () => {
   const d = dialogoExcepcion({
-    persona: { nombre: 'Aguero Cristian', novedad: {} },
+    tipo: 'parcial', persona: { nombre: 'Aguero Cristian', novedad: {} },
     motivos: MOTIVOS, obras: [], jornada: JORNADA, triggerId: 'trig-1', url: URL,
   })
   assert.equal(validarDialogo(d).ok, true)
   assert.equal(d.dialog.elements.some((e) => e.name === 'obra_realizada'), false)
-  assert.equal(d.dialog.elements.length, 4)
+  assert.equal(d.dialog.elements.length, 3)
 })
 
 test('diálogo de fecha: un solo campo, con el formato que la gente escribe acá', () => {

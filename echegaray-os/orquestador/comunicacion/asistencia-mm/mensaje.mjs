@@ -46,6 +46,16 @@ export const COLOR = Object.freeze({
   CANCELADO: '#8b8d94',
 })
 
+/**
+ * Tipo de novedad. Son los tres ámbitos del núcleo (`lib/asistencia-motivos.mjs`) hechos
+ * visibles: cuál se elige decide QUÉ formulario se abre y qué motivos entran en él.
+ */
+export const TIPO = Object.freeze({
+  AUSENCIA: 'ausencia', // no vino: 0 horas, motivo de ausencia
+  PARCIAL: 'parcial', // vino e hizo menos que la jornada: motivo de jornada parcial
+  EXTRA: 'extra', // vino e hizo de más: sin motivo, el extra lo calcula el núcleo
+})
+
 /** Marca al margen de cada persona. Silenciosa para lo normal, visible para la excepción. */
 export const MARCA = Object.freeze({
   NORMAL: '–',
@@ -212,14 +222,28 @@ export function mensajeCuadrilla({
   return { message: '', props: { attachments } }
 }
 
-/** Desplegable de excepción + Registrar + Cancelar. Tres acciones, sin ruido. */
+/**
+ * TRES desplegables de excepción + Registrar + Cancelar.
+ *
+ * POR QUÉ TRES Y NO UNO (31/07). Antes había uno solo —"Marcar excepción"— y el diálogo
+ * preguntaba "¿Trabajó?" con el CATÁLOGO ENTERO de motivos. Se podía elegir "trabajó 5 horas ·
+ * Faltó con aviso" y recién al guardar saltaba el error: la validación estaba bien, la
+ * experiencia mal.
+ *
+ * Un diálogo de Mattermost es ESTÁTICO: no hay evento de cambio, no se puede refrescar la lista
+ * de motivos cuando el jefe cambia una respuesta. Así que la pregunta se mueve ANTES: se elige
+ * el TIPO de novedad y se abre un formulario que ya sólo puede producir combinaciones válidas.
+ * Son los mismos tres ámbitos que el núcleo ya distingue (ausencia · parcial · extra), ahora
+ * visibles en la pantalla.
+ */
 function accionesCuadrilla({ personal, url, confirmacion }) {
   const marcables = personal.filter((p) => !p.bloqueado)
   const acciones = []
   if (marcables.length) {
-    acciones.push(menu('excepcion', 'Marcar excepción',
-      marcables.map((p) => ({ text: recortar(p.nombre, TOPE.OPCION), value: p.ref })),
-      { paso: 'excepcion' }, { url }))
+    const gente = marcables.map((p) => ({ text: recortar(p.nombre, TOPE.OPCION), value: p.ref }))
+    acciones.push(menu('novino', 'No vino', gente, { paso: 'excepcion', tipo: TIPO.AUSENCIA }, { url }))
+    acciones.push(menu('menoshoras', 'Hizo menos horas', gente, { paso: 'excepcion', tipo: TIPO.PARCIAL }, { url }))
+    acciones.push(menu('horasextra', 'Hizo horas extra', gente, { paso: 'excepcion', tipo: TIPO.EXTRA }, { url }))
   }
   acciones.push(boton('registrar', confirmacion ? 'Registrar igual' : 'Registrar',
     confirmacion ? { paso: 'registrar', confirmar: true } : { paso: 'registrar' },
@@ -309,48 +333,94 @@ export function mensajeCancelado({ motivo = 'Carga cancelada. No se escribió na
  */
 export function dialogoExcepcion({
   persona = {}, motivos = [], obras = [], jornada, triggerId, url, estado = {}, contexto = null,
+  tipo = TIPO.PARCIAL,
 } = {}) {
   const n = persona.novedad ?? persona
-  const elementos = [
-    {
-      display_name: recortar('¿Trabajó?', TOPE.NOMBRE_ELEMENTO),
-      name: 'presente', type: 'radio',
-      options: [{ text: 'Sí, trabajó', value: 'si' }, { text: 'No vino', value: 'no' }],
-      default: n.presente === false ? 'no' : 'si',
-    },
-    {
-      display_name: recortar('Horas', TOPE.NOMBRE_ELEMENTO),
-      name: 'horas', type: 'text', optional: true,
-      default: n.horas == null ? '' : fmt(n.horas),
-      placeholder: recortar(jornada?.horas != null ? `${fmt(jornada.horas)}` : '8', TOPE.PLACEHOLDER),
-      help_text: recortar('Horas trabajadas. Si no vino, 0. Si hizo de más, poné el total: el extra lo separa el sistema.', TOPE.AYUDA),
-    },
-    elementoSelect({
-      nombre: 'motivo', etiqueta: 'Motivo', valor: n.motivo,
-      opciones: (motivos || []).map((m) => ({
-        text: recortar(m.etiqueta ?? m.clave, TOPE.OPCION), value: m.clave,
-      })),
-      ayuda: 'Obligatorio si no vino o si hizo menos que la jornada.',
-    }),
-    elementoSelect({
-      nombre: 'obra_realizada', etiqueta: 'Estuvo en otra obra', valor: n.obra_realizada,
-      opciones: (obras || []).map((o) => ({ text: recortar(o.nombre, TOPE.OPCION), value: o.clave })),
-      ayuda: 'Sólo si trabajó, pero en otra obra de la planilla.',
-    }),
-    {
-      display_name: recortar('Aclaración', TOPE.NOMBRE_ELEMENTO),
-      name: 'aclaracion', type: 'textarea', optional: true,
-      default: n.aclaracion ?? '',
-      max_length: TOPE.ACLARACION,
-      placeholder: recortar('Una línea. Obligatoria en accidente de trabajo.', TOPE.PLACEHOLDER),
-    },
-  ].filter(Boolean)
-  return armarDialogo({
-    triggerId, url, callbackId: 'asistencia.excepcion', estado, contexto,
-    titulo: persona.nombre ?? 'Excepción',
-    intro: `${persona.nombre ?? ''} · ${textoJornada(jornada)}`.trim(),
-    elementos, submit: 'Guardar',
+  const opcionesMotivo = (motivos || []).map((m) => ({
+    text: recortar(m.etiqueta ?? m.clave, TOPE.OPCION), value: m.clave,
+  }))
+  const aclaracion = (placeholder) => ({
+    display_name: recortar('Aclaración', TOPE.NOMBRE_ELEMENTO),
+    name: 'aclaracion', type: 'textarea', optional: true,
+    default: n.aclaracion ?? '',
+    max_length: TOPE.ACLARACION,
+    placeholder: recortar(placeholder, TOPE.PLACEHOLDER),
   })
+
+  // Un formulario por tipo. Cada uno pregunta SÓLO lo que corresponde a su ámbito, así no
+  // existe la combinación inválida: no hay dónde elegirla.
+  const elementos = tipo === TIPO.AUSENCIA
+    ? [
+      elementoSelect({
+        nombre: 'motivo', etiqueta: 'Motivo de la falta', valor: n.motivo, opciones: opcionesMotivo,
+        ayuda: 'Por qué no vino. Las horas del día quedan en 0.', obligatorio: true,
+      }),
+      aclaracion('Una línea. Obligatoria en accidente y licencia especial.'),
+    ]
+    : tipo === TIPO.EXTRA
+      ? [
+        elementoHoras({ n, jornada, tipo }),
+        aclaracion('Opcional: para qué se quedó.'),
+      ]
+      : [
+        elementoHoras({ n, jornada, tipo }),
+        elementoSelect({
+          nombre: 'motivo', etiqueta: 'Motivo', valor: n.motivo, opciones: opcionesMotivo,
+          ayuda: 'Por qué hizo menos que la jornada.', obligatorio: true,
+        }),
+        elementoSelect({
+          nombre: 'obra_realizada', etiqueta: 'Estuvo en otra obra', valor: n.obra_realizada,
+          opciones: (obras || []).map((o) => ({ text: recortar(o.nombre, TOPE.OPCION), value: o.clave })),
+          ayuda: 'Sólo si esas horas las hizo en otra obra de la planilla.',
+        }),
+        aclaracion('Una línea. Obligatoria en accidente y licencia especial.'),
+      ]
+
+  return armarDialogo({
+    triggerId, url, callbackId: 'asistencia.excepcion', estado: { ...estado, tipo }, contexto,
+    titulo: recortar(persona.nombre ?? 'Excepción', TOPE.TITULO_DIALOGO),
+    intro: `${persona.nombre ?? ''} · ${textoJornada(jornada)}`.trim(),
+    elementos: elementos.filter(Boolean),
+    submit: 'Guardar',
+  })
+}
+
+/**
+ * Las horas, como DESPLEGABLE con los valores posibles de ese tipo — no como texto libre.
+ *
+ * Es la otra mitad de "que no se pueda elegir mal": en «hizo menos» sólo aparecen valores por
+ * debajo de la jornada, y en «hizo horas extra» sólo por encima. Así no existe el 5 con un
+ * motivo de ausencia, ni el 9 con un motivo de jornada parcial, ni el 26 de un dedazo.
+ *
+ * Cuando la planilla NO define la jornada del día (sábado, o un día sin calibrar) no hay contra
+ * qué armar la lista: se cae a un campo de texto. Inventar una jornada para poder ofrecer
+ * opciones sería fabricar el dato que falta.
+ */
+function elementoHoras({ n, jornada, tipo }) {
+  const j = Number.isFinite(jornada?.horas) && !jornada?.requiere_manual ? Number(jornada.horas) : null
+  const esExtra = tipo === TIPO.EXTRA
+  if (j == null) {
+    return {
+      display_name: recortar('Horas', TOPE.NOMBRE_ELEMENTO),
+      name: 'horas', type: 'text',
+      default: n.horas == null ? '' : fmt(n.horas),
+      placeholder: recortar('8', TOPE.PLACEHOLDER),
+      help_text: recortar('Horas trabajadas. Ese día la planilla no define la jornada.', TOPE.AYUDA),
+    }
+  }
+  const valores = []
+  if (esExtra) for (let h = j + 0.5; h <= j + 6; h += 0.5) valores.push(h)
+  else for (let h = 0.5; h < j; h += 0.5) valores.push(h)
+  const opciones = valores.map((h) => ({ text: `${fmt(h)} h`, value: fmt(h) }))
+  const previo = n.horas == null ? null : fmt(n.horas)
+  return {
+    display_name: recortar('Horas trabajadas', TOPE.NOMBRE_ELEMENTO),
+    name: 'horas', type: 'select', options: opciones,
+    ...(previo && opciones.some((o) => o.value === previo) ? { default: previo } : {}),
+    help_text: recortar(esExtra
+      ? `La jornada del día es ${fmt(j)} h: elegí el TOTAL. El extra lo separa el sistema.`
+      : `La jornada del día es ${fmt(j)} h. Elegí cuántas hizo.`, TOPE.AYUDA),
+  }
 }
 
 /** Diálogo de "Otra fecha…". Un solo campo, en el formato que la gente escribe acá. */
@@ -375,11 +445,11 @@ export function dialogoFecha({ fecha, triggerId, url, estado = {}, contexto = nu
  * un `select` sin `options` ni `data_source`, y un campo vacío tampoco le sirve a nadie.
  * `default` se omite si no hay valor previo — mandar `null` invalida el diálogo entero.
  */
-function elementoSelect({ nombre, etiqueta, valor, opciones, ayuda }) {
+function elementoSelect({ nombre, etiqueta, valor, opciones, ayuda, obligatorio = false }) {
   if (!opciones?.length) return null
   return {
     display_name: recortar(etiqueta, TOPE.NOMBRE_ELEMENTO),
-    name: nombre, type: 'select', optional: true,
+    name: nombre, type: 'select', optional: !obligatorio,
     options: opciones,
     ...(valor ? { default: String(valor) } : {}),
     help_text: recortar(ayuda, TOPE.AYUDA),
