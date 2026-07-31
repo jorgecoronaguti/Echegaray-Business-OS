@@ -23,18 +23,38 @@ const INDICE = [
 const AHORA = new Date('2026-07-31T13:00:00Z')
 
 /** Port de mentira: el índice, y un registro de todo lo que se escribió. */
-function portDe({ filas = INDICE, usos = [] } = {}) {
+function portDe({ filas = INDICE, usos = [], fuentes = [], eventos = [] } = {}) {
   const escrituras = []
+  const sql = []
   return {
     escrituras,
-    query: async (sql, params) => {
-      if (sql.includes('insert into public.drive_busqueda_uso')) { escrituras.push(params); return { rows: [] } }
-      if (sql.includes('drive_index')) return { rows: filas }
-      if (sql.includes('drive_busqueda_uso')) return { rows: usos }
-      if (sql.includes('drive_alias')) return { rows: [] }
+    sql,
+    query: async (q, params) => {
+      sql.push({ q: q.replace(/\s+/g, ' ').trim(), params })
+      if (q.includes('insert into public.drive_busqueda_uso')) { escrituras.push(params); return { rows: [] } }
+      if (q.includes('insert into public.drive_busqueda_evento')) return { rows: [{ id: 77 }] }
+      if (q.includes('from public.drive_busqueda_evento')) return { rows: eventos }
+      if (q.includes('drive_index')) return { rows: filas }
+      if (q.includes('fuentes_datos')) return { rows: fuentes }
+      if (q.includes('drive_busqueda_uso')) return { rows: usos }
+      if (q.includes('drive_alias')) return { rows: [] }
       return { rows: [] }
     },
   }
+}
+
+/** Un evento ya guardado: lo que el buscador propuso la vez anterior. */
+const EVENTO = {
+  id: 77,
+  consulta: 'flujo de fondos',
+  consulta_norm: 'flujo caja',
+  confianza: 'alta',
+  etapa: 'normalizada',
+  elegido: 'f-cash',
+  candidatos: [
+    { id: 'f-cash', name: 'Flujo de Caja - Cash Flow ECSAS', score: 1146, senales: { fuente_operativa: 300 } },
+    { id: 'f-vision', name: 'Vision / Tracción', score: 455, senales: { historico: -200 } },
+  ],
 }
 
 /** Doble del cliente Google. Cuenta las llamadas: el índice tiene que alcanzar solo. */
@@ -53,7 +73,7 @@ const correr = async (params, extra = {}) => {
   const google = 'google' in extra ? extra.google : googleFalso()
   const r = await capacidad.ejecutar(
     { tipo: 'cualquiera', ...params },
-    { port, google, ahora: () => AHORA },
+    { port, google, ahora: () => AHORA, identidad: extra.identidad ?? { plataformaUserId: 'u-jorge' } },
   )
   return { ...r, port, google }
 }
@@ -165,6 +185,48 @@ test('la opción dice dónde está cada uno: si no, elegir es tirar una moneda',
   assert.notEqual(a.etiqueta, b.etiqueta, 'dos opciones idénticas no se pueden elegir')
 })
 
+// ── Proponer: hay un favorito, pero el otro también existe ───────────────────
+//
+// El caso del dueño: "pasame el flujo de fondos". El archivo que se llama EXACTAMENTE así es
+// de 2025 y vive en una carpeta de archivo; el documento que la empresa usa es el Sheet vivo.
+// El OS elige, pero tiene que decir contra qué eligió.
+
+const FLUJOS = [
+  { drive_file_id: 'f-cash', name: 'Flujo de Caja - Cash Flow ECSAS', path: `${A}/Flujo de Caja - Cash Flow ECSAS`, tipo: 'planilla', mime_type: 'application/vnd.google-apps.spreadsheet', is_folder: false, modified_time: '2026-07-31T09:00:00Z', depth: 1 },
+  { drive_file_id: 'f-fondos', name: 'Flujo de Fondos.xlsx', path: `${A}/AÑO 2025/Flujo de Fondos.xlsx`, tipo: 'planilla', mime_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', is_folder: false, modified_time: '2026-01-15T09:00:00Z', depth: 2 },
+]
+const FUENTE_CASH = [{
+  drive_file_id: 'f-cash', nombre: 'Flujo de Caja - Cash Flow (Sheet)', area: 'Tesorería',
+  proceso_negocio: 'Flujo de caja proyectado y real', vigencia: 'vigente', estado: 'actualizado',
+  criticidad: 'alta', ultima_lectura: '2026-07-31T08:00:00Z',
+}]
+
+test('"pasame el flujo de fondos" abre el documento vivo, no el de AÑO 2025', async () => {
+  const r = await correr({ terminos: 'flujo de fondos' }, { filas: FLUJOS, fuentes: FUENTE_CASH })
+  assert.equal(r.ok, true)
+  assert.equal(r.evidencia.archivo.nombre, 'Flujo de Caja - Cash Flow ECSAS')
+})
+
+test('…y le muestra el archivo viejo como alternativa, con su enlace', async () => {
+  const r = await correr({ terminos: 'flujo de fondos' }, { filas: FLUJOS, fuentes: FUENTE_CASH })
+  assert.match(r.texto, /Creo que te referís a: \*\*Flujo de Caja - Cash Flow ECSAS\*\*/)
+  assert.match(r.texto, /También encontré:/)
+  assert.match(r.texto, /• Flujo de Fondos\.xlsx.*\[abrir\]\(https:\/\/drive\.google\.com\/file\/d\/f-fondos\/view\)/)
+})
+
+test('la evidencia dice con cuánta seguridad eligió y por qué señales', async () => {
+  const r = await correr({ terminos: 'flujo de fondos' }, { filas: FLUJOS, fuentes: FUENTE_CASH })
+  assert.equal(r.evidencia.confianza, 'alta')
+  assert.ok(r.evidencia.senales.fuente_operativa > 0)
+  assert.equal(r.evidencia.alternativas.length, 1)
+})
+
+test('sin competencia no hay ruido: un solo resultado se responde limpio', async () => {
+  const r = await correr({ terminos: 'vision' })
+  assert.match(r.texto, /^Encontré: /)
+  assert.doesNotMatch(r.texto, /También encontré/)
+})
+
 // ── Aprender ─────────────────────────────────────────────────────────────────
 
 test('elegir una opción devuelve ESE archivo y lo aprende', async () => {
@@ -174,7 +236,9 @@ test('elegir una opción devuelve ESE archivo y lo aprende', async () => {
   assert.equal(r.evidencia.archivo.id, 'f-av2')
   assert.equal(r.evidencia.aprendido, true)
   assert.equal(port.escrituras.length, 1)
-  assert.deepEqual(port.escrituras[0], ['avance obra', 'f-av2'])
+  // Se aprende PARA QUIÉN eligió, y cuánto suma: la preferencia de una persona no es la de la
+  // empresa, y un "no era ese" resta con el mismo peso (ver el test de rechazo).
+  assert.deepEqual(port.escrituras[0], ['avance obra', 'f-av2', 'u-jorge', 1])
 })
 
 test('lo aceptado antes para esta consulta pasa a ganar', async () => {
@@ -184,10 +248,75 @@ test('lo aceptado antes para esta consulta pasa a ganar', async () => {
   assert.equal(r.evidencia.archivo.id, 'f-av2')
 })
 
-test('un resultado dominante también se aprende', async () => {
+test('cuando sólo PROPONE no aprende: sería fabricar una preferencia y reforzarla sola', async () => {
+  const port = portDe({ usos: [{ consulta_norm: 'avance obra', drive_file_id: 'f-av2', veces: 2 }] })
+  const r = await correr({ terminos: 'avances de obra' }, { port })
+  assert.equal(r.ok, true)
+  assert.equal(r.evidencia.confianza, 'media', 'el caso elegido tiene que ser de confianza media')
+  assert.equal(port.escrituras.length, 0, 'anotó como elección algo que la persona nunca confirmó')
+})
+
+test('NI SIQUIERA un resultado dominante se aprende solo: proponer no es aprender', async () => {
+  // Antes esto se anotaba como si la persona lo hubiera elegido. Un resultado que nadie
+  // confirmó, reforzándose con su propio eco, es una preferencia fabricada: a los diez usos
+  // el buscador está seguro de algo que nadie le dijo nunca.
   const port = portDe()
-  await correr({ terminos: 'vision' }, { port })
-  assert.deepEqual(port.escrituras[0], ['vision', 'f-vision'])
+  const r = await correr({ terminos: 'vision' }, { port })
+  assert.equal(r.ok, true)
+  assert.equal(port.escrituras.length, 0)
+})
+
+// ── Feedback: la corrección más barata que existe ────────────────────────────
+
+test('toda búsqueda queda registrada, acierte o no', async () => {
+  const port = portDe()
+  const r = await correr({ terminos: 'vision' }, { port })
+  assert.equal(r.evidencia.evento, 77)
+  const ins = port.sql.filter((s) => s.q.startsWith('insert into public.drive_busqueda_evento'))
+  assert.equal(ins.length, 1)
+  assert.equal(ins[0].params[0], 'u-jorge')
+})
+
+test('la respuesta deja abierto el seguimiento: se puede desmentir, confirmar o preguntar', async () => {
+  const r = await correr({ terminos: 'vision' })
+  assert.equal(r.seguimiento.parcial.feedback, true)
+  assert.equal(r.seguimiento.parcial.parametros.eventoId, 77)
+  assert.ok(r.seguimiento.opciones.length >= 1)
+})
+
+test('"correcto" es lo que dispara el aprendizaje, y recién ahí', async () => {
+  const port = portDe({ eventos: [EVENTO] })
+  const r = await correr({ terminos: 'flujo de fondos', feedback: 'confirma', eventoId: 77 }, { port })
+  assert.equal(r.ok, true)
+  assert.equal(r.evidencia.aprendido, true)
+  assert.deepEqual(port.escrituras[0], ['flujo caja', 'f-cash', 'u-jorge', 1])
+  assert.ok(port.sql.some((s) => s.q.includes('confirmado_at = now()')))
+})
+
+test('"no era ese" descuenta y ofrece los que habían quedado atrás', async () => {
+  const port = portDe({ eventos: [EVENTO] })
+  const r = await correr({ terminos: 'flujo de fondos', feedback: 'rechaza', eventoId: 77 }, { port })
+  assert.deepEqual(port.escrituras[0], ['flujo caja', 'f-cash', 'u-jorge', -1],
+    'sin el descuento, mañana hay que corregir lo mismo otra vez')
+  assert.ok(port.sql.some((s) => s.q.includes('rechazado_at = now()')))
+  assert.equal(r.aclaracion.opciones.length, 1)
+  assert.equal(r.aclaracion.opciones[0].valor, 'f-vision')
+})
+
+test('"¿por qué ese?" contesta con el desglose, sin volver a buscar', async () => {
+  const port = portDe({ eventos: [EVENTO] })
+  const r = await correr({ terminos: 'flujo de fondos', feedback: 'explica', eventoId: 77 }, { port })
+  assert.equal(r.ok, true)
+  assert.match(r.texto, /Ganó: Flujo de Caja/)
+  assert.match(r.texto, /fuente de negocio/)
+  assert.match(r.texto, /Le ganó a "Vision \/ Tracción"/)
+  assert.equal(port.escrituras.length, 0, 'explicar no puede cambiar lo que explica')
+})
+
+test('feedback sin una búsqueda previa se dice, no se inventa una', async () => {
+  const r = await correr({ terminos: 'x', feedback: 'confirma' }, { port: portDe({ eventos: [] }) })
+  assert.equal(r.ok, false)
+  assert.equal(r.error.codigo, ERROR.NO_ENCONTRADO)
 })
 
 test('elegir un id que ya no está en el índice se dice, no se rellena con otro', async () => {

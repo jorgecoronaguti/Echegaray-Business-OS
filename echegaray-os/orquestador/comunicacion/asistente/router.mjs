@@ -30,6 +30,7 @@ import { interpretar as interpretarDefault, interpretarDeterministico, parametro
 import { identidadDe, resolverPersona, emailDe, nombreCorto } from './identidades.mjs'
 import { parseCuando } from './tiempo.mjs'
 import { googleDe } from './google-cliente.mjs'
+import { interpretarFeedback } from '../../lib/drive-busqueda/feedback.mjs'
 
 const PLATAFORMA = 'mattermost'
 const MINUTOS_PENDIENTE = 20
@@ -133,6 +134,12 @@ const DEICTICOS = new Set([
 /** Un pedazo de texto tan corto que puede aparecer por casualidad dentro de una etiqueta
  *  (una fecha, un número de orden) no alcanza para elegir un archivo. */
 const MIN_SUBSTRING = 4
+/** "El otro", "abrí el otro": no es el primero — es el que NO era. En una lista de dos, es
+ *  el segundo; en una más larga, el siguiente al que se propuso. */
+const OTROS = new Set([
+  'el otro', 'la otra', 'otro', 'otra', 'el otro si', 'abri el otro', 'abrime el otro',
+  'pasame el otro', 'dame el otro', 'el que sigue', 'el siguiente',
+])
 
 /**
  * ¿La respuesta es una de las opciones que se ofrecieron? Valor, etiqueta, ordinal o deíctico.
@@ -147,6 +154,7 @@ function elegirOpcion(opciones, texto) {
   const t = norm(texto)
   if (!t || !opciones?.length) return null
   if (DEICTICOS.has(t)) return opciones[0]
+  if (OTROS.has(t)) return opciones[1] ?? null
   // 1) Ordinal y valor exacto: lo que la persona escribe para elegir, sin ambigüedad.
   for (const [i, o] of opciones.entries()) {
     if ((ORDINALES[i + 1] ?? []).includes(t) || t === norm(o.valor)) return o
@@ -173,6 +181,26 @@ function respuestaAPendiente(pendiente, texto, ahora) {
   const faltante = parcial.faltante ?? null
   const parametros = { ...(parcial.parametros ?? {}) }
   const elegida = elegirOpcion(pendiente.opciones, texto)
+
+  // EL FEEDBACK SE LEE ANTES QUE "CAMBIÓ DE TEMA", Y NO ES UN DETALLE DE ORDEN.
+  //
+  // "correcto" es una palabra sola, y el intérprete reconoce sustantivos sueltos como pedidos
+  // de archivo: sin esto, confirmar un resultado disparaba una búsqueda de la palabra
+  // "correcto". Sólo se evalúa si la capacidad declaró que espera feedback, así que ninguna
+  // otra cambia de comportamiento.
+  if (!elegida && parcial.feedback) {
+    const f = interpretarFeedback(texto)
+    if (f) return { solicitud: solicitudDeAclaracion(parcial.intencion ?? pendiente.capacidad, { ...parametros, feedback: f }) }
+  }
+
+  // UN SEGUIMIENTO NO ES UNA PREGUNTA, Y NO SE PUEDE COMPORTAR COMO SI LO FUERA.
+  //
+  // Cuando el asistente PREGUNTA, cualquier cosa que la persona conteste es un intento de
+  // respuesta y forzarla al campo que falta tiene sentido. Cuando sólo dejó abierta la puerta
+  // por si querían corregirlo, no: un "gracias por todo" terminaba entrando como nombre de
+  // archivo y devolvía "ese archivo ya no está en el índice". Si no es una opción ni un
+  // feedback, la puerta se cierra sola y el mensaje sigue su camino normal.
+  if (!elegida && parcial.opcional) return { nuevoTema: true }
 
   // Cambió de tema: si el texto es un pedido reconocible POR SÍ MISMO, no es una respuesta a
   // la pregunta anterior. "el jueves a las 10" no se reconoce solo — y por eso es respuesta.
@@ -466,6 +494,22 @@ async function ejecutar({ capacidad, parametros, base, port, identidad, via }) {
       parcial: resultado.aclaracion.parcial,
       pregunta: resultado.texto,
       opciones: resultado.aclaracion.opciones,
+    })
+  }
+
+  // UNA RESPUESTA TAMBIÉN PUEDE ESPERAR RESPUESTA.
+  //
+  // "Te paso este archivo" admite un "no era ese" — y ese "no" es la corrección más barata que
+  // existe: alguien diciéndote que te equivocaste, gratis, en el momento. Se perdía entera,
+  // porque sin una fila abierta el mensaje siguiente se interpreta desde cero y "no" no es un
+  // pedido de nada. La capacidad declara qué deja abierto; el router lo guarda igual que una
+  // pregunta, en el mismo lugar y con el mismo vencimiento.
+  if (resultado.ok && resultado.seguimiento?.parcial) {
+    await guardarPendiente(port, identidad, base, {
+      capacidad: capacidad.id,
+      parcial: resultado.seguimiento.parcial,
+      pregunta: resultado.texto,
+      opciones: resultado.seguimiento.opciones ?? [],
     })
   }
   return final(resultado, via, capacidad.id)

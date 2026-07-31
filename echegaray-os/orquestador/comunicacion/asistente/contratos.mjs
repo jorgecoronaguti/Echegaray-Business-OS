@@ -183,8 +183,18 @@ export const zResultado = z.object({
 })
 
 /** Resultado OK con evidencia. Un `ok:true` sin evidencia es un bug, no un éxito. */
-export function resultadoOk(capacidad, texto, evidencia) {
-  return { ok: true, capacidad, texto, evidencia: evidencia ?? {}, error: null, aclaracion: null }
+/**
+ * @param {object} [seguimiento] Lo que esta respuesta deja abierto: `{parcial, opciones}`, con
+ *   la misma forma que una aclaración. Existe porque una respuesta también puede esperar
+ *   respuesta — "te paso este archivo" admite un "no era ese" —, y sin dejar constancia el
+ *   mensaje siguiente se interpreta desde cero y esa corrección se pierde. Opcional: una
+ *   capacidad que no lo usa se comporta igual que antes.
+ */
+export function resultadoOk(capacidad, texto, evidencia, seguimiento = null) {
+  return {
+    ok: true, capacidad, texto, evidencia: evidencia ?? {}, error: null, aclaracion: null,
+    seguimiento: seguimiento ?? null,
+  }
 }
 export function resultadoError(capacidad, err) {
   return { ok: false, capacidad, texto: err.mensaje, evidencia: null, error: err, aclaracion: null }
@@ -202,6 +212,11 @@ export const zDriveBuscar = z.object({
   // vuelta, cuando contesta "el segundo": es el momento en que se sabe con certeza cuál era,
   // y por eso es también lo único que el buscador toma como aprendizaje.
   archivoId: z.string().min(1).optional(),
+  // Lo que la persona dijo SOBRE el resultado anterior: "correcto", "no era ese", "por qué".
+  // Es la otra mitad del aprendizaje — sin esto, una corrección gratis se perdía entera.
+  feedback: z.enum(['confirma', 'rechaza', 'explica']).optional(),
+  // La búsqueda a la que se refiere ese feedback, para no adivinar cuál era.
+  eventoId: z.union([z.number(), z.string()]).optional(),
 })
 
 export const zDriveArchivo = z.object({

@@ -297,6 +297,92 @@ test('una pregunta de la capacidad se guarda como pendiente y se puede contestar
   assert.equal(ultima.parametros.terminos, 'avances de obra', 'se perdió qué se había buscado')
 })
 
+// ── Cuando la RESPUESTA espera respuesta ─────────────────────────────────────
+//
+// "Te paso este archivo" admite un "no era ese". Sin una fila abierta, ese "no" se interpreta
+// desde cero —y "no" no es un pedido de nada—, así que la corrección más barata que existe se
+// perdía entera.
+
+/** Una capacidad que contesta y deja abierto el seguimiento, como hace el buscador de Drive. */
+const capacidadConSeguimiento = () => capacidadFalsa({
+  id: CAPACIDAD.DRIVE_BUSCAR,
+  entrada: zDriveBuscar,
+  ejecutar: ({ archivoId, feedback }) => resultadoOk(
+    CAPACIDAD.DRIVE_BUSCAR,
+    feedback ? `feedback: ${feedback}` : `archivo: ${archivoId ?? 'f-cash'}`,
+    { archivo: { id: archivoId ?? 'f-cash' }, feedback: feedback ?? null },
+    {
+      parcial: {
+        intencion: CAPACIDAD.DRIVE_BUSCAR,
+        parametros: { terminos: 'flujo de fondos', tipo: 'cualquiera', eventoId: 77 },
+        faltante: 'archivoId',
+        feedback: true,
+        opcional: true,
+      },
+      opciones: [{ valor: 'f-cash', etiqueta: 'Flujo de Caja - Cash Flow' },
+        { valor: 'f-fondos', etiqueta: 'Flujo de Fondos.xlsx — en administracion > AÑO 2025' }],
+    },
+  ),
+})
+
+test('una respuesta con seguimiento queda abierta para que se la pueda desmentir', async () => {
+  const e = entorno({ lista: [capacidadAyuda, capacidadConSeguimiento()] })
+  const r = await e.pedir('pasame el flujo de fondos')
+  assert.equal(r.ok, true)
+  const abiertas = e.db.pendientes.filter((p) => p.estado === 'abierta')
+  assert.equal(abiertas.length, 1, 'sin esto, el "no era ese" siguiente se pierde')
+  assert.equal(abiertas[0].parcial.feedback, true)
+})
+
+test('"no era ese" vuelve a la capacidad como feedback, no como búsqueda de la palabra "no"', async () => {
+  const cap = capacidadConSeguimiento()
+  const e = entorno({ lista: [capacidadAyuda, cap] })
+  await e.pedir('pasame el flujo de fondos')
+  const r = await e.pedir('no era ese', { fetchImpl: fetchProhibido })
+  assert.equal(r.ok, true)
+  assert.equal(cap.llamadas.at(-1).parametros.feedback, 'rechaza')
+  assert.equal(cap.llamadas.at(-1).parametros.eventoId, 77, 'se perdió a qué búsqueda se refería')
+})
+
+test('"correcto" confirma en vez de disparar una búsqueda de la palabra "correcto"', async () => {
+  const cap = capacidadConSeguimiento()
+  const e = entorno({ lista: [capacidadAyuda, cap] })
+  await e.pedir('pasame el flujo de fondos')
+  const r = await e.pedir('correcto', { fetchImpl: fetchProhibido })
+  assert.equal(r.ok, true)
+  assert.equal(cap.llamadas.at(-1).parametros.feedback, 'confirma')
+})
+
+test('"abrí el otro" elige el segundo, que es el que NO era', async () => {
+  const cap = capacidadConSeguimiento()
+  const e = entorno({ lista: [capacidadAyuda, cap] })
+  await e.pedir('pasame el flujo de fondos')
+  const r = await e.pedir('abri el otro', { fetchImpl: fetchProhibido })
+  assert.equal(r.ok, true)
+  assert.equal(cap.llamadas.at(-1).parametros.archivoId, 'f-fondos')
+})
+
+test('decir "gracias" después de un resultado no se lee como el nombre de un archivo', async () => {
+  // Un seguimiento deja la puerta abierta; no pregunta nada. Forzar cualquier mensaje al campo
+  // que falta —como sí corresponde cuando el asistente PREGUNTÓ— hacía que agradecer terminara
+  // en "ese archivo ya no está en el índice".
+  const cap = capacidadConSeguimiento()
+  const e = entorno({ lista: [capacidadAyuda, cap] })
+  await e.pedir('pasame el flujo de fondos')
+  const r = await e.pedir('gracias por todo')
+  assert.notEqual(cap.llamadas.at(-1).parametros.archivoId, 'gracias por todo')
+  assert.equal(/ya no está en el índice/.test(r.texto ?? ''), false)
+})
+
+test('un pedido nuevo después de una respuesta sigue siendo un pedido nuevo', async () => {
+  const cap = capacidadConSeguimiento()
+  const e = entorno({ lista: [capacidadAyuda, cap] })
+  await e.pedir('pasame el flujo de fondos')
+  const r = await e.pedir('pasame el archivo de jornales')
+  assert.equal(cap.llamadas.at(-1).parametros.feedback, undefined)
+  assert.equal(r.ok, true)
+})
+
 test('contestar con el NÚMERO de la opción también sirve', async () => {
   const preguntona = capacidadFalsa({
     id: CAPACIDAD.DRIVE_BUSCAR,
