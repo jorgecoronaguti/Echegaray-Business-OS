@@ -97,6 +97,9 @@ import { formatear as formatearCuit } from '../lib/cuit.mjs'
 import { emparejarCuit } from '../lib/cuit-por-nombre.mjs'
 // La forma del cuadro de deuda se LEE de la grilla que se escribe, no se recuerda de antes.
 import { bloqueDeDeuda, clasificarDeuda } from '../lib/deuda-geometria.mjs'
+// Un texto nunca lleva formato de plata, y se decide por CONTENIDO. Ver el lib: la lista de defectos
+// cambiaba en cada corrida porque se mantenían rangos por bloque en vez de mirar la celda.
+import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = NOMBRES.proveedoresMateriales
@@ -1858,21 +1861,9 @@ async function formatear(google, sheetId, g, ancho, filas) {
   // lo que se agregue mañana. Las celdas que produce una FÓRMULA no entran acá (no se puede saber su
   // tipo sin evaluarla): esas siguen dependiendo de la declaración de su bloque.
   {
-    const filasTxt = new Map()
-    ;(g.filas || []).forEach((fila, i) => (fila || []).forEach((c, j) => {
-      if (j === 0 || !esRotulo(c)) return                    // la columna A ya es texto por definición
-      if (!filasTxt.has(j)) filasTxt.set(j, [])
-      filasTxt.get(j).push(i + 1)
-    }))
-    let n = 0
-    for (const [col, filasCol] of filasTxt) {
-      // Tramos contiguos, para no hacer un pedido por celda: la pestaña tiene cientos.
-      let ini = null; let prev = null
-      const cerrar = () => { if (ini !== null) { fmt({ ...r(ini - 1, prev, col, col + 1) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' }); n += prev - ini + 1 } }
-      for (const f of filasCol) { if (prev !== null && f === prev + 1) { prev = f; continue } cerrar(); ini = f; prev = f }
-      cerrar()
-    }
-    if (n) console.log(`  ${n} celda(s) de TEXTO con su formato de texto (no de plata) — por contenido, no por bloque`)
+    const { requests: rTxt, celdas } = requestsTextoPorContenido(sheetId, g.filas || [])
+    req.push(...rTxt)
+    if (celdas) console.log(`  ${celdas} celda(s) de TEXTO con su formato de texto (no de plata) — por contenido, no por bloque`)
   }
 
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 250 }, fields: 'pixelSize' } })
