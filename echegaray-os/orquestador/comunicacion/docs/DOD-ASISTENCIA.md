@@ -367,3 +367,64 @@ posterior** — la primera escritura en JORNALES desde Mattermost sigue sin qued
   no la pestaña.
 - Una protección que **se auto-canda** convierte un falso positivo en una **falla permanente**,
   no en una molestia pasajera.
+
+
+---
+
+## 15. El defecto que dejaba muertos los botones de fecha — 30/07/2026
+
+Otro defecto que ningún test del módulo podía ver, y esta vez tampoco los logs del OS: la falla
+ocurría **fuera** del OS, antes de que la petición entrara.
+
+### Síntoma
+
+`/asistencia` publicaba bien el mensaje, pero apretar cualquiera de los **tres botones de fecha**
+(`Hoy`, `Ayer`, `Otra fecha…`) mostraba «Sorry, we could not find the page.». El selector de obra
+y el botón `Registrar`, **en el mismo mensaje**, funcionaban.
+
+### Causa raíz
+
+Los tres botones de fecha tenían el `id` con guión bajo: `fecha_hoy`, `fecha_ayer`, `fecha_otra`.
+
+Al apretar un botón, el cliente llama a `POST /api/v4/posts/{post_id}/actions/{action_id}`, y
+**el router de Mattermost sólo acepta ids alfanuméricos** en ese segmento. Con guión bajo la ruta
+no matchea: Mattermost contesta su propio 404 de router y **la petición nunca llega al Business
+OS**. Por eso no había **una sola línea** en los logs del servicio — y esa ausencia fue lo que
+descartó las tres hipótesis equivocadas: no era el backend, ni el ruteo de Caddy, ni una URL
+vieja de la interfaz web eliminada.
+
+### La evidencia — mismo post, mismo token, cuatro llamadas
+
+| `id` enviado | Respuesta | Qué prueba |
+|---|---|---|
+| `obra` — alfanumérico, existe en el post | HTTP 200 `{"status":"OK"}` | La ruta matchea y la acción existe |
+| `noexisteaqui` — alfanumérico, no existe | HTTP 404 `api.post.do_action.action_id.app_error` | **El handler corrió** y dijo "esa acción no está" |
+| `fecha_hoy` — guión bajo | HTTP 404 `api.context.404.app_error` | «Sorry, we could not find the page»: **el router ni matcheó** |
+| `fecha-hoy` — guión medio | HTTP 404 `api.context.404.app_error` | Lo mismo |
+
+El contraste entre los **dos códigos de error 404 distintos** es lo que prueba que el problema es
+el **carácter** del id, y no la existencia de la acción.
+
+### La corrección
+
+Los ids pasan a ser alfanuméricos: `fechahoy`, `fechaayer`, `fechaotra`. **No cambia nada más**:
+mismo tipo de botón, mismo endpoint `/asistencia/accion`, mismo `context`, misma sesión, mismo
+backend — el servidor rutea por `context.paso`, nunca por el id.
+
+Para que no vuelva: `contrato-mattermost.mjs` ahora **exige** que todo id de acción sea
+alfanumérico, y hay un test que recorre todos los mensajes del módulo. Un botón nuevo con guión
+bajo no puede llegar a producción.
+
+### Qué queda verificado
+
+El síntoma, los cuatro códigos de respuesta y el contraste entre los dos 404 se comprobaron
+**contra el Mattermost real**, no contra mocks. Lo que este apartado documenta es el defecto, su
+causa y su corrección: **no incluye la prueba humana final desde el celular**, que todavía no
+ocurrió.
+
+### La lección
+
+- El `id` de una acción interactiva **no es una etiqueta interna**: viaja dentro de una URL de la
+  API de Mattermost, y por eso **su alfabeto lo decide Mattermost, no nosotros**.
+- Un defecto que **no deja rastro en los logs del propio sistema** es señal de que la falla ocurre
+  **antes** de llegar: hay que ir a mirar los logs del otro lado.
