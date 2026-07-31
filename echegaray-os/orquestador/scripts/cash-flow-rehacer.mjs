@@ -15,7 +15,7 @@ import { loadConfig } from '../lib/config.mjs'
 import {
   bloqueControl, CUADRO, verificarCuadro, formulaLineaMes, expresionReal, formulaTotalRubro, origenLinea,
   tablasDeProyeccion, formulaChequesSinFactura, hipervinculoDetalle, detalleDeRubro, SANGRIA_DETALLE,
-  formulaInteresSemana, edicionesConContenidoReal,
+  formulaInteresSemana, formulaComisionesMes, formulaComisionesSemana, edicionesConContenidoReal,
   instrumentosDeLinea, formulaCalendarioImpuestosMes, formulaCalendarioImpuestosSemana,
   rotulosCalendarioImpuestos, CALENDARIO_IMPUESTOS,
 } from '../lib/cash-flow-lineas.mjs'
@@ -175,6 +175,14 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
             ? cols.map((_, i) => (periodo === 'mensual'
               ? formulaInteresMes(`${letra(i + 1)}#{INICIO}`, `${letra(i + 1)}$${FILA_CAB}`)
               : formulaInteresSemana(`${letra(i + 1)}#{INICIO}`, desde(i), hasta(i))))
+            // Las comisiones del banco se LEEN del extracto (no hay tasa que proyectar ni factura en
+            // Compras): real de la ventana, y en los meses/semanas sin extracto el promedio de los que
+            // sí lo tienen. El semanal las carga en la semana que contiene el cierre del mes, que es
+            // cuando el banco las cobra (29/06, 29/07 y 30/07 en el extracto real).
+            : l.comisionesBancarias
+              ? cols.map((_, i) => (periodo === 'mensual'
+                ? formulaComisionesMes(`${letra(i + 1)}$${FILA_CAB}`)
+                : formulaComisionesSemana(desde(i), hasta(i))))
             : l.impuestoCheque
               // Se resuelve al final: necesita la lista de TODAS las demás líneas, que todavía no
               // existen. Referenciar el total de egresos sería circular — esta línea es un egreso. El

@@ -61,6 +61,19 @@ export const DESTINOS = {
     fuente: 'lib/costo-descubierto.mjs · formulaInteresMes / REAL',
     escribe: 'no',
   },
+  // LO QUE EL BANCO SE LLEVA POR EXISTIR. Hasta el 31/07 no tenía destino porque no tenía naturaleza:
+  // caía en el cajón de sastre "Transferencias a proveedores" y se leía como pago a proveedor. Ahora
+  // tiene línea propia en Financiación del Cash Flow (mensual y semanal), que lee _BANCO_RAW —el banco
+  // no emite factura por esto, así que Compras nunca lo va a tener— y la reconcilia el bloque 4.7 de
+  // CAJA contra "ninguna pestaña", que es la verdad: el único registro es el extracto.
+  'Comisiones y gastos bancarios': {
+    pestaña: 'Cash Flow Mensual / Cash Flow Semanal',
+    seccion: 'Actividades de Financiación → línea "Comisiones y gastos bancarios (Santander)"',
+    mecanismo: 'SUMIFS _BANCO_RAW col C donde Naturaleza = "Comisiones y gastos bancarios", por mes/semana; '
+      + 'los meses sin extracto proyectan el promedio de los meses que sí tienen (cash-flow-lineas.mjs · formulaComisionesMes)',
+    fuente: 'lib/cash-flow-lineas.mjs · COMISIONES / formulaComisionesMes / formulaComisionesSemana',
+    escribe: 'no',
+  },
   'Préstamo prendario': {
     pestaña: 'Impuestos y Financieros',
     seccion: '6 · Deuda financiera → cuota del prendario, proyectada a los meses que faltan',

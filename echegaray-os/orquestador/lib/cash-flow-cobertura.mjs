@@ -47,7 +47,7 @@ export function fuentesSumadas() {
       for (const l of g.lineas) {
         if (l.cobranzas) src.add('Cobranzas')
         else if (l.cheques) for (const i of Object.values(INSTRUMENTOS)) src.add(i.pestaña)
-        else if (l.descubierto || l.impuestoCheque) { /* calculado (tasa/ley), sin pestaña de origen */ }
+        else if (l.descubierto || l.impuestoCheque || l.comisionesBancarias) { /* calculado o leído del extracto (tasa/ley/comisión del banco), sin pestaña de origen */ }
         else if (l.soloSub) src.add('Compras') // bienes de uso: un sub-rubro de Compras
         else if (l.rubro) {
           const regla = porRubro.get(l.rubro)

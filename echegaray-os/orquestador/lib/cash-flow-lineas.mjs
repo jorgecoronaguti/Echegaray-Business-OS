@@ -710,6 +710,16 @@ export const CUADRO = [
           },
           // Tampoco sale de Compras: el banco lo debita solo, sin factura, sobre cada movimiento de
           // la cuenta. 0,6% de cada lado — verificado al 99,1% contra el extracto (impuesto-cheque.mjs).
+          // Tampoco sale de Compras, y por la misma razón que el impuesto al cheque: el banco lo
+          // debita solo, sin factura. La línea de arriba ("Cuotas de crédito prendario y gastos
+          // bancarios") dice "gastos bancarios" pero lee el rubro Financiero de COMPRAS, donde no hay
+          // ni una comisión — y no las va a haber. Ver COMISIONES arriba: $381.649,64 medidos en el
+          // mes y medio del extracto que el cuadro proyectaba como $0.
+          {
+            nombre: 'Comisiones y gastos bancarios (Santander)',
+            comisionesBancarias: true,
+            nota: 'Comisión de servicio de cuenta, de clearing, de cuenta en dólares y de compensación de cheques, cada una con su IVA 21% y su percepción RG 2408 al 3% — todo lo que el banco debita sin factura. Sale del extracto (_BANCO_RAW), no de Compras. Los meses sin extracto proyectan el promedio de los que sí tienen: base de DOS meses, y julio incluye $145.888,44 de compensación de cheques que no es mensual, así que el promedio queda por encima del gasto recurrente (~$122.000/mes). Es un PISO declarado.',
+          },
           {
             nombre: 'Impuesto al cheque (Ley 25.413, 0,6% de cada lado)',
             impuestoCheque: true,
@@ -845,6 +855,90 @@ export function formulaInteresSemana(saldoInicial, desde, hasta) {
   return `=MAX(${proyectado};IFERROR(-${real};0))`
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LAS COMISIONES DEL BANCO — EL COSTO QUE NO TENÍA LÍNEA
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// POR QUÉ EXISTE (31/07). El cuadro tenía una línea "Cuotas de crédito prendario y gastos bancarios"
+// que lee el rubro "Financiero" de COMPRAS. Ahí no hay ni una comisión bancaria, y no las va a haber
+// nunca: el banco no factura el mantenimiento de cuenta, lo debita solo. Resultado: los $381.649,64
+// que el Santander se llevó en el mes y medio del extracto no estaban en ninguna línea del cash flow,
+// y encima se leían como pagos a proveedores porque `clasificarMovimiento` los dejaba caer en su cajón
+// de sastre. Un costo fijo de ~$122.000/mes que el cuadro proyectaba como $0.
+//
+// LA LÍNEA LEE EL BANCO, COMO EL DESCUBIERTO Y EL IMPUESTO AL CHEQUE. Son las tres cosas que el cuadro
+// no puede sacar de una pestaña de gastos porque no pasan por una factura. El único registro es el
+// extracto, replicado en _BANCO_RAW con su naturaleza en la columna F.
+//
+// LA PROYECCIÓN DE LOS MESES SIN EXTRACTO: el promedio de los meses que SÍ tienen, calculado sobre la
+// propia réplica —no sobre la fila del cuadro, que sería circular—. Los meses con dato se cuentan con
+// el mismo SUMPRODUCT/COUNTIFS que usa el resto del archivo contra la espina de doce meses, así que
+// cuando entre el extracto de agosto la proyección se corrige sola.
+//
+// LA BASE ES FINA Y SE DECLARA: dos meses, y uno de ellos (julio) trae $145.888,44 de comisión de
+// compensación de cheques que NO es mensual. El promedio queda por encima del gasto recurrente. En un
+// costo, sobreestimar es el error barato — es la misma decisión que en el descubierto.
+
+/** De dónde salen las comisiones del banco. Es contrato con banco-raw-pestana.mjs y con NAT.comisiones. */
+export const COMISIONES = {
+  hoja: '_BANCO_RAW',
+  fecha: 'A',
+  importe: 'C',
+  naturaleza: 'F',
+  marca: 'Comisiones y gastos bancarios',
+}
+
+const rangoCom = (c) => `${COMISIONES.hoja}!$${c}$4:$${c}`
+
+/**
+ * NÚCLEO PURO: las comisiones que el banco YA cobró en una ventana [desde, hasta).
+ * En POSITIVO: el extracto las trae negativas y el cuadro muestra los egresos en positivo dentro de
+ * su categoría (la categoría entra restando al flujo).
+ * @returns {string} expresión es-AR SIN el "=" inicial
+ */
+export function expresionComisiones(desde, hasta) {
+  return `-SUMIFS(${rangoCom(COMISIONES.importe)};${rangoCom(COMISIONES.naturaleza)};"${COMISIONES.marca}"`
+    + `;${rangoCom(COMISIONES.fecha)};">="&${desde};${rangoCom(COMISIONES.fecha)};"<"&${hasta})`
+}
+
+/**
+ * NÚCLEO PURO: el promedio mensual de comisiones sobre los meses que tienen extracto.
+ * No referencia la fila del cuadro: sale entera de la réplica, así que no puede ser circular.
+ */
+export function expresionComisionesPromedio() {
+  const total = `-SUMIFS(${rangoCom(COMISIONES.importe)};${rangoCom(COMISIONES.naturaleza)};"${COMISIONES.marca}")`
+  const meses = `SUMPRODUCT(--(COUNTIFS(${rangoCom(COMISIONES.naturaleza)};"${COMISIONES.marca}"`
+    + `;${rangoCom(COMISIONES.fecha)};">="&${MESES_CAB};${rangoCom(COMISIONES.fecha)};"<"&EOMONTH(${MESES_CAB};0)+1)>0))`
+  return `IF(${meses}=0;0;${total}/${meses})`
+}
+
+/**
+ * NÚCLEO PURO: la línea de comisiones bancarias de UN MES.
+ * Mes cerrado o en curso → lo que el banco cobró. Mes futuro → el mayor entre lo cobrado (puede haber
+ * un cargo adelantado) y el promedio de los meses con extracto. Es un PISO, igual que el descubierto.
+ * @param {string} celdaMes celda con el primer día del mes (ej. 'B$3')
+ */
+export function formulaComisionesMes(celdaMes) {
+  const real = expresionComisiones(celdaMes, `EOMONTH(${celdaMes};0)+1`)
+  return `=IF(EOMONTH(${celdaMes};0)<=EOMONTH(TODAY();0);${real};MAX(${real};${expresionComisionesPromedio()}))`
+}
+
+/**
+ * NÚCLEO PURO: la línea de comisiones bancarias de UNA SEMANA.
+ *
+ * EL BANCO LAS COBRA A FIN DE MES, NO SEMANA A SEMANA — verificado en el extracto: el 29/06, el 29/07
+ * y el 30/07. Repartir el promedio mensual entre las ~4,3 semanas daría el total del mes bien y el
+ * timing mal, y el semanal existe justamente para el timing. Así que la proyección cae íntegra en la
+ * semana que CONTIENE el último día del mes; las demás semanas futuras muestran sólo lo real.
+ * @param {string} desde expresión del lunes de la semana · @param {string} hasta límite EXCLUYENTE
+ */
+export function formulaComisionesSemana(desde, hasta) {
+  const real = expresionComisiones(desde, hasta)
+  // ¿el cierre del mes del lunes cae dentro de [desde, hasta)? Entonces es la semana del cargo.
+  const esLaSemanaDelCierre = `(EOMONTH(${desde};0)>=${desde})*(EOMONTH(${desde};0)<${hasta})`
+  return `=MAX(${real};${esLaSemanaDelCierre}*${expresionComisionesPromedio()})`
+}
+
 /**
  * De dónde sale la proyección de una línea, para explicarlo en el Sheet. PURA.
  *
@@ -908,8 +1002,10 @@ const soloRango = (r) => String(r).split('!')[1].replace(/\$/g, '')
  * @returns {{pestaña:string, rango:string}|null}
  */
 export function destinoDetalle(l, filasTabla = {}, filasCal = {}) {
-  // Las que el cuadro calcula sobre sus propias celdas: no hay pestaña de origen que mostrar.
-  if (l.descubierto || l.impuestoCheque) return null
+  // Las que el cuadro calcula sobre sus propias celdas: no hay pestaña de origen que mostrar. Las
+  // comisiones bancarias tampoco: su origen es la RÉPLICA del extracto (_BANCO_RAW), que es una hoja
+  // técnica y no una pestaña de trabajo del dueño — hiperlinkear ahí no ayuda a nadie a decidir.
+  if (l.descubierto || l.impuestoCheque || l.comisionesBancarias) return null
   // IVA/IIBB: apunta a la fila "⇒ IVA a pagar" del calendario si ya se ubicó; si no, a la pestaña.
   if (l.calendarioImpuestos) {
     return { pestaña: CALENDARIO_IMPUESTOS.pestaña, rango: filasCal?.iva ? `A${filasCal.iva}` : 'A1' }
