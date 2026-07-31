@@ -31,18 +31,28 @@ const filas = filasQuincenas(b)
 // Tiene que coincidir EXACTO con las 10 columnas de la pestaña. Devolvía 7 (de un layout viejo):
 // como sólo escribe cuando algo cambia y nada había cambiado, nunca se notó — la primera quincena
 // nueva habría reescrito el cuadro con las columnas corridas.
-check('11 columnas por quincena, como la pestaña', filas[0].length === 11)
+// 12 desde el 31/07: entró "Se paga el" en la columna C. Si alguien agrega otra sin actualizar
+// COL_REGISTRO, este check y los índices de abajo fallan acá en vez de en el Sheet.
+check('12 columnas por quincena, como la pestaña', filas[0].length === 12)
 // La etiqueta es una REFERENCIA a la celda de fecha, nunca la fecha copiada.
 check('la fecha se referencia, no se copia', filas[0][0].f === "='_J_OBREROS'!F3")
 // El "Hasta" busca la POSICIÓN del último día cargado, no cuántos días hay: las filas de fecha
 // tienen huecos y COUNTA dejaba la celda vacía (bloque del 16/3: COUNTA 12, última posición 14).
 check('Hasta busca la posición del último, no cuenta', filas[0][1].f.includes('MAX(') && !filas[0][1].f.includes('COUNTA('))
-check('Σ del jornal por hora del plantel sale de la columna W', filas[0][10].f === "=SUM('_J_OBREROS'!W4:W6)")
-check('el total usa el rango del bloque', filas[0][9].f === "=SUM('_J_OBREROS'!AA4:AA6)")
-check('el segundo bloque usa SU rango', filas[1][9].f === "=SUM('_J_OBREROS'!AA9:AA10)")
+check('Σ del jornal por hora del plantel sale de la columna W', filas[0][11].f === "=SUM('_J_OBREROS'!W4:W6)")
+check('el total usa el rango del bloque', filas[0][10].f === "=SUM('_J_OBREROS'!AA4:AA6)")
+check('el segundo bloque usa SU rango', filas[1][10].f === "=SUM('_J_OBREROS'!AA9:AA10)")
 // Las hs correspondientes se autorreferencian: dependen de la fila donde va a quedar la quincena.
-check('hs correspondientes referencian su propia fila', filas[0][4].f === "=C6*D6*'Parámetros'!$B$43")
-check('la segunda quincena referencia la fila 7', filas[1][4].f === "=C7*D7*'Parámetros'!$B$43")
+// Entró "Se paga el" en la columna C (31/07) y todo el registro corrió una a la derecha: días hábiles
+// pasó a D y personas a E. Si alguien inserta otra columna, esto falla acá y no en el Sheet.
+check('hs correspondientes referencian su propia fila', filas[0][5].f === "=D6*E6*'Parámetros'!$B$43")
+check('la segunda quincena referencia la fila 7', filas[1][5].f === "=D7*E7*'Parámetros'!$B$43")
+// LA COLUMNA "Se paga el" TIENE QUE ESTAR, Y EN SU LUGAR. Es la fecha que decide en qué mes y en qué
+// semana cae la quincena; si el generador no la emite, COL_REGISTRO queda mintiendo sobre el layout.
+check('la columna 3 es "Se paga el" y sale del extracto', filas[0][2].f.includes("'_BANCO_RAW'!$A$4:$A") && filas[0][2].f.includes('WORKDAY(B6'))
+check('la fecha de pago se busca DESPUÉS del cierre, no el mismo día', filas[0][2].f.includes('>B6'))
+check('el rango del extracto es ABIERTO (sin fila final)', !/\$A\$4:\$A\$\d/.test(filas[0][2].f))
+check('cada quincena mira su propia fila de cierre', filas[1][2].f.includes('WORKDAY(B7'))
 check('ninguna celda trae un número suelto', filas.every((r) => r.every((c) => c.f && !('n' in c))))
 
 // cuerpoDelCuadro: dónde termina el cuerpo. Contar "celdas no vacías de la columna A" daba 30

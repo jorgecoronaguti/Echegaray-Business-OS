@@ -46,12 +46,24 @@
 // pagamos contra el básico más bajo del convenio (Ayudante). Eso es una sola línea y es un control
 // de verdad: un jornal por debajo del convenio es deuda laboral, no ahorro.
 //
+// ═══ 4. LA FECHA DE CIERRE NO ES LA FECHA DE PAGO (31/07) ═══
+//
+// El dueño: *"los jornales que se pagan de la quincena q termina hoy, se pagarán la semana que
+// viene"*. La pestaña tenía "Hasta" y nada más, y el cash flow tomaba esa columna como la fecha en
+// que la plata sale de la cuenta. El extracto del Santander dice que no: la quincena que cerró el
+// 15/07 se pagó el 17/07 y la que cerró el 30/06 se pagó el 01/07.
+//
+// Ahora hay una columna "Se paga el" al lado de Hasta, y es la que manda en la caja. Sale del BANCO
+// cuando el banco lo prueba, del parámetro de la pestaña Parámetros cuando no, y del dueño si él la
+// escribe a mano. Toda la lógica vive en lib/jornales-fecha-pago.mjs.
+//
 // ═══ LA GRILLA ═══
 //
 //   A   la quincena (fecha desde) · el concepto en los bloques que no son tabla
 //   B   hasta · el importe en el hero
-//   C…  la serie
-//   K   el TOTAL de la quincena
+//   C   se paga el (la fecha de caja)
+//   D…  la serie
+//   L   el TOTAL de la quincena
 //
 // Un solo ancho para toda la pestaña, con la única excepción que el patrón admite: el REGISTRO
 // quincena por quincena, que es más ancho y va al final.
@@ -69,6 +81,7 @@ import { detectarQuincenas, filasQuincenas } from '../lib/nomina-sync.mjs'
 import { CATEGORIAS, COL, formulaValor, formulaVigencia } from '../lib/uocra-escala.mjs'
 import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
 import { JORNALES_FILE_ID } from '../lib/espejo-jornales.mjs'
+import { formulaSePagaEl, PARAMETROS } from '../lib/jornales-fecha-pago.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Jornales por Quincena'
@@ -77,8 +90,9 @@ const ESPEJO = '_J_OBREROS'
 const ESPEJO_OFI = '_J_OFICINA'
 const DRY = process.argv.includes('--dry')
 const AÑO = 2026
-/** El ancho de la pestaña: el registro de abajo es el bloque más ancho y define la grilla. */
-const ANCHO = 12
+/** El ancho de la pestaña: el registro de abajo es el bloque más ancho y define la grilla.
+ *  Pasó de 12 a 13 el 31/07 al entrar la columna "Se paga el" al lado de Hasta. */
+const ANCHO = 13
 /** Los doce meses, para el cuadro de oficina: ahí se cobra por MES, no por quincena. */
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 /** Sereno se paga por MES: no entra en la comparación por hora. */
@@ -174,10 +188,37 @@ export function quincenasPendientes(desde, anio = AÑO) {
 const fecha = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
 
 /**
- * La grilla entera. `bloques` son las quincenas detectadas en el espejo.
+ * NÚCLEO PURO: ¿la celda "Se paga el" la escribió una persona a mano?
+ *
+ * SI SÍ, GANA ELLA. Es la regla de oro del archivo ("lo que el dueño edita a mano es la verdad
+ * definitiva") y acá es además la ÚNICA forma de cargar un dato que todavía no existe: la quincena que
+ * cierra hoy no tiene lote en el banco porque el pago es la semana que viene, así que si el dueño
+ * decide el jueves en vez del lunes, lo escribe y ningún generador se lo pisa.
+ *
+ * Se exige que PAREZCA UNA FECHA. Mirar sólo "no empieza con =" no alcanzaba: la columna C del layout
+ * anterior era "Días hábiles", y un 10 o un 14 pegados a mano ahí se habrían preservado como si
+ * fueran la fecha de pago de la quincena. Un serial de Sheets de 2026 está arriba de 46.000; un día
+ * hábil nunca pasa de 16.
  */
-function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia }) {
+export function esFechaAMano(v) {
+  const s = String(v ?? '').trim()
+  if (!s || s.startsWith('=')) return false
+  if (/^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$/.test(s)) return true
+  return /^\d{5}$/.test(s) && Number(s) > 40000
+}
+
+/**
+ * La grilla entera. `bloques` son las quincenas detectadas en el espejo.
+ * `pagoPrevio` es la columna C tal como está hoy en la pestaña (render FORMULA), para no pisar una
+ * fecha de pago escrita a mano.
+ */
+function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [] }) {
   const filas = []
+  /**
+   * La celda "Se paga el" de la fila `r`: mi fórmula, o vacío para que la fusión preserve la fecha que
+   * escribió el dueño. Cadena vacía —no VACIO— porque VACIO significa "es mi celda y va vacía".
+   */
+  const pago = (r) => (esFechaAMano(pagoPrevio[r - 1]) ? '' : formulaSePagaEl(`B${r}`))
   /**
    * Agrega una fila rellenada al ancho de la pestaña y devuelve su número (1-based).
    *
@@ -237,7 +278,7 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia }) {
   push([seccion(1, 'Obra — lo que falta pagar, quincena por quincena hasta fin de año')])
   const fSigma = push([sub('Σ $/hora del plantel (última quincena)')])
   const fHpd = push([sub('Horas por persona y por día (medido)')])
-  push(['Quincena', 'Hasta', 'Días hábiles', 'Personas', 'A valores de hoy', 'Ajuste inflación', 'Proyectado'])
+  push(['Quincena', 'Hasta', 'Se paga el', 'Días hábiles', 'Personas', 'A valores de hoy', 'Ajuste inflación', 'Proyectado'])
   const p0 = filas.length + 1
   pendientes.forEach((q, i) => {
     const r = p0 + i
@@ -245,16 +286,20 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia }) {
       // La primera arranca el día siguiente al último ya pagado; las demás encadenan.
       i === 0 ? fecha(q.desde) : `=B${r - 1}+1`,
       `=IF(DAY(A${r})<16;DATE(YEAR(A${r});MONTH(A${r});15);EOMONTH(A${r};0))`,
+      // LA FECHA DE CAJA. Una quincena proyectada nunca tiene lote en el banco, así que acá manda el
+      // parámetro — pero la fórmula es la MISMA que en el registro, para que el día que el pago
+      // aparezca en el extracto la fila se corrija sola sin que nadie la toque.
+      pago(r),
       `=NETWORKDAYS(A${r};B${r})`,
       `=$B$${0}`, // se completa abajo: no se puede referenciar el hero antes de conocer su fila
-      `=$B$${0}*$B$${0}*C${r}`,
+      `=$B$${0}*$B$${0}*D${r}`,
       `=IFERROR(INDEX('Parámetros'!$C$74:$C$90;MATCH(EOMONTH(A${r};0);EOMONTH('Parámetros'!$A$74:$A$90;0);0));1)`,
-      `=E${r}*F${r}`,
+      `=F${r}*G${r}`,
     ])
   })
   // Los huecos internos también son MÍOS: con `''` el generador preservaría la fórmula que el
   // layout anterior tenía en esa misma celda, y quedaría un #VALUE! al lado del total bueno.
-  const fTotalProy = push([rotuloTotal('Total a pagar hasta diciembre'), ...Array(5).fill(VACIO), `=SUM(G${p0}:G${p0 + pendientes.length - 1})`])
+  const fTotalProy = push([rotuloTotal('Total a pagar hasta diciembre'), ...Array(6).fill(VACIO), `=SUM(H${p0}:H${p0 + pendientes.length - 1})`])
   blanco()
 
   // ══ 2 · SUELDOS DE OFICINA ══
@@ -269,7 +314,9 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia }) {
   // 16/06–30/06, un mes detrás del de obra. No se rellena el hueco con una estimación disfrazada de
   // dato: las quincenas sin cargar entran en la proyección, rotuladas como lo que son.
   push([seccion(2, 'Oficina — sueldos, mes por mes hasta fin de año')])
-  push(['Mes', 'Personas', 'Pagado', VACIO, VACIO, 'Ajuste inflación', 'Proyectado'])
+  // "Proyectado" va en la MISMA columna que el "Proyectado" de la proyección de obra (H): dos totales
+  // del mismo concepto en columnas distintas se leen como dos conceptos distintos.
+  push(['Mes', 'Personas', 'Pagado', VACIO, VACIO, VACIO, 'Ajuste inflación', 'Proyectado'])
   const o0 = filas.length + 1
   MESES.forEach((nombre, i) => {
     const r = filas.length + 1
@@ -284,19 +331,19 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia }) {
     // sueldos fijos: no hay horas ni jornal que modelar, y estimarlo por hora sería inventar una
     // precisión que no existe. La base y el ajuste se ven los dos en pantalla.
     const ajuste = bs.length ? VACIO : `=IFERROR(INDEX('Parámetros'!$C$74:$C$90;MATCH(EOMONTH(DATE(${AÑO};${i + 1};1);0);EOMONTH('Parámetros'!$A$74:$A$90;0);0));1)`
-    push([nombre, personas, pagado, VACIO, VACIO, ajuste,
-      bs.length ? VACIO : `=$B$${0}*F${r}`]) // la base se completa abajo, cuando se sabe su fila
+    push([nombre, personas, pagado, VACIO, VACIO, VACIO, ajuste,
+      bs.length ? VACIO : `=$B$${0}*G${r}`]) // la base se completa abajo, cuando se sabe su fila
   })
   const oFin = o0 + MESES.length - 1
   const fTotalOfi = push([rotuloTotal('Oficina — pagado y por pagar en el año'), VACIO,
-    `=SUM(C$${o0}:C$${oFin})`, VACIO, VACIO, VACIO, `=SUM(G$${o0}:G$${oFin})`])
+    `=SUM(C$${o0}:C$${oFin})`, VACIO, VACIO, VACIO, VACIO, `=SUM(H$${o0}:H$${oFin})`])
   // La base de la proyección: el último mes con dato. Se resuelve acá porque recién ahora se conocen
   // las filas del bloque.
   const baseOfi = `INDEX($C$${o0}:$C$${oFin};MAX(IF($C$${o0}:$C$${oFin}<>"";ROW($C$${o0}:$C$${oFin})-${o0}+1)))`
   MESES.forEach((_, i) => {
     const r = o0 + i
     if (bloquesOfi.some((b) => b.mes === i + 1)) return
-    filas[r - 1][6] = `=ARRAYFORMULA(${baseOfi})*F${r}`
+    filas[r - 1][7] = `=ARRAYFORMULA(${baseOfi})*G${r}`
   })
   blanco()
 
@@ -331,34 +378,40 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia }) {
 
   // ── 4 · EL REGISTRO ──
   push([seccion(4, 'Obra — el registro, quincena por quincena')])
-  push(['Quincena', 'Hasta', 'Días hábiles', 'Personas', 'Hs previstas', 'Hs reales', 'Banco', 'Adelanto', 'Total recibo', 'TOTAL', 'Σ $/hora', 'Estado'])
+  // LA GLOSA DE LA COLUMNA NUEVA, EN LA PESTAÑA Y NO SÓLO EN EL CÓDIGO. Quien abre la planilla tiene
+  // que poder saber de dónde salió esa fecha y que puede cambiarla, sin preguntarle a nadie.
+  push([sub('"Se paga el" = el lote de haberes del banco; si todavía no salió, Hasta + Parámetros'),
+    VACIO, VACIO, 'escribí una fecha a mano y manda la tuya'])
+  push(['Quincena', 'Hasta', 'Se paga el', 'Días hábiles', 'Personas', 'Hs previstas', 'Hs reales', 'Banco', 'Adelanto', 'Total recibo', 'TOTAL', 'Σ $/hora', 'Estado'])
   const f0 = filas.length + 1
   // LA COLUMNA QUE FALTABA. Sin ella la última fila se lee igual que las trece de arriba —cerrada y
   // pagada— cuando en realidad la quincena está a mitad de camino. Es una fórmula con TODAY(): se da
   // vuelta sola el día que la quincena termina.
   filasQuincenas(bloques, f0, ESPEJO).forEach((fila, i) => {
     const r = f0 + i
-    // Las once columnas que ya calculaba el lector de quincenas, MÁS el estado. Recortar a diez
-    // dejaba afuera la Σ $/hora, que es de donde la proyección saca su base: sin ella la columna K
-    // pasaba a ser texto y toda la proyección daba #VALUE!.
-    push([...fila.map((c) => c.f), `=IF(N(B${r})=0;"";IF(B${r}<=TODAY();"cerrada";"en curso"))`])
+    // Las once columnas que ya calculaba el lector de quincenas, MÁS la fecha de pago intercalada
+    // después de Hasta y el estado al final. Recortar dejaba afuera la Σ $/hora, que es de donde la
+    // proyección saca su base: sin ella esa columna pasaba a ser texto y toda la proyección daba
+    // #VALUE!.
+    const [colA, colB, ...resto] = fila.map((c) => c.f)
+    push([colA, colB, pago(r), ...resto, `=IF(N(B${r})=0;"";IF(B${r}<=TODAY();"cerrada";"en curso"))`])
   })
   const fLast = f0 + bloques.length - 1
   const fTotalReal = push([
-    rotuloTotal('Total pagado en el año'), ...Array(5).fill(VACIO),
+    rotuloTotal('Total pagado en el año'), ...Array(6).fill(VACIO),
     // Se cierra contra la fila de ARRIBA, no contra un número de fila escrito a mano: así una fila
     // insertada nunca puede quedar afuera del total. Es el techo de 14 quincenas, arreglado de raíz.
-    ...['G', 'H', 'I', 'J'].map((c) => `=SUM(${c}$${f0}:INDEX(${c}:${c};ROW()-1))`),
+    ...['H', 'I', 'J', 'K'].map((c) => `=SUM(${c}$${f0}:INDEX(${c}:${c};ROW()-1))`),
   ])
 
   // ── Las referencias que no se podían escribir antes de conocer las filas ──
   const cel = (f, c) => `$${c}$${f}`
-  filas[fSigma - 1][1] = `=INDEX($K$${f0}:$K$${fLast};COUNTA($A$${f0}:$A$${fLast}))`
-  filas[fHpd - 1][1] = `=IFERROR(SUM($J$${f0}:$J$${fLast})/SUM($K$${f0}:$K$${fLast})/AVERAGE($C$${f0}:$C$${fLast});0)`
+  filas[fSigma - 1][1] = `=INDEX($L$${f0}:$L$${fLast};COUNTA($A$${f0}:$A$${fLast}))`
+  filas[fHpd - 1][1] = `=IFERROR(SUM($K$${f0}:$K$${fLast})/SUM($L$${f0}:$L$${fLast})/AVERAGE($D$${f0}:$D$${fLast});0)`
   pendientes.forEach((q, i) => {
     const r = p0 + i
-    filas[r - 1][3] = `=INDEX($D$${f0}:$D$${fLast};COUNTA($A$${f0}:$A$${fLast}))`
-    filas[r - 1][4] = `=${cel(fSigma, 'B')}*${cel(fHpd, 'B')}*C${r}`
+    filas[r - 1][4] = `=INDEX($E$${f0}:$E$${fLast};COUNTA($A$${f0}:$A$${fLast}))`
+    filas[r - 1][5] = `=${cel(fSigma, 'B')}*${cel(fHpd, 'B')}*D${r}`
   })
   // ═══ CERRADA vs EN CURSO: LO DECIDE UNA FÓRMULA, NO UNA CORRIDA DEL AGENTE ═══
   //
@@ -369,19 +422,23 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia }) {
   // recalcula solo cada vez que alguien abre la planilla: no espera a que corra el agente, no hay una
   // constante que actualizar, y el día que la quincena cierre pasa sola de una línea a la otra.
   // Ninguna persona tiene que acordarse de nada.
+  // OJO: "cerrada" mide la QUINCENA (¿ya terminó de trabajarse?), no el PAGO. Son dos preguntas
+  // distintas y las dos importan: el hero informa cuánto trabajo está terminado; el cash flow, cuándo
+  // sale la plata. Por eso este bloque sigue mirando B (Hasta) y no C (Se paga el) — cambiarlo haría
+  // que una quincena cerrada y todavía impaga se leyera como "en curso", que es falso.
   const cerrada = `($B$${f0}:$B$${fLast}<=TODAY())`
-  filas[fHero.cerradas - 1][1] = `=SUMPRODUCT(ISNUMBER($B$${f0}:$B$${fLast})*${cerrada}*IF(ISNUMBER($J$${f0}:$J$${fLast});$J$${f0}:$J$${fLast};0))`
-  filas[fHero.curso - 1][1] = `=SUMPRODUCT(ISNUMBER($B$${f0}:$B$${fLast})*NOT(${cerrada})*IF(ISNUMBER($J$${f0}:$J$${fLast});$J$${f0}:$J$${fLast};0))`
+  filas[fHero.cerradas - 1][1] = `=SUMPRODUCT(ISNUMBER($B$${f0}:$B$${fLast})*${cerrada}*IF(ISNUMBER($K$${f0}:$K$${fLast});$K$${f0}:$K$${fLast};0))`
+  filas[fHero.curso - 1][1] = `=SUMPRODUCT(ISNUMBER($B$${f0}:$B$${fLast})*NOT(${cerrada})*IF(ISNUMBER($K$${f0}:$K$${fLast});$K$${f0}:$K$${fLast};0))`
   // Y al lado, qué quincena es y HASTA QUÉ DÍA está cargada de verdad. Medido sobre las horas del
   // espejo, no sobre las fechas del encabezado: la planilla escribe los catorce días el día que abre
   // la quincena, así que las fechas dicen "31/07" desde el primer día y no distinguen nada.
   // El texto va CORTO: al lado tiene el importe, y uno largo se le monta encima.
   filas[fHero.curso - 1][2] = cargaAlDia ? `cargada hasta el ${cargaAlDia}` : VACIO
-  filas[fHero.falta - 1][1] = `=${cel(fTotalProy, 'G')}`
+  filas[fHero.falta - 1][1] = `=${cel(fTotalProy, 'H')}`
   filas[fHero.ofiPagado - 1][1] = `=${cel(fTotalOfi, 'C')}`
-  filas[fHero.ofiFalta - 1][1] = `=${cel(fTotalOfi, 'G')}`
+  filas[fHero.ofiFalta - 1][1] = `=${cel(fTotalOfi, 'H')}`
   filas[fHero.costo - 1][1] = `=B${fHero.cerradas}+B${fHero.curso}+B${fHero.falta}+B${fHero.ofiPagado}+B${fHero.ofiFalta}`
-  filas[fHero.plantel - 1][1] = `=INDEX($D$${f0}:$D$${fLast};COUNTA($A$${f0}:$A$${fLast}))`
+  filas[fHero.plantel - 1][1] = `=INDEX($E$${f0}:$E$${fLast};COUNTA($A$${f0}:$A$${fLast}))`
 
   return {
     filas,
@@ -450,12 +507,28 @@ async function main() {
     console.log(`  ⚠ la planilla de oficina va ${dias} día(s) detrás de la de obra: esas quincenas entran como proyección, no como pagadas`)
   }
 
-  const g = grilla({ bloques, pendientes, bloquesOfi, cargaAlDia })
+  // ── LA COLUMNA "SE PAGA EL" QUE YA ESTÁ EN LA PESTAÑA ──
+  // Se lee con render FORMULA y ANTES de armar la grilla: si el dueño escribió una fecha a mano, esa
+  // fila no se reescribe. Leerla después sería tarde, y leerla sin FORMULA no distingue una fecha
+  // tipeada de una que devuelve mi propia fórmula.
+  const pagoPrevio = []
+  const colC = await google.readSheetValues(ID, `'${PESTAÑA}'!C1:C400`, { render: 'FORMULA' }).catch(() => [])
+  colC.forEach((f, i) => { pagoPrevio[i] = f?.[0] })
+
+  const g = grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio })
   console.log(`grilla: ${g.filas.length} filas × ${ANCHO} columnas`)
+  const aMano = g.filas.filter((f) => f[2] === '').length
+  if (aMano) console.log(`  ✋ ${aMano} fecha(s) de pago escrita(s) a mano: no las toco`)
   if (DRY) { for (const f of g.filas) console.log('   ', f.filter((c) => c && c !== VACIO).map((x) => String(x).slice(0, 34)).join(' | ')); return }
 
-  const hoja = (await google.getSheetMeta(ID)).find((h) => h.title === PESTAÑA)
+  const hojas = await google.getSheetMeta(ID)
+  const hoja = hojas.find((h) => h.title === PESTAÑA)
   if (!hoja) throw new Error(`no encontré la pestaña "${PESTAÑA}"`)
+
+  // EL PARÁMETRO SE ASEGURA ANTES DE ESCRIBIR LA GRILLA. Las fórmulas de "Se paga el" citan
+  // JORNALES_DESFASE_PAGO y JORNALES_VENTANA_BANCO por nombre: si los nombres no existen todavía, la
+  // columna entera queda en #NAME? hasta la corrida siguiente.
+  await asegurarParametros(google, hojas).catch((e) => console.warn(`  ⚠ no pude asegurar los parámetros de fecha de pago: ${e.message}`))
 
   // La cola de la pestaña vieja: se marca VACIO —"es mi celda y va vacía"— así se limpia lo que
   // dejaron los generadores anteriores sin tocar lo que haya escrito una persona.
@@ -537,16 +610,85 @@ async function main() {
  * fórmula que dice `JORNALES_REAL_TOTAL` se audita sola, cosa que `$J$3:$J$16` no. Es lo que pide la
  * skill de Sheets y lo que evita que el próximo rediseño rompa otras tres pestañas en silencio.
  */
+/**
+ * NÚCLEO PURO: dónde va cada parámetro en Parámetros — el que ya está, o la fila donde agregarlo.
+ *
+ * SÓLO AGREGA LO QUE FALTA, NUNCA PISA UN VALOR. Es la diferencia entre un parámetro y una constante
+ * disfrazada: si el dueño cambia el 1 por un 3, la corrida siguiente tiene que RESPETARLO. Por eso
+ * cuando el rótulo ya existe esta función devuelve la fila y nada más: ni el valor ni la nota se
+ * reescriben.
+ *
+ * @param {any[][]} filas Parámetros!A1:C…
+ * @returns {{rango:string, rotulo:string, fila:number, nuevo:boolean, valor:any, nota:string}[]}
+ */
+export function ubicarParametros(filas = []) {
+  const norm = (s) => String(s ?? '').trim().toLowerCase()
+  let libre = 0
+  filas.forEach((f, i) => { if ((f || []).some((c) => String(c ?? '').trim())) libre = i + 1 })
+  // Una fila en blanco de separación: el bloque nuevo no se pega al último de la pestaña.
+  libre += 2
+  return PARAMETROS.map((p) => {
+    const i = filas.findIndex((f) => norm(f?.[0]) === norm(p.rotulo))
+    if (i >= 0) return { ...p, fila: i + 1, nuevo: false }
+    const fila = libre
+    libre++
+    return { ...p, fila, nuevo: true }
+  })
+}
+
+/**
+ * Asegura las dos filas de parámetro en Parámetros y publica sus rangos con nombre.
+ *
+ * POR QUÉ EL DESFASE VIVE EN LA PESTAÑA Y NO EN EL CÓDIGO. Es un criterio de negocio que va a cambiar
+ * —el banco acredita en uno o dos días hábiles según el día de la semana, y el dueño puede querer
+ * moverlo— y un criterio que sólo se puede cambiar editando JavaScript no se cambia: envejece. Es la
+ * misma razón por la que "Horas por jornada" ya vive ahí y no adentro de una fórmula.
+ */
+async function asegurarParametros(google, hojas) {
+  const TAB = 'Parámetros'
+  const hoja = hojas.find((h) => h.title === TAB)
+  if (!hoja) { console.warn(`  ⚠ no existe la pestaña "${TAB}": los parámetros de fecha de pago quedan en su valor por defecto`); return }
+
+  const filas = await google.readSheetValues(ID, `'${TAB}'!A1:C400`).catch(() => [])
+  const ubic = ubicarParametros(filas)
+
+  for (const p of ubic.filter((x) => x.nuevo)) {
+    // Se escribe SÓLO la fila del parámetro, con el portón que respeta candado, firma y anotaciones.
+    // Nada de batchUpdateValues crudo: Parámetros es una pestaña del dueño, no un espejo.
+    const r = await escribirPreservando(google, ID, `'${TAB}'`, [[p.rotulo, p.valor, p.nota]], {
+      fila0: p.fila, anchoHoja: 3, pestana: TAB,
+    })
+    if (r?.bloqueada || r?.editadaPorHumano) { console.log(`  ⚠ "${TAB}" está bajo tu control: no escribí "${p.rotulo}"`); continue }
+    console.log(`  ✚ parámetro nuevo en ${TAB}!A${p.fila}: "${p.rotulo}" = ${p.valor}`)
+  }
+
+  // Los nombres apuntan a la celda del VALOR (columna B). Si el dueño mueve la fila, la próxima
+  // corrida la vuelve a encontrar por el rótulo y reapunta el nombre: no hay coordenada escrita a mano.
+  const existentes = new Map((await google.getNamedRanges(ID)).map((r) => [r.name, r.namedRangeId]))
+  const reqs = ubic.map((p) => {
+    const range = { sheetId: hoja.sheetId, startRowIndex: p.fila - 1, endRowIndex: p.fila, startColumnIndex: 1, endColumnIndex: 2 }
+    return existentes.has(p.rango)
+      ? { updateNamedRange: { namedRange: { namedRangeId: existentes.get(p.rango), name: p.rango, range }, fields: 'range' } }
+      : { addNamedRange: { namedRange: { name: p.rango, range } } }
+  })
+  await google.spreadsheetBatchUpdate(ID, reqs)
+  console.log(`parámetros de fecha de pago: ${ubic.map((p) => `${p.rango}=${TAB}!B${p.fila}`).join(' · ')}`)
+}
+
 async function publicarRangos(google, sheetId, g) {
   const finProy = g.p0 + g.nProy - 1
   const rango = (c0, r0, r1) => ({ sheetId, startRowIndex: r0 - 1, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c0 + 1 })
   const quiero = {
     JORNALES_REAL_DESDE: rango(0, g.f0, g.fTotalReal - 1),
     JORNALES_REAL_HASTA: rango(1, g.f0, g.fTotalReal - 1),
-    JORNALES_REAL_TOTAL: rango(9, g.f0, g.fTotalReal - 1),
+    // LA FECHA DE CAJA (31/07). Es la que usa la línea de jornales del cash flow; HASTA queda como
+    // fallback y como la fecha del DEVENGAMIENTO, que es otra pregunta y otra pestaña.
+    JORNALES_REAL_PAGO: rango(2, g.f0, g.fTotalReal - 1),
+    JORNALES_REAL_TOTAL: rango(10, g.f0, g.fTotalReal - 1),
     JORNALES_PROY_DESDE: rango(0, g.p0, finProy),
     JORNALES_PROY_HASTA: rango(1, g.p0, finProy),
-    JORNALES_PROY_TOTAL: rango(6, g.p0, finProy),
+    JORNALES_PROY_PAGO: rango(2, g.p0, finProy),
+    JORNALES_PROY_TOTAL: rango(7, g.p0, finProy),
   }
   const existentes = new Map((await google.getNamedRanges(ID)).map((r) => [r.name, r.namedRangeId]))
   const reqs = Object.entries(quiero).map(([name, range]) => (existentes.has(name)
@@ -602,10 +744,13 @@ async function formatear(google, sheetId, filas, g) {
   // Las fechas son fechas, no importes: sin esto la columna A del registro mostraría "$46.204".
   // Y a la IZQUIERDA: una fecha alineada a la derecha en una columna de 330px queda flotando lejos
   // de su encabezado y la tabla se lee como si estuviera corrida.
+  // A, B y C son las tres fechas de cada fila de quincena: Quincena, Hasta y Se paga el. Sin la C acá,
+  // la fecha de pago saldría como "$46.237" —el serial con formato de moneda—, que es exactamente el
+  // defecto que este mismo bloque vino a arreglar para la columna Hasta.
   for (const f of g.fechas) {
     reqs.push({
       repeatCell: {
-        range: rg(f - 1, f, 0, 2),
+        range: rg(f - 1, f, 0, 3),
         cell: { userEnteredFormat: { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'LEFT' } },
         fields: 'userEnteredFormat(numberFormat,horizontalAlignment)',
       },
@@ -614,14 +759,15 @@ async function formatear(google, sheetId, filas, g) {
   const ENTERO = { type: 'NUMBER', pattern: '#,##0;-#,##0;"—"' }
   const HORAS = { type: 'NUMBER', pattern: '#,##0.0;-#,##0.0;"—"' }
   // Proyección: días hábiles y personas enteros; el ajuste por inflación es un coeficiente, no plata.
-  fmt(g.p0 - 1, finProy, 2, 4, ENTERO)
-  fmt(g.p0 - 1, finProy, 5, 6, { type: 'NUMBER', pattern: '0.00;-0.00;"—"' })
+  // Todos corridos una columna a la derecha desde el 31/07: entró "Se paga el" en la C.
+  fmt(g.p0 - 1, finProy, 3, 5, ENTERO)
+  fmt(g.p0 - 1, finProy, 6, 7, { type: 'NUMBER', pattern: '0.00;-0.00;"—"' })
   // Registro: días y personas enteros, las horas con un decimal.
-  fmt(g.f0 - 1, g.fTotalReal, 2, 4, ENTERO)
-  fmt(g.f0 - 1, g.fTotalReal, 4, 6, HORAS)
+  fmt(g.f0 - 1, g.fTotalReal, 3, 5, ENTERO)
+  fmt(g.f0 - 1, g.fTotalReal, 5, 7, HORAS)
   // Oficina: personas entera y el ajuste por inflación como coeficiente, no como plata.
   fmt(g.o0 - 1, g.oFin, 1, 2, ENTERO)
-  fmt(g.o0 - 1, g.oFin, 5, 6, { type: 'NUMBER', pattern: '0.00;-0.00;"—"' })
+  fmt(g.o0 - 1, g.oFin, 6, 7, { type: 'NUMBER', pattern: '0.00;-0.00;"—"' })
   for (const f of g.cantidades) fmt(f - 1, f, 1, 2, HORAS)
   for (const f of g.enteros) fmt(f - 1, f, 1, 2, ENTERO)
   reqs.push({

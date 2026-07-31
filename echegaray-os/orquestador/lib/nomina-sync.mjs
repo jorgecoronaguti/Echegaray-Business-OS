@@ -17,6 +17,7 @@
 // Es idempotente: si no cambió nada, reescribe lo mismo. No toca ninguna fórmula ni Compras.
 
 import { cargasSocialesDeclaradas } from './cargas-sociales.mjs'
+import { formulaSePagaEl } from './jornales-fecha-pago.mjs'
 
 /**
  * NÚCLEO PURO: detecta los bloques de quincena en la grilla del espejo de jornales.
@@ -52,6 +53,25 @@ export function detectarQuincenas(filas = []) {
  * @param {Array} bloques salida de detectarQuincenas
  * @param {number} filaInicio primera fila del cuerpo en la pestaña (las fórmulas se autorreferencian)
  */
+/**
+ * LAS COLUMNAS DEL CUADRO DE QUINCENAS, DECLARADAS UNA SOLA VEZ.
+ *
+ * POR QUÉ EXISTE (31/07). El generador escribía estas columnas y `sync-caja-nucleo.mjs` las leía con
+ * los índices tipeados aparte. El rediseño del 23/07 movió el cuadro y el lector siguió leyendo los
+ * índices viejos: la base terminó con CERO quincenas reales y nadie se enteró, porque leer una celda
+ * vacía no es un error. Un layout con dos definiciones se desincroniza; con una, no puede.
+ *
+ * Los índices son 0-based, relativos a la columna A de la pestaña.
+ */
+export const COL_REGISTRO = {
+  desde: 0, hasta: 1, pago: 2, dias: 3, personas: 4, hs_previstas: 5, hs_reales: 6,
+  banco: 7, adelanto: 8, total_recibo: 9, total: 10, sigma_hora: 11, estado: 12,
+}
+/** Ídem para el bloque de proyección (§1), que tiene menos columnas y otro orden. */
+export const COL_PROYECCION = {
+  desde: 0, hasta: 1, pago: 2, dias: 3, personas: 4, valores_hoy: 5, ajuste: 6, total: 7,
+}
+
 export function filasQuincenas(bloques, filaInicio = 6, hoja = '_J_OBREROS') {
   const H = `'${hoja}'`
   return bloques.map((b, i) => {
@@ -65,9 +85,17 @@ export function filasQuincenas(bloques, filaInicio = 6, hoja = '_J_OBREROS') {
       // día está en la posición 14 → la celda quedaba VACÍA. Hay que buscar la POSICIÓN del último
       // no vacío, no contar cuántos hay.
       { f: `=IFERROR(INDEX(${H}!F${ff}:U${ff},SUMPRODUCT(MAX((${H}!F${ff}:U${ff}<>"")*(COLUMN(${H}!F${ff}:U${ff})-COLUMN(${H}!F${ff})+1)))),"")` },
+      // SE PAGA EL — la fecha que decide en qué mes y en qué semana cae la quincena (31/07). Sale del
+      // lote de "Pago haberes" del extracto cuando el banco ya lo probó, y si no, del desfase que vive
+      // en Parámetros. NO es el cierre: el extracto muestra que la quincena que cerró el 15/07 se pagó
+      // el 17/07 y la que cerró el 30/06 se pagó el 01/07.
+      { f: formulaSePagaEl(`B${r}`), estilo: 'fecha' },
       { f: `=COUNTA(${H}!F${ff}:U${ff})` },
       { f: `=COUNT(${H}!A${b.inicio}:A${b.fin})` },
-      { f: `=C${r}*D${r}*'Parámetros'!$B$43` },
+      // D = días hábiles, E = personas. Eran C y D hasta el 31/07: entró "Se paga el" en la columna C
+      // y todo el registro corrió una a la derecha. Quien inserte otra columna tiene que corregir acá:
+      // esta fórmula la escribe el generador, así que el desfase NO daría error, daría un número.
+      { f: `=D${r}*E${r}*'Parámetros'!$B$43` },
       { f: `=SUM(${H}!V${b.inicio}:V${b.fin})` },
       { f: `=SUM(${H}!X${b.inicio}:X${b.fin})`, estilo: 'moneda' },
       { f: `=SUM(${H}!Y${b.inicio}:Y${b.fin})`, estilo: 'moneda' },
