@@ -1,0 +1,21 @@
+[Unit]
+# El vigía de fuentes: mira las fuentes que alimentan el Flujo de Fondos y registra las NOVEDADES
+# que lo afectan (public.vigia_novedades). Determinístico y 0 llamadas a Anthropic: no razona, compara.
+# Corre DESPUÉS del indexador del data room, porque las carpetas de Drive las ve a través de
+# public.drive_index (ver el comentario de cabecera del script).
+Description=Echegaray OS - Vigía de fuentes del Flujo de Fondos -> public.vigia_novedades
+After=network-online.target echegaray-drive-index.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+EnvironmentFile=%h/.config/echegaray-orq/worker.env
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/vigia-fuentes.mjs
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vigia-fuentes
+TimeoutStartSec=10min
+
+[Install]
+WantedBy=default.target
