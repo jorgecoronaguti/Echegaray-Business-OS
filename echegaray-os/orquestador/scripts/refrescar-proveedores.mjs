@@ -57,6 +57,14 @@ async function main() {
       : `⚠ el generador falló: ${e.message.slice(0, 200)}`)
     throw e
   }
+  // ═══ EL LOG DEL GENERADOR NO SE PIERDE (31/07) ═══
+  //
+  // Este refresher se comía el stdout del generador y publicaba una sola línea de resumen. Cuando la
+  // pestaña salió entrelazada después de una corrida automática, no había NINGÚN rastro de qué había
+  // hecho: ni qué guardas actuaron, ni cuántos proveedores listó, ni si escribió. Un agente que corre
+  // solo y no deja registro de lo que hizo no se puede diagnosticar — y este ya rompió la pestaña
+  // cuatro veces. Se reenvía el log completo al journal, con prefijo para distinguirlo.
+  for (const linea of String(stdout).split('\n')) if (linea.trim()) console.log(`  │ ${linea}`)
   const preserv = (String(stdout).match(/Proveedores: (\d+) celda/) || [])[1]
   const errores = /sin una sola celda en error/.test(stdout)
   // Y el propio aviso del cuadro: si el listado no muestra toda la deuda, no está refrescada.

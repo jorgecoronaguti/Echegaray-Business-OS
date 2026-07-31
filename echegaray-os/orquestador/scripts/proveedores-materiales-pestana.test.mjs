@@ -337,14 +337,23 @@ test('el saldo del JS es el MISMO que el de la fórmula, incluidos los paréntes
   assert.match(src, /MAX\(0;Compras!\$\$\{letra\(IDX\.parcial1\)\}/, 'la fórmula de la celda hace lo mismo')
 })
 
-test('SE CABLEA A TODO EL QUE TENGA UNA FILA PENDIENTE, no sólo al que hoy debe', () => {
-  // Cada fila está gateada por un predicado vivo: si no debe, se vacía sola. Sobre-incluir es gratis;
-  // sub-incluir es el defecto, porque un proveedor no cableado NO PUEDE aparecer aunque se le empiece a
-  // deber — hay que esperar a que corra el generador. Eso es lo que hacía que la pestaña no fuera viva.
+test('EL CUADRO LISTA SÓLO A QUIEN SE LE DEBE HOY — sobre-incluir NO era gratis', () => {
+  // Este test decía lo contrario y estaba MAL. La regla anterior cableaba a todo el que tuviera una fila
+  // Pendiente, con el argumento de que el predicado vivo vacía la fila del que no debe. En la pestaña
+  // real eso dejaba, por cada proveedor ya pagado, un par de filas con su nombre y su comentario (que SÍ
+  // se escribe: viene del respaldo) y "0 fac. · —" en el importe. Cuatro de esas quedaban intercaladas
+  // entre los proveedores reales y el cuadro se leía como corrupto. El dueño lo rechazó cuatro veces.
+  //
+  // Y peor: dos sumaban $468.542 que el titular no cuenta, así que el aviso "⚠ Faltan 2 facturas"
+  // quedaba encendido para siempre señalando una diferencia que era del propio listado.
+  //
+  // El comentario del proveedor pagado NO se pierde: vive en public.proveedor_notas y vuelve solo el día
+  // que reaparezca. El precio es que uno nuevo entra en la corrida siguiente, no al instante.
   const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
-  assert.match(src, /p\.total > 0\.5 \|\| p\.filas\.length > 0/,
-    'entra el que tiene saldo O el que tiene alguna fila pendiente')
-  assert.match(src, /sobre-incluir es GRATIS y sub-incluir es el defecto/i, 'y se explica por qué')
+  assert.match(src, /\.filter\(\(p\) => p\.total > 0\.5\)/, 'sólo entra el que tiene saldo > 0')
+  assert.ok(!/p\.total > 0\.5 \|\| p\.filas\.length > 0/.test(src),
+    'la regla vieja (sobre-incluir) no puede volver sin que este test falle')
+  assert.match(src, /SOBRE-INCLUIR NO ERA GRATIS/i, 'y queda escrito por qué se cambió')
 })
 
 test('la convención del dueño: un negativo entre paréntesis en Parcial es el saldo que FALTA', () => {
