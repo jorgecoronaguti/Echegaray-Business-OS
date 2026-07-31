@@ -524,7 +524,16 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
         // deuda que no existe: la columna "Pagado el" es nueva y no tener el dato no es deber la plata.
         // La plata de una quincena pagada antes del corte YA ESTÁ en el saldo del banco.
         + `+SUMPRODUCT(ISNUMBER(JORNALES_REAL_PAGO)*(JORNALES_REAL_PAGADO="")*(JORNALES_REAL_PAGO>=CAJA_FECHA_SALDO)*${tramo(k, 'JORNALES_REAL_PAGO')}*N(JORNALES_REAL_TOTAL))`
-        + `+SUMPRODUCT(ISNUMBER(JORNALES_PROY_PAGO)*${tramo(k, 'JORNALES_PROY_PAGO')}*N(JORNALES_PROY_TOTAL))`,
+        + `+SUMPRODUCT(ISNUMBER(JORNALES_PROY_PAGO)*${tramo(k, 'JORNALES_PROY_PAGO')}*N(JORNALES_PROY_TOTAL))`
+        // ═══ Y LA OFICINA, QUE TAMPOCO ESTABA (31/07) ═══
+        //
+        // El dueño: "no estás considerando oficina... se ve mal todo en cashflow y por ende podría estar
+        // mal en caja". Tenía razón las dos veces. Este calendario sumaba la nómina de OBRA y no la de
+        // OFICINA: ~$3,4M por mes que salen de la misma caja y que el piso proyectado no veía.
+        //
+        // Sale del MISMO bloque que ahora lee el cash flow (OFICINA_*, publicados por la pestaña
+        // Jornales): una capacidad, una fuente. Un mes está pagado o proyectado, nunca los dos.
+        + `+SUMPRODUCT(ISNUMBER(OFICINA_PAGO)*(OFICINA_PAGO>=CAJA_FECHA_SALDO)*${tramo(k, 'OFICINA_PAGO')}*(N(OFICINA_PAGADO)+N(OFICINA_PROYECTADO)))`,
       `=$C${f}-$D${f}`,
       // La posición acumulada arranca en la disponibilidad neta: de nada sirve un neto de tramo si no
       // se ve contra la plata que hay.
@@ -546,7 +555,10 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // nadie lee. Ahora resta las dos fuentes: cheques + nómina cerrada sin pagar + nómina proyectada.
   const nominaEnCalendario = 'SUMPRODUCT(ISNUMBER(JORNALES_REAL_PAGO)*(JORNALES_REAL_PAGADO="")*(JORNALES_REAL_PAGO>=CAJA_FECHA_SALDO)*N(JORNALES_REAL_TOTAL))'
     + '+SUMPRODUCT(ISNUMBER(JORNALES_PROY_PAGO)*N(JORNALES_PROY_TOTAL))'
-  push(['   · control: tiene que dar lo mismo que los cheques no debitados MÁS la nómina sin pagar', '', '',
+    // La oficina entra al calendario, así que el control tiene que restarla también: si no, quedaría en
+    // rojo permanente por una diferencia correcta, y un control que siempre da rojo no lo mira nadie.
+    + '+SUMPRODUCT(ISNUMBER(OFICINA_PAGO)*(OFICINA_PAGO>=CAJA_FECHA_SALDO)*(N(OFICINA_PAGADO)+N(OFICINA_PROYECTADO)))'
+  push(['   · control: cheques no debitados + nómina de obra sin pagar + oficina', '', '',
     `=$D${filas.length}-$E$${fCh}-(${nominaEnCalendario})`, '', '', '', '',
     'Si no da cero, el calendario cuenta de más o de menos — casi siempre una fecha guardada como texto. Ahora mide las DOS fuentes: los cheques emitidos y las obligaciones de nómina (cerradas sin pagar + proyectadas).'])
   const fPeor = push(['   · el punto más bajo del horizonte', '', '', '', '', `=MIN($F${cal0}:$F${cal1})`, '', '', ''])
@@ -1215,7 +1227,29 @@ async function main() {
   const { grid: gridFinal, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, PESTAÑA, g.filas, actual)
   g.filas = gridFinal
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)
-  const { conservadas } = await escribirPreservando(google, ID, tab, g.filas, { respetar: false /* la Regla 0 ya se aplicó arriba, a mano: este generador guarda el registro DESPUÉS de releer la pestaña, que es más fiel que hacerlo antes de escribir */, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
+  const escritura = await escribirPreservando(google, ID, tab, g.filas, { respetar: false /* la Regla 0 ya se aplicó arriba, a mano: este generador guarda el registro DESPUÉS de releer la pestaña, que es más fiel que hacerlo antes de escribir */, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
+  // ═══ SI NO SE ESCRIBIÓ, NO SE FORMATEA NI SE MUEVEN LOS NOMBRES (31/07) ═══
+  //
+  // ESTE ERA EL DESASTRE. El dueño: "desastre lo q estás haciendo en caja". La guarda hacía bien su
+  // trabajo —con la pestaña candada, `escribirPreservando` NO escribe— pero el resultado se ignoraba y
+  // la corrida seguía como si hubiera escrito:
+  //
+  //   · `formatear` pintaba la geometría de la grilla NUEVA sobre los valores VIEJOS. Cuatro filas de
+  //     corrimiento: la columna "Sale" del calendario quedó con formato de número ("32.288.000,00"),
+  //     "Queda después" con formato de FECHA, y la fila "Semana que viene" sin ningún formato
+  //     ("3488735"). Eso es exactamente lo que se ve en pantalla.
+  //   · `publicar` reapuntaba CAJA_TOTAL_DISPONIBLE y CAJA_FECHA_SALDO a las filas de la grilla nueva:
+  //     quedaron en E22 y F22, dos celdas VACÍAS. El total real seguía en la fila 18. Con el total en
+  //     cero y la fecha de corte en cero, TODO cheque y TODA quincena pasan el filtro ">=fecha de
+  //     saldo" y el calendario de vencimientos infla sus tramos. Sin un solo #ERROR, sin un aviso.
+  //
+  // Una pestaña que no se escribió no cambió de forma: su formato y sus nombres son los de su última
+  // escritura y así tienen que quedar. El skip es una decisión correcta; lo que estaba mal era seguir.
+  if (escritura?.bloqueada || escritura?.editadaPorHumano) {
+    console.log(`  🔒 "${PESTAÑA}" bajo tu control: no escribí, y por lo tanto NO le toco el formato, NI muevo sus rangos con nombre, NI reescribo su registro de rótulos. La pestaña queda exactamente como la dejaste.`)
+    return
+  }
+  const { conservadas } = escritura
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) escritas por una persona — CONSERVADAS`)
   await formatear(google, hoja.sheetId, g, tab)
 
@@ -1439,7 +1473,14 @@ async function formatear(google, sheetId, g, tab) {
 
   // Encabezados de columna al estilo statement: sin fondo, texto chico y apagado, alineado como su
   // dato (los importes a la derecha), y una hairline abajo que separa el título de las filas.
-  for (const c of [g.cab0, g.cab1, g.cab3]) {
+  // EL ENCABEZADO DEL CALENDARIO FALTABA EN ESTA LISTA (31/07). "Tramo · Entra · Sale · Neto · Queda
+  // después · Fin del tramo" se quedaba con el formato de SU COLUMNA: "Sale" dibujado como número
+  // suelto y "Queda después" con formato de FECHA. Se ubica por su rótulo, no por su número de fila.
+  const cabCal = g.filas.findIndex((f) => String(f?.[0] ?? '').trim() === 'Tramo') + 1
+  for (const c of [g.cab0, g.cab1, g.cab3, cabCal].filter((x) => x > 0)) {
+    // UN ENCABEZADO ES TEXTO, NUNCA PLATA NI FECHA: se le devuelve el formato de número junto con la
+    // tipografía. Sin esto gana el formato que se aplicó a la columna entera más arriba.
+    fmt(r(c - 1, c), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
     fmt(r(c - 1, c), 'userEnteredFormat',
       { textFormat: { bold: true, foregroundColor: MUTED, fontSize: E.TAM.nota }, horizontalAlignment: 'LEFT', wrapStrategy: 'CLIP' })
     fmt(r(c - 1, c, 2, 3), 'userEnteredFormat.horizontalAlignment', { horizontalAlignment: 'RIGHT' })

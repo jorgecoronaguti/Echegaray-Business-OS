@@ -428,6 +428,35 @@ export function formulaJornales(desde, hasta) {
 }
 
 /**
+ * NÚCLEO PURO: los sueldos de OFICINA en una ventana de caja, leyendo el bloque de la pestaña Jornales.
+ *
+ * POR QUÉ EXISTE (31/07). El dueño: "no estás considerando oficina... se ve mal todo en cashflow y por
+ * ende podría estar mal en caja". Medido, tres números distintos para el mismo sueldo:
+ *
+ *   · planilla JORNALES (bloque Oficina):  $19.909.063 pagado + $21.385.051 proyectado
+ *   · Compras, rubro "Nómina · Sueldos administración":  $51.020.773
+ *   · lo que sumaba el cash flow:  el de Compras — el bloque de la planilla no lo leía NADIE
+ *
+ * La planilla de sueldos es la fuente de la nómina, igual que para los jornales de obra (que ya salen
+ * del registro de quincenas y no de Compras). Que la línea de oficina saliera de Compras era la misma
+ * capacidad con dos fuentes: la regla 9 del archivo, "no duplicar, un solo juego de rubros".
+ *
+ * UN MES ESTÁ PAGADO O PROYECTADO, NUNCA LOS DOS: el bloque llena "Pagado" cuando la planilla tiene el
+ * mes y "Proyectado" cuando no. Sumar las dos columnas es correcto por construcción y, si algún día se
+ * llenaran las dos, el control de nómina de más abajo lo grita en vez de duplicar en silencio.
+ *
+ * @param {string} desde expresión de inicio · @param {string} hasta límite EXCLUYENTE
+ * @returns {string} fórmula es-AR
+ */
+export function formulaOficina(desde, hasta) {
+  const f = 'OFICINA_PAGO'
+  const en = `ISNUMBER(${f})*(${f}>=${desde})*(${f}<${hasta})`
+  const pagado = 'IF(ISNUMBER(OFICINA_PAGADO);OFICINA_PAGADO;0)'
+  const proy = 'IF(ISNUMBER(OFICINA_PROYECTADO);OFICINA_PROYECTADO;0)'
+  return `=SUMPRODUCT(${en}*(${pagado}+${proy}))`
+}
+
+/**
  * NÚCLEO PURO: las tres líneas de ingreso, leyendo Cobranzas.
  * La fecha de cobro es la real (columna Q) si ya se cobró, si no la de vencimiento (P): es la mejor
  * estimación disponible de CUÁNDO entra la plata. Cash flow es percibido, nunca devengado.
@@ -645,11 +674,33 @@ export const CUADRO = [
         nombre: 'Pagos al personal y cargas sociales', signo: -1,
         lineas: [
           { nombre: 'Jornales de obra', rubro: 'Nómina · Jornales de obra' },
+          // ═══ DOS NÚMEROS PARA EL MISMO SUELDO, LOS DOS A LA VISTA (31/07) ═══
+          //
+          // El dueño: "no estás considerando oficina". Era cierto: el bloque Oficina de la pestaña
+          // Jornales —que lee la planilla de sueldos— no lo consumía NINGUNA fórmula, y esta línea
+          // salía de Compras. Medido: Compras dice $51.020.773 y la planilla $19.909.063 pagados +
+          // $21.385.051 proyectados. La diferencia es de $10M largos y NO sé cuál es la correcta: puede
+          // ser que Compras incluya SAC y cargas de administración, o gente que la planilla no tiene.
+          //
+          // Elegir una a ojo sería inventar. Lo que corresponde es lo que hace el resto del archivo con
+          // las cobranzas esperadas: la que SALE DE CAJA suma (Compras: es lo que se pagó de verdad) y
+          // la otra queda al lado como MEMO que no suma, para que la diferencia se vea y se resuelva.
+          // El control de nómina de la pestaña Jornales mide la brecha.
           { nombre: 'Sueldos de administración', rubro: 'Nómina · Sueldos administración' },
           { nombre: 'Sueldo anual complementario', rubro: 'Nómina · SAC' },
           { nombre: 'Cargas sociales (F931)', rubro: 'Nómina · Cargas sociales' },
           { nombre: 'Aportes y contribuciones gremiales', rubro: 'Nómina · Gremiales' },
           { nombre: 'Planes de pago de deuda previsional', rubro: 'Deuda previsional (planes de pago)' },
+        ],
+      },
+      {
+        // MEMO, NO CAJA — signo 0, igual que las cobranzas esperadas. Hace VISIBLE la planilla de
+        // sueldos (la fuente de la nómina) al lado de lo que se cargó en Compras, sin contar dos veces
+        // el mismo sueldo. Mientras las dos no coincidan, la brecha se ve en el cuadro en vez de vivir
+        // en la cabeza de alguien. Ver formulaOficina.
+        nombre: 'ℹ Oficina según la planilla de sueldos (control, no suma al flujo)', signo: 0,
+        lineas: [
+          { nombre: 'Oficina · pagado y proyectado por la planilla', oficina: true, detalle: 'Jornales por Quincena' },
         ],
       },
       {
@@ -788,6 +839,7 @@ export function expresionReal(l, desde, hasta) {
   if (l.cheques || l.calendarioImpuestos) return null
   if (l.cobranzas) return formulaCobranzas(l.cobranzas, desde, hasta, l.modo).slice(1)
   if (l.rubro === 'Nómina · Jornales de obra') return formulaJornales(desde, hasta).slice(1)
+  if (l.oficina) return formulaOficina(desde, hasta).slice(1)
   const ventana = `${COL_FECHA};">="&${desde};${COL_FECHA};"<"&${hasta}`
   // Los bienes de uso salen por su SUB-rubro (columna AF), no por el rubro: son una parte de
   // Estructura que la norma manda mostrar en otra actividad.
@@ -812,7 +864,10 @@ export function formulaLineaMes(l, colMes, colTabla, filaCab, filasTabla = {}) {
   // Un bien de uso no tiene ritmo: comprar una moto en enero no significa comprar una por mes. Es
   // el mismo error que el SAC, y la misma regla lo mata.
   const p = l.soloSub ? null : PROYECCION[l.rubro]
-  if (p === null || l.cobranzas) return `=${real}`
+  // LA OFICINA YA VIENE PROYECTADA HASTA DICIEMBRE en su propio bloque (ajustada por inflación, mes por
+  // mes). Volver a proyectarla acá sobre el ritmo de los últimos tres meses sería contar dos veces la
+  // misma proyección — y encima con una fórmula que buscaría por un rubro que esta línea no tiene.
+  if (p === null || l.cobranzas || l.oficina) return `=${real}`
   let proy
   if (p?.tipo === 'tabla') {
     const fila = filasTabla[p.pestaña]
