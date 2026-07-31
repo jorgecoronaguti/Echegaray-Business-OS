@@ -1,0 +1,20 @@
+[
+  {
+    "entidad": "IERIC", "concepto": "1% IERIC (Art. 12 Ley 22.250)",
+    "boleta": "5715127", "periodo": "2026/06", "mes": "JUNIO",
+    "importe": 15092.62, "contribucion": 14826.92, "actualizacion": 265.70,
+    "baseImponible": 1482692.40, "trabajadores": 22,
+    "generada": "2026-07-29", "vencimiento": "2026-07-31", "pagada": "2026-07-30",
+    "tipoPago": "Débito", "operacionMP": "171255712158",
+    "barras": "906900000150926226073100571512700000010079"
+  },
+  {
+    "entidad": "FODECO", "concepto": "1% FODECO (Decreto 149/25)",
+    "boleta": "5715128", "periodo": "2026/06", "mes": "JUNIO",
+    "importe": 15092.62, "contribucion": 14826.92, "actualizacion": 265.70,
+    "baseImponible": 1482692.40, "trabajadores": 22,
+    "generada": "2026-07-29", "vencimiento": "2026-07-31", "pagada": "2026-07-30",
+    "tipoPago": "Débito", "operacionMP": "170361535353",
+    "barras": "906900000150926226073100571512800000010000"
+  }
+]

@@ -24,6 +24,7 @@ import { posicionIvaCompleta } from '../lib/posicion-iva.mjs'
 import { clasificar, mes as mesDe, COLUMNAS } from '../lib/retenciones-sufridas.mjs'
 import { query } from '../lib/db.mjs'
 import { parsearDDJJ, alicuotaDeclarada } from '../lib/iibb-ddjj.mjs'
+import { parsearDJIVA } from '../lib/iva-ddjj.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
 import { borrarNotas } from '../lib/nota-celda.mjs'
@@ -34,6 +35,10 @@ import { seccion, sub as subItem, total as rotuloTotal, auditarPatron } from '..
 // ($AC, $O): es exactamente lo que dejó el cuadro de "pagado" de Cargas Sociales en #VALUE! durante
 // semanas cuando alguien movió una columna. El nombre no se mueve; la posición sí.
 import { resolverColumnas, rango } from '../lib/compras-columnas.mjs'
+// LOS DOS RÓTULOS QUE EL CASH FLOW BUSCA EN ESTA PESTAÑA. No se escriben a mano acá: el consumidor los
+// ubica POR TEXTO en la columna A, así que el texto es el contrato entre las dos pestañas y tiene una
+// sola definición. Ver el bloque "EL CALENDARIO FISCAL" en lib/cash-flow-lineas.mjs.
+import { CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Impuestos y Financieros'
@@ -49,6 +54,10 @@ const cmes = (m) => String.fromCharCode(65 + m)
 // presentación) y, al listar en vez de hardcodear, el mes nuevo aparece solo cuando se sube.
 // Carpeta: .../Impuestos y Financiero/2026/IIBB
 const CARPETA_IIBB = '1R0kTgCE35Q6AlLhjr0VB2ZAtusK1eO1W'
+// Las DDJJ de IVA (F.2051) presentadas ante ARCA viven en su propia carpeta de Drive (MM-2026.pdf).
+// Se listan y se leen igual que IIBB: la DDJJ oficial es la fuente primaria, no el cálculo por
+// comprobantes. Carpeta: .../Impuestos y Financiero/2026/IVA
+const CARPETA_IVA = '1tLLahzfaTKZPbOi8M6IJLbAunFgappXx'
 
 // ═══ LA RÉPLICA DE LAS DDJJ DE IIBB ═══
 //
@@ -147,7 +156,7 @@ async function planesDePago() {
  * total, O de dónde sale. Las FILAS son las medidas y las COLUMNAS el tiempo — que es como se lee
  * cualquier cuadro fiscal— y todos los bloques quedan alineados uno debajo del otro.
  */
-function grilla(iva, planes, iibb, C) {
+function grilla(iva, planes, iibb, ivaOficial, C) {
   const filas = []
   const push = (c = []) => {
     const r = [...c].map((x) => (x === '' || x === undefined || x === null ? VACIO : x))
@@ -171,48 +180,37 @@ function grilla(iva, planes, iibb, C) {
   const heroBase = filas.length
   for (let k = 0; k < 10; k++) push()
 
-  // ── 1 · IVA ────────────────────────────────────────────────────────────────────────────────────
-  push([seccion(1, 'IVA — ¿cuánto se debe o se tiene a favor cada mes?')])
+  // ── 1 · IVA — LA DDJJ OFICIAL (F.2051) ───────────────────────────────────────────────────────────
+  // Antes se CALCULABA desde _ARCA_RAW (débito − crédito con arrastre técnico). El dueño trajo a Drive
+  // las F.2051 presentadas: la fuente primaria. Igual que IIBB se lee de la DDJJ de Rentas, el IVA
+  // ahora se lee del F.2051. Y el dato oficial corrige dos cosas que el cálculo no mostraba:
+  //   (1) la empresa NO paga IVA en efectivo — tiene ~$19,3M de crédito de LIBRE DISPONIBILIDAD que
+  //       absorbe cualquier posición a favor de ARCA (marzo: $10,75M técnico, $0 en efectivo);
+  //   (2) esa libre disponibilidad es la plata realmente inmovilizada en el fisco, no el saldo técnico.
+  push([seccion(1, 'IVA — la DDJJ oficial (F.2051): qué se debe o se tiene a favor')])
   cabecera()
-  const R = '_ARCA_RAW'
-  // El signo sale de la columna F de la réplica: una nota de crédito lleva −1 y una factura +1. Si
-  // el código no se reconoce, la columna queda vacía y la fila NO se suma — asumir que sumaba fue el
-  // error que costó $41,9M.
-  const sumaArca = (per, libro, colImporte) =>
-    `SUMPRODUCT((${R}!$A$4:$A="${per}")*(${R}!$B$4:$B="${libro}")`
-    + `*IF(ISNUMBER(${R}!$F$4:$F);${R}!$F$4:$F;0)`
-    + `*IF(ISNUMBER(${R}!$${colImporte}$4:$${colImporte});${R}!$${colImporte}$4:$${colImporte};0))`
-  // El factor de inflación NO se pega: se busca en el bloque "ÍNDICES PARA PROYECTAR" de Parámetros,
-  // que declara su fuente (REM del BCRA). Es el mismo que ya usan Estructura y Recurrentes.
-  const factor = (mes) => `IFERROR(INDEX(Parámetros!$C$74:$C$79;MATCH(DATE(${AÑO};${mes};1);Parámetros!$A$74:$A$79;0));1)`
-  const porMesIva = new Map(iva.map((m) => [Number(m.periodo.slice(5, 7)), m]))
-  const reales = M12.filter((m) => porMesIva.get(m)?.disponible)
-  const proyectados = M12.filter((m) => porMesIva.get(m)?.es_proyeccion && !porMesIva.get(m)?.disponible)
-  const conDato = [...reales, ...proyectados].sort((a, b) => a - b)
-  const ultReal = reales[reales.length - 1]
+  const porMesOf = new Map((ivaOficial ?? []).filter((d) => d.periodo).map((d) => [Number(String(d.periodo).slice(5, 7)), d]))
+  const mesesOf = M12.filter((m) => porMesOf.has(m))
+  const ultOf = mesesOf[mesesOf.length - 1]
+  // Los importes son VALORES de la DDJJ presentada, no fórmulas: el número oficial no se recalcula.
+  const of = (m, campo) => (porMesOf.has(m) ? porMesOf.get(m)[campo] : VACIO)
 
-  const fPos = filas.length + 1
-  const fRet = fPos + 1
-  // (fPos + 2 es la fila "a pagar": no hace falta nombrarla, nadie la referencia)
-  const fSaldo = fPos + 3
-  // El saldo a favor que venía es el que quedó el mes anterior. Para el primer mes con dato, cero.
-  const previo = (m) => (m === conDato[0] ? '0' : `${cmes(m - 1)}${fSaldo}`)
-
-  mensual('Posición del mes (ventas − compras)', (m) => (porMesIva.get(m)?.disponible
-    ? `=${sumaArca(porMesIva.get(m).periodo, 'Ventas', 'L')}-${sumaArca(porMesIva.get(m).periodo, 'Compras', 'L')}`
-    // Proyección: el ritmo real de los meses ya cerrados, ajustado por inflación.
-    : `=AVERAGE($B$${fPos}:$${cmes(ultReal)}$${fPos})*${factor(m)}`),
-  'ARCA · réplica _ARCA_RAW. Débito menos crédito fiscal del mes, con el signo de cada comprobante.', { meses: conDato })
-  mensual('Retención de IVA sufrida', (m) =>
-    `=SUMPRODUCT((YEAR(Cobranzas!$Q$5:$Q$400)=${AÑO})*(MONTH(Cobranzas!$Q$5:$Q$400)=${m})*IF(ISNUMBER(Cobranzas!$X$5:$X$400);Cobranzas!$X$5:$X$400;0))`,
-  'Cobranzas · imputada al mes del COBRO, no al de la factura. Es impuesto ya pagado.', { meses: conDato })
-  mensual(rotuloTotal('IVA a pagar en el mes'), (m) => `=MAX(0;${cmes(m)}${fPos}-${cmes(m)}${fRet}-${previo(m)})`,
-    'Primero se descuenta lo pagado por retención y recién después el saldo a favor que venía arrastrándose.', { meses: conDato })
-  mensual('Saldo a favor al cierre del mes', (m) => `=MAX(0;${previo(m)}+${cmes(m)}${fRet}-${cmes(m)}${fPos})`,
-    'No se suma a lo largo del año: es un saldo, se arrastra. El total no aplica.', { meses: conDato, totaliza: false })
-  mensual('Comprobantes cargados (ventas / compras)', (m) => (porMesIva.get(m)?.disponible
-    ? `=COUNTIFS(${R}!$A$4:$A;"${porMesIva.get(m).periodo}";${R}!$B$4:$B;"Ventas")&" / "&COUNTIFS(${R}!$A$4:$A;"${porMesIva.get(m).periodo}";${R}!$B$4:$B;"Compras")`
-    : 'proy.'), 'Cuántos comprobantes respaldan la cifra de arriba. "proy." = no hay comprobantes, es una proyección.', { meses: conDato, totaliza: false })
+  mensual('Débito fiscal del período', (m) => of(m, 'debito'),
+    'F.2051 · IVA generado por las ventas del mes.', { meses: mesesOf })
+  mensual('Crédito fiscal del período', (m) => of(m, 'credito'),
+    'F.2051 · IVA de las compras computable del mes.', { meses: mesesOf })
+  // EL RÓTULO NO SE ESCRIBE ACÁ: sale de ROTULOS_CALENDARIO, que es lo que el cash flow BUSCA. Este
+  // bloque conserva 5 filas mensuales para no correr la fila de "IIBB a pagar" (28); pero la fila que
+  // el cash flow encuentra la define el TEXTO, no la posición — el 30/07 se renombró esta fila
+  // razonando sobre la fila 18 y los dos cash flow quedaron sin poder regenerarse.
+  // La posición técnica del mes es derivable de débito − crédito + arrastre, así que no ocupa una fila
+  // propia; su único mes relevante (marzo, a favor de ARCA) se ve en la libre disponibilidad.
+  mensual(CALENDARIO_IMPUESTOS.rotulos.iva, (m) => of(m, 'a_pagar_efectivo'),
+    'Lo absorbe el crédito de libre disponibilidad. En 2026 no salió plata por IVA — no es un egreso del cash flow.', { meses: mesesOf })
+  const fLibre = mensual('Saldo de libre disponibilidad (acumulado)', (m) => of(m, 'libre_disp'),
+    'F.2051 · crédito de la empresa inmovilizado en ARCA (marzo: se consumió parte para la posición a favor de ARCA). Se arrastra; el total no aplica.', { meses: mesesOf, totaliza: false })
+  const fDDJJ = mensual('DDJJ presentada', (m) => (porMesOf.has(m) ? `${porMesOf.get(m).fecha_presentacion} · N°${porMesOf.get(m).nro_transaccion}` : VACIO),
+    'F.2051 presentada ante ARCA. Fuente primaria, verificable por N° de transacción.', { meses: mesesOf, totaliza: false })
   push()
 
   // ── 2 · INGRESOS BRUTOS ────────────────────────────────────────────────────────────────────────
@@ -243,7 +241,7 @@ function grilla(iva, planes, iibb, C) {
   mensual('Impuesto determinado', (m) => `=${cmes(m)}${fBase}*${cmes(m)}${fAli}`, 'Base × alícuota.', { meses: mesesIIBB })
   mensual('Retenciones sufridas', (m) => `=${refIIBB(m, IIBB_COL.retenciones)}`,
     'DDJJ de Rentas · réplica _IIBB_RAW. Ya vienen computadas ahí: no se vuelven a sumar en la sección 3.', { meses: mesesIIBB })
-  mensual(rotuloTotal('IIBB a pagar en el mes'), (m) => `=MAX(0;${cmes(m)}${fImp}-${cmes(m)}${fRetI}-${prevI(m)})`,
+  mensual(CALENDARIO_IMPUESTOS.rotulos.iibb, (m) => `=MAX(0;${cmes(m)}${fImp}-${cmes(m)}${fRetI}-${prevI(m)})`,
     'Impuesto menos retenciones menos el saldo a favor que venía.', { meses: mesesIIBB })
   mensual('Saldo a favor al cierre del mes', (m) => `=MAX(0;${prevI(m)}+${cmes(m)}${fRetI}-${cmes(m)}${fImp})`,
     'Se arrastra al mes siguiente. El total no aplica.', { meses: mesesIIBB, totaliza: false })
@@ -281,8 +279,15 @@ function grilla(iva, planes, iibb, C) {
   push([seccion(4, 'Otros impuestos — ¿qué más se paga y no estaba a la vista?')])
   cabecera()
   const B = '_BANCO_RAW'
+  // −IMPORTE, NO ABS(IMPORTE) (31/07). El extracto trae los débitos en negativo, así que ABS y "−" dan
+  // lo mismo… salvo cuando el banco DEVUELVE el impuesto. "Anul imp ley 25.413 debito 0,6%" es un
+  // crédito de +$294,78: con ABS se sumaba como si fuera un impuesto MÁS, o sea el cuadro declaraba
+  // $589,56 de impuesto que no se pagó (el que no se cobró, más el que se devolvió). Con "−" la reversa
+  // resta y la fila muestra el impuesto NETO, que es lo que la empresa efectivamente pagó. El defecto
+  // no se veía porque hasta hoy la reversa no llegaba a este bucket: caía en el cajón de sastre de
+  // clasificarMovimiento. Arreglar la clasificación sin arreglar esto habría empeorado el número.
   const porMesBanco = (patron) => (m) =>
-    `=SUMPRODUCT((YEAR(${B}!$A$4:$A)=${AÑO})*(MONTH(${B}!$A$4:$A)=${m})*ISNUMBER(SEARCH("${patron}";${B}!$F$4:$F))*ABS(IF(ISNUMBER(${B}!$C$4:$C);${B}!$C$4:$C;0)))`
+    `=SUMPRODUCT((YEAR(${B}!$A$4:$A)=${AÑO})*(MONTH(${B}!$A$4:$A)=${m})*ISNUMBER(SEARCH("${patron}";${B}!$F$4:$F))*-IF(ISNUMBER(${B}!$C$4:$C);${B}!$C$4:$C;0))`
   const o0 = filas.length + 1
   const fCheque = mensual('Impuesto al cheque (Ley 25.413)', porMesBanco('Impuesto al cheque'),
     'Extracto Santander · el banco lo debita solo y declara la alícuota en el concepto ("debito 0,6%"). Sólo hay dato en los meses que cubre el extracto.')
@@ -373,14 +378,17 @@ function grilla(iva, planes, iibb, C) {
   push(['⚠ La alícuota de IIBB se toma de las DDJJ leídas. Conviene que la confirme el contador.'])
 
   // ── EL HERO, RECIÉN AHORA: ya se sabe en qué fila quedó cada total ──────────────────────────────
-  const saldoIVA = ultReal ? `${cmes(ultReal)}${fSaldo}` : '0'
+  // El saldo a favor de IVA es la LIBRE DISPONIBILIDAD de la última DDJJ (ya incluye técnico +
+  // retenciones/percepciones de IVA). El de IIBB, el saldo a favor de su última DDJJ. Por eso las
+  // retenciones NO se vuelven a sumar al total: ya están adentro de esos dos saldos (doble conteo).
+  const saldoIVA = ultOf ? `${cmes(ultOf)}${fLibre}` : '0'
   const saldoIIBB = mesesIIBB.length ? `${cmes(mesesIIBB[mesesIIBB.length - 1])}${fSaldoI}` : '0'
   const hero = [
     ['LA POSICIÓN', 'Monto', ...Array(11).fill(VACIO), VACIO, 'De dónde sale'],
-    [rotuloTotal('A favor del fisco — plata inmovilizada'), `=${saldoIVA}+${saldoIIBB}+$N$${fRetTotal}`, ...Array(11).fill(VACIO), VACIO, 'Impuesto ya pagado que todavía no volvió.'],
-    [subItem('saldo a favor de IVA'), `=${saldoIVA}`, ...Array(11).fill(VACIO), VACIO, 'ARCA · último mes con comprobantes.'],
+    [rotuloTotal('A favor del fisco — plata inmovilizada'), `=${saldoIVA}+${saldoIIBB}`, ...Array(11).fill(VACIO), VACIO, 'Crédito de la empresa en el fisco (IVA + IIBB). Ya incluye las retenciones sufridas.'],
+    [subItem('saldo a favor de IVA (libre disponib.)'), `=${saldoIVA}`, ...Array(11).fill(VACIO), VACIO, 'DDJJ F.2051 · libre disponibilidad del último período presentado.'],
     [subItem('saldo a favor de IIBB'), `=${saldoIIBB}`, ...Array(11).fill(VACIO), VACIO, 'DGR San Juan · última DDJJ presentada.'],
-    [subItem('retenciones sufridas en el año'), `=$N$${fRetTotal}`, ...Array(11).fill(VACIO), VACIO, 'Cobranzas.'],
+    [subItem('retenciones sufridas en el año'), `=$N$${fRetTotal}`, ...Array(11).fill(VACIO), VACIO, 'Cobranzas · YA incluidas en los saldos de arriba; no se suman de nuevo (referencia).'],
     [],
     [rotuloTotal('Deuda financiera — lo que se debe'), `=$B$${fDeudaPrend}+$B$${fDeudaPlanes}`, ...Array(11).fill(VACIO), VACIO, 'Con instrumento: prendario y planes de pago.'],
     [subItem('planes de pago F931'), `=$B$${fDeudaPlanes}`, ...Array(11).fill(VACIO), VACIO, 'Compras.'],
@@ -397,9 +405,9 @@ function grilla(iva, planes, iibb, C) {
     titular: heroBase + 2,
     heroTotales: [heroBase + 2, heroBase + 7],
     alicuotas: [fAli],
-    textos: [fPos + 4],
-    proyectados: proyectados.map((m) => m),
-    saldos: [fSaldo, fSaldoI, fSalidaFin],
+    textos: [fDDJJ],
+    proyectados: [],
+    saldos: [fLibre, fSaldoI, fSalidaFin],
   }
 }
 
@@ -423,6 +431,26 @@ async function leerIIBB(google) {
     } catch (e) {
       // Un PDF que no se puede leer NO se rellena con ceros: se omite y se avisa.
       console.error(`  ⚠ no pude leer la DDJJ de ${periodo}: ${e.message}`)
+    }
+  }
+  return out
+}
+
+/** Lee las DDJJ de IVA (F.2051) desde los PDF originales de Drive. Mismo patrón que leerIIBB. */
+async function leerIVA(google) {
+  const out = []
+  const archivos = (await google.listFolder(CARPETA_IVA).catch((e) => { console.error(`  ⚠ no pude listar la carpeta de IVA: ${e.message}`); return [] }))
+    .filter((f) => /^\d{2}-\d{4}\.pdf$/i.test(f.name))
+    .sort((a, b) => a.name.localeCompare(b.name))
+  for (const f of archivos) {
+    const periodo = `${f.name.slice(3, 7)}-${f.name.slice(0, 2)}`
+    try {
+      const pdf = await google.readPdfText(f.id, { maxChars: 8000 })
+      const d = parsearDJIVA(pdf?.text ?? '')
+      out.push({ ...d, periodo: d.periodo ?? periodo, fuente: f.name })
+    } catch (e) {
+      // Un PDF que no se puede leer NO se rellena con ceros: se omite y se avisa.
+      console.error(`  ⚠ no pude leer la DDJJ de IVA de ${periodo}: ${e.message}`)
     }
   }
   return out
@@ -529,6 +557,7 @@ async function leerRetenciones(google) {
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const iibb = await leerIIBB(google)
+  const ivaOficial = await leerIVA(google)
   const ventas = await ventasProyectadas(google)
   // La regla de oro: toda proyección considera inflación, y el dato lo trae el OS de la web.
   const fi = await query("select periodo, factor_acumulado from public.factor_ajuste where indice='ipc' order by periodo")
@@ -546,7 +575,7 @@ async function main() {
   })
   if (faltan.length) { console.error(`⚠ faltan columnas en Compras: ${faltan.join(', ')} — no escribo con referencias inventadas`); process.exit(1) }
   console.log(`  Compras por encabezado: Total=${C.total} · Concepto=${C.concepto} · Fecha de caja=${C.fecha} · Rubro=${C.rubro}`)
-  const g = grilla(iva, planes, iibb, C)
+  const g = grilla(iva, planes, iibb, ivaOficial, C)
   if (ret.sospechosas.length) {
     console.error(`  ⚠ ${ret.sospechosas.length} retención(es) con alícuota que no encaja con ningún régimen — NO se computaron:`)
     for (const x of ret.sospechosas) console.error(`     fila ${x.fila} ${x.cliente}: ${x.regimen} ${Math.round(x.monto).toLocaleString('es-AR')} = ${(x.alicuota * 100).toFixed(2)}%`)

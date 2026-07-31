@@ -62,7 +62,12 @@ import { CAJA as N_CAJA, publicar } from '../lib/rangos-nombrados.mjs'
 import { esIndistinguible } from '../lib/cobranzas-duplicado.mjs'
 import * as CONC from '../lib/conciliacion-por-naturaleza.mjs'
 import { formulaEgresoDiario } from '../lib/egreso-diario.mjs'
-import { formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte, formulaNetaEfectivoPosterior } from '../lib/caja-posterior-al-corte.mjs'
+import { formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte, formulaNetaEfectivoPosterior, formulaCobrosPosteriores, formulaChequesDebitadosPosteriores, formulaComprasPagadasPosteriores } from '../lib/caja-posterior-al-corte.mjs'
+import { formulaCajaEnPesos, celdaCobrosEfectivo, celdaPagosEfectivo, celdaDepositosEfectivo, NETO_NO_SUMA_EN_PESOS, origenCajaEnPesos, IDENTIDAD } from '../lib/caja-efectivo-fisico.mjs'
+// LA CARTERA DE VALORES SALE DE LA RÉPLICA DE CHEQUES, NO DE UN ARRAY DE JAVASCRIPT (30/07). Ver
+// lib/cartera-cheques.mjs: es el arreglo del "$10.000.000 en CAJA con $10.290.000 en cartera" y del
+// calendario de vencimientos que leía DOS CELDAS FIJAS.
+import { EN_CARTERA, formulaCartera, formulaCarteraTramo, formulaImporteEnCartera, formulaFechaDeCheque, formulaCanarioDetalle } from '../lib/cartera-cheques.mjs'
 
 // LA MISMA definición de "dos cobros que no se pueden distinguir" que usa el control de la pestaña
 // Cobranzas. Antes acá había una segunda basada en el ID, y al reparar la columna A —que se
@@ -156,7 +161,7 @@ function rescatar(previo) {
   return cargado
 }
 
-function grilla(cargado, refs) {
+export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // El tipo de cambio se referencia por su RANGO CON NOMBRE. Así el bloque que lo calcula puede
   // vivir al pie de la pestaña —que es donde corresponde en una empresa que mueve todo en pesos—
   // sin que las filas de arriba dependan de en qué fila quedó.
@@ -313,8 +318,16 @@ function grilla(cargado, refs) {
     push(['Movimientos posteriores al corte del extracto', 'ARS',
       formulaNetaPosterior(`$F$${fBancoPesos}`), '', `=${C_IMP}${fPost}`, '=TODAY()',
       `=IF(${C_IMP}${fPost}=0;"sin movimientos";"vivo")`,
-      'Cobranzas (estado Cobrado, sin echeq) menos cheques debitados, todo con fecha POSTERIOR al corte del extracto. El extracto ya trae lo anterior: contarlo de nuevo duplicaría. Los echeq quedan afuera porque ya están en Valores a depositar.',
+      'El NETO de las dos líneas de abajo: lo que entró menos lo que salió después del corte del extracto. El extracto ya trae lo anterior; esto es sólo lo que todavía no muestra. Los echeq quedan afuera (ya están en Valores a depositar).',
       'Se calcula solo'])
+    // Desglose para que el número de arriba se ENTIENDA: de qué se compone. Van con el valor en la
+    // columna de origen y SIN valor en pesos, para que se vean pero no se sumen de nuevo al total.
+    push(['   · (+) cobros acreditados después del corte', 'ARS',
+      `=${formulaCobrosPosteriores(`$F$${fBancoPesos}`)}`, '', '', '', '',
+      'La plata que ENTRÓ después del corte y el extracto todavía no muestra: cobranzas en estado Cobrado (sin echeq), con fecha posterior al corte.', ''])
+    push(['   · (−) pagos debitados después del corte', 'ARS',
+      `=-(${formulaChequesDebitadosPosteriores(`$F$${fBancoPesos}`)}+${formulaComprasPagadasPosteriores(`$F$${fBancoPesos}`)})`, '', '', '', '',
+      'Lo que SALIÓ después del corte: cheques propios debitados + compras pagadas por transferencia/débito, con fecha posterior al corte.', ''])
   }
   // ═══ LA LÍNEA QUE HACE QUE LA CAJA FÍSICA SE MUEVA SOLA — EL ESPEJO DE EFECTIVO DEL BANCO (T06) ═══
   //
@@ -329,16 +342,72 @@ function grilla(cargado, refs) {
   // lo anterior ya está DENTRO del arqueo. Un arqueo nuevo, con fecha más reciente, colapsa lo viejo.
   const fPostEf = filas.length + 1
   push(['Movimientos de efectivo posteriores al arqueo', 'ARS',
-    formulaNetaEfectivoPosterior(`$F$${d0}`, { bancoRaw: refs.bancoRaw }), '', `=${C_IMP}${fPostEf}`, '=TODAY()',
+    formulaNetaEfectivoPosterior(`$F$${d0}`, { bancoRaw: refs.bancoRaw }),
+    // ═══ ESTA FILA YA NO APORTA VALOR EN PESOS (31/07) ═══
+    //
+    // El dueño: "se realiza una cobranza marcada en esa pestaña como en 'efectivo', ese valor tiene q
+    // cargarse en 'caja' directamente. ahora lo suma pero no carga en la celda de 'caja en pesos' como
+    // corresponde". Tenía razón en las dos mitades: el neto se calculaba bien y el total lo sumaba
+    // bien, pero la celda que él mira —"Caja en pesos"— decía $0. Medido el 31/07: $19.789.659,73 en
+    // esta fila y cero arriba.
+    //
+    // Ahora el neto va A "Caja en pesos" (ver abajo, donde se reescribe su celda de pesos) y esta fila
+    // queda como el DESGLOSE de cómo llegó ahí. Su columna de pesos tiene que quedar vacía o el mismo
+    // efectivo entraría dos veces en `SUM(E7:E13)`. Ver lib/caja-efectivo-fisico.mjs.
+    '', NETO_NO_SUMA_EN_PESOS, '=TODAY()',
     `=IF($F$${d0}="";"⚠ cargá un arqueo con fecha";IF(${C_IMP}${fPostEf}=0;"sin movimientos";"vivo"))`,
-    'Cobros en efectivo (Cobranzas, estado Cobrado) menos pagos en efectivo (Compras, Pagado/Efectivo) menos depósitos de efectivo al banco, todos con fecha POSTERIOR al arqueo de "Caja en pesos". El arqueo es el corte: lo anterior ya está contado dentro del saldo tipeado. Sin arqueo con fecha no hay ventana y da 0.',
+    `Ya está sumado arriba, en "Caja en pesos" — acá se muestra abierto, no se cuenta de nuevo. ${IDENTIDAD}. Cobros en efectivo (Cobranzas, estado Cobrado) menos pagos en efectivo (Compras, Pagado/Efectivo) menos depósitos de efectivo al banco. Sin arqueo con fecha no hay ventana y da 0.`,
     'Se calcula solo'])
+  // LOS TRES SUMANDOS, UNO POR UNO. Un total solo no se puede discutir: $19,7 millones de efectivo en
+  // un cajón es un número que hay que poder abrir. Las tres fórmulas son LAS MISMAS que arma la línea
+  // neta (se importan de la lib, no se copian), así que el desglose no puede decir otra cosa que el
+  // total. Van con el valor en la columna de origen y SIN valor en pesos: se ven y no se suman.
+  push(['   · (+) cobrado en efectivo después del arqueo', 'ARS',
+    celdaCobrosEfectivo(`$F$${d0}`), '', '', '', '',
+    'Cobranzas: forma de cobro "Efectivo" Y estado "Cobrado", con fecha de cobro posterior al arqueo. Un proyectado no es plata que esté en el cajón.', ''])
+  push(['   · (−) pagado en efectivo después del arqueo', 'ARS',
+    celdaPagosEfectivo(`$F$${d0}`), '', '', '', '',
+    'Compras: estado "Pagado" y tipo de pago "Efectivo", por su Fecha de caja. Es el billete que salió del cajón sin pasar por el banco — sin esta resta la caja crecería para siempre.', ''])
+  if (refs.bancoRaw) {
+    push(['   · (−) depositado en el banco después del arqueo', 'ARS',
+      celdaDepositosEfectivo(`$F$${d0}`), '', '', '', '',
+      'Réplica del extracto: los créditos cuyo concepto dice "depósito de efectivo". El billete dejó el cajón y entró a la cuenta: baja acá y sube en el saldo del banco.', ''])
+  }
   const d1 = filas.length
+
+  // ═══ Y ACÁ LLEGA EL EFECTIVO A LA CELDA QUE EL DUEÑO MIRA ═══
+  //
+  // Se reescribe la columna de pesos de la fila del arqueo. No se hace dentro del bucle de CUENTAS
+  // porque en ese momento todavía no se sabe en qué fila quedó el neto, y la fila del neto NO se puede
+  // deducir por posición: eso es exactamente lo que ya rompió la alerta de echeqs en esta pestaña.
+  //
+  // LA COLUMNA DE ORIGEN (C) NO SE TOCA: ahí vive el ARQUEO, que lo tipea el dueño y es verdad
+  // definitiva. Un conteo físico no se pisa con una suma automática. Lo que cambia es el SALDO EN
+  // PESOS: pasa de ser "el importe de al lado" a ser "el arqueo más lo que se movió desde entonces",
+  // que es lo que de verdad hay en el cajón.
+  filas[d0 - 1][4] = formulaCajaEnPesos({
+    arqueo: `$${C_IMP}$${d0}`, tc: `$${C_TC}$${d0}`, neta: `$${C_IMP}$${fPostEf}`,
+  })
+  // LA COLUMNA DE ORIGEN SÓLO SE EXPLICA SI ES LA MÍA. Si el dueño escribió ahí su propio texto, manda
+  // el suyo: su edición es verdad definitiva y "mejorarle" la redacción es la forma más fácil de
+  // perderla. Se reemplaza únicamente el `origenSugerido` que puso este mismo generador.
+  if ([CUENTAS[0].origenSugerido, VACIO, ''].includes(filas[d0 - 1][7])) filas[d0 - 1][7] = origenCajaEnPesos()
 
   // PERCIBIDO: el total excluye los Valores a depositar (echeq en custodia, sin acreditar). No son
   // caja de hoy — entran en el calendario cuando se acreditan. Es también el "Efectivo al inicio" que
   // usan los dos cash flows (CAJA_TOTAL_DISPONIBLE), así que su apertura queda percibida, sin el echeq.
-  const fTotal = push(['Total disponibilidades', '', '', '', `=SUM(${C_PESOS}${d0}:${C_PESOS}${d1})${fCartera ? `-${C_PESOS}${fCartera}` : ''}`, '', '', '', 'Efectivo al inicio (percibido) que usan los dos cash flows: caja + bancos + movimientos posteriores, SIN los valores a depositar, que entran en el calendario al acreditarse.'])
+  // LA FECHA DE LA POSICIÓN VIVE EN LA MISMA FILA QUE EL MONTO (31/07). CAJA_FECHA_SALDO apuntaba a
+  // "la última fila del bloque, columna F" — que tenía fecha sólo porque la cartera estaba última. Es
+  // el mismo defecto que ya arruinó la alerta de echeqs (ver el comentario de `d1` más arriba): al
+  // agregar las tres filas de efectivo posteriores al arqueo, la última pasó a ser "(−) depositado en
+  // el banco", que NO lleva fecha. EOMONTH de una celda vacía da 31/12/1899, así que las dos filas más
+  // importantes de los dos cash flow —"Efectivo al inicio" y "al cierre"— quedaron VACÍAS en los doce
+  // meses, sin error y sin aviso. CAJA lo veía y lo cantaba en "lo que no cierra" por $108,5M.
+  //
+  // Ahora la fecha es la MÁS RECIENTE del bloque, calculada (mismo criterio que ya usa el tramo del
+  // calendario), y el nombre se ancla a esta fila: el monto y su fecha no se pueden separar.
+  const fTotal = push(['Total disponibilidades', '', '', '', `=SUM(${C_PESOS}${d0}:${C_PESOS}${d1})${fCartera ? `-${C_PESOS}${fCartera}` : ''}`,
+    `=IFERROR(MAX($F$${d0}:$F$${d1});"")`, '', '', 'Efectivo al inicio (percibido) que usan los dos cash flows: caja + bancos + movimientos posteriores, SIN los valores a depositar, que entran en el calendario al acreditarse. La fecha de al lado es la del dato más reciente del bloque: es la que los dos cash flow usan para saber en qué mes abrir.'])
   // La exposición al tipo de cambio. No es un detalle de presentación: decide si conviene vender o
   // quedarse. Sale de las mismas filas de arriba, no se carga aparte.
 
@@ -432,7 +501,7 @@ function grilla(cargado, refs) {
     '', `=SUMPRODUCT((${K400})*(NOT(ISNUMBER(${I400})))*${F400})`, '', '', '', '',
     'Cheques firmados a los que nadie les puso fecha de pago, o cuya fecha quedó como texto. No se pueden ubicar en ningún tramo: hasta que se corrijan, el calendario no los ve.'])
   const cal1 = filas.length
-  push(['⇒ Total del horizonte', '', `=SUM($C${cal0}:$C${cal1})`, `=SUM($D${cal0}:$D${cal1})`, `=SUM($E${cal0}:$E${cal1})`,
+  const calTotal = push(['⇒ Total del horizonte', '', `=SUM($C${cal0}:$C${cal1})`, `=SUM($D${cal0}:$D${cal1})`, `=SUM($E${cal0}:$E${cal1})`,
     `=$F${cal1}`, '', 'La última "Queda después" es la posición al final del horizonte.', ''])
   push(['   · control: tiene que dar lo mismo que "Cheques emitidos, no debitados"', '', '',
     `=$D${filas.length}-$E$${fCh}`, '', '', '', '',
@@ -496,22 +565,38 @@ function grilla(cargado, refs) {
   if (!fValores) throw new Error('no encontré la fila de la cartera de valores: la alerta de echeqs quedaría mal')
   const g0 = filas.length + 1
   const cust0 = g0
-  for (const e of BANCO.enCartera()) {
+  // ═══ EL IMPORTE Y LA FECHA DE CADA VALOR SON FÓRMULAS SOBRE LA RÉPLICA (30/07) ═══
+  //
+  // Acá se pegaba `e.importe` desde un array de JavaScript escrito a mano el 21/07. Por eso CAJA
+  // mostraba $10.000.000 de cartera teniendo $10.290.000: el cheque 514 de Mineral Del Río entró a la
+  // base y a la réplica del propio archivo, y esta celda siguió mostrando lo de la semana pasada sin
+  // dar un solo error. Ahora cada fila le pregunta por SU cheque a _CHEQUES_RAW: si se deposita, la
+  // fila se apaga sola y el detalle sigue sumando lo mismo que el total.
+  //
+  // EL RÓTULO DICE "Cheque", no "ECHEQ": el 514 es un cheque físico del Santander y la base no guarda
+  // el instrumento de los recibidos. Llamar ECHEQ a un cheque de papel es un dato inventado.
+  for (const e of cartera.enCartera) {
     const f = filas.length + 1
-    push([`   ECHEQ ${e.numero} · ${e.emisor}`, 'ARS', e.importe, '', `=${C_IMP}${f}`, e.pago,
+    push([`   Cheque ${e.numero} · ${e.emisor}`, 'ARS', formulaImporteEnCartera(e.numero), '', `=${C_IMP}${f}`,
+      formulaFechaDeCheque(e.numero),
       `=IF(F${f}="";"";"entra en "&TEXT(F${f}-TODAY();"0")&" días")`,
-      `${BANCO.ORIGEN} · estado EN CUSTODIA`, 'Réplica del banco'])
+      `${cartera.origen} · estado ${EN_CARTERA}`, 'Réplica del banco'])
   }
   const cust1 = filas.length
   // LOS QUE SALIERON DE LA CARTERA. No suman —por eso van con importe en blanco— pero tienen que
   // estar A LA VISTA: son los $20.000.000 que el cuadro creía tener y ya no tiene.
-  for (const e of BANCO.endosados()) {
+  for (const e of cartera.endosados) {
     // EL RÓTULO DICE LO QUE PASÓ, NO EL TRÁMITE. "→ ENDOSADO a ALUMETAL S.A" con el emisor adelante
     // daba 71 caracteres en una celda donde entran 68: se cortaba justo en el dato que importa.
-    push([`   ECHEQ ${e.numero} · YA NO ES NUESTRO — endosado a ${e.beneficiario}`, '', '', '', '',
-      e.pago, 'entregado',
-      `${BANCO.ORIGEN} · se entregó para pagarle a ${e.beneficiario}: no va a entrar a la cuenta`, 'Réplica del banco'])
+    push([`   Cheque ${e.numero} · YA NO ES NUESTRO — endosado${e.beneficiario ? ` a ${e.beneficiario}` : ''}`, '', '', '', '',
+      formulaFechaDeCheque(e.numero), 'entregado',
+      `${cartera.origen} · se entregó para pagarle a un tercero: no va a entrar a la cuenta`, 'Réplica del banco'])
   }
+  // EL CANARIO DEL DETALLE. Las filas de arriba las escribe el generador; el total y el calendario son
+  // fórmulas vivas. Si entra un cheque y esta pestaña no se regenera —hoy está candada, así que es lo
+  // más probable—, el detalle listaría uno menos y NADIE lo vería: el total seguiría estando bien.
+  // Esta línea compara el detalle contra la réplica y dice exactamente qué hacer.
+  const gCanario = push(['⇒ ¿el detalle está al día? — si dice ⚠, corré la réplica y regenerá CAJA', '', '', '', '', '', '', '@CANARIO', 'Se calcula solo'])
   const gControl = push(['⇒ Control: qué dice Cobranzas de estos cheques', '',
     CUENTAS.find((c) => c.control)?.control ?? '', '', '', '', '',
     'Cobranzas registra que el echeq se cobró —y es cierto— pero no sabe qué pasó DESPUÉS con el valor. Si este número es mayor que el de arriba, la diferencia son cheques que se endosaron para pagarle a alguien.', 'Se calcula solo'])
@@ -794,8 +879,18 @@ function grilla(cargado, refs) {
   // LA FILA SE GUARDA, NO SE CUENTA. La resta de abajo la referenciaba como "fEfCobrado + 3": al
   // insertar el detalle de los depósitos habría restado la fila equivocada sin dar error. Es el
   // mismo defecto que ya rompió la alerta de echeqs esta misma tarde.
-  const fCajaFisica = push(['Declarado hoy en caja física', '', '', '', `=${C_PESOS}${d0}`, '', '', '',
-    'La primera fila del bloque 1: la carga a mano.'])
+  // ═══ APUNTA AL ARQUEO CRUDO, NO AL SALDO EN PESOS (31/07) ═══
+  //
+  // Era `=E7`, el saldo en pesos de "Caja en pesos". Desde este cambio esa celda vale arqueo + los
+  // movimientos POSTERIORES al arqueo, y esta alerta mide una ventana distinta (la del extracto). Si
+  // siguiera leyendo E7 restaría movimientos que no pertenecen a su ventana: es exactamente la mezcla
+  // de períodos que la regla de oro prohíbe, y habría hecho bajar el faltante con plata de otro mes.
+  //
+  // Lo que esta alerta necesita es el CONTEO FÍSICO puro, que vive en la columna de origen (C) y lo
+  // tipea el dueño. Se lee de ahí, y el rótulo dice la fecha del arqueo para que no se compare a ciegas.
+  const fCajaFisica = push([`Arqueo declarado de caja física`, '', '', '',
+    `=N($${C_IMP}$${d0})`, `=$F$${d0}`, '', '',
+    'El conteo físico que el dueño tipeó en la primera fila del bloque 1, a SU fecha (columna de al lado). NO incluye los movimientos posteriores al arqueo: esta alerta mide la ventana del extracto, y mezclar las dos ventanas daría un faltante falso.'])
   const fSinExpl = push(['⇒ EFECTIVO SIN EXPLICAR', '', '', '',
     `=${C_PESOS}${fEfCobrado}-${C_PESOS}${fDup}-${C_PESOS}${fEfDepos}-${C_PESOS}${fCajaFisica}`, '', '', '',
     '⚠ Es el efectivo cobrado en la ventana que no se depositó NI aparece en la caja física. Puede tener explicación —un depósito posterior al corte, un pago a proveedor hecho en efectivo sin pasar por el banco— pero no puede quedar sin mirar. Al 21/07: dos filas de Cobranzas por $16.200.000 cada una, el mismo día y del mismo cliente, que el detector de duplicados ya venía marcando.'])
@@ -833,7 +928,18 @@ function grilla(cargado, refs) {
     // total no le sirve a nadie; con el número de cheque y el proveedor se resuelve en dos minutos.
     // La lista de cheques/instrumentos va a la columna de origen (col H), que reparar-textos manda a
     // la NOTA de la celda: el detalle accionable queda a un hover, sin un muro de texto en la vista.
-    if (gr.detalle) push(['   · cuáles son', '', '', '', '', '', '', `${gr.detalle()}${gr.detalleNota ? ` — ${gr.detalleNota}` : ''}`])
+    // LA FÓRMULA VA EN UNA COLUMNA DE DATO; LA EXPLICACIÓN, EN LA DE ORIGEN (31/07).
+    //
+    // Estaban las dos pegadas en la MISMA celda de la columna H —`=IFERROR(TEXTJOIN(…);"") — Cheques
+    // con fecha de pago…`— y eso no es una fórmula: Sheets no lo puede parsear y la celda quedaba en
+    // #ERROR!. Encima H es la columna de prosa, que el localizador es-AR recorre cambiando comas por
+    // punto y coma: la nota terminó escrita "Si el banco ya los cobró; hay que marcarlos", con los
+    // punto y coma comiéndose las comas del castellano. La pista de que algo se estaba tratando como
+    // fórmula cuando era texto.
+    //
+    // Y el formateador YA esperaba la lista en la columna E (ver el bloque de `· cuáles son` más
+    // abajo, que le pone WRAP a esa columna): el push y el formato se contradecían.
+    if (gr.detalle) push(['   · cuáles son', '', '', '', gr.detalle(), '', '', gr.detalleNota || ''])
   }
   const n1 = filas.length
   push(['⇒ TOTAL QUE SALIÓ DE LA CUENTA', '', `=SUM(${C_IMP}${n0}:${C_IMP}${n1})`, '', '', '', '',
@@ -871,13 +977,26 @@ function grilla(cargado, refs) {
     '@DIFECHEQ': `=${C_IMP}${gDif}`, '@DIFCONC': `=ABS(${C_PESOS}${fDifConc})`, '@SINEXPL': `=${C_PESOS}${fSinExpl}`,
     // Si el banco no reporta ningún echeq en custodia, la cartera es cero y hay que decirlo con un
     // cero: un rango vacío daría #REF! y un total en blanco se leería como "falta cargar".
-    '@CARTERA': cust1 >= cust0 ? `=SUM(${C_IMP}${cust0}:${C_IMP}${cust1})` : '0',
-    // EL CALENDARIO: lo que ENTRA en cada tramo sale del detalle de la cartera, cuyas filas recién
-    // se conocen acá. Cada valor tiene su fecha de acreditación en la columna F de su propia fila.
+    // ═══ LA CARTERA SALE DE LA FUENTE, NO DEL DETALLE (30/07) ═══
+    //
+    // Era `=SUM($C$47:$C$47)` — la suma de las filas del detalle, que tenían el importe PEGADO. Dos
+    // consecuencias, las dos silenciosas: (1) entró el cheque 514 y el total siguió en $10.000.000
+    // con $10.290.000 en cartera; (2) el rango nace del alto del detalle, así que fosiliza en la
+    // cantidad de cheques que había el día que corrió el generador.
+    //
+    // Ahora es un SUMIFS de rango abierto sobre _CHEQUES_RAW: entra un cheque y el total lo toma sin
+    // que nadie corra nada. La pestaña está candada y esto sigue funcionando — que es el punto.
+    '@CARTERA': formulaCartera(),
+    // EL CALENDARIO: lo que ENTRA en cada tramo también sale de la réplica. Leía $C$47 y $F$47, DOS
+    // CELDAS FIJAS: con un solo cheque en cartera funcionaba de casualidad, y con dos el segundo no
+    // caía en ningún tramo — el piso proyectado de caja quedaba mal sin que se rompiera ninguna suma.
+    // Los bordes son los MISMOS que usa el lado que sale, así que ningún valor cae en dos tramos.
     ...Object.fromEntries(TRAMOS.map((_, k) => [`@ENTRA${k}`,
-      cust1 >= cust0
-        ? `=SUMPRODUCT(${tramo(k, `$F$${cust0}:$F$${cust1}`)}*IF(ISNUMBER($C$${cust0}:$C$${cust1});$C$${cust0}:$C$${cust1};0))`
-        : '0'])),
+      formulaCarteraTramo(k === 0 ? null : BORDES[k - 1][1], BORDES[k][1] || null)])),
+    // El canario compara el detalle (filas escritas) contra la réplica (la fuente), y el total del
+    // calendario contra el total: un valor sin fecha de pago no cae en ningún tramo y se perdería.
+    '@CANARIO': formulaCanarioDetalle(cust1 >= cust0 ? cust1 - cust0 + 1 : 0,
+      `$${C_IMP}$${fValores}`, `$${C_IMP}$${cust0}:$${C_IMP}$${cust1}`, `$${C_IMP}$${calTotal}`),
     // La cuenta escrita, con las filas reales. Se arma acá porque recién ahora se sabe dónde quedó
     // cada bloque: escribirla a mano en el texto de arriba la dejaría vieja en la primera corrida
     // que mueva una fila — que es exactamente lo que ya pasó con "Bloque 6".
@@ -889,7 +1008,52 @@ function grilla(cargado, refs) {
 
   // El grupo colapsable de controles va desde su encabezado hasta la última fila del cuadro.
   const fCtrl1 = filas.length
-  return { filas, cal0, calFin, n0, n1, usd, fTitulos, fCifras, fAire, fDias, fRitmo, fAlerta0, fAlerta1, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, fMTar, fMAcu, fMAire, fMargenTit: fMTar - 1, fCtrl0, fCtrl1, amarillas, fDetCob, fDetDep }
+  return { filas, cal0, calFin, calTotal, gCanario, n0, n1, usd, fTitulos, fCifras, fAire, fDias, fRitmo, fAlerta0, fAlerta1, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, fMTar, fMAcu, fMAire, fMargenTit: fMTar - 1, fCtrl0, fCtrl1, amarillas, fDetCob, fDetDep }
+}
+
+/**
+ * LA CARTERA, NORMALIZADA. Una sola forma para las dos fuentes posibles.
+ * @returns {{origen:string, enCartera:Array, endosados:Array}}
+ */
+function carteraDeRespaldo() {
+  // RESPALDO, no fuente: la transcripción de las pantallas del banco que vive en banco-santander.mjs.
+  // Se usa sólo si la base no responde — y en ese caso las FILAS pueden quedar viejas, pero el total y
+  // el calendario siguen saliendo de la réplica, así que el canario lo grita en la propia pestaña.
+  return {
+    origen: BANCO.ORIGEN,
+    enCartera: BANCO.enCartera().map((e) => ({ numero: e.numero, emisor: e.emisor, pago: e.pago })),
+    endosados: BANCO.endosados().map((e) => ({ numero: e.numero, beneficiario: e.beneficiario })),
+  }
+}
+
+/**
+ * LA CARTERA DESDE LA BASE — la misma fuente que alimenta la réplica _CHEQUES_RAW del archivo.
+ *
+ * POR QUÉ NO ALCANZABA EL ARRAY DE JAVASCRIPT: era una transcripción a mano con corte 22/07. El 30/07
+ * entró el cheque 514 por `importar-cheques.mjs`, quedó en la base y en la réplica, y el array no lo
+ * tenía: CAJA listaba un cheque y mostraba $10.000.000 con $10.290.000 en cartera.
+ *
+ * EL ENDOSATARIO NO ESTÁ EN LA BASE (public.cheques no tiene a quién se le entregó el valor), así que
+ * para el rótulo se completa desde la réplica del banco cuando el número coincide. Si no está, el
+ * rótulo dice "endosado" y no inventa un beneficiario.
+ */
+async function carteraDesdeLaBase() {
+  const { query } = await import('../lib/db.mjs')
+  const { rows } = await query(
+    `select numero, librador, contraparte, importe::float8 importe, fecha_pago::text pago, estado, corte::text corte
+       from public.cheques
+      where tipo = 'recibido' and estado in ($1, 'Endosado')
+      order by (fecha_pago is null), fecha_pago, numero`, [EN_CARTERA])
+  if (!rows.length) throw new Error('public.cheques no tiene valores en cartera ni endosados')
+  const corte = rows.reduce((mx, r) => (String(r.corte) > mx ? String(r.corte) : mx), '')
+  const beneficiarioDe = (numero) => BANCO.endosados().find((e) => String(e.numero) === String(numero))?.beneficiario ?? null
+  return {
+    origen: `public.cheques al ${corte}`,
+    enCartera: rows.filter((r) => r.estado === EN_CARTERA)
+      .map((r) => ({ numero: r.numero, emisor: r.librador || r.contraparte || 'librador sin cargar', pago: r.pago })),
+    endosados: rows.filter((r) => r.estado === 'Endosado')
+      .map((r) => ({ numero: r.numero, beneficiario: beneficiarioDe(r.numero) })),
+  }
 }
 
 async function main() {
@@ -927,9 +1091,18 @@ async function main() {
     cab: ubicarEnCashFlow(colA, 'Período'),
   }
 
-  const g = grilla(cargado, refs)
+  // LA CARTERA SE PIDE A LA BASE. Si no contesta, se sigue con el respaldo declarado: mejor un detalle
+  // viejo y avisado que una pestaña que no se puede generar.
+  let cartera = null
+  try {
+    cartera = await carteraDesdeLaBase()
+  } catch (e) {
+    cartera = carteraDeRespaldo()
+    console.log(`  ⚠ la cartera no salió de la base (${e.message}): uso el respaldo ${cartera.origen}. El total y el calendario SIGUEN saliendo de la réplica.`)
+  }
+  const g = grilla(cargado, refs, cartera)
   console.log(`${tab}: ${g.filas.length} filas · ${CUENTAS.length} cuentas · ${cargado.size} con dato ya cargado`)
-  console.log(`  cartera de echeqs según el banco al ${BANCO.CORTE}: ${BANCO.enCartera().length} en custodia por ${ars(BANCO.totalEcheqs(BANCO.enCartera()))} · ${BANCO.endosados().length} endosados por ${ars(BANCO.totalEcheqs(BANCO.endosados()))}`)
+  console.log(`  cartera (${cartera.origen}): ${cartera.enCartera.length} en cartera · ${cartera.endosados.length} endosado(s). Los IMPORTES los pone la réplica _CHEQUES_RAW, no este script.`)
   console.log(`  cierre del Cash Flow en la fila ${refs.cierre ?? '?'} · encabezado en la ${refs.cab ?? '?'}`)
   if (DRY) return console.log('--dry: no escribí nada.')
 
@@ -995,9 +1168,11 @@ async function main() {
   // referencias por celda, insertar un bloque acá arriba dejaba sus dos filas de efectivo vacías y
   // sin avisar. Un nombre sigue a la celda aunque se mueva, y por eso el orden de los pasos del
   // agente deja de importar.
+  // LOS DOS NOMBRES EN LA MISMA FILA. La fecha ya no es "la última del bloque" (que dejó de tener
+  // fecha el día que el bloque creció): es la celda calculada que está al lado del total.
   await publicar(google, ID, hoja.sheetId, [
     { name: N_CAJA.total, fila: g.fTotal, col: 5 },
-    { name: N_CAJA.fecha, fila: g.d1, col: 6 },
+    { name: N_CAJA.fecha, fila: g.fTotal, col: 6 },
   ])
 
   const v = await google.readSheetValues(ID, `${tab}!A1:I${g.filas.length}`)
@@ -1334,4 +1509,16 @@ async function formatear(google, sheetId, g, tab) {
   await google.spreadsheetBatchUpdate(ID, req)
 }
 
-main().catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+// ═══ SÓLO ESCRIBE SI SE LO CORRE A PROPÓSITO (31/07) ═══
+//
+// Antes `main()` se ejecutaba con el solo hecho de IMPORTAR el archivo. Eso hacía imposible testear la
+// grilla —cualquier test que importara `grilla` habría reescrito la pestaña real— y en un proyecto que
+// ya perdió trabajo del dueño seis veces eso no es un detalle de estilo. Ahora `grilla` se puede
+// importar y verificar en frío, y escribir sigue requiriendo correr el archivo.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main()
+    .catch((e) => { console.error('ERROR:', e.message); process.exitCode = 1 })
+    // El pool de Postgres se abre sólo si la cartera salió de la base; cerrarlo siempre es inofensivo y
+    // sin esto el proceso queda colgado después de escribir la pestaña.
+    .finally(async () => { await import('../lib/db.mjs').then((m) => m.closePool()).catch(() => {}) })
+}

@@ -19,72 +19,12 @@
 #                      admin@example.com (dominio RFC reservado, NO es un mailbox real): setear
 #                      ACME_EMAIL en .env con un correo real antes de exponer a producción.
 #   {$CHAT_DOMAIN}  -> hostname público. Default chat.ecsas.com.ar.
-#   {$OS_ASISTENCIA_UPSTREAM} -> dónde escucha el servicio de asistencia del HOST (ver abajo).
-#
-# (Sin línea en blanco antes del bloque global: `caddy fmt` lo pide y si no queda un warning
-#  en cada arranque.)
+
 {
 	email {$ACME_EMAIL:admin@example.com}
 }
 
 {$CHAT_DOMAIN:chat.ecsas.com.ar} {
+	reverse_proxy mattermost:8065
 	encode gzip
-
-	# ── ASISTENCIA (Business OS) — pantalla de carga + slash command ────────────────
-	#
-	# QUÉ PUBLICA (y nada más — la pantalla web se descartó el 30/07/2026: la interfaz vive
-	# adentro de Mattermost y nadie abre un navegador para cargar asistencia):
-	#   POST /asistencia/comando            el slash command /asistencia de Mattermost
-	#   POST /asistencia/accion?t=<secreto> los clicks de los botones y el envío de diálogos
-	# Todo lo demás bajo /asistencia* recibe 404 del propio servicio.
-	#
-	# Todo eso lo atiende UN proceso del host (`orquestador/comunicacion/servidor-asistencia.mjs`,
-	# user-unit `echegaray-asistencia-http.service`). Ese proceso NO abre ningún puerto público:
-	# Caddy sigue siendo lo único que mira a Internet.
-	#
-	# CÓMO LLEGA CADDY AL HOST — la parte que no es obvia, y que costó una vuelta:
-	# Caddy corre DENTRO del contenedor `echegaray-mm-caddy`. Ahí `127.0.0.1` es el propio
-	# contenedor, no la VM. El camino "natural" sería `host.docker.internal` con
-	# `extra_hosts: ["host.docker.internal:host-gateway"]`, PERO en esta VM no funciona, y
-	# conviene saber por qué antes de volver a intentarlo:
-	#   · `host-gateway` resuelve a 172.17.0.1 (el bridge POR DEFECTO de Docker), no al de
-	#     esta red, que es 172.18.0.1;
-	#   · y sobre todo, el firewall del host DESCARTA las conexiones que llegan desde los
-	#     bridges de Docker a cualquier puerto del host. Verificado: desde el host el puerto
-	#     responde, desde el contenedor da timeout, por las dos direcciones.
-	# Abrir ese puerto en el firewall pide root y suma un puerto escuchando.
-	#
-	# POR ESO: SOCKET UNIX. No viaja por la red, así que el firewall no interviene. El
-	# servicio del host lo crea en un directorio que se bind-montea en el contenedor (ver
-	# ../docker-compose.yml), con permisos 0660; Caddy entra como root y lo abre sin problema.
-	# Nada nuevo queda escuchando en ninguna interfaz de red.
-	#
-	# POR QUÉ EL PREFIJO /asistencia Y NO OTRO: Mattermost usa `/<nombre-del-equipo>/…` para su
-	# webapp. `asistencia` queda RESERVADO como nombre de equipo en este Mattermost — el canal
-	# se llama así, el equipo no, y no debe llamarse así.
-	@asistencia path /asistencia /asistencia/*
-	handle @asistencia {
-		# X-Forwarded-For lo agrega `reverse_proxy` solo: el servidor lee de ahí la IP real
-		# del visitante. Declararlo a mano es redundante y Caddy lo avisa por log.
-		reverse_proxy {$OS_ASISTENCIA_UPSTREAM:unix//sockets/asistencia.sock}
-	}
-
-	# Todo lo demás sigue siendo Mattermost, exactamente como antes.
-	handle {
-		reverse_proxy mattermost:8065
-	}
-
-	# El SECRETO DE LA INTEGRACIÓN viaja en `?t=` de la URL de callback que Mattermost tiene
-	# guardada. No tiene por qué quedar escrito en el log de acceso: se borra del registro.
-	# El resto de la URL se loguea normal.
-	log {
-		format filter {
-			wrap console
-			fields {
-				request>uri query {
-					delete t
-				}
-			}
-		}
-	}
 }

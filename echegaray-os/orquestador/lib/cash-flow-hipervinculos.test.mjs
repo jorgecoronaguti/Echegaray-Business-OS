@@ -13,8 +13,9 @@ import {
 const FILAS_TABLA = { Estructura: 15, Recurrentes: 24 }
 
 // Las líneas que el propio cuadro calcula sobre sus celdas (intereses del descubierto, impuesto al
-// cheque) NO tienen pestaña de origen: no se hiperlinkean.
-const SIN_ORIGEN = (l) => l.descubierto || l.impuestoCheque
+// cheque) NO tienen pestaña de origen: no se hiperlinkean. Las comisiones bancarias (31/07) tampoco:
+// su origen es _BANCO_RAW, una réplica técnica del extracto y no una pestaña de trabajo del dueño.
+const SIN_ORIGEN = (l) => l.descubierto || l.impuestoCheque || l.comisionesBancarias
 
 test('cada subconcepto con origen produce un HYPERLINK con placeholder de gid y range no vacío', () => {
   const { lineas } = verificarCuadro()
@@ -23,9 +24,10 @@ test('cada subconcepto con origen produce un HYPERLINK con placeholder de gid y 
   for (const l of conOrigen) {
     const h = hipervinculoDetalle(l, FILAS_TABLA)
     assert.ok(h, `"${l.nombre}" tiene destino`)
-    // Es un HYPERLINK con el placeholder de gid de SU pestaña destino, sin resolver (lo resuelve el script).
-    assert.ok(h.formula.startsWith(`=HYPERLINK("#gid=GID{${h.destino}}&range=`),
-      `"${l.nombre}" arranca con el HYPERLINK y el placeholder GID{${h.destino}}`)
+    // URL COMPLETA (placeholder URLID{}), no fragmento suelto: "#gid=…" da "El rango no es válido" en
+    // Google y no navega. El gid queda como placeholder GID{destino}, sin resolver (lo resuelve el script).
+    assert.ok(h.formula.startsWith(`=HYPERLINK("URLID{}#gid=GID{${h.destino}}&range=`),
+      `"${l.nombre}" arranca con el HYPERLINK, la URL completa y el placeholder GID{${h.destino}}`)
     // El range no puede quedar vacío: un vínculo sin range no lleva a ningún lado.
     assert.ok(h.rango && h.rango.length > 0, `"${l.nombre}" tiene range no vacío`)
     // El range va dentro del fragmento URL, cerrado por la comilla de la cadena "#gid=…&range=…".

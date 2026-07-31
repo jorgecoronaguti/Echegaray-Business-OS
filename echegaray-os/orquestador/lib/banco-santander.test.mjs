@@ -1,6 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { MOVIMIENTOS, MOVIMIENTOS_DIA, CUENTA, TARJETA, ACUERDO, verificarCadena, porTipo, ingresosPorNaturaleza, naturalezaIngreso, enCartera, endosados, totalEcheqs, antiguedadDias, clasificarMovimiento } from './banco-santander.mjs'
+import fs from 'node:fs'
+import { MOVIMIENTOS, MOVIMIENTOS_DIA, CUENTA, TARJETA, ACUERDO, verificarCadena, porTipo, ingresosPorNaturaleza, naturalezaIngreso, enCartera, endosados, totalEcheqs, antiguedadDias, clasificarMovimiento, verificarTripletesBancarios, NAT } from './banco-santander.mjs'
+import { DESTINOS } from './impacto-bancario.mjs'
+import { GRUPOS } from './conciliacion-por-naturaleza.mjs'
 
 // EL TEST QUE HACE CONFIABLE LA TRANSCRIPCIÓN. El extracto es una cadena: saldo(n) = saldo(n−1) +
 // importe(n). Si tipeé mal un dígito, la cadena se rompe y esto falla. Sin este test, los 71
@@ -117,4 +120,130 @@ test('el acuerdo y la tarjeta tienen su costo y su vencimiento declarados', () =
 test('la foto sabe cuántos días tiene', () => {
   assert.equal(antiguedadDias(new Date(2026, 6, 22)), 0)
   assert.equal(antiguedadDias(new Date(2026, 6, 29)), 7)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// LOS COSTOS BANCARIOS QUE SE LEÍAN COMO PAGOS A PROVEEDORES (31/07)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El cajón de sastre de `clasificarMovimiento` devolvía "Transferencias a proveedores" para todo lo que
+// no matcheara una regla, y ahí caían los costos del banco. Cada caso de abajo se fija con SU IMPORTE
+// REAL medido en public.banco_movimientos (170 movimientos, 22/06→31/07/2026): un test que sólo mira
+// el rótulo no distingue una regla que funciona de una que matchea de casualidad.
+
+test('cada comisión del banco es un costo bancario, no un pago a proveedor', () => {
+  // Los cuatro cargos que el Santander debita sin factura, con el importe con el que aparecen.
+  const casos = [
+    ['Comision por servicio de cuenta', 69000],
+    ['Comision mensual de movs clearing', 14400],
+    ['Comision servicio cuenta dolares', 14960],
+    ['Comision Compensacion Cheques Cfu', 117651.97],
+  ]
+  for (const [concepto, importe] of casos) {
+    assert.equal(clasificarMovimiento(concepto), NAT.comisiones, `"${concepto}" (${importe}) es costo bancario`)
+    assert.notEqual(clasificarMovimiento(concepto), NAT.transferencias, `"${concepto}" NO es un pago a proveedor`)
+  }
+  // "Comision Compensacion Cheques Cfu" dice "Cheques": tiene que ganar la regla de comisión, no la de
+  // cheques emitidos. Si cayera ahí, un costo del banco se leería como un cheque propio debitado.
+  assert.notEqual(clasificarMovimiento('Comision Compensacion Cheques Cfu'), NAT.cheques)
+})
+
+test('el IVA de una comisión va con la comisión; el del descubierto, con el descubierto', () => {
+  // La alícuota es la que dice de qué es el impuesto: 21% = servicio bancario · 10,5% = interés.
+  assert.equal(clasificarMovimiento('Iva 21% reg de transfisc ley27743'), NAT.comisiones)
+  assert.equal(clasificarMovimiento('Iva percepcion rg 2408'), NAT.comisiones)
+  assert.equal(clasificarMovimiento('Iva 10,5% reg trans fisc ley 27743'), NAT.descubierto)
+  assert.equal(clasificarMovimiento('Iva percep rg 2408 alic reducida'), NAT.descubierto)
+  assert.equal(clasificarMovimiento('Cobro de interes por descubierto - Del 08/06/26 al 07/07/26'), NAT.descubierto)
+})
+
+test('las percepciones RG 2408 de las comisiones ya no inflan el costo del descubierto', () => {
+  // EL NÚMERO QUE MOTIVÓ LA CORRECCIÓN. En el extracto transcripto (junio) las tres percepciones RG
+  // 2408 acompañan a las tres comisiones del 29/06 y valen $2.753,10 — que la regla vieja
+  // (/iva percep/) sumaba al costo del descubierto. Sobre la base entera de 170 movimientos son
+  // $9.233,46 (7 percepciones). El descubierto de julio queda en $282.621,15 exactos: interés
+  // $252.340,32 + IVA 10,5% $26.495,73 + percepción 1,5% $3.785,10.
+  const t = porTipo()
+  const desc = t.find((x) => x.tipo === NAT.descubierto)
+  assert.equal(Math.round(desc.monto * 100) / 100, -282621.15, 'el bucket del descubierto es SÓLO el interés y sus impuestos al 10,5%/1,5%')
+  assert.equal(desc.cantidad, 3, 'tres movimientos: interés, IVA 10,5% y percepción alícuota reducida')
+  const com = t.find((x) => x.tipo === NAT.comisiones)
+  assert.equal(Math.round(com.monto * 100) / 100, -113794.80, 'junio: tres comisiones con su IVA 21% y su percepción 3%')
+  assert.equal(com.cantidad, 9, 'tres tripletes de comisión + IVA + percepción')
+})
+
+test('los tripletes del banco cierran con su alícuota: la atribución se prueba, no se afirma', () => {
+  // Esto es lo que hace defendible la separación descubierto/comisión: cada impuesto tiene que ser el
+  // porcentaje exacto de un cargo del MISMO día. Un huérfano = un peso cuya clasificación es una
+  // suposición, y es la señal de que el banco empezó a cobrar algo que la regla no conoce.
+  const { cerrados, huerfanos } = verificarTripletesBancarios()
+  assert.deepEqual(huerfanos, [], 'hay impuestos del banco que no son el % de ningún cargo del día')
+  assert.equal(cerrados.length, 8, 'seis de comisión (junio) + dos del descubierto (14/07)')
+  const delDescubierto = cerrados.filter((c) => c.cargo === 'interés del descubierto')
+  assert.deepEqual(delDescubierto.map((c) => c.tasa).sort(), [0.015, 0.105])
+})
+
+test('la reversa del impuesto al cheque va con su impuesto, en positivo, no al cajón de sastre', () => {
+  // "Anul imp ley 25.413" es un CRÉDITO de +$294,78 (01/07). Antes caía en "Transferencias a
+  // proveedores": un ingreso sentado en un bucket de egresos, el mismo síntoma que delató el bucket de
+  // cheques cuando tenía los echeq acreditados adentro.
+  assert.equal(clasificarMovimiento('Anul imp ley 25.413 debito 0,6%'), NAT.impuestoCheque)
+  const mov = MOVIMIENTOS.find((m) => /anul imp ley 25\.413/i.test(m.concepto))
+  assert.equal(mov.importe, 294.78, 'es un crédito: el banco devuelve impuesto')
+  assert.notEqual(clasificarMovimiento('Anul imp ley 25.413 debito 0,6%'), NAT.transferencias)
+})
+
+test('la percepción del 30% sobre la compra en el exterior va con la compra que la generó', () => {
+  const c = 'Percep perc rg 5617 30% o suj - Google workspace ecsas.co - tarj nro. 6077'
+  assert.equal(clasificarMovimiento(c), NAT.tarjetaDebito)
+  assert.notEqual(clasificarMovimiento(c), NAT.transferencias)
+  const mov = MOVIMIENTOS.find((m) => /percep perc rg 5617/i.test(m.concepto))
+  assert.equal(mov.importe, -11203.92, 'el importe real medido; es pago a cuenta de Ganancias (gap declarado)')
+  // Salió de la cuenta el mismo día y por la misma compra: $37.926 + $11.203,92 = $49.129,92.
+  const compra = MOVIMIENTOS.find((m) => /compra en el exterior - google workspace/i.test(m.concepto))
+  assert.equal(Math.round((Math.abs(compra.importe) + Math.abs(mov.importe)) * 100) / 100, 49129.92)
+})
+
+test('honorarios y débito de online banking son decisiones explícitas, no caídas al cajón', () => {
+  // Los dos se quedan en "Transferencias a proveedores" —misma pestaña dueña (Compras)— pero por una
+  // regla escrita, para que un movimiento de $2.000.000 no dependa de que nadie tocó el fallthrough.
+  assert.equal(clasificarMovimiento('Pago de honorarios - 260702507 260702507'), NAT.transferencias)
+  assert.equal(clasificarMovimiento('Debito transf. online banking emp - A pedro ward / - var / 23280102199'), NAT.transferencias)
+  assert.equal(clasificarMovimiento('Debito transf. online banking emp - 00720567007000245843ars'), NAT.transferencias)
+  // Y NO son sueldos: un honorario no lleva cargas sociales y su factura es de un tercero.
+  assert.notEqual(clasificarMovimiento('Pago de honorarios - 260702507'), NAT.sueldos)
+  const hon = MOVIMIENTOS.find((m) => /pago de honorarios/i.test(m.concepto))
+  assert.equal(hon.importe, -2000000)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL GUARDIÁN: NINGUNA NATURALEZA SIN PESTAÑA DUEÑA — NI UNA QUE EL CÓDIGO EMITA A ESPALDAS DE NAT
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// La red que ya existía (cash-flow-cobertura-naturalezas.test.mjs) compara COBERTURA contra NAT. El
+// agujero: NAT es una constante escrita a mano, así que un `return 'Foo'` nuevo dentro de
+// clasificarMovimiento producía una naturaleza que NADIE declaraba y que ningún SUMIF del Sheet
+// referencia — o sea plata invisible, que es peor que plata mal clasificada. Esto lee los literales
+// del propio código fuente y exige que cada uno esté en NAT, en DESTINOS y en GRUPOS.
+
+test('toda naturaleza que clasificarMovimiento puede devolver está en NAT, en DESTINOS y con pestaña dueña', () => {
+  const src = fs.readFileSync(new URL('./banco-santander.mjs', import.meta.url), 'utf8')
+  const cuerpo = src.slice(src.indexOf('export function clasificarMovimiento'))
+  const fn = cuerpo.slice(0, cuerpo.indexOf('\n}\n'))
+  const literales = [...fn.matchAll(/return '([^']+)'/g)].map((m) => m[1])
+  assert.ok(literales.length >= 14, `se encontraron ${literales.length} naturalezas literales: el escaneo del fuente sigue funcionando`)
+  const enNat = new Set(Object.values(NAT))
+  const enGrupos = new Set(GRUPOS.map((g) => g.naturaleza))
+  for (const n of literales) {
+    assert.ok(enNat.has(n), `clasificarMovimiento devuelve "${n}" y NAT no lo declara: ninguna fórmula del Sheet lo va a sumar`)
+    assert.ok(DESTINOS[n], `"${n}" no tiene destino declarado en impacto-bancario.DESTINOS`)
+    assert.ok(DESTINOS[n].pestaña, `"${n}" tiene entrada en DESTINOS pero sin pestaña dueña`)
+  }
+  // Los EGRESOS además tienen que tener grupo en la conciliación: es lo que arma el bloque 4.7 de CAJA,
+  // cuya fila de control compara la suma de los grupos contra todo lo que el extracto dice que salió.
+  // Una naturaleza de egreso sin grupo hace que esos dos números dejen de coincidir.
+  const soloIngresos = new Set([NAT.cobranzas, NAT.rescates, NAT.traslados, NAT.ajusteSinDetalle])
+  for (const n of literales.filter((x) => !soloIngresos.has(x))) {
+    assert.ok(enGrupos.has(n), `"${n}" es un egreso sin grupo en conciliacion-por-naturaleza.GRUPOS: el control del bloque 4.7 de CAJA va a descuadrar`)
+  }
 })

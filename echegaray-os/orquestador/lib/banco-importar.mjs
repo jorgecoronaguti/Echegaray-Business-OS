@@ -108,10 +108,29 @@ function encabezadoCsvBanco(linea) {
   const iConcepto = partes.indexOf('concepto')
   const iImporte = partes.indexOf('importe')
   const iSaldo = partes.indexOf('saldo')
+  // LA REFERENCIA ES LA CLAVE DEL MOVIMIENTO Y SE VENÍA TIRANDO (30/07). Es el identificador del banco:
+  // no cambia entre descargas, al contrario del saldo corrido —que depende de la ventana y por eso dejó
+  // entrar 62 movimientos duplicados—. Y para los cheques ES el número de cheque ("0133;000000315;
+  // Cheque debitado" → físico 315), así que el cruce contra el extracto pasa a ser una identidad.
+  const iRef = partes.indexOf('referencia')
   // Sólo el formato con columnas EXTRA entre fecha y concepto (concepto no es la columna 1): ése es el
   // que el parseo genérico no sabe leer. Un "fecha;concepto;importe" común sigue por la vía de siempre.
   if (iConcepto < 2 || iImporte < 2) return null
-  return { fecha: 0, concepto: iConcepto, importe: iImporte, saldo: iSaldo >= 0 ? iSaldo : null }
+  return { fecha: 0, concepto: iConcepto, importe: iImporte, saldo: iSaldo >= 0 ? iSaldo : null, referencia: iRef >= 0 ? iRef : null }
+}
+
+/**
+ * La referencia, normalizada: sólo dígitos y sin ceros a la izquierda.
+ *
+ * POR QUÉ NORMALIZAR. El banco la escribe con relleno ("000000315") y en otras filas sin él
+ * ("16862006"). Como clave única el relleno da igual, pero para cruzar contra un cheque —cuyo número
+ * el OS guarda como "00000315" o "315" según de dónde salió— hay que compararlos en la misma forma.
+ * Se conserva '' → null: una referencia vacía NO es una referencia, y guardarla como cadena vacía
+ * haría que dos movimientos sin referencia choquen contra el índice único.
+ */
+export function normalizarReferencia(v) {
+  const s = String(v ?? '').replace(/\D/g, '').replace(/^0+/, '')
+  return s === '' ? null : s
 }
 
 /** El primer campo de la línea. Sirve para ver si la línea ABRE una fila (arranca con una fecha). */
@@ -189,7 +208,8 @@ export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {})
       const concepto = String(p[cols.concepto] ?? '').replace(/\s+/g, ' ').trim()
       if (!concepto) { rechazos.push({ linea: numLinea, texto: cruda.slice(0, 90), motivo: 'la fila no tiene concepto' }); continue }
       const saldo = cols.saldo != null ? importe(p[cols.saldo]) : null
-      movimientos.push({ fecha: f, concepto, importe: imp, saldo })
+      const referencia = cols.referencia != null ? normalizarReferencia(p[cols.referencia]) : null
+      movimientos.push({ fecha: f, concepto, importe: imp, saldo, referencia })
       continue
     }
 
@@ -249,7 +269,26 @@ export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {})
 
 /** La clave natural de un movimiento. El SALDO entra a propósito: dos transferencias iguales el
  *  mismo día son dos movimientos distintos y sólo el saldo corrido los separa. */
-export const clave = (m) => `${m.fecha}|${String(m.concepto).toLowerCase().replace(/\s+/g, ' ').trim()}|${Number(m.importe).toFixed(2)}|${m.saldo == null ? '' : Number(m.saldo).toFixed(2)}`
+export const claveNatural = (m) => `${m.fecha}|${String(m.concepto).toLowerCase().replace(/\s+/g, ' ').trim()}|${Number(m.importe).toFixed(2)}|${m.saldo == null ? '' : Number(m.saldo).toFixed(2)}`
+
+/**
+ * LA CLAVE DE UN MOVIMIENTO: la referencia cuando existe, la natural cuando no.
+ *
+ * POR QUÉ (31/07). La migración del 30/07 declaró la referencia como la única clave que identifica un
+ * movimiento —el saldo corrido cambia entre descargas y por eso dejó entrar 62 duplicados—, creó el
+ * índice único y arregló el parser para leerla. Pero esta función siguió usando el saldo, y el INSERT
+ * del importador ni siquiera escribía la columna: el índice quedó sobre una columna vacía. Medido hoy:
+ * el extracto 01/07→31/07 se reportó como "138 nuevos · 0 ya estaban" contra una base que ya tenía 173
+ * movimientos de julio. La clave estaba declarada y no estaba en vigencia.
+ */
+/**
+ * EL IMPORTE VA EN LA CLAVE DE LA REFERENCIA. El banco REPITE la referencia para una operación y su
+ * percepción: el 01/07 la compra en el exterior de Google Workspace ($-37.926) y su percepción RG 5617
+ * ($-11.203,92) comparten la referencia 00114824 y se distinguen por el Código Operativo, que el parser
+ * no captura. Con la referencia sola, la percepción se descartaba como "ya vista": un impuesto menos, sin
+ * un solo error a la vista.
+ */
+export const clave = (m) => (m?.referencia ? `ref:${String(m.referencia)}|${Number(m.importe).toFixed(2)}` : claveNatural(m))
 
 /**
  * NÚCLEO PURO: qué de lo nuevo NO estaba todavía.
@@ -257,14 +296,25 @@ export const clave = (m) => `${m.fecha}|${String(m.concepto).toLowerCase().repla
  * Las descargas del homebanking se piden con ventanas que se superponen, así que la mayor parte de
  * un extracto nuevo ya está cargada. Sin esto, cada importación duplicaría el tramo común: no daría
  * error, daría un saldo equivocado.
+ *
+ * SE MIRAN LAS DOS CLAVES, no una. Un movimiento ya cargado ANTES de que la referencia existiera no
+ * tiene con qué cruzarse por identidad: si sólo comparara referencias, cada fila vieja se duplicaría
+ * al llegar el mismo movimiento con su referencia. Y al revés, dos descargas del mismo movimiento
+ * traen saldos distintos, así que la natural sola tampoco alcanza. Conocido = cualquiera de las dos.
  */
 export function novedades(nuevos = [], existentes = []) {
-  const vistos = new Set(existentes.map(clave))
+  const refs = new Set(); const naturales = new Set()
+  for (const e of existentes) {
+    if (e?.referencia) refs.add(`ref:${String(e.referencia)}`)
+    naturales.add(claveNatural(e))
+  }
   const out = []
   for (const m of nuevos) {
-    const k = clave(m)
-    if (vistos.has(k)) continue
-    vistos.add(k) // el propio extracto puede traer la misma fila dos veces
+    if (m?.referencia && refs.has(`ref:${String(m.referencia)}`)) continue
+    if (naturales.has(claveNatural(m))) continue
+    // el propio extracto puede traer la misma fila dos veces
+    if (m?.referencia) refs.add(`ref:${String(m.referencia)}`)
+    naturales.add(claveNatural(m))
     out.push(m)
   }
   return out

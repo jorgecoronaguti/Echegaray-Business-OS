@@ -80,17 +80,24 @@ function leerEntrada() {
   try { return readFileSync(0, 'utf8') } catch { return '' }
 }
 
-/** Inserta ignorando los que ya están: la deduplicación la impone el índice único de la BASE. */
+/**
+ * Inserta ignorando los que ya están: la deduplicación la impone el índice único de la BASE.
+ *
+ * LA REFERENCIA SE ESCRIBE (31/07). Faltaba en esta lista de columnas, y era el agujero por el que se
+ * caía la clave entera: la migración del 30/07 creó el índice único `(cuenta, referencia)` y el parser
+ * ya la leía, pero acá se descartaba en silencio. El índice existía sobre una columna que siempre era
+ * NULL —206 de 206 filas—, así que no protegía nada y el cruce contra cheques no tenía de dónde salir.
+ */
 async function insertar(movs, origen) {
   if (!movs.length) return 0
   let n = 0
   for (const m of movs) {
     const r = await query(
-      `insert into public.banco_movimientos (cuenta, fecha, concepto, importe, saldo_despues, origen)
-       values ($1, $2, $3, $4, $5, $6)
+      `insert into public.banco_movimientos (cuenta, fecha, concepto, importe, saldo_despues, origen, referencia)
+       values ($1, $2, $3, $4, $5, $6, $7)
        on conflict do nothing
        returning id`,
-      [CUENTA.numero, m.fecha, m.concepto, m.importe, m.saldo, origen],
+      [CUENTA.numero, m.fecha, m.concepto, m.importe, m.saldo, origen, m.referencia ?? null],
     )
     n += r.rowCount
   }
@@ -136,12 +143,13 @@ async function main() {
     // del MISMO día sólo se distinguen por el orden en que el banco los listó — que es el orden en
     // que se insertaron. Sin esto llegan en el orden que quiera Postgres y la cadena "no cierra" por
     // un motivo inventado: un auditor que grita sin razón se deja de mirar.
-    'select fecha, concepto, importe, saldo_despues as saldo from public.banco_movimientos where cuenta = $1 order by fecha, id',
+    'select fecha, concepto, importe, saldo_despues as saldo, referencia from public.banco_movimientos where cuenta = $1 order by fecha, id',
     [CUENTA.numero],
   )
   const norm = existentes.map((r) => ({
     fecha: r.fecha instanceof Date ? r.fecha.toISOString().slice(0, 10) : String(r.fecha).slice(0, 10),
     concepto: r.concepto, importe: Number(r.importe), saldo: r.saldo == null ? null : Number(r.saldo),
+    referencia: r.referencia ?? null,
   }))
   const nuevos = novedades(movimientos, norm)
   console.log(`${nuevos.length} nuevo(s) · ${movimientos.length - nuevos.length} ya estaban (las ventanas del extracto se superponen)`)

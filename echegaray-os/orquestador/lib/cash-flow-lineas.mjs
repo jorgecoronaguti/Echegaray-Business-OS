@@ -16,6 +16,11 @@
 
 import { REGLAS, RUBROS } from './rubro-caja.mjs'
 import { TASAS, REAL as REAL_DESCUBIERTO } from './costo-descubierto.mjs'
+// La fecha de caja de una quincena vive en un solo lugar: ni el cash flow ni la pestaña de Jornales
+// la definen por su cuenta. Ver lib/jornales-fecha-pago.mjs.
+import { fechaDeCajaDeQuincena } from './jornales-fecha-pago.mjs'
+// El "⇒ " de los rótulos de total sale de una sola función, la misma que usan los generadores.
+import { total } from './patron-pestana.mjs'
 
 /** El sub-rubro de Estructura que NO es gasto del mes sino inversión. Lo escribe estructura-pestana. */
 export const SUB_BIENES_DE_USO = 'Equipos y rodados (inversión)'
@@ -152,19 +157,116 @@ export function formulasInstrumento(inst, marcas) {
  * @param {string} hasta expresión de la fecha de fin, EXCLUYENTE
  * @param {string} marcaFalta el texto exacto que el OS escribe cuando la factura no está
  */
-export function formulaChequesSinFactura(desde, hasta, marcaFalta) {
+export function formulaChequesSinFactura(desde, hasta, marcaFalta, instrumentos = Object.values(INSTRUMENTOS)) {
   const trozo = ({ pestaña, filaCab, colMonto, colFecha, colMarca }) => {
     const col = (n) => { let s = ''; for (let x = n; x >= 0; x = Math.floor(x / 26) - 1) s = String.fromCharCode(65 + (x % 26)) + s; return s }
     const r = (c) => `'${pestaña}'!$${c}$${filaCab + 1}:$${c}$${FILA_FIN}`
     return `SUMPRODUCT((${r(col(colMarca))}="${marcaFalta}")*(${r(colFecha)}>=${desde})*(${r(colFecha)}<${hasta})*IF(ISNUMBER(${r(colMonto)});${r(colMonto)};0))`
   }
-  return `=${Object.values(INSTRUMENTOS).map(trozo).join('+')}`
+  return `=${instrumentos.map(trozo).join('+')}`
+}
+
+/** El subconjunto de instrumentos de una línea de "sin factura": 'cheques' o 'tarjeta' abre UNO solo;
+ * sin `inst` van los dos (compatibilidad). Con esto la misma fórmula anti-doble-conteo alimenta dos
+ * líneas separadas sin sumar plata nueva: la partición cheques/tarjeta es de PRESENTACIÓN, no de monto. */
+export function instrumentosDeLinea(inst) {
+  return inst ? [INSTRUMENTOS[inst]] : Object.values(INSTRUMENTOS)
 }
 
 export const LINEA_CHEQUES = {
   rubro: 'Cheques y tarjeta sin factura cargada',
   detalle: 'Cheques Emitidos y Tarjeta de Credito',
   paga: 'Cheques Emitidos',
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL CALENDARIO FISCAL — IVA e IIBB A PAGAR, LA SALIDA QUE EL CUADRO NO PROYECTABA
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// POR QUÉ EXISTE (28/07). Auditoría TAUDIT: los dos cash flow no proyectaban hacia adelante el IVA ni
+// el IIBB a pagar (~$13,18M/año sólo de IVA). La línea de "Impuestos" del cuadro sólo ve
+// Compras!AC="Impuestos" —pagos YA hechos de OTROS impuestos— y el IVA/IIBB NO viven en Compras (lo
+// dice impuestos-pestana.mjs: "En Compras no hay UNA SOLA fila de IVA ni de IIBB"). El dato ya está
+// calculado, mes a mes, en la pestaña "Impuestos y Financieros": la fila "⇒ IVA a pagar en el mes" y
+// la fila "⇒ IIBB a pagar en el mes". Esta línea LEE esas filas; no recalcula nada (una sola fuente).
+//
+// NO DUPLICA. El IVA/IIBB neto a pagar no está en Compras, así que la línea de "Impuestos" (rubro de
+// Compras) y ésta miran plata distinta. Por eso "Impuestos y Financieros" pasa de DERIVADA a FUENTE en
+// el mapa de cobertura (cash-flow-cobertura.mjs) SÓLO por estas dos filas; el resto de la pestaña
+// (prendario, planes) sigue siendo vista de Compras y NO se suma.
+//
+// LAS FILAS NO SE HARDCODEAN (misma lección que Estructura!$15). Se ubican por su rótulo en la columna
+// A, igual que Estructura/Recurrentes; si el rótulo no aparece, el generador rompe en vez de escribir
+// una referencia muerta que devolvería $0 en silencio.
+// EL CONTRATO SE DEFINE UNA VEZ, Y EL PRODUCTOR LO IMPORTA (31/07). Estaba escrito dos veces —acá el
+// texto a buscar, allá el texto a escribir— y el 30/07 impuestos-pestana.mjs renombró su fila a "IVA a
+// pagar en efectivo" razonando sobre el NÚMERO DE FILA ("queda en la misma fila 18 que leía el cash
+// flow"), que es justo lo que este lado NO usa. Desde entonces los dos cash flow no se podían
+// regenerar: el generador fallaba cerrado, que es lo correcto, pero el archivo quedó sin recibir nada.
+// Ahora impuestos-pestana.mjs escribe ESTAS constantes: renombrar de un solo lado ya no es posible.
+export const ROTULOS_CALENDARIO = { iva: 'IVA a pagar en efectivo', iibb: 'IIBB a pagar en el mes' }
+export const CALENDARIO_IMPUESTOS = {
+  pestaña: 'Impuestos y Financieros',
+  // Los rótulos EXACTOS que escribe impuestos-pestana.mjs — con el "⇒ " que le antepone total().
+  rotulos: { iva: total(ROTULOS_CALENDARIO.iva), iibb: total(ROTULOS_CALENDARIO.iibb) },
+}
+
+/** Los rótulos a ubicar por su fila en "Impuestos y Financieros", para que el generador los resuelva
+ * (mismo mecanismo que tablasDeProyeccion). PURA. */
+export function rotulosCalendarioImpuestos() {
+  return Object.entries(CALENDARIO_IMPUESTOS.rotulos).map(([clave, rotulo]) => ({ clave, rotulo }))
+}
+
+/** Exige que las filas del calendario estén ubicadas: una referencia a una fila muerta da $0 sin avisar. */
+function filasCalendarioOk(filasCal) {
+  const { iva, iibb } = filasCal ?? {}
+  if (!iva || !iibb) throw new Error('cash-flow-lineas: no sé en qué filas de "Impuestos y Financieros" están "IVA a pagar"/"IIBB a pagar" — sin eso la línea apuntaría a una fila muerta')
+  return { iva, iibb }
+}
+
+/** La columna del mes N (1=enero) en la grilla mensual: enero es SIEMPRE la columna B, igual que en
+ * "Impuestos y Financieros" (A=concepto, B..M=doce meses, N=total). PURA. */
+export const colMesDelAnio = (m) => String.fromCharCode(65 + m)
+
+/**
+ * NÚCLEO PURO: el IVA + IIBB a pagar de un MES, leído del calendario. La columna del cash flow y la de
+ * "Impuestos y Financieros" están alineadas (B=enero…M=diciembre), así que se referencia la misma
+ * letra. El calendario YA trae real (ARCA/DDJJ) y proyección; esta línea sólo lo lee, no lo recalcula.
+ * N() convierte una celda vacía o "—" en 0 sin romper.
+ * @param {string} colTabla letra de la columna del mes (ej. 'D')
+ * @param {{iva:number,iibb:number}} filasCal filas ubicadas por rótulo
+ * @returns {string} fórmula es-AR
+ */
+export function formulaCalendarioImpuestosMes(colTabla, filasCal) {
+  const { iva, iibb } = filasCalendarioOk(filasCal)
+  const P = CALENDARIO_IMPUESTOS.pestaña
+  return `=N('${P}'!${colTabla}$${iva})+N('${P}'!${colTabla}$${iibb})`
+}
+
+/**
+ * NÚCLEO PURO: el IVA + IIBB imputado a una VENTANA SEMANAL. El calendario es mensual (no hay una
+ * fecha de vencimiento por día en la pestaña), así que el total del mes cae en la semana que contiene
+ * el fin de ese mes de vencimiento — aproximación DECLARADA de la timing intra-mes; el monto es exacto.
+ * Se recorre los doce meses y se queda con los que vencen dentro de [desde, hasta) (límite superior
+ * EXCLUYENTE, como el resto del cuadro, para que ningún mes caiga en dos semanas).
+ * @param {string} desde expresión de inicio (ej. 'B$3') · @param {string} hasta límite EXCLUYENTE
+ * @param {number} anio el año de la grilla (para construir la fecha de vencimiento del mes)
+ * @param {{iva:number,iibb:number}} filasCal filas ubicadas por rótulo
+ * @returns {string} fórmula es-AR
+ */
+export function formulaCalendarioImpuestosSemana(desde, hasta, anio, filasCal) {
+  const { iva, iibb } = filasCalendarioOk(filasCal)
+  const P = CALENDARIO_IMPUESTOS.pestaña
+  const term = (m) => {
+    const c = colMesDelAnio(m)
+    // PERCIBIDO (+1): el IVA/IIBB del período de un mes se PAGA al mes siguiente. El vencimiento real
+    // de AFIP cae alrededor del día 20 del mes siguiente → fin del mes del período + 20 días. Así el
+    // egreso semanal cae en la semana en que efectivamente sale la plata, no en la del período.
+    const venc = `EOMONTH(DATE(${anio};${m};1);0)+20`
+    const monto = `(N('${P}'!${c}$${iva})+N('${P}'!${c}$${iibb}))`
+    return `${monto}*(${venc}>=${desde})*(${venc}<${hasta})`
+  }
+  return `=${Array.from({ length: 12 }, (_, i) => term(i + 1)).join('+')}`
 }
 
 // De dónde sale la PROYECCIÓN de cada rubro para los meses que todavía no pasaron.
@@ -299,10 +401,28 @@ export function formulaJornales(desde, hasta) {
   // Jornales del 23/07 movió las quincenas reales a la fila 41 y estas dos sumas habrían seguido
   // devolviendo un número —el de las filas equivocadas— sin marcar un solo error. Los nombres los
   // publica el generador de Jornales y se mueven con la pestaña.
-  // Bloque 1: quincenas reales (HASTA = fecha de pago, TOTAL = lo pagado).
-  const real = `SUMPRODUCT(ISNUMBER(JORNALES_REAL_HASTA)*(JORNALES_REAL_HASTA>=${desde})*(JORNALES_REAL_HASTA<${hasta})*IF(ISNUMBER(JORNALES_REAL_TOTAL);JORNALES_REAL_TOTAL;0))`
+  //
+  // ═══ LA FECHA QUE DECIDE ES LA DE PAGO, NO LA DE CIERRE (31/07) ═══
+  //
+  // Decía acá mismo: "HASTA = fecha de pago, TOTAL = lo pagado". Era falso. El dueño: *"los jornales
+  // que se pagan de la quincena q termina hoy, se pagarán la semana que viene"* — y el extracto del
+  // Santander ya lo probaba desde antes: la quincena que cerró el 15/07 se pagó el 17/07 (lote
+  // 260717507, $3.775.150, que es EXACTAMENTE su columna "Banco"), y la que cerró el 30/06 se pagó el
+  // 01/07. Una quincena no se paga el día que cierra: se paga uno o dos días hábiles después.
+  //
+  // MEDIDO sobre las 24 quincenas del año: la quincena 16/07–31/07 ($7.675.588) pasa de la columna de
+  // JULIO a la de AGOSTO, y de la semana del 27/07 a la del 03/08. El total del año no cambia
+  // ($184.172.771 de las dos formas): la plata se mueve entre columnas, no aparece ni desaparece.
+  //
+  // EL FALLBACK A `HASTA` NO ES OPCIONAL. Si la celda de pago quedara vacía —una quincena vieja, una
+  // fórmula borrada a mano— la línea devolvería cero para esa quincena y el cuadro seguiría cuadrando
+  // con menos plata. Una línea en cero sin avisar es el peor resultado posible de este archivo.
+  const fReal = fechaDeCajaDeQuincena('JORNALES_REAL_PAGO', 'JORNALES_REAL_HASTA')
+  const fProy = fechaDeCajaDeQuincena('JORNALES_PROY_PAGO', 'JORNALES_PROY_HASTA')
+  // Bloque 1: quincenas reales (TOTAL = lo pagado).
+  const real = `SUMPRODUCT(ISNUMBER(${fReal})*(${fReal}>=${desde})*(${fReal}<${hasta})*IF(ISNUMBER(JORNALES_REAL_TOTAL);JORNALES_REAL_TOTAL;0))`
   // Bloque 2: quincenas proyectadas.
-  const proy = `SUMPRODUCT(ISNUMBER(JORNALES_PROY_HASTA)*(JORNALES_PROY_HASTA>=${desde})*(JORNALES_PROY_HASTA<${hasta})*IF(ISNUMBER(JORNALES_PROY_TOTAL);JORNALES_PROY_TOTAL;0))`
+  const proy = `SUMPRODUCT(ISNUMBER(${fProy})*(${fProy}>=${desde})*(${fProy}<${hasta})*IF(ISNUMBER(JORNALES_PROY_TOTAL);JORNALES_PROY_TOTAL;0))`
   return `=${real}+${proy}`
 }
 
@@ -536,7 +656,12 @@ export const CUADRO = [
         lineas: [
           { nombre: 'Materiales e insumos de obra civil', rubro: 'Materiales Civil' },
           { nombre: 'Materiales de mantenimiento', rubro: 'Materiales Mantenimiento' },
-          { nombre: 'Cheques y tarjeta sin factura cargada', cheques: true, detalle: 'Cheques Emitidos y Tarjeta de Credito' },
+          // Se abre en dos: mismo criterio anti-doble-conteo (sólo lo que NO está en Compras), misma
+          // fórmula (formulaChequesSinFactura por instrumento), pero el dueño ve el cheque y la cuota
+          // de tarjeta por separado. La suma de las dos = lo que antes era una sola línea: no hay plata
+          // nueva. La de tarjeta lee "Tarjeta de Credito" col E (monto) por col H (fecha de pago).
+          { nombre: 'Cheques sin factura cargada', cheques: true, inst: 'cheques', detalle: 'Cheques Emitidos' },
+          { nombre: 'Cuotas de tarjeta sin factura cargada', cheques: true, inst: 'tarjeta', detalle: 'Tarjeta de Credito' },
         ],
       },
       {
@@ -552,6 +677,14 @@ export const CUADRO = [
         nombre: 'Pagos de impuestos', signo: -1,
         lineas: [
           { nombre: 'Impuestos nacionales y provinciales', rubro: 'Impuestos' },
+          // NO sale de Compras: el IVA/IIBB neto a pagar no está cargado ahí. Lo trae el calendario
+          // de "Impuestos y Financieros" (fila "⇒ IVA a pagar" + "⇒ IIBB a pagar"), imputado al mes.
+          {
+            nombre: 'IVA e Ingresos Brutos a pagar',
+            calendarioImpuestos: true,
+            detalle: 'Impuestos y Financieros',
+            nota: 'IVA e IIBB del calendario fiscal, no de Compras',
+          },
         ],
       },
     ],
@@ -586,6 +719,16 @@ export const CUADRO = [
           },
           // Tampoco sale de Compras: el banco lo debita solo, sin factura, sobre cada movimiento de
           // la cuenta. 0,6% de cada lado — verificado al 99,1% contra el extracto (impuesto-cheque.mjs).
+          // Tampoco sale de Compras, y por la misma razón que el impuesto al cheque: el banco lo
+          // debita solo, sin factura. La línea de arriba ("Cuotas de crédito prendario y gastos
+          // bancarios") dice "gastos bancarios" pero lee el rubro Financiero de COMPRAS, donde no hay
+          // ni una comisión — y no las va a haber. Ver COMISIONES arriba: $381.649,64 medidos en el
+          // mes y medio del extracto que el cuadro proyectaba como $0.
+          {
+            nombre: 'Comisiones y gastos bancarios (Santander)',
+            comisionesBancarias: true,
+            nota: 'Comisión de servicio de cuenta, de clearing, de cuenta en dólares y de compensación de cheques, cada una con su IVA 21% y su percepción RG 2408 al 3% — todo lo que el banco debita sin factura. Sale del extracto (_BANCO_RAW), no de Compras. Los meses sin extracto proyectan el promedio de los que sí tienen: base de DOS meses, y julio incluye $145.888,44 de compensación de cheques que no es mensual, así que el promedio queda por encima del gasto recurrente (~$122.000/mes). Es un PISO declarado.',
+          },
           {
             nombre: 'Impuesto al cheque (Ley 25.413, 0,6% de cada lado)',
             impuestoCheque: true,
@@ -640,7 +783,8 @@ export function expresionReal(l, desde, hasta) {
   // La línea de cheques y tarjeta NO tiene fórmula: el cruce por número de comprobante hay que
   // normalizarlo de los dos lados ("0001-000036" vs "1-36") y eso en fórmula sería ilegible. La
   // llena el script con VALORES y el agente la reescribe cada 2 horas. Devolver null es la señal.
-  if (l.cheques) return null
+  // La de IVA/IIBB tampoco: su fórmula (mensual/semanal) la arma el generador con las filas ubicadas.
+  if (l.cheques || l.calendarioImpuestos) return null
   if (l.cobranzas) return formulaCobranzas(l.cobranzas, desde, hasta, l.modo).slice(1)
   if (l.rubro === 'Nómina · Jornales de obra') return formulaJornales(desde, hasta).slice(1)
   const ventana = `${COL_FECHA};">="&${desde};${COL_FECHA};"<"&${hasta}`
@@ -661,7 +805,7 @@ export function expresionReal(l, desde, hasta) {
  * @param {number} filaCab fila del encabezado con las fechas
  */
 export function formulaLineaMes(l, colMes, colTabla, filaCab, filasTabla = {}) {
-  if (l.cheques) return null
+  if (l.cheques || l.calendarioImpuestos) return null
   const mes = `${colMes}$${filaCab}`
   const real = expresionReal(l, mes, `EOMONTH(${mes};0)+1`)
   // Un bien de uso no tiene ritmo: comprar una moto en enero no significa comprar una por mes. Es
@@ -718,6 +862,90 @@ export function formulaInteresSemana(saldoInicial, desde, hasta) {
   // demás columnas del semanal. En el mensual la ventana es del mes; acá, de la semana. Mismo dato.
   const real = `SUMIFS(${rango(R.importe)};${rango(R.naturaleza)};"${R.marca}";${rango(R.fecha)};">="&${desde};${rango(R.fecha)};"<"&${hasta})`
   return `=MAX(${proyectado};IFERROR(-${real};0))`
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LAS COMISIONES DEL BANCO — EL COSTO QUE NO TENÍA LÍNEA
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// POR QUÉ EXISTE (31/07). El cuadro tenía una línea "Cuotas de crédito prendario y gastos bancarios"
+// que lee el rubro "Financiero" de COMPRAS. Ahí no hay ni una comisión bancaria, y no las va a haber
+// nunca: el banco no factura el mantenimiento de cuenta, lo debita solo. Resultado: los $381.649,64
+// que el Santander se llevó en el mes y medio del extracto no estaban en ninguna línea del cash flow,
+// y encima se leían como pagos a proveedores porque `clasificarMovimiento` los dejaba caer en su cajón
+// de sastre. Un costo fijo de ~$122.000/mes que el cuadro proyectaba como $0.
+//
+// LA LÍNEA LEE EL BANCO, COMO EL DESCUBIERTO Y EL IMPUESTO AL CHEQUE. Son las tres cosas que el cuadro
+// no puede sacar de una pestaña de gastos porque no pasan por una factura. El único registro es el
+// extracto, replicado en _BANCO_RAW con su naturaleza en la columna F.
+//
+// LA PROYECCIÓN DE LOS MESES SIN EXTRACTO: el promedio de los meses que SÍ tienen, calculado sobre la
+// propia réplica —no sobre la fila del cuadro, que sería circular—. Los meses con dato se cuentan con
+// el mismo SUMPRODUCT/COUNTIFS que usa el resto del archivo contra la espina de doce meses, así que
+// cuando entre el extracto de agosto la proyección se corrige sola.
+//
+// LA BASE ES FINA Y SE DECLARA: dos meses, y uno de ellos (julio) trae $145.888,44 de comisión de
+// compensación de cheques que NO es mensual. El promedio queda por encima del gasto recurrente. En un
+// costo, sobreestimar es el error barato — es la misma decisión que en el descubierto.
+
+/** De dónde salen las comisiones del banco. Es contrato con banco-raw-pestana.mjs y con NAT.comisiones. */
+export const COMISIONES = {
+  hoja: '_BANCO_RAW',
+  fecha: 'A',
+  importe: 'C',
+  naturaleza: 'F',
+  marca: 'Comisiones y gastos bancarios',
+}
+
+const rangoCom = (c) => `${COMISIONES.hoja}!$${c}$4:$${c}`
+
+/**
+ * NÚCLEO PURO: las comisiones que el banco YA cobró en una ventana [desde, hasta).
+ * En POSITIVO: el extracto las trae negativas y el cuadro muestra los egresos en positivo dentro de
+ * su categoría (la categoría entra restando al flujo).
+ * @returns {string} expresión es-AR SIN el "=" inicial
+ */
+export function expresionComisiones(desde, hasta) {
+  return `-SUMIFS(${rangoCom(COMISIONES.importe)};${rangoCom(COMISIONES.naturaleza)};"${COMISIONES.marca}"`
+    + `;${rangoCom(COMISIONES.fecha)};">="&${desde};${rangoCom(COMISIONES.fecha)};"<"&${hasta})`
+}
+
+/**
+ * NÚCLEO PURO: el promedio mensual de comisiones sobre los meses que tienen extracto.
+ * No referencia la fila del cuadro: sale entera de la réplica, así que no puede ser circular.
+ */
+export function expresionComisionesPromedio() {
+  const total = `-SUMIFS(${rangoCom(COMISIONES.importe)};${rangoCom(COMISIONES.naturaleza)};"${COMISIONES.marca}")`
+  const meses = `SUMPRODUCT(--(COUNTIFS(${rangoCom(COMISIONES.naturaleza)};"${COMISIONES.marca}"`
+    + `;${rangoCom(COMISIONES.fecha)};">="&${MESES_CAB};${rangoCom(COMISIONES.fecha)};"<"&EOMONTH(${MESES_CAB};0)+1)>0))`
+  return `IF(${meses}=0;0;${total}/${meses})`
+}
+
+/**
+ * NÚCLEO PURO: la línea de comisiones bancarias de UN MES.
+ * Mes cerrado o en curso → lo que el banco cobró. Mes futuro → el mayor entre lo cobrado (puede haber
+ * un cargo adelantado) y el promedio de los meses con extracto. Es un PISO, igual que el descubierto.
+ * @param {string} celdaMes celda con el primer día del mes (ej. 'B$3')
+ */
+export function formulaComisionesMes(celdaMes) {
+  const real = expresionComisiones(celdaMes, `EOMONTH(${celdaMes};0)+1`)
+  return `=IF(EOMONTH(${celdaMes};0)<=EOMONTH(TODAY();0);${real};MAX(${real};${expresionComisionesPromedio()}))`
+}
+
+/**
+ * NÚCLEO PURO: la línea de comisiones bancarias de UNA SEMANA.
+ *
+ * EL BANCO LAS COBRA A FIN DE MES, NO SEMANA A SEMANA — verificado en el extracto: el 29/06, el 29/07
+ * y el 30/07. Repartir el promedio mensual entre las ~4,3 semanas daría el total del mes bien y el
+ * timing mal, y el semanal existe justamente para el timing. Así que la proyección cae íntegra en la
+ * semana que CONTIENE el último día del mes; las demás semanas futuras muestran sólo lo real.
+ * @param {string} desde expresión del lunes de la semana · @param {string} hasta límite EXCLUYENTE
+ */
+export function formulaComisionesSemana(desde, hasta) {
+  const real = expresionComisiones(desde, hasta)
+  // ¿el cierre del mes del lunes cae dentro de [desde, hasta)? Entonces es la semana del cargo.
+  const esLaSemanaDelCierre = `(EOMONTH(${desde};0)>=${desde})*(EOMONTH(${desde};0)<${hasta})`
+  return `=MAX(${real};${esLaSemanaDelCierre}*${expresionComisionesPromedio()})`
 }
 
 /**
@@ -782,12 +1010,18 @@ const soloRango = (r) => String(r).split('!')[1].replace(/\$/g, '')
  * @param {Object<string,number>} filasTabla {pestaña: filaDelTotal} ubicada por rótulo (Estructura/Recurrentes)
  * @returns {{pestaña:string, rango:string}|null}
  */
-export function destinoDetalle(l, filasTabla = {}) {
-  // Las que el cuadro calcula sobre sus propias celdas: no hay pestaña de origen que mostrar.
-  if (l.descubierto || l.impuestoCheque) return null
-  // Cheques y tarjeta: el detalle vive en DOS pestañas; se apunta a la columna de monto de Cheques Emitidos.
+export function destinoDetalle(l, filasTabla = {}, filasCal = {}) {
+  // Las que el cuadro calcula sobre sus propias celdas: no hay pestaña de origen que mostrar. Las
+  // comisiones bancarias tampoco: su origen es la RÉPLICA del extracto (_BANCO_RAW), que es una hoja
+  // técnica y no una pestaña de trabajo del dueño — hiperlinkear ahí no ayuda a nadie a decidir.
+  if (l.descubierto || l.impuestoCheque || l.comisionesBancarias) return null
+  // IVA/IIBB: apunta a la fila "⇒ IVA a pagar" del calendario si ya se ubicó; si no, a la pestaña.
+  if (l.calendarioImpuestos) {
+    return { pestaña: CALENDARIO_IMPUESTOS.pestaña, rango: filasCal?.iva ? `A${filasCal.iva}` : 'A1' }
+  }
+  // Cheques y tarjeta (abiertas en dos líneas): cada una a la columna de monto de SU pestaña.
   if (l.cheques) {
-    const inst = INSTRUMENTOS.cheques
+    const inst = INSTRUMENTOS[l.inst] ?? INSTRUMENTOS.cheques
     return { pestaña: inst.pestaña, rango: soloRango(rangoInstrumento(inst, inst.colMonto)) }
   }
   // Cobranzas: la columna de monto (M) de la pestaña Cobranzas — la fuente exacta de las tres líneas de ingreso.
@@ -816,12 +1050,16 @@ export function destinoDetalle(l, filasTabla = {}) {
  * @param {object} l línea del CUADRO · @param {Object<string,number>} filasTabla
  * @returns {{formula:string, destino:string, rango:string}|null}
  */
-export function hipervinculoDetalle(l, filasTabla = {}) {
-  const dest = destinoDetalle(l, filasTabla)
+export function hipervinculoDetalle(l, filasTabla = {}, filasCal = {}) {
+  const dest = destinoDetalle(l, filasTabla, filasCal)
   if (!dest) return null
   // Las comillas del rótulo se duplican: si un nombre trajera una, cerraría la cadena de la fórmula.
   const etiqueta = `${SANGRIA_DETALLE}${l.nombre}`.replace(/"/g, '""')
-  const formula = `=HYPERLINK("#gid=GID{${dest.pestaña}}&range=${dest.rango}";"${etiqueta}")`
+  // URL COMPLETA (URLID{} = fileId, GID{} = getSheetMeta, los resuelve el script). La fila final del
+  // rango la TOPA el script al tamaño real de la pestaña destino: Google da "El rango no es válido" si
+  // el rango excede la grilla (Cobranzas tiene 358 filas y un M5:M400 se pasaba) y un rango abierto
+  // (O4:O) tampoco navega. La función pura deja el rango tal cual; el resolver lo acota con getSheetMeta.
+  const formula = `=HYPERLINK("URLID{}#gid=GID{${dest.pestaña}}&range=${dest.rango}";"${etiqueta}")`
   return { formula, destino: dest.pestaña, rango: dest.rango }
 }
 

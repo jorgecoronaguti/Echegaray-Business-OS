@@ -31,7 +31,9 @@ const filas = filasQuincenas(b)
 // Tiene que coincidir EXACTO con las 10 columnas de la pestaña. Devolvía 7 (de un layout viejo):
 // como sólo escribe cuando algo cambia y nada había cambiado, nunca se notó — la primera quincena
 // nueva habría reescrito el cuadro con las columnas corridas.
-check('11 columnas por quincena, como la pestaña', filas[0].length === 11)
+// SIGUEN SIENDO 11: la columna "Se paga el" la intercala jornales-pestana después de Hasta, no ésta.
+// Emitirla también acá la duplicaba y corría todo el registro una columna (visto en el dry del 31/07).
+check('11 columnas por quincena (la 12ª, "Se paga el", la intercala el generador)', filas[0].length === 11)
 // La etiqueta es una REFERENCIA a la celda de fecha, nunca la fecha copiada.
 check('la fecha se referencia, no se copia', filas[0][0].f === "='_J_OBREROS'!F3")
 // El "Hasta" busca la POSICIÓN del último día cargado, no cuántos días hay: las filas de fecha
@@ -41,8 +43,10 @@ check('Σ del jornal por hora del plantel sale de la columna W', filas[0][10].f 
 check('el total usa el rango del bloque', filas[0][9].f === "=SUM('_J_OBREROS'!AA4:AA6)")
 check('el segundo bloque usa SU rango', filas[1][9].f === "=SUM('_J_OBREROS'!AA9:AA10)")
 // Las hs correspondientes se autorreferencian: dependen de la fila donde va a quedar la quincena.
-check('hs correspondientes referencian su propia fila', filas[0][4].f === "=C6*D6*'Parámetros'!$B$43")
-check('la segunda quincena referencia la fila 7', filas[1][4].f === "=C7*D7*'Parámetros'!$B$43")
+// Entró "Se paga el" en la columna C (31/07) y todo el registro corrió una a la derecha: días hábiles
+// pasó a D y personas a E. Si alguien inserta otra columna, esto falla acá y no en el Sheet.
+check('hs correspondientes referencian su propia fila', filas[0][4].f === "=D6*E6*'Parámetros'!$B$43")
+check('la segunda quincena referencia la fila 7', filas[1][4].f === "=D7*E7*'Parámetros'!$B$43")
 check('ninguna celda trae un número suelto', filas.every((r) => r.every((c) => c.f && !('n' in c))))
 
 // cuerpoDelCuadro: dónde termina el cuerpo. Contar "celdas no vacías de la columna A" daba 30

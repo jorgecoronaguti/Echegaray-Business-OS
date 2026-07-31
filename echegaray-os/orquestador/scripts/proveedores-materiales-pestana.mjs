@@ -73,8 +73,10 @@ import { FAMILIAS, SIN_FAMILIA, formulaFamilia, familiaDeMaterial, RUBROS_CON_FA
 import { NOMBRES } from '../lib/sheet-pestanas.mjs'
 import { partir, filasHuerfanas, ref as refPestana } from '../lib/partir-pestana.mjs'
 import { anchosSegunContenido } from '../lib/nota-celda.mjs'
-import { fusionar, sobrantes, VACIO } from '../lib/preservar-anotaciones.mjs'
-import { conEdicionesRespetadas, guardarRegistro, detectarArranqueEnFrio, autoRespetarReescritura } from '../lib/respetar-ediciones.mjs'
+import { fusionar, sobrantes, VACIO, rellenoDeCola } from '../lib/preservar-anotaciones.mjs'
+import { conEdicionesRespetadas, guardarRegistro, detectarArranqueEnFrio, autoRespetarReescritura, leerRegistro } from '../lib/respetar-ediciones.mjs'
+// El respaldo de las notas por proveedor: sobrevive a que la lista de deuda cambie. Ver lib/proveedor-notas.mjs.
+import { claveProv, conciliarNotas, leerNotas, guardarNotas, borrarNotas, marcarEscritas, yaEscritas } from '../lib/proveedor-notas.mjs'
 import { firmaGuardia, sellarFirma } from '../lib/firma-tab.mjs'
 import { ESTADO_DEUDA } from '../lib/cuentas-por-pagar.mjs'
 /** El estado de Compras para lo pactado que todavía no es deuda firme. Convive con "Pendiente". */
@@ -91,6 +93,8 @@ import * as E from '../lib/estilo-pestana.mjs'
 import { INK, MUTED, HAIR } from '../lib/estilo-statement.mjs'
 import { R, IMPORTE, arcaPorComprobante, arcaPorComprobanteVentas, totalLibro } from '../lib/arca-formula.mjs'
 import { formatear as formatearCuit } from '../lib/cuit.mjs'
+// El CUIT se cruza por RAZÓN SOCIAL contra ARCA, y sólo si es inequívoco. Ver lib/cuit-por-nombre.mjs.
+import { emparejarCuit } from '../lib/cuit-por-nombre.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = NOMBRES.proveedoresMateriales
@@ -101,6 +105,14 @@ const DRY = process.argv.includes('--dry')
 // notasAncladas siguen re-anclando los comentarios del dueño por proveedor/comprobante. Nunca se
 // activa solo: hace falta --force en la línea de comandos o ORQ_PROV_FORCE=1 en el entorno.
 const FORCE = process.argv.includes('--force') || process.env.ORQ_PROV_FORCE === '1'
+// ALCANCE DE LA REGENERACIÓN (30/07). `--force` era GLOBAL: saltaba las guardas de skip de LAS DOS
+// pestañas que este script escribe. Pero el dueño reescribió "Materiales" entera a mano (de 518
+// rótulos míos quedan 38), así que un --force para arreglar el cuadro de deuda de "Proveedores" le
+// habría pasado por encima a un trabajo que no tiene nada que ver con lo que se pidió. Una
+// regeneración intencional tiene que poder apuntar a UNA pestaña.
+//   --solo Proveedores   → sólo esa pestaña se escribe; la otra no se toca ni con --force
+const iSolo = process.argv.indexOf('--solo')
+const SOLO = iSolo >= 0 ? String(process.argv[iSolo + 1] ?? '').trim() : ''
 const AÑO = 2026
 const TOP = 30
 /** Colchón de filas sobre la deuda actual, para que la tabla derrame sin pisar el bloque siguiente.
@@ -214,6 +226,36 @@ export function notasAncladas(bloque = [], L = {}) {
 }
 
 /**
+ * EL ANCHO QUE EL BLOQUE DE DEUDA REALMENTE OCUPA — no el que el dueño rotuló.
+ *
+ * ═══ EL INCIDENTE DEL 30/07, Y POR QUÉ ESTA FUNCIÓN EXISTE ═══
+ *
+ * El dueño rotuló OCHO columnas (A–H: hasta "Comentarios"), pero escribe hasta la Q (índice 16): al
+ * lado de Hormiserv y de Alumetal tenía su propia hoja de cálculo a mano —el nombre otra vez, los
+ * importes, "cheque a 4 dias"—. `celdas()` generaba filas del ancho de los RÓTULOS, así que todo lo
+ * que estaba de la columna 8 en adelante quedaba FUERA del footprint del generador: nunca se marcaba
+ * con VACIO, y la fusión —que por diseño preserva lo que no es suyo— lo dejaba clavado EN SU FILA
+ * FÍSICA. Las notas se re-anclaban bien al proveedor (notasAncladas hacía su trabajo), pero los restos
+ * anchos se quedaban quietos mientras los proveedores se movían. Resultado, con la lista reordenada:
+ *
+ *   · la fila de Hormiserv mostrando los números de Alumetal (el residuo de las columnas 13–16, que
+ *     Hormiserv no llena y por lo tanto no tapaba);
+ *   · una fila huérfana con importes y sin proveedor al lado;
+ *   · notas que el dueño había BORRADO reapareciendo, porque su residuo nunca se limpió.
+ *
+ * LA REGLA. Un generador tiene que ser dueño de TODO lo que su bloque ocupa. Si preserva por fila
+ * física una zona donde las filas se reordenan, no está respetando al dueño: está mezclando su trabajo.
+ * Lo que se respeta es la NOTA —anclada a su proveedor, que es de lo que habla— no el renglón.
+ *
+ * No agranda la pestaña ni cambia el formato: sólo declara hasta dónde llega el bloque para poder
+ * limpiarlo. Si el dueño estrecha su zona, el ancho se estrecha con ella en la corrida siguiente.
+ */
+export function anchoBloque(cols = [], previo = []) {
+  const anchoPrevio = (previo || []).reduce((mx, f) => Math.max(mx, (f || []).length), 0)
+  return Math.max((cols || []).length, anchoPrevio)
+}
+
+/**
  * LIMPIA EL FOOTPRINT DE UNA FILA ESTRUCTURAL — la que el generador es dueño de punta a punta
  * (los TOTALES y el encabezado/conteos de ARCA). En esas filas una celda vacía es SUYA y va vacía:
  * se marca cada '' con el centinela VACIO para que la FUSIÓN la BORRE de verdad, en vez de dejar ''
@@ -242,6 +284,10 @@ export function layoutDeuda(headers) {
     pago: cual(/tipo de pago/i),
     cat: cual(/categor/i),
     instr: cual(/instrumento/i),
+    // LA COLUMNA DE COMENTARIOS. No entra en `propias` (las que el generador manda): sigue siendo del
+    // dueño y se re-ancla por proveedor. El índice hace falta para rellenarla desde el respaldo de
+    // notas cuando quedó vacía — ver ponerDelRespaldo y lib/proveedor-notas.mjs.
+    nota: cual(/comentario/i),
   }
 }
 
@@ -283,7 +329,7 @@ export const soloConDeuda = (pred, valor, { texto = false } = {}) =>
     ? `=IF(${pred};"${String(valor).replace(/"/g, '""')}";"")`
     : `=IF(${pred};${String(valor).replace(/^=/, '')};"")`
 
-function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emitidas, notasCredito, anuladasCargadas, cruce, deudaCols, deudaPrevio }) {
+function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emitidas, notasCredito, anuladasCargadas, cruce, deudaCols, deudaPrevio, notasBase = new Map() }) {
   const filas = []
   const push = (c) => { filas.push(c); return filas.length }
   const nombres = FAMILIAS.map(([n]) => n)
@@ -384,13 +430,37 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   const L = layoutDeuda(deudaCols)
   // Las notas del dueño vuelven a SU proveedor / SU comprobante, no a la fila donde estaban.
   const NOTAS = notasAncladas(deudaPrevio || [], L)
-  // Las columnas que el generador MAPEA son suyas: si van vacías, se limpian (VACIO). Las que la
-  // persona agregó y el generador no llena —Comentarios— quedan '' y la fusión las conserva.
-  const PROPIAS = new Set([L.prov, L.fecha, L.comp, L.imp, L.obra, L.pago, L.cat, L.instr].filter((i) => i >= 0))
-  const celdas = () => L.cols.map(() => VACIO)
+  // EL BLOQUE ES DUEÑO DE TODO SU ANCHO, no sólo de las columnas rotuladas. Ver anchoBloque(): el dueño
+  // escribe más a la derecha de lo que rotuló, y lo que el generador no marca con VACIO la fusión lo deja
+  // clavado en la FILA FÍSICA — con la lista reordenada eso le pone a un proveedor los números de otro
+  // (incidente del 30/07). Cada celda del bloque nace VACIO y sólo sobrevive lo que se RE-ANCLA a su
+  // proveedor / comprobante: así una nota viaja con la entidad de la que habla, y un residuo no viaja.
+  const ANCHO = anchoBloque(L.cols, deudaPrevio)
+  const celdas = () => Array.from({ length: ANCHO }, () => VACIO)
+  // Toda nota re-anclada se marca como USADA: la que no encuentra a su proveedor se reporta al final en
+  // vez de desaparecer sin decirlo. Un dato del dueño no se pierde en silencio.
+  const usadas = new Set()
   const ponerNotas = (arr, mapa, clave) => {
-    const extra = mapa.get(String(clave ?? '').trim().toLowerCase())
-    if (extra) for (const [j, v] of extra) arr[j] = v
+    const k = String(clave ?? '').trim().toLowerCase()
+    const extra = mapa.get(k)
+    if (extra) { usadas.add(`${mapa === NOTAS.porProveedor ? 'p' : 'c'}|${k}`); for (const [j, v] of extra) arr[j] = v }
+    return arr
+  }
+  // ═══ LA NOTA VUELVE DEL RESPALDO SI LA PESTAÑA NO LA TIENE ═══
+  //
+  // "recien puse pagado en compras y no borro el agrupar segun corresponde". Cuando un proveedor se
+  // paga sale de la lista, y con la nota viviendo SÓLO en la columna Comentarios, pagarle borraba lo
+  // que el dueño escribió sobre él (le pasó a FEMENIA). Ahora la nota vive en public.proveedor_notas y
+  // vuelve sola cuando el proveedor reaparece. Lo que él escribe en la pestaña sigue ganando: esto
+  // rellena únicamente la celda que quedó VACÍA.
+  const notasPuestas = new Set()
+  const ponerDelRespaldo = (arr, nombre) => {
+    if (L.nota < 0) return arr
+    const ya = String(arr[L.nota] ?? '')
+    if (ya && ya !== VACIO) return arr        // lo que él escribió manda
+    const clave = claveProv(nombre)
+    const guardada = notasBase.get(clave)
+    if (guardada?.nota) { arr[L.nota] = guardada.nota; notasPuestas.add(clave) }
     return arr
   }
   const fAviso = push([])
@@ -415,6 +485,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
     if (L.comp >= 0) hCel[L.comp] = soloConDeuda(pred, `COUNTIFS(${COL_PROV};"${key}";${COL_ESTADO};"${ESTADO_DEUDA}";${COL_TOTAL};"<>")&" fac."`)
     if (L.imp >= 0) hCel[L.imp] = soloConDeuda(pred, netaProv)
     ponerNotas(hCel, NOTAS.porProveedor, gp.nombre)
+    ponerDelRespaldo(hCel, gp.nombre)
     const hRow = push(hCel)
     deudaHeaders.push(hRow)
     const inicio = filas.length + 1
@@ -470,11 +541,16 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   push(['Con quién se gasta y con qué plazo. El plazo —días entre factura y pago— es el dato clave: pagar a 0 días empuja al descubierto al 62,78% anual cuando el crédito del proveedor es gratis. La deuda de cada uno está arriba, agrupada. Sólo comerciales.'])
   const cabProv = push(['Proveedor', 'CUIT', 'Comprobantes', `Comprado ${AÑO}`, 'Plazo promedio', 'Qué se le compra'])
   const p0 = filas.length + 1
+  // LAS CELDAS VACÍAS DE ESTE BLOQUE LLEVAN CENTINELA, NO ''. Las seis columnas de la cuenta corriente
+  // son todas del generador: el dueño no escribe acá. `fusionar` interpreta '' como "el generador no
+  // tiene nada en esta celda" y CONSERVA lo que hubiera antes — así sobrevivió el texto "CUIT" de un
+  // encabezado de otro diseño metido en la fila de Mariana SA y en la del subtotal. El centinela dice
+  // "es mía y va vacía", que es la verdad.
   for (const p of proveedores) {
     const f = filas.length + 1
     push([
       p.nombre,
-      p.cuit ? formatearCuit(p.cuit) : '',
+      p.cuit ? formatearCuit(p.cuit) : VACIO,
       // Cuántos comprobantes (facturas) emitió el proveedor en el año — el dueño lo pidió de vuelta.
       `=COUNTIF(${COL_PROV};$A${f})`,
       `=SUMIF(${COL_PROV};$A${f};${COL_TOTAL})`,
@@ -484,9 +560,9 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
     ])
   }
   const p1 = filas.length
-  const fSub = push([`Subtotal de estos ${proveedores.length}`, '', `=SUM($C${p0}:$C${p1})`, `=SUM($D${p0}:$D${p1})`, '', ''])
-  push([`Resto de proveedores comerciales (${resto.cantidad})`, '', '', `=$D$TOTPROV-$D${fSub}`, '', 'ninguno llega al 1% del total'])
-  const fTotProv = push(['TOTAL PROVEEDORES COMERCIALES', '',
+  const fSub = push([`Subtotal de estos ${proveedores.length}`, VACIO, `=SUM($C${p0}:$C${p1})`, `=SUM($D${p0}:$D${p1})`, VACIO, VACIO])
+  push([`Resto de proveedores comerciales (${resto.cantidad})`, VACIO, VACIO, `=$D$TOTPROV-$D${fSub}`, VACIO, 'ninguno llega al 1% del total'])
+  const fTotProv = push(['TOTAL PROVEEDORES COMERCIALES', VACIO,
     `=COUNTIFS(${COL_ESTADO};"<>";${COL_COMERCIAL};1)`,
     RUBROS_COMERCIALES.map((r) => `SUMIF(${COL_RUBRO};"${r}";${COL_TOTAL})`).join('+').replace(/^/, '='),
     '', ''])
@@ -701,7 +777,15 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   //      sobrevivía texto viejo —p. ej. el título de la sección 2 duplicado.
   // Un barrido global aquí borraría notas del dueño en las filas de detalle: por eso NO se hace.
 
-  return { filas: resuelto, cabArca, marcas: { bPos, b1, b2, b3, b4, b5, b6, b7, b8, fin: filas.length }, bPos, pos0, pos1, posTotal, posProy, posPlazo, posFaltan, cuentas: [fCuenta1, fCuenta2], fCompFecha, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabDocFin, deudaL: L, deudaHeaders, deudaGrupos, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
+  // Las notas que no encontraron a su proveedor en la lista nueva (le pagaron, o cambió de nombre en
+  // Compras). Se DEVUELVEN para reportarlas: el bloque ya se limpia a su ancho real, así que sin este
+  // aviso el dato del dueño se iría sin dejar rastro. Queda en el log de la corrida, y el snapshot
+  // previo del pipeline lo tiene entero.
+  const notasHuerfanas = [
+    ...[...NOTAS.porProveedor.entries()].filter(([k]) => !usadas.has(`p|${k}`)).map(([k, m]) => ({ tipo: 'proveedor', clave: k, texto: [...m.values()].map(String).join(' · ') })),
+    ...[...NOTAS.porComprobante.entries()].filter(([k]) => !usadas.has(`c|${k}`)).map(([k, m]) => ({ tipo: 'comprobante', clave: k, texto: [...m.values()].map(String).join(' · ') })),
+  ]
+  return { filas: resuelto, notasHuerfanas, notasPuestas, anchoDeuda: ANCHO, cabArca, marcas: { bPos, b1, b2, b3, b4, b5, b6, b7, b8, fin: filas.length }, bPos, pos0, pos1, posTotal, posProy, posPlazo, posFaltan, cuentas: [fCuenta1, fCuenta2], fCompFecha, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabDocFin, deudaL: L, deudaHeaders, deudaGrupos, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
 }
 
 async function main() {
@@ -938,12 +1022,23 @@ async function main() {
     chequesPorProv.set(k, a)
   }
 
+  // LOS EMISORES DE ARCA, PARA CRUZAR EL CUIT POR RAZÓN SOCIAL. En Compras el dueño escribe "Alumetal"
+  // y ARCA dice "ALUMETAL S A": la igualdad exacta dejaba 22 proveedores sin CUIT. El cruce por tokens
+  // los resuelve, y ante dos candidatos NO elige — un CUIT ajeno hace transferir a otra cuenta.
+  const emisoresArca = [...new Map(rArca.filter((r) => r.emisor_cuit)
+    .map((r) => [String(r.emisor_cuit), { nombre: r.emisor_nombre, cuit: String(r.emisor_cuit) }])).values()]
+  let cuitsCruzados = 0; const sinCuit = []
   const proveedores = comerciales.slice(0, TOP).map((p) => {
     const k = normNombre(p.nombre)
     const ch = chequesPorProv.get(k) ?? []
+    // 1º el match exacto de nombre que ya existía; 2º el cruce por razón social contra ARCA.
+    const porNombre = porCuit.get(k)?.cuit
+    const cruzado = porNombre ? null : emparejarCuit(p.nombre, emisoresArca)
+    if (cruzado) cuitsCruzados++
+    if (!porNombre && !cruzado) sinCuit.push(p.nombre)
     return {
       nombre: p.nombre,
-      cuit: porCuit.get(k)?.cuit ?? '',
+      cuit: porNombre ?? cruzado?.cuit ?? '',
       arca: porCuit.get(k)?.total ?? '',
       // El N° de cheque se muestra CAPADO a los primeros seis: un proveedor con dieciséis cheques
       // (Corralón) derramaba una lista de tres renglones que tapaba la fila entera. La lista completa
@@ -987,10 +1082,21 @@ async function main() {
     }
   } catch { /* la pestaña todavía no existe: se usa el layout por defecto */ }
   if (deudaCols) console.log(`  columnas de deuda según la pestaña (las del dueño): ${deudaCols.filter(Boolean).join(' · ')}`)
-  const g = grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emitidas, notasCredito, anuladasCargadas, cruce, deudaCols, deudaPrevio })
+  // EL RESPALDO DE NOTAS, ANTES DE CONSTRUIR. Una nota vale por el proveedor del que habla, no por si
+  // hoy le debemos: si se le pagó, sale de la lista y su celda desaparece — pero la nota no.
+  const notasBase = await leerNotas(ID).catch((e) => { console.warn(`  ⚠ no pude leer el respaldo de notas: ${e.message}`); return new Map() })
+  if (cuitsCruzados) console.log(`  🔗 ${cuitsCruzados} CUIT resuelto(s) cruzando la razón social de ARCA`)
+  if (sinCuit.length) console.log(`  ○ ${sinCuit.length} sin CUIT (ARCA no los tiene o el nombre no alcanza para decidir): ${sinCuit.slice(0, 6).join(' · ')}${sinCuit.length > 6 ? ' …' : ''}`)
+  const g = grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emitidas, notasCredito, anuladasCargadas, cruce, deudaCols, deudaPrevio, notasBase })
   const ancho = Math.max(...g.filas.map((f) => f.length))
   const cuadro = g.filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r })
   console.log(`${PESTAÑA}: ${cuadro.length} filas x ${ancho} columnas`)
+  console.log(`  bloque de deuda: ${g.anchoDeuda} columnas de ancho real (los rótulos son ${g.deudaL?.cols?.length ?? '?'}) — se limpia todo ese ancho y las notas se re-anclan a su proveedor`)
+  if (g.notasHuerfanas?.length) {
+    // NO se pierde en silencio: queda en el log, textual, y el snapshot previo lo conserva entero.
+    console.log(`  ⚠ ${g.notasHuerfanas.length} nota(s) del dueño SIN proveedor en la lista nueva (le pagaron, o cambió el nombre en Compras):`)
+    for (const n of g.notasHuerfanas) console.log(`     ${n.tipo} "${n.clave}": ${n.texto}`)
+  }
   console.log(`  ${comerciales.length} proveedores comerciales de ${acc.size} · top ${proveedores.length} listados, ${resto.cantidad} en "resto"`)
   if (DRY) {
     // ═══ EN SECO, LA PREGUNTA ÚTIL NO ES "CUÁNTAS FILAS" SINO "QUÉ TE VOY A PISAR" ═══
@@ -1097,6 +1203,10 @@ async function main() {
   let hojas = await google.getSheetMeta(ID)
   const escritas = []
   for (const [i, t] of TRAMOS.entries()) {
+    // EL ALCANCE, ANTES DE CUALQUIER LECTURA O ESCRITURA DE ESTA PESTAÑA. Con --solo, la que no fue
+    // nombrada no se toca ni con --force: es la diferencia entre "regenerá el cuadro de deuda" y
+    // "regenerá las dos pestañas", que no es lo mismo cuando el dueño reescribió una de las dos.
+    if (SOLO && t.titulo !== SOLO) { console.log(`  ⏭ ${t.titulo}: fuera del alcance (--solo ${SOLO}), no la toco`); continue }
     // EL TÍTULO VA EN ORACIÓN, NO EN VERSALITA. Una pestaña entera gritando es la marca de una
     // planilla, no de un statement: la versalita se reserva para los títulos de sección.
     const filasP = [[t.titulo], [t.subtitulo], [], ...partes[i].filas]
@@ -1167,6 +1277,44 @@ async function main() {
     // contenido se escribe por otro camino y sigue protegido).
     await google.batchUpdateValues(ID, [{ range: `${refPestana(t.titulo)}!A1`, values: fusion }], { yaGuardado: FORCE })
     if (conservadas.length) console.log(`  ✋ ${t.titulo}: ${conservadas.length} celda(s) escritas por el dueño — CONSERVADAS, no se borra nada`)
+
+    // ═══ LA COLA DE UN DISEÑO ANTERIOR MÁS LARGO ═══
+    //
+    // "Lo que esté MÁS abajo no se toca" protege lo que el dueño anota debajo de la tabla, y por eso
+    // sigue siendo la regla. Pero deja huérfana para siempre la cola de un diseño anterior MÁS LARGO:
+    // un rediseño escribió 241 filas, se volvió al diseño de 199, y las filas 200 a 242 quedaron ahí
+    // —una segunda copia de las facturas emitidas, una sección de ARCA repetida, una "libreta" que ya
+    // no existía—. El dueño lo vio antes que ningún control: "dejaste un desastre en proveedores".
+    //
+    // No se limpia con clearValues (eso ya borró su trabajo varias veces): se borra SÓLO lo que se
+    // puede PROBAR que es del generador — un rótulo del registro, o una forma que sólo produce él (un
+    // importe, una fecha, un CUIT, un rótulo de sección). Una fila con una frase suya se SALTEA y se
+    // reporta con su texto, para que no se vaya sin dejar rastro.
+    const colaCruda = await google.readSheetValues(
+      ID, `${refPestana(t.titulo)}!A${cuadroP.length + 1}:${letra(anchoLeer - 1)}`,
+    ).catch(() => [])
+    if (colaCruda.length) {
+      const { mios } = await leerRegistro(ID, t.titulo).catch(() => ({ mios: [] }))
+      const { filas: relleno, limpiar, preservar } = rellenoDeCola(colaCruda, new Set(mios), anchoP)
+      if (limpiar.length) {
+        // Sólo las filas limpiables, cada una en su rango: escribir el bloque entero pisaría las que
+        // hay que preservar. Se agrupan en tramos contiguos para no hacer una llamada por fila.
+        const data = []
+        let tramo = null
+        relleno.forEach((f, i) => {
+          if (f) { if (!tramo) tramo = { desde: i, filas: [] }; tramo.filas.push(f) }
+          else if (tramo) { data.push(tramo); tramo = null }
+        })
+        if (tramo) data.push(tramo)
+        await google.batchUpdateValues(ID, data.map((x) => ({
+          range: `${refPestana(t.titulo)}!A${cuadroP.length + 1 + x.desde}`, values: x.filas,
+        })), { yaGuardado: FORCE })
+        console.log(`  🧹 ${t.titulo}: limpié ${limpiar.length} fila(s) de cola de un diseño anterior (filas ${cuadroP.length + 1}–${cuadroP.length + colaCruda.length})`)
+      }
+      for (const p of preservar) {
+        console.log(`  ✋ ${t.titulo}: fila ${cuadroP.length + 1 + p.i} de la cola es TUYA, la dejo: "${p.celdas.join(' · ').slice(0, 90)}"`)
+      }
+    }
     await sellarFirma(google, ID, t.titulo, refPestana(t.titulo))
     await guardarRegistro(ID, t.titulo, cuadroFinal, ediciones, visible, candidatos)
       .catch((e) => console.warn(`  ⚠ ${t.titulo}: no pude guardar el registro de rótulos: ${e.message}`))
@@ -1190,6 +1338,33 @@ async function main() {
     escritas.push({ titulo: t.titulo, filas: cuadroP.length, sheetId: hoja.sheetId })
     console.log(`  ${t.titulo.padEnd(32)} ${String(cuadroP.length).padStart(4)} filas x ${anchoP} columnas`)
   }
+
+  // ═══ EL RESPALDO DE NOTAS, DESPUÉS DE ESCRIBIR ═══
+  //
+  // Se relee la columna Comentarios de la pestaña y se concilia con el respaldo: lo que el dueño
+  // escribió gana y se guarda; lo que borró estando el proveedor EN la lista (y habiéndola escrito yo
+  // antes) se borra; lo que puse desde el respaldo se marca, para poder distinguir la próxima vez un
+  // borrado suyo de una nota que todavía no llegó a la pestaña. Ver lib/proveedor-notas.mjs.
+  try {
+    const hojaP = escritas.find((e) => e.titulo === NOMBRES.proveedores)
+    if (hojaP) {
+      const L = g.deudaL
+      const vistas = await google.readSheetValues(ID, `${refPestana(NOMBRES.proveedores)}!A1:${letra(Math.max(g.anchoDeuda, 8) - 1)}${hojaP.filas}`)
+      const enPestana = new Map(); const presentes = new Set()
+      for (const gp of deudaAgrupada) presentes.add(claveProv(gp.nombre))
+      for (const f of vistas) {
+        const nombre = String(f?.[L.prov] ?? '').trim()
+        if (!nombre || !presentes.has(claveProv(nombre))) continue
+        enPestana.set(claveProv(nombre), String(f?.[L.nota] ?? '').trim())
+      }
+      const { guardar, borrar } = conciliarNotas(enPestana, notasBase, presentes, yaEscritas(notasBase))
+      // La grafía que se guarda es la que él usa hoy en Compras.
+      const grafia = new Map(deudaAgrupada.map((gp) => [claveProv(gp.nombre), gp.nombre]))
+      if (guardar.length) { await guardarNotas(ID, guardar.map((x) => ({ ...x, proveedor: grafia.get(x.clave) ?? x.clave }))); console.log(`  📓 respaldo de notas: ${guardar.length} guardada(s)`) }
+      if (borrar.length) { await borrarNotas(ID, borrar); console.log(`  🗑 respaldo de notas: ${borrar.length} borrada(s) porque las borraste a mano (${borrar.join(', ')})`) }
+      if (g.notasPuestas?.size) { await marcarEscritas(ID, [...g.notasPuestas]); console.log(`  📓 ${g.notasPuestas.size} nota(s) devueltas desde el respaldo a su proveedor`) }
+    }
+  } catch (e) { console.warn(`  ⚠ no pude conciliar el respaldo de notas: ${e.message}`) }
 
   // Los nombres, DESPUÉS de escribir: se corren de fila según cuántas notas de crédito o
   // proveedores haya, y publicarlos antes los dejaría apuntando a la geometría vieja, en silencio.

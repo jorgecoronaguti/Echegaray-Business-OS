@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { fusionar, sobrantes, tiene, letraCol, escribirPreservando, limpiarCentinela, VACIO } from './preservar-anotaciones.mjs'
+import { fusionar, sobrantes, tiene, letraCol, escribirPreservando, limpiarCentinela, VACIO, colaLimpiable, rellenoDeCola, formaDeGenerador } from './preservar-anotaciones.mjs'
 
 // ═══ POR QUÉ ESTOS DOBLES (test hermético) ═══
 // `escribirPreservando`, para toda pestaña de contenido, consulta el candado (sheet_pestanas_bloqueadas)
@@ -159,4 +159,80 @@ test('limpiarCentinela deja la grilla lista para una escritura que no pasa por l
   assert.deepEqual(limpiarCentinela(g), [['Cuenta', '', 'ARS'], ['', 0, '']])
   // No toca el original: el generador puede seguir usándolo para fusionar.
   assert.equal(g[0][1], VACIO)
+})
+
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA COLA DE UN DISEÑO ANTERIOR — EL DESASTRE DEL 31/07
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El dueño: "dejaste un desastre en proveedores". Un rediseño escribió 241 filas; se volvió al diseño
+// de 199; y las filas 200 a 242 quedaron ahí para siempre, porque la regla del generador es "lo que
+// esté MÁS abajo no se toca" — correcta para proteger sus anotaciones, ciega ante su propia cola.
+// Estas son las filas REALES que quedaron.
+
+const COLA_REAL = [
+  ['6 · LO QUE ARCA REGISTRÓ Y EL OS TIENE', '', ''],
+  ['Cualquier pestaña que necesite el dato fiscal', '', ''],
+  ['Concepto', 'Cantidad', 'Monto'],
+  ['Comprobantes de compra (neto de notas de crédito)', '430', '$155.489.182'],
+  ['  · notas de crédito (restan)', '13', '-$20.976.638'],
+  ['7 · FACTURAS EMITIDAS — LO QUE SE FACTURÓ', '', ''],
+  ['ARCOR', '30-50279317-5', '0001-00000216'],
+  ['TOTAL FACTURADO', '', '$208.159.105'],
+  ['8 · LIBRETA DE PROVEEDORES', '', ''],
+  ['Proveedor', 'Comentarios', ''],
+  ['Hormiserv', 'Esperar a q escriba el cobrador para confirmar fecha de pago 16/8', ''],
+  ['FEMENIA', 'pagar con echeq a 30 días', ''],
+]
+
+test('la cola del generador se puede limpiar; la nota del dueño NO', () => {
+  const mios = new Set(['Concepto', 'Cantidad', 'Monto', 'Proveedor', 'Comentarios', 'TOTAL FACTURADO',
+    'Comprobantes de compra (neto de notas de crédito)', '  · notas de crédito (restan)',
+    '8 · LIBRETA DE PROVEEDORES', 'Cualquier pestaña que necesite el dato fiscal', 'ARCOR', 'Hormiserv', 'FEMENIA'])
+  const { limpiar, preservar } = colaLimpiable(COLA_REAL, mios)
+  // Las dos filas de notas se PRESERVAN: el texto del comentario no es de ningún generador.
+  assert.equal(preservar.length, 2, 'las dos notas del dueño quedan')
+  assert.deepEqual(preservar.map((p) => p.i), [10, 11])
+  assert.match(preservar[0].celdas[0], /Esperar a q escriba el cobrador/)
+  assert.match(preservar[1].celdas[0], /pagar con echeq a 30 días/)
+  // Todo lo demás es del generador y se puede borrar.
+  assert.equal(limpiar.length, 10)
+  assert.ok(!limpiar.includes(10) && !limpiar.includes(11))
+})
+
+test('formaDeGenerador reconoce lo que sólo produce un generador, y NADA MÁS', () => {
+  for (const propio of ['$155.489.182', '-$20.976.638', '430', '31/07/2026', '30-50279317-5', '20280401707',
+    '00003-00000210', '24 d', '1 fac.', '6 · LO QUE ARCA REGISTRÓ', '⚠ Faltan 4 facturas', '✓ está en Cobranzas',
+    '—', '', VACIO, '=SUMIFS(Compras!$O$4:$O;1;2)']) {
+    assert.equal(formaDeGenerador(propio), true, `"${propio}" lo escribe el generador`)
+  }
+  // Y lo que NO: cualquier frase del dueño. Si esto se rompe, se le borra el trabajo.
+  for (const suyo of ['Esperar a q escriba el cobrador', 'pagar con echeq a 30 días', 'viernes 31',
+    'no es prioridad', 'Confirmar trueque con chatarra propia', 'Pedir Factura y tratar de pagar con cheque a 15/8']) {
+    assert.equal(formaDeGenerador(suyo), false, `"${suyo}" es del dueño y NO se puede borrar`)
+  }
+})
+
+test('rellenoDeCola devuelve null en la fila que hay que preservar (para no escribirla)', () => {
+  const mios = new Set(['Proveedor', 'Comentarios'])
+  const { filas } = rellenoDeCola([['Proveedor', 'Comentarios'], ['Hormiserv', 'llamarlo el lunes']], mios, 4)
+  // VACÍO REAL, no el centinela: el centinela se resuelve dentro de `fusionar` y acá no hay fusión.
+  // Escribirlo dejó "::VACIO::" literal en treinta celdas del archivo del dueño la primera vez.
+  assert.deepEqual(filas[0], ['', '', '', ''], 'la fila del encabezado se limpia entera, con vacío real')
+  assert.ok(!filas[0].includes(VACIO), 'el centinela NUNCA llega al Sheet')
+  assert.equal(filas[1], null, 'la fila con su nota no se escribe: se saltea')
+})
+
+test('una cola VACÍA no genera trabajo (el caso normal, todas las corridas)', () => {
+  const { limpiar, preservar } = colaLimpiable([], new Set())
+  assert.equal(limpiar.length, 0)
+  assert.equal(preservar.length, 0)
+})
+
+test('una fila de la cola con SÓLO números y fechas se limpia aunque no esté en el registro', () => {
+  // La cola de un diseño viejo trae filas de datos que nunca fueron rótulos. Exigir que estén en el
+  // registro las dejaría ahí para siempre — que es el defecto que se está arreglando.
+  const { limpiar } = colaLimpiable([['', '$1.000', '31/07/2026', '1 fac.']], new Set())
+  assert.deepEqual(limpiar, [0])
 })

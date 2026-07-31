@@ -5,27 +5,9 @@ Capa de comunicación **multicanal, desacoplada y event-driven** del Echegaray B
 Soporta hoy **Mattermost** y está diseñado para sumar **WhatsApp Business, Email, Teams, Telegram** u
 otros canales **sin modificar el núcleo del OS**.
 
-> **Estado: PR-3 — esqueleto implementado + ajustes bloqueantes de la auditoría cerrados.** Evento
-> canónico con idempotencia por intención (M1), dedup entrante atómico (M2), colas salida/entrada con
-> lease durable y DLQ (M3/M4), seguridad de borde HMAC + anti-replay + auditoría (M7), puente explícito
-> con `orq.events` (M10), persistencia memoria + Postgres con tests reales (M11), observabilidad, deep
-> links, identidad, slash commands y bot @os (diseño). **Todavía NO conectado a los especialistas /
-> Work Fabric — eso es PR-4.**
+> **Estado: estructura reservada (PR-1). Sin lógica implementada.**
 > La infraestructura de Mattermost vive en [`../infra/mattermost/`](../infra/mattermost/).
-> Diseño general: [`ARCHITECTURE.md`](./ARCHITECTURE.md) · Implementación:
-> [`docs/PR-3-IMPLEMENTACION.md`](./docs/PR-3-IMPLEMENTACION.md) · Auditoría:
-> [`docs/AUDITORIA-PR3.md`](./docs/AUDITORIA-PR3.md) · Cierre de bloqueantes:
-> [`docs/CIERRE-BLOQUEANTES-PR3.md`](./docs/CIERRE-BLOQUEANTES-PR3.md) · Operación:
-> [`docs/OPERACION.md`](./docs/OPERACION.md).
-
-## Correr
-
-```bash
-cd communication-service
-npm test          # 65 tests unit + integración en memoria (hermético; 11 PG se saltean sin base)
-npm run test:pg   # 11 tests de integración contra un Postgres efímero en Docker (descartable)
-npm run demo      # demostración end-to-end (7/7 criterios), 0 red / 0 DB
-```
+> El diseño completo está en [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ## Reglas que gobiernan este servicio
 

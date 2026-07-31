@@ -151,16 +151,9 @@ services:
       # defecto acá para que `docker compose config` no falle si no hay .env; el Caddyfile
       # aporta sus propios defaults de placeholder ({$CHAT_DOMAIN:...} / {$ACME_EMAIL:...}).
       CHAT_DOMAIN: ${CHAT_DOMAIN:-chat.ecsas.com.ar}
-      # Dónde atiende la pantalla de asistencia del Business OS. Por defecto el socket unix
-      # que monta el volumen de abajo; se puede apuntar a un host:puerto para desarrollo.
-      OS_ASISTENCIA_UPSTREAM: ${OS_ASISTENCIA_UPSTREAM:-unix//sockets/asistencia.sock}
       ACME_EMAIL: ${ACME_EMAIL:-}
       TZ: ${TZ:-America/Argentina/San_Juan}
     volumes:
-      # Sockets del host: por acá entra la pantalla de asistencia del Business OS. Es un
-      # directorio, no el socket: si se montara el archivo, un reinicio del servicio del host
-      # lo recrearía y el contenedor seguiría viendo el inode viejo (y daría 502 para siempre).
-      - ${OS_SOCKETS_DIR:-/home/jorge/.local/run/echegaray}:/sockets
       # Config declarativa (read-only): el Caddyfile del repo.
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       # Certs y estado de ACME — DEBE persistir para la renovación automática.

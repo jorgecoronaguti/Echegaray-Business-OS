@@ -1,5 +1,5 @@
 {
- "saldoHoy": null,
+ "saldoHoy": 108501868.64778,
  "vencidos": [
   {
    "fecha": "2026-07-10",
@@ -23,20 +23,6 @@
    "monto": -3000000
   },
   {
-   "fecha": "2026-07-10",
-   "tipo": "pago",
-   "quien": "SINDICATOS",
-   "detalle": "Impuestos · JUNIO · proyectado",
-   "monto": -7300
-  },
-  {
-   "fecha": "2026-07-10",
-   "tipo": "pago",
-   "quien": "SINDICATOS",
-   "detalle": "Impuestos · JUNIO · proyectado",
-   "monto": -7300
-  },
-  {
    "fecha": "2026-07-15",
    "tipo": "pago",
    "quien": "Sueldos",
@@ -58,63 +44,14 @@
    "monto": -473767.08
   },
   {
-   "fecha": "2026-07-17",
+   "fecha": "2026-07-30",
    "tipo": "pago",
-   "quien": "SINDICATOS",
-   "detalle": "Impuestos · Junio · proyectado",
-   "monto": -700000
+   "quien": "Sueldos",
+   "detalle": "Estructura · Segunda · proyectado",
+   "monto": -3000000
   }
  ],
  "dias": [
-  {
-   "fecha": "2026-07-29",
-   "movimientos": [
-    {
-     "fecha": "2026-07-29",
-     "tipo": "cobro",
-     "quien": "MESSINA",
-     "detalle": "Civil · Facturado",
-     "monto": 9966250
-    },
-    {
-     "fecha": "2026-07-29",
-     "tipo": "cobro",
-     "quien": "MESSINA",
-     "detalle": "Civil · Facturado",
-     "monto": 6866157.2
-    }
-   ],
-   "neto": 16832407.2,
-   "acumulado": 16832407.2
-  },
-  {
-   "fecha": "2026-07-30",
-   "movimientos": [
-    {
-     "fecha": "2026-07-30",
-     "tipo": "cobro",
-     "quien": "LA ESTRELLA /ALIMENTOS DEL SUR SAS",
-     "detalle": "Civil · Proyectado",
-     "monto": 2313579.74
-    },
-    {
-     "fecha": "2026-07-30",
-     "tipo": "cobro",
-     "quien": "LA ESTRELLA /ALIMENTOS DEL SUR SAS",
-     "detalle": "Civil · Proyectado",
-     "monto": 17476079.99
-    },
-    {
-     "fecha": "2026-07-30",
-     "tipo": "pago",
-     "quien": "Sueldos",
-     "detalle": "Estructura · Segunda · proyectado",
-     "monto": -3000000
-    }
-   ],
-   "neto": 16789659.729999997,
-   "acumulado": 33622066.92999999
-  },
   {
    "fecha": "2026-07-31",
    "movimientos": [
@@ -122,14 +59,14 @@
      "fecha": "2026-07-31",
      "tipo": "cobro",
      "quien": "LA ESTRELLA /ALIMENTOS DEL SUR SAS",
-     "detalle": "Civil · Facturado",
+     "detalle": "Civil · Pendiente",
      "monto": 10000000
     },
     {
      "fecha": "2026-07-31",
      "tipo": "cobro",
      "quien": "Quattropani - Melisa García SAS",
-     "detalle": "Civil · Proyectado",
+     "detalle": "Civil · Facturado",
      "monto": 37510000
     },
     {
@@ -151,11 +88,25 @@
      "tipo": "pago",
      "quien": "Angel Fernandez",
      "detalle": "Civil · Montaje de Vigas y Correas",
-     "monto": -450000
+     "monto": -544500
+    },
+    {
+     "fecha": "2026-07-31",
+     "tipo": "pago",
+     "quien": "La Aguilana - OLIVIERI ESTEVEZ ALDO MARCELO",
+     "detalle": "Civil · Piedra gris perla + bacha",
+     "monto": -750184.61
+    },
+    {
+     "fecha": "2026-07-31",
+     "tipo": "pago",
+     "quien": "Ruviño Matias Esteban",
+     "detalle": "Civil · Abono dispenser frio/calor + 10 bidones de agua x 20 lts",
+     "monto": -102000
     }
    ],
-   "neto": 45720000,
-   "acumulado": 79342066.92999999
+   "neto": 44773315.39,
+   "acumulado": 153275184.03778
   },
   {
    "fecha": "2026-08-02",
@@ -190,7 +141,7 @@
     }
    ],
    "neto": -965863.5900033333,
-   "acumulado": 78376203.33999667
+   "acumulado": 152309320.44777665
   },
   {
    "fecha": "2026-08-03",
@@ -204,7 +155,28 @@
     }
    ],
    "neto": -317000,
-   "acumulado": 78059203.33999667
+   "acumulado": 151992320.44777665
+  },
+  {
+   "fecha": "2026-08-05",
+   "movimientos": [
+    {
+     "fecha": "2026-08-05",
+     "tipo": "cheque",
+     "quien": "ALUMETAL S.A",
+     "detalle": "ECHEQ N° 367",
+     "monto": -14982000
+    },
+    {
+     "fecha": "2026-08-05",
+     "tipo": "cheque",
+     "quien": "ALUMETAL S.A",
+     "detalle": "ECHEQ N° 370",
+     "monto": -16649000
+    }
+   ],
+   "neto": -31631000,
+   "acumulado": 120361320.44777665
   },
   {
    "fecha": "2026-08-07",
@@ -218,28 +190,14 @@
     },
     {
      "fecha": "2026-08-07",
-     "tipo": "cobro",
-     "quien": "MACRO CONSTRUCCIONES SRL",
-     "detalle": "Civil · Facturado",
-     "monto": 232320
-    },
-    {
-     "fecha": "2026-08-07",
-     "tipo": "cobro",
-     "quien": "MACRO CONSTRUCCIONES SRL",
-     "detalle": "Civil · Facturado",
-     "monto": -96800
-    },
-    {
-     "fecha": "2026-08-07",
      "tipo": "pago",
      "quien": "Banco",
      "detalle": "Financiero · Prestamo Camioneta Ford XLS · proyectado",
      "monto": -1282810.54
     }
    ],
-   "neto": 2341444.46,
-   "acumulado": 80400647.79999666
+   "neto": 2205924.46,
+   "acumulado": 122567244.90777664
   },
   {
    "fecha": "2026-08-08",
@@ -253,7 +211,7 @@
     }
    ],
    "neto": -429048.5,
-   "acumulado": 79971599.29999666
+   "acumulado": 122138196.40777664
   },
   {
    "fecha": "2026-08-10",
@@ -311,19 +269,19 @@
      "fecha": "2026-08-10",
      "tipo": "pago",
      "quien": "SINDICATOS",
-     "detalle": "Impuestos · JULIO · proyectado",
-     "monto": -7300
+     "detalle": "Impuestos · Proyección: el último pago real de IERIC (período JUNIO). Se reemplaza por la boleta cuando llegue. · proyectado",
+     "monto": -15092.62
     },
     {
      "fecha": "2026-08-10",
      "tipo": "pago",
      "quien": "SINDICATOS",
-     "detalle": "Impuestos · JULIO · proyectado",
-     "monto": -7300
+     "detalle": "Impuestos · Proyección: el último pago real de FODECO (período JUNIO). Se reemplaza por la boleta cuando llegue. · proyectado",
+     "monto": -15092.62
     }
    ],
-   "neto": -18614600,
-   "acumulado": 61356999.29999666
+   "neto": -18630185.240000002,
+   "acumulado": 103508011.16777664
   },
   {
    "fecha": "2026-08-15",
@@ -332,8 +290,8 @@
      "fecha": "2026-08-15",
      "tipo": "cobro",
      "quien": "LA ESTRELLA /ALIMENTOS DEL SUR SAS",
-     "detalle": "Civil · Proyectado",
-     "monto": 16679856.76
+     "detalle": "Civil · Pendiente",
+     "monto": 16469516.49
     },
     {
      "fecha": "2026-08-15",
@@ -350,8 +308,8 @@
      "monto": -635020.1
     }
    ],
-   "neto": 13044836.66,
-   "acumulado": 74401835.95999666
+   "neto": 12834496.39,
+   "acumulado": 116342507.55777664
   },
   {
    "fecha": "2026-08-16",
@@ -372,7 +330,7 @@
     }
    ],
    "neto": -2968642.73,
-   "acumulado": 71433193.22999665
+   "acumulado": 113373864.82777664
   },
   {
    "fecha": "2026-08-17",
@@ -386,7 +344,7 @@
     }
    ],
    "neto": -700000,
-   "acumulado": 70733193.22999665
+   "acumulado": 112673864.82777664
   },
   {
    "fecha": "2026-08-24",
@@ -400,7 +358,7 @@
     }
    ],
    "neto": -1700000,
-   "acumulado": 69033193.22999665
+   "acumulado": 110973864.82777664
   },
   {
    "fecha": "2026-08-30",
@@ -411,10 +369,24 @@
      "quien": "Sueldos",
      "detalle": "Estructura · Segunda · proyectado",
      "monto": -8000000
+    },
+    {
+     "fecha": "2026-08-30",
+     "tipo": "cheque",
+     "quien": "ALUMETAL S.A",
+     "detalle": "ECHEQ N° 368",
+     "monto": -837210
+    },
+    {
+     "fecha": "2026-08-30",
+     "tipo": "cheque",
+     "quien": "FEMENIA CONSTRUCCIONES",
+     "detalle": "ECHEQ N° 369",
+     "monto": -1839200
     }
    ],
-   "neto": -8000000,
-   "acumulado": 61033193.22999665
+   "neto": -10676410,
+   "acumulado": 100297454.82777664
   },
   {
    "fecha": "2026-08-31",
@@ -428,7 +400,7 @@
     }
    ],
    "neto": -100000,
-   "acumulado": 60933193.22999665
+   "acumulado": 100197454.82777664
   },
   {
    "fecha": "2026-09-02",
@@ -463,7 +435,7 @@
     }
    ],
    "neto": -965863.5900033333,
-   "acumulado": 59967329.63999332
+   "acumulado": 99231591.23777331
   },
   {
    "fecha": "2026-09-03",
@@ -477,7 +449,7 @@
     }
    ],
    "neto": -317000,
-   "acumulado": 59650329.63999332
+   "acumulado": 98914591.23777331
   },
   {
    "fecha": "2026-09-06",
@@ -505,7 +477,7 @@
     }
    ],
    "neto": 21422081.274,
-   "acumulado": 81072410.91399331
+   "acumulado": 120336672.51177332
   },
   {
    "fecha": "2026-09-07",
@@ -519,7 +491,7 @@
     }
    ],
    "neto": -1282810.54,
-   "acumulado": 79789600.3739933
+   "acumulado": 119053861.97177331
   },
   {
    "fecha": "2026-09-10",
@@ -547,7 +519,7 @@
     }
    ],
    "neto": -10300000,
-   "acumulado": 69489600.3739933
+   "acumulado": 108753861.97177331
   },
   {
    "fecha": "2026-09-15",
@@ -561,7 +533,7 @@
     }
    ],
    "neto": -3000000,
-   "acumulado": 66489600.37399331
+   "acumulado": 105753861.97177331
   },
   {
    "fecha": "2026-09-16",
@@ -575,7 +547,7 @@
     }
    ],
    "neto": -2494875.65,
-   "acumulado": 63994724.72399331
+   "acumulado": 103258986.3217733
   },
   {
    "fecha": "2026-09-17",
@@ -589,7 +561,7 @@
     }
    ],
    "neto": -700000,
-   "acumulado": 63294724.72399331
+   "acumulado": 102558986.3217733
   },
   {
    "fecha": "2026-09-26",
@@ -603,7 +575,7 @@
     }
    ],
    "neto": 2274800,
-   "acumulado": 65569524.72399331
+   "acumulado": 104833786.3217733
   },
   {
    "fecha": "2026-09-30",
@@ -652,7 +624,7 @@
     }
    ],
    "neto": 15865003.3143,
-   "acumulado": 81434528.0382933
+   "acumulado": 120698789.6360733
   },
   {
    "fecha": "2026-10-02",
@@ -673,7 +645,7 @@
     }
    ],
    "neto": -619227.3033333333,
-   "acumulado": 80815300.73495997
+   "acumulado": 120079562.33273998
   },
   {
    "fecha": "2026-10-03",
@@ -687,7 +659,7 @@
     }
    ],
    "neto": -317000,
-   "acumulado": 80498300.73495997
+   "acumulado": 119762562.33273998
   },
   {
    "fecha": "2026-10-07",
@@ -701,7 +673,7 @@
     }
    ],
    "neto": -1282810.54,
-   "acumulado": 79215490.19495997
+   "acumulado": 118479751.79273997
   },
   {
    "fecha": "2026-10-10",
@@ -729,7 +701,7 @@
     }
    ],
    "neto": -10300000,
-   "acumulado": 68915490.19495997
+   "acumulado": 108179751.79273997
   },
   {
    "fecha": "2026-10-15",
@@ -743,7 +715,7 @@
     }
    ],
    "neto": -3000000,
-   "acumulado": 65915490.19495997
+   "acumulado": 105179751.79273997
   },
   {
    "fecha": "2026-10-16",
@@ -757,7 +729,7 @@
     }
    ],
    "neto": -2494875.65,
-   "acumulado": 63420614.54495997
+   "acumulado": 102684876.14273997
   },
   {
    "fecha": "2026-10-17",
@@ -771,7 +743,7 @@
     }
    ],
    "neto": -700000,
-   "acumulado": 62720614.54495997
+   "acumulado": 101984876.14273997
   },
   {
    "fecha": "2026-10-30",
@@ -785,7 +757,7 @@
     }
    ],
    "neto": -3000000,
-   "acumulado": 59720614.54495997
+   "acumulado": 98984876.14273997
   },
   {
    "fecha": "2026-11-02",
@@ -799,7 +771,7 @@
     }
    ],
    "neto": -355413.39,
-   "acumulado": 59365201.15495997
+   "acumulado": 98629462.75273997
   },
   {
    "fecha": "2026-11-07",
@@ -813,7 +785,7 @@
     }
    ],
    "neto": -1282810.54,
-   "acumulado": 58082390.61495997
+   "acumulado": 97346652.21273996
   },
   {
    "fecha": "2026-11-10",
@@ -841,7 +813,7 @@
     }
    ],
    "neto": -10300000,
-   "acumulado": 47782390.61495997
+   "acumulado": 87046652.21273996
   },
   {
    "fecha": "2026-11-15",
@@ -855,7 +827,7 @@
     }
    ],
    "neto": -3000000,
-   "acumulado": 44782390.61495997
+   "acumulado": 84046652.21273996
   },
   {
    "fecha": "2026-11-17",
@@ -869,7 +841,7 @@
     }
    ],
    "neto": -700000,
-   "acumulado": 44082390.61495997
+   "acumulado": 83346652.21273996
   },
   {
    "fecha": "2026-11-30",
@@ -883,7 +855,7 @@
     }
    ],
    "neto": -3000000,
-   "acumulado": 41082390.61495997
+   "acumulado": 80346652.21273996
   },
   {
    "fecha": "2026-12-02",
@@ -897,7 +869,7 @@
     }
    ],
    "neto": -355413.39,
-   "acumulado": 40726977.22495997
+   "acumulado": 79991238.82273996
   },
   {
    "fecha": "2026-12-07",
@@ -911,7 +883,7 @@
     }
    ],
    "neto": -1282810.54,
-   "acumulado": 39444166.68495997
+   "acumulado": 78708428.28273995
   },
   {
    "fecha": "2026-12-10",
@@ -939,7 +911,7 @@
     }
    ],
    "neto": -10300000,
-   "acumulado": 29144166.68495997
+   "acumulado": 68408428.28273995
   },
   {
    "fecha": "2026-12-15",
@@ -953,7 +925,7 @@
     }
    ],
    "neto": -7000000,
-   "acumulado": 22144166.68495997
+   "acumulado": 61408428.28273995
   },
   {
    "fecha": "2026-12-17",
@@ -967,7 +939,7 @@
     }
    ],
    "neto": -700000,
-   "acumulado": 21444166.68495997
+   "acumulado": 60708428.28273995
   },
   {
    "fecha": "2026-12-30",
@@ -995,7 +967,7 @@
     }
    ],
    "neto": -11500000,
-   "acumulado": 9944166.68495997
+   "acumulado": 49208428.28273995
   },
   {
    "fecha": "2027-01-02",
@@ -1009,7 +981,7 @@
     }
    ],
    "neto": -355413.39,
-   "acumulado": 9588753.29495997
+   "acumulado": 48853014.89273995
   },
   {
    "fecha": "2027-02-02",
@@ -1023,7 +995,7 @@
     }
    ],
    "neto": -355413.39,
-   "acumulado": 9233339.90495997
+   "acumulado": 48497601.50273995
   },
   {
    "fecha": "2027-03-02",
@@ -1037,7 +1009,7 @@
     }
    ],
    "neto": -355413.39,
-   "acumulado": 8877926.514959969
+   "acumulado": 48142188.11273995
   },
   {
    "fecha": "2027-04-02",
@@ -1051,7 +1023,7 @@
     }
    ],
    "neto": -355413.39,
-   "acumulado": 8522513.124959968
+   "acumulado": 47786774.72273995
   },
   {
    "fecha": "2027-05-02",
@@ -1065,7 +1037,7 @@
     }
    ],
    "neto": -355413.39,
-   "acumulado": 8167099.734959968
+   "acumulado": 47431361.33273995
   },
   {
    "fecha": "2027-06-02",
@@ -1079,7 +1051,7 @@
     }
    ],
    "neto": -355413.39,
-   "acumulado": 7811686.344959969
+   "acumulado": 47075947.94273995
   },
   {
    "fecha": "2027-07-02",
@@ -1093,10 +1065,10 @@
     }
    ],
    "neto": -355413.39,
-   "acumulado": 7456272.954959969
+   "acumulado": 46720534.55273995
   }
  ],
- "totalCobros": 147094863.2783,
- "totalPagos": -157661889.22333983,
- "leidoEn": "28/7/2026, 04:30:53"
+ "totalCobros": 110030136.07830001,
+ "totalPagos": -192120169.07333985,
+ "leidoEn": "31/7/2026, 12:44:53"
 }

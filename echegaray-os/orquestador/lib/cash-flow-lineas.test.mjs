@@ -1,6 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { formulaInteresSemana, edicionesConContenidoReal } from './cash-flow-lineas.mjs'
+import {
+  formulaInteresSemana, edicionesConContenidoReal,
+  formulaComisionesMes, formulaComisionesSemana, expresionComisionesPromedio, COMISIONES,
+} from './cash-flow-lineas.mjs'
+import { NAT } from './banco-santander.mjs'
 import { TASAS } from './costo-descubierto.mjs'
 import { ALICUOTA, formulaImpuesto } from './impuesto-cheque.mjs'
 import { respetarEdiciones } from './respetar-ediciones.mjs'
@@ -10,6 +14,19 @@ import { grilla } from '../scripts/cash-flow-rehacer.mjs'
 const ERROR_TOKENS = /#(REF|ERROR|N\/A|VALUE|DIV|NAME|NUM|NULL|¡)/
 const balanceada = (s) => { let n = 0; for (const c of String(s)) { if (c === '(') n++; if (c === ')') n--; if (n < 0) return false } return n === 0 }
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
+
+// LAS FILAS DEL CALENDARIO DE IMPUESTOS, QUE `grilla` EXIGE (arreglado el 31/07 en dos frentes a la vez).
+//
+// En el generador real las ubica getSheetMeta POR RÓTULO; acá se simulan, igual que FILAS_TABLA. No se
+// pueden omitir: `filasCalendarioOk` exige que estén, porque una referencia a una fila muerta devolvería
+// $0 en silencio — así que un test que pasara `{}` estaría probando justo el caso que el guardián
+// prohíbe. Y faltaban desde que se agregó la línea de IVA/IIBB: los tres tests de abajo venían tirando
+// "no sé en qué filas están IVA a pagar/IIBB a pagar" y por lo tanto NINGUNO probaba nada. Un test que
+// tira antes de la primera aserción es peor que no tenerlo: figura en la suite y no defiende la grilla.
+//
+// Los números son los REALES de "Impuestos y Financieros" (leídos del archivo: IVA en la 18, IIBB en la
+// 28), no dos cualquiera: si algún día el simulacro y la pestaña se separan, que se note acá.
+const FILAS_CAL = { iva: 18, iibb: 28 }
 
 // ── CAMBIO 1 · las líneas 40/41 (descubierto e impuesto al cheque) ahora SE CALCULAN por semana ──
 
@@ -33,7 +50,7 @@ test('formulaInteresSemana: mismo modelo verificado que el mensual, ventana de 7
 })
 
 test("grilla semanal: las líneas del descubierto e impuesto al cheque NO quedan vacías en ninguna semana", () => {
-  const g = grilla('semanal', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", {})
+  const g = grilla('semanal', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", {}, FILAS_CAL)
   const desc = g.meta.detalle.find((d) => d.linea.descubierto)
   const imp = g.meta.detalle.find((d) => d.linea.impuestoCheque)
   assert.ok(desc && imp, 'existen ambas líneas en el semanal')
@@ -52,7 +69,7 @@ test("grilla semanal: las líneas del descubierto e impuesto al cheque NO quedan
 })
 
 test('impuesto al cheque semanal resuelto = 0,6% de entradas + 0,6% de salidas de la semana', () => {
-  const g = grilla('semanal', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", {})
+  const g = grilla('semanal', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", {}, FILAS_CAL)
   const ingreso = g.meta.detalle.filter((d) => d.signo > 0).map((d) => d.fila)
   const egreso = g.meta.detalle.filter((d) => d.signo < 0 && !d.linea.impuestoCheque).map((d) => d.fila)
   const imp = g.meta.detalle.find((d) => d.linea.impuestoCheque)
@@ -69,7 +86,7 @@ test('impuesto al cheque semanal resuelto = 0,6% de entradas + 0,6% de salidas d
 test('regresión: el MENSUAL sigue calculando descubierto e impuesto como antes', () => {
   // El mensual proyecta desde las pestañas de detalle: necesita la fila del total (la ubica el script
   // por rótulo; acá se simula). El semanal no las usa (muestra sólo lo comprometido).
-  const g = grilla('mensual', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", { Estructura: 15, Recurrentes: 24 })
+  const g = grilla('mensual', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", { Estructura: 15, Recurrentes: 24 }, FILAS_CAL)
   const desc = g.meta.detalle.find((d) => d.linea.descubierto)
   const imp = g.meta.detalle.find((d) => d.linea.impuestoCheque)
   const rowDesc = g.filas[desc.fila - 1]
@@ -77,6 +94,87 @@ test('regresión: el MENSUAL sigue calculando descubierto e impuesto como antes'
   // El mensual proyecta por mes: DAY(EOMONTH(...)) días, no 7.
   assert.ok(String(rowDesc[1]).includes('DAY(EOMONTH('), 'mensual usa los días del mes, no 7')
   assert.equal(String(rowImp[1]), `#{IMP:${letra(1)}}`, 'mensual sigue usando el marcador de impuesto')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA LÍNEA DE COMISIONES BANCARIAS (31/07) — EL COSTO QUE EL CUADRO PROYECTABA EN $0
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Lo que estos tests defienden no es la fórmula: es que el rótulo con el que el SUMIFS busca sea EL
+// MISMO que escribe clasificarMovimiento en la columna F de _BANCO_RAW. Si uno de los dos cambia y el
+// otro no, la fórmula no da error: da $0, y $381.649,64 de costo bancario desaparecen sin ruido.
+
+test('el SUMIFS de comisiones busca EXACTAMENTE el rótulo que el clasificador escribe en _BANCO_RAW', () => {
+  assert.equal(COMISIONES.marca, NAT.comisiones, 'el contrato del SUMIFS es el mismo string que NAT.comisiones')
+  assert.equal(COMISIONES.hoja, '_BANCO_RAW')
+  assert.equal(COMISIONES.naturaleza, 'F', 'la columna Naturaleza de la réplica (contrato con banco-raw-pestana.mjs)')
+  const f = formulaComisionesMes('B$3')
+  assert.ok(f.includes(`"${NAT.comisiones}"`), 'el criterio del SUMIFS es el rótulo literal')
+})
+
+test('la línea mensual de comisiones: real en los meses pasados, PISO en los futuros, sin circularidad', () => {
+  const f = formulaComisionesMes('B$3')
+  assert.ok(balanceada(f) && !ERROR_TOKENS.test(f))
+  // Mes cerrado o en curso → lo que el banco cobró. Mes futuro → MAX(real; promedio).
+  assert.ok(f.startsWith('=IF(EOMONTH(B$3;0)<=EOMONTH(TODAY();0);'), 'el pasado es el real, no una proyección')
+  assert.ok(f.includes('MAX('), 'el futuro es un PISO: nunca subestima un costo')
+  // NO referencia ninguna celda de su propia fila: el promedio sale de la réplica. La tentación era un
+  // AVERAGEIF sobre la propia fila ($B7:$M7) —lo que hace la pestaña de Impuestos en una fila APARTE—
+  // pero acá sería circular: la celda del mes futuro entraría en su propio promedio y Google devolvería
+  // #REF! en cada mes proyectado. Se comprueba que toda referencia esté calificada: o es la réplica
+  // (_BANCO_RAW!...), o es la espina de meses del encabezado ($B$3:$M$3), o es la celda del mes.
+  assert.ok(!/AVERAGEIF/i.test(f), 'no promedia sobre su propia fila (sería circular)')
+  const refsSueltas = f.replace(/_BANCO_RAW!\$[A-Z]\$4:\$[A-Z]/g, '').replace(/\$B\$3:\$M\$3/g, '').replace(/B\$3/g, '')
+  assert.ok(!/\$?[A-Z]{1,2}\$?\d+/.test(refsSueltas), `quedó una referencia sin calificar: ${refsSueltas}`)
+  assert.ok(f.includes(';">="&B$3;') && f.includes('"<"&EOMONTH(B$3;0)+1'), 'ventana del mes, límite superior excluyente')
+  // es-AR: punto y coma como separador de argumentos.
+  assert.ok(f.includes(';') && !/\d,\d/.test(f.replace(/0\.\d+/g, '')), 'es-AR: punto y coma, coma no es separador')
+})
+
+test('el promedio de comisiones se calcula sobre los meses QUE TIENEN extracto, no sobre doce', () => {
+  const p = expresionComisionesPromedio()
+  assert.ok(balanceada(p) && !ERROR_TOKENS.test(p))
+  // Divide por la cantidad de meses de la espina que tienen al menos un movimiento de esa naturaleza:
+  // dividir por 12 daría un promedio artificialmente bajo mientras el extracto cubra dos meses.
+  assert.ok(p.includes('SUMPRODUCT(--(COUNTIFS('), 'cuenta los meses con dato, como el resto del archivo')
+  assert.ok(p.includes('$B$3:$M$3'), 'contra la espina de doce meses del encabezado')
+  assert.ok(p.startsWith('IF(') && p.includes('=0;0;'), 'sin extracto todavía → 0, nunca una división por cero')
+})
+
+test('la línea semanal de comisiones carga el cargo en la semana del cierre de mes, que es cuando el banco lo cobra', () => {
+  const f = formulaComisionesSemana('B$3', 'B$3+7')
+  assert.ok(balanceada(f) && !ERROR_TOKENS.test(f))
+  assert.ok(f.startsWith('=MAX('), 'PISO, igual que el interés del descubierto semanal')
+  // La condición que decide si esta semana es la del cargo: el cierre del mes cae dentro de [desde, hasta).
+  assert.ok(f.includes('(EOMONTH(B$3;0)>=B$3)*(EOMONTH(B$3;0)<B$3+7)'),
+    'la proyección cae íntegra en la semana que contiene el último día del mes, no repartida entre las cuatro')
+  assert.ok(f.includes('">="&B$3') && f.includes('"<"&B$3+7'), 'el real acotado a la semana, límite excluyente')
+})
+
+test('la línea de comisiones está en el cuadro, en Financiación, y NO queda vacía en ninguna columna', () => {
+  for (const [periodo, filasTabla] of [['mensual', { Estructura: 15, Recurrentes: 24 }], ['semanal', {}]]) {
+    const g = grilla(periodo, [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", filasTabla, FILAS_CAL)
+    const com = g.meta.detalle.find((d) => d.linea.comisionesBancarias)
+    assert.ok(com, `${periodo}: la línea de comisiones existe en el cuadro`)
+    assert.equal(com.signo, -1, `${periodo}: es un egreso`)
+    const row = g.filas[com.fila - 1]
+    for (let i = 1; i <= g.n; i++) {
+      assert.ok(row[i] !== '' && row[i] != null, `${periodo}: comisiones columna ${i} no vacía`)
+      assert.ok(String(row[i]).startsWith('='), `${periodo}: columna ${i} es fórmula viva, no un número pegado`)
+      assert.ok(String(row[i]).includes(NAT.comisiones), `${periodo}: columna ${i} filtra por la naturaleza`)
+    }
+  }
+})
+
+test('el impuesto al cheque incluye las comisiones en su base: el banco lo cobra sobre ellas', () => {
+  // VERIFICADO CONTRA EL EXTRACTO: el 29/06 los débitos del día suman $3.667.838,24 —incluidas las tres
+  // comisiones y sus impuestos— y el banco cobró $22.007,03 de impuesto al cheque, que es el 0,6%
+  // EXACTO de ese total. O sea: la comisión bancaria está gravada, y la línea del impuesto tiene que
+  // contarla entre los egresos de la columna. Se excluye a sí misma (sería circular), nada más.
+  const g = grilla('mensual', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", { Estructura: 15, Recurrentes: 24 }, FILAS_CAL)
+  const com = g.meta.detalle.find((d) => d.linea.comisionesBancarias)
+  const egreso = g.meta.detalle.filter((d) => d.signo < 0 && !d.linea.impuestoCheque).map((d) => d.fila)
+  assert.ok(egreso.includes(com.fila), 'la fila de comisiones entra a la base del impuesto al cheque')
 })
 
 // ── CAMBIO 2 · --force NO destructivo: la fusión que preserva lo del dueño sigue SIEMPRE activa ──

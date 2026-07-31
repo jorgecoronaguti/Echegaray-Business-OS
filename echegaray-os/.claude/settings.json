@@ -1,6 +1,21 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "worktree": {
+    "baseRef": "head"
+  },
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /home/jorge/echegaray-os/app/echegaray-os/scripts/ensure-worktree-node-modules.sh || true",
+            "timeout": 15,
+            "statusMessage": "node_modules de worktrees"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit|NotebookEdit",
