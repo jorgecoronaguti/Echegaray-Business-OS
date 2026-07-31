@@ -108,3 +108,58 @@ test('normalizarConcepto no borra información, sólo el ruido de formato', () =
   // Dos conceptos DISTINTOS siguen siendo distintos: no se colapsan.
   assert.notEqual(normalizarConcepto('Cheque debitado'), normalizarConcepto('Echeq clearing recibido 48hs'))
 })
+
+test('LA REFERENCIA SOLA NO ES IDENTIDAD: una operación y su percepción la comparten', () => {
+  // El caso real (01/07): la compra en el exterior de Google Workspace y su percepción RG 5617 vienen con
+  // la MISMA referencia 00114824 y distinto importe — el banco las numera juntas porque son la misma
+  // operación. Agrupando por referencia sola, este código proponía borrar la percepción: $11.203,92 de
+  // impuesto que desaparecen sin que nada dé error.
+  const filas = [
+    f(A, -37926, { fecha: '2026-07-01', concepto: 'Compra en el exterior - Google workspace', referencia: '114824' }),
+    f(A, -11203.92, { fecha: '2026-07-01', concepto: 'Percep perc rg 5617 30% o suj - Google workspace', referencia: '114824' }),
+  ]
+  const { bajas } = planDedup(filas)
+  assert.equal(bajas.length, 0, 'son dos movimientos reales de la cuenta')
+})
+
+test('misma referencia Y mismo importe SÍ es el mismo movimiento importado de nuevo', () => {
+  const filas = [
+    f(A, -3731.79, { fecha: '2026-07-30', concepto: 'Impuesto ley 25.413 debito 0,6%', referencia: '8696' }),
+    f(B, -3731.79, { fecha: '2026-07-30', concepto: 'Impuesto ley 25.413 debito 0,6%', referencia: '8696' }),
+  ]
+  const { bajas } = planDedup(filas)
+  assert.equal(bajas.length, 1)
+  assert.match(bajas[0].motivo, /misma referencia 8696 y mismo importe/)
+})
+
+test('EL DUPLICADO QUE ESTE CÓDIGO NO VEÍA: el concepto RECORTADO por la otra descarga', () => {
+  // El caso real (30/06, y 41 más en julio): la semilla guardó "Pago haberes - 260630507" y el CSV trae el
+  // número repetido al final. Con el concepto exacto en la clave son dos grupos de una fila cada uno, así
+  // que este deduplicador informaba "no hay duplicados" sobre 42 movimientos contados dos veces.
+  const filas = [
+    f(A, -344401.2, { fecha: '2026-06-30', concepto: 'Pago haberes - 260630507' }),
+    f(B, -344401.2, { fecha: '2026-06-30', concepto: 'Pago haberes - 260630507       260630507' }),
+  ]
+  const { bajas } = planDedup(filas)
+  assert.equal(bajas.length, 1, 'es el mismo pago de haberes')
+  assert.equal(bajas[0].fila.origen, B, 'se conserva la más vieja')
+})
+
+test('el recorte NO junta dos movimientos que difieren EN EL MEDIO', () => {
+  // "Id debin cuit 307…" vs "Id debin z0kv8… cuit 307…": si el texto difiere en el medio, no se sabe si es
+  // el mismo movimiento. Acá el mismo origen los declaró: son reales y no se tocan.
+  const filas = [
+    f(A, -500, { concepto: 'Transferencia recibida - credin - Id debin cuit 30710630670' }),
+    f(A, -500, { concepto: 'Transferencia recibida - credin - Id debin z0kv879 cuit 30710630670' }),
+  ]
+  assert.equal(planDedup(filas).bajas.length, 0)
+})
+
+test('un prefijo pobre no empareja cualquier cosa', () => {
+  // Sin el piso de largo, "Iva" sería prefijo de "Iva percepcion rg 2408" y de "Iva 21% reg de transfisc".
+  const filas = [
+    f(A, -2070, { concepto: 'Iva' }),
+    f(B, -2070, { concepto: 'Iva percepcion rg 2408' }),
+  ]
+  assert.equal(planDedup(filas).bajas.length, 0, 'tres letras no identifican un movimiento')
+})

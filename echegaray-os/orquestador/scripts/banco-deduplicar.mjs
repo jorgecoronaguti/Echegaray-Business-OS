@@ -31,6 +31,7 @@
 
 import { writeFileSync } from 'node:fs'
 import { query, closePool } from '../lib/db.mjs'
+import { norm, agruparPorConcepto } from '../lib/banco-conceptos.mjs'
 
 const APLICAR = process.argv.includes('--aplicar')
 const RESPALDO = `/tmp/banco_movimientos-respaldo-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.json`
@@ -48,7 +49,7 @@ const $ = (n) => `$${Number(n ?? 0).toLocaleString('es-AR', { minimumFractionDig
  *
  * Mayúsculas y espacios los pone el banco distinto en cada descarga; no son parte del movimiento.
  */
-export const normalizarConcepto = (s) => String(s ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
+export const normalizarConcepto = norm
 
 /**
  * NÚCLEO PURO: qué filas se dan de baja. Devuelve los ids a borrar con su motivo.
@@ -59,11 +60,18 @@ export const normalizarConcepto = (s) => String(s ?? '').toLowerCase().replace(/
 export function planDedup(filas = []) {
   const bajas = []; const grupos = []
 
-  // ── 1. POR REFERENCIA: es identidad. Misma referencia = mismo movimiento, sin discusión.
+  // ── 1. POR REFERENCIA + IMPORTE: eso es identidad. La referencia SOLA no lo es.
+  //
+  // POR QUÉ EL IMPORTE ENTRA EN LA CLAVE (31/07). Este paso agrupaba por referencia sola y propuso dar de
+  // baja un movimiento REAL: el 01/07 la compra en el exterior de Google Workspace ($-37.926,00) y su
+  // percepción RG 5617 ($-11.203,92) comparten la referencia 00114824 —el banco las numera juntas porque
+  // son la misma operación y las distingue por el Código Operativo, que el extracto CSV no expone en una
+  // columna que el parser lea—. Con la referencia sola, "sin discusión" borraba una percepción de $11.203,92
+  // que nadie iba a extrañar hasta que el IVA no cerrara.
   const porRef = new Map()
   for (const f of filas) {
     if (!f.referencia) continue
-    const k = `${f.cuenta ?? ''}|${f.referencia}`
+    const k = `${f.cuenta ?? ''}|${f.referencia}|${Number(f.importe).toFixed(2)}`
     if (!porRef.has(k)) porRef.set(k, [])
     porRef.get(k).push(f)
   }
@@ -73,18 +81,29 @@ export function planDedup(filas = []) {
     // Se queda el más viejo (el primero que entró); los demás son la misma cosa importada de nuevo.
     const orden = g.slice().sort((a, b) => a.id - b.id)
     grupos.push({ clave: k, tipo: 'referencia', total: g.length, conserva: 1 })
-    for (const f of orden.slice(1)) { bajas.push({ id: f.id, motivo: `misma referencia ${f.referencia} que la fila ${orden[0].id}`, fila: f }); yaDeBaja.add(f.id) }
+    for (const f of orden.slice(1)) { bajas.push({ id: f.id, motivo: `misma referencia ${f.referencia} y mismo importe que la fila ${orden[0].id}`, fila: f }); yaDeBaja.add(f.id) }
   }
 
   // ── 2. SIN REFERENCIA: el excedente ENTRE orígenes. Lo que un mismo origen repite es real.
+  //
+  // SE AGRUPA POR (cuenta, fecha, importe) Y RECIÉN AHÍ POR CONCEPTO COMPATIBLE (31/07). Antes la clave
+  // incluía el concepto EXACTO normalizado, y así este deduplicador informaba "no hay duplicados" sobre una
+  // base que tenía 42 movimientos contados dos veces: las dos descargas escriben el concepto con CONTENIDO
+  // distinto —"Pago haberes - 260701507 260701507" en el CSV contra "Pago haberes - 260701507" en la
+  // semilla—, caían en grupos separados de una fila cada uno, y ningún grupo tenía copias. Normalizar
+  // mayúsculas y espacios no alcanzaba: lo que cambia es cuánto del concepto guardó cada descarga.
   const porNat = new Map()
   for (const f of filas) {
     if (yaDeBaja.has(f.id)) continue
-    const k = `${f.cuenta ?? ''}|${f.fecha}|${normalizarConcepto(f.concepto)}|${f.importe}`
+    const k = `${f.cuenta ?? ''}|${f.fecha}|${f.importe}`
     if (!porNat.has(k)) porNat.set(k, [])
     porNat.get(k).push(f)
   }
-  for (const [k, g] of porNat) {
+  const grupitos = []
+  for (const [k, bolsa] of porNat) {
+    for (const g of agruparPorConcepto(bolsa)) grupitos.push([`${k}|${normalizarConcepto(g[0].concepto)}`, g])
+  }
+  for (const [k, g] of grupitos) {
     if (g.length < 2) continue
     const porOrigen = new Map()
     for (const f of g) {
