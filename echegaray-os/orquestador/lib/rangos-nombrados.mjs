@@ -50,18 +50,6 @@ export const CAJA = {
 }
 
 /**
- * LO QUE LA PESTAÑA "Proveedores" LE OFRECE AL RESTO DEL ARCHIVO.
- *
- * `libreta` es la tabla proveedor → comentario que el dueño escribe a mano. La sección 1 —que desde el
- * 31/07 es un derrame de fórmula y se reordena sola en cada recálculo— la lee por nombre para traer
- * cada nota al lado de SU proveedor. Con la nota escrita al lado de la fila no alcanzaba: la fila se
- * mueve y la nota no, así que terminaba describiendo a otro proveedor.
- */
-export const PROVEEDORES = {
-  libreta: 'PROV_LIBRETA',
-}
-
-/**
  * NÚCLEO PURO: los pedidos de la API para dejar un conjunto de nombres apuntando donde toca.
  * Actualiza el que ya existe en vez de crear otro — la API no falla al duplicar un nombre, se queda
  * con dos y las fórmulas empiezan a leer el equivocado.
@@ -71,18 +59,11 @@ export const PROVEEDORES = {
  */
 export function pedidos(sheetId, destinos = [], existentes = []) {
   return destinos.map((d) => {
-    // UN NOMBRE PUEDE CUBRIR UN BLOQUE, NO SÓLO UNA CELDA (31/07). La libreta de proveedores es una
-    // TABLA de dos columnas que el dueño extiende hacia abajo, y su nombre tiene que seguirla: con
-    // `abierto` se omite `endRowIndex`, que en la API de Sheets significa "hasta el final de la hoja".
-    // Un rango con fila final se fosiliza —la fila que él agregue mañana queda afuera y el VLOOKUP que
-    // lo mira devuelve vacío sin dar ningún error—, que es el mismo defecto que este archivo evita en
-    // las fórmulas. Por defecto sigue siendo una celda: los doce nombres de ARCA no cambian.
     const range = {
       sheetId,
-      startRowIndex: d.fila - 1,
-      startColumnIndex: d.col - 1, endColumnIndex: d.col - 1 + (d.cols ?? 1),
+      startRowIndex: d.fila - 1, endRowIndex: d.fila,
+      startColumnIndex: d.col - 1, endColumnIndex: d.col,
     }
-    if (!d.abierto) range.endRowIndex = d.fila - 1 + (d.filas ?? 1)
     const ya = existentes.find((r) => r.name === d.name)
     return ya
       ? { updateNamedRange: { namedRange: { namedRangeId: ya.namedRangeId, name: d.name, range }, fields: 'name,range' } }

@@ -85,12 +85,7 @@ import { normComprobante, esLlaveUtil } from '../lib/cheques-cobertura.mjs'
 import { signo, esNotaDeCredito } from '../lib/comprobante-arca.mjs'
 import { analizar as analizarNC, facturasAnuladasCargadas, clave as claveNC } from '../lib/notas-credito.mjs'
 import { cruzar, verificar } from '../lib/cobertura-arca.mjs'
-import { ARCA as N_ARCA, PROVEEDORES as N_PROV, publicar } from '../lib/rangos-nombrados.mjs'
-import {
-  COLS_PROVEEDOR, COLS_FACTURA, COLS_LIBRETA,
-  rangosCompras, formulaPorProveedor, formulaPorFactura, formulaControl,
-  reservaPara, filasLibreta, verificarMigracionNotas,
-} from '../lib/proveedores-deuda-viva.mjs'
+import { ARCA as N_ARCA, publicar } from '../lib/rangos-nombrados.mjs'
 import { query } from '../lib/db.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { INK, MUTED, HAIR } from '../lib/estilo-statement.mjs'
@@ -152,15 +147,11 @@ let COL_PARCIAL2 = 'Compras!$W$4:$W'
 // conteo — el "proveedor con deuda a quien ya pagaste". Por eso el hero desglosa directa/cheque/tarjeta.
 let COL_TIPOPAGO = 'Compras!$P$4:$P'
 const COL_OBRA = 'Compras!$J$4:$J'
-// OJO CON EL NOMBRE: `COL_FACTURA` es la FECHA de la factura (col C), la que se resta contra la fecha
-// de caja para medir el plazo. El NÚMERO de comprobante es la H y la categoría la B — las dos se usaban
-// inline en cada fórmula; ahora tienen nombre porque la sección viva las referencia como rango abierto.
 const COL_FACTURA = 'Compras!$C$4:$C'
-const COL_COMPROBANTE = 'Compras!$H$4:$H'
-const COL_CATEGORIA = 'Compras!$B$4:$B'
 const COL_TOTAL = 'Compras!$O$4:$O'
 const COL_PROV = 'Compras!$E$4:$E'
 const COL_ESTADO = 'Compras!$X$4:$X'
+const CH = "'Cheques Emitidos'"
 
 /** Índices (0-based) de las columnas de Compras que el JS lee de cada fila. Se recalculan por nombre. */
 const IDX = { rubro: 28, fechaCaja: 29, familia: 30, comercial: 35, pagado: 19, parcial1: 20, parcial2: 22, tipoPago: 15, obra: 9, prov: 4, total: 14, estado: 23, concepto: 11, detalle: 10 }
@@ -293,18 +284,44 @@ export function layoutDeuda(headers) {
 }
 
 /**
- * SE FUERON `predicadoConDeuda` Y `soloConDeuda` (31/07), Y VALE DEJAR ESCRITO POR QUÉ.
+ * PREDICADO VIVO DE DEUDA — HACE QUE LA FILA-CABECERA DE UN PROVEEDOR DESAPAREZCA SOLA CUANDO SE LO PAGA.
  *
- * Existían para tapar un agujero del diseño viejo: la fila-cabecera de cada proveedor era una fila
- * FÍSICA con su nombre escrito, así que cuando se le pagaba, el nombre seguía ahí con un "−" al lado.
- * La cura era envolver cada celda en IF(hayDeuda; valor; "") para que la fila se vaciara sola.
+ * EL BUG QUE ARREGLA (28/07). La fila-cabecera de cada proveedor se materializa en JS: su NOMBRE era un
+ * texto fijo y sólo el importe una fórmula. Al pasar el proveedor a estado "Pagado" en Compras, el
+ * importe caía a 0 —se veía "−"— pero el nombre seguía escrito, así que el proveedor ya pagado quedaba
+ * LISTADO igual, con un guión. El dueño lo marcó: "un proveedor sin deuda pendiente NO se lista".
  *
- * Con la sección 1 viva el problema no se tapa: no existe. La lista de proveedores SALE de
- * `UNIQUE(FILTER(...))` sobre Compras y el filtro de saldo > 0 va adentro de la misma fórmula, así que
- * un proveedor pagado no queda vacío — no está. Una fila que no se genera no hay que apagarla.
+ * La cura es envolver cada celda de la cabecera en IF(hayDeuda; valor; "") con este predicado, de modo
+ * que la fila entera quede VACÍA en el mismo instante en que cambia el estado en Compras —sin esperar a
+ * que corra el agente cada 2 h—. `estado ≠ Pagado` ya lo garantiza condProv (filtra ESTADO_DEUDA =
+ * "Pendiente"); esto agrega `saldo > 0` sobre el saldo NETO (Total − pagos), que es exactamente el mismo
+ * número que suma el importe de la fila. Así el cuadro lista SÓLO proveedores con saldo pendiente > 0.
+ *
+ * @param {string} netaExpr saldo neto del proveedor (sin el `=`), tal como lo arma neta()
+ * @returns {string} un predicado booleano para usar dentro de un IF de Sheets
  */
+export const predicadoConDeuda = (netaExpr) => `ROUND(${netaExpr};0)>0`
 
-function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emitidas, notasCredito, anuladasCargadas, cruce, deudaCols, deudaPrevio, libretaPrevia = [] }) {
+/**
+ * ENVUELVE EL VALOR DE UNA CELDA-CABECERA para que quede VACÍA cuando el proveedor no tiene deuda
+ * pendiente. Con `texto:true` el valor es el NOMBRE del proveedor y entra como literal de cadena
+ * (comillas escapadas); si no, es una subexpresión de fórmula (próximo pago, conteo de facturas,
+ * importe), a la que se le quita el `=` inicial para anidarla dentro del IF.
+ *
+ * Es-AR: usa `;` como separador de argumentos y `""` como valor vacío — ninguna coma nueva, para que
+ * el localizador de fórmulas no la confunda con un decimal.
+ *
+ * @param {string} pred predicado de predicadoConDeuda()
+ * @param {string} valor el nombre (texto) o la subexpresión de fórmula
+ * @param {{texto?:boolean}} [opts]
+ * @returns {string} una fórmula `=IF(pred; valor; "")`
+ */
+export const soloConDeuda = (pred, valor, { texto = false } = {}) =>
+  texto
+    ? `=IF(${pred};"${String(valor).replace(/"/g, '""')}";"")`
+    : `=IF(${pred};${String(valor).replace(/^=/, '')};"")`
+
+function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emitidas, notasCredito, anuladasCargadas, cruce, deudaCols, deudaPrevio }) {
   const filas = []
   const push = (c) => { filas.push(c); return filas.length }
   const nombres = FAMILIAS.map(([n]) => n)
@@ -394,81 +411,99 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // una vez en esta misma pestaña. El texto del QUERY va entre comillas y el localizador de
   // fórmulas respeta los literales, así que sus comas llegan intactas.
   const b1 = push(['1 · QUÉ SE DEBE Y CUÁNDO'])
-  push(['Dos tablas VIVAS: no hay una sola fila escrita acá. Cada bloque es una fórmula sobre Compras, así que un proveedor nuevo aparece solo, el pagado se va solo, y ninguna de las dos cosas espera a que corra un agente. Pendiente se decide por el ESTADO de Compras, nunca por la fecha. Tus comentarios van en la LIBRETA del final: desde ahí vuelven solos al proveedor que nombran, aunque la lista se reordene.'])
+  // AVISO VIVO DE DESFASAJE. El detalle de abajo son filas físicas: existen cuando corre el agente.
+  // Los IMPORTES son fórmulas y se mueven solos, pero una factura de un proveedor NUEVO no tiene fila
+  // hasta la próxima corrida. Esta línea compara —en vivo— el total real contra la suma de lo listado
+  // y avisa el hueco, para que el cuadro nunca engañe aunque esté desactualizado. Se llena más abajo,
+  // cuando el bloque ya tiene coordenadas.
+  // Sin subtítulo de prosa: la tabla se explica sola (menos es más). Fila en blanco de respiro.
   push([])
-  // Las columnas de Compras, todas ABIERTAS y ubicadas por encabezado. `rangosCompras` corta la corrida
-  // si alguna llegara acotada a una fila final: un rango con techo se fosiliza y deja de ver lo nuevo.
-  const RC = rangosCompras({
-    prov: COL_PROV, estado: COL_ESTADO, comercial: COL_COMERCIAL, total: COL_TOTAL,
-    pagado: COL_PAGADO, parcial1: COL_PARCIAL1, parcial2: COL_PARCIAL2, fecha: COL_FECHA,
-    comprobante: COL_COMPROBANTE, obra: COL_OBRA, tipoPago: COL_TIPOPAGO, categoria: COL_CATEGORIA,
-  })
-  // Las notas que hoy están ancladas a cada proveedor en la pestaña. Se leen ACÁ, antes de rehacer el
-  // bloque, y viajan a la libreta: el rediseño borra las filas donde viven, así que si no se migran se
-  // pierden. `verificarMigracionNotas` (en main) corta la corrida si alguna no llegó.
+  // Las columnas son las que el dueño dejó en la pestaña (nombre y orden). Ver layoutDeuda.
   const L = layoutDeuda(deudaCols)
+  // Las notas del dueño vuelven a SU proveedor / SU comprobante, no a la fila donde estaban.
   const NOTAS = notasAncladas(deudaPrevio || [], L)
-  // LA LIBRETA SE SIEMBRA CON LA GRAFÍA DE COMPRAS, no con la clave normalizada. `notasAncladas`
-  // indexa en minúsculas (para poder emparejar), pero escribir "hormiserv" en la pestaña es escribir
-  // un nombre que el dueño no usa. VLOOKUP en Sheets es insensible a mayúsculas, así que emparejaría
-  // igual — pero la libreta la lee una persona, y un nombre en minúscula se lee como un error.
-  const canonDeuda = new Map(deudaAgrupada.map((gp) => [String(gp.nombre).trim().toLowerCase(), gp.nombre]))
-  const notasPorProveedor = new Map(
-    [...NOTAS.porProveedor.entries()].map(([k, m]) => [canonDeuda.get(k) ?? k, [...m.values()].map(String).join(' · ')]),
-  )
-  // La libreta decide sola si se siembra (está vacía: hay que migrar lo que el bloque viejo va a borrar)
-  // o si no se toca ni una celda (ya tiene contenido del dueño). Ver `filasLibreta`.
-  const libreta = filasLibreta(notasPorProveedor, libretaPrevia)
-  // EL ANCHO QUE SE LIMPIA es el que el bloque viejo REALMENTE ocupaba, no el de los rótulos: el dueño
-  // escribía hasta la Q y lo que el generador no marca con VACIO la fusión lo deja clavado en su fila
-  // física (incidente del 30/07). Con la lista viva reordenándose sola, un residuo así le pone a un
-  // proveedor los números de otro. Cada fila del bloque nace VACIO de punta a punta.
-  const ANCHO = Math.max(anchoBloque(L.cols, deudaPrevio), COLS_FACTURA.length)
-  /** Una fila del bloque: el ancla en su columna y el resto VACIO (mío y va vacío → la fusión lo borra). */
-  const filaBloque = (celdas = []) => {
-    const f = Array.from({ length: ANCHO }, () => VACIO)
-    celdas.forEach((v, i) => { f[i] = v })
-    return f
+  // EL BLOQUE ES DUEÑO DE TODO SU ANCHO, no sólo de las columnas rotuladas. Ver anchoBloque(): el dueño
+  // escribe más a la derecha de lo que rotuló, y lo que el generador no marca con VACIO la fusión lo deja
+  // clavado en la FILA FÍSICA — con la lista reordenada eso le pone a un proveedor los números de otro
+  // (incidente del 30/07). Cada celda del bloque nace VACIO y sólo sobrevive lo que se RE-ANCLA a su
+  // proveedor / comprobante: así una nota viaja con la entidad de la que habla, y un residuo no viaja.
+  const ANCHO = anchoBloque(L.cols, deudaPrevio)
+  const celdas = () => Array.from({ length: ANCHO }, () => VACIO)
+  // Toda nota re-anclada se marca como USADA: la que no encuentra a su proveedor se reporta al final en
+  // vez de desaparecer sin decirlo. Un dato del dueño no se pierde en silencio.
+  const usadas = new Set()
+  const ponerNotas = (arr, mapa, clave) => {
+    const k = String(clave ?? '').trim().toLowerCase()
+    const extra = mapa.get(k)
+    if (extra) { usadas.add(`${mapa === NOTAS.porProveedor ? 'p' : 'c'}|${k}`); for (const [j, v] of extra) arr[j] = v }
+    return arr
   }
-  /** Reserva el derrame: el ancla y sus filas de abajo, todas limpias para que la tabla pueda caer. */
-  const reservar = (formula, reserva) => {
-    const ancla = push(filaBloque([formula]))
-    for (let i = 1; i < reserva; i++) push(filaBloque())
-    return { ancla, fin: filas.length }
+  const fAviso = push([])
+  const cabDoc = push([...L.cols])
+  const deudaGrupos = []
+  const deudaHeaders = []
+  const qLit = (s) => String(s ?? '').replace(/"/g, '""')
+  for (const gp of deudaAgrupada) {
+    const key = qLit(gp.nombre)
+    const condProv = `${COL_PROV};"${key}";${COL_ESTADO};"${ESTADO_DEUDA}"`
+    const conFecha = `${condProv};${COL_FECHA};">0"`
+    // Fila-cabecera del proveedor: total NETO (Total − Monto Pagado) y próximo pago por fórmula viva.
+    // Es la que queda a la vista cuando el grupo está colapsado; las facturas se pliegan debajo.
+    // CADA CELDA SE GATEA CON `predicadoConDeuda`: si el saldo neto del proveedor no es > 0 (lo pagaron,
+    // o sus notas de crédito lo cubren), la fila-cabecera queda VACÍA sola. Sin esto el proveedor pagado
+    // seguía listado con un "−". La lista muestra SÓLO proveedores con saldo pendiente > 0, en vivo.
+    const netaProv = neta(condProv)
+    const pred = predicadoConDeuda(netaProv)
+    const hCel = celdas()
+    hCel[L.prov] = soloConDeuda(pred, gp.nombre, { texto: true })
+    if (L.fecha >= 0) hCel[L.fecha] = soloConDeuda(pred, `IF(COUNTIFS(${conFecha})=0;"sin fecha";MINIFS(${COL_FECHA};${conFecha}))`)
+    if (L.comp >= 0) hCel[L.comp] = soloConDeuda(pred, `COUNTIFS(${COL_PROV};"${key}";${COL_ESTADO};"${ESTADO_DEUDA}";${COL_TOTAL};"<>")&" fac."`)
+    if (L.imp >= 0) hCel[L.imp] = soloConDeuda(pred, netaProv)
+    ponerNotas(hCel, NOTAS.porProveedor, gp.nombre)
+    const hRow = push(hCel)
+    deudaHeaders.push(hRow)
+    const inicio = filas.length + 1
+    for (const inv of gp.filas) {
+      const rr = inv.fila
+      const rowNum = filas.length + 1
+      const pend = `Compras!$X$${rr}="${ESTADO_DEUDA}"`
+      // Cada factura referencia SU fila de Compras; si allá se marca pagada, la celda se vacía sola.
+      // Cada dato va a LA COLUMNA QUE EL DUEÑO ROTULÓ. Las que él agregó y el generador no llena
+      // —"Comentarios"— quedan vacías: la fusión conserva lo que escribió ahí.
+      const c = celdas()
+      if (L.fecha >= 0) c[L.fecha] = `=IF(${pend};Compras!$${letra(IDX.fechaCaja)}$${rr};"")`
+      if (L.comp >= 0) c[L.comp] = `=IF(${pend};Compras!$H$${rr}&"";"")`
+      // Saldo de ESTA factura = Total − pagado. Pagado = T + los positivos de U y W (MAX(0;·) descarta
+      // el saldo negativo/entre paréntesis, que no es un pago). Misma regla que neta(), fila a fila.
+      if (L.imp >= 0) c[L.imp] = `=IF(${pend};Compras!$O$${rr}-Compras!$${letra(IDX.pagado)}$${rr}-MAX(0;Compras!$${letra(IDX.parcial1)}$${rr})-MAX(0;Compras!$${letra(IDX.parcial2)}$${rr});"")`
+      if (L.obra >= 0) c[L.obra] = `=IF(${pend};Compras!$J$${rr};"")`
+      if (L.instr >= 0 && L.comp >= 0) {
+        const cc = `$${letra(L.comp)}${rowNum}`
+        c[L.instr] = `=IF(NOT(${pend});"";IF(${cc}="";"—";IFERROR(INDEX(${CH}!$A$2:$A;MATCH(${cc};${CH}!$H$2:$H;0))&" "&INDEX(${CH}!$B$2:$B;MATCH(${cc};${CH}!$H$2:$H;0));"—")))`
+      }
+      // Tipo de pago (Compras col P) y Categoría (Compras col B), de la misma fila de Compras.
+      if (L.pago >= 0) c[L.pago] = `=IF(${pend};Compras!$P$${rr}&"";"")`
+      if (L.cat >= 0) c[L.cat] = `=IF(${pend};Compras!$B$${rr}&"";"")`
+      ponerNotas(c, NOTAS.porComprobante, inv.comprobante)
+      push(c)
+    }
+    deudaGrupos.push({ inicio, fin: filas.length })
   }
-
-  // ── 1A · LA DEUDA POR PROVEEDOR ─────────────────────────────────────────────────────────────────
-  // Era la fila-cabecera de cada grupo del +/-, materializada por el JS. Ahora es UNA fórmula: la lista
-  // sale de UNIQUE(FILTER(...)) sobre Compras y se ordena por saldo. Al desaparecer las filas físicas
-  // desaparece también el +/- (no se puede agrupar lo que todavía no existe) — se cambió colapsar por
-  // estar vivo, que es lo que se pidió.
-  const cabDeudaProv = push(filaBloque(COLS_PROVEEDOR))
-  const resProv = reservaPara(deudaAgrupada.length)
-  const provSpill = reservar(formulaPorProveedor({ rangos: RC, libreta: N_PROV.libreta, reserva: resProv }), resProv)
-  // EL CONTROL QUE PUEDE FALLAR, en lugar del aviso que describía el defecto ("⚠ Faltan N facturas…
-  // aparecen cuando corre el agente"). La columna 4 del bloque es el saldo: su suma tiene que dar el
-  // mismo peso que el titular. Si el derrame se truncó contra la reserva, o si el criterio dejó de
-  // coincidir con el del hero, este renglón lo dice con el número exacto.
-  const ctrlProv = push(filaBloque([formulaControl({
-    rangos: RC,
-    rangoSaldo: `$${letra(3)}$${provSpill.ancla}:$${letra(3)}$${provSpill.fin}`,
-    que: 'el detalle por proveedor',
-  })]))
-  push([])
-
-  // ── 1B · FACTURA POR FACTURA, ORDENADA POR FECHA DE PAGO ────────────────────────────────────────
-  // Eran filas con la fila de Compras cableada (`Compras!$X$671`): insertar una fila allá corría todas
-  // las referencias en silencio. Ahora las siete columnas se filtran y se ordenan JUNTAS, en una sola
-  // operación, sobre rangos abiertos.
-  const cabDeudaFac = push(filaBloque(COLS_FACTURA))
-  const nPendientes = deudaAgrupada.reduce((n, gp) => n + gp.filas.length, 0)
-  const resFac = reservaPara(nPendientes, { minimo: 30 })
-  const facSpill = reservar(formulaPorFactura({ rangos: RC, reserva: resFac }), resFac)
-  const ctrlFac = push(filaBloque([formulaControl({
-    rangos: RC,
-    rangoSaldo: `$${letra(3)}$${facSpill.ancla}:$${letra(3)}$${facSpill.fin}`,
-    que: 'el detalle factura por factura',
-  })]))
+  const cabDocFin = filas.length
+  // El aviso, ahora que el bloque tiene coordenadas. Todo por fórmula: el hueco se calcula solo.
+  {
+    const cA = `$${letra(L.prov)}$${cabDoc + 1}:$${letra(L.prov)}$${cabDocFin}`
+    const cD = `$${letra(L.imp)}$${cabDoc + 1}:$${letra(L.imp)}$${cabDocFin}`
+    // Sólo las filas-cabecera tienen nombre en la primera columna: SUMIF sobre ellas da lo LISTADO.
+    const falta = `(${neta(condComercial)})-SUMIF(${cA};"?*";${cD})`
+    const listadasN = deudaAgrupada
+      .map((gp) => `COUNTIFS(${COL_PROV};"${qLit(gp.nombre)}";${COL_ESTADO};"${ESTADO_DEUDA}";${COL_TOTAL};"<>")`)
+      .join('+') || '0'
+    const totalN = `COUNTIFS(${COL_ESTADO};"${ESTADO_DEUDA}";${COL_COMERCIAL};1;${COL_TOTAL};"<>")`
+    const avisoFila = L.cols.map(() => VACIO)
+    avisoFila[0] = `=IF(ROUND(${falta};0)=0;"";"⚠ Faltan "&TEXT((${totalN})-(${listadasN});"0")&" factura(s) por "&TEXT(${falta};"$#,##0")&" que este listado todavía no muestra — aparecen cuando corre el agente. El total de arriba ya las cuenta.")`
+    filas[fAviso - 1] = avisoFila
+  }
   push([])
 
   // ── 2 · CUENTA CORRIENTE POR PROVEEDOR — EL PERFIL, NO LA DEUDA ──────────────────────────────────
@@ -649,27 +684,6 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   push(estructural(['TOTAL FACTURADO', '', '', '', `=SUM($E${emi0}:$E${emi1})`, '', '', '', '']))
   push([])
 
-  // ── 10 · LA LIBRETA — EL ÚNICO BLOQUE QUE ES DEL DUEÑO ──────────────────────────────────────────
-  //
-  // POR QUÉ EXISTE, Y POR QUÉ VA AL FINAL. Con la sección 1 viva, las filas de la deuda se reordenan
-  // solas en cada recálculo. Un comentario escrito a mano AL LADO de una de esas filas no las sigue: se
-  // queda clavado en su renglón y termina describiendo al proveedor equivocado —es el incidente del
-  // 30/07, que antes se compensaba re-anclando las notas en cada corrida del generador—. Reconstruir el
-  // anclaje una vez cada dos horas dejó de alcanzar el día que el cuadro pasó a moverse solo.
-  //
-  // Acá la nota se ancla POR CONSTRUCCIÓN: vive en una fila con el nombre del proveedor, y la tabla viva
-  // la trae con un VLOOKUP contra el rango con nombre PROV_LIBRETA. Se puede escribir, borrar y
-  // reordenar sin que ningún generador la toque: si la libreta tiene contenido, el OS no escribe ni una
-  // celda de datos (ver `filasLibreta`). Va al FINAL de la pestaña porque su rango es ABIERTO hacia
-  // abajo — así se pueden agregar proveedores sin que nadie republique nada.
-  const b10 = push(['10 · LIBRETA DE PROVEEDORES — tus notas'])
-  push(['Escribí acá: una fila por proveedor, el nombre igual que en Compras. La nota aparece sola en la tabla de deuda de arriba, al lado de SU proveedor, ordene como ordene. Ningún agente reescribe este bloque.'])
-  const cabLibreta = push([...COLS_LIBRETA])
-  const lib0 = filas.length + 1
-  for (const f of libreta.filas) push([...f])
-  const lib1 = filas.length
-  push([])
-
   // ── 3 · FAMILIA × MES ───────────────────────────────────────────────────────────────────────────
   const b3 = push(['3 · POR FAMILIA Y POR MES'])
   const cabFam = push(['Familia', ...meses, `Total ${AÑO}`, '% del total', 'Civil', 'Mantenimiento'])
@@ -732,61 +746,15 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   //      sobrevivía texto viejo —p. ej. el título de la sección 2 duplicado.
   // Un barrido global aquí borraría notas del dueño en las filas de detalle: por eso NO se hace.
 
-  // LAS NOTAS POR COMPROBANTE NO TIENEN LIBRETA, Y SE DICE. La libreta se indexa por PROVEEDOR, que es
-  // la entidad de la que hablan las notas del dueño hoy. Si alguna estaba pegada a una fila de detalle
-  // (anclada al N° de comprobante), no hay dónde re-anclarla: se reporta para que él la reubique, no se
-  // borra en silencio. Es información, no una falla del rediseño.
-  const notasHuerfanas = [...NOTAS.porComprobante.entries()]
-    .map(([k, m]) => ({ tipo: 'comprobante', clave: k, texto: [...m.values()].map(String).join(' · ') }))
-  return {
-    filas: resuelto, notasHuerfanas, anchoDeuda: ANCHO, cabArca,
-    // Lo que main necesita para verificar la migración ANTES de escribir una sola celda.
-    notasPorProveedor, libreta,
-    marcas: { bPos, b1, b2, b3, b4, b5, b6, b7, b8, b10, fin: filas.length },
-    bPos, pos0, pos1, posTotal, posProy, posPlazo, posFaltan, cuentas: [fCuenta1, fCuenta2], fCompFecha,
-    afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1,
-    fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas,
-    // La sección viva: dos bloques, cada uno con su encabezado, su ancla, su reserva y su control.
-    deudaL: L,
-    cabDeudaProv, provAncla: provSpill.ancla, provFin: provSpill.fin, ctrlProv,
-    cabDeudaFac, facAncla: facSpill.ancla, facFin: facSpill.fin, ctrlFac,
-    cabLibreta, lib0, lib1,
-    cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl,
-    anchoObras: obras.length,
-  }
-}
-
-/**
- * LA PREVISUALIZACIÓN DE LA SECCIÓN VIVA — para poder leerla antes de que toque el archivo real.
- *
- * Con la sección 1 hecha de fórmulas, todo el cuadro depende de CUATRO celdas. Un `--dry` que sólo
- * dijera "148 filas x 16 columnas" no sirve para revisar nada: lo que hay que poder mirar es qué
- * fórmula va en qué dirección, y qué filas quedan reservadas para el derrame.
- *
- * Las direcciones son las de la GRILLA (antes de partir la pestaña). `partir()` corre los bloques a su
- * pestaña y reubica las referencias; el desplazamiento se imprime para que la cuenta se pueda hacer.
- */
-function previsualizarSeccionViva(g) {
-  const dir = (fila, col = 0) => `${letra(col)}${fila}`
-  const bloques = [
-    ['1A · deuda POR PROVEEDOR', g.cabDeudaProv, g.provAncla, g.provFin, g.ctrlProv, COLS_PROVEEDOR],
-    ['1B · FACTURA POR FACTURA', g.cabDeudaFac, g.facAncla, g.facFin, g.ctrlFac, COLS_FACTURA],
+  // Las notas que no encontraron a su proveedor en la lista nueva (le pagaron, o cambió de nombre en
+  // Compras). Se DEVUELVEN para reportarlas: el bloque ya se limpia a su ancho real, así que sin este
+  // aviso el dato del dueño se iría sin dejar rastro. Queda en el log de la corrida, y el snapshot
+  // previo del pipeline lo tiene entero.
+  const notasHuerfanas = [
+    ...[...NOTAS.porProveedor.entries()].filter(([k]) => !usadas.has(`p|${k}`)).map(([k, m]) => ({ tipo: 'proveedor', clave: k, texto: [...m.values()].map(String).join(' · ') })),
+    ...[...NOTAS.porComprobante.entries()].filter(([k]) => !usadas.has(`c|${k}`)).map(([k, m]) => ({ tipo: 'comprobante', clave: k, texto: [...m.values()].map(String).join(' · ') })),
   ]
-  console.log('\n══ SECCIÓN 1, CELDA POR CELDA (direcciones de la grilla, antes de partir la pestaña) ══')
-  for (const [nombre, cab, ancla, fin, ctrl, cols] of bloques) {
-    console.log(`\n── ${nombre}`)
-    console.log(`   encabezados  ${dir(cab)}  ${cols.join(' | ')}`)
-    console.log(`   ANCLA        ${dir(ancla)}  (derrama ${fin - ancla + 1} filas x ${cols.length} columnas hasta ${dir(fin, cols.length - 1)})`)
-    console.log(`   ${g.filas[ancla - 1][0]}`)
-    console.log(`   reserva      ${dir(ancla + 1)}:${dir(fin, g.anchoDeuda - 1)} — se escriben VACÍAS (la fusión las limpia) para que el derrame pueda caer`)
-    console.log(`   CONTROL      ${dir(ctrl)}`)
-    console.log(`   ${g.filas[ctrl - 1][0]}`)
-  }
-  console.log(`\n── LIBRETA (tus notas; el OS ${g.libreta.sembradas ? 'la SIEMBRA esta vez' : 'NO la toca'})`)
-  console.log(`   encabezados  ${dir(g.cabLibreta)}  ${COLS_LIBRETA.join(' | ')}`)
-  console.log(`   filas        ${g.lib1 >= g.lib0 ? `${dir(g.lib0)}:${dir(g.lib1, 1)}` : '(ninguna todavía)'} · rango con nombre ${N_PROV.libreta} desde ${dir(g.lib0)} y ABIERTO hacia abajo`)
-  for (const f of g.libreta.filas.filter((x) => String(x?.[0] ?? '').trim())) console.log(`     ${f[0]} → ${f[1]}`)
-  console.log('')
+  return { filas: resuelto, notasHuerfanas, anchoDeuda: ANCHO, cabArca, marcas: { bPos, b1, b2, b3, b4, b5, b6, b7, b8, fin: filas.length }, bPos, pos0, pos1, posTotal, posProy, posPlazo, posFaltan, cuentas: [fCuenta1, fCuenta2], fCompFecha, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabDocFin, deudaL: L, deudaHeaders, deudaGrupos, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
 }
 
 async function main() {
@@ -1042,11 +1010,10 @@ async function main() {
   })
   const resto = { cantidad: Math.max(0, comerciales.length - TOP) }
 
-  // `deudaAgrupada` YA NO DECIDE QUÉ SE MUESTRA — sólo cuánto espacio reservar. Desde el 31/07 la lista
-  // de la sección 1 la arma una fórmula sobre Compras: esta lectura en JS se usa nada más que para
-  // dimensionar el derrame (`reservaPara`) y para migrar las notas del dueño a la libreta. Si queda
-  // desactualizada, el cuadro NO miente: lo único que puede pasar es que el derrame se trunque contra la
-  // reserva, y para eso está el control de reconciliación, que lo grita con el peso exacto.
+  // La lista de deuda se AGRUPA por proveedor en JS (para el +/- y para re-anclar las notas del dueño a
+  // SU proveedor), pero NINGÚN importe ni estado se materializa: cada celda de la fila es una fórmula
+  // VIVA sobre Compras, y la cabecera se gatea con predicadoConDeuda para que el proveedor que se paga
+  // desaparezca solo. Los grupos salen de deudaAgrupada, calculado más abajo.
 
   // Los nombres de obra son EXACTOS a como están en Compras (col J): "MESSINA", no "MESSINAS" —el
   // dueño lo marcó, esa columna salía vacía—. SUMIFS es insensible a mayúsculas, así que "Taller"
@@ -1056,7 +1023,6 @@ async function main() {
   // cada dato en la columna que el dueño rotuló, y para no pisar las que él agregó (Comentarios).
   let deudaCols = null
   let deudaPrevio = []
-  let libretaPrevia = []
   try {
     // SIN TECHO DE FILAS (28/07). Antes se leía `A1:AZ80`: con 80 filas el bloque de deuda —que puede
     // pasar de 100 filas cuando hay muchos proveedores— quedaba CORTADO, y las notas del dueño en los
@@ -1072,48 +1038,20 @@ async function main() {
       const fin = prevP.findIndex((f, k) => k > iCab && /^\s*2\s*·/.test(String(f?.[0] ?? '')))
       deudaPrevio = prevP.slice(iCab + 1, fin > iCab ? fin : undefined)
     }
-    // LA LIBRETA QUE YA ESTÉ EN LA PESTAÑA. Si tiene aunque sea una fila, es del dueño y no se toca ni
-    // una celda; si está vacía, se siembra con las notas del bloque viejo (que este rediseño borra).
-    // SE BUSCA POR TEXTO, NO POR NÚMERO: `partir()` renumera los títulos de bloque por pestaña, así que
-    // el "10 ·" de la grilla llega a la pestaña con otro número. Un ancla que depende de la numeración
-    // se rompe la primera vez que se agrega o se saca un bloque, y en silencio.
-    const iLib = (prevP || []).findIndex((f) => /LIBRETA DE PROVEEDORES/i.test(String(f?.[0] ?? '')))
-    if (iLib >= 0) {
-      const iCabLib = (prevP || []).findIndex((f, k) => k > iLib && /^proveedor$/i.test(String(f?.[0] ?? '').trim()))
-      if (iCabLib > iLib) libretaPrevia = prevP.slice(iCabLib + 1).filter((f) => String(f?.[0] ?? '').trim() !== '')
-    }
   } catch { /* la pestaña todavía no existe: se usa el layout por defecto */ }
   if (deudaCols) console.log(`  columnas de deuda según la pestaña (las del dueño): ${deudaCols.filter(Boolean).join(' · ')}`)
-  const g = grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emitidas, notasCredito, anuladasCargadas, cruce, deudaCols, deudaPrevio, libretaPrevia })
+  const g = grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emitidas, notasCredito, anuladasCargadas, cruce, deudaCols, deudaPrevio })
   const ancho = Math.max(...g.filas.map((f) => f.length))
   const cuadro = g.filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r })
   console.log(`${PESTAÑA}: ${cuadro.length} filas x ${ancho} columnas`)
-  console.log(`  sección 1 VIVA: por proveedor fila ${g.provAncla} (reserva ${g.provFin - g.provAncla + 1}) · factura por factura fila ${g.facAncla} (reserva ${g.facFin - g.facAncla + 1}) — dos anclas, cero filas escritas`)
-  console.log(`  libreta: ${g.libreta.motivo}${g.libreta.sembradas ? ` (${g.libreta.sembradas} nota(s) migradas)` : ''}`)
-
-  // ═══ LA MIGRACIÓN SE VERIFICA ANTES DE ESCRIBIR, NO DESPUÉS ═══
-  //
-  // Este rediseño BORRA las filas materializadas donde hoy viven los comentarios del dueño (pasan a la
-  // libreta). Si una sola no llegó, la corrida se corta acá: en este archivo ya se destruyó trabajo suyo
-  // más de una vez por rehacer un bloque que tenía datos, y "casi todas" no es un criterio aceptable.
-  const mig = verificarMigracionNotas(g.notasPorProveedor, g.libreta.sembradas ? g.libreta.filas : libretaPrevia)
-  if (!mig.ok) {
-    throw new Error(`la migración de notas a la libreta perdería ${mig.perdidas.length} comentario(s) del dueño y NO se escribe nada: `
-      + mig.perdidas.map((p) => `«${p}»`).join(' · ')
-      + ` — agregá esas filas a la libreta (bloque 10) o pasá --force sabiendo lo que se pierde.`)
-  }
+  console.log(`  bloque de deuda: ${g.anchoDeuda} columnas de ancho real (los rótulos son ${g.deudaL?.cols?.length ?? '?'}) — se limpia todo ese ancho y las notas se re-anclan a su proveedor`)
   if (g.notasHuerfanas?.length) {
     // NO se pierde en silencio: queda en el log, textual, y el snapshot previo lo conserva entero.
-    console.log(`  ⚠ ${g.notasHuerfanas.length} nota(s) ancladas a un COMPROBANTE, no a un proveedor: la libreta se indexa por proveedor, así que hay que reubicarlas a mano:`)
+    console.log(`  ⚠ ${g.notasHuerfanas.length} nota(s) del dueño SIN proveedor en la lista nueva (le pagaron, o cambió el nombre en Compras):`)
     for (const n of g.notasHuerfanas) console.log(`     ${n.tipo} "${n.clave}": ${n.texto}`)
   }
   console.log(`  ${comerciales.length} proveedores comerciales de ${acc.size} · top ${proveedores.length} listados, ${resto.cantidad} en "resto"`)
   if (DRY) {
-    // ═══ LO PRIMERO QUE HAY QUE PODER MIRAR: QUÉ FÓRMULA VA EN QUÉ CELDA ═══
-    // La sección 1 dejó de ser filas de datos y pasó a ser CUATRO celdas que deciden todo el cuadro. En
-    // seco se imprimen enteras, con su dirección final en la pestaña, para poder leerlas antes de que
-    // toquen el archivo real.
-    previsualizarSeccionViva(g)
     // ═══ EN SECO, LA PREGUNTA ÚTIL NO ES "CUÁNTAS FILAS" SINO "QUÉ TE VOY A PISAR" ═══
     //
     // POR QUÉ (23/07). El dueño preguntó qué edición suya había vuelto pisada y nombró esta pestaña.
@@ -1168,7 +1106,7 @@ async function main() {
   const M = g.marcas
   const TRAMOS = [
     { titulo: NOMBRES.proveedores, desde: M.bPos, hasta: M.b3 - 1,
-      subtitulo: 'Qué se debe y a quién: la posición arriba, y abajo la deuda VIVA —por proveedor y factura por factura— que se mueve sola cada vez que se carga una compra, sin esperar a ningún agente. Después la cuenta corriente con su plazo, las notas de crédito, lo que AFIP facturó que Compras no tiene, y al final tu libreta de notas por proveedor.',
+      subtitulo: 'Qué se debe y a quién: la posición arriba, la deuda agrupada por proveedor (con el +/- para abrir sus facturas), la cuenta corriente con su plazo, las notas de crédito y lo que AFIP facturó que Compras no tiene. Todo son fórmulas sobre Compras y ARCA — ni un importe escrito.',
       anchos: [230, 132, 142, 104, 132, 132, 124, 172, 124, 124, 124, 124, 136, 116, 104, 240] },
     { titulo: NOMBRES.materiales, desde: M.b3, hasta: M.fin,
       subtitulo: 'En qué se va la plata: por familia de material y por mes, y la misma plata abierta por obra. Sale de la columna "Familia de material" de Compras, que el OS calcula con una sola definición.',
@@ -1215,10 +1153,6 @@ async function main() {
     return out
   }
 
-  // Las coordenadas finales de los marcadores en la pestaña "Proveedores". Se calculan ANTES del bucle
-  // porque el nombre de la libreta hay que publicarlo antes de escribir las fórmulas que lo referencian.
-  const tArca = traducir(NOMBRES.proveedores)
-
   let hojas = await google.getSheetMeta(ID)
   const escritas = []
   for (const [i, t] of TRAMOS.entries()) {
@@ -1248,19 +1182,6 @@ async function main() {
     if ((hoja.rows ?? 0) < cuadroP.length + 10) reqG.push({ updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { rowCount: cuadroP.length + 30 } }, fields: 'gridProperties.rowCount' } })
     if ((hoja.cols ?? 0) < anchoP) reqG.push({ appendDimension: { sheetId: hoja.sheetId, dimension: 'COLUMNS', length: anchoP - (hoja.cols ?? 0) + 2 } })
     if (reqG.length) await google.spreadsheetBatchUpdate(ID, reqG)
-
-    // ═══ EL NOMBRE DE LA LIBRETA SE PUBLICA ANTES DE ESCRIBIR LAS FÓRMULAS QUE LO USAN ═══
-    //
-    // La sección 1 trae la nota de cada proveedor con `VLOOKUP(p;PROV_LIBRETA;2;FALSE)`. Si ese nombre
-    // todavía no existe cuando entra la fórmula, la celda evalúa #NAME? — el IFERROR de la columna lo
-    // tapa, así que la tabla no se cae, pero las diez notas del dueño quedarían INVISIBLES hasta la
-    // corrida siguiente y eso se lee como "otra vez me borraste los comentarios". Publicarlo primero
-    // cierra la ventana: cuando la fórmula llega, el nombre ya apunta a donde va la libreta.
-    if (t.titulo === NOMBRES.proveedores && tArca.lib0) {
-      await publicar(google, ID, hoja.sheetId, [{ name: N_PROV.libreta, fila: tArca.lib0, col: 1, cols: 2, abierto: true }])
-        .then(() => console.log(`  ${N_PROV.libreta} publicado en A${tArca.lib0} (abierto hacia abajo), antes de escribir las fórmulas que lo miran`))
-        .catch((e) => console.warn(`  ⚠ no pude publicar ${N_PROV.libreta} (${e.message}): las notas van a aparecer en la corrida siguiente`))
-    }
 
     // ═══ NUNCA SE BORRA NADA DE LO QUE ESCRIBE EL DUEÑO — REGLA ABSOLUTA ═══
     //
@@ -1336,25 +1257,38 @@ async function main() {
   // Los nombres, DESPUÉS de escribir: se corren de fila según cuántas notas de crédito o
   // proveedores haya, y publicarlos antes los dejaría apuntando a la geometría vieja, en silencio.
   const hojaArca = escritas.find((e) => e.titulo === NOMBRES.proveedores)
+  const tArca = traducir(NOMBRES.proveedores)
 
-  // ── SE VAN LOS GRUPOS DEL +/-, Y HAY QUE LIMPIARLOS ─────────────────────────────────────────────
-  //
-  // La deuda ya no tiene filas físicas por proveedor: no hay nada que agrupar. Pero los grupos VIEJOS
-  // siguen en la pestaña, y dos cosas los hacen peligrosos si se los deja: la API los APILA (nunca los
-  // reemplaza), y un grupo colapsado deja sus filas con `hiddenByUser=true` — o sea que el derrame nuevo
-  // caería en filas OCULTAS y el cuadro se vería vacío sin que nada dé error. Se borran todos y se
-  // fuerzan visibles todas las filas de la pestaña.
+  // ── LA FUNCIÓN AGRUPAR (el +/-): un grupo de filas por proveedor en la deuda ─────────────────────
+  // El dueño la pidió por nombre: "te pedí la función agrupar". Cada proveedor de la deuda es un grupo
+  // colapsable — la fila-cabecera (total + próximo pago) queda a la vista y sus facturas se pliegan
+  // con el +/-. Primero se BORRAN los grupos viejos (la API los APILA, no los reemplaza; sin esto el
+  // agente que rehace el cuadro cada 2 horas dejaría una escalera de +/- creciendo sola) y recién
+  // después se crean los nuevos, colapsados: la pestaña abre compacta, una fila por proveedor.
   const gruposPrevios = (await google.getRowGroups(ID)).find((x) => x.sheetId === hojaArca.sheetId)?.grupos ?? []
   const reqGr = gruposPrevios.map((v) => ({ deleteDimensionGroup: { range: { sheetId: hojaArca.sheetId, dimension: 'ROWS', startIndex: v.startIndex, endIndex: v.endIndex } } }))
+  // MOSTRAR TODAS LAS FILAS primero: borrar un grupo colapsado deja las filas con hiddenByUser=true, y
+  // esas quedan ocultas aunque el grupo nuevo abra expandido. Se limpia toda la pestaña de una.
   reqGr.push({ updateDimensionProperties: { range: { sheetId: hojaArca.sheetId, dimension: 'ROWS', startIndex: 3, endIndex: hojaArca.filas }, properties: { hiddenByUser: false }, fields: 'hiddenByUser' } })
+  let nGrupos = 0
+  for (const gp of (g.deudaGrupos || [])) {
+    const ini = donde.get(gp.inicio)?.fila
+    const fin = donde.get(gp.fin)?.fila
+    if (!ini || !fin || fin < ini) continue
+    const range = { sheetId: hojaArca.sheetId, dimension: 'ROWS', startIndex: ini - 1, endIndex: fin }
+    reqGr.push({ addDimensionGroup: { range } })
+    // ABIERTOS por defecto: el dueño quiere VER el N° de comprobante de cada factura sin tener que
+    // desplegar. El +/- queda igual para plegar el proveedor que no interese. (Antes arrancaban
+    // colapsados y parecía que los comprobantes no estaban.)
+    reqGr.push({ updateDimensionGroup: { dimensionGroup: { range, depth: 1, collapsed: false }, fields: 'collapsed' } })
+    // FORZAR VISIBLE: borrar un grupo colapsado deja las filas con hiddenByUser=true, y expandir el
+    // grupo nuevo NO las vuelve a mostrar. Sin esto, algunas facturas quedaban ocultas en silencio.
+    reqGr.push({ updateDimensionProperties: { range, properties: { hiddenByUser: false }, fields: 'hiddenByUser' } })
+    nGrupos++
+  }
   if (reqGr.length) await google.spreadsheetBatchUpdate(ID, reqGr)
-  console.log(`  ${gruposPrevios.length} grupo(s) +/- borrados y todas las filas forzadas visibles: el derrame no puede caer en filas ocultas`)
+  console.log(`  función agrupar: ${nGrupos} grupos de deuda (uno por proveedor), expandidos`)
   const nombres = await publicar(google, ID, hojaArca.sheetId, [
-    // LA LIBRETA, POR NOMBRE Y ABIERTA HACIA ABAJO. Por nombre porque el bloque se corre de fila según
-    // cuántas notas de crédito o cuántos proveedores haya ese día, y una referencia por celda apuntaría
-    // a otra cosa mañana en silencio. Abierta porque el dueño tiene que poder agregar un proveedor sin
-    // que nadie republique nada.
-    ...(tArca.lib0 ? [{ name: N_PROV.libreta, fila: tArca.lib0, col: 1, cols: 2, abierto: true }] : []),
     { name: N_ARCA.comprobantes, fila: tArca.fArcaN, col: 2 },
     { name: N_ARCA.total, fila: tArca.fArcaN, col: 3 },
     { name: N_ARCA.notasN, fila: tArca.fArcaNotas, col: 2 },
@@ -1398,6 +1332,10 @@ async function formatear(google, sheetId, g, ancho, filas) {
   // versalita apagada MUTED) y líneas finas (HAIR). Ver lib/estilo-statement.mjs. Las bandas azules
   // y grises que había antes son justo lo que hace ver una pestaña como planilla y no como JPMorgan.
   const r = (r0, r1, c0 = 0, c1 = ancho) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
+  // La columna "Comentarios" del dueño (la que agregó a la derecha del todo): nunca se trunca. Se deja
+  // DERRAMAR sobre las columnas vacías de la derecha, como la nota al margen de un statement, en vez de
+  // cortarla en el borde de la celda. Antes quedaba en CLIP a 108px y se comía media frase.
+  const iComent = ((g.deudaL || {}).cols || []).findIndex((h) => /coment/i.test(String(h ?? '')))
   // ═══ PRIMERO SE BORRA TODO, DESPUÉS SE PINTA ═══
   //
   // POR QUÉ (21/07). Este formateador sólo APLICABA formatos, nunca los sacaba. Mientras el layout
@@ -1603,41 +1541,25 @@ async function formatear(google, sheetId, g, ancho, filas) {
   // Columnas: A proveedor/(blanco) · B próximo pago/fecha · C cuenta/comprobante · D total/importe ·
   // E obra · F instrumento. La fila-cabecera de cada proveedor va en negrita tinta; las facturas de
   // abajo, normales, y el Sheet las pliega con el +/-.
-  // ── LOS DOS BLOQUES VIVOS: EL FORMATO VA POR COLUMNA, PORQUE LAS FILAS NO EXISTEN ───────────────
-  //
-  // Antes se pintaba fila por fila (la cabecera de cada proveedor en negrita) porque las filas eran
-  // físicas. Ahora el bloque es un derrame: las filas aparecen y desaparecen en cada recálculo, así que
-  // el formato tiene que valer para TODA la reserva, exista o no un dato ahí. Cada columna declara su
-  // unidad —fecha, moneda, texto— sobre el rango entero del bloque.
-  const bloqueVivo = (ancla, fin, unidades) => {
-    if (!ancla || !fin || fin < ancla) return
+  if (g.cabDoc && g.cabDocFin && g.cabDocFin > g.cabDoc) {
+    const d0 = g.cabDoc + 1
+    const d1 = g.cabDocFin
+    // El formato sigue LAS COLUMNAS DEL DUEÑO, no posiciones fijas: si él mueve "Categoría" o agrega
+    // "Comentarios", cada formato acompaña. Las columnas que el generador no llena quedan como texto.
+    const L = g.deudaL || {}
+    const col1 = (i, fields, cell) => { if (i >= 0) fmt({ ...r(d0 - 1, d1, i, i + 1) }, fields, cell) }
     const FTXT = 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.textFormat'
-    const NFMT = 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment'
-    // Piso: todo el bloque como texto chico. Después cada columna con unidad se corrige encima.
-    fmt({ ...r(ancla - 1, fin, 0, ancho) }, FTXT, { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: { fontSize: 9 } })
-    unidades.forEach((u, i) => {
-      if (u === 'fecha') fmt({ ...r(ancla - 1, fin, i, i + 1) }, NFMT, { numberFormat: E.NUM.fecha, horizontalAlignment: 'LEFT' })
-      if (u === 'moneda') fmt({ ...r(ancla - 1, fin, i, i + 1) }, NFMT, { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT' })
-      if (u === 'cantidad') fmt({ ...r(ancla - 1, fin, i, i + 1) }, NFMT, { numberFormat: E.NUM.cantidad, horizontalAlignment: 'CENTER' })
-      // La nota derrama a la derecha en vez de cortarse a la mitad de una frase, como al margen de un
-      // statement. Es la misma decisión que ya estaba tomada para la columna "Comentarios" del dueño.
-      if (u === 'nota') fmt({ ...r(ancla - 1, fin, i, i + 1) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.wrapStrategy,userEnteredFormat.textFormat',
-        { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', wrapStrategy: 'OVERFLOW_CELL', textFormat: { fontSize: 9, italic: true, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } } })
-    })
-  }
-  // El orden de las unidades es el de COLS_PROVEEDOR / COLS_FACTURA: es el mismo contrato que las fórmulas.
-  bloqueVivo(g.provAncla, g.provFin, ['texto', 'fecha', 'cantidad', 'moneda', 'nota'])
-  bloqueVivo(g.facAncla, g.facFin, ['texto', 'fecha', 'texto', 'moneda', 'texto', 'texto', 'texto'])
-  // Los dos controles: un renglón que puede gritar, en cursiva y derramando, para que se lea completo.
-  for (const c of [g.ctrlProv, g.ctrlFac]) {
-    if (c) fmt({ ...r(c - 1, c, 0, ancho) }, 'userEnteredFormat.numberFormat,userEnteredFormat.wrapStrategy,userEnteredFormat.textFormat',
-      { numberFormat: { type: 'TEXT' }, wrapStrategy: 'OVERFLOW_CELL', textFormat: { fontSize: 9, italic: true, foregroundColor: MUTED } })
-  }
-  // La libreta: es del dueño, así que sólo se le da unidad (texto) y su nota derrama.
-  if (g.lib0 && g.lib1 >= g.lib0) {
-    fmt({ ...r(g.lib0 - 1, g.lib1, 0, 1) }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
-    fmt({ ...r(g.lib0 - 1, g.lib1, 1, 2) }, 'userEnteredFormat.numberFormat,userEnteredFormat.wrapStrategy,userEnteredFormat.textFormat',
-      { numberFormat: { type: 'TEXT' }, wrapStrategy: 'OVERFLOW_CELL', textFormat: { fontSize: 9, italic: true, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } } })
+    const txtChico = { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: { fontSize: 9 } }
+    for (let i = 0; i < (L.cols?.length ?? 0); i++) col1(i, FTXT, txtChico)
+    col1(L.fecha, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.fecha, horizontalAlignment: 'LEFT' })
+    col1(L.comp, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' })
+    col1(L.imp, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT' })
+    // Comentarios: nota al margen en gris, que derrama a la derecha (OVERFLOW) en vez de truncarse.
+    if (iComent >= 0) col1(iComent, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.wrapStrategy,userEnteredFormat.textFormat',
+      { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', wrapStrategy: 'OVERFLOW_CELL', textFormat: { fontSize: 9, italic: true, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } } })
+    for (const h of (g.deudaHeaders || [])) {
+      if (h) fmt({ ...r(h - 1, h, 0, Math.max((L.imp ?? 3) + 1, 4)) }, 'userEnteredFormat.textFormat', { textFormat: { bold: true, foregroundColor: INK, fontSize: 10 } })
+    }
   }
 
   // ── LOS DEFECTOS DE PANTALLA QUE ENCONTRÓ auditar-pantalla.mjs (21/07) ───────────────────────
@@ -1666,7 +1588,7 @@ async function formatear(google, sheetId, g, ancho, filas) {
   }
   fmt({ ...r(g.emi0 - 1, g.emi1, 5, 6) }, 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'TEXT' }, textFormat: { fontSize: 9 }, horizontalAlignment: 'LEFT' })
-  for (const f of [g.cabDeudaProv, g.cabDeudaFac, g.cabLibreta, g.cabAfip, g.cabEmi]) {
+  for (const f of [g.cabDoc, g.cabAfip, g.cabEmi]) {
     if (f) encabezadoStmt(f)
   }
   fmt({ ...r(g.fam0 - 1, g.totFam), startColumnIndex: 14, endColumnIndex: 15 }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'PERCENT', pattern: '0.0%' } })
