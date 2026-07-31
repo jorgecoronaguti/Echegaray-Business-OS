@@ -30,7 +30,7 @@
 //                 CAJA y el cobro en Cobranzas. NO se suma (lo dice su propio encabezado: cada fila es
 //                 una operación, no un cheque, y sumar la columna contaría el mismo valor tres veces).
 
-import { CUADRO, INSTRUMENTOS } from './cash-flow-lineas.mjs'
+import { CUADRO, instrumentosDeLinea, CALENDARIO_IMPUESTOS } from './cash-flow-lineas.mjs'
 import { REGLAS } from './rubro-caja.mjs'
 
 /**
@@ -46,7 +46,11 @@ export function fuentesSumadas() {
     for (const g of act.grupos) {
       for (const l of g.lineas) {
         if (l.cobranzas) src.add('Cobranzas')
-        else if (l.cheques) for (const i of Object.values(INSTRUMENTOS)) src.add(i.pestaña)
+        else if (l.cheques) for (const i of instrumentosDeLinea(l.inst)) src.add(i.pestaña)
+        // IVA/IIBB neto a pagar: NO vive en Compras, así que el cuadro lo SUMA de "Impuestos y Financieros".
+        else if (l.calendarioImpuestos) src.add(CALENDARIO_IMPUESTOS.pestaña)
+        // Las comisiones del banco tampoco tienen pestaña dueña: se leen del extracto, igual que el
+        // interés del descubierto y el impuesto al cheque.
         else if (l.descubierto || l.impuestoCheque || l.comisionesBancarias) { /* calculado o leído del extracto (tasa/ley/comisión del banco), sin pestaña de origen */ }
         else if (l.soloSub) src.add('Compras') // bienes de uso: un sub-rubro de Compras
         else if (l.rubro) {
@@ -109,9 +113,9 @@ export const MAPA = [
     nota: 'Vista/proyección de los rubros de cargas sociales de Compras. El pago vive en Compras: NO se suma.',
   },
   {
-    pestania: 'Impuestos y Financieros', rol: 'DERIVADA', deriva_de: 'Compras',
-    concepto: 'detalle de Impuestos y de Financiero',
-    nota: 'Vista de los rubros Impuestos y Financiero de Compras (IVA real de ARCA, cuotas del prendario). El pago vive en Compras: NO se suma.',
+    pestania: 'Impuestos y Financieros', rol: 'FUENTE',
+    concepto: 'IVA e Ingresos Brutos a pagar (dentro de Pagos de impuestos)',
+    nota: 'El IVA/IIBB NETO a pagar NO vive en Compras (no hay una sola fila de IVA ni de IIBB ahí): el cuadro lo SUMA de las filas "⇒ IVA a pagar" / "⇒ IIBB a pagar" del calendario, imputado al mes. NO duplica la línea de "Impuestos" (rubro de Compras = otros impuestos). El RESTO de la pestaña (prendario, planes, detalle) sí es vista de Compras y NO se suma.',
   },
   {
     pestania: 'Estructura', rol: 'DERIVADA', deriva_de: 'Compras',
