@@ -289,3 +289,14 @@ test('el control del horizonte mide las DOS fuentes, o daría rojo para siempre'
   assert.match(String(fila[3]), /JORNALES_PROY_TOTAL/, 'y la proyectada')
   assert.match(String(fila[0]), /MÁS la nómina sin pagar/, 'y el rótulo dice qué mide')
 })
+
+test('ANTES DEL CORTE MANDA EL BANCO: las quincenas viejas sin marcar NO son deuda', () => {
+  // Sin esta condición el calendario mostraba $106M en "Vencido": las trece quincenas del año que
+  // nadie marcó como pagadas, porque la columna "Pagado el" es nueva. No tener el dato NO es deber la
+  // plata — y la de una quincena pagada antes del corte ya está descontada del saldo del banco.
+  const g = construir()
+  for (const f of g.filas.slice(g.cal0 - 1, g.cal0 - 1 + 6)) {
+    assert.match(String(f[3]), /JORNALES_REAL_PAGO>=CAJA_FECHA_SALDO/,
+      'sólo entra la nómina cuyo pago cae en o después del corte del extracto')
+  }
+})

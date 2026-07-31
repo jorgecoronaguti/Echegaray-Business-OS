@@ -253,7 +253,7 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [] }
   // la quincena en curso como si estuviera pagada. No lo está: al 23/07 la del 16/07–31/07 tiene
   // horas cargadas hasta el 21 y le faltan nueve días. Presentar una quincena a mitad de camino
   // junto a las cerradas es mezclar un hecho con algo que todavía se está formando.
-  const fHero = { costo: 0, cerradas: 0, sinPagar: 0, curso: 0, falta: 0, ofiPagado: 0, ofiFalta: 0, plantel: 0 }
+  const fHero = { costo: 0, cerradas: 0, aPagar: 0, sinRegistrar: 0, curso: 0, falta: 0, ofiPagado: 0, ofiFalta: 0, plantel: 0 }
   push(['JORNALES Y SUELDOS — lo pagado en el año y lo que falta hasta diciembre'])
   // EL TITULAR ENTRA EN SU COLUMNA. Con la fuente grande del hero, "…de oficina en el año" medía 49
   // caracteres en una columna de 330px que muestra 44, y a su derecha está el importe: se cortaba en
@@ -264,7 +264,13 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [] }
   // el 31/07 se paga el 03/08, así que $7.675.588 figuraban como pagados con la plata en la cuenta.
   // Se dice lo que mide, y la pregunta del pago pasa a tener su propia línea abajo.
   fHero.cerradas = push([sub('Obra — quincenas cerradas (trabajo terminado)')])
-  fHero.sinPagar = push([sub('   de eso, todavía SIN PAGAR')])
+  // DOS PREGUNTAS DISTINTAS, DOS LÍNEAS. "Sin pagar" a secas daba el año entero ($114,8M) porque la
+  // columna "Pagado el" es nueva y nadie la llenó todavía: eso no es deuda, es un hueco de registro, y
+  // presentarlo como deuda es peor que no mostrarlo. Se parten:
+  //   · A PAGAR      — cerró y su fecha de pago todavía no llegó. Es la obligación real y accionable.
+  //   · SIN REGISTRAR — la fecha de pago ya pasó y nadie marcó el pago. Es un dato que falta, no plata.
+  fHero.aPagar = push([sub('   de eso, A PAGAR (cerró y la fecha todavía no llegó)')])
+  fHero.sinRegistrar = push([sub('   de eso, sin registrar el pago (la fecha ya pasó)')])
   fHero.curso = push([sub('Obra — quincena en curso, todavía se está cargando')])
   fHero.falta = push([sub('Obra — falta pagar hasta diciembre')])
   fHero.ofiPagado = push([sub('Oficina — meses pagados')])
@@ -450,9 +456,14 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [] }
   // Una quincena está SIN PAGAR si cerró (B <= HOY) y no tiene fecha de pago real cargada (N vacía).
   // Es la plata que se debe a la gente hoy mismo, y es el número que el calendario de CAJA tiene que
   // ver. Antes no existía: estaba sumado dentro de "ya pagadas", que es donde no se ve.
-  const sinPagar = `(${cerrada}*($N$${f0}:$N$${fLast}=""))`
-  filas[fHero.sinPagar - 1][1] = `=SUMPRODUCT(ISNUMBER($B$${f0}:$B$${fLast})*${sinPagar}*IF(ISNUMBER($K$${f0}:$K$${fLast});$K$${f0}:$K$${fLast};0))`
-  filas[fHero.sinPagar - 1][2] = 'marcá la fecha en "Pagado el" cuando salga la plata y esta línea baja sola'
+  const sinMarcar = `(${cerrada}*($N$${f0}:$N$${fLast}=""))`
+  const K = `IF(ISNUMBER($K$${f0}:$K$${fLast});$K$${f0}:$K$${fLast};0)`
+  const futura = `($C$${f0}:$C$${fLast}>=TODAY())`
+  filas[fHero.aPagar - 1][1] = `=SUMPRODUCT(ISNUMBER($B$${f0}:$B$${fLast})*${sinMarcar}*${futura}*${K})`
+  filas[fHero.sinRegistrar - 1][1] = `=SUMPRODUCT(ISNUMBER($B$${f0}:$B$${fLast})*${sinMarcar}*NOT(${futura})*${K})`
+  // LA NOTA VA EN LA ÚLTIMA COLUMNA, no en la del medio. El auditor de patrón de la pestaña lo exige y
+  // tiene razón: un texto de 74 caracteres en la columna C se desparrama sobre el importe de al lado.
+  filas[fHero.sinRegistrar - 1][ANCHO - 1] = 'Marcá la fecha en "Pagado el" (última columna del registro) cuando salga la plata: esta línea baja sola y la quincena sale del calendario de CAJA.'
   // Y al lado, qué quincena es y HASTA QUÉ DÍA está cargada de verdad. Medido sobre las horas del
   // espejo, no sobre las fechas del encabezado: la planilla escribe los catorce días el día que abre
   // la quincena, así que las fechas dicen "31/07" desde el primer día y no distinguen nada.
@@ -461,7 +472,7 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [] }
   filas[fHero.falta - 1][1] = `=${cel(fTotalProy, 'H')}`
   filas[fHero.ofiPagado - 1][1] = `=${cel(fTotalOfi, 'C')}`
   filas[fHero.ofiFalta - 1][1] = `=${cel(fTotalOfi, 'H')}`
-  filas[fHero.costo - 1][1] = `=B${fHero.cerradas}+B${fHero.curso}+B${fHero.falta}+B${fHero.ofiPagado}+B${fHero.ofiFalta}`
+  filas[fHero.costo - 1][1] = `=B${fHero.cerradas}+B${fHero.curso}+B${fHero.falta}+B${fHero.ofiPagado}+B${fHero.ofiFalta}`  /* las dos líneas de detalle del pago NO se suman: son una partición de las cerradas */
   filas[fHero.plantel - 1][1] = `=INDEX($E$${f0}:$E$${fLast};COUNTA($A$${f0}:$A$${fLast}))`
 
   return {

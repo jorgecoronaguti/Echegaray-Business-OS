@@ -498,7 +498,11 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
       // en "Pagado el", la quincena sale del calendario: eso es la descarga, y evita contarla dos veces
       // porque su salida ya está en el extracto del banco.
       `=SUMPRODUCT((${K400})*ISNUMBER(${I400})*${tramo(k, I400)}*${F400})`
-        + `+SUMPRODUCT(ISNUMBER(JORNALES_REAL_PAGO)*(JORNALES_REAL_PAGADO="")*${tramo(k, 'JORNALES_REAL_PAGO')}*N(JORNALES_REAL_TOTAL))`
+        // ANTES DEL CORTE DEL EXTRACTO MANDA EL BANCO. Sin esta condición, las trece quincenas viejas
+        // que nadie marcó como pagadas caían en el tramo "Vencido" y el calendario mostraba $106M de
+        // deuda que no existe: la columna "Pagado el" es nueva y no tener el dato no es deber la plata.
+        // La plata de una quincena pagada antes del corte YA ESTÁ en el saldo del banco.
+        + `+SUMPRODUCT(ISNUMBER(JORNALES_REAL_PAGO)*(JORNALES_REAL_PAGADO="")*(JORNALES_REAL_PAGO>=CAJA_FECHA_SALDO)*${tramo(k, 'JORNALES_REAL_PAGO')}*N(JORNALES_REAL_TOTAL))`
         + `+SUMPRODUCT(ISNUMBER(JORNALES_PROY_PAGO)*${tramo(k, 'JORNALES_PROY_PAGO')}*N(JORNALES_PROY_TOTAL))`,
       `=$C${f}-$D${f}`,
       // La posición acumulada arranca en la disponibilidad neta: de nada sirve un neto de tramo si no
@@ -519,7 +523,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // emitidos no debitados". Al sumar los jornales al calendario, ese control quedaría en rojo para
   // siempre por una diferencia que es correcta — y un control que da rojo siempre es un control que
   // nadie lee. Ahora resta las dos fuentes: cheques + nómina cerrada sin pagar + nómina proyectada.
-  const nominaEnCalendario = 'SUMPRODUCT(ISNUMBER(JORNALES_REAL_PAGO)*(JORNALES_REAL_PAGADO="")*N(JORNALES_REAL_TOTAL))'
+  const nominaEnCalendario = 'SUMPRODUCT(ISNUMBER(JORNALES_REAL_PAGO)*(JORNALES_REAL_PAGADO="")*(JORNALES_REAL_PAGO>=CAJA_FECHA_SALDO)*N(JORNALES_REAL_TOTAL))'
     + '+SUMPRODUCT(ISNUMBER(JORNALES_PROY_PAGO)*N(JORNALES_PROY_TOTAL))'
   push(['   · control: tiene que dar lo mismo que los cheques no debitados MÁS la nómina sin pagar', '', '',
     `=$D${filas.length}-$E$${fCh}-(${nominaEnCalendario})`, '', '', '', '',
