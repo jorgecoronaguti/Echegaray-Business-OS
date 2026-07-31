@@ -74,7 +74,7 @@ import { NOMBRES } from '../lib/sheet-pestanas.mjs'
 import { partir, filasHuerfanas, ref as refPestana } from '../lib/partir-pestana.mjs'
 import { anchosSegunContenido } from '../lib/nota-celda.mjs'
 import { fusionar, sobrantes, VACIO, rellenoDeCola } from '../lib/preservar-anotaciones.mjs'
-import { conEdicionesRespetadas, guardarRegistro, detectarArranqueEnFrio, autoRespetarReescritura, leerRegistro } from '../lib/respetar-ediciones.mjs'
+import { conEdicionesRespetadas, guardarRegistro, detectarArranqueEnFrio, autoRespetarReescritura, leerRegistro, esRotulo } from '../lib/respetar-ediciones.mjs'
 // El respaldo de las notas por proveedor: sobrevive a que la lista de deuda cambie. Ver lib/proveedor-notas.mjs.
 import { claveProv, conciliarNotas, leerNotas, guardarNotas, borrarNotas, marcarEscritas, yaEscritas } from '../lib/proveedor-notas.mjs'
 import { firmaGuardia, sellarFirma } from '../lib/firma-tab.mjs'
@@ -1827,6 +1827,38 @@ async function formatear(google, sheetId, g, ancho, filas) {
   // "0,7 días". Otro defecto que sólo se ve en el PDF, no en un control que suma.
   const filaPlazo = g.filas.findIndex((f) => /^Plazo promedio ponderado/.test(String(f?.[0] ?? ''))) + 1
   if (filaPlazo > 0) fmt(r(filaPlazo - 1, filaPlazo, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '0.0" días"' } })
+
+  // ═══ UN TEXTO NUNCA LLEVA FORMATO DE PLATA — POR CONTENIDO, NO POR BLOQUE (31/07) ═══
+  //
+  // El formato moneda se aplica a la columna B en adelante de TODA la pestaña (correcto: son cinco
+  // tablas de importes) y después cada bloque le devuelve el suyo a las columnas que no son plata. Ese
+  // camino se queda corto SIEMPRE: cada tabla nueva, cada columna que el dueño agrega y cada fila de
+  // "resto" que cae fuera del rango declarado vuelve a aparecer como texto dibujado con formato de
+  // moneda. Volvieron 52 después de arreglar los 45 de los encabezados: la lista cambia, la clase de
+  // defecto no.
+  //
+  // Acá se cierra por CONTENIDO: si la celda que el generador escribe es TEXTO —ni fórmula, ni número,
+  // ni importe, ni fecha; la misma definición que usa la Regla 0 para decidir qué es un rótulo— su
+  // formato es TEXTO. No hay bloque que declarar ni rango que mantener: vale para lo que ya está y para
+  // lo que se agregue mañana. Las celdas que produce una FÓRMULA no entran acá (no se puede saber su
+  // tipo sin evaluarla): esas siguen dependiendo de la declaración de su bloque.
+  {
+    const filasTxt = new Map()
+    ;(g.filas || []).forEach((fila, i) => (fila || []).forEach((c, j) => {
+      if (j === 0 || !esRotulo(c)) return                    // la columna A ya es texto por definición
+      if (!filasTxt.has(j)) filasTxt.set(j, [])
+      filasTxt.get(j).push(i + 1)
+    }))
+    let n = 0
+    for (const [col, filasCol] of filasTxt) {
+      // Tramos contiguos, para no hacer un pedido por celda: la pestaña tiene cientos.
+      let ini = null; let prev = null
+      const cerrar = () => { if (ini !== null) { fmt({ ...r(ini - 1, prev, col, col + 1) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' }); n += prev - ini + 1 } }
+      for (const f of filasCol) { if (prev !== null && f === prev + 1) { prev = f; continue } cerrar(); ini = f; prev = f }
+      cerrar()
+    }
+    if (n) console.log(`  ${n} celda(s) de TEXTO con su formato de texto (no de plata) — por contenido, no por bloque`)
+  }
 
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 250 }, fields: 'pixelSize' } })
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: ancho }, properties: { pixelSize: 108 }, fields: 'pixelSize' } })
