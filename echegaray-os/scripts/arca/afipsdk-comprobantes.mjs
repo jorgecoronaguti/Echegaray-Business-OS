@@ -36,8 +36,12 @@ const readKV = (f) =>
 
 const cred = readKV('clave-fiscal.txt')
 let token
+let tokenCuenta
 try {
-  token = readKV('afipsdk-token.txt').ACCESS_TOKEN
+  const kv = readKV('afipsdk-token.txt')
+  token = kv.ACCESS_TOKEN
+  // El ACCOUNT_TOKEN es el que puede leer el cupo del proyecto (el ACCESS_TOKEN no: da 401).
+  tokenCuenta = kv.ACCOUNT_TOKEN
 } catch {
   console.error('Falta credentials/afipsdk-token.txt con ACCESS_TOKEN (cuenta gratis en https://app.afipsdk.com).')
   process.exit(2)
@@ -49,7 +53,37 @@ const hasta = process.argv[4] || '30/06/2026'
 
 const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
 
+// ═══ EL FRENO DEL PRESUPUESTO — ANTES DE GASTAR, PREGUNTAR CUÁNTO QUEDA ═══
+//
+// El dueño (31/07): "cuidado con eso porque usas tantas automatizaciones de afip sdk". Horas antes yo
+// había pasado el sync de mensual a DIARIO sin mirar cómo se paga: el plan free da 10 automatizaciones
+// por período y cada corrida consume DOS (libro R + libro E). Diario son ~60 por mes. La cuenta estaba
+// en 10/10 cuando avisó.
+//
+// Bajar la frecuencia no alcanza: cualquiera puede volver a subirla, o correr esto a mano cinco veces
+// depurando. Este chequeo se niega a crear la automatización si no hay cupo, y deja una reserva para
+// que él pueda traer el libro con urgencia sin que un timer se la haya comido.
+//
+//   --manual  → puede usar la reserva (es una corrida pedida a mano, no un timer)
+//   --forzar  → salta el chequeo por completo. Existe para una urgencia real y avisa que se factura.
+async function verificarCupo() {
+  const { leerCuota, alcanzaElCupo, explicar } = await import('../../orquestador/lib/afipsdk-presupuesto.mjs')
+  if (process.argv.includes('--forzar')) {
+    console.error('⚠ --forzar: no verifico el cupo. Si el plan está agotado, esta llamada SE FACTURA.')
+    return
+  }
+  const manual = process.argv.includes('--manual')
+  const cuota = await leerCuota({ accountToken: cred.ACCOUNT_TOKEN || tokenCuenta }).catch(() => null)
+  const veredicto = cuota ? alcanzaElCupo(cuota, { necesita: 1, manual }) : { alcanza: false, motivo: '' }
+  console.log(explicar(cuota, veredicto))
+  if (!veredicto.alcanza) {
+    console.error('NO llamo a la API de AfipSDK. Subir el límite en app.afipsdk.com o esperar el período nuevo.')
+    process.exit(3)
+  }
+}
+
 async function crear() {
+  await verificarCupo()
   const res = await fetch('https://app.afipsdk.com/api/v1/automations', {
     method: 'POST',
     headers,
