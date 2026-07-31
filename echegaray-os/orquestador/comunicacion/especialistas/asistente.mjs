@@ -48,12 +48,16 @@ export const especialista = {
    * El handler de comunicación arma el actor con las claves de Mattermost; acá se traduce
    * al contexto del asistente una sola vez.
    */
-  async atender({ texto, port, google, actor, correlationId, commEventId = null, auditar }) {
+  async atender({ texto, port, actor, correlationId, commEventId = null, auditar, config = null, googleInyectado = null }) {
     const r = await atenderPedido({
       texto,
       ctx: {
         port,
-        google,
+        config,
+        // NO se toma el `google` del handler: ese es el de la cuenta operadora del OS. El
+        // router resuelve la cuenta de QUIEN PIDE. Sólo se respeta un cliente inyectado a
+        // propósito (tests), y como FÁBRICA, para que el camino sea el mismo.
+        ...(googleInyectado ? { googleDe: async () => googleInyectado } : {}),
         actor: {
           plataformaUserId: actor?.plataforma_user_id ?? null,
           plataformaUsername: actor?.plataforma_username ?? null,

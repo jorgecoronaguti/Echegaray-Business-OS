@@ -29,6 +29,7 @@ import { capacidadPorId, capacidadesHabilitadas, catalogoCompacto, renderAyuda }
 import { interpretar as interpretarDefault, interpretarDeterministico, parametrosPorIntencion, PREGUNTA_TIPO, plano } from './interpretar.mjs'
 import { identidadDe, resolverPersona, emailDe, nombreCorto } from './identidades.mjs'
 import { parseCuando } from './tiempo.mjs'
+import { googleDe } from './google-cliente.mjs'
 
 const PLATAFORMA = 'mattermost'
 const MINUTOS_PENDIENTE = 20
@@ -271,9 +272,18 @@ export async function atenderPedido({ texto, ctx = {}, deps = {} } = {}) {
   if (!identidad) {
     return final(resultadoError('asistente', errorAsistente(ERROR.USUARIO_INEXISTENTE, 'No pude identificar quién me está escribiendo.')), 'sin_identidad', null)
   }
-  // `registro` viaja en el contexto para que la AYUDA se arme con la MISMA lista con la que
-  // el router decide. Si cada uno leyera la suya, volvería a existir la segunda lista.
-  const base = { ...ctx, port, identidad, registro, ahora: () => ahora }
+  // CON QUÉ CUENTA DE GOOGLE. Se resuelve ACÁ, desde la identidad de quien pide, y NUNCA se
+  // hereda el cliente que traiga el contexto. Costó descubrirlo en producción: el handler de
+  // comunicación le pasa a todo especialista el cliente de la cuenta operadora del OS —
+  // correcto para Personal IA, que escribe JORNALES como el OS— y el asistente lo estaba
+  // usando para las cosas de cada persona. El resultado no fue un error: la tarea "llamar a
+  // Santander" se creó de verdad, con id y todo, en la lista de tareas de la cuenta de
+  // servicio. El asistente dijo "listo" y Jorge no la vio nunca. Un efecto en la cuenta
+  // equivocada es peor que un fallo, porque no se nota.
+  const google = typeof ctx.googleDe === 'function'
+    ? await ctx.googleDe(identidad)
+    : await googleDe({ identidad, config: ctx.config ?? undefined })
+  const base = { ...ctx, port, identidad, registro, google, ahora: () => ahora }
   const habilitadas = await registro.capacidadesHabilitadas(base)
 
   // 1) ¿Esto es la respuesta a algo que pregunté?

@@ -1,6 +1,7 @@
 # Asistente conversacional del OS — MVP
 
-> Estado: integrado en `feature/mattermost-assistant-integration`. **No desplegado.**
+> Estado: probado contra el entorno REAL el 31/07/2026 (migración aplicada, identidades
+> sembradas, las seis frases ejecutadas de punta a punta). **No desplegado.**
 > El despliegue (merge a `main`, actualizar el árbol de deploy y reiniciar servicios)
 > requiere autorización explícita del dueño.
 
@@ -162,6 +163,29 @@ node orquestador/comunicacion/test-pr4.mjs   # las verticales, contra un Postgre
 Las verticales levantan un Postgres efímero en Docker, le aplican los esquemas reales
 (`orq` + `comunicacion` + esta migración) y recorren el camino completo. Es lo que destapó
 que `comunicacion.identidades` ya existía: contra dobles, todo pasaba.
+
+## Un defecto ajeno, confirmado y NO corregido
+
+`orquestador/lib/google-os.mjs:21` llama `operadorEmail()` **sin `await`**. Como es `async`,
+`op` es una Promise siempre verdadera, `accessTokenFor` termina consultando la base por el
+literal `"[object promise]"`, no encuentra fila, devuelve `null` y `makeGoogleClient` cae en
+silencio al Service Account. O sea: **`googleDelOs()` nunca actúa como la cuenta operadora
+OAuth**, que es exactamente lo que el comentario de cabecera de ese archivo dice querer
+evitar.
+
+Se confirmó en producción el 31/07/2026 con una consecuencia concreta: en la primera prueba
+real, "creame una tarea para llamar a Santander" **creó la tarea de verdad, con id y todo, en
+la lista de la cuenta de servicio**. El asistente contestó "Listo" y en las tareas de Jorge no
+había nada. Un efecto en la cuenta equivocada es peor que un fallo, porque no se nota.
+
+**No se corrigió a propósito**, y no por prudencia genérica: la protección de ediciones de
+Drive reconoce al OS por el `gserviceaccount.com` del historial. Arreglar el `await` cambia la
+identidad con la que el OS escribe JORNALES y toca el candado. Eso necesita su propio cambio y
+su propia verificación.
+
+Lo que sí se corrigió es el asistente: **resuelve su propia cuenta de Google desde la identidad
+de quien pide** (`router.mjs` → `googleDe`) y ya no hereda el cliente del handler. Personal IA
+sigue recibiendo el cliente operador, que para escribir JORNADAS *como el OS* es lo correcto.
 
 ## Lo que este módulo NO resuelve todavía
 
