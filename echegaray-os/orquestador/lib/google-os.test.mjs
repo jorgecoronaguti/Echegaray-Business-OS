@@ -123,8 +123,14 @@ test('nadie llama sin await a una función async de google-oauth', () => {
   for (const archivo of archivosMjs(ORQUESTADOR)) {
     const lineas = fs.readFileSync(archivo, 'utf8').split('\n')
     lineas.forEach((linea, i) => {
-      // El comentario que EXPLICA el bug cita la línea vieja: no es una llamada.
-      const codigo = linea.replace(/\/\/.*$/, '')
+      // Sólo se mira CÓDIGO. El comentario que explica el bug cita la línea vieja, y el
+      // título de un test la nombra para que se entienda qué prueba: ninguno de los dos
+      // llama a nada. Sin esto, la propia documentación del defecto lo reporta como defecto.
+      const codigo = linea
+        .replace(/\/\/.*$/, '')
+        .replace(/'(?:[^'\\]|\\.)*'/g, "''")
+        .replace(/"(?:[^"\\]|\\.)*"/g, '""')
+        .replace(/`(?:[^`\\]|\\.)*`/g, '``')
       for (const fn of ASYNC_DE_OAUTH) {
         const re = new RegExp(`(^|[^\\w.])(${fn})\\s*\\(`, 'g')
         let m
