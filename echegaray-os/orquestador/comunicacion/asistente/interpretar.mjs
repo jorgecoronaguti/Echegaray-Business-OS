@@ -312,14 +312,19 @@ function desdeModelo(crudo, texto, ctx) {
   const tiempo = analizarTiempo(j.frase_temporal ? String(j.frase_temporal) : texto, ctx.ahora)
   const contenido = String(j.contenido ?? '').trim() || contenidoDe(texto, tiempo.spans)
   const base = { cuando: tiempo.cuando, cadencia: tiempo.cadencia, contenido, titulo: contenido, terminos: contenido }
-  const parametros = parametrosPara(j.intencion, base, j.destinatario ? String(j.destinatario) : null)
+  const parametros = parametrosPorIntencion(j.intencion, base, j.destinatario ? String(j.destinatario) : null)
   const sol = { intencion: j.intencion, via: 'modelo', confianza: Number(j.confianza ?? 0.6), parametros }
   const r = zSolicitud.safeParse(sol)
   return r.success ? r.data : null
 }
 
-/** Cada capacidad nombra sus parámetros a su manera; acá se traduce una sola vez. */
-function parametrosPara(intencion, b, destinatario) {
+/**
+ * Cada capacidad nombra sus parámetros a su manera; acá se traduce una sola vez.
+ * EXPORTADA porque el router la necesita para el mismo contenido después de una aclaración:
+ * cuando la persona elige "que sea un evento", lo entendido tiene que reetiquetarse
+ * (`contenido`→`titulo`, `cuando`→`inicio`) y esa tabla de equivalencias vive acá, una vez.
+ */
+export function parametrosPorIntencion(intencion, b, destinatario = null) {
   if (intencion === CAPACIDAD.RECORDATORIO_CREAR) {
     return { contenido: b.contenido, destinatario, destinatarioUserId: null, cuando: b.cuando, cadencia: b.cadencia, zonaHoraria: TZ_EMPRESA }
   }
