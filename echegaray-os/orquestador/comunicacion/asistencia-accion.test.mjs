@@ -24,6 +24,8 @@ function portDoble({ bindingActivo = true, conPermiso = true } = {}) {
           : { rows: [] }
       }
       if (/permisos_skill/.test(sql)) return { rows: conPermiso ? [{ otorgado: true }] : [] }
+      // El auditor resuelve tenant/project antes de emitir: sin esto no llega a emitir nada.
+      if (/orq\.tenants/.test(sql)) return { rows: [{ tenant_id: 'tenant-1', project_id: 'proj-1' }] }
       if (/asistencia_novedades/.test(sql)) return { rows: [] }
       return { rows: [] }
     },
@@ -104,4 +106,54 @@ test('no razona: este camino tiene que andar sin crédito de API', async () => {
   const { readFileSync } = await import('node:fs')
   const src = readFileSync(new URL('./asistencia-accion.mjs', import.meta.url), 'utf8')
   assert.ok(!/anthropic|claude|razonar\(/i.test(src), 'la carga de asistencia no invoca modelos')
+})
+
+// ── LA PUERTA TAMBIÉN DEJA CONSTANCIA ───────────────────────────────────────────
+//
+// Antes, un click desde un DM o desde otro canal se rechazaba y no quedaba en ningún lado
+// salvo el log del servicio, que rota y no se puede consultar. Ahora el mismo ledger que
+// registra una carga registra el intento negado. La guarda no cambió: sólo se la anota.
+
+/** Los `emit_event` que salieron de un port doble, decodificados. */
+function eventosEmitidos(port) {
+  return port.consultas
+    .filter((c) => /emit_event/.test(c.sql))
+    .map((c) => ({ evento: c.params[3], datos: JSON.parse(c.params[9]) }))
+}
+
+test('un click desde un DM queda AUDITADO como rechazo', async () => {
+  const port = portDoble()
+  const manejar = crearManejadorAccion({ port, mattermost: mattermostDoble(), google: googleDoble() })
+  await manejar(payloadAccion({ channel_id: 'un-dm-cualquiera', channel_type: 'D', team_id: 'equipo-1', user_name: 'jefe' }))
+  const negados = eventosEmitidos(port).filter((e) => e.evento === EVENTO.DENIED)
+  assert.equal(negados.length, 1)
+  const d = negados[0].datos
+  assert.equal(d.status, 'denied')
+  assert.equal(d.motivo, 'canal')
+  assert.equal(d.error_code, 'canal_directo')
+  assert.equal(d.origen, 'accion')
+  assert.equal(d.mattermost_user_id, 'usr-jefe')
+  assert.equal(d.mattermost_username, 'jefe')
+  assert.equal(d.channel_id, 'un-dm-cualquiera')
+  assert.equal(d.team_id, 'equipo-1')
+  assert.ok(d.request_id, 'sin request_id no se puede seguir el intento en los logs')
+})
+
+test('un click desde otro canal queda auditado con SU motivo', async () => {
+  const port = portDoble()
+  const manejar = crearManejadorAccion({ port, mattermost: mattermostDoble(), google: googleDoble() })
+  await manejar(payloadAccion({ channel_id: 'canal-de-obras' }))
+  const d = eventosEmitidos(port).find((e) => e.evento === EVENTO.DENIED).datos
+  assert.equal(d.error_code, 'canal_no_es_el_oficial')
+})
+
+test('la auditoría del rechazo no lleva el payload ni nada sensible', async () => {
+  const port = portDoble()
+  const manejar = crearManejadorAccion({ port, mattermost: mattermostDoble(), google: googleDoble() })
+  await manejar(payloadAccion({
+    channel_id: 'un-dm-cualquiera', channel_type: 'D',
+    context: { paso: 'obra', token: 'zx9-secreto', texto_privado: 'lo que escribió el jefe' },
+  }))
+  const s = JSON.stringify(eventosEmitidos(port))
+  assert.ok(!s.includes('zx9-secreto') && !s.includes('lo que escribió el jefe'))
 })

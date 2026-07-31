@@ -20,7 +20,7 @@
 // ERRORES. Siempre `ephemeral_text` en castellano, con la frase que le sirve al jefe de
 // obra. Nunca un stack, una ruta, un id interno ni un secreto: lo técnico va al log.
 
-import { EVENTO, sanitizarError } from '../../lib/asistencia-auditoria.mjs'
+import { EVENTO, ORIGEN, payloadRechazo, sanitizarError } from '../../lib/asistencia-auditoria.mjs'
 import { MOTIVO as MOTIVO_NUCLEO } from '../../lib/tools/jornales-asistencia.mjs'
 import { ESTADO_SESION, RECHAZO } from '../asistencia-sesion.mjs'
 import { diaAnterior, hoyIso, validarFecha } from '../../lib/asistencia-servicio/fechas.mjs'
@@ -110,18 +110,45 @@ function validarDeps(deps) {
 
 // ── BORDE: identidad, permiso, sesión ───────────────────────────────────────────
 
+/**
+ * Deja constancia de un rechazo. Nunca cambia el veredicto ni el mensaje al usuario: si la
+ * auditoría no se puede escribir, el rechazo se devuelve igual.
+ */
+async function anotarRechazo(d, payload, { motivo, detalle, dialogo = false }) {
+  await Promise.resolve(d.auditar(EVENTO.DENIED, payloadRechazo({
+    origen: dialogo ? ORIGEN.DIALOGO : ORIGEN.ACCION,
+    motivo,
+    detalle,
+    actor: { plataforma_user_id: payload?.user_id ?? null, plataforma_username: payload?.user_name ?? null },
+    channelId: payload?.channel_id ?? null,
+    teamId: payload?.team_id ?? null,
+  }))).catch(() => {})
+}
+
 async function despachar(d, payload) {
   const p = normalizarPayload(payload)
-  if (!p.ok) return { status: 400, body: { ephemeral_text: TEXTO.PAYLOAD } }
+  if (!p.ok) {
+    // Un payload que no se entiende también se anota: es la forma que tiene un intento
+    // de sondeo de verse desde afuera.
+    await anotarRechazo(d, payload, { motivo: 'payload', detalle: 'payload_invalido' })
+    return { status: 400, body: { ephemeral_text: TEXTO.PAYLOAD } }
+  }
   const permiso = await d.permisos.tienePermiso(d.port, { plataformaUserId: p.userId })
   if (!permiso.ok) {
-    await d.auditar(EVENTO.DENIED, { status: 'denied', motivo: permiso.motivo, mattermost_user_id: p.userId })
+    await anotarRechazo(d, payload, { motivo: 'permiso', detalle: permiso.motivo, dialogo: p.dialogo })
     return p.dialogo ? { status: 200, body: { error: TEXTO.SIN_PERMISO } } : efimero(TEXTO.SIN_PERMISO)
   }
   const s = await d.sesiones.abiertaDe({ plataformaUserId: p.userId })
   if (!s.ok) {
     const texto = s.motivo === RECHAZO.VENCIDA ? TEXTO.SESION_VENCIDA
       : s.motivo === RECHAZO.AJENA ? TEXTO.SESION_AJENA : TEXTO.SIN_SESION
+    // Formulario ajeno, vencido o inexistente: los tres se distinguen en `error_code`.
+    await anotarRechazo(d, payload, {
+      motivo: 'sesion',
+      detalle: s.motivo === RECHAZO.VENCIDA ? 'sesion_vencida'
+        : s.motivo === RECHAZO.AJENA ? 'sesion_ajena' : 'sesion_inexistente',
+      dialogo: p.dialogo,
+    })
     return p.dialogo ? { status: 200, body: { error: texto } } : efimero(texto)
   }
   return atender(d, p, s.sesion)
@@ -136,6 +163,7 @@ function normalizarPayload(payload) {
     ok: true, userId,
     username: payload.user_name ? String(payload.user_name) : null,
     channelId: payload.channel_id ?? null,
+    teamId: payload.team_id ?? null,
     postId: payload.post_id ?? null,
     triggerId: payload.trigger_id ?? null,
   }
@@ -155,11 +183,16 @@ function normalizarPayload(payload) {
   }
 }
 
-function atender(d, p, sesion) {
+async function atender(d, p, sesion) {
+  const anotar = (detalle) => anotarRechazo(d, {
+    user_id: p.userId, user_name: p.username, channel_id: p.channelId, team_id: p.teamId,
+  }, { motivo: 'payload', detalle, dialogo: p.dialogo })
+
   if (p.dialogo) {
     if (p.cancelado) return { status: 200, body: {} }
     if (p.callbackId === CALLBACK.FECHA) return pasoFechaEscrita(d, p, sesion)
     if (p.callbackId === CALLBACK.EXCEPCION) return pasoAplicar(d, p, sesion)
+    await anotar('formulario_invalido')
     return { status: 200, body: { error: TEXTO.PAYLOAD } }
   }
   const pasos = {
@@ -167,7 +200,11 @@ function atender(d, p, sesion) {
     [PASO.REGISTRAR]: pasoRegistrar, [PASO.CANCELAR]: pasoCancelar,
   }
   const fn = pasos[p.paso]
-  return fn ? fn(d, p, sesion) : efimero(TEXTO.PAYLOAD)
+  if (!fn) {
+    await anotar('paso_desconocido')
+    return efimero(TEXTO.PAYLOAD)
+  }
+  return fn(d, p, sesion)
 }
 
 // ── ESTADO DEL FORMULARIO, dentro de la sesión ──────────────────────────────────

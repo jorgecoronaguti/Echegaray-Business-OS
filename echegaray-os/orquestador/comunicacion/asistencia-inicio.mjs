@@ -10,6 +10,7 @@
 // obligaría a publicar desde acá y a duplicar la salida que ya existe.
 
 import { puedeCargar } from './asistencia-guarda.mjs'
+import { crearAuditor, EVENTO, ORIGEN, payloadRechazo } from '../lib/asistencia-auditoria.mjs'
 import { mensajeInicial } from './asistencia-mm/mensaje.mjs'
 import { SesionesPostgres } from './asistencia-sesion.mjs'
 import { listarObrasPorFecha } from '../lib/tools/jornales-asistencia.mjs'
@@ -27,9 +28,14 @@ const RESPALDO = 'Carga de asistencia: elegí la obra en el mensaje.'
  * @param {object} o.actor      identidad ya resuelta de Mattermost
  * @param {string} [o.correlationId]
  * @param {string} [o.url]      URL del callback de acciones
+ * @param {string} [o.requestId]
+ * @param {string} [o.origen]   por qué puerta entró (comando o mención)
  * @returns {Promise<{texto:string, attachments?:Array, privado?:boolean, estado:string}>}
  */
-export async function iniciarAsistencia({ port, google, actor, correlationId = null, url = null, sesiones = null, hoy = hoyIso } = {}) {
+export async function iniciarAsistencia({
+  port, google, actor, correlationId = null, url = null, sesiones = null, hoy = hoyIso,
+  requestId = null, origen = ORIGEN.MENCION, auditar = null,
+} = {}) {
   // LA PUERTA PRIMERO. Antes de leer la planilla y antes de abrir nada.
   const permitido = await puedeCargar({
     port,
@@ -37,7 +43,18 @@ export async function iniciarAsistencia({ port, google, actor, correlationId = n
     channelId: actor?.channel_id ?? null,
     plataforma: 'mattermost',
   })
-  if (!permitido.ok) return { texto: permitido.texto, estado: 'denegado' }
+  if (!permitido.ok) {
+    // El rechazo queda registrado con el MISMO mecanismo que la carga exitosa. Un intento
+    // negado que no deja rastro es un agujero de seguridad: nadie puede revisar después
+    // quién quiso cargar desde dónde. La auditoría nunca puede voltear el rechazo.
+    const registrar = auditar ?? (port ? crearAuditor(port, { correlationId }) : null)
+    await Promise.resolve(registrar?.(EVENTO.DENIED, payloadRechazo({
+      origen, motivo: permitido.motivo, detalle: permitido.detalle,
+      actor, channelId: actor?.channel_id ?? null, teamId: actor?.team_id ?? null,
+      requestId, correlationId,
+    }))).catch(() => {}) // auditar no puede voltear el veredicto ni romper la respuesta
+    return { texto: permitido.texto, estado: 'denegado' }
+  }
 
   const fecha = hoy()
   let obras = []

@@ -22,7 +22,7 @@ import * as nucleo from '../lib/tools/jornales-asistencia.mjs'
 import * as motivos from '../lib/asistencia-motivos.mjs'
 import { jornadaConfigurada } from '../lib/jornada-config.mjs'
 import { tienePermiso } from '../lib/asistencia-permisos.mjs'
-import { crearAuditor, EVENTO } from '../lib/asistencia-auditoria.mjs'
+import { crearAuditor, EVENTO, ORIGEN, payloadRechazo } from '../lib/asistencia-auditoria.mjs'
 import { guardarNovedades } from '../lib/asistencia-novedades.mjs'
 import { SesionesPostgres } from './asistencia-sesion.mjs'
 import { googleDelOs } from '../lib/google-os.mjs'
@@ -43,6 +43,8 @@ function normalizar(payload = {}) {
     // El tipo de canal NO viene en el payload de acción: Mattermost no lo manda. La guarda
     // lo resuelve contra el binding, que es la fuente confiable de todos modos.
     channelType: payload.channel_type ?? null,
+    teamId: payload.team_id ?? null,
+    username: payload.user_name ?? null,
     triggerId: payload.trigger_id ?? null,
     postId: payload.post_id ?? payload.callback_id ?? null,
   }
@@ -95,6 +97,8 @@ export function crearManejadorAccion({ port, mattermost, google = null, log = nu
   return async function manejar(payload = {}) {
     const p = normalizar(payload)
     const correlationId = payload.context?.correlation_id ?? randomUUID()
+    const requestId = randomUUID()
+    const auditar = auditorDe(correlationId)
 
     // 1) LA PUERTA. Antes de cualquier otra cosa.
     const permitido = await puedeCargar({
@@ -109,6 +113,14 @@ export function crearManejadorAccion({ port, mattermost, google = null, log = nu
     })
     if (!permitido.ok) {
       log?.info?.('asistencia: pedido rechazado en la puerta', { motivo: permitido.motivo, detalle: permitido.detalle })
+      // El log sirve para mirar en el momento; la AUDITORÍA es la que queda. Se registra
+      // con el mismo ledger que la carga exitosa, sin tocar ni el mensaje ni el veredicto.
+      await auditar(EVENTO.DENIED, payloadRechazo({
+        origen: p.esDialogo ? ORIGEN.DIALOGO : ORIGEN.ACCION,
+        motivo: permitido.motivo, detalle: permitido.detalle,
+        actor: { plataforma_user_id: p.userId, plataforma_username: p.username },
+        channelId: p.channelId, teamId: p.teamId, requestId, correlationId,
+      })).catch(() => {}) // el rechazo se devuelve igual aunque no se pueda anotar
       // Un diálogo sólo admite `errors`/`error`; una acción admite `ephemeral_text`.
       return responder(p.esDialogo ? { error: permitido.texto } : { ephemeral_text: permitido.texto })
     }

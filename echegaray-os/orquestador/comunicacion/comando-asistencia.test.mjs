@@ -104,6 +104,89 @@ test('si el arranque explota, se responde en castellano y sin stack', async () =
   assert.ok(!/boom|secreto|token=|Error:/.test(JSON.stringify(r.body)))
 })
 
+// ── AUDITORÍA DE LOS RECHAZOS ───────────────────────────────────────────────────
+//
+// Un intento negado que no deja rastro es un agujero: después nadie puede revisar quién
+// quiso cargar, desde dónde y por qué no pudo. Se registra con el MISMO ledger que la
+// carga exitosa, y nunca puede voltear el veredicto.
+
+function auditorDoble() {
+  const eventos = []
+  const fn = async (evento, datos) => { eventos.push({ evento, datos }); return { ok: true } }
+  fn.eventos = eventos
+  return fn
+}
+const CON_EQUIPO = { ...CAMPOS, team_id: 'equipo-1' }
+
+test('sin token configurado: el rechazo QUEDA ANOTADO', async () => {
+  const a = auditorDoble()
+  const manejar = crearComandoAsistencia({ tokenComando: null, iniciar: inicioDoble(CON_MENSAJE).fn, auditar: a })
+  await manejar({ campos: CON_EQUIPO })
+  assert.equal(a.eventos.length, 1)
+  const { evento, datos } = a.eventos[0]
+  assert.match(evento, /denied$/)
+  assert.equal(datos.origen, 'slash_command')
+  assert.equal(datos.error_code, 'token_sin_configurar')
+  assert.equal(datos.channel_id, 'canal-asistencia')
+  assert.equal(datos.team_id, 'equipo-1')
+})
+
+test('token inválido: se anota, y la identidad queda marcada como NO verificada', async () => {
+  const a = auditorDoble()
+  const manejar = crearComandoAsistencia({ tokenComando: TOKEN, iniciar: inicioDoble(CON_MENSAJE).fn, auditar: a })
+  await manejar({ campos: { ...CON_EQUIPO, token: 'otro-token-cualquiera' } })
+  assert.equal(a.eventos[0].datos.error_code, 'token_invalido')
+  assert.equal(a.eventos[0].datos.identidad_verificada, false,
+    'con el token mal, el user_id es lo que ALGUIEN DICE ser')
+})
+
+test('el token NUNCA viaja a la auditoría', async () => {
+  const a = auditorDoble()
+  const manejar = crearComandoAsistencia({ tokenComando: TOKEN, iniciar: inicioDoble(CON_MENSAJE).fn, auditar: a })
+  await manejar({ campos: { ...CON_EQUIPO, token: 'token-secreto-de-alguien' } })
+  const s = JSON.stringify(a.eventos)
+  assert.ok(!s.includes('token-secreto-de-alguien') && !s.includes(TOKEN))
+})
+
+test('sin identidad: se anota', async () => {
+  const a = auditorDoble()
+  const manejar = crearComandoAsistencia({ tokenComando: TOKEN, iniciar: inicioDoble(CON_MENSAJE).fn, auditar: a })
+  await manejar({ campos: { ...CON_EQUIPO, user_id: '' } })
+  assert.equal(a.eventos[0].datos.error_code, 'sin_identidad')
+})
+
+test('un pedido ACEPTADO no genera un rechazo: nada de auditorías duplicadas ni falsas', async () => {
+  const a = auditorDoble()
+  const manejar = crearComandoAsistencia({ tokenComando: TOKEN, iniciar: inicioDoble(CON_MENSAJE).fn, auditar: a })
+  await manejar({ campos: CON_EQUIPO })
+  assert.equal(a.eventos.length, 0)
+})
+
+test('un rechazo se anota UNA sola vez', async () => {
+  const a = auditorDoble()
+  const manejar = crearComandoAsistencia({ tokenComando: TOKEN, iniciar: inicioDoble(CON_MENSAJE).fn, auditar: a })
+  await manejar({ campos: { ...CON_EQUIPO, token: 'mal' } })
+  assert.equal(a.eventos.length, 1)
+})
+
+test('si la auditoría falla, el rechazo SIGUE siendo un rechazo', async () => {
+  const rota = async () => { throw new Error('la base no responde') }
+  const i = inicioDoble(CON_MENSAJE)
+  const manejar = crearComandoAsistencia({ tokenComando: TOKEN, iniciar: i.fn, auditar: rota })
+  const r = await manejar({ campos: { ...CON_EQUIPO, token: 'mal' } })
+  assert.equal(r.body.response_type, RESPUESTA.PRIVADA, 'no se cae ni cambia la respuesta')
+  assert.equal(i.llamadas.length, 0, 'un fallo de auditoría nunca puede dejar pasar el pedido')
+})
+
+test('el mensaje al usuario no cambió por auditar', async () => {
+  const a = auditorDoble()
+  const manejar = crearComandoAsistencia({ tokenComando: TOKEN, iniciar: inicioDoble(CON_MENSAJE).fn, auditar: a })
+  const r = await manejar({ campos: { ...CON_EQUIPO, token: 'mal' } })
+  assert.equal(r.status, 200)
+  assert.equal(r.body.response_type, RESPUESTA.PRIVADA)
+  assert.equal(r.body.text, 'No pude verificar que este pedido venga de Mattermost.')
+})
+
 test('no razona: esta puerta tiene que andar sin crédito de API', async () => {
   const { readFileSync } = await import('node:fs')
   const src = readFileSync(new URL('./comando-asistencia.mjs', import.meta.url), 'utf8')

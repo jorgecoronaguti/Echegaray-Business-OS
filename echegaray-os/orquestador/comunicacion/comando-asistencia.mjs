@@ -15,8 +15,9 @@
 // publicarlos (403). Los RECHAZOS sí van efímeros: que te digan que no podés cargar es
 // asunto tuyo, no del canal.
 
-import { timingSafeEqual } from 'node:crypto'
+import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { iniciarAsistencia } from './asistencia-inicio.mjs'
+import { crearAuditor, EVENTO, ORIGEN, payloadRechazo } from '../lib/asistencia-auditoria.mjs'
 
 export const RESPUESTA = Object.freeze({ CANAL: 'in_channel', PRIVADA: 'ephemeral' })
 
@@ -51,36 +52,61 @@ const efimero = (texto) => ({ status: 200, body: { response_type: RESPUESTA.PRIV
  * @param {Function} [deps.iniciar]   inyectable para tests
  * @returns {(o:{campos:object, ip?:string}) => Promise<{status:number, body:object}>}
  */
-export function crearComandoAsistencia({ tokenComando, port, google, url = null, iniciar = iniciarAsistencia, log = null } = {}) {
+export function crearComandoAsistencia({ tokenComando, port, google, url = null, iniciar = iniciarAsistencia, auditar = null, log = null } = {}) {
+  // El auditor se arma una vez; cada rechazo se registra con su propio `request_id`.
+  const registrar = auditar ?? (port ? crearAuditor(port) : async () => ({ ok: false }))
+
   return async function manejar({ campos = {}, ip = null } = {}) {
+    const requestId = randomUUID()
+
+    /**
+     * Rechaza y DEJA CONSTANCIA. Que un intento no prospere no lo vuelve invisible.
+     *
+     * La auditoría no puede cambiar el resultado: si falla, el rechazo se devuelve igual.
+     * Un sistema que deja pasar —o que se cae— porque no pudo escribir un log es peor que
+     * uno que no audita.
+     */
+    const negar = async (texto, { motivo, detalle, verificada = true }) => {
+      await registrar(EVENTO.DENIED, payloadRechazo({
+        origen: ORIGEN.COMANDO, motivo, detalle, requestId, identidadVerificada: verificada,
+        actor: { plataforma_user_id: campos.user_id ?? null, plataforma_username: campos.user_name ?? null },
+        channelId: campos.channel_id ?? null, teamId: campos.team_id ?? null,
+      })).catch((e) => log?.warn?.('no se pudo auditar un rechazo de asistencia', { detalle: String(e?.message ?? e).slice(0, 120) }))
+      return efimero(texto)
+    }
+
     // 1) ¿Viene de Mattermost? Sin token configurado NO se atiende: un endpoint que abre
     //    cargas sin verificar nada es peor que un endpoint apagado.
     if (!esTexto(tokenComando)) {
       log?.warn?.('comando de asistencia sin token configurado: se rechaza', { ip })
-      return efimero(TEXTO.SIN_CONFIGURAR)
+      return negar(TEXTO.SIN_CONFIGURAR, { motivo: 'token', detalle: 'token_sin_configurar', verificada: false })
     }
     if (!igualEnTiempoConstante(tokenComando, campos.token)) {
       // Sin detalle: quien no tiene el token no se entera de si existe, venció o es otro.
       log?.warn?.('comando de asistencia con token inválido', { ip })
-      return efimero(TEXTO.NO_AUTORIZADO)
+      return negar(TEXTO.NO_AUTORIZADO, { motivo: 'token', detalle: 'token_invalido', verificada: false })
     }
 
     // 2) Identidad REAL de Mattermost, no la que diga el cuerpo del pedido.
     const userId = esTexto(campos.user_id) ? campos.user_id : null
-    if (!userId) return efimero(TEXTO.SIN_IDENTIDAD)
+    if (!userId) return negar(TEXTO.SIN_IDENTIDAD, { motivo: 'sin_identidad', detalle: 'sin_identidad' })
 
     // 3) EXACTAMENTE el mismo arranque que `@os asistencia`. La guarda de canal y permisos
-    //    corre adentro: acá no se repite ni se afloja.
+    //    corre adentro: acá no se repite ni se afloja. La auditoría del rechazo de la guarda
+    //    también vive adentro, para que la mención y el comando registren lo mismo.
     let r
     try {
       r = await iniciar({
         port,
         google,
         url,
+        requestId,
+        origen: ORIGEN.COMANDO,
         actor: {
           plataforma_user_id: userId,
           plataforma_username: campos.user_name ?? null,
           channel_id: campos.channel_id ?? null,
+          team_id: campos.team_id ?? null,
         },
       })
     } catch (e) {

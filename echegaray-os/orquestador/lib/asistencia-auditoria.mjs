@@ -27,6 +27,55 @@ export const EVENTO = Object.freeze({
 export const SKILL = 'personal.registrar_asistencia'
 export const TIMEZONE = 'America/Argentina/San_Juan'
 
+/** Por qué puerta entró el intento. Un rechazo sin origen no se puede investigar. */
+export const ORIGEN = Object.freeze({
+  COMANDO: 'slash_command',
+  ACCION: 'accion',
+  DIALOGO: 'dialogo',
+  MENCION: 'mencion',
+})
+
+/**
+ * Payload de un intento RECHAZADO, para el evento `DENIED`.
+ *
+ * POR QUÉ ESTA FUNCIÓN Y NO UN OBJETO ARMADO EN CADA LUGAR: porque un rechazo se registra
+ * desde cuatro puertas distintas y el riesgo real no es olvidarse un campo — es meter de
+ * más. Acá la lista de claves es CERRADA: entra lo que se enumera y nada más. Un token, un
+ * secreto o el payload entero no tienen por dónde colarse, aunque el llamador los tenga a
+ * mano. Hay un test que falla si aparece una clave nueva.
+ *
+ * IDENTIDAD VERIFICADA. Cuando el token del slash command no coincide, el `user_id` que
+ * viene en el pedido es lo que ALGUIEN DICE ser, no lo que Mattermost afirma. Se registra
+ * igual —sirve para investigar— pero marcado con `identidad_verificada: false`, para que
+ * nadie lo lea después como si fuera una identidad probada.
+ *
+ * @param {object} o
+ * @param {string} o.origen                de `ORIGEN`
+ * @param {string} o.motivo                familia del rechazo (canal, permiso, sesión, token…)
+ * @param {string} [o.detalle]             el caso exacto: `sin_permiso`, `canal_directo`, `sesion_vencida`…
+ * @param {{plataforma_user_id?:string, plataforma_username?:string}} [o.actor]
+ * @param {boolean} [o.identidadVerificada=true]
+ * @returns {object} payload plano, sin secretos
+ */
+export function payloadRechazo({
+  origen, motivo, detalle = null, actor = null, channelId = null, teamId = null,
+  requestId = null, correlationId = null, identidadVerificada = true,
+} = {}) {
+  return {
+    status: 'denied',
+    origen: origen ?? null,
+    motivo: motivo ?? null,
+    error_code: detalle ?? motivo ?? null,
+    mattermost_user_id: actor?.plataforma_user_id ?? actor?.user_id ?? null,
+    mattermost_username: actor?.plataforma_username ?? actor?.user_name ?? null,
+    identidad_verificada: identidadVerificada,
+    channel_id: channelId ?? null,
+    team_id: teamId ?? null,
+    request_id: requestId ?? null,
+    correlation_id: correlationId ?? null,
+  }
+}
+
 /** Recorta y limpia un mensaje de error para el log: nunca tokens ni secretos. */
 export function sanitizarError(e) {
   return String(e?.message ?? e ?? '')

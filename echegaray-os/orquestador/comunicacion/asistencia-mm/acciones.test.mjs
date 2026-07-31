@@ -403,3 +403,73 @@ test('todo lo que se publica en el recorrido completo es JSON válido de Matterm
   assert.equal(e.sesion.plataforma_user_id, USUARIO.id)
   assert.equal(e.sesion.fecha_operativa, FECHA_HOY)
 })
+
+// ── AUDITORÍA DE LOS RECHAZOS DEL RUTEADOR ──────────────────────────────────────
+//
+// Sesión vencida, formulario ajeno, payload que no se entiende: los tres devuelven un
+// mensaje al usuario y ninguno dejaba rastro. Ahora los tres se anotan, con el detalle
+// distinguible en `error_code` — que es lo que permite ver un sondeo desde afuera.
+
+/** Los eventos `denied` de un entorno. */
+const rechazos = (e) => e.eventos.filter((x) => x.evento.endsWith('denied'))
+
+test('payload que no se entiende: queda anotado', async () => {
+  const e = await crearEntorno()
+  const r = await e.rutear({ payload: { channel_id: 'canal-1' } }) // sin user_id
+  assert.equal(r.status, 400)
+  assert.equal(rechazos(e).length, 1)
+  assert.equal(rechazos(e)[0].datos.error_code, 'payload_invalido')
+  assert.equal(rechazos(e)[0].datos.channel_id, 'canal-1')
+})
+
+test('sin sesión abierta: queda anotado como sesión inexistente', async () => {
+  const e = await crearEntorno({ abrirSesion: false })
+  await e.accion({ paso: PASO.OBRA, selected_option: OBRA.clave })
+  assert.equal(rechazos(e).length, 1)
+  assert.equal(rechazos(e)[0].datos.error_code, 'sesion_inexistente')
+  assert.equal(rechazos(e)[0].datos.origen, 'accion')
+})
+
+test('sin permiso: queda anotado con quién y desde dónde', async () => {
+  const e = await crearEntorno({ permisos: permisosDoble(false) })
+  await e.accion({ paso: PASO.OBRA, selected_option: OBRA.clave })
+  const d = rechazos(e)[0].datos
+  assert.equal(d.motivo, 'permiso')
+  assert.equal(d.mattermost_user_id, USUARIO.id)
+  assert.equal(d.channel_id, 'canal-1')
+})
+
+test('un diálogo con un formulario desconocido queda anotado, y como diálogo', async () => {
+  const e = await crearEntorno()
+  await e.dialogo('asistencia.formulario-que-no-existe', { fecha: '30/07/2026' })
+  const d = rechazos(e)[0].datos
+  assert.equal(d.error_code, 'formulario_invalido')
+  assert.equal(d.origen, 'dialogo')
+})
+
+test('un paso inventado queda anotado', async () => {
+  const e = await crearEntorno()
+  await e.accion({ paso: 'borrar-todo' })
+  assert.equal(rechazos(e)[0].datos.error_code, 'paso_desconocido')
+})
+
+test('el recorrido normal NO genera un solo rechazo', async () => {
+  const e = await crearEntorno()
+  await e.accion({ paso: PASO.FECHA, valor: 'hoy' })
+  await elegirObra(e)
+  assert.equal(rechazos(e).length, 0, 'una auditoría de rechazo falsa es tan mala como no auditar')
+})
+
+test('cada rechazo se anota UNA vez, no dos', async () => {
+  const e = await crearEntorno({ permisos: permisosDoble(false) })
+  await e.accion({ paso: PASO.OBRA, selected_option: OBRA.clave })
+  await e.accion({ paso: PASO.REGISTRAR })
+  assert.equal(rechazos(e).length, 2, 'dos intentos, dos registros: ni más ni menos')
+})
+
+test('el rechazo sigue diciendo lo mismo al usuario', async () => {
+  const e = await crearEntorno({ abrirSesion: false })
+  const r = await e.accion({ paso: PASO.OBRA, selected_option: OBRA.clave })
+  assert.match(textoDe(r), /formulario/i)
+  assert.equal(r.status, 200)
+})
