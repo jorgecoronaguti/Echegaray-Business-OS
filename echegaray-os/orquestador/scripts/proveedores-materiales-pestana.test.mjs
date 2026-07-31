@@ -13,7 +13,7 @@
 // del propio generador (la col I de los cruces ARCA, que es no-vacía y por eso se conserva).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { estructural, predicadoConDeuda, soloConDeuda, layoutDeuda, notasAncladas, anchoBloque } from './proveedores-materiales-pestana.mjs'
+import { estructural, layoutDeuda, notasAncladas, anchoBloque } from './proveedores-materiales-pestana.mjs'
 import { fusionar, VACIO } from '../lib/preservar-anotaciones.mjs'
 
 test('estructural: convierte los \'\' en VACIO y deja intacto todo lo no-vacío', () => {
@@ -67,56 +67,17 @@ test('(c) la nota de conciliación LEGÍTIMA en col I de los cruces ARCA se cons
   assert.equal(out[3], '', 'el $46.213 fantasma de col D se borra')
 })
 
-// ═══ BUG 1 (28/07): EL PROVEEDOR PAGADO DESAPARECE SOLO DEL CUADRO DE DEUDA ═══
+// ═══ SE FUERON LOS TESTS DE `predicadoConDeuda` / `soloConDeuda` (31/07) ═══
 //
-// El dueño: al pasar un proveedor a estado "Pagado", SEGUÍA apareciendo en el listado con un "−" en vez
-// de desaparecer. La fila-cabecera se materializa en JS (para el +/- y para re-anclar sus notas), pero
-// su nombre era texto fijo. Ahora cada celda de la cabecera se gatea con predicadoConDeuda: si el saldo
-// neto no es > 0, la fila entera queda VACÍA en vivo. El cuadro lista SÓLO proveedores con saldo > 0.
-
-test('predicadoConDeuda: exige saldo neto redondeado > 0 (estado ≠ Pagado ya lo filtra condProv)', () => {
-  const neta = 'SUMIFS(O;C;"X")-SUMIFS(T;C;"X")'
-  assert.equal(predicadoConDeuda(neta), `ROUND(${neta};0)>0`)
-})
-
-test('soloConDeuda (texto): el NOMBRE sólo aparece en la rama verdadera; si no hay deuda, la celda va vacía', () => {
-  const pred = predicadoConDeuda('SALDO')
-  const cell = soloConDeuda(pred, 'ARCOR', { texto: true })
-  assert.equal(cell, '=IF(ROUND(SALDO;0)>0;"ARCOR";"")')
-  assert.ok(cell.startsWith('=IF('), 'es una fórmula, no un texto fijo')
-  assert.ok(cell.endsWith(';"")'), 'la rama falsa (sin deuda) es la cadena vacía: el proveedor no se lista')
-  // El nombre está dentro del IF, nunca suelto: un proveedor pagado no deja el nombre a la vista.
-  assert.equal(cell.indexOf('"ARCOR"'), cell.indexOf('>0;') + 3, 'el nombre va inmediatamente en la rama verdadera')
-})
-
-test('soloConDeuda (texto): escapa las comillas del nombre y tolera una coma dentro del nombre (es-AR)', () => {
-  const cell = soloConDeuda(predicadoConDeuda('S'), 'Metalúrgica "El Álamo", SA', { texto: true })
-  assert.equal(cell, '=IF(ROUND(S;0)>0;"Metalúrgica ""El Álamo"", SA";"")')
-  // La única coma vive DENTRO del literal de cadena; el separador de argumentos es ';' (locale es-AR).
-  assert.ok(!/,(?=[^"]*(?:"[^"]*"[^"]*)*$)/.test(cell.replace(/"[^"]*"/g, '')), 'no hay coma fuera del literal')
-})
-
-test('soloConDeuda (fórmula): quita el "=" inicial y anida la subexpresión dentro del IF', () => {
-  const pred = predicadoConDeuda('S')
-  assert.equal(soloConDeuda(pred, '=MINIFS(F;C;"X")'), '=IF(ROUND(S;0)>0;MINIFS(F;C;"X");"")')
-  assert.equal(soloConDeuda(pred, 'COUNTIFS(C;"X")&" fac."'), '=IF(ROUND(S;0)>0;COUNTIFS(C;"X")&" fac.";"")')
-})
-
-test('la fila-cabecera COMPLETA (nombre + próximo pago + N° fac. + importe) queda vacía sin deuda', () => {
-  // Se arman las cuatro celdas igual que grilla(): un proveedor pagado → las cuatro colapsan a "".
-  const neta = 'SUMIFS(O;E;"ACME")-SUMIFS(T;E;"ACME")'
-  const pred = predicadoConDeuda(neta)
-  const cabecera = [
-    soloConDeuda(pred, 'ACME', { texto: true }),
-    soloConDeuda(pred, 'IF(COUNTIFS(FE;">0")=0;"sin fecha";MINIFS(FE))'),
-    soloConDeuda(pred, 'COUNTIFS(E;"ACME";O;"<>")&" fac."'),
-    soloConDeuda(pred, neta),
-  ]
-  for (const c of cabecera) {
-    assert.ok(c.startsWith('=IF(ROUND(' + neta + ';0)>0;'), 'toda celda depende del mismo predicado de saldo')
-    assert.ok(c.endsWith(';"")'), 'y colapsa a vacío cuando el proveedor no debe: no queda "−" ni nombre suelto')
-  }
-})
+// Probaban que la fila-cabecera de un proveedor PAGADO colapsara a vacío: era la cura del diseño viejo,
+// donde esa fila era física y llevaba el nombre escrito. Con la sección 1 viva la fila no existe hasta
+// que la fórmula la genera, y el filtro de saldo > 0 vive adentro de la misma fórmula — así que el
+// proveedor pagado no queda vacío, no está. Lo que sí hay que seguir probando es la fórmula, y eso vive
+// en lib/proveedores-deuda-viva.test.mjs.
+//
+// LO QUE SIGUE ABAJO SÍ SIGUE VIVO: `notasAncladas` y `anchoBloque` ahora se usan para LEER el bloque
+// viejo y migrar los comentarios del dueño a la libreta, y para saber cuánto ancho hay que limpiar. La
+// migración es de una sola vez, pero si se hace mal se pierde su trabajo: los tests se quedan.
 
 // ═══ BUG 2 (28/07): LAS NOTAS DEL DUEÑO SE RE-ANCLAN AUNQUE LA CABECERA SEA UNA FÓRMULA ═══
 //
