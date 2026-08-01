@@ -63,7 +63,7 @@ import { CAJA as N_CAJA, publicar } from '../lib/rangos-nombrados.mjs'
 import { esIndistinguible } from '../lib/cobranzas-duplicado.mjs'
 import * as CONC from '../lib/conciliacion-por-naturaleza.mjs'
 import { formulaEgresoDiario } from '../lib/egreso-diario.mjs'
-import { formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte, formulaNetaEfectivoPosterior, formulaCobrosPosteriores, formulaChequesDebitadosPosteriores, formulaComprasPagadasPosteriores, formulaJornalesBancoPosteriores, celdaJornalesEfectivo } from '../lib/caja-posterior-al-corte.mjs'
+import { formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte, formulaNetaEfectivoPosterior, formulaCobrosPosteriores, formulaChequesDebitadosPosteriores, formulaComprasPagadasPosteriores, formulaJornalesBancoPosteriores, celdaJornalesEfectivo, formulaOficinaBancoPosteriores, formulaOficinaSinCanal, celdaOficinaEfectivo, celdaExtraccionesEfectivo } from '../lib/caja-posterior-al-corte.mjs'
 import { formulaCajaEnPesos, celdaCobrosEfectivo, celdaPagosEfectivo, celdaDepositosEfectivo, NETO_NO_SUMA_EN_PESOS, origenCajaEnPesos, IDENTIDAD } from '../lib/caja-efectivo-fisico.mjs'
 // LA CARTERA DE VALORES SALE DE LA RÉPLICA DE CHEQUES, NO DE UN ARRAY DE JAVASCRIPT (30/07). Ver
 // lib/cartera-cheques.mjs: es el arreglo del "$10.000.000 en CAJA con $10.290.000 en cartera" y del
@@ -335,6 +335,9 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
     push(['   · (−) jornales pagados por transferencia después del corte', 'ARS',
       `=-(${formulaJornalesBancoPosteriores(`$F$${fBancoPesos}`)})`, '', '', '', '',
       'Jornales por Quincena, columna Banco: el lote de haberes de las quincenas con fecha en "Pagado el" posterior al corte. La plata salió de la cuenta y el extracto todavía no lo muestra.', ''])
+    push(['   · (−) sueldos de administración por transferencia después del corte', 'ARS',
+      `=-(${formulaOficinaBancoPosteriores(`$F$${fBancoPesos}`)})`, '', '', '', '',
+      'Jornales por Quincena, bloque Oficina, columna Banco: los meses con fecha de pago posterior al corte. Si la columna está vacía no se resta nada — el canal no declarado se reporta en "LO QUE NO CIERRA", no se adivina.', ''])
   }
   // ═══ LA LÍNEA QUE HACE QUE LA CAJA FÍSICA SE MUEVA SOLA — EL ESPEJO DE EFECTIVO DEL BANCO (T06) ═══
   //
@@ -385,6 +388,12 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   push(['   · (−) jornales pagados en efectivo después del arqueo', 'ARS',
     celdaJornalesEfectivo(`$F$${d0}`), '', '', '', '',
     'Jornales por Quincena, columnas Adelanto y Total recibo: lo que se pagó de la nómina en billetes, de las quincenas con fecha en "Pagado el" posterior al arqueo.', ''])
+  push(['   · (−) sueldos de administración en efectivo después del arqueo', 'ARS',
+    celdaOficinaEfectivo(`$F$${d0}`), '', '', '', '',
+    'Jornales por Quincena, bloque Oficina, columna Efectivo: los sueldos de administración pagados en billetes, por su fecha de pago.', ''])
+  push(['   · (+) extraído del banco después del arqueo', 'ARS',
+    celdaExtraccionesEfectivo(`$F$${d0}`), '', '', '', '',
+    'Réplica del extracto: los débitos cuyo concepto dice "extracción" o "retiro de efectivo". Es el espejo del depósito — el billete deja la cuenta y entra al cajón, así que acá SUMA. Hoy el extracto no tiene ninguno.', ''])
   if (refs.bancoRaw) {
     push(['   · (−) depositado en el banco después del arqueo', 'ARS',
       celdaDepositosEfectivo(`$F$${d0}`), '', '', '', '',
@@ -640,6 +649,11 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // decir un número distinto del que entraría en cuanto se cargue el arqueo.
   push(['El efectivo del período no se está contando: falta la fecha del arqueo', '', '@SINARQUEO',
     '', '', '', '', '@ORIGEN_ARQUEO'])
+  // El sueldo de administración que se pagó y no dice por dónde salió. No se resta de ninguna
+  // disponibilidad —no se sabe de cuál— así que tiene que verse acá con nombre y monto. Se apaga sola
+  // en cuanto el mes tenga Banco o Efectivo cargado.
+  push(['Sueldos de administración pagados sin declarar por qué canal salieron', '', '@OFISINCANAL',
+    '', '', '', '', '@ORIGEN_OFICANAL'])
   const fAlerta1 = filas.length
   push()
 
@@ -1087,6 +1101,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
     // va a leer como saldo. Así que la alerta nombra el problema y da la instrucción; la plata aparece
     // sola, y bien, en cuanto la fecha esté cargada.
     '@SINARQUEO': `=IF($F$${d0}<>"";0;0)`,
+    '@OFISINCANAL': `=${formulaOficinaSinCanal(`$F$${fBancoPesos || d0}`)}`,
     // Si el banco no reporta ningún echeq en custodia, la cartera es cero y hay que decirlo con un
     // cero: un rango vacío daría #REF! y un total en blanco se leería como "falta cargar".
     // ═══ LA CARTERA SALE DE LA FUENTE, NO DEL DETALLE (30/07) ═══
@@ -1131,6 +1146,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
     // que mueva una fila — que es exactamente lo que ya pasó con "Bloque 6".
     '@ORIGEN_ECHEQ': `=CONCATENATE("Endosados a un proveedor: son un pago hecho, no un ingreso futuro. Corregir en Cobranzas.   ▸ SALE DE LA FILA ${gDif}: lo que Cobranzas dice que hay en echeq (";TEXT(${C_IMP}${gControl};"$#,##0");") menos lo que el banco tiene en custodia (";TEXT(${C_IMP}${fValores};"$#,##0");")")`,
     '@ORIGEN_CONC': `=CONCATENATE("O faltan movimientos por cargar, o el saldo inicial del cuadro quedó viejo. Mientras no cierre, la proyección de caja no se puede usar para decidir.   ▸ SALE DE LA FILA ${fDifConc}: la plata que hay hoy (";TEXT(${C_PESOS}${fDecl};"$#,##0");") menos la que el Cash Flow Mensual proyecta para esa fecha (";TEXT(${C_PESOS}${fProy};"$#,##0");")")`,
+    '@ORIGEN_OFICANAL': `=IF(${C_IMP}${fAlerta0 + 4}=0;"";"Cargá Banco y Efectivo del mes en el bloque Oficina de Jornales por Quincena y este importe baja solo de la disponibilidad que corresponda.   ▸ Mientras el canal no esté declarado NO se resta de ninguna: no se puede saber si salió de la cuenta o del cajón, y repartirlo mitad y mitad porque suele ser así sería inventar el dato.")`,
     '@ORIGEN_ARQUEO': `=IF($F$${d0}<>"";"";CONCATENATE("Cargá la fecha del arqueo en F${d0} —la del último conteo físico— y todo el efectivo entra solo al total: cobros en efectivo, menos pagos en efectivo, menos depósitos al banco, menos jornales pagados en billetes.   ▸ Sin esa fecha la fila de movimientos de efectivo devuelve 0 POR DISEÑO: sin ancla no hay ventana que acotar, y un cero por falta de dato se lee igual que un cero medido. Acá no se muestra un monto a propósito: sin ancla, cualquier cifra se leería como un saldo de caja y no lo es."))`,
     '@ORIGEN_EFVO': `=CONCATENATE("Puede tener explicación (un depósito posterior al corte, un pago en efectivo sin pasar por el banco), pero no puede quedar sin mirar.   ▸ SALE DE LA FILA ${fSinExpl}, en el bloque 7: el efectivo que Cobranzas dice cobrado, menos lo que el extracto muestra depositado, menos lo que hay en la caja física.")`,
   }

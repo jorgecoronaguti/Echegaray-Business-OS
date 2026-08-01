@@ -187,6 +187,8 @@ export function formulaNetaPosterior(corte) {
     // misma clase de salida que un cheque debitado: la plata ya no está y el extracto todavía no lo
     // muestra. Ver el bloque de la nómina, al final de este archivo.
     + `-(${formulaJornalesBancoPosteriores(corte)})`
+    // Y los sueldos de administración que salieron por transferencia después del corte (01/08).
+    + `-(${formulaOficinaBancoPosteriores(corte)})`
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -283,14 +285,23 @@ export function formulaDepositosEfectivoPosteriores(arqueo, c = DEP) {
  * @returns {string} fórmula completa, con el `=` adelante
  */
 export function formulaNetaEfectivoPosterior(arqueo, { bancoRaw = DEP.hoja } = {}) {
+  // Los dos movimientos que cruzan de canal salen de la réplica del extracto: sin ella no se pueden
+  // detectar, y se omiten los DOS juntos. Dejar la extracción sin el depósito inflaría el cajón.
   const depositos = bancoRaw
     ? `-${formulaDepositosEfectivoPosteriores(arqueo, { ...DEP, hoja: bancoRaw })}`
+    : ''
+  const extracciones = bancoRaw
+    ? `+${formulaExtraccionesEfectivoPosteriores(arqueo, { ...DEP, hoja: bancoRaw })}`
     : ''
   return `=IF(NOT(ISNUMBER(${arqueo}));0;`
     + `${formulaCobrosEfectivoPosteriores(arqueo)}-${formulaComprasEfectivoPosteriores(arqueo)}${depositos}`
     // Los jornales pagados en efectivo después del arqueo (01/08): adelantos y contra recibo. Es el
     // billete que sale del cajón para la nómina, que hasta hoy no bajaba de ningún lado.
-    + `-${formulaJornalesEfectivoPosteriores(arqueo)})`
+    + `-${formulaJornalesEfectivoPosteriores(arqueo)}`
+    // La oficina en billetes RESTA y la extracción del banco SUMA: los dos canales que faltaban para
+    // que el cajón pueda subir y bajar por todos los motivos por los que sube y baja de verdad.
+    + `-${formulaOficinaEfectivoPosteriores(arqueo)}`
+    + `${extracciones})`
 }
 
 /**
@@ -415,4 +426,85 @@ export function formulaJornalesBancoPosteriores(corte, j = JOR) {
  */
 export function celdaJornalesEfectivo(arqueo, j = JOR) {
   return `=IF(NOT(ISNUMBER(${arqueo}));0;-(${formulaJornalesEfectivoPosteriores(arqueo, j)}))`
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA OFICINA Y LA EXTRACCIÓN — LOS DOS CANALES QUE FALTABAN PARA CERRAR LA NÓMINA (01/08)
+//
+// EL DUEÑO: *"¿revisaste el sheet jornales la pestaña oficina, actualizaste los valores... y ese es el
+// valor que se refleja en cash flow semanal y mensual y por ende lo que se debería restar en caja cada
+// vez que se haya pagado?"*. La respuesta era no, y por el mismo motivo que la obra: `OFICINA_*` lo
+// consumía sólo el CALENDARIO (la proyección). Un sueldo de administración PAGADO no bajaba ninguna
+// disponibilidad — ni el banco ni el cajón.
+//
+// LO QUE HUBO QUE AGREGAR PRIMERO. El bloque de Oficina tenía una sola columna de plata ("Pagado"),
+// sin canal. Con eso no se puede decidir de dónde sale: media empresa paga la mitad por transferencia
+// y la mitad en billetes. Ahora el bloque tiene dos columnas de entrada —Banco y Efectivo— que llena
+// el dueño y que el generador NO pisa (no las escribe: la fusión preserva lo que él ponga).
+//
+// Y POR ESO ESTAS FÓRMULAS NO INVENTAN NADA. Si el canal no está declarado, no se resta de ningún
+// lado: se nombra en "LO QUE NO CIERRA" con su monto. Repartir "mitad y mitad" porque suele ser así
+// sería fabricar un dato, que es exactamente lo que este archivo no hace.
+
+/** Los rangos con nombre del bloque de Oficina que publica `jornales-pestana.mjs`. */
+export const OFI = { pago: 'OFICINA_PAGO', pagado: 'OFICINA_PAGADO', banco: 'OFICINA_BANCO', efectivo: 'OFICINA_EFECTIVO' }
+
+/** La ventana común de la oficina: meses con fecha de pago posterior al corte/arqueo. */
+const ventanaOfi = (corte, o) => `ISNUMBER(${o.pago})*(${o.pago}>${corte})`
+
+/**
+ * NÚCLEO PURO: los sueldos de administración pagados por BANCO después del corte del extracto.
+ * @param {string} corte referencia a la celda con la fecha de corte
+ */
+export function formulaOficinaBancoPosteriores(corte, o = OFI) {
+  return `SUMPRODUCT(${ventanaOfi(corte, o)}*N(${o.banco}))`
+}
+
+/**
+ * NÚCLEO PURO: los sueldos de administración pagados en EFECTIVO después del arqueo.
+ * @param {string} arqueo referencia a la celda con la fecha del arqueo
+ */
+export function formulaOficinaEfectivoPosteriores(arqueo, o = OFI) {
+  return `SUMPRODUCT(${ventanaOfi(arqueo, o)}*N(${o.efectivo}))`
+}
+
+/**
+ * NÚCLEO PURO: lo pagado de oficina SIN declarar por qué canal salió, en la ventana viva.
+ *
+ * No se resta de ninguna disponibilidad —no se sabe de dónde salió— y por eso tiene que VERSE. Va al
+ * bloque "LO QUE NO CIERRA", que es donde vive todo lo que el cuadro sabe que no sabe. Cuando el dueño
+ * completa Banco/Efectivo del mes, esta línea baja sola a cero.
+ */
+export function formulaOficinaSinCanal(corte, o = OFI) {
+  return `SUMPRODUCT(${ventanaOfi(corte, o)}*(N(${o.banco})+N(${o.efectivo})=0)*N(${o.pagado}))`
+}
+
+/**
+ * NÚCLEO PURO: las EXTRACCIONES de efectivo del banco posteriores al arqueo. CARGA la caja física.
+ *
+ * Es el espejo exacto del depósito, que ya estaba: el depósito mueve billetes del cajón a la cuenta y
+ * RESTA; la extracción los trae de vuelta y SUMA. Sin esta mitad, la caja física sólo podía crecer con
+ * cobranzas en efectivo y bajaba con todo lo demás — un modelo que sólo puede dar de menos.
+ *
+ * HONESTIDAD SOBRE LO MEDIDO (01/08): en el extracto cargado hoy no hay NINGÚN movimiento que matchee
+ * (cero débitos con "extracción" o "retiro de efectivo" en el concepto). O sea que hoy esta línea vale
+ * 0 y no cambia ningún número. Se escribe igual, porque el día que aparezca una extracción el cajón
+ * tiene que subir solo — y porque una asimetría (modelar la salida y no la entrada) es justamente cómo
+ * un cuadro empieza a mentir despacio.
+ */
+export function formulaExtraccionesEfectivoPosteriores(arqueo, c = DEP) {
+  const col = (x) => `${c.hoja}!$${x}$${c.desde}:$${x}`
+  const concepto = `LOWER(SUBSTITUTE(${col(c.concepto)};"ó";"o"))`
+  return `SUMPRODUCT((${col(c.flujo)}="sale")`
+    + `*(ISNUMBER(SEARCH("extraccion";${concepto}))+ISNUMBER(SEARCH("retiro de efectivo";${concepto}))>0)`
+    + `*ISNUMBER(${col(c.fecha)})*(${col(c.fecha)}>${arqueo})`
+    + `*ABS(IF(ISNUMBER(${col(c.importe)});${col(c.importe)};0)))`
+}
+
+/** Los renglones del desglose, con su signo, para que el desglose siga siendo la misma fórmula. */
+export function celdaOficinaEfectivo(arqueo, o = OFI) {
+  return `=IF(NOT(ISNUMBER(${arqueo}));0;-(${formulaOficinaEfectivoPosteriores(arqueo, o)}))`
+}
+export function celdaExtraccionesEfectivo(arqueo, c = DEP) {
+  return `=IF(NOT(ISNUMBER(${arqueo}));0;${formulaExtraccionesEfectivoPosteriores(arqueo, c)})`
 }

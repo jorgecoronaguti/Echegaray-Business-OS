@@ -368,7 +368,16 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [], 
   // criterio queda ESCRITO en la pestaña, no escondido en el código: cierre de mes + el mismo desfase
   // de pago que la obra (JORNALES_DESFASE_PAGO, el parámetro que el dueño puede corregir). Si mañana
   // se paga otro día, se cambia el parámetro y se mueven las dos cosas juntas.
-  push(['Mes', 'Personas', 'Pagado', VACIO, 'Se paga el', VACIO, 'Ajuste inflación', 'Proyectado'])
+  // ═══ LAS DOS COLUMNAS DE ENTRADA: POR QUÉ CANAL SALIÓ EL SUELDO (01/08) ═══
+  //
+  // Este bloque tenía UNA sola columna de plata ("Pagado"), sin canal. Con eso CAJA no podía restarlo
+  // de ningún lado: media empresa paga la mitad por transferencia y la mitad en billetes, y adivinar
+  // cuál mitad es fabricar un dato. Con Banco y Efectivo, cada peso sale de donde salió de verdad.
+  //
+  // SÓLO SE ESCRIBE EL ENCABEZADO. Las celdas de abajo NO se emiten —las filas de meses siguen
+  // teniendo ocho columnas— así que la fusión preserva lo que escriba el dueño y el generador no se lo
+  // pisa en la próxima corrida. Es lo contrario del centinela VACIO, que significa "es mía y va vacía".
+  push(['Mes', 'Personas', 'Pagado', VACIO, 'Se paga el', VACIO, 'Ajuste inflación', 'Proyectado', 'Banco', 'Efectivo'])
   const o0 = filas.length + 1
   MESES.forEach((nombre, i) => {
     const r = filas.length + 1
@@ -883,6 +892,10 @@ async function publicarRangos(google, sheetId, g) {
     OFICINA_PAGO: rango(4, g.o0, g.oFin),
     OFICINA_PAGADO: rango(2, g.o0, g.oFin),
     OFICINA_PROYECTADO: rango(7, g.o0, g.oFin),
+    // El canal por el que salió cada sueldo de administración (01/08). Sin estos dos, CAJA sabía
+    // CUÁNTO se pagó de oficina y no de dónde salió, así que no lo restaba de ninguna disponibilidad.
+    OFICINA_BANCO: rango(8, g.o0, g.oFin),
+    OFICINA_EFECTIVO: rango(9, g.o0, g.oFin),
   }
   const existentes = new Map((await google.getNamedRanges(ID)).map((r) => [r.name, r.namedRangeId]))
   const reqs = Object.entries(quiero).map(([name, range]) => (existentes.has(name)

@@ -125,8 +125,9 @@ test('la línea del banco: 2 SUMIFS (cobros, cheques) + 2 SUMPRODUCT (compras y 
   // lado y el lote de haberes salía del banco sin bajar la disponibilidad.
   const f = formulaNetaPosterior('$F$19')
   assert.equal(f.split('SUMIFS').length - 1, 2)
-  assert.equal(f.split('SUMPRODUCT').length - 1, 2)
+  assert.equal(f.split('SUMPRODUCT').length - 1, 3)
   assert.match(f, /JORNALES_REAL_BANCO/)
+  assert.match(f, /OFICINA_BANCO/, 'los sueldos de administración por transferencia también salen del banco')
 })
 
 test('cobros en efectivo posteriores: SÓLO Efectivo, SÓLO Cobrado, DESPUÉS del arqueo', () => {
@@ -170,10 +171,12 @@ test('la línea neta de la caja física: cobros − pagos − depósitos, guarda
   assert.ok(f.startsWith('='))
   // Sin arqueo con fecha no hay ventana: da 0 en vez de inventar plata en el cajón.
   assert.match(f, /^=IF\(NOT\(ISNUMBER\(\$F\$4\)\);0;/)
-  // 1 SUMIFS (cobros efectivo) + 3 SUMPRODUCT (pagos efectivo + depósitos + nómina en efectivo).
+  // 1 SUMIFS (cobros) + 5 SUMPRODUCT (pagos, depósitos, nómina de obra, oficina, extracciones).
   assert.equal(f.split('SUMIFS').length - 1, 1)
-  assert.equal(f.split('SUMPRODUCT').length - 1, 3)
+  assert.equal(f.split('SUMPRODUCT').length - 1, 5)
   assert.match(f, /JORNALES_REAL_ADELANTO/)
+  assert.match(f, /OFICINA_EFECTIVO/)
+  assert.match(f, /extraccion/, 'la extracción del banco CARGA el cajón: es el espejo del depósito')
   // Cobros suman, pagos y depósitos restan.
   assert.match(f, /;"Cobrado";.*"Efectivo".*\)-SUMPRODUCT/) // cobros, luego resta el pago
   assert.match(f, /\)-SUMPRODUCT/) // resta el depósito
@@ -181,10 +184,12 @@ test('la línea neta de la caja física: cobros − pagos − depósitos, guarda
 
 test('sin réplica del extracto, la caja física no resta depósitos (no restar un cero disfrazado)', () => {
   const f = formulaNetaEfectivoPosterior('$F$4', { bancoRaw: null })
-  // Siguen el pago en efectivo y la nómina en efectivo (2 SUMPRODUCT) pero YA NO el depósito: sin
-  // _BANCO_RAW no se detecta. La nómina no depende de la réplica del extracto, así que no se cae con ella.
-  assert.equal(f.split('SUMPRODUCT').length - 1, 2)
+  // Siguen pago en efectivo, nómina de obra y oficina (3 SUMPRODUCT) pero YA NO el depósito NI la
+  // extracción: los dos salen de la réplica y se omiten juntos. Dejar uno solo inflaría o vaciaría el
+  // cajón. La nómina no depende de la réplica, así que no se cae con ella.
+  assert.equal(f.split('SUMPRODUCT').length - 1, 3)
   assert.doesNotMatch(f, /deposito de efectivo/)
+  assert.doesNotMatch(f, /extraccion/)
   assert.equal(f.split('SUMIFS').length - 1, 1) // sólo cobros (efectivo)
 })
 
@@ -209,7 +214,7 @@ test('la ventana de efectivo cuelga del arqueo que se le pase: cambiar el ancla 
   // El ancla aparece en la guarda ISNUMBER y en los CUATRO términos (cobros, pagos, depósitos,
   // nómina en efectivo): al registrar un arqueo nuevo, la ventana ">" de todos se corre junta y lo
   // viejo colapsa. Si un canal quedara anclado a otra celda, este número lo delata.
-  assert.equal((nuevo.match(/\$F\$99/g) || []).length, 5)
+  assert.equal((nuevo.match(/\$F\$99/g) || []).length, 7)
 })
 
 test('la exclusividad es por construcción: efectivo y banco no comparten ninguna forma de cobro', () => {
@@ -239,9 +244,9 @@ test('la línea es NETA: un solo lado inflaría la caja para siempre', () => {
   const f = formulaNetaPosterior('$F$19')
   assert.ok(f.startsWith('='))
   assert.ok(f.includes('-SUMIFS'), 'tiene que restar los cheques debitados')
-  // 2 SUMIFS (cobros, cheques debitados) + 2 SUMPRODUCT (compras transferencia/débito + nómina banco).
+  // 2 SUMIFS (cobros, cheques) + 3 SUMPRODUCT (compras, nómina de obra y oficina, todo por banco).
   assert.equal(f.split('SUMIFS').length - 1, 2)
-  assert.equal(f.split('SUMPRODUCT').length - 1, 2)
+  assert.equal(f.split('SUMPRODUCT').length - 1, 3)
 })
 
 test('las fórmulas van en es-AR: separador ; y nunca ,', () => {

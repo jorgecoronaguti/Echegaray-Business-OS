@@ -424,3 +424,49 @@ test('la alerta del arqueo apunta a la celda REAL donde se carga la fecha', () =
   const monto = celda(g, filaDe(g, /falta la fecha del arqueo/i), 2)
   assert.match(monto, new RegExp(`\\$F\\$${fArqueo}<>""`), 'tiene que mirar la fecha de la fila del arqueo, no una fila fija')
 })
+
+
+// ═══ LA NÓMINA COMPLETA: OFICINA Y LA EXTRACCIÓN (01/08) ═══
+//
+// El dueño: "¿ese es el valor que se refleja en cash flow y por ende lo que se debería restar en caja
+// cada vez que se haya pagado?". Era no: OFICINA_* lo consumía sólo el CALENDARIO, así que un sueldo
+// de administración pagado no bajaba ninguna disponibilidad. Y la caja física sólo sabía BAJAR hacia
+// el banco (depósito) y nunca subir desde él (extracción), una asimetría que sólo puede dar de menos.
+
+test('la oficina DESCARGA los dos canales, cada uno del suyo', () => {
+  const g = construir()
+  const bco = celda(g, filaDe(g, /sueldos de administración por transferencia/i), 2)
+  assert.match(bco, /OFICINA_BANCO/)
+  assert.ok(!bco.includes('OFICINA_EFECTIVO'), 'lo que salió en billetes no puede salir también del banco')
+  const efvo = celda(g, filaDe(g, /sueldos de administración en efectivo/i), 2)
+  assert.match(efvo, /OFICINA_EFECTIVO/)
+  assert.ok(!efvo.includes('OFICINA_BANCO'))
+  assert.match(efvo, /^=IF\(NOT\(ISNUMBER\(/, 'guardada por el arqueo como el resto del desglose')
+})
+
+test('la extracción SUMA al cajón — es el espejo del depósito, que resta', () => {
+  const g = construir()
+  const f = filaDe(g, /extraído del banco después del arqueo/i)
+  assert.ok(f > 0)
+  const c = celda(g, f, 2)
+  assert.match(c, /extraccion/)
+  assert.ok(!/;-\(/.test(c), 'la extracción CARGA la caja: no lleva signo negativo')
+  assert.ok(vacia(celda(g, f, 4)), 'el desglose no aporta pesos')
+})
+
+test('el canal no declarado se NOMBRA, no se adivina', () => {
+  const g = construir()
+  const f = filaDe(g, /sin declarar por qué canal/i)
+  assert.ok(f > 0, 'tiene que estar en el bloque LO QUE NO CIERRA')
+  const monto = celda(g, f, 2)
+  assert.match(monto, /OFICINA_PAGADO/)
+  assert.match(monto, /N\(OFICINA_BANCO\)\+N\(OFICINA_EFECTIVO\)=0/, 'sólo los meses SIN canal')
+  // Y no se reparte mitad y mitad porque suele ser así: eso sería fabricar el dato.
+  assert.ok(!/0[,.]5|\/2/.test(monto))
+})
+
+test('los dos netos incorporan la oficina', () => {
+  const g = construir()
+  assert.match(celda(g, filaDe(g, /^Movimientos de efectivo posteriores al arqueo/), 2), /OFICINA_EFECTIVO/)
+  assert.match(celda(g, filaDe(g, /^Movimientos posteriores al corte del extracto/), 2), /OFICINA_BANCO/)
+})
