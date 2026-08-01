@@ -140,14 +140,30 @@ El rendimiento cae a medida que la ventana se llena. Se administra activamente:
 - **Después de DOS correcciones fallidas sobre el mismo problema, parar.** El contexto ya está
   contaminado de intentos que no funcionaron. `/clear` y reformular incorporando lo aprendido.
 
-## 2. Explorar → planificar → implementar → confirmar
+## 2. Todo trabajo se hace en un worktree
+
+Nunca sobre el árbol principal del dueño. Él trabaja ahí, tiene cambios sin commitear y una rama en
+curso: un `git checkout` o un archivo a medio escribir en ese árbol le pisa el día.
+
+```bash
+git worktree add -b <rama> .claude/worktrees/<nombre> <base>
+git merge main    # PRIMERO — el worktree nace del commit inicial de la sesión, no de main vivo
+```
+
+Dos excepciones, y sólo dos: **la configuración de `.claude/`** (es lo que Claude Code lee de verdad)
+y **escribir en el Sheet real** — desde un worktree eso ya borró una pestaña entera, porque la guarda
+no encontró la base que esperaba y falló cerrada.
+
+El worktree temporal se elimina al terminar. No se dejan ramas permanentes dando vueltas.
+
+## 3. Explorar → planificar → implementar → confirmar
 
 Saltar a codificar produce código que resuelve el problema equivocado.
 
 Plan mode cuando el cambio toca varios archivos, cuando el código es desconocido o cuando no está
 claro el enfoque. **Si el diff se puede describir en una oración, no hay nada que planificar.**
 
-## 3. Toda tarea necesita una verificación EJECUTABLE
+## 4. Toda tarea necesita una verificación EJECUTABLE
 
 Sin algo que devuelva verde o rojo, "parece hecho" es la única señal disponible — y el humano se
 convierte en el bucle de verificación.
@@ -160,7 +176,7 @@ convierte en el bucle de verificación.
 - Los hooks de `settings.json` son la puerta determinística: lo que tiene que pasar siempre no se
   pide por instrucción, se enforcea con un hook.
 
-## 4. Nadie cierra su propio trabajo
+## 5. Nadie cierra su propio trabajo
 
 Ya está en el `CLAUDE.md` raíz (PRINCIPIO DE CIERRE) y acá se vuelve operativo: **antes de dar algo
 por terminado, lo revisa un subagente con contexto nuevo**, que ve el diff y los criterios pero no
@@ -170,13 +186,13 @@ Advertencia que viene con esto: un revisor al que se le pide encontrar brechas *
 alguna**. Se corrige lo que afecta corrección o requisitos declarados; perseguir cada hallazgo lleva
 a sobre-ingeniería — capas de abstracción, código defensivo y tests para casos que no pueden pasar.
 
-## 5. Los pedidos se hacen específicos
+## 6. Los pedidos se hacen específicos
 
 Archivo concreto, síntoma concreto, y qué cuenta como "corregido". "Arreglá el login" contra "el
 login falla al vencer la sesión, mirá `src/auth/`, escribí primero el test que lo reproduce".
 Cuando el patrón ya existe en el repo, se señala el archivo de ejemplo en vez de describirlo.
 
-## 6. Cada capacidad en su lugar
+## 7. Cada capacidad en su lugar
 
 | Capa | Para qué | Se carga |
 |---|---|---|

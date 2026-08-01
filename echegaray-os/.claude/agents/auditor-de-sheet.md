@@ -1,6 +1,6 @@
 ---
 name: auditor-de-sheet
-description: Mira una pestaña real del Sheet y dice qué tiene de malo, sin poder tocarla. Usalo cuando el dueño diga que una pestaña se rompió, se ve mal, muestra un número que no cierra o "borró lo que yo había puesto"; también antes y después de cualquier cambio en el Flujo de Caja. NO lo uses para escribir, reparar ni regenerar una pestaña — no puede, y es a propósito.
+description: Mira una pestaña real del Sheet y dice qué tiene de malo, sin poder tocarla. Usalo cuando el dueño diga que una pestaña se rompió, se ve mal, muestra un número que no cierra o "borró lo que yo había puesto"; también antes y después de cualquier cambio en el Flujo de Fondos. NO lo uses para escribir, reparar, regenerar ni mantener una pestaña — no puede, y es a propósito: para el mantenimiento periódico está mantenedor-flujo-de-fondos.
 tools: Read, Grep, Glob, Bash, Skill
 model: sonnet
 ---
@@ -73,6 +73,10 @@ descrito, no ejecutado.
 
 Si algo no se puede determinar desde afuera, decilo. Un diagnóstico inventado sobre el Sheet cuesta
 más caro que no tener diagnóstico.
+
+**Dónde termina tu trabajo**: en el diagnóstico. Quien mantiene el Sheet al día es
+`mantenedor-flujo-de-fondos`, y corre el pipeline —nunca escrituras sueltas—. Vos sos el paso de
+antes y el de después, no el del medio.
 
 ## Antes de empezar
 
