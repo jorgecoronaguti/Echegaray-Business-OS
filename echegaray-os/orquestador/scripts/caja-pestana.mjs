@@ -79,6 +79,21 @@ const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1
 const PESTAÑA = 'Caja'
 const DRY = process.argv.includes('--dry')
 
+// ═══ EL ARQUEO VIVE EN SU PROPIO BLOQUE, Y SE CITA POR NOMBRE (01/08) ═══
+//
+// Antes el ancla era `$F$7` — una celda del bloque de saldos. Citarla por posición ataba las seis
+// fórmulas del efectivo a que esa fila nunca se moviera; con el nombre, se mueve el bloque y las
+// fórmulas siguen apuntando bien. Es la misma razón por la que la nómina se cita por rango con
+// nombre desde el 31/07.
+const ARQ_ARS = 'CAJA_ARQUEO_ARS'
+const ARQ_ARS_FECHA = 'CAJA_ARQUEO_ARS_FECHA'
+const ARQ_USD = 'CAJA_ARQUEO_USD'
+const ARQ_USD_FECHA = 'CAJA_ARQUEO_USD_FECHA'
+
+/** La valuación estándar de una fila de cuenta: importe en su moneda × tipo de cambio. */
+const saldoEnPesos = (f) => `=IF(C${f}="";"";C${f}*IF(D${f}="";1;D${f}))`
+
+
 // A concepto · B moneda · C importe en origen · D tipo de cambio · E importe en pesos ·
 // F fecha · G antigüedad · H origen del dato · I declarado por
 const ANCHO = 8
@@ -172,11 +187,20 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // "$581" con signo de peso se lee como 581 pesos: es un error de lectura de tres órdenes de
   // magnitud, y sólo se ve mirando la pantalla.
   const usd = []
+  // ═══ EL CENTINELA `AJENA`: UNA CELDA QUE NO ES MÍA (01/08) ═══
+  //
+  // `push` convierte toda celda vacía en el centinela VACIO, que significa "es mía y va vacía" — y por
+  // eso la fusión la LIMPIA. Perfecto para el 99% de la grilla y catastrófico para una celda de CARGA:
+  // las dos celdas del arqueo declarado salían con VACIO y le habrían borrado el conteo al dueño en la
+  // primera corrida. Lo cazó el render en frío, no un test: el test decía `vacia()` y VACIO pasa por
+  // vacía. Ahora `AJENA` marca las celdas que el generador deja explícitamente en manos de una persona;
+  // se convierten en `undefined`, que la fusión preserva.
+  const AJENA = Symbol('celda del dueño: no la escribo ni la borro')
   const push = (c = []) => {
     // Se rellena Y SE TRUNCA a lo que mide la tabla: al sacar la columna "Declarado por" quedaron
     // filas de nueve elementos contra una grilla de ocho, y el batch entero falla sin escribir nada.
-    const r = [...c].map((x) => (x === '' || x === undefined || x === null ? VACIO : x))
-    while (r.length < ANCHO) r.push(VACIO)
+    const r = [...c].map((x) => (x === AJENA ? undefined : (x === '' || x === undefined || x === null ? VACIO : x)))
+    while (r.length < ANCHO) r.push(r.__ajena ? undefined : VACIO)
     r.length = ANCHO
     filas.push(r)
     if (r[1] === 'USD') usd.push(filas.length)
@@ -352,7 +376,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // lo anterior ya está DENTRO del arqueo. Un arqueo nuevo, con fecha más reciente, colapsa lo viejo.
   const fPostEf = filas.length + 1
   push(['Movimientos de efectivo posteriores al arqueo', 'ARS',
-    formulaNetaEfectivoPosterior(`$F$${d0}`, { bancoRaw: refs.bancoRaw }),
+    formulaNetaEfectivoPosterior(ARQ_ARS_FECHA, { bancoRaw: refs.bancoRaw }),
     // ═══ ESTA FILA YA NO APORTA VALOR EN PESOS (31/07) ═══
     //
     // El dueño: "se realiza una cobranza marcada en esa pestaña como en 'efectivo', ese valor tiene q
@@ -368,7 +392,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
     // LA COLUMNA "ANTIGÜEDAD" MIDE 96px: "⚠ cargá un arqueo con fecha" entraba cortado y se leía
     // "gá un arqueo cor", que parece basura y hace desconfiar de toda la fila. El aviso va CORTO acá
     // —cabe— y la instrucción completa vive en la nota de la fila, como el resto de esta pestaña.
-    `=IF($F$${d0}="";"⚠ sin arqueo";IF(${C_IMP}${fPostEf}=0;"sin movimientos";"vivo"))`,
+    `=IF(${ARQ_ARS_FECHA}="";"⚠ sin arqueo";IF(${C_IMP}${fPostEf}=0;"sin movimientos";"vivo"))`,
     `Ya está sumado arriba, en "Caja en pesos" — acá se muestra abierto, no se cuenta de nuevo. ${IDENTIDAD}. Cobros en efectivo (Cobranzas, estado Cobrado) menos pagos en efectivo (Compras, Pagado/Efectivo) menos depósitos de efectivo al banco. Sin arqueo con fecha no hay ventana y da 0.`,
     'Se calcula solo'])
   // LOS TRES SUMANDOS, UNO POR UNO. Un total solo no se puede discutir: $19,7 millones de efectivo en
@@ -376,27 +400,27 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // neta (se importan de la lib, no se copian), así que el desglose no puede decir otra cosa que el
   // total. Van con el valor en la columna de origen y SIN valor en pesos: se ven y no se suman.
   push(['   · (+) cobrado en efectivo después del arqueo', 'ARS',
-    celdaCobrosEfectivo(`$F$${d0}`), '', '', '', '',
+    celdaCobrosEfectivo(ARQ_ARS_FECHA), '', '', '', '',
     'Cobranzas: forma de cobro "Efectivo" Y estado "Cobrado", con fecha de cobro posterior al arqueo. Un proyectado no es plata que esté en el cajón.', ''])
   push(['   · (−) pagado en efectivo después del arqueo', 'ARS',
-    celdaPagosEfectivo(`$F$${d0}`), '', '', '', '',
+    celdaPagosEfectivo(ARQ_ARS_FECHA), '', '', '', '',
     'Compras: estado "Pagado" y tipo de pago "Efectivo", por su Fecha de caja. Es el billete que salió del cajón sin pasar por el banco — sin esta resta la caja crecería para siempre.', ''])
   // LA NÓMINA EN EFECTIVO (01/08). Un jornal no es una compra, así que la fila de arriba —que mira
   // sólo Compras— nunca lo veía: el 50% en efectivo de la quincena salía del cajón y la caja física
   // no bajaba un peso. Sale de las columnas Adelanto y Total recibo de Jornales por Quincena, que ya
   // separan el canal y ya se controlan contra el TOTAL de la quincena.
   push(['   · (−) jornales pagados en efectivo después del arqueo', 'ARS',
-    celdaJornalesEfectivo(`$F$${d0}`), '', '', '', '',
+    celdaJornalesEfectivo(ARQ_ARS_FECHA), '', '', '', '',
     'Jornales por Quincena, columnas Adelanto y Total recibo: lo que se pagó de la nómina en billetes, de las quincenas con fecha en "Pagado el" posterior al arqueo.', ''])
   push(['   · (−) sueldos de administración en efectivo después del arqueo', 'ARS',
-    celdaOficinaEfectivo(`$F$${d0}`), '', '', '', '',
+    celdaOficinaEfectivo(ARQ_ARS_FECHA), '', '', '', '',
     'Jornales por Quincena, bloque Oficina, columna Efectivo: los sueldos de administración pagados en billetes, por su fecha de pago.', ''])
   push(['   · (+) extraído del banco después del arqueo', 'ARS',
-    celdaExtraccionesEfectivo(`$F$${d0}`), '', '', '', '',
+    celdaExtraccionesEfectivo(ARQ_ARS_FECHA), '', '', '', '',
     'Réplica del extracto: los débitos cuyo concepto dice "extracción" o "retiro de efectivo". Es el espejo del depósito — el billete deja la cuenta y entra al cajón, así que acá SUMA. Hoy el extracto no tiene ninguno.', ''])
   if (refs.bancoRaw) {
     push(['   · (−) depositado en el banco después del arqueo', 'ARS',
-      celdaDepositosEfectivo(`$F$${d0}`), '', '', '', '',
+      celdaDepositosEfectivo(ARQ_ARS_FECHA), '', '', '', '',
       'Réplica del extracto: los créditos cuyo concepto dice "depósito de efectivo". El billete dejó el cajón y entró a la cuenta: baja acá y sube en el saldo del banco.', ''])
   }
   const d1 = filas.length
@@ -411,9 +435,17 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // definitiva. Un conteo físico no se pisa con una suma automática. Lo que cambia es el SALDO EN
   // PESOS: pasa de ser "el importe de al lado" a ser "el arqueo más lo que se movió desde entonces",
   // que es lo que de verdad hay en el cajón.
-  filas[d0 - 1][4] = formulaCajaEnPesos({
-    arqueo: `$${C_IMP}$${d0}`, tc: `$${C_TC}$${d0}`, neta: `$${C_IMP}$${fPostEf}`,
-  })
+  // ═══ LAS FILAS DE CAJA MUESTRAN LO QUE HAY HOY (01/08) ═══
+  //
+  // Antes: columna C = el arqueo (0) y columna E = el saldo real. Una fila que se contradice a sí
+  // misma. Ahora C es el saldo vivo EN SU MONEDA —arqueo declarado más lo que se movió desde
+  // entonces— y E lo valúa igual que cualquier otra cuenta. La fecha es la de HOY y la antigüedad
+  // dice "vivo", porque el número se recalcula solo: mostrar la fecha del arqueo ahí hacía leer
+  // como atrasado un dato que estaba al día.
+  filas[d0 - 1][2] = `=N(${ARQ_ARS})+$${C_IMP}$${fPostEf}`
+  filas[d0 - 1][5] = '=TODAY()'
+  filas[d0 - 1][6] = `=IF(N(${C_IMP}${d0})=0;"sin movimientos";"vivo")`
+  filas[d0 - 1][4] = saldoEnPesos(d0)
   // LA COLUMNA DE ORIGEN SÓLO SE EXPLICA SI ES LA MÍA. Si el dueño escribió ahí su propio texto, manda
   // el suyo: su edición es verdad definitiva y "mejorarle" la redacción es la forma más fácil de
   // perderla. Se reemplaza únicamente el `origenSugerido` que puso este mismo generador.
@@ -427,9 +459,11 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // Sin esto, U$S 15.000 cobrados el 31/07 entraban al cajón de PESOS como $15.000.
   const dUsd = filas.findIndex((f) => /^caja en d[oó]lares/i.test(String(f?.[0] ?? '').trim())) + 1
   if (dUsd) {
-    filas[dUsd - 1][4] = `=IF(AND($${C_IMP}$${dUsd}="";${formulaCobrosUsdEfectivoPosteriores(`$F$${dUsd}`)}=0);"";`
-      + `(N($${C_IMP}$${dUsd})+IF(NOT(ISNUMBER($F$${dUsd}));0;${formulaCobrosUsdEfectivoPosteriores(`$F$${dUsd}`)}))`
-      + `*IF($${C_TC}$${dUsd}="";1;$${C_TC}$${dUsd}))`
+    filas[dUsd - 1][2] = `=N(${ARQ_USD})+IF(NOT(ISNUMBER(${ARQ_USD_FECHA}));0;${formulaCobrosUsdEfectivoPosteriores(ARQ_USD_FECHA)})`
+    filas[dUsd - 1][3] = `=IF(ISNUMBER(C${dUsd});${RANGO_TC};"")`
+    filas[dUsd - 1][4] = saldoEnPesos(dUsd)
+    filas[dUsd - 1][5] = '=TODAY()'
+    filas[dUsd - 1][6] = `=IF(N(C${dUsd})=0;"sin movimientos";"vivo")`
   }
 
   // PERCIBIDO: el total excluye los Valores a depositar (echeq en custodia, sin acreditar). No son
@@ -1015,7 +1049,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // Lo que esta alerta necesita es el CONTEO FÍSICO puro, que vive en la columna de origen (C) y lo
   // tipea el dueño. Se lee de ahí, y el rótulo dice la fecha del arqueo para que no se compare a ciegas.
   const fCajaFisica = push([`Arqueo declarado de caja física`, '', '', '',
-    `=N($${C_IMP}$${d0})`, `=$F$${d0}`, '', '',
+    `=N(${ARQ_ARS})`, `=${ARQ_ARS_FECHA}`, '', '',
     'El conteo físico que el dueño tipeó en la primera fila del bloque 1, a SU fecha (columna de al lado). NO incluye los movimientos posteriores al arqueo: esta alerta mide la ventana del extracto, y mezclar las dos ventanas daría un faltante falso.'])
   const fSinExpl = push(['⇒ EFECTIVO SIN EXPLICAR', '', '', '',
     `=${C_PESOS}${fEfCobrado}-${C_PESOS}${fDup}-${C_PESOS}${fEfDepos}-${C_PESOS}${fCajaFisica}`, '', '', '',
@@ -1096,6 +1130,27 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   push(['· El tipo de cambio se actualiza solo con la cotización del día. Si operás a otro (MEP, tarjeta), cargalo en la fila "Dólar declarado" y ése pasa a mandar.'])
   push(['· Todo lo demás de esta pestaña se recalcula solo cada 2 horas junto con el resto del archivo.'])
 
+  // ═══ 4.10 · DONDE VIVE EL ARQUEO (01/08) ═══
+  //
+  // El dueño, con la pantalla delante: "mirá cómo me has dejado caja con cosas en cero y con fechas
+  // desactualizadas". El bloque 1 mostraba en la columna "Saldo en moneda de origen" el ARQUEO (0)
+  // mientras la columna de pesos mostraba el saldo real ($15,19M): la fila decía cero y "2 días"
+  // teniendo quince millones vivos. La causa era de diseño, no de dato — la celda de CARGA ocupaba la
+  // celda de RESULTADO. En las filas de banco esa columna es el saldo; sólo en las de caja era un input.
+  //
+  // Acá el conteo físico es lo que es: un dato declarado, con su fecha, en su propio bloque. Arriba
+  // queda lo que hay HOY, que es lo que se mira para decidir.
+  //
+  // NO SE EMITEN LAS CELDAS DE VALOR (C y F): las filas llevan sólo el rótulo y la moneda, así la
+  // fusión preserva lo que el dueño haya contado y el generador no se lo pisa en la próxima corrida.
+  push([])
+  const fArq0 = push(['4.10 · ARQUEO DECLARADO DE LA CAJA FÍSICA'])
+  push(['El conteo físico del cajón y el día en que se hizo. Es el ANCLA: de esa fecha en adelante la caja se mueve sola con las cobranzas y los pagos en efectivo. Cargá acá el importe y la fecha; arriba se muestra lo que hay hoy.'])
+  const arq = (rot, mon) => [rot, mon, AJENA, AJENA, AJENA, AJENA, AJENA, AJENA]
+  const fArqArs = push(arq('Caja en pesos — contado', 'ARS'))
+  const fArqUsd = push(arq('Caja en dólares — contado', 'USD'))
+  const fArq1 = filas.length
+
   // El panel de arriba se resuelve acá, cuando ya se sabe en qué fila quedó cada total. Son
   // referencias, no copias: si el detalle cambia, el titular cambia con él.
   const PANEL = {
@@ -1113,7 +1168,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
     // El problema no es un monto: es que SIN ANCLA no hay ventana, y cualquier monto que se muestre se
     // va a leer como saldo. Así que la alerta nombra el problema y da la instrucción; la plata aparece
     // sola, y bien, en cuanto la fecha esté cargada.
-    '@SINARQUEO': `=IF($F$${d0}<>"";0;0)`,
+    '@SINARQUEO': `=IF(${ARQ_ARS_FECHA}<>"";0;0)`,
     '@OFISINCANAL': `=${formulaOficinaSinCanal(`$F$${fBancoPesos || d0}`)}`,
     // Si el banco no reporta ningún echeq en custodia, la cartera es cero y hay que decirlo con un
     // cero: un rango vacío daría #REF! y un total en blanco se leería como "falta cargar".
@@ -1160,14 +1215,14 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
     '@ORIGEN_ECHEQ': `=CONCATENATE("Endosados a un proveedor: son un pago hecho, no un ingreso futuro. Corregir en Cobranzas.   ▸ SALE DE LA FILA ${gDif}: lo que Cobranzas dice que hay en echeq (";TEXT(${C_IMP}${gControl};"$#,##0");") menos lo que el banco tiene en custodia (";TEXT(${C_IMP}${fValores};"$#,##0");")")`,
     '@ORIGEN_CONC': `=CONCATENATE("O faltan movimientos por cargar, o el saldo inicial del cuadro quedó viejo. Mientras no cierre, la proyección de caja no se puede usar para decidir.   ▸ SALE DE LA FILA ${fDifConc}: la plata que hay hoy (";TEXT(${C_PESOS}${fDecl};"$#,##0");") menos la que el Cash Flow Mensual proyecta para esa fecha (";TEXT(${C_PESOS}${fProy};"$#,##0");")")`,
     '@ORIGEN_OFICANAL': `=IF(${C_IMP}${fAlerta0 + 4}=0;"";"Cargá Banco y Efectivo del mes en el bloque Oficina de Jornales por Quincena y este importe baja solo de la disponibilidad que corresponda.   ▸ Mientras el canal no esté declarado NO se resta de ninguna: no se puede saber si salió de la cuenta o del cajón, y repartirlo mitad y mitad porque suele ser así sería inventar el dato.")`,
-    '@ORIGEN_ARQUEO': `=IF($F$${d0}<>"";"";CONCATENATE("Cargá la fecha del arqueo en F${d0} —la del último conteo físico— y todo el efectivo entra solo al total: cobros en efectivo, menos pagos en efectivo, menos depósitos al banco, menos jornales pagados en billetes.   ▸ Sin esa fecha la fila de movimientos de efectivo devuelve 0 POR DISEÑO: sin ancla no hay ventana que acotar, y un cero por falta de dato se lee igual que un cero medido. Acá no se muestra un monto a propósito: sin ancla, cualquier cifra se leería como un saldo de caja y no lo es."))`,
+    '@ORIGEN_ARQUEO': `=IF(${ARQ_ARS_FECHA}<>"";"";CONCATENATE("Cargá el conteo y su fecha en el bloque 4.10 —ARQUEO DECLARADO DE LA CAJA FÍSICA— y todo el efectivo entra solo al total: cobros en efectivo, menos pagos en efectivo, menos depósitos al banco, menos jornales pagados en billetes.   ▸ Sin esa fecha la fila de movimientos de efectivo devuelve 0 POR DISEÑO: sin ancla no hay ventana que acotar, y un cero por falta de dato se lee igual que un cero medido. Acá no se muestra un monto a propósito: sin ancla, cualquier cifra se leería como un saldo de caja y no lo es."))`,
     '@ORIGEN_EFVO': `=CONCATENATE("Puede tener explicación (un depósito posterior al corte, un pago en efectivo sin pasar por el banco), pero no puede quedar sin mirar.   ▸ SALE DE LA FILA ${fSinExpl}, en el bloque 7: el efectivo que Cobranzas dice cobrado, menos lo que el extracto muestra depositado, menos lo que hay en la caja física.")`,
   }
   for (const f of filas) f.forEach((c, j) => { if (typeof c === 'string' && PANEL[c]) f[j] = PANEL[c] })
 
   // El grupo colapsable de controles va desde su encabezado hasta la última fila del cuadro.
   const fCtrl1 = filas.length
-  return { filas, fRespuesta, cal0, calFin, calTotal, gCanario, n0, n1, usd, fTitulos, fCifras, fAire, fDias, fRitmo, fAlerta0, fAlerta1, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, fMTar, fMAcu, fMAire, fMargenTit: fMTar - 1, fCtrl0, fCtrl1, amarillas, fDetCob, fDetDep }
+  return { filas, fRespuesta, cal0, calFin, calTotal, gCanario, n0, n1, usd, fTitulos, fCifras, fAire, fDias, fRitmo, fAlerta0, fAlerta1, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, fMTar, fMAcu, fMAire, fMargenTit: fMTar - 1, fCtrl0, fCtrl1, amarillas, fDetCob, fDetDep, fArq0, fArq1, fArqArs, fArqUsd }
 }
 
 /**

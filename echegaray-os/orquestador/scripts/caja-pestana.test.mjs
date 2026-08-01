@@ -41,20 +41,35 @@ test('"Caja en pesos" es la PRIMERA fila del bloque, y su saldo en pesos suma el
   const fNeto = filaDe(g, /^movimientos de efectivo posteriores al arqueo$/i)
   assert.ok(fNeto > 0, 'la línea del neto tiene que existir')
 
+  // DESDE EL 01/08 el saldo vivo está en la columna de ORIGEN (C), no en la de pesos: la fila se
+  // comporta como cualquier cuenta —importe en su moneda × tipo de cambio— en vez de mostrar el
+  // arqueo en cero al lado de quince millones.
+  const origen = celda(g, fCaja, 2)
+  assert.match(origen, /^=/, '"Caja en pesos" tiene que ser una FÓRMULA, no un número pegado')
+  assert.ok(origen.includes(`$C$${fNeto}`),
+    `el saldo tiene que sumar la celda del neto ($C$${fNeto}); dice: ${origen}`)
+  assert.match(origen, /CAJA_ARQUEO_ARS/, 'y partir del arqueo declarado, citado por nombre')
   const pesos = celda(g, fCaja, 4)
-  assert.match(pesos, /^=/, '"Caja en pesos" tiene que ser una FÓRMULA, no un número pegado')
-  assert.ok(pesos.includes(`$C$${fNeto}`),
-    `el saldo en pesos del arqueo tiene que sumar la celda del neto ($C$${fNeto}); dice: ${pesos}`)
-  assert.ok(pesos.includes(`$C$${fCaja}`), 'y tiene que seguir partiendo del arqueo que el dueño tipea')
+  assert.match(pesos, new RegExp(`C${fCaja}\\*IF\\(D${fCaja}`), 'y valuarse como cualquier otra cuenta')
 })
 
-test('el ARQUEO (columna de origen) NO se toca: sigue siendo la celda de carga del dueño', () => {
+test('el ARQUEO no se pisa: sus celdas ni siquiera se emiten, así la fusión preserva el conteo', () => {
   const g = construir()
-  const fCaja = filaDe(g, /^caja en pesos$/i)
-  // Sin nada cargado previamente, la celda del arqueo queda VACÍA para que él la complete. Si acá
-  // apareciera una fórmula, el conteo físico habría quedado pisado por una suma automática.
-  const arqueo = celda(g, fCaja, 2)
-  assert.doesNotMatch(arqueo, /^=/, 'la columna de origen del arqueo NO puede ser una fórmula: la tipea el dueño')
+  // Desde el 01/08 el conteo físico vive en su propio bloque (4.10). El generador escribe el rótulo
+  // y la moneda, y NO emite el importe ni la fecha: una celda ausente la preserva la fusión, mientras
+  // que el centinela VACIO la borraría. Es la diferencia entre "esta celda es mía y va vacía" y "esta
+  // celda es tuya y no la toco".
+  for (const f of [g.fArqArs, g.fArqUsd]) {
+    assert.ok(f > 0, 'el bloque del arqueo declarado tiene que existir')
+    // NO ALCANZA CON `vacia()`: el centinela VACIO pasa por vacío y significa "es mía y va vacía",
+    // o sea que la fusión la LIMPIA. La primera versión de este test decía vacia() y dejó pasar un
+    // generador que le borraba el conteo al dueño en la primera corrida — lo cazó el render en frío.
+    // La celda de carga tiene que ser `undefined`: ausente, que es lo único que la fusión preserva.
+    for (const col of [2, 5]) {
+      assert.equal(g.filas[f - 1][col], undefined,
+        `la celda ${col} del arqueo tiene que estar AUSENTE (ni valor ni centinela VACIO): la carga el dueño`)
+    }
+  }
 })
 
 test('EL ANTI-DOBLE-CONTEO: la fila del neto no aporta valor en pesos', () => {
@@ -80,7 +95,9 @@ test('exactamente UNA fila del bloque aporta el efectivo: ninguna otra referenci
   const fNeto = filaDe(g, /^movimientos de efectivo posteriores al arqueo$/i)
   // Cuántas celdas de la COLUMNA DE PESOS, dentro del bloque, mencionan la celda del neto.
   let n = 0
-  for (let f = g.d0; f <= g.d1; f++) if (celda(g, f, 4).includes(`$C$${fNeto}`) || celda(g, f, 4) === `=C${fNeto}`) n++
+  for (let f = g.d0; f <= g.d1; f++) {
+    for (const col of [2, 4]) if (celda(g, f, col).includes(`$C$${fNeto}`) || celda(g, f, col) === `=C${fNeto}`) n++
+  }
   assert.equal(n, 1, 'el neto de efectivo tiene que entrar al total por una sola puerta')
 })
 
@@ -105,7 +122,9 @@ test('la alerta 4.6 lee el ARQUEO CRUDO, no el saldo en pesos (que ahora mezcla 
   const fArq = filaDe(g, /^arqueo declarado de caja física$/i)
   assert.ok(fArq > 0, 'la fila del arqueo declarado tiene que estar en el bloque de trazabilidad')
   const v = celda(g, fArq, 4)
-  assert.ok(v.includes(`$C$${g.d0}`), `tiene que leer la columna de origen (el conteo físico): ${v}`)
+  // Desde el 01/08 el conteo vive en el bloque 4.10 y se cita por nombre, no por la fila del bloque 1
+  // (que ahora muestra el saldo VIVO, con movimientos posteriores que están fuera de esta ventana).
+  assert.match(v, /CAJA_ARQUEO_ARS/, `tiene que leer el conteo físico declarado: ${v}`)
   assert.doesNotMatch(v, new RegExp(`=E${g.d0}\\b`),
     'no puede leer el saldo en pesos: desde el cambio incluye movimientos posteriores al arqueo, '
     + 'que están fuera de la ventana de esta alerta — mezclar las dos daría un faltante falso')
@@ -409,20 +428,22 @@ test('sin fecha de arqueo, la alerta dice CUÁNTO efectivo está quedando afuera
   assert.ok(f > 0, 'la alerta tiene que estar en el bloque "LO QUE NO CIERRA"')
   const monto = celda(g, f, 2)
   // Con arqueo cargado la alerta se apaga sola: existe sólo mientras existe el problema.
-  assert.match(monto, /^=IF\(\$F\$\d+<>"";0;/)
+  assert.match(monto, /^=IF\(CAJA_ARQUEO_ARS_FECHA<>"";0;/)
   // Y NO lleva monto: sin ancla, cualquier cifra se lee como saldo de caja y no lo es. Medido contra
   // el archivo real, el neto con la ventana abierta da −$47.033.903 (el acumulado del año, no un
   // saldo). El problema se nombra y se instruye; la plata aparece sola al cargar la fecha.
   assert.ok(!/'Cobranzas'!|JORNALES_REAL/.test(monto), 'la alerta no puede publicar un monto sin ancla')
   const instruccion = celda(g, f, 7)
-  assert.match(instruccion, /Cargá la fecha del arqueo/)
+  assert.match(instruccion, /bloque 4\.10|ARQUEO DECLARADO/)
 })
 
-test('la alerta del arqueo apunta a la celda REAL donde se carga la fecha', () => {
+test('la alerta del arqueo cita el ancla POR NOMBRE, no por número de fila', () => {
   const g = construir()
-  const fArqueo = filaDe(g, /^Caja en pesos/)
   const monto = celda(g, filaDe(g, /falta la fecha del arqueo/i), 2)
-  assert.match(monto, new RegExp(`\\$F\\$${fArqueo}<>""`), 'tiene que mirar la fecha de la fila del arqueo, no una fila fija')
+  // Antes decía `$F$7`. Citar el ancla por posición ataba seis fórmulas a que esa fila no se moviera
+  // nunca — y este mismo cambio la movió. Con el nombre, el bloque se puede reordenar sin romper nada.
+  assert.match(monto, /CAJA_ARQUEO_ARS_FECHA/)
+  assert.doesNotMatch(monto, /\$F\$\d+/)
 })
 
 
@@ -482,9 +503,9 @@ test('la caja en dólares existe, lleva su moneda y se valúa al tipo de cambio'
   const f = filaDe(g, /^Caja en dólares/)
   assert.ok(f > 0, 'tiene que haber una fila de caja en dólares')
   assert.equal(celda(g, f, 1), 'USD', 'la columna de moneda dice USD')
-  const pesos = celda(g, f, 4)
-  assert.match(pesos, /"USD"/, 'suma sólo los cobros marcados en dólares')
-  assert.match(pesos, /TIPO_CAMBIO_USD|\$D\$/, 'y los valúa al tipo de cambio para poder sumarlos')
+  assert.match(celda(g, f, 2), /"USD"/, 'suma sólo los cobros marcados en dólares')
+  assert.match(celda(g, f, 3), /TIPO_CAMBIO_USD/, 'y trae el tipo de cambio')
+  assert.match(celda(g, f, 4), new RegExp(`C${f}\\*IF\\(D${f}`), 'y se valúa como cualquier otra cuenta')
 })
 
 test('el cajón en PESOS ya no se come los dólares', () => {
@@ -496,7 +517,7 @@ test('el cajón en PESOS ya no se come los dólares', () => {
 test('pesos y dólares son una PARTICIÓN: ningún cobro en efectivo queda afuera ni entra dos veces', () => {
   const g = construir()
   const pesos = celda(g, filaDe(g, /^Movimientos de efectivo posteriores al arqueo/), 2)
-  const usd = celda(g, filaDe(g, /^Caja en dólares/), 4)
+  const usd = celda(g, filaDe(g, /^Caja en dólares/), 2)
   assert.match(pesos, /"<>USD"/)
   assert.match(usd, /;"USD";/)
 })
