@@ -183,6 +183,10 @@ export function formulaComprasPagadasPosteriores(corte, c = CMP) {
 export function formulaNetaPosterior(corte) {
   return `=${formulaCobrosPosteriores(corte)}-${formulaChequesDebitadosPosteriores(corte)}`
     + `-(${formulaComprasPagadasPosteriores(corte)})`
+    // El lote de haberes que salió por transferencia después del corte (01/08). Es exactamente la
+    // misma clase de salida que un cheque debitado: la plata ya no está y el extracto todavía no lo
+    // muestra. Ver el bloque de la nómina, al final de este archivo.
+    + `-(${formulaJornalesBancoPosteriores(corte)})`
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -283,7 +287,10 @@ export function formulaNetaEfectivoPosterior(arqueo, { bancoRaw = DEP.hoja } = {
     ? `-${formulaDepositosEfectivoPosteriores(arqueo, { ...DEP, hoja: bancoRaw })}`
     : ''
   return `=IF(NOT(ISNUMBER(${arqueo}));0;`
-    + `${formulaCobrosEfectivoPosteriores(arqueo)}-${formulaComprasEfectivoPosteriores(arqueo)}${depositos})`
+    + `${formulaCobrosEfectivoPosteriores(arqueo)}-${formulaComprasEfectivoPosteriores(arqueo)}${depositos}`
+    // Los jornales pagados en efectivo después del arqueo (01/08): adelantos y contra recibo. Es el
+    // billete que sale del cajón para la nómina, que hasta hoy no bajaba de ningún lado.
+    + `-${formulaJornalesEfectivoPosteriores(arqueo)})`
 }
 
 /**
@@ -334,4 +341,73 @@ export function formulaUltimoSaldo(hoja = '_BANCO_RAW', col = 'D', desde = 4) {
  */
 export function formulaFechaCorte(hoja = '_BANCO_RAW', col = 'A', desde = 4) {
   return `=MAX(${hoja}!$${col}$${desde}:$${col})`
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA NÓMINA PAGADA — EL TERCER CANAL QUE FALTABA (01/08)
+//
+// EL DUEÑO, describiendo el 31/07: "se realizaron cobranzas en efectivo, compras y pago de jornales
+// en efectivo al 50%, el otro 50% fue por transferencia bancaria".
+//
+// LO QUE ESTABA MAL. La partición por canal —banco / caja física / cartera— cubría los COBROS y las
+// COMPRAS, y dejaba afuera la NÓMINA, que es la salida de plata más grande y más regular que tiene la
+// empresa. Medido sobre las fórmulas de CAJA al 31/07:
+//
+//   · el efectivo de la nómina no bajaba la caja física — la fila "(−) pagado en efectivo" mira
+//     SÓLO `Compras` con tipo de pago Efectivo, y un jornal no es una compra;
+//   · la transferencia de la nómina no bajaba el banco — la fila "(−) pagos debitados después del
+//     corte" mira SÓLO Cheques Emitidos y Compras.
+//
+// Los jornales aparecían únicamente en el CALENDARIO (el bloque 2, la proyección), y con el filtro
+// `PAGADO=""`: al registrarse el pago salían de la proyección y no entraban en ninguna disponibilidad.
+// La plata se pagaba y no salía de ningún lado. Cero #ERROR, cero aviso — el patrón de siempre.
+//
+// LO QUE YA ESTABA BIEN, Y POR ESO ESTO ES BARATO. La pestaña `Jornales por Quincena` ya separa las
+// tres formas de pago por quincena —Banco (H), Adelanto en efectivo (I), Total recibo en efectivo (J)—
+// y ya tiene su propio control de que las tres suman el TOTAL. El 50/50 del dueño ya estaba registrado.
+// Lo único que faltaba era que CAJA leyera esas columnas. No se inventa un dato nuevo: se consume el
+// que ya existe, por rango con nombre, que es como esta pestaña cita a las otras.
+//
+// LA VENTANA ES "PAGADO EL", NO "SE PAGA EL". `JORNALES_REAL_PAGO` es la fecha PREVISTA y la usa la
+// proyección; para una disponibilidad hace falta el HECHO, que es `JORNALES_REAL_PAGADO` — la fecha
+// que se completa cuando el pago ocurrió. ISNUMBER además descarta las quincenas sin pagar (celda
+// vacía), que compararían como texto y entrarían todas.
+
+/** Los rangos con nombre que publica `jornales-pestana.mjs`. Se citan por nombre, nunca por fila. */
+export const JOR = {
+  pagado: 'JORNALES_REAL_PAGADO',
+  banco: 'JORNALES_REAL_BANCO',
+  adelanto: 'JORNALES_REAL_ADELANTO',
+  recibo: 'JORNALES_REAL_RECIBO',
+}
+
+/** La ventana común: quincenas con pago REGISTRADO y posterior al corte/arqueo. */
+const ventanaPagada = (corte, j) => `ISNUMBER(${j.pagado})*(${j.pagado}>${corte})`
+
+/**
+ * NÚCLEO PURO: la nómina pagada en EFECTIVO después del arqueo. DESCARGA de la caja física.
+ * Adelantos (antes del cierre de la quincena) + lo entregado contra recibo: las dos formas en las que
+ * el billete sale del cajón. N() sobre cada importe porque SUMPRODUCT no tolera texto en la columna
+ * que suma — una celda con "—" o vacía tumbaría la fórmula entera.
+ * @param {string} arqueo referencia a la celda con la fecha del arqueo
+ * @returns {string} fórmula, separador es-AR
+ */
+export function formulaJornalesEfectivoPosteriores(arqueo, j = JOR) {
+  return `SUMPRODUCT(${ventanaPagada(arqueo, j)}*(N(${j.adelanto})+N(${j.recibo})))`
+}
+
+/**
+ * NÚCLEO PURO: la nómina pagada por BANCO después del corte del extracto. DESCARGA del saldo bancario.
+ * Es el lote de haberes que el extracto todavía no muestra, exactamente igual que un cheque debitado
+ * o una compra pagada por transferencia después del corte.
+ * @param {string} corte referencia a la celda con la fecha de corte del extracto
+ * @returns {string} fórmula
+ */
+export function formulaJornalesBancoPosteriores(corte, j = JOR) {
+  return `SUMPRODUCT(${ventanaPagada(corte, j)}*N(${j.banco}))`
+}
+
+/** La nómina en efectivo, ya con signo, para el renglón del desglose. */
+export function celdaJornalesEfectivo(arqueo, j = JOR) {
+  return `=-(${formulaJornalesEfectivoPosteriores(arqueo, j)})`
 }

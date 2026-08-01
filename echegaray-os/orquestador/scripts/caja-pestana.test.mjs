@@ -358,3 +358,64 @@ test('EL DESASTRE DEL 31/07: si la escritura se saltea, NO se formatea ni se mue
   // Y los nombres se publican después de formatear, así que el mismo return los cubre.
   assert.ok(src.indexOf('await publicar(', corte) > corte, 'publicar queda del lado protegido por el return')
 })
+
+// ═══ LA NÓMINA SALE DE LA CAJA POR LOS DOS CANALES (01/08) ═══
+//
+// El dueño, sobre el 31/07: cobranzas en efectivo, compras, y jornales pagados 50% en efectivo y 50%
+// por transferencia. Ni una mitad ni la otra bajaba ninguna disponibilidad: la nómina no es una compra
+// ni un cheque, así que no entraba en ninguna de las dos líneas que existían. Aparecía sólo en el
+// CALENDARIO, y con el filtro "sin pagar" — al registrarse el pago salía de la proyección y no entraba
+// a ningún lado. La plata se pagaba y no salía de la pestaña.
+
+test('la nómina en efectivo DESCARGA la caja física, y se ve en su propio renglón', () => {
+  const g = construir()
+  const f = filaDe(g, /jornales pagados en efectivo después del arqueo/i)
+  assert.ok(f > 0, 'el renglón de la nómina en efectivo tiene que existir')
+  const origen = celda(g, f, 2)
+  assert.match(origen, /^=-\(/, 'descarga: va restando')
+  assert.match(origen, /JORNALES_REAL_ADELANTO/)
+  assert.match(origen, /JORNALES_REAL_RECIBO/)
+  assert.ok(!origen.includes('JORNALES_REAL_BANCO'), 'lo que salió por banco no puede salir también del cajón')
+  // El desglose se VE y no SUMA: la columna de pesos va vacía, como los otros tres sumandos.
+  assert.ok(vacia(celda(g, f, 4)), 'un renglón del desglose que aporte pesos duplicaría el efectivo')
+})
+
+test('la nómina por transferencia DESCARGA el banco, y se ve en su propio renglón', () => {
+  const g = construir()
+  const f = filaDe(g, /jornales pagados por transferencia después del corte/i)
+  assert.ok(f > 0, 'el renglón de la nómina por banco tiene que existir')
+  const origen = celda(g, f, 2)
+  assert.match(origen, /^=-\(/)
+  assert.match(origen, /JORNALES_REAL_BANCO/)
+  assert.ok(!/ADELANTO|RECIBO/.test(origen), 'lo que salió en billetes no puede salir también del banco')
+  assert.ok(vacia(celda(g, f, 4)))
+})
+
+test('los dos netos incorporan la nómina: el desglose no puede decir algo que el total no dice', () => {
+  const g = construir()
+  const neto = celda(g, filaDe(g, /^Movimientos de efectivo posteriores al arqueo/), 2)
+  assert.match(neto, /JORNALES_REAL_ADELANTO/, 'el neto de efectivo tiene que restar la nómina en billetes')
+  const netoBanco = celda(g, filaDe(g, /^Movimientos posteriores al corte del extracto/), 2)
+  assert.match(netoBanco, /JORNALES_REAL_BANCO/, 'el neto bancario tiene que restar el lote de haberes')
+})
+
+// ═══ UN CERO POR FALTA DE DATO NO SE ESCRIBE IGUAL QUE UN CERO MEDIDO (01/08) ═══
+
+test('sin fecha de arqueo, la alerta dice CUÁNTO efectivo está quedando afuera', () => {
+  const g = construir()
+  const f = filaDe(g, /falta la fecha del arqueo/i)
+  assert.ok(f > 0, 'la alerta tiene que estar en el bloque "LO QUE NO CIERRA"')
+  const monto = celda(g, f, 2)
+  // Con arqueo cargado la alerta se apaga sola: existe sólo mientras existe el problema.
+  assert.match(monto, /^=IF\(\$F\$\d+<>"";0;/)
+  // Y el monto es el MISMO cálculo del neto, con la ventana abierta — no una estimación aparte.
+  assert.match(monto, /'Cobranzas'!/)
+  assert.match(monto, /JORNALES_REAL_ADELANTO/)
+})
+
+test('la alerta del arqueo apunta a la celda REAL donde se carga la fecha', () => {
+  const g = construir()
+  const fArqueo = filaDe(g, /^Caja en pesos/)
+  const monto = celda(g, filaDe(g, /falta la fecha del arqueo/i), 2)
+  assert.match(monto, new RegExp(`\\$F\\$${fArqueo}<>""`), 'tiene que mirar la fecha de la fila del arqueo, no una fila fija')
+})

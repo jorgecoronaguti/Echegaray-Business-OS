@@ -5,7 +5,7 @@ import {
   formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte, COB, CHQ, CMP,
   formulaCobrosEfectivoPosteriores, formulaComprasEfectivoPosteriores,
   formulaDepositosEfectivoPosteriores, formulaNetaEfectivoPosterior, DEP,
-} from './caja-posterior-al-corte.mjs'
+  formulaJornalesEfectivoPosteriores, formulaJornalesBancoPosteriores, celdaJornalesEfectivo, JOR } from './caja-posterior-al-corte.mjs'
 import { COL_FECHA_CAJA, colIndex } from './rubro-caja.mjs'
 
 test('las compras pagadas posteriores restan sólo Transferencia y Débito, después del corte', () => {
@@ -118,12 +118,15 @@ test('el banco NO cuenta el efectivo: va a la caja física, no duplicar', () => 
   assert.match(f, /"<>Echeq"/)
 })
 
-test('la línea del banco: 2 SUMIFS (cobros, cheques) + 1 SUMPRODUCT (compras, tolerante a fecha-texto)', () => {
+test('la línea del banco: 2 SUMIFS (cobros, cheques) + 2 SUMPRODUCT (compras y nómina por banco)', () => {
   // Excluir el efectivo es un criterio MÁS dentro del mismo SUMIFS de cobros, no un SUMIFS nuevo.
   // Compras pasó a un SOLO SUMPRODUCT (transferencia+débito juntos), no dos SUMIFS.
+  // El segundo SUMPRODUCT es la NÓMINA pagada por transferencia (01/08): antes no estaba en ningún
+  // lado y el lote de haberes salía del banco sin bajar la disponibilidad.
   const f = formulaNetaPosterior('$F$19')
   assert.equal(f.split('SUMIFS').length - 1, 2)
-  assert.equal(f.split('SUMPRODUCT').length - 1, 1)
+  assert.equal(f.split('SUMPRODUCT').length - 1, 2)
+  assert.match(f, /JORNALES_REAL_BANCO/)
 })
 
 test('cobros en efectivo posteriores: SÓLO Efectivo, SÓLO Cobrado, DESPUÉS del arqueo', () => {
@@ -167,9 +170,10 @@ test('la línea neta de la caja física: cobros − pagos − depósitos, guarda
   assert.ok(f.startsWith('='))
   // Sin arqueo con fecha no hay ventana: da 0 en vez de inventar plata en el cajón.
   assert.match(f, /^=IF\(NOT\(ISNUMBER\(\$F\$4\)\);0;/)
-  // 1 SUMIFS (cobros efectivo) + 2 SUMPRODUCT (pagos efectivo tolerante a texto + depósitos).
+  // 1 SUMIFS (cobros efectivo) + 3 SUMPRODUCT (pagos efectivo + depósitos + nómina en efectivo).
   assert.equal(f.split('SUMIFS').length - 1, 1)
-  assert.equal(f.split('SUMPRODUCT').length - 1, 2)
+  assert.equal(f.split('SUMPRODUCT').length - 1, 3)
+  assert.match(f, /JORNALES_REAL_ADELANTO/)
   // Cobros suman, pagos y depósitos restan.
   assert.match(f, /;"Cobrado";.*"Efectivo".*\)-SUMPRODUCT/) // cobros, luego resta el pago
   assert.match(f, /\)-SUMPRODUCT/) // resta el depósito
@@ -177,8 +181,9 @@ test('la línea neta de la caja física: cobros − pagos − depósitos, guarda
 
 test('sin réplica del extracto, la caja física no resta depósitos (no restar un cero disfrazado)', () => {
   const f = formulaNetaEfectivoPosterior('$F$4', { bancoRaw: null })
-  // Sigue el pago en efectivo (1 SUMPRODUCT tolerante a texto) pero YA NO el depósito: sin _BANCO_RAW no se detecta.
-  assert.equal(f.split('SUMPRODUCT').length - 1, 1)
+  // Siguen el pago en efectivo y la nómina en efectivo (2 SUMPRODUCT) pero YA NO el depósito: sin
+  // _BANCO_RAW no se detecta. La nómina no depende de la réplica del extracto, así que no se cae con ella.
+  assert.equal(f.split('SUMPRODUCT').length - 1, 2)
   assert.doesNotMatch(f, /deposito de efectivo/)
   assert.equal(f.split('SUMIFS').length - 1, 1) // sólo cobros (efectivo)
 })
@@ -201,9 +206,10 @@ test('la ventana de efectivo cuelga del arqueo que se le pase: cambiar el ancla 
   const nuevo = formulaNetaEfectivoPosterior('$F$99')
   // Toda referencia al ancla vieja desaparece cuando el arqueo se registra en otra celda.
   assert.ok(!viejo.includes('$F$99') && !nuevo.includes('$F$4'))
-  // El ancla aparece en la guarda ISNUMBER y en los TRES términos (cobros, pagos, depósitos): al
-  // registrar un arqueo nuevo, la ventana ">" de los tres se corre junta y lo viejo colapsa.
-  assert.equal((nuevo.match(/\$F\$99/g) || []).length, 4)
+  // El ancla aparece en la guarda ISNUMBER y en los CUATRO términos (cobros, pagos, depósitos,
+  // nómina en efectivo): al registrar un arqueo nuevo, la ventana ">" de todos se corre junta y lo
+  // viejo colapsa. Si un canal quedara anclado a otra celda, este número lo delata.
+  assert.equal((nuevo.match(/\$F\$99/g) || []).length, 5)
 })
 
 test('la exclusividad es por construcción: efectivo y banco no comparten ninguna forma de cobro', () => {
@@ -233,9 +239,9 @@ test('la línea es NETA: un solo lado inflaría la caja para siempre', () => {
   const f = formulaNetaPosterior('$F$19')
   assert.ok(f.startsWith('='))
   assert.ok(f.includes('-SUMIFS'), 'tiene que restar los cheques debitados')
-  // 2 SUMIFS (cobros, cheques debitados) + 1 SUMPRODUCT (compras transferencia/débito, tolerante a texto).
+  // 2 SUMIFS (cobros, cheques debitados) + 2 SUMPRODUCT (compras transferencia/débito + nómina banco).
   assert.equal(f.split('SUMIFS').length - 1, 2)
-  assert.equal(f.split('SUMPRODUCT').length - 1, 1)
+  assert.equal(f.split('SUMPRODUCT').length - 1, 2)
 })
 
 test('las fórmulas van en es-AR: separador ; y nunca ,', () => {
@@ -306,4 +312,58 @@ test('todas las referencias a Cobranzas del repo terminan en la misma fila', asy
     }
   }
   assert.equal(topes.size, 1, `conviven ${topes.size} topes distintos: ${[...topes].map(([t, f]) => `${t} en ${f}`).join(' · ')}`)
+})
+
+// ═══ LA NÓMINA: EL TERCER CANAL (01/08) ═══
+//
+// El dueño describió el 31/07: jornales pagados 50% en efectivo y 50% por transferencia. Ni una mitad
+// ni la otra bajaba ninguna disponibilidad — la nómina no era una compra ni un cheque, así que no
+// entraba en ninguna de las dos líneas que ya existían. Estos tests fijan que ahora sale por los dos
+// canales que corresponden, y por el canal correcto en cada uno.
+
+test('nómina en efectivo: adelantos + contra recibo, sólo de quincenas con pago REGISTRADO y posterior al arqueo', () => {
+  const f = formulaJornalesEfectivoPosteriores('$F$7')
+  assert.match(f, /N\(JORNALES_REAL_ADELANTO\)\+N\(JORNALES_REAL_RECIBO\)/)
+  // El HECHO, no la previsión: "Pagado el", nunca "Se paga el".
+  assert.match(f, /JORNALES_REAL_PAGADO>\$F\$7/)
+  assert.doesNotMatch(f, /JORNALES_REAL_PAGO>/)
+  // ISNUMBER descarta las quincenas sin pagar: una celda vacía compararía como texto y entrarían todas.
+  assert.match(f, /ISNUMBER\(JORNALES_REAL_PAGADO\)/)
+  // Ventana EXCLUSIVA, igual que los otros canales: lo anterior ya está dentro del arqueo.
+  assert.doesNotMatch(f, />=/)
+})
+
+test('nómina por banco: SÓLO la columna Banco — el efectivo no puede salir dos veces', () => {
+  const f = formulaJornalesBancoPosteriores('$F$9')
+  assert.match(f, /N\(JORNALES_REAL_BANCO\)/)
+  assert.doesNotMatch(f, /ADELANTO|RECIBO/)
+  assert.match(f, /JORNALES_REAL_PAGADO>\$F\$9/)
+})
+
+test('la partición de la nómina es disjunta: banco y efectivo no comparten ninguna columna', () => {
+  // Es la misma garantía anti-doble-conteo que ya tenían los cobros por forma de pago, aplicada a la
+  // nómina: Banco (H) va al saldo bancario, Adelanto (I) y Total recibo (J) a la caja física. La
+  // pestaña de Jornales ya controla que las tres sumen el TOTAL de la quincena.
+  const banco = formulaJornalesBancoPosteriores('$F$9')
+  const efectivo = formulaJornalesEfectivoPosteriores('$F$7')
+  assert.ok(!banco.includes(JOR.adelanto) && !banco.includes(JOR.recibo))
+  assert.ok(!efectivo.includes(JOR.banco))
+})
+
+test('la nómina se cita por rango con nombre, nunca por número de fila', () => {
+  // El motivo por el que existen esos nombres: la pestaña de Jornales ya se reordenó una vez y tres
+  // fórmulas siguieron sumando las filas equivocadas sin una sola celda en rojo.
+  const f = formulaJornalesEfectivoPosteriores('$F$7') + formulaJornalesBancoPosteriores('$F$9')
+  assert.doesNotMatch(f, /'Jornales/)
+  assert.doesNotMatch(f, /\$[A-Z]\$\d+:\$[A-Z]\$\d+/)
+})
+
+test('el renglón del desglose de la nómina lleva el signo puesto y es la MISMA fórmula del neto', () => {
+  // Si el desglose se escribiera aparte, podría decir otra cosa que el total. Se importa, no se copia.
+  assert.equal(celdaJornalesEfectivo('$F$7'), `=-(${formulaJornalesEfectivoPosteriores('$F$7')})`)
+})
+
+test('las fórmulas de la nómina van en es-AR: separador ; y nunca ,', () => {
+  assert.ok(!formulaJornalesEfectivoPosteriores('$F$7').includes(','))
+  assert.ok(!formulaJornalesBancoPosteriores('$F$9').includes(','))
 })

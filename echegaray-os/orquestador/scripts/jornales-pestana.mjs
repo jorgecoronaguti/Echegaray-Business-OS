@@ -863,6 +863,15 @@ async function publicarRangos(google, sheetId, g) {
     // esté vacía, la quincena cerrada PESA en el calendario de CAJA. En cuanto el dueño escribe la
     // fecha, deja de pesar — la salida ya está en el extracto del banco.
     JORNALES_REAL_PAGADO: rango(13, g.f0, g.fTotalReal - 1),
+    // ═══ POR QUÉ CANAL SALIÓ (01/08) ═══
+    // El dueño paga la quincena en partes: una por transferencia y otra en efectivo (adelantos y
+    // contra recibo). Esta pestaña ya lo separaba —y ya lo controla contra el TOTAL— pero nadie leía
+    // esas tres columnas: CAJA no tenía forma de bajar el banco por el lote de haberes ni la caja
+    // física por el efectivo, así que la nómina se pagaba y no salía de ninguna disponibilidad.
+    // Publicadas por nombre, las consume lib/caja-posterior-al-corte.mjs.
+    JORNALES_REAL_BANCO: rango(7, g.f0, g.fTotalReal - 1),
+    JORNALES_REAL_ADELANTO: rango(8, g.f0, g.fTotalReal - 1),
+    JORNALES_REAL_RECIBO: rango(9, g.f0, g.fTotalReal - 1),
     JORNALES_PROY_DESDE: rango(0, g.p0, finProy),
     JORNALES_PROY_HASTA: rango(1, g.p0, finProy),
     JORNALES_PROY_PAGO: rango(2, g.p0, finProy),
