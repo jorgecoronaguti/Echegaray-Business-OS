@@ -729,6 +729,37 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         offset: { fila: d.startRow || 0, col: d.startColumn || 0 },
       }
     },
+    /**
+     * El formato ENTRADO (`userEnteredFormat`) de un rango, más anchos de columna y filas congeladas.
+     *
+     * POR QUÉ NO ALCANZA `readSheetFormats` (01/08). Aquél lee `effectiveFormat` —lo que se VE— que es
+     * lo correcto para comparar pestañas entre sí, y lo incorrecto para detectar una edición: incluye
+     * el resultado del formato condicional y el formato que Google deduce de una fórmula, así que
+     * cambia cuando cambia un VALOR aunque nadie haya tocado un formato. Para la firma de formato hace
+     * falta lo que una PERSONA escribió como formato, que es exactamente `userEnteredFormat`.
+     */
+    async readSheetUserFormats(fileId, range) {
+      const campos = 'sheets(properties(title,sheetId,gridProperties(frozenRowCount,frozenColumnCount)),'
+        + 'data(startRow,startColumn,columnMetadata(pixelSize),'
+        + 'rowData(values(userEnteredFormat(backgroundColor,horizontalAlignment,verticalAlignment,wrapStrategy,'
+        + 'numberFormat,borders,textFormat(fontFamily,fontSize,bold,italic,strikethrough,foregroundColor))))))'
+      const j = await apiGet(
+        `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?ranges=${encodeURIComponent(range)}&fields=${encodeURIComponent(campos)}`)
+      const s = (j.sheets || [])[0]
+      if (!s) return null
+      const d = (s.data || [])[0] || {}
+      return {
+        titulo: s.properties?.title ?? null,
+        sheetId: s.properties?.sheetId,
+        congeladas: {
+          filas: s.properties?.gridProperties?.frozenRowCount ?? 0,
+          columnas: s.properties?.gridProperties?.frozenColumnCount ?? 0,
+        },
+        anchos: (d.columnMetadata || []).map((c) => c?.pixelSize ?? null),
+        filas: (d.rowData || []).map((r) => (r.values || []).map((c) => ({ formato: c?.userEnteredFormat ?? null }))),
+        offset: { fila: d.startRow || 0, col: d.startColumn || 0 },
+      }
+    },
     /** Lee las reglas de VALIDACIÓN DE DATOS (desplegables) de un rango. Devuelve la data
      *  cruda de la Sheets API (sheets[].data[].rowData[].values[].dataValidation) para que el
      *  llamador extraiga, por celda, las opciones permitidas. Sirve para NO pisar un desplegable

@@ -127,7 +127,10 @@ export function evaluarFirma({ firmaActual, firmaGuardada, hayEdicionHumana = fa
  * y devuelve editada:true — el generador debe SALTAR esa pestaña. Rango A1:BZ (toda la pestaña), así
  * una edición en cualquier parte cuenta. Sin baseline, no se puede afirmar edición → editada:false.
  */
-export async function firmaGuardia(google, fileId, pestana, ref = pestana) {
+// `candar:false` (01/08): responde lo mismo pero NO auto-canda. Lo usa la guarda de PRESENTACIÓN, que
+// consulta el estado de contenido de pestañas a las que sólo se les iba a pasar formato: un batch
+// cosmético que recorre todo el archivo no debe sembrar candados en la base.
+export async function firmaGuardia(google, fileId, pestana, ref = pestana, { candar = true } = {}) {
   try {
     const actual = await google.readSheetValues(fileId, `${ref}!A1:BZ`, { render: 'FORMULA' }).catch(() => null)
     // No pude releer la pestaña: NO puedo afirmar que está intacta. Antes esto devolvía editada:false
@@ -149,8 +152,10 @@ export async function firmaGuardia(google, fileId, pestana, ref = pestana) {
     }
     const { editada, motivo } = evaluarFirma({ firmaActual: firmaDeGrid(actual), firmaGuardada, hayEdicionHumana })
     if (editada) {
-      const { bloquear } = await import('./pestana-bloqueada.mjs')
-      await bloquear({}, fileId, pestana, { motivo: `auto: ${motivo}`, por: 'auto' })
+      if (candar) {
+        const { bloquear } = await import('./pestana-bloqueada.mjs')
+        await bloquear({}, fileId, pestana, { motivo: `auto: ${motivo}`, por: 'auto' })
+      }
       console.log(`  🔒 "${pestana}": ${motivo} — la tomo como tuya, no la piso.`)
       return { editada: true }
     }
