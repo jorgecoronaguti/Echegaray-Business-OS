@@ -27,8 +27,8 @@ trabajo, sin poder tocarlo.
 
 ## El bucle que cubren
 
-El Agent SDK define un solo bucle: **reunir contexto → actuar → verificar**. Los siete agentes no son
-una lista: son las tres etapas cubiertas, y por eso son siete y no veinte.
+El Agent SDK define un solo bucle: **reunir contexto → actuar → verificar**. Los nueve agentes no son
+una lista: son las tres etapas cubiertas, y por eso son nueve y no treinta.
 
 | Etapa | Agente | Qué aporta |
 |---|---|---|
@@ -53,7 +53,7 @@ la lista de herramientas.
 
 ## Por qué existen estos y no otros
 
-Los cuatro primeros salen de una sola línea del `CLAUDE.md` raíz, la del PRINCIPIO DE CIERRE:
+Los cuatro auditores salen de una sola línea del `CLAUDE.md` raíz, la del PRINCIPIO DE CIERRE:
 
 > **NINGÚN TRABAJO LO CIERRA QUIEN LO CONSTRUYÓ.**
 > El cierre lo firma quien no escribió el trabajo y probó el sistema vivo intentando romperlo.
@@ -62,8 +62,8 @@ Esa regla era, hasta ahora, una intención. No se podía cumplir: el que constru
 revisaba, con el mismo contexto y los mismos puntos ciegos. Un agente con contexto propio y sin
 permiso de escritura es la primera forma material de cumplirla.
 
-El quinto (`ejecutor-de-tarea`) existe por lo contrario: es el único que **sí** escribe, y por eso
-lleva grabadas las tres trampas que ya costaron trabajo perdido en este repo.
+Los tres que actúan existen por lo contrario: son los que **sí** escriben, y por eso llevan grabadas
+las trampas que ya costaron trabajo perdido en este repo.
 
 ---
 
