@@ -30,6 +30,30 @@ import { evaluarRiesgo, PERFILES } from './riesgo.mjs'
 import { generarRecomendaciones, recomendarAplicarADeuda } from './recomendacion.mjs'
 import { validarLote } from './validar.mjs'
 import { formatoPropuesta, formatoAplicarADeuda, formatoSesionRequerida, esCambioMaterial } from './formato-mattermost.mjs'
+import { evaluarAccionabilidad } from './politicas.mjs'
+
+/** Cuántas horas puede tener una observación de mercado antes de dejar de sostener una decisión. */
+export const HORAS_MERCADO_FRESCO = 6
+
+/**
+ * ¿Hay datos de mercado frescos? Se responde con los instrumentos RELEVADOS, no con una variable de
+ * entorno: la frescura es un hecho observable —la hora de la observación más vieja— y el evaluador de
+ * riesgo ya rechaza por separado cualquier instrumento de más de 24 horas.
+ */
+export function frescuraDeMercado(instrumentos = [], ahora = new Date()) {
+  const conFecha = instrumentos.filter((i) => Number.isFinite(Date.parse(i?.observado_en)))
+  if (!conFecha.length) return { fresco: false, motivo: 'no se relevó ningún instrumento con fecha de observación', n: 0 }
+  const masVieja = Math.min(...conFecha.map((i) => Date.parse(i.observado_en)))
+  const horas = (ahora.getTime() - masVieja) / 3600000
+  return {
+    fresco: horas <= HORAS_MERCADO_FRESCO,
+    horas: Math.round(horas * 10) / 10,
+    n: conFecha.length,
+    motivo: horas <= HORAS_MERCADO_FRESCO
+      ? `${conFecha.length} instrumento(s), el más viejo de hace ${horas.toFixed(1)} h`
+      : `el dato más viejo tiene ${horas.toFixed(1)} h y el máximo son ${HORAS_MERCADO_FRESCO}`,
+  }
+}
 
 /**
  * Rutas informativas de Balanz. Todas pasan igual por la barrera: la lista no es una autorización.
@@ -162,10 +186,27 @@ export async function correrCiclo(deps = {}, opts = {}) {
     paso('comparacion', 'ok', comparacion.rankings.map((r) => `${r.bloque}:${r.ranking.length}`).join(' '))
 
     // 13 · Recomendar (SKILL 8).
-    const generadas = generarRecomendaciones(comparacion, ventanas, {
+    // ── LA ACCIONABILIDAD SE RE-EVALÚA DESPUÉS DEL MERCADO ────────────────────
+    //
+    // `posicion` se calcula en el paso 4 y el relevamiento es el paso 7: cuando la posición decide si
+    // hay datos de mercado frescos, todavía no se miró el mercado. La segunda auditoría lo midió: con
+    // la reserva aprobada, la caja restringida declarada y el extractor validado, TODO seguía
+    // NO_ACCIONABLE por "no hay datos de mercado frescos", y ningún archivo del repo podía ponerlo en
+    // true. Una compuerta que nadie puede abrir no es una compuerta: es una pared.
+    const frescura = frescuraDeMercado(instrumentos, ahora)
+    const accionabilidad = evaluarAccionabilidad({
+      reserva: posicion.reserva,
+      restringida: posicion.caja_restringida,
+      extractorValidado: Boolean(opts.extractorValidado),
+      mercadoFresco: frescura.fresco,
+    })
+    paso('accionabilidad', accionabilidad.accionable ? 'accionable' : 'no_accionable',
+      accionabilidad.bloqueos.join(' · ') || frescura.motivo)
+
+    const generadas = generarRecomendaciones(comparacion, ventanas.map((v) => ({ ...v, accionable: accionabilidad.accionable })), {
       hoy: ahora, tasa_de_corte: excedente.tasa_de_corte, riesgos,
-      accionable: Boolean(posicion.accionable),
-      bloqueos: posicion.bloqueos_accionabilidad ?? [],
+      accionable: accionabilidad.accionable,
+      bloqueos: accionabilidad.bloqueos,
       fuente_caja: posicion.fuente, fuente_mercado: `Balanz — ${mercado.observado_en ?? ahora.toISOString()}`,
     })
     paso('recomendaciones', 'ok', `${generadas.propuestas.length} propuestas · ${generadas.sin_propuesta.length} bloques sin propuesta`)
@@ -193,6 +234,7 @@ export async function correrCiclo(deps = {}, opts = {}) {
       bloqueos: mercado.bloqueos || [],
       publicado: publicar.publicar,
       motivo_publicacion: publicar.motivo,
+      accionabilidad, frescura_mercado: frescura,
       textos, resumen, traza,
       evidencia: EVIDENCIA.CALCULO,
     }

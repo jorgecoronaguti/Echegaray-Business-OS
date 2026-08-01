@@ -64,8 +64,9 @@ async function main() {
         publicarSiempre: FORZAR, dias: 90,
         // La validación del extractor contra la pantalla real es un HECHO que se declara por entorno,
         // no algo que el agente pueda afirmar de sí mismo. Sin ella, todo sale NO_ACCIONABLE.
+        // La frescura NO entra por acá: la mide el ciclo con los instrumentos relevados, después de
+        // mirar el mercado. Cablearla en false hacía que nada fuera nunca accionable.
         extractorValidado: process.env.ORQ_BALANZ_EXTRACTOR_VALIDADO === '1',
-        mercadoFresco: false, // lo fija el relevamiento: sin sesión no hay mercado fresco
       },
     )
   } catch (e) {

@@ -20,6 +20,7 @@ import { calcularExcedente, tasaDeCorte, rendimientoPeriodo } from './excedente.
 import { aTea, tnaATea, periodoATea, normalizarInstrumento, categorizar, esAptoTesoreria, porcentajeArg, plazoLiquidacion } from './instrumentos.mjs'
 import { compararAlternativas, evaluarContraVentana, liquidezCompatible, costoTotal, rendimientoDelPeriodo } from './comparar.mjs'
 import { evaluarRiesgo, evaluarConcentracion, PERFILES } from './riesgo.mjs'
+import { frescuraDeMercado } from './ciclo.mjs'
 import { generarRecomendaciones, recomendarAplicarADeuda, estaVencida } from './recomendacion.mjs'
 import { validarRecomendacion, validarLote, esNumero } from './validar.mjs'
 import { registrarCorreccion, esConfirmacionReal, proponerCambioPolitica, TIPO_CORRECCION } from './aprendizaje.mjs'
@@ -854,4 +855,77 @@ test('resumirHorizonte no afirma un piso sobre días que no miró', () => {
   const corto = Array.from({ length: 11 }, (_, i) => ({ fecha: `d${i}`, ingresos: 0, egresos: 0 }))
   assert.equal(resumirHorizonte(corto, 90, ESCENARIOS.adverso, 1e8).estado, 'sin_dato')
   assert.equal(resumirHorizonte(corto, 7, ESCENARIOS.adverso, 1e8).estado, 'ok')
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// SEGUNDA AUDITORÍA — dos correcciones no tenían quién las protegiera
+// ════════════════════════════════════════════════════════════════════════════
+
+test('un fondo SIN plazo de rescate no se cuela como liquidez inmediata', () => {
+  // El auditor revirtió las tres líneas de esta corrección y la suite quedó VERDE: publicaba $44,3M
+  // en un fondo cuyo plazo de rescate no se conoce, declarándolo T+0. No había ni un test.
+  for (const sinPlazo of [null, undefined, '', NaN]) {
+    const i = normalizarInstrumento({
+      nombre: 'FCI Money Market Opaco', moneda: 'ARS',
+      plazo_rescate_dias: sinPlazo, liquidacion_dias: sinPlazo,
+      tasa: { tipo: 'tea', valor: 1.5, naturaleza: 'indicativa' }, costos: { comision: 0 }, emisor: 'X',
+    }, { observadoEn: HOY.toISOString() })
+
+    assert.equal(i.plazo_rescate_dias, null, `${String(sinPlazo)} se convirtió en un número`)
+    assert.ok(i.campos_faltantes.includes('plazo_rescate_dias'), 'tiene que declararse faltante')
+    assert.equal(liquidezCompatible(i, 30).compatible, false, 'la guarda de liquidez estaba muerta para null')
+    assert.equal(evaluarRiesgo(i, PERFILES.caja_operativa, { ahora: HOY }).apto, false)
+    // Y no llega al ranking, por más que rinda 150%.
+    const r = evaluarContraVentana(i, { bloque: 'C', moneda: 'ARS', dias_libres: 30, monto_maximo: 1e6, referencia: { hurdle_periodo: 0 } }, { valor: 0.6278 })
+    assert.equal(r.excluido, true)
+  }
+  // Un T+0 declarado de verdad SÍ pasa: la guarda no puede bloquear lo legítimo.
+  const bueno = normalizarInstrumento({
+    nombre: 'FCI Money Market', moneda: 'ARS', plazo_rescate_dias: 0, liquidacion_dias: 0,
+    tasa: { tipo: 'tea', valor: 1.5, naturaleza: 'indicativa' }, costos: { comision: 0 }, emisor: 'X',
+  }, { observadoEn: HOY.toISOString() })
+  assert.equal(liquidezCompatible(bueno, 30).compatible, true)
+  assert.equal(evaluarRiesgo(bueno, PERFILES.caja_operativa, { ahora: HOY }).apto, true)
+})
+
+test('la accionabilidad falla CERRADA: sin decir true, no es accionable', () => {
+  // Era `!== false`, así que un `undefined` daba accionable = true. El auditor lo revirtió y la suite
+  // siguió verde: la única compuerta de accionabilidad tenía el default del lado peligroso.
+  const inst = normalizarInstrumento({
+    nombre: 'Lecap S31O5', moneda: 'ARS', plazo_rescate_dias: 0, liquidacion_dias: 1,
+    tasa: { tipo: 'tea', valor: 1.2, naturaleza: 'contractual' }, costos: { comision: 0.001 }, emisor: 'Tesoro',
+  }, { observadoEn: HOY.toISOString() })
+  const corte = { valor: 0.6278 }
+  const armar = (accionableVentana, accionableCtx) => {
+    const ventana = {
+      bloque: 'C', titulo: 'x', monto_maximo: 1e6, moneda: 'ARS', dias_libres: 30,
+      reserva_preservada: 0, obligaciones_cubiertas: [], condiciones_invalidez: [],
+      confianza: CONFIANZA.MEDIA, motivo: null, accionable: accionableVentana,
+      referencia: { hurdle_periodo: 0, modo: 'costo_oportunidad' },
+    }
+    return generarRecomendaciones(compararAlternativas([inst], [ventana], corte), [ventana], {
+      hoy: HOY, tasa_de_corte: corte, riesgos: { [inst.id]: evaluarRiesgo(inst, PERFILES.caja_operativa, { ahora: HOY }) },
+      accionable: accionableCtx, fuente_caja: 'x', fuente_mercado: 'y',
+    }).propuestas[0]
+  }
+  assert.equal(armar(undefined, undefined).accionable, false, 'undefined no puede significar sí')
+  assert.equal(armar(true, undefined).accionable, false)
+  assert.equal(armar(undefined, true).accionable, false)
+  assert.equal(armar(true, true).accionable, true, 'con las dos en true sí')
+  assert.equal(armar(undefined, undefined).etiqueta_monto, 'techo_tecnico_preliminar')
+})
+
+test('la frescura del mercado se MIDE con lo relevado, no se cablea', () => {
+  // Estaba fija en `false` en el entrypoint, y ningún archivo del repo la ponía en true: con todo lo
+  // demás aprobado, las cuatro propuestas salían NO_ACCIONABLE por "no hay datos frescos". Una
+  // compuerta que nadie puede abrir no es una compuerta: es una pared.
+  const ahora = new Date('2026-08-01T12:00:00Z')
+  assert.equal(frescuraDeMercado([], ahora).fresco, false)
+  assert.equal(frescuraDeMercado([{ observado_en: 'basura' }], ahora).fresco, false)
+  assert.equal(frescuraDeMercado([{ observado_en: '2026-08-01T11:00:00Z' }], ahora).fresco, true)
+  assert.equal(frescuraDeMercado([{ observado_en: '2026-07-30T11:00:00Z' }], ahora).fresco, false)
+  // La más VIEJA manda: un instrumento fresco no rescata a los demás.
+  assert.equal(frescuraDeMercado([
+    { observado_en: '2026-08-01T11:55:00Z' }, { observado_en: '2026-07-29T00:00:00Z' },
+  ], ahora).fresco, false)
 })

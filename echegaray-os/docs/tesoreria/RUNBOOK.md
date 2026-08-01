@@ -44,8 +44,10 @@ Los cuatro bloqueos posibles:
 
 1. reserva mínima no aprobada
 2. caja restringida en `unknown`, `unavailable` o `stale`
-3. el extractor de Balanz no validado contra la pantalla real
-4. sin datos de mercado frescos
+3. el extractor de Balanz no validado contra la pantalla real (`ORQ_BALANZ_EXTRACTOR_VALIDADO=1`)
+4. sin datos de mercado frescos — **se mide sola**: la observación más vieja de los instrumentos
+   relevados tiene que tener 6 horas o menos. Se cierra corriendo con la sesión de Balanz arriba y el
+   mercado abierto; no hay variable que la encienda, porque la frescura es un hecho, no una decisión
 
 ---
 
@@ -335,6 +337,7 @@ select clave, valor, aprobada_por from tesoreria.politicas order by vigente_desd
 | Qué | Impacto | Cómo se cierra |
 |---|---|---|
 | El extractor **no** fue validado contra el DOM real de Balanz | todo sale `NO_ACCIONABLE` | Chrome dedicado + túnel + `balanz-explorar.mjs` + comparar una muestra |
+| Sin sesión no hay datos de mercado, y sin datos frescos nada es accionable | el análisis de caja se publica igual | misma sesión: los dos bloqueos se cierran juntos |
 | La migración no está en producción | el ledger no persiste | aplicarla al integrar (arriba) |
 | Reserva y caja restringida sin cargar | todo `NO_ACCIONABLE` | los dos comandos de arriba |
 | `row_reference` y `source_formula` en null | trazabilidad a nivel pestaña, no fila | conseguirla exigiría duplicar el lector del Sheet: no se hace |
