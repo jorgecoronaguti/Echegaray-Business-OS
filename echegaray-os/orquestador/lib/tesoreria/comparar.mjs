@@ -20,7 +20,7 @@
 // sin explicación es un instrumento que alguien va a volver a proponer el mes que viene.
 
 import { EVIDENCIA, CONFIANZA } from './contratos.mjs'
-import { aTea, esAptoTesoreria } from './instrumentos.mjs'
+import { aTea, esAptoTesoreria, esNumero } from './instrumentos.mjs'
 
 /** Rendimiento efectivo del período a partir de la TEA. Aritmética pura. */
 export const rendimientoDelPeriodo = (tea, dias) => (1 + Number(tea)) ** (Number(dias) / 365) - 1
@@ -32,9 +32,9 @@ export const rendimientoDelPeriodo = (tea, dias) => (1 + Number(tea)) ** (Number
  */
 export function costoTotal(inst = {}, { salidaAnticipada = false } = {}) {
   const c = inst.costos || {}
-  const partes = [c.comision, c.honorarios, c.spread].filter((x) => Number.isFinite(Number(x)))
+  const partes = [c.comision, c.honorarios, c.spread].filter(esNumero)
   const base = partes.reduce((s, x) => s + Number(x), 0)
-  const salida = salidaAnticipada && Number.isFinite(Number(c.salida_anticipada)) ? Number(c.salida_anticipada) : 0
+  const salida = salidaAnticipada && esNumero(c.salida_anticipada) ? Number(c.salida_anticipada) : 0
   return { total: base + salida, conocido: partes.length > 0, componentes: partes.length }
 }
 
@@ -43,12 +43,15 @@ export function costoTotal(inst = {}, { salidaAnticipada = false } = {}) {
  * un fondo que "rescata T+0" pero liquida T+2 devuelve la plata en dos días, no en cero.
  */
 export function liquidezCompatible(inst = {}, diasVentana) {
-  const rescate = Number(inst.plazo_rescate_dias)
-  const liq = Number(inst.liquidacion_dias)
-  if (!Number.isFinite(rescate) && !Number.isFinite(liq)) {
-    return { compatible: false, motivo: 'no se conoce el plazo de rescate ni el de liquidación' }
+  // `Number.isFinite(Number(null))` es true: la guarda de abajo estaba MUERTA para `null`, que es
+  // justo el caso que importa —un instrumento del que el bróker no publicó el plazo de rescate—.
+  // Y sin el plazo de rescate no hay liquidez que verificar: se excluye.
+  const hayRescate = esNumero(inst.plazo_rescate_dias)
+  const hayLiq = esNumero(inst.liquidacion_dias)
+  if (!hayRescate) {
+    return { compatible: false, motivo: 'no se conoce el plazo de rescate: no se puede saber cuándo vuelve la plata' }
   }
-  const total = (Number.isFinite(rescate) ? rescate : 0) + (Number.isFinite(liq) ? liq : 0)
+  const total = Number(inst.plazo_rescate_dias) + (hayLiq ? Number(inst.liquidacion_dias) : 0)
   if (total > Number(diasVentana)) {
     return { compatible: false, motivo: `la plata vuelve en ${total} días y la ventana es de ${diasVentana}` }
   }

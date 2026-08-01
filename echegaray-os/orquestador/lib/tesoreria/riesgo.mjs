@@ -13,6 +13,7 @@
 // evalúa una cartera de inversión.
 
 import { CONFIANZA, EVIDENCIA } from './contratos.mjs'
+import { esNumero } from './instrumentos.mjs'
 
 /** Perfiles. `excedente_estrategico` es plata que la empresa no necesita en el horizonte visible. */
 export const PERFILES = {
@@ -81,8 +82,9 @@ export function evaluarRiesgo(inst = {}, perfil = PERFILES.caja_operativa, ctx =
   }
 
   // LIQUIDEZ Y RESCATE — el riesgo dominante de la caja operativa.
-  const vuelta = (Number(inst.plazo_rescate_dias) || 0) + (Number(inst.liquidacion_dias) || 0)
-  if (!Number.isFinite(Number(inst.plazo_rescate_dias))) {
+  const vuelta = (esNumero(inst.plazo_rescate_dias) ? Number(inst.plazo_rescate_dias) : 0)
+    + (esNumero(inst.liquidacion_dias) ? Number(inst.liquidacion_dias) : 0)
+  if (!esNumero(inst.plazo_rescate_dias)) {
     marcar('rescate', 'alto', 'no se conoce el plazo de rescate: no se puede saber cuándo vuelve la plata', true)
   } else if (vuelta > perfil.max_dias_vuelta) {
     marcar('liquidez', 'alto', `la plata vuelve en ${vuelta} días y el perfil ${perfil.id} admite ${perfil.max_dias_vuelta}`, true)
@@ -96,7 +98,7 @@ export function evaluarRiesgo(inst = {}, perfil = PERFILES.caja_operativa, ctx =
   }
 
   // DURATION Y TASA — un instrumento largo se mueve mucho ante un cambio de tasa.
-  if (Number(inst.duration) > 1) marcar('duration', 'medio', `duration ${inst.duration}: sensible a movimientos de tasa`)
+  if (esNumero(inst.duration) && Number(inst.duration) > 1) marcar('duration', 'medio', `duration ${inst.duration}: sensible a movimientos de tasa`)
 
   // MONEDA — el descalce es el riesgo silencioso: las obligaciones de esta empresa son en pesos.
   if (inst.moneda === 'USD' && (ctx.moneda_obligaciones ?? 'ARS') === 'ARS') {

@@ -21,6 +21,22 @@
 
 import { EVIDENCIA, TIPO_TASA, NATURALEZA_TASA, Instrumento, validarContra } from './contratos.mjs'
 
+/**
+ * ¿ES UN NÚMERO DE VERDAD? `Number.isFinite(Number(null))` es **true** porque `Number(null)` es 0.
+ *
+ * Es el defecto que `politicas.mjs` fue escrito para eliminar, y estaba reproducido acá: un
+ * instrumento sin plazo de rescate publicado entraba como `plazo_rescate_dias: 0`, o sea **liquidez
+ * inmediata garantizada**. Pasaba el filtro duro de liquidez, pasaba el bloqueante de riesgo, y
+ * `campos_faltantes` salía vacío, así que tampoco bajaba la confianza. Exactamente el escenario "el
+ * día 5 no se pagan sueldos", con la propuesta marcada confianza media.
+ */
+export function esNumero(x) {
+  if (x == null) return false
+  if (typeof x === 'string' && x.trim() === '') return false
+  if (typeof x === 'boolean' || Array.isArray(x)) return false
+  return Number.isFinite(Number(x))
+}
+
 /** Categorías de instrumento que Balanz expone. `apta_tesoreria` es criterio de ESTA empresa. */
 export const CATEGORIAS = {
   money_market: { titulo: 'Money Market', apta_tesoreria: true, liquidez_tipica: 0 },
@@ -141,12 +157,12 @@ export function normalizarInstrumento(crudo = {}, { observadoEn = new Date().toI
     subcategoria: crudo.subcategoria ?? null,
     emisor: crudo.emisor ?? null,
     moneda: crudo.moneda === 'USD' ? 'USD' : 'ARS',
-    precio: Number.isFinite(Number(crudo.precio)) ? Number(crudo.precio) : null,
+    precio: esNumero(crudo.precio) ? Number(crudo.precio) : null,
     tasa,
-    plazo_rescate_dias: Number.isFinite(Number(crudo.plazo_rescate_dias)) ? Number(crudo.plazo_rescate_dias) : null,
-    liquidacion_dias: Number.isFinite(Number(crudo.liquidacion_dias)) ? Number(crudo.liquidacion_dias) : null,
+    plazo_rescate_dias: esNumero(crudo.plazo_rescate_dias) ? Number(crudo.plazo_rescate_dias) : null,
+    liquidacion_dias: esNumero(crudo.liquidacion_dias) ? Number(crudo.liquidacion_dias) : null,
     vencimiento: crudo.vencimiento ?? null,
-    duration: Number.isFinite(Number(crudo.duration)) ? Number(crudo.duration) : null,
+    duration: esNumero(crudo.duration) ? Number(crudo.duration) : null,
     riesgo_declarado: crudo.riesgo_declarado ?? null,
     costos: {
       comision: crudo.costos?.comision ?? null,
@@ -160,6 +176,7 @@ export function normalizarInstrumento(crudo = {}, { observadoEn = new Date().toI
     campos_faltantes: [...new Set([...faltantes, ...(crudo.campos_faltantes || [])])],
   }
   if (inst.plazo_rescate_dias == null) inst.campos_faltantes.push('plazo_rescate_dias')
+  if (inst.liquidacion_dias == null) inst.campos_faltantes.push('liquidacion_dias')
   if (inst.costos.comision == null && inst.costos.honorarios == null) inst.campos_faltantes.push('costos')
 
   const v = validarContra(Instrumento, inst)
