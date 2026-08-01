@@ -75,8 +75,19 @@ export const GRUPOS = [
   {
     naturaleza: 'Sueldos',
     pestana: 'Jornales por Quincena',
-    formula: null,
-    nota: 'La acreditación de haberes. Jornales lleva la quincena devengada, no el día del pago.',
+    // ═══ EL CONTROL QUE FALTABA, Y QUE YA SE PUEDE HACER (01/08) ═══
+    //
+    // La nota decía "Jornales lleva la quincena devengada, no el día del pago", y por eso esta fila
+    // no tenía contraste. Era cierto y dejó de serlo: la pestaña tiene ahora "Pagado el" —el día en
+    // que la plata salió— y la columna Banco —cuánto de esa quincena salió por transferencia—. Con
+    // esas dos, comparar contra el extracto es exactamente la misma cuenta que las demás filas.
+    //
+    // POR QUÉ IMPORTA, MEDIDO. Al 31/07 el extracto no muestra NINGUNA acreditación de haberes y
+    // Jornales registra dos quincenas pagadas ese día con $7.621.808 por banco. Sin esta fila, esos
+    // $7,6 millones no aparecían en ningún control: ni en el saldo (el extracto no los tiene) ni en
+    // el desvío (esta celda estaba vacía). El dinero más regular de la empresa, sin cuadrar.
+    formula: (d, h) => `SUMPRODUCT(ISNUMBER(JORNALES_REAL_PAGADO)*(JORNALES_REAL_PAGADO>=${d})*(JORNALES_REAL_PAGADO<=${h})*N(JORNALES_REAL_BANCO))`,
+    nota: 'La acreditación de haberes: columna Banco de las quincenas con fecha en "Pagado el" dentro de la ventana del extracto. Sólo la parte bancaria — lo que se pagó en billetes (Adelanto y Total recibo) sale de la caja física, no de la cuenta.',
   },
   {
     naturaleza: 'Préstamo prendario',

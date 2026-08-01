@@ -86,12 +86,15 @@ test('el desglose usa las MISMAS fórmulas que la línea neta, no una copia', ()
   const a = '$F$7'
   // Si alguien reescribiera una de las tres a mano, el desglose podría sumar distinto que el número
   // de arriba. Se comparan literalmente contra la fuente.
-  assert.equal(celdaCobrosEfectivo(a), `=${formulaCobrosEfectivoPosteriores(a)}`)
-  assert.equal(celdaPagosEfectivo(a), `=-(${formulaComprasEfectivoPosteriores(a)})`)
-  assert.equal(celdaDepositosEfectivo(a), `=-(${formulaDepositosEfectivoPosteriores(a)})`)
+  // Desde el 01/08 llevan además la MISMA guarda de arqueo que abre el total: sin fecha, 0 y no el
+  // histórico. Es lo que impedía que el desglose contradijera a su total (ver el bloque del desglose).
+  const guarda = `=IF(NOT(ISNUMBER(${a}));0;`
+  assert.equal(celdaCobrosEfectivo(a), `${guarda}${formulaCobrosEfectivoPosteriores(a)})`)
+  assert.equal(celdaPagosEfectivo(a), `${guarda}-(${formulaComprasEfectivoPosteriores(a)}))`)
+  assert.equal(celdaDepositosEfectivo(a), `${guarda}-(${formulaDepositosEfectivoPosteriores(a)}))`)
   // Los dos que descargan la caja van con signo negativo: el desglose se lee sumando de arriba abajo.
-  assert.match(celdaPagosEfectivo(a), /^=-\(/)
-  assert.match(celdaDepositosEfectivo(a), /^=-\(/)
+  assert.match(celdaPagosEfectivo(a), /;-\(/)
+  assert.match(celdaDepositosEfectivo(a), /;-\(/)
 })
 
 test('el desglose cierra contra la línea neta: los tres sumandos son los mismos tres términos', () => {
@@ -206,4 +209,18 @@ test('la partición por canal se mantiene: el efectivo va a la caja y NUNCA al b
 test('sin arqueo con fecha, la línea neta da 0: no se inventa plata que nadie contó', () => {
   const f = formulaNetaEfectivoPosterior('$F$7')
   assert.match(f, /^=IF\(NOT\(ISNUMBER\(\$F\$7\)\);0;/)
+})
+
+
+// ═══ EL DESGLOSE NO PUEDE CONTRADECIR A SU TOTAL (01/08) ═══
+//
+// Visto en la pestaña real con la fecha de arqueo vacía: el total decía "—" y abajo "(−) pagado en
+// efectivo −$126.617.300". La causa es una asimetría de Sheets contra una celda vacía: el SUMIFS de
+// cobros no matchea nada y el SUMPRODUCT de pagos trata el vacío como CERO y toma TODAS las fechas.
+
+test('sin fecha de arqueo, NINGÚN renglón del desglose muestra el histórico', () => {
+  const a = '$F$7'
+  for (const celda of [celdaCobrosEfectivo(a), celdaPagosEfectivo(a), celdaDepositosEfectivo(a)]) {
+    assert.match(celda, /^=IF\(NOT\(ISNUMBER\(\$F\$7\)\);0;/, 'la guarda del total tiene que estar también acá')
+  }
 })

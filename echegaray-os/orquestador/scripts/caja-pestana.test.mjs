@@ -95,8 +95,9 @@ test('el desglose del efectivo está y no suma: los tres sumandos se ven en la c
     assert.ok(vacia(celda(g, f, 4)), `${nombre}: el desglose NO puede aportar valor en pesos`)
   }
   // Los dos que descargan la caja van negativos, para que el desglose se lea sumando de arriba abajo.
-  assert.match(celda(g, fPag, 2), /^=-\(/)
-  assert.match(celda(g, fDep, 2), /^=-\(/)
+  // El signo va DESPUÉS de la guarda de arqueo (01/08): `=IF(NOT(ISNUMBER(...));0;-(...))`.
+  assert.match(celda(g, fPag, 2), /;-\(/)
+  assert.match(celda(g, fDep, 2), /;-\(/)
 })
 
 test('la alerta 4.6 lee el ARQUEO CRUDO, no el saldo en pesos (que ahora mezcla otra ventana)', () => {
@@ -372,7 +373,8 @@ test('la nómina en efectivo DESCARGA la caja física, y se ve en su propio reng
   const f = filaDe(g, /jornales pagados en efectivo después del arqueo/i)
   assert.ok(f > 0, 'el renglón de la nómina en efectivo tiene que existir')
   const origen = celda(g, f, 2)
-  assert.match(origen, /^=-\(/, 'descarga: va restando')
+  assert.match(origen, /;-\(/, 'descarga: va restando')
+  assert.match(origen, /^=IF\(NOT\(ISNUMBER\(/, 'y guardada por el arqueo, como los otros tres renglones')
   assert.match(origen, /JORNALES_REAL_ADELANTO/)
   assert.match(origen, /JORNALES_REAL_RECIBO/)
   assert.ok(!origen.includes('JORNALES_REAL_BANCO'), 'lo que salió por banco no puede salir también del cajón')

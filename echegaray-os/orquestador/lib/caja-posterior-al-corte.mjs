@@ -407,7 +407,12 @@ export function formulaJornalesBancoPosteriores(corte, j = JOR) {
   return `SUMPRODUCT(${ventanaPagada(corte, j)}*N(${j.banco}))`
 }
 
-/** La nómina en efectivo, ya con signo, para el renglón del desglose. */
+/**
+ * La nómina en efectivo, ya con signo, para el renglón del desglose. Lleva la MISMA guarda de arqueo
+ * que los otros tres renglones: sin fecha no hay ventana y el renglón dice 0, no el histórico entero.
+ * Ver el bloque del desglose en caja-efectivo-fisico.mjs — con el arqueo vacío, un SUMPRODUCT compara
+ * contra cero y devuelve TODO, que es como la pestaña llegó a mostrar $126.617.300 de pagos en efectivo.
+ */
 export function celdaJornalesEfectivo(arqueo, j = JOR) {
-  return `=-(${formulaJornalesEfectivoPosteriores(arqueo, j)})`
+  return `=IF(NOT(ISNUMBER(${arqueo}));0;-(${formulaJornalesEfectivoPosteriores(arqueo, j)}))`
 }

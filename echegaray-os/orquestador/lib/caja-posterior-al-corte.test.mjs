@@ -360,7 +360,7 @@ test('la nómina se cita por rango con nombre, nunca por número de fila', () =>
 
 test('el renglón del desglose de la nómina lleva el signo puesto y es la MISMA fórmula del neto', () => {
   // Si el desglose se escribiera aparte, podría decir otra cosa que el total. Se importa, no se copia.
-  assert.equal(celdaJornalesEfectivo('$F$7'), `=-(${formulaJornalesEfectivoPosteriores('$F$7')})`)
+  assert.equal(celdaJornalesEfectivo('$F$7'), `=IF(NOT(ISNUMBER($F$7));0;-(${formulaJornalesEfectivoPosteriores('$F$7')}))`)
 })
 
 test('las fórmulas de la nómina van en es-AR: separador ; y nunca ,', () => {

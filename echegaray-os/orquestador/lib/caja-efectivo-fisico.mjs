@@ -125,17 +125,36 @@ export function formulaCajaEnPesos({ arqueo, tc, neta }) {
 // hay que poder abrirlo. Estas tres funciones son las mismas que arma la línea neta —se importan, no
 // se reescriben— y sirven para escribir el desglose debajo, cada renglón con su signo.
 
+// ═══ EL DESGLOSE TIENE QUE ESTAR GUARDADO POR EL MISMO ARQUEO QUE EL TOTAL (01/08) ═══
+//
+// VISTO EN LA PESTAÑA REAL, con la fecha de arqueo vacía: el total decía "—" y los renglones de abajo
+// decían "(−) pagado en efectivo −$126.617.300" y "(−) depositado −$9.960.000". Números enormes,
+// falsos, y que no sumaban el total que tenían encima.
+//
+// LA CAUSA es una asimetría de Sheets que no se ve leyendo una fórmula sola: contra una celda VACÍA,
+// `SUMIFS(...;">"&$F$6)` no matchea nada (criterio ">" sin operando) mientras que el `(fecha>$F$6)` de
+// un SUMPRODUCT trata el vacío como CERO y da verdadero para TODAS las fechas. El mismo arqueo vacío
+// devolvía 0 en la línea de cobros y el histórico COMPLETO en las de pagos y depósitos.
+//
+// El total ya estaba a salvo —`formulaNetaEfectivoPosterior` abre con `IF(NOT(ISNUMBER(arqueo));0;`—,
+// así que el defecto vivía sólo en el desglose. Un desglose que contradice a su total es peor que no
+// tenerlo: el que lo mira concluye que la empresa pagó $126 millones en billetes. La misma guarda, en
+// los cuatro renglones, y el desglose vuelve a decir exactamente lo que dice el total.
+
+/** La guarda del arqueo, la misma que abre el total. Sin fecha no hay ventana: 0, no el histórico. */
+const guardado = (arqueo, cuerpo) => `=IF(NOT(ISNUMBER(${arqueo}));0;${cuerpo})`
+
 /** Los cobros en efectivo posteriores al arqueo (CARGA la caja). Con `=` adelante, para una celda. */
 export function celdaCobrosEfectivo(arqueo, c = COB) {
-  return `=${formulaCobrosEfectivoPosteriores(arqueo, c)}`
+  return guardado(arqueo, formulaCobrosEfectivoPosteriores(arqueo, c))
 }
 /** Los pagos en efectivo posteriores al arqueo (DESCARGAN la caja), ya con signo negativo. */
 export function celdaPagosEfectivo(arqueo, c = CMP) {
-  return `=-(${formulaComprasEfectivoPosteriores(arqueo, c)})`
+  return guardado(arqueo, `-(${formulaComprasEfectivoPosteriores(arqueo, c)})`)
 }
 /** Los depósitos de efectivo al banco posteriores al arqueo (DESCARGAN la caja), con signo negativo. */
 export function celdaDepositosEfectivo(arqueo, c = DEP) {
-  return `=-(${formulaDepositosEfectivoPosteriores(arqueo, c)})`
+  return guardado(arqueo, `-(${formulaDepositosEfectivoPosteriores(arqueo, c)})`)
 }
 
 /**
