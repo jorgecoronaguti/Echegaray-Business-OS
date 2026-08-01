@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { CUENTAS } from './caja-disponibilidades.mjs'
 
 // CADA CUENTA DE CAJA SE FECHA CON SU PROPIA FUENTE.
@@ -49,4 +50,17 @@ test('toda cuenta que se carga a mano declara de dónde sale su fecha', () => {
 test('el Fondo fijo sigue fuera del cuadro', () => {
   // El dueño: "quitá la fila de fondo fijo, no la voy a usar, no la consideres más".
   assert.equal(CUENTAS.some((c) => /fondo fijo/i.test(c.nombre)), false)
+})
+
+test('el generador NO pisa la fecha del arqueo con TODAY() más abajo', () => {
+  // EL DEFECTO QUE ESTO CIERRA. La fila de "Caja en pesos" se arma bien arriba —con la fecha del
+  // arqueo— y doscientas líneas más abajo dos asignaciones sueltas la volvían a poner en =TODAY().
+  // El código decía una cosa y el Sheet mostraba otra, y sin mirar la celda viva no se notaba.
+  const src = readFileSync(new URL('../scripts/caja-pestana.mjs', import.meta.url), 'utf8')
+  const pisadas = [...src.matchAll(/filas\[(d0|dUsd) - 1\]\[5\] = ([^\n]+)/g)]
+  assert.equal(pisadas.length, 2, 'siguen siendo las dos filas de caja física')
+  for (const [, cual, valor] of pisadas) {
+    assert.ok(!/TODAY\(\)/.test(valor), `la fecha de ${cual} no puede ser TODAY(): ${valor.trim()}`)
+    assert.match(valor, /ARQ_(ARS|USD)_FECHA/, `la fecha de ${cual} sale del arqueo`)
+  }
 })

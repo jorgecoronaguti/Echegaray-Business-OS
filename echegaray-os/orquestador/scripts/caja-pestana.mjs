@@ -464,7 +464,12 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // dice "vivo", porque el número se recalcula solo: mostrar la fecha del arqueo ahí hacía leer
   // como atrasado un dato que estaba al día.
   filas[d0 - 1][2] = `=N(${ARQ_ARS})+$${C_IMP}$${fPostEf}`
-  filas[d0 - 1][5] = '=TODAY()'
+    // LA FECHA ES LA DEL ARQUEO, NO HOY (01/08). Acá se pisaba con =TODAY() lo que la fila ya traía
+    // bien resuelto más arriba. Un conteo de caja fechado hoy afirma que se contó hoy —sea cierto o
+    // no— y deja la alarma de antigüedad de la columna de al lado clavada en "0 días": la única fila
+    // del cuadro que NUNCA podía avisar de estar vieja era justamente la que sólo se actualiza cuando
+    // una persona abre el cajón y cuenta. Vacía significa "todavía no lo contaste", que es la verdad.
+  filas[d0 - 1][5] = `=IF(ISNUMBER(${ARQ_ARS_FECHA});${ARQ_ARS_FECHA};"")`
   filas[d0 - 1][6] = `=IF(N(${C_IMP}${d0})=0;"sin movimientos";"vivo")`
   filas[d0 - 1][4] = saldoEnPesos(d0)
   // LA COLUMNA DE ORIGEN SÓLO SE EXPLICA SI ES LA MÍA. Si el dueño escribió ahí su propio texto, manda
@@ -483,7 +488,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
     filas[dUsd - 1][2] = `=N(${ARQ_USD})+IF(NOT(ISNUMBER(${ARQ_USD_FECHA}));0;${formulaCobrosUsdEfectivoPosteriores(ARQ_USD_FECHA)})`
     filas[dUsd - 1][3] = `=IF(ISNUMBER(C${dUsd});${RANGO_TC};"")`
     filas[dUsd - 1][4] = saldoEnPesos(dUsd)
-    filas[dUsd - 1][5] = '=TODAY()'
+    filas[dUsd - 1][5] = `=IF(ISNUMBER(${ARQ_USD_FECHA});${ARQ_USD_FECHA};"")`
     filas[dUsd - 1][6] = `=IF(N(C${dUsd})=0;"sin movimientos";"vivo")`
   }
 
