@@ -117,3 +117,77 @@ npm run build        # Build de producción
 npm run typecheck     # Verificación de tipos
 npm run lint          # ESLint
 ```
+
+---
+
+# REGLAS DE ORO DEL DESARROLLO
+
+Rigen todo trabajo sobre el OS, igual que las reglas de negocio del `CLAUDE.md` raíz. Salen de las
+mejores prácticas de Claude Code y del bucle agéntico del Agent SDK, cruzadas con lo que este repo
+ya aprendió a la mala.
+
+**El bucle es: REUNIR CONTEXTO → ACTUAR → VERIFICAR.** Las reglas de abajo son cómo se cierra cada
+una de las tres etapas.
+
+## 1. El contexto es el recurso escaso
+
+El rendimiento cae a medida que la ventana se llena. Se administra activamente:
+
+- **`/clear` entre tareas no relacionadas.** La sesión de todo incluido degrada todo lo que sigue.
+- **Investigar es trabajo de un subagente**, no de la conversación principal. Un barrido de cientos
+  de archivos que después nadie relee es contexto quemado. Ver `.claude/agents/`.
+- **Delimitar la investigación.** "Investigá X" sin acotar es exploración infinita.
+- **Después de DOS correcciones fallidas sobre el mismo problema, parar.** El contexto ya está
+  contaminado de intentos que no funcionaron. `/clear` y reformular incorporando lo aprendido.
+
+## 2. Explorar → planificar → implementar → confirmar
+
+Saltar a codificar produce código que resuelve el problema equivocado.
+
+Plan mode cuando el cambio toca varios archivos, cuando el código es desconocido o cuando no está
+claro el enfoque. **Si el diff se puede describir en una oración, no hay nada que planificar.**
+
+## 3. Toda tarea necesita una verificación EJECUTABLE
+
+Sin algo que devuelva verde o rojo, "parece hecho" es la única señal disponible — y el humano se
+convierte en el bucle de verificación.
+
+- **Se muestra la evidencia, no se afirma el éxito**: la salida del test, el comando y lo que
+  devolvió, la captura. Es más rápido revisar evidencia que volver a correr todo.
+- **Tres formas, de más barata a más fuerte**: reglas (tests, typecheck, lint) · visual (capturas,
+  el PDF de la pestaña, la pantalla real) · un modelo que juzga (el `auditor-de-cierre`).
+- **La causa raíz, no el síntoma.** Silenciar un error no es arreglarlo.
+- Los hooks de `settings.json` son la puerta determinística: lo que tiene que pasar siempre no se
+  pide por instrucción, se enforcea con un hook.
+
+## 4. Nadie cierra su propio trabajo
+
+Ya está en el `CLAUDE.md` raíz (PRINCIPIO DE CIERRE) y acá se vuelve operativo: **antes de dar algo
+por terminado, lo revisa un subagente con contexto nuevo**, que ve el diff y los criterios pero no
+el razonamiento que los produjo.
+
+Advertencia que viene con esto: un revisor al que se le pide encontrar brechas **siempre encuentra
+alguna**. Se corrige lo que afecta corrección o requisitos declarados; perseguir cada hallazgo lleva
+a sobre-ingeniería — capas de abstracción, código defensivo y tests para casos que no pueden pasar.
+
+## 5. Los pedidos se hacen específicos
+
+Archivo concreto, síntoma concreto, y qué cuenta como "corregido". "Arreglá el login" contra "el
+login falla al vencer la sesión, mirá `src/auth/`, escribí primero el test que lo reproduce".
+Cuando el patrón ya existe en el repo, se señala el archivo de ejemplo en vez de describirlo.
+
+## 6. Cada capacidad en su lugar
+
+| Capa | Para qué | Se carga |
+|---|---|---|
+| `CLAUDE.md` | lo que aplica SIEMPRE | cada sesión |
+| `.claude/skills/` | conocimiento de dominio y método | bajo demanda |
+| `.claude/commands/` | un flujo que se dispara a mano | al invocarlo |
+| `.claude/agents/` | contexto aislado, herramientas restringidas, modelo barato | al delegar |
+| `.claude/hooks/` | lo que debe pasar sí o sí | automático |
+
+**Este archivo se mantiene corto.** El criterio para cada línea es: *¿causaría un error si la
+borro?* Si no, se borra. Un CLAUDE.md inflado hace que se ignoren las reglas que sí importan — y
+entonces la regla que faltaba el día que importaba estaba escrita, sólo que perdida en el ruido.
+
+Conocimiento de dominio → skill. Nunca acá.
