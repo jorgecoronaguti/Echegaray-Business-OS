@@ -119,6 +119,27 @@ export function coherenciaDelTotal(total, composicion) {
 }
 
 /**
+ * CUENTAS QUE DESAPARECIERON — el control que el de coherencia NO puede dar.
+ *
+ * El 01/08, después de arreglarse a medias el `#REF!`, la pestaña quedó con "Caja en pesos" y "Caja
+ * en dólares" en `—`. El total volvió a ser COHERENTE con las cuentas legibles ($88.709.996) y el
+ * control de coherencia pasó — correctamente, porque el total ya no miente. Pero la caja está
+ * subvaluada en ~$37M, porque dos cuentas simplemente no están.
+ *
+ * Un lector no puede distinguir "esta cuenta no existe" de "esta cuenta no tiene valor" mirando una
+ * sola foto. Sí puede compararla con la anterior: una cuenta que ayer estaba y hoy no, desapareció.
+ * Es la única forma barata de ver este agujero, y por eso el control es contra el HISTORIAL, no
+ * contra la misma lectura.
+ */
+export function cuentasQueDesaparecieron(composicion, composicionAnterior) {
+  if (!composicion?.detalle?.length || !composicionAnterior?.detalle?.length) return []
+  const hoy = new Set(composicion.detalle.map((c) => String(c.cuenta ?? '').trim()))
+  return composicionAnterior.detalle
+    .filter((c) => !hoy.has(String(c.cuenta ?? '').trim()) && Math.abs(Number(c.saldo) || 0) > 0)
+    .map((c) => ({ cuenta: c.cuenta, saldo_anterior: Math.round(Number(c.saldo) || 0) }))
+}
+
+/**
  * SKILL 2. Reconstruye la posición financiera con criterio percibido.
  *
  * @param {object} deps {google}
@@ -161,6 +182,14 @@ export async function reconstruirPosicion(deps = {}, opts = {}) {
     }
   }
 
+  // Una cuenta que estaba en la corrida anterior y hoy no está NO es una cuenta en cero: es una fila
+  // que se rompió. Se declara y bloquea la acción, porque la caja quedó subvaluada por ese monto.
+  const desaparecidas = cuentasQueDesaparecieron(composicion, opts.composicionAnterior)
+  if (desaparecidas.length) {
+    faltantes.push(`desaparecieron ${desaparecidas.length} cuenta(s) de la pestaña CAJA respecto de la corrida anterior: `
+      + desaparecidas.map((d) => `${d.cuenta} (valía $${d.saldo_anterior.toLocaleString('es-AR')})`).join(' · '))
+  }
+
   const oblig = modelo.comprometido?.estado === 'ok' ? modelo.comprometido : null
   const comercial = modelo.deuda_comercial?.estado === 'ok' ? modelo.deuda_comercial : null
 
@@ -196,7 +225,12 @@ export async function reconstruirPosicion(deps = {}, opts = {}) {
     : Math.min(techoAritmetico, Math.max(0, arsLiquida - comprometida - restringida - minima))
 
   const accionabilidad = evaluarAccionabilidad({
-    reserva, restringida: restringidaModelo,
+    reserva,
+    // Una cuenta desaparecida bloquea igual que una caja restringida desconocida: en los dos casos
+    // hay plata cuyo estado no se conoce.
+    restringida: desaparecidas.length
+      ? { ...restringidaModelo, bloquea_accionable: true, motivo: `faltan cuentas en la pestaña CAJA: ${desaparecidas.map((d) => d.cuenta).join(', ')}` }
+      : restringidaModelo,
     // La validación del extractor y la frescura del mercado las conoce el ciclo, no esta skill:
     // entran por opts y por defecto bloquean, que es el lado seguro.
     extractorValidado: Boolean(opts.extractorValidado),
@@ -246,6 +280,7 @@ export async function reconstruirPosicion(deps = {}, opts = {}) {
     evidencia: evidenciaCombinada(EVIDENCIA.DATO, faltantes.length ? EVIDENCIA.ESTIMACION : EVIDENCIA.CALCULO),
     confianza: faltantes.length >= 3 ? CONFIANZA.BAJA : faltantes.length ? CONFIANZA.MEDIA : CONFIANZA.ALTA,
     coherencia,
+    cuentas_desaparecidas: desaparecidas,
     fuente: modelo.fuentes,
     modelo,
   }

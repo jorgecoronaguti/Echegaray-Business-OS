@@ -19,10 +19,21 @@ import { evaluarElemento } from './balanz-denylist.mjs'
 import { clicSeguro, navegarSeguro, auditarControles, verificarSesion } from './balanz-navegador.mjs'
 import { extraerDeTabla, mapearColumnas } from './instrumentos.mjs'
 
+// NO ALCANZA CON QUE PLAYWRIGHT IMPORTE: en este servidor el binario de Chromium existe y no arranca
+// sin sus librerías de sistema (van en `LD_LIBRARY_PATH=/home/jorge/.local/lib/pw-libs`, instaladas
+// sin root). Chequear sólo el import dejaba la suite entera ROJA para cualquiera que no las tuviera —
+// y un test de entorno que se disfraza de test de producto es la peor clase de falso rojo.
 let chromium = null
-try { ({ chromium } = await import('playwright')) } catch { /* sin playwright */ }
+let motivoSalteo = null
+try { ({ chromium } = await import('playwright')) } catch { motivoSalteo = 'playwright no está instalado' }
+if (chromium) {
+  try { const b = await chromium.launch(); await b.close() } catch (e) {
+    motivoSalteo = `Chromium no arranca (${String(e?.message ?? e).split('\n')[0].slice(0, 80)}). Probá con LD_LIBRARY_PATH=/home/jorge/.local/lib/pw-libs`
+    chromium = null
+  }
+}
 const salta = !chromium
-const opts = { skip: salta ? 'playwright no disponible' : false }
+const opts = { skip: salta ? motivoSalteo : false }
 
 /** Una pantalla informativa de bróker, con todas las trampas que importan. */
 const PAGINA = `
@@ -151,8 +162,7 @@ test('el modal de confirmación queda bloqueado por su contenido, no por su clas
   assert.ok(['textoPadre', 'tituloModal'].includes(v.campo), `lo delata el contenedor, no el botón — cayó por ${v.campo}`)
 })
 
-test('el CONTENEDOR no es la página entera: un link inofensivo no se bloquea por otro botón lejano', async (t) => {
-  if (salta) return t.skip('playwright no disponible')
+test('el CONTENEDOR no es la página entera: un link inofensivo no se bloquea por otro botón lejano', opts, async () => {
   // Defecto real encontrado con el DOM de verdad: `parentElement.innerText` de un elemento de primer
   // nivel es TODA la página. El link al prospecto caía porque en algún lado de la pantalla decía
   // "Invertir". Un agente que bloquea todo no es prudente, es inútil.

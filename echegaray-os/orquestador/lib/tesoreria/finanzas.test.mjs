@@ -10,7 +10,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { EVIDENCIA, evidenciaCombinada, bloquePorDias, CONFIANZA } from './contratos.mjs'
-import { enDescubierto, clasificarCuentas, coherenciaDelTotal } from './posicion-caja.mjs'
+import { enDescubierto, clasificarCuentas, coherenciaDelTotal, cuentasQueDesaparecieron } from './posicion-caja.mjs'
 import { tasaDeReferencia, deudaCancelable, MODO } from './costo-liquidez.mjs'
 import {
   estadoReserva, modelarCajaRestringida, evaluarAccionabilidad, ESTADO_POLITICA,
@@ -680,4 +680,24 @@ test('el control acepta la relación REAL: el total excluye los valores a deposi
   assert.equal(coherenciaDelTotal(126190287, sana).coherente, true)
   // Y un total inflado en más de la tolerancia tampoco pasa.
   assert.equal(coherenciaDelTotal(200000000, sana).coherente, false)
+})
+
+test('una cuenta que ayer estaba y hoy no, NO es una cuenta en cero', () => {
+  // El 01/08, con el #REF! arreglado a medias, "Caja en pesos" y "Caja en dólares" quedaron en `—`.
+  // El total volvió a ser coherente con lo legible y el control de coherencia pasó — bien, porque el
+  // total ya no mentía. Pero la caja quedó subvaluada en ~$37M: dos cuentas simplemente no estaban.
+  const ayer = clasificarCuentas([
+    { cuenta: 'Caja en pesos', saldo: 15194864 },
+    { cuenta: 'Caja en dólares', saldo: 22285427 },
+    { cuenta: 'Santander · cta cte ARS', saldo: 87913839 },
+  ])
+  const hoy = clasificarCuentas([{ cuenta: 'Santander · cta cte ARS', saldo: 87913839 }])
+  const faltan = cuentasQueDesaparecieron(hoy, ayer)
+  assert.equal(faltan.length, 2)
+  assert.equal(faltan[0].saldo_anterior, 15194864)
+  // Sin historial no se puede afirmar nada: no se inventa una alarma.
+  assert.deepEqual(cuentasQueDesaparecieron(hoy, null), [])
+  // Y una cuenta que estaba en CERO y desaparece no es una alarma: no había plata ahí.
+  const conCero = clasificarCuentas([{ cuenta: 'Santander · cta cte ARS', saldo: 87913839 }, { cuenta: 'Cuenta vieja', saldo: 0 }])
+  assert.deepEqual(cuentasQueDesaparecieron(hoy, conCero), [])
 })
