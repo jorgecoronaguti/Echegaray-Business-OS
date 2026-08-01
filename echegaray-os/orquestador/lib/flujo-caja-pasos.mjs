@@ -82,6 +82,15 @@ export const PASOS = [
 // FALTABA EN EL REGISTRO Y POR ESO NO CORRÍA EN EL AGENTE. La pestaña existía, tenía su generador y
   // su fuente (la pantalla eCHEQ del Santander), pero nadie la ejecutaba: se actualizaba sólo cuando
   // alguien corría el script a mano. Es la forma más silenciosa de que una pestaña envejezca.
+  // ═══ LA RÉPLICA DE CHEQUES, QUE NADIE REFRESCABA (01/08) ═══
+  //
+  // `_CHEQUES_RAW` la escribe cheques-raw-pestana.mjs y NO estaba en estos pasos: sólo se
+  // actualizaba si alguien la corría a mano. Medido: 30 cheques en la réplica y **35 celdas de
+  // "Cheques Recibidos" que la leen por fórmula**. Una fuente que se congela sin gritar — el mismo
+  // modo de falla del espejo de JORNALES, que mostró una quincena entera con valores viejos.
+  //
+  // Va ANTES de cheques-recibidos-pestana, que es quien la consume.
+  ['cheques-raw-pestana.mjs', '_CHEQUES_RAW — la réplica de la cartera de cheques que lee Cheques Recibidos', ['_CHEQUES_RAW']],
   ['cheques-recibidos-pestana.mjs', 'Cheques Recibidos — cuánto valor hay en cartera y cuándo se vuelve caja', ['Cheques Recibidos']],
   ['cheques-emitidos-tablero.mjs', 'Cheques Emitidos — de lo firmado, cuánto no salió todavía y cuándo sale', ['Cheques Emitidos']],
   // Va última: ubica las líneas del Cash Flow por rótulo, así que necesita el cuadro ya escrito.
