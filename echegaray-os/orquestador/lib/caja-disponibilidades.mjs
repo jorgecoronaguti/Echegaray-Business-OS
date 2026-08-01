@@ -66,6 +66,22 @@ export const CUENTAS = [
     origenSugerido: 'Arqueo de caja',
   },
   {
+    // ═══ EL CAJÓN TAMBIÉN TIENE DÓLARES (01/08) ═══
+    //
+    // El dueño: "tenemos una cobranza en dólares en efectivo dentro de esa pestaña". Es la fila 62 de
+    // Cobranzas: U$S 15.000 de anticipo de Quattropani, cobrados en efectivo el 31/07. Hasta hoy ese
+    // cobro entraba a la caja de PESOS como $15.000 — el importe correcto en la moneda equivocada.
+    //
+    // Se trata igual que la cuenta en dólares del banco, que ya existía: se lleva el saldo EN SU
+    // MONEDA y se valúa con TIPO_CAMBIO_USD para poder sumarlo al total. No se convierte al cargarlo:
+    // un cobro en dólares sigue siendo dólares hasta que se venda, y la exposición cambiaria tiene
+    // que poder verse (por eso el bloque 4.8 la muestra aparte).
+    nombre: 'Caja en dólares',
+    moneda: 'USD',
+    patron: /^caja en d[oó]lares/i,
+    origenSugerido: 'Arqueo de caja',
+  },
+  {
     nombre: 'Fondo fijo',
     moneda: 'ARS',
     patron: /^fondo fijo/i,

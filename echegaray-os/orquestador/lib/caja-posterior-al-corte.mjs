@@ -75,7 +75,9 @@ import { COL_FECHA_CAJA } from './rubro-caja.mjs'
 // se cumple por construcción, porque cada SUMPRODUCT mira columnas de UNA sola pestaña.
 
 /** Las columnas de Cobranzas. Verificadas contra la fila de encabezado del 21/07. Rango ABIERTO. */
-export const COB = { hoja: 'Cobranzas', total: 'M', forma: 'N', estado: 'O', fecha: 'Q', desde: 5 }
+// `moneda` (01/08): la columna que distingue un cobro en PESOS de uno en DÓLARES. Ver el bloque de la
+// caja en dólares, al final de este archivo.
+export const COB = { hoja: 'Cobranzas', total: 'M', forma: 'N', estado: 'O', fecha: 'Q', moneda: 'AA', desde: 5 }
 /** Las columnas de Cheques Emitidos. I es la fecha en que se debita, K el SI/NO. Rango ABIERTO. */
 export const CHQ = { hoja: 'Cheques Emitidos', importe: 'F', fechaPago: 'I', debitado: 'K', desde: 2 }
 /**
@@ -232,6 +234,10 @@ export function formulaCobrosEfectivoPosteriores(arqueo, c = COB) {
   return `SUMIFS(${rango(c.hoja, c.total, c.desde)};`
     + `${rango(c.hoja, c.estado, c.desde)};"Cobrado";`
     + `${rango(c.hoja, c.forma, c.desde)};"Efectivo";`
+    // LOS DÓLARES NO SON PESOS. Sin este criterio, "U$S 15.000" entraba al cajón de pesos como
+    // $15.000 — el importe correcto en la moneda equivocada, que es la peor clase de número: no
+    // rompe nada y está mal por dos órdenes de magnitud. Ver el bloque de la caja en dólares.
+    + `${rango(c.hoja, c.moneda, c.desde)};"<>USD";`
     + `${rango(c.hoja, c.fecha, c.desde)};">"&${arqueo})`
 }
 
@@ -511,4 +517,56 @@ export function celdaOficinaEfectivo(arqueo, o = OFI) {
 }
 export function celdaExtraccionesEfectivo(arqueo, c = DEP) {
   return `=IF(NOT(ISNUMBER(${arqueo}));0;${formulaExtraccionesEfectivoPosteriores(arqueo, c)})`
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA CAJA EN DÓLARES — UN BILLETE VERDE NO ES UN BILLETE (01/08)
+//
+// EL DUEÑO: *"tenemos una cobranza en dólares en efectivo dentro de esa pestaña, quiero que la revises
+// y agregues una línea en caja considerándola y la sumes a todo"*.
+//
+// LO QUE ENCONTRÉ. Cobranzas fila 62, Quattropani, anticipo de obra: **U$S 15.000 cobrados en efectivo
+// el 31/07**. La columna "TOTAL a cobrar" guarda el número 15000 y el formato de la celda de al lado
+// dice "U$S" — pero un formato no es un dato: para toda fórmula del libro eso valía QUINCE MIL PESOS.
+// La línea de efectivo lo sumaba al cajón como si fueran pesos. El importe correcto en la moneda
+// equivocada: no rompe nada, no da error, y está mal por dos órdenes de magnitud.
+//
+// POR QUÉ HIZO FALTA UNA COLUMNA NUEVA. No hay forma de distinguir la moneda desde una fórmula: el
+// valor es el mismo número y lo único que cambia es el FORMATO, que las fórmulas no ven. Así que
+// Cobranzas gana una columna "Moneda" (vacía = ARS, "USD" donde corresponda). Sin ese dato el libro
+// no puede saberlo, y adivinarlo por el cliente o por el monto sería inventar.
+//
+// EL TRATAMIENTO ES EL MISMO QUE EL DE LA CUENTA EN DÓLARES DEL BANCO, que ya existe: se lleva el
+// saldo EN SU MONEDA y se valúa con TIPO_CAMBIO_USD para poder sumarlo al total. No se convierte al
+// cargarlo — un cobro en dólares sigue siendo dólares hasta que se venda, y la exposición cambiaria
+// tiene que poder verse.
+
+/** La columna de moneda de Cobranzas y el valor que marca un cobro en dólares. */
+export const MONEDA_USD = 'USD'
+
+/**
+ * NÚCLEO PURO: los cobros en efectivo Y EN DÓLARES posteriores al arqueo, en DÓLARES (no en pesos).
+ * Es el espejo exacto de formulaCobrosEfectivoPosteriores con el criterio de moneda invertido, así
+ * que los dos juntos son una partición: ningún cobro en efectivo queda afuera ni entra dos veces.
+ * @param {string} arqueo referencia a la celda con la fecha del arqueo en dólares
+ */
+export function formulaCobrosUsdEfectivoPosteriores(arqueo, c = COB) {
+  return `SUMIFS(${rango(c.hoja, c.total, c.desde)};`
+    + `${rango(c.hoja, c.estado, c.desde)};"Cobrado";`
+    + `${rango(c.hoja, c.forma, c.desde)};"Efectivo";`
+    + `${rango(c.hoja, c.moneda, c.desde)};"${MONEDA_USD}";`
+    + `${rango(c.hoja, c.fecha, c.desde)};">"&${arqueo})`
+}
+
+/**
+ * La celda de la caja en dólares: el arqueo en dólares más lo cobrado en efectivo y en dólares desde
+ * entonces. Devuelve DÓLARES; la valuación a pesos la hace la columna de la pestaña, igual que en la
+ * cuenta en dólares del banco. Sin fecha de arqueo se comporta como la caja en pesos: 0, no el
+ * histórico — ver la guarda en formulaNetaEfectivoPosterior.
+ * @param {string} arqueo referencia a la celda con la FECHA del arqueo
+ * @param {string} contado referencia a la celda con el arqueo CONTADO en dólares
+ */
+export function celdaCajaDolares(arqueo, contado, c = COB) {
+  return `=N(${contado})+IF(NOT(ISNUMBER(${arqueo}));0;${formulaCobrosUsdEfectivoPosteriores(arqueo, c)})`
 }
