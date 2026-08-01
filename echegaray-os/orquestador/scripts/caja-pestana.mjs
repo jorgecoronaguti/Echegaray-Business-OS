@@ -964,7 +964,12 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   const hoy = 'TODAY()'
   const finMes = 'EOMONTH(TODAY();0)'
   const cobRestoMes = `SUMIFS(${C}!$M$5:$M$400;${C}!$Q$5:$Q$400;">"&${hoy};${C}!$Q$5:$Q$400;"<="&${finMes})`
-  const pagRestoMes = `SUMIFS(${CO}!$O$4:$O$800;${CO}!$AD$4:$AD$800;">"&${hoy};${CO}!$AD$4:$AD$800;"<="&${finMes})`
+  // RANGO ABIERTO, NO HASTA LA 800 (01/08). El auditor de rangos fosilizados: "lee Compras hasta
+  // la 800, datos hasta la 797". Tres filas de margen. El día que Compras pase la 800 esta celda
+  // deja de contar los pagos del resto del mes SIN dar un error — el piso proyectado de caja se
+  // vería más alto de lo que es, que es el error que peor se paga. Los demás rangos de este archivo
+  // ya son abiertos por esta misma razón.
+  const pagRestoMes = `SUMIFS(${CO}!$O$4:$O;${CO}!$AD$4:$AD;">"&${hoy};${CO}!$AD$4:$AD;"<="&${finMes})`
   const fResto = push(['   · lo que el cash flow espera que pase del 22 al fin de mes (cobros menos pagos)', '', '', '',
     `=${cobRestoMes}-${pagRestoMes}`, '', '', '',
     'NO es un error: es futuro. La fila de arriba compara la plata de HOY contra el cierre de TODO el mes, así que esta parte de la diferencia es simplemente lo que todavía no pasó.'])
