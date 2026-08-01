@@ -91,7 +91,21 @@ export const PASOS = [
   //
   // Va ANTES de cheques-recibidos-pestana, que es quien la consume.
   ['cheques-raw-pestana.mjs', '_CHEQUES_RAW — la réplica de la cartera de cheques que lee Cheques Recibidos', ['_CHEQUES_RAW']],
-  ['cheques-recibidos-pestana.mjs', 'Cheques Recibidos — cuánto valor hay en cartera y cuándo se vuelve caja', ['Cheques Recibidos']],
+  // ═══ QUIÉN ES EL DUEÑO DE "Cheques Recibidos" — DECIDIDO (01/08) ═══
+  //
+  // Dos generadores se la disputaban y por eso la pestaña se auto-candaba en cada corrida:
+  // `cheques-recibidos-pestana` corría desde el pipeline y se frenaba solo ("sólo 7 de 34 de mis
+  // rótulos siguen en la pestaña"), mientras el tablero —que ya la había escrito— no estaba en los
+  // pasos y sólo corría a mano.
+  //
+  // Gana el TABLERO, y no por antigüedad: el registro viejo listaba OPERACIONES del homebanking
+  // (Aceptación, Custodia, Depósito, Endoso) y el mismo cheque aparecía varias veces, así que la
+  // cartera NO SE PODÍA SUMAR — el endoso de $20.000.000 figuraba dos veces. El tablero usa el CHEQUE
+  // como unidad, que es lo que hace que el total signifique algo, y además entra la orden de pago de
+  // Messina, que no tiene número de operación y en el registro viejo no tenía dónde ir.
+  //
+  // `--pestana` le dice que escriba el real: sabe hacerlo desde el 30/07 y el diseño ya está aprobado.
+  ['cheques-recibidos-tablero.mjs', 'Cheques Recibidos — la cartera con el cheque como unidad', ['Cheques Recibidos'], ['--pestana', 'Cheques Recibidos']],
   ['cheques-emitidos-tablero.mjs', 'Cheques Emitidos — de lo firmado, cuánto no salió todavía y cuándo sale', ['Cheques Emitidos']],
   // Va última: ubica las líneas del Cash Flow por rótulo, así que necesita el cuadro ya escrito.
   // 'Caja' con minúsculas era el nombre viejo de la pestaña: quedó declarado y el censo lo reportaba
