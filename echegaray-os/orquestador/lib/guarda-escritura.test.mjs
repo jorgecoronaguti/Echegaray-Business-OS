@@ -1,7 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { registerHooks } from 'node:module'
-import { nombreTab, esProtegible, tabsProtegibles, separarPermitido, sheetIdDeRequestContenido, separarRequests, gridVacia, protegerVacioSobreLleno, guardarEscritura, evaluarBloqueadas } from './guarda-escritura.mjs'
+import { nombreTab, esProtegible, tabsProtegibles, separarPermitido, sheetIdDeRequestContenido, sheetIdDeRequestFormato, separarRequests, gridVacia, protegerVacioSobreLleno, guardarEscritura, guardarRequests, evaluarBloqueadas } from './guarda-escritura.mjs'
+import { firmaDeFormato, limpiarCacheFormato } from './firma-formato.mjs'
+import { firmaDeGrid } from './firma-tab.mjs'
 
 // ═══ DOBLE DE LA BASE — se registra ACÁ ARRIBA, antes de que nadie importe db.mjs ═══
 //
@@ -338,4 +340,107 @@ test('SIN compartida (default): la firma que difiere sigue bloqueando y auto-can
   assert.deepEqual(g.bloqueadas, ['Compras'], 'la editaste: el generador no la pisa')
   assert.equal(g.data.length, 0)
   assert.deepEqual(registro.candados, ['Compras'], 'y queda candada, como siempre')
+})
+
+// ═══ EL FORMATO TAMBIÉN ES TRABAJO DEL DUEÑO (01/08) ═══
+//
+// Hasta hoy el portón dejaba pasar TODOS los requests de formato ("nunca se bloquea un formateo"). El
+// dueño pinta celdas, pone formato de moneda y ensancha columnas: eso es trabajo suyo tanto como un
+// número, y el generador se lo pasaba por encima en la corrida siguiente sin que la firma de valores
+// —que hashea sólo el texto— se enterara. Estos tests fijan las dos mitades de la corrección: qué
+// request cuenta como presentación, y que la presentación se frena cuando el formato es del dueño
+// SIN frenar los números.
+
+test('sheetIdDeRequestFormato: la presentación se identifica, y el contenido no se cuenta dos veces', () => {
+  // Presentación pura → la gobierna la firma de formato.
+  assert.equal(sheetIdDeRequestFormato({ repeatCell: { range: { sheetId: 3 }, fields: 'userEnteredFormat.backgroundColor' } }), 3)
+  assert.equal(sheetIdDeRequestFormato({ updateCells: { range: { sheetId: 3 }, fields: 'userEnteredFormat.textFormat' } }), 3)
+  assert.equal(sheetIdDeRequestFormato({ updateDimensionProperties: { range: { sheetId: 3 } } }), 3)
+  assert.equal(sheetIdDeRequestFormato({ updateBorders: { range: { sheetId: 3 } } }), 3)
+  assert.equal(sheetIdDeRequestFormato({ addConditionalFormatRule: { rule: { ranges: [{ sheetId: 3 }] } } }), 3)
+  assert.equal(sheetIdDeRequestFormato({ setDataValidation: { range: { sheetId: 3 } } }), 3)
+  // Contenido → ya lo gobierna la guarda de contenido (la más restrictiva). No se clasifica dos veces.
+  assert.equal(sheetIdDeRequestFormato({ updateCells: { range: { sheetId: 3 }, fields: 'userEnteredValue' } }), null)
+  assert.equal(sheetIdDeRequestFormato({ updateCells: { range: { sheetId: 3 }, fields: '*' } }), null)
+  // Estructura → viaja con el contenido; frenarla a mitad de camino corre la pestaña. Ver el encabezado.
+  assert.equal(sheetIdDeRequestFormato({ insertDimension: { range: { sheetId: 3 } } }), null)
+  assert.equal(sheetIdDeRequestFormato({ mergeCells: { range: { sheetId: 3 } } }), null)
+})
+
+test('separarRequests: el formato a una pestaña con formato tuyo se descarta; el resto pasa', () => {
+  const reqs = [
+    { repeatCell: { range: { sheetId: 7 }, fields: 'userEnteredFormat.backgroundColor' } }, // formato a 7 → se frena
+    { repeatCell: { range: { sheetId: 9 }, fields: 'userEnteredFormat.backgroundColor' } }, // formato a 9 → pasa
+    { insertDimension: { range: { sheetId: 7 } } }, // estructura → pasa siempre
+  ]
+  const { permitidos, bloqueados } = separarRequests(reqs, new Set(), new Set([7]))
+  assert.equal(bloqueados.length, 1)
+  assert.equal(permitidos.length, 2)
+  assert.equal(bloqueados[0].repeatCell.range.sheetId, 7)
+})
+
+/** Base falsa que además contesta la firma de FORMATO. */
+function baseFalsaConFormato({ candadas = [], firmaSellada = null, firmaFormato = null } = {}) {
+  const registro = { candados: [], sellos: [], sellosFormato: [] }
+  globalThis.__dobleDbGuarda.query = async (sql, params = []) => {
+    if (/insert into public\.sheet_pestanas_bloqueadas/i.test(sql)) { registro.candados.push(params[1]); return { rows: [] } }
+    if (/select pestana from public\.sheet_pestanas_bloqueadas/i.test(sql)) return { rows: candadas.map((p) => ({ pestana: p })) }
+    if (/select firma_formato from public\.sheet_tab_firma/i.test(sql)) return { rows: firmaFormato ? [{ firma_formato: firmaFormato }] : [] }
+    if (/select firma from public\.sheet_tab_firma/i.test(sql)) return { rows: firmaSellada ? [{ firma: firmaSellada }] : [] }
+    if (/insert into public\.sheet_tab_firma/i.test(sql)) {
+      // El sello de VALORES y el de FORMATO usan la misma tabla y los dos mandan 4 parámetros: lo que
+      // los distingue es la COLUMNA que escriben, no la aridad.
+      if (/firma_formato/i.test(sql)) registro.sellosFormato.push(params[1]); else registro.sellos.push(params[1])
+      return { rows: [] }
+    }
+    return { rows: [] }
+  }
+  return registro
+}
+
+const FMT_CAJA = { congeladas: { filas: 1 }, anchos: [100], filas: [[{ formato: { textFormat: { bold: true } } }]] }
+
+/** Cliente completo: meta de pestañas, valores y formato entrado. */
+function clienteConFormato(fmt = FMT_CAJA, grid = [['x']]) {
+  return {
+    async getSheetMeta() { return [{ sheetId: 7, title: 'CAJA' }] },
+    async readSheetValues() { return grid },
+    async readSheetUserFormats() { return fmt },
+  }
+}
+
+test('guardarRequests: si el formato de la pestaña es TUYO, el generador no la re-formatea', async (t) => {
+  t.after(() => { globalThis.__dobleDbGuarda.query = sinBase; limpiarCacheFormato() })
+  limpiarCacheFormato()
+  // El OS selló OTRO formato: lo que hay hoy en la pestaña no es lo que él dejó → lo tocó una persona.
+  baseFalsaConFormato({ firmaSellada: firmaDeGrid([['x']]), firmaFormato: 'otro-formato-el-que-yo-dejé' })
+  const reqs = [{ repeatCell: { range: { sheetId: 7 }, fields: 'userEnteredFormat.backgroundColor' } }]
+  const g = await guardarRequests(clienteConFormato(), 'ID', reqs)
+  assert.equal(g.requests.length, 0, 'no se le pasa el formato por encima')
+  assert.deepEqual(g.bloqueadas, ['CAJA'])
+})
+
+test('guardarRequests: si el formato coincide con el que dejó el OS, formatea normal y resella', async (t) => {
+  t.after(() => { globalThis.__dobleDbGuarda.query = sinBase; limpiarCacheFormato() })
+  limpiarCacheFormato()
+  const registro = baseFalsaConFormato({ firmaSellada: firmaDeGrid([['x']]), firmaFormato: firmaDeFormato(FMT_CAJA) })
+  const reqs = [{ repeatCell: { range: { sheetId: 7 }, fields: 'userEnteredFormat.backgroundColor' } }]
+  const g = await guardarRequests(clienteConFormato(), 'ID', reqs)
+  assert.equal(g.requests.length, 1, 'el camino feliz no cambia')
+  assert.deepEqual(g.bloqueadas, [])
+  await g.sellar()
+  assert.deepEqual(registro.sellosFormato, ['CAJA'], 'y se resella el formato del OS')
+})
+
+test('el formato protegido NO frena los números ni deja candados sembrados', async (t) => {
+  t.after(() => { globalThis.__dobleDbGuarda.query = sinBase; limpiarCacheFormato() })
+  limpiarCacheFormato()
+  // Escenario del pedido: tocaste un FORMATO, no un número. La pestaña se sigue actualizando.
+  const registro = baseFalsaConFormato({ firmaSellada: firmaDeGrid([['x']]), firmaFormato: 'el-mío-era-otro' })
+  const g = await guardarEscritura(clienteConFormato(), 'ID', [{ range: 'CAJA!A1', values: [['x']] }])
+  assert.deepEqual(g.bloqueadas, [], 'los valores entran: no tocaste ningún número')
+  assert.equal(g.data.length, 1)
+  await g.sellar()
+  assert.deepEqual(registro.sellosFormato, [], 'y tu formato NO se adopta como propio: sigue siendo tuyo')
+  assert.deepEqual(registro.candados, [], 'un formato tuyo no canda la pestaña entera')
 })

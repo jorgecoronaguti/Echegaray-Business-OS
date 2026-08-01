@@ -107,6 +107,34 @@ function refDeTab(tab) {
   return /[^A-Za-z0-9_]/.test(tab) ? `'${String(tab).replace(/'/g, "''")}'` : tab
 }
 
+// ═══ EL HISTORIAL DE VERSIONES, ANTES DE TOCAR NADA (01/08) ═══
+//
+// Regla de oro del dueño, textual: *"antes de revisar modificaciones tienen que revisar el historial de
+// versiones y ver si yo he hecho modificaciones en las pestañas y respetarlas"*. `historial-ediciones.mjs`
+// existía desde el 23/07 pero se consultaba en UN solo caso —el arranque en frío de la firma—, así que
+// en la corrida normal nadie miraba el historial nunca. Acá se consulta SIEMPRE, en el portón por el que
+// pasa toda escritura, y queda en el log: una línea por archivo y por corrida que dice quién lo tocó y
+// cuándo. Cuesta una sola llamada por proceso (`historialEdiciones` cachea por fileId).
+//
+// Qué decide y qué no. El historial de Drive es del ARCHIVO, no de la pestaña: dice "una persona tocó
+// este Sheet", no "tocó la celda B7 de CAJA". Bloquear todo el archivo porque el dueño editó una celda
+// congelaría el Sheet entero (lo edita todos los días). Entonces el historial no decide: AVISA y obliga
+// a mirar. Quien decide pestaña por pestaña son las dos firmas —la de valores y la de formato— que sí
+// distinguen qué cambió y dónde.
+
+/** Consulta el historial de versiones y lo deja en el log. Una vez por archivo y por proceso. */
+export async function revisarHistorial(cliente, fileId) {
+  try {
+    const { historialEdiciones, avisoEdicionHumana } = await import('./historial-ediciones.mjs')
+    const h = await historialEdiciones(cliente, fileId)
+    if (h?.yaAvisado) return h
+    if (h?.hubo) console.log(`  📜 ${avisoEdicionHumana(h)}`)
+    else if (h?.desconocido) console.log('  📜 historial de versiones no disponible: verifico igual pestaña por pestaña (firma de valores y de formato).')
+    h.yaAvisado = true
+    return h
+  } catch { return { hubo: false, desconocido: true } }
+}
+
 /**
  * Evalúa qué pestañas de contenido están protegidas (candada o editada por humano). Impura (base + Sheet).
  *
@@ -135,10 +163,11 @@ function refDeTab(tab) {
  * huella justo antes de escribir, y aborta toda la operación si cambió. Se protege la CELDA, que es la
  * unidad que se comparte, en vez de la pestaña.
  */
-export async function evaluarBloqueadas(cliente, fileId, tabs = [], { compartida = false } = {}) {
+export async function evaluarBloqueadas(cliente, fileId, tabs = [], { compartida = false, candar = true } = {}) {
   const bloqueadas = new Set()
   const protegibles = tabs.filter(esProtegible)
   if (!protegibles.length) return bloqueadas
+  await revisarHistorial(cliente, fileId)
   // ¿La base responde? Sin ella no hay forma de conocer candado ni firma → fail-closed total.
   try {
     const { query } = await import('./db.mjs')
@@ -158,7 +187,7 @@ export async function evaluarBloqueadas(cliente, fileId, tabs = [], { compartida
     const { firmaGuardia } = await import('./firma-tab.mjs')
     for (const t of protegibles) {
       if (bloqueadas.has(t)) continue
-      const { editada, noVerificable } = await firmaGuardia(cliente, fileId, t, refDeTab(t)).catch(() => ({ editada: false, noVerificable: true }))
+      const { editada, noVerificable } = await firmaGuardia(cliente, fileId, t, refDeTab(t), { candar }).catch(() => ({ editada: false, noVerificable: true }))
       // editada = la tocaste; noVerificable = no pude confirmar que está intacta. En ambos casos, no piso.
       if (editada || noVerificable) bloqueadas.add(t)
     }
@@ -166,13 +195,67 @@ export async function evaluarBloqueadas(cliente, fileId, tabs = [], { compartida
   return bloqueadas
 }
 
-/** Sella la firma de las pestañas de contenido que el OS acaba de escribir (para no confundir su propia escritura con una edición humana la próxima vez). */
-export async function sellarTabs(cliente, fileId, tabs = []) {
+/**
+ * ¿De qué pestañas es TUYO el formato? (01/08). Devuelve el conjunto que no se puede re-formatear.
+ *
+ * Una pestaña protege su formato si está CANDADA, si su CONTENIDO ya está protegido (repintar la
+ * geometría de una pestaña que no se pudo reescribir es exactamente el desastre del 31/07: el formato
+ * de la grilla nueva sobre los valores viejos), o si su FIRMA DE FORMATO difiere de la que dejó el OS.
+ *
+ * A diferencia del contenido, un formato protegido NO auto-canda y NO frena los valores: los números
+ * se siguen actualizando y lo único que se saltea es la pasada de formato. Es la respuesta literal al
+ * pedido —"puedo haber tocado algún número o algún formato y las debe respetar"— sin el efecto lateral
+ * de congelar la pestaña entera por un color.
+ */
+export async function evaluarFormatoProtegido(cliente, fileId, tabs = [], yaProtegidas = new Set()) {
+  const protegidas = new Set()
   const protegibles = tabs.filter(esProtegible)
-  if (!protegibles.length) return
+  if (!protegibles.length) return protegidas
   try {
-    const { sellarFirma } = await import('./firma-tab.mjs')
-    for (const t of protegibles) await sellarFirma(cliente, fileId, t, refDeTab(t)).catch(() => {})
+    const { formatoGuardia } = await import('./firma-formato.mjs')
+    for (const t of protegibles) {
+      if (yaProtegidas.has(t)) { protegidas.add(t); continue }
+      const { protegido, motivo } = await formatoGuardia(cliente, fileId, t, refDeTab(t)).catch(() => ({ protegido: true, motivo: 'no pude verificar el formato (fail-closed)' }))
+      if (protegido) {
+        protegidas.add(t)
+        console.log(`  🎨 "${t}": no le toco el formato — ${motivo}. Los números se siguen actualizando.`)
+      }
+    }
+  } catch {
+    // Fail-closed: sin el subsistema de firma de formato no se puede saber qué es tuyo → no se formatea.
+    for (const t of protegibles) protegidas.add(t)
+  }
+  return protegidas
+}
+
+/**
+ * Sella lo que el OS acaba de dejar en la pestaña: la firma de VALORES siempre, y la de FORMATO sólo
+ * para las pestañas de `formato` — las que en el momento de decidir NO tenían el formato del dueño.
+ *
+ * Por qué la de formato es condicional. `USER_ENTERED` deduce el formato de número de lo que se escribe
+ * ("$ 1.234" deja la celda en moneda), así que una escritura de VALORES puede mover el formato. Si esa
+ * pestaña venía coincidiendo con el sello del OS, el cambio es del OS y hay que resellar (si no, la
+ * corrida siguiente lo leería como una edición del dueño y no volvería a formatear nunca). Si el formato
+ * ya era del dueño, resellar sería justamente adoptar lo suyo como propio y pisarlo la próxima: no se
+ * sella y sigue protegido hasta que él lo diga.
+ */
+export async function sellarTabs(cliente, fileId, tabs = [], { formato = [] } = {}) {
+  const protegibles = tabs.filter(esProtegible)
+  // OJO: no cortar acá cuando `tabs` viene vacío. Un batch de SÓLO formato (el caso más común: la pasada
+  // de estilo de un generador) no escribe contenido, así que `tabs` es [] — y con el `return` temprano
+  // el sello del formato no llegaba a correr nunca. Sin sello no hay referencia, y sin referencia la
+  // corrida siguiente vuelve a adoptar y a saltear el formateo: la pestaña no se formateaba más.
+  if (protegibles.length) {
+    try {
+      const { sellarFirma } = await import('./firma-tab.mjs')
+      for (const t of protegibles) await sellarFirma(cliente, fileId, t, refDeTab(t)).catch(() => {})
+    } catch { /* no crítico */ }
+  }
+  const conFormato = formato.filter(esProtegible)
+  if (!conFormato.length) return
+  try {
+    const { sellarFormato } = await import('./firma-formato.mjs')
+    for (const t of conFormato) await sellarFormato(cliente, fileId, t, refDeTab(t)).catch(() => {})
   } catch { /* no crítico */ }
 }
 
@@ -225,9 +308,16 @@ export async function guardarEscritura(cliente, fileId, data, { chequearVacio = 
   const tabs = tabsProtegibles(data)
   if (!tabs.length) return { data, bloqueadas: [], sellar: async () => {} }
   const bloqueadas = await evaluarBloqueadas(cliente, fileId, tabs, { compartida })
+  // El formato se evalúa ANTES de escribir aunque esta escritura sea de valores: `USER_ENTERED` puede
+  // mover el formato de número, y sólo se puede resellar el formato de una pestaña que en ESTE momento
+  // todavía coincidía con el sello del OS. Después de escribir ya no se puede distinguir su cambio del
+  // nuestro. En pestaña compartida no aplica (el OS no es dueño de nada ahí).
+  const formatoProtegido = compartida ? new Set() : await evaluarFormatoProtegido(cliente, fileId, tabs, bloqueadas)
   // En una pestaña compartida el OS no es dueño de nada: sellar una firma que la próxima edición de
   // administración va a invalidar sólo fabrica un baseline falso. No se sella.
-  const sellarSi = (t) => (compartida ? async () => {} : () => sellarTabs(cliente, fileId, t))
+  const sellarSi = (t) => (compartida
+    ? async () => {}
+    : () => sellarTabs(cliente, fileId, t, { formato: t.filter((x) => !formatoProtegido.has(x)) }))
   if (!bloqueadas.size) {
     const conAprendidas = await reInyectarAprendidas(fileId, data)
     return { data: conAprendidas, bloqueadas: [], sellar: sellarSi(tabs) }
@@ -241,10 +331,21 @@ export async function guardarEscritura(cliente, fileId, data, { chequearVacio = 
 
 // ═══ EL MISMO CANDADO, PARA spreadsheetBatchUpdate (updateCells/copyPaste/pasteData/appendCells) ═══
 //
-// spreadsheetBatchUpdate mezcla FORMATO/estructura (que no pisa datos de nadie) con requests que SÍ
-// escriben CONTENIDO. Sólo esos últimos pueden pisar lo que editaste. Se los identifica por tipo y se
-// saca su sheetId; el resto (colores, anchos, merges, dimensiones) pasa siempre — nunca se bloquea un
-// formateo, sólo una escritura de contenido a una pestaña que tomaste.
+// spreadsheetBatchUpdate mezcla FORMATO/estructura con requests que escriben CONTENIDO. Se los clasifica
+// por tipo y se saca su sheetId.
+//
+// HASTA EL 01/08 el formato pasaba SIEMPRE ("nunca se bloquea un formateo"). Esa frase era verdadera
+// para el dato y falsa para el trabajo del dueño: él pinta celdas, pone formato de moneda y ensancha
+// columnas, y eso es trabajo suyo tanto como un número. Ahora hay dos clasificaciones y dos decisiones:
+//
+//   · CONTENIDO  → se frena si la pestaña está candada o su firma de VALORES cambió.
+//   · PRESENTACIÓN → se frena si además su firma de FORMATO cambió (evaluarFormatoProtegido).
+//
+// Lo que NO se clasifica como presentación y sigue pasando siempre es la ESTRUCTURA que acompaña a una
+// escritura de contenido —insertar/borrar filas y columnas, combinar y descombinar—. Frenar a mitad de
+// camino un insertDimension que el generador ya contó en sus coordenadas deja la pestaña corrida, que
+// es peor que el problema que se quería evitar. La estructura viaja con el contenido y se gobierna con
+// la misma decisión que él.
 
 /** sheetId del request SI escribe CONTENIDO (no formato). null si es formato/estructura puro. Puro. */
 export function sheetIdDeRequestContenido(req) {
@@ -277,33 +378,82 @@ export function sheetIdDeRequestContenido(req) {
   return null
 }
 
-/** Parte los requests en permitidos y bloqueados según los sheetId protegidos. Puro. */
-export function separarRequests(requests = [], sheetIdsBloqueados = new Set()) {
+/**
+ * sheetId del request SI cambia la PRESENTACIÓN de una pestaña (color, tipografía, formato de número,
+ * bordes, anchos, congeladas, banding, formato condicional, validación de datos). null si no. Puro.
+ *
+ * Deliberadamente NO incluye la estructura (insert/deleteDimension, merge/unmergeCells): ver el bloque
+ * de arriba. Un `updateCells` o `repeatCell` que trae valor Y formato ya viaja por la clasificación de
+ * CONTENIDO, que es la más restrictiva: no se cuenta dos veces.
+ */
+export function sheetIdDeRequestFormato(req) {
+  if (!req || typeof req !== 'object') return null
+  if (sheetIdDeRequestContenido(req) != null) return null // lo decide la guarda de contenido
+  if (req.repeatCell) return req.repeatCell.range?.sheetId ?? null
+  if (req.updateCells) return req.updateCells.range?.sheetId ?? req.updateCells.start?.sheetId ?? null
+  if (req.updateBorders) return req.updateBorders.range?.sheetId ?? null
+  if (req.updateDimensionProperties) return req.updateDimensionProperties.range?.sheetId ?? null
+  if (req.setDataValidation) return req.setDataValidation.range?.sheetId ?? null
+  if (req.addConditionalFormatRule) return req.addConditionalFormatRule.rule?.ranges?.[0]?.sheetId ?? null
+  if (req.updateConditionalFormatRule) return req.updateConditionalFormatRule.sheetId ?? req.updateConditionalFormatRule.rule?.ranges?.[0]?.sheetId ?? null
+  if (req.deleteConditionalFormatRule) return req.deleteConditionalFormatRule.sheetId ?? null
+  if (req.addBanding) return req.addBanding.bandedRange?.range?.sheetId ?? null
+  if (req.updateBanding) return req.updateBanding.bandedRange?.range?.sheetId ?? null
+  if (req.deleteBanding) return null // borrar un banding no pinta nada nuevo; se deja pasar
+  if (req.updateSheetProperties) return req.updateSheetProperties.properties?.sheetId ?? null
+  if (req.autoResizeDimensions) return req.autoResizeDimensions.dimensions?.sheetId ?? null
+  if (req.copyPaste) {
+    const pt = String(req.copyPaste.pasteType ?? 'PASTE_NORMAL')
+    return /^PASTE_(FORMAT|DATA_VALIDATION|CONDITIONAL_FORMATTING)$/.test(pt) ? (req.copyPaste.destination?.sheetId ?? null) : null
+  }
+  return null
+}
+
+/**
+ * Parte los requests en permitidos y bloqueados. `sheetIdsBloqueados` frena el CONTENIDO;
+ * `sheetIdsFormato` frena la PRESENTACIÓN. Puro.
+ */
+export function separarRequests(requests = [], sheetIdsBloqueados = new Set(), sheetIdsFormato = new Set()) {
   const permitidos = []; const bloqueados = []
   for (const r of requests) {
-    const sid = sheetIdDeRequestContenido(r)
-    ;(sid != null && sheetIdsBloqueados.has(sid) ? bloqueados : permitidos).push(r)
+    const sidC = sheetIdDeRequestContenido(r)
+    if (sidC != null && sheetIdsBloqueados.has(sidC)) { bloqueados.push(r); continue }
+    const sidF = sheetIdDeRequestFormato(r)
+    ;(sidF != null && sheetIdsFormato.has(sidF) ? bloqueados : permitidos).push(r)
   }
   return { permitidos, bloqueados }
 }
 
 /**
  * Guarda para spreadsheetBatchUpdate: descarta los requests que escriben contenido sobre pestañas
- * candadas/editadas, deja pasar formato y estructura. Necesita mapear sheetId→pestaña (getSheetMeta).
+ * candadas/editadas, y los que re-formatean una pestaña cuyo formato es del dueño. Necesita mapear
+ * sheetId→pestaña (getSheetMeta).
  * @returns {Promise<{requests:any[], bloqueadas:string[], sellar:() => Promise<void>}>}
  */
 export async function guardarRequests(cliente, fileId, requests) {
-  const sids = [...new Set((requests || []).map(sheetIdDeRequestContenido).filter((s) => s != null))]
-  if (!sids.length) return { requests, bloqueadas: [], sellar: async () => {} }
+  const sidsC = [...new Set((requests || []).map(sheetIdDeRequestContenido).filter((s) => s != null))]
+  const sidsF = [...new Set((requests || []).map(sheetIdDeRequestFormato).filter((s) => s != null))]
+  if (!sidsC.length && !sidsF.length) return { requests, bloqueadas: [], sellar: async () => {} }
   const meta = await cliente.getSheetMeta(fileId)
   const id2tab = new Map(meta.map((m) => [m.sheetId, m.title]))
-  const tabsContenido = sids.map((s) => id2tab.get(s)).filter(esProtegible)
+  const tabsContenido = sidsC.map((s) => id2tab.get(s)).filter(esProtegible)
+  const tabsFormato = sidsF.map((s) => id2tab.get(s)).filter(esProtegible)
   const bloqTabs = await evaluarBloqueadas(cliente, fileId, tabsContenido)
+  // Las pestañas que sólo reciben formato se evalúan SIN auto-candar: un batch cosmético que pasa por
+  // todas las pestañas del archivo no tiene por qué dejar candados sembrados en la base. Su contenido
+  // igual se respeta —si su firma de valores cambió, tampoco se la re-formatea—, pero sin efecto lateral.
+  const soloFormato = tabsFormato.filter((t) => !tabsContenido.includes(t))
+  const bloqSuave = soloFormato.length ? await evaluarBloqueadas(cliente, fileId, soloFormato, { candar: false }) : new Set()
+  const contenidoProtegido = new Set([...bloqTabs, ...bloqSuave])
+  const fmtTabs = await evaluarFormatoProtegido(cliente, fileId, tabsFormato, contenidoProtegido)
   const escritos = [...new Set(tabsContenido)].filter((t) => !bloqTabs.has(t))
-  if (!bloqTabs.size) return { requests, bloqueadas: [], sellar: () => sellarTabs(cliente, fileId, escritos) }
+  const formateados = [...new Set(tabsFormato)].filter((t) => !fmtTabs.has(t))
+  const sellar = () => sellarTabs(cliente, fileId, escritos, { formato: formateados })
+  if (!bloqTabs.size && !fmtTabs.size) return { requests, bloqueadas: [], sellar }
   const bloqSids = new Set([...id2tab].filter(([, t]) => bloqTabs.has(t)).map(([s]) => s))
-  const { permitidos, bloqueados } = separarRequests(requests, bloqSids)
-  for (const t of bloqTabs) console.log(`  🔒 "${t}" bajo tu control (candado/edición): salteo escritura(s) de contenido, dejo el formato.`)
+  const fmtSids = new Set([...id2tab].filter(([, t]) => fmtTabs.has(t)).map(([s]) => s))
+  const { permitidos, bloqueados } = separarRequests(requests, bloqSids, fmtSids)
+  for (const t of bloqTabs) console.log(`  🔒 "${t}" bajo tu control (candado/edición): salteo escritura(s) de contenido.`)
   void bloqueados
-  return { requests: permitidos, bloqueadas: [...bloqTabs], sellar: () => sellarTabs(cliente, fileId, escritos) }
+  return { requests: permitidos, bloqueadas: [...new Set([...bloqTabs, ...fmtTabs])], sellar }
 }
