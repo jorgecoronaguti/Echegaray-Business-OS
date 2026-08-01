@@ -6,7 +6,7 @@ metadata:
   author: echegaray-os
   type: expert-domain
   jurisdiccion-principal: "San Juan, Argentina"
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Tesorería e Inversiones Corporativas — caja de constructora
@@ -22,17 +22,32 @@ rendimiento, una tesorería busca no quedarse sin plata el día 5.
 Del `CLAUDE.md` raíz: **proteger o generar caja** y **reducir el costo de oportunidad**. Una empresa
 que opera en descubierto y a la vez deja saldos ociosos está pagando dos veces por el mismo peso.
 
-## LA REGLA QUE GOBIERNA TODO
+## LA REGLA QUE GOBIERNA TODO: LA VARA DEPENDE DEL CASO
 
-> **CANCELAR DESCUBIERTO ES UNA INVERSIÓN AL CFT DEL ACUERDO, LIBRE DE RIESGO Y DE IMPUESTOS.**
+> **CANCELAR DESCUBIERTO ES UNA INVERSIÓN AL CFT DEL ACUERDO, LIBRE DE RIESGO Y DE IMPUESTOS —
+> PERO SÓLO SI HAY DESCUBIERTO QUE CANCELAR.**
 
-Echegaray opera con el acuerdo N°00007 al **62,78% CFT** (verificado contra el cargo real del banco,
-no supuesto). Entonces la **tasa de corte** de cualquier colocación no es cero: es 62,78% efectivo
-anual. Un instrumento que rinde menos **hace perder plata**, aunque el número sea positivo.
+Echegaray tiene el acuerdo N°00007 al **62,78% CFT** (verificado contra el cargo real del banco). De
+ahí salen tres casos, y confundirlos cuesta plata en las dos direcciones:
 
-Consecuencia práctica: **mientras la cuenta esté en rojo, la respuesta correcta es siempre "no
-inviertas, cancelá la línea"**. Un análisis que en esa situación propone un FCI está mal, por más
-prolijo que se vea.
+| Caso | Situación | La vara |
+|---|---|---|
+| **A** | descubierto **utilizado** | el CFT — **por el monto que alcanza a cancelarlo**, no por todo |
+| **B** | sin descubierto ni riesgo de déficit | superar **cero neto**. Un 40% anual puede ser razonable |
+| **C** | inmovilizar **provoca** el rojo | el costo del descubierto, ponderado por los días y el monto en rojo |
+
+El error de la primera versión de este agente fue usar el CFT como piso universal. Con la cuenta en
+positivo, eso rechaza absolutamente todo y la plata se queda quieta rindiendo cero — **el costo de
+oportunidad de no invertir no es "nada"**, es el rendimiento entero que se dejó de ganar.
+
+El error opuesto es peor: invertir al 30% debiendo al 62,78% pierde 32,78% con papeleo.
+
+**El descubierto se mide POR CUENTA, no por el total.** Una cuenta corriente $8M en rojo con $20M de
+efectivo en la caja da un total positivo, y el banco cobra igual todos los días.
+
+**El caso C no se estima: se simula.** Poner una probabilidad a ojo es falsa precisión. Se recorre el
+calendario en escenario adverso con el monto inmovilizado y se suma el interés de cada día en rojo.
+La probabilidad implícita es 1 — un supuesto declarado, no un número inventado.
 
 ## Las cinco cajas que la gente llama "caja"
 
@@ -97,16 +112,27 @@ Comprar, vender, suscribir, rescatar, transferir, confirmar, caucionar, licitar:
 aprobación humana explícita**. Este dominio produce PROPUESTAS. Toda recomendación nace y muere como
 `PROPUESTA — REQUIERE APROBACIÓN HUMANA`, y trae adjunto qué la invalida y cuándo vence.
 
+## Techo técnico ≠ excedente aprobado
+
+Sin políticas aprobadas, el número que sale del cálculo **no se llama excedente**: se llama
+`techo_tecnico_preliminar`, y `excedente_aprobado` queda en **null** —no en un número más chico—
+porque un número invita a usarlo. Toda recomendación sale `NO_ACCIONABLE`.
+
 ## Datos que faltan y no se inventan
 
-- **Reserva mínima operativa**: es una política del dueño. Sin ella declarada, se dice que falta y
-  baja la confianza — no se supone un piso.
-- **Caja restringida**: hoy ninguna fuente del OS la declara. Un 0 significa "no hay dato".
+- **Reserva mínima operativa**: es una política del dueño. El agente la PROPONE con datos reales (el
+  máximo entre egresos de 7 días, obligaciones fiscales y laborales, pagos de obra y colchón; el
+  máximo y **no la suma**, que reservaría tres veces el mismo peso) y una persona la APRUEBA.
+  **Guardar no es aprobar**: una fila sin aprobador sigue siendo una propuesta.
+- **Caja restringida**: tiene ESTADO, no sólo monto — `known_zero`, `known_positive`, `unknown`,
+  `unavailable`, `stale`. Un `null` NO es un cero: tres de esos cinco estados significan "no sé", y
+  restar cero en silencio infla el excedente con plata que podría estar embargada.
 
 ## Implementación en el OS
 
-El criterio de esta skill está ejecutado y probado en `orquestador/lib/tesoreria/`: diez módulos, uno
-por skill del contrato, con 65 tests. La aritmética es determinística — el modelo no suma.
+El criterio de esta skill está ejecutado y probado en `orquestador/lib/tesoreria/`: doce módulos —las
+diez skills del contrato más `costo-liquidez` (la vara) y `politicas` (reserva y caja restringida)—
+con 101 tests, once de ellos contra un navegador real. La aritmética es determinística: el modelo no suma.
 
 Runbook operativo: `docs/tesoreria/RUNBOOK.md`.
 
