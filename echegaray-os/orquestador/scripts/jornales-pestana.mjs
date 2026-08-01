@@ -374,10 +374,20 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [], 
   // de ningún lado: media empresa paga la mitad por transferencia y la mitad en billetes, y adivinar
   // cuál mitad es fabricar un dato. Con Banco y Efectivo, cada peso sale de donde salió de verdad.
   //
-  // SÓLO SE ESCRIBE EL ENCABEZADO. Las celdas de abajo NO se emiten —las filas de meses siguen
-  // teniendo ocho columnas— así que la fusión preserva lo que escriba el dueño y el generador no se lo
-  // pisa en la próxima corrida. Es lo contrario del centinela VACIO, que significa "es mía y va vacía".
-  push(['Mes', 'Personas', 'Pagado', VACIO, 'Se paga el', VACIO, 'Ajuste inflación', 'Proyectado', 'Banco', 'Efectivo'])
+  // SÓLO SE ESCRIBE EL ENCABEZADO. Las celdas de abajo NO se emiten —el generador no las incluye en la
+  // fila— así que la fusión preserva lo que escriba el dueño y no se lo pisa en la próxima corrida. Es
+  // lo contrario del centinela VACIO, que significa "es mía y va vacía".
+  //
+  // UNA SOLA COLUMNA, NO DOS, Y NO ES POR ESPACIO. La primera versión agregaba "Banco" y "Efectivo" al
+  // final y dejaba la pestaña con tres anchos de grilla (8, 10 y 14): el auditor de patrón lo cazó en
+  // la primera corrida. Obligó a un diseño mejor: se carga LO QUE SALIÓ POR TRANSFERENCIA y el efectivo
+  // es el resto, por definición. Así los dos canales SIEMPRE suman lo pagado —no puede haber un mes
+  // donde las partes no cierren contra el total— y es un número menos para cargar.
+  //
+  // Vacío ≠ cero. Una celda vacía significa "todavía no sé por dónde salió" y no se resta de ninguna
+  // disponibilidad; un 0 significa "no salió nada por banco, fue todo en billetes". Las distingue
+  // ISNUMBER, y la diferencia se ve en el bloque "LO QUE NO CIERRA".
+  push(['Mes', 'Personas', 'Pagado', VACIO, 'Se paga el', 'Banco', 'Ajuste inflación', 'Proyectado'])
   const o0 = filas.length + 1
   MESES.forEach((nombre, i) => {
     const r = filas.length + 1
@@ -892,10 +902,10 @@ async function publicarRangos(google, sheetId, g) {
     OFICINA_PAGO: rango(4, g.o0, g.oFin),
     OFICINA_PAGADO: rango(2, g.o0, g.oFin),
     OFICINA_PROYECTADO: rango(7, g.o0, g.oFin),
-    // El canal por el que salió cada sueldo de administración (01/08). Sin estos dos, CAJA sabía
+    // El canal por el que salió cada sueldo de administración (01/08). Sin esta columna, CAJA sabía
     // CUÁNTO se pagó de oficina y no de dónde salió, así que no lo restaba de ninguna disponibilidad.
-    OFICINA_BANCO: rango(8, g.o0, g.oFin),
-    OFICINA_EFECTIVO: rango(9, g.o0, g.oFin),
+    // El efectivo no tiene rango propio: es Pagado − Banco, y así los dos canales siempre cierran.
+    OFICINA_BANCO: rango(5, g.o0, g.oFin),
   }
   const existentes = new Map((await google.getNamedRanges(ID)).map((r) => [r.name, r.namedRangeId]))
   const reqs = Object.entries(quiero).map(([name, range]) => (existentes.has(name)

@@ -447,7 +447,7 @@ export function celdaJornalesEfectivo(arqueo, j = JOR) {
 // sería fabricar un dato, que es exactamente lo que este archivo no hace.
 
 /** Los rangos con nombre del bloque de Oficina que publica `jornales-pestana.mjs`. */
-export const OFI = { pago: 'OFICINA_PAGO', pagado: 'OFICINA_PAGADO', banco: 'OFICINA_BANCO', efectivo: 'OFICINA_EFECTIVO' }
+export const OFI = { pago: 'OFICINA_PAGO', pagado: 'OFICINA_PAGADO', banco: 'OFICINA_BANCO' }
 
 /** La ventana común de la oficina: meses con fecha de pago posterior al corte/arqueo. */
 const ventanaOfi = (corte, o) => `ISNUMBER(${o.pago})*(${o.pago}>${corte})`
@@ -465,7 +465,10 @@ export function formulaOficinaBancoPosteriores(corte, o = OFI) {
  * @param {string} arqueo referencia a la celda con la fecha del arqueo
  */
 export function formulaOficinaEfectivoPosteriores(arqueo, o = OFI) {
-  return `SUMPRODUCT(${ventanaOfi(arqueo, o)}*N(${o.efectivo}))`
+  // POR DIFERENCIA, no por una segunda columna: lo que no salió por transferencia salió en billetes.
+  // Así los dos canales suman SIEMPRE lo pagado y no puede existir un mes donde las partes no cierren.
+  // ISNUMBER exige que el canal esté DECLARADO: con la celda vacía no se asume "todo efectivo".
+  return `SUMPRODUCT(${ventanaOfi(arqueo, o)}*ISNUMBER(${o.banco})*(N(${o.pagado})-N(${o.banco})))`
 }
 
 /**
@@ -476,7 +479,8 @@ export function formulaOficinaEfectivoPosteriores(arqueo, o = OFI) {
  * completa Banco/Efectivo del mes, esta línea baja sola a cero.
  */
 export function formulaOficinaSinCanal(corte, o = OFI) {
-  return `SUMPRODUCT(${ventanaOfi(corte, o)}*(N(${o.banco})+N(${o.efectivo})=0)*N(${o.pagado}))`
+  // (1-ISNUMBER(...)) y no NOT(...): NOT no se expande sobre un array dentro de SUMPRODUCT.
+  return `SUMPRODUCT(${ventanaOfi(corte, o)}*(1-ISNUMBER(${o.banco}))*N(${o.pagado}))`
 }
 
 /**

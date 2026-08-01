@@ -175,7 +175,7 @@ test('la línea neta de la caja física: cobros − pagos − depósitos, guarda
   assert.equal(f.split('SUMIFS').length - 1, 1)
   assert.equal(f.split('SUMPRODUCT').length - 1, 5)
   assert.match(f, /JORNALES_REAL_ADELANTO/)
-  assert.match(f, /OFICINA_EFECTIVO/)
+  assert.match(f, /OFICINA_PAGADO/)
   assert.match(f, /extraccion/, 'la extracción del banco CARGA el cajón: es el espejo del depósito')
   // Cobros suman, pagos y depósitos restan.
   assert.match(f, /;"Cobrado";.*"Efectivo".*\)-SUMPRODUCT/) // cobros, luego resta el pago

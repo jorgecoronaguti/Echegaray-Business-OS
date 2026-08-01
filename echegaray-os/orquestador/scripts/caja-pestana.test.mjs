@@ -439,8 +439,9 @@ test('la oficina DESCARGA los dos canales, cada uno del suyo', () => {
   assert.match(bco, /OFICINA_BANCO/)
   assert.ok(!bco.includes('OFICINA_EFECTIVO'), 'lo que salió en billetes no puede salir también del banco')
   const efvo = celda(g, filaDe(g, /sueldos de administración en efectivo/i), 2)
-  assert.match(efvo, /OFICINA_EFECTIVO/)
-  assert.ok(!efvo.includes('OFICINA_BANCO'))
+  // El efectivo sale POR DIFERENCIA (Pagado − Banco): así los dos canales suman siempre lo pagado.
+  assert.match(efvo, /N\(OFICINA_PAGADO\)-N\(OFICINA_BANCO\)/)
+  assert.match(efvo, /ISNUMBER\(OFICINA_BANCO\)/, 'con la celda vacía no se asume "todo efectivo"')
   assert.match(efvo, /^=IF\(NOT\(ISNUMBER\(/, 'guardada por el arqueo como el resto del desglose')
 })
 
@@ -460,13 +461,13 @@ test('el canal no declarado se NOMBRA, no se adivina', () => {
   assert.ok(f > 0, 'tiene que estar en el bloque LO QUE NO CIERRA')
   const monto = celda(g, f, 2)
   assert.match(monto, /OFICINA_PAGADO/)
-  assert.match(monto, /N\(OFICINA_BANCO\)\+N\(OFICINA_EFECTIVO\)=0/, 'sólo los meses SIN canal')
+  assert.match(monto, /\(1-ISNUMBER\(OFICINA_BANCO\)\)/, 'sólo los meses SIN canal declarado')
   // Y no se reparte mitad y mitad porque suele ser así: eso sería fabricar el dato.
   assert.ok(!/0[,.]5|\/2/.test(monto))
 })
 
 test('los dos netos incorporan la oficina', () => {
   const g = construir()
-  assert.match(celda(g, filaDe(g, /^Movimientos de efectivo posteriores al arqueo/), 2), /OFICINA_EFECTIVO/)
+  assert.match(celda(g, filaDe(g, /^Movimientos de efectivo posteriores al arqueo/), 2), /OFICINA_PAGADO/)
   assert.match(celda(g, filaDe(g, /^Movimientos posteriores al corte del extracto/), 2), /OFICINA_BANCO/)
 })
