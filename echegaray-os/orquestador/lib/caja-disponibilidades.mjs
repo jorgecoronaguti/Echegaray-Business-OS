@@ -64,6 +64,9 @@ export const CUENTAS = [
     moneda: 'ARS',
     patron: /^caja en pesos/i,
     origenSugerido: 'Arqueo de caja',
+    // La fecha de esta fila es la del ARQUEO, no la de hoy. Ver caja-pestana.mjs: fechar un conteo
+    // de caja con TODAY() afirma que se contó hoy y deja la alarma de antigüedad clavada en 0 días.
+    arqueo: 'CAJA_ARQUEO_ARS_FECHA',
   },
   {
     // ═══ EL CAJÓN TAMBIÉN TIENE DÓLARES (01/08) ═══
@@ -80,6 +83,7 @@ export const CUENTAS = [
     moneda: 'USD',
     patron: /^caja en d[oó]lares/i,
     origenSugerido: 'Arqueo de caja',
+    arqueo: 'CAJA_ARQUEO_USD_FECHA',
   },
   // FONDO FIJO — RETIRADO (01/08). El dueño: "quita la fila de fondo fijo, no la voy a usar, no la
   // consideres más". Vivía en el bloque desde el diseño original y nunca tuvo un peso cargado: una

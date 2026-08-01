@@ -319,8 +319,29 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
       // LA FECHA DE CORTE TAMBIÉN SE LEE DE LA RÉPLICA. Es la fecha del último movimiento del
       // extracto, y de ella depende la ventana de "movimientos posteriores al corte" de más abajo:
       // una fecha escrita a mano que quede vieja haría contar dos veces todo lo que hay en el medio.
+      // ═══ CADA CUENTA SE FECHA CON SU PROPIA FUENTE (01/08) ═══
+      //
+      // El dueño, tres veces: *"aún noto desactualizadas las fechas"*, *"cambiá las fechas de todo
+      // CAJA según corresponde según extracto bancario auditado"*. El defecto no era que estuvieran
+      // viejas: era que TRES cuentas se fechaban con la fuente de OTRA.
+      //
+      //   · "Caja en pesos" y "Caja en dólares" decían =TODAY(). El saldo lo cargás vos contando el
+      //     cajón: fecharlo HOY afirma que lo contaste hoy, sea cierto o no, y encima apaga la
+      //     alarma de antigüedad de la columna de al lado — que nunca podía pasar de 0 días. Un
+      //     arqueo de hace una semana se veía igual de fresco que uno de esta mañana.
+      //   · "Valores a depositar" decía la fecha de corte del EXTRACTO. Son cheques que todavía no
+      //     entraron al banco: el extracto no sabe nada de ellos, y esa fecha era prestada.
+      //
+      // Ahora cada una dice de cuándo es SU dato: el arqueo se fecha con la fecha del arqueo, el
+      // banco con el último movimiento del extracto auditado, y lo que el OS calcula sobre el
+      // presente (la cartera, los movimientos posteriores) con TODAY(), que ahí sí es la verdad.
       c.banco === 'saldoPesos' && refs.bancoRaw ? formulaFechaCorte(refs.bancoRaw)
-        : c.banco ? BANCO.CORTE : (c.formula ? '=TODAY()' : previo(c.nombre, 'fecha')),
+        // La CARTERA no está en el extracto: son valores que todavía no entraron al banco. Se calcula
+        // hoy, filtrando Cobranzas por fecha de acreditación futura, así que su fecha es hoy.
+        : c.banco === 'cartera' ? '=TODAY()'
+        : c.banco ? BANCO.CORTE
+        : c.arqueo ? `=IF(ISNUMBER(${c.arqueo});${c.arqueo};"")`
+        : (c.formula ? '=TODAY()' : previo(c.nombre, 'fecha')),
       // La antigüedad no es decorativa: un saldo de hace 20 días avisando que tiene 20 días vale
       // muchísimo más que el mismo saldo mudo. Arriba de una semana, avisa.
       `=IF(F${f}="";"⚠ sin cargar";IF(TODAY()-F${f}>7;"⚠ "&TEXT(TODAY()-F${f};"0")&" días";TEXT(TODAY()-F${f};"0")&" días"))`,
