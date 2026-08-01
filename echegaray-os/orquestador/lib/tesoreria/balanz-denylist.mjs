@@ -116,13 +116,68 @@ export function evaluarElemento(el = {}) {
   return { permitido: true, motivo: 'sin verbos ni rutas transaccionales', coincidencia: null, campo: null }
 }
 
+/**
+ * ALLOWLIST DE NAVEGACIÓN INFORMATIVA — la excepción quirúrgica para cauciones.
+ *
+ * ═══ EL PROBLEMA ═══
+ *
+ * "Caucionar" es operar, así que `caucion` está en la denylist. Pero `/mercado/cauciones` es la
+ * PANTALLA donde se leen las tasas de caución, que es información legítima y valiosa para tesorería.
+ * La primera versión resolvió el choque sacando la ruta del relevamiento: correcto como default
+ * seguro, pero deja a la empresa sin ver el instrumento de corto plazo más usado del mercado local.
+ *
+ * ═══ POR QUÉ ESTA EXCEPCIÓN NO ABRE LA PUERTA ═══
+ *
+ * 1. Es por RUTA EXACTA, no por prefijo. `/mercado/cauciones` pasa; `/mercado/cauciones/operar` NO,
+ *    `/mercado/caucionar` NO, `/mercado/cauciones-nueva` NO. Un prefijo habría sido exactamente el
+ *    agujero que se quería evitar.
+ * 2. Vale SÓLO para navegar. `evaluarElemento` no la consulta nunca: un botón "Caucionar" dentro de
+ *    esa misma pantalla sigue bloqueado, y un formulario también. Se puede mirar, no tocar.
+ * 3. El query string se descarta antes de comparar y se evalúa aparte, para que
+ *    `/mercado/cauciones?accion=caucionar` no entre por la ventana.
+ */
+export const NAVEGACION_INFORMATIVA = new Set([
+  '/mercado/cauciones',
+  '/cauciones',
+  '/mercado/cauciones/listado',
+  '/mercado/cauciones/tasas',
+])
+
+/** Path exacto, sin query, sin hash y sin barra final. Devuelve null si la URL no parsea. */
+export function rutaExacta(url) {
+  const u = String(url ?? '').trim()
+  if (!u) return null
+  let path
+  try { path = new URL(u, 'https://clientes.balanz.com').pathname } catch { return null }
+  return path.replace(/\/+$/, '') || '/'
+}
+
+/** ¿La ruta está en la allowlist informativa, por coincidencia EXACTA? */
+export function esNavegacionInformativa(url) {
+  const p = rutaExacta(url)
+  return p != null && NAVEGACION_INFORMATIVA.has(p)
+}
+
+/** El query string y el hash, que se evalúan aparte de la allowlist. */
+function extras(url) {
+  try { const u = new URL(String(url), 'https://clientes.balanz.com'); return `${u.search} ${u.hash}` } catch { return '' }
+}
+
 /** Una navegación directa por URL. Mismo criterio, sin DOM. */
 export function evaluarNavegacion(url) {
+  if (!normalizar(url)) return { permitido: false, motivo: 'URL vacía', coincidencia: null, campo: 'url' }
+  // La allowlist se consulta primero, PERO el query string se sigue evaluando: la excepción es de la
+  // ruta, no de todo lo que venga colgado de ella.
+  if (esNavegacionInformativa(url)) {
+    const q = extras(url).replace(/[?#=&_-]+/g, ' ')
+    const vq = contieneVerboProhibido(q)
+    if (vq) return { permitido: false, motivo: `la ruta es informativa pero el query trae "${vq}"`, coincidencia: vq, campo: 'query' }
+    return { permitido: true, motivo: 'allowlist de navegación informativa (ruta exacta)', coincidencia: null, campo: null, allowlist: true }
+  }
   const r = rutaProhibida(url)
   if (r) return { permitido: false, motivo: `ruta transaccional "${r}"`, coincidencia: r, campo: 'url' }
   const v = contieneVerboProhibido(String(url).replace(/[/?=&_-]+/g, ' '))
   if (v) return { permitido: false, motivo: `verbo transaccional "${v}" en la URL`, coincidencia: v, campo: 'url' }
-  if (!normalizar(url)) return { permitido: false, motivo: 'URL vacía', coincidencia: null, campo: 'url' }
   return { permitido: true, motivo: 'ruta informativa', coincidencia: null, campo: null }
 }
 

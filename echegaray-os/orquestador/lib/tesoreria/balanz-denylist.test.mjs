@@ -10,6 +10,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   evaluarElemento, evaluarNavegacion, contieneVerboProhibido, normalizar, registroBloqueo,
+  esNavegacionInformativa, rutaExacta,
 } from './balanz-denylist.mjs'
 
 const DIR = dirname(fileURLToPath(import.meta.url))
@@ -107,4 +108,63 @@ test('el navegador NO extrae cookies, tokens ni contraseñas', () => {
   for (const prohibido of ['cookies()', 'storageState', 'localStorage', 'sessionStorage', 'password:']) {
     assert.equal(src.includes(prohibido), false, `el navegador usa ${prohibido}`)
   }
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// CAUCIONES — leer la pantalla sin habilitar la operación
+// ════════════════════════════════════════════════════════════════════════════
+
+test('la ruta informativa de cauciones se permite, por coincidencia EXACTA', () => {
+  assert.equal(evaluarNavegacion('https://clientes.balanz.com/mercado/cauciones').permitido, true)
+  assert.equal(evaluarNavegacion('/mercado/cauciones').permitido, true)
+  assert.equal(evaluarNavegacion('/mercado/cauciones/').permitido, true, 'la barra final no cambia la ruta')
+  assert.equal(esNavegacionInformativa('/mercado/cauciones'), true)
+})
+
+test('NINGUNA variante operativa entra por la allowlist', () => {
+  for (const u of [
+    '/mercado/caucionar',
+    '/mercado/cauciones/operar',
+    '/mercado/cauciones/nueva',
+    '/mercado/cauciones-operar',
+    '/mercado/caucionesx',
+    '/operar/cauciones',
+  ]) {
+    assert.equal(evaluarNavegacion(u).permitido, false, `${u} entró por la allowlist`)
+    assert.equal(esNavegacionInformativa(u), false, `${u} matcheó la allowlist`)
+  }
+})
+
+test('la allowlist es de la RUTA, no del query: ?accion=caucionar sigue bloqueado', () => {
+  const v = evaluarNavegacion('/mercado/cauciones?accion=caucionar&monto=5000000')
+  assert.equal(v.permitido, false)
+  assert.equal(v.campo, 'query')
+})
+
+test('dentro de la pantalla informativa, el botón "Caucionar" sigue bloqueado', () => {
+  // La excepción vale para NAVEGAR. `evaluarElemento` no consulta la allowlist nunca.
+  assert.equal(evaluarElemento({ texto: 'Caucionar', href: '/mercado/cauciones' }).permitido, false)
+  assert.equal(evaluarElemento({ texto: 'Tomar caución', ariaLabel: 'Caucionar 5.000.000' }).permitido, false)
+  assert.equal(evaluarElemento({ tag: 'FORM', action: '/mercado/cauciones' }).permitido, false, 'un formulario es una orden en potencia')
+  assert.equal(evaluarElemento({ rol: 'button', tipo: 'submit', texto: 'Confirmar plazo' }).permitido, false)
+})
+
+test('el modal de confirmación de una caución está bloqueado por su contexto', () => {
+  const v = evaluarElemento({ texto: 'Aceptar', tituloModal: 'Confirmá tu caución a 7 días' })
+  assert.equal(v.permitido, false)
+})
+
+test('a cauciones se ENTRA navegando, no clickeando — y eso es deliberado', () => {
+  // Un link cuyo href contiene "caucion" queda bloqueado a nivel ELEMENTO, incluso apuntando a una
+  // ruta de la allowlist. No es un descuido: hacer clic es la operación riesgosa, y exceptuar
+  // elementos por su href abriría la puerta a un botón "Caucionar" con href informativo.
+  assert.equal(evaluarElemento({ texto: 'Ver tasas', href: '/mercado/cauciones/tasas' }).permitido, false)
+  // El camino habilitado es la navegación directa por URL, que sí consulta la allowlist.
+  assert.equal(evaluarNavegacion('/mercado/cauciones/tasas').permitido, true)
+})
+
+test('rutaExacta normaliza y no se deja engañar por el host ni la barra final', () => {
+  assert.equal(rutaExacta('https://clientes.balanz.com/mercado/cauciones/'), '/mercado/cauciones')
+  assert.equal(rutaExacta('/mercado/cauciones?x=1#y'), '/mercado/cauciones')
+  assert.equal(rutaExacta(''), null)
 })
