@@ -16,11 +16,24 @@
 // El ciclo tiene el veredicto de acá como condición, no como sugerencia.
 
 import { CONFIANZA } from './contratos.mjs'
-import { rendimientoDelPeriodo } from './comparar.mjs'
+import { rendimientoDelPeriodo, costoTotal } from './comparar.mjs'
+import { aTea } from './instrumentos.mjs'
 import { estaVencida } from './recomendacion.mjs'
 
 /** Tolerancia de reproducción de la aritmética. 1 peso: no es redondeo, es un error de fórmula. */
 export const TOLERANCIA_PESOS = 1
+
+/**
+ * ¿ES UN NÚMERO DE VERDAD? `Number.isFinite(Number(null))` es **true**, porque `Number(null)` es 0.
+ * Lo mismo con `''` y con `[]`. Escribí este control dos veces con `Number.isFinite(Number(x))` y las
+ * dos veces dejó pasar el `null` que venía a atrapar. El vacío se descarta ANTES de convertir.
+ */
+export function esNumero(x) {
+  if (x == null) return false
+  if (typeof x === 'string' && x.trim() === '') return false
+  if (typeof x === 'boolean' || Array.isArray(x)) return false
+  return Number.isFinite(Number(x))
+}
 
 const falla = (regla, detalle) => ({ regla, ok: false, detalle })
 const pasa = (regla, detalle = null) => ({ regla, ok: true, detalle })
@@ -58,12 +71,12 @@ export function validarRecomendacion(rec = {}, fuentes = {}) {
     // número daba NaN, y `x <= NaN` es false, así que el control fallaba cerrado — por accidente.
     // Un control que sólo funciona por accidente no es un control: acá se lee el campo correcto y se
     // verifica explícitamente que los cuatro componentes sean números.
-    const restringida = Number(posicion.caja_restringida?.monto_a_restar ?? posicion.caja_restringida ?? 0)
+    const restringida = posicion.caja_restringida?.monto_a_restar ?? posicion.caja_restringida
     const componentes = [enPesos, posicion.caja_comprometida, restringida, posicion.caja_minima]
-    if (!componentes.every((x) => Number.isFinite(Number(x)))) {
+    if (!componentes.every(esNumero)) {
       chequeos.push(falla('sin_caja_comprometida', `no se puede recalcular la caja libre: algún componente no es un número (${componentes.join(', ')})`))
     } else {
-      const libre = enPesos - Number(posicion.caja_comprometida) - restringida - Number(posicion.caja_minima)
+      const libre = Number(enPesos) - Number(posicion.caja_comprometida) - Number(restringida) - Number(posicion.caja_minima)
       chequeos.push(rec.monto_maximo <= libre + TOLERANCIA_PESOS
         ? pasa('sin_caja_comprometida', `$${rec.monto_maximo.toLocaleString('es-AR')} ≤ $${Math.round(libre).toLocaleString('es-AR')} libre`)
         : falla('sin_caja_comprometida', `propone $${rec.monto_maximo.toLocaleString('es-AR')} y sólo hay $${Math.round(libre).toLocaleString('es-AR')} libres`))
@@ -91,9 +104,16 @@ export function validarRecomendacion(rec = {}, fuentes = {}) {
     : falla('ventana_cubre', `la ventana del bloque ${rec.bloque} no existe o no cubre $${rec.monto_maximo?.toLocaleString('es-AR')}`))
 
   // 6 · LA RESERVA SE PRESERVA.
-  chequeos.push(posicion?.estado !== 'ok' || rec.reserva_preservada == null || rec.reserva_preservada >= posicion.caja_minima
-    ? pasa('reserva_preservada')
-    : falla('reserva_preservada', `preserva $${rec.reserva_preservada} y la reserva mínima es $${posicion.caja_minima}`))
+  // `reserva_preservada == null` PASABA. Una propuesta que declara no preservar nada aprobaba el
+  // control llamado "la reserva se preserva". Un ausente falla, no pasa.
+  if (posicion?.estado !== 'ok') chequeos.push(pasa('reserva_preservada', 'sin posición: ya falló arriba'))
+  else if (!esNumero(rec.reserva_preservada)) {
+    chequeos.push(falla('reserva_preservada', 'la propuesta no declara qué reserva preserva'))
+  } else {
+    chequeos.push(Number(rec.reserva_preservada) >= posicion.caja_minima
+      ? pasa('reserva_preservada')
+      : falla('reserva_preservada', `preserva $${rec.reserva_preservada} y la reserva mínima es $${posicion.caja_minima}`))
+  }
 
   // 7 · MONEDA Y HORIZONTE COINCIDEN CON LA VENTANA.
   chequeos.push(ventana && ventana.moneda === rec.moneda
@@ -104,18 +124,26 @@ export function validarRecomendacion(rec = {}, fuentes = {}) {
     : falla('horizonte_coincide', `${rec.horizonte_dias} días no caben en la ventana de ${ventana?.dias_libres ?? '?'}`))
 
   // 8 · EL RESCATE ES COMPATIBLE.
-  chequeos.push(rec.plazo_rescate_dias == null || rec.plazo_rescate_dias <= Number(rec.horizonte_dias)
-    ? pasa('rescate_compatible')
-    : falla('rescate_compatible', `la plata vuelve en ${rec.plazo_rescate_dias} días y el horizonte es ${rec.horizonte_dias}`))
+  // `plazo_rescate_dias == null` PASABA — justo el riesgo de que la plata no vuelva a tiempo, que
+  // este agente declara como el dominante de la caja operativa.
+  chequeos.push(!esNumero(rec.plazo_rescate_dias)
+    ? falla('rescate_compatible', 'no se conoce el plazo de rescate: no se puede saber si la plata vuelve a tiempo')
+    : (Number(rec.plazo_rescate_dias) <= Number(rec.horizonte_dias)
+      ? pasa('rescate_compatible')
+      : falla('rescate_compatible', `la plata vuelve en ${rec.plazo_rescate_dias} días y el horizonte es ${rec.horizonte_dias}`)))
 
   // 9 · SUPERA LA VARA DE SU VENTANA. Se toma de la VENTANA, no de la propuesta: leer el umbral que
   //     el otro lado declaró sería validar un control contra la información que produce.
-  const varaP = ventana?.referencia
-    ? Number(ventana.referencia.hurdle_periodo) || 0
+  // `Number(undefined) || 0` daba vara CERO: una ventana sin `hurdle_periodo` hacía que cualquier
+  // rendimiento positivo "superara la vara". Sin vara calculable se cae a la conservadora (el CFT).
+  const hurdle = ventana?.referencia?.hurdle_periodo
+  const varaP = esNumero(hurdle)
+    ? Number(hurdle)
     : rendimientoDelPeriodo(Number(excedente?.tasa_de_corte?.valor) || 0, Number(rec.horizonte_dias) || 0)
+  const modoVara = esNumero(hurdle) ? (ventana?.referencia?.modo ?? 'sin modo') : 'vara conservadora (la ventana no trae referencia)'
   chequeos.push(Number(rec.rendimiento_neto_periodo) > varaP
-    ? pasa('supera_vara', `${(rec.rendimiento_neto_periodo * 100).toFixed(2)}% > ${(varaP * 100).toFixed(2)}% (${ventana?.referencia?.modo ?? 'vara conservadora'})`)
-    : falla('supera_vara', `${((rec.rendimiento_neto_periodo ?? 0) * 100).toFixed(2)}% no supera la vara ${(varaP * 100).toFixed(2)}% de su ventana`))
+    ? pasa('supera_vara', `${(rec.rendimiento_neto_periodo * 100).toFixed(2)}% > ${(varaP * 100).toFixed(2)}% (${modoVara})`)
+    : falla('supera_vara', `${((rec.rendimiento_neto_periodo ?? 0) * 100).toFixed(2)}% no supera la vara ${(varaP * 100).toFixed(2)}% (${modoVara})`))
 
   // 10 · ARITMÉTICA REPRODUCIBLE. La ganancia declarada tiene que salir de monto × neto.
   const esperado = Math.round(Number(rec.monto_maximo) * Number(rec.rendimiento_neto_periodo))
@@ -123,11 +151,33 @@ export function validarRecomendacion(rec = {}, fuentes = {}) {
     ? pasa('aritmetica')
     : falla('aritmetica', `declara $${rec.ganancia_neta_estimada} y monto × neto da $${esperado}`))
 
-  // 11 · NO CONFUNDE HISTÓRICO CON ESPERADO.
+  // 11 · EL INSTRUMENTO EXISTE, y su rendimiento SE RECALCULA desde él.
+  //
+  // Dos agujeros que encontró la auditoría, y el segundo era el peor de todos: `!inst` pasaba (un
+  // `instrumento_id` inventado no se detectaba), y el `rendimiento_neto_periodo` nunca se rehacía —
+  // el chequeo 10 comparaba dos campos de la propuesta CONTRA SÍ MISMOS. Un neto inflado diez veces
+  // aprobaba con cero fallas. La cabecera de este archivo prometía recalcular; ahora lo hace.
   const inst = instrumentos.find((i) => i.id === rec.instrumento_id)
-  chequeos.push(!inst || !['rendimiento_historico', 'variacion_precio'].includes(inst.tasa?.tipo)
-    ? pasa('no_historico_como_esperado')
-    : falla('no_historico_como_esperado', `la tasa del instrumento es "${inst.tasa.tipo}": es pasado, no una expectativa`))
+  if (!inst) {
+    chequeos.push(falla('instrumento_existe', `el instrumento "${rec.instrumento_id}" no está entre los relevados`))
+  } else {
+    chequeos.push(pasa('instrumento_existe'))
+    chequeos.push(!['rendimiento_historico', 'variacion_precio'].includes(inst.tasa?.tipo)
+      ? pasa('no_historico_como_esperado')
+      : falla('no_historico_como_esperado', `la tasa del instrumento es "${inst.tasa.tipo}": es pasado, no una expectativa`))
+
+    const tea = aTea(inst.tasa)
+    if (tea == null) {
+      chequeos.push(falla('neto_reproducible', 'la tasa del instrumento no se puede llevar a efectiva anual: el neto declarado no se puede verificar'))
+    } else {
+      const netoReal = rendimientoDelPeriodo(tea, Number(rec.horizonte_dias) || 0) - costoTotal(inst).total
+      const declarado = Number(rec.rendimiento_neto_periodo)
+      // Tolerancia relativa de medio punto básico sobre el período: separa un redondeo de un invento.
+      chequeos.push(Math.abs(netoReal - declarado) <= 0.00005
+        ? pasa('neto_reproducible', `${(declarado * 100).toFixed(4)}% reproduce desde el instrumento`)
+        : falla('neto_reproducible', `declara ${(declarado * 100).toFixed(4)}% y el instrumento da ${(netoReal * 100).toFixed(4)}% en ${rec.horizonte_dias} días`))
+    }
+  }
 
   // 12 · LA EVIDENCIA EXISTE.
   chequeos.push(rec.fuente_caja && rec.fuente_mercado
@@ -157,4 +207,4 @@ export function validarLote(recs = [], fuentes = {}) {
   }
 }
 
-export const VERSION_SKILL = '1.1.0'
+export const VERSION_SKILL = '1.2.0'

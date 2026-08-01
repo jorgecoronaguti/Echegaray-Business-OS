@@ -21,7 +21,7 @@ import { aTea, tnaATea, periodoATea, normalizarInstrumento, categorizar, esAptoT
 import { compararAlternativas, evaluarContraVentana, liquidezCompatible, costoTotal, rendimientoDelPeriodo } from './comparar.mjs'
 import { evaluarRiesgo, evaluarConcentracion, PERFILES } from './riesgo.mjs'
 import { generarRecomendaciones, recomendarAplicarADeuda, estaVencida } from './recomendacion.mjs'
-import { validarRecomendacion, validarLote } from './validar.mjs'
+import { validarRecomendacion, validarLote, esNumero } from './validar.mjs'
 import { registrarCorreccion, esConfirmacionReal, proponerCambioPolitica, TIPO_CORRECCION } from './aprendizaje.mjs'
 import { esCambioMaterial, formatoPropuesta } from './formato-mattermost.mjs'
 import { idMovimiento, detectarDuplicados, estaComprometido, vencidoComercialDe, PESTANAS_PROHIBIDAS } from './lectura-flujo.mjs'
@@ -159,11 +159,12 @@ test('un egreso fechado está comprometido; un ingreso nunca lo está', () => {
 
 test('el piso invertible sale del MÍNIMO del período, no del saldo final', () => {
   // Caso clásico: termina el mes con $10M pero el día 5 se pagan sueldos y toca $1M.
-  const dias = [
-    { fecha: '2026-08-01', ingresos: 0, egresos: 0 },
-    { fecha: '2026-08-05', ingresos: 0, egresos: 9000000 },
-    { fecha: '2026-08-20', ingresos: 9000000, egresos: 0 },
-  ]
+  // El calendario tiene que CUBRIR el horizonte: pedir 30 días con 3 filas ahora es `sin_dato`.
+  const dias = Array.from({ length: 31 }, (_, i) => ({
+    fecha: `2026-08-${String(i + 1).padStart(2, '0')}`,
+    ingresos: i === 19 ? 9000000 : 0,
+    egresos: i === 4 ? 9000000 : 0,
+  }))
   const h = resumirHorizonte(dias, 30, ESCENARIOS.base, 10000000)
   assert.equal(h.saldo_final, 10000000)
   assert.equal(h.saldo_minimo, 1000000)
@@ -172,7 +173,9 @@ test('el piso invertible sale del MÍNIMO del período, no del saldo final', () 
 })
 
 test('el escenario adverso castiga los COBROS, nunca posterga los pagos solo', () => {
-  const dias = [{ fecha: '2026-08-01', ingresos: 10000000, egresos: 5000000 }]
+  const dias = Array.from({ length: 8 }, (_, i) => ({
+    fecha: `2026-08-0${i + 1}`, ingresos: i === 0 ? 10000000 : 0, egresos: i === 0 ? 5000000 : 0,
+  }))
   const base = resumirHorizonte(dias, 7, ESCENARIOS.base, 0)
   const adv = resumirHorizonte(dias, 7, ESCENARIOS.adverso, 0)
   assert.equal(base.ingresos, 10000000)
@@ -304,6 +307,9 @@ function escenarioConExcedente() {
     fecha_inicial: '2026-08-01', fecha_limite: '2026-08-31', dias_libres: 30,
     reserva_preservada: 2000000, obligaciones_cubiertas: ['impuesto: $1.000.000'],
     condiciones_invalidez: ['si entra un pago no previsto'], confianza: CONFIANZA.MEDIA, motivo: null,
+    // El default de accionabilidad pasó a fail-closed: hay que decir `true`, no basta con no decir false.
+    accionable: true, estado_recomendacion: 'ACCIONABLE',
+    referencia: { hurdle_periodo: 0, modo: 'costo_oportunidad', explicacion: 'sin deuda ni riesgo de déficit' },
   }
   const inst = normalizarInstrumento({
     nombre: 'Lecap S31O5', moneda: 'ARS', plazo_rescate_dias: 0, liquidacion_dias: 1,
@@ -314,7 +320,8 @@ function escenarioConExcedente() {
   const comparacion = compararAlternativas([inst], [ventana], corte)
   const riesgos = { [inst.id]: evaluarRiesgo(inst, PERFILES.caja_operativa, { ahora: HOY }) }
   const gen = generarRecomendaciones(comparacion, [ventana], {
-    hoy: HOY, tasa_de_corte: corte, riesgos, fuente_caja: 'Flujo de Caja', fuente_mercado: 'Balanz',
+    hoy: HOY, tasa_de_corte: corte, riesgos, accionable: true,
+    fuente_caja: 'Flujo de Caja', fuente_mercado: 'Balanz',
   })
   const posicion = {
     estado: 'ok', en_descubierto: false, caja_real: 20000000, caja_comprometida: 6000000,
@@ -322,7 +329,7 @@ function escenarioConExcedente() {
     composicion: { ars_liquida: 20000000, moneda_extranjera: 0, valores_a_depositar: 0, sin_clasificar: 0 },
     confianza: CONFIANZA.MEDIA, fecha: '01/08/2026', fuente: 'cash-briefing',
   }
-  const excedente = { estado: 'ok', ventanas: [ventana], tasa_de_corte: corte }
+  const excedente = { estado: 'ok', ventanas: [ventana], tasa_de_corte: corte, deuda_cancelable: { monto: 0 } }
   return { ventana, inst, comparacion, gen, posicion, excedente }
 }
 
@@ -551,7 +558,9 @@ test('NO se afirma nada más allá de donde llega el calendario (el bloque E pro
     estado: 'ok',
     escenarios: { adverso: { horizontes: [0, 2, 7, 15, 30, 60, 90].map((d) => ({ dias: d, estado: 'ok', piso_invertible: 80000000 })) } },
   }
-  const r = await calcularExcedente(posicion, proy, { hoy: HOY })
+  // La cobertura sale de las FILAS del calendario, no del mayor horizonte que dijo "ok": 91 filas = 90 días.
+  const cal = Array.from({ length: 91 }, (_, i) => ({ fecha: `d${i}`, ingresos: 0, egresos: 0, movimientos: [] }))
+  const r = await calcularExcedente(posicion, proy, { hoy: HOY, dias: cal })
   const e = r.ventanas.find((v) => v.bloque_solicitado === 'E')
   assert.ok(e, 'el bloque E tiene que aparecer, aunque sea para decir que no se sabe')
   assert.equal(e.bloque, 'G', 'más allá de la cobertura del calendario no se puede afirmar un excedente')
@@ -715,4 +724,134 @@ test('un pico de $1 por redondeo NO es una contingencia', () => {
   assert.equal(ref.contingencia.costo, 0, 'pero el costo no llega a un peso')
   assert.equal(ref.modo, MODO.COSTO_OPORTUNIDAD, 'entonces no es una contingencia')
   assert.equal(ref.hurdle_periodo, 0)
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// LO QUE ENCONTRÓ LA AUDITORÍA DE CIERRE — el validador aprobaba un invento
+// ════════════════════════════════════════════════════════════════════════════
+
+test('una propuesta FABRICADA no aprueba: cuatro controles pasaban por ausencia de campo', () => {
+  const rec = {
+    id: 'inventada', bloque: 'C', instrumento: 'Fantasma', instrumento_id: 'no-existe',
+    monto_maximo: 1000, moneda: 'ARS', horizonte_dias: 30,
+    rendimiento_neto_periodo: 0.001, ganancia_neta_estimada: 1,
+    reserva_preservada: null, plazo_rescate_dias: null, accionable: true,
+    fuente_caja: 'x', fuente_mercado: 'y', datos_faltantes: [],
+    vence_en: new Date(HOY.getTime() + 3600e3).toISOString(),
+  }
+  const posicion = {
+    estado: 'ok', en_descubierto: false, caja_real: 1e7, caja_comprometida: 0,
+    caja_restringida: { monto_a_restar: 0 }, caja_minima: 0, composicion: { ars_liquida: 1e7 },
+  }
+  const excedente = {
+    ventanas: [{ bloque: 'C', moneda: 'ARS', dias_libres: 30, monto_maximo: 1e6, referencia: {} }],
+    tasa_de_corte: { valor: 0.6278 }, deuda_cancelable: { monto: 0 },
+  }
+  const v = validarRecomendacion(rec, { posicion, excedente, instrumentos: [], ahora: HOY })
+  assert.equal(v.aprobada, false)
+  for (const regla of ['reserva_preservada', 'rescate_compatible', 'supera_vara', 'instrumento_existe']) {
+    assert.ok(v.fallas.some((f) => f.startsWith(regla)), `${regla} pasó: ${v.fallas.join(' | ')}`)
+  }
+})
+
+test('el rendimiento neto SE RECALCULA desde el instrumento, no se cree lo declarado', () => {
+  // El chequeo aritmético comparaba `monto × neto = ganancia`: dos campos de la propuesta contra sí
+  // mismos. Un neto inflado diez veces aprobaba con cero fallas.
+  const inst = normalizarInstrumento({
+    nombre: 'Lecap S31O5', moneda: 'ARS', plazo_rescate_dias: 0, liquidacion_dias: 1,
+    tasa: { tipo: 'tea', valor: 0.90, naturaleza: 'contractual' }, costos: { comision: 0.001 },
+    emisor: 'Tesoro',
+  }, { observadoEn: HOY.toISOString() })
+  const ventana = {
+    bloque: 'C', moneda: 'ARS', dias_libres: 30, monto_maximo: 1e6,
+    referencia: { hurdle_periodo: 0, modo: 'costo_oportunidad' },
+  }
+  const posicion = {
+    estado: 'ok', en_descubierto: false, caja_real: 1e7, caja_comprometida: 0,
+    caja_restringida: { monto_a_restar: 0 }, caja_minima: 0, composicion: { ars_liquida: 1e7 },
+  }
+  const excedente = { ventanas: [ventana], tasa_de_corte: { valor: 0.6278 }, deuda_cancelable: { monto: 0 } }
+  const base = {
+    id: 'r', bloque: 'C', instrumento: inst.nombre, instrumento_id: inst.id,
+    monto_maximo: 1e6, moneda: 'ARS', horizonte_dias: 30, plazo_rescate_dias: 1,
+    reserva_preservada: 0, accionable: true, fuente_caja: 'x', fuente_mercado: 'y',
+    datos_faltantes: [], vence_en: new Date(HOY.getTime() + 3600e3).toISOString(),
+  }
+  const fuentes = { posicion, excedente, instrumentos: [inst], ahora: HOY }
+
+  // El neto verdadero del instrumento a 30 días.
+  const real = (1.9 ** (30 / 365)) - 1 - 0.001
+  const ok = validarRecomendacion({ ...base, rendimiento_neto_periodo: real, ganancia_neta_estimada: Math.round(1e6 * real) }, fuentes)
+  assert.equal(ok.aprobada, true, `la propuesta correcta no pasó: ${ok.fallas.join(' | ')}`)
+
+  // El mismo instrumento, con el neto inflado diez veces y la ganancia coherente con la mentira.
+  const inflado = real * 10
+  const mal = validarRecomendacion({ ...base, rendimiento_neto_periodo: inflado, ganancia_neta_estimada: Math.round(1e6 * inflado) }, fuentes)
+  assert.equal(mal.aprobada, false, 'un neto inflado 10x aprobó')
+  assert.ok(mal.fallas.some((f) => f.startsWith('neto_reproducible')), mal.fallas.join(' | '))
+})
+
+test('esNumero no se deja engañar por la coerción', () => {
+  assert.equal(esNumero(null), false)
+  assert.equal(esNumero(undefined), false)
+  assert.equal(esNumero(''), false)
+  assert.equal(esNumero('  '), false)
+  assert.equal(esNumero([]), false)
+  assert.equal(esNumero(true), false)
+  assert.equal(esNumero(NaN), false)
+  assert.equal(esNumero(0), true, 'un cero SÍ es un número')
+  assert.equal(esNumero('12.5'), true)
+})
+
+test('sin composición, el control de coherencia FALLA — no pasa por no poder cruzar', () => {
+  // Fallaba abierto en su forma total: sin composición devolvía `coherente: true`. El control creado
+  // para que un #REF! no se informe como caja $0 se caía del lado cómodo justo cuando la pestaña
+  // estaba del todo ilegible. "No se puede cruzar" no es "está bien": es no saber.
+  assert.equal(coherenciaDelTotal(126190287, null).coherente, false)
+  assert.equal(coherenciaDelTotal(0, { ars_liquida: 0, moneda_extranjera: 0, valores_a_depositar: 0, sin_clasificar: 0, detalle: [] }).coherente, false)
+  // Total 0 y cuentas 0: dos ceros que coinciden no son un cruce.
+  const todoCero = clasificarCuentas([{ cuenta: 'Santander · cta cte ARS', saldo: 0 }])
+  const r = coherenciaDelTotal(0, todoCero)
+  assert.equal(r.coherente, false)
+  assert.match(r.motivo, /no se pudo leer/)
+})
+
+test('la contingencia se simula EN PESOS: los dólares no tapan un déficit en pesos', async () => {
+  // El techo ya se topeaba con `ars_liquida`; la simulación del riesgo arrancaba del total —dólares
+  // incluidos— así que creía que había más pesos de los que hay y devolvía una vara más baja.
+  const cal = Array.from({ length: 31 }, (_, i) => ({ fecha: `d${i}`, ingresos: 0, egresos: i === 10 ? 30000000 : 0, movimientos: [] }))
+  const proy = { estado: 'ok', escenarios: { adverso: { horizontes: [0, 2, 7, 15, 30].map((d) => ({ dias: d, estado: 'ok', piso_invertible: 25000000 })) } } }
+  const base = {
+    estado: 'ok', caja_real: 50000000, caja_comprometida: 0, caja_minima: 0,
+    techo_tecnico_preliminar: 25000000, accionable: true, confianza: CONFIANZA.MEDIA,
+  }
+  const conDolares = await calcularExcedente(
+    { ...base, composicion: { ars_liquida: 20000000, moneda_extranjera: 30000000, valores_a_depositar: 0, sin_clasificar: 0, detalle: [{ cuenta: 'x', saldo: 20000000, clase: 'ars_liquida' }] } },
+    proy, { hoy: HOY, dias: cal },
+  )
+  const sinComposicion = await calcularExcedente({ ...base, composicion: null }, proy, { hoy: HOY, dias: cal })
+  const varaC = conDolares.ventanas.find((v) => v.bloque === 'C')?.referencia?.hurdle_periodo ?? 0
+  const varaS = sinComposicion.ventanas.find((v) => v.bloque === 'C')?.referencia?.hurdle_periodo ?? 0
+  assert.ok(varaC > varaS, `mirando sólo los pesos la vara tiene que ser MAYOR: ${varaC} vs ${varaS}`)
+})
+
+test('la cobertura del calendario sale de las FILAS, no del horizonte que dijo "ok"', async () => {
+  // `resumirHorizonte` devolvía `ok` con cualquier array no vacío, así que con 11 días el horizonte
+  // de 90 salía ok y la cobertura daba 90 igual: el control se validaba contra sí mismo.
+  const proy = { estado: 'ok', escenarios: { adverso: { horizontes: [0, 2, 7, 15, 30, 60, 90].map((d) => ({ dias: d, estado: 'ok', piso_invertible: 9e7 })) } } }
+  const posicion = {
+    estado: 'ok', caja_real: 1e8, caja_comprometida: 0, caja_minima: 0,
+    techo_tecnico_preliminar: 1e8, accionable: true, confianza: CONFIANZA.MEDIA, composicion: null,
+  }
+  const corto = Array.from({ length: 11 }, (_, i) => ({ fecha: `d${i}`, ingresos: 0, egresos: 0, movimientos: [] }))
+  const r = await calcularExcedente(posicion, proy, { hoy: HOY, dias: corto })
+  const d = r.ventanas.find((v) => v.bloque_solicitado === 'D') ?? r.ventanas.find((v) => v.bloque === 'D')
+  assert.equal(d.bloque, 'G', 'con 11 días no se puede afirmar nada a 31-90')
+  assert.match(d.motivo, /10 días/)
+})
+
+test('resumirHorizonte no afirma un piso sobre días que no miró', () => {
+  const corto = Array.from({ length: 11 }, (_, i) => ({ fecha: `d${i}`, ingresos: 0, egresos: 0 }))
+  assert.equal(resumirHorizonte(corto, 90, ESCENARIOS.adverso, 1e8).estado, 'sin_dato')
+  assert.equal(resumirHorizonte(corto, 7, ESCENARIOS.adverso, 1e8).estado, 'ok')
 })
