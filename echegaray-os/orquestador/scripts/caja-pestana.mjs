@@ -1355,7 +1355,10 @@ async function main() {
 
   // EL RANGO CON NOMBRE VA PRIMERO. Las fórmulas de arriba dicen TIPO_CAMBIO_USD, así que el nombre
   // tiene que existir antes de escribirlas o la pestaña se llena de #NAME? en la primera corrida.
-  await rangoConNombre(google, hoja.sheetId, g.fTC)
+  // Los cinco rangos con nombre, contra las filas de ESTA corrida. Si el bloque 4.10 se movió, los
+  // del arqueo se mueven con él; si no se republicaran, "Caja en dólares" leería otra fila.
+  const publicados = await rangoConNombre(google, hoja.sheetId, g)
+  console.log(`  🔖 ${publicados} rango(s) con nombre republicados: ${RANGOS_DE_CAJA.map((r) => r.nombre).join(' · ')}`)
   // ═══ NO SE BORRA HASTA SABER QUE LO NUEVO SE PUEDE ESCRIBIR ═══
   //
   // POR QUÉ (21/07). Esta pestaña es la ÚNICA donde una persona carga números a mano. Una corrida
@@ -1454,16 +1457,46 @@ async function main() {
 }
 
 /**
- * El tipo de cambio, con nombre, para que lo pueda usar cualquier fórmula del archivo sin depender
- * de en qué fila quedó hoy. Se actualiza el que ya existe en vez de crear uno nuevo: la API apila.
+ * Los rangos con nombre de esta pestaña, republicados en CADA corrida desde las filas reales.
+ *
+ * ═══ POR QUÉ AHORA SON CINCO Y NO UNO (01/08) ═══
+ *
+ * El tipo de cambio se republicaba siempre; los CUATRO del arqueo (`CAJA_ARQUEO_ARS`, `_USD` y sus
+ * dos fechas) se habían creado UNA vez a mano y nadie los volvía a apuntar. Mientras la pestaña
+ * estuvo candada eso no se notó, porque no se movía. La primera vez que el generador la rehízo, el
+ * bloque 4.10 bajó de la fila 141 a la 151 y los cuatro nombres quedaron apuntando a la fila del
+ * TIPO DE CAMBIO: "Caja en dólares" pasó a leerse a sí misma y toda la columna dio #REF! — el total
+ * de disponibilidades, el piso de caja y la exposición en moneda extranjera incluidos.
+ *
+ * Es el defecto que este archivo ya pagó tres veces: ANCLAR EN LA POSICIÓN. Un rango con nombre
+ * existe justamente para no depender de la fila, y un rango con nombre que no se republica es una
+ * fila escrita a mano con mejor letra. Se publican los cinco, desde las coordenadas que devuelve la
+ * grilla, y un test exige que la lista de acá y las constantes de arriba no se separen.
  */
-async function rangoConNombre(google, sheetId, fila) {
-  const rango = { sheetId, startRowIndex: fila - 1, endRowIndex: fila, startColumnIndex: 2, endColumnIndex: 3 }
+export const RANGOS_DE_CAJA = [
+  { nombre: RANGO_TC, fila: (g) => g.fTC, col: 2 },
+  { nombre: ARQ_ARS, fila: (g) => g.fArqArs, col: 2 },
+  { nombre: ARQ_ARS_FECHA, fila: (g) => g.fArqArs, col: 5 },
+  { nombre: ARQ_USD, fila: (g) => g.fArqUsd, col: 2 },
+  { nombre: ARQ_USD_FECHA, fila: (g) => g.fArqUsd, col: 5 },
+]
+
+async function rangoConNombre(google, sheetId, g) {
   const existentes = await google.getNamedRanges(ID).catch(() => [])
-  const ya = existentes.find((r) => r.name === RANGO_TC)
-  await google.spreadsheetBatchUpdate(ID, [ya
-    ? { updateNamedRange: { namedRange: { namedRangeId: ya.namedRangeId, name: RANGO_TC, range: rango }, fields: 'name,range' } }
-    : { addNamedRange: { namedRange: { name: RANGO_TC, range: rango } } }])
+  const reqs = []
+  for (const r of RANGOS_DE_CAJA) {
+    const fila = typeof g === 'number' ? (r.nombre === RANGO_TC ? g : null) : r.fila(g)
+    // Sin fila no se publica NADA para ese nombre: dejar el rango viejo apuntando a una fila que ya
+    // no es la suya es peor que no tenerlo — miente sin dar error.
+    if (!Number.isFinite(fila) || fila < 1) continue
+    const rango = { sheetId, startRowIndex: fila - 1, endRowIndex: fila, startColumnIndex: r.col, endColumnIndex: r.col + 1 }
+    const ya = existentes.find((x) => x.name === r.nombre)
+    reqs.push(ya
+      ? { updateNamedRange: { namedRange: { namedRangeId: ya.namedRangeId, name: r.nombre, range: rango }, fields: 'name,range' } }
+      : { addNamedRange: { namedRange: { name: r.nombre, range: rango } } })
+  }
+  if (reqs.length) await google.spreadsheetBatchUpdate(ID, reqs)
+  return reqs.length
 }
 
 async function formatear(google, sheetId, g, tab) {
