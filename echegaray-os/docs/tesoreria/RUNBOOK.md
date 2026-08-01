@@ -278,6 +278,29 @@ motivo para correrlo.
 
 ---
 
+## Encender el timer (después, no antes)
+
+`install.sh` **copia** la unit pero **no la habilita**. Antes de que corra solo hacen falta tres cosas
+que el agente no puede darse a sí mismo:
+
+1. la migración aplicada,
+2. la reserva mínima **aprobada** por una persona,
+3. el extractor validado contra la pantalla real (`ORQ_BALANZ_EXTRACTOR_VALIDADO=1`).
+
+Con las tres:
+
+```bash
+bash orquestador/systemd/install.sh          # copia la unit
+systemctl --user enable --now echegaray-tesorero.timer
+systemctl --user list-timers echegaray-tesorero.timer
+```
+
+Las tres variables del agente van en `~/.config/echegaray-orq/worker.env` (fuera de git, `chmod 600`).
+Están comentadas en la plantilla de `install.sh` con qué se rompe si faltan; **si el archivo ya existe,
+el instalador no lo toca** — hay que agregarlas a mano.
+
+---
+
 ## Diagnóstico
 
 ```bash

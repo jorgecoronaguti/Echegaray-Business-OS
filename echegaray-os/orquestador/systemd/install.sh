@@ -24,6 +24,19 @@ ORQ_DB_SSL=false
 ORQ_CONCURRENCY=2
 ORQ_LOG_LEVEL=info
 ORQ_ENGINE=claude-cli
+
+# ── Tesorero Inversor IA ──────────────────────────────────────────────────
+# ORQ_TESORERIA_CANAL: canal de Mattermost donde publica. SIN esto no publica:
+#   escribe el análisis en el journal y sigue. No es un error, es no publicar.
+# ORQ_BALANZ_CDP: endpoint del Chrome dedicado (default http://127.0.0.1:9222).
+#   SIN Chrome escuchando el ciclo devuelve SESSION_REQUIRED y NO intenta entrar.
+# ORQ_BALANZ_EXTRACTOR_VALIDADO: ponerlo en 1 SOLO después de comparar a mano una
+#   muestra del extractor contra la pantalla real (ver docs/tesoreria/RUNBOOK.md).
+#   Sin esto, toda recomendación sale NO_ACCIONABLE — que es el default seguro.
+#ORQ_TESORERIA_CANAL=
+#ORQ_BALANZ_CDP=http://127.0.0.1:9222
+#ORQ_BALANZ_EXTRACTOR_VALIDADO=0
+
 # Cuando tengas el pooler real de Supabase (D1), reemplazá DATABASE_URL por:
 #   postgresql://postgres.<ref>:<PASSWORD>@aws-1-sa-east-1.pooler.supabase.com:5432/postgres
 # y ORQ_DB_SSL=true
@@ -37,6 +50,10 @@ fi
 cp "$SRC_DIR"/echegaray-orq-*.service "$SRC_DIR"/echegaray-orq-*.timer "$UNIT_DIR/"
 # Servicios del canal de la extensión (PRP-015): túnel HTTPS saliente + agenda.
 cp "$SRC_DIR"/echegaray-os-*.service "$SRC_DIR"/echegaray-os-*.timer "$UNIT_DIR/"
+# Tesorero Inversor IA. Va aparte porque no comparte prefijo: un glob que no lo
+# incluyera dejaba el timer sin instalar y el agente sin correr nunca — el defecto
+# más silencioso posible, porque no falla nada, simplemente no pasa.
+cp "$SRC_DIR"/echegaray-tesorero.service "$SRC_DIR"/echegaray-tesorero.timer "$UNIT_DIR/"
 echo "units copiadas a $UNIT_DIR"
 
 systemctl --user daemon-reload
@@ -47,5 +64,11 @@ systemctl --user enable --now echegaray-orq-vigilancia.timer
 systemctl --user enable --now echegaray-orq-interactive.service
 systemctl --user enable --now echegaray-os-tunnel.service      # túnel HTTPS saliente (canal extensión)
 systemctl --user enable --now echegaray-os-schedules.timer     # disparador de recurrencias (agenda)
+
+# El Tesorero se COPIA pero NO se habilita, a propósito. Antes de que corra solo hacen
+# falta tres cosas que no puede darse a sí mismo: la migración aplicada, la reserva
+# mínima aprobada por una persona y el extractor validado contra la pantalla real.
+# Habilitarlo antes haría que publique análisis NO_ACCIONABLE dos veces por día.
+#   systemctl --user enable --now echegaray-tesorero.timer
 echo "servicios habilitados y arrancados."
 systemctl --user --no-pager status echegaray-orq-worker.service | head -6 || true
