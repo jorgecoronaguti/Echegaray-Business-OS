@@ -11,6 +11,10 @@ import { fileURLToPath } from 'node:url'
 
 import { EVIDENCIA, evidenciaCombinada, bloquePorDias, CONFIANZA } from './contratos.mjs'
 import { enDescubierto, clasificarCuentas } from './posicion-caja.mjs'
+import { tasaDeReferencia, deudaCancelable, MODO } from './costo-liquidez.mjs'
+import {
+  estadoReserva, modelarCajaRestringida, evaluarAccionabilidad, ESTADO_POLITICA,
+} from './politicas.mjs'
 import { resumirHorizonte, ventanaSinPerforar, ESCENARIOS, proyectarLiquidez } from './proyeccion-liquidez.mjs'
 import { calcularExcedente, tasaDeCorte, rendimientoPeriodo } from './excedente.mjs'
 import { aTea, tnaATea, periodoATea, normalizarInstrumento, categorizar, esAptoTesoreria, porcentajeArg, plazoLiquidacion } from './instrumentos.mjs'
@@ -29,41 +33,111 @@ const HOY = new Date('2026-08-01T10:00:00Z')
 // LA REGLA CENTRAL
 // ════════════════════════════════════════════════════════════════════════════
 
-test('EN DESCUBIERTO NO HAY EXCEDENTE: la respuesta es cancelar la línea, no invertir', async () => {
-  const posicion = {
-    estado: 'ok', en_descubierto: true, caja_real: -5000000, caja_comprometida: 3000000,
-    caja_restringida: 0, caja_minima: 0, caja_excedente_bruto: -8000000, confianza: CONFIANZA.ALTA,
+test('CASO A · con descubierto utilizado, cancelar la línea es la vara y una colocación inferior se rechaza', () => {
+  const ventana = {
+    bloque: 'C', moneda: 'ARS', dias_libres: 30, monto_maximo: 10000000,
+    referencia: tasaDeReferencia({
+      dias: 30, monto: 10000000, deuda: 10000000, cft: 0.6278,
+      dias_calendario: [{ fecha: 'd', ingresos: 0, egresos: 0 }], cajaInicial: 10000000, interesDia: () => 0,
+    }),
   }
-  const proy = { estado: 'ok', escenarios: { adverso: { horizontes: [{ dias: 7, estado: 'ok', piso_invertible: 0 }] } } }
-  const r = await calcularExcedente(posicion, proy, { hoy: HOY })
-  assert.equal(r.en_descubierto, true)
-  assert.equal(r.ventanas.length, 1)
-  assert.equal(r.ventanas[0].bloque, 'F')
-  assert.equal(r.ventanas[0].monto_maximo, 0)
-  assert.match(r.ventanas[0].motivo, /62[.,]78%/, 'tiene que decir cuánto rinde cancelar la línea')
+  assert.equal(ventana.referencia.modo, MODO.CANCELACION_DEUDA)
+  const inst = normalizarInstrumento({
+    nombre: 'FCI Money Market Pesos', moneda: 'ARS', plazo_rescate_dias: 0, liquidacion_dias: 0,
+    tasa: { tipo: 'tea', valor: 0.40, naturaleza: 'indicativa' }, costos: { comision: 0 },
+  }, { observadoEn: HOY.toISOString() })
+  const r = evaluarContraVentana(inst, ventana, { valor: 0.6278 })
+  assert.equal(r.excluido, true)
+  assert.match(r.motivo, /cancelar descubierto rinde/)
 })
 
-test('la tasa de corte es el CFT del acuerdo, no cero ni una tasa inventada', async () => {
+test('CASO B · SIN descubierto, un instrumento por debajo del 62,78% NO se rechaza automáticamente', () => {
+  // Es la corrección central. Con la cuenta en positivo y sin riesgo de déficit, exigirle el CFT del
+  // acuerdo a una colocación de 30 días rechazaba todo y dejaba la plata rindiendo cero.
+  const ventana = {
+    bloque: 'C', moneda: 'ARS', dias_libres: 30, monto_maximo: 10000000,
+    referencia: tasaDeReferencia({
+      dias: 30, monto: 10000000, deuda: 0, cft: 0.6278, cajaInicial: 50000000, reserva: 0,
+      dias_calendario: Array.from({ length: 31 }, (_, i) => ({ fecha: `d${i}`, ingresos: 0, egresos: 0 })),
+      interesDia: () => 0,
+    }),
+  }
+  assert.equal(ventana.referencia.modo, MODO.COSTO_OPORTUNIDAD)
+  assert.equal(ventana.referencia.hurdle_periodo, 0, 'sin deuda ni riesgo de déficit la vara es cero neto')
+  const inst = normalizarInstrumento({
+    nombre: 'FCI Money Market Pesos', moneda: 'ARS', plazo_rescate_dias: 0, liquidacion_dias: 0,
+    tasa: { tipo: 'tea', valor: 0.40, naturaleza: 'indicativa' }, costos: { comision: 0 },
+  }, { observadoEn: HOY.toISOString() })
+  const r = evaluarContraVentana(inst, ventana, { valor: 0.6278 })
+  assert.equal(r.excluido, false, 'un 40% anual con la caja en positivo es una colocación legítima')
+  assert.equal(r.modo_vara, MODO.COSTO_OPORTUNIDAD)
+  assert.ok(r.exceso_sobre_corte > 0)
+})
+
+test('CASO C · si inmovilizar provoca déficit, el costo del descubierto entra a la comparación', () => {
+  // El día 10 sale un pago grande: inmovilizar deja la caja en rojo y eso cuesta, día por día.
+  const cal = Array.from({ length: 31 }, (_, i) => ({ fecha: `d${i}`, ingresos: 0, egresos: i === 10 ? 9000000 : 0 }))
+  const ref = tasaDeReferencia({
+    dias: 30, monto: 8000000, deuda: 0, cft: 0.6278, cajaInicial: 10000000, reserva: 0,
+    dias_calendario: cal, factorIngresos: 1,
+    interesDia: (saldo) => Math.abs(saldo) * 0.6278 / 365,
+  })
+  assert.equal(ref.modo, MODO.CONTINGENCIA)
+  assert.ok(ref.hurdle_periodo > 0, 'el costo esperado del descubierto tiene que subir la vara')
+  assert.equal(ref.contingencia.dias_en_rojo, 21) // del día 10 al 30 inclusive
+  assert.equal(ref.evidencia, EVIDENCIA.INFERENCIA, 'sale de un escenario declarado, no de un hecho')
+  assert.match(ref.explicacion, /escenario adverso/)
+})
+
+test('el costo de contingencia NO se inventa: sin calendario cae a la vara conservadora y lo dice', () => {
+  const ref = tasaDeReferencia({ dias: 30, monto: 5000000, deuda: 0, cft: 0.6278, dias_calendario: [] })
+  assert.equal(ref.confianza, CONFIANZA.BAJA)
+  assert.match(ref.explicacion, /sin calendario/)
+  assert.ok(Math.abs(ref.hurdle_periodo - ref.cft_periodo) < 1e-12, 'sin poder simular se aplica el CFT, que es el lado seguro')
+})
+
+test('el CFT anual NUNCA se compara contra un retorno de pocos días sin convertir', () => {
+  const ref = tasaDeReferencia({
+    dias: 7, monto: 1000000, deuda: 1000000, cft: 0.6278,
+    dias_calendario: [{ fecha: 'd', ingresos: 0, egresos: 0 }], cajaInicial: 1000000, interesDia: () => 0,
+  })
+  // 62,78% anual en 7 días son ~0,93%, no 62,78%.
+  const esperado = (1.6278) ** (7 / 365) - 1
+  assert.ok(Math.abs(ref.hurdle_periodo - esperado) < 1e-12)
+  assert.ok(ref.hurdle_periodo < 0.01, 'si diera 0,62 estaríamos comparando un año contra una semana')
+})
+
+test('la deuda cancelable se mide POR CUENTA, no por el saldo total', () => {
+  // Una cuenta corriente en rojo con efectivo en la caja fuerte da un total positivo, y el banco
+  // cobra el descubierto igual. Mirar sólo el total hacía invisible ese costo.
+  const comp = clasificarCuentas([
+    { cuenta: 'Santander · cta cte ARS', saldo: -8000000 },
+    { cuenta: 'Caja en pesos', saldo: 20000000 },
+  ])
+  const d = deudaCancelable(comp, 12000000)
+  assert.equal(d.monto, 8000000)
+  assert.equal(d.por_cuenta.length, 1)
+  assert.equal(d.evidencia, EVIDENCIA.DATO)
+  // Sin composición sólo queda el total, y se declara como inferencia.
+  assert.equal(deudaCancelable(null, -3000000).evidencia, EVIDENCIA.INFERENCIA)
+  assert.equal(deudaCancelable(null, 5000000).monto, 0)
+})
+
+test('la tasa de corte del acuerdo sigue siendo un HECHO verificado — pero ya no es el piso universal', async () => {
   const c = await tasaDeCorte()
   assert.equal(c.valor, 0.6278)
   assert.equal(c.evidencia, EVIDENCIA.HECHO)
   assert.match(c.fuente, /costo-descubierto/)
 })
 
-test('un instrumento que rinde MENOS que el costo del dinero queda excluido, con motivo', () => {
-  const ventana = { bloque: 'C', moneda: 'ARS', dias_libres: 30, monto_maximo: 10000000 }
-  const inst = normalizarInstrumento({
-    nombre: 'FCI Money Market Pesos', moneda: 'ARS', plazo_rescate_dias: 0, liquidacion_dias: 0,
-    tasa: { tipo: 'tea', valor: 0.40, naturaleza: 'indicativa' },
-    costos: { comision: 0 },
-  }, { observadoEn: HOY.toISOString() })
-  const r = evaluarContraVentana(inst, ventana, { valor: 0.6278 })
-  assert.equal(r.excluido, true)
-  assert.match(r.motivo, /aplicar la plata a la deuda gana/)
-})
-
-test('un instrumento que SÍ supera el costo del dinero entra y trae su exceso', () => {
-  const ventana = { bloque: 'C', moneda: 'ARS', dias_libres: 30, monto_maximo: 10000000 }
+test('un instrumento que supera la vara entra y trae su exceso', () => {
+  const ventana = {
+    bloque: 'C', moneda: 'ARS', dias_libres: 30, monto_maximo: 10000000,
+    referencia: tasaDeReferencia({
+      dias: 30, monto: 10000000, deuda: 10000000, cft: 0.6278,
+      dias_calendario: [{ fecha: 'd', ingresos: 0, egresos: 0 }], cajaInicial: 10000000, interesDia: () => 0,
+    }),
+  }
   const inst = normalizarInstrumento({
     nombre: 'Lecap a 30 días', moneda: 'ARS', plazo_rescate_dias: 0, liquidacion_dias: 1,
     tasa: { tipo: 'tea', valor: 0.90, naturaleza: 'contractual' }, costos: { comision: 0.001 },
@@ -124,9 +198,21 @@ test('las cobranzas por cobrar NO suman al excedente y eso queda declarado en la
   assert.match(src, /no es caja hasta que se acredita/)
 })
 
-test('sin reserva mínima declarada, se dice que falta y baja la confianza — no se inventa un piso', () => {
-  const src = readFileSync(join(DIR, 'posicion-caja.mjs'), 'utf8')
-  assert.match(src, /reserva mínima operativa \(política del dueño/)
+test('sin reserva mínima APROBADA, el número no se llama excedente y nada es accionable', () => {
+  assert.equal(estadoReserva(null).estado, ESTADO_POLITICA.AUSENTE)
+  // Guardar la política NO la aprueba: sin `aprobada_por` sigue siendo una propuesta.
+  const guardada = estadoReserva({ valor: { monto: 5000000, metodo: 'piso_mas_egresos' }, creada_en: '2026-08-01' })
+  assert.equal(guardada.estado, ESTADO_POLITICA.PROPUESTA)
+  assert.match(guardada.motivo, /guardarla no es aprobarla/)
+  const aprobada = estadoReserva({ valor: { monto: 5000000 }, aprobada_por: 'jorge', vigente_desde: '2026-08-01' })
+  assert.equal(aprobada.estado, ESTADO_POLITICA.APROBADA)
+  assert.equal(aprobada.monto, 5000000)
+
+  const sinPolitica = evaluarAccionabilidad({ reserva: estadoReserva(null), restringida: modelarCajaRestringida(null), extractorValidado: true, mercadoFresco: true })
+  assert.equal(sinPolitica.accionable, false)
+  assert.equal(sinPolitica.etiqueta, 'techo_tecnico_preliminar')
+  assert.equal(sinPolitica.estado_recomendacion, 'NO_ACCIONABLE')
+
   assert.equal(enDescubierto(-1), true)
   assert.equal(enDescubierto(0), false)
   assert.equal(enDescubierto(null), false)
@@ -232,7 +318,8 @@ function escenarioConExcedente() {
   })
   const posicion = {
     estado: 'ok', en_descubierto: false, caja_real: 20000000, caja_comprometida: 6000000,
-    caja_restringida: 0, caja_minima: 2000000, caja_excedente_bruto: 12000000,
+    caja_restringida: 0, caja_minima: 2000000, techo_tecnico_preliminar: 12000000, accionable: true, estado_recomendacion: 'ACCIONABLE',
+    composicion: { ars_liquida: 20000000, moneda_extranjera: 0, valores_a_depositar: 0, sin_clasificar: 0 },
     confianza: CONFIANZA.MEDIA, fecha: '01/08/2026', fuente: 'cash-briefing',
   }
   const excedente = { estado: 'ok', ventanas: [ventana], tasa_de_corte: corte }
@@ -280,13 +367,21 @@ test('la validación RECHAZA una propuesta vencida', () => {
   assert.equal(estaVencida(gen.propuestas[0], manana), true)
 })
 
-test('la validación RECHAZA si la empresa está en descubierto, aunque el resto cierre', () => {
+test('la validación RECHAZA si hay deuda cancelable sin aplicar', () => {
   const { gen, posicion, excedente, inst } = escenarioConExcedente()
   const v = validarRecomendacion(gen.propuestas[0], {
-    posicion: { ...posicion, en_descubierto: true }, excedente, instrumentos: [inst], ahora: HOY,
+    posicion, excedente: { ...excedente, deuda_cancelable: { monto: 4000000 } }, instrumentos: [inst], ahora: HOY,
   })
   assert.equal(v.aprobada, false)
-  assert.ok(v.fallas.some((f) => /sin_descubierto/.test(f)))
+  assert.ok(v.fallas.some((f) => /deuda_primero/.test(f)))
+})
+
+test('la validación RECHAZA una propuesta NO_ACCIONABLE por más que la aritmética cierre', () => {
+  const { gen, posicion, excedente, inst } = escenarioConExcedente()
+  const noAccionable = { ...gen.propuestas[0], accionable: false, bloqueos_accionabilidad: ['reserva mínima ausente'] }
+  const v = validarRecomendacion(noAccionable, { posicion, excedente, instrumentos: [inst], ahora: HOY })
+  assert.equal(v.aprobada, false)
+  assert.ok(v.fallas.some((f) => /accionable/.test(f)))
 })
 
 test('validarLote separa publicables de rechazadas y NUNCA descarta en silencio', () => {
@@ -450,14 +545,14 @@ test('NO se afirma nada más allá de donde llega el calendario (el bloque E pro
   // modelo no ve los sueldos de 2027. No los ve porque no llega, no porque no existan.
   const posicion = {
     estado: 'ok', en_descubierto: false, caja_real: 100000000, caja_comprometida: 0,
-    caja_restringida: 0, caja_minima: 0, caja_excedente_bruto: 100000000, confianza: CONFIANZA.MEDIA,
+    caja_restringida: 0, caja_minima: 0, techo_tecnico_preliminar: 100000000, accionable: true, estado_recomendacion: 'ACCIONABLE', confianza: CONFIANZA.MEDIA,
   }
   const proy = {
     estado: 'ok',
     escenarios: { adverso: { horizontes: [0, 2, 7, 15, 30, 60, 90].map((d) => ({ dias: d, estado: 'ok', piso_invertible: 80000000 })) } },
   }
   const r = await calcularExcedente(posicion, proy, { hoy: HOY })
-  const e = r.ventanas.find((v) => v.bloque_solicitado === 'E') ?? r.ventanas.find((v) => v.bloque === 'E')
+  const e = r.ventanas.find((v) => v.bloque_solicitado === 'E')
   assert.ok(e, 'el bloque E tiene que aparecer, aunque sea para decir que no se sabe')
   assert.equal(e.bloque, 'G', 'más allá de la cobertura del calendario no se puede afirmar un excedente')
   assert.match(e.motivo, /90 días/)
@@ -508,6 +603,24 @@ test('los dólares y los cheques en cartera NO financian una colocación en peso
   const sumaCuentas = c.ars_liquida + c.moneda_extranjera + c.valores_a_depositar + c.sin_clasificar
   assert.equal(sumaCuentas, 136480286)
   assert.equal(sumaCuentas - 126190287, c.valores_a_depositar - 1) // -1: el total de la pestaña redondea
+})
+
+test('si un componente de la caja no es número, el control FALLA — no pasa por accidente', () => {
+  // Regresión del 01/08: `caja_restringida` pasó de número a modelo y el validador hacía
+  // `caja_real - ... - {objeto}` = NaN. `monto <= NaN` es false, así que rechazaba todo: parecía
+  // funcionar y en realidad estaba roto. Un control que acierta por accidente no es un control.
+  const { gen, posicion, excedente, inst } = escenarioConExcedente()
+  const rota = { ...posicion, caja_comprometida: undefined }
+  const v = validarRecomendacion(gen.propuestas[0], { posicion: rota, excedente, instrumentos: [inst], ahora: HOY })
+  assert.equal(v.aprobada, false)
+  assert.ok(v.fallas.some((f) => /no es un número/.test(f)), `motivo real: ${v.fallas.join(' | ')}`)
+})
+
+test('el validador lee el monto restringido del MODELO, no del objeto entero', () => {
+  const { gen, posicion, excedente, inst } = escenarioConExcedente()
+  const conModelo = { ...posicion, caja_restringida: { monto_a_restar: 0, restricted_cash_status: 'known_zero' } }
+  const v = validarRecomendacion(gen.propuestas[0], { posicion: conModelo, excedente, instrumentos: [inst], ahora: HOY })
+  assert.equal(v.aprobada, true, `falló: ${v.fallas.join(' | ')}`)
 })
 
 test('el validador topea por la parte líquida en pesos, no por el total', () => {

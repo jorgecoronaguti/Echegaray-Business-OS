@@ -24,6 +24,7 @@
 // El excedente es el MENOR de los tres resultados, nunca el mayor.
 
 import { BLOQUES, bloquePorDias, EVIDENCIA, CONFIANZA } from './contratos.mjs'
+import { deudaCancelable, tasaDeReferencia, interesDiarioDelAcuerdo, MODO } from './costo-liquidez.mjs'
 
 /**
  * TASA DE CORTE (hurdle rate) — el rendimiento anual que un instrumento tiene que superar para que
@@ -87,6 +88,7 @@ function ventanaCerrada(bloque, motivo, extra = {}) {
 export async function calcularExcedente(posicion = {}, proyeccion = {}, opts = {}) {
   const hoy = opts.hoy ? new Date(opts.hoy) : new Date()
   const corte = await tasaDeCorte()
+  const interesDia = opts.interesDia ?? await interesDiarioDelAcuerdo()
 
   if (posicion.estado !== 'ok' || proyeccion.estado !== 'ok') {
     const motivo = posicion.motivo || proyeccion.motivo || 'falta la posición de caja o la proyección'
@@ -96,27 +98,21 @@ export async function calcularExcedente(posicion = {}, proyeccion = {}, opts = {
     }
   }
 
-  // ── EL PORTÓN: ¿la empresa está en rojo? ────────────────────────────────────
-  if (posicion.en_descubierto) {
-    const motivo = `la cuenta está en descubierto ($${Math.abs(posicion.caja_real).toLocaleString('es-AR')}): `
-      + `cada peso aplicado a la línea "rinde" ${(corte.valor * 100).toFixed(2)}% efectivo anual, libre de riesgo. `
-      + 'Ningún instrumento de tesorería en pesos paga eso. No hay excedente invertible.'
-    return {
-      estado: 'ok', hoy: hoy.toISOString().slice(0, 10), tasa_de_corte: corte,
-      en_descubierto: true,
-      recomendacion_estructural: 'aplicar todo sobrante a cancelar descubierto antes de evaluar cualquier inversión',
-      ventanas: [ventanaCerrada('F', motivo, { monto_maximo: 0 })],
-      evidencia: EVIDENCIA.CALCULO, confianza: CONFIANZA.ALTA,
-    }
-  }
+  // ── DEUDA CANCELABLE: el CASO A, y sólo por su monto ────────────────────────
+  //
+  // Corrección del 01/08. La versión anterior, ante cualquier saldo negativo, devolvía "excedente
+  // cero" para TODO. Eso mezcla dos cosas: cancelar deuda es la mejor colocación para la porción que
+  // alcanza a cancelarla, no para el resto. Y el descubierto se mide POR CUENTA — una cuenta corriente
+  // en rojo con efectivo en la caja fuerte da un total positivo y el banco cobra igual.
+  const deuda = deudaCancelable(posicion.composicion, posicion.caja_real)
 
-  // ── EL EXCEDENTE ES EL MENOR DE LAS TRES RESTAS ─────────────────────────────
   const reserva = Number(posicion.caja_minima) || 0
-  const excedentePosicion = Number(posicion.caja_excedente_bruto) || 0
-  if (excedentePosicion <= 0) {
+  const techoPosicion = Number(posicion.techo_tecnico_preliminar) || 0
+  if (techoPosicion <= 0) {
     return {
-      estado: 'ok', hoy: hoy.toISOString().slice(0, 10), tasa_de_corte: corte, en_descubierto: false,
-      ventanas: [ventanaCerrada('F', `después de restar lo comprometido ($${posicion.caja_comprometida.toLocaleString('es-AR')}), lo restringido y la reserva, no queda excedente`, { monto_maximo: 0 })],
+      estado: 'ok', hoy: hoy.toISOString().slice(0, 10), tasa_de_corte: corte, en_descubierto: deuda.monto > 0,
+      deuda_cancelable: deuda,
+      ventanas: [ventanaCerrada('F', `después de restar lo comprometido ($${posicion.caja_comprometida.toLocaleString('es-AR')}), lo restringido y la reserva, no queda techo técnico`, { monto_maximo: 0 })],
       evidencia: EVIDENCIA.CALCULO, confianza: posicion.confianza,
     }
   }
@@ -143,7 +139,7 @@ export async function calcularExcedente(posicion = {}, proyeccion = {}, opts = {
     const h = dias.find((x) => x.dias >= tope) || dias[dias.length - 1]
     const piso = h?.estado === 'ok' ? h.piso_invertible : null
     if (piso == null) { porBloque.set(b.id, ventanaCerrada('G', `el calendario no cubre ${b.hasta} días`, { bloque_solicitado: b.id })); continue }
-    const monto = Math.max(0, Math.min(excedentePosicion, piso - reserva))
+    const monto = Math.max(0, Math.min(techoPosicion, piso - reserva))
     if (monto <= 0) {
       porBloque.set(b.id, ventanaCerrada('F', `el saldo mínimo proyectado a ${tope} días (escenario adverso) es $${Math.round(piso).toLocaleString('es-AR')}: no aguanta inmovilizar nada`, { monto_maximo: 0 }))
       continue
@@ -160,14 +156,24 @@ export async function calcularExcedente(posicion = {}, proyeccion = {}, opts = {
       dias_libres: tope,
       reserva_preservada: Math.round(reserva),
       obligaciones_cubiertas: obligacionesCubiertas(opts.dias || [], b.hasta),
+      // LA VARA DE ESTA VENTANA. No es un número global: depende del plazo, del monto y de si
+      // inmovilizarlo lleva la caja a rojo en el escenario adverso. Se calcula por ventana.
+      referencia: tasaDeReferencia({
+        dias: tope, monto: Math.round(monto), deuda: deuda.monto,
+        dias_calendario: opts.dias || [], cajaInicial: posicion.caja_real, reserva,
+        cft: corte.valor, interesDia, factorIngresos: 0.5, escenario: 'adverso',
+      }),
       condiciones_invalidez: [
         `si entra un pago no previsto mayor a $${Math.round(piso - reserva - monto).toLocaleString('es-AR')}, la ventana se cierra`,
         'si una cobranza del período no se acredita, el piso baja y el monto deja de ser válido',
-        `si la cuenta vuelve al descubierto, cancelar la línea rinde ${(corte.valor * 100).toFixed(2)}% y gana a cualquier instrumento`,
+        ...(deuda.monto > 0 ? [`hay $${deuda.monto.toLocaleString('es-AR')} de descubierto utilizado: esa porción va a cancelar la línea antes que a cualquier instrumento`] : []),
         ...(tope < b.hasta ? [`la ventana se recortó a ${tope} días: el calendario no proyecta más allá`] : []),
       ],
       evidencia: EVIDENCIA.PROYECCION,
       confianza: posicion.confianza === CONFIANZA.ALTA ? CONFIANZA.MEDIA : posicion.confianza,
+      // Una ventana con monto NO es una ventana accionable: eso lo decide la política aprobada.
+      accionable: Boolean(posicion.accionable),
+      estado_recomendacion: posicion.estado_recomendacion ?? 'NO_ACCIONABLE',
       motivo: null,
     })
   }
@@ -180,12 +186,18 @@ export async function calcularExcedente(posicion = {}, proyeccion = {}, opts = {
   return {
     estado: 'ok',
     hoy: hoy.toISOString().slice(0, 10),
-    en_descubierto: false,
-    tasa_de_corte: corte,
-    excedente_base: Math.round(excedentePosicion),
+    en_descubierto: deuda.monto > 0,
+    deuda_cancelable: deuda,
+    tasa_de_corte: corte, // el CFT del acuerdo: es UNA referencia, ya no el piso universal
+    techo_base: Math.round(techoPosicion),
+    etiqueta_monto: posicion.etiqueta_monto ?? 'techo_tecnico_preliminar',
+    accionable: Boolean(posicion.accionable),
+    estado_recomendacion: posicion.estado_recomendacion ?? 'NO_ACCIONABLE',
+    bloqueos_accionabilidad: posicion.bloqueos_accionabilidad ?? [],
     reserva_preservada: Math.round(reserva),
     ventanas,
-    criterio: 'excedente = min(caja − comprometido − restringido − reserva, piso del período en escenario adverso − reserva)',
+    criterio: 'techo = min(caja − comprometido − restringido − reserva, piso del período en escenario adverso − reserva); '
+      + 'la vara de cada ventana sale de costo-liquidez (cancelación de deuda / costo de oportunidad / contingencia), no del CFT fijo',
     evidencia: EVIDENCIA.CALCULO,
     confianza: posicion.confianza,
   }
@@ -194,4 +206,6 @@ export async function calcularExcedente(posicion = {}, proyeccion = {}, opts = {
 /** Bloque que le corresponde a un plazo, para clasificar un instrumento contra las ventanas. */
 export { bloquePorDias }
 
-export const VERSION_SKILL = '1.0.0'
+export { MODO }
+
+export const VERSION_SKILL = '1.1.0'
