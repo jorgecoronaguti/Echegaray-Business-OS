@@ -34,14 +34,22 @@ una lista: son las tres etapas cubiertas, y por eso son siete y no veinte.
 |---|---|---|
 | **Reunir contexto** | `buscador-de-evidencia` | barre el data room y vuelve con el dato y su fuente, no con los archivos |
 | | `centinela-de-produccion` | el estado real: qué corre, con qué hash, qué falló |
-| **Actuar** | `ejecutor-de-tarea` | el único que escribe, en worktree aislado |
+| **Actuar** | `ejecutor-de-tarea` | escribe código, en worktree aislado |
+| | `mattermost` | escribe el subsistema del chat: bot, asistente, capacidades, ruteo |
+| | `mantenedor-flujo-de-fondos` | mantiene el Sheet vivo — corriendo el pipeline, nunca celda por celda |
 | **Verificar** | `cazador-de-regresiones` | feedback por **reglas**: tests, typecheck, lint |
 | | `qa-visual` | feedback **visual**: el navegador, la captura |
 | | `auditor-de-sheet` | feedback **visual** sobre el Sheet: el render y el PDF |
 | | `auditor-de-cierre` | un **modelo que juzga** contra los criterios de cierre |
 
-La etapa de verificación tiene cuatro agentes y la de acción uno solo. No es un descuido: en este OS
-lo que falla no es escribir código, es dar por terminado algo que no lo está.
+La etapa de verificación tiene cuatro agentes. No es un descuido: en este OS lo que falla no es
+escribir código, es dar por terminado algo que no lo está.
+
+**Bash es un vector de escritura, y el inventario no lo muestra.** `mantenedor-flujo-de-fondos`
+figura sin `Write` ni `Edit` y sin embargo reescribe pestañas del Sheet real — lo hace corriendo el
+pipeline, que ya tiene adentro los candados, las firmas y el snapshot. Es deliberado: una escritura
+"a mano" saltearía las tres protecciones a la vez. El alcance de cada agente lo fija su prompt, no
+la lista de herramientas.
 
 ## Por qué existen estos y no otros
 

@@ -59,7 +59,12 @@ console.log(`\n${agentes.length} agente(s) en .claude/agents/\n`)
 for (const a of agentes) {
   console.log(`  ${escribe(a) ? '✎' : '👁'}  ${(a.name ?? a.esperado).padEnd(26)} ${(a.model ?? '—').padEnd(8)} ${a.tools.join(', ') || '(TODAS)'}`)
 }
-console.log(`\n  ✎ = puede escribir · 👁 = sólo lectura\n`)
+console.log(`\n  ✎ = edita archivos del repo · 👁 = no los edita`)
+// BASH ES UN VECTOR DE ESCRITURA Y ESTE ÍCONO NO LO MUESTRA.
+// `mantenedor-flujo-de-fondos` figura como 👁 y sin embargo reescribe pestañas del Sheet real: lo
+// hace corriendo el pipeline, no editando archivos. Decir "sólo lectura" ahí sería mentir en el
+// único lugar donde la mentira sale cara.
+console.log('  Ojo: todos tienen Bash. El alcance real de cada uno lo fija su prompt, no esta columna.\n')
 
 if (process.argv.includes('--validar')) {
   if (!problemas.length) {
