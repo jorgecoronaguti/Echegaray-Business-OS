@@ -22,6 +22,8 @@ import { fechaDeCajaDeQuincena } from './jornales-fecha-pago.mjs'
 // La otra mitad de la nómina de administración: los retiros mensuales de Dirección, que no están en
 // ninguna planilla y hasta hoy sólo existían como filas sueltas de Compras.
 import { formulaDireccion } from './direccion-retiros.mjs'
+// Lo que el banco muestra que salió por cada naturaleza — para poder contrastarlo contra el cuadro.
+import { formulaBancoPorNaturaleza } from './banco-vs-cuadro.mjs'
 // El "⇒ " de los rótulos de total sale de una sola función, la misma que usan los generadores.
 import { total } from './patron-pestana.mjs'
 
@@ -825,6 +827,32 @@ export const CUADRO = [
           },
         ],
       },
+      {
+        // ═══ LO QUE SALIÓ DEL BANCO Y EL CUADRO NO TIENE (01/08) ═══
+        //
+        // El dueño: "esos conceptos sí están en el Sheet, buscalos y consolidalos donde corresponden".
+        // Medido contra la réplica del extracto: de los $14,1M, tres conceptos el cuadro ya los cuenta
+        // AL PESO (prendario $1.282.811, comisiones $381.650, descubierto $282.621) y tres no:
+        //
+        //     AFIP                            $6.368.462   la línea de impuestos dice $0
+        //     Compras con tarjeta de débito   $4.077.785   no hay ninguna línea que lo contenga
+        //     Débitos automáticos (seguros)     $675.494   idem
+        //
+        // Misma causa las tres: salieron de la cuenta y NO tienen comprobante cargado en Compras. El
+        // cuadro suma Compras, así que no los ve. El banco prueba que salieron.
+        //
+        // NO SUMA, Y ESO ES LO IMPORTANTE. Sumarlas cerraría el total hoy y el día que alguien cargue
+        // la factura del seguro ese gasto quedaría contado DOS veces —una por el banco y otra por
+        // Compras— con el control del pie cerrando igual, porque las dos salen del mismo lado. Se
+        // muestran al lado, como las cobranzas esperadas: la plata deja de ser invisible sin arriesgar
+        // contarla dos veces, y cuando se carguen las facturas estas líneas bajan solas a cero.
+        nombre: 'ℹ Salió del banco y no está cargado en Compras (control, no suma al flujo)', signo: 0,
+        lineas: [
+          { nombre: 'AFIP — pagos debitados de la cuenta', bancoNat: 'AFIP', detalle: 'Impuestos y Financieros' },
+          { nombre: 'Consumos con tarjeta de débito', bancoNat: 'Compras con tarjeta de débito', detalle: 'Compras' },
+          { nombre: 'Débitos automáticos (seguros)', bancoNat: 'Débitos automáticos (seguros)', detalle: 'Recurrentes' },
+        ],
+      },
     ],
   },
 ]
@@ -893,6 +921,9 @@ export function expresionReal(l, desde, hasta) {
   // entre la planilla y lo cargado en Compras se vea en el cuadro. Sin esta marca las dos líneas
   // darían el mismo número y el control no controlaría nada.
   if (l.rubro === 'Nómina · Sueldos administración' && !l.desdeCompras) return formulaAdministracion(desde, hasta).slice(1)
+  // El control banco↔cuadro: lo que salió de la cuenta por esa naturaleza. Vive SIEMPRE en un grupo
+  // con signo 0 (lo exige verificarCuadro), así que no puede duplicar plata del cuadro.
+  if (l.bancoNat) return formulaBancoPorNaturaleza(l.bancoNat, desde, hasta).slice(1)
   if (l.oficina) return formulaOficina(desde, hasta).slice(1)
   const ventana = `${COL_FECHA};">="&${desde};${COL_FECHA};"<"&${hasta}`
   // Los bienes de uso salen por su SUB-rubro (columna AF), no por el rubro: son una parte de
