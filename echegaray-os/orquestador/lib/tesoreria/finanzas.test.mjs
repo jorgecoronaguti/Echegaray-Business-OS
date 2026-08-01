@@ -701,3 +701,18 @@ test('una cuenta que ayer estaba y hoy no, NO es una cuenta en cero', () => {
   const conCero = clasificarCuentas([{ cuenta: 'Santander · cta cte ARS', saldo: 87913839 }, { cuenta: 'Cuenta vieja', saldo: 0 }])
   assert.deepEqual(cuentasQueDesaparecieron(hoy, conCero), [])
 })
+
+test('un pico de $1 por redondeo NO es una contingencia', () => {
+  // Corrida real: la ventana se calcula para tocar el piso exacto y el punto flotante la deja $1
+  // abajo. El modo salía "contingencia" con costo $0 — una etiqueta alarmante sobre ruido. Una vara
+  // que grita cuando no pasa nada entrena a ignorarla.
+  const cal = Array.from({ length: 31 }, (_, i) => ({ fecha: `d${i}`, ingresos: 0, egresos: i === 10 ? 1 : 0 }))
+  const ref = tasaDeReferencia({
+    dias: 30, monto: 1000000, deuda: 0, cft: 0.6278, cajaInicial: 1000000, dias_calendario: cal,
+    factorIngresos: 1, interesDia: (s) => Math.abs(s) * 0.6278 / 365,
+  })
+  assert.ok(ref.contingencia.dias_en_rojo > 0, 'la simulación sí toca el rojo')
+  assert.equal(ref.contingencia.costo, 0, 'pero el costo no llega a un peso')
+  assert.equal(ref.modo, MODO.COSTO_OPORTUNIDAD, 'entonces no es una contingencia')
+  assert.equal(ref.hurdle_periodo, 0)
+})

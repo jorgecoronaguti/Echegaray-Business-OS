@@ -150,7 +150,13 @@ export function tasaDeReferencia({
     // El costo se expresa como TASA del período sobre el monto invertido: así se compara pera a pera
     // contra el rendimiento neto del instrumento, que también es del período.
     const tasaContingencia = invertible > 0 ? contingencia.costo / invertible : 0
-    const hayRiesgo = contingencia.dias_en_rojo > 0
+    // HAY RIESGO SI HAY COSTO, no si hay días en rojo.
+    //
+    // El monto de la ventana se calcula para tocar exactamente el piso, y el punto flotante lo deja
+    // $1 por debajo de cero. Eso marcaba "contingencia" con costo $0 en la corrida real: una etiqueta
+    // alarmante sobre ruido de redondeo. Si el costo modelado no llega a un peso, no hay costo — y
+    // una vara que dice "contingencia" cuando no pasa nada entrena a ignorarla.
+    const hayRiesgo = contingencia.costo >= 1
     tramos.push({
       modo: hayRiesgo ? MODO.CONTINGENCIA : MODO.COSTO_OPORTUNIDAD,
       desde: aCancelar, hasta: aCancelar + invertible,
