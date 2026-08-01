@@ -1,0 +1,22 @@
+[Unit]
+Description=Echegaray OS — Tesorero Inversor IA: excedente de caja y oportunidades (solo lectura, 0 API)
+Documentation=file:///home/jorge/echegaray-os/app/echegaray-os/docs/tesoreria/RUNBOOK.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+Environment=PATH=/home/jorge/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=/home/jorge/.config/echegaray-orq/worker.env
+# La credencial de Google y el token del bot llegan por EnvironmentFile. Nunca por línea de comandos:
+# los argumentos de un proceso los ve cualquiera con `ps`.
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/ciclo-tesorero.mjs
+# El relevamiento de Balanz espera al navegador; si no hay sesión corta en 3 segundos.
+TimeoutStartSec=300
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=os-tesorero
+
+[Install]
+WantedBy=default.target
