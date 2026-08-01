@@ -1074,11 +1074,19 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   const PANEL = {
     '@TOTAL': `=${C_PESOS}${fTotal}`, '@CHEQUES': `=${C_PESOS}${fCh}`, '@NETA': `=$F$${fPeor}`, '@AIRE': `=${C_PESOS}${fAire}`,
     '@DIFECHEQ': `=${C_IMP}${gDif}`, '@DIFCONC': `=ABS(${C_PESOS}${fDifConc})`, '@SINEXPL': `=${C_PESOS}${fSinExpl}`,
-    // CUÁNTO EFECTIVO QUEDA AFUERA POR NO TENER FECHA DE ARQUEO. Con arqueo cargado da 0 y la línea se
-    // apaga sola: la alerta existe sólo mientras el problema existe. La ventana abierta se consigue
-    // pasando `0` como ancla —ISNUMBER(0) es verdadero y toda fecha es > 0—, así que es exactamente el
-    // mismo cálculo que se activará al cargar la fecha, no una estimación aparte.
-    '@SINARQUEO': `=IF($F$${d0}<>"";0;ABS(${formulaNetaEfectivoPosterior('0', { bancoRaw: refs.bancoRaw }).slice(1)}))`,
+    // ═══ ACÁ NO VA UN MONTO, Y ES A PROPÓSITO ═══
+    //
+    // La primera versión ponía el neto de efectivo con la ventana abierta ("lo que entraría al cargar
+    // la fecha"). Medido contra el archivo real da −$47.033.903: cobros $175.445.306 menos pagos
+    // $126.617.300 menos nómina en efectivo $95.861.909. Ese número NO es un saldo de caja — es el
+    // acumulado del año, y sale negativo porque el efectivo también se carga con extracciones del
+    // banco, que este cuadro todavía no modela. Publicarlo como "cuánto falta" habría puesto una cifra
+    // falsa en el único bloque que existe para decir la verdad incómoda.
+    //
+    // El problema no es un monto: es que SIN ANCLA no hay ventana, y cualquier monto que se muestre se
+    // va a leer como saldo. Así que la alerta nombra el problema y da la instrucción; la plata aparece
+    // sola, y bien, en cuanto la fecha esté cargada.
+    '@SINARQUEO': `=IF($F$${d0}<>"";0;0)`,
     // Si el banco no reporta ningún echeq en custodia, la cartera es cero y hay que decirlo con un
     // cero: un rango vacío daría #REF! y un total en blanco se leería como "falta cargar".
     // ═══ LA CARTERA SALE DE LA FUENTE, NO DEL DETALLE (30/07) ═══
@@ -1123,7 +1131,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
     // que mueva una fila — que es exactamente lo que ya pasó con "Bloque 6".
     '@ORIGEN_ECHEQ': `=CONCATENATE("Endosados a un proveedor: son un pago hecho, no un ingreso futuro. Corregir en Cobranzas.   ▸ SALE DE LA FILA ${gDif}: lo que Cobranzas dice que hay en echeq (";TEXT(${C_IMP}${gControl};"$#,##0");") menos lo que el banco tiene en custodia (";TEXT(${C_IMP}${fValores};"$#,##0");")")`,
     '@ORIGEN_CONC': `=CONCATENATE("O faltan movimientos por cargar, o el saldo inicial del cuadro quedó viejo. Mientras no cierre, la proyección de caja no se puede usar para decidir.   ▸ SALE DE LA FILA ${fDifConc}: la plata que hay hoy (";TEXT(${C_PESOS}${fDecl};"$#,##0");") menos la que el Cash Flow Mensual proyecta para esa fecha (";TEXT(${C_PESOS}${fProy};"$#,##0");")")`,
-    '@ORIGEN_ARQUEO': `=IF($F$${d0}<>"";"";CONCATENATE("Cargá la fecha del arqueo en F${d0} (la del último conteo físico) y este efectivo entra solo al total.   ▸ Sin esa fecha la fila de movimientos de efectivo devuelve 0 POR DISEÑO: sin ancla no hay ventana que acotar. El monto de al lado es lo que entraría hoy: cobros en efectivo, menos pagos en efectivo, menos depósitos al banco, menos jornales pagados en billetes."))`,
+    '@ORIGEN_ARQUEO': `=IF($F$${d0}<>"";"";CONCATENATE("Cargá la fecha del arqueo en F${d0} —la del último conteo físico— y todo el efectivo entra solo al total: cobros en efectivo, menos pagos en efectivo, menos depósitos al banco, menos jornales pagados en billetes.   ▸ Sin esa fecha la fila de movimientos de efectivo devuelve 0 POR DISEÑO: sin ancla no hay ventana que acotar, y un cero por falta de dato se lee igual que un cero medido. Acá no se muestra un monto a propósito: sin ancla, cualquier cifra se leería como un saldo de caja y no lo es."))`,
     '@ORIGEN_EFVO': `=CONCATENATE("Puede tener explicación (un depósito posterior al corte, un pago en efectivo sin pasar por el banco), pero no puede quedar sin mirar.   ▸ SALE DE LA FILA ${fSinExpl}, en el bloque 7: el efectivo que Cobranzas dice cobrado, menos lo que el extracto muestra depositado, menos lo que hay en la caja física.")`,
   }
   for (const f of filas) f.forEach((c, j) => { if (typeof c === 'string' && PANEL[c]) f[j] = PANEL[c] })

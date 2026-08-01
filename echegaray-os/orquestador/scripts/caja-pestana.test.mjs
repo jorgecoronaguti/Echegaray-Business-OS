@@ -410,9 +410,12 @@ test('sin fecha de arqueo, la alerta dice CUÁNTO efectivo está quedando afuera
   const monto = celda(g, f, 2)
   // Con arqueo cargado la alerta se apaga sola: existe sólo mientras existe el problema.
   assert.match(monto, /^=IF\(\$F\$\d+<>"";0;/)
-  // Y el monto es el MISMO cálculo del neto, con la ventana abierta — no una estimación aparte.
-  assert.match(monto, /'Cobranzas'!/)
-  assert.match(monto, /JORNALES_REAL_ADELANTO/)
+  // Y NO lleva monto: sin ancla, cualquier cifra se lee como saldo de caja y no lo es. Medido contra
+  // el archivo real, el neto con la ventana abierta da −$47.033.903 (el acumulado del año, no un
+  // saldo). El problema se nombra y se instruye; la plata aparece sola al cargar la fecha.
+  assert.ok(!/'Cobranzas'!|JORNALES_REAL/.test(monto), 'la alerta no puede publicar un monto sin ancla')
+  const instruccion = celda(g, f, 7)
+  assert.match(instruccion, /Cargá la fecha del arqueo/)
 })
 
 test('la alerta del arqueo apunta a la celda REAL donde se carga la fecha', () => {
