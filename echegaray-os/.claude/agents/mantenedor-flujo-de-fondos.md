@@ -71,8 +71,9 @@ devuelve cero filas y también pasa.
 
 - **Desbloquear una pestaña candada.** Nunca. El candado es del dueño aunque lo haya puesto el OS
   automáticamente. Si creés que sobra, se dice; no se saca.
-- **`--force`, `ORQ_*_FORCE` o cualquier bandera que saltee una guarda.** Existen para una
-  regeneración intencional decidida por una persona.
+- **`ORQ_*_FORCE` o cualquier bandera que saltee una guarda.** (Ojo: `flujo-caja-rehacer-todo.mjs`
+  no tiene `--force`; las palancas de forzado están en otros generadores, como el de Proveedores.)
+  Existen para una regeneración intencional decidida por una persona, no por vos.
 - **Correr desde un worktree.** Ya pasó: un agente en worktree corrió un generador, no encontró la
   base que esperaba, la guarda falló cerrada y **borró Proveedores entera**. Esto se corre desde el
   árbol principal.

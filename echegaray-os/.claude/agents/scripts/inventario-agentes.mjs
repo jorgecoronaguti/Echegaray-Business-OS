@@ -12,7 +12,13 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const DIR = join(dirname(fileURLToPath(import.meta.url)), '..')
+// `--dir <ruta>` existe para poder PROBAR el validador contra un directorio con agentes rotos, sin
+// tener que copiar el árbol entero ni ensuciar `.claude/agents/`. Un validador que no se puede
+// apuntar a otro lado es un validador que nadie va a ver fallar nunca.
+const iDir = process.argv.indexOf('--dir')
+const DIR = iDir >= 0 && process.argv[iDir + 1]
+  ? process.argv[iDir + 1]
+  : join(dirname(fileURLToPath(import.meta.url)), '..')
 const MODELOS = new Set(['haiku', 'sonnet', 'opus', 'inherit'])
 
 /** Las que escriben. Un agente que las tenga sin decir por qué es un accidente esperando. */
@@ -53,7 +59,16 @@ for (const a of agentes) {
   else if (!MODELOS.has(a.model)) problemas.push(`${donde}: model "${a.model}" no es ${[...MODELOS].join('|')}`)
 }
 
-const escribe = (a) => a.tools.some((t) => PELIGROSAS.has(t))
+// SIN `tools` HEREDA TODO, INCLUIDAS Write Y Edit. El ícono decía 👁 ("no edita") justo en el caso
+// más peligroso, con `(TODAS)` al lado. Un indicador que miente donde importa es peor que no tenerlo.
+const porNombre = new Map()
+for (const a of agentes) {
+  const n = a.name ?? a.esperado
+  if (porNombre.has(n)) problemas.push(`${a.archivo}: 'name' duplicado con ${porNombre.get(n)}`)
+  else porNombre.set(n, a.archivo)
+}
+
+const escribe = (a) => !a.tools.length || a.tools.some((t) => PELIGROSAS.has(t))
 
 console.log(`\n${agentes.length} agente(s) en .claude/agents/\n`)
 for (const a of agentes) {
@@ -65,6 +80,12 @@ console.log(`\n  ✎ = edita archivos del repo · 👁 = no los edita`)
 // hace corriendo el pipeline, no editando archivos. Decir "sólo lectura" ahí sería mentir en el
 // único lugar donde la mentira sale cara.
 console.log('  Ojo: todos tienen Bash. El alcance real de cada uno lo fija su prompt, no esta columna.\n')
+
+// LOS PROBLEMAS SE DICEN SIEMPRE. Antes sólo se imprimían con --validar: sin la bandera, un
+// inventario roto se veía prolijo y salía con código 0.
+if (problemas.length && !process.argv.includes('--validar')) {
+  console.log(`  ⚠ ${problemas.length} problema(s) — corré con --validar para verlos\n`)
+}
 
 if (process.argv.includes('--validar')) {
   if (!problemas.length) {

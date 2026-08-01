@@ -1,5 +1,13 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Bash(node orquestador/scripts/pestana-candado.mjs desbloquear:*)",
+      "Bash(*pestana-candado.mjs desbloquear*)",
+      "Bash(ORQ_PROV_FORCE=*)",
+      "Bash(*ORQ_PROV_FORCE=*)"
+    ]
+  },
   "hooks": {
     "PostToolUse": [
       {
