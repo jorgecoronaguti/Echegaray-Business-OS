@@ -63,10 +63,11 @@ test('permite lo genuinamente informativo', () => {
   }
 })
 
-test('NO bloquea por subcadena: "Recomprar" sí, "compras" del menú de la empresa no es de Balanz', () => {
-  // La frontera de palabra evita el falso positivo que dejaría al agente sin poder navegar nada.
+test('la raíz se ancla al COMIENZO de la palabra, no en cualquier posición', () => {
+  // Sin el ancla, `compr` bloquearía "descompresión" y el agente no podría navegar nada.
   assert.equal(contieneVerboProhibido('Descompresión de datos'), null)
-  assert.equal(contieneVerboProhibido('Comprar ahora'), 'comprar')
+  assert.equal(contieneVerboProhibido('Comprar ahora'), 'compr')
+  assert.equal(contieneVerboProhibido('Comprá ahora'), 'compr')
 })
 
 test('la navegación directa a una URL transaccional se bloquea', () => {
@@ -204,5 +205,64 @@ test('el dominio se compara por SUFIJO DE HOST, no por includes', async () => {
   ]) assert.equal(esDominioBalanz(no), false, `${no} NO debería pasar`)
 
   assert.equal(dominioDe('https://clientes.balanz.com/x'), 'clientes.balanz.com')
+  assert.equal(dominioDe('/mercado/cauciones'), 'clientes.balanz.com', 'una ruta propia es del propio sitio')
+  // Un string suelto NO es una URL relativa: resolvía a clientes.balanz.com y pasaba como si fuera
+  // de Balanz. Lo que no es ni ruta ni URL absoluta no tiene host.
   assert.equal(dominioDe('roto'), null)
+  assert.equal(dominioDe('no-es-una-url'), null)
+  assert.equal(dominioDe(''), null)
+  assert.equal(esDominioBalanz('no-es-una-url'), false)
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// HALLAZGOS DE LA AUDITORÍA — el voseo, el host y las URLs de los elementos
+// ════════════════════════════════════════════════════════════════════════════
+
+test('las CTA en VOSEO caen: es como escribe un bróker argentino', () => {
+  // La auditoría lo ejecutó sobre HEAD: nueve CTA transaccionales pasaban. `Comprá` caía sólo por
+  // casualidad, porque el sustantivo "compra" estaba en la lista. El repo ya había aprendido esto en
+  // el ruteo del chat —el voseo rompe los verbos, hay que usar RAÍCES— y no se había traído acá.
+  for (const t of [
+    'Comprá', 'Vendé', 'Suscribí', 'Suscribite', 'Invertí', 'Operá', 'Confirmá', 'Rescatá',
+    'Caucioná', 'Aceptá', 'Adherí', 'Licitá', 'Renová', 'Transferí', 'Firmá', 'Autorizá',
+    'Aplicá tus fondos', 'Constituí tu plazo fijo', 'Sí, quiero', 'Estoy de acuerdo',
+    'COMPRÁ AHORA', 'vendé todo', 'Adquirí', 'Liquidá',
+  ]) {
+    assert.equal(evaluarElemento({ texto: t, href: '#' }).permitido, false, `"${t}" pasó la barrera`)
+  }
+})
+
+test('la raíz se ancla al comienzo de la palabra: no bloquea de más', () => {
+  for (const el of [
+    { texto: 'Ver ficha', href: '/fondos/detalle/1' },
+    { texto: 'Rendimientos históricos', href: '/fondos/123' },
+    { texto: 'Descargar prospecto', href: '/documentos/prospecto.pdf' },
+    { texto: 'Cotizaciones', href: '/mercado/cotizacion' },
+    { texto: 'Descompresión de datos', href: '/x' },
+  ]) assert.equal(evaluarElemento(el).permitido, true, `"${el.texto}" se bloqueó de más`)
+})
+
+test('el chequeo de raíces corre también sobre el href del ELEMENTO, no sólo al navegar', () => {
+  // Asimetría que encontró la auditoría: `/plazo-fijo/constituir` pasaba por clic y caía por
+  // navegación. El clic es el lado peligroso.
+  for (const href of ['/plazo-fijo/constituir', '/inversiones/nueva', '/fci/aplicar', '/cuenta/liquidar']) {
+    assert.equal(evaluarElemento({ texto: 'Continuar', href }).permitido, false, `${href} pasó por clic`)
+  }
+})
+
+test('fuera del dominio de Balanz NO se navega — ni a una ruta de la allowlist', async () => {
+  // La guarda estaba en `verificarSesion`, que corre DESPUÉS del `page.goto`: la pestaña autenticada
+  // del dueño ya había navegado al host ajeno cuando saltaba el error.
+  for (const u of [
+    'https://evil.example.com/mercado/cauciones',
+    'https://clientes.balanz.com.evil.io/mercado/cauciones',
+    '//evil.com/mercado/cauciones',
+    'https://notbalanz.com/fondos',
+  ]) {
+    const v = evaluarNavegacion(u)
+    assert.equal(v.permitido, false, `${u} entró`)
+    assert.equal(v.campo, 'host')
+  }
+  assert.equal(evaluarNavegacion('https://clientes.balanz.com/mercado/cauciones').permitido, true)
+  assert.equal(evaluarNavegacion('/mercado/cauciones').permitido, true, 'una ruta relativa es del propio sitio')
 })

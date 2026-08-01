@@ -19,25 +19,52 @@
 // iniciar una operación financiera?* Si la respuesta es "no estoy seguro", es "sí".
 
 /**
- * Verbos transaccionales. Van sin acento y en minúscula porque la comparación normaliza; el texto
- * real de Balanz mezcla mayúsculas, tildes y espacios finos.
+ * RAÍCES transaccionales, no palabras completas.
  *
- * La lista es la del pedido del dueño, más las variantes que un sitio real usa para lo mismo. Agregar
- * un término acá es barato; que falte uno cuesta una orden enviada.
+ * ═══ EL AGUJERO QUE ESTO CIERRA ═══
+ *
+ * La primera versión listaba infinitivos y sustantivos: `vender`, `invertir`, `confirmar`. Balanz es
+ * un bróker argentino y sus botones están en VOSEO imperativo. La auditoría lo ejecutó:
+ *
+ *   PERMITIDO  Vendé · Invertí · Suscribí · Operá · Rescatá · Confirmá · Aceptá · Caucioná · Adherí
+ *
+ * Nueve CTA transaccionales pasaban. `Comprá` caía sólo por casualidad, porque el sustantivo
+ * "compra" estaba en la lista. Este repo ya había aprendido exactamente esto en el ruteo del chat
+ * —el voseo rompe los verbos, hay que trabajar con RAÍCES— y la lección no se había traído acá.
+ *
+ * Ahora cada entrada es una raíz que matchea desde el comienzo de la palabra: `vend` atrapa vender,
+ * vendé, vendo, venden, vendiendo, venta y ventas. Es deliberadamente amplio: en una pantalla
+ * informativa un falso positivo cuesta no leer un dato; un falso negativo cuesta una orden enviada.
+ */
+export const RAICES_PROHIBIDAS = [
+  'compr', 'vend', 'vent', 'suscrib', 'suscripcion', 'rescat', 'transfer',
+  'confirm', 'acept', 'oper', 'orden', 'invert', 'renov', 'licit',
+  'firm', 'autoriz', 'caucion', 'coloc', 'ejecut', 'deposit', 'retir',
+  'extra', 'pag', 'cobr', 'canje', 'canjea', 'adher', 'contrat',
+  // Verbos que un bróker usa para "operar" sin decir "operar".
+  'constitu', 'aplic', 'adquir', 'liquid', 'ingres', 'egres', 'mandat',
+]
+
+/** Frases transaccionales que ninguna raíz sola atrapa. */
+export const FRASES_PROHIBIDAS = [
+  'enviar orden', 'continuar operacion', 'confirmar operacion', 'si quiero', 'estoy de acuerdo',
+]
+
+/**
+ * Se conserva por compatibilidad y porque documenta el pedido original del dueño. La evaluación
+ * real usa `RAICES_PROHIBIDAS`, que las cubre a todas.
  */
 export const VERBOS_PROHIBIDOS = [
-  'comprar', 'compra', 'vender', 'venta', 'suscribir', 'suscripcion', 'rescatar', 'rescate',
-  'transferir', 'transferencia', 'confirmar', 'confirmacion', 'aceptar', 'operar', 'operacion',
-  'enviar orden', 'ordenar', 'invertir', 'renovar', 'renovacion', 'licitar', 'licitacion',
-  'firmar', 'firma', 'autorizar', 'autorizacion', 'continuar operacion', 'confirmar operacion',
-  'caucionar', 'caucion', 'colocar', 'ejecutar', 'aplicar fondos', 'depositar', 'retirar',
-  'extraer', 'pagar', 'cobrar', 'canjear', 'canje', 'adherir', 'contratar',
+  'comprar', 'vender', 'suscribir', 'rescatar', 'transferir', 'confirmar', 'aceptar', 'operar',
+  'enviar orden', 'invertir', 'renovar', 'licitar', 'firmar', 'autorizar',
+  'continuar operacion', 'confirmar operacion', 'caucionar',
 ]
 
 /** Rutas/acciones que son transaccionales por su URL aunque el texto sea inocente ("Continuar"). */
 export const RUTAS_PROHIBIDAS = [
   '/comprar', '/vender', '/suscri', '/rescat', '/operar', '/orden', '/transferenc',
   '/caucion', '/licitac', '/confirmar', '/checkout', '/pagos', '/extraccion', '/deposito',
+  '/constitu', '/nueva', '/alta', '/solicitud',
 ]
 
 /** Rutas explícitamente informativas: no habilitan nada por sí solas, pero sí ayudan a decidir. */
@@ -55,14 +82,20 @@ export function normalizar(s) {
     .trim()
 }
 
-/** ¿El texto contiene un verbo transaccional como PALABRA, no como subcadena? */
+/**
+ * ¿El texto contiene una RAÍZ transaccional al comienzo de una palabra?
+ *
+ * La raíz se ancla al principio de la palabra, no en cualquier posición: así `compr` atrapa
+ * "Comprá" y "compraste" pero no "descompresión", y `pag` atrapa "Pagá" pero no "despagina".
+ */
 export function contieneVerboProhibido(texto) {
   const t = normalizar(texto)
   if (!t) return null
-  for (const v of VERBOS_PROHIBIDOS) {
-    // Frontera de palabra a mano: `\b` no sirve con frases ("enviar orden") ni con acentos ya quitados.
-    const re = new RegExp(`(^|[^a-z0-9])${v.replace(/ /g, '\\s+')}($|[^a-z0-9])`)
-    if (re.test(t)) return v
+  for (const f of FRASES_PROHIBIDAS) {
+    if (new RegExp(`(^|[^a-z0-9])${f.replace(/ /g, '[\\s,]+')}`).test(t)) return f
+  }
+  for (const r of RAICES_PROHIBIDAS) {
+    if (new RegExp(`(^|[^a-z0-9])${r}`).test(t)) return r
   }
   return null
 }
@@ -95,9 +128,15 @@ export function evaluarElemento(el = {}) {
     if (v) return { permitido: false, motivo: `verbo transaccional "${v}" en ${campo}`, coincidencia: v, campo }
   }
   // 2 · Las URLs y acciones: una ruta transaccional bloquea aunque el texto sea "Continuar".
+  //
+  // Y también se les corre el chequeo de RAÍCES, que antes sólo se aplicaba a las navegaciones. La
+  // asimetría la encontró la auditoría: `/plazo-fijo/constituir` y `/inversiones/nueva` pasaban por
+  // clic y caían por navegación — y el clic es el lado peligroso.
   for (const campo of CAMPOS_URL) {
     const r = rutaProhibida(el[campo])
     if (r) return { permitido: false, motivo: `ruta transaccional "${r}" en ${campo}`, coincidencia: r, campo }
+    const v = contieneVerboProhibido(String(el[campo] ?? '').replace(/[/?=&_.-]+/g, ' '))
+    if (v) return { permitido: false, motivo: `raíz transaccional "${v}" en la URL de ${campo}`, coincidencia: v, campo }
   }
   // 3 · UN FORMULARIO ES UNA ORDEN EN POTENCIA — y todo lo que vive adentro también.
   //
@@ -146,6 +185,34 @@ export function evaluarElemento(el = {}) {
  * 3. El query string se descarta antes de comparar y se evalúa aparte, para que
  *    `/mercado/cauciones?accion=caucionar` no entre por la ventana.
  */
+export const DOMINIOS_BALANZ = ['balanz.com', 'balanz.com.ar']
+
+export function dominioDe(url) {
+  const u = String(url ?? '').trim()
+  if (!u) return null
+  // Sólo se resuelve contra la base lo que ES una ruta del propio sitio (`/algo`). Un string suelto
+  // como "no-es-una-url" resolvía a `clientes.balanz.com` y pasaba como si fuera de Balanz: el parser
+  // trataba cualquier texto como ruta relativa. Lo que no es ni ruta ni URL absoluta, no tiene host.
+  const esRutaPropia = u.startsWith('/') && !u.startsWith('//')
+  const esAbsoluta = u.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(u)
+  if (!esRutaPropia && !esAbsoluta) return null
+  try { return new URL(u, 'https://clientes.balanz.com').hostname.toLowerCase() || null } catch { return null }
+}
+
+/**
+ * ¿La URL es de Balanz? Por sufijo de host con punto delante — lo único que no se falsifica con un
+ * nombre parecido: `balanz.com.evil.io` y `notbalanz.com` NO pasan.
+ *
+ * Vive en la BARRERA, no en el navegador, porque la auditoría encontró que estar en `verificarSesion`
+ * la dejaba corriendo DESPUÉS del `page.goto`: la pestaña autenticada del dueño ya había navegado al
+ * host ajeno cuando saltaba el error. Un control que llega tarde no es un control.
+ */
+export function esDominioBalanz(url) {
+  const h = dominioDe(url)
+  if (!h) return false
+  return DOMINIOS_BALANZ.some((x) => h === x || h.endsWith(`.${x}`))
+}
+
 export const NAVEGACION_INFORMATIVA = new Set([
   '/mercado/cauciones',
   '/cauciones',
@@ -176,6 +243,12 @@ function extras(url) {
 /** Una navegación directa por URL. Mismo criterio, sin DOM. */
 export function evaluarNavegacion(url) {
   if (!normalizar(url)) return { permitido: false, motivo: 'URL vacía', coincidencia: null, campo: 'url' }
+  // EL HOST, ANTES QUE TODO. `https://atacante.example/mercado/cauciones` entraba por la allowlist,
+  // que comparaba sólo el pathname. Y `//evil.com/...` también, porque el parser lo resuelve como
+  // protocolo relativo. Fuera del dominio de Balanz no se navega, informativa o no.
+  if (!esDominioBalanz(url)) {
+    return { permitido: false, motivo: `${dominioDe(url) ?? 'destino ilegible'} no es un dominio de Balanz`, coincidencia: dominioDe(url), campo: 'host' }
+  }
   // La allowlist se consulta primero, PERO el query string se sigue evaluando: la excepción es de la
   // ruta, no de todo lo que venga colgado de ella.
   if (esNavegacionInformativa(url)) {

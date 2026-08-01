@@ -120,8 +120,8 @@ test('la barrera clasifica los controles de una pantalla real', opts, async () =
   assert.ok(r.total >= 8, `se esperaban varios controles, hubo ${r.total}`)
   const motivos = r.bloqueados.map((b) => b.motivo).join(' | ')
   // Los cuatro peligros de la pantalla tienen que estar bloqueados.
-  assert.match(motivos, /suscribir/i, 'el botón con aria-label "Suscribir" tiene que caer')
-  assert.match(motivos, /invertir/i, 'el botón "Invertir" tiene que caer')
+  assert.match(motivos, /suscrib/i, 'el botón con aria-label "Suscribir" tiene que caer')
+  assert.match(motivos, /invert/i, 'el botón "Invertir" tiene que caer')
   assert.match(motivos, /formulario|submit/i, 'el formulario y su submit tienen que caer')
   assert.ok(r.permitidos >= 3, 'los links a fichas y al prospecto tienen que quedar permitidos')
 })

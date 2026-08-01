@@ -52,7 +52,7 @@ async function main() {
   const browser = await chromium.connectOverCDP(ENDPOINT_CDP)
   const ctx = browser.contexts()[0]
   if (!ctx) throw new SesionRequerida('el navegador no tiene contextos')
-  const page = ctx.pages()[0] || await ctx.newPage()
+  const page = await ctx.newPage() // pestaña propia: no se le toca la del dueño
   const mapa = []
 
   try {
@@ -89,6 +89,7 @@ async function main() {
       })
     }
   } finally {
+    await page.close().catch(() => {})
     await browser.close().catch(() => {})
   }
 

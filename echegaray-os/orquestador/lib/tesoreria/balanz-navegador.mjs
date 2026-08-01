@@ -23,7 +23,13 @@
 // guarda capturas de pantalla del sitio autenticado (tienen saldos y datos de cuenta). No escribe
 // credenciales en ningún log.
 
-import { evaluarElemento, evaluarNavegacion, registroBloqueo } from './balanz-denylist.mjs'
+import {
+  evaluarElemento, evaluarNavegacion, registroBloqueo, esDominioBalanz, dominioDe,
+} from './balanz-denylist.mjs'
+
+// La guarda de dominio vive en la barrera (se re-exporta para no romper a los consumidores): tiene
+// que poder decidir ANTES del `goto`, no después.
+export { esDominioBalanz, dominioDe }
 
 export const ENDPOINT_CDP = process.env.ORQ_BALANZ_CDP || 'http://127.0.0.1:9222'
 export const ORIGEN_BALANZ = 'https://clientes.balanz.com'
@@ -91,24 +97,6 @@ export async function verificarSesion(page, { exigirDominio = true } = {}) {
   const hayLogin = await page.locator('input[type="password"]').count().catch(() => 0)
   if (hayLogin > 0) throw new SesionRequerida('hay un campo de contraseña en pantalla: la sesión venció')
   return true
-}
-
-/** Dominios propios de Balanz. Comparación por SUFIJO DE HOST, nunca por `includes`. */
-export const DOMINIOS_BALANZ = ['balanz.com', 'balanz.com.ar']
-
-export function dominioDe(url) {
-  try { return new URL(String(url)).hostname.toLowerCase() } catch { return null }
-}
-
-/**
- * ¿La URL es de Balanz? Por sufijo de host con punto delante, que es lo único que no se puede
- * falsificar con un nombre parecido: `balanz.com.evil.io` y `notbalanz.com` NO pasan, y un
- * `includes('balanz.com')` habría dejado entrar a los dos.
- */
-export function esDominioBalanz(url) {
-  const h = dominioDe(url)
-  if (!h) return false
-  return DOMINIOS_BALANZ.some((d) => h === d || h.endsWith(`.${d}`))
 }
 
 /** Navega a una URL informativa. La barrera decide primero; si dice que no, no se navega. */
@@ -275,7 +263,9 @@ export async function relevar({ rutas = [], endpoint = ENDPOINT_CDP } = {}) {
   const { browser, ctx } = await conectar(endpoint)
   const bloqueos = []
   const paginas = []
-  const page = ctx.pages()[0] || await ctx.newPage()
+  // PESTAÑA PROPIA, no la del dueño. `ctx.pages()[0]` se lleva la pestaña que él tenga abierta y la
+  // pasea por siete URLs — dos veces por día hábil. Se abre una nueva y se cierra al terminar.
+  const page = await ctx.newPage()
   try {
     for (const ruta of rutas) {
       const url = ruta.startsWith('http') ? ruta : `${ORIGEN_BALANZ}${ruta}`
@@ -294,8 +284,9 @@ export async function relevar({ rutas = [], endpoint = ENDPOINT_CDP } = {}) {
     }
     throw e
   } finally {
-    // Se cierra la CONEXIÓN, nunca el navegador del dueño: `browser.close()` sobre una conexión CDP
-    // desconecta, pero si el contexto fuera propio cerraría su Chrome. Por eso no se cierran páginas.
+    // La pestaña propia SÍ se cierra (es nuestra). La CONEXIÓN se corta con `browser.close()`, que
+    // sobre CDP desconecta sin matar el Chrome del dueño.
+    await page.close().catch(() => {})
     await browser.close().catch(() => {})
   }
 }
