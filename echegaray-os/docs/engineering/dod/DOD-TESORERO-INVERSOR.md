@@ -14,7 +14,7 @@
 | **Auditó** | agente independiente (contexto nuevo, sin el razonamiento del que construyó) |
 | **SHA inicio → cierre** | `990ce71` (origin/main) → ver `git log` de la rama |
 | **Autorizó** | **nadie todavía** — no alcanza el nivel de autonomía E porque no ejecuta operaciones, pero **el dueño no lo usó** (ver A3) |
-| **Estado** | **En auditoría** |
+| **Estado** | **Cerrado con límites** (dos auditorías independientes; la segunda: CERRADO CON LÍMITES) |
 | **Horas** | ~2 sesiones |
 
 ---
@@ -24,7 +24,7 @@
 | # | Criterio | Evidencia | Resultado |
 |---|---|---|---|
 | A1 | Ninguna evidencia de B/C/D se produjo con código del módulo | **CUMPLE parcial.** El control de coherencia del total se verificó leyendo la pestaña CAJA cruda con `google.readSheetValues` directo (canal distinto del motor); la migración se verificó con `psql` contra un Postgres descartable, no con el código del ledger; la barrera se verificó con un navegador Chromium real contando clics en el DOM (`window.__clics`), no con la función que la llama. **Pero** las cifras de caja de la corrida real salen del mismo motor: se cruzaron contra el "Total disponibilidades" que calcula la propia planilla, que es otra fuente, no otra herramienta mía | **CUMPLE** |
-| A2 | El auditor no corrigió lo que encontró | El auditor corre con `Read/Grep/Glob/Bash` y sin `Edit`/`Write`. Las correcciones las hizo el constructor, en commits propios | **CUMPLE** |
+| A2 | El auditor no corrigió lo que encontró | Dos auditorías independientes, ninguna editó un archivo. La primera devolvió NO CERRADO con 3 hallazgos altos; la segunda verificó 8/8 cerrados **reproduciendo el ataque**, y encontró 3 nuevos (dos de ellos causados por mis propias correcciones). Todo corregido por el constructor, en commits propios | **CUMPLE** |
 | A3 | El dueño lo usó cinco minutos, en su celular, con un caso real | **No ocurrió.** | **NO CUMPLE** |
 
 ---
@@ -106,7 +106,18 @@ Ninguna guarda pide un deploy para destrabarse.
 | `<button type=submit>` sin rol | `un submit sin role="button" también cae` (contra Chromium real) |
 | `parentElement` = página entera | `el CONTENEDOR no es la página entera` |
 | Validador con `NaN` | `si un componente de la caja no es número, el control FALLA` |
-| `aprobada_en` inexistente | los 11 tests de `ledger.pg.test.mjs` no arrancan |
+| `aprobada_en` inexistente | los tests de `ledger.pg.test.mjs` no arrancan |
+| CTA en voseo (`Vendé`, `Invertí`, `Caucioná`) | `las CTA en VOSEO caen` |
+| Host ignorado en la navegación | `fuera del dominio de Balanz NO se navega` |
+| Validador aprobando un invento | `una propuesta FABRICADA no aprueba` |
+| Neto no recalculado desde el instrumento | `el rendimiento neto SE RECALCULA desde el instrumento` |
+| `Number(null)` en instrumentos | `un fondo SIN plazo de rescate no se cuela como liquidez inmediata` |
+| Coherencia fallando abierto | `sin composición, el control de coherencia FALLA` |
+| Contingencia con dólares | `la contingencia se simula EN PESOS` |
+| Cobertura del calendario aparente | `la cobertura del calendario sale de las FILAS` |
+| Accionabilidad `!== false` | `la accionabilidad falla CERRADA` |
+| `mercadoFresco` cableado | `la frescura del mercado se MIDE con lo relevado` |
+| Excepciones informativas | `las excepciones informativas no abren la puerta` |
 
 ---
 
@@ -123,7 +134,10 @@ Ninguna guarda pide un deploy para destrabarse.
 
 ## Veredicto
 
-**NO CERRADO.** Seis filas en NO CUMPLE:
+**NO CERRADO.** Seis filas en NO CUMPLE. Las dos auditorías independientes coinciden: la segunda
+dictaminó **CERRADO CON LÍMITES** sobre el código —los 8 hallazgos anteriores verificados cerrados
+reproduciendo el ataque— y este documento mantiene NO CERRADO porque el DoD del repo mide otra cosa:
+evidencia del efecto en producción, que sigue sin existir.
 
 | Fila | Qué falta | Cómo se consigue |
 |---|---|---|
