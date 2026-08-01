@@ -178,7 +178,12 @@ export function estadoReserva(fila = null) {
     return { estado: ESTADO_POLITICA.AUSENTE, monto: null, aprobada_por: null, motivo: 'no hay política de reserva mínima cargada' }
   }
   const valor = typeof fila.valor === 'object' && fila.valor !== null ? fila.valor : { monto: fila.valor }
-  const monto = Number(valor.monto)
+  // MISMA DISCIPLINA QUE LA CAJA RESTRINGIDA. `Number(null)` es 0: una política "aprobada" sin monto
+  // hacía que la reserva usada fuera $0 y todo pasara a ACCIONABLE. El módulo predicaba "un null no
+  // es un cero" para la caja restringida y hacía exactamente eso con la reserva.
+  const crudo = valor.monto
+  const vacio = crudo == null || (typeof crudo === 'string' && crudo.trim() === '')
+  const monto = vacio ? NaN : Number(crudo)
   if (!fila.aprobada_por) {
     return {
       estado: ESTADO_POLITICA.PROPUESTA,
@@ -189,9 +194,19 @@ export function estadoReserva(fila = null) {
       motivo: 'la política existe como PROPUESTA: guardarla no es aprobarla',
     }
   }
+  // Aprobada CON un monto usable, o no está aprobada. Media aprobación no es una aprobación.
+  if (!Number.isFinite(monto) || monto < 0) {
+    return {
+      estado: ESTADO_POLITICA.PROPUESTA,
+      monto: null,
+      metodo: valor.metodo ?? null,
+      aprobada_por: fila.aprobada_por,
+      motivo: `la política figura aprobada por ${fila.aprobada_por} pero su monto no es un número usable (${JSON.stringify(crudo)})`,
+    }
+  }
   return {
     estado: ESTADO_POLITICA.APROBADA,
-    monto: Number.isFinite(monto) ? Math.round(monto) : null,
+    monto: Math.round(monto),
     metodo: valor.metodo ?? null,
     aprobada_por: fila.aprobada_por,
     aprobada_en: fila.aprobada_en ?? fila.vigente_desde ?? null,

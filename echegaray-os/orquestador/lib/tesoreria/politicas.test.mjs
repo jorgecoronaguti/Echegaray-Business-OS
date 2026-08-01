@@ -138,3 +138,21 @@ test('el comando de aprobación viaja en el código, no sólo en un documento', 
   assert.match(COMANDO_APROBAR_RESERVA, /tesoreria-politica\.mjs aprobar reserva_minima/)
   assert.match(COMANDO_APROBAR_RESERVA, /--aprobador/)
 })
+
+// ════════════════════════════════════════════════════════════════════════════
+// LO QUE ENCONTRÓ LA AUDITORÍA
+// ════════════════════════════════════════════════════════════════════════════
+
+test('"aprobada" sin monto usable NO es una aprobación', () => {
+  // El módulo predicaba "un null no es un cero" para la caja restringida y hacía exactamente eso con
+  // la reserva: `Number(null)` = 0 → reserva $0 → todo ACCIONABLE. Media aprobación no es aprobación.
+  for (const valor of [{ monto: null }, {}, { monto: '' }, { monto: '12.500.000,00' }, { monto: -1 }]) {
+    const r = estadoReserva({ valor, aprobada_por: 'jorge', aprobada_en: '2026-08-01' })
+    assert.equal(r.estado, ESTADO_POLITICA.PROPUESTA, `${JSON.stringify(valor)} quedó aprobada`)
+    assert.equal(r.monto, null)
+    assert.match(r.motivo, /no es un número usable/)
+  }
+  // Un monto de verdad sí aprueba. Y el cero también: es una decisión legítima.
+  assert.equal(estadoReserva({ valor: { monto: 5000000 }, aprobada_por: 'j', aprobada_en: 'x' }).estado, ESTADO_POLITICA.APROBADA)
+  assert.equal(estadoReserva({ valor: { monto: 0 }, aprobada_por: 'j', aprobada_en: 'x' }).monto, 0)
+})

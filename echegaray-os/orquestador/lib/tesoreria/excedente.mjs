@@ -124,7 +124,15 @@ export async function calcularExcedente(posicion = {}, proyeccion = {}, opts = {
   // fecha límite en 2036 calculada con el piso de los 90 días. Decir que $80M están libres diez años
   // porque el calendario de tres meses no muestra egresos es exactamente inventar precisión: en 2027
   // hay sueldos, y el modelo no los ve porque no llega, no porque no existan.
-  const cobertura = Math.max(0, ...dias.filter((x) => x.estado === 'ok').map((x) => x.dias))
+  // COBERTURA = FILAS REALES DEL CALENDARIO, no el mayor horizonte que dijo "ok".
+  //
+  // `resumirHorizonte` devolvía `ok` con cualquier array no vacío, así que con 11 días de calendario
+  // el horizonte de 90 salía `ok` y `cobertura` daba 90 igual. El bloque E caía en G sólo porque
+  // 91 > 90, no porque se hubiera medido nada: el control se validaba contra sí mismo.
+  const filas = (opts.dias || []).length
+  const cobertura = filas > 0
+    ? Math.min(filas - 1, Math.max(0, ...dias.filter((x) => x.estado === 'ok').map((x) => x.dias)))
+    : 0
 
   const porBloque = new Map()
   for (const b of [BLOQUES.A, BLOQUES.B, BLOQUES.C, BLOQUES.D, BLOQUES.E]) {
@@ -160,7 +168,15 @@ export async function calcularExcedente(posicion = {}, proyeccion = {}, opts = {
       // inmovilizarlo lleva la caja a rojo en el escenario adverso. Se calcula por ventana.
       referencia: tasaDeReferencia({
         dias: tope, monto: Math.round(monto), deuda: deuda.monto,
-        dias_calendario: opts.dias || [], cajaInicial: posicion.caja_real, reserva,
+        dias_calendario: opts.dias || [],
+        // EN PESOS, NO EL TOTAL. El techo ya se topea con `ars_liquida`; la simulación del riesgo
+        // arrancaba del total —dólares incluidos— así que creía que había más pesos de los que hay,
+        // subestimaba los días en rojo y devolvía una vara más baja. El mismo error de moneda que el
+        // módulo ya había corregido en el techo, sin corregir en la vara.
+        cajaInicial: Number.isFinite(Number(posicion.composicion?.ars_liquida))
+          ? Math.min(Number(posicion.caja_real), Number(posicion.composicion.ars_liquida))
+          : Number(posicion.caja_real),
+        reserva,
         cft: corte.valor, interesDia, factorIngresos: 0.5, escenario: 'adverso',
       }),
       condiciones_invalidez: [

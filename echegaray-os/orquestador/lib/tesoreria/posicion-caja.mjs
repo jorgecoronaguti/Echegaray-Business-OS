@@ -102,9 +102,20 @@ export function clasificarCuentas(cuentas = []) {
 export const TOLERANCIA_COHERENCIA = 200000
 
 export function coherenciaDelTotal(total, composicion) {
-  if (!composicion) return { coherente: true, motivo: 'sin composición: no se puede cruzar' }
+  // FALLABA ABIERTO EN SU FORMA TOTAL. Sin composición devolvía `coherente: true` — el control creado
+  // para que un `#REF!` no se informe como caja $0 se caía del lado cómodo justo cuando la pestaña
+  // estaba del todo ilegible. "No se puede cruzar" no es "está bien": es no saber.
+  if (!composicion?.detalle?.length) {
+    return { coherente: false, total_declarado: Math.round(Number(total) || 0), esperado: null, diferencia: null,
+      motivo: 'no hay ninguna cuenta legible en la pestaña CAJA: el total no se puede cruzar contra nada, y un total sin contraste no sostiene una posición' }
+  }
   const suma = composicion.ars_liquida + composicion.moneda_extranjera + composicion.valores_a_depositar + composicion.sin_clasificar
   const esperado = suma - composicion.valores_a_depositar
+  // Total 0 y cuentas 0 daba diferencia 0 → "coherente". Dos ceros que coinciden no son un cruce.
+  if (Number(total) === 0 && esperado === 0) {
+    return { coherente: false, total_declarado: 0, esperado: 0, diferencia: 0,
+      motivo: 'el total y todas las cuentas dan cero: no es una caja vacía, es una pestaña que no se pudo leer' }
+  }
   const dif = Math.abs(Number(total) - esperado)
   const tolerancia = Math.max(TOLERANCIA_COHERENCIA, Math.abs(esperado) * 0.01)
   if (dif <= tolerancia) return { coherente: true, total_declarado: Math.round(total), esperado: Math.round(esperado), diferencia: Math.round(dif) }

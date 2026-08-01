@@ -87,7 +87,9 @@ export function generarRecomendaciones(comparacion = {}, ventanas = [], ctx = {}
     // UNA VENTANA SIN POLÍTICA APROBADA NO PRODUCE UN MONTO EJECUTABLE.
     // El monto se informa igual —sirve para dimensionar— pero la propuesta sale NO_ACCIONABLE y con
     // el bloqueo escrito. Un número con nombre de accionable se usa como accionable.
-    const accionable = ventana?.accionable !== false && ctx.accionable !== false
+    // FAIL-CLOSED. Era `!== false`, así que un `undefined` daba accionable = true: la única compuerta
+    // de accionabilidad tenía el default del lado peligroso.
+    const accionable = ventana?.accionable === true && ctx.accionable === true
     const salida = new Date(hoy); salida.setDate(salida.getDate() + Number(r.dias))
     const prop = {
       id: `rec_${r.bloque}_${iso(hoy)}_${ganador.instrumento_id}`.slice(0, 90),

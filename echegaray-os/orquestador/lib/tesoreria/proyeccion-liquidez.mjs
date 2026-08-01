@@ -37,7 +37,11 @@ export const ESCENARIOS = {
  */
 export function resumirHorizonte(dias = [], nDias = 7, escenario = ESCENARIOS.base, cajaInicial = 0) {
   const ventana = dias.slice(0, Math.max(1, nDias + 1))
-  if (!ventana.length) return { dias: nDias, estado: 'sin_dato', motivo: 'el calendario no cubre este horizonte' }
+  // NO ALCANZA CON QUE EL ARRAY NO ESTÉ VACÍO. Con 11 días de calendario, el horizonte de 90 devolvía
+  // `ok` — y afirmaba un piso sobre 79 días que nunca se miraron.
+  if (ventana.length < nDias + 1) {
+    return { dias: nDias, estado: 'sin_dato', motivo: `el calendario cubre ${dias.length} día(s) y este horizonte necesita ${nDias + 1}` }
+  }
   let saldo = Number(cajaInicial) || 0
   let minimo = saldo
   let fechaMinimo = ventana[0].fecha

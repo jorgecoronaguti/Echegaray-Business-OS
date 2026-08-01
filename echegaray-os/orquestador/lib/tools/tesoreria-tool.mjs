@@ -68,7 +68,7 @@ export function tesoreriaTools(google) {
       schema: {
         name: 'excedente_invertible',
         description:
-          'EXCEDENTE DE CAJA POR HORIZONTE — cuánta plata puede inmovilizarse hoy sin comprometer la operación, separada en bloques (T+0, 2-7, 8-30, 31-90 y +90 días), con la reserva preservada, las obligaciones que cubre y las condiciones que invalidan cada ventana. Aplica criterio PERCIBIDO: una cobranza esperada no es caja. Y aplica la tasa de corte de la empresa: si la cuenta está en descubierto, el excedente es CERO y la respuesta es cancelar la línea. Usalo cuando el dueño pregunte "cuánta plata me sobra", "puedo invertir algo", "qué hago con la plata parada", "me conviene un plazo fijo".',
+          'EXCEDENTE DE CAJA POR HORIZONTE — cuánta plata puede inmovilizarse hoy sin comprometer la operación, separada en bloques (T+0, 2-7, 8-30, 31-90 y +90 días), con la reserva preservada, las obligaciones que cubre y las condiciones que invalidan cada ventana. Aplica criterio PERCIBIDO: una cobranza esperada no es caja. Y la vara contra la que se mide depende del caso: con descubierto utilizado es el CFT del acuerdo (por el monto que alcanza a cancelarlo), sin descubierto es superar cero neto, y si inmovilizar provoca el rojo entra el costo del descubierto ponderado. Mientras falte una política aprobada el monto es un TECHO TÉCNICO, no un excedente, y nada es accionable. Usalo cuando el dueño pregunte "cuánta plata me sobra", "puedo invertir algo", "qué hago con la plata parada", "me conviene un plazo fijo".',
         input_schema: { type: 'object', properties: {} },
       },
       async run() {

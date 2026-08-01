@@ -204,3 +204,23 @@ test('el org_order del Tesorero no pisa a nadie', opts, async () => {
   const { rows: t } = await query("select org_order from orq.agents where slug='tesorero'")
   assert.equal(t[0].org_order, 20)
 })
+
+test('el CHECK de aprobación existe aunque la tabla ya existiera sin él', opts, async () => {
+  // Dentro del `create table if not exists` el constraint NO se crea si la tabla ya estaba: el
+  // control sólo existía en el contenedor de prueba, que siempre es fresco. Se simula el caso real.
+  await query('alter table tesoreria.politicas drop constraint if exists politicas_aprobacion_completa')
+  const sql = readFileSync(join(APP, 'supabase', 'migrations', '20260801170000_tesoreria_inversor.sql'), 'utf8')
+  await query(sql)
+  await assert.rejects(
+    () => query("insert into tesoreria.politicas (clave, valor, aprobada_por) values ('z','{}','jorge')"),
+    /politicas_aprobacion_completa/,
+  )
+})
+
+test('las rutas de modelo NO reintroducen el engine claude-cli', opts, async () => {
+  // La migración 20260714140000 lo anuló en todo el OS. Copiarlo de una migración vieja lo habría
+  // devuelto en una fila nueva.
+  const { rows } = await query("select engine from orq.model_routes where match_key = 'advise.treasury'")
+  assert.ok(rows.length >= 2)
+  assert.ok(rows.every((r) => r.engine === null), `engine no nulo: ${JSON.stringify(rows)}`)
+})

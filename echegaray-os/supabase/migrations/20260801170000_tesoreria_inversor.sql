@@ -57,9 +57,12 @@ begin
   select v_agent, unnest(array['advise.treasury', 'read.analyze', 'doc.write'])
   on conflict do nothing;
 
+  -- ENGINE NULL, no 'claude-cli': la migración 20260714140000 lo anuló explícitamente en todo el
+  -- OS (el razonamiento salió del CLI y pasó a la API). Copiar 'claude-cli' de las migraciones
+  -- viejas habría reintroducido, en una fila nueva, algo que el repo ya había sacado.
   insert into orq.model_routes (tenant_id, scope, match_key, priority, engine, model, max_cost_usd) values
-    (v_tenant, 'capability', 'advise.treasury',  50, 'claude-cli', 'sonnet', 0.50),
-    (v_tenant, 'capability', 'advise.treasury', 100, 'claude-cli', 'opus',   1.00)
+    (v_tenant, 'capability', 'advise.treasury',  50, null, 'sonnet', 0.50),
+    (v_tenant, 'capability', 'advise.treasury', 100, null, 'opus',   1.00)
   on conflict (tenant_id, scope, match_key, priority) do nothing;
 end $$;
 
@@ -210,8 +213,14 @@ create table if not exists tesoreria.politicas (
   creada_en     timestamptz not null default now(),
   constraint politicas_aprobacion_completa check ((aprobada_por is null) = (aprobada_en is null))
 );
--- Para una base donde la migración ya corrió sin la columna (aditivo, no destructivo).
+-- Para una base donde la migración ya corrió sin la columna. El CHECK también va afuera: dentro del
+-- `create table if not exists` NO se crea si la tabla ya existía, y el test pasaba igual porque el
+-- contenedor de prueba siempre es fresco — un control que sólo existe en el entorno de prueba.
 alter table tesoreria.politicas add column if not exists aprobada_en timestamptz;
+do $$ begin
+  alter table tesoreria.politicas add constraint politicas_aprobacion_completa
+    check ((aprobada_por is null) = (aprobada_en is null));
+exception when duplicate_object then null; end $$;
 create index if not exists tesoreria_politicas_vigentes_idx on tesoreria.politicas (clave, vigente_desde desc);
 
 -- --- Seguridad y errores del navegador --------------------------------------
