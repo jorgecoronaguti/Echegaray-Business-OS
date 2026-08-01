@@ -100,6 +100,7 @@ export async function correrCiclo(deps = {}, opts = {}) {
       hoy: ahora,
       filaReserva: opts.filaReserva ?? null,
       filaRestringida: opts.filaRestringida ?? null,
+      composicionAnterior: opts.composicionAnterior ?? null,
       extractorValidado: Boolean(opts.extractorValidado),
       mercadoFresco: Boolean(opts.mercadoFresco),
       vencidoComercial: vencidoComercialDe(flujo),

@@ -20,10 +20,11 @@ const fmt = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
 async function politicas() {
   try {
     const { query } = await import('../db.mjs')
-    const { politicaVigente, filaCajaRestringida } = await import('../tesoreria/ledger.mjs')
+    const { politicaVigente, filaCajaRestringida, composicionAnterior } = await import('../tesoreria/ledger.mjs')
     return {
       filaReserva: await politicaVigente(query, 'reserva_minima'),
       filaRestringida: await filaCajaRestringida(query),
+      composicionAnterior: await composicionAnterior(query),
     }
   } catch (e) {
     // "LA TABLA NO EXISTE" ES unknown, NO unavailable. Son estados distintos: uno dice que nadie lo

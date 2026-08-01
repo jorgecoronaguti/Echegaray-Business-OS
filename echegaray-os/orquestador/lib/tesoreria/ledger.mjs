@@ -151,6 +151,19 @@ export async function resumenAnterior(query) {
   return rows[0]?.payload?.resumen ?? null
 }
 
+/**
+ * La composición de cuentas de la última corrida válida. Es la única forma de detectar una cuenta
+ * que DESAPARECIÓ de la pestaña: contra una sola foto, una fila rota y una cuenta en cero se ven igual.
+ */
+export async function composicionAnterior(query) {
+  const { rows } = await query(
+    `select payload from tesoreria.posiciones
+      where payload ? 'composicion' and payload->'composicion' is not null
+      order by observado_en desc limit 1`,
+  )
+  return rows[0]?.payload?.composicion ?? null
+}
+
 /** Marca vencidas las propuestas que pasaron su fecha. Un vencido en pantalla es un riesgo. */
 export async function vencerPropuestas(query) {
   const { rowCount } = await query(

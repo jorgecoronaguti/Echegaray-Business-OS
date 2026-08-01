@@ -20,7 +20,7 @@ import { relevar } from '../lib/tesoreria/balanz-navegador.mjs'
 import {
   abrirCorrida, cerrarCorrida, guardarPosicion, guardarVentanas, guardarInstrumentos,
   guardarRecomendaciones, guardarBloqueos, resumenAnterior, vencerPropuestas, politicaVigente,
-  filaCajaRestringida,
+  filaCajaRestringida, composicionAnterior,
 } from '../lib/tesoreria/ledger.mjs'
 
 const args = new Set(process.argv.slice(2))
@@ -47,6 +47,7 @@ async function main() {
   const filaReserva = DRY ? null : await politicaVigente(query, 'reserva_minima').catch(() => null)
   const filaRestringida = DRY ? null : await filaCajaRestringida(query).catch(() => ({ error: 'no se pudo leer la política de caja restringida' }))
   const anterior = DRY ? null : await resumenAnterior(query).catch(() => null)
+  const compAnterior = DRY ? null : await composicionAnterior(query).catch(() => null)
 
   let runId = null
   if (!DRY) {
@@ -59,7 +60,8 @@ async function main() {
     r = await correrCiclo(
       { google, query: DRY ? null : query, relevar, publicar },
       {
-        filaReserva, filaRestringida, anterior, publicarSiempre: FORZAR, dias: 90,
+        filaReserva, filaRestringida, anterior, composicionAnterior: compAnterior,
+        publicarSiempre: FORZAR, dias: 90,
         // La validación del extractor contra la pantalla real es un HECHO que se declara por entorno,
         // no algo que el agente pueda afirmar de sí mismo. Sin ella, todo sale NO_ACCIONABLE.
         extractorValidado: process.env.ORQ_BALANZ_EXTRACTOR_VALIDADO === '1',
