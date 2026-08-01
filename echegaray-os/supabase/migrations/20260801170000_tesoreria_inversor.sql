@@ -36,15 +36,18 @@ begin
   on conflict (tenant_id, slug) do update set rol = excluded.rol, clearance = excluded.clearance
   returning id into v_princ;
 
-  -- org_order 1.5 no existe (es int): va 12, después de los roles de software. El
-  -- organigrama lo muestra bajo Finanzas por su capacidad, no por el número.
+  -- ORG_ORDER 20, NO 12. El 12 ya es del Presupuestador IA — verificado leyendo el
+  -- organigrama real de producción, que tiene 20 roles (0..19). Poner un número
+  -- ocupado no falla (no hay unique) y deja dos agentes empatados en la lista: el
+  -- orden pasa a depender de cómo ordene Postgres, que es no depender de nada.
+  -- El vínculo con Finanzas lo da la capacidad `advise.treasury`, no el número.
   insert into orq.agents (tenant_id, principal_id, slug, role, description, context_ref,
                           default_model, max_cost_usd_per_task, max_cost_usd_per_day,
                           max_concurrent, org_title, org_order)
   values (v_tenant, v_princ, 'tesorero', 'Tesorero Inversor IA',
           'Excedentes de caja e inversiones corporativas. Subordinado al CFO IA: consume su modelo de liquidez, no lo recalcula. Propone colocaciones con criterio percibido y NUNCA opera.',
           'echegaray-os/.claude/skills/tesoreria-inversiones-corporativas',
-          'sonnet', 0.50, 4.0, 1, 'Tesorero Inversor IA', 12)
+          'sonnet', 0.50, 4.0, 1, 'Tesorero Inversor IA', 20)
   on conflict (tenant_id, slug) do update
     set role = excluded.role, description = excluded.description, context_ref = excluded.context_ref,
         org_title = excluded.org_title, org_order = excluded.org_order

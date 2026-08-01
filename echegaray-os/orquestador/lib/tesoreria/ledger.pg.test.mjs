@@ -191,3 +191,16 @@ test('no se puede marcar aprobador sin fecha ni fecha sin aprobador', opts, asyn
     /politicas_aprobacion_completa/,
   )
 })
+
+test('el org_order del Tesorero no pisa a nadie', opts, async () => {
+  // El 12 ya es del Presupuestador IA en producción. Dos agentes con el mismo número no fallan
+  // (no hay unique) y dejan el orden del organigrama librado a cómo ordene Postgres.
+  await query(`insert into orq.agents (tenant_id, slug, role, org_title, org_order)
+               select tenant_id, 'presupuestador', 'x', 'Presupuestador IA', 12 from orq.agents where slug='tesorero'
+               on conflict do nothing`)
+  const { rows } = await query(`select org_order, count(*)::int n from orq.agents
+                                where org_title is not null group by org_order having count(*) > 1`)
+  assert.deepEqual(rows, [], `hay org_order repetidos: ${JSON.stringify(rows)}`)
+  const { rows: t } = await query("select org_order from orq.agents where slug='tesorero'")
+  assert.equal(t[0].org_order, 20)
+})
