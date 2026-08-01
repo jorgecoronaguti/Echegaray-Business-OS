@@ -168,3 +168,29 @@ test('rutaExacta normaliza y no se deja engañar por el host ni la barra final',
   assert.equal(rutaExacta('/mercado/cauciones?x=1#y'), '/mercado/cauciones')
   assert.equal(rutaExacta(''), null)
 })
+
+// ════════════════════════════════════════════════════════════════════════════
+// DOMINIO — no se lee ni se toca nada fuera de Balanz
+// ════════════════════════════════════════════════════════════════════════════
+
+test('el dominio se compara por SUFIJO DE HOST, no por includes', async () => {
+  const { esDominioBalanz, dominioDe } = await import('./balanz-navegador.mjs')
+  for (const ok of [
+    'https://clientes.balanz.com/fondos',
+    'https://balanz.com',
+    'https://www.balanz.com.ar/mercado',
+  ]) assert.equal(esDominioBalanz(ok), true, `${ok} debería pasar`)
+
+  // Los tres que un `includes('balanz.com')` habría dejado entrar.
+  for (const no of [
+    'https://balanz.com.evil.io/fondos',
+    'https://notbalanz.com/fondos',
+    'https://evil.io/?r=balanz.com',
+    'https://balanz.com.ar.phish.net/',
+    'no-es-una-url',
+    '',
+  ]) assert.equal(esDominioBalanz(no), false, `${no} NO debería pasar`)
+
+  assert.equal(dominioDe('https://clientes.balanz.com/x'), 'clientes.balanz.com')
+  assert.equal(dominioDe('roto'), null)
+})

@@ -76,12 +76,39 @@ async function conectar(endpoint) {
  * sesión sería leer credenciales, que es justo lo prohibido. Si aparece un formulario de login o la
  * URL cayó en /login, la sesión venció.
  */
-export async function verificarSesion(page) {
+export async function verificarSesion(page, { exigirDominio = true } = {}) {
   const url = String(page.url() || '')
+  // EL DOMINIO PRIMERO. El Chrome dedicado puede tener otras pestañas, y una redirección puede llevar
+  // a un dominio de terceros. Leer y clasificar controles de una pantalla que no es Balanz no sólo es
+  // inútil: si esa pantalla fuera hostil, estaría dictando lo que el agente cree ver.
+  // Un host VACÍO (`about:blank`, `data:`) no es "otro dominio": es "todavía no hay página". No tiene
+  // contenido que leer ni controles que tocar, así que no hay nada de qué protegerse.
+  const host = dominioDe(url)
+  if (exigirDominio && host && !esDominioBalanz(url)) {
+    throw new SesionRequerida(`la página está en ${host}, no en Balanz: no se lee ni se toca nada fuera del dominio`)
+  }
   if (/\/(login|signin|ingresar|auth)/i.test(url)) throw new SesionRequerida('la página está en el login: la sesión venció')
   const hayLogin = await page.locator('input[type="password"]').count().catch(() => 0)
   if (hayLogin > 0) throw new SesionRequerida('hay un campo de contraseña en pantalla: la sesión venció')
   return true
+}
+
+/** Dominios propios de Balanz. Comparación por SUFIJO DE HOST, nunca por `includes`. */
+export const DOMINIOS_BALANZ = ['balanz.com', 'balanz.com.ar']
+
+export function dominioDe(url) {
+  try { return new URL(String(url)).hostname.toLowerCase() } catch { return null }
+}
+
+/**
+ * ¿La URL es de Balanz? Por sufijo de host con punto delante, que es lo único que no se puede
+ * falsificar con un nombre parecido: `balanz.com.evil.io` y `notbalanz.com` NO pasan, y un
+ * `includes('balanz.com')` habría dejado entrar a los dos.
+ */
+export function esDominioBalanz(url) {
+  const h = dominioDe(url)
+  if (!h) return false
+  return DOMINIOS_BALANZ.some((d) => h === d || h.endsWith(`.${d}`))
 }
 
 /** Navega a una URL informativa. La barrera decide primero; si dice que no, no se navega. */

@@ -225,10 +225,25 @@ test('verificarSesion detecta el login por lo que se VE, sin tocar cookies', opt
   const browser = await chromium.launch()
   const page = await browser.newPage()
   try {
+    // `setContent` deja la URL en about:blank: host vacío, que NO es "otro dominio" sino "todavía no
+    // hay página". El chequeo de sesión sigue corriendo igual.
     await page.setContent('<form><input type="password" /></form>')
     await assert.rejects(() => verificarSesion(page), /SESSION_REQUIRED/)
     await page.setContent(PAGINA)
     assert.equal(await verificarSesion(page), true)
+  } finally { await browser.close() }
+})
+
+test('una pantalla de OTRO dominio no se lee ni se toca', opts, async () => {
+  // El Chrome dedicado puede tener otras pestañas, y una redirección puede llevar a un tercero. Leer
+  // y clasificar controles de una pantalla que no es Balanz no sólo es inútil: si esa pantalla fuera
+  // hostil, estaría dictando lo que el agente cree ver.
+  const browser = await chromium.launch()
+  const page = await browser.newPage()
+  try {
+    await page.route('**/*', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<h1>otra cosa</h1>' }))
+    await page.goto('https://example.com/fondos')
+    await assert.rejects(() => verificarSesion(page), /no en Balanz/)
   } finally { await browser.close() }
 })
 
