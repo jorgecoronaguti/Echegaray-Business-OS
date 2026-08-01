@@ -63,7 +63,7 @@ import { CAJA as N_CAJA, publicar } from '../lib/rangos-nombrados.mjs'
 import { esIndistinguible } from '../lib/cobranzas-duplicado.mjs'
 import * as CONC from '../lib/conciliacion-por-naturaleza.mjs'
 import { formulaEgresoDiario } from '../lib/egreso-diario.mjs'
-import { formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte, formulaNetaEfectivoPosterior, formulaCobrosPosteriores, formulaChequesDebitadosPosteriores, formulaComprasPagadasPosteriores, formulaJornalesBancoPosteriores, celdaJornalesEfectivo, formulaOficinaBancoPosteriores, formulaOficinaSinCanal, celdaOficinaEfectivo, celdaExtraccionesEfectivo } from '../lib/caja-posterior-al-corte.mjs'
+import { formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte, formulaNetaEfectivoPosterior, formulaCobrosPosteriores, formulaChequesDebitadosPosteriores, formulaComprasPagadasPosteriores, formulaJornalesBancoPosteriores, celdaJornalesEfectivo, formulaOficinaBancoPosteriores, formulaOficinaSinCanal, celdaOficinaEfectivo, celdaExtraccionesEfectivo, formulaCobrosUsdEfectivoPosteriores } from '../lib/caja-posterior-al-corte.mjs'
 import { formulaCajaEnPesos, celdaCobrosEfectivo, celdaPagosEfectivo, celdaDepositosEfectivo, NETO_NO_SUMA_EN_PESOS, origenCajaEnPesos, IDENTIDAD } from '../lib/caja-efectivo-fisico.mjs'
 // LA CARTERA DE VALORES SALE DE LA RÉPLICA DE CHEQUES, NO DE UN ARRAY DE JAVASCRIPT (30/07). Ver
 // lib/cartera-cheques.mjs: es el arreglo del "$10.000.000 en CAJA con $10.290.000 en cartera" y del
@@ -418,6 +418,19 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // el suyo: su edición es verdad definitiva y "mejorarle" la redacción es la forma más fácil de
   // perderla. Se reemplaza únicamente el `origenSugerido` que puso este mismo generador.
   if ([CUENTAS[0].origenSugerido, VACIO, ''].includes(filas[d0 - 1][7])) filas[d0 - 1][7] = origenCajaEnPesos()
+
+  // ═══ Y LO MISMO PARA EL CAJÓN EN DÓLARES (01/08) ═══
+  //
+  // Mismo mecanismo que la línea de arriba, del otro lado de la moneda: la columna de ORIGEN sigue
+  // siendo el arqueo que tipea el dueño —en dólares, sin convertir— y el SALDO EN PESOS pasa a ser
+  // "el arqueo más lo cobrado en efectivo y en dólares desde entonces", valuado al tipo de cambio.
+  // Sin esto, U$S 15.000 cobrados el 31/07 entraban al cajón de PESOS como $15.000.
+  const dUsd = filas.findIndex((f) => /^caja en d[oó]lares/i.test(String(f?.[0] ?? '').trim())) + 1
+  if (dUsd) {
+    filas[dUsd - 1][4] = `=IF(AND($${C_IMP}$${dUsd}="";${formulaCobrosUsdEfectivoPosteriores(`$F$${dUsd}`)}=0);"";`
+      + `(N($${C_IMP}$${dUsd})+IF(NOT(ISNUMBER($F$${dUsd}));0;${formulaCobrosUsdEfectivoPosteriores(`$F$${dUsd}`)}))`
+      + `*IF($${C_TC}$${dUsd}="";1;$${C_TC}$${dUsd}))`
+  }
 
   // PERCIBIDO: el total excluye los Valores a depositar (echeq en custodia, sin acreditar). No son
   // caja de hoy — entran en el calendario cuando se acreditan. Es también el "Efectivo al inicio" que

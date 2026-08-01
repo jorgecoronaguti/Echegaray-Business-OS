@@ -471,3 +471,32 @@ test('los dos netos incorporan la oficina', () => {
   assert.match(celda(g, filaDe(g, /^Movimientos de efectivo posteriores al arqueo/), 2), /OFICINA_PAGADO/)
   assert.match(celda(g, filaDe(g, /^Movimientos posteriores al corte del extracto/), 2), /OFICINA_BANCO/)
 })
+
+// ═══ LA CAJA EN DÓLARES (01/08) ═══
+//
+// "U$S 15.000" cobrados en efectivo entraban al cajón de PESOS como $15.000: el importe correcto en
+// la moneda equivocada, que no da error y está mal por dos órdenes de magnitud.
+
+test('la caja en dólares existe, lleva su moneda y se valúa al tipo de cambio', () => {
+  const g = construir()
+  const f = filaDe(g, /^Caja en dólares/)
+  assert.ok(f > 0, 'tiene que haber una fila de caja en dólares')
+  assert.equal(celda(g, f, 1), 'USD', 'la columna de moneda dice USD')
+  const pesos = celda(g, f, 4)
+  assert.match(pesos, /"USD"/, 'suma sólo los cobros marcados en dólares')
+  assert.match(pesos, /TIPO_CAMBIO_USD|\$D\$/, 'y los valúa al tipo de cambio para poder sumarlos')
+})
+
+test('el cajón en PESOS ya no se come los dólares', () => {
+  const g = construir()
+  const neto = celda(g, filaDe(g, /^Movimientos de efectivo posteriores al arqueo/), 2)
+  assert.match(neto, /"<>USD"/, 'la línea de pesos excluye explícitamente los cobros en dólares')
+})
+
+test('pesos y dólares son una PARTICIÓN: ningún cobro en efectivo queda afuera ni entra dos veces', () => {
+  const g = construir()
+  const pesos = celda(g, filaDe(g, /^Movimientos de efectivo posteriores al arqueo/), 2)
+  const usd = celda(g, filaDe(g, /^Caja en dólares/), 4)
+  assert.match(pesos, /"<>USD"/)
+  assert.match(usd, /;"USD";/)
+})
