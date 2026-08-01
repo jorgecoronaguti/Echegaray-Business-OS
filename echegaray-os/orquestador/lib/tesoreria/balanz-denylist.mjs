@@ -99,13 +99,23 @@ export function evaluarElemento(el = {}) {
     const r = rutaProhibida(el[campo])
     if (r) return { permitido: false, motivo: `ruta transaccional "${r}" en ${campo}`, coincidencia: r, campo }
   }
-  // 3 · UN FORMULARIO ES UNA ORDEN EN POTENCIA. `submit` no se toca nunca: lo que envía un formulario
-  //     en un bróker es, por definición, algo que el bróker va a procesar.
-  if (normalizar(el.rol) === 'button' && normalizar(el.tipo) === 'submit') {
+  // 3 · UN FORMULARIO ES UNA ORDEN EN POTENCIA — y todo lo que vive adentro también.
+  //
+  // La versión anterior exigía `rol === 'button'` para bloquear un submit, y un `<button
+  // type="submit">` normal no declara `role`. El test contra un DOM real lo encontró: el botón
+  // "Continuar" del formulario de suscripción quedaba PERMITIDO. En un bróker ese botón es la orden.
+  //
+  // Ahora: cualquier `type=submit` cae, tenga el rol que tenga; y cualquier elemento DENTRO de un
+  // formulario cae también, porque un control dentro de un form puede enviarlo. Es deliberadamente
+  // amplio: en una pantalla informativa no hay nada que leer adentro de un formulario.
+  if (normalizar(el.tipo) === 'submit') {
     return { permitido: false, motivo: 'botón de submit: enviar un formulario en un bróker es operar', coincidencia: 'submit', campo: 'tipo' }
   }
   if (normalizar(el.tag) === 'form' || normalizar(el.rol) === 'form') {
     return { permitido: false, motivo: 'es un formulario', coincidencia: 'form', campo: 'tag' }
+  }
+  if (el.dentroDeFormulario) {
+    return { permitido: false, motivo: 'está dentro de un formulario: cualquier control ahí adentro puede enviarlo', coincidencia: 'form', campo: 'dentroDeFormulario' }
   }
   // 4 · FALLA CERRADA. Un elemento del que no sabemos nada no se toca. No es paranoia: es que el
   //     costo de no hacer clic es cero y el de hacerlo mal es una orden enviada con plata real.

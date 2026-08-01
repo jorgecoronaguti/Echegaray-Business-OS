@@ -96,15 +96,47 @@ export async function navegarSeguro(page, url, bloqueos = []) {
   return { navegado: true }
 }
 
-/** Los atributos de un elemento que la barrera necesita. Se extraen en el navegador, en una pasada. */
-const EXTRAER = `(el) => ({
-  tag: el.tagName, rol: el.getAttribute('role'), tipo: el.getAttribute('type'),
-  texto: (el.innerText || el.textContent || '').slice(0, 200),
-  ariaLabel: el.getAttribute('aria-label'), title: el.getAttribute('title'),
-  href: el.getAttribute('href'), action: el.getAttribute('action'),
-  formAction: el.getAttribute('formaction'), dataUrl: el.getAttribute('data-url'),
-  textoPadre: (el.parentElement?.innerText || '').slice(0, 200),
-})`
+/**
+ * Los atributos de un elemento que la barrera necesita. Es una FUNCIÓN, no un string: Playwright
+ * serializa la función y la corre en la página, y un string con cuerpo de bloque puede resolverse
+ * como una función sin llamarla —que fue exactamente lo que devolvía `undefined` en silencio—.
+ *
+ * ═══ EL CONTENEDOR, NO EL PADRE ═══
+ *
+ * `parentElement.innerText` de un elemento de primer nivel es EL TEXTO DE TODA LA PÁGINA. Con eso,
+ * cualquier link de una pantalla que en algún lado diga "Invertir" quedaba bloqueado: en la prueba
+ * contra un DOM real, el link al prospecto —inofensivo— caía por el texto de un botón que estaba a
+ * quinientos píxeles. Un agente que bloquea todo no es prudente: es inútil, y además esconde los
+ * bloqueos que sí importan entre cientos que no.
+ *
+ * Se usa el CONTENEDOR más cercano con significado —modal, formulario, fila, ítem de lista— y sólo si
+ * es chico. Un "Aceptar" dentro de un modal que dice "Confirmá tu suscripción" sigue bloqueado, que
+ * es el caso que esto tiene que atrapar.
+ */
+export function extraerAtributos(el) {
+  const form = el.closest('form')
+  const cont = el.closest('[role=dialog],[role=alertdialog],dialog,form,tr,li,[class*=modal],[class*=card]')
+  const textoCont = cont && cont !== el ? (cont.innerText || '') : ''
+  return {
+    tag: el.tagName,
+    rol: el.getAttribute('role'),
+    tipo: el.getAttribute('type'),
+    texto: (el.innerText || el.textContent || '').slice(0, 200),
+    ariaLabel: el.getAttribute('aria-label'),
+    title: el.getAttribute('title'),
+    href: el.getAttribute('href'),
+    action: el.getAttribute('action'),
+    formAction: el.getAttribute('formaction'),
+    dataUrl: el.getAttribute('data-url'),
+    // Un contenedor largo no dice nada del elemento: 400 caracteres es una fila o un modal, no una
+    // pantalla entera.
+    textoPadre: textoCont.length <= 400 ? textoCont.slice(0, 200) : '',
+    tituloModal: cont?.matches?.('[role=dialog],[role=alertdialog],dialog,[class*=modal]') ? textoCont.slice(0, 200) : null,
+    // Un control dentro de un formulario puede enviarlo. En una pantalla informativa no hay nada que
+    // leer ahí adentro, así que se bloquea entero.
+    dentroDeFormulario: Boolean(form) && form !== el,
+  }
+}
 
 /**
  * Clic con barrera. Es el ÚNICO camino por el que este agente toca algo en Balanz: no hay un
@@ -113,7 +145,7 @@ const EXTRAER = `(el) => ({
 export async function clicSeguro(page, selector, bloqueos = []) {
   const loc = page.locator(selector).first()
   if (!(await loc.count())) return { clicado: false, motivo: 'el selector no existe' }
-  const el = await loc.evaluate(EXTRAER).catch(() => ({}))
+  const el = await loc.evaluate(extraerAtributos).catch(() => ({}))
   const v = evaluarElemento(el)
   if (!v.permitido) {
     bloqueos.push(registroBloqueo(el, v))
@@ -130,9 +162,9 @@ export async function clicSeguro(page, selector, bloqueos = []) {
  * la barrera vio la pantalla real y la clasificó.
  */
 export async function auditarControles(page) {
-  const els = await page.locator('a, button, input[type=submit], form').evaluateAll(
-    `(els) => els.slice(0, 400).map(${EXTRAER})`,
-  ).catch(() => [])
+  const els = await page.locator('a, button, input[type=submit], form')
+    .evaluateAll((nodos, f) => nodos.slice(0, 400).map(new Function('el', `return (${f})(el)`)), extraerAtributos.toString())
+    .catch(() => [])
   const bloqueados = []
   let permitidos = 0
   for (const el of els) {

@@ -1,0 +1,234 @@
+// LA BARRERA Y EL EXTRACTOR CONTRA UN DOM DE VERDAD — Chromium real, no strings.
+//
+// ═══ QUÉ PRUEBA ESTO, Y QUÉ NO ═══
+//
+// SÍ prueba: que `clicSeguro`, `navegarSeguro`, `auditarControles` y el extractor funcionan sobre un
+// navegador real, con lazy loading, paginación, modales, formularios y atributos ARIA — o sea, sobre
+// las cosas que un DOM tiene y un string no.
+//
+// NO prueba: que el DOM de Balanz sea así. La página de abajo la escribí yo imitando un bróker
+// argentino; sin la sesión del dueño no hay pantalla real que mirar. Es la diferencia entre "el
+// mecanismo funciona" y "los selectores aciertan", y sólo lo primero se puede afirmar hoy. La segunda
+// mitad se cierra con `orquestador/scripts/balanz-explorar.mjs` cuando haya sesión.
+//
+// Se saltea si Chromium no está instalado.
+
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { evaluarElemento } from './balanz-denylist.mjs'
+import { clicSeguro, navegarSeguro, auditarControles, verificarSesion } from './balanz-navegador.mjs'
+import { extraerDeTabla, mapearColumnas } from './instrumentos.mjs'
+
+let chromium = null
+try { ({ chromium } = await import('playwright')) } catch { /* sin playwright */ }
+const salta = !chromium
+const opts = { skip: salta ? 'playwright no disponible' : false }
+
+/** Una pantalla informativa de bróker, con todas las trampas que importan. */
+const PAGINA = `
+<h1>Fondos Comunes de Inversión</h1>
+<nav role="tablist">
+  <button role="tab">Pesos</button><button role="tab">Dólares</button>
+</nav>
+<table aria-label="Listado de fondos">
+  <thead><tr>
+    <th>Fondo</th><th>Moneda</th><th>TNA</th><th>Liquidez</th><th>Valor cuotaparte</th><th></th>
+  </tr></thead>
+  <tbody>
+    <tr>
+      <td>Balanz Money Market</td><td>ARS</td><td>58,20%</td><td>T+0</td><td>1.234,56</td>
+      <td><a href="/fondos/detalle/1">Ver ficha</a>
+          <button aria-label="Suscribir Balanz Money Market">→</button></td>
+    </tr>
+    <tr>
+      <td>Balanz Renta Fija</td><td>ARS</td><td>71,40%</td><td>T+1</td><td>2.981,10</td>
+      <td><a href="/fondos/detalle/2">Ver ficha</a>
+          <button class="btn-primary">Invertir</button></td>
+    </tr>
+    <tr>
+      <td>Balanz Ahorro USD</td><td>U$S</td><td>4,10%</td><td>T+1</td><td>1,0521</td>
+      <td><a href="/fondos/detalle/3">Ver ficha</a></td>
+    </tr>
+  </tbody>
+</table>
+<div id="lazy"></div>
+<nav aria-label="Paginación"><button>1</button><button>2</button></nav>
+<form action="/fondos/suscribir" id="alta">
+  <input name="monto" /><button type="submit">Continuar</button>
+</form>
+<div role="dialog" id="modal" style="display:none">
+  <p>Confirmá tu suscripción al fondo</p><button>Siguiente</button>
+</div>
+<a href="/documentos/prospecto.pdf">Descargar prospecto</a>
+<script>
+  // LAZY LOADING: dos filas más aparecen recién cuando se baja hasta el final.
+  let cargado = false
+  addEventListener('scroll', () => {
+    if (cargado || (innerHeight + scrollY) < document.body.offsetHeight - 5) return
+    cargado = true
+    const tb = document.querySelector('tbody')
+    tb.insertAdjacentHTML('beforeend',
+      '<tr><td>Balanz Performance</td><td>ARS</td><td>84,00%</td><td>T+2</td><td>512,30</td><td></td></tr>' +
+      '<tr><td>Balanz Capital</td><td>ARS</td><td>66,10%</td><td>T+1</td><td>905,44</td><td></td></tr>')
+  })
+  document.getElementById('lazy').style.height = '2000px'
+</script>`
+
+async function conPagina(fn) {
+  const browser = await chromium.launch()
+  const page = await browser.newPage()
+  await page.setContent(`<!doctype html><meta charset="utf-8">${PAGINA}`)
+  try { return await fn(page) } finally { await browser.close() }
+}
+
+/** Se pasa como FUNCIÓN, no como string: un string con cuerpo de bloque devolvía undefined. */
+function leerTabla() {
+  const t = document.querySelector('table')
+  return {
+    cabecera: [...t.querySelectorAll('th')].map((h) => h.innerText.trim()),
+    filas: [...t.querySelectorAll('tbody tr')].map((r) => [...r.querySelectorAll('td')].map((c) => c.innerText.trim())),
+  }
+}
+
+test('un submit sin role="button" también cae — y todo lo que vive dentro del form', opts, async () => {
+  // Defecto real encontrado con el DOM de verdad: la regla exigía `role="button"` y un
+  // `<button type="submit">` normal no lo declara. El botón "Continuar" del formulario de
+  // suscripción quedaba PERMITIDO. En un bróker, ese botón es la orden.
+  const { extraerAtributos } = await import('./balanz-navegador.mjs')
+  const el = await conPagina((page) => page.locator('#alta button[type=submit]').evaluate(extraerAtributos))
+  const v = evaluarElemento(el)
+  assert.equal(v.permitido, false)
+  assert.equal(v.coincidencia, 'submit')
+  const input = await conPagina((page) => page.locator('#alta input').evaluate(extraerAtributos))
+  assert.equal(input.dentroDeFormulario, true)
+  assert.equal(evaluarElemento(input).permitido, false, 'un input dentro del form tampoco se toca')
+})
+
+test('la barrera clasifica los controles de una pantalla real', opts, async () => {
+  const r = await conPagina((page) => auditarControles(page))
+  assert.ok(r.total >= 8, `se esperaban varios controles, hubo ${r.total}`)
+  const motivos = r.bloqueados.map((b) => b.motivo).join(' | ')
+  // Los cuatro peligros de la pantalla tienen que estar bloqueados.
+  assert.match(motivos, /suscribir/i, 'el botón con aria-label "Suscribir" tiene que caer')
+  assert.match(motivos, /invertir/i, 'el botón "Invertir" tiene que caer')
+  assert.match(motivos, /formulario|submit/i, 'el formulario y su submit tienen que caer')
+  assert.ok(r.permitidos >= 3, 'los links a fichas y al prospecto tienen que quedar permitidos')
+})
+
+test('clicSeguro NO hace clic en "Invertir" — y el DOM lo demuestra', opts, async () => {
+  const clicado = await conPagina(async (page) => {
+    await page.evaluate('window.__clics = 0; document.querySelectorAll("button").forEach(b => b.addEventListener("click", () => window.__clics++))')
+    const bloqueos = []
+    const r = await clicSeguro(page, 'button.btn-primary', bloqueos)
+    return { r, bloqueos, clics: await page.evaluate('window.__clics') }
+  })
+  assert.equal(clicado.r.clicado, false)
+  assert.equal(clicado.r.bloqueado, true)
+  assert.equal(clicado.clics, 0, 'el DOM registró un clic: la barrera no lo frenó')
+  assert.equal(clicado.bloqueos.length, 1)
+})
+
+test('clicSeguro SÍ hace clic en un link informativo', opts, async () => {
+  const r = await conPagina(async (page) => {
+    await page.evaluate('window.__ok = 0; document.querySelector("a[href*=prospecto]").addEventListener("click", (e) => { e.preventDefault(); window.__ok++ })')
+    const res = await clicSeguro(page, 'a[href*=prospecto]', [])
+    return { res, ok: await page.evaluate('window.__ok') }
+  })
+  assert.equal(r.res.clicado, true)
+  assert.equal(r.ok, 1)
+})
+
+test('el modal de confirmación queda bloqueado por su contenido, no por su clase', opts, async () => {
+  const v = await conPagina(async (page) => {
+    await page.evaluate('document.getElementById("modal").style.display = "block"')
+    const { extraerAtributos } = await import('./balanz-navegador.mjs')
+    const el = await page.locator('#modal button').evaluate(extraerAtributos)
+    return evaluarElemento(el)
+  })
+  // El botón dice "Siguiente" — inofensivo por sí solo. Lo que lo delata es el modal que lo contiene.
+  assert.equal(v.permitido, false)
+  assert.match(v.motivo, /suscri/i)
+  assert.ok(['textoPadre', 'tituloModal'].includes(v.campo), `lo delata el contenedor, no el botón — cayó por ${v.campo}`)
+})
+
+test('el CONTENEDOR no es la página entera: un link inofensivo no se bloquea por otro botón lejano', async (t) => {
+  if (salta) return t.skip('playwright no disponible')
+  // Defecto real encontrado con el DOM de verdad: `parentElement.innerText` de un elemento de primer
+  // nivel es TODA la página. El link al prospecto caía porque en algún lado de la pantalla decía
+  // "Invertir". Un agente que bloquea todo no es prudente, es inútil.
+  const { extraerAtributos } = await import('./balanz-navegador.mjs')
+  const el = await conPagina((page) => page.locator('a[href*=prospecto]').evaluate(extraerAtributos))
+  assert.equal(el.textoPadre, '', 'el body no puede viajar como "texto del padre"')
+  assert.equal(evaluarElemento(el).permitido, true)
+})
+
+test('el extractor lee la tabla por ENCABEZADO y tipifica la tasa como TNA', opts, async () => {
+  const tabla = await conPagina((page) => page.evaluate(leerTabla))
+  const { idx, faltan } = mapearColumnas(tabla.cabecera)
+  assert.equal(idx.nombre, 0)
+  assert.equal(idx.tna, 2)
+  assert.ok(faltan.includes('tea'), 'lo que no está se declara faltante')
+
+  const { instrumentos } = extraerDeTabla(tabla, { observadoEn: new Date().toISOString() })
+  assert.equal(instrumentos.length, 3)
+  const mm = instrumentos[0]
+  assert.equal(mm.nombre, 'Balanz Money Market')
+  assert.equal(mm.categoria, 'money_market')
+  assert.equal(mm.tasa.tipo, 'tna', 'la columna dice TNA: la tasa es una TNA, no una TEA')
+  assert.ok(Math.abs(mm.tasa.valor - 0.582) < 1e-9)
+  assert.equal(mm.plazo_rescate_dias, 0)
+  assert.equal(mm.precio, 1234.56, 'el precio en formato es-AR')
+  assert.equal(instrumentos[2].moneda, 'USD', 'U$S se reconoce como dólares')
+})
+
+test('las filas que carga el lazy loading también se extraen', opts, async () => {
+  const tabla = await conPagina(async (page) => {
+    await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+    await page.waitForTimeout(300)
+    return page.evaluate(leerTabla)
+  })
+  const { instrumentos } = extraerDeTabla(tabla, {})
+  assert.equal(instrumentos.length, 5, 'sin bajar la página se perdían dos fondos')
+  assert.ok(instrumentos.some((i) => i.nombre === 'Balanz Performance'))
+})
+
+test('un cambio de orden de columnas NO rompe la extracción', opts, async () => {
+  // Es el motivo de leer por encabezado: el bróker reordena y el extractor sigue acertando.
+  const reordenada = {
+    cabecera: ['Moneda', 'Fondo', 'Liquidez', 'TNA'],
+    filas: [['ARS', 'Balanz Money Market', 'T+0', '58,20%']],
+  }
+  const { instrumentos } = extraerDeTabla(reordenada, {})
+  assert.equal(instrumentos[0].nombre, 'Balanz Money Market')
+  assert.ok(Math.abs(instrumentos[0].tasa.valor - 0.582) < 1e-9)
+})
+
+test('una columna genérica de "Rendimiento" entra como HISTÓRICA y queda fuera del ranking', opts, () => {
+  const { instrumentos } = extraerDeTabla({
+    cabecera: ['Fondo', 'Rendimiento'], filas: [['Balanz Money Market', '3,10%']],
+  }, {})
+  assert.equal(instrumentos[0].tasa.tipo, 'rendimiento_historico')
+  assert.equal(instrumentos[0].tasa.naturaleza, 'historica')
+})
+
+test('verificarSesion detecta el login por lo que se VE, sin tocar cookies', opts, async () => {
+  const browser = await chromium.launch()
+  const page = await browser.newPage()
+  try {
+    await page.setContent('<form><input type="password" /></form>')
+    await assert.rejects(() => verificarSesion(page), /SESSION_REQUIRED/)
+    await page.setContent(PAGINA)
+    assert.equal(await verificarSesion(page), true)
+  } finally { await browser.close() }
+})
+
+test('navegarSeguro no navega a una ruta transaccional ni con el navegador abierto', opts, async () => {
+  const r = await conPagina(async (page) => {
+    const bloqueos = []
+    const res = await navegarSeguro(page, 'https://clientes.balanz.com/fondos/suscribir', bloqueos)
+    return { res, bloqueos, url: page.url() }
+  })
+  assert.equal(r.res.navegado, false)
+  assert.equal(r.bloqueos.length, 1)
+  assert.ok(!r.url.includes('balanz.com'), 'la página no se movió')
+})

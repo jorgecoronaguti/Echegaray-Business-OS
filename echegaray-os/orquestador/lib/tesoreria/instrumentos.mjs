@@ -201,4 +201,94 @@ export function extraerDeTexto(texto = '', { url = null, observadoEn = new Date(
   return out
 }
 
-export const VERSION_SKILL = '1.0.0'
+// ════════════════════════════════════════════════════════════════════════════
+// EXTRACCIÓN POR TABLA — por ENCABEZADO, nunca por posición
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Sinónimos de cada campo tal como los escriben los brókers argentinos. Se busca por CONTENIDO del
+ * encabezado, no por índice: es la misma regla que este repo aplica a las columnas de Compras, y por
+ * el mismo motivo — el orden de las columnas cambia sin avisar, los nombres casi nunca.
+ */
+export const COLUMNAS = {
+  nombre: [/^(nombre|fondo|especie|instrumento|denominaci)/i],
+  ticker: [/^(ticker|s[ií]mbolo|simbolo|c[oó]digo)/i],
+  moneda: [/^(moneda|divisa)/i],
+  precio: [/^(precio|valor cuotaparte|valor cuota|[uú]ltimo)/i],
+  tna: [/\btna\b/i],
+  tea: [/\btea\b/i],
+  rendimiento: [/^(rendimiento|variaci|retorno|performance)/i],
+  tir: [/\btir\b|rendimiento al vencimiento|yield/i],
+  plazo_rescate: [/rescate|liquidez|disponibilidad/i],
+  liquidacion: [/liquidaci/i],
+  vencimiento: [/vencimiento|maturity/i],
+  duration: [/duration|duraci[oó]n modificada/i],
+  plazo: [/^(plazo|d[ií]as)/i],
+}
+
+/** Índice de cada campo dentro de la cabecera. Devuelve también los que no encontró. */
+export function mapearColumnas(cabecera = []) {
+  const idx = {}
+  const faltan = []
+  for (const [campo, patrones] of Object.entries(COLUMNAS)) {
+    const i = cabecera.findIndex((h) => patrones.some((re) => re.test(String(h ?? ''))))
+    if (i >= 0) idx[campo] = i
+    else faltan.push(campo)
+  }
+  return { idx, faltan }
+}
+
+/** Número en formato es-AR dentro de una celda ("1.234,56" → 1234.56). Devuelve null si no hay. */
+export function numeroArg(s) {
+  const t = String(s ?? '').replace(/[^\d.,-]/g, '').trim()
+  if (!t) return null
+  const n = Number(t.replace(/\./g, '').replace(',', '.'))
+  return Number.isFinite(n) ? n : null
+}
+
+/**
+ * SKILL 5 (tabla). Convierte una tabla ya extraída del DOM en instrumentos normalizados.
+ *
+ * El tipo de tasa sale de la COLUMNA, que es donde el bróker lo declara: si la columna dice "TNA", la
+ * tasa es una TNA. Si sólo hay una columna genérica de "Rendimiento", entra como histórico —y por lo
+ * tanto queda fuera del ranking, en vez de colarse disfrazada de expectativa.
+ */
+export function extraerDeTabla({ cabecera = [], filas = [] } = {}, { url = null, observadoEn = new Date().toISOString(), categoria = null } = {}) {
+  const { idx, faltan } = mapearColumnas(cabecera)
+  if (idx.nombre == null) return { instrumentos: [], motivo: 'la tabla no tiene una columna de nombre reconocible', cabecera }
+  const out = []
+  for (const f of filas) {
+    const nombre = String(f?.[idx.nombre] ?? '').trim()
+    if (!nombre) continue
+    let tasa = null
+    if (idx.tea != null && numeroArg(f[idx.tea]) != null) {
+      tasa = { tipo: TIPO_TASA.TEA, valor: numeroArg(f[idx.tea]) / 100, naturaleza: NATURALEZA_TASA.INDICATIVA }
+    } else if (idx.tna != null && numeroArg(f[idx.tna]) != null) {
+      tasa = { tipo: TIPO_TASA.TNA, valor: numeroArg(f[idx.tna]) / 100, naturaleza: NATURALEZA_TASA.INDICATIVA }
+    } else if (idx.tir != null && numeroArg(f[idx.tir]) != null) {
+      tasa = { tipo: TIPO_TASA.TIR, valor: numeroArg(f[idx.tir]) / 100, naturaleza: NATURALEZA_TASA.INDICATIVA }
+    } else if (idx.rendimiento != null && numeroArg(f[idx.rendimiento]) != null) {
+      // SIN ETIQUETA NO HAY EXPECTATIVA: una columna que sólo dice "Rendimiento" es historia.
+      tasa = { tipo: TIPO_TASA.RENDIMIENTO_HISTORICO, valor: numeroArg(f[idx.rendimiento]) / 100, naturaleza: NATURALEZA_TASA.HISTORICA }
+    }
+    const celdaLiq = idx.plazo_rescate != null ? String(f[idx.plazo_rescate] ?? '') : ''
+    out.push(normalizarInstrumento({
+      nombre,
+      ticker: idx.ticker != null ? String(f[idx.ticker] ?? '').trim() || null : null,
+      categoria: categoria || categorizar(nombre),
+      moneda: /u\$s|usd|d[oó]lar/i.test(String(f[idx.moneda] ?? '')) ? 'USD' : 'ARS',
+      precio: idx.precio != null ? numeroArg(f[idx.precio]) : null,
+      tasa,
+      plazo_rescate_dias: plazoLiquidacion(celdaLiq) ?? (/inmediat|t\s*\+\s*0/i.test(celdaLiq) ? 0 : null),
+      liquidacion_dias: idx.liquidacion != null ? plazoLiquidacion(String(f[idx.liquidacion] ?? '')) : null,
+      vencimiento: idx.vencimiento != null ? String(f[idx.vencimiento] ?? '').trim() || null : null,
+      duration: idx.duration != null ? numeroArg(f[idx.duration]) : null,
+      url,
+      evidencia: EVIDENCIA.DATO, // salió de una tabla estructurada, no de un renglón adivinado
+      campos_faltantes: faltan.filter((c) => ['plazo_rescate', 'liquidacion'].includes(c)),
+    }, { observadoEn }))
+  }
+  return { instrumentos: out, columnas: idx, columnas_faltantes: faltan }
+}
+
+export const VERSION_SKILL = '1.1.0'
