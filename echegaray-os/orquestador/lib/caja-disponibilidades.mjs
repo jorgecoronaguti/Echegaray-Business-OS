@@ -81,12 +81,10 @@ export const CUENTAS = [
     patron: /^caja en d[oó]lares/i,
     origenSugerido: 'Arqueo de caja',
   },
-  {
-    nombre: 'Fondo fijo',
-    moneda: 'ARS',
-    patron: /^fondo fijo/i,
-    origenSugerido: 'Arqueo de caja',
-  },
+  // FONDO FIJO — RETIRADO (01/08). El dueño: "quita la fila de fondo fijo, no la voy a usar, no la
+  // consideres más". Vivía en el bloque desde el diseño original y nunca tuvo un peso cargado: una
+  // fila permanentemente en "⚠ sin cargar" no es un control, es ruido que enseña a ignorar los avisos.
+  // No se reemplaza por una fila vacía: se saca. Si algún día hay caja chica, se vuelve a agregar acá.
   {
     // Nombre terso, estilo statement de tesorería (el n° de cuenta va en la nota de origen, no en el
     // rótulo). El saldo lo trae el extracto (banco-santander.mjs), no depende del nombre de la fila.
