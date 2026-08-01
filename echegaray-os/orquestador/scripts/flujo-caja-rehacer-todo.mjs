@@ -84,7 +84,20 @@ async function verificarPresentacion(bloqueadas = new Set()) {
   // pestaña. Leer la fórmula y "ver que está bien" no es verificar.
   for (const pestaña of ['Cash Flow Semanal', 'Cash Flow Mensual']) {
     if (bloqueadas.has(pestaña)) continue // pestaña del dueño: no se escribe A200 ni se verifica el atajo
-    const gidReal = hojas.find((h) => h.title === pestaña)?.sheetId
+    const hoja = hojas.find((h) => h.title === pestaña)
+    const gidReal = hoja?.sheetId
+    // ═══ LA CELDA DE APUNTE NO PUEDE SER UNA FILA TIPEADA (01/08) ═══
+    //
+    // Era `A200`, fijo. El dueño reescribió Cash Flow Semanal más corta —89 filas— y la API devolvió
+    // `Range ('Cash Flow Semanal'!A200) exceeds grid limits`, un 400 que MATÓ toda la corrida: desde
+    // las 12:56 el Flujo de Caja no se regeneraba y el servicio quedaba en failed cada 2 horas. Una
+    // VERIFICACIÓN tumbando la REGENERACIÓN es el defecto más caro posible, porque el síntoma no se
+    // parece a la causa: no falla lo que se está verificando, falla todo lo demás.
+    //
+    // La última fila de la grilla SIEMPRE existe, cualquiera sea el alto de la pestaña. Y abajo, el
+    // bloque entero va en try/catch: si el apunte falla por lo que sea, se reporta como "no verificado"
+    // y el resto de la corrida sigue. Nunca más una comprobación puede voltear el pipeline.
+    const apunte = `A${Math.max(1, hoja?.rows ?? 1000)}`
     const f = (await google.readSheetGrid(ID, `${pestaña}!A2`)).filas?.[0]?.[0]?.formula ?? ''
     const gid = /#gid=(\d+)/.exec(f)?.[1]
     const i = f.indexOf('&range="&')
@@ -96,12 +109,17 @@ async function verificarPresentacion(bloqueadas = new Set()) {
       // REGLA 0 — NO APLICA, Y ESTÁ DECIDIDO: respetar: false.
       // Acá no se escribe contenido: A200 se usa un instante como celda de apunte para resolver a qué
       // rango apunta un atajo, y se restaura lo que hubiera. Nada queda escrito al terminar.
-      const previoA200 = (await google.readSheetValues(ID, `${pestaña}!A200`, { render: 'FORMULA' }))?.[0]?.[0] ?? ''
-      // yaGuardado: A200 es celda de apunte transitoria; se lee y RESTAURA acá mismo (su propia
-      // preservación). No debe pasar por la guarda central ni disparar sello de firma.
-      await google.batchUpdateValues(ID, [{ range: `${pestaña}!A200`, values: [[`=${f.slice(i + 9, j)}`]] }], { yaGuardado: true })
-      rango = (await google.readSheetValues(ID, `${pestaña}!A200`))?.[0]?.[0]
-      await google.batchUpdateValues(ID, [{ range: `${pestaña}!A200`, values: [[previoA200]] }], { yaGuardado: true })
+      try {
+        const previo = (await google.readSheetValues(ID, `${pestaña}!${apunte}`, { render: 'FORMULA' }))?.[0]?.[0] ?? ''
+        // yaGuardado: la celda de apunte es transitoria; se lee y RESTAURA acá mismo (su propia
+        // preservación). No debe pasar por la guarda central ni disparar sello de firma.
+        await google.batchUpdateValues(ID, [{ range: `${pestaña}!${apunte}`, values: [[`=${f.slice(i + 9, j)}`]] }], { yaGuardado: true })
+        rango = (await google.readSheetValues(ID, `${pestaña}!${apunte}`))?.[0]?.[0]
+        await google.batchUpdateValues(ID, [{ range: `${pestaña}!${apunte}`, values: [[previo]] }], { yaGuardado: true })
+      } catch (e) {
+        console.log(`   ⚠ no pude verificar el atajo de ${pestaña} (${String(e.message).slice(0, 80)}) — sigo con el resto`)
+        continue
+      }
     }
     if (/^[A-Z]+\d+$/.test(String(rango)) && String(gid) === String(gidReal)) {
       console.log(`   ✓ atajo de ${pestaña}: lleva a ${rango}`)
