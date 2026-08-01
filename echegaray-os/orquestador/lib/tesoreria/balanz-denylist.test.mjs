@@ -266,3 +266,29 @@ test('fuera del dominio de Balanz NO se navega — ni a una ruta de la allowlist
   assert.equal(evaluarNavegacion('https://clientes.balanz.com/mercado/cauciones').permitido, true)
   assert.equal(evaluarNavegacion('/mercado/cauciones').permitido, true, 'una ruta relativa es del propio sitio')
 })
+
+test('las excepciones informativas no abren la puerta: cada una es una PALABRA, no un comodín', () => {
+  // El precio de las raíces: `pag` atrapa "página", `liquid` atrapa "liquidez". La segunda auditoría
+  // midió 12 de 46 etiquetas informativas bloqueadas, incluidas "Tasas de caución", que es justo lo
+  // que este agente viene a leer. Las excepciones se nombran de a una y no aflojan la raíz.
+  for (const t of [
+    'Página siguiente', 'Pág. 2', 'Ordenar por rendimiento', 'Liquidez', 'Liquidez inmediata',
+    'Ventajas', 'Mis operaciones', 'Historial de operaciones', 'Extracto de cuenta',
+    'Tasas de caución', 'Ingresos brutos', 'Cobranzas', 'Comparar fondos',
+  ]) assert.equal(evaluarElemento({ texto: t, href: '/fondos' }).permitido, true, `"${t}" se bloqueó de más`)
+
+  // Y las formas transaccionales de las MISMAS raíces siguen cayendo.
+  for (const t of ['Pagá ahora', 'Pagar', 'Liquidá', 'Vendé', 'Ordená la compra', 'Caucioná', 'Depositá', 'Retirá']) {
+    assert.equal(evaluarElemento({ texto: t, href: '#' }).permitido, false, `"${t}" pasó`)
+  }
+})
+
+test('paginar y ordenar una tabla no es operar: el query de presentación no bloquea', () => {
+  for (const u of ['/fondos?pagina=2', '/fondos/renta-fija?page=2', '/mercado/letras?orden=tir',
+    '/fondos/liquidez', 'https://clientes.balanz.com/fondos?orden=tna&limit=50']) {
+    assert.equal(evaluarNavegacion(u).permitido, true, `${u} se bloqueó de más`)
+  }
+  // Pero un query que SÍ acciona sigue cayendo, y la ruta se evalúa entera.
+  assert.equal(evaluarNavegacion('/mercado/cauciones?accion=caucionar').permitido, false)
+  assert.equal(evaluarNavegacion('/fondos/suscribir?pagina=2').permitido, false)
+})

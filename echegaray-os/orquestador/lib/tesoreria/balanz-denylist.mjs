@@ -45,6 +45,47 @@ export const RAICES_PROHIBIDAS = [
   'constitu', 'aplic', 'adquir', 'liquid', 'ingres', 'egres', 'mandat',
 ]
 
+/**
+ * PALABRAS QUE CONTIENEN UNA RAÍZ Y NO SON UNA ACCIÓN.
+ *
+ * El precio de trabajar con raíces: `pag` atrapa "página", `liquid` atrapa "liquidez", `vent` atrapa
+ * "ventajas". La segunda auditoría midió el daño — 12 de 46 etiquetas informativas de un bróker
+ * quedaban bloqueadas, incluidas "Página siguiente", "Liquidez" y "Tasas de caución", que es
+ * exactamente lo que este agente viene a leer.
+ *
+ * Un agente que bloquea todo no es prudente: no puede paginar una tabla de fondos ni ordenarla, y
+ * los bloqueos que sí importan se pierden entre cientos que no.
+ *
+ * Cada excepción es una PALABRA COMPLETA, nombrada de a una. No hay comodines: "liquidez" pasa,
+ * "liquidá" no; "página" pasa, "pagá" no.
+ */
+export const PALABRAS_INFORMATIVAS = new Set([
+  'pag', 'pags', 'pagina', 'paginas', 'paginacion', 'page', 'pages', // "Pág. 2" queda en "pag"
+
+  'liquidez', 'iliquidez',
+  'ventaja', 'ventajas', 'ventana', 'ventanas',
+  'operativa', 'operativo', 'operatoria',
+  'ingresos', 'ingreso', // "Ingresos brutos" es un impuesto, no una acción
+  'extracto', 'extractos',
+  'contratado', 'contratados', 'contrato', 'contratos',
+  'cobranza', 'cobranzas', 'cobrada', 'cobradas',
+  'aplicacion', 'aplicaciones',
+  'compraventa', // el nombre del mercado, no el botón
+])
+
+/**
+ * FRASES informativas: la palabra sola sería sospechosa, la frase entera no lo es.
+ * Se evalúan ANTES que las raíces.
+ */
+export const FRASES_INFORMATIVAS = [
+  'ordenar por', 'orden de', 'mis operaciones', 'historial de operaciones',
+  'extracto de cuenta', 'tasas de caucion', 'tasa de caucion', 'ingresos brutos',
+  'resumen de operaciones', 'operaciones realizadas',
+]
+
+/** Claves de query que son de presentación, no de acción: paginar y ordenar no operan nada. */
+export const QUERY_PRESENTACION = ['pagina', 'page', 'orden', 'ordenar', 'sort', 'filtro', 'tab', 'limit', 'offset']
+
 /** Frases transaccionales que ninguna raíz sola atrapa. */
 export const FRASES_PROHIBIDAS = [
   'enviar orden', 'continuar operacion', 'confirmar operacion', 'si quiero', 'estoy de acuerdo',
@@ -89,15 +130,32 @@ export function normalizar(s) {
  * "Comprá" y "compraste" pero no "descompresión", y `pag` atrapa "Pagá" pero no "despagina".
  */
 export function contieneVerboProhibido(texto) {
-  const t = normalizar(texto)
+  let t = normalizar(texto)
   if (!t) return null
   for (const f of FRASES_PROHIBIDAS) {
     if (new RegExp(`(^|[^a-z0-9])${f.replace(/ /g, '[\\s,]+')}`).test(t)) return f
   }
-  for (const r of RAICES_PROHIBIDAS) {
-    if (new RegExp(`(^|[^a-z0-9])${r}`).test(t)) return r
+  // Las frases informativas se sacan del texto ANTES de buscar raíces: "Ordenar por rendimiento" no
+  // es una orden, y "Tasas de caución" es justo lo que hay que leer.
+  for (const f of FRASES_INFORMATIVAS) t = t.replace(new RegExp(f.replace(/ /g, '\\s+'), 'g'), ' ')
+
+  for (const palabra of t.split(/[^a-z0-9]+/)) {
+    if (!palabra || PALABRAS_INFORMATIVAS.has(palabra)) continue
+    const r = RAICES_PROHIBIDAS.find((raiz) => palabra.startsWith(raiz))
+    if (r) return r
   }
   return null
+}
+
+/**
+ * Saca de la URL las claves de query que son de PRESENTACIÓN (`?pagina=2`, `?orden=tir`) antes de
+ * buscar raíces. Paginar y ordenar una tabla no opera nada, y bloquearlos dejaba al agente sin poder
+ * recorrer una lista larga de fondos. La RUTA sigue evaluándose entera.
+ */
+export function sinQueryDePresentacion(url) {
+  let u = String(url ?? '')
+  for (const k of QUERY_PRESENTACION) u = u.replace(new RegExp(`([?&])${k}=[^&#]*`, 'gi'), '$1')
+  return u.replace(/[/?=&_.-]+/g, ' ')
 }
 
 /** ¿La URL/acción cae en una ruta transaccional? */
@@ -135,7 +193,7 @@ export function evaluarElemento(el = {}) {
   for (const campo of CAMPOS_URL) {
     const r = rutaProhibida(el[campo])
     if (r) return { permitido: false, motivo: `ruta transaccional "${r}" en ${campo}`, coincidencia: r, campo }
-    const v = contieneVerboProhibido(String(el[campo] ?? '').replace(/[/?=&_.-]+/g, ' '))
+    const v = contieneVerboProhibido(sinQueryDePresentacion(el[campo]))
     if (v) return { permitido: false, motivo: `raíz transaccional "${v}" en la URL de ${campo}`, coincidencia: v, campo }
   }
   // 3 · UN FORMULARIO ES UNA ORDEN EN POTENCIA — y todo lo que vive adentro también.
@@ -259,8 +317,8 @@ export function evaluarNavegacion(url) {
   }
   const r = rutaProhibida(url)
   if (r) return { permitido: false, motivo: `ruta transaccional "${r}"`, coincidencia: r, campo: 'url' }
-  const v = contieneVerboProhibido(String(url).replace(/[/?=&_-]+/g, ' '))
-  if (v) return { permitido: false, motivo: `verbo transaccional "${v}" en la URL`, coincidencia: v, campo: 'url' }
+  const v = contieneVerboProhibido(sinQueryDePresentacion(url))
+  if (v) return { permitido: false, motivo: `raíz transaccional "${v}" en la URL`, coincidencia: v, campo: 'url' }
   return { permitido: true, motivo: 'ruta informativa', coincidencia: null, campo: null }
 }
 

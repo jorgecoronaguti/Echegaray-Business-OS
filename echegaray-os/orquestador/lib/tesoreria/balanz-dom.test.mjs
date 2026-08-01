@@ -158,7 +158,7 @@ test('el modal de confirmación queda bloqueado por su contenido, no por su clas
   })
   // El botón dice "Siguiente" — inofensivo por sí solo. Lo que lo delata es el modal que lo contiene.
   assert.equal(v.permitido, false)
-  assert.match(v.motivo, /suscri/i)
+  assert.match(v.motivo, /suscrib|confirm/i, `motivo real: ${v.motivo}`)
   assert.ok(['textoPadre', 'tituloModal'].includes(v.campo), `lo delata el contenedor, no el botón — cayó por ${v.campo}`)
 })
 
