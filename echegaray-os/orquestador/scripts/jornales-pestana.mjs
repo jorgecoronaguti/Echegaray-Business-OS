@@ -82,6 +82,10 @@ import { CATEGORIAS, COL, formulaValor, formulaVigencia, MES_SIGUIENTE } from '.
 import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
 import { JORNALES_FILE_ID } from '../lib/espejo-jornales.mjs'
 import { formulaSePagaEl, PARAMETROS } from '../lib/jornales-fecha-pago.mjs'
+import {
+  NOMBRES_DIRECCION, PARAMETRO_DIA_PAGO, formulaRetiroMensual, formulaPrimerRetiro,
+  formulaPagadoMes, formulaSePagaElDireccion, formulaProyectadoMes,
+} from '../lib/direccion-retiros.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Jornales por Quincena'
@@ -98,6 +102,9 @@ const AÑO = 2026
 const ANCHO = 14
 /** Los doce meses, para el cuadro de oficina: ahí se cobra por MES, no por quincena. */
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+// Los criterios de fecha que esta pestaña deja escritos en "Parámetros" para que se puedan cambiar
+// sin tocar código: cuándo se paga una quincena y qué día del mes salen los retiros de Dirección.
+const TODOS_LOS_PARAMETROS = [...PARAMETROS, PARAMETRO_DIA_PAGO]
 /** Sereno se paga por MES: no entra en la comparación por hora. */
 const ES_MENSUAL = (cat) => cat === 'Sereno'
 
@@ -253,7 +260,7 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [], 
   // la quincena en curso como si estuviera pagada. No lo está: al 23/07 la del 16/07–31/07 tiene
   // horas cargadas hasta el 21 y le faltan nueve días. Presentar una quincena a mitad de camino
   // junto a las cerradas es mezclar un hecho con algo que todavía se está formando.
-  const fHero = { costo: 0, cerradas: 0, aPagar: 0, sinRegistrar: 0, porBanco: 0, porAdelanto: 0, porRecibo: 0, curso: 0, falta: 0, ofiPagado: 0, ofiFalta: 0, plantel: 0 }
+  const fHero = { costo: 0, cerradas: 0, aPagar: 0, sinRegistrar: 0, porBanco: 0, porAdelanto: 0, porRecibo: 0, curso: 0, falta: 0, ofiPagado: 0, ofiFalta: 0, dirPagado: 0, dirFalta: 0, plantel: 0 }
   push(['JORNALES Y SUELDOS — lo pagado en el año y lo que falta hasta diciembre'])
   // EL TITULAR ENTRA EN SU COLUMNA. Con la fuente grande del hero, "…de oficina en el año" medía 49
   // caracteres en una columna de 330px que muestra 44, y a su derecha está el importe: se cortaba en
@@ -288,6 +295,11 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [], 
   fHero.falta = push([sub('Obra — falta pagar hasta diciembre')])
   fHero.ofiPagado = push([sub('Oficina — meses pagados')])
   fHero.ofiFalta = push([sub('Oficina — falta pagar hasta diciembre')])
+  // LA MITAD DE LA NÓMINA DE ADMINISTRACIÓN QUE NO ESTABA EN NINGÚN CUADRO (01/08). Los retiros de
+  // Dirección no vivían en ninguna planilla: sólo como filas sueltas de Compras, cargadas una vez.
+  // Acá arriba se ven al lado de las otras dos mitades, que es donde se lee cuánto cuesta la gente.
+  fHero.dirPagado = push([sub('Dirección — retiros ya pagados')])
+  fHero.dirFalta = push([sub('Dirección — falta pagar hasta diciembre')])
   fHero.plantel = push([sub('Plantel de obra de la última quincena')])
   // QUÉ NO ESTÁ ACÁ ADENTRO, DICHO EN LA PESTAÑA. El dueño: "¿está considerando lo que se le debe
   // pagar a la nómina en SAC y vacaciones? ¿eso está en cargas sociales?". No y sí: este cuadro es
@@ -425,8 +437,48 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [], 
   })
   blanco()
 
-  // ── 3 · CONTROL DE CONVENIO ──
-  push([seccion(3, 'Control de convenio — ningún jornal por debajo de la escala UOCRA')])
+  // ══ 3 · LOS RETIROS DE DIRECCIÓN ══
+  //
+  // POR QUÉ APARECE (01/08). El dueño, sobre la línea "Sueldos de administración": *"agregalos a
+  // jornales por quincena, como pagos mensuales a jorge echegaray, rodrigo echegaray y jorge corona,
+  // de ahí tiene que salir y se tiene que considerar impactando en todas las pestañas, esto aún no
+  // fue pagado"*. Es la respuesta a la pregunta que quedó abierta ayer —si Compras incluía gente que
+  // la planilla no tiene— y era que sí: la planilla tiene DOS personas y Compras CINCO.
+  //
+  // El razonamiento completo, con los números medidos, está en lib/direccion-retiros.mjs. Lo que
+  // importa acá: son $6.500.000 por mes que sólo estaban cargados UNA vez en Compras, así que de
+  // septiembre a diciembre el cash flow proyectaba $3.000.000 donde el compromiso es $9.800.000.
+  push([seccion(3, 'Dirección — retiros mensuales de los socios')])
+  push(['   · no están en la planilla JORNALES: el importe de cada uno es su última carga en Compras, y desde cuándo corre lo dice la fecha de caja de esa carga.'])
+  push(['   · "Pagado" son las filas de Compras ya marcadas como pagadas. Mientras no lo estén, el mes va en "Proyectado" y pesa en el calendario de caja.'])
+  push(['Persona', 'Retiro mensual', VACIO, VACIO, 'Desde'])
+  const dp0 = filas.length + 1
+  for (const nombre of NOMBRES_DIRECCION) push([nombre, formulaRetiroMensual(`$A$${filas.length + 1}`)])
+  const dpFin = dp0 + NOMBRES_DIRECCION.length - 1
+  // El total mensual y la fecha del primer retiro: las dos celdas de las que cuelga toda la grilla
+  // de abajo. Van juntas y a la vista, no escondidas adentro de doce fórmulas repetidas.
+  const fTotalMensual = push([rotuloTotal('Retiro mensual de Dirección'), `=SUM($B$${dp0}:$B$${dpFin})`,
+    VACIO, VACIO, formulaPrimerRetiro()])
+  blanco()
+  // La MISMA grilla que Oficina, columna por columna: dos bloques que responden la misma pregunta
+  // —cuánto sale de nómina cada mes— tienen que leerse igual. "Banco" queda para cuando se registre
+  // por qué canal salió; hoy ninguno está pagado.
+  push(['Mes', 'Personas', 'Pagado', VACIO, 'Se paga el', 'Banco', VACIO, 'Proyectado'])
+  const d0 = filas.length + 1
+  MESES.forEach((_, i) => {
+    const r = filas.length + 1
+    push([MESES[i], `=COUNTIF($B$${dp0}:$B$${dpFin};">0")`, formulaPagadoMes(i + 1, AÑO),
+      VACIO, formulaSePagaElDireccion(i + 1, AÑO), VACIO, VACIO,
+      formulaProyectadoMes(`E${r}`, `C${r}`, `$B$${fTotalMensual}`, `$E$${fTotalMensual}`)])
+  })
+  const dFin = d0 + MESES.length - 1
+  const fTotalDir = push([rotuloTotal('Dirección — pagado y por pagar en el año'), VACIO,
+    `=SUM(C$${d0}:C$${dFin})`, VACIO, VACIO, VACIO, VACIO, `=SUM(H$${d0}:H$${dFin})`])
+  push([sub('el cash flow lee este bloque por rango con nombre: DIRECCION_PAGO · DIRECCION_PAGADO · DIRECCION_PROYECTADO')])
+  blanco()
+
+  // ── 4 · CONTROL DE CONVENIO ──
+  push([seccion(4, 'Control de convenio — ningún jornal por debajo de la escala UOCRA')])
   // LA RÉPLICA DEL ACUERDO TRAE SALTOS DE LÍNEA ADENTRO DEL RÓTULO ("Julio\n+2%"): sin aplanarlos, la
   // fila crece a dos renglones y el texto queda cortado por la altura fija.
   const fVig = push([`=SUBSTITUTE(SUBSTITUTE(${formulaVigencia().slice(1)};CHAR(10);" ");CHAR(13);" ")`,
@@ -446,8 +498,11 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [], 
   // ninguna parte, así que el control sólo podía avisar de un incumplimiento cuando ya era pasado.
   // Con el escalón siguiente al lado, el margen del mes que viene se ve HOY — y si ese mes no está en
   // la réplica, la vigencia lo grita en vez de mostrar una escala vencida como si estuviera al día.
+  // LA GLOSA VA EN LA ÚLTIMA COLUMNA, NO EN LA DEL MEDIO. Cuando la réplica del acuerdo no tiene el
+  // mes, esta celda devuelve un aviso de 105 caracteres: en la columna 7 se desparrama sobre el resto
+  // de la grilla. El auditor de patrón lo marcaba en cada corrida y tenía razón.
   const fVigProx = push([sub('El escalón que viene — desde el mes próximo'),
-    VACIO, VACIO, VACIO, VACIO, VACIO,
+    ...Array(ANCHO - 2).fill(VACIO),
     `=SUBSTITUTE(SUBSTITUTE(${formulaVigencia(MES_SIGUIENTE).slice(1)};CHAR(10);" ");CHAR(13);" ")`])
   const fPisoProx = push([sub('Básico de Ayudante desde ese mes'), formulaValor('Ayudante', COL.basico, MES_SIGUIENTE)])
   const fMargenProx = push([sub('Margen contra ese piso — lo que falta corregir'), `=IF(N(B${fPisoProx})=0;"";B${fMin}/B${fPisoProx}-1)`])
@@ -466,8 +521,8 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [], 
   }
   blanco()
 
-  // ── 4 · EL REGISTRO ──
-  push([seccion(4, 'Obra — el registro, quincena por quincena')])
+  // ── 5 · EL REGISTRO ──
+  push([seccion(5, 'Obra — el registro, quincena por quincena')])
   // LA GLOSA DE LA COLUMNA NUEVA, EN LA PESTAÑA Y NO SÓLO EN EL CÓDIGO. Quien abre la planilla tiene
   // que poder saber de dónde salió esa fecha y que puede cambiarla, sin preguntarle a nadie.
   push([sub('"Se paga el" = el lote de haberes del banco; si todavía no salió, Hasta + Parámetros'),
@@ -567,7 +622,9 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [], 
   filas[fHero.falta - 1][1] = `=${cel(fTotalProy, 'H')}`
   filas[fHero.ofiPagado - 1][1] = `=${cel(fTotalOfi, 'C')}`
   filas[fHero.ofiFalta - 1][1] = `=${cel(fTotalOfi, 'H')}`
-  filas[fHero.costo - 1][1] = `=B${fHero.cerradas}+B${fHero.curso}+B${fHero.falta}+B${fHero.ofiPagado}+B${fHero.ofiFalta}`  /* las dos líneas de detalle del pago NO se suman: son una partición de las cerradas */
+  filas[fHero.dirPagado - 1][1] = `=${cel(fTotalDir, 'C')}`
+  filas[fHero.dirFalta - 1][1] = `=${cel(fTotalDir, 'H')}`
+  filas[fHero.costo - 1][1] = `=B${fHero.cerradas}+B${fHero.curso}+B${fHero.falta}+B${fHero.ofiPagado}+B${fHero.ofiFalta}+B${fHero.dirPagado}+B${fHero.dirFalta}`  /* las dos líneas de detalle del pago NO se suman: son una partición de las cerradas */
   filas[fHero.plantel - 1][1] = `=INDEX($E$${f0}:$E$${fLast};COUNTA($A$${f0}:$A$${fLast}))`
 
   return {
@@ -588,6 +645,9 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [], 
     // obra: sin esto la columna "Hasta" mostraba $46.037 —el número de serie de la fecha con formato
     // de moneda— y el ajuste por inflación salía como "$1".
     o0, oFin, fCurso: fHero.curso,
+    // El bloque de Dirección: la tabla de personas (dp0..dpFin) y la grilla de meses (d0..dFin).
+    // Las dos se pasan porque reciben formatos distintos — plata en las dos, pero fecha sólo en una.
+    dp0, dpFin, d0, dFin, fTotalMensual,
     fMin,
     fTotalProy,
     fTotalReal,
@@ -597,7 +657,7 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia, pagoPrevio = [], 
     // toda la grilla de la B a la L, y donde el hero deja un número más arriba en la misma columna, el
     // detector deja de leer "Hasta"/"Personas"/"Banco" como encabezado y los marca como texto en una
     // celda de moneda (12 casos). Se les devuelve el formato de texto DESPUÉS de la moneda.
-    encabezados: [p0 - 1, o0 - 1, f0 - 1],
+    encabezados: [p0 - 1, o0 - 1, f0 - 1, dp0 - 1, d0 - 1],
     fVig,
   }
 }
@@ -812,15 +872,17 @@ async function main() {
  * reescriben.
  *
  * @param {any[][]} filas Parámetros!A1:C…
+ * @param {object[]} params los parámetros a ubicar. Por defecto los tres que usa esta pestaña: los
+ *   dos de la fecha de pago de la quincena y el día en que salen los retiros de Dirección.
  * @returns {{rango:string, rotulo:string, fila:number, nuevo:boolean, valor:any, nota:string}[]}
  */
-export function ubicarParametros(filas = []) {
+export function ubicarParametros(filas = [], params = TODOS_LOS_PARAMETROS) {
   const norm = (s) => String(s ?? '').trim().toLowerCase()
   let libre = 0
   filas.forEach((f, i) => { if ((f || []).some((c) => String(c ?? '').trim())) libre = i + 1 })
   // Una fila en blanco de separación: el bloque nuevo no se pega al último de la pestaña.
   libre += 2
-  return PARAMETROS.map((p) => {
+  return params.map((p) => {
     const i = filas.findIndex((f) => norm(f?.[0]) === norm(p.rotulo))
     if (i >= 0) return { ...p, fila: i + 1, nuevo: false }
     const fila = libre
@@ -906,6 +968,12 @@ async function publicarRangos(google, sheetId, g) {
     // CUÁNTO se pagó de oficina y no de dónde salió, así que no lo restaba de ninguna disponibilidad.
     // El efectivo no tiene rango propio: es Pagado − Banco, y así los dos canales siempre cierran.
     OFICINA_BANCO: rango(5, g.o0, g.oFin),
+    // ═══ LOS RETIROS DE DIRECCIÓN, PUBLICADOS (01/08) ═══
+    // Misma forma que OFICINA_*, y por la misma razón: sin estos nombres el bloque sería otro cuadro
+    // que nadie lee. La línea "Sueldos de administración" del cash flow es OFICINA + DIRECCIÓN.
+    DIRECCION_PAGO: rango(4, g.d0, g.dFin),
+    DIRECCION_PAGADO: rango(2, g.d0, g.dFin),
+    DIRECCION_PROYECTADO: rango(7, g.d0, g.dFin),
   }
   const existentes = new Map((await google.getNamedRanges(ID)).map((r) => [r.name, r.namedRangeId]))
   const reqs = Object.entries(quiero).map(([name, range]) => (existentes.has(name)
@@ -997,6 +1065,11 @@ async function formatear(google, sheetId, filas, g) {
   fmt(g.o0 - 1, g.oFin, 1, 2, ENTERO)
   // "Se paga el" es una FECHA, no plata: sin esto el formato moneda de todo el ancho la dibuja "$46.235".
   fmt(g.o0 - 1, g.oFin, 4, 5, { type: 'DATE', pattern: 'dd/mm/yyyy' })
+  // Dirección: la fecha de pago de cada mes y la fecha "Desde" de la tabla de personas. Sin esto las
+  // dos salen como plata —"$46.242"— que es el serial de la fecha con formato de moneda encima.
+  fmt(g.d0 - 1, g.dFin, 4, 5, { type: 'DATE', pattern: 'dd/mm/yyyy' })
+  fmt(g.fTotalMensual - 1, g.fTotalMensual, 4, 5, { type: 'DATE', pattern: 'dd/mm/yyyy' })
+  fmt(g.d0 - 1, g.dFin, 1, 2, ENTERO)
   fmt(g.o0 - 1, g.oFin, 6, 7, { type: 'NUMBER', pattern: '0.00;-0.00;"—"' })
   for (const f of g.cantidades) fmt(f - 1, f, 1, 2, HORAS)
   for (const f of g.enteros) fmt(f - 1, f, 1, 2, ENTERO)

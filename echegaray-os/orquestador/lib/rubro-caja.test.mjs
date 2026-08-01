@@ -64,9 +64,11 @@ test('cada regla declara dónde vive su detalle y quién la paga', () => {
     assert.ok(r.detalle, `${r.rubro} no dice en qué pestaña está su detalle`)
     assert.ok(r.paga, `${r.rubro} no dice de dónde sale el monto`)
   }
-  // El único rubro que NO se paga desde Compras es jornales: su monto real está en la planilla.
+  // Los rubros que NO se pagan desde Compras son los DOS de nómina: su monto real está en la
+  // planilla (obra y oficina) o se proyecta desde el bloque de retiros (dirección). Compras los
+  // sigue teniendo cargados a mano, incompletos, y por eso no manda. Ver lib/direccion-retiros.mjs.
   const fuera = REGLAS.filter((r) => r.paga !== 'compras').map((r) => r.rubro)
-  assert.deepEqual(fuera, ['Nómina · Jornales de obra'])
+  assert.deepEqual(fuera, ['Nómina · Jornales de obra', 'Nómina · Sueldos administración'])
 })
 
 test('un plan de pago de F931 es deuda previsional, no un impuesto', () => {

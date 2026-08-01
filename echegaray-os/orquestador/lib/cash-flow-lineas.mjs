@@ -19,6 +19,9 @@ import { TASAS, REAL as REAL_DESCUBIERTO } from './costo-descubierto.mjs'
 // La fecha de caja de una quincena vive en un solo lugar: ni el cash flow ni la pestaña de Jornales
 // la definen por su cuenta. Ver lib/jornales-fecha-pago.mjs.
 import { fechaDeCajaDeQuincena } from './jornales-fecha-pago.mjs'
+// La otra mitad de la nómina de administración: los retiros mensuales de Dirección, que no están en
+// ninguna planilla y hasta hoy sólo existían como filas sueltas de Compras.
+import { formulaDireccion } from './direccion-retiros.mjs'
 // El "⇒ " de los rótulos de total sale de una sola función, la misma que usan los generadores.
 import { total } from './patron-pestana.mjs'
 
@@ -457,6 +460,30 @@ export function formulaOficina(desde, hasta) {
 }
 
 /**
+ * NÚCLEO PURO: la línea "Sueldos de administración" del cash flow = OFICINA + DIRECCIÓN.
+ *
+ * ═══ POR QUÉ CAMBIÓ DE FUENTE (01/08) ═══
+ *
+ * Esta línea salía de Compras y el bloque de la planilla quedaba al lado como memo. Estaba puesto
+ * así a propósito el 31/07, con esta razón escrita: *"la diferencia es de $10M largos y NO sé cuál
+ * es la correcta: puede ser que Compras incluya gente que la planilla no tiene. Elegir una a ojo
+ * sería inventar."*
+ *
+ * Se midió y era exactamente eso. Compras tiene CINCO personas y la planilla DOS: los tres que
+ * faltaban son los retiros de Dirección (ver lib/direccion-retiros.mjs). El dueño confirmó quiénes
+ * son y dónde van, así que la planilla dejó de estar incompleta y ya no hay nada que elegir a ojo:
+ * las dos mitades de la nómina de administración viven ahora en "Jornales por Quincena" y ésta es
+ * su suma. La regla 9 del archivo —un solo juego de rubros— se cumple recién ahora.
+ *
+ * LO QUE SE INVIRTIÓ, Y ES LO QUE EVITA EL DOBLE CONTEO: el memo pasó a ser Compras. Las mismas
+ * filas siguen cargadas ahí (es donde el dueño registra el pago) pero YA NO SUMAN al flujo: la
+ * línea que suma es ésta. Mientras los dos números no coincidan, la brecha se ve en el cuadro.
+ */
+export function formulaAdministracion(desde, hasta) {
+  return `=${formulaOficina(desde, hasta).slice(1)}+${formulaDireccion(desde, hasta).slice(1)}`
+}
+
+/**
  * NÚCLEO PURO: las tres líneas de ingreso, leyendo Cobranzas.
  * La fecha de cobro es la real (columna Q) si ya se cobró, si no la de vencimiento (P): es la mejor
  * estimación disponible de CUÁNDO entra la plata. Cash flow es percibido, nunca devengado.
@@ -674,19 +701,17 @@ export const CUADRO = [
         nombre: 'Pagos al personal y cargas sociales', signo: -1,
         lineas: [
           { nombre: 'Jornales de obra', rubro: 'Nómina · Jornales de obra' },
-          // ═══ DOS NÚMEROS PARA EL MISMO SUELDO, LOS DOS A LA VISTA (31/07) ═══
+          // ═══ RESUELTO: ERA GENTE QUE FALTABA, NO UNA FÓRMULA MAL (01/08) ═══
           //
-          // El dueño: "no estás considerando oficina". Era cierto: el bloque Oficina de la pestaña
-          // Jornales —que lee la planilla de sueldos— no lo consumía NINGUNA fórmula, y esta línea
-          // salía de Compras. Medido: Compras dice $51.020.773 y la planilla $19.909.063 pagados +
-          // $21.385.051 proyectados. La diferencia es de $10M largos y NO sé cuál es la correcta: puede
-          // ser que Compras incluya SAC y cargas de administración, o gente que la planilla no tiene.
+          // El 31/07 esta línea salía de Compras y acá decía que no se podía elegir entre las dos
+          // fuentes sin inventar, porque la diferencia de $10M largos podía ser "gente que la planilla
+          // no tiene". Era exactamente eso: Compras tiene CINCO personas y la planilla DOS. Los tres
+          // que faltaban son los retiros de Dirección — Jorge Echegaray, Rodrigo Echegaray y Jorge
+          // Corona— que no estaban en ninguna planilla.
           //
-          // Elegir una a ojo sería inventar. Lo que corresponde es lo que hace el resto del archivo con
-          // las cobranzas esperadas: la que SALE DE CAJA suma (Compras: es lo que se pagó de verdad) y
-          // la otra queda al lado como MEMO que no suma, para que la diferencia se vea y se resuelva.
-          // El control de nómina de la pestaña Jornales mide la brecha.
-          { nombre: 'Sueldos de administración', rubro: 'Nómina · Sueldos administración' },
+          // Ahora las dos mitades viven en "Jornales por Quincena" y esta línea las suma
+          // (formulaAdministracion). Compras pasó a ser el MEMO de abajo: sigue cargado, ya no suma.
+          { nombre: 'Sueldos de administración', rubro: 'Nómina · Sueldos administración', detalle: 'Jornales por Quincena' },
           { nombre: 'Sueldo anual complementario', rubro: 'Nómina · SAC' },
           { nombre: 'Cargas sociales (F931)', rubro: 'Nómina · Cargas sociales' },
           { nombre: 'Aportes y contribuciones gremiales', rubro: 'Nómina · Gremiales' },
@@ -694,13 +719,25 @@ export const CUADRO = [
         ],
       },
       {
-        // MEMO, NO CAJA — signo 0, igual que las cobranzas esperadas. Hace VISIBLE la planilla de
-        // sueldos (la fuente de la nómina) al lado de lo que se cargó en Compras, sin contar dos veces
-        // el mismo sueldo. Mientras las dos no coincidan, la brecha se ve en el cuadro en vez de vivir
-        // en la cabeza de alguien. Ver formulaOficina.
-        nombre: 'ℹ Oficina según la planilla de sueldos (control, no suma al flujo)', signo: 0,
+        // MEMO, NO CAJA — signo 0, igual que las cobranzas esperadas. Son las dos MITADES de la línea
+        // que sí suma, más la otra fuente del mismo concepto, para que se pueda ver de dónde sale cada
+        // peso sin contarlo dos veces:
+        //
+        //   Oficina (planilla)  +  Dirección (retiros)  =  "Sueldos de administración" de arriba
+        //   Compras                                     =  lo cargado a mano, que ya NO suma
+        //
+        // Mientras Compras y la suma de las dos mitades no coincidan, la brecha se ve en el cuadro en
+        // vez de vivir en la cabeza de alguien. Se invirtió el 01/08: hasta ese día la que sumaba era
+        // Compras y el memo era la planilla.
+        // UNA SOLA LÍNEA, PARA QUE EL SUBTOTAL SIGNIFIQUE ALGO. La primera versión ponía tres
+        // —Oficina, Dirección y Compras— y el subtotal del grupo sumaba las dos mitades MÁS la otra
+        // fuente de esas mismas mitades: $19.323.125 en agosto, un número que no es nada y que se lee
+        // como el costo de la administración del mes. Un número que parece un total y no lo es es peor
+        // que no mostrarlo. Las dos mitades se ven abiertas en "Jornales por Quincena", que es donde
+        // está su detalle y adonde lleva el vínculo de la línea que sí suma.
+        nombre: 'ℹ La misma nómina de administración, según Compras (control, no suma al flujo)', signo: 0,
         lineas: [
-          { nombre: 'Oficina · pagado y proyectado por la planilla', oficina: true, detalle: 'Jornales por Quincena' },
+          { nombre: 'Sueldos de administración cargados a mano en Compras', rubro: 'Nómina · Sueldos administración', desdeCompras: true, detalle: 'Compras' },
         ],
       },
       {
@@ -803,7 +840,20 @@ export const CUADRO = [
  */
 export function verificarCuadro() {
   const lineas = CUADRO.flatMap((a) => a.grupos.flatMap((g) => g.lineas))
-  const usados = lineas.map((l) => l.rubro).filter(Boolean)
+  // ═══ UN MEMO NO OCUPA EL RUBRO, PERO TIENE QUE SER UN MEMO DE VERDAD (01/08) ═══
+  //
+  // "Sueldos de administración" aparece dos veces a propósito: la línea que SUMA lee la planilla de
+  // nómina y la de abajo lee Compras para que la brecha entre las dos fuentes se vea. La segunda no
+  // suma, así que no duplica plata y no puede consumir el rubro.
+  //
+  // Pero "no suma" no es una promesa: es una propiedad del grupo donde vive (`signo: 0`). Si alguien
+  // mueve esa línea a un grupo con signo −1, el cuadro contaría el sueldo dos veces y el control del
+  // pie —que compara contra el total de Compras— seguiría cerrando, porque las dos líneas salen del
+  // mismo lado. Por eso se verifica acá, que es donde se puede ver el grupo.
+  const memoFueraDeMemo = CUADRO.flatMap((a) => a.grupos.flatMap(
+    (g) => g.lineas.filter((l) => l.desdeCompras && g.signo !== 0).map((l) => `${l.nombre} (grupo "${g.nombre}")`)))
+  if (memoFueraDeMemo.length) throw new Error(`cash-flow-lineas: líneas de control que SÍ suman al flujo — contarían dos veces el mismo rubro: ${memoFueraDeMemo.join(', ')}`)
+  const usados = lineas.filter((l) => !l.desdeCompras).map((l) => l.rubro).filter(Boolean)
   const dup = usados.filter((r, i) => usados.indexOf(r) !== i)
   if (dup.length) throw new Error(`cash-flow-lineas: rubros repetidos en el cuadro: ${dup.join(', ')}`)
   const faltan = RUBROS.filter((r) => !usados.includes(r))
@@ -839,6 +889,10 @@ export function expresionReal(l, desde, hasta) {
   if (l.cheques || l.calendarioImpuestos) return null
   if (l.cobranzas) return formulaCobranzas(l.cobranzas, desde, hasta, l.modo).slice(1)
   if (l.rubro === 'Nómina · Jornales de obra') return formulaJornales(desde, hasta).slice(1)
+  // `desdeCompras` es la marca del MEMO: la misma línea, leída de la otra fuente, para que la brecha
+  // entre la planilla y lo cargado en Compras se vea en el cuadro. Sin esta marca las dos líneas
+  // darían el mismo número y el control no controlaría nada.
+  if (l.rubro === 'Nómina · Sueldos administración' && !l.desdeCompras) return formulaAdministracion(desde, hasta).slice(1)
   if (l.oficina) return formulaOficina(desde, hasta).slice(1)
   const ventana = `${COL_FECHA};">="&${desde};${COL_FECHA};"<"&${hasta}`
   // Los bienes de uso salen por su SUB-rubro (columna AF), no por el rubro: son una parte de
@@ -1094,6 +1148,11 @@ export function destinoDetalle(l, filasTabla = {}, filasCal = {}) {
   // Materiales" NO es una pestaña: es prosa que nombra DOS (Proveedores y Materiales); esas líneas
   // salen de Compras por rubro, así que su origen cierto es la columna fuente del monto (O), igual que
   // SAC/sueldos y el fallback genérico. Nunca un destino adivinado ni un tab inexistente.
+  // EL MEMO APUNTA A SU PROPIA FUENTE, NO A LA DEL RUBRO (01/08). La línea de control lee Compras
+  // justamente porque el rubro ya NO se paga desde ahí: si el vínculo siguiera la regla del rubro,
+  // llevaría a la pestaña de nómina —lo que la línea controla— y el control mandaría a leer el mismo
+  // número que dice controlar.
+  if (l.desdeCompras) return { pestaña: 'Compras', rango: soloRango(COL_TOTAL) }
   const tab = detalleDeRubro(l.rubro)
   if (tab && tab !== 'Compras' && !DETALLE_MULTI_PESTAÑA.has(tab)) return { pestaña: tab, rango: 'A1' }
   return { pestaña: 'Compras', rango: soloRango(COL_TOTAL) }

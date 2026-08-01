@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   formulaInteresSemana, edicionesConContenidoReal,
   formulaComisionesMes, formulaComisionesSemana, expresionComisionesPromedio, COMISIONES,
-  formulaOficina, formulaLineaMes, CUADRO,
+  formulaOficina, formulaLineaMes, CUADRO, expresionReal, verificarCuadro,
 } from './cash-flow-lineas.mjs'
 import { NAT } from './banco-santander.mjs'
 import { TASAS } from './costo-descubierto.mjs'
@@ -250,11 +250,50 @@ test('OFICINA: NO se vuelve a proyectar en el mensual — su bloque ya proyecta 
   assert.match(f, /OFICINA_PAGO/)
 })
 
-test('OFICINA: el memo no suma al flujo (signo 0) y el sueldo de Compras sigue siendo el que sale de caja', () => {
+test('NÓMINA DE ADMINISTRACIÓN: suma la planilla, y Compras queda como memo que no suma', () => {
+  // SE INVIRTIÓ EL 01/08. Hasta ese día la que sumaba era Compras y el memo era la planilla, porque
+  // no se sabía cuál de las dos era la correcta. Ahora se sabe: Compras tenía CINCO personas y la
+  // planilla DOS —faltaban los tres retiros de Dirección— así que la planilla estaba incompleta, no
+  // equivocada. Completada, manda ella. Ver lib/direccion-retiros.mjs.
   const grupos = CUADRO.flatMap((a) => a.grupos)
-  const memo = grupos.find((g) => /planilla de sueldos/.test(g.nombre))
-  assert.ok(memo, 'existe el grupo memo de la planilla')
+  const memo = grupos.find((g) => /según Compras/.test(g.nombre))
+  assert.ok(memo, 'existe el grupo de control de la nómina de administración')
   assert.equal(memo.signo, 0, 'un memo NUNCA suma: contaría dos veces el mismo sueldo')
-  const caja = grupos.flatMap((g) => g.lineas).find((l) => l.rubro === 'Nómina · Sueldos administración')
-  assert.ok(caja, 'lo que efectivamente salió de caja sigue mostrándose y sumando')
+  // UNA sola línea, y su subtotal es esa línea. Con tres, el subtotal sumaba las dos mitades más la
+  // otra fuente de esas mismas mitades: un número que parece el costo del mes y no es nada.
+  assert.equal(memo.lineas.length, 1, 'el subtotal de un grupo de control tiene que significar algo')
+  assert.ok(memo.lineas[0].desdeCompras, 'el control se lee de Compras, que es la otra fuente')
+
+  // La línea que SUMA existe, está en un grupo con signo, y no es la del memo.
+  const gCaja = grupos.find((g) => g.lineas.some((l) => l.rubro === 'Nómina · Sueldos administración' && !l.desdeCompras))
+  assert.ok(gCaja, 'la nómina de administración tiene que seguir saliendo de caja')
+  assert.equal(gCaja.signo, -1)
+})
+
+test('la línea que suma lee la planilla; la del memo lee Compras — si no, el control se compara consigo mismo', () => {
+  const lineas = CUADRO.flatMap((a) => a.grupos.flatMap((g) => g.lineas))
+  const suma = lineas.find((l) => l.rubro === 'Nómina · Sueldos administración' && !l.desdeCompras)
+  const memo = lineas.find((l) => l.desdeCompras)
+  const fSuma = expresionReal(suma, '$C$3', '$D$3')
+  const fMemo = expresionReal(memo, '$C$3', '$D$3')
+  assert.ok(fSuma.includes('OFICINA_PAGO') && fSuma.includes('DIRECCION_PAGO'), fSuma)
+  assert.ok(!fSuma.includes('Compras!'), `la que suma no puede leer Compras: ${fSuma}`)
+  assert.ok(fMemo.includes('Compras!$AC$4:$AC'), `el memo tiene que leer Compras: ${fMemo}`)
+  assert.notEqual(fSuma, fMemo, 'un control que devuelve lo mismo que lo controlado no controla nada')
+})
+
+test('una línea de control NUNCA puede vivir en un grupo que suma', () => {
+  // El guard de verificarCuadro. Se prueba de verdad —moviendo la línea— y no leyendo el código:
+  // si mañana alguien la muda a "Pagos al personal", el cuadro contaría el sueldo dos veces y el
+  // control del pie seguiría cerrando, porque las dos líneas salen del mismo lado.
+  const grupos = CUADRO.flatMap((a) => a.grupos)
+  const memo = grupos.find((g) => g.lineas.some((l) => l.desdeCompras))
+  const original = memo.signo
+  memo.signo = -1
+  try {
+    assert.throws(() => verificarCuadro(), /líneas de control que SÍ suman/)
+  } finally {
+    memo.signo = original
+  }
+  assert.doesNotThrow(() => verificarCuadro(), 'el cuadro tiene que volver a estar sano')
 })
