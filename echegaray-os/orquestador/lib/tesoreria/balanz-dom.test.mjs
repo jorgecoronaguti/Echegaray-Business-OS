@@ -257,3 +257,35 @@ test('navegarSeguro no navega a una ruta transaccional ni con el navegador abier
   assert.equal(r.bloqueos.length, 1)
   assert.ok(!r.url.includes('balanz.com'), 'la página no se movió')
 })
+
+test('el mapeo de estructura devuelve datos — un string habría devuelto undefined', opts, async () => {
+  // Verificado contra Chromium: `page.evaluate('() => { ... }')` Y `page.evaluate('() => ({...})')`
+  // devuelven AMBOS `undefined`. Sólo una función real funciona. El explorador —el script con el que
+  // se valida el extractor contra Balanz— usaba strings: habría mapeado cero tablas y cero controles
+  // sin fallar, y la pantalla habría parecido vacía.
+  const { estructuraDePagina, controlesDePagina, cargarTodo } = await import('./balanz-navegador.mjs')
+  const r = await conPagina(async (page) => ({
+    est: await page.evaluate(estructuraDePagina),
+    ctrl: await controlesDePagina(page),
+  }))
+  assert.ok(r.est, 'la estructura no puede ser undefined')
+  assert.equal(r.est.encabezados[0].texto, 'Fondos Comunes de Inversión')
+  assert.equal(r.est.tablas.length, 1)
+  assert.deepEqual(r.est.tablas[0].cabecera.slice(0, 3), ['Fondo', 'Moneda', 'TNA'])
+  assert.equal(r.est.tablas[0].filas, 3)
+  assert.deepEqual(r.est.tabs, ['Pesos', 'Dólares'])
+  assert.ok(r.est.paginacion >= 1)
+  assert.ok(r.ctrl.length >= 8, `controles: ${r.ctrl.length}`)
+  assert.ok(r.ctrl.every((c) => typeof c === 'object' && 'tag' in c), 'cada control tiene que traer sus atributos')
+  void cargarTodo
+})
+
+test('cargarTodo dispara el lazy loading y para cuando la altura deja de crecer', opts, async () => {
+  const { estructuraDePagina, cargarTodo } = await import('./balanz-navegador.mjs')
+  const r = await conPagina(async (page) => {
+    const vueltas = await cargarTodo(page, 5)
+    return { vueltas, est: await page.evaluate(estructuraDePagina) }
+  })
+  assert.equal(r.est.tablas[0].filas, 5, 'las dos filas diferidas tienen que estar')
+  assert.ok(r.vueltas < 5, `paró sola en ${r.vueltas} vueltas, no agotó el tope`)
+})

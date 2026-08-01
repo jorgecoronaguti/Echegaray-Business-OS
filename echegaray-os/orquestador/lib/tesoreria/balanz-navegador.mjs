@@ -166,6 +166,65 @@ export function extraerAtributos(el) {
 }
 
 /**
+ * ESTRUCTURA SEMÁNTICA DE LA PÁGINA — encabezados, tablas con sus columnas, listas, tabs, paginación.
+ *
+ * Vive acá y no en el script del explorador por dos motivos: se pasa como FUNCIÓN (un string, en
+ * cualquiera de sus dos formas, devuelve `undefined` en silencio — verificado contra Chromium), y así
+ * se puede probar contra una página real sin necesitar una sesión de Balanz.
+ *
+ * Sirve para elegir selectores semánticos —rol, nombre accesible, encabezado de tabla— en vez de
+ * clases CSS, que cambian con cada despliegue del bróker.
+ */
+export function estructuraDePagina() {
+  const texto = (el) => (el?.innerText || '').trim().slice(0, 120)
+  const encabezados = [...document.querySelectorAll('h1,h2,h3,[role=heading]')].slice(0, 40)
+    .map((h) => ({ nivel: h.tagName.toLowerCase(), texto: texto(h) }))
+  const tablas = [...document.querySelectorAll('table,[role=table],[role=grid]')].slice(0, 20).map((t, i) => {
+    const cabecera = [...t.querySelectorAll('th,[role=columnheader]')].map(texto).filter(Boolean)
+    const cuerpo = [...t.querySelectorAll('tbody tr')]
+    return {
+      i,
+      cabecera,
+      filas: cuerpo.length,
+      muestra: cuerpo.slice(0, 3).map((r) => [...r.querySelectorAll('td,[role=cell],[role=gridcell]')].map(texto)),
+      tieneAria: Boolean(t.getAttribute('aria-label')),
+    }
+  })
+  const listas = [...document.querySelectorAll('[role=list],ul')].slice(0, 10)
+    .map((l) => ({ items: l.children.length, primero: texto(l.children[0]) }))
+    .filter((l) => l.items > 2 && l.primero)
+  const tabs = [...document.querySelectorAll('[role=tab],[role=tablist] button')].slice(0, 20).map(texto).filter(Boolean)
+  const paginacion = [...document.querySelectorAll('[aria-label*=agina],[class*=pagina],[class*=pagination]')].length
+  return {
+    titulo: document.title,
+    url: location.href,
+    encabezados, tablas, listas, tabs, paginacion,
+    alto: document.body.scrollHeight,
+    visible: window.innerHeight,
+  }
+}
+
+/** Baja hasta el final para que carguen las filas diferidas. Scrollear NO es tocar un control. */
+export async function cargarTodo(page, vueltas = 8) {
+  let alto = 0
+  for (let i = 0; i < vueltas; i += 1) {
+    const nuevo = await page.evaluate(() => document.body.scrollHeight)
+    if (nuevo === alto) return i
+    alto = nuevo
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+    await page.waitForTimeout(700)
+  }
+  return vueltas
+}
+
+/** Todos los controles de la página, ya extraídos para la barrera. */
+export async function controlesDePagina(page) {
+  return page.locator('a, button, input[type=submit], form')
+    .evaluateAll((nodos, f) => nodos.slice(0, 400).map(new Function('el', `return (${f})(el)`)), extraerAtributos.toString())
+    .catch(() => [])
+}
+
+/**
  * Clic con barrera. Es el ÚNICO camino por el que este agente toca algo en Balanz: no hay un
  * `page.click` suelto en todo el módulo, y el test lo verifica leyendo este archivo.
  */
@@ -189,9 +248,7 @@ export async function clicSeguro(page, selector, bloqueos = []) {
  * la barrera vio la pantalla real y la clasificó.
  */
 export async function auditarControles(page) {
-  const els = await page.locator('a, button, input[type=submit], form')
-    .evaluateAll((nodos, f) => nodos.slice(0, 400).map(new Function('el', `return (${f})(el)`)), extraerAtributos.toString())
-    .catch(() => [])
+  const els = await controlesDePagina(page)
   const bloqueados = []
   let permitidos = 0
   for (const el of els) {

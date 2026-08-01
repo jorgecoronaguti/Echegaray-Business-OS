@@ -92,15 +92,27 @@ test('normalizar saca tildes y colapsa espacios', () => {
 // Que la barrera funcione no sirve si el navegador la puentea. Este test lee el archivo del
 // navegador y verifica que no exista un camino de clic que no pase por acá.
 
-test('el navegador NO tiene ningún clic ni goto que saltee la barrera', () => {
-  const src = readFileSync(join(DIR, 'balanz-navegador.mjs'), 'utf8')
-  // Los únicos usos permitidos viven dentro de clicSeguro/navegarSeguro.
-  const clics = [...src.matchAll(/\.click\(/g)].length
-  const gotos = [...src.matchAll(/\.goto\(/g)].length
-  assert.equal(clics, 1, 'hay más de un .click(): alguno no pasa por clicSeguro')
-  assert.equal(gotos, 1, 'hay más de un .goto(): alguno no pasa por navegarSeguro')
-  assert.match(src, /evaluarElemento/, 'el navegador no llama a la barrera')
-  assert.match(src, /evaluarNavegacion/, 'el navegador no evalúa las navegaciones')
+test('NINGÚN archivo tiene un clic o un goto que saltee la barrera', () => {
+  // El test miraba sólo `balanz-navegador.mjs`, y el explorador tiene su propio `goto`: el invariante
+  // no estaba cubierto donde podía romperse. Ahora se revisan TODOS los archivos que manejan la
+  // página, y cada `goto` tiene que estar acompañado de su `evaluarNavegacion` en el mismo archivo.
+  const archivos = [
+    join(DIR, 'balanz-navegador.mjs'),
+    join(DIR, '..', '..', 'scripts', 'balanz-explorar.mjs'),
+  ]
+  let clics = 0
+  for (const f of archivos) {
+    const src = readFileSync(f, 'utf8')
+    clics += [...src.matchAll(/\.(click|tap|fill|press|selectOption|check)\(/g)].length
+    const gotos = [...src.matchAll(/\.goto\(/g)].length
+    if (gotos > 0) {
+      assert.match(src, /evaluarNavegacion|navegarSeguro/, `${f} navega sin consultar la barrera`)
+    }
+  }
+  assert.equal(clics, 1, 'sólo puede existir UN clic en todo el subsistema: el de clicSeguro')
+  const nav = readFileSync(join(DIR, 'balanz-navegador.mjs'), 'utf8')
+  assert.match(nav, /evaluarElemento/, 'el navegador no llama a la barrera')
+  assert.match(nav, /evaluarNavegacion/, 'el navegador no evalúa las navegaciones')
 })
 
 test('el navegador NO extrae cookies, tokens ni contraseñas', () => {

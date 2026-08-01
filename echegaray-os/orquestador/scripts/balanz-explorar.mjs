@@ -28,7 +28,10 @@
 //
 //   ssh -N -R 127.0.0.1:9222:127.0.0.1:9222 <usuario>@<servidor>
 
-import { sesionDisponible, ENDPOINT_CDP, ORIGEN_BALANZ, SesionRequerida } from '../lib/tesoreria/balanz-navegador.mjs'
+import {
+  sesionDisponible, ENDPOINT_CDP, ORIGEN_BALANZ, SesionRequerida,
+  estructuraDePagina, controlesDePagina, cargarTodo, verificarSesion,
+} from '../lib/tesoreria/balanz-navegador.mjs'
 import { evaluarNavegacion, evaluarElemento } from '../lib/tesoreria/balanz-denylist.mjs'
 import { RUTAS_INFORMATIVAS } from '../lib/tesoreria/ciclo.mjs'
 
@@ -36,41 +39,6 @@ const args = process.argv.slice(2)
 const JSON_OUT = args.includes('--json')
 const rutas = args.filter((a) => a.startsWith('/'))
 const RUTAS = rutas.length ? rutas : RUTAS_INFORMATIVAS
-
-/** Extrae la estructura semántica de la página. Se corre EN el navegador, en una sola pasada. */
-const MAPEAR = `() => {
-  const texto = (el) => (el?.innerText || '').trim().slice(0, 120)
-  const encabezados = [...document.querySelectorAll('h1,h2,h3,[role=heading]')].slice(0, 40).map((h) => ({
-    nivel: h.tagName.toLowerCase(), texto: texto(h),
-  }))
-  const tablas = [...document.querySelectorAll('table,[role=table],[role=grid]')].slice(0, 20).map((t, i) => {
-    const cabecera = [...t.querySelectorAll('th,[role=columnheader]')].map(texto).filter(Boolean)
-    const filas = [...t.querySelectorAll('tbody tr,[role=row]')].length
-    const muestra = [...t.querySelectorAll('tbody tr,[role=row]')].slice(1, 4).map(
-      (r) => [...r.querySelectorAll('td,[role=cell],[role=gridcell]')].map(texto),
-    )
-    return { i, cabecera, filas, muestra, tieneAria: Boolean(t.getAttribute('aria-label')) }
-  })
-  const listas = [...document.querySelectorAll('[role=list],ul')].slice(0, 10)
-    .map((l) => ({ items: l.children.length, primero: texto(l.children[0]) }))
-    .filter((l) => l.items > 2 && l.primero)
-  const tabs = [...document.querySelectorAll('[role=tab],[role=tablist] button')].slice(0, 20).map(texto).filter(Boolean)
-  const paginacion = [...document.querySelectorAll('[aria-label*=agina],[class*=pagina],[class*=pagination]')].length
-  return {
-    titulo: document.title, url: location.href,
-    encabezados, tablas, listas, tabs, paginacion,
-    alto: document.body.scrollHeight, visible: window.innerHeight,
-  }
-}`
-
-const EXTRAER_CONTROL = `(el) => ({
-  tag: el.tagName, rol: el.getAttribute('role'), tipo: el.getAttribute('type'),
-  texto: (el.innerText || el.textContent || '').slice(0, 200),
-  ariaLabel: el.getAttribute('aria-label'), title: el.getAttribute('title'),
-  href: el.getAttribute('href'), action: el.getAttribute('action'),
-  formAction: el.getAttribute('formaction'), dataUrl: el.getAttribute('data-url'),
-  textoPadre: (el.parentElement?.innerText || '').slice(0, 200),
-})`
 
 async function main() {
   const disp = await sesionDisponible(ENDPOINT_CDP)
@@ -93,27 +61,20 @@ async function main() {
       const v = evaluarNavegacion(url)
       if (!v.permitido) { mapa.push({ ruta, estado: 'bloqueada', motivo: v.motivo }); continue }
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
-      if (await page.locator('input[type="password"]').count().catch(() => 0)) {
-        console.error('SESSION_REQUIRED: hay un campo de contraseña en pantalla. No se automatiza el login.')
+      // Mismo chequeo que el ciclo: dominio + sesión. Si vencio, se para.
+      try { await verificarSesion(page) } catch (e) {
+        console.error(`${e.message}\nNo se automatiza el login: entrá a mano en el Chrome dedicado.`)
         process.exitCode = 2
         return
       }
       await page.waitForTimeout(1500)
 
-      // LAZY LOADING: se baja hasta el final para que carguen las filas diferidas. Bajar la página no
-      // es interactuar con un control — no dispara nada, y es la única forma de ver la tabla entera.
-      let alto = 0
-      for (let i = 0; i < 8; i += 1) {
-        const nuevo = await page.evaluate('document.body.scrollHeight')
-        if (nuevo === alto) break
-        alto = nuevo
-        await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
-        await page.waitForTimeout(700)
-      }
+      // LAZY LOADING: bajar la página no es interactuar con un control —no dispara nada— y es la
+      // única forma de ver la tabla entera.
+      await cargarTodo(page)
 
-      const estructura = await page.evaluate(MAPEAR)
-      const controles = await page.locator('a, button, input[type=submit], form')
-        .evaluateAll(`(els) => els.slice(0, 400).map(${EXTRAER_CONTROL})`).catch(() => [])
+      const estructura = await page.evaluate(estructuraDePagina)
+      const controles = await controlesDePagina(page)
       const veredictos = controles.map((el) => ({ el, v: evaluarElemento(el) }))
       mapa.push({
         ruta, estado: 'ok', ...estructura,
