@@ -216,7 +216,7 @@ async function main() {
     }
   } catch (e) { console.log(`· pre-pasada de firma/reconciliación no disponible (${e.message}) — sigue el candado por paso\n`) }
 
-  for (const [script, que, pestañas = []] of PASOS) {
+  for (const [script, que, pestañas = [], args = []] of PASOS) {
     const inicio = Date.now()
     if (pasoTotalmenteBloqueado(pestañas, bloqueadas)) {
       saltados.push({ script, pestañas })
@@ -227,7 +227,10 @@ async function main() {
     try {
       // process.execPath, NO 'node': bajo systemd el PATH no incluye el node de nvm y los hijos
       // fallaban con ENOENT. Así siempre usa el mismo intérprete que está corriendo este script.
-      const { stdout } = await ejecutar(process.execPath, [path.join(AQUI, script)], {
+      // ARGUMENTOS POR PASO (01/08). Un generador que sabe escribir en dos destinos —el de prueba y
+      // el real— necesita que el pipeline le diga cuál. Sin esto, "Cheques Recibidos" quedaba en manos
+      // del generador viejo y el nuevo sólo corría a mano.
+      const { stdout } = await ejecutar(process.execPath, [path.join(AQUI, script), ...args], {
         env: process.env,
         maxBuffer: 8 * 1024 * 1024,
         timeout: 5 * 60 * 1000,
