@@ -48,6 +48,9 @@ before(async () => {
   const sql = readFileSync(join(APP, 'supabase', 'migrations', '20260801170000_tesoreria_inversor.sql'), 'utf8')
   await query(sql)
   await query(sql)
+  // Un test que sólo pasa la primera vez contra una base limpia no es un test: es una casualidad.
+  // Correrlo dos veces seguidas contra el mismo contenedor tiene que dar lo mismo.
+  await query(`truncate tesoreria.corridas, tesoreria.instrumentos, tesoreria.politicas restart identity cascade`)
   runId = await ledger.abrirCorrida(query, { correlationId: 'test' })
 })
 
@@ -126,10 +129,46 @@ test('el bloqueo de seguridad se guarda sin reconstruir la pantalla del bróker'
   assert.equal(rows[0].elemento.texto, 'Comprar')
 })
 
-test('la política vigente sale de la base y sin fila devuelve null', opts, async () => {
-  assert.equal(await ledger.politicaVigente(query, 'reserva_minima'), null, 'sin política, el agente declara el gap')
-  await query("insert into tesoreria.politicas (clave, valor, aprobada_por) values ('reserva_minima','5000000','jorge')")
-  assert.equal(await ledger.politicaVigente(query, 'reserva_minima'), 5000000)
+test('GUARDAR NO ES APROBAR: la fila entera viaja, y sin aprobador es una propuesta', opts, async () => {
+  const { estadoReserva, ESTADO_POLITICA } = await import('./politicas.mjs')
+
+  // Sin fila: el agente declara el gap.
+  assert.equal(await ledger.politicaVigente(query, 'reserva_minima'), null)
+  assert.equal(estadoReserva(null).estado, ESTADO_POLITICA.AUSENTE)
+
+  // Guardada SIN aprobador. Devolver sólo `valor` —como hacía la primera versión— hacía imposible
+  // distinguir esto de una política aprobada: el aprobador vive en la FILA, no en el valor.
+  await query(`insert into tesoreria.politicas (clave, valor) values ('reserva_minima', '{"monto":5000000,"metodo":"piso_mas_egresos"}')`)
+  const propuesta = await ledger.politicaVigente(query, 'reserva_minima')
+  assert.equal(propuesta.aprobada_por, null)
+  assert.equal(estadoReserva(propuesta).estado, ESTADO_POLITICA.PROPUESTA)
+
+  // Aprobar cierra la anterior y crea una nueva: queda el historial de qué regla regía cuándo.
+  await query('update tesoreria.politicas set vigente_hasta = now() where id = $1', [propuesta.id])
+  await query(`insert into tesoreria.politicas (clave, valor, aprobada_por, aprobada_en)
+               values ('reserva_minima', $1, 'jorge', now())`, [JSON.stringify(propuesta.valor)])
+  const aprobada = estadoReserva(await ledger.politicaVigente(query, 'reserva_minima'))
+  assert.equal(aprobada.estado, ESTADO_POLITICA.APROBADA)
+  assert.equal(aprobada.monto, 5000000)
+  assert.equal(aprobada.aprobada_por, 'jorge')
+
+  // Y la propuesta vieja sigue ahí: el historial no se pisa.
+  const { rows } = await query("select count(*)::int n from tesoreria.politicas where clave='reserva_minima'")
+  assert.equal(rows[0].n, 2)
+})
+
+test('la caja restringida se declara por la MISMA tabla y su fila se modela con estado', opts, async () => {
+  const { modelarCajaRestringida, ESTADO_RESTRINGIDA } = await import('./politicas.mjs')
+  assert.equal(await ledger.filaCajaRestringida(query), null, 'sin declarar es null, no cero')
+
+  await query(`insert into tesoreria.politicas (clave, valor, aprobada_por, aprobada_en)
+               values ('caja_restringida', $1, 'jorge', now())`,
+  [JSON.stringify({ monto: 0, fuente: 'revisión de garantías', declarada_en: new Date().toISOString() })])
+  const fila = await ledger.filaCajaRestringida(query)
+  const m = modelarCajaRestringida(fila)
+  assert.equal(m.restricted_cash_status, ESTADO_RESTRINGIDA.KNOWN_ZERO, 'un cero DECLARADO sí es un cero')
+  assert.equal(m.bloquea_accionable, false)
+  assert.equal(m.restricted_cash_source, 'revisión de garantías')
 })
 
 test('resumenAnterior devuelve la foto de la última corrida cerrada', opts, async () => {
@@ -138,4 +177,17 @@ test('resumenAnterior devuelve la foto de la última corrida cerrada', opts, asy
   })
   const r = await ledger.resumenAnterior(query)
   assert.equal(r.excedente, 123)
+})
+
+test('no se puede marcar aprobador sin fecha ni fecha sin aprobador', opts, async () => {
+  // Las dos juntas o ninguna: media aprobación no es una aprobación, y dejar `aprobada_por` suelto
+  // haría que `estadoReserva` diera APROBADA sin que nadie sepa cuándo ni contra qué datos.
+  await assert.rejects(
+    () => query("insert into tesoreria.politicas (clave, valor, aprobada_por) values ('x','{}','jorge')"),
+    /politicas_aprobacion_completa/,
+  )
+  await assert.rejects(
+    () => query("insert into tesoreria.politicas (clave, valor, aprobada_en) values ('x','{}',now())"),
+    /politicas_aprobacion_completa/,
+  )
 })

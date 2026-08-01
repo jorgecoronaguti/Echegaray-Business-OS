@@ -197,10 +197,18 @@ create table if not exists tesoreria.politicas (
   valor         jsonb not null,
   vigente_desde timestamptz not null default now(),
   vigente_hasta timestamptz,
+  -- APROBADA_POR Y APROBADA_EN VAN JUNTAS, y son lo que distingue una política de una propuesta.
+  -- Sin ellas, `creada_en` sería lo único disponible y "guardado" se confundiría con "aprobado" —
+  -- que es exactamente la confusión que este agente no puede permitirse: sin aprobación real, todo
+  -- lo que calcula es un techo técnico, no un monto ejecutable.
   aprobada_por  text,
+  aprobada_en   timestamptz,
   motivo        text,
-  creada_en     timestamptz not null default now()
+  creada_en     timestamptz not null default now(),
+  constraint politicas_aprobacion_completa check ((aprobada_por is null) = (aprobada_en is null))
 );
+-- Para una base donde la migración ya corrió sin la columna (aditivo, no destructivo).
+alter table tesoreria.politicas add column if not exists aprobada_en timestamptz;
 create index if not exists tesoreria_politicas_vigentes_idx on tesoreria.politicas (clave, vigente_desde desc);
 
 -- --- Seguridad y errores del navegador --------------------------------------
