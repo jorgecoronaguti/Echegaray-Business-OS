@@ -3,6 +3,14 @@
   "worktree": {
     "baseRef": "head"
   },
+  "permissions": {
+    "deny": [
+      "Bash(node orquestador/scripts/pestana-candado.mjs desbloquear:*)",
+      "Bash(*pestana-candado.mjs desbloquear*)",
+      "Bash(ORQ_PROV_FORCE=*)",
+      "Bash(*ORQ_PROV_FORCE=*)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {

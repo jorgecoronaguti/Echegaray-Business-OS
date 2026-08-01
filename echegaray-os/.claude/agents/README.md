@@ -17,7 +17,9 @@ Un agente se justifica sólo si aporta **al menos una** de estas tres cosas:
 | **Herramientas restringidas** | Que sea *imposible* hacer daño, no que esté prohibido | un auditor que **no tiene** `Edit` no puede pisar una pestaña |
 | **Modelo más barato** | Trabajo mecánico que no necesita criterio caro | leer logs, correr tests, mirar timers |
 
-Si la respuesta es "aporta criterio de dominio" → **eso es una skill**, y hay 42. No se duplica.
+Si la respuesta es "aporta criterio de dominio" → **eso es una skill**, y ya hay decenas. No se
+duplica. (Cuántas exactamente lo dice `inventario_skills.py`; escribir el número acá es fabricar
+la próxima mentira — este README ya dijo "42" cuando eran 41.)
 
 Y al revés: los cuatro auditores de acá **no llevan conocimiento de negocio adentro**. Cargan la skill
 que corresponda igual que cualquiera. Lo que aportan es la *posición* desde la que miran: afuera del
@@ -77,6 +79,20 @@ node .claude/agents/scripts/inventario-agentes.mjs             # qué hay, con q
 node .claude/agents/scripts/inventario-agentes.mjs --validar   # exit 1 si alguno está mal declarado
 ```
 
+Y corre solo: `agentes.test.mjs` lo ejecuta con la suite. Un validador que hay que acordarse de
+tipear caduca igual que la lista a mano que vino a reemplazar.
+
+---
+
+## Dos límites del descubrimiento — se pagan con una hora de confusión
+
+1. **El cwd tiene que ser `echegaray-os/`, no la raíz del repo.** `$CLAUDE_PROJECT_DIR` resuelve al
+   directorio desde donde arrancó el CLI. Arrancando desde `app/` —que es la raíz de git y donde vive
+   el `CLAUDE.md` raíz— **los nueve agentes no existen**, y no hay ningún aviso.
+2. **No se cargan en caliente.** Se leen al arrancar la sesión. Un agente creado a mitad de sesión no
+   está disponible hasta la siguiente. Verificado: crear los archivos y llamarlos en la misma sesión
+   devuelve `Agent type not found`.
+
 ---
 
 ## Reglas de declaración
@@ -114,10 +130,28 @@ Del Agent SDK, el diagnóstico según el síntoma — es más útil que reescrib
 | No se corrige solo | le faltan herramientas para intentar otro camino |
 | Rinde distinto cada vez | hace falta un set de casos representativos para medirlo, no una impresión |
 
+## Una prohibición escrita no es un control
+
+El prompt de un agente dice qué no debe hacer. **No le impide hacerlo.** Con el permiso en modo
+bypass, un `Bash` ejecuta sin preguntar, y este repo tiene seis pérdidas documentadas del trabajo del
+dueño de exactamente esa clase — todas mitigadas escribiendo la lección en un texto que después no
+frenó nada.
+
+Por eso las dos palancas que pueden deshacer una decisión del dueño están en `permissions.deny` de
+`settings.json`, no en un párrafo:
+
+- `pestana-candado.mjs desbloquear` — el candado es del dueño. Si hay que sacarlo, lo saca él.
+- `ORQ_PROV_FORCE` — el forzado de una regeneración es una decisión humana.
+
+Lo demás sigue confiado al prompt, y eso es una decisión consciente con su riesgo a la vista: un
+`deny` sobre `git push` o sobre las migraciones bloquearía también el trabajo legítimo de todos los
+días. El criterio es **denegar lo que revierte una decisión del dueño**, no todo lo que escribe.
+
 ## Lo que ningún agente de acá hace
 
 - No commitea, no mergea, no pushea, no despliega. Eso lo decide el dueño.
-- No escribe en el Sheet real. Ni siquiera el que puede escribir código (ver `ejecutor-de-tarea`).
+- No escribe celdas del Sheet real. `mantenedor-flujo-de-fondos` lo reescribe, pero **corriendo el
+  pipeline**, nunca celda por celda: las guardas viven adentro de ese comando.
 - No corre migraciones ni toca datos productivos.
 - No llama a APIs externas con efecto económico, contractual, fiscal o laboral (Nivel E del
   `CLAUDE.md` raíz: requiere autorización humana explícita).

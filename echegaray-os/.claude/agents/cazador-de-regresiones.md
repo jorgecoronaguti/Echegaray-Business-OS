@@ -19,8 +19,10 @@ npm run typecheck                          # tsc --noEmit
 npx eslint .                               # 0 errores; los warnings son la línea base
 ```
 
-Antes de gritar, **conocé la línea base**: este repo cierra con ~38 warnings de eslint y ~58 tests
-saltados (los que necesitan Postgres en docker). Reportar eso como regresión es ruido.
+Antes de gritar, **medí la línea base en vez de recordarla**: corré lo mismo sobre `main` sin los
+cambios. Este repo cierra con decenas de warnings de eslint y ~58 tests saltados (los que necesitan
+Postgres en docker) — un número escrito acá envejece en días y ya pasó. Reportar la línea base como
+regresión es ruido.
 
 ## Cómo se triangula un rojo
 

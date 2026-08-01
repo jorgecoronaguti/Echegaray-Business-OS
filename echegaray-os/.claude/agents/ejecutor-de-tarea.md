@@ -1,6 +1,6 @@
 ---
 name: ejecutor-de-tarea
-description: Ejecuta UNA tarea de código completa dentro de un worktree aislado, con las trampas de este repo ya grabadas. Lo usa /backlog para correr varias tareas en paralelo, y sirve para cualquier trabajo acotado que convenga aislar. NO lo uses para tareas que tocan el Sheet real ni para decisiones de arquitectura: lo primero está prohibido desde un worktree, lo segundo se decide antes.
+description: Ejecuta UNA tarea de código completa dentro de un worktree aislado, con las trampas de este repo ya grabadas. Sirve para cualquier trabajo de código acotado que convenga aislar, y es el agente que conviene pasarle a /backlog con --agente para que sus tareas paralelas hereden las trampas de este repo. NO lo uses para tareas que tocan el Sheet real ni para decisiones de arquitectura: lo primero está prohibido desde un worktree, lo segundo se decide antes.
 tools: Read, Write, Edit, Grep, Glob, Bash, Skill, TodoWrite
 model: opus
 ---
