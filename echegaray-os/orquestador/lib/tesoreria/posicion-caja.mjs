@@ -71,10 +71,51 @@ export function clasificarCuentas(cuentas = []) {
     else if (/\busd\b|d[oó]lar|u\$s/.test(n)) clase = 'moneda_extranjera'
     else if (/pesos|ars|cta cte|cuenta corriente|caja|banco|santander|movimientos/.test(n)) clase = 'ars_liquida'
     else clase = 'sin_clasificar'
+    // AJUSTE ≠ CUENTA. Las filas "Movimientos posteriores al corte" son correcciones al saldo de una
+    // cuenta, no cuentas propias. Suman al total en pesos igual —por eso conservan su clase— pero
+    // NO pueden leerse como una cuenta en rojo: la corrida real del 01/08 daba "descubierto
+    // utilizado $67.612" por un ajuste negativo, con las tres cuentas del banco en positivo. Un
+    // descubierto inventado dispara la vara alta y hace descartar toda colocación.
+    const esAjuste = /movimientos (posteriores|de efectivo)|\(\+\)|\(−\)|\(-\)|^\s*·/.test(n)
     out[clase] += saldo
-    out.detalle.push({ cuenta: c.cuenta, saldo, clase })
+    out.detalle.push({ cuenta: c.cuenta, saldo, clase, es_ajuste: esAjuste })
   }
   return out
+}
+
+/**
+ * CONTROL DE COHERENCIA DEL TOTAL — el que faltaba, y que la corrida del 01/08 hizo falta.
+ *
+ * La pestaña CAJA se rompió con `#REF!` en "Total disponibilidades" mientras este agente corría.
+ * `parseMonto('#REF!')` devuelve 0, el total de la pestaña es la fuente autoritativa, y el OS pasó a
+ * informar **caja hoy $0** con cara de hecho. Cero no es "no sé", y una fórmula rota no puede
+ * convertirse en una posición financiera sin que nadie se entere.
+ *
+ * El control es un CRUCE: compara el total que declara la pestaña contra la suma de las cuentas que
+ * el lector detectó por su cuenta. Son dos informaciones distintas —el total lo calcula una fórmula
+ * de la planilla, el detalle son filas— así que el control no se valida contra sí mismo.
+ *
+ * La relación esperada la fijó la verificación manual del 01/08: el total de la pestaña EXCLUYE los
+ * valores a depositar (los cheques en cartera todavía no son caja). Si esa relación deja de cumplirse
+ * por encima de la tolerancia, el total no es confiable y se declara `sin_dato`.
+ */
+export const TOLERANCIA_COHERENCIA = 200000
+
+export function coherenciaDelTotal(total, composicion) {
+  if (!composicion) return { coherente: true, motivo: 'sin composición: no se puede cruzar' }
+  const suma = composicion.ars_liquida + composicion.moneda_extranjera + composicion.valores_a_depositar + composicion.sin_clasificar
+  const esperado = suma - composicion.valores_a_depositar
+  const dif = Math.abs(Number(total) - esperado)
+  const tolerancia = Math.max(TOLERANCIA_COHERENCIA, Math.abs(esperado) * 0.01)
+  if (dif <= tolerancia) return { coherente: true, total_declarado: Math.round(total), esperado: Math.round(esperado), diferencia: Math.round(dif) }
+  return {
+    coherente: false,
+    total_declarado: Math.round(total),
+    esperado: Math.round(esperado),
+    diferencia: Math.round(dif),
+    motivo: `el total de la pestaña dice $${Math.round(total).toLocaleString('es-AR')} y las cuentas detectadas suman $${Math.round(esperado).toLocaleString('es-AR')} (sin los valores a depositar): `
+      + 'una diferencia así significa que el total no se puede leer — típicamente un #REF! o una fórmula rota. No se informa un saldo que no se puede sostener.',
+  }
 }
 
 /**
@@ -107,6 +148,19 @@ export async function reconstruirPosicion(deps = {}, opts = {}) {
   let composicion = null
   try { composicion = clasificarCuentas((await cashBriefing(deps.google, hoy)).caja?.cuentas || []) }
   catch { faltantes.push('composición de la caja (no se pudo leer el detalle de cuentas)') }
+  // EL CONTROL VA ANTES DE TODO LO DEMÁS: si el saldo no es confiable, nada de lo que sigue lo es.
+  const coherencia = coherenciaDelTotal(cajaReal, composicion)
+  if (!coherencia.coherente) {
+    return {
+      estado: 'sin_dato',
+      motivo: coherencia.motivo,
+      coherencia,
+      composicion,
+      modelo, evidencia: EVIDENCIA.SIN_DATO, confianza: CONFIANZA.NULA,
+      fecha: modelo.fecha,
+    }
+  }
+
   const oblig = modelo.comprometido?.estado === 'ok' ? modelo.comprometido : null
   const comercial = modelo.deuda_comercial?.estado === 'ok' ? modelo.deuda_comercial : null
 
@@ -191,6 +245,7 @@ export async function reconstruirPosicion(deps = {}, opts = {}) {
     datos_faltantes: faltantes,
     evidencia: evidenciaCombinada(EVIDENCIA.DATO, faltantes.length ? EVIDENCIA.ESTIMACION : EVIDENCIA.CALCULO),
     confianza: faltantes.length >= 3 ? CONFIANZA.BAJA : faltantes.length ? CONFIANZA.MEDIA : CONFIANZA.ALTA,
+    coherencia,
     fuente: modelo.fuentes,
     modelo,
   }

@@ -10,7 +10,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { EVIDENCIA, evidenciaCombinada, bloquePorDias, CONFIANZA } from './contratos.mjs'
-import { enDescubierto, clasificarCuentas } from './posicion-caja.mjs'
+import { enDescubierto, clasificarCuentas, coherenciaDelTotal } from './posicion-caja.mjs'
 import { tasaDeReferencia, deudaCancelable, MODO } from './costo-liquidez.mjs'
 import {
   estadoReserva, modelarCajaRestringida, evaluarAccionabilidad, ESTADO_POLITICA,
@@ -630,4 +630,54 @@ test('el validador topea por la parte líquida en pesos, no por el total', () =>
   const v = validarRecomendacion(gen.propuestas[0], { posicion: enDolares, excedente, instrumentos: [inst], ahora: HOY })
   assert.equal(v.aprobada, false)
   assert.ok(v.fallas.some((f) => /sin_caja_comprometida/.test(f)))
+})
+
+test('un AJUSTE negativo no es una cuenta en descubierto', () => {
+  // Corrida real del 01/08: la fila "Movimientos posteriores al corte del extracto" vale -$67.612 y
+  // el agente la leyó como descubierto utilizado, con las tres cuentas del banco en positivo. Un
+  // descubierto inventado sube la vara al CFT y hace descartar toda colocación razonable.
+  // Las tres filas son las reales de la pestaña CAJA al 01/08.
+  const comp = clasificarCuentas([
+    { cuenta: 'Santander · cta cte ARS', saldo: 87913839 },
+    { cuenta: 'Caja en pesos', saldo: 15194864 },
+    { cuenta: 'Movimientos posteriores al corte del extracto', saldo: -67612 },
+  ])
+  assert.equal(deudaCancelable(comp, 103041091).monto, 0, 'no hay ninguna CUENTA en rojo')
+  // Pero el ajuste sigue contando para el total en pesos: no se descarta, sólo no se lee como deuda.
+  assert.equal(comp.ars_liquida, 87913839 + 15194864 - 67612)
+  assert.equal(comp.detalle.find((c) => /Movimientos/.test(c.cuenta)).es_ajuste, true)
+  // Y una cuenta de verdad en rojo sí se detecta.
+  const conRojo = clasificarCuentas([{ cuenta: 'Santander · cta cte ARS', saldo: -8000000 }])
+  assert.equal(deudaCancelable(conRojo, -8000000).monto, 8000000)
+})
+
+test('un #REF! en el total NO se informa como caja $0', () => {
+  // Pasó de verdad el 01/08, mientras corría el agente: la pestaña CAJA se rompió, `parseMonto('#REF!')`
+  // devolvió 0, y el OS informó "caja hoy $0" con cara de hecho. Cero no es "no sé".
+  const rota = clasificarCuentas([
+    { cuenta: 'Santander · cta cte ARS', saldo: 87913839 },
+    { cuenta: 'Santander · cta cte USD', saldo: 863768 },
+    { cuenta: 'Valores a depositar', saldo: 10290000 },
+    { cuenta: 'Movimientos posteriores al corte del extracto', saldo: -67612 },
+  ])
+  const c = coherenciaDelTotal(0, rota)
+  assert.equal(c.coherente, false)
+  assert.match(c.motivo, /#REF!|fórmula rota/)
+  assert.equal(c.esperado, 88709995)
+})
+
+test('el control acepta la relación REAL: el total excluye los valores a depositar', () => {
+  // Verificado a mano contra la pestaña el 01/08: suma de cuentas $136.480.286, total $126.190.287,
+  // diferencia exacta = los $10.290.000 de valores a depositar.
+  const sana = clasificarCuentas([
+    { cuenta: 'Caja en pesos', saldo: 15194864 },
+    { cuenta: 'Caja en dólares', saldo: 22285427 },
+    { cuenta: 'Santander · cta cte ARS', saldo: 87913839 },
+    { cuenta: 'Santander · cta cte USD', saldo: 863768 },
+    { cuenta: 'Valores a depositar', saldo: 10290000 },
+    { cuenta: 'Movimientos posteriores al corte del extracto', saldo: -67612 },
+  ])
+  assert.equal(coherenciaDelTotal(126190287, sana).coherente, true)
+  // Y un total inflado en más de la tolerancia tampoco pasa.
+  assert.equal(coherenciaDelTotal(200000000, sana).coherente, false)
 })

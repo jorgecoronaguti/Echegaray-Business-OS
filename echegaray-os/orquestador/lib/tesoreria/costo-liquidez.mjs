@@ -58,7 +58,9 @@ export function deudaCancelable(composicion = null, cajaReal = 0) {
     const d = Number(cajaReal) < 0 ? Math.abs(Number(cajaReal)) : 0
     return { monto: d, por_cuenta: [], evidencia: EVIDENCIA.INFERENCIA, nota: 'sin detalle de cuentas: el descubierto se infirió del saldo total' }
   }
-  const negativas = composicion.detalle.filter((c) => Number(c.saldo) < 0 && c.clase !== 'valores_a_depositar')
+  const negativas = composicion.detalle.filter(
+    (c) => Number(c.saldo) < 0 && c.clase !== 'valores_a_depositar' && !c.es_ajuste,
+  )
   return {
     monto: negativas.reduce((s, c) => s + Math.abs(Number(c.saldo) || 0), 0),
     por_cuenta: negativas.map((c) => ({ cuenta: c.cuenta, saldo: Math.round(c.saldo) })),
