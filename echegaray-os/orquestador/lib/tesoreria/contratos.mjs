@@ -213,6 +213,17 @@ export const Recomendacion = z.object({
   fuente_mercado: z.string(),
   vence_en: z.string(),
   estado: z.literal(ESTADO_RECOMENDACION),
+
+  // ACCIONABILIDAD. Separada del `estado` a propósito: `estado` dice que requiere aprobación humana
+  // (siempre); esto dice si el OS puede siquiera SUGERIR un monto. Sin políticas aprobadas el monto
+  // es un techo técnico y la propuesta no es accionable — un número con nombre de accionable se usa
+  // como accionable, por más notas al pie que lleve.
+  accionable: z.boolean().default(false),
+  estado_accionabilidad: z.enum(['ACCIONABLE', 'NO_ACCIONABLE']).default('NO_ACCIONABLE'),
+  bloqueos_accionabilidad: z.array(z.string()).default([]),
+  etiqueta_monto: z.enum(['excedente_aprobado', 'techo_tecnico_preliminar']).default('techo_tecnico_preliminar'),
+  vara_periodo: z.number().nullable().default(null),
+  modo_vara: z.string().nullable().default(null),
 })
 
 /** Valida en el borde y devuelve {ok, valor} o {ok:false, errores} — nunca tira dentro del ciclo. */
@@ -222,4 +233,4 @@ export function validarContra(esquema, valor) {
   return { ok: false, errores: r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`) }
 }
 
-export const VERSION_CONTRATOS = '1.0.0'
+export const VERSION_CONTRATOS = '1.1.0'

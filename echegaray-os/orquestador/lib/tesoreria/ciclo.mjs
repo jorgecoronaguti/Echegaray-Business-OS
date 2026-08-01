@@ -34,13 +34,15 @@ import { formatoPropuesta, formatoAplicarADeuda, formatoSesionRequerida, esCambi
 /**
  * Rutas informativas de Balanz. Todas pasan igual por la barrera: la lista no es una autorización.
  *
- * FALTA CAUCIONES, Y ES A PROPÓSITO. `/mercado/cauciones` contiene "caucion", que la barrera bloquea
- * porque "caucionar" ES operar. Se podría afinar el patrón para dejar pasar el plural informativo,
- * pero eso abriría la puerta a `/caucionar` por un carácter de diferencia. El criterio es que la
- * barrera nunca se debilita para que entre una ruta cómoda: las cauciones quedan fuera del
- * relevamiento automático y, si algún día hacen falta, se cargan por `opts.instrumentos`.
+ * CAUCIONES ENTRA POR LA ALLOWLIST DE RUTA EXACTA (`balanz-denylist.NAVEGACION_INFORMATIVA`), no
+ * porque se haya aflojado el patrón: `/mercado/caucionar` y `/mercado/cauciones/operar` siguen
+ * bloqueados, y el botón "Caucionar" de esa misma pantalla también. Se puede mirar, no tocar.
  */
-export const RUTAS_INFORMATIVAS = ['/fondos', '/fondos/money-market', '/mercado/letras']
+export const RUTAS_INFORMATIVAS = [
+  '/fondos', '/fondos/money-market', '/fondos/renta-fija',
+  '/mercado/letras', '/mercado/bonos', '/mercado/obligaciones-negociables',
+  '/mercado/cauciones',
+]
 
 const LOCK_KEY = 738201 // arbitrario y estable: identifica ESTE ciclo entre los advisory locks del OS
 
@@ -95,7 +97,12 @@ export async function correrCiclo(deps = {}, opts = {}) {
     // La deuda comercial vencida sale de los movimientos YA leídos: si no se la pasa, el modelo la
     // deja en "sin dato" y el excedente cuenta plata que ya tiene dueño.
     const posicion = await reconstruirPosicion(deps, {
-      hoy: ahora, politica: opts.politica, vencidoComercial: vencidoComercialDe(flujo),
+      hoy: ahora,
+      filaReserva: opts.filaReserva ?? null,
+      filaRestringida: opts.filaRestringida ?? null,
+      extractorValidado: Boolean(opts.extractorValidado),
+      mercadoFresco: Boolean(opts.mercadoFresco),
+      vencidoComercial: vencidoComercialDe(flujo),
     })
     paso('posicion', posicion.estado, posicion.estado === 'ok' ? `caja ${posicion.caja_real}` : posicion.motivo)
 
@@ -104,14 +111,15 @@ export async function correrCiclo(deps = {}, opts = {}) {
     paso('proyeccion', proyeccion.estado)
 
     // 6 · Excedente invertible (SKILL 4).
-    const excedente = await calcularExcedente(posicion, proyeccion, { hoy: ahora, dias: flujo.dias, politica: opts.politica })
-    paso('excedente', excedente.estado, excedente.en_descubierto ? 'en descubierto' : `${excedente.ventanas.length} ventanas`)
+    const excedente = await calcularExcedente(posicion, proyeccion, { hoy: ahora, dias: flujo.dias })
+    paso('excedente', excedente.estado, `${excedente.ventanas.length} ventanas · ${excedente.etiqueta_monto}${excedente.deuda_cancelable?.monto ? ` · deuda $${excedente.deuda_cancelable.monto}` : ''}`)
 
     // ── EL ATAJO QUE AHORRA PLATA Y CRÉDITOS ──────────────────────────────────
-    // Si la empresa está en descubierto no hay nada que buscar en Balanz: ninguna colocación puede
-    // ganarle a cancelar la línea. Se corta acá, sin abrir el navegador.
-    if (excedente.en_descubierto || excedente.ventanas.every((v) => !(Number(v.monto_maximo) > 0))) {
-      const rec = recomendarAplicarADeuda(posicion, excedente.tasa_de_corte, ahora)
+    // Sin ninguna ventana con monto no hay nada que buscar en Balanz. Y si hay deuda que cancela toda
+    // la caja libre, tampoco: esa porción va a la línea, que rinde el CFT sin riesgo.
+    const sinVentanas = excedente.ventanas.every((v) => !(Number(v.monto_maximo) > 0))
+    if (sinVentanas) {
+      const rec = recomendarAplicarADeuda(posicion, excedente.tasa_de_corte, ahora, excedente.deuda_cancelable?.monto ?? 0)
       paso('mercado', 'omitido', 'sin excedente: no se releva el mercado')
       const resumen = resumirCorrida({ posicion, excedente, comparacion: null, sesionRequerida: false })
       const publicar = opts.publicarSiempre ? { publicar: true, motivo: 'forzado' } : esCambioMaterial(resumen, opts.anterior, opts.umbrales)
@@ -155,6 +163,8 @@ export async function correrCiclo(deps = {}, opts = {}) {
     // 13 · Recomendar (SKILL 8).
     const generadas = generarRecomendaciones(comparacion, ventanas, {
       hoy: ahora, tasa_de_corte: excedente.tasa_de_corte, riesgos,
+      accionable: Boolean(posicion.accionable),
+      bloqueos: posicion.bloqueos_accionabilidad ?? [],
       fuente_caja: posicion.fuente, fuente_mercado: `Balanz — ${mercado.observado_en ?? ahora.toISOString()}`,
     })
     paso('recomendaciones', 'ok', `${generadas.propuestas.length} propuestas · ${generadas.sin_propuesta.length} bloques sin propuesta`)
@@ -190,4 +200,4 @@ export async function correrCiclo(deps = {}, opts = {}) {
   }
 }
 
-export const VERSION_CICLO = '1.0.0'
+export const VERSION_CICLO = '1.1.0'

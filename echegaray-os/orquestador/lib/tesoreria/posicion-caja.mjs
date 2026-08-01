@@ -21,6 +21,9 @@
 // a su vez los toma de sus fuentes únicas. Acá no se recalcula un peso: se CLASIFICA.
 
 import { EVIDENCIA, CONFIANZA, evidenciaCombinada } from './contratos.mjs'
+import {
+  modelarCajaRestringida, estadoReserva, evaluarAccionabilidad, ESTADO_POLITICA,
+} from './politicas.mjs'
 
 /**
  * RESERVA MÍNIMA OPERATIVA. El default es 0 a propósito: un piso inventado por el software sería un
@@ -78,13 +81,12 @@ export function clasificarCuentas(cuentas = []) {
  * SKILL 2. Reconstruye la posición financiera con criterio percibido.
  *
  * @param {object} deps {google}
- * @param {object} [opts] {hoy, politica:{reserva_minima}, vencidoComercial}
+ * @param {object} [opts] {hoy, filaReserva, filaRestringida, vencidoComercial, extractorValidado, mercadoFresco}
  */
 export async function reconstruirPosicion(deps = {}, opts = {}) {
   const { modeloLiquidez } = await import('../ingenieria-financiera.mjs')
   const { cashBriefing } = await import('../cash-briefing.mjs')
   const hoy = opts.hoy ? new Date(opts.hoy) : new Date()
-  const politica = opts.politica || {}
   const faltantes = []
 
   const modelo = await modeloLiquidez(deps, hoy, { vencidoComercial: opts.vencidoComercial })
@@ -118,22 +120,34 @@ export async function reconstruirPosicion(deps = {}, opts = {}) {
 
   const comprometida = (vencidoFiscal ?? 0) + (vencidoComercial ?? 0) + (entra30 ?? 0)
 
-  // RESTRINGIDA. Hoy el OS no tiene ninguna fuente que declare fondos afectados en garantía o
-  // embargados. Se declara el gap: 0 acá significa "no hay dato", no "no hay fondos restringidos".
-  const restringida = Number(politica.caja_restringida) || 0
-  if (politica.caja_restringida == null) faltantes.push('caja restringida (ninguna fuente del OS la declara hoy)')
+  // RESTRINGIDA. Un `null` NO es un cero: ver `modelarCajaRestringida`. Lo que devuelve trae el monto
+  // a restar (conservador) por separado de si el estado permite accionar.
+  const restringidaModelo = modelarCajaRestringida(opts.filaRestringida ?? null, hoy)
+  const restringida = restringidaModelo.monto_a_restar
+  if (restringidaModelo.bloquea_accionable) faltantes.push(`caja restringida: ${restringidaModelo.motivo}`)
 
-  const minima = Number(politica.reserva_minima ?? RESERVA_POR_DEFECTO) || 0
-  if (politica.reserva_minima == null) faltantes.push('reserva mínima operativa (política del dueño, no la fija el software)')
+  // RESERVA MÍNIMA. Es una POLÍTICA del dueño. Mientras no esté aprobada, el número que sale de acá
+  // NO se llama excedente: se llama techo técnico preliminar, y nada es accionable.
+  const reserva = estadoReserva(opts.filaReserva ?? null)
+  const minima = Number(reserva.monto ?? RESERVA_POR_DEFECTO) || 0
+  if (reserva.estado !== ESTADO_POLITICA.APROBADA) faltantes.push(`reserva mínima ${reserva.estado}: ${reserva.motivo ?? 'falta aprobación humana'}`)
 
-  const excedente = Math.round(cajaReal - comprometida - restringida - minima)
+  const techoAritmetico = Math.round(cajaReal - comprometida - restringida - minima)
 
   // TECHO EN PESOS. Un excedente en dólares o en cheques por depositar no se coloca en un instrumento
-  // en pesos: el excedente aplicable es el menor entre el aritmético y la parte líquida en ARS.
+  // en pesos: el techo aplicable es el menor entre el aritmético y la parte líquida en ARS.
   const arsLiquida = composicion ? Math.round(composicion.ars_liquida) : null
-  const excedenteArs = arsLiquida == null
-    ? excedente
-    : Math.min(excedente, Math.max(0, arsLiquida - comprometida - restringida - minima))
+  const techoArs = arsLiquida == null
+    ? techoAritmetico
+    : Math.min(techoAritmetico, Math.max(0, arsLiquida - comprometida - restringida - minima))
+
+  const accionabilidad = evaluarAccionabilidad({
+    reserva, restringida: restringidaModelo,
+    // La validación del extractor y la frescura del mercado las conoce el ciclo, no esta skill:
+    // entran por opts y por defecto bloquean, que es el lado seguro.
+    extractorValidado: Boolean(opts.extractorValidado),
+    mercadoFresco: Boolean(opts.mercadoFresco),
+  })
 
   return {
     estado: 'ok',
@@ -141,12 +155,24 @@ export async function reconstruirPosicion(deps = {}, opts = {}) {
     en_descubierto: enDescubierto(cajaReal),
     caja_real: Math.round(cajaReal),
     caja_comprometida: Math.round(comprometida),
-    caja_restringida: Math.round(restringida),
     caja_minima: Math.round(minima),
-    caja_excedente_bruto: excedenteArs, // "bruto": todavía no pasó por el hurdle del costo del dinero
-    caja_excedente_sin_topar: excedente, // el aritmético, antes del techo en pesos — para auditar la diferencia
+
+    // ── LOS DOS NOMBRES, Y CUÁL ESTÁ VIGENTE ────────────────────────────────
+    // `techo_tecnico_preliminar` existe SIEMPRE: es lo que la aritmética permite.
+    // `excedente_aprobado` existe SÓLO si todas las políticas están aprobadas. Cuando no lo está es
+    // `null`, no un número más chico: un número invita a usarlo.
+    techo_tecnico_preliminar: techoArs,
+    excedente_aprobado: accionabilidad.accionable ? techoArs : null,
+    etiqueta_monto: accionabilidad.etiqueta,
+    accionable: accionabilidad.accionable,
+    bloqueos_accionabilidad: accionabilidad.bloqueos,
+    estado_recomendacion: accionabilidad.estado_recomendacion,
+
+    reserva,
+    caja_restringida: restringidaModelo,
+    techo_sin_topar: techoAritmetico, // el aritmético, antes del techo en pesos — para auditar la diferencia
     composicion,
-    deficit_previsto: excedente < 0 ? Math.abs(excedente) : 0,
+    deficit_previsto: techoAritmetico < 0 ? Math.abs(techoAritmetico) : 0,
     detalle: {
       vencido_fiscal: vencidoFiscal, vencido_comercial: vencidoComercial, entra_30_dias: entra30,
       cobranzas_por_cobrar_mes: d.cobranzas_por_cobrar_mes ?? null,
@@ -160,7 +186,7 @@ export async function reconstruirPosicion(deps = {}, opts = {}) {
       criterio: 'una cobranza esperada no es caja hasta que se acredita — no suma al excedente',
       valores_a_depositar: composicion ? Math.round(composicion.valores_a_depositar) : null,
       moneda_extranjera: composicion ? Math.round(composicion.moneda_extranjera) : null,
-      criterio_tope: 'el excedente colocable en pesos se topea con la parte líquida en ARS: ni los dólares ni los cheques en cartera son pesos disponibles hoy',
+      criterio_tope: 'el techo colocable en pesos se topea con la parte líquida en ARS: ni los dólares ni los cheques en cartera son pesos disponibles hoy',
     },
     datos_faltantes: faltantes,
     evidencia: evidenciaCombinada(EVIDENCIA.DATO, faltantes.length ? EVIDENCIA.ESTIMACION : EVIDENCIA.CALCULO),
@@ -170,4 +196,4 @@ export async function reconstruirPosicion(deps = {}, opts = {}) {
   }
 }
 
-export const VERSION_SKILL = '1.0.0'
+export const VERSION_SKILL = '1.1.0'

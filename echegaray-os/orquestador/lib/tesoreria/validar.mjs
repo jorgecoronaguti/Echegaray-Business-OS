@@ -54,16 +54,35 @@ export function validarRecomendacion(rec = {}, fuentes = {}) {
     const enPesos = Number.isFinite(Number(posicion.composicion?.ars_liquida))
       ? Math.min(posicion.caja_real, Number(posicion.composicion.ars_liquida))
       : posicion.caja_real
-    const libre = enPesos - posicion.caja_comprometida - posicion.caja_restringida - posicion.caja_minima
-    chequeos.push(rec.monto_maximo <= libre + TOLERANCIA_PESOS
-      ? pasa('sin_caja_comprometida', `$${rec.monto_maximo.toLocaleString('es-AR')} ≤ $${Math.round(libre).toLocaleString('es-AR')} libre`)
-      : falla('sin_caja_comprometida', `propone $${rec.monto_maximo.toLocaleString('es-AR')} y sólo hay $${Math.round(libre).toLocaleString('es-AR')} libres`))
+    // `caja_restringida` es un MODELO, no un número: el monto a restar vive adentro. Leerlo como
+    // número daba NaN, y `x <= NaN` es false, así que el control fallaba cerrado — por accidente.
+    // Un control que sólo funciona por accidente no es un control: acá se lee el campo correcto y se
+    // verifica explícitamente que los cuatro componentes sean números.
+    const restringida = Number(posicion.caja_restringida?.monto_a_restar ?? posicion.caja_restringida ?? 0)
+    const componentes = [enPesos, posicion.caja_comprometida, restringida, posicion.caja_minima]
+    if (!componentes.every((x) => Number.isFinite(Number(x)))) {
+      chequeos.push(falla('sin_caja_comprometida', `no se puede recalcular la caja libre: algún componente no es un número (${componentes.join(', ')})`))
+    } else {
+      const libre = enPesos - Number(posicion.caja_comprometida) - restringida - Number(posicion.caja_minima)
+      chequeos.push(rec.monto_maximo <= libre + TOLERANCIA_PESOS
+        ? pasa('sin_caja_comprometida', `$${rec.monto_maximo.toLocaleString('es-AR')} ≤ $${Math.round(libre).toLocaleString('es-AR')} libre`)
+        : falla('sin_caja_comprometida', `propone $${rec.monto_maximo.toLocaleString('es-AR')} y sólo hay $${Math.round(libre).toLocaleString('es-AR')} libres`))
+    }
   }
 
-  // 4 · LA EMPRESA NO ESTÁ EN DESCUBIERTO. Si lo está, ninguna colocación es válida.
-  chequeos.push(posicion?.en_descubierto
-    ? falla('sin_descubierto', 'la cuenta está en descubierto: aplicar a la línea domina cualquier colocación')
-    : pasa('sin_descubierto'))
+  // 4 · SI HAY DEUDA CANCELABLE, NO SE COLOCA POR ENCIMA DE ELLA.
+  //
+  // Ya no es "si está en descubierto, nada": cancelar deuda domina SÓLO por su monto. Lo que se
+  // verifica es que la propuesta no ocupe pesos que deberían ir a la línea.
+  const deudaMonto = Number(excedente?.deuda_cancelable?.monto) || 0
+  chequeos.push(deudaMonto <= 0
+    ? pasa('deuda_primero')
+    : falla('deuda_primero', `hay $${deudaMonto.toLocaleString('es-AR')} de descubierto utilizado: esa porción va a la línea antes que a cualquier instrumento`))
+
+  // 4bis · ACCIONABILIDAD. Sin políticas aprobadas el monto es un techo técnico, no un excedente.
+  chequeos.push(rec.accionable
+    ? pasa('accionable')
+    : falla('accionable', `NO_ACCIONABLE: ${(rec.bloqueos_accionabilidad || ['falta política aprobada']).join(' · ')}`))
 
   // 5 · LA VENTANA EXISTE Y CUBRE EL MONTO.
   const ventana = (excedente?.ventanas || []).find((v) => v.bloque === rec.bloque)
@@ -89,12 +108,14 @@ export function validarRecomendacion(rec = {}, fuentes = {}) {
     ? pasa('rescate_compatible')
     : falla('rescate_compatible', `la plata vuelve en ${rec.plazo_rescate_dias} días y el horizonte es ${rec.horizonte_dias}`))
 
-  // 9 · SUPERA LA TASA DE CORTE. Se recalcula acá: es el chequeo que no se delega.
-  const corte = Number(excedente?.tasa_de_corte?.valor) || 0
-  const corteP = rendimientoDelPeriodo(corte, Number(rec.horizonte_dias) || 0)
-  chequeos.push(Number(rec.rendimiento_neto_periodo) > corteP
-    ? pasa('supera_costo_del_dinero', `${(rec.rendimiento_neto_periodo * 100).toFixed(2)}% > ${(corteP * 100).toFixed(2)}%`)
-    : falla('supera_costo_del_dinero', `${((rec.rendimiento_neto_periodo ?? 0) * 100).toFixed(2)}% no supera el ${(corteP * 100).toFixed(2)}% que cuesta el peso marginal`))
+  // 9 · SUPERA LA VARA DE SU VENTANA. Se toma de la VENTANA, no de la propuesta: leer el umbral que
+  //     el otro lado declaró sería validar un control contra la información que produce.
+  const varaP = ventana?.referencia
+    ? Number(ventana.referencia.hurdle_periodo) || 0
+    : rendimientoDelPeriodo(Number(excedente?.tasa_de_corte?.valor) || 0, Number(rec.horizonte_dias) || 0)
+  chequeos.push(Number(rec.rendimiento_neto_periodo) > varaP
+    ? pasa('supera_vara', `${(rec.rendimiento_neto_periodo * 100).toFixed(2)}% > ${(varaP * 100).toFixed(2)}% (${ventana?.referencia?.modo ?? 'vara conservadora'})`)
+    : falla('supera_vara', `${((rec.rendimiento_neto_periodo ?? 0) * 100).toFixed(2)}% no supera la vara ${(varaP * 100).toFixed(2)}% de su ventana`))
 
   // 10 · ARITMÉTICA REPRODUCIBLE. La ganancia declarada tiene que salir de monto × neto.
   const esperado = Math.round(Number(rec.monto_maximo) * Number(rec.rendimiento_neto_periodo))
@@ -136,4 +157,4 @@ export function validarLote(recs = [], fuentes = {}) {
   }
 }
 
-export const VERSION_SKILL = '1.0.0'
+export const VERSION_SKILL = '1.1.0'

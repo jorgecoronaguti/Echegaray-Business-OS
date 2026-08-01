@@ -49,8 +49,18 @@ export async function guardarPosicion(query, runId, p) {
        (run_id, en_descubierto, caja_real, caja_comprometida, caja_restringida, caja_minima,
         caja_excedente, confianza, datos_faltantes, payload)
      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-    [runId, p.en_descubierto, p.caja_real, p.caja_comprometida, p.caja_restringida, p.caja_minima,
-      p.caja_excedente_bruto, p.confianza, p.datos_faltantes ?? [], JSON.stringify(p.detalle ?? {})],
+    [runId, p.en_descubierto, p.caja_real, p.caja_comprometida,
+      p.caja_restringida?.monto_a_restar ?? null, p.caja_minima,
+      // La columna se llama `caja_excedente` desde la primera versión. Lo que se guarda es el TECHO
+      // TÉCNICO, y `excedente_aprobado` va en el payload: renombrar la columna obligaría a una
+      // migración destructiva para ganar claridad que el payload ya da.
+      p.techo_tecnico_preliminar, p.confianza, p.datos_faltantes ?? [],
+      JSON.stringify({
+        detalle: p.detalle ?? {}, composicion: p.composicion ?? null,
+        reserva: p.reserva ?? null, caja_restringida: p.caja_restringida ?? null,
+        excedente_aprobado: p.excedente_aprobado ?? null, etiqueta_monto: p.etiqueta_monto ?? null,
+        accionable: Boolean(p.accionable), bloqueos: p.bloqueos_accionabilidad ?? [],
+      })],
   )
 }
 
@@ -150,13 +160,28 @@ export async function vencerPropuestas(query) {
   return rowCount ?? 0
 }
 
-/** Política vigente por clave. Sin fila, devuelve null: el agente declara el gap, no supone. */
+/**
+ * FILA de política vigente por clave — la fila ENTERA, no sólo el valor.
+ *
+ * Devolver únicamente `valor` era el atajo que hacía imposible distinguir una política aprobada de
+ * una propuesta guardada: el aprobador vive en la fila, no en el valor. Sin él, persistir se
+ * confundía con aprobar.
+ */
 export async function politicaVigente(query, clave) {
   const { rows } = await query(
-    `select valor from tesoreria.politicas
+    `select id, clave, valor, aprobada_por, aprobada_en, vigente_desde, vigente_hasta, motivo, creada_en
+       from tesoreria.politicas
       where clave = $1 and vigente_desde <= now() and (vigente_hasta is null or vigente_hasta > now())
       order by vigente_desde desc limit 1`,
     [clave],
   )
-  return rows[0]?.valor ?? null
+  return rows[0] ?? null
+}
+
+/** La caja restringida se guarda como política declarada: misma tabla, mismo workflow de aprobación. */
+export async function filaCajaRestringida(query) {
+  const fila = await politicaVigente(query, 'caja_restringida')
+  if (!fila) return null
+  const v = typeof fila.valor === 'object' && fila.valor !== null ? fila.valor : {}
+  return { monto: v.monto, fuente: v.fuente ?? fila.motivo ?? null, declarada_en: v.declarada_en ?? fila.aprobada_en ?? fila.vigente_desde }
 }

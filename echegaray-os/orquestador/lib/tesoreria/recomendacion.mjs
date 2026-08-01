@@ -36,8 +36,13 @@ function vencimiento(hoy, horas = VIGENCIA_HORAS) {
  * LA RECOMENDACIÓN ESTRUCTURAL DE ESTA EMPRESA: aplicar el sobrante a la línea. No lleva instrumento
  * porque no hay nada que comprar — y por eso no usa el contrato `Recomendacion`, que exige uno.
  */
-export function recomendarAplicarADeuda(posicion = {}, corte = {}, hoy = new Date()) {
-  const monto = Math.max(0, Math.abs(Number(posicion.caja_real) || 0))
+export function recomendarAplicarADeuda(posicion = {}, corte = {}, hoy = new Date(), deuda = null) {
+  // EL MONTO ES LA DEUDA, NO EL SALDO. Antes tomaba |caja_real|, que con la cuenta en positivo daba
+  // un número enorme y sin sentido ("cancelá $126M de descubierto" con cero descubierto). La deuda
+  // cancelable la calcula `costo-liquidez.deudaCancelable` mirando los saldos negativos POR CUENTA.
+  const monto = deuda != null
+    ? Math.max(0, Number(deuda) || 0)
+    : Math.max(0, -(Number(posicion.caja_real) || 0))
   const ahorroDiario = (Number(corte.valor) || 0) / 365 * monto
   return {
     tipo: 'aplicar_a_deuda',
@@ -64,7 +69,6 @@ export function recomendarAplicarADeuda(posicion = {}, corte = {}, hoy = new Dat
  */
 export function generarRecomendaciones(comparacion = {}, ventanas = [], ctx = {}) {
   const hoy = ctx.hoy ? new Date(ctx.hoy) : new Date()
-  const corte = ctx.tasa_de_corte || { valor: 0 }
   const propuestas = []
   const sinPropuesta = []
 
@@ -80,6 +84,10 @@ export function generarRecomendaciones(comparacion = {}, ventanas = [], ctx = {}
       sinPropuesta.push({ bloque: r.bloque, motivo: `el mejor por rendimiento no pasa el filtro de riesgo: ${riesgo.bloqueantes.join(' · ')}` })
       continue
     }
+    // UNA VENTANA SIN POLÍTICA APROBADA NO PRODUCE UN MONTO EJECUTABLE.
+    // El monto se informa igual —sirve para dimensionar— pero la propuesta sale NO_ACCIONABLE y con
+    // el bloqueo escrito. Un número con nombre de accionable se usa como accionable.
+    const accionable = ventana?.accionable !== false && ctx.accionable !== false
     const salida = new Date(hoy); salida.setDate(salida.getDate() + Number(r.dias))
     const prop = {
       id: `rec_${r.bloque}_${iso(hoy)}_${ganador.instrumento_id}`.slice(0, 90),
@@ -107,6 +115,7 @@ export function generarRecomendaciones(comparacion = {}, ventanas = [], ctx = {}
         ...(ventana?.condiciones_invalidez || []),
         `la tasa fue observada el ${ganador.evidencia === 'hecho' ? 'cierre' : 'relevamiento'} y esta propuesta vence en ${VIGENCIA_HORAS} horas`,
         ...(ganador.costos_conocidos ? [] : ['los costos del instrumento no se pudieron leer: el neto es un techo, no un resultado']),
+        ...(accionable ? [] : ['NO ACCIONABLE: el monto es un techo técnico preliminar, no un excedente aprobado']),
       ],
       datos_faltantes: ganador.campos_faltantes || [],
       confianza: confianzaDe(ganador, riesgo, ventana),
@@ -115,6 +124,12 @@ export function generarRecomendaciones(comparacion = {}, ventanas = [], ctx = {}
       fuente_mercado: ctx.fuente_mercado ?? 'Balanz',
       vence_en: vencimiento(hoy),
       estado: ESTADO_RECOMENDACION,
+      accionable,
+      estado_accionabilidad: accionable ? 'ACCIONABLE' : 'NO_ACCIONABLE',
+      bloqueos_accionabilidad: accionable ? [] : (ctx.bloqueos ?? ['falta una política de tesorería aprobada']),
+      etiqueta_monto: accionable ? 'excedente_aprobado' : 'techo_tecnico_preliminar',
+      vara_periodo: ganador.vara_periodo ?? null,
+      modo_vara: ganador.modo_vara ?? null,
     }
     const v = validarContra(Recomendacion, prop)
     if (v.ok) propuestas.push(v.valor)
@@ -138,4 +153,4 @@ export function confianzaDe(ganador = {}, riesgo = null, ventana = null) {
 /** ¿Venció? Se pregunta antes de publicar y antes de mostrar: una propuesta vieja es un riesgo. */
 export const estaVencida = (rec, ahora = new Date()) => Date.parse(rec?.vence_en) <= ahora.getTime()
 
-export const VERSION_SKILL = '1.0.0'
+export const VERSION_SKILL = '1.1.0'

@@ -30,6 +30,13 @@ function googleFake({ caja = 20000000, egresoDia5 = 0 } = {}) {
   }
 }
 
+/** Una política de reserva APROBADA, con la forma exacta que devuelve `tesoreria.politicas`. */
+const RESERVA_APROBADA = {
+  valor: { monto: 1000000, metodo: 'piso_mas_egresos', version: 1 },
+  aprobada_por: 'jorge', vigente_desde: '2026-08-01T00:00:00Z', aprobada_en: '2026-08-01T00:00:00Z',
+}
+const RESTRINGIDA_CERO = { monto: 0, fuente: 'declaración del dueño', declarada_en: '2026-08-01T00:00:00Z' }
+
 const publicados = []
 const publicar = async (t) => { publicados.push(t) }
 
@@ -76,7 +83,8 @@ test('con excedente y una alternativa que gana, produce una propuesta validada',
     relevar: async () => ({ estado: 'ok', paginas: [], bloqueos: [], observado_en: HOY.toISOString() }),
     publicar, ahora: HOY,
   }, {
-    politica: { reserva_minima: 1000000, caja_restringida: 0 },
+    filaReserva: RESERVA_APROBADA, filaRestringida: RESTRINGIDA_CERO,
+    extractorValidado: true, mercadoFresco: true,
     dias: 60,
     publicarSiempre: true,
     instrumentos: [{
@@ -102,7 +110,7 @@ test('sin cambio material, NO publica aunque haya propuesta', async () => {
     publicar, ahora: HOY,
   }
   const opts = {
-    politica: { reserva_minima: 1000000, caja_restringida: 0 }, dias: 60,
+    filaReserva: RESERVA_APROBADA, filaRestringida: RESTRINGIDA_CERO, extractorValidado: true, mercadoFresco: true, dias: 60,
     instrumentos: [{
       nombre: 'Lecap S31O5', moneda: 'ARS', plazo_rescate_dias: 0, liquidacion_dias: 1,
       tasa: { tipo: 'tea', valor: 1.3, naturaleza: 'contractual' },

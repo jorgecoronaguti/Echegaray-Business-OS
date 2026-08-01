@@ -20,6 +20,7 @@ import { relevar } from '../lib/tesoreria/balanz-navegador.mjs'
 import {
   abrirCorrida, cerrarCorrida, guardarPosicion, guardarVentanas, guardarInstrumentos,
   guardarRecomendaciones, guardarBloqueos, resumenAnterior, vencerPropuestas, politicaVigente,
+  filaCajaRestringida,
 } from '../lib/tesoreria/ledger.mjs'
 
 const args = new Set(process.argv.slice(2))
@@ -40,11 +41,11 @@ async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WORKSPACE_SCOPES })
   const publicar = await hacerPublicador()
 
-  // La política vive en la base, no en el código: la reserva mínima es una decisión del dueño.
-  const politica = DRY ? {} : {
-    reserva_minima: await politicaVigente(query, 'reserva_minima').catch(() => null),
-    caja_restringida: await politicaVigente(query, 'caja_restringida').catch(() => null),
-  }
+  // Las políticas viven en la base, no en el código: la reserva mínima es una decisión del dueño.
+  // Se lee la FILA entera —no sólo el valor— porque el aprobador vive en la fila, y sin aprobador
+  // una política guardada sigue siendo una propuesta.
+  const filaReserva = DRY ? null : await politicaVigente(query, 'reserva_minima').catch(() => null)
+  const filaRestringida = DRY ? null : await filaCajaRestringida(query).catch(() => ({ error: 'no se pudo leer la política de caja restringida' }))
   const anterior = DRY ? null : await resumenAnterior(query).catch(() => null)
 
   let runId = null
@@ -57,7 +58,13 @@ async function main() {
   try {
     r = await correrCiclo(
       { google, query: DRY ? null : query, relevar, publicar },
-      { politica, anterior, publicarSiempre: FORZAR, dias: 90 },
+      {
+        filaReserva, filaRestringida, anterior, publicarSiempre: FORZAR, dias: 90,
+        // La validación del extractor contra la pantalla real es un HECHO que se declara por entorno,
+        // no algo que el agente pueda afirmar de sí mismo. Sin ella, todo sale NO_ACCIONABLE.
+        extractorValidado: process.env.ORQ_BALANZ_EXTRACTOR_VALIDADO === '1',
+        mercadoFresco: false, // lo fija el relevamiento: sin sesión no hay mercado fresco
+      },
     )
   } catch (e) {
     if (runId) await cerrarCorrida(query, runId, { estado: 'error', motivo: String(e?.message ?? e).slice(0, 300) })
