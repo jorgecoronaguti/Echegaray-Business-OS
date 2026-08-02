@@ -64,6 +64,33 @@ export async function sesionDisponible(endpoint = ENDPOINT_CDP, fetchImpl = fetc
  * devDependency, y el resto del agente —incluida toda la parte financiera— tiene que poder correr en
  * el worker de producción sin él instalado.
  */
+/**
+ * BUSCA LA PESTAÑA AUTENTICADA. No abre una nueva, y eso es una corrección, no una comodidad.
+ *
+ * ═══ POR QUÉ LA PESTAÑA PROPIA NO PODÍA FUNCIONAR NUNCA ═══
+ *
+ * El diseño original abría `ctx.newPage()` con un argumento razonable: no pasearle al dueño su
+ * pestaña por siete URLs dos veces por día. Contra el sitio real no funciona, y no por un detalle
+ * ajustable:
+ *
+ *   cookies del contexto:  0
+ *   sessionStorage:        plataforma-clientes-v2_currentAccount, _parametrosNegocio, … (6 claves)
+ *   localStorage:          plataforma-clientes-v2_bdid
+ *
+ * Balanz no guarda la sesión en cookies: la guarda en `sessionStorage`, que es **por pestaña**. Una
+ * pestaña nueva del mismo navegador y del mismo perfil nace deslogueada por definición. El
+ * explorador, corrido con la sesión del dueño abierta y andando, devolvía `SESSION_REQUIRED`.
+ *
+ * Así que se usa la pestaña que YA tiene la sesión, y se le devuelve la URL donde estaba al terminar.
+ * Se sigue sin tocar cookies, sin leer tokens y sin exportar nada: se navega y se lee, nada más.
+ */
+export function buscarPestanaAutenticada(paginas = []) {
+  return paginas.find((p) => {
+    const u = String(p.url() || '')
+    return esDominioBalanz(u) && !/\/(login|signin|ingresar|auth)/i.test(u)
+  }) || null
+}
+
 async function conectar(endpoint) {
   let chromium
   try { ({ chromium } = await import('playwright')) } catch {
@@ -162,6 +189,12 @@ export async function navegarSeguro(page, url, bloqueos = []) {
   }
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
   await verificarSesion(page)
+  // La sesión puede estar perfecta y la pantalla ser OTRA (ver `llegoADestino`). Se chequea después
+  // de `verificarSesion` porque un redirect al login tiene que reportarse como sesión vencida, que es
+  // lo accionable, y no como "no llegué".
+  if (!llegoADestino(url, page.url())) {
+    return { navegado: false, motivo: `la ruta no existe: Balanz redirigió a ${page.url()}`, redirigido_a: page.url() }
+  }
   return { navegado: true }
 }
 
@@ -246,17 +279,161 @@ export function estructuraDePagina() {
   }
 }
 
-/** Baja hasta el final para que carguen las filas diferidas. Scrollear NO es tocar un control. */
-export async function cargarTodo(page, vueltas = 8) {
-  let alto = 0
+/**
+ * Baja hasta el final para que carguen las filas diferidas. Scrollear NO es tocar un control.
+ *
+ * ═══ LA VENTANA NO ES LA QUE SCROLLEA ═══
+ *
+ * La versión anterior movía `window` y medía `document.body.scrollHeight`. En la app real de Balanz
+ * el `body` NO scrollea —`scrollHeight` y `innerHeight` valen los dos 788— porque el contenido vive
+ * dentro de un `section.content.overflow-y-scroll` con su propio scroll (4154 contra 749 de alto
+ * visible). O sea: la primera vuelta medía el mismo alto que la anterior, la función devolvía 0 y
+ * se daba por satisfecha sin haber disparado una sola carga.
+ *
+ * El costo estaba medido y era grande. Con el scroll arreglado, en la misma sesión:
+ *
+ *   bonos     20 → 189 filas
+ *   cedears   20 → 260 filas
+ *   cauciones 20 → 164 filas
+ *   letras    20 →  65 filas
+ *
+ * El agente elegía "la mejor alternativa" entre las primeras 20 filas alfabéticas de cada pantalla y
+ * lo informaba como si hubiera mirado el mercado. No es un bug de rendimiento: es una recomendación
+ * hecha sobre el 8% de los datos, presentada sin ninguna marca de que faltaba el resto.
+ *
+ * Se mide el crecimiento por CANTIDAD DE FILAS además de por altura: un contenedor virtualizado puede
+ * reciclar los nodos y mantener el alto constante mientras cambia el contenido.
+ */
+export async function cargarTodo(page, vueltas = 15) {
+  let firma = ''
   for (let i = 0; i < vueltas; i += 1) {
-    const nuevo = await page.evaluate(() => document.body.scrollHeight)
-    if (nuevo === alto) return i
-    alto = nuevo
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+    const nueva = await page.evaluate(async () => {
+      // El scroller real: el elemento con scroll propio más alto de la página. Si no hay ninguno
+      // —una pantalla corta—, se cae a la ventana, que es el comportamiento clásico.
+      const cand = [...document.querySelectorAll('*')]
+        .filter((e) => e.scrollHeight > e.clientHeight + 50 && e.clientHeight > 200)
+        .sort((a, b) => b.scrollHeight - a.scrollHeight)[0]
+      if (cand) cand.scrollTop = cand.scrollHeight
+      else window.scrollTo(0, document.body.scrollHeight)
+      const alto = cand ? cand.scrollHeight : document.body.scrollHeight
+      return `${alto}:${document.querySelectorAll('tbody tr').length}:${document.querySelectorAll('[class*=fondo-item]').length}`
+    })
+    if (nueva === firma) return i
+    firma = nueva
     await page.waitForTimeout(700)
   }
   return vueltas
+}
+
+/**
+ * ¿La navegación llegó a donde pidió? Balanz responde a una ruta que no existe **redirigiendo a
+ * `/app/home` sin ningún error**: `/app/cotizaciones/on`, `/etf` y `/lecaps` terminan todas ahí.
+ *
+ * Y `/app/home` es una pantalla autenticada y legítima de Balanz, así que `verificarSesion` la
+ * aprueba. El relevamiento se llevaba el ticker de la portada —TAMAR, S&P MERVAL, los ETF del
+ * encabezado— y lo devolvía como si fuera el listado de obligaciones negociables que se había pedido.
+ * Otra vez el mismo patrón: no falla, contesta otra cosa.
+ */
+export function llegoADestino(urlPedida, urlFinal) {
+  const ruta = (u) => { try { return new URL(u, ORIGEN_BALANZ).pathname.replace(/\/+$/, '').toLowerCase() } catch { return null } }
+  const pedida = ruta(urlPedida)
+  const final = ruta(urlFinal)
+  if (!pedida || !final) return false
+  return final === pedida || final.startsWith(`${pedida}/`)
+}
+
+/**
+ * LEE LA TABLA DE COTIZACIONES tal como la dibuja Balanz. Se pasa como FUNCIÓN (un string devuelve
+ * `undefined` en silencio) y se corre dentro de la página.
+ *
+ * Las pantallas de acciones, bonos, cedears, letras, cauciones y corporativos SÍ son `<table>` con
+ * `<th>`, así que el mapeo por encabezado de `instrumentos.mjs` sirve tal cual. Lo único que hay que
+ * limpiar acá es lo que el DOM mete dentro de las celdas y no es dato:
+ *
+ * · la primera celda trae `TICKER⏎NOMBRE LARGO` en dos líneas → se parten en dos campos;
+ * · la última celda es el libro de puntas, con los botones "Vender"/"Comprar" adentro. Su texto
+ *   ("10 × 960,00 Vender 995,00 × 89 Comprar") no es un dato de mercado utilizable y además mete
+ *   verbos transaccionales en el texto que después se guarda. Se descarta.
+ */
+export function leerTablaCotizaciones() {
+  const limpio = (el) => (el?.innerText || '').replace(/\u00a0/g, ' ').trim()
+  const t = document.querySelector('table')
+  if (!t) return null
+  const cabCruda = [...t.querySelectorAll('th')].map(limpio)
+  const filasCrudas = [...t.querySelectorAll('tbody tr')].map((r) => [...r.querySelectorAll('td')].map(limpio))
+  if (!cabCruda.length) return { cabecera: cabCruda, filas: filasCrudas, normalizada: false }
+
+  // 1 · FUERA LAS COLUMNAS SIN ENCABEZADO. En la tabla real son dos: la primera (el ícono de
+  //     "seguir") y la última, que es el libro de puntas — y esa última trae los botones "Vender" y
+  //     "Comprar" adentro, con lo cual su texto mete verbos transaccionales en el dato guardado.
+  const utiles = cabCruda.map((h, i) => (h ? i : -1)).filter((i) => i >= 0)
+  let cabecera = utiles.map((i) => cabCruda[i])
+  let filas = filasCrudas.map((f) => utiles.map((i) => f[i] ?? ''))
+
+  // 2 · PARTIR TICKER Y NOMBRE. La tabla NO tiene columna "Nombre": la primera celda trae
+  //     `ALUA⏎ALUAR S.A. ORDS 1 VOTO ESCRITURALES` en dos renglones. Sin esto `mapearColumnas` no
+  //     encuentra columna de nombre y `extraerDeTabla` devuelve CERO instrumentos, con un motivo que
+  //     nadie mira — que es exactamente lo que pasaba con las cinco pantallas de cotizaciones.
+  const iTicker = cabecera.findIndex((h) => /^ticker$/i.test(h))
+  if (iTicker >= 0 && filas.some((f) => String(f[iTicker] ?? '').includes('\n'))) {
+    cabecera = [...cabecera.slice(0, iTicker + 1), 'Nombre', ...cabecera.slice(iTicker + 1)]
+    filas = filas.map((f) => {
+      const [tk, ...resto] = String(f[iTicker] ?? '').split('\n').map((x) => x.trim())
+      return [...f.slice(0, iTicker), tk, resto.join(' ').trim(), ...f.slice(iTicker + 1)]
+    })
+  }
+  return { cabecera, filas, normalizada: true }
+}
+
+/**
+ * LEE LAS TARJETAS DE FONDOS. La pantalla de fondos no es una tabla: son tarjetas `div.fondo-item`
+ * con pares etiqueta→valor. Contra la app real hay CERO `<table>`, CERO `<th>`, CERO encabezados
+ * `h1..h6`, CERO `[role=tab]` y CERO `<li>` — 1579 `<div>` y nada más.
+ *
+ * Por eso se lee por ETIQUETA y no por posición, que es la misma regla que este repo aplica a las
+ * columnas de Compras y a las tablas de arriba: el orden de los bloques cambia con cada despliegue,
+ * los rótulos casi nunca.
+ *
+ * La tasa se toma SÓLO del rótulo "TNA:" que la tarjeta trae explícito. Las variaciones
+ * Diaria/Semanal/Mensual/Anual son rendimiento PASADO y se devuelven aparte, nunca como tasa: en la
+ * pantalla real sólo 2 de 10 fondos declaran TNA, y llamar "tasa" al 44,21% anual de un fondo de
+ * renta fija sería exactamente inventar una expectativa donde hay un histórico.
+ */
+export function leerTarjetasDeFondos() {
+  const limpio = (el) => (el?.innerText || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim()
+  const tarjetas = [...document.querySelectorAll('[class*="fondo-item"]')]
+  return tarjetas.map((c) => {
+    // Pares etiqueta→valor: un div de rótulo seguido de su hermano con el valor.
+    const pares = {}
+    for (const el of c.querySelectorAll('div')) {
+      if (el.children.length) continue
+      const k = limpio(el).replace(/:$/, '')
+      const sig = el.nextElementSibling
+      if (k && sig && !sig.children.length) pares[k] = limpio(sig)
+    }
+    const badge = c.querySelector('[class*="fondo-badge"]')
+    const moneda = c.querySelector('[class*="badge-moneda"]')
+    // El nombre: el primer div hoja con clase de título dentro de la tarjeta.
+    const nombreEl = c.querySelector('[class*="text-size-6"]') || c.querySelector('[class*="fw-semibold"]')
+    // "TNA: +17,81%" — el rótulo y su span viven en el mismo bloque.
+    const bloqueTna = [...c.querySelectorAll('div')].find((e) => /^TNA\s*:/i.test(limpio(e)))
+    return {
+      nombre: limpio(nombreEl),
+      plazo_rescate_texto: limpio(badge) || null,
+      moneda_texto: limpio(moneda) || null,
+      perfil: pares['Perfíl'] ?? pares.Perfil ?? null,
+      tipo: pares.Tipo ?? null,
+      horizonte: pares.Horizonte ?? null,
+      tna_texto: bloqueTna ? limpio(bloqueTna) : null,
+      variaciones: {
+        diaria: pares.Diaria ?? null,
+        semanal: pares.Semanal ?? null,
+        mensual: pares.Mensual ?? null,
+        anual: pares.Anual ?? null,
+      },
+      texto: limpio(c).slice(0, 400),
+    }
+  }).filter((f) => f.nombre)
 }
 
 /** Todos los controles de la página, ya extraídos para la barrera. */
@@ -317,19 +494,42 @@ export async function relevar({ rutas = [], endpoint = ENDPOINT_CDP } = {}) {
   const { browser, ctx } = await conectar(endpoint)
   const bloqueos = []
   const paginas = []
-  // PESTAÑA PROPIA, no la del dueño. `ctx.pages()[0]` se lleva la pestaña que él tenga abierta y la
-  // pasea por siete URLs — dos veces por día hábil. Se abre una nueva y se cierra al terminar.
-  const page = await ctx.newPage()
+  // LA PESTAÑA DEL DUEÑO ES LA ÚNICA QUE TIENE SESIÓN (ver `buscarPestanaAutenticada`): Balanz la
+  // guarda en `sessionStorage`, que no se comparte entre pestañas.
+  const page = buscarPestanaAutenticada(ctx.pages())
+  if (!page) {
+    await browser.close().catch(() => {})
+    return {
+      estado: 'session_required',
+      motivo: 'no hay ninguna pestaña de Balanz abierta con sesión iniciada en el Chrome dedicado',
+      paginas: [], bloqueos: [], observado_en: new Date().toISOString(),
+    }
+  }
+  const urlOriginal = page.url() // se la devolvemos como estaba al terminar
   try {
     for (const ruta of rutas) {
       const url = ruta.startsWith('http') ? ruta : `${ORIGEN_BALANZ}${ruta}`
       const nav = await navegarSeguro(page, url, bloqueos)
-      if (!nav.navegado) { paginas.push({ url, estado: 'bloqueada', motivo: nav.motivo }); continue }
+      if (!nav.navegado) {
+        paginas.push({ url, estado: nav.redirigido_a ? 'no_existe' : 'bloqueada', motivo: nav.motivo })
+        continue
+      }
       await page.waitForTimeout(1200)
+      // Primero cargar TODO (el scroller real, no la ventana): sin esto se leen 20 filas de 189.
+      const vueltas = await cargarTodo(page)
       const texto = await page.locator('body').innerText().catch(() => '')
+      // Y LEER LA ESTRUCTURA, no sólo el texto plano. El texto de una tarjeta pone el nombre y la
+      // tasa en renglones distintos, así que un extractor por línea no puede juntarlos: contra la
+      // pantalla real devolvía dos instrumentos llamados "TNA: +" y ninguno de los diez fondos.
+      const tabla = await page.evaluate(leerTablaCotizaciones).catch(() => null)
+      const tarjetas = await page.evaluate(leerTarjetasDeFondos).catch(() => [])
       const controles = await auditarControles(page)
       bloqueos.push(...controles.bloqueados)
-      paginas.push({ url, estado: 'ok', texto: String(texto).slice(0, 60000), controles: { total: controles.total, permitidos: controles.permitidos, bloqueados: controles.bloqueados.length } })
+      paginas.push({
+        url, estado: 'ok', texto: String(texto).slice(0, 60000),
+        tabla, tarjetas, vueltas_de_carga: vueltas,
+        controles: { total: controles.total, permitidos: controles.permitidos, bloqueados: controles.bloqueados.length },
+      })
     }
     return { estado: 'ok', paginas, bloqueos, observado_en: new Date().toISOString() }
   } catch (e) {
@@ -338,9 +538,11 @@ export async function relevar({ rutas = [], endpoint = ENDPOINT_CDP } = {}) {
     }
     throw e
   } finally {
-    // La pestaña propia SÍ se cierra (es nuestra). La CONEXIÓN se corta con `browser.close()`, que
-    // sobre CDP desconecta sin matar el Chrome del dueño.
-    await page.close().catch(() => {})
+    // La pestaña es DEL DUEÑO: no se cierra, se le devuelve la URL donde estaba. La CONEXIÓN se corta
+    // con `browser.close()`, que sobre CDP desconecta sin matar el Chrome.
+    if (urlOriginal && page.url() !== urlOriginal && esDominioBalanz(urlOriginal)) {
+      await page.goto(urlOriginal, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {})
+    }
     await browser.close().catch(() => {})
   }
 }

@@ -43,6 +43,12 @@ export const RAICES_PROHIBIDAS = [
   'extra', 'pag', 'cobr', 'canje', 'canjea', 'adher', 'contrat',
   // Verbos que un bróker usa para "operar" sin decir "operar".
   'constitu', 'aplic', 'adquir', 'liquid', 'ingres', 'egres', 'mandat',
+  // `tom` lo agregó la pantalla REAL de cauciones (02/08/2026). Cada fila trae dos botones:
+  // "Colocar" —que ya caía por `coloc`— y "Tomar", que pasaba limpio. Tomar una caución es pedir
+  // plata prestada a una tasa: es la punta DEUDORA de la misma operación, y para una empresa con el
+  // descubierto al 62,78% es la más cara de las dos. La barrera bloqueaba la mitad de la pantalla y
+  // dejaba abierta justo la mitad que endeuda.
+  'tom',
 ]
 
 /**
@@ -84,7 +90,7 @@ export const FRASES_INFORMATIVAS = [
 ]
 
 /** Claves de query que son de presentación, no de acción: paginar y ordenar no operan nada. */
-export const QUERY_PRESENTACION = ['pagina', 'page', 'orden', 'ordenar', 'sort', 'filtro', 'tab', 'limit', 'offset']
+export const QUERY_PRESENTACION = ['pagina', 'page', 'orden', 'ordenar', 'sort', 'filtro', 'tab', 'limit', 'offset', 'all']
 
 /**
  * Frases transaccionales que ninguna raíz sola atrapa.
@@ -286,6 +292,11 @@ export const NAVEGACION_INFORMATIVA = new Set([
   '/cauciones',
   '/mercado/cauciones/listado',
   '/mercado/cauciones/tasas',
+  // La ruta REAL de la aplicación, verificada con sesión el 02/08/2026. Las cuatro de arriba se
+  // conservan porque no cuesta nada y porque el sitio ya cambió de esquema una vez; ninguna
+  // habilita un prefijo: `/app/cotizaciones/cauciones/operar` sigue bloqueada, y en esa pantalla
+  // los botones "Colocar" y "Tomar" —las dos puntas de la operación— también.
+  '/app/cotizaciones/cauciones',
 ])
 
 /** Path exacto, sin query, sin hash y sin barra final. Devuelve null si la URL no parsea. */

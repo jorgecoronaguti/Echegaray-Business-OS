@@ -31,6 +31,7 @@
 import {
   sesionDisponible, ENDPOINT_CDP, ORIGEN_BALANZ, SesionRequerida,
   estructuraDePagina, controlesDePagina, cargarTodo, verificarSesion,
+  buscarPestanaAutenticada, llegoADestino, leerTablaCotizaciones, leerTarjetasDeFondos,
 } from '../lib/tesoreria/balanz-navegador.mjs'
 import { evaluarNavegacion, evaluarElemento } from '../lib/tesoreria/balanz-denylist.mjs'
 import { RUTAS_INFORMATIVAS } from '../lib/tesoreria/ciclo.mjs'
@@ -52,7 +53,17 @@ async function main() {
   const browser = await chromium.connectOverCDP(ENDPOINT_CDP)
   const ctx = browser.contexts()[0]
   if (!ctx) throw new SesionRequerida('el navegador no tiene contextos')
-  const page = await ctx.newPage() // pestaña propia: no se le toca la del dueño
+  // NO se abre una pestaña nueva: Balanz guarda la sesión en `sessionStorage`, que es por pestaña, y
+  // una pestaña nueva nace deslogueada. Se usa la del dueño y se le devuelve la URL al terminar.
+  const page = buscarPestanaAutenticada(ctx.pages())
+  if (!page) {
+    console.error('SESSION_REQUIRED: no hay ninguna pestaña de Balanz con sesión iniciada.')
+    console.error('Abrí el Chrome dedicado, entrá a Balanz a mano y dejá esa pestaña abierta.')
+    process.exitCode = 2
+    await browser.close().catch(() => {})
+    return
+  }
+  const urlOriginal = page.url()
   const mapa = []
 
   try {
@@ -68,16 +79,24 @@ async function main() {
         return
       }
       await page.waitForTimeout(1500)
+      // Balanz redirige a /app/home cualquier ruta que no existe, SIN error: hay que verificar que
+      // se llegó, o se mapea la portada creyendo que es la pantalla pedida.
+      if (!llegoADestino(url, page.url())) {
+        mapa.push({ ruta, estado: 'no_existe', motivo: `redirigió a ${page.url()}` })
+        continue
+      }
 
       // LAZY LOADING: bajar la página no es interactuar con un control —no dispara nada— y es la
       // única forma de ver la tabla entera.
-      await cargarTodo(page)
+      const vueltas = await cargarTodo(page)
 
       const estructura = await page.evaluate(estructuraDePagina)
+      const tabla = await page.evaluate(leerTablaCotizaciones).catch(() => null)
+      const tarjetas = await page.evaluate(leerTarjetasDeFondos).catch(() => [])
       const controles = await controlesDePagina(page)
       const veredictos = controles.map((el) => ({ el, v: evaluarElemento(el) }))
       mapa.push({
-        ruta, estado: 'ok', ...estructura,
+        ruta, estado: 'ok', ...estructura, tabla, tarjetas, vueltas_de_carga: vueltas,
         controles: {
           total: veredictos.length,
           permitidos: veredictos.filter((x) => x.v.permitido).length,
@@ -89,7 +108,10 @@ async function main() {
       })
     }
   } finally {
-    await page.close().catch(() => {})
+    // La pestaña es del dueño: se le devuelve donde estaba, no se cierra.
+    if (urlOriginal && page.url() !== urlOriginal) {
+      await page.goto(urlOriginal, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {})
+    }
     await browser.close().catch(() => {})
   }
 
@@ -99,11 +121,17 @@ async function main() {
     if (p.estado !== 'ok') continue
     console.log(`  título: ${p.titulo}`)
     if (p.tabs?.length) console.log(`  tabs: ${p.tabs.join(' · ')}`)
-    for (const t of p.tablas) {
-      console.log(`  tabla #${t.i}: ${t.filas} filas · columnas: ${t.cabecera.join(' | ') || '(sin th)'}`)
-      for (const m of t.muestra) console.log(`      ${m.join(' | ').slice(0, 160)}`)
+    if (p.tabla?.filas?.length) {
+      console.log(`  TABLA: ${p.tabla.filas.length} filas (${p.vueltas_de_carga} vueltas de carga) · columnas: ${p.tabla.cabecera.join(' | ')}`)
+      for (const m of p.tabla.filas.slice(0, 2)) console.log(`      ${m.join(' | ').replace(/\n/g, '⏎').slice(0, 150)}`)
     }
-    if (!p.tablas.length) console.log(`  (sin tablas) encabezados: ${p.encabezados.map((h) => h.texto).slice(0, 8).join(' · ')}`)
+    if (p.tarjetas?.length) {
+      console.log(`  TARJETAS: ${p.tarjetas.length}`)
+      for (const f of p.tarjetas.slice(0, 3)) {
+        console.log(`      ${f.nombre} · ${f.moneda_texto} · rescate ${f.plazo_rescate_texto} · tipo ${f.tipo} · tna ${f.tna_texto ?? '(no declarada)'} · anual ${f.variaciones?.anual ?? '-'}`)
+      }
+    }
+    if (!p.tabla?.filas?.length && !p.tarjetas?.length) console.log('  (sin tabla ni tarjetas)')
     console.log(`  controles: ${p.controles.permitidos} permitidos · ${p.controles.bloqueados} BLOQUEADOS`)
     for (const b of p.controles.ejemplos_bloqueados) console.log(`      ⛔ "${b.texto}" — ${b.motivo}`)
   }

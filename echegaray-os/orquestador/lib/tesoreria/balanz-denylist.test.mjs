@@ -117,10 +117,17 @@ test('NINGÚN archivo tiene un clic o un goto que saltee la barrera', () => {
 })
 
 test('el navegador NO extrae cookies, tokens ni contraseñas', () => {
+  // El guard mira el CÓDIGO, no el archivo entero. La versión anterior buscaba el string en todo el
+  // texto y se ponía roja cuando un comentario EXPLICABA dónde guarda Balanz la sesión — o sea,
+  // castigaba documentar el hallazgo que hacía falta documentar. Sacar los comentarios primero lo
+  // vuelve más estricto, no menos: ahora afirma que no se USAN, que es lo que importa.
   const src = readFileSync(join(DIR, 'balanz-navegador.mjs'), 'utf8')
+  const codigo = src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1')
   for (const prohibido of ['cookies()', 'storageState', 'localStorage', 'sessionStorage', 'password:']) {
-    assert.equal(src.includes(prohibido), false, `el navegador usa ${prohibido}`)
+    assert.equal(codigo.includes(prohibido), false, `el navegador usa ${prohibido}`)
   }
+  // Y la mención tiene que seguir siendo SÓLO comentario: si alguien la mueve al código, salta arriba.
+  assert.match(src, /sessionStorage/, 'el archivo debe seguir explicando por qué no se usa una pestaña nueva')
 })
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -328,4 +335,49 @@ test('abrir una cuenta se bloquea en todas sus formas, y "abril" no', () => {
   for (const t of ['Abril 2026', 'Vencimientos de abril', 'Abrir el prospecto']) {
     assert.equal(evaluarElemento({ texto: t, href: '/prospecto' }).permitido, true, `"${t}" se bloqueó de más`)
   }
+})
+
+test('"Tomar" una caución es endeudarse, y la barrera lo dejaba pasar', () => {
+  // ═══ HALLAZGO DE LA PANTALLA REAL (02/08/2026) ═══
+  //
+  // Cada fila de /app/cotizaciones/cauciones trae DOS botones: "Colocar" —que ya caía por la raíz
+  // `coloc`— y "Tomar", que pasaba limpio. Tomar una caución es pedir plata prestada a una tasa: es
+  // la punta DEUDORA de la misma operación y, para una empresa con el descubierto al 62,78%, la más
+  // cara de las dos. La barrera bloqueaba la mitad de la pantalla y dejaba abierta la que endeuda.
+  for (const t of ['Tomar', 'Tomá', 'TOMAR CAUCIÓN', 'Tomador', 'Tomo']) {
+    assert.equal(evaluarElemento({ texto: t, href: '#' }).permitido, false, `"${t}" pasó`)
+  }
+})
+
+test('los controles REALES de las seis pantallas de cotizaciones', () => {
+  // Medido con sesión el 02/08/2026 sobre /fondos, /letras, /bonos, /cauciones, /acciones y
+  // /cedears: entre 63 y 120 controles por pantalla, y SIEMPRE los mismos 10 permitidos —que son
+  // navegación del sitio, no acciones. Si algún día aparece un permitido nuevo, este test lo muestra.
+  const CHROME_DE_NAVEGACION = [
+    'Inicio', 'Cartera', 'Actividad', 'Mercado', 'Seguidos', 'Perfil', 'Dólar oficial', 'Research',
+    'Scroll tabs left', 'Scroll tabs right', "Ver todas las ON's", 'Ver todos los fondos',
+    'Detalle del fondo',
+  ]
+  for (const t of CHROME_DE_NAVEGACION) {
+    assert.equal(evaluarElemento({ texto: t, href: '/app/cotizaciones/fondos' }).permitido, true,
+      `"${t}" es navegación del sitio y se bloqueó de más`)
+  }
+  // Y los transaccionales reales de esas mismas pantallas, todos bloqueados.
+  const CTA_REALES = ['Vender', 'Comprar', 'Colocar', 'Tomar', 'Suscribir', 'Invertir']
+  for (const t of CTA_REALES) {
+    assert.equal(evaluarElemento({ texto: t, href: '#' }).permitido, false, `"${t}" pasó`)
+  }
+})
+
+test('la ruta REAL de cauciones entra por la allowlist, y sus vecinas no', () => {
+  assert.equal(evaluarNavegacion('/app/cotizaciones/cauciones').permitido, true)
+  assert.equal(evaluarNavegacion('https://clientes.balanz.com/app/cotizaciones/cauciones').permitido, true)
+  // Ni un prefijo más: la allowlist es por ruta EXACTA.
+  for (const u of ['/app/cotizaciones/cauciones/operar', '/app/cotizaciones/caucionar',
+    '/app/cotizaciones/cauciones-nueva', '/app/cotizaciones/cauciones?accion=tomar']) {
+    assert.equal(evaluarNavegacion(u).permitido, false, `${u} pasó`)
+  }
+  // Y `?all=1`, que es lo que muestra el listado completo, es presentación: no bloquea.
+  assert.equal(evaluarNavegacion('/app/cotizaciones/corporativos?all=1').permitido, true)
+  assert.equal(evaluarNavegacion('/app/cotizaciones/fondosext?all=1').permitido, true)
 })

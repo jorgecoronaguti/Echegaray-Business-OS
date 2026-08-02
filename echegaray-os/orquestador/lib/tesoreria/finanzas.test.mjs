@@ -17,7 +17,10 @@ import {
 } from './politicas.mjs'
 import { resumirHorizonte, ventanaSinPerforar, ESCENARIOS, proyectarLiquidez } from './proyeccion-liquidez.mjs'
 import { calcularExcedente, tasaDeCorte, rendimientoPeriodo } from './excedente.mjs'
-import { aTea, tnaATea, periodoATea, normalizarInstrumento, categorizar, esAptoTesoreria, porcentajeArg, plazoLiquidacion } from './instrumentos.mjs'
+import {
+  aTea, tnaATea, periodoATea, normalizarInstrumento, categorizar, esAptoTesoreria, porcentajeArg,
+  plazoLiquidacion, numeroArg, separadorDecimal, extraerDeTabla, extraerDeTarjetas,
+} from './instrumentos.mjs'
 import { compararAlternativas, evaluarContraVentana, liquidezCompatible, costoTotal, rendimientoDelPeriodo } from './comparar.mjs'
 import { evaluarRiesgo, evaluarConcentracion, PERFILES } from './riesgo.mjs'
 import { frescuraDeMercado } from './ciclo.mjs'
@@ -928,4 +931,158 @@ test('la frescura del mercado se MIDE con lo relevado, no se cablea', () => {
   assert.equal(frescuraDeMercado([
     { observado_en: '2026-08-01T11:55:00Z' }, { observado_en: '2026-07-29T00:00:00Z' },
   ], ahora).fresco, false)
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// LA PANTALLA REAL DE BALANZ — datos capturados con sesión el 02/08/2026
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Las filas de abajo NO están inventadas: salen de `clientes.balanz.com/app/cotizaciones/*` leídas
+ * por CDP desde el Chrome dedicado, con la sesión del dueño abierta. Se conservan textuales —con su
+ * cabecera, su `⏎` entre ticker y nombre, y sus guiones— porque cada rareza de formato costó un
+ * defecto.
+ */
+const TABLA_BONOS_REAL = {
+  cabecera: ['Ticker', 'Nombre', 'Plazo', 'Hora', 'Precio', 'Var(%)', 'Var', 'TIR', 'Volumen'],
+  filas: [
+    ['AE38', 'BONO REP. ARGENTINA USD STEP UP 2038', '24hs', '31/07/2026', '1.250,00', '0,00%', '0,00', '9.3%', '6.918.918.474'],
+    ['AE38C', 'BONO REP. ARGENTINA USD STEP UP 2038', '24hs', '31/07/2026', '0,792', '0,00%', '0,00', '-', '2.201.718'],
+  ],
+}
+const TABLA_LETRAS_REAL = {
+  cabecera: ['Ticker', 'Nombre', 'Plazo', 'Hora', 'Precio', 'Var(%)', 'Var', 'TNA', 'Volumen'],
+  filas: [
+    ['S14G6', 'LETRA DEL TESORO NACIONAL CAPITALIZABLE EN PESOS VTO. 14/08/2026', '24hs', '31/07/2026', '1,0727', '0,00%', '0,00', '23,16%', '49.128.611.494'],
+  ],
+}
+const TABLA_CAUCIONES_REAL = {
+  cabecera: ['Ticker', 'Nombre', 'Plazo', 'Hora', 'TNA', 'Var(%)', 'Var', 'Volumen'],
+  filas: [
+    ['DOLAR', 'DOLARES', '72hs', '31/07/2026', '2.11', '0,00%', '0,00', '1.037.184.028'],
+    ['PESOS', 'CAUCION PESOS', '72hs', '31/07/2026', '10', '0,00%', '0,00', '8.449.076.556.363'],
+  ],
+}
+
+test('el punto NO siempre es separador de miles: la TIR real del AE38 es 9,3%, no 3%', () => {
+  // ═══ EL DEFECTO ═══
+  // Balanz escribe la TIR con punto decimal ("9.3%") y el precio con coma ("1.250,00"), en la misma
+  // fila. La regex vieja exigía grupos de miles de 3 dígitos, así que sobre "9.3%" no matcheaba el
+  // "9" y capturaba el "3" suelto: devolvía 0.03. Un bono que rinde 9,3% informado como 3% se
+  // descarta solo, y nadie se entera de que se descartó por un parser.
+  assert.ok(Math.abs(porcentajeArg('9.3%') - 0.093) < 1e-9, 'la TIR con punto decimal se lee mal')
+  assert.ok(Math.abs(porcentajeArg('23,16%') - 0.2316) < 1e-9, 'y la TNA con coma tiene que seguir andando')
+  // El otro lado: el punto SÍ es miles cuando vienen tres dígitos justos.
+  assert.equal(numeroArg('1.250,00'), 1250)
+  assert.equal(numeroArg('1.234.567'), 1234567)
+  assert.equal(numeroArg('49.128.611.494'), 49128611494)
+  // Y el caso que la caución en dólares expuso: "2.11" es 2,11, no 211.
+  assert.equal(numeroArg('2.11'), 2.11)
+  // Un grupo de miles nunca arranca con cero: "0.792" es cero coma algo, no setecientos noventa y dos.
+  assert.equal(numeroArg('0.792'), 0.792)
+  assert.equal(numeroArg('0,792'), 0.792, 'y así es como lo escribe Balanz de verdad')
+  // Un guion es "no hay dato", nunca cero.
+  assert.equal(numeroArg('-'), null)
+  assert.equal(numeroArg(''), null)
+  assert.equal(numeroArg(null), null)
+})
+
+test('separadorDecimal declara qué hace con cada forma, incluida la ambigua', () => {
+  assert.equal(separadorDecimal('1.250,00'), 'coma')
+  assert.equal(separadorDecimal('23,16'), 'coma')
+  assert.equal(separadorDecimal('9.3'), 'punto')
+  assert.equal(separadorDecimal('2.11'), 'punto')
+  assert.equal(separadorDecimal('1.234.567'), 'miles')
+  assert.equal(separadorDecimal('0.792'), 'punto', 'un grupo de miles no arranca con cero')
+  assert.equal(separadorDecimal('10'), 'ninguno')
+  // El único ambiguo de verdad: en es-AR es nueve mil trescientos. Se resuelve así y se declara.
+  assert.equal(separadorDecimal('9.300'), 'miles')
+})
+
+test('la tabla REAL de bonos: TIR 9,3%, moneda USD, y el guion NO es cero', () => {
+  const { instrumentos } = extraerDeTabla(TABLA_BONOS_REAL, { url: '/app/cotizaciones/bonos' })
+  assert.equal(instrumentos.length, 2)
+  const [ae38, ae38c] = instrumentos
+  assert.equal(ae38.ticker, 'AE38')
+  assert.equal(ae38.tasa.tipo, 'tir')
+  assert.ok(Math.abs(ae38.tasa.valor - 0.093) < 1e-9)
+  assert.equal(ae38.precio, 1250)
+  // Sin columna de moneda, el default silencioso era ARS — para un bono que dice USD en el nombre.
+  assert.equal(ae38.moneda, 'USD', 'un bono en dólares no puede quedar etiquetado en pesos')
+  // "Plazo 24hs" es la liquidación: es lo que decide cuándo vuelve la plata.
+  assert.equal(ae38.liquidacion_dias, 1)
+  // Y la fila sin TIR queda SIN tasa, no con tasa 0.
+  assert.equal(ae38c.tasa, null)
+  assert.ok(ae38c.campos_faltantes.includes('tasa'))
+})
+
+test('la tabla REAL de letras: la Lecap entra al universo de tesorería con su TNA', () => {
+  const { instrumentos } = extraerDeTabla(TABLA_LETRAS_REAL, { url: '/app/cotizaciones/letras' })
+  const [s14g6] = instrumentos
+  assert.equal(s14g6.ticker, 'S14G6')
+  assert.equal(s14g6.categoria, 'lecap')
+  assert.equal(esAptoTesoreria(s14g6.categoria), true)
+  assert.equal(s14g6.tasa.tipo, 'tna')
+  assert.ok(Math.abs(s14g6.tasa.valor - 0.2316) < 1e-9)
+  assert.equal(s14g6.moneda, 'ARS')
+})
+
+test('la tabla REAL de cauciones: la de dólares es USD y rinde 2,11%, no 211%', () => {
+  const { instrumentos } = extraerDeTabla(TABLA_CAUCIONES_REAL, { url: '/app/cotizaciones/cauciones' })
+  const [dolar, pesos] = instrumentos
+  // Las dos trampas de esta pantalla juntas: la tasa viene con punto decimal y SIN signo %, y la
+  // moneda no tiene columna. Antes: caución en dólares al 211% TNA etiquetada en pesos. Con el
+  // descubierto al 62,78%, una tasa así habría ganado cualquier ranking.
+  assert.equal(dolar.moneda, 'USD')
+  assert.ok(Math.abs(dolar.tasa.valor - 0.0211) < 1e-9, `TNA leída: ${dolar.tasa.valor}`)
+  assert.equal(pesos.moneda, 'ARS')
+  assert.ok(Math.abs(pesos.tasa.valor - 0.10) < 1e-9)
+  assert.equal(pesos.categoria, 'caucion')
+})
+
+test('las variaciones de un fondo NO son su tasa: sólo el rótulo TNA lo es', () => {
+  // La tarjeta real de Balanz, tal como la devuelve `leerTarjetasDeFondos`. En la pantalla del
+  // 02/08/2026 sólo 2 de 10 fondos declaraban TNA; los otros ocho traen únicamente variaciones
+  // pasadas. Anualizar el "Anual 44,21%" de un fondo de renta fija y llamarlo tasa sería fabricar
+  // una expectativa: el número es plausible, entra al ranking y gana.
+  const TARJETAS_REALES = [
+    {
+      nombre: 'Money Market Pesos', plazo_rescate_texto: 'Inmediato', moneda_texto: 'ARS',
+      perfil: 'Conservador', tipo: 'Mercado de Dinero', horizonte: 'Corto plazo',
+      tna_texto: 'TNA: +17,81%',
+      variaciones: { diaria: '0,05%', semanal: '0,32%', mensual: '1,40%', anual: '28,17%' },
+    },
+    {
+      nombre: 'Ahorro corto plazo', plazo_rescate_texto: '24hs', moneda_texto: 'ARS',
+      perfil: 'Conservador', tipo: 'Renta Fija', horizonte: 'Corto plazo',
+      tna_texto: null,
+      variaciones: { diaria: '0,20%', semanal: '0,25%', mensual: '1,76%', anual: '44,21%' },
+    },
+    {
+      nombre: 'Crédito Privado', plazo_rescate_texto: '24hs', moneda_texto: 'ARS',
+      perfil: 'Moderado', tipo: 'Renta Fija', horizonte: 'Corto plazo',
+      tna_texto: null,
+      variaciones: { diaria: '0,11%', semanal: '0,47%', mensual: '2,06%', anual: '-' },
+    },
+  ]
+  const inst = extraerDeTarjetas(TARJETAS_REALES, { url: '/app/cotizaciones/fondos' })
+  assert.equal(inst.length, 3)
+
+  const [mm, ahorro, credito] = inst
+  assert.equal(mm.categoria, 'money_market', 'la categoría sale del campo "Tipo" de la tarjeta')
+  assert.equal(mm.tasa.tipo, 'tna')
+  assert.ok(Math.abs(mm.tasa.valor - 0.1781) < 1e-9)
+  assert.equal(mm.plazo_rescate_dias, 0, '"Inmediato" es rescate a 0 días')
+  assert.equal(mm.riesgo_declarado, 'Conservador')
+
+  // EL CASO QUE IMPORTA: 44,21% anual a la vista y NINGUNA tasa.
+  assert.equal(ahorro.tasa, null, 'un rendimiento histórico no puede convertirse en tasa')
+  assert.ok(ahorro.campos_faltantes.includes('tasa_no_declarada_en_pantalla'))
+  assert.equal(ahorro.variaciones_historicas.anual, '44,21%', 'pero el histórico se conserva como evidencia')
+  assert.equal(ahorro.plazo_rescate_dias, 1, '"24hs" es rescate a 1 día')
+  assert.equal(ahorro.categoria, 'fci_renta_fija')
+
+  // Y un "-" en la variación anual sigue siendo un guion, no un cero.
+  assert.equal(credito.variaciones_historicas.anual, '-')
+  assert.equal(credito.tasa, null)
 })

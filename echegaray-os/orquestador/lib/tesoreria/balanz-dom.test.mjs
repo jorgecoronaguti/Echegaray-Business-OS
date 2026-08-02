@@ -16,7 +16,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { evaluarElemento } from './balanz-denylist.mjs'
-import { clicSeguro, navegarSeguro, auditarControles, verificarSesion, marcasDeLogin } from './balanz-navegador.mjs'
+import {
+  clicSeguro, navegarSeguro, auditarControles, verificarSesion, marcasDeLogin,
+  leerTablaCotizaciones, leerTarjetasDeFondos, llegoADestino, cargarTodo, buscarPestanaAutenticada,
+} from './balanz-navegador.mjs'
 import { extraerDeTabla, mapearColumnas } from './instrumentos.mjs'
 
 // NO ALCANZA CON QUE PLAYWRIGHT IMPORTE: en este servidor el binario de Chromium existe y no arranca
@@ -349,4 +352,150 @@ test('una pantalla informativa con UNA frase de seguridad no se confunde con el 
     assert.ok(marcasDeLogin(LOGIN_REAL.replace(/<[^>]+>/g, ' ')).length >= 2,
       'el login real tiene que disparar al menos dos marcas')
   } finally { await browser.close() }
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// EL DOM REAL DE BALANZ — reproducido tal como se leyó con sesión el 02/08/2026
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * La tabla de cotizaciones, con sus tres rarezas verificadas contra el sitio:
+ * columna sin encabezado al principio (el ícono de "seguir"), ticker y nombre en la MISMA celda
+ * separados por un salto, y última columna sin encabezado con el libro de puntas — que trae los
+ * botones "Vender" y "Comprar" adentro.
+ */
+const TABLA_REAL = `
+<table>
+ <thead><tr>
+   <th></th><th>Ticker</th><th>Plazo</th><th>Hora</th><th>Precio</th>
+   <th>Var(%)</th><th>Var</th><th>TIR</th><th>Volumen</th><th></th>
+ </tr></thead>
+ <tbody>
+   <tr>
+     <td><span>☆</span></td>
+     <td>AE38<br>BONO REP. ARGENTINA USD STEP UP 2038</td>
+     <td>24hs</td><td>31/07/2026</td><td>1.250,00</td><td>0,00%</td><td>0,00</td>
+     <td>9.3%</td><td>6.918.918.474</td>
+     <td>99 × 1.180,00 <button>Vender</button> 1.265,00 × 4000 <button>Comprar</button></td>
+   </tr>
+ </tbody>
+</table>`
+
+/** La tarjeta de un fondo: pares etiqueta→valor, sin una sola tabla ni encabezado semántico. */
+const TARJETA_REAL = `
+<div class="row fondo-item border-bottom mx-0 ng-star-inserted">
+  <div class="col-4"><div class="d-flex flex-column gap-3 w-100"><div>
+    <div class="text-color-primary-alt-dark text-size-6 fw-semibold cursor-pointer"> Money Market Pesos </div>
+  </div><div class="text-size-4 text-color-base">Fondo que busca un rendimiento diario estable.</div></div></div>
+  <div class="col-3"><div><div class="fondo-head-detail d-flex">
+    <div class="fw-semibold text-size-4"> Detalle del fondo </div>
+    <div class="d-flex"><div class="fondo-badge me-1 text-color-base"> Inmediato </div>
+    <div class="badge-moneda-custom px-2"> ARS </div></div></div>
+    <div class="d-flex"><div><div class="text-size-2 text-color-base">Perfíl</div>
+    <div class="fw-semibold text-size-4"> Conservador </div></div>
+    <div><div class="text-size-2 text-color-base">Tipo</div>
+    <div class="fw-semibold text-size-4"> Mercado de Dinero </div></div>
+    <div><div class="text-size-2 text-color-base">Horizonte</div>
+    <div class="fw-semibold text-size-4"> Corto plazo </div></div></div></div></div>
+  <div class="col-3"><div><div class="fondo-head-detail d-flex">
+    <div class="fw-semibold text-size-4"> Variaciones </div>
+    <div class="text-size-2"> TNA: <span class="fw-semibold exchange-upper"> +17,81% </span></div></div>
+    <div class="d-flex"><div><div class="text-size-2 text-color-base">Diaria</div>
+    <div class="fw-semibold text-size-4 exchange-upper"> 0,05% </div></div>
+    <div><div class="text-size-2 text-color-base">Anual</div>
+    <div class="fw-semibold text-size-4 exchange-upper"> 28,17% </div></div></div></div></div>
+  <div class="col-2"><button>Suscribir</button></div>
+</div>`
+
+test('la tabla real se normaliza: ticker y nombre se parten, el libro de puntas se descarta', opts, async () => {
+  // Sin esto, `mapearColumnas` no encontraba columna de nombre —la tabla NO tiene una— y
+  // `extraerDeTabla` devolvía CERO instrumentos con un motivo que el ciclo no mira. Cinco pantallas
+  // de cotizaciones enteras leídas como si estuvieran vacías.
+  const browser = await chromium.launch()
+  const page = await browser.newPage()
+  try {
+    await page.setContent(TABLA_REAL)
+    const t = await page.evaluate(leerTablaCotizaciones)
+    assert.deepEqual(t.cabecera, ['Ticker', 'Nombre', 'Plazo', 'Hora', 'Precio', 'Var(%)', 'Var', 'TIR', 'Volumen'])
+    assert.equal(t.filas.length, 1)
+    assert.equal(t.filas[0][0], 'AE38')
+    assert.equal(t.filas[0][1], 'BONO REP. ARGENTINA USD STEP UP 2038')
+    assert.equal(t.filas[0][7], '9.3%')
+    // El libro de puntas queda AFUERA: su texto mete "Vender" y "Comprar" en el dato guardado.
+    assert.ok(!t.filas[0].some((c) => /vender|comprar/i.test(c)), 'un verbo transaccional entró al dato')
+  } finally { await browser.close() }
+})
+
+test('la tarjeta real se lee por ETIQUETA: hay CERO tablas y CERO encabezados en esa pantalla', opts, async () => {
+  const browser = await chromium.launch()
+  const page = await browser.newPage()
+  try {
+    await page.setContent(TARJETA_REAL)
+    // La constatación que rompió el diseño anterior: la pantalla de fondos no tiene NADA semántico.
+    assert.equal(await page.locator('table').count(), 0)
+    assert.equal(await page.locator('h1,h2,h3,h4,h5,h6,[role=heading]').count(), 0)
+    assert.equal(await page.locator('[role=tab],[role=table],li').count(), 0)
+
+    const [f] = await page.evaluate(leerTarjetasDeFondos)
+    assert.equal(f.nombre, 'Money Market Pesos')
+    assert.equal(f.plazo_rescate_texto, 'Inmediato')
+    assert.equal(f.moneda_texto, 'ARS')
+    assert.equal(f.tipo, 'Mercado de Dinero')
+    assert.equal(f.perfil, 'Conservador')
+    assert.match(f.tna_texto, /TNA:\s*\+?17,81%/)
+    assert.equal(f.variaciones.anual, '28,17%')
+  } finally { await browser.close() }
+})
+
+test('cargarTodo scrollea el CONTENEDOR, no la ventana — que en Balanz no scrollea', opts, async () => {
+  // ═══ EL DEFECTO ═══
+  // En la app real `document.body.scrollHeight` y `window.innerHeight` valen los dos 788: el body no
+  // scrollea nunca. El contenido vive en un `section.content.overflow-y-scroll` propio. La versión
+  // anterior movía la ventana, medía el body, no veía cambio y devolvía 0 en la primera vuelta.
+  // Costo medido con la sesión abierta: bonos 20→189 filas, cedears 20→260, cauciones 20→164.
+  const browser = await chromium.launch()
+  const page = await browser.newPage()
+  try {
+    await page.setContent(`
+      <section id="sc" style="height:300px;overflow-y:scroll">
+        <table><tbody id="tb"><tr><td>1</td></tr></tbody></table>
+        <div style="height:1200px"></div>
+      </section>
+      <script>
+        document.getElementById('sc').addEventListener('scroll', () => {
+          const tb = document.getElementById('tb')
+          if (tb.children.length < 40) {
+            for (let i = 0; i < 10; i += 1) tb.insertAdjacentHTML('beforeend', '<tr><td>x</td></tr>')
+          }
+        })
+      </script>`)
+    assert.equal(await page.locator('tbody tr').count(), 1, 'arranca con una fila')
+    await cargarTodo(page)
+    const filas = await page.locator('tbody tr').count()
+    assert.ok(filas >= 40, `el scroll interno no disparó la carga: quedaron ${filas} filas`)
+  } finally { await browser.close() }
+})
+
+test('una ruta que no existe redirige a /app/home SIN error, y eso no es llegar', () => {
+  // Balanz no devuelve 404: manda a la portada, que es autenticada y legítima, así que
+  // `verificarSesion` la aprueba. Verificado con sesión: /on, /etf y /lecaps terminan las tres ahí.
+  // Sin esta guarda el relevamiento se traía el ticker de la portada como si fuera el listado pedido.
+  assert.equal(llegoADestino('https://clientes.balanz.com/app/cotizaciones/on', 'https://clientes.balanz.com/app/home'), false)
+  assert.equal(llegoADestino('/app/cotizaciones/bonos', 'https://clientes.balanz.com/app/cotizaciones/bonos'), true)
+  // El query no cambia la ruta, y una subruta del destino sí es haber llegado.
+  assert.equal(llegoADestino('/app/cotizaciones/corporativos?all=1', 'https://clientes.balanz.com/app/cotizaciones/corporativos?all=1'), true)
+  assert.equal(llegoADestino('/app/cotizaciones/fondos', 'https://clientes.balanz.com/app/cotizaciones/fondos/detalle/1'), true)
+})
+
+test('la sesión vive en la pestaña: se busca la autenticada, no se abre una nueva', () => {
+  // Balanz guarda la sesión en `sessionStorage` —0 cookies en todo el contexto—, y `sessionStorage`
+  // no se comparte entre pestañas. `ctx.newPage()` nacía deslogueada SIEMPRE: el explorador devolvía
+  // SESSION_REQUIRED con la sesión del dueño abierta y andando al lado.
+  const pagina = (u) => ({ url: () => u })
+  assert.equal(buscarPestanaAutenticada([]), null)
+  assert.equal(buscarPestanaAutenticada([pagina('https://clientes.balanz.com/auth/login')]), null,
+    'la pestaña en el login no sirve como pestaña autenticada')
+  assert.equal(buscarPestanaAutenticada([pagina('chrome://intro/')]), null)
+  const buena = pagina('https://clientes.balanz.com/app/cotizaciones/fondos')
+  assert.equal(buscarPestanaAutenticada([pagina('chrome://intro/'), pagina('https://otro.com/x'), buena]), buena)
 })

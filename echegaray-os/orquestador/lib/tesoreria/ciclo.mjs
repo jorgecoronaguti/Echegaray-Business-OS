@@ -24,7 +24,9 @@ import { leerFlujoDeFondos, vencidoComercialDe } from './lectura-flujo.mjs'
 import { reconstruirPosicion } from './posicion-caja.mjs'
 import { proyectarLiquidez } from './proyeccion-liquidez.mjs'
 import { calcularExcedente } from './excedente.mjs'
-import { normalizarInstrumento, extraerDeTexto, esAptoTesoreria } from './instrumentos.mjs'
+import {
+  normalizarInstrumento, extraerDeTexto, extraerDeTabla, extraerDeTarjetas, esAptoTesoreria,
+} from './instrumentos.mjs'
 import { compararAlternativas } from './comparar.mjs'
 import { evaluarRiesgo, PERFILES } from './riesgo.mjs'
 import { generarRecomendaciones, recomendarAplicarADeuda } from './recomendacion.mjs'
@@ -63,9 +65,25 @@ export function frescuraDeMercado(instrumentos = [], ahora = new Date()) {
  * bloqueados, y el botón "Caucionar" de esa misma pantalla también. Se puede mirar, no tocar.
  */
 export const RUTAS_INFORMATIVAS = [
-  '/fondos', '/fondos/money-market', '/fondos/renta-fija',
-  '/mercado/letras', '/mercado/bonos', '/mercado/obligaciones-negociables',
-  '/mercado/cauciones',
+  // ═══ LAS RUTAS SON LAS REALES, VERIFICADAS CONTRA LA SESIÓN DEL 02/08/2026 ═══
+  //
+  // Las siete anteriores (`/fondos`, `/mercado/letras`, `/mercado/bonos`…) fueron escritas sin poder
+  // ver la aplicación y NINGUNA existe. La app vive bajo `/app/cotizaciones/`. Y Balanz no devuelve
+  // 404 a una ruta inventada: redirige a `/app/home` sin decir nada, que es una pantalla autenticada
+  // y legítima — así que el relevamiento se traía el ticker de la portada creyendo que era el listado
+  // pedido. Ahora `navegarSeguro` verifica que llegó (ver `llegoADestino`) y esa página se marca
+  // `no_existe` en vez de aportar datos de otra pantalla.
+  //
+  // `?all=1` es lo que muestra el listado completo en corporativos y fondos externos; sin él la
+  // pantalla trae sólo una vista previa detrás de un botón "Ver todas las ON's".
+  '/app/cotizaciones/fondos',                 // FCI en pesos: money market, renta fija, dólar linked
+  '/app/cotizaciones/fondosext?all=1',        // FCI en dólares (Fondos Ext)
+  '/app/cotizaciones/letras',                 // Lecaps y letras del Tesoro (trae columna TNA)
+  '/app/cotizaciones/bonos',                  // bonos soberanos (trae columna TIR)
+  '/app/cotizaciones/corporativos?all=1',     // obligaciones negociables (trae columna TIR)
+  '/app/cotizaciones/cauciones',              // SÓLO LECTURA — ver la nota de la allowlist
+  '/app/cotizaciones/acciones',
+  '/app/cotizaciones/cedears',
 ]
 
 const LOCK_KEY = 738201 // arbitrario y estable: identifica ESTE ciclo entre los advisory locks del OS
@@ -172,9 +190,33 @@ export async function correrCiclo(deps = {}, opts = {}) {
       }
     }
 
+    // ═══ DE DÓNDE SALEN LOS INSTRUMENTOS, Y POR QUÉ EN ESTE ORDEN ═══
+    //
+    // Hasta el 02/08/2026 la única fuente era `extraerDeTexto` sobre el texto plano de la pantalla.
+    // Contra la app real de Balanz eso devolvía DOS instrumentos, los dos llamados `"TNA: +"`, los
+    // dos con categoría `otro` y por lo tanto los dos descartados por `esAptoTesoreria`. O sea: cero
+    // instrumentos leídos de una pantalla con diez fondos, sin un solo error en el camino.
+    //
+    // El motivo es que `extraerDeTexto` trabaja por RENGLÓN y necesita el nombre y la tasa en el
+    // mismo, y las pantallas reales no son así: las de cotizaciones son `<table>` con `<th>` (para
+    // eso ya existía `extraerDeTabla`, que hasta hoy era código muerto) y la de fondos son tarjetas
+    // con pares etiqueta→valor.
+    //
+    // El texto plano queda como ÚLTIMO recurso y sólo cuando la página no trajo ni tabla ni
+    // tarjetas: sirve para no quedarse ciego si Balanz cambia el DOM otra vez, y su evidencia sigue
+    // siendo `estimacion`.
+    const obs = { observadoEn: ahora.toISOString() }
     const instrumentos = (opts.instrumentos || [])
-      .map((i) => normalizarInstrumento(i, { observadoEn: ahora.toISOString() }))
-      .concat((mercado.paginas || []).flatMap((p) => extraerDeTexto(p.texto || '', { url: p.url, observadoEn: ahora.toISOString() })))
+      .map((i) => normalizarInstrumento(i, obs))
+      .concat((mercado.paginas || []).flatMap((p) => {
+        if (p.estado !== 'ok') return []
+        const deTabla = p.tabla?.filas?.length
+          ? extraerDeTabla(p.tabla, { url: p.url, ...obs }).instrumentos : []
+        const deTarjetas = p.tarjetas?.length
+          ? extraerDeTarjetas(p.tarjetas, { url: p.url, ...obs }) : []
+        if (deTabla.length || deTarjetas.length) return [...deTabla, ...deTarjetas]
+        return extraerDeTexto(p.texto || '', { url: p.url, ...obs })
+      }))
     const aptos = instrumentos.filter((i) => esAptoTesoreria(i.categoria))
     paso('instrumentos', 'ok', `${instrumentos.length} relevados · ${aptos.length} aptos para tesorería`)
 

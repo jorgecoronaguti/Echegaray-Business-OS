@@ -92,12 +92,68 @@ export function aTea(tasa) {
   }
 }
 
-/** Números en formato es-AR dentro de un texto ("12,34%" → 0.1234). */
+/**
+ * DECIMAL DE UN NÚMERO SUELTO — el punto no siempre es separador de miles.
+ *
+ * ═══ LO QUE ENCONTRÓ LA PANTALLA REAL ═══
+ *
+ * Balanz no escribe todo en es-AR. En la misma sesión del 02/08/2026 conviven:
+ *
+ *   1.250,00   precio de un bono      → miles con punto, decimal con coma  (es-AR)
+ *   23,16%     TNA de una Lecap       → decimal con coma
+ *   9.3%       TIR de un bono         → decimal con PUNTO
+ *   2.11       TNA de caución en USD  → decimal con PUNTO, y sin signo %
+ *
+ * Tratar el punto como separador de miles siempre —que es lo que hacía— convertía la TIR real de
+ * 9,3% del AE38 en 3%, y la TNA de 2,11% de la caución en dólares en 211. Ninguno de los dos avisaba:
+ * salían como números válidos. Un bono que rinde 9,3% mostrado como 3% se descarta solo; una caución
+ * al 211% se elige sola. Los dos errores son caros y ninguno hace ruido.
+ *
+ * ═══ LA REGLA, Y DÓNDE SE NIEGA A ADIVINAR ═══
+ *
+ * · Hay coma  → la coma es el decimal y los puntos son miles. Es es-AR, sin ambigüedad.
+ * · Sólo punto, seguido de EXACTAMENTE 3 dígitos y sin más dígitos detrás (`1.250`) → miles.
+ * · Sólo punto en cualquier otra forma (`9.3`, `2.11`, `0.792`) → decimal.
+ * · Más de un punto sin coma (`1.234.567`) → miles.
+ *
+ * El único caso que queda ambiguo de verdad es `9.300`: en es-AR es nueve mil trescientos y en
+ * en-US es 9,3. Se resuelve como miles —la convención del sitio para precios— y se declara acá.
+ * No hay una tercera opción honesta: el número no trae la información que haría falta.
+ */
+export function separadorDecimal(t) {
+  if (t.includes(',')) return 'coma'
+  const puntos = (t.match(/\./g) || []).length
+  if (puntos === 0) return 'ninguno'
+  if (puntos > 1) return 'miles'
+  // Un grupo de miles nunca arranca con cero a la izquierda: "0.792" es cero coma setecientos noventa
+  // y dos, no setecientos noventa y dos. Sin esta condición, el precio 0.792 del AE38C —que Balanz
+  // escribe con coma pero cualquier pantalla puede escribir con punto— se multiplicaba por mil.
+  return /^-?[1-9]\d{0,2}\.\d{3}$/.test(t) ? 'miles' : 'punto'
+}
+
+/** Aplica la regla de `separadorDecimal` y devuelve el número, o null si no hay número. */
+function aNumero(t) {
+  if (!t) return null
+  const modo = separadorDecimal(t)
+  const limpio = modo === 'coma' ? t.replace(/\./g, '').replace(',', '.')
+    : modo === 'miles' ? t.replace(/\./g, '')
+      : t
+  const n = Number(limpio)
+  return Number.isFinite(n) ? n : null
+}
+
+/**
+ * Porcentaje dentro de un texto ("12,34%" → 0.1234, "9.3%" → 0.093).
+ *
+ * La regex vieja exigía que los grupos de miles fueran de 3 dígitos, así que sobre "9.3%" no
+ * matcheaba el "9" y terminaba capturando el "3" suelto: devolvía 0.03 en vez de 0.093. Ahora se
+ * captura el número COMPLETO pegado al signo y se decide el separador con la regla de arriba.
+ */
 export function porcentajeArg(s) {
-  const m = /(-?\d{1,3}(?:\.\d{3})*(?:,\d+)?)\s*%/.exec(String(s ?? ''))
+  const m = /(-?[\d.,]*\d)\s*%/.exec(String(s ?? ''))
   if (!m) return null
-  const n = Number(m[1].replace(/\./g, '').replace(',', '.'))
-  return Number.isFinite(n) ? n / 100 : null
+  const n = aNumero(m[1])
+  return n == null ? null : n / 100
 }
 
 /** T+0 / T+1 / T+2 dentro de un texto. */
@@ -255,12 +311,22 @@ export function mapearColumnas(cabecera = []) {
   return { idx, faltan }
 }
 
-/** Número en formato es-AR dentro de una celda ("1.234,56" → 1234.56). Devuelve null si no hay. */
+/**
+ * Número dentro de una celda ("1.234,56" → 1234.56, "9.3" → 9.3). Devuelve null si no hay número.
+ *
+ * Usa la misma regla de separador que `porcentajeArg` (ver `separadorDecimal`): tratar el punto como
+ * miles siempre convertía la TNA de caución en dólares de 2,11 en 211.
+ *
+ * Un guion —la forma en que Balanz escribe "este instrumento no tiene este dato"— devuelve **null**,
+ * nunca 0. Antes `"-"` sobrevivía al filtro de caracteres y `Number('-')` daba `NaN`, que caía en el
+ * mismo `null` por casualidad y no por diseño; ahora es explícito y hay un test que lo fija.
+ */
 export function numeroArg(s) {
-  const t = String(s ?? '').replace(/[^\d.,-]/g, '').trim()
-  if (!t) return null
-  const n = Number(t.replace(/\./g, '').replace(',', '.'))
-  return Number.isFinite(n) ? n : null
+  const crudo = String(s ?? '').trim()
+  if (!crudo || /^[-–—]$/.test(crudo)) return null
+  const t = crudo.replace(/[^\d.,-]/g, '').trim()
+  if (!t || !/\d/.test(t)) return null
+  return aNumero(t)
 }
 
 /**
@@ -289,23 +355,126 @@ export function extraerDeTabla({ cabecera = [], filas = [] } = {}, { url = null,
       tasa = { tipo: TIPO_TASA.RENDIMIENTO_HISTORICO, valor: numeroArg(f[idx.rendimiento]) / 100, naturaleza: NATURALEZA_TASA.HISTORICA }
     }
     const celdaLiq = idx.plazo_rescate != null ? String(f[idx.plazo_rescate] ?? '') : ''
+    // ═══ LA MONEDA, CUANDO NO HAY COLUMNA DE MONEDA ═══
+    //
+    // Las tablas de cotizaciones no tienen columna "Moneda", así que `f[idx.moneda]` era `undefined`
+    // y el ternario caía en ARS. Contra la pantalla real eso etiquetaba en pesos al "BONO REP.
+    // ARGENTINA **USD** STEP UP 2038" y a la caución "DOLARES". Comparar un rendimiento en dólares
+    // contra uno en pesos como si fueran la misma cosa es el error más caro que puede cometer un
+    // comparador de tesorería, y el default silencioso lo garantizaba.
+    //
+    // Ahora se mira la celda si existe, y si no el nombre. Si ninguna de las dos lo dice, la moneda
+    // NO se afirma: se declara faltante y el instrumento queda fuera del ranking.
+    const textoMoneda = idx.moneda != null ? String(f[idx.moneda] ?? '') : ''
+    const hayMarcaUSD = /u\$s|usd|d[oó]lar/i.test(textoMoneda) || /\busd\b|u\$s|d[oó]lar/i.test(nombre)
+    const hayMarcaARS = /\bars\b|pesos?\b/i.test(textoMoneda) || /\bpesos?\b/i.test(nombre)
+    const faltaMoneda = !hayMarcaUSD && !hayMarcaARS && idx.moneda == null
     out.push(normalizarInstrumento({
       nombre,
       ticker: idx.ticker != null ? String(f[idx.ticker] ?? '').trim() || null : null,
       categoria: categoria || categorizar(nombre),
-      moneda: /u\$s|usd|d[oó]lar/i.test(String(f[idx.moneda] ?? '')) ? 'USD' : 'ARS',
+      moneda: hayMarcaUSD ? 'USD' : 'ARS',
       precio: idx.precio != null ? numeroArg(f[idx.precio]) : null,
       tasa,
       plazo_rescate_dias: plazoLiquidacion(celdaLiq) ?? (/inmediat|t\s*\+\s*0/i.test(celdaLiq) ? 0 : null),
-      liquidacion_dias: idx.liquidacion != null ? plazoLiquidacion(String(f[idx.liquidacion] ?? '')) : null,
+      // La columna "Plazo" de las cotizaciones ("24hs", "72hs") es el plazo de LIQUIDACIÓN, que es
+      // justo lo que decide cuándo vuelve la plata. Se leía sólo si existía una columna llamada
+      // "Liquidación", que en esta app no existe: quedaba siempre en null.
+      liquidacion_dias: idx.liquidacion != null
+        ? plazoLiquidacion(String(f[idx.liquidacion] ?? ''))
+        : (idx.plazo != null ? plazoRescateDias(String(f[idx.plazo] ?? '')) : null),
       vencimiento: idx.vencimiento != null ? String(f[idx.vencimiento] ?? '').trim() || null : null,
       duration: idx.duration != null ? numeroArg(f[idx.duration]) : null,
       url,
       evidencia: EVIDENCIA.DATO, // salió de una tabla estructurada, no de un renglón adivinado
-      campos_faltantes: faltan.filter((c) => ['plazo_rescate', 'liquidacion'].includes(c)),
+      campos_faltantes: [
+        ...faltan.filter((c) => ['plazo_rescate', 'liquidacion'].includes(c)),
+        ...(faltaMoneda ? ['moneda_no_declarada_en_pantalla'] : []),
+      ],
     }, { observadoEn }))
   }
   return { instrumentos: out, columnas: idx, columnas_faltantes: faltan }
 }
 
-export const VERSION_SKILL = '1.1.0'
+/**
+ * PLAZO DE RESCATE tal como lo escribe la pantalla de fondos: "Inmediato", "T+0", "24hs", "48hs".
+ * Devuelve días, o `null` — nunca 0 por defecto. Un fondo sin plazo declarado ya rompió este módulo
+ * una vez colándose como liquidez inmediata garantizada.
+ */
+export function plazoRescateDias(s) {
+  const t = String(s ?? '').trim().toLowerCase()
+  if (!t) return null
+  if (/inmediat/.test(t)) return 0
+  const tmas = plazoLiquidacion(t)
+  if (tmas != null) return tmas
+  const hs = /(\d+)\s*h/.exec(t)
+  if (hs) return Math.round(Number(hs[1]) / 24)
+  const d = /(\d+)\s*d/.exec(t)
+  if (d) return Number(d[1])
+  return null
+}
+
+/**
+ * SKILL 5 (tarjetas). La pantalla de fondos de Balanz no es una tabla — ver `leerTarjetasDeFondos`.
+ *
+ * ═══ LA REGLA QUE MANDA ACÁ ═══
+ *
+ * La tarjeta trae cinco números y sólo uno es una tasa. "Diaria 0,05% · Semanal 0,32% · Mensual
+ * 1,40% · Anual 28,17%" son variaciones YA OCURRIDAS del valor de la cuotaparte. La TNA aparece
+ * suelta, con su rótulo, y sólo en algunos fondos: en la pantalla del 02/08/2026, en 2 de 10.
+ *
+ * Anualizar el 44,21% de "Anual" y llamarlo tasa sería fabricar una expectativa a partir de un
+ * histórico — el error más caro que puede cometer este módulo, porque el número resultante es
+ * plausible, entra al ranking y gana. Las variaciones se conservan como evidencia y el instrumento
+ * queda SIN tasa, que es lo que lo mantiene fuera del ranking.
+ */
+export function extraerDeTarjetas(tarjetas = [], { url = null, observadoEn = new Date().toISOString() } = {}) {
+  const out = []
+  for (const t of tarjetas || []) {
+    const nombre = String(t?.nombre ?? '').trim()
+    if (!nombre) continue
+    // La tasa SÓLO si la tarjeta la rotuló. `porcentajeArg` devuelve null si no hay número.
+    const tna = t.tna_texto && /\btna\b/i.test(t.tna_texto) ? porcentajeArg(t.tna_texto) : null
+    const faltantes = []
+    if (tna == null) faltantes.push('tasa_no_declarada_en_pantalla')
+    const rescate = plazoRescateDias(t.plazo_rescate_texto)
+    if (rescate == null) faltantes.push('plazo_rescate_no_legible')
+    out.push({
+      ...normalizarInstrumento({
+        nombre,
+        categoria: categorizarFondo(t.tipo, nombre),
+        subcategoria: t.tipo || null,
+        moneda: /usd|u\$s|d[oó]lar/i.test(String(t.moneda_texto ?? '')) ? 'USD' : 'ARS',
+        tasa: tna == null ? null : {
+          tipo: TIPO_TASA.TNA, valor: tna, naturaleza: NATURALEZA_TASA.INDICATIVA,
+        },
+        plazo_rescate_dias: rescate,
+        riesgo_declarado: t.perfil || null,
+        url,
+        evidencia: EVIDENCIA.DATO,
+        campos_faltantes: faltantes,
+      }, { observadoEn }),
+      // Las variaciones viajan como evidencia, NUNCA como tasa. Se guardan crudas: convertirlas
+      // sería darles un estatus que la pantalla no les dio.
+      variaciones_historicas: t.variaciones ?? null,
+      horizonte_declarado: t.horizonte ?? null,
+    })
+  }
+  return out
+}
+
+/**
+ * La categoría de un fondo sale del campo "Tipo" que la propia tarjeta declara ("Mercado de Dinero",
+ * "Renta Fija"), y sólo se cae al nombre si ese campo no está. Es mejor fuente: `categorizar('Lecaps')`
+ * daba `lecap` para un fondo que es de renta fija, y `Ahorro corto plazo` no daba nada.
+ */
+export function categorizarFondo(tipo, nombre = '') {
+  const t = String(tipo ?? '').toLowerCase()
+  if (/mercado\s*de\s*dinero|money\s*market/.test(t)) return 'money_market'
+  if (/renta\s*fija/.test(t)) return 'fci_renta_fija'
+  if (/renta\s*mixta|balancead/.test(t)) return 'fci_renta_mixta'
+  if (/renta\s*variable/.test(t)) return 'fci_renta_variable'
+  return categorizar(nombre)
+}
+
+export const VERSION_SKILL = '1.2.0'
