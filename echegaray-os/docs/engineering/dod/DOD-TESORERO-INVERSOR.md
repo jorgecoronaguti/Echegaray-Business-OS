@@ -10,7 +10,7 @@
 |---|---|
 | **Módulo** | Tesorero Inversor IA (`orquestador/lib/tesoreria/`) |
 | **Qué hace** | **sólo lectura** — lee el Sheet de Flujo de Caja y Balanz; no escribe celdas, no mueve dinero, no publica rutas HTTP. Publica texto en Mattermost |
-| **Construyó** | Claude Opus 5, sesión del 01/08/2026 |
+| **Construyó** | Claude Opus 5, sesiones del 01/08/2026 y 02/08/2026 |
 | **Auditó** | agente independiente (contexto nuevo, sin el razonamiento del que construyó) |
 | **SHA inicio → cierre** | `990ce71` (origin/main) → ver `git log` de la rama |
 | **Autorizó** | **nadie todavía** — no alcanza el nivel de autonomía E porque no ejecuta operaciones, pero **el dueño no lo usó** (ver A3) |
@@ -35,7 +35,7 @@
 
 | # | Criterio | Evidencia | Resultado |
 |---|---|---|---|
-| B1 | El recorrido completo se ejecutó en producción, por el camino real | **PARCIAL, y el faltante bloquea.** El tramo de caja corrió entero contra el Sheet real por el camino canónico (`node orquestador/os.mjs excedente_invertible` y `ciclo-tesorero.mjs --dry`): 51 movimientos, caja $88.709.996, seis ventanas. El tramo de MERCADO nunca corrió: no hay sesión de Balanz | **NO CUMPLE** |
+| B1 | El recorrido completo se ejecutó en producción, por el camino real | **PARCIAL, y el faltante bloquea.** El tramo de caja corrió entero contra el Sheet real por el camino canónico (`ciclo-tesorero.mjs --dry`): el 01/08 dio 51 movimientos y caja $88.709.996; repetido el 02/08 con el Sheet vivo dio 51 movimientos y caja $129.589.497, seis ventanas, `techo_tecnico_preliminar`. El tramo de MERCADO **sigue sin correr**: el 02/08 el Chrome dedicado respondía por CDP pero **sin sesión iniciada** (0 cookies; `clientes.balanz.com/fondos` redirige al ingreso), y el ciclo cortó donde debía, con `session_required`. Lo único que se leyó de Balanz es su pantalla pública de ingreso | **NO CUMPLE** |
 | B2 | El efecto se verificó leyendo el destino con otra herramienta | El ledger se verificó leyendo las tablas con `psql`/`query` directo contra un Postgres descartable: 11 tablas, 22 policies, observaciones no pisadas, recomendación reemplazada por su clave. **En producción no hay destino**: la migración no está aplicada | **NO CUMPLE** |
 | B3 | La operación dejó registro con evidencia, en el camino que usa la gente | `tesoreria.corridas` + `posiciones` + `ventanas` + `bloqueos_seguridad` guardan qué se leyó y con qué dato se decidió. Probado contra Postgres real. **No probado en producción** | **NO CUMPLE** |
 | B4 | Todos los textos de éxito se leyeron uno por uno | Los textos salen de `formato-mattermost.mjs`. Ninguno afirma una colocación hecha: el estado literal es `PROPUESTA — REQUIERE APROBACIÓN HUMANA`, y hay un test que falla si el mensaje contiene "Comprar", "Suscribir", "Confirmar", "actions" o "integration". El mensaje de sesión vencida dice explícitamente que el análisis de caja **sí** se hizo y que falta el mercado | **CUMPLE** |
@@ -51,7 +51,14 @@
 | C3 | Sin la configuración, falla cerrado | Sin `ORQ_TESORERIA_CANAL` no publica (imprime en journal). Sin cliente real de Mattermost **lanza** en vez de caer a un Fake (`ciclo-tesorero.mjs`). Sin CDP devuelve `SESSION_REQUIRED` y no intenta entrar. Sin política de reserva, todo sale `NO_ACCIONABLE`. Sin composición de caja, el excedente no se topea y se declara | **CUMPLE** |
 | C4 | Campos del pedido usados sin re-verificar | El único input externo es el DOM de Balanz, y **nada de lo que dice el DOM habilita una acción**: la barrera decide sobre el DOM, no confía en él. `ORQ_BALANZ_EXTRACTOR_VALIDADO` es una declaración humana por entorno; si un atacante la pusiera en 1, sólo lograría que las propuestas salieran ACCIONABLE — sin ejecutar nada, porque no existe la herramienta | **CUMPLE** |
 
-**Barrera transaccional**: 20 tests puros + 11 contra Chromium real. Bloquea por texto, `aria-label`, `title`, texto del contenedor, `href`, `action`, ruta, todo `type=submit`, todo `<form>` y todo lo que viva adentro de uno. Falla cerrada. Un test lee `balanz-navegador.mjs` y falla si aparece un segundo `.click()` o `.goto()`.
+**La primera pantalla REAL del bróker (02/08/2026)**. Sin sesión no se puede ver el mercado, pero sí se pudo medir la barrera y el control de sesión contra el ingreso público de `clientes.balanz.com` (versión 2.35.1), leído por CDP. Dos defectos, los dos del lado cómodo, ninguno visible contra un DOM imitado:
+
+- **Las dos señales de sesión fallaban juntas.** En el instante exacto en que corre `verificarSesion` —justo después del `domcontentloaded` de `navegarSeguro`— la URL todavía era `/fondos` (el sitio es una SPA y la reescribe a `/auth/login` recién ~3s después) y los campos de contraseña eran **0** (el ingreso es en dos pasos; el primero pide sólo el usuario). El login ya estaba dibujado y ninguna de las dos señales lo veía. `relevar` habría devuelto `ok` con el texto del login y el ciclo habría informado *"el mercado no tiene nada"* en vez de *"no pude ver el mercado"*. Se agregó una tercera señal por contenido visible, que exige dos marcas y deja afuera la advertencia de seguridad de Balanz —esa sola oración contenía dos frases, y habría dejado al agente desconectado para siempre desde cualquier pie de página autenticado—. Muestreada sobre el sitio vivo, es la única presente desde el primer instante (t0, t+2s, t+5s: 3 marcas).
+- **"Abrir cuenta de inversión" quedaba PERMITIDO.** No manda una orden, pero abre un alta de cliente: Nivel E. Bloqueado por frase, no por la raíz `abr`, que se llevaba puesta "abril".
+
+Los 15 controles reales de esa pantalla quedaron como test: 14 bloqueados, 1 permitido (un link de ayuda).
+
+**Barrera transaccional**: 29 tests puros (`balanz-denylist.test.mjs`) + 17 contra Chromium real (`balanz-dom.test.mjs`). Bloquea por texto, `aria-label`, `title`, texto del contenedor, `href`, `action`, ruta, todo `type=submit`, todo `<form>` y todo lo que viva adentro de uno. Falla cerrada. Un test lee `balanz-navegador.mjs` y falla si aparece un segundo `.click()` o `.goto()`.
 
 **Secretos**: `grep -rInE "(AIza[0-9A-Za-z_-]{30}|sk-ant-|BEGIN .*PRIVATE KEY)"` sobre el diff → 0. El navegador no toca `cookies()`, `storageState`, `localStorage` ni `sessionStorage` (test que lee el archivo). Los bloqueos guardan tag, rol y 80 caracteres de texto: no reconstruyen la pantalla.
 
@@ -118,6 +125,29 @@ Ninguna guarda pide un deploy para destrabarse.
 | Accionabilidad `!== false` | `la accionabilidad falla CERRADA` |
 | `mercadoFresco` cableado | `la frescura del mercado se MIDE con lo relevado` |
 | Excepciones informativas | `las excepciones informativas no abren la puerta` |
+| Sesión detectada sólo por URL y campo de contraseña | `el login REAL de Balanz no tiene campo de contraseña — y aun así se detecta` |
+| Advertencia de seguridad contada como marca de login | `una pantalla informativa con UNA frase de seguridad no se confunde con el login` |
+| `Abrir cuenta de inversión` permitido | `la pantalla real de Balanz: los 15 controles del ingreso, clasificados` |
+
+### La suite, corrida entera
+
+El 02/08/2026 la suite del módulo corrió **sin un solo salteo**, que es la primera vez: los 14 tests
+contra Postgres y los 17 contra Chromium venían salteándose por entorno, y un test que se saltea es
+un test que no existe.
+
+```
+LD_LIBRARY_PATH=/home/jorge/.local/lib/pw-libs \
+PG_TEST_URL=postgres://postgres:probe@127.0.0.1:55437/postgres \
+  node --test 'orquestador/lib/tesoreria/*.test.mjs'
+→ tests 148 · pass 148 · fail 0 · skipped 0
+```
+
+Y la suite completa del orquestador, para descartar daño colateral:
+`node --test 'orquestador/**/*.test.mjs'` → **2170 tests · 2098 pass · 0 fail · 72 skipped**.
+
+> El `PG_TEST_URL` va **por archivo**, no global: apuntar toda la suite del orquestador al Postgres
+> descartable pone 26 tests de otros módulos en rojo, porque esperan su propio schema sembrado. No es
+> una falla del módulo; es usar mal la variable.
 
 ---
 
@@ -142,7 +172,7 @@ evidencia del efecto en producción, que sigue sin existir.
 | Fila | Qué falta | Cómo se consigue |
 |---|---|---|
 | **A3** | el dueño no lo usó | correr `node orquestador/os.mjs excedente_invertible` y leer la salida |
-| **B1** | el tramo de mercado nunca corrió | Chrome dedicado + túnel + `balanz-explorar.mjs` |
+| **B1** | el tramo de mercado nunca corrió | El Chrome dedicado y el túnel **ya están** (CDP respondió el 02/08). Falta lo único que el OS no puede hacer por diseño: **iniciar sesión en Balanz a mano** en ese Chrome. Con eso, `balanz-explorar.mjs` cierra la fila |
 | **B2**, **B3** | el ledger no tiene destino en producción | aplicar la migración al integrar |
 | **F3** | las tres variables no están en la plantilla | agregarlas a `worker.env` al desplegar |
 | **F4** | catálogo de lecciones sin actualizar | subir los patrones nuevos |
