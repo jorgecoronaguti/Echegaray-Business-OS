@@ -16,7 +16,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { evaluarElemento } from './balanz-denylist.mjs'
-import { clicSeguro, navegarSeguro, auditarControles, verificarSesion } from './balanz-navegador.mjs'
+import { clicSeguro, navegarSeguro, auditarControles, verificarSesion, marcasDeLogin } from './balanz-navegador.mjs'
 import { extraerDeTabla, mapearColumnas } from './instrumentos.mjs'
 
 // NO ALCANZA CON QUE PLAYWRIGHT IMPORTE: en este servidor el binario de Chromium existe y no arranca
@@ -288,4 +288,65 @@ test('cargarTodo dispara el lazy loading y para cuando la altura deja de crecer'
   })
   assert.equal(r.est.tablas[0].filas, 5, 'las dos filas diferidas tienen que estar')
   assert.ok(r.vueltas < 5, `paró sola en ${r.vueltas} vueltas, no agotó el tope`)
+})
+
+/**
+ * EL LOGIN REAL DE BALANZ. Es el texto visible que devolvió el sitio el 2026-08-02 (versión 2.35.1),
+ * leído por CDP desde el Chrome dedicado, sin sesión iniciada. Se conserva textual a propósito: lo
+ * que hace peligrosa a esta pantalla es lo que NO tiene.
+ */
+const LOGIN_REAL = `
+<div>
+  <h1>Ingresá y comenzá a invertir</h1>
+  <form>
+    <label>Usuario</label>
+    <input type="text" />
+    <button type="button">Olvidé o bloqueé mi usuario o contraseña</button>
+    <button type="submit">Continuar</button>
+  </form>
+  <button>Abrir cuenta de inversión</button>
+  <p>Si ya abriste una cuenta y es la primera vez que ingresas tenes que Crear/Activar usuario</p>
+  <footer>
+    <p>© 2026 Balanz Todos los derechos reservados. Versión 2.35.1</p>
+    <p>No compartas tus datos de acceso o Código de Operación por mensajes, redes sociales, teléfono o email.</p>
+  </footer>
+</div>`
+
+test('el login REAL de Balanz no tiene campo de contraseña — y aun así se detecta', opts, async () => {
+  // ═══ EL DEFECTO QUE ESTE TEST FIJA ═══
+  //
+  // El ingreso de Balanz es en DOS PASOS: el primero pide sólo el usuario. `input[type=password]`
+  // devuelve CERO. Con lo cual, hasta este cambio, la única señal viva era la URL — y si el bróker
+  // sirviera el login como overlay sobre `/fondos`, `verificarSesion` lo habría dado por autenticado,
+  // `relevar` habría devuelto `estado:'ok'` con el texto del login, y el ciclo habría informado
+  // "el mercado no tiene nada" en vez de "no pude ver el mercado".
+  const browser = await chromium.launch()
+  const page = await browser.newPage()
+  try {
+    await page.setContent(LOGIN_REAL) // URL about:blank: NO hay /login del que agarrarse
+    assert.equal(await page.locator('input[type=password]').count(), 0,
+      'si Balanz agrega el campo de contraseña al primer paso, este test dejó de probar lo que importa')
+    await assert.rejects(() => verificarSesion(page), /SESSION_REQUIRED/)
+    await assert.rejects(() => verificarSesion(page), /es el ingreso de Balanz/)
+  } finally { await browser.close() }
+})
+
+test('una pantalla informativa con UNA frase de seguridad no se confunde con el login', opts, async () => {
+  // El otro lado del mismo control: con una sola marca no alcanza. Un pie de página autenticado puede
+  // repetir la recomendación de seguridad, y un agente que se declara desconectado para siempre por
+  // eso es tan inútil como uno que no detecta nada.
+  const browser = await chromium.launch()
+  const page = await browser.newPage()
+  try {
+    // La advertencia de seguridad ENTERA, tal como la escribe Balanz. Es la leyenda que un bróker
+    // repite en todas sus pantallas: no puede valer ni una marca, porque si valiera dos —y contiene
+    // dos frases— un pie de página autenticado dejaría al agente desconectado para siempre.
+    const AVISO = 'No compartas tus datos de acceso o Código de Operación por mensajes, redes sociales, teléfono o email.'
+    await page.setContent(`${PAGINA}<footer>${AVISO}</footer>`)
+    assert.equal(await verificarSesion(page), true)
+    assert.equal(marcasDeLogin(AVISO).length, 0, 'la advertencia de seguridad no es una marca de login')
+    assert.equal(marcasDeLogin('Ingresá y comenzá a invertir').length, 1)
+    assert.ok(marcasDeLogin(LOGIN_REAL.replace(/<[^>]+>/g, ' ')).length >= 2,
+      'el login real tiene que disparar al menos dos marcas')
+  } finally { await browser.close() }
 })

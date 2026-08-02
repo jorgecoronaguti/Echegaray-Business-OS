@@ -86,9 +86,19 @@ export const FRASES_INFORMATIVAS = [
 /** Claves de query que son de presentación, no de acción: paginar y ordenar no operan nada. */
 export const QUERY_PRESENTACION = ['pagina', 'page', 'orden', 'ordenar', 'sort', 'filtro', 'tab', 'limit', 'offset']
 
-/** Frases transaccionales que ninguna raíz sola atrapa. */
+/**
+ * Frases transaccionales que ninguna raíz sola atrapa.
+ *
+ * Las de "abrir cuenta" las agregó la auditoría contra la pantalla real de Balanz: el CTA
+ * "Abrir cuenta de inversión" quedaba PERMITIDO. No envía una orden, pero abre un alta de cliente —
+ * un acto contractual con la entidad, o sea Nivel E, que en este OS no se ejecuta sin firma del
+ * dueño. No se agrega la raíz `abr` a propósito: atraparía "abril" y media docena de palabras
+ * inocentes; la frase alcanza y no ensucia el resto.
+ */
 export const FRASES_PROHIBIDAS = [
   'enviar orden', 'continuar operacion', 'confirmar operacion', 'si quiero', 'estoy de acuerdo',
+  'abrir cuenta', 'abri cuenta', 'abrir una cuenta', 'abri una cuenta',
+  'abrir tu cuenta', 'abri tu cuenta', 'abrir mi cuenta', 'abri mi cuenta',
 ]
 
 /**

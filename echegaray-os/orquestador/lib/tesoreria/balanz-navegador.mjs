@@ -78,9 +78,57 @@ async function conectar(endpoint) {
 }
 
 /**
+ * MARCAS DE LA PANTALLA DE INGRESO DE BALANZ, tomadas del login real (2026-08-02, versión 2.35.1).
+ *
+ * ═══ POR QUÉ HIZO FALTA AGREGARLAS ═══
+ *
+ * La primera versión decidía "la sesión venció" por dos señales: la URL en `/login` y un
+ * `input[type=password]` en pantalla. Contra el sitio vivo las dos fallan del lado cómodo:
+ *
+ *   · el login de Balanz es en DOS PASOS y el primero pide sólo el usuario — no hay ni un campo de
+ *     contraseña en el DOM (verificado: `input[type=password]` devuelve 0);
+ *   · con lo cual la única señal que quedaba en pie era la URL, y alcanza con que el bróker sirva el
+ *     ingreso como overlay sobre la misma ruta —o renombre `/auth/login`— para que `verificarSesion`
+ *     dé por buena una pantalla de login.
+ *
+ * Y el costo de ese fallo no es un error: es peor. `relevar` devolvería `estado:'ok'` con el texto
+ * del login, el extractor no encontraría instrumentos, y el ciclo informaría "el mercado no tiene
+ * nada" en lugar de "no pude ver el mercado". Convertir un ciego en un cero es exactamente el defecto
+ * que este módulo viene arreglando en otras seis partes.
+ *
+ * Se exige que coincidan DOS marcas, no una: con una sola, una frase suelta en un pie de página
+ * autenticado dejaría al agente desconectado para siempre, que es el fallo opuesto y también caro.
+ *
+ * ═══ POR QUÉ NO ESTÁ ACÁ LA ADVERTENCIA DE SEGURIDAD ═══
+ *
+ * El login trae "No compartas tus datos de acceso o Código de Operación por mensajes...". Es la marca
+ * más tentadora y la más peligrosa: es la típica leyenda que un bróker repite en TODAS sus pantallas,
+ * incluidas las autenticadas. Peor todavía, esa sola oración contiene dos frases distintas — con lo
+ * cual un único pie de página alcanzaría para llegar al umbral de dos y bloquear al agente sin que
+ * haya ningún login. Queda afuera a propósito.
+ *
+ * Las que quedan son propias del acto de ingresar y no tienen razón de existir en una pantalla de
+ * fondos. Contra el login vivo disparan tres.
+ */
+export const MARCAS_DE_LOGIN = [
+  'olvide o bloquee', 'olvide mi usuario', 'olvide mi contrasena', 'recuperar contrasena',
+  'activar usuario', 'crear usuario',
+  'comenza a invertir', 'iniciar sesion', 'ingresa con tu usuario',
+]
+
+/** Sin tildes y en minúscula: el texto de un sitio real no viene prolijo. */
+const plano = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ')
+
+/** ¿Cuántas marcas de pantalla de ingreso tiene este texto? Pura, para poder testearla sin navegador. */
+export function marcasDeLogin(texto) {
+  const t = plano(texto)
+  return MARCAS_DE_LOGIN.filter((m) => t.includes(m))
+}
+
+/**
  * ¿La página está autenticada? Se decide por lo que se VE, no por una cookie: buscar la cookie de
- * sesión sería leer credenciales, que es justo lo prohibido. Si aparece un formulario de login o la
- * URL cayó en /login, la sesión venció.
+ * sesión sería leer credenciales, que es justo lo prohibido. Si aparece un formulario de login, si el
+ * texto tiene las marcas del ingreso, o si la URL cayó en /login, la sesión venció.
  */
 export async function verificarSesion(page, { exigirDominio = true } = {}) {
   const url = String(page.url() || '')
@@ -96,6 +144,12 @@ export async function verificarSesion(page, { exigirDominio = true } = {}) {
   if (/\/(login|signin|ingresar|auth)/i.test(url)) throw new SesionRequerida('la página está en el login: la sesión venció')
   const hayLogin = await page.locator('input[type="password"]').count().catch(() => 0)
   if (hayLogin > 0) throw new SesionRequerida('hay un campo de contraseña en pantalla: la sesión venció')
+  // LA TERCERA SEÑAL, la que no depende de la URL ni del campo de contraseña (ver MARCAS_DE_LOGIN).
+  const texto = await page.locator('body').innerText().catch(() => '')
+  const marcas = marcasDeLogin(texto)
+  if (marcas.length >= 2) {
+    throw new SesionRequerida(`la pantalla es el ingreso de Balanz (${marcas.slice(0, 3).join(', ')}): la sesión venció`)
+  }
   return true
 }
 

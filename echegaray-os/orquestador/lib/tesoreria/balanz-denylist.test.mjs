@@ -292,3 +292,40 @@ test('paginar y ordenar una tabla no es operar: el query de presentación no blo
   assert.equal(evaluarNavegacion('/mercado/cauciones?accion=caucionar').permitido, false)
   assert.equal(evaluarNavegacion('/fondos/suscribir?pagina=2').permitido, false)
 })
+
+test('la pantalla real de Balanz: los 15 controles del ingreso, clasificados', () => {
+  // ═══ ESTO NO ES UN DOM INVENTADO ═══
+  //
+  // Son los controles que devolvió `controlesDePagina` sobre https://clientes.balanz.com/auth/login
+  // el 2026-08-02 (versión 2.35.1 del sitio), leídos por CDP desde el Chrome dedicado. Es la primera
+  // vez que la barrera se mide contra una pantalla del bróker y no contra una imitación.
+  //
+  // El hallazgo: "Abrir cuenta de inversión" quedaba PERMITIDO. No manda una orden, pero abre un alta
+  // de cliente — Nivel E — y este agente no firma nada.
+  const PANTALLA_REAL = [
+    { tag: 'FORM', texto: 'Usuario\nOlvidé o bloqueé mi usuario o contraseña\nContinuar', dentroDeFormulario: false },
+    { tag: 'BUTTON', texto: 'Olvidé o bloqueé mi usuario o contraseña', dentroDeFormulario: true },
+    { tag: 'BUTTON', texto: 'Continuar', tipo: 'submit', dentroDeFormulario: true },
+    { tag: 'BUTTON', texto: ' Abrir cuenta de inversión', dentroDeFormulario: false },
+    { tag: 'BUTTON', texto: 'Recomendaciones de seguridad', dentroDeFormulario: false },
+    { tag: 'BUTTON', texto: '    ', dentroDeFormulario: false },
+  ]
+  const veredictos = PANTALLA_REAL.map((el) => ({ el, v: evaluarElemento(el) }))
+  const permitidos = veredictos.filter((x) => x.v.permitido).map((x) => x.el.texto.trim())
+
+  assert.deepEqual(permitidos, ['Recomendaciones de seguridad'],
+    'sólo un link de ayuda puede quedar permitido en la pantalla de ingreso')
+  assert.equal(evaluarElemento({ texto: ' Abrir cuenta de inversión' }).permitido, false,
+    'abrir una cuenta es un acto contractual, no una lectura')
+})
+
+test('abrir una cuenta se bloquea en todas sus formas, y "abril" no', () => {
+  for (const t of ['Abrir cuenta de inversión', 'Abrí tu cuenta', 'Abrir una cuenta',
+    'ABRÍ MI CUENTA', 'Abrir cuenta comitente']) {
+    assert.equal(evaluarElemento({ texto: t }).permitido, false, `"${t}" pasó`)
+  }
+  // El motivo de no usar la raíz `abr`: se llevaba puestas palabras inocentes.
+  for (const t of ['Abril 2026', 'Vencimientos de abril', 'Abrir el prospecto']) {
+    assert.equal(evaluarElemento({ texto: t, href: '/prospecto' }).permitido, true, `"${t}" se bloqueó de más`)
+  }
+})
