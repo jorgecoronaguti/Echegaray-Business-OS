@@ -163,3 +163,32 @@ test('verificarEscritura caza la escritura PARTIDA al medio (un 429 entre dos ra
   assert.deepEqual(v.vacias, [])
   assert.deepEqual(v.distintas, [{ fila: 801, columna: 'M', esperado: 5000, encontrado: '$ 500,00' }])
 })
+
+test('verificarEscritura compara el NÚMERO crudo, no el mostrado por el formato', () => {
+  // El 03/08/2026 las 7 filas quedaron perfectas en Compras y el script las declaró no escritas:
+  // el formato moneda sin decimales muestra "$ 54.448" para 54447,71 y la comparación daba 29
+  // centavos de diferencia. Un verificador que da rojo sobre una escritura correcta se desactiva,
+  // y entonces no sirve el día que la escritura sí falla.
+  const r = verificarEscritura(
+    [{ M: 54447.71, N: 9558.36 }],
+    [[...Array(12), { valor: '$ 54.448', numero: 54447.71 }, { valor: '$ 9.558', numero: 9558.36 }]],
+    { desde: 800 },
+  )
+  assert.equal(r.ok, true, `no debería haber diferencias: ${JSON.stringify(r.distintas)}`)
+})
+
+test('pero un número REALMENTE distinto sigue dando rojo', () => {
+  const r = verificarEscritura(
+    [{ M: 54447.71 }],
+    [[...Array(12), { valor: '$ 99.999', numero: 99999 }]],
+    { desde: 800 },
+  )
+  assert.equal(r.ok, false)
+  assert.equal(r.distintas[0].columna, 'M')
+})
+
+test('una celda vacía sigue siendo vacía aunque se espere un número', () => {
+  const r = verificarEscritura([{ M: 54447.71 }], [[...Array(12), { valor: '', numero: null }]], { desde: 800 })
+  assert.equal(r.ok, false)
+  assert.equal(r.vacias[0].columna, 'M')
+})

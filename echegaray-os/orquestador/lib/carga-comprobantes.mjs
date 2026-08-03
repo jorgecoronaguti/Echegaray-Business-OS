@@ -226,7 +226,15 @@ export function verificarEscritura(valoresPorFila = [], filasLeidas = [], { desd
     const leida = filasLeidas[k] || []
     for (const [letra, esperado] of Object.entries(valores || {})) {
       if (esperado == null || esperado === '') continue // no se pidió escribir nada acá
-      const encontrado = leida[colIndice(letra)]?.valor ?? ''
+      // EL NÚMERO CRUDO ANTES QUE EL MOSTRADO. La celda viene con las dos caras: `numero` es lo que
+      // Google guardó y `valor` es cómo lo dibuja el formato. En Compras el formato es moneda sin
+      // decimales, así que 54447,71 se MUESTRA "$ 54.448" — y comparar contra eso daba una
+      // diferencia de 29 centavos y un ROJO FALSO en toda carga correcta. Verificado el 03/08/2026:
+      // las 7 filas estaban perfectas en el destino y el script las declaró no escritas.
+      const celda = leida[colIndice(letra)]
+      const encontrado = (typeof esperado === 'number' && typeof celda?.numero === 'number')
+        ? celda.numero
+        : (celda?.valor ?? '')
       if (String(encontrado).trim() === '') vacias.push({ fila, columna: letra, esperado })
       else if (!mismoValor(esperado, encontrado)) distintas.push({ fila, columna: letra, esperado, encontrado })
     }
