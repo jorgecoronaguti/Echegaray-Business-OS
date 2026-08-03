@@ -51,14 +51,24 @@ openbox --sm-disable &
 # publicado a 127.0.0.1 del host (ver `balanz-runtime.mjs`), no un bind interno.
 mkdir -p "$ESTADO"
 CLAVE="$ESTADO/vnc.pass"
-if [ ! -f "$CLAVE" ]; then
+PLANA="$ESTADO/vnc.plain"
+if [ ! -f "$CLAVE" ] || [ ! -f "$PLANA" ]; then
   log "generando contraseña de escritorio remoto (primera vez)"
-  x11vnc -storepasswd "$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 24)" "$CLAVE" >/dev/null 2>&1
-  chmod 0600 "$CLAVE"
+  # `-storepasswd` guarda la clave ofuscada, que es lo que x11vnc sabe leer. La pasarela del host
+  # necesita además la versión en claro para dársela al cliente del escritorio, así que se guarda
+  # aparte y con permisos de sólo dueño. NO es una credencial de Balanz: da acceso a la pantalla,
+  # nunca a la cuenta, y el login del bróker se sigue haciendo a mano sobre esa pantalla.
+  NUEVA=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 24)
+  x11vnc -storepasswd "$NUEVA" "$CLAVE" >/dev/null 2>&1
+  printf '%s' "$NUEVA" > "$PLANA"
+  chmod 0600 "$CLAVE" "$PLANA"
+  unset NUEVA
 fi
+# SIN `-nopw`: esa opción convive mal con `-rfbauth` y su combinación dejaba el escritorio sin
+# credencial. El aislamiento de red es la primera defensa (el puerto sólo existe en 127.0.0.1 de la
+# VM), y la credencial es la segunda.
 x11vnc -display "$DISPLAY" -rfbauth "$CLAVE" -rfbport 5900 -forever -shared \
-       -noxdamage -nopw -quiet -bg -o "$ESTADO/x11vnc.log" 2>/dev/null \
-  || x11vnc -display "$DISPLAY" -rfbauth "$CLAVE" -rfbport 5900 -forever -shared -bg -o "$ESTADO/x11vnc.log"
+       -noxdamage -quiet -bg -o "$ESTADO/x11vnc.log"
 log "vnc en :5900"
 
 # ── 4 · CHROMIUM ────────────────────────────────────────────────────────────────────────────────
