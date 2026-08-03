@@ -116,6 +116,16 @@ fi
 socat TCP-LISTEN:9223,fork,reuseaddr TCP:127.0.0.1:9222 &
 log "relay CDP 9223 → 127.0.0.1:9222"
 
+# ── LOS DOS CARTELES QUE TAPAN EL LOGIN ─────────────────────────────────────────────────────────
+#
+# Se vieron en la captura de la pantalla remota, y los dos importan porque caen JUSTO encima de lo
+# único que una persona tiene que hacer en este navegador: escribir el usuario.
+#
+# · "Chromium didn't shut down correctly / Restore" aparece después de cada arranque sucio — o sea
+#   después de CADA recuperación automática, que es justamente el camino que este runtime usa cuando
+#   el navegador se cae. Un cartel que aparece siempre que algo se recuperó solo es el peor de todos:
+#   convierte cada recuperación exitosa en una pantalla que parece rota.
+# · el globo de traducción se superpone al formulario de ingreso.
 set -- \
   --remote-debugging-port=9222 \
   --user-data-dir="$PERFIL" \
@@ -124,7 +134,10 @@ set -- \
   --start-maximized \
   --no-first-run \
   --no-default-browser-check \
-  --disable-features=Translate,MediaRouter \
+  --disable-session-crashed-bubble \
+  --hide-crash-restore-bubble \
+  --disable-features=Translate,TranslateUI,MediaRouter \
+  --lang=es-AR \
   --disable-background-networking \
   --password-store=basic \
   --use-mock-keychain
