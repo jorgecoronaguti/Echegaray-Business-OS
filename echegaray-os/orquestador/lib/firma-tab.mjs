@@ -14,6 +14,35 @@
 import { createHash } from 'node:crypto'
 
 /**
+ * NÚCLEO PURO: el rango A1 de una pestaña entera, entrecomillado UNA SOLA VEZ.
+ *
+ * ═══ LA MISMA TRAMPA, DOS VECES EN UN DÍA (03/08) ═══
+ *
+ * A la mañana el defecto era la FALTA de comillas: toda pestaña con espacios en el nombre
+ * —"Cash Flow Mensual", "Jornales por Quincena", "Impuestos y Financieros", o sea casi todas—
+ * hacía que la API rechazara el rango, el `.catch` lo volviera `null`, y la guarda cayera en
+ * `noVerificable`. De ahí salió la epidemia de auto-candados: ocho pestañas candadas, siete por
+ * escrituras del propio OS que nunca pudo reconocer como suyas.
+ *
+ * Se agregaron las comillas acá adentro. Y eso rompió el camino principal, porque `refDeTab()`
+ * en `guarda-escritura.mjs` YA se las ponía: el resultado era `'''Cash Flow Mensual'''!A1:BZ`,
+ * que la API rechaza con "Unable to parse range". Mismo síntoma exacto —`firma-no-verificable`
+ * en todas las pestañas de nombre compuesto—, causa opuesta. Medido contra el archivo real.
+ *
+ * La lección es que el contrato "¿viene entrecomillada o pelada?" no se puede dejar implícito
+ * entre dos módulos: cada lado supone lo que le conviene y el error es SILENCIOSO (la guarda
+ * falla cerrado, así que no rompe nada — simplemente deja de verificar para siempre).
+ *
+ * Por eso esta función acepta LAS DOS FORMAS: desenvuelve si ya venía entrecomillada y vuelve a
+ * entrecomillar una sola vez. Es idempotente a propósito.
+ */
+export function rangoDePestana(ref, sufijo = 'A1:BZ') {
+  let n = String(ref ?? '').trim()
+  if (n.length >= 2 && n.startsWith("'") && n.endsWith("'")) n = n.slice(1, -1).replace(/''/g, "'")
+  return `'${n.replace(/'/g, "''")}'!${sufijo}`
+}
+
+/**
  * NÚCLEO PURO: la firma de una grilla. Normaliza cada celda (trim) y las une con un separador que no
  * aparece en el contenido, luego hashea. Dos grillas con el MISMO contenido visible/fórmula dan la
  * misma firma; un cambio de una persona (texto, fórmula, fila) la cambia.
@@ -132,14 +161,9 @@ export function evaluarFirma({ firmaActual, firmaGuardada, hayEdicionHumana = fa
 // cosmético que recorre todo el archivo no debe sembrar candados en la base.
 export async function firmaGuardia(google, fileId, pestana, ref = pestana, { candar = true } = {}) {
   try {
-    // LAS COMILLAS, OTRA VEZ, Y ACÁ ERA LA CAUSA RAÍZ. Sin ellas, toda pestaña con espacios en el
-    // nombre —"Cash Flow Mensual", "Jornales por Quincena", "Impuestos y Financieros", o sea casi
-    // todas— hacía que la API rechazara el rango, el `.catch` lo volviera `null` y la guarda cayera
-    // en `noVerificable`. Falla del lado seguro, así que no destruía nada: la trataba como del dueño
-    // y no la tocaba. Pero eso significa que NINGUNA de esas pestañas se pudo verificar jamás, y de
-    // ahí salió la epidemia de auto-candados del 03/08 — ocho pestañas candadas, siete de ellas por
-    // escrituras del propio OS que nunca pudo reconocer como suyas.
-    const rango = `'${String(ref).replace(/'/g, "''")}'!A1:BZ`
+    // `ref` llega entrecomillada desde `refDeTab()` y PELADA desde los generadores que llaman
+    // directo. Las dos formas son legítimas y el normalizador las acepta: ver `rangoDePestana`.
+    const rango = rangoDePestana(ref)
     const actual = await google.readSheetValues(fileId, rango, { render: 'FORMULA' }).catch(() => null)
     // No pude releer la pestaña: NO puedo afirmar que está intacta. Antes esto devolvía editada:false
     // y el generador la pisaba (fail-OPEN). Ahora se marca NO VERIFICABLE → el portón la trata como
@@ -178,12 +202,11 @@ export async function firmaGuardia(google, fileId, pestana, ref = pestana, { can
  * normalización de Google en el ida y vuelta, igual que con la firma.
  */
 export async function sellarFirma(google, fileId, pestana, ref = pestana) {
-  // LAS COMILLAS NO SON COSMÉTICA. Casi toda pestaña de este Sheet tiene espacios en el nombre
-  // ("Cash Flow Mensual", "Jornales por Quincena"): sin comillas la API rechaza el rango, el
-  // `.catch` de abajo lo convertía en `null` y el sellado no ocurría NUNCA — en silencio, que es lo
-  // peor. Se manifestaba como pestañas que se auto-candaban solas una y otra vez: el OS no lograba
-  // registrar su propia escritura y después la leía como una edición del dueño.
-  const rango = `'${String(ref).replace(/'/g, "''")}'!A1:BZ`
+  // EL SELLADO ES LA MITAD SILENCIOSA DEL PROBLEMA. Si el rango sale mal, el `.catch` de abajo lo
+  // vuelve `null` y el sellado no ocurre NUNCA, sin un solo error visible: el OS no logra registrar
+  // su propia escritura y en la corrida siguiente la lee como una edición del dueño. Por eso el
+  // rango se arma con el mismo normalizador que la guarda, y no a mano. Ver `rangoDePestana`.
+  const rango = rangoDePestana(ref)
   const readback = await google.readSheetValues(fileId, rango, { render: 'FORMULA' }).catch(() => null)
   if (!readback) return { sellada: false, motivo: `no pude releer ${rango}` }
   await guardarFirma({}, fileId, pestana, firmaDeGrid(readback), readback)
