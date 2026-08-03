@@ -1,8 +1,9 @@
 ---
 paths:
   - "orquestador/**/*.test.mjs"
-  - "src/**/*.test.ts"
-  - "src/**/*.test.tsx"
+  - ".claude/hooks/*.test.mjs"
+  - "scripts/**/*.test.mjs"
+  - "tests/*.spec.ts"
 ---
 
 # Tests
@@ -30,6 +31,10 @@ escribió, no está verificando nada.
 ## Correrlos
 
 ```
-npm run orq:test                    # los 216 archivos, ~37 s
+npm run orq:test                    # 2.351 tests, ~38 s   ← la evidencia de cierre
 node --test <archivo>.test.mjs      # uno solo, mientras se itera
+npx playwright test tests/<x>.spec.ts   # los 47 del navegador
 ```
+
+Los tests del núcleo son `.test.mjs` (`node --test`); los del navegador, `tests/*.spec.ts`
+(Playwright). **No hay tests bajo `src/`** — buscar ahí es buscar donde no hay.
