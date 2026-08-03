@@ -12,6 +12,10 @@ import { GoogleAuth } from 'google-auth-library'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+// El freno de mano de la escritura de Sheets. Import estático a propósito: un `await import()` dentro
+// de un try/catch —como el resto de las guardas— fallaría ABIERTO si el módulo no cargara, y este es
+// justamente el que no puede fallar abierto. Sólo toca el filesystem: no depende de la base ni de red.
+import { frenar } from './congelador-sheets.mjs'
 
 const READONLY_SCOPES = [
   'https://www.googleapis.com/auth/drive.readonly',
@@ -917,6 +921,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     /** Sobrescribe un rango A1 de un Sheet con `values` (matriz de filas).
      *  USER_ENTERED: respeta fórmulas y formatos de número como si lo tipearas. */
     async updateSheetValues(fileId, range, values, { espejo = false, yaGuardado = false } = {}) {
+      const hielo = frenar(fileId, range); if (hielo) return hielo
       // Mismo choke point que batchUpdateValues: no piso una pestaña candada ni una que editaste.
       let sellar = async () => {}
       if (!espejo && !yaGuardado) {
@@ -939,6 +944,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     /** Agrega filas al final de la tabla que arranca en `range` (INSERT_ROWS: no pisa
      *  lo que haya debajo). Devuelve el rango efectivamente escrito. */
     async appendSheetValues(fileId, range, values, { espejo = false, yaGuardado = false } = {}) {
+      const hielo = frenar(fileId, range); if (hielo) return hielo
       // Guarda central: aunque append no PISA (inserta filas), respeta un candado — si tomaste la
       // pestaña, no le agrego filas hasta que la devuelvas.
       let sellar = async () => {}
@@ -1009,6 +1015,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     /** Escribe VARIOS rangos de un Sheet en UNA sola operación (batch). `data` = matriz de
      *  { range, values }. Mucho más rápido y menos "escueto" que una celda por vez. */
     async batchUpdateValues(fileId, data, { espejo = false, yaGuardado = false, compartida = false } = {}) {
+      const hielo = frenar(fileId, (data || []).map((d) => d?.range).filter(Boolean).join(', ')); if (hielo) return hielo
       // ── GUARDA CENTRAL (25/07): el choke point que hace que NINGÚN escritor —crudo o no— pueda pisar
       // una pestaña candada o que el dueño editó (firma). Se saltea sólo con bandera explícita: `espejo`
       // (mirrors _RAW) o `yaGuardado` (lo llama escribirPreservando, que ya verificó y sella él mismo).
@@ -1037,6 +1044,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     },
     /** Limpia (vacía) el contenido de un rango sin borrar formato. */
     async clearValues(fileId, range, { espejo = false, yaGuardado = false } = {}) {
+      const hielo = frenar(fileId, range); if (hielo) return hielo
       // Guarda central: clearValues BORRA. No vaciar una pestaña candada ni una que editaste — sería la
       // forma más directa del bug. Bypass explícito para la tool drive.clear (el dueño la aprueba).
       if (!espejo && !yaGuardado) {
@@ -1149,6 +1157,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     /** Operaciones ESTRUCTURALES de un Sheet (insertar/borrar filas o columnas, formato)
      *  vía batchUpdate. `requests` = array de requests de la Sheets API. */
     async spreadsheetBatchUpdate(fileId, requests, { espejo = false, yaGuardado = false } = {}) {
+      const hielo = frenar(fileId, `${(requests || []).length} request(s) estructurales/formato`); if (hielo) return hielo
       // Guarda central para el batch estructural: descarta SÓLO los requests que escriben CONTENIDO
       // (updateCells con valor, copyPaste/pasteData/appendCells) sobre pestañas candadas/editadas; el
       // formato y la estructura pasan siempre. Un batch puramente de formato no paga nada (sin sheetIds
