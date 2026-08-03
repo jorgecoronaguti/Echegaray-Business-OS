@@ -37,6 +37,7 @@ import {
   formatoExcedentePorPlazo, formatoTablaInstrumentos,
 } from './formato-mattermost.mjs'
 import { evaluarAccionabilidad } from './politicas.mjs'
+import { medirLey25413, parametrosFiscales, CLAVE_POLITICA_FISCAL } from './impuestos-colocacion.mjs'
 import { RUTAS_INFORMATIVAS, PANTALLAS_ACOTADAS, esDeTesoreria } from './universo-mercado.mjs'
 import { mensajeNecesitaAutenticacion, mensajeNavegadorRoto } from './preparar-navegador.mjs'
 
@@ -397,9 +398,22 @@ export async function correrCiclo(deps = {}, opts = {}) {
       ].filter(Boolean).join(' '))
     paso('instrumentos', 'ok', `${instrumentos.length} relevados · ${aptos.length} aptos para tesorería`)
 
+    // ── LOS IMPUESTOS, ANTES DE COMPARAR ──────────────────────────────────────
+    //
+    // No es una capa de presentación: el impuesto al cheque se lleva 1,2% del capital y sobre 30 días
+    // eso ordena el ranking distinto que el rendimiento bruto. Si se aplicara sólo al publicar, el
+    // ganador de la comparación no sería el que más deja.
+    //
+    // La alícuota NO se cita de memoria: se contrasta contra lo que el banco efectivamente cobró.
+    const medicionLey = query ? await medirLey25413(query).catch((e) => ({ estado: 'sin_dato', motivo: String(e?.message ?? e).slice(0, 120) })) : null
+    const politicaFiscal = query ? await import('./ledger.mjs').then((m) => m.politicaVigente(query, CLAVE_POLITICA_FISCAL)).catch(() => null) : null
+    const fiscal = parametrosFiscales({ medicion: medicionLey, politica: politicaFiscal })
+    paso('impuestos', fiscal.ley_25413.estado === 'conocido' ? 'ok' : 'parcial',
+      [`Ley 25.413: ${fiscal.ley_25413.estado}`, `IIBB: ${fiscal.iibb.estado}`, `Ganancias: ${fiscal.ganancias.estado}`].join(' · '))
+
     // 11-12 · Comparar (SKILL 6) y evaluar riesgo (SKILL 7).
     const ventanas = excedente.ventanas.filter((v) => Number(v.monto_maximo) > 0)
-    const comparacion = compararAlternativas(aptos, ventanas, excedente.tasa_de_corte)
+    const comparacion = compararAlternativas(aptos, ventanas, excedente.tasa_de_corte, fiscal)
     const riesgos = {}
     for (const i of aptos) riesgos[i.id] = evaluarRiesgo(i, PERFILES.caja_operativa, { ahora })
     paso('comparacion', 'ok', comparacion.rankings.map((r) => `${r.bloque}:${r.ranking.length}`).join(' '))
@@ -432,7 +446,7 @@ export async function correrCiclo(deps = {}, opts = {}) {
     paso('recomendaciones', 'ok', `${generadas.propuestas.length} propuestas · ${generadas.sin_propuesta.length} bloques sin propuesta`)
 
     // 14 · Revisión independiente (SKILL 9). Lo que no pasa, NO se publica.
-    const val = validarLote(generadas.propuestas, { posicion, excedente, proyeccion, instrumentos: aptos, ahora })
+    const val = validarLote(generadas.propuestas, { posicion, excedente, proyeccion, instrumentos: aptos, ahora, fiscal })
     paso('validacion', 'ok', `${val.publicables.length} publicables · ${val.rechazadas.length} rechazadas`)
 
     // ═══ 14 bis · LA TABLA COMPARATIVA — lo que el dueño pidió y no estaba ═══
@@ -443,9 +457,15 @@ export async function correrCiclo(deps = {}, opts = {}) {
     // tiene respuesta aunque no haya un peso para colocar.
     const ventanasTabla = ventanas.length ? ventanas : (excedente.ventanas_por_plazo || [])
       .filter((v) => v.estado === 'ok')
-      .map((v) => ({ bloque: null, titulo: `Referencia a ${v.dias} días (sin monto colocable hoy)`, moneda: 'ARS', dias_libres: v.dias, monto_maximo: 0 }))
+      .map((v) => ({
+        bloque: null, titulo: `Referencia a ${v.dias} días (sin monto colocable hoy)`, moneda: 'ARS',
+        dias_libres: v.dias, monto_maximo: 0,
+        // La derivación viaja también en la tabla de referencia: cuando el colocable da cero, la
+        // pregunta "¿por qué cero?" es MÁS importante, no menos.
+        derivacion: v.derivacion ?? null,
+      }))
     const tablaComparacion = tablaComparativa(aptos, ventanasTabla, {
-      hurdleAnual: Number(excedente.tasa_de_corte?.valor) || 0, riesgos,
+      hurdleAnual: Number(excedente.tasa_de_corte?.valor) || 0, riesgos, fiscal,
     })
     const sospechosas = comparacion.rankings.flatMap((r) => (r.excluidos || []).filter((e) => e.sospechosa))
     paso('tabla_instrumentos', 'ok',
@@ -494,6 +514,18 @@ export async function correrCiclo(deps = {}, opts = {}) {
       recomendaciones: val.publicables,
       rechazadas: val.rechazadas,
       validaciones: val.validaciones,
+      // ═══ TODO LO QUE SE GENERÓ, NO SÓLO LO QUE SE PUBLICA ═══
+      //
+      // El ledger recibía únicamente `val.publicables`, así que una propuesta rechazada por la
+      // validación NUNCA llegaba a `tesoreria.recomendaciones` — y su validación tampoco, porque el
+      // ledger descarta las validaciones sin recomendación persistida. Resultado medido el
+      // 03/08/2026: el ciclo informaba "1 propuesta · 1 rechazada" y las dos tablas estaban en 0
+      // filas. Nadie podía contestar por qué se rechazó una decisión de plata.
+      //
+      // La rechazada no se publica (eso no cambia: lo que no pasa la revisión no se le manda al
+      // dueño) pero SÍ se guarda, con estado 'rechazada' y sus fallas.
+      generadas: generadas.propuestas,
+      fiscal,
       sin_propuesta: generadas.sin_propuesta,
       bloqueos: mercado.bloqueos || [],
       publicado: seEnvio,

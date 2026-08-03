@@ -202,6 +202,19 @@ export const Recomendacion = z.object({
   plazo_rescate_dias: z.number().nullable(),
   liquidacion_dias: z.number().nullable(),
   rendimiento_estimado_periodo: z.number().nullable(),
+
+  // ═══ EL DESGLOSE FISCAL ES PARTE DEL CONTRATO, NO UN ADORNO ═══
+  //
+  // Un rendimiento sin impuestos es una estimación optimista: sacar la plata del banco y traerla de
+  // vuelta paga 1,2% del capital (Ley 25.413, las dos puntas), y sobre 30 días eso se come más de la
+  // mitad de la ganancia. Cuando esto vivía fuera del contrato, Zod lo borraba en silencio al validar
+  // la propuesta y el mensaje publicaba el bruto con nombre de neto. Está acá para que no se pueda
+  // perder: si el desglose no viaja, la revisión independiente rechaza la propuesta.
+  rendimiento_bruto_periodo: z.number().nullable().default(null),
+  rendimiento_antes_de_impuestos_periodo: z.number().nullable().default(null),
+  impuestos: z.object({ estado: z.string() }).passthrough().nullable().default(null),
+  impuestos_completos: z.boolean().default(false),
+
   rendimiento_neto_periodo: z.number().nullable(),
   ganancia_neta_estimada: z.number().nullable(),
   costo_oportunidad_evitado: z.number().nullable(),

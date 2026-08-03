@@ -117,7 +117,13 @@ async function main() {
       if (inst?.fallidos?.length) {
         console.error(`[tesorero] ${inst.fallidos.length} observación(es) no entraron al ledger: ${inst.fallidos.slice(0, 3).join(' | ')}`)
       }
-      await guardarRecomendaciones(query, runId, r.recomendaciones ?? [], r.validaciones ?? [])
+      // TODO LO GENERADO, NO SÓLO LO PUBLICABLE. `r.recomendaciones` son las que pasaron la
+      // validación; `r.generadas` son todas. Guardando sólo las primeras, una propuesta rechazada no
+      // dejaba rastro y su motivo se perdía: el ciclo decía "1 rechazada" y la tabla estaba vacía.
+      const led = await guardarRecomendaciones(query, runId, r.generadas ?? r.recomendaciones ?? [], r.validaciones ?? [])
+      if (led?.guardadas) {
+        console.log(`[tesorero] ledger: ${led.guardadas} recomendación(es) (${led.rechazadas} rechazada(s)) · ${led.validaciones} validación(es)`)
+      }
       await guardarBloqueos(query, runId, r.bloqueos ?? [])
     } catch (e) {
       fallaLedger = String(e?.message ?? e).slice(0, 200)

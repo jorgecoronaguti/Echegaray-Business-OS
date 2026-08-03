@@ -26,6 +26,7 @@ import { evaluarRiesgo, evaluarConcentracion, PERFILES } from './riesgo.mjs'
 import { frescuraDeMercado } from './ciclo.mjs'
 import { generarRecomendaciones, recomendarAplicarADeuda, estaVencida } from './recomendacion.mjs'
 import { validarRecomendacion, validarLote, esNumero } from './validar.mjs'
+import { impuestosDeColocacion, parametrosFiscales } from './impuestos-colocacion.mjs'
 import { registrarCorreccion, esConfirmacionReal, proponerCambioPolitica, TIPO_CORRECCION } from './aprendizaje.mjs'
 import { esCambioMaterial, formatoPropuesta } from './formato-mattermost.mjs'
 import { idMovimiento, detectarDuplicados, estaComprometido, vencidoComercialDe, PESTANAS_PROHIBIDAS } from './lectura-flujo.mjs'
@@ -794,14 +795,23 @@ test('el rendimiento neto SE RECALCULA desde el instrumento, no se cree lo decla
   }
   const fuentes = { posicion, excedente, instrumentos: [inst], ahora: HOY }
 
-  // El neto verdadero del instrumento a 30 días.
-  const real = (1.9 ** (30 / 365)) - 1 - 0.001
-  const ok = validarRecomendacion({ ...base, rendimiento_neto_periodo: real, ganancia_neta_estimada: Math.round(1e6 * real) }, fuentes)
+  // El neto verdadero del instrumento a 30 días: bruto − comisión − IMPUESTOS. El impuesto al cheque
+  // no es opcional; sin él este número es un bruto con nombre de neto.
+  const antesDeImpuestos = (1.9 ** (30 / 365)) - 1 - 0.001
+  const fiscal = impuestosDeColocacion({
+    capital: 1e6, rendimientoBrutoPeriodo: antesDeImpuestos, categoria: inst.categoria, parametros: parametrosFiscales({}),
+  })
+  const real = fiscal.rendimiento_neto_periodo
+  assert.ok(antesDeImpuestos - real >= 0.0119, 'el neto tiene que descontar el 1,2% de la Ley 25.413 por las dos puntas')
+  const ok = validarRecomendacion({
+    ...base, impuestos: fiscal, rendimiento_antes_de_impuestos_periodo: antesDeImpuestos,
+    rendimiento_neto_periodo: real, ganancia_neta_estimada: Math.round(1e6 * real),
+  }, fuentes)
   assert.equal(ok.aprobada, true, `la propuesta correcta no pasó: ${ok.fallas.join(' | ')}`)
 
   // El mismo instrumento, con el neto inflado diez veces y la ganancia coherente con la mentira.
   const inflado = real * 10
-  const mal = validarRecomendacion({ ...base, rendimiento_neto_periodo: inflado, ganancia_neta_estimada: Math.round(1e6 * inflado) }, fuentes)
+  const mal = validarRecomendacion({ ...base, impuestos: fiscal, rendimiento_neto_periodo: inflado, ganancia_neta_estimada: Math.round(1e6 * inflado) }, fuentes)
   assert.equal(mal.aprobada, false, 'un neto inflado 10x aprobó')
   assert.ok(mal.fallas.some((f) => f.startsWith('neto_reproducible')), mal.fallas.join(' | '))
 })

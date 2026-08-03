@@ -26,6 +26,7 @@
 import { BLOQUES, bloquePorDias, EVIDENCIA, CONFIANZA } from './contratos.mjs'
 import { deudaCancelable, tasaDeReferencia, interesDiarioDelAcuerdo, MODO } from './costo-liquidez.mjs'
 import { ventanaDeExcedente, excedentePorVentana, VENTANAS_DIAS, DIAS_ACREDITACION_VALORES } from './excedente-ventana.mjs'
+import { porQueBajaConElPlazo } from './derivacion-excedente.mjs'
 
 /**
  * TASA DE CORTE (hurdle rate) — el rendimiento anual que un instrumento tiene que superar para que
@@ -133,6 +134,13 @@ export async function calcularExcedente(posicion = {}, proyeccion = {}, opts = {
     reserva,
     restringidaFueraDelCalendario: restringidaFuera,
     hoy,
+    // La fecha del dato de caja viaja hasta el cuadro: "caja líquida $X" sin decir de cuándo es no
+    // se puede contrastar contra la pestaña.
+    fechaCaja: posicion.fecha ?? null,
+    // LO VENCIDO, ABIERTO POR FUENTE. `caja_comprometida` es un total de dos orígenes distintos
+    // (obligacion_resumen y Compras) y el cuadro tiene que decir cuál es cuál: mandar al dueño a
+    // buscar en Compras un número que sale de Postgres es peor que no darle ninguna coordenada.
+    vencidoDetalle: posicion.detalle ?? null,
   }
   // LA VISTA QUE PIDIÓ EL DUEÑO: el excedente por plazo, no un número único. Va aparte de los bloques
   // A–E porque responde otra pregunta —"¿cuánto puedo colocar a 30, a 60 y a 90 días?"— y es la que
@@ -244,6 +252,16 @@ export async function calcularExcedente(posicion = {}, proyeccion = {}, opts = {
     ventanas,
     // LA TABLA QUE SE PUBLICA. Un excedente por plazo, con los tres escenarios de cobro al lado.
     ventanas_por_plazo: porPlazo,
+    // POR QUÉ A 90 DÍAS HAY MENOS QUE A 1 DÍA. Se calcula sobre los bloques A–E porque son los que
+    // encabezan las tablas de instrumentos ("ALTERNATIVAS A 90 DÍAS — sobre $X"), que es donde el
+    // dueño vio el número que no entendía.
+    por_que_baja_con_el_plazo: porQueBajaConElPlazo(
+      ventanas.filter((v) => v.detalle_ventana?.estado === 'ok')
+        .map((v) => ({
+          estado: 'ok', dias: v.dias_libres, monto_maximo: v.monto_maximo,
+          piso: v.detalle_ventana.piso, fecha_tension: v.detalle_ventana.fecha_tension,
+        })),
+    ),
     solape_reserva: porPlazo[0]?.solape_reserva ?? null,
     criterio: 'el excedente de cada ventana es el SALDO MÍNIMO del recorrido del calendario (pesos líquidos + valores a depositar '
       + `acreditados a ${DIAS_ACREDITACION_VALORES} días + cobranzas del período al 50% − lo vencido − los egresos que caen DENTRO de la ventana) menos la reserva aprobada; `
