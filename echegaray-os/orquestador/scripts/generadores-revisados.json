@@ -1,0 +1,122 @@
+{
+  "queEs": "Hasta qué punto se revisó cada generador de Sheets contra las ramas sin mergear. Lo lee generadores-atrasados.mjs.",
+  "comoSeMantiene": [
+    "Cuando generadores-atrasados.mjs marca un archivo SIN REVISAR: mirá qué trae la rama, decidí, y anotalo acá.",
+    "revisadoHasta = el commit cuya versión se evaluó. Vale una lista si se revisó contra más de un linaje.",
+    "decision = incorporado (se trajo) | descartado (se miró y NO se trae, con motivo) | pendiente (declarado, sin resolver).",
+    "pendientes = motivo por RAMA, para una rama viva que se conoce y no se toca. Nunca pone el hallazgo en verde.",
+    "El motivo es obligatorio para todo lo que no sea incorporado: lo que se descarta, se descarta por escrito."
+  ],
+  "archivos": {
+    "orquestador/lib/firma-tab.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "incorporado"
+    },
+    "orquestador/lib/google.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "incorporado"
+    },
+    "orquestador/lib/preservar-anotaciones.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "incorporado"
+    },
+    "orquestador/lib/respetar-ediciones.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "incorporado"
+    },
+    "orquestador/scripts/banco-raw-pestana.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "incorporado"
+    },
+    "orquestador/scripts/caja-pestana.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "incorporado"
+    },
+    "orquestador/scripts/cash-flow-rehacer.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "incorporado"
+    },
+    "orquestador/scripts/cheques-cobertura-sheet.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "incorporado"
+    },
+    "orquestador/scripts/cheques-emitidos-sync-banco.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "incorporado"
+    },
+    "orquestador/scripts/estructura-pestana.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "incorporado"
+    },
+    "orquestador/scripts/flujo-caja-rehacer-todo.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "incorporado"
+    },
+    "orquestador/scripts/formato-condicional.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "incorporado"
+    },
+    "orquestador/scripts/formato-pestanas.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "incorporado"
+    },
+    "orquestador/scripts/proveedores-materiales-pestana.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "incorporado"
+    },
+    "orquestador/scripts/recurrentes-pestana.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "incorporado"
+    },
+    "orquestador/scripts/refrescar-proveedores.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "incorporado"
+    },
+    "orquestador/scripts/resumen-pestana.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "incorporado"
+    },
+    "orquestador/scripts/sync-caja-nucleo.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "incorporado"
+    },
+    "orquestador/scripts/cargas-sociales-pestana.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "incorporado",
+      "pendientes": {
+        "fix/frescura-cinco-cierre": "fix/frescura-cinco-cierre (9f13201) es trabajo VIVO de otra tanda sobre los rótulos de frescura, creado el 03/08 sobre el mismo main del que salió esta rama. No se tocó: integrarlo es decisión de quien tiene la vista del conjunto, y hacerlo desde acá dejaría a esa tanda peleando contra un archivo que le movieron abajo. Hay que mergearlo DESPUÉS de este trabajo, no antes."
+      }
+    },
+    "orquestador/scripts/cheques-emitidos-tablero.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "incorporado",
+      "pendientes": {
+        "fix/frescura-cinco-cierre": "fix/frescura-cinco-cierre (9f13201) es trabajo VIVO de otra tanda sobre los rótulos de frescura, creado el 03/08 sobre el mismo main del que salió esta rama. No se tocó: integrarlo es decisión de quien tiene la vista del conjunto, y hacerlo desde acá dejaría a esa tanda peleando contra un archivo que le movieron abajo. Hay que mergearlo DESPUÉS de este trabajo, no antes."
+      }
+    },
+    "orquestador/scripts/impuestos-pestana.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "incorporado",
+      "pendientes": {
+        "fix/frescura-cinco-cierre": "fix/frescura-cinco-cierre (9f13201) es trabajo VIVO de otra tanda sobre los rótulos de frescura, creado el 03/08 sobre el mismo main del que salió esta rama. No se tocó: integrarlo es decisión de quien tiene la vista del conjunto, y hacerlo desde acá dejaría a esa tanda peleando contra un archivo que le movieron abajo. Hay que mergearlo DESPUÉS de este trabajo, no antes."
+      }
+    },
+    "orquestador/scripts/jornales-pestana.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "incorporado",
+      "pendientes": {
+        "fix/frescura-cinco-cierre": "fix/frescura-cinco-cierre (9f13201) es trabajo VIVO de otra tanda sobre los rótulos de frescura, creado el 03/08 sobre el mismo main del que salió esta rama. No se tocó: integrarlo es decisión de quien tiene la vista del conjunto, y hacerlo desde acá dejaría a esa tanda peleando contra un archivo que le movieron abajo. Hay que mergearlo DESPUÉS de este trabajo, no antes."
+      }
+    },
+    "orquestador/lib/guarda-escritura.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "descartado",
+      "motivo": "la rama construye la protección del FORMATO del dueño (evaluarFormatoProtegido, sheetIdDeRequestFormato) sobre la arquitectura anterior al 03/08. Main la reemplazó por clasificar-request.mjs, que además hace pasar deleteDimension por la guarda — la protección que existe porque se perdió trabajo del dueño. Traer la rama la revertía. Portar la capa de formato a la arquitectura nueva es un rediseño, no un merge: queda pendiente. Lo que la rama tenía y SÍ se trajo es firma-formato.mjs, que main ya importaba sin tenerlo."
+    },
+    "orquestador/scripts/cargar-comprobantes-compras.mjs": {
+      "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
+      "decision": "descartado",
+      "motivo": "la rama destraba el candado de \"Compras\" y lo vuelve a poner (--forzar-candado, 31/07). Main resolvió el MISMO problema después y mejor: releyendo el destino y escribiendo sólo si está vacío (soloFilasVacias + escribirYVerificar, dfa7dff del 03/08). Traer la rama revertía ese arreglo. No queda nada suyo por rescatar."
+    }
+  }
+}
