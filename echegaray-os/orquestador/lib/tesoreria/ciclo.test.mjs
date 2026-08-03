@@ -262,3 +262,113 @@ test('`publicado` es lo que se ENVIÓ, no lo que se decidió enviar', async () =
   const paso = r.traza.find((p) => p.paso === 'publicacion')
   assert.equal(paso.estado, 'omitido')
 })
+
+// ════════════════════════════════════════════════════════════════════════════
+// LAS DOS DECISIONES, EN EL CICLO COMPLETO
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Un Sheet con la cuenta corriente EN ROJO y efectivo aparte: el caso real que rompía el motor. */
+function googleConDescubierto({ ctaCte = -40000000, efectivo = 100000000 } = {}) {
+  const n = (x) => String(x).replace('.', ',')
+  const filas = {
+    'Caja!A1:H200': [
+      ['Fecha del saldo', 'Cuenta', 'Saldo en pesos'],
+      ['01/08/2026', 'Santander · cta cte ARS', n(ctaCte)],
+      ['01/08/2026', 'Caja en pesos', n(efectivo)],
+    ],
+    'Cheques Emitidos!A1:L997': [],
+    'Cobranzas!A5:R2000': [],
+    'Compras!A3:BZ3': [[]],
+    'Compras!A4:AK': [],
+  }
+  return { readSheetValues: async (_id, rango) => filas[rango] ?? [] }
+}
+
+test('DEFECTO · con descubierto abierto sale la propuesta de CANCELAR, no cuatro tablas y cero propuestas', async () => {
+  // ═══ LO QUE EL DUEÑO RECHAZÓ TRES VECES ═══
+  //
+  // Con la cuenta corriente en rojo, la vara de cada ventana pasaba a ser el CFT del acuerdo (62,78%)
+  // y ningún instrumento del mercado lo supera: todos excluidos. Y la propuesta de cancelar tampoco
+  // salía, porque sólo se emitía cuando NINGUNA ventana tenía monto. Resultado publicado: cuatro
+  // tablas y cero propuestas, sin una línea que dijera por qué.
+  publicados.length = 0
+  const r = await correrCiclo({
+    google: googleConDescubierto(),
+    relevar: async () => ({ estado: 'ok', paginas: [], bloqueos: [], observado_en: HOY.toISOString() }),
+    publicar, ahora: HOY,
+  }, {
+    publicarSiempre: true, dias: 30,
+    filaReserva: RESERVA_APROBADA, filaRestringida: RESTRINGIDA_CERO,
+    extractorValidado: true, mercadoFresco: true,
+    instrumentos: [{
+      nombre: 'FCI Money Market Pesos', moneda: 'ARS', plazo_rescate_dias: 0, liquidacion_dias: 0,
+      tasa: { tipo: 'tea', valor: 0.35, naturaleza: 'indicativa' },
+      costos: { comision: 0 }, emisor: 'Balanz', evidencia: 'dato',
+    }],
+  })
+
+  assert.equal(r.estado, 'ok')
+  assert.equal(r.excedente.deuda_cancelable.monto, 40_000_000, 'la cuenta corriente está en rojo')
+  // El escenario tiene descubierto Y ventanas con monto a la vez: es el que rompía el motor.
+  assert.equal(r.sin_excedente, false, 'hay ventanas con monto, así que la vieja compuerta no aplica')
+
+  // 1 · LA CANCELACIÓN SE PROPONE AUNQUE HAYA VENTANAS CON MONTO.
+  //     Antes salía sólo con `sinVentanas`, o sea nunca en este caso.
+  assert.equal(r.cancelacion.hay_propuesta, true)
+  assert.equal(r.cancelacion.monto_a_cancelar, 40_000_000)
+  assert.equal(r.recomendacion_estructural?.tipo, 'aplicar_a_deuda',
+    'con saldo deudor la propuesta de cancelar sale siempre, no sólo cuando no hay excedente')
+  assert.ok(publicados.some((t) => /Cancelar descubierto antes de evaluar/.test(t)))
+
+  // 2 · EL EXCEDENTE QUE SE OFRECE COLOCAR ES EL NETO DE LA DEUDA.
+  //     Sin esto el motor proponía inmovilizar $54,3M teniendo $40M de rojo: plata ya comprometida.
+  const bruto = r.excedente.ventanas.find((v) => v.bloque === 'C').monto_maximo
+  const colocacionC = r.decision.colocaciones.find((c) => c.bloque === 'C')
+  assert.equal(colocacionC.excedente, bruto - 40_000_000)
+  assert.ok(colocacionC.hay_propuesta, 'sobre el remanente sí hay una colocación que conviene')
+  assert.equal(colocacionC.vara.periodo, 0, 'y la vara del remanente no es el CFT')
+  //     La derivación publicada tiene que seguir cerrando en el número nuevo, no en el viejo.
+  const tablaC = r.tabla_instrumentos.tablas.find((t) => t.bloque === 'C')
+  assert.equal(tablaC.monto_a_colocar, bruto - 40_000_000)
+  assert.equal(tablaC.derivacion.monto_maximo, bruto - 40_000_000)
+  assert.equal(tablaC.derivacion.chequeo.coincide, true, 'los términos siguen sumando el piso del recorrido')
+  assert.ok(tablaC.derivacion.cierre.some((t) => /descubierto que se cancela primero/.test(t.concepto)),
+    'el descuento aparece como término del cuadro, no como una resta invisible')
+
+  // 3 · Y NINGÚN BLOQUE QUEDA SIN CAUSA DECLARADA.
+  assert.ok(r.decision.sin_propuesta.length > 0)
+  assert.equal(r.decision.sin_propuesta.filter((s) => !s.codigo || !s.motivo).length, 0,
+    'un bloque sin propuesta y sin código es indistinguible de un bloque que el sistema no supo analizar')
+  assert.ok(publicados.some((t) => /POR QUÉ NO HAY PROPUESTA EN CADA BLOQUE/.test(t)))
+})
+
+test('DEFECTO · sin descubierto, un instrumento que rinde MENOS que el 62,78% igual se propone', async () => {
+  // Un 35% anual sobre plata que iba a quedarse parada es ganancia pura. Medirlo contra el costo de
+  // estar corto lo rechazaba, y con él a todo el universo: cero propuestas, siempre.
+  publicados.length = 0
+  const r = await correrCiclo({
+    google: googleFake({ caja: 50000000 }),
+    relevar: async () => ({ estado: 'ok', paginas: [], bloqueos: [], observado_en: HOY.toISOString() }),
+    publicar, ahora: HOY,
+  }, {
+    publicarSiempre: true, dias: 60,
+    filaReserva: RESERVA_APROBADA, filaRestringida: RESTRINGIDA_CERO,
+    extractorValidado: true, mercadoFresco: true,
+    instrumentos: [{
+      nombre: 'Caución pesos 35%', moneda: 'ARS', plazo_rescate_dias: 0, liquidacion_dias: 1,
+      tasa: { tipo: 'tea', valor: 0.35, naturaleza: 'contractual' },
+      costos: { comision: 0.001 }, emisor: 'BYMA', evidencia: 'dato',
+    }],
+  })
+
+  assert.equal(r.estado, 'ok')
+  assert.equal(r.cancelacion.hay_propuesta, false, 'no hay rojo que cancelar en este escenario')
+  assert.ok(0.35 < 0.6278, 'el instrumento rinde menos que el descubierto, a propósito')
+  assert.ok(r.recomendaciones.length >= 1, `sin propuestas: ${JSON.stringify(r.decision.sin_propuesta)}`)
+  const prop = r.decision.colocaciones.find((c) => c.hay_propuesta)
+  assert.ok(prop, 'el núcleo de decisión tiene que proponer la colocación')
+  assert.equal(prop.vara.periodo, 0, 'la vara es cero neto, no el CFT del descubierto')
+  // Y el neto publicado no finge estar completo: IIBB y Ganancias siguen siendo DESCONOCIDO.
+  assert.equal(prop.propuestas[0].neto_declarado.es_techo, true)
+  assert.ok(prop.propuestas[0].neto_declarado.no_contempla.length === 2)
+})
