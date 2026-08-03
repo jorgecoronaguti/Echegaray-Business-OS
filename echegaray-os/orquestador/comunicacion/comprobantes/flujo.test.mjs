@@ -7,7 +7,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { procesarPost, armarItem, bajarAdjunto, TEXTO } from './flujo.mjs'
-import { repoMemoria, portGuarda, mmFalso, lecturaBarcelo, LISTAS, lecturaCorralonReal, ARCA_CORRALON, LISTAS_COMPRAS, filasCompras, filaCompras } from './dobles.mjs'
+import { repoMemoria, portGuarda, mmFalso, lecturaBarcelo, LISTAS, lecturaCorralonReal, ARCA_CORRALON, LISTAS_COMPRAS, filasCompras, filaCompras, lecturaTiqueBarcelo, filasBarcelo } from './dobles.mjs'
 import { ESTADO } from '../../lib/comprobantes/fajo.mjs'
 import { indexarCompras } from '../../lib/comprobantes/compras-vivas.mjs'
 
@@ -46,8 +46,8 @@ test('una foto en el canal abre un fajo y devuelve el mensaje con los tres boton
   const r = await procesarPost(d, post())
   assert.equal(r.estado, 'confirmar')
   assert.match(r.texto, /COMBUSTIBLES BARCELO|Combustibles Barcelo/)
-  assert.match(r.texto, /total \$36\.460,30/)
-  assert.match(r.texto, /obra: Estrella/)
+  assert.match(r.texto, /\| \*\*Total\*\* \| \*\*\$36\.460,30\*\*/)
+  assert.match(r.texto, /\| Obra \| Estrella/)
   assert.deepEqual(r.attachments[0].actions.map((a) => a.id), ['confirmar', 'corregir', 'descartar'])
   const f = repo._fajos.get(r.fajoId)
   assert.equal(f.estado, ESTADO.ABIERTO)
@@ -68,7 +68,7 @@ test('varios adjuntos en UN post son un solo fajo con dos comprobantes', async (
   })
   const r = await procesarPost(d, post({ fileIds: ['f1', 'f2'] }))
   assert.equal(repo._fajos.get(r.fajoId).items.length, 2)
-  assert.match(r.texto, /Leí 2 comprobantes/)
+  assert.match(r.texto, /### 2\. /, 'un bloque por comprobante, no una lista corrida')
 })
 
 test('dos posts seguidos del mismo usuario se SUMAN al mismo fajo: una sola confirmación', async () => {
@@ -136,7 +136,7 @@ test('un comprobante YA CARGADO se avisa con su fila, y no se ofrece cargarlo de
   repo._cargados.set('c:30712345678|A|0113-00010489', { clave: 'c:30712345678|A|0113-00010489', fila: 412, hoja: 'Compras' })
   const { d } = armar({ repo })
   const r = await procesarPost(d, post())
-  assert.match(r.texto, /ya está cargado en la fila 412/)
+  assert.match(r.texto, /Ya está cargado\*\* — fila 412/)
   assert.ok(!r.attachments[0].actions.some((a) => a.id === 'confirmar'))
 })
 
@@ -231,7 +231,7 @@ test('un post sin adjuntos no dispara ningún trabajo', async () => {
 test('la obra sale de lo que la persona ESCRIBIÓ al mandar la foto', async () => {
   const { d } = armar({ lecturas: [lecturaBarcelo({ anotacion_manuscrita: null })] })
   const r = await procesarPost(d, post({ texto: 'San Francisco' }))
-  assert.match(r.texto, /obra: San Francisco/)
+  assert.match(r.texto, /\| Obra \| San Francisco/)
   assert.match(r.texto, /de lo que escribiste/, 'se declara de dónde salió la obra')
   assert.ok(r.attachments[0].actions.some((a) => a.id === 'confirmar'))
 })
@@ -249,7 +249,7 @@ test('el texto del mensaje NO pisa la obra que dice el comprobante', () => {
 test('un texto que no matchea ninguna obra no inventa nada: se sigue preguntando', async () => {
   const { d } = armar({ lecturas: [lecturaBarcelo({ anotacion_manuscrita: null })] })
   const r = await procesarPost(d, post({ texto: 'ahí te mando la factura, gracias' }))
-  assert.match(r.texto, /obra: _falta_/)
+  assert.match(r.texto, /\| Obra \| _falta/)
   assert.match(r.texto, /a qué obra va/)
   assert.equal(r.attachments[0].actions.some((a) => a.id === 'confirmar'), false)
 })
@@ -270,7 +270,7 @@ test('el texto del post vale para TODOS los adjuntos del mismo post', async () =
       lecturaBarcelo({ numero: '0001-00000002', anotacion_manuscrita: null })],
   })
   const r = await procesarPost(d, post({ fileIds: ['f1', 'f2'], texto: 'Messina' }))
-  assert.equal((r.texto.match(/obra: Messina/g) ?? []).length, 2)
+  assert.equal((r.texto.match(/\| Obra \| Messina/g) ?? []).length, 2)
 })
 
 // ── EL CASO REAL DEL 03/08: la obra escrita a mano y el duplicado que no se vio ──
@@ -303,7 +303,7 @@ const otraFactura = (over) => lecturaCorralonReal({
 test('la obra ESCRITA A MANO se resuelve sola: no se pregunta lo que está en el papel', async () => {
   const { d } = armarConPadron({ lecturas: [otraFactura({ anotacion_manuscrita: 'Messinas BSA' })] })
   const r = await procesarPost(d, post())
-  assert.match(r.texto, /obra: MESSINA/)
+  assert.match(r.texto, /\| Obra \| MESSINA/)
   assert.match(r.texto, /escrito a mano/)
   assert.doesNotMatch(r.texto, /a qué obra va/, 'la obra estaba en el papel: no había nada que preguntar')
   assert.equal(r.attachments[0].actions.some((a) => a.id === 'confirmar'), true)
@@ -314,7 +314,7 @@ test('la letra manuscrita mal leída se salva con el vocabulario VIVO de la colu
   // palabra que nombra la obra. Alcanza igual, porque "BSA" sólo aparece en detalles de MESSINA.
   const { d } = armarConPadron({ lecturas: [otraFactura({ anotacion_manuscrita: 'Nuestros BSA' })] })
   const r = await procesarPost(d, post())
-  assert.match(r.texto, /obra: MESSINA/)
+  assert.match(r.texto, /\| Obra \| MESSINA/)
   assert.doesNotMatch(r.texto, /a qué obra va/)
 })
 
@@ -322,7 +322,7 @@ test('el DETALLE de la columna K se completa sólo cuando es UNO solo', async ()
   const { d, repo } = armarConPadron({ lecturas: [otraFactura({ anotacion_manuscrita: 'Messinas Planta de BSA' })] })
   const r = await procesarPost(d, post())
   assert.equal(repo._fajos.get(r.fajoId).items[0].comprobante.detalleObra, 'Planta de BSA')
-  assert.match(r.texto, /obra: MESSINA · Planta de BSA/)
+  assert.match(r.texto, /\| Detalle \| Planta de BSA/)
 
   // Y con "BSA" a secas, cuando en Compras hay TRES detalles con BSA —los tres de MESSINA—, la obra
   // se resuelve igual y el detalle queda vacío: elegir uno de los tres sería inventar.
@@ -341,7 +341,7 @@ test('una anotación AMBIGUA sigue preguntando: el arreglo no es un adivinador',
   const listas = { ...LISTAS_COMPRAS, obras: ['MESSINA NORTE', 'MESSINA SUR'], detalles: {} }
   const base = armar({ lecturas: [lecturaCorralonReal({ anotacion_manuscrita: 'Messinas', numero: '0004-00009999', fecha: '02/08/2026' })], listas })
   const r = await procesarPost({ ...base.d, arcaDe: async () => [], comprasDe: async () => null }, post())
-  assert.match(r.texto, /obra: _falta_/)
+  assert.match(r.texto, /\| Obra \| _falta/)
   assert.match(r.texto, /a qué obra va/)
   assert.equal(r.attachments[0].actions.some((a) => a.id === 'confirmar'), false)
 })
@@ -354,7 +354,7 @@ test('el DÍGITO DE MÁS se corrige contra ARCA, y ahí aparece el duplicado de 
   assert.equal(it.comprobante.numeroLeidoMal, '0004-00036542')
   assert.equal(it.comprobante.cuit, '23369111574', 'el CUIT del emisor lo pone el padrón')
   assert.match(r.texto, /había leído \*\*0004-00036542\*\*/)
-  assert.match(r.texto, /ya está cargado en la fila 802 de Compras/)
+  assert.match(r.texto, /Ya está cargado\*\* — fila 802 de Compras/)
   assert.match(r.texto, /figura en ARCA \(PEREZ GARCIA MARISOL BIBIANA\)/)
   assert.equal(r.attachments[0].actions.some((a) => a.id === 'confirmar'), false, 'no se ofrece cargar lo que ya está')
 })
@@ -369,7 +369,7 @@ test('otra factura del MISMO proveedor el MISMO día NO se marca duplicada', asy
     })],
   })
   const r = await procesarPost(d, post())
-  assert.doesNotMatch(r.texto, /ya está cargado/)
+  assert.doesNotMatch(r.texto, /[Yy]a está cargado/)
   assert.doesNotMatch(r.texto, /puede que ya esté cargado/)
   assert.match(r.texto, /no figura en ARCA/, 'y se dice que no se pudo verificar, en vez de callarlo')
   assert.equal(r.attachments[0].actions.some((a) => a.id === 'confirmar'), true)
@@ -381,7 +381,7 @@ test('mismo proveedor, día e importe con OTRO número: se pregunta con botones,
     arca: [], // sin ARCA que corrija el número, queda el probable duplicado a secas
   })
   const r = await procesarPost(d, post())
-  assert.match(r.texto, /puede que ya esté cargado en la \*\*fila 802\*\*/)
+  assert.match(r.texto, /Puede que ya esté cargado\*\* — fila 802/)
   assert.deepEqual(r.attachments[0].actions.map((a) => a.id), ['duplicado_mismo', 'duplicado_otro', 'descartar'])
 })
 
@@ -390,4 +390,103 @@ test('sin ARCA y sin Compras el flujo sigue, y DECLARA que no pudo verificar', a
   const r = await procesarPost(d, post())
   assert.equal(r.estado, 'confirmar')
   assert.match(r.texto, /no pude verificarlo contra ARCA/)
+})
+
+// ═══ EL TIQUE DE COMBUSTIBLE (03/08) ═══
+//
+// El bot leyó bien el papel, dijo "no figura en ARCA" y ofreció **Confirmar y cargar** un gasto que
+// ya estaba en Compras fila 800. Estos tests se ponen rojos si vuelve cualquiera de las dos causas:
+// que la búsqueda del duplicado dependa de ARCA o del tipo de comprobante, y que la imputación no
+// aproveche lo que la empresa ya hizo con ese proveedor.
+
+/** El flujo con la pestaña Compras viva y SIN ARCA — que es como llega un tique de estación. */
+function armarTique({ filas = filasBarcelo(), arca = [], listas = LISTAS_COMPRAS, lecturas } = {}) {
+  const base = armar({ lecturas: lecturas ?? [lecturaTiqueBarcelo()], listas })
+  return {
+    ...base,
+    d: { ...base.d, arcaDe: async () => arca, comprasDe: async () => ({ ok: true, ...indexarCompras(filas) }) },
+  }
+}
+
+test('un comprobante AUSENTE de ARCA se busca IGUAL en Compras: ahí estaba, fila 800', async () => {
+  const { d, repo } = armarTique()
+  const r = await procesarPost(d, post())
+  const it = repo._fajos.get(r.fajoId).items[0]
+  assert.equal(it.comprobante.tipo, null, 'de un tique la visión no sacó la letra: así llegó el caso real')
+  assert.equal(it.yaCargado.fila, 800, 'el tipo faltaba, pero (proveedor, número) alcanza')
+  assert.match(r.texto.split('\n')[0], /Ya está cargado/, 'y se lee en la primera línea')
+  assert.match(r.texto, /fila 800/)
+  assert.match(r.texto, /no figura en ARCA/)
+  assert.equal(r.attachments[0].actions.some((a) => a.id === 'confirmar'), false,
+    'NO se ofrece "Confirmar y cargar" un gasto que ya está en el Flujo de Fondos')
+})
+
+test('que ARCA no lo tenga no puede apagar la búsqueda: sin ARCA se encuentra igual', async () => {
+  // El mismo tique, con ARCA devolviendo filas de otro proveedor (o sea: sin registro para éste).
+  const { d } = armarTique({ arca: ARCA_CORRALON })
+  const r = await procesarPost(d, post())
+  assert.match(r.texto, /Ya está cargado\*\* — fila 800/)
+})
+
+test('el DETALLE de la columna K sale del historial de ese proveedor EN ESA obra', async () => {
+  // El mismo tique con OTRO número (no está cargado) y sin la anotación manuscrita: la obra la
+  // resuelve el historial y el detalle también, porque (Barcelo, MESSINA) → "Camion - BSA".
+  const { d, repo } = armarTique({
+    lecturas: [lecturaTiqueBarcelo({ numero: '00113-00019999', anotacion_manuscrita: null, total: '20.000,00', iva_21: '3.471,07', otros_tributos: null })],
+  })
+  const r = await procesarPost(d, post())
+  const it = repo._fajos.get(r.fajoId).items[0]
+  assert.equal(it.comprobante.obra, 'MESSINA')
+  assert.equal(it.comprobante.detalleObra, 'Camion - BSA')
+  assert.equal(it.comprobante.obraVia, 'historial')
+  assert.match(r.texto, /\| Detalle \| Camion - BSA _\(sugerido: \d+ de \d+ cargas de este proveedor en MESSINA\)_/,
+    'se dice de dónde salió: el dueño tiene que poder desconfiar')
+})
+
+test('lo ESCRITO A MANO manda sobre el historial: no se discute con el papel', async () => {
+  const filas = filasBarcelo({ cargado: false })
+  const { d, repo } = armarTique({
+    filas,
+    lecturas: [lecturaTiqueBarcelo({ numero: '00113-00019998', anotacion_manuscrita: 'ARCOR', total: '20.000,00', iva_21: '3.471,07', otros_tributos: null })],
+  })
+  const r = await procesarPost(d, post())
+  const it = repo._fajos.get(r.fajoId).items[0]
+  assert.equal(it.comprobante.obra, 'ARCOR', 'el historial dice MESSINA 6 de 6 y no importa: el papel dice ARCOR')
+  assert.equal(it.comprobante.obraVia, 'comprobante')
+  assert.equal(it.comprobante.detalleObra, null, 'y no se le cuelga el detalle de MESSINA a una compra de ARCOR')
+})
+
+test('sin historia suficiente NO se adivina la obra: se pregunta', async () => {
+  const { d, repo } = armarTique({
+    filas: filasBarcelo({ conHistoria: false, cargado: false }),
+    lecturas: [lecturaTiqueBarcelo({ numero: '00113-00019997', anotacion_manuscrita: null, total: '20.000,00', iva_21: '3.471,07', otros_tributos: null })],
+  })
+  const r = await procesarPost(d, post())
+  assert.equal(repo._fajos.get(r.fajoId).items[0].comprobante.obra, null)
+  assert.match(r.texto, /a qué obra va/)
+  assert.equal(r.attachments[0].actions.some((a) => a.id === 'confirmar'), false)
+})
+
+test('si no se pudo leer Compras, se DICE — no se deja creer que se miró', async () => {
+  const base = armar({ lecturas: [lecturaTiqueBarcelo()], listas: LISTAS_COMPRAS })
+  const r = await procesarPost({ ...base.d, arcaDe: async () => [], comprasDe: async () => ({ ok: false, error: 'timeout' }) }, post())
+  assert.match(r.texto, /no pude leer la pestaña Compras/)
+})
+
+test('lo manuscrito se matchea contra J Y contra K: "Camion BSA - Messina" son DOS datos', async () => {
+  // Escrito a mano arriba del tique. El bot sacaba la obra y dejaba el detalle vacío; la fila 800,
+  // cargada a mano, dice MESSINA / Camion - BSA. El dato estaba escrito y no se usaba.
+  const { d, repo } = armarTique({
+    filas: filasBarcelo({ cargado: false }),
+    lecturas: [lecturaTiqueBarcelo({ numero: '00113-00019996', total: '20.000,00', iva_21: '3.471,07', otros_tributos: null })],
+  })
+  const r = await procesarPost(d, post())
+  const c = repo._fajos.get(r.fajoId).items[0].comprobante
+  assert.equal(c.obra, 'MESSINA')
+  assert.equal(c.detalleObra, 'Camion - BSA')
+  assert.equal(c.obraVia, 'comprobante', 'del papel, no del historial')
+  assert.equal(c.detalleVia, 'palabras', 'del papel también: "Camion BSA" identifica el detalle')
+  // Y los productos del ticket son el CONCEPTO (columna L), nunca el detalle (columna K).
+  assert.equal(c.concepto, 'Nafta Super 1 y Diesel 500')
+  assert.match(r.texto, /\| Concepto \| Nafta Super 1 y Diesel 500 \|/)
 })

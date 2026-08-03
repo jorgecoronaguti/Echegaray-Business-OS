@@ -24,7 +24,9 @@ import { normalizarLectura, claveComprobante, MEDIA_SOPORTADOS, MAX_BYTES_ADJUNT
 import { imputacionDeAnotacion } from '../../lib/comprobantes/imputacion.mjs'
 import { conciliarConArca, aplicarArca, ESTADO_ARCA } from '../../lib/comprobantes/arca.mjs'
 import { buscarEnCompras, HALLAZGO } from '../../lib/comprobantes/compras-vivas.mjs'
-import { colapsarRepetidos, entraEnElFajo, mensajeFajo, ESTADO } from '../../lib/comprobantes/fajo.mjs'
+import { colapsarRepetidos, entraEnElFajo, ESTADO } from '../../lib/comprobantes/fajo.mjs'
+import { mensajeFajo } from '../../lib/comprobantes/mensaje.mjs'
+import { perfilesDeImputacion, sugerirImputacion } from '../../lib/imputacion-aprendida.mjs'
 import { puedeCargarComprobantes } from './guarda.mjs'
 import * as repoReal from './repositorio.mjs'
 
@@ -168,18 +170,78 @@ export async function conciliarItems(items = [], arcaDe) {
  * que se pregunta con botones, nunca se resuelve solo.
  */
 export function marcarEnCompras(items = [], indice = null) {
-  if (!indice?.ok) return items
+  if (!indice?.ok) {
+    // NO PODER MIRAR COMPRAS NO ES "NO ESTÁ CARGADO". Callarlo hace que las dos cosas se vean igual
+    // en el mensaje, y el dueño confirma creyendo que se revisó. Se declara por ítem.
+    for (const it of items) it.comprasNoRevisadas = { error: indice?.error ?? 'no pude leer la pestaña Compras' }
+    return items
+  }
   for (const it of items) {
     const r = buscarEnCompras(it.comprobante ?? {}, indice)
     if (!r) continue
     if (r.que === HALLAZGO.CARGADO && !it.yaCargado) {
-      it.yaCargado = { fila: r.fila, hoja: r.hoja, fuente: 'Compras', obra: r.obra, detalle: r.detalle }
+      // `via` viaja porque el mensaje tiene que poder decir POR QUÉ es ése ("mismo número y mismo
+      // total"). Un aviso de duplicado sin la razón es un aviso que no se puede desmentir.
+      it.yaCargado = { fila: r.fila, hoja: r.hoja, fuente: 'Compras', obra: r.obra, detalle: r.detalle, via: r.via }
     } else if (r.que === HALLAZGO.PROBABLE && !it.yaCargado) {
       it.posibleDuplicado = {
         fila: r.fila, hoja: r.hoja, numero: r.numero, fecha: r.fecha, total: r.total,
         obra: r.obra, detalle: r.detalle, proveedor: r.proveedor, otras: r.otras ?? 0,
       }
     }
+  }
+  return items
+}
+
+/**
+ * Completa la imputación que el PAPEL no dijo, con lo que la empresa ya hizo antes.
+ *
+ * ═══ POR QUÉ ESTA FUNCIÓN NO TIENE UNA SOLA REGLA DE IMPUTACIÓN ═══
+ *
+ * Porque ya existen y no son de acá. `lib/imputacion-aprendida.mjs` es el módulo del OS que aprende
+ * de `Compras` cómo imputa el dueño —perfiles por proveedor, umbrales calibrados (n≥5 y 80% para
+ * hablar firme), confianza declarada— y es el mismo que usa el cargador que corre Claude Code. El bot
+ * lo IGNORABA y resolvía la imputación por su cuenta: por eso Claude Code parecía más inteligente que
+ * el bot. Acá no se decide nada nuevo; se le pregunta al que sabe y se aplica su respuesta.
+ *
+ * ═══ EL ORDEN, QUE ES TODA LA REGLA ═══
+ *
+ * **Lo escrito a mano en el papel MANDA sobre el historial.** Si el comprobante dice "Camion BSA -
+ * Messina", eso es una decisión del dueño tomada sobre ese gasto; el historial es una estadística
+ * sobre otros gastos. El historial sólo llena lo que quedó vacío.
+ *
+ * Y proponer no es decidir: sólo se aplica lo que la lib declara FIRME (`pide_confirmacion:false`).
+ * Lo que no llega, se pregunta —con las opciones más probables adelante— porque adivinar la obra
+ * imputa plata a la obra equivocada y ensucia el margen de las dos.
+ */
+export function completarConHistorial(items = [], perfiles = null) {
+  if (!perfiles?.por_proveedor) return items
+  for (const it of items) {
+    const c = it.comprobante ?? {}
+    if (!c.proveedor) continue
+    const base = { proveedor: c.proveedor, concepto: c.concepto, monto: c.total }
+    let s = sugerirImputacion({ ...base, obra: c.obra }, perfiles)
+    const ap = {}
+    if (!c.obra && s.obra?.sugerido && !s.obra.pide_confirmacion) {
+      c.obra = s.obra.sugerido
+      c.obraVia = 'historial'
+      ap.obra = { n: s.obra.n, share: s.obra.share }
+      // El detalle depende de la obra: con la obra recién resuelta hay que volver a preguntar, o se
+      // estaría ofreciendo el detalle más frecuente de OTRA obra.
+      s = sugerirImputacion({ ...base, obra: c.obra }, perfiles)
+    }
+    if (!c.detalleObra && s.detalle?.sugerido && !s.detalle.pide_confirmacion) {
+      c.detalleObra = s.detalle.sugerido
+      c.detalleVia = 'historial'
+      ap.detalle = { n: s.detalle.n, share: s.detalle.share, obra: s.detalle.obra ?? c.obra ?? null }
+    }
+    if (!c.unidad && s.unidad?.sugerido && !s.unidad.pide_confirmacion) {
+      c.unidad = s.unidad.sugerido
+      ap.unidad = { n: s.unidad.n, share: s.unidad.share }
+    }
+    // Lo que NO se aplicó viaja igual: es con lo que se pregunta sin preguntar en blanco.
+    it.sugerencia = { obra: s.obra ?? null, detalle: s.detalle ?? null, unidad: s.unidad ?? null }
+    if (Object.keys(ap).length) it.aprendido = ap
   }
   return items
 }
@@ -261,8 +323,14 @@ export async function procesarPost(d, m = {}) {
 
   // 7) ¿Ya estaban cargados? En el registro del chat Y en la pestaña Compras VIVA: el comprobante
   //    pudo haber entrado por Claude Code o a mano, que es exactamente lo que pasó.
+  //    ESTO CORRE SIEMPRE, con ARCA o sin ARCA. Que un tique no esté en el Libro IVA no dice nada
+  //    sobre si ya está cargado; es justo cuando más falta hace mirar el destino.
   await marcarYaCargados(port, unicos, repo)
   marcarEnCompras(unicos, indiceCompras)
+
+  // 7 bis) Lo que el papel no dijo, lo dice la historia de Compras — vía el módulo que ya aprende
+  //        para todo el OS. Nunca pisa lo escrito a mano.
+  completarConHistorial(unicos, await perfilesDeHistorial(indiceCompras, d))
 
   // 8) Abrir o ampliar el fajo.
   const abierto = await repo.fajoAbierto(port, {
@@ -292,6 +360,23 @@ export async function procesarPost(d, m = {}) {
   const msg = mensajeFajo(fajo, { url })
   const cola = problemas.length ? ['', '**No pude con estos:**', ...problemas].join('\n') : ''
   return { texto: msg.texto + cola, attachments: msg.attachments, estado: 'confirmar', fajoId: fajo.id }
+}
+
+/**
+ * Los perfiles de imputación, de la fuente más completa que haya.
+ *
+ * PRIMERO LA PESTAÑA VIVA, que ya se leyó para buscar el duplicado: trae el detalle de la columna K
+ * separado del concepto y trae también las filas sin obra. SEGUNDO el espejo `public.costos_obra`,
+ * que es el feeder original de la lib y el que usa el cargador. Los dos entran por la MISMA función
+ * pura (`perfilesDeImputacion`): no hay dos formas de aprender, hay dos formas de leer la historia.
+ *
+ * Si no hay ninguna, se devuelve null y no se sugiere nada. Sin historia no se inventa una obra.
+ */
+async function perfilesDeHistorial(indiceCompras, d) {
+  if (indiceCompras?.ok && indiceCompras.historia?.length) return perfilesDeImputacion(indiceCompras.historia)
+  const desdeDB = d.perfilesDesdeDB
+  if (typeof desdeDB !== 'function') return null
+  try { return await desdeDB() } catch { return null }
 }
 
 function nuevoFajo(m, items) {

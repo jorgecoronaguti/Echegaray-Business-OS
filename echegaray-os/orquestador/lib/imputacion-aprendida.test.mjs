@@ -164,3 +164,55 @@ test('perfilDimension con historia toda vacía siempre pide confirmación', () =
   assert.equal(d.sugerido, null)
   assert.equal(d.pide_confirmacion, true)
 })
+
+// ─── EL DETALLE (columna K) — se aprende acá para que lo usen el bot Y el cargador ────────────
+//
+// El caso: Combustibles Barcelo en MESSINA siempre va a "Camion - BSA". Eso no está en ningún
+// desplegable; la única definición legítima es lo que el dueño ya escribió en esa obra.
+
+const conDetalle = (proveedor, obra, detalle) => ({ proveedor, unidad_negocio: 'Civil', obra_texto: obra, detalle, concepto: 'gasoil' })
+
+test('el detalle se aprende por (proveedor, OBRA): es del frente, no del proveedor', () => {
+  const historia = [
+    ...Array.from({ length: 6 }, () => conDetalle('Barcelo', 'MESSINA', 'Camion - BSA')),
+    ...Array.from({ length: 6 }, () => conDetalle('Barcelo', 'LA ESTRELLA', 'Camioneta obra')),
+  ]
+  const perfiles = perfilesDeImputacion(historia)
+  const enMessina = sugerirImputacion({ proveedor: 'Barcelo', obra: 'MESSINA' }, perfiles)
+  assert.equal(enMessina.detalle.sugerido, 'Camion - BSA')
+  assert.equal(enMessina.detalle.pide_confirmacion, false, '6 de 6 en esa obra: se propone')
+  assert.equal(enMessina.detalle.alcance, 'proveedor+obra')
+
+  const enEstrella = sugerirImputacion({ proveedor: 'Barcelo', obra: 'LA ESTRELLA' }, perfiles)
+  assert.equal(enEstrella.detalle.sugerido, 'Camioneta obra', 'el mismo proveedor, otra obra, otro detalle')
+})
+
+test('en una obra donde ese proveedor nunca cargó, NO se le ofrece el detalle de otra', () => {
+  const historia = Array.from({ length: 6 }, () => conDetalle('Barcelo', 'MESSINA', 'Camion - BSA'))
+  const s = sugerirImputacion({ proveedor: 'Barcelo', obra: 'ARCOR' }, perfilesDeImputacion(historia))
+  assert.equal(s.detalle.sugerido, null, 'colgarle el detalle de MESSINA a una compra de ARCOR es imputar mal')
+  assert.equal(s.detalle.pide_confirmacion, true)
+})
+
+test('detalle repartido entre varios = ambiguo: se pregunta, con las opciones más probables primero', () => {
+  const historia = [
+    ...Array.from({ length: 3 }, () => conDetalle('Barcelo', 'MESSINA', 'Camion - BSA')),
+    ...Array.from({ length: 3 }, () => conDetalle('Barcelo', 'MESSINA', 'Excavadora - BSA')),
+  ]
+  const s = sugerirImputacion({ proveedor: 'Barcelo', obra: 'MESSINA' }, perfilesDeImputacion(historia))
+  assert.equal(s.detalle.pide_confirmacion, true, 'empatado no es evidencia')
+  assert.deepEqual(s.detalle.opciones.map((o) => o.valor), ['Camion - BSA', 'Excavadora - BSA'])
+})
+
+test('el detalle NO bloquea la carga: no entra en el pide_confirmacion general', () => {
+  // 6 filas consistentes en unidad y obra, con el detalle repartido. La fila se puede escribir igual;
+  // el detalle es texto libre de la columna K.
+  const historia = [
+    ...Array.from({ length: 3 }, () => conDetalle('Barcelo', 'MESSINA', 'Camion - BSA')),
+    ...Array.from({ length: 3 }, () => conDetalle('Barcelo', 'MESSINA', 'Excavadora - BSA')),
+  ]
+  const s = sugerirImputacion({ proveedor: 'Barcelo', obra: 'MESSINA', concepto: 'gasoil' }, perfilesDeImputacion(historia))
+  assert.equal(s.obra.pide_confirmacion, false)
+  assert.equal(s.detalle.pide_confirmacion, true)
+  assert.equal(s.pide_confirmacion, s.unidad.pide_confirmacion || s.obra.pide_confirmacion || s.rubro.pide_confirmacion)
+})

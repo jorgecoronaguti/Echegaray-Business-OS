@@ -1,71 +1,67 @@
-fecha: 2026-08-03
+fecha: 2026-08-03 (tarde)
 
 ## OBJETIVO
 
-Cargar todo lo del 03/08 al Flujo de Fondos (comprobantes, extracto, cheques), poner agosto como
-mes real, arreglar Jornales, sacar el plan previsional duplicado de Impuestos, y darle al dueño la
-recomendación de instrumento en Balanz.
+Cerrar los cinco frentes en vuelo y dejar el OS operable: el Tesorero que el dueño ya rechazó tres
+veces, la carga de comprobantes por Mattermost, los generadores atrasados que bloquean reactivar el
+pipeline, y los rótulos de frescura.
 
-El dueño autorizó levantar el freno de Sheets **para esto**, y fijó la regla: *"no tenés permiso de
-correr el mantenedor de sheet nunca, yo si te digo q hagas algo en el sheet lo haces y listo"*. El
-freno se levanta por comando (`ORQ_SHEETS_DESCONGELAR`), NO borrando la marca: los timers y agentes
-siguen apagados.
+**El freno de Sheets sigue puesto** y se levanta SÓLO por comando (`ORQ_SHEETS_DESCONGELAR="motivo"`),
+nunca borrando la marca. `pestana-candado.mjs desbloquear` está PROHIBIDO por regla permanente en
+`.claude/settings.json`; para los auto-candados existe `scripts/destrabar-auto.mjs`, que aborta ante
+un candado del dueño y re-sella la firma al soltar.
 
-## DÓNDE QUEDÓ
+## HECHO Y VERIFICADO HOY
 
-**HECHO Y VERIFICADO EN EL DESTINO:**
-- Snapshot completo previo en `/home/jorge/echegaray-os/snapshots/flujo-2026-08-03T12-56-42/`
-  (25 pestañas, 74.630 celdas, 16.094 fórmulas). Es la marcha atrás.
-- **Compras filas 800-806**: los 7 comprobantes cargados y leídos de vuelta uno por uno. Incluye la
-  nota de crédito en NEGATIVO (−406,06). Proveedor nuevo "Ductos San Juan SRL" agregado al
-  desplegable estricto. Obras: MESSINA ×3, LA ESTRELLA ×1, San Francisco ×3 (las de Ductos, decidido
-  por el dueño).
-- Piso de reserva calculado: **$41.004.461**. Caja restringida: **$48.148.311** (de Cheques
-  Emitidos, su control cierra). Excedente: **$40.119.900**.
+- **Banco: $2.448.225,80 recuperados.** Faltaban 42 movimientos del 16/06 ("Acreditación fondo
+  desempleo 05/2026"). Se detectó por aritmética: el impuesto al cheque de ese día se cobró sobre una
+  base que los incluía. 86 movimientos cargados, base de 239→325, hueco final $45.080 (anterior al
+  28/05, sin extracto para cerrarlo).
+- **Impuestos y Financieros**: sacado el plan previsional duplicado y corregida una sobredeclaración
+  de **$8.578.426** — la fila "Deuda pendiente de los planes" era el total del año, no lo que falta.
+- **Jornales**: filas 5-19 borradas, sueldos de Dirección $3M ×3 con inflación por mes DEVENGADO,
+  UOCRA verificada, quincena en curso estimada Y real, y cabecera de "cuánto hay que pagar".
+- **Cheque FÍSICO 223** marcado como debitado (canje interno del 20/07).
+- **Defectos de núcleo, todos con test**: backoff de 429 que no cruzaba la ventana de cuota · el
+  portón dejaba borrar filas pero no repararlas · `sellarFirma` NUNCA selló sobre pestañas con
+  espacios en el nombre (de ahí 7 candados falsos) · TIR de 95.739.511.996% que mataba el análisis ·
+  "no deber nada vencido" leído como "no pude mirar".
+- **271 commits fuera de main**: rescatado el bloque de banco + 7 migraciones. Falta el resto.
 
-**FRENADO A PROPÓSITO — NO CARGAR HASTA QUE ESTÉ EL ARREGLO:**
-- El extracto (239 movimientos, `scratchpad/banco/extracto-03-08.csv`) **no se cargó**: el dedup dio
-  "239 nuevos · 0 ya estaban" con 170 ya en la base y ventanas superpuestas. Habría metido ~170
-  duplicados. Causa localizada: `clave()` en `banco-importar.mjs:252` incluye el SALDO, que cambia
-  entre descargas; y la consulta de `importar-banco.mjs:134` ni siquiera selecciona `referencia`.
+## EN VUELO — cinco agentes
 
-## DECISIONES
+1. **Tesorero, tercera vuelta** (`a6b4b23295c605f3e`). El dueño rechazó el informe otra vez: no
+   explica CÓMO llega al monto, y no contempla impuestos. Falta: derivación línea por línea con
+   origen de cada término; impuesto al cheque 0,6% cada punta (1,2% del capital, se come media
+   ganancia); IIBB e Ganancias; y persistir `tesoreria.recomendaciones`/`validaciones`, que están
+   VACÍAS aunque el ciclo reporte propuestas.
+2. **Visión del bot** (`a902c55b07fe2d829`). No lee la obra escrita a mano —que es donde está— y no
+   detecta duplicados. ARCA (`public.comprobantes_arca`) resuelve las dos cosas.
+3. **19 generadores atrasados** (`adb7b034f0f72db51`). Bloquea reactivar el pipeline.
+4. **Las 5 de frescura** (`ac731b60d1406b397`), con OK explícito del dueño.
 
-- **El auto-candado es levantable, el candado del dueño no.** Un append a filas confirmadas vacías
-  no puede destruir nada. El dueño lo confirmó explícitamente.
-- **Las de Ductos van a San Francisco** (decisión del dueño, no inferencia mía; yo había propuesto
-  LA ESTRELLA por el rubro sanitario).
-- **No sacar el plan previsional de Impuestos todavía**: verifiqué que NO se duplica en los cash
-  flows — ambos leen de `Compras` col AC "Deuda previsional (planes de pago)". Sacarlo es
-  presentación, no corrige ningún número.
+## DECISIONES DEL DUEÑO, VIGENTES
 
-## VERIFICADO / NO VERIFICADO
+- "destraba y edita respetando lo mío siempre" → auto-candados sí, los suyos no. Compras queda
+  candada: tiene una edición tipeada suya (`L758`).
+- "todos los q estén en ese canal tienen q estar habilitados a cargar comprobantes".
+- El saldo USD del Santander "sigue igual" — fecha actualizada al 03/08.
+- Reactivar el pipeline: SÍ, pero DESPUÉS de poner los generadores al día. Correr
+  `jornales-pestana.mjs` de main hoy le borra el bloque de Dirección.
 
-- VERIFICADO: las 7 filas de Compras leídas del destino con valores exactos y fórmulas por fila
-  bajadas (A D O Q R T U X Z AG AH AI). Y/AA vacías igual que en 798-799.
-- VERIFICADO: `npm run orq:test` 2.384 / 0 fallas · typecheck limpio.
-- VERIFICADO: el cheque FÍSICO N°223 Corralón $200.000 marcado "vencido sin debitar" SÍ salió — el
-  20/07 como "Canje interno recibido 24 hs" ref 000000223. La conciliación sólo reconoce "Cheque
-  debitado" y se pierde "Canje interno recibido" (hay 5 movimientos así en el extracto).
-- NO VERIFICADO: nada del extracto ni de los cheques está cargado. Agosto sigue como proyección.
-  Jornales sin tocar.
+## TRAMPAS NUEVAS, PAGADAS HOY
 
-## BLOQUEOS
-
-- **Tesorero**: NO_ACCIONABLE hasta que el dueño corra los dos comandos de aprobación
-  (`tesoreria-politica.mjs aprobar reserva_minima` y `declarar caja_restringida --monto 48148311`),
-  y hasta que el barrido de Balanz deje de truncar (worktree `fix/barrido-balanz-completo`,
-  vueltas 15→45 y TOPE_CONTROLES 400→2000, sin terminar).
+- **El bot corre desde el worktree `deploy-comunicacion`, no desde main.** Mergear a main no
+  despliega nada. Costó media hora.
+- **Mattermost manda el SLUG del canal, no el nombre visible**: "Comprobantes-gastos" viaja como
+  `compras`.
+- **`TEXT()` sobre un nombre de mes** ("Agosto") da error → `IFERROR` lo vuelve `""` → una escritura
+  vacía la CONSERVA el cinturón anti-borrado, y la celda se queda con lo viejo.
+- Una **celda combinada** no se puede pisar escribiéndole: `Jornales!C7` quedó con texto viejo por
+  eso. Su número es correcto; la etiqueta miente.
 
 ## PRÓXIMO PASO
 
-Mergear `fix/dedup-banco-por-referencia` cuando termine, correr
-`node orquestador/scripts/importar-banco.mjs <csv> --dry` y confirmar que dedupea los ~170
-solapados. Recién ahí cargar con `--igual-cargalo` (el corte de la cadena de saldos del 16/06 es
-legítimo: el banco lista un depósito de la sucursal 770 fuera de secuencia).
-
-Después, en orden: agosto como mes real · Jornales (filas 5-19, sueldos 3M ×3 a Jorge/Rodrigo/Jorge
-con inflación, verificar vínculo UOCRA) · sacar el plan de Impuestos y Financieros.
-
-Worktrees en vuelo: `feat/comprobantes-por-mattermost`, `fix/dedup-banco-por-referencia`,
-`fix/barrido-balanz-completo`.
+Cuando cierren los agentes: mergear a main, y **además al checkout `deploy-comunicacion`** para lo
+que toque el bot, reiniciando `echegaray-comunicacion-ws` y `echegaray-comunicacion-worker`. Recién
+con los generadores al día, reactivar el pipeline.

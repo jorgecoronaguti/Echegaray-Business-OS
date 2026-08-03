@@ -25,26 +25,35 @@ test('la ventana es semiabierta — el último día de un mes no se cuenta dos v
 
 const lineasDeBanco = () => CUADRO.flatMap((a) => a.grupos.flatMap((x) => x.lineas)).filter((l) => l.bancoNat)
 
-test('CANARIO: el cuadro todavía NO tiene las líneas de control del banco', () => {
-  // Este archivo se rescató SOLO (bloque de banco). Las líneas `bancoNat` del cuadro viven en
-  // cash-flow-lineas.mjs, que es la estructura de la pestaña Cash Flow y NO entra en esta tanda.
-  //
-  // Mientras no estén, las dos pruebas de abajo no prueban nada (recorren una lista vacía), y una
-  // prueba que pasa sin ejercitar el código es la peor clase de verde. Este canario lo dice en voz
-  // alta: cuando alguien traiga `bancoNat` al cuadro, ESTE test se pone rojo, y lo que hay que hacer
-  // es borrarlo y restituir los dos asserts que están abajo comentados con su nombre.
-  assert.equal(lineasDeBanco().length, 0,
-    'llegó bancoNat al cuadro: borrá este canario y activá "grupo que NO suma" + "NUNCA consume un rubro"')
+// EL CANARIO SE CUMPLIÓ Y SE RETIRA (03/08). Decía: "cuando alguien traiga `bancoNat` al cuadro, este
+// test se pone rojo, y lo que hay que hacer es borrarlo y restituir los dos asserts". Eso pasó: el
+// bloque de banco entró a `cash-flow-lineas.mjs` junto con el resto de los generadores atrasados. Los
+// dos asserts que custodiaba ya no recorren una lista vacía — abajo se comprueba que recorren 3.
+
+test('las líneas de banco existen: los dos controles de abajo ejercitan código de verdad', () => {
+  // Sin esto, el día que alguien saque `bancoNat` del cuadro los dos tests de abajo volverían a pasar
+  // recorriendo una lista vacía. Un verde que no ejercita nada es exactamente lo que el canario evitaba.
+  assert.ok(lineasDeBanco().length > 0, 'no hay ninguna línea bancoNat: los controles de abajo no prueban nada')
 })
 
 test('una línea de banco NUNCA consume un rubro de Compras', () => {
   // Si tuviera `rubro`, la partición de Compras la contaría y el control del pie dejaría de cerrar.
-  // Hoy recorre una lista vacía a propósito — lo custodia el canario de arriba.
   for (const l of lineasDeBanco()) {
     assert.equal(l.rubro, undefined, `"${l.nombre}" no puede tener rubro: rompería la partición de Compras`)
   }
-  // Esto SÍ ejercita el cuadro real de main: la estructura que hay tiene que ser coherente.
   assert.doesNotThrow(() => verificarCuadro())
+})
+
+test('las líneas de banco viven en un grupo que NO suma al flujo', () => {
+  // "No suma" no es una promesa del nombre: es `signo: 0` en el grupo. Si alguien mueve una de estas
+  // líneas a un grupo con signo −1, el gasto se contaría dos veces —una por el banco y otra por
+  // Compras, el día que se cargue la factura— y el control del pie cerraría igual. Ver cash-flow-lineas.
+  for (const a of CUADRO) {
+    for (const g of a.grupos) {
+      const deBanco = g.lineas.filter((l) => l.bancoNat)
+      if (deBanco.length) assert.equal(g.signo, 0, `"${g.nombre}" tiene líneas de banco y signo ${g.signo}: duplicaría el gasto`)
+    }
+  }
 })
 
 test('cada naturaleza controlada declara dónde tendría que estar cargada', () => {

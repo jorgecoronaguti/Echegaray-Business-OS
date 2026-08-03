@@ -82,7 +82,30 @@ export const PASOS = [
 // FALTABA EN EL REGISTRO Y POR ESO NO CORRÍA EN EL AGENTE. La pestaña existía, tenía su generador y
   // su fuente (la pantalla eCHEQ del Santander), pero nadie la ejecutaba: se actualizaba sólo cuando
   // alguien corría el script a mano. Es la forma más silenciosa de que una pestaña envejezca.
-  ['cheques-recibidos-pestana.mjs', 'Cheques Recibidos — cuánto valor hay en cartera y cuándo se vuelve caja', ['Cheques Recibidos']],
+  // ═══ LA RÉPLICA DE CHEQUES, QUE NADIE REFRESCABA (01/08) ═══
+  //
+  // `_CHEQUES_RAW` la escribe cheques-raw-pestana.mjs y NO estaba en estos pasos: sólo se
+  // actualizaba si alguien la corría a mano. Medido: 30 cheques en la réplica y **35 celdas de
+  // "Cheques Recibidos" que la leen por fórmula**. Una fuente que se congela sin gritar — el mismo
+  // modo de falla del espejo de JORNALES, que mostró una quincena entera con valores viejos.
+  //
+  // Va ANTES de cheques-recibidos-pestana, que es quien la consume.
+  ['cheques-raw-pestana.mjs', '_CHEQUES_RAW — la réplica de la cartera de cheques que lee Cheques Recibidos', ['_CHEQUES_RAW']],
+  // ═══ QUIÉN ES EL DUEÑO DE "Cheques Recibidos" — DECIDIDO (01/08) ═══
+  //
+  // Dos generadores se la disputaban y por eso la pestaña se auto-candaba en cada corrida:
+  // `cheques-recibidos-pestana` corría desde el pipeline y se frenaba solo ("sólo 7 de 34 de mis
+  // rótulos siguen en la pestaña"), mientras el tablero —que ya la había escrito— no estaba en los
+  // pasos y sólo corría a mano.
+  //
+  // Gana el TABLERO, y no por antigüedad: el registro viejo listaba OPERACIONES del homebanking
+  // (Aceptación, Custodia, Depósito, Endoso) y el mismo cheque aparecía varias veces, así que la
+  // cartera NO SE PODÍA SUMAR — el endoso de $20.000.000 figuraba dos veces. El tablero usa el CHEQUE
+  // como unidad, que es lo que hace que el total signifique algo, y además entra la orden de pago de
+  // Messina, que no tiene número de operación y en el registro viejo no tenía dónde ir.
+  //
+  // `--pestana` le dice que escriba el real: sabe hacerlo desde el 30/07 y el diseño ya está aprobado.
+  ['cheques-recibidos-tablero.mjs', 'Cheques Recibidos — la cartera con el cheque como unidad', ['Cheques Recibidos'], ['--pestana', 'Cheques Recibidos']],
   ['cheques-emitidos-tablero.mjs', 'Cheques Emitidos — de lo firmado, cuánto no salió todavía y cuándo sale', ['Cheques Emitidos']],
   // Va última: ubica las líneas del Cash Flow por rótulo, así que necesita el cuadro ya escrito.
   // 'Caja' con minúsculas era el nombre viejo de la pestaña: quedó declarado y el censo lo reportaba
@@ -103,6 +126,11 @@ export const PASOS = [
   // PEGADOS en vez de ser fórmula o celda derramada. Sin este censo, la única forma de enterarse era
   // que el dueño abriera una celda y mirara la barra de fórmulas — que es exactamente lo que pasó.
   ['censo-numeros-pegados.mjs', 'regla de oro: cuántos números están pegados en vez de calculados', []],
+  // EL SALDO DEL BANCO CONTRA SUS PROPIOS MOVIMIENTOS (31/07). El dueño: "está mal el saldo de caja en
+  // todos lados". De ese saldo cuelgan CAJA_TOTAL_DISPONIBLE, el efectivo inicial de los dos cash flow y
+  // el piso proyectado: un agujero en el extracto cargado se propaga a todas las pantallas en silencio,
+  // y no había ningún control que lo mirara. Medido la primera vez que corrió: faltaba $113.314,76.
+  ['auditar-saldo-banco.mjs', 'el saldo del banco contra la suma de sus movimientos (el número del que cuelga todo)', []],
   // ÚLTIMO ENTRE LOS QUE ESCRIBEN: cada script pone los anchos que declara, así que ensanchar antes
   // de que corran no sirve de nada. Lo que este paso arregla es lo que ningún script dueño puede
   // saber solo: si el texto que le tocó a esta corrida entra o no.
@@ -152,7 +180,7 @@ export const PASOS = [
 // arregla las dos: un fallo real (un generador que crashea) sigue siendo un fallo; un defecto de
 // pantalla o de auditoría es un REPORTE visible que no bloquea ni la frescura ni el estado del servicio.
 export const REPORTES = new Set([
-  'formato-pestanas.mjs', 'reparar-pantalla.mjs', 'censo-numeros-pegados.mjs',
+  'formato-pestanas.mjs', 'reparar-pantalla.mjs', 'censo-numeros-pegados.mjs', 'auditar-saldo-banco.mjs',
   'reparar-textos.mjs', 'formato-condicional.mjs', 'auditar-pantalla.mjs',
 ])
 

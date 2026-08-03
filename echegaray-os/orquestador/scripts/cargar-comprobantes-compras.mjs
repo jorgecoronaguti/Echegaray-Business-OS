@@ -20,7 +20,8 @@ import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { matchProveedor, valoresInput, validar, discrepanciaNeto, verificarEscritura, colIndice, GRUPOS_FORMULA } from '../lib/carga-comprobantes.mjs'
 import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
-import { perfilesDeImputacionDesdeDB, sugerirImputacion } from '../lib/imputacion-aprendida.mjs'
+import { perfilesDeImputacionDesdeDB, perfilesDeImputacion, sugerirImputacion } from '../lib/imputacion-aprendida.mjs'
+import { historiaDeCompras, RANGO as RANGO_COMPRAS } from '../lib/comprobantes/compras-vivas.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
@@ -112,6 +113,17 @@ export async function escribirYVerificar(google, { desde, hasta, plan, fileId = 
   return { ok: false, congelado: respuesta?.congelado === true, motivo: porQueNoEntro(respuesta, Boolean(leido)), ...v, respuesta }
 }
 
+/**
+ * Los perfiles de imputación leídos de la pestaña Compras VIVA. Null si no se pudo leer, para que
+ * quien llame caiga al espejo de Postgres. Sólo lectura: no toca una celda.
+ */
+async function perfilesVivos(google) {
+  const filas = await google.readSheetValues(ID, RANGO_COMPRAS)
+  const historia = historiaDeCompras(filas ?? [])
+  if (!historia.length) return null
+  return { ...perfilesDeImputacion(historia), disponible: true, nota: `${historia.length} filas de Compras (pestaña viva)` }
+}
+
 async function main() {
   if (!fileArg) { console.error('Falta --file <fajo.json> (array de comprobantes parseados de las fotos)'); process.exit(1) }
   const comprobantes = JSON.parse(readFileSync(fileArg, 'utf8'))
@@ -123,8 +135,11 @@ async function main() {
   const [lista, arca, colE, perfiles] = await Promise.all([
     listaProveedores(google), indiceArca(), google.readSheetValues(ID, 'Compras!E1:E'),
     // IMPUTACIÓN QUE APRENDE (F8): perfiles de cómo el dueño imputó comprobantes parecidos. Sólo LEE
-    // (public.costos_obra, Nivel D reversible); si no hay historia, degrada y la sugerencia lo dice.
-    perfilesDeImputacionDesdeDB({ query }).catch(() => null),
+    // y si no hay historia degrada declarándolo. La historia sale de la pestaña VIVA cuando se puede
+    // leer —trae el detalle de la columna K separado del concepto, que el espejo pega en un campo— y
+    // del espejo public.costos_obra cuando no. Es la MISMA lib que usa el bot de Mattermost: hay dos
+    // formas de leer la historia, una sola de aprenderla.
+    perfilesVivos(google).catch(() => null).then((p) => p ?? perfilesDeImputacionDesdeDB({ query }).catch(() => null)),
   ])
   let ultima = 0
   colE.forEach((r, i) => { if (r[0] != null && r[0] !== '') ultima = i + 1 })
@@ -173,7 +188,7 @@ async function main() {
     for (const { p } of conSug) {
       const s = p.sug
       const dim = (d) => d.sugerido ? `${d.sugerido}${d.pide_confirmacion ? ' (?)' : ' ✓'}` : '—'
-      console.log(`   ${p.proveedor}: unidad ${dim(s.unidad)} · obra ${dim(s.obra)} · rubro ${dim(s.rubro)}  [${s.pide_confirmacion ? 'confirmá' : 'alta confianza'}]`)
+      console.log(`   ${p.proveedor}: unidad ${dim(s.unidad)} · obra ${dim(s.obra)} · detalle ${dim(s.detalle ?? {})} · rubro ${dim(s.rubro)}  [${s.pide_confirmacion ? 'confirmá' : 'alta confianza'}]`)
       console.log(`      ↳ ${s.nota}`)
     }
     console.log('   (✓ = alta confianza · (?) = necesita tu confirmación)')

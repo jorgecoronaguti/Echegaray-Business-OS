@@ -21,6 +21,7 @@
 
 import { EVIDENCIA, CONFIANZA } from './contratos.mjs'
 import { aTea, esAptoTesoreria, esNumero, tasaCreible } from './instrumentos.mjs'
+import { impuestosDeColocacion, parametrosFiscales } from './impuestos-colocacion.mjs'
 
 /** Rendimiento efectivo del período a partir de la TEA. Aritmética pura. */
 export const rendimientoDelPeriodo = (tea, dias) => (1 + Number(tea)) ** (Number(dias) / 365) - 1
@@ -62,7 +63,7 @@ export function liquidezCompatible(inst = {}, diasVentana) {
  * Evalúa UN instrumento contra UNA ventana. Devuelve la fila completa del ranking o la exclusión con
  * su motivo. Pura y determinística: la aritmética no la hace el modelo.
  */
-export function evaluarContraVentana(inst, ventana, tasaCorte) {
+export function evaluarContraVentana(inst, ventana, tasaCorte, fiscal = null) {
   const dias = Number(ventana.dias_libres)
   // LA VARA ES LA DE ESTA VENTANA, no una global.
   //
@@ -102,7 +103,16 @@ export function evaluarContraVentana(inst, ventana, tasaCorte) {
   if (!cordura.creible) return { excluido: true, sospechosa: Boolean(cordura.sospechosa), motivo: cordura.motivo }
   const bruto = rendimientoDelPeriodo(tea, dias)
   const costos = costoTotal(inst)
-  const neto = bruto - costos.total
+  const antesDeImpuestos = bruto - costos.total
+  const monto = Number(ventana.monto_maximo) || 0
+  // EL RANKING SE ORDENA DESPUÉS DE IMPUESTOS, no antes. Si el impuesto al cheque se aplicara sólo al
+  // publicar, el que gana la comparación no sería el que más deja: sobre 30 días el 1,2% del capital
+  // ordena distinto que el rendimiento bruto, y ordenar mal es peor que informar mal.
+  const impuestos = impuestosDeColocacion({
+    capital: monto, rendimientoBrutoPeriodo: antesDeImpuestos,
+    categoria: inst.categoria, parametros: fiscal ?? parametrosFiscales({}),
+  })
+  const neto = impuestos.estado === 'ok' ? impuestos.rendimiento_neto_periodo : antesDeImpuestos
   // Sin referencia calculada se cae a la vara conservadora (el CFT): es el lado seguro, y se nota
   // porque el motivo de exclusión lo dice.
   const corteP = ref
@@ -110,14 +120,15 @@ export function evaluarContraVentana(inst, ventana, tasaCorte) {
     : rendimientoDelPeriodo(Number(tasaCorte?.valor) || 0, dias)
 
   if (neto <= corteP) {
+    const conImp = impuestos.costo_fiscal_periodo > 0
+      ? ` (después de ${(impuestos.costo_fiscal_periodo * 100).toFixed(2)}% de impuestos sobre el capital)` : ''
     return {
       excluido: true,
       motivo: ref
-        ? `rinde ${(neto * 100).toFixed(2)}% neto en ${dias} días y la vara de esta ventana es ${(corteP * 100).toFixed(2)}% — ${ref.explicacion}`
-        : `rinde ${(neto * 100).toFixed(2)}% en ${dias} días y sin referencia calculada se aplica la vara conservadora ${(corteP * 100).toFixed(2)}%`,
+        ? `rinde ${(neto * 100).toFixed(2)}% neto en ${dias} días${conImp} y la vara de esta ventana es ${(corteP * 100).toFixed(2)}% — ${ref.explicacion}`
+        : `rinde ${(neto * 100).toFixed(2)}% en ${dias} días${conImp} y sin referencia calculada se aplica la vara conservadora ${(corteP * 100).toFixed(2)}%`,
     }
   }
-  const monto = Number(ventana.monto_maximo) || 0
   return {
     excluido: false,
     instrumento_id: inst.id,
@@ -128,6 +139,11 @@ export function evaluarContraVentana(inst, ventana, tasaCorte) {
     rendimiento_bruto_periodo: bruto,
     costos_periodo: costos.total,
     costos_conocidos: costos.conocido,
+    rendimiento_antes_de_impuestos_periodo: antesDeImpuestos,
+    impuestos,
+    impuestos_periodo: impuestos.costo_fiscal_periodo ?? null,
+    impuestos_completos: Boolean(impuestos.completo),
+    etiqueta_neto: impuestos.etiqueta_neto ?? null,
     rendimiento_neto_periodo: neto,
     exceso_sobre_corte: neto - corteP,
     vara_periodo: corteP,
@@ -146,14 +162,15 @@ export function evaluarContraVentana(inst, ventana, tasaCorte) {
  * Desempate: menos días de vuelta primero. Entre dos que rinden casi lo mismo, gana el que devuelve
  * la plata antes — en tesorería la liquidez es el activo, no el rendimiento.
  */
-export function compararAlternativas(instrumentos = [], ventanas = [], tasaCorte = { valor: 0 }) {
+export function compararAlternativas(instrumentos = [], ventanas = [], tasaCorte = { valor: 0 }, fiscal = null) {
+  const par = fiscal ?? parametrosFiscales({})
   const rankings = []
   for (const v of ventanas) {
     if (!['A', 'B', 'C', 'D', 'E'].includes(v.bloque) || !(Number(v.monto_maximo) > 0)) continue
     const filas = []
     const excluidos = []
     for (const inst of instrumentos) {
-      const r = evaluarContraVentana(inst, v, tasaCorte)
+      const r = evaluarContraVentana(inst, v, tasaCorte, par)
       if (r.excluido) excluidos.push({ instrumento: inst.nombre, instrumento_id: inst.id, motivo: r.motivo, sospechosa: Boolean(r.sospechosa) })
       else filas.push(r)
     }
@@ -183,10 +200,12 @@ export function compararAlternativas(instrumentos = [], ventanas = [], tasaCorte
   return {
     estado: 'ok',
     rankings,
+    fiscal: par,
     evidencia: EVIDENCIA.CALCULO,
     confianza: instrumentos.length ? CONFIANZA.MEDIA : CONFIANZA.NULA,
-    criterio: 'un ranking por bloque de horizonte y moneda; filtros duros de liquidez y de la vara de CADA ventana antes del orden',
+    criterio: 'un ranking por bloque de horizonte y moneda; filtros duros de liquidez y de la vara de CADA ventana antes del orden; '
+      + 'el rendimiento que ordena es NETO de comisiones y de los impuestos conocidos (Ley 25.413 por las dos puntas)',
   }
 }
 
-export const VERSION_SKILL = '1.1.0'
+export const VERSION_SKILL = '1.2.0'

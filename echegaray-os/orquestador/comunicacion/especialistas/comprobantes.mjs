@@ -29,6 +29,7 @@ import { procesarPost, TEXTO as TEXTO_FLUJO } from '../comprobantes/flujo.mjs'
 import { leerAdjunto } from '../../lib/comprobantes/vision.mjs'
 import { listasDeCompras } from '../../lib/comprobantes/listas.mjs'
 import { indiceDeCompras } from '../../lib/comprobantes/compras-vivas.mjs'
+import { perfilesDeImputacionDesdeDB } from '../../lib/imputacion-aprendida.mjs'
 import { caeCanonico, soloDigitos } from '../../lib/comprobantes/lectura.mjs'
 import { fechaIsoDeComprobante } from '../../lib/comprobantes/arca.mjs'
 import { urlConSecreto } from '../secreto-compartido.mjs'
@@ -112,8 +113,12 @@ export const especialista = {
         fechaIso: fechaIsoDeComprobante(c?.fecha),
       }),
       // LA PESTAÑA VIVA es la única que sabe lo que entró por Claude Code o a mano. También trae el
-      // vocabulario de la columna K con el que se resuelve la obra escrita a mano.
+      // vocabulario de la columna K con el que se resuelve la obra escrita a mano, y la historia de
+      // imputación con la que aprende `imputacion-aprendida.mjs`.
       comprasDe: () => indiceDeCompras(google),
+      // EL FEEDER DE RESERVA de esa misma lib: el espejo en Postgres. Se usa sólo si no se pudo leer
+      // la pestaña. Es el que ya consume el cargador de Claude Code — la misma lib, otra lectura.
+      perfilesDesdeDB: () => perfilesDeImputacionDesdeDB({ query: (...a) => port.query(...a) }),
       url,
       log,
     }, {

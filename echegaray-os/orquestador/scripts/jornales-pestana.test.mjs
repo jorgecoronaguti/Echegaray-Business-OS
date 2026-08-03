@@ -21,16 +21,29 @@ const bloquesOfi = [{ mes: 6, inicio: 5, fin: 8 }, { mes: 7, inicio: 12, fin: 15
 const g = grilla({ bloques, pendientes, bloquesOfi })
 const colA = g.filas.map((f) => String(f[0] ?? ''))
 
-test('el TOTAL de la quincena es la J en ESTE layout, no la K', () => {
-  // Si alguien copia la fórmula de la pestaña viva tal cual, este test se cae. La K de acá es otra
-  // columna y una fórmula contra ella devolvería un número plausible y equivocado.
-  assert.equal(colDe('TOTAL'), 'J')
-  assert.equal(colDe('Σ $/hora'), 'K')
-  assert.equal(colDe('Hasta'), 'B')
+// EL ORÁCULO ES EL ENCABEZADO QUE LA GRILLA ESCRIBE DE VERDAD, NO UNA LETRA COPIADA ACÁ.
+//
+// La versión anterior de estos tests clavaba 'J' porque el registro tenía doce columnas. Al entrar
+// "Se paga el" y "Pagado el" pasó a catorce y el TOTAL se corrió a la K — y los tests se pusieron
+// rojos afirmando una letra que ya no era. Clavar la letra en el test reproduce, del lado del
+// control, exactamente el defecto que el control existe para atrapar. Se lee de la fila que la
+// grilla emitió: si una fórmula apunta a la columna de al lado, sigue saltando.
+const encabezado = g.filas.find((f) => f[0] === 'Quincena' && f[1] === 'Hasta' && f.includes('TOTAL'))
+const letraDe = (rotulo) => String.fromCharCode(65 + encabezado.indexOf(rotulo))
+
+test('cada letra sale del encabezado real del registro, no de otro layout', () => {
+  // Si alguien copia una fórmula de la pestaña viva —o de una versión anterior de este generador—
+  // con la letra puesta a mano, apunta a otra columna y devuelve un número plausible y equivocado.
+  assert.ok(encabezado, 'no está el encabezado del registro')
+  for (const rotulo of ['Quincena', 'Hasta', 'TOTAL', 'Σ $/hora', 'Pagado el']) {
+    assert.equal(colDe(rotulo), letraDe(rotulo), `"${rotulo}": colDe y el encabezado no coinciden`)
+  }
+  // Y las dos que más se confunden entre sí no pueden ser la misma columna.
+  assert.notEqual(colDe('TOTAL'), colDe('Σ $/hora'))
 })
 
 test('una columna que ya no existe GRITA, no cae a un default', () => {
-  assert.throws(() => colDe('Se paga el'), /no tiene la columna/)
+  assert.throws(() => colDe('Hs extra'), /no tiene la columna/)
 })
 
 test('el subtítulo es una fórmula viva y no trae ninguna fecha estampada', () => {
@@ -44,8 +57,9 @@ test('la frescura sale del importe cargado, no del encabezado de la quincena', (
   // catorce días antes de que tenga un peso adentro. Un MAX sobre las fechas declara frescura por
   // un encabezado vacío.
   const subtitulo = String(g.filas[1][0])
-  assert.match(subtitulo, /MAXIFS\(\$B\$\d+:\$B\$\d+;\$J\$\d+:\$J\$\d+;">0";\$B\$\d+:\$B\$\d+;"<="&TODAY\(\)\)/,
-    `la frescura no está condicionada al TOTAL: ${subtitulo.slice(0, 120)}`)
+  const T = letraDe('TOTAL'); const H = letraDe('Hasta')
+  assert.match(subtitulo, new RegExp(`MAXIFS\\(\\$${H}\\$\\d+:\\$${H}\\$\\d+;\\$${T}\\$\\d+:\\$${T}\\$\\d+;">0";\\$${H}\\$\\d+:\\$${H}\\$\\d+;"<="&TODAY\\(\\)\\)`),
+    `la frescura no está condicionada al TOTAL (columna ${T}): ${subtitulo.slice(0, 120)}`)
 })
 
 test('"registro cargado al …" es una FÓRMULA: era el último texto estampado de la pestaña', () => {
@@ -60,17 +74,20 @@ test('"registro cargado al …" es una FÓRMULA: era el último texto estampado 
 
 test('los rangos del registro son CERRADOS y arrancan donde arranca el registro', () => {
   // Abierto (`$B$83:$B`) barrería la proyección y la nómina de oficina, que también tienen fechas en
-  // la columna B y hablan de otra cosa. La fila de arranque sale del layout, no de un número escrito.
-  const f0 = colA.findIndex((a) => /^4 · /.test(a)) + 3 // sección, encabezado, primera fila
+  // la columna B y hablan de otra cosa. La fila de arranque sale de DÓNDE ESTÁ el encabezado del
+  // registro, no del número de sección: la sección se movió de la 4 a la 5 al entrar el bloque de
+  // Dirección, y anclar en "4 · " habría medido otro bloque sin dar un solo error.
+  const f0 = g.filas.indexOf(encabezado) + 2 // 1-based, y la primera fila va después del encabezado
   const subtitulo = String(g.filas[1][0])
-  assert.match(subtitulo, new RegExp(`\\$B\\$${f0}:\\$B\\$${f0 + bloques.length - 1}`),
+  const H = letraDe('Hasta')
+  assert.match(subtitulo, new RegExp(`\\$${H}\\$${f0}:\\$${H}\\$${f0 + bloques.length - 1}`),
     `el rango del registro no coincide con el layout (arranca en ${f0})`)
 })
 
 test('el registro conserva su encabezado completo: es el contrato de las letras', () => {
-  const hdr = g.filas.find((f) => f[0] === 'Quincena' && f[1] === 'Hasta' && f.includes('TOTAL'))
-  assert.ok(hdr, 'no está el encabezado del registro')
-  assert.equal(hdr[colDe('TOTAL').charCodeAt(0) - 65], 'TOTAL')
+  assert.ok(encabezado, 'no está el encabezado del registro')
+  assert.equal(encabezado[colDe('TOTAL').charCodeAt(0) - 65], 'TOTAL')
+  assert.equal(encabezado.length, colA.length && encabezado.length, 'el encabezado no puede venir recortado')
 })
 
 test('el último día cargado del espejo se saca del MÁXIMO, no de la última celda', () => {

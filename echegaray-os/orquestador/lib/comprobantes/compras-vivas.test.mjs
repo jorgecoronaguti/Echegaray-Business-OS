@@ -6,7 +6,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { indexarCompras, buscarEnCompras, importeDeCompras, tipoDeCompras, detallesPorObra, HALLAZGO } from './compras-vivas.mjs'
+import { indexarCompras, buscarEnCompras, importeDeCompras, tipoDeCompras, detallesPorObra, historiaDeCompras, HALLAZGO } from './compras-vivas.mjs'
 import { normalizarLectura } from './lectura.mjs'
 
 const fila = (fecha, prov, tipo, numero, obra, detalle, total) =>
@@ -73,12 +73,82 @@ test('otra compra del MISMO proveedor el MISMO día NO se marca duplicada', () =
   assert.equal(buscarEnCompras(nueva, INDICE), null)
 })
 
-test('el mismo número con OTRO importe no es el mismo comprobante', () => {
-  assert.equal(buscarEnCompras(leido({ total: '80.000,00' }), INDICE), null)
+// CAMBIO DE CONTRATO (03/08). Antes esto devolvía `null` — "el mismo número con otro importe no es
+// el mismo comprobante"—. Es falso: un proveedor NO emite dos comprobantes con el mismo punto de
+// venta y número. Si el número y el proveedor coinciden y el importe no, o es éste con un importe
+// mal leído, o la fila de Compras está mal cargada. Las dos salidas son caras: se pregunta.
+test('el mismo número del MISMO proveedor con otro importe se PREGUNTA, no se ignora', () => {
+  const r = buscarEnCompras(leido({ total: '80.000,00' }), INDICE)
+  assert.equal(r.que, HALLAZGO.PROBABLE)
+  assert.equal(r.fila, 802)
 })
 
 test('sin poder leer Compras no se afirma que algo esté cargado', () => {
-  assert.equal(buscarEnCompras(leido(), { porNumero: new Map(), porImporte: new Map() }), null)
+  assert.equal(buscarEnCompras(leido(), { porNumero: new Map(), porFechaTotal: new Map() }), null)
+})
+
+// ── EL TIQUE DE COMBUSTIBLE (03/08) — la búsqueda no puede depender del tipo ni de ARCA ──────
+//
+// Compras fila 800: Combustibles Barcelo · F A · 00113-00014219 · $64.006,07. El dueño mandó la foto
+// de ese mismo tique. El bot dijo "no figura en ARCA" y se ofreció a cargarlo.
+
+const BARCELO = [
+  ...Array.from({ length: 796 }, () => []),
+  fila('31/7/2026', 'Combustibles Barcelo', 'F A', '00113-00014219', 'MESSINA', 'Camion - BSA', '$ 64.006,07'),
+]
+const I_BARCELO = { ok: true, ...indexarCompras(BARCELO) }
+
+const tique = (over = {}) => normalizarLectura({
+  emisor: 'Combustibles Barcelo', letra: '', numero: '00113-00014219', fecha: '31/07/2026',
+  total: '64.006,07', iva_21: '9.558,36', ...over,
+}).comprobante
+
+test('un TIQUE sin tipo legible se encuentra igual: la clave (proveedor, número) no necesita la letra', () => {
+  const c = tique()
+  assert.equal(c.tipo, null, 'de un tique la visión no siempre saca la letra — así llegó el caso real')
+  const r = buscarEnCompras(c, I_BARCELO)
+  assert.equal(r.que, HALLAZGO.CARGADO)
+  assert.equal(r.fila, 800)
+  assert.equal(r.via, 'proveedor+numero')
+})
+
+test('sin proveedor legible alcanza (número, total): el número y el total no mienten juntos', () => {
+  const r = buscarEnCompras(tique({ emisor: '' }), I_BARCELO)
+  assert.equal(r.que, HALLAZGO.CARGADO)
+  assert.equal(r.via, 'numero+total')
+})
+
+test('con el número ilegible queda (proveedor, fecha, total): se pregunta', () => {
+  const r = buscarEnCompras(tique({ numero: '' }), I_BARCELO)
+  assert.equal(r.que, HALLAZGO.PROBABLE)
+  assert.equal(r.fila, 800)
+  assert.equal(r.via, 'proveedor+fecha+importe')
+})
+
+test('el mismo número de OTRO proveedor no es un duplicado: cada uno numera su talonario', () => {
+  assert.equal(buscarEnCompras(tique({ emisor: 'Ferreteria El Tornillo SRL', total: '1.000,00', iva_21: '0' }), I_BARCELO), null)
+})
+
+test('el CUIT manda sobre el nombre cuando alguien puede aportarlo', () => {
+  // Compras no tiene columna de CUIT: se lo aporta quien lo sepa, y ahí la identidad deja de
+  // depender de cómo esté escrito el nombre en el desplegable.
+  const conCuit = { ok: true, ...indexarCompras(BARCELO, { cuitPorProveedor: { 'combustibles barcelo': '30-70912345-3' } }) }
+  const r = buscarEnCompras(tique({ emisor: 'ESTACION DE SERVICIO SA', cuit: '30709123453' }), conCuit)
+  assert.equal(r.que, HALLAZGO.CARGADO)
+  assert.equal(r.via, 'cuit+numero')
+})
+
+// ── La historia con la que aprende la imputación ─────────────────────────────
+
+test('la MISMA lectura entrega la historia de imputación, con el detalle de la columna K separado', () => {
+  const h = historiaDeCompras(BARCELO)
+  assert.deepEqual(h[0], {
+    proveedor: 'Combustibles Barcelo',
+    unidad_negocio: null,
+    obra_texto: 'MESSINA',
+    detalle: 'Camion - BSA',
+    concepto: 'concepto',
+  })
 })
 
 // ── El vocabulario de la columna K ───────────────────────────────────────────

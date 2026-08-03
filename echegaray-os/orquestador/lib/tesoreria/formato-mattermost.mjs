@@ -11,6 +11,75 @@ const pesos = (n) => (Number.isFinite(Number(n)) ? '$' + Math.round(Number(n)).t
 const pct = (x) => (Number.isFinite(Number(x)) ? (Number(x) * 100).toFixed(2) + '%' : 'sin dato')
 const lista = (xs, vacio = '—') => (xs?.length ? xs.map((x) => `• ${x}`).join('\n') : vacio)
 
+/** El CFT anual del descubierto llevado al período. Aritmética, para no comparar peras con manzanas. */
+const cftDelPeriodo = (anual, dias) => (Number.isFinite(Number(anual)) && Number.isFinite(Number(dias))
+  ? ((1 + Number(anual)) ** (Number(dias) / 365)) - 1 : null)
+
+/** La coordenada verificable de un término: dónde ir a mirarlo con los propios ojos. */
+const coordenada = (o = {}) => [
+  o.pestana ? `**${o.pestana}**` : o.fuente,
+  o.criterio,
+  o.fecha_dato ? `al ${o.fecha_dato}` : null,
+].filter(Boolean).join(' · ')
+
+/**
+ * LA DERIVACIÓN DE UNA VENTANA — la respuesta a "cómo determinás ese valor", que el dueño pidió tres
+ * veces. Cada línea lleva su monto y el lugar exacto del que sale.
+ */
+export function formatoDerivacion(d = {}, titulo = '') {
+  if (d?.estado !== 'ok') return `_Sin derivación: ${d?.motivo ?? 'no se pudo calcular'}._`
+  const L = [
+    `**${titulo || `Cómo se determina el colocable a ${d.dias} días`}**`,
+    '',
+    `Todo lo que entra y sale entre hoy y el **${d.dia_de_tension}**, que es el peor día de los ${d.dias}: `
+    + 'el colocable es lo que sobra ESE día, no al final de la ventana.',
+    '',
+    '```',
+  ]
+  for (const t of [...d.terminos, ...d.cierre]) {
+    // El signo va en su columna: imprimir además el monto negativo daba "− ... $-4.700.000", que se
+    // lee como una resta de un negativo. El único que va con signo propio es el total.
+    const monto = t.signo === '=' ? pesos(t.monto) : pesos(Math.abs(t.monto))
+    L.push(`${t.signo} ${t.concepto.padEnd(60).slice(0, 60)} ${monto.padStart(16)}   ${coordenada(t.origen).replace(/\*\*/g, '')}`)
+  }
+  L.push('```')
+  // SI EL CUADRO NO CIERRA, SE DICE. Publicar una derivación que no llega al número publicado es peor
+  // que no publicar ninguna.
+  if (!d.chequeo?.coincide || d.chequeo?.monto_coincide === false) {
+    L.push('', `⚠️ **EL CUADRO NO CIERRA**: los términos suman ${pesos(d.chequeo?.suma_terminos)} y el piso del recorrido es `
+      + `${pesos(d.chequeo?.piso)}. No usar este número hasta entender la diferencia.`)
+  }
+  if (d.chequeo?.descuadre_calendario) {
+    L.push('', `⚠️ hay ${pesos(d.chequeo.descuadre_calendario)} de diferencia entre el detalle por movimiento y el total diario del calendario.`)
+  }
+  L.push('', `Al último día de la ventana el saldo sería ${pesos(d.resto_de_la_ventana?.neto_al_vencimiento)}, `
+    + `pero ${d.resto_de_la_ventana?.nota}.`)
+  return L.join('\n')
+}
+
+/**
+ * EL RENDIMIENTO, ABIERTO. Bruto, cada impuesto por separado y el neto — nunca un neto solo. Cuando
+ * la propuesta no trae el cálculo de impuestos, lo dice en vez de presentar un bruto disfrazado.
+ */
+export function desgloseDeRendimiento(rec = {}) {
+  const imp = rec.impuestos
+  const capital = Number(rec.monto_maximo) || 0
+  if (imp?.estado !== 'ok') {
+    return [
+      `Rendimiento bruto del período: ${pct(rec.rendimiento_bruto_periodo ?? rec.rendimiento_neto_periodo)}`,
+      '⚠️ **SIN IMPUESTOS CALCULADOS**: este número NO es un rendimiento neto y no alcanza para decidir.',
+    ]
+  }
+  const L = [`Rendimiento bruto del período: ${pct(rec.rendimiento_antes_de_impuestos_periodo ?? imp.rendimiento_bruto_periodo)} (${pesos(capital * (rec.rendimiento_antes_de_impuestos_periodo ?? imp.rendimiento_bruto_periodo))})`]
+  for (const c of imp.cargas || []) {
+    L.push(`  − ${c.concepto} · ${c.jurisdiccion} · ${pct(c.alicuota)} sobre ${c.base}: −${pesos(capital * c.peso_sobre_capital)}`)
+  }
+  L.push(`Rendimiento ${imp.etiqueta_neto}: **${pct(rec.rendimiento_neto_periodo)} (${pesos(rec.ganancia_neta_estimada)})**`)
+  for (const p of imp.pendientes || []) L.push(`  ⚠️ falta ${p.concepto}: ${p.motivo}`)
+  if ((imp.pendientes || []).length) L.push('  ⚠️ el resultado REAL es menor que el publicado: lo de arriba es antes de esos impuestos.')
+  return L
+}
+
 /** La propuesta de colocación, en el formato exacto que pidió el dueño. */
 export function formatoPropuesta(rec, posicion, ctx = {}) {
   return [
@@ -25,7 +94,8 @@ export function formatoPropuesta(rec, posicion, ctx = {}) {
     `Alternativa recomendada: **${rec.instrumento}**`,
     `Moneda: ${rec.moneda}`,
     `Liquidez: T+${rec.plazo_rescate_dias ?? '?'}`,
-    `Rendimiento estimado para el período: ${pct(rec.rendimiento_neto_periodo)} (${pesos(rec.ganancia_neta_estimada)})`,
+    // EL BRUTO Y CADA DESCUENTO POR SEPARADO. Publicar sólo el neto obliga a creerlo.
+    ...desgloseDeRendimiento(rec),
     `Monto máximo sugerido: ${pesos(rec.monto_maximo)}`,
     '',
     `Obligaciones cubiertas:\n${lista(rec.obligaciones_cubiertas)}`,
@@ -85,6 +155,14 @@ export function formatoExcedentePorPlazo(exc = {}) {
     L.push(`| ${v.dias} días | **${pesos(v.monto_maximo)}** | ${pesos(v.monto_sin_creerle_a_las_cobranzas)} | ${pesos(v.piso)} | ${v.fecha_tension} |`)
   }
   L.push('', `Reserva mínima aprobada y preservada: ${pesos(exc.reserva_preservada)}`)
+  // POR QUÉ LA VENTANA LARGA TIENE MENOS. Sin esta línea, "$46,6M a 1 día y $14,6M a 90" se lee como
+  // un error del sistema — y así lo leyó el dueño.
+  if (exc.por_que_baja_con_el_plazo?.texto) L.push('', `ℹ️ ${exc.por_que_baja_con_el_plazo.texto}`)
+  // LA CUENTA, NO SÓLO EL RESULTADO. Se publica la de la ventana más larga con monto: es la que
+  // encabeza las tablas de instrumentos y la que el dueño no podía auditar.
+  const conDerivacion = (exc.ventanas_por_plazo || []).filter((v) => v.estado === 'ok' && v.derivacion?.estado === 'ok')
+  const elegida = conDerivacion[conDerivacion.length - 1]
+  if (elegida) L.push('', formatoDerivacion(elegida.derivacion, `Cómo se determina el colocable a ${elegida.dias} días — ${pesos(elegida.monto_maximo)}`))
   // EL SOLAPAMIENTO SE DICE. Es plata real que el dueño podría liberar cambiando su propia política,
   // y el software no puede cambiarla por él.
   const s = exc.solape_reserva
@@ -104,23 +182,42 @@ export function formatoExcedentePorPlazo(exc = {}) {
  */
 export function formatoTablaInstrumentos(tabla = {}) {
   const L = [`**TESORERÍA · ALTERNATIVAS A ${tabla.dias} DÍAS** — sobre ${pesos(tabla.monto_a_colocar)}`, '']
-  L.push(`Vara a superar: **${pct(tabla.vara?.periodo)}** en ${tabla.dias} días (${pct(tabla.vara?.anual)} anual) — ${tabla.vara?.explicacion}`)
-  L.push(`Equivale a ${pesos(tabla.vara?.en_pesos)}: es lo que cuesta NO hacer nada.`, '')
+  // DE DÓNDE SALE EL MONTO DE ESTA TABLA. Era exactamente el número que el dueño no podía auditar.
+  if (tabla.derivacion?.estado === 'ok') L.push(formatoDerivacion(tabla.derivacion, `De dónde salen los ${pesos(tabla.monto_a_colocar)}`), '')
+  L.push(`Vara a superar: **${pct(tabla.vara?.periodo)}** en ${tabla.dias} día(s) — ${tabla.vara?.explicacion}`)
+  L.push(`Equivale a ${pesos(tabla.vara?.en_pesos)}: es lo que cuesta NO hacer nada.`)
+  // EL PISO DE COMPARACIÓN QUE MANDA, EN TODAS LAS TABLAS. Aunque hoy la cuenta esté en positivo y la
+  // vara activa sea otra, el descubierto es el rendimiento libre de riesgo que la empresa ya tiene
+  // disponible: nada que rinda menos que eso, NETO de impuestos, justifica quedarse sin liquidez.
+  L.push(`Referencia que manda: el descubierto del acuerdo N°00007 cuesta **${pct(tabla.vara?.anual)} de CFT anual** `
+    + `($1.506,85 por día por millón, verificado) — equivale a ${pct(cftDelPeriodo(tabla.vara?.anual, tabla.dias))} en ${tabla.dias} día(s). `
+    + 'Ningún instrumento que rinda menos que eso, neto de impuestos, justifica inmovilizar plata.', '')
+  L.push(formatoImpuestos(tabla.fiscal, tabla.monto_a_colocar), '')
   if (tabla.viables?.length) {
-    L.push('| # | Instrumento | Ticker | TNA | TEA | Liquidez | Rinde en $ | Riesgo | Mínimo |')
-    L.push('|---|---|---|---:|---:|---|---:|---|---|')
+    // BRUTO E IMPUESTOS AL LADO DEL NETO, SIEMPRE. Un neto sin su bruto no se puede discutir.
+    L.push('| # | Instrumento | Ticker | TNA | TEA | Liquidez | Bruto en $ | Impuestos | Neto en $ | Riesgo | Mínimo |')
+    L.push('|---|---|---|---:|---:|---|---:|---:|---:|---|---|')
     tabla.viables.forEach((f, i) => {
       const tna = f.tna_declarada != null ? pct(f.tna_declarada) : f.tna_equivalente != null ? `${pct(f.tna_equivalente)} _(calc.)_` : 'sin dato'
-      L.push(`| ${i + 1} | ${f.instrumento} | ${f.ticker} | ${tna} | ${pct(f.tea)} | ${f.liquidez} | **${pesos(f.rinde_en_pesos)}** | ${f.nivel_riesgo} | ${f.monto_minimo} |`)
+      // LA COMPUERTA: sin cálculo de impuestos NO se publica un neto. Un número que parece neto y es
+      // bruto es el defecto que este informe viene a corregir; imprimirlo igual lo reintroduciría.
+      const neto = f.impuestos?.estado === 'ok' ? `**${pesos(f.rinde_en_pesos)}**` : '**SIN IMPUESTOS CALCULADOS — no es un neto**'
+      const imp = f.impuestos_en_pesos != null ? `−${pesos(f.impuestos_en_pesos)}` : 'DESCONOCIDO'
+      L.push(`| ${i + 1} | ${f.instrumento} | ${f.ticker} | ${tna} | ${pct(f.tea)} | ${f.liquidez} | ${pesos(f.bruto_en_pesos)} | ${imp} | ${neto} | ${f.nivel_riesgo} | ${f.monto_minimo} |`)
     })
   } else {
     L.push('_Ninguna alternativa relevada supera la vara._')
   }
   L.push('', `Veredicto: ${tabla.veredicto}`)
   if (tabla.recomendacion) {
-    L.push('', `**Recomendada: ${tabla.recomendacion.instrumento}** (${tabla.recomendacion.familia})`,
-      `Por qué: rinde ${pct(tabla.recomendacion.rendimiento_neto_periodo)} neto en ${tabla.dias} días — `
-      + `${pct(tabla.recomendacion.exceso_sobre_vara)} por encima de la vara — y devuelve la plata en ${tabla.recomendacion.dias_vuelta} día(s).`)
+    const r = tabla.recomendacion
+    L.push('', `**Recomendada: ${r.instrumento}** (${r.familia})`,
+      `Por qué: rinde ${pct(r.rendimiento_neto_periodo)} ${r.etiqueta_neto ?? 'neto'} en ${tabla.dias} días — `
+      + `${pct(r.exceso_sobre_vara)} por encima de la vara — y devuelve la plata en ${r.dias_vuelta} día(s).`,
+      `Bruto ${pesos(r.bruto_en_pesos)} − impuestos ${pesos(r.impuestos_en_pesos)} = ${pesos(r.rinde_en_pesos)}.`)
+    if (!r.impuestos_completos) {
+      L.push(`⚠️ Este neto NO está completo: falta ${(r.impuestos_pendientes || []).map((p) => p.concepto).join(' y ')}. El número real es MENOR.`)
+    }
   }
   if (tabla.por_que_no_las_otras?.length) {
     L.push('', 'Por qué NO las otras:', lista(tabla.por_que_no_las_otras.map((x) => `${x.instrumento}: ${x.motivo}`).slice(0, 12)))
@@ -129,6 +226,40 @@ export function formatoTablaInstrumentos(tabla = {}) {
     L.push('', 'Familias sin dato en esta corrida (**DESCONOCIDO**, no se estima):',
       lista(tabla.familias_sin_dato.map((f) => `${f.familia}: ${f.motivo}`)))
   }
+  return L.join('\n')
+}
+
+/**
+ * LOS IMPUESTOS DE LA COLOCACIÓN, antes de la tabla. Cada alícuota con su estado y su fuente, y las
+ * que faltan con la pregunta exacta que hay que hacerle al estudio contable — no un "consultar".
+ */
+export function formatoImpuestos(fiscal = null, monto = 0) {
+  if (!fiscal) return '⚠️ **Esta tabla no calculó impuestos**: los rendimientos de abajo son brutos, no netos.'
+  const L = ['**Impuestos contemplados** (un rendimiento sin impuestos es una estimación optimista, no un resultado)', '']
+  L.push('| Impuesto | Jurisdicción | Estado | Alícuota | Fuente |')
+  L.push('|---|---|---|---:|---|')
+  const ley = fiscal.ley_25413 ?? {}
+  const alicuotaLey = ley.valor ? pct(Number(ley.valor.debito) + Number(ley.valor.credito)) : 'DESCONOCIDO'
+  L.push(`| Ley 25.413 (débitos y créditos) | nacional | ${ley.estado ?? 'DESCONOCIDO'} | ${alicuotaLey} sobre el capital | ${ley.fuente ?? ley.motivo ?? '—'} |`)
+  for (const [k, titulo, jur] of [['iibb', 'Ingresos Brutos sobre intereses', 'San Juan'], ['ganancias', 'Ganancias', 'nacional']]) {
+    const p = fiscal[k] ?? {}
+    L.push(`| ${titulo} | ${jur} | ${p.estado ?? 'DESCONOCIDO'} | ${p.valor != null ? pct(p.valor) : 'DESCONOCIDO'} | ${p.fuente ?? p.motivo ?? '—'} |`)
+  }
+  if (Number(monto) > 0 && ley.estado === 'conocido') {
+    const tasa = Number(ley.valor.debito) + Number(ley.valor.credito)
+    L.push('', `Sobre ${pesos(monto)}, sacar la plata y traerla de vuelta paga ${pesos(Number(monto) * tasa)} de impuesto al cheque `
+      + '— y eso se paga aunque la colocación no rinda nada.')
+  }
+  // LO QUE FALTA SE DERIVA DE LOS PARÁMETROS, no de que alguien se acuerde de pasarlo. Si dependiera
+  // de un campo opcional, el día que no viaje el mensaje quedaría diciendo "neto" sin asterisco.
+  const pendientes = fiscal.pendientes?.length ? fiscal.pendientes
+    : [fiscal.iibb, fiscal.ganancias].filter((p) => p && p.estado !== 'conocido')
+      .map((p) => ({ concepto: p === fiscal.iibb ? 'Ingresos Brutos (San Juan)' : 'Impuesto a las Ganancias', motivo: p.motivo, pregunta: p.pregunta }))
+  if (pendientes.length) {
+    L.push('', '**Lo que falta para poder llamarlo NETO** (mientras tanto, el neto publicado es un techo, no un resultado):')
+    L.push(lista(pendientes.map((p) => `${p.concepto} — ${p.motivo}. Pregunta concreta: _${p.pregunta}_`)))
+  }
+  if (fiscal.fuera_de_alcance?.length) L.push('', `Fuera del alcance de este cálculo: ${fiscal.fuera_de_alcance.join(' · ')}.`)
   return L.join('\n')
 }
 

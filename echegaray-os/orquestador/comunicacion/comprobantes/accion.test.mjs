@@ -289,7 +289,7 @@ test('guardar la corrección actualiza el fajo y reescribe el mensaje del canal'
   })
   assert.equal(r.status, 200)
   assert.equal(repo._fajos.get(fajo.id).items[0].comprobante.obra, 'Messina')
-  assert.match(mm.posts.at(-1).message, /obra: Messina/)
+  assert.match(mm.posts.at(-1).message, /\| Obra \| Messina/)
   assert.ok(mm.posts.at(-1).props.attachments[0].actions.some((a) => a.id === 'confirmar'))
 })
 
@@ -404,7 +404,7 @@ test('"Es el mismo, no lo cargues" NO lo carga, y queda constancia de que se dec
   assert.equal(repo._fajos.get(fajo.id).items[0].duplicadoResuelto, 'mismo')
   assert.equal(escribio, false)
   const post = mm.posts.find((p) => p.id === 'post_bot')
-  assert.match(post.message, /marcado como ya cargado/)
+  assert.match(post.message, /Marcado como ya cargado/)
   // Y sigue sin haber Confirmar: lo que el dueño dijo es que ese comprobante NO se carga.
   assert.equal(post.props.attachments[0].actions.some((a) => a.id === 'confirmar'), false)
 })

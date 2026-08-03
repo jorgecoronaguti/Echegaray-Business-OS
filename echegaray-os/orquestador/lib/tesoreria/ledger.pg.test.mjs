@@ -160,6 +160,34 @@ test('una recomendación repetida el mismo día se REEMPLAZA, no se duplica', op
   assert.equal(rows[0].m, 2000000)
 })
 
+test('DEFECTO · una propuesta RECHAZADA entra a la base con su motivo, contra Postgres de verdad', opts, async () => {
+  // Las dos tablas estaban en 0 filas mientras el ciclo informaba "1 propuesta · 1 rechazada": el
+  // ledger recibía sólo las publicables. Sin la rechazada persistida, nadie puede contestar por qué
+  // no se hizo una colocación — y ésa es la pregunta que se hace seis meses después.
+  const base = {
+    bloque: 'D', instrumento_id: 'bz_probe', monto_maximo: 5623127, moneda: 'ARS', horizonte_dias: 90,
+    rendimiento_neto_periodo: 0.005, ganancia_neta_estimada: 28116, confianza: 'baja',
+    vence_en: new Date(Date.now() + 86400000).toISOString(),
+  }
+  const validaciones = [
+    { id: 'rec_D_rechazada', aprobada: false, fallas: ['supera_vara: rinde 0,50% y la vara es 4,09%'], chequeos: [{ regla: 'supera_vara', pasa: false }], validado_en: new Date().toISOString() },
+  ]
+  const out = await ledger.guardarRecomendaciones(query, runId, [{ ...base, id: 'rec_D_rechazada' }], validaciones)
+  assert.equal(out.rechazadas, 1)
+
+  const { rows } = await query("select estado, payload from tesoreria.recomendaciones where id='rec_D_rechazada'")
+  assert.equal(rows[0].estado, 'rechazada')
+  assert.match(rows[0].payload.validacion.fallas[0], /supera_vara/)
+  const { rows: v } = await query("select aprobada, fallas from tesoreria.validaciones where recomendacion_id='rec_D_rechazada'")
+  assert.equal(v.length, 1, 'la validación de la rechazada es la que explica el NO')
+  assert.equal(v[0].aprobada, false)
+
+  // Y una corrida posterior no puede bajarla a 'propuesta': el veredicto no se pisa solo.
+  await ledger.guardarRecomendaciones(query, runId, [{ ...base, id: 'rec_D_rechazada' }], [])
+  const { rows: otra } = await query("select estado from tesoreria.recomendaciones where id='rec_D_rechazada'")
+  assert.equal(otra[0].estado, 'rechazada')
+})
+
 test('vencerPropuestas marca las viejas y deja las vigentes', opts, async () => {
   await query(`insert into tesoreria.recomendaciones (id, run_id, bloque, monto_maximo, moneda, horizonte_dias, vence_en, payload)
                values ('vieja',$1,'B',1,'ARS',7, now() - interval '1 hour','{}')`, [runId])

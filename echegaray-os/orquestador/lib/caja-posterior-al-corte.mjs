@@ -56,19 +56,45 @@
 import { COL_FECHA_CAJA } from './rubro-caja.mjs'
 import { formulaUltimaFecha, formulaFrescuraDe } from './fecha-de-frescura.mjs'
 
-/** Las columnas de Cobranzas. Verificadas contra la fila de encabezado del 21/07. */
-export const COB = { hoja: 'Cobranzas', total: 'M', forma: 'N', estado: 'O', fecha: 'Q', desde: 5, hasta: 400 }
-/** Las columnas de Cheques Emitidos. I es la fecha en que se debita, K el SI/NO. */
-export const CHQ = { hoja: 'Cheques Emitidos', importe: 'F', fechaPago: 'I', debitado: 'K', desde: 2, hasta: 400 }
+// ═══ LOS RANGOS SON ABIERTOS. NINGUNA FILA FINAL. (31/07) ═══
+//
+// Estos tres bloques tenían fila final tipeada —Cobranzas hasta 400, Compras hasta 1200, Cheques
+// Emitidos hasta 400— y eso es una bomba de tiempo silenciosa: el día que la pestaña pasa esa fila,
+// la fórmula deja de ver lo nuevo y NO da error. La caja miente para abajo y nada avisa.
+//
+// No era teórico. Medido el 31/07 sobre el archivo real: Cobranzas tenía datos hasta la fila 358 y
+// el rango terminaba en la 400. Cuarenta y dos filas de aire. Al ritmo de carga de este año, un mes
+// o dos. La primera cobranza en efectivo que cayera en la fila 401 habría desaparecido de "Caja en
+// pesos" sin un solo #REF! — exactamente el defecto que este archivo ya documentó tres veces (el
+// rango fosilizado, el encabezado de período con la fila fija, el auditor con ventana fija).
+//
+// Un rango abierto (`$M$5:$M`) no tiene ese modo de falla. Cuesta más calcular y no importa: son mil
+// filas, una vez, y el precio de la alternativa es un número falso que nadie ve. El test
+// `los rangos son ABIERTOS` falla si alguien vuelve a poner una fila final.
+//
+// Nota para SUMPRODUCT: todos los rangos de un mismo SUMPRODUCT tienen que tener el mismo largo. Acá
+// se cumple por construcción, porque cada SUMPRODUCT mira columnas de UNA sola pestaña.
+
+/** Las columnas de Cobranzas. Verificadas contra la fila de encabezado del 21/07. Rango ABIERTO. */
+// `moneda` (01/08): la columna que distingue un cobro en PESOS de uno en DÓLARES. Ver el bloque de la
+// caja en dólares, al final de este archivo.
+export const COB = { hoja: 'Cobranzas', total: 'M', forma: 'N', estado: 'O', fecha: 'Q', moneda: 'AA', desde: 5 }
+/** Las columnas de Cheques Emitidos. I es la fecha en que se debita, K el SI/NO. Rango ABIERTO. */
+export const CHQ = { hoja: 'Cheques Emitidos', importe: 'F', fechaPago: 'I', debitado: 'K', desde: 2 }
 /**
  * Las columnas de Compras. O=Total, P=Tipo pago, X=Estado, AD=Fecha de caja. Verificadas 24/07.
  * `tiposBanco`: los medios que pegan al banco EN EL DÍA y todavía no están cubiertos por otra línea —
  * Cheque ya lo resta "Cheques Emitidos", la Tarjeta de Crédito consume el cupo (no la cuenta), el
  * Efectivo no toca el banco (sale de la caja física). Sólo Transferencia y Débito faltan.
+ * Rango ABIERTO.
  */
-export const CMP = { hoja: 'Compras', total: 'O', tipoPago: 'P', estado: 'X', fecha: COL_FECHA_CAJA, desde: 4, hasta: 1200, tiposBanco: ['Transferencia', 'Débito'] }
+export const CMP = { hoja: 'Compras', total: 'O', tipoPago: 'P', estado: 'X', fecha: COL_FECHA_CAJA, desde: 4, tiposBanco: ['Transferencia', 'Débito'] }
 
-const rango = (h, col, d, f) => `'${h}'!$${col}$${d}:$${col}$${f}`
+/**
+ * Un rango de columna ABIERTO: de la primera fila de datos hasta el final de la pestaña.
+ * No acepta fila final a propósito — ver el bloque de arriba.
+ */
+const rango = (h, col, d) => `'${h}'!$${col}$${d}:$${col}`
 
 // ═══ LA COLUMNA "FECHA DE CAJA" DE COMPRAS VIENE EN FORMATO MIXTO — POR QUÉ ESTAS FÓRMULAS NO USAN SUMIFS ═══
 //
@@ -87,11 +113,11 @@ const rango = (h, col, d, f) => `'${h}'!$${col}$${d}:$${col}$${f}`
 
 /** La "Fecha de caja" de Compras coaccionada a número, tolerante al formato mixto serie/texto. */
 const fechaCajaCoerc = (c) => {
-  const r = rango(c.hoja, c.fecha, c.desde, c.hasta)
+  const r = rango(c.hoja, c.fecha, c.desde)
   return `IFERROR(DATEVALUE(${r}&"");N(${r}))`
 }
 /** El total de Compras coaccionado con N(): SUMPRODUCT no suma texto, N() lo lleva a 0. */
-const totalCoerc = (c) => `N(${rango(c.hoja, c.total, c.desde, c.hasta)})`
+const totalCoerc = (c) => `N(${rango(c.hoja, c.total, c.desde)})`
 
 /**
  * NÚCLEO PURO: lo cobrado DESPUÉS de la fecha de corte del extracto.
@@ -104,13 +130,13 @@ const totalCoerc = (c) => `N(${rango(c.hoja, c.total, c.desde, c.hasta)})`
  * @returns {string} fórmula, separador es-AR
  */
 export function formulaCobrosPosteriores(corte, c = COB) {
-  return `SUMIFS(${rango(c.hoja, c.total, c.desde, c.hasta)};`
-    + `${rango(c.hoja, c.estado, c.desde, c.hasta)};"Cobrado";`
-    + `${rango(c.hoja, c.forma, c.desde, c.hasta)};"<>Echeq";`
+  return `SUMIFS(${rango(c.hoja, c.total, c.desde)};`
+    + `${rango(c.hoja, c.estado, c.desde)};"Cobrado";`
+    + `${rango(c.hoja, c.forma, c.desde)};"<>Echeq";`
     // El efectivo va a la caja física (T06), no al banco: se excluye para que la partición por canal
     // no deje ningún cobro contado dos veces. Ver el encabezado de este archivo.
-    + `${rango(c.hoja, c.forma, c.desde, c.hasta)};"<>Efectivo";`
-    + `${rango(c.hoja, c.fecha, c.desde, c.hasta)};">"&${corte})`
+    + `${rango(c.hoja, c.forma, c.desde)};"<>Efectivo";`
+    + `${rango(c.hoja, c.fecha, c.desde)};">"&${corte})`
 }
 
 /**
@@ -122,9 +148,9 @@ export function formulaCobrosPosteriores(corte, c = COB) {
  * @returns {string} fórmula
  */
 export function formulaChequesDebitadosPosteriores(corte, c = CHQ) {
-  return `SUMIFS(${rango(c.hoja, c.importe, c.desde, c.hasta)};`
-    + `${rango(c.hoja, c.debitado, c.desde, c.hasta)};"SI";`
-    + `${rango(c.hoja, c.fechaPago, c.desde, c.hasta)};">"&${corte})`
+  return `SUMIFS(${rango(c.hoja, c.importe, c.desde)};`
+    + `${rango(c.hoja, c.debitado, c.desde)};"SI";`
+    + `${rango(c.hoja, c.fechaPago, c.desde)};">"&${corte})`
 }
 
 /**
@@ -143,8 +169,8 @@ export function formulaChequesDebitadosPosteriores(corte, c = CHQ) {
  * @returns {string} fórmula (sin `=`)
  */
 export function formulaComprasPagadasPosteriores(corte, c = CMP) {
-  const tipos = c.tiposBanco.map((t) => `(${rango(c.hoja, c.tipoPago, c.desde, c.hasta)}="${t}")`).join('+')
-  return `SUMPRODUCT((${rango(c.hoja, c.estado, c.desde, c.hasta)}="Pagado")`
+  const tipos = c.tiposBanco.map((t) => `(${rango(c.hoja, c.tipoPago, c.desde)}="${t}")`).join('+')
+  return `SUMPRODUCT((${rango(c.hoja, c.estado, c.desde)}="Pagado")`
     + `*(${tipos})`
     + `*(${fechaCajaCoerc(c)}>${corte})`
     + `*${totalCoerc(c)})`
@@ -160,6 +186,12 @@ export function formulaComprasPagadasPosteriores(corte, c = CMP) {
 export function formulaNetaPosterior(corte) {
   return `=${formulaCobrosPosteriores(corte)}-${formulaChequesDebitadosPosteriores(corte)}`
     + `-(${formulaComprasPagadasPosteriores(corte)})`
+    // El lote de haberes que salió por transferencia después del corte (01/08). Es exactamente la
+    // misma clase de salida que un cheque debitado: la plata ya no está y el extracto todavía no lo
+    // muestra. Ver el bloque de la nómina, al final de este archivo.
+    + `-(${formulaJornalesBancoPosteriores(corte)})`
+    // Y los sueldos de administración que salieron por transferencia después del corte (01/08).
+    + `-(${formulaOficinaBancoPosteriores(corte)})`
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -200,10 +232,14 @@ export const DEP = { hoja: '_BANCO_RAW', fecha: 'A', concepto: 'B', importe: 'C'
  * @returns {string} fórmula, separador es-AR
  */
 export function formulaCobrosEfectivoPosteriores(arqueo, c = COB) {
-  return `SUMIFS(${rango(c.hoja, c.total, c.desde, c.hasta)};`
-    + `${rango(c.hoja, c.estado, c.desde, c.hasta)};"Cobrado";`
-    + `${rango(c.hoja, c.forma, c.desde, c.hasta)};"Efectivo";`
-    + `${rango(c.hoja, c.fecha, c.desde, c.hasta)};">"&${arqueo})`
+  return `SUMIFS(${rango(c.hoja, c.total, c.desde)};`
+    + `${rango(c.hoja, c.estado, c.desde)};"Cobrado";`
+    + `${rango(c.hoja, c.forma, c.desde)};"Efectivo";`
+    // LOS DÓLARES NO SON PESOS. Sin este criterio, "U$S 15.000" entraba al cajón de pesos como
+    // $15.000 — el importe correcto en la moneda equivocada, que es la peor clase de número: no
+    // rompe nada y está mal por dos órdenes de magnitud. Ver el bloque de la caja en dólares.
+    + `${rango(c.hoja, c.moneda, c.desde)};"<>USD";`
+    + `${rango(c.hoja, c.fecha, c.desde)};">"&${arqueo})`
 }
 
 /**
@@ -217,8 +253,8 @@ export function formulaCobrosEfectivoPosteriores(arqueo, c = COB) {
  * @returns {string} fórmula
  */
 export function formulaComprasEfectivoPosteriores(arqueo, c = CMP) {
-  return `SUMPRODUCT((${rango(c.hoja, c.estado, c.desde, c.hasta)}="Pagado")`
-    + `*(${rango(c.hoja, c.tipoPago, c.desde, c.hasta)}="Efectivo")`
+  return `SUMPRODUCT((${rango(c.hoja, c.estado, c.desde)}="Pagado")`
+    + `*(${rango(c.hoja, c.tipoPago, c.desde)}="Efectivo")`
     + `*(${fechaCajaCoerc(c)}>${arqueo})`
     + `*${totalCoerc(c)})`
 }
@@ -256,11 +292,23 @@ export function formulaDepositosEfectivoPosteriores(arqueo, c = DEP) {
  * @returns {string} fórmula completa, con el `=` adelante
  */
 export function formulaNetaEfectivoPosterior(arqueo, { bancoRaw = DEP.hoja } = {}) {
+  // Los dos movimientos que cruzan de canal salen de la réplica del extracto: sin ella no se pueden
+  // detectar, y se omiten los DOS juntos. Dejar la extracción sin el depósito inflaría el cajón.
   const depositos = bancoRaw
     ? `-${formulaDepositosEfectivoPosteriores(arqueo, { ...DEP, hoja: bancoRaw })}`
     : ''
+  const extracciones = bancoRaw
+    ? `+${formulaExtraccionesEfectivoPosteriores(arqueo, { ...DEP, hoja: bancoRaw })}`
+    : ''
   return `=IF(NOT(ISNUMBER(${arqueo}));0;`
-    + `${formulaCobrosEfectivoPosteriores(arqueo)}-${formulaComprasEfectivoPosteriores(arqueo)}${depositos})`
+    + `${formulaCobrosEfectivoPosteriores(arqueo)}-${formulaComprasEfectivoPosteriores(arqueo)}${depositos}`
+    // Los jornales pagados en efectivo después del arqueo (01/08): adelantos y contra recibo. Es el
+    // billete que sale del cajón para la nómina, que hasta hoy no bajaba de ningún lado.
+    + `-${formulaJornalesEfectivoPosteriores(arqueo)}`
+    // La oficina en billetes RESTA y la extracción del banco SUMA: los dos canales que faltaban para
+    // que el cajón pueda subir y bajar por todos los motivos por los que sube y baja de verdad.
+    + `-${formulaOficinaEfectivoPosteriores(arqueo)}`
+    + `${extracciones})`
 }
 
 /**
@@ -357,4 +405,215 @@ export function formulaFrescuraCaja({ bancoRaw = '_BANCO_RAW' } = {}) {
       cuando: `(${abierto(COB.hoja, COB.estado, COB.desde)}="Cobrado")`,
     }),
   ])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA NÓMINA PAGADA — EL TERCER CANAL QUE FALTABA (01/08)
+//
+// EL DUEÑO, describiendo el 31/07: "se realizaron cobranzas en efectivo, compras y pago de jornales
+// en efectivo al 50%, el otro 50% fue por transferencia bancaria".
+//
+// LO QUE ESTABA MAL. La partición por canal —banco / caja física / cartera— cubría los COBROS y las
+// COMPRAS, y dejaba afuera la NÓMINA, que es la salida de plata más grande y más regular que tiene la
+// empresa. Medido sobre las fórmulas de CAJA al 31/07:
+//
+//   · el efectivo de la nómina no bajaba la caja física — la fila "(−) pagado en efectivo" mira
+//     SÓLO `Compras` con tipo de pago Efectivo, y un jornal no es una compra;
+//   · la transferencia de la nómina no bajaba el banco — la fila "(−) pagos debitados después del
+//     corte" mira SÓLO Cheques Emitidos y Compras.
+//
+// Los jornales aparecían únicamente en el CALENDARIO (el bloque 2, la proyección), y con el filtro
+// `PAGADO=""`: al registrarse el pago salían de la proyección y no entraban en ninguna disponibilidad.
+// La plata se pagaba y no salía de ningún lado. Cero #ERROR, cero aviso — el patrón de siempre.
+//
+// LO QUE YA ESTABA BIEN, Y POR ESO ESTO ES BARATO. La pestaña `Jornales por Quincena` ya separa las
+// tres formas de pago por quincena —Banco (H), Adelanto en efectivo (I), Total recibo en efectivo (J)—
+// y ya tiene su propio control de que las tres suman el TOTAL. El 50/50 del dueño ya estaba registrado.
+// Lo único que faltaba era que CAJA leyera esas columnas. No se inventa un dato nuevo: se consume el
+// que ya existe, por rango con nombre, que es como esta pestaña cita a las otras.
+//
+// LA VENTANA ES "PAGADO EL", NO "SE PAGA EL". `JORNALES_REAL_PAGO` es la fecha PREVISTA y la usa la
+// proyección; para una disponibilidad hace falta el HECHO, que es `JORNALES_REAL_PAGADO` — la fecha
+// que se completa cuando el pago ocurrió. ISNUMBER además descarta las quincenas sin pagar (celda
+// vacía), que compararían como texto y entrarían todas.
+
+/** Los rangos con nombre que publica `jornales-pestana.mjs`. Se citan por nombre, nunca por fila. */
+export const JOR = {
+  pagado: 'JORNALES_REAL_PAGADO',
+  banco: 'JORNALES_REAL_BANCO',
+  adelanto: 'JORNALES_REAL_ADELANTO',
+  recibo: 'JORNALES_REAL_RECIBO',
+}
+
+/** La ventana común: quincenas con pago REGISTRADO y posterior al corte/arqueo. */
+const ventanaPagada = (corte, j) => `ISNUMBER(${j.pagado})*(${j.pagado}>${corte})`
+
+/**
+ * NÚCLEO PURO: la nómina pagada en EFECTIVO después del arqueo. DESCARGA de la caja física.
+ * Adelantos (antes del cierre de la quincena) + lo entregado contra recibo: las dos formas en las que
+ * el billete sale del cajón. N() sobre cada importe porque SUMPRODUCT no tolera texto en la columna
+ * que suma — una celda con "—" o vacía tumbaría la fórmula entera.
+ * @param {string} arqueo referencia a la celda con la fecha del arqueo
+ * @returns {string} fórmula, separador es-AR
+ */
+export function formulaJornalesEfectivoPosteriores(arqueo, j = JOR) {
+  return `SUMPRODUCT(${ventanaPagada(arqueo, j)}*(N(${j.adelanto})+N(${j.recibo})))`
+}
+
+/**
+ * NÚCLEO PURO: la nómina pagada por BANCO después del corte del extracto. DESCARGA del saldo bancario.
+ * Es el lote de haberes que el extracto todavía no muestra, exactamente igual que un cheque debitado
+ * o una compra pagada por transferencia después del corte.
+ * @param {string} corte referencia a la celda con la fecha de corte del extracto
+ * @returns {string} fórmula
+ */
+export function formulaJornalesBancoPosteriores(corte, j = JOR) {
+  return `SUMPRODUCT(${ventanaPagada(corte, j)}*N(${j.banco}))`
+}
+
+/**
+ * La nómina en efectivo, ya con signo, para el renglón del desglose. Lleva la MISMA guarda de arqueo
+ * que los otros tres renglones: sin fecha no hay ventana y el renglón dice 0, no el histórico entero.
+ * Ver el bloque del desglose en caja-efectivo-fisico.mjs — con el arqueo vacío, un SUMPRODUCT compara
+ * contra cero y devuelve TODO, que es como la pestaña llegó a mostrar $126.617.300 de pagos en efectivo.
+ */
+export function celdaJornalesEfectivo(arqueo, j = JOR) {
+  return `=IF(NOT(ISNUMBER(${arqueo}));0;-(${formulaJornalesEfectivoPosteriores(arqueo, j)}))`
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA OFICINA Y LA EXTRACCIÓN — LOS DOS CANALES QUE FALTABAN PARA CERRAR LA NÓMINA (01/08)
+//
+// EL DUEÑO: *"¿revisaste el sheet jornales la pestaña oficina, actualizaste los valores... y ese es el
+// valor que se refleja en cash flow semanal y mensual y por ende lo que se debería restar en caja cada
+// vez que se haya pagado?"*. La respuesta era no, y por el mismo motivo que la obra: `OFICINA_*` lo
+// consumía sólo el CALENDARIO (la proyección). Un sueldo de administración PAGADO no bajaba ninguna
+// disponibilidad — ni el banco ni el cajón.
+//
+// LO QUE HUBO QUE AGREGAR PRIMERO. El bloque de Oficina tenía una sola columna de plata ("Pagado"),
+// sin canal. Con eso no se puede decidir de dónde sale: media empresa paga la mitad por transferencia
+// y la mitad en billetes. Ahora el bloque tiene dos columnas de entrada —Banco y Efectivo— que llena
+// el dueño y que el generador NO pisa (no las escribe: la fusión preserva lo que él ponga).
+//
+// Y POR ESO ESTAS FÓRMULAS NO INVENTAN NADA. Si el canal no está declarado, no se resta de ningún
+// lado: se nombra en "LO QUE NO CIERRA" con su monto. Repartir "mitad y mitad" porque suele ser así
+// sería fabricar un dato, que es exactamente lo que este archivo no hace.
+
+/** Los rangos con nombre del bloque de Oficina que publica `jornales-pestana.mjs`. */
+export const OFI = { pago: 'OFICINA_PAGO', pagado: 'OFICINA_PAGADO', banco: 'OFICINA_BANCO' }
+
+/** La ventana común de la oficina: meses con fecha de pago posterior al corte/arqueo. */
+const ventanaOfi = (corte, o) => `ISNUMBER(${o.pago})*(${o.pago}>${corte})`
+
+/**
+ * NÚCLEO PURO: los sueldos de administración pagados por BANCO después del corte del extracto.
+ * @param {string} corte referencia a la celda con la fecha de corte
+ */
+export function formulaOficinaBancoPosteriores(corte, o = OFI) {
+  return `SUMPRODUCT(${ventanaOfi(corte, o)}*N(${o.banco}))`
+}
+
+/**
+ * NÚCLEO PURO: los sueldos de administración pagados en EFECTIVO después del arqueo.
+ * @param {string} arqueo referencia a la celda con la fecha del arqueo
+ */
+export function formulaOficinaEfectivoPosteriores(arqueo, o = OFI) {
+  // POR DIFERENCIA, no por una segunda columna: lo que no salió por transferencia salió en billetes.
+  // Así los dos canales suman SIEMPRE lo pagado y no puede existir un mes donde las partes no cierren.
+  // ISNUMBER exige que el canal esté DECLARADO: con la celda vacía no se asume "todo efectivo".
+  return `SUMPRODUCT(${ventanaOfi(arqueo, o)}*ISNUMBER(${o.banco})*(N(${o.pagado})-N(${o.banco})))`
+}
+
+/**
+ * NÚCLEO PURO: lo pagado de oficina SIN declarar por qué canal salió, en la ventana viva.
+ *
+ * No se resta de ninguna disponibilidad —no se sabe de dónde salió— y por eso tiene que VERSE. Va al
+ * bloque "LO QUE NO CIERRA", que es donde vive todo lo que el cuadro sabe que no sabe. Cuando el dueño
+ * completa Banco/Efectivo del mes, esta línea baja sola a cero.
+ */
+export function formulaOficinaSinCanal(corte, o = OFI) {
+  // (1-ISNUMBER(...)) y no NOT(...): NOT no se expande sobre un array dentro de SUMPRODUCT.
+  return `SUMPRODUCT(${ventanaOfi(corte, o)}*(1-ISNUMBER(${o.banco}))*N(${o.pagado}))`
+}
+
+/**
+ * NÚCLEO PURO: las EXTRACCIONES de efectivo del banco posteriores al arqueo. CARGA la caja física.
+ *
+ * Es el espejo exacto del depósito, que ya estaba: el depósito mueve billetes del cajón a la cuenta y
+ * RESTA; la extracción los trae de vuelta y SUMA. Sin esta mitad, la caja física sólo podía crecer con
+ * cobranzas en efectivo y bajaba con todo lo demás — un modelo que sólo puede dar de menos.
+ *
+ * HONESTIDAD SOBRE LO MEDIDO (01/08): en el extracto cargado hoy no hay NINGÚN movimiento que matchee
+ * (cero débitos con "extracción" o "retiro de efectivo" en el concepto). O sea que hoy esta línea vale
+ * 0 y no cambia ningún número. Se escribe igual, porque el día que aparezca una extracción el cajón
+ * tiene que subir solo — y porque una asimetría (modelar la salida y no la entrada) es justamente cómo
+ * un cuadro empieza a mentir despacio.
+ */
+export function formulaExtraccionesEfectivoPosteriores(arqueo, c = DEP) {
+  const col = (x) => `${c.hoja}!$${x}$${c.desde}:$${x}`
+  const concepto = `LOWER(SUBSTITUTE(${col(c.concepto)};"ó";"o"))`
+  return `SUMPRODUCT((${col(c.flujo)}="sale")`
+    + `*(ISNUMBER(SEARCH("extraccion";${concepto}))+ISNUMBER(SEARCH("retiro de efectivo";${concepto}))>0)`
+    + `*ISNUMBER(${col(c.fecha)})*(${col(c.fecha)}>${arqueo})`
+    + `*ABS(IF(ISNUMBER(${col(c.importe)});${col(c.importe)};0)))`
+}
+
+/** Los renglones del desglose, con su signo, para que el desglose siga siendo la misma fórmula. */
+export function celdaOficinaEfectivo(arqueo, o = OFI) {
+  return `=IF(NOT(ISNUMBER(${arqueo}));0;-(${formulaOficinaEfectivoPosteriores(arqueo, o)}))`
+}
+export function celdaExtraccionesEfectivo(arqueo, c = DEP) {
+  return `=IF(NOT(ISNUMBER(${arqueo}));0;${formulaExtraccionesEfectivoPosteriores(arqueo, c)})`
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA CAJA EN DÓLARES — UN BILLETE VERDE NO ES UN BILLETE (01/08)
+//
+// EL DUEÑO: *"tenemos una cobranza en dólares en efectivo dentro de esa pestaña, quiero que la revises
+// y agregues una línea en caja considerándola y la sumes a todo"*.
+//
+// LO QUE ENCONTRÉ. Cobranzas fila 62, Quattropani, anticipo de obra: **U$S 15.000 cobrados en efectivo
+// el 31/07**. La columna "TOTAL a cobrar" guarda el número 15000 y el formato de la celda de al lado
+// dice "U$S" — pero un formato no es un dato: para toda fórmula del libro eso valía QUINCE MIL PESOS.
+// La línea de efectivo lo sumaba al cajón como si fueran pesos. El importe correcto en la moneda
+// equivocada: no rompe nada, no da error, y está mal por dos órdenes de magnitud.
+//
+// POR QUÉ HIZO FALTA UNA COLUMNA NUEVA. No hay forma de distinguir la moneda desde una fórmula: el
+// valor es el mismo número y lo único que cambia es el FORMATO, que las fórmulas no ven. Así que
+// Cobranzas gana una columna "Moneda" (vacía = ARS, "USD" donde corresponda). Sin ese dato el libro
+// no puede saberlo, y adivinarlo por el cliente o por el monto sería inventar.
+//
+// EL TRATAMIENTO ES EL MISMO QUE EL DE LA CUENTA EN DÓLARES DEL BANCO, que ya existe: se lleva el
+// saldo EN SU MONEDA y se valúa con TIPO_CAMBIO_USD para poder sumarlo al total. No se convierte al
+// cargarlo — un cobro en dólares sigue siendo dólares hasta que se venda, y la exposición cambiaria
+// tiene que poder verse.
+
+/** La columna de moneda de Cobranzas y el valor que marca un cobro en dólares. */
+export const MONEDA_USD = 'USD'
+
+/**
+ * NÚCLEO PURO: los cobros en efectivo Y EN DÓLARES posteriores al arqueo, en DÓLARES (no en pesos).
+ * Es el espejo exacto de formulaCobrosEfectivoPosteriores con el criterio de moneda invertido, así
+ * que los dos juntos son una partición: ningún cobro en efectivo queda afuera ni entra dos veces.
+ * @param {string} arqueo referencia a la celda con la fecha del arqueo en dólares
+ */
+export function formulaCobrosUsdEfectivoPosteriores(arqueo, c = COB) {
+  return `SUMIFS(${rango(c.hoja, c.total, c.desde)};`
+    + `${rango(c.hoja, c.estado, c.desde)};"Cobrado";`
+    + `${rango(c.hoja, c.forma, c.desde)};"Efectivo";`
+    + `${rango(c.hoja, c.moneda, c.desde)};"${MONEDA_USD}";`
+    + `${rango(c.hoja, c.fecha, c.desde)};">"&${arqueo})`
+}
+
+/**
+ * La celda de la caja en dólares: el arqueo en dólares más lo cobrado en efectivo y en dólares desde
+ * entonces. Devuelve DÓLARES; la valuación a pesos la hace la columna de la pestaña, igual que en la
+ * cuenta en dólares del banco. Sin fecha de arqueo se comporta como la caja en pesos: 0, no el
+ * histórico — ver la guarda en formulaNetaEfectivoPosterior.
+ * @param {string} arqueo referencia a la celda con la FECHA del arqueo
+ * @param {string} contado referencia a la celda con el arqueo CONTADO en dólares
+ */
+export function celdaCajaDolares(arqueo, contado, c = COB) {
+  return `=N(${contado})+IF(NOT(ISNUMBER(${arqueo}));0;${formulaCobrosUsdEfectivoPosteriores(arqueo, c)})`
 }

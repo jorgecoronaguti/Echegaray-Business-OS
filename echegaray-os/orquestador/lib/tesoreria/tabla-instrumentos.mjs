@@ -30,6 +30,7 @@
 import { EVIDENCIA, CONFIANZA, TIPO_TASA } from './contratos.mjs'
 import { aTea, esAptoTesoreria, esNumero, tasaCreible, CATEGORIAS } from './instrumentos.mjs'
 import { rendimientoDelPeriodo, costoTotal, liquidezCompatible } from './comparar.mjs'
+import { impuestosDeColocacion, parametrosFiscales } from './impuestos-colocacion.mjs'
 
 export const DESCONOCIDO = 'DESCONOCIDO'
 
@@ -89,14 +90,25 @@ export function describirRiesgo(inst = {}, riesgo = null) {
  * motivo que lo invalida. Un instrumento que desaparece sin explicación vuelve a proponerse el mes que
  * viene.
  */
-export function filaDeInstrumento(inst, { dias, monto, hurdlePeriodo, hurdleAnual, riesgo = null } = {}) {
+export function filaDeInstrumento(inst, { dias, monto, hurdlePeriodo, hurdleAnual, riesgo = null, fiscal = null } = {}) {
   const tea = aTea(inst.tasa)
   const cordura = tea == null ? { creible: false, motivo: 'sin tasa convertible a efectiva anual' } : tasaCreible(tea)
   const liq = describirLiquidez(inst)
   const compat = liquidezCompatible(inst, dias)
   const costos = costoTotal(inst)
   const bruto = tea != null && cordura.creible ? rendimientoDelPeriodo(tea, dias) : null
-  const neto = bruto == null ? null : bruto - costos.total
+  // ═══ EL RENDIMIENTO DESPUÉS DE COMISIONES TODAVÍA NO ES EL RESULTADO ═══
+  //
+  // Hasta el 03/08/2026 acá terminaba la cuenta: bruto − comisiones = "neto". Faltaba el impuesto al
+  // cheque, que sobre 30 días se lleva más de la mitad de la ganancia (1,2% del capital contra ~1,9%
+  // de rendimiento bruto). Una colocación sin impuestos no es un rendimiento: es una estimación
+  // optimista, y el dueño la rechazó con ese nombre.
+  const antesDeImpuestos = bruto == null ? null : bruto - costos.total
+  const impuestos = antesDeImpuestos == null ? null : impuestosDeColocacion({
+    capital: monto, rendimientoBrutoPeriodo: antesDeImpuestos,
+    categoria: inst.categoria, parametros: fiscal ?? parametrosFiscales({}),
+  })
+  const neto = impuestos?.estado === 'ok' ? impuestos.rendimiento_neto_periodo : null
   const tnaDeclarada = inst.tasa?.tipo === TIPO_TASA.TNA ? Number(inst.tasa.valor) : null
 
   const invalidan = []
@@ -107,7 +119,8 @@ export function filaDeInstrumento(inst, { dias, monto, hurdlePeriodo, hurdleAnua
   if (tea == null) invalidan.push(inst.tasa ? `la tasa es "${inst.tasa.tipo}" y no se puede llevar a efectiva anual sin inventar` : 'no tiene tasa conocida')
   else if (!cordura.creible) invalidan.push(cordura.motivo)
   else if (neto != null && neto <= hurdlePeriodo) {
-    invalidan.push(`rinde ${(neto * 100).toFixed(2)}% neto en ${dias} días y la vara de esta ventana es ${(hurdlePeriodo * 100).toFixed(2)}%`)
+    invalidan.push(`rinde ${(neto * 100).toFixed(2)}% ${impuestos?.etiqueta_neto ?? 'neto'} en ${dias} días y la vara de esta ventana es ${(hurdlePeriodo * 100).toFixed(2)}%`
+      + (impuestos?.costo_fiscal_periodo > 0 ? ` (los impuestos se llevan ${(impuestos.costo_fiscal_periodo * 100).toFixed(2)}% del capital)` : ''))
   }
   if (riesgo && !riesgo.apto) invalidan.push(...(riesgo.bloqueantes?.length ? riesgo.bloqueantes : [`riesgo ${riesgo.nivel_instrumento} por encima del máximo del perfil (${riesgo.max_riesgo_perfil})`]))
 
@@ -133,7 +146,18 @@ export function filaDeInstrumento(inst, { dias, monto, hurdlePeriodo, hurdleAnua
     monto_minimo: esNumero(inst.monto_minimo) ? Number(inst.monto_minimo) : DESCONOCIDO,
     costos_periodo: costos.conocido ? costos.total : DESCONOCIDO,
     rendimiento_bruto_periodo: bruto,
+    rendimiento_antes_de_impuestos_periodo: antesDeImpuestos,
     rendimiento_neto_periodo: neto,
+    // EL BRUTO VIAJA AL LADO DEL NETO SIEMPRE. Un neto sin su bruto no se puede discutir: no se ve
+    // cuánto se llevó el fisco ni si la diferencia es razonable.
+    bruto_en_pesos: antesDeImpuestos != null ? Math.round(Number(monto) * antesDeImpuestos) : null,
+    impuestos,
+    impuestos_periodo: impuestos?.costo_fiscal_periodo ?? null,
+    impuestos_en_pesos: impuestos?.estado === 'ok' ? Math.round(Number(monto) * impuestos.costo_fiscal_periodo) : null,
+    impuestos_pendientes: impuestos?.pendientes ?? [],
+    impuestos_completos: Boolean(impuestos?.completo),
+    etiqueta_neto: impuestos?.etiqueta_neto ?? DESCONOCIDO,
+    rendimiento_antes_de_ganancias_periodo: impuestos?.rendimiento_antes_de_ganancias_periodo ?? null,
     // EL NÚMERO QUE ENTIENDE CUALQUIERA: cuánta plata es, sobre el monto que se colocaría.
     rinde_en_pesos: neto != null ? Math.round(Number(monto) * neto) : null,
     exceso_sobre_vara: neto != null ? neto - hurdlePeriodo : null,
@@ -152,13 +176,14 @@ export function filaDeInstrumento(inst, { dias, monto, hurdlePeriodo, hurdleAnua
  * LA TABLA DE UNA VENTANA. Ordenada por rendimiento NETO en pesos, con las viables arriba y las
  * descartadas abajo con su motivo, y con la fila de referencia del descubierto que fija la vara.
  */
-export function tablaDeVentana(instrumentos = [], ventana = {}, { hurdleAnual = 0, riesgos = {} } = {}) {
+export function tablaDeVentana(instrumentos = [], ventana = {}, { hurdleAnual = 0, riesgos = {}, fiscal = null } = {}) {
   const dias = Number(ventana.dias_libres ?? ventana.dias) || 0
   const monto = Number(ventana.monto_maximo) || 0
   const hurdlePeriodo = Number(ventana.referencia?.hurdle_periodo)
   const vara = Number.isFinite(hurdlePeriodo) ? hurdlePeriodo : rendimientoDelPeriodo(hurdleAnual, dias)
+  const par = fiscal ?? parametrosFiscales({})
   const filas = instrumentos.map((i) => filaDeInstrumento(i, {
-    dias, monto, hurdlePeriodo: vara, hurdleAnual, riesgo: riesgos[i.id] ?? null,
+    dias, monto, hurdlePeriodo: vara, hurdleAnual, riesgo: riesgos[i.id] ?? null, fiscal: par,
   }))
   const viables = filas.filter((f) => f.viable)
     .sort((a, b) => (b.rendimiento_neto_periodo - a.rendimiento_neto_periodo) || (a.dias_vuelta - b.dias_vuelta))
@@ -180,6 +205,9 @@ export function tablaDeVentana(instrumentos = [], ventana = {}, { hurdleAnual = 
     monto_a_colocar: monto,
     bloque: ventana.bloque ?? null,
     titulo: ventana.titulo ?? null,
+    // LA CUENTA DEL MONTO QUE ENCABEZA ESTA TABLA. «sobre $5.623.127» sin la derivación es el número
+    // que el dueño rechazó tres veces.
+    derivacion: ventana.detalle_ventana?.derivacion ?? ventana.derivacion ?? null,
     // LA REFERENCIA QUE HACE QUE TODO ESTO IMPORTE.
     vara: {
       anual: hurdleAnual,
@@ -192,6 +220,18 @@ export function tablaDeVentana(instrumentos = [], ventana = {}, { hurdleAnual = 
     viables,
     descartadas,
     familias_sin_dato: faltantes,
+    // LOS PARÁMETROS FISCALES DE ESTA TABLA, con lo que falta. Una tabla sin esto no se puede leer
+    // como "neta": el lector no sabe qué se descontó ni qué no.
+    fiscal: {
+      ley_25413: par.ley_25413,
+      iibb: par.iibb,
+      ganancias: par.ganancias,
+      fuera_de_alcance: par.fuera_de_alcance,
+      // Lo que falta para poder llamarlo neto sin asterisco, sin repetirlo por fila.
+      pendientes: [...new Map((filas.flatMap((f) => f.impuestos_pendientes || []))
+        .map((p) => [p.concepto, p])).values()],
+      completo: filas.length > 0 && filas.every((f) => f.impuestos_completos),
+    },
     recomendacion: viables[0] ?? null,
     // POR QUÉ NO LAS OTRAS. Es la mitad de la respuesta y la que nunca se escribe.
     por_que_no_las_otras: viables.slice(1).map((f) => ({
@@ -208,12 +248,14 @@ export function tablaDeVentana(instrumentos = [], ventana = {}, { hurdleAnual = 
 }
 
 /** Una tabla por ventana con monto. Sin ventanas con monto se devuelve igual, informativa. */
-export function tablaComparativa(instrumentos = [], ventanas = [], { hurdleAnual = 0, riesgos = {} } = {}) {
+export function tablaComparativa(instrumentos = [], ventanas = [], { hurdleAnual = 0, riesgos = {}, fiscal = null } = {}) {
+  const par = fiscal ?? parametrosFiscales({})
   return {
     estado: 'ok',
     hurdle_anual: hurdleAnual,
-    tablas: ventanas.map((v) => tablaDeVentana(instrumentos, v, { hurdleAnual, riesgos })),
+    tablas: ventanas.map((v) => tablaDeVentana(instrumentos, v, { hurdleAnual, riesgos, fiscal: par })),
     n_instrumentos: instrumentos.length,
+    fiscal: par,
     evidencia: EVIDENCIA.CALCULO,
   }
 }

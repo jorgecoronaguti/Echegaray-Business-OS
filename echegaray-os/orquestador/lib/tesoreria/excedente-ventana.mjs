@@ -35,6 +35,7 @@
 // contado exactamente una vez.
 
 import { EVIDENCIA, CONFIANZA } from './contratos.mjs'
+import { derivacionDeVentana } from './derivacion-excedente.mjs'
 
 /** Las ventanas que decide el dueño. No es un número único: 30, 60 y 90 días son decisiones distintas. */
 export const VENTANAS_DIAS = [30, 60, 90]
@@ -79,6 +80,11 @@ export function saldoCorrido({
   let saldo = Number(saldoInicial) - Number(vencido)
   let piso = saldo
   let fechaTension = dias[0]?.fecha ?? null
+  // EL ÍNDICE DEL PEOR DÍA, NO SÓLO SU FECHA. La derivación necesita saber HASTA DÓNDE sumar para
+  // reconstruir el piso; con la fecha sola hay una ambigüedad de un día justo cuando el peor momento
+  // es el arranque (índice −1: antes de que se mueva un solo peso), y un cuadro que no cierra por un
+  // día es un cuadro que no cierra.
+  let indiceTension = -1
   let entradas = 0
   let salidas = Number(vencido) || 0
   const ventana = dias.slice(0, hasta + 1)
@@ -91,7 +97,7 @@ export function saldoCorrido({
     entradas += inMov
     salidas += outMov
     saldo = saldo + inMov - outMov
-    if (saldo < piso) { piso = saldo; fechaTension = ventana[i].fecha }
+    if (saldo < piso) { piso = saldo; fechaTension = ventana[i].fecha; indiceTension = i }
   }
   return {
     estado: 'ok',
@@ -102,6 +108,7 @@ export function saldoCorrido({
     // EL NÚMERO QUE DECIDE. No es el saldo del último día: es el peor día del recorrido.
     piso: redondear(piso),
     fecha_tension: fechaTension,
+    indice_tension: indiceTension,
     dias_cubiertos: hasta,
     factor_ingresos: Number(factorIngresos),
   }
@@ -175,7 +182,7 @@ export function restringidaDeVentana(cheques = [], hoy = new Date(), dias = 30) 
 export function ventanaDeExcedente({
   dias = [], hasta = 30, saldoInicial = 0, vencido = 0, valoresADepositar = 0,
   diasAcreditacion = DIAS_ACREDITACION_VALORES, reserva = 0, restringidaFueraDelCalendario = 0,
-  factorIngresos = 0.5, hoy = new Date(),
+  factorIngresos = 0.5, hoy = new Date(), fechaCaja = null, vencidoDetalle = null,
 } = {}) {
   const corrido = saldoCorrido({
     dias, saldoInicial, vencido, valoresADepositar, diasAcreditacion, hasta, factorIngresos,
@@ -187,7 +194,14 @@ export function ventanaDeExcedente({
   const piso = corrido.piso - (Number(restringidaFueraDelCalendario) || 0)
   const monto = Math.max(0, piso - (Number(reserva) || 0))
   const limite = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + hasta)
+  // LA CUENTA VIAJA CON EL NÚMERO. No es un extra opcional: el dueño rechazó tres informes por un
+  // monto sin derivación, así que la ventana no se considera completa sin ella.
+  const derivacion = derivacionDeVentana({
+    dias, hasta, corrido, saldoInicial, vencido, valoresADepositar, diasAcreditacion,
+    factorIngresos, reserva, restringidaFueraDelCalendario, fechaCaja, vencidoDetalle, montoMaximo: monto,
+  })
   return {
+    derivacion,
     dias: hasta,
     estado: 'ok',
     // TRES NÚMEROS, PORQUE SON TRES PREGUNTAS DISTINTAS. El que decide es `monto_maximo`.
@@ -223,7 +237,7 @@ export function ventanaDeExcedente({
 export function excedentePorVentana({
   dias = [], ventanas = VENTANAS_DIAS, saldoInicial = 0, vencido = 0, valoresADepositar = 0,
   diasAcreditacion = DIAS_ACREDITACION_VALORES, reserva = 0, restringidaFueraDelCalendario = 0,
-  hoy = new Date(),
+  hoy = new Date(), fechaCaja = null, vencidoDetalle = null,
 } = {}) {
   const factores = { base: 1, adverso: 0.5, sin_cobranzas: 0 }
   const salida = []
@@ -232,7 +246,7 @@ export function excedentePorVentana({
     for (const [nombre, f] of Object.entries(factores)) {
       escenarios[nombre] = ventanaDeExcedente({
         dias, hasta: h, saldoInicial, vencido, valoresADepositar, diasAcreditacion,
-        reserva, restringidaFueraDelCalendario, factorIngresos: f, hoy,
+        reserva, restringidaFueraDelCalendario, factorIngresos: f, hoy, fechaCaja, vencidoDetalle,
       })
     }
     salida.push({

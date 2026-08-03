@@ -61,6 +61,19 @@ export const DESTINOS = {
     fuente: 'lib/costo-descubierto.mjs · formulaInteresMes / REAL',
     escribe: 'no',
   },
+  // LO QUE EL BANCO SE LLEVA POR EXISTIR. Hasta el 31/07 no tenía destino porque no tenía naturaleza:
+  // caía en el cajón de sastre "Transferencias a proveedores" y se leía como pago a proveedor. Ahora
+  // tiene línea propia en Financiación del Cash Flow (mensual y semanal), que lee _BANCO_RAW —el banco
+  // no emite factura por esto, así que Compras nunca lo va a tener— y la reconcilia el bloque 4.7 de
+  // CAJA contra "ninguna pestaña", que es la verdad: el único registro es el extracto.
+  'Comisiones y gastos bancarios': {
+    pestaña: 'Cash Flow Mensual / Cash Flow Semanal',
+    seccion: 'Actividades de Financiación → línea "Comisiones y gastos bancarios (Santander)"',
+    mecanismo: 'SUMIFS _BANCO_RAW col C donde Naturaleza = "Comisiones y gastos bancarios", por mes/semana; '
+      + 'los meses sin extracto proyectan el promedio de los meses que sí tienen (cash-flow-lineas.mjs · formulaComisionesMes)',
+    fuente: 'lib/cash-flow-lineas.mjs · COMISIONES / formulaComisionesMes / formulaComisionesSemana',
+    escribe: 'no',
+  },
   'Préstamo prendario': {
     pestaña: 'Impuestos y Financieros',
     seccion: '6 · Deuda financiera → cuota del prendario, proyectada a los meses que faltan',
@@ -71,11 +84,13 @@ export const DESTINOS = {
   'Cheques y echeq': {
     pestaña: 'Cheques Emitidos',
     seccion: 'Columna DEBITADO (K): SI cuando el banco lo pagó',
-    mecanismo: 'cheques-emitidos-sync-banco.mjs marca DEBITADO por número de echeq (fuente: lista ECHEQS_EMITIDOS). '
-      + 'El CHEQUE FÍSICO no está en esa lista: sale por la referencia del extracto, que trae el número pero NO el '
-      + 'instrumento — conciliarDebitosDeCheques empareja por (instrumento, número) y declara AMBIGUO lo que no puede '
-      + 'resolver, en vez de marcar el cheque equivocado. Los debitados DESPUÉS del corte restan en la línea neta de '
-      + 'CAJA (formulaChequesDebitadosPosteriores)',
+    mecanismo: 'cheques-emitidos-sync-banco.mjs marca DEBITADO cruzando por (instrumento, número) — la '
+      + 'chequera física y la electrónica numeran por separado y el registro tiene el 313 en las dos. '
+      + 'Fuente: public.cheques (desde el 30/07; antes era la lista a mano ECHEQS_EMITIDOS, con corte congelado). '
+      + 'El débito del CHEQUE FÍSICO sale de la referencia del extracto, que trae el número pero NO el '
+      + 'instrumento: conciliarDebitosDeCheques declara AMBIGUO lo que no puede resolver, en vez de marcar el '
+      + 'cheque equivocado. Los debitados DESPUÉS del corte restan en la línea neta de CAJA '
+      + '(formulaChequesDebitadosPosteriores)',
     fuente: 'scripts/cheques-emitidos-sync-banco.mjs · lib/cheques-debito-banco.mjs · lib/caja-posterior-al-corte.mjs',
     escribe: 'columna DEBITADO',
   },

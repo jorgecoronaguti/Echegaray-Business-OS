@@ -435,11 +435,30 @@ export async function conEdicionesRespetadas(fileId, pestana, generado, actual) 
  * @param {any[][]} actual   lo que HAY hoy en la pestaña (texto visible)
  */
 export function duenoReescribioLaPestana(generado = [], actual = [], { umbralPresencia = 0.35, minAnclas = 8 } = {}) {
+  // ═══ UNA FÓRMULA NO ES UN RÓTULO, Y UN NÚMERO TAMPOCO (31/07) ═══
+  //
+  // EL FALSO POSITIVO. El dueño: "se ve mal todo en cashflow". La causa no estaba en el cuadro: los dos
+  // cash flow se habían AUTO-CANDADO y llevaban semanas sin mantenerse. El detector contaba como
+  // "ancla" CADA CELDA que el generador escribe —2.387 en el semanal, casi todas fórmulas— y las
+  // comparaba contra lo que la pestaña MUESTRA, que son los valores ya calculados. `=SUMPRODUCT(…)`
+  // nunca va a coincidir con "$9.384.100": quedaban 84 de 2.387 (3,5%), muy por debajo del umbral del
+  // 35%, y la pestaña se candaba sola. En una pestaña hecha de fórmulas el veredicto era INEVITABLE.
+  //
+  // Las anclas son los RÓTULOS: el texto que el generador escribe y que se lee igual en la pantalla.
+  // Una fórmula y un número no se pueden comparar entre las dos lecturas, así que no entran en el
+  // cociente — ni arriba ni abajo. Y el caso para el que existe este detector (el dueño reescribe la
+  // pestaña con otra estructura) se detecta MEJOR así: lo que desaparece cuando la rehace son los
+  // rótulos, no las fórmulas.
+  // NO SE DEFINE OTRA VEZ QUÉ ES UN RÓTULO: `esRotulo` ya existe en este mismo módulo y dice
+  // exactamente esto —texto, ni fórmula, ni número, ni importe, ni fecha—. Es la misma definición que
+  // usa la Regla 0 celda por celda, y tiene que ser la misma acá: dos definiciones de "rótulo" en el
+  // archivo que decide qué es del dueño es justo la clase de duplicación que ya rompió otras cosas.
+  const ancla = (v) => (esRotulo(v) ? sinApostrofo(clave(v)) : null)
   const quiere = new Set()
-  for (const f of generado || []) for (const c of f || []) { const t = sinApostrofo(clave(c)); if (t) quiere.add(t) }
+  for (const f of generado || []) for (const c of f || []) { const t = ancla(c); if (t) quiere.add(t) }
   if (quiere.size < minAnclas) return { reescrita: false, fraccion: 1, motivo: 'pocas anclas para juzgar' }
   const presentes = new Set()
-  for (const f of actual || []) for (const c of f || []) { const t = sinApostrofo(clave(c)); if (t) presentes.add(t) }
+  for (const f of actual || []) for (const c of f || []) { const t = ancla(c); if (t) presentes.add(t) }
   // Una pestaña casi vacía NO es una reescritura: es una lectura transitoria fallida o una pestaña
   // nueva que el generador debe llenar. No auto-candar por eso.
   if (presentes.size < Math.max(3, Math.floor(minAnclas * 0.4))) return { reescrita: false, fraccion: 0, motivo: 'pestaña vacía o lectura parcial' }
