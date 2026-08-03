@@ -30,7 +30,7 @@ import {
   mensajeCancelado, mensajeConfirmado, mensajeCuadrilla, mensajeInicial,
 } from './mensaje.mjs'
 import {
-  celdasParaMostrar, contextoDelDia, escribir, leerCuadrilla, planDe, razonesDeConfirmacion,
+  celdasParaMostrar, contextoDelDia, escribir, jornadaNumero, leerCuadrilla, planDe, razonesDeConfirmacion,
 } from './operaciones.mjs'
 import { errorDeFormulario, fechaDeDialogo, leerEstado, motivosDelTipo, novedadDeDialogo } from './dialogos.mjs'
 import { abrirDialogo, actualizarPost } from './cliente.mjs'
@@ -40,6 +40,9 @@ import { validarMensaje } from './contrato-mattermost.mjs'
 // sin ruta cae en "acción desconocida" y el jefe de obra se come un error mudo.
 export const PASO = Object.freeze({
   FECHA: 'fecha', OBRA: 'obra', EXCEPCION: 'excepcion',
+  // REPETIR: copia la última novedad guardada a otra persona, sin volver a abrir el diálogo.
+  // Es lo que convierte «un formulario por cabeza» en «un formulario y un click por cabeza».
+  REPETIR: 'repetir',
   REGISTRAR: 'registrar', CANCELAR: 'cancelar',
 })
 
@@ -63,6 +66,7 @@ export const TEXTO = Object.freeze({
   SESION_CERRADA_SIN_ESCRIBIR: 'El formulario se cerró antes de registrar, así que NO se escribió nada. Escribí «asistencia» y cargá de nuevo.',
   ESCRITURA_FALLIDA: 'Escribí «asistencia» para volver a cargar: este formulario ya no sirve.',
   OBRA_CAMBIADA: 'Cambiaste de obra: las excepciones que habías marcado se borraron.',
+  SIN_NOVEDAD_QUE_COPIAR: 'No hay una novedad para copiar. Marcá primero una excepción y después aplicala a los demás.',
   CUADRILLA_CAMBIO: 'La cuadrilla de la obra cambió en la planilla. Revisá la lista y volvé a apretar Registrar.',
   ERROR: 'No se pudo completar la acción. Probá de nuevo; si sigue igual, avisá a Dirección.',
 })
@@ -109,6 +113,7 @@ export function crearRuteadorAcciones(deps = {}) {
     auditar: deps.auditar ?? (async () => ({ ok: true })),
     port: deps.port ?? null,
     requestId: deps.requestId ?? null,
+    canalOficial: deps.canalOficial ?? null,
   }
   return async function rutear({ payload } = {}) {
     try {
@@ -162,7 +167,14 @@ async function despachar(d, payload) {
     await anotarRechazo(d, payload, { motivo: 'payload', detalle: 'payload_invalido' })
     return { status: 400, body: { ephemeral_text: TEXTO.PAYLOAD } }
   }
-  const permiso = await d.permisos.tienePermiso(d.port, { plataformaUserId: p.userId })
+  // EL CANAL OFICIAL, NO EL DEL PAYLOAD. Desde el 03/08 estar en el canal habilita, así que este
+  // parámetro decide permisos y no puede salir de algo que escriba quien llama: `asistencia-accion`
+  // ya corrió la guarda, que validó el canal contra `comunicacion.canales_area`, y es ESE id el que
+  // inyecta acá. Sin él (los tests del ruteador solo, que traen su propio doble de permisos) queda
+  // en null y sólo vale el grant — que es el comportamiento anterior, es decir, el más cerrado.
+  const permiso = await d.permisos.tienePermiso(d.port, {
+    plataformaUserId: p.userId, canalOficial: d.canalOficial ?? null,
+  })
   if (!permiso.ok) {
     await anotarRechazo(d, payload, { motivo: 'permiso', detalle: permiso.motivo, dialogo: p.dialogo })
     return p.dialogo ? { status: 200, body: { error: TEXTO.SIN_PERMISO } } : efimero(TEXTO.SIN_PERMISO)
@@ -258,6 +270,7 @@ async function atender(d, p, sesionCruda) {
   }
   const pasos = {
     [PASO.FECHA]: pasoFecha, [PASO.OBRA]: pasoObra, [PASO.EXCEPCION]: pasoExcepcion,
+    [PASO.REPETIR]: pasoRepetir,
     [PASO.REGISTRAR]: pasoRegistrar, [PASO.CANCELAR]: pasoCancelar,
   }
   const fn = pasos[p.paso]
@@ -280,19 +293,30 @@ function marcasDe(sesion) {
 
 const postDe = (sesion) => sesion?.root_post_id ?? metaDe(sesion).post_id ?? null
 
-/** Guarda excepciones + estado del formulario. Cambiar las marcas invalida el plan previo. */
-function guardar(d, sesion, { marcas = {}, fecha, obra = null, refs = [], postId }) {
+/**
+ * Guarda excepciones + estado del formulario. Cambiar las marcas invalida el plan previo.
+ *
+ * `ultima` es la ref de la última persona marcada, y vive en la SESIÓN como todo lo demás: es lo
+ * que «Aplicar lo mismo a…» copia. No viaja por el cliente ni un metro — si viajara, el context de
+ * la acción podría decir «copiá lo de fulano» sobre una novedad que nadie cargó.
+ */
+function guardar(d, sesion, { marcas = {}, fecha, obra = null, refs = [], postId, ultima }) {
+  const previo = metaDe(sesion)
   return d.sesiones.guardarMarcas(sesion.id, {
     ...marcas,
-    [META]: { fecha, obra, refs, post_id: postId ?? postDe(sesion) ?? null },
+    [META]: {
+      fecha, obra, refs, post_id: postId ?? postDe(sesion) ?? null,
+      // `undefined` conserva lo que había; `null` lo borra a propósito (cambio de obra o de fecha).
+      ultima: ultima === undefined ? (previo.ultima ?? null) : ultima,
+    },
   })
 }
 
-function renderCuadrilla(d, c, { marcas, aviso = null, confirmacion = null, sinAcciones = false }) {
+function renderCuadrilla(d, c, { marcas, aviso = null, confirmacion = null, sinAcciones = false, ultima = null }) {
   return mensajeCuadrilla({
     fecha: c.fecha, obra: c.obra, jornada: c.jornada, personal: c.personal, marcas,
     resumen: resumirCuadrilla({ personal: c.personal, marcas, jornada: c.jornada }),
-    url: d.url, aviso, confirmacion, sinAcciones,
+    url: d.url, aviso, confirmacion, sinAcciones, ultima,
   })
 }
 
@@ -327,7 +351,7 @@ async function irAInicial(d, p, sesion, fecha) {
   const ctx = await contextoDelDia(d, { fecha: v.fecha })
   const obras = ctx.ok ? ctx.obras : []
   await d.sesiones.guardarContexto(sesion.id, { fechaOperativa: v.fecha })
-  await guardar(d, sesion, { marcas: {}, fecha: v.fecha, obra: null, refs: [], postId: p.postId })
+  await guardar(d, sesion, { marcas: {}, fecha: v.fecha, obra: null, refs: [], postId: p.postId, ultima: null })
   return actualizarCon(d, mensajeInicial({
     fecha: v.fecha, obras, jornada: ctx.ok ? ctx.jornada : null, url: d.url,
     aviso: ctx.ok ? null : ctx.texto,
@@ -356,7 +380,7 @@ async function pasoObra(d, p, sesion) {
   // hacía en silencio: elegir la obra equivocada y corregir es el error típico, y el jefe
   // rehacía el trabajo sin enterarse de que lo había perdido. Sólo se avisa si había algo.
   const habia = Object.keys(marcasDe(sesion)).length > 0 && (metaDe(sesion).obra ?? null) !== clave
-  await guardar(d, sesion, { marcas: {}, fecha: v.fecha, obra: clave, refs: refsDe(c), postId: p.postId })
+  await guardar(d, sesion, { marcas: {}, fecha: v.fecha, obra: clave, refs: refsDe(c), postId: p.postId, ultima: null })
   await d.auditar(EVENTO.SHEET_READ, {
     status: 'read', origen: 'mattermost', fecha_operativa: v.fecha, sheet_name: c.ctx.pestana,
     obra_normalizada: clave, mattermost_user_id: p.userId, cantidad_trabajadores: c.personal.length,
@@ -390,7 +414,51 @@ async function pasoExcepcion(d, p, sesion) {
     estado: { sesion_id: sesion.id, ref: persona.ref, tipo },
   }))
   if (!abierto) return efimero(TEXTO.SIN_DIALOGO)
-  return actualizarCon(d, renderCuadrilla(d, c, { marcas }))
+  return actualizarCon(d, renderCuadrilla(d, c, { marcas, ultima: meta.ultima ?? null }))
+}
+
+/**
+ * APLICAR LO MISMO A OTRA PERSONA. Un click, sin diálogo.
+ *
+ * Lo que se copia sale de la SESIÓN (`marcas[ultima]`), no del pedido: el cliente elige a QUIÉN,
+ * nunca QUÉ. Y no se copia a ciegas — la novedad se vuelve a validar contra el catálogo con la
+ * jornada de la fecha, igual que si se hubiera cargado por el formulario, porque copiar no puede
+ * ser una puerta trasera que se saltee la validación que el diálogo sí hace.
+ */
+async function pasoRepetir(d, p, sesion) {
+  const meta = metaDe(sesion)
+  if (!meta.obra) return efimero(TEXTO.ELEGI_OBRA)
+  const origenRef = meta.ultima ?? null
+  const destinoRef = String(p.seleccion ?? '').trim()
+  if (!origenRef || !destinoRef) return efimero(TEXTO.SIN_NOVEDAD_QUE_COPIAR)
+  if (origenRef === destinoRef) return efimero(TEXTO.SIN_NOVEDAD_QUE_COPIAR)
+
+  const c = await leerCuadrilla(d, { fecha: meta.fecha, claveObra: meta.obra })
+  if (!c.ok) return efimero(c.texto)
+  const marcas = marcasDe(sesion)
+  const novedad = marcas[origenRef]
+  if (!novedad) return efimero(TEXTO.SIN_NOVEDAD_QUE_COPIAR)
+
+  const destino = c.personal.find((x) => x.ref === destinoRef)
+  if (!destino) return efimero(TEXTO.PERSONA_DESCONOCIDA)
+  if (destino.bloqueado) return efimero(`${destino.nombre}: ${destino.bloqueado}.`)
+
+  const v = d.motivos.validarNovedad({
+    presente: novedad.presente === true,
+    horas: novedad.horas,
+    jornada: jornadaNumero(c.jornada),
+    motivo: novedad.motivo ?? null,
+    aclaracion: novedad.aclaracion ?? null,
+    // La obra de destino NO se copia: «estuvo en otra obra» es de esa persona, no del grupo.
+    obra_realizada: null,
+  })
+  if (!v.ok) return efimero(`${destino.nombre}: ${v.error}`)
+
+  const nuevas = { ...marcas, [destinoRef]: { ...novedad, obra_realizada: null } }
+  // `ultima` NO se mueve al destino a propósito: así se puede seguir aplicando LA MISMA novedad a
+  // una tercera y una cuarta persona sin que el origen se vaya corriendo por la lista.
+  await guardar(d, sesion, { marcas: nuevas, fecha: c.fecha, obra: meta.obra, refs: refsDe(c), postId: p.postId })
+  return actualizarCon(d, renderCuadrilla(d, c, { marcas: nuevas, ultima: origenRef }))
 }
 
 /** El diálogo de excepción, ya enviado: se valida, se guarda y se re-renderiza el post. */
@@ -409,8 +477,9 @@ async function pasoAplicar(d, p, sesion) {
   })
   if (!n.ok) return { status: 200, body: errorDeFormulario(n) }
   const marcas = { ...marcasDe(sesion), [ref]: n.novedad }
-  await guardar(d, sesion, { marcas, fecha: c.fecha, obra: meta.obra, refs: refsDe(c), postId: p.postId })
-  await actualizarPost(d, postDe(sesion), renderCuadrilla(d, c, { marcas }))
+  // Ésta pasa a ser la novedad repetible: es la última que una persona cargó a mano.
+  await guardar(d, sesion, { marcas, fecha: c.fecha, obra: meta.obra, refs: refsDe(c), postId: p.postId, ultima: ref })
+  await actualizarPost(d, postDe(sesion), renderCuadrilla(d, c, { marcas, ultima: ref }))
   return { status: 200, body: {} }
 }
 
@@ -427,19 +496,20 @@ async function pasoRegistrar(d, p, sesion) {
   const r = await planDe(d, { fecha: v.fecha, claveObra: meta.obra, marcas, actor })
   if (!r.ok) {
     return r.cuadrilla
-      ? actualizarCon(d, renderCuadrilla(d, r.cuadrilla, { marcas, aviso: r.texto }), { ephemeral_text: r.texto })
+      ? actualizarCon(d, renderCuadrilla(d, r.cuadrilla, { marcas, aviso: r.texto, ultima: meta.ultima ?? null }), { ephemeral_text: r.texto })
       : efimero(r.texto)
   }
   const c = r.cuadrilla
   if (cambio(meta.refs, refsDe(c))) {
     await guardar(d, sesion, { marcas, fecha: v.fecha, obra: meta.obra, refs: refsDe(c), postId: p.postId })
-    return actualizarCon(d, renderCuadrilla(d, c, { marcas, aviso: TEXTO.CUADRILLA_CAMBIO }),
+    return actualizarCon(d, renderCuadrilla(d, c, { marcas, aviso: TEXTO.CUADRILLA_CAMBIO, ultima: meta.ultima ?? null }),
       { ephemeral_text: TEXTO.CUADRILLA_CAMBIO })
   }
   const razones = razonesDeConfirmacion(r.plan)
   if (razones.length && !p.confirmar) {
     return actualizarCon(d, renderCuadrilla(d, c, {
-      marcas, confirmacion: { texto: razones.join(' ') }, aviso: `${razones.join(' ')} Apretá «Registrar igual» si querés seguir.`,
+      marcas, confirmacion: { texto: razones.join(' ') }, ultima: meta.ultima ?? null,
+      aviso: `${razones.join(' ')} Apretá «Registrar igual» si querés seguir.`,
     }))
   }
   return confirmarYEscribir(d, p, sesion, { plan: r.plan, cuadrilla: c, novedades: r.novedades, marcas })

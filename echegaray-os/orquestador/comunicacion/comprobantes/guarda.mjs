@@ -7,15 +7,24 @@
 //   1. CANAL. Sólo desde el canal oficial del área `compras`, y ese canal NO está escrito acá: sale
 //      de `comunicacion.canales_area`, el mismo binding que usa el Director. Un id de Mattermost
 //      hardcodeado sería configuración escondida en git que nadie puede cambiar sin desplegar.
-//   2. PERMISO. Hace falta un grant activo en `comunicacion.permisos_skill`. **Siempre estricto**,
-//      sin importar `ORQ_ASISTENCIA_PERMISOS`: la asistencia puede permitirse el modo abierto —el
-//      costo de que un jefe no pueda cargar es mayor que el de que cargue quien no debía— pero acá
-//      el efecto es plata y la asimetría se da vuelta.
+//   2. PERMISO. Hace falta un grant activo en `comunicacion.permisos_skill` **o ser miembro del
+//      canal oficial de compras**. **Siempre estricto**, sin importar `ORQ_ASISTENCIA_PERMISOS`:
+//      la asistencia puede permitirse el modo abierto —el costo de que un jefe no pueda cargar es
+//      mayor que el de que cargue quien no debía— pero acá el efecto es plata y la asimetría se da
+//      vuelta. Que el modo abierto no llegue nunca hasta acá lo garantiza `permiso-de-canal.mjs`,
+//      que no consulta `modoVigente()`.
 //
-// ESTAR EN EL CANAL NO HABILITA. Son dos preguntas distintas: "¿desde dónde?" y "¿quién?".
+// LA MEMBRESÍA COMO SEGUNDA VÍA es del 03/08 y es el pedido textual del dueño: «todos los q esten
+// ese canal tienen q estar habilitados a cargar». SIGUEN SIENDO DOS PREGUNTAS —«¿desde dónde?» y
+// «¿quién?»— y las dos se hacen: el canal desde el que llega el pedido se valida contra el binding
+// (paso 1) y recién ese canal, ya confirmado como oficial, es contra el que se pregunta la
+// membresía. Un canal que alguien se arme por su cuenta muere en el paso 1 y no habilita nada.
 //
-// FAIL-CLOSED SIN EXCEPCIONES. Si la base no responde, se deniega. Un permiso que se afloja cuando
-// se cae Postgres no es un permiso; y del otro lado hay una planilla con la plata de la empresa.
+// FAIL-CLOSED SIN EXCEPCIONES. Si la base no responde, o si Mattermost no contesta si la persona
+// está en el canal, se deniega. Un permiso que se afloja cuando se cae Postgres no es un permiso;
+// y del otro lado hay una planilla con la plata de la empresa.
+
+import { puedeOperar, MOTIVO as MOTIVO_PERMISO } from '../../lib/permiso-de-canal.mjs'
 
 /** Área canónica dueña del gasto de compras (`public.area_canonica`). */
 export const AREA_COMPRAS = 'compras'
@@ -62,7 +71,7 @@ const niega = (motivo, detalle, texto) => ({ ok: false, motivo, detalle, texto }
  * @param {string} [o.plataforma='mattermost']
  * @returns {Promise<{ok:true, canal:{id,nombre,area}}|{ok:false, motivo, detalle, texto}>}
  */
-export async function puedeCargarComprobantes({ port, actor = {}, channelId, plataforma = 'mattermost' } = {}) {
+export async function puedeCargarComprobantes({ port, actor = {}, channelId, plataforma = 'mattermost', mattermost } = {}) {
   const canal = txt(channelId)
   if (!canal) return niega(RECHAZO.CANAL, DETALLE.SIN_CANAL, TEXTO.CANAL_NO_VERIFICABLE)
 
@@ -76,10 +85,15 @@ export async function puedeCargarComprobantes({ port, actor = {}, channelId, pla
   const identidad = txt(actor.plataforma_user_id) ?? txt(actor.plataformaUserId) ?? txt(actor.user_id)
   if (!identidad) return niega(RECHAZO.SIN_IDENTIDAD, DETALLE.SIN_IDENTIDAD, TEXTO.SIN_IDENTIDAD)
 
-  const permiso = await permisoEstricto(port, { plataforma, plataformaUserId: identidad })
+  const permiso = await permisoEstricto(port, {
+    plataforma, plataformaUserId: identidad, canalOficial: canal, mattermost,
+  })
   if (!permiso.ok) return permiso
 
-  return { ok: true, canal: { id: canal, nombre: oficial.nombre, area: AREA_COMPRAS }, display: permiso.display ?? null }
+  return {
+    ok: true, canal: { id: canal, nombre: oficial.nombre, area: AREA_COMPRAS },
+    display: permiso.display ?? null, via: permiso.via ?? null,
+  }
 }
 
 /** ¿Este canal está atado al área `compras` y activo? Es DATO: se cambia sin desplegar. */
@@ -100,19 +114,20 @@ async function canalOficial(port, { channelId, plataforma }) {
 }
 
 /**
- * Grant explícito, siempre. No consulta `modoVigente()` a propósito: el modo abierto es una decisión
- * tomada para la asistencia, y heredarla acá convertiría una decisión sobre horas trabajadas en una
- * decisión sobre la caja de la empresa sin que nadie la tomara.
+ * Grant explícito O membresía del canal oficial, siempre estricto. La lógica no está acá: está en
+ * `lib/permiso-de-canal.mjs`, compartida con la asistencia — el dueño pidió lo mismo para las dos
+ * y dos copias de la misma regla se separan a la primera corrección.
+ *
+ * No consulta `modoVigente()` a propósito: el modo abierto es una decisión tomada para la
+ * asistencia, y heredarla acá convertiría una decisión sobre horas trabajadas en una decisión sobre
+ * la caja de la empresa sin que nadie la tomara. `puedeOperar` tampoco lo consulta.
  */
-async function permisoEstricto(port, { plataforma, plataformaUserId }) {
-  try {
-    const { rows } = await port.query(
-      `select display from comunicacion.permisos_skill
-        where plataforma = $1 and plataforma_user_id = $2 and permiso = $3 and activo limit 1`,
-      [plataforma, plataformaUserId, PERMISO_COMPROBANTES])
-    if (!rows.length) return niega(RECHAZO.PERMISO, DETALLE.SIN_PERMISO, TEXTO.SIN_PERMISO)
-    return { ok: true, display: rows[0].display ?? null }
-  } catch {
-    return niega(RECHAZO.PERMISO, DETALLE.PERMISO_NO_VERIFICABLE, TEXTO.PERMISO_NO_VERIFICABLE)
-  }
+async function permisoEstricto(port, { plataforma, plataformaUserId, canalOficial, mattermost }) {
+  const r = await puedeOperar({
+    port, plataforma, plataformaUserId, permiso: PERMISO_COMPROBANTES, canalOficial, mattermost,
+  })
+  if (r.ok) return { ok: true, display: r.display ?? null, via: r.via }
+  return r.motivo === MOTIVO_PERMISO.NO_VERIFICABLE
+    ? niega(RECHAZO.PERMISO, DETALLE.PERMISO_NO_VERIFICABLE, TEXTO.PERMISO_NO_VERIFICABLE)
+    : niega(RECHAZO.PERMISO, DETALLE.SIN_PERMISO, TEXTO.SIN_PERMISO)
 }

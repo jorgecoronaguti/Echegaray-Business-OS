@@ -5,16 +5,24 @@
 // tabla `comunicacion.permisos_skill` vacía NO bloquea nada — ni se consulta.
 // Lo único no negociable es la identidad real: todo queda auditado con ella.
 //
-// MODO ESTRICTO (`ORQ_ASISTENCIA_PERMISOS=estricto`): sólo opera quien tenga un grant
-// activo en `comunicacion.permisos_skill`. El "quiénes" es CONFIGURACIÓN, no código: se
-// otorga con el script `asistencia-permiso.mjs` y se revoca en un segundo sin desplegar.
-// Ahí sí es fail-closed: sin fila activa no se ejecuta, y si la base no responde tampoco
-// — un permiso que se relaja cuando la base se cae no es un permiso.
+// MODO ESTRICTO (`ORQ_ASISTENCIA_PERMISOS=estricto`, que es lo que corre hoy en producción):
+// opera quien tenga un grant activo en `comunicacion.permisos_skill` **o quien sea miembro del
+// canal oficial del área**. El "quiénes" es CONFIGURACIÓN, no código: se otorga con el script
+// `asistencia-permiso.mjs` —o agregando a la persona al canal— y se revoca en un segundo sin
+// desplegar. Ahí sí es fail-closed: sin ninguna de las dos vías no se ejecuta, y si no se pudo
+// preguntar tampoco — un permiso que se relaja cuando la base o Mattermost se caen no es un
+// permiso. Las dos vías viven en `lib/permiso-de-canal.mjs`, compartidas con comprobantes.
 //
 // La infraestructura del modo estricto queda escrita y probada a propósito: endurecer
 // es cambiar una variable de entorno, no volver a construir esto.
 
+import { puedeOperar, VIA as VIA_PERMISO, MOTIVO as MOTIVO_PERMISO } from './permiso-de-canal.mjs'
+
 export const PERMISO_ASISTENCIA_WRITE = 'personal.asistencia.write'
+
+/** Por dónde entró el permiso. Se audita: sirve para saber quién opera por membresía y quién por
+ *  grant, que es la diferencia entre «lo agregaron al canal» y «Dirección lo habilitó». */
+export const VIA = Object.freeze({ ...VIA_PERMISO, MODO_ABIERTO: 'modo_abierto' })
 
 export const DENEGADO = Object.freeze({
   SIN_IDENTIDAD: 'sin_identidad',
@@ -58,28 +66,35 @@ export function modoVigente() {
  * @param {{query:Function}} port  pool del OS (sólo se usa en modo estricto)
  * @returns {Promise<{ok:boolean, motivo?:string, modo:string, display?:string|null}>}
  */
-export async function tienePermiso(port, { plataforma = 'mattermost', plataformaUserId, permiso = PERMISO_ASISTENCIA_WRITE } = {}) {
+export async function tienePermiso(port, {
+  plataforma = 'mattermost', plataformaUserId, permiso = PERMISO_ASISTENCIA_WRITE,
+  canalOficial = null, mattermost = undefined, log = null,
+} = {}) {
   const modo = modoVigente()
   if (!plataformaUserId) return { ok: false, motivo: DENEGADO.SIN_IDENTIDAD, modo }
-  if (modo === MODO.ABIERTO) return { ok: true, modo, display: null }
-  return permisoEstricto(port, { plataforma, plataformaUserId, permiso, modo })
+  if (modo === MODO.ABIERTO) return { ok: true, modo, display: null, via: VIA.MODO_ABIERTO }
+  return permisoEstricto(port, { plataforma, plataformaUserId, permiso, modo, canalOficial, mattermost, log })
 }
 
-/** Verificación por grant explícito. Fail-closed, incluso si la base no responde. */
-async function permisoEstricto(port, { plataforma, plataformaUserId, permiso, modo }) {
-  try {
-    const { rows } = await port.query(
-      `select display from comunicacion.permisos_skill
-        where plataforma = $1 and plataforma_user_id = $2 and permiso = $3 and activo
-        limit 1`,
-      [plataforma, plataformaUserId, permiso],
-    )
-    if (!rows.length) return { ok: false, motivo: DENEGADO.SIN_PERMISO, modo }
-    return { ok: true, display: rows[0].display ?? null, modo }
-  } catch (e) {
-    // Fail-closed explícito: se registra el motivo, no se concede.
-    return { ok: false, motivo: DENEGADO.ERROR_VERIFICANDO, modo, error: String(e?.message ?? e).slice(0, 200) }
-  }
+/**
+ * Modo estricto: grant explícito O membresía del canal oficial. Fail-closed en las dos vías.
+ *
+ * LA SEGUNDA VÍA ES DEL 03/08 y responde al pedido textual del dueño: «que las personas agregadas
+ * al canal todas puedan cargar». Hasta ese día, sumar a alguien al canal de Asistencia no lo
+ * habilitaba: había que correr `scripts/asistencia-permiso.mjs` aparte, y en la práctica eso
+ * significaba que el jefe de obra nuevo veía el formulario y recibía «no tenés habilitada la carga».
+ *
+ * La lógica no vive acá: vive en `lib/permiso-de-canal.mjs`, compartida con la guarda de
+ * comprobantes, que tiene el mismo pedido. Este archivo sólo traduce sus motivos a los suyos.
+ */
+async function permisoEstricto(port, { plataforma, plataformaUserId, permiso, modo, canalOficial, mattermost, log }) {
+  const r = await puedeOperar({ port, plataforma, plataformaUserId, permiso, canalOficial, mattermost, log })
+  if (r.ok) return { ok: true, display: r.display ?? null, modo, via: r.via }
+  return r.motivo === MOTIVO_PERMISO.NO_VERIFICABLE
+    // El detalle viene ya recortado por la lib: la traza no puede llevarse un mensaje entero de
+    // driver, que es de donde salen las filtraciones que nadie mira hasta que se leen.
+    ? { ok: false, motivo: DENEGADO.ERROR_VERIFICANDO, modo, error: r.error ?? '' }
+    : { ok: false, motivo: DENEGADO.SIN_PERMISO, modo }
 }
 
 /** Otorga (o reactiva) un permiso. Idempotente por (plataforma, user, permiso). */

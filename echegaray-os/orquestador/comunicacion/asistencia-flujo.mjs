@@ -21,7 +21,7 @@ import {
 } from '../lib/tools/jornales-asistencia.mjs'
 import { tienePermiso, PERMISO_ASISTENCIA_WRITE } from '../lib/asistencia-permisos.mjs'
 import { crearAuditor, EVENTO, ORIGEN, payloadConfirmacion, payloadRechazo, sanitizarError } from '../lib/asistencia-auditoria.mjs'
-import { puedeCargar } from './asistencia-guarda.mjs'
+import { puedeCargar, canalOficialDeAsistencia } from './asistencia-guarda.mjs'
 import { ESTADO, normalizarHoras } from '../lib/horas-extra.mjs'
 import { responderConsulta, renderConsulta } from '../lib/asistencia-consultas.mjs'
 import { SesionesPostgres, ESTADO_SESION, RECHAZO } from './asistencia-sesion.mjs'
@@ -49,11 +49,17 @@ const fechaIso = (s) => (s?.fecha_operativa instanceof Date
  */
 export async function manejarAsistencia(o = {}) {
   const { port, google, actor, texto, correlationId, ahora = new Date() } = o
+  // El canal SÓLO se usa como segunda vía del permiso DESPUÉS de que la guarda lo haya validado
+  // contra el binding (ver más abajo): hasta entonces es apenas lo que dice el pedido. Por eso se
+  // arma vacío y se completa recién con el veredicto de la guarda.
+  let canalOficial = null
   const d = {
     google,
     actor,
     sesiones: o.sesiones ?? new SesionesPostgres(port),
-    permisos: o.permisos ?? ((a) => tienePermiso(port, { plataformaUserId: a, permiso: PERMISO_ASISTENCIA_WRITE })),
+    permisos: o.permisos ?? ((a) => tienePermiso(port, {
+      plataformaUserId: a, permiso: PERMISO_ASISTENCIA_WRITE, canalOficial,
+    })),
     auditar: o.auditar ?? crearAuditor(port, { correlationId }),
   }
   const hoy = ui.fechaOperativaSanJuan(ahora)
@@ -76,6 +82,9 @@ export async function manejarAsistencia(o = {}) {
       }))
       return resp(permitido.texto, 'denegado')
     }
+    // Recién ACÁ el canal está confirmado como el oficial del área: desde este punto sirve para
+    // decidir el permiso por membresía.
+    canalOficial = permitido.canal?.id ?? null
   }
 
   const permiso = await d.permisos(actor?.plataforma_user_id)
@@ -389,6 +398,11 @@ async function fallaEscritura(d, { resultado, base, sesion, plan }) {
   // La escritura no entró: se cierra como FALLIDA, no como confirmada. Si quedara
   // 'confirmada', la clave de idempotencia seguiría tomada y el reintento del jefe recibiría
   // "esa carga ya estaba registrada" con las celdas de JORNALES vacías — para siempre.
+  if (resultado.motivo === MOTIVO.ESCRITURA_CONGELADA) {
+    await d.sesiones.cerrar(sesion.id, ESTADO_SESION.FALLIDA)
+    await d.auditar(EVENTO.FAILED, payloadConfirmacion({ ...base, resultado, status: 'escritura_congelada' }))
+    return resp(ui.renderCongelado(), 'congelada')
+  }
   if (resultado.motivo === MOTIVO.PESTANA_PROTEGIDA) {
     await d.sesiones.cerrar(sesion.id, ESTADO_SESION.FALLIDA)
     await d.auditar(EVENTO.FAILED, payloadConfirmacion({ ...base, resultado, status: 'pestana_protegida' }))
@@ -419,7 +433,14 @@ async function cancelar(d) {
  */
 export async function consultarAsistencia(o = {}) {
   const { port, google, actor, consulta, correlationId, ahora = new Date() } = o
-  const permisos = o.permisos ?? ((a) => tienePermiso(port, { plataformaUserId: a, permiso: PERMISO_ASISTENCIA_WRITE }))
+  // El canal cuenta como permiso sólo si es el oficial, y eso lo dice el binding — nunca el pedido.
+  // Sin `port` (tests con dobles) queda en null y sólo vale el grant.
+  const canalOficial = port
+    ? await canalOficialDeAsistencia(port, { channelId: actor?.channel_id }).catch(() => null)
+    : null
+  const permisos = o.permisos ?? ((a) => tienePermiso(port, {
+    plataformaUserId: a, permiso: PERMISO_ASISTENCIA_WRITE, canalOficial,
+  }))
   const auditar = o.auditar ?? crearAuditor(port, { correlationId })
 
   const permiso = await permisos(actor?.plataforma_user_id)

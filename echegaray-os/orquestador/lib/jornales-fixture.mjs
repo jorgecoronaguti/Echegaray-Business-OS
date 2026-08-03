@@ -185,7 +185,7 @@ const idxCol = (letra) => {
  * un token vencido). Sin este seam no se podía probar qué pasa DESPUÉS de confirmar y
  * ANTES de que la celda entre: exactamente donde vivía el bloqueo de idempotencia.
  */
-export function fakeGoogleJornales({ tabs = PESTANAS, protegido = false, alLeer, alEscribir } = {}) {
+export function fakeGoogleJornales({ tabs = PESTANAS, protegido = false, congelado = false, alLeer, alEscribir } = {}) {
   const grid = gridJornales()
   const escrituras = []
   let lecturas = 0
@@ -204,6 +204,10 @@ export function fakeGoogleJornales({ tabs = PESTANAS, protegido = false, alLeer,
       // aplica la firma de pestaña) es parte del contrato del llamador, no un detalle interno.
       escrituras.push({ id, data, opts })
       if (alEscribir) alEscribir(data)
+      // DOS NEGATIVAS DISTINTAS, como las devuelve el cliente real: el candado de pestaña trae
+      // sólo `protegido`, y el freno de mano general de Sheets trae además `congelado`. Antes acá
+      // había una sola y por eso el mensaje al jefe de obra confundía las dos causas.
+      if (congelado) return { protegido: true, congelado: true, bloqueadas: ['Obreros 26'], motivo: 'freno de mano (simulado)' }
       if (protegido) return { protegido: true, bloqueadas: ['Obreros 26'] }
       for (const d of data) {
         const m = /!([A-Z]+)(\d+)$/.exec(d.range)

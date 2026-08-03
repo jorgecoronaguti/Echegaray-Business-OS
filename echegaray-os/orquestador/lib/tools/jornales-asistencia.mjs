@@ -52,6 +52,13 @@ export const MOTIVO = Object.freeze({
   OBRA_NO_COINCIDE: 'obra_no_coincide',
   CONFLICTO_CONCURRENCIA: 'conflicto_concurrencia',
   PESTANA_PROTEGIDA: 'pestana_protegida',
+  // EL FRENO DE MANO GENERAL (`~/.config/echegaray-orq/SHEETS-CONGELADOS`) NO ES UN CANDADO DE
+  // PESTAÑA, y hasta el 03/08 se reportaban igual. Ese día, en producción, dos cargas de Rodrigo
+  // —una del 31/07 y otra del 03/08— murieron con `pestana_protegida` y el jefe leyó que la
+  // pestaña estaba "tomada por alguien que la está editando". No la estaba: el dueño había
+  // congelado la escritura de TODOS los Sheets media hora antes. Una causa equivocada manda a
+  // buscar el problema al lugar equivocado — y de paso hace parecer roto un módulo que funcionaba.
+  ESCRITURA_CONGELADA: 'escritura_congelada',
   VERIFICACION_FALLIDA: 'verificacion_fallida',
 })
 
@@ -444,10 +451,16 @@ export async function registrarAsistencia(google, { plan, confirmarSobrescritura
   // celda destino y se comparó su huella; si algo cambió, no se escribe NADA. El candado explícito del
   // dueño sigue mandando: si él toma la pestaña, esto se corta igual.
   const res = await google.batchUpdateValues(plan.spreadsheet_id, data, { compartida: true })
-  // La guarda central del cliente puede negar la escritura (pestaña candada por el
-  // dueño o editada a mano). Eso NO es éxito: se informa tal cual.
+  // La guarda central del cliente puede negar la escritura. Eso NO es éxito: se informa tal cual,
+  // y se distingue POR QUÉ — el freno de mano general viene marcado con `congelado` y se lo
+  // arrastra hasta el mensaje, en vez de disfrazarlo de candado de pestaña.
   if (res?.protegido) {
-    return { ok: false, motivo: MOTIVO.PESTANA_PROTEGIDA, bloqueadas: res.bloqueadas ?? null, escritas: 0 }
+    return {
+      ok: false,
+      motivo: res.congelado ? MOTIVO.ESCRITURA_CONGELADA : MOTIVO.PESTANA_PROTEGIDA,
+      bloqueadas: res.bloqueadas ?? null,
+      escritas: 0,
+    }
   }
 
   // 4) Verificación por relectura: lo persistido tiene que ser lo enviado.

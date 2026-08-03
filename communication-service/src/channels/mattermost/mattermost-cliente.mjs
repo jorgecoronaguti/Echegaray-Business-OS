@@ -141,6 +141,30 @@ export class MattermostCliente {
   }
 
   /**
+   * ¿Este usuario es miembro de este canal?
+   *
+   * Es la pregunta que convierte "estar en el canal" en una habilitación. El bot NO es admin y
+   * aun así puede contestarla para los canales de los que él mismo es miembro: verificado en
+   * vivo el 03/08 contra el Mattermost de producción — 200 para los cinco miembros del canal de
+   * Asistencia, 404 para quien no está.
+   *
+   * DEVUELVE UN BOOLEANO SÓLO CUANDO LA RESPUESTA ES CONCLUYENTE. El 404 de Mattermost significa
+   * "no es miembro" y es una respuesta; un 500, un timeout o un token vencido NO lo son, y esos
+   * TIRAN a propósito: quien llama tiene que poder distinguir "no está" de "no pude averiguarlo"
+   * para poder fallar cerrado. Devolver `false` ante un error de red convertiría una caída del
+   * servidor en una denegación silenciosa — o, con la lógica invertida, en un permiso regalado.
+   */
+  async miembroDeCanal({ channel_id, user_id }) {
+    try {
+      await this._req('GET', `/channels/${encodeURIComponent(channel_id)}/members/${encodeURIComponent(user_id)}`)
+      return true
+    } catch (e) {
+      if (e?.status === 404) return false
+      throw e
+    }
+  }
+
+  /**
    * Canal DIRECTO (1 a 1) entre dos usuarios. Idempotente en Mattermost: si el DM ya
    * existe devuelve el mismo canal. Hace falta para los skills cuya respuesta NO puede
    * salir en un canal donde hay más gente — asistencia del personal, por ejemplo.
@@ -186,8 +210,20 @@ export class FakeMattermost {
     this.reacciones = []
     this.dialogos = []
     this.archivos = new Map() // id → {name, mime_type, size, data}
+    // MEMBRESÍAS: canal → Set(user_id). VACÍO POR DEFECTO, y esa es la parte importante — el
+    // doble arranca negando, igual que el servidor real ante alguien que no está en el canal.
+    // Un doble que dijera que sí "para no molestar" haría pasar por bueno justo el permiso que
+    // este mapa existe para probar.
+    this.miembros = new Map()
     this._fallo = null // { veces, status } → falla las próximas N llamadas
     this._seq = 0
+  }
+
+  /** Alta de membresía para los tests: `fake.agregarAlCanal('canal', 'usuario')`. */
+  agregarAlCanal(channelId, userId) {
+    if (!this.miembros.has(channelId)) this.miembros.set(channelId, new Set())
+    this.miembros.get(channelId).add(userId)
+    return this
   }
 
   /** Programa que las próximas `veces` llamadas fallen con `status`. */
@@ -255,6 +291,12 @@ export class FakeMattermost {
   async canalPorNombre({ team_id, nombre }) {
     this._maybeFail('canalPorNombre')
     return { id: `canal_${nombre}`, team_id, name: nombre }
+  }
+
+  /** Misma semántica que el real: booleano si la respuesta es concluyente, y TIRA si no. */
+  async miembroDeCanal({ channel_id, user_id }) {
+    this._maybeFail('miembroDeCanal')
+    return this.miembros.get(channel_id)?.has(user_id) === true
   }
 
   async canalDirecto({ usuarioA, usuarioB }) {
