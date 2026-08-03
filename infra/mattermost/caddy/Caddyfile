@@ -62,6 +62,27 @@
 	# POR QUÉ EL PREFIJO /asistencia Y NO OTRO: Mattermost usa `/<nombre-del-equipo>/…` para su
 	# webapp. `asistencia` queda RESERVADO como nombre de equipo en este Mattermost — el canal
 	# se llama así, el equipo no, y no debe llamarse así.
+	# ── PANTALLA REMOTA DEL NAVEGADOR DE BALANZ ─────────────────────────────────────
+	#
+	# QUÉ PUBLICA:
+	#   GET /balanz?t=<token>     el escritorio de la VM, para iniciar sesión en el bróker a mano
+	#   GET /balanz/vendor/*      el cliente del escritorio (librería abierta, sin secretos)
+	#   WS  /balanz/ws?t=<token>  el puente hacia el escritorio
+	#
+	# Mismo camino que `/asistencia` y por el mismo motivo: socket unix, porque el firewall del host
+	# descarta lo que llega desde los bridges de Docker. Caddy sigue siendo lo único que mira a
+	# Internet, y el VNC del contenedor sólo existe en 127.0.0.1 de la VM.
+	#
+	# El WebSocket no necesita configuración especial: `reverse_proxy` de Caddy v2 hace el upgrade
+	# solo (igual que para Mattermost).
+	#
+	# El token va en `?t=` porque el enlace tiene que poder abrirse desde un click en el celular. Se
+	# borra del log de acceso más abajo, junto con el de asistencia: quien lo tenga entra.
+	@balanz path /balanz /balanz/*
+	handle @balanz {
+		reverse_proxy {$OS_BALANZ_UPSTREAM:unix//sockets/balanz.sock}
+	}
+
 	@asistencia path /asistencia /asistencia/*
 	handle @asistencia {
 		# X-Forwarded-For lo agrega `reverse_proxy` solo: el servidor lee de ahí la IP real

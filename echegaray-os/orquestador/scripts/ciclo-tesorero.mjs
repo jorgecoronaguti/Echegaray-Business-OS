@@ -8,15 +8,21 @@
 // NO depende de Claude Code, de una terminal ni de una conversación abierta. Toda la aritmética es
 // determinística: en una corrida normal este proceso hace CERO llamadas a la API de Anthropic.
 //
-// Balanz: si no hay una sesión de Chrome que reusar, el ciclo NO intenta entrar — publica
-// SESSION_REQUIRED y termina bien. Que falte el mercado no invalida el análisis de caja, que es la
-// mitad que más decide.
+// Balanz: el navegador vive en la VM (contenedor `echegaray-balanz`) y este ciclo lo levanta si
+// hace falta. Lo que NO hace nunca es iniciar sesión: si la sesión venció, publica el aviso con el
+// enlace a la pantalla remota y termina bien. Que falte el mercado no invalida el análisis de caja,
+// que es la mitad que más decide.
+//
+// No depende de la Mac del dueño, de un túnel SSH ni de ninguna terminal abierta.
 
 import { makeGoogleClient, WORKSPACE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { correrCiclo } from '../lib/tesoreria/ciclo.mjs'
 import { relevar } from '../lib/tesoreria/balanz-navegador.mjs'
+import { configRuntime, tomarCerrojo, soltarCerrojo } from '../lib/tesoreria/navegador-runtime.mjs'
+import { prepararNavegador } from '../lib/tesoreria/preparar-navegador.mjs'
+import { enlaceRemoto } from './balanz-runtime.mjs'
 import {
   abrirCorrida, cerrarCorrida, guardarPosicion, guardarVentanas, guardarInstrumentos,
   guardarRecomendaciones, guardarBloqueos, resumenAnterior, vencerPropuestas, politicaVigente,
@@ -37,9 +43,17 @@ async function hacerPublicador() {
   return async (texto) => { await cliente.crearPost({ channel_id: CANAL, message: texto }) }
 }
 
+const dormir = (ms) => new Promise((r) => setTimeout(r, ms))
+
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WORKSPACE_SCOPES })
   const publicar = await hacerPublicador()
+
+  // EL CERROJO DEL NAVEGADOR. Es distinto del lock de la base (ese evita dos corridas): éste le
+  // avisa al VIGÍA que hay una corrida en curso, para que no reinicie el navegador en mitad de un
+  // relevamiento. Una corrida interrumpida a la mitad no falla: devuelve medio mercado, que es peor.
+  const cfgNav = configRuntime()
+  await tomarCerrojo(cfgNav)
 
   // Las políticas viven en la base, no en el código: la reserva mínima es una decisión del dueño.
   // Se lee la FILA entera —no sólo el valor— porque el aprobador vive en la fila, y sin aprobador
@@ -58,7 +72,17 @@ async function main() {
   let r
   try {
     r = await correrCiclo(
-      { google, query: DRY ? null : query, relevar, publicar },
+      {
+        google, query: DRY ? null : query, relevar, publicar,
+        // EL NAVEGADOR ES DE LA CASA. Antes esto dependía del Chrome de la Mac del dueño y de un
+        // túnel SSH: si él cerraba la notebook, el agente se quedaba sin mercado y el aviso decía
+        // "no hay sesión", que era falso — no había navegador. Ahora el ciclo lo levanta si hace
+        // falta, espera a que abra, repone la pestaña si se perdió, y sólo pide una persona cuando
+        // lo único que falta es el login.
+        prepararNavegador: () => prepararNavegador(configRuntime(), { dormirImpl: dormir }),
+        // El enlace se genera SÓLO si se lo pide el ciclo, y sólo cuando la sesión venció.
+        enlaceRemoto: async () => enlaceRemoto().url,
+      },
       {
         filaReserva, filaRestringida, anterior, composicionAnterior: compAnterior,
         publicarSiempre: FORZAR, dias: 90,
@@ -95,4 +119,6 @@ async function main() {
 
 main()
   .catch((e) => { console.error('[tesorero] error:', e.message); process.exitCode = 1 })
-  .finally(() => closePool())
+  // El cerrojo se suelta SIEMPRE, incluso si la corrida explotó: si no, el vigía se queda creyendo
+  // que hay una corrida en curso y deja de supervisar hasta que el cerrojo vence solo.
+  .finally(async () => { await soltarCerrojo(configRuntime()).catch(() => {}); await closePool() })

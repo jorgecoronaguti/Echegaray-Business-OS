@@ -54,6 +54,10 @@ cp "$SRC_DIR"/echegaray-os-*.service "$SRC_DIR"/echegaray-os-*.timer "$UNIT_DIR/
 # incluyera dejaba el timer sin instalar y el agente sin correr nunca — el defecto
 # más silencioso posible, porque no falla nada, simplemente no pasa.
 cp "$SRC_DIR"/echegaray-tesorero.service "$SRC_DIR"/echegaray-tesorero.timer "$UNIT_DIR/"
+# Navegador dedicado de Balanz + pantalla remota + vigía. Mismo motivo que arriba: no comparten
+# prefijo con nada, y si el glob no los nombra el agente arranca sin navegador y avisa "no hay
+# sesión" para siempre.
+cp "$SRC_DIR"/echegaray-balanz-*.service "$SRC_DIR"/echegaray-balanz-*.timer "$UNIT_DIR/"
 echo "units copiadas a $UNIT_DIR"
 
 systemctl --user daemon-reload
@@ -70,5 +74,12 @@ systemctl --user enable --now echegaray-os-schedules.timer     # disparador de r
 # mínima aprobada por una persona y el extractor validado contra la pantalla real.
 # Habilitarlo antes haría que publique análisis NO_ACCIONABLE dos veces por día.
 #   systemctl --user enable --now echegaray-tesorero.timer
+#
+# El navegador de Balanz y su pantalla remota SÍ se habilitan: son infraestructura, no deciden nada
+# y no publican plata. Sin ellos el Tesorero no tiene dónde mirar el mercado. El vigía también, que
+# es lo que hace que un navegador caído se recupere solo en vez de esperar a la próxima corrida.
+systemctl --user enable --now echegaray-balanz-browser.service
+systemctl --user enable --now echegaray-balanz-remoto.service
+systemctl --user enable --now echegaray-balanz-vigia.timer
 echo "servicios habilitados y arrancados."
 systemctl --user --no-pager status echegaray-orq-worker.service | head -6 || true

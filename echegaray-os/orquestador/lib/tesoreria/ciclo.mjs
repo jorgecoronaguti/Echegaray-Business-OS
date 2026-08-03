@@ -33,6 +33,7 @@ import { generarRecomendaciones, recomendarAplicarADeuda } from './recomendacion
 import { validarLote } from './validar.mjs'
 import { formatoPropuesta, formatoAplicarADeuda, formatoSesionRequerida, esCambioMaterial } from './formato-mattermost.mjs'
 import { evaluarAccionabilidad } from './politicas.mjs'
+import { mensajeNecesitaAutenticacion, mensajeNavegadorRoto } from './preparar-navegador.mjs'
 
 /** Cuántas horas puede tener una observación de mercado antes de dejar de sostener una decisión. */
 export const HORAS_MERCADO_FRESCO = 6
@@ -255,7 +256,35 @@ export async function correrCiclo(deps = {}, opts = {}) {
       }
     }
 
-    // 7-10 · Mercado: sesión, relevamiento, normalización (SKILL 5).
+    // ── 7 · EL NAVEGADOR, ANTES DEL MERCADO ───────────────────────────────────
+    //
+    // Hasta acá el tramo de caja ya está hecho y es válido pase lo que pase con Balanz. Lo que sigue
+    // puede fallar de varias maneras distintas, y cada una pide algo distinto de una persona: una
+    // sesión vencida se arregla desde el celular en veinte segundos; un navegador caído, no. Mandar
+    // el mensaje equivocado manda al dueño a mirar una pantalla negra.
+    if (deps.prepararNavegador) {
+      const prep = await deps.prepararNavegador()
+      paso('navegador', prep.estado, prep.detalle)
+      if (!prep.listo) {
+        const esSesion = prep.estado === 'SESSION_REQUIRED'
+        // El enlace se pide SÓLO cuando hace falta: no se generan enlaces al escritorio "por las
+        // dudas", y si no se puede generar, el aviso sale igual diciendo que falta el secreto.
+        const enlace = esSesion && deps.enlaceRemoto ? await deps.enlaceRemoto().catch(() => null) : null
+        const texto = esSesion
+          ? mensajeNecesitaAutenticacion({ enlace, detalle: prep.detalle, ahora })
+          : mensajeNavegadorRoto({ detalle: prep.detalle, acciones: prep.acciones, ahora })
+        if (deps.publicar) await deps.publicar(texto)
+        return {
+          estado: esSesion ? 'session_required' : 'browser_error',
+          motivo: prep.detalle,
+          // La caja SE DEVUELVE IGUAL. Perder el análisis que ya estaba bien hecho porque el
+          // navegador no abrió es convertir una falla parcial en una falla total.
+          posicion, proyeccion, excedente, publicado: Boolean(deps.publicar), texto, traza,
+        }
+      }
+    }
+
+    // 8-10 · Mercado: sesión, relevamiento, normalización (SKILL 5).
     const relevar = deps.relevar
     let mercado = { estado: 'omitido', paginas: [], bloqueos: [] }
     if (relevar) mercado = await relevar({ rutas: opts.rutas ?? RUTAS_INFORMATIVAS })

@@ -1,8 +1,13 @@
 [Unit]
 Description=Echegaray OS — Tesorero Inversor IA: excedente de caja y oportunidades (solo lectura, 0 API)
 Documentation=file:///home/jorge/echegaray-os/app/echegaray-os/docs/tesoreria/RUNBOOK.md
-After=network-online.target
+After=network-online.target echegaray-balanz-browser.service
 Wants=network-online.target
+# `Wants`, NO `Requires`: si el navegador no está, el Tesorero tiene que correr IGUAL y publicar el
+# análisis de caja —que es la mitad que más decide— avisando que no pudo ver el mercado. Con
+# `Requires` una falla del navegador cancelaría la corrida entera y el dueño no recibiría nada, que
+# es exactamente el fallo silencioso que este agente viene evitando.
+Wants=echegaray-balanz-browser.service
 
 [Service]
 Type=oneshot
