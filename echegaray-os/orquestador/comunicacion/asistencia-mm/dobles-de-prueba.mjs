@@ -53,14 +53,33 @@ export function jornadaConfigDoble(respuesta = { horas: null, origen: 'sin_confi
   return async () => respuesta
 }
 
-/** Cliente de Mattermost: registra lo que se le pidió, no habla con nadie. */
-export function mattermostDoble({ abre = true, actualiza = true } = {}) {
+/** Cliente de Mattermost: registra lo que se le pidió, no habla con nadie.
+ *  `posts` son las ACTUALIZACIONES y `creados` los posts nuevos: son dos operaciones
+ *  distintas y mezclarlas en una lista haría pasar una por la otra. */
+export function mattermostDoble({ abre = true, actualiza = true, crea = true } = {}) {
   const dialogos = []
   const posts = []
+  const creados = []
   return {
     dialogos,
     posts,
+    creados,
     async abrirDialogo(d) { dialogos.push(d); return { ok: abre } },
+    // EXIGE `channel_id` y un `message` string, igual que el cliente real: sin canal
+    // Mattermost devuelve 400, y `message` es el texto de respaldo que ven las
+    // notificaciones y los clientes que no dibujan attachments.
+    async crearPost(p) {
+      if (!crea) {
+        const e = new Error('fallo simulado al crear el post')
+        e.status = 403
+        throw e
+      }
+      if (!p?.channel_id) throw new Error('crearPost: falta `channel_id` (así se llama en el cliente real)')
+      if (typeof p.message !== 'string') throw new Error('crearPost: `message` tiene que ser un string')
+      const post = { id: `post-nuevo-${creados.length + 1}`, ...p, props: p.props ?? {} }
+      creados.push(post)
+      return post
+    },
     // EXIGE `id`, igual que el cliente real. Este doble aceptaba cualquier forma, y por eso
     // nadie vio que el ruteador mandaba `postId`: en producción salía `PUT /posts/undefined`.
     // Un doble más permisivo que el original no prueba la frontera: la tapa.

@@ -239,6 +239,35 @@ Si están distintas, el mensaje se publica y **ningún botón responde**. Ver §
 El rechazo queda auditado como cualquier otro: familia `token`, con `error_code`
 `secreto_sin_configurar` o `secreto_invalido`. Al usuario no se le dice cuál de los dos.
 
+### La tarjeta del slash command la publica el BOT, nunca `in_channel`
+
+**Hallazgo del 03/08/2026, medido en producción.** El servicio logueaba `no se pudo actualizar
+el post` y Mattermost contestaba `PUT /posts/{id} → 403: You do not have the appropriate
+permissions`, dos veces seguidas, con el jefe cargando.
+
+La causa no estaba en el pedido: estaba en **de quién es el post**. `/asistencia` respondía con
+`response_type: 'in_channel'`, y un slash command respondido así crea el post **a nombre de
+quien tipeó el comando**, no del bot. El bot (`os`, `is_bot: true`, rol `system_user`) no tiene
+`edit_others_posts`, así que **ningún** refresco por API sobre esa tarjeta podía funcionar —
+nunca, no de a ratos.
+
+Por qué no se veía en los botones: un click se refresca devolviendo `{update: …}` en el cuerpo
+de la respuesta, y eso Mattermost lo aplica sin mirar quién es el dueño del post. Los
+**diálogos** (excepción guiada, «Aplicar lo mismo a…») vuelven por la API. Resultado: la marca
+**se guardaba** y la tarjeta **no se redibujaba**. El jefe veía la lista vieja, creía que no
+se había guardado, y volvía a cargar. La mención `@os asistencia` nunca tuvo el problema porque
+ahí el post lo publica el bot desde el principio.
+
+La corrección: el comando recibe el cliente de Mattermost y publica la tarjeta con
+`crearPost` — el post es del bot y se puede reescribir siempre. El slash command contesta 200
+sin cuerpo. El `id` del post nuevo se ata a la sesión (`root_post_id`) en el mismo arranque, así
+que `postDe(sesion)` resuelve desde el primer momento y el refresco ya no depende de que alguien
+haya tocado un botón antes. Si `crearPost` falla, la sesión se cierra y la persona recibe un
+efímero que dice que no se registró nada.
+
+Lección general: **quién es el autor del post decide qué se puede hacer después con él.** Una
+respuesta que "se ve igual" en el canal puede ser de otro dueño.
+
 ### El `id` de una acción viaja dentro de una URL de Mattermost
 
 Cuando el jefe toca un botón, el cliente llama a
@@ -439,7 +468,7 @@ Persona inexistente → lista los trabajadores reales, no inventa.
 | Archivo | Responsabilidad |
 |---|---|
 | `servidor-asistencia.mjs` | El servicio HTTP: socket unix, lectura del entorno, armado del secreto y de la URL de callback |
-| `comando-asistencia.mjs` | Puerta del slash command (verifica su token) |
+| `comando-asistencia.mjs` | Puerta del slash command (verifica su token) y publica la tarjeta **con el bot**, nunca `in_channel` |
 | `asistencia-accion.mjs` | Cableado de `POST /asistencia/accion`: **secreto → guarda → ruteador**, y el gancho que proyecta las novedades |
 | `secreto-compartido.mjs` | Comparación en tiempo constante y la única URL de callback con secreto |
 | `asistencia-mm/acciones.mjs` | El ruteador: qué hace cada click. Se prueba entero sin red ni base |

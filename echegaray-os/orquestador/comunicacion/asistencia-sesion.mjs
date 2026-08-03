@@ -171,6 +171,14 @@ export class SesionesMemoria {
     return s
   }
 
+  /** Ata la sesión al post de su tarjeta. Ver el porqué en SesionesPostgres.atarPost. */
+  async atarPost(id, postId) {
+    if (!postId) return null
+    const s = this.filas.find((f) => f.id === id)
+    if (!s || s.root_post_id) return null
+    return this._set(id, { root_post_id: postId })
+  }
+
   async guardarContexto(id, { fechaOperativa, claveObra, spreadsheetId, pestana }) {
     const s = this.filas.find((f) => f.id === id)
     if (!s) return null
@@ -275,6 +283,26 @@ export class SesionesPostgres {
     const r = evaluar(rows[0] ?? null, { plataforma, plataformaUserId, ahora: Date.now() })
     if (!r.ok && r.motivo === RECHAZO.VENCIDA) await this.cerrar(r.sesion.id, ESTADO_SESION.VENCIDA)
     return r
+  }
+
+  /**
+   * Ata la sesión al post de su tarjeta, apenas se sabe cuál es.
+   *
+   * Cuando la tarjeta la publica el BOT (el slash command lo hace así desde el 03/08), el id
+   * se conoce en el mismo arranque y la sesión no tiene que esperar al primer click para
+   * saber a qué post volver — que es de lo que dependía el refresco después de un diálogo.
+   *
+   * SÓLO ATA UNA VEZ (`root_post_id is null`): una sesión ya atada pertenece a una tarjeta
+   * concreta, y reapuntarla mandaría los refrescos al mensaje equivocado. Devolver `null`
+   * cuando no ata es información, no un fallo: quien llama decide si le importa.
+   */
+  async atarPost(id, postId) {
+    if (!postId) return null
+    const { rows } = await this.port.query(
+      `update comunicacion.asistencia_sesiones
+          set root_post_id = $2, actualizado_at = now()
+        where id = $1 and root_post_id is null returning *`, [id, postId])
+    return rows[0] ?? null
   }
 
   async guardarContexto(id, { fechaOperativa, claveObra, spreadsheetId, pestana }) {
