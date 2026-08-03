@@ -51,8 +51,8 @@ La VM no tiene navegador, no tiene servidor X, y `jorge` no tiene sudo. Se inten
 | B1 | **Sesión de Balanz iniciada en el navegador de la VM** | ❌ | el perfil nace vacío y el login es manual: lo tiene que hacer el dueño por la pantalla remota |
 | B2 | **Relevamiento real desde el navegador de la VM** | ❌ | depende de B1. El extractor está validado contra el DOM real, pero con el navegador anterior |
 | B3 | **Corrida real completa con mercado** | ❌ | depende de B1 |
-| B4 | Ruta `/balanz` publicada por Caddy | ⏳ | el Caddyfile está cambiado en la rama; toma efecto al actualizar el árbol productivo y recargar Caddy |
-| B5 | Units instalados y habilitados en producción | ⏳ | `bash orquestador/systemd/install.sh` después del merge |
+| B4 | Ruta `/balanz` publicada por Caddy | ✅ | `https://chat.ecsas.com.ar/balanz` → 403 sin token, 200 con enlace firmado; Mattermost intacto (200) y `/asistencia` sigue ruteando a su servidor |
+| B5 | Units instalados y habilitados en producción | ✅ | los tres `active/enabled`; el aviso real llegó al canal de Dirección con su enlace |
 | B6 | Túnel de la Mac retirado | ⏳ | lo cierra el dueño; el OS ya no lo usa |
 | B7 | Reboot de la VM probado | ❌ | no se reinició la VM: afecta al resto del OS y no es una decisión del agente |
 
@@ -102,3 +102,14 @@ Los cinco hallazgos, y qué se hizo con cada uno:
 **Fuera de alcance, encontrado de paso y sin tocar:** el puerto **3123** (`next-server`) escucha en
 todas las interfaces y responde desde la IP pública. Es preexistente —cero ocurrencias en este
 diff— pero es una exposición real del OS y hay que decidir qué hacer con ella.
+
+## Dos cosas que aparecieron al desplegar
+
+1. **La configuración de Caddy en producción NO sale de `main`.** El contenedor monta su `Caddyfile`
+   desde `.claude/worktrees/release-runtime/`, un worktree en HEAD desprendido. O sea que mergear a
+   main no publica una ruta nueva, y nadie lo habría notado hasta que el enlace no funcionara. Se
+   aplicó ahí, con backup y verificando que Mattermost siguiera en pie. **Merece decidirse aparte:**
+   el proxy que mira a Internet se configura desde un checkout que puede quedar viejo sin avisar.
+2. **El vigía no publicaba.** Corría la ronda y dejaba el resultado en el journal — o sea que
+   detectaba la sesión vencida a las 10:05 y el dueño se enteraba en la corrida de las 15:30, que es
+   justo el retraso que el vigía existe para eliminar. Un vigía que no habla no es un vigía.
