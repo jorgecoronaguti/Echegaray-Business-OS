@@ -21,7 +21,7 @@
 // ventana abierta justo para el caso que hay que impedir.
 
 import { igualEnTiempoConstante } from '../secreto-compartido.mjs'
-import { ESTADO, estaCompleto, resolverDuplicado } from '../../lib/comprobantes/fajo.mjs'
+import { ESTADO, estaCompleto, resolverDuplicado, aplicarOpcion } from '../../lib/comprobantes/fajo.mjs'
 import { mensajeFajo } from '../../lib/comprobantes/mensaje.mjs'
 import { puedeCargarComprobantes } from './guarda.mjs'
 import { dialogoCorreccion, leerEstado, aplicarCorreccion, CALLBACK_ID } from './dialogo.mjs'
@@ -38,6 +38,7 @@ export const TEXTO = Object.freeze({
   YA_CERRADO: 'Esa carga ya se cerró.',
   NADA_QUE_CORREGIR: 'No quedó nada para corregir en esa carga.',
   DUPLICADO_RESUELTO: 'Ese comprobante ya lo contestaste.',
+  OPCION_INVALIDA: 'Esa opción ya no corresponde a este comprobante. Usá **Corregir**.',
   CARGANDO: '⏳ Cargando en Compras…',
   DESCARTADO: '🗑 Descartado. No cargué nada.',
   INTERNO: 'No pude completar la acción. Probá de nuevo en un minuto.',
@@ -65,6 +66,8 @@ export function normalizar(payload = {}) {
     accion: payload.context?.accion ?? null,
     fajoId: payload.context?.fajo_id ?? null,
     indice: Number.isInteger(payload.context?.indice) ? payload.context.indice : null,
+    campo: payload.context?.campo ?? null,
+    valor: payload.context?.valor ?? null,
     submission: payload.submission ?? null,
     state: payload.state ?? null,
   }
@@ -110,6 +113,7 @@ export function crearManejadorComprobantes({ port, mattermost, secreto = null, u
       if (p.accion === 'duplicado_mismo' || p.accion === 'duplicado_otro') {
         return await contestarDuplicado({ port, mattermost, url, repo, log }, p)
       }
+      if (p.accion === 'imputar') return await imputar({ port, mattermost, url, repo, log }, p)
       if (p.accion === 'descartar') return await descartar({ port, mattermost, url, repo, log }, p)
       return malo('No entendí ese botón.')
     } catch (e) {
@@ -228,6 +232,37 @@ async function contestarDuplicado(d, p) {
   await refrescar(mattermost, guardado, mensajeMattermost(guardado, url), log)
   log?.info?.('comprobantes: duplicado contestado', { fajo: fajo.id, indice: p.indice, respuesta })
   return responder({ ephemeral_text: respuesta === 'mismo' ? 'Anotado: no lo cargo.' : 'Anotado: es otro comprobante.' })
+}
+
+// ── La obra, con un click ────────────────────────────────────────────────────
+//
+// El bot pregunta la obra porque hay proveedores que van a siete obras distintas y adivinar imputa
+// plata a la obra equivocada. Pero preguntar no puede significar hacer escribir: las opciones que la
+// historia de Compras ya contó salen como botones, y este manejador las aplica.
+//
+// LO QUE SE ACEPTA LO DECIDE `aplicarOpcion`, contra las opciones de ESE ítem. Acá no se valida el
+// valor: si se validara en los dos lados habría dos criterios y uno se quedaría viejo.
+
+async function imputar(d, p) {
+  const { port, mattermost, url, repo, log } = d
+  const fajo = await repo.fajoPorId(port, p.fajoId)
+  if (!fajo) return responder({ ephemeral_text: TEXTO.SIN_FAJO })
+  if (fajo.estado !== ESTADO.ABIERTO) return responder({ ephemeral_text: TEXTO.YA_CERRADO })
+
+  const items = [...(fajo.items ?? [])]
+  const item = items[p.indice ?? -1]
+  if (!item) return responder({ ephemeral_text: TEXTO.SIN_FAJO })
+  const nuevo = aplicarOpcion(item, { campo: p.campo, valor: p.valor })
+  // Un valor que este comprobante no ofreció, o un segundo click sobre un botón que ya se contestó y
+  // dejó de ofrecerse: en los dos casos no se toca nada. Es el mismo idempotente que el duplicado.
+  if (!nuevo) return responder({ ephemeral_text: TEXTO.OPCION_INVALIDA })
+  items[p.indice] = nuevo
+
+  const guardado = await repo.guardarItems(port, { id: fajo.id, items })
+  if (!guardado) return responder({ ephemeral_text: TEXTO.YA_CERRADO })
+  await refrescar(mattermost, guardado, mensajeMattermost(guardado, url), log)
+  log?.info?.('comprobantes: imputación elegida', { fajo: fajo.id, indice: p.indice, campo: p.campo })
+  return responder({ ephemeral_text: `Anotado: ${p.campo} = ${p.valor}.` })
 }
 
 // ── Descartar ────────────────────────────────────────────────────────────────

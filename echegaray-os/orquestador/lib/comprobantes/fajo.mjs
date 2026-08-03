@@ -108,6 +108,12 @@ export function etiquetaComprobante(c = {}) {
  * con preguntas abiertas se muestra igual —para que el dueño vea que llegó— pero no se carga hasta
  * que estén contestadas.
  */
+/**
+ * La pregunta de la obra, como constante y no como literal repetido: `mensaje.mjs` la reemplaza por
+ * el bloque con las opciones del historial y necesita reconocerla sin acoplarse a una redacción.
+ */
+export const PREGUNTA_OBRA = 'no dice a qué obra va — ¿cuál es?'
+
 export function preguntasDe(item = {}) {
   const c = item.comprobante ?? {}
   const p = []
@@ -123,7 +129,7 @@ export function preguntasDe(item = {}) {
   if (item.posibleDuplicado && !item.duplicadoResuelto) {
     p.push(`puede que ya esté cargado en la **fila ${item.posibleDuplicado.fila ?? '?'}** — ¿es el mismo?`)
   }
-  if (!c.obra) p.push('no dice a qué obra va — ¿cuál es?')
+  if (!c.obra) p.push(PREGUNTA_OBRA)
   if (c.total == null) p.push('no pude leer el total')
   if (!c.fecha) p.push('no pude leer la fecha')
   if (!c.numero) p.push('no pude leer el número de comprobante')
@@ -146,6 +152,70 @@ export function indiceDuplicadoAbierto(items = []) {
 // mensaje se rehízo entero como tabla markdown —el dueño no podía leer la prosa corrida— y mezclar
 // las dos cosas en un archivo hacía que cambiar una coma del texto obligara a releer la lógica de
 // idempotencia. `mensaje.mjs` importa de acá; nunca al revés.
+
+// ── LO QUE LA HISTORIA OFRECE PARA CONTESTAR ─────────────────────────────────
+//
+// Una sola función para el texto y para los botones. Si el mensaje listara las opciones de un lado y
+// los botones salieran de otro, existiría la opción que se lee y no se puede tocar — y peor, la que
+// se puede tocar y nadie ofreció, que es por donde entra un valor que el desplegable estricto de la
+// columna J va a rechazar.
+
+/** Campos que se pueden completar tocando un botón. El resto va por el formulario de "Corregir". */
+export const CAMPOS_IMPUTABLES = Object.freeze(['obra', 'unidad', 'detalle'])
+
+/**
+ * Las opciones que la lib de imputación aprendida contó para una dimensión, con el valor sugerido
+ * adelante si no estuviera entre las más frecuentes (pasa cuando la obra se refina por el concepto).
+ * Ese caso va SIN conteo: la lib no lo da y acá no se inventa un número.
+ *
+ * @param {{sugerido?:string, opciones?:Array<{valor:string,n:number}>}|null} sug
+ * @returns {Array<{valor:string, n:number|null}>}
+ */
+export function opcionesDe(sug) {
+  if (!sug) return []
+  const ops = (Array.isArray(sug.opciones) ? sug.opciones : [])
+    .filter((o) => o && String(o.valor ?? '').trim())
+    .map((o) => ({ valor: String(o.valor).trim(), n: Number.isFinite(o.n) ? o.n : null }))
+  if (sug.sugerido && !ops.some((o) => o.valor === sug.sugerido)) {
+    return [{ valor: String(sug.sugerido).trim(), n: null }, ...ops]
+  }
+  return ops
+}
+
+/** El primer ítem al que le falta la obra Y tiene opciones que ofrecer. -1 si no hay ninguno. */
+export function indiceObraOfrecible(items = []) {
+  return items.findIndex((it) => it && !it.yaCargado && !it.comprobante?.obra && opcionesDe(it.sugerencia?.obra).length)
+}
+
+/**
+ * Aplica una opción ELEGIDA con un botón. Devuelve el ítem nuevo (no muta) o null si no se acepta.
+ *
+ * FALLA CERRADO Y CONTRA LO QUE ESTE ÍTEM OFRECIÓ. El callback de Mattermost no trae identidad y su
+ * `context` lo puede escribir cualquiera que consiga la URL: si acá se aceptara un valor arbitrario,
+ * un click fabricado imputaría un gasto a una obra que no existe en el desplegable estricto de la
+ * columna J —celda en rojo y cruces del Cash Flow rotos—. Sólo se acepta uno de los valores que
+ * salieron de la historia de Compras de este mismo comprobante.
+ */
+export function aplicarOpcion(item = {}, { campo, valor } = {}) {
+  if (!CAMPOS_IMPUTABLES.includes(campo)) return null
+  const elegido = opcionesDe(item?.sugerencia?.[campo]).find((o) => o.valor === String(valor ?? '').trim())
+  if (!elegido) return null
+  const c = { ...(item.comprobante ?? {}) }
+  const sug = { ...(item.sugerencia ?? {}) }
+  if (campo === 'obra') {
+    c.obra = elegido.valor
+    c.obraVia = 'eleccion'
+    // EL DETALLE CUELGA DE LA OBRA. La sugerencia que viajaba se calculó para la obra que la lib
+    // proponía; si el dueño eligió otra, ofrecerla igual sería ofrecerle el frente de otra obra.
+    if (sug.detalle && sug.detalle.obra && sug.detalle.obra !== elegido.valor) sug.detalle = null
+  } else if (campo === 'unidad') {
+    c.unidad = elegido.valor
+  } else {
+    c.detalleObra = elegido.valor
+    c.detalleVia = 'eleccion'
+  }
+  return { ...item, comprobante: c, sugerencia: sug, elegido: { ...(item.elegido ?? {}), [campo]: elegido.valor } }
+}
 
 /**
  * Los botones. `integration.url` lleva el SECRETO en la query: Mattermost guarda esa URL en su base
@@ -181,11 +251,34 @@ export function botonesFajo(fajo = {}, { url } = {}) {
   }
   acciones.push({ id: 'corregir', name: 'Corregir', type: 'button', integration: { url, context: contexto('corregir') } })
   acciones.push({ id: 'descartar', name: 'Descartar', type: 'button', style: 'danger', integration: { url, context: contexto('descartar') } })
-  return [{
+  const bloques = []
+
+  // LA OBRA SE CONTESTA CON UN CLICK. Se ofrece la del PRIMER comprobante que la necesita, no la de
+  // todos: cuatro comprobantes darían doce botones y el dueño no sabría cuál es de cuál. Al contestar
+  // uno, el mensaje se reescribe y aparece el siguiente.
+  const oi = indiceObraOfrecible(items)
+  if (oi >= 0) {
+    const it = items[oi]
+    const cual = items.length > 1 ? ` (${oi + 1}/${items.length})` : ''
+    bloques.push({
+      fallback: '¿A qué obra va este comprobante?',
+      color: '#b58900',
+      title: `¿A qué obra va${cual}? — ${it.comprobante?.proveedor ?? 'sin proveedor'}`,
+      actions: opcionesDe(it.sugerencia?.obra).slice(0, 3).map((o, k) => ({
+        id: `obra_${k}`,
+        name: o.n != null ? `${o.valor} (${o.n})` : o.valor,
+        type: 'button',
+        integration: { url, context: contexto('imputar', { indice: oi, campo: 'obra', valor: o.valor }) },
+      })),
+    })
+  }
+
+  bloques.push({
     fallback: 'Confirmá la carga de los comprobantes desde Mattermost.',
     color: hayQueCargar ? '#1e7e34' : '#b58900',
     actions: acciones,
-  }]
+  })
+  return bloques
 }
 
 /**

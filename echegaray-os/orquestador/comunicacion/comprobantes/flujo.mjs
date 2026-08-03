@@ -239,8 +239,14 @@ export function completarConHistorial(items = [], perfiles = null) {
       c.unidad = s.unidad.sugerido
       ap.unidad = { n: s.unidad.n, share: s.unidad.share }
     }
-    // Lo que NO se aplicó viaja igual: es con lo que se pregunta sin preguntar en blanco.
-    it.sugerencia = { obra: s.obra ?? null, detalle: s.detalle ?? null, unidad: s.unidad ?? null }
+    // Lo que NO se aplicó viaja igual —con sus opciones, sus conteos y sus notas—: es con lo que el
+    // mensaje pregunta sin preguntar en blanco, y de donde salen los botones. Tirarlo acá era la
+    // causa del "Obra: falta — ¿a qué obra va?" que no decía nada, con 126 cargas de ese proveedor
+    // ya contadas dos líneas más arriba.
+    //
+    // El RUBRO viaja aunque no se pregunte nunca: es la línea del Cash Flow donde va a caer esta
+    // plata, o sea la consecuencia de la imputación que el dueño está por elegir.
+    it.sugerencia = { obra: s.obra ?? null, detalle: s.detalle ?? null, unidad: s.unidad ?? null, rubro: s.rubro ?? null }
     if (Object.keys(ap).length) it.aprendido = ap
   }
   return items

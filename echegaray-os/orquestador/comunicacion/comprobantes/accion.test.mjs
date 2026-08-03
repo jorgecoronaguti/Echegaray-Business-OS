@@ -428,6 +428,54 @@ test('el segundo click sobre el mismo duplicado no cambia la respuesta ya dada',
   assert.equal(repo._fajos.get(fajo.id).items[0].duplicadoResuelto, 'mismo')
 })
 
+// ── La obra, con un click ────────────────────────────────────────────────────
+//
+// El bot preguntaba la obra tirando lo que la lib de imputación ya sabía. Ahora la ofrece con sus
+// conteos, y las tres más frecuentes son botones: contestar es un click, no escribir.
+
+/** Un tique sin obra, con la sugerencia real de un proveedor que va a varias obras. */
+const sinObra = () => ({
+  ...item({ comprobante: { obra: null } }),
+  sugerencia: {
+    obra: {
+      sugerido: 'Taller', n: 126, distintos: 7, share: 0.325, evidencia: 'ambiguo', pide_confirmacion: true,
+      opciones: [{ valor: 'San Francisco', n: 41 }, { valor: 'Administracion', n: 39 }, { valor: 'Taller', n: 18 }],
+      nota: 'obra elegida por coincidencia de concepto, no por la más frecuente del proveedor',
+    },
+  },
+})
+
+const clickObra = (fajoId, valor, indice = 0) => click(fajoId, 'imputar', {
+  context: { accion: 'imputar', fajo_id: fajoId, indice, campo: 'obra', valor },
+})
+
+test('tocar una obra la deja imputada y habilita Confirmar', async () => {
+  const { repo, fajo } = await conFajo({ items: [sinObra()] })
+  const { mm, manejar } = manejador({ repo })
+  const r = await manejar(clickObra(fajo.id, 'San Francisco'))
+  assert.match(r.body.ephemeral_text, /San Francisco/)
+  assert.equal(repo._fajos.get(fajo.id).items[0].comprobante.obra, 'San Francisco')
+  const post = mm.posts.find((p) => p.id === 'post_bot')
+  assert.match(post.message, /\| Obra \| San Francisco _\(la elegiste vos\)_ \|/)
+  assert.equal(post.props.attachments[0].actions.some((a) => a.id === 'confirmar'), true)
+})
+
+test('una obra que este comprobante NO ofreció no se aplica — el callback no trae identidad', async () => {
+  const { repo, fajo } = await conFajo({ items: [sinObra()] })
+  const { manejar } = manejador({ repo })
+  const r = await manejar(clickObra(fajo.id, 'Obra Que No Existe'))
+  assert.match(r.body.ephemeral_text, /ya no corresponde/)
+  assert.equal(repo._fajos.get(fajo.id).items[0].comprobante.obra, null, 'no se imputó nada')
+})
+
+test('un fajo ya cerrado no acepta que le cambien la obra', async () => {
+  const { repo, fajo } = await conFajo({ items: [sinObra()], estado: ESTADO.CONFIRMADO })
+  const { manejar } = manejador({ repo })
+  const r = await manejar(clickObra(fajo.id, 'Taller'))
+  assert.match(r.body.ephemeral_text, /ya se cerró/)
+  assert.equal(repo._fajos.get(fajo.id).items[0].comprobante.obra, null)
+})
+
 test('un fajo con un duplicado abierto NO escribe nada si igual se fuerza el Confirmar', async () => {
   const { repo, fajo } = await conFajo({ items: [conDuplicado()] })
   let corridas = 0
