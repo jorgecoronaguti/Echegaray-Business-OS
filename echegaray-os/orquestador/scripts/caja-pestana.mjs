@@ -992,7 +992,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
     `=SUMIFS(${C}!$M$5:$M$400;${C}!$Q$5:$Q$400;">="&EOMONTH(TODAY();-1)+1;${C}!$Q$5:$Q$400;"<="&${hoy};${C}!$O$5:$O$400;"<>Cobrado")`,
     '', '', '',
     '⚠ Esto SÍ es un problema: la proyección los da por entrados y su fecha ya pasó. O se cobraron y falta marcarlos, o hay que correr la fecha.'])
-  const fResiduo = push(['⇒ LO QUE QUEDA SIN EXPLICAR', '', '', '',
+  push(['⇒ LO QUE QUEDA SIN EXPLICAR', '', '', '',
     `=${C_PESOS}${fDifConc}+${C_PESOS}${fResto}+${C_PESOS}${fNoCobrado}`, '', '', '',
     'Este es el número a buscar: plata que se movió y no está en ninguna pestaña. Los dos renglones de arriba ya tienen explicación.'])
   push()
@@ -1540,10 +1540,7 @@ async function formatear(google, sheetId, g, tab) {
   //   · proyectado  → un número que todavía no pasó
   //   · AMARILLO    → lo ÚNICO que una persona escribe a mano. Es el color más importante de esta
   //                   pestaña y por eso es el único que no se toca.
-  const AZUL = E.COLOR.encabezado
-  const GRIS = E.COLOR.total
   const AMARILLO = { red: 1, green: 0.98, blue: 0.86 }
-  const VERDE = E.COLOR.ok
   const n = g.filas.length
   const r = (r0, r1, c0 = 0, c1 = ANCHO) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
   // ═══ SE RESETEA TODO AL ESTÁNDAR, Y RECIÉN DESPUÉS SE PINTAN LAS EXCEPCIONES ═══

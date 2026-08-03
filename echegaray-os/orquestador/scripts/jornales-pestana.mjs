@@ -538,7 +538,7 @@ export function grilla({ bloques, pendientes, bloquesOfi, pagoPrevio = [], ultim
   // LA GLOSA VA EN LA ÚLTIMA COLUMNA, NO EN LA DEL MEDIO. Cuando la réplica del acuerdo no tiene el
   // mes, esta celda devuelve un aviso de 105 caracteres: en la columna 7 se desparrama sobre el resto
   // de la grilla. El auditor de patrón lo marcaba en cada corrida y tenía razón.
-  const fVigProx = push([sub('El escalón que viene — desde el mes próximo'),
+  push([sub('El escalón que viene — desde el mes próximo'),
     ...Array(ANCHO - 2).fill(VACIO),
     `=SUBSTITUTE(SUBSTITUTE(${formulaVigencia(MES_SIGUIENTE).slice(1)};CHAR(10);" ");CHAR(13);" ")`])
   const fPisoProx = push([sub('Básico de Ayudante desde ese mes'), formulaValor('Ayudante', COL.basico, MES_SIGUIENTE)])

@@ -102,26 +102,62 @@ export function leerRegistro(ruta = RUTA_REGISTRO) {
  * `motivoRama` es la declaración por RAMA: sirve para una rama viva de otra tanda, que se conoce y no
  * se toca. Nunca convierte el hallazgo en verde — sólo le pone nombre.
  *
- * @param {{cubierto:boolean, decision?:string, motivoRama?:string|null}} h
- * @returns {'incorporado'|'descartado'|'pendiente'|'SIN REVISAR'}
+ * ═══ `incorporado` SE VERIFICA, NO SE CREE (03/08) ═══
+ *
+ * La primera versión de este veredicto leía `decision: 'incorporado'` del registro y devolvía verde.
+ * Probado: poniendo la base en el commit ANTERIOR a la incorporación —o sea con el trabajo revertido
+ * y `jornales-pestana.mjs` otra vez sin el bloque de Dirección— seguía diciendo "incorporado". El
+ * registro se estaba validando contra sí mismo, que es exactamente lo que un control no puede hacer.
+ *
+ * Ahora la incorporación tiene que dejar EVIDENCIA en el archivo de la base: que su contenido ya no
+ * sea el de antes, y —cuando hay una señal declarada— que la señal esté. Si no, `REVERTIDO`.
+ *
+ * @param {{cubierto:boolean, decision?:string, motivoRama?:string|null, evidencia?:boolean}} h
+ * @returns {'incorporado'|'REVERTIDO'|'descartado'|'pendiente'|'SIN REVISAR'}
  */
-export function veredicto({ cubierto, decision, motivoRama }) {
+export function veredicto({ cubierto, decision, motivoRama, evidencia = true }) {
   if (!cubierto) return motivoRama ? 'pendiente' : 'SIN REVISAR'
   if (decision === 'descartado') return 'descartado'
   if (decision === 'pendiente') return 'pendiente'
-  return 'incorporado'
+  return evidencia ? 'incorporado' : 'REVERTIDO'
 }
 
 /** ¿El veredicto frena el pipeline? Puro. Todo lo que no se incorporó, con o sin motivo. */
 export const frenaElPipeline = (v) => v !== 'incorporado'
 
-/** ¿Y además nadie lo miró? Ése es el que no puede quedar así. Puro. */
-export const nadieLoMiro = (v) => v === 'SIN REVISAR'
+/** ¿Y además nadie lo miró —o se perdió lo que ya se había traído? Ésos no pueden quedar así. Puro. */
+export const nadieLoMiro = (v) => v === 'SIN REVISAR' || v === 'REVERTIDO'
 
-/** Ramas locales que NO están contenidas en `base`, sin el ruido de los worktrees de agentes. */
+/**
+ * ¿La incorporación dejó rastro en el archivo de `base`? Puro respecto de sus entradas.
+ *
+ * Dos evidencias, de la más débil a la más fuerte:
+ *   · `blobAntes` — la versión previa. Si el archivo volvió EXACTAMENTE a ella, se perdió lo que se
+ *     había traído. Sirve siempre, y por eso se registra para todos.
+ *   · `senal` — algo que la incorporación tuvo que dejar adentro (un import, un identificador).
+ *     Sobrevive a cambios cosméticos posteriores y detecta un revert PARCIAL, que el blob no ve.
+ *
+ * Sin ninguna de las dos declaradas no se puede afirmar nada, y no afirmar nada es `false`: la falta
+ * de evidencia no es evidencia de que esté.
+ */
+export function hayEvidencia({ blobBase, fuenteBase, blobAntes, senal }) {
+  if (!blobAntes && !senal) return false
+  if (blobAntes && blobBase === blobAntes) return false
+  if (senal) return typeof fuenteBase === 'string' && fuenteBase.includes(senal)
+  return true
+}
+
+/**
+ * Ramas locales que NO están contenidas en `base`, sin el ruido de los worktrees de agentes.
+ *
+ * Se excluye la rama ACTUAL: nadie está atrasado respecto de sí mismo. Quien corre esto desde su
+ * worktree está justamente produciendo ese trabajo, y verlo listado como "main está atrasado" no le
+ * dice nada — pero le tapa lo que sí tiene que mirar. Cuando su rama entre a main, desaparece sola.
+ */
 export function ramasSinMergear(base = 'main') {
+  const actual = git(['rev-parse', '--abbrev-ref', 'HEAD'])
   const todas = (git(['for-each-ref', '--format=%(refname:short)', 'refs/heads/']) ?? '').split('\n').filter(Boolean)
-  return todas.filter((b) => b !== base && !RUIDO.test(b) && git(['merge-base', '--is-ancestor', b, base]) === null)
+  return todas.filter((b) => b !== base && b !== actual && !RUIDO.test(b) && git(['merge-base', '--is-ancestor', b, base]) === null)
 }
 
 /** Los archivos de `orquestador/` que escriben Sheets, según el árbol de `base`. */
@@ -170,9 +206,16 @@ export function revisarArchivo(archivo, ramas, base = 'main', registro = leerReg
   // `revisadoHasta` admite varios puntos: un archivo puede haberse revisado contra más de un linaje.
   const puntos = [entrada.revisadoHasta].flat().filter(Boolean)
   const revisados = new Set(puntos.flatMap((p) => [...blobsEnLaHistoria(p, archivo)]))
+  // La evidencia se mide UNA vez por archivo: sale del contenido de la base, no de las ramas.
+  const evidencia = hayEvidencia({
+    blobBase: enBase,
+    fuenteBase: entrada.senal ? git(['show', `${base}:${archivo}`]) : null,
+    blobAntes: entrada.blobAntes,
+    senal: entrada.senal,
+  })
   return distintas.map(({ rama, blob }) => {
     const motivoRama = entrada.pendientes?.[rama] ?? null
-    const v = veredicto({ cubierto: revisados.has(blob), decision: entrada.decision, motivoRama })
+    const v = veredicto({ cubierto: revisados.has(blob), decision: entrada.decision, motivoRama, evidencia })
     return { archivo: corto(archivo), rama, blob: blob.slice(0, 7), veredicto: v, motivo: motivoRama ?? entrada.motivo ?? null }
   })
 }
@@ -203,7 +246,7 @@ export function resumir(hallazgos) {
   }).sort((a, b) => a.archivo.localeCompare(b.archivo))
 }
 
-const MARCA = { 'SIN REVISAR': '✖', descartado: '📝', pendiente: '⏳' }
+const MARCA = { 'SIN REVISAR': '✖', REVERTIDO: '🚨', descartado: '📝', pendiente: '⏳' }
 
 function informar(resumen) {
   const frenan = resumen.filter((r) => frenaElPipeline(r.veredicto))
@@ -228,7 +271,7 @@ function main() {
   if (!informar(resumir(hallazgos))) { console.log('\n✔ todo el trabajo de rama está incorporado. El pipeline puede correr.'); return 0 }
   console.log('\n  NO corras el pipeline contra el Sheet real hasta resolverlo: un generador viejo reescribe')
   console.log('  la grilla que él conoce y borra lo que se agregó después, sin fallar y sin avisar.')
-  console.log(`  Cuando lo resuelvas —lo traigas o decidas no traerlo— anotalo en ${corto(RUTA_REGISTRO)}.`)
+  console.log('  Cuando lo resuelvas —lo traigas o decidas no traerlo— anotalo en orquestador/scripts/generadores-revisados.json.')
   return 1
 }
 
