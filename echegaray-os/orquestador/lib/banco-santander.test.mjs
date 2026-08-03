@@ -54,6 +54,11 @@ test('un echeq acreditado es un traslado que ENTRA, no un cheque que sale', () =
   assert.equal(clasificarMovimiento('Canje interno recibido 24 hs'), 'Cheques y echeq')
   assert.equal(clasificarMovimiento('Echeq canje interno recibido 24hs'), 'Cheques y echeq')
   assert.equal(clasificarMovimiento('Cheque debitado - Nº 221'), 'Cheques y echeq')
+  // Y las variantes de escritura de la MISMA salida: el banco cambia mayúsculas, espacios y el
+  // pegado de "24hs" entre descargas. Con el literal viejo, cualquiera de éstas caía en
+  // "Transferencias a proveedores" y el cheque quedaba figurando como vencido sin debitar.
+  assert.equal(clasificarMovimiento('CANJE  INTERNO   RECIBIDO 24HS'), 'Cheques y echeq')
+  assert.equal(clasificarMovimiento('Canje interno recibído 24 horas'), 'Cheques y echeq')
   // El bucket de cheques, mirando SÓLO lo que sale, no puede dar positivo.
   const soloSalidas = MOVIMIENTOS.filter((m) => clasificarMovimiento(m.concepto) === 'Cheques y echeq')
   assert.ok(soloSalidas.every((m) => m.importe < 0), 'el bucket de cheques quedó con un crédito adentro')
