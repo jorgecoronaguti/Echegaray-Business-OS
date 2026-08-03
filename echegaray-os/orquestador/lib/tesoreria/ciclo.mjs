@@ -384,8 +384,25 @@ export async function correrCiclo(deps = {}, opts = {}) {
     const textos = val.publicables.map((r) => formatoPropuesta(r, posicion, {
       fecha_caja: posicion.fecha, fecha_mercado: mercado.observado_en ?? null,
     }))
-    if (publicar.publicar && deps.publicar) for (const t of textos) await deps.publicar(t)
-    paso('publicacion', publicar.publicar ? 'publicado' : 'omitido', publicar.motivo)
+    // ═══ `publicado` ES LO QUE SE ENVIÓ, NO LO QUE SE DECIDIÓ ENVIAR ═══
+    //
+    // La versión anterior escribía `publicado: publicar.publicar`, o sea la DECISIÓN de publicar, sin
+    // mirar si había algo que mandar. Con 0 propuestas publicables —el caso normal mientras falte la
+    // reserva mínima— `textos` viene vacío, no sale un solo mensaje, y el ledger igual registraba
+    // `publicado=true`. Verificado en la primera corrida productiva: la corrida quedó con
+    // `publicado=true` y el último post en el canal era de siete minutos antes.
+    //
+    // Es la falla que el repo llama "un log que felicita sin haber escrito": el registro que existe
+    // para responder *¿se le avisó al dueño?* contestaba que sí sin haber avisado.
+    let enviados = 0
+    if (publicar.publicar && deps.publicar) {
+      for (const t of textos) { await deps.publicar(t); enviados += 1 }
+    }
+    const seEnvio = enviados > 0
+    paso('publicacion', seEnvio ? 'publicado' : 'omitido',
+      seEnvio ? `${enviados} mensaje(s) · ${publicar.motivo}`
+        : textos.length === 0 ? 'nada que publicar: ninguna propuesta pasó la validación'
+          : publicar.motivo)
 
     return {
       estado: 'ok',
@@ -395,7 +412,8 @@ export async function correrCiclo(deps = {}, opts = {}) {
       validaciones: val.validaciones,
       sin_propuesta: generadas.sin_propuesta,
       bloqueos: mercado.bloqueos || [],
-      publicado: publicar.publicar,
+      publicado: seEnvio,
+      mensajes_enviados: enviados,
       motivo_publicacion: publicar.motivo,
       accionabilidad, frescura_mercado: frescura,
       textos, resumen, traza,

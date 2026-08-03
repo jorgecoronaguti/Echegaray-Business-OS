@@ -167,3 +167,31 @@ test('resumirCorrida produce la foto comparable entre corridas', () => {
   })
   assert.deepEqual(r, { en_descubierto: false, excedente: 5000000, mejor_tasa: 0.05, mejor_instrumento: 'X', sesion_requerida: false })
 })
+
+test('`publicado` es lo que se ENVIÓ, no lo que se decidió enviar', async () => {
+  // ═══ EL DEFECTO, ENCONTRADO EN LA PRIMERA CORRIDA PRODUCTIVA ═══
+  //
+  // El ledger escribía `publicado: publicar.publicar` —la DECISIÓN— sin mirar si había algo que
+  // mandar. Con 0 propuestas publicables (el caso normal mientras falte la reserva mínima) `textos`
+  // viene vacío, no sale un solo mensaje, y la corrida quedaba registrada como publicada. Verificado
+  // contra Mattermost: `publicado=true` en el ledger y el último post del canal era de 7 minutos
+  // antes. El registro que existe para responder "¿se le avisó al dueño?" contestaba que sí.
+  publicados.length = 0
+  const r = await correrCiclo({
+    google: googleFake({ caja: 50000000 }),
+    query: null,
+    relevar: async () => ({ estado: 'ok', paginas: [], bloqueos: [], observado_en: HOY.toISOString() }),
+    publicar,
+    ahora: HOY,
+  }, {
+    publicarSiempre: true, dias: 30,
+    filaReserva: RESERVA_APROBADA, filaRestringida: RESTRINGIDA_CERO, extractorValidado: true,
+  })
+  // Sin mercado no hay propuesta publicable: no se envió nada.
+  assert.equal(publicados.length, 0, 'no debería haber salido ningún mensaje')
+  assert.equal(r.publicado, false, 'y el ledger no puede decir que publicó')
+  assert.equal(r.mensajes_enviados, 0)
+  const paso = r.traza.find((p) => p.paso === 'publicacion')
+  assert.equal(paso.estado, 'omitido')
+  assert.match(paso.detalle, /nada que publicar/)
+})
