@@ -103,3 +103,53 @@ test('el registro se ubica por el DATO (FISICO/ECHEQ), no por un rótulo borrabl
   // Y si no hay registro, no adivina: devuelve null y el script aborta.
   assert.equal(ubicarRegistro([['x'], ['y']]), null)
 })
+
+// ═══ 3. EL RÓTULO DE CORTE SE MUEVE CON LAS DOS PUERTAS, NO SÓLO CON LA EMISIÓN ═══
+//
+// El pedido del dueño (03/08): *"siempre q modifiques valores de caja con el extracto q te envio […]
+// las fechas que aparecen se deben actualizar de manera automatica"*. Marcar DEBITADO=SI ES una
+// modificación que viene del extracto, y mueve los dos números grandes de la banda. Con la emisión
+// como única fuente ese hecho no movía el rótulo.
+
+const subtitulo = String(banda[1][0])
+
+test('el corte mira TAMBIÉN la fecha de pago de los cheques ya debitados', () => {
+  // Si alguien vuelve a dejar sólo la emisión, este test se cae.
+  assert.match(subtitulo, new RegExp(`UPPER\\(\\$K\\$${HDR}:\\$K\\)="SI"`),
+    'marcar DEBITADO=SI tiene que mover el rótulo: es la puerta del extracto')
+  assert.match(subtitulo, new RegExp(`\\$I\\$${HDR}:\\$I`), 'la fecha del débito sale de la columna I')
+  assert.match(subtitulo, new RegExp(`\\$C\\$${HDR}:\\$C`), 'y la emisión sigue contando')
+  assert.match(subtitulo, /^="[^"]*"&IF\(MAX\(/, 'las dos puertas se combinan con MAX, no se elige una')
+})
+
+test('la fecha de pago SIN debitar no cuenta: es una previsión, no un hecho', () => {
+  // Un MAX pelado sobre la columna I metería los diferidos no debitados: un cheque con fecha de pago
+  // hoy que el banco todavía no debitó declararía frescura de algo que no ocurrió (Regla de Oro 2).
+  // La única aparición legítima de la columna I es dentro de un MAX que arranca con el filtro.
+  const conFiltro = `MAX((UPPER($K$${HDR}:$K)="SI")*IF(ISNUMBER($I$${HDR}:$I)`
+  const sinFiltro = subtitulo.split(conFiltro).join('')
+  assert.ok(!sinFiltro.includes(`$I$${HDR}:$I`) || !/MAX\(IF\(ISNUMBER\(\$I/.test(sinFiltro),
+    'hay un MAX sobre la fecha de pago que NO exige DEBITADO="SI"')
+})
+
+test('ninguna de las dos puertas declara frescura del futuro', () => {
+  // La columna I trae diferidos a septiembre y la C podría traer un año mal tipeado: sin `<=TODAY()`
+  // el corte diría septiembre. Se comprueba puerta por puerta, no contando apariciones — la
+  // expresión se repite cuatro veces dentro del rótulo y un conteo no dice CUÁL falta.
+  for (const col of ['C', 'I']) {
+    assert.match(subtitulo, new RegExp(`IF\\(ISNUMBER\\(\\$${col}\\$${HDR}:\\$${col}\\);\\$${col}\\$${HDR}:\\$${col};0\\)<=TODAY\\(\\)`),
+      `la puerta de la columna ${col} no filtra el futuro`)
+  }
+})
+
+test('el rótulo no trae ninguna fecha estampada: si la trajera, quedaría clavada', () => {
+  assert.doesNotMatch(subtitulo.replace(/"dd\/mm\/yyyy"/g, ''), /\d{1,2}\/\d{1,2}\/\d{2,4}/)
+})
+
+test('separador es-AR: ni una coma en la parte CALCULADA de la fórmula', () => {
+  // La coma es el separador DECIMAL en es-AR: una coma entre argumentos parte la fórmula. Se miran
+  // sólo los operadores, no los literales — el rótulo es prosa en castellano y ahí la coma es la
+  // puntuación, no un separador ("de la cuenta, y cuándo sale").
+  const soloCalculo = subtitulo.replace(/"(?:[^"]|"")*"/g, '')
+  assert.doesNotMatch(soloCalculo, /,/, `hay una coma separando argumentos: ${soloCalculo}`)
+})

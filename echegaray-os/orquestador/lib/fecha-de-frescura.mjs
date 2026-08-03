@@ -60,6 +60,16 @@
 export const DIAS_AVISO = 7
 
 /**
+ * El mismo umbral, para una fuente MENSUAL (una DDJJ, un F931, una liquidación de IIBB).
+ *
+ * Una DDJJ de junio se presenta a mediados de julio: contra los 7 días de una fuente diaria el ⚠
+ * estaría prendido SIEMPRE, y un aviso que nunca se apaga deja de leerse — es el mismo fracaso del
+ * trinquete de frescura que ya hubo que arreglar una vez. 45 días = el mes del período más la demora
+ * normal de presentación; pasado eso, falta una DDJJ de verdad.
+ */
+export const DIAS_AVISO_MENSUAL = 45
+
+/**
  * NÚCLEO PURO: un texto, listo para entrar adentro de una fórmula de Sheets.
  *
  * La comilla doble se duplica: sin esto un rótulo con comillas parte la fórmula al medio y la celda
@@ -107,6 +117,57 @@ export function formulaUltimaFecha(rango, { mixto = false, cuando = '' } = {}) {
 }
 
 /**
+ * NÚCLEO PURO: la última fecha de las filas QUE YA TIENEN IMPORTE CARGADO.
+ *
+ * Es más fuerte que `formulaUltimaFecha` sobre la misma columna, y la diferencia importa. Un registro
+ * por quincenas escribe la FILA —con su "Hasta"— el día que la quincena abre, mucho antes de que haya
+ * un solo peso adentro. Un MAX sobre las fechas declara frescura por un encabezado vacío; un MAXIFS
+ * condicionado al importe declara frescura por PLATA CARGADA, que es lo que la pestaña muestra.
+ *
+ * Es el patrón que la fila 4 de "Jornales por Quincena" ya usa en vivo y que funciona:
+ *     MAXIFS($B:$B;$K:$K;">0")
+ * con dos diferencias, las dos a propósito:
+ *
+ *   · RANGOS CERRADOS, no columnas enteras. La columna entera anduvo de casualidad: sólo funciona
+ *     mientras ninguna otra sección de la pestaña use esa misma letra. En el layout de este generador
+ *     la columna K es "Σ $/hora" y no el TOTAL —una letra corrida por una columna que se agregó
+ *     arriba—, así que la fórmula copiada al pie de la letra apuntaría a otra cosa sin dar error.
+ *     Las letras las pasa el generador desde su PROPIO encabezado.
+ *   · `<=TODAY()`. La quincena en curso tiene importe PARCIAL y un "Hasta" que todavía no llegó: sin
+ *     el filtro, el rótulo declara frescura de una fecha futura sobre un cuadro a medio cargar.
+ *
+ * @param {string} rangoFecha en notación A1, cerrado ("$B$83:$B$96")
+ * @param {string} rangoImporte la columna que sólo se llena cuando hay dato ("$J$83:$J$96")
+ * @returns {string} expresión sin `=`
+ */
+export function formulaUltimaFechaConImporte(rangoFecha, rangoImporte) {
+  return `MAXIFS(${rangoFecha};${rangoImporte};">0";${rangoFecha};"<="&TODAY())`
+}
+
+/**
+ * NÚCLEO PURO: hasta qué PERÍODO llega una fuente mensual, expresado como el último día que cubre.
+ *
+ * Una DDJJ no tiene fecha de dato: tiene período. El F931 de junio se presenta en julio y habla de
+ * junio — la frescura honesta es "cubre hasta el 30/06", no la fecha en que alguien lo bajó del PDF.
+ *
+ * La conversión NO usa DATEVALUE. `DATEVALUE("2026-06-01")` depende del locale del archivo y este
+ * libro es es-AR: un día que Sheets lea el ISO como dd/mm devolvería un mes por otro sin dar error.
+ * `DATE(VALUE(LEFT(…;4));VALUE(MID(…;6;2));1)` no depende del locale de nadie.
+ *
+ * FALLA MOSTRANDO CERO, NO UNA FECHA CUALQUIERA. Las celdas vacías del rango abierto y cualquier
+ * período con otro formato caen a 0 por IFERROR, y `EOMONTH(0;0)` sería 31/01/1900 — una fecha
+ * plausible y falsa, que es lo peor que puede pasar acá. Por eso el cero se ataja ANTES del EOMONTH y
+ * el rótulo termina diciendo "sin datos" en vez de inventar un siglo.
+ *
+ * @param {string} rango la columna de períodos "AAAA-MM" ("_F931_RAW!$A$4:$A")
+ * @returns {string} expresión sin `=`
+ */
+export function formulaUltimoPeriodo(rango) {
+  const m = `SUMPRODUCT(MAX(IFERROR(DATE(VALUE(LEFT(${rango};4));VALUE(MID(${rango};6;2));1);0)))`
+  return `IF(${m}=0;0;EOMONTH(${m};0))`
+}
+
+/**
  * NÚCLEO PURO: la más NUEVA de varias fuentes.
  *
  * Es la frescura de una pestaña que se mueve por más de UNA PUERTA — CAJA cambia con el extracto del
@@ -148,6 +209,51 @@ export function rotuloAlDia(texto, expr, { sinDato = '⚠ sin datos cargados', a
   const conFecha = `"al "&TEXT(${expr};"dd/mm/yyyy")&${aviso}`
   const fin = cola ? `&" · "&${literal(cola)}` : ''
   return `=${literal(`${texto} · `)}&IF(${expr}=0;${literal(sinDato)};${conFecha})${fin}`
+}
+
+/**
+ * NÚCLEO PURO: el rótulo de una pestaña que se alimenta de FUENTES CON FRESCURAS DISTINTAS.
+ *
+ * ═══ POR QUÉ NO ALCANZA UN `MAX` ═══
+ *
+ * "Impuestos y Financieros" cruza ARCA y el extracto del banco —que llegan a ayer— con el F931 y las
+ * DDJJ de IIBB, que salen de PDF del data room y se quedan en el último período presentado. Un
+ * `MAX` sobre las cuatro devuelve la fecha de la más nueva y la pone como si fuera la frescura del
+ * cuadro entero: el rótulo diría "al 03/08" arriba de un número de cargas sociales que no se mueve
+ * desde junio. Es exactamente la mentira que estos rótulos vinieron a sacar, con el agravante de que
+ * la esconde detrás de una fecha viva.
+ *
+ *     UNA FUENTE VIVA NO LE PRESTA SU FRESCURA A UNA CONGELADA.
+ *
+ * Y AL REVÉS TAMPOCO: un `MIN` haría que la más atrasada arrastre a todas, y el dueño dejaría de ver
+ * que el IVA de ARCA sí está al día. La única salida honesta es NO RESUMIR: cada fuente declara la
+ * suya, y la que está atrasada lo dice al lado de su propia fecha.
+ *
+ * ═══ EL UMBRAL ES POR FUENTE, NO UNO SOLO PARA TODAS ═══
+ *
+ * Una fuente MENSUAL siempre está "atrasada" contra un umbral de días pensado para el extracto: el
+ * F931 de junio se presenta a mediados de julio y a fin de mes ya lleva 34 días. Con un umbral único
+ * de 7 días el ⚠ estaría prendido siempre, y un aviso que nunca se apaga deja de leerse — el mismo
+ * fracaso del trinquete de frescura que ya hubo que arreglar una vez. Cada fuente trae el suyo:
+ * diario para el banco y ARCA, del orden del mes + la demora de presentación para una DDJJ.
+ *
+ * @param {string} texto el rótulo fijo, sin fechas
+ * @param {{nombre:string, expr:string, avisoDias?:number}[]} fuentes en el orden en que se leen
+ * @param {{avisoDias?:number, cola?:string}} [opts]
+ * @returns {string} fórmula con `=`
+ */
+export function rotuloPorFuente(texto, fuentes = [], { avisoDias = DIAS_AVISO, cola = '' } = {}) {
+  const xs = (fuentes || []).filter((f) => f && f.nombre && f.expr)
+  // Igual que `formulaFrescuraDe`: sin fuentes el que falta es el código, no el dato. Un rótulo que
+  // dijera "sin datos" por un arreglo vacío sería una afirmación falsa sobre la empresa.
+  if (!xs.length) throw new Error('rotuloPorFuente: sin fuentes no hay frescura que declarar')
+  const trozo = ({ nombre, expr, avisoDias: dias = avisoDias }) => {
+    const atraso = `TODAY()-${expr}`
+    const aviso = `IF(${atraso}>${dias};" ⚠ hace "&TEXT(${atraso};"0")&" días";"")`
+    return `IF(${expr}=0;${literal(`${nombre} sin datos`)};${literal(`${nombre} al `)}&TEXT(${expr};"dd/mm")&${aviso})`
+  }
+  const fin = cola ? `&" · "&${literal(cola)}` : ''
+  return `=${literal(`${texto} · `)}&${xs.map(trozo).join('&" · "&')}${fin}`
 }
 
 /**
