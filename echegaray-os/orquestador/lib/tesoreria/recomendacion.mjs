@@ -113,6 +113,12 @@ export function generarRecomendaciones(comparacion = {}, ventanas = [], ctx = {}
       plazo_rescate_dias: ganador.dias_vuelta ?? null,
       liquidacion_dias: null,
       rendimiento_estimado_periodo: ganador.rendimiento_bruto_periodo,
+      rendimiento_bruto_periodo: ganador.rendimiento_bruto_periodo,
+      // EL DESGLOSE FISCAL VIAJA CON LA PROPUESTA. Sin él, el mensaje no puede mostrar el bruto al
+      // lado del neto, y un neto sin bruto no se puede discutir ni auditar.
+      rendimiento_antes_de_impuestos_periodo: ganador.rendimiento_antes_de_impuestos_periodo ?? null,
+      impuestos: ganador.impuestos ?? null,
+      impuestos_completos: Boolean(ganador.impuestos_completos),
       rendimiento_neto_periodo: ganador.rendimiento_neto_periodo,
       ganancia_neta_estimada: ganador.ganancia_neta_estimada,
       costo_oportunidad_evitado: Math.round((Number(r.monto_maximo) || 0) * (ganador.exceso_sobre_corte || 0)),
@@ -125,6 +131,10 @@ export function generarRecomendaciones(comparacion = {}, ventanas = [], ctx = {}
         ...(ventana?.condiciones_invalidez || []),
         `la tasa fue observada el ${ganador.evidencia === 'hecho' ? 'cierre' : 'relevamiento'} y esta propuesta vence en ${VIGENCIA_HORAS} horas`,
         ...(ganador.costos_conocidos ? [] : ['los costos del instrumento no se pudieron leer: el neto es un techo, no un resultado']),
+        // Una alícuota que falta no es un detalle de forma: el resultado real es MENOR que el publicado.
+        ...((ganador.impuestos?.pendientes || []).length
+          ? [`el rendimiento publicado NO descuenta ${ganador.impuestos.pendientes.map((p) => p.concepto).join(' ni ')}: el resultado real es menor`]
+          : []),
         ...(accionable ? [] : ['NO ACCIONABLE: el monto es un techo técnico preliminar, no un excedente aprobado']),
       ],
       datos_faltantes: ganador.campos_faltantes || [],

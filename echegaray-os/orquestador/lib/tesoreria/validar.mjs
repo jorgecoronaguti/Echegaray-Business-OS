@@ -19,6 +19,7 @@ import { CONFIANZA } from './contratos.mjs'
 import { rendimientoDelPeriodo, costoTotal } from './comparar.mjs'
 import { aTea } from './instrumentos.mjs'
 import { estaVencida } from './recomendacion.mjs'
+import { impuestosDeColocacion, parametrosFiscales } from './impuestos-colocacion.mjs'
 
 /** Tolerancia de reproducción de la aritmética. 1 peso: no es redondeo, es un error de fórmula. */
 export const TOLERANCIA_PESOS = 1
@@ -170,12 +171,30 @@ export function validarRecomendacion(rec = {}, fuentes = {}) {
     if (tea == null) {
       chequeos.push(falla('neto_reproducible', 'la tasa del instrumento no se puede llevar a efectiva anual: el neto declarado no se puede verificar'))
     } else {
-      const netoReal = rendimientoDelPeriodo(tea, Number(rec.horizonte_dias) || 0) - costoTotal(inst).total
+      // EL VALIDADOR REHACE LA CUENTA ENTERA, IMPUESTOS INCLUIDOS. Recalcular sólo bruto − comisiones
+      // y compararlo contra un neto que sí descuenta impuestos hace fallar a la propuesta correcta;
+      // peor todavía, si algún día el ciclo dejara de descontar impuestos, este chequeo aprobaría el
+      // error. La revisión independiente tiene que medir lo MISMO que la propuesta afirma.
+      const antesDeImpuestos = rendimientoDelPeriodo(tea, Number(rec.horizonte_dias) || 0) - costoTotal(inst).total
+      const fiscal = impuestosDeColocacion({
+        capital: Number(rec.monto_maximo) || 0, rendimientoBrutoPeriodo: antesDeImpuestos,
+        categoria: inst.categoria, parametros: fuentes.fiscal ?? parametrosFiscales({}),
+      })
+      const netoReal = fiscal.estado === 'ok' ? fiscal.rendimiento_neto_periodo : antesDeImpuestos
       const declarado = Number(rec.rendimiento_neto_periodo)
       // Tolerancia relativa de medio punto básico sobre el período: separa un redondeo de un invento.
       chequeos.push(Math.abs(netoReal - declarado) <= 0.00005
-        ? pasa('neto_reproducible', `${(declarado * 100).toFixed(4)}% reproduce desde el instrumento`)
+        ? pasa('neto_reproducible', `${(declarado * 100).toFixed(4)}% reproduce desde el instrumento, con ${(fiscal.costo_fiscal_periodo * 100).toFixed(4)}% de impuestos`)
         : falla('neto_reproducible', `declara ${(declarado * 100).toFixed(4)}% y el instrumento da ${(netoReal * 100).toFixed(4)}% en ${rec.horizonte_dias} días`))
+
+      // ═══ UN RENDIMIENTO SIN IMPUESTOS NO SE PUBLICA ═══
+      //
+      // No alcanza con que la aritmética cierre: si la propuesta llegó hasta acá sin desglose fiscal,
+      // el número que se le muestra al dueño es un bruto con cara de neto. Eso ya costó tres informes
+      // rechazados, así que es una falla de validación, no una nota al pie.
+      chequeos.push(rec.impuestos?.estado === 'ok'
+        ? pasa('impuestos_descontados', rec.impuestos.etiqueta_neto)
+        : falla('impuestos_descontados', 'la propuesta no trae el cálculo de impuestos: lo que declara como neto es bruto'))
     }
   }
 

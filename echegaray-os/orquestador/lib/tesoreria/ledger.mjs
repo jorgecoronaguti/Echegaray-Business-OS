@@ -128,31 +128,65 @@ export async function guardarInstrumentos(query, runId, instrumentos = []) {
 /**
  * Recomendaciones. Idempotente por su id, que ya codifica (bloque, día, instrumento): correr dos
  * veces el mismo día no duplica la propuesta, la actualiza.
+ *
+ * ═══ SE GUARDA LO GENERADO, NO LO PUBLICADO ═══
+ *
+ * Hasta el 03/08/2026 esta función recibía sólo las propuestas que habían pasado la validación. Como
+ * en esta empresa casi ninguna pasa, las dos tablas quedaban VACÍAS mientras el ciclo informaba
+ * "1 propuesta · 1 rechazada": lo que se computaba no se persistía, y entonces no había forma de
+ * contestar **por qué se rechazó** una decisión de plata. El motivo vivía en memoria y se perdía.
+ *
+ * Ahora entra todo lo generado. El estado sale de su validación: `propuesta` si la pasó, `rechazada`
+ * si no. Publicar sigue siendo otra cosa —lo rechazado no se le manda al dueño— pero auditar deja de
+ * depender de que algo se haya publicado.
+ *
+ * El `estado` NO se pisa en el conflicto: si un humano ya aprobó o rechazó una recomendación, una
+ * corrida posterior no puede volver a bajarla a 'propuesta'.
  */
 export async function guardarRecomendaciones(query, runId, recs = [], validaciones = []) {
+  const porId = new Map(validaciones.map((v) => [v.id, v]))
+  let guardadas = 0
+  let rechazadas = 0
   for (const r of recs) {
+    const v = porId.get(r.id)
+    const estado = v && v.aprobada === false ? 'rechazada' : 'propuesta'
+    if (estado === 'rechazada') rechazadas += 1
     await query(
       `insert into tesoreria.recomendaciones
          (id, run_id, bloque, instrumento_id, monto_maximo, moneda, horizonte_dias,
           rendimiento_neto_periodo, ganancia_neta_estimada, confianza, estado, vence_en, payload)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'propuesta',$11,$12)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        on conflict (id) do update
          set run_id = excluded.run_id, monto_maximo = excluded.monto_maximo,
              rendimiento_neto_periodo = excluded.rendimiento_neto_periodo,
              ganancia_neta_estimada = excluded.ganancia_neta_estimada,
-             confianza = excluded.confianza, vence_en = excluded.vence_en, payload = excluded.payload`,
+             confianza = excluded.confianza, vence_en = excluded.vence_en, payload = excluded.payload,
+             estado = case when tesoreria.recomendaciones.estado in ('aprobada','rechazada')
+                             and excluded.estado = 'propuesta'
+                           then tesoreria.recomendaciones.estado
+                           else excluded.estado end`,
       [r.id, runId, r.bloque, r.instrumento_id, r.monto_maximo, r.moneda, r.horizonte_dias,
-        r.rendimiento_neto_periodo, r.ganancia_neta_estimada, r.confianza, r.vence_en, JSON.stringify(r)],
+        r.rendimiento_neto_periodo, r.ganancia_neta_estimada, r.confianza, estado, r.vence_en,
+        // El payload lleva el veredicto adentro: seis meses después nadie tiene que cruzar dos tablas
+        // para saber por qué no se hizo.
+        JSON.stringify({ ...r, validacion: v ?? null })],
     )
+    guardadas += 1
   }
+  const ids = new Set(recs.map((r) => r.id))
+  let validacionesGuardadas = 0
   for (const v of validaciones) {
-    if (!recs.some((r) => r.id === v.id)) continue // sólo las de recomendaciones persistidas
+    // La foreign key obliga: una validación sin su recomendación no entra. Con todo lo generado
+    // persistido, esto ya no descarta las rechazadas — descarta sólo lo que de verdad no existe.
+    if (!ids.has(v.id)) continue
     await query(
       `insert into tesoreria.validaciones (recomendacion_id, validado_en, aprobada, fallas, chequeos)
        values ($1,$2,$3,$4,$5)`,
       [v.id, v.validado_en, v.aprobada, v.fallas ?? [], JSON.stringify(v.chequeos ?? [])],
     )
+    validacionesGuardadas += 1
   }
+  return { guardadas, rechazadas, validaciones: validacionesGuardadas, sin_recomendacion: validaciones.length - validacionesGuardadas }
 }
 
 /** Bloqueos de la barrera. Es la evidencia de que NO se operó. */
