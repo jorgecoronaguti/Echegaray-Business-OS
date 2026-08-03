@@ -14,6 +14,12 @@
 -- superponen (22/06→22/07, después 15/07→23/07) y el mismo movimiento entra dos veces. Duplicar un
 -- débito de $200.000 no da error: da un saldo equivocado y una caja que no cierra.
 --
+-- ⚠ EL RAZONAMIENTO DE ABAJO SOBRE EL SALDO QUEDÓ SUPERADO. Ver 20260730160000_banco_movimientos_
+-- referencia.sql y 20260731130000_banco_referencia_mas_importe.sql: dos descargas del MISMO movimiento
+-- reportan saldos distintos, así que el saldo en la clave hacía entrar de nuevo cada tramo superpuesto.
+-- La clave del movimiento es (cuenta, referencia, importe); esta de acá abajo quedó sólo para las filas
+-- sin referencia. Se conserva el texto original porque explica por qué se creyó lo contrario.
+--
 -- La clave natural del movimiento es (fecha, concepto, importe, saldo_despues). El SALDO forma parte
 -- de la clave a propósito: dos transferencias iguales el mismo día a la misma persona son dos
 -- movimientos reales y distintos, y lo único que los distingue es el saldo corrido. Sacarlo del

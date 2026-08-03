@@ -1,5 +1,9 @@
 // LEER UN EXTRACTO DEL SANTANDER PEGADO O EXPORTADO. NÚCLEO PURO, SIN RED NI BASE.
 //
+// (La única dependencia es `banco-conceptos.mjs`, que también es núcleo puro: es la definición ÚNICA
+// de cuándo dos conceptos son el mismo movimiento, para que el importador y el deduplicador no den
+// respuestas distintas sobre el mismo par de filas.)
+//
 // POR QUÉ EXISTE (23/07). El dueño: "a diario y quizás dos veces por día te tengo que cargar los
 // movimientos bancarios vía archivo csv o capturas de pantalla". Hasta hoy eso significaba que yo
 // editara a mano un array de 127 movimientos adentro de lib/banco-santander.mjs. Un dato que se
@@ -23,6 +27,11 @@
 // es una identidad, no una estimación: si no cierra, hay un typo o falta un movimiento. Es el mismo
 // control que ya encontró dos errores de transcripción en este archivo. Se aplica DESPUÉS de mezclar
 // lo nuevo con lo que ya estaba, porque un extracto nuevo puede arrancar a mitad de la serie.
+
+import { norm as normConcepto, conceptoCompatible } from './banco-conceptos.mjs'
+
+/** ¿El concepto de estos dos movimientos es el mismo? Se pregunta una sola vez, acá. */
+const cotejaConcepto = (a, b) => conceptoCompatible(a?.concepto, b?.concepto) !== null
 
 /** El importe a la argentina: "1.234,56" / "-1.234,56" / "$ 1.234,56-" → número. */
 export function importe(txt) {
@@ -87,7 +96,7 @@ const ES_RUIDO = /^(fecha\b|saldo (inicial|final|anterior|al\b)|[úu]ltimos movi
  *
  * @param {string} texto  el extracto tal cual, con sus saltos de línea
  * @param {{anio?:number}} opts
- * @returns {{movimientos:{fecha:string,concepto:string,importe:number,saldo:number|null}[], rechazos:{linea:number,texto:string,motivo:string}[]}}
+ * @returns {{movimientos:{fecha:string,concepto:string,importe:number,saldo:number|null,referencia:string|null}[], rechazos:{linea:number,texto:string,motivo:string}[]}}
  */
 /**
  * El CSV que descarga el homebanking del Santander ("descargaUltimosMovimientos") NO es el formato
@@ -108,10 +117,31 @@ function encabezadoCsvBanco(linea) {
   const iConcepto = partes.indexOf('concepto')
   const iImporte = partes.indexOf('importe')
   const iSaldo = partes.indexOf('saldo')
+  // LA REFERENCIA ES LA CLAVE DEL MOVIMIENTO Y SE VENÍA TIRANDO. Es el identificador del banco: no
+  // cambia entre descargas, al contrario del saldo corrido —que depende de la ventana de la descarga y
+  // por eso dejó entrar duplicados—. Y para los cheques ES el número de cheque ("0133;000000315;
+  // Cheque debitado" → físico 315), así que el cruce contra el extracto pasa a ser una identidad.
+  const iRef = partes.indexOf('referencia')
   // Sólo el formato con columnas EXTRA entre fecha y concepto (concepto no es la columna 1): ése es el
   // que el parseo genérico no sabe leer. Un "fecha;concepto;importe" común sigue por la vía de siempre.
   if (iConcepto < 2 || iImporte < 2) return null
-  return { fecha: 0, concepto: iConcepto, importe: iImporte, saldo: iSaldo >= 0 ? iSaldo : null }
+  return { fecha: 0, concepto: iConcepto, importe: iImporte, saldo: iSaldo >= 0 ? iSaldo : null, referencia: iRef >= 0 ? iRef : null }
+}
+
+/**
+ * La referencia, normalizada: sólo dígitos y sin ceros a la izquierda.
+ *
+ * POR QUÉ NORMALIZAR. El banco la escribe con relleno ("000008689") y en otras filas sin él
+ * ("16862006"), y la base guarda las que ya cargó SIN relleno. Comparadas crudas, "000008689" y "8689"
+ * son dos claves distintas: el mismo movimiento se cargaría de nuevo en cada descarga. Como número de
+ * cheque pasa lo mismo — el OS lo guarda "00000315" o "315" según de dónde salió.
+ *
+ * Se conserva '' → null: una referencia vacía NO es una referencia. Guardarla como cadena vacía haría
+ * que todos los movimientos pegados por captura choquen entre sí contra el índice único.
+ */
+export function normalizarReferencia(v) {
+  const s = String(v ?? '').replace(/\D/g, '').replace(/^0+/, '')
+  return s === '' ? null : s
 }
 
 /** El primer campo de la línea. Sirve para ver si la línea ABRE una fila (arranca con una fecha). */
@@ -189,7 +219,8 @@ export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {})
       const concepto = String(p[cols.concepto] ?? '').replace(/\s+/g, ' ').trim()
       if (!concepto) { rechazos.push({ linea: numLinea, texto: cruda.slice(0, 90), motivo: 'la fila no tiene concepto' }); continue }
       const saldo = cols.saldo != null ? importe(p[cols.saldo]) : null
-      movimientos.push({ fecha: f, concepto, importe: imp, saldo })
+      const referencia = cols.referencia != null ? normalizarReferencia(p[cols.referencia]) : null
+      movimientos.push({ fecha: f, concepto, importe: imp, saldo, referencia })
       continue
     }
 
@@ -219,7 +250,10 @@ export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {})
     // Un saldo 0 inventado rompería la cadena y haría gritar al control sin motivo.
     const imp = numericos[0].n
     const saldo = numericos.length >= 2 ? numericos[numericos.length - 1].n : null
-    movimientos.push({ fecha: f, concepto, importe: imp, saldo })
+    // Un pegado de pantalla o una captura NO traen la columna Referencia. Se declara null explícito —y
+    // no se omite el campo— para que todo movimiento tenga la misma forma: quien deduplica pregunta
+    // por `referencia` y un `undefined` silencioso lo mandaría por el camino equivocado sin avisar.
+    movimientos.push({ fecha: f, concepto, importe: imp, saldo, referencia: null })
   }
 
   // EL HOMEBANKING DESCARGA DEL MÁS NUEVO AL MÁS VIEJO. La cadena de saldos —saldo(n)=saldo(n−1)+
@@ -247,9 +281,66 @@ export function parsearExtracto(texto, { anio = new Date().getFullYear() } = {})
   return { movimientos, rechazos }
 }
 
-/** La clave natural de un movimiento. El SALDO entra a propósito: dos transferencias iguales el
- *  mismo día son dos movimientos distintos y sólo el saldo corrido los separa. */
-export const clave = (m) => `${m.fecha}|${String(m.concepto).toLowerCase().replace(/\s+/g, ' ').trim()}|${Number(m.importe).toFixed(2)}|${m.saldo == null ? '' : Number(m.saldo).toFixed(2)}`
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// DEDUPLICAR: EL SALDO SIRVE DENTRO DE UNA DESCARGA Y MIENTE ENTRE DOS
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// MEDIDO (03/08). El extracto 04/06→03/08 se leyó contra una base con 170 movimientos y el importador
+// dijo "239 nuevo(s) · 0 ya estaban" — con las ventanas superpuestas casi enteras. Cargarlo habría
+// metido ~170 duplicados. No habría dado un solo error: un duplicado no grita, infla las sumas.
+//
+// LA CAUSA. La clave incluía el SALDO corrido, y el saldo corrido NO es una propiedad del movimiento:
+// depende de la ventana y del orden con que el banco arma la descarga. El mismo echeq quedó con saldo
+// −3.397.612,85 en una descarga y −3.541.112,85 en otra. Con el saldo adentro, cada descarga que se
+// superpone reinyecta todo lo que ya estaba.
+//
+// LA DISTINCIÓN QUE ORDENA TODO: el saldo es coherente DENTRO de una misma descarga (es el saldo que
+// el banco imprimió en esa corrida, y su cadena lo verifica) y NO lo es ENTRE descargas. Por eso acá
+// se usa para separar dos filas del MISMO extracto —dos transferencias reales iguales el mismo día
+// sólo se distinguen por el saldo— y NUNCA para reconocer lo que ya está cargado en la base.
+
+/** La clave natural: fecha, concepto, importe y saldo. Sólo vale contra filas de la MISMA descarga. */
+export const claveNatural = (m) => `${m.fecha}|${normConcepto(m.concepto)}|${Number(m.importe).toFixed(2)}|${m.saldo == null ? '' : Number(m.saldo).toFixed(2)}`
+
+/**
+ * LA IDENTIDAD DEL MOVIMIENTO PARA EL BANCO: (referencia, importe). Null si no tiene referencia.
+ *
+ * EL IMPORTE VA EN LA CLAVE. El banco REPITE la referencia para una operación y su percepción: la
+ * compra en el exterior de Google Workspace ($-37.926) y su percepción RG 5617 ($-11.203,92) comparten
+ * la referencia 00114824 y se distinguen por el Código Operativo, que el parser no captura. Con la
+ * referencia sola, la percepción se descartaba como "ya vista": un impuesto menos y ningún error.
+ *
+ * ES EXACTAMENTE LA CLAVE DEL ÍNDICE ÚNICO DE LA BASE —(cuenta, referencia, importe) donde referencia
+ * no es nula—. Deliberado: si el código usara una clave más fina que la base, dejaría pasar filas que
+ * el índice rechaza después con `on conflict do nothing`, y el importador informaría cargas que no
+ * ocurrieron. La clave del código y la de la base tienen que ser la misma o el conteo miente.
+ */
+export const claveReferencia = (m) => {
+  const r = normalizarReferencia(m?.referencia)
+  return r === null ? null : `ref:${r}|${Number(m.importe).toFixed(2)}`
+}
+
+/** La clave del RESPALDO, para los movimientos sin referencia: fecha e importe, jamás el saldo. El
+ *  concepto no entra al hash porque se compara aparte (ver `cotejaConcepto`): entre descargas cambia
+ *  de mayúsculas y viene recortado, y un hash exacto lo trataría como otro movimiento. */
+export const claveCotejo = (m) => `${m.fecha}|${Number(m.importe).toFixed(2)}`
+
+/** La clave de un movimiento: la del banco cuando existe, la natural cuando no. */
+export const clave = (m) => claveReferencia(m) ?? claveNatural(m)
+
+/** Índice de lo ya cargado por las dos claves. Guarda POSICIONES, no cantidades: cada fila existente
+ *  se puede consumir UNA sola vez, así dos movimientos reales idénticos no colapsan en uno. */
+function indexarExistentes(existentes) {
+  const porRef = new Map()
+  const porCotejo = new Map()
+  const agregar = (mapa, k, i) => { const l = mapa.get(k); if (l) l.push(i); else mapa.set(k, [i]) }
+  existentes.forEach((e, i) => {
+    const r = claveReferencia(e)
+    if (r !== null) agregar(porRef, r, i)
+    agregar(porCotejo, claveCotejo(e), i)
+  })
+  return { porRef, porCotejo }
+}
 
 /**
  * NÚCLEO PURO: qué de lo nuevo NO estaba todavía.
@@ -257,14 +348,42 @@ export const clave = (m) => `${m.fecha}|${String(m.concepto).toLowerCase().repla
  * Las descargas del homebanking se piden con ventanas que se superponen, así que la mayor parte de
  * un extracto nuevo ya está cargada. Sin esto, cada importación duplicaría el tramo común: no daría
  * error, daría un saldo equivocado.
+ *
+ * SE EMPAREJA UNO A UNO, no se pregunta "¿existe?". Si la base tiene UNA transferencia de $100.000 y
+ * el extracto trae DOS (dos transferencias reales del mismo día por el mismo importe), preguntar por
+ * existencia descartaría las dos y borraría plata real; emparejando, la primera se reconoce y la
+ * segunda entra. La base dice cuántas hay, no si hay.
+ *
+ * @param {{fecha:string,concepto:string,importe:number,saldo?:number|null,referencia?:string|null}[]} nuevos
+ * @param {{fecha:string,concepto:string,importe:number,saldo?:number|null,referencia?:string|null}[]} existentes
  */
 export function novedades(nuevos = [], existentes = []) {
-  const vistos = new Set(existentes.map(clave))
+  const { porRef, porCotejo } = indexarExistentes(existentes)
+  const usado = new Array(existentes.length).fill(false)
+  const tomar = (mapa, k, admite) => {
+    for (const i of mapa.get(k) ?? []) {
+      if (usado[i] || (admite && !admite(existentes[i]))) continue
+      usado[i] = true
+      return true
+    }
+    return false
+  }
+
+  const propias = new Set() // dentro de una misma descarga el saldo SÍ distingue: ver el bloque de arriba
   const out = []
   for (const m of nuevos) {
-    const k = clave(m)
-    if (vistos.has(k)) continue
-    vistos.add(k) // el propio extracto puede traer la misma fila dos veces
+    const propia = clave(m)
+    if (propias.has(propia)) continue // el mismo extracto pegado dos veces no se duplica contra sí mismo
+    propias.add(propia)
+
+    const ref = claveReferencia(m)
+    if (ref !== null && tomar(porRef, ref)) continue
+    // RESPALDO. Para las filas que la base guardó SIN referencia —las que entraron por captura de
+    // pantalla o por la semilla— la referencia no puede ser la clave: no la tienen. Se cotejan por
+    // fecha + importe + concepto compatible. Si el nuevo TIENE referencia, sólo puede emparejar con
+    // una fila existente SIN referencia: si la existente tiene otra referencia, el banco ya dijo que
+    // son dos movimientos distintos y fusionarlos perdería uno.
+    if (tomar(porCotejo, claveCotejo(m), (e) => cotejaConcepto(m, e) && (ref === null || claveReferencia(e) === null))) continue
     out.push(m)
   }
   return out
@@ -341,7 +460,10 @@ if (import.meta.url === `file://${process.argv[1]}` && process.argv.includes('--
   const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
   console.log(`\nMOVIMIENTOS PARSEADOS: ${movimientos.length}`)
   for (const m of movimientos) {
-    console.log(`  ${m.fecha}  imp ${fmt(m.importe).padStart(18)}  saldo ${fmt(m.saldo).padStart(18)}  ${m.concepto.slice(0, 70)}`)
+    // La REFERENCIA se muestra porque es la clave con la que se deduplica: mirar un extracto antes de
+    // importarlo sirve justamente para ver si la trae. Un tramo con "ref —" se va a cotejar por el
+    // respaldo, y eso conviene saberlo antes y no cuando ya está cargado.
+    console.log(`  ${m.fecha}  ref ${String(m.referencia ?? '—').padStart(10)}  imp ${fmt(m.importe).padStart(18)}  saldo ${fmt(m.saldo).padStart(18)}  ${m.concepto.slice(0, 60)}`)
   }
   if (rechazos.length) {
     console.log(`\nRECHAZOS: ${rechazos.length}`)
