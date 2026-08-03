@@ -26,6 +26,12 @@ paths:
 evidencia de que algo anda, estás mirando una validación que siempre miente. El comando es
 `orq:test`.
 
+## El shell repite preámbulo
+
+En el historial hay **8.194 comandos que empiezan con `cd`** y **3.330 con `set -a`**. El directorio
+de trabajo persiste entre llamadas: reorientarse en cada una es preámbulo pagado. Usar rutas
+absolutas y no repetir el `cd` salvo que se cambie de worktree.
+
 ## Una fuente por concepto
 
 Un concepto que aparece en más de una cara (web, chat, Claude Code) se define **una vez**, en

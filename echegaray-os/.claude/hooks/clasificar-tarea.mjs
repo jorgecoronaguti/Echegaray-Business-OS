@@ -56,7 +56,12 @@ const SEÑALES = {
     fuertes: ['error', 'roto', 'no anda', 'no funciona', 'bug', 'arregl', 'corregi', 'corregí',
       'corrig', 'se rompió', 'se rompio', 'dejó de', 'dejo de', 'anda mal', 'está mal', 'esta mal',
       'quedó mal', 'quedo mal', 'salió mal', 'salio mal', 'crash', 'se cuelga', 'excepcion',
-      'excepción', 'no muestra', 'no aparece', 'no llega', 'no guarda', 'devuelve mal'],
+      'excepción', 'no muestra', 'no aparece', 'no llega', 'no guarda', 'devuelve mal',
+      // La familia "no + verbo": es como el dueño reporta la mitad de las fallas. Medido contra
+      // los 2.229 pedidos del historial, sin estas líneas quedaban sin clasificar cosas tan
+      // explícitas como "no logro hacer q cambie nada de ningun archivo, no edita, no modifica".
+      'no ejecuta', 'no edita', 'no modifica', 'no cambia', 'no responde', 'no contesta',
+      'no sigue', 'no logro', 'no hace', 'no lo hace', 'no me deja', 'nunca ', 'pesimo', 'pésimo'],
     debiles: ['falla', 'fallo', 'rompi', 'rompí', 'stack', 'undefined', 'regres',
       'no está andando', 'no esta andando'],
   },
@@ -96,9 +101,10 @@ const SEÑALES = {
       'compara ', 'verificá', 'verifica ', 'chequeá', 'chequea '],
   },
   OPTIMIZACION: {
-    fuertes: ['optimiz', 'performance', 'más rápido', 'mas rapido', 'consumo', 'acelerar'],
+    fuertes: ['optimiz', 'performance', 'más rápido', 'mas rapido', 'consumo', 'acelerar',
+      'velocidad', 'rapidez'],
     debiles: ['lento', 'rendimiento', 'costo de', 'crédito', 'credito', 'contexto', 'caro',
-      'gasta mucho', 'reducir el', 'ahorra', 'eficien'],
+      'gasta mucho', 'reducir el', 'ahorra', 'eficien', 'concis'],
   },
 }
 

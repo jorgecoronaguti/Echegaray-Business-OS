@@ -41,6 +41,18 @@ test('BUG: incluye la forma en que el dueño reporta de verdad', () => {
   assert.equal(clasificar('dejo de andar el timer del flujo')?.categoria, 'BUG')
 })
 
+test('BUG: la familia "no + verbo", que es como reporta la mitad de las fallas', () => {
+  // Medido contra los 2.229 pedidos del historial: sin estas señales, BUG detectaba 52 casos.
+  // Con ellas, 122. Eran quejas explícitas que quedaban clasificadas como nada.
+  assert.equal(clasificar('pesimo, no sigue hilo de la conversacion. no ejecuta nunca, es lento')?.categoria, 'BUG')
+  assert.equal(clasificar('no logro hacer q cambie nada de ningun archivo, no edita, no modifica')?.categoria, 'BUG')
+  assert.equal(clasificar('el chat no responde y no me deja cargar el comprobante')?.categoria, 'BUG')
+})
+
+test('OPTIMIZACIÓN: pedir velocidad es pedir optimización', () => {
+  assert.equal(clasificar('necesito velocidad y q sean concisas y especificas las respuestas')?.categoria, 'OPTIMIZACION')
+})
+
 test('DESARROLLO: el pedido real que originó este sistema', () => {
   const r = clasificar("agrega esta habilidad nueva del bot de mattermost a lo q responde le pregunto 'q sabes hacer'")
   assert.equal(r?.categoria, 'DESARROLLO')
