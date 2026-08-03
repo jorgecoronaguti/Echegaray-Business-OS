@@ -228,10 +228,11 @@ function normalizarPayload(payload) {
 /**
  * Ata el post a la sesión apenas se sabe cuál es.
  *
- * El id del post SÓLO llega en los clicks: un `dialog_submission` no lo trae, y la sesión
- * nace sin él (el slash command publica por respuesta, así que el OS no se entera del id
- * hasta el primer toque). Si el primer click es «Otra fecha…» —que abre un diálogo y no
- * guardaba nada— la respuesta del formulario no tenía a qué post volver: la fecha cambiaba
+ * DEPENDE DE QUIÉN PUBLICÓ LA TARJETA. Cuando la publica el slash command, la crea el bot y
+ * la sesión ya nace atada (`root_post_id`), así que acá no hay nada que hacer. Cuando la
+ * publica el Communication Layer (la mención), el OS no conoce el id hasta el primer click: un
+ * `dialog_submission` no lo trae. Si el primer toque es «Otra fecha…» —que abre un diálogo y
+ * no guardaba nada— la respuesta del formulario no tenía a qué post volver: la fecha cambiaba
  * en la sesión y el mensaje seguía mostrando la vieja, con las obras del día viejo.
  */
 async function recordarPost(d, p, sesion) {
@@ -242,7 +243,11 @@ async function recordarPost(d, p, sesion) {
   // queda en el canal con sus botones vivos. Sin esta guarda, esos botones manejaban la
   // sesión NUEVA y encima le reapuntaban el post, así que los refrescos posteriores
   // aterrizaban en el mensaje equivocado. Se rechaza y se dice cuál es el bueno.
-  if (meta.post_id && meta.post_id !== p.postId) return { ...sesion, __postAjeno: true }
+  //
+  // Se pregunta por `postDe`, no por `meta.post_id`: desde que la tarjeta del slash command la
+  // publica el bot, la atadura puede venir de `root_post_id` y mirar sólo la meta dejaba pasar
+  // el click del mensaje viejo — que además se refrescaba en el mensaje nuevo.
+  if (postDe(sesion)) return { ...sesion, __postAjeno: true }
   await guardar(d, sesion, {
     marcas: marcasDe(sesion), fecha: meta.fecha, obra: meta.obra ?? null,
     refs: meta.refs ?? [], postId: p.postId,

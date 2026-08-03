@@ -266,10 +266,14 @@ async function main() {
     log,
   })
 
+  // El MISMO cliente que usa el manejador de acciones: la tarjeta del slash command la publica
+  // el bot (si la publicara Mattermost por respuesta, sería de la persona y el bot no podría
+  // reescribirla nunca — 403 en cada refresco por API). Ver `comando-asistencia.mjs`.
   const manejarComando = crearComandoAsistencia({
     tokenComando: process.env.MM_SLASH_TOKEN_ASISTENCIA || null,
     port: pool,
     google: (await import('../lib/google-os.mjs')).googleDelOs({ log }),
+    mattermost,
     url: urlAccion,
     log,
   })
