@@ -220,12 +220,32 @@ export function detectarDuplicados(movs = []) {
  * Se calcula de los MISMOS movimientos que ya se leyeron: no se vuelve a abrir Compras, que es lo que
  * haría que dos criterios distintos midieran la misma deuda.
  */
+/**
+ * DEUDA COMERCIAL VENCIDA. Y la distinción que hace toda la diferencia: **no deber nada vencido no es
+ * lo mismo que no haber podido mirar.**
+ *
+ * Antes devolvía `null` en los dos casos, y aguas abajo `null` se traduce en "hay datos faltantes que
+ * afectan el cálculo" — que bloquea toda propuesta de inversión. O sea que una empresa que paga en
+ * fecha quedaba castigada POR pagar en fecha: su cero de deuda vencida se leía como un agujero de
+ * información. Es la misma trampa que este repo ya pagó del otro lado ("un cero por falta de policy es
+ * indistinguible de un cero real"), sólo que dada vuelta.
+ *
+ * Ahora: si el flujo no se pudo leer, `null` — no sabemos. Si se leyó y Compras no aparece por ningún
+ * lado, también `null` — Compras siempre tiene movimientos, que no haya ninguno es sospechoso, no
+ * tranquilizador. Y si Compras se leyó y no hay una sola fila vencida, eso es un CERO REAL y se
+ * declara como tal.
+ */
 export function vencidoComercialDe(flujo = {}) {
-  const vencidos = (flujo.movimientos || []).filter(
-    (m) => m.status === 'vencido' && m.direction === 'out' && /Compras/i.test(String(m.sheet_name ?? '')),
-  )
-  if (!vencidos.length) return null
-  return { monto: vencidos.reduce((s, m) => s + (Number(m.amount) || 0), 0), n: vencidos.length }
+  if (flujo.estado !== 'ok') return null
+  const deCompras = (flujo.movimientos || []).filter((m) => /Compras/i.test(String(m.sheet_name ?? '')))
+  const vioCompras = deCompras.length > 0 || (flujo.pestanas_leidas || []).some((p) => /Compras/i.test(String(p)))
+  if (!vioCompras) return null
+  const vencidos = deCompras.filter((m) => m.status === 'vencido' && m.direction === 'out')
+  return {
+    monto: vencidos.reduce((s, m) => s + (Number(m.amount) || 0), 0),
+    n: vencidos.length,
+    leido: true,
+  }
 }
 
 export const VERSION_SKILL = '1.0.0'
