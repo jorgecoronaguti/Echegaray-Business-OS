@@ -1336,3 +1336,14 @@ test('en la pantalla de cauciones, TODAS las filas son cauciones', () => {
   assert.equal(conPantalla[0].liquidacion_dias, 0, 'y no se cuenta dos veces')
   assert.notEqual(conPantalla[0].id, conPantalla[1].id)
 })
+
+test('el timeout del unit alcanza para una corrida real, medida', () => {
+  // La primera corrida productiva completa tardó 530 s (8 pantallas, 1107 instrumentos y la
+  // persistencia del ledger sobre el pooler). El unit cortaba a los 300: el timer habría matado cada
+  // corrida a mitad de la escritura, dos veces por día, y el journal habría mostrado un timeout en
+  // lugar del defecto. Este repo ya pagó esa trampa con otro generador cortado a los 10 minutos.
+  const unit = readFileSync(join(DIR, '..', '..', 'systemd', 'echegaray-tesorero.service'), 'utf8')
+  const m = /TimeoutStartSec=(\d+)/.exec(unit)
+  assert.ok(m, 'el unit tiene que declarar un TimeoutStartSec')
+  assert.ok(Number(m[1]) >= 900, `TimeoutStartSec=${m[1]} es menor que una corrida real medida (530 s)`)
+})
