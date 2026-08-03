@@ -39,7 +39,8 @@ import { resolverColumnas, rango } from '../lib/compras-columnas.mjs'
 import { seccion, sub, total as rotuloTotal, auditarPatron } from '../lib/patron-pestana.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
 import { borrarNotas } from '../lib/nota-celda.mjs'
-import { celdaF931, celdaCabecera, PESTAÑA as RAW } from './f931-sheet.mjs'
+import { celdaF931, celdaCabecera, PESTAÑA as RAW, COL as F931_COL, FILA0 as F931_FILA0 } from './f931-sheet.mjs'
+import { formulaUltimaFecha, formulaUltimoPeriodo, rotuloPorFuente, DIAS_AVISO_MENSUAL } from '../lib/fecha-de-frescura.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Cargas Sociales'
@@ -159,7 +160,7 @@ async function planes() {
 }
 
 /** NÚCLEO PURO: arma la grilla entera de la pestaña. Devuelve las filas y las marcas que usa el formato. */
-export function grilla({ periodos, conceptos, ps, C, corte }) {
+export function grilla({ periodos, conceptos, ps, C }) {
   const DESDE_PROY = desdeQueMesSeProyecta(periodos)
   const filas = []
   /** Empuja una fila rellenando hasta el ancho de la grilla y devuelve su número de fila real. */
@@ -182,7 +183,23 @@ export function grilla({ periodos, conceptos, ps, C, corte }) {
 
   // ── TÍTULO Y HERO ──────────────────────────────────────────────────────────────────────────────
   push(['Cargas sociales'])
-  push([`Qué genera la nómina, qué se paga y cuándo sale de la caja · DDJJ F931 del data room + Compras · al ${ar(corte)}`])
+  // LA FRESCURA VA DECLARADA POR FUENTE, NO EN UNA SOLA FECHA (03/08).
+  //
+  // Era `al ${HOY}` —el día en que corría el script—, y el arreglo evidente (un MAX sobre las dos
+  // fuentes) sería peor: Compras se mueve todos los días y el F931 sale de los PDF del data room, que
+  // se quedan en el último período presentado. El MAX pondría la fecha de Compras arriba del cuadro
+  // "declarado en las DDJJ F931", que hace un mes y medio que no cambia. El porqué, en
+  // lib/fecha-de-frescura.mjs; el criterio es el mismo que en "Impuestos y Financieros".
+  //
+  // El F931 declara su PERÍODO, no la fecha en que se leyó el PDF: una DDJJ de junio presentada en
+  // julio habla de junio, y decir "al 16/07" sería declarar frescura de la gestión, no del dato.
+  push([rotuloPorFuente('Qué genera la nómina, qué se paga y cuándo sale de la caja', [
+    { nombre: 'DDJJ F931', expr: formulaUltimoPeriodo(`${RAW}!$${F931_COL.periodo}$${F931_FILA0}:$${F931_COL.periodo}`), avisoDias: DIAS_AVISO_MENSUAL },
+    // Lo pagado sale de Compras, por la misma columna de fecha que usan las SUMIFS de la sección 3.
+    // `mixto`: esa columna convive como serial y como texto tipeado — un MAX crudo pierde las
+    // tipeadas EN SILENCIO y declararía como corte la última que entró por casualidad como número.
+    { nombre: 'Compras', expr: formulaUltimaFecha(rango(C.fecha), { mixto: true }) },
+  ])])
   push()
 
   push(['LA POSICIÓN', 'Monto', ...Array(11).fill(VACIO), VACIO, 'De dónde sale'])
@@ -436,7 +453,7 @@ async function main() {
   const ps = await planes()
   console.log(`${periodos.length} período(s) F931 · ${conceptos.length} concepto(s) · ${ps.length} plan(es) de pago`)
 
-  const { filas, cantidades, ratios, titular } = grilla({ periodos, conceptos, ps, C, corte: HOY })
+  const { filas, cantidades, ratios, titular } = grilla({ periodos, conceptos, ps, C })
   console.log(`grilla: ${filas.length} filas × ${ANCHO} columnas — un solo ancho para toda la pestaña`)
   if (DRY) return
 

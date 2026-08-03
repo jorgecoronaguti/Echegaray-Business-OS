@@ -578,6 +578,7 @@ test('NO se afirma nada más allá de donde llega el calendario (el bloque E pro
 
 test('la deuda comercial vencida sale de los movimientos ya leídos, no de una segunda lectura', () => {
   const flujo = {
+    estado: 'ok',
     movimientos: [
       { status: 'vencido', direction: 'out', sheet_name: 'Compras', amount: 5351225 },
       { status: 'vencido', direction: 'out', sheet_name: 'Compras', amount: 1000000 },
@@ -589,7 +590,17 @@ test('la deuda comercial vencida sale de los movimientos ya leídos, no de una s
   const v = vencidoComercialDe(flujo)
   assert.equal(v.monto, 6351225)
   assert.equal(v.n, 2)
-  assert.equal(vencidoComercialDe({ movimientos: [] }), null, 'sin vencidos es null, no un cero que parezca dato')
+  // CAMBIÓ EL CRITERIO, Y SE DECLARA. Este test afirmaba que "sin vencidos es null, no un cero que
+  // parezca dato". La intención era buena —no fabricar un cero— pero en producción hizo daño: `null`
+  // se traduce aguas abajo en "hay datos faltantes" y eso bloquea toda propuesta de inversión, así
+  // que una empresa sin deuda vencida quedaba castigada por no tenerla (03/08: "0 publicables · 2
+  // rechazadas"). La distinción correcta no es "hay vencidos o no", es "¿pude mirar Compras?".
+  // Sin poder mirar sigue siendo null; mirando y sin vencidos, es un cero real. Ver
+  // deuda-comercial-cero.test.mjs.
+  assert.equal(vencidoComercialDe({ movimientos: [] }), null, 'un flujo que no se pudo leer sigue siendo null')
+  const cero = vencidoComercialDe({ estado: 'ok', pestanas_leidas: ['Compras'], movimientos: [] })
+  assert.equal(cero.monto, 0, 'Compras leída y sin vencidos es un CERO REAL')
+  assert.equal(cero.leido, true)
 })
 
 test('los dólares y los cheques en cartera NO financian una colocación en pesos', () => {
@@ -834,9 +845,15 @@ test('la contingencia se simula EN PESOS: los dólares no tapan un déficit en p
     proy, { hoy: HOY, dias: cal },
   )
   const sinComposicion = await calcularExcedente({ ...base, composicion: null }, proy, { hoy: HOY, dias: cal })
-  const varaC = conDolares.ventanas.find((v) => v.bloque === 'C')?.referencia?.hurdle_periodo ?? 0
-  const varaS = sinComposicion.ventanas.find((v) => v.bloque === 'C')?.referencia?.hurdle_periodo ?? 0
-  assert.ok(varaC > varaS, `mirando sólo los pesos la vara tiene que ser MAYOR: ${varaC} vs ${varaS}`)
+  // 03/08: con el motor por ventana el efecto es MÁS fuerte que "una vara más alta". Con $20M de pesos
+  // y un egreso de $30M el día 10, el recorrido en pesos toca −$10M: no hay ventana a 30 días, punto.
+  // Mirando el total —dólares incluidos— la ventana queda abierta con $20M. Ése es exactamente el
+  // error que el test vigila: los dólares no pueden tapar un déficit en pesos.
+  const deC = (r) => r.ventanas.find((v) => v.bloque === 'C' || v.bloque_solicitado === 'C')
+  const cC = deC(conDolares)
+  const cS = deC(sinComposicion)
+  assert.equal(cC.monto_maximo, 0, 'mirando sólo los pesos no puede quedar nada colocable a 30 días')
+  assert.ok(Number(cS.monto_maximo) > 0, 'mirando el total (con dólares) la ventana queda abierta: ése es el defecto')
 })
 
 test('la cobertura del calendario sale de las FILAS, no del horizonte que dijo "ok"', async () => {

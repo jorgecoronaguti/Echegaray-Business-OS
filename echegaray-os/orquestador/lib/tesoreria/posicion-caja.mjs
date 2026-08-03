@@ -24,6 +24,8 @@ import { EVIDENCIA, CONFIANZA, evidenciaCombinada } from './contratos.mjs'
 import {
   modelarCajaRestringida, estadoReserva, evaluarAccionabilidad, ESTADO_POLITICA,
 } from './politicas.mjs'
+import { leerChequesFirmados, cajaRestringidaViva, dobleConteoConCompras } from './cheques-firmados.mjs'
+import { restringidaDeVentana, VENTANAS_DIAS } from './excedente-ventana.mjs'
 
 /**
  * RESERVA MÍNIMA OPERATIVA. El default es 0 a propósito: un piso inventado por el software sería un
@@ -151,6 +153,18 @@ export function cuentasQueDesaparecieron(composicion, composicionAnterior) {
 }
 
 /**
+ * CAJA COMPROMETIDA = LO VENCIDO, Y NADA MÁS.
+ *
+ * Está separada en una función propia para poder probarla sola, porque es la resta que más caro
+ * costó: sumar `entra_30_dias` acá restaba dos veces las mismas obligaciones —una acá y otra en el
+ * calendario, que las trae fechadas— y encima lo hacía con un nombre que sugiere lo contrario. El
+ * parámetro `entra30` se recibe a propósito: entra, se informa y NO se suma.
+ */
+export function cajaComprometida({ vencidoFiscal = null, vencidoComercial = null } = {}) {
+  return (Number(vencidoFiscal) || 0) + (Number(vencidoComercial) || 0)
+}
+
+/**
  * SKILL 2. Reconstruye la posición financiera con criterio percibido.
  *
  * @param {object} deps {google}
@@ -204,21 +218,55 @@ export async function reconstruirPosicion(deps = {}, opts = {}) {
   const oblig = modelo.comprometido?.estado === 'ok' ? modelo.comprometido : null
   const comercial = modelo.deuda_comercial?.estado === 'ok' ? modelo.deuda_comercial : null
 
-  // COMPROMETIDO = lo vencido (que ya debería haber salido) + lo que entra en 30 días. Ni un peso de
-  // esto es excedente, por más que hoy esté en la cuenta.
+  // ═══ COMPROMETIDO = LO VENCIDO, Y NADA MÁS ═══
+  //
+  // Hasta el 03/08/2026 acá se sumaba también `entra_30_dias`, y eso estaba mal por dos motivos a la
+  // vez. El primero es el nombre: `entra_30_dias` NO es plata que entra, son obligaciones que VENCEN
+  // dentro de 30 días (sale de `obligacion_resumen`, la misma vista que `vencido`). El segundo es que
+  // esas obligaciones YA están en el calendario como egresos fechados, así que restarlas otra vez acá
+  // es contar el mismo peso dos veces.
+  //
+  // Lo vencido, en cambio, NO está en el calendario: el calendario arranca hoy y descarta lo que
+  // quedó atrás. Por eso se resta acá y por eso `entra_30_dias` viaja al detalle, informado pero sin
+  // sumar — el número sigue estando, y ahora se puede auditar por qué no entra.
   const vencidoFiscal = oblig ? Number(oblig.vencido) || 0 : null
   const vencidoComercial = comercial ? Number(comercial.vencido) || 0 : null
   const entra30 = oblig ? Number(oblig.entra_30_dias) || 0 : null
   if (vencidoFiscal == null) faltantes.push('obligaciones fiscales (vista obligacion_resumen no disponible)')
   if (vencidoComercial == null) faltantes.push('deuda comercial vencida (Compras del Cash Flow)')
 
-  const comprometida = (vencidoFiscal ?? 0) + (vencidoComercial ?? 0) + (entra30 ?? 0)
+  const comprometida = cajaComprometida({ vencidoFiscal, vencidoComercial, entra30 })
 
-  // RESTRINGIDA. Un `null` NO es un cero: ver `modelarCajaRestringida`. Lo que devuelve trae el monto
-  // a restar (conservador) por separado de si el estado permite accionar.
-  const restringidaModelo = modelarCajaRestringida(opts.filaRestringida ?? null, hoy)
+  // ═══ RESTRINGIDA: SE RECALCULA, NO SE CONSULTA UNA FOTO ═══
+  //
+  // La política declarada decía $48.148.311 y los cheques reales sumaban $47.948.311: $200.000 de
+  // diferencia por un cheque marcado como debitado que nadie volvió a declarar. Ahora se lee la
+  // pestaña en cada corrida y la política queda de respaldo para cuando la lectura falla — un `null`
+  // sigue sin ser un cero (ver `modelarCajaRestringida`).
+  let cheques = []
+  let restringidaModelo = modelarCajaRestringida(opts.filaRestringida ?? null, hoy)
+  try {
+    cheques = await leerChequesFirmados(deps.google, opts.spreadsheetId || (await import('../cash-briefing.mjs')).CASHFLOW_ID)
+    restringidaModelo = cajaRestringidaViva(cheques, hoy)
+  } catch (e) {
+    faltantes.push(`no se pudo recalcular la caja restringida de Cheques Emitidos (${String(e?.message ?? e).slice(0, 80)}): se usa la política declarada, que puede estar vieja`)
+  }
+  // POR VENCIMIENTO, NO EN BLOQUE. Para decidir una colocación a 30 días sólo hay que cubrir lo que
+  // vence en esos 30 días; un cheque a 60 no bloquea nada a 30. Y lo que el calendario no puede ver
+  // —lo ya vencido sin debitar y lo que no tiene fecha— se resta aparte, siempre.
+  const restringidaPorVentana = Object.fromEntries(
+    VENTANAS_DIAS.map((d) => [d, restringidaDeVentana(cheques, hoy, d)]),
+  )
   const restringida = restringidaModelo.monto_a_restar
   if (restringidaModelo.bloquea_accionable) faltantes.push(`caja restringida: ${restringidaModelo.motivo}`)
+
+  // EL DOBLE CONTEO QUE HABÍA QUE DESCARTAR POR EVIDENCIA. Un cheque emitido que paga una factura de
+  // Compras vencida estaría en `restringida` y en `vencido_comercial` a la vez.
+  const dobleConteo = dobleConteoConCompras(cheques, opts.movimientosVencidos ?? [])
+  if (dobleConteo.hay) {
+    faltantes.push(`${dobleConteo.n} cheque(s) por $${dobleConteo.monto.toLocaleString('es-AR')} coinciden con facturas de Compras vencidas: `
+      + 'ese monto se está restando dos veces (como caja restringida y como deuda comercial vencida)')
+  }
 
   // RESERVA MÍNIMA. Es una POLÍTICA del dueño. Mientras no esté aprobada, el número que sale de acá
   // NO se llama excedente: se llama techo técnico preliminar, y nada es accionable.
@@ -228,8 +276,16 @@ export async function reconstruirPosicion(deps = {}, opts = {}) {
 
   const techoAritmetico = Math.round(cajaReal - comprometida - restringida - minima)
 
-  // TECHO EN PESOS. Un excedente en dólares o en cheques por depositar no se coloca en un instrumento
-  // en pesos: el techo aplicable es el menor entre el aritmético y la parte líquida en ARS.
+  // ═══ ESTE NÚMERO ES EL TECHO DE HOY, NO EL EXCEDENTE DE 30 DÍAS ═══
+  //
+  // Resta la caja restringida ENTERA porque responde una pregunta de T+0: "¿cuánto podría mover hoy
+  // mismo sin mirar el calendario?". A T+0 no hay tiempo para que entre una cobranza ni para que se
+  // acredite un valor a depositar, así que todo lo firmado pesa.
+  //
+  // El excedente por ventana —30, 60 y 90 días— NO sale de acá y no está topeado por acá: lo calcula
+  // `excedente-ventana.mjs` caminando el calendario, que es el único lugar donde entra y sale plata
+  // una sola vez. Usar este techo como tope de aquél era el segundo sesgo conservador apilado: el
+  // 03/08/2026 daba $0 con $99M de pesos líquidos en la cuenta.
   const arsLiquida = composicion ? Math.round(composicion.ars_liquida) : null
   const techoArs = arsLiquida == null
     ? techoAritmetico
@@ -269,11 +325,18 @@ export async function reconstruirPosicion(deps = {}, opts = {}) {
 
     reserva,
     caja_restringida: restringidaModelo,
+    // El detalle por vencimiento es lo que permite NO restar a 30 días un cheque que vence a 60.
+    caja_restringida_por_ventana: restringidaPorVentana,
+    doble_conteo_cheques_compras: dobleConteo,
     techo_sin_topar: techoAritmetico, // el aritmético, antes del techo en pesos — para auditar la diferencia
     composicion,
     deficit_previsto: techoAritmetico < 0 ? Math.abs(techoAritmetico) : 0,
     detalle: {
-      vencido_fiscal: vencidoFiscal, vencido_comercial: vencidoComercial, entra_30_dias: entra30,
+      vencido_fiscal: vencidoFiscal, vencido_comercial: vencidoComercial,
+      // INFORMADO, NO SUMADO. Son obligaciones que vencen dentro de 30 días y ya viven en el
+      // calendario como egresos fechados: sumarlas acá las restaba dos veces.
+      entra_30_dias: entra30,
+      entra_30_dias_criterio: 'no suma a lo comprometido: son obligaciones que ya están en el calendario como egresos fechados',
       cobranzas_por_cobrar_mes: d.cobranzas_por_cobrar_mes ?? null,
       cobranzas_vencidas: d.cobranzas_vencidas ?? null,
       linea_descubierto: modelo.lineas?.descubierto ?? null,

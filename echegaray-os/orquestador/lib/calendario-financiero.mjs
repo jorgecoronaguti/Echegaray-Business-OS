@@ -189,19 +189,20 @@ export async function calendarioDiario(deps = {}, opts = {}) {
   // arranca donde el Tipo dice FISICO/ECHEQ (no en una fila fija): A Tipo(0), E Proveedor(4),
   // F Monto(5), I fecha de pago(8, DD/MM/YYYY), K DEBITADO(10). Un debitado ya salió de la cuenta.
   try {
+    // EL PARSEO DE LA FILA ES UNO SOLO (`filaCheque`), compartido con `tesoreria/cheques-firmados`.
+    // Los dos módulos hacen preguntas distintas —acá "qué cae cada día", allá "cuánta plata ya tiene
+    // dueño"— y con dos parseos separados podían responder con universos distintos de cheques.
+    const { filaCheque } = await import('./tesoreria/cheques-firmados.mjs')
     const chq = await google.readSheetValues(LIBRO, 'Cheques Emitidos!A1:L997').catch(() => [])
     for (const r of chq) {
-      if (!/^(fisico|echeq)$/i.test(String(r?.[0] ?? '').trim())) continue // sólo filas del registro
-      if (/^si$/i.test(String(r?.[10] ?? '').trim())) continue // ya debitado: ya salió de la cuenta
-      const fecha = parseFecha(r?.[8]); const monto = parseMonto(r?.[5])
-      if (!fecha || fecha < desde || fecha > hasta || !(monto > 0)) continue
-      const proveedor = String(r?.[4] ?? '').trim()
+      const c = filaCheque(r, { parseMonto, parseFecha })
+      if (!c || !c.fecha || c.fecha < desde || c.fecha > hasta) continue
       // EL INSTRUMENTO MANDA CUANDO EL CONCEPTO NO DICE NADA (QA 23/07). Clasificar un cheque por el
       // nombre del proveedor lo mandaba a "obligación": la línea "Cheques" del día daba $0 aunque los
       // movimientos fueran cheques (Diesel Rodriguez, NEUMAGOM). Si el proveedor SÍ delata un pago
       // fiscal o previsional (UOCRA, ARCA…), gana ese concepto; si no, es lo que es: un cheque.
-      const cat = categoriaEgreso(proveedor)
-      movimientos.push({ fecha, tipo: 'egreso', monto, categoria: cat === 'obligacion' ? 'cheque' : cat, proveedor, obra: String(r?.[11] ?? '').trim() || null, medio: 'Cheque', origen: 'Cheques Emitidos' })
+      const cat = categoriaEgreso(c.proveedor)
+      movimientos.push({ fecha: c.fecha, tipo: 'egreso', monto: c.monto, categoria: cat === 'obligacion' ? 'cheque' : cat, proveedor: c.proveedor, obra: c.obra, medio: 'Cheque', origen: 'Cheques Emitidos' })
     }
   } catch { /* sin cheques: el día queda sin ese egreso */ }
 

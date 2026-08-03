@@ -40,24 +40,35 @@ const RESTRINGIDA_CERO = { monto: 0, fuente: 'declaración del dueño', declarad
 const publicados = []
 const publicar = async (t) => { publicados.push(t) }
 
-test('con la cuenta en descubierto, el ciclo NI ABRE el navegador y recomienda cancelar la línea', async () => {
+test('sin excedente el mercado SE RELEVA IGUAL, y la recomendación estructural sigue saliendo', async () => {
+  // ═══ CAMBIO DE CRITERIO, 03/08/2026 — declarado, no silencioso ═══
+  //
+  // Antes, sin ventanas con monto el ciclo devolvía `mercado: omitido — sin excedente` y terminaba sin
+  // mirar Balanz. El razonamiento ("si cancelar la línea gana siempre, no hay nada que mirar") es
+  // correcto para DECIDIR y desastroso como compuerta: el excedente se calculaba mal —restaba todo lo
+  // que sale y no sumaba una cobranza— y por lo tanto daba cero siempre, así que el agente no miró el
+  // mercado NUNCA. Un defecto de la mitad de caja apagaba la otra mitad entera.
+  //
+  // Ahora el relevamiento no depende del excedente. La recomendación de aplicar a la deuda sigue
+  // saliendo —eso no cambió— y va JUNTO a la tabla comparativa, no en lugar de ella.
   publicados.length = 0
   let releveIntentado = false
   const r = await correrCiclo({
     google: googleFake({ caja: -5000000 }),
-    relevar: async () => { releveIntentado = true; return { estado: 'ok', paginas: [], bloqueos: [] } },
+    relevar: async () => { releveIntentado = true; return { estado: 'ok', paginas: [], bloqueos: [], observado_en: HOY.toISOString() } },
     publicar, ahora: HOY,
   }, { publicarSiempre: true, dias: 30 })
 
   assert.equal(r.estado, 'ok')
   assert.equal(r.sin_excedente, true)
-  assert.equal(releveIntentado, false, 'no tiene sentido mirar el mercado si cancelar la línea gana siempre')
+  assert.equal(releveIntentado, true, 'el mercado se releva SIEMPRE: no puede depender del excedente')
   assert.equal(r.recomendacion_estructural.tipo, 'aplicar_a_deuda')
-  assert.equal(publicados.length, 1)
-  assert.match(publicados[0], /NO HAY EXCEDENTE INVERTIBLE/)
-  assert.match(publicados[0], /REQUIERE APROBACIÓN HUMANA/)
-  // El paso del mercado tiene que quedar registrado como omitido, no ausente.
-  assert.ok(r.traza.some((p) => p.paso === 'mercado' && p.estado === 'omitido'))
+  assert.ok(publicados.some((t) => /NO HAY EXCEDENTE INVERTIBLE/.test(t)))
+  assert.ok(publicados.some((t) => /REQUIERE APROBACIÓN HUMANA/.test(t)))
+  // Y la tabla comparativa se publica igual: saber contra qué se compara es información aunque hoy no
+  // haya un peso para colocar.
+  assert.ok(publicados.some((t) => /ALTERNATIVAS A \d+ DÍAS/.test(t)), 'falta la tabla comparativa')
+  assert.ok(r.traza.some((p) => p.paso === 'tabla_instrumentos'))
 })
 
 test('sin sesión de Balanz, el ciclo NO intenta entrar: avisa y para', async () => {
@@ -97,7 +108,9 @@ test('con excedente y una alternativa que gana, produce una propuesta validada',
   assert.equal(r.estado, 'ok')
   assert.ok(r.recomendaciones.length >= 1, `sin propuestas: ${JSON.stringify(r.sin_propuesta)}`)
   assert.equal(r.publicado, true)
-  assert.match(publicados[0], /TESORERÍA · PROPUESTA DE INVERSIÓN/)
+  // El primer mensaje ahora es el excedente POR PLAZO: es la mitad que decide y va antes que todo.
+  assert.match(publicados[0], /TESORERÍA · EXCEDENTE POR PLAZO/)
+  assert.ok(publicados.some((t) => /TESORERÍA · PROPUESTA DE INVERSIÓN/.test(t)))
   // Toda propuesta publicada pasó por la validación independiente.
   assert.ok(r.validaciones.every((v) => v.aprobada || !r.recomendaciones.some((x) => x.id === v.id)))
 })
@@ -226,22 +239,26 @@ test('`publicado` es lo que se ENVIÓ, no lo que se decidió enviar', async () =
   // viene vacío, no sale un solo mensaje, y la corrida quedaba registrada como publicada. Verificado
   // contra Mattermost: `publicado=true` en el ledger y el último post del canal era de 7 minutos
   // antes. El registro que existe para responder "¿se le avisó al dueño?" contestaba que sí.
+  //
+  // 03/08: el escenario cambió pero el defecto es el mismo. Ahora el ciclo publica SIEMPRE el
+  // excedente por plazo, así que "no hay nada que mandar" ya no se alcanza por falta de propuestas.
+  // Se alcanza igual sin publicador: la DECISIÓN de publicar sigue en true y no sale un solo mensaje.
+  // Si alguien vuelve a escribir `publicado: publicar.publicar`, este test se pone rojo.
   publicados.length = 0
   const r = await correrCiclo({
     google: googleFake({ caja: 50000000 }),
     query: null,
     relevar: async () => ({ estado: 'ok', paginas: [], bloqueos: [], observado_en: HOY.toISOString() }),
-    publicar,
+    publicar: null,
     ahora: HOY,
   }, {
     publicarSiempre: true, dias: 30,
     filaReserva: RESERVA_APROBADA, filaRestringida: RESTRINGIDA_CERO, extractorValidado: true,
   })
-  // Sin mercado no hay propuesta publicable: no se envió nada.
   assert.equal(publicados.length, 0, 'no debería haber salido ningún mensaje')
+  assert.equal(r.motivo_publicacion, 'forzado', 'la DECISIÓN de publicar era sí')
   assert.equal(r.publicado, false, 'y el ledger no puede decir que publicó')
   assert.equal(r.mensajes_enviados, 0)
   const paso = r.traza.find((p) => p.paso === 'publicacion')
   assert.equal(paso.estado, 'omitido')
-  assert.match(paso.detalle, /nada que publicar/)
 })

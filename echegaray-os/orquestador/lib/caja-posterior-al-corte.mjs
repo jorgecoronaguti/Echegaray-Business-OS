@@ -54,6 +54,7 @@
 // en Compras. Escritor y lector comparten una sola definición, así el efecto Compras→CAJA no se
 // rompe en silencio si la columna se mueve (lo verifica caja-posterior-al-corte.test.mjs).
 import { COL_FECHA_CAJA } from './rubro-caja.mjs'
+import { formulaUltimaFecha, formulaFrescuraDe } from './fecha-de-frescura.mjs'
 
 /** Las columnas de Cobranzas. Verificadas contra la fila de encabezado del 21/07. */
 export const COB = { hoja: 'Cobranzas', total: 'M', forma: 'N', estado: 'O', fecha: 'Q', desde: 5, hasta: 400 }
@@ -310,4 +311,50 @@ export function formulaUltimoSaldo(hoja = '_BANCO_RAW', col = 'D', desde = 4) {
  */
 export function formulaFechaCorte(hoja = '_BANCO_RAW', col = 'A', desde = 4) {
   return `=MAX(${hoja}!$${col}$${desde}:$${col})`
+}
+
+/**
+ * NÚCLEO PURO: hasta cuándo llega lo que CAJA sabe — LAS TRES PUERTAS, en una sola fecha.
+ *
+ * EL PEDIDO DEL DUEÑO (03/08): *"siempre q modifiques valores de caja con el extracto q te envio o se
+ * haga modificaciones por compras pagas en efectivo o transferencias o cobranzas, las fechas que
+ * aparecen se deben actualizar de manera automatica"*. Son exactamente tres puertas, y son las mismas
+ * tres que este archivo ya usa para MOVER el saldo:
+ *
+ *     1. el extracto del banco       →  _BANCO_RAW!A   (la fecha del movimiento)
+ *     2. una compra marcada pagada   →  Compras!AD     ("Fecha de caja", sólo estado "Pagado")
+ *     3. una cobranza cobrada        →  Cobranzas!Q    (sólo estado "Cobrado")
+ *
+ * Se toma la MÁS NUEVA: cualquiera de las tres que se mueva tiene que mover el rótulo, porque
+ * cualquiera de las tres mueve el número que está arriba. Si el rótulo sólo mirara el extracto,
+ * cargar diez cobranzas no lo movería y el dueño leería "al 24/07" sobre una caja que ya cambió.
+ *
+ * POR QUÉ SE FILTRA POR ESTADO. Una compra con fecha de caja pero sin pagar, o una cobranza
+ * proyectada, son PREVISIONES. Contarlas acá haría que el rótulo declarara frescura por un dato que
+ * todavía no ocurrió — la Regla de Oro 2, presentar una estimación como un hecho.
+ *
+ * RANGOS ABIERTOS, no los cerrados que usan las fórmulas de importe de este archivo: un rótulo de
+ * frescura que envejece porque el registro pasó la fila 1200 es el mismo defecto que se está
+ * arreglando, sólo que más difícil de ver.
+ *
+ * @param {{bancoRaw?:string|null}} [refs] `bancoRaw` null = el libro no tiene la réplica del extracto
+ * @returns {string} expresión sin `=`, separador es-AR
+ */
+export function formulaFrescuraCaja({ bancoRaw = '_BANCO_RAW' } = {}) {
+  const abierto = (h, col, desde) => `'${h}'!$${col}$${desde}:$${col}`
+  return formulaFrescuraDe([
+    // El extracto: la puerta 1. Sin réplica en el libro esta puerta no existe y se omite — mejor una
+    // frescura de dos fuentes que una referencia a una hoja que no está (#REF! en el subtítulo).
+    bancoRaw ? formulaUltimaFecha(`'${bancoRaw}'!$A$4:$A`) : '',
+    // La puerta 2. `mixto`: la "Fecha de caja" convive como serial y como texto "dd/mm/aaaa" — un MAX
+    // crudo se queda con la última que entró como número y pierde las tipeadas EN SILENCIO.
+    formulaUltimaFecha(abierto(CMP.hoja, CMP.fecha, CMP.desde), {
+      mixto: true,
+      cuando: `(${abierto(CMP.hoja, CMP.estado, CMP.desde)}="Pagado")`,
+    }),
+    // La puerta 3.
+    formulaUltimaFecha(abierto(COB.hoja, COB.fecha, COB.desde), {
+      cuando: `(${abierto(COB.hoja, COB.estado, COB.desde)}="Cobrado")`,
+    }),
+  ])
 }

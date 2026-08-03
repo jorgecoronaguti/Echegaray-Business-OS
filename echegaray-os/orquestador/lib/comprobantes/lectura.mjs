@@ -36,6 +36,7 @@
 // existe: es la regla de oro #1 del OS.
 
 import { aNumero, redondear2, normalizar } from '../carga-comprobantes.mjs'
+import { matchUnico } from './imputacion.mjs'
 
 /** Formatos que un modelo de visión puede mirar. Cualquier otro se rechaza ANTES de gastar nada. */
 export const MEDIA_SOPORTADOS = Object.freeze([
@@ -44,6 +45,13 @@ export const MEDIA_SOPORTADOS = Object.freeze([
 
 /** Techo de tamaño por adjunto. Arriba de esto la API rechaza y no vale la pena intentarlo. */
 export const MAX_BYTES_ADJUNTO = 5 * 1024 * 1024
+
+/**
+ * El CUIT de la propia empresa. Todo comprobante de compra lo trae —Echegaray es el COMPRADOR— y el
+ * modelo de visión lo devolvía como si fuera el del emisor. Un CUIT de emisor igual a éste no es un
+ * dato dudoso: es, con certeza, el dato equivocado, y se descarta.
+ */
+export const CUIT_EMPRESA = String(process.env.ORQ_CUIT_EMPRESA || '30716304643').replace(/\D/g, '')
 
 /** Sólo dígitos. Un CUIT con guiones y uno sin guiones son el mismo CUIT. */
 export function soloDigitos(v) {
@@ -95,24 +103,29 @@ export function tipoDesdeLectura({ letra, esNotaCredito } = {}) {
  * la fecha sería fabricar imputación contable, que es la peor forma de fabricar un dato: no se nota
  * hasta que el margen de la obra está mal.
  *
+ * El matcheo —exacto, por contención, y por palabras tolerando plural y error de tipeo— vive en
+ * `imputacion.mjs`, que es el que también resuelve el detalle de la columna K. Acá queda la puerta
+ * angosta que usa el formulario de "Corregir": una obra, o null.
+ *
  * @param {string|null} anotacion  lo que el modelo transcribió, tal cual
  * @param {string[]} obras         valores exactos del desplegable estricto
  * @returns {{valor:string, via:string}|null}
  */
 export function obraDeAnotacion(anotacion, obras = []) {
-  const a = normalizar(anotacion)
-  if (!a || !Array.isArray(obras) || !obras.length) return null
-  const exacta = obras.find((o) => normalizar(o) === a)
-  if (exacta) return { valor: exacta, via: 'exacta' }
-  // Contención en los dos sentidos: la anotación puede decir menos ("Estrella") o más
-  // ("obra Estrella 2do piso") que el rótulo del desplegable.
-  const candidatas = obras.filter((o) => {
-    const n = normalizar(o)
-    return n.length >= 4 && (a.includes(n) || n.includes(a))
-  })
-  // AMBIGUA = NO RESUELTA. Si la anotación matchea dos obras, elegir una es tirar una moneda
-  // sobre a qué obra se le carga el costo. Se devuelve null y se pregunta.
-  return candidatas.length === 1 ? { valor: candidatas[0], via: 'parcial' } : null
+  return matchUnico(anotacion, obras)
+}
+
+/**
+ * CAE canónico: **exactamente 14 dígitos**, o null.
+ *
+ * Es el dato más fuerte que trae un comprobante electrónico —identifica uno y sólo uno en todo
+ * ARCA— y por eso mismo un CAE mal leído es peligroso: conciliaría contra otra factura. Medido
+ * sobre las 558 filas de `comprobantes_arca`, TODOS tienen 14 dígitos. Cualquier otra cosa que
+ * devuelva la visión (el CUIT del comprador, un pedazo del código de barras) se descarta.
+ */
+export function caeCanonico(v) {
+  const d = soloDigitos(v)
+  return d.length === 14 ? d : null
 }
 
 /**
@@ -188,10 +201,17 @@ export function normalizar_lectura(crudo = {}) {
   return {
     comprobante: {
       proveedor,
-      cuit: cuit.length === 11 ? cuit : null,
+      // El nombre que leyó la OTRA pasada de visión, cuando hubo revisión y las dos difieren. Quien
+      // decide cuál vale es el desplegable ESTRICTO de Compras, no el modelo: `armarItem` prueba las
+      // dos y se queda con la que matchea.
+      proveedorAlt: textoODefault(crudo.emisor_alt),
+      cuit: cuit.length === 11 && cuit !== CUIT_EMPRESA ? cuit : null,
       tipo,
       esNotaCredito: esNC,
       numero,
+      // El CAE viaja aunque hoy no se escriba en ninguna celda: es la clave con la que se concilia
+      // contra ARCA, y es la que permite decir "el número que leí estaba mal, el bueno es éste".
+      cae: caeCanonico(crudo.cae),
       fecha,
       // `neto` va informativo: `valoresInput` DERIVA M = total − iva cuando hay total, y ese es el
       // camino correcto. Se conserva para poder mostrar la discrepancia (la percepción absorbida).

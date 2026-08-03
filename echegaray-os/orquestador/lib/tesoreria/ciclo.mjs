@@ -28,10 +28,14 @@ import {
   normalizarInstrumento, extraerDeTexto, extraerDeTabla, extraerDeTarjetas, esAptoTesoreria,
 } from './instrumentos.mjs'
 import { compararAlternativas } from './comparar.mjs'
+import { tablaComparativa } from './tabla-instrumentos.mjs'
 import { evaluarRiesgo, PERFILES } from './riesgo.mjs'
 import { generarRecomendaciones, recomendarAplicarADeuda } from './recomendacion.mjs'
 import { validarLote } from './validar.mjs'
-import { formatoPropuesta, formatoAplicarADeuda, formatoSesionRequerida, esCambioMaterial } from './formato-mattermost.mjs'
+import {
+  formatoPropuesta, formatoAplicarADeuda, formatoSesionRequerida, esCambioMaterial,
+  formatoExcedentePorPlazo, formatoTablaInstrumentos,
+} from './formato-mattermost.mjs'
 import { evaluarAccionabilidad } from './politicas.mjs'
 import { RUTAS_INFORMATIVAS, PANTALLAS_ACOTADAS, esDeTesoreria } from './universo-mercado.mjs'
 import { mensajeNecesitaAutenticacion, mensajeNavegadorRoto } from './preparar-navegador.mjs'
@@ -189,8 +193,24 @@ export async function correrCiclo(deps = {}, opts = {}) {
   }
 
   try {
+    // ── EL ATRASO TÍPICO DE CADA CLIENTE, ANTES DE LEER EL CALENDARIO ─────────
+    //
+    // Las cobranzas del Cash Flow traen la fecha PROMETIDA. Este repo ya midió que los clientes pagan
+    // tarde —para eso existe `aprendizaje-cobranzas`— y proyectar un cobro en su fecha nominal es
+    // proyectarlo en el día en que no va a entrar. No se reimplementa nada: se pasan los perfiles y el
+    // calendario reproyecta. Si la base no está, se sigue con las fechas nominales y se declara.
+    let perfilesCobro = opts.perfilesCobro ?? null
+    if (!perfilesCobro && query) {
+      const { perfilesDeCobroDesdeDB } = await import('../aprendizaje-cobranzas.mjs')
+      perfilesCobro = await perfilesDeCobroDesdeDB({ query }).catch(() => null)
+    }
+    paso('atraso_cobranzas', perfilesCobro?.n_clientes ? 'ok' : 'sin_dato',
+      perfilesCobro?.n_clientes
+        ? `${perfilesCobro.n_clientes} cliente(s) con perfil · atraso global ${perfilesCobro.global?.atraso_mediano ?? '?'}d`
+        : 'sin historia de cobros: las cobranzas caen en su fecha nominal')
+
     // 1-3 · Leer y validar el Flujo de Caja (SKILL 1).
-    const flujo = await leerFlujoDeFondos(deps, { hoy: ahora, dias: opts.dias ?? 90, spreadsheetId: opts.spreadsheetId })
+    const flujo = await leerFlujoDeFondos(deps, { hoy: ahora, dias: opts.dias ?? 90, spreadsheetId: opts.spreadsheetId, perfilesCobro })
     paso('leer_flujo', flujo.estado, flujo.estado === 'ok' ? `${flujo.movimientos.length} movimientos` : flujo.motivo)
     if (flujo.estado !== 'ok') {
       return { estado: 'sin_dato', motivo: flujo.motivo, flujo, traza }
@@ -208,6 +228,9 @@ export async function correrCiclo(deps = {}, opts = {}) {
       extractorValidado: Boolean(opts.extractorValidado),
       mercadoFresco: Boolean(opts.mercadoFresco),
       vencidoComercial: vencidoComercialDe(flujo),
+      // Para el control de doble conteo cheque ↔ factura de Compras vencida: sale de los movimientos
+      // YA leídos, no de una segunda lectura del Sheet.
+      movimientosVencidos: flujo.movimientos.filter((m) => m.status === 'vencido' && m.direction === 'out'),
     })
     paso('posicion', posicion.estado, posicion.estado === 'ok' ? `caja ${posicion.caja_real}` : posicion.motivo)
 
@@ -219,23 +242,26 @@ export async function correrCiclo(deps = {}, opts = {}) {
     const excedente = await calcularExcedente(posicion, proyeccion, { hoy: ahora, dias: flujo.dias })
     paso('excedente', excedente.estado, `${excedente.ventanas.length} ventanas · ${excedente.etiqueta_monto}${excedente.deuda_cancelable?.monto ? ` · deuda $${excedente.deuda_cancelable.monto}` : ''}`)
 
-    // ── EL ATAJO QUE AHORRA PLATA Y CRÉDITOS ──────────────────────────────────
-    // Sin ninguna ventana con monto no hay nada que buscar en Balanz. Y si hay deuda que cancela toda
-    // la caja libre, tampoco: esa porción va a la línea, que rinde el CFT sin riesgo.
+    // ═══ EL ATAJO QUE SE SACÓ, Y POR QUÉ ═══
+    //
+    // Hasta el 03/08/2026, sin ninguna ventana con monto el ciclo devolvía `mercado: omitido — sin
+    // excedente` y terminaba. Parecía ahorro y era ceguera: con el excedente mal calculado en cero —lo
+    // estaba, ver `excedente-ventana.mjs`— el agente NUNCA miró Balanz. Un defecto de la mitad de caja
+    // apagaba la otra mitad entera, y el dueño rechazó dos corridas seguidas por eso.
+    //
+    // Además el atajo era malo por sí mismo: saber que el mercado paga 40% cuando el descubierto cuesta
+    // 62,78% es una decisión (no colocar, cancelar línea) y hay que poder mostrarla con números. El
+    // relevamiento es informativo y read-only; el costo de mirar es bajo y el de no mirar ya se pagó.
+    //
+    // Lo único que se conserva es la recomendación estructural: si no hay ventana con monto, la
+    // propuesta es aplicar a la deuda, y eso se dice igual — junto a la tabla, no en lugar de ella.
     const sinVentanas = excedente.ventanas.every((v) => !(Number(v.monto_maximo) > 0))
-    if (sinVentanas) {
-      const rec = recomendarAplicarADeuda(posicion, excedente.tasa_de_corte, ahora, excedente.deuda_cancelable?.monto ?? 0)
-      paso('mercado', 'omitido', 'sin excedente: no se releva el mercado')
-      const resumen = resumirCorrida({ posicion, excedente, comparacion: null, sesionRequerida: false })
-      const publicar = opts.publicarSiempre ? { publicar: true, motivo: 'forzado' } : esCambioMaterial(resumen, opts.anterior, opts.umbrales)
-      const texto = formatoAplicarADeuda(rec, posicion)
-      if (publicar.publicar && deps.publicar) await deps.publicar(texto)
-      return {
-        estado: 'ok', sin_excedente: true, posicion, proyeccion, excedente,
-        recomendacion_estructural: rec, publicado: publicar.publicar, motivo_publicacion: publicar.motivo,
-        texto, resumen, traza,
-      }
-    }
+    const recEstructural = sinVentanas
+      ? recomendarAplicarADeuda(posicion, excedente.tasa_de_corte, ahora, excedente.deuda_cancelable?.monto ?? 0)
+      : null
+    paso('mercado_previo', sinVentanas ? 'sin_excedente' : 'con_excedente',
+      sinVentanas ? 'no hay ventana con monto: se releva el mercado igual, para poder mostrar contra qué se compara'
+        : `${excedente.ventanas.filter((v) => Number(v.monto_maximo) > 0).length} ventana(s) con monto`)
 
     // ── 7 · EL NAVEGADOR, ANTES DEL MERCADO ───────────────────────────────────
     //
@@ -251,9 +277,16 @@ export async function correrCiclo(deps = {}, opts = {}) {
         // El enlace se pide SÓLO cuando hace falta: no se generan enlaces al escritorio "por las
         // dudas", y si no se puede generar, el aviso sale igual diciendo que falta el secreto.
         const enlace = esSesion && deps.enlaceRemoto ? await deps.enlaceRemoto().catch(() => null) : null
-        const texto = esSesion
-          ? mensajeNecesitaAutenticacion({ enlace, detalle: prep.detalle, ahora })
-          : mensajeNavegadorRoto({ detalle: prep.detalle, acciones: prep.acciones, ahora })
+        // LA MITAD QUE SÍ SE PUDO HACER SE PUBLICA IGUAL. Que Balanz no abra no invalida el excedente
+        // por plazo, que es la mitad que más decide: sin esto, un navegador caído dejaba al dueño sin
+        // el análisis de caja que ya estaba terminado y bien.
+        const texto = [
+          esSesion
+            ? mensajeNecesitaAutenticacion({ enlace, detalle: prep.detalle, ahora })
+            : mensajeNavegadorRoto({ detalle: prep.detalle, acciones: prep.acciones, ahora }),
+          '',
+          formatoExcedentePorPlazo(excedente),
+        ].join('\n')
         if (deps.publicar) await deps.publicar(texto)
         return {
           estado: esSesion ? 'session_required' : 'browser_error',
@@ -402,12 +435,35 @@ export async function correrCiclo(deps = {}, opts = {}) {
     const val = validarLote(generadas.propuestas, { posicion, excedente, proyeccion, instrumentos: aptos, ahora })
     paso('validacion', 'ok', `${val.publicables.length} publicables · ${val.rechazadas.length} rechazadas`)
 
+    // ═══ 14 bis · LA TABLA COMPARATIVA — lo que el dueño pidió y no estaba ═══
+    //
+    // `comparacion` produce un ranking por bloque, y con 0 ventanas con monto produce cero rankings:
+    // el dueño se quedaba sin ver una sola opción. La tabla se arma IGUAL, con monto 0 si hace falta,
+    // porque la pregunta "¿qué paga hoy el mercado contra el 62,78% que me cuesta el descubierto?"
+    // tiene respuesta aunque no haya un peso para colocar.
+    const ventanasTabla = ventanas.length ? ventanas : (excedente.ventanas_por_plazo || [])
+      .filter((v) => v.estado === 'ok')
+      .map((v) => ({ bloque: null, titulo: `Referencia a ${v.dias} días (sin monto colocable hoy)`, moneda: 'ARS', dias_libres: v.dias, monto_maximo: 0 }))
+    const tablaComparacion = tablaComparativa(aptos, ventanasTabla, {
+      hurdleAnual: Number(excedente.tasa_de_corte?.valor) || 0, riesgos,
+    })
+    const sospechosas = comparacion.rankings.flatMap((r) => (r.excluidos || []).filter((e) => e.sospechosa))
+    paso('tabla_instrumentos', 'ok',
+      `${tablaComparacion.tablas.length} tabla(s) · ${tablaComparacion.tablas.reduce((s, t) => s + t.viables.length, 0)} opción(es) viable(s)`
+      + (sospechosas.length ? ` · ${sospechosas.length} tasa(s) por encima del techo de cordura` : ''))
+
     // 15-16 · Comparar contra la corrida anterior y publicar sólo lo material.
     const resumen = resumirCorrida({ posicion, excedente, comparacion, sesionRequerida: false })
     const publicar = opts.publicarSiempre ? { publicar: true, motivo: 'forzado' } : esCambioMaterial(resumen, opts.anterior, opts.umbrales)
-    const textos = val.publicables.map((r) => formatoPropuesta(r, posicion, {
-      fecha_caja: posicion.fecha, fecha_mercado: mercado.observado_en ?? null,
-    }))
+    const textos = [
+      // EL EXCEDENTE POR PLAZO VA PRIMERO Y VA SIEMPRE: es la mitad que decide.
+      formatoExcedentePorPlazo(excedente),
+      ...tablaComparacion.tablas.map((t) => formatoTablaInstrumentos(t)),
+      ...(recEstructural ? [formatoAplicarADeuda(recEstructural, posicion)] : []),
+      ...val.publicables.map((r) => formatoPropuesta(r, posicion, {
+        fecha_caja: posicion.fecha, fecha_mercado: mercado.observado_en ?? null,
+      })),
+    ]
     // ═══ `publicado` ES LO QUE SE ENVIÓ, NO LO QUE SE DECIDIÓ ENVIAR ═══
     //
     // La versión anterior escribía `publicado: publicar.publicar`, o sea la DECISIÓN de publicar, sin
@@ -431,6 +487,10 @@ export async function correrCiclo(deps = {}, opts = {}) {
     return {
       estado: 'ok',
       posicion, proyeccion, excedente, instrumentos, comparacion, riesgos,
+      tabla_instrumentos: tablaComparacion,
+      tasas_sospechosas: sospechosas,
+      sin_excedente: sinVentanas,
+      recomendacion_estructural: recEstructural,
       recomendaciones: val.publicables,
       rechazadas: val.rechazadas,
       validaciones: val.validaciones,

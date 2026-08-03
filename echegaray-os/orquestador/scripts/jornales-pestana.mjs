@@ -51,7 +51,9 @@
 //   A   la quincena (fecha desde) · el concepto en los bloques que no son tabla
 //   B   hasta · el importe en el hero
 //   C…  la serie
-//   K   el TOTAL de la quincena
+//   J   el TOTAL de la quincena — la letra la manda REGISTRO_COLS, no este comentario. Acá decía
+//       "K el TOTAL" y era falso: la K es "Σ $/hora". Un mapa de columnas escrito en prosa envejece
+//       sin que nada lo avise, y el que lo lee escribe la fórmula contra la columna equivocada.
 //
 // Un solo ancho para toda la pestaña, con la única excepción que el patrón admite: el REGISTRO
 // quincena por quincena, que es más ancho y va al final.
@@ -69,6 +71,7 @@ import { detectarQuincenas, filasQuincenas } from '../lib/nomina-sync.mjs'
 import { CATEGORIAS, COL, formulaValor, formulaVigencia } from '../lib/uocra-escala.mjs'
 import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
 import { JORNALES_FILE_ID } from '../lib/espejo-jornales.mjs'
+import { formulaUltimaFechaConImporte, rotuloAlDia } from '../lib/fecha-de-frescura.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Jornales por Quincena'
@@ -79,6 +82,34 @@ const DRY = process.argv.includes('--dry')
 const AÑO = 2026
 /** El ancho de la pestaña: el registro de abajo es el bloque más ancho y define la grilla. */
 const ANCHO = 12
+
+/**
+ * EL ENCABEZADO DEL REGISTRO ES EL CONTRATO — Y LA LETRA DE CADA COLUMNA SALE DE ACÁ, NUNCA A MANO.
+ *
+ * POR QUÉ (03/08). La fila 4 de la pestaña VIVA usa `MAXIFS($B:$B;$K:$K;">0")` y anda bien, así que
+ * copiarla parecía gratis. No lo es: esa K es el TOTAL en un layout que tiene una columna más
+ * ("Se paga el") que este generador todavía no escribe. En ESTE layout la K es "Σ $/hora" — otra
+ * cosa, siempre distinta de cero, y la fórmula copiada al pie de la letra habría contestado otra
+ * pregunta sin dar un solo error. Es el mismo defecto que la fila 40 clavada a fuego, pero de lado.
+ *
+ * Con la letra derivada del encabezado, agregar o mover una columna no puede desalinear la fórmula:
+ * si el rótulo desaparece, `colDe` grita en vez de apuntar a la columna de al lado.
+ */
+const REGISTRO_COLS = ['Quincena', 'Hasta', 'Días hábiles', 'Personas', 'Hs previstas', 'Hs reales', 'Banco', 'Adelanto', 'Total recibo', 'TOTAL', 'Σ $/hora', 'Estado']
+
+/**
+ * NÚCLEO PURO: la letra de una columna del registro, buscada por su rótulo.
+ * @param {string} rotulo tal como aparece en el encabezado
+ * @param {string[]} [cols]
+ * @returns {string} la letra A1
+ */
+export function colDe(rotulo, cols = REGISTRO_COLS) {
+  const i = cols.indexOf(rotulo)
+  // Falla RUIDOSA: devolver un default dejaría una fórmula que suma la columna equivocada y da un
+  // número plausible. Un rótulo que ya no existe es un cambio de contrato, no un detalle.
+  if (i < 0) throw new Error(`colDe: el registro de Jornales no tiene la columna "${rotulo}"`)
+  return String.fromCharCode(65 + i)
+}
 /** Los doce meses, para el cuadro de oficina: ahí se cobra por MES, no por quincena. */
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 /** Sereno se paga por MES: no entra en la comparación por hora. */
@@ -176,7 +207,11 @@ const fecha = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMont
 /**
  * La grilla entera. `bloques` son las quincenas detectadas en el espejo.
  */
-function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia }) {
+/**
+ * NÚCLEO PURO: la grilla entera de la pestaña. Se exporta para poder probar las fórmulas SIN tocar
+ * el Sheet real — la única verificación de estas celdas que no arriesga la pestaña del dueño.
+ */
+export function grilla({ bloques, pendientes, bloquesOfi }) {
   const filas = []
   /**
    * Agrega una fila rellenada al ancho de la pestaña y devuelve su número (1-based).
@@ -199,7 +234,11 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia }) {
   push(['Jornales por quincena'])
   // EL SUBTÍTULO ENTRA EN UN RENGLÓN. El anterior medía 190 caracteres, se envolvía en una fila de
   // 21px y se leía la mitad: un subtítulo cortado es peor que ninguno.
-  push([`Jornales de obra y sueldos de oficina · fuente: planilla JORNALES y escala UOCRA · al ${fecha(new Date())}`])
+  // LA FECHA DEL SUBTÍTULO SALE DEL REGISTRO, NO DEL RELOJ (03/08). Era `fecha(new Date())`: decía
+  // "al 02/08" porque ese día corrió el script, no porque los jornales llegaran hasta ahí. La
+  // fórmula se resuelve más abajo, cuando se conocen las filas del registro — igual que el resto de
+  // las referencias de esta grilla.
+  const fSubtitulo = push([VACIO])
   blanco()
 
   // ── HERO: la posición, en cuatro números ──
@@ -331,7 +370,7 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia }) {
 
   // ── 4 · EL REGISTRO ──
   push([seccion(4, 'Obra — el registro, quincena por quincena')])
-  push(['Quincena', 'Hasta', 'Días hábiles', 'Personas', 'Hs previstas', 'Hs reales', 'Banco', 'Adelanto', 'Total recibo', 'TOTAL', 'Σ $/hora', 'Estado'])
+  push(REGISTRO_COLS)
   const f0 = filas.length + 1
   // LA COLUMNA QUE FALTABA. Sin ella la última fila se lee igual que las trece de arriba —cerrada y
   // pagada— cuando en realidad la quincena está a mitad de camino. Es una fórmula con TODAY(): se da
@@ -370,13 +409,41 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia }) {
   // constante que actualizar, y el día que la quincena cierre pasa sola de una línea a la otra.
   // Ninguna persona tiene que acordarse de nada.
   const cerrada = `($B$${f0}:$B$${fLast}<=TODAY())`
+  // HASTA DÓNDE LLEGAN LOS JORNALES: el "Hasta" más nuevo que YA PASÓ **DE UNA QUINCENA CON PLATA
+  // CARGADA**. El rango va cerrado a propósito —y no abierto como en las demás pestañas—: abajo del
+  // registro están la proyección y la nómina de oficina, que también tienen fechas en la columna B y
+  // hablarían de otra cosa. `<=TODAY()` es obligatorio: la planilla escribe los catorce días de la
+  // quincena el día que la abre, así que un MAX crudo declararía frescura de una fecha futura.
+  //
+  // POR QUÉ CONDICIONADO AL TOTAL Y NO UN MAX DE FECHAS (03/08). Una quincena existe en el registro
+  // desde que la planilla la abre, mucho antes de que tenga un peso adentro: un MAX sobre la columna
+  // "Hasta" declara frescura por un ENCABEZADO VACÍO. Lo que la pestaña muestra es plata, así que la
+  // frescura tiene que salir de la plata. Es el patrón que la fila 4 ya usa en vivo, con la letra
+  // resuelta por rótulo (ver REGISTRO_COLS: acá el TOTAL es la J, no la K).
+  const hastaCargado = formulaUltimaFechaConImporte(
+    `$${colDe('Hasta')}$${f0}:$${colDe('Hasta')}$${fLast}`,
+    `$${colDe('TOTAL')}$${f0}:$${colDe('TOTAL')}$${fLast}`,
+  )
+  filas[fSubtitulo - 1][0] = rotuloAlDia(
+    'Jornales de obra y sueldos de oficina · fuente: planilla JORNALES y escala UOCRA',
+    hastaCargado,
+  )
   filas[fHero.cerradas - 1][1] = `=SUMPRODUCT(ISNUMBER($B$${f0}:$B$${fLast})*${cerrada}*IF(ISNUMBER($J$${f0}:$J$${fLast});$J$${f0}:$J$${fLast};0))`
   filas[fHero.curso - 1][1] = `=SUMPRODUCT(ISNUMBER($B$${f0}:$B$${fLast})*NOT(${cerrada})*IF(ISNUMBER($J$${f0}:$J$${fLast});$J$${f0}:$J$${fLast};0))`
-  // Y al lado, qué quincena es y HASTA QUÉ DÍA está cargada de verdad. Medido sobre las horas del
-  // espejo, no sobre las fechas del encabezado: la planilla escribe los catorce días el día que abre
-  // la quincena, así que las fechas dicen "31/07" desde el primer día y no distinguen nada.
-  // El texto va CORTO: al lado tiene el importe, y uno largo se le monta encima.
-  filas[fHero.curso - 1][2] = cargaAlDia ? `cargada hasta el ${cargaAlDia}` : VACIO
+  // Y al lado, HASTA DÓNDE LLEGA EL REGISTRO CARGADO — la referencia contra la cual leer el importe
+  // parcial que tiene al lado.
+  //
+  // ERA UN TEXTO ESTAMPADO (03/08): `cargada hasta el ${cargaAlDia}`, con `cargaAlDia` medido en JS
+  // sobre las horas de `_J_OBREROS`. Honesto el día que se escribía y congelado a partir del
+  // siguiente — el mismo defecto que el resto de esta tanda, sólo que envuelto en un número correcto.
+  //
+  // NO SE PUDO CONSERVAR LA GRANULARIDAD DE DÍA, Y ESTÁ DICHO: `_J_OBREROS` guarda los días como
+  // rótulos de texto ("5/1", "6/1") en una fila de encabezado POR BLOQUE, con las columnas corridas
+  // en cada quincena. Sacar "el último día con horas" de ahí con una sola fórmula exige recorrer
+  // bloques, y una fórmula frágil que se rompe en silencio sería peor que perder precisión. Lo que
+  // queda es una afirmación más gruesa pero VERDADERA Y VIVA: hasta qué quincena el registro tiene
+  // importes. El texto va CORTO: al lado tiene el importe y uno largo se le monta encima.
+  filas[fHero.curso - 1][2] = `=IF(${hastaCargado}=0;"sin registro cargado";"registro cargado al "&TEXT(${hastaCargado};"dd/mm"))`
   filas[fHero.falta - 1][1] = `=${cel(fTotalProy, 'G')}`
   filas[fHero.ofiPagado - 1][1] = `=${cel(fTotalOfi, 'C')}`
   filas[fHero.ofiFalta - 1][1] = `=${cel(fTotalOfi, 'G')}`
@@ -450,7 +517,7 @@ async function main() {
     console.log(`  ⚠ la planilla de oficina va ${dias} día(s) detrás de la de obra: esas quincenas entran como proyección, no como pagadas`)
   }
 
-  const g = grilla({ bloques, pendientes, bloquesOfi, cargaAlDia })
+  const g = grilla({ bloques, pendientes, bloquesOfi })
   console.log(`grilla: ${g.filas.length} filas × ${ANCHO} columnas`)
   if (DRY) { for (const f of g.filas) console.log('   ', f.filter((c) => c && c !== VACIO).map((x) => String(x).slice(0, 34)).join(' | ')); return }
 

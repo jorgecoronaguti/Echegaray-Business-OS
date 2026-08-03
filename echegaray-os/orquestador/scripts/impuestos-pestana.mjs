@@ -34,6 +34,7 @@ import { seccion, sub as subItem, total as rotuloTotal, auditarPatron } from '..
 // ($AC, $O): es exactamente lo que dejó el cuadro de "pagado" de Cargas Sociales en #VALUE! durante
 // semanas cuando alguien movió una columna. El nombre no se mueve; la posición sí.
 import { resolverColumnas, rango } from '../lib/compras-columnas.mjs'
+import { formulaUltimaFecha, formulaUltimoPeriodo, rotuloPorFuente, DIAS_AVISO_MENSUAL } from '../lib/fecha-de-frescura.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Impuestos y Financieros'
@@ -74,6 +75,11 @@ const IIBB_COLS = [
 /** Dónde vive cada columna de _IIBB_RAW, para no buscarla por posición a ojo. */
 const IIBB_COL = { periodo: 'A', base: 'B', alicuota: 'C', impuesto: 'D', retenciones: 'E', saldoAnt: 'F' }
 const IIBB_FILA0 = 4  // primera fila de datos (título, nota, encabezados, datos)
+
+/** Las otras dos réplicas que alimentan esta pestaña. Sus columnas son contrato, igual que las de IIBB. */
+export const ARCA_RAW = '_ARCA_RAW'
+const ARCA_FILA0 = 4
+export const BANCO_RAW = '_BANCO_RAW'
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
@@ -161,10 +167,32 @@ function grilla(iva, planes, iibb, C) {
       totaliza ? `=SUM($B${f}:$M${f})` : VACIO, origen])
   }
   const cabecera = () => push(['Concepto', ...MES.map((m) => `'${m}-${String(AÑO).slice(2)}`), 'Total', 'De dónde sale'])
-  const hoy = new Date().toISOString().slice(0, 10)
 
   push(['Impuestos y financiero'])
-  push([`Qué se le debe al fisco, qué está inmovilizado y qué se debe con instrumento · IVA de ARCA · IIBB y F931 de las DDJJ de Rentas (Drive) · prendario del extracto Santander · retenciones de Cobranzas · al ${hoy}`])
+  // EL SUBTÍTULO DECLARA LA FRESCURA DE CADA FUENTE POR SEPARADO, Y NO UNA SOLA FECHA (03/08).
+  //
+  // Era `al ${new Date()}` —el día de la corrida— y el arreglo obvio, un MAX sobre las cuatro
+  // fuentes, es PEOR que el texto estampado: ARCA y el extracto llegan a ayer, pero las DDJJ de IIBB
+  // salen de los PDF de Rentas y se quedan en el último período presentado. El MAX pondría la fecha
+  // de ARCA arriba de un cuadro de IIBB que no se mueve desde junio, y el dueño leería como fresco un
+  // número que tiene un mes y medio. La regla y el porqué, en lib/fecha-de-frescura.mjs.
+  //
+  // El texto fijo se acortó a propósito: antes enumeraba las fuentes en prosa ("IVA de ARCA · IIBB y
+  // F931 de las DDJJ de Rentas (Drive) · prendario del extracto Santander …") y ahora cada una
+  // aparece con SU fecha al lado. Repetir la lista dos veces en la misma línea sólo la hacía más
+  // larga sin decir nada nuevo.
+  push([rotuloPorFuente('Qué se le debe al fisco, qué está inmovilizado y qué se debe con instrumento', [
+    // Los comprobantes de ARCA: fecha del comprobante. Diaria — se replica en cada corrida.
+    { nombre: 'IVA de ARCA', expr: formulaUltimaFecha(`${ARCA_RAW}!$C$${ARCA_FILA0}:$C`) },
+    // IIBB: NO la fecha en que se bajó el PDF sino el PERÍODO que la DDJJ cubre. Una DDJJ de junio
+    // presentada el 16/07 habla de junio; declarar el 16/07 sería declarar frescura de la gestión
+    // administrativa, no del dato. El umbral es mensual: con 7 días el ⚠ estaría prendido siempre.
+    { nombre: 'IIBB', expr: formulaUltimoPeriodo(`${IIBB_RAW}!$${IIBB_COL.periodo}$${IIBB_FILA0}:$${IIBB_COL.periodo}`), avisoDias: DIAS_AVISO_MENSUAL },
+    // El extracto: de acá salen el prendario y el impuesto al cheque.
+    { nombre: 'banco', expr: formulaUltimaFecha(`${BANCO_RAW}!$A$4:$A`) },
+    // Las retenciones sufridas se imputan al mes del COBRO: su frescura es la del último cobro.
+    { nombre: 'retenciones', expr: formulaUltimaFecha('Cobranzas!$Q$5:$Q') },
+  ])])
   push()
   // EL HERO se RESERVA acá y se llena al final con referencias a las celdas de los bloques de abajo
   // —ni un número pegado—. Es lo primero que se ve: la posición, con su origen al lado.
@@ -174,7 +202,7 @@ function grilla(iva, planes, iibb, C) {
   // ── 1 · IVA ────────────────────────────────────────────────────────────────────────────────────
   push([seccion(1, 'IVA — ¿cuánto se debe o se tiene a favor cada mes?')])
   cabecera()
-  const R = '_ARCA_RAW'
+  const R = ARCA_RAW
   // El signo sale de la columna F de la réplica: una nota de crédito lleva −1 y una factura +1. Si
   // el código no se reconoce, la columna queda vacía y la fila NO se suma — asumir que sumaba fue el
   // error que costó $41,9M.
@@ -280,7 +308,7 @@ function grilla(iva, planes, iibb, C) {
   // fila en Compras ni en el banco. No se estiman — se nombran como gap, que es lo único honesto.
   push([seccion(4, 'Otros impuestos — ¿qué más se paga y no estaba a la vista?')])
   cabecera()
-  const B = '_BANCO_RAW'
+  const B = BANCO_RAW
   const porMesBanco = (patron) => (m) =>
     `=SUMPRODUCT((YEAR(${B}!$A$4:$A)=${AÑO})*(MONTH(${B}!$A$4:$A)=${m})*ISNUMBER(SEARCH("${patron}";${B}!$F$4:$F))*ABS(IF(ISNUMBER(${B}!$C$4:$C);${B}!$C$4:$C;0)))`
   const o0 = filas.length + 1

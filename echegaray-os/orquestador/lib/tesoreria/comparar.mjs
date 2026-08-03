@@ -20,7 +20,7 @@
 // sin explicación es un instrumento que alguien va a volver a proponer el mes que viene.
 
 import { EVIDENCIA, CONFIANZA } from './contratos.mjs'
-import { aTea, esAptoTesoreria, esNumero } from './instrumentos.mjs'
+import { aTea, esAptoTesoreria, esNumero, tasaCreible } from './instrumentos.mjs'
 
 /** Rendimiento efectivo del período a partir de la TEA. Aritmética pura. */
 export const rendimientoDelPeriodo = (tea, dias) => (1 + Number(tea)) ** (Number(dias) / 365) - 1
@@ -96,6 +96,10 @@ export function evaluarContraVentana(inst, ventana, tasaCorte) {
   if (tea == null) {
     return { excluido: true, motivo: inst.tasa ? `la tasa es "${inst.tasa.tipo}" y no se puede llevar a efectiva anual sin inventar` : 'no tiene tasa conocida' }
   }
+  // EL TECHO DE CORDURA VA ANTES DEL ORDEN, no después: el ranking ordena por rendimiento, así que una
+  // tasa rota no se "nota" — gana. Ver `tasaCreible` en instrumentos.mjs.
+  const cordura = tasaCreible(tea)
+  if (!cordura.creible) return { excluido: true, sospechosa: Boolean(cordura.sospechosa), motivo: cordura.motivo }
   const bruto = rendimientoDelPeriodo(tea, dias)
   const costos = costoTotal(inst)
   const neto = bruto - costos.total
@@ -150,7 +154,7 @@ export function compararAlternativas(instrumentos = [], ventanas = [], tasaCorte
     const excluidos = []
     for (const inst of instrumentos) {
       const r = evaluarContraVentana(inst, v, tasaCorte)
-      if (r.excluido) excluidos.push({ instrumento: inst.nombre, instrumento_id: inst.id, motivo: r.motivo })
+      if (r.excluido) excluidos.push({ instrumento: inst.nombre, instrumento_id: inst.id, motivo: r.motivo, sospechosa: Boolean(r.sospechosa) })
       else filas.push(r)
     }
     filas.sort((a, b) => (b.exceso_sobre_corte - a.exceso_sobre_corte) || (a.dias_vuelta - b.dias_vuelta))
