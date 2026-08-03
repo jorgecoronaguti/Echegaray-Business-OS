@@ -209,6 +209,31 @@ export function origenANota(filas, colOrigen, sheetId) {
  *
  * @returns {{requests: object[], borradas: number}}
  */
+/**
+ * SACA DE VERDAD LA COLUMNA DE PROSA — lo que `borrarNotas` no hace y se creyó que hacía.
+ *
+ * POR QUÉ (03/08). El dueño, textual y por tercera vez: *"esas aclaraciones de mierda yo siempre las
+ * saco"*. Los tres generadores llamaban a `borrarNotas` creyendo que con eso la columna desaparecía,
+ * y no desaparecía nunca: blanquea con `''`, y `''` significa "no es mi celda" → la fusión PRESERVA
+ * lo que hubiera. Medido en el archivo real: 44 celdas vivas en Impuestos, 58 en Cargas Sociales y
+ * 30 en Cash Flow Mensual, con las tres pestañas "sin prosa" según el código.
+ *
+ * El único valor que limpia de verdad es el centinela `VACIO` ("es mi celda y va vacía"), y tiene que
+ * viajar EN LA GRILLA que se escribe — no en `formatear()`, que corre después de la escritura, que es
+ * el otro motivo por el que `borrarNotas` no podía funcionar aunque el valor fuera el correcto.
+ *
+ * Se llama sobre la grilla ANTES de escribirla. Ensancha la fila si hace falta con `''`, que la fusión
+ * preserva: ensanchar no puede borrarle una columna propia al dueño más a la derecha.
+ */
+export function vaciarColumnaDeProsa(filas, colOrigen) {
+  for (const f of filas) {
+    if (!Array.isArray(f)) continue
+    while (f.length <= colOrigen) f.push('')
+    f[colOrigen] = VACIO
+  }
+  return filas
+}
+
 export function borrarNotas(filas, colOrigen, sheetId) {
   const requests = []
   let borradas = 0

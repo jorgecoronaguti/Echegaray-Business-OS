@@ -108,3 +108,36 @@ test('borrarNotas blanquea con "", que la fusión PRESERVA: no saca la columna d
   const conCentinela = fusionar([['IVA', 100, VACIO]], [['IVA', 100, 'DDJJ F.2002…']])
   assert.equal(conCentinela[0][2], '', 'el centinela VACIO es lo único que limpia')
 })
+
+// ═══ LA QUE SÍ SACA LA COLUMNA (03/08) ═══
+//
+// El test de arriba fija que `borrarNotas` NO saca la columna. Éste fija que `vaciarColumnaDeProsa`
+// sí, y la diferencia es exactamente un valor: `''` significa "no es mi celda" y la fusión preserva
+// lo que hubiera; `VACIO` significa "es mi celda y va vacía" y la fusión la limpia.
+
+test('vaciarColumnaDeProsa marca la columna con VACIO: la fusión SÍ la limpia', async () => {
+  const { vaciarColumnaDeProsa } = await import('./nota-celda.mjs')
+  const { VACIO, fusionar } = await import('./preservar-anotaciones.mjs')
+  const filas = [['Concepto', 100, 'De dónde sale'], ['IVA', 200, 'F.2051 · lo que sea']]
+  vaciarColumnaDeProsa(filas, 2)
+  assert.equal(filas[0][2], VACIO)
+  assert.equal(filas[1][2], VACIO)
+  // Y contra lo que la pestaña ya tenía: la prosa se va, el resto se queda.
+  const existente = [['Concepto', 100, 'De dónde sale'], ['IVA', 200, 'F.2051 · lo que sea']]
+  const out = fusionar(filas, existente)
+  assert.equal(out[1][2], '', 'la prosa tenía que quedar vacía')
+  assert.equal(out[1][0], 'IVA', 'el concepto no se toca')
+  assert.equal(out[1][1], 200, 'el número no se toca')
+})
+
+test('ensancha la fila corta sin borrar nada: el relleno es "", que la fusión preserva', async () => {
+  const { vaciarColumnaDeProsa } = await import('./nota-celda.mjs')
+  const { VACIO, fusionar } = await import('./preservar-anotaciones.mjs')
+  const filas = [['solo A']]
+  vaciarColumnaDeProsa(filas, 3)
+  assert.equal(filas[0].length, 4)
+  assert.equal(filas[0][3], VACIO)
+  // La columna C es del dueño y quedó como relleno '': tiene que sobrevivir la fusión.
+  const out = fusionar(filas, [['solo A', 'suyo B', 'suyo C', 'prosa']])
+  assert.deepEqual(out[0], ['solo A', 'suyo B', 'suyo C', ''])
+})

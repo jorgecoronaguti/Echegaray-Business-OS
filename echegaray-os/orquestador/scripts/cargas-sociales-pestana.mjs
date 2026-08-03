@@ -38,7 +38,7 @@ import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-edicion
 import { resolverColumnas, rango } from '../lib/compras-columnas.mjs'
 import { seccion, sub, total as rotuloTotal, auditarPatron } from '../lib/patron-pestana.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
-import { borrarNotas } from '../lib/nota-celda.mjs'
+import { borrarNotas, vaciarColumnaDeProsa } from '../lib/nota-celda.mjs'
 import { celdaF931, celdaCabecera, PESTAÑA as RAW, COL as F931_COL, FILA0 as F931_FILA0 } from './f931-sheet.mjs'
 import { formulaUltimaFecha, formulaUltimoPeriodo, rotuloPorFuente, DIAS_AVISO_MENSUAL } from '../lib/fecha-de-frescura.mjs'
 
@@ -491,6 +491,8 @@ async function main() {
   // de distinguir una edición de una versión vieja de sí mismo. Ver lib/respetar-ediciones.mjs.
   const { grid: gridFinal, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, PESTAÑA, filas, previo)
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)
+  // LA COLUMNA DE PROSA SE VA CON LA GRILLA, NO DESPUÉS: ver vaciarColumnaDeProsa en lib/nota-celda.mjs.
+  vaciarColumnaDeProsa(gridFinal, ANCHO - 1)
   const escritura = await escribirPreservando(google, ID, `'${PESTAÑA}'`, gridFinal, { respetar: false /* la Regla 0 ya se aplicó arriba, a mano: este generador guarda el registro DESPUÉS de releer la pestaña, que es más fiel que hacerlo antes de escribir */, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   // ═══ SI LA ESCRITURA SE SALTEÓ, NO SE TOCA LA GEOMETRÍA (31/07) ═══
   //
