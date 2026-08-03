@@ -6,7 +6,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { importe, fecha, campos, parsearExtracto, novedades, verificarCadena, clave, dryRun } from './banco-importar.mjs'
+import { importe, fecha, campos, parsearExtracto, novedades, verificarCadena, clave, dryRun, normalizarReferencia } from './banco-importar.mjs'
 
 test('el importe se lee a la argentina: punto de miles, coma decimal', () => {
   assert.equal(importe('1.234,56'), 1234.56)
@@ -64,6 +64,9 @@ test('lee un extracto pegado, con su saldo corrido', () => {
     concepto: 'Transferencia realizada - A gisela agostina d amico',
     importe: -230000,
     saldo: -399586.65,
+    // Un pegado no trae la columna Referencia del CSV: el campo existe y vale null. Se declara en el
+    // objeto —y no se omite— porque quien deduplica pregunta por él en TODOS los movimientos.
+    referencia: null,
   })
 })
 
@@ -123,6 +126,160 @@ test('dos movimientos IGUALES el mismo día son dos movimientos, y el saldo los 
 test('el mismo extracto pegado dos veces no se duplica contra sí mismo', () => {
   const m = { fecha: '2026-07-20', concepto: 'Pago A', importe: -100, saldo: 900 }
   assert.equal(novedades([m, m], []).length, 1)
+})
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// LA CLAVE DEL MOVIMIENTO ES LA REFERENCIA DEL BANCO, NUNCA EL SALDO
+//
+// Medido el 03/08 con el extracto real 04/06→03/08: "239 nuevo(s) · 0 ya estaban" contra una base
+// que tenía 170 movimientos y ventanas superpuestas casi enteras. Cargarlo metía ~170 duplicados y
+// ninguno grita: un duplicado no da error, infla las sumas.
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('EL DEFECTO: el mismo movimiento con SALDO distinto en dos descargas dedupea', () => {
+  // El caso está medido sobre el dato real: el echeq 306 de $317.000 del 07/07 quedó con saldo
+  // -3.397.612,85 en la descarga del 22/07 y -3.541.112,85 en el CSV del 30/07. El saldo corrido no
+  // es una propiedad del movimiento — depende de la ventana con la que el banco arma la descarga—,
+  // así que con el saldo en la clave cada descarga superpuesta reinyecta todo lo que ya estaba.
+  const enLaBase = [{ fecha: '2026-07-07', concepto: 'Echeq clearing recibido', importe: -317000, saldo: -3397612.85, referencia: '306' }]
+  const enLaDescargaNueva = [{ fecha: '2026-07-07', concepto: 'Echeq clearing recibido', importe: -317000, saldo: -3541112.85, referencia: '000000306' }]
+  assert.deepEqual(novedades(enLaDescargaNueva, enLaBase), [])
+})
+
+test('"000008689" y "8689" son la misma referencia', () => {
+  // El banco escribe la referencia con relleno y la base la guarda sin él (verificado: 8689, 8687).
+  // Comparadas crudas son dos claves distintas y el movimiento se vuelve a cargar en cada descarga.
+  assert.equal(normalizarReferencia('000008689'), '8689')
+  assert.equal(normalizarReferencia(' 8689 '), '8689')
+  assert.equal(normalizarReferencia('16862006'), '16862006')
+  // Una referencia vacía NO es una referencia: si fuera '', todos los movimientos sin referencia
+  // chocarían entre sí contra el índice único como si fueran el mismo.
+  assert.equal(normalizarReferencia(''), null)
+  assert.equal(normalizarReferencia(null), null)
+  assert.equal(normalizarReferencia('0000'), null)
+
+  const base = [{ fecha: '2026-07-30', concepto: 'Comision servicio cuenta dolares', importe: -14960, saldo: 88316639.82, referencia: '8689' }]
+  const nueva = [{ fecha: '2026-07-30', concepto: 'Comision servicio cuenta dolares', importe: -14960, saldo: 1, referencia: '000008689' }]
+  assert.deepEqual(novedades(nueva, base), [])
+})
+
+test('misma fecha y mismo importe con REFERENCIA distinta son dos movimientos, y no se fusionan', () => {
+  // Dato real del extracto del 31/07: dos compras con débito de $15.092,62 el mismo día, mismo
+  // concepto, referencias 16996641 y 16999189. Son dos consumos reales. Fusionarlos por "fecha +
+  // importe + concepto" borraría plata de verdad, que es el error opuesto al que estamos arreglando.
+  const base = [{ fecha: '2026-07-31', concepto: 'Compra con tarjeta de debito - Merpago*ieric - tarj nro. 6077', importe: -15092.62, saldo: 87928931.89, referencia: '16996641' }]
+  const nueva = [{ fecha: '2026-07-31', concepto: 'Compra con tarjeta de debito - Merpago*ieric - tarj nro. 6077', importe: -15092.62, saldo: 87913839.27, referencia: '16999189' }]
+  const n = novedades(nueva, base)
+  assert.equal(n.length, 1)
+  assert.equal(n[0].referencia, '16999189')
+})
+
+test('la referencia con el MISMO número y distinto importe son dos movimientos (la operación y su percepción)', () => {
+  // El 01/07 la compra en el exterior de Google Workspace ($-37.926) y su percepción RG 5617
+  // ($-11.203,92) comparten la referencia 00114824 y sólo las separa el Código Operativo, que el
+  // parser no captura. Con la referencia SOLA, la percepción se descartaba como "ya vista": un
+  // impuesto menos y cero errores a la vista. Por eso la clave es (referencia, importe).
+  const base = [{ fecha: '2026-07-01', concepto: 'Compra en el exterior - Google workspace', importe: -37926, saldo: 100, referencia: '114824' }]
+  const nueva = [{ fecha: '2026-07-01', concepto: 'Percep perc rg 5617 30% o suj - Google w', importe: -11203.92, saldo: 90, referencia: '00114824' }]
+  assert.equal(novedades(nueva, base).length, 1)
+})
+
+test('un movimiento SIN referencia dedupea por el respaldo, y el respaldo tampoco mira el saldo', () => {
+  // 32 filas de la base no tienen referencia: entraron por captura de pantalla o por la semilla del
+  // extracto verificado. Para ésas la referencia no puede ser la clave, y el respaldo es
+  // (fecha, concepto, importe) — nunca el saldo, que es justamente el campo que cambia entre
+  // descargas. Acá el saldo difiere en $143.500 y aun así es el mismo movimiento.
+  const base = [{ fecha: '2026-07-07', concepto: 'Pago haberes - 260701507', importe: -1250000, saldo: -3397612.85, referencia: null }]
+  const nueva = [{ fecha: '2026-07-07', concepto: 'Pago haberes - 260701507', importe: -1250000, saldo: -3541112.85, referencia: null }]
+  assert.deepEqual(novedades(nueva, base), [])
+})
+
+test('el respaldo aguanta que el concepto venga recortado o en otras mayúsculas', () => {
+  // Las dos descargas escriben el mismo concepto distinto: la semilla guardó "Pago haberes -
+  // 260701507" y el CSV repite el número al final; y el depósito de $16.807.425,92 apareció en
+  // mayúsculas en una descarga y en minúsculas en la otra. Comparado exacto, $16,8M contaban dos veces.
+  const base = [
+    { fecha: '2026-07-07', concepto: 'Pago haberes - 260701507', importe: -1250000, saldo: 10, referencia: null },
+    { fecha: '2026-07-29', concepto: 'Deposito E-cheq 48hs Presencia Bsr', importe: 16807425.92, saldo: 20, referencia: null },
+  ]
+  const nueva = [
+    { fecha: '2026-07-07', concepto: 'Pago haberes - 260701507        260701507', importe: -1250000, saldo: 11, referencia: null },
+    { fecha: '2026-07-29', concepto: 'deposito e-cheq 48hs presencia bsr', importe: 16807425.92, saldo: 21, referencia: null },
+  ]
+  assert.deepEqual(novedades(nueva, base), [])
+})
+
+test('una fila vieja SIN referencia reconoce al mismo movimiento cuando vuelve CON referencia', () => {
+  // Es el día del cambio: lo que ya estaba cargado no tiene referencia y el CSV nuevo sí la trae. Si
+  // sólo se comparara por referencia, la base entera se duplicaría de una sola vez.
+  const base = [{ fecha: '2026-07-30', concepto: 'Comision por servicio de cuenta', importe: -69000, saldo: 88366015.82, referencia: null }]
+  const nueva = [{ fecha: '2026-07-30', concepto: 'Comision por servicio de cuenta', importe: -69000, saldo: 1, referencia: '8683' }]
+  assert.deepEqual(novedades(nueva, base), [])
+})
+
+test('el respaldo empareja UNO A UNO: si la base tiene una y el extracto trae dos, entra una', () => {
+  // La base dice CUÁNTAS hay, no si hay. Dos cheques de $383.175 el mismo día son dos movimientos
+  // reales: preguntando "¿existe?" se descartarían los dos y se borraría plata; emparejando, el
+  // primero se reconoce como ya cargado y el segundo entra.
+  const base = [{ fecha: '2026-07-15', concepto: 'Cheque debitado', importe: -383175, saldo: 500, referencia: null }]
+  const nueva = [
+    { fecha: '2026-07-15', concepto: 'Cheque debitado', importe: -383175, saldo: 500, referencia: null },
+    { fecha: '2026-07-15', concepto: 'Cheque debitado', importe: -383175, saldo: 116.825, referencia: null },
+  ]
+  assert.equal(novedades(nueva, base).length, 1)
+})
+
+test('DOS DESCARGAS SUPERPUESTAS DEL EXTRACTO REAL: el resultado es la unión, sin duplicados', () => {
+  // Filas textuales del CSV que bajó el dueño del homebanking (Últimos Movimientos, cuenta
+  // 179-091383/6). La descarga vieja llega hasta el 30/07 y la nueva la incluye entera y agrega el
+  // 31/07 — que es cómo se piden: con ventanas que se superponen.
+  //
+  // Lo ÚNICO alterado a propósito son los saldos del lado "ya cargado": se desplazan para reproducir
+  // el modo de falla medido (el mismo movimiento con distinto saldo corrido en dos descargas). Las
+  // fechas, referencias, conceptos e importes son los del extracto.
+  const CABECERA = 'Fecha;Suc. Origen;Desc. Sucursal;Cod. Operativo;Referencia;Concepto;Importe;Saldo'
+  const COMUNES = [
+    '30/07/2026;0179;San Juan;4637;000008697;Impuesto ley 25.413 credito 0,6%;(813,12);87.944.024,51',
+    '30/07/2026;0179;San Juan;4633;000008696;Impuesto ley 25.413 debito 0,6%;(3.731,79);87.944.837,63',
+    '30/07/2026;0179;San Juan;3489;000008689;Comision servicio cuenta dolares;(14.960,00);88.316.639,82',
+    '30/07/2026;0179;San Juan;3254;000008687;Iva 21% reg de transfisc ley27743;(3.024,00);88.332.031,82',
+    '29/07/2026;0179;San Juan;1304;16862006;Compra con tarjeta de debito - Esso servicentro media - tarj nro. 6077;(58.000,00);88.541.781,68',
+    '29/07/2026;0179;San Juan;3036;000008676;Deposito e-cheq 48hs presencia bsr;16.807.425,92;88.745.670,12',
+  ]
+  const SOLO_EN_LA_NUEVA = [
+    '31/07/2026;0179;San Juan;1304;16996641;Compra con tarjeta de debito - Merpago*ieric - tarj nro. 6077;(15.092,62);87.913.839,27',
+    '31/07/2026;0179;San Juan;1304;16999189;Compra con tarjeta de debito - Merpago*ieric - tarj nro. 6077;(15.092,62);87.928.931,89',
+  ]
+
+  const { movimientos: vieja } = parsearExtracto([CABECERA, ...COMUNES].join('\n'))
+  const { movimientos: nueva } = parsearExtracto([CABECERA, ...SOLO_EN_LA_NUEVA, ...COMUNES].join('\n'))
+  assert.equal(vieja.length, 6)
+  assert.equal(nueva.length, 8)
+
+  // Así queda lo ya cargado en la base: la referencia SIN los ceros de relleno (verificado: 8689,
+  // 8687) y el saldo corrido de aquella descarga, distinto del de hoy.
+  const enLaBase = vieja.map((m) => ({ ...m, referencia: m.referencia, saldo: m.saldo - 143500 }))
+
+  const n = novedades(nueva, enLaBase)
+  assert.equal(n.length, 2, 'sólo los dos movimientos del 31/07 son nuevos')
+  assert.deepEqual(n.map((m) => m.referencia).sort(), ['16996641', '16999189'])
+  // La unión: 6 que ya estaban + 2 nuevos = los 8 del extracto, ni uno más.
+  assert.equal(enLaBase.length + n.length, nueva.length)
+  // Y volver a correr la MISMA descarga contra la base ya completa no agrega nada.
+  assert.deepEqual(novedades(nueva, [...enLaBase, ...n]), [])
+})
+
+test('el parser saca la referencia de la columna Referencia del CSV, normalizada', () => {
+  // Sin esto, la clave correcta no tiene de dónde salir: es el primero de los tres defectos
+  // encadenados (parser que la tira · SELECT que no la trae · clave que usa el saldo).
+  const txt = ['Fecha;Suc. Origen;Desc. Sucursal;Cod. Operativo;Referencia;Concepto;Importe;Saldo',
+    '30/07/2026;0179;San Juan;3489;000008689;Comision servicio cuenta dolares;(14.960,00);88.316.639,82'].join('\n')
+  const { movimientos } = parsearExtracto(txt)
+  assert.equal(movimientos[0].referencia, '8689')
+  assert.equal(movimientos[0].importe, -14960)
+  // Un pegado de pantalla no trae la columna: referencia null explícito, nunca undefined.
+  const pegado = parsearExtracto('22/07/2026\tAlgo\t-100,00\t-169.686,65')
+  assert.equal(pegado.movimientos[0].referencia, null)
 })
 
 test('LA CADENA DE SALDOS: saldo(n) = saldo(n-1) + importe(n)', () => {
