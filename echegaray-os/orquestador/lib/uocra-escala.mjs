@@ -88,3 +88,20 @@ export function formulaVigencia(fecha = 'TODAY()') {
   return `=IFERROR(INDEX(${HOJA}!$${COL.mes}$1:$${COL.mes};${expresionFilaDelMes(fecha)})&"";`
     + `"⚠ el mes en curso NO está en "&"${HOJA}"&": la escala que se muestra quedó vencida. Cargar el acuerdo nuevo.")`
 }
+
+/**
+ * El PRIMER DÍA DEL MES QUE VIENE, como expresión de fecha.
+ *
+ * POR QUÉ HACE FALTA (31/07). El dueño, dos veces: "uocra desactualizado", "todavía no haces lo de
+ * uocra". Y el cuadro mostraba lo correcto para el mes en curso —julio, Ayudante $4.948—, así que el
+ * control decía la verdad y sin embargo no servía: la réplica YA tiene el escalón de agosto ($5.399,
+ * +1,9% del Acuerdo Mayo 2026) y la pestaña no lo mostraba en ninguna parte. Un control que sólo mira
+ * el mes que se está yendo no avisa nada: cuando llegue el 1° de agosto, el jornal que hoy está 9,1%
+ * por debajo del piso va a estar 16,7% por debajo, y eso es deuda laboral que ya se puede ver hoy.
+ *
+ * Con el escalón siguiente al lado, el cuadro contesta las dos preguntas que importan: ¿estoy pagando
+ * por debajo del convenio HOY? ¿y el mes que viene? Y si el mes que viene no está cargado en la
+ * réplica, `formulaVigencia` sobre esta misma fecha lo GRITA — la escala no puede quedar vencida en
+ * silencio, que es exactamente cómo pasó de junio a julio sin que nadie se enterara.
+ */
+export const MES_SIGUIENTE = 'EOMONTH(TODAY();0)+1'

@@ -214,7 +214,14 @@ async function main() {
   // respeta los rótulos que una persona editó, comparando contra el TEXTO QUE SE VE (no la fórmula).
   // Sin techo de filas: ver la nota de caja-pestana.mjs. Un rótulo que hoy vive más abajo de la
   // grilla nueva no está borrado, está fuera de la ventana que yo leí.
-  const previo = await google.readSheetValues(ID, `'${PESTANA}'!A1:M`).catch(() => [])
+  // UNA LECTURA QUE FALLA NO ES UNA PESTAÑA VACÍA (31/07). Con `.catch(() => [])` un 429 de la API se
+  // convertía en "la pestaña está vacía": la Regla 0 daba TODOS mis rótulos por borrados por el dueño y
+  // la fusión escribía encima de lo que él tenía. Es el mismo defecto que dejó Proveedores con las filas
+  // entrelazadas. Si no se puede leer, no se puede decidir: falla cerrado y la corrida siguiente lo hace
+  // bien. Ver lib/google.mjs, donde el 429 ahora espera la ventana del minuto antes de rendirse.
+  const previo = await google.readSheetValues(ID, `'${PESTANA}'!A1:M`).catch((e) => {
+    throw new Error(`no pude leer "${PESTANA}" (${e.message}). NO escribo: la fusión tomaría la pestaña por vacía y pisaría lo tuyo.`)
+  })
   // LA FIRMA primero (respeto más fuerte: cualquier edición tuya). Después, la reescritura total.
   if ((await firmaGuardia(google, ID, PESTANA, `'${PESTANA}'`)).editada) return
   // AUTO-RESPETO (24/07): si reescribiste esta pestaña entera, la tomo como tuya y no la piso.

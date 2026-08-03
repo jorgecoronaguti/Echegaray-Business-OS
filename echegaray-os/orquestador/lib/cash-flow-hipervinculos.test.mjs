@@ -13,8 +13,9 @@ import {
 const FILAS_TABLA = { Estructura: 15, Recurrentes: 24 }
 
 // Las líneas que el propio cuadro calcula sobre sus celdas (intereses del descubierto, impuesto al
-// cheque) NO tienen pestaña de origen: no se hiperlinkean.
-const SIN_ORIGEN = (l) => l.descubierto || l.impuestoCheque
+// cheque) NO tienen pestaña de origen: no se hiperlinkean. Las comisiones bancarias (31/07) tampoco:
+// su origen es _BANCO_RAW, una réplica técnica del extracto y no una pestaña de trabajo del dueño.
+const SIN_ORIGEN = (l) => l.descubierto || l.impuestoCheque || l.comisionesBancarias
 
 test('cada subconcepto con origen produce un HYPERLINK con placeholder de gid y range no vacío', () => {
   const { lineas } = verificarCuadro()
@@ -23,9 +24,10 @@ test('cada subconcepto con origen produce un HYPERLINK con placeholder de gid y 
   for (const l of conOrigen) {
     const h = hipervinculoDetalle(l, FILAS_TABLA)
     assert.ok(h, `"${l.nombre}" tiene destino`)
-    // Es un HYPERLINK con el placeholder de gid de SU pestaña destino, sin resolver (lo resuelve el script).
-    assert.ok(h.formula.startsWith(`=HYPERLINK("#gid=GID{${h.destino}}&range=`),
-      `"${l.nombre}" arranca con el HYPERLINK y el placeholder GID{${h.destino}}`)
+    // URL COMPLETA (placeholder URLID{}), no fragmento suelto: "#gid=…" da "El rango no es válido" en
+    // Google y no navega. El gid queda como placeholder GID{destino}, sin resolver (lo resuelve el script).
+    assert.ok(h.formula.startsWith(`=HYPERLINK("URLID{}#gid=GID{${h.destino}}&range=`),
+      `"${l.nombre}" arranca con el HYPERLINK, la URL completa y el placeholder GID{${h.destino}}`)
     // El range no puede quedar vacío: un vínculo sin range no lleva a ningún lado.
     assert.ok(h.rango && h.rango.length > 0, `"${l.nombre}" tiene range no vacío`)
     // El range va dentro del fragmento URL, cerrado por la comilla de la cadena "#gid=…&range=…".
@@ -74,8 +76,13 @@ test('el destino de cada tipo de línea es el más específico y cierto', () => 
   // apunta a la columna fuente del monto. "Proveedores y Materiales" es prosa que nombra DOS pestañas,
   // no un tab único: no se hiperlinkea a una pestaña inexistente.
   assert.deepEqual(dest(buscar((l) => l.rubro === 'Materiales Civil')), { pestaña: 'Compras', rango: 'O4:O' })
-  // Sueldos de administración → su detalle es la propia Compras: cae a la columna fuente del monto (O).
-  assert.deepEqual(dest(buscar((l) => l.rubro === 'Nómina · Sueldos administración')), { pestaña: 'Compras', rango: 'O4:O' })
+  // Sueldos de administración → desde el 01/08 su monto sale de la planilla de nómina (Oficina +
+  // los retiros de Dirección), no de Compras: el vínculo tiene que llevar a donde está el número.
+  assert.deepEqual(dest(buscar((l) => l.rubro === 'Nómina · Sueldos administración' && !l.desdeCompras)),
+    { pestaña: 'Jornales por Quincena', rango: 'A1' })
+  // ...y la línea de CONTROL del mismo rubro va a Compras, que es la otra fuente — la que controla.
+  // Si las dos apuntaran al mismo lado, el vínculo mandaría a verificar un número contra sí mismo.
+  assert.deepEqual(dest(buscar((l) => l.desdeCompras)), { pestaña: 'Compras', rango: 'O4:O' })
 })
 
 test('el destino usa la MISMA lógica de origen que la sección "DÓNDE ESTÁ" (no se duplica)', () => {
@@ -88,8 +95,9 @@ test('el destino usa la MISMA lógica de origen que la sección "DÓNDE ESTÁ" (
   // Divergencia intencional: cuando detalleDeRubro es PROSA de dos pestañas ("Proveedores y
   // Materiales"), el TEXTO la muestra tal cual pero el VÍNCULO cae al origen cierto (Compras), porque
   // no se puede hiperlinkear a un tab que no existe.
-  const sueldos = lineas.find((l) => l.rubro === 'Nómina · Sueldos administración')
-  assert.equal(detalleDeRubro(sueldos.rubro), 'Compras')
+  const sueldos = lineas.find((l) => l.rubro === 'Nómina · Sueldos administración' && !l.desdeCompras)
+  assert.equal(detalleDeRubro(sueldos.rubro), 'Jornales por Quincena')
+  assert.equal(destinoDetalle(sueldos, FILAS_TABLA).pestaña, detalleDeRubro(sueldos.rubro))
   const materiales = lineas.find((l) => l.rubro === 'Materiales Mantenimiento')
   assert.equal(detalleDeRubro(materiales.rubro), 'Proveedores y Materiales')
   assert.equal(destinoDetalle(materiales, FILAS_TABLA).pestaña, 'Compras')

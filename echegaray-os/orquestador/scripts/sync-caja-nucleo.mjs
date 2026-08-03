@@ -23,6 +23,8 @@ import { query, closePool } from '../lib/db.mjs'
 import { parseMonto, parseFecha } from '../lib/cash-briefing.mjs'
 import { normComprobante, esLlaveUtil } from '../lib/cheques-cobertura.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
+// Las columnas del cuadro las declara el módulo que las ESCRIBE. Ver COL_REGISTRO.
+import { COL_REGISTRO, COL_PROYECCION } from '../lib/nomina-sync.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
@@ -30,43 +32,67 @@ const iso = (d) => (d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
 const ars = (n) => '$' + Math.round(n).toLocaleString('es-AR')
 
 /**
- * Las quincenas, reales y proyectadas.
+ * NÚCLEO PURO: las quincenas, reales y proyectadas, leídas POR RANGO CON NOMBRE.
  *
- * LOS DOS BLOQUES Y POR QUÉ EL CORTE ESTÁ DONDE ESTÁ. El bloque real llega hasta la fila 16
- * (quincena 16/7–30/7, ya liquidada). El bloque de proyección arranca en la fila 23, pero esa fila
- * es la quincena EN CURSO (16/7–31/7) y se saltea: su equivalente ya está en el bloque real y
- * contarla dos veces sumaría $7.417.358 que nadie va a pagar de nuevo. Es el mismo corte que hace la
- * fórmula del cash flow, y tiene que seguir siendo el mismo o las dos caras dejan de coincidir.
+ * ═══ ESTABA FOSILIZADO, Y SE PODÍA MEDIR CUÁNTO (31/07) ═══
+ *
+ * Esta función leía las filas 3–16 (real) y 24–33 (proyección) ESCRITAS A MANO. El rediseño del 23/07
+ * movió las quincenas reales a la fila 60 y la proyección a la 18. Consecuencia medida en la base el
+ * 31/07, once días después:
+ *
+ *   · `public.jornal_quincena` tenía CUATRO filas —Nov 1-15, Nov 16-30, Dic 1-15, Dic 16-31— por
+ *     $28.213.222, y CERO quincenas reales. El Sheet dice 14 reales por $114.260.361 y 10 proyectadas
+ *     por $69.912.410. O sea que la web y el motor financiero veían el 15% de los jornales del año, y
+ *     ninguna quincena pagada.
+ *   · No dio un solo error. Las filas 3–16 del layout nuevo son el hero y los títulos: `parseMonto`
+ *     de una celda vacía devuelve 0, la fila se saltea, y el script termina diciendo "OK".
+ *
+ * Es exactamente el modo de falla que los rangos con nombre existen para eliminar, y que la fórmula
+ * del cash flow ya había arreglado el 23/07 — este script se quedó atrás porque nadie lo miró.
+ *
+ * AHORA LA GEOMETRÍA LA DICE LA PESTAÑA. Los seis rangos los publica jornales-pestana.mjs y se mueven
+ * con ella. Si un rango no existe, esto FALLA RUIDOSAMENTE en vez de escribir un universo incompleto:
+ * un núcleo con el 15% de los jornales es peor que un núcleo que avisa que no pudo sincronizar.
+ *
+ * EL ANCLA ES EL RANGO CON NOMBRE, LAS COLUMNAS SON UNA DECLARACIÓN COMPARTIDA. Las FILAS —lo que se
+ * fosilizó— salen de `JORNALES_REAL_HASTA` / `JORNALES_PROY_HASTA`, que la pestaña mueve sola. Las
+ * COLUMNAS salen de `COL_REGISTRO` / `COL_PROYECCION` en lib/nomina-sync.mjs, el mismo módulo que las
+ * ESCRIBE: una sola definición, imposible de desincronizar.
+ *
+ * @param {{real:any[][], proyeccion:any[][]}} bloques las filas de cada bloque, ya recortadas
  */
-function leerJornales(filas) {
+export function leerJornales({ real = [], proyeccion = [] } = {}) {
   const out = []
-  // A=Desde, B=Hasta, C=Días, D=Personas, F=Hs reales, G=Banco, H=Adelanto, I=Recibo, J=TOTAL.
-  for (let i = 2; i <= 15; i++) {
-    const f = filas[i]
-    const hasta = parseFecha(f?.[1])
-    const total = parseMonto(f?.[9])
-    if (!hasta || !total) continue
-    out.push({
-      desde: iso(parseFecha(f?.[0])) ?? iso(hasta), hasta: iso(hasta), clase: 'real',
-      dias_habiles: Number(f?.[2]) || null, personas: Number(f?.[3]) || null,
-      hs_reales: parseMonto(f?.[5]) || null, banco: parseMonto(f?.[6]),
-      adelanto: parseMonto(f?.[7]), total_recibo: parseMonto(f?.[8]), total,
-    })
+  const armar = (filas, clase, C, extras) => {
+    for (const f of filas) {
+      const h = parseFecha(f?.[C.hasta])
+      const t = parseMonto(f?.[C.total])
+      if (!h || !t) continue
+      // LA FECHA DE CAJA ES LA DE PAGO, CON FALLBACK A HASTA. Es la misma regla que la fórmula del
+      // cash flow: si la celda de pago está vacía la quincena no desaparece, vale su cierre.
+      const p = parseFecha(f?.[C.pago]) ?? h
+      out.push({
+        desde: iso(parseFecha(f?.[C.desde])) ?? iso(h), hasta: iso(h), fecha_pago: iso(p), clase,
+        total: t, ...extras(f),
+      })
+    }
   }
-  // Proyección: A=Desde, B=Hasta, C=Días, D=Personas, G=TOTAL PROYECTADO. Desde la fila 24.
-  for (let i = 23; i <= 32; i++) {
-    const f = filas[i]
-    const hasta = parseFecha(f?.[1])
-    const total = parseMonto(f?.[6])
-    if (!hasta || !total) continue
-    out.push({
-      desde: iso(parseFecha(f?.[0])) ?? iso(hasta), hasta: iso(hasta), clase: 'proyeccion',
-      dias_habiles: Number(f?.[2]) || null, personas: Number(f?.[3]) || null,
-      hs_reales: null, banco: null, adelanto: null, total_recibo: null, total,
-    })
-  }
+  armar(real, 'real', COL_REGISTRO, (f) => ({
+    dias_habiles: Number(f?.[COL_REGISTRO.dias]) || null,
+    personas: Number(f?.[COL_REGISTRO.personas]) || null,
+    hs_reales: parseMonto(f?.[COL_REGISTRO.hs_reales]) || null,
+    banco: parseMonto(f?.[COL_REGISTRO.banco]),
+    adelanto: parseMonto(f?.[COL_REGISTRO.adelanto]),
+    total_recibo: parseMonto(f?.[COL_REGISTRO.total_recibo]),
+  }))
+  armar(proyeccion, 'proyeccion', COL_PROYECCION, () => ({
+    dias_habiles: null, personas: null, hs_reales: null, banco: null, adelanto: null, total_recibo: null,
+  }))
   return out
 }
+
+/** Los dos rangos con nombre que anclan los bloques. Sin ellos esta sincronización NO escribe. */
+export const ANCLAS = { real: 'JORNALES_REAL_HASTA', proyeccion: 'JORNALES_PROY_HASTA' }
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
@@ -75,10 +101,35 @@ async function main() {
   const tabTarjeta = hallarPestana(hojas, 'Tarjeta').title
   const tabJornales = hallarPestana(hojas, 'Jornales').title
 
-  const jornales = leerJornales(await google.readSheetValues(ID, `${tabJornales}!A1:L40`))
+  // ── LOS BLOQUES, UBICADOS POR SU RANGO CON NOMBRE ──
+  // Si el ancla no está, se corta acá. Escribir con la geometría equivocada fue el defecto: dejó la
+  // base con cero quincenas reales durante once días sin dar un error.
+  const nombrados = new Map((await google.getNamedRanges(ID)).map((r) => [r.name, r.range]))
+  const bloque = (clave) => {
+    const r = nombrados.get(ANCLAS[clave])
+    if (!r || r.startRowIndex == null) {
+      throw new Error(`falta el rango con nombre ${ANCLAS[clave]} en "${tabJornales}": corré primero jornales-pestana.mjs. No sincronizo con filas adivinadas.`)
+    }
+    return { desde: r.startRowIndex + 1, hasta: r.endRowIndex }
+  }
+  const bReal = bloque('real'), bProy = bloque('proyeccion')
+  const [filasReal, filasProy] = await Promise.all([
+    google.readSheetValues(ID, `${tabJornales}!A${bReal.desde}:M${bReal.hasta}`),
+    google.readSheetValues(ID, `${tabJornales}!A${bProy.desde}:M${bProy.hasta}`),
+  ])
+  console.log(`bloques por rango con nombre: real filas ${bReal.desde}–${bReal.hasta} · proyección ${bProy.desde}–${bProy.hasta}`)
+
+  const jornales = leerJornales({ real: filasReal, proyeccion: filasProy })
   const real = jornales.filter((j) => j.clase === 'real').reduce((s, j) => s + j.total, 0)
   const proy = jornales.filter((j) => j.clase === 'proyeccion').reduce((s, j) => s + j.total, 0)
   console.log(`JORNALES  ${jornales.length} quincenas · real ${ars(real)} · proyectado ${ars(proy)} · total ${ars(real + proy)}`)
+  // CUÁNTAS QUINCENAS CAMBIAN DE MES POR LA FECHA DE PAGO. Es el número que explica por qué la web y
+  // el Sheet pueden discrepar mes a mes aunque el total del año coincida.
+  const cambian = jornales.filter((j) => j.fecha_pago.slice(0, 7) !== j.hasta.slice(0, 7))
+  if (cambian.length) {
+    console.log(`  ${cambian.length} quincena(s) se pagan en un mes distinto al de su cierre — ${ars(cambian.reduce((s, j) => s + j.total, 0))} que la caja mueve de mes:`)
+    for (const j of cambian) console.log(`    ${j.desde}→${j.hasta} se paga ${j.fecha_pago} · ${ars(j.total)}`)
+  }
 
   // Las claves de comprobante que SÍ están en Compras. Misma normalización que usa el Sheet.
   const compras = await google.readSheetValues(ID, 'Compras!A4:O940')
@@ -125,10 +176,11 @@ async function main() {
   for (const j of jornales) {
     await query(
       `insert into public.jornal_quincena
-         (desde, hasta, clase, personas, dias_habiles, hs_reales, banco, adelanto, total_recibo, total)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-       on conflict (desde, hasta, clase) do update set total = excluded.total, sincronizado_en = now()`,
-      [j.desde, j.hasta, j.clase, j.personas, j.dias_habiles, j.hs_reales, j.banco, j.adelanto, j.total_recibo, j.total],
+         (desde, hasta, fecha_pago, clase, personas, dias_habiles, hs_reales, banco, adelanto, total_recibo, total)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       on conflict (desde, hasta, clase) do update set
+         total = excluded.total, fecha_pago = excluded.fecha_pago, sincronizado_en = now()`,
+      [j.desde, j.hasta, j.fecha_pago, j.clase, j.personas, j.dias_habiles, j.hs_reales, j.banco, j.adelanto, j.total_recibo, j.total],
     )
   }
   await query("delete from public.instrumento_pago where origen in ('cheques_sheet','tarjeta_sheet')")

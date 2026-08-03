@@ -733,6 +733,37 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         offset: { fila: d.startRow || 0, col: d.startColumn || 0 },
       }
     },
+    /**
+     * El formato ENTRADO (`userEnteredFormat`) de un rango, más anchos de columna y filas congeladas.
+     *
+     * POR QUÉ NO ALCANZA `readSheetFormats` (01/08). Aquél lee `effectiveFormat` —lo que se VE— que es
+     * lo correcto para comparar pestañas entre sí, y lo incorrecto para detectar una edición: incluye
+     * el resultado del formato condicional y el formato que Google deduce de una fórmula, así que
+     * cambia cuando cambia un VALOR aunque nadie haya tocado un formato. Para la firma de formato hace
+     * falta lo que una PERSONA escribió como formato, que es exactamente `userEnteredFormat`.
+     */
+    async readSheetUserFormats(fileId, range) {
+      const campos = 'sheets(properties(title,sheetId,gridProperties(frozenRowCount,frozenColumnCount)),'
+        + 'data(startRow,startColumn,columnMetadata(pixelSize),'
+        + 'rowData(values(userEnteredFormat(backgroundColor,horizontalAlignment,verticalAlignment,wrapStrategy,'
+        + 'numberFormat,borders,textFormat(fontFamily,fontSize,bold,italic,strikethrough,foregroundColor))))))'
+      const j = await apiGet(
+        `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?ranges=${encodeURIComponent(range)}&fields=${encodeURIComponent(campos)}`)
+      const s = (j.sheets || [])[0]
+      if (!s) return null
+      const d = (s.data || [])[0] || {}
+      return {
+        titulo: s.properties?.title ?? null,
+        sheetId: s.properties?.sheetId,
+        congeladas: {
+          filas: s.properties?.gridProperties?.frozenRowCount ?? 0,
+          columnas: s.properties?.gridProperties?.frozenColumnCount ?? 0,
+        },
+        anchos: (d.columnMetadata || []).map((c) => c?.pixelSize ?? null),
+        filas: (d.rowData || []).map((r) => (r.values || []).map((c) => ({ formato: c?.userEnteredFormat ?? null }))),
+        offset: { fila: d.startRow || 0, col: d.startColumn || 0 },
+      }
+    },
     /** Lee las reglas de VALIDACIÓN DE DATOS (desplegables) de un rango. Devuelve la data
      *  cruda de la Sheets API (sheets[].data[].rowData[].values[].dataValidation) para que el
      *  llamador extraiga, por celda, las opciones permitidas. Sirve para NO pisar un desplegable
@@ -810,6 +841,41 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       const j = await res.json()
       return { id: j.id, link: j.webViewLink || `https://drive.google.com/file/d/${j.id}/view` }
     },
+    /**
+     * EL HISTORIAL DE VERSIONES, QUE ES DONDE VIVE EL FORMATO QUE ESTABLECIÓ EL DUEÑO.
+     *
+     * POR QUÉ (01/08). El dueño: "los agentes, antes de modificar, tienen que revisar el historial de
+     * versiones y ver si yo hice modificaciones... puedo haber tocado algún número o algún FORMATO, y
+     * las debe respetar". La firma de formato detecta que un formato es suyo y lo protege, pero no
+     * guarda CUÁL era: si un generador ya lo pisó, no hay con qué volver. Drive sí lo tiene.
+     *
+     * Devuelve las revisiones, de la más vieja a la más nueva.
+     */
+    async listarRevisiones(fileId) {
+      const r = await apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/revisions?fields=revisions(id,modifiedTime,lastModifyingUser/emailAddress)&pageSize=1000`)
+      return r?.revisions ?? []
+    },
+
+    /**
+     * Exporta UNA revisión como .xlsx y devuelve su contenido en base64. El xlsx trae el formato
+     * completo (formatos de número, fuentes, rellenos, bordes, anchos), que es lo que no se puede
+     * recuperar de ninguna otra fuente.
+     */
+    async exportarRevision(fileId, revisionId, mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+      // Un archivo NATIVO de Google no tiene bytes propios: `alt=media` sobre su revisión responde
+      // "Revision not found". Hay que pedir el `exportLinks` de ESA revisión y bajar de ahí.
+      const meta = await apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/revisions/${encodeURIComponent(revisionId)}?fields=id,exportLinks`)
+      const url = meta?.exportLinks?.[mimeType]
+      if (!url) throw new Error(`la revisión ${revisionId} no se puede exportar como ${mimeType} (formatos: ${Object.keys(meta?.exportLinks ?? {}).join(', ') || 'ninguno'})`)
+      const token = await accessToken()
+      const res = await withRetry(() => doFetch(url, { headers: { Authorization: `Bearer ${token}` } }))
+      if (!res.ok) {
+        const t = String(await res.text()).slice(0, 300)
+        const e = new Error(`google export revision ${res.status}: ${t}`); e.status = res.status; throw e
+      }
+      return Buffer.from(await res.arrayBuffer())
+    },
+
     /** EXPORTA un archivo nativo de Google (Sheet/Doc/Slides) a PDF y lo GUARDA en Drive.
      *  Devuelve {id, link, nombre}. Si se pasa `parentId`, queda en esa carpeta (ej. la del cliente
      *  en el data room). Es lo que permite mandar un presupuesto o un informe como PDF. */
