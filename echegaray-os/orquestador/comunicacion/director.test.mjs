@@ -100,12 +100,17 @@ test('el canal declara el área y el mensaje va a su especialista sin código nu
   assert.equal(r.area, 'personas')
 })
 
+// El área de ejemplo era `compras` hasta que `compras` TUVO especialista (la carga de comprobantes
+// por Mattermost). El contrato que este test protege no cambió —un canal atado a un área todavía sin
+// capacidades no inventa un destino— así que se mueve a un área que hoy sigue vacía. Cambiar el
+// ejemplo no es aflojar el test: aflojarlo habría sido borrarlo o dejarlo apuntando a un área que ya
+// resuelve.
 test('un canal de un área SIN especialista todavía no inventa un destino', async () => {
-  const port = puerto({ 'canal-compras': { area: 'compras', canal: 'Compras' } })
-  const r = await resolver({ texto: 'generar orden de compra', port, channelId: 'canal-compras' })
+  const port = puerto({ 'canal-calidad': { area: 'calidad', canal: 'Calidad' } })
+  const r = await resolver({ texto: 'abrir una no conformidad', port, channelId: 'canal-calidad' })
   assert.equal(r.especialista, null)
   assert.equal(r.via, VIA.SIN_DESTINO)
-  assert.equal(r.area, 'compras', 'pero el área SÍ se resolvió: el canal está bien atado')
+  assert.equal(r.area, 'calidad', 'pero el área SÍ se resolvió: el canal está bien atado')
 })
 
 test('areaDelCanal lee el binding de la base, no una constante', async () => {

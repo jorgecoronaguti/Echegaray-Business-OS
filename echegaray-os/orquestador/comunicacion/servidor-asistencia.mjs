@@ -37,6 +37,10 @@ import { secretoDeUrl, urlConSecreto } from './secreto-compartido.mjs'
 
 export const RUTA_ACCION_DEFAULT = '/asistencia/accion'
 export const RUTA_COMANDO_DEFAULT = '/asistencia/comando'
+// Los botones de la carga de comprobantes. Ruta propia y SECRETO propio: son dos dominios distintos
+// con dos permisos distintos, y compartir el secreto haría que quien puede cargar asistencia pudiera
+// confirmar un gasto. Un secreto compartido entre dos puertas es una sola puerta.
+export const RUTA_COMPROBANTES_DEFAULT = '/comprobantes/accion'
 const MAX_BYTES_DEFAULT = 16 * 1024 // un slash command de Mattermost son ~1 KB
 const BODY_TIMEOUT_MS_DEFAULT = 5000
 
@@ -64,8 +68,10 @@ const TEXTO = Object.freeze({
 export function crearServidorAsistencia({
   manejarAccion,
   manejarComando = null,
+  manejarComprobantes = null,
   rutaAccion = RUTA_ACCION_DEFAULT,
   rutaComando = RUTA_COMANDO_DEFAULT,
+  rutaComprobantes = RUTA_COMPROBANTES_DEFAULT,
   maxBytes = MAX_BYTES_DEFAULT,
   bodyTimeoutMs = BODY_TIMEOUT_MS_DEFAULT,
   log = null,
@@ -77,6 +83,12 @@ export function crearServidorAsistencia({
       const ruta = soloRuta(req.url)
 
       if (ruta === rutaAccion) return await atenderAccion(req, res, { manejarAccion, maxBytes, bodyTimeoutMs })
+
+      // Los botones de la carga de comprobantes. Mismo transporte (leer con techo, responder sin
+      // stacks), manejador y secreto distintos.
+      if (ruta === rutaComprobantes && typeof manejarComprobantes === 'function') {
+        return await atenderAccion(req, res, { manejarAccion: manejarComprobantes, maxBytes, bodyTimeoutMs })
+      }
 
       // El slash command llega como form-urlencoded; la acción, como JSON. Los dos se leen
       // igual y se responden igual: cambia sólo a quién se le entrega el cuerpo.
@@ -262,7 +274,24 @@ async function main() {
     log,
   })
 
-  const server = crearServidorAsistencia({ manejarAccion, manejarComando, log })
+  // CARGA DE COMPROBANTES: su propio secreto y su propio manejador. Si falta el secreto, la ruta
+  // queda igualmente montada y DENIEGA todo (falla cerrado); acá se deja dicho por qué, para que no
+  // se diagnostique como "los botones dejaron de andar".
+  const secretoComprobantes = process.env.COMPROBANTES_ACCION_SECRETO || null
+  if (!secretoComprobantes) log.warn('sin COMPROBANTES_ACCION_SECRETO: la carga de comprobantes por botón se va a denegar')
+  const { crearManejadorComprobantes } = await import('./comprobantes/accion.mjs')
+  const { listasDeCompras } = await import('../lib/comprobantes/listas.mjs')
+  const googleOs = (await import('../lib/google-os.mjs')).googleDelOs({ log })
+  const manejarComprobantes = crearManejadorComprobantes({
+    port: pool,
+    mattermost,
+    secreto: secretoComprobantes,
+    url: urlConSecreto(process.env.COMPROBANTES_ACCION_URL || 'https://chat.ecsas.com.ar/comprobantes/accion', secretoComprobantes),
+    obrasDe: async () => (await listasDeCompras(googleOs)).obras,
+    log,
+  })
+
+  const server = crearServidorAsistencia({ manejarAccion, manejarComando, manejarComprobantes, log })
 
   const cerrar = (s) => { log.info('shutdown', { señal: s }); server.close(() => process.exit(0)) }
   for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => cerrar(s))

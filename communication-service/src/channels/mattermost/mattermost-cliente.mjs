@@ -92,6 +92,49 @@ export class MattermostCliente {
     return this._req('POST', '/reactions', { user_id, post_id, emoji_name })
   }
 
+  /** Metadata de un adjunto: `name`, `mime_type` y `size`. Se pide ANTES de bajarlo, para no
+   *  traerse 40 MB de un formato que después no se puede mirar. */
+  archivoInfo(fileId) {
+    return this._req('GET', `/files/${encodeURIComponent(fileId)}/info`)
+  }
+
+  /**
+   * Baja el contenido BINARIO de un adjunto.
+   *
+   * NO pasa por `_req` a propósito: `_req` lee el cuerpo como texto y lo parsea como JSON, que para
+   * un JPEG es una forma elegante de corromperlo. Mantiene el mismo techo de tiempo y la misma
+   * clasificación de errores reintentables.
+   * @returns {Promise<Buffer>}
+   */
+  async archivo(fileId) {
+    const ac = new AbortController()
+    const t = setTimeout(() => ac.abort(), this.timeoutMs)
+    try {
+      const res = await this._fetch(`${this.baseUrl}/api/v4/files/${encodeURIComponent(fileId)}`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${this.token}` },
+        signal: ac.signal,
+      })
+      if (!res.ok) {
+        const err = new Error(`mattermost GET /files/${fileId} → ${res.status}`)
+        err.status = res.status
+        err.reintentable = esReintentable(res.status)
+        throw err
+      }
+      return Buffer.from(await res.arrayBuffer())
+    } catch (e) {
+      if (e?.name === 'AbortError') {
+        const err = new Error(`mattermost GET /files/${fileId} → Mattermost no respondió en ${this.timeoutMs}ms`)
+        err.status = 504
+        err.reintentable = true
+        throw err
+      }
+      throw e
+    } finally {
+      clearTimeout(t)
+    }
+  }
+
   /** Resuelve un canal por equipo+nombre (para no hardcodear channel_ids). */
   canalPorNombre({ team_id, nombre }) {
     return this._req('GET', `/teams/${team_id}/channels/name/${encodeURIComponent(nombre)}`)
@@ -142,6 +185,7 @@ export class FakeMattermost {
     this.posts = []
     this.reacciones = []
     this.dialogos = []
+    this.archivos = new Map() // id → {name, mime_type, size, data}
     this._fallo = null // { veces, status } → falla las próximas N llamadas
     this._seq = 0
   }
@@ -184,6 +228,21 @@ export class FakeMattermost {
     post.props = props ?? post.props
     post.update_at = Date.now()
     return post
+  }
+
+  /** Adjuntos de mentira: `fake.archivos.set(id, {name, mime_type, size, data})`. */
+  async archivoInfo(fileId) {
+    this._maybeFail('archivoInfo')
+    const f = this.archivos.get(fileId)
+    if (!f) { const e = new Error(`fake mattermost: no existe el archivo ${fileId}`); e.status = 404; throw e }
+    return { id: fileId, name: f.name ?? fileId, mime_type: f.mime_type ?? 'application/octet-stream', size: f.size ?? (f.data?.length ?? 0) }
+  }
+
+  async archivo(fileId) {
+    this._maybeFail('archivo')
+    const f = this.archivos.get(fileId)
+    if (!f) { const e = new Error(`fake mattermost: no existe el archivo ${fileId}`); e.status = 404; throw e }
+    return Buffer.isBuffer(f.data) ? f.data : Buffer.from(String(f.data ?? ''))
   }
 
   async agregarReaccion({ user_id, post_id, emoji_name }) {

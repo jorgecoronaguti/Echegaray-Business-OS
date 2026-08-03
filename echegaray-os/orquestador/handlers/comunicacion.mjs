@@ -32,10 +32,21 @@ export async function comunicacionResponderHandler(task, ctx) {
     channel_id: inp.channel_id ?? null,
     root_post_id: inp.root_post_id ?? null,
   }
+  // ADJUNTOS del mensaje: los ids, no los bytes. Un especialista que los necesita los baja él, y
+  // sólo después de pasar su propia puerta. Viajan en el ctx del especialista, no en el texto,
+  // porque un mensaje puede ser SÓLO una foto: sin esto, mandar una factura al canal llegaba como
+  // un mensaje vacío y no había nada que rutear.
+  const fileIds = Array.isArray(inp.file_ids) ? inp.file_ids : []
 
   // EL DIRECTOR DECIDE. Esta capa no elige destino ni conoce gramáticas de dominio.
+  //
+  // `fileIds` viaja al Director porque hay reclamos que dependen de que el mensaje TRAIGA ALGO y no
+  // de lo que diga: una foto sola no tiene texto que reconocer. Sin esto, el especialista de
+  // comprobantes nunca podría reclamar el caso más común de su dominio — el dueño mandando una
+  // factura sin escribir una palabra —, y el mensaje moriría en "no supe a quién derivarlo" con la
+  // capacidad entera construida del otro lado. Ya pasó con el feedback del buscador.
   const ruta = await resolver({
-    texto: inp.comando, port, channelId: inp.channel_id, actor, razonar: ctx.razonarRuteo,
+    texto: inp.comando, port, channelId: inp.channel_id, actor, razonar: ctx.razonarRuteo, fileIds,
   })
   ctx.logger?.info?.('director: ruteo resuelto', {
     via: ruta.via, area: ruta.area ?? null, especialista: ruta.especialista?.slug ?? null,
@@ -64,6 +75,11 @@ export async function comunicacionResponderHandler(task, ctx) {
       // lease vencido y reclamado por otro worker duplica el efecto en silencio.
       commEventId: inp.comm_event_id ?? null,
       config: ctx.config ?? null,
+      // Los adjuntos y el cliente de la plataforma para bajarlos. El cliente lo provee el conector
+      // (es el único que lo conoce); si no está, el especialista lo dice en vez de fallar raro.
+      fileIds,
+      postId: inp.root_post_id ?? null,
+      mattermost: ctx.mattermost ?? null,
       // `google` (arriba) es el cliente de la cuenta OPERADORA del OS: es lo correcto para
       // Personal IA, que escribe JORNALES *como el OS*. Un especialista que actúa POR una
       // persona (su Drive, su agenda, sus tareas) tiene que resolver su propia cuenta y no
@@ -119,10 +135,20 @@ export async function comunicacionResponderHandler(task, ctx) {
     task_id: task.id,
   }
 
-  if (typeof ctx.responderComunicacion !== 'function') {
-    throw new Error('comunicacion.responder: falta ctx.responderComunicacion (salida no cableada)')
+  // UN ESPECIALISTA PUEDE HABER PUBLICADO ÉL MISMO (`silencioso: true`).
+  //
+  // Es la excepción, no la regla, y tiene una única razón legítima: necesitar el ID DEL POST que
+  // acaba de publicar para poder REESCRIBIRLO después. La salida normal va por el outbox, que
+  // devuelve un evento, no un post: un mensaje que se actualiza —"⏳ cargando" → "✔ fila 412"— no se
+  // puede construir sin ese id. Publicar dos veces sería peor que esta costura.
+  if (salida?.silencioso === true) {
+    ctx.logger?.info?.('comunicacion: el especialista publicó por su cuenta', { especialista: ruta.especialista?.slug })
+  } else {
+    if (typeof ctx.responderComunicacion !== 'function') {
+      throw new Error('comunicacion.responder: falta ctx.responderComunicacion (salida no cableada)')
+    }
+    await ctx.responderComunicacion(respuesta)
   }
-  await ctx.responderComunicacion(respuesta)
 
   return {
     result: { handler: 'comunicacion.responder', comm_event_id: inp.comm_event_id, texto, via: ruta.via },
