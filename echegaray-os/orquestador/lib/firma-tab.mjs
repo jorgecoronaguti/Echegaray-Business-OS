@@ -132,7 +132,15 @@ export function evaluarFirma({ firmaActual, firmaGuardada, hayEdicionHumana = fa
 // cosmético que recorre todo el archivo no debe sembrar candados en la base.
 export async function firmaGuardia(google, fileId, pestana, ref = pestana, { candar = true } = {}) {
   try {
-    const actual = await google.readSheetValues(fileId, `${ref}!A1:BZ`, { render: 'FORMULA' }).catch(() => null)
+    // LAS COMILLAS, OTRA VEZ, Y ACÁ ERA LA CAUSA RAÍZ. Sin ellas, toda pestaña con espacios en el
+    // nombre —"Cash Flow Mensual", "Jornales por Quincena", "Impuestos y Financieros", o sea casi
+    // todas— hacía que la API rechazara el rango, el `.catch` lo volviera `null` y la guarda cayera
+    // en `noVerificable`. Falla del lado seguro, así que no destruía nada: la trataba como del dueño
+    // y no la tocaba. Pero eso significa que NINGUNA de esas pestañas se pudo verificar jamás, y de
+    // ahí salió la epidemia de auto-candados del 03/08 — ocho pestañas candadas, siete de ellas por
+    // escrituras del propio OS que nunca pudo reconocer como suyas.
+    const rango = `'${String(ref).replace(/'/g, "''")}'!A1:BZ`
+    const actual = await google.readSheetValues(fileId, rango, { render: 'FORMULA' }).catch(() => null)
     // No pude releer la pestaña: NO puedo afirmar que está intacta. Antes esto devolvía editada:false
     // y el generador la pisaba (fail-OPEN). Ahora se marca NO VERIFICABLE → el portón la trata como
     // tuya y no la toca (fail-closed). Un error transitorio de lectura sólo posterga un regen; nunca
