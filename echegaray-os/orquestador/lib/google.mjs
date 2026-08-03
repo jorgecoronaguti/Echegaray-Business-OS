@@ -1106,8 +1106,13 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
 
     /** Escribe VARIOS rangos de un Sheet en UNA sola operación (batch). `data` = matriz de
      *  { range, values }. Mucho más rápido y menos "escueto" que una celda por vez. */
-    async batchUpdateValues(fileId, data, { espejo = false, yaGuardado = false, compartida = false, soloFilasVacias = false } = {}) {
-      const hielo = frenar(fileId, (data || []).map((d) => d?.range).filter(Boolean).join(', ')); if (hielo) return hielo
+    // `confirmacion` ({ actor, motivo }) es la ÚNICA puerta del freno de mano, y vive SÓLO acá: de las
+    // cinco entradas de escritura, ésta es la que usa la asistencia por chat —la única donde hay una
+    // persona identificada apretando "Registrar" sobre lo que ya vio—. Las otras cuatro mantienen el
+    // freno duro aunque se les pase la opción: ampliar la superficie sería volver a la defensa por
+    // enumeración que este archivo ya pagó. Ver `congelador-sheets.mjs`.
+    async batchUpdateValues(fileId, data, { espejo = false, yaGuardado = false, compartida = false, soloFilasVacias = false, confirmacion = null } = {}) {
+      const hielo = frenar(fileId, (data || []).map((d) => d?.range).filter(Boolean).join(', '), { confirmacion }); if (hielo) return hielo
       // ── GUARDA CENTRAL (25/07): el choke point que hace que NINGÚN escritor —crudo o no— pueda pisar
       // una pestaña candada o que el dueño editó (firma). Se saltea sólo con bandera explícita: `espejo`
       // (mirrors _RAW) o `yaGuardado` (lo llama escribirPreservando, que ya verificó y sella él mismo).

@@ -106,4 +106,82 @@ test('congelado() no lanza si la marca no se puede leer — pero tampoco descong
   }
 })
 
+// ── LA CONFIRMACIÓN HUMANA (03/08) ──────────────────────────────────────────
+//
+// El dueño decidió que una persona identificada que confirma en el chat pueda escribir, y que los
+// timers/generadores/agentes sigan bloqueados. Lo que estos tests fijan es que la puerta NO se pueda
+// abrir por accidente: hace falta un actor con nombre Y un motivo escrito. La marca del filesystem
+// sigue puesta en todos ellos — el freno no se borra, se atraviesa con nombre.
+
+const CONFIRMADA = { actor: 'jcorona', motivo: 'asistencia del 03/08/2026 confirmada en el chat por jcorona' }
+
+test('el freno SIGUE bloqueando cuando no hay confirmación', async () => {
+  await conMarca('congelado por pedido del dueño', (m) => {
+    for (const sin of [undefined, {}, { confirmacion: undefined }, { confirmacion: null }]) {
+      const r = sin === undefined ? m.frenar('FILE', 'X') : m.frenar('FILE', 'X', sin)
+      assert.equal(r?.congelado, true, 'sin confirmación no se escribe nada')
+    }
+  })
+})
+
+test('el freno bloquea con un MOTIVO CORTO: "ok" no es una decisión', async () => {
+  await conMarca('congelado por pedido del dueño', (m) => {
+    for (const flojo of ['ok', 'si', 'sí', '1', 'true', 'dale', '', '   ', undefined]) {
+      const r = m.frenar('FILE', 'X', { confirmacion: { actor: 'jcorona', motivo: flojo } })
+      assert.equal(r?.congelado, true, `"${flojo}" no puede levantar el freno`)
+    }
+  })
+})
+
+test('el freno bloquea SIN ACTOR: una escritura sin nombre no es una escritura', async () => {
+  await conMarca('congelado por pedido del dueño', (m) => {
+    for (const sin of ['', '   ', null, undefined]) {
+      const r = m.frenar('FILE', 'X', { confirmacion: { actor: sin, motivo: CONFIRMADA.motivo } })
+      assert.equal(r?.congelado, true, 'sin actor identificado, fail-closed')
+    }
+  })
+})
+
+test('una confirmación que NO es un objeto no levanta nada — ni true, ni 1, ni un array', async () => {
+  // Es el error que se comete solo: pasar `confirmacion: true` desde un caller que "ya sabe" que hay
+  // una persona. Si eso alcanzara, cualquier timer podría escribir la misma línea.
+  await conMarca('congelado por pedido del dueño', (m) => {
+    for (const basura of [true, 1, 'confirmado', ['jcorona'], () => {}]) {
+      const r = m.frenar('FILE', 'X', { confirmacion: basura })
+      assert.equal(r?.congelado, true, `${String(basura)} no es una confirmación`)
+    }
+  })
+})
+
+test('con actor Y motivo válido, la escritura pasa aunque la marca siga puesta', async () => {
+  await conMarca('congelado por pedido del dueño', (m) => {
+    assert.equal(m.frenar('FILE', "'JORNALES'!AA26", { confirmacion: CONFIRMADA }), null)
+    assert.ok(m.congelado(), 'la marca NO se borra: sigue frenando todo lo demás')
+    assert.equal(m.frenar('OTRO', 'X')?.congelado, true, 'lo que no trae confirmación sigue frenado')
+  })
+})
+
+test('el levantamiento se loguea en CADA escritura, no una vez por proceso', async () => {
+  // Asimetría deliberada respecto del aviso de congelado. Cada línea `🔓` es una escritura que
+  // ocurrió sobre un Sheet frenado: si sólo saliera la primera, después no se sabe si tocó una celda
+  // o mil. Un bypass sin rastro no se puede auditar.
+  await conMarca('congelado por pedido del dueño', (m) => {
+    const lineas = []
+    const orig = console.log
+    console.log = (s) => lineas.push(s)
+    try { for (let i = 0; i < 5; i++) m.frenar('FILE', `R${i}`, { confirmacion: CONFIRMADA }) } finally { console.log = orig }
+    assert.equal(lineas.length, 5)
+    for (const l of lineas) assert.match(l, /🔓 freno levantado por jcorona: asistencia del 03\/08\/2026/)
+  })
+})
+
+test('confirmacionValida es núcleo puro y normaliza: devuelve actor y motivo, o null', async () => {
+  const m = await import('./congelador-sheets.mjs')
+  assert.deepEqual(m.confirmacionValida({ actor: '  jcorona ', motivo: '  asistencia confirmada en el chat  ' }),
+    { actor: 'jcorona', motivo: 'asistencia confirmada en el chat' })
+  assert.equal(m.confirmacionValida(null), null)
+  assert.equal(m.confirmacionValida({ actor: 'jcorona' }), null)
+  assert.equal(m.confirmacionValida({ motivo: 'asistencia confirmada en el chat' }), null)
+})
+
 void congelado; void _resetAviso

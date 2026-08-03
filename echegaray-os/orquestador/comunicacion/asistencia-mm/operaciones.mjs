@@ -133,12 +133,18 @@ export function razonesDeConfirmacion(plan) {
   return razones
 }
 
-/** El único camino de escritura. Nunca lanza: devuelve la frase que ve el jefe. */
-export async function escribir(deps, { plan, confirmar = false }) {
+/**
+ * El único camino de escritura. Nunca lanza: devuelve la frase que ve el jefe.
+ *
+ * `actor` es quien apretó el botón, con la identidad que trae el callback ya resuelta contra
+ * Mattermost. Viaja hasta el núcleo porque es lo que levanta el freno de mano para ESTA escritura:
+ * sin él, la carga queda frenada como cualquier timer. Ver `congelador-sheets.mjs`.
+ */
+export async function escribir(deps, { plan, confirmar = false, actor = null }) {
   let r
   try {
     r = await deps.nucleo.registrarAsistencia(deps.google, {
-      plan, confirmarSobrescritura: confirmar, confirmarReemplazoFormula: confirmar,
+      plan, confirmarSobrescritura: confirmar, confirmarReemplazoFormula: confirmar, actor,
     })
   } catch (e) {
     return {

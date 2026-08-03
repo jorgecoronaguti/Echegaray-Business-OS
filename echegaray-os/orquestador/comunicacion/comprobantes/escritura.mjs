@@ -230,7 +230,13 @@ export async function escribirFajo(d, fajo) {
     filas: filas.map((f) => ({ clave: f.clave, fila: f.fila, proveedor: f.proveedor, numero: f.numero })),
   })
 
-  return { estado: ESTADO.CARGADO, texto: textoCargado(filas, yaEstaban, r.datos), filas }
+  // Los que entraron SIN obra, con su fila, para poder decirlo por su nombre en el mensaje.
+  // `entran` y `filas` están en el mismo orden por construcción (los dos salen del mismo filtro).
+  const sinObra = entran
+    .map((it, k) => ({ it, fila: filas[k] }))
+    .filter(({ it }) => !it.comprobante?.obra)
+    .map(({ it, fila }) => ({ proveedor: it.comprobante?.proveedor ?? null, fila: fila.fila ?? null }))
+  return { estado: ESTADO.CARGADO, texto: textoCargado(filas, yaEstaban, r.datos, { sinObra }), filas }
 }
 
 /** El comprobante como fila de `comunicacion.comprobantes_cargados`. */
@@ -259,7 +265,7 @@ export function aIso(v) {
   return m ? `${m[3]}-${m[2]}-${m[1]}` : null
 }
 
-function textoCargado(filas, yaEstaban, datos) {
+function textoCargado(filas, yaEstaban, datos, { sinObra = [] } = {}) {
   const l = []
   const conFila = filas.filter((f) => f.fila != null)
   l.push(conFila.length === 1
@@ -278,6 +284,15 @@ function textoCargado(filas, yaEstaban, datos) {
   // Estar en ARCA no es un duplicado: es el libro fiscal confirmando el comprobante. Lo que importa
   // avisar es cuando el número que se leyó de la foto NO era el verdadero.
   if (datos?.arca?.corregidos) l.push(`ℹ ${datos.arca.corregidos} número(s) de comprobante corregido(s) contra ARCA.`)
+  // CARGADO SIN OBRA, DICHO CON TODAS LAS LETRAS (03/08/2026). El dueño decidió que la obra no
+  // bloquee, no que se cargue en silencio: una fila sin imputar entra al Flujo de Caja con el rubro
+  // sin clasificar y la única forma de que alguien la complete es que sepa que existe. Va con la fila
+  // para que completarla sea abrir Compras e ir a esa línea, no buscarla.
+  if (sinObra.length) {
+    l.push(sinObra.length === 1
+      ? `⚠️ Cargado **SIN obra** — completala en Compras${sinObra[0].fila ? `, fila ${sinObra[0].fila}` : ''}.`
+      : `⚠️ ${sinObra.length} quedaron **SIN obra** — completalas en Compras: ${sinObra.map((s) => `fila ${s.fila ?? '?'}${s.proveedor ? ` (${s.proveedor})` : ''}`).join(' · ')}.`)
+  }
   l.push('_Completá vos la Unidad de Negocio y el Tipo de Costo: ahí clasifica el rubro de caja._')
   return l.join('\n')
 }

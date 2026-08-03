@@ -84,10 +84,12 @@ test('la clave se RECALCULA del comprobante, no se cree la que venía guardada',
 
 // ── Lo que falta se pregunta ─────────────────────────────────────────────────
 
-test('un comprobante sin obra no está completo: se pregunta, no se infiere', () => {
+test('un comprobante sin obra SE CARGA IGUAL: la obra se ofrece, no se exige (03/08/2026)', () => {
+  // Decisión del dueño. La obra dejó de ser un faltante en las dos políticas; el desplegable con las
+  // opciones del historial sigue saliendo y el mensaje avisa que va sin imputar (mensaje.test.mjs).
   const sinObra = item({ comprobante: { obra: null } })
-  assert.equal(estaCompleto(sinObra), false)
-  assert.match(preguntasDe(sinObra).join(' '), /obra/)
+  assert.equal(estaCompleto(sinObra), true)
+  assert.deepEqual(preguntasDe(sinObra), [], 'no queda nada por contestar para poder cargarlo')
 })
 
 test('un PROVEEDOR DESCONOCIDO frena la carga y se pregunta por su nombre', () => {
@@ -126,8 +128,23 @@ test('los botones llevan el secreto en la URL de integración y el id del fajo e
 
 test('sin nada cargable NO aparece el botón de Confirmar', () => {
   const url = 'https://x/accion?t=s'
-  const [att] = botonesFajo({ id: 'f1', items: [item({ comprobante: { obra: null } })] }, { url })
+  // Sin número no se puede cargar por chat: ése sigue siendo un faltante de verdad. (Sin obra ya no
+  // lo es — ver arriba —, así que ese caso dejaría de probar lo que este test quiere probar.)
+  const [att] = botonesFajo({ id: 'f1', items: [item({ comprobante: { numero: null } })] }, { url })
   assert.deepEqual(att.actions.map((a) => a.id), ['corregir', 'descartar'])
+})
+
+test('faltando el número pero no la obra, el desplegable de obra SIGUE ofreciéndose', () => {
+  // El bloque de obra no cuelga de que el ítem sea cargable: cuelga de que la obra falte y tenga
+  // opciones. Contestar la obra mientras se corrige el número no puede quedar bloqueado.
+  const url = 'https://x/accion?t=s'
+  const it = {
+    ...item({ comprobante: { numero: null, obra: null } }),
+    sugerencia: { obra: { sugerido: 'Taller', opciones: [{ valor: 'Taller', n: 18 }] } },
+  }
+  const att = botonesFajo({ id: 'f1', items: [it] }, { url })
+  assert.match(att[0].title, /¿A qué obra va\?/)
+  assert.deepEqual(att[1].actions.map((a) => a.id), ['corregir', 'descartar'])
 })
 
 test('sin URL no se dibujan botones que no van a poder llamar a nadie', () => {

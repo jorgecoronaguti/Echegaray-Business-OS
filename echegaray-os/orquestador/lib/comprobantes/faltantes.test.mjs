@@ -32,12 +32,27 @@ const codigos = (it, pol) => faltantesDe(it, pol).map((f) => f.codigo)
 
 // ── La política: lo que difiere, y por qué ───────────────────────────────────
 
-test('SIN OBRA: el cargador lo escribe igual, el chat lo pregunta — y es la ÚNICA diferencia', () => {
+test('SIN OBRA: las dos caras cargan igual — decisión del dueño del 03/08/2026', () => {
+  // Era la única diferencia de NEGOCIO entre las dos políticas: el bot bloqueaba y el cargador no.
+  // El dueño decidió alinear el bot con el cargador. Bloquear costaba más que el dato que protegía:
+  // el comprobante no quedaba cargado en ningún lado. La obra se sigue OFRECIENDO —eso se prueba en
+  // mensaje.test.mjs—, pero no impide escribir la fila.
   const sinObra = item({ comprobante: { obra: null } })
   assert.deepEqual(codigos(sinObra, POLITICA.CARGADOR), [], 'el cargador no exige la obra: el dueño la completa en el Sheet')
-  assert.deepEqual(codigos(sinObra, POLITICA.CHAT), [MOTIVO.OBRA], 'el bot bloquea: una fila sin obra entra al Flujo de Caja sin clasificar')
+  assert.deepEqual(codigos(sinObra, POLITICA.CHAT), [], 'el bot tampoco: carga y avisa que fue sin obra')
   assert.equal(puedeCargarse(sinObra, POLITICA.CARGADOR), true)
-  assert.equal(puedeCargarse(sinObra, POLITICA.CHAT), false)
+  assert.equal(puedeCargarse(sinObra, POLITICA.CHAT), true)
+  assert.equal(POLITICA.CHAT.exigirObra, false, 'la decisión vive en la bandera, no repartida por el código')
+  assert.equal(POLITICA.CARGADOR.exigirObra, false)
+})
+
+test('el MECANISMO de exigir la obra sigue existiendo: la decisión es una bandera, no un borrado', () => {
+  // Si el dueño la vuelve a exigir mañana, tiene que alcanzar con la bandera. Borrar la rama habría
+  // convertido una decisión reversible en una reescritura.
+  const sinObra = item({ comprobante: { obra: null } })
+  const exigente = { ...POLITICA.CHAT, exigirObra: true }
+  assert.deepEqual(codigos(sinObra, exigente), [MOTIVO.OBRA])
+  assert.equal(puedeCargarse(sinObra, exigente), false)
 })
 
 test('la diferencia vive en la POLÍTICA, no en la lógica: con la misma política, la misma respuesta', () => {
@@ -125,11 +140,15 @@ test('validar() del cargador es la política CARGADOR de esta función, no una c
 
 // ── El texto de la obra es uno solo ─────────────────────────────────────────
 
-test('la pregunta de la obra tiene un solo texto: mensaje.mjs la reconoce por igualdad', () => {
-  // `mensaje.mjs` la reemplaza por el bloque con los botones comparando el string exacto. Dos
-  // literales distintos harían que el dueño viera la pregunta escrita y sin nada que apretar.
+test('la obra YA NO se pregunta como faltante — pero su texto sigue siendo uno solo', () => {
+  // Desde el 03/08/2026 la obra no bloquea, así que no sale de `faltantesDe`. El bloque que la
+  // OFRECE lo arma `mensaje.mjs` por su cuenta (ver `ofreceObra`), y sigue habiendo un solo literal
+  // para no terminar con dos redacciones de la misma pregunta.
   const p = preguntasDe(item({ comprobante: { obra: null } }))
-  assert.ok(p.includes(PREGUNTA_OBRA))
+  assert.equal(p.includes(PREGUNTA_OBRA), false, 'no es un faltante: no se lista como lo que impide cargar')
+  // Y con la bandera puesta, la que sale es exactamente ese texto — el mecanismo no se degradó.
+  const conExigencia = faltantesDe(item({ comprobante: { obra: null } }), { ...POLITICA.CHAT, exigirObra: true })
+  assert.equal(conExigencia.find((f) => f.codigo === MOTIVO.OBRA)?.pregunta, PREGUNTA_OBRA)
 })
 
 // ── El caso que motivó el fajo: sólo el neto ─────────────────────────────────
