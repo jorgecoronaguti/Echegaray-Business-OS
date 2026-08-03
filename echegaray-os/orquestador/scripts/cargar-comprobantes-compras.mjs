@@ -18,7 +18,7 @@ import { readFileSync } from 'node:fs'
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
-import { matchProveedor, valoresInput, validar, discrepanciaNeto, GRUPOS_FORMULA } from '../lib/carga-comprobantes.mjs'
+import { matchProveedor, valoresInput, validar, discrepanciaNeto, verificarEscritura, colIndice, GRUPOS_FORMULA } from '../lib/carga-comprobantes.mjs'
 import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
 import { perfilesDeImputacionDesdeDB, sugerirImputacion } from '../lib/imputacion-aprendida.mjs'
 
@@ -28,7 +28,7 @@ const ADD_PROV = process.argv.includes('--add-proveedores')
 const fileArg = (process.argv.find((a) => a.startsWith('--file=')) || '').split('=')[1]
   || process.argv[process.argv.indexOf('--file') + 1]
 
-const idx = (l) => { let c = 0; for (const ch of l) c = c * 26 + (ch.charCodeAt(0) - 64); return c - 1 } // 'A'->0, 'AA'->26
+const idx = colIndice // 'A'->0, 'AA'->26 — una sola definición, compartida con la verificación
 
 /** Lista viva del desplegable ESTRICTO de proveedores (columna E). */
 async function listaProveedores(google) {
@@ -50,6 +50,51 @@ async function indiceArca() {
     if (num) porNumero.set(num, r)
   }
   return { porNumero, total: rows.length }
+}
+
+/** Traduce lo que devolvió la escritura en la razón HUMANA de por qué el destino quedó como quedó. */
+function porQueNoEntro(respuesta, leidoOk) {
+  if (respuesta?.congelado) return `la escritura de Sheets está CONGELADA — ${String(respuesta.motivo).split('\n')[0]}`
+  if (respuesta?.noBorrar) return 'la guarda no-borrar descartó los rangos (no pudo releer el destino)'
+  if (respuesta?.protegido) {
+    const tabs = (respuesta.bloqueadas || []).join(', ') || 'la pestaña'
+    // `porQue` viene de la guarda como pestaña → motivo (candado-dueño · firma-editada · …).
+    const causa = Object.values(respuesta.porQue || {})[0] || respuesta.motivo || 'candado de pestaña o firma'
+    return `la guarda protegió ${tabs} (${causa}): o la candaste a mano, o la editaste desde mi última escritura`
+  }
+  if (!leidoOk) return 'no pude releer las filas para verificar la escritura — no afirmo que se escribieron'
+  return 'la API aceptó la escritura pero el destino no la tiene (algún filtro de la guarda descartó los rangos)'
+}
+
+/**
+ * ESCRIBE LAS FILAS Y PRUEBA EL EFECTO. La respuesta de la API no es evidencia: la evidencia es el dato
+ * leído en su destino. Escribe el bloque de input, RELEE exactamente las filas que dice haber escrito y
+ * las compara contra lo que se quiso poner. Devuelve ok:false —con el porqué— si alguna quedó vacía o
+ * distinta, para que el llamador falle en vez de felicitar. Exportada para poder probar el fallo.
+ *
+ * @returns {Promise<{ok:boolean, motivo?:string, vacias:object[], distintas:object[], respuesta:any}>}
+ */
+export async function escribirYVerificar(google, { desde, hasta, plan, fileId = ID }) {
+  const letras = [...new Set(plan.flatMap((p) => Object.keys(p.valores)))]
+  const data = letras.map((L) => ({
+    range: `Compras!${L}${desde}:${L}${hasta}`,
+    values: plan.map((p) => [p.valores[L] ?? '']),
+  }))
+  // REGLA 0 — NO APLICA, Y ESTÁ DECIDIDO: respetar: false.
+  // Este cargador AGREGA filas de comprobante al final de "Compras". No escribe un solo rótulo:
+  // escribe datos —CUIT, número, importe, fecha— en filas que antes no existían. No hay texto de
+  // una persona debajo que se pueda pisar, porque debajo no había nada.
+  //
+  // Y ese mismo hecho es el que habilita `soloFilasVacias`: como es un APPEND, la guarda puede dejarlo
+  // pasar aunque la firma de "Compras" difiera (el dueño la edita todos los días) — pero sólo después de
+  // RELEER el destino y confirmarlo vacío, y nunca contra un candado puesto a mano. Ver
+  // guarda-escritura.mjs. Que "debajo no había nada" deje de ser cierto no es una hipótesis: es lo que la
+  // guarda verifica antes de escribir, y lo que la verificación de abajo prueba después.
+  const respuesta = await google.batchUpdateValues(fileId, data, { soloFilasVacias: true })
+  const leido = await google.readSheetGrid(fileId, `Compras!A${desde}:AD${hasta}`).catch(() => null)
+  const v = verificarEscritura(plan.map((p) => p.valores), leido?.filas || [], { desde })
+  if (v.ok && leido) return { ok: true, ...v, respuesta }
+  return { ok: false, motivo: porQueNoEntro(respuesta, Boolean(leido)), ...v, respuesta }
 }
 
 async function main() {
@@ -145,16 +190,16 @@ async function main() {
 
   // 1) VALORES de input y de imputación (obra), una columna por vez. NO toca fórmulas, derivadas
   //    (AC/AD/AE/AF/AJ) ni lo que el dueño completa aparte (Unidad de Negocio, Detalle).
-  const letras = [...new Set(plan.flatMap((p) => Object.keys(p.valores)))]
-  const data = letras.map((L) => ({
-    range: `Compras!${L}${desde}:${L}${hasta}`,
-    values: plan.map((p) => [p.valores[L] ?? '']),
-  }))
-  // REGLA 0 — NO APLICA, Y ESTÁ DECIDIDO: respetar: false.
-  // Este cargador AGREGA filas de comprobante al final de "Compras". No escribe un solo rótulo:
-  // escribe datos —CUIT, número, importe, fecha— en filas que antes no existían. No hay texto de
-  // una persona debajo que se pueda pisar, porque debajo no había nada.
-  await google.batchUpdateValues(ID, data)
+  const escritura = await escribirYVerificar(google, { desde, hasta, plan })
+  if (!escritura.ok) {
+    console.error(`\n✖ NO se escribió lo que pedí: ${escritura.motivo}`)
+    for (const v of escritura.vacias.slice(0, 10)) console.error(`   fila ${v.fila} col ${v.columna}: quedó VACÍA (esperaba "${v.esperado}")`)
+    for (const d of escritura.distintas.slice(0, 10)) console.error(`   fila ${d.fila} col ${d.columna}: dice "${d.encontrado}", esperaba "${d.esperado}"`)
+    console.error('   No estampo fórmulas sobre filas que no tienen datos. Nada quedó a medias: revisá el candado/firma de "Compras" y volvé a correr.')
+    console.error('   Para devolver la pestaña al OS:  node orquestador/scripts/pestana-candado.mjs desbloquear "Compras"')
+    process.exitCode = 1
+    await closePool(); return
+  }
 
   // 2) FÓRMULAS por fila: copiar de la última fila con datos a las nuevas (Google reajusta refs).
   const reqs = GRUPOS_FORMULA.map(([a, b]) => ({
@@ -181,7 +226,10 @@ async function main() {
     console.log('ℹ Compras tiene un filtro activo: copyPaste no aplica sobre filas filtradas, pero Google auto-extendió las fórmulas por fila (verificado en la columna O = Total). No se tocó tu filtro.')
   }
 
-  // 3) VERIFICAR: releer id (A), total (O) y rubro de caja (AC) de las filas nuevas.
+  // 3) VERIFICAR LAS FÓRMULAS: releer id (A), total (O) y rubro de caja (AC) de las filas nuevas.
+  //    Buscar #ERROR es el chequeo de las FÓRMULAS, y sólo eso: un rango vacío no tiene errores, así que
+  //    nunca podría haber detectado que la escritura no entró. Eso ya lo probó escribirYVerificar arriba,
+  //    releyendo el dato en su destino — las dos verificaciones son de efectos distintos.
   const check = await google.readSheetGrid(ID, `Compras!A${desde}:AD${hasta}`)
   let errores = 0; let sinRubro = 0
   for (const f of check.filas) {
@@ -189,7 +237,7 @@ async function main() {
     if (/#(ERROR|REF|N\/A|VALUE|¿NOMBRE|NAME)/i.test([val(0), val(14), val(28)].join(' '))) errores++
     if (!val(28)) sinRubro++
   }
-  console.log(`\n✔ Escritas ${plan.length} fila(s). ${errores ? `⚠ ${errores} con #ERROR — revisar.` : 'Sin #ERROR.'}`)
+  console.log(`\n✔ Escritas y VERIFICADAS en el destino ${plan.length} fila(s) (${desde}..${hasta}). ${errores ? `⚠ ${errores} con #ERROR — revisar.` : 'Sin #ERROR.'}`)
   if (sinRubro) console.log(`ℹ ${sinRubro} sin Rubro de caja (AC) todavía: se clasifican cuando completes la Unidad de Negocio (I).`)
   // FRESCURA (26/07). Cargar comprobantes a mano ES una ingesta de gastos sobre el Cash Flow: el OS
   // acaba de escribir ese Sheet. Se registra por drive_file_id (la misma fila que mantiene el
@@ -205,4 +253,8 @@ async function main() {
   await closePool()
 }
 
-main().catch((e) => { console.error(e); process.exitCode = 1 })
+// Sólo corre si se lo invoca como comando: importarlo desde un test NO dispara main() —que toca Google,
+// la base y el Sheet real—, así el test puede ejercitar la escritura verificada con un cliente falso.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((e) => { console.error(e); process.exitCode = 1 })
+}

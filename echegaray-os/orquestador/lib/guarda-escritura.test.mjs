@@ -243,11 +243,19 @@ test('RESPETO-NOTAS: borrar/escribir una NOTA sobre una pestaña candada se fren
  * NO pasó. Una firma sellada que no es un sha256 real garantiza que la firma actual siempre difiere:
  * es el escenario permanente de JORNALES, donde una persona edita la pestaña todos los días.
  */
-function baseFalsa({ candadas = [], firmaSellada = null } = {}) {
+function baseFalsa({ candadas = [], candadasAuto = [], firmaSellada = null } = {}) {
   const registro = { candados: [], sellos: [] }
   globalThis.__dobleDbGuarda.query = async (sql, params = []) => {
     if (/insert into public\.sheet_pestanas_bloqueadas/i.test(sql)) { registro.candados.push(params[1]); return { rows: [] } }
-    if (/select pestana from public\.sheet_pestanas_bloqueadas/i.test(sql)) return { rows: candadas.map((p) => ({ pestana: p })) }
+    // `bloqueada_por` distingue el candado del DUEÑO del auto-candado que pone el OS al detectar por
+    // firma que la pestaña cambió. La guarda lo consulta para decidir si `soloFilasVacias` puede aplicar.
+    if (/select bloqueada_por from public\.sheet_pestanas_bloqueadas/i.test(sql)) {
+      const pest = params[1]
+      if (candadas.includes(pest)) return { rows: [{ bloqueada_por: 'dueño' }] }
+      if (candadasAuto.includes(pest)) return { rows: [{ bloqueada_por: 'auto' }] }
+      return { rows: [] }
+    }
+    if (/select pestana from public\.sheet_pestanas_bloqueadas/i.test(sql)) return { rows: [...candadas, ...candadasAuto].map((p) => ({ pestana: p })) }
     if (/select firma from public\.sheet_tab_firma/i.test(sql)) return { rows: firmaSellada ? [{ firma: firmaSellada }] : [] }
     if (/insert into public\.sheet_tab_firma/i.test(sql)) { registro.sellos.push(params[1]); return { rows: [] } }
     return { rows: [] }
@@ -338,4 +346,115 @@ test('SIN compartida (default): la firma que difiere sigue bloqueando y auto-can
   assert.deepEqual(g.bloqueadas, ['Compras'], 'la editaste: el generador no la pisa')
   assert.equal(g.data.length, 0)
   assert.deepEqual(registro.candados, ['Compras'], 'y queda candada, como siempre')
+})
+
+// ═══ `soloFilasVacias` (03/08) — el APPEND que no puede pisar nada y sin embargo se bloqueaba ═══
+//
+// EL CASO MEDIDO contra el Sheet real: `cargar-comprobantes-compras.mjs` agregó un fajo de 7 comprobantes
+// a "Compras" (filas 800..806, vacías, debajo de la última con datos). La firma de "Compras" difería —el
+// dueño la había editado— y la guarda descartó la escritura entera. Las 7 filas quedaron vacías.
+//
+// Lo que estos tests fijan es el LÍMITE de la excepción, no su comodidad: se levanta sólo lo que el OS
+// dedujo solo (firma / auto-candado), sólo sobre un destino RELEÍDO y confirmado vacío, y nunca sobre el
+// candado del dueño ni cuando la relectura falla. Si alguno de estos cinco se pone verde por accidente,
+// la excepción dejó de ser angosta y hay que revisarla: es la única puerta al candado que existe.
+
+/**
+ * Cliente de Sheets falso para el append: la pestaña entera (A1:BZ, la que mira la firma) SIEMPRE tiene
+ * contenido —el dueño la usa—, mientras que el DESTINO del append devuelve lo que pida cada test.
+ * `fallaDestino` simula la relectura que no se puede hacer (429, sin red, sin permiso).
+ */
+function clienteAppend(destino = [], { fallaDestino = false } = {}) {
+  const lecturas = []
+  return {
+    lecturas,
+    async readSheetValues(_fileId, range) {
+      lecturas.push(range)
+      if (/A1:BZ/.test(range)) return [['Compras', 'la pestaña que el dueño edita todos los días']]
+      if (fallaDestino) throw new Error('429 / sin red: no pude releer el destino')
+      return destino
+    },
+  }
+}
+
+const APPEND = [{ range: 'Compras!E800:E806', values: [['ARCOR'], ['YPF']] }]
+
+test('soloFilasVacias: firma editada + destino VACÍO → la escritura entra (el append no pisa nada)', async (t) => {
+  t.after(() => { globalThis.__dobleDbGuarda.query = sinBase })
+  baseFalsa({ firmaSellada: FIRMA_VIEJA })
+  const cliente = clienteAppend([]) // filas 800..806: vacías
+  const g = await guardarEscritura(cliente, 'ID', APPEND, { soloFilasVacias: true })
+  assert.equal(g.data.length, 1, 'el fajo se escribe: abajo no había nada del dueño')
+  assert.deepEqual(g.data[0].values, [['ARCOR'], ['YPF']])
+  assert.deepEqual(g.bloqueadas, [], 'no queda nada bloqueado que reportar')
+  assert.deepEqual(g.rescatadas, ['Compras'])
+  assert.ok(cliente.lecturas.includes('Compras!E800:E806'), 'confirmó el vacío releyendo el destino, no confiando en el llamador')
+})
+
+test('soloFilasVacias: NO sella la firma de la pestaña rescatada — la edición del dueño sigue protegida', async (t) => {
+  // Si sellara, el append borraría la evidencia de que el dueño editó "Compras" y la próxima corrida del
+  // generador —esa que SÍ reescribe la pestaña entera— pasaría el control como si nada hubiera cambiado.
+  // La excepción deja entrar el append; no le devuelve la pestaña al OS.
+  t.after(() => { globalThis.__dobleDbGuarda.query = sinBase })
+  const registro = baseFalsa({ firmaSellada: FIRMA_VIEJA })
+  const g = await guardarEscritura(clienteAppend([]), 'ID', APPEND, { soloFilasVacias: true })
+  await g.sellar()
+  assert.deepEqual(registro.sellos, [], 'ninguna firma nueva de "Compras"')
+})
+
+test('soloFilasVacias: si el destino tiene UNA celda con algo → NO se escribe', async (t) => {
+  // El caso peligroso: la fila calculada quedó vieja (alguien ya cargó ahí) y el append pisaría datos.
+  t.after(() => { globalThis.__dobleDbGuarda.query = sinBase })
+  baseFalsa({ firmaSellada: FIRMA_VIEJA })
+  const g = await guardarEscritura(clienteAppend([['', ''], ['', 'ANOTACIÓN DEL DUEÑO']]), 'ID', APPEND, { soloFilasVacias: true })
+  assert.equal(g.data.length, 0, 'ahí ya hay algo: la excepción no aplica')
+  assert.deepEqual(g.bloqueadas, ['Compras'])
+})
+
+test('soloFilasVacias: si NO se puede releer el destino → falla CERRADO, no escribe', async (t) => {
+  // "No pude confirmar que estaba vacío" no es "estaba vacío". Es la misma regla que el resto de la guarda.
+  t.after(() => { globalThis.__dobleDbGuarda.query = sinBase })
+  baseFalsa({ firmaSellada: FIRMA_VIEJA })
+  const g = await guardarEscritura(clienteAppend([], { fallaDestino: true }), 'ID', APPEND, { soloFilasVacias: true })
+  assert.equal(g.data.length, 0, 'ante la duda no se escribe')
+  assert.deepEqual(g.bloqueadas, ['Compras'])
+})
+
+test('soloFilasVacias: una pestaña CANDADA A MANO sigue bloqueada aunque el destino esté vacío', async (t) => {
+  // El candado es la voluntad DECLARADA del dueño sobre la pestaña entera ("es mía, no la toques"). No lo
+  // levanta una heurística por más segura que sea: si esto se pone verde, la excepción dejó de ser angosta.
+  t.after(() => { globalThis.__dobleDbGuarda.query = sinBase })
+  baseFalsa({ candadas: ['Compras'] })
+  const g = await guardarEscritura(clienteAppend([]), 'ID', APPEND, { soloFilasVacias: true })
+  assert.equal(g.data.length, 0, 'la candaste vos: no entra ni un append')
+  assert.deepEqual(g.bloqueadas, ['Compras'])
+  assert.deepEqual(g.rescatadas, [])
+})
+
+test('soloFilasVacias: el AUTO-candado (lo dedujo el OS de la firma) sí se levanta sobre destino vacío', async (t) => {
+  // Sin esto la excepción nacía muerta: `firmaGuardia` AUTO-CANDA la pestaña la primera vez que detecta la
+  // edición, así que en la corrida siguiente el motivo ya no es "firma" sino "candado". Ese candado no lo
+  // puso el dueño: lo dedujo el OS del mismo hecho (la firma difiere) que la excepción sí contempla.
+  t.after(() => { globalThis.__dobleDbGuarda.query = sinBase })
+  baseFalsa({ candadasAuto: ['Compras'] })
+  const g = await guardarEscritura(clienteAppend([]), 'ID', APPEND, { soloFilasVacias: true })
+  assert.equal(g.data.length, 1, 'un candado automático no es la voluntad declarada del dueño')
+  assert.deepEqual(g.rescatadas, ['Compras'])
+})
+
+test('soloFilasVacias es OPT-IN: sin la bandera, el mismo append sobre destino vacío se bloquea', async (t) => {
+  // El contrapeso: ningún generador hereda la excepción por existir. La pide quien sabe que agrega filas.
+  t.after(() => { globalThis.__dobleDbGuarda.query = sinBase })
+  baseFalsa({ firmaSellada: FIRMA_VIEJA })
+  const g = await guardarEscritura(clienteAppend([]), 'ID', APPEND)
+  assert.equal(g.data.length, 0)
+  assert.deepEqual(g.bloqueadas, ['Compras'])
+})
+
+test('soloFilasVacias: sin base (fail-closed total) tampoco escribe — no se sabe si la candaste a mano', async () => {
+  // El default del archivo es "sin base", igual que un worktree sin DATABASE_URL: ahí no se puede
+  // distinguir un candado del dueño de una firma, así que la excepción no puede aplicar.
+  const g = await guardarEscritura(clienteAppend([]), 'ID', APPEND, { soloFilasVacias: true })
+  assert.equal(g.data.length, 0)
+  assert.deepEqual(g.bloqueadas, ['Compras'])
 })
