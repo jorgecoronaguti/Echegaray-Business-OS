@@ -1,8 +1,8 @@
 // EL CONCEPTO DE UN MOVIMIENTO BANCARIO, COMPARADO COMO CORRESPONDE.
 //
 // POR QUÉ EXISTE. La pregunta "¿estos dos textos son el mismo movimiento?" la necesitan el importador
-// (para no cargar de nuevo lo que ya está) y, cuando se integre, el deduplicador y la conciliación
-// contra el extracto. Cada uno tenía su propia respuesta y eran distintas: comparando el concepto
+// (para no cargar de nuevo lo que ya está), el deduplicador y la conciliación contra el extracto —los
+// tres, ya integrados. Cada uno tenía su propia respuesta y eran distintas: comparando el concepto
 // EXACTO no se veía una familia entera de duplicados, y el mismo par de filas era "duplicado" para uno
 // y "movimientos distintos" para el otro. Un concepto crítico se define UNA sola vez.
 //
@@ -30,4 +30,38 @@ export function conceptoCompatible(a, b) {
   if (x === y) return 'exacto'
   if (x.length >= 8 && y.length >= 8 && (x.startsWith(y) || y.startsWith(x))) return 'prefijo'
   return null
+}
+
+/**
+ * El número de cheque que el OS anotó a mano en el concepto ("Cheque debitado - Nº 221" → "221").
+ *
+ * El banco escribe "Cheque debitado" a secas: sin el número, un débito de cheque no se puede atribuir a
+ * ningún cheque de la cartera. La anotación la agrega el OS, y por eso hay que saber leerla de vuelta —
+ * si no, el mismo movimiento anotado deja de parecerse al que trae la descarga siguiente.
+ */
+export const numeroAnotado = (concepto) => {
+  const t = String(concepto ?? '').match(/n[ºo°]\s*0*(\d+)/i)
+  return t ? t[1] : null
+}
+
+/**
+ * Agrupa filas que son EL MISMO movimiento, dentro de un conjunto que ya comparte cuenta, fecha e importe.
+ *
+ * El representante del grupo es el concepto MÁS CORTO: si "a" es prefijo de "ab" y "ab" de "abc", los tres
+ * son la misma cosa, y comparar contra el más corto los junta a todos. Comparar contra el primero que
+ * llegó haría que el resultado dependiera del orden de las filas — el mismo conjunto daría dos respuestas.
+ *
+ * @param {object[]} filas con .concepto
+ * @returns {object[][]} grupos
+ */
+export function agruparPorConcepto(filas = []) {
+  const grupos = []
+  for (const f of filas) {
+    const g = grupos.find((gr) => conceptoCompatible(gr.rep, f.concepto))
+    if (g) {
+      g.filas.push(f)
+      if (norm(f.concepto).length < norm(g.rep).length) g.rep = f.concepto
+    } else grupos.push({ rep: f.concepto, filas: [f] })
+  }
+  return grupos.map((g) => g.filas)
 }
