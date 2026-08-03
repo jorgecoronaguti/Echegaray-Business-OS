@@ -1289,3 +1289,23 @@ test('ALTO · un relevamiento truncado no habilita a accionar', () => {
   assert.equal(parcial.accionable, false)
   assert.ok(parcial.bloqueos.some((b) => /truncado/.test(b)))
 })
+
+test('el unit del Tesorero carga el archivo donde vive el token del bot', () => {
+  // ═══ EL DEFECTO, ENCONTRADO AL DESPLEGAR ═══
+  //
+  // `ciclo-tesorero.mjs` resuelve el cliente de Mattermost con `resolverCliente()`, que falla CERRADO
+  // si falta `MM_BOT_TOKEN` —nunca cae a un Fake—. Esa variable vive en `comunicacion.env`, y el unit
+  // sólo cargaba `worker.env`. La primera corrida productiva murió con:
+  //
+  //   [tesorero] error: conector: cliente Mattermost REAL requerido — falta MM_BOT_TOKEN (fail-closed)
+  //
+  // El agente no habría publicado nunca, y habría fallado igual cada mañana a las 09:15. Ningún test
+  // lo cubría porque el ciclo se prueba con un publicador inyectado.
+  const unit = readFileSync(join(DIR, '..', '..', 'systemd', 'echegaray-tesorero.service'), 'utf8')
+  assert.match(unit, /EnvironmentFile=.*worker\.env/, 'sin worker.env no hay DATABASE_URL')
+  assert.match(unit, /EnvironmentFile=-?.*comunicacion\.env/, 'sin comunicacion.env el agente no puede publicar')
+  // Y el timer NO se habilita solo: encenderlo es una decisión aparte y deliberada.
+  const install = readFileSync(join(DIR, '..', '..', 'systemd', 'install.sh'), 'utf8')
+  assert.ok(!/^\s*systemctl\s+--user\s+enable[^\n]*tesorero/m.test(install),
+    'el instalador NO puede encender el timer del Tesorero por su cuenta')
+})

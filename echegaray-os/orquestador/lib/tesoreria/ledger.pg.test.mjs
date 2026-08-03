@@ -33,7 +33,7 @@ create table if not exists orq.principals (id uuid primary key default gen_rando
 create table if not exists orq.capabilities (slug text primary key, domain text, description text, required_clearance text, blast_radius text, idempotency text, agent_role text);
 create table if not exists orq.agents (id uuid primary key default gen_random_uuid(), tenant_id uuid, principal_id uuid, slug text, role text, description text, context_ref text, default_model text, max_cost_usd_per_task numeric, max_cost_usd_per_day numeric, max_concurrent int, org_title text, org_order int, unique (tenant_id, slug));
 create table if not exists orq.agent_capabilities (agent_id uuid, capability_slug text, primary key (agent_id, capability_slug));
-create table if not exists orq.model_routes (tenant_id uuid, scope text, match_key text, priority int, engine text, model text, max_cost_usd numeric, primary key (tenant_id, scope, match_key, priority));
+create table if not exists orq.model_routes (tenant_id uuid, scope text, match_key text, priority int, engine text not null, model text, max_cost_usd numeric, primary key (tenant_id, scope, match_key, priority));
 insert into orq.tenants (slug) values ('echegaray') on conflict do nothing;
 `
 
@@ -217,10 +217,19 @@ test('el CHECK de aprobación existe aunque la tabla ya existiera sin él', opts
   )
 })
 
-test('las rutas de modelo NO reintroducen el engine claude-cli', opts, async () => {
-  // La migración 20260714140000 lo anuló en todo el OS. Copiarlo de una migración vieja lo habría
-  // devuelto en una fila nueva.
+test('las rutas de modelo declaran engine, y NO es claude-cli', opts, async () => {
+  // ═══ EL DEFECTO QUE ESTE TEST DEJÓ PASAR, Y QUE SÓLO APARECIÓ AL DESPLEGAR ═══
+  //
+  // La migración 20260714140000 anuló `claude-cli` en todo el OS, y esta ponía `engine = null` para
+  // no reintroducirlo. Pero `orq.model_routes.engine` es **NOT NULL en producción**, y el stub de
+  // arriba declaraba la columna sin la restricción: el test corría contra un schema más permisivo
+  // que el real y pasaba. El despliegue se cortó a mitad —schema creado, capacidad insertada, agente
+  // no— con el error que este test tendría que haber dado.
+  //
+  // El stub ya lleva el `not null`; esta aserción exige además el valor correcto, que es el que usan
+  // 41 de las 45 rutas vivas del OS.
   const { rows } = await query("select engine from orq.model_routes where match_key = 'advise.treasury'")
   assert.ok(rows.length >= 2)
-  assert.ok(rows.every((r) => r.engine === null), `engine no nulo: ${JSON.stringify(rows)}`)
+  assert.ok(rows.every((r) => r.engine === 'anthropic-api'), `engine inesperado: ${JSON.stringify(rows)}`)
+  assert.ok(rows.every((r) => r.engine !== 'claude-cli'))
 })

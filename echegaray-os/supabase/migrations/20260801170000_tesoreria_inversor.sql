@@ -57,12 +57,18 @@ begin
   select v_agent, unnest(array['advise.treasury', 'read.analyze', 'doc.write'])
   on conflict do nothing;
 
-  -- ENGINE NULL, no 'claude-cli': la migración 20260714140000 lo anuló explícitamente en todo el
-  -- OS (el razonamiento salió del CLI y pasó a la API). Copiar 'claude-cli' de las migraciones
-  -- viejas habría reintroducido, en una fila nueva, algo que el repo ya había sacado.
+  -- ENGINE 'anthropic-api', no 'claude-cli': la migración 20260714140000 lo anuló explícitamente en
+  -- todo el OS (el razonamiento salió del CLI y pasó a la API). Copiar 'claude-cli' de las
+  -- migraciones viejas habría reintroducido, en una fila nueva, algo que el repo ya había sacado.
+  --
+  -- Y NO VA NULL, aunque "sin engine, que use el default" suene más prolijo: `orq.model_routes.engine`
+  -- es NOT NULL en producción. La primera versión ponía null y el despliegue se cortó a mitad —
+  -- schema creado, capacidad insertada, agente no—. El stub del test declaraba la columna sin la
+  -- restricción, así que el test pasaba contra un schema más permisivo que el real: un doble más
+  -- débil que el original no prueba nada. El stub quedó corregido junto con esto.
   insert into orq.model_routes (tenant_id, scope, match_key, priority, engine, model, max_cost_usd) values
-    (v_tenant, 'capability', 'advise.treasury',  50, null, 'sonnet', 0.50),
-    (v_tenant, 'capability', 'advise.treasury', 100, null, 'opus',   1.00)
+    (v_tenant, 'capability', 'advise.treasury',  50, 'anthropic-api', 'sonnet', 0.50),
+    (v_tenant, 'capability', 'advise.treasury', 100, 'anthropic-api', 'opus',   1.00)
   on conflict (tenant_id, scope, match_key, priority) do nothing;
 end $$;
 

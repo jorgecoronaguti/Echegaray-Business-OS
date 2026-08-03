@@ -9,6 +9,19 @@ Type=oneshot
 WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
 Environment=PATH=/home/jorge/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=/home/jorge/.config/echegaray-orq/worker.env
+# EL TOKEN DEL BOT VIVE EN OTRO ARCHIVO, y este unit no lo cargaba.
+#
+# `ciclo-tesorero.mjs` resuelve el cliente de Mattermost con `resolverCliente()`, que falla CERRADO
+# si no encuentra `MM_BOT_TOKEN` —nunca cae a un Fake— y esa variable está en `comunicacion.env`, no
+# en `worker.env`. Con lo cual la primera corrida productiva terminó así, y habría terminado igual
+# cada mañana a las 09:15:
+#
+#   [tesorero] error: conector: cliente Mattermost REAL requerido — falta MM_BOT_TOKEN (fail-closed)
+#
+# El agente no habría publicado NUNCA, y el fallo es del lado correcto (no publica de más), pero un
+# agente que no puede hablar no sirve. Va con `-` como el resto de los archivos opcionales del OS:
+# si no está, el ciclo corre igual y escribe en el journal.
+EnvironmentFile=-/home/jorge/.config/echegaray-orq/comunicacion.env
 # La credencial de Google y el token del bot llegan por EnvironmentFile. Nunca por línea de comandos:
 # los argumentos de un proceso los ve cualquiera con `ps`.
 ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/ciclo-tesorero.mjs
