@@ -171,3 +171,73 @@ export function valoresInput(c) {
   if (estado === 'Pagado' && total != null) set('pagado', total)
   return out
 }
+
+// ═══ VERIFICACIÓN DEL EFECTO (03/08) — el log no puede felicitar sin haber escrito ═══
+//
+// EL DEFECTO MEDIDO. El cargador imprimía "✔ Escritas 7 fila(s). Sin #ERROR." después de que la guarda
+// descartara la escritura entera: las filas 800..806 quedaron VACÍAS. El chequeo que existía —buscar
+// #ERROR en lo releído— no podía detectarlo: un rango vacío no tiene errores. "Sin errores" sobre la nada
+// es la forma más cara de mentir, porque el siguiente paso (sync a Supabase, conciliación) da por hecho
+// que el comprobante está cargado.
+//
+// LA REGLA. Lo que prueba una escritura es el DATO LEÍDO EN SU DESTINO, nunca la respuesta de la API.
+// Estas dos funciones son puras: comparan lo que se quiso escribir contra lo que se releyó.
+
+/** Letra de columna → índice 0. 'A'→0, 'AA'→26. Contrato con el orden de columnas de readSheetGrid. */
+export function colIndice(letra) {
+  let n = 0
+  for (const ch of String(letra).toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64)
+  return n - 1
+}
+
+/**
+ * ¿La celda del Sheet dice lo mismo que se quiso escribir? No es igualdad de strings: el Sheet devuelve
+ * el valor FORMATEADO en es-AR, así que 23540.5 vuelve como "$ 23.540,50" y una fecha como "22/07/2025".
+ * Comparar crudo daría falsos negativos en cada fila; comparar laxo no verificaría nada. El orden es:
+ * texto normalizado → fecha → número con tolerancia de centavo. Una celda VACÍA nunca coincide: es
+ * justamente el caso que hay que cazar.
+ */
+export function mismoValor(esperado, encontrado) {
+  const a = String(esperado ?? '').trim(); const b = String(encontrado ?? '').trim()
+  if (!b) return false
+  if (normalizar(a) === normalizar(b)) return true
+  const fa = aFechaAR(a); const fb = aFechaAR(b)
+  if (fa && fb) return fa === fb
+  // El número esperado se compara SIN pasar por su string: `aNumero` lee es-AR (punto = miles), así que
+  // el 28479.3 de JavaScript, stringificado, se leería como 284.793. El valor leído sí viene formateado.
+  const na = typeof esperado === 'number' ? esperado : aNumero(a)
+  const nb = aNumero(b)
+  if (na != null && nb != null) return Math.abs(na - nb) < 0.01
+  return false
+}
+
+/**
+ * Contrasta lo que el cargador quiso escribir contra lo que quedó en la pestaña.
+ *
+ * @param {Array<{[letra:string]: any}>} valoresPorFila lo que se quiso escribir (valoresInput por fila)
+ * @param {Array<Array<{valor?:any}>>} filasLeidas grid releído del bloque, la primera columna es A
+ * @param {{desde:number}} p fila real (1-based) de la primera fila del bloque, sólo para el informe
+ * @returns {{ok:boolean, vacias:object[], distintas:object[]}} vacías = no se escribió NADA ahí
+ */
+export function verificarEscritura(valoresPorFila = [], filasLeidas = [], { desde = 1 } = {}) {
+  const vacias = []; const distintas = []
+  valoresPorFila.forEach((valores, k) => {
+    const fila = desde + k
+    const leida = filasLeidas[k] || []
+    for (const [letra, esperado] of Object.entries(valores || {})) {
+      if (esperado == null || esperado === '') continue // no se pidió escribir nada acá
+      // EL NÚMERO CRUDO ANTES QUE EL MOSTRADO. La celda viene con las dos caras: `numero` es lo que
+      // Google guardó y `valor` es cómo lo dibuja el formato. En Compras el formato es moneda sin
+      // decimales, así que 54447,71 se MUESTRA "$ 54.448" — y comparar contra eso daba una
+      // diferencia de 29 centavos y un ROJO FALSO en toda carga correcta. Verificado el 03/08/2026:
+      // las 7 filas estaban perfectas en el destino y el script las declaró no escritas.
+      const celda = leida[colIndice(letra)]
+      const encontrado = (typeof esperado === 'number' && typeof celda?.numero === 'number')
+        ? celda.numero
+        : (celda?.valor ?? '')
+      if (String(encontrado).trim() === '') vacias.push({ fila, columna: letra, esperado })
+      else if (!mismoValor(esperado, encontrado)) distintas.push({ fila, columna: letra, esperado, encontrado })
+    }
+  })
+  return { ok: !vacias.length && !distintas.length, vacias, distintas }
+}

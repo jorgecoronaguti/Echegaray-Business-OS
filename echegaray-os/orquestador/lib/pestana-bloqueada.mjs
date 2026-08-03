@@ -77,6 +77,31 @@ export async function estaBloqueada(deps, fileId, pestana) {
   return set.has(String(pestana))
 }
 
+/**
+ * ¿Está bloqueada, y QUIÉN la bloqueó? La distinción importa porque los dos candados no valen lo mismo:
+ * `dueño` es su voluntad declarada sobre la pestaña ("es mía, no la toques"), mientras que `auto` lo puso
+ * el OS solo al detectar por firma que la pestaña cambió. Quien necesite tratar distinto una deducción
+ * propia de una decisión del dueño —hoy, la excepción `soloFilasVacias` de guarda-escritura.mjs— necesita
+ * este dato; `estaBloqueada` no lo trae.
+ *
+ * Un candado sin autor registrado (fila vieja, `bloqueada_por` NULL) se lee como del DUEÑO: ante la duda,
+ * el candado más fuerte. Sin base no se puede consultar → {bloqueada:false}, igual que `estaBloqueada`
+ * (el fail-closed por base caída vive en el portón, que lo decide una sola vez para todas las pestañas).
+ *
+ * @returns {Promise<{bloqueada:boolean, por:string|null}>}
+ */
+export async function bloqueoDe(deps, fileId, pestana) {
+  try {
+    const query = await q(deps)
+    await asegurarTabla(query)
+    const { rows } = await query(
+      'select bloqueada_por from public.sheet_pestanas_bloqueadas where file_id = $1 and pestana = $2',
+      [fileId, String(pestana)])
+    if (!rows.length) return { bloqueada: false, por: null }
+    return { bloqueada: true, por: rows[0].bloqueada_por ?? 'dueño' }
+  } catch { return { bloqueada: false, por: null } }
+}
+
 /** El dueño toma una pestaña: desde ahora ningún agente la escribe. Trazable (motivo/quién). */
 export async function bloquear(deps, fileId, pestana, { motivo = null, por = 'dueño' } = {}) {
   const query = await q(deps)

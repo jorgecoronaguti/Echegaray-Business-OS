@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { tipoComprobante, condicionAPago, matchProveedor, aNumero, aFechaAR, validar, valoresInput, discrepanciaNeto, redondear2, COL } from './carga-comprobantes.mjs'
+import { tipoComprobante, condicionAPago, matchProveedor, aNumero, aFechaAR, validar, valoresInput, discrepanciaNeto, redondear2, verificarEscritura, mismoValor, colIndice, COL } from './carga-comprobantes.mjs'
 
 test('el tipo de comprobante se normaliza al valor exacto del desplegable', () => {
   assert.equal(tipoComprobante('A'), 'F A')
@@ -105,4 +105,90 @@ test('redondear2 no arrastra el error binario de la resta', () => {
   assert.equal(redondear2(124500 - 21000), 103500)
   assert.equal(redondear2(0.1 + 0.2), 0.3)
   assert.equal(redondear2(null), null)
+})
+
+// ═══ VERIFICAR EL EFECTO (03/08) — lo que quedó en la celda, no lo que contestó la API ═══
+//
+// El cargador imprimió "✔ Escritas 7 fila(s). Sin #ERROR." con las filas 800..806 VACÍAS: la guarda había
+// descartado los rangos. Estas funciones son el control que faltaba, y tienen que aguantar el ida y vuelta
+// real del Sheet (es-AR formatea los números y las fechas) sin volverse laxas: una celda vacía NUNCA pasa.
+
+test('mismoValor tolera el formato es-AR de vuelta del Sheet, y nunca da por buena una celda vacía', () => {
+  assert.equal(mismoValor(28479.3, '$ 28.479,30'), true)   // el importe vuelve formateado
+  assert.equal(mismoValor('22/07/2025', '22/7/2025'), true) // la fecha vuelve sin el cero
+  assert.equal(mismoValor('Combustibles Barcelo', 'combustibles barcelo'), true)
+  assert.equal(mismoValor(28479.3, '$ 28.470,00'), false)  // otro importe NO es el mismo
+  assert.equal(mismoValor('ARCOR', 'YPF'), false)
+  assert.equal(mismoValor('ARCOR', ''), false, 'la celda vacía es exactamente el caso que hay que cazar')
+  assert.equal(mismoValor('ARCOR', null), false)
+  assert.equal(mismoValor(0, '0'), true)                   // el 0 es un valor, no un vacío
+})
+
+test('colIndice ubica la columna del contrato de Compras', () => {
+  assert.equal(colIndice('A'), 0)
+  assert.equal(colIndice(COL.total), 14)   // O = Total
+  assert.equal(colIndice(COL.rubroCaja), 28) // AC = Rubro de caja
+})
+
+test('verificarEscritura CAZA el caso real: la guarda descartó todo y las filas quedaron vacías', () => {
+  // Reproduce lo medido el 03/08: se pidieron 2 filas, el Sheet devuelve el bloque sin nada.
+  const querido = [{ E: 'ARCOR', H: '0001-00012345', M: 28479.3 }, { E: 'YPF', H: '0002-00000777', M: 5000 }]
+  const v = verificarEscritura(querido, [], { desde: 800 })
+  assert.equal(v.ok, false, 'no se puede decir "escritas 2 filas" sobre un bloque vacío')
+  assert.equal(v.vacias.length, 6, 'cada celda que se pidió escribir y no está, se nombra')
+  assert.deepEqual(v.vacias[0], { fila: 800, columna: 'E', esperado: 'ARCOR' })
+  assert.equal(v.vacias.at(-1).fila, 801)
+})
+
+test('verificarEscritura da OK cuando el dato está en su destino, aunque vuelva formateado', () => {
+  const querido = [{ E: 'ARCOR', C: '22/07/2025', M: 28479.3 }]
+  const fila = []
+  fila[colIndice('C')] = { valor: '22/07/2025' }
+  fila[colIndice('E')] = { valor: 'ARCOR' }
+  fila[colIndice('M')] = { valor: '$ 28.479,30' }
+  const v = verificarEscritura(querido, [fila], { desde: 800 })
+  assert.equal(v.ok, true)
+  assert.deepEqual(v.vacias, [])
+  assert.deepEqual(v.distintas, [])
+})
+
+test('verificarEscritura caza la escritura PARTIDA al medio (un 429 entre dos rangos)', () => {
+  // Este repo ya pagó una escritura cortada por un 429: entró una columna y la otra no. El total de filas
+  // "escritas" no lo detecta; la celda que falta, sí. Y una celda con OTRO valor tampoco pasa.
+  const querido = [{ E: 'ARCOR', M: 28479.3 }, { E: 'YPF', M: 5000 }]
+  const f0 = []; f0[colIndice('E')] = { valor: 'ARCOR' }; f0[colIndice('M')] = { valor: '$ 28.479,30' }
+  const f1 = []; f1[colIndice('E')] = { valor: 'YPF' }; f1[colIndice('M')] = { valor: '$ 500,00' }
+  const v = verificarEscritura(querido, [f0, f1], { desde: 800 })
+  assert.equal(v.ok, false)
+  assert.deepEqual(v.vacias, [])
+  assert.deepEqual(v.distintas, [{ fila: 801, columna: 'M', esperado: 5000, encontrado: '$ 500,00' }])
+})
+
+test('verificarEscritura compara el NÚMERO crudo, no el mostrado por el formato', () => {
+  // El 03/08/2026 las 7 filas quedaron perfectas en Compras y el script las declaró no escritas:
+  // el formato moneda sin decimales muestra "$ 54.448" para 54447,71 y la comparación daba 29
+  // centavos de diferencia. Un verificador que da rojo sobre una escritura correcta se desactiva,
+  // y entonces no sirve el día que la escritura sí falla.
+  const r = verificarEscritura(
+    [{ M: 54447.71, N: 9558.36 }],
+    [[...Array(12), { valor: '$ 54.448', numero: 54447.71 }, { valor: '$ 9.558', numero: 9558.36 }]],
+    { desde: 800 },
+  )
+  assert.equal(r.ok, true, `no debería haber diferencias: ${JSON.stringify(r.distintas)}`)
+})
+
+test('pero un número REALMENTE distinto sigue dando rojo', () => {
+  const r = verificarEscritura(
+    [{ M: 54447.71 }],
+    [[...Array(12), { valor: '$ 99.999', numero: 99999 }]],
+    { desde: 800 },
+  )
+  assert.equal(r.ok, false)
+  assert.equal(r.distintas[0].columna, 'M')
+})
+
+test('una celda vacía sigue siendo vacía aunque se espere un número', () => {
+  const r = verificarEscritura([{ M: 54447.71 }], [[...Array(12), { valor: '', numero: null }]], { desde: 800 })
+  assert.equal(r.ok, false)
+  assert.equal(r.vacias[0].columna, 'M')
 })

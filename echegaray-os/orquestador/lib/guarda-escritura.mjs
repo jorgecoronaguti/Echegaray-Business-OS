@@ -108,6 +108,23 @@ function refDeTab(tab) {
 }
 
 /**
+ * Por qué está protegida una pestaña. Los dos primeros son DECISIÓN del dueño o falta de información;
+ * los dos marcados como deducidos (`motivoDeducido`) los infirió el OS de la firma.
+ */
+export const MOTIVO = {
+  SIN_BASE: 'sin-base',                            // no se pudo consultar candado ni firma (fail-closed)
+  CANDADO_DUENO: 'candado-dueño',                  // la candó él: "es mía, no la toques"
+  CANDADO_AUTO: 'candado-auto',                    // la candó el OS al detectar por firma que cambió
+  FIRMA_EDITADA: 'firma-editada',                  // la firma difiere de la última escritura del OS
+  FIRMA_NO_VERIFICABLE: 'firma-no-verificable',    // no se pudo releer la pestaña para comparar
+}
+
+/** ¿El motivo lo DEDUJO el OS de la firma (en vez de declararlo el dueño o desconocerse)? */
+export function motivoDeducido(motivo) {
+  return motivo === MOTIVO.FIRMA_EDITADA || motivo === MOTIVO.CANDADO_AUTO
+}
+
+/**
  * Evalúa qué pestañas de contenido están protegidas (candada o editada por humano). Impura (base + Sheet).
  *
  * Falla CERRADO (26/07, tras perder la versión del dueño otra vez). La regla del dueño es explícita:
@@ -135,35 +152,52 @@ function refDeTab(tab) {
  * huella justo antes de escribir, y aborta toda la operación si cambió. Se protege la CELDA, que es la
  * unidad que se comparte, en vez de la pestaña.
  */
-export async function evaluarBloqueadas(cliente, fileId, tabs = [], { compartida = false } = {}) {
-  const bloqueadas = new Set()
+export async function evaluarBloqueadas(cliente, fileId, tabs = [], opciones = {}) {
+  return new Set((await evaluarBloqueadasConMotivo(cliente, fileId, tabs, opciones)).keys())
+}
+
+/**
+ * Lo mismo que `evaluarBloqueadas`, pero diciendo POR QUÉ está protegida cada pestaña. Existe porque hay
+ * una diferencia que la decisión binaria borra: un candado que puso EL DUEÑO es su voluntad declarada,
+ * mientras que la firma —y el auto-candado que ella dispara— son una DEDUCCIÓN del OS ("esto cambió desde
+ * mi última escritura"). La deducción es correcta, pero su conclusión (proteger la pestaña ENTERA) es más
+ * ancha que el riesgo real cuando la escritura no puede pisar nada. Ver `soloFilasVacias`, más abajo.
+ *
+ * @returns {Promise<Map<string, string>>} pestaña → uno de MOTIVO
+ */
+export async function evaluarBloqueadasConMotivo(cliente, fileId, tabs = [], { compartida = false } = {}) {
+  const motivos = new Map()
   const protegibles = tabs.filter(esProtegible)
-  if (!protegibles.length) return bloqueadas
+  if (!protegibles.length) return motivos
   // ¿La base responde? Sin ella no hay forma de conocer candado ni firma → fail-closed total.
   try {
     const { query } = await import('./db.mjs')
     await query('select 1')
   } catch {
-    for (const t of protegibles) bloqueadas.add(t)
+    for (const t of protegibles) motivos.set(t, MOTIVO.SIN_BASE)
     console.log('  🔒 base no accesible: no puedo verificar tus ediciones → no piso ninguna pestaña de contenido (fail-closed).')
-    return bloqueadas
+    return motivos
   }
   try {
-    const { estaBloqueada } = await import('./pestana-bloqueada.mjs')
-    for (const t of protegibles) { if (await estaBloqueada({}, fileId, t).catch(() => false)) bloqueadas.add(t) }
+    const { bloqueoDe } = await import('./pestana-bloqueada.mjs')
+    for (const t of protegibles) {
+      const b = await bloqueoDe({}, fileId, t).catch(() => null)
+      if (b?.bloqueada) motivos.set(t, b.por === 'auto' ? MOTIVO.CANDADO_AUTO : MOTIVO.CANDADO_DUENO)
+    }
   } catch { /* la base respondió el probe; un fallo puntual acá no habilita a pisar */ }
   // Pestaña compartida: la firma no aplica (y por lo tanto tampoco el auto-candado). Ver el encabezado.
-  if (compartida) return bloqueadas
+  if (compartida) return motivos
   try {
     const { firmaGuardia } = await import('./firma-tab.mjs')
     for (const t of protegibles) {
-      if (bloqueadas.has(t)) continue
+      if (motivos.has(t)) continue
       const { editada, noVerificable } = await firmaGuardia(cliente, fileId, t, refDeTab(t)).catch(() => ({ editada: false, noVerificable: true }))
       // editada = la tocaste; noVerificable = no pude confirmar que está intacta. En ambos casos, no piso.
-      if (editada || noVerificable) bloqueadas.add(t)
+      if (editada) motivos.set(t, MOTIVO.FIRMA_EDITADA)
+      else if (noVerificable) motivos.set(t, MOTIVO.FIRMA_NO_VERIFICABLE)
     }
   } catch { /* fail-closed: ante un fallo del subsistema de firma, no se libera nada nuevo */ }
-  return bloqueadas
+  return motivos
 }
 
 /** Sella la firma de las pestañas de contenido que el OS acaba de escribir (para no confundir su propia escritura con una edición humana la próxima vez). */
@@ -204,14 +238,64 @@ async function reInyectarAprendidas(fileId, data) {
   } catch { return data }
 }
 
+// ═══ EXCEPCIÓN ANGOSTA `soloFilasVacias` (03/08) — el APPEND que no puede pisar nada ═══
+//
+// EL CASO MEDIDO. `cargar-comprobantes-compras.mjs` agrega un fajo de comprobantes al final de "Compras":
+// escribe estrictamente POR DEBAJO de la última fila con datos, en celdas que hoy están vacías. El 03/08,
+// contra el Sheet real, esa carga se descartó entera —la firma de "Compras" difería porque el dueño la
+// había editado— y las 7 filas quedaron sin escribir. Proteger la pestaña ENTERA es la respuesta correcta
+// para un generador que la reescribe; para un append es más ancha que el riesgo: abajo no hay nada suyo.
+//
+// POR QUÉ ES SEGURA, que es lo único que la justifica. La excepción NO le cree al llamador cuando dice
+// "esto es un append": RELEE el destino y sólo lo escribe si confirma que está COMPLETAMENTE VACÍO.
+// Escribir sobre vacío es la única escritura de la que se puede AFIRMAR que no destruye trabajo de nadie
+// —no hay contenido que reemplazar—, y por eso es la única excepción admisible al candado. Si el destino
+// no se puede releer, no se escribe: mismo fail-closed que el resto de la guarda, porque "no pude
+// confirmar que estaba vacío" no es "estaba vacío".
+//
+// LO QUE NO AFLOJA:
+//  · El CANDADO EXPLÍCITO del dueño (`bloqueada_por='dueño'`, pestana-candado.mjs) frena igual. Candar es
+//    su voluntad declarada sobre la pestaña entera, no una inferencia del OS: no se negocia con una
+//    heurística. Sólo se levanta lo que el OS dedujo solo (firma editada y su auto-candado).
+//  · El fail-closed por base caída (`sin-base`): sin base no se sabe si la pestaña está candada A MANO,
+//    así que tampoco se sabe si la excepción aplica.
+//  · La firma NO SE SELLA para una pestaña rescatada (ver `guardarEscritura`): sellar borraría la
+//    evidencia de que el dueño la editó, y la próxima reescritura COMPLETA de un generador —esa que sí
+//    pisa— pasaría el control como si nada hubiera cambiado. El append entra; la protección queda puesta.
+//  · Es OPT-IN: sólo la pide quien sabe que su escritura es un append. Ningún generador la hereda.
+
+/**
+ * De los rangos que la guarda bloqueó, devuelve los que se pueden escribir igual porque su destino se
+ * relee y se confirma VACÍO. Impura sólo del lado Sheets. Fail-closed en las dos formas de la duda: si no
+ * se puede releer, o si hay una sola celda con contenido, el rango queda descartado con su motivo.
+ *
+ * @returns {Promise<{rescatados:any[], descartados:{range:string, motivo:string}[]}>}
+ */
+export async function rescatarFilasVacias(cliente, fileId, bloqueado = [], motivos = new Map()) {
+  const rescatados = []; const descartados = []
+  for (const d of bloqueado) {
+    const motivo = motivos.get(nombreTab(d?.range))
+    if (!motivoDeducido(motivo)) { descartados.push({ range: d?.range, motivo: `la pestaña está protegida por vos o sin verificar (${motivo}): eso no lo levanta un append` }); continue }
+    let previo
+    try { previo = await cliente.readSheetValues(fileId, d.range) } catch { previo = undefined }
+    if (previo === undefined) { descartados.push({ range: d?.range, motivo: 'no pude releer el destino para confirmar que está vacío (fail-closed)' }); continue }
+    if (!gridVacia(previo)) { descartados.push({ range: d?.range, motivo: 'el destino NO está vacío: ahí ya hay algo y un append no lo pisa' }); continue }
+    rescatados.push(d)
+  }
+  return { rescatados, descartados }
+}
+
 /**
  * LA GUARDA COMPLETA, para un choke point de escritura de valores. Devuelve el `data` filtrado a lo que
  * se puede escribir (y con las celdas aprendidas del dueño re-inyectadas) y una función `sellar()` para
  * llamar DESPUÉS de escribir. Un solo lugar: lo usan batchUpdateValues y updateSheetValues.
  *
- * @returns {Promise<{data:any[], bloqueadas:string[], motivo?:string, sellar:() => Promise<void>}>}
+ * `soloFilasVacias` es la excepción documentada arriba: opt-in, y sólo para destinos que se confirman
+ * vacíos releyéndolos.
+ *
+ * @returns {Promise<{data:any[], bloqueadas:string[], rescatadas?:string[], motivo?:string, sellar:() => Promise<void>}>}
  */
-export async function guardarEscritura(cliente, fileId, data, { chequearVacio = true, compartida = false } = {}) {
+export async function guardarEscritura(cliente, fileId, data, { chequearVacio = true, compartida = false, soloFilasVacias = false } = {}) {
   // CINTURÓN 1 — "vacío sobre lleno". Corre PRIMERO y sin base: aunque candado/firma no puedan
   // consultarse, una grilla vacía nunca reemplaza contenido. clearValues/append lo apagan (chequearVacio:false).
   if (chequearVacio) {
@@ -224,7 +308,8 @@ export async function guardarEscritura(cliente, fileId, data, { chequearVacio = 
   }
   const tabs = tabsProtegibles(data)
   if (!tabs.length) return { data, bloqueadas: [], sellar: async () => {} }
-  const bloqueadas = await evaluarBloqueadas(cliente, fileId, tabs, { compartida })
+  const motivos = await evaluarBloqueadasConMotivo(cliente, fileId, tabs, { compartida })
+  const bloqueadas = new Set(motivos.keys())
   // En una pestaña compartida el OS no es dueño de nada: sellar una firma que la próxima edición de
   // administración va a invalidar sólo fabrica un baseline falso. No se sella.
   const sellarSi = (t) => (compartida ? async () => {} : () => sellarTabs(cliente, fileId, t))
@@ -232,11 +317,33 @@ export async function guardarEscritura(cliente, fileId, data, { chequearVacio = 
     const conAprendidas = await reInyectarAprendidas(fileId, data)
     return { data: conAprendidas, bloqueadas: [], sellar: sellarSi(tabs) }
   }
-  const { permitido } = separarPermitido(data, bloqueadas)
-  for (const t of bloqueadas) console.log(`  🔒 "${t}" bajo tu control (candado/edición): no la piso — escritura protegida en el portón.`)
+  const { permitido, bloqueado } = separarPermitido(data, bloqueadas)
+  let rescatados = []
+  if (soloFilasVacias && bloqueado.length) {
+    const r = await rescatarFilasVacias(cliente, fileId, bloqueado, motivos)
+    rescatados = r.rescatados
+    for (const x of r.rescatados) console.log(`  ✚ "${x.range}": el destino está VACÍO — lo escribo igual (append: no pisa nada tuyo).`)
+    for (const x of r.descartados) console.log(`  🔒 "${x.range}": no lo escribo — ${x.motivo}.`)
+  }
+  const conservados = [...permitido, ...rescatados]
+  const rescatadas = tabsProtegibles(rescatados)
+  for (const t of bloqueadas) {
+    if (rescatadas.includes(t)) continue
+    console.log(`  🔒 "${t}" bajo tu control (${motivos.get(t)}): no la piso — escritura protegida en el portón.`)
+  }
+  // Se sella SÓLO lo que estaba libre. Sellar una pestaña rescatada borraría la evidencia de la edición
+  // del dueño y dejaría entrar la próxima reescritura completa del generador. Ver el encabezado.
   const escritos = tabsProtegibles(permitido)
-  const conAprendidas = await reInyectarAprendidas(fileId, permitido)
-  return { data: conAprendidas, bloqueadas: [...bloqueadas], sellar: sellarSi(escritos) }
+  const conAprendidas = await reInyectarAprendidas(fileId, conservados)
+  return {
+    data: conAprendidas,
+    bloqueadas: [...bloqueadas].filter((t) => !rescatadas.includes(t)),
+    rescatadas,
+    // `porQue` (pestaña → MOTIVO) viaja hasta el llamador para que pueda DECIR qué pasó. `motivo` sigue
+    // reservado al cinturón vacío-sobre-lleno: es lo que distingue las dos rutas de bloqueo.
+    porQue: Object.fromEntries(motivos),
+    sellar: sellarSi(escritos),
+  }
 }
 
 // ═══ EL MISMO CANDADO, PARA spreadsheetBatchUpdate (updateCells/copyPaste/pasteData/appendCells) ═══
