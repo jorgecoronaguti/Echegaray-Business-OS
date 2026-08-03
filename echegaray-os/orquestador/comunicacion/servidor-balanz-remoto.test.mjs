@@ -104,7 +104,7 @@ test('una firma alterada no vale aunque el vencimiento esté bien', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 test('sin token la pantalla devuelve 403, no el escritorio', async () => {
-  const { escritorio, puerto, cerrar } = await levantar()
+  const { puerto, cerrar } = await levantar()
   try {
     assert.equal((await pedir(puerto, RUTA_BASE)).status, 403)
     assert.equal((await pedir(puerto, `${RUTA_BASE}?t=basura`)).status, 403)
@@ -112,7 +112,7 @@ test('sin token la pantalla devuelve 403, no el escritorio', async () => {
 })
 
 test('con token válido sirve la pantalla, y NO la deja cachear', async () => {
-  const { escritorio, puerto, cerrar } = await levantar()
+  const { puerto, cerrar } = await levantar()
   try {
     const { token } = emitirToken({ env: ENV })
     const r = await pedir(puerto, `${RUTA_BASE}?t=${token}`)
@@ -127,7 +127,7 @@ test('con token válido sirve la pantalla, y NO la deja cachear', async () => {
 test('la ruta de archivos no sirve nada fuera de la librería', async () => {
   // Sin la guarda, `/vendor/../../../.env` entregaría por esta misma ruta las credenciales de Google
   // y de Supabase que viven al lado del repo.
-  const { escritorio, puerto, cerrar } = await levantar()
+  const { puerto, cerrar } = await levantar()
   try {
     for (const intento of ['../../../package.json', '../../../../.env', '..%2f..%2fpackage.json']) {
       const r = await pedir(puerto, `${RUTA_BASE}/vendor/${intento}`)

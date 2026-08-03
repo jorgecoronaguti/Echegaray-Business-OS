@@ -1,0 +1,21 @@
+[Unit]
+# RONDA DE SUPERVISIÓN DEL NAVEGADOR. Barata y sin API: mira Docker y el puerto de depuración.
+#
+# Existe separada del ciclo financiero porque el ciclo corre dos veces por día: si el navegador se
+# cae un lunes a las 10, sin vigía nadie se entera hasta las 15:30 — o sea cuando ya se perdió una
+# corrida y el aviso llega tarde.
+Description=Echegaray OS — Vigía del navegador de Balanz (recupera y avisa)
+After=network-online.target echegaray-balanz-browser.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+Environment=PATH=/home/jorge/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/home/jorge/.config/echegaray-orq/worker.env
+EnvironmentFile=-/home/jorge/.config/echegaray-orq/balanz.env
+EnvironmentFile=-/home/jorge/.config/echegaray-orq/comunicacion.env
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/balanz-runtime.mjs vigia
+TimeoutStartSec=300
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=balanz-vigia

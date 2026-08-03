@@ -1,0 +1,40 @@
+[Unit]
+# EL NAVEGADOR DEDICADO DE BALANZ — display, escritorio remoto y Chromium, dentro de la VM.
+#
+# Reemplaza al Chrome de la Mac del dueño más un túnel SSH inverso. Ese arreglo servía para
+# desarrollar; no puede sostener un agente que corre dos veces por día hábil sin que nadie esté
+# mirando: alcanzaba con cerrar la notebook para que el Tesorero se quedara ciego.
+#
+# El proceso pesado no vive acá: vive en el contenedor `echegaray-balanz`, con su propia política de
+# reinicio. Este unit lo crea si no está y comprueba que responda. Por eso es `oneshot` con
+# `RemainAfterExit`: no tiene sentido que systemd vigile un proceso que Docker ya vigila, y duplicar
+# la supervisión produce las dos peleándose por reiniciar.
+Description=Echegaray OS — Navegador dedicado de Balanz (Chromium + escritorio en la VM)
+Documentation=file:///home/jorge/echegaray-os/app/echegaray-os/docs/tesoreria/RUNBOOK.md
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+Environment=PATH=/home/jorge/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/home/jorge/.config/echegaray-orq/worker.env
+EnvironmentFile=-/home/jorge/.config/echegaray-orq/balanz.env
+# `preparar` es idempotente: si el navegador ya está arriba no lo toca, y si no está lo levanta y
+# espera a que abra el puerto. Nunca inicia sesión.
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/balanz-runtime.mjs preparar
+# `preparar` termina con código 2 cuando el navegador quedó bien pero SIN SESIÓN. Eso no es una
+# falla del servicio: es el estado normal después de un reinicio, y la sesión la abre una persona.
+# Sin esto el unit quedaría "failed" con el navegador perfectamente sano.
+SuccessExitStatus=0 2
+# Al parar el servicio se para el contenedor. No se borra: el perfil vive en un bind-mount del host
+# y sobrevive igual, pero dejar el contenedor corriendo con el unit detenido confunde el diagnóstico.
+ExecStop=/usr/bin/docker stop echegaray-balanz
+TimeoutStartSec=180
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=balanz-browser
+
+[Install]
+WantedBy=default.target

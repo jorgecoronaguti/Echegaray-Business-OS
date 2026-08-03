@@ -1,0 +1,14 @@
+[Unit]
+Description=Echegaray OS — Ronda del vigía del navegador de Balanz
+
+[Timer]
+# Cada 15 minutos. No es sondeo agresivo: son dos consultas locales (Docker y un GET a loopback) y
+# CERO llamadas a la API. Más seguido no aporta —una sesión no se cae y se recupera en cinco
+# minutos— y más espaciado deja al agente ciego media mañana.
+OnBootSec=3min
+OnUnitActiveSec=15min
+# SIN Persistent: una ronda de supervisión perdida no se recupera, se hace la próxima.
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target
