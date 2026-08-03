@@ -20,8 +20,11 @@ async function mandar(d, repo, m) {
   return procesarPost(d, m)
 }
 
-function armar({ repo = repoMemoria(), port = portGuarda(), lecturas = [lecturaBarcelo()], listas = LISTAS, archivos } = {}) {
-  const mm = mmFalso({ archivos: archivos ?? { f1: { name: 'factura.jpg', mime: 'image/jpeg' }, f2: { name: 'otra.jpg', mime: 'image/jpeg' } } })
+function armar({ repo = repoMemoria(), port = portGuarda(), lecturas = [lecturaBarcelo()], listas = LISTAS, archivos, miembros, miembrosRoto } = {}) {
+  const mm = mmFalso({
+    archivos: archivos ?? { f1: { name: 'factura.jpg', mime: 'image/jpeg' }, f2: { name: 'otra.jpg', mime: 'image/jpeg' } },
+    miembros, miembrosRoto,
+  })
   let i = 0
   return {
     repo,
@@ -152,11 +155,41 @@ test('desde un canal que NO es el oficial no se carga nada', async () => {
   assert.match(r.texto, /canal de comprobantes/)
 })
 
-test('estar en el canal NO habilita: sin grant de permiso se deniega', async () => {
-  const { d } = armar({ port: portGuarda({ permisoOk: false }) })
+// EL PEDIDO DEL DUEÑO, 03/08: «todos los q esten ese canal tienen q estar habilitados a cargar».
+// Hasta ese día este test decía lo contrario ("estar en el canal NO habilita") y era correcto para
+// la regla anterior. La regla cambió: se reescribe, no se borra, y queda dicho por qué.
+test('estar en el canal HABILITA, aunque no haya grant', async () => {
+  const { d } = armar({
+    port: portGuarda({ permisoOk: false }),
+    miembros: { c_comprobantes: ['u_rodrigo'] },
+  })
+  const r = await procesarPost(d, post())
+  assert.notEqual(r.estado, 'rechazado_permiso')
+})
+
+test('sin grant Y sin estar en el canal, se deniega', async () => {
+  const { d } = armar({ port: portGuarda({ permisoOk: false }), miembros: {} })
   const r = await procesarPost(d, post())
   assert.equal(r.estado, 'rechazado_permiso')
   assert.match(r.texto, /No tenés habilitada/)
+})
+
+test('membresía de OTRO canal no habilita: se pregunta por el canal oficial', async () => {
+  // Cualquiera puede crear un canal y agregarse solo. Si la pregunta fuera "¿es miembro del canal
+  // desde el que dice escribir?", el permiso se regalaría. Se pregunta por el canal del binding.
+  const { d } = armar({
+    port: portGuarda({ permisoOk: false }),
+    miembros: { c_cualquiera: ['u_rodrigo'] },
+  })
+  const r = await procesarPost(d, post())
+  assert.equal(r.estado, 'rechazado_permiso')
+})
+
+test('FAIL-CLOSED: si no se puede preguntar la membresía, se deniega y se dice que no se pudo', async () => {
+  const { d } = armar({ port: portGuarda({ permisoOk: false }), miembrosRoto: true })
+  const r = await procesarPost(d, post())
+  assert.equal(r.estado, 'rechazado_permiso')
+  assert.match(r.texto, /No pude confirmar/)
 })
 
 test('un DM se rechaza sin gastar una consulta', async () => {

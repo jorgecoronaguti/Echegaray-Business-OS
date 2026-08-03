@@ -17,6 +17,9 @@ const MENSAJE = Object.freeze({
   [MOTIVO_NUCLEO.OBRA_DESCONOCIDA]: 'Esa obra no figura en la planilla para el {fecha}.',
   [MOTIVO_NUCLEO.CONFLICTO_CONCURRENCIA]: 'Alguien cambió la planilla mientras cargabas. No se escribió nada: volvé a abrir la obra y revisá.',
   [MOTIVO_NUCLEO.PESTANA_PROTEGIDA]: 'La pestaña de JORNALES está tomada y no se puede escribir ahora.',
+  // Dos frases distintas porque son dos cosas distintas y se arreglan en lugares distintos: una la
+  // destraba quien esté editando la pestaña, la otra sólo la levanta el dueño.
+  [MOTIVO_NUCLEO.ESCRITURA_CONGELADA]: 'La escritura de planillas está frenada por pedido de Dirección. No es la pestaña ni la carga: es el freno general. Se registra igual cuando lo levanten.',
   [MOTIVO_NUCLEO.VERIFICACION_FALLIDA]: 'La planilla no quedó con los valores enviados. Revisala antes de volver a cargar.',
   [MOTIVO_NUCLEO.TEXTO_NO_NUMERICO]: 'Hay una celda con texto escrito a mano. No se toca.',
   [MOTIVO_NUCLEO.FORMULA_CON_ERROR]: 'Hay una celda con una fórmula con error. No se toca.',

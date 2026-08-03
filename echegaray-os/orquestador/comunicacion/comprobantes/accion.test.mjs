@@ -86,11 +86,24 @@ test('un click con secreto válido pero desde un canal ajeno se deniega', async 
   assert.match(r.body.ephemeral_text, /canal de comprobantes/)
 })
 
-test('con secreto válido pero SIN grant de permiso, tampoco', async () => {
+test('con secreto válido pero sin grant NI membresía del canal, tampoco', async () => {
   const { repo, fajo } = await conFajo()
   const { manejar } = manejador({ repo, port: portGuarda({ permisoOk: false }), escribir: async () => ({}) })
   const r = await manejar(click(fajo.id, 'confirmar'))
   assert.match(r.body.ephemeral_text, /No tenés habilitada/)
+})
+
+// El pedido del dueño (03/08): el click de alguien agregado al canal tiene que funcionar sin que
+// nadie corra un script de permisos. Si se revierte la segunda vía, esto vuelve a "No tenés
+// habilitada" y se pone rojo.
+test('un click de alguien que está EN EL CANAL entra sin grant', async () => {
+  const { repo, fajo } = await conFajo()
+  const { manejar } = manejador({
+    repo, port: portGuarda({ permisoOk: false }), escribir: async () => ({ ok: true, fila: 7 }),
+    mm: mmFalso({ miembros: { c_comprobantes: ['u_rodrigo'] } }),
+  })
+  const r = await manejar(click(fajo.id, 'confirmar'))
+  assert.doesNotMatch(String(r.body.ephemeral_text ?? ''), /No tenés habilitada/)
 })
 
 // ── Confirmar una sola vez ───────────────────────────────────────────────────

@@ -386,6 +386,92 @@ test('la pestaña candada por el dueño no se fuerza: se informa y se corta', as
   sinFiltraciones(textoDe(r))
 })
 
+// EL 03/08, EN PRODUCCIÓN: dos cargas de Rodrigo —una del 31/07 y otra del 03/08, ya de agosto—
+// murieron con el mensaje de "pestaña tomada" cuando lo que estaba puesto era el FRENO DE MANO de
+// todos los Sheets. Son dos causas distintas y se destraban en lugares distintos.
+test('el FRENO GENERAL de Sheets no se reporta como pestaña candada', async () => {
+  const e = await crearEntorno({ google: fakeGoogleJornales({ congelado: true }) })
+  await elegirObra(e)
+  const r = respuestaValida(await registrar(e))
+  assert.match(textoDe(r), /frenada por pedido de Dirección/)
+  assert.doesNotMatch(textoDe(r), /está tomada/)
+  sinFiltraciones(textoDe(r))
+})
+
+// ── VARIAS PERSONAS CON LA MISMA NOVEDAD ────────────────────────────────────────────
+// El pedido del dueño (03/08): «que se pueda agregar más de una persona». Lo que obligaba a
+// repetir el trámite era un diálogo POR CABEZA para la misma novedad.
+
+/** Ref de una persona de la cuadrilla, por el texto de su nombre en el desplegable. */
+const refDe = (cuadrilla, nombre) => accionesDe(cuadrilla).find((a) => a.id === 'novino')
+  .options.find((o) => o.text.includes(nombre)).value
+
+const menuRepetir = (r) => accionesDe(r).find((a) => a.id === 'repetir')
+
+test('sin ninguna novedad cargada NO se ofrece repetir: un desplegable que no hace nada es peor que ninguno', async () => {
+  const e = await crearEntorno()
+  const cuadrilla = respuestaValida(await elegirObra(e))
+  assert.equal(menuRepetir(cuadrilla), undefined)
+})
+
+test('marcada la primera persona, aparece «Aplicar lo mismo a…» con el RESTO de la cuadrilla', async () => {
+  const e = await crearEntorno()
+  const cuadrilla = await elegirObra(e)
+  const ref = refDe(cuadrilla, 'Quiroga')
+  await e.dialogo('asistencia.excepcion', { motivo: 'falta' }, { ref, tipo: 'ausencia' })
+  const post = e.mattermost.posts.at(-1)
+  assert.equal(validarMensaje(post).ok, true)
+  const menu = (post.props.attachments.flatMap((a) => a.actions ?? [])).find((a) => a.id === 'repetir')
+  assert.ok(menu, 'tiene que ofrecerse repetir la novedad recién cargada')
+  assert.ok(menu.options.length > 0)
+  assert.equal(menu.options.some((o) => o.value === ref), false, 'no se ofrece copiársela a sí mismo')
+  assert.match(JSON.stringify(post.props), /Aplicar lo mismo a/)
+})
+
+test('UN CLICK aplica la misma novedad a la segunda persona: sin diálogo y sin repetir el trámite', async () => {
+  const e = await crearEntorno()
+  const cuadrilla = await elegirObra(e)
+  const ref = refDe(cuadrilla, 'Quiroga')
+  await e.dialogo('asistencia.excepcion', { motivo: 'falta' }, { ref, tipo: 'ausencia' })
+  const dialogosAntes = e.mattermost.dialogos.length
+
+  const otro = (e.mattermost.posts.at(-1).props.attachments.flatMap((a) => a.actions ?? []))
+    .find((a) => a.id === 'repetir').options[0].value
+  const r = respuestaValida(await e.accion({ paso: PASO.REPETIR, selected_option: otro }))
+
+  assert.equal(e.mattermost.dialogos.length, dialogosAntes, 'copiar no abre ningún formulario')
+  assert.match(textoDe(r), /"title":"Ausentes","value":"2"/)
+})
+
+test('se puede seguir aplicando a una TERCERA persona: el origen no se corre de lugar', async () => {
+  const e = await crearEntorno()
+  const cuadrilla = await elegirObra(e)
+  const ref = refDe(cuadrilla, 'Quiroga')
+  await e.dialogo('asistencia.excepcion', { motivo: 'falta' }, { ref, tipo: 'ausencia' })
+  const opciones = (e.mattermost.posts.at(-1).props.attachments.flatMap((a) => a.actions ?? []))
+    .find((a) => a.id === 'repetir').options
+  await e.accion({ paso: PASO.REPETIR, selected_option: opciones[0].value })
+  const r = respuestaValida(await e.accion({ paso: PASO.REPETIR, selected_option: opciones[1].value }))
+  assert.match(textoDe(r), /"title":"Ausentes","value":"3"/)
+})
+
+test('copiar sin haber marcado nada no inventa una novedad', async () => {
+  const e = await crearEntorno()
+  const cuadrilla = await elegirObra(e)
+  const ref = refDe(cuadrilla, 'Quiroga')
+  const r = await e.accion({ paso: PASO.REPETIR, selected_option: ref })
+  assert.match(r.body.ephemeral_text, /No hay una novedad para copiar/)
+})
+
+test('cambiar de obra apaga el repetir: la novedad era de la cuadrilla anterior', async () => {
+  const e = await crearEntorno()
+  const cuadrilla = await elegirObra(e)
+  const ref = refDe(cuadrilla, 'Quiroga')
+  await e.dialogo('asistencia.excepcion', { motivo: 'falta' }, { ref, tipo: 'ausencia' })
+  const otra = respuestaValida(await elegirObra(e, OBRA.ESTRELLA))
+  assert.equal(menuRepetir(otra), undefined)
+})
+
 // ── EL CONTRATO, A LO LARGO DEL RECORRIDO ───────────────────────────────────────────
 
 test('todo lo que se publica en el recorrido completo es JSON válido de Mattermost', async () => {
