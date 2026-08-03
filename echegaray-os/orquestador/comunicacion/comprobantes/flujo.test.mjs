@@ -7,8 +7,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { procesarPost, armarItem, bajarAdjunto, TEXTO } from './flujo.mjs'
-import { repoMemoria, portGuarda, mmFalso, lecturaBarcelo, LISTAS } from './dobles.mjs'
+import { repoMemoria, portGuarda, mmFalso, lecturaBarcelo, LISTAS, lecturaCorralonReal, ARCA_CORRALON, LISTAS_COMPRAS, filasCompras, filaCompras } from './dobles.mjs'
 import { ESTADO } from '../../lib/comprobantes/fajo.mjs'
+import { indexarCompras } from '../../lib/comprobantes/compras-vivas.mjs'
 
 const URL = 'https://chat.ecsas.com.ar/comprobantes/accion?t=SECRETO'
 const ACTOR = { plataforma_user_id: 'u_rodrigo', plataforma_username: 'rodrigo', channel_type: 'P', channel_id: 'c_comprobantes' }
@@ -270,4 +271,123 @@ test('el texto del post vale para TODOS los adjuntos del mismo post', async () =
   })
   const r = await procesarPost(d, post({ fileIds: ['f1', 'f2'], texto: 'Messina' }))
   assert.equal((r.texto.match(/obra: Messina/g) ?? []).length, 2)
+})
+
+// ── EL CASO REAL DEL 03/08: la obra escrita a mano y el duplicado que no se vio ──
+//
+// El dueño mandó al canal la foto de una factura de Corralón Progreso con "Messinas BSA" escrito a
+// mano arriba a la izquierda. El bot contestó `obra: falta · ¿cuál es?` y se ofreció a cargarla —
+// cuando ese mismo comprobante ya estaba en Compras fila 802, imputado a MESSINA / Planta de BSA.
+// Eran dos defectos: no leer lo manuscrito, y no ver el duplicado porque el número tenía un dígito
+// de más. Los cuatro tests de abajo son los cuatro que se ponen rojos si cualquiera de los dos vuelve.
+
+/** Arma el flujo con el padrón de ARCA y la pestaña Compras vivos, como en producción. */
+function armarConPadron({ lecturas, filas = filasCompras(), arca = ARCA_CORRALON } = {}) {
+  const base = armar({ lecturas, listas: LISTAS_COMPRAS })
+  return {
+    ...base,
+    d: {
+      ...base.d,
+      arcaDe: async () => arca,
+      comprasDe: async () => ({ ok: true, ...indexarCompras(filas) }),
+    },
+  }
+}
+
+/** Otra factura, con un número que ARCA no conoce: aísla la imputación del duplicado. */
+const otraFactura = (over) => lecturaCorralonReal({
+  numero: '0004-00009999', total: '9.900,00', iva_21: '1.717,36', neto_gravado: '8.182,64',
+  fecha: '02/08/2026', legible: true, ...over,
+})
+
+test('la obra ESCRITA A MANO se resuelve sola: no se pregunta lo que está en el papel', async () => {
+  const { d } = armarConPadron({ lecturas: [otraFactura({ anotacion_manuscrita: 'Messinas BSA' })] })
+  const r = await procesarPost(d, post())
+  assert.match(r.texto, /obra: MESSINA/)
+  assert.match(r.texto, /escrito a mano/)
+  assert.doesNotMatch(r.texto, /a qué obra va/, 'la obra estaba en el papel: no había nada que preguntar')
+  assert.equal(r.attachments[0].actions.some((a) => a.id === 'confirmar'), true)
+})
+
+test('la letra manuscrita mal leída se salva con el vocabulario VIVO de la columna K', async () => {
+  // Lo que el modelo grande leyó DE VERDAD de esa foto fue "Nuestros BSA": ni siquiera acertó la
+  // palabra que nombra la obra. Alcanza igual, porque "BSA" sólo aparece en detalles de MESSINA.
+  const { d } = armarConPadron({ lecturas: [otraFactura({ anotacion_manuscrita: 'Nuestros BSA' })] })
+  const r = await procesarPost(d, post())
+  assert.match(r.texto, /obra: MESSINA/)
+  assert.doesNotMatch(r.texto, /a qué obra va/)
+})
+
+test('el DETALLE de la columna K se completa sólo cuando es UNO solo', async () => {
+  const { d, repo } = armarConPadron({ lecturas: [otraFactura({ anotacion_manuscrita: 'Messinas Planta de BSA' })] })
+  const r = await procesarPost(d, post())
+  assert.equal(repo._fajos.get(r.fajoId).items[0].comprobante.detalleObra, 'Planta de BSA')
+  assert.match(r.texto, /obra: MESSINA · Planta de BSA/)
+
+  // Y con "BSA" a secas, cuando en Compras hay TRES detalles con BSA —los tres de MESSINA—, la obra
+  // se resuelve igual y el detalle queda vacío: elegir uno de los tres sería inventar.
+  const tresBsa = filasCompras([
+    filaCompras('12/6/2026', 'Combustibles Barcelo', 'F A', '0113-00010001', 'MESSINA', 'Camion - BSA', 'gasoil', '$ 1.000,00'),
+    filaCompras('13/6/2026', 'Combustibles Barcelo', 'F A', '0113-00010002', 'MESSINA', 'Excavadora - BSA', 'gasoil', '$ 1.000,00'),
+  ])
+  const otro = armarConPadron({ lecturas: [otraFactura({ anotacion_manuscrita: 'BSA' })], filas: tresBsa })
+  const r2 = await procesarPost(otro.d, post())
+  const it = otro.repo._fajos.get(r2.fajoId).items[0]
+  assert.equal(it.comprobante.obra, 'MESSINA', 'los tres BSA son de MESSINA: la obra es inequívoca')
+  assert.equal(it.comprobante.detalleObra, null, 'cuál de los tres, no')
+})
+
+test('una anotación AMBIGUA sigue preguntando: el arreglo no es un adivinador', async () => {
+  const listas = { ...LISTAS_COMPRAS, obras: ['MESSINA NORTE', 'MESSINA SUR'], detalles: {} }
+  const base = armar({ lecturas: [lecturaCorralonReal({ anotacion_manuscrita: 'Messinas', numero: '0004-00009999', fecha: '02/08/2026' })], listas })
+  const r = await procesarPost({ ...base.d, arcaDe: async () => [], comprasDe: async () => null }, post())
+  assert.match(r.texto, /obra: _falta_/)
+  assert.match(r.texto, /a qué obra va/)
+  assert.equal(r.attachments[0].actions.some((a) => a.id === 'confirmar'), false)
+})
+
+test('el DÍGITO DE MÁS se corrige contra ARCA, y ahí aparece el duplicado de la fila 802', async () => {
+  const { d, repo } = armarConPadron({ lecturas: [lecturaCorralonReal({ anotacion_manuscrita: 'Messinas BSA' })] })
+  const r = await procesarPost(d, post())
+  const it = repo._fajos.get(r.fajoId).items[0]
+  assert.equal(it.comprobante.numero, '0004-00003642', 'el número bueno es el de ARCA')
+  assert.equal(it.comprobante.numeroLeidoMal, '0004-00036542')
+  assert.equal(it.comprobante.cuit, '23369111574', 'el CUIT del emisor lo pone el padrón')
+  assert.match(r.texto, /había leído \*\*0004-00036542\*\*/)
+  assert.match(r.texto, /ya está cargado en la fila 802 de Compras/)
+  assert.match(r.texto, /figura en ARCA \(PEREZ GARCIA MARISOL BIBIANA\)/)
+  assert.equal(r.attachments[0].actions.some((a) => a.id === 'confirmar'), false, 'no se ofrece cargar lo que ya está')
+})
+
+test('otra factura del MISMO proveedor el MISMO día NO se marca duplicada', async () => {
+  // La 3366 de $31.533,90 existe de verdad y es otra compra. Marcarla duplicada sería una alarma
+  // falsa, y una alarma que suena por nada deja de leerse.
+  const { d } = armarConPadron({
+    lecturas: [lecturaCorralonReal({
+      numero: '0006-00003400', total: '48.400,00', iva_21: '8.400,00', neto_gravado: '40.000,00',
+      anotacion_manuscrita: 'Messinas BSA', legible: true,
+    })],
+  })
+  const r = await procesarPost(d, post())
+  assert.doesNotMatch(r.texto, /ya está cargado/)
+  assert.doesNotMatch(r.texto, /puede que ya esté cargado/)
+  assert.match(r.texto, /no figura en ARCA/, 'y se dice que no se pudo verificar, en vez de callarlo')
+  assert.equal(r.attachments[0].actions.some((a) => a.id === 'confirmar'), true)
+})
+
+test('mismo proveedor, día e importe con OTRO número: se pregunta con botones, no se decide', async () => {
+  const { d } = armarConPadron({
+    lecturas: [lecturaCorralonReal({ numero: '0009-00000123', anotacion_manuscrita: 'Messinas BSA' })],
+    arca: [], // sin ARCA que corrija el número, queda el probable duplicado a secas
+  })
+  const r = await procesarPost(d, post())
+  assert.match(r.texto, /puede que ya esté cargado en la \*\*fila 802\*\*/)
+  assert.deepEqual(r.attachments[0].actions.map((a) => a.id), ['duplicado_mismo', 'duplicado_otro', 'descartar'])
+})
+
+test('sin ARCA y sin Compras el flujo sigue, y DECLARA que no pudo verificar', async () => {
+  const { d } = armar({ lecturas: [lecturaCorralonReal({ anotacion_manuscrita: 'Estrella' })], listas: LISTAS })
+  const r = await procesarPost(d, post())
+  assert.equal(r.estado, 'confirmar')
+  assert.match(r.texto, /no pude verificarlo contra ARCA/)
 })

@@ -216,3 +216,79 @@ export const LISTAS = Object.freeze({
   proveedores: ['Combustibles Barcelo', 'ACEROLATINA', 'Cemento SA'],
   obras: ['Estrella', 'San Francisco', 'Messina'],
 })
+
+// ═══ EL CASO REAL DEL 03/08 — no es un ejemplo inventado ═══
+//
+// El dueño mandó al canal la foto de esta factura (IMG_7530.jpg). Todo lo de abajo está medido:
+// lo que la visión leyó de verdad, las dos filas que ARCA tiene de ese proveedor ese día, y la fila
+// de Compras donde el comprobante YA estaba cargado por Claude Code.
+
+/** Lo que la visión leyó, TEXTUAL, de la foto que falló. El número tiene un dígito de más. */
+export function lecturaCorralonReal(over = {}) {
+  return {
+    emisor: 'Néstor Rubén Corralón Progreso',
+    cuit: null,                 // la foto trae dos CUIT y el modelo no eligió ninguno
+    letra: 'A',
+    es_nota_credito: false,
+    numero: '0004-00036542',    // el real es 0004-00003642: un dígito de más
+    cae: null,
+    fecha: '30/07/2026',
+    neto_gravado: '62.000,00',  // copió el total en el lugar del neto
+    iva_21: '10.760,33',
+    iva_105: '0',
+    otros_tributos: '0',
+    total: '62.000,00',
+    condicion_venta: 'Contado',
+    forma_pago: null,
+    concepto: 'Materiales de construcción',
+    anotacion_manuscrita: null, // NO vio "Messinas BSA", que es la obra
+    legible: false,
+    dudas: [],
+    ...over,
+  }
+}
+
+/**
+ * Las dos filas que ARCA tiene de Corralón Progreso el 30/07/2026. Son reales y son distintas:
+ * la segunda es el negativo del test de duplicados —mismo proveedor, mismo día, otro comprobante—.
+ * Corralón factura como PEREZ GARCIA MARISOL BIBIANA: el nombre de fantasía no está en el padrón.
+ */
+export const ARCA_CORRALON = Object.freeze([
+  Object.freeze({
+    emisor_cuit: '23369111574', emisor_nombre: 'PEREZ GARCIA MARISOL BIBIANA',
+    punto_venta: '4', numero: '3642', cae: '86316017919602', fecha_emision: '2026-07-30',
+    tipo_comprobante: '1', imp_total: 62000, total_iva: 10760.33, neto_gravado: 51239.67,
+  }),
+  Object.freeze({
+    emisor_cuit: '23369111574', emisor_nombre: 'PEREZ GARCIA MARISOL BIBIANA',
+    punto_venta: '6', numero: '3366', cae: '86316052354343', fecha_emision: '2026-07-30',
+    tipo_comprobante: '1', imp_total: 31533.9, total_iva: 5355.02, neto_gravado: 26178.88,
+  }),
+])
+
+/**
+ * El desplegable de obras de la columna J, tal como está en Compras.
+ *
+ * NO trae los detalles de la columna K a propósito: K no tiene desplegable, y su vocabulario sale de
+ * las filas VIVAS de la pestaña. Ponerlo acá haría creer que hay una lista que no existe.
+ */
+export const LISTAS_COMPRAS = Object.freeze({
+  ok: true,
+  proveedores: ['Corralon Progreso', 'Ductos San Juan SRL', 'Combustibles Barcelo'],
+  obras: ['Administracion', 'ARCOR', 'LA ESTRELLA', 'MESSINA', 'San Francisco', 'Taller'],
+})
+
+/** Una fila de Compras en el rango C4:O. */
+export const filaCompras = (fecha, prov, tipo, numero, obra, detalle, concepto, total) =>
+  [fecha, '', prov, '', tipo, numero, '', obra, detalle, concepto, '', '', total]
+
+/** Las filas de Compras con las que se prueba el duplicado. La primera con datos es la 802. */
+export function filasCompras(over = []) {
+  return [
+    // Relleno para que la primera fila con datos caiga en la 802 del Sheet: el rango empieza en la 4.
+    ...Array.from({ length: 798 }, () => []),
+    filaCompras('30/7/2026', 'Corralon Progreso', 'F A', '0004-00003642', 'MESSINA', 'Planta de BSA', 'Cemento Loma Negra x 25 kg', '$ 62.000,00'),
+    filaCompras('30/7/2026', 'Corralon Progreso', 'F A', '0006-00003366', 'LA ESTRELLA', 'Sanitarios', 'Flexible PVC', '$ 31.533,90'),
+    ...over,
+  ]
+}

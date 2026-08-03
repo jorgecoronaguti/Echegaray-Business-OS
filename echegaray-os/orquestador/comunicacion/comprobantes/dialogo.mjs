@@ -131,7 +131,13 @@ export function aplicarCorreccion(item = {}, submission = {}, { obras = [] } = {
   if (num) {
     const n = numeroCanonico(num)
     if (!n) errors.numero = 'No pude leer ese número. Poné punto de venta y número: 0113-00010489.'
-    else c.numero = n
+    else {
+      c.numero = n
+      // La persona MANDA sobre ARCA. Si el número lo había corregido el padrón y ahora lo escribe a
+      // mano, el rastro de la corrección deja de tener sentido: mostrarlo diría "había leído X" de
+      // una lectura que ya nadie está usando.
+      delete c.numeroLeidoMal
+    }
   }
 
   const fecha = dado('fecha')

@@ -28,6 +28,9 @@
 import { procesarPost, TEXTO as TEXTO_FLUJO } from '../comprobantes/flujo.mjs'
 import { leerAdjunto } from '../../lib/comprobantes/vision.mjs'
 import { listasDeCompras } from '../../lib/comprobantes/listas.mjs'
+import { indiceDeCompras } from '../../lib/comprobantes/compras-vivas.mjs'
+import { caeCanonico, soloDigitos } from '../../lib/comprobantes/lectura.mjs'
+import { fechaIsoDeComprobante } from '../../lib/comprobantes/arca.mjs'
 import { urlConSecreto } from '../secreto-compartido.mjs'
 import * as repo from '../comprobantes/repositorio.mjs'
 
@@ -101,6 +104,16 @@ export const especialista = {
       mattermost,
       leer: (adjunto) => leerAdjunto(adjunto),
       listas: () => listasDeCompras(google),
+      // EL PADRÓN DE ARCA es la fuente de verdad del número de comprobante: contra él se corrige el
+      // dígito que la visión leyó de más. Se consulta por comprobante, con lo poco que se leyó.
+      arcaDe: (c) => repo.candidatasArca(port, {
+        cae: caeCanonico(c?.cae),
+        cuit: soloDigitos(c?.cuit).length === 11 ? soloDigitos(c.cuit) : null,
+        fechaIso: fechaIsoDeComprobante(c?.fecha),
+      }),
+      // LA PESTAÑA VIVA es la única que sabe lo que entró por Claude Code o a mano. También trae el
+      // vocabulario de la columna K con el que se resuelve la obra escrita a mano.
+      comprasDe: () => indiceDeCompras(google),
       url,
       log,
     }, {

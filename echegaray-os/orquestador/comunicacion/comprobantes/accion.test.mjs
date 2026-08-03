@@ -373,3 +373,67 @@ test('la fila de trazabilidad guarda de qué post y de qué fajo salió', () => 
   assert.equal(f.userId, 'u1')
   assert.equal(f.tipo, 'A')
 })
+
+// ── El probable duplicado: dos botones, y ninguna decisión automática ────────
+//
+// Mismo proveedor, mismo día y mismo importe con otro número puede ser el mismo comprobante con un
+// dígito mal leído —lo que pasó el 03/08— o dos compras distintas. Cargar de más duplica el gasto en
+// el Flujo de Fondos; descartar de más lo hace desaparecer. Las dos salidas son caras: decide el dueño.
+
+const conDuplicado = (o = {}) => ({
+  ...item(o),
+  posibleDuplicado: { fila: 802, hoja: 'Compras', numero: '0004-00003642', fecha: '30/07/2026', total: 62000, obra: 'MESSINA' },
+})
+
+test('mientras el duplicado no se conteste NO aparece Confirmar', async () => {
+  const { repo, fajo } = await conFajo({ items: [conDuplicado()] })
+  const { mm, manejar } = manejador({ repo })
+  await manejar(click(fajo.id, 'corregir')) // cualquier acción que redibuje sirve para mirar el mensaje
+  const { botonesFajo } = await import('../../lib/comprobantes/fajo.mjs')
+  const ids = botonesFajo(repo._fajos.get(fajo.id), { url: URL })[0].actions.map((a) => a.id)
+  assert.deepEqual(ids, ['duplicado_mismo', 'duplicado_otro', 'descartar'])
+  assert.ok(mm)
+})
+
+test('"Es el mismo, no lo cargues" NO lo carga, y queda constancia de que se decidió', async () => {
+  const { repo, fajo } = await conFajo({ items: [conDuplicado()] })
+  let escribio = false
+  const { mm, manejar } = manejador({ repo, escribir: async () => { escribio = true; return {} } })
+  const r = await manejar(click(fajo.id, 'duplicado_mismo', { context: { accion: 'duplicado_mismo', fajo_id: fajo.id, indice: 0 } }))
+  assert.match(r.body.ephemeral_text, /no lo cargo/i)
+  assert.equal(repo._fajos.get(fajo.id).items[0].duplicadoResuelto, 'mismo')
+  assert.equal(escribio, false)
+  const post = mm.posts.find((p) => p.id === 'post_bot')
+  assert.match(post.message, /marcado como ya cargado/)
+  // Y sigue sin haber Confirmar: lo que el dueño dijo es que ese comprobante NO se carga.
+  assert.equal(post.props.attachments[0].actions.some((a) => a.id === 'confirmar'), false)
+})
+
+test('"Es otro, cargalo" habilita Confirmar', async () => {
+  const { repo, fajo } = await conFajo({ items: [conDuplicado()] })
+  const { mm, manejar } = manejador({ repo })
+  await manejar(click(fajo.id, 'duplicado_otro', { context: { accion: 'duplicado_otro', fajo_id: fajo.id, indice: 0 } }))
+  assert.equal(repo._fajos.get(fajo.id).items[0].duplicadoResuelto, 'otro')
+  const post = mm.posts.find((p) => p.id === 'post_bot')
+  assert.equal(post.props.attachments[0].actions.some((a) => a.id === 'confirmar'), true)
+})
+
+test('el segundo click sobre el mismo duplicado no cambia la respuesta ya dada', async () => {
+  const { repo, fajo } = await conFajo({ items: [conDuplicado()] })
+  const { manejar } = manejador({ repo })
+  const ctx = { accion: 'duplicado_mismo', fajo_id: fajo.id, indice: 0 }
+  await manejar(click(fajo.id, 'duplicado_mismo', { context: ctx }))
+  const r = await manejar(click(fajo.id, 'duplicado_otro', { context: { ...ctx, accion: 'duplicado_otro' } }))
+  assert.match(r.body.ephemeral_text, /ya lo contestaste/)
+  assert.equal(repo._fajos.get(fajo.id).items[0].duplicadoResuelto, 'mismo')
+})
+
+test('un fajo con un duplicado abierto NO escribe nada si igual se fuerza el Confirmar', async () => {
+  const { repo, fajo } = await conFajo({ items: [conDuplicado()] })
+  let corridas = 0
+  const r = await escribirFajo({
+    port: null, repo, congelado: SIN_HIELO, correr: async () => { corridas++; return { ok: true, datos: { ok: true, escritas: 1, filas: [] } } },
+  }, repo._fajos.get(fajo.id))
+  assert.equal(corridas, 0, 'no se corre el cargador con una pregunta sin contestar')
+  assert.equal(r.estado, ESTADO.DESCARTADO)
+})

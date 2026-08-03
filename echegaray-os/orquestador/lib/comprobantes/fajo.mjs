@@ -111,6 +111,14 @@ export function preguntasDe(item = {}) {
   if (item.proveedorNuevo) {
     p.push(`el proveedor **${c.proveedor ?? '(ilegible)'}** no está en la lista de Compras — ¿lo agrego?`)
   }
+  // UN PROBABLE DUPLICADO ES UNA PREGUNTA, NO UNA DECISIÓN. Ni cargar ni descartar solo: mismo
+  // proveedor, mismo día y mismo importe con otro número puede ser el mismo comprobante con un
+  // dígito mal leído —lo que ya pasó— o dos compras distintas. Las dos salidas son caras y ninguna
+  // se elige sin el dueño.
+  if (item.posibleDuplicado && !item.duplicadoResuelto) {
+    const d = item.posibleDuplicado
+    p.push(`puede que ya esté cargado en la **fila ${d.fila ?? '?'}** (${d.numero ?? 's/n'} · ${d.fecha ?? 's/f'} · ${money(d.total)}${d.obra ? ` · ${d.obra}` : ''}) — ¿es el mismo?`)
+  }
   if (!c.obra) p.push('no dice a qué obra va — ¿cuál es?')
   if (c.total == null) p.push('no pude leer el total')
   if (!c.fecha) p.push('no pude leer la fecha')
@@ -120,7 +128,13 @@ export function preguntasDe(item = {}) {
 
 /** ¿Este ítem se puede escribir sin preguntarle nada a nadie? */
 export function estaCompleto(item = {}) {
+  if (item.duplicadoResuelto === 'mismo') return false // el dueño dijo que ya estaba: no se carga
   return preguntasDe(item).length === 0 && !item.yaCargado
+}
+
+/** ¿Queda algún duplicado sin contestar? Mientras lo haya, no se ofrece Confirmar. */
+export function indiceDuplicadoAbierto(items = []) {
+  return items.findIndex((it) => it?.posibleDuplicado && !it.duplicadoResuelto)
 }
 
 /**
@@ -145,12 +159,24 @@ export function resumenFajo(fajo = {}) {
     l.push(`   ${imp}${iva}${importe}`)
     if (c.otrosTributos) l.push(`   percepciones/otros tributos ${money(c.otrosTributos)} (van dentro del importe, no son IVA)`)
     if (c.esNotaCredito) l.push('   ⚠ **nota de crédito: entra en negativo**')
-    // De DÓNDE salió la obra se dice siempre que no venga del papel. Imputar el costo a una obra es
-    // la decisión con más consecuencias de toda la fila —arrastra margen, certificación y P&L— y si
-    // se dedujo de lo que la persona escribió en el chat, tiene que poder verlo antes de confirmar.
-    const via = c.obra && c.obraVia === 'mensaje' ? ' _(de lo que escribiste)_' : ''
-    l.push(`   obra: ${c.obra ?? '_falta_'}${via}${c.concepto ? ` · ${c.concepto}` : ''}`)
-    if (it.yaCargado) l.push(`   ✓ **ya está cargado en la fila ${it.yaCargado.fila ?? '?'}** — no lo vuelvo a cargar`)
+    // De DÓNDE salió la obra se dice SIEMPRE. Imputar el costo a una obra es la decisión con más
+    // consecuencias de toda la fila —arrastra margen, certificación y P&L—: si salió de una
+    // anotación a mano o de lo que la persona escribió en el chat, tiene que verlo antes de
+    // confirmar. Decir "obra: MESSINA" sin decir de dónde salió es pedirle que confíe.
+    l.push(`   obra: ${imputacion(c)}${c.concepto ? ` · ${c.concepto}` : ''}`)
+    if (c.numeroLeidoMal) l.push(`   ✎ había leído **${c.numeroLeidoMal}**; el número correcto según ARCA es **${c.numero}**`)
+    if (it.arca?.importesCorregidos) {
+      const v = it.arca.importesCorregidos
+      l.push(`   ✎ los importes que leí no cerraban (total ${money(v.total)} · IVA ${money(v.iva)}): puse los de ARCA`)
+    }
+    const arca = lineaArca(it.arca)
+    if (arca) l.push(`   ${arca}`)
+    if (it.yaCargado) {
+      const donde = it.yaCargado.fuente === 'Compras' ? ' de Compras' : ''
+      l.push(`   ✓ **ya está cargado en la fila ${it.yaCargado.fila ?? '?'}${donde}** — no lo vuelvo a cargar`)
+    }
+    if (it.duplicadoResuelto === 'mismo') l.push('   ✓ marcado como ya cargado — no lo cargo')
+    if (it.duplicadoResuelto === 'otro') l.push('   ✓ marcado como comprobante distinto — se carga igual')
     for (const p of preguntasDe(it)) l.push(`   ❓ ${p}`)
   })
 
@@ -170,6 +196,31 @@ function redondear(n) {
   return n == null ? null : Math.round((n + Number.EPSILON) * 100) / 100
 }
 
+/** "MESSINA · Planta de BSA _(escrito a mano)_" — la obra, su detalle y de dónde salieron. */
+function imputacion(c = {}) {
+  if (!c.obra) return '_falta_'
+  const det = c.detalleObra ? ` · ${c.detalleObra}` : ''
+  const via = c.obraVia === 'mensaje' ? ' _(de lo que escribiste)_' : ' _(escrito a mano)_'
+  return `${c.obra}${det}${via}`
+}
+
+/**
+ * Qué se pudo verificar contra el padrón de ARCA. Se dice SIEMPRE, incluso cuando no está.
+ *
+ * No estar en ARCA no es un error —puede ser un ticket no electrónico o el sync atrasado— pero
+ * callarlo hace que "verificado" y "no verificado" se vean igual, y entonces la verificación no
+ * sirve para decidir nada.
+ */
+function lineaArca(arca) {
+  if (!arca) return null
+  if (arca.estado === 'coincide') {
+    const quien = arca.emisorNombre ? ` (${arca.emisorNombre})` : ''
+    return `✓ figura en ARCA${quien}${arca.cae ? ` · CAE ${arca.cae}` : ''}`
+  }
+  if (arca.estado === 'sin_registro') return 'ℹ no figura en ARCA — puede ser un ticket no electrónico o que el sync esté atrasado'
+  return 'ℹ no pude verificarlo contra ARCA'
+}
+
 /**
  * Los botones. `integration.url` lleva el SECRETO en la query: Mattermost guarda esa URL en su base
  * y no se la manda al cliente, así que es el único lugar donde un callback puede probar que viene de
@@ -177,9 +228,28 @@ function redondear(n) {
  */
 export function botonesFajo(fajo = {}, { url } = {}) {
   if (!url) return []
-  const contexto = (accion) => ({ accion, fajo_id: fajo.id, dominio: 'comprobantes' })
-  const hayQueCargar = (fajo.items ?? []).some(estaCompleto)
+  const items = fajo.items ?? []
+  const contexto = (accion, extra = {}) => ({ accion, fajo_id: fajo.id, dominio: 'comprobantes', ...extra })
+  const hayQueCargar = items.some(estaCompleto)
   const acciones = []
+
+  // EL DUPLICADO SE CONTESTA ANTES QUE NADA. Mientras haya uno abierto no aparece "Confirmar":
+  // dejarlo al lado invita a apretarlo sin leer, y lo que está en juego es un gasto contado dos
+  // veces en el Flujo de Fondos.
+  const dup = indiceDuplicadoAbierto(items)
+  if (dup >= 0) {
+    const n = items.length > 1 ? ` (${dup + 1}/${items.length})` : ''
+    return [{
+      fallback: 'Decidí si este comprobante ya estaba cargado.',
+      color: '#b58900',
+      actions: [
+        { id: 'duplicado_mismo', name: `Es el mismo, no lo cargues${n}`, type: 'button', integration: { url, context: contexto('duplicado_mismo', { indice: dup }) } },
+        { id: 'duplicado_otro', name: `Es otro, cargalo${n}`, type: 'button', style: 'primary', integration: { url, context: contexto('duplicado_otro', { indice: dup }) } },
+        { id: 'descartar', name: 'Descartar', type: 'button', style: 'danger', integration: { url, context: contexto('descartar') } },
+      ],
+    }]
+  }
+
   if (hayQueCargar) {
     acciones.push({ id: 'confirmar', name: 'Confirmar y cargar', type: 'button', style: 'primary', integration: { url, context: contexto('confirmar') } })
   }
@@ -190,6 +260,24 @@ export function botonesFajo(fajo = {}, { url } = {}) {
     color: hayQueCargar ? '#1e7e34' : '#b58900',
     actions: acciones,
   }]
+}
+
+/**
+ * Contesta un probable duplicado. Devuelve los ítems NUEVOS (no muta los de entrada).
+ *
+ * "Es el mismo" no borra el comprobante: lo deja marcado y visible, para que quede constancia de que
+ * se decidió no cargarlo. Un descarte silencioso y un comprobante que nunca llegó se ven igual.
+ *
+ * @param {Array} items
+ * @param {number} indice
+ * @param {'mismo'|'otro'} respuesta
+ */
+export function resolverDuplicado(items = [], indice = -1, respuesta = 'otro') {
+  const it = items[indice]
+  if (!it?.posibleDuplicado || it.duplicadoResuelto) return null
+  const out = [...items]
+  out[indice] = { ...it, duplicadoResuelto: respuesta === 'mismo' ? 'mismo' : 'otro' }
+  return out
 }
 
 /** El mensaje completo (texto + botones) tal como sale al canal. */

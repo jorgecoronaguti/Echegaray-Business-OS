@@ -21,7 +21,7 @@
 // ventana abierta justo para el caso que hay que impedir.
 
 import { igualEnTiempoConstante } from '../secreto-compartido.mjs'
-import { mensajeFajo, ESTADO, estaCompleto } from '../../lib/comprobantes/fajo.mjs'
+import { mensajeFajo, ESTADO, estaCompleto, resolverDuplicado } from '../../lib/comprobantes/fajo.mjs'
 import { puedeCargarComprobantes } from './guarda.mjs'
 import { dialogoCorreccion, leerEstado, aplicarCorreccion, CALLBACK_ID } from './dialogo.mjs'
 import { escribirFajo } from './escritura.mjs'
@@ -36,6 +36,7 @@ export const TEXTO = Object.freeze({
   YA_EN_CURSO: 'Esos comprobantes ya se están cargando. Esperá el resultado.',
   YA_CERRADO: 'Esa carga ya se cerró.',
   NADA_QUE_CORREGIR: 'No quedó nada para corregir en esa carga.',
+  DUPLICADO_RESUELTO: 'Ese comprobante ya lo contestaste.',
   CARGANDO: '⏳ Cargando en Compras…',
   DESCARTADO: '🗑 Descartado. No cargué nada.',
   INTERNO: 'No pude completar la acción. Probá de nuevo en un minuto.',
@@ -62,6 +63,7 @@ export function normalizar(payload = {}) {
     postId: payload.post_id ?? null,
     accion: payload.context?.accion ?? null,
     fajoId: payload.context?.fajo_id ?? null,
+    indice: Number.isInteger(payload.context?.indice) ? payload.context.indice : null,
     submission: payload.submission ?? null,
     state: payload.state ?? null,
   }
@@ -104,6 +106,9 @@ export function crearManejadorComprobantes({ port, mattermost, secreto = null, u
       if (p.esDialogo) return await guardarCorreccion({ port, mattermost, url, obrasDe, repo, log }, p)
       if (p.accion === 'confirmar') return await confirmar({ port, mattermost, url, escribir, repo, log }, p)
       if (p.accion === 'corregir') return await corregir({ port, mattermost, url, obrasDe, repo, log }, p)
+      if (p.accion === 'duplicado_mismo' || p.accion === 'duplicado_otro') {
+        return await contestarDuplicado({ port, mattermost, url, repo, log }, p)
+      }
       if (p.accion === 'descartar') return await descartar({ port, mattermost, url, repo, log }, p)
       return malo('No entendí ese botón.')
     } catch (e) {
@@ -197,6 +202,31 @@ async function guardarCorreccion(d, p) {
   if (!guardado) return responder({ error: TEXTO.YA_CERRADO })
   await refrescar(mattermost, guardado, mensajeMattermost(guardado, url), log)
   return responder({})
+}
+
+// ── El probable duplicado ────────────────────────────────────────────────────
+//
+// Los dos botones son la única salida de un ítem con `posibleDuplicado`: mientras no se conteste,
+// `estaCompleto` es false y "Confirmar" ni siquiera aparece. Es a propósito — el estado por defecto
+// de una duda sobre un duplicado tiene que ser "no se carga".
+
+async function contestarDuplicado(d, p) {
+  const { port, mattermost, url, repo, log } = d
+  const fajo = await repo.fajoPorId(port, p.fajoId)
+  if (!fajo) return responder({ ephemeral_text: TEXTO.SIN_FAJO })
+  if (fajo.estado !== ESTADO.ABIERTO) return responder({ ephemeral_text: TEXTO.YA_CERRADO })
+
+  const respuesta = p.accion === 'duplicado_mismo' ? 'mismo' : 'otro'
+  const items = resolverDuplicado(fajo.items ?? [], p.indice ?? -1, respuesta)
+  // Sin ítems nuevos: o el índice no existe, o alguien ya lo contestó (dos clicks, o el reintento de
+  // Mattermost). Se contesta que ya está resuelto en vez de reescribir el post por nada.
+  if (!items) return responder({ ephemeral_text: TEXTO.DUPLICADO_RESUELTO })
+
+  const guardado = await repo.guardarItems(port, { id: fajo.id, items })
+  if (!guardado) return responder({ ephemeral_text: TEXTO.YA_CERRADO })
+  await refrescar(mattermost, guardado, mensajeMattermost(guardado, url), log)
+  log?.info?.('comprobantes: duplicado contestado', { fajo: fajo.id, indice: p.indice, respuesta })
+  return responder({ ephemeral_text: respuesta === 'mismo' ? 'Anotado: no lo cargo.' : 'Anotado: es otro comprobante.' })
 }
 
 // ── Descartar ────────────────────────────────────────────────────────────────

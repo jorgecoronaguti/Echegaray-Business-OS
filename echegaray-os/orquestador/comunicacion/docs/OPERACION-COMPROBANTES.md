@@ -19,9 +19,15 @@ foto en #comprobantes-gastos
                   └─ comprobantes/flujo.mjs
                       · puerta: canal oficial + grant de permiso   (fail-closed)
                       · baja los adjuntos de Mattermost
-                      · lib/comprobantes/vision.mjs → 1 llamada al modelo POR ADJUNTO
-                      · matchea proveedor y obra contra los desplegables ESTRICTOS
-                      · ¿ya está cargado? → (CUIT, tipo, número)
+                      · lib/comprobantes/vision.mjs → 1 llamada al modelo POR ADJUNTO,
+                        + una SEGUNDA con un modelo grande sólo si la primera dudó
+                      · matchea proveedor contra el desplegable estricto (E), y la obra
+                        escrita A MANO contra el desplegable de J + el vocabulario vivo de K
+                      · concilia contra `public.comprobantes_arca`: CORRIGE el número mal
+                        leído, completa el CUIT del emisor y, si los importes no cierran,
+                        los reemplaza por los del libro fiscal
+                      · ¿ya está cargado? → (CUIT, tipo, número) en el registro del chat
+                        Y en la pestaña `Compras` VIVA (lo que entró por Claude Code o a mano)
                       · abre o amplía el FAJO y publica el mensaje con botones
                           └─ [Confirmar] → POST /comprobantes/accion  (secreto en la query)
                               └─ comprobantes/escritura.mjs
@@ -86,7 +92,9 @@ on conflict (plataforma, plataforma_user_id, permiso) do update set activo=true;
 | `COMPROBANTES_ACCION_URL` | URL pública del callback de los botones | `https://chat.ecsas.com.ar/comprobantes/accion` |
 | `COMPROBANTES_ACCION_SECRETO` | **Obligatorio.** Sin él los botones se deniegan | — |
 | `MM_CANALES_ADJUNTOS` | Canales donde un post con adjuntos entra sin mencionar a `@os`. **Slug o channel_id** | `comprobantes-gastos,compras` |
-| `ORQ_COMPROBANTES_MODELO` | Modelo de visión | `claude-haiku-4-5-…` |
+| `ORQ_COMPROBANTES_MODELO` | Modelo de visión de la PRIMERA lectura | `claude-haiku-4-5-…` |
+| `ORQ_COMPROBANTES_MODELO_REVISION` | Segunda lectura, sólo si la primera dudó. Vacío = apagada | `claude-sonnet-4-5-…` |
+| `ORQ_CUIT_EMPRESA` | El CUIT del COMPRADOR, que nunca puede ser el del emisor | `30716304643` |
 | `ORQ_COMPROBANTES_VENTANA_MIN` | Ventana de agrupación del fajo | `5` |
 | `ORQ_COMPROBANTES_MAX_ADJUNTOS` | Techo de adjuntos por post | `12` |
 | `ANTHROPIC_API_KEY` | La lectura de la foto | — |
@@ -124,6 +132,54 @@ Después, siempre: `comunicacion.outbox` (mirar `dead`), `orq.chat_result` y el 
 
 ---
 
+## Lo que se arregló el 03/08 (tarde), y contra qué se midió
+
+El dueño mandó al canal la foto de una factura de Corralón Progreso (`IMG_7530.jpg`, un ticket
+fotografiado **acostado 90°**). El bot contestó:
+
+```
+Corralon Progreso · F A 0004-00036542 · 30/07/2026
+  obra: falta · ❓ no dice a qué obra va — ¿cuál es?
+No hay nada que cargar todavía.
+```
+
+Dos defectos, y ninguno era del código de arriba:
+
+1. **No leyó lo escrito a mano.** En la foto, con birome, decía **"Messinas BSA"**: la obra. En esta
+   empresa la obra se anota A MANO sobre el comprobante — es el dato más importante para imputar el
+   gasto y el único que nunca viene impreso, porque el proveedor no sabe a qué obra va.
+2. **No detectó el duplicado.** Ese comprobante YA estaba en `Compras` **fila 802**
+   (`MESSINA` / `Planta de BSA`), cargado por Claude Code. La visión había leído `0004-00036542`
+   cuando el número real es `0004-00003642` —**un dígito de más**— y como la deduplicación se apoya
+   en el número, no colapsó contra nada. Un dígito mal leído = una compra contada dos veces.
+
+Corrido contra la foto REAL, el padrón REAL y la pestaña REAL, el mismo comprobante ahora produce:
+
+```
+Corralon Progreso · F A 0004-00003642 · 30/07/2026
+  total $62.000,00 · IVA $10.760,33 · importe a Compras $51.239,67
+  obra: MESSINA (escrito a mano) · …
+  ✓ figura en ARCA (PEREZ GARCIA MARISOL BIBIANA) · CAE 86316017919602
+  ✓ ya está cargado en la fila 802 de Compras — no lo vuelvo a cargar
+```
+
+Los tres importes coinciden al centavo con la fila 802. Lo que lo hace posible:
+
+| Defensa | Dónde vive | Qué garantiza |
+|---|---|---|
+| Prompt de visión reescrito | `lib/comprobantes/vision.mjs` | busca lo manuscrito en los cuatro márgenes, avisa que la foto puede venir girada, distingue los DOS CUIT del papel, pide el CAE, y **permite dudar** (una versión que exigía no devolver null hizo que el modelo FABRICARA importes) |
+| Escalera de lectura | `vision.mjs` · `necesitaRevision` | una segunda lectura con un modelo grande **sólo** cuando la primera dudó: total ausente, aritmética que no cierra, ilegible, o ninguna anotación manuscrita. Las dos lecturas se fusionan campo por campo |
+| Matcheo tolerante | `lib/comprobantes/imputacion.mjs` | plural, abreviatura y un error de tipeo. **Si no es único, es null y se pregunta** |
+| Vocabulario vivo de la columna K | `lib/comprobantes/compras-vivas.mjs` | K **no tiene desplegable**: su lista legítima es lo que el dueño ya usó en esa obra. "BSA" resuelve MESSINA porque los tres detalles con BSA son de MESSINA |
+| Conciliación con ARCA | `lib/comprobantes/arca.mjs` | corrige el número, completa el CUIT del emisor y reemplaza los importes cuando no cierran. Ojo con el formato: ARCA guarda `punto_venta` y `numero` sueltos y sin ceros (`4`, `3642`) |
+| Duplicado contra `Compras` VIVA | `compras-vivas.mjs` · `flujo.mjs` | por tipo+número es certeza; por proveedor+fecha+importe con otro número es un **probable** duplicado que se pregunta con botones |
+
+**Que un comprobante esté en ARCA NO es un duplicado**: toda factura electrónica recibida está ahí.
+El duplicado se busca en `Compras` y en el registro, nunca en el padrón.
+
+**Corralón Progreso factura como `PEREZ GARCIA MARISOL BIBIANA`**: el nombre del desplegable no es la
+razón social del padrón. Matchear proveedores por nombre contra ARCA no funciona y no se intenta.
+
 ## Estado de verificación al 03/08/2026
 
 Probado contra el **Mattermost vivo** (subida real de un archivo al canal real, descarga real por el
@@ -143,13 +199,26 @@ número, fecha e importes de un comprobante de ARCA), renderizado a PDF.
 | Segundo click → no duplica | ✔ verificado |
 | Payload final para `Compras` (fila 807) | ✔ verificado con `--dry --json` |
 | **Escritura real en la pestaña `Compras`** | ✖ **NO verificado**: el freno de mano está puesto |
-| **Migración aplicada en la base de producción** | ✖ **NO aplicada** (la aplica el dueño, no un agente) |
-| **Fila en `canales_area` y grant de permiso en producción** | ✖ **NO cargados** |
-| **Ruta `/comprobantes/accion` publicada en Caddy** | ✖ en el repo, **NO recargada** en producción |
-| **Servicios reiniciados con este código** | ✖ **NO** — producción sigue en el commit desplegado |
+| **Migración aplicada en la base de producción** | ✔ aplicada — hay fajos reales en `comunicacion.comprobante_fajos` |
+| **Fila en `canales_area` y grant de permiso en producción** | ✔ cargados (`Comprobantes-gastos`→`compras`; grant de `jorge`) |
+| **Servicios reiniciados con este código** | ✖ **NO** — producción corre desde el worktree `deploy-comunicacion` (rama `deploy/comunicacion-protegido`), en detached HEAD sobre el commit desplegado. **Mergear a `main` no despliega.** |
 
-Mientras esas cinco últimas filas sigan en ✖, **la carga por chat no funciona en producción**: el
-camino está probado, pero no está encendido.
+### Verificación del arreglo del 03/08 (tarde)
+
+| Tramo | Estado |
+|---|---|
+| Foto REAL del canal (`file_id` `3zr8mwq…`) leída con la visión real | ✔ verificado, antes y después |
+| Obra manuscrita → `MESSINA` sin preguntar | ✔ verificado sobre la foto real |
+| Número `0004-00036542` → `0004-00003642` contra ARCA | ✔ verificado contra `public.comprobantes_arca` |
+| IVA mal leído (`$10,76`) → `$10.760,33` del libro fiscal | ✔ verificado; coincide al centavo con la fila 802 |
+| Duplicado detectado en `Compras` fila 802 | ✔ verificado contra el Sheet vivo (803 filas leídas) |
+| Otra factura del mismo proveedor el mismo día NO se marca duplicada | ✔ verificado (la 3366 de $31.533,90, que existe) |
+| Anotación ambigua sigue preguntando | ✔ test, rojo al revertir |
+| **Botones `duplicado_mismo` / `duplicado_otro` apretados en Mattermost real** | ✖ **NO verificado**: sólo por test |
+| **Servicios reiniciados con este arreglo** | ✖ **NO** — hay que mergear `main` en `deploy-comunicacion` y reiniciar `-ws` y `-worker` |
+
+Mientras esas filas sigan en ✖, **el arreglo no está en producción**: el camino está probado, pero el
+bot que atiende el canal sigue corriendo el código viejo.
 
 ## Reglas que este módulo hace cumplir
 
