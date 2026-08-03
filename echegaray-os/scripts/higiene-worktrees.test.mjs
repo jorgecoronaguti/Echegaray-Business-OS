@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { clasificar, parsearWorktrees } from './higiene-worktrees.mjs'
+import { clasificar, parsearWorktrees, ramasMergeadas } from './higiene-worktrees.mjs'
 
 test('lo sucio NUNCA es borrable, ni aunque la rama esté mergeada', () => {
   // La condición que protege el trabajo del dueño. Si esto se afloja, el script pierde código.
@@ -37,4 +37,28 @@ test('parsea la salida porcelain, incluido el detached', () => {
 
 test('una salida vacía no inventa worktrees', () => {
   assert.deepEqual(parsearWorktrees(''), [])
+})
+
+test('lo que NO SE PUDO VERIFICAR no se borra: falla cerrado', () => {
+  // git falla (permisos, lock, timeout) → `null`. Antes eso llegaba como 0 y quedaba
+  // indistinguible de "confirmado limpio", o sea elegible para borrar.
+  assert.equal(clasificar({ esPrincipal: false, sucios: null, mergeada: true }), 'NO SE PUDO VERIFICAR')
+  assert.equal(clasificar({ esPrincipal: false, sucios: undefined, mergeada: false }), 'NO SE PUDO VERIFICAR')
+})
+
+test('ramasMergeadas saca el `+` de las ramas checkeadas en otro worktree', () => {
+  // git marca con `+` toda rama que está en OTRO worktree — o sea, todas las que nos importan.
+  // Sacando sólo el `*`, "SEGURO DE ELIMINAR" era código muerto: nunca matcheaba ninguna.
+  const salida = ['  main', '* feat/actual', '+ feat/en-otro-worktree', '+ audit/x'].join('\n')
+  const s = ramasMergeadas(salida)
+  assert.ok(s.has('feat/en-otro-worktree'), 'el `+` tiene que salir')
+  assert.ok(s.has('audit/x'))
+  assert.ok(s.has('feat/actual'), 'el `*` también')
+  assert.ok(s.has('main'))
+  assert.ok(!s.has('+ feat/en-otro-worktree'))
+})
+
+test('ramasMergeadas sobre una salida fallida devuelve conjunto vacío, no rompe', () => {
+  assert.equal(ramasMergeadas(null).size, 0)
+  assert.equal(ramasMergeadas('').size, 0)
 })

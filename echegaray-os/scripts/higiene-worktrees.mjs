@@ -35,10 +35,23 @@ import { execFileSync } from 'node:child_process'
 const EJECUTAR = process.argv.includes('--ejecutar')
 const AMPLIO = process.argv.includes('--incluir-sin-mergear')
 
+/**
+ * Corre git. Devuelve `null` cuando FALLÓ, string cuando funcionó.
+ *
+ * LA DIFERENCIA ENTRE `null` Y `''` ES LA QUE PROTEGE EL TRABAJO DEL DUEÑO. Antes esto devolvía
+ * `''` en los dos casos, así que un worktree que NO SE PUDO VERIFICAR (permisos, lock, timeout,
+ * directorio corrupto) quedaba indistinguible de uno CONFIRMADO LIMPIO — y por lo tanto elegible
+ * para borrar. Reproducido: un worktree con cambios sin commitear y permisos revocados se
+ * clasificaba como limpio.
+ *
+ * No perdía datos por casualidad —`git worktree remove` sin `--force` tiene su propio candado y se
+ * negaba igual— pero era una bomba esperando a que alguien agregara `--force` "para que no falle
+ * en silencio". Un control que depende de que otro control lo salve no es un control.
+ */
 const git = (args, cwd) => {
   try {
     return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 30000 }).trim()
-  } catch { return '' }
+  } catch { return null }
 }
 
 /** `git worktree list --porcelain` → [{ruta, rama, commit}] */
@@ -63,9 +76,28 @@ export function parsearWorktrees(salida) {
  */
 export function clasificar({ esPrincipal, sucios, mergeada }) {
   if (esPrincipal) return 'PRINCIPAL'
+  // FALLA CERRADO: `null` es "no pude verificarlo", y eso pesa igual que tener trabajo sin guardar.
+  // Lo que no se pudo mirar no se borra.
+  if (sucios === null || sucios === undefined) return 'NO SE PUDO VERIFICAR'
   if (sucios > 0) return 'CON TRABAJO SIN GUARDAR'
   if (mergeada) return 'SEGURO DE ELIMINAR'
   return 'LIMPIO, RAMA SIN MERGEAR'
+}
+
+/**
+ * Ramas mergeadas a `main`, según `git branch --merged main`.
+ *
+ * EL `+` NO SOBRA. git marca con `*` la rama actual y con `+` las que están checkeadas en OTRO
+ * worktree — que es, por definición, el caso de TODOS los worktrees vinculados. Sacando sólo el
+ * `*`, el nombre quedaba como `+feat/algo` y no matcheaba nunca: la categoría "SEGURO DE ELIMINAR"
+ * era código muerto y el modo por defecto no tenía jamás nada para limpiar.
+ *
+ * Peor: la comprobación que hice a mano para "verificar" esto usaba un `sed` que sólo saca `*` y
+ * espacios — exactamente el mismo defecto. Confirmé el código con un control que compartía su bug.
+ */
+export function ramasMergeadas(salida) {
+  if (!salida) return new Set()
+  return new Set(salida.split('\n').map((s) => s.replace(/^[*+]?\s*/, '').trim()).filter(Boolean))
 }
 
 // TODO LO QUE TOCA EL MUNDO VIVE ACÁ ADENTRO.
@@ -76,16 +108,15 @@ function main() {
   const RAIZ = git(['rev-parse', '--show-toplevel'], process.cwd())
   if (!RAIZ) { console.error('no estoy dentro de un repositorio git'); process.exit(1) }
 
-  const mergeadas = new Set(
-    git(['branch', '--merged', 'main'], RAIZ).split('\n').map((s) => s.replace('*', '').trim()).filter(Boolean),
-  )
+  const mergeadas = ramasMergeadas(git(['branch', '--merged', 'main'], RAIZ))
 
   const wts = parsearWorktrees(git(['worktree', 'list', '--porcelain'], RAIZ))
   const filas = []
   for (const wt of wts) {
     const esPrincipal = wt.ruta === RAIZ
-    const sucios = esPrincipal ? 0
-      : git(['status', '--porcelain'], wt.ruta).split('\n').filter(Boolean).length
+    const salida = esPrincipal ? '' : git(['status', '--porcelain'], wt.ruta)
+    // `null` (git falló) se propaga como `null`: no se convierte en 0 por el camino.
+    const sucios = salida === null ? null : salida.split('\n').filter(Boolean).length
     const mergeada = !!wt.rama && mergeadas.has(wt.rama)
     filas.push({ ...wt, sucios, mergeada, clase: clasificar({ esPrincipal, sucios, mergeada }) })
   }
@@ -94,11 +125,16 @@ function main() {
   const seguros = porClase('SEGURO DE ELIMINAR')
   const conTrabajo = porClase('CON TRABAJO SIN GUARDAR')
   const sinMergear = porClase('LIMPIO, RAMA SIN MERGEAR')
+  const opacos = porClase('NO SE PUDO VERIFICAR')
 
   console.log(`\nworktrees: ${filas.length}   (repositorio: ${RAIZ})\n`)
   console.log(`  SEGURO DE ELIMINAR        ${String(seguros.length).padStart(3)}   limpios y ya en main`)
   console.log(`  LIMPIO, RAMA SIN MERGEAR  ${String(sinMergear.length).padStart(3)}   el trabajo vive en su rama; se conserva`)
   console.log(`  CON TRABAJO SIN GUARDAR   ${String(conTrabajo.length).padStart(3)}   NO SE TOCAN`)
+  if (opacos.length) {
+    console.log(`  NO SE PUDO VERIFICAR      ${String(opacos.length).padStart(3)}   git falló al mirarlos: NO SE TOCAN`)
+    for (const f of opacos) console.log(`      ${f.rama ?? '(detached)'}  ${f.ruta}`)
+  }
 
   if (conTrabajo.length) {
     console.log('\n── con trabajo sin commitear (revisalos a mano) ──')

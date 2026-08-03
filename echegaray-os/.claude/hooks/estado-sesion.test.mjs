@@ -76,3 +76,28 @@ test('SessionEnd no escribe nada en stdout y no rompe', () => {
   const salida = execFileSync('node', [RUTA, '--fin'], { input: '{}', encoding: 'utf8' })
   assert.equal(salida.trim(), '')
 })
+
+test('el techo es del TOTAL inyectado, no sólo del traspaso', () => {
+  // Lo midió una auditoría: recortaba el traspaso a 2.000 y le sumaba encabezado, rama, commits y
+  // sucios ENCIMA — total real 2.319. El techo publicado describe lo que se paga, así que mentía.
+  const txt = armarInicio({
+    rama: 'feat/una-rama-con-nombre-bastante-largo',
+    sucios: Array.from({ length: 12 }, (_, i) => `orquestador/lib/archivo-largo-${i}.mjs`),
+    commits: ['abc1234 un commit con un asunto largo de verdad',
+      'def5678 otro commit igual de largo que el anterior',
+      'ghi9012 y un tercero para completar el bloque'].join('\n'),
+    traspaso: 'x'.repeat(500000),
+    fechaTraspaso: '2026-08-03',
+  })
+  assert.ok(txt.length <= 2000, `el bloque mide ${txt.length} chars y el techo prometido es 2.000`)
+  assert.match(txt, /recortado/)
+})
+
+test('aun con el presupuesto agotado se muestra algo del traspaso', () => {
+  const txt = armarInicio({
+    rama: 'r', sucios: Array.from({ length: 400 }, (_, i) => `archivo-${i}.mjs`),
+    commits: 'x'.repeat(3000), traspaso: 'lo importante del traspaso'.repeat(50),
+  })
+  assert.match(txt, /traspaso de la sesión anterior/)
+  assert.ok(txt.includes('lo importante'), 'no puede quedarse sin nada del traspaso')
+})

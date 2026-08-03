@@ -157,3 +157,14 @@ test('pero un pedido humano que MENCIONA una notificación se sigue clasificando
   const r = clasificar('el agente que lanzaste devolvió un error y no muestra el resultado, arreglalo')
   assert.equal(r?.categoria, 'BUG')
 })
+
+test('un problema de COBRANZA no es un bug de software', () => {
+  // Lo encontró una auditoría adversarial: este pedido daba BUG con confianza ALTA, y el protocolo
+  // mandaba "reproducir con un test que FALLE" para una cuestión de cobranza.
+  const r = clasificar('no llega el pago del cliente, no contesta hace una semana')
+  assert.notEqual(r?.categoria, 'BUG', 'una cobranza no puede rutearse como defecto de código')
+})
+
+test('pero un servicio que no contesta SÍ es un bug', () => {
+  assert.equal(clasificar('el bot no responde, tira error 500 y quedó roto')?.categoria, 'BUG')
+})

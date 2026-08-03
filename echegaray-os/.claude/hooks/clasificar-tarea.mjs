@@ -45,9 +45,10 @@ const SEÑALES = {
   OPERACION: {
     fuertes: ['cuant', 'cuánt', 'decime', 'decíme', 'mostrame', 'mostrá', 'qué hay', 'que hay',
       'briefing', 'arqueo', 'cómo viene', 'como viene', 'cómo venimos', 'como venimos'],
-    debiles: ['saldo', 'caja', 'cobranz', 'cobrad', 'pagad', 'factur', 'proveedor', 'impuest',
-      'deuda', 'vencim', 'cheque', 'banco', 'jornal', 'nomin', 'nómin', 'sueldo', 'certificac',
-      'flujo de fondos', 'flujo de caja', 'iva', 'arca', 'afip', 'extracto', 'conciliac'],
+    debiles: ['saldo', 'caja', 'cobranz', 'cobrad', 'pagad', 'pago', 'factur', 'proveedor',
+      'cliente', 'impuest', 'deuda', 'vencim', 'cheque', 'banco', 'jornal', 'nomin', 'nómin',
+      'sueldo', 'certificac', 'flujo de fondos', 'flujo de caja', 'iva', 'arca', 'afip',
+      'extracto', 'conciliac'],
   },
   BUG: {
     // "no muestra el total" y "quedó mal" son reportes de defecto sin ambigüedad: van en fuertes.
@@ -56,14 +57,19 @@ const SEÑALES = {
     fuertes: ['error', 'roto', 'no anda', 'no funciona', 'bug', 'arregl', 'corregi', 'corregí',
       'corrig', 'se rompió', 'se rompio', 'dejó de', 'dejo de', 'anda mal', 'está mal', 'esta mal',
       'quedó mal', 'quedo mal', 'salió mal', 'salio mal', 'crash', 'se cuelga', 'excepcion',
-      'excepción', 'no muestra', 'no aparece', 'no llega', 'no guarda', 'devuelve mal',
+      'excepción', 'no muestra', 'no aparece', 'no guarda', 'devuelve mal',
       // La familia "no + verbo": es como el dueño reporta la mitad de las fallas. Medido contra
       // los 2.229 pedidos del historial, sin estas líneas quedaban sin clasificar cosas tan
       // explícitas como "no logro hacer q cambie nada de ningun archivo, no edita, no modifica".
-      'no ejecuta', 'no edita', 'no modifica', 'no cambia', 'no responde', 'no contesta',
+      'no ejecuta', 'no edita', 'no modifica', 'no cambia',
       'no sigue', 'no logro', 'no hace', 'no lo hace', 'no me deja', 'nunca ', 'pesimo', 'pésimo'],
+    // AMBIGUAS A PROPÓSITO. "no llega" y "no contesta" describen un defecto tanto como una
+    // cobranza: "no llega el pago del cliente, no contesta hace una semana" se clasificaba como
+    // BUG con confianza ALTA, y el protocolo mandaba a escribir un test que falle para un problema
+    // de cobranza. Como débiles empatan con las señales de OPERACIÓN y el clasificador se calla,
+    // que es lo correcto cuando de verdad no se sabe.
     debiles: ['falla', 'fallo', 'rompi', 'rompí', 'stack', 'undefined', 'regres',
-      'no está andando', 'no esta andando'],
+      'no está andando', 'no esta andando', 'no llega', 'no contesta', 'no responde'],
   },
   DESARROLLO: {
     fuertes: ['agreg', 'implement', 'funcionalidad', 'feature', 'desarroll', 'nuevo modul',
