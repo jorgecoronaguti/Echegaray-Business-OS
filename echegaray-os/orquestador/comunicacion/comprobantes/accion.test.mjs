@@ -155,6 +155,27 @@ test('escritura OK: se contesta la FILA y se anota la trazabilidad del post', as
   assert.equal(c.post_id, 'p1', 'queda de qué post de Mattermost salió la fila')
 })
 
+test('CARGADO SIN OBRA: se dice con todas las letras y con su fila (03/08/2026)', async () => {
+  // La obra dejó de bloquear, y eso no puede pasar en silencio: una fila sin imputar entra al Flujo
+  // de Caja con el rubro sin clasificar, y la única forma de que alguien la complete es enterarse de
+  // que existe. La fila va en el mensaje para que completarla sea ir a esa línea, no buscarla.
+  const { repo, fajo } = await conFajo({ items: [item({ comprobante: { obra: null } })] })
+  const correr = async ({ fajo: json }) => {
+    assert.equal(json.length, 1, 'el que no tiene obra igual se manda al cargador')
+    return { ok: true, datos: { ok: true, escritas: 1, filas: [{ i: 0, fila: 413 }] } }
+  }
+  const r = await escribirFajo({ port: null, repo, correr, congelado: SIN_HIELO }, fajo)
+  assert.equal(r.estado, ESTADO.CARGADO)
+  assert.match(r.texto, /⚠️ Cargado \*\*SIN obra\*\* — completala en Compras, fila 413\./)
+})
+
+test('CON OBRA no aparece la advertencia: sólo se avisa lo que quedó incompleto', async () => {
+  const { repo, fajo } = await conFajo()
+  const correr = async () => ({ ok: true, datos: { ok: true, escritas: 1, filas: [{ i: 0, fila: 412 }] } })
+  const r = await escribirFajo({ port: null, repo, correr, congelado: SIN_HIELO }, fajo)
+  assert.doesNotMatch(r.texto, /SIN obra/)
+})
+
 test('un comprobante que YA estaba cargado no se manda al cargador', async () => {
   const { repo, fajo } = await conFajo()
   repo._cargados.set('c:30712345678|A|0113-00010489', { clave: 'c:30712345678|A|0113-00010489', fila: 99 })
@@ -204,6 +225,46 @@ test('CON EL FRENO DE MANO PUESTO no se escribe: se dice y se encola', async () 
   assert.match(r.texto, /congelada/)
   assert.equal(repo._cargados.size, 0, 'no se reservan claves de una carga que no va a ocurrir')
   assert.equal(repo._fajos.get(fajo.id).estado, ESTADO.ENCOLADO)
+})
+
+// ═══ LA PUERTA DE LA PERSONA, Y EL BYPASS QUE ERA CÓDIGO MUERTO (03/08) ═══
+//
+// `correrCargador` ponía `ORQ_SHEETS_DESCONGELAR` en el entorno del proceso hijo desde esa misma
+// mañana, con el argumento de que del otro lado había una persona apretando Confirmar. No servía
+// para nada: el chequeo del freno, sesenta líneas antes, devolvía ENCOLADO y el cargador no se
+// corría nunca. Con la marca puesta, comprobantes NO escribía — y se le dijo al dueño que sí.
+//
+// La distinción que sostiene la puerta es la misma que la de la asistencia: un timer no tiene
+// nombre. Un fajo confirmado tiene `plataforma_username`.
+
+test('con el freno puesto pero una PERSONA que confirmó, la carga corre igual', async () => {
+  const repo = repoMemoria()
+  const f = await repo.abrirFajo(null, {
+    userId: 'u_rodrigo', username: 'rodrigo', channelId: 'c_comprobantes', rootPostId: 'p1', postId: 'p1', items: [item()],
+  })
+  const fajo = repo._fajos.get(f.id)
+  let visto = null
+  const r = await escribirFajo({
+    port: null, repo, congelado: CON_HIELO,
+    correr: async (o) => { visto = o; return { ok: true, datos: { ok: true, escritas: 1, filas: [{ i: 0, fila: 900 }] } } },
+  }, fajo)
+  assert.notEqual(r.estado, ESTADO.ENCOLADO, 'una persona confirmó: no se encola')
+  assert.equal(r.estado, ESTADO.CARGADO)
+  assert.equal(visto?.actor, 'rodrigo', 'el actor viaja al hijo: el motivo del deshielo tiene que nombrarlo')
+})
+
+test('el deshielo del hijo NOMBRA a quien confirmó — sin nombre no se puede auditar', async () => {
+  let entorno = null
+  const spawnFalso = (_exe, _args, o) => {
+    entorno = o.env
+    return { stdout: { on: () => {} }, stderr: { on: () => {} }, on: (ev, cb) => { if (ev === 'close') setImmediate(() => cb(0)) } }
+  }
+  await correrCargador({ fajo: [], actor: 'rodrigo', spawnImpl: spawnFalso, env: {} }).catch(() => {})
+  assert.match(String(entorno?.ORQ_SHEETS_DESCONGELAR ?? ''), /rodrigo/)
+
+  entorno = null
+  await correrCargador({ fajo: [], actor: null, spawnImpl: spawnFalso, env: {} }).catch(() => {})
+  assert.equal(entorno?.ORQ_SHEETS_DESCONGELAR, undefined, 'sin actor, el hijo no recibe el deshielo')
 })
 
 test('el freno que se consulta por defecto es el REAL del OS, no uno inventado acá', () => {
@@ -278,7 +339,9 @@ test('el diálogo lleva el fajo y el índice en el state, y vuelven enteros', ()
 })
 
 test('el formulario apunta al comprobante INCOMPLETO, no siempre al primero', () => {
-  const items = [item(), item({ clave: 'c:x|A|1', comprobante: { numero: '0113-00000001', obra: null } })]
+  // Incompleto = le falta algo que IMPIDE cargar. La obra dejó de ser eso el 03/08/2026, así que el
+  // ítem incompleto de este caso es el que no tiene número.
+  const items = [item(), item({ clave: 'c:x|A|1', comprobante: { numero: null } })]
   assert.equal(indiceACorregir(items), 1)
 })
 
@@ -316,8 +379,17 @@ test('no se puede corregir un fajo ya cerrado', async () => {
 // ── Piezas puras de la escritura ─────────────────────────────────────────────
 
 test('los ítems incompletos NO se mandan al cargador', () => {
-  const json = aFajoJson([item(), item({ comprobante: { obra: null } })])
+  const json = aFajoJson([item(), item({ comprobante: { numero: null } })])
   assert.equal(json.length, 1)
+})
+
+test('el que va SIN OBRA sí se manda: la obra viaja vacía, no lo excluye (03/08/2026)', () => {
+  // `aFajoJson` filtra por `estaCompleto`. Al dejar de exigir la obra, el comprobante sin imputar
+  // tiene que llegar al cargador —que ya sabe escribir la fila con la columna J vacía— en vez de
+  // caerse en silencio del array.
+  const json = aFajoJson([item({ comprobante: { obra: null } })])
+  assert.equal(json.length, 1)
+  assert.equal(json[0].obra, undefined, 'la obra viaja ausente, no como un texto inventado')
 })
 
 test('la fecha se guarda como date, no como texto argentino', () => {

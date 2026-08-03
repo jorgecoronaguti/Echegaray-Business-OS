@@ -24,8 +24,9 @@
 //     proveedores con el mismo correlativo. Ahora se usa `arca.mjs`: CAE, CUIT+fecha+total,
 //     CUIT+número, con coincidencia ÚNICA obligatoria, y corrige el número leído mal;
 //   · "¿qué le falta a este comprobante?" tenía dos definiciones. Ahora es una (`faltantes.mjs`) y
-//     lo que difiere es la POLÍTICA: acá la obra NO se exige, en el chat sí. Es una decisión de
-//     negocio del dueño que todavía no tomó — está declarada allá, no repartida en dos archivos.
+//     lo que difiere es la POLÍTICA. La obra era la única diferencia de negocio —acá no se exigía y
+//     en el chat sí— y el dueño la resolvió el 03/08/2026 alineando el chat con este cargador:
+//     ninguno la exige. La obra se OFRECE en el chat con el historial adelante, pero no bloquea.
 //
 //   node orquestador/scripts/cargar-comprobantes-compras.mjs --file fajo.json [--dry] [--cargar-igual]
 

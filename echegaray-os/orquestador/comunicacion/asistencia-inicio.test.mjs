@@ -9,6 +9,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { iniciarAsistencia } from './asistencia-inicio.mjs'
 import { EVENTO, ORIGEN } from '../lib/asistencia-auditoria.mjs'
+import { ESTADO_SESION, SesionesMemoria } from './asistencia-sesion.mjs'
+import { FECHA_HOY, fakeGoogleJornales } from '../lib/jornales-fixture.mjs'
 
 const CANAL_OFICIAL = 'canal-oficial-de-asistencia'
 
@@ -100,4 +102,78 @@ test('si la auditoría falla, el rechazo se devuelve igual', async () => {
     actor: { plataforma_user_id: 'u', channel_id: 'otro-canal' },
   })
   assert.equal(r.estado, 'denegado')
+})
+
+// ── QUIÉN PUBLICA LA TARJETA ────────────────────────────────────────────────────
+//
+// Las dos puertas comparten este arranque pero NO comparten quién publica. La mención la
+// publica el Communication Layer (con el bot) después de que esto devuelva; el slash command
+// NO puede publicar por respuesta —Mattermost crearía el post a nombre de la persona y el bot
+// no podría reescribirlo nunca: 403 en cada refresco por API—, así que pasa `publicar`.
+
+const ACTOR_OK = { plataforma_user_id: 'usr-jefe', plataforma_username: 'jefe', channel_id: CANAL_OFICIAL }
+
+/** El arranque completo, con la planilla de mentira y el repositorio en memoria. */
+function arranque({ publicar = null, sesiones = new SesionesMemoria() } = {}) {
+  return {
+    sesiones,
+    correr: () => iniciarAsistencia({
+      port: portDoble(), google: fakeGoogleJornales(), actor: ACTOR_OK,
+      sesiones, hoy: () => FECHA_HOY, origen: ORIGEN.COMANDO, publicar,
+    }),
+  }
+}
+
+test('con `publicar` la tarjeta la crea el BOT y la sesión queda atada al post desde el arranque', async () => {
+  const publicados = []
+  const a = arranque({
+    publicar: async (p) => { publicados.push(p); return { id: 'post-del-bot' } },
+  })
+  const r = await a.correr()
+
+  assert.equal(r.estado, 'publicado')
+  assert.equal(r.postId, 'post-del-bot')
+  assert.equal(publicados.length, 1)
+  assert.ok(publicados[0].props.attachments.length >= 2, 'la tarjeta viaja con sus attachments')
+  assert.ok(publicados[0].message.length > 0, 'y con texto de respaldo para quien no los dibuja')
+
+  const sesion = a.sesiones.filas[0]
+  assert.equal(sesion.estado, ESTADO_SESION.ABIERTA)
+  assert.equal(sesion.root_post_id, 'post-del-bot',
+    'sin esto, el refresco después de un diálogo depende de que alguien haya tocado un botón antes')
+})
+
+test('sin `publicar` (la mención) nada se publica acá y la sesión nace sin post', async () => {
+  const a = arranque()
+  const r = await a.correr()
+  assert.equal(r.estado, 'iniciado')
+  assert.ok(r.attachments.length >= 2)
+  assert.equal(a.sesiones.filas[0].root_post_id, null, 'la ata el ruteador en el primer click')
+})
+
+test('si publicar falla: se avisa, y la sesión NO queda abierta bloqueando la próxima carga', async () => {
+  const a = arranque({
+    publicar: async () => { const e = new Error('403 no tenés permiso'); e.status = 403; throw e },
+  })
+  const r = await a.correr()
+
+  assert.equal(r.estado, 'sin_publicar')
+  assert.match(r.texto, /no se registró nada/i)
+  assert.ok(!r.attachments, 'no hay tarjeta que mostrar')
+  assert.equal(a.sesiones.filas[0].estado, ESTADO_SESION.CANCELADA)
+})
+
+test('un `publicar` que devuelve algo sin id se trata como fallo, no como éxito', async () => {
+  const a = arranque({ publicar: async () => ({}) })
+  const r = await a.correr()
+  assert.equal(r.estado, 'sin_publicar')
+  assert.equal(a.sesiones.filas[0].estado, ESTADO_SESION.CANCELADA)
+})
+
+test('la sesión se ata UNA vez: un segundo intento no reapunta la tarjeta', async () => {
+  const sesiones = new SesionesMemoria()
+  const a = arranque({ sesiones, publicar: async () => ({ id: 'post-1' }) })
+  await a.correr()
+  assert.equal(await sesiones.atarPost(sesiones.filas[0].id, 'post-2'), null)
+  assert.equal(sesiones.filas[0].root_post_id, 'post-1')
 })

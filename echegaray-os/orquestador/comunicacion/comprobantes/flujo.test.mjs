@@ -125,14 +125,16 @@ test('si NO se pudieron leer las listas, no se acusa al proveedor de nuevo', () 
 
 // ── Sin obra ─────────────────────────────────────────────────────────────────
 
-test('sin anotación manuscrita, la obra se PREGUNTA y no se puede confirmar', async () => {
+test('sin anotación manuscrita, la obra se PREGUNTA — pero ya no bloquea (03/08/2026)', async () => {
   const { d } = armar({ lecturas: [lecturaBarcelo({ anotacion_manuscrita: null })] })
   const r = await procesarPost(d, post())
   assert.match(r.texto, /❓ \*\*¿A qué obra va\?\*\*/)
   // Sin historia de este proveedor no hay opciones que ofrecer, y se dice POR QUÉ en vez de dejar la
   // pregunta pelada. Con historia, el mensaje trae las obras contadas (ver mensaje.test.mjs).
   assert.match(r.texto, /No tengo ninguna carga anterior de \*\*Combustibles Barcelo\*\* en Compras/)
-  assert.ok(!r.attachments[0].actions.some((a) => a.id === 'confirmar'))
+  // El dueño decidió que se cargue igual: el Confirmar está, y al lado dice que va sin imputar.
+  assert.ok(r.attachments.at(-1).actions.some((a) => a.id === 'confirmar'))
+  assert.match(r.texto, /⚠️ Va \*\*sin obra\*\* — completala en Compras/)
 })
 
 // ── Idempotencia ─────────────────────────────────────────────────────────────
@@ -287,7 +289,9 @@ test('un texto que no matchea ninguna obra no inventa nada: se sigue preguntando
   const r = await procesarPost(d, post({ texto: 'ahí te mando la factura, gracias' }))
   assert.match(r.texto, /\| Obra \| _falta/)
   assert.match(r.texto, /a qué obra va/)
-  assert.equal(r.attachments[0].actions.some((a) => a.id === 'confirmar'), false)
+  // Lo que NO se hace sigue siendo lo importante: no se rellena la obra con una adivinada. Que se
+  // pueda cargar sin ella es otra cosa — la fila queda vacía y visible, no imputada al azar.
+  assert.match(r.texto, /⚠️ Va \*\*sin obra\*\*/)
 })
 
 test('un texto AMBIGUO entre dos obras no elige una: pregunta', () => {
@@ -379,7 +383,9 @@ test('una anotación AMBIGUA sigue preguntando: el arreglo no es un adivinador',
   const r = await procesarPost({ ...base.d, arcaDe: async () => [], comprasDe: async () => null }, post())
   assert.match(r.texto, /\| Obra \| _falta/)
   assert.match(r.texto, /a qué obra va/)
-  assert.equal(r.attachments[0].actions.some((a) => a.id === 'confirmar'), false)
+  // Ambigua = no se elige ninguna. Se carga sin obra y se dice; adivinar entre MESSINA NORTE y
+  // MESSINA SUR imputaría el costo a la obra equivocada, que es lo caro.
+  assert.match(r.texto, /⚠️ Va \*\*sin obra\*\*/)
 })
 
 test('el DÍGITO DE MÁS se corrige contra ARCA, y ahí aparece el duplicado de la fila 802', async () => {
@@ -500,7 +506,7 @@ test('sin historia suficiente NO se adivina la obra: se pregunta', async () => {
   const r = await procesarPost(d, post())
   assert.equal(repo._fajos.get(r.fajoId).items[0].comprobante.obra, null)
   assert.match(r.texto, /a qué obra va/)
-  assert.equal(r.attachments[0].actions.some((a) => a.id === 'confirmar'), false)
+  assert.match(r.texto, /⚠️ Va \*\*sin obra\*\*/, 'se carga sin obra, y se dice — no se adivina')
 })
 
 test('si no se pudo leer Compras, se DICE — no se deja creer que se miró', async () => {

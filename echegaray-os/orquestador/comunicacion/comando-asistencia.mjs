@@ -9,18 +9,31 @@
 // bot es `system_user` y NO puede crear el comando (verificado: 403 contra el servidor
 // real), así que el alta es un clic humano y la mención es la puerta que ya está abierta.
 //
-// LA RESPUESTA VA AL CANAL (`in_channel`), no efímera, y eso es a propósito: el mensaje
-// interactivo tiene que ser un post real para que los botones funcionen y para poder
-// reescribirlo. Un efímero no se puede actualizar por API — y además el bot tampoco puede
-// publicarlos (403). Los RECHAZOS sí van efímeros: que te digan que no podés cargar es
-// asunto tuyo, no del canal.
+// LA TARJETA LA PUBLICA EL BOT, NUNCA `in_channel`. Un `response_type: 'in_channel'` se ve
+// igual en el canal, pero Mattermost crea ese post A NOMBRE DE QUIEN TIPEÓ EL COMANDO. El bot
+// es `system_user` y sin `edit_others_posts` no puede editar un post ajeno: TODO
+// `PUT /posts/{id}` sobre una tarjeta nacida así devuelve 403, para siempre.
+//
+// Verificado en producción el 03/08 (dos veces, con el jefe cargando): el post que el bot no
+// podía editar tenía como `user_id` el de la persona, no el del bot. Los clicks de BOTÓN
+// sobrevivían porque se refrescan devolviendo `{update:…}` en el cuerpo de la respuesta y eso
+// Mattermost lo aplica sin mirar de quién es el post; los DIÁLOGOS vuelven por la API, así que
+// la excepción se guardaba y la lista seguía mostrándose vieja. El jefe la volvía a cargar.
+//
+// Publicando con `crearPost` el post es del bot: se puede reescribir siempre, que es la
+// condición de todo el flujo —un solo mensaje que va cambiando— y el id queda atado a la
+// sesión en el mismo arranque. El slash command contesta 200 sin cuerpo visible.
+//
+// Los RECHAZOS sí van efímeros: que te digan que no podés cargar es asunto tuyo, no del canal.
 
 import { randomUUID } from 'node:crypto'
 import { iniciarAsistencia } from './asistencia-inicio.mjs'
 import { igualEnTiempoConstante } from './secreto-compartido.mjs'
 import { crearAuditor, EVENTO, ORIGEN, payloadRechazo } from '../lib/asistencia-auditoria.mjs'
 
-export const RESPUESTA = Object.freeze({ CANAL: 'in_channel', PRIVADA: 'ephemeral' })
+// `in_channel` NO está acá a propósito: ver el encabezado. La única respuesta con cuerpo que
+// da este comando es privada; la tarjeta viaja por la API, publicada por el bot.
+export const RESPUESTA = Object.freeze({ PRIVADA: 'ephemeral' })
 
 const TEXTO = Object.freeze({
   SIN_CONFIGURAR: 'La carga de asistencia todavía no está configurada. Avisale a Dirección.',
@@ -40,11 +53,13 @@ const efimero = (texto) => ({ status: 200, body: { response_type: RESPUESTA.PRIV
  * @param {string} deps.tokenComando  token que Mattermost manda con cada invocación
  * @param {{query:Function, withTx:Function}} deps.port
  * @param {object} deps.google
+ * @param {{crearPost:Function}} deps.mattermost  cliente REAL de Mattermost: publica la tarjeta
+ *                                                con la identidad del bot (ver el encabezado)
  * @param {string} [deps.url]         URL del callback de las acciones
  * @param {Function} [deps.iniciar]   inyectable para tests
  * @returns {(o:{campos:object, ip?:string}) => Promise<{status:number, body:object}>}
  */
-export function crearComandoAsistencia({ tokenComando, port, google, url = null, iniciar = iniciarAsistencia, auditar = null, log = null } = {}) {
+export function crearComandoAsistencia({ tokenComando, port, google, mattermost = null, url = null, iniciar = iniciarAsistencia, auditar = null, log = null } = {}) {
   // El auditor se arma una vez; cada rechazo se registra con su propio `request_id`.
   const registrar = auditar ?? (port ? crearAuditor(port) : async () => ({ ok: false }))
 
@@ -79,6 +94,14 @@ export function crearComandoAsistencia({ tokenComando, port, google, url = null,
       return negar(TEXTO.NO_AUTORIZADO, { motivo: 'token', detalle: 'token_invalido', verificada: false })
     }
 
+    // 1 bis) SIN CLIENTE DE MATTERMOST NO SE ABRE NADA. La alternativa sería caer en
+    //        `in_channel`, que es exactamente el defecto que este archivo existe para no
+    //        repetir: una tarjeta que el bot no puede reescribir nunca. Mejor no abrirla.
+    if (typeof mattermost?.crearPost !== 'function') {
+      log?.error?.('comando de asistencia sin cliente de Mattermost: no hay quién publique la tarjeta')
+      return negar(TEXTO.SIN_CONFIGURAR, { motivo: 'config', detalle: 'sin_cliente_mattermost' })
+    }
+
     // 2) Identidad REAL de Mattermost, no la que diga el cuerpo del pedido.
     const userId = esTexto(campos.user_id) ? campos.user_id : null
     if (!userId) return negar(TEXTO.SIN_IDENTIDAD, { motivo: 'sin_identidad', detalle: 'sin_identidad' })
@@ -93,7 +116,14 @@ export function crearComandoAsistencia({ tokenComando, port, google, url = null,
         google,
         url,
         requestId,
+        log,
         origen: ORIGEN.COMANDO,
+        // LA TARJETA, CON LA IDENTIDAD DEL BOT. El arranque la publica acá adentro porque es
+        // el dueño de la sesión: recién con el post creado puede atarle el id, y sin id el
+        // refresco tras un diálogo dependía de que alguien hubiera tocado un botón antes.
+        publicar: ({ message, props }) => mattermost.crearPost({
+          channel_id: campos.channel_id, message, props,
+        }),
         actor: {
           plataforma_user_id: userId,
           plataforma_username: campos.user_name ?? null,
@@ -106,13 +136,14 @@ export function crearComandoAsistencia({ tokenComando, port, google, url = null,
       return efimero(TEXTO.ERROR)
     }
 
-    // 4) Sin mensaje interactivo (denegado, sin obras, planilla sin la columna) la respuesta
-    //    es privada: es una explicación para quien escribió, no una novedad para el canal.
-    if (!Array.isArray(r.attachments) || !r.attachments.length) return efimero(r.texto ?? TEXTO.ERROR)
+    // 4) Sin mensaje interactivo (denegado, sin obras, planilla sin la columna, o la tarjeta
+    //    que no se pudo publicar) la respuesta es privada: es una explicación para quien
+    //    escribió, no una novedad para el canal. Que `crearPost` falle NO se calla: el
+    //    arranque devuelve su propio texto y la persona se entera de que no se registró nada.
+    if (r.estado !== 'publicado') return efimero(r.texto ?? TEXTO.ERROR)
 
-    return {
-      status: 200,
-      body: { response_type: RESPUESTA.CANAL, text: r.texto ?? '', attachments: r.attachments },
-    }
+    // 5) La tarjeta ya está en el canal, publicada por el bot. El comando no tiene nada que
+    //    devolver: un cuerpo con attachments crearía un SEGUNDO post, y encima ajeno.
+    return { status: 200, body: {} }
   }
 }

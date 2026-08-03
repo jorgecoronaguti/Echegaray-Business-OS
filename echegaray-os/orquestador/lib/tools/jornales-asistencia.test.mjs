@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   pestanaOperativaPara, leerEstructuraJornales, contextoParaFecha, listarObrasPorFecha,
   listarPersonalPorObraYFecha, planificarAsistencia, registrarAsistencia, claveIdempotencia,
-  huellaCelda, dryRun, MOTIVO,
+  huellaCelda, dryRun, MOTIVO, confirmacionDe,
 } from './jornales-asistencia.mjs'
 import {
   fakeGoogleJornales, idxCol, PESTANAS as TABS,
@@ -223,6 +223,49 @@ test('la escritura se declara COMPARTIDA: JORNALES la editan personas y la firma
   const { plan } = await planPara(g)
   await registrarAsistencia(g, { plan })
   assert.equal(g.escrituras[0].opts?.compartida, true, 'sin esta bandera la asistencia no entra nunca')
+})
+
+// ── LA CONFIRMACIÓN HUMANA QUE LEVANTA EL FRENO (03/08) ─────────────────────
+//
+// El dueño decidió que una persona identificada que confirma en el chat pueda escribir con el freno de
+// mano puesto, y que los timers/generadores/agentes sigan bloqueados. La distinción se sostiene en que
+// hasta acá llega un ACTOR real —el del evento autenticado de Mattermost, el mismo que firma la
+// auditoría y entra en la clave de idempotencia— y un timer no tiene ninguno.
+
+test('la escritura viaja con la confirmación de QUIÉN la confirmó y PARA QUÉ', async () => {
+  const g = fakeGoogle()
+  const { plan } = await planPara(g)
+  await registrarAsistencia(g, { plan, actor: { plataforma_user_id: 'mm-jefe-1', plataforma_username: 'rlopez' } })
+  const c = g.escrituras[0].opts?.confirmacion
+  assert.equal(c?.actor, 'rlopez')
+  assert.match(c?.motivo, /^asistencia del .+ confirmada en el chat por rlopez$/)
+  assert.ok(c.motivo.includes(plan.fecha), 'el motivo dice QUÉ día se está cargando')
+})
+
+test('SIN actor no se arma confirmación: la escritura queda a merced del freno (falla cerrado)', async () => {
+  // Es el caso del timer y el del agente de mantenimiento: nadie apretó nada. Que acá viaje `null` es
+  // lo que hace que el freno los siga parando aunque llamen a la misma función.
+  const g = fakeGoogle()
+  const { plan } = await planPara(g)
+  await registrarAsistencia(g, { plan })
+  assert.equal(g.escrituras[0].opts?.confirmacion, null)
+})
+
+test('un actor sin username cae al id de plataforma, nunca a un placeholder', async () => {
+  const g = fakeGoogle()
+  const { plan } = await planPara(g)
+  await registrarAsistencia(g, { plan, actor: { plataforma_user_id: 'mm-jefe-1' } })
+  assert.equal(g.escrituras[0].opts?.confirmacion?.actor, 'mm-jefe-1')
+})
+
+test('confirmacionDe es núcleo puro y devuelve null sin identidad', () => {
+  assert.equal(confirmacionDe({ actor: null, fecha: '2026-08-03' }), null)
+  assert.equal(confirmacionDe({ actor: { plataforma_username: '   ' }, fecha: '2026-08-03' }), null)
+  assert.equal(confirmacionDe({}), null)
+  assert.deepEqual(confirmacionDe({ actor: { plataforma_username: 'rlopez' }, fecha: '2026-08-03' }), {
+    actor: 'rlopez',
+    motivo: 'asistencia del 2026-08-03 confirmada en el chat por rlopez',
+  })
 })
 
 test('escribe NÚMEROS, no texto ni letras de asistencia', async () => {

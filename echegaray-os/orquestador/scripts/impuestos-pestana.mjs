@@ -27,7 +27,7 @@ import { parsearDDJJ, alicuotaDeclarada } from '../lib/iibb-ddjj.mjs'
 import { parsearDJIVA } from '../lib/iva-ddjj.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
-import { borrarNotas } from '../lib/nota-celda.mjs'
+import { borrarNotas, vaciarColumnaDeProsa } from '../lib/nota-celda.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { seccion, sub as subItem, total as rotuloTotal, auditarPatron } from '../lib/patron-pestana.mjs'
@@ -647,6 +647,10 @@ async function main() {
   const { grid: gridFinal, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, PESTAÑA, g.filas, previoTab)
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}") en vez de escribir "${r.mio.slice(0, 44)}"`)
   g.filas = gridFinal
+  // LA COLUMNA DE PROSA SE VA CON LA GRILLA, NO DESPUÉS. `borrarNotas` (en formatear()) corre después
+  // de escribir y blanquea con '', que la fusión preserva: por eso la columna nunca se iba. Ver
+  // vaciarColumnaDeProsa en lib/nota-celda.mjs.
+  vaciarColumnaDeProsa(g.filas, ANCHO - 1)
   const escritura = await escribirPreservando(google, ID, PESTAÑA, g.filas, { respetar: false /* la Regla 0 ya se aplicó arriba, a mano: este generador guarda el registro DESPUÉS de releer la pestaña, que es más fiel que hacerlo antes de escribir */, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   // ═══ SI LA ESCRITURA SE SALTEÓ, NO SE TOCA LA GEOMETRÍA (31/07) ═══
   //

@@ -78,7 +78,7 @@ import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { seccion, sub, total as rotuloTotal, auditarPatron } from '../lib/patron-pestana.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
-import { borrarNotas } from '../lib/nota-celda.mjs'
+import { borrarNotas, vaciarColumnaDeProsa } from '../lib/nota-celda.mjs'
 import { detectarQuincenas, filasQuincenas } from '../lib/nomina-sync.mjs'
 import { CATEGORIAS, COL, formulaValor, formulaVigencia, MES_SIGUIENTE } from '../lib/uocra-escala.mjs'
 import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
@@ -869,6 +869,8 @@ async function main() {
   // Y la cabecera, que sí es mía.
   if (nuevo >= 0) grid[nuevo][iPagado] = 'Pagado el'
   if (copiadas) console.log(`  ✋ ${copiadas} fecha(s) de "Pagado el" copiadas de la pestaña: esa columna es TUYA, el generador no la escribe`)
+  // LA COLUMNA DE PROSA SE VA CON LA GRILLA, NO DESPUÉS: ver vaciarColumnaDeProsa en lib/nota-celda.mjs.
+  vaciarColumnaDeProsa(grid, ANCHO - 1)
   const escritura = await escribirPreservando(google, ID, `'${PESTAÑA}'`, grid, { respetar: false /* la Regla 0 ya se aplicó arriba, a mano: este generador guarda el registro DESPUÉS de releer la pestaña, que es más fiel que hacerlo antes de escribir */, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   // ═══ SI LA ESCRITURA SE SALTEÓ, NO SE TOCA LA GEOMETRÍA (31/07) ═══
   //

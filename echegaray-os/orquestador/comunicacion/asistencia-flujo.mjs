@@ -376,6 +376,10 @@ async function confirmar(d, { sobrescribir, reemplazar_formula } = {}) {
       plan,
       confirmarSobrescritura: Boolean(sobrescribir),
       confirmarReemplazoFormula: Boolean(reemplazar_formula),
+      // QUIÉN CONFIRMÓ. Es el actor del evento autenticado de Mattermost —el mismo que firma la
+      // auditoría y entra en la clave de idempotencia—, y es lo que levanta el freno de mano para
+      // esta escritura. Si no hay identidad, no se levanta nada.
+      actor: d.actor,
     })
   } catch (e) {
     resultado = { ok: false, motivo: 'error_escribiendo', error: sanitizarError(e), celdas: [] }

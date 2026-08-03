@@ -96,7 +96,7 @@ export function itemsQueEntran(items = []) {
 }
 
 /** Corre el cargador y devuelve su línea JSON. Inyectable para poder probar sin Google ni Postgres. */
-export async function correrCargador({ fajo, dry = false, spawnImpl = spawn, cwd = resolve(AQUI, '../../..'), env = process.env } = {}) {
+export async function correrCargador({ fajo, dry = false, actor = null, spawnImpl = spawn, cwd = resolve(AQUI, '../../..'), env = process.env } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'orq-fajo-'))
   const ruta = join(dir, 'fajo.json')
   await writeFile(ruta, JSON.stringify(fajo, null, 2), 'utf8')
@@ -106,7 +106,11 @@ export async function correrCargador({ fajo, dry = false, spawnImpl = spawn, cwd
   // ESTE proceso hijo y sólo llega hasta que termina. Lo que lo justifica es que del otro lado hubo
   // una persona apretando "Confirmar" sobre un comprobante que ya vio — no es el OS decidiendo.
   // Sin esto el flujo entero quedaba en "encolado" y la foto nunca llegaba a Compras.
-  const entorno = dry ? env : { ...env, ORQ_SHEETS_DESCONGELAR: 'carga de comprobante confirmada por una persona en el chat' }
+  // El motivo lleva el NOMBRE de quien confirmó. Un deshielo anónimo no se puede auditar después, y
+  // auditarlo después es la única razón por la que esta puerta es admisible.
+  const entorno = dry || !actor
+    ? env
+    : { ...env, ORQ_SHEETS_DESCONGELAR: `carga de comprobante confirmada en el chat por ${actor}` }
   try {
     const r = await unaCorrida(spawnImpl, args, { cwd, env: entorno })
     const linea = String(r.stdout ?? '').split('\n').reverse().find((l) => l.startsWith(MARCA_JSON))
@@ -167,7 +171,20 @@ export async function escribirFajo(d, fajo) {
   }
 
   // 1) EL FRENO DE MANO. Se mira antes de reservar claves y antes de gastar una corrida.
-  const hielo = hayHielo()
+  //
+  // ═══ LA PUERTA DE LA PERSONA (03/08) ═══
+  //
+  // El deshielo del proceso hijo (`correrCargador`) existía desde el 03/08 a la mañana y NUNCA se
+  // ejecutaba: este chequeo devuelve ENCOLADO sesenta líneas antes de llegar a correr el cargador.
+  // O sea que con la marca puesta el bypass era código muerto, y el dueño creía —yo le dije eso—
+  // que comprobantes escribía mientras la asistencia no. Las dos estaban frenadas.
+  //
+  // El freno existe para que ningún TIMER y ningún AGENTE escriba solo. Un fajo confirmado tiene un
+  // `plataforma_username`: una persona identificada que miró el comprobante y apretó Confirmar. Esa
+  // es la misma distinción que habilita `frenar(..., {confirmacion})` para la asistencia, y acá se
+  // aplica igual. Sin actor identificado NO se levanta nada: se encola, como antes.
+  const quienConfirmo = String(fajo?.plataforma_username ?? '').trim() || null
+  const hielo = hayHielo() && !quienConfirmo
   if (hielo) {
     await repo.cerrarFajo(port, { id: fajo.id, estado: ESTADO.ENCOLADO, error: 'sheets congelados' })
     return {
@@ -195,7 +212,7 @@ export async function escribirFajo(d, fajo) {
   // 3) Correr el cargador.
   let r
   try {
-    r = await correr({ fajo: aFajoJson(entran) })
+    r = await correr({ fajo: aFajoJson(entran), actor: quienConfirmo })
   } catch (e) {
     r = { ok: false, error: String(e?.message ?? e).slice(0, 200) }
   }
@@ -230,7 +247,13 @@ export async function escribirFajo(d, fajo) {
     filas: filas.map((f) => ({ clave: f.clave, fila: f.fila, proveedor: f.proveedor, numero: f.numero })),
   })
 
-  return { estado: ESTADO.CARGADO, texto: textoCargado(filas, yaEstaban, r.datos), filas }
+  // Los que entraron SIN obra, con su fila, para poder decirlo por su nombre en el mensaje.
+  // `entran` y `filas` están en el mismo orden por construcción (los dos salen del mismo filtro).
+  const sinObra = entran
+    .map((it, k) => ({ it, fila: filas[k] }))
+    .filter(({ it }) => !it.comprobante?.obra)
+    .map(({ it, fila }) => ({ proveedor: it.comprobante?.proveedor ?? null, fila: fila.fila ?? null }))
+  return { estado: ESTADO.CARGADO, texto: textoCargado(filas, yaEstaban, r.datos, { sinObra }), filas }
 }
 
 /** El comprobante como fila de `comunicacion.comprobantes_cargados`. */
@@ -259,7 +282,7 @@ export function aIso(v) {
   return m ? `${m[3]}-${m[2]}-${m[1]}` : null
 }
 
-function textoCargado(filas, yaEstaban, datos) {
+function textoCargado(filas, yaEstaban, datos, { sinObra = [] } = {}) {
   const l = []
   const conFila = filas.filter((f) => f.fila != null)
   l.push(conFila.length === 1
@@ -278,6 +301,15 @@ function textoCargado(filas, yaEstaban, datos) {
   // Estar en ARCA no es un duplicado: es el libro fiscal confirmando el comprobante. Lo que importa
   // avisar es cuando el número que se leyó de la foto NO era el verdadero.
   if (datos?.arca?.corregidos) l.push(`ℹ ${datos.arca.corregidos} número(s) de comprobante corregido(s) contra ARCA.`)
+  // CARGADO SIN OBRA, DICHO CON TODAS LAS LETRAS (03/08/2026). El dueño decidió que la obra no
+  // bloquee, no que se cargue en silencio: una fila sin imputar entra al Flujo de Caja con el rubro
+  // sin clasificar y la única forma de que alguien la complete es que sepa que existe. Va con la fila
+  // para que completarla sea abrir Compras e ir a esa línea, no buscarla.
+  if (sinObra.length) {
+    l.push(sinObra.length === 1
+      ? `⚠️ Cargado **SIN obra** — completala en Compras${sinObra[0].fila ? `, fila ${sinObra[0].fila}` : ''}.`
+      : `⚠️ ${sinObra.length} quedaron **SIN obra** — completalas en Compras: ${sinObra.map((s) => `fila ${s.fila ?? '?'}${s.proveedor ? ` (${s.proveedor})` : ''}`).join(' · ')}.`)
+  }
   l.push('_Completá vos la Unidad de Negocio y el Tipo de Costo: ahí clasifica el rubro de caja._')
   return l.join('\n')
 }

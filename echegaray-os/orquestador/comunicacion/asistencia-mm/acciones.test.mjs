@@ -307,6 +307,24 @@ test('cancelar: cierra la sesión y deja dicho que no se escribió nada', async 
   assert.match(despues.body.ephemeral_text, /ya se cerró/)
 })
 
+test('el click de una tarjeta VIEJA se rechaza aunque la sesión se haya atado al abrirse', async () => {
+  // La tarjeta del slash command la publica el bot, así que la sesión nace atada por
+  // `root_post_id` y no por la meta. Mirando sólo la meta, el botón del mensaje anterior
+  // pasaba —y encima el refresco aterrizaba en el mensaje nuevo, no en el que se tocó.
+  const e = await crearEntorno()
+  await e.sesiones.atarPost(e.sesion.id, 'post-de-la-tarjeta')
+  const r = await e.accion({ paso: PASO.OBRA, selected_option: OBRA.REVOQUE }, { post_id: 'post-viejo' })
+  assert.match(r.body.ephemeral_text, /mensaje de asistencia anterior/i)
+  assert.equal(e.google.lecturas, 0, 'ni se toca la planilla')
+})
+
+test('el click de LA tarjeta atada sigue pasando: la guarda no bloquea el caso normal', async () => {
+  const e = await crearEntorno()
+  await e.sesiones.atarPost(e.sesion.id, 'post-1') // el mismo `post_id` que manda el doble
+  const r = respuestaValida(await elegirObra(e))
+  assert.ok(attachmentsDe(r).length > 0)
+})
+
 test('sin formulario abierto: se explica cómo abrir uno, sin tocar la planilla', async () => {
   const e = await crearEntorno({ abrirSesion: false })
   const r = await elegirObra(e)

@@ -178,7 +178,7 @@ export function bloqueObra(item = {}) {
     const sin = s?.evidencia === 'sin_historia' || !s
       ? ` No tengo ninguna carga anterior de **${prov}** en Compras para deducirla.`
       : ''
-    return [`❓ **¿A qué obra va?**${sin}`]
+    return [`❓ **¿A qué obra va?**${sin}`, SIN_OBRA_NO_BLOQUEA]
   }
   const n = s.n ?? 0
   const distintos = s.distintos ?? ops.length
@@ -194,7 +194,33 @@ export function bloqueObra(item = {}) {
   // por la más frecuente del proveedor" es exactamente lo que hace falta para confiar o desconfiar de
   // la sugerida; repetir "obra ambigua (7 distintas en 126)" sería decir dos veces lo de arriba.
   if (s.nota) l.push(`_ℹ ${s.nota}_`)
+  l.push(SIN_OBRA_NO_BLOQUEA)
   return l
+}
+
+/**
+ * QUE SE OFREZCA NO SIGNIFICA QUE BLOQUEE (03/08/2026).
+ *
+ * El dueño decidió que el bot cargue igual con la obra vacía, alineado con el cargador de Claude Code
+ * (ver `faltantes.mjs`). Pero la pregunta se sigue haciendo con todo el historial adelante: elegir la
+ * obra en el momento cuesta un click y completarla después cuesta abrir el Sheet y buscar la fila.
+ *
+ * Lo que NO se puede hacer es dejar la pregunta como estaba: un `❓` que ya no bloquea y no lo dice
+ * hace que el jefe crea que tiene que contestar para que se cargue, y el que no contesta se va
+ * pensando que no cargó nada. La consecuencia va escrita al lado de la pregunta.
+ */
+export const SIN_OBRA_NO_BLOQUEA = '_ℹ no me hace falta para cargar: si no elegís ninguna, lo cargo **sin obra** y la completás en Compras._'
+
+/**
+ * ¿A este comprobante hay que ofrecerle la obra? Falta la obra y todavía se va a cargar.
+ *
+ * Uno ya cargado o marcado como "es el mismo" no se ofrece: no hay nada que imputar. Un duplicado sin
+ * contestar tampoco pregunta la obra — primero se decide si existe, después dónde va.
+ */
+export function ofreceObra(item = {}) {
+  if (item.yaCargado || item.duplicadoResuelto === 'mismo') return false
+  if (item.posibleDuplicado && !item.duplicadoResuelto) return false
+  return !item.comprobante?.obra
 }
 
 /**
@@ -320,11 +346,20 @@ export function resumenFajo(fajo = {}) {
     if (c.esNotaCredito) l.push('', '⚠️ **Nota de crédito: entra en negativo.**')
     const dup = avisoDuplicado(it)
     if (dup) l.push('', dup)
-    // LA PREGUNTA DE LA OBRA SE REEMPLAZA POR EL BLOQUE CON LAS OPCIONES. `preguntasDe` decide QUÉ
-    // falta (y por eso `estaCompleto` sigue siendo false); acá se decide CÓMO se pregunta. El resto de
-    // las preguntas —el total, la fecha, el número— no tienen historial que ofrecer: van tal cual.
-    const preguntas = preguntasDe(it).filter((p) => !/ya esté cargado/.test(p))
-    const bloques = preguntas.flatMap((p) => (p === PREGUNTA_OBRA ? bloqueObra(it) : [`❓ ${p}`]))
+    // LA OBRA SE OFRECE SIEMPRE QUE FALTE, AUNQUE YA NO SEA UN FALTANTE (03/08/2026).
+    //
+    // Antes el bloque salía porque `preguntasDe` devolvía `PREGUNTA_OBRA`: la obra era obligatoria y
+    // el mensaje se limitaba a reemplazar el texto pelado por las opciones del historial. Ahora que no
+    // bloquea, `faltantesDe` ya no la devuelve — y si el bloque colgara de ahí, el desplegable con las
+    // siete obras del proveedor y sus conteos habría desaparecido junto con la exigencia. Eso sería
+    // apagar la parte útil por haber apagado la molesta: se decide acá, y por la única condición que
+    // importa, que la obra falte. El resto de las preguntas —el total, la fecha, el número— siguen
+    // saliendo de la política y no tienen historial que ofrecer: van tal cual.
+    const preguntas = preguntasDe(it).filter((p) => !/ya esté cargado/.test(p) && p !== PREGUNTA_OBRA)
+    const bloques = [
+      ...(ofreceObra(it) ? bloqueObra(it) : []),
+      ...preguntas.map((p) => `❓ ${p}`),
+    ]
     if (bloques.length) {
       l.push('')
       for (const b of bloques) l.push(b)
@@ -348,7 +383,18 @@ export function resumenFajo(fajo = {}) {
   if (hayAprendido) l.push('_Lo que no dice "sugerido" lo leí del comprobante._')
   const cargables = items.filter(estaCompleto).length
   const pendientes = items.some((it) => [ESTADO_ITEM.FALTA, ESTADO_ITEM.DUPLICADO].includes(estadoDeItem(it)))
-  if (cargables) l.push(`Si está bien, apretá **Confirmar** y lo escribo en Compras (${cargables} fila${cargables > 1 ? 's' : ''}).`)
+  // CUÁNTOS VAN A ENTRAR SIN OBRA, DICHO ANTES DE APRETAR. La obra dejó de bloquear, así que el
+  // Confirmar puede escribir una fila con la columna J vacía. Que eso pase en silencio sería cambiar
+  // el resultado de un botón sin avisarlo: el jefe apretó lo mismo de siempre.
+  const sinObra = items.filter((it) => estaCompleto(it) && !it.comprobante?.obra).length
+  if (cargables) {
+    l.push(`Si está bien, apretá **Confirmar** y lo escribo en Compras (${cargables} fila${cargables > 1 ? 's' : ''}).`)
+    if (sinObra) {
+      l.push(sinObra === 1 && cargables === 1
+        ? '⚠️ Va **sin obra** — completala en Compras, o elegila arriba y lo cargo imputado.'
+        : `⚠️ ${sinObra} de ${cargables} van **sin obra** — completalas en Compras, o elegilas arriba.`)
+    }
+  }
   else if (pendientes) {
     // Si hay opciones ofrecidas hay botones para tocarlas: decir sólo "contestame" haría escribir lo
     // que se resuelve con un click.
