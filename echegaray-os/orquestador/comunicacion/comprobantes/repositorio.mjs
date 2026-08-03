@@ -195,37 +195,12 @@ export async function anotarFilas(port, filas = []) {
   }
 }
 
-/**
- * Filas CANDIDATAS de `public.comprobantes_arca` para conciliar UN comprobante leído.
- *
- * Trae poco a propósito: el CAE exacto, el CUIT del emisor, y todo lo emitido ese día. Con eso
- * `arca.mjs` resuelve las cuatro pasadas sin traerse el padrón entero a memoria por cada foto — y
- * la pasada "fecha + total" necesita ver a TODOS los emisores de ese día para poder afirmar que la
- * coincidencia es única.
- *
- * `tipo_libro = 'R'` es el libro de RECIBIDOS (compras). El de emitidos son las ventas de la
- * empresa y no tiene nada que ver con un comprobante de gasto.
- *
- * Nunca lanza: si la tabla no existe o la base no contesta, devuelve `[]` y la conciliación queda
- * "no verificada". No poder verificar no es lo mismo que no estar.
- */
-export async function candidatasArca(port, { cae = null, cuit = null, fechaIso = null } = {}) {
-  if (typeof port?.query !== 'function') return []
-  if (!cae && !cuit && !fechaIso) return []
-  try {
-    const { rows } = await port.query(
-      `select emisor_cuit, emisor_nombre, punto_venta, numero, cae, fecha_emision, tipo_comprobante,
-              imp_total::float8 imp_total, total_iva::float8 total_iva, neto_gravado::float8 neto_gravado
-         from public.comprobantes_arca
-        where tipo_libro = 'R'
-          and ( ($1::text is not null and cae = $1)
-             or ($2::text is not null and emisor_cuit = $2)
-             or ($3::date is not null and fecha_emision = $3) )
-        limit 500`,
-      [cae, cuit, fechaIso])
-    return rows ?? []
-  } catch { return [] }
-}
+// LAS CANDIDATAS DE ARCA NO SE CONSULTAN ACÁ (03/08). El SQL vive en `lib/comprobantes/arca.mjs`,
+// al lado de la conciliación que lo consume: preguntarle al padrón por un comprobante es parte de
+// esa capacidad y no del canal por el que llegó la foto. Se re-exporta para no cambiarle el punto de
+// entrada a quien ya lo usaba — pero la consulta es UNA, y el cargador de línea de comandos ahora
+// llama a la misma en vez de armar la suya.
+export { candidatasArca } from '../../lib/comprobantes/arca.mjs'
 
 /** Suelta las claves reservadas cuando la escritura NO llegó a ocurrir. Sólo las que siguen sin fila. */
 export async function soltarReservas(port, claves = []) {

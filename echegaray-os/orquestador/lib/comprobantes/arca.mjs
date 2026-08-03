@@ -1,4 +1,10 @@
-// EL COMPROBANTE LEÍDO CONTRA EL PADRÓN DE ARCA. NÚCLEO PURO, CERO MODELO.
+// EL COMPROBANTE LEÍDO CONTRA EL PADRÓN DE ARCA. CERO MODELO.
+//
+// La conciliación es NÚCLEO PURO. La única función con entrada/salida es `candidatasArca`, al final
+// del archivo, y recibe el puerto de base inyectado: está acá —y no en el repositorio del chat—
+// porque preguntarle al padrón por un comprobante es parte de esta capacidad, no del canal por el
+// que llegó la foto. Tenerla en `comunicacion/` obligaba al cargador de línea de comandos a escribir
+// su propio SQL, y esa segunda consulta indexaba por número pelado y daba falsos positivos.
 //
 // ═══ POR QUÉ EXISTE (03/08) ═══
 //
@@ -218,4 +224,61 @@ export function aplicarArca(comprobante = {}, conciliacion = {}) {
     comprobante.neto = conciliacion.neto == null ? comprobante.neto : redondear2(Math.abs(conciliacion.neto) * signo)
   }
   return bloque
+}
+
+// ═══ EL PADRÓN — LA ÚNICA CONSULTA ═══════════════════════════════════════════
+//
+// Antes había dos formas de preguntarle a `public.comprobantes_arca`: ésta, y un `indiceArca()`
+// dentro del cargador que se traía la tabla entera y la indexaba por NÚMERO PELADO —sin punto de
+// venta y sin CUIT—. Dos comprobantes de proveedores distintos con el mismo correlativo caían en la
+// misma clave, y el cargador avisaba "ya figura en ARCA" sobre una factura que nunca vio. Con una
+// sola consulta y una sola conciliación, ese falso positivo no tiene dónde volver a aparecer.
+
+/**
+ * Los datos con los que se le pregunta al padrón por UN comprobante leído.
+ * El CUIT se exige completo: once dígitos o nada. Media identidad es peor que ninguna.
+ */
+export function clavesDeBusqueda(c = {}) {
+  const cuit = soloDigitos(c?.cuit)
+  return {
+    cae: caeCanonico(c?.cae),
+    cuit: cuit.length === 11 ? cuit : null,
+    fechaIso: fechaIsoDeComprobante(c?.fecha),
+  }
+}
+
+/**
+ * Filas CANDIDATAS del padrón para conciliar UN comprobante leído.
+ *
+ * Trae poco a propósito: el CAE exacto, el CUIT del emisor, y todo lo emitido ese día. Con eso
+ * `conciliarConArca` resuelve las cuatro pasadas sin traerse el padrón entero a memoria por cada
+ * foto — y la pasada "fecha + total" necesita ver a TODOS los emisores de ese día para poder
+ * afirmar que la coincidencia es única. Quien decide cuál es —si es que alguna— es la conciliación.
+ *
+ * `tipo_libro = 'R'` es el libro de RECIBIDOS (compras). El de emitidos son las ventas de la
+ * empresa y no tiene nada que ver con un comprobante de gasto.
+ *
+ * Nunca lanza: si la tabla no existe o la base no contesta, devuelve `[]` y la conciliación queda
+ * "no verificada". No poder verificar no es lo mismo que no estar.
+ *
+ * @param {{query:Function}} port
+ * @param {object} comprobante  el leído (o cualquier objeto con cae/cuit/fecha)
+ */
+export async function candidatasArca(port, comprobante = {}) {
+  if (typeof port?.query !== 'function') return []
+  const { cae, cuit, fechaIso } = clavesDeBusqueda(comprobante)
+  if (!cae && !cuit && !fechaIso) return []
+  try {
+    const { rows } = await port.query(
+      `select emisor_cuit, emisor_nombre, punto_venta, numero, cae, fecha_emision, tipo_comprobante,
+              imp_total::float8 imp_total, total_iva::float8 total_iva, neto_gravado::float8 neto_gravado
+         from public.comprobantes_arca
+        where tipo_libro = 'R'
+          and ( ($1::text is not null and cae = $1)
+             or ($2::text is not null and emisor_cuit = $2)
+             or ($3::date is not null and fecha_emision = $3) )
+        limit 500`,
+      [cae, cuit, fechaIso])
+    return rows ?? []
+  } catch { return [] }
 }

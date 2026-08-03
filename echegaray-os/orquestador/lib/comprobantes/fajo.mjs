@@ -23,6 +23,7 @@
 // agrupación que se usara como control de duplicados sería un control que depende del reloj.
 
 import { claveComprobante } from './lectura.mjs'
+import { faltantesDe, puedeCargarse, POLITICA, PREGUNTA_OBRA } from './faltantes.mjs'
 
 /** Ventana de agrupación, en minutos. Corta a propósito: agrupa una tanda, no una jornada. */
 export const VENTANA_FAJO_MIN = Number(process.env.ORQ_COMPROBANTES_VENTANA_MIN || 5)
@@ -101,45 +102,25 @@ export function etiquetaComprobante(c = {}) {
   return t ? `${t} ${n}` : n
 }
 
-/**
- * Qué le falta a un comprobante para poder cargarse, en castellano y como PREGUNTA.
- *
- * La regla del OS es no inventar; la consecuencia operativa es que hay que preguntar. Un comprobante
- * con preguntas abiertas se muestra igual —para que el dueño vea que llegó— pero no se carga hasta
- * que estén contestadas.
- */
-/**
- * La pregunta de la obra, como constante y no como literal repetido: `mensaje.mjs` la reemplaza por
- * el bloque con las opciones del historial y necesita reconocerla sin acoplarse a una redacción.
- */
-export const PREGUNTA_OBRA = 'no dice a qué obra va — ¿cuál es?'
+// ── QUÉ LE FALTA A UN COMPROBANTE — LA RESPUESTA NO SE DECIDE ACÁ ────────────
+//
+// Vivía acá y también en `validar()` del cargador, con criterios distintos para la misma pregunta.
+// Ahora las dos caras llaman a `faltantes.mjs` y difieren SÓLO en la política: el chat exige obra y
+// número (`POLITICA.CHAT`), el cargador por línea de comandos no (`POLITICA.CARGADOR`). Esa
+// diferencia es una decisión de negocio del dueño que todavía no tomó, y está declarada allá.
+//
+// `PREGUNTA_OBRA` se re-exporta porque `mensaje.mjs` la reemplaza por el bloque con las opciones del
+// historial y la reconoce por igualdad; su texto es uno solo y vive en `faltantes.mjs`.
+export { PREGUNTA_OBRA }
 
+/** Qué le falta a un comprobante para poder cargarse POR CHAT, en castellano y como PREGUNTA. */
 export function preguntasDe(item = {}) {
-  const c = item.comprobante ?? {}
-  const p = []
-  if (item.proveedorNuevo) {
-    p.push(`el proveedor **${c.proveedor ?? '(ilegible)'}** no está en la lista de Compras — ¿lo agrego?`)
-  }
-  // UN PROBABLE DUPLICADO ES UNA PREGUNTA, NO UNA DECISIÓN. Ni cargar ni descartar solo: mismo
-  // proveedor, mismo día y mismo importe con otro número puede ser el mismo comprobante con un
-  // dígito mal leído —lo que ya pasó— o dos compras distintas. Las dos salidas son caras y ninguna
-  // se elige sin el dueño.
-  // El detalle de la fila candidata lo muestra el mensaje (`avisoDuplicado`), arriba y con formato:
-  // acá sólo queda la razón por la que este comprobante NO está listo para cargarse.
-  if (item.posibleDuplicado && !item.duplicadoResuelto) {
-    p.push(`puede que ya esté cargado en la **fila ${item.posibleDuplicado.fila ?? '?'}** — ¿es el mismo?`)
-  }
-  if (!c.obra) p.push(PREGUNTA_OBRA)
-  if (c.total == null) p.push('no pude leer el total')
-  if (!c.fecha) p.push('no pude leer la fecha')
-  if (!c.numero) p.push('no pude leer el número de comprobante')
-  return p
+  return faltantesDe(item, POLITICA.CHAT).map((f) => f.pregunta)
 }
 
 /** ¿Este ítem se puede escribir sin preguntarle nada a nadie? */
 export function estaCompleto(item = {}) {
-  if (item.duplicadoResuelto === 'mismo') return false // el dueño dijo que ya estaba: no se carga
-  return preguntasDe(item).length === 0 && !item.yaCargado
+  return puedeCargarse(item, POLITICA.CHAT)
 }
 
 /** ¿Queda algún duplicado sin contestar? Mientras lo haya, no se ofrece Confirmar. */

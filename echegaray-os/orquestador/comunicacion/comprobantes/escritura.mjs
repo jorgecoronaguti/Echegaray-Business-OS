@@ -53,6 +53,18 @@ export const TIMEOUT_MS = Number(process.env.ORQ_COMPROBANTES_TIMEOUT_MS || 180_
  * mano el defecto que ese contrato ya arregló.
  *
  * Los importes viajan CON SU SIGNO: una nota de crédito llega en negativo desde la lectura.
+ *
+ * ═══ EL CUIT Y EL DUPLICADO YA RESUELTO VIAJAN (03/08) ═══
+ *
+ * La pestaña Compras no tiene columna de CUIT y el cargador no lo escribe en ninguna celda: viaja
+ * porque desde que el cargador también busca el duplicado (`compras-vivas.mjs`, la misma lib que
+ * usa el bot), el CUIT es lo que le permite afirmar la identidad del proveedor sobre la fila
+ * candidata. Sin él, la misma búsqueda corre con menos datos de un lado que del otro y las dos caras
+ * dejan de dar la misma respuesta — que es exactamente lo que se está arreglando.
+ *
+ * Y `duplicadoResuelto` viaja porque el dueño ya contestó: apretó "Es otro, cargalo" sobre una fila
+ * candidata que vio. Sin eso, el cargador volvería a encontrar el mismo PROBABLE y bloquearía una
+ * carga que una persona ya autorizó.
  */
 export function aFajoJson(items = []) {
   return items.filter(estaCompleto).map((it) => {
@@ -61,6 +73,8 @@ export function aFajoJson(items = []) {
       categoria: c.categoria ?? undefined,
       fecha: c.fecha,
       proveedor: c.proveedor,
+      cuit: c.cuit ?? undefined,
+      cae: c.cae ?? undefined,
       tipo: c.tipo,
       numero: c.numero,
       concepto: c.concepto ?? undefined,
@@ -71,6 +85,7 @@ export function aFajoJson(items = []) {
       obra: c.obra ?? undefined,
       unidad: c.unidad ?? undefined,
       detalle: c.detalleObra ?? undefined,
+      duplicadoResuelto: it.duplicadoResuelto ?? undefined,
     }
   })
 }
@@ -254,7 +269,15 @@ function textoCargado(filas, yaEstaban, datos) {
   if (yaEstaban.length) l.push(`_${yaEstaban.length} ya estaba(n) cargado(s); no los dupliqué._`)
   if (datos?.errores) l.push(`⚠ ${datos.errores} fila(s) quedaron con #ERROR — revisalas.`)
   if (datos?.nuevos?.length) l.push(`⚠ Proveedor(es) fuera del desplegable: ${datos.nuevos.join(' · ')}. Confirmá si hay que agregarlos.`)
-  if (datos?.dupesArca?.length) l.push(`ℹ ${datos.dupesArca.length} ya figura(n) en ARCA — revisá que no sea un duplicado.`)
+  // EL CARGADOR TAMBIÉN MIRA COMPRAS. Si encontró uno que ya estaba, no lo escribió: entre la
+  // confirmación y la escritura pasa tiempo, y en ese hueco el comprobante pudo entrar por Claude
+  // Code o a mano. Decirlo es lo que evita que el dueño lo dé por cargado y lo mande de nuevo.
+  if (datos?.duplicados?.length) {
+    l.push(`⛔ ${datos.duplicados.length} NO lo(s) cargué: ya estaban en Compras (${datos.duplicados.map((d) => `fila ${d.fila}`).join(', ')}).`)
+  }
+  // Estar en ARCA no es un duplicado: es el libro fiscal confirmando el comprobante. Lo que importa
+  // avisar es cuando el número que se leyó de la foto NO era el verdadero.
+  if (datos?.arca?.corregidos) l.push(`ℹ ${datos.arca.corregidos} número(s) de comprobante corregido(s) contra ARCA.`)
   l.push('_Completá vos la Unidad de Negocio y el Tipo de Costo: ahí clasifica el rubro de caja._')
   return l.join('\n')
 }

@@ -116,18 +116,13 @@ export function aFechaAR(v) {
   return null
 }
 
-/**
- * Problemas que impiden cargar un comprobante. Vacío = cargable. NO es una opinión de negocio:
- * son los mínimos para que las fórmulas y los cruces funcionen (fecha, proveedor, un importe).
- */
-export function validar(c) {
-  const p = []
-  if (!aFechaAR(c.fecha)) p.push('fecha ilegible o ausente')
-  if (!normalizar(c.proveedor)) p.push('sin proveedor')
-  if (aNumero(c.neto) == null && aNumero(c.total) == null) p.push('sin importe numérico')
-  if (c.tipo && !tipoComprobante(c.tipo)) p.push(`tipo de comprobante no reconocido: "${c.tipo}"`)
-  return p
-}
+// ¿QUÉ LE FALTA A ESTE COMPROBANTE? NO SE CONTESTA ACÁ (03/08).
+//
+// `validar()` vivía en este archivo y contestaba distinto que `preguntasDe()` del bot: dos criterios
+// para la misma pregunta, y ninguna de las dos caras sabía lo que revisaba la otra. La respuesta se
+// unificó en `comprobantes/faltantes.mjs`, parametrizada por política (`POLITICA.CARGADOR` exige lo
+// mínimo para que las fórmulas y los cruces funcionen; `POLITICA.CHAT` exige además obra y número).
+// Acá no se reintroduce: este archivo sabe QUÉ COLUMNA lleva cada dato, no si el dato alcanza.
 
 /**
  * Traduce un comprobante parseado (de la foto) a los VALORES de las columnas de input, ya
