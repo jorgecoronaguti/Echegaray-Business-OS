@@ -63,10 +63,11 @@ export async function areaDelCanal(port, channelId) {
  * @param {{query:Function}} [o.port]
  * @param {string} [o.channelId]
  * @param {Function} [o.razonar]  (texto, candidatos) => Promise<slug|null>  — inyectable
+ * @param {string[]} [o.fileIds]  adjuntos del mensaje: hay dominios donde el pedido ES el archivo
  * @returns {Promise<{especialista:object|null, via:string, area:string|null,
  *                    intencion:object|null, candidatos:Array, catalogo?:Array}>}
  */
-export async function resolver({ texto, port, channelId, actor, razonar } = {}) {
+export async function resolver({ texto, port, channelId, actor, razonar, fileIds = [] } = {}) {
   const todos = await especialistas()
   const ctxCanal = await areaDelCanal(port, channelId)
   const area = ctxCanal?.area ?? null
@@ -80,7 +81,10 @@ export async function resolver({ texto, port, channelId, actor, razonar } = {}) 
   const reclamos = []
   for (const e of todos) {
     let r = null
-    try { r = await e.reconoce(texto, { area, canal: ctxCanal?.canal ?? null, port, actor }) } catch { r = null }
+    // `fileIds` viaja con el contexto porque hay dominios donde el pedido ES el archivo: una foto de
+    // una factura no trae una sola palabra que reconocer. Un especialista que no lo mire funciona
+    // exactamente igual que antes.
+    try { r = await e.reconoce(texto, { area, canal: ctxCanal?.canal ?? null, port, actor, fileIds }) } catch { r = null }
     if (r) reclamos.push({ especialista: e, intencion: r })
   }
   if (reclamos.length === 1) {

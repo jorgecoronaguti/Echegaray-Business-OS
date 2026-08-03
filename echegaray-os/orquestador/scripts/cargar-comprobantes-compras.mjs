@@ -25,10 +25,22 @@ import { perfilesDeImputacionDesdeDB, sugerirImputacion } from '../lib/imputacio
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
 const ADD_PROV = process.argv.includes('--add-proveedores')
+// SALIDA LEGIBLE POR OTRO PROGRAMA (`--json`). Aditiva y apagada por defecto: sin la bandera este
+// script imprime exactamente lo que imprimía. Existe porque el bot de Mattermost necesita contestarle
+// al dueño EN QUÉ FILA quedó cada comprobante, y sacar un número de fila parseando prosa es la clase
+// de acoplamiento que se rompe el día que alguien mejora un mensaje.
+const JSON_OUT = process.argv.includes('--json')
 const fileArg = (process.argv.find((a) => a.startsWith('--file=')) || '').split('=')[1]
   || process.argv[process.argv.indexOf('--file') + 1]
 
-const idx = colIndice // 'A'->0, 'AA'->26 — una sola definición, compartida con la verificación
+/** Marca que delimita la línea de resultado. Todo lo demás de stdout es para una persona. */
+const MARCA_JSON = '##ORQ-JSON##'
+const emitir = (o) => { if (JSON_OUT) console.log(MARCA_JSON + JSON.stringify(o)) }
+
+// El índice de columna sale de `colIndice`, no de una copia local: la verificación de la escritura
+// usa la misma función, y dos definiciones de "qué número de columna es la M" es exactamente cómo
+// se cuela un desfasaje que nadie ve hasta que escribe en la columna de al lado.
+const idx = colIndice // 'A'->0, 'AA'->26
 
 /** Lista viva del desplegable ESTRICTO de proveedores (columna E). */
 async function listaProveedores(google) {
@@ -94,7 +106,10 @@ export async function escribirYVerificar(google, { desde, hasta, plan, fileId = 
   const leido = await google.readSheetGrid(fileId, `Compras!A${desde}:AD${hasta}`).catch(() => null)
   const v = verificarEscritura(plan.map((p) => p.valores), leido?.filas || [], { desde })
   if (v.ok && leido) return { ok: true, ...v, respuesta }
-  return { ok: false, motivo: porQueNoEntro(respuesta, Boolean(leido)), ...v, respuesta }
+  // El freno de mano y el candado se arreglan de formas distintas —uno lo levanta el dueño para toda
+  // la sesión, el otro es por pestaña—, así que quien consuma esto tiene que poder distinguirlos sin
+  // leer prosa. Sin este campo, el bot le decía "pestaña candada" a un Sheet congelado.
+  return { ok: false, congelado: respuesta?.congelado === true, motivo: porQueNoEntro(respuesta, Boolean(leido)), ...v, respuesta }
 }
 
 async function main() {
@@ -133,7 +148,9 @@ async function main() {
     const sug = perfiles && !cc.unidad && !cc.obra
       ? sugerirImputacion({ proveedor: prov.valor, concepto: c.concepto, monto: c.total ?? c.neto }, perfiles)
       : null
-    plan.push({ valores: valoresInput(cc), nuevo: prov.esNuevo, proveedor: prov.valor, sug })
+    // `i` = índice del comprobante en el fajo de ENTRADA. Va en el plan porque los rechazados no
+    // ocupan fila: sin él, quien llama no puede saber a qué comprobante suyo corresponde cada fila.
+    plan.push({ i, valores: valoresInput(cc), nuevo: prov.esNuevo, proveedor: prov.valor, sug })
   }
 
   const desde = ultima + 1
@@ -161,12 +178,17 @@ async function main() {
     }
     console.log('   (✓ = alta confianza · (?) = necesita tu confirmación)')
   }
-  if (!plan.length) { console.log('\nNada cargable.'); await closePool(); return }
+  if (!plan.length) {
+    console.log('\nNada cargable.')
+    emitir({ ok: false, motivo: 'nada_cargable', escritas: 0, rechazos, nuevos: [...nuevos] })
+    await closePool(); return
+  }
 
   if (DRY) {
     console.log('\n(--dry) Muestra de la primera fila a escribir:')
     console.log('  ', JSON.stringify(plan[0].valores))
     console.log(`  Fórmulas a estampar por copyPaste desde la fila ${ultima}: ${GRUPOS_FORMULA.map((g) => g[0] === g[1] ? g[0] : g.join(':')).join(' ')}`)
+    emitir({ ok: true, dry: true, desde, hasta, escritas: 0, filas: plan.map((p, k) => ({ i: p.i, fila: desde + k, proveedor: p.proveedor })), rechazos, nuevos: [...nuevos] })
     await closePool(); return
   }
 
@@ -190,14 +212,27 @@ async function main() {
 
   // 1) VALORES de input y de imputación (obra), una columna por vez. NO toca fórmulas, derivadas
   //    (AC/AD/AE/AF/AJ) ni lo que el dueño completa aparte (Unidad de Negocio, Detalle).
+  // NO ALCANZA CON MIRAR LO QUE DEVUELVE LA API. La escritura puede no ocurrir sin lanzar una
+  // excepción: el freno de mano, el candado de pestaña y la firma devuelven `{protegido:true}` y el
+  // script seguía derecho hasta imprimir "✔ Escritas N filas" sobre un Sheet que no se tocó. Por eso
+  // `escribirYVerificar` RELEE el destino y compara celda por celda: la evidencia es el dato leído
+  // donde tenía que quedar, nunca la pantalla que contestó que sí.
   const escritura = await escribirYVerificar(google, { desde, hasta, plan })
   if (!escritura.ok) {
     console.error(`\n✖ NO se escribió lo que pedí: ${escritura.motivo}`)
     for (const v of escritura.vacias.slice(0, 10)) console.error(`   fila ${v.fila} col ${v.columna}: quedó VACÍA (esperaba "${v.esperado}")`)
     for (const d of escritura.distintas.slice(0, 10)) console.error(`   fila ${d.fila} col ${d.columna}: dice "${d.encontrado}", esperaba "${d.esperado}"`)
     console.error('   No estampo fórmulas sobre filas que no tienen datos. Nada quedó a medias: revisá el candado/firma de "Compras" y volvé a correr.')
-    console.error('   Para devolver la pestaña al OS:  node orquestador/scripts/pestana-candado.mjs desbloquear "Compras"')
-    process.exitCode = 1
+    // El bot de Mattermost consume esta línea: sin ella tendría que adivinar el resultado parseando
+    // prosa, y un mensaje mejorado le rompería la lectura.
+    emitir({
+      ok: false,
+      motivo: escritura.congelado ? 'congelado' : 'protegido',
+      congelado: escritura.congelado === true,
+      detalle: String(escritura.motivo ?? '').slice(0, 300),
+      escritas: 0,
+    })
+    process.exitCode = escritura.congelado ? 2 : 1
     await closePool(); return
   }
 
@@ -249,6 +284,11 @@ async function main() {
   } catch (e) {
     console.log(`· frescura no registrada: ${String(e?.message ?? e).slice(0, 120)}`)
   }
+  emitir({
+    ok: true, desde, hasta, escritas: plan.length, errores, sinRubro,
+    filas: plan.map((p, k) => ({ i: p.i, fila: desde + k, proveedor: p.proveedor })),
+    rechazos, nuevos: [...nuevos], dupesArca: dupes,
+  })
   console.log('\nSIGUIENTE: node orquestador/scripts/sync-compras.mjs  (espeja a Supabase, regla #6).')
   await closePool()
 }

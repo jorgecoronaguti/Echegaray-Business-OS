@@ -114,6 +114,11 @@ export class MattermostAdapter extends PuertoAdapter {
       team_id: payload.team_id ?? null,
       post_id: payload.post_id ?? null,
       texto: payload.text ?? '',
+      // Tipo de canal y ADJUNTOS del post. Los ids de archivo, no los bytes: el evento canónico es
+      // un hecho, no un depósito de binario. Quien necesite el contenido lo baja después, y sólo
+      // después de pasar su propia puerta.
+      ...(payload.channel_type != null ? { channel_type: payload.channel_type } : {}),
+      ...(Array.isArray(payload.file_ids) && payload.file_ids.length ? { file_ids: payload.file_ids } : {}),
     }
 
     // Slash command: MM manda `command` (ej. "/os"). Es un COMANDO_INVOCADO.

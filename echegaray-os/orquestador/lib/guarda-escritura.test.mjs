@@ -1,7 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { registerHooks } from 'node:module'
-import { nombreTab, esProtegible, tabsProtegibles, separarPermitido, sheetIdDeRequestContenido, separarRequests, gridVacia, protegerVacioSobreLleno, guardarEscritura, evaluarBloqueadas } from './guarda-escritura.mjs'
+import { nombreTab, esProtegible, tabsProtegibles, separarPermitido, separarRequests, gridVacia, protegerVacioSobreLleno, guardarEscritura, evaluarBloqueadas, guardarRequests, CLASE, clasificarRequest } from './guarda-escritura.mjs'
+import { firmaDeGrid } from './firma-tab.mjs'
 
 // ═══ DOBLE DE LA BASE — se registra ACÁ ARRIBA, antes de que nadie importe db.mjs ═══
 //
@@ -77,40 +78,107 @@ test('separarPermitido: sin bloqueadas, pasa todo tal cual', () => {
   assert.equal(bloqueado.length, 0)
 })
 
-test('sheetIdDeRequestContenido: sólo los requests que escriben VALORES cuentan', () => {
-  // updateCells con userEnteredValue → contenido
-  assert.equal(sheetIdDeRequestContenido({ updateCells: { range: { sheetId: 7 }, fields: 'userEnteredValue,userEnteredFormat' } }), 7)
-  // updateCells sólo formato → NO es contenido (nunca destruye datos del dueño)
-  assert.equal(sheetIdDeRequestContenido({ updateCells: { range: { sheetId: 7 }, fields: 'userEnteredFormat.textFormat' } }), null)
-  // updateCells que toca la NOTA → SÍ es contenido (RESPETO-NOTAS): una nota es del dueño y no se pisa
-  // en pestaña candada/editada. Cubre escritura, borrado (rows:[{values:[{note:''}]}]) y note combinada.
-  assert.equal(sheetIdDeRequestContenido({ updateCells: { range: { sheetId: 7 }, fields: 'note' } }), 7)
-  assert.equal(sheetIdDeRequestContenido({ updateCells: { range: { sheetId: 7 }, rows: [{ values: [{ note: '' }] }], fields: 'note' } }), 7)
-  assert.equal(sheetIdDeRequestContenido({ updateCells: { start: { sheetId: 8 }, fields: 'note' } }), 8)
-  assert.equal(sheetIdDeRequestContenido({ updateCells: { range: { sheetId: 7 }, fields: 'userEnteredFormat,note' } }), 7)
-  // La palabra "note" no puede colarse por un nombre de campo que la contenga como subcadena.
-  assert.equal(sheetIdDeRequestContenido({ updateCells: { range: { sheetId: 7 }, fields: 'footnotes' } }), null)
-  // updateCells con start (no range) igual cuenta
-  assert.equal(sheetIdDeRequestContenido({ updateCells: { start: { sheetId: 9 }, fields: 'userEnteredValue' } }), 9)
-  // copyPaste de fórmula/valor → contenido; de formato → no
-  assert.equal(sheetIdDeRequestContenido({ copyPaste: { destination: { sheetId: 3 }, pasteType: 'PASTE_FORMULA' } }), 3)
-  assert.equal(sheetIdDeRequestContenido({ copyPaste: { destination: { sheetId: 3 }, pasteType: 'PASTE_FORMAT' } }), null)
-  // pasteData / appendCells → contenido
-  assert.equal(sheetIdDeRequestContenido({ pasteData: { coordinate: { sheetId: 4 } } }), 4)
-  assert.equal(sheetIdDeRequestContenido({ appendCells: { sheetId: 5 } }), 5)
-  // formato/estructura puros → null (nunca se bloquean)
-  assert.equal(sheetIdDeRequestContenido({ repeatCell: { range: { sheetId: 1 } } }), null)
-  assert.equal(sheetIdDeRequestContenido({ mergeCells: { range: { sheetId: 1 } } }), null)
-  assert.equal(sheetIdDeRequestContenido({ deleteDimension: { range: { sheetId: 1 } } }), null)
-  assert.equal(sheetIdDeRequestContenido({ updateSheetProperties: { properties: { sheetId: 1 } } }), null)
-  assert.equal(sheetIdDeRequestContenido(null), null)
+// ═══ CLASIFICACIÓN DE REQUESTS (03/08) — el borrado también destruye ═══
+//
+// Las tres assertions que cambiaron de significado respecto de la versión anterior de este test, y por
+// qué: `deleteDimension`, `mergeCells` y un `repeatCell` SIN máscara `fields` daban `null` (pasaban
+// libres). Las dos primeras destruyen contenido —borrar filas es la operación más destructiva que existe;
+// combinar un rango con datos descarta el valor de todas las celdas menos la ancla— y la tercera no se
+// puede afirmar inofensiva sin la máscara. La assertion vieja de `deleteDimension` es literalmente el
+// defecto que este cambio arregla: fijaba por escrito que borrar filas sobre una pestaña candada pasaba.
+
+/** Atajo de lectura: ¿este request pasa por la guarda, y a qué pestañas se le atribuye? */
+const clase = (req, dims) => { const c = clasificarRequest(req, dims); return { destructivo: c.clase === CLASE.DESTRUCTIVO, ids: c.sheetIds, todas: c.todas } }
+
+test('clasificarRequest: escribir una celda destruye — y borrarla también', () => {
+  // updateCells con valor / nota / pivot → destructivo (RESPETO-NOTAS, 27/07: una nota es del dueño).
+  assert.deepEqual(clase({ updateCells: { range: { sheetId: 7 }, fields: 'userEnteredValue,userEnteredFormat' } }), { destructivo: true, ids: [7], todas: false })
+  assert.deepEqual(clase({ updateCells: { range: { sheetId: 7 }, fields: 'note' } }), { destructivo: true, ids: [7], todas: false })
+  assert.deepEqual(clase({ updateCells: { range: { sheetId: 7 }, rows: [{ values: [{ note: '' }] }], fields: 'note' } }), { destructivo: true, ids: [7], todas: false })
+  assert.deepEqual(clase({ updateCells: { start: { sheetId: 8 }, fields: 'note' } }), { destructivo: true, ids: [8], todas: false })
+  assert.deepEqual(clase({ updateCells: { start: { sheetId: 9 }, fields: 'userEnteredValue' } }), { destructivo: true, ids: [9], todas: false })
+  assert.equal(clase({ updateCells: { range: { sheetId: 7 }, fields: 'pivotTable' } }).destructivo, true)
+  // updateCells sólo formato → pasa. Y "note" no se cuela por una subcadena (`footnotes`).
+  assert.equal(clase({ updateCells: { range: { sheetId: 7 }, fields: 'userEnteredFormat.textFormat' } }).destructivo, false)
+  assert.equal(clase({ updateCells: { range: { sheetId: 7 }, fields: 'footnotes' } }).destructivo, false)
+  // copyPaste de fórmula/valor pisa el destino; de formato, no.
+  assert.deepEqual(clase({ copyPaste: { destination: { sheetId: 3 }, pasteType: 'PASTE_FORMULA' } }), { destructivo: true, ids: [3], todas: false })
+  assert.equal(clase({ copyPaste: { destination: { sheetId: 3 }, pasteType: 'PASTE_FORMAT' } }).destructivo, false)
+  assert.deepEqual(clase({ pasteData: { coordinate: { sheetId: 4 } } }), { destructivo: true, ids: [4], todas: false })
+  assert.deepEqual(clase({ appendCells: { sheetId: 5 } }), { destructivo: true, ids: [5], todas: false })
+  // EL DEFECTO: los que BORRAN o DESPLAZAN. Antes pasaban libres los tres.
+  assert.deepEqual(clase({ deleteDimension: { range: { sheetId: 1, dimension: 'ROWS', startIndex: 5, endIndex: 20 } } }), { destructivo: true, ids: [1], todas: false })
+  assert.deepEqual(clase({ deleteRange: { range: { sheetId: 1 }, shiftDimension: 'ROWS' } }), { destructivo: true, ids: [1], todas: false })
+  assert.deepEqual(clase({ deleteSheet: { sheetId: 1 } }), { destructivo: true, ids: [1], todas: false })
+  assert.deepEqual(clase({ insertDimension: { range: { sheetId: 1 } } }), { destructivo: true, ids: [1], todas: false })
+  assert.deepEqual(clase({ moveDimension: { source: { sheetId: 1 }, destinationIndex: 3 } }), { destructivo: true, ids: [1], todas: false })
+  assert.deepEqual(clase({ sortRange: { range: { sheetId: 1 } } }), { destructivo: true, ids: [1], todas: false })
+  assert.deepEqual(clase({ deleteDuplicates: { range: { sheetId: 1 } } }), { destructivo: true, ids: [1], todas: false })
+  assert.deepEqual(clase({ trimWhitespace: { range: { sheetId: 1 } } }), { destructivo: true, ids: [1], todas: false })
+  // mergeCells: combinar un rango con datos descarta el valor de todas menos la ancla. unmerge no.
+  assert.deepEqual(clase({ mergeCells: { range: { sheetId: 1 } } }), { destructivo: true, ids: [1], todas: false })
+  assert.equal(clase({ unmergeCells: { range: { sheetId: 1 } } }).destructivo, false)
+  // repeatCell sin máscara: no se puede AFIRMAR que sea sólo formato → fail-closed.
+  assert.equal(clase({ repeatCell: { range: { sheetId: 1 } } }).destructivo, true)
+  assert.equal(clase({ repeatCell: { range: { sheetId: 1 }, fields: 'userEnteredFormat.backgroundColor' } }).destructivo, false)
+  // repeatCell CON valor pisa un rango entero de una: era el otro agujero de la misma familia.
+  assert.equal(clase({ repeatCell: { range: { sheetId: 1 }, cell: { userEnteredValue: { stringValue: 'x' } }, fields: 'userEnteredValue' } }).destructivo, true)
+  // Apariencia y estructura que sólo agrega: pasan.
+  for (const r of [{ addSheet: { properties: { title: 'Nueva' } } }, { appendDimension: { sheetId: 1, length: 10 } }, { updateBorders: { range: { sheetId: 1 } } }, { updateDimensionProperties: { range: { sheetId: 1 }, fields: 'pixelSize' } }, { addDimensionGroup: { range: { sheetId: 1 } } }]) {
+    assert.equal(clase(r).destructivo, false, JSON.stringify(r))
+  }
+  assert.equal(clase(null).destructivo, false)
 })
 
-test('separarRequests: descarta sólo los requests de contenido a sheetIds bloqueados, deja el formato', () => {
+test('clasificarRequest: cutPaste protege el ORIGEN además del destino — vaciarlo también es borrar', () => {
+  // Clasificarlo sólo por el destino (lo que hacía la versión anterior) dejaba el origen sin protección:
+  // un cutPaste desde una pestaña candada hacia una libre le vaciaba las celdas al dueño.
+  const c = clase({ cutPaste: { source: { sheetId: 7 }, destination: { sheetId: 8 }, pasteType: 'PASTE_NORMAL' } })
+  assert.deepEqual(c.ids.sort(), [7, 8])
+  assert.equal(c.destructivo, true)
+  assert.equal(separarRequests([{ cutPaste: { source: { sheetId: 7 }, destination: { sheetId: 8 } } }], new Set([7])).bloqueados.length, 1, 'el ORIGEN candado lo frena')
+  assert.equal(separarRequests([{ cutPaste: { source: { sheetId: 7 }, destination: { sheetId: 8 } } }], new Set([8])).bloqueados.length, 1, 'el DESTINO candado también')
+})
+
+test('clasificarRequest: un tipo desconocido o inatribuible le pega a TODAS (fail-closed)', () => {
+  // El olvido que produjo este bug fue exactamente éste: un request que nadie clasificó pasó libre. Con
+  // la lista blanca invertida, lo que no está enumerado entra por el lado seguro sin que nadie se acuerde.
+  const inventado = clase({ requestQueGoogleAgregueEnDosAnios: { range: { sheetId: 4 } } })
+  assert.equal(inventado.destructivo, true)
+  assert.deepEqual(inventado.ids, [4], 'igual se le saca el sheetId para no frenar de más')
+  // Sin ningún sheetId no se puede atribuir → todas.
+  assert.deepEqual(clase({ findReplace: { allSheets: true, find: 'a', replacement: 'b' } }), { destructivo: true, ids: [], todas: true })
+  assert.deepEqual(clase({ deleteEmbeddedObject: { objectId: 99 } }), { destructivo: true, ids: [], todas: true })
+  // Un request `todas` se frena si hay CUALQUIER pestaña protegida, y pasa si no hay ninguna.
+  const req = [{ findReplace: { allSheets: true, find: 'a', replacement: 'b' } }]
+  assert.equal(separarRequests(req, new Set([7])).bloqueados.length, 1)
+  assert.equal(separarRequests(req, new Set()).permitidos.length, 1)
+})
+
+test('clasificarRequest: achicar la grilla es un deleteDimension con otro nombre; agrandarla no', () => {
+  // `updateSheetProperties{gridProperties.rowCount}` es la vía indirecta de borrar filas: bajar el
+  // rowCount se lleva puestas las de abajo CON su contenido. Distinguir achicar de agrandar necesita el
+  // tamaño actual (getSheetMeta) — sin él no se puede afirmar cuál de las dos es, así que se frena.
+  const dims = new Map([[1, { rows: 500, cols: 26 }]])
+  const achica = { updateSheetProperties: { properties: { sheetId: 1, gridProperties: { rowCount: 100 } }, fields: 'gridProperties.rowCount' } }
+  const agranda = { updateSheetProperties: { properties: { sheetId: 1, gridProperties: { rowCount: 900 } }, fields: 'gridProperties.rowCount' } }
+  assert.equal(clase(achica, dims).destructivo, true)
+  assert.equal(clase(agranda, dims).destructivo, false)
+  assert.equal(clase(achica, null).destructivo, true, 'sin el tamaño actual: fail-closed')
+  assert.equal(clase(agranda, null).destructivo, true, 'sin el tamaño actual: fail-closed aunque agrande')
+  // Congelar filas y pintar la pestaña siguen pasando libres: `frozenRowCount` no es `rowCount`.
+  assert.equal(clase({ updateSheetProperties: { properties: { sheetId: 1, gridProperties: { frozenRowCount: 2 } }, fields: 'gridProperties.frozenRowCount' } }, dims).destructivo, false)
+  assert.equal(clase({ updateSheetProperties: { properties: { sheetId: 1, tabColor: {} }, fields: 'tabColor' } }, dims).destructivo, false)
+  // Máscara combinada y máscara ancha.
+  assert.equal(clase({ updateSheetProperties: { properties: { sheetId: 1, gridProperties: { rowCount: 900, columnCount: 10 } }, fields: 'gridProperties(rowCount,columnCount)' } }, dims).destructivo, true, 'achica las columnas')
+  assert.equal(clase({ updateSheetProperties: { properties: { sheetId: 1, gridProperties: { frozenRowCount: 2 } }, fields: 'gridProperties' } }, dims).destructivo, true, 'máscara ancha: borra el rowCount que no declara')
+})
+
+test('separarRequests: descarta sólo lo destructivo a sheetIds bloqueados, deja la apariencia', () => {
   const reqs = [
-    { updateCells: { range: { sheetId: 7 }, fields: 'userEnteredValue' } }, // contenido a 7 (bloqueado)
-    { repeatCell: { range: { sheetId: 7 } } },                              // formato a 7 → pasa
-    { updateCells: { range: { sheetId: 8 }, fields: 'userEnteredValue' } }, // contenido a 8 (libre) → pasa
+    { updateCells: { range: { sheetId: 7 }, fields: 'userEnteredValue' } },              // contenido a 7 (bloqueado)
+    { repeatCell: { range: { sheetId: 7 }, fields: 'userEnteredFormat.textFormat' } },   // formato a 7 → pasa
+    { updateCells: { range: { sheetId: 8 }, fields: 'userEnteredValue' } },              // contenido a 8 (libre) → pasa
   ]
   const { permitidos, bloqueados } = separarRequests(reqs, new Set([7]))
   assert.equal(permitidos.length, 2)
@@ -457,4 +525,132 @@ test('soloFilasVacias: sin base (fail-closed total) tampoco escribe — no se sa
   const g = await guardarEscritura(clienteAppend([]), 'ID', APPEND, { soloFilasVacias: true })
   assert.equal(g.data.length, 0)
   assert.deepEqual(g.bloqueadas, ['Compras'])
+})
+
+// ═══ EL BORRADO PASA POR LA GUARDA, Y NO SE AUTO-BLINDA (03/08) ═══
+//
+// LOS DOS CASOS REALES, el mismo día contra el Sheet real. Se borraron 15 filas de "Jornales por
+// Quincena" con `deleteDimension`: pasó sin control, cambió la firma de la pestaña, eso la AUTO-CANDÓ, y
+// la escritura que COMPLETABA el trabajo quedó bloqueada — la pestaña a medio camino. Lo mismo en
+// "Impuestos y Financieros": borrada la sección duplicada, la pestaña se auto-candó por el propio borrado
+// y las filas que dependían de lo borrado quedaron en #REF! sin poder repararlas.
+//
+// Son dos defectos encadenados y los dos se prueban acá: (1) el borrado no pasaba por la guarda, (2) un
+// cambio que la guarda AUTORIZÓ no re-sellaba la firma, así que el OS leía su propia escritura como una
+// edición del dueño y se bloqueaba a sí mismo a mitad de una operación.
+
+/** Base con firma VIVA: lo que se sella se puede volver a leer. Sin eso no se puede probar el re-sellado. */
+function baseViva({ candadas = [], candadasAuto = [] } = {}) {
+  const reg = { candados: [], firmas: new Map() }
+  globalThis.__dobleDbGuarda.query = async (sql, params = []) => {
+    if (/insert into public\.sheet_pestanas_bloqueadas/i.test(sql)) { reg.candados.push(params[1]); return { rows: [] } }
+    if (/select bloqueada_por from public\.sheet_pestanas_bloqueadas/i.test(sql)) {
+      const p = params[1]
+      if (candadas.includes(p)) return { rows: [{ bloqueada_por: 'dueño' }] }
+      if (candadasAuto.includes(p)) return { rows: [{ bloqueada_por: 'auto' }] }
+      return { rows: [] }
+    }
+    if (/select pestana from public\.sheet_pestanas_bloqueadas/i.test(sql)) return { rows: [...candadas, ...candadasAuto].map((p) => ({ pestana: p })) }
+    if (/select firma from public\.sheet_tab_firma/i.test(sql)) { const f = reg.firmas.get(params[1]); return { rows: f ? [{ firma: f }] : [] } }
+    if (/insert into public\.sheet_tab_firma/i.test(sql)) { reg.firmas.set(params[1], params[2]); return { rows: [] } }
+    return { rows: [] }
+  }
+  return reg
+}
+
+const TAB = 'Jornales por Quincena'
+const SID = 3
+/** 30 filas: 15 de encabezado+quincena buena y 15 duplicadas, que es lo que se borró de verdad. */
+const GRID = Array.from({ length: 30 }, (_, i) => [`fila ${i}`, i * 100])
+const BORRAR_15 = [{ deleteDimension: { range: { sheetId: SID, dimension: 'ROWS', startIndex: 15, endIndex: 30 } } }]
+
+/**
+ * Planilla falsa que se MODIFICA de verdad: el borrado se aplica sobre su grilla, así la firma cambia
+ * como cambia en el Sheet real. Un doble que devolviera siempre la misma grilla no probaría nada — el
+ * bug entero consiste en que la firma cambia por culpa del propio OS.
+ */
+function planillaFalsa(filas = GRID) {
+  const estado = { grid: filas.map((f) => [...f]) }
+  return {
+    estado,
+    async getSheetMeta() { return [{ sheetId: SID, title: TAB, rows: estado.grid.length, cols: 26 }] },
+    async readSheetValues() { return estado.grid.map((f) => [...f]) },
+    borrar(desde, hasta) { estado.grid.splice(desde, hasta - desde) },
+  }
+}
+
+test('deleteDimension sobre una pestaña CANDADA POR EL DUEÑO: rechazado', async (t) => {
+  // El corazón del defecto. Antes esto pasaba: borrar quince filas de una pestaña que el dueño tomó
+  // cruzaba la guarda entera, mientras escribirle una fórmula a la misma pestaña se frenaba.
+  t.after(() => { globalThis.__dobleDbGuarda.query = sinBase })
+  baseViva({ candadas: [TAB] })
+  const g = await guardarRequests(planillaFalsa(), 'ID', BORRAR_15)
+  assert.equal(g.requests.length, 0, 'no queda nada que mandar → spreadsheetBatchUpdate devuelve protegido:true')
+  assert.deepEqual(g.bloqueadas, [TAB])
+})
+
+test('deleteDimension sobre una pestaña LIBRE: pasa, y re-sella su propia escritura', async (t) => {
+  // La otra mitad: la guarda no puede volverse un freno de mano. En una pestaña libre el borrado entra.
+  t.after(() => { globalThis.__dobleDbGuarda.query = sinBase })
+  const reg = baseViva()
+  const pl = planillaFalsa()
+  reg.firmas.set(TAB, firmaDeGrid(pl.estado.grid)) // baseline: la última que escribió el OS
+  const g = await guardarRequests(pl, 'ID', BORRAR_15)
+  assert.equal(g.requests.length, 1, 'el borrado pasa')
+  assert.deepEqual(g.bloqueadas, [])
+  pl.borrar(15, 30) // el batch se aplica de verdad contra la planilla
+  await g.sellar()
+  assert.equal(reg.firmas.get(TAB), firmaDeGrid(pl.estado.grid), 'la firma sellada es la de DESPUÉS del borrado')
+  assert.deepEqual(reg.candados, [], 'y nadie candó nada')
+})
+
+test('la operación de DOS PASOS (borrar y después escribir) se completa entera, sin auto-blindarse', async (t) => {
+  // EL CASO EXACTO de "Jornales por Quincena" y de "Impuestos y Financieros". Si esto se pone rojo, el OS
+  // vuelve a poder romper una pestaña y no poder arreglarla: el borrado se auto-canda y la escritura que
+  // repara lo borrado queda afuera, con las filas dependientes en #REF!.
+  t.after(() => { globalThis.__dobleDbGuarda.query = sinBase })
+  const reg = baseViva()
+  const pl = planillaFalsa()
+  reg.firmas.set(TAB, firmaDeGrid(pl.estado.grid))
+
+  const paso1 = await guardarRequests(pl, 'ID', BORRAR_15)
+  assert.equal(paso1.requests.length, 1, 'precondición: el borrado está autorizado')
+  pl.borrar(15, 30)
+  await paso1.sellar()
+
+  const paso2 = await guardarEscritura(pl, 'ID', [{ range: `'${TAB}'!A16:B16`, values: [['TOTAL QUINCENA', 4500]] }])
+  assert.deepEqual(paso2.bloqueadas, [], 'el OS reconoce su propio borrado en vez de leerlo como una edición tuya')
+  assert.equal(paso2.data.length, 1, 'la escritura que COMPLETA el trabajo entra')
+  assert.deepEqual(reg.candados, [], 'y la pestaña no quedó auto-candada por el borrado del propio OS')
+})
+
+test('el re-sellado NO levanta el candado del dueño: una pestaña candada no se toca ni se sella', async (t) => {
+  // El límite del arreglo, y lo único que lo hace admisible: sólo se sella lo que la guarda AUTORIZÓ.
+  // Si esto se pone verde al revés (aparece una firma nueva), el re-sellado se convirtió en un bypass.
+  t.after(() => { globalThis.__dobleDbGuarda.query = sinBase })
+  const reg = baseViva({ candadas: [TAB] })
+  const pl = planillaFalsa()
+  const g = await guardarRequests(pl, 'ID', [
+    ...BORRAR_15,
+    { updateDimensionProperties: { range: { sheetId: SID, dimension: 'COLUMNS' }, properties: { pixelSize: 120 }, fields: 'pixelSize' } },
+  ])
+  assert.equal(g.requests.length, 1, 'el borrado se frena; el ancho de columna pasa')
+  assert.ok(g.requests[0].updateDimensionProperties)
+  await g.sellar()
+  assert.equal(reg.firmas.has(TAB), false, 'ninguna firma nueva para una pestaña que el dueño tomó')
+})
+
+test('un batch de pura apariencia no consulta nada: ni getSheetMeta, ni base, ni firma', async (t) => {
+  // El contrapeso de costo: la guarda nueva es más ancha, no más cara. 106 repeatCell de formato por
+  // corrida no pueden empezar a pagar una lectura de A1:BZ cada uno.
+  t.after(() => { globalThis.__dobleDbGuarda.query = sinBase })
+  baseViva()
+  const cliente = { async getSheetMeta() { throw new Error('no debería pedir la meta') }, async readSheetValues() { throw new Error('no debería leer') } }
+  const g = await guardarRequests(cliente, 'ID', [
+    { repeatCell: { range: { sheetId: SID }, fields: 'userEnteredFormat.numberFormat' } },
+    { updateBorders: { range: { sheetId: SID } } },
+    { updateSheetProperties: { properties: { sheetId: SID, tabColor: {} }, fields: 'tabColor' } },
+  ])
+  assert.equal(g.requests.length, 3)
+  assert.deepEqual(g.bloqueadas, [])
 })
