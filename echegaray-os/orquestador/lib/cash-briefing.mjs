@@ -33,9 +33,17 @@ export function parseFecha(s) {
 }
 export const fmt = (n) => '$' + Math.round(n).toLocaleString('es-AR')
 
-/** Lee SOLO columnas estructuradas del Cash Flow. `hoy` inyectable para test. */
-export async function cashBriefing(google, hoy = new Date()) {
-  const ID = CASHFLOW_ID
+/**
+ * Lee SOLO columnas estructuradas del Cash Flow. `hoy` inyectable para test.
+ *
+ * `opts.spreadsheetId` permite apuntar a OTRO libro —una copia, un escenario— pero NO a cualquier
+ * planilla: este lector está atado a la estructura del Flujo de Fondos (pestañas `Caja`,
+ * `Cobranzas`, `Compras`, `Cheques Emitidos` con sus filas de encabezado). Contra un libro con otra
+ * forma no falla: devuelve ceros, que es peor. Quien lo apunte a otro lado tiene que verificar la
+ * estructura antes — para eso está `verificarEstructuraFlujo`.
+ */
+export async function cashBriefing(google, hoy = new Date(), opts = {}) {
+  const ID = opts.spreadsheetId || CASHFLOW_ID
   const hoy0 = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())
   const fin7 = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 7)
   const dentro7 = (d) => d && d >= hoy0 && d <= fin7

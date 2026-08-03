@@ -123,18 +123,22 @@ export function pestanaDeOrigen(origen = '') {
 export async function leerFlujoDeFondos(deps = {}, opts = {}) {
   const { calendarioDiario } = await import('../calendario-financiero.mjs')
   const { CASHFLOW_ID } = await import('../cash-briefing.mjs')
+  // EL LIBRO VIAJA CON EL DATO. `source_spreadsheet_id` es la procedencia de cada movimiento: si se
+  // analiza otro libro y la procedencia siguiera diciendo el de siempre, el ledger guardaría una
+  // trazabilidad falsa — el peor defecto posible en un sistema cuya regla es no fabricar datos.
+  const LIBRO = opts.spreadsheetId || CASHFLOW_ID
   const hoy = opts.hoy ? new Date(opts.hoy) : new Date()
   const observadoEn = new Date().toISOString()
   const problemas = []
 
   let cal
   try {
-    cal = await calendarioDiario(deps, { hoy, dias: Math.max(1, Number(opts.dias) || 90) })
+    cal = await calendarioDiario(deps, { hoy, dias: Math.max(1, Number(opts.dias) || 90), spreadsheetId: LIBRO })
   } catch (e) {
     return {
       estado: 'sin_dato',
       motivo: `no se pudo leer el Flujo de Caja: ${String(e?.message ?? e).slice(0, 160)}`,
-      spreadsheet_id: CASHFLOW_ID, movimientos: [], pestanas_leidas: [], problemas, observado_en: observadoEn,
+      spreadsheet_id: LIBRO, movimientos: [], pestanas_leidas: [], problemas, observado_en: observadoEn,
     }
   }
 
@@ -148,7 +152,7 @@ export async function leerFlujoDeFondos(deps = {}, opts = {}) {
   for (const m of crudos) {
     const pestana = pestanaDeOrigen(m.origen)
     if (pestana && PESTANAS_PROHIBIDAS.includes(pestana)) continue // no debería pasar; la guarda es barata
-    const v = validarContra(Movimiento, normalizarMovimiento(m, { spreadsheetId: CASHFLOW_ID, pestana, observadoEn }))
+    const v = validarContra(Movimiento, normalizarMovimiento(m, { spreadsheetId: LIBRO, pestana, observadoEn }))
     if (v.ok) movimientos.push(v.valor)
     else invalidos.push(v.errores.join('; '))
   }
@@ -166,7 +170,7 @@ export async function leerFlujoDeFondos(deps = {}, opts = {}) {
   const pestanas = [...new Set(movimientos.map((m) => m.sheet_name).filter(Boolean))]
   return {
     estado: 'ok',
-    spreadsheet_id: CASHFLOW_ID,
+    spreadsheet_id: LIBRO,
     pestanas_leidas: pestanas,
     pestanas_prohibidas: PESTANAS_PROHIBIDAS,
     caja_inicial: cal.caja_inicial ?? null,

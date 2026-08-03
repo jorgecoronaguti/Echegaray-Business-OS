@@ -210,7 +210,7 @@ export async function correrCiclo(deps = {}, opts = {}) {
 
   try {
     // 1-3 · Leer y validar el Flujo de Caja (SKILL 1).
-    const flujo = await leerFlujoDeFondos(deps, { hoy: ahora, dias: opts.dias ?? 90 })
+    const flujo = await leerFlujoDeFondos(deps, { hoy: ahora, dias: opts.dias ?? 90, spreadsheetId: opts.spreadsheetId })
     paso('leer_flujo', flujo.estado, flujo.estado === 'ok' ? `${flujo.movimientos.length} movimientos` : flujo.motivo)
     if (flujo.estado !== 'ok') {
       return { estado: 'sin_dato', motivo: flujo.motivo, flujo, traza }
@@ -221,6 +221,7 @@ export async function correrCiclo(deps = {}, opts = {}) {
     // deja en "sin dato" y el excedente cuenta plata que ya tiene dueño.
     const posicion = await reconstruirPosicion(deps, {
       hoy: ahora,
+      spreadsheetId: opts.spreadsheetId,
       filaReserva: opts.filaReserva ?? null,
       filaRestringida: opts.filaRestringida ?? null,
       composicionAnterior: opts.composicionAnterior ?? null,

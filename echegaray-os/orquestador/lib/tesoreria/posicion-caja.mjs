@@ -178,7 +178,7 @@ export async function reconstruirPosicion(deps = {}, opts = {}) {
   // La composición sale del MISMO lector que el total (cash-briefing), no de una segunda lectura con
   // otro criterio: el total nunca se recalcula acá, sólo se clasifica en qué está.
   let composicion = null
-  try { composicion = clasificarCuentas((await cashBriefing(deps.google, hoy)).caja?.cuentas || []) }
+  try { composicion = clasificarCuentas((await cashBriefing(deps.google, hoy, { spreadsheetId: opts.spreadsheetId })).caja?.cuentas || []) }
   catch { faltantes.push('composición de la caja (no se pudo leer el detalle de cuentas)') }
   // EL CONTROL VA ANTES DE TODO LO DEMÁS: si el saldo no es confiable, nada de lo que sigue lo es.
   const coherencia = coherenciaDelTotal(cajaReal, composicion)
