@@ -227,6 +227,46 @@ test('CON EL FRENO DE MANO PUESTO no se escribe: se dice y se encola', async () 
   assert.equal(repo._fajos.get(fajo.id).estado, ESTADO.ENCOLADO)
 })
 
+// ═══ LA PUERTA DE LA PERSONA, Y EL BYPASS QUE ERA CÓDIGO MUERTO (03/08) ═══
+//
+// `correrCargador` ponía `ORQ_SHEETS_DESCONGELAR` en el entorno del proceso hijo desde esa misma
+// mañana, con el argumento de que del otro lado había una persona apretando Confirmar. No servía
+// para nada: el chequeo del freno, sesenta líneas antes, devolvía ENCOLADO y el cargador no se
+// corría nunca. Con la marca puesta, comprobantes NO escribía — y se le dijo al dueño que sí.
+//
+// La distinción que sostiene la puerta es la misma que la de la asistencia: un timer no tiene
+// nombre. Un fajo confirmado tiene `plataforma_username`.
+
+test('con el freno puesto pero una PERSONA que confirmó, la carga corre igual', async () => {
+  const repo = repoMemoria()
+  const f = await repo.abrirFajo(null, {
+    userId: 'u_rodrigo', username: 'rodrigo', channelId: 'c_comprobantes', rootPostId: 'p1', postId: 'p1', items: [item()],
+  })
+  const fajo = repo._fajos.get(f.id)
+  let visto = null
+  const r = await escribirFajo({
+    port: null, repo, congelado: CON_HIELO,
+    correr: async (o) => { visto = o; return { ok: true, datos: { ok: true, escritas: 1, filas: [{ i: 0, fila: 900 }] } } },
+  }, fajo)
+  assert.notEqual(r.estado, ESTADO.ENCOLADO, 'una persona confirmó: no se encola')
+  assert.equal(r.estado, ESTADO.CARGADO)
+  assert.equal(visto?.actor, 'rodrigo', 'el actor viaja al hijo: el motivo del deshielo tiene que nombrarlo')
+})
+
+test('el deshielo del hijo NOMBRA a quien confirmó — sin nombre no se puede auditar', async () => {
+  let entorno = null
+  const spawnFalso = (_exe, _args, o) => {
+    entorno = o.env
+    return { stdout: { on: () => {} }, stderr: { on: () => {} }, on: (ev, cb) => { if (ev === 'close') setImmediate(() => cb(0)) } }
+  }
+  await correrCargador({ fajo: [], actor: 'rodrigo', spawnImpl: spawnFalso, env: {} }).catch(() => {})
+  assert.match(String(entorno?.ORQ_SHEETS_DESCONGELAR ?? ''), /rodrigo/)
+
+  entorno = null
+  await correrCargador({ fajo: [], actor: null, spawnImpl: spawnFalso, env: {} }).catch(() => {})
+  assert.equal(entorno?.ORQ_SHEETS_DESCONGELAR, undefined, 'sin actor, el hijo no recibe el deshielo')
+})
+
 test('el freno que se consulta por defecto es el REAL del OS, no uno inventado acá', () => {
   // Sin esto, la costura inyectable de arriba podría estar apuntando a cualquier lado y los dos
   // tests de freno pasarían igual sin proteger nada.

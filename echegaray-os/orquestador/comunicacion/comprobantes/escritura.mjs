@@ -96,7 +96,7 @@ export function itemsQueEntran(items = []) {
 }
 
 /** Corre el cargador y devuelve su línea JSON. Inyectable para poder probar sin Google ni Postgres. */
-export async function correrCargador({ fajo, dry = false, spawnImpl = spawn, cwd = resolve(AQUI, '../../..'), env = process.env } = {}) {
+export async function correrCargador({ fajo, dry = false, actor = null, spawnImpl = spawn, cwd = resolve(AQUI, '../../..'), env = process.env } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'orq-fajo-'))
   const ruta = join(dir, 'fajo.json')
   await writeFile(ruta, JSON.stringify(fajo, null, 2), 'utf8')
@@ -106,7 +106,11 @@ export async function correrCargador({ fajo, dry = false, spawnImpl = spawn, cwd
   // ESTE proceso hijo y sólo llega hasta que termina. Lo que lo justifica es que del otro lado hubo
   // una persona apretando "Confirmar" sobre un comprobante que ya vio — no es el OS decidiendo.
   // Sin esto el flujo entero quedaba en "encolado" y la foto nunca llegaba a Compras.
-  const entorno = dry ? env : { ...env, ORQ_SHEETS_DESCONGELAR: 'carga de comprobante confirmada por una persona en el chat' }
+  // El motivo lleva el NOMBRE de quien confirmó. Un deshielo anónimo no se puede auditar después, y
+  // auditarlo después es la única razón por la que esta puerta es admisible.
+  const entorno = dry || !actor
+    ? env
+    : { ...env, ORQ_SHEETS_DESCONGELAR: `carga de comprobante confirmada en el chat por ${actor}` }
   try {
     const r = await unaCorrida(spawnImpl, args, { cwd, env: entorno })
     const linea = String(r.stdout ?? '').split('\n').reverse().find((l) => l.startsWith(MARCA_JSON))
@@ -167,7 +171,20 @@ export async function escribirFajo(d, fajo) {
   }
 
   // 1) EL FRENO DE MANO. Se mira antes de reservar claves y antes de gastar una corrida.
-  const hielo = hayHielo()
+  //
+  // ═══ LA PUERTA DE LA PERSONA (03/08) ═══
+  //
+  // El deshielo del proceso hijo (`correrCargador`) existía desde el 03/08 a la mañana y NUNCA se
+  // ejecutaba: este chequeo devuelve ENCOLADO sesenta líneas antes de llegar a correr el cargador.
+  // O sea que con la marca puesta el bypass era código muerto, y el dueño creía —yo le dije eso—
+  // que comprobantes escribía mientras la asistencia no. Las dos estaban frenadas.
+  //
+  // El freno existe para que ningún TIMER y ningún AGENTE escriba solo. Un fajo confirmado tiene un
+  // `plataforma_username`: una persona identificada que miró el comprobante y apretó Confirmar. Esa
+  // es la misma distinción que habilita `frenar(..., {confirmacion})` para la asistencia, y acá se
+  // aplica igual. Sin actor identificado NO se levanta nada: se encola, como antes.
+  const quienConfirmo = String(fajo?.plataforma_username ?? '').trim() || null
+  const hielo = hayHielo() && !quienConfirmo
   if (hielo) {
     await repo.cerrarFajo(port, { id: fajo.id, estado: ESTADO.ENCOLADO, error: 'sheets congelados' })
     return {
@@ -195,7 +212,7 @@ export async function escribirFajo(d, fajo) {
   // 3) Correr el cargador.
   let r
   try {
-    r = await correr({ fajo: aFajoJson(entran) })
+    r = await correr({ fajo: aFajoJson(entran), actor: quienConfirmo })
   } catch (e) {
     r = { ok: false, error: String(e?.message ?? e).slice(0, 200) }
   }
