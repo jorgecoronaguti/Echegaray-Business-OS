@@ -138,3 +138,22 @@ test('entrada basura no rompe el hook ni bloquea el prompt', async () => {
   const salida = execFileSync('node', [ruta], { input: 'esto no es json {{{', encoding: 'utf8' })
   assert.equal(salida.trim(), '') // silencio, y código 0 (execFileSync habría tirado si no)
 })
+
+test('una notificación del sistema NO es un pedido: no se le contesta con un protocolo', () => {
+  // Se detectó sola: el hook, ya cableado, clasificó "esperando al auditor" de una notificación
+  // de tarea de fondo como INVESTIGACIÓN e inyectó su protocolo. En una sesión con agentes en
+  // paralelo eso son cientos de tokens contestándole al sistema.
+  const notificacion = [
+    '[SYSTEM NOTIFICATION - NOT USER INPUT]',
+    '<task-notification><task-id>abc</task-id>',
+    '<summary>Background command "esperando al auditor" completed</summary>',
+  ].join('\n')
+  assert.equal(clasificar(notificacion), null)
+  assert.equal(clasificar('<local-command-stdout>investigá y auditá todo el repo</local-command-stdout>'), null)
+  assert.equal(clasificar('<command-name>/compact</command-name> investigá el error roto'), null)
+})
+
+test('pero un pedido humano que MENCIONA una notificación se sigue clasificando', () => {
+  const r = clasificar('el agente que lanzaste devolvió un error y no muestra el resultado, arreglalo')
+  assert.equal(r?.categoria, 'BUG')
+})

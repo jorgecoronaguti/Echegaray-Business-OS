@@ -171,6 +171,16 @@ const PROTOCOLOS = {
 const CHARLA = /^(ok|oka?y|dale|listo|gracias|perfecto|bien|bueno|si|sí|no|segu[ií]|continu[aá]?|and[aá]|hac[eé]lo|proced[eé]|sigue|adelante|joya|barbaro|bárbaro|excelente)[\s.!,]*$/i
 
 /**
+ * Texto que NO escribió una persona.
+ *
+ * Este hook también se dispara cuando vuelve una tarea de fondo, y esas notificaciones traen
+ * palabras que puntúan: la primera versión clasificó "esperando al auditor" como INVESTIGACIÓN e
+ * inyectó su protocolo. En una sesión con muchos agentes en paralelo eso son cientos de tokens de
+ * protocolo contestándole a un mensaje del sistema. Se detectó sola, corriendo sobre sí misma.
+ */
+const NO_ES_HUMANO = /\[SYSTEM NOTIFICATION|NOT USER INPUT|<task-notification>|<local-command|<command-name>|tool_use_id|hook additional context/i
+
+/**
  * Clasifica el pedido. Función pura: mismo texto, misma respuesta, sin tocar el mundo.
  *
  * Devuelve `null` cuando no hay señal suficiente. Ese `null` es una respuesta legítima y frecuente:
@@ -182,6 +192,7 @@ export function clasificar(texto) {
   if (!t || t.length < 12) return null
   if (CHARLA.test(t)) return null
   if (t.startsWith('/')) return null // comando explícito: ya sabe lo que hace
+  if (NO_ES_HUMANO.test(texto)) return null // notificación del sistema, no un pedido
 
   const puntajes = []
   for (const [cat, { fuertes, debiles }] of Object.entries(SEÑALES)) {
