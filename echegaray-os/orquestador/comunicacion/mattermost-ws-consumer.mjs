@@ -167,7 +167,18 @@ export function crearConsumidorWS(opts) {
     const info = parsearPosted(raw)
     if (!info) return { estado: 'no-posted' }
     if (!esRelevante(info, { botUserId, botUsername, canalesAdjuntos })) {
-      log.info?.('ws: ignorado por guarda', { post_id: info.post.id, channel_type: info.channelType })
+      // POR QUÉ SE IGNORÓ, NO SÓLO QUE SE IGNORÓ. Una foto de factura que no llega a ningún lado y
+      // deja un log que dice "ignorado por guarda" manda a buscar el problema a ciegas: pasó el
+      // 03/08 y costó media hora descubrir que el canal viaja por SLUG y no por nombre visible.
+      // Estos cuatro campos contestan la pregunta de una lectura.
+      log.info?.('ws: ignorado por guarda', {
+        post_id: info.post.id,
+        channel_type: info.channelType,
+        channel_name: info.channelName ?? null,
+        channel_id: info.post.channel_id ?? null,
+        tiene_adjuntos: tieneAdjuntos(info.post),
+        canales_de_ingesta: [...canalesAdjuntos],
+      })
       return { estado: 'ignorado' }
     }
     if (dedup.visto(info.post.id)) { log.info?.('ws: duplicado ignorado', { post_id: info.post.id }); return { estado: 'duplicado' } }
