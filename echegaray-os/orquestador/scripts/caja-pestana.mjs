@@ -1436,12 +1436,12 @@ async function main() {
     }])
   }
 
-  // EL RANGO CON NOMBRE VA PRIMERO. Las fórmulas de arriba dicen TIPO_CAMBIO_USD, así que el nombre
-  // tiene que existir antes de escribirlas o la pestaña se llena de #NAME? en la primera corrida.
-  // Los cinco rangos con nombre, contra las filas de ESTA corrida. Si el bloque 4.10 se movió, los
-  // del arqueo se mueven con él; si no se republicaran, "Caja en dólares" leería otra fila.
-  const publicados = await rangoConNombre(google, hoja.sheetId, g)
-  console.log(`  🔖 ${publicados} rango(s) con nombre republicados: ${RANGOS_DE_CAJA.map((r) => r.nombre).join(' · ')}`)
+  // ANTES DE ESCRIBIR: SÓLO LOS QUE NO EXISTEN. Las fórmulas de arriba dicen TIPO_CAMBIO_USD, así
+  // que el nombre tiene que EXISTIR antes de escribirlas o la pestaña se llena de #NAME? en la
+  // primera corrida. Pero existir no es apuntar a la fila nueva: reapuntar acá, antes de saber si el
+  // portón deja escribir, es lo que el 03/08 borró $42,88M del total. Ver `rangoConNombre`.
+  const creados = await rangoConNombre(google, hoja.sheetId, g, { soloFaltantes: true })
+  if (creados) console.log(`  🔖 ${creados} rango(s) con nombre CREADOS (no existían): arranque en frío`)
   // ═══ NO SE BORRA HASTA SABER QUE LO NUEVO SE PUEDE ESCRIBIR ═══
   //
   // POR QUÉ (21/07). Esta pestaña es la ÚNICA donde una persona carga números a mano. Una corrida
@@ -1507,6 +1507,12 @@ async function main() {
   }
   const { conservadas } = escritura
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) escritas por una persona — CONSERVADAS`)
+
+  // AHORA SÍ: la escritura entró, así que la grilla de esta corrida ES el layout de la pestaña y los
+  // nombres pueden seguirla. Si el bloque 4.10 se movió, los del arqueo se mueven con él.
+  const publicados = await rangoConNombre(google, hoja.sheetId, g)
+  console.log(`  🔖 ${publicados} rango(s) con nombre reapuntados a la grilla RECIÉN ESCRITA: ${RANGOS_DE_CAJA.map((r) => r.nombre).join(' · ')}`)
+
   await formatear(google, hoja.sheetId, g)
 
   // El registro de rótulos se guarda con lo que QUEDÓ escrito en la pestaña, no con lo que el
@@ -1564,20 +1570,52 @@ export const RANGOS_DE_CAJA = [
   { nombre: ARQ_USD_FECHA, fila: (g) => g.fArqUsd, col: 5 },
 ]
 
-async function rangoConNombre(google, sheetId, g) {
-  const existentes = await google.getNamedRanges(ID).catch(() => [])
+/**
+ * NÚCLEO PURO: los requests para publicar los rangos. `soloFaltantes` es la diferencia entre
+ * arrancar en frío y reapuntar — y es lo que separa el bootstrap del daño.
+ */
+export function requestsDeRangos(sheetId, g, existentes = [], { soloFaltantes = false } = {}) {
   const reqs = []
   for (const r of RANGOS_DE_CAJA) {
     const fila = typeof g === 'number' ? (r.nombre === RANGO_TC ? g : null) : r.fila(g)
     // Sin fila no se publica NADA para ese nombre: dejar el rango viejo apuntando a una fila que ya
     // no es la suya es peor que no tenerlo — miente sin dar error.
     if (!Number.isFinite(fila) || fila < 1) continue
-    const rango = { sheetId, startRowIndex: fila - 1, endRowIndex: fila, startColumnIndex: r.col, endColumnIndex: r.col + 1 }
     const ya = existentes.find((x) => x.name === r.nombre)
+    if (soloFaltantes && ya) continue
+    const rango = { sheetId, startRowIndex: fila - 1, endRowIndex: fila, startColumnIndex: r.col, endColumnIndex: r.col + 1 }
     reqs.push(ya
       ? { updateNamedRange: { namedRange: { namedRangeId: ya.namedRangeId, name: r.nombre, range: rango }, fields: 'name,range' } }
       : { addNamedRange: { namedRange: { name: r.nombre, range: rango } } })
   }
+  return reqs
+}
+
+/**
+ * ═══ UN NOMBRE NO SE REAPUNTA A UNA GRILLA QUE TODAVÍA NO SE ESCRIBIÓ (03/08) ═══
+ *
+ * LO QUE PASÓ, MEDIDO. Esta función se llamaba ANTES de escribir, con este argumento escrito al
+ * lado: "EL RANGO CON NOMBRE VA PRIMERO … o la pestaña se llena de #NAME? en la primera corrida".
+ * El argumento vale para la PRIMERA corrida y sólo para ésa. En cualquier otra reapunta los cinco
+ * nombres a las filas de la grilla que el generador PIENSA escribir — y si el portón después frena
+ * la escritura (la pestaña es tuya, la editaste), la pestaña se queda con su layout viejo y los
+ * nombres apuntando a otro. Pasó el 03/08: los cinco quedaron cuatro filas abajo, `CAJA_ARQUEO_ARS`
+ * y `TIPO_CAMBIO_USD` cayeron en celdas vacías, y el total de disponibilidades pasó de $123,79M a
+ * $80,91M. **Sin un solo #REF! y sin una sola celda de contenido modificada** — el diff de la
+ * pestaña dio cero. La guarda protegía el CONTENIDO y nadie protegía los NOMBRES.
+ *
+ * Peor: el generador ya imprimía "no escribí, y por lo tanto NO muevo sus rangos con nombre"…
+ * DESPUÉS de haberlos movido. Un log que niega lo que acaba de hacer es peor que no loguear.
+ *
+ * Ahora hay dos momentos y son distintos:
+ *   · ANTES de escribir → sólo los nombres que NO EXISTEN (`soloFaltantes`). Cubre el arranque en
+ *     frío —que era el problema real— y no puede reapuntar nada, porque sólo agrega lo que falta.
+ *   · DESPUÉS de escribir bien → los cinco contra la grilla que QUEDÓ escrita.
+ * Si la escritura se frena, no se toca un solo nombre.
+ */
+async function rangoConNombre(google, sheetId, g, { soloFaltantes = false } = {}) {
+  const existentes = await google.getNamedRanges(ID).catch(() => [])
+  const reqs = requestsDeRangos(sheetId, g, existentes, { soloFaltantes })
   if (reqs.length) await google.spreadsheetBatchUpdate(ID, reqs)
   return reqs.length
 }
