@@ -461,10 +461,10 @@ test('la alerta del arqueo cita el ancla POR NOMBRE, no por número de fila', ()
 
 test('la oficina DESCARGA los dos canales, cada uno del suyo', () => {
   const g = construir()
-  const bco = celda(g, filaDe(g, /sueldos de administración por transferencia/i), 2)
+  const bco = celda(g, filaDe(g, /sueldos de OFICINA por transferencia/i), 2)
   assert.match(bco, /OFICINA_BANCO/)
   assert.ok(!bco.includes('OFICINA_EFECTIVO'), 'lo que salió en billetes no puede salir también del banco')
-  const efvo = celda(g, filaDe(g, /sueldos de administración en efectivo/i), 2)
+  const efvo = celda(g, filaDe(g, /sueldos de OFICINA en efectivo/i), 2)
   // El efectivo sale POR DIFERENCIA (Pagado − Banco): así los dos canales suman siempre lo pagado.
   assert.match(efvo, /N\(OFICINA_PAGADO\)-N\(OFICINA_BANCO\)/)
   assert.match(efvo, /ISNUMBER\(OFICINA_BANCO\)/, 'con la celda vacía no se asume "todo efectivo"')
@@ -657,4 +657,23 @@ test('el generador NO publica rangos en el camino de la escritura frenada', asyn
   assert.ok(corte > 0 && soloFaltantes > 0 && reapunta > 0, 'las tres marcas tienen que existir')
   assert.ok(soloFaltantes < corte, 'la creación de los que faltan va ANTES del corte')
   assert.ok(reapunta > corte, 'el reapuntado va DESPUÉS del corte: si la escritura se frena, no se llega')
+})
+
+// ═══ EL RÓTULO DICE OFICINA PORQUE ES OFICINA (03/08) ═══
+//
+// Estas filas leen `OFICINA_*` —el bloque de `_J_OFICINA`, dos personas— y decían "sueldos de
+// administración". El dueño separó los dos grupos y les puso criterios distintos: **oficina son 2
+// empleados, 50% banco y 50% efectivo; administración cobra TODA por banco.** Con el rótulo viejo,
+// alguien que busca administración la encuentra en un cuadro donde no está, y una diferencia de
+// oficina se lee como un faltante de administración.
+
+test('las filas de oficina se llaman OFICINA, no administración', () => {
+  const g = construir()
+  for (const re of [/sueldos de OFICINA por transferencia/i, /sueldos de OFICINA en efectivo/i]) {
+    const f = filaDe(g, re)
+    assert.ok(f >= 0, `falta la fila ${re}`)
+  }
+  const textos = g.filas.map((f) => String(f?.[0] ?? ''))
+  const malRotuladas = textos.filter((t) => /sueldos de administraci[oó]n/i.test(t))
+  assert.deepEqual(malRotuladas, [], 'ninguna fila que lee OFICINA_* puede llamarse "de administración"')
 })

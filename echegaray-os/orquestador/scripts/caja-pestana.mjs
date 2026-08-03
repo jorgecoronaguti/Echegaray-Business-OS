@@ -426,7 +426,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
     push(['   · (−) jornales pagados por transferencia después del corte', 'ARS',
       `=-(${formulaJornalesBancoPosteriores(`$F$${fBancoPesos}`)})`, '', '', '', '',
       'Jornales por Quincena, columna Banco: el lote de haberes de las quincenas con fecha en "Pagado el" posterior al corte. La plata salió de la cuenta y el extracto todavía no lo muestra.', ''])
-    push(['   · (−) sueldos de administración por transferencia después del corte', 'ARS',
+    push(['   · (−) sueldos de OFICINA por transferencia después del corte', 'ARS',
       `=-(${formulaOficinaBancoPosteriores(`$F$${fBancoPesos}`)})`, '', '', '', '',
       'Jornales por Quincena, bloque Oficina, columna Banco: los meses con fecha de pago posterior al corte. Si la columna está vacía no se resta nada — el canal no declarado se reporta en "LO QUE NO CIERRA", no se adivina.', ''])
   }
@@ -479,9 +479,9 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   push(['   · (−) jornales pagados en efectivo después del arqueo', 'ARS',
     celdaJornalesEfectivo(ARQ_ARS_FECHA), '', '', '', '',
     'Jornales por Quincena, columnas Adelanto y Total recibo: lo que se pagó de la nómina en billetes, de las quincenas con fecha en "Pagado el" posterior al arqueo.', ''])
-  push(['   · (−) sueldos de administración en efectivo después del arqueo', 'ARS',
+  push(['   · (−) sueldos de OFICINA en efectivo después del arqueo', 'ARS',
     celdaOficinaEfectivo(ARQ_ARS_FECHA), '', '', '', '',
-    'Jornales por Quincena, bloque Oficina, columna Efectivo: los sueldos de administración pagados en billetes, por su fecha de pago.', ''])
+    'Jornales por Quincena, bloque Oficina, columna Efectivo: los sueldos de OFICINA pagados en billetes, por su fecha de pago.', ''])
   push(['   · (+) extraído del banco después del arqueo', 'ARS',
     celdaExtraccionesEfectivo(ARQ_ARS_FECHA), '', '', '', '',
     'Réplica del extracto: los débitos cuyo concepto dice "extracción" o "retiro de efectivo". Es el espejo del depósito — el billete deja la cuenta y entra al cajón, así que acá SUMA. Hoy el extracto no tiene ninguno.', ''])
@@ -764,6 +764,17 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // misma fórmula del neto pero con la ventana abierta (ancla 0 = todas las fechas), así que no puede
   // decir un número distinto del que entraría en cuanto se cargue el arqueo.
   push(['El efectivo del período no se está contando: falta la fecha del arqueo', '', '@SINARQUEO'])
+  // ═══ SE LLAMA OFICINA, NO ADMINISTRACIÓN — Y NO ES LO MISMO (03/08) ═══
+  //
+  // Estas líneas decían "sueldos de administración" y leen `OFICINA_*`, que es el bloque de
+  // `_J_OFICINA`: dos personas (Emi Maldonado y Juan Pablo Nievas desde febrero; en enero eran
+  // cuatro). El dueño lo separó explícitamente: **oficina son 2 empleados y cobran 50% banco y 50%
+  // efectivo; administración cobra TODA por banco.** Son dos grupos con dos criterios distintos.
+  //
+  // El rótulo equivocado no es cosmético: manda a buscar administración en un cuadro donde no está,
+  // y hace parecer que falta plata de un grupo que nunca pasa por la caja física. Administración,
+  // al cobrar 100% por banco, ya está dentro del saldo bancario y no toca el efectivo — por eso no
+  // hay nada que reconciliar por ese lado.
   // El sueldo de administración que se pagó y no dice por dónde salió. No se resta de ninguna
   // disponibilidad —no se sabe de cuál— así que tiene que verse acá con nombre y monto. Se apaga sola
   // en cuanto el mes tenga Banco o Efectivo cargado.
@@ -777,7 +788,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // El contraste contra una fuente distinta —los débitos de haberes del EXTRACTO— vive en el bloque
   // 4.7, grupo "Sueldos", de lib/conciliacion-por-naturaleza.mjs. Esta línea sigue contestando su
   // propia pregunta ("¿qué se pagó sin declarar el canal?"); la que detecta el rango ciego es aquélla.
-  push(['Sueldos de administración pagados sin declarar por qué canal salieron', '', '@OFISINCANAL'])
+  push(['Sueldos de OFICINA pagados sin declarar por qué canal salieron', '', '@OFISINCANAL'])
   const fAlerta1 = filas.length
   push()
 
