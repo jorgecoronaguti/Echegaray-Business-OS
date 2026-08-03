@@ -319,7 +319,11 @@ export function estructuraDePagina() {
  * Se mide el crecimiento por CANTIDAD DE FILAS además de por altura: un contenedor virtualizado puede
  * reciclar los nodos y mantener el alto constante mientras cambia el contenido.
  */
-export async function cargarTodo(page, vueltas = 15) {
+// TOPE SUBIDO DE 15 A 45 (03/08/2026). Con 15 vueltas, `corporativos` y `cedears` terminaban en 320
+// filas y el ciclo se declaraba NO_ACCIONABLE por "relevamiento truncado" — o sea, el tope impedía
+// recomendar, que es justo para lo que existe el módulo. El bucle corta solo cuando la pantalla deja
+// de crecer, así que subir el techo no cuesta tiempo en las chicas: sólo deja terminar a las grandes.
+export async function cargarTodo(page, vueltas = 120) {
   let firma = ''
   let estables = 0
   for (let i = 0; i < vueltas; i += 1) {
@@ -467,7 +471,10 @@ export function leerTarjetasDeFondos() {
 }
 
 /** Todos los controles de la página, ya extraídos para la barrera. */
-export const TOPE_CONTROLES = 400
+// 400 dejaba 4 pantallas enteras por la mitad (bonos, corporativos, cauciones, cedears): el barrido
+// se reportaba parcial y bloqueaba la accionabilidad. 2.000 cubre el universo relevado —1.108
+// instrumentos— con margen, y el tope sigue existiendo para que una pantalla rota no cuelgue el ciclo.
+export const TOPE_CONTROLES = 8000
 
 export async function controlesDePagina(page) {
   return page.locator('a, button, input[type=submit], form')
