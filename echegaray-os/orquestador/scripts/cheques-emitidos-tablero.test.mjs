@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 import { bandaFilas, ubicarRegistro } from './cheques-emitidos-tablero.mjs'
 
 const HDR = 20
-const banda = bandaFilas(HDR, '23/7/2026')
+const banda = bandaFilas(HDR)
 const colA = banda.map((f) => f[0])
 const filaDe = (re) => colA.findIndex((a) => re.test(String(a ?? ''))) + 1
 
@@ -20,7 +20,7 @@ test('la banda tiene el alto declarado y una sola grilla de 13 columnas', () => 
 
 test('la gramática: título, subtítulo, y tres secciones numeradas y corridas', () => {
   assert.equal(banda[0][0], 'Cheques emitidos')
-  assert.match(banda[1][0], /al 23\/7\/2026/)
+  assert.match(banda[1][0], /^="Cuánto de lo firmado/)
   const secciones = colA.filter((a) => /^\d+ · /.test(String(a ?? '')))
   assert.equal(secciones.length, 3)
   secciones.forEach((s, i) => assert.match(String(s), new RegExp(`^${i + 1} · `), `la sección ${i + 1} está fuera de orden`))
@@ -65,6 +65,34 @@ test('la plata disponible se busca en CAJA POR RÓTULO, nunca por celda', () => 
 
 test('la banda NUNCA escribe en la columna F: CAJA la suma como si fuera un cheque', () => {
   for (const f of banda) assert.equal(f[5], '', 'hay contenido en la columna F de la banda')
+})
+
+// ═══ EL DEFECTO QUE EL DUEÑO REPORTÓ EL 03/08 ═══
+//
+// La pestaña decía "al 24/7/2026" con cheques cargados al 03/08: la fecha era la del día en que
+// corrió el generador, no la del último cheque. El registro lo carga el dueño A MANO, así que cambia
+// sin que corra nadie — y el rótulo se quedaba atrás para siempre.
+
+test('el corte del subtítulo sale del registro, no del reloj de la corrida', () => {
+  const sub = String(banda[1][0])
+  // Dos corridas distintas tienen que producir EXACTAMENTE el mismo texto: si dependiera de la fecha
+  // del sistema, este archivo volvería a estampar la fecha del día.
+  assert.equal(sub, String(bandaFilas(HDR)[1][0]), 'el subtítulo cambia entre corridas: depende del reloj')
+  assert.ok(sub.startsWith('='), 'tiene que ser fórmula: un texto no lo recalcula Sheets')
+  assert.match(sub, /\$C\$20:\$C/, 'la fecha sale de la columna C (fecha de emisión) del registro')
+  const sinMascara = sub.replace(/"dd\/mm\/yyyy"/g, '')
+  assert.doesNotMatch(sinMascara, /\d{1,2}\/\d{1,2}\/\d{2,4}/, 'quedó una fecha estampada en el subtítulo')
+})
+
+test('el corte no puede irse al futuro por un cheque diferido', () => {
+  // La columna I trae fechas de pago diferidas (septiembre). Si el corte se calculara sobre ella —o
+  // sobre C sin filtrar— el subtítulo declararía frescura de algo que todavía no pasó.
+  assert.match(String(banda[1][0]), /<=TODAY\(\)/)
+})
+
+test('el subtítulo se ancla al ancla calculada, nunca a una fila escrita a mano', () => {
+  // Una fila fija ya dio #NUM! en cadena y contaminó el titular de CAJA cuando el bloque se corrió.
+  assert.match(String(bandaFilas(30)[1][0]), /\$C\$30:\$C/, 'el rango tiene que seguir al HDR real')
 })
 
 test('el registro se ubica por el DATO (FISICO/ECHEQ), no por un rótulo borrable', () => {

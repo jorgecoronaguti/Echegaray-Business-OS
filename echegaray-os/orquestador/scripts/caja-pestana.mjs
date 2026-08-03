@@ -62,7 +62,8 @@ import { CAJA as N_CAJA, publicar } from '../lib/rangos-nombrados.mjs'
 import { esIndistinguible } from '../lib/cobranzas-duplicado.mjs'
 import * as CONC from '../lib/conciliacion-por-naturaleza.mjs'
 import { formulaEgresoDiario } from '../lib/egreso-diario.mjs'
-import { formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte, formulaNetaEfectivoPosterior } from '../lib/caja-posterior-al-corte.mjs'
+import { formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte, formulaNetaEfectivoPosterior, formulaFrescuraCaja } from '../lib/caja-posterior-al-corte.mjs'
+import { rotuloAlDia, formulaAntiguedad } from '../lib/fecha-de-frescura.mjs'
 
 // LA MISMA definición de "dos cobros que no se pueden distinguir" que usa el control de la pestaña
 // Cobranzas. Antes acá había una segunda basada en el ID, y al reparar la columna A —que se
@@ -182,7 +183,18 @@ function grilla(cargado, refs) {
   push(['Posición de caja'])
   // LA FILA 2 DICE QUÉ CONTESTA LA PESTAÑA, DE DÓNDE SALE Y A QUÉ FECHA. Era la única del archivo que
   // arrancaba en el titular sin decir de qué está hablando ni a qué corte.
-  push([`Cuánta plata hay de verdad, qué ya está comprometido y hasta cuándo alcanza · extracto Santander, Cobranzas, Compras, Cheques Emitidos y Cheques Recibidos · al ${new Date().toLocaleDateString('es-AR')}`])
+  //
+  // Y LA FECHA SALE DEL DATO, NO DEL RELOJ (03/08). Era `new Date()`: declaraba la frescura de la
+  // CORRIDA, no la del dato. Con el pipeline detenido eso es una mentira que se lee como un hecho —
+  // el rótulo dice "al 03/08" porque alguien corrió el script, aunque el último movimiento sea del
+  // 24/07. Ahora es la más nueva de LAS TRES PUERTAS que mueven esta caja (extracto, compras pagadas,
+  // cobranzas), calculada por Sheets: cambia cuando cambia el dato, sin que corra nadie. Ver
+  // formulaFrescuraCaja — las mismas columnas que ya mueven el saldo, para que el número y su fecha
+  // no puedan contradecirse.
+  push([rotuloAlDia(
+    'Cuánta plata hay de verdad, qué ya está comprometido y hasta cuándo alcanza · extracto Santander, Cobranzas, Compras, Cheques Emitidos y Cheques Recibidos',
+    formulaFrescuraCaja({ bancoRaw: refs.bancoRaw }),
+  )])
   push()
   // ═══ LOS TRES NÚMEROS QUE CONTESTAN LA PREGUNTA, ARRIBA DE TODO ═══
   //
@@ -293,7 +305,10 @@ function grilla(cargado, refs) {
         : c.banco ? BANCO.CORTE : (c.formula ? '=TODAY()' : previo(c.nombre, 'fecha')),
       // La antigüedad no es decorativa: un saldo de hace 20 días avisando que tiene 20 días vale
       // muchísimo más que el mismo saldo mudo. Arriba de una semana, avisa.
-      `=IF(F${f}="";"⚠ sin cargar";IF(TODAY()-F${f}>7;"⚠ "&TEXT(TODAY()-F${f};"0")&" días";TEXT(TODAY()-F${f};"0")&" días"))`,
+      // El dueño señaló esta columna como EL PATRÓN BUENO —se calcula contra la fecha del saldo, no
+      // contra el reloj de la corrida—, así que vive en lib/fecha-de-frescura.mjs y de ahí la toman
+      // también los subtítulos. Copiada en dos lugares se arreglaría en uno y seguiría rota en el otro.
+      formulaAntiguedad(`F${f}`),
       c.banco ? `${c.origenSugerido} · ${BANCO.ORIGEN}` : (previo(c.nombre, 'origen') || c.origenSugerido),
       previo(c.nombre, 'quien'),
     ])
