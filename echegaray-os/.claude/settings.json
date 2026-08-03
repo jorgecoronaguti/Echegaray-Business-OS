@@ -5,10 +5,43 @@
       "Bash(node orquestador/scripts/pestana-candado.mjs desbloquear:*)",
       "Bash(*pestana-candado.mjs desbloquear*)",
       "Bash(ORQ_PROV_FORCE=*)",
-      "Bash(*ORQ_PROV_FORCE=*)"
+      "Bash(*ORQ_PROV_FORCE=*)",
+      "Read(./node_modules/**)",
+      "Read(./.next/**)",
+      "Read(./.claude/worktrees/**)",
+      "Read(./package-lock.json)"
     ]
   },
+  "skillOverrides": {
+    "add-login": "off",
+    "ai": "off",
+    "image-generation": "off"
+  },
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/estado-sesion.mjs",
+            "timeout": 20,
+            "statusMessage": "estado de la sesión anterior"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/clasificar-tarea.mjs",
+            "timeout": 15,
+            "statusMessage": "clasificando"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit|NotebookEdit",
@@ -28,7 +61,7 @@
           {
             "type": "command",
             "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/validar-cierre.mjs",
-            "timeout": 420,
+            "timeout": 900,
             "statusMessage": "validando el cambio antes de cerrar"
           }
         ]
@@ -40,8 +73,20 @@
           {
             "type": "command",
             "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/validar-cierre.mjs",
-            "timeout": 420,
+            "timeout": 900,
             "statusMessage": "validando la tarea del agente"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/estado-sesion.mjs --fin",
+            "timeout": 15,
+            "statusMessage": "guardando dónde quedó todo"
           }
         ]
       }
