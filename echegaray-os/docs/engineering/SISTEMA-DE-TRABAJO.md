@@ -138,6 +138,26 @@ Techo: 2.000 caracteres. Por encima se recorta **avisando dónde está el resto*
 
 ---
 
+## El resultado, medido
+
+Lo que se carga en toda sesión, antes de escribir una línea de la tarea:
+
+| | antes | ahora | delta |
+|---|---:|---:|---:|
+| `CLAUDE.md` raíz | 12.698 tok | 2.327 | **−10.371** |
+| `CLAUDE.md` app | 3.105 | 1.514 | −1.591 |
+| listado de skills | 5.939 | 5.663 | −276 |
+| `MEMORY.md` | 6.079 | 6.079 | 0 |
+| **total controlable** | **27.821** | **15.583** | **−12.238 (−44 %)** |
+
+Sobre el arranque mediano real medido (38,3k tokens, que incluye system prompt y herramientas, que
+no controlamos): **−32 %**.
+
+Eso es por sesión y antes de contar el segundo efecto, que es mayor y no se puede estimar con
+honestidad todavía: lo que no entra al contexto al principio no se re-lee en cada turno posterior.
+Con el 75 % de los turnos por encima de 200k, cada token que no entra se deja de pagar decenas de
+veces. Cuánto exactamente se sabrá midiendo los transcripts nuevos, no calculándolo acá.
+
 ## Lo que se corrigió de paso
 
 Cinco defectos reales que la auditoría destapó y no eran el objetivo:
