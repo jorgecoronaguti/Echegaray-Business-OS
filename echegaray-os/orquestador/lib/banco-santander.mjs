@@ -31,6 +31,7 @@
 // semana.
 
 import { extraer } from './cuit.mjs'
+import { esMovimientoDeCheques } from './cheques-debito-banco.mjs'
 
 /** El día y la hora de la foto. Todo lo de abajo es verdad A ESTA FECHA, no hoy. */
 export const CORTE = '2026-07-22'
@@ -356,7 +357,12 @@ export function clasificarMovimiento(concepto = '') {
       : n === 'financiero' ? 'Rescates de inversión y financiero'
       : 'Traslados de fondos propios (no es ingreso)'
   }
-  if (/e-?cheq|cheque debitado|canje interno/i.test(c)) return 'Cheques y echeq'
+  // EL LITERAL SE MUDÓ (03/08). Acá vivía `/e-?cheq|cheque debitado|canje interno/i`, y cada variante
+  // nueva del banco ("Canje interno recibido 24 hs" con doble espacio, "24hs" pegado, una tilde de
+  // más) pedía otro literal. Un cheque que el banco debitó y este regex no reconoce se lee como
+  // "vencido sin debitar": una alerta inventada. La familia de conceptos se define UNA vez, ya
+  // normalizada, en cheques-debito-banco.mjs.
+  if (esMovimientoDeCheques(c)) return 'Cheques y echeq'
   if (/afip|imp\.afip/i.test(c)) return 'AFIP'
   if (/prestamos prendarios/i.test(c)) return 'Préstamo prendario'
   if (/tarjeta de credito/i.test(c)) return 'Pago de la tarjeta'
