@@ -31,6 +31,31 @@ export function enlaceRemoto(env = process.env) {
   return { url: `${baseRemota(env)}/balanz?t=${token}`, vence }
 }
 
+/**
+ * Publicador del vigía. Si falta el canal o el token del bot, el vigía **sigue corriendo** y sólo
+ * deja de hablar: recuperar el navegador es útil aunque nadie se entere, y hacer fallar la ronda por
+ * no poder avisar dejaría al navegador caído además de mudo.
+ *
+ * Lo que NO hace es caer a un cliente falso. Un Fake que "publica" en la nada es peor que el
+ * silencio: el journal diría que avisó.
+ */
+async function publicadorVigia() {
+  const canal = process.env.ORQ_TESORERIA_CANAL || process.env.MM_CANAL_DIRECCION || null
+  if (!canal || !process.env.MM_BOT_TOKEN) {
+    console.error('[vigia] sin canal o sin MM_BOT_TOKEN: la ronda corre igual, pero no publica')
+    return null
+  }
+  try {
+    const { resolverCliente } = await import('../comunicacion/conector.mjs')
+    const { cliente, tipoCliente } = resolverCliente({})
+    if (tipoCliente !== 'real') { console.error('[vigia] cliente de Mattermost no real: no se publica'); return null }
+    return async (texto) => { await cliente.crearPost({ channel_id: canal, message: texto }) }
+  } catch (e) {
+    console.error(`[vigia] no se pudo preparar el publicador: ${e.message}`)
+    return null
+  }
+}
+
 async function main() {
   if (orden === 'estado') {
     const d = await diagnosticar(cfg)
@@ -84,8 +109,12 @@ async function main() {
   //   · y cuando la sesión vuelve, cierra el incidente avisando.
   if (orden === 'vigia') {
     const { rondaVigia } = await import('../lib/tesoreria/vigia-navegador.mjs')
-    const r = await rondaVigia({ cfg })
-    console.log(JSON.stringify(r))
+    // UN VIGÍA QUE NO HABLA NO ES UN VIGÍA. La primera versión corría la ronda y sólo imprimía el
+    // resultado en el journal — o sea que detectaba la sesión vencida a las 10:05 y el dueño se
+    // enteraba en la corrida de las 15:30, que es exactamente el retraso que este vigía existe para
+    // eliminar. El aviso es la mitad del trabajo.
+    const r = await rondaVigia({ cfg, publicar: await publicadorVigia(), enlace: () => enlaceRemoto() })
+    console.log(JSON.stringify({ estado: r.estado, aviso: r.aviso, acciones: r.acciones }))
     return
   }
 
