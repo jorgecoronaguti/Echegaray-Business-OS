@@ -120,7 +120,14 @@ export const CUENTAS = [
     //
     // El corte es la fecha de acreditación: si todavía no llegó, el valor está en cartera. Los que ya
     // se acreditaron son saldo del banco y contarlos acá los duplicaría.
-    nombre: 'Valores a depositar',
+    // 02/08 — EL ‖ NO ES DECORACIÓN. El total de disponibilidades es `SUM(E10:E26)-E14`: RESTA esta
+    // línea. El criterio es correcto —un ECHEQ en custodia no es plata disponible hoy, entra en su
+    // fecha de pago y ya está contado en el calendario de vencimientos— pero la pestaña no lo decía
+    // en ningún lado. El dueño sumaba la columna a ojo y le faltaban $10.290.000 contra el total, sin
+    // nada que explicara la diferencia. Un cuadro cuyo total no cierra con sus propias líneas no se
+    // puede auditar mirándolo, y eso es exactamente lo que él llamó "mal manejo de información".
+    // El ‖ es la misma marca que usan las líneas memo de los dos Cash Flow: se lee igual en todos lados.
+    nombre: 'Valores a depositar ‖ no suma al total',
     moneda: 'ARS',
     patron: /^valores a depositar/i,
     // 21/07: DEJÓ DE SALIR DE COBRANZAS. La fórmula sobre Cobranzas daba $30.000.000 y la cartera
