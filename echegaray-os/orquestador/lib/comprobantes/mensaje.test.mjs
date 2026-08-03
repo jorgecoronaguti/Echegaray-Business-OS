@@ -7,7 +7,9 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { resumenFajo, titular, tablaComprobante, notasDe, estadoDeItem, ESTADO_ITEM } from './mensaje.mjs'
+import { resumenFajo, titular, tablaComprobante, notasDe, estadoDeItem, ESTADO_ITEM, bloqueObra, ofertasDe, lineaRubro } from './mensaje.mjs'
+import { botonesFajo, aplicarOpcion } from './fajo.mjs'
+import { perfilesDeImputacion, sugerirImputacion } from '../imputacion-aprendida.mjs'
 
 const barcelo = ({ comprobante, ...over } = {}) => ({
   ...over,
@@ -138,4 +140,128 @@ test('con dos listos y uno ya cargado, el titular los cuenta a los tres', () => 
   const t = titular([barcelo(), barcelo(), { ...barcelo(), yaCargado: { fila: 800 } }])
   assert.match(t, /2 listos para cargar/)
   assert.match(t, /1 ya cargado/)
+})
+
+// ── PREGUNTAR CON LO QUE SE SABE ADELANTE ────────────────────────────────────
+//
+// EL DEFECTO (03/08): el tique de Barcelo llegó SIN anotación manuscrita y el bot contestó
+//   "❓ no dice a qué obra va — ¿cuál es?"
+// mientras la lib de imputación aprendida ya había contado 126 cargas de ese proveedor en 7 obras,
+// con San Francisco 41 · Administracion 39 · Taller 18 y la nota de por qué proponía Taller. El
+// dueño: "sigue sin ser inteligente". El sistema SABÍA y el mensaje tiraba lo que sabía.
+//
+// La historia de abajo REPRODUCE la distribución real y la sugerencia se calcula con la lib de
+// verdad, no a mano: si alguien cambia los umbrales o el refinamiento por concepto, esto se entera.
+
+const OBRAS_BARCELO = [['San Francisco', 41], ['Administracion', 39], ['Taller', 18], ['MESSINA', 10], ['Estrella', 8], ['Planta BSA', 6], ['Rawson', 4]]
+const UNIDADES_BARCELO = [['Civil', 68], ['Estructura', 47], ['Mantenimiento', 11]]
+
+function historiaBarcelo() {
+  const obras = OBRAS_BARCELO.flatMap(([o, n]) => Array(n).fill(o))
+  const unidades = UNIDADES_BARCELO.flatMap(([u, n]) => Array(n).fill(u))
+  return obras.map((obra, i) => {
+    const enTaller = obra === 'Taller'
+    const k = obras.slice(0, i).filter((o) => o === 'Taller').length
+    return {
+      proveedor: 'Combustibles Barcelo',
+      unidad_negocio: unidades[i],
+      obra_texto: obra,
+      // El concepto de Taller se parece al del tique; el del resto, no. Es lo que hace que la lib
+      // sugiera Taller (18) y no San Francisco (41), y lo declare en su nota.
+      concepto: enTaller ? 'Nafta Super' : 'Gasoil granel',
+      // 18 filas en Taller: 9 "combustible", 5 "Camion", 4 sin detalle → n=14, share 0,643.
+      detalle: enTaller ? (k < 9 ? 'combustible' : k < 14 ? 'Camion' : '') : 'Gasoil',
+    }
+  })
+}
+
+/** El tique de combustible SIN anotación manuscrita, con la sugerencia que devuelve la lib real. */
+function tiqueSinAnotacion() {
+  const perfiles = perfilesDeImputacion(historiaBarcelo())
+  const s = sugerirImputacion({ proveedor: 'Combustibles Barcelo', concepto: 'Nafta Super 1 y Diesel 500', monto: 64006.07 }, perfiles)
+  return {
+    ...barcelo({ comprobante: { obra: null, obraVia: null, detalleObra: null, detalleVia: null, unidad: null } }),
+    sugerencia: { obra: s.obra, unidad: s.unidad, detalle: s.detalle, rubro: s.rubro },
+  }
+}
+
+test('la sugerencia de la lib es la del caso real: 126 cargas, 7 obras, 41/39/18 y Taller por concepto', () => {
+  const s = tiqueSinAnotacion().sugerencia
+  assert.equal(s.obra.n, 126)
+  assert.equal(s.obra.distintos, 7)
+  assert.equal(s.obra.share, 0.325)
+  assert.equal(s.obra.sugerido, 'Taller')
+  assert.deepEqual(s.obra.opciones, [{ valor: 'San Francisco', n: 41 }, { valor: 'Administracion', n: 39 }, { valor: 'Taller', n: 18 }])
+  assert.equal(s.obra.nota, 'obra elegida por coincidencia de concepto, no por la más frecuente del proveedor')
+  assert.equal(s.rubro.sugerido, 'Materiales Civil')
+})
+
+test('EL DEFECTO: preguntar la obra sin ofrecer las opciones que la lib entregó', () => {
+  const t = resumenFajo({ items: [tiqueSinAnotacion()] })
+  // La pregunta pelada que mandaba el bot no puede volver.
+  assert.doesNotMatch(t, /no dice a qué obra va — ¿cuál es\?/)
+  // Las tres opciones, CON su conteo y sobre el total de cargas.
+  assert.match(t, /• \*\*San Francisco\*\* — 41 de 126/)
+  assert.match(t, /• \*\*Administracion\*\* — 39 de 126/)
+  assert.match(t, /• \*\*Taller\*\* — 18 de 126 ← la que sugiero/)
+  // Y por qué son 7 y no una: es lo que justifica que se pregunte en vez de adivinar.
+  assert.match(t, /\*\*7 obras distintas\*\* en 126 cargas/)
+})
+
+test('la nota de la lib se muestra cuando EXPLICA algo: por qué Taller y no la más frecuente', () => {
+  const t = resumenFajo({ items: [tiqueSinAnotacion()] })
+  assert.match(t, /obra elegida por coincidencia de concepto, no por la más frecuente del proveedor/)
+})
+
+test('unidad y detalle se OFRECEN con su conteo, y se declara que no bloquean la carga', () => {
+  const o = ofertasDe(tiqueSinAnotacion()).join('\n')
+  assert.match(o, /\*\*Unidad de negocio\*\* _\(no la necesito para cargar\)_: \*\*Civil\*\* 68 · Estructura 47 · Mantenimiento 11 — de 126 cargas/)
+  // El detalle cuelga de la obra: se ofrece CONDICIONADO a la obra que todavía no está decidida.
+  assert.match(o, /si la obra queda en \*\*Taller\*\*, \*\*combustible\*\* 9 · Camion 5 — de 14 cargas/)
+})
+
+test('el RUBRO no se pregunta nunca: se muestra como derivado de la imputación', () => {
+  const t = resumenFajo({ items: [tiqueSinAnotacion()] })
+  assert.doesNotMatch(t, /❓[^\n]*rubro/i, 'el rubro sale de la imputación, no del dueño')
+  assert.match(lineaRubro(tiqueSinAnotacion()), /sale de la imputación — con esa imputación sería \*\*Materiales Civil\*\*/)
+})
+
+test('un proveedor SIN historia no recibe opciones inventadas: se dice por qué no se puede deducir', () => {
+  const item = barcelo({ comprobante: { proveedor: 'Ferretería Nueva', obra: null } })
+  item.sugerencia = { obra: { sugerido: null, n: 0, distintos: 0, opciones: [], evidencia: 'sin_historia', pide_confirmacion: true } }
+  const b = bloqueObra(item).join('\n')
+  assert.match(b, /❓ \*\*¿A qué obra va\?\*\* No tengo ninguna carga anterior de \*\*Ferretería Nueva\*\* en Compras para deducirla\./)
+  assert.equal(bloqueObra(item).length, 1, 'sin historia no hay lista que mostrar')
+})
+
+test('CONTESTAR ES UN CLICK: las tres obras más frecuentes salen como botones', () => {
+  const fajo = { id: 'f1', items: [tiqueSinAnotacion()] }
+  const att = botonesFajo(fajo, { url: 'https://x/comprobantes/accion?s=1' })
+  const obras = att[0]
+  assert.match(obras.title, /¿A qué obra va\? — Combustibles Barcelo/)
+  assert.deepEqual(obras.actions.map((a) => a.name), ['San Francisco (41)', 'Administracion (39)', 'Taller (18)'])
+  assert.deepEqual(obras.actions[0].integration.context, {
+    accion: 'imputar', fajo_id: 'f1', dominio: 'comprobantes', indice: 0, campo: 'obra', valor: 'San Francisco',
+  })
+  // Y el bloque de siempre sigue estando, sin Confirmar (falta la obra: el ítem no está completo).
+  assert.deepEqual(att[1].actions.map((a) => a.id), ['corregir', 'descartar'])
+})
+
+test('elegir la obra con el botón la deja en el comprobante, marcada como elección del dueño', () => {
+  const item = aplicarOpcion(tiqueSinAnotacion(), { campo: 'obra', valor: 'San Francisco' })
+  assert.equal(item.comprobante.obra, 'San Francisco')
+  const t = resumenFajo({ items: [item] })
+  assert.match(t, /\| Obra \| San Francisco _\(la elegiste vos\)_ \|/)
+  assert.match(t.split('\n')[0], /✅ \*\*1 listo para cargar\*\*/)
+  // El detalle que se ofrecía era el de Taller: elegida otra obra, deja de ofrecerse.
+  assert.doesNotMatch(t, /combustible/)
+})
+
+test('un valor que este comprobante no ofreció NO se aplica — el callback no trae identidad', () => {
+  const item = tiqueSinAnotacion()
+  assert.equal(aplicarOpcion(item, { campo: 'obra', valor: 'Obra Inventada' }), null)
+  assert.equal(aplicarOpcion(item, { campo: 'total', valor: '1' }), null, 'sólo obra/unidad/detalle')
+  // Segundo click sobre un botón ya contestado: la obra ya está puesta y no se pisa con otra.
+  const ya = aplicarOpcion(item, { campo: 'obra', valor: 'Taller' })
+  assert.equal(ya.comprobante.obra, 'Taller')
 })

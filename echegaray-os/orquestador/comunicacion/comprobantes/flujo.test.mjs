@@ -125,7 +125,10 @@ test('si NO se pudieron leer las listas, no se acusa al proveedor de nuevo', () 
 test('sin anotación manuscrita, la obra se PREGUNTA y no se puede confirmar', async () => {
   const { d } = armar({ lecturas: [lecturaBarcelo({ anotacion_manuscrita: null })] })
   const r = await procesarPost(d, post())
-  assert.match(r.texto, /no dice a qué obra va/)
+  assert.match(r.texto, /❓ \*\*¿A qué obra va\?\*\*/)
+  // Sin historia de este proveedor no hay opciones que ofrecer, y se dice POR QUÉ en vez de dejar la
+  // pregunta pelada. Con historia, el mensaje trae las obras contadas (ver mensaje.test.mjs).
+  assert.match(r.texto, /No tengo ninguna carga anterior de \*\*Combustibles Barcelo\*\* en Compras/)
   assert.ok(!r.attachments[0].actions.some((a) => a.id === 'confirmar'))
 })
 

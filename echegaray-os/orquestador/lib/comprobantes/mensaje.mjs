@@ -30,8 +30,30 @@
 // · lo que **dedujo del historial** de Compras — marcado `_(sugerido: …)_` con la evidencia contada.
 //   Sin decir de dónde salió, el dueño no puede desconfiar cuando corresponde.
 // · lo que **está preguntando** — bloque `❓` propio, después de la tabla.
+//
+// ═══ PREGUNTAR NO ES NO SABER (03/08, el tique de Barcelo sin anotación) ═══
+//
+// El bot contestó `Obra: falta — ¿a qué obra va?` y nada más. Pero abajo, la lib de imputación
+// aprendida había devuelto TODO esto sobre Combustibles Barcelo: 126 cargas históricas, 7 obras
+// distintas, San Francisco 41 · Administracion 39 · Taller 18, y la nota de por qué proponía Taller
+// y no la más frecuente. El mensaje tiró la evidencia y dejó la pregunta pelada. El dueño: "sigue
+// sin ser inteligente" — y tenía razón: **el sistema sabía y el mensaje no lo mostraba.**
+//
+// Preguntar la obra ESTÁ BIEN: Barcelo va a siete obras de verdad y adivinar imputa plata a la obra
+// equivocada. Lo que está mal es preguntar como si no supiera nada. Entonces:
+//
+//   **UNA PREGUNTA SE HACE CON TODO LO QUE SE SABE ADELANTE.** Las opciones que la lib contó, con su
+//   conteo, la que se sugiere marcada, y la nota de la lib cuando explica algo.
+//
+// Y como contestar tiene que ser un click y no escribir, las tres más frecuentes salen además como
+// BOTONES (`botonesFajo` → acción `imputar`). El texto y los botones ofrecen exactamente lo mismo:
+// los dos salen de `opcionesDe(...)`, para que no exista una opción que se lee y no se puede tocar.
+//
+// LO QUE NO CAMBIA: la unidad, el detalle y el rubro NO bloquean la carga —el cargador de Claude
+// Code tampoco los exige— así que se ofrecen, no se preguntan. Y el rubro no se ofrece siquiera: es
+// derivado de la imputación (`rubro-caja.mjs`, definición única), y se muestra como lo que es.
 
-import { estaCompleto, preguntasDe, etiquetaComprobante, botonesFajo } from './fajo.mjs'
+import { estaCompleto, preguntasDe, etiquetaComprobante, botonesFajo, PREGUNTA_OBRA, opcionesDe } from './fajo.mjs'
 
 export const money = (n) => (n == null
   ? '—'
@@ -113,11 +135,13 @@ function valorObra(c, item) {
 /** De dónde salió la obra. Es el dato con más consecuencias de la fila: nunca se muestra pelado. */
 function origenObra(c, item) {
   if (c.obraVia === 'mensaje') return 'de lo que escribiste'
+  if (c.obraVia === 'eleccion') return 'la elegiste vos'
   if (c.obraVia === 'historial') return sugeridoTexto(item.aprendido?.obra)
   return 'escrito a mano'
 }
 
 function origenDetalle(c, item) {
+  if (c.detalleVia === 'eleccion') return 'lo elegiste vos'
   if (c.detalleVia === 'historial') return sugeridoTexto(item.aprendido?.detalle)
   return c.detalleObra ? 'escrito a mano' : null
 }
@@ -133,6 +157,98 @@ export function sugeridoTexto(ap) {
 }
 
 const conOrigen = (valor, origen) => (origen ? `${valor} _(${origen})_` : String(valor))
+
+// ── LA PREGUNTA CON LO QUE SE SABE ADELANTE ──────────────────────────────────
+
+const plural = (n, sing, plur) => (n === 1 ? sing : plur)
+
+/**
+ * El bloque `❓` de la obra: la pregunta, las opciones que la lib contó y su nota.
+ *
+ * Cuando no hay historia no se inventa un "no sé": se dice POR QUÉ no se puede deducir. Un proveedor
+ * nuevo y un proveedor que va a siete obras son dos situaciones distintas y el dueño decide distinto
+ * en cada una.
+ */
+export function bloqueObra(item = {}) {
+  const c = item.comprobante ?? {}
+  const s = item.sugerencia?.obra ?? null
+  const prov = c.proveedor ?? 'este proveedor'
+  const ops = opcionesDe(s)
+  if (!ops.length) {
+    const sin = s?.evidencia === 'sin_historia' || !s
+      ? ` No tengo ninguna carga anterior de **${prov}** en Compras para deducirla.`
+      : ''
+    return [`❓ **¿A qué obra va?**${sin}`]
+  }
+  const n = s.n ?? 0
+  const distintos = s.distintos ?? ops.length
+  const l = [`❓ **¿A qué obra va?** ${prov} fue a **${distintos} ${plural(distintos, 'obra distinta', 'obras distintas')}** en ${n} ${plural(n, 'carga', 'cargas')} de Compras, así que no la doy por hecha:`]
+  // La viñeta es `•` y no `-` de markdown a propósito: es la que ya usa el resto de los mensajes del
+  // bot (drive-buscar, recordatorios) y no depende de que Mattermost arranque una lista en la línea
+  // siguiente a un párrafo. Una opción que no se lee es una opción que no existe.
+  for (const o of ops) {
+    const cuantas = o.n != null ? ` — ${o.n} de ${n}` : ''
+    l.push(`• **${o.valor}**${cuantas}${o.valor === s.sugerido ? ' ← la que sugiero' : ''}`)
+  }
+  // La nota de la lib se muestra CUANDO EXPLICA ALGO. "obra elegida por coincidencia de concepto, no
+  // por la más frecuente del proveedor" es exactamente lo que hace falta para confiar o desconfiar de
+  // la sugerida; repetir "obra ambigua (7 distintas en 126)" sería decir dos veces lo de arriba.
+  if (s.nota) l.push(`_ℹ ${s.nota}_`)
+  return l
+}
+
+/**
+ * Las dimensiones que NO bloquean: se OFRECEN, no se preguntan.
+ *
+ * El cargador de Claude Code escribe la fila con Unidad y Detalle vacías y las completa el dueño en
+ * el Sheet; el bot no puede ser más exigente que él. Pero si acá se sabe qué puso antes, ofrecerlo
+ * ahorra ese viaje — declarando que no hace falta para cargar.
+ */
+export function ofertasDe(item = {}) {
+  const c = item.comprobante ?? {}
+  const sug = item.sugerencia ?? {}
+  const l = []
+  if (!c.unidad) {
+    const t = listaCorta(sug.unidad)
+    if (t) l.push(`**Unidad de negocio** _(no la necesito para cargar)_: ${t}`)
+  }
+  if (!c.detalleObra) {
+    const t = listaCorta(sug.detalle)
+    // El detalle se aprende por (proveedor, OBRA). Si la obra todavía no está decidida, lo que se
+    // ofrece es el detalle de la obra SUGERIDA: decirlo sin esa condición sería ofrecer el frente de
+    // una obra que puede no ser la que termine quedando.
+    const obra = sug.detalle?.obra ?? null
+    if (t) {
+      const cond = obra && !c.obra ? `si la obra queda en **${obra}**, ` : (obra ? `en **${obra}** ` : '')
+      l.push(`**Detalle de obra** _(no lo necesito para cargar)_: ${cond}${t}`)
+    }
+  }
+  return l
+}
+
+/** "**Civil** 68 · Estructura 47 · Mantenimiento 11 — de 126 cargas": los valores con su conteo. */
+export function listaCorta(s) {
+  const ops = opcionesDe(s)
+  if (!ops.length) return null
+  const n = s?.n ?? 0
+  const partes = ops.map((o) => {
+    const cuenta = o.n != null ? ` ${o.n}` : ''
+    return o.valor === s?.sugerido ? `**${o.valor}**${cuenta}` : `${o.valor}${cuenta}`
+  })
+  return `${partes.join(' · ')}${n ? ` — de ${n} ${plural(n, 'carga', 'cargas')}` : ''}`
+}
+
+/**
+ * El rubro de caja NO SE PREGUNTA NUNCA: es derivado de la imputación y lo define `rubro-caja.mjs`,
+ * la única definición del rubro en todo el sistema. Se muestra para que el dueño vea la consecuencia
+ * de la imputación que está por elegir — es la línea del Cash Flow donde va a caer esta plata.
+ */
+export function lineaRubro(item = {}) {
+  const r = item.sugerencia?.rubro
+  if (!r?.sugerido || r.evidencia === 'sin_clasificar') return null
+  const cond = r.evidencia === 'depende_de_la_imputacion' ? 'con esa imputación sería' : 'es'
+  return `el rubro de caja no te lo pregunto: sale de la imputación — ${cond} **${r.sugerido}**`
+}
 
 /**
  * Las notas al pie de un comprobante. Informan, no deciden: van abajo, en itálica y con ℹ.
@@ -204,12 +320,23 @@ export function resumenFajo(fajo = {}) {
     if (c.esNotaCredito) l.push('', '⚠️ **Nota de crédito: entra en negativo.**')
     const dup = avisoDuplicado(it)
     if (dup) l.push('', dup)
+    // LA PREGUNTA DE LA OBRA SE REEMPLAZA POR EL BLOQUE CON LAS OPCIONES. `preguntasDe` decide QUÉ
+    // falta (y por eso `estaCompleto` sigue siendo false); acá se decide CÓMO se pregunta. El resto de
+    // las preguntas —el total, la fecha, el número— no tienen historial que ofrecer: van tal cual.
     const preguntas = preguntasDe(it).filter((p) => !/ya esté cargado/.test(p))
-    if (preguntas.length) {
+    const bloques = preguntas.flatMap((p) => (p === PREGUNTA_OBRA ? bloqueObra(it) : [`❓ ${p}`]))
+    if (bloques.length) {
       l.push('')
-      for (const p of preguntas) l.push(`❓ ${p}`)
+      for (const b of bloques) l.push(b)
+    }
+    const ofertas = ofertasDe(it)
+    if (ofertas.length) {
+      l.push('')
+      for (const o of ofertas) l.push(o)
     }
     const notas = notasDe(it)
+    const rubro = lineaRubro(it)
+    if (rubro) notas.push(rubro)
     if (notas.length) {
       l.push('')
       for (const n of notas) l.push(`_ℹ ${n}_`)
@@ -222,7 +349,14 @@ export function resumenFajo(fajo = {}) {
   const cargables = items.filter(estaCompleto).length
   const pendientes = items.some((it) => [ESTADO_ITEM.FALTA, ESTADO_ITEM.DUPLICADO].includes(estadoDeItem(it)))
   if (cargables) l.push(`Si está bien, apretá **Confirmar** y lo escribo en Compras (${cargables} fila${cargables > 1 ? 's' : ''}).`)
-  else if (pendientes) l.push('**No hay nada que cargar todavía.** Contestame lo que falta y lo cargo.')
+  else if (pendientes) {
+    // Si hay opciones ofrecidas hay botones para tocarlas: decir sólo "contestame" haría escribir lo
+    // que se resuelve con un click.
+    const hayBotones = items.some((it) => opcionesDe(it?.sugerencia?.obra).length && !it?.comprobante?.obra)
+    l.push(hayBotones
+      ? '**No hay nada que cargar todavía.** Tocá la obra —o escribime otra— y lo cargo.'
+      : '**No hay nada que cargar todavía.** Contestame lo que falta y lo cargo.')
+  }
   else l.push('**No hay nada que cargar:** ya estaba en Compras.')
   return l.join('\n')
 }
