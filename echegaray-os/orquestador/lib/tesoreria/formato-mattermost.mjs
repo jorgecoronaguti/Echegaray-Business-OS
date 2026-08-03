@@ -71,6 +71,67 @@ export function formatoAplicarADeuda(rec, posicion) {
   ].join('\n')
 }
 
+/**
+ * EL EXCEDENTE POR PLAZO. Un número único no es una decisión: colocar a 30 días y a 90 días son dos
+ * decisiones distintas sobre el mismo peso, y la diferencia entre "con cobranzas" y "sin cobranzas" es
+ * justo lo que hay que mirar antes de inmovilizar plata.
+ */
+export function formatoExcedentePorPlazo(exc = {}) {
+  const L = ['**TESORERÍA · EXCEDENTE POR PLAZO**', '']
+  L.push('| Plazo | Colocable hoy | Si no cobrás nada | Piso del período | Día de tensión |')
+  L.push('|---|---:|---:|---:|---|')
+  for (const v of exc.ventanas_por_plazo || []) {
+    if (v.estado !== 'ok') { L.push(`| ${v.dias} días | sin dato | — | — | ${v.motivo ?? ''} |`); continue }
+    L.push(`| ${v.dias} días | **${pesos(v.monto_maximo)}** | ${pesos(v.monto_sin_creerle_a_las_cobranzas)} | ${pesos(v.piso)} | ${v.fecha_tension} |`)
+  }
+  L.push('', `Reserva mínima aprobada y preservada: ${pesos(exc.reserva_preservada)}`)
+  // EL SOLAPAMIENTO SE DICE. Es plata real que el dueño podría liberar cambiando su propia política,
+  // y el software no puede cambiarla por él.
+  const s = exc.solape_reserva
+  if (s?.solapado > 0) {
+    L.push('', `⚠️ ${s.nota}`,
+      `Si la reserva pasara a ser un colchón para lo IMPREVISTO en vez de los egresos que el calendario ya descuenta, `
+      + `el colocable a 30 días subiría a ${pesos((exc.ventanas_por_plazo || [])[0]?.monto_si_reserva_no_duplicara)}. **Es una decisión tuya, no del OS.**`)
+  }
+  return L.join('\n')
+}
+
+/**
+ * LA TABLA COMPARATIVA DE INSTRUMENTOS — lo que el dueño pidió dos veces y no estaba.
+ *
+ * Se publica SIEMPRE que haya relevamiento, tenga o no la empresa excedente: saber que el mercado paga
+ * 40% cuando el descubierto cuesta 62,78% es información aunque hoy no haya un peso para colocar.
+ */
+export function formatoTablaInstrumentos(tabla = {}) {
+  const L = [`**TESORERÍA · ALTERNATIVAS A ${tabla.dias} DÍAS** — sobre ${pesos(tabla.monto_a_colocar)}`, '']
+  L.push(`Vara a superar: **${pct(tabla.vara?.periodo)}** en ${tabla.dias} días (${pct(tabla.vara?.anual)} anual) — ${tabla.vara?.explicacion}`)
+  L.push(`Equivale a ${pesos(tabla.vara?.en_pesos)}: es lo que cuesta NO hacer nada.`, '')
+  if (tabla.viables?.length) {
+    L.push('| # | Instrumento | Ticker | TNA | TEA | Liquidez | Rinde en $ | Riesgo | Mínimo |')
+    L.push('|---|---|---|---:|---:|---|---:|---|---|')
+    tabla.viables.forEach((f, i) => {
+      const tna = f.tna_declarada != null ? pct(f.tna_declarada) : f.tna_equivalente != null ? `${pct(f.tna_equivalente)} _(calc.)_` : 'sin dato'
+      L.push(`| ${i + 1} | ${f.instrumento} | ${f.ticker} | ${tna} | ${pct(f.tea)} | ${f.liquidez} | **${pesos(f.rinde_en_pesos)}** | ${f.nivel_riesgo} | ${f.monto_minimo} |`)
+    })
+  } else {
+    L.push('_Ninguna alternativa relevada supera la vara._')
+  }
+  L.push('', `Veredicto: ${tabla.veredicto}`)
+  if (tabla.recomendacion) {
+    L.push('', `**Recomendada: ${tabla.recomendacion.instrumento}** (${tabla.recomendacion.familia})`,
+      `Por qué: rinde ${pct(tabla.recomendacion.rendimiento_neto_periodo)} neto en ${tabla.dias} días — `
+      + `${pct(tabla.recomendacion.exceso_sobre_vara)} por encima de la vara — y devuelve la plata en ${tabla.recomendacion.dias_vuelta} día(s).`)
+  }
+  if (tabla.por_que_no_las_otras?.length) {
+    L.push('', 'Por qué NO las otras:', lista(tabla.por_que_no_las_otras.map((x) => `${x.instrumento}: ${x.motivo}`).slice(0, 12)))
+  }
+  if (tabla.familias_sin_dato?.length) {
+    L.push('', 'Familias sin dato en esta corrida (**DESCONOCIDO**, no se estima):',
+      lista(tabla.familias_sin_dato.map((f) => `${f.familia}: ${f.motivo}`)))
+  }
+  return L.join('\n')
+}
+
 /** Sesión vencida. Es un aviso operativo, no una alerta financiera: se dice qué tiene que hacer él. */
 export function formatoSesionRequerida(motivo) {
   return [

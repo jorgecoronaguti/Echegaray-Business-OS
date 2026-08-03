@@ -25,6 +25,7 @@
 
 import { BLOQUES, bloquePorDias, EVIDENCIA, CONFIANZA } from './contratos.mjs'
 import { deudaCancelable, tasaDeReferencia, interesDiarioDelAcuerdo, MODO } from './costo-liquidez.mjs'
+import { ventanaDeExcedente, excedentePorVentana, VENTANAS_DIAS, DIAS_ACREDITACION_VALORES } from './excedente-ventana.mjs'
 
 /**
  * TASA DE CORTE (hurdle rate) — el rendimiento anual que un instrumento tiene que superar para que
@@ -108,14 +109,35 @@ export async function calcularExcedente(posicion = {}, proyeccion = {}, opts = {
 
   const reserva = Number(posicion.caja_minima) || 0
   const techoPosicion = Number(posicion.techo_tecnico_preliminar) || 0
-  if (techoPosicion <= 0) {
-    return {
-      estado: 'ok', hoy: hoy.toISOString().slice(0, 10), tasa_de_corte: corte, en_descubierto: deuda.monto > 0,
-      deuda_cancelable: deuda,
-      ventanas: [ventanaCerrada('F', `después de restar lo comprometido ($${posicion.caja_comprometida.toLocaleString('es-AR')}), lo restringido y la reserva, no queda techo técnico`, { monto_maximo: 0 })],
-      evidencia: EVIDENCIA.CALCULO, confianza: posicion.confianza,
-    }
+
+  // ═══ LOS INSUMOS DEL MOTOR POR VENTANA ═══
+  //
+  // Antes, un `techo_tecnico_preliminar` en cero cortaba acá y devolvía "no invertible" para TODOS los
+  // plazos. Ese techo es una foto de T+0 que resta el 100% de los cheques firmados —incluidos los que
+  // vencen dentro de 90 días— y no suma una sola cobranza: usarlo como compuerta garantizaba el mismo
+  // resultado siempre. Ya no corta: es un dato más, y el excedente sale de caminar el calendario.
+  const arsLiquida = Number.isFinite(Number(posicion.composicion?.ars_liquida))
+    ? Number(posicion.composicion.ars_liquida) : Number(posicion.caja_real) || 0
+  const valoresADepositar = Number(posicion.composicion?.valores_a_depositar) || 0
+  // Lo que el calendario NO puede ver: cheques ya vencidos sin debitar y cheques sin fecha. No depende
+  // de la ventana (los dos casos pueden caer cualquier día), así que se toma una sola vez.
+  const restringidaFuera = Number(
+    Object.values(posicion.caja_restringida_por_ventana ?? {})[0]?.a_restar_fuera_del_calendario ?? 0,
+  ) || 0
+  const insumos = {
+    dias: opts.dias || [],
+    saldoInicial: arsLiquida,
+    vencido: Number(posicion.caja_comprometida) || 0,
+    valoresADepositar,
+    diasAcreditacion: DIAS_ACREDITACION_VALORES,
+    reserva,
+    restringidaFueraDelCalendario: restringidaFuera,
+    hoy,
   }
+  // LA VISTA QUE PIDIÓ EL DUEÑO: el excedente por plazo, no un número único. Va aparte de los bloques
+  // A–E porque responde otra pregunta —"¿cuánto puedo colocar a 30, a 60 y a 90 días?"— y es la que
+  // se publica.
+  const porPlazo = excedentePorVentana({ ...insumos, ventanas: VENTANAS_DIAS })
 
   const dias = (proyeccion.escenarios?.adverso?.horizontes) || []
   // HASTA DÓNDE VE EL CALENDARIO. Todo lo que esté más allá NO se puede afirmar.
@@ -144,12 +166,16 @@ export async function calcularExcedente(posicion = {}, proyeccion = {}, opts = {
     // el piso de los 30, no el de hoy. Si el bloque se extiende más allá de la cobertura, se recorta
     // a lo observable — una ventana más corta y cierta, en vez de una larga e inventada.
     const tope = Math.min(b.hasta, cobertura)
-    const h = dias.find((x) => x.dias >= tope) || dias[dias.length - 1]
-    const piso = h?.estado === 'ok' ? h.piso_invertible : null
-    if (piso == null) { porBloque.set(b.id, ventanaCerrada('G', `el calendario no cubre ${b.hasta} días`, { bloque_solicitado: b.id })); continue }
-    const monto = Math.max(0, Math.min(techoPosicion, piso - reserva))
+    // EL MOTOR ES UNO SOLO. `ventanaDeExcedente` camina el mismo calendario en escenario adverso
+    // sumando las cobranzas del período y restando SÓLO los egresos que caen dentro de la ventana.
+    const v = ventanaDeExcedente({ ...insumos, hasta: tope, factorIngresos: 0.5 })
+    if (v.estado !== 'ok') { porBloque.set(b.id, ventanaCerrada('G', v.motivo, { bloque_solicitado: b.id })); continue }
+    const piso = v.piso
+    const monto = v.monto_maximo
     if (monto <= 0) {
-      porBloque.set(b.id, ventanaCerrada('F', `el saldo mínimo proyectado a ${tope} días (escenario adverso) es $${Math.round(piso).toLocaleString('es-AR')}: no aguanta inmovilizar nada`, { monto_maximo: 0 }))
+      // `bloque_solicitado` viaja también en la F: una ventana cerrada tiene que decir CUÁL se cerró.
+      // Sin eso, tres bloques distintos devuelven tres filas idénticas y no se puede auditar ninguna.
+      porBloque.set(b.id, ventanaCerrada('F', `el saldo mínimo proyectado a ${tope} días (escenario adverso, cobranzas al 50%) es $${Math.round(piso).toLocaleString('es-AR')} y la reserva aprobada es $${Math.round(reserva).toLocaleString('es-AR')}: no aguanta inmovilizar nada`, { monto_maximo: 0, detalle_ventana: v, bloque_solicitado: b.id, dias_libres: tope }))
       continue
     }
     const inicio = new Date(hoy)
@@ -179,9 +205,13 @@ export async function calcularExcedente(posicion = {}, proyeccion = {}, opts = {
         reserva,
         cft: corte.valor, interesDia, factorIngresos: 0.5, escenario: 'adverso',
       }),
+      // EL DETALLE COMPLETO DEL RECORRIDO. Entradas, salidas, el día de tensión y el solapamiento de
+      // la reserva con el calendario: sin esto el monto es un número sin defensa.
+      detalle_ventana: v,
       condiciones_invalidez: [
-        `si entra un pago no previsto mayor a $${Math.round(piso - reserva - monto).toLocaleString('es-AR')}, la ventana se cierra`,
-        'si una cobranza del período no se acredita, el piso baja y el monto deja de ser válido',
+        `el día de mayor tensión es el ${v.fecha_tension}: si ese día entra un pago no previsto, la ventana se cierra`,
+        `sin creerle nada a las cobranzas el excedente a ${tope} días sería $${Math.round(ventanaDeExcedente({ ...insumos, hasta: tope, factorIngresos: 0 }).monto_maximo ?? 0).toLocaleString('es-AR')}`,
+        ...(v.solape_reserva?.solapado > 0 ? [v.solape_reserva.nota] : []),
         ...(deuda.monto > 0 ? [`hay $${deuda.monto.toLocaleString('es-AR')} de descubierto utilizado: esa porción va a cancelar la línea antes que a cualquier instrumento`] : []),
         ...(tope < b.hasta ? [`la ventana se recortó a ${tope} días: el calendario no proyecta más allá`] : []),
       ],
@@ -212,7 +242,11 @@ export async function calcularExcedente(posicion = {}, proyeccion = {}, opts = {
     bloqueos_accionabilidad: posicion.bloqueos_accionabilidad ?? [],
     reserva_preservada: Math.round(reserva),
     ventanas,
-    criterio: 'techo = min(caja − comprometido − restringido − reserva, piso del período en escenario adverso − reserva); '
+    // LA TABLA QUE SE PUBLICA. Un excedente por plazo, con los tres escenarios de cobro al lado.
+    ventanas_por_plazo: porPlazo,
+    solape_reserva: porPlazo[0]?.solape_reserva ?? null,
+    criterio: 'el excedente de cada ventana es el SALDO MÍNIMO del recorrido del calendario (pesos líquidos + valores a depositar '
+      + `acreditados a ${DIAS_ACREDITACION_VALORES} días + cobranzas del período al 50% − lo vencido − los egresos que caen DENTRO de la ventana) menos la reserva aprobada; `
       + 'la vara de cada ventana sale de costo-liquidez (cancelación de deuda / costo de oportunidad / contingencia), no del CFT fijo',
     evidencia: EVIDENCIA.CALCULO,
     confianza: posicion.confianza,

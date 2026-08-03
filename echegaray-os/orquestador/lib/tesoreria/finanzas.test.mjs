@@ -834,9 +834,15 @@ test('la contingencia se simula EN PESOS: los dólares no tapan un déficit en p
     proy, { hoy: HOY, dias: cal },
   )
   const sinComposicion = await calcularExcedente({ ...base, composicion: null }, proy, { hoy: HOY, dias: cal })
-  const varaC = conDolares.ventanas.find((v) => v.bloque === 'C')?.referencia?.hurdle_periodo ?? 0
-  const varaS = sinComposicion.ventanas.find((v) => v.bloque === 'C')?.referencia?.hurdle_periodo ?? 0
-  assert.ok(varaC > varaS, `mirando sólo los pesos la vara tiene que ser MAYOR: ${varaC} vs ${varaS}`)
+  // 03/08: con el motor por ventana el efecto es MÁS fuerte que "una vara más alta". Con $20M de pesos
+  // y un egreso de $30M el día 10, el recorrido en pesos toca −$10M: no hay ventana a 30 días, punto.
+  // Mirando el total —dólares incluidos— la ventana queda abierta con $20M. Ése es exactamente el
+  // error que el test vigila: los dólares no pueden tapar un déficit en pesos.
+  const deC = (r) => r.ventanas.find((v) => v.bloque === 'C' || v.bloque_solicitado === 'C')
+  const cC = deC(conDolares)
+  const cS = deC(sinComposicion)
+  assert.equal(cC.monto_maximo, 0, 'mirando sólo los pesos no puede quedar nada colocable a 30 días')
+  assert.ok(Number(cS.monto_maximo) > 0, 'mirando el total (con dólares) la ventana queda abierta: ése es el defecto')
 })
 
 test('la cobertura del calendario sale de las FILAS, no del horizonte que dijo "ok"', async () => {

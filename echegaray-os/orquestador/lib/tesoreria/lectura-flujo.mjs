@@ -133,7 +133,13 @@ export async function leerFlujoDeFondos(deps = {}, opts = {}) {
 
   let cal
   try {
-    cal = await calendarioDiario(deps, { hoy, dias: Math.max(1, Number(opts.dias) || 90), spreadsheetId: LIBRO })
+    // EL ATRASO TÍPICO DE CADA CLIENTE, CUANDO SE LO PASAN. `aprendizaje-cobranzas` ya mide sobre
+    // `public.cobranza` cuántos días tarde paga cada cliente; el calendario sabe reproyectar con eso.
+    // Sin este opt las cobranzas caen en su fecha NOMINAL, que es la fecha en la que no van a entrar.
+    cal = await calendarioDiario(deps, {
+      hoy, dias: Math.max(1, Number(opts.dias) || 90), spreadsheetId: LIBRO,
+      perfilesCobro: opts.perfilesCobro ?? null,
+    })
   } catch (e) {
     return {
       estado: 'sin_dato',
@@ -175,6 +181,8 @@ export async function leerFlujoDeFondos(deps = {}, opts = {}) {
     pestanas_prohibidas: PESTANAS_PROHIBIDAS,
     caja_inicial: cal.caja_inicial ?? null,
     dias: cal.dias || [],
+    // Qué escenario de cobro gobierna las fechas de este calendario. `null` = fechas nominales.
+    escenario_cobro: cal.escenario_cobro ?? null,
     movimientos,
     duplicados: detectarDuplicados(movimientos),
     problemas,

@@ -93,6 +93,41 @@ export function aTea(tasa) {
 }
 
 /**
+ * ═══ TECHO DE CORDURA DE UNA TASA ═══
+ *
+ * En la pantalla real de Balanz existe, hoy, una ON de Plaza Logística en UVA con una TIR publicada de
+ * **95.739.511.996%**. No es un error de este código: la pantalla lo dice. Sale de calcular una TIR
+ * sobre un precio que no corresponde a la moneda del flujo, y le puede pasar a cualquier especie
+ * ilíquida cualquier día.
+ *
+ * Ninguna validación del módulo le ponía techo a una tasa. Todos los filtros miran otra cosa —moneda,
+ * categoría, liquidez, frescura— y el orden del ranking es por rendimiento: el día que una letra apta
+ * publique un disparate parecido, gana sola y con cara de oportunidad.
+ *
+ * El techo es ABSOLUTO y deliberadamente alto: 1000% efectivo anual. Argentina tuvo tasas de tres
+ * cifras y este módulo no puede declararlas imposibles sin conocimiento que no tiene. Lo que sí puede
+ * afirmar es que un instrumento de TESORERÍA que promete más de diez veces el capital en un año no es
+ * una oportunidad: es un dato roto. Y lo que supera el techo no se descarta en silencio — se declara
+ * SOSPECHOSO, con el número, para que alguien pueda mirarlo.
+ */
+export const TEA_MAXIMA_CREIBLE = 10
+
+/** ¿La tasa está dentro de lo que un instrumento de tesorería puede pagar de verdad? */
+export function tasaCreible(tea) {
+  const t = Number(tea)
+  if (!Number.isFinite(t)) return { creible: false, motivo: 'la tasa no es un número' }
+  if (t > TEA_MAXIMA_CREIBLE) {
+    return {
+      creible: false,
+      sospechosa: true,
+      motivo: `la tasa publicada equivale a ${(t * 100).toLocaleString('es-AR', { maximumFractionDigits: 0 })}% efectivo anual y el techo de cordura es ${TEA_MAXIMA_CREIBLE * 100}%: `
+        + 'es un dato roto de la pantalla, no una oportunidad. No se recomienda y no entra al ranking.',
+    }
+  }
+  return { creible: true }
+}
+
+/**
  * DECIMAL DE UN NÚMERO SUELTO — el punto no siempre es separador de miles.
  *
  * ═══ LO QUE ENCONTRÓ LA PANTALLA REAL ═══
