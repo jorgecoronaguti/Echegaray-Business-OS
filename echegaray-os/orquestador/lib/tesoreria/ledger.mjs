@@ -79,25 +79,50 @@ export async function guardarVentanas(query, runId, ventanas = []) {
 /**
  * Instrumentos y observaciones. El instrumento se hace upsert (es una identidad estable); la
  * observación SIEMPRE inserta.
+ *
+ * ═══ UNA FILA MALA NO SE LLEVA PUESTA LA CORRIDA ═══
+ *
+ * El 03/08/2026 la ON de Plaza Logística en UVA (ZPC4O) llegó con la TIR que publica Balanz —
+ * 957.395.119,965— y el insert tiró `numeric field overflow`. Como esto corre ANTES de
+ * `cerrarCorrida`, la excepción se llevó el análisis de caja entero, que ya estaba bien hecho, y
+ * dejó la corrida `en_curso` para siempre: 1 fila de 1.108 borró el trabajo de las otras 1.107.
+ *
+ * La columna se ensanchó (migración `20260803150000`), pero el día que aparezca otro disparate no
+ * puede volver a pasar lo mismo. La fila que falla se registra en `errores_extraccion` —que existía
+ * y nadie escribía— y el resto sigue. NO se silencia: el conteo vuelve al llamador y la fila queda
+ * con su motivo en la base.
  */
 export async function guardarInstrumentos(query, runId, instrumentos = []) {
+  let guardados = 0
+  const fallidos = []
   for (const i of instrumentos) {
-    await query(
-      `insert into tesoreria.instrumentos (id, nombre, ticker, categoria, emisor, moneda, apto_tesoreria)
-       values ($1,$2,$3,$4,$5,$6,$7)
-       on conflict (id) do update set nombre = excluded.nombre, visto_ultimo = now()`,
-      [i.id, i.nombre, i.ticker, i.categoria, i.emisor, i.moneda, esAptoTesoreria(i.categoria)],
-    )
-    await query(
-      `insert into tesoreria.observaciones
-         (run_id, instrumento_id, observado_en, precio, tasa_tipo, tasa_valor, tasa_naturaleza,
-          plazo_rescate_dias, liquidacion_dias, costos, evidencia, campos_faltantes, url)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-      [runId, i.id, i.observado_en, i.precio, i.tasa?.tipo ?? null, i.tasa?.valor ?? null,
-        i.tasa?.naturaleza ?? null, i.plazo_rescate_dias, i.liquidacion_dias,
-        JSON.stringify(i.costos ?? {}), i.evidencia, i.campos_faltantes ?? [], i.url],
-    )
+    try {
+      await query(
+        `insert into tesoreria.instrumentos (id, nombre, ticker, categoria, emisor, moneda, apto_tesoreria)
+         values ($1,$2,$3,$4,$5,$6,$7)
+         on conflict (id) do update set nombre = excluded.nombre, visto_ultimo = now()`,
+        [i.id, i.nombre, i.ticker, i.categoria, i.emisor, i.moneda, esAptoTesoreria(i.categoria)],
+      )
+      await query(
+        `insert into tesoreria.observaciones
+           (run_id, instrumento_id, observado_en, precio, tasa_tipo, tasa_valor, tasa_naturaleza,
+            plazo_rescate_dias, liquidacion_dias, costos, evidencia, campos_faltantes, url)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        [runId, i.id, i.observado_en, i.precio, i.tasa?.tipo ?? null, i.tasa?.valor ?? null,
+          i.tasa?.naturaleza ?? null, i.plazo_rescate_dias, i.liquidacion_dias,
+          JSON.stringify(i.costos ?? {}), i.evidencia, i.campos_faltantes ?? [], i.url],
+      )
+      guardados += 1
+    } catch (e) {
+      const detalle = `${i.id}: ${String(e?.message ?? e).slice(0, 200)}`
+      fallidos.push(detalle)
+      await query(
+        `insert into tesoreria.errores_extraccion (run_id, url, detalle) values ($1,$2,$3)`,
+        [runId, i.url ?? null, detalle],
+      ).catch(() => {}) // si ni el registro del error entra, no se pierde el resto de la corrida
+    }
   }
+  return { guardados, fallidos }
 }
 
 /**

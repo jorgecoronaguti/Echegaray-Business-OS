@@ -48,6 +48,12 @@ before(async () => {
   const sql = readFileSync(join(APP, 'supabase', 'migrations', '20260801170000_tesoreria_inversor.sql'), 'utf8')
   await query(sql)
   await query(sql)
+  // Y ENCIMA LA QUE ENSANCHA LA TASA. El schema que hay que probar es el que resulta de TODAS las
+  // migraciones, no el de la primera: probar contra la inicial es probar contra una base que en
+  // producción ya no existe.
+  const anchoTasa = readFileSync(join(APP, 'supabase', 'migrations', '20260803150000_tesoreria_tasa_ancho_real.sql'), 'utf8')
+  await query(anchoTasa)
+  await query(anchoTasa)
   // Un test que sólo pasa la primera vez contra una base limpia no es un test: es una casualidad.
   // Correrlo dos veces seguidas contra el mismo contenedor tiene que dar lo mismo.
   await query(`truncate tesoreria.corridas, tesoreria.instrumentos, tesoreria.politicas restart identity cascade`)
@@ -93,6 +99,52 @@ test('las observaciones de mercado NO se pisan: cada lectura es una fila', opts,
   assert.deepEqual(rows.map((r) => r.v), [0.8, 0.9], 'la lectura vieja tiene que seguir ahí: es la evidencia de con qué dato se decidió')
   const { rows: i } = await query("select count(*)::int n from tesoreria.instrumentos where id='bz_probe'")
   assert.equal(i[0].n, 1, 'el instrumento es una identidad estable: una sola fila')
+})
+
+test('la TASA QUE PUBLICA LA PANTALLA entra al ledger, por absurda que sea', opts, async () => {
+  // ═══ EL DEFECTO, MEDIDO EN PRODUCCIÓN ═══
+  //
+  // 03/08/2026: la corrida f8849d89 murió con `numeric field overflow` y quedó `en_curso` para
+  // siempre. La fila era ésta, leída de la pantalla viva de corporativos:
+  //
+  //   ON PLAZA LOGISTICA CL.4 04/03/29 UVA (ZPC4O) · precio 0,37 · TIR 957.395.119,965
+  //
+  // Es un disparate que fabrica el bróker calculando contra un precio del 18/06/2026, pero es EL
+  // DATO QUE LA PANTALLA PUBLICA y el histórico existe para poder auditar con qué dato se decidió.
+  // `numeric(12,8)` corta en 9.999,99999999.
+  const inst = {
+    id: 'bz_zpc4o-l1d', nombre: 'ON PLAZA LOGISTICA CL.4 04/03/29 UVA', ticker: 'ZPC4O',
+    categoria: 'on', emisor: null, moneda: 'ARS', precio: 0.37,
+    tasa: { tipo: 'tir', valor: 957395119.965, naturaleza: 'indicativa' },
+    plazo_rescate_dias: null, liquidacion_dias: 1, costos: {}, evidencia: 'dato',
+    observado_en: new Date().toISOString(), campos_faltantes: [], url: '/app/cotizaciones/corporativos?all=1',
+  }
+  const r = await ledger.guardarInstrumentos(query, runId, [inst])
+  assert.deepEqual(r.fallidos, [], 'la observación tiene que entrar')
+  const { rows } = await query("select tasa_valor::text v from tesoreria.observaciones where instrumento_id='bz_zpc4o-l1d'")
+  assert.equal(rows[0].v, '957395119.96500000', 'y se lee de vuelta SIN redondear: el histórico guarda el insumo')
+})
+
+test('UNA FILA MALA NO SE LLEVA PUESTA LA CORRIDA: se registra y el resto entra', opts, async () => {
+  // Lo que costó el overflow no fue la fila perdida: fue que la excepción salió antes de
+  // `cerrarCorrida` y se llevó el análisis de caja de las otras 1.107. Con la columna ensanchada
+  // esta fila puntual ya entra, así que el caso se fuerza con lo que ninguna migración arregla —un
+  // instrumento con id nulo, que viola la primary key—.
+  const buena = {
+    id: 'bz_sobreviviente', nombre: 'Caución 30d', categoria: 'caucion', moneda: 'ARS', precio: null,
+    tasa: { tipo: 'tna', valor: 0.31, naturaleza: 'indicativa' }, plazo_rescate_dias: 30,
+    liquidacion_dias: 0, costos: {}, evidencia: 'dato', observado_en: new Date().toISOString(),
+    campos_faltantes: [], url: '/app/cotizaciones/cauciones', ticker: 'PESOS', emisor: null,
+  }
+  const r = await ledger.guardarInstrumentos(query, runId, [{ ...buena, id: null }, buena])
+  assert.equal(r.guardados, 1, 'la fila sana tiene que haber entrado igual')
+  assert.equal(r.fallidos.length, 1)
+  // Y NO se silencia: queda en la tabla que existe para eso.
+  const { rows } = await query(
+    "select detalle from tesoreria.errores_extraccion where run_id=$1 and url='/app/cotizaciones/cauciones'", [runId])
+  assert.equal(rows.length, 1, 'el error tiene que quedar registrado, no desaparecer')
+  const { rows: viva } = await query("select count(*)::int n from tesoreria.observaciones where instrumento_id='bz_sobreviviente'")
+  assert.equal(viva[0].n, 1)
 })
 
 test('una recomendación repetida el mismo día se REEMPLAZA, no se duplica', opts, async () => {
