@@ -34,6 +34,11 @@ const READONLY_SCOPES = [
 // con la SA) hace falta el scope `drive` completo. Es un service account SIN delegación:
 // el acceso real lo sigue gobernando el COMPARTIR de cada archivo, no el scope — el scope
 // amplio no da acceso a nada que no esté compartido con la cuenta. No requiere re-consent.
+// Las dos escaleras de reintento, a nivel de módulo para que el test pueda medirlas. La de cuota
+// TIENE que sumar más de 60.000 ms o no sirve para nada: la cuota de Sheets se renueva por minuto.
+export const ESPERAS_5XX = [600, 1400, 3000, 6000]
+export const ESPERAS_429 = [2000, 5000, 12000, 25000, 45000]
+
 export const WRITE_SCOPES = [
   'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/spreadsheets',
@@ -192,18 +197,28 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
   /** POST/PUT/PATCH con cuerpo JSON. Devuelve el JSON de respuesta. Error CLARO con
    *  el status y el cuerpo (para distinguir p.ej. 403 sin permiso de edición sobre
    *  el archivo destino — el Gotcha del Service Account). */
-  // Reintento con backoff ante límites transitorios de Google: 429 (Quota exceeded —
-  // "Read requests per minute per user", que salta cuando el agente lee muchos rangos
-  // seguidos al reconstruir una planilla) y 5xx. Sin esto, una ráfaga de lecturas rompe
-  // toda la tarea a mitad. Hasta 4 intentos, espera creciente (0.6s, 1.4s, 3s, 6s).
+  // Reintento con backoff ante límites transitorios de Google. Son DOS fallas distintas y por eso
+  // hay dos escaleras: un 5xx es un hipo del servidor y se pasa en segundos; un 429 es una VENTANA
+  // DE CUOTA, y la de Sheets se mide POR MINUTO ("Read requests per minute per user").
+  //
+  // LA ESPERA TIENE QUE CRUZAR EL MINUTO. La escalera anterior era [0,6s 1,4s 3s 6s]: 11 segundos
+  // en total contra una ventana de 60. Matemáticamente no podía salvar un 429 — sólo lo demoraba y
+  // devolvía el mismo error. Con dos tareas leyendo el Sheet a la vez, toda lectura moría a mitad
+  // de camino. Es la misma lección que ya se pagó del lado de la escritura (un 429 partió una
+  // pestaña al medio), que nunca se había aplicado a la lectura.
+  //
+  // Si Google dice cuánto esperar (Retry-After), se le hace caso: sabe mejor que nosotros.
   async function withRetry(doer) {
-    const esperas = [600, 1400, 3000, 6000]
     for (let intento = 0; ; intento++) {
       const res = await doer()
       if (res.ok || res.status === 204) return res
-      const transitorio = res.status === 429 || (res.status >= 500 && res.status < 600)
+      const esCuota = res.status === 429
+      const esperas = esCuota ? ESPERAS_429 : ESPERAS_5XX
+      const transitorio = esCuota || (res.status >= 500 && res.status < 600)
       if (!transitorio || intento >= esperas.length) return res
-      await new Promise((r) => setTimeout(r, esperas[intento]))
+      const sugerido = Number(res.headers?.get?.('retry-after')) * 1000
+      const espera = Number.isFinite(sugerido) && sugerido > 0 ? sugerido : esperas[intento]
+      await new Promise((r) => setTimeout(r, espera))
     }
   }
 
