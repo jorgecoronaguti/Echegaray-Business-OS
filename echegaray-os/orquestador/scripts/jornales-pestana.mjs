@@ -1126,8 +1126,22 @@ async function publicarRangos(google, sheetId, g) {
   const retirar = RANGOS_RETIRADOS.filter((n) => existentes.has(n))
   for (const n of retirar) reqs.push({ deleteNamedRange: { namedRangeId: existentes.get(n) } })
   await google.spreadsheetBatchUpdate(ID, reqs)
-  if (retirar.length) console.log(`rangos con nombre RETIRADOS (apuntaban a un layout que ya no existe): ${retirar.join(', ')}`)
   console.log(`rangos con nombre publicados: ${quiero.map((d) => d.nombre).join(', ')} — las otras pestañas ya no citan números de fila`)
+
+  // ═══ EL RETIRO SE VERIFICA MIRANDO EL ARCHIVO, NO EL REQUEST QUE SE MANDÓ ═══
+  //
+  // `deleteNamedRange` está FUERA de la lista blanca de la guarda (deshace algo que puede tener
+  // fórmulas colgando) y encima no trae sheetId, así que se lo atribuye a TODAS las pestañas: con
+  // una sola pestaña candada, la guarda lo descarta y el resto del lote pasa igual. Anunciar
+  // "RETIRADOS" ahí sería un log que felicita sin haber borrado nada — el defecto que este archivo
+  // ya pagó. Se relee y se dice lo que quedó.
+  if (retirar.length) {
+    const despues = new Set((await google.getNamedRanges(ID)).map((r) => r.name))
+    const fueron = retirar.filter((n) => !despues.has(n))
+    const siguen = retirar.filter((n) => despues.has(n))
+    if (fueron.length) console.log(`rangos con nombre RETIRADOS (apuntaban a un layout que ya no existe): ${fueron.join(', ')}`)
+    if (siguen.length) console.log(`  ⚠ NO se pudieron retirar: ${siguen.join(', ')} — la guarda descarta el borrado si hay alguna pestaña bajo tu control. Siguen devolviendo vacío.`)
+  }
 }
 
 async function formatear(google, sheetId, filas, g) {
