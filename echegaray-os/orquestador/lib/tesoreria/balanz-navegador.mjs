@@ -319,10 +319,20 @@ export function estructuraDePagina() {
  * Se mide el crecimiento por CANTIDAD DE FILAS además de por altura: un contenedor virtualizado puede
  * reciclar los nodos y mantener el alto constante mientras cambia el contenido.
  */
-// TOPE SUBIDO DE 15 A 45 (03/08/2026). Con 15 vueltas, `corporativos` y `cedears` terminaban en 320
-// filas y el ciclo se declaraba NO_ACCIONABLE por "relevamiento truncado" — o sea, el tope impedía
-// recomendar, que es justo para lo que existe el módulo. El bucle corta solo cuando la pantalla deja
-// de crecer, así que subir el techo no cuesta tiempo en las chicas: sólo deja terminar a las grandes.
+// ═══ EL TOPE ALCANZA, PERO POR SIETE VUELTAS ═══
+//
+// Se subió de 15 a 120 y funciona. Medido sobre la sesión viva del 03/08/2026:
+//
+//   corporativos?all=1   793 filas · 41 vueltas ·  33 s · completo
+//   cedears            1.078 filas · 113 vueltas · 687 s · completo
+//   (con el tope de 15, las dos cortaban en 320 filas)
+//
+// Cedears usa 113 de 120 y tarda once minutos y medio. El margen es de siete vueltas: el próximo
+// lote de CEDEARs vuelve a truncar. Por eso la respuesta no fue subir el número otra vez —esas dos
+// pantallas no aportan un solo instrumento apto para tesorería y salieron del universo relevado,
+// ver `universo-mercado.mjs`—. Con las que quedan (fondos, letras, cauciones) el bucle corta solo en
+// pocas vueltas, y este número queda como red de seguridad para que una pantalla rota no cuelgue el
+// ciclo, no como la forma de completar un relevamiento.
 export async function cargarTodo(page, vueltas = 120) {
   let firma = ''
   let estables = 0
@@ -471,9 +481,10 @@ export function leerTarjetasDeFondos() {
 }
 
 /** Todos los controles de la página, ya extraídos para la barrera. */
-// 400 dejaba 4 pantallas enteras por la mitad (bonos, corporativos, cauciones, cedears): el barrido
-// se reportaba parcial y bloqueaba la accionabilidad. 2.000 cubre el universo relevado —1.108
-// instrumentos— con margen, y el tope sigue existiendo para que una pantalla rota no cuelgue el ciclo.
+// 400 dejaba 4 pantallas enteras por la mitad (bonos, corporativos, cauciones, cedears): la barrera
+// no clasificaba todo lo que había. De esas cuatro, tres salieron del universo relevado (no aportan
+// un solo instrumento apto para tesorería); la que queda —cauciones, 164 filas— entra holgada acá.
+// El tope sigue existiendo para que una pantalla rota no cuelgue el ciclo, no para acotar el trabajo.
 export const TOPE_CONTROLES = 8000
 
 export async function controlesDePagina(page) {

@@ -102,18 +102,37 @@ async function main() {
   for (const p of r.traza ?? []) console.log(`  · ${p.paso}: ${p.estado}${p.detalle ? ` — ${p.detalle}` : ''}`)
 
   if (runId) {
-    await guardarPosicion(query, runId, r.posicion)
-    await guardarVentanas(query, runId, r.excedente?.ventanas ?? [])
-    await guardarInstrumentos(query, runId, r.instrumentos ?? [])
-    await guardarRecomendaciones(query, runId, r.recomendaciones ?? [], r.validaciones ?? [])
-    await guardarBloqueos(query, runId, r.bloqueos ?? [])
+    // ═══ LA CORRIDA SE CIERRA SIEMPRE ═══
+    //
+    // Estas escrituras estaban sueltas, y una sola de ellas que fallara —pasó: `numeric field
+    // overflow` guardando una observación de mercado— salía por el `catch` de `main()` sin llegar
+    // nunca a `cerrarCorrida`. La corrida quedaba `en_curso` para siempre y `resumenAnterior` no la
+    // veía, así que la siguiente se creía "la primera". Un ledger que no puede registrar su propio
+    // fracaso no es un ledger.
+    let fallaLedger = null
+    try {
+      await guardarPosicion(query, runId, r.posicion)
+      await guardarVentanas(query, runId, r.excedente?.ventanas ?? [])
+      const inst = await guardarInstrumentos(query, runId, r.instrumentos ?? [])
+      if (inst?.fallidos?.length) {
+        console.error(`[tesorero] ${inst.fallidos.length} observación(es) no entraron al ledger: ${inst.fallidos.slice(0, 3).join(' | ')}`)
+      }
+      await guardarRecomendaciones(query, runId, r.recomendaciones ?? [], r.validaciones ?? [])
+      await guardarBloqueos(query, runId, r.bloqueos ?? [])
+    } catch (e) {
+      fallaLedger = String(e?.message ?? e).slice(0, 200)
+      console.error('[tesorero] el ledger falló:', fallaLedger)
+    }
     await cerrarCorrida(query, runId, {
-      estado: r.estado === 'omitida' ? 'omitida' : r.estado,
-      motivo: r.motivo ?? r.motivo_publicacion ?? null,
+      // El estado dice la VERDAD sobre la corrida: si el ledger no pudo guardar lo que se decidió,
+      // no es una corrida 'ok' aunque el análisis haya salido bien.
+      estado: fallaLedger ? 'error' : (r.estado === 'omitida' ? 'omitida' : r.estado),
+      motivo: fallaLedger ? `ledger: ${fallaLedger}` : (r.motivo ?? r.motivo_publicacion ?? null),
       publicado: Boolean(r.publicado),
       sesion: r.estado === 'session_required' ? 'requerida' : 'ok',
       payload: { resumen: r.resumen, traza: r.traza, sin_propuesta: r.sin_propuesta, rechazadas: r.rechazadas },
     })
+    if (fallaLedger) process.exitCode = 1
   }
 }
 

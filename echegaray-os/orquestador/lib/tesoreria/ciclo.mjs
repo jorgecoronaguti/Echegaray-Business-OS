@@ -33,6 +33,7 @@ import { generarRecomendaciones, recomendarAplicarADeuda } from './recomendacion
 import { validarLote } from './validar.mjs'
 import { formatoPropuesta, formatoAplicarADeuda, formatoSesionRequerida, esCambioMaterial } from './formato-mattermost.mjs'
 import { evaluarAccionabilidad } from './politicas.mjs'
+import { RUTAS_INFORMATIVAS, PANTALLAS_ACOTADAS, esDeTesoreria } from './universo-mercado.mjs'
 import { mensajeNecesitaAutenticacion, mensajeNavegadorRoto } from './preparar-navegador.mjs'
 
 /** Cuántas horas puede tener una observación de mercado antes de dejar de sostener una decisión. */
@@ -134,34 +135,13 @@ export function frescuraDeMercado(instrumentos = [], ahora = new Date()) {
   }
 }
 
-/**
- * Rutas informativas de Balanz. Todas pasan igual por la barrera: la lista no es una autorización.
- *
- * CAUCIONES ENTRA POR LA ALLOWLIST DE RUTA EXACTA (`balanz-denylist.NAVEGACION_INFORMATIVA`), no
- * porque se haya aflojado el patrón: `/mercado/caucionar` y `/mercado/cauciones/operar` siguen
- * bloqueados, y el botón "Caucionar" de esa misma pantalla también. Se puede mirar, no tocar.
- */
-export const RUTAS_INFORMATIVAS = [
-  // ═══ LAS RUTAS SON LAS REALES, VERIFICADAS CONTRA LA SESIÓN DEL 02/08/2026 ═══
-  //
-  // Las siete anteriores (`/fondos`, `/mercado/letras`, `/mercado/bonos`…) fueron escritas sin poder
-  // ver la aplicación y NINGUNA existe. La app vive bajo `/app/cotizaciones/`. Y Balanz no devuelve
-  // 404 a una ruta inventada: redirige a `/app/home` sin decir nada, que es una pantalla autenticada
-  // y legítima — así que el relevamiento se traía el ticker de la portada creyendo que era el listado
-  // pedido. Ahora `navegarSeguro` verifica que llegó (ver `llegoADestino`) y esa página se marca
-  // `no_existe` en vez de aportar datos de otra pantalla.
-  //
-  // `?all=1` es lo que muestra el listado completo en corporativos y fondos externos; sin él la
-  // pantalla trae sólo una vista previa detrás de un botón "Ver todas las ON's".
-  '/app/cotizaciones/fondos',                 // FCI en pesos: money market, renta fija, dólar linked
-  '/app/cotizaciones/fondosext?all=1',        // FCI en dólares (Fondos Ext)
-  '/app/cotizaciones/letras',                 // Lecaps y letras del Tesoro (trae columna TNA)
-  '/app/cotizaciones/bonos',                  // bonos soberanos (trae columna TIR)
-  '/app/cotizaciones/corporativos?all=1',     // obligaciones negociables (trae columna TIR)
-  '/app/cotizaciones/cauciones',              // SÓLO LECTURA — ver la nota de la allowlist
-  '/app/cotizaciones/acciones',
-  '/app/cotizaciones/cedears',
-]
+// Rutas informativas de Balanz. Todas pasan igual por la barrera: la lista no es una autorización, y
+// CAUCIONES entra por la allowlist de ruta exacta (`balanz-denylist.NAVEGACION_INFORMATIVA`) —
+// `/mercado/caucionar` y el botón "Caucionar" de esa misma pantalla siguen bloqueados.
+//
+// QUÉ PANTALLAS SON Y CUÁLES SE DEJAN AFUERA vive en `universo-mercado.mjs`, con la medición que lo
+// justifica. Se re-exporta porque los consumidores (y los tests) ya lo importaban desde acá.
+export { RUTAS_INFORMATIVAS, PANTALLAS_ACOTADAS }
 
 // Arbitrario y estable: identifica ESTE ciclo entre los advisory locks del OS. Se EXPORTA porque el
 // explorador maneja la misma pestaña de Chrome y tiene que pedir el mismo lock: dos procesos
@@ -340,20 +320,27 @@ export async function correrCiclo(deps = {}, opts = {}) {
       }))
     const aptos = instrumentos.filter((i) => esAptoTesoreria(i.categoria))
 
-    // ═══ UN RELEVAMIENTO TRUNCADO NO ES UN RELEVAMIENTO ═══
+    // ═══ UN RELEVAMIENTO TRUNCADO NO ES UN RELEVAMIENTO — PERO TRUNCADO ¿DE QUÉ? ═══
     //
     // `relevar` ya marcaba `relevamiento_completo` por página, y nadie lo leía: no bajaba la
-    // confianza, no aparecía en el mensaje y no quedaba en la traza. En la corrida real corporativos
-    // y cedears agotaron el tope con 320 filas cada uno — el ciclo habría elegido "la mejor
-    // alternativa del mercado" sobre un universo cortado, sin una sola marca. El flag existía; el
-    // camino hasta la decisión, no.
-    const paginasTruncadas = (mercado.paginas || [])
-      .filter((p) => p.estado === 'ok' && p.relevamiento_completo === false)
-      .map((p) => p.url)
-    const paginasConError = (mercado.paginas || []).filter((p) => p.estado === 'error').map((p) => p.url)
-    // El barrido de controles también tiene tope (400 por pantalla, y en la corrida real 4 de 8
-    // pantallas lo alcanzaron). No cambia qué instrumentos se leyeron, pero sí significa que la
-    // barrera NO clasificó todo lo que había: es parte de la cobertura y se informa igual.
+    // confianza, no aparecía en el mensaje y no quedaba en la traza. El flag existía; el camino
+    // hasta la decisión, no.
+    //
+    // Pero después el control se pasó para el otro lado: cualquier pantalla truncada dejaba el
+    // mercado "parcial" y eso bloquea la accionabilidad. Cedears y corporativos truncaban con el tope
+    // viejo, y ninguna de las dos aporta un solo instrumento apto para tesorería (0 de 320 y 0 de
+    // 787, medido en el ledger). O sea: el agente se declaraba ciego por no terminar de leer algo
+    // que, terminado, no le habría cambiado una coma. Ver `universo-mercado.mjs` para la medición.
+    //
+    // Desde acá, TRUNCADO ES UN DEFECTO sólo dentro del universo de tesorería. Afuera es una
+    // decisión declarada, y se informa como tal — no desaparece, cambia de nombre.
+    const cortadas = (mercado.paginas || []).filter((p) => p.estado === 'ok' && p.relevamiento_completo === false)
+    const paginasTruncadas = cortadas.filter((p) => esDeTesoreria(p.url)).map((p) => p.url)
+    const paginasConError = (mercado.paginas || [])
+      .filter((p) => p.estado === 'error' && esDeTesoreria(p.url)).map((p) => p.url)
+    // El barrido de controles también tiene tope por pantalla. No cambia qué instrumentos se leyeron,
+    // pero sí significa que la barrera NO clasificó todo lo que había: es parte de la cobertura y se
+    // informa igual.
     const paginasSinBarrer = (mercado.paginas || [])
       .filter((p) => p.estado === 'ok' && p.controles?.barrido_completo === false)
       .map((p) => p.url)
@@ -368,6 +355,13 @@ export async function correrCiclo(deps = {}, opts = {}) {
     if (paginasSinBarrer.length) {
       paso('barrido_controles', 'parcial', `${paginasSinBarrer.length} pantalla(s) con más controles que el tope: ${paginasSinBarrer.join(' · ')}`)
     }
+    // LO EXCLUIDO SE DICE, NO SE OMITE. Un universo acotado que no se declara es indistinguible de un
+    // universo mal relevado, y ésa es justo la confusión que este paso viene a deshacer.
+    const acotadasVistas = cortadas.filter((p) => !esDeTesoreria(p.url)).map((p) => p.url)
+    paso('universo_mercado', 'acotado',
+      [`${PANTALLAS_ACOTADAS.length} pantalla(s) fuera del universo por decisión declarada: ${PANTALLAS_ACOTADAS.map((p) => p.ruta).join(' · ')}`,
+        acotadasVistas.length ? `(${acotadasVistas.length} de ellas además quedó truncada, y no cuenta como defecto)` : null,
+      ].filter(Boolean).join(' '))
     paso('instrumentos', 'ok', `${instrumentos.length} relevados · ${aptos.length} aptos para tesorería`)
 
     // 11-12 · Comparar (SKILL 6) y evaluar riesgo (SKILL 7).

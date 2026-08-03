@@ -158,6 +158,56 @@ test('TODAS las rutas por defecto del relevamiento pasan la barrera', () => {
   }
 })
 
+/** Una corrida con excedente que llega hasta el paso de cobertura, con las páginas que se le pasen. */
+const corridaConPaginas = (paginas) => correrCiclo({
+  google: googleFake({ caja: 50000000 }),
+  query: null,
+  relevar: async () => ({ estado: 'ok', paginas, bloqueos: [], observado_en: HOY.toISOString() }),
+  publicar,
+  ahora: HOY,
+}, {
+  dias: 30, filaReserva: RESERVA_APROBADA, filaRestringida: RESTRINGIDA_CERO, extractorValidado: true,
+})
+const pagina = (url, completo) => ({ url: `https://clientes.balanz.com${url}`, estado: 'ok', texto: '', tabla: null, tarjetas: [], relevamiento_completo: completo, controles: { barrido_completo: true } })
+
+test('una pantalla FUERA del universo truncada no deja el mercado "parcial"', async () => {
+  // ═══ EL DEFECTO ═══
+  //
+  // Con el tope de 15 vueltas, cedears y corporativos cortaban en 320 filas y eso dejaba
+  // `cobertura_mercado: parcial`, que BLOQUEA la accionabilidad. Subir el tope a 120 las completa
+  // —medido sobre la sesión viva: corporativos 793 filas en 41 vueltas, cedears 1.078 en 113— pero
+  // cedears usa 113 de 120 y tarda 11,5 minutos: el próximo lote de CEDEARs vuelve a truncar.
+  // Y ninguna de las dos aporta un solo instrumento apto para tesorería (0 de 320 y 0 de 787,
+  // medido en el ledger): el agente no puede quedarse sin recomendar por no terminar de leer eso.
+  const r = await corridaConPaginas([
+    pagina('/app/cotizaciones/cauciones', true),
+    pagina('/app/cotizaciones/cedears', false),
+    pagina('/app/cotizaciones/corporativos?all=1', false),
+  ])
+  const cobertura = r.traza.find((p) => p.paso === 'cobertura_mercado')
+  assert.equal(cobertura.estado, 'ok', `el mercado quedó "${cobertura.estado}": ${cobertura.detalle}`)
+  assert.ok(!r.accionabilidad.bloqueos.some((b) => /truncado/.test(b)),
+    `la accionabilidad no puede bloquearse por eso: ${JSON.stringify(r.accionabilidad.bloqueos)}`)
+  // Y NO desaparece en silencio: lo excluido se declara con su motivo.
+  const universo = r.traza.find((p) => p.paso === 'universo_mercado')
+  assert.equal(universo.estado, 'acotado')
+  assert.match(universo.detalle, /decisión declarada/)
+  assert.match(universo.detalle, /cedears/)
+})
+
+test('una pantalla DEL universo truncada sigue siendo un defecto que bloquea', async () => {
+  // El riesgo del arreglo de arriba es perdonar de más. Letras SÍ produce instrumentos de tesorería:
+  // si esa queda cortada, el agente está eligiendo sobre un universo mutilado y tiene que decirlo.
+  const r = await corridaConPaginas([
+    pagina('/app/cotizaciones/cauciones', true),
+    pagina('/app/cotizaciones/letras', false),
+  ])
+  const cobertura = r.traza.find((p) => p.paso === 'cobertura_mercado')
+  assert.equal(cobertura.estado, 'parcial')
+  assert.match(cobertura.detalle, /letras/)
+  assert.ok(r.accionabilidad.bloqueos.some((b) => /truncado/.test(b)))
+})
+
 test('resumirCorrida produce la foto comparable entre corridas', () => {
   const r = resumirCorrida({
     posicion: { en_descubierto: false },
