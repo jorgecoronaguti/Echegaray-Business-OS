@@ -31,10 +31,11 @@ import { compararAlternativas } from './comparar.mjs'
 import { tablaComparativa } from './tabla-instrumentos.mjs'
 import { evaluarRiesgo, PERFILES } from './riesgo.mjs'
 import { generarRecomendaciones, recomendarAplicarADeuda } from './recomendacion.mjs'
+import { cancelarDescubierto, ventanaParaColocacion, decidirTesoreria } from './decision.mjs'
 import { validarLote } from './validar.mjs'
 import {
   formatoPropuesta, formatoAplicarADeuda, formatoSesionRequerida, esCambioMaterial,
-  formatoExcedentePorPlazo, formatoTablaInstrumentos,
+  formatoExcedentePorPlazo, formatoTablaInstrumentos, formatoSinPropuesta,
 } from './formato-mattermost.mjs'
 import { evaluarAccionabilidad } from './politicas.mjs'
 import { medirLey25413, parametrosFiscales, CLAVE_POLITICA_FISCAL } from './impuestos-colocacion.mjs'
@@ -256,9 +257,19 @@ export async function correrCiclo(deps = {}, opts = {}) {
     //
     // Lo único que se conserva es la recomendación estructural: si no hay ventana con monto, la
     // propuesta es aplicar a la deuda, y eso se dice igual — junto a la tabla, no en lugar de ella.
+    // ═══ LA CANCELACIÓN NO ES EL PREMIO CONSUELO DE "NO HAY EXCEDENTE" ═══
+    //
+    // Hasta acá la propuesta de aplicar a la deuda salía SÓLO cuando ninguna ventana tenía monto. Con
+    // descubierto abierto Y excedente pasaba lo peor de los dos mundos: no se proponía cancelar
+    // —porque había ventanas— y tampoco se proponía colocar —porque la vara de esas ventanas era el
+    // CFT del acuerdo y ningún instrumento del mercado lo supera—. Cuatro tablas y cero propuestas.
+    //
+    // Ahora la cancelación se propone SIEMPRE que haya saldo deudor: es la decisión 1, es la que más
+    // rinde y no compite con la colocación. Ver `decision.mjs`.
     const sinVentanas = excedente.ventanas.every((v) => !(Number(v.monto_maximo) > 0))
-    const recEstructural = sinVentanas
-      ? recomendarAplicarADeuda(posicion, excedente.tasa_de_corte, ahora, excedente.deuda_cancelable?.monto ?? 0)
+    const deudaCancelable = Number(excedente.deuda_cancelable?.monto) || 0
+    const recEstructural = (sinVentanas || deudaCancelable > 0)
+      ? recomendarAplicarADeuda(posicion, excedente.tasa_de_corte, ahora, deudaCancelable)
       : null
     paso('mercado_previo', sinVentanas ? 'sin_excedente' : 'con_excedente',
       sinVentanas ? 'no hay ventana con monto: se releva el mercado igual, para poder mostrar contra qué se compara'
@@ -411,8 +422,27 @@ export async function correrCiclo(deps = {}, opts = {}) {
     paso('impuestos', fiscal.ley_25413.estado === 'conocido' ? 'ok' : 'parcial',
       [`Ley 25.413: ${fiscal.ley_25413.estado}`, `IIBB: ${fiscal.iibb.estado}`, `Ganancias: ${fiscal.ganancias.estado}`].join(' · '))
 
+    // ── 10 bis · DECISIÓN 1: CANCELAR DESCUBIERTO ─────────────────────────────
+    //
+    // Se resuelve ANTES de comparar instrumentos porque cambia las dos cosas que la comparación
+    // necesita: cuánto hay realmente para colocar (el excedente NETO de la deuda) y contra qué se
+    // mide (la vara de colocación, que nunca es el CFT). Ver `decision.mjs`.
+    const cancelacion = cancelarDescubierto({
+      deuda: deudaCancelable,
+      disponible: Number.isFinite(Number(posicion.composicion?.ars_liquida))
+        ? Number(posicion.composicion.ars_liquida) : Number(posicion.caja_real),
+      reserva: Number(posicion.reserva) || 0,
+      cftAnual: Number(excedente.tasa_de_corte?.valor) || 0,
+    })
+    const aCancelar = cancelacion.hay_propuesta ? cancelacion.monto_a_cancelar : 0
+    paso('cancelacion', cancelacion.hay_propuesta ? 'propuesta' : 'sin_propuesta',
+      cancelacion.hay_propuesta ? `cancelar $${aCancelar} · ahorra $${cancelacion.ahorro_diario}/día` : cancelacion.motivo)
+
     // 11-12 · Comparar (SKILL 6) y evaluar riesgo (SKILL 7).
-    const ventanas = excedente.ventanas.filter((v) => Number(v.monto_maximo) > 0)
+    const ventanas = excedente.ventanas
+      .filter((v) => Number(v.monto_maximo) > 0)
+      .map((v) => ventanaParaColocacion(v, aCancelar))
+      .filter((v) => Number(v.monto_maximo) > 0)
     const comparacion = compararAlternativas(aptos, ventanas, excedente.tasa_de_corte, fiscal)
     const riesgos = {}
     for (const i of aptos) riesgos[i.id] = evaluarRiesgo(i, PERFILES.caja_operativa, { ahora })
@@ -444,6 +474,33 @@ export async function correrCiclo(deps = {}, opts = {}) {
       fuente_caja: posicion.fuente, fuente_mercado: `Balanz — ${mercado.observado_en ?? ahora.toISOString()}`,
     })
     paso('recomendaciones', 'ok', `${generadas.propuestas.length} propuestas · ${generadas.sin_propuesta.length} bloques sin propuesta`)
+
+    // ── 13 bis · DECISIÓN 2, Y SU EXPLICACIÓN BLOQUE POR BLOQUE ───────────────
+    //
+    // `generarRecomendaciones` sólo puede explicar los bloques que llegaron al ranking, y un bloque
+    // sin monto NUNCA llega: quedaba fuera en silencio. Resultado publicado: «0 propuestas» sin una
+    // línea de por qué, tres corridas seguidas. Acá se recorre el universo COMPLETO de bloques —los
+    // cerrados, los sin excedente, los que se fueron enteros a cancelar deuda y los que no superan la
+    // vara— y cada uno sale con su código de causa.
+    const decision = decidirTesoreria({
+      deuda: deudaCancelable,
+      disponible: Number.isFinite(Number(posicion.composicion?.ars_liquida))
+        ? Number(posicion.composicion.ars_liquida) : Number(posicion.caja_real),
+      reserva: Number(posicion.reserva) || 0,
+      cftAnual: Number(excedente.tasa_de_corte?.valor) || 0,
+      ventanas: excedente.ventanas.map((v) => ({
+        bloque: v.bloque ?? null,
+        titulo: v.titulo ?? null,
+        dias: Number(v.dias_libres) || 0,
+        monto_maximo: Number(v.monto_maximo) || 0,
+        motivo: v.motivo ?? null,
+        referencia: v.referencia ?? null,
+        // Los candidatos ya vienen evaluados contra la ventana CORREGIDA (monto neto y vara de
+        // colocación): la decisión y el ranking miran exactamente lo mismo.
+        candidatos: (comparacion.rankings.find((r) => r.bloque === v.bloque)?.ranking) ?? [],
+      })),
+    })
+    paso('decision', 'ok', `${decision.n_propuestas} propuesta(s) · ${decision.sin_propuesta.length} bloque(s) con causa declarada`)
 
     // 14 · Revisión independiente (SKILL 9). Lo que no pasa, NO se publica.
     const val = validarLote(generadas.propuestas, { posicion, excedente, proyeccion, instrumentos: aptos, ahora, fiscal })
@@ -479,6 +536,9 @@ export async function correrCiclo(deps = {}, opts = {}) {
       // EL EXCEDENTE POR PLAZO VA PRIMERO Y VA SIEMPRE: es la mitad que decide.
       formatoExcedentePorPlazo(excedente),
       ...tablaComparacion.tablas.map((t) => formatoTablaInstrumentos(t)),
+      // LA CAUSA VA ANTES QUE LAS PROPUESTAS, no después: cuando no hay ninguna, es el único mensaje
+      // que contesta la pregunta del dueño.
+      ...([formatoSinPropuesta(decision)].filter(Boolean)),
       ...(recEstructural ? [formatoAplicarADeuda(recEstructural, posicion)] : []),
       ...val.publicables.map((r) => formatoPropuesta(r, posicion, {
         fecha_caja: posicion.fecha, fecha_mercado: mercado.observado_en ?? null,
@@ -510,6 +570,9 @@ export async function correrCiclo(deps = {}, opts = {}) {
       tabla_instrumentos: tablaComparacion,
       tasas_sospechosas: sospechosas,
       sin_excedente: sinVentanas,
+      // LAS DOS DECISIONES, SEPARADAS Y CON SU CAUSA. Es lo que consume el especialista y el ledger.
+      decision,
+      cancelacion,
       recomendacion_estructural: recEstructural,
       recomendaciones: val.publicables,
       rechazadas: val.rechazadas,

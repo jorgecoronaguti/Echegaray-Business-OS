@@ -23,6 +23,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { SUBRUBROS, OTROS } from '../lib/sub-rubro-estructura.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { fila as filaConNombre, aRangoApi, verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Estructura'
@@ -52,7 +53,7 @@ const rangoSub = 'Compras!$AF$4:$AF'
 const rangoFecha = 'Compras!$AD$4:$AD'
 const COL_SUB_COMPRAS = 31   // AF
 
-function grilla() {
+export function grilla() {
   const rubros = [...SUBRUBROS.map(([n]) => n), OTROS]
   const filas = []
   const push = (c) => { filas.push(c); return filas.length }
@@ -99,7 +100,7 @@ function grilla() {
   }
   const f1 = filas.length
   const tot = vacia()
-  tot[0] = 'TOTAL ESTRUCTURA'
+  tot[0] = ROTULO_TOTAL
   for (const c of [...Array(12).keys()].map((m) => C_MES0 + m).concat([C_TOTREAL, C_PROY, C_TOTAL])) {
     tot[c] = `=SUM(${letra(c)}${f0}:${letra(c)}${f1})`
   }
@@ -122,6 +123,57 @@ function grilla() {
 
   const resuelto = filas.map((f) => f.map((c) => (typeof c === 'string' ? c.replaceAll('$TOT', String(fTot)) : c)))
   return { filas: resuelto, f0, f1, fTot, fCtrl: fc, rubros }
+}
+
+/** El rótulo de la fila de totales. Es el ancla del rango con nombre: si cambia, cambian los dos. */
+export const ROTULO_TOTAL = 'TOTAL ESTRUCTURA'
+
+/**
+ * NÚCLEO PURO: los rangos con nombre de esta pestaña, anclados a la fila de totales.
+ *
+ * ═══ POR QUÉ APARECE ACÁ RECIÉN AHORA (03/08) ═══
+ *
+ * `ESTRUCTURA_TOTAL_MESES` existía en el archivo real apuntando a la FILA 3 de esta pestaña, que hoy
+ * es una de las dos filas en blanco entre el subtítulo y el primer título de sección: cero celdas con
+ * dato. Y este generador no publicaba NINGÚN rango con nombre — o sea que el nombre venía de un
+ * layout anterior (cuando el cuadro arrancaba arriba de todo, sin subtítulo ni títulos de sección) y
+ * nadie lo volvió a mover nunca. Anclado a la posición, otra vez.
+ *
+ * SE REAPUNTA, NO SE BORRA — al revés que `OFICINA_EFECTIVO`. La diferencia es que acá el bloque que
+ * el nombre describe EXISTE: los doce totales por mes de la fila TOTAL ESTRUCTURA, que es la línea
+ * "Gastos de estructura" del cash flow mes a mes. Un nombre con destino se arregla apuntándolo; uno
+ * sin destino se retira.
+ *
+ * INFERENCIA declarada: que `ESTRUCTURA_TOTAL_MESES` quería decir "los totales por mes" sale del
+ * nombre y de su forma (una fila, no una columna). Ninguna fórmula del OS lo usa hoy, así que no hay
+ * un consumidor que lo confirme. Si el dueño lo tenía apuntando a otra cosa, esto lo cambia.
+ *
+ * @param {ReturnType<typeof grilla>} g
+ */
+export function rangosDeEstructura(g) {
+  return [
+    filaConNombre('ESTRUCTURA_TOTAL_MESES', { fila: g.fTot, c0: C_MES0, c1: C_MES0 + 11, rotulo: ROTULO_TOTAL }),
+  ]
+}
+
+async function publicarRangos(google, sheetId, g) {
+  const quiero = rangosDeEstructura(g)
+  // No se publica un rango ciego: se verifica contra la grilla recién armada, sin red.
+  const problemas = verificarRangos(g.filas, quiero)
+  if (problemas.length) {
+    console.error('✗ NO publico los rangos con nombre: hay rangos ciegos\n' + explicarProblemas(problemas))
+    process.exitCode = 1
+    return
+  }
+  const existentes = new Map((await google.getNamedRanges(ID)).map((r) => [r.name, r.namedRangeId]))
+  const reqs = quiero.map((d) => {
+    const range = aRangoApi(sheetId, d)
+    return existentes.has(d.nombre)
+      ? { updateNamedRange: { namedRange: { namedRangeId: existentes.get(d.nombre), name: d.nombre, range }, fields: 'range' } }
+      : { addNamedRange: { namedRange: { name: d.nombre, range } } }
+  })
+  await google.spreadsheetBatchUpdate(ID, reqs)
+  console.log(`rangos con nombre publicados: ${quiero.map((d) => d.nombre).join(', ')} — sobre la fila ${g.fTot} (${ROTULO_TOTAL})`)
 }
 
 async function main() {
@@ -183,6 +235,7 @@ async function main() {
   const { conservadas } = salteada ? { conservadas: [] } : escritura
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
   if (!salteada) await formatear(google, sheetId, g)
+  if (!salteada) await publicarRangos(google, sheetId, g)
 
   const v = await google.readSheetValues(ID, `${PESTAÑA}!A1:${letra(C_PCT)}${g.filas.length}`)
   const err = []
@@ -243,4 +296,8 @@ async function formatear(google, sheetId, g) {
   await google.spreadsheetBatchUpdate(ID, req)
 }
 
-main().catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+// SÓLO CORRE SI SE LO INVOCA, NO SI SE LO IMPORTA. Sin esta guarda, un test que importa `grilla()`
+// para verificar sus rangos con nombre ARRANCA EL GENERADOR CONTRA EL SHEET REAL.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+}

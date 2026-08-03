@@ -175,6 +175,30 @@ export function formatoExcedentePorPlazo(exc = {}) {
 }
 
 /**
+ * POR QUÉ NO HAY PROPUESTA, BLOQUE POR BLOQUE.
+ *
+ * «0 propuestas» sin causa no se puede leer: no distingue "no conviene" de "el sistema no supo", y
+ * las dos lecturas piden cosas opuestas del dueño. Cada línea nombra el bloque, el código de causa y
+ * la explicación en pesos y días.
+ */
+export function formatoSinPropuesta(decision = {}) {
+  const filas = decision.sin_propuesta || []
+  if (!filas.length) return null
+  const L = ['**TESORERÍA · POR QUÉ NO HAY PROPUESTA EN CADA BLOQUE**', '']
+  if (decision.cancelacion?.hay_propuesta) {
+    L.push(`Antes que nada: hay ${pesos(decision.cancelacion.deuda)} de descubierto y se propone cancelar `
+      + `${pesos(decision.cancelacion.monto_a_cancelar)}. Ese monto ya NO figura como colocable en ningún bloque.`, '')
+  }
+  L.push('| Bloque | Plazo | Causa | Detalle |')
+  L.push('|---|---|---|---|')
+  for (const f of filas) {
+    L.push(`| ${f.titulo ?? f.bloque ?? '—'} | ${f.dias ?? '—'} días | \`${f.codigo ?? 'sin_codigo'}\` | ${f.motivo ?? '—'} |`)
+  }
+  L.push('', `Propuestas emitidas en esta corrida: **${decision.n_propuestas ?? 0}**.`)
+  return L.join('\n')
+}
+
+/**
  * LA TABLA COMPARATIVA DE INSTRUMENTOS — lo que el dueño pidió dos veces y no estaba.
  *
  * Se publica SIEMPRE que haya relevamiento, tenga o no la empresa excedente: saber que el mercado paga
@@ -186,12 +210,17 @@ export function formatoTablaInstrumentos(tabla = {}) {
   if (tabla.derivacion?.estado === 'ok') L.push(formatoDerivacion(tabla.derivacion, `De dónde salen los ${pesos(tabla.monto_a_colocar)}`), '')
   L.push(`Vara a superar: **${pct(tabla.vara?.periodo)}** en ${tabla.dias} día(s) — ${tabla.vara?.explicacion}`)
   L.push(`Equivale a ${pesos(tabla.vara?.en_pesos)}: es lo que cuesta NO hacer nada.`)
-  // EL PISO DE COMPARACIÓN QUE MANDA, EN TODAS LAS TABLAS. Aunque hoy la cuenta esté en positivo y la
-  // vara activa sea otra, el descubierto es el rendimiento libre de riesgo que la empresa ya tiene
-  // disponible: nada que rinda menos que eso, NETO de impuestos, justifica quedarse sin liquidez.
-  L.push(`Referencia que manda: el descubierto del acuerdo N°00007 cuesta **${pct(tabla.vara?.anual)} de CFT anual** `
-    + `($1.506,85 por día por millón, verificado) — equivale a ${pct(cftDelPeriodo(tabla.vara?.anual, tabla.dias))} en ${tabla.dias} día(s). `
-    + 'Ningún instrumento que rinda menos que eso, neto de impuestos, justifica inmovilizar plata.', '')
+  // ═══ EL DESCUBIERTO ES CONTEXTO, NO LA VARA DE ESTA TABLA ═══
+  //
+  // Esta línea decía «ningún instrumento que rinda menos que eso justifica inmovilizar plata», con
+  // «eso» = 62,78%. Era el defecto conceptual escrito con todas las letras en el mensaje que lee el
+  // dueño: el descubierto mide lo que cuesta estar CORTO, no el costo de oportunidad de estar LARGO.
+  // Sobre plata que igual iba a quedarse parada, la alternativa es CERO, y un plazo fijo al 30% neto
+  // es ganancia pura aunque el descubierto cueste el doble. Lo que el CFT sí manda es la PRIORIDAD:
+  // mientras haya rojo, el primer peso va a cancelarlo.
+  L.push(`Contexto: el descubierto del acuerdo N°00007 cuesta **${pct(tabla.vara?.anual)} de CFT anual** `
+    + `($1.506,85 por día por millón, verificado) — ${pct(cftDelPeriodo(tabla.vara?.anual, tabla.dias))} en ${tabla.dias} día(s). `
+    + 'Eso fija la PRIORIDAD, no la vara: mientras haya saldo deudor el primer peso va a cancelarlo, y sólo lo que sobra se compara con esta tabla.', '')
   L.push(formatoImpuestos(tabla.fiscal, tabla.monto_a_colocar), '')
   if (tabla.viables?.length) {
     // BRUTO E IMPUESTOS AL LADO DEL NETO, SIEMPRE. Un neto sin su bruto no se puede discutir.

@@ -426,7 +426,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
     push(['   · (−) jornales pagados por transferencia después del corte', 'ARS',
       `=-(${formulaJornalesBancoPosteriores(`$F$${fBancoPesos}`)})`, '', '', '', '',
       'Jornales por Quincena, columna Banco: el lote de haberes de las quincenas con fecha en "Pagado el" posterior al corte. La plata salió de la cuenta y el extracto todavía no lo muestra.', ''])
-    push(['   · (−) sueldos de administración por transferencia después del corte', 'ARS',
+    push(['   · (−) sueldos de OFICINA por transferencia después del corte', 'ARS',
       `=-(${formulaOficinaBancoPosteriores(`$F$${fBancoPesos}`)})`, '', '', '', '',
       'Jornales por Quincena, bloque Oficina, columna Banco: los meses con fecha de pago posterior al corte. Si la columna está vacía no se resta nada — el canal no declarado se reporta en "LO QUE NO CIERRA", no se adivina.', ''])
   }
@@ -479,9 +479,9 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   push(['   · (−) jornales pagados en efectivo después del arqueo', 'ARS',
     celdaJornalesEfectivo(ARQ_ARS_FECHA), '', '', '', '',
     'Jornales por Quincena, columnas Adelanto y Total recibo: lo que se pagó de la nómina en billetes, de las quincenas con fecha en "Pagado el" posterior al arqueo.', ''])
-  push(['   · (−) sueldos de administración en efectivo después del arqueo', 'ARS',
+  push(['   · (−) sueldos de OFICINA en efectivo después del arqueo', 'ARS',
     celdaOficinaEfectivo(ARQ_ARS_FECHA), '', '', '', '',
-    'Jornales por Quincena, bloque Oficina, columna Efectivo: los sueldos de administración pagados en billetes, por su fecha de pago.', ''])
+    'Jornales por Quincena, bloque Oficina, columna Efectivo: los sueldos de OFICINA pagados en billetes, por su fecha de pago.', ''])
   push(['   · (+) extraído del banco después del arqueo', 'ARS',
     celdaExtraccionesEfectivo(ARQ_ARS_FECHA), '', '', '', '',
     'Réplica del extracto: los débitos cuyo concepto dice "extracción" o "retiro de efectivo". Es el espejo del depósito — el billete deja la cuenta y entra al cajón, así que acá SUMA. Hoy el extracto no tiene ninguno.', ''])
@@ -764,10 +764,31 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // misma fórmula del neto pero con la ventana abierta (ancla 0 = todas las fechas), así que no puede
   // decir un número distinto del que entraría en cuanto se cargue el arqueo.
   push(['El efectivo del período no se está contando: falta la fecha del arqueo', '', '@SINARQUEO'])
+  // ═══ SE LLAMA OFICINA, NO ADMINISTRACIÓN — Y NO ES LO MISMO (03/08) ═══
+  //
+  // Estas líneas decían "sueldos de administración" y leen `OFICINA_*`, que es el bloque de
+  // `_J_OFICINA`: dos personas (Emi Maldonado y Juan Pablo Nievas desde febrero; en enero eran
+  // cuatro). El dueño lo separó explícitamente: **oficina son 2 empleados y cobran 50% banco y 50%
+  // efectivo; administración cobra TODA por banco.** Son dos grupos con dos criterios distintos.
+  //
+  // El rótulo equivocado no es cosmético: manda a buscar administración en un cuadro donde no está,
+  // y hace parecer que falta plata de un grupo que nunca pasa por la caja física. Administración,
+  // al cobrar 100% por banco, ya está dentro del saldo bancario y no toca el efectivo — por eso no
+  // hay nada que reconciliar por ese lado.
   // El sueldo de administración que se pagó y no dice por dónde salió. No se resta de ninguna
   // disponibilidad —no se sabe de cuál— así que tiene que verse acá con nombre y monto. Se apaga sola
   // en cuanto el mes tenga Banco o Efectivo cargado.
-  push(['Sueldos de administración pagados sin declarar por qué canal salieron', '', '@OFISINCANAL'])
+  //
+  // ═══ ESTA LÍNEA NO ES SU PROPIO CONTROL, Y NO PUEDE SERLO (03/08) ═══
+  //
+  // Sale de `OFICINA_PAGADO` y `OFICINA_BANCO`: los MISMOS dos rangos que producen las dos líneas de
+  // sueldos de administración de arriba. Cuando `OFICINA_BANCO` quedó ciego —el generador le borraba
+  // la columna en cada corrida— las dos líneas dieron $0 y esta informó "sin problemas" mirando el
+  // mismo agujero. Un control nunca se valida contra la misma información que produce.
+  // El contraste contra una fuente distinta —los débitos de haberes del EXTRACTO— vive en el bloque
+  // 4.7, grupo "Sueldos", de lib/conciliacion-por-naturaleza.mjs. Esta línea sigue contestando su
+  // propia pregunta ("¿qué se pagó sin declarar el canal?"); la que detecta el rango ciego es aquélla.
+  push(['Sueldos de OFICINA pagados sin declarar por qué canal salieron', '', '@OFISINCANAL'])
   const fAlerta1 = filas.length
   push()
 
@@ -1426,12 +1447,12 @@ async function main() {
     }])
   }
 
-  // EL RANGO CON NOMBRE VA PRIMERO. Las fórmulas de arriba dicen TIPO_CAMBIO_USD, así que el nombre
-  // tiene que existir antes de escribirlas o la pestaña se llena de #NAME? en la primera corrida.
-  // Los cinco rangos con nombre, contra las filas de ESTA corrida. Si el bloque 4.10 se movió, los
-  // del arqueo se mueven con él; si no se republicaran, "Caja en dólares" leería otra fila.
-  const publicados = await rangoConNombre(google, hoja.sheetId, g)
-  console.log(`  🔖 ${publicados} rango(s) con nombre republicados: ${RANGOS_DE_CAJA.map((r) => r.nombre).join(' · ')}`)
+  // ANTES DE ESCRIBIR: SÓLO LOS QUE NO EXISTEN. Las fórmulas de arriba dicen TIPO_CAMBIO_USD, así
+  // que el nombre tiene que EXISTIR antes de escribirlas o la pestaña se llena de #NAME? en la
+  // primera corrida. Pero existir no es apuntar a la fila nueva: reapuntar acá, antes de saber si el
+  // portón deja escribir, es lo que el 03/08 borró $42,88M del total. Ver `rangoConNombre`.
+  const creados = await rangoConNombre(google, hoja.sheetId, g, { soloFaltantes: true })
+  if (creados) console.log(`  🔖 ${creados} rango(s) con nombre CREADOS (no existían): arranque en frío`)
   // ═══ NO SE BORRA HASTA SABER QUE LO NUEVO SE PUEDE ESCRIBIR ═══
   //
   // POR QUÉ (21/07). Esta pestaña es la ÚNICA donde una persona carga números a mano. Una corrida
@@ -1497,6 +1518,12 @@ async function main() {
   }
   const { conservadas } = escritura
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) escritas por una persona — CONSERVADAS`)
+
+  // AHORA SÍ: la escritura entró, así que la grilla de esta corrida ES el layout de la pestaña y los
+  // nombres pueden seguirla. Si el bloque 4.10 se movió, los del arqueo se mueven con él.
+  const publicados = await rangoConNombre(google, hoja.sheetId, g)
+  console.log(`  🔖 ${publicados} rango(s) con nombre reapuntados a la grilla RECIÉN ESCRITA: ${RANGOS_DE_CAJA.map((r) => r.nombre).join(' · ')}`)
+
   await formatear(google, hoja.sheetId, g)
 
   // El registro de rótulos se guarda con lo que QUEDÓ escrito en la pestaña, no con lo que el
@@ -1554,20 +1581,52 @@ export const RANGOS_DE_CAJA = [
   { nombre: ARQ_USD_FECHA, fila: (g) => g.fArqUsd, col: 5 },
 ]
 
-async function rangoConNombre(google, sheetId, g) {
-  const existentes = await google.getNamedRanges(ID).catch(() => [])
+/**
+ * NÚCLEO PURO: los requests para publicar los rangos. `soloFaltantes` es la diferencia entre
+ * arrancar en frío y reapuntar — y es lo que separa el bootstrap del daño.
+ */
+export function requestsDeRangos(sheetId, g, existentes = [], { soloFaltantes = false } = {}) {
   const reqs = []
   for (const r of RANGOS_DE_CAJA) {
     const fila = typeof g === 'number' ? (r.nombre === RANGO_TC ? g : null) : r.fila(g)
     // Sin fila no se publica NADA para ese nombre: dejar el rango viejo apuntando a una fila que ya
     // no es la suya es peor que no tenerlo — miente sin dar error.
     if (!Number.isFinite(fila) || fila < 1) continue
-    const rango = { sheetId, startRowIndex: fila - 1, endRowIndex: fila, startColumnIndex: r.col, endColumnIndex: r.col + 1 }
     const ya = existentes.find((x) => x.name === r.nombre)
+    if (soloFaltantes && ya) continue
+    const rango = { sheetId, startRowIndex: fila - 1, endRowIndex: fila, startColumnIndex: r.col, endColumnIndex: r.col + 1 }
     reqs.push(ya
       ? { updateNamedRange: { namedRange: { namedRangeId: ya.namedRangeId, name: r.nombre, range: rango }, fields: 'name,range' } }
       : { addNamedRange: { namedRange: { name: r.nombre, range: rango } } })
   }
+  return reqs
+}
+
+/**
+ * ═══ UN NOMBRE NO SE REAPUNTA A UNA GRILLA QUE TODAVÍA NO SE ESCRIBIÓ (03/08) ═══
+ *
+ * LO QUE PASÓ, MEDIDO. Esta función se llamaba ANTES de escribir, con este argumento escrito al
+ * lado: "EL RANGO CON NOMBRE VA PRIMERO … o la pestaña se llena de #NAME? en la primera corrida".
+ * El argumento vale para la PRIMERA corrida y sólo para ésa. En cualquier otra reapunta los cinco
+ * nombres a las filas de la grilla que el generador PIENSA escribir — y si el portón después frena
+ * la escritura (la pestaña es tuya, la editaste), la pestaña se queda con su layout viejo y los
+ * nombres apuntando a otro. Pasó el 03/08: los cinco quedaron cuatro filas abajo, `CAJA_ARQUEO_ARS`
+ * y `TIPO_CAMBIO_USD` cayeron en celdas vacías, y el total de disponibilidades pasó de $123,79M a
+ * $80,91M. **Sin un solo #REF! y sin una sola celda de contenido modificada** — el diff de la
+ * pestaña dio cero. La guarda protegía el CONTENIDO y nadie protegía los NOMBRES.
+ *
+ * Peor: el generador ya imprimía "no escribí, y por lo tanto NO muevo sus rangos con nombre"…
+ * DESPUÉS de haberlos movido. Un log que niega lo que acaba de hacer es peor que no loguear.
+ *
+ * Ahora hay dos momentos y son distintos:
+ *   · ANTES de escribir → sólo los nombres que NO EXISTEN (`soloFaltantes`). Cubre el arranque en
+ *     frío —que era el problema real— y no puede reapuntar nada, porque sólo agrega lo que falta.
+ *   · DESPUÉS de escribir bien → los cinco contra la grilla que QUEDÓ escrita.
+ * Si la escritura se frena, no se toca un solo nombre.
+ */
+async function rangoConNombre(google, sheetId, g, { soloFaltantes = false } = {}) {
+  const existentes = await google.getNamedRanges(ID).catch(() => [])
+  const reqs = requestsDeRangos(sheetId, g, existentes, { soloFaltantes })
   if (reqs.length) await google.spreadsheetBatchUpdate(ID, reqs)
   return reqs.length
 }

@@ -461,10 +461,10 @@ test('la alerta del arqueo cita el ancla POR NOMBRE, no por número de fila', ()
 
 test('la oficina DESCARGA los dos canales, cada uno del suyo', () => {
   const g = construir()
-  const bco = celda(g, filaDe(g, /sueldos de administración por transferencia/i), 2)
+  const bco = celda(g, filaDe(g, /sueldos de OFICINA por transferencia/i), 2)
   assert.match(bco, /OFICINA_BANCO/)
   assert.ok(!bco.includes('OFICINA_EFECTIVO'), 'lo que salió en billetes no puede salir también del banco')
-  const efvo = celda(g, filaDe(g, /sueldos de administración en efectivo/i), 2)
+  const efvo = celda(g, filaDe(g, /sueldos de OFICINA en efectivo/i), 2)
   // El efectivo sale POR DIFERENCIA (Pagado − Banco): así los dos canales suman siempre lo pagado.
   assert.match(efvo, /N\(OFICINA_PAGADO\)-N\(OFICINA_BANCO\)/)
   assert.match(efvo, /ISNUMBER\(OFICINA_BANCO\)/, 'con la celda vacía no se asume "todo efectivo"')
@@ -604,4 +604,76 @@ test('el rescate LEE el bloque 4.10: sin esto el conteo no tiene de dónde viaja
   // Y la grilla lo devuelve a su fila nueva, que es el punto entero del arreglo.
   const g = grilla(cargado, REFS, CARTERA)
   assert.equal(g.filas[g.fArqArs - 1][5], 46233)
+})
+
+// ═══ UN NOMBRE NO SE REAPUNTA A UNA GRILLA QUE NO SE ESCRIBIÓ (03/08) ═══
+//
+// EL DAÑO, MEDIDO. Los cinco rangos con nombre de CAJA se publicaban ANTES de escribir, contra la
+// grilla que el generador PENSABA escribir. El 03/08 el portón frenó la escritura —la pestaña era
+// del dueño— y la pestaña quedó con su layout viejo mientras los nombres se iban cuatro filas abajo:
+// `CAJA_ARQUEO_ARS` y `TIPO_CAMBIO_USD` cayeron en celdas vacías y el total de disponibilidades pasó
+// de $123,79M a $80,91M. Sin un solo #REF!, y con el diff de la pestaña en CERO celdas: el contenido
+// no se tocó, se movieron los punteros.
+//
+// El bootstrap (que el nombre EXISTA antes de escribir la fórmula que lo usa) se resuelve creando
+// sólo los que faltan. Crear no puede reapuntar nada.
+
+test('ANTES de escribir sólo se CREAN los que faltan: ninguno se reapunta', async () => {
+  const { requestsDeRangos, RANGOS_DE_CAJA } = await import('./caja-pestana.mjs')
+  const g = { fTC: 136, fArqArs: 148, fArqUsd: 149 }
+  // Los cinco ya existen, apuntando a cualquier lado.
+  const existentes = RANGOS_DE_CAJA.map((r, i) => ({ name: r.nombre, namedRangeId: `id${i}`, range: { startRowIndex: 999 } }))
+  const reqs = requestsDeRangos(7, g, existentes, { soloFaltantes: true })
+  assert.equal(reqs.length, 0, 'con todos los nombres ya creados, antes de escribir no se toca ninguno')
+})
+
+test('ANTES de escribir, el que NO existe sí se crea — si no, #NAME? en la primera corrida', async () => {
+  const { requestsDeRangos } = await import('./caja-pestana.mjs')
+  const g = { fTC: 136, fArqArs: 148, fArqUsd: 149 }
+  const reqs = requestsDeRangos(7, g, [], { soloFaltantes: true })
+  assert.equal(reqs.length, 5, 'arranque en frío: se crean los cinco')
+  assert.ok(reqs.every((r) => r.addNamedRange), 'sólo se AGREGAN, nunca se reapunta')
+})
+
+test('DESPUÉS de escribir sí se reapuntan los cinco a la grilla escrita', async () => {
+  const { requestsDeRangos, RANGOS_DE_CAJA } = await import('./caja-pestana.mjs')
+  const g = { fTC: 136, fArqArs: 148, fArqUsd: 149 }
+  const existentes = RANGOS_DE_CAJA.map((r, i) => ({ name: r.nombre, namedRangeId: `id${i}`, range: { startRowIndex: 999 } }))
+  const reqs = requestsDeRangos(7, g, existentes)
+  assert.equal(reqs.length, 5)
+  const arq = reqs.find((r) => r.updateNamedRange?.namedRange?.name === 'CAJA_ARQUEO_ARS')
+  assert.equal(arq.updateNamedRange.namedRange.range.startRowIndex, 147, 'fila 148, 0-based')
+  const tc = reqs.find((r) => r.updateNamedRange?.namedRange?.name === 'TIPO_CAMBIO_USD')
+  assert.equal(tc.updateNamedRange.namedRange.range.startRowIndex, 135, 'fila 136, 0-based')
+})
+
+test('el generador NO publica rangos en el camino de la escritura frenada', async () => {
+  // La prueba es del CÓDIGO: la llamada sin `soloFaltantes` tiene que estar DESPUÉS del `return`
+  // que corta cuando la pestaña es del dueño. Si alguien la vuelve a subir, esto se pone rojo.
+  const src = readFileSync(new URL('./caja-pestana.mjs', import.meta.url), 'utf8')
+  const corte = src.indexOf('escritura?.bloqueada || escritura?.editadaPorHumano')
+  const soloFaltantes = src.indexOf('soloFaltantes: true')
+  const reapunta = src.indexOf('reapuntados a la grilla RECIÉN ESCRITA')
+  assert.ok(corte > 0 && soloFaltantes > 0 && reapunta > 0, 'las tres marcas tienen que existir')
+  assert.ok(soloFaltantes < corte, 'la creación de los que faltan va ANTES del corte')
+  assert.ok(reapunta > corte, 'el reapuntado va DESPUÉS del corte: si la escritura se frena, no se llega')
+})
+
+// ═══ EL RÓTULO DICE OFICINA PORQUE ES OFICINA (03/08) ═══
+//
+// Estas filas leen `OFICINA_*` —el bloque de `_J_OFICINA`, dos personas— y decían "sueldos de
+// administración". El dueño separó los dos grupos y les puso criterios distintos: **oficina son 2
+// empleados, 50% banco y 50% efectivo; administración cobra TODA por banco.** Con el rótulo viejo,
+// alguien que busca administración la encuentra en un cuadro donde no está, y una diferencia de
+// oficina se lee como un faltante de administración.
+
+test('las filas de oficina se llaman OFICINA, no administración', () => {
+  const g = construir()
+  for (const re of [/sueldos de OFICINA por transferencia/i, /sueldos de OFICINA en efectivo/i]) {
+    const f = filaDe(g, re)
+    assert.ok(f >= 0, `falta la fila ${re}`)
+  }
+  const textos = g.filas.map((f) => String(f?.[0] ?? ''))
+  const malRotuladas = textos.filter((t) => /sueldos de administraci[oó]n/i.test(t))
+  assert.deepEqual(malRotuladas, [], 'ninguna fila que lee OFICINA_* puede llamarse "de administración"')
 })

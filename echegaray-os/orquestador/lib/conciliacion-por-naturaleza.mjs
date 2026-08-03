@@ -86,8 +86,30 @@ export const GRUPOS = [
     // Jornales registra dos quincenas pagadas ese día con $7.621.808 por banco. Sin esta fila, esos
     // $7,6 millones no aparecían en ningún control: ni en el saldo (el extracto no los tiene) ni en
     // el desvío (esta celda estaba vacía). El dinero más regular de la empresa, sin cuadrar.
-    formula: (d, h) => `SUMPRODUCT(ISNUMBER(JORNALES_REAL_PAGADO)*(JORNALES_REAL_PAGADO>=${d})*(JORNALES_REAL_PAGADO<=${h})*N(JORNALES_REAL_BANCO))`,
-    nota: 'La acreditación de haberes: columna Banco de las quincenas con fecha en "Pagado el" dentro de la ventana del extracto. Sólo la parte bancaria — lo que se pagó en billetes (Adelanto y Total recibo) sale de la caja física, no de la cuenta.',
+    // ═══ Y LA OFICINA, QUE FALTABA DE ESTE LADO DE LA CUENTA (03/08) ═══
+    //
+    // POR QUÉ SE AGREGA. La línea 54 de CAJA —"Sueldos de administración pagados sin declarar por qué
+    // canal salieron"— es el control de las dos líneas de sueldos de administración, y sale de los
+    // MISMOS DOS RANGOS que ellas (`OFICINA_PAGADO` y `OFICINA_BANCO`). Un control construido sobre la
+    // información que controla no puede ver la falla que importa: cuando `OFICINA_BANCO` quedó ciego
+    // —doce celdas que el generador borraba en cada corrida— las dos líneas dieron $0 y el control
+    // informó "sin problemas" mirando el mismo agujero.
+    //
+    // ACÁ LA FUENTE ES OTRA: el extracto del banco. La empresa paga los sueldos de administración por
+    // el mismo lote de haberes que los de obra, así que el débito está en el extracto lo declare o no
+    // la planilla. Si `OFICINA_BANCO` vuelve a quedar ciego, este renglón se abre por la diferencia —
+    // el banco muestra haberes que la planilla no explica— y eso NO se puede tapar desde la planilla.
+    //
+    // LO QUE ESTA FILA NO PUEDE HACER, DECLARADO. El lado de la oficina se filtra por "Se paga el",
+    // que es una fecha de CRITERIO (fin de mes + JORNALES_DESFASE_PAGO), no el día registrado en que
+    // salió la plata: la oficina no tiene columna "Pagado el". Cerca de un cambio de mes eso puede
+    // correr un mes de lado. El de obra sí usa la fecha registrada. Son dos calidades de dato
+    // distintas sumadas en la misma celda, y por eso el desvío sirve para MIRAR, no para cuadrar al
+    // peso. Cerrarlo del todo pide una columna "Pagado el" en el bloque de Oficina.
+    formula: (d, h) => 'SUMPRODUCT(ISNUMBER(JORNALES_REAL_PAGADO)'
+      + `*(JORNALES_REAL_PAGADO>=${d})*(JORNALES_REAL_PAGADO<=${h})*N(JORNALES_REAL_BANCO))`
+      + `+SUMPRODUCT(ISNUMBER(OFICINA_PAGO)*(OFICINA_PAGO>=${d})*(OFICINA_PAGO<=${h})*N(OFICINA_BANCO))`,
+    nota: 'La acreditación de haberes: columna Banco de las quincenas con "Pagado el" en la ventana del extracto, MÁS la columna Banco del bloque Oficina por su fecha "Se paga el". Sólo la parte bancaria — lo que se pagó en billetes sale de la caja física, no de la cuenta. Es el contraste de los sueldos de administración contra una fuente que no es la planilla: si la columna Banco de Oficina queda vacía, la diferencia aparece acá.',
   },
   {
     naturaleza: 'Préstamo prendario',

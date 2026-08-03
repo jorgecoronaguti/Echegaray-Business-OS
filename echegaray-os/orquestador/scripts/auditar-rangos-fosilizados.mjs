@@ -17,11 +17,21 @@
 //   · FOSILIZADO — el rango termina antes de la última fila con datos: ya hay plata invisible;
 //   · SIN MARGEN — todavía alcanza, pero por menos de 40 filas: es la próxima en fallar.
 //
+// ═══ Y LOS RANGOS CON NOMBRE, QUE ES LA MISMA MENTIRA SIN LA LETRA A LA VISTA (03/08) ═══
+//
+// Un rango A1 corto al menos se LEE en la fórmula. Un nombre no dice a dónde apunta: `OFICINA_BANCO`
+// se lee igual de bien sobre el bloque de oficina que sobre doce celdas en blanco de otro layout. De
+// 47 nombres del archivo había TRES apuntando a celdas sin un solo dato, y dos líneas de CAJA valían
+// $0 por eso — sin un error, sin un descuadre. Este auditor los agrega:
+//   · CIEGO    — ninguna celda con dato Y hay fórmulas que lo leen: esas fórmulas dan 0 hoy;
+//   · HUÉRFANO — nadie lo lee. No hace daño todavía; es exactamente cómo nace un ciego.
+//
 //   node orquestador/scripts/auditar-rangos-fosilizados.mjs
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { diagnosticarRango } from '../lib/cobranzas-por-cliente.mjs'
+import { clasificarNombrados } from '../lib/rangos-con-nombre.mjs'
 import { PESTANAS } from './formato-pestanas.mjs'
 
 // ═══ SÓLO SE AUDITAN LAS PESTAÑAS DONDE LAS FILAS CRECEN ═══
@@ -115,11 +125,17 @@ async function main() {
   }
 
   const fosilizados = [], sinMargen = []
+  // La grilla de cada pestaña y TODAS las fórmulas del libro se guardan: las necesita la segunda
+  // mitad del auditor, la de los rangos con nombre, y releerlas sería pagar el doble por lo mismo.
+  const grillas = new Map()
+  const formulas = []
   for (const h of meta) {
     const gr = await google.readSheetGrid(ID, `'${h.title}'!A1:BZ${Math.min(h.rows ?? 200, 300)}`).catch(() => null)
     if (!gr) continue
+    grillas.set(h.title, gr)
     gr.filas.forEach((fila, i) => fila.forEach((c, j) => {
       if (!c?.formula) return
+      formulas.push(c.formula)
       for (const r of rangosDe(c.formula, h.title)) {
         if (!esQueCrece(r.hoja)) continue
         // EL RANGO ACUMULATIVO NO ES UN RANGO CORTO. `COUNTIFS($AD$4:$AD292;…)` escrito en la fila
@@ -160,6 +176,60 @@ async function main() {
   }
   if (!F.length && !S.length) console.log('✓ ningún rango se quedó corto ni está por quedarse')
   if (F.length) process.exitCode = 1
+
+  await auditarNombrados(google, meta, grillas, formulas)
+}
+
+/**
+ * Cuántas celdas de un rango con nombre tienen contenido, mirando la grilla ya leída.
+ * Devuelve `null` cuando el rango cae fuera de lo que se leyó: NO se puede decir que está vacío un
+ * rango que no se miró — declarar "no verificable" es la única respuesta honesta ahí.
+ */
+export function contarConDato(grilla, rango) {
+  const r0 = rango.startRowIndex ?? 0
+  const r1 = rango.endRowIndex ?? 0
+  const c0 = rango.startColumnIndex ?? 0
+  const c1 = rango.endColumnIndex ?? 0
+  if (r1 > grilla.filas.length || c1 > 78 /* hasta BZ */) return null
+  let con = 0, total = 0
+  for (let i = r0; i < r1; i++) {
+    for (let j = c0; j < c1; j++) {
+      total++
+      const c = grilla.filas[i]?.[j]
+      if (c && (c.formula != null || (c.valor != null && String(c.valor).trim() !== ''))) con++
+    }
+  }
+  return { con, total }
+}
+
+async function auditarNombrados(google, meta, grillas, formulas) {
+  const porId = new Map(meta.map((h) => [h.sheetId, h.title]))
+  const nombrados = []
+  const noVerificables = []
+  for (const nr of await google.getNamedRanges(ID)) {
+    const hoja = porId.get(nr.range?.sheetId) ?? null
+    const gr = hoja ? grillas.get(hoja) : null
+    const cuenta = gr ? contarConDato(gr, nr.range ?? {}) : null
+    if (!cuenta) { noVerificables.push({ nombre: nr.name, hoja }); continue }
+    nombrados.push({ nombre: nr.name, hoja, conDato: cuenta.con, celdas: cuenta.total })
+  }
+
+  const clasificados = clasificarNombrados(nombrados, formulas)
+  const ciegos = clasificados.filter((n) => n.estado === 'ciego')
+  const huerfanos = clasificados.filter((n) => n.estado === 'huérfano')
+
+  console.log(`\nRANGOS CON NOMBRE — ${clasificados.length} verificados de ${clasificados.length + noVerificables.length}`)
+  if (ciegos.length) {
+    console.log('⚠ RANGOS CIEGOS — apuntan a celdas vacías y hay fórmulas leyéndolos: esas fórmulas valen 0 HOY:')
+    for (const n of ciegos) console.log(`   ${n.nombre} → ${n.hoja}, ${n.celdas} celda(s), NINGUNA con dato · ${n.usos} fórmula(s) lo leen`)
+  }
+  if (huerfanos.length) {
+    console.log('· HUÉRFANOS — ninguna fórmula los lee. Sin dueño, se quedan anclados al layout viejo:')
+    for (const n of huerfanos) console.log(`   ${n.nombre} → ${n.hoja}, ${n.conDato}/${n.celdas} celda(s) con dato`)
+  }
+  for (const n of noVerificables) console.log(`   ? ${n.nombre} → ${n.hoja ?? 'sin pestaña'}: fuera del tramo leído, NO se puede afirmar que esté vacío`)
+  if (!ciegos.length && !huerfanos.length) console.log('✓ ningún rango con nombre apunta a celdas vacías')
+  if (ciegos.length) process.exitCode = 1
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
