@@ -12,6 +12,7 @@ import { formatoAplicarADeuda, formatoPropuesta } from '../tesoreria/formato-mat
 import { relevar } from '../tesoreria/balanz-navegador.mjs'
 import { configRuntime, tomarCerrojo, soltarCerrojo } from '../tesoreria/navegador-runtime.mjs'
 import { prepararNavegador } from '../tesoreria/preparar-navegador.mjs'
+import { verificarEstructuraFlujo, idDeSheet } from '../tesoreria/estructura-flujo.mjs'
 
 const fmt = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
 
@@ -96,7 +97,13 @@ export function tesoreriaTools(google) {
           'CICLO COMPLETO DEL TESORERO, A PEDIDO — lee el Flujo de Caja, reconstruye la posición, proyecta la liquidez, calcula el excedente por horizonte, ENTRA A BALANZ en el momento y en SOLO LECTURA (fondos, letras, bonos, cauciones, cedears, corporativos y acciones), y propone una colocación por bloque ya pasada por una validación independiente. Tarda varios minutos porque recorre todas las pantallas. NUNCA ejecuta una operación financiera. Si la sesión de Balanz no está iniciada devuelve el análisis de caja igual y avisa cómo entrar; si hay una corrida programada en curso, contesta la caja y dice que espere. Usalo cuando el dueño pida "analizá si conviene invertir", "fijate qué hay disponible en Balanz", "buscá opciones para la plata que sobra", "qué rinde más para lo que tengo libre".',
         input_schema: {
           type: 'object',
-          properties: { forzar: { type: 'boolean', description: 'devolver el análisis aunque no haya cambio material' } },
+          properties: {
+            forzar: { type: 'boolean', description: 'devolver el análisis aunque no haya cambio material' },
+            sheet: {
+              type: 'string',
+              description: 'ID o URL del Sheet a analizar. Si no se indica, usa el Flujo de Fondos de la empresa. Sólo sirve para libros con la MISMA estructura (pestañas Caja, Cobranzas, Compras y Cheques Emitidos): contra cualquier otro se niega en vez de devolver ceros.',
+            },
+          },
         },
       },
       async run(args) {
@@ -112,6 +119,19 @@ export function tesoreriaTools(google) {
           // Ahora el navegador es de la casa y hay un cerrojo que arbitra. Así que se releva, salvo
           // que haya una corrida en curso: en ese caso se contesta la caja y se dice por qué falta el
           // mercado, en vez de pelear por la pestaña.
+          // ── EL LIBRO QUE SE VA A LEER ──────────────────────────────────────────────────────
+          //
+          // Por defecto el Flujo de Fondos de la empresa. Si el dueño indica otro, se verifica la
+          // ESTRUCTURA antes de leer un peso: este lector pide pestañas concretas, y contra un libro
+          // con otra forma no falla — devuelve ceros, que es peor que un error porque no se
+          // distingue de una caja realmente vacía.
+          let libro = null
+          if (args?.sheet) {
+            libro = idDeSheet(args.sheet)
+            if (!libro) return { error: `no reconocí "${String(args.sheet).slice(0, 60)}" como un Sheet: pegá el enlace completo o el ID.` }
+            const forma = await verificarEstructuraFlujo(google, libro)
+            if (!forma.ok) return { error: forma.motivo, faltantes: forma.faltantes ?? null }
+          }
           const cerrojo = await tomarCerrojo(configRuntime())
           const deps = { google }
           if (cerrojo.tomado) {
@@ -119,9 +139,8 @@ export function tesoreriaTools(google) {
             deps.relevar = relevar
           }
           try {
-            const r = cerrojo.tomado
-              ? await correrCiclo(deps, { ...(await politicas()), publicarSiempre: Boolean(args?.forzar), dias: 90 })
-              : await correrCiclo({ google }, { ...(await politicas()), publicarSiempre: Boolean(args?.forzar), dias: 90 })
+            const base = { ...(await politicas()), publicarSiempre: Boolean(args?.forzar), dias: 90, spreadsheetId: libro }
+            const r = await correrCiclo(cerrojo.tomado ? deps : { google }, base)
             if (!cerrojo.tomado) r.mercado_omitido = cerrojo.motivo
             return armarRespuesta(r, cerrojo)
           } finally {

@@ -112,6 +112,14 @@ Por Mattermost, a `@os`:
 > *"fijate qué hay disponible en Balanz"* · *"analizá si conviene invertir"* · *"qué hago con la
 > plata parada"*
 
+Y si querés que analice **otro libro** —una copia, un escenario— se lo indicás pegando el enlace:
+
+> *"analizá este flujo de fondos y fijate qué conviene: https://docs.google.com/spreadsheets/d/…"*
+
+**Sólo sirve para libros con la MISMA estructura** (pestañas `Caja`, `Cobranzas`, `Compras` y
+`Cheques Emitidos`). Contra cualquier otro **se niega y dice qué falta**, en vez de leer cero y
+presentarlo como una caja vacía — que es lo que pasaría si nadie mirara la forma primero.
+
 O desde la VM, si preferís verlo en crudo:
 
 ```bash
