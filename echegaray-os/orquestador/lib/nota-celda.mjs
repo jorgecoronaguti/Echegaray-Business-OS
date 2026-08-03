@@ -181,7 +181,7 @@ export function origenANota(filas, colOrigen, sheetId) {
 }
 
 /**
- * SACA LA COLUMNA DE PROCEDENCIA Y NO DEJA NINGUNA NOTA.
+ * BORRA LAS NOTAS DE CELDA. NO saca la columna de la planilla — ver la advertencia al final.
  *
  * POR QUÉ (23/07). `origenANota` movió el muro de texto a las notas de celda, y el dueño: "quitá las
  * notas, son confusas". Veintiocho triangulitos amarillos son veintiocho invitaciones a interrumpir
@@ -191,6 +191,21 @@ export function origenANota(filas, colOrigen, sheetId) {
  * una vez, como las notas al pie de un tearsheet. Esta función además BORRA las notas que puedan
  * haber quedado de la versión anterior: una nota vive fuera del valor de la celda, así que
  * reescribir la pestaña no la toca.
+ *
+ * ═══ LO QUE ESTA FUNCIÓN NO HACE, Y SE CREYÓ QUE HACÍA (03/08) ═══
+ *
+ * NO saca la columna de prosa de la planilla, aunque blanquee `filas[i][colOrigen]`. Dos motivos
+ * independientes, los dos invisibles desde el call site:
+ *
+ *   1 · Los tres generadores que la usan la llaman desde `formatear()`, que corre DESPUÉS de
+ *       `escribirPreservando`: cuando muta la grilla, el texto ya está escrito.
+ *   2 · Blanquea con `''`, y para `fusionar()` una cadena vacía significa "no es mi celda" →
+ *       PRESERVA lo que hubiera. El único valor que limpia de verdad es el centinela VACIO.
+ *
+ * Medido en el archivo real (snapshot 03/08): 44 celdas de prosa en Impuestos y 58 en Cargas
+ * Sociales, con las dos pestañas "sin notas" según el código. Si querés que la columna DESAPAREZCA,
+ * emitila con VACIO en la grilla ANTES de escribir — es lo que hace caja-pestana con su columna H.
+ * Hay un test que fija este comportamiento en nota-celda.test.mjs.
  *
  * @returns {{requests: object[], borradas: number}}
  */

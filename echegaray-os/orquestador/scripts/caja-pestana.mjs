@@ -51,12 +51,16 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
-import { notasDeColumna, altoDeParrafo, entranEn } from '../lib/nota-celda.mjs'
+// `notasDeColumna` NO se importa, y no es un olvido: es la función que escribía las notas de la
+// columna H. Un test de orquestador/lib/sin-notas-generadas.test.mjs impide que vuelva a entrar.
+import { altoDeParrafo } from '../lib/nota-celda.mjs'
 import { CUENTAS, CARGA, ALIAS, TIPO_CAMBIO, RANGO_TC, filaDeCuenta } from '../lib/caja-disponibilidades.mjs'
 import * as BANCO from '../lib/banco-santander.mjs'
 import { TASAS, CARGO_VERIFICADO, tasaDiaria, costoConImpuestos, interesDelPeriodo } from '../lib/costo-descubierto.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
-import { escribirPreservando, limpiarCentinela, VACIO } from '../lib/preservar-anotaciones.mjs'
+// `limpiarCentinela` deja de hacer falta: existía para la SEGUNDA escritura (la columna de orígenes),
+// que no pasaba por la fusión y mandaba " ::VACIO:: " literal a la planilla. Esa escritura ya no está.
+import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { CAJA as N_CAJA, publicar } from '../lib/rangos-nombrados.mjs'
@@ -65,7 +69,8 @@ import * as CONC from '../lib/conciliacion-por-naturaleza.mjs'
 import { formulaEgresoDiario } from '../lib/egreso-diario.mjs'
 import { rotuloAlDia, formulaAntiguedad } from '../lib/fecha-de-frescura.mjs'
 import { formulaFrescuraCaja, formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte, formulaNetaEfectivoPosterior, formulaCobrosPosteriores, formulaChequesDebitadosPosteriores, formulaComprasPagadasPosteriores, formulaJornalesBancoPosteriores, celdaJornalesEfectivo, formulaOficinaBancoPosteriores, formulaOficinaSinCanal, celdaOficinaEfectivo, celdaExtraccionesEfectivo, formulaCobrosUsdEfectivoPosteriores } from '../lib/caja-posterior-al-corte.mjs'
-import { formulaCajaEnPesos, celdaCobrosEfectivo, celdaPagosEfectivo, celdaDepositosEfectivo, NETO_NO_SUMA_EN_PESOS, origenCajaEnPesos, IDENTIDAD } from '../lib/caja-efectivo-fisico.mjs'
+// `origenCajaEnPesos` ya NO se importa: era el texto que iba a la columna H de la fila del arqueo.
+import { formulaCajaEnPesos, celdaCobrosEfectivo, celdaPagosEfectivo, celdaDepositosEfectivo, NETO_NO_SUMA_EN_PESOS, IDENTIDAD } from '../lib/caja-efectivo-fisico.mjs'
 // LA CARTERA DE VALORES SALE DE LA RÉPLICA DE CHEQUES, NO DE UN ARRAY DE JAVASCRIPT (30/07). Ver
 // lib/cartera-cheques.mjs: es el arreglo del "$10.000.000 en CAJA con $10.290.000 en cartera" y del
 // calendario de vencimientos que leía DOS CELDAS FIJAS.
@@ -96,11 +101,33 @@ const saldoEnPesos = (f) => `=IF(C${f}="";"";C${f}*IF(D${f}="";1;D${f}))`
 
 
 // A concepto · B moneda · C importe en origen · D tipo de cambio · E importe en pesos ·
-// F fecha · G antigüedad · H origen del dato · I declarado por
+// F fecha · G antigüedad · H —
+//
+// ═══ LA COLUMNA H NO LLEGA A LA PLANILLA, Y ES A PROPÓSITO (03/08) ═══
+//
+// El dueño, textual: "esas aclaraciones de mierda yo siempre las saco y elimino todo lo q vos anotas
+// en columna h". No es la primera vez —ya lo había pedido para Impuestos y Cargas Sociales, donde el
+// generador dejó de emitir su columna "De dónde sale"— y sin embargo la corrida de hoy le puso 66
+// celdas de prosa otra vez. Un generador que reescribe la explicación en cada pasada le gana siempre
+// a una persona que la borra una vez.
+//
+// LA REGLA: el generador escribe el DATO; la explicación vive en el código y en la documentación.
+//
+// Los textos de procedencia SIGUEN en las llamadas a `push` de este archivo: son el "por qué" de cada
+// fila y perderlos sería perder trazabilidad. Lo que cambió es que ya no pueden SALIR: `push` fuerza
+// la columna al centinela VACIO, que significa "esta celda es MÍA y va vacía". No es un acuerdo entre
+// autores —eso ya se olvidó una vez, por un merge— es una celda que el código no deja escribir.
+//
+// LO QUE ESTE CAMBIO NO HACE, DICHO ANTES DE QUE SE LO CREA NADIE: no borra las 66 celdas que quedaron
+// en la planilla. `lib/no-borrar.mjs` frena TODA escritura que deje vacía una celda con contenido, sin
+// bypass y a propósito. Lo que este cambio garantiza es que el generador no las vuelva a producir; las
+// que ya están las saca una persona, una vez, y esta vez no vuelven.
 const ANCHO = 8
-/** El ancho de cada columna. La de origen es angosta A PROPÓSITO: lleva una etiqueta, no un párrafo
- *  —el texto completo vive en la nota de la celda (lib/nota-celda.mjs)—. */
-const ANCHOS = [400, 64, 148, 96, 152, 104, 96, 300]
+/** La columna de prosa. Se sigue emitiendo con el centinela —en vez de dejar de emitirse— para que la
+ *  intención quede DECLARADA: la columna es del generador y va vacía. Ver el bloque de arriba. */
+const COL_PROSA = 7
+/** El ancho de cada columna. La última mide lo mínimo: existe para limpiarse, no para leerse. */
+const ANCHOS = [400, 64, 148, 96, 152, 104, 96, 24]
 const C_IMP = 'C', C_TC = 'D', C_PESOS = 'E'
 /** El índice 0-based de la columna de pesos, para escribir directo en la matriz de filas. */
 const C_PESOS_I = C_PESOS.charCodeAt(0) - 65
@@ -147,7 +174,7 @@ const numero = (s) => {
  * quedaba en #VALUE!, que se propagaba al TOTAL. El valor ingresado es el hecho; el formato es
  * presentación.
  */
-function rescatar(previo) {
+export function rescatar(previo) {
   const cargado = new Map()
   let mapa = null
   const leer = (c) => {
@@ -203,6 +230,10 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
     const r = [...c].map((x) => (x === AJENA ? undefined : (x === '' || x === undefined || x === null ? VACIO : x)))
     while (r.length < ANCHO) r.push(r.__ajena ? undefined : VACIO)
     r.length = ANCHO
+    // EL PORTÓN DE LA COLUMNA DE PROSA. Ver el comentario de COL_PROSA arriba: el texto de procedencia
+    // que traiga la fila se descarta acá, en el único lugar por el que pasan TODAS las filas. Puesto en
+    // cada llamada sería un acuerdo que la próxima llamada olvida — y ya se olvidó una vez.
+    r[COL_PROSA] = VACIO
     filas.push(r)
     if (r[1] === 'USD') usd.push(filas.length)
     return filas.length
@@ -487,10 +518,10 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   filas[d0 - 1][5] = `=IF(ISNUMBER(${ARQ_ARS_FECHA});${ARQ_ARS_FECHA};"")`
   filas[d0 - 1][6] = `=IF(N(${C_IMP}${d0})=0;"sin movimientos";"vivo")`
   filas[d0 - 1][4] = saldoEnPesos(d0)
-  // LA COLUMNA DE ORIGEN SÓLO SE EXPLICA SI ES LA MÍA. Si el dueño escribió ahí su propio texto, manda
-  // el suyo: su edición es verdad definitiva y "mejorarle" la redacción es la forma más fácil de
-  // perderla. Se reemplaza únicamente el `origenSugerido` que puso este mismo generador.
-  if ([CUENTAS[0].origenSugerido, VACIO, ''].includes(filas[d0 - 1][7])) filas[d0 - 1][7] = origenCajaEnPesos()
+  // ACÁ IBA LA EXPLICACIÓN DE ESTA FILA, EN LA COLUMNA H. Ya no: el dueño la borra siempre y el
+  // generador se la reescribía en cada corrida (ver COL_PROSA). La identidad que hacía falta explicar
+  // —`efectivo = arqueo + movimientos posteriores`— vive en lib/caja-efectivo-fisico.mjs, que es donde
+  // se puede leer una vez en vez de una por fila.
 
   // ═══ Y LO MISMO PARA EL CAJÓN EN DÓLARES (01/08) ═══
   //
@@ -711,17 +742,14 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   const fCtrl0 = push(['4 · ANEXO — EL DETALLE Y LAS CONCILIACIONES'])
 
   const fAlerta0 = push(['⚠ LO QUE NO CIERRA — mirar antes de decidir con los números de arriba'])
-  push(['Cada línea es un problema con nombre y monto; la última columna dice de qué resta sale.'])
-  // LA EXPLICACIÓN VA EN LA ÚLTIMA COLUMNA, COMO EN TODO EL RESTO DE LA PESTAÑA. Estaba en la
-  // cuarta: doscientos veinte caracteres en el medio de la grilla desparraman la fila y corren de
-  // lugar todo lo que está debajo. Es el defecto que se ve como "descuadrado".
-  push(['Qué pasa', '', 'Cuánto', '', '', '', '', 'Qué hacer, y de dónde sale el número'])
-  push(['Cheques de terceros que el cash flow espera y ya se entregaron', '', '@DIFECHEQ',
-    '', '', '', '', '@ORIGEN_ECHEQ'])
-  push(['El cash flow proyecta un efectivo que no está', '', '@DIFCONC',
-    '', '', '', '', '@ORIGEN_CONC'])
-  push(['Efectivo cobrado que no se depositó ni está en la caja física', '', '@SINEXPL',
-    '', '', '', '', '@ORIGEN_EFVO'])
+  push(['Cada línea es un problema con nombre y monto.'])
+  // ACÁ VIVÍAN LAS CINCO EXPLICACIONES MÁS LARGAS DE LA PESTAÑA, en la columna H. Eran las que el
+  // dueño borraba primero. El rótulo de cada alerta ya nombra el problema; lo que hay que hacer con
+  // él es una decisión de tesorería, no un párrafo al lado del monto.
+  push(['Qué pasa', '', 'Cuánto'])
+  push(['Cheques de terceros que el cash flow espera y ya se entregaron', '', '@DIFECHEQ'])
+  push(['El cash flow proyecta un efectivo que no está', '', '@DIFCONC'])
+  push(['Efectivo cobrado que no se depositó ni está en la caja física', '', '@SINEXPL'])
   // ═══ EL $0 QUE NO ERA UN CERO (01/08) ═══
   //
   // El dueño describió su 31/07: caja en pesos en cero al inicio, cobranzas en efectivo, compras y el
@@ -735,13 +763,11 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // los separa: dice CUÁNTO efectivo está quedando afuera por no tener la fecha. Se calcula con la
   // misma fórmula del neto pero con la ventana abierta (ancla 0 = todas las fechas), así que no puede
   // decir un número distinto del que entraría en cuanto se cargue el arqueo.
-  push(['El efectivo del período no se está contando: falta la fecha del arqueo', '', '@SINARQUEO',
-    '', '', '', '', '@ORIGEN_ARQUEO'])
+  push(['El efectivo del período no se está contando: falta la fecha del arqueo', '', '@SINARQUEO'])
   // El sueldo de administración que se pagó y no dice por dónde salió. No se resta de ninguna
   // disponibilidad —no se sabe de cuál— así que tiene que verse acá con nombre y monto. Se apaga sola
   // en cuanto el mes tenga Banco o Efectivo cargado.
-  push(['Sueldos de administración pagados sin declarar por qué canal salieron', '', '@OFISINCANAL',
-    '', '', '', '', '@ORIGEN_OFICANAL'])
+  push(['Sueldos de administración pagados sin declarar por qué canal salieron', '', '@OFISINCANAL'])
   const fAlerta1 = filas.length
   push()
 
@@ -1187,12 +1213,24 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // Acá el conteo físico es lo que es: un dato declarado, con su fecha, en su propio bloque. Arriba
   // queda lo que hay HOY, que es lo que se mira para decidir.
   //
-  // NO SE EMITEN LAS CELDAS DE VALOR (C y F): las filas llevan sólo el rótulo y la moneda, así la
-  // fusión preserva lo que el dueño haya contado y el generador no se lo pisa en la próxima corrida.
+  // ═══ EL CONTEO VIAJA CON SU BLOQUE, NO SE QUEDA EN LA FILA (03/08) ═══
+  //
+  // Hasta hoy estas filas salían con TODAS sus celdas ausentes (`AJENA`): "no las escribo, que la
+  // fusión preserve lo que el dueño tipeó". Eso sólo es cierto MIENTRAS EL BLOQUE NO SE MUEVE — la
+  // fusión preserva por POSICIÓN. La corrida de hoy metió cuatro filas más arriba, el bloque bajó de
+  // la 148 a la 152, y el conteo del dueño se quedó en la 148 mientras los cuatro rangos con nombre
+  // se republicaban en la 152, vacía. `CAJA_ARQUEO_ARS_FECHA` quedó en blanco y la caja física
+  // ($39,28M) se fue a cero: la fila del efectivo arranca con `IF(NOT(ISNUMBER(fecha));0;…)`.
+  //
+  // Ahora el conteo se RE-EMITE en su fila nueva desde lo que se leyó al empezar. Se sigue leyendo el
+  // valor INGRESADO (número de serie para las fechas), no el formateado: "30/07/2026" depende del
+  // locale, 46233 no. Si no se pudo leer nada, la celda vuelve a salir AJENA — sin dato no se
+  // sobrescribe, que es el lado seguro para equivocarse.
   push([])
   const fArq0 = push(['4.10 · ARQUEO DECLARADO DE LA CAJA FÍSICA'])
   push(['El conteo físico del cajón y el día en que se hizo. Es el ANCLA: de esa fecha en adelante la caja se mueve sola con las cobranzas y los pagos en efectivo. Cargá acá el importe y la fecha; arriba se muestra lo que hay hoy.'])
-  const arq = (rot, mon) => [rot, mon, AJENA, AJENA, AJENA, AJENA, AJENA, AJENA]
+  const suyoOAusente = (rot, campo) => { const v = previo(rot, campo); return v === '' || v === null || v === undefined ? AJENA : v }
+  const arq = (rot, mon) => [rot, mon, suyoOAusente(rot, 'saldo'), AJENA, AJENA, suyoOAusente(rot, 'fecha'), AJENA, AJENA]
   const fArqArs = push(arq('Caja en pesos — contado', 'ARS'))
   const fArqUsd = push(arq('Caja en dólares — contado', 'USD'))
   const fArq1 = filas.length
@@ -1258,11 +1296,10 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
     // La cuenta escrita, con las filas reales. Se arma acá porque recién ahora se sabe dónde quedó
     // cada bloque: escribirla a mano en el texto de arriba la dejaría vieja en la primera corrida
     // que mueva una fila — que es exactamente lo que ya pasó con "Bloque 6".
-    '@ORIGEN_ECHEQ': `=CONCATENATE("Endosados a un proveedor: son un pago hecho, no un ingreso futuro. Corregir en Cobranzas.   ▸ SALE DE LA FILA ${gDif}: lo que Cobranzas dice que hay en echeq (";TEXT(${C_IMP}${gControl};"$#,##0");") menos lo que el banco tiene en custodia (";TEXT(${C_IMP}${fValores};"$#,##0");")")`,
-    '@ORIGEN_CONC': `=CONCATENATE("O faltan movimientos por cargar, o el saldo inicial del cuadro quedó viejo. Mientras no cierre, la proyección de caja no se puede usar para decidir.   ▸ SALE DE LA FILA ${fDifConc}: la plata que hay hoy (";TEXT(${C_PESOS}${fDecl};"$#,##0");") menos la que el Cash Flow Mensual proyecta para esa fecha (";TEXT(${C_PESOS}${fProy};"$#,##0");")")`,
-    '@ORIGEN_OFICANAL': `=IF(${C_IMP}${fAlerta0 + 4}=0;"";"Cargá Banco y Efectivo del mes en el bloque Oficina de Jornales por Quincena y este importe baja solo de la disponibilidad que corresponda.   ▸ Mientras el canal no esté declarado NO se resta de ninguna: no se puede saber si salió de la cuenta o del cajón, y repartirlo mitad y mitad porque suele ser así sería inventar el dato.")`,
-    '@ORIGEN_ARQUEO': `=IF(${ARQ_ARS_FECHA}<>"";"";CONCATENATE("Cargá el conteo y su fecha en el bloque 4.10 —ARQUEO DECLARADO DE LA CAJA FÍSICA— y todo el efectivo entra solo al total: cobros en efectivo, menos pagos en efectivo, menos depósitos al banco, menos jornales pagados en billetes.   ▸ Sin esa fecha la fila de movimientos de efectivo devuelve 0 POR DISEÑO: sin ancla no hay ventana que acotar, y un cero por falta de dato se lee igual que un cero medido. Acá no se muestra un monto a propósito: sin ancla, cualquier cifra se leería como un saldo de caja y no lo es."))`,
-    '@ORIGEN_EFVO': `=CONCATENATE("Puede tener explicación (un depósito posterior al corte, un pago en efectivo sin pasar por el banco), pero no puede quedar sin mirar.   ▸ SALE DE LA FILA ${fSinExpl}, en el bloque 7: el efectivo que Cobranzas dice cobrado, menos lo que el extracto muestra depositado, menos lo que hay en la caja física.")`,
+    // ACÁ HABÍA CINCO `@ORIGEN_*` MÁS: las explicaciones de las alertas, que se escribían en la
+    // columna H con CONCATENATE citando las filas de las que salía cada resta. Se fueron con la
+    // columna (ver COL_PROSA). El "de dónde sale" de cada alerta está en el comentario de su push,
+    // que es donde se puede mantener sin que el dueño tenga que borrarlo cada dos horas.
   }
   for (const f of filas) f.forEach((c, j) => { if (typeof c === 'string' && PANEL[c]) f[j] = PANEL[c] })
 
@@ -1322,7 +1359,18 @@ async function main() {
   const hoja = hallarPestana(hojas, PESTAÑA)
   const tab = hoja.title
 
-  const previo = await google.readSheetGrid(ID, `${tab}!A1:I80`).catch(() => ({ filas: [] }))
+  // ═══ LA LECTURA NO LLEVA TECHO DE FILAS (03/08) ═══
+  //
+  // Era `A1:I80`, y el bloque 4.10 —donde el dueño tipea el ARQUEO— vive en la fila 148. O sea que el
+  // rescate NUNCA veía el conteo ni su fecha. Mientras el bloque no se movía no se notaba: la fusión
+  // preservaba esas celdas POR POSICIÓN. La corrida de hoy agregó cuatro filas más arriba, el bloque
+  // bajó a la 152, y las celdas de carga quedaron vacías en su nueva fila mientras los rangos con
+  // nombre se republicaban ahí. `CAJA_ARQUEO_ARS_FECHA` pasó a apuntar a una celda vacía y la caja
+  // física —$39,28M— se fue a cero sin un solo #ERROR.
+  //
+  // Es el mismo defecto que ya costó los 74 borrados falsos de la Regla 0: una lectura con techo no
+  // devuelve "no hay dato", devuelve "no miré". Sin techo, el arqueo viaja CON su bloque.
+  const previo = await google.readSheetGrid(ID, `${tab}!A1:I`).catch(() => ({ filas: [] }))
   const cargado = rescatar(previo.filas ?? [])
 
   // Las referencias a otras pestañas se resuelven por rótulo, no se adivinan.
@@ -1449,7 +1497,7 @@ async function main() {
   }
   const { conservadas } = escritura
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) escritas por una persona — CONSERVADAS`)
-  await formatear(google, hoja.sheetId, g, tab)
+  await formatear(google, hoja.sheetId, g)
 
   // El registro de rótulos se guarda con lo que QUEDÓ escrito en la pestaña, no con lo que el
   // generador quiso escribir: el formato acorta los orígenes largos y pasa el texto a una nota.
@@ -1524,7 +1572,7 @@ async function rangoConNombre(google, sheetId, g) {
   return reqs.length
 }
 
-async function formatear(google, sheetId, g, tab) {
+async function formatear(google, sheetId, g) {
   // ═══ LOS COLORES SALEN DEL ESTÁNDAR ÚNICO, NO DE CUATRO CONSTANTES DE ESTA PESTAÑA ═══
   //
   // POR QUÉ (21/07). El dueño: "los colores, lo que dice la información, cómo la refleja, todo es un
@@ -1587,8 +1635,9 @@ async function formatear(google, sheetId, g, tab) {
   fmt(r(0, n, 5, 6), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER' })
   fmt(r(0, n, 6, 7), 'userEnteredFormat.horizontalAlignment', { horizontalAlignment: 'CENTER' })
-  fmt(r(0, n, 7, 9), 'userEnteredFormat',
-    { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: { fontSize: E.TAM.nota, italic: true, foregroundColor: E.COLOR.nota }, wrapStrategy: 'CLIP' })
+  // La columna de prosa (H) ya no lleva formato propio: no tiene contenido que dibujar. Ver COL_PROSA.
+  // Formatearla igual es la trampa de "escritura salteada que sigue formateando": el candado vale
+  // también para el formato, y una columna vacía en itálica gris se lee como "acá falta algo".
   // UNA TASA NO ES PLATA. Con el formato de moneda, el 55% anual se dibujaba "$1" — que además de
   // no significar nada, invita a leerlo como un peso.
   fmt(r(g.fTasa - 1, g.fTasa, 2, 3), 'userEnteredFormat.numberFormat',
@@ -1723,11 +1772,11 @@ async function formatear(google, sheetId, g, tab) {
   }
   // LAS CELDAS DE CARGA EN AMARILLO. Es la diferencia más importante de la pestaña: lo que una
   // persona escribe tiene que verse distinto de lo que el sistema calcula, o nadie sabe qué puede
-  // tocar sin romper nada. Sólo se pinta lo que de verdad se carga: el importe, la fecha y el origen.
+  // tocar sin romper nada. Sólo se pinta lo que de verdad se carga: el importe y la fecha. La columna
+  // de prosa salía amarilla como si hubiera que completarla — y ya no se completa nunca (COL_PROSA).
   for (const f of g.amarillas) {
     fmt(r(f - 1, f, 2, 3), 'userEnteredFormat.backgroundColor', { backgroundColor: AMARILLO })
     fmt(r(f - 1, f, 5, 6), 'userEnteredFormat.backgroundColor', { backgroundColor: AMARILLO })
-    fmt(r(f - 1, f, 7, 9), 'userEnteredFormat.backgroundColor', { backgroundColor: AMARILLO })
   }
   // El detalle de cheques, más chico y en gris: es información de respaldo, no una cuenta más.
   if (g.g1 > g.g0) {
@@ -1799,37 +1848,25 @@ async function formatear(google, sheetId, g, tab) {
       { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT' })
   }
 
-  // ── EL ORIGEN DEL DATO: ETIQUETA EN LA CELDA, TEXTO COMPLETO EN LA NOTA ────────────────────────
-  // Hasta hoy había orígenes de 207 caracteres en una celda donde entran 48. La procedencia de cada
-  // saldo —lo que hace que el número sea creíble— estaba escrita y no se podía leer.
-  const COL_ORIGEN = 7
-  // SIN EL CENTINELA: esta escritura NO pasa por la fusión, así que mandaría " ::VACIO:: " tal cual
-  // a la planilla. Ya lo hizo: 61 celdas de CAJA mostraban el texto del centinela.
-  // ═══ NINGUNA NOTA EN EL MEDIO DE LA GRILLA ═══
+  // ═══ NI UNA NOTA, EN NINGUNA COLUMNA (03/08) ═══
   //
-  // POR QUÉ (23/07). El dueño: "vuelve a tener los comentarios de mierda esos en el medio". En CAJA
-  // quedaban CINCO colgadas de la columna A —residuo de una versión anterior que colgaba la
-  // procedencia del concepto—, y este generador nunca las borraba: una nota vive fuera del valor de
-  // la celda, así que reescribir la pestaña no la toca. Sobrevivían corrida tras corrida.
+  // POR QUÉ (23/07, y otra vez hoy). El dueño: "vuelve a tener los comentarios de mierda esos en el
+  // medio", y hoy: "elimino todo lo q vos anotas en columna h". Una nota vive FUERA del valor de la
+  // celda: reescribir la pestaña no la toca, así que la única forma de que un borrado suyo dure es
+  // borrarlas explícitamente y no volver a escribir ninguna.
   //
-  // La regla queda dicha en el código: la nota SÓLO puede vivir en la columna de origen, que en esta
-  // pestaña está declarada y a la vista. En el medio del cuadro, nunca.
+  // Antes acá se limpiaban las notas de A..G y se ESCRIBÍAN las de H (`notasDeColumna` partía cada
+  // origen largo en etiqueta + nota). Ese era el mecanismo exacto que le devolvió las 66 celdas de
+  // hoy. Se limpia el ANCHO ENTERO y no se escribe ninguna.
   req.push({
     updateCells: {
       // Hasta donde llega la grilla y NI UNA FILA MÁS: pedir una fila que la hoja no tiene hace
       // fallar el lote entero ("beyond the last requested row"), y con él toda la corrida.
-      range: { sheetId, startRowIndex: 0, endRowIndex: g.filas.length, startColumnIndex: 0, endColumnIndex: COL_ORIGEN },
-      rows: Array.from({ length: g.filas.length }, () => ({ values: Array.from({ length: COL_ORIGEN }, () => ({ note: '' })) })),
+      range: { sheetId, startRowIndex: 0, endRowIndex: g.filas.length, startColumnIndex: 0, endColumnIndex: ANCHO },
+      rows: Array.from({ length: g.filas.length }, () => ({ values: Array.from({ length: ANCHO }, () => ({ note: '' })) })),
       fields: 'note',
     },
   })
-  const { requests: notas, celdas, conNota } = notasDeColumna(limpiarCentinela(g.filas), COL_ORIGEN, sheetId, entranEn(ANCHOS[COL_ORIGEN]))
-  if (conNota) {
-    await google.batchUpdateValues(ID, [{ range: `'${tab}'!${letra(COL_ORIGEN)}1`, values: celdas.map((f) => [f[COL_ORIGEN] ?? '']) }])
-    req.push(...notas)
-    console.log(`  ${conNota} orígenes largos pasaron a nota: la celda muestra la etiqueta, el detalle está a un click`)
-  }
-  fmt(r(0, g.filas.length, COL_ORIGEN, COL_ORIGEN + 1), 'userEnteredFormat', E.nota())
 
   const ancho = ANCHOS
   ancho.forEach((px, i) => req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: px }, fields: 'pixelSize' } }))
