@@ -270,6 +270,12 @@ async function marcarInstrumentos(google, datos) {
     const porFila = new Map(o.items.map((i) => [i.fila, marcaDe(i.comprobante, datos.enCompras)]))
     const marcas = []
     for (let f = o.filaCab + 1; f <= o.hasta; f++) marcas.push([porFila.get(f) ?? ''])
+    // ACÁ LA FECHA DE LA CORRIDA ES LA CORRECTA, Y ES LA EXCEPCIÓN A LA REGLA (03/08).
+    // Los subtítulos del Flujo de Fondos pasaron a calcular su corte con una fórmula sobre el dato
+    // (ver lib/fecha-de-frescura.mjs), porque rotulan rangos VIVOS que se mueven solos. Este rótulo
+    // no: encabeza una columna de marcas ✓/⚠ que el OS congeló EN ESA CORRIDA y que no se recalculan
+    // nunca. Una fórmula acá diría "al 03/08" sobre marcas del 24/07 — frescura FALSA, que es peor
+    // que el texto honesto. El estampado es el dato correcto: cuándo miró el OS.
     const hoy = new Date().toLocaleDateString('es-AR')
     const letraCol = letra(COL)
     await google.batchUpdateValues(ID, [

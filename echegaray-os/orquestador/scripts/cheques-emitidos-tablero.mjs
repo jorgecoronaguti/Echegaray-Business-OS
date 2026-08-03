@@ -68,6 +68,7 @@ import { skinRequests, MUTED, HAIR } from '../lib/estilo-statement.mjs'
 import { seccion, total } from '../lib/patron-pestana.mjs'
 import { conEdicionesRespetadas, guardarRegistro, autoRespetarReescritura } from '../lib/respetar-ediciones.mjs'
 import { firmaGuardia, sellarFirma } from '../lib/firma-tab.mjs'
+import { formulaUltimaFecha, rotuloAlDia } from '../lib/fecha-de-frescura.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTANA = 'Cheques Emitidos'
@@ -79,16 +80,16 @@ const BANDA = 19
 const TITULAR = 8
 
 const ACENTO = { red: 0.11, green: 0.23, blue: 0.37 }
-const hoy = new Date().toLocaleDateString('es-AR')
 
 /**
  * NÚCLEO PURO: las filas de la banda, dado dónde arranca el registro.
  * Devuelve la grilla de 13 columnas lista para escribir. Todo fórmula: 0 números pegados.
  */
-export function bandaFilas(HDR, fechaCorte = hoy) {
+export function bandaFilas(HDR) {
   const F = `$F$${HDR}:$F` // Monto
   const K = `$K$${HDR}:$K` // DEBITADO SI/No
   const I = `$I$${HDR}:$I` // fecha de pago
+  const C = `$C$${HDR}:$C` // fecha de emisión
   // NO DEBITADO = todo lo que NO dice "SI", no sólo lo que dice "No": un DEBITADO en blanco es un
   // cheque que todavía no se debitó (default seguro, mismo criterio que CAJA). El IF(ISNUMBER(F))
   // evita que las filas vacías del rango abierto sumen.
@@ -107,7 +108,19 @@ export function bandaFilas(HDR, fechaCorte = hoy) {
     fila('Cheques emitidos'),
     // El subtítulo entra en UNA línea que desborda sobre las columnas vacías: envuelto en la
     // columna A necesitaría cinco renglones y una fila alta, que es lo que hace ver "apretado".
-    fila(`Cuánto de lo firmado todavía no salió de la cuenta, y cuándo sale · registro de tesorería · al ${fechaCorte} · en pesos`),
+    //
+    // LA FECHA DE CORTE SALE DEL REGISTRO, NO DEL RELOJ (03/08). Era `al ${new Date()}`: el día que
+    // corría el script. El registro lo carga el DUEÑO a mano y cambia sin que corra nadie, así que
+    // el rótulo se quedaba atrás — medido en vivo: decía "al 24/7/2026" con cheques cargados al
+    // 03/08. Ahora es la fecha de emisión más nueva QUE YA PASÓ (columna C): la fórmula la recalcula
+    // el motor de Sheets al abrir la planilla, que es lo que pidió el dueño. `<=TODAY()` no es un
+    // detalle: la columna I trae fechas de pago diferidas y un MAX crudo haría que el corte dijera
+    // septiembre.
+    fila(rotuloAlDia(
+      'Cuánto de lo firmado todavía no salió de la cuenta, y cuándo sale · registro de tesorería',
+      formulaUltimaFecha(C),
+      { cola: 'en pesos' },
+    )),
     fila(),
     fila(seccion(1, '¿me alcanza? — lo que firmé contra lo que hay en el banco')),
     fila('Concepto', 'Monto', 'Qué significa'),

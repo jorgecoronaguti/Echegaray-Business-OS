@@ -4,7 +4,7 @@ import {
   formulaCobrosPosteriores, formulaChequesDebitadosPosteriores, formulaComprasPagadasPosteriores,
   formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte, COB, CHQ, CMP,
   formulaCobrosEfectivoPosteriores, formulaComprasEfectivoPosteriores,
-  formulaDepositosEfectivoPosteriores, formulaNetaEfectivoPosterior, DEP,
+  formulaDepositosEfectivoPosteriores, formulaNetaEfectivoPosterior, DEP, formulaFrescuraCaja,
 } from './caja-posterior-al-corte.mjs'
 import { COL_FECHA_CAJA, colIndex } from './rubro-caja.mjs'
 
@@ -306,4 +306,48 @@ test('todas las referencias a Cobranzas del repo terminan en la misma fila', asy
     }
   }
   assert.equal(topes.size, 1, `conviven ${topes.size} topes distintos: ${[...topes].map(([t, f]) => `${t} en ${f}`).join(' · ')}`)
+})
+
+// ═══ LAS TRES PUERTAS QUE EL DUEÑO NOMBRÓ (03/08) ═══
+//
+// *"siempre q modifiques valores de caja con el extracto q te envio o se haga modificaciones por
+// compras pagas en efectivo o transferencias o cobranzas, las fechas que aparecen se deben actualizar
+// de manera automatica"*. Son tres puertas y las tres tienen que mover el rótulo de CAJA.
+
+test('la frescura de CAJA mira LAS TRES PUERTAS: extracto, compras pagadas y cobranzas', () => {
+  const f = formulaFrescuraCaja()
+  assert.match(f, /_BANCO_RAW'!\$A\$4:\$A/, 'puerta 1: el extracto del banco')
+  assert.match(f, new RegExp(`Compras'!\\$${COL_FECHA_CAJA}\\$${CMP.desde}:\\$${COL_FECHA_CAJA}`), 'puerta 2: la fecha de caja de Compras')
+  assert.match(f, new RegExp(`Cobranzas'!\\$${COB.fecha}\\$${COB.desde}:\\$${COB.fecha}`), 'puerta 3: la fecha de cobro')
+  assert.match(f, /^MAX\(/, 'gana la más nueva: cualquiera de las tres que se mueva mueve el rótulo')
+})
+
+test('sólo cuenta lo que YA OCURRIÓ: una previsión no da frescura', () => {
+  const f = formulaFrescuraCaja()
+  // Compras trae fecha prevista de pago y Cobranzas fecha esperada de cobro. Sin el filtro de estado
+  // y sin `<=TODAY()`, el rótulo declararía un corte futuro sobre plata que no se movió.
+  assert.match(f, new RegExp(`Compras'!\\$${CMP.estado}\\$${CMP.desde}:\\$${CMP.estado}="Pagado"`))
+  assert.match(f, new RegExp(`Cobranzas'!\\$${COB.estado}\\$${COB.desde}:\\$${COB.estado}="Cobrado"`))
+  assert.equal(f.match(/<=TODAY\(\)/g)?.length, 3, 'las tres puertas tienen que filtrar el futuro')
+})
+
+test('la fecha de caja de Compras se coacciona: viene mezclada serie/texto', () => {
+  // El mismo defecto que ya infló la caja: un MAX crudo se queda con la última fecha que por
+  // casualidad entró como número y pierde las tipeadas, EN SILENCIO.
+  assert.match(formulaFrescuraCaja(), /IFERROR\(DATEVALUE\('Compras'!\$AD\$4:\$AD&""\);N\('Compras'!\$AD\$4:\$AD\)\)/)
+})
+
+test('sin la réplica del extracto la puerta 1 se omite, no queda una referencia rota', () => {
+  const f = formulaFrescuraCaja({ bancoRaw: null })
+  assert.doesNotMatch(f, /_BANCO_RAW/, 'referenciar una hoja que no está manda el subtítulo a #REF!')
+  assert.match(f, /Compras/)
+  assert.match(f, /Cobranzas/)
+})
+
+test('los rangos de la frescura son ABIERTOS: un tope de filas caduca en silencio', () => {
+  assert.doesNotMatch(formulaFrescuraCaja(), /:\$[A-Z]{1,2}\$\d+/, 'hay un rango cerrado en la frescura')
+})
+
+test('separador es-AR en la frescura de CAJA: ni una coma', () => {
+  assert.doesNotMatch(formulaFrescuraCaja(), /,/)
 })

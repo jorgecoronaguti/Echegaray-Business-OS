@@ -69,6 +69,7 @@ import { detectarQuincenas, filasQuincenas } from '../lib/nomina-sync.mjs'
 import { CATEGORIAS, COL, formulaValor, formulaVigencia } from '../lib/uocra-escala.mjs'
 import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
 import { JORNALES_FILE_ID } from '../lib/espejo-jornales.mjs'
+import { formulaUltimaFecha, rotuloAlDia } from '../lib/fecha-de-frescura.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Jornales por Quincena'
@@ -199,7 +200,11 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia }) {
   push(['Jornales por quincena'])
   // EL SUBTÍTULO ENTRA EN UN RENGLÓN. El anterior medía 190 caracteres, se envolvía en una fila de
   // 21px y se leía la mitad: un subtítulo cortado es peor que ninguno.
-  push([`Jornales de obra y sueldos de oficina · fuente: planilla JORNALES y escala UOCRA · al ${fecha(new Date())}`])
+  // LA FECHA DEL SUBTÍTULO SALE DEL REGISTRO, NO DEL RELOJ (03/08). Era `fecha(new Date())`: decía
+  // "al 02/08" porque ese día corrió el script, no porque los jornales llegaran hasta ahí. La
+  // fórmula se resuelve más abajo, cuando se conocen las filas del registro — igual que el resto de
+  // las referencias de esta grilla.
+  const fSubtitulo = push([VACIO])
   blanco()
 
   // ── HERO: la posición, en cuatro números ──
@@ -370,6 +375,15 @@ function grilla({ bloques, pendientes, bloquesOfi, cargaAlDia }) {
   // constante que actualizar, y el día que la quincena cierre pasa sola de una línea a la otra.
   // Ninguna persona tiene que acordarse de nada.
   const cerrada = `($B$${f0}:$B$${fLast}<=TODAY())`
+  // HASTA DÓNDE LLEGAN LOS JORNALES: el "Hasta" más nuevo que YA PASÓ, o sea la última quincena
+  // cerrada. El rango va cerrado a propósito —y no abierto como en las demás pestañas—: abajo del
+  // registro están la proyección y la nómina de oficina, que también tienen fechas en la columna B y
+  // hablarían de otra cosa. `<=TODAY()` es obligatorio: la planilla escribe los catorce días de la
+  // quincena el día que la abre, así que un MAX crudo declararía frescura de una fecha futura.
+  filas[fSubtitulo - 1][0] = rotuloAlDia(
+    'Jornales de obra y sueldos de oficina · fuente: planilla JORNALES y escala UOCRA',
+    formulaUltimaFecha(`$B$${f0}:$B$${fLast}`),
+  )
   filas[fHero.cerradas - 1][1] = `=SUMPRODUCT(ISNUMBER($B$${f0}:$B$${fLast})*${cerrada}*IF(ISNUMBER($J$${f0}:$J$${fLast});$J$${f0}:$J$${fLast};0))`
   filas[fHero.curso - 1][1] = `=SUMPRODUCT(ISNUMBER($B$${f0}:$B$${fLast})*NOT(${cerrada})*IF(ISNUMBER($J$${f0}:$J$${fLast});$J$${f0}:$J$${fLast};0))`
   // Y al lado, qué quincena es y HASTA QUÉ DÍA está cargada de verdad. Medido sobre las horas del
