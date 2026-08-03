@@ -16,6 +16,9 @@ import { fileURLToPath } from 'node:url'
 // de un try/catch —como el resto de las guardas— fallaría ABIERTO si el módulo no cargara, y este es
 // justamente el que no puede fallar abierto. Sólo toca el filesystem: no depende de la base ni de red.
 import { frenar } from './congelador-sheets.mjs'
+// La regla que no se puede apagar: ninguna escritura deja vacía una celda que tenía algo. No la
+// levanta ORQ_SHEETS_DESCONGELAR, ni yaGuardado, ni espejo, ni respetar:false, ni --force.
+import { permiteBorradoExplicito, protegerBorrado } from './no-borrar.mjs'
 
 const READONLY_SCOPES = [
   'https://www.googleapis.com/auth/drive.readonly',
@@ -932,6 +935,14 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
           sellar = g.sellar
         } catch { /* sin base: se escribe (disponibilidad) */ }
       }
+      // NO-BORRAR: después de toda guarda y de todo bypass. Si acá una celda quedara vacía sobre
+      // contenido, se conserva el contenido. Ver no-borrar.mjs.
+      {
+        const nb = await protegerBorrado(cliente, fileId, [{ range, values }])
+        if (!nb.data.length) return { protegido: true, noBorrar: true, motivo: 'no pude releer el destino para garantizar que no se borra nada (falla cerrado)' }
+        if (nb.preservadas) console.log(`  🛟 conservo ${nb.preservadas} celda(s) tuya(s) que esta escritura dejaba vacías: ${nb.detalle.join(' · ')}`)
+        values = nb.data[0].values
+      }
       values = await localizeValues(fileId, values)
       const res = await apiSend(
         `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
@@ -1032,6 +1043,14 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
           sellar = g.sellar
         } catch { /* sin base: se escribe (la preservación celda a celda sigue para quien use el portón) */ }
       }
+      // NO-BORRAR: el mismo trato para el batch. Ver no-borrar.mjs.
+      {
+        const nb = await protegerBorrado(cliente, fileId, data)
+        if (nb.descartados.length) console.log(`  🛟 descarto ${nb.descartados.length} rango(s): no pude releer el destino y no arriesgo borrarte algo — ${nb.descartados.slice(0, 3).join(', ')}`)
+        if (nb.preservadas) console.log(`  🛟 conservo ${nb.preservadas} celda(s) tuya(s) que esta escritura dejaba vacías: ${nb.detalle.join(' · ')}`)
+        data = nb.data
+        if (!data.length) return { protegido: true, noBorrar: true, bloqueadas: nb.descartados }
+      }
       const loc = []
       for (const d of data) loc.push({ ...d, values: await localizeValues(fileId, d.values) })
       const res = await apiSend(
@@ -1055,6 +1074,12 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
           const g = await guardarEscritura(cliente, fileId, [{ range, values: [] }], { chequearVacio: false })
           if (!g.data.length) return { protegido: true, bloqueadas: g.bloqueadas }
         } catch { /* fail-open */ }
+      }
+      // NO-BORRAR: clearValues no puede hacer otra cosa que borrar, así que acá no hay nada que
+      // corregir — o pasa o no. Fuera de un espejo, no pasa. Sin bypass. Ver no-borrar.mjs.
+      if (!permiteBorradoExplicito(range)) {
+        console.log(`  🛟 NO borro "${range}": un borrado explícito sobre una pestaña de contenido está prohibido (no-borrar.mjs).`)
+        return { protegido: true, noBorrar: true, motivo: 'borrado explícito prohibido fuera de los espejos' }
       }
       return apiSend(
         `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values/${encodeURIComponent(range)}:clear`,
