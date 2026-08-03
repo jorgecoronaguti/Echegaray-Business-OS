@@ -16,6 +16,21 @@ const CONVERTIDAS = [
   'orquestador/scripts/cheques-emitidos-tablero.mjs',
   'orquestador/scripts/caja-pestana.mjs',
   'orquestador/scripts/jornales-pestana.mjs',
+  'orquestador/scripts/impuestos-pestana.mjs',
+  'orquestador/scripts/cargas-sociales-pestana.mjs',
+]
+
+/**
+ * LAS DE FUENTES MIXTAS — las que NO pueden resumir su frescura en una sola fecha.
+ *
+ * Cruzan una fuente viva (ARCA, el extracto, Compras) con una congelada (el F931 y las DDJJ de IIBB,
+ * que salen de PDF del data room y se quedan en el último período presentado). Acá el `MAX` es peor
+ * que el texto estampado: le presta la fecha de la viva a la congelada y el dueño lee como fresco un
+ * número que tiene un mes y medio. Tienen que declarar cada fuente por separado.
+ */
+const FUENTES_MIXTAS = [
+  'orquestador/scripts/impuestos-pestana.mjs',
+  'orquestador/scripts/cargas-sociales-pestana.mjs',
 ]
 
 /**
@@ -55,9 +70,28 @@ test('las pestañas convertidas NO estampan la fecha de la corrida en un rótulo
   }
 })
 
-test('las pestañas convertidas construyen su subtítulo con rotuloAlDia', async () => {
+test('las pestañas convertidas construyen su subtítulo con un rótulo vivo de la lib', async () => {
   for (const f of CONVERTIDAS) {
-    assert.match(await leer(f), /rotuloAlDia\(/, `${f} dejó de usar el rótulo vivo`)
+    assert.match(await leer(f), /rotuloAlDia\(|rotuloPorFuente\(/, `${f} dejó de usar el rótulo vivo`)
+  }
+})
+
+test('las de fuentes mixtas declaran CADA fuente: un MAX le presta frescura a la congelada', async () => {
+  for (const f of FUENTES_MIXTAS) {
+    const src = await leer(f)
+    assert.match(src, /rotuloPorFuente\(/,
+      `${f} tiene fuentes con frescuras distintas y las está resumiendo en una sola fecha`)
+    // Y la mensual declara su PERÍODO, no el día en que alguien bajó el PDF: una DDJJ de junio
+    // presentada el 16/07 habla de junio, y decir "al 16/07" es declarar frescura de la gestión.
+    assert.match(src, /formulaUltimoPeriodo\(/, `${f} no declara el período de su fuente mensual`)
+  }
+})
+
+test('ninguna pestaña nueva se cuela sin rótulo vivo: las tres que faltaban están cerradas', () => {
+  // Las cinco de esta tanda. Si alguien saca una de la lista para "simplificar", el canario se cae:
+  // una pestaña que deja de estar en el inventario deja de estar controlada.
+  for (const f of ['impuestos-pestana.mjs', 'cargas-sociales-pestana.mjs', 'jornales-pestana.mjs']) {
+    assert.ok(CONVERTIDAS.some((c) => c.endsWith(f)), `${f} salió del inventario de convertidas`)
   }
 })
 
