@@ -34,6 +34,13 @@ export { esDominioBalanz, dominioDe }
 export const ENDPOINT_CDP = process.env.ORQ_BALANZ_CDP || 'http://127.0.0.1:9222'
 export const ORIGEN_BALANZ = 'https://clientes.balanz.com'
 
+/**
+ * Cuánto se espera a que la SPA termine de rutear antes de controlar y de leer. El sitio reescribe la
+ * URL hasta ~3 s después del `domcontentloaded`: cualquier control que corra antes mira una pantalla
+ * que todavía no es la definitiva.
+ */
+export const ESPERA_SPA_MS = Number(process.env.ORQ_BALANZ_ESPERA_MS || 2500)
+
 export class SesionRequerida extends Error {
   constructor(motivo) {
     super(`SESSION_REQUIRED: ${motivo}`)
@@ -188,6 +195,14 @@ export async function navegarSeguro(page, url, bloqueos = []) {
     return { navegado: false, motivo: v.motivo }
   }
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
+  // ═══ ESPERAR A QUE LA SPA SE ASIENTE, ANTES DE CONTROLAR NADA ═══
+  //
+  // `domcontentloaded` es t0: Balanz reescribe la URL con su router HASTA ~3 s después. Los dos
+  // controles corrían en ese t0 y después `relevar` esperaba 1200 ms y recién ahí leía — o sea que
+  // controlaban una pantalla y se guardaba otra. Reproducido con un redirect diferido a 600 ms:
+  // `navegarSeguro` decía `navegado:true` sobre /bonos y lo que se leía era el ticker de /app/home.
+  // La guarda escrita para impedir exactamente eso no lo impedía en el camino de producción.
+  await page.waitForTimeout(ESPERA_SPA_MS)
   await verificarSesion(page)
   // La sesión puede estar perfecta y la pantalla ser OTRA (ver `llegoADestino`). Se chequea después
   // de `verificarSesion` porque un redirect al login tiene que reportarse como sesión vencida, que es
@@ -306,6 +321,7 @@ export function estructuraDePagina() {
  */
 export async function cargarTodo(page, vueltas = 15) {
   let firma = ''
+  let estables = 0
   for (let i = 0; i < vueltas; i += 1) {
     const nueva = await page.evaluate(async () => {
       // El scroller real: el elemento con scroll propio más alto de la página. Si no hay ninguno
@@ -318,7 +334,16 @@ export async function cargarTodo(page, vueltas = 15) {
       const alto = cand ? cand.scrollHeight : document.body.scrollHeight
       return `${alto}:${document.querySelectorAll('tbody tr').length}:${document.querySelectorAll('[class*=fondo-item]').length}`
     })
-    if (nueva === firma) return { vueltas: i, completo: true }
+    if (nueva === firma) {
+      // DOS lecturas iguales, no una. Con una sola muestra a 700 ms, un lote que tarde 800 ms en
+      // llegar hacía que la pantalla se declarara completa con 20 filas de 189 — el mismo número que
+      // tenían bonos y cauciones ANTES del arreglo de scroll, o sea indistinguible del defecto viejo.
+      if (estables >= 1) return { vueltas: i, completo: true }
+      estables += 1
+      await page.waitForTimeout(900)
+      continue
+    }
+    estables = 0
     firma = nueva
     await page.waitForTimeout(700)
   }
@@ -442,9 +467,12 @@ export function leerTarjetasDeFondos() {
 }
 
 /** Todos los controles de la página, ya extraídos para la barrera. */
+export const TOPE_CONTROLES = 400
+
 export async function controlesDePagina(page) {
   return page.locator('a, button, input[type=submit], form')
-    .evaluateAll((nodos, f) => nodos.slice(0, 400).map(new Function('el', `return (${f})(el)`)), extraerAtributos.toString())
+    .evaluateAll((nodos, f, tope) => nodos.slice(0, tope).map(new Function('el', `return (${f})(el)`)),
+      extraerAtributos.toString(), TOPE_CONTROLES)
     .catch(() => [])
 }
 
@@ -474,13 +502,23 @@ export async function clicSeguro(page, selector, bloqueos = []) {
 export async function auditarControles(page) {
   const els = await controlesDePagina(page)
   const bloqueados = []
-  let permitidos = 0
+  // LO QUE UNA BARRERA TIENE QUE PODER MOSTRAR NO ES QUÉ FRENÓ: ES QUÉ DEJÓ PASAR. Antes se guardaban
+  // diez ejemplos de bloqueos y CERO permitidos, con lo cual la evidencia no permitía revisar la
+  // única lista que importa auditar. Son etiquetas cortas: no reconstruyen la pantalla.
+  const permitidos = []
   for (const el of els) {
     const v = evaluarElemento(el)
-    if (v.permitido) permitidos += 1
+    if (v.permitido) permitidos.push(String(el.texto || el.ariaLabel || el.tag || '').trim().replace(/\s+/g, ' ').slice(0, 60))
     else bloqueados.push(registroBloqueo(el, v))
   }
-  return { total: els.length, permitidos, bloqueados }
+  return {
+    total: els.length,
+    permitidos: permitidos.length,
+    etiquetas_permitidas: [...new Set(permitidos)].filter(Boolean),
+    bloqueados,
+    // Un total clavado en el tope no es "había 400": es "no los vi a todos", y hay que decirlo.
+    barrido_completo: els.length < TOPE_CONTROLES,
+  }
 }
 
 /**
@@ -514,31 +552,51 @@ export async function relevar({ rutas = [], endpoint = ENDPOINT_CDP } = {}) {
   try {
     for (const ruta of rutas) {
       const url = ruta.startsWith('http') ? ruta : `${ORIGEN_BALANZ}${ruta}`
-      const nav = await navegarSeguro(page, url, bloqueos)
-      if (!nav.navegado) {
-        paginas.push({ url, estado: nav.redirigido_a ? 'no_existe' : 'bloqueada', motivo: nav.motivo })
-        continue
+      try {
+        const nav = await navegarSeguro(page, url, bloqueos)
+        if (!nav.navegado) {
+          paginas.push({ url, estado: nav.redirigido_a ? 'no_existe' : 'bloqueada', motivo: nav.motivo })
+          continue
+        }
+        // `navegarSeguro` ya esperó a que la SPA se asiente y RECIÉN AHÍ controló destino y sesión.
+        // No se vuelve a esperar acá: esa espera intermedia era justamente lo que hacía que el
+        // control y la lectura miraran pantallas distintas.
+        //
+        // Primero cargar TODO (el scroller real, no la ventana): sin esto se leen 20 filas de 189.
+        const carga = await cargarTodo(page)
+        const texto = await page.locator('body').innerText().catch(() => '')
+        // Y LEER LA ESTRUCTURA, no sólo el texto plano. El texto de una tarjeta pone el nombre y la
+        // tasa en renglones distintos, así que un extractor por línea no puede juntarlos: contra la
+        // pantalla real devolvía dos instrumentos llamados "TNA: +" y ninguno de los diez fondos.
+        const tabla = await page.evaluate(leerTablaCotizaciones).catch(() => null)
+        const tarjetas = await page.evaluate(leerTarjetasDeFondos).catch(() => [])
+        const controles = await auditarControles(page)
+        bloqueos.push(...controles.bloqueados)
+        paginas.push({
+          url,
+          estado: 'ok',
+          texto: String(texto).slice(0, 60000),
+          tabla,
+          tarjetas,
+          carga: { vueltas: carga.vueltas, completo: carga.completo },
+          // Si la carga quedó truncada, el relevamiento de esta pantalla NO es completo y hay que
+          // decirlo acá: quien lea 320 filas tiene que saber si son todas o las primeras 320.
+          relevamiento_completo: carga.completo,
+          controles: {
+            total: controles.total,
+            permitidos: controles.permitidos,
+            etiquetas_permitidas: controles.etiquetas_permitidas,
+            bloqueados: controles.bloqueados.length,
+            barrido_completo: controles.barrido_completo,
+          },
+        })
+      } catch (e) {
+        // UNA PANTALLA QUE FALLA NO PUEDE LLEVARSE EL ANÁLISIS ENTERO. Un `goto` que agotaba los 30 s
+        // en la quinta ruta tiraba también el tramo de caja, que ya estaba bien calculado. La sesión
+        // vencida SÍ corta todo —no tiene sentido seguir sin sesión— y por eso se relanza.
+        if (e instanceof SesionRequerida) throw e
+        paginas.push({ url, estado: 'error', motivo: String(e?.message ?? e).split('\n')[0].slice(0, 160) })
       }
-      await page.waitForTimeout(1200)
-      // Primero cargar TODO (el scroller real, no la ventana): sin esto se leen 20 filas de 189.
-      const carga = await cargarTodo(page)
-      const texto = await page.locator('body').innerText().catch(() => '')
-      // Y LEER LA ESTRUCTURA, no sólo el texto plano. El texto de una tarjeta pone el nombre y la
-      // tasa en renglones distintos, así que un extractor por línea no puede juntarlos: contra la
-      // pantalla real devolvía dos instrumentos llamados "TNA: +" y ninguno de los diez fondos.
-      const tabla = await page.evaluate(leerTablaCotizaciones).catch(() => null)
-      const tarjetas = await page.evaluate(leerTarjetasDeFondos).catch(() => [])
-      const controles = await auditarControles(page)
-      bloqueos.push(...controles.bloqueados)
-      paginas.push({
-        url, estado: 'ok', texto: String(texto).slice(0, 60000),
-        tabla, tarjetas,
-        carga: { vueltas: carga.vueltas, completo: carga.completo },
-        // Si la carga quedó truncada, el relevamiento de esta pantalla NO es completo y hay que
-        // decirlo acá: quien lea 320 filas tiene que saber si son todas o las primeras 320.
-        relevamiento_completo: carga.completo,
-        controles: { total: controles.total, permitidos: controles.permitidos, bloqueados: controles.bloqueados.length },
-      })
     }
     return { estado: 'ok', paginas, bloqueos, observado_en: new Date().toISOString() }
   } catch (e) {

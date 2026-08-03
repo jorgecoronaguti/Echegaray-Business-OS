@@ -43,17 +43,47 @@ export const HORAS_MERCADO_FRESCO = 6
  * riesgo ya rechaza por separado cualquier instrumento de más de 24 horas.
  */
 export function frescuraDeMercado(instrumentos = [], ahora = new Date()) {
-  const conFecha = instrumentos.filter((i) => Number.isFinite(Date.parse(i?.observado_en)))
-  if (!conFecha.length) return { fresco: false, motivo: 'no se relevó ningún instrumento con fecha de observación', n: 0 }
-  const masVieja = Math.min(...conFecha.map((i) => Date.parse(i.observado_en)))
-  const horas = (ahora.getTime() - masVieja) / 3600000
+  // ═══ QUÉ MIDE, Y POR QUÉ NO MIDE EL ESLABÓN MÁS VIEJO ═══
+  //
+  // Se mide `cotizado_en` —cuándo cotizó el mercado— y NO `observado_en`, que lo estampa el propio
+  // extractor con la hora de la corrida. Medir `observado_en` contra `ahora` daba 0,0 h SIEMPRE: un
+  // control comparándose contra la información que él mismo produce. Con eso, un solo candidato
+  // parseado certificaba "mercado fresco". Verificado sobre el relevamiento real: entre los 1107
+  // instrumentos había una ON cotizada por última vez el 20/11/2018 informada como "de hace 0,0 h".
+  //
+  // Pero la pregunta que esta compuerta contesta NO es "¿está todo fresco?". Medir por el dato más
+  // viejo deja al conjunto rehén de cualquier especie ilíquida que no cotiza hace meses —y que ya
+  // está excluida una por una por `riesgo.mjs`, que bloquea todo lo de más de 24 h—. Eso cierra la
+  // compuerta para siempre, que es el otro modo de control inútil: el que nunca deja pasar nada.
+  //
+  // La pregunta correcta es: **¿hay datos de HOY con los que decidir?** Se mide la cotización MÁS
+  // RECIENTE, y se informan aparte cuántos están viejos y cuántos sin fecha, porque esos números son
+  // los que bajan la confianza de la propuesta.
+  const conFecha = instrumentos.filter((i) => Number.isFinite(Date.parse(i?.cotizado_en)))
+  const sinFecha = instrumentos.length - conFecha.length
+  if (!conFecha.length) {
+    return {
+      fresco: false,
+      n: 0,
+      sin_fecha: sinFecha,
+      viejos: 0,
+      motivo: instrumentos.length
+        ? `ninguno de los ${instrumentos.length} instrumentos declara cuándo cotizó: no se puede afirmar que el dato sea de hoy`
+        : 'no se relevó ningún instrumento',
+    }
+  }
+  const masNueva = Math.max(...conFecha.map((i) => Date.parse(i.cotizado_en)))
+  const horas = (ahora.getTime() - masNueva) / 3600000
+  const viejos = conFecha.filter((i) => (ahora.getTime() - Date.parse(i.cotizado_en)) / 3600000 > HORAS_MERCADO_FRESCO).length
   return {
     fresco: horas <= HORAS_MERCADO_FRESCO,
     horas: Math.round(horas * 10) / 10,
     n: conFecha.length,
+    sin_fecha: sinFecha,
+    viejos,
     motivo: horas <= HORAS_MERCADO_FRESCO
-      ? `${conFecha.length} instrumento(s), el más viejo de hace ${horas.toFixed(1)} h`
-      : `el dato más viejo tiene ${horas.toFixed(1)} h y el máximo son ${HORAS_MERCADO_FRESCO}`,
+      ? `la cotización más reciente es de hace ${horas.toFixed(1)} h (${viejos} instrumento(s) con dato viejo, ${sinFecha} sin fecha)`
+      : `ni la cotización más reciente es de hoy: tiene ${horas.toFixed(1)} h y el máximo son ${HORAS_MERCADO_FRESCO}`,
   }
 }
 
@@ -207,7 +237,11 @@ export async function correrCiclo(deps = {}, opts = {}) {
     // siendo `estimacion`.
     const obs = { observadoEn: ahora.toISOString() }
     const instrumentos = (opts.instrumentos || [])
-      .map((i) => normalizarInstrumento(i, obs))
+      // Un instrumento declarado A MANO (una oferta de plazo fijo que trajo una persona) no salió de
+      // ninguna pantalla, así que no tiene columna "Hora": cotiza al momento en que se lo declara,
+      // salvo que quien lo declara diga otra cosa. Los que SÍ salen de una pantalla no reciben este
+      // default: si el bróker no dijo cuándo cotizó, eso se marca como riesgo y no se rellena.
+      .map((i) => normalizarInstrumento({ cotizado_en: obs.observadoEn, ...i }, obs))
       .concat((mercado.paginas || []).flatMap((p) => {
         if (p.estado !== 'ok') return []
         const deTabla = p.tabla?.filas?.length
@@ -218,6 +252,26 @@ export async function correrCiclo(deps = {}, opts = {}) {
         return extraerDeTexto(p.texto || '', { url: p.url, ...obs })
       }))
     const aptos = instrumentos.filter((i) => esAptoTesoreria(i.categoria))
+
+    // ═══ UN RELEVAMIENTO TRUNCADO NO ES UN RELEVAMIENTO ═══
+    //
+    // `relevar` ya marcaba `relevamiento_completo` por página, y nadie lo leía: no bajaba la
+    // confianza, no aparecía en el mensaje y no quedaba en la traza. En la corrida real corporativos
+    // y cedears agotaron el tope con 320 filas cada uno — el ciclo habría elegido "la mejor
+    // alternativa del mercado" sobre un universo cortado, sin una sola marca. El flag existía; el
+    // camino hasta la decisión, no.
+    const paginasTruncadas = (mercado.paginas || [])
+      .filter((p) => p.estado === 'ok' && p.relevamiento_completo === false)
+      .map((p) => p.url)
+    const paginasConError = (mercado.paginas || []).filter((p) => p.estado === 'error').map((p) => p.url)
+    const mercadoCompleto = paginasTruncadas.length === 0 && paginasConError.length === 0
+    paso('cobertura_mercado', mercadoCompleto ? 'ok' : 'parcial',
+      mercadoCompleto
+        ? `${(mercado.paginas || []).length} pantallas relevadas enteras`
+        : [
+          paginasTruncadas.length ? `${paginasTruncadas.length} truncada(s): ${paginasTruncadas.join(' · ')}` : null,
+          paginasConError.length ? `${paginasConError.length} con error: ${paginasConError.join(' · ')}` : null,
+        ].filter(Boolean).join(' | '))
     paso('instrumentos', 'ok', `${instrumentos.length} relevados · ${aptos.length} aptos para tesorería`)
 
     // 11-12 · Comparar (SKILL 6) y evaluar riesgo (SKILL 7).
@@ -235,12 +289,13 @@ export async function correrCiclo(deps = {}, opts = {}) {
     // la reserva aprobada, la caja restringida declarada y el extractor validado, TODO seguía
     // NO_ACCIONABLE por "no hay datos de mercado frescos", y ningún archivo del repo podía ponerlo en
     // true. Una compuerta que nadie puede abrir no es una compuerta: es una pared.
-    const frescura = frescuraDeMercado(instrumentos, ahora)
+    const frescura = frescuraDeMercado(aptos, ahora)
     const accionabilidad = evaluarAccionabilidad({
       reserva: posicion.reserva,
       restringida: posicion.caja_restringida,
       extractorValidado: Boolean(opts.extractorValidado),
       mercadoFresco: frescura.fresco,
+      mercadoCompleto,
     })
     paso('accionabilidad', accionabilidad.accionable ? 'accionable' : 'no_accionable',
       accionabilidad.bloqueos.join(' · ') || frescura.motivo)

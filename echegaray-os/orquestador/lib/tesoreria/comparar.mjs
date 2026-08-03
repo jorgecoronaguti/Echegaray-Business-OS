@@ -72,6 +72,17 @@ export function evaluarContraVentana(inst, ventana, tasaCorte) {
   // es "nada". `costo-liquidez.mjs` calcula la vara correcta por ventana: cancelación de deuda si hay
   // deuda, contingencia si inmovilizar lleva la caja a rojo, y cero neto si no pasa ninguna de las dos.
   const ref = ventana.referencia ?? null
+  // ═══ UNA MONEDA ASUMIDA NO ES UNA MONEDA ═══
+  //
+  // El extractor declara `moneda_no_declarada_en_pantalla` cuando la tabla no trae columna de moneda
+  // y el nombre tampoco lo dice — y ese campo NO lo leía nadie: quedaba escrito y el instrumento
+  // competía igual, etiquetado ARS por defecto. En la pantalla real de letras son 52 de 65, y entre
+  // ellas la punta en dólares de una especie que también cotiza en pesos (MG6D, 36,27%, contra
+  // M31G6, 21,85%). El día que esas letras dejen de excluirse por otra causa, gana la de dólares
+  // dentro de una ventana en pesos: el error que este archivo declara como el más caro posible.
+  if ((inst.campos_faltantes || []).includes('moneda_no_declarada_en_pantalla')) {
+    return { excluido: true, motivo: 'la pantalla no declara la moneda: no se compara contra una moneda asumida' }
+  }
   if (inst.moneda !== ventana.moneda) {
     return { excluido: true, motivo: `moneda distinta: el instrumento es ${inst.moneda} y la ventana es ${ventana.moneda}` }
   }

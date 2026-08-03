@@ -204,9 +204,16 @@ export function categorizar(nombre = '') {
  */
 export function idDeInstrumento(crudo = {}, nombre = '') {
   const base = String(crudo.ticker || nombre || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)
-  const plazo = esNumero(crudo.liquidacion_dias) ? `-${Number(crudo.liquidacion_dias)}d`
-    : esNumero(crudo.plazo_rescate_dias) ? `-r${Number(crudo.plazo_rescate_dias)}d` : ''
-  return `bz_${base}${plazo}`
+  // EL PLAZO QUE DISTINGUE ES EL DE RESCATE, no el de liquidación. Se aprendió arreglando el conteo
+  // doble de la caución: al poner su liquidación en 0 —porque el plazo ya estaba contado como
+  // rescate— un id armado desde la liquidación devolvía `bz_pesos-0d` para las 82, o sea la misma
+  // colisión que este id existe para impedir, reintroducida por un arreglo de otra cosa. Van los dos
+  // cuando existen, y el de rescate primero.
+  const partes = [
+    esNumero(crudo.plazo_rescate_dias) ? `r${Number(crudo.plazo_rescate_dias)}d` : null,
+    esNumero(crudo.liquidacion_dias) ? `l${Number(crudo.liquidacion_dias)}d` : null,
+  ].filter(Boolean)
+  return `bz_${base}${partes.length ? `-${partes.join('-')}` : ''}`
 }
 
 /**
@@ -257,6 +264,8 @@ export function normalizarInstrumento(crudo = {}, { observadoEn = new Date().toI
     },
     url: crudo.url ?? null,
     observado_en: observadoEn,
+    // Cuándo cotizó el mercado, no cuándo miramos nosotros. Null es "la pantalla no lo dijo".
+    cotizado_en: crudo.cotizado_en ?? null,
     evidencia: crudo.evidencia || EVIDENCIA.ESTIMACION,
     campos_faltantes: [...new Set([...faltantes, ...(crudo.campos_faltantes || [])])],
   }
@@ -326,6 +335,48 @@ export const COLUMNAS = {
   vencimiento: [/vencimiento|maturity/i],
   duration: [/duration|duraci[oó]n modificada/i],
   plazo: [/^(plazo|d[ií]as)/i],
+  // La ÚLTIMA COTIZACIÓN de la fila. La pantalla la trae y se estaba tirando: sin ella, la frescura
+  // del mercado se mide contra el reloj del propio proceso y da siempre 0 horas (ver `cotizadoEn`).
+  hora: [/^(hora|[uú]lt(ima)?\.?\s*cotiz|fecha)/i],
+}
+
+/**
+ * CUÁNDO COTIZÓ ESTE INSTRUMENTO POR ÚLTIMA VEZ — distinto de cuándo lo miramos nosotros.
+ *
+ * ═══ POR QUÉ SON DOS CAMPOS Y NO UNO ═══
+ *
+ * `observado_en` es cuándo el agente leyó la pantalla; `cotizado_en` es cuándo el mercado puso ese
+ * precio. Confundirlos convertía el control de frescura en un espejo: los tres extractores estampaban
+ * `observado_en = ahora` y `frescuraDeMercado` medía la antigüedad contra el mismo `ahora`, con lo
+ * cual devolvía 0,0 h SIEMPRE. La compuerta quedaba abierta de forma permanente y el bloqueante de
+ * 24 h de `riesgo.mjs` no podía dispararse nunca.
+ *
+ * Y el dato estaba en la pantalla. Medido sobre las 164 cauciones reales del 02/08/2026: 114 tenían
+ * su última cotización en otra fecha, una de ellas del 05/05/2026 — tres meses vieja, informada como
+ * "de hace 0,0 horas".
+ *
+ * Devuelve null si la celda no es una fecha legible. Null NO es "hoy": el que consume decide, y
+ * `frescuraDeMercado` cuenta esos casos aparte en vez de darlos por frescos.
+ */
+export function cotizadoEn(celda, { ahora = new Date() } = {}) {
+  const t = String(celda ?? '').trim()
+  if (!t) return null
+  // dd/mm/yyyy [hh:mm[:ss]] — el formato de la pantalla, en locale es-AR.
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:[\s,]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(t)
+  if (m) {
+    const [, d, mes, a, hh, mm, ss] = m
+    const anio = Number(a) < 100 ? 2000 + Number(a) : Number(a)
+    const f = new Date(anio, Number(mes) - 1, Number(d), Number(hh ?? 0), Number(mm ?? 0), Number(ss ?? 0))
+    return Number.isFinite(f.getTime()) ? f.toISOString() : null
+  }
+  // Sólo hora ("17:32"): es de HOY según el reloj del que mira, que es lo único que se puede afirmar.
+  const h = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(t)
+  if (h) {
+    const f = new Date(ahora)
+    f.setHours(Number(h[1]), Number(h[2]), Number(h[3] ?? 0), 0)
+    return Number.isFinite(f.getTime()) ? f.toISOString() : null
+  }
+  return null
 }
 
 /** Índice de cada campo dentro de la cabecera. Devuelve también los que no encontró. */
@@ -426,12 +477,17 @@ export function extraerDeTabla({ cabecera = [], filas = [] } = {}, { url = null,
       // La columna "Plazo" de las cotizaciones ("24hs", "72hs") es el plazo de LIQUIDACIÓN, que es
       // justo lo que decide cuándo vuelve la plata. Se leía sólo si existía una columna llamada
       // "Liquidación", que en esta app no existe: quedaba siempre en null.
+      // OJO CON CONTAR EL PLAZO DOS VECES. `liquidezCompatible` SUMA rescate + liquidación, así que
+      // para una caución —donde la columna "Plazo" ya se usó como plazo de rescate— volver a
+      // escribirla acá duplicaba el tiempo: una caución a 20 días se informaba como "vuelve en 40" y
+      // quedaba excluida de una ventana de 30 en la que entra, con un motivo que además era falso.
       liquidacion_dias: idx.liquidacion != null
         ? plazoLiquidacion(String(f[idx.liquidacion] ?? ''))
-        : (idx.plazo != null ? plazoRescateDias(String(f[idx.plazo] ?? '')) : null),
+        : (plazoOperacion != null ? 0 : (idx.plazo != null ? plazoRescateDias(String(f[idx.plazo] ?? '')) : null)),
       vencimiento: idx.vencimiento != null ? String(f[idx.vencimiento] ?? '').trim() || null : null,
       duration: idx.duration != null ? numeroArg(f[idx.duration]) : null,
       url,
+      cotizado_en: idx.hora != null ? cotizadoEn(f[idx.hora], { ahora: new Date(observadoEn) }) : null,
       evidencia: EVIDENCIA.DATO, // salió de una tabla estructurada, no de un renglón adivinado
       campos_faltantes: [
         ...faltan.filter((c) => ['plazo_rescate', 'liquidacion'].includes(c)),
@@ -485,6 +541,10 @@ export function extraerDeTarjetas(tarjetas = [], { url = null, observadoEn = new
     if (tna == null) faltantes.push('tasa_no_declarada_en_pantalla')
     const rescate = plazoRescateDias(t.plazo_rescate_texto)
     if (rescate == null) faltantes.push('plazo_rescate_no_legible')
+    // Mismo criterio que en las tablas: si la tarjeta no dice la moneda, no se asume una.
+    if (!/usd|u\$s|d[oó]lar|ars|pesos?/i.test(String(t.moneda_texto ?? ''))) {
+      faltantes.push('moneda_no_declarada_en_pantalla')
+    }
     out.push({
       ...normalizarInstrumento({
         nombre,

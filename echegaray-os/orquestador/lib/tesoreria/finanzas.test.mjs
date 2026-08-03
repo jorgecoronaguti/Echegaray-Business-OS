@@ -19,7 +19,7 @@ import { resumirHorizonte, ventanaSinPerforar, ESCENARIOS, proyectarLiquidez } f
 import { calcularExcedente, tasaDeCorte, rendimientoPeriodo } from './excedente.mjs'
 import {
   aTea, tnaATea, periodoATea, normalizarInstrumento, categorizar, esAptoTesoreria, porcentajeArg,
-  plazoLiquidacion, numeroArg, separadorDecimal, extraerDeTabla, extraerDeTarjetas,
+  plazoLiquidacion, numeroArg, separadorDecimal, extraerDeTabla, extraerDeTarjetas, cotizadoEn,
 } from './instrumentos.mjs'
 import { compararAlternativas, evaluarContraVentana, liquidezCompatible, costoTotal, rendimientoDelPeriodo } from './comparar.mjs'
 import { evaluarRiesgo, evaluarConcentracion, PERFILES } from './riesgo.mjs'
@@ -284,12 +284,12 @@ test('un CEDEAR no es apto para caja operativa por más que rinda', () => {
 })
 
 test('el riesgo bloquea por iliquidez y por dato viejo, y no promedia', () => {
-  const viejo = { id: 'x', categoria: 'money_market', plazo_rescate_dias: 0, liquidacion_dias: 0, observado_en: '2026-07-01T00:00:00Z', emisor: 'Balanz' }
+  const viejo = { id: 'x', categoria: 'money_market', plazo_rescate_dias: 0, liquidacion_dias: 0, observado_en: '2026-07-01T00:00:00Z', cotizado_en: '2026-07-01T00:00:00Z', emisor: 'Balanz' }
   const r = evaluarRiesgo(viejo, PERFILES.caja_operativa, { ahora: HOY })
   assert.equal(r.apto, false)
   assert.ok(r.bloqueantes.some((b) => /horas/.test(b)), 'una tasa de hace un mes no puede usarse')
 
-  const ilíquido = { id: 'y', categoria: 'lecap', plazo_rescate_dias: 5, liquidacion_dias: 1, observado_en: HOY.toISOString(), emisor: 'Tesoro' }
+  const ilíquido = { id: 'y', categoria: 'lecap', plazo_rescate_dias: 5, liquidacion_dias: 1, observado_en: HOY.toISOString(), cotizado_en: HOY.toISOString(), emisor: 'Tesoro' }
   const r2 = evaluarRiesgo(ilíquido, PERFILES.caja_operativa, { ahora: HOY })
   assert.equal(r2.apto, false)
   assert.ok(r2.bloqueantes.some((b) => /vuelve en 6 días/.test(b)))
@@ -924,12 +924,32 @@ test('la frescura del mercado se MIDE con lo relevado, no se cablea', () => {
   // compuerta que nadie puede abrir no es una compuerta: es una pared.
   const ahora = new Date('2026-08-01T12:00:00Z')
   assert.equal(frescuraDeMercado([], ahora).fresco, false)
-  assert.equal(frescuraDeMercado([{ observado_en: 'basura' }], ahora).fresco, false)
-  assert.equal(frescuraDeMercado([{ observado_en: '2026-08-01T11:00:00Z' }], ahora).fresco, true)
-  assert.equal(frescuraDeMercado([{ observado_en: '2026-07-30T11:00:00Z' }], ahora).fresco, false)
-  // La más VIEJA manda: un instrumento fresco no rescata a los demás.
+  // ═══ SE MIDE `cotizado_en`, NO `observado_en` ═══
+  // `observado_en` lo estampa el propio extractor con la hora de la corrida: medirlo era un espejo
+  // —daba 0,0 h siempre— y con un solo candidato parseado la compuerta quedaba abierta para siempre.
+  assert.equal(frescuraDeMercado([{ cotizado_en: 'basura' }], ahora).fresco, false)
+  assert.equal(frescuraDeMercado([{ cotizado_en: '2026-08-01T11:00:00Z' }], ahora).fresco, true)
+  assert.equal(frescuraDeMercado([{ cotizado_en: '2026-07-30T11:00:00Z' }], ahora).fresco, false)
+  // Y un instrumento recién observado pero SIN fecha de cotización no es fresco: es sin fecha.
+  const sinFecha = frescuraDeMercado([{ observado_en: ahora.toISOString(), cotizado_en: null }], ahora)
+  assert.equal(sinFecha.fresco, false)
+  assert.match(sinFecha.motivo, /no declara|ninguno/)
+  // ═══ LA COMPUERTA PREGUNTA "¿HAY DATOS DE HOY?", NO "¿ESTÁ TODO FRESCO?" ═══
+  //
+  // Medir por el eslabón más VIEJO deja el conjunto rehén de cualquier especie ilíquida —en el
+  // relevamiento real había una ON cotizada por última vez el 20/11/2018— que además ya está
+  // excluida una por una por `riesgo.mjs`, que bloquea todo lo de más de 24 h. Eso cierra la
+  // compuerta para siempre, que es el otro modo de control inútil.
+  const mezcla = frescuraDeMercado([
+    { cotizado_en: '2026-08-01T11:55:00Z' }, { cotizado_en: '2026-07-29T00:00:00Z' },
+  ], ahora)
+  assert.equal(mezcla.fresco, true, 'hay un dato de hace 5 minutos: sí se puede decidir con el mercado de hoy')
+  // Pero el viejo NO se esconde: se cuenta, y es lo que después baja la confianza de la propuesta.
+  assert.equal(mezcla.viejos, 1)
+  assert.match(mezcla.motivo, /1 instrumento\(s\) con dato viejo/)
+  // Y si NINGUNO es de hoy, la compuerta cierra aunque haya cien instrumentos.
   assert.equal(frescuraDeMercado([
-    { observado_en: '2026-08-01T11:55:00Z' }, { observado_en: '2026-07-29T00:00:00Z' },
+    { cotizado_en: '2026-07-30T11:00:00Z' }, { cotizado_en: '2026-07-29T00:00:00Z' },
   ], ahora).fresco, false)
 })
 
@@ -1126,4 +1146,97 @@ test('en una LETRA el "Plazo" es liquidación, y el rescate queda en null declar
   assert.equal(l.liquidacion_dias, 1, 'la liquidación sí sale de "24hs"')
   assert.equal(l.plazo_rescate_dias, null, 'el rescate NO se inventa desde la liquidación')
   assert.ok(l.campos_faltantes.includes('plazo_rescate_dias'), 'y se declara faltante')
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// LOS HALLAZGOS DE LA AUDITORÍA DE CIERRE
+// ════════════════════════════════════════════════════════════════════════════
+
+test('BLOQUEANTE · la frescura no puede medirse contra el reloj del propio proceso', () => {
+  // ═══ EL DEFECTO ═══
+  // Los tres extractores estampaban `observado_en = ahora` y `frescuraDeMercado` medía la antigüedad
+  // contra ese mismo `ahora`: devolvía 0,0 h SIEMPRE. Un control comparándose contra la información
+  // que él mismo produce — un espejo. Con eso, un solo candidato parseado (incluso una línea del
+  // ticker de la portada) certificaba "mercado fresco" y la compuerta quedaba abierta para siempre.
+  const ahora = new Date('2026-08-02T12:00:00Z')
+  const reciénLeído = { observado_en: ahora.toISOString(), cotizado_en: null }
+  const f = frescuraDeMercado([reciénLeído], ahora)
+  assert.equal(f.fresco, false, 'leerlo recién no lo hace fresco: lo hace fresco que el mercado lo haya cotizado recién')
+  assert.equal(f.sin_fecha, 1)
+
+  // Y el dato existe en la pantalla: es la columna "Hora", que se estaba tirando.
+  const TABLA = {
+    cabecera: ['Ticker', 'Nombre', 'Plazo', 'Hora', 'TNA', 'Var(%)', 'Var', 'Volumen'],
+    filas: [['DOLAR', 'DOLARES', '72hs', '05/05/2026', '2.5', '0,00%', '0,00', '1.000']],
+  }
+  const [viejo] = extraerDeTabla(TABLA, { url: '/x', observadoEn: ahora.toISOString() }).instrumentos
+  assert.equal(viejo.cotizado_en, cotizadoEn('05/05/2026'))
+  assert.equal(frescuraDeMercado([viejo], ahora).fresco, false, 'una cotización de hace tres meses no es fresca')
+  // Que es exactamente lo que pasaba en la pantalla real: 114 de 164 cauciones cotizaban en otra
+  // fecha y todas se informaban como "de hace 0,0 horas".
+})
+
+test('cotizadoEn lee la fecha de la pantalla y devuelve null cuando no la hay', () => {
+  assert.equal(cotizadoEn('31/07/2026').slice(0, 10), '2026-07-31')
+  assert.equal(cotizadoEn('5/5/26').slice(0, 10), '2026-05-05')
+  assert.equal(cotizadoEn('-'), null, 'un guion no es una fecha, y tampoco es hoy')
+  assert.equal(cotizadoEn(''), null)
+  assert.equal(cotizadoEn(null), null)
+  assert.equal(cotizadoEn('no es fecha'), null)
+})
+
+test('ALTO · una moneda ASUMIDA no compite: el campo faltante ahora excluye de verdad', () => {
+  // El comentario del extractor prometía que el instrumento quedaba "fuera del ranking" y
+  // `moneda_no_declarada_en_pantalla` no lo leía nadie: aparecía una sola vez en el repo, donde se
+  // escribe. En la tabla real de letras son 52 de 65 sin columna de moneda, y entre ellas la punta
+  // en dólares de una especie que también cotiza en pesos: entraría a una ventana en pesos con una
+  // tasa en dólares, que es el error que `comparar.mjs` declara como el más caro posible.
+  const inst = normalizarInstrumento({
+    nombre: 'LETRA CAPITALIZABLE', moneda: 'ARS', plazo_rescate_dias: 0, liquidacion_dias: 1,
+    tasa: { tipo: 'tea', valor: 1.2, naturaleza: 'indicativa' }, costos: { comision: 0 }, emisor: 'Tesoro',
+    cotizado_en: HOY.toISOString(), campos_faltantes: ['moneda_no_declarada_en_pantalla'],
+  }, { observadoEn: HOY.toISOString() })
+  const r = evaluarContraVentana(inst, {
+    bloque: 'C', moneda: 'ARS', dias_libres: 30, monto_maximo: 1e6, referencia: { hurdle_periodo: 0 },
+  }, { valor: 0.6278 })
+  assert.equal(r.excluido, true)
+  assert.match(r.motivo, /no declara la moneda/)
+})
+
+test('MEDIO · el plazo de la caución no se cuenta dos veces', () => {
+  // `liquidezCompatible` SUMA rescate + liquidación. Escribir la columna "Plazo" en los dos campos
+  // duplicaba el tiempo: una caución a 20 días se informaba como "vuelve en 40" y quedaba excluida
+  // de una ventana de 30 en la que entra, con un motivo además falso.
+  const TABLA = {
+    cabecera: ['Ticker', 'Nombre', 'Plazo', 'Hora', 'TNA', 'Var(%)', 'Var', 'Volumen'],
+    filas: [['PESOS', 'CAUCION PESOS', '20 días', '31/07/2026', '25,00', '0,00%', '0,00', '1.000']],
+  }
+  const [c] = extraerDeTabla(TABLA, { url: '/x', observadoEn: HOY.toISOString() }).instrumentos
+  assert.equal(c.plazo_rescate_dias, 20)
+  assert.equal(c.liquidacion_dias, 0, 'el plazo ya se contó como rescate: la liquidación no lo repite')
+  assert.equal(liquidezCompatible(c, 30).compatible, true, 'una caución a 20 días entra en una ventana de 30')
+  // Y el id sigue distinguiendo por plazo aunque la liquidación sea 0 — el arreglo de arriba había
+  // reintroducido la colisión (`bz_pesos-0d` para las 82).
+  const dos = extraerDeTabla({
+    cabecera: TABLA.cabecera,
+    filas: [TABLA.filas[0], ['PESOS', 'CAUCION PESOS', '30 días', '31/07/2026', '26,00', '0,00%', '0,00', '1.000']],
+  }, { url: '/x', observadoEn: HOY.toISOString() }).instrumentos
+  assert.notEqual(dos[0].id, dos[1].id)
+})
+
+test('ALTO · un relevamiento truncado no habilita a accionar', () => {
+  // El flag `relevamiento_completo` existía y no llegaba a ninguna decisión: no bajaba la confianza,
+  // no salía en el mensaje, no quedaba en la traza. En la corrida real corporativos y cedears
+  // agotaron el tope con 320 filas cada uno — el ciclo habría elegido "la mejor alternativa del
+  // mercado" sobre un universo cortado, sin una sola marca.
+  const base = {
+    reserva: { estado: 'aprobada', monto: 1e6, aprobador: 'Jorge' },
+    restringida: { bloquea_accionable: false },
+    extractorValidado: true,
+    mercadoFresco: true,
+  }
+  assert.equal(evaluarAccionabilidad({ ...base, mercadoCompleto: true }).accionable, true)
+  const parcial = evaluarAccionabilidad({ ...base, mercadoCompleto: false })
+  assert.equal(parcial.accionable, false)
+  assert.ok(parcial.bloqueos.some((b) => /truncado/.test(b)))
 })

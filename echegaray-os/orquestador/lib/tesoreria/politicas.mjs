@@ -222,7 +222,9 @@ export function estadoReserva(fila = null) {
  * Devuelve el veredicto con TODOS los motivos, no el primero: arreglar uno y descubrir el siguiente
  * al día siguiente es la forma más cara de enterarse.
  */
-export function evaluarAccionabilidad({ reserva, restringida, extractorValidado = false, mercadoFresco = false } = {}) {
+export function evaluarAccionabilidad({
+  reserva, restringida, extractorValidado = false, mercadoFresco = false, mercadoCompleto = true,
+} = {}) {
   const bloqueos = []
   if (reserva?.estado !== ESTADO_POLITICA.APROBADA) {
     bloqueos.push(`reserva mínima ${reserva?.estado ?? 'ausente'}: ${reserva?.motivo ?? 'falta aprobación humana explícita'}`)
@@ -232,6 +234,10 @@ export function evaluarAccionabilidad({ reserva, restringida, extractorValidado 
   }
   if (!extractorValidado) bloqueos.push('el extractor de mercado no fue validado contra la pantalla real')
   if (!mercadoFresco) bloqueos.push('no hay datos de mercado frescos')
+  // ELEGIR "LA MEJOR ALTERNATIVA" SOBRE UN MERCADO CORTADO NO ES ELEGIR. En la corrida real, dos de
+  // las ocho pantallas agotaron el tope de carga con 320 filas cada una: puede haber más, y una
+  // recomendación que no puede afirmar que miró todo no se acciona.
+  if (!mercadoCompleto) bloqueos.push('el relevamiento de mercado quedó truncado: no se puede afirmar que se miró todo el universo')
   return {
     accionable: bloqueos.length === 0,
     bloqueos,

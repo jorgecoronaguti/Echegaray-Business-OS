@@ -344,8 +344,33 @@ test('"Tomar" una caución es endeudarse, y la barrera lo dejaba pasar', () => {
   // `coloc`— y "Tomar", que pasaba limpio. Tomar una caución es pedir plata prestada a una tasa: es
   // la punta DEUDORA de la misma operación y, para una empresa con el descubierto al 62,78%, la más
   // cara de las dos. La barrera bloqueaba la mitad de la pantalla y dejaba abierta la que endeuda.
-  for (const t of ['Tomar', 'Tomá', 'TOMAR CAUCIÓN', 'Tomador', 'Tomo']) {
+  for (const t of ['Tomar', 'Tomá', 'TOMAR CAUCIÓN', 'Tomo la caución']) {
     assert.equal(evaluarElemento({ texto: t, href: '#' }).permitido, false, `"${t}" pasó`)
+  }
+  // Y el precio de la raíz, acotado con excepciones por palabra completa: en la propia pantalla de
+  // cauciones "tomadora" es rótulo de columna, y hay que poder ordenar por ella.
+  // El href va a una ruta neutra a propósito: la allowlist de cauciones vale SÓLO para navegar, y
+  // `evaluarElemento` no la consulta nunca. Un control cuyo destino contiene `/caucion` sigue
+  // bloqueado aunque su texto sea un rótulo, y eso es deliberado.
+  for (const t of ['Tomador', 'Tasa tomadora', 'Tomo I']) {
+    assert.equal(evaluarElemento({ texto: t, href: '/app/cotizaciones/letras' }).permitido, true, `"${t}" se bloqueó de más`)
+  }
+})
+
+test('el query de presentación borra la CLAVE, nunca el VALOR', () => {
+  // ═══ EL AGUJERO ═══
+  // Se borraba el par entero, y el valor es exactamente donde vive la acción: en una SPA el `?tab=`
+  // es el mecanismo que abre el panel de operación. Verificado antes del arreglo:
+  //   evaluarElemento({href:'/app/cotizaciones/fondos?tab=suscribir'}) → PERMITIDO
+  for (const u of ['/app/cotizaciones/fondos?tab=suscribir', '/app/cotizaciones/x?filtro=rescatar',
+    '/app/cotizaciones/x?orden=enviar', '/app/cotizaciones/x?orden=comprar', '/x?page=1&tab=caucionar']) {
+    assert.equal(evaluarNavegacion(u).permitido, false, `${u} pasó al navegar`)
+    assert.equal(evaluarElemento({ texto: 'Ver detalle', href: u }).permitido, false, `${u} pasó al clickear`)
+  }
+  // Y la presentación legítima sigue pasando: la CLAVE se sigue borrando.
+  for (const u of ['/app/cotizaciones/fondos?pagina=2', '/app/cotizaciones/letras?orden=tna',
+    '/app/cotizaciones/corporativos?all=1', '/fondos?page=2&limit=50']) {
+    assert.equal(evaluarNavegacion(u).permitido, true, `${u} se bloqueó de más`)
   }
 })
 

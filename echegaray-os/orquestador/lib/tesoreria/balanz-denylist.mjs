@@ -49,6 +49,10 @@ export const RAICES_PROHIBIDAS = [
   // descubierto al 62,78% es la más cara de las dos. La barrera bloqueaba la mitad de la pantalla y
   // dejaba abierta justo la mitad que endeuda.
   'tom',
+  // `envi` faltaba: "Enviar" solo —sin la palabra "orden" al lado— no caía por ninguna raíz, y
+  // `FRASES_PROHIBIDAS` sólo tenía la frase completa "enviar orden". En un formulario de bróker el
+  // botón dice "Enviar" a secas. Lo destapó probar `?orden=enviar` contra la barrera.
+  'envi',
 ]
 
 /**
@@ -77,6 +81,10 @@ export const PALABRAS_INFORMATIVAS = new Set([
   'cobranza', 'cobranzas', 'cobrada', 'cobradas',
   'aplicacion', 'aplicaciones',
   'compraventa', // el nombre del mercado, no el botón
+  // La raíz `tom` es correcta y necesaria ("Tomar" es la punta deudora de una caución), pero en la
+  // propia pantalla de cauciones "tomadora/colocadora" es rótulo de columna. Sin estas excepciones
+  // la barrera bloquea el encabezado por el que hay que poder ordenar.
+  'tomador', 'tomadora', 'tomadores', 'tomadoras', 'tomo', 'tomos',
 ])
 
 /**
@@ -90,7 +98,7 @@ export const FRASES_INFORMATIVAS = [
 ]
 
 /** Claves de query que son de presentación, no de acción: paginar y ordenar no operan nada. */
-export const QUERY_PRESENTACION = ['pagina', 'page', 'orden', 'ordenar', 'sort', 'filtro', 'tab', 'limit', 'offset', 'all']
+export const QUERY_PRESENTACION = ['pagina', 'page', 'orden', 'ordenar', 'sort', 'filtro', 'tab', 'limit', 'offset']
 
 /**
  * Frases transaccionales que ninguna raíz sola atrapa.
@@ -170,7 +178,17 @@ export function contieneVerboProhibido(texto) {
  */
 export function sinQueryDePresentacion(url) {
   let u = String(url ?? '')
-  for (const k of QUERY_PRESENTACION) u = u.replace(new RegExp(`([?&])${k}=[^&#]*`, 'gi'), '$1')
+  // ═══ SE BORRA LA CLAVE, NUNCA EL VALOR ═══
+  //
+  // La versión anterior borraba el par entero (`?tab=suscribir` desaparecía completo), y el valor es
+  // exactamente donde vive la acción. Verificado: un `href="/app/cotizaciones/fondos?tab=suscribir"`
+  // quedaba PERMITIDO, y en una SPA el `?tab=` es el mecanismo que abre el panel de operación.
+  // También pasaban `?filtro=rescatar` y `?orden=enviar`.
+  //
+  // Lo que había que sacar era el NOMBRE de la clave —`orden` contiene la raíz `orden`, `pagina`
+  // contiene `pag`—, no lo que la clave apunta. Ahora la clave se borra y el valor se sigue
+  // evaluando como parte de la URL.
+  for (const k of QUERY_PRESENTACION) u = u.replace(new RegExp(`([?&])${k}=`, 'gi'), '$1')
   return u.replace(/[/?=&_.-]+/g, ' ')
 }
 

@@ -173,6 +173,10 @@ export const Instrumento = z.object({
   }).default({}),
   url: z.string().nullable(),
   observado_en: z.string(),
+  // CUÁNDO COTIZÓ EL MERCADO, distinto de cuándo lo miramos. Sin este campo, la frescura se medía
+  // contra el reloj del propio proceso y daba 0,0 horas siempre. Null es "la pantalla no lo dijo" y
+  // NO se lee como "recién ahora": ver `frescuraDeMercado`.
+  cotizado_en: z.string().nullable().default(null),
   evidencia: z.string(),
   campos_faltantes: z.array(z.string()).default([]),
 })

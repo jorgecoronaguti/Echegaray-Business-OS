@@ -111,8 +111,19 @@ export function evaluarRiesgo(inst = {}, perfil = PERFILES.caja_operativa, ctx =
   if (!inst.emisor) marcar('contraparte', 'medio', 'no se identificó el emisor/administradora')
 
   // CALIDAD DE LA INFORMACIÓN — un riesgo del agente, no del instrumento, y hay que decirlo igual.
-  const h = horasDesde(inst.observado_en, ctx.ahora)
-  if (h == null) marcar('informacion_desactualizada', 'alto', 'el dato no tiene fecha de observación', true, 'informacion')
+  // LA ANTIGÜEDAD ES LA DE LA COTIZACIÓN, no la de nuestra lectura. `observado_en` lo escribe el
+  // propio extractor con la hora de la corrida: medirlo daba siempre ~0 h y este bloqueante no podía
+  // dispararse nunca. Si la pantalla no declara cuándo cotizó, eso NO es "recién ahora": es un dato
+  // sin fecha, y se marca como tal en vez de darlo por fresco.
+  const h = inst.cotizado_en ? horasDesde(inst.cotizado_en, ctx.ahora) : null
+  // SIN FECHA DE COTIZACIÓN: se marca alto, pero NO bloquea el instrumento. La pantalla de fondos no
+  // publica hora de cotización para ningún FCI, así que bloquear por eso dejaría afuera al money
+  // market —la colocación más apta que tiene esta empresa— por una carencia del bróker, no del
+  // instrumento. La compuerta que corresponde es la del CONJUNTO: `frescuraDeMercado` cuenta los
+  // instrumentos sin fecha y se niega a declarar el mercado fresco, con lo cual la corrida entera
+  // sale NO_ACCIONABLE. Un ranking sin fecha sigue sirviendo para saber QUÉ habría; lo que no puede
+  // es habilitar una colocación.
+  if (h == null) marcar('cotizacion_sin_fecha', 'alto', 'la pantalla no declara cuándo cotizó: no se puede afirmar que el precio sea de hoy', false, 'informacion')
   else if (h > 24) marcar('informacion_desactualizada', 'alto', `el dato tiene ${Math.round(h)} horas: una tasa de ayer no es la de hoy`, true, 'informacion')
   else if (h > 6) marcar('informacion_desactualizada', 'medio', `el dato tiene ${Math.round(h)} horas`, false, 'informacion')
 
