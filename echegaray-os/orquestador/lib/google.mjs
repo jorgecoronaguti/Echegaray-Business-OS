@@ -1200,10 +1200,15 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
      *  vía batchUpdate. `requests` = array de requests de la Sheets API. */
     async spreadsheetBatchUpdate(fileId, requests, { espejo = false, yaGuardado = false } = {}) {
       const hielo = frenar(fileId, `${(requests || []).length} request(s) estructurales/formato`); if (hielo) return hielo
-      // Guarda central para el batch estructural: descarta SÓLO los requests que escriben CONTENIDO
-      // (updateCells con valor, copyPaste/pasteData/appendCells) sobre pestañas candadas/editadas; el
-      // formato y la estructura pasan siempre. Un batch puramente de formato no paga nada (sin sheetIds
-      // de contenido, la guarda es no-op). Ver guarda-escritura.mjs.
+      // Guarda central para el batch estructural: descarta los requests que DESTRUYEN —borran, pisan,
+      // desplazan o reordenan contenido— sobre pestañas candadas/editadas, y deja pasar la apariencia.
+      // Un `deleteDimension` cuenta como destructivo igual que un `updateCells` con valor: hasta el
+      // 03/08 no contaba, y se podía borrar quince filas de una pestaña candada pero no escribirle una
+      // fórmula. Un batch de pura apariencia sigue sin pagar ni una llamada. La tabla de qué destruye y
+      // qué no está en clasificar-request.mjs; la guarda, en guarda-escritura.mjs.
+      // `sellar()` re-sella la firma de lo que la guarda AUTORIZÓ a modificar (borrados incluidos): sin
+      // eso, el propio borrado auto-candaba la pestaña y frenaba la escritura que completaba la
+      // operación. Nunca sella una pestaña bloqueada, así que no levanta ningún candado.
       let sellar = async () => {}
       if (!espejo && !yaGuardado) {
         try {
