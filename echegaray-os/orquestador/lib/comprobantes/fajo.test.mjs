@@ -7,8 +7,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  entraEnElFajo, colapsarRepetidos, resumenFajo, botonesFajo, preguntasDe, estaCompleto,
-  etiquetaComprobante, ESTADO, VENTANA_FAJO_MIN,
+  entraEnElFajo, colapsarRepetidos, botonesFajo, preguntasDe, estaCompleto,
+  ESTADO, VENTANA_FAJO_MIN,
 } from './fajo.mjs'
 
 const T0 = new Date('2026-08-03T10:00:00Z')
@@ -107,31 +107,9 @@ test('un comprobante completo es cargable', () => {
   assert.equal(estaCompleto(item()), true)
 })
 
-// ── El mensaje ───────────────────────────────────────────────────────────────
-
-test('el resumen muestra el TOTAL del papel y el importe que va a la columna M', () => {
-  const t = resumenFajo({ items: [item()] })
-  assert.match(t, /total \$36\.460,30/)
-  assert.match(t, /IVA \$5\.981,00/)
-  // 36.460,30 − 5.981,00 = 30.479,30. Sin mostrar el total, el dueño no puede verificar contra el
-  // papel el único número que el papel tiene impreso grande.
-  assert.match(t, /importe a Compras \$30\.479,30/)
-  assert.match(t, /Confirmar/)
-})
-
-test('una nota de crédito se ANUNCIA y se muestra en negativo', () => {
-  const nc = item({ comprobante: { esNotaCredito: true, tipo: 'NC', total: -9823178, iva: -1704849.90 } })
-  const t = resumenFajo({ items: [nc] })
-  assert.match(t, /nota de crédito: entra en negativo/)
-  assert.match(t, /−\$9\.823\.178,00/)
-  assert.equal(etiquetaComprobante(nc.comprobante), 'N C 0113-00010489')
-})
-
-test('si ya estaba cargado, el mensaje dice EN QUÉ FILA en vez de duplicar', () => {
-  const t = resumenFajo({ items: [{ ...item(), yaCargado: { fila: 412 } }] })
-  assert.match(t, /ya está cargado en la fila 412/)
-  assert.match(t, /No hay nada que cargar todavía/)
-})
+// EL MENSAJE SE PROBÓ APARTE desde el 03/08: se rehizo como tabla markdown y vive en `mensaje.mjs`.
+// Sus tests están en `mensaje.test.mjs`. Acá quedó lo que DECIDE, que es lo que no puede cambiar
+// porque cambie una palabra del texto.
 
 // ── Los botones ──────────────────────────────────────────────────────────────
 

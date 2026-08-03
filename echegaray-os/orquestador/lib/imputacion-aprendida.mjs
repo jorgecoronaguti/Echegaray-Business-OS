@@ -19,6 +19,14 @@
 // imputaciones. Este módulo NO crea una tabla nueva, NO copia Compras, NO reescribe una imputación: lee
 // la historia y estima.
 //
+// DOS FEEDERS, UN SOLO QUE APRENDE (03/08). `perfilesDeImputacion(historia)` es PURA y no le importa
+// de dónde salen las filas. Hoy la alimentan dos: `perfilesDeImputacionDesdeDB()` con el espejo
+// public.costos_obra, y el bot de comprobantes con la pestaña Compras VIVA que ya lee para buscar
+// duplicados (`historiaDeCompras`, en lib/comprobantes/compras-vivas.mjs). La viva es más completa
+// para el DETALLE de la columna K: el espejo pega detalle y concepto en un solo campo y sólo guarda
+// las filas que ya tienen obra. Por eso desde la DB el detalle sale `sin_historia`, y se declara —
+// no se adivina con el campo pegado.
+//
 // El RUBRO no se aprende por separado: se COMPUTA con rubroDeCaja() (rubro-caja.mjs, la única definición
 // del rubro en todo el sistema) a partir de la imputación sugerida. Aprender el rubro aparte sería una
 // segunda versión del mismo concepto — justo lo que la arquitectura prohíbe. Su confianza cuelga de las
@@ -85,7 +93,10 @@ export function distribucion(valores = []) {
   }
   let top = null; let topN = 0
   for (const [k, n] of cuenta) if (n > topN) { top = k; topN = n }
-  return { top, topN, total, share: total ? topN / total : 0, distintos: cuenta.size }
+  // Las alternativas, de la más usada a la menos. Cuando la evidencia NO alcanza para sugerir, hay
+  // que preguntar igual — pero preguntar con las opciones más probables adelante, no en blanco.
+  const opciones = [...cuenta.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([valor, n]) => ({ valor, n }))
+  return { top, topN, total, share: total ? topN / total : 0, distintos: cuenta.size, opciones }
 }
 
 // La etiqueta de evidencia: gobierna si el perfil se usa como sugerencia firme o pide confirmación. No es
@@ -117,6 +128,7 @@ export function perfilDimension(valores = []) {
     sugerido: d.top,
     n: d.total,
     distintos: d.distintos,
+    opciones: d.opciones,
     share: redondear(d.share, 3),
     evidencia,
     confianza,
@@ -138,19 +150,27 @@ export function perfilProveedor(proveedor, regs = []) {
   const obras = regs.map((r) => r.obra_texto ?? r.obra)
   // Por cada obra, el bag de palabras de sus conceptos: permite desempatar por el concepto del comprobante.
   const conceptoPorObra = new Map()
+  // Y por cada obra, qué DETALLE (col K) usó el dueño ahí con este proveedor. Ver `perfilDetalle`.
+  const detallePorObra = new Map()
   for (const r of regs) {
     const obra = String(r.obra_texto ?? r.obra ?? '').trim()
     if (!obra) continue
     if (!conceptoPorObra.has(obra)) conceptoPorObra.set(obra, new Map())
     const bag = conceptoPorObra.get(obra)
     for (const w of palabrasConcepto(r.concepto)) bag.set(w, (bag.get(w) ?? 0) + 1)
+    if (!detallePorObra.has(obra)) detallePorObra.set(obra, [])
+    detallePorObra.get(obra).push(r.detalle)
   }
   return {
     proveedor: normProv(proveedor),
     n: regs.length,
     unidad: perfilDimension(unidades),
     obra: perfilDimension(obras),
+    // El detalle del proveedor sin mirar la obra. Sirve cuando el proveedor hace siempre lo mismo
+    // ("Combustible") y no cuando el detalle es del equipo o del frente, que es lo habitual.
+    detalle: perfilDimension(regs.map((r) => r.detalle)),
     conceptoPorObra,
+    detallePorObra: new Map([...detallePorObra].map(([obra, ds]) => [obra, perfilDimension(ds)])),
   }
 }
 
@@ -194,6 +214,36 @@ function refinarObraPorConcepto(perfilProv, concepto) {
     if (score > mejorScore) { mejor = obra; mejorScore = score }
   }
   return mejorScore > 0 ? { obra: mejor, porConcepto: true } : null
+}
+
+/**
+ * NÚCLEO PURO: el DETALLE (columna K, "Detalles / Obra") que este proveedor tuvo antes.
+ *
+ * ═══ POR QUÉ EL DETALLE SE APRENDE ACÁ Y NO EN UN MÓDULO DEL BOT (03/08) ═══
+ *
+ * "Camion - BSA" no está en ningún desplegable: es texto libre, y su única definición legítima es lo
+ * que el dueño ya escribió en esa obra. Es exactamente el mismo problema que este módulo resuelve
+ * para la unidad y la obra —aprender de la historia y declarar la confianza— así que vive acá, con
+ * los mismos umbrales, y lo aprovechan por igual el bot de Mattermost y el cargador de Claude Code.
+ *
+ * LA CLAVE ES (proveedor, OBRA), no el proveedor solo. El detalle casi nunca depende del proveedor:
+ * depende del frente o del equipo al que se le carga el gasto. Combustibles Barcelo en MESSINA es
+ * "Camion - BSA"; el mismo proveedor en otra obra es otra cosa. Por eso, con obra conocida se usa el
+ * perfil de esa obra, y sólo sin obra se cae al perfil general del proveedor — declarando el alcance.
+ *
+ * @param {object} perfil  el de `perfilProveedor`
+ * @param {string|null} obra
+ */
+export function perfilDetalle(perfil, obra = null) {
+  const sinHist = { sugerido: null, n: 0, distintos: 0, share: 0, evidencia: 'sin_historia', confianza: 0.1, pide_confirmacion: true, alcance: 'sin_historia' }
+  if (!perfil) return { ...sinHist }
+  const k = String(obra ?? '').trim()
+  const porObra = k ? perfil.detallePorObra?.get(k) : null
+  if (porObra) return { ...porObra, alcance: 'proveedor+obra', obra: k }
+  // Sin historia en ESA obra no se ofrece el detalle de otra: sería imputar el gasto a un frente que
+  // nunca tuvo. Con obra desconocida sí vale el perfil general, declarado como tal.
+  if (k) return { ...sinHist, alcance: 'proveedor+obra' }
+  return { ...(perfil.detalle ?? sinHist), alcance: 'proveedor' }
 }
 
 /**
@@ -251,6 +301,15 @@ export function sugerirImputacion(comprobante = {}, perfiles = {}, opts = {}) {
     pide_confirmacion: !(rubroClasificado && (estableSinImput || (!unidad.pide_confirmacion && !obra.pide_confirmacion))),
   }
 
+  // EL DETALLE SE SUGIERE CONTRA LA OBRA QUE VA A QUEDAR. Si quien llama ya sabe la obra —porque el
+  // dueño la escribió a mano en el papel, que MANDA sobre cualquier historial— se usa ésa; si no, la
+  // sugerida. Nunca se pisa lo que el comprobante ya declara.
+  const obraElegida = String(comprobante.obra ?? '').trim() || obra.sugerido
+  const detalle = perfilDetalle(perfil, obraElegida)
+
+  // El detalle NO entra en el `pide_confirmacion` general a propósito: es texto libre de la columna K
+  // y su ausencia no impide cargar la fila. Que se pregunte o no lo decide quien arma el mensaje,
+  // mirando `detalle.pide_confirmacion`.
   const pide_confirmacion = unidad.pide_confirmacion || obra.pide_confirmacion || rubro.pide_confirmacion
   return {
     tipo: 'INFERIDO',
@@ -260,6 +319,7 @@ export function sugerirImputacion(comprobante = {}, perfiles = {}, opts = {}) {
     n_historia: perfil?.n ?? 0,
     unidad,
     obra: obraNota ? { ...obra, nota: obraNota } : obra,
+    detalle,
     rubro,
     pide_confirmacion,
     nota: notaSugerencia({ perfil, unidad, obra, rubro }),

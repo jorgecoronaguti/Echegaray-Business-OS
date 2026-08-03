@@ -88,14 +88,17 @@ export function colapsarRepetidos(items = []) {
   return { items: out, repetidos }
 }
 
-const money = (n) => (n == null
-  ? '—'
-  : `${n < 0 ? '−' : ''}$${Math.abs(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
-
-/** Etiqueta corta del comprobante: "F A 0113-00010489" · "N C 0001-00000042". */
+/**
+ * Etiqueta corta del comprobante: "F A 0113-00010489" · "N C 0001-00000042".
+ *
+ * Sin tipo va SÓLO el número. De un tique la visión no siempre saca la letra, y la etiqueta decía
+ * "comprobante 00113-00014219", que en una tabla cuyo rótulo ya dice "Comprobante" se leía como un
+ * tartamudeo. Que falte la letra no impide cargar ni buscar el duplicado: no se anuncia como falla.
+ */
 export function etiquetaComprobante(c = {}) {
-  const t = c.esNotaCredito ? 'N C' : (c.tipo ? `F ${c.tipo}` : 'comprobante')
-  return `${t} ${c.numero ?? 's/n'}`
+  const t = c.esNotaCredito ? 'N C' : (c.tipo ? `F ${c.tipo}` : null)
+  const n = c.numero ?? 's/n'
+  return t ? `${t} ${n}` : n
 }
 
 /**
@@ -115,9 +118,10 @@ export function preguntasDe(item = {}) {
   // proveedor, mismo día y mismo importe con otro número puede ser el mismo comprobante con un
   // dígito mal leído —lo que ya pasó— o dos compras distintas. Las dos salidas son caras y ninguna
   // se elige sin el dueño.
+  // El detalle de la fila candidata lo muestra el mensaje (`avisoDuplicado`), arriba y con formato:
+  // acá sólo queda la razón por la que este comprobante NO está listo para cargarse.
   if (item.posibleDuplicado && !item.duplicadoResuelto) {
-    const d = item.posibleDuplicado
-    p.push(`puede que ya esté cargado en la **fila ${d.fila ?? '?'}** (${d.numero ?? 's/n'} · ${d.fecha ?? 's/f'} · ${money(d.total)}${d.obra ? ` · ${d.obra}` : ''}) — ¿es el mismo?`)
+    p.push(`puede que ya esté cargado en la **fila ${item.posibleDuplicado.fila ?? '?'}** — ¿es el mismo?`)
   }
   if (!c.obra) p.push('no dice a qué obra va — ¿cuál es?')
   if (c.total == null) p.push('no pude leer el total')
@@ -137,89 +141,11 @@ export function indiceDuplicadoAbierto(items = []) {
   return items.findIndex((it) => it?.posibleDuplicado && !it.duplicadoResuelto)
 }
 
-/**
- * El mensaje de confirmación: qué leyó el OS, comprobante por comprobante.
- *
- * MUESTRA EL TOTAL Y EL IVA POR SEPARADO a propósito. El Importe que va a la columna M es
- * `Total − IVA` y absorbe percepciones: si el mensaje mostrara sólo "importe", el dueño no podría
- * verificar contra el papel el número que sí está impreso ahí, que es el total.
- */
-export function resumenFajo(fajo = {}) {
-  const items = fajo.items ?? []
-  const l = []
-  l.push(items.length === 1 ? '**Leí este comprobante:**' : `**Leí ${items.length} comprobantes:**`)
-  l.push('')
-  items.forEach((it, i) => {
-    const c = it.comprobante ?? {}
-    const n = items.length > 1 ? `${i + 1}. ` : ''
-    l.push(`${n}**${c.proveedor ?? '(proveedor ilegible)'}** · ${etiquetaComprobante(c)} · ${c.fecha ?? 'sin fecha'}`)
-    const imp = c.total != null ? `total ${money(c.total)}` : 'total ilegible'
-    const iva = c.iva != null ? ` · IVA ${money(c.iva)}` : ' · sin IVA discriminado'
-    const importe = c.total != null ? ` · importe a Compras ${money(redondear(c.total - (c.iva ?? 0)))}` : ''
-    l.push(`   ${imp}${iva}${importe}`)
-    if (c.otrosTributos) l.push(`   percepciones/otros tributos ${money(c.otrosTributos)} (van dentro del importe, no son IVA)`)
-    if (c.esNotaCredito) l.push('   ⚠ **nota de crédito: entra en negativo**')
-    // De DÓNDE salió la obra se dice SIEMPRE. Imputar el costo a una obra es la decisión con más
-    // consecuencias de toda la fila —arrastra margen, certificación y P&L—: si salió de una
-    // anotación a mano o de lo que la persona escribió en el chat, tiene que verlo antes de
-    // confirmar. Decir "obra: MESSINA" sin decir de dónde salió es pedirle que confíe.
-    l.push(`   obra: ${imputacion(c)}${c.concepto ? ` · ${c.concepto}` : ''}`)
-    if (c.numeroLeidoMal) l.push(`   ✎ había leído **${c.numeroLeidoMal}**; el número correcto según ARCA es **${c.numero}**`)
-    if (it.arca?.importesCorregidos) {
-      const v = it.arca.importesCorregidos
-      l.push(`   ✎ los importes que leí no cerraban (total ${money(v.total)} · IVA ${money(v.iva)}): puse los de ARCA`)
-    }
-    const arca = lineaArca(it.arca)
-    if (arca) l.push(`   ${arca}`)
-    if (it.yaCargado) {
-      const donde = it.yaCargado.fuente === 'Compras' ? ' de Compras' : ''
-      l.push(`   ✓ **ya está cargado en la fila ${it.yaCargado.fila ?? '?'}${donde}** — no lo vuelvo a cargar`)
-    }
-    if (it.duplicadoResuelto === 'mismo') l.push('   ✓ marcado como ya cargado — no lo cargo')
-    if (it.duplicadoResuelto === 'otro') l.push('   ✓ marcado como comprobante distinto — se carga igual')
-    for (const p of preguntasDe(it)) l.push(`   ❓ ${p}`)
-  })
-
-  const cargables = items.filter(estaCompleto).length
-  const yaEstaban = items.filter((it) => it.yaCargado).length
-  l.push('')
-  if (yaEstaban) l.push(`_${yaEstaban} ya estaba${yaEstaban > 1 ? 'n' : ''} cargado${yaEstaban > 1 ? 's' : ''}._`)
-  if (!cargables) {
-    l.push('**No hay nada que cargar todavía.** Contestame lo que falta y lo cargo.')
-  } else {
-    l.push(`Si está bien, apretá **Confirmar** y lo escribo en Compras (${cargables} fila${cargables > 1 ? 's' : ''}).`)
-  }
-  return l.join('\n')
-}
-
-function redondear(n) {
-  return n == null ? null : Math.round((n + Number.EPSILON) * 100) / 100
-}
-
-/** "MESSINA · Planta de BSA _(escrito a mano)_" — la obra, su detalle y de dónde salieron. */
-function imputacion(c = {}) {
-  if (!c.obra) return '_falta_'
-  const det = c.detalleObra ? ` · ${c.detalleObra}` : ''
-  const via = c.obraVia === 'mensaje' ? ' _(de lo que escribiste)_' : ' _(escrito a mano)_'
-  return `${c.obra}${det}${via}`
-}
-
-/**
- * Qué se pudo verificar contra el padrón de ARCA. Se dice SIEMPRE, incluso cuando no está.
- *
- * No estar en ARCA no es un error —puede ser un ticket no electrónico o el sync atrasado— pero
- * callarlo hace que "verificado" y "no verificado" se vean igual, y entonces la verificación no
- * sirve para decidir nada.
- */
-function lineaArca(arca) {
-  if (!arca) return null
-  if (arca.estado === 'coincide') {
-    const quien = arca.emisorNombre ? ` (${arca.emisorNombre})` : ''
-    return `✓ figura en ARCA${quien}${arca.cae ? ` · CAE ${arca.cae}` : ''}`
-  }
-  if (arca.estado === 'sin_registro') return 'ℹ no figura en ARCA — puede ser un ticket no electrónico o que el sync esté atrasado'
-  return 'ℹ no pude verificarlo contra ARCA'
-}
+// EL MENSAJE VIVE EN `mensaje.mjs`, AL LADO. Está separado a propósito desde el 03/08: acá quedó lo
+// que DECIDE (qué entra en el fajo, qué falta, qué se puede cargar) y allá lo que se MUESTRA. El
+// mensaje se rehízo entero como tabla markdown —el dueño no podía leer la prosa corrida— y mezclar
+// las dos cosas en un archivo hacía que cambiar una coma del texto obligara a releer la lógica de
+// idempotencia. `mensaje.mjs` importa de acá; nunca al revés.
 
 /**
  * Los botones. `integration.url` lleva el SECRETO en la query: Mattermost guarda esa URL en su base
@@ -278,9 +204,4 @@ export function resolverDuplicado(items = [], indice = -1, respuesta = 'otro') {
   const out = [...items]
   out[indice] = { ...it, duplicadoResuelto: respuesta === 'mismo' ? 'mismo' : 'otro' }
   return out
-}
-
-/** El mensaje completo (texto + botones) tal como sale al canal. */
-export function mensajeFajo(fajo, { url } = {}) {
-  return { texto: resumenFajo(fajo), attachments: botonesFajo(fajo, { url }) }
 }

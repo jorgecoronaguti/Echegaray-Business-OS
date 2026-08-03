@@ -292,3 +292,52 @@ export function filasCompras(over = []) {
     ...over,
   ]
 }
+
+// ═══ EL TIQUE DE COMBUSTIBLE (03/08) — el caso que el bot no vio ═══
+//
+// Compras fila 800: Combustibles Barcelo · F A · 00113-00014219 · MESSINA · Camion - BSA ·
+// $64.006,07. El dueño mandó la foto de ESE tique y el bot se ofreció a cargarlo de nuevo.
+//
+// Dos detalles del tique que importan y no son adorno:
+//   · la visión NO sacó la letra ("TIQUE FACTURA A" no es "FACTURA A"): `letra` viene vacía, y el
+//     mensaje real decía "comprobante 00113-…" en vez de "F A 00113-…". Con el tipo en null se caía
+//     la única pasada de duplicado que existía.
+//   · escrito a mano arriba dice "Camion BSA - Messina": trae la OBRA (col J) y el DETALLE (col K)
+//     en el mismo renglón. Son dos datos, no uno.
+
+/** La lectura del tique de Combustibles Barcelo, tal como la devolvió el modelo de visión. */
+export function lecturaTiqueBarcelo(over = {}) {
+  return {
+    emisor: 'Combustibles Barcelo',
+    cuit: '30709123453',
+    letra: '', // un tique no siempre deja leer la letra
+    numero: '00113-00014219',
+    fecha: '31/07/2026',
+    neto_gravado: '45.516,02',
+    iva_21: '9.558,36',
+    otros_tributos: '8.931,69',
+    total: '64.006,07',
+    condicion_venta: 'Contado',
+    concepto: 'Nafta Super 1 y Diesel 500',
+    anotacion_manuscrita: 'Camion BSA - Messina',
+    legible: true,
+    dudas: [],
+    ...over,
+  }
+}
+
+/**
+ * Compras con el tique YA cargado en la 800 y la historia de imputación de ese proveedor.
+ *
+ * Las filas 801..805 son las que le dan evidencia FUERTE al aprendizaje (n≥5 y ≥80% en un mismo
+ * valor): sin ellas la lib no sugiere nada, que es exactamente lo que tiene que pasar con un
+ * proveedor sin historia.
+ */
+export function filasBarcelo({ conHistoria = true, cargado = true } = {}) {
+  const relleno = Array.from({ length: 796 }, () => [])
+  const fila800 = filaCompras('31/7/2026', 'Combustibles Barcelo', 'F A', '00113-00014219', 'MESSINA', 'Camion - BSA', 'Nafta Super y Diesel 500', '$ 64.006,07')
+  const historia = Array.from({ length: 6 }, (_, k) => filaCompras(
+    `${10 + k}/7/2026`, 'Combustibles Barcelo', 'F A', `00113-0001400${k}`, 'MESSINA', 'Camion - BSA', 'Gasoil', `$ ${11 + k}.000,00`,
+  ))
+  return [...relleno, ...(cargado ? [fila800] : [[]]), ...(conHistoria ? historia : [])]
+}

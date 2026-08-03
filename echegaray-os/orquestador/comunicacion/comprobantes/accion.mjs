@@ -21,7 +21,8 @@
 // ventana abierta justo para el caso que hay que impedir.
 
 import { igualEnTiempoConstante } from '../secreto-compartido.mjs'
-import { mensajeFajo, ESTADO, estaCompleto, resolverDuplicado } from '../../lib/comprobantes/fajo.mjs'
+import { ESTADO, estaCompleto, resolverDuplicado } from '../../lib/comprobantes/fajo.mjs'
+import { mensajeFajo } from '../../lib/comprobantes/mensaje.mjs'
 import { puedeCargarComprobantes } from './guarda.mjs'
 import { dialogoCorreccion, leerEstado, aplicarCorreccion, CALLBACK_ID } from './dialogo.mjs'
 import { escribirFajo } from './escritura.mjs'
