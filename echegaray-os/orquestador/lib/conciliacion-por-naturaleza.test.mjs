@@ -84,3 +84,30 @@ test('el grupo de cheques trae detalle accionable, no sólo un total', () => {
   // el locale—. Chequear la cadena entera marcaba como error una fórmula bien escrita.
   assert.ok(!sinLiterales(f).includes(','), `es-AR: coma fuera de un literal en ${f}`)
 })
+
+test('EL CONTROL DE LOS SUELDOS DE ADMINISTRACIÓN NO SE VALIDA CONTRA SU PROPIA FUENTE (03/08)', () => {
+  // POR QUÉ EXISTE. La línea 54 de CAJA —"Sueldos de administración pagados sin declarar por qué
+  // canal salieron"— es el control de las dos líneas de sueldos de administración, y sale de los
+  // MISMOS dos rangos que ellas: OFICINA_PAGADO y OFICINA_BANCO. Cuando OFICINA_BANCO quedó ciego,
+  // las dos líneas dieron $0 y el control informó "sin problemas" mirando el mismo agujero.
+  //
+  // El contraste tiene que venir de una fuente que la planilla no produce: el extracto. El grupo
+  // "Sueldos" compara los débitos de haberes del banco contra lo que la planilla dice haber pagado
+  // por transferencia — y hasta hoy ese lado sólo tenía la obra. Sin la oficina, un OFICINA_BANCO
+  // ciego se absorbía en el desvío sin nombre.
+  const g = GRUPOS.find((x) => x.naturaleza === 'Sueldos')
+  const f = g.formula('D1', 'D2')
+  assert.match(f, /JORNALES_REAL_BANCO/, 'la nómina de obra por transferencia')
+  assert.match(f, /OFICINA_BANCO/, 'y la de administración: el banco paga las dos por el mismo lote de haberes')
+  assert.match(f, /ISNUMBER\(OFICINA_PAGO\)/, 'la oficina se acota por su fecha de pago, no se suma el año entero')
+  // Y sigue leyendo el EXTRACTO del otro lado: si esto se cayera, el control volvería a validarse
+  // contra la misma planilla que produce el número.
+  assert.match(segunBanco('Sueldos'), new RegExp(RAW.hoja))
+})
+
+test('la nota del grupo Sueldos declara la limitación de la fecha de la oficina', () => {
+  // La oficina se filtra por "Se paga el", que es una fecha de CRITERIO (fin de mes + desfase), no el
+  // día registrado en que salió la plata. Una limitación sin declarar anula el criterio que toca.
+  const g = GRUPOS.find((x) => x.naturaleza === 'Sueldos')
+  assert.match(g.nota, /Se paga el/)
+})

@@ -767,6 +767,16 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // El sueldo de administración que se pagó y no dice por dónde salió. No se resta de ninguna
   // disponibilidad —no se sabe de cuál— así que tiene que verse acá con nombre y monto. Se apaga sola
   // en cuanto el mes tenga Banco o Efectivo cargado.
+  //
+  // ═══ ESTA LÍNEA NO ES SU PROPIO CONTROL, Y NO PUEDE SERLO (03/08) ═══
+  //
+  // Sale de `OFICINA_PAGADO` y `OFICINA_BANCO`: los MISMOS dos rangos que producen las dos líneas de
+  // sueldos de administración de arriba. Cuando `OFICINA_BANCO` quedó ciego —el generador le borraba
+  // la columna en cada corrida— las dos líneas dieron $0 y esta informó "sin problemas" mirando el
+  // mismo agujero. Un control nunca se valida contra la misma información que produce.
+  // El contraste contra una fuente distinta —los débitos de haberes del EXTRACTO— vive en el bloque
+  // 4.7, grupo "Sueldos", de lib/conciliacion-por-naturaleza.mjs. Esta línea sigue contestando su
+  // propia pregunta ("¿qué se pagó sin declarar el canal?"); la que detecta el rango ciego es aquélla.
   push(['Sueldos de administración pagados sin declarar por qué canal salieron', '', '@OFISINCANAL'])
   const fAlerta1 = filas.length
   push()

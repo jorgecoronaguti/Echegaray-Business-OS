@@ -75,6 +75,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { columna, aRangoApi, verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { seccion, sub, total as rotuloTotal, auditarPatron } from '../lib/patron-pestana.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
@@ -455,7 +456,14 @@ export function grilla({ bloques, pendientes, bloquesOfi, pagoPrevio = [], ultim
     // La fecha de caja del mes: fin de mes + el desfase de pago de la obra. Por fórmula, para que se
     // mueva sola si se corrige el parámetro — y visible, para que el criterio se pueda discutir.
     const pago = `=EOMONTH(DATE(${AÑO};${i + 1};1);0)+JORNALES_DESFASE_PAGO`
-    push([nombre, personas, pagado, bs.length ? VACIO : 'proyección', pago, VACIO, ajuste,
+    // LA COLUMNA "Banco" VA CON CADENA VACÍA, NO CON EL CENTINELA (03/08). Es la causa raíz de que
+    // `OFICINA_BANCO` tuviera 0 celdas con dato desde el día que se publicó, y con él las dos líneas
+    // de sueldos de administración de CAJA en $0 sin un solo error. El comentario de arriba decía
+    // —desde el primer día— que estas celdas NO se emiten para que la fusión preserve lo que carga el
+    // dueño; el código las emitía con VACIO, que significa exactamente lo contrario ("es mi celda y
+    // va vacía") y el worker se las borraba cada 2 h. Es el mismo defecto que ya le costó dos veces
+    // las fechas de "Pagado el". `''` = "no es mía, preservá lo que haya".
+    push([nombre, personas, pagado, bs.length ? VACIO : 'proyección', pago, '', ajuste,
       bs.length ? VACIO : `=$B$${0}*G${r}`]) // la base se completa abajo, cuando se sabe su fila
   })
   const oFin = o0 + MESES.length - 1
@@ -504,8 +512,11 @@ export function grilla({ bloques, pendientes, bloquesOfi, pagoPrevio = [], ultim
   const d0 = filas.length + 1
   MESES.forEach((_, i) => {
     const r = filas.length + 1
+    // "Banco" con cadena vacía por lo mismo que en Oficina: es columna de carga del dueño y el
+    // centinela se la borraría en cada corrida. Hoy ningún retiro está pagado, así que el defecto
+    // todavía no costó plata — pero es el mismo, y se arregla en el mismo commit.
     push([MESES[i], `=COUNTIF($B$${dp0}:$B$${dpFin};">0")`, formulaPagadoMes(i + 1, AÑO),
-      VACIO, formulaSePagaElDireccion(i + 1, AÑO), VACIO, VACIO,
+      VACIO, formulaSePagaElDireccion(i + 1, AÑO), '', VACIO,
       formulaProyectadoMes(`E${r}`, `C${r}`, `$B$${fTotalMensual}`, `$E$${fTotalMensual}`)])
   })
   const dFin = d0 + MESES.length - 1
@@ -1002,57 +1013,121 @@ async function asegurarParametros(google, hojas) {
   console.log(`parámetros de fecha de pago: ${ubic.map((p) => `${p.rango}=${TAB}!B${p.fila}`).join(' · ')}`)
 }
 
-async function publicarRangos(google, sheetId, g) {
+/**
+ * NÚCLEO PURO: qué rango ocupa cada nombre publicado, con su ANCLA y de quién es su contenido.
+ *
+ * ═══ POR QUÉ ES UNA DECLARACIÓN Y NO UNA LISTA DE COORDENADAS (03/08) ═══
+ *
+ * Antes esto era un objeto de `rango(col, desde, hasta)` y nada más. Alcanzaba para reapuntar los
+ * nombres en cada corrida —eso ya estaba bien— pero no para NOTAR que uno quedó ciego: un nombre
+ * apuntando a doce celdas en blanco se publica igual de contento que uno apuntando a los datos.
+ *
+ * Cada rango declara ahora dos cosas más, y las dos son verificables sin red:
+ *   · el ENCABEZADO bajo el que tiene que caer — si alguien inserta una columna en el bloque, el
+ *     nombre pasa a leer la columna de al lado y la única señal sería un número plausible;
+ *   · DE QUIÉN es el contenido — un rango del OS vacío es un defecto, uno de carga del dueño puede
+ *     estar vacío pero el generador no puede emitir el centinela ahí (ver `OFICINA_BANCO`).
+ *
+ * @param {ReturnType<typeof grilla>} g
+ */
+export function rangosDeJornales(g) {
   const finProy = g.p0 + g.nProy - 1
-  const rango = (c0, r0, r1) => ({ sheetId, startRowIndex: r0 - 1, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c0 + 1 })
-  const quiero = {
-    JORNALES_REAL_DESDE: rango(0, g.f0, g.fTotalReal - 1),
-    JORNALES_REAL_HASTA: rango(1, g.f0, g.fTotalReal - 1),
+  // El encabezado sale de REGISTRO_COLS, que es la MISMA lista de la que sale la fila que se escribe:
+  // clavarlo acá a mano reproduciría, del lado del control, el defecto que el control atrapa.
+  const reg = (nombre, col, contenido) => columna(nombre, { col, r0: g.f0, r1: g.fTotalReal - 1, encabezado: REGISTRO_COLS[col], contenido })
+  return [
+    reg('JORNALES_REAL_DESDE', 0),
+    reg('JORNALES_REAL_HASTA', 1),
     // LA FECHA DE CAJA (31/07). Es la que usa la línea de jornales del cash flow; HASTA queda como
     // fallback y como la fecha del DEVENGAMIENTO, que es otra pregunta y otra pestaña.
-    JORNALES_REAL_PAGO: rango(2, g.f0, g.fTotalReal - 1),
-    JORNALES_REAL_TOTAL: rango(10, g.f0, g.fTotalReal - 1),
+    reg('JORNALES_REAL_PAGO', 2),
+    reg('JORNALES_REAL_TOTAL', 10),
     // CUÁNDO SALIÓ LA PLATA DE VERDAD (31/07). Es lo que descarga la obligación: mientras esta celda
     // esté vacía, la quincena cerrada PESA en el calendario de CAJA. En cuanto el dueño escribe la
     // fecha, deja de pesar — la salida ya está en el extracto del banco.
-    JORNALES_REAL_PAGADO: rango(13, g.f0, g.fTotalReal - 1),
+    //
+    // ES LA ÚNICA COLUMNA `dueño-restaurado` DE LA PESTAÑA: el generador SÍ emite el centinela ahí y
+    // después copia, celda por celda, lo que había en la pestaña (ver el bloque "Pagado el" de
+    // main()). Se declara distinto de `dueño` a propósito: el mecanismo funciona pero depende de
+    // reconocer la cabecera del registro, y si no la reconoce avisa. No es el patrón a imitar.
+    reg('JORNALES_REAL_PAGADO', 13, 'dueño-restaurado'),
     // ═══ POR QUÉ CANAL SALIÓ (01/08) ═══
     // El dueño paga la quincena en partes: una por transferencia y otra en efectivo (adelantos y
     // contra recibo). Esta pestaña ya lo separaba —y ya lo controla contra el TOTAL— pero nadie leía
     // esas tres columnas: CAJA no tenía forma de bajar el banco por el lote de haberes ni la caja
     // física por el efectivo, así que la nómina se pagaba y no salía de ninguna disponibilidad.
     // Publicadas por nombre, las consume lib/caja-posterior-al-corte.mjs.
-    JORNALES_REAL_BANCO: rango(7, g.f0, g.fTotalReal - 1),
-    JORNALES_REAL_ADELANTO: rango(8, g.f0, g.fTotalReal - 1),
-    JORNALES_REAL_RECIBO: rango(9, g.f0, g.fTotalReal - 1),
-    JORNALES_PROY_DESDE: rango(0, g.p0, finProy),
-    JORNALES_PROY_HASTA: rango(1, g.p0, finProy),
-    JORNALES_PROY_PAGO: rango(2, g.p0, finProy),
-    JORNALES_PROY_TOTAL: rango(7, g.p0, finProy),
+    reg('JORNALES_REAL_BANCO', 7),
+    reg('JORNALES_REAL_ADELANTO', 8),
+    reg('JORNALES_REAL_RECIBO', 9),
+    columna('JORNALES_PROY_DESDE', { col: 0, r0: g.p0, r1: finProy, encabezado: 'Quincena' }),
+    columna('JORNALES_PROY_HASTA', { col: 1, r0: g.p0, r1: finProy, encabezado: 'Hasta' }),
+    columna('JORNALES_PROY_PAGO', { col: 2, r0: g.p0, r1: finProy, encabezado: 'Se paga el' }),
+    columna('JORNALES_PROY_TOTAL', { col: 7, r0: g.p0, r1: finProy, encabezado: 'Proyectado' }),
     // ═══ LA OFICINA, PUBLICADA (31/07) ═══
     // Sin estos tres nombres el bloque de oficina era decorativo: la línea "Sueldos de administración"
     // del cash flow salía de Compras y decía otro número que la planilla de sueldos. Ahora la fuente
     // es una sola y el cash flow la referencia, no la copia.
-    OFICINA_PAGO: rango(4, g.o0, g.oFin),
-    OFICINA_PAGADO: rango(2, g.o0, g.oFin),
-    OFICINA_PROYECTADO: rango(7, g.o0, g.oFin),
+    columna('OFICINA_PAGO', { col: 4, r0: g.o0, r1: g.oFin, encabezado: 'Se paga el' }),
+    columna('OFICINA_PAGADO', { col: 2, r0: g.o0, r1: g.oFin, encabezado: 'Pagado' }),
+    columna('OFICINA_PROYECTADO', { col: 7, r0: g.o0, r1: g.oFin, encabezado: 'Proyectado' }),
     // El canal por el que salió cada sueldo de administración (01/08). Sin esta columna, CAJA sabía
     // CUÁNTO se pagó de oficina y no de dónde salió, así que no lo restaba de ninguna disponibilidad.
     // El efectivo no tiene rango propio: es Pagado − Banco, y así los dos canales siempre cierran.
-    OFICINA_BANCO: rango(5, g.o0, g.oFin),
+    columna('OFICINA_BANCO', { col: 5, r0: g.o0, r1: g.oFin, encabezado: 'Banco', contenido: 'dueño' }),
     // ═══ LOS RETIROS DE DIRECCIÓN, PUBLICADOS (01/08) ═══
     // Misma forma que OFICINA_*, y por la misma razón: sin estos nombres el bloque sería otro cuadro
     // que nadie lee. La línea "Sueldos de administración" del cash flow es OFICINA + DIRECCIÓN.
-    DIRECCION_PAGO: rango(4, g.d0, g.dFin),
-    DIRECCION_PAGADO: rango(2, g.d0, g.dFin),
-    DIRECCION_PROYECTADO: rango(7, g.d0, g.dFin),
+    columna('DIRECCION_PAGO', { col: 4, r0: g.d0, r1: g.dFin, encabezado: 'Se paga el' }),
+    columna('DIRECCION_PAGADO', { col: 2, r0: g.d0, r1: g.dFin, encabezado: 'Pagado' }),
+    columna('DIRECCION_PROYECTADO', { col: 7, r0: g.d0, r1: g.dFin, encabezado: 'Proyectado' }),
+  ]
+}
+
+/**
+ * NOMBRES QUE ESTE GENERADOR PUBLICÓ Y YA NO SOSTIENE — SE RETIRAN, NO SE DEJAN.
+ *
+ * `OFICINA_EFECTIVO` es de la primera versión del bloque de Oficina, la de DOS columnas de entrada
+ * (Banco y Efectivo). Ese diseño se descartó el mismo día —el auditor de patrón lo cazó por dejar la
+ * pestaña con tres anchos de grilla— y quedó "el efectivo es Pagado − Banco", con una sola columna.
+ * El nombre sobrevivió al layout: nadie lo republica, así que quedó clavado en la columna J filas
+ * 26-37 del layout viejo, dos filas más arriba que el bloque de hoy. Cero celdas con dato.
+ *
+ * POR QUÉ SE BORRA Y NO SE REAPUNTA. No hay a qué apuntarlo: la columna "Efectivo" no existe y
+ * fabricarla para darle destino a un nombre es al revés. Y un nombre que devuelve vacío es peor que
+ * uno que no existe: la fórmula que lo use da 0 en silencio, mientras que sin el nombre da #NAME? —
+ * ruidoso, visible, arreglable. Verificado: ninguna fórmula del OS lo usa (caja-pestana.test.mjs lo
+ * prohíbe explícitamente). Si el dueño tuviera una fórmula propia con este nombre, va a ver un
+ * #NAME? en vez de un cero — que es exactamente lo que queremos que pase.
+ */
+export const RANGOS_RETIRADOS = ['OFICINA_EFECTIVO']
+
+async function publicarRangos(google, sheetId, g) {
+  const quiero = rangosDeJornales(g)
+
+  // ═══ NO SE PUBLICA UN RANGO CIEGO ═══
+  // Se verifica contra la grilla que se acaba de armar, en memoria: si un nombre cayó fuera del
+  // bloque, quedó bajo otro encabezado o el generador le borra el contenido a la columna, esto lo
+  // dice ACÁ y no dentro de seis meses auditando por qué una línea de CAJA vale $0.
+  const problemas = verificarRangos(g.filas, quiero)
+  if (problemas.length) {
+    console.error('✗ NO publico los rangos con nombre: hay rangos ciegos\n' + explicarProblemas(problemas))
+    process.exitCode = 1
+    return
   }
+
   const existentes = new Map((await google.getNamedRanges(ID)).map((r) => [r.name, r.namedRangeId]))
-  const reqs = Object.entries(quiero).map(([name, range]) => (existentes.has(name)
-    ? { updateNamedRange: { namedRange: { namedRangeId: existentes.get(name), name, range }, fields: 'range' } }
-    : { addNamedRange: { namedRange: { name, range } } }))
+  const reqs = quiero.map((d) => {
+    const range = aRangoApi(sheetId, d)
+    return existentes.has(d.nombre)
+      ? { updateNamedRange: { namedRange: { namedRangeId: existentes.get(d.nombre), name: d.nombre, range }, fields: 'range' } }
+      : { addNamedRange: { namedRange: { name: d.nombre, range } } }
+  })
+  const retirar = RANGOS_RETIRADOS.filter((n) => existentes.has(n))
+  for (const n of retirar) reqs.push({ deleteNamedRange: { namedRangeId: existentes.get(n) } })
   await google.spreadsheetBatchUpdate(ID, reqs)
-  console.log(`rangos con nombre publicados: ${Object.keys(quiero).join(', ')} — las otras pestañas ya no citan números de fila`)
+  if (retirar.length) console.log(`rangos con nombre RETIRADOS (apuntaban a un layout que ya no existe): ${retirar.join(', ')}`)
+  console.log(`rangos con nombre publicados: ${quiero.map((d) => d.nombre).join(', ')} — las otras pestañas ya no citan números de fila`)
 }
 
 async function formatear(google, sheetId, filas, g) {

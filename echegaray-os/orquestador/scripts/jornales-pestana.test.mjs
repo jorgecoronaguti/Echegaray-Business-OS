@@ -9,7 +9,9 @@
 //      letra contesta otra pregunta SIN dar un solo error.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { colDe, grilla, ultimoDiaCargado } from './jornales-pestana.mjs'
+import { colDe, grilla, ultimoDiaCargado, rangosDeJornales, RANGOS_RETIRADOS } from './jornales-pestana.mjs'
+import { verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
+import { VACIO, tiene } from '../lib/preservar-anotaciones.mjs'
 
 // Bloques mínimos con la forma que `filasQuincenas` y el cuadro de oficina esperan.
 const bloques = [
@@ -95,4 +97,57 @@ test('el último día cargado del espejo se saca del MÁXIMO, no de la última c
   const d = ultimoDiaCargado(['5/1', '9/1', '6/1', '', '7/1'], 2026)
   assert.equal(d.getDate(), 9)
   assert.equal(d.getMonth(), 0)
+})
+
+// ═══ LOS RANGOS CON NOMBRE, CONTRA LA GRILLA QUE LA PESTAÑA ESCRIBE DE VERDAD (03/08) ═══
+//
+// El defecto que trajo este bloque: de los 47 rangos con nombre del archivo, TRES apuntaban a celdas
+// sin un solo dato — y `SUMPRODUCT(…*N(RANGO))` sobre celdas vacías vale 0, así que las dos líneas de
+// sueldos de administración de CAJA decían $0 con el cuadro cuadrando. Ningún error, ningún descuadre.
+//
+// El oráculo NO es una lista de filas escrita acá: es la grilla que `grilla()` acaba de armar. Clavar
+// las coordenadas en el test reproduciría, del lado del control, exactamente el defecto que el control
+// existe para atrapar — que es la razón por la que estos tests leen el encabezado y no una letra.
+test('NINGÚN RANGO CON NOMBRE APUNTA A CELDAS VACÍAS NI A LA COLUMNA DE AL LADO', () => {
+  const problemas = verificarRangos(g.filas, rangosDeJornales(g))
+  assert.deepEqual(problemas, [], explicarProblemas(problemas))
+})
+
+test('LA COLUMNA "Banco" DE OFICINA ES DEL DUEÑO: el generador NO puede emitir el centinela ahí', () => {
+  // ÉSTA ES LA CAUSA RAÍZ DE `OFICINA_BANCO` CIEGO. El comentario del generador decía —desde el primer
+  // día— que estas celdas no se emiten para que la fusión preserve lo que carga el dueño; el código
+  // las emitía con VACIO, que significa lo contrario ("es mi celda y va vacía"), y el worker se las
+  // borraba cada 2 h. Revertirlo a VACIO pone rojo esto y el test de arriba.
+  const iBanco = g.filas[g.o0 - 2].indexOf('Banco')
+  assert.ok(iBanco > 0, 'desapareció el encabezado "Banco" del bloque de Oficina')
+  for (let r = g.o0; r <= g.oFin; r++) {
+    assert.notEqual(g.filas[r - 1][iBanco], VACIO,
+      `fila ${r}: la columna Banco lleva el centinela — el generador le borra al dueño lo que cargue`)
+  }
+})
+
+test('el bloque de Dirección tiene el mismo cuidado en su columna "Banco"', () => {
+  const iBanco = g.filas[g.d0 - 2].indexOf('Banco')
+  assert.ok(iBanco > 0, 'desapareció el encabezado "Banco" del bloque de Dirección')
+  for (let r = g.d0; r <= g.dFin; r++) assert.notEqual(g.filas[r - 1][iBanco], VACIO, `fila ${r}: centinela en una columna del dueño`)
+})
+
+test('OFICINA_EFECTIVO SE RETIRA: un nombre sin bloque es peor que ningún nombre', () => {
+  // Quedó de la primera versión del bloque (dos columnas de entrada), clavado en la columna J filas
+  // 26-37 de ese layout. Nadie lo republica, así que no se mueve nunca. Un nombre que devuelve vacío
+  // da 0 en silencio; sin el nombre, la fórmula da #NAME? — ruidoso, visible, arreglable.
+  const nombres = rangosDeJornales(g).map((d) => d.nombre)
+  assert.ok(!nombres.includes('OFICINA_EFECTIVO'), 'no hay columna "Efectivo": el efectivo es Pagado − Banco')
+  assert.ok(RANGOS_RETIRADOS.includes('OFICINA_EFECTIVO'), 'si no se retira, sigue ahí devolviendo cero para siempre')
+})
+
+test('los rangos de Oficina que SÍ funcionan siguen funcionando', () => {
+  // El control de que el arreglo no rompió lo que andaba: PAGO, PAGADO y PROYECTADO tenían dato antes
+  // y lo siguen teniendo. Un arreglo que apaga la señal de al lado no es un arreglo.
+  const d = Object.fromEntries(rangosDeJornales(g).map((x) => [x.nombre, x]))
+  for (const n of ['OFICINA_PAGO', 'OFICINA_PAGADO', 'OFICINA_PROYECTADO']) {
+    const { c0, r0, r1 } = d[n]
+    const con = [...Array(r1 - r0 + 1).keys()].filter((k) => tiene(g.filas[r0 - 1 + k][c0])).length
+    assert.ok(con > 0, `${n} se quedó sin una sola celda con dato`)
+  }
 })
