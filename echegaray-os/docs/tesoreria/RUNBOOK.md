@@ -88,50 +88,84 @@ pero no sostiene una decisión.
 
 ---
 
-## Chrome dedicado y túnel — el único paso que hace una persona
+## El navegador de Balanz — vive en la VM, y lo único que hace una persona es entrar
 
-El agente **reusa** una sesión ya iniciada. No automatiza login, ni OTP, ni CAPTCHA, no copia el
-perfil de Chrome, no lee contraseñas guardadas, no exporta cookies y no persiste tokens.
+El agente **reusa** una sesión ya iniciada. No automatiza login, ni OTP, ni CAPTCHA, no copia ningún
+perfil, no lee contraseñas guardadas, no exporta cookies y no persiste tokens.
 
-### 1 · Chrome dedicado (en tu Mac)
+Lo que cambió: el navegador ya **no está en tu Mac**. Vive en la VM, en un contenedor propio, y
+sobrevive a que cierres la notebook, VS Code, Claude Code y todas las terminales. No hay túnel SSH.
 
-**Perfil aparte del personal**, para que el agente nunca vea tu navegación ni tus otras cuentas:
-
-```bash
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  --remote-debugging-address=127.0.0.1 \
-  --remote-debugging-port=9222 \
-  --user-data-dir="$HOME/.chrome-balanz-agent"
+```
+Caddy (chat.ecsas.com.ar)  →  socket unix  →  pantalla remota  →  VNC 127.0.0.1:5900
+                                                                        ↓
+   Tesorero  →  CDP 127.0.0.1:9222  →  Chromium + Xvfb  (contenedor echegaray-balanz)
 ```
 
-La primera vez el perfil arranca vacío. **Entrá a Balanz a mano** en esa ventana y dejala abierta.
-
-### 2 · Túnel hacia el servidor
-
-El OS corre en `64.176.22.159` con el usuario `jorge`. Desde tu Mac:
+### 1 · Levantarlo (una vez; después arranca solo)
 
 ```bash
-ssh -N -R 127.0.0.1:9222:127.0.0.1:9222 jorge@64.176.22.159
+bash orquestador/systemd/install.sh          # copia y habilita los tres units
+systemctl --user status echegaray-balanz-browser.service
 ```
 
-El `127.0.0.1:` del lado remoto **no es decorativo**: ata el puerto al loopback del servidor. Sin él
-—y con `GatewayPorts yes` en el sshd— el puerto de depuración de tu navegador quedaría expuesto a
-Internet, y CDP no pide autenticación: cualquiera podría manejar tu sesión de Balanz.
+El perfil vive en `~/.local/share/echegaray-os/balanz/perfil` y **persiste**: reiniciar el
+contenedor no borra la sesión. Reiniciar el navegador, sí — la sesión de Balanz vive en
+`sessionStorage`, que es por pestaña.
 
-**Nunca**: bind en `0.0.0.0`, abrir el 9222 en el firewall, ni publicarlo por el túnel de Cloudflare.
+### 2 · Iniciar sesión (lo único que necesita una persona)
 
-### 3 · Verificar desde el servidor
+Cuando la sesión vence, el agente publica en Mattermost **BALANZ · NECESITA AUTENTICACIÓN** con un
+enlace. Abrilo, entrá a Balanz a mano, cerrá la pestaña. Nada más: el OS detecta la sesión solo,
+cierra el incidente con **BALANZ · SESIÓN RESTAURADA** y releva en la próxima corrida.
+
+Si necesitás el enlace sin esperar el aviso:
 
 ```bash
-curl -s http://127.0.0.1:9222/json/version          # tiene que responder
-ss -ltn | grep 9222                                 # tiene que decir 127.0.0.1:9222, NUNCA 0.0.0.0
-curl -s http://64.176.22.159:9222/json/version      # tiene que FALLAR (si responde, está expuesto)
+node orquestador/scripts/balanz-runtime.mjs enlace     # vence en 20 minutos
 ```
 
-### 4 · Cerrar
+El enlace va firmado y **da acceso a la pantalla del bróker**: no se reenvía ni se pega en un canal
+público. El puente que lo sirve mueve tramas opacas y no las interpreta — no registra pulsaciones,
+ni contraseña, ni OTP.
 
-Cortá el `ssh` con `Ctrl-C` y cerrá la ventana de Chrome dedicada. El perfil queda en
-`~/.chrome-balanz-agent` con tu sesión; borralo si querés forzar un login nuevo.
+### 3 · Ver qué está pasando
+
+```bash
+node orquestador/scripts/balanz-runtime.mjs estado
+```
+
+| Estado | Qué significa | Qué hacer |
+|---|---|---|
+| `SESSION_ACTIVE` | hay pestaña de Balanz fuera del login | nada |
+| `SESSION_REQUIRED` | la sesión venció | abrir el enlace y entrar a mano |
+| `BALANZ_TARGET_MISSING` | no quedó ninguna pestaña | el OS la repone solo |
+| `BROWSER_STARTING` | Chromium todavía no abrió el puerto | esperar (no reiniciar) |
+| `BROWSER_ERROR` | el navegador no responde | `balanz-runtime.mjs reiniciar` |
+
+### 4 · Verificar que nada quedó expuesto
+
+Los dos puertos son **de loopback de la VM**. CDP no pide autenticación: quien lo alcanza maneja el
+navegador entero, con la sesión del bróker adentro.
+
+```bash
+ss -ltn | grep -E "9222|5900"                        # tiene que decir 127.0.0.1, NUNCA 0.0.0.0
+curl -s --max-time 5 http://64.176.22.159:9222/json/version   # tiene que FALLAR
+curl -s --max-time 5 http://64.176.22.159:5900                # tiene que FALLAR
+curl -s -o /dev/null -w '%{http_code}\n' https://chat.ecsas.com.ar/balanz   # 403 sin token
+```
+
+**Nunca**: bind en `0.0.0.0`, abrir 9222 o 5900 en el firewall, ni publicarlos por Cloudflare.
+
+### 5 · Parar o volver atrás
+
+```bash
+systemctl --user stop echegaray-balanz-vigia.timer echegaray-balanz-remoto.service
+systemctl --user stop echegaray-balanz-browser.service    # para el contenedor
+docker rm -f echegaray-balanz                             # además lo borra (el perfil sobrevive)
+```
+
+Para forzar un login nuevo, borrá el perfil: `rm -rf ~/.local/share/echegaray-os/balanz/perfil`.
 
 ### 5 · Mapear el DOM y validar el extractor
 
@@ -322,7 +356,7 @@ select clave, valor, aprobada_por from tesoreria.politicas order by vigente_desd
 | Síntoma | Causa probable |
 |---|---|
 | `estado=omitida` | otra corrida tenía el lock |
-| `session_required` | no hay Chrome con `--remote-debugging-port`, o falta el túnel |
+| `session_required` | la sesión de Balanz venció: hace falta que una persona entre por la pantalla remota |
 | "el total de la pestaña dice $0" | la pestaña CAJA tiene un `#REF!` — andá a arreglarla |
 | todo `NO_ACCIONABLE` | falta aprobar la reserva y/o declarar la caja restringida |
 | `sin_excedente=true` con deuda | hay descubierto utilizado: esa porción va a la línea |
@@ -336,7 +370,7 @@ select clave, valor, aprobada_por from tesoreria.politicas order by vigente_desd
 
 | Qué | Impacto | Cómo se cierra |
 |---|---|---|
-| El extractor **no** fue validado contra el DOM real de Balanz | todo sale `NO_ACCIONABLE` | Chrome dedicado + túnel + `balanz-explorar.mjs` + comparar una muestra |
+| El extractor **no** fue validado contra el DOM real de Balanz | todo sale `NO_ACCIONABLE` | `balanz-runtime.mjs estado` + `balanz-explorar.mjs` + comparar una muestra |
 | Sin sesión no hay datos de mercado, y sin datos frescos nada es accionable | el análisis de caja se publica igual | misma sesión: los dos bloqueos se cierran juntos |
 | La migración no está en producción | el ledger no persiste | aplicarla al integrar (arriba) |
 | Reserva y caja restringida sin cargar | todo `NO_ACCIONABLE` | los dos comandos de arriba |

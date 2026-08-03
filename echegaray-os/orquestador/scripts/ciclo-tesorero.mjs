@@ -8,9 +8,12 @@
 // NO depende de Claude Code, de una terminal ni de una conversación abierta. Toda la aritmética es
 // determinística: en una corrida normal este proceso hace CERO llamadas a la API de Anthropic.
 //
-// Balanz: si no hay una sesión de Chrome que reusar, el ciclo NO intenta entrar — publica
-// SESSION_REQUIRED y termina bien. Que falte el mercado no invalida el análisis de caja, que es la
-// mitad que más decide.
+// Balanz: el navegador vive en la VM (contenedor `echegaray-balanz`) y este ciclo lo levanta si
+// hace falta. Lo que NO hace nunca es iniciar sesión: si la sesión venció, publica el aviso con el
+// enlace a la pantalla remota y termina bien. Que falte el mercado no invalida el análisis de caja,
+// que es la mitad que más decide.
+//
+// No depende de la Mac del dueño, de un túnel SSH ni de ninguna terminal abierta.
 
 import { makeGoogleClient, WORKSPACE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'

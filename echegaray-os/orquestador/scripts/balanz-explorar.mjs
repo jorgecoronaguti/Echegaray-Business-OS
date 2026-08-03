@@ -17,16 +17,13 @@
 //
 // ═══ ANTES DE CORRERLO ═══
 //
-// Hace falta un Chrome DEDICADO (perfil aparte del personal) con el puerto de depuración abierto, y
-// la sesión iniciada A MANO. En Mac:
+// Hace falta el navegador dedicado de la VM arriba y CON SESIÓN INICIADA A MANO:
 //
-//   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-//     --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 \
-//     --user-data-dir="$HOME/.chrome-balanz-agent"
+//   node orquestador/scripts/balanz-runtime.mjs estado     # tiene que decir SESSION_ACTIVE
+//   node orquestador/scripts/balanz-runtime.mjs enlace     # si dice SESSION_REQUIRED, entrá por acá
 //
-// Y, si el OS corre en otra máquina, un túnel que ate el puerto SÓLO a loopback del servidor:
-//
-//   ssh -N -R 127.0.0.1:9222:127.0.0.1:9222 <usuario>@<servidor>
+// No hace falta ningún Chrome local ni ningún túnel: el navegador vive en la VM (contenedor
+// `echegaray-balanz`) y su puerto de depuración escucha en 127.0.0.1 del servidor.
 
 import {
   sesionDisponible, ENDPOINT_CDP, ORIGEN_BALANZ, SesionRequerida,
