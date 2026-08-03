@@ -88,6 +88,48 @@ pero no sostiene una decisión.
 
 ---
 
+## Cuándo corre el Tesorero: SÓLO cuando vos lo pedís
+
+Decisión del dueño, 03/08/2026. **No hay corridas agendadas ni rondas de supervisión.** Los dos
+timers están deshabilitados a propósito y el instalador los deja así:
+
+| | |
+|---|---|
+| `echegaray-tesorero.timer` | **apagado** — no corre a las 09:15 ni a las 15:30 |
+| `echegaray-balanz-vigia.timer` | **apagado** — no supervisa cada 15 min |
+| `echegaray-balanz-browser` | **prendido** — tiene que estarlo, o se pierde la sesión |
+| `echegaray-balanz-remoto` | **prendido** — es cómo entrás a Balanz |
+
+El navegador queda arriba **y eso no es que "corra solo"**: está quieto, no navega, no gasta API y no
+publica nada. Está prendido por un motivo concreto — Balanz guarda la sesión en `sessionStorage`, que
+vive en la pestaña. Si el navegador se apaga, la sesión muere con él y habría que volver a entrar a
+mano en cada pedido.
+
+### Cómo se lo pedís
+
+Por Mattermost, a `@os`:
+
+> *"fijate qué hay disponible en Balanz"* · *"analizá si conviene invertir"* · *"qué hago con la
+> plata parada"*
+
+O desde la VM, si preferís verlo en crudo:
+
+```bash
+node orquestador/scripts/ciclo-tesorero.mjs           # corrida completa, publica en Dirección
+node orquestador/scripts/ciclo-tesorero.mjs --dry     # igual pero sin publicar ni escribir el ledger
+```
+
+Tarda 7-8 minutos: recorre las 8 pantallas y baja las tablas enteras.
+
+### Si algún día querés que vuelva a correr solo
+
+```bash
+systemctl --user enable --now echegaray-tesorero.timer       # 09:15 y 15:30, días hábiles
+systemctl --user enable --now echegaray-balanz-vigia.timer   # vigilancia cada 15 min
+```
+
+---
+
 ## El navegador de Balanz — vive en la VM, y lo único que hace una persona es entrar
 
 El agente **reusa** una sesión ya iniciada. No automatiza login, ni OTP, ni CAPTCHA, no copia ningún

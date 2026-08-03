@@ -75,11 +75,24 @@ systemctl --user enable --now echegaray-os-schedules.timer     # disparador de r
 # Habilitarlo antes haría que publique análisis NO_ACCIONABLE dos veces por día.
 #   systemctl --user enable --now echegaray-tesorero.timer
 #
-# El navegador de Balanz y su pantalla remota SÍ se habilitan: son infraestructura, no deciden nada
-# y no publican plata. Sin ellos el Tesorero no tiene dónde mirar el mercado. El vigía también, que
-# es lo que hace que un navegador caído se recupere solo en vez de esperar a la próxima corrida.
+# El navegador de Balanz y su pantalla remota SÍ se habilitan: son infraestructura, no deciden nada,
+# no publican plata y no gastan API. Tienen que estar arriba para que la sesión del bróker siga viva
+# entre pedido y pedido — si el navegador se apaga, la sesión muere con la pestaña (`sessionStorage`)
+# y habría que volver a iniciarla a mano cada vez.
 systemctl --user enable --now echegaray-balanz-browser.service
 systemctl --user enable --now echegaray-balanz-remoto.service
-systemctl --user enable --now echegaray-balanz-vigia.timer
+
+# ── EL VIGÍA NO SE HABILITA. DECISIÓN DEL DUEÑO, 03/08/2026 ─────────────────────────────────────
+#
+# El Tesorero funciona SÓLO A PEDIDO: sin corridas agendadas y sin rondas de supervisión. Que el
+# navegador se recupere solo lo sigue haciendo Docker (`restart: unless-stopped`), y el análisis a
+# pedido levanta lo que falte antes de mirar el mercado.
+#
+# Habilitarlos acá "porque son útiles" volvería a poner al agente a correr solo, que es exactamente
+# lo que el dueño pidió que no pasara. Si algún día quiere volver:
+#   systemctl --user enable --now echegaray-balanz-vigia.timer   # vigilancia cada 15 min
+#   systemctl --user enable --now echegaray-tesorero.timer       # corridas 09:15 y 15:30
+systemctl --user disable --now echegaray-balanz-vigia.timer 2>/dev/null || true
+systemctl --user disable --now echegaray-tesorero.timer 2>/dev/null || true
 echo "servicios habilitados y arrancados."
 systemctl --user --no-pager status echegaray-orq-worker.service | head -6 || true
