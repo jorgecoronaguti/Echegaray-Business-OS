@@ -294,8 +294,15 @@ export async function correrCiclo(deps = {}, opts = {}) {
       .map((i) => normalizarInstrumento({ cotizado_en: obs.observadoEn, ...i }, obs))
       .concat((mercado.paginas || []).flatMap((p) => {
         if (p.estado !== 'ok') return []
+        // LA CATEGORÍA LA DECIDE LA PANTALLA, no sólo el nombre de la fila. En /cauciones TODAS las
+        // filas son cauciones, pero `categorizar()` sólo reconoce las que se llaman así: la fila de
+        // pesos dice "CAUCION PESOS" y cae bien, la de dólares dice "DOLARES" y caía en `otro`. El
+        // cotejo de la muestra viva lo encontró: el mismo instrumento, en la misma tabla, clasificado
+        // de dos formas distintas según cómo lo hubiera bautizado el bróker. Y con la categoría mal,
+        // la regla del plazo de la caución tampoco corre: quedaba además sin plazo de rescate.
+        const categoriaDePantalla = /\/cauciones(\?|$)/.test(p.url) ? 'caucion' : null
         const deTabla = p.tabla?.filas?.length
-          ? extraerDeTabla(p.tabla, { url: p.url, ...obs }).instrumentos : []
+          ? extraerDeTabla(p.tabla, { url: p.url, categoria: categoriaDePantalla, ...obs }).instrumentos : []
         const deTarjetas = p.tarjetas?.length
           ? extraerDeTarjetas(p.tarjetas, { url: p.url, ...obs }) : []
         if (deTabla.length || deTarjetas.length) return [...deTabla, ...deTarjetas]

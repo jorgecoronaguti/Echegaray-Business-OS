@@ -1309,3 +1309,30 @@ test('el unit del Tesorero carga el archivo donde vive el token del bot', () => 
   assert.ok(!/^\s*systemctl\s+--user\s+enable[^\n]*tesorero/m.test(install),
     'el instalador NO puede encender el timer del Tesorero por su cuenta')
 })
+
+test('en la pantalla de cauciones, TODAS las filas son cauciones', () => {
+  // El cotejo de la muestra viva (02/08/2026) encontró la inconsistencia: la fila de pesos se llama
+  // "CAUCION PESOS" y `categorizar()` la reconoce; la de dólares se llama sólo "DOLARES" y caía en
+  // `otro`. El mismo instrumento, en la misma tabla, clasificado de dos formas según cómo lo hubiera
+  // bautizado el bróker — y el de dólares quedaba fuera del universo de tesorería y sin plazo de
+  // rescate, porque esa regla sólo corre cuando la categoría es `caucion`.
+  const TABLA = {
+    cabecera: ['Ticker', 'Nombre', 'Plazo', 'Hora', 'TNA', 'Var(%)', 'Var', 'Volumen'],
+    filas: [
+      ['DOLAR', 'DOLARES', '72hs', '31/07/2026', '2.11', '0,00%', '0,00', '1.037.184.028'],
+      ['PESOS', 'CAUCION PESOS', '72hs', '31/07/2026', '10', '0,00%', '0,00', '8.449.076.556.363'],
+    ],
+  }
+  const sinPantalla = extraerDeTabla(TABLA, { url: '/x', observadoEn: HOY.toISOString() }).instrumentos
+  assert.equal(sinPantalla[0].categoria, 'otro', 'por el nombre solo, "DOLARES" no se reconoce')
+
+  const conPantalla = extraerDeTabla(TABLA, {
+    url: '/app/cotizaciones/cauciones', categoria: 'caucion', observadoEn: HOY.toISOString(),
+  }).instrumentos
+  assert.equal(conPantalla[0].categoria, 'caucion')
+  assert.equal(conPantalla[1].categoria, 'caucion')
+  assert.equal(conPantalla[0].moneda, 'USD')
+  assert.equal(conPantalla[0].plazo_rescate_dias, 3, 'con la categoría correcta, el plazo SÍ se lee')
+  assert.equal(conPantalla[0].liquidacion_dias, 0, 'y no se cuenta dos veces')
+  assert.notEqual(conPantalla[0].id, conPantalla[1].id)
+})
