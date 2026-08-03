@@ -68,7 +68,7 @@ import { skinRequests, MUTED, HAIR } from '../lib/estilo-statement.mjs'
 import { seccion, total } from '../lib/patron-pestana.mjs'
 import { conEdicionesRespetadas, guardarRegistro, autoRespetarReescritura } from '../lib/respetar-ediciones.mjs'
 import { firmaGuardia, sellarFirma } from '../lib/firma-tab.mjs'
-import { formulaUltimaFecha, rotuloAlDia } from '../lib/fecha-de-frescura.mjs'
+import { formulaUltimaFecha, formulaFrescuraDe, rotuloAlDia } from '../lib/fecha-de-frescura.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTANA = 'Cheques Emitidos'
@@ -111,14 +111,31 @@ export function bandaFilas(HDR) {
     //
     // LA FECHA DE CORTE SALE DEL REGISTRO, NO DEL RELOJ (03/08). Era `al ${new Date()}`: el día que
     // corría el script. El registro lo carga el DUEÑO a mano y cambia sin que corra nadie, así que
-    // el rótulo se quedaba atrás — medido en vivo: decía "al 24/7/2026" con cheques cargados al
-    // 03/08. Ahora es la fecha de emisión más nueva QUE YA PASÓ (columna C): la fórmula la recalcula
-    // el motor de Sheets al abrir la planilla, que es lo que pidió el dueño. `<=TODAY()` no es un
-    // detalle: la columna I trae fechas de pago diferidas y un MAX crudo haría que el corte dijera
-    // septiembre.
+    // el rótulo se quedaba atrás — medido en vivo: decía "al 24/7/2026" con el registro ya movido.
+    //
+    // ESTA PESTAÑA TIENE DOS PUERTAS, NO UNA (03/08). La primera versión miró sólo la emisión
+    // (columna C) y eso deja afuera la mitad del pedido del dueño: *"siempre q modifiques valores de
+    // caja con el extracto q te envio […] las fechas que aparecen se deben actualizar de manera
+    // automatica"*. MARCAR DEBITADO=SI ES UNA MODIFICACIÓN QUE VIENE DEL EXTRACTO —así se marcó el
+    // cheque FISICO 223— y con la emisión como única fuente ese hecho no movía nada, aunque sí
+    // mueve los dos números grandes de arriba (el comprometido y "con esto podés pagar").
+    //
+    //   frescura = MAX( última emisión ya ocurrida ; última fecha de pago de un cheque DEBITADO )
+    //
+    // POR QUÉ LA SEGUNDA PUERTA VA FILTRADA POR DEBITADO=SI y no es un MAX pelado de la columna I.
+    // La columna I trae la fecha de pago de TODOS los cheques, debitados o no, y para los que no se
+    // debitaron es una PREVISIÓN. Un cheque diferido a hoy que el banco todavía no debitó haría que
+    // el rótulo declarara frescura por algo que no ocurrió (Regla de Oro 2). Con el filtro, sólo
+    // cuenta el hecho: el banco lo debitó y alguien lo registró.
+    //
+    // `<=TODAY()` en las dos: la columna I trae diferidos a septiembre y un MAX crudo haría que el
+    // corte dijera septiembre.
     fila(rotuloAlDia(
       'Cuánto de lo firmado todavía no salió de la cuenta, y cuándo sale · registro de tesorería',
-      formulaUltimaFecha(C),
+      formulaFrescuraDe([
+        formulaUltimaFecha(C),
+        formulaUltimaFecha(I, { cuando: `(UPPER(${K})="SI")` }),
+      ]),
       { cola: 'en pesos' },
     )),
     fila(),

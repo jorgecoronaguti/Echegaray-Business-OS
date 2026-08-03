@@ -578,6 +578,7 @@ test('NO se afirma nada más allá de donde llega el calendario (el bloque E pro
 
 test('la deuda comercial vencida sale de los movimientos ya leídos, no de una segunda lectura', () => {
   const flujo = {
+    estado: 'ok',
     movimientos: [
       { status: 'vencido', direction: 'out', sheet_name: 'Compras', amount: 5351225 },
       { status: 'vencido', direction: 'out', sheet_name: 'Compras', amount: 1000000 },
@@ -589,7 +590,17 @@ test('la deuda comercial vencida sale de los movimientos ya leídos, no de una s
   const v = vencidoComercialDe(flujo)
   assert.equal(v.monto, 6351225)
   assert.equal(v.n, 2)
-  assert.equal(vencidoComercialDe({ movimientos: [] }), null, 'sin vencidos es null, no un cero que parezca dato')
+  // CAMBIÓ EL CRITERIO, Y SE DECLARA. Este test afirmaba que "sin vencidos es null, no un cero que
+  // parezca dato". La intención era buena —no fabricar un cero— pero en producción hizo daño: `null`
+  // se traduce aguas abajo en "hay datos faltantes" y eso bloquea toda propuesta de inversión, así
+  // que una empresa sin deuda vencida quedaba castigada por no tenerla (03/08: "0 publicables · 2
+  // rechazadas"). La distinción correcta no es "hay vencidos o no", es "¿pude mirar Compras?".
+  // Sin poder mirar sigue siendo null; mirando y sin vencidos, es un cero real. Ver
+  // deuda-comercial-cero.test.mjs.
+  assert.equal(vencidoComercialDe({ movimientos: [] }), null, 'un flujo que no se pudo leer sigue siendo null')
+  const cero = vencidoComercialDe({ estado: 'ok', pestanas_leidas: ['Compras'], movimientos: [] })
+  assert.equal(cero.monto, 0, 'Compras leída y sin vencidos es un CERO REAL')
+  assert.equal(cero.leido, true)
 })
 
 test('los dólares y los cheques en cartera NO financian una colocación en pesos', () => {

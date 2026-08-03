@@ -19,6 +19,9 @@ import { escribirFajo, aFajoJson } from './escritura.mjs'
 import { aplicarCorreccion } from './dialogo.mjs'
 import { entraEnElFajo, colapsarRepetidos, resumenFajo, ESTADO } from '../../lib/comprobantes/fajo.mjs'
 import { normalizarLectura, claveComprobante } from '../../lib/comprobantes/lectura.mjs'
+import { conciliarConArca } from '../../lib/comprobantes/arca.mjs'
+import { imputacionDeAnotacion } from '../../lib/comprobantes/imputacion.mjs'
+import { buscarEnCompras, indexarCompras } from '../../lib/comprobantes/compras-vivas.mjs'
 import { repoMemoria, portGuarda } from './dobles.mjs'
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url))
@@ -54,6 +57,10 @@ test('el ÚNICO archivo del módulo que nombra la API del modelo es el que lee l
   const entradas = [
     path.join(AQUI, 'guarda.mjs'), path.join(AQUI, 'repositorio.mjs'),
     path.join(AQUI, 'escritura.mjs'), path.join(AQUI, 'dialogo.mjs'), path.join(AQUI, 'accion.mjs'),
+    // El flujo entra desde el 03/08: ahora alcanza la conciliación con ARCA, la pestaña Compras viva
+    // y el matcheo de lo escrito a mano. Los tres tienen que seguir siendo aritmética y texto — la
+    // única llamada a un modelo la hace el `leer` que se le INYECTA, nunca un import suyo.
+    path.join(AQUI, 'flujo.mjs'),
   ]
   const modulos = new Set()
   for (const e of entradas) for (const m of arbolDeImports(e)) modulos.add(m)
@@ -107,4 +114,18 @@ test('normalizar una lectura ya hecha es puro: el modelo se usó ANTES, una vez'
   const { comprobante } = normalizarLectura({ emisor: 'X', letra: 'A', numero: '1-1', fecha: '01/01/2026', total: '100,00' })
   assert.equal(comprobante.total, 100)
   assert.equal(aFajoJson([item()]).length, 1)
+})
+
+test('la conciliación con ARCA y el matcheo de lo manuscrito son aritmética, no razonamiento', () => {
+  // Son las dos capacidades que se agregaron el 03/08 y las dos tenían una versión "obvia" que
+  // habría sido pedirle a un modelo que dijera si dos comprobantes son el mismo, o a qué obra va
+  // una anotación. Las dos habrían costado plata por comprobante y las dos habrían sido inauditables.
+  const c = { cuit: '23369111574', tipo: 'A', numero: '0004-00036542', fecha: '30/07/2026', total: 62000 }
+  const r = conciliarConArca(c, [{
+    emisor_cuit: '23369111574', punto_venta: '4', numero: '3642', cae: '86316017919602',
+    fecha_emision: '2026-07-30', imp_total: 62000,
+  }])
+  assert.equal(r.numeroArca, '0004-00003642')
+  assert.equal(imputacionDeAnotacion('Messinas BSA', { obras: ['MESSINA', 'ARCOR'] }).obra, 'MESSINA')
+  assert.equal(buscarEnCompras(c, indexarCompras([])), null)
 })

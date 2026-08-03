@@ -239,12 +239,20 @@ export async function modeloLiquidez(deps = {}, hoy = new Date(), opts = {}) {
  * la realidad única prohíbe. El motor ahora las nombra por separado y las suma para decidir.
  */
 function bloqueComercial(v) {
-  if (!v || !(Number(v.monto) > 0)) return { estado: 'sin dato', motivo: 'no se recibió la deuda comercial vencida' }
+  // UN CERO LEÍDO ES UN DATO, NO UNA AUSENCIA. Antes cualquier monto que no fuera mayor que cero caía
+  // en "sin dato", así que no deber nada vencido se reportaba igual que no haber podido mirar — y
+  // aguas abajo eso bloquea toda propuesta de inversión. Quien lee Compras marca `leido: true` cuando
+  // efectivamente la miró; ahí el cero es un hecho y se declara como tal.
+  if (!v) return { estado: 'sin dato', motivo: 'no se recibió la deuda comercial vencida' }
+  const monto = Number(v.monto) || 0
+  if (!v.leido && !(monto > 0)) return { estado: 'sin dato', motivo: 'no se recibió la deuda comercial vencida' }
   return {
     estado: 'ok',
-    vencido: Math.round(Number(v.monto)),
+    vencido: Math.round(monto),
     n: Number(v.n) || 0,
-    evidencia: 'real — Compras del Cash Flow, filas "Pendiente" con vencimiento cumplido',
+    evidencia: monto > 0
+      ? 'real — Compras del Cash Flow, filas "Pendiente" con vencimiento cumplido'
+      : 'real — Compras se leyó entera y no hay una sola fila vencida',
   }
 }
 

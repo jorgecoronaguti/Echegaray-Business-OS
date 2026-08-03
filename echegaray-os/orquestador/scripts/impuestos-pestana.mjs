@@ -39,6 +39,7 @@ import { resolverColumnas, rango } from '../lib/compras-columnas.mjs'
 // ubica POR TEXTO en la columna A, así que el texto es el contrato entre las dos pestañas y tiene una
 // sola definición. Ver el bloque "EL CALENDARIO FISCAL" en lib/cash-flow-lineas.mjs.
 import { CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
+import { formulaUltimaFecha, formulaUltimoPeriodo, rotuloPorFuente, DIAS_AVISO_MENSUAL } from '../lib/fecha-de-frescura.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Impuestos y Financieros'
@@ -83,6 +84,11 @@ const IIBB_COLS = [
 /** Dónde vive cada columna de _IIBB_RAW, para no buscarla por posición a ojo. */
 const IIBB_COL = { periodo: 'A', base: 'B', alicuota: 'C', impuesto: 'D', retenciones: 'E', saldoAnt: 'F' }
 const IIBB_FILA0 = 4  // primera fila de datos (título, nota, encabezados, datos)
+
+/** Las otras dos réplicas que alimentan esta pestaña. Sus columnas son contrato, igual que las de IIBB. */
+export const ARCA_RAW = '_ARCA_RAW'
+const ARCA_FILA0 = 4
+export const BANCO_RAW = '_BANCO_RAW'
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
@@ -170,10 +176,32 @@ function grilla(iva, planes, iibb, ivaOficial, C) {
       totaliza ? `=SUM($B${f}:$M${f})` : VACIO, origen])
   }
   const cabecera = () => push(['Concepto', ...MES.map((m) => `'${m}-${String(AÑO).slice(2)}`), 'Total', 'De dónde sale'])
-  const hoy = new Date().toISOString().slice(0, 10)
 
   push(['Impuestos y financiero'])
-  push([`Qué se le debe al fisco, qué está inmovilizado y qué se debe con instrumento · IVA de ARCA · IIBB y F931 de las DDJJ de Rentas (Drive) · prendario del extracto Santander · retenciones de Cobranzas · al ${hoy}`])
+  // EL SUBTÍTULO DECLARA LA FRESCURA DE CADA FUENTE POR SEPARADO, Y NO UNA SOLA FECHA (03/08).
+  //
+  // Era `al ${new Date()}` —el día de la corrida— y el arreglo obvio, un MAX sobre las cuatro
+  // fuentes, es PEOR que el texto estampado: ARCA y el extracto llegan a ayer, pero las DDJJ de IIBB
+  // salen de los PDF de Rentas y se quedan en el último período presentado. El MAX pondría la fecha
+  // de ARCA arriba de un cuadro de IIBB que no se mueve desde junio, y el dueño leería como fresco un
+  // número que tiene un mes y medio. La regla y el porqué, en lib/fecha-de-frescura.mjs.
+  //
+  // El texto fijo se acortó a propósito: antes enumeraba las fuentes en prosa ("IVA de ARCA · IIBB y
+  // F931 de las DDJJ de Rentas (Drive) · prendario del extracto Santander …") y ahora cada una
+  // aparece con SU fecha al lado. Repetir la lista dos veces en la misma línea sólo la hacía más
+  // larga sin decir nada nuevo.
+  push([rotuloPorFuente('Qué se le debe al fisco, qué está inmovilizado y qué se debe con instrumento', [
+    // Los comprobantes de ARCA: fecha del comprobante. Diaria — se replica en cada corrida.
+    { nombre: 'IVA de ARCA', expr: formulaUltimaFecha(`${ARCA_RAW}!$C$${ARCA_FILA0}:$C`) },
+    // IIBB: NO la fecha en que se bajó el PDF sino el PERÍODO que la DDJJ cubre. Una DDJJ de junio
+    // presentada el 16/07 habla de junio; declarar el 16/07 sería declarar frescura de la gestión
+    // administrativa, no del dato. El umbral es mensual: con 7 días el ⚠ estaría prendido siempre.
+    { nombre: 'IIBB', expr: formulaUltimoPeriodo(`${IIBB_RAW}!$${IIBB_COL.periodo}$${IIBB_FILA0}:$${IIBB_COL.periodo}`), avisoDias: DIAS_AVISO_MENSUAL },
+    // El extracto: de acá salen el prendario y el impuesto al cheque.
+    { nombre: 'banco', expr: formulaUltimaFecha(`${BANCO_RAW}!$A$4:$A`) },
+    // Las retenciones sufridas se imputan al mes del COBRO: su frescura es la del último cobro.
+    { nombre: 'retenciones', expr: formulaUltimaFecha('Cobranzas!$Q$5:$Q') },
+  ])])
   push()
   // EL HERO se RESERVA acá y se llena al final con referencias a las celdas de los bloques de abajo
   // —ni un número pegado—. Es lo primero que se ve: la posición, con su origen al lado.
@@ -278,7 +306,7 @@ function grilla(iva, planes, iibb, ivaOficial, C) {
   // fila en Compras ni en el banco. No se estiman — se nombran como gap, que es lo único honesto.
   push([seccion(4, 'Otros impuestos — ¿qué más se paga y no estaba a la vista?')])
   cabecera()
-  const B = '_BANCO_RAW'
+  const B = BANCO_RAW
   // −IMPORTE, NO ABS(IMPORTE) (31/07). El extracto trae los débitos en negativo, así que ABS y "−" dan
   // lo mismo… salvo cuando el banco DEVUELVE el impuesto. "Anul imp ley 25.413 debito 0,6%" es un
   // crédito de +$294,78: con ABS se sumaba como si fuera un impuesto MÁS, o sea el cuadro declaraba

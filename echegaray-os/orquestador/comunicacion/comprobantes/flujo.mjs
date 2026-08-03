@@ -9,16 +9,21 @@
 //   1. ¿está aplicada la migración?   → si no, se dice; no se revienta.
 //   2. LA PUERTA (canal + permiso)    → antes de bajar un solo byte y antes de gastar un token.
 //   3. bajar los adjuntos             → sólo lo que un modelo de visión puede mirar.
-//   4. leer cada uno                  → una llamada por comprobante, en paralelo acotado.
-//   5. matchear proveedor y obra      → contra los desplegables ESTRICTOS; sin match, se pregunta.
-//   6. ¿ya está cargado?              → por (CUIT, tipo, número), ANTES de mostrar nada.
-//   7. abrir o ampliar el fajo        → un mensaje con botones, no una cascada.
+//   4. leer cada uno                  → una llamada por comprobante, con revisión si dudó.
+//   5. matchear proveedor, obra y detalle → contra el desplegable ESTRICTO y el vocabulario vivo de
+//                                       la columna K; sin match inequívoco, se pregunta.
+//   6. conciliar contra ARCA          → corrige el número mal leído ANTES de deduplicar con él.
+//   7. ¿ya está cargado?              → por (CUIT, tipo, número) en el registro Y en Compras VIVO.
+//   8. abrir o ampliar el fajo        → un mensaje con botones, no una cascada.
 //
 // NO ESCRIBE EN EL SHEET. Ni acá ni por accidente: la escritura vive en `escritura.mjs` y sólo la
 // dispara un Confirmar.
 
 import { matchProveedor } from '../../lib/carga-comprobantes.mjs'
-import { normalizarLectura, claveComprobante, obraDeAnotacion, MEDIA_SOPORTADOS, MAX_BYTES_ADJUNTO } from '../../lib/comprobantes/lectura.mjs'
+import { normalizarLectura, claveComprobante, MEDIA_SOPORTADOS, MAX_BYTES_ADJUNTO } from '../../lib/comprobantes/lectura.mjs'
+import { imputacionDeAnotacion } from '../../lib/comprobantes/imputacion.mjs'
+import { conciliarConArca, aplicarArca, ESTADO_ARCA } from '../../lib/comprobantes/arca.mjs'
+import { buscarEnCompras, HALLAZGO } from '../../lib/comprobantes/compras-vivas.mjs'
 import { colapsarRepetidos, entraEnElFajo, mensajeFajo, ESTADO } from '../../lib/comprobantes/fajo.mjs'
 import { puedeCargarComprobantes } from './guarda.mjs'
 import * as repoReal from './repositorio.mjs'
@@ -79,21 +84,35 @@ export function armarItem({ lectura, adjunto, listas, textoPost = null } = {}) {
 
   let proveedorNuevo = false
   if (listasOk && comprobante.proveedor) {
-    const m = matchProveedor(comprobante.proveedor, listas.proveedores)
+    // EL DESPLEGABLE ES EL ÁRBITRO, NO EL MODELO. Cuando hubo revisión, las dos pasadas pueden haber
+    // leído nombres distintos del mismo membrete ("Néstor Rubén Corralón Progreso" y "MATERIALES DE
+    // CONSTRUCCION"): se prueban las dos contra la lista estricta y gana la que matchea. Si ninguna
+    // matchea, queda la principal marcada como nueva, igual que antes.
+    let m = matchProveedor(comprobante.proveedor, listas.proveedores)
+    if (m.esNuevo && comprobante.proveedorAlt) {
+      const alt = matchProveedor(comprobante.proveedorAlt, listas.proveedores)
+      if (!alt.esNuevo) m = alt
+    }
     comprobante.proveedor = m.valor
     proveedorNuevo = m.esNuevo === true
   }
+  delete comprobante.proveedorAlt
 
   // 1º el papel, 2º lo que escribió la persona. Nunca al revés.
-  const obras = listas?.obras ?? []
-  let obra = obraDeAnotacion(comprobante.anotacion, obras)
-  let obraVia = obra ? 'comprobante' : null
-  if (!obra) {
-    const porTexto = obraDeAnotacion(textoPost, obras)
-    if (porTexto) { obra = porTexto; obraVia = 'mensaje' }
+  const vocabulario = { obras: listas?.obras ?? [], detalles: listas?.detalles ?? {} }
+  let imp = imputacionDeAnotacion(comprobante.anotacion, vocabulario)
+  let obraVia = imp.obra ? 'comprobante' : null
+  if (!imp.obra) {
+    const porTexto = imputacionDeAnotacion(textoPost, vocabulario)
+    if (porTexto.obra) { imp = porTexto; obraVia = 'mensaje' }
   }
-  comprobante.obra = obra?.valor ?? null
+  comprobante.obra = imp.obra ?? null
   comprobante.obraVia = obraVia
+  // K "Detalles / Obra" no tiene desplegable: su lista legítima es el vocabulario que el dueño ya
+  // usó en esa obra. Se completa sólo cuando la anotación identifica UNO solo; si "BSA" puede ser
+  // tres detalles distintos de MESSINA, la obra queda resuelta y el detalle vacío.
+  comprobante.detalleObra = imp.detalle ?? null
+  comprobante.detalleVia = imp.detalleVia ?? null
 
   const k = claveComprobante(comprobante)
   return {
@@ -109,6 +128,63 @@ export function armarItem({ lectura, adjunto, listas, textoPost = null } = {}) {
 }
 
 /**
+ * Concilia un ítem contra el padrón de ARCA: corrige el número mal leído y completa el CUIT.
+ *
+ * VA ANTES DEL COLAPSO Y DE LA IDEMPOTENCIA, y ese orden es todo el arreglo: la clave de
+ * deduplicación se arma con el número, así que corregirlo después sería corregirlo tarde. Con
+ * `0004-00036542` el comprobante no colapsaba contra el que ya estaba en Compras; con el número
+ * bueno, sí.
+ *
+ * `arcaDe` es inyectable y puede no estar: sin ella el ítem queda `no_verificado` y se declara. No
+ * poder consultar ARCA nunca bloquea la carga — bloquearla convertiría una integración en un muro.
+ */
+export async function conciliarItems(items = [], arcaDe) {
+  if (typeof arcaDe !== 'function') {
+    for (const it of items) it.arca = { estado: ESTADO_ARCA.NO_VERIFICADO }
+    return items
+  }
+  for (const it of items) {
+    try {
+      const filas = await arcaDe(it.comprobante ?? {})
+      const r = conciliarConArca(it.comprobante ?? {}, filas ?? [])
+      it.arca = aplicarArca(it.comprobante ?? {}, r)
+      const k = claveComprobante(it.comprobante ?? {})
+      it.clave = k?.clave ?? null
+      it.claveFuerte = k?.fuerte ?? false
+    } catch {
+      // Una consulta caída no puede tumbar la lectura de una foto que ya se pagó.
+      it.arca = { estado: ESTADO_ARCA.NO_VERIFICADO }
+    }
+  }
+  return items
+}
+
+/**
+ * ¿Alguno de estos comprobantes ya está en la pestaña Compras VIVA?
+ *
+ * Es distinto de `marcarYaCargados`, que sólo mira lo que entró por el chat. El caso real entró por
+ * Claude Code: el registro propio no lo tenía y el destino sí. Un hallazgo por tipo+número es
+ * certeza (`yaCargado`); uno por proveedor+fecha+importe con otro número es un PROBABLE duplicado
+ * que se pregunta con botones, nunca se resuelve solo.
+ */
+export function marcarEnCompras(items = [], indice = null) {
+  if (!indice?.ok) return items
+  for (const it of items) {
+    const r = buscarEnCompras(it.comprobante ?? {}, indice)
+    if (!r) continue
+    if (r.que === HALLAZGO.CARGADO && !it.yaCargado) {
+      it.yaCargado = { fila: r.fila, hoja: r.hoja, fuente: 'Compras', obra: r.obra, detalle: r.detalle }
+    } else if (r.que === HALLAZGO.PROBABLE && !it.yaCargado) {
+      it.posibleDuplicado = {
+        fila: r.fila, hoja: r.hoja, numero: r.numero, fecha: r.fecha, total: r.total,
+        obra: r.obra, detalle: r.detalle, proveedor: r.proveedor, otras: r.otras ?? 0,
+      }
+    }
+  }
+  return items
+}
+
+/**
  * Procesa un post con adjuntos. Es el punto de entrada del especialista.
  *
  * @param {object} d  dependencias inyectadas
@@ -116,13 +192,18 @@ export function armarItem({ lectura, adjunto, listas, textoPost = null } = {}) {
  * @param {object} d.mattermost   cliente con `archivoInfo` y `archivo`
  * @param {Function} d.leer       (adjunto) => {ok, crudo}   — el modelo de visión
  * @param {Function} d.listas     () => {ok, proveedores, obras}
+ * @param {Function} [d.arcaDe]   (comprobante) => filas candidatas de public.comprobantes_arca
+ * @param {Function} [d.comprasDe] () => índice de la pestaña Compras viva (`compras-vivas.mjs`)
  * @param {string} d.url          URL de callback CON el secreto en la query
  * @param {object} [d.log]
  * @param {object} m  el mensaje
  * @returns {Promise<{texto:string, attachments?:Array, estado:string, fajoId?:string}>}
  */
 export async function procesarPost(d, m = {}) {
-  const { port, mattermost, leer, listas, url, log } = d
+  // `arcaDe` y `comprasDe` son OPCIONALES y por eso están fuera del destructuring con default: sin
+  // ellas el flujo funciona igual y lo declara. Que el padrón de ARCA no conteste no puede impedir
+  // que una foto se lea.
+  const { port, mattermost, leer, listas, url, log, arcaDe, comprasDe } = d
   // El repositorio entra INYECTABLE (default: el real). Es la costura que permite probar el flujo
   // entero —puerta, lectura, agrupado, idempotencia, mensaje— con un doble en memoria, sin Postgres.
   const repo = d.repo ?? repoReal
@@ -153,26 +234,37 @@ export async function procesarPost(d, m = {}) {
   }
 
   // 4) Leer con el modelo. Una llamada por adjunto.
-  const listasVivas = await listas()
+  //    Compras VIVO se lee una sola vez y sirve para dos cosas: el vocabulario de la columna K con el
+  //    que se resuelve lo escrito a mano, y el índice contra el que se busca el duplicado.
+  const [listasVivas, indiceCompras] = await Promise.all([
+    listas(),
+    typeof comprasDe === 'function' ? comprasDe().catch(() => null) : Promise.resolve(null),
+  ])
+  const vocabulario = { ...listasVivas, detalles: indiceCompras?.detalles ?? {} }
   const items = []
   for (const a of bajados) {
     const r = await leer(a)
     if (!r?.ok) { problemas.push(`· ${a.nombre}: ${r?.error ?? 'no pude leerlo'}`); continue }
     // El texto del post vale para TODOS sus adjuntos: mandar cinco fotos con un solo "ARCOR" arriba
     // es la forma en que se manda un fajo de una misma obra.
-    items.push(armarItem({ lectura: r.crudo, adjunto: a, listas: listasVivas, textoPost: m.texto ?? null }))
+    items.push(armarItem({ lectura: r.crudo, adjunto: a, listas: vocabulario, textoPost: m.texto ?? null }))
   }
   if (!items.length) {
     return { texto: [TEXTO.NADA_LEGIBLE, ...(problemas.length ? ['', ...problemas] : [])].join('\n'), estado: 'ilegible' }
   }
 
-  // 5) Colapsar los repetidos del propio envío (la misma factura fotografiada dos veces).
+  // 5) ARCA, ANTES de colapsar: corrige el número mal leído, que es justo con lo que se deduplica.
+  await conciliarItems(items, arcaDe)
+
+  // 6) Colapsar los repetidos del propio envío (la misma factura fotografiada dos veces).
   const { items: unicos } = colapsarRepetidos(items)
 
-  // 6) ¿Ya estaban cargados? Se pregunta ANTES de mostrar, para que se vea junto con todo lo demás.
+  // 7) ¿Ya estaban cargados? En el registro del chat Y en la pestaña Compras VIVA: el comprobante
+  //    pudo haber entrado por Claude Code o a mano, que es exactamente lo que pasó.
   await marcarYaCargados(port, unicos, repo)
+  marcarEnCompras(unicos, indiceCompras)
 
-  // 7) Abrir o ampliar el fajo.
+  // 8) Abrir o ampliar el fajo.
   const abierto = await repo.fajoAbierto(port, {
     plataforma: m.plataforma ?? 'mattermost', userId: m.actor?.plataforma_user_id, channelId: m.channelId,
   })
