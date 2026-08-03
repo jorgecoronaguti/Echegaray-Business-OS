@@ -8,24 +8,45 @@
 // bloquea el derrame. Como los cruces del Sheet (Cash Flow, Proveedores, CAJA, Cheques) ya son
 // fórmulas ABIERTAS sobre Compras, un comprobante bien cargado se propaga solo.
 //
-// FLUJO: cruza contra ARCA (duplicados) → matchea proveedor contra el desplegable estricto → asegura
-// la grilla → escribe input → estampa fórmulas → verifica (sin #ERROR, totales) → reporta nuevos
-// proveedores y duplicados. Después conviene: node scripts/sync-compras.mjs (→ Supabase, regla #6).
+// FLUJO: lee la pestaña Compras VIVA (una sola vez) → matchea proveedor contra el desplegable
+// estricto → concilia contra ARCA (corrige el número mal leído) → busca el DUPLICADO en Compras →
+// asegura la grilla → escribe input → estampa fórmulas → verifica (sin #ERROR, totales) → reporta.
+// Después conviene: node scripts/sync-compras.mjs (→ Supabase, regla #6).
 //
-//   node orquestador/scripts/cargar-comprobantes-compras.mjs --file fajo.json [--dry]
+// ═══ LAS TRES BARRERAS SON LAS MISMAS QUE LAS DEL BOT (03/08) ═══
+//
+// Este script y el bot de Mattermost comparten la escritura desde el principio (el bot lo INVOCA;
+// ver `comunicacion/comprobantes/escritura.mjs`), pero decidían distinto sobre tres cosas, y en las
+// tres el bot era el que sabía más:
+//   · el DUPLICADO contra Compras viva (`compras-vivas.mjs`) sólo lo miraba el bot — por eso Claude
+//     Code cargó dos veces un tique de Combustibles Barcelo que ya estaba en la fila 800;
+//   · ARCA se conciliaba acá con un índice por NÚMERO PELADO, que da falsos positivos entre dos
+//     proveedores con el mismo correlativo. Ahora se usa `arca.mjs`: CAE, CUIT+fecha+total,
+//     CUIT+número, con coincidencia ÚNICA obligatoria, y corrige el número leído mal;
+//   · "¿qué le falta a este comprobante?" tenía dos definiciones. Ahora es una (`faltantes.mjs`) y
+//     lo que difiere es la POLÍTICA: acá la obra NO se exige, en el chat sí. Es una decisión de
+//     negocio del dueño que todavía no tomó — está declarada allá, no repartida en dos archivos.
+//
+//   node orquestador/scripts/cargar-comprobantes-compras.mjs --file fajo.json [--dry] [--cargar-igual]
 
 import { readFileSync } from 'node:fs'
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
-import { matchProveedor, valoresInput, validar, discrepanciaNeto, verificarEscritura, colIndice, GRUPOS_FORMULA } from '../lib/carga-comprobantes.mjs'
+import { matchProveedor, valoresInput, aFechaAR, discrepanciaNeto, verificarEscritura, colIndice, GRUPOS_FORMULA } from '../lib/carga-comprobantes.mjs'
+import { faltantesDe, puedeCargarse, POLITICA } from '../lib/comprobantes/faltantes.mjs'
 import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
 import { perfilesDeImputacionDesdeDB, perfilesDeImputacion, sugerirImputacion } from '../lib/imputacion-aprendida.mjs'
-import { historiaDeCompras, RANGO as RANGO_COMPRAS } from '../lib/comprobantes/compras-vivas.mjs'
+import { indiceDeCompras, buscarEnCompras, HALLAZGO } from '../lib/comprobantes/compras-vivas.mjs'
+import { conciliarConArca, aplicarArca, candidatasArca, ESTADO_ARCA } from '../lib/comprobantes/arca.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
 const ADD_PROV = process.argv.includes('--add-proveedores')
+// "Ya lo revisé, no es el mismo: cargalo." Es el equivalente por línea de comandos del botón "Es
+// otro, cargalo" del bot, y sólo levanta los PROBABLES. Una coincidencia CIERTA —mismo número y
+// mismo total— no la levanta ninguna bandera: para eso habría que borrar la fila que ya está.
+const CARGAR_IGUAL = process.argv.includes('--cargar-igual')
 // SALIDA LEGIBLE POR OTRO PROGRAMA (`--json`). Aditiva y apagada por defecto: sin la bandera este
 // script imprime exactamente lo que imprimía. Existe porque el bot de Mattermost necesita contestarle
 // al dueño EN QUÉ FILA quedó cada comprobante, y sacar un número de fila parseando prosa es la clase
@@ -52,17 +73,6 @@ async function listaProveedores(google) {
     if (dv?.condition?.type === 'ONE_OF_LIST') return dv.condition.values.map((v) => v.userEnteredValue)
   }
   return []
-}
-
-/** Comprobantes de ARCA para detectar duplicados: clave laxa por número y por CUIT. */
-async function indiceArca() {
-  const { rows } = await query('select emisor_cuit, punto_venta, numero, imp_total::float8 imp_total from comprobantes_arca').catch(() => ({ rows: [] }))
-  const porNumero = new Map()
-  for (const r of rows) {
-    const num = String(r.numero ?? '').replace(/\D/g, '').replace(/^0+/, '')
-    if (num) porNumero.set(num, r)
-  }
-  return { porNumero, total: rows.length }
 }
 
 /** Traduce lo que devolvió la escritura en la razón HUMANA de por qué el destino quedó como quedó. */
@@ -113,15 +123,141 @@ export async function escribirYVerificar(google, { desde, hasta, plan, fileId = 
   return { ok: false, congelado: respuesta?.congelado === true, motivo: porQueNoEntro(respuesta, Boolean(leido)), ...v, respuesta }
 }
 
+/** Concilia contra el padrón. MUTA el comprobante: le corrige el número, el CUIT y el CAE. */
+async function conciliar(cc, arcaDe) {
+  if (typeof arcaDe !== 'function') return { estado: ESTADO_ARCA.NO_VERIFICADO }
+  try {
+    return aplicarArca(cc, conciliarConArca(cc, (await arcaDe(cc)) ?? []))
+  } catch {
+    // Que el padrón no conteste no puede frenar una carga: se declara y se sigue.
+    return { estado: ESTADO_ARCA.NO_VERIFICADO }
+  }
+}
+
 /**
- * Los perfiles de imputación leídos de la pestaña Compras VIVA. Null si no se pudo leer, para que
- * quien llame caiga al espejo de Postgres. Sólo lectura: no toca una celda.
+ * UN comprobante del fajo → el ítem con todo lo que se sabe de él. Es el mismo orden que usa el bot
+ * (`comunicacion/comprobantes/flujo.mjs`) y ese orden ES el arreglo: ARCA corrige el número ANTES de
+ * buscar el duplicado, porque el duplicado se busca justamente por número.
+ *
+ * @returns {Promise<{item:object, arca:object, prov:object, hallazgo:object|null}>}
  */
-async function perfilesVivos(google) {
-  const filas = await google.readSheetValues(ID, RANGO_COMPRAS)
-  const historia = historiaDeCompras(filas ?? [])
-  if (!historia.length) return null
-  return { ...perfilesDeImputacion(historia), disponible: true, nota: `${historia.length} filas de Compras (pestaña viva)` }
+export async function prepararUno(c = {}, { lista = [], indiceCompras = null, arcaDe = null, cargarIgual = false } = {}) {
+  const prov = matchProveedor(c.proveedor, lista)
+  // La fecha se canoniza ANTES que nada: ARCA la exige en DD/MM/AAAA y el índice de Compras compara
+  // contra ese mismo formato. Un "5/1/2026" sin normalizar no matchea nada y el duplicado pasa.
+  const cc = { ...c, proveedor: prov.valor, fecha: aFechaAR(c.fecha) ?? c.fecha ?? null }
+  const arca = await conciliar(cc, arcaDe)
+  const hallazgo = indiceCompras?.ok === false ? null : buscarEnCompras(cc, indiceCompras ?? {})
+  const item = {
+    comprobante: cc,
+    proveedorNuevo: prov.esNuevo === true,
+    // La resolución puede venir en el propio fajo (el botón "Es otro, cargalo" del bot) o de la
+    // bandera. Las dos dicen lo mismo: una persona ya miró la fila candidata.
+    duplicadoResuelto: c.duplicadoResuelto ?? (cargarIgual ? 'otro' : null),
+  }
+  if (hallazgo?.que === HALLAZGO.CARGADO) item.yaCargado = hallazgo
+  else if (hallazgo?.que === HALLAZGO.PROBABLE) item.posibleDuplicado = hallazgo
+  return { item, arca, prov, hallazgo }
+}
+
+/**
+ * El fajo de entrada → el plan de filas a escribir, y todo lo que NO se escribe con su razón.
+ *
+ * NO TOCA LA RED por su cuenta: la pestaña ya viene leída y ARCA entra por `arcaDe`. Exportada para
+ * poder probar las tres barreras —duplicado, ARCA y qué le falta— sin Google, sin Postgres y sin
+ * escribir una celda.
+ */
+export async function prepararPlan(comprobantes = [], o = {}) {
+  const { perfiles = null } = o
+  const plan = []; const rechazos = []; const duplicados = []; const percep = []
+  const nuevos = new Set(); const arca = { coinciden: 0, corregidos: 0 }
+  for (const [i, c] of comprobantes.entries()) {
+    const { item, arca: bloque, prov } = await prepararUno(c, o)
+    const cc = item.comprobante
+    if (bloque.estado === ESTADO_ARCA.COINCIDE) { arca.coinciden++; if (bloque.numeroLeido) arca.corregidos++ }
+    // UN DUPLICADO NO ES UN PROBLEMA DE DATOS: se informa aparte para que no se lea como un
+    // comprobante ilegible. Es la barrera más cara de las tres — la que evita contar un gasto dos
+    // veces en el Flujo de Fondos, donde se propaga solo por fórmula a cuatro pestañas más.
+    if (item.yaCargado || (item.posibleDuplicado && !item.duplicadoResuelto)) {
+      const h = item.yaCargado ?? item.posibleDuplicado
+      duplicados.push({ i, cierto: Boolean(item.yaCargado), fila: h.fila, via: h.via ?? null, proveedor: cc.proveedor, numero: cc.numero ?? null })
+      continue
+    }
+    const problemas = faltantesDe(item, POLITICA.CARGADOR).map((f) => f.texto)
+    if (problemas.length || !puedeCargarse(item, POLITICA.CARGADOR)) {
+      rechazos.push({ i, proveedor: c.proveedor, problemas })
+      continue
+    }
+    if (prov.esNuevo) nuevos.add(prov.valor)
+    const dif = discrepanciaNeto(cc)
+    if (dif) percep.push({ i, proveedor: prov.valor, dif })
+    // SUGERENCIA de imputación (F8): aparece para que el dueño la vea; NO cambia lo que se escribe.
+    // Sólo si el comprobante no trae la imputación explícita (no pisamos lo que el dueño ya anotó).
+    const sug = perfiles && !cc.unidad && !cc.obra
+      ? sugerirImputacion({ proveedor: prov.valor, concepto: cc.concepto, monto: cc.total ?? cc.neto }, perfiles)
+      : null
+    // `i` = índice del comprobante en el fajo de ENTRADA. Va en el plan porque los rechazados no
+    // ocupan fila: sin él, quien llama no puede saber a qué comprobante suyo corresponde cada fila.
+    plan.push({ i, valores: valoresInput(cc), nuevo: prov.esNuevo, proveedor: prov.valor, sug })
+  }
+  // `revisadoContraCompras` viaja porque no poder mirar la pestaña NO es "no está cargado", y las dos
+  // cosas se ven iguales si nadie las distingue. Quien informe esto tiene que poder decir cuál fue.
+  return { plan, rechazos, duplicados, percep, nuevos: [...nuevos], arca, revisadoContraCompras: o.indiceCompras?.ok === true }
+}
+
+/** Lo que se decidió, para una persona. No decide nada: sólo cuenta lo que ya se decidió. */
+function informar({ plan, rechazos, duplicados, percep, nuevos, arca }, { ultima, desde, hasta, indiceCompras, perfiles }) {
+  console.log(`Compras: última fila con datos = ${ultima}. Se cargan ${plan.length} comprobante(s) → filas ${desde}..${hasta}.`)
+  // NO PODER MIRAR COMPRAS NO ES "NO ESTÁ CARGADO". Si se callara, una corrida ciega y una corrida
+  // verificada se verían iguales — y la ciega es justo la que puede duplicar un gasto.
+  if (!indiceCompras?.ok) console.log(`\n⚠ NO pude leer la pestaña Compras para buscar duplicados (${indiceCompras?.error ?? 'sin detalle'}). No afirmo que estos comprobantes no estén ya cargados.`)
+  if (duplicados.length) {
+    console.log(`\n⛔ ${duplicados.length} NO se cargan porque YA ESTÁN en Compras:`)
+    duplicados.forEach((d) => console.log(`   #${d.i} ${d.proveedor || '(sin proveedor)'} ${d.numero ?? ''} → fila ${d.fila}${d.cierto ? '' : ' (PROBABLE)'} [${d.via ?? 'sin vía'}]`))
+    if (duplicados.some((d) => !d.cierto)) console.log('   Los PROBABLES: si ya los miraste y no son el mismo, volvé a correr con --cargar-igual.')
+  }
+  if (rechazos.length) { console.log(`\n⚠ ${rechazos.length} NO se cargan (dato insuficiente, no se inventa):`); rechazos.forEach((r) => console.log(`   #${r.i} ${r.proveedor || '(sin proveedor)'}: ${r.problemas.join('; ')}`)) }
+  if (nuevos.length) console.log(`\n⚠ Proveedores NUEVOS (no están en el desplegable estricto — confirmá antes de fijarlos): ${nuevos.join(' · ')}`)
+  if (percep.length) console.log(`\nℹ Percepción/impuesto interno absorbido en Importe (M = Total − IVA, para que el Total cierre): ${percep.map((p) => `${p.proveedor} (+$${Math.round(p.dif).toLocaleString('es-AR')})`).join(' · ')}`)
+  // QUE ESTÉ EN ARCA NO ES UN DUPLICADO: toda factura electrónica recibida está en el padrón.
+  // Encontrarla ahí prueba que existe y da su número VERDADERO. El duplicado se busca en Compras.
+  if (arca.coinciden) console.log(`\nℹ ARCA: ${arca.coinciden} conciliado(s) contra el padrón${arca.corregidos ? ` — ${arca.corregidos} con el número corregido por el del libro fiscal` : ''}.`)
+  informarImputacion(plan, perfiles)
+}
+
+/**
+ * SUGERENCIA DE IMPUTACIÓN (F8) — el OS SUGIERE, el dueño CONFIRMA. Nunca imputa solo: estas filas se
+ * escriben con Unidad/Obra VACÍAS igual que siempre (las completa el dueño, y ahí el rubro
+ * reclasifica). Acá sólo se muestra qué imputó históricamente a proveedores parecidos, para que
+ * complete más rápido y corrija si hace falta — esa corrección re-alimenta el aprendizaje.
+ */
+function informarImputacion(plan, perfiles) {
+  const conSug = plan.filter((p) => p.sug)
+  if (!perfiles?.disponible) {
+    console.log('\nℹ Imputación aprendida: sin historia espejada todavía (public.costos_obra). La máquina mide; la historia recién arranca.')
+    return
+  }
+  if (!conSug.length) return
+  console.log('\n💡 Sugerencia de imputación (aprendida de cómo imputaste comprobantes parecidos — SUGIERE, no impone; completá/corregí vos):')
+  for (const p of conSug) {
+    const s = p.sug
+    const dim = (d) => d.sugerido ? `${d.sugerido}${d.pide_confirmacion ? ' (?)' : ' ✓'}` : '—'
+    console.log(`   ${p.proveedor}: unidad ${dim(s.unidad)} · obra ${dim(s.obra)} · detalle ${dim(s.detalle ?? {})} · rubro ${dim(s.rubro)}  [${s.pide_confirmacion ? 'confirmá' : 'alta confianza'}]`)
+    console.log(`      ↳ ${s.nota}`)
+  }
+  console.log('   (✓ = alta confianza · (?) = necesita tu confirmación)')
+}
+
+/**
+ * Los perfiles de imputación de la fuente más completa que haya. PRIMERO la pestaña viva —trae el
+ * detalle de la columna K separado del concepto y también las filas sin obra—, después el espejo
+ * `public.costos_obra`. Los dos entran por la MISMA función pura: no hay dos formas de aprender.
+ */
+async function perfilesDe(indiceCompras) {
+  if (indiceCompras?.ok && indiceCompras.historia?.length) {
+    return { ...perfilesDeImputacion(indiceCompras.historia), disponible: true, nota: `${indiceCompras.filas} filas de Compras (pestaña viva)` }
+  }
+  return perfilesDeImputacionDesdeDB({ query }).catch(() => null)
 }
 
 async function main() {
@@ -132,70 +268,28 @@ async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const meta = await google.getSheetMeta(ID)
   const hoja = meta.find((h) => h.title === 'Compras')
-  const [lista, arca, colE, perfiles] = await Promise.all([
-    listaProveedores(google), indiceArca(), google.readSheetValues(ID, 'Compras!E1:E'),
-    // IMPUTACIÓN QUE APRENDE (F8): perfiles de cómo el dueño imputó comprobantes parecidos. Sólo LEE
-    // y si no hay historia degrada declarándolo. La historia sale de la pestaña VIVA cuando se puede
-    // leer —trae el detalle de la columna K separado del concepto, que el espejo pega en un campo— y
-    // del espejo public.costos_obra cuando no. Es la MISMA lib que usa el bot de Mattermost: hay dos
-    // formas de leer la historia, una sola de aprenderla.
-    perfilesVivos(google).catch(() => null).then((p) => p ?? perfilesDeImputacionDesdeDB({ query }).catch(() => null)),
+  // UNA SOLA LECTURA DE LA PESTAÑA VIVA alimenta las dos cosas que hacen falta: el índice contra el
+  // que se busca el duplicado y la historia con la que `imputacion-aprendida.mjs` sugiere la
+  // imputación. Ya se leía para lo segundo; lo primero es lo que faltaba y no cuesta una consulta más.
+  const [lista, colE, indiceCompras] = await Promise.all([
+    listaProveedores(google), google.readSheetValues(ID, 'Compras!E1:E'), indiceDeCompras(google, { fileId: ID }),
   ])
+  const perfiles = await perfilesDe(indiceCompras)
   let ultima = 0
   colE.forEach((r, i) => { if (r[0] != null && r[0] !== '') ultima = i + 1 })
 
-  // Preparar cada fila: validar, matchear proveedor, cruzar ARCA.
-  const plan = []
-  const nuevos = new Set(); const dupes = []; const rechazos = []; const percep = []
-  for (const [i, c] of comprobantes.entries()) {
-    const prov = matchProveedor(c.proveedor, lista)
-    const cc = { ...c, proveedor: prov.valor }
-    const problemas = validar(cc)
-    if (problemas.length) { rechazos.push({ i, proveedor: c.proveedor, problemas }); continue }
-    if (prov.esNuevo) nuevos.add(prov.valor)
-    const num = String(c.numero ?? '').replace(/\D/g, '').replace(/^0+/, '')
-    const enArca = num && arca.porNumero.get(num)
-    if (enArca) dupes.push({ i, numero: c.numero, arcaTotal: enArca.imp_total })
-    const dif = discrepanciaNeto(c)
-    if (dif) percep.push({ i, proveedor: prov.valor, dif })
-    // SUGERENCIA de imputación (F8): aparece para que el dueño la vea; NO cambia lo que se escribe.
-    // Sólo si el comprobante no trae la imputación explícita (no pisamos lo que el dueño ya anotó).
-    const sug = perfiles && !cc.unidad && !cc.obra
-      ? sugerirImputacion({ proveedor: prov.valor, concepto: c.concepto, monto: c.total ?? c.neto }, perfiles)
-      : null
-    // `i` = índice del comprobante en el fajo de ENTRADA. Va en el plan porque los rechazados no
-    // ocupan fila: sin él, quien llama no puede saber a qué comprobante suyo corresponde cada fila.
-    plan.push({ i, valores: valoresInput(cc), nuevo: prov.esNuevo, proveedor: prov.valor, sug })
-  }
+  const { plan, rechazos, duplicados, percep, nuevos, arca } = await prepararPlan(comprobantes, {
+    lista, indiceCompras, perfiles, cargarIgual: CARGAR_IGUAL,
+    arcaDe: (c) => candidatasArca({ query }, c),
+  })
 
   const desde = ultima + 1
   const hasta = ultima + plan.length
-  console.log(`Compras: última fila con datos = ${ultima}. Se cargan ${plan.length} comprobante(s) → filas ${desde}..${hasta}.`)
-  if (rechazos.length) { console.log(`\n⚠ ${rechazos.length} NO se cargan (dato insuficiente, no se inventa):`); rechazos.forEach((r) => console.log(`   #${r.i} ${r.proveedor || '(sin proveedor)'}: ${r.problemas.join('; ')}`)) }
-  if (nuevos.size) console.log(`\n⚠ Proveedores NUEVOS (no están en el desplegable estricto — confirmá antes de fijarlos): ${[...nuevos].join(' · ')}`)
-  if (percep.length) console.log(`\nℹ Percepción/impuesto interno absorbido en Importe (M = Total − IVA, para que el Total cierre): ${percep.map((p) => `${p.proveedor} (+$${Math.round(p.dif).toLocaleString('es-AR')})`).join(' · ')}`)
-  if (dupes.length) console.log(`\nℹ Ya figuran en ARCA (posible duplicado, revisá): ${dupes.map((d) => `${d.numero} ($${Math.round(d.arcaTotal).toLocaleString('es-AR')})`).join(' · ')}`)
-
-  // SUGERENCIA DE IMPUTACIÓN (F8) — el OS SUGIERE, el dueño CONFIRMA. Nunca imputa solo: estas filas se
-  // escriben con Unidad/Obra VACÍAS igual que siempre (las completa el dueño, y ahí el rubro reclasifica).
-  // Acá sólo mostramos, por comprobante, qué imputó históricamente a proveedores parecidos, para que el
-  // dueño complete más rápido y corrija si hace falta — esa corrección re-alimenta el aprendizaje.
-  const conSug = plan.map((p, k) => ({ k, p })).filter((x) => x.p.sug)
-  if (!perfiles?.disponible) {
-    console.log('\nℹ Imputación aprendida: sin historia espejada todavía (public.costos_obra). La máquina mide; la historia recién arranca.')
-  } else if (conSug.length) {
-    console.log('\n💡 Sugerencia de imputación (aprendida de cómo imputaste comprobantes parecidos — SUGIERE, no impone; completá/corregí vos):')
-    for (const { p } of conSug) {
-      const s = p.sug
-      const dim = (d) => d.sugerido ? `${d.sugerido}${d.pide_confirmacion ? ' (?)' : ' ✓'}` : '—'
-      console.log(`   ${p.proveedor}: unidad ${dim(s.unidad)} · obra ${dim(s.obra)} · detalle ${dim(s.detalle ?? {})} · rubro ${dim(s.rubro)}  [${s.pide_confirmacion ? 'confirmá' : 'alta confianza'}]`)
-      console.log(`      ↳ ${s.nota}`)
-    }
-    console.log('   (✓ = alta confianza · (?) = necesita tu confirmación)')
-  }
+  informar({ plan, rechazos, duplicados, percep, nuevos, arca }, { ultima, desde, hasta, indiceCompras, perfiles })
   if (!plan.length) {
     console.log('\nNada cargable.')
-    emitir({ ok: false, motivo: 'nada_cargable', escritas: 0, rechazos, nuevos: [...nuevos] })
+    // `duplicados` viaja: para quien llama no es lo mismo "no se pudo leer" que "ya estaba cargado".
+    emitir({ ok: false, motivo: duplicados.length && !rechazos.length ? 'ya_cargados' : 'nada_cargable', escritas: 0, rechazos, duplicados, nuevos })
     await closePool(); return
   }
 
@@ -203,7 +297,7 @@ async function main() {
     console.log('\n(--dry) Muestra de la primera fila a escribir:')
     console.log('  ', JSON.stringify(plan[0].valores))
     console.log(`  Fórmulas a estampar por copyPaste desde la fila ${ultima}: ${GRUPOS_FORMULA.map((g) => g[0] === g[1] ? g[0] : g.join(':')).join(' ')}`)
-    emitir({ ok: true, dry: true, desde, hasta, escritas: 0, filas: plan.map((p, k) => ({ i: p.i, fila: desde + k, proveedor: p.proveedor })), rechazos, nuevos: [...nuevos] })
+    emitir({ ok: true, dry: true, desde, hasta, escritas: 0, filas: plan.map((p, k) => ({ i: p.i, fila: desde + k, proveedor: p.proveedor })), rechazos, duplicados, nuevos })
     await closePool(); return
   }
 
@@ -302,7 +396,7 @@ async function main() {
   emitir({
     ok: true, desde, hasta, escritas: plan.length, errores, sinRubro,
     filas: plan.map((p, k) => ({ i: p.i, fila: desde + k, proveedor: p.proveedor })),
-    rechazos, nuevos: [...nuevos], dupesArca: dupes,
+    rechazos, nuevos, duplicados, arca,
   })
   console.log('\nSIGUIENTE: node orquestador/scripts/sync-compras.mjs  (espeja a Supabase, regla #6).')
   await closePool()

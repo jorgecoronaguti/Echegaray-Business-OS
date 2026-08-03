@@ -11,7 +11,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { grilla } from './caja-pestana.mjs'
+import { grilla, rescatar } from './caja-pestana.mjs'
 import { CUENTAS } from '../lib/caja-disponibilidades.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
 
@@ -53,12 +53,14 @@ test('"Caja en pesos" es la PRIMERA fila del bloque, y su saldo en pesos suma el
   assert.match(pesos, new RegExp(`C${fCaja}\\*IF\\(D${fCaja}`), 'y valuarse como cualquier otra cuenta')
 })
 
-test('el ARQUEO no se pisa: sus celdas ni siquiera se emiten, así la fusión preserva el conteo', () => {
+test('el ARQUEO no se pisa: sin nada leído sus celdas ni se emiten, así la fusión preserva el conteo', () => {
   const g = construir()
-  // Desde el 01/08 el conteo físico vive en su propio bloque (4.10). El generador escribe el rótulo
-  // y la moneda, y NO emite el importe ni la fecha: una celda ausente la preserva la fusión, mientras
-  // que el centinela VACIO la borraría. Es la diferencia entre "esta celda es mía y va vacía" y "esta
-  // celda es tuya y no la toco".
+  // Desde el 01/08 el conteo físico vive en su propio bloque (4.10). Cuando NO se pudo leer nada de la
+  // pestaña —que es este caso: `construir()` pasa un mapa vacío— el generador escribe el rótulo y la
+  // moneda y NO emite el importe ni la fecha: una celda ausente la preserva la fusión, mientras que el
+  // centinela VACIO la borraría. Es la diferencia entre "esta celda es mía y va vacía" y "esta celda
+  // es tuya y no la toco". Cuando SÍ se leyó, el conteo se re-emite para viajar con su bloque — ver el
+  // test del 03/08 al final del archivo, que es el defecto que dejó la caja física en cero.
   for (const f of [g.fArqArs, g.fArqUsd]) {
     assert.ok(f > 0, 'el bloque del arqueo declarado tiene que existir')
     // NO ALCANZA CON `vacia()`: el centinela VACIO pasa por vacío y significa "es mía y va vacía",
@@ -433,8 +435,11 @@ test('sin fecha de arqueo, la alerta dice CUÁNTO efectivo está quedando afuera
   // el archivo real, el neto con la ventana abierta da −$47.033.903 (el acumulado del año, no un
   // saldo). El problema se nombra y se instruye; la plata aparece sola al cargar la fecha.
   assert.ok(!/'Cobranzas'!|JORNALES_REAL/.test(monto), 'la alerta no puede publicar un monto sin ancla')
-  const instruccion = celda(g, f, 7)
-  assert.match(instruccion, /bloque 4\.10|ARQUEO DECLARADO/)
+  // LA INSTRUCCIÓN YA NO VIAJA EN LA PLANILLA (03/08). Estaba en la columna H —"Cargá el conteo y su
+  // fecha en el bloque 4.10…"— y era una de las 66 celdas que el dueño borra siempre. Lo que queda es
+  // el rótulo, que nombra el problema y el bloque donde se resuelve sin un párrafo al lado del monto.
+  assert.match(String(g.filas[f - 1][0]), /falta la fecha del arqueo/i)
+  assert.ok(vacia(g.filas[f - 1][7]), 'la alerta no puede volver a llevar su explicación en la columna H')
 })
 
 test('la alerta del arqueo cita el ancla POR NOMBRE, no por número de fila', () => {
@@ -520,4 +525,83 @@ test('pesos y dólares son una PARTICIÓN: ningún cobro en efectivo queda afuer
   const usd = celda(g, filaDe(g, /^Caja en dólares/), 2)
   assert.match(pesos, /"<>USD"/)
   assert.match(usd, /;"USD";/)
+})
+
+// ═══ LA COLUMNA H NO VUELVE (03/08) ═══
+//
+// EL DEFECTO. La corrida de hoy le escribió al dueño 66 celdas de prosa en la columna H de CAJA
+// ("Arqueo de caja (columna de al lado, se carga a…", "Extracto bancario · Santander Empresas",
+// "Cobranzas: forma de cobro Efectivo Y estado…"). Él las borra siempre —textual: "esas aclaraciones
+// de mierda yo siempre las saco"— y ya lo había pedido en julio para Impuestos y Cargas Sociales.
+//
+// Volvió por un MERGE: se rescataron generadores de una rama del 01/08, anterior a esa decisión.
+// Por eso el control es de grilla y no de revisión: un merge no lee las decisiones, lee los tests.
+
+test('la grilla no lleva NI UNA celda de prosa en la columna H', () => {
+  const g = construir()
+  const conTexto = g.filas
+    .map((f, i) => ({ fila: i + 1, v: f[7] }))
+    .filter((x) => !vacia(x.v) && x.v !== undefined)
+  assert.deepEqual(conTexto, [],
+    'volvió la columna "de dónde sale". El generador escribe el DATO; la explicación va en el código.\n'
+    + conTexto.slice(0, 8).map((x) => `  fila ${x.fila}: ${String(x.v).slice(0, 70)}`).join('\n'))
+})
+
+test('la columna H se emite con el centinela: la intención queda DECLARADA, no implícita', () => {
+  const g = construir()
+  // Una celda AUSENTE significa "no es mía, no la toco"; el centinela VACIO significa "es mía y va
+  // vacía". La columna de prosa es del generador, así que sale declarada. (Borrar lo que ya está en la
+  // planilla no lo hace esto: lo frena lib/no-borrar.mjs, sin bypass y a propósito.)
+  for (const f of g.filas) assert.equal(f[7], VACIO, 'la columna de prosa tiene que salir con el centinela')
+})
+
+// ═══ EL ARQUEO VIAJA CON SU BLOQUE (03/08) ═══
+//
+// EL DEFECTO. La misma corrida dejó sin FECHA las dos filas del arqueo. La causa: sus celdas salían
+// AUSENTES para que la fusión preservara lo tipeado… y la fusión preserva por POSICIÓN. Al crecer la
+// grilla, el bloque bajó de la fila 148 a la 152, el conteo del dueño se quedó en la 148 y los rangos
+// con nombre se republicaron en la 152 vacía: CAJA_ARQUEO_ARS_FECHA quedó en blanco y $39,28M de
+// disponibilidades se fueron a cero sin un solo #ERROR.
+
+test('con el conteo ya cargado, el arqueo se RE-EMITE en su fila nueva (no se queda en la vieja)', () => {
+  const cargado = new Map([
+    ['Caja en pesos — contado', { saldo: 0, fecha: 46233, origen: '', quien: '' }],
+    ['Caja en dólares — contado', { saldo: 15000, fecha: 46233, origen: '', quien: '' }],
+  ])
+  const g = grilla(cargado, REFS, CARTERA)
+  // El importe 0 es un dato, no un vacío: es exactamente lo que el dueño tenía cargado el 03/08.
+  assert.equal(g.filas[g.fArqArs - 1][2], 0, 'el conteo en pesos tiene que viajar con su bloque')
+  assert.equal(g.filas[g.fArqArs - 1][5], 46233, 'y su fecha también — sin fecha no hay ventana')
+  assert.equal(g.filas[g.fArqUsd - 1][2], 15000)
+  assert.equal(g.filas[g.fArqUsd - 1][5], 46233)
+  // LA FECHA VIAJA COMO NÚMERO DE SERIE, no como "30/07/2026": el texto depende del locale del
+  // archivo (es_AR) y ya vació una pestaña entera por leerse como dd/mm/yy.
+  assert.equal(typeof g.filas[g.fArqArs - 1][5], 'number')
+})
+
+test('sin nada leído, el arqueo sigue saliendo AUSENTE: sin dato no se sobrescribe', () => {
+  const g = construir()
+  for (const f of [g.fArqArs, g.fArqUsd]) {
+    for (const col of [2, 5]) assert.equal(g.filas[f - 1][col], undefined)
+  }
+})
+
+test('el rescate LEE el bloque 4.10: sin esto el conteo no tiene de dónde viajar', () => {
+  // La forma exacta que devuelve readSheetGrid para el bloque 4.10 del archivo real (03/08). El
+  // encabezado que manda es el del bloque 4.8 —"Concepto · Cotización · … · Fecha"—, que es el último
+  // antes del arqueo: de ahí salen los índices de columna, por RÓTULO y no por letra.
+  const cel = (valor, numero = null, formula = null) => ({ valor, numero, formula, formato: null })
+  const grid = [
+    [cel('Concepto'), cel(''), cel('Cotización'), cel(''), cel(''), cel('Fecha')],
+    [cel('4.10 · ARQUEO DECLARADO DE LA CAJA FÍSICA')],
+    [cel('Caja en pesos — contado'), cel('ARS'), cel('0', 0), cel(''), cel(''), cel('30/07/2026', 46233)],
+    [cel('Caja en dólares — contado'), cel('USD'), cel('U$S 15.000,00', 15000), cel(''), cel(''), cel('30/07/2026', 46233)],
+  ]
+  const cargado = rescatar(grid)
+  assert.equal(cargado.get('Caja en pesos — contado')?.saldo, 0)
+  assert.equal(cargado.get('Caja en pesos — contado')?.fecha, 46233)
+  assert.equal(cargado.get('Caja en dólares — contado')?.saldo, 15000)
+  // Y la grilla lo devuelve a su fila nueva, que es el punto entero del arreglo.
+  const g = grilla(cargado, REFS, CARTERA)
+  assert.equal(g.filas[g.fArqArs - 1][5], 46233)
 })

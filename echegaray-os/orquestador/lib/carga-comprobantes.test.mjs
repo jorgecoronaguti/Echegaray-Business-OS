@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { tipoComprobante, condicionAPago, matchProveedor, aNumero, aFechaAR, validar, valoresInput, discrepanciaNeto, redondear2, verificarEscritura, mismoValor, colIndice, COL } from './carga-comprobantes.mjs'
+import * as carga from './carga-comprobantes.mjs'
+import { tipoComprobante, condicionAPago, matchProveedor, aNumero, aFechaAR, valoresInput, discrepanciaNeto, redondear2, verificarEscritura, mismoValor, colIndice, COL } from './carga-comprobantes.mjs'
 
 test('el tipo de comprobante se normaliza al valor exacto del desplegable', () => {
   assert.equal(tipoComprobante('A'), 'F A')
@@ -40,11 +41,15 @@ test('los importes es-AR entran como número y las fechas como DD/MM/YYYY', () =
   assert.equal(aFechaAR('sin fecha'), null)
 })
 
-test('validar exige lo mínimo para que las fórmulas y los cruces funcionen', () => {
-  assert.deepEqual(validar({ fecha: '5/1/2026', proveedor: 'RSV', neto: '$44.664' }), [])
-  assert.ok(validar({ proveedor: 'RSV', neto: 100 }).includes('fecha ilegible o ausente'))
-  assert.ok(validar({ fecha: '5/1/2026', neto: 100 }).includes('sin proveedor'))
-  assert.ok(validar({ fecha: '5/1/2026', proveedor: 'RSV' }).includes('sin importe numérico'))
+// ESTE ARCHIVO NO CONTESTA "¿QUÉ LE FALTA?" (03/08). `validar()` vivía acá y contestaba distinto que
+// `preguntasDe()` del bot: dos criterios para la misma pregunta. La respuesta se unificó en
+// `comprobantes/faltantes.mjs`, parametrizada por política, y sus casos se prueban allá.
+//
+// Este test se pone ROJO si alguien la vuelve a definir acá. No es celo de estilo: la divergencia
+// anterior hizo que el bot revisara el proveedor con una regla que el cargador no tenía y viceversa,
+// y cada cara creía estar aplicando "la" validación.
+test('este módulo NO define qué le falta a un comprobante: eso vive en faltantes.mjs', () => {
+  assert.equal(carga.validar, undefined, 'volvió a haber una segunda definición de "qué le falta"')
 })
 
 // El total NO se escribe: lo calcula la fórmula O = N+M. Y las columnas del dueño (I/J/K) y las

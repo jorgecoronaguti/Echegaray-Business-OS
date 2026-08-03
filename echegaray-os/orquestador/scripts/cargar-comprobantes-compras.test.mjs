@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { escribirYVerificar } from './cargar-comprobantes-compras.mjs'
+import { escribirYVerificar, prepararPlan } from './cargar-comprobantes-compras.mjs'
 import { colIndice } from '../lib/carga-comprobantes.mjs'
+import { indexarCompras } from '../lib/comprobantes/compras-vivas.mjs'
 
 // ═══ EL LOG NO PUEDE FELICITAR SIN HABER ESCRITO (03/08) ═══
 //
@@ -134,4 +135,164 @@ test('la escritura del cargador pide soloFilasVacias: es un APPEND, no una reesc
   // Y escribe una columna por vez, en el bloque exacto que declaró (filas 800..801).
   assert.deepEqual(google.escrituras[0].data.map((d) => d.range).sort(),
     ['Compras!E800:E801', 'Compras!H800:H801', 'Compras!M800:M801', 'Compras!N800:N801'])
+})
+
+// ═══ LAS TRES BARRERAS QUE EL CARGADOR NO TENÍA Y EL BOT SÍ (03/08) ═══
+//
+// El bot de Mattermost INVOCA a este script para escribir: la escritura ya era una sola. Lo que no
+// era una sola eran las decisiones de ANTES de escribir. Medido sobre el código de `main`:
+//
+//   · el duplicado contra la pestaña Compras VIVA (`compras-vivas.mjs`) lo miraba SÓLO el bot. Por
+//     eso Claude Code cargó por segunda vez un tique de Combustibles Barcelo que ya estaba en la
+//     fila 800: mismo número, mismo total al centavo, y este script escribió la fila igual;
+//   · ARCA se cruzaba acá con un índice por NÚMERO PELADO, sin punto de venta y sin CUIT;
+//   · "¿qué le falta?" tenía dos definiciones (ver `lib/comprobantes/faltantes.test.mjs`).
+//
+// `prepararPlan` es todo lo que se decide antes de tocar una celda, y por eso se prueba sin Google,
+// sin Postgres y sin escribir nada. Si se revierte cualquiera de las tres, algo de acá se pone rojo.
+
+/** Fila de la pestaña Compras tal como la devuelve `readSheetValues(RANGO)`: C fecha … O total. */
+function filaCompras({ fecha, proveedor, tipo = '', numero, obra = '', detalle = '', total }) {
+  const r = []
+  r[0] = fecha; r[2] = proveedor; r[4] = tipo; r[5] = numero; r[7] = obra; r[8] = detalle; r[12] = total
+  return r
+}
+
+/** El índice de Compras con esas filas EN SU FILA REAL (la del Sheet, no la del array). */
+function comprasCon(porFila = {}) {
+  const filas = []
+  for (const [fila, datos] of Object.entries(porFila)) filas[Number(fila) - 4] = filaCompras(datos)
+  return { ok: true, ...indexarCompras(filas) }
+}
+
+const BARCELO_800 = {
+  800: { fecha: '02/08/2026', proveedor: 'Combustibles Barcelo', numero: '00113-00014219', total: '$ 64.006,07' },
+}
+const TIQUE_BARCELO = {
+  proveedor: 'Combustibles Barcelo', fecha: '02/08/2026', numero: '00113-00014219', total: 64006.07, iva: 11106.07,
+}
+
+test('EL DEFECTO: el cargador escribía de nuevo un comprobante que YA está en Compras', async () => {
+  // El caso real, con los datos reales: el tique estaba en la fila 800 y entró por segunda vez.
+  const r = await prepararPlan([TIQUE_BARCELO], {
+    lista: ['Combustibles Barcelo'], indiceCompras: comprasCon(BARCELO_800),
+  })
+  assert.equal(r.plan.length, 0, 'no puede escribir una fila de un comprobante que ya está cargado')
+  assert.equal(r.duplicados.length, 1)
+  assert.equal(r.duplicados[0].fila, 800, 'y dice EN QUÉ FILA está, para que se pueda desmentir')
+  assert.equal(r.duplicados[0].cierto, true, 'mismo número y mismo total al centavo es certeza, no sospecha')
+  assert.deepEqual(r.rechazos, [], 'un duplicado no es un dato ilegible: se informa aparte')
+})
+
+test('el tique de una estación de servicio se caza SIN ARCA — es cuando más falta hace mirar Compras', async () => {
+  // Un tique no electrónico puede legítimamente no estar en el padrón. "No figura en ARCA" no dice
+  // NADA sobre si ya está cargado; el bot lo aprendió y el cargador lo ignoraba.
+  const r = await prepararPlan([TIQUE_BARCELO], {
+    lista: ['Combustibles Barcelo'], indiceCompras: comprasCon(BARCELO_800), arcaDe: async () => [],
+  })
+  assert.equal(r.plan.length, 0)
+  assert.equal(r.arca.coinciden, 0)
+})
+
+test('un comprobante que NO está en Compras se carga igual: la barrera no bloquea lo legítimo', async () => {
+  // El contrapeso. Sin esto, la barrera podría ser un "siempre rojo" y no probaría nada.
+  const otro = { ...TIQUE_BARCELO, numero: '00113-00019999', total: 12345.5 }
+  const r = await prepararPlan([otro], { lista: ['Combustibles Barcelo'], indiceCompras: comprasCon(BARCELO_800) })
+  assert.equal(r.plan.length, 1)
+  assert.deepEqual(r.duplicados, [])
+  assert.equal(r.plan[0].valores.H, '00113-00019999')
+})
+
+test('ARCA NO cruza dos proveedores distintos que comparten el correlativo', async () => {
+  // EL FALSO POSITIVO DEL ÍNDICE POR NÚMERO PELADO: ARCA guarda `punto_venta` y `numero` por
+  // separado y SIN ceros a la izquierda (`4` y `3642`); Compras usa `0004-00003642`. Un índice por
+  // el número solo mete en la misma clave al `0001-00003642` de un emisor y al `0004-00003642` de
+  // otro. Acá la conciliación exige CAE, o CUIT+fecha+total, o CUIT+número — y coincidencia ÚNICA.
+  //
+  // EL IMPORTE ES EL MISMO A PROPÓSITO. Con importes distintos el control cruzado de `resolver` ya
+  // descartaría el cruce, y el test pasaría aunque la identidad no se mirara — o sea, no probaría lo
+  // que dice probar. Dos abonos mensuales iguales el mismo mes no son una hipótesis rebuscada.
+  const ajeno = {
+    emisor_cuit: '30111111118', emisor_nombre: 'PEREZ GARCIA MARISOL BIBIANA',
+    punto_venta: '1', numero: '3642', fecha_emision: '2026-07-15', imp_total: 64006.07,
+  }
+  const r = await prepararPlan([{ ...TIQUE_BARCELO, cuit: '30222222229', numero: '0004-00003642' }], {
+    lista: ['Combustibles Barcelo'], indiceCompras: comprasCon({}), arcaDe: async () => [ajeno],
+  })
+  assert.equal(r.arca.coinciden, 0, 'compartir el correlativo no es ser el mismo comprobante')
+  assert.equal(r.arca.corregidos, 0)
+  assert.equal(r.plan[0].valores.H, '0004-00003642', 'y el número NO se pisa con el del otro emisor')
+})
+
+test('ARCA corrige el número mal leído, y RECIÉN ENTONCES aparece el duplicado', async () => {
+  // La cadena entera, con el caso real: la visión leyó `0004-00036542` (un dígito de más) y por eso
+  // no colapsaba contra la fila 802. El orden es todo el arreglo: ARCA antes que la deduplicación,
+  // porque se deduplica por el número. Corregirlo después sería corregirlo tarde.
+  const arca = {
+    emisor_cuit: '30111111118', emisor_nombre: 'PEREZ GARCIA MARISOL BIBIANA',
+    punto_venta: '4', numero: '3642', fecha_emision: '2026-08-02', imp_total: 100000,
+  }
+  const leido = {
+    proveedor: 'Corralón Progreso', cuit: '30111111118', fecha: '02/08/2026',
+    numero: '0004-00036542', total: 100000, iva: 17355.37,
+  }
+  const compras = comprasCon({
+    802: { fecha: '02/08/2026', proveedor: 'Corralón Progreso', numero: '0004-00003642', total: '$ 100.000,00' },
+  })
+  const r = await prepararPlan([leido], { lista: ['Corralón Progreso'], indiceCompras: compras, arcaDe: async () => [arca] })
+  assert.equal(r.arca.corregidos, 1, 'el número bueno es el del libro fiscal, no el de la foto')
+  assert.equal(r.plan.length, 0)
+  assert.equal(r.duplicados[0].fila, 802, 'con el número corregido, colapsa contra la fila que ya estaba')
+})
+
+test('un PROBABLE frena la carga y se levanta con --cargar-igual, nunca solo', async () => {
+  // Mismo proveedor, mismo día, mismo importe y OTRO número: puede ser el mismo con un dígito mal
+  // leído o dos compras distintas. Las dos salidas son caras; ninguna se elige sin una persona.
+  const compras = comprasCon({
+    802: { fecha: '02/08/2026', proveedor: 'Corralón Progreso', numero: '0004-00003642', total: '$ 100.000,00' },
+  })
+  const leido = { proveedor: 'Corralón Progreso', fecha: '02/08/2026', numero: '0007-00009999', total: 100000 }
+  const frenado = await prepararPlan([leido], { lista: ['Corralón Progreso'], indiceCompras: compras })
+  assert.equal(frenado.plan.length, 0)
+  assert.equal(frenado.duplicados[0].cierto, false, 'es una PREGUNTA, no una certeza')
+
+  const forzado = await prepararPlan([leido], { lista: ['Corralón Progreso'], indiceCompras: compras, cargarIgual: true })
+  assert.equal(forzado.plan.length, 1, 'ya lo miró una persona: es el equivalente del botón "Es otro, cargalo"')
+
+  // Y la bandera NO levanta una coincidencia CIERTA: para eso habría que borrar la fila que ya está.
+  const cierto = await prepararPlan([TIQUE_BARCELO], {
+    lista: ['Combustibles Barcelo'], indiceCompras: comprasCon(BARCELO_800), cargarIgual: true,
+  })
+  assert.equal(cierto.plan.length, 0)
+})
+
+test('el "Es otro, cargalo" que el dueño ya apretó en el chat viaja en el fajo', async () => {
+  // Sin esto, el bot preguntaba, el dueño contestaba, y el cargador volvía a encontrar el mismo
+  // PROBABLE y bloqueaba una carga que una persona ya había autorizado.
+  const compras = comprasCon({
+    802: { fecha: '02/08/2026', proveedor: 'Corralón Progreso', numero: '0004-00003642', total: '$ 100.000,00' },
+  })
+  const r = await prepararPlan([{
+    proveedor: 'Corralón Progreso', fecha: '02/08/2026', numero: '0007-00009999', total: 100000,
+    duplicadoResuelto: 'otro',
+  }], { lista: ['Corralón Progreso'], indiceCompras: compras })
+  assert.equal(r.plan.length, 1)
+})
+
+test('no poder leer Compras NO se hace pasar por "no está cargado"', async () => {
+  // La corrida ciega y la verificada no pueden verse iguales: la ciega es justo la que duplica.
+  const r = await prepararPlan([TIQUE_BARCELO], {
+    lista: ['Combustibles Barcelo'], indiceCompras: { ok: false, error: 'sin red' },
+  })
+  assert.equal(r.revisadoContraCompras, false, 'y quien informe tiene que poder decirlo')
+  assert.equal(r.plan.length, 1, 'pero no bloquea: no poder verificar no es un error del comprobante')
+})
+
+test('la fecha del fajo se canoniza antes de buscar: "2/8/2026" es el mismo día que "02/08/2026"', async () => {
+  // Un fajo escrito a mano trae la fecha como salga. Sin canonizarla, el índice de Compras —que
+  // compara DD/MM/AAAA— no matchea nada y el duplicado pasa derecho.
+  const r = await prepararPlan([{ ...TIQUE_BARCELO, fecha: '2/8/2026', numero: '113-14219' }], {
+    lista: ['Combustibles Barcelo'], indiceCompras: comprasCon(BARCELO_800),
+  })
+  assert.equal(r.duplicados.length, 1, 'mismo comprobante escrito distinto sigue siendo el mismo')
 })

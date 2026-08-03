@@ -79,3 +79,32 @@ test('el centinela del generador NUNCA se convierte en una nota', async () => {
   assert.equal(requests.length, 0)
   assert.equal(filas[0][2], '', 'y además limpia la celda')
 })
+
+// ═══ `borrarNotas` BORRA NOTAS, NO COLUMNAS (03/08) ═══
+//
+// LA TRAMPA, MEDIDA. Tres generadores —impuestos, cargas sociales, jornales— llaman a `borrarNotas`
+// convencidos de que con eso su columna "De dónde sale" desaparece de la planilla. No desaparece, por
+// dos razones independientes, y las dos son invisibles leyendo el call site:
+//
+//   1 · La llaman desde `formatear()`, que corre DESPUÉS de `escribirPreservando`. Cuando muta la
+//       grilla, el texto ya se escribió.
+//   2 · Aunque la llamaran antes, blanquea con `''`, y para la fusión `''` significa "no es mi celda":
+//       PRESERVA lo que hubiera. El único valor que limpia es el centinela VACIO.
+//
+// Medido en el snapshot del 03/08 del archivo real: 44 celdas de prosa en la columna O de Impuestos y
+// 58 en la de Cargas Sociales, con la pestaña ya "sin notas" según el código. Este test fija lo que la
+// función HACE para que nadie más vuelva a creerle lo que su nombre promete.
+test('borrarNotas blanquea con "", que la fusión PRESERVA: no saca la columna de la planilla', async () => {
+  const { borrarNotas } = await import('./nota-celda.mjs')
+  const { fusionar, VACIO } = await import('./preservar-anotaciones.mjs')
+  const filas = [['IVA', 100, 'DDJJ F.2002 del último período presentado']]
+  borrarNotas(filas, 2, 1)
+  assert.equal(filas[0][2], '', 'hoy blanquea con cadena vacía')
+  // Y eso, contra lo que ya está en la pestaña, deja el texto intacto.
+  const quedaria = fusionar(filas, [['IVA', 100, 'DDJJ F.2002 del último período presentado']])
+  assert.equal(quedaria[0][2], 'DDJJ F.2002 del último período presentado',
+    'con "" la fusión conserva el texto viejo: la columna NO se va')
+  // El centinela sí la saca. Es lo que hace caja-pestana desde hoy con su columna H.
+  const conCentinela = fusionar([['IVA', 100, VACIO]], [['IVA', 100, 'DDJJ F.2002…']])
+  assert.equal(conCentinela[0][2], '', 'el centinela VACIO es lo único que limpia')
+})
