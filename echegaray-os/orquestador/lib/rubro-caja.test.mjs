@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { rubroDeCaja, repartir, formulaRubro, REGLAS, RUBROS, SIN_CLASIFICAR } from './rubro-caja.mjs'
+import { rubroDeCaja, repartir, formulaRubro, formulaFechaCaja, REGLAS, RUBROS, SIN_CLASIFICAR } from './rubro-caja.mjs'
 
 // Los casos que ya se equivocaron una vez en esta planilla. Cada uno es plata que cambió de línea.
 test('el orden de las reglas decide, y ese orden está medido', () => {
@@ -98,4 +98,31 @@ test('la financiación del F931 de junio es un PLAN, no el F931 del mes', () => 
   )
   // El F931 del mes corriente, sin plan, sigue siendo carga social.
   assert.equal(rubroDeCaja({ proveedor: 'ARCA', cliente: 'F931', concepto: 'F931 junio' }), 'Nómina · Cargas sociales')
+})
+
+test('la fecha de caja extrae la PRIMERA fecha aunque la celda tenga texto alrededor', () => {
+  // EL CASO REAL (02/08): Alumetal, $11.423.913, con "28/1/2026 y 7/3/26" en la fecha prevista —un
+  // pago en dos veces. DATEVALUE fallaba, la fila quedaba sin fecha de caja, y el control del Cash
+  // Flow la reportaba como "gasto sin fecha de pago". El dueño la había cargado: tenía DOS.
+  const f = formulaFechaCaja()
+  assert.match(f, /REGEXEXTRACT/, 'tiene que extraer la fecha del texto, no confiar en DATEVALUE solo')
+  assert.match(f, /\\d\{1,2\}\/\\d\{1,2\}\/\\d\{2,4\}/, 'el patrón dd/mm/aaaa, con año de 2 o 4 dígitos')
+})
+
+test('la fecha de caja YA NO mira la columna Y, que no es una fecha', () => {
+  // "Tipo de Costo" contiene "Directo"/"Indirecto". La rama era una referencia fosilizada de cuando
+  // las columnas estaban en otro lado. Un número tipeado ahí se habría leído como fecha de pago.
+  const f = formulaFechaCaja()
+  assert.ok(!f.includes('$Y$4:$Y'), `no puede referenciar la columna Y: ${f}`)
+})
+
+test('la fecha de caja sigue prefiriendo el número cuando la celda ya es una fecha', () => {
+  const f = formulaFechaCaja()
+  assert.match(f, /ISNUMBER\(\$Q\$4:\$Q\);\$Q\$4:\$Q/, 'una fecha real no pasa por el parseo de texto')
+})
+
+test('la fórmula de fecha de caja es es-AR y cierra paréntesis', () => {
+  const f = formulaFechaCaja()
+  assert.equal([...f].reduce((n, c) => n + (c === '(' ? 1 : c === ')' ? -1 : 0), 0), 0)
+  assert.ok(!f.replace(/"[^"]*"/g, '""').includes(','), `separador con coma: ${f}`)
 })

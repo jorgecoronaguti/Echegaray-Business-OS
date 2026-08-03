@@ -233,13 +233,40 @@ export function sqlRubroDeCaja() {
 }
 
 /**
- * La fecha en que la plata SALE de la caja: la contable del pago si está, si no la prevista.
- * (Y = fecha contable del pago, Q = fecha prevista). Nunca la fecha de la factura: una factura de
- * enero pagada en junio es caja de junio.
+ * La fecha en que la plata SALE de la caja. Nunca la de la factura: una factura de enero pagada en
+ * junio es caja de junio.
+ *
+ * ═══ DOS CORRECCIONES (02/08) ═══
+ *
+ * 1 · SE CAYÓ LA RAMA `$Y`. El comentario de esta función decía "Y = fecha contable del pago". Esa
+ *     columna NO EXISTE: la Y de Compras se llama "Tipo de Costo" y contiene "Directo"/"Indirecto".
+ *     La referencia quedó fosilizada de cuando las columnas estaban en otro lado —el mismo desplazamiento
+ *     que dejó los encabezados duplicados AB/AC y AG/AH—. Medido en el Sheet vivo: 0 filas tienen un
+ *     número en Y, así que la rama nunca se usó y no rompió nada. Pero el día que alguien tipee un
+ *     número ahí, ese número se leería como la fecha en que salió la plata. Se saca: una rama que
+ *     apunta a la columna equivocada no es una funcionalidad, es una trampa esperando.
+ *
+ * 2 · UNA FECHA EN TEXTO CON MÁS DE UNA FECHA. `DATEVALUE("28/1/2026 y 7/3/26")` falla, así que la
+ *     fila quedaba SIN fecha de caja y el control del Cash Flow la reportaba como "gasto sin fecha
+ *     de pago". El dueño, con razón: *"esto es mentira, yo mismo corroboré la columna y todo tiene
+ *     fecha"*. Tenía dos. Era la factura de Alumetal por $11.423.913, pagada en dos veces.
+ *
+ *     El control decía la causa equivocada, que es peor que no decir nada: manda a buscar una fecha
+ *     que ya estaba. Ahora se EXTRAE la primera fecha del texto y la fila entra al cuadro por ella.
+ *
+ *     Es una aproximación declarada, no un dato: un pago en dos partes son dos movimientos de caja y
+ *     acá entra como uno solo, en la fecha del primero. Para partirlo de verdad están las columnas
+ *     que ya existen en Compras —"Monto Parcial 1" (U), "Fecha prevista de pago 2" (V) y "Monto
+ *     Parcial 2" (W)—; mientras no se usen, una fecha aproximada y visible es mejor que una fila
+ *     invisible para todo el cuadro.
+ *
  * @returns {string} ARRAYFORMULA en es-AR
  */
 export function formulaFechaCaja() {
-  return `=ARRAYFORMULA(IF(${FILA_REAL};"";IF(ISNUMBER($Y$4:$Y);$Y$4:$Y;IF(ISNUMBER($Q$4:$Q);$Q$4:$Q;IFERROR(DATEVALUE($Q$4:$Q&"");"")))))`
+  const q = '$Q$4:$Q'
+  // La primera fecha dd/mm/aaaa que aparezca en el texto. Sirve igual para "23/7/2026" a secas.
+  const primeraFecha = `REGEXEXTRACT(${q}&"";"\\d{1,2}/\\d{1,2}/\\d{2,4}")`
+  return `=ARRAYFORMULA(IF(${FILA_REAL};"";IF(ISNUMBER(${q});${q};IFERROR(DATEVALUE(${primeraFecha});""))))`
 }
 
 /**
