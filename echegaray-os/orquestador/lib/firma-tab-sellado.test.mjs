@@ -43,3 +43,47 @@ test('si no se puede releer, lo dice — no finge que selló', async () => {
   assert.equal(r.sellada, false)
   assert.match(r.motivo, /no pude releer/)
 })
+
+// ═══ Y EL MISMO DÍA, LA TRAMPA OPUESTA (03/08, tarde) ═══
+//
+// Los tests de arriba fijaron que la ref PELADA se entrecomilla. Lo que ninguno miraba es que el
+// camino principal NO manda la ref pelada: `refDeTab()` en `guarda-escritura.mjs` ya la entrecomilla
+// antes de pasarla. Con el arreglo de la mañana puesto, eso producía `'''Cash Flow Mensual'''!A1:BZ`
+// y la API respondía "Unable to parse range" — verificado contra el archivo real.
+//
+// El síntoma era idéntico al de la mañana: `firma-no-verificable` en toda pestaña de nombre
+// compuesto, o sea la guarda protegiendo TODO contra TODOS, incluidas las órdenes del dueño. Y el
+// sellado, otra vez, sin ocurrir nunca. Un test que sólo prueba una de las dos formas de llamada no
+// habría cazado ninguna de las dos versiones del defecto.
+
+test('la ref que YA viene entrecomillada no se entrecomilla de nuevo', async () => {
+  const g = clienteQueAnota()
+  // Exactamente lo que devuelve refDeTab() para un nombre con espacios.
+  await sellarFirma(g, 'ID', 'Cash Flow Mensual', "'Cash Flow Mensual'").catch(() => {})
+  assert.equal(g.rangos[0], "'Cash Flow Mensual'!A1:BZ")
+})
+
+test('desenvolver no rompe el escape: la comilla del nombre sobrevive al ida y vuelta', async () => {
+  const g = clienteQueAnota()
+  // refDeTab("Caja d'obra") duplica la comilla interna y envuelve: "'Caja d''obra'".
+  await sellarFirma(g, 'ID', "Caja d'obra", "'Caja d''obra'").catch(() => {})
+  assert.equal(g.rangos[0], "'Caja d''obra'!A1:BZ")
+})
+
+test('firmaGuardia con la ref entrecomillada llega a leer: no cae en noVerificable', async () => {
+  const { firmaGuardia } = await import('./firma-tab.mjs')
+  const g = clienteQueAnota([['x']])
+  const r = await firmaGuardia(g, 'ID', 'Cash Flow Mensual', "'Cash Flow Mensual'", { candar: false })
+  assert.equal(g.rangos[0], "'Cash Flow Mensual'!A1:BZ")
+  assert.notEqual(r.noVerificable, true, 'la guarda no pudo releer la pestaña: vuelve a estar ciega')
+})
+
+test('rangoDePestana es idempotente — es el contrato que faltaba explicitar', async () => {
+  const { rangoDePestana } = await import('./firma-tab.mjs')
+  const esperado = "'Cash Flow Mensual'!A1:BZ"
+  assert.equal(rangoDePestana('Cash Flow Mensual'), esperado)
+  assert.equal(rangoDePestana("'Cash Flow Mensual'"), esperado)
+  assert.equal(rangoDePestana(rangoDePestana('Cash Flow Mensual').split('!')[0]), esperado)
+  // Un nombre sin espacios no necesita comillas pero tampoco se rompe con ellas.
+  assert.equal(rangoDePestana('CAJA'), "'CAJA'!A1:BZ")
+})
