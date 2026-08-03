@@ -41,7 +41,7 @@ La VM no tiene navegador, no tiene servidor X, y `jorge` no tiene sudo. Se inten
 | A13 | Sobrevive al reboot | ✅ | `docker.service` enabled, `Linger=yes`, units `WantedBy=default.target` |
 | A14 | Avisa una vez por incidente, y lo cierra al volver | ✅ | `correspondeAvisar` + tests |
 | A15 | La barrera transaccional quedó intacta | ✅ | `git diff origin/main..HEAD -- '*denylist*'` vacío |
-| A16 | Suite verde | ✅ | 2284 tests, 0 fail, 95 skipped · typecheck limpio · eslint 0 errores |
+| A16 | Suite verde | ✅ | 2284 tests, 2212 pass, 0 fail, 72 skipped · typecheck limpio · eslint 0 errores |
 | A17 | Documentación migrada | ✅ | RUNBOOK reescrito; sin instrucciones de Mac, `open -na` ni `ssh -N -R` |
 
 ## Lo que NO está cerrado
@@ -77,3 +77,28 @@ y no como relevamiento de mercado, y el DoD no puede decir otra cosa.
 6. **La guarda de recorrido de la ruta de estáticos normalizaba el ataque en vez de rechazarlo**, y
    `fetch` lo tapaba: el cliente colapsa los `../` antes de mandar el pedido, así que el servidor
    nunca los veía. Contra `http` crudo, `/vendor/../../../package.json` devolvía 200.
+
+## Auditoría independiente
+
+La firmó un agente que no escribió el trabajo, con el sistema vivo. Dictamen:
+**CERRADO CON LÍMITES** — cerrado como infraestructura, no como capacidad (B1–B3).
+
+Verificó por su cuenta, y no por lectura: la exposición (`ss` + pruebas contra la IP pública), la
+autenticación de la pantalla remota **con `http` crudo** —nueve variantes de recorrido de ruta,
+todas rechazadas—, que el puente no registra lo que se tipea, que el diff no toca la barrera
+transaccional, y la calidad de los tests **por mutación**: rompió el código en cinco lugares y en los
+cinco la suite se puso roja. Los tests prueban comportamiento, no forma.
+
+Los cinco hallazgos, y qué se hizo con cada uno:
+
+| Gravedad | Hallazgo | Resolución |
+|---|---|---|
+| MEDIO | `seccomp=unconfined` podría ser más ancho de lo necesario (sospecha, no reproducida) | **Medido: no es de más.** Sólo con `apparmor=unconfined` el navegador muere con `Exited (133)` y "No usable sandbox". La medición original era inválida —se hizo antes de arreglar el candado del perfil— y se rehízo entera. Queda la reproducción escrita al lado del código |
+| MEDIO | Ventana en la que se abre una **segunda pestaña**: si la pestaña con sesión está transitoriamente fuera del dominio (`about:blank` recargando, `chrome-error://`, un IdP externo), se la daba por perdida | **Corregido.** Ahora sólo se crea una pestaña si NO queda ninguna. Test con los tres casos + el service worker |
+| BAJO | La clave del escritorio decía 24 caracteres y el formato VNC trunca a 8 (~2⁴⁷, no ~2¹⁴³) | **Corregido**: se generan 8 y el comentario explica el límite de DES |
+| BAJO | El DoD declaraba 95 salteados y la corrida daba 72 | **Corregido** |
+| BAJO | El aviso decía "la sesión venció" cuando nunca hubo sesión | **Corregido**: dice "no hay sesión iniciada" |
+
+**Fuera de alcance, encontrado de paso y sin tocar:** el puerto **3123** (`next-server`) escucha en
+todas las interfaces y responde desde la IP pública. Es preexistente —cero ocurrencias en este
+diff— pero es una exposición real del OS y hay que decidir qué hacer con ella.

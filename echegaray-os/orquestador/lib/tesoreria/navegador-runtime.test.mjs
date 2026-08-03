@@ -164,6 +164,26 @@ test('sin ninguna pestaña sí se recrea, y va por PUT', async () => {
   assert.equal(r.creada, true)
 })
 
+test('una pestaña que salió TRANSITORIAMENTE del dominio no dispara una segunda', async () => {
+  // La pestaña con sesión puede estar un instante en `about:blank` (la SPA recargando),
+  // `chrome-error://` (un corte de red) o un proveedor de identidad externo. Abrir otra ahí no
+  // rompe el análisis —la sesión sigue viva en la primera— pero hace que `buscarPestanaAutenticada`
+  // pueda tomar la nueva, que nace deslogueada, y pedirle al dueño que entre cuando ya estaba
+  // adentro. Un aviso falso enseña a ignorar los avisos.
+  for (const url of ['about:blank', 'chrome-error://chromewebdata/', 'https://idp.ejemplo.com/oauth']) {
+    const r = await asegurarPestanaCanonica(CFG, {
+      fetchImpl: fetchFalso({ version: {}, targets: [{ type: 'page', url, id: 'T' }], nuevaPestana: true }),
+    })
+    assert.equal(r.creada, false, `${url} disparó una pestaña nueva`)
+    assert.match(r.motivo, /no se abre otra/)
+  }
+  // Y un service worker suelto NO cuenta como pestaña: si es lo único que queda, sí hay que reponerla.
+  const sw = await asegurarPestanaCanonica(CFG, {
+    fetchImpl: fetchFalso({ version: {}, targets: [{ type: 'service_worker', url: 'https://clientes.balanz.com/ngsw-worker.js', id: 'SW' }], nuevaPestana: true }),
+  })
+  assert.equal(sw.creada, true, 'un service worker no es una pestaña: había que reponerla')
+})
+
 // ════════════════════════════════════════════════════════════════════════════
 // EL REINICIO NO SE USA PARA TAPAR UNA SESIÓN VENCIDA
 // ════════════════════════════════════════════════════════════════════════════

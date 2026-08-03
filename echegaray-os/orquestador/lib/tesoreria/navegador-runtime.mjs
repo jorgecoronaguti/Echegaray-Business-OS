@@ -215,12 +215,22 @@ export async function arrancarNavegador(cfg = configRuntime(), deps = {}) {
     '-v', `${join(cfg.base, 'perfil')}:/profile`,
     '-v', `${join(cfg.base, 'estado')}:/estado`,
     '--shm-size=1g',
-    // El sandbox de Chromium necesita crear espacios de nombres, y tanto el seccomp por defecto de
-    // Docker como el AppArmor de esta VM lo impiden. Comprobado: con el perfil por defecto el
-    // navegador muere con "Failed to move to new namespace"; con SYS_ADMIN también. Aflojar estos
-    // dos es lo que permite mantener el sandbox ACTIVO — la alternativa era --no-sandbox, o sea
-    // abrir Internet sin aislamiento de render. El contenedor sigue sin privilegios, sin
-    // capacidades extra, con usuario no root y con su propia red.
+    // ── LOS DOS PERFILES SE AFLOJAN, Y HACEN FALTA LOS DOS ─────────────────────────────────────
+    //
+    // El sandbox de Chromium necesita crear espacios de nombres. Aflojar seccomp parece de más —el
+    // perfil por defecto de Docker permite `clone` con CLONE_NEWUSER desde hace años, y lo que esta
+    // VM bloquea es AppArmor— así que se midió en vez de suponerlo, con la imagen ya arreglada:
+    //
+    //   sólo apparmor=unconfined, seccomp por defecto  →  Exited (133), "No usable sandbox"
+    //   apparmor=unconfined + seccomp=unconfined       →  arriba, CDP responde, 0 errores
+    //
+    // (La primera medición de esto fue inválida: se hizo antes de arreglar el candado del perfil, y
+    // los contenedores morían por el candado —código 21— no por el sandbox. Se rehízo entera.)
+    //
+    // O sea: aflojar los dos es lo que permite mantener el sandbox ACTIVO. La alternativa era
+    // --no-sandbox, o sea abrir Internet sin aislamiento de render, que es peor. El contenedor sigue
+    // sin privilegios, sin capacidades extra, con usuario no root, con memoria acotada y con su
+    // propia red.
     '--security-opt', 'apparmor=unconfined',
     '--security-opt', 'seccomp=unconfined',
     '--restart', 'unless-stopped',
@@ -259,6 +269,28 @@ export async function asegurarPestanaCanonica(cfg = configRuntime(), deps = {}) 
   const lista = await listarTargets(cfg.endpoint, fetchImpl)
   if (!lista.ok) return { creada: false, motivo: lista.motivo }
   if (pestanaCanonica(lista.targets)) return { creada: false, motivo: 'ya existe la pestaña canónica' }
+
+  // ── SÓLO SE CREA SI NO QUEDA NINGUNA PESTAÑA. NI UNA ──────────────────────────────────────────
+  //
+  // `pestanaCanonica` exige que la URL esté en el dominio de Balanz, y hay momentos legítimos en que
+  // la pestaña CON SESIÓN no lo está: `about:blank` mientras la SPA recarga, `chrome-error://` tras
+  // un corte de red, o un proveedor de identidad externo durante el ingreso.
+  //
+  // En esos instantes el diagnóstico dice `BALANZ_TARGET_MISSING`, y la versión anterior abría una
+  // SEGUNDA pestaña. Eso no rompía el análisis —la sesión sigue viva en la primera— pero producía un
+  // "necesita autenticación" FALSO: `buscarPestanaAutenticada` toma la primera página en el dominio,
+  // que podía ser la nueva, que nace deslogueada. Pedirle al dueño que entre cuando ya estaba
+  // adentro es la clase de aviso que enseña a ignorar los avisos.
+  //
+  // Con una pestaña presente no se crea nada: se informa y se deja que el diagnóstico se repita en
+  // la ronda siguiente, cuando la SPA haya terminado de rutear.
+  const paginas = lista.targets.filter((t) => t.type === 'page')
+  if (paginas.length) {
+    return {
+      creada: false,
+      motivo: `hay ${paginas.length} pestaña(s) abierta(s) fuera del dominio de Balanz (puede ser una recarga en curso): no se abre otra`,
+    }
+  }
   const r = await fetchImpl(`${cfg.endpoint}/json/new?${encodeURIComponent(cfg.urlInicial)}`, { method: 'PUT' })
     .catch((e) => ({ ok: false, statusText: String(e?.message ?? e) }))
   if (!r.ok) return { creada: false, motivo: `no se pudo abrir la pestaña: ${r.statusText || r.status}` }

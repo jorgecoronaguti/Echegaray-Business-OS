@@ -116,7 +116,10 @@ export function mensajeNecesitaAutenticacion({ enlace = null, detalle = '', corr
   return [
     '**BALANZ · NECESITA AUTENTICACIÓN**',
     '',
-    `La sesión del bróker venció${detalle ? ` (${detalle})` : ''}.`,
+    // NO dice "venció": el perfil del navegador nace vacío, así que la PRIMERA vez —y después de
+    // cualquier reinstalación— nunca hubo sesión que venciera. Afirmar que venció algo que no
+    // existió es una falsedad chica que enseña a leer los avisos con desconfianza.
+    `No hay sesión iniciada en Balanz${detalle ? ` (${detalle})` : ''}.`,
     '',
     '**El análisis de caja se hizo igual y está publicado.** Lo que falta son las alternativas de',
     'inversión: no se relevó ninguna oportunidad nueva, así que no hay recomendación de mercado.',

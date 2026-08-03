@@ -58,7 +58,14 @@ if [ ! -f "$CLAVE" ] || [ ! -f "$PLANA" ]; then
   # necesita además la versión en claro para dársela al cliente del escritorio, así que se guarda
   # aparte y con permisos de sólo dueño. NO es una credencial de Balanz: da acceso a la pantalla,
   # nunca a la cuenta, y el login del bróker se sigue haciendo a mano sobre esa pantalla.
-  NUEVA=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 24)
+  #
+  # OCHO CARACTERES, Y NO ES UNA CONCESIÓN: el esquema de autenticación de VNC usa DES con una clave
+  # de 8 bytes, así que `-storepasswd` TRUNCA a 8 y el cliente también. La versión anterior generaba
+  # 24 y guardaba 24 en claro, con lo cual el archivo prometía ~2^143 de entropía y el efecto real
+  # era ~2^47. No cambiaba la exposición —detrás hay loopback y un token firmado— pero un comentario
+  # que promete más de lo que el mecanismo entrega es exactamente lo que hace que nadie vuelva a
+  # revisarlo. Se generan 8 y se dice por qué.
+  NUEVA=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 8)
   x11vnc -storepasswd "$NUEVA" "$CLAVE" >/dev/null 2>&1
   printf '%s' "$NUEVA" > "$PLANA"
   chmod 0600 "$CLAVE" "$PLANA"
