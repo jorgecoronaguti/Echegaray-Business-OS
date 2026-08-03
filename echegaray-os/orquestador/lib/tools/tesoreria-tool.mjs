@@ -9,6 +9,9 @@ import { leerFlujoDeFondos, vencidoComercialDe } from '../tesoreria/lectura-fluj
 import { proyectarLiquidez } from '../tesoreria/proyeccion-liquidez.mjs'
 import { calcularExcedente } from '../tesoreria/excedente.mjs'
 import { formatoAplicarADeuda, formatoPropuesta } from '../tesoreria/formato-mattermost.mjs'
+import { relevar } from '../tesoreria/balanz-navegador.mjs'
+import { configRuntime, tomarCerrojo, soltarCerrojo } from '../tesoreria/navegador-runtime.mjs'
+import { prepararNavegador } from '../tesoreria/preparar-navegador.mjs'
 
 const fmt = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
 
@@ -90,7 +93,7 @@ export function tesoreriaTools(google) {
       schema: {
         name: 'analisis_inversion',
         description:
-          'CICLO COMPLETO DEL TESORERO — lee el Flujo de Caja, reconstruye la posición, proyecta la liquidez, calcula el excedente por horizonte, releva Balanz en SOLO LECTURA y propone una colocación por bloque, ya pasada por una validación independiente. NUNCA ejecuta una operación financiera. Si la sesión de Balanz no está disponible devuelve el análisis de caja igual y avisa. Usalo cuando el dueño pida "analizá si conviene invertir", "buscá opciones para la plata que sobra", "qué rinde más para lo que tengo libre".',
+          'CICLO COMPLETO DEL TESORERO, A PEDIDO — lee el Flujo de Caja, reconstruye la posición, proyecta la liquidez, calcula el excedente por horizonte, ENTRA A BALANZ en el momento y en SOLO LECTURA (fondos, letras, bonos, cauciones, cedears, corporativos y acciones), y propone una colocación por bloque ya pasada por una validación independiente. Tarda varios minutos porque recorre todas las pantallas. NUNCA ejecuta una operación financiera. Si la sesión de Balanz no está iniciada devuelve el análisis de caja igual y avisa cómo entrar; si hay una corrida programada en curso, contesta la caja y dice que espere. Usalo cuando el dueño pida "analizá si conviene invertir", "fijate qué hay disponible en Balanz", "buscá opciones para la plata que sobra", "qué rinde más para lo que tengo libre".',
         input_schema: {
           type: 'object',
           properties: { forzar: { type: 'boolean', description: 'devolver el análisis aunque no haya cambio material' } },
@@ -98,22 +101,59 @@ export function tesoreriaTools(google) {
       },
       async run(args) {
         try {
-          // Sin `relevar` y sin `publicar`: desde el chat se ANALIZA, no se navega ni se publica solo.
-          // Abrir el navegador desde una consulta interactiva pelearía con la corrida del timer por la
-          // misma sesión de Chrome, y las dos leerían la pantalla equivocada.
-          const r = await correrCiclo({ google }, { ...(await politicas()), publicarSiempre: Boolean(args?.forzar), dias: 90 })
-          if (r.sin_excedente) {
-            return { ...r, texto: formatoAplicarADeuda(r.recomendacion_estructural, r.posicion) }
+          // ═══ DESDE EL CHAT SÍ SE MIRA EL MERCADO ═══
+          //
+          // Antes no: el chat analizaba la caja y avisaba que el mercado se relevaba "en la corrida
+          // programada". El motivo era real —con el navegador en la Mac del dueño, una consulta
+          // interactiva y el timer se peleaban por la MISMA pestaña, y las dos terminaban leyendo la
+          // pantalla equivocada— pero el efecto era que el dueño no podía pedir el análisis cuando lo
+          // necesitaba, que es justo cuando sirve.
+          //
+          // Ahora el navegador es de la casa y hay un cerrojo que arbitra. Así que se releva, salvo
+          // que haya una corrida en curso: en ese caso se contesta la caja y se dice por qué falta el
+          // mercado, en vez de pelear por la pestaña.
+          const cerrojo = await tomarCerrojo(configRuntime())
+          const deps = { google }
+          if (cerrojo.tomado) {
+            deps.prepararNavegador = () => prepararNavegador(configRuntime())
+            deps.relevar = relevar
           }
-          const textos = (r.recomendaciones ?? []).map((rec) => formatoPropuesta(rec, r.posicion, {}))
-          return {
-            ...r,
-            texto: textos.length
-              ? textos.join('\n\n---\n\n')
-              : `${textoExcedente(r.posicion, r.excedente)}\n\n_No hay alternativas relevadas: el mercado se releva en la corrida programada, no desde el chat._`,
+          try {
+            const r = cerrojo.tomado
+              ? await correrCiclo(deps, { ...(await politicas()), publicarSiempre: Boolean(args?.forzar), dias: 90 })
+              : await correrCiclo({ google }, { ...(await politicas()), publicarSiempre: Boolean(args?.forzar), dias: 90 })
+            if (!cerrojo.tomado) r.mercado_omitido = cerrojo.motivo
+            return armarRespuesta(r, cerrojo)
+          } finally {
+            // El cerrojo se suelta SIEMPRE. Si queda tomado, el vigía deja de supervisar el navegador
+            // hasta que venza solo — media hora de ceguera por una consulta del chat.
+            if (cerrojo.tomado) await soltarCerrojo(configRuntime())
           }
         } catch (e) { return { error: `no pude correr el análisis: ${String(e?.message ?? e).slice(0, 180)}` } }
       },
     },
   }
+}
+
+/**
+ * Arma la respuesta del ciclo completo. Vive afuera del `run` para que la función quepa y se lea.
+ *
+ * Lo importante acá es POR QUÉ falta el mercado cuando falta. Son tres motivos distintos y cada uno
+ * pide algo distinto de una persona: una corrida en curso se resuelve esperando, una sesión vencida
+ * se resuelve entrando por la pantalla remota, y un navegador caído no se resuelve desde el celular.
+ * Un único "no hay alternativas" para los tres es lo que hacía que nadie supiera qué hacer.
+ */
+export function armarRespuesta(r, cerrojo) {
+  if (r.sin_excedente) {
+    return { ...r, texto: formatoAplicarADeuda(r.recomendacion_estructural, r.posicion) }
+  }
+  const textos = (r.recomendaciones ?? []).map((rec) => formatoPropuesta(rec, r.posicion, {}))
+  if (textos.length) return { ...r, texto: textos.join('\n\n---\n\n') }
+
+  let porQue
+  if (!cerrojo.tomado) porQue = `_No se miró el mercado: ${cerrojo.motivo}. Probá de nuevo en unos minutos._`
+  else if (r.estado === 'session_required') porQue = '_No se miró el mercado: la sesión de Balanz no está iniciada. Te mandé el enlace para entrar._'
+  else if (r.estado === 'browser_error') porQue = `_No se miró el mercado: ${r.motivo}._`
+  else porQue = '_Se miró el mercado y ninguna alternativa superó la vara, o ninguna es apta para caja operativa._'
+  return { ...r, texto: `${textoExcedente(r.posicion, r.excedente)}\n\n${porQue}` }
 }

@@ -48,9 +48,9 @@ La VM no tiene navegador, no tiene servidor X, y `jorge` no tiene sudo. Se inten
 
 | # | Criterio | Estado | Qué falta |
 |---|---|---|---|
-| B1 | **Sesión de Balanz iniciada en el navegador de la VM** | ❌ | el perfil nace vacío y el login es manual: lo tiene que hacer el dueño por la pantalla remota |
-| B2 | **Relevamiento real desde el navegador de la VM** | ❌ | depende de B1. El extractor está validado contra el DOM real, pero con el navegador anterior |
-| B3 | **Corrida real completa con mercado** | ❌ | depende de B1 |
+| B1 | **Sesión de Balanz iniciada en el navegador de la VM** | ✅ | el dueño entró por la pantalla remota el 03/08/2026 |
+| B2 | **Relevamiento real desde el navegador de la VM** | ✅ | 8 pantallas · **1107 instrumentos**, el MISMO número que con el navegador anterior: el extractor lee igual en Chromium/151 |
+| B3 | **Corrida real completa con mercado** | ✅ | 224 aptos · 2 propuestas · 2 rechazadas por la validación · nada publicado, y con razón |
 | B4 | Ruta `/balanz` publicada por Caddy | ✅ | `https://chat.ecsas.com.ar/balanz` → 403 sin token, 200 con enlace firmado; Mattermost intacto (200) y `/asistencia` sigue ruteando a su servidor |
 | B5 | Units instalados y habilitados en producción | ✅ | los tres `active/enabled`; el aviso real llegó al canal de Dirección con su enlace |
 | B6 | Túnel de la Mac retirado | ⏳ | lo cierra el dueño; el OS ya no lo usa |
@@ -113,3 +113,18 @@ diff— pero es una exposición real del OS y hay que decidir qué hacer con ell
 2. **El vigía no publicaba.** Corría la ronda y dejaba el resultado en el journal — o sea que
    detectaba la sesión vencida a las 10:05 y el dueño se enteraba en la corrida de las 15:30, que es
    justo el retraso que el vigía existe para eliminar. Un vigía que no habla no es un vigía.
+
+## La primera corrida real desde el navegador de la VM
+
+`03/08/2026` — caja $129.641.088, 8 pantallas, **1107 instrumentos** relevados, 224 aptos para
+tesorería. Es exactamente el mismo número que leía el navegador anterior: **el extractor lee igual en
+Chromium/151 sobre Linux**, que era el único riesgo real que quedaba del cambio de navegador.
+
+Terminó sin publicar nada, y está bien: las dos propuestas que generó las rechazó la validación
+independiente, y la accionabilidad quedó bloqueada por tres motivos que el agente nombra uno por uno
+— falta la reserva mínima aprobada, la caja restringida está en `unknown`, y **el relevamiento quedó
+truncado en dos pantallas** (corporativos y cedears llegaron al tope de vueltas de scroll).
+
+Ese tercer bloqueo es el que más vale: el agente sabe que no vio todo el universo y **se niega a
+afirmar que eligió la mejor alternativa**. Un relevamiento truncado informado como completo es el
+defecto que este módulo viene corrigiendo desde el principio.
