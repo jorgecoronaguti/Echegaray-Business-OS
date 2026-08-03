@@ -145,7 +145,11 @@ export function resumenFajo(fajo = {}) {
     l.push(`   ${imp}${iva}${importe}`)
     if (c.otrosTributos) l.push(`   percepciones/otros tributos ${money(c.otrosTributos)} (van dentro del importe, no son IVA)`)
     if (c.esNotaCredito) l.push('   ⚠ **nota de crédito: entra en negativo**')
-    l.push(`   obra: ${c.obra ?? '_falta_'}${c.concepto ? ` · ${c.concepto}` : ''}`)
+    // De DÓNDE salió la obra se dice siempre que no venga del papel. Imputar el costo a una obra es
+    // la decisión con más consecuencias de toda la fila —arrastra margen, certificación y P&L— y si
+    // se dedujo de lo que la persona escribió en el chat, tiene que poder verlo antes de confirmar.
+    const via = c.obra && c.obraVia === 'mensaje' ? ' _(de lo que escribiste)_' : ''
+    l.push(`   obra: ${c.obra ?? '_falta_'}${via}${c.concepto ? ` · ${c.concepto}` : ''}`)
     if (it.yaCargado) l.push(`   ✓ **ya está cargado en la fila ${it.yaCargado.fila ?? '?'}** — no lo vuelvo a cargar`)
     for (const p of preguntasDe(it)) l.push(`   ❓ ${p}`)
   })

@@ -153,7 +153,9 @@ export async function escribirFajo(d, fajo) {
       estado: ESTADO.ENCOLADO,
       texto: [
         '🧊 **La escritura de Sheets está congelada.** No toqué nada.',
-        `Dejé los ${items.length} comprobante(s) guardados: cuando Dirección levante el freno se cargan.`,
+        items.length === 1
+          ? 'Dejé el comprobante guardado: cuando Dirección levante el freno se carga.'
+          : `Dejé los ${items.length} comprobantes guardados: cuando Dirección levante el freno se cargan.`,
       ].join('\n'),
     }
   }

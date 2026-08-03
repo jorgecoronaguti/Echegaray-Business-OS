@@ -90,6 +90,26 @@
 		reverse_proxy {$OS_ASISTENCIA_UPSTREAM:unix//sockets/asistencia.sock}
 	}
 
+	# ── BOTONES DE LA CARGA DE COMPROBANTES ─────────────────────────────────────────
+	#
+	# QUÉ PUBLICA:
+	#   POST /comprobantes/accion?t=<secreto>  Confirmar · Corregir · Descartar de un fajo
+	#
+	# MISMO PROCESO y MISMO SOCKET que `/asistencia`: `servidor-asistencia.mjs` monta las dos rutas.
+	# Por eso no hay upstream nuevo, ni servicio nuevo, ni puerto nuevo.
+	#
+	# Lo que SÍ es propio es el SECRETO (`COMPROBANTES_ACCION_SECRETO`, distinto del de asistencia):
+	# son dos dominios con dos permisos distintos, y un secreto compartido entre dos puertas es una
+	# sola puerta — quien pudiera cargar asistencia podría confirmar un gasto en el Flujo de Fondos.
+	#
+	# Viaja en `?t=` como el de asistencia, así que el filtro de log de abajo ya lo borra: no hay que
+	# agregar nada ahí. Si algún día se le cambia el nombre al parámetro, hay que agregarlo al filtro
+	# o el secreto queda escrito en el log de acceso.
+	@comprobantes path /comprobantes /comprobantes/*
+	handle @comprobantes {
+		reverse_proxy {$OS_ASISTENCIA_UPSTREAM:unix//sockets/asistencia.sock}
+	}
+
 	# Todo lo demás sigue siendo Mattermost, exactamente como antes.
 	handle {
 		reverse_proxy mattermost:8065

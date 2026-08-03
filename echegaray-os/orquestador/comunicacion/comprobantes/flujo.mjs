@@ -62,8 +62,18 @@ export async function bajarAdjunto(mattermost, fileId) {
  * `listas` son los desplegables ESTRICTOS. Si no se pudieron leer (`ok:false`), NO se marca al
  * proveedor como nuevo: se lo deja tal cual y se declara que no se pudo verificar. Decir "este
  * proveedor no existe" porque falló una lectura sería fabricar un hallazgo.
+ *
+ * `textoPost` es lo que la persona ESCRIBIÓ al mandar la foto. Es la segunda fuente de la obra y no
+ * un adorno: mandar la foto con "ARCOR" al lado es la forma más natural de decir a qué obra va, y
+ * mucho más frecuente que anotarla a mano en el papel antes de fotografiarlo. Sin mirarla, el bot
+ * preguntaba por una obra que la persona acababa de escribir un renglón más arriba.
+ *
+ * EL ORDEN IMPORTA: manda lo que dice el COMPROBANTE; el texto del chat sólo se usa cuando el papel
+ * no dice nada. Y las dos pasan por el MISMO matcheo estricto contra el desplegable, que devuelve
+ * null si la referencia es ambigua. Escribir "ARCOR" no mete "ARCOR" en la celda: mete el rótulo del
+ * desplegable que matchea sin ambigüedad, o no mete nada y se pregunta.
  */
-export function armarItem({ lectura, adjunto, listas } = {}) {
+export function armarItem({ lectura, adjunto, listas, textoPost = null } = {}) {
   const { comprobante, faltantes, dudas } = normalizarLectura(lectura)
   const listasOk = listas?.ok !== false && (listas?.proveedores?.length ?? 0) > 0
 
@@ -74,8 +84,16 @@ export function armarItem({ lectura, adjunto, listas } = {}) {
     proveedorNuevo = m.esNuevo === true
   }
 
-  const obra = obraDeAnotacion(comprobante.anotacion, listas?.obras ?? [])
+  // 1º el papel, 2º lo que escribió la persona. Nunca al revés.
+  const obras = listas?.obras ?? []
+  let obra = obraDeAnotacion(comprobante.anotacion, obras)
+  let obraVia = obra ? 'comprobante' : null
+  if (!obra) {
+    const porTexto = obraDeAnotacion(textoPost, obras)
+    if (porTexto) { obra = porTexto; obraVia = 'mensaje' }
+  }
   comprobante.obra = obra?.valor ?? null
+  comprobante.obraVia = obraVia
 
   const k = claveComprobante(comprobante)
   return {
@@ -140,7 +158,9 @@ export async function procesarPost(d, m = {}) {
   for (const a of bajados) {
     const r = await leer(a)
     if (!r?.ok) { problemas.push(`· ${a.nombre}: ${r?.error ?? 'no pude leerlo'}`); continue }
-    items.push(armarItem({ lectura: r.crudo, adjunto: a, listas: listasVivas }))
+    // El texto del post vale para TODOS sus adjuntos: mandar cinco fotos con un solo "ARCOR" arriba
+    // es la forma en que se manda un fajo de una misma obra.
+    items.push(armarItem({ lectura: r.crudo, adjunto: a, listas: listasVivas, textoPost: m.texto ?? null }))
   }
   if (!items.length) {
     return { texto: [TEXTO.NADA_LEGIBLE, ...(problemas.length ? ['', ...problemas] : [])].join('\n'), estado: 'ilegible' }

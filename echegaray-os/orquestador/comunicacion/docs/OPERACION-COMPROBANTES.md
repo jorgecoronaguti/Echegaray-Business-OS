@@ -53,9 +53,17 @@ select table_name from information_schema.tables
 
 El canal oficial **no está en el código**: sale de `comunicacion.canales_area`.
 
+> **El canal se llama distinto de lo que se ve.** En este Mattermost el canal que en pantalla dice
+> `Comprobantes-gastos` tiene el slug **`compras`** y el id `ataehrdpmfyctqyjcfz5rs9jka`. Eso importa
+> dos veces: el frame `posted` del WebSocket manda el **slug**, no el nombre visible, y configurar el
+> nombre visible en `MM_CANALES_ADJUNTOS` hace que la guarda no matchee nunca y la foto no llegue a
+> nadie. Verificado con un frame real del Mattermost vivo — los tests con canal de mentira pasaban
+> igual porque traían el nombre que el código esperaba. Por eso la guarda ahora acepta también el
+> **channel_id**, que es lo único que sobrevive a que alguien renombre el canal.
+
 ```sql
 insert into comunicacion.canales_area (plataforma, channel_id, canal_nombre, area_clave)
-values ('mattermost', '<channel_id de comprobantes-gastos>', 'comprobantes-gastos', 'compras')
+values ('mattermost', 'ataehrdpmfyctqyjcfz5rs9jka', 'comprobantes-gastos', 'compras')
 on conflict (plataforma, channel_id) do update set area_clave='compras', activo=true;
 ```
 
@@ -77,7 +85,7 @@ on conflict (plataforma, plataforma_user_id, permiso) do update set activo=true;
 |---|---|---|
 | `COMPROBANTES_ACCION_URL` | URL pública del callback de los botones | `https://chat.ecsas.com.ar/comprobantes/accion` |
 | `COMPROBANTES_ACCION_SECRETO` | **Obligatorio.** Sin él los botones se deniegan | — |
-| `MM_CANALES_ADJUNTOS` | Canales donde un post con adjuntos entra sin mencionar a `@os` | `comprobantes-gastos` |
+| `MM_CANALES_ADJUNTOS` | Canales donde un post con adjuntos entra sin mencionar a `@os`. **Slug o channel_id** | `comprobantes-gastos,compras` |
 | `ORQ_COMPROBANTES_MODELO` | Modelo de visión | `claude-haiku-4-5-…` |
 | `ORQ_COMPROBANTES_VENTANA_MIN` | Ventana de agrupación del fajo | `5` |
 | `ORQ_COMPROBANTES_MAX_ADJUNTOS` | Techo de adjuntos por post | `12` |
@@ -115,6 +123,33 @@ El bot no es admin: no puede publicar en nombre de una persona. Se inyecta en el
 Después, siempre: `comunicacion.outbox` (mirar `dead`), `orq.chat_result` y el journal del worker.
 
 ---
+
+## Estado de verificación al 03/08/2026
+
+Probado contra el **Mattermost vivo** (subida real de un archivo al canal real, descarga real por el
+cliente del bot), el **modelo de visión real**, los **desplegables reales del Sheet** y un Postgres
+**desechable** con esta migración aplicada. El comprobante es real por sus datos (proveedor, CUIT,
+número, fecha e importes de un comprobante de ARCA), renderizado a PDF.
+
+| Tramo | Estado |
+|---|---|
+| Frame `posted` real del canal → `esRelevante` | ✔ verificado (y arreglado: entraba `false`) |
+| Descarga del adjunto desde Mattermost | ✔ verificado |
+| Lectura por visión → proveedor/CUIT/tipo/N°/fecha/IVA/total | ✔ verificado, exacto |
+| Matcheo contra los desplegables estrictos | ✔ verificado (`Neumagom`, `ARCOR`) |
+| Obra ausente → se pregunta, no se inventa | ✔ verificado |
+| Botones: sin secreto / secreto inválido → denegado | ✔ verificado |
+| Confirmar con freno de mano puesto → `encolado`, no escribe | ✔ verificado |
+| Segundo click → no duplica | ✔ verificado |
+| Payload final para `Compras` (fila 807) | ✔ verificado con `--dry --json` |
+| **Escritura real en la pestaña `Compras`** | ✖ **NO verificado**: el freno de mano está puesto |
+| **Migración aplicada en la base de producción** | ✖ **NO aplicada** (la aplica el dueño, no un agente) |
+| **Fila en `canales_area` y grant de permiso en producción** | ✖ **NO cargados** |
+| **Ruta `/comprobantes/accion` publicada en Caddy** | ✖ en el repo, **NO recargada** en producción |
+| **Servicios reiniciados con este código** | ✖ **NO** — producción sigue en el commit desplegado |
+
+Mientras esas cinco últimas filas sigan en ✖, **la carga por chat no funciona en producción**: el
+camino está probado, pero no está encendido.
 
 ## Reglas que este módulo hace cumplir
 

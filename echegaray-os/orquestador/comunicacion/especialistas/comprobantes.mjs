@@ -105,6 +105,9 @@ export const especialista = {
       log,
     }, {
       fileIds,
+      // Lo que la persona escribió al mandar la foto. Es de donde sale la obra cuando el papel no
+      // la dice, que es el caso normal: una factura de proveedor no sabe a qué obra se imputa.
+      texto,
       actor,
       channelId: actor?.channel_id,
       rootPostId: actor?.root_post_id ?? postId ?? null,

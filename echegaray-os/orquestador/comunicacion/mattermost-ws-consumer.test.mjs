@@ -186,3 +186,69 @@ test('conexión · shutdown limpio ⇒ no reconecta', async () => {
   assert.equal(FakeWS.instancias.length, n)
   assert.equal(c._estado().cerrado, true)
 })
+
+// ── EL FRAME REAL DEL CANAL DE COMPROBANTES ─────────────────────────────────
+//
+// Este bloque NO es un frame inventado: es la captura literal de un evento `posted` del Mattermost
+// vivo, del canal que el dueño ve como "Comprobantes-gastos", con un PDF real adjunto.
+//
+// Lo que enseñó, y por lo que existe este test: Mattermost manda en `channel_name` el SLUG del
+// canal (`compras`), NO su nombre visible (`Comprobantes-gastos`). Configurar el nombre que se lee
+// en la pantalla hacía que `esRelevante` devolviera false y la foto no llegara a NADIE — con toda la
+// capacidad construida del otro lado. Los tests con canal de mentira pasaban igual, porque el frame
+// falso traía el nombre que el código esperaba: la prueba se estaba dando la razón a sí misma.
+const FRAME_REAL_COMPROBANTES = {
+  event: 'posted',
+  data: {
+    channel_display_name: 'Comprobantes-gastos',
+    channel_name: 'compras', // ← el SLUG, que es lo único que viaja
+    channel_type: 'O',
+    post: JSON.stringify({
+      id: 'x5o3tjus5bfoxq1cuqyqx3j9po',
+      channel_id: 'ataehrdpmfyctqyjcfz5rs9jka',
+      user_id: 'persona_real',
+      message: '',
+      type: '',
+      file_ids: ['9e5yrxbrctg6fjsx5u3nux81zo'],
+    }),
+    mentions: '[]',
+  },
+}
+
+test('el frame REAL del canal de comprobantes entra por su SLUG, no por el nombre visible', () => {
+  const info = parsearPosted(FRAME_REAL_COMPROBANTES)
+  assert.equal(info.channelName, 'compras')
+  assert.deepEqual(info.post.file_ids, ['9e5yrxbrctg6fjsx5u3nux81zo'])
+
+  // Configurar el nombre VISIBLE no alcanza: es exactamente el defecto que se encontró en vivo.
+  assert.equal(
+    esRelevante(info, { botUserId: BOT, canalesAdjuntos: new Set(['comprobantes-gastos']) }),
+    false,
+    'el nombre visible del canal no matchea el slug que manda Mattermost')
+
+  // Por slug, entra.
+  assert.equal(esRelevante(info, { botUserId: BOT, canalesAdjuntos: new Set(['compras']) }), true)
+  // Y por channel_id también, que es lo que sobrevive a un renombre del canal.
+  assert.equal(
+    esRelevante(info, { botUserId: BOT, canalesAdjuntos: new Set(['ataehrdpmfyctqyjcfz5rs9jka']) }),
+    true)
+})
+
+test('un mensaje SIN adjuntos en el canal de comprobantes no se lo roba a nadie', () => {
+  const crudo = JSON.parse(JSON.stringify(FRAME_REAL_COMPROBANTES))
+  const post = JSON.parse(crudo.data.post)
+  post.file_ids = []
+  post.message = 'che, ¿cuánto le debemos a Cemento SA?'
+  crudo.data.post = JSON.stringify(post)
+  const info = parsearPosted(crudo)
+  assert.equal(esRelevante(info, { botUserId: BOT, canalesAdjuntos: new Set(['compras']) }), false)
+})
+
+test('el eco del propio bot con adjuntos no reentra (anti-loop)', () => {
+  const crudo = JSON.parse(JSON.stringify(FRAME_REAL_COMPROBANTES))
+  const post = JSON.parse(crudo.data.post)
+  post.user_id = BOT
+  crudo.data.post = JSON.stringify(post)
+  const info = parsearPosted(crudo)
+  assert.equal(esRelevante(info, { botUserId: BOT, canalesAdjuntos: new Set(['compras']) }), false)
+})

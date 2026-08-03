@@ -56,14 +56,21 @@ function escaparRegex(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&
  * nadie mencione a @os: mandar la foto de una factura al canal de comprobantes ES el pedido, y
  * exigir "@os" además de la foto convertiría lo natural en un trámite.
  *
- * Se configura por entorno (nombres de canal, no ids) y el default es el canal que el dueño pidió.
+ * Se configura por entorno y acepta **nombre de canal O channel_id**. Aceptar el id no es un lujo:
+ * lo que Mattermost manda en el frame `posted` es `channel_name`, y `channel_name` es el SLUG del
+ * canal, no su nombre visible. El canal que el dueño llama "Comprobantes-gastos" viaja por el
+ * WebSocket como `compras`, así que configurar el nombre que se ve en la pantalla hace que la guarda
+ * no matchee nunca y la foto no llegue a nadie — verificado contra el Mattermost vivo, con un frame
+ * real. El id es inmutable: renombrar el canal no vuelve a romper esto.
+ *
  * Es sólo un PREFILTRO de costo cero — decide qué evento vale la pena crear, no quién puede cargar.
  * La puerta de verdad (canal oficial contra `comunicacion.canales_area` + grant de permiso) vive en
  * `comprobantes/guarda.mjs` y se evalúa después, contra la base: un nombre de canal que llega por
- * WebSocket no autoriza nada.
+ * WebSocket no autoriza nada. Por eso un prefiltro de más sólo cuesta un evento que después se
+ * deniega, mientras que uno de menos pierde el pedido en silencio.
  */
 export function canalesDeAdjuntos(env = process.env) {
-  const crudo = env.MM_CANALES_ADJUNTOS ?? 'comprobantes-gastos'
+  const crudo = env.MM_CANALES_ADJUNTOS ?? 'comprobantes-gastos,compras'
   return new Set(String(crudo).split(',').map((s) => s.trim().toLowerCase()).filter(Boolean))
 }
 
@@ -85,7 +92,11 @@ export function esRelevante(info, { botUserId = null, botUsername = 'os', canale
   const porTexto = new RegExp(`(^|\\s)@${escaparRegex(botUsername)}\\b`, 'i').test(post.message ?? '')
   if (porId || porTexto) return true
   const canales = canalesAdjuntos ?? canalesDeAdjuntos()
-  return Boolean(channelName && canales.has(String(channelName).toLowerCase()) && tieneAdjuntos(post))
+  // Por SLUG (lo que viaja en el frame) o por CHANNEL_ID (inmutable). Cualquiera de los dos alcanza:
+  // el id sobrevive a que alguien renombre el canal, el slug es lo que se lee cómodo en el .env.
+  const esCanalDeIngesta = (channelName && canales.has(String(channelName).toLowerCase()))
+    || (post.channel_id && canales.has(String(post.channel_id).toLowerCase()))
+  return Boolean(esCanalDeIngesta && tieneAdjuntos(post))
 }
 
 /** Mapea el post de Mattermost al payload que el MattermostAdapter ya espera.

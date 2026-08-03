@@ -219,3 +219,55 @@ test('un post sin adjuntos no dispara ningún trabajo', async () => {
   const r = await procesarPost(d, post({ fileIds: [] }))
   assert.equal(r.estado, 'sin_adjuntos')
 })
+
+// ── LA OBRA QUE VIENE DEL MENSAJE, NO DEL PAPEL ──────────────────────────────
+//
+// Una factura de proveedor NO dice a qué obra se imputa: eso lo sabe quien la manda. La forma
+// natural de decirlo en un chat es escribirlo al lado de la foto ("ARCOR" + la imagen), no anotarlo
+// a mano en el papel antes de fotografiarlo. Verificado contra el Mattermost vivo: sin esto el bot
+// preguntaba por una obra que la persona acababa de escribir un renglón más arriba.
+
+test('la obra sale de lo que la persona ESCRIBIÓ al mandar la foto', async () => {
+  const { d } = armar({ lecturas: [lecturaBarcelo({ anotacion_manuscrita: null })] })
+  const r = await procesarPost(d, post({ texto: 'San Francisco' }))
+  assert.match(r.texto, /obra: San Francisco/)
+  assert.match(r.texto, /de lo que escribiste/, 'se declara de dónde salió la obra')
+  assert.ok(r.attachments[0].actions.some((a) => a.id === 'confirmar'))
+})
+
+test('el texto del mensaje NO pisa la obra que dice el comprobante', () => {
+  const it = armarItem({
+    lectura: lecturaBarcelo({ anotacion_manuscrita: 'Messina' }),
+    listas: LISTAS,
+    textoPost: 'San Francisco',
+  })
+  assert.equal(it.comprobante.obra, 'Messina', 'manda el papel')
+  assert.equal(it.comprobante.obraVia, 'comprobante')
+})
+
+test('un texto que no matchea ninguna obra no inventa nada: se sigue preguntando', async () => {
+  const { d } = armar({ lecturas: [lecturaBarcelo({ anotacion_manuscrita: null })] })
+  const r = await procesarPost(d, post({ texto: 'ahí te mando la factura, gracias' }))
+  assert.match(r.texto, /obra: _falta_/)
+  assert.match(r.texto, /a qué obra va/)
+  assert.equal(r.attachments[0].actions.some((a) => a.id === 'confirmar'), false)
+})
+
+test('un texto AMBIGUO entre dos obras no elige una: pregunta', () => {
+  // "San" matchea parcialmente con "San Francisco" y nada más; con dos candidatas debe dar null.
+  const it = armarItem({
+    lectura: lecturaBarcelo({ anotacion_manuscrita: null }),
+    listas: { ok: true, proveedores: LISTAS.proveedores, obras: ['San Francisco', 'San Martin'] },
+    textoPost: 'San',
+  })
+  assert.equal(it.comprobante.obra, null, 'elegir una sería tirar una moneda sobre a qué obra va el costo')
+})
+
+test('el texto del post vale para TODOS los adjuntos del mismo post', async () => {
+  const { d } = armar({
+    lecturas: [lecturaBarcelo({ numero: '0001-00000001', anotacion_manuscrita: null }),
+      lecturaBarcelo({ numero: '0001-00000002', anotacion_manuscrita: null })],
+  })
+  const r = await procesarPost(d, post({ fileIds: ['f1', 'f2'], texto: 'Messina' }))
+  assert.equal((r.texto.match(/obra: Messina/g) ?? []).length, 2)
+})
