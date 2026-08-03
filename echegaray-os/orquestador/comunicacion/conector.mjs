@@ -120,6 +120,11 @@ export function crearConector(opts = {}) {
         // degrada al catálogo en vez de adivinar un destino.
         razonarRuteo,
         canalPrivadoPara,
+        // EL CLIENTE DE LA PLATAFORMA. El conector es el único que lo conoce, y hay capacidades que
+        // lo necesitan de verdad: bajar el adjunto de un post (una foto de factura) y publicar un
+        // mensaje del que hace falta saber el id para reescribirlo después. Sigue siendo el ÚNICO
+        // que lo construye; el handler sólo lo pasa.
+        mattermost: cliente,
         // Cliente de Google INYECTABLE. En producción es undefined y el handler arma el que
         // corresponde. Existe para que el test vertical pueda recorrer el camino completo
         // —mensaje → Director → asistente → capacidad → outbox— sin llamar a Google: sin

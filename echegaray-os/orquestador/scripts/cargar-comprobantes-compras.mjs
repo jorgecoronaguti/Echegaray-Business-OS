@@ -25,8 +25,17 @@ import { perfilesDeImputacionDesdeDB, sugerirImputacion } from '../lib/imputacio
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
 const ADD_PROV = process.argv.includes('--add-proveedores')
+// SALIDA LEGIBLE POR OTRO PROGRAMA (`--json`). Aditiva y apagada por defecto: sin la bandera este
+// script imprime exactamente lo que imprimía. Existe porque el bot de Mattermost necesita contestarle
+// al dueño EN QUÉ FILA quedó cada comprobante, y sacar un número de fila parseando prosa es la clase
+// de acoplamiento que se rompe el día que alguien mejora un mensaje.
+const JSON_OUT = process.argv.includes('--json')
 const fileArg = (process.argv.find((a) => a.startsWith('--file=')) || '').split('=')[1]
   || process.argv[process.argv.indexOf('--file') + 1]
+
+/** Marca que delimita la línea de resultado. Todo lo demás de stdout es para una persona. */
+const MARCA_JSON = '##ORQ-JSON##'
+const emitir = (o) => { if (JSON_OUT) console.log(MARCA_JSON + JSON.stringify(o)) }
 
 const idx = (l) => { let c = 0; for (const ch of l) c = c * 26 + (ch.charCodeAt(0) - 64); return c - 1 } // 'A'->0, 'AA'->26
 
@@ -88,7 +97,9 @@ async function main() {
     const sug = perfiles && !cc.unidad && !cc.obra
       ? sugerirImputacion({ proveedor: prov.valor, concepto: c.concepto, monto: c.total ?? c.neto }, perfiles)
       : null
-    plan.push({ valores: valoresInput(cc), nuevo: prov.esNuevo, proveedor: prov.valor, sug })
+    // `i` = índice del comprobante en el fajo de ENTRADA. Va en el plan porque los rechazados no
+    // ocupan fila: sin él, quien llama no puede saber a qué comprobante suyo corresponde cada fila.
+    plan.push({ i, valores: valoresInput(cc), nuevo: prov.esNuevo, proveedor: prov.valor, sug })
   }
 
   const desde = ultima + 1
@@ -116,12 +127,17 @@ async function main() {
     }
     console.log('   (✓ = alta confianza · (?) = necesita tu confirmación)')
   }
-  if (!plan.length) { console.log('\nNada cargable.'); await closePool(); return }
+  if (!plan.length) {
+    console.log('\nNada cargable.')
+    emitir({ ok: false, motivo: 'nada_cargable', escritas: 0, rechazos, nuevos: [...nuevos] })
+    await closePool(); return
+  }
 
   if (DRY) {
     console.log('\n(--dry) Muestra de la primera fila a escribir:')
     console.log('  ', JSON.stringify(plan[0].valores))
     console.log(`  Fórmulas a estampar por copyPaste desde la fila ${ultima}: ${GRUPOS_FORMULA.map((g) => g[0] === g[1] ? g[0] : g.join(':')).join(' ')}`)
+    emitir({ ok: true, dry: true, desde, hasta, escritas: 0, filas: plan.map((p, k) => ({ i: p.i, fila: desde + k, proveedor: p.proveedor })), rechazos, nuevos: [...nuevos] })
     await closePool(); return
   }
 
@@ -154,7 +170,22 @@ async function main() {
   // Este cargador AGREGA filas de comprobante al final de "Compras". No escribe un solo rótulo:
   // escribe datos —CUIT, número, importe, fecha— en filas que antes no existían. No hay texto de
   // una persona debajo que se pueda pisar, porque debajo no había nada.
-  await google.batchUpdateValues(ID, data)
+  //
+  // Y SE MIRA LO QUE DEVUELVE. La escritura puede no ocurrir sin lanzar una excepción: el freno de
+  // mano de Sheets, el candado de pestaña y la firma de valores devuelven `{protegido:true}` y el
+  // script seguía derecho hasta imprimir "✔ Escritas N filas" sobre un Sheet que no se tocó. Un log
+  // que felicita sin haber escrito manda a buscar el problema al lugar equivocado.
+  const escrito = await google.batchUpdateValues(ID, data)
+  if (escrito?.protegido) {
+    const motivo = escrito.congelado
+      ? `la escritura de Sheets está CONGELADA — ${String(escrito.motivo ?? '').split('\n')[0]}`
+      : `la guarda no dejó escribir (${escrito.motivo ?? 'pestaña candada o editada a mano'})`
+    console.error(`\n✖ NO se escribió nada: ${motivo}`)
+    emitir({ ok: false, motivo: 'protegido', congelado: escrito.congelado === true, detalle: String(escrito.motivo ?? '').slice(0, 300), escritas: 0 })
+    await closePool()
+    process.exitCode = 2
+    return
+  }
 
   // 2) FÓRMULAS por fila: copiar de la última fila con datos a las nuevas (Google reajusta refs).
   const reqs = GRUPOS_FORMULA.map(([a, b]) => ({
@@ -201,6 +232,11 @@ async function main() {
   } catch (e) {
     console.log(`· frescura no registrada: ${String(e?.message ?? e).slice(0, 120)}`)
   }
+  emitir({
+    ok: true, desde, hasta, escritas: plan.length, errores, sinRubro,
+    filas: plan.map((p, k) => ({ i: p.i, fila: desde + k, proveedor: p.proveedor })),
+    rechazos, nuevos: [...nuevos], dupesArca: dupes,
+  })
   console.log('\nSIGUIENTE: node orquestador/scripts/sync-compras.mjs  (espeja a Supabase, regla #6).')
   await closePool()
 }
