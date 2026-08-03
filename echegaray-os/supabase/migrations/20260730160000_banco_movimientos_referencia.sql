@@ -42,8 +42,17 @@ comment on column public.banco_movimientos.referencia is
 
 -- LA CLAVE FUERTE, donde el dato la permite. Parcial: las filas sin referencia no compiten por este
 -- índice y siguen deduplicándose por el viejo.
-create unique index if not exists banco_movimientos_ref_unico
-  on public.banco_movimientos (cuenta, referencia)
+-- CORREGIDO 03/08/2026: este índice era (cuenta, referencia) y NO SE PUEDE CREAR sobre los datos
+-- reales — el banco REPITE la referencia para una operación y su percepción. Verificado en la base
+-- viva: la referencia 114824 es la compra de Google Workspace (-37.926,00) y su percepción RG 5617
+-- (-11.203,92), las dos legítimas y las dos con el mismo número.
+--
+-- La migración siguiente (20260731130000) ya lo arreglaba agregando el importe, pero ésta corre
+-- primero y abortaba con "could not create unique index", así que la cadena entera quedaba sin
+-- aplicar y el importador nunca llegaba a escribir. Se crea directo en la forma final: mismo estado
+-- final, sin el paso que falla.
+create unique index if not exists banco_movimientos_ref_importe_unico
+  on public.banco_movimientos (cuenta, referencia, importe)
   where referencia is not null;
 
 -- Para cruzar cheques por identidad sin escanear la tabla entera.
