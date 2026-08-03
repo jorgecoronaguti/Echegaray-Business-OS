@@ -13,7 +13,7 @@
     "orq:health": "node orquestador/worker.mjs --health",
     "orq:enqueue": "node orquestador/scripts/enqueue.mjs",
     "orq:smoke": "node orquestador/scripts/smoke-anthropic.mjs",
-    "orq:test": "node --test 'orquestador/**/*.test.mjs' && node orquestador/scripts/auditar-ruteo-areas.mjs > /dev/null && node orquestador/scripts/verificar-extension-zip.mjs > /dev/null"
+    "orq:test": "node --test 'orquestador/**/*.test.mjs' '.claude/hooks/*.test.mjs' 'scripts/**/*.test.mjs' && node orquestador/scripts/auditar-ruteo-areas.mjs > /dev/null && node orquestador/scripts/verificar-extension-zip.mjs > /dev/null"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",

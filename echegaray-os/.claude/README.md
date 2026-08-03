@@ -18,7 +18,7 @@ El `CLAUDE.md` de `echegaray-os/` traduce ese contexto a reglas técnicas: stack
 Framework: Next.js (App Router) + TypeScript
 Styling: Tailwind CSS
 Backend: Supabase (Auth + Postgres + RLS)
-Testing: Playwright CLI
+Testing: `node --test` (`npm run orq:test`) es el runner que produce la evidencia de cierre; Playwright para el recorrido por navegador
 ```
 
 ## Arquitectura Feature-First
@@ -100,7 +100,8 @@ Skills que se conservan porque el chasis técnico es reutilizable, pero sin caso
 
 ## Hooks
 
-`hooks/log-tool-usage.sh` — registra cada uso de herramienta en `.claude/logs/tool-usage.log` para auditoría/debug.
+`hooks/clasificar-tarea.mjs` (UserPromptSubmit) — clasifica el pedido e inyecta el protocolo mínimo de esa categoría.
+`hooks/estado-sesion.mjs` (SessionStart/SessionEnd) — inyecta el estado real y el traspaso de la sesión anterior.
 
 ## MCPs (`.mcp.json`)
 
@@ -162,7 +163,8 @@ Si en el futuro se necesita un control de acceso más estricto (solo-lectura gar
 │   └── prp-base.md
 │
 ├── hooks/
-│   └── log-tool-usage.sh
+│   ├── clasificar-tarea.mjs
+│   └── estado-sesion.mjs
 │
 ├── .mcp.json
 └── example.mcp.json
