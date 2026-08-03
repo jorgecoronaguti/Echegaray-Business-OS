@@ -97,9 +97,10 @@ export function crearManejadorComprobantes({ port, mattermost, secreto = null, u
       return malo(s.texto)
     }
 
-    // 1) LA PUERTA: canal oficial + grant. La misma que la ingesta, no una versión relajada.
+    // 1) LA PUERTA: canal oficial + (grant o membresía). La misma que la ingesta, no una relajada.
     const permitido = await puedeCargarComprobantes({
       port, actor: { plataforma_user_id: p.userId, channel_type: p.channelType }, channelId: p.channelId,
+      mattermost,
     })
     if (!permitido.ok) {
       log?.info?.('comprobantes: acción rechazada en la puerta', { motivo: permitido.motivo, detalle: permitido.detalle })

@@ -286,6 +286,7 @@ export async function procesarPost(d, m = {}) {
   // 2) LA PUERTA. Antes de bajar un byte y antes de gastar un token de visión.
   const permitido = await puedeCargarComprobantes({
     port, actor: m.actor ?? {}, channelId: m.channelId, plataforma: m.plataforma ?? 'mattermost',
+    mattermost, // segunda vía del permiso: estar en el canal oficial habilita
   })
   if (!permitido.ok) {
     log?.info?.('comprobantes: rechazado en la puerta', { motivo: permitido.motivo, detalle: permitido.detalle })

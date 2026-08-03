@@ -94,3 +94,32 @@ test('el timer se limpia en TODOS los caminos: el proceso no queda despierto de 
   }
   assert.equal(cancelados, 3, 'éxito, error HTTP y excepción: los tres limpian su timer')
 })
+
+// ── MEMBRESÍA DE CANAL ──────────────────────────────────────────────────────────────
+// Es lo que convierte "estar en el canal" en una habilitación, así que su contrato es de
+// seguridad: un 404 es un NO y cualquier otra cosa NO es un no. Verificado además en vivo contra
+// el Mattermost de producción el 03/08 — el bot, que no es admin, contesta 200/404 para los
+// canales de los que es miembro.
+
+test('miembroDeCanal: 200 ⇒ true, 404 ⇒ false', async () => {
+  const ok = new MattermostCliente(cfg(async () => respuesta({ user_id: 'u1', channel_id: 'c1' })))
+  assert.equal(await ok.miembroDeCanal({ channel_id: 'c1', user_id: 'u1' }), true)
+  const no = new MattermostCliente(cfg(async () => respuesta({ message: 'not found' }, 404)))
+  assert.equal(await no.miembroDeCanal({ channel_id: 'c1', user_id: 'u1' }), false)
+})
+
+test('miembroDeCanal: un 500 o un token vencido NO se traducen a "no es miembro"', async () => {
+  // Devolver `false` acá haría pasar una caída de Mattermost por una denegación limpia, y quien
+  // llama perdería la única forma de distinguirla para fallar cerrado con el mensaje correcto.
+  for (const status of [500, 401, 403]) {
+    const cliente = new MattermostCliente(cfg(async () => respuesta({ message: 'x' }, status)))
+    await assert.rejects(() => cliente.miembroDeCanal({ channel_id: 'c1', user_id: 'u1' }))
+  }
+})
+
+test('miembroDeCanal pega en la ruta de miembros del canal, no en otra', async () => {
+  const vistas = []
+  const cliente = new MattermostCliente(cfg(async (url) => { vistas.push(url); return respuesta({}) }))
+  await cliente.miembroDeCanal({ channel_id: 'c1', user_id: 'u1' })
+  assert.equal(vistas[0], 'http://mm:8065/api/v4/channels/c1/members/u1')
+})

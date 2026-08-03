@@ -48,6 +48,21 @@ const conBinding = (extra = {}) => puerto({
 
 const actorValido = (extra = {}) => ({ plataforma_user_id: USUARIO, plataforma_username: 'pablo', ...extra })
 
+/**
+ * Doble de Mattermost para la SEGUNDA vía del permiso (membresía del canal).
+ *
+ * Arranca sin miembros y TIRA cuando `roto`, igual que el cliente real: el 404 de Mattermost es
+ * una respuesta ("no está") y un 500 no lo es. Un doble que devolviera `false` ante un error de red
+ * haría pasar por "denegado limpio" lo que en realidad es "no pude preguntar", que es justo la
+ * distinción que sostiene el fail-closed.
+ */
+const mmDoble = ({ miembros = {}, roto = false } = {}) => ({
+  async miembroDeCanal({ channel_id, user_id }) {
+    if (roto) throw new Error('mattermost caído (simulado)')
+    return (miembros[channel_id] ?? []).includes(user_id)
+  },
+})
+
 /** Aísla process.env alrededor de un caso asíncrono. */
 async function conEnv(vars, fn) {
   const previo = {}
@@ -241,14 +256,83 @@ test('sin actor ⇒ se deniega', async () => {
 
 // ── Permiso ─────────────────────────────────────────────────────────────────────
 
-test('canal oficial + SIN permiso (modo estricto) ⇒ se deniega', async () => {
+test('canal oficial + SIN grant NI membresía (modo estricto) ⇒ se deniega', async () => {
   await estricto(async () => {
     const port = conBinding()
-    const r = await puedeCargar({ port, channelId: CANAL_OFICIAL, actor: actorValido() })
+    const r = await puedeCargar({ port, channelId: CANAL_OFICIAL, actor: actorValido(), mattermost: mmDoble() })
     assert.equal(r.ok, false)
     assert.equal(r.motivo, RECHAZO.PERMISO)
     assert.equal(r.detalle, DETALLE.SIN_PERMISO)
     assert.equal(consultoPermiso(port), true, 'el canal estaba bien: acá sí correspondía preguntar')
+  })
+})
+
+// ── La segunda vía: estar en el canal habilita (pedido del dueño, 03/08) ─────────
+
+test('SIN grant pero MIEMBRO del canal oficial (modo estricto) ⇒ pasa', async () => {
+  await estricto(async () => {
+    const port = conBinding() // sin un solo grant
+    const r = await puedeCargar({
+      port, channelId: CANAL_OFICIAL, actor: actorValido({ channel_type: 'P' }),
+      mattermost: mmDoble({ miembros: { [CANAL_OFICIAL]: [USUARIO] } }),
+    })
+    assert.equal(r.ok, true)
+    assert.equal(r.via, 'miembro_canal', 'tiene que quedar registrado por dónde entró')
+  })
+})
+
+test('la membresía se pregunta por el CANAL OFICIAL, no por el que declara el pedido', async () => {
+  // Cualquiera puede crear un canal y agregarse solo. Si la pregunta fuera sobre el canal del
+  // pedido, el permiso se regalaría; el pedido desde otro canal ya muere antes, en el binding.
+  await estricto(async () => {
+    const port = conBinding()
+    const r = await puedeCargar({
+      port, channelId: CANAL_OFICIAL, actor: actorValido({ channel_type: 'P' }),
+      mattermost: mmDoble({ miembros: { [CANAL_OTRO]: [USUARIO] } }),
+    })
+    assert.equal(r.ok, false)
+    assert.equal(r.detalle, DETALLE.SIN_PERMISO)
+  })
+})
+
+test('FAIL-CLOSED: si no se puede preguntar la membresía, se deniega como NO VERIFICABLE', async () => {
+  await estricto(async () => {
+    const port = conBinding()
+    const r = await puedeCargar({
+      port, channelId: CANAL_OFICIAL, actor: actorValido({ channel_type: 'P' }),
+      mattermost: mmDoble({ roto: true }),
+    })
+    assert.equal(r.ok, false)
+    assert.equal(r.detalle, DETALLE.PERMISO_NO_VERIFICABLE)
+    assert.equal(r.texto, TEXTO.PERMISO_NO_VERIFICABLE)
+  })
+})
+
+test('el GRANT sigue valiendo aunque la persona NO esté en el canal', async () => {
+  // No se saca la vía vieja: hay gente habilitada que no está —ni tiene por qué estar— en el canal.
+  await estricto(async () => {
+    const port = puerto({
+      canales: { [CANAL_OFICIAL]: { area: AREA_ASISTENCIA, nombre: 'Asistencia', activo: true } },
+      grants: { [USUARIO]: 'Pablo' },
+    })
+    const r = await puedeCargar({
+      port, channelId: CANAL_OFICIAL, actor: actorValido({ channel_type: 'P' }), mattermost: mmDoble(),
+    })
+    assert.equal(r.ok, true)
+    assert.equal(r.via, 'grant')
+  })
+})
+
+test('con grant, NI SE PREGUNTA la membresía: el camino barato alcanza', async () => {
+  await estricto(async () => {
+    const port = puerto({
+      canales: { [CANAL_OFICIAL]: { area: AREA_ASISTENCIA, nombre: 'Asistencia', activo: true } },
+      grants: { [USUARIO]: 'Pablo' },
+    })
+    let pregunto = false
+    const mm = { async miembroDeCanal() { pregunto = true; return false } }
+    await puedeCargar({ port, channelId: CANAL_OFICIAL, actor: actorValido({ channel_type: 'P' }), mattermost: mm })
+    assert.equal(pregunto, false, 'una llamada de red por click, para nada')
   })
 })
 

@@ -403,6 +403,22 @@ export function renderPestanaProtegida({ pestana }) {
   ].join('\n')
 }
 
+/**
+ * El FRENO GENERAL, que no es lo mismo que una pestaña tomada.
+ *
+ * Se separó el 03/08 después de verlo en producción: la carga de agosto de Rodrigo falló con el
+ * mensaje de "pestaña tomada" cuando lo que estaba puesto era el freno de mano de TODOS los Sheets.
+ * Decirlo bien no destraba nada, pero manda a buscar el problema donde está.
+ */
+export function renderCongelado() {
+  return [
+    '⚠️ **No se escribió nada.**',
+    '',
+    'La escritura de planillas está frenada por pedido de Dirección — no es un problema de la',
+    'pestaña ni de lo que cargaste. Avisale a Dirección: cuando levanten el freno, se registra.',
+  ].join('\n')
+}
+
 export function renderError({ mensaje }) {
   return `⚠️ No pude completar el registro: ${mensaje}. No se escribió nada en JORNALES.`
 }

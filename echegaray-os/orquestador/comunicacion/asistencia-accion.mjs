@@ -178,6 +178,7 @@ export function crearManejadorAccion({ port, mattermost, google = null, log = nu
       },
       channelId: p.channelId,
       plataforma: 'mattermost',
+      mattermost, // para poder preguntar la membresía del canal (segunda vía del permiso)
     })
     if (!permitido.ok) {
       log?.info?.('asistencia: pedido rechazado en la puerta', { motivo: permitido.motivo, detalle: permitido.detalle })
@@ -201,6 +202,10 @@ export function crearManejadorAccion({ port, mattermost, google = null, log = nu
       permisos: { tienePermiso },
       auditar: auditorDe(correlationId),
       requestId,
+      // El canal que la guarda acaba de confirmar como oficial. El ruteador vuelve a preguntar el
+      // permiso en cada click y necesita el mismo id contra el cual mirar la membresía; sacarlo del
+      // payload sería creerle al que llama justo el dato que decide si puede escribir.
+      canalOficial: permitido.canal?.id ?? null,
       ...(url ? { url } : {}),
     })
     try {

@@ -158,14 +158,26 @@ export function portGuarda({ canalOk = true, permisoOk = true, canal = 'comproba
   }
 }
 
-/** Cliente de Mattermost de mentira, con adjuntos. */
-export function mmFalso({ archivos = {} } = {}) {
+/**
+ * Cliente de Mattermost de mentira, con adjuntos.
+ *
+ * `miembros` es el mapa canal → [usuarios] de la SEGUNDA vía del permiso, y arranca VACÍO: el doble
+ * niega por defecto, igual que el servidor real ante alguien que no está en el canal. Un doble
+ * complaciente acá haría pasar por bueno justo el control que decide quién puede tocar la plata.
+ */
+export function mmFalso({ archivos = {}, miembros = {}, miembrosRoto = false } = {}) {
   const posts = []
   const dialogos = []
   let seq = 0
   return {
     posts,
     dialogos,
+    async miembroDeCanal({ channel_id, user_id }) {
+      // Igual que el cliente real: TIRA cuando no puede contestar, para que quien llama pueda
+      // distinguir «no es miembro» de «no pude preguntarlo» y fallar cerrado en el segundo.
+      if (miembrosRoto) throw new Error('mattermost caído (simulado)')
+      return (miembros[channel_id] ?? []).includes(user_id)
+    },
     async archivoInfo(id) {
       const a = archivos[id]
       if (!a) { const e = new Error('404'); e.status = 404; throw e }

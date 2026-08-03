@@ -206,7 +206,7 @@ function camposResumen(resumen) {
  */
 export function mensajeCuadrilla({
   fecha, obra, jornada, personal = [], marcas = {}, resumen = {}, url,
-  aviso = null, confirmacion = null, sinAcciones = false,
+  aviso = null, confirmacion = null, sinAcciones = false, ultima = null,
 } = {}) {
   const lineas = personal.map((p) => lineaPersona(p, novedadDe(p, marcas), jornada))
   const principal = {
@@ -220,6 +220,8 @@ export function mensajeCuadrilla({
     actions: sinAcciones ? [] : accionesCuadrilla({ personal, url, confirmacion }),
   }
   const attachments = [principal]
+  const repetir = sinAcciones ? null : attachmentRepetir({ personal, marcas, ultima, jornada, url })
+  if (repetir) attachments.push(repetir)
   if (resumen.sin_horas > 0) {
     attachments.push(attachmentAviso(
       `Falta indicar las horas de ${resumen.sin_horas} persona(s): ese día la planilla no define la jornada. Marcalas una por una antes de registrar.`))
@@ -256,6 +258,52 @@ function accionesCuadrilla({ personal, url, confirmacion }) {
     { url, style: confirmacion ? 'danger' : 'primary' }))
   acciones.push(boton('cancelar', 'Cancelar', { paso: 'cancelar' }, { url }))
   return acciones
+}
+
+/**
+ * «Aplicar lo mismo a…»: LA MISMA NOVEDAD A VARIAS PERSONAS, sin repetir el trámite.
+ *
+ * EL PEDIDO DEL DUEÑO, 03/08: «que se pueda agregar más de una persona». Lo que obligaba a repetir
+ * persona por persona era esto: marcar una excepción abría un diálogo POR CABEZA. Un día de lluvia
+ * en una cuadrilla de seis son seis formularios idénticos, con el mismo motivo elegido seis veces.
+ *
+ * POR QUÉ NO UN DESPLEGABLE DE SELECCIÓN MÚLTIPLE: Mattermost no tiene. Ni el `select` de un
+ * attachment ni el de un diálogo aceptan más de un valor, y un diálogo es estático (no hay evento
+ * de cambio), así que no se puede armar una lista de casilleros que dependa de la cuadrilla. Lo que
+ * SÍ da la plataforma es un desplegable por click, y con eso alcanza: un diálogo para la primera
+ * persona y UN CLICK para cada una de las siguientes.
+ *
+ * VA EN SU PROPIO ATTACHMENT porque el principal ya gasta las cinco acciones del presupuesto de
+ * legibilidad (`contrato-mattermost.mjs`), y porque es una decisión aparte: merece su título.
+ *
+ * `null` cuando no hay nada que repetir todavía — así el mensaje no muestra un desplegable que no
+ * puede hacer nada.
+ */
+function attachmentRepetir({ personal, marcas, ultima, jornada, url }) {
+  if (!ultima) return null
+  const origen = personal.find((p) => p.ref === ultima)
+  if (!origen) return null // la persona ya no está en la cuadrilla: la planilla cambió
+  const n = marcas?.[ultima]
+  if (!n) return null
+  const gente = personal
+    .filter((p) => !p.bloqueado && p.ref !== ultima)
+    .map((p) => ({ text: recortar(p.nombre, TOPE.OPCION), value: p.ref }))
+  if (!gente.length) return null
+  return {
+    fallback: 'Aplicar la misma novedad a otra persona',
+    color: COLOR.OBRA,
+    title: 'Aplicar lo mismo a…',
+    text: `Copia la novedad de ${String(origen.nombre ?? '').trim()} — ${resumenNovedad(n, jornada)} — a quien elijas. Se puede repetir.`,
+    actions: [menu('repetir', 'Elegí a quién', gente, { paso: 'repetir' }, { url })],
+  }
+}
+
+/** La novedad que se va a copiar, en una línea, para que nadie copie a ciegas. */
+function resumenNovedad(n, jornada) {
+  if (n?.presente !== true) return `no vino${n?.motivo ? ` · ${etiquetaMotivo(n.motivo)}` : ''}`
+  const extra = extrasDe({ horas: n.horas, jornada })
+  const horas = extra > 0 ? `${fmt(n.horas)} h (${fmt(extra)} extra)` : `${fmt(n.horas)} h`
+  return [horas, n.motivo ? etiquetaMotivo(n.motivo) : null].filter(Boolean).join(' · ')
 }
 
 // ── 3 · MENSAJE CONFIRMADO ──────────────────────────────────────────────────────

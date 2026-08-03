@@ -16,7 +16,12 @@
 //   3. IDENTIDAD (gratis). Sin identidad real de la plataforma no hay a quién auditar, y una
 //      escritura en la planilla de jornales sin nombre no es una escritura: es un agujero.
 //   4. PERMISO. Con `lib/asistencia-permisos.mjs`, el sistema que YA existe. Acá no se
-//      inventa un segundo sistema de permisos ni se lo modifica: se lo consulta.
+//      inventa un segundo sistema de permisos ni se lo modifica: se lo consulta. Desde el
+//      03/08 ese sistema acepta DOS vías —el grant explícito y la membresía del canal
+//      oficial— y por eso el paso 4 recibe el canal que el paso 2 acaba de validar.
+//      SIGUEN SIENDO DOS PREGUNTAS: «¿desde dónde?» la contesta el binding, «¿quién?» la
+//      contesta el permiso. Que la segunda ahora pueda contestarse mirando el canal no las
+//      fusiona: un pedido desde otro canal muere en el paso 2 y nunca llega al 4.
 //
 // POR QUÉ LA CARGA VIVE EN UN SOLO CANAL. La asistencia es un acto de equipo con efecto
 // económico: lo que se carga se ve, se corrige a la vista de todos y queda en un lugar
@@ -103,7 +108,7 @@ const niega = (motivo, detalle, txt) => ({ ok: false, motivo, detalle, texto: tx
  * @returns {Promise<{ok:true, canal:{id:string, nombre:string, area:string}, modoPermisos:string|null}
  *                 |{ok:false, motivo:string, detalle:string, texto:string}>}
  */
-export async function puedeCargar({ port, actor, channelId, plataforma } = {}) {
+export async function puedeCargar({ port, actor, channelId, plataforma, mattermost } = {}) {
   const red = texto(plataforma) ?? 'mattermost'
 
   // 1) Canal, a costo cero: forma, tipo y coherencia del pedido.
@@ -119,13 +124,21 @@ export async function puedeCargar({ port, actor, channelId, plataforma } = {}) {
   if (!identidad) return niega(RECHAZO.SIN_IDENTIDAD, DETALLE.SIN_IDENTIDAD, TEXTO.SIN_IDENTIDAD)
 
   // 4) Permiso, con el sistema que ya existe (no se crea uno nuevo acá).
-  const permiso = await verificarPermiso(port, { plataforma: red, plataformaUserId: identidad })
+  //
+  // EL CANAL VIAJA AL VERIFICADOR, y por eso el paso 2 tiene que haber corrido antes: lo que se
+  // le pasa es el canal YA CONFIRMADO como oficial del área, no el que declaró el pedido. Estar
+  // en ese canal es, desde el 03/08, una de las dos vías del permiso; estar en un canal cualquiera
+  // no habilita nada, porque ese canal jamás llega hasta acá.
+  const permiso = await verificarPermiso(port, {
+    plataforma: red, plataformaUserId: identidad, canalOficial: forma.canal, mattermost,
+  })
   if (!permiso.ok) return permiso
 
   return {
     ok: true,
     canal: { id: forma.canal, nombre: oficial.nombre, area: AREA_ASISTENCIA },
     modoPermisos: permiso.modo ?? null,
+    via: permiso.via ?? null,
   }
 }
 
@@ -164,6 +177,21 @@ function canalDelPedido({ actor, channelId }) {
  * Un binding apagado y un canal que nunca estuvo atado dan el mismo resultado a propósito:
  * de cara al jefe de obra son la misma situación, y el detalle interno alcanza para Dirección.
  */
+/**
+ * El id del canal SÓLO si es el oficial del área, y `null` si no lo es o si no se pudo verificar.
+ *
+ * Existe para el camino de CONSULTA, que no exige canal oficial (leer no es escribir) pero sí
+ * necesita saber si el canal desde el que se pregunta cuenta como habilitación por membresía. Sin
+ * esto, alguien agregado al canal podía CARGAR la asistencia y no podía CONSULTARLA: el mismo
+ * sistema contestándole dos cosas distintas sobre el mismo permiso.
+ */
+export async function canalOficialDeAsistencia(port, { channelId, plataforma = 'mattermost' } = {}) {
+  const canal = texto(channelId)
+  if (!canal) return null
+  const r = await canalOficial(port, { channelId: canal, plataforma })
+  return r.ok ? canal : null
+}
+
 async function canalOficial(port, { channelId, plataforma }) {
   if (typeof port?.query !== 'function') {
     return niega(RECHAZO.CANAL, DETALLE.BASE_INDISPONIBLE, TEXTO.CANAL_NO_VERIFICABLE)
@@ -186,14 +214,16 @@ async function canalOficial(port, { channelId, plataforma }) {
 }
 
 /** Permiso de escritura, con `lib/asistencia-permisos.mjs`. Traduce sus motivos a los míos. */
-async function verificarPermiso(port, { plataforma, plataformaUserId }) {
+async function verificarPermiso(port, { plataforma, plataformaUserId, canalOficial, mattermost }) {
   let r
   try {
-    r = await tienePermiso(port, { plataforma, plataformaUserId, permiso: PERMISO_ASISTENCIA_WRITE })
+    r = await tienePermiso(port, {
+      plataforma, plataformaUserId, permiso: PERMISO_ASISTENCIA_WRITE, canalOficial, mattermost,
+    })
   } catch {
     return niega(RECHAZO.PERMISO, DETALLE.PERMISO_NO_VERIFICABLE, TEXTO.PERMISO_NO_VERIFICABLE)
   }
-  if (r?.ok) return { ok: true, modo: r.modo ?? null }
+  if (r?.ok) return { ok: true, modo: r.modo ?? null, via: r.via ?? null }
   if (r?.motivo === DENEGADO.SIN_IDENTIDAD) {
     return niega(RECHAZO.SIN_IDENTIDAD, DETALLE.SIN_IDENTIDAD, TEXTO.SIN_IDENTIDAD)
   }
