@@ -318,11 +318,16 @@ export async function cargarTodo(page, vueltas = 15) {
       const alto = cand ? cand.scrollHeight : document.body.scrollHeight
       return `${alto}:${document.querySelectorAll('tbody tr').length}:${document.querySelectorAll('[class*=fondo-item]').length}`
     })
-    if (nueva === firma) return i
+    if (nueva === firma) return { vueltas: i, completo: true }
     firma = nueva
     await page.waitForTimeout(700)
   }
-  return vueltas
+  // SE ACABARON LAS VUELTAS Y LA PANTALLA SEGUÍA CRECIENDO. No es lo mismo que haber terminado, y la
+  // diferencia importa: en el relevamiento del 02/08/2026 corporativos y cedears llegaron al tope con
+  // 320 filas cada uno, o sea que puede haber más y nadie lo estaba diciendo. Un relevamiento
+  // truncado que se informa como completo es la misma familia de defecto que este módulo viene
+  // corrigiendo: no falla, contesta de menos.
+  return { vueltas, completo: false }
 }
 
 /**
@@ -516,7 +521,7 @@ export async function relevar({ rutas = [], endpoint = ENDPOINT_CDP } = {}) {
       }
       await page.waitForTimeout(1200)
       // Primero cargar TODO (el scroller real, no la ventana): sin esto se leen 20 filas de 189.
-      const vueltas = await cargarTodo(page)
+      const carga = await cargarTodo(page)
       const texto = await page.locator('body').innerText().catch(() => '')
       // Y LEER LA ESTRUCTURA, no sólo el texto plano. El texto de una tarjeta pone el nombre y la
       // tasa en renglones distintos, así que un extractor por línea no puede juntarlos: contra la
@@ -527,7 +532,11 @@ export async function relevar({ rutas = [], endpoint = ENDPOINT_CDP } = {}) {
       bloqueos.push(...controles.bloqueados)
       paginas.push({
         url, estado: 'ok', texto: String(texto).slice(0, 60000),
-        tabla, tarjetas, vueltas_de_carga: vueltas,
+        tabla, tarjetas,
+        carga: { vueltas: carga.vueltas, completo: carga.completo },
+        // Si la carga quedó truncada, el relevamiento de esta pantalla NO es completo y hay que
+        // decirlo acá: quien lea 320 filas tiene que saber si son todas o las primeras 320.
+        relevamiento_completo: carga.completo,
         controles: { total: controles.total, permitidos: controles.permitidos, bloqueados: controles.bloqueados.length },
       })
     }

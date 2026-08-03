@@ -1086,3 +1086,44 @@ test('las variaciones de un fondo NO son su tasa: sólo el rótulo TNA lo es', (
   assert.equal(credito.variaciones_historicas.anual, '-')
   assert.equal(credito.tasa, null)
 })
+
+test('82 cauciones distintas no pueden compartir el mismo id', () => {
+  // ═══ EL DEFECTO ═══
+  // La pantalla real devuelve 164 filas de caución y TODAS se llaman igual: el "ticker" es PESOS o
+  // DOLAR, y lo que las distingue es el plazo. Con el id armado sólo desde el ticker, 82 cauciones
+  // de pesos —de 3 a 90 días, del 10% al 17% TNA— colapsaban en un único `bz_pesos`. Y el id es la
+  // clave con la que el ledger guarda las observaciones y con la que se arma la clave estable de una
+  // recomendación: 82 tasas escribiéndose sobre la misma fila, y una propuesta aprobada "a la
+  // caución en pesos" sin poder decir a qué plazo.
+  const TABLA = {
+    cabecera: ['Ticker', 'Nombre', 'Plazo', 'Hora', 'TNA', 'Var(%)', 'Var', 'Volumen'],
+    filas: [
+      ['PESOS', 'CAUCION PESOS', '72hs', '31/07/2026', '10', '0,00%', '0,00', '8.449.076.556.363'],
+      ['PESOS', 'CAUCION PESOS', '96hs', '31/07/2026', '14,50', '0,00%', '0,00', '1.000'],
+      ['PESOS', 'CAUCION PESOS', '120hs', '31/07/2026', '15,10', '0,00%', '0,00', '1.000'],
+    ],
+  }
+  const { instrumentos } = extraerDeTabla(TABLA, { url: '/app/cotizaciones/cauciones' })
+  const ids = instrumentos.map((i) => i.id)
+  assert.equal(new Set(ids).size, 3, `ids colisionados: ${ids.join(', ')}`)
+
+  // Y en una caución, la columna "Plazo" ES cuándo vuelve la plata. Sin esto las 82 quedaban
+  // excluidas por "no se conoce el plazo de rescate" — el instrumento de corto plazo más usado del
+  // mercado local, descartado entero por un campo que la pantalla sí declara.
+  assert.deepEqual(instrumentos.map((i) => i.plazo_rescate_dias), [3, 4, 5])
+  assert.ok(Math.abs(instrumentos[1].tasa.valor - 0.145) < 1e-9)
+})
+
+test('en una LETRA el "Plazo" es liquidación, y el rescate queda en null declarado', () => {
+  // El otro lado del mismo criterio. En una letra "24hs" es cuándo se liquida la compra, no cuándo
+  // vuelve el capital: eso pasa al VENCIMIENTO, que esta tabla no trae como columna. Inferirlo del
+  // nombre ("VTO. 14/08/2026") sería adivinar una fecha que decide una inversión.
+  const TABLA = {
+    cabecera: ['Ticker', 'Nombre', 'Plazo', 'Hora', 'Precio', 'Var(%)', 'Var', 'TNA', 'Volumen'],
+    filas: [['S14G6', 'LETRA DEL TESORO NACIONAL CAPITALIZABLE EN PESOS VTO. 14/08/2026', '24hs', '31/07/2026', '1,0727', '0,00%', '0,00', '23,16%', '49.128.611.494']],
+  }
+  const [l] = extraerDeTabla(TABLA, { url: '/app/cotizaciones/letras' }).instrumentos
+  assert.equal(l.liquidacion_dias, 1, 'la liquidación sí sale de "24hs"')
+  assert.equal(l.plazo_rescate_dias, null, 'el rescate NO se inventa desde la liquidación')
+  assert.ok(l.campos_faltantes.includes('plazo_rescate_dias'), 'y se declara faltante')
+})

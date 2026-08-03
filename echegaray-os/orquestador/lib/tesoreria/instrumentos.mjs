@@ -181,6 +181,35 @@ export function categorizar(nombre = '') {
 }
 
 /**
+ * EL IDENTIFICADOR DE UN INSTRUMENTO — el ticker NO alcanza para identificarlo.
+ *
+ * ═══ LO QUE ENCONTRÓ EL RELEVAMIENTO COMPLETO (02/08/2026) ═══
+ *
+ * La pantalla de cauciones devuelve 164 filas y todas se llaman igual: el "ticker" es PESOS o DOLAR,
+ * y lo que las distingue es el PLAZO. Con el id armado sólo desde el ticker, 82 cauciones de pesos
+ * —de 3 a 90 días, del 10% al 17% TNA— colapsaban en un único `bz_pesos`:
+ *
+ *   id "bz_pesos" → 82 instrumentos DISTINTOS
+ *      plazo=3d tasa=10,00%   plazo=4d tasa=14,50%   plazo=5d tasa=15,10%   plazo=6d tasa=17,00%
+ *
+ * Y el id no es cosmético: es la clave con la que el ledger guarda las observaciones de mercado y
+ * con la que se arma la clave estable de una recomendación (bloque, día, instrumento). Ochenta y dos
+ * tasas distintas escribiéndose sobre la misma fila, y una propuesta aprobada "a la caución en
+ * pesos" sin poder decir a qué plazo. Este repo ya aprendió exactamente esto con los cheques —el
+ * número no identifica un cheque, la clave es (instrumento, número)— y la lección no había llegado
+ * acá.
+ *
+ * El plazo entra al id sólo cuando existe: para una Lecap o un FCI el ticker ya es único y el id no
+ * cambia respecto de antes.
+ */
+export function idDeInstrumento(crudo = {}, nombre = '') {
+  const base = String(crudo.ticker || nombre || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)
+  const plazo = esNumero(crudo.liquidacion_dias) ? `-${Number(crudo.liquidacion_dias)}d`
+    : esNumero(crudo.plazo_rescate_dias) ? `-r${Number(crudo.plazo_rescate_dias)}d` : ''
+  return `bz_${base}${plazo}`
+}
+
+/**
  * SKILL 5. Normaliza un instrumento crudo al contrato. Todo campo ausente se declara en
  * `campos_faltantes` — que después la SKILL 6 usa para excluirlo del ranking en vez de completarlo.
  */
@@ -206,7 +235,7 @@ export function normalizarInstrumento(crudo = {}, { observadoEn = new Date().toI
   } else faltantes.push('tasa')
 
   const inst = {
-    id: crudo.id || `bz_${(crudo.ticker || nombre).toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}`,
+    id: crudo.id || idDeInstrumento(crudo, nombre),
     nombre: nombre || '(sin nombre)',
     ticker: crudo.ticker ?? null,
     categoria,
@@ -355,6 +384,21 @@ export function extraerDeTabla({ cabecera = [], filas = [] } = {}, { url = null,
       tasa = { tipo: TIPO_TASA.RENDIMIENTO_HISTORICO, valor: numeroArg(f[idx.rendimiento]) / 100, naturaleza: NATURALEZA_TASA.HISTORICA }
     }
     const celdaLiq = idx.plazo_rescate != null ? String(f[idx.plazo_rescate] ?? '') : ''
+    const cat = categoria || categorizar(nombre)
+    // ═══ EN UNA CAUCIÓN, "PLAZO" ES EL PLAZO DE LA OPERACIÓN ═══
+    //
+    // Y por lo tanto es cuándo vuelve la plata, que es justo lo que el evaluador necesita. Sin esto,
+    // las 82 cauciones en pesos del relevamiento real quedaban excluidas por "no se conoce el plazo
+    // de rescate" — el instrumento de corto plazo más usado del mercado local, descartado entero por
+    // un campo que la pantalla sí declara.
+    //
+    // NO se hace lo mismo con letras ni bonos: ahí "Plazo" es la LIQUIDACIÓN (24hs) y la plata vuelve
+    // al VENCIMIENTO, que esta tabla no trae como columna. Inferirlo del nombre ("VTO. 14/08/2026")
+    // sería adivinar una fecha que decide una inversión: se deja en null, se declara, y el evaluador
+    // los excluye con su motivo. Un excluido con causa es información; un plazo inventado es un
+    // error con formato de dato.
+    const plazoOperacion = cat === 'caucion' && idx.plazo != null
+      ? plazoRescateDias(String(f[idx.plazo] ?? '')) : null
     // ═══ LA MONEDA, CUANDO NO HAY COLUMNA DE MONEDA ═══
     //
     // Las tablas de cotizaciones no tienen columna "Moneda", así que `f[idx.moneda]` era `undefined`
@@ -372,11 +416,13 @@ export function extraerDeTabla({ cabecera = [], filas = [] } = {}, { url = null,
     out.push(normalizarInstrumento({
       nombre,
       ticker: idx.ticker != null ? String(f[idx.ticker] ?? '').trim() || null : null,
-      categoria: categoria || categorizar(nombre),
+      categoria: cat,
       moneda: hayMarcaUSD ? 'USD' : 'ARS',
       precio: idx.precio != null ? numeroArg(f[idx.precio]) : null,
       tasa,
-      plazo_rescate_dias: plazoLiquidacion(celdaLiq) ?? (/inmediat|t\s*\+\s*0/i.test(celdaLiq) ? 0 : null),
+      plazo_rescate_dias: plazoLiquidacion(celdaLiq)
+        ?? (/inmediat|t\s*\+\s*0/i.test(celdaLiq) ? 0 : null)
+        ?? plazoOperacion,
       // La columna "Plazo" de las cotizaciones ("24hs", "72hs") es el plazo de LIQUIDACIÓN, que es
       // justo lo que decide cuándo vuelve la plata. Se leía sólo si existía una columna llamada
       // "Liquidación", que en esta app no existe: quedaba siempre en null.

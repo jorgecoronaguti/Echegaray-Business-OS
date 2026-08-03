@@ -88,7 +88,7 @@ async function main() {
 
       // LAZY LOADING: bajar la página no es interactuar con un control —no dispara nada— y es la
       // única forma de ver la tabla entera.
-      const vueltas = await cargarTodo(page)
+      const carga = await cargarTodo(page)
 
       const estructura = await page.evaluate(estructuraDePagina)
       const tabla = await page.evaluate(leerTablaCotizaciones).catch(() => null)
@@ -96,7 +96,8 @@ async function main() {
       const controles = await controlesDePagina(page)
       const veredictos = controles.map((el) => ({ el, v: evaluarElemento(el) }))
       mapa.push({
-        ruta, estado: 'ok', ...estructura, tabla, tarjetas, vueltas_de_carga: vueltas,
+        ruta, estado: 'ok', ...estructura, tabla, tarjetas,
+        carga, relevamiento_completo: carga.completo,
         controles: {
           total: veredictos.length,
           permitidos: veredictos.filter((x) => x.v.permitido).length,
@@ -122,7 +123,8 @@ async function main() {
     console.log(`  título: ${p.titulo}`)
     if (p.tabs?.length) console.log(`  tabs: ${p.tabs.join(' · ')}`)
     if (p.tabla?.filas?.length) {
-      console.log(`  TABLA: ${p.tabla.filas.length} filas (${p.vueltas_de_carga} vueltas de carga) · columnas: ${p.tabla.cabecera.join(' | ')}`)
+      const trunc = p.relevamiento_completo ? '' : '  ⚠ TRUNCADO: se agotaron las vueltas de carga y la pantalla seguía creciendo'
+      console.log(`  TABLA: ${p.tabla.filas.length} filas (${p.carga?.vueltas} vueltas)${trunc} · columnas: ${p.tabla.cabecera.join(' | ')}`)
       for (const m of p.tabla.filas.slice(0, 2)) console.log(`      ${m.join(' | ').replace(/\n/g, '⏎').slice(0, 150)}`)
     }
     if (p.tarjetas?.length) {

@@ -290,7 +290,34 @@ test('cargarTodo dispara el lazy loading y para cuando la altura deja de crecer'
     return { vueltas, est: await page.evaluate(estructuraDePagina) }
   })
   assert.equal(r.est.tablas[0].filas, 5, 'las dos filas diferidas tienen que estar')
-  assert.ok(r.vueltas < 5, `paró sola en ${r.vueltas} vueltas, no agotó el tope`)
+  assert.ok(r.vueltas.vueltas < 5, `paró sola en ${r.vueltas.vueltas} vueltas, no agotó el tope`)
+  assert.equal(r.vueltas.completo, true, 'paró porque terminó, no porque se quedó sin vueltas')
+})
+
+test('una carga que se queda sin vueltas se declara TRUNCADA, no completa', opts, async () => {
+  // En el relevamiento real, corporativos y cedears llegaron al tope con 320 filas cada uno: puede
+  // haber más. Informar 320 como si fueran todas es contestar de menos sin decirlo.
+  const browser = await chromium.launch()
+  const page = await browser.newPage()
+  try {
+    await page.setContent(`
+      <section id="sc" style="height:320px;overflow-y:scroll">
+        <table><tbody id="tb"><tr><td>1</td></tr></tbody></table>
+        <div id="relleno" style="height:900px"></div>
+      </section>
+      <script>
+        // Crece SIEMPRE, y de a mucho: es una lista infinita, nunca se termina de cargar.
+        let alto = 900
+        document.getElementById('sc').addEventListener('scroll', () => {
+          document.getElementById('tb').insertAdjacentHTML('beforeend', '<tr><td>x</td></tr>')
+          alto += 900
+          document.getElementById('relleno').style.height = alto + 'px'
+        })
+      </script>`)
+    const r = await cargarTodo(page, 4)
+    assert.equal(r.vueltas, 4, 'agotó el tope')
+    assert.equal(r.completo, false, 'y tiene que declararse incompleta')
+  } finally { await browser.close() }
 })
 
 /**
