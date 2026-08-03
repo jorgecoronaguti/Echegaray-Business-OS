@@ -266,6 +266,10 @@ export function normalizarInstrumento(crudo = {}, { observadoEn = new Date().toI
     observado_en: observadoEn,
     // Cuándo cotizó el mercado, no cuándo miramos nosotros. Null es "la pantalla no lo dijo".
     cotizado_en: crudo.cotizado_en ?? null,
+    // 'minuto' | 'dia' | null — la pantalla real publica sólo FECHA, y la vara de frescura tiene que
+    // saberlo: medir "menos de 6 horas" contra una fecha parseada a medianoche da falso desde las
+    // 06:00, o sea siempre a la hora en que corre el timer.
+    cotizado_precision: crudo.cotizado_precision ?? null,
     evidencia: crudo.evidencia || EVIDENCIA.ESTIMACION,
     campos_faltantes: [...new Set([...faltantes, ...(crudo.campos_faltantes || [])])],
   }
@@ -295,6 +299,9 @@ export function extraerDeTexto(texto = '', { url = null, observadoEn = new Date(
     const esTea = /\btea\b/i.test(l)
     out.push(normalizarInstrumento({
       nombre,
+      // Mismo criterio que en tablas y tarjetas: si el renglón no dice la moneda, no se asume una.
+      // Este es el camino de RESPALDO —el que corre si Balanz cambia el DOM—, o sea justo donde la
+      // moneda es menos legible: era el único de los tres extractores que seguía afirmando ARS.
       moneda: /u\$s|usd|d[oó]lar/i.test(l) ? 'USD' : 'ARS',
       liquidacion_dias: plazoLiquidacion(l),
       tasa: {
@@ -306,7 +313,10 @@ export function extraerDeTexto(texto = '', { url = null, observadoEn = new Date(
       },
       url,
       evidencia: EVIDENCIA.ESTIMACION,
-      campos_faltantes: esTna || esTea ? [] : ['tipo_de_tasa_no_declarado_en_pantalla'],
+      campos_faltantes: [
+        ...(esTna || esTea ? [] : ['tipo_de_tasa_no_declarado_en_pantalla']),
+        ...(/u\$s|usd|d[oó]lar|\bars\b|pesos?/i.test(l) ? [] : ['moneda_no_declarada_en_pantalla']),
+      ],
     }, { observadoEn }))
   }
   return out
@@ -359,6 +369,31 @@ export const COLUMNAS = {
  * `frescuraDeMercado` cuenta esos casos aparte en vez de darlos por frescos.
  */
 export function cotizadoEn(celda, { ahora = new Date() } = {}) {
+  return cotizacionDe(celda, { ahora }).iso
+}
+
+/**
+ * Igual que `cotizadoEn` pero devuelve también la PRECISIÓN de lo que dijo la pantalla.
+ *
+ * ═══ POR QUÉ HACE FALTA SABERLO ═══
+ *
+ * Las seis tablas reales de Balanz publican en la columna "Hora" una FECHA sin hora del día
+ * ("31/07/2026"). Parsearla a medianoche y después medir "¿tiene menos de 6 horas?" da falso a
+ * partir de las 06:00 de la mañana — con lo cual, para un timer que corre 09:15 y 15:30, la
+ * respuesta es NO SIEMPRE, incluso con datos cotizados hoy. Así se convierte un control que decía
+ * siempre que sí en uno que dice siempre que no: el mismo defecto de diseño, del otro lado.
+ *
+ * Con la precisión declarada, la vara puede ser la correcta para cada caso: horas cuando la pantalla
+ * da hora, días hábiles cuando sólo da fecha.
+ */
+export function cotizacionDe(celda, { ahora = new Date() } = {}) {
+  const iso = parsearCotizacion(celda, ahora)
+  if (!iso) return { iso: null, precision: null }
+  const t = String(celda ?? '').trim()
+  return { iso, precision: /\d{1,2}:\d{2}/.test(t) ? 'minuto' : 'dia' }
+}
+
+function parsearCotizacion(celda, ahora) {
   const t = String(celda ?? '').trim()
   if (!t) return null
   // dd/mm/yyyy [hh:mm[:ss]] — el formato de la pantalla, en locale es-AR.
@@ -487,7 +522,8 @@ export function extraerDeTabla({ cabecera = [], filas = [] } = {}, { url = null,
       vencimiento: idx.vencimiento != null ? String(f[idx.vencimiento] ?? '').trim() || null : null,
       duration: idx.duration != null ? numeroArg(f[idx.duration]) : null,
       url,
-      cotizado_en: idx.hora != null ? cotizadoEn(f[idx.hora], { ahora: new Date(observadoEn) }) : null,
+      cotizado_en: idx.hora != null ? cotizacionDe(f[idx.hora], { ahora: new Date(observadoEn) }).iso : null,
+      cotizado_precision: idx.hora != null ? cotizacionDe(f[idx.hora], { ahora: new Date(observadoEn) }).precision : null,
       evidencia: EVIDENCIA.DATO, // salió de una tabla estructurada, no de un renglón adivinado
       campos_faltantes: [
         ...faltan.filter((c) => ['plazo_rescate', 'liquidacion'].includes(c)),

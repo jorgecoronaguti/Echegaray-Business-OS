@@ -11,10 +11,10 @@
 | **Módulo** | Tesorero Inversor IA (`orquestador/lib/tesoreria/`) |
 | **Qué hace** | **sólo lectura** — lee el Sheet de Flujo de Caja y Balanz; no escribe celdas, no mueve dinero, no publica rutas HTTP. Publica texto en Mattermost |
 | **Construyó** | Claude Opus 5, sesiones del 01/08/2026 y 02/08/2026 |
-| **Auditó** | agente independiente (contexto nuevo, sin el razonamiento del que construyó) |
+| **Auditó** | cuatro auditorías independientes (contexto nuevo, sin el razonamiento del que construyó) |
 | **SHA inicio → cierre** | `990ce71` (origin/main) → ver `git log` de la rama |
 | **Autorizó** | **nadie todavía** — no alcanza el nivel de autonomía E porque no ejecuta operaciones, pero **el dueño no lo usó** (ver A3) |
-| **Estado** | **Cerrado con límites** (dos auditorías independientes; la segunda: CERRADO CON LÍMITES) |
+| **Estado** | **NO CERRADO** — ver el veredicto al pie |
 | **Horas** | ~2 sesiones |
 
 ---
@@ -35,7 +35,7 @@
 
 | # | Criterio | Evidencia | Resultado |
 |---|---|---|---|
-| B1 | El recorrido completo se ejecutó en producción, por el camino real | **PARCIAL, y el faltante bloquea.** El tramo de caja corrió entero contra el Sheet real por el camino canónico (`ciclo-tesorero.mjs --dry`): el 01/08 dio 51 movimientos y caja $88.709.996; repetido el 02/08 con el Sheet vivo dio 51 movimientos y caja $129.589.497, seis ventanas, `techo_tecnico_preliminar`. El tramo de MERCADO **sigue sin correr**: el 02/08 el Chrome dedicado respondía por CDP pero **sin sesión iniciada** (0 cookies; `clientes.balanz.com/fondos` redirige al ingreso), y el ciclo cortó donde debía, con `session_required`. Lo único que se leyó de Balanz es su pantalla pública de ingreso | **NO CUMPLE** |
+| B1 | El recorrido completo se ejecutó en producción, por el camino real | **CUMPLE PARCIAL — el recorrido corrió entero, una vez.** El 02/08, con la sesión del dueño abierta, `ciclo-tesorero.mjs --dry` recorrió las ocho rutas reales y devolvió: 51 movimientos, caja $129.616.360, seis ventanas, **8 páginas relevadas · 1107 instrumentos · 142 aptos para tesorería**, comparación `A:1 B:1 C:10 D:29`, 0 propuestas (`no_accionable` por reserva mínima y caja restringida, que son decisiones del dueño). El explorador dejó el mapa de las ocho pantallas. **Lo que falta**: repetirlo DESPUÉS de las correcciones de la tercera y cuarta auditoría — la sesión de Balanz caducó tres veces durante el trabajo y las últimas correcciones se verificaron contra la captura real, no contra el sitio vivo | **NO CUMPLE** |
 | B2 | El efecto se verificó leyendo el destino con otra herramienta | El ledger se verificó leyendo las tablas con `psql`/`query` directo contra un Postgres descartable: 11 tablas, 22 policies, observaciones no pisadas, recomendación reemplazada por su clave. **En producción no hay destino**: la migración no está aplicada | **NO CUMPLE** |
 | B3 | La operación dejó registro con evidencia, en el camino que usa la gente | `tesoreria.corridas` + `posiciones` + `ventanas` + `bloqueos_seguridad` guardan qué se leyó y con qué dato se decidió. Probado contra Postgres real. **No probado en producción** | **NO CUMPLE** |
 | B4 | Todos los textos de éxito se leyeron uno por uno | Los textos salen de `formato-mattermost.mjs`. Ninguno afirma una colocación hecha: el estado literal es `PROPUESTA — REQUIERE APROBACIÓN HUMANA`, y hay un test que falla si el mensaje contiene "Comprar", "Suscribir", "Confirmar", "actions" o "integration". El mensaje de sesión vencida dice explícitamente que el análisis de caja **sí** se hizo y que falta el mercado | **CUMPLE** |
@@ -58,7 +58,7 @@
 
 Los 15 controles reales de esa pantalla quedaron como test: 14 bloqueados, 1 permitido (un link de ayuda).
 
-**Barrera transaccional**: 29 tests puros (`balanz-denylist.test.mjs`) + 17 contra Chromium real (`balanz-dom.test.mjs`). Bloquea por texto, `aria-label`, `title`, texto del contenedor, `href`, `action`, ruta, todo `type=submit`, todo `<form>` y todo lo que viva adentro de uno. Falla cerrada. Un test lee `balanz-navegador.mjs` y falla si aparece un segundo `.click()` o `.goto()`.
+**Barrera transaccional**: 35 tests puros (`balanz-denylist.test.mjs`) + 25 contra Chromium real (`balanz-dom.test.mjs`). Bloquea por texto, `aria-label`, `title`, texto del contenedor, `href`, `action`, ruta, todo `type=submit`, todo `<form>` y todo lo que viva adentro de uno. Falla cerrada. Un test lee `balanz-navegador.mjs` y falla si aparece un segundo `.click()` o `.goto()`.
 
 **Secretos**: `grep -rInE "(AIza[0-9A-Za-z_-]{30}|sk-ant-|BEGIN .*PRIVATE KEY)"` sobre el diff → 0. El navegador no toca `cookies()`, `storageState`, `localStorage` ni `sessionStorage` (test que lee el archivo). Los bloqueos guardan tag, rol y 80 caracteres de texto: no reconstruyen la pantalla.
 
@@ -126,6 +126,24 @@ Ninguna guarda pide un deploy para destrabarse.
 | `mercadoFresco` cableado | `la frescura del mercado se MIDE con lo relevado` |
 | Excepciones informativas | `las excepciones informativas no abren la puerta` |
 | Sesión detectada sólo por URL y campo de contraseña | `el login REAL de Balanz no tiene campo de contraseña — y aun así se detecta` |
+| Frescura medida contra el reloj del propio proceso | `BLOQUEANTE · la frescura no puede medirse contra el reloj del propio proceso` |
+| Frescura en horas sobre una pantalla que da FECHA | `BLOQUEANTE · con una pantalla que sólo publica FECHA, la vara son DÍAS HÁBILES` |
+| No saber el emisor vetaba todo instrumento de pantalla | `BLOQUEANTE · no saber el emisor no puede vetar un money market` |
+| Punto tratado siempre como separador de miles | `el punto NO siempre es separador de miles: la TIR real del AE38 es 9,3%, no 3%` |
+| Tabla sin columna "Nombre" | `la tabla real se normaliza: ticker y nombre se parten` |
+| Pantalla de fondos leída como tabla | `la tarjeta real se lee por ETIQUETA` |
+| Moneda asumida ARS sin declararlo | `ALTO · una moneda ASUMIDA no compite` |
+| 82 cauciones con el mismo id | `82 cauciones distintas no pueden compartir el mismo id` |
+| Plazo de la caución contado dos veces | `MEDIO · el plazo de la caución no se cuenta dos veces` |
+| Scroll a la ventana, que en Balanz no scrollea | `cargarTodo scrollea el CONTENEDOR, no la ventana` |
+| Una sola lectura estable de carga | `cargarTodo no se conforma con UNA lectura estable` |
+| Relevamiento truncado informado como completo | `ALTO · un relevamiento truncado no habilita a accionar` |
+| Control de destino antes de que la SPA rutee | `el control de destino corre DESPUÉS de que la SPA rutea` |
+| Ruta inexistente redirigida en silencio a /app/home | `una ruta que no existe redirige a /app/home SIN error` |
+| Pestaña nueva sin sesión (`sessionStorage`) | `la sesión vive en la pestaña: se busca la autenticada` |
+| `?tab=suscribir` pasaba la barrera | `el query de presentación borra la CLAVE, nunca el VALOR` |
+| "Tomar" una caución quedaba permitido | `"Tomar" una caución es endeudarse` |
+| El explorador no pedía el lock del ciclo | `NINGÚN archivo tiene un clic o un goto que saltee la barrera` |
 | Advertencia de seguridad contada como marca de login | `una pantalla informativa con UNA frase de seguridad no se confunde con el login` |
 | `Abrir cuenta de inversión` permitido | `la pantalla real de Balanz: los 15 controles del ingreso, clasificados` |
 
@@ -139,11 +157,19 @@ un test que no existe.
 LD_LIBRARY_PATH=/home/jorge/.local/lib/pw-libs \
 PG_TEST_URL=postgres://postgres:probe@127.0.0.1:55437/postgres \
   node --test 'orquestador/lib/tesoreria/*.test.mjs'
-→ tests 148 · pass 148 · fail 0 · skipped 0
+→ tests 179 · pass 179 · fail 0 · skipped 0
 ```
 
 Y la suite completa del orquestador, para descartar daño colateral:
-`node --test 'orquestador/**/*.test.mjs'` → **2170 tests · 2098 pass · 0 fail · 72 skipped**.
+`node --test 'orquestador/**/*.test.mjs'` → **2197 tests · 2125 pass · 0 fail · 72 skipped**.
+
+**Dos de los tests nuevos se verificaron por REVERSIÓN**, que es lo único que prueba que un test
+sostiene un arreglo: se deshizo el cambio en el código y se comprobó que el test se pone rojo.
+
+```
+revertir «espera antes de los controles» → test ROJO ✓
+revertir «dos lecturas estables»          → test ROJO ✓
+```
 
 > El `PG_TEST_URL` va **por archivo**, no global: apuntar toda la suite del orquestador al Postgres
 > descartable pone 26 tests de otros módulos en rojo, porque esperan su propio schema sembrado. No es
@@ -157,17 +183,26 @@ Y la suite completa del orquestador, para descartar daño colateral:
 |---|---|---|---|
 | F1 | Cada afirmación de control tiene el comando que la verifica | El runbook trae los comandos de verificación del túnel (3), de la migración (4 consultas SQL), del diagnóstico (4 comandos + 4 consultas) y de revertir | **CUMPLE** |
 | F2 | Ningún comentario declara una condición futura sin cumplir | `grep -niE "cuando (haya|exista|se)|si alguna vez|qué la activaría" orquestador/lib/tesoreria/*.mjs` → las menciones son a condiciones **de runtime documentadas** (sin sesión, sin calendario, sin política), todas implementadas y con test. Ninguna promete un control futuro | **CUMPLE** |
-| F3 | Toda variable leída está en la plantilla de deploy | `ORQ_BALANZ_CDP` (default `127.0.0.1:9222`), `ORQ_TESORERIA_CANAL` (sin ella no publica), `ORQ_BALANZ_EXTRACTOR_VALIDADO` (sin ella todo `NO_ACCIONABLE`). Las tres documentadas con qué se rompe si faltan. **NO están en `worker.env`**: se agregan al integrar | **NO CUMPLE** |
+| F3 | Toda variable leída está en la plantilla de deploy | `ORQ_BALANZ_CDP` (default `127.0.0.1:9222`), `ORQ_TESORERIA_CANAL` (sin ella no publica), `ORQ_BALANZ_EXTRACTOR_VALIDADO` (sin ella todo `NO_ACCIONABLE`) y **`ORQ_BALANZ_ESPERA_MS`** (default 2500 — cuánto se espera a que la SPA termine de rutear antes de controlar destino y sesión; bajarla reintroduce el defecto de controlar una pantalla y leer otra). Las cuatro documentadas con qué se rompe si faltan. **NO están en `worker.env`**: se agregan al integrar | **NO CUMPLE** |
 | F4 | Lecciones producidas y contadores actualizados | No se tocó `LECCIONES_APRENDIDAS_ASISTENCIA.md`: los defectos de este módulo son propios y están en los mensajes de commit y en este documento. **El catálogo no se actualizó** | **NO CUMPLE** |
 
 ---
 
 ## Veredicto
 
-**NO CERRADO.** Seis filas en NO CUMPLE. Las dos auditorías independientes coinciden: la segunda
-dictaminó **CERRADO CON LÍMITES** sobre el código —los 8 hallazgos anteriores verificados cerrados
-reproduciendo el ataque— y este documento mantiene NO CERRADO porque el DoD del repo mide otra cosa:
-evidencia del efecto en producción, que sigue sin existir.
+**NO CERRADO.**
+
+Las dos primeras auditorías dictaminaron CERRADO CON LÍMITES sobre el código. **La tercera y la
+cuarta corrieron contra la sesión REAL de Balanz y cambiaron el veredicto**: encontraron 2
+bloqueantes, 6 altos y 11 medios que ningún DOM imitado podía mostrar. Todos corregidos, cada uno
+con su test; pero el criterio de este DoD es evidencia del EFECTO, y el recorrido completo no volvió
+a correr contra el sitio vivo después de la última tanda de correcciones.
+
+Lo que esas dos auditorías dejaron probado, y vale registrarlo porque es la lección del módulo:
+**el código estaba verde y no podía leer una sola pantalla del bróker.** 148 tests pasando, dos
+auditorías conformes, y contra la aplicación real el extractor devolvía dos instrumentos llamados
+`"TNA: +"` de una pantalla con diez fondos. Todo lo que se creía verificado estaba verificado contra
+una imitación escrita por el mismo que escribió el código.
 
 | Fila | Qué falta | Cómo se consigue |
 |---|---|---|

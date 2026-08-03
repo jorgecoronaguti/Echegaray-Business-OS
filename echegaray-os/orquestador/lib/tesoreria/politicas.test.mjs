@@ -120,14 +120,14 @@ test('sin políticas aprobadas la etiqueta es techo técnico y el estado NO_ACCI
   assert.equal(r.accionable, false)
   assert.equal(r.etiqueta, 'techo_tecnico_preliminar')
   assert.equal(r.estado_recomendacion, 'NO_ACCIONABLE')
-  assert.equal(r.bloqueos.length, 4, 'reserva + restringida + extractor + frescura: los cuatro juntos')
+  assert.equal(r.bloqueos.length, 5, 'reserva + restringida + extractor + frescura + cobertura: los cinco juntos')
 })
 
 test('con todo aprobado y validado, la etiqueta pasa a excedente aprobado', () => {
   const r = evaluarAccionabilidad({
     reserva: estadoReserva({ valor: { monto: 5000000 }, aprobada_por: 'jorge' }),
     restringida: modelarCajaRestringida({ monto: 0, declarada_en: AHORA.toISOString() }, AHORA),
-    extractorValidado: true, mercadoFresco: true,
+    extractorValidado: true, mercadoFresco: true, mercadoCompleto: true,
   })
   assert.equal(r.accionable, true)
   assert.equal(r.etiqueta, 'excedente_aprobado')

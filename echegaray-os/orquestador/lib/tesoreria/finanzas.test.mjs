@@ -927,9 +927,10 @@ test('la frescura del mercado se MIDE con lo relevado, no se cablea', () => {
   // ═══ SE MIDE `cotizado_en`, NO `observado_en` ═══
   // `observado_en` lo estampa el propio extractor con la hora de la corrida: medirlo era un espejo
   // —daba 0,0 h siempre— y con un solo candidato parseado la compuerta quedaba abierta para siempre.
-  assert.equal(frescuraDeMercado([{ cotizado_en: 'basura' }], ahora).fresco, false)
-  assert.equal(frescuraDeMercado([{ cotizado_en: '2026-08-01T11:00:00Z' }], ahora).fresco, true)
-  assert.equal(frescuraDeMercado([{ cotizado_en: '2026-07-30T11:00:00Z' }], ahora).fresco, false)
+  const conHora = (iso) => ({ cotizado_en: iso, cotizado_precision: 'minuto' })
+  assert.equal(frescuraDeMercado([conHora('basura')], ahora).fresco, false)
+  assert.equal(frescuraDeMercado([conHora('2026-08-01T11:00:00Z')], ahora).fresco, true)
+  assert.equal(frescuraDeMercado([conHora('2026-07-30T11:00:00Z')], ahora).fresco, false)
   // Y un instrumento recién observado pero SIN fecha de cotización no es fresco: es sin fecha.
   const sinFecha = frescuraDeMercado([{ observado_en: ahora.toISOString(), cotizado_en: null }], ahora)
   assert.equal(sinFecha.fresco, false)
@@ -941,16 +942,64 @@ test('la frescura del mercado se MIDE con lo relevado, no se cablea', () => {
   // excluida una por una por `riesgo.mjs`, que bloquea todo lo de más de 24 h. Eso cierra la
   // compuerta para siempre, que es el otro modo de control inútil.
   const mezcla = frescuraDeMercado([
-    { cotizado_en: '2026-08-01T11:55:00Z' }, { cotizado_en: '2026-07-29T00:00:00Z' },
+    conHora('2026-08-01T11:55:00Z'), conHora('2026-07-29T00:00:00Z'),
   ], ahora)
   assert.equal(mezcla.fresco, true, 'hay un dato de hace 5 minutos: sí se puede decidir con el mercado de hoy')
   // Pero el viejo NO se esconde: se cuenta, y es lo que después baja la confianza de la propuesta.
   assert.equal(mezcla.viejos, 1)
-  assert.match(mezcla.motivo, /1 instrumento\(s\) con dato viejo/)
+  assert.match(mezcla.motivo, /1 con dato viejo/)
   // Y si NINGUNO es de hoy, la compuerta cierra aunque haya cien instrumentos.
   assert.equal(frescuraDeMercado([
-    { cotizado_en: '2026-07-30T11:00:00Z' }, { cotizado_en: '2026-07-29T00:00:00Z' },
+    conHora('2026-07-30T11:00:00Z'), conHora('2026-07-29T00:00:00Z'),
   ], ahora).fresco, false)
+})
+
+test('BLOQUEANTE · con una pantalla que sólo publica FECHA, la vara son DÍAS HÁBILES', () => {
+  // ═══ EL DEFECTO QUE INTRODUJO EL ARREGLO ANTERIOR ═══
+  //
+  // Las seis tablas reales de Balanz traen la columna "Hora" con una FECHA sin hora del día
+  // ("31/07/2026"). Parseada a medianoche y medida en horas contra un máximo de 6, la respuesta es
+  // NO desde las 06:00 — y el timer del Tesorero corre 09:15 y 15:30. La compuerta pasó de estar
+  // siempre abierta (el espejo) a no poder abrirse nunca (la pared): el mismo defecto de diseño.
+  //
+  // A las 09:15 de un lunes el mercado NO ABRIÓ: el último precio que existe es el del viernes, y
+  // exigirle uno de hoy es exigir un dato que no puede existir.
+  const soloFecha = (y, m, d) => ({ cotizado_en: new Date(y, m, d).toISOString(), cotizado_precision: 'dia' })
+  const lunes0915 = new Date(2026, 7, 3, 9, 15)
+  const lunes1530 = new Date(2026, 7, 3, 15, 30)
+
+  assert.equal(frescuraDeMercado([soloFecha(2026, 6, 31)], lunes0915).fresco, true, 'el viernes es el último cierre: es el dato vigente')
+  assert.equal(frescuraDeMercado([soloFecha(2026, 7, 3)], lunes1530).fresco, true, 'y una cotización de hoy también')
+  // Pero un dato del miércoles anterior SÍ está viejo: la tolerancia es de UN día hábil, no de la semana.
+  const vieja = frescuraDeMercado([soloFecha(2026, 6, 29)], lunes0915)
+  assert.equal(vieja.fresco, false)
+  assert.match(vieja.motivo, /día\(s\) hábil\(es\)/)
+  // Y el riesgo por instrumento usa la MISMA vara: si no, bloquearía el precio del viernes un lunes.
+  const delViernes = {
+    id: 'x', categoria: 'money_market', plazo_rescate_dias: 0, liquidacion_dias: 0, emisor: null,
+    observado_en: lunes0915.toISOString(), ...soloFecha(2026, 6, 31),
+  }
+  assert.equal(evaluarRiesgo(delViernes, PERFILES.caja_operativa, { ahora: lunes0915 }).apto, true)
+  const delMiercoles = { ...delViernes, ...soloFecha(2026, 6, 29) }
+  assert.equal(evaluarRiesgo(delMiercoles, PERFILES.caja_operativa, { ahora: lunes0915 }).apto, false)
+})
+
+test('BLOQUEANTE · no saber el emisor no puede vetar un money market', () => {
+  // ═══ EL DEFECTO ═══
+  // Ningún extractor escribe `emisor` —Balanz no publica la administradora en la grilla— y la marca
+  // `contraparte` vivía en la familia `instrumento`. Resultado sobre las pantallas reales: los 142
+  // instrumentos aptos daban `apto:false`, y 22 de ellos con `bloqueantes: []`, o sea sin un solo
+  // motivo escrito. El módulo no podía producir una propuesta y no decía por qué.
+  const sinEmisor = {
+    id: 'mm', categoria: 'money_market', plazo_rescate_dias: 0, liquidacion_dias: 0, emisor: null,
+    cotizado_en: HOY.toISOString(), cotizado_precision: 'minuto', observado_en: HOY.toISOString(),
+  }
+  const r = evaluarRiesgo(sinEmisor, PERFILES.caja_operativa, { ahora: HOY })
+  assert.equal(r.apto, true, 'un money market no se veta por un dato que el bróker no publica')
+  // Pero se sigue reportando: es un hueco nuestro y tiene que verse.
+  assert.ok(r.hallazgos.some((x) => x.tipo === 'contraparte'))
+  assert.equal(r.nivel, 'medio', 'el nivel REPORTADO lo refleja aunque no vete')
+  assert.equal(r.max_riesgo_perfil, 'bajo', 'y el techo del perfil viaja, para poder escribir el motivo')
 })
 
 // ════════════════════════════════════════════════════════════════════════════

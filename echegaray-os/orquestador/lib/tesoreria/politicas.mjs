@@ -223,7 +223,7 @@ export function estadoReserva(fila = null) {
  * al día siguiente es la forma más cara de enterarse.
  */
 export function evaluarAccionabilidad({
-  reserva, restringida, extractorValidado = false, mercadoFresco = false, mercadoCompleto = true,
+  reserva, restringida, extractorValidado = false, mercadoFresco = false, mercadoCompleto = false,
 } = {}) {
   const bloqueos = []
   if (reserva?.estado !== ESTADO_POLITICA.APROBADA) {
@@ -237,6 +237,9 @@ export function evaluarAccionabilidad({
   // ELEGIR "LA MEJOR ALTERNATIVA" SOBRE UN MERCADO CORTADO NO ES ELEGIR. En la corrida real, dos de
   // las ocho pantallas agotaron el tope de carga con 320 filas cada una: puede haber más, y una
   // recomendación que no puede afirmar que miró todo no se acciona.
+  // DEFAULT `false`, igual que los otros dos de esta firma. Con `true` bastaba con no pasar el
+  // parámetro para que la compuerta se diera por cumplida — que es exactamente el defecto
+  // `!== false` que este archivo ya había arreglado una vez, reintroducido en la misma función.
   if (!mercadoCompleto) bloqueos.push('el relevamiento de mercado quedó truncado: no se puede afirmar que se miró todo el universo')
   return {
     accionable: bloqueos.length === 0,

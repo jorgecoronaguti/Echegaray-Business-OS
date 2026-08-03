@@ -526,3 +526,65 @@ test('la sesión vive en la pestaña: se busca la autenticada, no se abre una nu
   const buena = pagina('https://clientes.balanz.com/app/cotizaciones/fondos')
   assert.equal(buscarPestanaAutenticada([pagina('chrome://intro/'), pagina('https://otro.com/x'), buena]), buena)
 })
+
+test('el control de destino corre DESPUÉS de que la SPA rutea, no antes', opts, async () => {
+  // ═══ EL DEFECTO, Y POR QUÉ NO ALCANZABA CON MOVER LA LÍNEA ═══
+  //
+  // `navegarSeguro` verificaba sesión y destino en el `domcontentloaded`, y `relevar` esperaba 1200 ms
+  // DESPUÉS y recién ahí leía: se controlaba una pantalla y se guardaba otra. La corrección movió la
+  // espera antes de los dos controles — pero no había ningún test que se pusiera rojo al revertirla,
+  // que es lo único que la sostiene. Este lo hace: la página redirige por router a los 600 ms.
+  const browser = await chromium.launch()
+  const page = await browser.newPage()
+  try {
+    await page.route('**/*', (route) => {
+      const u = route.request().url()
+      if (/\/app\/home/.test(u)) {
+        return route.fulfill({ status: 200, contentType: 'text/html', body: '<h1>Portada</h1><div>TAMAR 2,50%</div>' })
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: `<h1>Bonos</h1><script>setTimeout(() => { location.replace('/app/home') }, 600)</script>`,
+      })
+    })
+    const bloqueos = []
+    const r = await navegarSeguro(page, 'https://clientes.balanz.com/app/cotizaciones/bonos', bloqueos)
+    assert.equal(r.navegado, false, 'la SPA redirigió a la portada: NO se llegó al destino')
+    assert.match(r.motivo, /la ruta no existe|redirigió/)
+    assert.match(page.url(), /app\/home/, 'y la prueba es que la URL final es otra')
+  } finally { await browser.close() }
+})
+
+test('cargarTodo no se conforma con UNA lectura estable: espera la tanda lenta', opts, async () => {
+  // El arreglo exigió dos lecturas iguales en vez de una, porque un lote que tarda 800 ms en llegar
+  // hacía que la pantalla se declarara completa con 20 filas de 189. Los dos tests anteriores usaban
+  // una lista que se estabiliza para siempre y otra que nunca se estabiliza: ninguno cubría ESTE
+  // caso, y revertir a un solo `return` no ponía nada rojo.
+  const browser = await chromium.launch()
+  const page = await browser.newPage()
+  try {
+    await page.setContent(`
+      <section id="sc" style="height:320px;overflow-y:scroll">
+        <table><tbody id="tb"><tr><td>1</td></tr></tbody></table>
+        <div id="relleno" style="height:1200px"></div>
+      </section>
+      <script>
+        // La segunda tanda llega 800 ms DESPUÉS del scroll: más tarde que la espera de una vuelta.
+        let tandas = 0
+        document.getElementById('sc').addEventListener('scroll', () => {
+          if (tandas >= 2) return
+          tandas += 1
+          setTimeout(() => {
+            const tb = document.getElementById('tb')
+            for (let i = 0; i < 10; i += 1) tb.insertAdjacentHTML('beforeend', '<tr><td>x</td></tr>')
+            document.getElementById('relleno').style.height = (1200 + tandas * 800) + 'px'
+          }, 800)
+        })
+      </script>`)
+    const r = await cargarTodo(page, 10)
+    const filas = await page.locator('tbody tr').count()
+    assert.ok(filas >= 21, `se cortó antes de la tanda lenta: quedaron ${filas} filas`)
+    assert.equal(r.completo, true)
+  } finally { await browser.close() }
+})

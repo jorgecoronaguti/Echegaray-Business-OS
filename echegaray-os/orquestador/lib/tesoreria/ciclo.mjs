@@ -42,23 +42,53 @@ export const HORAS_MERCADO_FRESCO = 6
  * entorno: la frescura es un hecho observable —la hora de la observación más vieja— y el evaluador de
  * riesgo ya rechaza por separado cualquier instrumento de más de 24 horas.
  */
+/**
+ * DÍAS HÁBILES ENTRE DOS FECHAS (sábados y domingos afuera). No conoce feriados: por eso el criterio
+ * de abajo admite UN día hábil de atraso, que es lo que absorbe un feriado suelto sin abrir la puerta
+ * a un dato de la semana pasada.
+ */
+export function diasHabilesEntre(desdeISO, hasta) {
+  const a = new Date(desdeISO)
+  const b = new Date(hasta)
+  if (!Number.isFinite(a.getTime()) || !Number.isFinite(b.getTime())) return null
+  const d0 = new Date(a.getFullYear(), a.getMonth(), a.getDate())
+  const d1 = new Date(b.getFullYear(), b.getMonth(), b.getDate())
+  if (d1 < d0) return 0
+  let n = 0
+  const cur = new Date(d0)
+  while (cur < d1) {
+    cur.setDate(cur.getDate() + 1)
+    const dia = cur.getDay()
+    if (dia !== 0 && dia !== 6) n += 1
+  }
+  return n
+}
+
+/** Cuántos días hábiles de atraso admite una cotización que sólo trae FECHA (sin hora del día). */
+export const DIAS_HABILES_MERCADO_FRESCO = 1
+
 export function frescuraDeMercado(instrumentos = [], ahora = new Date()) {
-  // ═══ QUÉ MIDE, Y POR QUÉ NO MIDE EL ESLABÓN MÁS VIEJO ═══
+  // ═══ DOS VARAS, PORQUE LA PANTALLA PUBLICA DOS COSAS DISTINTAS ═══
   //
   // Se mide `cotizado_en` —cuándo cotizó el mercado— y NO `observado_en`, que lo estampa el propio
-  // extractor con la hora de la corrida. Medir `observado_en` contra `ahora` daba 0,0 h SIEMPRE: un
-  // control comparándose contra la información que él mismo produce. Con eso, un solo candidato
-  // parseado certificaba "mercado fresco". Verificado sobre el relevamiento real: entre los 1107
-  // instrumentos había una ON cotizada por última vez el 20/11/2018 informada como "de hace 0,0 h".
+  // extractor con la hora de la corrida: medir eso contra `ahora` daba 0,0 h SIEMPRE, un control
+  // comparándose contra la información que él mismo produce. Sobre el relevamiento real había una ON
+  // cotizada por última vez el 20/11/2018 informada como "de hace 0,0 h".
   //
-  // Pero la pregunta que esta compuerta contesta NO es "¿está todo fresco?". Medir por el dato más
-  // viejo deja al conjunto rehén de cualquier especie ilíquida que no cotiza hace meses —y que ya
-  // está excluida una por una por `riesgo.mjs`, que bloquea todo lo de más de 24 h—. Eso cierra la
-  // compuerta para siempre, que es el otro modo de control inútil: el que nunca deja pasar nada.
+  // Arreglar eso midiendo HORAS creó el defecto simétrico, y también verificado: las seis tablas
+  // reales publican FECHA sin hora del día ("31/07/2026"). Parseada a medianoche, "¿tiene menos de 6
+  // horas?" da falso desde las 06:00 — y el timer corre 09:15 y 15:30. La compuerta pasaba de estar
+  // siempre abierta a no poder abrirse nunca: el mismo defecto de diseño, del otro lado.
   //
-  // La pregunta correcta es: **¿hay datos de HOY con los que decidir?** Se mide la cotización MÁS
-  // RECIENTE, y se informan aparte cuántos están viejos y cuántos sin fecha, porque esos números son
-  // los que bajan la confianza de la propuesta.
+  // Entonces la vara depende de lo que la pantalla haya declarado:
+  //   · con hora del día  → horas, contra HORAS_MERCADO_FRESCO;
+  //   · sólo con fecha    → DÍAS HÁBILES, contra DIAS_HABILES_MERCADO_FRESCO. A las 09:15 de un lunes
+  //     el mercado no abrió todavía: el último precio que existe ES el del viernes, y llamarlo viejo
+  //     sería exigir un dato que no puede existir.
+  //
+  // Y la pregunta es "¿hay datos de HOY con los que decidir?", no "¿está todo fresco?": medir por el
+  // dato más viejo deja al conjunto rehén de cualquier especie ilíquida —que `riesgo.mjs` ya excluye
+  // una por una—. Los viejos y los sin fecha se cuentan aparte y bajan la confianza de la propuesta.
   const conFecha = instrumentos.filter((i) => Number.isFinite(Date.parse(i?.cotizado_en)))
   const sinFecha = instrumentos.length - conFecha.length
   if (!conFecha.length) {
@@ -72,18 +102,34 @@ export function frescuraDeMercado(instrumentos = [], ahora = new Date()) {
         : 'no se relevó ningún instrumento',
     }
   }
+
+  /** ¿Esta cotización está dentro de la vara que le corresponde? */
+  const vigente = (i) => {
+    if (i.cotizado_precision === 'dia') {
+      const d = diasHabilesEntre(i.cotizado_en, ahora)
+      return d != null && d <= DIAS_HABILES_MERCADO_FRESCO
+    }
+    return (ahora.getTime() - Date.parse(i.cotizado_en)) / 3600000 <= HORAS_MERCADO_FRESCO
+  }
+
+  const frescos = conFecha.filter(vigente)
+  const viejos = conFecha.length - frescos.length
   const masNueva = Math.max(...conFecha.map((i) => Date.parse(i.cotizado_en)))
   const horas = (ahora.getTime() - masNueva) / 3600000
-  const viejos = conFecha.filter((i) => (ahora.getTime() - Date.parse(i.cotizado_en)) / 3600000 > HORAS_MERCADO_FRESCO).length
+  const soloFecha = conFecha.some((i) => i.cotizado_precision === 'dia')
   return {
-    fresco: horas <= HORAS_MERCADO_FRESCO,
+    fresco: frescos.length > 0,
     horas: Math.round(horas * 10) / 10,
+    dias_habiles: soloFecha ? diasHabilesEntre(new Date(masNueva).toISOString(), ahora) : null,
     n: conFecha.length,
+    frescos: frescos.length,
     sin_fecha: sinFecha,
     viejos,
-    motivo: horas <= HORAS_MERCADO_FRESCO
-      ? `la cotización más reciente es de hace ${horas.toFixed(1)} h (${viejos} instrumento(s) con dato viejo, ${sinFecha} sin fecha)`
-      : `ni la cotización más reciente es de hoy: tiene ${horas.toFixed(1)} h y el máximo son ${HORAS_MERCADO_FRESCO}`,
+    motivo: frescos.length
+      ? `${frescos.length} instrumento(s) con cotización vigente (${viejos} con dato viejo, ${sinFecha} sin fecha)`
+      : soloFecha
+        ? `la cotización más reciente es de hace ${diasHabilesEntre(new Date(masNueva).toISOString(), ahora)} día(s) hábil(es) y el máximo es ${DIAS_HABILES_MERCADO_FRESCO}`
+        : `ni la cotización más reciente es de hoy: tiene ${horas.toFixed(1)} h y el máximo son ${HORAS_MERCADO_FRESCO}`,
   }
 }
 
@@ -116,7 +162,11 @@ export const RUTAS_INFORMATIVAS = [
   '/app/cotizaciones/cedears',
 ]
 
-const LOCK_KEY = 738201 // arbitrario y estable: identifica ESTE ciclo entre los advisory locks del OS
+// Arbitrario y estable: identifica ESTE ciclo entre los advisory locks del OS. Se EXPORTA porque el
+// explorador maneja la misma pestaña de Chrome y tiene que pedir el mismo lock: dos procesos
+// navegando la misma pestaña se pisan y cada uno atribuye a su ruta lo que dibujó el otro.
+export const LOCK_CICLO = 738201
+const LOCK_KEY = LOCK_CICLO
 
 /** Toma el lock. Si no lo consigue, la corrida se omite: no se encola ni se espera. */
 async function tomarLock(query) {
@@ -264,6 +314,12 @@ export async function correrCiclo(deps = {}, opts = {}) {
       .filter((p) => p.estado === 'ok' && p.relevamiento_completo === false)
       .map((p) => p.url)
     const paginasConError = (mercado.paginas || []).filter((p) => p.estado === 'error').map((p) => p.url)
+    // El barrido de controles también tiene tope (400 por pantalla, y en la corrida real 4 de 8
+    // pantallas lo alcanzaron). No cambia qué instrumentos se leyeron, pero sí significa que la
+    // barrera NO clasificó todo lo que había: es parte de la cobertura y se informa igual.
+    const paginasSinBarrer = (mercado.paginas || [])
+      .filter((p) => p.estado === 'ok' && p.controles?.barrido_completo === false)
+      .map((p) => p.url)
     const mercadoCompleto = paginasTruncadas.length === 0 && paginasConError.length === 0
     paso('cobertura_mercado', mercadoCompleto ? 'ok' : 'parcial',
       mercadoCompleto
@@ -272,6 +328,9 @@ export async function correrCiclo(deps = {}, opts = {}) {
           paginasTruncadas.length ? `${paginasTruncadas.length} truncada(s): ${paginasTruncadas.join(' · ')}` : null,
           paginasConError.length ? `${paginasConError.length} con error: ${paginasConError.join(' · ')}` : null,
         ].filter(Boolean).join(' | '))
+    if (paginasSinBarrer.length) {
+      paso('barrido_controles', 'parcial', `${paginasSinBarrer.length} pantalla(s) con más controles que el tope: ${paginasSinBarrer.join(' · ')}`)
+    }
     paso('instrumentos', 'ok', `${instrumentos.length} relevados · ${aptos.length} aptos para tesorería`)
 
     // 11-12 · Comparar (SKILL 6) y evaluar riesgo (SKILL 7).
@@ -301,7 +360,7 @@ export async function correrCiclo(deps = {}, opts = {}) {
       accionabilidad.bloqueos.join(' · ') || frescura.motivo)
 
     const generadas = generarRecomendaciones(comparacion, ventanas.map((v) => ({ ...v, accionable: accionabilidad.accionable })), {
-      hoy: ahora, tasa_de_corte: excedente.tasa_de_corte, riesgos,
+      hoy: ahora, tasa_de_corte: excedente.tasa_de_corte, riesgos, frescura,
       accionable: accionabilidad.accionable,
       bloqueos: accionabilidad.bloqueos,
       fuente_caja: posicion.fuente, fuente_mercado: `Balanz — ${mercado.observado_en ?? ahora.toISOString()}`,

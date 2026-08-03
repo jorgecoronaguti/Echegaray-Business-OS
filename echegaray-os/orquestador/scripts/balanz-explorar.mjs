@@ -34,12 +34,52 @@ import {
   buscarPestanaAutenticada, llegoADestino, leerTablaCotizaciones, leerTarjetasDeFondos,
 } from '../lib/tesoreria/balanz-navegador.mjs'
 import { evaluarNavegacion, evaluarElemento } from '../lib/tesoreria/balanz-denylist.mjs'
-import { RUTAS_INFORMATIVAS } from '../lib/tesoreria/ciclo.mjs'
+import { RUTAS_INFORMATIVAS, LOCK_CICLO } from '../lib/tesoreria/ciclo.mjs'
 
 const args = process.argv.slice(2)
 const JSON_OUT = args.includes('--json')
 const rutas = args.filter((a) => a.startsWith('/'))
 const RUTAS = rutas.length ? rutas : RUTAS_INFORMATIVAS
+
+/**
+ * EL MISMO LOCK QUE EL CICLO. Este script es el SEGUNDO camino a la misma pestaña de Chrome, y no lo
+ * pedía: corrido a mano mientras el timer releva —que es justo lo que se hace para depurar— las dos
+ * corridas se pisan la navegación y cada una atribuye a su ruta lo que dibujó la otra, sin fallar.
+ *
+ * Es best-effort a propósito: el explorador tiene que poder correr en una máquina sin base (es una
+ * herramienta de diagnóstico). Si no hay Postgres, avisa y sigue; si HAY Postgres y el lock está
+ * tomado, se detiene — que es el caso peligroso.
+ */
+async function conLock(fn) {
+  let query = null
+  let closePool = null
+  try { ({ query, closePool } = await import('../lib/db.mjs')) } catch { /* sin base: se avisa abajo */ }
+  if (!query) {
+    console.error('AVISO: sin base de datos no se puede tomar el lock del ciclo.')
+    console.error('Si el timer del Tesorero está activo, pará el servicio antes de explorar.\n')
+    return fn()
+  }
+  let tomado = false
+  try {
+    const { rows } = await query('select pg_try_advisory_lock($1) as ok', [LOCK_CICLO])
+    tomado = Boolean(rows?.[0]?.ok)
+  } catch (e) {
+    console.error(`AVISO: no se pudo consultar el lock (${String(e?.message ?? e).slice(0, 80)}). Se sigue igual.\n`)
+    await closePool?.().catch(() => {})
+    return fn()
+  }
+  if (!tomado) {
+    console.error('El ciclo del Tesorero está corriendo AHORA sobre la misma pestaña de Chrome.')
+    console.error('Explorar al mismo tiempo mezcla las pantallas de las dos corridas. Probá de nuevo en un rato.')
+    await closePool?.().catch(() => {})
+    process.exitCode = 3
+    return undefined
+  }
+  try { return await fn() } finally {
+    await query('select pg_advisory_unlock($1)', [LOCK_CICLO]).catch(() => {})
+    await closePool?.().catch(() => {})
+  }
+}
 
 async function main() {
   const disp = await sesionDisponible(ENDPOINT_CDP)
@@ -140,4 +180,4 @@ async function main() {
   console.log('\nCero clics. Cero operaciones. Sólo navegación por URL y lectura del DOM.')
 }
 
-main().catch((e) => { console.error(`[explorar] ${e.message}`); process.exitCode = 1 })
+conLock(main).catch((e) => { console.error(`[explorar] ${e.message}`); process.exitCode = 1 })

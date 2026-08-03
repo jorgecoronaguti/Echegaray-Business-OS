@@ -111,6 +111,12 @@ test('NINGÚN archivo tiene un clic o un goto que saltee la barrera', () => {
     }
   }
   assert.equal(clics, 1, 'sólo puede existir UN clic en todo el subsistema: el de clicSeguro')
+  // Y TODO camino a la pestaña pide el MISMO lock. El explorador es el segundo proceso que maneja la
+  // pestaña del dueño: corrido a mano mientras el timer releva, las dos corridas se pisan la
+  // navegación y cada una atribuye a su ruta lo que dibujó la otra, sin fallar.
+  const explorador = readFileSync(join(DIR, '..', '..', 'scripts', 'balanz-explorar.mjs'), 'utf8')
+  assert.match(explorador, /LOCK_CICLO/, 'el explorador navega la misma pestaña sin pedir el lock del ciclo')
+  assert.match(explorador, /pg_try_advisory_lock/, 'el explorador no intenta tomar el lock')
   const nav = readFileSync(join(DIR, 'balanz-navegador.mjs'), 'utf8')
   assert.match(nav, /evaluarElemento/, 'el navegador no llama a la barrera')
   assert.match(nav, /evaluarNavegacion/, 'el navegador no evalúa las navegaciones')

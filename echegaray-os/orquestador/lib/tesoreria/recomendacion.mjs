@@ -81,7 +81,15 @@ export function generarRecomendaciones(comparacion = {}, ventanas = [], ctx = {}
     }
     const riesgo = (ctx.riesgos || {})[ganador.instrumento_id]
     if (riesgo && !riesgo.apto) {
-      sinPropuesta.push({ bloque: r.bloque, motivo: `el mejor por rendimiento no pasa el filtro de riesgo: ${riesgo.bloqueantes.join(' · ')}` })
+      // UN MOTIVO VACÍO NO ES UN MOTIVO. `apto` puede ser false por un bloqueante explícito o
+      // porque el NIVEL de riesgo del instrumento supera el del perfil, y en ese segundo caso
+      // `bloqueantes` viene vacío: el mensaje terminaba en "no pasa el filtro de riesgo: " y nada
+      // detrás. Sobre las pantallas reales eran 22 instrumentos descartados sin una palabra.
+      const causa = riesgo.bloqueantes?.length
+        ? riesgo.bloqueantes.join(' · ')
+        : `su nivel de riesgo es ${riesgo.nivel_instrumento ?? riesgo.nivel ?? 'desconocido'} y el perfil admite hasta ${riesgo.max_riesgo_perfil ?? 'bajo'}`
+          + (riesgo.hallazgos?.length ? ` (${riesgo.hallazgos.slice(0, 3).map((x) => x.detalle ?? x.tipo).join(' · ')})` : '')
+      sinPropuesta.push({ bloque: r.bloque, motivo: `el mejor por rendimiento no pasa el filtro de riesgo: ${causa}` })
       continue
     }
     // UNA VENTANA SIN POLÍTICA APROBADA NO PRODUCE UN MONTO EJECUTABLE.
@@ -120,7 +128,7 @@ export function generarRecomendaciones(comparacion = {}, ventanas = [], ctx = {}
         ...(accionable ? [] : ['NO ACCIONABLE: el monto es un techo técnico preliminar, no un excedente aprobado']),
       ],
       datos_faltantes: ganador.campos_faltantes || [],
-      confianza: confianzaDe(ganador, riesgo, ventana),
+      confianza: confianzaDe(ganador, riesgo, ventana, ctx.frescura),
       evidencia: ganador.evidencia,
       fuente_caja: ctx.fuente_caja ?? 'Flujo de Caja',
       fuente_mercado: ctx.fuente_mercado ?? 'Balanz',
@@ -145,9 +153,25 @@ export function generarRecomendaciones(comparacion = {}, ventanas = [], ctx = {}
  * La confianza NO se elige: se deriva. Costos desconocidos o campos faltantes la bajan, porque el
  * número neto deja de ser un resultado y pasa a ser un techo optimista.
  */
-export function confianzaDe(ganador = {}, riesgo = null, ventana = null) {
+export function confianzaDe(ganador = {}, riesgo = null, ventana = null, frescura = null) {
   if (!ganador.costos_conocidos) return CONFIANZA.BAJA
   if ((ganador.campos_faltantes || []).length >= 2) return CONFIANZA.BAJA
+  // ═══ LA COBERTURA DEL MERCADO ENTRA ACÁ, Y NO EN NINGÚN OTRO LADO ═══
+  //
+  // `frescuraDeMercado` cuenta cuántos instrumentos tienen el dato viejo y cuántos no declaran cuándo
+  // cotizaron, y esos dos números se escribían sin que nadie los leyera — el mismo defecto que la
+  // auditoría había encontrado con `moneda_no_declarada_en_pantalla`, reintroducido en el arreglo de
+  // la frescura. Peor todavía: `riesgo.mjs` justifica NO bloquear un instrumento sin fecha diciendo
+  // que el costo se paga bajando la confianza. Si no se pagaba acá, no se pagaba en ningún lado.
+  //
+  // Elegir sobre un universo donde la mayoría no tiene fecha de cotización no es lo mismo que
+  // elegir sobre uno donde todos la tienen, aunque el ganador sea el mismo instrumento.
+  const total = Number(frescura?.n ?? 0) + Number(frescura?.sin_fecha ?? 0)
+  if (total > 0) {
+    const dudosos = (Number(frescura?.viejos ?? 0) + Number(frescura?.sin_fecha ?? 0)) / total
+    if (dudosos >= 0.5) return CONFIANZA.BAJA
+    if (dudosos > 0) return CONFIANZA.MEDIA
+  }
   if (riesgo?.nivel === 'medio' || ventana?.confianza === CONFIANZA.BAJA) return CONFIANZA.MEDIA
   return ventana?.confianza === CONFIANZA.ALTA ? CONFIANZA.ALTA : CONFIANZA.MEDIA
 }
