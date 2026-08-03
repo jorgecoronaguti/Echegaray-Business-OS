@@ -31,14 +31,30 @@ import http from 'node:http'
 import net from 'node:net'
 import fs from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { join, normalize } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join, normalize, dirname, sep } from 'node:path'
+import { createRequire } from 'node:module'
 import { verificarToken, tokenDeUrl } from './balanz-remoto-token.mjs'
 import { responderApreton, leerTramas, armarTrama, OPCODE } from './balanz-ws.mjs'
 import { configRuntime } from '../lib/tesoreria/navegador-runtime.mjs'
 
 export const RUTA_BASE = process.env.BALANZ_REMOTO_RUTA || '/balanz'
-const RAIZ_NOVNC = fileURLToPath(new URL('../../node_modules/@novnc/novnc/', import.meta.url))
+/**
+ * La raíz del cliente del escritorio, resuelta POR NODE y no por una ruta armada a mano.
+ *
+ * La versión anterior era `new URL('../../node_modules/@novnc/novnc/', import.meta.url)`: asume que
+ * el paquete está exactamente dos niveles arriba de este archivo. Eso es cierto en el árbol
+ * productivo y falso en cualquier worktree, donde `node_modules` está compartido más arriba — y ahí
+ * la pantalla remota servía 404 para su propio cliente, con el servidor "sano". Un test lo agarró
+ * al primer worktree nuevo.
+ *
+ * `require.resolve` usa la resolución de verdad de Node, que ya sabe de symlinks y de hoisting.
+ *
+ * Se resuelve el especificador DESNUDO. El paquete declara `"exports": "./core/rfb.js"` —un string,
+ * no un mapa— así que `@novnc/novnc` es lo ÚNICO resoluble: tanto `package.json` como la ruta
+ * explícita `core/rfb.js` tiran ERR_PACKAGE_PATH_NOT_EXPORTED. Lo que devuelve es el propio
+ * `core/rfb.js`, y su abuelo es la raíz del paquete.
+ */
+const RAIZ_NOVNC = dirname(dirname(createRequire(import.meta.url).resolve('@novnc/novnc'))) + sep
 
 const TIPOS = { '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css', '.html': 'text/html; charset=utf-8' }
 
