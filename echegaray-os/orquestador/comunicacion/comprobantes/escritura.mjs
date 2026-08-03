@@ -86,8 +86,14 @@ export async function correrCargador({ fajo, dry = false, spawnImpl = spawn, cwd
   const ruta = join(dir, 'fajo.json')
   await writeFile(ruta, JSON.stringify(fajo, null, 2), 'utf8')
   const args = [RUTA_CARGADOR, '--file', ruta, '--json', ...(dry ? ['--dry'] : [])]
+  // EL FRENO DE MANO SE LEVANTA POR ESTA CARGA, NO PARA TODOS. El freno existe para que ningún timer
+  // ni ningún agente escriba el Sheet solo, y eso sigue igual: acá el deshielo va en el entorno de
+  // ESTE proceso hijo y sólo llega hasta que termina. Lo que lo justifica es que del otro lado hubo
+  // una persona apretando "Confirmar" sobre un comprobante que ya vio — no es el OS decidiendo.
+  // Sin esto el flujo entero quedaba en "encolado" y la foto nunca llegaba a Compras.
+  const entorno = dry ? env : { ...env, ORQ_SHEETS_DESCONGELAR: 'carga de comprobante confirmada por una persona en el chat' }
   try {
-    const r = await unaCorrida(spawnImpl, args, { cwd, env })
+    const r = await unaCorrida(spawnImpl, args, { cwd, env: entorno })
     const linea = String(r.stdout ?? '').split('\n').reverse().find((l) => l.startsWith(MARCA_JSON))
     if (!linea) {
       return { ok: false, error: r.code === 0 ? 'el cargador no devolvió resultado' : (recorte(r.stderr) || `el cargador salió con código ${r.code}`), salida: r }
