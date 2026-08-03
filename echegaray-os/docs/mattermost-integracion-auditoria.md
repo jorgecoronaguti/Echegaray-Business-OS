@@ -1,6 +1,14 @@
 # Integración de Mattermost con el Echegaray Business OS — Auditoría Técnica y Plan
 
-> **Estado: AUDITORÍA + PLAN. No implementado. No se modificó código, no se instaló nada, no se creó ningún PR, no se tocó infraestructura.**
+> **Estado: HISTÓRICO — el plan de este documento YA SE EJECUTÓ.** Mattermost está en producción
+> desde entonces: el bot `@os` vive por WebSocket, con Director, especialistas, slash commands,
+> acciones interactivas y carga de asistencia. Se conserva como registro de la auditoría que
+> originó el trabajo, no como plan pendiente.
+>
+> El encabezado original decía "No implementado", y así quedó cuatro días después de que estuviera
+> andando: quien lo leyera concluiría que no hay nada hecho.
+>
+> _Texto original de 2026-07-28, sin cambios de acá para abajo:_
 > Fecha de auditoría: 2026-07-28 · VM `echegaray-os` (64.176.22.159) · Auditor: OS.
 
 ---

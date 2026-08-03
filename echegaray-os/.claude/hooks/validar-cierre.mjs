@@ -45,7 +45,14 @@ const PROY = process.env.CLAUDE_PROJECT_DIR || resolve(dirname(fileURLToPath(imp
  * package.json). Si no, se cae al proyecto de origen.
  */
 function baseDeTrabajo(cwd) {
-  if (cwd && existsSync(join(cwd, 'package.json')) && existsSync(join(cwd, '.claude'))) return cwd
+  // EL SUBDIRECTORIO NO SOBRA. En los worktrees de este repo la raíz del worktree NO tiene
+  // `package.json` ni `.claude`: el proyecto cuelga un nivel más abajo, en `echegaray-os/`. Sin
+  // este segundo intento el hook caía a `CLAUDE_PROJECT_DIR` y validaba el árbol principal —
+  // exactamente el caso que este sistema existe para soportar, dando por buena una tarea de un
+  // agente que ni siquiera miró.
+  for (const c of [cwd, cwd && join(cwd, 'echegaray-os')]) {
+    if (c && existsSync(join(c, 'package.json')) && existsSync(join(c, '.claude'))) return c
+  }
   return PROY
 }
 
@@ -88,7 +95,10 @@ function huella(archivos) {
 /** Corre un comando y devuelve {ok, salida}. Nunca tira. */
 function correr(cmd, args, base) {
   try {
-    execFileSync(cmd, args, { cwd: base, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 300000 })
+    // EL TOPE INTERNO TIENE QUE SER MENOR QUE EL DEL HOOK, NO AL REVÉS. Con 300 s acá y 420 s en
+    // `settings.json`, una suite lenta moría por este `timeout`, `correr()` devolvía `ok:false` y el
+    // cierre se bloqueaba por un ROJO FALSO — un test que nunca falló. Hoy: 600 s acá, 900 s allá.
+    execFileSync(cmd, args, { cwd: base, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 600000 })
     return { ok: true, salida: '' }
   } catch (e) {
     const txt = `${e.stdout ?? ''}${e.stderr ?? ''}`.trim()

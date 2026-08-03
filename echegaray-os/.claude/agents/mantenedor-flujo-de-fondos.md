@@ -101,3 +101,21 @@ Si decidiste no correr, esa es una entrega válida y completa: decí qué viste 
 `admin-finanzas-sheets-clase-mundial` (el estándar del dueño), `google-sheets-business-systems` (el
 cómo técnico), `finanzas-tesoreria-construccion` (el dato) y `cash-flow-operativo` (las reglas del
 módulo). Para diagnosticar algo roto sin tocarlo, delegá en `auditor-de-sheet`.
+
+Y según lo que dispare el trabajo:
+
+- llegó un **extracto o una captura del banco** → `lectura-bancaria-impacto-sheet`, que tiene el mapa
+  de qué evento bancario impacta en qué pestaña y columna;
+- hay que **decidir un pago, un financiamiento o priorizar** → `financial-engineering`, el motor de
+  liquidez, subordinado al criterio de `finanzas-tesoreria-construccion`;
+- llegaron **fotos o PDF de comprobantes** para cargar a Compras → `carga-gastos-multimedia`;
+- hay **excedente de caja** y la pregunta es dónde colocarlo → `tesoreria-inversiones-corporativas`.
+
+<!-- Estas cuatro existían y ninguna estaba nombrada desde ningún agente ni desde el ruteo: dependían
+     de que el modelo las descubriera sola por su description. Una skill sin puntero determinístico
+     es una skill que a veces no aparece el día que hacía falta. -->
+
+Nota: `cash-flow-operativo` tiene una sección de "decisiones abiertas" (cheques/echeqs, obligaciones
+recurrentes, umbral de divergencia) que **ya se resolvieron** en trabajo posterior — está en el
+código y en `lectura-bancaria-impacto-sheet`. No la uses para negarte a resolver algo que ya tiene
+respuesta.

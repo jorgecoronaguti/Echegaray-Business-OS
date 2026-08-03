@@ -165,8 +165,14 @@ export async function firmaGuardia(google, fileId, pestana, ref = pestana) {
  * normalización de Google en el ida y vuelta, igual que con la firma.
  */
 export async function sellarFirma(google, fileId, pestana, ref = pestana) {
-  try {
-    const readback = await google.readSheetValues(fileId, `${ref}!A1:BZ`, { render: 'FORMULA' }).catch(() => null)
-    if (readback) await guardarFirma({}, fileId, pestana, firmaDeGrid(readback), readback)
-  } catch { /* no crítico */ }
+  // LAS COMILLAS NO SON COSMÉTICA. Casi toda pestaña de este Sheet tiene espacios en el nombre
+  // ("Cash Flow Mensual", "Jornales por Quincena"): sin comillas la API rechaza el rango, el
+  // `.catch` de abajo lo convertía en `null` y el sellado no ocurría NUNCA — en silencio, que es lo
+  // peor. Se manifestaba como pestañas que se auto-candaban solas una y otra vez: el OS no lograba
+  // registrar su propia escritura y después la leía como una edición del dueño.
+  const rango = `'${String(ref).replace(/'/g, "''")}'!A1:BZ`
+  const readback = await google.readSheetValues(fileId, rango, { render: 'FORMULA' }).catch(() => null)
+  if (!readback) return { sellada: false, motivo: `no pude releer ${rango}` }
+  await guardarFirma({}, fileId, pestana, firmaDeGrid(readback), readback)
+  return { sellada: true, filas: readback.length }
 }

@@ -72,8 +72,11 @@ export const DESTINOS = {
     pestaña: 'Cheques Emitidos',
     seccion: 'Columna DEBITADO (K): SI cuando el banco lo pagó',
     mecanismo: 'cheques-emitidos-sync-banco.mjs marca DEBITADO por número de echeq (fuente: lista ECHEQS_EMITIDOS). '
-      + 'Los debitados DESPUÉS del corte restan en la línea neta de CAJA (formulaChequesDebitadosPosteriores)',
-    fuente: 'scripts/cheques-emitidos-sync-banco.mjs · lib/caja-posterior-al-corte.mjs',
+      + 'El CHEQUE FÍSICO no está en esa lista: sale por la referencia del extracto, que trae el número pero NO el '
+      + 'instrumento — conciliarDebitosDeCheques empareja por (instrumento, número) y declara AMBIGUO lo que no puede '
+      + 'resolver, en vez de marcar el cheque equivocado. Los debitados DESPUÉS del corte restan en la línea neta de '
+      + 'CAJA (formulaChequesDebitadosPosteriores)',
+    fuente: 'scripts/cheques-emitidos-sync-banco.mjs · lib/cheques-debito-banco.mjs · lib/caja-posterior-al-corte.mjs',
     escribe: 'columna DEBITADO',
   },
   AFIP: {

@@ -17,9 +17,12 @@
 //      declarados con su origen. No se tiran: son el extracto 22/06→22/07 verificado.
 //   2. Parsea lo nuevo. Cada línea que no entiende la DEVUELVE — un importador que come 80 filas de
 //      100 y no lo dice es peor que uno que falla.
-//   3. DEDUPLICA. Las descargas del homebanking se piden con ventanas que se superponen, así que la
-//      mayor parte de un extracto nuevo ya está cargada. Duplicar un débito no da error: da un saldo
-//      equivocado.
+//   3. DEDUPLICA POR LA REFERENCIA DEL BANCO —(referencia, importe)—, no por el saldo. Las descargas
+//      se piden con ventanas que se superponen, así que la mayor parte de un extracto nuevo ya está
+//      cargada. El saldo corrido cambia entre descargas y usarlo como clave hacía entrar todo de nuevo:
+//      el 03/08, 239 movimientos contra 170 ya cargados dieron "0 ya estaban". Duplicar un débito no da
+//      error: da un saldo equivocado. Las filas sin referencia (capturas de pantalla, la semilla) se
+//      cotejan por fecha + concepto + importe.
 //   4. VERIFICA LA CADENA DE SALDOS sobre el conjunto ya mezclado, no sobre lo nuevo suelto:
 //      saldo(n) = saldo(n−1) + importe(n) es una identidad del extracto, y si no cierra hay un typo
 //      o falta un movimiento. Es el control que ya encontró dos errores de transcripción.
@@ -45,7 +48,15 @@ import { registrarIngesta, FUENTES_INGESTA } from '../lib/registrar-sincronizaci
 const run = promisify(execFile)
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const AQUI = dirname(fileURLToPath(import.meta.url))
-const MIGRACION = join(RAIZ, 'supabase', 'migrations', '20260723120000_banco_movimientos.sql')
+// LAS TRES MIGRACIONES DE LA TABLA, EN ORDEN. Se aplican todas y no sólo la primera: son idempotentes,
+// y una migración que está en el repo pero nadie aplicó es una columna que no existe. La segunda agrega
+// `referencia` —sin ella este importador falla al insertar— y la tercera corrige la clave única a
+// (cuenta, referencia, importe), que es la misma que usa `clave()` en el núcleo.
+const MIGRACIONES = [
+  '20260723120000_banco_movimientos.sql',
+  '20260730160000_banco_movimientos_referencia.sql',
+  '20260731130000_banco_referencia_mas_importe.sql',
+].map((f) => join(RAIZ, 'supabase', 'migrations', f))
 const DRY = process.argv.includes('--dry')
 const IGUAL = process.argv.includes('--igual-cargalo')
 const SOLO_SEMBRAR = process.argv.includes('--sembrar')
@@ -80,17 +91,23 @@ function leerEntrada() {
   try { return readFileSync(0, 'utf8') } catch { return '' }
 }
 
-/** Inserta ignorando los que ya están: la deduplicación la impone el índice único de la BASE. */
+/**
+ * Inserta ignorando los que ya están: la deduplicación la impone el índice único de la BASE.
+ *
+ * LA REFERENCIA SE ESCRIBE. Faltaba en esta lista de columnas, y era el agujero por el que se caía la
+ * clave entera: el índice único `(cuenta, referencia, importe)` existe pero, si el INSERT no escribe la
+ * columna, vive sobre NULLs y no protege nada — y el cruce contra cheques no tiene de dónde salir.
+ */
 async function insertar(movs, origen) {
   if (!movs.length) return 0
   let n = 0
   for (const m of movs) {
     const r = await query(
-      `insert into public.banco_movimientos (cuenta, fecha, concepto, importe, saldo_despues, origen)
-       values ($1, $2, $3, $4, $5, $6)
+      `insert into public.banco_movimientos (cuenta, fecha, concepto, importe, saldo_despues, origen, referencia)
+       values ($1, $2, $3, $4, $5, $6, $7)
        on conflict do nothing
        returning id`,
-      [CUENTA.numero, m.fecha, m.concepto, m.importe, m.saldo, origen],
+      [CUENTA.numero, m.fecha, m.concepto, m.importe, m.saldo, origen, m.referencia ?? null],
     )
     n += r.rowCount
   }
@@ -100,8 +117,8 @@ async function insertar(movs, origen) {
 async function main() {
   // ── 1. La tabla, y la semilla ──
   if (!DRY) {
-    await query(readFileSync(MIGRACION, 'utf8'))
-    console.log('✓ public.banco_movimientos lista')
+    for (const m of MIGRACIONES) await query(readFileSync(m, 'utf8'))
+    console.log('✓ public.banco_movimientos lista (con `referencia` y su índice único)')
   }
 
   const { rows: [{ n: yaHabia }] } = await query('select count(*)::int as n from public.banco_movimientos')
@@ -136,15 +153,28 @@ async function main() {
     // del MISMO día sólo se distinguen por el orden en que el banco los listó — que es el orden en
     // que se insertaron. Sin esto llegan en el orden que quiera Postgres y la cadena "no cierra" por
     // un motivo inventado: un auditor que grita sin razón se deja de mirar.
-    'select fecha, concepto, importe, saldo_despues as saldo from public.banco_movimientos where cuenta = $1 order by fecha, id',
+    // LA REFERENCIA SE TRAE. Sin esta columna en el SELECT, el lado "existente" no tiene con qué
+    // compararse por identidad y la clave del banco queda inservible aunque `clave()` esté bien: el
+    // 03/08 el extracto 04/06→03/08 dio "239 nuevos · 0 ya estaban" contra 170 filas ya cargadas.
+    'select fecha, concepto, importe, saldo_despues as saldo, referencia from public.banco_movimientos where cuenta = $1 order by fecha, id',
     [CUENTA.numero],
   )
   const norm = existentes.map((r) => ({
     fecha: r.fecha instanceof Date ? r.fecha.toISOString().slice(0, 10) : String(r.fecha).slice(0, 10),
     concepto: r.concepto, importe: Number(r.importe), saldo: r.saldo == null ? null : Number(r.saldo),
+    // La base guarda las referencias sin ceros a la izquierda ("8689") y el extracto las trae con
+    // ("000008689"): `novedades` normaliza los dos lados, acá sólo se pasa el dato tal cual está.
+    referencia: r.referencia ?? null,
   }))
   const nuevos = novedades(movimientos, norm)
   console.log(`${nuevos.length} nuevo(s) · ${movimientos.length - nuevos.length} ya estaban (las ventanas del extracto se superponen)`)
+
+  // CON QUÉ CLAVE SE DEDUPLICÓ, A LA VISTA. La deduplicación fuerte necesita la referencia en LOS DOS
+  // lados; si falta de uno, todo cae al respaldo (fecha + concepto + importe) y eso hay que saberlo
+  // ANTES de escribir, no después. El 03/08 el importador informó "0 ya estaban" sobre 170 filas
+  // superpuestas sin decir una palabra de por qué: un contador que no muestra su base no es evidencia.
+  const conRef = (a) => a.filter((m) => m.referencia != null).length
+  console.log(`   clave: ${conRef(movimientos)}/${movimientos.length} del extracto y ${conRef(norm)}/${norm.length} de la base traen referencia; el resto se coteja por fecha + concepto + importe`)
   if (!nuevos.length) {
     console.log('\n✓ nada que cargar: el extracto ya estaba entero en la base')
     // Igual es una lectura exitosa del extracto: el dato está al día. Marcar la frescura (no --dry).

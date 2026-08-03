@@ -62,10 +62,51 @@
 	# POR QUÉ EL PREFIJO /asistencia Y NO OTRO: Mattermost usa `/<nombre-del-equipo>/…` para su
 	# webapp. `asistencia` queda RESERVADO como nombre de equipo en este Mattermost — el canal
 	# se llama así, el equipo no, y no debe llamarse así.
+	# ── PANTALLA REMOTA DEL NAVEGADOR DE BALANZ ─────────────────────────────────────
+	#
+	# QUÉ PUBLICA:
+	#   GET /balanz?t=<token>     el escritorio de la VM, para iniciar sesión en el bróker a mano
+	#   GET /balanz/vendor/*      el cliente del escritorio (librería abierta, sin secretos)
+	#   WS  /balanz/ws?t=<token>  el puente hacia el escritorio
+	#
+	# Mismo camino que `/asistencia` y por el mismo motivo: socket unix, porque el firewall del host
+	# descarta lo que llega desde los bridges de Docker. Caddy sigue siendo lo único que mira a
+	# Internet, y el VNC del contenedor sólo existe en 127.0.0.1 de la VM.
+	#
+	# El WebSocket no necesita configuración especial: `reverse_proxy` de Caddy v2 hace el upgrade
+	# solo (igual que para Mattermost).
+	#
+	# El token va en `?t=` porque el enlace tiene que poder abrirse desde un click en el celular. Se
+	# borra del log de acceso más abajo, junto con el de asistencia: quien lo tenga entra.
+	@balanz path /balanz /balanz/*
+	handle @balanz {
+		reverse_proxy {$OS_BALANZ_UPSTREAM:unix//sockets/balanz.sock}
+	}
+
 	@asistencia path /asistencia /asistencia/*
 	handle @asistencia {
 		# X-Forwarded-For lo agrega `reverse_proxy` solo: el servidor lee de ahí la IP real
 		# del visitante. Declararlo a mano es redundante y Caddy lo avisa por log.
+		reverse_proxy {$OS_ASISTENCIA_UPSTREAM:unix//sockets/asistencia.sock}
+	}
+
+	# ── BOTONES DE LA CARGA DE COMPROBANTES ─────────────────────────────────────────
+	#
+	# QUÉ PUBLICA:
+	#   POST /comprobantes/accion?t=<secreto>  Confirmar · Corregir · Descartar de un fajo
+	#
+	# MISMO PROCESO y MISMO SOCKET que `/asistencia`: `servidor-asistencia.mjs` monta las dos rutas.
+	# Por eso no hay upstream nuevo, ni servicio nuevo, ni puerto nuevo.
+	#
+	# Lo que SÍ es propio es el SECRETO (`COMPROBANTES_ACCION_SECRETO`, distinto del de asistencia):
+	# son dos dominios con dos permisos distintos, y un secreto compartido entre dos puertas es una
+	# sola puerta — quien pudiera cargar asistencia podría confirmar un gasto en el Flujo de Fondos.
+	#
+	# Viaja en `?t=` como el de asistencia, así que el filtro de log de abajo ya lo borra: no hay que
+	# agregar nada ahí. Si algún día se le cambia el nombre al parámetro, hay que agregarlo al filtro
+	# o el secreto queda escrito en el log de acceso.
+	@comprobantes path /comprobantes /comprobantes/*
+	handle @comprobantes {
 		reverse_proxy {$OS_ASISTENCIA_UPSTREAM:unix//sockets/asistencia.sock}
 	}
 

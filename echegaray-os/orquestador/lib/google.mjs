@@ -12,8 +12,12 @@ import { GoogleAuth } from 'google-auth-library'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-// El freno de mano y la regla sin bypass. Import estático: no pueden fallar ABIERTO.
+// El freno de mano de la escritura de Sheets. Import estático a propósito: un `await import()` dentro
+// de un try/catch —como el resto de las guardas— fallaría ABIERTO si el módulo no cargara, y este es
+// justamente el que no puede fallar abierto. Sólo toca el filesystem: no depende de la base ni de red.
 import { frenar } from './congelador-sheets.mjs'
+// La regla que no se puede apagar: ninguna escritura deja vacía una celda que tenía algo. No la
+// levanta ORQ_SHEETS_DESCONGELAR, ni yaGuardado, ni espejo, ni respetar:false, ni --force.
 import { permiteBorradoExplicito, protegerBorrado } from './no-borrar.mjs'
 
 const READONLY_SCOPES = [
@@ -30,6 +34,11 @@ const READONLY_SCOPES = [
 // con la SA) hace falta el scope `drive` completo. Es un service account SIN delegación:
 // el acceso real lo sigue gobernando el COMPARTIR de cada archivo, no el scope — el scope
 // amplio no da acceso a nada que no esté compartido con la cuenta. No requiere re-consent.
+// Las dos escaleras de reintento, a nivel de módulo para que el test pueda medirlas. La de cuota
+// TIENE que sumar más de 60.000 ms o no sirve para nada: la cuota de Sheets se renueva por minuto.
+export const ESPERAS_5XX = [600, 1400, 3000, 6000]
+export const ESPERAS_429 = [2000, 5000, 12000, 25000, 45000]
+
 export const WRITE_SCOPES = [
   'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/spreadsheets',
@@ -188,18 +197,28 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
   /** POST/PUT/PATCH con cuerpo JSON. Devuelve el JSON de respuesta. Error CLARO con
    *  el status y el cuerpo (para distinguir p.ej. 403 sin permiso de edición sobre
    *  el archivo destino — el Gotcha del Service Account). */
-  // Reintento con backoff ante límites transitorios de Google: 429 (Quota exceeded —
-  // "Read requests per minute per user", que salta cuando el agente lee muchos rangos
-  // seguidos al reconstruir una planilla) y 5xx. Sin esto, una ráfaga de lecturas rompe
-  // toda la tarea a mitad. Hasta 4 intentos, espera creciente (0.6s, 1.4s, 3s, 6s).
+  // Reintento con backoff ante límites transitorios de Google. Son DOS fallas distintas y por eso
+  // hay dos escaleras: un 5xx es un hipo del servidor y se pasa en segundos; un 429 es una VENTANA
+  // DE CUOTA, y la de Sheets se mide POR MINUTO ("Read requests per minute per user").
+  //
+  // LA ESPERA TIENE QUE CRUZAR EL MINUTO. La escalera anterior era [0,6s 1,4s 3s 6s]: 11 segundos
+  // en total contra una ventana de 60. Matemáticamente no podía salvar un 429 — sólo lo demoraba y
+  // devolvía el mismo error. Con dos tareas leyendo el Sheet a la vez, toda lectura moría a mitad
+  // de camino. Es la misma lección que ya se pagó del lado de la escritura (un 429 partió una
+  // pestaña al medio), que nunca se había aplicado a la lectura.
+  //
+  // Si Google dice cuánto esperar (Retry-After), se le hace caso: sabe mejor que nosotros.
   async function withRetry(doer) {
-    const esperas = [600, 1400, 3000, 6000]
     for (let intento = 0; ; intento++) {
       const res = await doer()
       if (res.ok || res.status === 204) return res
-      const transitorio = res.status === 429 || (res.status >= 500 && res.status < 600)
+      const esCuota = res.status === 429
+      const esperas = esCuota ? ESPERAS_429 : ESPERAS_5XX
+      const transitorio = esCuota || (res.status >= 500 && res.status < 600)
       if (!transitorio || intento >= esperas.length) return res
-      await new Promise((r) => setTimeout(r, esperas[intento]))
+      const sugerido = Number(res.headers?.get?.('retry-after')) * 1000
+      const espera = Number.isFinite(sugerido) && sugerido > 0 ? sugerido : esperas[intento]
+      await new Promise((r) => setTimeout(r, espera))
     }
   }
 
@@ -931,6 +950,14 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
           sellar = g.sellar
         } catch { /* sin base: se escribe (disponibilidad) */ }
       }
+      // NO-BORRAR: después de toda guarda y de todo bypass. Si acá una celda quedara vacía sobre
+      // contenido, se conserva el contenido. Ver no-borrar.mjs.
+      {
+        const nb = await protegerBorrado(cliente, fileId, [{ range, values }])
+        if (!nb.data.length) return { protegido: true, noBorrar: true, motivo: 'no pude releer el destino para garantizar que no se borra nada (falla cerrado)' }
+        if (nb.preservadas) console.log(`  🛟 conservo ${nb.preservadas} celda(s) tuya(s) que esta escritura dejaba vacías: ${nb.detalle.join(' · ')}`)
+        values = nb.data[0].values
+      }
       values = await localizeValues(fileId, values)
       const res = await apiSend(
         `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
@@ -1013,7 +1040,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
 
     /** Escribe VARIOS rangos de un Sheet en UNA sola operación (batch). `data` = matriz de
      *  { range, values }. Mucho más rápido y menos "escueto" que una celda por vez. */
-    async batchUpdateValues(fileId, data, { espejo = false, yaGuardado = false, compartida = false } = {}) {
+    async batchUpdateValues(fileId, data, { espejo = false, yaGuardado = false, compartida = false, soloFilasVacias = false } = {}) {
       const hielo = frenar(fileId, (data || []).map((d) => d?.range).filter(Boolean).join(', ')); if (hielo) return hielo
       // ── GUARDA CENTRAL (25/07): el choke point que hace que NINGÚN escritor —crudo o no— pueda pisar
       // una pestaña candada o que el dueño editó (firma). Se saltea sólo con bandera explícita: `espejo`
@@ -1025,11 +1052,21 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
           const { guardarEscritura } = await import('./guarda-escritura.mjs')
           // `compartida`: pestaña que el OS no genera (JORNALES). Mantiene candado y vacío-sobre-lleno,
           // saltea la FIRMA — que ahí siempre difiere y no significa conflicto. Ver guarda-escritura.mjs.
-          const g = await guardarEscritura(cliente, fileId, data, { compartida })
-          if (!g.data.length) return { protegido: true, bloqueadas: g.bloqueadas, motivo: g.motivo }
+          // `soloFilasVacias`: APPEND — deja pasar un rango cuyo destino se relee y se confirma VACÍO,
+          // aunque la firma difiera. No levanta el candado del dueño ni escribe sin poder releer.
+          const g = await guardarEscritura(cliente, fileId, data, { compartida, soloFilasVacias })
+          if (!g.data.length) return { protegido: true, bloqueadas: g.bloqueadas, motivo: g.motivo, porQue: g.porQue }
           data = g.data
           sellar = g.sellar
         } catch { /* sin base: se escribe (la preservación celda a celda sigue para quien use el portón) */ }
+      }
+      // NO-BORRAR: el mismo trato para el batch. Ver no-borrar.mjs.
+      {
+        const nb = await protegerBorrado(cliente, fileId, data)
+        if (nb.descartados.length) console.log(`  🛟 descarto ${nb.descartados.length} rango(s): no pude releer el destino y no arriesgo borrarte algo — ${nb.descartados.slice(0, 3).join(', ')}`)
+        if (nb.preservadas) console.log(`  🛟 conservo ${nb.preservadas} celda(s) tuya(s) que esta escritura dejaba vacías: ${nb.detalle.join(' · ')}`)
+        data = nb.data
+        if (!data.length) return { protegido: true, noBorrar: true, bloqueadas: nb.descartados }
       }
       const loc = []
       for (const d of data) loc.push({ ...d, values: await localizeValues(fileId, d.values) })
@@ -1044,7 +1081,6 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     /** Limpia (vacía) el contenido de un rango sin borrar formato. */
     async clearValues(fileId, range, { espejo = false, yaGuardado = false } = {}) {
       const hielo = frenar(fileId, range); if (hielo) return hielo
-      if (!permiteBorradoExplicito(range)) return { protegido: true, noBorrar: true, motivo: 'borrado explícito prohibido fuera de los espejos' }
       // Guarda central: clearValues BORRA. No vaciar una pestaña candada ni una que editaste — sería la
       // forma más directa del bug. Bypass explícito para la tool drive.clear (el dueño la aprueba).
       if (!espejo && !yaGuardado) {
@@ -1055,6 +1091,12 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
           const g = await guardarEscritura(cliente, fileId, [{ range, values: [] }], { chequearVacio: false })
           if (!g.data.length) return { protegido: true, bloqueadas: g.bloqueadas }
         } catch { /* fail-open */ }
+      }
+      // NO-BORRAR: clearValues no puede hacer otra cosa que borrar, así que acá no hay nada que
+      // corregir — o pasa o no. Fuera de un espejo, no pasa. Sin bypass. Ver no-borrar.mjs.
+      if (!permiteBorradoExplicito(range)) {
+        console.log(`  🛟 NO borro "${range}": un borrado explícito sobre una pestaña de contenido está prohibido (no-borrar.mjs).`)
+        return { protegido: true, noBorrar: true, motivo: 'borrado explícito prohibido fuera de los espejos' }
       }
       return apiSend(
         `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values/${encodeURIComponent(range)}:clear`,
@@ -1157,11 +1199,16 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     /** Operaciones ESTRUCTURALES de un Sheet (insertar/borrar filas o columnas, formato)
      *  vía batchUpdate. `requests` = array de requests de la Sheets API. */
     async spreadsheetBatchUpdate(fileId, requests, { espejo = false, yaGuardado = false } = {}) {
-      const hielo = frenar(fileId, `${(requests || []).length} request(s)`); if (hielo) return hielo
-      // Guarda central para el batch estructural: descarta SÓLO los requests que escriben CONTENIDO
-      // (updateCells con valor, copyPaste/pasteData/appendCells) sobre pestañas candadas/editadas; el
-      // formato y la estructura pasan siempre. Un batch puramente de formato no paga nada (sin sheetIds
-      // de contenido, la guarda es no-op). Ver guarda-escritura.mjs.
+      const hielo = frenar(fileId, `${(requests || []).length} request(s) estructurales/formato`); if (hielo) return hielo
+      // Guarda central para el batch estructural: descarta los requests que DESTRUYEN —borran, pisan,
+      // desplazan o reordenan contenido— sobre pestañas candadas/editadas, y deja pasar la apariencia.
+      // Un `deleteDimension` cuenta como destructivo igual que un `updateCells` con valor: hasta el
+      // 03/08 no contaba, y se podía borrar quince filas de una pestaña candada pero no escribirle una
+      // fórmula. Un batch de pura apariencia sigue sin pagar ni una llamada. La tabla de qué destruye y
+      // qué no está en clasificar-request.mjs; la guarda, en guarda-escritura.mjs.
+      // `sellar()` re-sella la firma de lo que la guarda AUTORIZÓ a modificar (borrados incluidos): sin
+      // eso, el propio borrado auto-candaba la pestaña y frenaba la escritura que completaba la
+      // operación. Nunca sella una pestaña bloqueada, así que no levanta ningún candado.
       let sellar = async () => {}
       if (!espejo && !yaGuardado) {
         try {

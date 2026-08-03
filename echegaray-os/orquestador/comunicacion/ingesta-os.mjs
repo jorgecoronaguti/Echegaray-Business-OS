@@ -72,6 +72,11 @@ export function crearEmitEventOS(port) {
           // Tipo de canal (D directo · G grupo · P privado · O abierto). Hay capacidades que
           // sólo operan desde su canal oficial: con esto descartan un DM sin ir a la base.
           channel_type: p.data?.channel_type ?? p.canal_tipo ?? null,
+          channel_name: p.data?.channel_name ?? null,
+          // ADJUNTOS del post. Van a los inputs de la tarea porque el especialista que los necesita
+          // corre DESPUÉS, en el worker: sin esto, un mensaje con una foto llegaba al Director como
+          // un mensaje vacío y la foto no existía para nadie.
+          file_ids: Array.isArray(p.data?.file_ids) ? p.data.file_ids : [],
           comando,
           actor: p.actor ?? null,
         },

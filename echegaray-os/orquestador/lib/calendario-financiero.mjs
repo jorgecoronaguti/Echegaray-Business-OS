@@ -173,6 +173,8 @@ export function movimientosCompras({ filas = [], idx = {}, parseMonto, parseFech
 export async function calendarioDiario(deps = {}, opts = {}) {
   const { cashBriefing, CASHFLOW_ID, parseMonto, parseFecha } = await import('./cash-briefing.mjs')
   const google = deps.google
+  // El libro es parametrizable, pero NO es "cualquier planilla": ver `verificarEstructuraFlujo`.
+  const LIBRO = opts.spreadsheetId || CASHFLOW_ID
   const hoy = opts.hoy ? new Date(opts.hoy) : new Date()
   const dias = Math.max(1, Number(opts.dias) || 60)
   const desde = aDia(hoy)
@@ -180,14 +182,14 @@ export async function calendarioDiario(deps = {}, opts = {}) {
 
   // Saldo de arranque: la caja de hoy (fuente única = cash-briefing).
   let cajaInicial = 0
-  try { cajaInicial = (await cashBriefing(google, hoy)).caja?.total ?? 0 } catch { cajaInicial = 0 }
+  try { cajaInicial = (await cashBriefing(google, hoy, { spreadsheetId: LIBRO })).caja?.total ?? 0 } catch { cajaInicial = 0 }
 
   const movimientos = []
   // EGRESOS — cheques emitidos no debitados. La pestaña real es "Cheques Emitidos" y su registro
   // arranca donde el Tipo dice FISICO/ECHEQ (no en una fila fija): A Tipo(0), E Proveedor(4),
   // F Monto(5), I fecha de pago(8, DD/MM/YYYY), K DEBITADO(10). Un debitado ya salió de la cuenta.
   try {
-    const chq = await google.readSheetValues(CASHFLOW_ID, 'Cheques Emitidos!A1:L997').catch(() => [])
+    const chq = await google.readSheetValues(LIBRO, 'Cheques Emitidos!A1:L997').catch(() => [])
     for (const r of chq) {
       if (!/^(fisico|echeq)$/i.test(String(r?.[0] ?? '').trim())) continue // sólo filas del registro
       if (/^si$/i.test(String(r?.[10] ?? '').trim())) continue // ya debitado: ya salió de la cuenta
@@ -206,7 +208,7 @@ export async function calendarioDiario(deps = {}, opts = {}) {
   // INGRESOS — cobranzas no cobradas con fecha de cobro. La pestaña real es "Cobranzas": cliente
   // idx6, monto idx12, estado idx14, fecha esperada idx15 (P), fecha cobro idx16 (Q).
   try {
-    const cob = await google.readSheetValues(CASHFLOW_ID, 'Cobranzas!A5:R2000').catch(() => [])
+    const cob = await google.readSheetValues(LIBRO, 'Cobranzas!A5:R2000').catch(() => [])
     for (const r of cob) {
       if (/cobrado/i.test(String(r?.[14] ?? ''))) continue
       const fecha = parseFecha(r?.[16]); const monto = parseMonto(r?.[12])
@@ -223,10 +225,10 @@ export async function calendarioDiario(deps = {}, opts = {}) {
   let comprasSinFecha = null
   try {
     const { resolverColumnas } = await import('./compras-columnas.mjs')
-    const cab = (await google.readSheetValues(CASHFLOW_ID, 'Compras!A3:BZ3'))[0] || []
+    const cab = (await google.readSheetValues(LIBRO, 'Compras!A3:BZ3'))[0] || []
     const { idx, faltan } = resolverColumnas(cab, COLUMNAS_COMPRAS)
     if (faltan.length) throw new Error(`faltan encabezados en Compras: ${faltan.join(', ')}`)
-    const filas = await google.readSheetValues(CASHFLOW_ID, 'Compras!A4:AK')
+    const filas = await google.readSheetValues(LIBRO, 'Compras!A4:AK')
     const r = movimientosCompras({ filas, idx, parseMonto, parseFecha, desde, hasta })
     movimientos.push(...r.movimientos)
     if (r.sinFecha.n) comprasSinFecha = r.sinFecha

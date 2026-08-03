@@ -154,6 +154,8 @@ services:
       # Dónde atiende la pantalla de asistencia del Business OS. Por defecto el socket unix
       # que monta el volumen de abajo; se puede apuntar a un host:puerto para desarrollo.
       OS_ASISTENCIA_UPSTREAM: ${OS_ASISTENCIA_UPSTREAM:-unix//sockets/asistencia.sock}
+      # Pantalla remota del navegador de Balanz — mismo directorio de sockets, mismo motivo.
+      OS_BALANZ_UPSTREAM: ${OS_BALANZ_UPSTREAM:-unix//sockets/balanz.sock}
       ACME_EMAIL: ${ACME_EMAIL:-}
       TZ: ${TZ:-America/Argentina/San_Juan}
     volumes:

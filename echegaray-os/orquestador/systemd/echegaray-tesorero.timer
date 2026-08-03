@@ -1,0 +1,16 @@
+[Unit]
+Description=Tesorero Inversor IA — dos corridas por día hábil
+
+[Timer]
+# 09:15 y 15:30: después de que el sync de compras/cobranzas actualizó la caja, y con el mercado
+# abierto. No corre de madrugada a propósito: una tasa relevada con el mercado cerrado es la de ayer,
+# y el evaluador de riesgo la rechazaría igual por vencida.
+OnCalendar=Mon..Fri *-*-* 09:15:00
+OnCalendar=Mon..Fri *-*-* 15:30:00
+# SIN Persistent. Es deliberado: con `Persistent=true`, una máquina apagada dos días dispara la
+# corrida atrasada al arrancar, y publicaría una propuesta calculada con la caja de hoy contra tasas
+# que ya no existen. Una corrida de tesorería perdida no se recupera: se hace la próxima.
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

@@ -18,3 +18,7 @@
 # Los worktrees que crea EnterWorktree cuelgan de la raíz del repositorio, no de acá,
 # pero se declara igual por si alguna versión los ubica bajo el proyecto.
 /worktrees/
+
+# Estado de la ultima sesion: rastro local de la maquina, no configuracion del repo.
+# El traspaso semantico (estado/traspaso.md) SI se versiona: viaja entre worktrees y maquinas.
+/estado/ultima-sesion.json

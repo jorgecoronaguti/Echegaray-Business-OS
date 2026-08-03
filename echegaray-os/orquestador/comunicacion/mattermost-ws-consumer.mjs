@@ -51,18 +51,52 @@ export function parsearPosted(mensaje) {
 
 function escaparRegex(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
 
-/** GUARDA de relevancia. Acepta SÓLO: DM al bot, o mención directa a @os (por
- *  user_id en mentions o por texto). Rechaza el eco del propio bot. Todo lo demás
- *  se ignora ANTES de crear un evento ⇒ cero costo. */
-export function esRelevante(info, { botUserId = null, botUsername = 'os' } = {}) {
+/**
+ * CANALES DE INGESTA POR ADJUNTO. En estos canales, un post CON archivos adjuntos entra aunque
+ * nadie mencione a @os: mandar la foto de una factura al canal de comprobantes ES el pedido, y
+ * exigir "@os" además de la foto convertiría lo natural en un trámite.
+ *
+ * Se configura por entorno y acepta **nombre de canal O channel_id**. Aceptar el id no es un lujo:
+ * lo que Mattermost manda en el frame `posted` es `channel_name`, y `channel_name` es el SLUG del
+ * canal, no su nombre visible. El canal que el dueño llama "Comprobantes-gastos" viaja por el
+ * WebSocket como `compras`, así que configurar el nombre que se ve en la pantalla hace que la guarda
+ * no matchee nunca y la foto no llegue a nadie — verificado contra el Mattermost vivo, con un frame
+ * real. El id es inmutable: renombrar el canal no vuelve a romper esto.
+ *
+ * Es sólo un PREFILTRO de costo cero — decide qué evento vale la pena crear, no quién puede cargar.
+ * La puerta de verdad (canal oficial contra `comunicacion.canales_area` + grant de permiso) vive en
+ * `comprobantes/guarda.mjs` y se evalúa después, contra la base: un nombre de canal que llega por
+ * WebSocket no autoriza nada. Por eso un prefiltro de más sólo cuesta un evento que después se
+ * deniega, mientras que uno de menos pierde el pedido en silencio.
+ */
+export function canalesDeAdjuntos(env = process.env) {
+  const crudo = env.MM_CANALES_ADJUNTOS ?? 'comprobantes-gastos,compras'
+  return new Set(String(crudo).split(',').map((s) => s.trim().toLowerCase()).filter(Boolean))
+}
+
+/** ¿Este post trae archivos adjuntos? */
+export function tieneAdjuntos(post) {
+  return Array.isArray(post?.file_ids) ? post.file_ids.length > 0 : Boolean(post?.metadata?.files?.length)
+}
+
+/** GUARDA de relevancia. Acepta SÓLO: DM al bot, mención directa a @os (por
+ *  user_id en mentions o por texto), o un post CON ADJUNTOS en un canal de ingesta.
+ *  Rechaza el eco del propio bot. Todo lo demás se ignora ANTES de crear un evento ⇒ cero costo. */
+export function esRelevante(info, { botUserId = null, botUsername = 'os', canalesAdjuntos = null } = {}) {
   if (!info?.post) return false
-  const { post, channelType, mentions } = info
+  const { post, channelType, channelName, mentions } = info
   if (botUserId && post.user_id === botUserId) return false // eco propio (anti-loop)
   if (post.type && post.type !== '') return false // posts de sistema (join/leave/header) no son mensajes
   if (channelType === 'D') return true // mensaje directo al bot
   const porId = Boolean(botUserId && mentions.includes(botUserId))
   const porTexto = new RegExp(`(^|\\s)@${escaparRegex(botUsername)}\\b`, 'i').test(post.message ?? '')
-  return porId || porTexto
+  if (porId || porTexto) return true
+  const canales = canalesAdjuntos ?? canalesDeAdjuntos()
+  // Por SLUG (lo que viaja en el frame) o por CHANNEL_ID (inmutable). Cualquiera de los dos alcanza:
+  // el id sobrevive a que alguien renombre el canal, el slug es lo que se lee cómodo en el .env.
+  const esCanalDeIngesta = (channelName && canales.has(String(channelName).toLowerCase()))
+    || (post.channel_id && canales.has(String(post.channel_id).toLowerCase()))
+  return Boolean(esCanalDeIngesta && tieneAdjuntos(post))
 }
 
 /** Mapea el post de Mattermost al payload que el MattermostAdapter ya espera.
@@ -82,6 +116,10 @@ export function mapearAPayload(post, info = {}) {
     // capacidades que sólo pueden operar desde su canal oficial y necesitan descartar un
     // DM sin ir a preguntarle a la base de qué canal se trata.
     channel_type: info.channelType ?? null,
+    // ADJUNTOS. Los ids, no los bytes: bajar el archivo es trabajo del especialista que lo
+    // necesite, y sólo después de pasar la puerta. Meter 5 MB de JPEG en un evento canónico
+    // sería llenar `orq.events` de binario que nadie va a volver a mirar.
+    file_ids: Array.isArray(post.file_ids) ? post.file_ids : [],
   }
 }
 
@@ -112,6 +150,9 @@ export function crearConsumidorWS(opts) {
     con, wsUrl, token, botUserId = null, botUsername = 'os',
     WebSocketImpl = globalThis.WebSocket, log = crearLog(),
     pingMs = 30_000, backoffBaseMs = 1000, backoffMaxMs = 30_000, dedupMax = 5000,
+    // Se resuelve UNA vez al construir el consumidor, no en cada mensaje: es configuración, y
+    // releerla por post sería pagar un parseo por cada línea que alguien escribe en el equipo.
+    canalesAdjuntos = canalesDeAdjuntos(),
   } = opts
   if (!con?.recibir) throw new Error('consumidor-ws: falta con.recibir')
   if (!wsUrl) throw new Error('consumidor-ws: falta wsUrl')
@@ -125,7 +166,7 @@ export function crearConsumidorWS(opts) {
   async function manejarMensaje(raw) {
     const info = parsearPosted(raw)
     if (!info) return { estado: 'no-posted' }
-    if (!esRelevante(info, { botUserId, botUsername })) {
+    if (!esRelevante(info, { botUserId, botUsername, canalesAdjuntos })) {
       log.info?.('ws: ignorado por guarda', { post_id: info.post.id, channel_type: info.channelType })
       return { estado: 'ignorado' }
     }
