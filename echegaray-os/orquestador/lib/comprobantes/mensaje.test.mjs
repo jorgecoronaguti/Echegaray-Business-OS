@@ -7,7 +7,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { resumenFajo, titular, tablaComprobante, notasDe, estadoDeItem, ESTADO_ITEM, bloqueObra, ofertasDe, lineaRubro } from './mensaje.mjs'
+import { resumenFajo, titular, tablaComprobante, notasDe, estadoDeItem, ESTADO_ITEM, bloqueObra, ofertasDe, lineaRubro, ofreceObra } from './mensaje.mjs'
 import { botonesFajo, aplicarOpcion } from './fajo.mjs'
 import { perfilesDeImputacion, sugerirImputacion } from '../imputacion-aprendida.mjs'
 
@@ -87,11 +87,60 @@ test('sin nada raro, la primera línea dice que está listo y cuántas filas ent
 })
 
 test('lo que falta se pregunta aparte de la tabla, con ❓', () => {
-  const item = barcelo({ comprobante: { obra: null, detalleObra: null } })
+  // El faltante que SÍ bloquea: sin número no se puede cargar por chat. (La obra dejó de bloquear el
+  // 03/08/2026 y tiene su propio test más abajo.)
+  const item = barcelo({ comprobante: { numero: null } })
   const t = resumenFajo({ items: [item] })
   assert.match(t.split('\n')[0], /Me falta un dato/)
-  assert.match(t, /❓ .*obra/)
+  assert.match(t, /❓ .*número de comprobante/)
   assert.equal(estadoDeItem(item), ESTADO_ITEM.FALTA)
+})
+
+// ── LA OBRA SE OFRECE PERO NO BLOQUEA (03/08/2026) ──────────────────────────
+//
+// La decisión del dueño fue que el bot cargue igual con la obra vacía. El riesgo del cambio no es que
+// se cargue de más: es que, al dejar de ser un faltante, el bloque con las siete obras del proveedor y
+// sus conteos desapareciera del mensaje sin que nadie lo notara —colgaba de `preguntasDe`—. Eso sería
+// apagar la parte útil por haber apagado la molesta.
+
+test('sin obra el comprobante YA SE PUEDE CARGAR, y el desplegable sigue apareciendo', () => {
+  const item = barcelo({ comprobante: { obra: null, obraVia: null, detalleObra: null } })
+  const t = resumenFajo({ items: [item] })
+  assert.equal(estadoDeItem(item), ESTADO_ITEM.LISTO, 'la obra no lo deja incompleto')
+  assert.match(t.split('\n')[0], /✅ \*\*1 listo para cargar\*\*/)
+  assert.match(t, /❓ \*\*¿A qué obra va\?\*\*/, 'la obra se sigue ofreciendo: no se esconde')
+  assert.match(t, /apretá \*\*Confirmar\*\*/)
+})
+
+test('el mensaje DICE que va sin obra: no se carga en silencio', () => {
+  const t = resumenFajo({ items: [barcelo({ comprobante: { obra: null, obraVia: null } })] })
+  assert.match(t, /no me hace falta para cargar.*sin obra.*completás en Compras/s)
+  assert.match(t, /⚠️ Va \*\*sin obra\*\* — completala en Compras/)
+})
+
+test('con la obra puesta no aparece ni la oferta ni la advertencia', () => {
+  const t = resumenFajo({ items: [barcelo()] })
+  assert.doesNotMatch(t, /¿A qué obra va\?/)
+  assert.doesNotMatch(t, /sin obra/)
+})
+
+test('ofreceObra: no se ofrece sobre lo que no se va a cargar', () => {
+  assert.equal(ofreceObra(barcelo({ comprobante: { obra: null } })), true)
+  assert.equal(ofreceObra(barcelo()), false, 'ya tiene obra')
+  assert.equal(ofreceObra({ ...barcelo({ comprobante: { obra: null } }), yaCargado: { fila: 802 } }), false)
+  assert.equal(ofreceObra({ ...barcelo({ comprobante: { obra: null } }), duplicadoResuelto: 'mismo' }), false)
+  // Primero se decide si el comprobante existe; recién después, dónde va.
+  assert.equal(ofreceObra({ ...barcelo({ comprobante: { obra: null } }), posibleDuplicado: { fila: 802 } }), false)
+})
+
+test('varios comprobantes sin obra: la advertencia los cuenta', () => {
+  const items = [
+    barcelo({ comprobante: { obra: null } }),
+    barcelo({ comprobante: { obra: null, numero: '0113-00014220' } }),
+    barcelo({ comprobante: { numero: '0113-00014221' } }),
+  ]
+  const t = resumenFajo({ items })
+  assert.match(t, /⚠️ 2 de 3 van \*\*sin obra\*\*/)
 })
 
 test('varios comprobantes = un bloque con título por cada uno', () => {
@@ -231,7 +280,10 @@ test('un proveedor SIN historia no recibe opciones inventadas: se dice por qué 
   item.sugerencia = { obra: { sugerido: null, n: 0, distintos: 0, opciones: [], evidencia: 'sin_historia', pide_confirmacion: true } }
   const b = bloqueObra(item).join('\n')
   assert.match(b, /❓ \*\*¿A qué obra va\?\*\* No tengo ninguna carga anterior de \*\*Ferretería Nueva\*\* en Compras para deducirla\./)
-  assert.equal(bloqueObra(item).length, 1, 'sin historia no hay lista que mostrar')
+  // La pregunta + la aclaración de que no bloquea. Sin historia no hay LISTA que mostrar: dos líneas,
+  // no una lista de obras inventadas.
+  assert.equal(bloqueObra(item).length, 2, 'sin historia no hay lista que mostrar')
+  assert.match(bloqueObra(item)[1], /sin obra/)
 })
 
 test('CONTESTAR ES UN CLICK: las tres obras más frecuentes salen como botones', () => {
@@ -243,8 +295,10 @@ test('CONTESTAR ES UN CLICK: las tres obras más frecuentes salen como botones',
   assert.deepEqual(obras.actions[0].integration.context, {
     accion: 'imputar', fajo_id: 'f1', dominio: 'comprobantes', indice: 0, campo: 'obra', valor: 'San Francisco',
   })
-  // Y el bloque de siempre sigue estando, sin Confirmar (falta la obra: el ítem no está completo).
-  assert.deepEqual(att[1].actions.map((a) => a.id), ['corregir', 'descartar'])
+  // Y el bloque de siempre sigue estando. Desde el 03/08/2026 el Confirmar APARECE aunque falte la
+  // obra: se ofrece elegirla con un click y, si no se elige, se carga sin ella. Los botones de obra y
+  // el Confirmar conviven a propósito — son las dos salidas legítimas y ninguna se esconde.
+  assert.deepEqual(att[1].actions.map((a) => a.id), ['confirmar', 'corregir', 'descartar'])
 })
 
 test('elegir la obra con el botón la deja en el comprobante, marcada como elección del dueño', () => {

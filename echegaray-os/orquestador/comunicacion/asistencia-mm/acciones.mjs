@@ -543,7 +543,7 @@ async function confirmarYEscribir(d, p, sesion, { plan, cuadrilla, novedades, ma
     obra_normalizada: plan.clave_obra, idempotency_key: plan.idempotency_key,
     mattermost_user_id: p.userId, mattermost_username: p.username,
   })
-  const r = await escribir(d, { plan, confirmar: true })
+  const r = await escribir(d, { plan, confirmar: true, actor })
   if (!r.ok) {
     await d.sesiones.cerrar(sesion.id, ESTADO_SESION.FALLIDA)
     await d.auditar(r.motivo === MOTIVO_NUCLEO.CONFLICTO_CONCURRENCIA ? EVENTO.CONFLICT : EVENTO.FAILED, {

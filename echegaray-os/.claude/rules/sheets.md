@@ -15,8 +15,14 @@ Se carga sólo al tocar los archivos que escriben el Flujo de Fondos. Es el áre
 
 ## Antes de tocar nada
 
-**El freno de mano manda.** Si hay marca de congelamiento (`congelador-sheets.mjs`), nadie escribe
-Sheets hasta que el dueño lo levante. Ninguna opción de código la sortea, y no se pide excepción.
+**El freno de mano manda.** Si hay marca de congelamiento (`congelador-sheets.mjs`), ningún timer,
+generador, agente ni script escribe Sheets hasta que el dueño lo levante. Ninguna bandera de
+comportamiento lo sortea, y no se pide excepción.
+
+La única puerta (03/08/2026) es una **persona identificada que confirma en el chat**: `frenar(...,
+{ confirmacion: { actor, motivo } })`, y sólo desde `batchUpdateValues`. Hacen falta las dos piezas
+—actor con nombre y motivo de ≥8 caracteres— y cada levantamiento se loguea. Un timer no tiene actor:
+por eso la distinción se sostiene sola. **La marca no se borra nunca.**
 
 **Lo que el dueño editó o borró a mano es verdad definitiva.** No se revierte ni se "mejora". Si un
 generador necesita esa celda, se adapta el generador. Los candados de pestaña

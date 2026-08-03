@@ -13,16 +13,27 @@
 // de las dos caras sabía lo que revisaba la otra. Un comprobante sin proveedor legible pasaba las
 // cinco preguntas del bot y recién moría dentro del cargador, con un mensaje que el dueño no veía.
 //
-// ═══ LO QUE ES POLÍTICA Y SIGUE SIENDO DISTINTO A PROPÓSITO ═══
+// ═══ LA OBRA: POR QUÉ DIFERÍA Y QUÉ DECIDIÓ EL DUEÑO (03/08/2026) ═══
 //
-// **Exigir la obra es una decisión de negocio del dueño, y todavía no la tomó.** Una fila sin obra
-// entra al Flujo de Caja con el rubro sin clasificar —"compras sin obra asignada" es un problema que
-// él mismo listó—, y por eso el bot bloquea; el cargador por línea de comandos sigue escribiendo la
-// fila y dejando que él complete la imputación después, que es como viene trabajando.
+// La diferencia existía por una razón real: una fila sin obra entra al Flujo de Caja con el rubro sin
+// clasificar —"compras sin obra asignada" es un problema que el dueño mismo listó—, así que el bot la
+// exigía y bloqueaba; el cargador por línea de comandos, en cambio, escribía la fila igual y dejaba
+// que él completara la imputación después en el Sheet, que es como viene trabajando.
+//
+// **DECIDIDO (03/08/2026): el bot carga igual con la obra vacía, alineado con el cargador.** Bloquear
+// costaba más que el dato que protegía: el comprobante quedaba sin cargar en ningún lado —ni en el
+// Sheet, ni con obra— y el jefe abandonaba el flujo. Una fila cargada sin obra es un dato incompleto
+// que se completa en un minuto; una foto que nunca llegó a Compras es un gasto perdido.
+//
+// LO QUE NO CAMBIA: **la obra se sigue OFRECIENDO.** El desplegable con las obras del historial
+// (`PREGUNTA_OBRA` → `bloqueObra`/`ofertasDe` en `mensaje.mjs`, botones en `fajo.mjs`) aparece igual,
+// con su conteo y su sugerida. Lo único que cambió es que no BLOQUEA: si el jefe no elige, se carga
+// con la obra vacía y el mensaje lo dice con todas las letras. Ofrecer y exigir son dos cosas
+// distintas, y esta política decide sólo la segunda.
 //
 // Lo que NO puede diferir es la LÓGICA. Por eso la diferencia vive en un objeto de política
-// (`POLITICA.CARGADOR` vs `POLITICA.CHAT`) y no en dos funciones: el día que el dueño decida, se
-// cambia una bandera y las dos caras quedan iguales sin tocar una línea de código de decisión.
+// (`POLITICA.CARGADOR` vs `POLITICA.CHAT`) y no en dos funciones: cuando el dueño decidió, se cambió
+// una bandera y las dos caras quedaron iguales sin tocar una línea de código de decisión.
 //
 // NÚCLEO PURO: no lee el Sheet, no consulta la base, no llama a ningún modelo.
 
@@ -44,15 +55,19 @@ export const MOTIVO = Object.freeze({
 /**
  * La pregunta de la obra, como constante y no como literal repetido: `mensaje.mjs` la reemplaza por
  * el bloque con las opciones del historial y necesita reconocerla sin acoplarse a una redacción.
+ *
+ * Desde el 03/08/2026 la obra ya NO es un faltante (ninguna política la exige), así que esta pregunta
+ * no sale de `faltantesDe`. La constante sigue viva porque el bloque que la ofrece —con las opciones
+ * del historial y los botones— sigue existiendo: `mensaje.mjs` la usa para armarlo.
  */
 export const PREGUNTA_OBRA = 'no dice a qué obra va — ¿cuál es?'
 
 /**
  * Las dos políticas vigentes. Lo que cambia es QUÉ se exige, nunca CÓMO se evalúa.
  *
- * `exigirObra` es la única diferencia que responde a una decisión de negocio pendiente. Las otras
- * tres responden al canal: el chat puede preguntar y esperar, la línea de comandos no tiene a quién
- * preguntarle en el medio de una corrida.
+ * Las tres diferencias que quedan responden al CANAL, no a una decisión de negocio pendiente: el chat
+ * puede preguntar y esperar, la línea de comandos no tiene a quién preguntarle en el medio de una
+ * corrida. `exigirObra` era la única de negocio y ya está decidida: no se exige en ninguna de las dos.
  */
 export const POLITICA = Object.freeze({
   // Claude Code: escribe la fila y el dueño completa la imputación en el Sheet.
@@ -66,7 +81,9 @@ export const POLITICA = Object.freeze({
   // El bot: tiene botones, así que lo que falta se pregunta antes de escribir nada.
   CHAT: Object.freeze({
     nombre: 'chat',
-    exigirObra: true,
+    // DECIDIDO 03/08/2026 — ver el encabezado. La obra se ofrece con todo el historial adelante, pero
+    // no bloquea: sin elección se carga con la obra vacía y el mensaje lo dice.
+    exigirObra: false,
     exigirNumero: true,
     // El fajo que viaja al cargador NO lleva el neto (`aFajoJson`): la columna M se deriva de
     // Total − IVA. Sin total, del otro lado no hay con qué escribir la fila.

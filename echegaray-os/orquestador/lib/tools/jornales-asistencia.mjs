@@ -373,6 +373,25 @@ export function claveIdempotencia({ ctx, claveObra, items, actor } = {}) {
 }
 
 /**
+ * NÚCLEO PURO: la confirmación humana con la que se levanta el freno de mano para ESTA
+ * escritura. `null` si no hay actor identificado — y entonces no se escribe nada.
+ *
+ * El nombre que se deja escrito es el username de la plataforma cuando existe (es lo que
+ * una persona reconoce al auditar) y el id si no; nunca los dos, y nunca un placeholder.
+ *
+ * @param {{actor?:{plataforma_username?:string, plataforma_user_id?:string}|null, fecha?:string}} o
+ * @returns {{actor:string, motivo:string}|null}
+ */
+export function confirmacionDe({ actor, fecha } = {}) {
+  const quien = String(actor?.plataforma_username ?? actor?.plataforma_user_id ?? '').trim()
+  if (!quien) return null
+  return {
+    actor: quien,
+    motivo: `asistencia del ${fecha ?? 's/f'} confirmada en el chat por ${quien}`,
+  }
+}
+
+/**
  * ESCRITURA · `registrar_asistencia`.
  *
  * Antes de escribir vuelve a leer la planilla y RE-RESUELVE cada celda por nombre
@@ -380,8 +399,13 @@ export function claveIdempotencia({ ctx, claveObra, items, actor } = {}) {
  * otra persona). Después compara la huella con la del plan: si algo cambió, no escribe
  * NADA y devuelve conflicto. La escritura es UNA sola operación batch, y al final se
  * relee para verificar que lo persistido es lo enviado.
+ *
+ * `actor` es QUIÉN confirmó, y es el mismo que ya entra en `claveIdempotencia`: no hay
+ * una segunda identidad. Con él se arma la confirmación humana que levanta el freno de
+ * mano para ESTA escritura (ver `congelador-sheets.mjs`). Sin actor no se arma nada y el
+ * freno queda puesto: falla cerrado, como todo lo que en este subsistema necesita nombre.
  */
-export async function registrarAsistencia(google, { plan, confirmarSobrescritura = false, confirmarReemplazoFormula = false } = {}) {
+export async function registrarAsistencia(google, { plan, confirmarSobrescritura = false, confirmarReemplazoFormula = false, actor = null } = {}) {
   if (!plan?.escribibles?.length) {
     return { ok: true, escritas: 0, celdas: [], nota: 'nada que escribir' }
   }
@@ -450,7 +474,13 @@ export async function registrarAsistencia(google, { plan, confirmarSobrescritura
   // asistencia muerta. La protección que corresponde es la de arriba y es más fuerte: se releyó cada
   // celda destino y se comparó su huella; si algo cambió, no se escribe NADA. El candado explícito del
   // dueño sigue mandando: si él toma la pestaña, esto se corta igual.
-  const res = await google.batchUpdateValues(plan.spreadsheet_id, data, { compartida: true })
+  const res = await google.batchUpdateValues(plan.spreadsheet_id, data, {
+    compartida: true,
+    // EL FRENO DE MANO, LEVANTADO POR LA PERSONA QUE CONFIRMÓ. No es el OS decidiendo escribir: del
+    // otro lado hubo un jefe de obra que vio el preview y apretó Registrar. Sin actor identificado
+    // esto es `null` y la escritura queda frenada — la asistencia no se carga a nombre de nadie.
+    confirmacion: confirmacionDe({ actor, fecha: plan.fecha }),
+  })
   // La guarda central del cliente puede negar la escritura. Eso NO es éxito: se informa tal cual,
   // y se distingue POR QUÉ — el freno de mano general viene marcado con `congelado` y se lo
   // arrastra hasta el mensaje, en vez de disfrazarlo de candado de pestaña.

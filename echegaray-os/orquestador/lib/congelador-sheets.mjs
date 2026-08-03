@@ -19,18 +19,43 @@
 // mismos. Un freno que se pueda saltear con una opción no es un freno.
 //
 // Este vive ARRIBA de todo eso, en las cinco funciones de `google.mjs` que efectivamente mandan bytes a
-// la API, y **no lo levanta ninguna opción de código**: ni `yaGuardado`, ni `espejo`, ni `respetar:false`.
-// Sólo lo levanta una decisión humana tomada en el momento (ver abajo).
+// la API, y **no lo levanta ninguna bandera de comportamiento**: ni `yaGuardado`, ni `espejo`, ni
+// `respetar:false`. Lo único que lo levanta es una DECISIÓN HUMANA, y siempre con nombre.
 //
 // ═══ CÓMO SE LEVANTA ═══
 //
 // Borrando la marca:            rm ~/.config/echegaray-orq/SHEETS-CONGELADOS
-// O, para UNA corrida puntual:  ORQ_SHEETS_DESCONGELAR="motivo" node scripts/loQueSea.mjs
+// Para UNA corrida puntual:     ORQ_SHEETS_DESCONGELAR="motivo" node scripts/loQueSea.mjs
+// Para UNA escritura del chat:  frenar(fileId, detalle, { confirmacion: { actor, motivo } })
 //
 // La variable de entorno es deliberadamente incómoda: hay que tipearla en el comando, con un motivo, y
 // queda en el log. Un timer no la tiene. Un worker no la tiene. Un agente que la ponga solo está
 // dejando por escrito que la puso. Es la diferencia entre "no puede pasar" y "no puede pasar sin que
 // quede dicho quién lo hizo y por qué" — y lo segundo es lo que se puede auditar después.
+//
+// ═══ LA CONFIRMACIÓN HUMANA (03/08) — POR QUÉ LA DISTINCIÓN ES REAL ═══
+//
+// El dueño decidió: *una persona identificada que confirma en el chat puede escribir; los timers, los
+// generadores y los agentes de mantenimiento siguen bloqueados.* La marca NO se borra: sigue puesta y
+// sigue frenando todo lo demás.
+//
+// La distinción no es una convención que dependa de la buena fe del que llama. Un timer no tiene un
+// `actor`: nadie apretó nada, no hay identidad de plataforma que arrastrar hasta acá, y este subsistema
+// ya falla cerrado sin identidad real (una escritura sin nombre no es una escritura). Un generador
+// tampoco: corre solo, contra un cron, sin nadie del otro lado. El `actor` que llega hasta acá viene del
+// evento autenticado de Mattermost —el mismo `plataforma_user_id` con el que se firma la auditoría y se
+// arma la clave de idempotencia—, así que "hubo una persona" es un hecho verificable, no una promesa.
+//
+// Por eso hacen falta LAS DOS cosas, y ninguna de las dos se puede fabricar por accidente:
+//   · `actor`  — quién. Vacío, `true`, `{}` o un booleano no levantan nada.
+//   · `motivo` — para qué, con la misma vara que la variable de entorno (`motivoValido`, ≥8 caracteres
+//                y no trivial). Un "ok" no es una decisión.
+//
+// Y **se loguea en CADA escritura, no una vez por proceso**. El aviso de congelado sí se emite una sola
+// vez —para no llenar el log de un generador con 200 rangos—, pero el LEVANTAMIENTO es lo contrario:
+// cada línea que dice `🔓 freno levantado por X: motivo` es una escritura que ocurrió sobre un Sheet
+// que en teoría estaba frenado. Un bypass que deja una sola línea por proceso no se puede auditar
+// después: no se sabe si escribió una celda o mil.
 //
 // La marca NO depende de Postgres a propósito. Si la base está caída, el freno tiene que seguir puesto:
 // un freno que se suelta cuando falla una dependencia es el defecto que este repo ya pagó (fail-open).
@@ -84,15 +109,48 @@ export function aviso(marca, fileId, detalle) {
 }
 
 /**
+ * NÚCLEO PURO: ¿esto es una confirmación humana que levanta el freno para ESTA escritura?
+ *
+ * Devuelve `{ actor, motivo }` normalizado, o `null`. Falla cerrado ante cualquier cosa que no sean las
+ * dos piezas completas: `true`, `1`, `{}`, un actor vacío o un motivo trivial NO levantan nada. Es
+ * deliberado que no exista una forma corta de decir que sí — el freno se saltea con nombre y con
+ * motivo, o no se saltea.
+ *
+ * @param {{actor?:string, motivo?:string}|unknown} c
+ * @returns {{actor:string, motivo:string}|null}
+ */
+export function confirmacionValida(c) {
+  if (!c || typeof c !== 'object' || Array.isArray(c)) return null
+  const actor = String(c.actor ?? '').trim()
+  const motivo = String(c.motivo ?? '').trim()
+  if (!actor) return null
+  if (!motivoValido(motivo)) return null
+  return { actor, motivo }
+}
+
+/**
  * El chequeo que hacen las cinco funciones de escritura de `google.mjs`. Si está congelado, avisa una
  * sola vez por proceso (para no llenar el log de un generador con 200 rangos) y devuelve el resultado
  * que los llamadores ya saben interpretar: `{ protegido: true }` — la misma forma que devuelve la
  * guarda cuando descarta una escritura, así que ningún script se rompe, simplemente no escribe.
+ *
+ * `confirmacion` es la ÚNICA opción que lo levanta, y sólo la reenvía `batchUpdateValues` (ver
+ * `google.mjs`): superficie mínima, que es la que usa la asistencia por chat. El levantamiento se
+ * loguea en cada llamada, a propósito — ver el encabezado.
+ *
+ * @param {string} fileId
+ * @param {string} [detalle]
+ * @param {{confirmacion?:{actor?:string, motivo?:string}}} [opciones]
  */
 let yaAviso = false
-export function frenar(fileId, detalle) {
+export function frenar(fileId, detalle, { confirmacion } = {}) {
   const marca = congelado()
   if (!marca) return null
+  const ok = confirmacionValida(confirmacion)
+  if (ok) {
+    console.log(`🔓 freno levantado por ${ok.actor}: ${ok.motivo}`)
+    return null
+  }
   if (!yaAviso) { console.log(aviso(marca, fileId, detalle)); yaAviso = true }
   return { protegido: true, congelado: true, motivo: marca, bloqueadas: [detalle || fileId].filter(Boolean) }
 }
