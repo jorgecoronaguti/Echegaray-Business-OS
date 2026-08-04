@@ -99,6 +99,58 @@ export class MattermostCliente {
   }
 
   /**
+   * SUBE un archivo binario a un canal y devuelve su `file_id`, listo para `crearPost`.
+   *
+   * Mattermost separa subir de postear: primero se sube al canal, después el post referencia el id.
+   * Sin este paso, `crearPost({file_ids})` sólo puede reenviar adjuntos que ya vivían en Mattermost
+   * — no hay forma de mandar un PDF que salió de Drive, del disco o de un generador.
+   *
+   * NO pasa por `_req`, por lo mismo que `archivo()`: el cuerpo es `multipart/form-data` binario y
+   * serializarlo como JSON lo corrompe.
+   *
+   * @param {{channel_id:string, nombre:string, datos:Buffer|Uint8Array, mime?:string}} p
+   * @returns {Promise<{id:string, name:string, size:number}>}
+   */
+  async subirArchivo({ channel_id, nombre, datos, mime = 'application/octet-stream' }) {
+    if (!channel_id) throw new Error('subirArchivo: falta channel_id')
+    if (!nombre) throw new Error('subirArchivo: falta el nombre del archivo')
+    if (!datos?.length) throw new Error(`subirArchivo: "${nombre}" viene vacío — no subo un archivo de 0 bytes`)
+    const form = new FormData()
+    form.append('channel_id', channel_id)
+    form.append('files', new Blob([datos], { type: mime }), nombre)
+
+    const ac = new AbortController()
+    const t = setTimeout(() => ac.abort(), this.timeoutMs)
+    try {
+      const res = await this._fetch(`${this.baseUrl}/api/v4/files`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.token}` }, // el boundary lo pone fetch: no fijarlo a mano
+        body: form,
+        signal: ac.signal,
+      })
+      if (!res.ok) {
+        const err = new Error(`mattermost POST /files (${nombre}) → ${res.status}`)
+        err.status = res.status
+        err.reintentable = esReintentable(res.status)
+        throw err
+      }
+      const j = await res.json()
+      const info = j?.file_infos?.[0]
+      // Un 200 sin file_info es un éxito aparente que después rompe el post con un id vacío.
+      if (!info?.id) throw new Error(`mattermost POST /files (${nombre}) → 200 sin file_info: no hay id que adjuntar`)
+      return info
+    } catch (e) {
+      if (e?.name === 'AbortError') {
+        const err = new Error(`mattermost POST /files (${nombre}) → no respondió en ${this.timeoutMs}ms`)
+        err.status = 504
+        err.reintentable = true
+        throw err
+      }
+      throw e
+    } finally { clearTimeout(t) }
+  }
+
+  /**
    * Baja el contenido BINARIO de un adjunto.
    *
    * NO pasa por `_req` a propósito: `_req` lee el cuerpo como texto y lo parsea como JSON, que para
@@ -276,6 +328,17 @@ export class FakeMattermost {
     const post = { id: `post_${++this._seq}`, channel_id, message, root_id: root_id ?? '', file_ids: file_ids ?? [], props: props ?? {}, create_at: Date.now() }
     this.posts.push(post)
     return post
+  }
+
+  /** Sube y registra en `this.archivos`, con las mismas guardas que el real. */
+  async subirArchivo({ channel_id, nombre, datos, mime = 'application/octet-stream' }) {
+    this._maybeFail('subirArchivo')
+    if (!channel_id) throw new Error('subirArchivo: falta channel_id')
+    if (!nombre) throw new Error('subirArchivo: falta el nombre del archivo')
+    if (!datos?.length) throw new Error(`subirArchivo: "${nombre}" viene vacío — no subo un archivo de 0 bytes`)
+    const info = { id: `file_${++this._seq}`, name: nombre, mime_type: mime, size: datos.length }
+    this.archivos.set(info.id, { ...info, data: Buffer.from(datos) })
+    return info
   }
 
 

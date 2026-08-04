@@ -469,6 +469,35 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       const j = await apiGet(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&pageSize=10`)
       return j.files || []
     },
+    /** LO QUE HAY ADENTRO DE UNA CARPETA, con paginado completo.
+     *
+     *  Sin esto, cualquier pregunta sobre "los archivos de tal carpeta" se contesta con
+     *  `searchFile`, que busca por NOMBRE en todo el Drive y no sabe de carpetas: trae de otras
+     *  carpetas lo que se llame parecido y se pierde lo que ahí adentro se llama distinto.
+     *
+     *  Pagina hasta el final a propósito. La API devuelve 100 por página; quedarse con la primera
+     *  no da error, da una respuesta incompleta que se ve completa — el modo de falla más caro.
+     *
+     *  @param {string} carpetaId
+     *  @param {{q?:string, campos?:string, tope?:number}} opts `q` se AGREGA al filtro de carpeta.
+     *  @returns {Promise<Array<{id:string,name:string,mimeType:string,modifiedTime:string,size?:string}>>}
+     */
+    async listarCarpeta(carpetaId, { q = '', campos = 'id,name,mimeType,modifiedTime,size', tope = 2000 } = {}) {
+      const filtro = `'${String(carpetaId).replace(/'/g, "\\'")}' in parents and trashed = false${q ? ` and (${q})` : ''}`
+      const out = []
+      let pageToken = ''
+      do {
+        const url = 'https://www.googleapis.com/drive/v3/files'
+          + `?q=${encodeURIComponent(filtro)}`
+          + `&fields=${encodeURIComponent(`nextPageToken,files(${campos})`)}`
+          + '&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true'
+          + (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '')
+        const j = await apiGet(url)
+        out.push(...(j.files || []))
+        pageToken = j.nextPageToken || ''
+      } while (pageToken && out.length < tope)
+      return out
+    },
     /** Metadata liviana de un archivo por id (existe? cómo se llama?). Lanza si NO existe (404).
      *  Para VALIDAR un adjunto antes de encolar un mail — así el OS no afirma haber adjuntado
      *  un archivo inexistente. */
@@ -813,6 +842,11 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     async getMeta(fileId) {
       return apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,size,webViewLink&supportsAllDrives=true`)
     },
+    /** Los BYTES crudos de un archivo. Ya se usaban por dentro (Excel, PDF, imágenes) pero no
+     *  estaban expuestos, así que reenviar un archivo tal cual —a un mail, al chat— obligaba a
+     *  parsearlo y volver a armarlo. Un PDF que hay que entregar se entrega, no se reconstruye.
+     *  @returns {Promise<Buffer>} */
+    async descargarBytes(fileId) { return downloadBytes(fileId) },
     /** Lee un archivo Excel (.xlsx/.xlsm) descargándolo y parseándolo. Acotado a
      *  maxRows para no explotar tokens. Devuelve pestañas + filas de la elegida. */
     async readExcel(fileId, { sheet, maxRows = 50 } = {}) {
