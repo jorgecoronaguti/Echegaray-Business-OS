@@ -28,7 +28,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { diferenciasDeHuella, huellaProtegida } from '../lib/proveedores-bloque-vivo.mjs'
 import {
   anchoDelPivot, cabeEnElHueco, COL, filtrosPorCondicion, formatoDelImporte, fuenteCompras,
-  celdasVacias, formatoDeLaCantidad, formatoDeLaFecha, geometriaDeLaSeccion, letraDeLaDeuda,
+  celdasVacias, deudaSinNombre, formatoDeLaCantidad, formatoDeLaFecha, geometriaDeLaSeccion, letraDeLaDeuda,
   nivelesConSubtotal, PENDIENTE, pivotSeccion1, proveedoresQueAgrupan, reapuntarControl, VISTA,
 } from '../lib/proveedores-pivot-seccion1.mjs'
 
@@ -49,9 +49,11 @@ async function main() {
   // ── 1. El universo, contado desde Compras con el MISMO criterio que los filtros del pivot.
   const compras = await google.readSheetValues(ID, 'Compras!A4:AL', { render: 'UNFORMATTED_VALUE' })
   const pendientes = (compras ?? []).filter((f) =>
+    // Mismo criterio que los filtros del pivot, EXACTAMENTE: estado y comercial, sin exigir
+    // nombre. Si el script contara con un criterio más estricto que el del cuadro, su total y el
+    // del cuadro dirían cosas distintas y el control no serviría para nada.
     String(f?.[COL.estado] ?? '').trim() === PENDIENTE
-    && String(f?.[COL.comercial] ?? '').trim() === '1'
-    && String(f?.[COL.proveedor] ?? '').trim() !== '')
+    && String(f?.[COL.comercial] ?? '').trim() === '1')
   const totalEsperado = pendientes.reduce((a, f) => a + (Number(f?.[COL.saldo]) || 0), 0)
 
 
@@ -100,6 +102,15 @@ async function main() {
   console.log('NO SE TOCA  la columna H (Comentarios) ni la sección 2 entera')
   console.log(`VISTA   ${VISTA_ELEGIDA}`)
   console.log(`ORIGEN  Compras!A3:AL${filasCompras} (la grilla entera: una compra nueva entra sola)`)
+  // Una deuda SIN NOMBRE de proveedor entra al cuadro con el rótulo en blanco. Una sin NÚMERO de
+  // comprobante entra bien y tiene que entrar: son cosas distintas y sólo la primera es un agujero.
+  const anonimas = deudaSinNombre(pendientes)
+  if (anonimas.length) {
+    console.error(`  ✗ ${anonimas.length} deuda(s) SIN NOMBRE de proveedor: harían un rótulo en blanco en la columna A`)
+    for (const a of anonimas) console.error(`      comprobante ${a.comprobante} · ${plata(a.saldo)} — completá el proveedor en Compras`)
+    process.exitCode = 1
+    return
+  }
   // Con el proveedor como primer campo, el que repite agrupa y sus filas hermanas quedan sin rótulo.
   // Se imprime ANTES de escribir: una limitación declarada, no una sorpresa al mirar la pantalla.
   if (VISTA_ELEGIDA === VISTA.DETALLE) {

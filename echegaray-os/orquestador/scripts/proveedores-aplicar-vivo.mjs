@@ -29,13 +29,18 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import {
-  diferenciasDeHuella, geometriaSeccion1, huellaProtegida, planDeEscritura, rangosDesdeEncabezado,
+  diferenciasDeHuella, huellaProtegida, planDeEscritura, rangosDesdeEncabezado,
 } from '../lib/proveedores-bloque-vivo.mjs'
+import { geometriaDeLaSeccion } from '../lib/proveedores-pivot-seccion1.mjs'
 import { formulaControl, formulaPorFactura, rangosCompras } from '../lib/proveedores-deuda-viva.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Proveedores'
 const APLICAR = process.argv.includes('--aplicar')
+
+/** Los rótulos del cuadro, en el orden del dueño. El importe vuelve a la D, donde él lo tenía. */
+const ROTULOS = ['Proveedor / factura', 'Próximo pago', 'Comprobante', 'Importe', 'Obra',
+  'Tipo de Pago', 'Categoría']
 
 const iCol = (ref) => {
   const m = /\$([A-Z]{1,3})\$/.exec(ref)
@@ -127,8 +132,14 @@ async function main() {
   const pendientes = contarPendientes(compras, rangos)
 
   const antes = await google.readSheetValues(ID, `${PESTAÑA}!A1:R220`, { render: 'FORMULA' })
-  const geo = geometriaSeccion1(antes)
-  const plan = planDeEscritura({ ...geo, pendientes })
+  // La geometría se busca sobre el valor VISIBLE: si la sección 1 quedó como tabla dinámica, sus
+  // celdas no tienen ni valor ni fórmula propios y una lectura FORMULA devuelve el bloque vacío —
+  // el script no encontraba sus propios rótulos y no podía reemplazarla.
+  const visible = await google.readSheetValues(ID, `${PESTAÑA}!A1:R220`, { render: 'FORMATTED_VALUE' })
+  const geo = geometriaDeLaSeccion(visible)
+  // Los rótulos del contrato: si la sección quedó como dinámica, el encabezado que hay es el de
+  // Compras. Se reponen los del cuadro para que el plan valide contra lo que se va a escribir.
+  const plan = planDeEscritura({ ...geo, encabezados: ROTULOS, pendientes })
   if (!plan.ok) { console.error(`✗ NO HAY PLAN: ${plan.motivo}`); process.exitCode = 1; return }
 
   const filaControl = filaDelControl(antes, geo)

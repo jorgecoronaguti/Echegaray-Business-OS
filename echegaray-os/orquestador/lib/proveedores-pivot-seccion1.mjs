@@ -91,6 +91,26 @@ export function proveedoresQueAgrupan(filas = []) {
     .sort((a, b) => b.sinRotulo - a.sinRotulo)
 }
 
+/**
+ * LAS DEUDAS QUE ENTRARÍAN CON EL RÓTULO EN BLANCO.
+ *
+ * Los filtros del pivot son estado y comercial: NO exigen nombre de proveedor. Una compra pendiente
+ * cuyo proveedor esté vacío en Compras entra igual —la plata no se pierde, y eso está bien— pero
+ * arma un grupo sin nombre: un agujero en la columna A, que es justo lo que el cuadro no puede
+ * tener. Hoy no hay ninguna; el día que aparezca, el script lo grita antes de escribir.
+ *
+ * OJO con lo que NO es esto: una factura sin NÚMERO DE COMPROBANTE (hoy, La Isla Metal SRL con
+ * $100.000) tiene que entrar y entra. Lo que rompe el cuadro es la falta de NOMBRE, no de número.
+ *
+ * @param {Array<Array<any>>} filas  las filas de Compras que entran a la dinámica
+ * @returns {Array<{comprobante:string, saldo:number}>}
+ */
+export function deudaSinNombre(filas = []) {
+  return filas
+    .filter((f) => String(f?.[COL.proveedor] ?? '').trim() === '')
+    .map((f) => ({ comprobante: String(f?.[COL.comprobante] ?? '').trim() || '(sin número)', saldo: Number(f?.[COL.saldo]) || 0 }))
+}
+
 /** Los filtros. NUNCA por `condition`: ver la trampa 1. */
 export function filtros() {
   return [

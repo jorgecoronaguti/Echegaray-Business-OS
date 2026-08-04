@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import {
   anchoDelPivot, cabeEnElHueco, camposDeFila, COL, filtros, filtrosPorCondicion, fuenteCompras,
   clavesRepetidas, formatoDeLaFecha, formatoDelImporte, geometriaDeLaSeccion, nivelesConSubtotal,
-  celdasVacias, formatoDeLaCantidad, letraDeLaDeuda, pivotSeccion1, proveedoresQueAgrupan,
+  celdasVacias, deudaSinNombre, formatoDeLaCantidad, letraDeLaDeuda, pivotSeccion1, proveedoresQueAgrupan,
   reapuntarControl, VISTA,
 } from './proveedores-pivot-seccion1.mjs'
 
@@ -218,4 +218,13 @@ test('el conteo de facturas cuenta FILAS, no números de comprobante', () => {
   const conteo = p.values.find((v) => v.summarizeFunction === 'COUNTA')
   assert.equal(conteo.sourceColumnOffset, COL.proveedor,
     'contando el comprobante, una factura sin número da "0 facturas" con deuda de $100.000')
+})
+
+test('SIN FACTURA sí entra · SIN NOMBRE es el que rompe, y se avisa', () => {
+  const fila = (prov, comp, saldo) => { const f = []; f[COL.proveedor] = prov; f[COL.comprobante] = comp; f[COL.saldo] = saldo; return f }
+  // La Isla Metal SRL: $100.000 y ningún número de comprobante. Tiene que entrar, y entra.
+  assert.deepEqual(deudaSinNombre([fila('La Isla Metal SRL', '', 100000)]), [])
+  // Lo que rompe el cuadro es la falta de NOMBRE: ahí el pivot arma un grupo sin rótulo.
+  assert.deepEqual(deudaSinNombre([fila('', '0001-0002', 5000)]), [{ comprobante: '0001-0002', saldo: 5000 }])
+  assert.deepEqual(deudaSinNombre([fila('', '', 7000)]), [{ comprobante: '(sin número)', saldo: 7000 }])
 })

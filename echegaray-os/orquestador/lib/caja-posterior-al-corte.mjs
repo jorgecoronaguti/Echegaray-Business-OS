@@ -272,10 +272,34 @@ export function formulaComprasEfectivoPosteriores(arqueo, c = CMP) {
  */
 export function formulaDepositosEfectivoPosteriores(arqueo, c = DEP) {
   const col = (x) => `${c.hoja}!$${x}$${c.desde}:$${x}`
-  return `SUMPRODUCT((${col(c.flujo)}="entra")`
-    + `*ISNUMBER(SEARCH("deposito de efectivo";LOWER(SUBSTITUTE(${col(c.concepto)};"ó";"o"))))`
+  return `SUMPRODUCT((${col(c.flujo)}="entra")*${esDepositoDeEfectivo(col(c.concepto))}`
     + `*ISNUMBER(${col(c.fecha)})*(${col(c.fecha)}>${arqueo})`
     + `*IF(ISNUMBER(${col(c.importe)});${col(c.importe)};0))`
+}
+
+/**
+ * ¿ESTE CONCEPTO DEL BANCO ES UN DEPÓSITO DE EFECTIVO? — el trozo de fórmula que lo decide.
+ *
+ * Buscar la frase exacta "deposito de efectivo" deja ciega la mitad de los casos. El Santander no
+ * usa un solo texto; en el extracto real conviven:
+ *
+ *     "Deposito de efectivo - Tarj nro. 5892445072…"   ← la matcheaba
+ *     "Deposito efvo caja suc 0770"                    ← NO la matcheaba  · $4.000.000 el 15/06
+ *
+ * Un depósito que no se reconoce no descarga la caja física: el cajón queda inflado por ese monto
+ * y nadie se entera, porque la fórmula no falla — devuelve un número más chico. Por eso la
+ * condición es "dice depósito" Y "dice efectivo o efvo", en vez de una frase literal.
+ *
+ * Los e-cheq quedan afuera solos: "Deposito e-cheq int misma plaza" no dice ni efectivo ni efvo.
+ * Eso importa — un e-cheq depositado NO sale de la caja física.
+ *
+ * @param {string} rango  la referencia a la columna del concepto, ya armada
+ * @returns {string} el trozo de fórmula booleano
+ */
+export function esDepositoDeEfectivo(rango) {
+  const limpio = `LOWER(SUBSTITUTE(${rango};"ó";"o"))`
+  return `ISNUMBER(SEARCH("deposito";${limpio}))`
+    + `*(ISNUMBER(SEARCH("efectivo";${limpio}))+ISNUMBER(SEARCH("efvo";${limpio}))>0)`
 }
 
 /**

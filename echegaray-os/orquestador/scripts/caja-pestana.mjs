@@ -1127,7 +1127,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // _BANCO_RAW: mismo criterio que usaba el código —los créditos cuyo concepto dice "depósito de
   // efectivo"—, pero escrito donde cualquiera lo puede abrir y verificar.
   const fEfDepos = push(['Depositado en efectivo en esa misma ventana', '', '', '',
-    '=SUMPRODUCT((_BANCO_RAW!$E$4:$E="entra")*ISNUMBER(SEARCH("deposito de efectivo";LOWER(SUBSTITUTE(_BANCO_RAW!$B$4:$B;"ó";"o"))))*IF(ISNUMBER(_BANCO_RAW!$C$4:$C);_BANCO_RAW!$C$4:$C;0))', '', '', '',
+    '=SUMPRODUCT((_BANCO_RAW!$E$4:$E="entra")*ISNUMBER(SEARCH("deposito";LOWER(SUBSTITUTE(_BANCO_RAW!$B$4:$B;"ó";"o"))))*(ISNUMBER(SEARCH("efectivo";LOWER(SUBSTITUTE(_BANCO_RAW!$B$4:$B;"ó";"o"))))+ISNUMBER(SEARCH("efvo";LOWER(SUBSTITUTE(_BANCO_RAW!$B$4:$B;"ó";"o"))))>0)*IF(ISNUMBER(_BANCO_RAW!$C$4:$C);_BANCO_RAW!$C$4:$C;0))', '', '', '',
     `Extracto del Santander ${BANCO.CORTE}. Los dos números miran los mismos días: comparar un año contra dos semanas no mide nada.`])
   // LOS DEPÓSITOS, UNO POR UNO, PARA QUE EL TOTAL SE PUEDA VERIFICAR.
   //
@@ -1136,7 +1136,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // tiene que poder decir "estos tres, tal día, tanto" — sobre todo cuando el renglón de abajo acusa
   // $15.955.646 sin explicar. La lista sale de la misma fórmula que el total, así que no puede
   // decir algo distinto, y no pega un solo número: es TEXTJOIN sobre la réplica del extracto.
-  const CONDEP = '(_BANCO_RAW!$E$4:$E="entra")*ISNUMBER(SEARCH("deposito de efectivo";LOWER(SUBSTITUTE(_BANCO_RAW!$B$4:$B;"ó";"o"))))'
+  const CONDEP = '(_BANCO_RAW!$E$4:$E="entra")*ISNUMBER(SEARCH("deposito";LOWER(SUBSTITUTE(_BANCO_RAW!$B$4:$B;"ó";"o"))))*(ISNUMBER(SEARCH("efectivo";LOWER(SUBSTITUTE(_BANCO_RAW!$B$4:$B;"ó";"o"))))+ISNUMBER(SEARCH("efvo";LOWER(SUBSTITUTE(_BANCO_RAW!$B$4:$B;"ó";"o"))))>0)'
   // EL DETALLE NO VA EN LA COLUMNA DEL DINERO. Este TEXTJOIN es una tira larga de cobros; puesto en
   // la columna de importes rompía la alineación de todo el statement —el ojo recorre una columna de
   // números y se choca con un párrafo—. Va en la columna del rótulo, que ya tiene overflow, con la
