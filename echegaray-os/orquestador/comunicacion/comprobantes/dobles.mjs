@@ -170,8 +170,12 @@ export function portGuarda({ canalOk = true, permisoOk = true, canal = 'comproba
  * `miembros` es el mapa canal → [usuarios] de la SEGUNDA vía del permiso, y arranca VACÍO: el doble
  * niega por defecto, igual que el servidor real ante alguien que no está en el canal. Un doble
  * complaciente acá haría pasar por bueno justo el control que decide quién puede tocar la plata.
+ *
+ * `usuarios` (id → usuario de Mattermost) arranca vacío por el mismo motivo: un id que el test no
+ * declaró NO existe, igual que en el servidor real, y `usuariosRoto` simula el Mattermost que no
+ * contesta — el caso en el que la reconciliación de identidades tiene que fallar cerrada.
  */
-export function mmFalso({ archivos = {}, miembros = {}, miembrosRoto = false } = {}) {
+export function mmFalso({ archivos = {}, miembros = {}, miembrosRoto = false, usuarios = {}, usuariosRoto = false } = {}) {
   const posts = []
   const dialogos = []
   let seq = 0
@@ -183,6 +187,12 @@ export function mmFalso({ archivos = {}, miembros = {}, miembrosRoto = false } =
       // distinguir «no es miembro» de «no pude preguntarlo» y fallar cerrado en el segundo.
       if (miembrosRoto) throw new Error('mattermost caído (simulado)')
       return (miembros[channel_id] ?? []).includes(user_id)
+    },
+    async usuario(id) {
+      // Igual que el cliente real: TIRA cuando no puede contestar y devuelve `null` sólo cuando
+      // Mattermost dice que ese usuario no existe. Las dos respuestas significan cosas opuestas.
+      if (usuariosRoto) { const e = new Error('mattermost caído (simulado)'); e.status = 503; throw e }
+      return usuarios[String(id)] ?? null
     },
     async archivoInfo(id) {
       const a = archivos[id]
@@ -297,8 +307,10 @@ export const LISTAS_COMPRAS = Object.freeze({
 })
 
 /** Una fila de Compras en el rango C4:O. */
-export const filaCompras = (fecha, prov, tipo, numero, obra, detalle, concepto, total) =>
-  [fecha, '', prov, '', tipo, numero, '', obra, detalle, concepto, '', '', total]
+// El rango leído arranca en la columna B (Categoría), no en la C: la posición 0 es B. Ver `RANGO` en
+// `compras-vivas.mjs` — la categoría se sumó el 04/08 porque toda fila que cargó el bot quedó sin ella.
+export const filaCompras = (fecha, prov, tipo, numero, obra, detalle, concepto, total, categoria = '') =>
+  [categoria, fecha, '', prov, '', tipo, numero, '', obra, detalle, concepto, '', '', total]
 
 /** Las filas de Compras con las que se prueba el duplicado. La primera con datos es la 802. */
 export function filasCompras(over = []) {

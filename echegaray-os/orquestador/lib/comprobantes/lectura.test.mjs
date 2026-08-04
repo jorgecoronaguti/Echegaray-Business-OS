@@ -6,6 +6,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { matchProveedor } from '../carga-comprobantes.mjs'
 import {
   normalizarLectura, numeroCanonico, claveComprobante, obraDeAnotacion,
   fechaDeLectura, tipoDesdeLectura, FALTA,
@@ -230,4 +231,43 @@ test('el modelo devuelve el JSON envuelto en prosa y se rescata igual', async ()
   const r = await leerAdjunto({ data: 'x', mediaType: 'image/png' }, { apiKey: 'k', fetchImpl })
   assert.equal(r.ok, true)
   assert.equal(r.crudo.numero, '0113-00010489')
+})
+
+// ═══ EL CUIT IDENTIFICA AL PROVEEDOR; EL NOMBRE, NO SIEMPRE (04/08) ═══
+//
+// Dos veces en producción el bot frenó una carga declarando «proveedor nuevo» sobre proveedores que
+// SÍ estaban en el desplegable, porque la factura trae la razón social del padrón y el desplegable
+// el nombre de fantasía:
+//   · «DUBOS UGARTE PEDRO LUIS RAUL» es DUPEC (CUIT 20-28773782-4) — 04/08
+//   · «PEREZ GARCIA MARISOL BIBIANA» es Corralon Progreso (CUIT 23-36911157-4) — 30/07
+// No se parecen en nada y no tienen por qué: ningún matcheo de texto los va a unir jamás.
+test('el CUIT resuelve al proveedor cuando la razón social no se parece al nombre de fantasía', () => {
+  const lista = ['DUPEC', 'Corralon Progreso', 'Alumetal']
+  const porCuit = new Map([['20287737824', 'DUPEC'], ['23369111574', 'Corralon Progreso']])
+
+  const dupec = matchProveedor('DUBOS UGARTE PEDRO LUIS RAUL', lista, { cuit: '20-28773782-4', porCuit })
+  assert.equal(dupec.valor, 'DUPEC')
+  assert.equal(dupec.esNuevo, false, 'no es un proveedor nuevo: está en el desplegable')
+  assert.equal(dupec.motivo, 'cuit')
+
+  const corralon = matchProveedor('PEREZ GARCIA MARISOL BIBIANA', lista, { cuit: '23369111574', porCuit })
+  assert.equal(corralon.valor, 'Corralon Progreso')
+})
+
+test('SIN el mapa de CUIT, el mismo comprobante se declara proveedor nuevo — el defecto', () => {
+  const m = matchProveedor('DUBOS UGARTE PEDRO LUIS RAUL', ['DUPEC'], { cuit: '20287737824' })
+  assert.equal(m.esNuevo, true, 'es exactamente lo que pasaba antes, y lo que el mapa arregla')
+})
+
+test('un CUIT que NO está en la pestaña no inventa un proveedor', () => {
+  const m = matchProveedor('QUIEN SEA SA', ['DUPEC'], { cuit: '30999999999', porCuit: new Map([['20287737824', 'DUPEC']]) })
+  assert.equal(m.esNuevo, true)
+  assert.equal(m.valor, 'QUIEN SEA SA')
+})
+
+// EL DESPLEGABLE SIGUE DECIDIENDO QUÉ SE ESCRIBE. El CUIT resuelve QUIÉN es; si ese nombre no está
+// en la lista estricta, la celda quedaría en rojo — así que no entra por esta puerta tampoco.
+test('un nombre que el desplegable no tiene no entra ni con el CUIT correcto', () => {
+  const m = matchProveedor('DUBOS UGARTE', ['Alumetal'], { cuit: '20287737824', porCuit: new Map([['20287737824', 'DUPEC']]) })
+  assert.equal(m.esNuevo, true, 'DUPEC no está en la lista: no se escribe')
 })

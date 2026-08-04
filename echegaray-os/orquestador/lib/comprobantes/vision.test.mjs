@@ -6,7 +6,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { leerAdjunto, necesitaRevision, fusionar, PROMPT_LECTURA, MODELO_LECTURA, MODELO_REVISION } from './vision.mjs'
+import { leerAdjunto, necesitaRevision, fusionar, bloqueImputacion, PROMPT_LECTURA, MODELO_LECTURA, MODELO_REVISION } from './vision.mjs'
 
 const ADJUNTO = { data: 'AAAA', mediaType: 'image/jpeg', nombre: 'f.jpg' }
 
@@ -97,7 +97,39 @@ test('el prompt pide explícitamente lo manuscrito, en cualquier margen y con la
   assert.match(PROMPT_LECTURA, /ESCRITO A MANO/)
   assert.match(PROMPT_LECTURA, /cualquier margen/)
   assert.match(PROMPT_LECTURA, /GIRADA/)
-  assert.match(PROMPT_LECTURA, /NO decidas a qué obra corresponde/, 'transcribe, no interpreta')
+  // LA TRANSCRIPCIÓN LITERAL SE MANTIENE APARTE de la imputación. Desde el 04/08 el modelo también
+  // imputa —con las listas de las columnas delante—, pero "anotacion_manuscrita" sigue siendo lo que
+  // el papel decía, sin corregir: si después hay que discutir a qué obra fue, está el original.
+  assert.match(PROMPT_LECTURA, /TAL CUAL, letra por letra, sin corregirlo ni interpretarlo/)
+  assert.match(PROMPT_LECTURA, /la transcripción literal viaja igual y aparte/)
+})
+
+// ═══ EL MODELO IMPUTA CON LAS LISTAS DELANTE, O NO IMPUTA (04/08) ═══
+//
+// Transcribía "HW DX 2018" y ahí terminaba: el matcheo de texto de después no encuentra ninguna obra
+// que se llame así, porque eso no es una obra — es un VEHÍCULO. Una persona lo resuelve porque sabe
+// que existe una obra "Vehiculos / Maquinas". Lo único que le faltaba al modelo era la lista.
+test('el bloque de imputación trae las listas EXACTAS de las tres columnas', () => {
+  const b = bloqueImputacion({
+    obras: ['MESSINA', 'Vehiculos / Maquinas'],
+    unidades: ['Civil', 'Mantenimiento'],
+    detalles: { MESSINA: ['Camion - BSA'] },
+  })
+  assert.match(b, /MESSINA/)
+  assert.match(b, /Vehiculos \/ Maquinas/)
+  assert.match(b, /Mantenimiento/)
+  assert.match(b, /Camion - BSA/)
+  // LA REGLA QUE IMPIDE QUE ESTO SE VUELVA FABRICACIÓN: valor exacto de la lista, o null.
+  assert.match(b, /EXACTO de las listas/)
+  assert.match(b, /o poné null/)
+  assert.match(b, /peor que uno\nsin imputar/)
+  // Y le pide el porqué: una imputación que no se puede discutir no se puede corregir.
+  assert.match(b, /por_que_esa_obra/)
+})
+
+test('sin listas no hay bloque de imputación: no se le pide elegir a ciegas', () => {
+  assert.equal(bloqueImputacion({}), null)
+  assert.equal(bloqueImputacion({ obras: [], unidades: [] }), null)
 })
 
 test('el prompt avisa que hay DOS CUIT y pide el CAE', () => {

@@ -25,6 +25,7 @@
 // y del otro lado hay una planilla con la plata de la empresa.
 
 import { puedeOperar, MOTIVO as MOTIVO_PERMISO } from '../../lib/permiso-de-canal.mjs'
+import { canalOficialDeArea, CANAL } from '../../lib/canal-de-area.mjs'
 
 /** Área canónica dueña del gasto de compras (`public.area_canonica`). */
 export const AREA_COMPRAS = 'compras'
@@ -51,10 +52,12 @@ export const DETALLE = Object.freeze({
 
 /** Castellano llano: qué pasó y qué hacer. Sin ids, sin nombres de tablas, sin jerga. */
 export const TEXTO = Object.freeze({
-  CANAL: 'Los comprobantes se cargan sólo desde el canal de comprobantes del equipo. Mandá la foto ahí y la registro.',
+  CANAL: 'Los comprobantes se cargan sólo desde el canal de comprobantes del equipo. Mandá la foto ahí y la registro. Si no ves ese canal en tu lista, pedí que te agreguen: con estar adentro ya podés cargar.',
   CANAL_NO_VERIFICABLE: 'No pude confirmar desde dónde estás escribiendo, así que no cargué nada. Probá de nuevo en un minuto.',
   SIN_IDENTIDAD: 'No pude reconocer quién manda el comprobante, y cada carga queda a nombre de alguien. Volvé a entrar a Mattermost y probá otra vez.',
-  SIN_PERMISO: 'No tenés habilitada la carga de comprobantes. Pedísela a Dirección: se activa en el momento.',
+  // No manda a pedir un permiso: la regla es que estar en el canal habilita, y a este texto sólo se
+  // llega DESDE el canal oficial (el paso 1 ya corrió). Ver la nota equivalente en asistencia-guarda.
+  SIN_PERMISO: 'No pude habilitarte la carga de comprobantes. La habilita estar en el canal de comprobantes del equipo: no hace falta que te den nada aparte. Si ya estás en ese canal y te sale esto, avisale a Dirección — es un problema del OS, no tuyo.',
   PERMISO_NO_VERIFICABLE: 'No pude confirmar si tenés habilitada la carga, así que no cargué nada. Probá de nuevo en un minuto.',
 })
 
@@ -96,21 +99,20 @@ export async function puedeCargarComprobantes({ port, actor = {}, channelId, pla
   }
 }
 
-/** ¿Este canal está atado al área `compras` y activo? Es DATO: se cambia sin desplegar. */
+/**
+ * ¿Este canal está atado al área `compras` y activo? Es DATO: se cambia sin desplegar.
+ *
+ * La consulta NO vive acá: vive en `lib/canal-de-area.mjs`, compartida con la guarda de asistencia
+ * y con el prefiltro de ingesta. Había tres formas de contestar la misma pregunta y la tercera
+ * —una lista de slugs en el entorno— no miraba el binding: un canal atado a `compras` habilitaba la
+ * carga y sus fotos no llegaban a crear un evento. Esta función sólo traduce motivos a los suyos.
+ */
 async function canalOficial(port, { channelId, plataforma }) {
-  if (typeof port?.query !== 'function') {
-    return niega(RECHAZO.CANAL, DETALLE.BASE_INDISPONIBLE, TEXTO.CANAL_NO_VERIFICABLE)
-  }
-  try {
-    const { rows } = await port.query(
-      `select canal_nombre from comunicacion.canales_area
-        where plataforma = $1 and channel_id = $2 and area_clave = $3 and activo limit 1`,
-      [plataforma, channelId, AREA_COMPRAS])
-    if (!rows.length) return niega(RECHAZO.CANAL, DETALLE.CANAL_NO_ES_EL_OFICIAL, TEXTO.CANAL)
-    return { ok: true, nombre: rows[0].canal_nombre ?? null }
-  } catch {
-    return niega(RECHAZO.CANAL, DETALLE.BASE_INDISPONIBLE, TEXTO.CANAL_NO_VERIFICABLE)
-  }
+  const r = await canalOficialDeArea({ port, channelId, area: AREA_COMPRAS, plataforma })
+  if (r.ok) return { ok: true, nombre: r.nombre }
+  return r.motivo === CANAL.NO_VERIFICABLE
+    ? niega(RECHAZO.CANAL, DETALLE.BASE_INDISPONIBLE, TEXTO.CANAL_NO_VERIFICABLE)
+    : niega(RECHAZO.CANAL, DETALLE.CANAL_NO_ES_EL_OFICIAL, TEXTO.CANAL)
 }
 
 /**

@@ -12,7 +12,7 @@
 
 import { z } from 'zod'
 import { CAPACIDAD, resultadoOk } from '../contratos.mjs'
-import { capacidadesHabilitadas, renderAyuda } from '../registro.mjs'
+import { capacidadesHabilitadas, capacidadesNoDisponibles, renderAyuda } from '../registro.mjs'
 
 export const capacidad = {
   id: CAPACIDAD.AYUDA,
@@ -39,9 +39,18 @@ export const capacidad = {
     // registro acotado a un canal). Si no viene, el del OS. Nunca una lista escrita acá.
     const listar = ctx?.registro?.capacidadesHabilitadas ?? capacidadesHabilitadas
     const lista = await listar(ctx)
-    const texto = renderAyuda(lista)
+    // LO QUE NO PUEDE, TAMBIÉN. Listar sólo lo habilitado hacía que alguien sin identidad viera un
+    // OS mucho más tonto de lo que es, sin una palabra sobre por qué. La ayuda mostraba el
+    // síntoma de un defecto del OS como si fuera el alcance del producto.
+    const faltantes = ctx?.registro?.capacidadesNoDisponibles ?? capacidadesNoDisponibles
+    let noDisponibles = []
+    try { noDisponibles = await faltantes(ctx, lista) } catch { noDisponibles = [] }
+    const texto = renderAyuda(lista, { noDisponibles })
     // La evidencia es la lista real que se ofreció: permite auditar después qué vio esa
     // persona, que es lo único que hace verificable una respuesta de ayuda.
-    return resultadoOk(CAPACIDAD.AYUDA, texto, { capacidades: lista.map((c) => c.id) })
+    return resultadoOk(CAPACIDAD.AYUDA, texto, {
+      capacidades: lista.map((c) => c.id),
+      noDisponibles: noDisponibles.map((n) => ({ id: n.capacidad.id, motivo: n.motivo.codigo })),
+    })
   },
 }

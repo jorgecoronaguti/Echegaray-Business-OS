@@ -38,6 +38,7 @@
 // NÚCLEO PURO: no lee el Sheet, no consulta la base, no llama a ningún modelo.
 
 import { aFechaAR, aNumero, normalizar, tipoComprobante } from '../carga-comprobantes.mjs'
+import { identidadDelComprobante, fueraDeEscala, pesos, FACTOR_FUERA_DE_ESCALA } from './aritmetica.mjs'
 
 /** Por qué un comprobante no está listo. El código es el contrato; los textos son presentación. */
 export const MOTIVO = Object.freeze({
@@ -50,6 +51,8 @@ export const MOTIVO = Object.freeze({
   FECHA: 'fecha',
   TIPO: 'tipo',
   NUMERO: 'numero',
+  ARITMETICA: 'aritmetica',
+  ESCALA: 'escala',
 })
 
 /**
@@ -129,6 +132,43 @@ export function faltantesDe(item = {}, politica = POLITICA.CARGADOR) {
   } else if (p.exigirTotal && aNumero(c.total) == null) {
     falta(MOTIVO.TOTAL, 'sin total (sólo el neto)', 'no pude leer el total')
   }
+  // ═══ UN IMPORTE QUE NO CIERRA NO SE ESCRIBE (04/08) ═══
+  //
+  // Es el control que faltaba el día que entraron $201M falsos al Flujo de Caja. La identidad
+  // —neto + IVA + otros tributos = total— la mira `vision.mjs` ANTES, y por eso todo comprobante que
+  // llega hasta acá sin cerrar ya tuvo su segunda lectura con el modelo grande: no es una duda que se
+  // pueda despejar insistiendo. La única salida honesta es que una persona mire el papel.
+  //
+  // NO DEPENDE DE LA POLÍTICA. Cargar un importe que no cierra cuesta lo mismo entre por donde entre;
+  // la diferencia entre el chat y la línea de comandos es a quién se le puede preguntar, no si el
+  // número está bien. Del lado del cargador el neto no viaja (`aFajoJson` lo omite a propósito), así
+  // que allá esto simplemente no es verificable y no opina — que es lo correcto, no una excepción.
+  const ar = identidadDelComprobante({ neto: c.neto, iva: c.iva, otros: c.otrosTributos, total: c.total })
+  if (ar.verificable && !ar.cierra) {
+    falta(MOTIVO.ARITMETICA,
+      `los importes no cierran: suman ${pesos(ar.suma)} y el total dice ${pesos(ar.total)}`,
+      `los importes no cierran — neto + IVA + otros tributos dan **${pesos(ar.suma)}** y el total dice **${pesos(ar.total)}** (${pesos(Math.abs(ar.diferencia))} de diferencia). Tocá **Corregir** y arreglá el que esté mal leído.`)
+  }
+
+  // ═══ Y UNO QUE SE SALE DE ESCALA, TAMPOCO ═══
+  //
+  // `item.escala` es la evidencia —cuántos comprobantes de ESE proveedor se conocen y cuál fue el
+  // mayor— que arma quien leyó la pestaña Compras. Acá sólo se compara: guardar el veredicto en vez
+  // de la evidencia haría que corregir el total no volviera a evaluarlo, y el control quedaría
+  // opinando sobre un número que ya nadie usa.
+  //
+  // Un total TIPEADO POR UNA PERSONA no se cuestiona: `totalTipeado` lo pone el formulario de
+  // Corregir. Alguien miró el papel y escribió el número; seguir preguntando sería un callejón sin
+  // salida para toda compra grande de verdad.
+  if (!c.totalTipeado) {
+    const esc = fueraDeEscala(c.total, item.escala)
+    if (esc.sospechoso) {
+      falta(MOTIVO.ESCALA,
+        `${pesos(c.total)} es ${esc.factor}× el máximo histórico de este proveedor (${pesos(esc.max)} en ${esc.n} comprobantes)`,
+        `**${pesos(c.total)}** es ${esc.factor}× lo más grande que ${c.proveedor ?? 'este proveedor'} nos facturó nunca (${pesos(esc.max)}, sobre ${esc.n} comprobantes). Más de ${FACTOR_FUERA_DE_ESCALA}× es casi siempre una coma mal leída — confirmalo con **Corregir**.`)
+    }
+  }
+
   if (!aFechaAR(c.fecha)) falta(MOTIVO.FECHA, 'fecha ilegible o ausente', 'no pude leer la fecha')
   if (c.tipo && !tipoComprobante(c.tipo)) {
     falta(MOTIVO.TIPO, `tipo de comprobante no reconocido: "${c.tipo}"`,

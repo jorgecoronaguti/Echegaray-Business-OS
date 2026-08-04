@@ -151,10 +151,11 @@ test('la escritura del cargador pide soloFilasVacias: es un APPEND, no una reesc
 // `prepararPlan` es todo lo que se decide antes de tocar una celda, y por eso se prueba sin Google,
 // sin Postgres y sin escribir nada. Si se revierte cualquiera de las tres, algo de acá se pone rojo.
 
-/** Fila de la pestaña Compras tal como la devuelve `readSheetValues(RANGO)`: C fecha … O total. */
-function filaCompras({ fecha, proveedor, tipo = '', numero, obra = '', detalle = '', total }) {
+/** Fila de la pestaña Compras tal como la devuelve `readSheetValues(RANGO)`: B categoría … O total. */
+function filaCompras({ fecha, proveedor, tipo = '', numero, obra = '', detalle = '', total, categoria = '' }) {
   const r = []
-  r[0] = fecha; r[2] = proveedor; r[4] = tipo; r[5] = numero; r[7] = obra; r[8] = detalle; r[12] = total
+  r[0] = categoria; r[1] = fecha; r[3] = proveedor; r[5] = tipo; r[6] = numero
+  r[8] = obra; r[9] = detalle; r[13] = total
   return r
 }
 

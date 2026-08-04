@@ -165,6 +165,26 @@ export class MattermostCliente {
   }
 
   /**
+   * Quién es este user_id: `username`, `email`, nombre y si es bot o está dado de baja.
+   *
+   * Es la fuente de la identidad del OS, y en particular DEL CORREO: Mattermost es donde la
+   * persona se autentica, así que su email es el único que no es una adivinanza. Inferirlo del
+   * username termina, un día, creando el evento en la cuenta de otro.
+   *
+   * `null` significa exactamente una cosa: Mattermost contestó que no existe (404). Un 500, un
+   * timeout o un token vencido TIRAN, igual que en `miembroDeCanal`, para que quien llama pueda
+   * distinguir «no está» de «no pude averiguarlo» y no reconciliar a ciegas.
+   */
+  async usuario(userId) {
+    try {
+      return await this._req('GET', `/users/${encodeURIComponent(userId)}`)
+    } catch (e) {
+      if (e?.status === 404) return null
+      throw e
+    }
+  }
+
+  /**
    * Canal DIRECTO (1 a 1) entre dos usuarios. Idempotente en Mattermost: si el DM ya
    * existe devuelve el mismo canal. Hace falta para los skills cuya respuesta NO puede
    * salir en un canal donde hay más gente — asistencia del personal, por ejemplo.
@@ -215,8 +235,18 @@ export class FakeMattermost {
     // Un doble que dijera que sí "para no molestar" haría pasar por bueno justo el permiso que
     // este mapa existe para probar.
     this.miembros = new Map()
+    // USUARIOS: id → {id, username, email, first_name, ...}. También VACÍO por defecto: un doble
+    // que inventara un usuario para cualquier id dejaría pasar en verde exactamente el defecto que
+    // la reconciliación existe para impedir (dar por buena una identidad que nadie verificó).
+    this.usuarios = new Map()
     this._fallo = null // { veces, status } → falla las próximas N llamadas
     this._seq = 0
+  }
+
+  /** Alta de usuario para los tests: `fake.agregarUsuario({ id, username, email })`. */
+  agregarUsuario(u) {
+    this.usuarios.set(String(u.id), { delete_at: 0, is_bot: false, ...u, id: String(u.id) })
+    return this
   }
 
   /** Alta de membresía para los tests: `fake.agregarAlCanal('canal', 'usuario')`. */
@@ -297,6 +327,12 @@ export class FakeMattermost {
   async miembroDeCanal({ channel_id, user_id }) {
     this._maybeFail('miembroDeCanal')
     return this.miembros.get(channel_id)?.has(user_id) === true
+  }
+
+  /** Misma semántica que el real: `null` sólo cuando el usuario NO existe; el fallo simulado tira. */
+  async usuario(userId) {
+    this._maybeFail('usuario')
+    return this.usuarios.get(String(userId)) ?? null
   }
 
   async canalDirecto({ usuarioA, usuarioB }) {

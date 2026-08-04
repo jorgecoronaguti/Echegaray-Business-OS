@@ -21,16 +21,20 @@
 // NO SABE ESCRIBIR EN EL SHEET. La escritura vive entera en `escritura.mjs` y entra por `escribir`,
 // inyectada como todo lo demás: acá se decide CUÁNDO, nunca CÓMO.
 
-import { matchProveedor } from '../../lib/carga-comprobantes.mjs'
-import { normalizarLectura, claveComprobante, MEDIA_SOPORTADOS, MAX_BYTES_ADJUNTO } from '../../lib/comprobantes/lectura.mjs'
-import { imputacionDeAnotacion } from '../../lib/comprobantes/imputacion.mjs'
+import { claveComprobante, MEDIA_SOPORTADOS, MAX_BYTES_ADJUNTO } from '../../lib/comprobantes/lectura.mjs'
 import { conciliarConArca, aplicarArca, ESTADO_ARCA } from '../../lib/comprobantes/arca.mjs'
-import { buscarEnCompras, HALLAZGO } from '../../lib/comprobantes/compras-vivas.mjs'
-import { colapsarRepetidos, entraEnElFajo, estaCompleto, imputacionPendiente, MAX_OPCIONES, ESTADO } from '../../lib/comprobantes/fajo.mjs'
+import { buscarEnCompras, HALLAZGO, escalaDelProveedor, detallesFirmes } from '../../lib/comprobantes/compras-vivas.mjs'
+import { colapsarRepetidos, entraEnElFajo, estaCompleto, imputacionPendiente, ESTADO } from '../../lib/comprobantes/fajo.mjs'
 import { mensajeFajo } from '../../lib/comprobantes/mensaje.mjs'
 import { perfilesDeImputacion, sugerirImputacion } from '../../lib/imputacion-aprendida.mjs'
 import { puedeCargarComprobantes } from './guarda.mjs'
 import * as repoReal from './repositorio.mjs'
+
+// QUÉ VA EN CADA COLUMNA se decide en `lib/comprobantes/item.mjs`, que es puro y se prueba solo. Se
+// re-exporta desde acá porque es el punto de entrada histórico del módulo: mover el archivo no puede
+// obligar a tocar a todos los que ya lo importaban.
+export { armarItem, opcionesParaImputar } from '../../lib/comprobantes/item.mjs'
+import { armarItem } from '../../lib/comprobantes/item.mjs'
 
 /** Techo de adjuntos por post. Un álbum de 40 fotos no es un fajo: es un accidente. */
 export const MAX_ADJUNTOS = Number(process.env.ORQ_COMPROBANTES_MAX_ADJUNTOS || 12)
@@ -63,92 +67,6 @@ export async function bajarAdjunto(mattermost, fileId) {
   } catch (e) {
     return { ok: false, nombre: fileId, error: `no pude bajar el archivo: ${String(e?.message ?? e).slice(0, 120)}` }
   }
-}
-
-/**
- * Un adjunto ya bajado → el ítem del fajo (comprobante + preguntas abiertas).
- *
- * `listas` son los desplegables ESTRICTOS. Si no se pudieron leer (`ok:false`), NO se marca al
- * proveedor como nuevo: se lo deja tal cual y se declara que no se pudo verificar. Decir "este
- * proveedor no existe" porque falló una lectura sería fabricar un hallazgo.
- *
- * `textoPost` es lo que la persona ESCRIBIÓ al mandar la foto. Es la segunda fuente de la obra y no
- * un adorno: mandar la foto con "ARCOR" al lado es la forma más natural de decir a qué obra va, y
- * mucho más frecuente que anotarla a mano en el papel antes de fotografiarlo. Sin mirarla, el bot
- * preguntaba por una obra que la persona acababa de escribir un renglón más arriba.
- *
- * EL ORDEN IMPORTA: manda lo que dice el COMPROBANTE; el texto del chat sólo se usa cuando el papel
- * no dice nada. Y las dos pasan por el MISMO matcheo estricto contra el desplegable, que devuelve
- * null si la referencia es ambigua. Escribir "ARCOR" no mete "ARCOR" en la celda: mete el rótulo del
- * desplegable que matchea sin ambigüedad, o no mete nada y se pregunta.
- */
-export function armarItem({ lectura, adjunto, listas, textoPost = null } = {}) {
-  const { comprobante, faltantes, dudas } = normalizarLectura(lectura)
-  const listasOk = listas?.ok !== false && (listas?.proveedores?.length ?? 0) > 0
-
-  let proveedorNuevo = false
-  if (listasOk && comprobante.proveedor) {
-    // EL DESPLEGABLE ES EL ÁRBITRO, NO EL MODELO. Cuando hubo revisión, las dos pasadas pueden haber
-    // leído nombres distintos del mismo membrete ("Néstor Rubén Corralón Progreso" y "MATERIALES DE
-    // CONSTRUCCION"): se prueban las dos contra la lista estricta y gana la que matchea. Si ninguna
-    // matchea, queda la principal marcada como nueva, igual que antes.
-    let m = matchProveedor(comprobante.proveedor, listas.proveedores)
-    if (m.esNuevo && comprobante.proveedorAlt) {
-      const alt = matchProveedor(comprobante.proveedorAlt, listas.proveedores)
-      if (!alt.esNuevo) m = alt
-    }
-    comprobante.proveedor = m.valor
-    proveedorNuevo = m.esNuevo === true
-  }
-  delete comprobante.proveedorAlt
-
-  // 1º el papel, 2º lo que escribió la persona. Nunca al revés.
-  const vocabulario = { obras: listas?.obras ?? [], detalles: listas?.detalles ?? {} }
-  let imp = imputacionDeAnotacion(comprobante.anotacion, vocabulario)
-  let obraVia = imp.obra ? 'comprobante' : null
-  if (!imp.obra) {
-    const porTexto = imputacionDeAnotacion(textoPost, vocabulario)
-    if (porTexto.obra) { imp = porTexto; obraVia = 'mensaje' }
-  }
-  comprobante.obra = imp.obra ?? null
-  comprobante.obraVia = obraVia
-  // K "Detalles / Obra" no tiene desplegable: su lista legítima es el vocabulario que el dueño ya
-  // usó en esa obra. Se completa sólo cuando la anotación identifica UNO solo; si "BSA" puede ser
-  // tres detalles distintos de MESSINA, la obra queda resuelta y el detalle vacío.
-  comprobante.detalleObra = imp.detalle ?? null
-  comprobante.detalleVia = imp.detalleVia ?? null
-
-  const k = claveComprobante(comprobante)
-  return {
-    comprobante,
-    clave: k?.clave ?? null,
-    claveFuerte: k?.fuerte ?? false,
-    proveedorNuevo,
-    listasVerificadas: listasOk,
-    // LOS DESPLEGABLES VIAJAN CON EL ÍTEM. El mensaje se vuelve a dibujar en cada click, desde el
-    // fajo que está en Postgres: si las listas se releyeran de Google ahí, sería una llamada por
-    // click y —peor— se podría ofrecer algo distinto de lo que después se valida. Lo que se ofrece y
-    // lo que se acepta salen de la misma lista, guardada una sola vez.
-    opciones: opcionesParaImputar(listas),
-    faltantes,
-    dudas,
-    origen: { fileId: adjunto?.fileId ?? null, nombre: adjunto?.nombre ?? null },
-  }
-}
-
-/**
- * Las listas ESTRICTAS con las que se va a preguntar la imputación, acotadas para que quepan en el
- * fajo. El detalle (columna K) no tiene desplegable: su vocabulario legítimo es el que el dueño ya
- * usó en esa obra, y por eso va por obra.
- */
-export function opcionesParaImputar(listas = {}) {
-  const acotar = (a) => (Array.isArray(a) ? a : []).map((v) => String(v).trim()).filter(Boolean).slice(0, MAX_OPCIONES)
-  const detalle = {}
-  for (const [obra, vals] of Object.entries(listas?.detalles ?? {})) {
-    const l = acotar(vals)
-    if (l.length) detalle[obra] = l
-  }
-  return { obra: acotar(listas?.obras), unidad: acotar(listas?.unidades), detalle }
 }
 
 /**
@@ -199,6 +117,11 @@ export function marcarEnCompras(items = [], indice = null) {
     return items
   }
   for (const it of items) {
+    // LA ESCALA DEL PROVEEDOR VIAJA COMO EVIDENCIA, NO COMO VEREDICTO. `faltantes.mjs` compara el
+    // total contra ella cada vez que se evalúa el ítem: guardar acá el "es sospechoso" haría que
+    // corregir el importe no volviera a mirarlo, y el control quedaría opinando sobre un número que
+    // ya nadie usa. Se lee de la MISMA pasada por Compras que busca el duplicado.
+    it.escala = escalaDelProveedor(it.comprobante ?? {}, indice)
     const r = buscarEnCompras(it.comprobante ?? {}, indice)
 
     // ═══ EL REGISTRO PROPIO NO PRUEBA NADA: LA PRUEBA ES LA FILA EN COMPRAS (04/08) ═══
@@ -281,6 +204,14 @@ export function completarConHistorial(items = [], perfiles = null) {
       c.unidad = s.unidad.sugerido
       ap.unidad = { n: s.unidad.n, share: s.unidad.share }
     }
+    // LA CATEGORÍA (columna B) QUEDABA VACÍA EN TODA FILA QUE CARGÓ EL BOT (04/08). Depende del
+    // proveedor y de casi nada más —un corralón siempre es la misma categoría—, así que es la
+    // dimensión que el historial resuelve mejor. Mismos umbrales que las otras tres: sólo se aplica
+    // lo que la lib declara FIRME.
+    if (!c.categoria && s.categoria?.sugerido && !s.categoria.pide_confirmacion) {
+      c.categoria = s.categoria.sugerido
+      ap.categoria = { n: s.categoria.n, share: s.categoria.share }
+    }
     // Lo que NO se aplicó viaja igual —con sus opciones, sus conteos y sus notas—: es con lo que el
     // mensaje pregunta sin preguntar en blanco, y de donde salen los botones. Tirarlo acá era la
     // causa del "Obra: falta — ¿a qué obra va?" que no decía nada, con 126 cargas de ese proveedor
@@ -288,7 +219,10 @@ export function completarConHistorial(items = [], perfiles = null) {
     //
     // El RUBRO viaja aunque no se pregunte nunca: es la línea del Cash Flow donde va a caer esta
     // plata, o sea la consecuencia de la imputación que el dueño está por elegir.
-    it.sugerencia = { obra: s.obra ?? null, detalle: s.detalle ?? null, unidad: s.unidad ?? null, rubro: s.rubro ?? null }
+    it.sugerencia = {
+      obra: s.obra ?? null, detalle: s.detalle ?? null, unidad: s.unidad ?? null,
+      categoria: s.categoria ?? null, rubro: s.rubro ?? null,
+    }
     if (Object.keys(ap).length) it.aprendido = ap
   }
   return items
@@ -351,10 +285,20 @@ export async function procesarPost(d, m = {}) {
     listas(),
     typeof comprasDe === 'function' ? comprasDe().catch(() => null) : Promise.resolve(null),
   ])
-  const vocabulario = { ...listasVivas, detalles: indiceCompras?.detalles ?? {} }
+  const vocabulario = {
+    ...listasVivas,
+    detalles: indiceCompras?.detalles ?? {},
+    // El vocabulario FIRME de la columna K —lo que cada obra ya usó más de una vez— es con lo que se
+    // imputa solo. La lista completa sigue siendo la que se ofrece en el menú.
+    detallesFirmes: detallesFirmes(indiceCompras?.usosDeDetalle ?? {}),
+  }
   const items = []
   for (const a of bajados) {
-    const r = await leer(a)
+    // EL VOCABULARIO VIAJA A LA LECTURA. El modelo mira la foto CON las listas de las tres columnas
+    // delante: es la misma información que tiene una persona cuando decide a qué obra va el gasto.
+    // Sin esto transcribía "HW DX 2018" y ahí terminaba — nadie sabe que eso es un vehículo si no le
+    // dijiste que existe una obra "Vehiculos / Maquinas".
+    const r = await leer(a, vocabulario)
     if (!r?.ok) { problemas.push(`· ${a.nombre}: ${r?.error ?? 'no pude leerlo'}`); continue }
     // El texto del post vale para TODOS sus adjuntos: mandar cinco fotos con un solo "ARCOR" arriba
     // es la forma en que se manda un fajo de una misma obra.

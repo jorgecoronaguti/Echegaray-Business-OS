@@ -399,8 +399,20 @@ test('cada rechazo tiene su propio mensaje: canal, permiso e identidad no dicen 
     assert.match(x, /\.$/)
   }
   assert.match(TEXTO.CANAL, /canal de asistencia/i)
-  assert.match(TEXTO.SIN_PERMISO, /Dirección/)
   assert.match(TEXTO.SIN_IDENTIDAD, /Mattermost/)
+})
+
+// LA ACCIÓN QUE PIDE EL MENSAJE TIENE QUE SER LA QUE DESTRABA. Con la regla vigente —estar en el
+// canal habilita— mandar a pedirle un permiso a Dirección manda a hacer un trámite que no
+// corresponde: a este texto sólo se llega DESDE el canal oficial, o sea que quien lo lee ya está
+// donde tiene que estar, y lo que falló es otra cosa.
+test('el rechazo por permiso nombra el canal y no manda a pedir un permiso', () => {
+  assert.match(TEXTO.SIN_PERMISO, /canal de asistencia/i)
+  assert.doesNotMatch(TEXTO.SIN_PERMISO, /ped[íi]sela a Dirección/i)
+})
+
+test('el mensaje de canal dice cómo entrar al canal, no sólo que no es ese', () => {
+  assert.match(TEXTO.CANAL, /pedí que te agreguen/i)
 })
 
 test('los mensajes no filtran ids, tablas, columnas ni jerga técnica', async () => {
@@ -437,7 +449,11 @@ test('la base caída no cuenta lo que pasó del lado del sistema', async () => {
 test('ningún id de Mattermost escrito a mano: el canal sale del binding', () => {
   const src = readFileSync(new URL('./asistencia-guarda.mjs', import.meta.url), 'utf8')
   assert.doesNotMatch(src, /\b[a-z0-9]{26}\b/, 'asistencia-guarda.mjs tiene algo con forma de id de Mattermost')
-  assert.match(src, /comunicacion\.canales_area/, 'el canal oficial tiene que salir del binding')
+  // El binding se consulta a través de la lib compartida. La versión anterior de este test buscaba
+  // el nombre de la tabla en el archivo y se conformaba con encontrarlo EN UN COMENTARIO: seguía
+  // verde aunque la consulta desapareciera. Lo que hay que exigir es la dependencia, no la mención.
+  assert.match(src, /from '\.\.\/lib\/canal-de-area\.mjs'/, 'el canal oficial tiene que salir del binding')
+  assert.match(src, /area: AREA_ASISTENCIA/, 'y se pregunta por el ÁREA de la capacidad')
 })
 
 test('la guarda no crea un sistema de permisos propio: usa el que ya existe', () => {

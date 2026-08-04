@@ -169,6 +169,12 @@ export function perfilProveedor(proveedor, regs = []) {
     // El detalle del proveedor sin mirar la obra. Sirve cuando el proveedor hace siempre lo mismo
     // ("Combustible") y no cuando el detalle es del equipo o del frente, que es lo habitual.
     detalle: perfilDimension(regs.map((r) => r.detalle)),
+    // LA CATEGORÍA (columna B) SE APRENDE COMO CUALQUIER OTRA DIMENSIÓN (04/08). Depende del
+    // proveedor y casi de nada más —un corralón siempre es la misma categoría—, así que el perfil por
+    // proveedor la resuelve con la misma cascada, los mismos umbrales y la misma confianza declarada
+    // que la unidad y la obra. Cuando la historia no la trae (el espejo `costos_obra` no tiene esa
+    // columna) queda `sin_historia` y no se sugiere nada, que es la respuesta correcta.
+    categoria: perfilDimension(regs.map((r) => r.categoria)),
     conceptoPorObra,
     detallePorObra: new Map([...detallePorObra].map(([obra, ds]) => [obra, perfilDimension(ds)])),
   }
@@ -320,6 +326,9 @@ export function sugerirImputacion(comprobante = {}, perfiles = {}, opts = {}) {
     unidad,
     obra: obraNota ? { ...obra, nota: obraNota } : obra,
     detalle,
+    // La categoría no entra en `pide_confirmacion` general, igual que el detalle: su ausencia no
+    // impide escribir la fila. Quien arma el mensaje decide si la pregunta mirando su propio flag.
+    categoria: perfil ? { ...perfil.categoria } : { ...sinHist },
     rubro,
     pide_confirmacion,
     nota: notaSugerencia({ perfil, unidad, obra, rubro }),

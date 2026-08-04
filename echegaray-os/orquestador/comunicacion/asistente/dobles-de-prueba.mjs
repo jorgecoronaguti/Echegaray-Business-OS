@@ -7,6 +7,7 @@
 
 import { z } from 'zod'
 import { resultadoOk } from './contratos.mjs'
+import { motivoDeshabilitada } from './registro.mjs'
 
 /**
  * Base en memoria con las cuatro tablas que toca el asistente. Entiende sólo las consultas
@@ -96,11 +97,13 @@ export function filaIdentidad({ id, username = null, nombre, alias = [], email =
  * Capacidad de prueba: registra con qué la llamaron y devuelve evidencia.
  * `efectoExterno` la mete en la barrera de idempotencia, igual que Calendar.
  */
-export function capacidadFalsa({ id, entrada = z.object({}).passthrough(), efectoExterno = false, habilitada = async () => true, ejecutar = null, descripcion = null }) {
+export function capacidadFalsa({ id, entrada = z.object({}).passthrough(), efectoExterno = false, habilitada = async () => true, ejecutar = null, descripcion = null, nombre = null, motivoNoHabilitada = undefined, permisos = [] }) {
   const llamadas = []
   const cap = {
-    id, nombre: id, descripcion: descripcion ?? `hacer ${id}`, version: '1.0.0',
-    permisos: [], ejemplos: [], efectoExterno, habilitada, entrada, llamadas,
+    id, nombre: nombre ?? id, descripcion: descripcion ?? `hacer ${id}`, version: '1.0.0',
+    // `motivoNoHabilitada` viaja igual que en una capacidad real: es lo que le permite a un test
+    // verificar la FRASE que lee la persona cuando algo no está disponible, y no sólo el booleano.
+    permisos, ejemplos: [], efectoExterno, habilitada, motivoNoHabilitada, entrada, llamadas,
     async ejecutar(parametros, ctx) {
       llamadas.push({ parametros, ctx })
       if (ejecutar) return ejecutar(parametros, ctx)
@@ -112,14 +115,26 @@ export function capacidadFalsa({ id, entrada = z.object({}).passthrough(), efect
 
 /** Registro de capacidades inyectable: la misma forma que `registro.mjs`, sin filesystem. */
 export function registroFalso(lista) {
+  const habilitadasDe = async (ctx) => {
+    const out = []
+    for (const c of lista) {
+      let ok = false
+      try { ok = (await c.habilitada(ctx)) === true } catch { ok = false }
+      if (ok) out.push(c)
+    }
+    return out
+  }
   return {
     capacidadPorId: async (id) => lista.find((c) => c.id === id) ?? null,
-    capacidadesHabilitadas: async (ctx) => {
+    capacidadesHabilitadas: habilitadasDe,
+    // Con el MISMO motivo que el registro real (`motivoDeshabilitada`): un doble que devolviera
+    // una explicación inventada dejaría sin probar justo la frase que la persona lee.
+    capacidadesNoDisponibles: async (ctx, habilitadas = null) => {
+      const ids = new Set((habilitadas ?? await habilitadasDe(ctx)).map((c) => c.id))
       const out = []
       for (const c of lista) {
-        let ok = false
-        try { ok = (await c.habilitada(ctx)) === true } catch { ok = false }
-        if (ok) out.push(c)
+        if (ids.has(c.id)) continue
+        out.push({ capacidad: c, motivo: await motivoDeshabilitada(c, ctx) })
       }
       return out
     },

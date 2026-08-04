@@ -189,7 +189,19 @@ export const FALTA = Object.freeze({
  * @returns {{comprobante:object, faltantes:string[], dudas:string[]}}
  */
 export function normalizar_lectura(crudo = {}) {
-  const esNC = crudo.es_nota_credito === true
+  // ═══ LA LETRA Y EL FLAG PUEDEN CONTRADECIRSE, Y EL SIGNO NO PUEDE DEPENDER DE UNO SOLO (04/08) ═══
+  //
+  // Acá decía `const esNC = crudo.es_nota_credito === true`, y el tipo se calculaba después mirando
+  // TAMBIÉN la letra. O sea que una lectura con `letra:"NOTA DE CREDITO A"` y `es_nota_credito:false`
+  // —que es lo que devuelve el modelo cuando ve el rótulo pero se olvida del flag— salía de acá con
+  // `tipo:'NC'` y los importes en POSITIVO: una nota de crédito contada como compra. Es exactamente
+  // el error que ya costó $41,9M en este repo, y el 04/08 volvió a pasar con la nota de HORMISERV.
+  //
+  // El signo se decide con las DOS señales: alcanza con que una diga nota de crédito. Que sobre-marque
+  // una factura como NC es un error visible al instante (un gasto en negativo salta); que sub-marque
+  // una nota de crédito es invisible hasta que no cierra el IVA del ejercicio.
+  const tipo = tipoDesdeLectura({ letra: crudo.letra, esNotaCredito: crudo.es_nota_credito === true })
+  const esNC = crudo.es_nota_credito === true || tipo === 'NC'
   const signo = esNC ? -1 : 1
   const con = (v) => { const n = aNumero(v); return n == null ? null : redondear2(Math.abs(n) * signo) }
 
@@ -204,7 +216,6 @@ export function normalizar_lectura(crudo = {}) {
 
   const proveedor = String(crudo.emisor ?? '').trim() || null
   const cuit = soloDigitos(crudo.cuit)
-  const tipo = tipoDesdeLectura({ letra: crudo.letra, esNotaCredito: esNC })
   const numero = numeroCanonico(crudo.numero)
   const fecha = fechaDeLectura(crudo.fecha)
 
@@ -249,6 +260,36 @@ export function normalizar_lectura(crudo = {}) {
 
 /** Alias en camelCase, que es como se escribe el resto del repo. */
 export const normalizarLectura = normalizar_lectura
+
+/** Cómo se marca en la columna L lo que estaba escrito a mano. Es contrato, no formato. */
+export const MARCA_A_MANO = '· a mano:'
+
+/**
+ * EL CONCEPTO DE LA COLUMNA L, CON LA TRANSCRIPCIÓN LITERAL DE LO ESCRITO A MANO.
+ *
+ * ═══ DECISIÓN DEL DUEÑO (04/08) ═══
+ *
+ * `<descripción de lo comprado> · a mano: "<transcripción literal>"`. Así lo cargó él a mano los
+ * siete comprobantes de ese día: `· a mano: "Ford XLS"`, `· a mano: "Estrella c/c"`,
+ * `· a mano: "SF. Cuenta cte"`, `· a mano: "Camion · Corpodos Pagos"`.
+ *
+ * LA TRANSCRIPCIÓN VA SIEMPRE, AUNQUE ADEMÁS SE HAYA USADO PARA IMPUTAR. Ese es todo el punto: la
+ * anotación es la que decide a qué obra y a qué frente se le carga el gasto, y esa decisión se
+ * discute meses después, cuando el margen de la obra no cierra. Si lo único que quedó es el resultado
+ * de la imputación —"MESSINA / Planta de BSA"— no hay contra qué discutirla: hay que ir a buscar la
+ * foto. Con el papel transcripto en la fila, la discusión se da mirando la fila.
+ *
+ * Es IDEMPOTENTE: un concepto que ya trae su marca no la recibe dos veces. El fajo se puede reescribir
+ * (Corregir, reintento) y un concepto que se va agrandando en cada pasada es un dato que se degrada.
+ */
+export function conceptoConAnotacion({ concepto, anotacion } = {}) {
+  const a = String(anotacion ?? '').trim()
+  const c = String(concepto ?? '').trim()
+  if (!a) return c || null
+  if (c.includes(MARCA_A_MANO)) return c
+  const marca = `${MARCA_A_MANO} "${a.slice(0, 120)}"`
+  return (c ? `${c} ${marca}` : marca).slice(0, 300)
+}
 
 function textoODefault(v) {
   const s = String(v ?? '').trim()

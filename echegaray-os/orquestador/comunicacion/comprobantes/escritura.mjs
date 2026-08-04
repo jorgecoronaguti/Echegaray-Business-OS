@@ -33,7 +33,7 @@ import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { congelado } from '../../lib/congelador-sheets.mjs'
 import { estaCompleto, ESTADO } from '../../lib/comprobantes/fajo.mjs'
-import { numeroCanonico, claveComprobante } from '../../lib/comprobantes/lectura.mjs'
+import { numeroCanonico, claveComprobante, conceptoConAnotacion } from '../../lib/comprobantes/lectura.mjs'
 import * as repoReal from './repositorio.mjs'
 
 const AQUI = dirname(fileURLToPath(import.meta.url))
@@ -78,7 +78,10 @@ export function aFajoJson(items = []) {
       cae: c.cae ?? undefined,
       tipo: c.tipo,
       numero: c.numero,
-      concepto: c.concepto ?? undefined,
+      // LO ESCRITO A MANO VIAJA AL CONCEPTO, LITERAL (04/08). Ver `conceptoConAnotacion`: la
+      // anotación es la que decide la imputación, y la imputación se discute meses después. Sin la
+      // transcripción en la fila, esa discusión obliga a ir a buscar la foto.
+      concepto: conceptoConAnotacion(c) ?? undefined,
       iva: c.iva ?? undefined,
       total: c.total,
       condicion: c.condicion ?? undefined,

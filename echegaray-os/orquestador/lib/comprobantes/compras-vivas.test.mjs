@@ -9,10 +9,10 @@ import assert from 'node:assert/strict'
 import { indexarCompras, buscarEnCompras, importeDeCompras, tipoDeCompras, detallesPorObra, historiaDeCompras, HALLAZGO } from './compras-vivas.mjs'
 import { normalizarLectura } from './lectura.mjs'
 
-const fila = (fecha, prov, tipo, numero, obra, detalle, total) =>
-  [fecha, '', prov, '', tipo, numero, '', obra, detalle, 'concepto', '', '', total]
+const fila = (fecha, prov, tipo, numero, obra, detalle, total, categoria = '') =>
+  [categoria, fecha, '', prov, '', tipo, numero, '', obra, detalle, 'concepto', '', '', total]
 
-/** Las filas 802 y 803 de Compras, en el rango C4:O (la primera con datos es la 802). */
+/** Las filas 802 y 803 de Compras, en el rango B4:O (la primera con datos es la 802). */
 const FILAS = [
   ...Array.from({ length: 798 }, () => []),
   fila('30/7/2026', 'Corralon Progreso', 'F A', '0004-00003642', 'MESSINA', 'Planta de BSA', '$ 62.000,00'),
@@ -148,6 +148,7 @@ test('la MISMA lectura entrega la historia de imputación, con el detalle de la 
     obra_texto: 'MESSINA',
     detalle: 'Camion - BSA',
     concepto: 'concepto',
+    categoria: null,
   })
 })
 

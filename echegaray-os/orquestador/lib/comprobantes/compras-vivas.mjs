@@ -51,13 +51,21 @@
 
 import { numeroCanonico, fechaDeLectura, soloDigitos } from './lectura.mjs'
 import { normalizar, aNumero, redondear2 } from '../carga-comprobantes.mjs'
+import { escalaDeTotales } from './aritmetica.mjs'
 
-/** Rango mínimo suficiente: C fecha … O total. La fila del Sheet es el índice + esta base. */
-export const RANGO = 'Compras!C4:O'
+/**
+ * Rango mínimo suficiente: B categoría … O total. La fila del Sheet es el índice + esta base.
+ *
+ * Arrancaba en C. La columna B (Categoría) se sumó el 04/08 porque toda fila que cargó el bot quedó
+ * SIN categoría, y la única forma legítima de saber qué categoría le corresponde a un proveedor es
+ * la que ya usó este dueño con ese proveedor. Una columna más en una lectura que ya se hacía no
+ * cuesta nada; una segunda lectura del Sheet para lo mismo, sí.
+ */
+export const RANGO = 'Compras!B4:O'
 export const FILA_BASE = 4
 
-/** Posición de cada dato DENTRO del rango leído (C = 0). Contrato con `RANGO`. */
-const EN = { fecha: 0, proveedor: 2, tipo: 4, numero: 5, unidad: 6, obra: 7, detalle: 8, concepto: 9, total: 12 }
+/** Posición de cada dato DENTRO del rango leído (B = 0). Contrato con `RANGO`. */
+const EN = { categoria: 0, fecha: 1, proveedor: 3, tipo: 5, numero: 6, unidad: 7, obra: 8, detalle: 9, concepto: 10, total: 13 }
 
 /** Tolerancia de importe. Debajo de esto es el redondeo del comprobante, no otra compra. */
 const TOLERANCIA = 0.5
@@ -102,6 +110,11 @@ export function indexarCompras(filas = [], { cuitPorProveedor = null } = {}) {
   // identidad del proveedor se evalúa después, sobre cada candidata.
   const porNumero = new Map()
   const porFechaTotal = new Map()
+  // POR FECHA SOLA. Es el índice que hacía falta para la pasada de "un dígito de distancia": ahí el
+  // número está mal leído (no sirve `porNumero`) y el importe TAMBIÉN está mal leído (no sirve
+  // `porFechaTotal`). Lo único que quedó en pie es el día y el proveedor.
+  const porFecha = new Map()
+  const totalesPorProveedor = new Map()
   const registros = []
   let n = 0
   filas.forEach((r, i) => {
@@ -114,6 +127,7 @@ export function indexarCompras(filas = [], { cuitPorProveedor = null } = {}) {
       hoja: 'Compras',
       proveedor: String(r?.[EN.proveedor] ?? '').trim() || null,
       cuit: cuitDe(proveedor),
+      categoria: String(r?.[EN.categoria] ?? '').trim() || null,
       tipo: tipoDeCompras(r?.[EN.tipo]),
       numero,
       fecha: fechaDeLectura(r?.[EN.fecha]),
@@ -126,16 +140,45 @@ export function indexarCompras(filas = [], { cuitPorProveedor = null } = {}) {
     registros.push(reg)
     if (numero) empujar(porNumero, numero, reg)
     if (reg.fecha && reg.total != null) empujar(porFechaTotal, `${reg.fecha}|${redondear2(reg.total)}`, reg)
+    if (reg.fecha) empujar(porFecha, reg.fecha, reg)
+    if (proveedor && reg.total != null) {
+      const l = totalesPorProveedor.get(proveedor)
+      if (l) l.push(reg.total); else totalesPorProveedor.set(proveedor, [reg.total])
+    }
   })
-  // Una sola lectura del Sheet alimenta las TRES cosas que hacen falta: el duplicado, el vocabulario
-  // con el que se resuelve lo escrito a mano, y la historia de imputación con la que se aprende.
+  // Una sola lectura del Sheet alimenta TODO lo que hace falta: el duplicado, el vocabulario con el
+  // que se resuelve lo escrito a mano, la historia de imputación con la que se aprende, y la escala
+  // de cada proveedor con la que se detecta un importe fuera de rango.
   return {
     porNumero,
     porFechaTotal,
+    porFecha,
     filas: n,
     detalles: detallesPorObra(filas),
+    usosDeDetalle: usosDeDetallePorObra(filas),
+    escalaPorProveedor: escalasDe(totalesPorProveedor),
     historia: registros.map(aHistoria),
   }
+}
+
+/** proveedor normalizado → `{n, max}` de sus totales. Ver `aritmetica.mjs`. */
+function escalasDe(totalesPorProveedor) {
+  const out = {}
+  for (const [prov, totales] of totalesPorProveedor) out[prov] = escalaDeTotales(totales)
+  return out
+}
+
+/**
+ * La escala histórica del proveedor de ESTE comprobante, con la misma noción de identidad que usa el
+ * duplicado: primero el nombre normalizado, y si no hay, el nombre del desplegable ya matcheado.
+ *
+ * Devuelve `{n:0, max:0}` cuando no se sabe nada de ese proveedor — que es lo que hace que el control
+ * no opine sobre un proveedor nuevo, en vez de tratarlo como si su máximo fuera cero.
+ */
+export function escalaDelProveedor(comprobante = {}, indice = {}) {
+  const p = normalizar(comprobante?.proveedor)
+  if (!p) return { n: 0, max: 0 }
+  return indice?.escalaPorProveedor?.[p] ?? { n: 0, max: 0 }
 }
 
 function lectorDeCuit(mapa) {
@@ -229,7 +272,59 @@ export function buscarEnCompras(comprobante = {}, indice = {}) {
     // distintos es una coincidencia, no un duplicado, y una alarma que suena siempre deja de leerse.
     if (sinProveedor && cands.length) return hallazgo(HALLAZGO.PROBABLE, cands, 'fecha+importe')
   }
+
+  // ── 3) MISMO PROVEEDOR, MISMO DÍA, NÚMERO A UN DÍGITO ──────────────────────
+  //
+  // ═══ EL DUPLICADO NO PUEDE DEPENDER DE QUE EL NÚMERO ESTÉ BIEN LEÍDO (04/08) ═══
+  //
+  // ALUMETAL, 31/07/2026. El papel decía `0038-00025942` y $2.014.940,07. El modelo leyó
+  // `0036-00025942` y $201.494.007. Esa factura YA estaba en Compras, fila 797.
+  //
+  // Las dos pasadas de arriba fallaron por la misma razón y en cascada: la del número, porque el
+  // número leído era otro; la de fecha+importe, porque el importe leído TAMBIÉN era otro. Cada una
+  // suponía que al menos uno de los dos datos estaba bien, y no lo estaba ninguno. El resultado fue
+  // $201M falsos entrando al Flujo de Caja sobre un gasto que ya estaba registrado.
+  //
+  // Lo que sí quedó en pie —y es mucho— es que un OCR se equivoca en UN dígito, no en el número
+  // entero: `0036` contra `0038`. Mismo proveedor, mismo día, un carácter de diferencia.
+  //
+  // ES UN "PROBABLE", NO UN "CARGADO", y tiene que serlo: dos facturas CONSECUTIVAS del mismo
+  // proveedor el mismo día (`...3370` y `...3371`) también difieren en un dígito y son dos compras
+  // distintas y legítimas. Por eso no se descarta nada solo: se muestra la fila candidata con su
+  // número, su fecha y su importe, y quien mira el papel contesta en un segundo. El costo del falso
+  // positivo es una pregunta; el del falso negativo ya se midió y fueron $201M.
+  if (numero && fecha) {
+    const cands = (indice.porFecha?.get(fecha) ?? [])
+      .filter((r) => r.numero && r.numero !== numero && difiereEnUnCaracter(numero, r.numero))
+      .map((r) => ({ r, quien: identidadProveedor(comprobante, r) }))
+      .filter((c) => c.quien === 'igual')
+    if (cands.length) return hallazgo(HALLAZGO.PROBABLE, cands, 'proveedor+fecha+numero a un digito')
+  }
   return null
+}
+
+/**
+ * ¿Estos dos números canónicos difieren en a lo sumo UN carácter? Sustitución, agregado o faltante.
+ *
+ * No se calcula la distancia de edición real: sólo hace falta saber si es ≤1, y así el costo es
+ * lineal. Es el mismo criterio que `imputacion.mjs` usa para tolerar un error de tipeo en un rótulo,
+ * pero acá no se importa de allá a propósito: aquello tolera para ACERTAR un match y esto sospecha
+ * para PREGUNTAR. Que las dos reglas puedan cambiar por separado, sin arrastrarse, vale las diez
+ * líneas.
+ */
+export function difiereEnUnCaracter(a, b) {
+  const x = String(a ?? '')
+  const y = String(b ?? '')
+  if (x === y) return true
+  const [largo, corto] = x.length >= y.length ? [x, y] : [y, x]
+  if (largo.length - corto.length > 1) return false
+  let i = 0; let j = 0; let fallas = 0
+  while (i < largo.length && j < corto.length) {
+    if (largo[i] === corto[j]) { i++; j++; continue }
+    if (++fallas > 1) return false
+    if (largo.length === corto.length) { i++; j++ } else { i++ }
+  }
+  return fallas + (largo.length - i) + (corto.length - j) <= 1
 }
 
 function viaNumero(mejor, tipo) {
@@ -251,7 +346,10 @@ function hallazgo(que, cands, via) {
  */
 export async function indiceDeCompras(google, { fileId, cuitPorProveedor = null } = {}) {
   const id = fileId || process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
-  const vacio = { porNumero: new Map(), porFechaTotal: new Map(), filas: 0, detalles: {}, historia: [] }
+  const vacio = {
+    porNumero: new Map(), porFechaTotal: new Map(), porFecha: new Map(), filas: 0,
+    detalles: {}, usosDeDetalle: {}, escalaPorProveedor: {}, historia: [],
+  }
   if (typeof google?.readSheetValues !== 'function') return { ok: false, ...vacio, error: 'sin cliente de Google' }
   try {
     return { ok: true, ...indexarCompras(await google.readSheetValues(id, RANGO), { cuitPorProveedor }) }
@@ -267,6 +365,52 @@ export async function indiceDeCompras(google, { fileId, cuitPorProveedor = null 
  * @returns {Object<string,string[]>} obra → detalles ya usados, del más usado al menos
  */
 export function detallesPorObra(filas = []) {
+  const out = {}
+  for (const [obra, m] of contarDetalles(filas)) {
+    out[obra] = [...m.entries()].sort((a, b) => b[1] - a[1]).map(([d]) => d)
+  }
+  return out
+}
+
+/**
+ * Lo mismo, pero con el CONTEO. Es lo que distingue el vocabulario de una obra del ruido que alguien
+ * escribió una vez en esa columna.
+ *
+ * ═══ POR QUÉ HACE FALTA CONTAR (04/08) ═══
+ *
+ * El bot escribió `Rodrigo Echegaray` en la columna K. No es un frente, ni un vehículo, ni un rubro:
+ * es un nombre de persona que estaba en las observaciones de la factura. Como la columna K no tiene
+ * desplegable, su única lista legítima es lo que ya se usó — y "ya se usó" incluye lo que alguien
+ * escribió UNA vez.
+ *
+ * La regla que separa una cosa de la otra sin tener que clasificar textos: **para completarse solo,
+ * un detalle tiene que ser vocabulario de esa obra, o sea haber aparecido más de una vez. Para
+ * OFRECERSE en el menú, con una vez alcanza** — ahí decide una persona, que es exactamente la
+ * diferencia. Un frente real ("Planta de BSA", "Camion - 608D") aparece decenas de veces; el ruido,
+ * una sola.
+ *
+ * @returns {Object<string, Object<string, number>>} obra → detalle → cuántas veces
+ */
+export function usosDeDetallePorObra(filas = []) {
+  const out = {}
+  for (const [obra, m] of contarDetalles(filas)) out[obra] = Object.fromEntries(m)
+  return out
+}
+
+/** Cuántas veces la usó cada obra un detalle antes de completarlo solo. Ver `usosDeDetallePorObra`. */
+export const MIN_USOS_DETALLE = 2
+
+/** obra → detalles que la obra usó al menos `min` veces, del más usado al menos. */
+export function detallesFirmes(usos = {}, min = MIN_USOS_DETALLE) {
+  const out = {}
+  for (const [obra, m] of Object.entries(usos ?? {})) {
+    const l = Object.entries(m ?? {}).filter(([, n]) => n >= min).sort((a, b) => b[1] - a[1]).map(([d]) => d)
+    if (l.length) out[obra] = l
+  }
+  return out
+}
+
+function contarDetalles(filas = []) {
   const cuenta = new Map()
   for (const r of filas) {
     const obra = String(r?.[EN.obra] ?? '').trim()
@@ -276,9 +420,7 @@ export function detallesPorObra(filas = []) {
     const m = cuenta.get(obra)
     m.set(det, (m.get(det) ?? 0) + 1)
   }
-  const out = {}
-  for (const [obra, m] of cuenta) out[obra] = [...m.entries()].sort((a, b) => b[1] - a[1]).map(([d]) => d)
-  return out
+  return cuenta
 }
 
 /**
@@ -305,5 +447,8 @@ function aHistoria(reg) {
     obra_texto: reg.obra,
     detalle: reg.detalle,
     concepto: reg.concepto,
+    // La CATEGORÍA (columna B) viaja desde el 04/08: es la cuarta columna que toda fila cargada por
+    // el bot dejaba vacía, y la aprende el mismo módulo que aprende las otras tres.
+    categoria: reg.categoria,
   }
 }

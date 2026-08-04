@@ -138,6 +138,27 @@ asistente no inventa usuarios ni manda un recordatorio a alguien que no pudo ide
 Para actuar sobre Google, el OS usa la cuenta del **que pide** si autorizó la suya
 (`orq.google_tokens`); si no autorizó, se lo dice. Nunca actúa en la cuenta de un tercero.
 
+### La identidad se repara sola, en el momento del pedido
+
+Si el `user_id` que trae el evento no tiene fila —o la tiene sin correo— el router le pregunta a
+Mattermost quién es y la escribe (`asistente/reconciliacion-identidades.mjs`). **El correo lo manda
+Mattermost**, nunca se infiere del username. Es fail-closed: si Mattermost no contesta no se toca
+nada y la respuesta lo dice.
+
+Esto existe por un defecto medido el 04/08: la tabla tenía ids de una siembra de ejemplo
+(`u-jorge`), el evento traía el id real, y la falta de correo dejaba fuera de `habilitadas` a todo
+lo que necesita el Google de la persona. El chat contestaba «no tengo habilitado eso para vos» —la
+frase del permiso denegado— cuando el problema era del OS. Hoy son dos mensajes distintos y dos
+códigos distintos: `identidad_no_resuelta` (lo arregla el OS) y `capacidad_deshabilitada` (lo
+arregla la persona o Dirección). «¿Qué sabés hacer?» también nombra lo que no puede, con el motivo.
+
+Lo que la reparación no ve —gente que hoy no escribe, filas viejas, tokens sin identidad— lo mira
+el canario, que no escribe nada:
+
+```bash
+node orquestador/scripts/canario-identidades.mjs   # sale 1 si algo no resuelve, y dice para quién
+```
+
 ## Operación
 
 El módulo corre dentro de servicios que ya existen; **no agrega procesos**:

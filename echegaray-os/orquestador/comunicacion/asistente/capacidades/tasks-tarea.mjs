@@ -16,7 +16,7 @@ import {
 } from '../contratos.mjs'
 import { paredAR, formatearAR } from '../tiempo.mjs'
 import {
-  clasificarErrorGoogle, googlePropioDisponible, permiteEfectoExterno, errorSinCuenta, errorCuentaAjena,
+  clasificarErrorGoogle, googlePropioDisponible, motivoGooglePropio, permiteEfectoExterno, errorSinCuenta, errorCuentaAjena,
 } from '../google-cliente.mjs'
 
 const LISTA_DEFECTO = '@default'
@@ -74,6 +74,9 @@ export const capacidad = {
   ejemplos: ['anotame llamar al contador el viernes', 'agregá a mis tareas pedir el certificado de obra'],
   entrada: zGoogleTarea,
   habilitada: (ctx) => googlePropioDisponible(ctx, ctx?.googleDeps),
+  // Y cuando NO está habilitada, por qué. Sin esto el chat dice "no tengo eso habilitado para vos"
+  // tanto si la persona no enlazó su Google como si el OS no sabe quién es — que es un defecto del OS.
+  motivoNoHabilitada: (ctx) => motivoGooglePropio(ctx, ctx?.googleDeps),
 
   async ejecutar(params, ctx = {}) {
     const p = zGoogleTarea.safeParse(params)

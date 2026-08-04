@@ -24,16 +24,14 @@
 // modelo grande acertó el número y la anotación, y el chico acertó el nombre del proveedor. Tirar la
 // primera lectura entera habría cambiado un defecto por otro.
 
-import { aNumero, redondear2 } from '../carga-comprobantes.mjs'
+import { aNumero } from '../carga-comprobantes.mjs'
+import { identidadDelComprobante } from './aritmetica.mjs'
 
 /** Modelo de lectura. Barato a propósito: leer un ticket es extracción, no razonamiento. */
 export const MODELO_LECTURA = process.env.ORQ_COMPROBANTES_MODELO || 'claude-haiku-4-5-20251001'
 
 /** Modelo de REVISIÓN. Sólo se usa cuando la primera lectura dudó. */
 export const MODELO_REVISION = process.env.ORQ_COMPROBANTES_MODELO_REVISION || 'claude-sonnet-4-5-20250929'
-
-/** Diferencia tolerada al chequear que neto + IVA + otros tributos cierren con el total. */
-const TOLERANCIA = 0.5
 
 /**
  * Bloque de contenido para la API de Anthropic. Imagen → `image`; PDF → `document`.
@@ -85,9 +83,16 @@ export const PROMPT_LECTURA = [
   'Suele estar arriba a la izquierda, pero puede estar en cualquier margen, torcido, con birome, en',
   'otro sentido que el texto impreso o al lado del logo. Buscalo SIEMPRE.',
   'Transcribilo TAL CUAL, letra por letra, sin corregirlo ni interpretarlo: si está en plural va en',
-  'plural, si está abreviado va abreviado. NO decidas a qué obra corresponde — eso lo resuelve otro',
-  'paso contra la lista oficial. Si hay varias anotaciones, ponelas todas separadas por " · ".',
+  'plural, si está abreviado va abreviado. Eso va en "anotacion_manuscrita" y no se toca. Si más',
+  'abajo te doy las listas de las columnas, además vas a IMPUTAR el gasto usando esta anotación —',
+  'pero la transcripción literal viaja igual y aparte. Si hay varias, separalas con " · ".',
   'Si de verdad no hay nada escrito a mano, poné null: es una respuesta válida.',
+  '',
+  'MANUSCRITO ES TINTA, NO UN CAMPO IMPRESO. Los campos "Observaciones", "Señor/es", "Vendedor",',
+  '"Remito", "Transportista" o "Retira" están IMPRESOS y los completa el proveedor: un nombre de',
+  'persona que sale de ahí NO es una anotación manuscrita y NO se imputa con él. Pasó: se cargó',
+  '"Rodrigo Echegaray" como si fuera el frente de una obra. Si dudás de si algo está escrito a mano,',
+  'poné null.',
   '',
   'DUDAR ESTÁ PERMITIDO; INVENTAR NO. Si un dato no se lee, poné null y explicalo en "dudas".',
   'Nunca completes un importe, un número ni una letra "para que quede algo": un dato inventado se',
@@ -112,6 +117,11 @@ export const PROMPT_LECTURA = [
   '  va en "cuit". Si ves dos CUIT, el del emisor es el que NO es Echegaray.',
   '· El TOTAL es obligatorio: es el número más grande y prominente, el que tiene que cerrar con la',
   '  plata que salió. Si no se lee, poné legible=false y decilo en "dudas".',
+  '· ANTES DE CONTESTAR, SUMÁ: neto gravado + IVA + otros tributos tiene que dar EXACTAMENTE el total.',
+  '  Si no da, hay un número mal copiado y casi siempre es la coma: $2.014.940,07 leído como',
+  '  $201.494.007 (dos ceros de más) o $686.070,00 leído como $686,07. Volvé a mirar los decimales de',
+  '  cada importe y corregí el que esté mal. Un comprobante cuyos números no cierran NO SE CARGA, así',
+  '  que dejarlo mal no ahorra trabajo: lo duplica.',
   '· NETO GRAVADO es el subtotal SIN IVA (aparece como "ST1", "Subtotal" o "Neto"). Tiene que cumplir',
   '  neto + IVA + otros tributos = total. Si lo que anotaste no cierra, volvé a mirar: lo más común',
   '  es haber copiado el total en el lugar del neto.',
@@ -145,18 +155,85 @@ const vacio = (v) => v == null || String(v).trim() === '' || /^(null|n\/a|-|—)
  * escrito— y está igual: la obra es el dato que decide a qué obra se le carga el costo, y no verla
  * cuando está es exactamente el defecto que se está arreglando.
  */
+/**
+ * EL BLOQUE DE IMPUTACIÓN — las listas REALES de cada columna, delante del modelo mientras lee.
+ *
+ * ═══ POR QUÉ (04/08) ═══
+ *
+ * El modelo transcribía la anotación a mano y ahí terminaba su trabajo: devolvía "HW DX 2018" y el
+ * matcheo estricto de después no encontraba ninguna obra que se llamara así, así que el comprobante
+ * entraba sin imputar. Pero "HW DX 2018" no es una obra: es un VEHÍCULO, y quien mira la foto
+ * sabiendo que existe una obra "Vehiculos / Maquinas" y un detalle "Camion - 608D" lo resuelve en un
+ * segundo. Eso es exactamente lo que hace una persona, y lo único que le faltaba al modelo era la
+ * lista — leía a ciegas.
+ *
+ * NO ES ADIVINAR: se le dan los valores EXACTOS de los desplegables y sólo puede devolver uno de
+ * ellos o null. Lo que elija se vuelve a validar contra la misma lista del lado del OS, así que un
+ * valor inventado no llega a una celda. Y la transcripción literal sigue viajando aparte: si después
+ * hay que discutir la imputación, está lo que el papel decía.
+ *
+ * @param {{obras?:string[], unidades?:string[], categorias?:string[], tiposPago?:string[],
+ *          detalles?:Object<string,string[]>}} v
+ */
+export function bloqueImputacion(v = {}) {
+  const obras = (v.obras ?? []).filter(Boolean)
+  const unidades = (v.unidades ?? []).filter(Boolean)
+  const categorias = (v.categorias ?? []).filter(Boolean)
+  const tiposPago = (v.tiposPago ?? []).filter(Boolean)
+  const detalles = Object.entries(v.detalles ?? {}).filter(([, l]) => (l ?? []).length)
+  if (!obras.length && !unidades.length && !categorias.length) return null
+
+  const l = ['', 'AHORA IMPUTÁ EL GASTO. Esto es lo que hace una persona cuando mira el papel: decide',
+    'a qué obra va y de qué tipo de costo es. Lo escrito a mano es la pista principal, y muchas veces',
+    'NO es el nombre de la obra sino un VEHÍCULO, una máquina, un frente de trabajo o una persona.',
+    '',
+    'REGLA DURA: elegí un valor EXACTO de las listas de abajo, copiado tal cual (mayúsculas, tildes y',
+    'espacios incluidos), o poné null. Nunca escribas un valor que no esté en la lista y nunca elijas',
+    '"el más parecido" para no dejarlo vacío: un gasto imputado a la obra equivocada es peor que uno',
+    'sin imputar, porque nadie lo va a revisar. Si dudás entre dos, poné null y decilo en "dudas".']
+
+  if (obras.length) l.push('', `OBRA / CLIENTE (columna J) — valores válidos:\n${obras.map((o) => `  · ${o}`).join('\n')}`)
+  if (unidades.length) l.push('', `UNIDAD DE NEGOCIO (columna I) — qué clase de costo es:\n${unidades.map((o) => `  · ${o}`).join('\n')}`)
+  if (categorias.length) l.push('', `CATEGORÍA (columna B) — qué se compró, en el vocabulario de la empresa:\n${categorias.map((o) => `  · ${o}`).join('\n')}`)
+  if (detalles.length) {
+    l.push('', 'DETALLE / OBRA (columna K) — el frente, vehículo o rubro DENTRO de la obra. Estos son los',
+      'que ya se usaron en cada una; elegí uno sólo si la obra que elegiste es la suya. NUNCA un nombre',
+      'de persona ni un texto de las observaciones de la factura:')
+    for (const [obra, vals] of detalles.slice(0, 30)) l.push(`  ${obra}: ${vals.slice(0, 15).join(' | ')}`)
+  }
+  // EL TIPO DE PAGO ES EL QUE MÁS BASURA METIÓ. Es la única de estas columnas cuyo valor SÍ está
+  // impreso en el papel, y por eso el modelo copiaba lo que veía cerca ("Importe", "30 DIAS FECHA
+  // FACTURA") en vez de elegir de la lista. Se le dice explícitamente que es una lista cerrada y que
+  // el plazo de pago no es una forma de pago.
+  if (tiposPago.length) {
+    l.push('', `TIPO DE PAGO (columna P) — CON QUÉ se pagó, no CUÁNDO. Sólo estos valores:\n${tiposPago.map((o) => `  · ${o}`).join('\n')}`,
+      'Un plazo ("30 DIAS FECHA FACTURA"), una condición ("Cuenta Corriente") o un rótulo de la factura',
+      '("Importe") NO son formas de pago: ahí va null. Si el papel no dice con qué se pagó, va null.')
+  }
+  l.push('', 'Agregá al JSON: "obra":"<exacto de la lista o null>","unidad_negocio":"<exacto o null>",',
+    '"categoria":"<exacto o null>","detalle_obra":"<exacto o null>",',
+    '"forma_pago":"<exacto de la lista de tipo de pago, o null>",',
+    '"por_que_esa_obra":"<en qué te basaste, en 10 palabras>"')
+  return l.join('\n')
+}
+
 export function necesitaRevision(crudo = {}) {
   const motivos = []
   if (crudo?.legible === false) motivos.push('la lectura se declaró ilegible')
   if (vacio(crudo?.total)) motivos.push('no leyó el total')
   if (vacio(crudo?.numero)) motivos.push('no leyó el número')
   if (vacio(crudo?.fecha)) motivos.push('no leyó la fecha')
-  const total = aNumero(crudo?.total)
-  const neto = aNumero(crudo?.neto_gravado)
-  if (total != null && neto != null) {
-    const suma = neto + (aNumero(crudo?.iva_21) ?? 0) + (aNumero(crudo?.iva_105) ?? 0) + (aNumero(crudo?.otros_tributos) ?? 0)
-    if (Math.abs(redondear2(suma - total)) > TOLERANCIA) motivos.push('neto + IVA no cierra con el total')
-  }
+  // LA MISMA IDENTIDAD QUE DESPUÉS DECIDE SI SE ESCRIBE (`faltantes.mjs`), calculada por la MISMA
+  // función. Acá su consecuencia es pedir el modelo grande; allá, no cargar. Dos consecuencias, una
+  // sola cuenta: si cada una tuviera la suya, el que avisa y el que bloquea podrían discrepar sobre
+  // el mismo papel.
+  const ar = identidadDelComprobante({
+    neto: aNumero(crudo?.neto_gravado),
+    iva: (aNumero(crudo?.iva_21) ?? 0) + (aNumero(crudo?.iva_105) ?? 0),
+    otros: aNumero(crudo?.otros_tributos),
+    total: aNumero(crudo?.total),
+  })
+  if (ar.verificable && !ar.cierra) motivos.push('neto + IVA no cierra con el total')
   if (vacio(crudo?.anotacion_manuscrita)) motivos.push('no encontró ninguna anotación manuscrita')
   return motivos
 }
@@ -183,7 +260,7 @@ export function fusionar(primera = {}, revision = {}) {
 }
 
 /** Una sola llamada al modelo. Devuelve el JSON crudo o `{error}`; nunca lanza. */
-async function unaLectura(bloque, { apiKey, fetchImpl, modelo, maxTokens }) {
+async function unaLectura(bloque, { apiKey, fetchImpl, modelo, maxTokens, prompt = PROMPT_LECTURA }) {
   try {
     const res = await fetchImpl('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -192,7 +269,7 @@ async function unaLectura(bloque, { apiKey, fetchImpl, modelo, maxTokens }) {
         model: modelo,
         max_tokens: maxTokens,
         temperature: 0,
-        messages: [{ role: 'user', content: [bloque, { type: 'text', text: PROMPT_LECTURA }] }],
+        messages: [{ role: 'user', content: [bloque, { type: 'text', text: prompt }] }],
       }),
     })
     if (!res.ok) return { ok: false, error: `la lectura del comprobante falló (${res.status})` }
@@ -216,7 +293,11 @@ async function unaLectura(bloque, { apiKey, fetchImpl, modelo, maxTokens }) {
  * `revision.error`. Perder la segunda opinión no puede convertirse en no leer nada.
  *
  * @param {{data:string, mediaType:string, nombre?:string}} adjunto  base64 + tipo
- * @param {{apiKey?:string, fetchImpl?:Function, modelo?:string, modeloRevision?:string|null, maxTokens?:number}} [ctx]
+ * `vocabulario` son las listas de los desplegables de Compras. Van al prompt para que el modelo
+ * pueda IMPUTAR lo escrito a mano y no sólo transcribirlo (ver `bloqueImputacion`). Sin ellas se lee
+ * igual que antes: es opcional a propósito, para que un fallo leyendo el Sheet no impida leer la foto.
+ *
+ * @param {{apiKey?:string, fetchImpl?:Function, modelo?:string, modeloRevision?:string|null, maxTokens?:number, vocabulario?:object}} [ctx]
  * @returns {Promise<{ok:true, crudo:object, revision?:object}|{ok:false, error:string}>}
  */
 export async function leerAdjunto(adjunto, ctx = {}) {
@@ -225,13 +306,15 @@ export async function leerAdjunto(adjunto, ctx = {}) {
     fetchImpl = globalThis.fetch,
     modelo = MODELO_LECTURA,
     modeloRevision = MODELO_REVISION,
-    maxTokens = 1200,
+    maxTokens = 1600,
+    vocabulario = null,
   } = ctx
   const bloque = bloqueAdjunto(adjunto)
   if (!bloque) return { ok: false, error: `no puedo mirar un archivo ${adjunto?.mediaType ?? 'sin tipo'}` }
   if (!apiKey || typeof fetchImpl !== 'function') return { ok: false, error: 'no hay lectura de comprobantes disponible ahora' }
 
-  const opciones = { apiKey, fetchImpl, modelo, maxTokens }
+  const imputacion = vocabulario ? bloqueImputacion(vocabulario) : null
+  const opciones = { apiKey, fetchImpl, modelo, maxTokens, prompt: imputacion ? `${PROMPT_LECTURA}\n${imputacion}` : PROMPT_LECTURA }
   const primera = await unaLectura(bloque, opciones)
   if (!primera.ok) return primera
 

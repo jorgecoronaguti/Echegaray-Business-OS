@@ -49,7 +49,8 @@ test('un usuario SIN permiso no llega a leer nada y queda auditado', async () =>
   const b = banco()
   const r = await b.decir('@os asistencia', OTRO)
   assert.equal(r.estado, 'denegado')
-  assert.match(r.texto, /No tenés permiso/)
+  // El rechazo nombra la vía que habilita —estar en el canal— en vez de mandar a pedir un permiso.
+  assert.match(r.texto, /canal de asistencia/i)
   assert.deepEqual(b.tipos(), [EVENTO.DENIED])
   assert.equal(b.eventos[0].datos.error_code, DENEGADO.SIN_PERMISO)
   assert.equal(b.g.lecturas, 0, 'ni siquiera leyó la planilla')
