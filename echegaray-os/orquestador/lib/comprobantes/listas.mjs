@@ -38,33 +38,38 @@ function opcionesDe(hoja) {
  * toda fila cargada por el chat, junto con la obra (J) y el detalle (K), y sin su lista no se la
  * puede ofrecer: escribir "civil" a mano donde hay un desplegable estricto deja la celda en rojo.
  *
- * @returns {Promise<{ok:boolean, proveedores:string[], obras:string[], unidades:string[], error?:string}>}
+ * LA CATEGORÍA (B) Y EL TIPO DE PAGO (P) se agregaron el 04/08 por las dos caras del mismo problema:
+ * B quedaba SIEMPRE vacía y P quedaba con basura ("Importe", "30 DIAS FECHA FACTURA") porque nadie
+ * comparaba lo leído contra la lista. Un desplegable estricto que no se lee es un desplegable que no
+ * defiende nada.
+ *
+ * EL ORDEN DE LOS RANGOS ES CONTRATO: la API no rotula los rangos de vuelta, así que se toman por
+ * posición. Agregar uno nuevo se hace SIEMPRE al final.
+ *
+ * @returns {Promise<{ok:boolean, proveedores:string[], obras:string[], unidades:string[], categorias:string[], tiposPago:string[], error?:string}>}
  */
+const RANGOS = ['Compras!E4:E12', 'Compras!J4:J12', 'Compras!I4:I12', 'Compras!B4:B12', 'Compras!P4:P12']
+const ORDEN = ['proveedores', 'obras', 'unidades', 'categorias', 'tiposPago']
+
 export async function listasDeCompras(google, { fileId = CASHFLOW_ID } = {}) {
+  const vacias = { proveedores: [], obras: [], unidades: [], categorias: [], tiposPago: [] }
   if (typeof google?.readSheetValidations !== 'function') {
-    return { ok: false, proveedores: [], obras: [], unidades: [], error: 'sin cliente de Google' }
+    return { ok: false, ...vacias, error: 'sin cliente de Google' }
   }
   try {
-    const hojas = await google.readSheetValidations(fileId, ['Compras!E4:E12', 'Compras!J4:J12', 'Compras!I4:I12'])
+    const hojas = await google.readSheetValidations(fileId, RANGOS)
     const compras = (hojas || []).filter((h) => /^compras$/i.test(h.properties?.title))
-    // Los dos rangos vuelven en `data[0]` de dos entradas distintas de la MISMA hoja, en el orden en
-    // que se pidieron. Se toma por posición porque la API no rotula los rangos de vuelta.
-    const conRangos = (hojas || []).find((h) => /^compras$/i.test(h.properties?.title) && (h.data?.length ?? 0) >= 2)
-    if (conRangos) {
-      return {
-        ok: true,
-        proveedores: opcionesDe({ data: [conRangos.data[0]] }),
-        obras: opcionesDe({ data: [conRangos.data[1]] }),
-        unidades: opcionesDe({ data: [conRangos.data[2]] }),
-      }
-    }
-    return {
-      ok: true,
-      proveedores: opcionesDe(compras[0]),
-      obras: opcionesDe(compras[1] ?? compras[0]),
-      unidades: opcionesDe(compras[2] ?? {}),
-    }
+    // Todos los rangos vuelven en `data[k]` de la MISMA entrada de hoja, en el orden en que se
+    // pidieron. El fallback —una entrada por rango— es la otra forma en que la API los devuelve.
+    const conRangos = compras.find((h) => (h.data?.length ?? 0) >= 2)
+    const out = { ok: true, ...vacias }
+    ORDEN.forEach((clave, k) => {
+      out[clave] = conRangos
+        ? opcionesDe({ data: [conRangos.data[k]] })
+        : opcionesDe(compras[k] ?? (k ? {} : compras[0]))
+    })
+    return out
   } catch (e) {
-    return { ok: false, proveedores: [], obras: [], unidades: [], error: String(e?.message ?? e).slice(0, 200) }
+    return { ok: false, ...vacias, error: String(e?.message ?? e).slice(0, 200) }
   }
 }

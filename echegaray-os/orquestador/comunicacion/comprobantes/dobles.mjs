@@ -297,8 +297,10 @@ export const LISTAS_COMPRAS = Object.freeze({
 })
 
 /** Una fila de Compras en el rango C4:O. */
-export const filaCompras = (fecha, prov, tipo, numero, obra, detalle, concepto, total) =>
-  [fecha, '', prov, '', tipo, numero, '', obra, detalle, concepto, '', '', total]
+// El rango leído arranca en la columna B (Categoría), no en la C: la posición 0 es B. Ver `RANGO` en
+// `compras-vivas.mjs` — la categoría se sumó el 04/08 porque toda fila que cargó el bot quedó sin ella.
+export const filaCompras = (fecha, prov, tipo, numero, obra, detalle, concepto, total, categoria = '') =>
+  [categoria, fecha, '', prov, '', tipo, numero, '', obra, detalle, concepto, '', '', total]
 
 /** Las filas de Compras con las que se prueba el duplicado. La primera con datos es la 802. */
 export function filasCompras(over = []) {
