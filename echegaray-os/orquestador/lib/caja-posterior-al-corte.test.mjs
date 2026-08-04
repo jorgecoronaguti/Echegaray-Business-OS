@@ -160,7 +160,12 @@ test('el pago en efectivo usa el MISMO medio que el banco deja afuera (partició
 test('los depósitos de efectivo se detectan como en la alerta 4.6 y sólo los posteriores al arqueo', () => {
   const f = formulaDepositosEfectivoPosteriores('$F$4')
   assert.match(f, /_BANCO_RAW!\$E\$4:\$E="entra"/) // es un crédito
-  assert.match(f, /deposito de efectivo/) // el concepto del banco
+  // El extracto real trae DOS redacciones: "Deposito de efectivo - Tarj nro." y "Deposito efvo caja
+  // suc 0770". Buscar la frase literal dejaba ciega la segunda ($4.000.000 el 15/06) y un depósito
+  // no reconocido no descarga la caja física — el cajón queda inflado sin que nada falle.
+  assert.match(f, /SEARCH\("deposito"/)
+  assert.match(f, /SEARCH\("efectivo"/)
+  assert.match(f, /SEARCH\("efvo"/) // el concepto del banco
   assert.match(f, /_BANCO_RAW!\$A\$4:\$A>\$F\$4/) // ventana posterior al arqueo
   // ISNUMBER sobre la fecha: una fecha guardada como texto metería un depósito viejo en la ventana.
   assert.match(f, /ISNUMBER\(_BANCO_RAW!\$A\$4:\$A\)/)
