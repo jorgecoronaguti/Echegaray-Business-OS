@@ -7,7 +7,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   anchoDelPivot, cabeEnElHueco, camposDeFila, COL, filtros, filtrosPorCondicion, fuenteCompras,
-  nivelesConSubtotal, pivotSeccion1, reapuntarControl,
+  clavesRepetidas, formatoDeLaFecha, formatoDelImporte, geometriaDeLaSeccion, nivelesConSubtotal,
+  pivotSeccion1, reapuntarControl,
 } from './proveedores-pivot-seccion1.mjs'
 
 const fuente = fuenteCompras({ sheetId: 7, filas: 900 })
@@ -43,7 +44,7 @@ test('el source se niega si no sabe cuántas filas tiene Compras', () => {
 test('los campos de fila van en el orden de la pestaña y el importe es el único valor', () => {
   const p = pivotSeccion1(fuente)
   assert.deepEqual(p.rows.map((r) => r.sourceColumnOffset),
-    [COL.proveedor, COL.proximoPago, COL.comprobante, COL.obra, COL.tipoPago, COL.categoria])
+    [COL.comprobante, COL.proveedor, COL.proximoPago, COL.obra, COL.tipoPago, COL.categoria])
   assert.equal(p.values.length, 1)
   assert.equal(p.values[0].sourceColumnOffset, COL.saldo)
   assert.equal(p.values[0].summarizeFunction, 'SUM')
@@ -51,10 +52,23 @@ test('los campos de fila van en el orden de la pestaña y el importe es el únic
   assert.equal(anchoDelPivot(p), 7)
 })
 
-test('el primer nivel ordena por el valor: a quién le debemos más, arriba', () => {
+test('NINGUNA FILA SIN NOMBRE · el primer campo es el único de la factura', () => {
+  // Una dinámica escribe el rótulo de un nivel una vez por grupo. Con el proveedor al frente, la
+  // segunda factura de Alumetal quedaba con la columna A vacía y se leía como proveedor faltante.
   const [primero] = camposDeFila()
+  assert.equal(primero.sourceColumnOffset, COL.comprobante,
+    'el primer campo no es único por factura: van a volver las celdas en blanco')
   assert.equal(primero.sortOrder, 'DESCENDING')
   assert.deepEqual(primero.valueBucket, { valuesIndex: 0 })
+})
+
+test('avisa cuando dos facturas comparten comprobante: ahí vuelven los blancos', () => {
+  const fila = (comprobante) => { const f = []; f[COL.comprobante] = comprobante; return f }
+  assert.deepEqual(clavesRepetidas([fila('A-1'), fila('A-2'), fila('A-3')]), [])
+  assert.deepEqual(clavesRepetidas([fila('A-1'), fila('A-1'), fila('A-2')]), [{ clave: 'A-1', veces: 2 }])
+  // Hoy hay UNA factura sin número (La Isla Metal): con una no se agrupa nada, con dos sí.
+  assert.deepEqual(clavesRepetidas([fila(''), fila('A-2')]), [])
+  assert.deepEqual(clavesRepetidas([fila(''), fila('')]), [{ clave: '(sin número)', veces: 2 }])
 })
 
 test('EL HUECO · si no entra hasta la sección 2, se dice ANTES de escribir', () => {
@@ -94,4 +108,45 @@ test('un control que ya apunta bien queda idéntico', () => {
 test('un control vacío no se inventa', () => {
   assert.equal(reapuntarControl('', 'G', { filaEncabezado: 17, filaLimite: 38 }), '')
   assert.equal(reapuntarControl(null, 'G', { filaEncabezado: 17, filaLimite: 38 }), '')
+})
+
+test('LA FECHA lleva formato de fecha, y su columna se calcula del orden real', () => {
+  const f = formatoDeLaFecha({ sheetId: 3, filaAncla: 17, alto: 15 })
+  // proximoPago es el 3er campo de fila → columna C (índice 2). Si cambia el orden, cambia sola.
+  const esperada = camposDeFila().findIndex((r) => r.sourceColumnOffset === COL.proximoPago)
+  assert.equal(f.repeatCell.range.startColumnIndex, esperada)
+  assert.equal(f.repeatCell.cell.userEnteredFormat.numberFormat.type, 'DATE')
+  assert.equal(f.repeatCell.cell.userEnteredFormat.numberFormat.pattern, 'dd/mm/yyyy',
+    'sin patrón dd/mm/yyyy la fecha sale como 46238, el número de serie crudo')
+})
+
+test('el importe y la fecha NO caen en la misma columna', () => {
+  const imp = formatoDelImporte({ sheetId: 3, filaAncla: 17, alto: 15, ancho: 7 })
+  const fec = formatoDeLaFecha({ sheetId: 3, filaAncla: 17, alto: 15 })
+  assert.notEqual(imp.repeatCell.range.startColumnIndex, fec.repeatCell.range.startColumnIndex)
+})
+
+test('LA GEOMETRÍA encuentra los rótulos con el proveedor en cualquier columna', () => {
+  const conPivot = [
+    ['1 · QUÉ SE DEBE Y CUÁNDO'], ['✓ cierra'],
+    ['N° Comprobante', 'Proveedor', 'Fecha prevista de pago (día)', 'Cliente / Asignación', 'Tipo pago'],
+    [], [], ['2 · CUENTA CORRIENTE POR PROVEEDOR'],
+  ]
+  const g = geometriaDeLaSeccion(conPivot)
+  assert.equal(g.filaEncabezado, 3, 'no encontró la fila de rótulos con el comprobante primero')
+  assert.equal(g.filaLimite, 6)
+})
+
+test('la misma geometría sirve para el bloque de fórmulas viejo', () => {
+  const conBloque = [
+    ['1 · QUÉ SE DEBE Y CUÁNDO'], ['✓ cierra'],
+    ['Proveedor / factura', 'Próximo pago', 'Comprobante', 'Importe', 'Obra'],
+    ['2 · CUENTA CORRIENTE POR PROVEEDOR'],
+  ]
+  assert.equal(geometriaDeLaSeccion(conBloque).filaEncabezado, 3)
+})
+
+test('sin el título de la sección 2 no hay plan: no se escribe a ciegas', () => {
+  const sinLimite = [['1 · QUÉ SE DEBE Y CUÁNDO'], ['Proveedor', 'a', 'b', 'c']]
+  assert.throws(() => geometriaDeLaSeccion(sinLimite), /sección 2/)
 })

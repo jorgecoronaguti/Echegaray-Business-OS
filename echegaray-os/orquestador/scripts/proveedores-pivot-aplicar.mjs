@@ -25,10 +25,11 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { diferenciasDeHuella, geometriaSeccion1, huellaProtegida } from '../lib/proveedores-bloque-vivo.mjs'
+import { diferenciasDeHuella, huellaProtegida } from '../lib/proveedores-bloque-vivo.mjs'
 import {
   anchoDelPivot, cabeEnElHueco, COL, filtrosPorCondicion, formatoDelImporte, fuenteCompras,
-  nivelesConSubtotal, PENDIENTE, pivotSeccion1, reapuntarControl,
+  clavesRepetidas, formatoDeLaFecha, geometriaDeLaSeccion, nivelesConSubtotal, PENDIENTE,
+  pivotSeccion1, reapuntarControl,
 } from '../lib/proveedores-pivot-seccion1.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -58,7 +59,7 @@ async function main() {
   // ahí lo que importa es que la fórmula del dueño siga siendo idéntica, carácter por carácter.
   const visible = await google.readSheetValues(ID, `${PESTAÑA}!A1:R220`, { render: 'FORMATTED_VALUE' })
   const antes = await google.readSheetValues(ID, `${PESTAÑA}!A1:R220`, { render: 'FORMULA' })
-  const geo = geometriaSeccion1(visible)
+  const geo = geometriaDeLaSeccion(visible)
 
   const meta = await google.getSheetMeta(ID)
   const sheetIdProv = meta.find((s) => s.title === PESTAÑA)?.sheetId
@@ -85,6 +86,9 @@ async function main() {
   console.log(`ANCLA   ${PESTAÑA}!A${geo.filaEncabezado}   ANCHO ${ancho} columnas (A..${String.fromCharCode(64 + ancho)})`)
   console.log(`ALTO    ${hueco.alto} filas · disponibles ${hueco.disponible} hasta la sección 2 (fila ${geo.filaLimite}) · holgura ${hueco.holgura}`)
   console.log('NO SE TOCA  la columna H (Comentarios) ni la sección 2 entera')
+  // Si el primer campo deja de ser único vuelven las celdas vacías que reportó el dueño.
+  const repes = clavesRepetidas(pendientes)
+  for (const r of repes) console.log(`  ⚠ comprobante ${r.clave} aparece ${r.veces} veces: esas filas se van a agrupar y quedar sin nombre`)
   if (!hueco.cabe) { console.error(`✗ NO ENTRA: ${hueco.motivo}`); process.exitCode = 1; return }
   if (!APLICAR) { console.log('\n(sin --aplicar: no se escribió nada)'); return }
 
@@ -121,6 +125,7 @@ async function main() {
       range: { sheetId: sheetIdProv, startRowIndex: filaIdx, endRowIndex: filaIdx + 1, startColumnIndex: 0, endColumnIndex: 1 },
       rows: [{ values: [{ pivotTable: pivot }] }], fields: 'pivotTable' } },
     formatoDelImporte({ sheetId: sheetIdProv, filaAncla: geo.filaEncabezado, alto: hueco.alto, ancho }),
+    formatoDeLaFecha({ sheetId: sheetIdProv, filaAncla: geo.filaEncabezado, alto: hueco.alto }),
     // EL CONTROL TIENE QUE MIRAR LA COLUMNA DONDE QUEDÓ EL IMPORTE.
     //
     // Sumaba $D$18:$D$37 — la columna del importe en el bloque de fórmulas. Con la dinámica, la D

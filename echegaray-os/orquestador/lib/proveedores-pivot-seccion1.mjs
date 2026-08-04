@@ -47,9 +47,19 @@ export const PENDIENTE = 'Pendiente'
  */
 export function camposDeFila() {
   return [
-    { sourceColumnOffset: COL.proveedor, showTotals: false, sortOrder: 'DESCENDING', valueBucket: { valuesIndex: 0 } },
+    // EL COMPROBANTE VA PRIMERO, Y ES POR LAS CELDAS VACÍAS.
+    //
+    // Una dinámica escribe el rótulo de un nivel UNA sola vez y deja en blanco las filas hermanas.
+    // Con el proveedor al frente, la segunda factura de Alumetal y la segunda, tercera y cuarta de
+    // Corralón Progreso quedaban con la columna A vacía — y eso se lee como "faltan proveedores",
+    // que es exactamente lo que reportó el dueño el 04/08.
+    //
+    // El comprobante es único por factura: cada grupo tiene un solo hijo, así que TODOS los niveles
+    // de adentro se escriben en todas las filas. Ninguna queda sin nombre. Es la única forma de que
+    // una dinámica nativa se vea como una tabla plana; no hay opción de "repetir rótulos" en la API.
+    { sourceColumnOffset: COL.comprobante, showTotals: false, sortOrder: 'DESCENDING', valueBucket: { valuesIndex: 0 } },
+    { sourceColumnOffset: COL.proveedor, showTotals: false, sortOrder: 'ASCENDING' },
     { sourceColumnOffset: COL.proximoPago, showTotals: false, sortOrder: 'ASCENDING' },
-    { sourceColumnOffset: COL.comprobante, showTotals: false, sortOrder: 'ASCENDING' },
     { sourceColumnOffset: COL.obra, showTotals: false, sortOrder: 'ASCENDING' },
     { sourceColumnOffset: COL.tipoPago, showTotals: false, sortOrder: 'ASCENDING' },
     { sourceColumnOffset: COL.categoria, showTotals: false, sortOrder: 'ASCENDING' },
@@ -101,6 +111,30 @@ export function filtrosPorCondicion(pivot = {}) {
     .map((f) => String(f.columnOffsetIndex))
 }
 
+/**
+ * ¿VUELVEN LAS CELDAS VACÍAS?
+ *
+ * El primer nivel del pivot sólo escribe su rótulo una vez por grupo. Que ninguna fila quede sin
+ * nombre depende de que ese primer campo sea ÚNICO. Si dos facturas comparten comprobante —o si dos
+ * lo tienen vacío— vuelven a agruparse y reaparecen los blancos que el dueño reportó.
+ *
+ * No es hipotético: hoy hay una factura sin número (La Isla Metal SRL). Con una sola no se agrupa
+ * nada; con dos, sí. Por eso se avisa ANTES de escribir en vez de descubrirlo mirando la pantalla.
+ *
+ * @param {Array<Array<any>>} filas  las filas de Compras que entran a la dinámica
+ * @returns {Array<{clave:string, veces:number}>} los comprobantes repetidos (vacío = está bien)
+ */
+export function clavesRepetidas(filas = []) {
+  const cuenta = new Map()
+  for (const f of filas) {
+    const k = String(f?.[COL.comprobante] ?? '').trim()
+    cuenta.set(k, (cuenta.get(k) ?? 0) + 1)
+  }
+  return [...cuenta.entries()]
+    .filter(([, n]) => n > 1)
+    .map(([clave, veces]) => ({ clave: clave === '' ? '(sin número)' : clave, veces }))
+}
+
 /** ¿Algún nivel pide subtotales que la API no emite? Test de la trampa 2. */
 export function nivelesConSubtotal(pivot = {}) {
   return (pivot?.rows ?? []).filter((r) => r?.showTotals === true).map((r) => String(r.sourceColumnOffset))
@@ -116,18 +150,76 @@ export function nivelesConSubtotal(pivot = {}) {
  * @param {{sheetId:number, filaAncla:number, alto:number, ancho:number}} o  filas en base 1
  */
 export function formatoDelImporte({ sheetId, filaAncla, alto, ancho }) {
+  return formatoDeColumna({
+    sheetId, filaAncla, alto, columna: ancho - 1,
+    numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0' }, horizontalAlignment: 'RIGHT',
+  })
+}
+
+/**
+ * EL FORMATO DE LA COLUMNA DE LA FECHA.
+ *
+ * Misma historia que el importe, y peor de leer: la fecha cayó en una columna que antes tenía el
+ * comprobante —formato de texto— y salió como `46238`, el número de serie crudo. Un número de cinco
+ * cifras donde va una fecha no se lee mal: no se lee.
+ *
+ * La posición se CALCULA de `camposDeFila()`, no se tipea: si mañana cambia el orden, el formato
+ * sigue al campo en vez de quedarse apuntando a la columna de al lado.
+ */
+export function formatoDeLaFecha({ sheetId, filaAncla, alto }) {
+  const columna = camposDeFila().findIndex((r) => r.sourceColumnOffset === COL.proximoPago)
+  if (columna < 0) throw new Error('formatoDeLaFecha: la fecha no es un campo de fila del pivot')
+  return formatoDeColumna({
+    sheetId, filaAncla, alto, columna,
+    numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'RIGHT',
+  })
+}
+
+/** El pedido de formato de UNA columna del bloque, desde la fila siguiente al rótulo. */
+function formatoDeColumna({ sheetId, filaAncla, alto, columna, numberFormat, horizontalAlignment }) {
   return {
     repeatCell: {
       range: {
         sheetId,
         startRowIndex: filaAncla, // la fila DESPUÉS del rótulo
         endRowIndex: filaAncla + alto,
-        startColumnIndex: ancho - 1,
-        endColumnIndex: ancho,
+        startColumnIndex: columna,
+        endColumnIndex: columna + 1,
       },
-      cell: { userEnteredFormat: { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0' }, horizontalAlignment: 'RIGHT' } },
+      cell: { userEnteredFormat: { numberFormat, horizontalAlignment } },
       fields: 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     },
+  }
+}
+
+/**
+ * DÓNDE EMPIEZA Y DÓNDE TERMINA LA SECCIÓN 1 — anclado al texto, nunca a un número de fila.
+ *
+ * No se usa `geometriaSeccion1` de `proveedores-bloque-vivo.mjs` porque aquélla exige que la fila de
+ * rótulos diga "Proveedor" EN LA COLUMNA A. Con la dinámica, la A pasó a ser el comprobante y la
+ * detección dejaba de encontrar su propio resultado: el script no podía correr dos veces seguidas.
+ *
+ * Acá el rótulo se busca EN CUALQUIER COLUMNA de la fila, así sirve para las dos formas —el bloque
+ * de fórmulas viejo y la dinámica— y sobrevive a que mañana cambie el orden de los campos.
+ *
+ * @param {Array<Array<any>>} filas  la pestaña leída con FORMATTED_VALUE (una dinámica no tiene fórmulas)
+ * @returns {{filaEncabezado:number, filaLimite:number, encabezados:string[]}} filas en base 1
+ */
+export function geometriaDeLaSeccion(filas = []) {
+  const txt = (v) => String(v ?? '').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  const colA = (i) => txt((filas[i] ?? [])[0])
+  const iTitulo = filas.findIndex((_, i) => /^1\s*[·.\-]/.test(colA(i)) && /QUE SE DEBE/.test(colA(i)))
+  if (iTitulo < 0) throw new Error('no encontré el título "1 · QUÉ SE DEBE Y CUÁNDO": la pestaña cambió de forma, no hay plan')
+  const iLimite = filas.findIndex((_, i) => i > iTitulo && /^2\s*[·.\-]/.test(colA(i)))
+  if (iLimite < 0) throw new Error('no encontré el título de la sección 2: sin límite no puedo reservar filas sin pisar lo de abajo')
+  const iCab = filas.findIndex((_, i) => i > iTitulo && i < iLimite
+    && (filas[i] ?? []).some((c) => /PROVEEDOR/.test(txt(c)))
+    && (filas[i] ?? []).filter((c) => String(c ?? '').trim()).length >= 4)
+  if (iCab < 0) throw new Error('no encontré la fila de rótulos de la sección 1 (ninguna columna dice "Proveedor")')
+  return {
+    filaEncabezado: iCab + 1,
+    filaLimite: iLimite + 1,
+    encabezados: (filas[iCab] ?? []).map((c) => String(c ?? '').trim()),
   }
 }
 
