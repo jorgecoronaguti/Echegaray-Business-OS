@@ -19,6 +19,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { diferenciasDeHuella, huellaProtegida } from '../lib/proveedores-bloque-vivo.mjs'
+import { COLCHON_FINAL, filaDelSiguienteTitulo, filasNoVacias, sobranteDeColchon } from '../lib/proveedores-colchon.mjs'
 import {
   altoEmitido, bandasDeFormato, COL, filtros, formatoDeTodo, fuenteCompras, geometriaDeLaSeccion,
   PENDIENTE, VISTA,
@@ -30,9 +31,12 @@ const APLICAR = process.argv.includes('--aplicar')
 // A cuánto se lleva la grilla de Compras. Con 817 filas usadas y ~90 comprobantes por mes, esto son
 // más de quince años de margen: el origen deja de ser algo que haya que recordar.
 const MINIMO_GRILLA_COMPRAS = 3000
-// Filas de aire que se dejan entre el cuadro y la sección 2. Es lo que absorbe las facturas nuevas
-// sin que nadie tenga que correr nada; cuando se acaba, este mismo script inserta más.
+// Lo que se RESERVA de una cuando hay que insertar. Insertar de a una fila cuesta una corrida
+// entera, así que cuando no entra se pide holgura — y al final de la corrida se devuelve lo que
+// sobró (ver `recortarElAire`). El colchón que QUEDA puesto es `COLCHON_FINAL`, chico y a propósito.
 const COLCHON = 12
+/** Hasta dónde se mira el ancho para decidir si una fila está vacía. Bien a la derecha del bloque. */
+const ANCHO_LECTURA = 'AZ'
 
 const plata = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
 
@@ -210,11 +214,54 @@ async function main() {
   const rotos = (leido ?? []).flat().filter((c) => /#(REF|NAME|VALUE|DIV|N\/A|ERROR|¿NOMBRE)/i.test(String(c ?? '')))
   if (rotos.length) { console.error(`✗✗ ${rotos.length} celda(s) con error: ${[...new Set(rotos)].join(' · ')}`); process.exitCode = 1 }
 
+  await recortarElAire({ google, sheetId, geo })
+
   console.log('\nLEÍDO DEL ARCHIVO:')
   for (const f of leido ?? []) {
     const t = (f ?? []).map((c) => String(c ?? '')).join(' | ')
     console.log('  ' + (t.replace(/[| ]/g, '') ? t.slice(0, 104) : '·'))
   }
+}
+
+/**
+ * DEVOLVER EL AIRE QUE SOBRÓ ENTRE ESTA SECCIÓN Y LA 2.
+ *
+ * POR QUÉ (04/08). El dueño: entre las dos secciones había un agujero de filas vacías que se lee
+ * como un error de la pestaña. El colchón tiene una razón legítima —una dinámica que no entra NO se
+ * renderiza y deja la sección invisible— pero reservar con holgura y dejarlo puesto convierte una
+ * precaución en un defecto visible.
+ *
+ * La reserva se hace ANTES de escribir, cuando todavía no se sabe cuánto va a emitir la dinámica; la
+ * devolución se hace DESPUÉS, cuando ya se puede medir. La capacidad de crecer no se pierde: las
+ * filas que quedan absorben el crecimiento chico sin correr nada, y cuando no alcanzan este mismo
+ * script vuelve a insertar. Lo que se pierde es el agujero.
+ *
+ * Se mide anclado al TÍTULO de la sección 2 —texto real de otro dueño— y mirando el ancho ENTERO:
+ * borrar una fila no tiene vuelta, y ya pasó que un generador que se creyó dueño hasta su última
+ * columna le borrara al dueño catorce fechas que vivían más a la derecha. Ver `lib/proveedores-colchon.mjs`.
+ */
+async function recortarElAire({ google, sheetId, geo }) {
+  const ancho = await google.readSheetValues(ID, `${PESTAÑA}!A1:${ANCHO_LECTURA}${geo.filaLimite + 20}`, { render: 'FORMULA' })
+  const siguiente = filaDelSiguienteTitulo(ancho, geo.filaEncabezado)
+  const s = sobranteDeColchon({ filas: ancho, desde: geo.filaEncabezado, hasta: siguiente })
+  const sucias = filasNoVacias(ancho, s)
+  if (s.sobrante && sucias.length) {
+    console.error(`✗ NO recorto: las filas ${sucias.join(', ')} tienen datos — borrar no tiene vuelta`)
+    return
+  }
+  if (!s.sobrante) {
+    console.log(`${s.blancas} fila(s) de aire antes de la sección 2: no sobra nada (colchón ${COLCHON_FINAL})`)
+    return
+  }
+  console.log(`${s.blancas} fila(s) de aire antes de la sección 2 → se devuelven ${s.sobrante}, quedan ${COLCHON_FINAL}`)
+  await google.spreadsheetBatchUpdate(ID, [{ deleteDimension: { range: {
+    sheetId, dimension: 'ROWS', startIndex: s.desdeBorrar - 1, endIndex: s.hastaBorrar - 1 } } }], { espejo: true })
+
+  // LA EVIDENCIA ES DEL EFECTO: se relee y se cuenta el aire que quedó de verdad.
+  const despues = await google.readSheetValues(ID, `${PESTAÑA}!A1:${ANCHO_LECTURA}${geo.filaLimite + 20}`, { render: 'FORMULA' })
+  const ahora = sobranteDeColchon({ filas: despues, desde: geo.filaEncabezado, hasta: filaDelSiguienteTitulo(despues, geo.filaEncabezado) })
+  if (ahora.blancas === COLCHON_FINAL) console.log(`✓ quedaron ${ahora.blancas} filas de aire, releídas del archivo`)
+  else { console.error(`✗✗ quedaron ${ahora.blancas} filas de aire y se esperaban ${COLCHON_FINAL}`); process.exitCode = 1 }
 }
 
 main().catch((e) => { console.error(e); process.exit(1) })

@@ -48,6 +48,31 @@ export function filaDelTitulo(filas = [], re) {
 }
 
 /**
+ * CUALQUIER TÍTULO DE SECCIÓN: "1 · ", "7 · ", "12 - ". El número NO se da por sabido.
+ *
+ * POR QUÉ (04/08). El límite de abajo estaba anclado a `/^3 ·/` y un día dejó de existir: el
+ * generador del bloque de texto renumeró y la pestaña pasó a decir 1, 2, 7, 5. Anclar al NÚMERO de
+ * la sección de al lado es anclar en algo que no es mío y que se mueve; lo que no se mueve es que
+ * abajo del bloque empieza OTRA sección. Un límite que desaparece frena todo el generador, y frenar
+ * está bien —no se escribe a ciegas— pero frenarse por un número es frenarse de gusto.
+ */
+// El espacio a los DOS lados del separador y la letra después no son decoración: sin ellos
+// `0004-00003637` (un número de comprobante) es un título de sección, y el límite del bloque cae en
+// la primera factura. El número va acotado a dos dígitos por lo mismo: `2026 - saldo` no es una
+// sección. El contrato de la pestaña es "N · TÍTULO", y acá se exige entero.
+export const TITULO_DE_SECCION = /^\d{1,2}\s+[·.\-]\s+\p{L}/u
+
+/**
+ * LA PRIMERA SECCIÓN QUE EMPIEZA DESPUÉS DE `desde`. Base 1; 0 si no hay ninguna.
+ *
+ * Es el límite de abajo de un bloque: hasta ahí llega lo mío y ni una fila más.
+ */
+export function filaDelSiguienteTitulo(filas = [], desde = 0) {
+  const i = filas.findIndex((f, j) => j + 1 > desde && TITULO_DE_SECCION.test(String((f ?? [])[0] ?? '').trim()))
+  return i < 0 ? 0 : i + 1
+}
+
+/**
  * LA ÚLTIMA FILA CON ALGO dentro de [desde, hasta), mirando desde abajo. Base 1; 0 si está todo vacío.
  */
 export function ultimaConDato(filas = [], { desde, hasta }) {

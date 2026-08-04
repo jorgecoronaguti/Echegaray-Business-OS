@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert'
 import { describe, it } from 'node:test'
 import {
-  COLCHON_FINAL, filaDelTitulo, filasNoVacias, sobranteDeColchon, ultimaConDato,
+  COLCHON_FINAL, filaDelSiguienteTitulo, filaDelTitulo, filasNoVacias, sobranteDeColchon, ultimaConDato,
 } from './proveedores-colchon.mjs'
 
 /** La pestaña como estaba el 04/08: el bloque termina en la 49 y el título de abajo está en la 68. */
@@ -24,6 +24,32 @@ describe('filaDelTitulo', () => {
 
   it('devuelve 0 cuando el título no está — sin ancla no se borra nada', () => {
     assert.equal(filaDelTitulo(pestana(), /^9\s*[·.\-]/), 0)
+  })
+})
+
+describe('filaDelSiguienteTitulo', () => {
+  // La pestaña real del 04/08 quedó numerada 1, 2, 7, 5: el generador del bloque de texto renumeró
+  // y el "3 ·" al que este generador estaba anclado dejó de existir.
+  const renumerada = () => [
+    ['1 · QUÉ SE DEBE Y CUÁNDO'], ['Proveedor', 'Se le debe'], ['Alumetal', 100],
+    ['2 · CUENTA CORRIENTE POR PROVEEDOR'], ['Proveedor', 'CUIT'], ['Alumetal', '30-1'],
+    [''], [''],
+    ['7 · FACTURAS EMITIDAS — control cruzado'], ['x'],
+    ['5 · LO QUE HAY QUE CORREGIR EN COMPRAS'],
+  ]
+
+  it('EL DEFECTO: el límite no puede depender de que la sección de abajo se llame "3"', () => {
+    assert.equal(filaDelSiguienteTitulo(renumerada(), 4), 9, 'el límite de la sección 2 es el "7 ·"')
+    assert.equal(filaDelSiguienteTitulo(renumerada(), 1), 4, 'el límite de la sección 1 es el "2 ·"')
+  })
+
+  it('no confunde un dato que arranca con un número con un título', () => {
+    const f = [['1 · SECCIÓN'], ['0004-00003637', 6113], ['2026 - saldo', 1], ['2 · OTRA']]
+    assert.equal(filaDelSiguienteTitulo(f, 1), 4)
+  })
+
+  it('sin sección de abajo devuelve 0, y sin límite no se borra nada', () => {
+    assert.equal(filaDelSiguienteTitulo([['1 · SOLA'], ['dato']], 1), 0)
   })
 })
 
