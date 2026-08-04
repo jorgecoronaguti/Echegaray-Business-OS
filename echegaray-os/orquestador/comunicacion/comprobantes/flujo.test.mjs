@@ -424,7 +424,7 @@ test('mismo proveedor, día e importe con OTRO número: se pregunta con botones,
   })
   const r = await procesarPost(d, post())
   assert.match(r.texto, /Puede que ya esté cargado\*\* — fila 802/)
-  assert.deepEqual(r.attachments[0].actions.map((a) => a.id), ['duplicado_mismo', 'duplicado_otro', 'descartar'])
+  assert.deepEqual(r.attachments[0].actions.map((a) => a.id), ['dupmismo', 'dupotro', 'descartar'])
 })
 
 test('sin ARCA y sin Compras el flujo sigue, y DECLARA que no pudo verificar', async () => {
