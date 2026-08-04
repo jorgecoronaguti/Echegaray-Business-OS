@@ -68,7 +68,13 @@ export function crearEmitEventOS(port) {
           comm_event_id: commId,
           correlation_id: params.correlation_id,
           channel_id: p.canal ?? p.data?.channel_id ?? null,
-          root_post_id: p.data?.post_id ?? null, // hilo: se responde en el mismo post
+          // RAÍZ DEL HILO, no el post que llegó. Mattermost rechaza con
+          // `400 Invalid RootId parameter` un root_id que apunta a una RESPUESTA: la raíz de
+          // un hilo tiene que ser un post de primer nivel. Cuando la persona escribe DENTRO de
+          // un hilo —lo normal al conversar con el bot— `post_id` ES una respuesta, y la
+          // respuesta del OS moría en dead-letter sin que nadie la viera. El consumer ya
+          // calcula la raíz real (`root_id = post.root_id || post.id`): se usa esa.
+          root_post_id: p.data?.root_id ?? p.data?.post_id ?? null,
           // Tipo de canal (D directo · G grupo · P privado · O abierto). Hay capacidades que
           // sólo operan desde su canal oficial: con esto descartan un DM sin ir a la base.
           channel_type: p.data?.channel_type ?? p.canal_tipo ?? null,

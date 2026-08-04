@@ -120,6 +120,32 @@ test('no se agenda en la cuenta de otro: si no conectó la suya, se le dice', as
   assert.equal(ajeno.creados.length, 0)
 })
 
+// LA REGLA, DESPUÉS DEL 03/08/2026: si no consta que la cuenta es de quien pide, no se crea
+// nada. Un cliente sin marca puede ser el del robot —fue exactamente lo que pasó— y crear el
+// evento del dueño en la agenda del robot es peor que no crearlo: le devuelve "listo" sobre
+// algo que no va a ver nunca.
+test('cliente sin marca de cuenta: no se agenda nada y se explica por qué', async () => {
+  const sinMarca = googleFalso()
+  delete sinMarca[CUENTA]
+  const r = await capacidad.ejecutar({ titulo: 'Reu Alonso Construcciones', inicio: MANANA_9 }, ctxCon(sinMarca))
+  assert.equal(r.ok, false)
+  assert.equal(r.error.codigo, ERROR.GOOGLE_SIN_ACCESO)
+  assert.equal(sinMarca.creados.length, 0, 'se creó el evento en una cuenta que no se sabe de quién es')
+  assert.match(r.texto, /TU cuenta de Google/)
+})
+
+test('a quien no se pudo invitar se lo NOMBRA, y el evento se crea igual', async () => {
+  const g = googleFalso()
+  const r = await capacidad.ejecutar({
+    titulo: 'Reu Alonso Construcciones', inicio: MANANA_9,
+    participantes: ['rodrigo@ecsas.com.ar'], noInvitados: ['Marcelo'],
+  }, ctxCon(g))
+  assert.equal(r.ok, true)
+  assert.deepEqual(g.creados[0].attendees, ['rodrigo@ecsas.com.ar'])
+  assert.match(r.texto, /Marcelo/)
+  assert.match(r.texto, /no (lo |los )?(tengo|pude)/i)
+})
+
 test('sin cuenta conectada, la capacidad no se ofrece ni se ejecuta', async () => {
   const r = await capacidad.ejecutar({ titulo: 'Reunión', inicio: MANANA_9 }, { identidad: { email: 'x@y.com' } })
   assert.equal(r.error.codigo, ERROR.GOOGLE_SIN_ACCESO)

@@ -273,6 +273,10 @@ export const zCalendarEvento = z.object({
   duracionMin: z.number().int().positive().nullable().default(null),
   descripcion: z.string().nullable().default(null),
   participantes: z.array(z.string()).default([]),   // emails ya resueltos
+  // A quién NO se pudo invitar (un nombre que no está en `comunicacion.identidades`, o que
+  // está sin mail). No es un error: el evento se crea igual y la respuesta lo dice. Inventar
+  // un mail parecido sería mandarle la invitación a cualquiera.
+  noInvitados: z.array(z.string()).default([]),
 })
 
 export const zCalendarResultado = z.object({

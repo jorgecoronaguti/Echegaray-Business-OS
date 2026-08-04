@@ -101,6 +101,42 @@ test('los invitados a un evento se resuelven a EMAILS reales antes de crear nada
   assert.deepEqual(llamada.parametros.participantes, ['rodrigo@ecsas.com.ar'])
 })
 
+// ── El pedido REAL del dueño (03/08/2026) ────────────────────────────────────
+//
+// El equipo de verdad: un Jorge y un Rodrigo, con los emails que hoy tiene
+// `comunicacion.identidades` verificados. El mensaje es textual, con sus typos.
+const EQUIPO_REAL = [
+  filaIdentidad({ id: 'u-jorge', username: 'jorge', nombre: 'Jorge Corona', email: 'jorge@ecsas.com.ar' }),
+  filaIdentidad({ id: 'u-rodrigo', username: 'rodrigo', nombre: 'Rodrigo Echegaray', email: 'rodrigo@ecsas.com.ar' }),
+]
+const PEDIDO_REAL = '@os crea un evento para mañana a las 15 agreganos a mi y a rodrigo de '
+  + 'invitados y q el titulo sea "Reu Alonso Construcciones"'
+
+test('"agreganos a mi y a rodrigo": "mí" es quien pide, y los dos viajan como email', async () => {
+  const e = entorno({ identidades: EQUIPO_REAL })
+  const r = await e.pedir(PEDIDO_REAL)
+  assert.equal(r.ok, true)
+  const [llamada] = e.cap(CAPACIDAD.CALENDAR_EVENTO_CREAR).llamadas
+  assert.equal(llamada.parametros.titulo, 'Reu Alonso Construcciones')
+  assert.deepEqual(llamada.parametros.participantes, ['jorge@ecsas.com.ar', 'rodrigo@ecsas.com.ar'])
+})
+
+test('un invitado que no existe no frena el evento: se crea con los que sí y se dice cuál faltó', async () => {
+  const e = entorno({ identidades: EQUIPO_REAL })
+  const r = await e.pedir('agendá reunión mañana a las 9 e invitá a rodrigo y a Marcelo')
+  assert.equal(r.ok, true, 'el evento se crea igual')
+  const [llamada] = e.cap(CAPACIDAD.CALENDAR_EVENTO_CREAR).llamadas
+  assert.deepEqual(llamada.parametros.participantes, ['rodrigo@ecsas.com.ar'])
+  assert.deepEqual(llamada.parametros.noInvitados, ['Marcelo'], 'no se inventa un mail: se declara')
+})
+
+test('dos personas con el mismo nombre siguen preguntando cuál, sin crear nada', async () => {
+  const e = entorno()   // EQUIPO tiene dos Rodrigos
+  const r = await e.pedir('agendá reunión mañana a las 9 e invitá a Rodrigo')
+  assert.ok(r.aclaracion, 'es una pregunta, no una adivinanza')
+  assert.equal(e.cap(CAPACIDAD.CALENDAR_EVENTO_CREAR).llamadas.length, 0)
+})
+
 // ── Una sola aclaración ──────────────────────────────────────────────────────
 
 test('falta el cuándo: se pregunta UNA vez y queda guardado lo ya entendido', async () => {

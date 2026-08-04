@@ -27,7 +27,7 @@ import {
 } from './contratos.mjs'
 import { capacidadPorId, capacidadesHabilitadas, capacidadesNoDisponibles, catalogoCompacto, motivoDeshabilitada, renderAyuda } from './registro.mjs'
 import { interpretar as interpretarDefault, interpretarDeterministico, parametrosPorIntencion, PREGUNTA_TIPO, plano } from './interpretar.mjs'
-import { identidadDe, resolverPersona, emailDe, nombreCorto, esProblemaDeIdentidad } from './identidades.mjs'
+import { identidadDe, resolverPersona, emailDe, nombreCorto, normalizar, esProblemaDeIdentidad } from './identidades.mjs'
 import { asegurarIdentidad } from './reconciliacion-identidades.mjs'
 import { parseCuando } from './tiempo.mjs'
 import { googleDe } from './google-cliente.mjs'
@@ -290,6 +290,10 @@ const solicitudDeAclaracion = (intencion, parametros) =>
 
 // ── Personas nombradas en el pedido ──────────────────────────────────────────
 
+/** Cómo se nombra a sí misma la persona que escribe. `normalizar` ya sacó los acentos, así
+ *  que "mí" y "mi" llegan iguales. No se busca en la tabla: es quien está escribiendo. */
+const ES_QUIEN_PIDE = new Set(['mi', 'mi mismo', 'mi misma', 'yo', 'yo mismo', 'yo misma', 'me', 'nos', 'nosotros', 'conmigo'])
+
 /**
  * "avisale a Rodrigo" → un user_id real, o una pregunta, o un error. Nunca el más parecido.
  * @returns {Promise<{ok:true}|{aclaracion:object}|{error:object}>}
@@ -321,7 +325,16 @@ async function resolverPersonasDelPedido(port, solicitud, identidad) {
 
   if (solicitud.intencion === CAPACIDAD.CALENDAR_EVENTO_CREAR && Array.isArray(p.invitados) && p.invitados.length) {
     const emails = [...(p.participantes ?? [])]
+    const sinResolver = []
     for (const nombre of p.invitados) {
+      // "agregános a MÍ y a Rodrigo": el que pide también es un invitado, y su email lo sabe
+      // el router —no el intérprete, que sólo vio una palabra.
+      if (ES_QUIEN_PIDE.has(normalizar(nombre))) {
+        const propio = emailDe(identidad)
+        if (propio) emails.push(propio)
+        else sinResolver.push('vos')
+        continue
+      }
       const r = await resolverPersona(port, nombre, { plataforma: identidad.plataforma })
       if (r.ambiguas) {
         return {
@@ -332,12 +345,17 @@ async function resolverPersonasDelPedido(port, solicitud, identidad) {
           },
         }
       }
-      if (!r.unica) return { error: errorAsistente(ERROR.USUARIO_INEXISTENTE, `No tengo registrado a "${nombre}", así que no lo puedo invitar.`) }
-      const mail = emailDe(r.unica)
-      if (!mail) return { error: errorAsistente(ERROR.DATO_FALTANTE, `${nombreCorto(r.unica)} no tiene mail cargado en el OS: no puedo invitarlo al evento.`) }
-      emails.push(mail)
+      // UN INVITADO QUE NO RESUELVE NO CANCELA LA REUNIÓN.
+      //
+      // Antes era un error duro: nombrar a alguien que no está en la tabla dejaba al dueño sin
+      // evento y sin nada. La reunión existe igual —lo que falta es un mail, no el evento—, así
+      // que se crea con los que sí resolvieron y la respuesta dice a quién no pudo agregar.
+      // Lo que NUNCA se hace es completar con el más parecido: la invitación le llegaría a otro.
+      if (!r.unica || !emailDe(r.unica)) { sinResolver.push(r.unica ? nombreCorto(r.unica) : nombre); continue }
+      emails.push(emailDe(r.unica))
     }
     p.participantes = [...new Set(emails)]
+    p.noInvitados = sinResolver
     delete p.invitados
   }
   return { ok: true }
