@@ -1783,6 +1783,11 @@ async function main() {
       { name: N_ARCA.ventasMonto, fila: tArca.fArcaVentas, col: 3 },
     ].filter((x) => x.fila))
     console.log(`  ${nombres.nombres} rangos con nombre publicados: el Cash Flow los referencia en vez de copiarlos`)
+    // LA RELECTURA ES LA EVIDENCIA. Los doce nombres estuvieron apuntando 22 filas más abajo de donde
+    // debían —ARCA_FALTAN_MONTO devolvía "0001-00000211" y ARCA_FALTAN_N un CUIT— y nadie se enteró,
+    // porque publicar un nombre siempre "funciona". Ahora se releen y se grita.
+    for (const s of nombres.sospechosos ?? []) console.log(`  ⚠ RANGO CON NOMBRE MAL APUNTADO: ${s}`)
+    if (nombres.sospechosos?.length) console.log('    (quien los lea va a creer el valor: revisar la fila de cada uno antes de confiar)')
   }
 
   // ═══ VERIFICACIÓN ANTES DE RETIRAR LA PESTAÑA VIEJA ═══

@@ -59,12 +59,23 @@ test('LA COBERTURA SE MUESTRA COMO PROPORCIÓN, no sólo como monto', () => {
   assert.equal(cob[1], '=IF(B53=0;"";B54/B53)')
 })
 
-test('EL NÚMERO GLOBAL VA REFERENCIADO POR NOMBRE, NO RECALCULADO', () => {
-  // Recalcularlo acá daba $13.090.051 contra los $13,8M de ARCA_FALTAN_MONTO que publica Proveedores:
-  // dos cifras parecidas, con nombres parecidos, respondiendo preguntas distintas.
+test('EL NÚMERO GLOBAL NO SALE DE ARCA_FALTAN_MONTO — ese nombre apunta a otra celda', () => {
+  // EL DEFECTO (05/08, leído del Sheet real). La versión anterior ponía `=ARCA_FALTAN_MONTO` para no
+  // tener dos cifras del mismo hecho. Aplicado, esa celda devolvió "0001-00000211": un número de
+  // comprobante, no un importe.
+  //
+  // Leídos los DOCE nombres ARCA_* del archivo, ninguno apunta a donde debe — el bloque vive en las
+  // filas 177–182 de Proveedores y los nombres apuntan a 199–204, dentro de la LISTA de faltantes.
+  // `ARCA_FALTAN_N` devuelve un CUIT ("30-71647696-7"). Es un defecto del publicador de nombres, no de
+  // este bloque, pero mientras exista no se puede apoyar nada ahí: un nombre que apunta a otra cosa es
+  // peor que no tenerlo, porque nadie lo duda.
   const g = armar().find((f) => String(f[0]).includes('ARCA facturó y Compras NO lo tiene'))
   assert.ok(g, 'la línea global existe')
-  assert.equal(g[1], '=ARCA_FALTAN_MONTO')
+  assert.doesNotMatch(g[1], /ARCA_FALTAN_MONTO/, 'no puede depender de un nombre que resuelve mal')
+  // Sale de _CRUCE_ARCA, que este generador escribe y relee. NO es una segunda cifra: desde que el
+  // normalizador de razón social quedó unificado las dos listas son idénticas (57 / $13.090.051).
+  assert.match(g[1], new RegExp(DIR.arcaSinCompras))
+  assert.match(g[1], /_CRUCE_ARCA/)
   assert.match(String(g[0]), /Compras ENTERA, no de esta pestaña/, 'y dice de qué universo es')
 })
 

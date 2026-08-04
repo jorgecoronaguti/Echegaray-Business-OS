@@ -43,6 +43,7 @@ import { escribirPreservando, limpiarCentinela, VACIO } from '../lib/preservar-a
 import { skinRequests } from '../lib/estilo-statement.mjs'
 import { MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL, CONTADOR, PORCENTAJE } from '../lib/formato-statement.mjs'
 import { bloqueControlArca } from '../lib/control-arca-bloque.mjs'
+import { extenderConCola } from '../lib/cola-vieja.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Recurrentes'
@@ -201,8 +202,17 @@ async function main() {
       cell: {}, fields: 'userEnteredFormat',
     },
   }])
+  // ═══ LA COLA DE LA CORRIDA ANTERIOR (05/08) ═══
+  //
+  // El bloque de ARCA pasó de 13 filas a 9 y las cuatro sobrantes se quedaron escritas — entre ellas
+  // "· El resto — facturas cargadas por un IMPORTE distinto…", la línea que se había eliminado por
+  // afirmar algo falso, ahora mostrando #VALUE!. El generador es dueño de TODO su footprint, también
+  // del que dejó ayer. Ver lib/cola-vieja.mjs.
+  const { filas: conCola, limpiadas } = await extenderConCola(google, ID, hoja.title, g.filas, ANCHO)
+  if (limpiadas) console.log(`  🧹 cola de la corrida anterior: limpio ${limpiadas} fila(s)`)
+
   // NO se borra nada escrito por una persona: se lee, se fusiona y se escribe. Ver lib/preservar-anotaciones.mjs.
-  const gridRec = g.filas.map((f) => f.map((c) => (c instanceof Date ? `${c.getUTCDate()}/${c.getUTCMonth() + 1}/${c.getUTCFullYear()}` : c)))
+  const gridRec = conCola.map((f) => f.map((c) => (c instanceof Date ? `${c.getUTCDate()}/${c.getUTCMonth() + 1}/${c.getUTCFullYear()}` : c)))
   const escritura = await escribirPreservando(google, ID, hoja.title, gridRec, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   // ═══ SI LA ESCRITURA SE SALTEÓ, NO SE TOCA LA GEOMETRÍA (31/07) ═══
   //

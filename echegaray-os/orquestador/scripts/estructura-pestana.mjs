@@ -27,6 +27,7 @@ import { fila as filaConNombre, aRangoApi, verificarRangos, explicarProblemas } 
 import { skinRequests } from '../lib/estilo-statement.mjs'
 import { MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL, CONTADOR, PORCENTAJE } from '../lib/formato-statement.mjs'
 import { bloqueControlArca } from '../lib/control-arca-bloque.mjs'
+import { extenderConCola } from '../lib/cola-vieja.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Estructura'
@@ -251,8 +252,14 @@ async function main() {
   reqC.push({ updateDimensionProperties: { range: { sheetId: compras.sheetId, dimension: 'COLUMNS', startIndex: COL_SUB_COMPRAS, endIndex: COL_SUB_COMPRAS + 1 }, properties: { pixelSize: 200 }, fields: 'pixelSize' } })
   await google.spreadsheetBatchUpdate(ID, reqC)
 
+  // LA COLA DE LA CORRIDA ANTERIOR: el generador es dueño de todo su footprint, también del que dejó
+  // ayer. Sin esto, un bloque que se acorta deja sus filas viejas afirmando con un #VALUE! al lado.
+  // Ver lib/cola-vieja.mjs.
+  const { filas: conCola, limpiadas } = await extenderConCola(google, ID, PESTAÑA, g.filas, ANCHO)
+  if (limpiadas) console.log(`  🧹 cola de la corrida anterior: limpio ${limpiadas} fila(s)`)
+
   // NO se borra nada escrito por una persona: se lee, se fusiona y se escribe. Ver lib/preservar-anotaciones.mjs.
-  const escritura = await escribirPreservando(google, ID, PESTAÑA, g.filas, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
+  const escritura = await escribirPreservando(google, ID, PESTAÑA, conCola, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   // ═══ SI LA ESCRITURA SE SALTEÓ, NO SE TOCA LA GEOMETRÍA (31/07) ═══
   //
   // El defecto que arruinó CAJA, buscado en todos los generadores y encontrado en seis. La guarda hace

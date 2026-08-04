@@ -90,10 +90,60 @@ export function pedidos(sheetId, destinos = [], existentes = []) {
   })
 }
 
-/** Publica los nombres. Falla silenciosamente NO: si no se puede, el que llama se entera. */
-export async function publicar(google, fileId, sheetId, destinos = []) {
-  if (!destinos.length) return { nombres: 0 }
+/**
+ * NÚCLEO PURO: ¿el valor que devolvió el nombre es plausible para lo que ese nombre promete?
+ *
+ * ═══ POR QUÉ EXISTE (05/08) ═══
+ *
+ * `ARCA_FALTAN_MONTO` devolvió "0001-00000211" — un número de comprobante donde tenía que haber un
+ * importe. Leídos los doce nombres del archivo, NINGUNO apuntaba a donde debía: el bloque de ARCA
+ * vive en las filas 177–182 de Proveedores y los nombres apuntaban a 199–204, dentro de la LISTA de
+ * faltantes. `ARCA_FALTAN_N` devolvía un CUIT.
+ *
+ * Nadie se enteró porque publicar un nombre siempre "funciona": la API acepta cualquier rango. Un
+ * nombre que apunta a otra celda es peor que un nombre que no existe — el que no existe da #NAME? y
+ * se ve; el que apunta mal devuelve un valor y se cree.
+ *
+ * El criterio es deliberadamente flojo: un nombre que promete plata (_MONTO, _TOTAL) no puede
+ * devolver algo que parezca un comprobante o un CUIT, y uno que promete un recuento (_N) no puede
+ * devolver texto. No valida que el número sea correcto —eso no se puede saber desde acá—, sólo que
+ * no sea de otra especie.
+ */
+export function pareceSospechoso(name, valor) {
+  const v = String(valor ?? '').trim()
+  if (!v) return null
+  const esComprobante = /^\d{3,5}-\d{6,10}$/.test(v)
+  const esCuit = /^\d{2}-\d{7,8}-\d$/.test(v)
+  if (esComprobante) return `"${v}" parece un N° de comprobante`
+  if (esCuit) return `"${v}" parece un CUIT`
+  if (/_(MONTO|TOTAL)$/.test(name) && !/\d/.test(v)) return `"${v}" no tiene un solo dígito`
+  return null
+}
+
+/**
+ * Publica los nombres Y LOS RELEE. Falla silenciosamente NO: si no se puede, el que llama se entera.
+ *
+ * La relectura es la evidencia del EFECTO. Escribir el nombre y confiar en que la API dijo que sí es
+ * exactamente lo que dejó doce nombres apuntando a la lista equivocada durante quién sabe cuántas
+ * corridas. La API de Sheets acepta un rango con nombre como rango de lectura, así que verificar
+ * cuesta una llamada por nombre.
+ *
+ * NO tira: devuelve `sospechosos` para que el generador lo muestre. Un nombre mal apuntado no debería
+ * frenar la escritura de una pestaña entera, pero tampoco puede pasar en silencio.
+ */
+export async function publicar(google, fileId, sheetId, destinos = [], { verificar = true } = {}) {
+  if (!destinos.length) return { nombres: 0, sospechosos: [] }
   const existentes = await google.getNamedRanges(fileId).catch(() => [])
   await google.spreadsheetBatchUpdate(fileId, pedidos(sheetId, destinos, existentes))
-  return { nombres: destinos.length }
+  if (!verificar) return { nombres: destinos.length, sospechosos: [] }
+
+  const sospechosos = []
+  for (const d of destinos) {
+    // Una lectura que falla no se convierte en "está bien": se declara como no verificada.
+    const leido = await google.readSheetValues(fileId, d.name).catch(() => null)
+    if (leido === null) { sospechosos.push(`${d.name}: no pude releerlo`); continue }
+    const motivo = pareceSospechoso(d.name, leido?.[0]?.[0])
+    if (motivo) sospechosos.push(`${d.name} → ${motivo}`)
+  }
+  return { nombres: destinos.length, sospechosos }
 }

@@ -101,13 +101,26 @@ export function bloqueControlArca({ titulo, rubros, fila0 }) {
     `=${sinRespaldo(rubros)}`])
   filas.push(['⇒ Cobertura fiscal de esta pestaña', `=IF(B${f(3)}=0;"";B${f(4)}/B${f(3)})`])
 
-  // ═══ EL ÚNICO NÚMERO GLOBAL, Y VA REFERENCIADO — NO RECALCULADO ═══
+  // ═══ EL ÚNICO NÚMERO GLOBAL — Y NO PUEDE SALIR DE `ARCA_FALTAN_MONTO` (05/08) ═══
   //
-  // Un comprobante que Compras no cargó no tiene rubro todavía, así que NO se puede repartir entre las
-  // vistas: es de Compras entera. Ese número ya existe y ya tiene nombre — `ARCA_FALTAN_MONTO`, que
-  // publica Proveedores. Calcularlo de nuevo acá creaba una segunda cifra parecida con otro nombre
-  // ($13.090.051 contra $13,8M), que es fuente garantizada de desconfianza. Una definición, una fuente.
-  filas.push(['⚠ ARCA facturó y Compras NO lo tiene — de Compras ENTERA, no de esta pestaña', '=ARCA_FALTAN_MONTO'])
+  // Un comprobante que Compras no cargó no tiene rubro todavía: no se reparte entre las vistas, es de
+  // Compras entera. La versión anterior lo tomaba del rango con nombre `ARCA_FALTAN_MONTO` que publica
+  // Proveedores, para no tener dos cifras. Aplicado al Sheet, esa celda devolvió "0001-00000211" — un
+  // número de comprobante, no un importe.
+  //
+  // Leídos los doce nombres del archivo, NINGUNO apunta a donde debe: el bloque de ARCA vive en las
+  // filas 177–182 de Proveedores y los nombres apuntan a 199–204, veintidós filas más abajo, dentro de
+  // la LISTA de faltantes. `ARCA_FALTAN_N` devuelve un CUIT. El defecto es del publicador de nombres,
+  // no de este bloque —y afecta también a la línea "Facturado por AFIP que Compras no tiene" del
+  // encabezado de Proveedores—, pero mientras exista, apoyarse ahí es apoyarse en algo que falla en
+  // silencio: nadie duda de un nombre.
+  //
+  // Así que sale de `_CRUCE_ARCA`, que este generador escribe y verifica releyendo. NO son dos cifras
+  // distintas: desde que el normalizador de razón social quedó unificado, las dos listas son idénticas
+  // —57 comprobantes, $13.090.051, verificado contra los datos vivos—. Es la misma definición leída de
+  // la fuente que sí está sana.
+  filas.push(['⚠ ARCA facturó y Compras NO lo tiene — de Compras ENTERA, no de esta pestaña',
+    `=SUMIFS(${rg(CC.importe)};${rg(CC.direccion)};"${DIR.arcaSinCompras}")`])
 
   // ═══ EL VEREDICTO ═══
   //

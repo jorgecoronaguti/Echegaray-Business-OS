@@ -1,6 +1,56 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { pedidos, ARCA } from './rangos-nombrados.mjs'
+import { pedidos, ARCA, pareceSospechoso, publicar } from './rangos-nombrados.mjs'
+
+// ═══ UN NOMBRE QUE APUNTA A OTRA CELDA (05/08) ═══
+//
+// `ARCA_FALTAN_MONTO` devolvió "0001-00000211" en el Sheet real: un N° de comprobante donde tenía que
+// haber un importe. Los DOCE nombres ARCA_* apuntaban 22 filas más abajo de su bloque, dentro de la
+// lista de faltantes, y `ARCA_FALTAN_N` devolvía un CUIT. Nadie lo notó porque publicar un nombre
+// siempre "funciona": la API acepta cualquier rango.
+test('un importe que devuelve un N° de comprobante o un CUIT se marca sospechoso', () => {
+  assert.match(pareceSospechoso('ARCA_FALTAN_MONTO', '0001-00000211'), /comprobante/)
+  assert.match(pareceSospechoso('ARCA_FALTAN_N', '30-71647696-7'), /CUIT/)
+  assert.match(pareceSospechoso('ARCA_COMPRAS_TOTAL', '0001-00000204'), /comprobante/)
+})
+
+test('un valor legítimo NO se marca — un control que grita siempre se deja de mirar', () => {
+  assert.equal(pareceSospechoso('ARCA_FALTAN_MONTO', 13090051), null)
+  assert.equal(pareceSospechoso('ARCA_FALTAN_MONTO', '$13.090.051'), null)
+  assert.equal(pareceSospechoso('ARCA_FALTAN_N', 57), null)
+  assert.equal(pareceSospechoso('ARCA_NOTAS_MONTO', '-21359123,26'), null)
+  assert.equal(pareceSospechoso('ARCA_FALTAN_MONTO', ''), null, 'una celda vacía no es otra especie')
+})
+
+test('un monto que no tiene un solo dígito es sospechoso', () => {
+  assert.match(pareceSospechoso('ARCA_COMPRAS_TOTAL', 'Comprobantes de compra'), /dígito/)
+})
+
+test('publicar RELEE cada nombre y devuelve los que resuelven mal', async () => {
+  const leidos = { ARCA_FALTAN_MONTO: [['0001-00000211']], ARCA_FALTAN_N: [[57]] }
+  const google = {
+    getNamedRanges: async () => [],
+    spreadsheetBatchUpdate: async () => ({}),
+    readSheetValues: async (_id, name) => leidos[name],
+  }
+  const r = await publicar(google, 'id', 1, [
+    { name: 'ARCA_FALTAN_MONTO', fila: 203, col: 3 },
+    { name: 'ARCA_FALTAN_N', fila: 203, col: 2 },
+  ])
+  assert.equal(r.nombres, 2)
+  assert.equal(r.sospechosos.length, 1)
+  assert.match(r.sospechosos[0], /ARCA_FALTAN_MONTO/)
+})
+
+test('una relectura que falla se declara, no se toma por buena', async () => {
+  const google = {
+    getNamedRanges: async () => [],
+    spreadsheetBatchUpdate: async () => ({}),
+    readSheetValues: async () => { throw new Error('429') },
+  }
+  const r = await publicar(google, 'id', 1, [{ name: 'ARCA_FALTAN_MONTO', fila: 1, col: 1 }])
+  assert.match(r.sospechosos[0], /no pude releerlo/)
+})
 
 test('crea el nombre cuando no existe', () => {
   const [p] = pedidos(7, [{ name: 'ARCA_COMPRAS_N', fila: 10, col: 4 }], [])
