@@ -11,8 +11,37 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { guardarRecomendaciones } from './ledger.mjs'
+import { readFileSync, readdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { guardarRecomendaciones, ESTADOS_CORRIDA } from './ledger.mjs'
 import { correrCiclo } from './ciclo.mjs'
+
+const APP = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
+
+/**
+ * EL CHECK QUE RIGE DESPUÉS DE TODAS LAS MIGRACIONES, no el de la primera. Se recorren en orden y
+ * gana la última que lo define: probar contra la inicial es probar contra una base que ya no existe.
+ */
+function estadosDelCheck() {
+  const dir = join(APP, 'supabase', 'migrations')
+  let ultimo = null
+  for (const f of readdirSync(dir).sort()) {
+    const sql = readFileSync(join(dir, f), 'utf8')
+    // Sólo las sentencias, nunca los comentarios: un `--` que enumere estados no define nada.
+    const sinComentarios = sql.split('\n').filter((l) => !l.trimStart().startsWith('--')).join('\n')
+    for (const m of sinComentarios.matchAll(/check\s*\(estado in \(([^)]*)\)\)/gi)) {
+      // A QUÉ TABLA PERTENECE: la última nombrada antes del check. Buscar la palabra "corridas" cerca
+      // hacía pasar el check de `recomendaciones`, que la nombra en su foreign key — y el test se
+      // ponía rojo con el mensaje equivocado, que es peor que no tenerlo.
+      const tabla = [...sinComentarios.slice(0, m.index)
+        .matchAll(/(?:create table(?: if not exists)?|alter table)\s+([a-z_.]+)/gi)].pop()
+      if (!tabla || !/(^|\.)corridas$/i.test(tabla[1])) continue
+      ultimo = m[1].split(',').map((s) => s.trim().replace(/^'|'$/g, ''))
+    }
+  }
+  return ultimo
+}
 
 /** Doble de `query`: graba todo lo que se le pidió escribir. */
 function queryFake() {
@@ -105,4 +134,26 @@ test('DEFECTO · el ciclo devuelve TODO lo generado, no sólo lo publicable', as
   assert.ok(r.generadas.length >= r.recomendaciones.length)
   // Y toda propuesta generada tiene su validación: no se pierde ninguna por el camino.
   for (const g of r.generadas) assert.ok(r.validaciones.some((v) => v.id === g.id), `la propuesta ${g.id} no tiene validación`)
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// EL LEDGER TIENE QUE PODER REGISTRAR SU PROPIO FRACASO
+// ════════════════════════════════════════════════════════════════════════════
+
+test('DEFECTO · el check de estados rechazaba `browser_error` y la corrida no se podía cerrar', () => {
+  // Con Chrome caído, `ciclo.mjs` devuelve 'browser_error' y `ciclo-tesorero.mjs` cierra la corrida
+  // con ese estado. El check no lo admitía: el update explotaba, el cierre nunca corría y la fila
+  // quedaba `en_curso` para siempre. Del rastro del navegador roto no quedaba nada.
+  const admitidos = estadosDelCheck()
+  assert.ok(admitidos, 'no se encontró el check de tesoreria.corridas en ninguna migración')
+  assert.ok(admitidos.includes('browser_error'),
+    `el check admite [${admitidos.join(', ')}] y el ciclo produce browser_error`)
+})
+
+test('la lista de estados del código y la de la base son la MISMA', () => {
+  // Dos listas que dicen lo mismo son una sola definición sólo mientras un test las compare.
+  assert.deepEqual([...estadosDelCheck()].sort(), [...ESTADOS_CORRIDA].sort())
+  // Y lo que no puede volver nunca: este agente no opera, así que ninguna corrida se ejecuta.
+  assert.equal(ESTADOS_CORRIDA.includes('ejecutada'), false)
+  assert.equal(estadosDelCheck().includes('ejecutada'), false)
 })

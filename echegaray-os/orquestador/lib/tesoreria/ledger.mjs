@@ -21,6 +21,20 @@
 
 import { esAptoTesoreria } from './instrumentos.mjs'
 
+/**
+ * LOS ESTADOS EN QUE PUEDE TERMINAR UNA CORRIDA — la lista está acá y en el check de la base, y un
+ * test las compara. No es redundancia: la base es la que manda, pero el código es el que los produce,
+ * y cuando uno agrega un estado y la otra no lo conoce, el `update` explota JUSTO en el momento en que
+ * la corrida quería registrar que algo salió mal.
+ *
+ * Pasó con `browser_error` (Chrome caído): la corrida no se podía cerrar, el `catch` de `main()` se
+ * llevaba el cierre entero y la fila quedaba `en_curso` para siempre. La siguiente corrida se creía
+ * la primera y el rastro del navegador roto no existía en ningún lado.
+ */
+export const ESTADOS_CORRIDA = Object.freeze([
+  'en_curso', 'ok', 'sin_dato', 'session_required', 'browser_error', 'error', 'omitida',
+])
+
 /** Abre una corrida y devuelve su run_id. Todo lo demás cuelga de acá. */
 export async function abrirCorrida(query, { correlationId = null, spreadsheetId = null } = {}) {
   const { rows } = await query(

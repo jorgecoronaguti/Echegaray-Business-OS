@@ -25,7 +25,8 @@ import { compararAlternativas, evaluarContraVentana, liquidezCompatible, costoTo
 import { evaluarRiesgo, evaluarConcentracion, PERFILES } from './riesgo.mjs'
 import { frescuraDeMercado } from './ciclo.mjs'
 import { generarRecomendaciones, recomendarAplicarADeuda, estaVencida } from './recomendacion.mjs'
-import { validarRecomendacion, validarLote, esNumero } from './validar.mjs'
+import { validarRecomendacion, validarLote, esNumero, cajaLibreDeLaFuente } from './validar.mjs'
+import { ventanaDeExcedente, cajaLibreParaColocar } from './excedente-ventana.mjs'
 import { impuestosDeColocacion, parametrosFiscales } from './impuestos-colocacion.mjs'
 import { registrarCorreccion, esConfirmacionReal, proponerCambioPolitica, TIPO_CORRECCION } from './aprendizaje.mjs'
 import { esCambioMaterial, formatoPropuesta } from './formato-mattermost.mjs'
@@ -403,6 +404,174 @@ test('validarLote separa publicables de rechazadas y NUNCA descarta en silencio'
   assert.equal(r.publicables.length, 1)
   assert.equal(r.rechazadas.length, 1)
   assert.ok(r.rechazadas[0].fallas.length)
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// EL DEFECTO DE LOS $51,5M · DOS DEFINICIONES DE CAJA LIBRE
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Corrida real del 03/08/2026: el motor de excedente decía «colocable $48.214.876» y el validador
+// «libre −$3.325.484», así que TODA recomendación se auto-rechazaba con `sin_caja_comprometida` y el
+// dueño nunca vio una propuesta. Las dos partes calculaban el mismo concepto con criterios distintos.
+//
+// Acá se reproduce la POSICIÓN real —los cuatro componentes que dan exactamente −$3.325.484— y un
+// calendario mínimo pero fiel: parte de los cheques firmados vence DENTRO de la ventana (el motor ya
+// los ve como egresos fechados) y parte DESPUÉS. Lo que se prueba es la mecánica, y la diferencia
+// entre los dos criterios queda descompuesta peso por peso.
+
+const CAJA = {
+  real: 115_549_454,
+  ars_liquida: 91_633_288,
+  valores_a_depositar: 10_290_000,
+  moneda_extranjera: 13_626_166, // 115.549.454 − 91.633.288 − 10.290.000
+  comprometida: 4_700_000,
+  restringida_total: 49_254_311,
+  cheques_dentro: 12_000_000, // vencen el día 5: el calendario YA los descuenta
+  cheques_fuera: 37_254_311, // vencen después del día 30: no bloquean una colocación a 30 días
+  minima: 41_004_461,
+}
+
+/** La fórmula que tenía el validador. Se conserva SÓLO acá, para poder medir contra qué se corrigió. */
+const formulaVieja = (c) => c.ars_liquida - c.comprometida - c.restringida_total - c.minima
+
+function calendarioDe({ desde = '2026-08-01', largo = 31, egresos = {}, ingresos = {} } = {}) {
+  return Array.from({ length: largo }, (_, i) => {
+    const f = new Date(`${desde}T00:00:00Z`)
+    f.setUTCDate(f.getUTCDate() + i)
+    return {
+      fecha: f.toISOString().slice(0, 10),
+      ingresos: Number(ingresos[i]) || 0,
+      egresos: Number(egresos[i]) || 0,
+      movimientos: [],
+    }
+  })
+}
+
+/** La posición real, la ventana que sale del motor y una propuesta completa sobre ella. */
+function escenario03Ago({ restringidaFuera = 0 } = {}) {
+  const dias = calendarioDe({
+    egresos: { 5: CAJA.cheques_dentro },
+    ingresos: { 12: 20_000_000 }, // cobranza: en escenario adverso entra la mitad
+  })
+  const v = ventanaDeExcedente({
+    dias, hasta: 30, saldoInicial: CAJA.ars_liquida, vencido: CAJA.comprometida,
+    valoresADepositar: CAJA.valores_a_depositar, reserva: CAJA.minima,
+    restringidaFueraDelCalendario: restringidaFuera, hoy: HOY,
+  })
+  const ventana = {
+    bloque: 'C', titulo: 'Excedente de 8 a 30 días', monto_maximo: v.monto_maximo, moneda: 'ARS',
+    fecha_inicial: '2026-08-01', fecha_limite: '2026-08-31', dias_libres: 30,
+    reserva_preservada: v.reserva_preservada, obligaciones_cubiertas: [],
+    condiciones_invalidez: [`el día de mayor tensión es el ${v.fecha_tension}`],
+    confianza: CONFIANZA.MEDIA, motivo: null, accionable: true, estado_recomendacion: 'ACCIONABLE',
+    referencia: { hurdle_periodo: 0, modo: 'costo_oportunidad', explicacion: 'sin deuda ni riesgo de déficit' },
+  }
+  const inst = normalizarInstrumento({
+    nombre: 'Lecap S31O5', moneda: 'ARS', plazo_rescate_dias: 0, liquidacion_dias: 1,
+    tasa: { tipo: 'tea', valor: 1.2, naturaleza: 'contractual' },
+    costos: { comision: 0.001 }, emisor: 'Tesoro Nacional',
+  }, { observadoEn: HOY.toISOString() })
+  const corte = { valor: 0.6278, evidencia: EVIDENCIA.HECHO }
+  const gen = generarRecomendaciones(compararAlternativas([inst], [ventana], corte), [ventana], {
+    hoy: HOY, tasa_de_corte: corte, riesgos: { [inst.id]: evaluarRiesgo(inst, PERFILES.caja_operativa, { ahora: HOY }) },
+    accionable: true, fuente_caja: 'Flujo de Caja · CAJA', fuente_mercado: 'Balanz',
+  })
+  const posicion = {
+    estado: 'ok', en_descubierto: false, caja_real: CAJA.real, caja_comprometida: CAJA.comprometida,
+    caja_restringida: { monto_a_restar: CAJA.restringida_total, restricted_cash_status: 'known' },
+    caja_restringida_por_ventana: {
+      30: { total: CAJA.restringida_total, dentro: CAJA.cheques_dentro, fuera: CAJA.cheques_fuera, vencidos: 0, sin_fecha: 0, a_restar_fuera_del_calendario: restringidaFuera },
+    },
+    caja_minima: CAJA.minima, accionable: true, estado_recomendacion: 'ACCIONABLE',
+    composicion: {
+      ars_liquida: CAJA.ars_liquida, moneda_extranjera: CAJA.moneda_extranjera,
+      valores_a_depositar: CAJA.valores_a_depositar, sin_clasificar: 0,
+    },
+    confianza: CONFIANZA.MEDIA, fecha: '03/08/2026', fuente: 'Flujo de Caja · CAJA',
+  }
+  const excedente = { estado: 'ok', ventanas: [ventana], tasa_de_corte: corte, deuda_cancelable: { monto: 0 } }
+  return { dias, v, ventana, inst, gen, posicion, excedente }
+}
+
+test('DEFECTO · el validador restaba de nuevo los cheques que el calendario ya había descontado', () => {
+  const { dias, v, gen, posicion, excedente, inst } = escenario03Ago()
+
+  // 1 · La fórmula vieja, sobre la posición real, daba el número que vetaba todo.
+  assert.equal(formulaVieja(CAJA), -3_325_484)
+
+  // 2 · El motor camina el calendario: el piso es el peor día (el 05/08, cuando salen los cheques),
+  //     ya con los valores a depositar acreditados. De ahí sale el colocable.
+  assert.equal(v.piso, 85_223_288)
+  assert.equal(v.monto_maximo, 44_218_827)
+
+  // 3 · LA DIFERENCIA, DESCOMPUESTA. No es un misterio de $51,5M: son los cheques que vencen DESPUÉS
+  //     de la ventana (que el T+0 restaba igual) más los valores a depositar que el T+0 no ve.
+  assert.equal(v.monto_maximo - formulaVieja(CAJA), CAJA.cheques_fuera + CAJA.valores_a_depositar)
+
+  // 4 · Y ÉSTE ES EL DEFECTO: la propuesta que el motor habilitó, el validador la rechazaba.
+  const propuesta = gen.propuestas[0]
+  assert.equal(propuesta.monto_maximo, v.monto_maximo)
+  const val = validarRecomendacion(propuesta, { posicion, excedente, instrumentos: [inst], ahora: HOY, dias })
+  assert.equal(val.aprobada, true, `la colocación sensata se rechazó: ${val.fallas.join(' | ')}`)
+  const chequeo = val.chequeos.find((c) => c.regla === 'sin_caja_comprometida')
+  assert.equal(chequeo.ok, true)
+  assert.match(chequeo.detalle, /piso del recorrido a 30 día/)
+
+  // 5 · Y los dos lados calculan el MISMO número, no dos parecidos.
+  const libre = cajaLibreDeLaFuente(propuesta, { posicion, dias })
+  assert.equal(libre.libre, v.monto_maximo)
+})
+
+test('la caja libre corregida SIGUE rechazando lo que se come el colchón mínimo', () => {
+  const { dias, v, gen, posicion, excedente, inst } = escenario03Ago()
+  // El piso entero: la propuesta se comería la reserva mínima aprobada del dueño.
+  const glotona = { ...gen.propuestas[0], monto_maximo: v.piso }
+  const val = validarRecomendacion(glotona, { posicion, excedente, instrumentos: [inst], ahora: HOY, dias })
+  assert.equal(val.aprobada, false, 'una propuesta que se come la reserva aprobó')
+  assert.ok(val.fallas.some((f) => /sin_caja_comprometida/.test(f)), val.fallas.join(' | '))
+  // Y un peso por encima del colocable tampoco pasa: el límite es el límite.
+  const unPesoDeMas = { ...gen.propuestas[0], monto_maximo: v.monto_maximo + 2 }
+  assert.equal(
+    validarRecomendacion(unPesoDeMas, { posicion, excedente, instrumentos: [inst], ahora: HOY, dias })
+      .chequeos.find((c) => c.regla === 'sin_caja_comprometida').ok, false,
+  )
+})
+
+test('la caja libre corregida SIGUE restando los cheques por debitar que el calendario no ve', () => {
+  // Mismos cheques, pero ya vencidos y sin debitar: pueden caer cualquier día y el calendario, que
+  // arranca hoy, no los tiene. Ésos se restan aparte SIEMPRE — no restarlos era el otro extremo.
+  const conVencidos = escenario03Ago({ restringidaFuera: CAJA.cheques_fuera })
+  const libre = cajaLibreDeLaFuente(conVencidos.gen.propuestas[0], { posicion: conVencidos.posicion, dias: conVencidos.dias })
+  assert.equal(libre.libre, 85_223_288 - CAJA.cheques_fuera - CAJA.minima)
+
+  // Y la propuesta del escenario sano, medida contra esta caja, se rechaza.
+  const sano = escenario03Ago()
+  const val = validarRecomendacion(sano.gen.propuestas[0], {
+    posicion: conVencidos.posicion, excedente: conVencidos.excedente, instrumentos: [sano.inst], ahora: HOY, dias: conVencidos.dias,
+  })
+  assert.equal(val.aprobada, false)
+  assert.ok(val.fallas.some((f) => /sin_caja_comprometida/.test(f)), val.fallas.join(' | '))
+})
+
+test('sin calendario en las fuentes, la caja libre degrada a T+0 y lo DECLARA', () => {
+  // El lado seguro cuando falta el insumo: se mide la foto de hoy y se resta la restringida entera.
+  // Lo que no puede pasar es que degrade en silencio y parezca la medición de 30 días.
+  const { gen, posicion } = escenario03Ago()
+  const libre = cajaLibreDeLaFuente(gen.propuestas[0], { posicion })
+  assert.equal(libre.libre, formulaVieja(CAJA))
+  assert.match(libre.criterio, /T\+0/)
+  assert.equal(libre.dias_recorridos, 0)
+})
+
+test('cajaLibreParaColocar es la definición única: el motor y el validador la comparten', () => {
+  const r = cajaLibreParaColocar({ piso: 85_223_288, restringidaFueraDelCalendario: 0, reserva: CAJA.minima })
+  assert.equal(r.libre, 44_218_827)
+  assert.equal(r.colocable, 44_218_827)
+  // Un piso que no llega ni a la reserva NO devuelve un colocable negativo, pero sí un libre negativo:
+  // el signo es la información de cuánto falta.
+  const corto = cajaLibreParaColocar({ piso: 10_000_000, restringidaFueraDelCalendario: 0, reserva: CAJA.minima })
+  assert.equal(corto.colocable, 0)
+  assert.equal(corto.libre, 10_000_000 - CAJA.minima)
 })
 
 test('la recomendación de aplicar a deuda trae el rendimiento equivalente y el ahorro diario', () => {
