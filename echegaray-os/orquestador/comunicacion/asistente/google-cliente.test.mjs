@@ -8,7 +8,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   googleDe, googleDisponible, googlePropioDisponible, cuentaDe, permiteEfectoExterno,
-  clasificarErrorGoogle, sinSecretos, errorSinCuenta, CUENTA,
+  puedeEscribirAgenda, clasificarErrorGoogle, sinSecretos, errorSinCuenta, CUENTA,
 } from './google-cliente.mjs'
 import { ERROR } from './contratos.mjs'
 
@@ -48,6 +48,29 @@ test('sin ninguna cuenta utilizable, googleDe devuelve null (no un cliente que v
 test('un cliente sin marca de cuenta no se bloquea: la identidad la decide quien la conoce', () => {
   assert.equal(permiteEfectoExterno({ searchFile: async () => [] }), true)
   assert.equal(cuentaDe({}), null)
+})
+
+// ── El agujero del 03/08/2026 ────────────────────────────────────────────────
+//
+// El dueño pidió un evento y el evento se creó… en el calendario del robot. La marca del
+// cliente decía `propia:true` (su token existía en `orq.google_tokens`) pero el refresh daba
+// `invalid_grant`, y `makeGoogleClient` cae al Service Account cuando el token del usuario
+// vuelve nulo. Un cliente marcado como personal ejecutando como el robot: la marca mentía.
+test('el cliente de una persona se arma SIN puerta de salida al robot', async () => {
+  const d = deps({ operador: 'rodrigo@ecsas.com.ar' })
+  let opciones = null
+  d.crearCliente = (config, getToken, opts) => { opciones = opts; return { config, getToken } }
+  await googleDe({ identidad: identidad('rodrigo@ecsas.com.ar'), config: {}, deps: d })
+  assert.equal(opciones?.soloUsuario, true, 'sin esto, un OAuth vencido ejecuta como la cuenta de servicio')
+})
+
+test('escribir en la agenda de alguien exige saber que la cuenta es SUYA', () => {
+  // `permiteEfectoExterno` es permisivo con un cliente sin marca a propósito (arriba). Para la
+  // agenda de una persona eso no alcanza: "no sé de quién es esta cuenta" tiene que ser NO.
+  assert.equal(puedeEscribirAgenda({ searchFile: async () => [] }), false)
+  assert.equal(puedeEscribirAgenda({ [CUENTA]: { email: 'jorge@ecsas.com.ar', propia: false } }), false)
+  assert.equal(puedeEscribirAgenda({ [CUENTA]: { email: 'jorge@ecsas.com.ar', propia: true } }), true)
+  assert.equal(puedeEscribirAgenda(null), false)
 })
 
 test('googleDisponible: false sin cuenta conectada, true con cliente en el contexto', async () => {

@@ -110,6 +110,47 @@ test('los invitados de un evento son nombres, no emails, y no se comen la frase 
   assert.equal(r.parametros.inicio, '2026-08-01T09:00:00-03:00')
 })
 
+// ── El pedido REAL del dueño, textual (03/08/2026) ───────────────────────────
+//
+// Se copió del chat con sus typos: "q" por "que", sin tildes, y el título entre comillas.
+// El asistente lo interpretó así: título = "evento para a mi y a rodrigo de invitados y q el
+// titulo sea "Reu Alonso Construcciones"" y CERO invitados. Su veredicto: «interpreta
+// cualquier cosa». Estas tres pruebas son ese mensaje.
+const PEDIDO_REAL = '@os crea un evento para mañana a las 15 agreganos a mi y a rodrigo de '
+  + 'invitados y q el titulo sea "Reu Alonso Construcciones"'
+
+test('el título ENTRE COMILLAS es el título: no se lo come el resto de la frase', () => {
+  const r = leer(PEDIDO_REAL)
+  assert.equal(r.intencion, CAPACIDAD.CALENDAR_EVENTO_CREAR)
+  assert.equal(r.parametros.titulo, 'Reu Alonso Construcciones')
+  assert.equal(r.parametros.inicio, '2026-08-01T15:00:00-03:00')
+})
+
+test('"agreganos a mi y a rodrigo de invitados" son DOS invitados, y uno soy yo', () => {
+  const r = leer(PEDIDO_REAL)
+  // El intérprete no conoce emails: devuelve los nombres tal como se dijeron. "mi" es una
+  // referencia a quien pide y la resuelve el router, que es quien tiene la identidad.
+  assert.deepEqual(r.parametros.invitados, ['mi', 'rodrigo'])
+})
+
+test('el título entre comillas manda también sin la palabra "título"', () => {
+  assert.equal(leer('agendá para mañana a las 9 "Visita a la obra Estrella"').parametros.titulo,
+    'Visita a la obra Estrella')
+  // Y con las otras formas de decirlo.
+  assert.equal(leer('crea un evento mañana a las 9 que se llame "Cierre de mes"').parametros.titulo,
+    'Cierre de mes')
+})
+
+test('sin comillas nada cambia: el título se sigue armando con la frase', () => {
+  const r = leer('agendá la visita de obra mañana a las 9')
+  assert.equal(r.parametros.titulo, 'visita de obra')
+})
+
+test('"invitá a Rodrigo y a Juan Pablo" también son invitados', () => {
+  const r = leer('agendá reunión mañana a las 9 e invitá a Rodrigo y a Juan Pablo')
+  assert.deepEqual(r.parametros.invitados, ['Rodrigo', 'Juan Pablo'])
+})
+
 test('un recordatorio sin cuándo declara el faltante en vez de inventar una hora', () => {
   const r = leer('recordame comprar cemento')
   assert.equal(r.intencion, CAPACIDAD.RECORDATORIO_CREAR)

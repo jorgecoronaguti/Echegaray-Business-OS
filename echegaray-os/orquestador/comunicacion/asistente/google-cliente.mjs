@@ -74,6 +74,20 @@ export function permiteEfectoExterno(google) {
 }
 
 /**
+ * ¿Este cliente puede ESCRIBIR EN LA AGENDA (o en las tareas) de una persona?
+ *
+ * Es la versión estricta de `permiteEfectoExterno`, y la diferencia es a propósito: ahí un
+ * cliente sin marca se deja pasar porque la identidad la decide quien la conoce; acá no, porque
+ * lo que está en juego es dónde CAE el evento. Un cliente sin marca puede ser el del robot —lo
+ * fue el 03/08/2026— y entonces el dueño recibe "Listo" por un evento que no existe para él.
+ *
+ * Sin marca, o con la marca de otro: NO. Sólo `propia === true` habilita.
+ */
+export function puedeEscribirAgenda(google) {
+  return cuentaDe(google)?.propia === true
+}
+
+/**
  * Cliente de Google para ejecutar ESTE pedido.
  *
  * Prioridad: la cuenta de quien pide, si autorizó la suya. Si no autorizó, cae a la cuenta
@@ -85,13 +99,17 @@ export function permiteEfectoExterno(google) {
 export async function googleDe({ identidad, config, deps = {} } = {}) {
   const resolverOperador = deps.operadorPara ?? operadorPara
   const tokenPara = deps.getTokenFor ?? getTokenFor
-  const crear = deps.crearCliente ?? ((cfg, getToken) => makeGoogleClient({ config: cfg, scopes: WORKSPACE_SCOPES, getToken }))
+  const crear = deps.crearCliente
+    ?? ((cfg, getToken, opciones) => makeGoogleClient({ config: cfg, scopes: WORKSPACE_SCOPES, getToken, ...opciones }))
   const email = String(identidad?.email ?? '').toLowerCase() || null
   let cuenta = null
   try { cuenta = await resolverOperador(email) } catch { cuenta = null }
   if (!cuenta) return null
   const cfg = config ?? (deps.loadConfig ?? loadConfig)()
-  const cliente = crear(cfg, tokenPara(cuenta))
+  // `soloUsuario` es lo que impide que este cliente termine siendo el robot. Sin él, un token
+  // vencido (invalid_grant) hace que `makeGoogleClient` caiga a la cuenta de servicio y el
+  // efecto ocurra donde nadie lo va a ver — con la marca de abajo diciendo `propia:true`.
+  const cliente = crear(cfg, tokenPara(cuenta), { soloUsuario: true })
   if (!cliente) return null
   try { cliente[CUENTA] = { email: cuenta, propia: Boolean(email) && cuenta === email } } catch { /* cliente congelado: sin marca */ }
   return cliente

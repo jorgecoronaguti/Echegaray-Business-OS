@@ -241,25 +241,101 @@ function tarea(texto, tiempo) {
 function evento(texto, tiempo) {
   // Los invitados se leen sobre el texto YA SIN las frases temporales: si no,
   // "con Rodrigo el jueves a las 10" convierte media oración en un nombre propio.
-  const invitados = invitadosDe(quitarTiempo(texto, tiempo.spans).replace(RE_DURACION, ' '))
+  const invitacion = invitacionDe(quitarTiempo(texto, tiempo.spans).replace(RE_DURACION, ' '))
+  const dicho = tituloDicho(texto)
   // El orden de los `extras` importa: la duración se saca ANTES que el "con Fulano" anclado
-  // al final, o "con Rodrigo … de 2 horas" deja de estar al final y no se limpia.
-  const titulo = contenidoDe(texto, tiempo.spans, [RE_DURACION, RE_CALENDARIO_FRASE, /\bcon\s+[a-záéíóúñ\s]+$/i])
+  // al final, o "con Rodrigo … de 2 horas" deja de estar al final y no se limpia. La frase de
+  // los invitados sale también: "agregános a mí y a Rodrigo de invitados" es a QUIÉN se
+  // invita, no de qué se trata la reunión.
+  const titulo = dicho ?? contenidoDe(texto, tiempo.spans,
+    [RE_DURACION, RE_CALENDARIO_FRASE, invitacion.frase, /\bcon\s+[a-záéíóúñ\s]+$/i])
   return {
     intencion: CAPACIDAD.CALENDAR_EVENTO_CREAR,
     parametros: {
       titulo, inicio: tiempo.cuando, fin: null, duracionMin: duracionDe(texto),
-      descripcion: null, participantes: [], invitados,
+      descripcion: null, participantes: [], invitados: invitacion.nombres,
     },
     faltantes: [...(titulo ? [] : ['titulo']), ...(tiempo.cuando ? [] : ['inicio'])],
   }
 }
 
-/** "reunión con Rodrigo y Juan Pablo" → los nombres, sin resolver. Los resuelve el router. */
-function invitadosDe(texto) {
-  const m = texto.match(/\bcon\s+([a-záéíóúñ@][\wáéíóúñ.@\s]{1,60})$/i)
-  if (!m) return []
-  return m[1].split(/\s*(?:,| y )\s*/).map((s) => s.trim().replace(/^@/, '')).filter((s) => s.length > 1).slice(0, 5)
+// ── El título, cuando la persona lo DIJO ─────────────────────────────────────
+//
+// «q el titulo sea "Reu Alonso Construcciones"» y el evento salió llamándose «evento para a mi
+// y a rodrigo de invitados y q el titulo sea "Reu Alonso Construcciones"». El dato estaba
+// escrito, entre comillas y anunciado: no había nada que inferir. Un título entre comillas es
+// un DATO EXPLÍCITO, y un dato explícito le gana siempre a lo que quede de limpiar la frase.
+
+/** Cualquiera de las comillas que se usan en el chat, rectas o tipográficas. */
+const RE_COMILLADO = /["“”«»]([^"“”«»\n]{2,90})["“”«»]/g
+/** Las formas de anunciar el título. Si aparece, manda la comilla que viene DESPUÉS. */
+const RE_ANUNCIO_TITULO = /\b(?:el\s+)?t[ií]tulo\s+(?:sea|es|va a ser)|\bque\s+se\s+llame\b|\bq\s+se\s+llame\b|\btitulal[oa]\b|\bllamal[oa]\b|\b(?:con|de)\s+t[ií]tulo\b/i
+
+/**
+ * El título que la persona escribió entre comillas, o null si no escribió ninguno.
+ *
+ * Con anuncio ("el título sea …", "que se llame …") gana la primera comilla posterior al
+ * anuncio; sin anuncio, la primera del mensaje. Se devuelve TAL CUAL se escribió: mayúsculas,
+ * acentos y espacios son del dueño, no del parser.
+ */
+function tituloDicho(texto) {
+  const t = String(texto ?? '')
+  const citas = [...t.matchAll(RE_COMILLADO)].map((m) => ({ valor: m[1].trim(), desde: m.index ?? 0 }))
+    .filter((c) => c.valor.length >= 2)
+  if (!citas.length) return null
+  const anuncio = t.match(RE_ANUNCIO_TITULO)
+  const elegida = anuncio ? citas.find((c) => c.desde > (anuncio.index ?? 0)) : null
+  return (elegida ?? citas[0]).valor
+}
+
+// ── A quién se invita ────────────────────────────────────────────────────────
+
+/** Una enumeración de personas: "a mí y a Rodrigo", "a Juan, a Pedro y a Ana". */
+const RE_LISTA_A = /\ba\s+@?[a-záéíóúñ][\wáéíóúñ.]*(?:(?:\s*,\s*|\s+y\s+|\s+e\s+)(?:a\s+)?@?[a-záéíóúñ][\wáéíóúñ.]*)*/gi
+/** El rótulo con el que se cierra la enumeración: "… de invitados", "… como invitados". */
+const RE_ROTULO_INVITADOS = /\b(?:de|como)\s+invitad[oa]s?\b/i
+/** El verbo: "invitá a Rodrigo y a Juan Pablo". */
+const RE_VERBO_INVITAR = /\binvit[aá][a-z]*\s+((?:a\s+)?[a-záéíóúñ@][\wáéíóúñ.@,\sy]{1,60})$/i
+/** La forma clásica, anclada al final: "reunión con Rodrigo y Juan Pablo". */
+const RE_CON_FINAL = /\bcon\s+([a-záéíóúñ@][\wáéíóúñ.@\s]{1,60})$/i
+
+/** "a mí y a Rodrigo" → ['mi', 'Rodrigo']. Nombres como se dijeron; los resuelve el router. */
+function nombresDeLista(texto) {
+  return String(texto ?? '')
+    .split(/\s*,\s*|\s+y\s+|\s+e\s+/)
+    .map((s) => s.trim().replace(/^al?\s+/i, '').replace(/^@/, '').trim())
+    .filter((s) => s.length > 1)
+    .slice(0, 5)
+}
+
+/**
+ * A quién hay que invitar, y con qué frase lo dijo.
+ *
+ * Tres formas, en orden: el rótulo ("… de invitados"), el verbo ("invitá a …") y el "con …"
+ * final que ya existía. La `frase` se devuelve para sacarla del título — el defecto del 03/08
+ * fue exactamente ese: la lista de invitados terminó siendo el nombre de la reunión.
+ *
+ * @returns {{nombres:string[], frase:string|null}}
+ */
+function invitacionDe(texto) {
+  const t = String(texto ?? '')
+  const rotulo = t.match(RE_ROTULO_INVITADOS)
+  if (rotulo) {
+    const previo = t.slice(0, rotulo.index)
+    const listas = [...previo.matchAll(RE_LISTA_A)]
+    const ultima = listas[listas.length - 1]
+    if (ultima) {
+      return {
+        nombres: nombresDeLista(ultima[0]),
+        frase: t.slice(ultima.index ?? 0, (rotulo.index ?? 0) + rotulo[0].length),
+      }
+    }
+  }
+  const verbo = t.match(RE_VERBO_INVITAR)
+  if (verbo) return { nombres: nombresDeLista(verbo[1]), frase: verbo[0] }
+  const con = t.match(RE_CON_FINAL)
+  if (con) return { nombres: nombresDeLista(con[1]), frase: null }
+  return { nombres: [], frase: null }
 }
 
 function drive(texto) {

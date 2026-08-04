@@ -21,7 +21,7 @@ import {
 } from '../contratos.mjs'
 import { paredAR, formatearAR } from '../tiempo.mjs'
 import {
-  clasificarErrorGoogle, googlePropioDisponible, permiteEfectoExterno, errorSinCuenta, errorCuentaAjena,
+  clasificarErrorGoogle, googlePropioDisponible, puedeEscribirAgenda, errorSinCuenta, errorCuentaAjena,
 } from '../google-cliente.mjs'
 
 /** Lo que dura una reunión cuando nadie dijo cuánto. Se afirma y se avisa; no se pregunta. */
@@ -84,9 +84,14 @@ function validarParticipantes(lista) {
   )
 }
 
-function textoCreado({ titulo, inicio, fin, asumida, minutos, participantes, ahora }) {
+function textoCreado({ titulo, inicio, fin, asumida, minutos, participantes, noInvitados = [], ahora }) {
   const partes = [`Listo. Creé "${titulo}" ${diaRelativo(inicio, ahora)} de ${hhmm(inicio)} a ${hhmm(fin)}.`]
   if (participantes.length) partes.push(`Le mandé la invitación a ${participantes.join(', ')}.`)
+  // A quién NO se invitó se dice SIEMPRE, y con nombre. Callarlo dejaría a alguien esperando
+  // una invitación que no existe, que es la forma silenciosa de este mismo defecto.
+  if (noInvitados.length) {
+    partes.push(`A ${noInvitados.join(', ')} no lo pude agregar: no lo tengo registrado con mail en el OS. Pasámelo y lo sumo.`)
+  }
   if (asumida) partes.push(`Le puse ${minutos} minutos porque no me dijiste hasta cuándo; si va otra cosa, decime y lo corrijo.`)
   return partes.join(' ')
 }
@@ -110,9 +115,11 @@ export const capacidad = {
         ERROR.DATO_FALTANTE, '¿Qué agendo y para cuándo? Decime el título y el día y hora.', p.error.message,
       ))
     }
-    const { titulo, inicio, descripcion, participantes } = p.data
+    const { titulo, inicio, descripcion, participantes, noInvitados } = p.data
     if (!ctx.google) return resultadoError(CAPACIDAD.CALENDAR_EVENTO_CREAR, errorSinCuenta())
-    if (!permiteEfectoExterno(ctx.google)) {
+    // LA AGENDA ES DE SU DUEÑO, Y ESTO SE VERIFICA ANTES DE ESCRIBIR. No alcanza con que el
+    // cliente "no sea de otro": tiene que constar que es el SUYO. Ver `puedeEscribirAgenda`.
+    if (!puedeEscribirAgenda(ctx.google)) {
       return resultadoError(CAPACIDAD.CALENDAR_EVENTO_CREAR, errorCuentaAjena(ctx.google))
     }
     const malos = validarParticipantes(participantes)
@@ -146,7 +153,7 @@ export const capacidad = {
       }
       return resultadoOk(
         CAPACIDAD.CALENDAR_EVENTO_CREAR,
-        textoCreado({ titulo, inicio, fin, asumida, minutos, participantes, ahora }),
+        textoCreado({ titulo, inicio, fin, asumida, minutos, participantes, noInvitados, ahora }),
         { evento: { id: r.id, enlace: r.link ?? null, titulo, inicio, fin }, duplicado: false },
       )
     } catch (e) {

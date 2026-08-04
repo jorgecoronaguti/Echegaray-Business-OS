@@ -141,8 +141,10 @@ export function normalizarDestinatarios(raw) {
  * @param {object} [deps.auth]       override para tests (debe exponer getAccessToken())
  * @param {function} [deps.fetchImpl] override de fetch para tests
  * @param {string}  [deps.impersonate] cuenta @ecsas a impersonar (domain-wide delegation)
+ * @param {boolean} [deps.soloUsuario] el cliente es de una PERSONA: si su token no está
+ *   disponible, se rompe en vez de caer a la cuenta de servicio (ver `accessToken`)
  */
-export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes, getToken } = {}) {
+export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes, getToken, soloUsuario = false } = {}) {
   // IDENTIDAD (25/07): por defecto el cliente actúa como la CUENTA DE SERVICIO (el robot). Es a
   // propósito y NO se cambia a "actuar como el dueño" globalmente: la protección de ediciones distingue
   // al OS de una persona por el email `gserviceaccount.com` en el historial de Drive (ver
@@ -184,6 +186,19 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
   async function accessToken() {
     // OAuth por usuario: si hay getToken y devuelve token, se actúa COMO el usuario.
     if (getToken) { const ut = await userToken(); if (ut) return ut }
+    // SIN PUERTA DE SALIDA AL ROBOT (03/08/2026). Cuando el cliente se armó para actuar como
+    // una PERSONA, un token que vuelve nulo —OAuth vencido, consentimiento revocado, sin
+    // GOOGLE_OAUTH_CLIENT_ID en el proceso— no puede degradar a la cuenta de servicio: el
+    // efecto ocurre en el calendario/las tareas del robot y la persona no ve nada. Ya pasó:
+    // el evento "Reu Alonso Construcciones" del dueño terminó en la agenda del Service Account
+    // con un "Listo" en el chat. Falla ruidoso, y con el 401 que el asistente traduce a
+    // "conectá tu Google".
+    if (soloUsuario) {
+      const err = new Error('google: la cuenta de esta persona no está conectada (OAuth vencido o revocado); '
+        + 'no se ejecuta con la cuenta de servicio')
+      err.status = 401
+      throw err
+    }
     if (!_auth) {
       const keyPath = resolveKeyPath(config)
       if (!fs.existsSync(keyPath)) throw new MissingGoogleCredential(keyPath)
