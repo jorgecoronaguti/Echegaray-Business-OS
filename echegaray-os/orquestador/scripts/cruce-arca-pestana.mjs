@@ -140,13 +140,18 @@ async function main() {
 
   console.log(`Ventana comparable (deducida de ARCA): ${r.ventana.desde ?? '—'} a ${r.ventana.hasta ?? '—'}  ·  criterio: FECHA DE FACTURA`)
   const $ = (n) => `$${Math.round(n).toLocaleString('es-AR')}`
-  console.log(`  ARCA libro compras, neto de NC ......... ${$(r.totales.arcaNeto)}`)
-  console.log(`  Compras comercial en la ventana ....... ${$(r.totales.comprasUniverso)}`)
-  console.log(`  → ARCA registró y Compras no tiene .... ${$(r.totales.arcaSinCompras)}  (${r.arcaSinCompras.length} comprobantes)`)
-  console.log(`  → Compras sin respaldo en ARCA ........ ${$(r.totales.comprasSinArca)}  (${r.comprasSinArca.length} filas)`)
+  // EL TOTAL DEL LIBRO Y EL DEL UNIVERSO COMERCIAL SE IMPRIMEN, PERO NO SE RESTAN. Son universos
+  // distintos —el libro son TODAS las compras— y restarlos fue lo que escribió "−$203.592.436" en
+  // Recurrentes. Acá van como contexto, cada uno con su nombre, sin una diferencia entre ellos.
+  console.log(`  ARCA libro compras, neto de NC ......... ${$(r.totales.arcaNeto)}   (todas las compras)`)
+  console.log(`  Compras comercial en la ventana ....... ${$(r.totales.comprasUniverso)}   (universo comparable)`)
+  console.log(`  · con comprobante en el libro ......... ${$(r.totales.comprasConRespaldo)}`)
+  console.log(`  · sin comprobante en el libro ......... ${$(r.totales.comprasSinArca)}  (${r.comprasSinArca.length} filas) ← INFLADO: incluye proveedores que no facturan`)
+  console.log(`  ⇒ cobertura fiscal .................... ${r.totales.cobertura === null ? '—' : `${(r.totales.cobertura * 100).toFixed(1)}%`}`)
+  console.log(`  ⚠ ARCA facturó y Compras NO lo tiene .. ${$(r.totales.arcaSinCompras)}  (${r.arcaSinCompras.length} comprobantes) ← esto sí es un hallazgo`)
   console.log(`  ⓘ fuera de ARCA por naturaleza ........ ${$(r.totales.fueraDeArca)}   ← no es error`)
   console.log(`  ⓘ posterior a la ventana .............. ${$(r.totales.fueraDeVentana)}   ← no es error`)
-  console.log(`  identidad: dif ${$(id.difAgregada)} = explicado ${$(id.explicado)} + dif de importes ${$(id.difImportes)}  ${id.ok ? 'cierra' : '⚠ NO CIERRA'}`)
+  console.log(`  identidad: ${$(id.universo)} = ${$(id.reconstruido)} (respaldado + sin respaldo)  ${id.ok ? 'cierra exacto' : `⚠ NO CIERRA por ${$(id.diferencia)}`}`)
   if (r.desalineados.length) console.log(`  ⚠ ${r.desalineados.length} comprobante(s) con período de DDJJ distinto al mes de emisión`)
   if (r.desconocidos.length) console.log(`  ⚠ ${r.desconocidos.length} comprobante(s) con tipo que no sé si suma o resta`)
   if (r.totales.rubroDesconocido) console.log(`  ⚠ ${$(r.totales.rubroDesconocido)} en rubros que ninguna lista declara`)

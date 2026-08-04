@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { bloqueControlArca, ALTO_BLOQUE, comprasDevengado, DIR, C, DESDE, HASTA } from './control-arca-bloque.mjs'
 
-const armar = (rubros = ['Materiales Civil']) => bloqueControlArca({ titulo: '9 · CONTROL', rubros, fila0: 50 })
+const armar = (rubros = ['Materiales Civil']) => bloqueControlArca({ titulo: '9 · RESPALDO FISCAL', rubros, fila0: 50 })
 
 test('el bloque declara su alto real — una fila de más corre las fórmulas de abajo', () => {
   assert.equal(armar().length, ALTO_BLOQUE)
@@ -16,9 +16,70 @@ test('NI UN SOLO IMPORTE ESCRITO: toda celda de la columna B es fórmula', () =>
   }
 })
 
+test('EL BLOQUE NO MUESTRA EL TOTAL DEL LIBRO EN UNA VISTA PARCIAL', () => {
+  // EL DEFECTO (04/08, visto ya escrito en el Sheet real). El bloque ponía en Recurrentes:
+  //   "ARCA · libro de compras, neto de notas de crédito   $209.231.271"
+  //   "Compras · lo de esta pestaña, por fecha de FACTURA    $5.638.835"
+  //   "⇒ Diferencia agregada                              -$203.592.436"
+  // Comparaba TODAS las compras del año contra los servicios recurrentes. La diferencia no era un
+  // hallazgo: era la definición de que los dos universos no son el mismo.
+  const texto = armar().map((f) => String(f[1] ?? '')).join(' ')
+  assert.doesNotMatch(texto, /SUMPRODUCT\(\(_ARCA_RAW!\$B\$4:\$B="Compras"\)\*IF/,
+    'el total del libro entero no puede aparecer en una vista de un solo rubro')
+  const rotulos = armar().map((f) => String(f[0]))
+  assert.equal(rotulos.some((r) => r.includes('Diferencia agregada')), false,
+    'no puede haber una "diferencia agregada" entre universos distintos')
+})
+
+test('LOS TRES NÚMEROS SON PARTICIONES DEL MISMO CONJUNTO: respaldado + sin respaldo = lo que lista', () => {
+  const filas = armar()
+  const lista = filas.find((f) => String(f[0]).startsWith('Lo que esta pestaña lista'))
+  const con = filas.find((f) => String(f[0]).includes('con su comprobante'))
+  const sin = filas.find((f) => String(f[0]).includes('sin comprobante en el libro —'))
+  assert.ok(lista && con && sin)
+  // "con" se despeja de los otros dos: la identidad es exacta por construcción y no puede dejar un
+  // residuo al que haya que inventarle una causa.
+  assert.equal(con[1], '=B53-B55')
+  assert.match(lista[1], /SUMIFS\(Compras!\$O\$4:\$O/)
+  assert.match(sin[1], new RegExp(DIR.comprasSinArca))
+})
+
+test('NINGÚN RESIDUO LLEVA CAUSA INVENTADA', () => {
+  // EL DEFECTO: la línea "· El resto — facturas cargadas por un IMPORTE distinto al que ARCA
+  // registró  −$212.255.479". Es una INFERENCIA presentada como HECHO, sobre comprobantes que nunca
+  // se identificaron uno por uno. Un número así hace desconfiar del archivo entero.
+  const rotulos = armar().map((f) => String(f[0])).join(' | ')
+  assert.doesNotMatch(rotulos, /IMPORTE distinto/, 'no se le pone causa a un residuo sin identificar')
+  assert.doesNotMatch(rotulos, /El resto/)
+})
+
+test('LA COBERTURA SE MUESTRA COMO PROPORCIÓN, no sólo como monto', () => {
+  const cob = armar().find((f) => String(f[0]).includes('Cobertura fiscal'))
+  assert.ok(cob, 'la línea de cobertura existe')
+  assert.equal(cob[1], '=IF(B53=0;"";B54/B53)')
+})
+
+test('EL NÚMERO GLOBAL VA REFERENCIADO POR NOMBRE, NO RECALCULADO', () => {
+  // Recalcularlo acá daba $13.090.051 contra los $13,8M de ARCA_FALTAN_MONTO que publica Proveedores:
+  // dos cifras parecidas, con nombres parecidos, respondiendo preguntas distintas.
+  const g = armar().find((f) => String(f[0]).includes('ARCA facturó y Compras NO lo tiene'))
+  assert.ok(g, 'la línea global existe')
+  assert.equal(g[1], '=ARCA_FALTAN_MONTO')
+  assert.match(String(g[0]), /Compras ENTERA, no de esta pestaña/, 'y dice de qué universo es')
+})
+
+test('LO SIN RESPALDO NO SE PRESENTA COMO ERROR mientras la cifra esté inflada', () => {
+  const sin = armar().find((f) => String(f[0]).includes('sin comprobante en el libro —'))
+  assert.match(String(sin[0]), /NO es error sin más/)
+  const veredicto = String(armar().at(-1)[0])
+  // El ✗ está reservado para lo inequívoco. Marcar en rojo una cifra que se sabe inflada entrena a
+  // ignorar el control — que es justo lo que pasó con los −$212M.
+  assert.doesNotMatch(veredicto, /"✗/, 'sin respaldo no lleva ✗')
+  assert.match(veredicto, /ⓘ /)
+  assert.match(veredicto, /inflada/, 'y el límite se declara en la propia pestaña')
+})
+
 test('LA VENTANA ES DEVENGADA: compara por fecha de FACTURA (col C), nunca por fecha de caja (col AD)', () => {
-  // Es la regla de oro nº 3. Medido contra los datos reales del 04/08, usar la fecha de caja mueve
-  // junio de +$27.621.744 a +$1.276.132 y julio de −$6.008.294 a −$20.320.175.
   const f = comprasDevengado(['Materiales Civil'])
   assert.match(f, /Compras!\$C\$4:\$C/)
   assert.doesNotMatch(f, /Compras!\$AD\$4:\$AD/, 'la fecha de caja no puede entrar en un control contra ARCA')
@@ -27,47 +88,13 @@ test('LA VENTANA ES DEVENGADA: compara por fecha de FACTURA (col C), nunca por f
 test('la ventana sale de _ARCA_RAW y no está escrita a mano — se estira sola al replicar un mes', () => {
   assert.match(DESDE, /_ARCA_RAW/)
   assert.match(HASTA, /_ARCA_RAW/)
-  const texto = armar().flat().join(' ')
-  assert.doesNotMatch(texto, /2026-0\d\b/, 'ningún período literal en el bloque')
+  assert.doesNotMatch(armar().flat().join(' '), /2026-0\d\b/, 'ningún período literal en el bloque')
 })
 
-test('LAS DOS DIRECCIONES SE INFORMAN POR SEPARADO — nunca restadas', () => {
-  const filas = armar()
-  const a = filas.find((f) => String(f[0]).includes('ARCA registró y Compras NO tiene'))
-  const b = filas.find((f) => String(f[0]).includes('ARCA NO respalda'))
-  assert.ok(a && b, 'las dos líneas existen')
-  assert.match(a[1], new RegExp(DIR.arcaSinCompras))
-  assert.match(b[1], new RegExp(DIR.comprasSinArca))
-  // Y ninguna de las dos se calcula restando la otra: son sumas independientes sobre _CRUCE_ARCA.
-  assert.doesNotMatch(a[1], new RegExp(DIR.comprasSinArca))
-  assert.doesNotMatch(b[1], new RegExp(DIR.arcaSinCompras))
-})
-
-test('EL VEREDICTO NO SE PONE VERDE SIN FUENTE, y exige que las DOS direcciones estén en cero', () => {
+test('EL VEREDICTO NO SE PONE VERDE SIN FUENTE', () => {
   const v = String(armar().at(-1)[0])
   assert.match(v, /NO PUEDO VERIFICAR/)
-  // El ✓ tiene que estar detrás de un AND de las dos direcciones: con un OR, $10M de un lado darían
-  // verde si el otro lado está limpio.
-  assert.match(v, /IF\(AND\(/)
-  assert.doesNotMatch(v, /IF\(OR\(/)
-})
-
-test('el veredicto de fracaso trae los DOS montos, no la diferencia neta', () => {
-  const v = String(armar().at(-1)[0])
-  const refs = v.match(/B5[0-9]/g) ?? []
-  // B56 (ARCA sin Compras) y B57 (Compras sin ARCA) con fila0=50.
-  assert.ok(refs.includes('B56') && refs.includes('B57'), `referencias encontradas: ${refs}`)
-})
-
-test('lo que legítimamente no está en ARCA va en su línea, marcada, y NO en la diferencia', () => {
-  const filas = armar()
-  const l = filas.find((f) => String(f[0]).includes('Fuera de ARCA por naturaleza'))
-  assert.ok(l, 'la línea existe')
-  assert.match(String(l[0]), /^ⓘ/, 'marcada como informativa, no como hallazgo')
-  assert.match(l[1], /Jornales de obra/)
-  // La diferencia agregada NO la incluye: es B(compras del universo) − B(arca).
-  const dif = filas.find((f) => String(f[0]).startsWith('⇒ Diferencia agregada'))
-  assert.equal(dif[1], '=ROUND(B54-B53;0)')
+  assert.match(v, /IF\(NOT\(COUNTIFS/, 'lo primero que evalúa es si la fuente llegó')
 })
 
 test('las fórmulas usan el separador es_AR (;) y no la coma', () => {
@@ -86,19 +113,11 @@ test('un universo de varios rubros suma todos — Materiales cubre Civil y Mante
   assert.equal(f.split('SUMIFS').length - 1, 2)
 })
 
-test('LAS LÍNEAS RECONSTRUYEN LA DIFERENCIA — ningún número queda sin explicar', () => {
-  // El defecto que esto atrapa: mostrar "⇒ difieren en $67.838.113" y debajo dos direcciones que
-  // suman otra cosa. Contra los datos del 04/08 el residuo es −$31.096.502 y tiene que estar a la
-  // vista, no escondido. Con fila0=50: dif=B55, arcaSin=B56, comprasSin=B57, NC=B58, resto=B59.
-  const filas = armar()
-  const resto = filas.find((f) => String(f[0]).includes('IMPORTE distinto al que ARCA registró'))
-  assert.ok(resto, 'la línea del residuo existe')
-  assert.equal(resto[1], '=ROUND(B55-(B57-B56+B58);0)')
-  const nc = filas.find((f) => String(f[0]).includes('Notas de crédito'))
-  assert.ok(nc, 'las notas de crédito se declaran aparte: restan del libro, no son carga faltante')
-})
-
-test('el detalle accionable se remite a la pestaña que lo tiene, no a un texto suelto', () => {
+test('el detalle accionable se remite a la pestaña que lo tiene', () => {
   assert.equal(C, '_CRUCE_ARCA')
   assert.match(String(armar().at(-1)[0]), /_CRUCE_ARCA/)
+})
+
+test('la bajada avisa que NO compara totales — es lo que confundió al lector', () => {
+  assert.match(String(armar()[1][0]), /No compara totales/)
 })
