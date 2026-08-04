@@ -63,8 +63,17 @@ test('la línea de cheques sin factura es una fórmula que suma las marcas del O
   const f = formulaChequesSinFactura('B$3', 'EOMONTH(B$3;0)+1', MARCAS.falta)
   assert.ok(f.startsWith('='))
   // Las dos pestañas, o la mitad del número se pierde.
-  assert.ok(f.includes("'Cheques Emitidos'!$M$2:$M$400"))
-  assert.ok(f.includes("'Tarjeta de Credito'!$L$3:$L$400"))
+  // ═══ EL RANGO SE DERIVA DEL INSTRUMENTO, NO SE TIPEA (04/08) ═══
+  //
+  // Acá decía `$L$3:$L$400` a mano. Eso no fijaba una regla: fijaba el valor que tenía `filaCab`
+  // ese día (2). Cuando se corrigió a 31 —el encabezado del registro de la tarjeta está en la 31,
+  // no en la 2— el test se puso rojo y el dato correcto parecía el error. La regla que sí vale es
+  // que la fórmula arranque en la PRIMERA FILA DE DATOS de cada instrumento, sea cual sea.
+  for (const i of [INSTRUMENTOS.cheques, INSTRUMENTOS.tarjeta]) {
+    const col = i.colMarca === 11 ? 'L' : 'M'
+    assert.ok(f.includes(`'${i.pestaña}'!$${col}$${i.filaCab + 1}:$${col}$400`),
+      `la fórmula tiene que leer ${i.pestaña} desde su primera fila de datos (${i.filaCab + 1})`)
+  }
   // La marca EXACTA: si el texto cambia de un lado y no del otro, la fórmula da $0 en silencio.
   assert.ok(f.includes(MARCAS.falta))
   // Ventana con límite superior EXCLUYENTE: ningún pago puede caer en dos columnas.
