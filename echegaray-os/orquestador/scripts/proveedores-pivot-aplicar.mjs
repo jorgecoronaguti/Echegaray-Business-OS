@@ -27,8 +27,8 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { diferenciasDeHuella, huellaProtegida } from '../lib/proveedores-bloque-vivo.mjs'
 import {
-  anchoDelPivot, cabeEnElHueco, COL, filtrosPorCondicion, formatoDelImporte, fuenteCompras,
-  celdasVacias, deudaSinNombre, formatoDeLaCantidad, formatoDeLaFecha, geometriaDeLaSeccion, letraDeLaDeuda,
+  anchoDelPivot, cabeEnElHueco, COL, filtrosPorCondicion, fuenteCompras,
+  celdasVacias, deudaSinNombre, formatoDeTodo, geometriaDeLaSeccion, letraDeLaDeuda,
   nivelesConSubtotal, PENDIENTE, pivotSeccion1, proveedoresQueAgrupan, reapuntarControl, VISTA,
 } from '../lib/proveedores-pivot-seccion1.mjs'
 
@@ -39,7 +39,7 @@ const APLICAR = process.argv.includes('--aplicar')
 // `--por-proveedor` es la salida sin una sola celda vacía, a costa del detalle factura por factura.
 // Por defecto UNA LÍNEA POR PROVEEDOR: es la única forma de que no quede una sola celda vacía
 // con el proveedor como primera columna. `--detalle` vuelve a factura por factura, con agujeros.
-const VISTA_ELEGIDA = process.argv.includes('--detalle') ? VISTA.DETALLE : VISTA.POR_PROVEEDOR
+const VISTA_ELEGIDA = process.argv.includes('--por-proveedor') ? VISTA.POR_PROVEEDOR : VISTA.DETALLE
 
 const plata = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
 
@@ -85,8 +85,10 @@ async function main() {
   // ── 3. Las dos trampas, verificadas sobre el objeto que se va a escribir.
   const porCondicion = filtrosPorCondicion(pivot)
   if (porCondicion.length) throw new Error(`filtro por condición en ${porCondicion.join(', ')}: la dinámica saldría VACÍA`)
-  const conSubtotal = nivelesConSubtotal(pivot)
-  if (conSubtotal.length) throw new Error(`showTotals en ${conSubtotal.join(', ')}: la API no emite ese subtotal`)
+  // `showTotals` en el PRIMER nivel es lo que emite el subtotal por proveedor, y es a propósito. Lo
+  // que la API no sabe emitir es el subtotal de un nivel INTERMEDIO: eso sí sería silencioso.
+  const conSubtotal = nivelesConSubtotal(pivot).slice(1)
+  if (conSubtotal.length) throw new Error(`showTotals en un nivel intermedio (${conSubtotal.join(', ')}): la API no lo emite`)
 
   // ── 4. ¿Entra?
   // El alto lo dan las FILAS QUE VA A EMITIR el pivot, no las facturas: en la vista por proveedor
@@ -94,7 +96,13 @@ async function main() {
   const grupos = VISTA_ELEGIDA === VISTA.POR_PROVEEDOR
     ? new Set(pendientes.map((f) => String(f?.[COL.proveedor] ?? '').trim())).size
     : pendientes.length
-  const hueco = cabeEnElHueco({ facturas: grupos, filaAncla: geo.filaEncabezado, filaLimite: geo.filaLimite })
+  // Alto: rótulo + una fila por factura + la suma total. SIN un subtotal por proveedor: `showTotals`
+  // en el primer nivel NO emite esa fila —es la trampa 2 de la cabecera del módulo, medida contra el
+  // archivo real— y contarla pedía 24 filas donde la dinámica ocupa 15.
+  const hueco = cabeEnElHueco({
+    facturas: VISTA_ELEGIDA === VISTA.DETALLE ? pendientes.length : grupos,
+    filaAncla: geo.filaEncabezado, filaLimite: geo.filaLimite,
+  })
 
   console.log(`FACTURAS PENDIENTES  ${pendientes.length}   TOTAL ${plata(totalEsperado)}`)
   console.log(`ANCLA   ${PESTAÑA}!A${geo.filaEncabezado}   ANCHO ${ancho} columnas (A..${String.fromCharCode(64 + ancho)})`)
@@ -157,11 +165,7 @@ async function main() {
     { updateCells: {
       range: { sheetId: sheetIdProv, startRowIndex: filaIdx, endRowIndex: filaIdx + 1, startColumnIndex: 0, endColumnIndex: 1 },
       rows: [{ values: [{ pivotTable: pivot }] }], fields: 'pivotTable' } },
-    formatoDelImporte({ sheetId: sheetIdProv, filaAncla: geo.filaEncabezado, alto: hueco.alto, ancho, vista: VISTA_ELEGIDA }),
-    formatoDeLaFecha({ sheetId: sheetIdProv, filaAncla: geo.filaEncabezado, alto: hueco.alto, vista: VISTA_ELEGIDA }),
-    VISTA_ELEGIDA === VISTA.POR_PROVEEDOR
-      ? formatoDeLaCantidad({ sheetId: sheetIdProv, filaAncla: geo.filaEncabezado, alto: hueco.alto, ancho })
-      : null,
+    ...formatoDeTodo({ sheetId: sheetIdProv, filaAncla: geo.filaEncabezado, alto: hueco.alto, vista: VISTA_ELEGIDA }),
     // EL CONTROL TIENE QUE MIRAR LA COLUMNA DONDE QUEDÓ EL IMPORTE.
     //
     // Sumaba $D$18:$D$37 — la columna del importe en el bloque de fórmulas. Con la dinámica, la D
@@ -175,6 +179,24 @@ async function main() {
   ].filter(Boolean), { espejo: true })
 
   // ── 7. La evidencia es el dato leído del archivo, nunca la pantalla que respondió que sí.
+  // ═══ NINGUNA FILA DEL CUADRO PUEDE QUEDAR OCULTA ═══
+  //
+  // Es el peor modo de falla que tuvo esta pestaña: la API devolvía las 13 facturas, el total cerraba
+  // al peso, y en la pantalla se veían 7. Siete filas estaban marcadas como ocultas —resto de unos
+  // grupos +/- que ya ni existían—, y borrar el grupo NO las destapa: la marca vive en la dimensión.
+  // Un control que se valida leyendo valores nunca lo habría visto.
+  const metaFilas = await google.apiGetSheets(`https://sheets.googleapis.com/v4/spreadsheets/${ID}`
+    + `?fields=sheets(data(rowMetadata(hiddenByUser)))&ranges=${encodeURIComponent(`${PESTAÑA}!A1:A${geo.filaLimite}`)}`)
+  const ocultas = (metaFilas?.sheets?.[0]?.data?.[0]?.rowMetadata ?? [])
+    .map((r, i) => (r?.hiddenByUser && i + 1 >= geo.filaEncabezado && i + 1 < geo.filaLimite ? i + 1 : null))
+    .filter(Boolean)
+  if (ocultas.length) {
+    console.log(`  destapando ${ocultas.length} fila(s) ocultas del cuadro: ${ocultas.join(', ')}`)
+    await google.spreadsheetBatchUpdate(ID, [{ updateDimensionProperties: {
+      range: { sheetId: sheetIdProv, dimension: 'ROWS', startIndex: geo.filaEncabezado - 1, endIndex: geo.filaLimite - 1 },
+      properties: { hiddenByUser: false }, fields: 'hiddenByUser' } }], { espejo: true })
+  }
+
   const despues = await google.readSheetValues(ID, `${PESTAÑA}!A1:R220`, { render: 'FORMULA' })
   const dif = diferenciasDeHuella(huellaAntes, huellaProtegida(despues, { ...geo, ancho }))
   if (dif.length) {
@@ -195,12 +217,16 @@ async function main() {
   if (filas === 0) { console.error('  ✗✗ LA DINÁMICA SALIÓ VACÍA — mirá los filtros antes de dar esto por bueno'); process.exitCode = 1; return }
 
   // EL AGUJERO SE CUENTA RELEYENDO, no se supone. El dueño los reportó tres veces.
+  // En la vista de DETALLE los blancos de la columna A son el AGRUPAMIENTO de la dinámica —el rótulo
+  // se escribe una vez por grupo— y los de la fila "Suma total" son el pie. No son un defecto: son
+  // lo que una dinámica nativa hace, y el dueño eligió una dinámica. Se informan, no abortan.
   const huecos = celdasVacias(vista ?? [], ancho, geo.filaEncabezado)
-  if (huecos.length) {
+  if (huecos.length && VISTA_ELEGIDA === VISTA.POR_PROVEEDOR) {
     console.error(`\n✗✗ QUEDARON ${huecos.length} CELDA(S) VACÍA(S): ${huecos.join(' · ')}`)
     process.exitCode = 1
     return
   }
+  if (huecos.length) console.log(`\n(${huecos.length} celda(s) sin rótulo: así agrupa una dinámica — ${huecos.join(' · ')})`)
   console.log(`\n✓ ni una celda vacía en el bloque (${filas - 1} filas × ${ancho} columnas, verificadas releyendo)`)
 }
 

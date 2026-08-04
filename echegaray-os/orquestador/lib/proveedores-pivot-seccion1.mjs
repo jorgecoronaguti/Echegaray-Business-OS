@@ -58,8 +58,12 @@ export function camposDeFila({ vista = VISTA.POR_PROVEEDOR } = {}) {
   if (vista === VISTA.POR_PROVEEDOR) {
     return [{ sourceColumnOffset: COL.proveedor, showTotals: false, sortOrder: 'DESCENDING', valueBucket: { valuesIndex: 0 } }]
   }
+  // EL PROVEEDOR ES EL NIVEL QUE AGRUPA, con `showTotals` para que emita su subtotal. Debajo, una
+  // línea por factura con todo lo que hace falta para decidir un pago: número, cuándo, obra, con qué
+  // se paga y categoría. Esto es una dinámica nativa: la recalcula Google, no un generador.
   return [
-    { sourceColumnOffset: COL.proveedor, showTotals: false, sortOrder: 'DESCENDING', valueBucket: { valuesIndex: 0 } },
+    { sourceColumnOffset: COL.proveedor, showTotals: true, sortOrder: 'DESCENDING', valueBucket: { valuesIndex: 0 } },
+    { sourceColumnOffset: COL.comprobante, showTotals: false, sortOrder: 'ASCENDING' },
     { sourceColumnOffset: COL.proximoPago, showTotals: false, sortOrder: 'ASCENDING' },
     { sourceColumnOffset: COL.obra, showTotals: false, sortOrder: 'ASCENDING' },
     { sourceColumnOffset: COL.tipoPago, showTotals: false, sortOrder: 'ASCENDING' },
@@ -148,9 +152,12 @@ export function fuenteCompras({ sheetId, filas }) {
  * eso el cuadro es proveedor · deuda · facturas, y la fecha vuelve el día que esas dos facturas
  * tengan fecha en Compras. No se inventa una fecha para tapar un hueco.
  */
-export function valoresDelPivot() {
+export function valoresDelPivot({ vista = VISTA.POR_PROVEEDOR } = {}) {
+  // En el DETALLE, un COUNTA pondría un "1" en cada renglón de factura: ruido en todas las filas
+  // para un dato que sólo significa algo en un total. Va sólo en la vista por proveedor.
+  if (vista === VISTA.DETALLE) return [{ sourceColumnOffset: COL.saldo, summarizeFunction: 'SUM', name: 'Importe' }]
   return [
-    { sourceColumnOffset: COL.saldo, summarizeFunction: 'SUM', name: 'Deuda' },
+    { sourceColumnOffset: COL.saldo, summarizeFunction: 'SUM', name: 'Importe' },
     // COUNTA sobre el PROVEEDOR, no sobre el número de comprobante: hay una factura sin número
     // (La Isla Metal SRL) y COUNTA sólo cuenta lo no vacío — mostraba "0 facturas" para un
     // proveedor al que le debemos $100.000. El proveedor está en todas las filas del grupo por
@@ -164,7 +171,7 @@ export function pivotSeccion1(fuente, { vista = VISTA.POR_PROVEEDOR } = {}) {
   return {
     source: fuente,
     rows: camposDeFila({ vista }),
-    values: valoresDelPivot(),
+    values: valoresDelPivot({ vista }),
     filterSpecs: filtros(),
     valueLayout: 'HORIZONTAL',
   }
@@ -255,7 +262,7 @@ export function letraDeLaDeuda({ vista = VISTA.POR_PROVEEDOR } = {}) {
   return String.fromCharCode(65 + columnaDeLaDeuda({ vista }))
 }
 
-export function formatoDelImporte({ sheetId, filaAncla, alto, ancho, vista = VISTA.POR_PROVEEDOR }) {
+export function formatoDelImporte({ sheetId, filaAncla, alto, vista = VISTA.POR_PROVEEDOR }) {
   const columna = columnaDeLaDeuda({ vista })
   return formatoDeColumna({
     sheetId, filaAncla, alto, columna,
@@ -296,6 +303,39 @@ export function formatoDeLaCantidad({ sheetId, filaAncla, alto, ancho }) {
     sheetId, filaAncla, alto, columna: ancho - 1,
     numberFormat: { type: 'NUMBER', pattern: '0' }, horizontalAlignment: 'RIGHT',
   })
+}
+
+/**
+ * EL FORMATO DE TODAS LAS COLUMNAS DEL BLOQUE, DE UNA.
+ *
+ * Una dinámica no trae formato: usa el que la celda ya tenía. Después de tres reescrituras seguidas,
+ * la columna del comprobante conservaba el formato de fecha de la vuelta anterior y "826666" se veía
+ * como `01/05/4163`. Cada columna se declara explícitamente en cada corrida — el formato es del
+ * archivo, no del dato, y nunca vuelve solo a "automático".
+ */
+export function formatoDeTodo({ sheetId, filaAncla, alto, vista = VISTA.POR_PROVEEDOR }) {
+  const campos = camposDeFila({ vista })
+  const iFecha = campos.findIndex((r) => r.sourceColumnOffset === COL.proximoPago)
+  const ancho = campos.length + valoresDelPivot({ vista }).length
+  const pedidos = []
+  for (let c = 0; c < campos.length; c++) {
+    pedidos.push(formatoDeColumna({
+      sheetId, filaAncla, alto, columna: c,
+      numberFormat: c === iFecha ? { type: 'DATE', pattern: 'dd/mm/yyyy' } : { type: 'TEXT', pattern: '@' },
+      horizontalAlignment: c === iFecha ? 'RIGHT' : 'LEFT',
+    }))
+  }
+  pedidos.push(formatoDeColumna({
+    sheetId, filaAncla, alto, columna: campos.length,
+    numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0' }, horizontalAlignment: 'RIGHT',
+  }))
+  if (ancho > campos.length + 1) {
+    pedidos.push(formatoDeColumna({
+      sheetId, filaAncla, alto, columna: ancho - 1,
+      numberFormat: { type: 'NUMBER', pattern: '0' }, horizontalAlignment: 'RIGHT',
+    }))
+  }
+  return pedidos
 }
 
 /** El pedido de formato de UNA columna del bloque, desde la fila siguiente al rótulo. */

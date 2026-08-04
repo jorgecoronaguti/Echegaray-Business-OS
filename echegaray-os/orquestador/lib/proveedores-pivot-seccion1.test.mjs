@@ -53,7 +53,8 @@ test('por defecto: una línea por proveedor · deuda · facturas, y nada más', 
 test('la vista DETALLE sigue existiendo, con sus agujeros declarados', () => {
   const p = pivotSeccion1(fuente, { vista: VISTA.DETALLE })
   assert.deepEqual(p.rows.map((r) => r.sourceColumnOffset),
-    [COL.proveedor, COL.proximoPago, COL.obra, COL.tipoPago, COL.categoria])
+    // El comprobante volvió al detalle: sin el número de factura el cuadro no sirve para pagar.
+    [COL.proveedor, COL.comprobante, COL.proximoPago, COL.obra, COL.tipoPago, COL.categoria])
   assert.equal(anchoDelPivot(p), 7)
 })
 
@@ -202,7 +203,8 @@ test('EL CONTROL suma la columna de la DEUDA, no la de los conteos', () => {
   // Con dos valores, `ancho - 1` es la cantidad de facturas: el control sumaba 13 contra un titular
   // de $15.716.930 y daba cualquier cosa. La deuda es el primer valor.
   assert.equal(letraDeLaDeuda(), 'B')
-  assert.equal(letraDeLaDeuda({ vista: VISTA.DETALLE }), 'F')
+  // Detalle: 6 campos de fila (A..F) y el importe en la G.
+  assert.equal(letraDeLaDeuda({ vista: VISTA.DETALLE }), 'G')
 })
 
 test('la cantidad de facturas lleva formato de entero, o hereda el de fecha de antes', () => {
