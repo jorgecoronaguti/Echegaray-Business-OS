@@ -51,6 +51,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
+import { MONEDA_TOTAL } from '../lib/formato-statement.mjs'
 // `notasDeColumna` NO se importa, y no es un olvido: es la función que escribía las notas de la
 // columna H. Un test de orquestador/lib/sin-notas-generadas.test.mjs impide que vuelva a entrar.
 import { altoDeParrafo } from '../lib/nota-celda.mjs'
@@ -1778,7 +1779,11 @@ async function formatear(google, sheetId, g) {
   const grupos = (await google.getRowGroups(ID).catch(() => [])).find((s) => s.sheetId === sheetId)?.grupos ?? []
   for (const gr of grupos) req.push({ deleteDimensionGroup: { range: { sheetId, dimension: 'ROWS', startIndex: gr.startIndex, endIndex: gr.endIndex } } })
 
-  const MONEDA = { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }
+  // El patrón sale de la definición única (formato-statement.mjs): negativo entre paréntesis, y sin
+  // [Red] — el rojo de esta pestaña es del control que no cierra, no de cualquier número que dé menos
+  // que cero. Con [Red] se pintaba en rojo el neto de un tramo en el que legítimamente se paga más de
+  // lo que se cobra, y un rojo que aparece siempre deja de avisar.
+  const MONEDA = { ...MONEDA_TOTAL }
   fmt(r(0, n, 2, 3), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: MONEDA, horizontalAlignment: 'RIGHT' })
   fmt(r(0, n, 4, 5), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: MONEDA, horizontalAlignment: 'RIGHT' })
   // El tipo de cambio no es plata: es una relación. Con dos decimales y sin signo $.
@@ -1799,7 +1804,7 @@ async function formatear(google, sheetId, g) {
   // LOS IMPORTES EN DÓLARES, con su propio símbolo. Sin esto, U$S 581,39 se dibuja "$581".
   for (const f of g.usd) {
     fmt(r(f - 1, f, 2, 3), 'userEnteredFormat.numberFormat',
-      { numberFormat: { type: 'CURRENCY', pattern: '"U$S "#,##0.00;[Red]-"U$S "#,##0.00;"—"' } })
+      { numberFormat: { type: 'CURRENCY', pattern: '"U$S "#,##0.00;("U$S "#,##0.00);"—"' } })
   }
   // La cotización de la fila del tipo de cambio NO es plata: se muestra como número.
   fmt(r(g.fRef - 1, g.fTC, 2, 3), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '#,##0.00' } })
