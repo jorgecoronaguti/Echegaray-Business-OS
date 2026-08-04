@@ -241,9 +241,54 @@ async function main() {
       + `${pesos(saldoViejo).padStart(15)} → ${pesos(saldoNuevo).padStart(15)}`)
   })
   console.log('─'.repeat(72))
-  console.log(`  piso que muestra CAJA hoy : ${pesos(peorViejo.v)}  (${peorViejo.tramo}, hasta ${fmtFecha(peorViejo.hasta)})`)
+  console.log(`  piso del calendario VIEJO   : ${pesos(peorViejo.v)}  (${peorViejo.tramo}, hasta ${fmtFecha(peorViejo.hasta)})`)
   console.log(`  piso con la definición única: ${pesos(peorNuevo.v)}  (${peorNuevo.tramo}, hasta ${fmtFecha(peorNuevo.hasta)})`)
   console.log(`  el piso estaba inflado en   : ${pesos(peorViejo.v - peorNuevo.v)}\n`)
+
+  // ── LO QUE LA PESTAÑA MUESTRA DE VERDAD ────────────────────────────────────────────────────────
+  //
+  // ═══ ESTO FALTABA, Y SIN ESTO EL SCRIPT NO VERIFICA NADA (04/08) ═══
+  //
+  // El encabezado prometía "recién al final compara contra lo que las dos pestañas muestran", y no lo
+  // hacía: las dos cifras de arriba son DOS MODELOS de este mismo archivo. Comparar un modelo con
+  // otro no prueba que la pestaña haya cambiado — es exactamente el "control validado contra la misma
+  // información que produce" que este trabajo entero vino a matar, cometido por el verificador.
+  //
+  // Ahora se lee la celda que CAJA publica. LA FILA SE BUSCA POR SU RÓTULO: el punto más bajo se
+  // mueve cada vez que el calendario gana o pierde una fila, y una referencia fija leería otra cosa
+  // sin dar error. Si la pestaña todavía no se regeneró, la diferencia lo dice con su número.
+  const ROTULO_PISO = 'el punto más bajo del horizonte'
+  const caja = await g.readSheetValues(ID, 'CAJA!A1:F', { render: 'UNFORMATTED_VALUE' })
+  const iPiso = caja.findIndex((f) => String(f?.[0] ?? '').includes(ROTULO_PISO))
+  console.log('EL VEREDICTO — LO QUE LA PESTAÑA MUESTRA CONTRA LO QUE DEBERÍA MOSTRAR')
+  console.log('─'.repeat(72))
+  if (iPiso < 0) {
+    console.log(`  ⚠ no encontré la fila "${ROTULO_PISO}" en CAJA: sin ella no puedo verificar el efecto.\n`)
+    process.exitCode = 1
+    return
+  }
+  const escrito = num(caja[iPiso]?.[5])
+  console.log(`  piso escrito en CAJA (fila ${iPiso + 1}) : ${pesos(escrito)}`)
+  console.log(`  piso con la definición única        : ${pesos(peorNuevo.v)}`)
+  // ═══ POR QUÉ NO SE EXIGE EL PESO EXACTO ═══
+  //
+  // El cajón en dólares se revalúa entre una lectura y la otra, así que las dos corridas no ven el
+  // mismo saldo inicial. Medido: ~$850 de deriva. El umbral es de MIL PESOS —tres órdenes de magnitud
+  // por debajo del error que este trabajo corrigió— y NO se relaja: si un día no cierra por más que
+  // eso, es porque el calendario y esta cuenta volvieron a contar cosas distintas.
+  //
+  // LA OTRA DIFERENCIA LEGÍTIMA, DECLARADA: este script no modela el IVA/IIBB del calendario fiscal
+  // (no vive en Compras) y la pestaña SÍ lo suma desde el 04/08. Ese IVA vence el 20 de cada mes, así
+  // que sólo puede afectar tramos posteriores al que hoy marca el piso; si algún día el piso cayera
+  // en un tramo con vencimiento de IVA adentro, la pestaña mostraría MENOS que esta cuenta y la
+  // diferencia sería exactamente ese IVA. Un piso más bajo que el modelo nunca es el error peligroso.
+  const dif = escrito - peorNuevo.v
+  const TOLERANCIA = 1000
+  console.log(`  el piso sigue inflado en            : ${pesos(dif)}`)
+  console.log(Math.abs(dif) <= TOLERANCIA
+    ? '\n  ✓ la pestaña muestra el piso de la definición única (dentro de la deriva del dólar).\n'
+    : `\n  ✗ NO CIERRA por ${pesos(dif)}. Si es positivo, CAJA sigue viendo de menos y el piso miente.\n`)
+  if (Math.abs(dif) > TOLERANCIA) process.exitCode = 1
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => { console.error(e); process.exitCode = 1 })
