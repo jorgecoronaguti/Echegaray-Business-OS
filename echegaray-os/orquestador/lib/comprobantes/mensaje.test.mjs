@@ -28,7 +28,7 @@ const barcelo = ({ comprobante, ...over } = {}) => ({
     otrosTributos: 8931.69,
     ...(comprobante ?? {}),
   },
-  clave: 'p:combustibles barcelo|A|0113-00014219',
+  clave: 'p:combustibles barcelo|0113-00014219',
 })
 
 // ── La tabla ─────────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { faltantesDe, puedeCargarse, validar, POLITICA, MOTIVO, PREGUNTA_OBRA } from './faltantes.mjs'
 import { preguntasDe, estaCompleto } from './fajo.mjs'
+import { claveComprobante } from './lectura.mjs'
 
 // ═══ UNA PREGUNTA, UNA DEFINICIÓN, DOS POLÍTICAS (03/08) ═══
 //
@@ -159,4 +160,48 @@ test('con neto y sin total: el cargador puede escribir la fila, el chat no', () 
   const soloNeto = item({ comprobante: { total: null, neto: 52900 } })
   assert.deepEqual(codigos(soloNeto, POLITICA.CARGADOR), [])
   assert.deepEqual(codigos(soloNeto, POLITICA.CHAT), [MOTIVO.TOTAL])
+})
+
+// ── LA INVARIANTE QUE FALTABA: cargable ⇒ identificable (04/08) ──────────────
+//
+// El chat reserva una clave de idempotencia ANTES de escribir, y `claveComprobante` devuelve null
+// cuando falta el número o la LETRA. Un ítem que `estaCompleto` pero sin clave era un agujero: la
+// reserva lo salteaba en silencio, `escribirFajo` lo confundía con un duplicado y contestaba "ya
+// estaban cargados" sin haber escrito nada (el tique de Barcelo del 03/08).
+//
+// Se cierra en el origen: si el chat lo va a dar por cargable, tiene que poder identificarlo.
+test('INVARIANTE: todo lo que el chat da por cargable tiene clave de idempotencia', () => {
+  const casos = [
+    item(),
+    item({ comprobante: { tipo: null } }),                    // el tique sin letra
+    item({ comprobante: { tipo: null, esNotaCredito: true } }), // NC: el tipo sale del flag
+    item({ comprobante: { numero: null } }),
+    item({ comprobante: { cuit: null } }),                    // sin CUIT: cae al nombre, sigue habiendo clave
+    item({ comprobante: { cuit: null, proveedor: null } }),
+  ]
+  let cargables = 0
+  for (const it of casos) {
+    if (!puedeCargarse(it, POLITICA.CHAT)) continue
+    cargables++
+    assert.ok(claveComprobante(it.comprobante), `cargable sin clave: ${JSON.stringify(it.comprobante)}`)
+  }
+  assert.ok(cargables >= 2, 'la invariante se probó sobre casos que de verdad pasan')
+})
+
+test('sin letra el chat CARGA IGUAL: la letra no es parte de la identidad', () => {
+  // El tique de Combustibles Barcelo del 03/08. "TIQUE FACTURA A" no es "FACTURA A" y la visión
+  // devolvió la letra vacía: antes eso lo dejaba sin clave y el bot decía "ya estaba cargado" sin
+  // haber escrito nada. La letra se sigue leyendo y se escribe en la columna G si está — pero no
+  // puede impedir que el gasto entre a Compras.
+  const sinLetra = item({ comprobante: { tipo: null } })
+  assert.deepEqual(codigos(sinLetra, POLITICA.CHAT), [], 'no bloquea')
+  assert.ok(claveComprobante(sinLetra.comprobante), 'y tiene con qué deduplicarse')
+})
+
+test('una NOTA DE CRÉDITO no comparte clave con la factura del mismo número', () => {
+  // Comparten numeración y confundirlas ya costó $41,9M. La separación va por el flag, no por la
+  // letra: no depende de que el OCR lea nada.
+  const factura = claveComprobante({ cuit: '30712345678', numero: '0113-00010489', tipo: 'A' })
+  const nc = claveComprobante({ cuit: '30712345678', numero: '0113-00010489', esNotaCredito: true })
+  assert.notEqual(factura.clave, nc.clave)
 })
