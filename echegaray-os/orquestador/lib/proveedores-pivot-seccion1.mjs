@@ -45,7 +45,7 @@ export const PENDIENTE = 'Pendiente'
  *
  * El primer nivel ordena por el valor DESCENDENTE — a quién le debemos más, arriba.
  */
-export function camposDeFila({ vista = VISTA.DETALLE } = {}) {
+export function camposDeFila({ vista = VISTA.POR_PROVEEDOR } = {}) {
   // EL PROVEEDOR VA PRIMERO — pedido explícito del dueño (04/08), y el comprobante no se muestra.
   //
   // Lo que eso cuesta, dicho: el primer nivel es el que AGRUPA, y una dinámica escribe su rótulo una
@@ -100,8 +100,12 @@ export function filtros() {
 }
 
 /**
- * El rango de Compras que alimenta la dinámica, acotado por abajo a la grilla real: un source
- * ilimitado obliga a recorrer la hoja entera en cada recálculo sin ganar una sola fila.
+ * EL ORIGEN DE LA DINÁMICA — Y POR QUÉ LLEGA HASTA EL FINAL DE LA GRILLA.
+ *
+ * `filas` tiene que ser el `rowCount` de la PESTAÑA Compras, no la última fila con datos. Si se
+ * corta en la última factura cargada, la compra que se cargue mañana cae FUERA del origen y la
+ * dinámica no la ve nunca: deja de ser viva sin dar un solo error. Es el defecto que el cuadro
+ * viejo tenía de otra forma (referencias a filas fijas) y que este cuadro existe para no repetir.
  *
  * `startRowIndex: 2` es la fila 3, donde están los rótulos: el pivot la usa como encabezado.
  * Arrancar en la 4 le haría tomar la primera factura como nombre de columna.
@@ -112,15 +116,60 @@ export function fuenteCompras({ sheetId, filas }) {
   return { sheetId, startRowIndex: 2, endRowIndex: filas, startColumnIndex: 0, endColumnIndex: 38 }
 }
 
+/**
+ * LOS VALORES — y por qué la fecha NO es uno de ellos.
+ *
+ * El dueño pidió CERO agujeros. Un valor de pivot es siempre una agregación numérica, así que
+ * "próximo pago" sólo podría entrar como MIN de la fecha prevista. Y ahí aparece el agujero: dos
+ * proveedores (DUPEC y RSV) tienen la palabra "Pendiente" en la columna de la fecha en vez de una
+ * fecha, MIN no encuentra ningún número, y la celda sale vacía. Medido, no supuesto.
+ *
+ * SUM y COUNTA no pueden quedar vacíos nunca: un grupo existe porque tiene al menos una fila. Por
+ * eso el cuadro es proveedor · deuda · facturas, y la fecha vuelve el día que esas dos facturas
+ * tengan fecha en Compras. No se inventa una fecha para tapar un hueco.
+ */
+export function valoresDelPivot() {
+  return [
+    { sourceColumnOffset: COL.saldo, summarizeFunction: 'SUM', name: 'Deuda' },
+    // COUNTA sobre el PROVEEDOR, no sobre el número de comprobante: hay una factura sin número
+    // (La Isla Metal SRL) y COUNTA sólo cuenta lo no vacío — mostraba "0 facturas" para un
+    // proveedor al que le debemos $100.000. El proveedor está en todas las filas del grupo por
+    // definición: es lo único que garantiza que el conteo sea la cantidad de filas.
+    { sourceColumnOffset: COL.proveedor, summarizeFunction: 'COUNTA', name: 'Facturas' },
+  ]
+}
+
 /** La dinámica entera, lista para `updateCells`. */
-export function pivotSeccion1(fuente, { vista = VISTA.DETALLE } = {}) {
+export function pivotSeccion1(fuente, { vista = VISTA.POR_PROVEEDOR } = {}) {
   return {
     source: fuente,
     rows: camposDeFila({ vista }),
-    values: [{ sourceColumnOffset: COL.saldo, summarizeFunction: 'SUM', name: 'Importe' }],
+    values: valoresDelPivot(),
     filterSpecs: filtros(),
     valueLayout: 'HORIZONTAL',
   }
+}
+
+/**
+ * ¿QUEDÓ ALGUNA CELDA VACÍA EN EL BLOQUE ESCRITO?
+ *
+ * El dueño reportó agujeros tres veces. Que el script los cuente RELEYENDO el archivo —y falle si
+ * hay uno— es la diferencia entre "creo que quedó bien" y evidencia del efecto.
+ *
+ * @param {Array<Array<any>>} filas  el bloque leído del archivo (encabezado incluido)
+ * @param {number} ancho             las columnas que ocupa la dinámica
+ * @returns {string[]} las direcciones relativas vacías, p.ej. ["fila 3 · columna A"]
+ */
+export function celdasVacias(filas = [], ancho = 0, filaAncla = 1) {
+  const huecos = []
+  filas.forEach((f, i) => {
+    const llenas = (f ?? []).slice(0, ancho).filter((c) => String(c ?? '').trim() !== '').length
+    if (llenas === 0) return // fila entera vacía = abajo del bloque, no es un agujero
+    for (let c = 0; c < ancho; c++) {
+      if (String((f ?? [])[c] ?? '').trim() === '') huecos.push(`${String.fromCharCode(65 + c)}${filaAncla + i}`)
+    }
+  })
+  return huecos
 }
 
 /**
@@ -174,9 +223,22 @@ export function nivelesConSubtotal(pivot = {}) {
  *
  * @param {{sheetId:number, filaAncla:number, alto:number, ancho:number}} o  filas en base 1
  */
-export function formatoDelImporte({ sheetId, filaAncla, alto, ancho }) {
+export function columnaDeLaDeuda({ vista = VISTA.POR_PROVEEDOR } = {}) {
+  // La deuda es el PRIMER valor, no el último: con dos valores (deuda y facturas) tomar `ancho - 1`
+  // formatea la cantidad de facturas como pesos y deja la deuda pelada — y peor, hace que el
+  // control de arriba sume la columna de los conteos y dé cualquier cosa.
+  return camposDeFila({ vista }).length
+}
+
+/** La letra de la columna de la deuda, para el control. Calculada, nunca tipeada. */
+export function letraDeLaDeuda({ vista = VISTA.POR_PROVEEDOR } = {}) {
+  return String.fromCharCode(65 + columnaDeLaDeuda({ vista }))
+}
+
+export function formatoDelImporte({ sheetId, filaAncla, alto, ancho, vista = VISTA.POR_PROVEEDOR }) {
+  const columna = columnaDeLaDeuda({ vista })
   return formatoDeColumna({
-    sheetId, filaAncla, alto, columna: ancho - 1,
+    sheetId, filaAncla, alto, columna,
     numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0' }, horizontalAlignment: 'RIGHT',
   })
 }
@@ -199,6 +261,20 @@ export function formatoDeLaFecha({ sheetId, filaAncla, alto, vista = VISTA.DETAL
   return formatoDeColumna({
     sheetId, filaAncla, alto, columna,
     numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'RIGHT',
+  })
+}
+
+/**
+ * EL FORMATO DE LA CANTIDAD DE FACTURAS — un entero, y hay que decirlo.
+ *
+ * Sin esto, la columna se queda con el formato que TENÍA de la corrida anterior. Pasó de verdad:
+ * quedó con formato de fecha y "2 facturas" se mostró como `01/01/1900`. Una celda no vuelve sola a
+ * "automático" porque el contenido cambió de sentido; el formato es del archivo, no del dato.
+ */
+export function formatoDeLaCantidad({ sheetId, filaAncla, alto, ancho }) {
+  return formatoDeColumna({
+    sheetId, filaAncla, alto, columna: ancho - 1,
+    numberFormat: { type: 'NUMBER', pattern: '0' }, horizontalAlignment: 'RIGHT',
   })
 }
 

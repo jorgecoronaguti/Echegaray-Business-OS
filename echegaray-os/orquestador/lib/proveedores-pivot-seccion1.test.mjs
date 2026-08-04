@@ -8,7 +8,8 @@ import assert from 'node:assert/strict'
 import {
   anchoDelPivot, cabeEnElHueco, camposDeFila, COL, filtros, filtrosPorCondicion, fuenteCompras,
   clavesRepetidas, formatoDeLaFecha, formatoDelImporte, geometriaDeLaSeccion, nivelesConSubtotal,
-  pivotSeccion1, proveedoresQueAgrupan, reapuntarControl, VISTA,
+  celdasVacias, formatoDeLaCantidad, letraDeLaDeuda, pivotSeccion1, proveedoresQueAgrupan,
+  reapuntarControl, VISTA,
 } from './proveedores-pivot-seccion1.mjs'
 
 const fuente = fuenteCompras({ sheetId: 7, filas: 900 })
@@ -41,15 +42,19 @@ test('el source se niega si no sabe cuántas filas tiene Compras', () => {
   assert.throws(() => fuenteCompras({ filas: 900 }), /falta el sheetId/)
 })
 
-test('los campos de fila van en el orden de la pestaña y el importe es el único valor', () => {
+test('por defecto: una línea por proveedor · deuda · facturas, y nada más', () => {
   const p = pivotSeccion1(fuente)
+  assert.deepEqual(p.rows.map((r) => r.sourceColumnOffset), [COL.proveedor])
+  assert.equal(p.values[0].sourceColumnOffset, COL.saldo)
+  // 1 campo de fila + 2 valores = 3 columnas: A..C, y la H del dueño queda lejos.
+  assert.equal(anchoDelPivot(p), 3)
+})
+
+test('la vista DETALLE sigue existiendo, con sus agujeros declarados', () => {
+  const p = pivotSeccion1(fuente, { vista: VISTA.DETALLE })
   assert.deepEqual(p.rows.map((r) => r.sourceColumnOffset),
     [COL.proveedor, COL.proximoPago, COL.obra, COL.tipoPago, COL.categoria])
-  assert.equal(p.values.length, 1)
-  assert.equal(p.values[0].sourceColumnOffset, COL.saldo)
-  assert.equal(p.values[0].summarizeFunction, 'SUM')
-  // 5 campos de fila + 1 valor = 6 columnas: A..F, y la H del dueño queda afuera.
-  assert.equal(anchoDelPivot(p), 6)
+  assert.equal(anchoDelPivot(p), 7)
 })
 
 test('EL PROVEEDOR VA PRIMERO, y el comprobante no se muestra', () => {
@@ -73,7 +78,6 @@ test('LA VISTA POR PROVEEDOR no deja una sola celda sin rótulo', () => {
   const p = pivotSeccion1(fuente, { vista: VISTA.POR_PROVEEDOR })
   assert.equal(p.rows.length, 1, 'con un solo nivel no hay nivel que agrupe: cada fila lleva su nombre')
   assert.equal(p.rows[0].sourceColumnOffset, COL.proveedor)
-  assert.equal(anchoDelPivot(p), 2)
   // Y no se pide formatear una columna de fecha que en esta vista no existe.
   assert.equal(formatoDeLaFecha({ sheetId: 3, filaAncla: 17, alto: 15, vista: VISTA.POR_PROVEEDOR }), null)
 })
@@ -127,18 +131,24 @@ test('un control vacío no se inventa', () => {
 })
 
 test('LA FECHA lleva formato de fecha, y su columna se calcula del orden real', () => {
-  const f = formatoDeLaFecha({ sheetId: 3, filaAncla: 17, alto: 15 })
+  const f = formatoDeLaFecha({ sheetId: 3, filaAncla: 17, alto: 15, vista: VISTA.DETALLE })
   // proximoPago es el 3er campo de fila → columna C (índice 2). Si cambia el orden, cambia sola.
-  const esperada = camposDeFila().findIndex((r) => r.sourceColumnOffset === COL.proximoPago)
+  const esperada = camposDeFila({ vista: VISTA.DETALLE }).findIndex((r) => r.sourceColumnOffset === COL.proximoPago)
   assert.equal(f.repeatCell.range.startColumnIndex, esperada)
   assert.equal(f.repeatCell.cell.userEnteredFormat.numberFormat.type, 'DATE')
   assert.equal(f.repeatCell.cell.userEnteredFormat.numberFormat.pattern, 'dd/mm/yyyy',
     'sin patrón dd/mm/yyyy la fecha sale como 46238, el número de serie crudo')
 })
 
-test('el importe y la fecha NO caen en la misma columna', () => {
-  const imp = formatoDelImporte({ sheetId: 3, filaAncla: 17, alto: 15, ancho: 6 })
-  const fec = formatoDeLaFecha({ sheetId: 3, filaAncla: 17, alto: 15 })
+test('la DEUDA se formatea como plata, y no en la columna de la cantidad de facturas', () => {
+  const imp = formatoDelImporte({ sheetId: 3, filaAncla: 17, alto: 15, ancho: 3 })
+  assert.equal(imp.repeatCell.range.startColumnIndex, 1, 'la deuda es el PRIMER valor: columna B')
+  assert.equal(imp.repeatCell.cell.userEnteredFormat.numberFormat.type, 'CURRENCY')
+})
+
+test('en la vista detalle el importe y la fecha NO caen en la misma columna', () => {
+  const imp = formatoDelImporte({ sheetId: 3, filaAncla: 17, alto: 15, ancho: 7, vista: VISTA.DETALLE })
+  const fec = formatoDeLaFecha({ sheetId: 3, filaAncla: 17, alto: 15, vista: VISTA.DETALLE })
   assert.notEqual(imp.repeatCell.range.startColumnIndex, fec.repeatCell.range.startColumnIndex)
 })
 
@@ -165,4 +175,47 @@ test('la misma geometría sirve para el bloque de fórmulas viejo', () => {
 test('sin el título de la sección 2 no hay plan: no se escribe a ciegas', () => {
   const sinLimite = [['1 · QUÉ SE DEBE Y CUÁNDO'], ['Proveedor', 'a', 'b', 'c']]
   assert.throws(() => geometriaDeLaSeccion(sinLimite), /sección 2/)
+})
+
+test('SIN AGUJEROS · los valores son SUM y COUNTA, que nunca pueden quedar vacíos', () => {
+  const p = pivotSeccion1(fuente)
+  assert.deepEqual(p.values.map((v) => v.summarizeFunction), ['SUM', 'COUNTA'])
+  // La fecha NO entra: como valor sólo podría ser MIN, y dos proveedores tienen la palabra
+  // "Pendiente" donde va la fecha — MIN no encuentra número y la celda sale vacía.
+  assert.ok(!p.values.some((v) => v.sourceColumnOffset === COL.proximoPago),
+    'la fecha como valor deja huecos donde el origen dice "Pendiente"')
+})
+
+test('el detector de agujeros los encuentra, y no confunde una fila de más con un hueco', () => {
+  const bloque = [['Proveedor', 'Deuda', 'Facturas'], ['Alumetal', '$1', '2'], ['', '$2', '1'], []]
+  assert.deepEqual(celdasVacias(bloque, 3, 17), ['A19'])
+  assert.deepEqual(celdasVacias([['A', 'B', 'C'], []], 3, 17), [], 'una fila entera vacía es el fin del bloque')
+})
+
+test('el origen llega al final de la GRILLA: una compra nueva entra sola', () => {
+  const f = fuenteCompras({ sheetId: 7, filas: 2000 })
+  assert.equal(f.endRowIndex, 2000,
+    'si el origen se corta en la última factura cargada, la de mañana queda afuera en silencio')
+})
+
+test('EL CONTROL suma la columna de la DEUDA, no la de los conteos', () => {
+  // Con dos valores, `ancho - 1` es la cantidad de facturas: el control sumaba 13 contra un titular
+  // de $15.716.930 y daba cualquier cosa. La deuda es el primer valor.
+  assert.equal(letraDeLaDeuda(), 'B')
+  assert.equal(letraDeLaDeuda({ vista: VISTA.DETALLE }), 'F')
+})
+
+test('la cantidad de facturas lleva formato de entero, o hereda el de fecha de antes', () => {
+  const f = formatoDeLaCantidad({ sheetId: 3, filaAncla: 17, alto: 11, ancho: 3 })
+  assert.equal(f.repeatCell.range.startColumnIndex, 2, 'la cantidad es la última columna')
+  assert.equal(f.repeatCell.cell.userEnteredFormat.numberFormat.type, 'NUMBER')
+  assert.equal(f.repeatCell.cell.userEnteredFormat.numberFormat.pattern, '0',
+    'sin patrón propio, "2 facturas" se muestra como 01/01/1900 con el formato de la corrida anterior')
+})
+
+test('el conteo de facturas cuenta FILAS, no números de comprobante', () => {
+  const p = pivotSeccion1(fuente)
+  const conteo = p.values.find((v) => v.summarizeFunction === 'COUNTA')
+  assert.equal(conteo.sourceColumnOffset, COL.proveedor,
+    'contando el comprobante, una factura sin número da "0 facturas" con deuda de $100.000')
 })

@@ -28,8 +28,8 @@ import { loadConfig } from '../lib/config.mjs'
 import { diferenciasDeHuella, huellaProtegida } from '../lib/proveedores-bloque-vivo.mjs'
 import {
   anchoDelPivot, cabeEnElHueco, COL, filtrosPorCondicion, formatoDelImporte, fuenteCompras,
-  formatoDeLaFecha, geometriaDeLaSeccion, nivelesConSubtotal, PENDIENTE, pivotSeccion1,
-  proveedoresQueAgrupan, reapuntarControl, VISTA,
+  celdasVacias, formatoDeLaCantidad, formatoDeLaFecha, geometriaDeLaSeccion, letraDeLaDeuda,
+  nivelesConSubtotal, PENDIENTE, pivotSeccion1, proveedoresQueAgrupan, reapuntarControl, VISTA,
 } from '../lib/proveedores-pivot-seccion1.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -37,7 +37,9 @@ const PESTAÑA = 'Proveedores'
 const APLICAR = process.argv.includes('--aplicar')
 // El dueño pidió el proveedor primero y sin comprobante; eso agrupa y deja rótulos en blanco.
 // `--por-proveedor` es la salida sin una sola celda vacía, a costa del detalle factura por factura.
-const VISTA_ELEGIDA = process.argv.includes('--por-proveedor') ? VISTA.POR_PROVEEDOR : VISTA.DETALLE
+// Por defecto UNA LÍNEA POR PROVEEDOR: es la única forma de que no quede una sola celda vacía
+// con el proveedor como primera columna. `--detalle` vuelve a factura por factura, con agujeros.
+const VISTA_ELEGIDA = process.argv.includes('--detalle') ? VISTA.DETALLE : VISTA.POR_PROVEEDOR
 
 const plata = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
 
@@ -51,7 +53,7 @@ async function main() {
     && String(f?.[COL.comercial] ?? '').trim() === '1'
     && String(f?.[COL.proveedor] ?? '').trim() !== '')
   const totalEsperado = pendientes.reduce((a, f) => a + (Number(f?.[COL.saldo]) || 0), 0)
-  const filasCompras = 3 + (compras?.length ?? 0)
+
 
   // ── 2. La geometría, anclada al TEXTO de los títulos — nunca a un número de fila.
   //
@@ -71,6 +73,10 @@ async function main() {
     throw new Error('no encontré el sheetId de Proveedores o de Compras: no escribo a ciegas')
   }
 
+  // LA GRILLA ENTERA, no la última fila con datos: si el origen se corta donde termina lo cargado
+  // hoy, la compra de mañana queda afuera y la dinámica deja de ser viva sin dar ningún error.
+  const filasCompras = meta.find((s) => s.title === 'Compras')?.rows
+  if (!(filasCompras > 3)) throw new Error(`no pude leer cuántas filas tiene la grilla de Compras (${filasCompras}): no escribo a ciegas`)
   const pivot = pivotSeccion1(fuenteCompras({ sheetId: sheetIdCompras, filas: filasCompras }), { vista: VISTA_ELEGIDA })
   const ancho = anchoDelPivot(pivot)
 
@@ -81,15 +87,19 @@ async function main() {
   if (conSubtotal.length) throw new Error(`showTotals en ${conSubtotal.join(', ')}: la API no emite ese subtotal`)
 
   // ── 4. ¿Entra?
-  const hueco = cabeEnElHueco({
-    facturas: pendientes.length, filaAncla: geo.filaEncabezado, filaLimite: geo.filaLimite,
-  })
+  // El alto lo dan las FILAS QUE VA A EMITIR el pivot, no las facturas: en la vista por proveedor
+  // nueve proveedores con trece facturas ocupan nueve filas, no trece.
+  const grupos = VISTA_ELEGIDA === VISTA.POR_PROVEEDOR
+    ? new Set(pendientes.map((f) => String(f?.[COL.proveedor] ?? '').trim())).size
+    : pendientes.length
+  const hueco = cabeEnElHueco({ facturas: grupos, filaAncla: geo.filaEncabezado, filaLimite: geo.filaLimite })
 
   console.log(`FACTURAS PENDIENTES  ${pendientes.length}   TOTAL ${plata(totalEsperado)}`)
   console.log(`ANCLA   ${PESTAÑA}!A${geo.filaEncabezado}   ANCHO ${ancho} columnas (A..${String.fromCharCode(64 + ancho)})`)
   console.log(`ALTO    ${hueco.alto} filas · disponibles ${hueco.disponible} hasta la sección 2 (fila ${geo.filaLimite}) · holgura ${hueco.holgura}`)
   console.log('NO SE TOCA  la columna H (Comentarios) ni la sección 2 entera')
   console.log(`VISTA   ${VISTA_ELEGIDA}`)
+  console.log(`ORIGEN  Compras!A3:AL${filasCompras} (la grilla entera: una compra nueva entra sola)`)
   // Con el proveedor como primer campo, el que repite agrupa y sus filas hermanas quedan sin rótulo.
   // Se imprime ANTES de escribir: una limitación declarada, no una sorpresa al mirar la pantalla.
   if (VISTA_ELEGIDA === VISTA.DETALLE) {
@@ -109,7 +119,7 @@ async function main() {
     && (f ?? []).some((c) => /cierra con el titular|no cierra con el titular/i.test(String(c ?? ''))))
   if (iControl < 0) throw new Error('no encontré la celda del control arriba del encabezado: no escribo a ciegas')
   const filaControl = iControl + 1
-  const colImporte = String.fromCharCode(64 + ancho)
+  const colImporte = letraDeLaDeuda({ vista: VISTA_ELEGIDA })
   const controlViejo = String(antes[iControl]?.[0] ?? '')
   const controlReapuntado = reapuntarControl(controlViejo, colImporte, geo)
   if (controlReapuntado === controlViejo) {
@@ -136,8 +146,11 @@ async function main() {
     { updateCells: {
       range: { sheetId: sheetIdProv, startRowIndex: filaIdx, endRowIndex: filaIdx + 1, startColumnIndex: 0, endColumnIndex: 1 },
       rows: [{ values: [{ pivotTable: pivot }] }], fields: 'pivotTable' } },
-    formatoDelImporte({ sheetId: sheetIdProv, filaAncla: geo.filaEncabezado, alto: hueco.alto, ancho }),
+    formatoDelImporte({ sheetId: sheetIdProv, filaAncla: geo.filaEncabezado, alto: hueco.alto, ancho, vista: VISTA_ELEGIDA }),
     formatoDeLaFecha({ sheetId: sheetIdProv, filaAncla: geo.filaEncabezado, alto: hueco.alto, vista: VISTA_ELEGIDA }),
+    VISTA_ELEGIDA === VISTA.POR_PROVEEDOR
+      ? formatoDeLaCantidad({ sheetId: sheetIdProv, filaAncla: geo.filaEncabezado, alto: hueco.alto, ancho })
+      : null,
     // EL CONTROL TIENE QUE MIRAR LA COLUMNA DONDE QUEDÓ EL IMPORTE.
     //
     // Sumaba $D$18:$D$37 — la columna del importe en el bloque de fórmulas. Con la dinámica, la D
@@ -168,7 +181,16 @@ async function main() {
     const t = (f ?? []).map((c) => String(c ?? '')).join(' | ')
     if (t.replace(/[| ]/g, '')) { console.log('  ' + t); filas++ }
   }
-  if (filas === 0) console.error('  ✗✗ LA DINÁMICA SALIÓ VACÍA — mirá los filtros antes de dar esto por bueno')
+  if (filas === 0) { console.error('  ✗✗ LA DINÁMICA SALIÓ VACÍA — mirá los filtros antes de dar esto por bueno'); process.exitCode = 1; return }
+
+  // EL AGUJERO SE CUENTA RELEYENDO, no se supone. El dueño los reportó tres veces.
+  const huecos = celdasVacias(vista ?? [], ancho, geo.filaEncabezado)
+  if (huecos.length) {
+    console.error(`\n✗✗ QUEDARON ${huecos.length} CELDA(S) VACÍA(S): ${huecos.join(' · ')}`)
+    process.exitCode = 1
+    return
+  }
+  console.log(`\n✓ ni una celda vacía en el bloque (${filas - 1} filas × ${ancho} columnas, verificadas releyendo)`)
 }
 
 main().catch((e) => { console.error(e); process.exit(1) })
