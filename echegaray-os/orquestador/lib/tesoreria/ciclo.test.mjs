@@ -12,14 +12,14 @@ import { evaluarNavegacion } from './balanz-denylist.mjs'
 const HOY = new Date('2026-08-01T10:00:00Z')
 
 /** Doble del cliente Google: devuelve lo que el calendario y el briefing esperan leer. */
-function googleFake({ caja = 20000000, egresoDia5 = 0 } = {}) {
+function googleFake({ caja = 20000000, egresoDia5 = 0, fechaCheque = '05/08/2026' } = {}) {
   const filas = {
     'Caja!A1:H200': [
       ['Fecha del saldo', 'Cuenta', 'Saldo en pesos'],
       ['01/08/2026', 'Santander', String(caja).replace('.', ',')],
     ],
     'Cheques Emitidos!A1:L997': egresoDia5
-      ? [['FISICO', '', '', '', 'Proveedor X', String(egresoDia5), '', '', '05/08/2026', '', 'NO', '']]
+      ? [['FISICO', '', '', '', 'Proveedor X', String(egresoDia5), '', '', fechaCheque, '', 'NO', '']]
       : [],
     'Cobranzas!A5:R2000': [],
     'Compras!A3:BZ3': [[]],
@@ -113,6 +113,45 @@ test('con excedente y una alternativa que gana, produce una propuesta validada',
   assert.ok(publicados.some((t) => /TESORERÍA · PROPUESTA DE INVERSIÓN/.test(t)))
   // Toda propuesta publicada pasó por la validación independiente.
   assert.ok(r.validaciones.every((v) => v.aprobada || !r.recomendaciones.some((x) => x.id === v.id)))
+})
+
+test('DEFECTO · la validación mide la caja con el MISMO calendario que el motor, no con la foto de hoy', async () => {
+  // Corrida real del 03/08/2026: el motor habilitaba $48.214.876 y el validador contestaba
+  // «−$3.325.484 libres», así que las seis opciones viables se auto-rechazaban con
+  // `sin_caja_comprometida` y al dueño no le llegó NUNCA una propuesta.
+  //
+  // Acá está la forma exacta del defecto: $50M en caja y un cheque de $30M que vence el 20/08. Para
+  // una colocación a 7 días ese cheque no molesta —vence después—, y el motor lo sabe porque camina
+  // el calendario. El validador miraba la foto de hoy y restaba el cheque entero igual.
+  publicados.length = 0
+  const r = await correrCiclo({
+    google: googleFake({ caja: 50000000, egresoDia5: 30000000, fechaCheque: '20/08/2026' }),
+    relevar: async () => ({ estado: 'ok', paginas: [], bloqueos: [], observado_en: HOY.toISOString() }),
+    publicar, ahora: HOY,
+  }, {
+    filaReserva: RESERVA_APROBADA,
+    // El dueño declara como restringidos los mismos $30M del cheque: es lo que hace la pestaña
+    // "Cheques Emitidos" en la corrida real, y es lo que se estaba restando dos veces.
+    filaRestringida: { monto: 30000000, fuente: 'Cheques Emitidos', declarada_en: '2026-08-01T00:00:00Z' },
+    extractorValidado: true, mercadoFresco: true, dias: 60, publicarSiempre: true,
+    instrumentos: [{
+      nombre: 'FCI Money Market Pesos', moneda: 'ARS', plazo_rescate_dias: 0, liquidacion_dias: 0,
+      tasa: { tipo: 'tea', valor: 1.3, naturaleza: 'contractual' },
+      costos: { comision: 0 }, emisor: 'Balanz', evidencia: 'dato',
+    }],
+  })
+
+  assert.equal(r.estado, 'ok')
+  // A 7 días el motor habilita $44,3M (el cheque todavía no venció); a 30 y 60, $14,3M (ya venció).
+  const b = r.excedente.ventanas.find((v) => v.bloque === 'B')
+  assert.equal(b.monto_maximo, 44300000)
+  // LO QUE MIRA EL DUEÑO: que le llegue LA propuesta grande, no sólo las que sobrevivían al T+0.
+  const publicada = r.recomendaciones.find((x) => x.bloque === 'B')
+  assert.ok(publicada, `la colocación a 7 días no llegó: ${JSON.stringify(r.rechazadas)}`)
+  assert.equal(publicada.monto_maximo, 44300000)
+  // Y LA CAUSA RAÍZ: ninguna se cae por una caja libre calculada con otro criterio que el motor.
+  const porCaja = (r.rechazadas ?? []).filter((x) => x.fallas.some((f) => /sin_caja_comprometida/.test(f)))
+  assert.deepEqual(porCaja, [], 'el validador volvió a medir la caja con una definición propia')
 })
 
 test('sin cambio material, NO publica aunque haya propuesta', async () => {

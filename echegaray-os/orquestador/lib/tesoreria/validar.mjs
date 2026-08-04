@@ -20,6 +20,9 @@ import { rendimientoDelPeriodo, costoTotal } from './comparar.mjs'
 import { aTea } from './instrumentos.mjs'
 import { estaVencida } from './recomendacion.mjs'
 import { impuestosDeColocacion, parametrosFiscales } from './impuestos-colocacion.mjs'
+import {
+  saldoCorrido, cajaLibreParaColocar, FACTOR_INGRESOS_ADVERSO, DIAS_ACREDITACION_VALORES,
+} from './excedente-ventana.mjs'
 
 /** Tolerancia de reproducción de la aritmética. 1 peso: no es redondeo, es un error de fórmula. */
 export const TOLERANCIA_PESOS = 1
@@ -38,6 +41,82 @@ export function esNumero(x) {
 
 const falla = (regla, detalle) => ({ regla, ok: false, detalle })
 const pasa = (regla, detalle = null) => ({ regla, ok: true, detalle })
+
+const pesos = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
+
+/**
+ * ═══ LA CAJA LIBRE, RECALCULADA DESDE LAS FUENTES ═══
+ *
+ * Este control se rehace acá adentro —no se le cree a la propuesta ni a la ventana— pero con la
+ * DEFINICIÓN ÚNICA de `excedente-ventana.mjs`, no con una propia.
+ *
+ * La versión anterior tenía fórmula propia y era una doble resta:
+ *
+ *     libre = pesos de hoy − comprometida − restringida ENTERA − reserva
+ *
+ * El motor ya camina el calendario, y adentro de ese recorrido ya salieron lo vencido, los cheques
+ * firmados con fecha y las obligaciones. Restarlos otra vez sobre la caja de hoy contaba el mismo
+ * peso dos veces, y encima no sumaba una sola cobranza del período. El 03/08/2026 daba −$3.325.484
+ * contra $48.214.876 del motor: ninguna propuesta podía sobrevivir a eso.
+ *
+ * Independencia (`CLAUDE.md`: un control nunca se valida contra la información que produce): los
+ * insumos salen de la POSICIÓN y del CALENDARIO, nunca de la ventana ni de la propuesta. El piso se
+ * vuelve a caminar acá; si el motor inflara su número, este control lo ve igual que antes.
+ *
+ * Sin calendario en las fuentes no se inventa uno: el recorrido vacío deja el piso en «caja de hoy
+ * menos lo vencido» y entonces la restringida pesa ENTERA, porque no hay recorrido que la contenga.
+ * Es la lectura de T+0, más conservadora, y se declara como tal en vez de pasar por la de 30 días.
+ */
+export function cajaLibreDeLaFuente(rec = {}, fuentes = {}) {
+  const { posicion = {}, dias = [] } = fuentes
+  // El techo es la parte líquida EN PESOS: los dólares y los cheques en cartera no financian una
+  // colocación en pesos.
+  const enPesos = esNumero(posicion.composicion?.ars_liquida)
+    ? Math.min(Number(posicion.caja_real), Number(posicion.composicion.ars_liquida))
+    : posicion.caja_real
+  // `caja_restringida` es un MODELO, no un número: el monto a restar vive adentro. Leerlo como número
+  // daba NaN, y `x <= NaN` es false, así que el control fallaba cerrado — por accidente.
+  const restringida = posicion.caja_restringida?.monto_a_restar ?? posicion.caja_restringida
+  const componentes = [enPesos, posicion.caja_comprometida, restringida, posicion.caja_minima]
+  if (!componentes.every(esNumero)) {
+    return { estado: 'sin_dato', motivo: `no se puede recalcular la caja libre: algún componente no es un número (${componentes.join(', ')})` }
+  }
+  const horizonte = Number(rec.horizonte_dias) || 0
+  // Hasta donde llegue el calendario. Una ventana recortada es una afirmación más corta y cierta;
+  // inventar los días que faltan sería lo contrario.
+  const hasta = Math.min(horizonte, Math.max(0, dias.length - 1))
+  const corrido = dias.length
+    ? saldoCorrido({
+      dias,
+      saldoInicial: Number(enPesos),
+      vencido: Number(posicion.caja_comprometida),
+      valoresADepositar: Number(posicion.composicion?.valores_a_depositar) || 0,
+      diasAcreditacion: DIAS_ACREDITACION_VALORES,
+      hasta,
+      factorIngresos: FACTOR_INGRESOS_ADVERSO,
+    })
+    : { estado: 'sin_calendario' }
+  const conCalendario = corrido.estado === 'ok'
+  // Lo que el calendario NO puede ver: cheques ya vencidos sin debitar y cheques sin fecha. Los que
+  // tienen fecha dentro del recorrido ya salieron ahí; volver a restarlos es la doble resta.
+  const fuera = Object.values(posicion.caja_restringida_por_ventana ?? {})[0]?.a_restar_fuera_del_calendario
+  const aRestar = conCalendario && esNumero(fuera) ? Number(fuera) : Number(restringida)
+  const piso = conCalendario ? corrido.piso : Number(enPesos) - Number(posicion.caja_comprometida)
+  const { libre, componentes: partes } = cajaLibreParaColocar({
+    piso, restringidaFueraDelCalendario: aRestar, reserva: posicion.caja_minima,
+  })
+  return {
+    estado: 'ok',
+    libre,
+    partes,
+    dias_recorridos: conCalendario ? hasta : 0,
+    fecha_tension: conCalendario ? corrido.fecha_tension : null,
+    criterio: conCalendario
+      ? `piso del recorrido a ${hasta} día(s) (cobranzas al ${Math.round(FACTOR_INGRESOS_ADVERSO * 100)}%)`
+        + (hasta < horizonte ? ` — recortado: el calendario sólo cubre ${dias.length} día(s)` : '')
+      : 'sin calendario en las fuentes: se mide a T+0 (caja en pesos − lo vencido − la restringida entera)',
+  }
+}
 
 /**
  * SKILL 9. Valida UNA recomendación contra las fuentes.
@@ -60,27 +139,16 @@ export function validarRecomendacion(rec = {}, fuentes = {}) {
     ? falla('no_vencida', `la propuesta venció el ${rec.vence_en}`)
     : pasa('no_vencida'))
 
-  // 3 · NO SE USÓ CAJA COMPROMETIDA. Se recalcula desde la posición, no se cree lo declarado.
+  // 3 · NO SE USÓ CAJA COMPROMETIDA. Se recalcula desde las FUENTES —posición y calendario— con la
+  //     definición única de `cajaLibreParaColocar`, nunca desde el número que declaró el otro lado.
   if (posicion?.estado === 'ok') {
-    // Se recalcula desde los COMPONENTES, no desde `caja_excedente_bruto`: un control que lee el
-    // número que produjo el otro lado no es un control. Y el techo es la parte líquida EN PESOS —
-    // los dólares y los cheques en cartera no financian una colocación en pesos.
-    const enPesos = Number.isFinite(Number(posicion.composicion?.ars_liquida))
-      ? Math.min(posicion.caja_real, Number(posicion.composicion.ars_liquida))
-      : posicion.caja_real
-    // `caja_restringida` es un MODELO, no un número: el monto a restar vive adentro. Leerlo como
-    // número daba NaN, y `x <= NaN` es false, así que el control fallaba cerrado — por accidente.
-    // Un control que sólo funciona por accidente no es un control: acá se lee el campo correcto y se
-    // verifica explícitamente que los cuatro componentes sean números.
-    const restringida = posicion.caja_restringida?.monto_a_restar ?? posicion.caja_restringida
-    const componentes = [enPesos, posicion.caja_comprometida, restringida, posicion.caja_minima]
-    if (!componentes.every(esNumero)) {
-      chequeos.push(falla('sin_caja_comprometida', `no se puede recalcular la caja libre: algún componente no es un número (${componentes.join(', ')})`))
+    const caja = cajaLibreDeLaFuente(rec, fuentes)
+    if (caja.estado !== 'ok') {
+      chequeos.push(falla('sin_caja_comprometida', caja.motivo))
     } else {
-      const libre = Number(enPesos) - Number(posicion.caja_comprometida) - Number(restringida) - Number(posicion.caja_minima)
-      chequeos.push(rec.monto_maximo <= libre + TOLERANCIA_PESOS
-        ? pasa('sin_caja_comprometida', `$${rec.monto_maximo.toLocaleString('es-AR')} ≤ $${Math.round(libre).toLocaleString('es-AR')} libre`)
-        : falla('sin_caja_comprometida', `propone $${rec.monto_maximo.toLocaleString('es-AR')} y sólo hay $${Math.round(libre).toLocaleString('es-AR')} libres`))
+      chequeos.push(rec.monto_maximo <= caja.libre + TOLERANCIA_PESOS
+        ? pasa('sin_caja_comprometida', `${pesos(rec.monto_maximo)} ≤ ${pesos(caja.libre)} libre · ${caja.criterio}`)
+        : falla('sin_caja_comprometida', `propone ${pesos(rec.monto_maximo)} y sólo hay ${pesos(caja.libre)} libres · ${caja.criterio}`))
     }
   }
 
@@ -226,4 +294,4 @@ export function validarLote(recs = [], fuentes = {}) {
   }
 }
 
-export const VERSION_SKILL = '1.2.0'
+export const VERSION_SKILL = '1.3.0'
