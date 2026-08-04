@@ -14,9 +14,14 @@
 // los comprobantes—, el OS las baja acá, las redimensiona y las deja en disco. Desde ese momento son
 // un archivo local y se leen sin límite de tamaño.
 //
-//   node orquestador/scripts/traer-capturas.mjs                        # últimas del canal por defecto
+//   node orquestador/scripts/traer-capturas.mjs --dm jorge             # el privado con el bot ← lo normal
 //   node orquestador/scripts/traer-capturas.mjs --canal obras --n 10
 //   node orquestador/scripts/traer-capturas.mjs --lado 1600            # techo del lado mayor
+//
+// EL PRIVADO CON EL BOT ES LA VÍA POR DEFECTO, y no es una preferencia de implementación: una
+// certificación de avance no va al canal de gastos ni mezclada con los comprobantes. El dueño lo dijo
+// mejor que yo — "eso está pésimo, es una práctica errónea". Mandarle una captura al bot es la forma
+// natural de pasarle algo al OS sin ensuciar el canal de nadie.
 //
 // NO BORRA NADA y no escribe en ningún Sheet: baja, redimensiona y guarda.
 
@@ -28,7 +33,8 @@ const arg = (n, d = null) => { const i = process.argv.indexOf(`--${n}`); return 
 
 const BASE = (process.env.MM_BASE_URL || '').replace(/\/$/, '')
 const TOKEN = process.env.MM_BOT_TOKEN || ''
-const CANAL = arg('canal', 'compras')
+const CANAL = arg('canal', null)
+const DM = arg('dm', null)
 const CUANTOS = Number(arg('n', 8))
 // 2000 px es el techo de la API cuando van VARIAS imágenes juntas. Se deja margen: el costo de una
 // imagen más chica es nada comparado con el de una que no se puede mirar.
@@ -43,12 +49,28 @@ async function mm(ruta) {
 
 async function main() {
   if (!BASE || !TOKEN) throw new Error('faltan MM_BASE_URL / MM_BOT_TOKEN')
-  const equipos = await (await mm('/teams')).json()
   let canal = null
-  for (const t of equipos) {
-    try { canal = await (await mm(`/teams/${t.id}/channels/name/${encodeURIComponent(CANAL)}`)).json(); break } catch { /* probamos el siguiente equipo */ }
+  if (DM || !CANAL) {
+    // EL CANAL DIRECTO CON EL BOT. Su id lo arma Mattermost con los dos user_id ordenados; se pide
+    // con `POST /channels/direct` y los dos ids, que además lo crea si todavía no existía.
+    const quien = DM || 'jorge'
+    const u = await (await mm(`/users/username/${encodeURIComponent(quien)}`)).json()
+    const yo = process.env.MM_BOT_USER_ID
+    if (!yo) throw new Error('falta MM_BOT_USER_ID para abrir el privado')
+    const r = await fetch(`${BASE}/api/v4/channels/direct`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+      body: JSON.stringify([yo, u.id]),
+    })
+    if (!r.ok) throw new Error(`no pude abrir el privado con ${quien}: ${r.status}`)
+    canal = await r.json()
+  } else {
+    const equipos = await (await mm('/teams')).json()
+    for (const t of equipos) {
+      try { canal = await (await mm(`/teams/${t.id}/channels/name/${encodeURIComponent(CANAL)}`)).json(); break } catch { /* probamos el siguiente equipo */ }
+    }
+    if (!canal?.id) throw new Error(`no encontré el canal "${CANAL}"`)
   }
-  if (!canal?.id) throw new Error(`no encontré el canal "${CANAL}"`)
 
   const posts = await (await mm(`/channels/${canal.id}/posts?per_page=60`)).json()
   const orden = (posts.order || []).map((id) => posts.posts[id]).filter(Boolean)
@@ -56,7 +78,8 @@ async function main() {
 
   const archivos = []
   for (const p of orden) for (const fid of p.file_ids || []) archivos.push({ fid, at: p.create_at, user: p.user_id })
-  if (!archivos.length) { console.log(`sin adjuntos en #${CANAL}`); return }
+  const donde = DM || !CANAL ? `el privado con ${DM || 'jorge'}` : `#${CANAL}`
+  if (!archivos.length) { console.log(`sin adjuntos en ${donde}`); return }
 
   await mkdir(DESTINO, { recursive: true })
   const salida = []
@@ -74,7 +97,7 @@ async function main() {
     salida.push({ ruta, de: `${meta.width}×${meta.height}`, a: `${fin.width}×${fin.height}` })
   }
 
-  if (!salida.length) { console.log(`los últimos adjuntos de #${CANAL} no son imágenes`); return }
+  if (!salida.length) { console.log(`los últimos adjuntos de ${donde} no son imágenes`); return }
   console.log(`${salida.length} captura(s) listas para leer:\n`)
   for (const s of salida) console.log(`  ${s.ruta}\n     ${s.de} → ${s.a}`)
 }
