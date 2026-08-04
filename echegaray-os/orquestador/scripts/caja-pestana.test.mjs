@@ -299,7 +299,26 @@ test('LA OFICINA TAMBIÉN SALE DE ESTA CAJA: el calendario la suma, y de la mism
   assert.match(sale, /OFICINA_PAGO/, 'la oficina entra al calendario')
   assert.match(sale, /N\(OFICINA_PAGADO\)\+N\(OFICINA_PROYECTADO\)/, 'un mes está pagado o proyectado, nunca los dos')
   assert.match(sale, /OFICINA_PAGO>=CAJA_FECHA_SALDO/, 'antes del corte del extracto manda el banco, igual que la obra')
-  assert.ok(!/Compras!/.test(sale.slice(sale.indexOf('OFICINA_PAGO'))), 'la nómina sale de la planilla de sueldos, no de Compras')
+  // El término de la oficina se acota al SUYO: desde donde empieza hasta el siguiente sumando. Medir
+  // "todo lo que viene después" hacía fallar el test cuando se agregó al calendario la deuda que NO
+  // se paga con cheque, que sí sale de Compras y es un sumando aparte.
+  const iOfi = sale.indexOf('SUMPRODUCT(ISNUMBER(OFICINA_PAGO)')
+  const sig = sale.indexOf('+SUMPRODUCT(', iOfi + 1)
+  const terminoOficina = sale.slice(iOfi, sig < 0 ? undefined : sig)
+  assert.ok(!/Compras!/.test(terminoOficina), 'la nómina sale de la planilla de sueldos, no de Compras')
+})
+
+test('EL PISO CUENTA LO QUE NO SE PAGA CON CHEQUE, o se coloca plata que hace falta', () => {
+  // Medido el 04/08: \$15.000.401 de deuda con fecha futura invisible para el calendario —débito
+  // \$7.484.627 (plan previsional), tarjeta \$5.124.412, efectivo \$1.624.000, transferencia \$767.362.
+  // Un piso MÁS ALTO que el real es el error que peor se paga.
+  const g = construir()
+  const sale = String(g.filas[g.cal0 - 1]?.[3] ?? '')
+  assert.match(sale, /Compras!\$X\$4:\$X="Pendiente"/, 'sólo la deuda viva')
+  assert.match(sale, /Compras!\$P\$4:\$P<>"Cheque"/, 'los cheques ya vienen de Cheques Emitidos: contarlos acá los duplica')
+  assert.match(sale, /Compras!\$P\$4:\$P<>"Echeq"/, 'un echeq es un cheque electrónico y también está en Cheques Emitidos')
+  assert.match(sale, /Compras!\$Q\$4:\$Q>=CAJA_FECHA_SALDO/, 'lo anterior al corte ya está dentro del saldo del banco')
+  assert.match(sale, /Compras!\$O\$4:\$O.*Compras!\$T\$4:\$T/s, 'sale el SALDO (total menos pagado), no el total de la factura')
 })
 
 test('la fecha que ubica el jornal en el tramo es la de PAGO, nunca la de cierre', () => {

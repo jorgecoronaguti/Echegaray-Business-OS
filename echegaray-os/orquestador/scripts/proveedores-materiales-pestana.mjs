@@ -71,6 +71,8 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { FAMILIAS, SIN_FAMILIA, formulaFamilia, familiaDeMaterial, RUBROS_CON_FAMILIA } from '../lib/familia-material.mjs'
 import { bloqueControlArca } from '../lib/control-arca-bloque.mjs'
+// "El mismo proveedor" se define UNA vez, en lib/: ver el comentario junto a RUBROS_COMERCIALES.
+import { normNombre } from '../lib/razon-social.mjs'
 import { NOMBRES } from '../lib/sheet-pestanas.mjs'
 import { partir, filasHuerfanas, referenciasFuera, ref as refPestana } from '../lib/partir-pestana.mjs'
 import { anchosSegunContenido } from '../lib/nota-celda.mjs'
@@ -190,13 +192,17 @@ const IDX = { rubro: 28, fechaCaja: 29, familia: 30, comercial: 35, pagado: 19, 
  *  a los que se les pueda pedir plazo, y mezclarlos tapa a los que sí. */
 const RUBROS_COMERCIALES = [...RUBROS_CON_FAMILIA, 'Estructura', 'Servicios recurrentes']
 
-/** El banco escribe "ALUMETAL S A" y Compras "Alumetal": sin normalizar, el cruce da cero. */
-const normNombre = (s) => String(s ?? '')
-  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  .toUpperCase()
-  .replace(/\bS\.?\s?A\.?\s?S\.?\b|\bS\.?\s?A\.?\b|\bS\.?R\.?L\.?\b|\bSRL\b|\bSAS\b/g, '')
-  .replace(/[^A-Z0-9]+/g, ' ')
-  .trim()
+// "EL MISMO PROVEEDOR" SE DEFINE UNA SOLA VEZ (05/08).
+//
+// Ac\u00e1 viv\u00eda una copia local de la normalizaci\u00f3n ("ALUMETAL S A" = "Alumetal"). Cuando el control de
+// ARCA de las otras pesta\u00f1as empez\u00f3 a usar la de `lib/razon-social.mjs`, las dos copias produjeron
+// dos listas distintas de "facturado que Compras no tiene": la pesta\u00f1a mostraba ARCA_FALTAN_MONTO y
+// remit\u00eda a un detalle calculado con OTRO criterio. Dos cifras parecidas con nombres parecidos es
+// exactamente lo que hace desconfiar del archivo.
+//
+// La compartida adem\u00e1s reconoce S.A.U. y S.H., que la local no: el cambio no s\u00f3lo unifica, corrige.
+// Puede mover levemente ARCA_FALTAN_MONTO \u2014 hay que mirarlo renderizado.
+// (el import est\u00e1 arriba, con los dem\u00e1s)
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 
@@ -817,7 +823,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, not
   // escribe, por FECHA DE FACTURA. Ver lib/control-arca-bloque.mjs.
   const arca0 = filas.length + 1
   for (const b of bloqueControlArca({
-    titulo: `${nSeccion('controlArca', SECCIONES_MATERIALES)} · CONTROL CONTRA ARCA — la fuente independiente`,
+    titulo: `${nSeccion('controlArca', SECCIONES_MATERIALES)} · RESPALDO FISCAL — contra el libro de IVA de ARCA`,
     rubros: [...RUBROS_CON_FAMILIA], fila0: arca0,
   })) push(b)
   push([])

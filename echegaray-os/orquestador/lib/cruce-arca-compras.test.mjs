@@ -147,7 +147,11 @@ test('una nota de crédito no es carga faltante y entra restando en el neto', ()
   assert.equal(r.totales.arcaSinCompras, 0, 'la NC no es una factura que falte cargar')
 })
 
-test('LA IDENTIDAD CIERRA — la diferencia agregada se explica entera con las líneas del detalle', () => {
+test('LA IDENTIDAD ES EXACTA Y NO DEJA RESIDUO: respaldado + sin respaldo = lo que la vista lista', () => {
+  // LA IDENTIDAD ANTERIOR ERA `Compras(universo) − ARCA(neto)` y despejaba el sobrante como
+  // "facturas cargadas por un importe distinto al que ARCA registró". Los dos lados no eran el mismo
+  // universo (ARCA es TODAS las compras), así que en Recurrentes escribió −$203.592.436 de diferencia
+  // y −$212.255.479 de residuo CON UNA CAUSA INVENTADA. Ésta parte el MISMO conjunto en dos.
   const r = conciliar({
     comprobantes: [
       fac({ numero: '1', imp_total: 1000 }),
@@ -162,24 +166,32 @@ test('LA IDENTIDAD CIERRA — la diferencia agregada se explica entera con las l
   })
   const id = verificarIdentidad(r)
   assert.equal(id.ok, true)
-  assert.equal(id.difAgregada, r.totales.comprasUniverso - r.totales.arcaNeto)
-  assert.equal(id.explicado, 450 - 700 + 200)
-  assert.equal(id.difImportes, 0)
+  assert.equal(id.diferencia, 0, 'exacta: no hay residuo al que ponerle nombre')
+  assert.equal(id.universo, 1450)
+  assert.equal(id.reconstruido, 1450)
+  assert.equal(r.totales.comprasConRespaldo, 1000)
+  assert.equal(r.totales.comprasSinArca, 450)
+  assert.equal(verificarIdentidad(r).diferencia, 0)
 })
 
-test('una factura cargada con IMPORTE distinto al fiscal aparece como diferencia de importe', () => {
-  // Mismo comprobante en las dos fuentes, importes distintos: no falta ni sobra un comprobante, y sin
-  // embargo el agregado no cierra. Ése es el residuo que la identidad despeja.
+test('LA COBERTURA ES UNA PROPORCIÓN DEL PROPIO UNIVERSO, no una comparación contra el libro entero', () => {
   const r = conciliar({
-    comprobantes: [fac({ numero: '1', imp_total: 1000 })],
-    filasCompras: [fil({ fila: 4, comprobante: '1-1', total: 1150 })],
+    comprobantes: [fac({ numero: '1', imp_total: 750 }), fac({ numero: '9', imp_total: 999999, emisor_nombre: 'DE OTRO RUBRO' })],
+    filasCompras: [
+      fil({ fila: 4, comprobante: '1-1', total: 750 }),
+      fil({ fila: 5, prov: 'SIN FACTURA', total: 250 }),
+    ],
     clave,
   })
-  assert.equal(r.totales.comprasSinArca, 0)
-  assert.equal(r.totales.arcaSinCompras, 0)
-  const id = verificarIdentidad(r)
-  assert.equal(id.difImportes, 150)
-  assert.equal(id.ok, true)
+  // El libro tiene $1.000.749 y la vista $1.000: la cobertura NO los compara, mide 750 sobre 1000.
+  assert.equal(r.totales.cobertura, 0.75)
+  assert.notEqual(r.totales.arcaNeto, r.totales.comprasUniverso)
+})
+
+test('sin universo comparable la cobertura es null, no 0 ni 1', () => {
+  // Un 0% invitaría a leer "no hay nada respaldado" y un 100% "está todo bien". No hay dato.
+  const r = conciliar({ comprobantes: [fac({ numero: '1', imp_total: 10 })], filasCompras: [], clave })
+  assert.equal(r.totales.cobertura, null)
 })
 
 test('un rubro que no está en ninguna de las dos listas no desaparece en silencio', () => {
@@ -216,6 +228,41 @@ test('el período se compara contra un Date de Postgres, no contra su texto', ()
   assert.equal(mesDeEmision('2026-06-15'), '2026-06')
   assert.equal(periodosDesalineados([fac({ periodo: '2026-06', fecha_emision: new Date(Date.UTC(2026, 5, 15)) })]).length, 0)
   assert.equal(periodosDesalineados([fac({ periodo: '2026-07', fecha_emision: new Date(Date.UTC(2026, 5, 15)) })]).length, 1)
+})
+
+test('EL CRUCE VA CONTRA COMPRAS ENTERA — una factura cargada en otro rubro NO es "ARCA sin Compras"', () => {
+  // EL DEFECTO (04/08). El cruce corría sólo contra el universo comercial dentro de la ventana, así
+  // que una factura cargada en un rubro de nómina, o con fecha fuera de la ventana, figuraba como
+  // "ARCA la registró y Compras no la tiene". Eso daba $13.090.051 donde ARCA_FALTAN_MONTO —el número
+  // que Proveedores ya publica— daba $13,8M: dos cifras parecidas con nombres parecidos.
+  const r = conciliar({
+    comprobantes: [
+      fac({ numero: '1', imp_total: 500 }),
+      fac({ numero: '2', imp_total: 900 }),
+    ],
+    filasCompras: [
+      // Cargada, pero en un rubro que NO es comercial: existe en Compras igual.
+      fil({ fila: 4, comprobante: '1-1', total: 500, rubro: 'Nómina · Gremiales' }),
+      // Cargada, pero con fecha fuera de la ventana de ARCA: también existe.
+      fil({ fila: 5, comprobante: '1-2', total: 900, periodo: '2026-11' }),
+    ],
+    clave,
+  })
+  assert.equal(r.arcaSinCompras.length, 0, 'están cargadas: el rubro y el mes no cambian ese hecho')
+  assert.equal(r.totales.arcaSinCompras, 0)
+})
+
+test('el universo de la VISTA sigue siendo el recorte, aunque el cruce mire Compras entera', () => {
+  const r = conciliar({
+    comprobantes: [fac({ numero: '1', imp_total: 500 })],
+    filasCompras: [
+      fil({ fila: 4, comprobante: '1-1', total: 500 }),
+      fil({ fila: 5, prov: 'JORNALES', total: 90000, rubro: 'Nómina · Jornales de obra' }),
+    ],
+    clave,
+  })
+  assert.equal(r.totales.comprasUniverso, 500, 'los jornales no entran en el universo de una vista comercial')
+  assert.equal(r.totales.fueraDeArca, 90000, 'pero se declaran')
 })
 
 test('las dos listas de rubros no se pisan — un rubro no puede ser comercial y no-fiscal a la vez', () => {
