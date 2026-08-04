@@ -28,13 +28,16 @@ import { loadConfig } from '../lib/config.mjs'
 import { diferenciasDeHuella, huellaProtegida } from '../lib/proveedores-bloque-vivo.mjs'
 import {
   anchoDelPivot, cabeEnElHueco, COL, filtrosPorCondicion, formatoDelImporte, fuenteCompras,
-  clavesRepetidas, formatoDeLaFecha, geometriaDeLaSeccion, nivelesConSubtotal, PENDIENTE,
-  pivotSeccion1, reapuntarControl,
+  formatoDeLaFecha, geometriaDeLaSeccion, nivelesConSubtotal, PENDIENTE, pivotSeccion1,
+  proveedoresQueAgrupan, reapuntarControl, VISTA,
 } from '../lib/proveedores-pivot-seccion1.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Proveedores'
 const APLICAR = process.argv.includes('--aplicar')
+// El dueño pidió el proveedor primero y sin comprobante; eso agrupa y deja rótulos en blanco.
+// `--por-proveedor` es la salida sin una sola celda vacía, a costa del detalle factura por factura.
+const VISTA_ELEGIDA = process.argv.includes('--por-proveedor') ? VISTA.POR_PROVEEDOR : VISTA.DETALLE
 
 const plata = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
 
@@ -68,7 +71,7 @@ async function main() {
     throw new Error('no encontré el sheetId de Proveedores o de Compras: no escribo a ciegas')
   }
 
-  const pivot = pivotSeccion1(fuenteCompras({ sheetId: sheetIdCompras, filas: filasCompras }))
+  const pivot = pivotSeccion1(fuenteCompras({ sheetId: sheetIdCompras, filas: filasCompras }), { vista: VISTA_ELEGIDA })
   const ancho = anchoDelPivot(pivot)
 
   // ── 3. Las dos trampas, verificadas sobre el objeto que se va a escribir.
@@ -86,9 +89,18 @@ async function main() {
   console.log(`ANCLA   ${PESTAÑA}!A${geo.filaEncabezado}   ANCHO ${ancho} columnas (A..${String.fromCharCode(64 + ancho)})`)
   console.log(`ALTO    ${hueco.alto} filas · disponibles ${hueco.disponible} hasta la sección 2 (fila ${geo.filaLimite}) · holgura ${hueco.holgura}`)
   console.log('NO SE TOCA  la columna H (Comentarios) ni la sección 2 entera')
-  // Si el primer campo deja de ser único vuelven las celdas vacías que reportó el dueño.
-  const repes = clavesRepetidas(pendientes)
-  for (const r of repes) console.log(`  ⚠ comprobante ${r.clave} aparece ${r.veces} veces: esas filas se van a agrupar y quedar sin nombre`)
+  console.log(`VISTA   ${VISTA_ELEGIDA}`)
+  // Con el proveedor como primer campo, el que repite agrupa y sus filas hermanas quedan sin rótulo.
+  // Se imprime ANTES de escribir: una limitación declarada, no una sorpresa al mirar la pantalla.
+  if (VISTA_ELEGIDA === VISTA.DETALLE) {
+    const agrupan = proveedoresQueAgrupan(pendientes)
+    const sinRotulo = agrupan.reduce((a, x) => a + x.sinRotulo, 0)
+    if (sinRotulo) {
+      console.log(`  ⚠ ${sinRotulo} fila(s) van a quedar SIN el nombre repetido en la columna A (así agrupa una dinámica):`)
+      for (const x of agrupan) console.log(`      ${x.proveedor}: ${x.filas} facturas → ${x.sinRotulo} sin rótulo`)
+      console.log('      con --por-proveedor no queda ninguna, a costa del detalle factura por factura')
+    }
+  }
   if (!hueco.cabe) { console.error(`✗ NO ENTRA: ${hueco.motivo}`); process.exitCode = 1; return }
   if (!APLICAR) { console.log('\n(sin --aplicar: no se escribió nada)'); return }
 
@@ -125,7 +137,7 @@ async function main() {
       range: { sheetId: sheetIdProv, startRowIndex: filaIdx, endRowIndex: filaIdx + 1, startColumnIndex: 0, endColumnIndex: 1 },
       rows: [{ values: [{ pivotTable: pivot }] }], fields: 'pivotTable' } },
     formatoDelImporte({ sheetId: sheetIdProv, filaAncla: geo.filaEncabezado, alto: hueco.alto, ancho }),
-    formatoDeLaFecha({ sheetId: sheetIdProv, filaAncla: geo.filaEncabezado, alto: hueco.alto }),
+    formatoDeLaFecha({ sheetId: sheetIdProv, filaAncla: geo.filaEncabezado, alto: hueco.alto, vista: VISTA_ELEGIDA }),
     // EL CONTROL TIENE QUE MIRAR LA COLUMNA DONDE QUEDÓ EL IMPORTE.
     //
     // Sumaba $D$18:$D$37 — la columna del importe en el bloque de fórmulas. Con la dinámica, la D
@@ -136,7 +148,7 @@ async function main() {
     { updateCells: {
       range: { sheetId: sheetIdProv, startRowIndex: filaControl - 1, endRowIndex: filaControl, startColumnIndex: 0, endColumnIndex: 1 },
       rows: [{ values: [{ userEnteredValue: { formulaValue: controlReapuntado } }] }], fields: 'userEnteredValue' } },
-  ], { espejo: true })
+  ].filter(Boolean), { espejo: true })
 
   // ── 7. La evidencia es el dato leído del archivo, nunca la pantalla que respondió que sí.
   const despues = await google.readSheetValues(ID, `${PESTAÑA}!A1:R220`, { render: 'FORMULA' })

@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import {
   anchoDelPivot, cabeEnElHueco, camposDeFila, COL, filtros, filtrosPorCondicion, fuenteCompras,
   clavesRepetidas, formatoDeLaFecha, formatoDelImporte, geometriaDeLaSeccion, nivelesConSubtotal,
-  pivotSeccion1, reapuntarControl,
+  pivotSeccion1, proveedoresQueAgrupan, reapuntarControl, VISTA,
 } from './proveedores-pivot-seccion1.mjs'
 
 const fuente = fuenteCompras({ sheetId: 7, filas: 900 })
@@ -44,22 +44,38 @@ test('el source se niega si no sabe cuántas filas tiene Compras', () => {
 test('los campos de fila van en el orden de la pestaña y el importe es el único valor', () => {
   const p = pivotSeccion1(fuente)
   assert.deepEqual(p.rows.map((r) => r.sourceColumnOffset),
-    [COL.comprobante, COL.proveedor, COL.proximoPago, COL.obra, COL.tipoPago, COL.categoria])
+    [COL.proveedor, COL.proximoPago, COL.obra, COL.tipoPago, COL.categoria])
   assert.equal(p.values.length, 1)
   assert.equal(p.values[0].sourceColumnOffset, COL.saldo)
   assert.equal(p.values[0].summarizeFunction, 'SUM')
-  // 6 campos de fila + 1 valor = 7 columnas: A..G, y la H del dueño queda afuera.
-  assert.equal(anchoDelPivot(p), 7)
+  // 5 campos de fila + 1 valor = 6 columnas: A..F, y la H del dueño queda afuera.
+  assert.equal(anchoDelPivot(p), 6)
 })
 
-test('NINGUNA FILA SIN NOMBRE · el primer campo es el único de la factura', () => {
-  // Una dinámica escribe el rótulo de un nivel una vez por grupo. Con el proveedor al frente, la
-  // segunda factura de Alumetal quedaba con la columna A vacía y se leía como proveedor faltante.
-  const [primero] = camposDeFila()
-  assert.equal(primero.sourceColumnOffset, COL.comprobante,
-    'el primer campo no es único por factura: van a volver las celdas en blanco')
-  assert.equal(primero.sortOrder, 'DESCENDING')
-  assert.deepEqual(primero.valueBucket, { valuesIndex: 0 })
+test('EL PROVEEDOR VA PRIMERO, y el comprobante no se muestra', () => {
+  const p = pivotSeccion1(fuente)
+  assert.equal(p.rows[0].sourceColumnOffset, COL.proveedor)
+  assert.equal(p.rows[0].sortOrder, 'DESCENDING', 'a quién le debemos más, arriba')
+  assert.deepEqual(p.rows[0].valueBucket, { valuesIndex: 0 })
+  assert.ok(!p.rows.some((r) => r.sourceColumnOffset === COL.comprobante),
+    'el comprobante sigue siendo una columna del cuadro')
+})
+
+test('se sabe ANTES de escribir cuántas filas quedan sin rótulo, y de quién', () => {
+  const fila = (prov) => { const f = []; f[COL.proveedor] = prov; return f }
+  assert.deepEqual(proveedoresQueAgrupan([fila('A'), fila('B')]), [])
+  assert.deepEqual(
+    proveedoresQueAgrupan([fila('Corralon'), fila('Corralon'), fila('Corralon'), fila('Alumetal'), fila('Alumetal'), fila('RSV')]),
+    [{ proveedor: 'Corralon', filas: 3, sinRotulo: 2 }, { proveedor: 'Alumetal', filas: 2, sinRotulo: 1 }])
+})
+
+test('LA VISTA POR PROVEEDOR no deja una sola celda sin rótulo', () => {
+  const p = pivotSeccion1(fuente, { vista: VISTA.POR_PROVEEDOR })
+  assert.equal(p.rows.length, 1, 'con un solo nivel no hay nivel que agrupe: cada fila lleva su nombre')
+  assert.equal(p.rows[0].sourceColumnOffset, COL.proveedor)
+  assert.equal(anchoDelPivot(p), 2)
+  // Y no se pide formatear una columna de fecha que en esta vista no existe.
+  assert.equal(formatoDeLaFecha({ sheetId: 3, filaAncla: 17, alto: 15, vista: VISTA.POR_PROVEEDOR }), null)
 })
 
 test('avisa cuando dos facturas comparten comprobante: ahí vuelven los blancos', () => {
@@ -121,7 +137,7 @@ test('LA FECHA lleva formato de fecha, y su columna se calcula del orden real', 
 })
 
 test('el importe y la fecha NO caen en la misma columna', () => {
-  const imp = formatoDelImporte({ sheetId: 3, filaAncla: 17, alto: 15, ancho: 7 })
+  const imp = formatoDelImporte({ sheetId: 3, filaAncla: 17, alto: 15, ancho: 6 })
   const fec = formatoDeLaFecha({ sheetId: 3, filaAncla: 17, alto: 15 })
   assert.notEqual(imp.repeatCell.range.startColumnIndex, fec.repeatCell.range.startColumnIndex)
 })

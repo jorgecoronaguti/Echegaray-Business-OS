@@ -45,25 +45,50 @@ export const PENDIENTE = 'Pendiente'
  *
  * El primer nivel ordena por el valor DESCENDENTE — a quién le debemos más, arriba.
  */
-export function camposDeFila() {
+export function camposDeFila({ vista = VISTA.DETALLE } = {}) {
+  // EL PROVEEDOR VA PRIMERO — pedido explícito del dueño (04/08), y el comprobante no se muestra.
+  //
+  // Lo que eso cuesta, dicho: el primer nivel es el que AGRUPA, y una dinámica escribe su rótulo una
+  // sola vez por grupo. Con el proveedor al frente, las facturas 2ª de Alumetal y 2ª/3ª/4ª de
+  // Corralón Progreso quedan con la columna A en blanco. No es un dato faltante y no hay forma de
+  // evitarlo en una dinámica nativa: la API no tiene "repetir rótulos" (Excel sí, Sheets no).
+  //
+  // Por eso existe VISTA.POR_PROVEEDOR: una línea por proveedor, sin una sola celda vacía, a costa
+  // de perder el detalle factura por factura. Se elige, no se sufre.
+  if (vista === VISTA.POR_PROVEEDOR) {
+    return [{ sourceColumnOffset: COL.proveedor, showTotals: false, sortOrder: 'DESCENDING', valueBucket: { valuesIndex: 0 } }]
+  }
   return [
-    // EL COMPROBANTE VA PRIMERO, Y ES POR LAS CELDAS VACÍAS.
-    //
-    // Una dinámica escribe el rótulo de un nivel UNA sola vez y deja en blanco las filas hermanas.
-    // Con el proveedor al frente, la segunda factura de Alumetal y la segunda, tercera y cuarta de
-    // Corralón Progreso quedaban con la columna A vacía — y eso se lee como "faltan proveedores",
-    // que es exactamente lo que reportó el dueño el 04/08.
-    //
-    // El comprobante es único por factura: cada grupo tiene un solo hijo, así que TODOS los niveles
-    // de adentro se escriben en todas las filas. Ninguna queda sin nombre. Es la única forma de que
-    // una dinámica nativa se vea como una tabla plana; no hay opción de "repetir rótulos" en la API.
-    { sourceColumnOffset: COL.comprobante, showTotals: false, sortOrder: 'DESCENDING', valueBucket: { valuesIndex: 0 } },
-    { sourceColumnOffset: COL.proveedor, showTotals: false, sortOrder: 'ASCENDING' },
+    { sourceColumnOffset: COL.proveedor, showTotals: false, sortOrder: 'DESCENDING', valueBucket: { valuesIndex: 0 } },
     { sourceColumnOffset: COL.proximoPago, showTotals: false, sortOrder: 'ASCENDING' },
     { sourceColumnOffset: COL.obra, showTotals: false, sortOrder: 'ASCENDING' },
     { sourceColumnOffset: COL.tipoPago, showTotals: false, sortOrder: 'ASCENDING' },
     { sourceColumnOffset: COL.categoria, showTotals: false, sortOrder: 'ASCENDING' },
   ]
+}
+
+/** Las dos formas del cuadro. El detalle muestra cada factura; la otra, una línea por proveedor. */
+export const VISTA = Object.freeze({ DETALLE: 'detalle', POR_PROVEEDOR: 'por-proveedor' })
+
+/**
+ * ¿CUÁNTAS CELDAS VAN A QUEDAR SIN RÓTULO, Y DE QUIÉN?
+ *
+ * El dueño reportó "faltan proveedores" cuando lo que había eran rótulos agrupados. Que el número
+ * salga impreso ANTES de escribir es la diferencia entre una limitación declarada y una sorpresa.
+ *
+ * @param {Array<Array<any>>} filas  las filas de Compras que entran a la dinámica
+ * @returns {Array<{proveedor:string, filas:number, sinRotulo:number}>} sólo los que repiten
+ */
+export function proveedoresQueAgrupan(filas = []) {
+  const cuenta = new Map()
+  for (const f of filas) {
+    const p = String(f?.[COL.proveedor] ?? '').trim()
+    if (p) cuenta.set(p, (cuenta.get(p) ?? 0) + 1)
+  }
+  return [...cuenta.entries()]
+    .filter(([, n]) => n > 1)
+    .map(([proveedor, n]) => ({ proveedor, filas: n, sinRotulo: n - 1 }))
+    .sort((a, b) => b.sinRotulo - a.sinRotulo)
 }
 
 /** Los filtros. NUNCA por `condition`: ver la trampa 1. */
@@ -88,10 +113,10 @@ export function fuenteCompras({ sheetId, filas }) {
 }
 
 /** La dinámica entera, lista para `updateCells`. */
-export function pivotSeccion1(fuente) {
+export function pivotSeccion1(fuente, { vista = VISTA.DETALLE } = {}) {
   return {
     source: fuente,
-    rows: camposDeFila(),
+    rows: camposDeFila({ vista }),
     values: [{ sourceColumnOffset: COL.saldo, summarizeFunction: 'SUM', name: 'Importe' }],
     filterSpecs: filtros(),
     valueLayout: 'HORIZONTAL',
@@ -166,9 +191,11 @@ export function formatoDelImporte({ sheetId, filaAncla, alto, ancho }) {
  * La posición se CALCULA de `camposDeFila()`, no se tipea: si mañana cambia el orden, el formato
  * sigue al campo en vez de quedarse apuntando a la columna de al lado.
  */
-export function formatoDeLaFecha({ sheetId, filaAncla, alto }) {
-  const columna = camposDeFila().findIndex((r) => r.sourceColumnOffset === COL.proximoPago)
-  if (columna < 0) throw new Error('formatoDeLaFecha: la fecha no es un campo de fila del pivot')
+export function formatoDeLaFecha({ sheetId, filaAncla, alto, vista = VISTA.DETALLE }) {
+  const columna = camposDeFila({ vista }).findIndex((r) => r.sourceColumnOffset === COL.proximoPago)
+  // En la vista por proveedor no hay columna de fecha: no hay nada que formatear, y pedirlo con
+  // índice -1 formatearía la columna anterior. Devuelve null y el script lo saltea.
+  if (columna < 0) return null
   return formatoDeColumna({
     sheetId, filaAncla, alto, columna,
     numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'RIGHT',
