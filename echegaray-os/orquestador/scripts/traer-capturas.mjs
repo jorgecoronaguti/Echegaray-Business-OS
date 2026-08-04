@@ -88,7 +88,11 @@ async function main() {
     if (!/^image\//.test(info.mime_type || '')) continue
     const buf = Buffer.from(await (await mm(`/files/${a.fid}`)).arrayBuffer())
     const meta = await sharp(buf).metadata()
-    const ruta = join(DESTINO, `${new Date(a.at).toISOString().slice(0, 19).replace(/[:T]/g, '')}-${info.name.replace(/[^\w.-]/g, '_')}.jpg`)
+    // EL ID DEL ARCHIVO VA EN EL NOMBRE. Seis capturas pegadas en el mismo post llegan las seis como
+    // `image.png` y con el mismo timestamp: sin el id se pisaban entre sí y quedaba UNA. Pasó en la
+    // primera corrida real — el script dijo "6 capturas listas" y había un solo archivo escrito seis
+    // veces. Un contador de lo que se bajó no vale nada si no cuenta lo que quedó.
+    const ruta = join(DESTINO, `${new Date(a.at).toISOString().slice(0, 19).replace(/[:T]/g, '')}-${a.fid.slice(0, 8)}-${info.name.replace(/[^\w.-]/g, '_')}.jpg`)
     // `withoutEnlargement`: una captura que ya entra NO se agranda. Reescalar hacia arriba no agrega
     // información y sí agrega peso y borrosidad.
     await sharp(buf).rotate().resize({ width: LADO, height: LADO, fit: 'inside', withoutEnlargement: true })
