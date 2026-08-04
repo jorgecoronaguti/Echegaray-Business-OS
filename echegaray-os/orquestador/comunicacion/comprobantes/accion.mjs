@@ -21,7 +21,7 @@
 // ventana abierta justo para el caso que hay que impedir.
 
 import { igualEnTiempoConstante } from '../secreto-compartido.mjs'
-import { ESTADO, estaCompleto, resolverDuplicado, aplicarOpcion } from '../../lib/comprobantes/fajo.mjs'
+import { ESTADO, estaCompleto, resolverDuplicado, aplicarOpcion, imputacionPendiente } from '../../lib/comprobantes/fajo.mjs'
 import { mensajeFajo } from '../../lib/comprobantes/mensaje.mjs'
 import { puedeCargarComprobantes } from './guarda.mjs'
 import { dialogoCorreccion, leerEstado, aplicarCorreccion, CALLBACK_ID } from './dialogo.mjs'
@@ -67,7 +67,10 @@ export function normalizar(payload = {}) {
     fajoId: payload.context?.fajo_id ?? null,
     indice: Number.isInteger(payload.context?.indice) ? payload.context.indice : null,
     campo: payload.context?.campo ?? null,
-    valor: payload.context?.valor ?? null,
+    // EL VALOR DE UN MENÚ NO VIENE EN EL CONTEXTO. Mattermost lo agrega como `selected_option` al
+    // elegir una opción de un `select`; el `context` es lo que nosotros configuramos y viaja igual
+    // para todas las opciones. Un botón sí trae su valor fijo en el contexto: se aceptan los dos.
+    valor: payload.context?.selected_option ?? payload.context?.valor ?? null,
     submission: payload.submission ?? null,
     state: payload.state ?? null,
   }
@@ -114,7 +117,7 @@ export function crearManejadorComprobantes({ port, mattermost, secreto = null, u
       if (p.accion === 'duplicado_mismo' || p.accion === 'duplicado_otro') {
         return await contestarDuplicado({ port, mattermost, url, repo, log }, p)
       }
-      if (p.accion === 'imputar') return await imputar({ port, mattermost, url, repo, log }, p)
+      if (p.accion === 'imputar') return await imputar({ port, mattermost, url, escribir, repo, log }, p)
       if (p.accion === 'descartar') return await descartar({ port, mattermost, url, repo, log }, p)
       return malo('No entendí ese botón.')
     } catch (e) {
@@ -261,8 +264,17 @@ async function imputar(d, p) {
 
   const guardado = await repo.guardarItems(port, { id: fajo.id, items })
   if (!guardado) return responder({ ephemeral_text: TEXTO.YA_CERRADO })
-  await refrescar(mattermost, guardado, mensajeMattermost(guardado, url), log)
   log?.info?.('comprobantes: imputación elegida', { fajo: fajo.id, indice: p.indice, campo: p.campo })
+
+  // CONTESTAR LO ÚLTIMO QUE FALTABA ES CONFIRMAR. No se le pide un click más a quien acaba de
+  // completar la imputación: si ya no queda nada que preguntar y todo es cargable, se carga. Es la
+  // misma condición que usa la carga automática del post, y el mismo `escribirFajo` de siempre.
+  const listo = (guardado.items ?? []).length
+    && (guardado.items ?? []).every((it) => !imputacionPendiente(it).length)
+    && (guardado.items ?? []).some(estaCompleto)
+  if (listo) return await confirmar(d, { ...p, fajoId: fajo.id })
+
+  await refrescar(mattermost, guardado, mensajeMattermost(guardado, url), log)
   return responder({ ephemeral_text: `Anotado: ${p.campo} = ${p.valor}.` })
 }
 

@@ -26,7 +26,7 @@ import { normalizarLectura, claveComprobante, MEDIA_SOPORTADOS, MAX_BYTES_ADJUNT
 import { imputacionDeAnotacion } from '../../lib/comprobantes/imputacion.mjs'
 import { conciliarConArca, aplicarArca, ESTADO_ARCA } from '../../lib/comprobantes/arca.mjs'
 import { buscarEnCompras, HALLAZGO } from '../../lib/comprobantes/compras-vivas.mjs'
-import { colapsarRepetidos, entraEnElFajo, estaCompleto, ESTADO } from '../../lib/comprobantes/fajo.mjs'
+import { colapsarRepetidos, entraEnElFajo, estaCompleto, imputacionPendiente, MAX_OPCIONES, ESTADO } from '../../lib/comprobantes/fajo.mjs'
 import { mensajeFajo } from '../../lib/comprobantes/mensaje.mjs'
 import { perfilesDeImputacion, sugerirImputacion } from '../../lib/imputacion-aprendida.mjs'
 import { puedeCargarComprobantes } from './guarda.mjs'
@@ -125,10 +125,30 @@ export function armarItem({ lectura, adjunto, listas, textoPost = null } = {}) {
     claveFuerte: k?.fuerte ?? false,
     proveedorNuevo,
     listasVerificadas: listasOk,
+    // LOS DESPLEGABLES VIAJAN CON EL ÍTEM. El mensaje se vuelve a dibujar en cada click, desde el
+    // fajo que está en Postgres: si las listas se releyeran de Google ahí, sería una llamada por
+    // click y —peor— se podría ofrecer algo distinto de lo que después se valida. Lo que se ofrece y
+    // lo que se acepta salen de la misma lista, guardada una sola vez.
+    opciones: opcionesParaImputar(listas),
     faltantes,
     dudas,
     origen: { fileId: adjunto?.fileId ?? null, nombre: adjunto?.nombre ?? null },
   }
+}
+
+/**
+ * Las listas ESTRICTAS con las que se va a preguntar la imputación, acotadas para que quepan en el
+ * fajo. El detalle (columna K) no tiene desplegable: su vocabulario legítimo es el que el dueño ya
+ * usó en esa obra, y por eso va por obra.
+ */
+export function opcionesParaImputar(listas = {}) {
+  const acotar = (a) => (Array.isArray(a) ? a : []).map((v) => String(v).trim()).filter(Boolean).slice(0, MAX_OPCIONES)
+  const detalle = {}
+  for (const [obra, vals] of Object.entries(listas?.detalles ?? {})) {
+    const l = acotar(vals)
+    if (l.length) detalle[obra] = l
+  }
+  return { obra: acotar(listas?.obras), unidad: acotar(listas?.unidades), detalle }
 }
 
 /**
@@ -405,6 +425,18 @@ async function cargarSolo(d, fajo, repo, problemas = []) {
   if (typeof escribir !== 'function') return null      // sin escritor inyectado: el flujo viejo
   const items = fajo?.items ?? []
   if (!items.length || !items.every(estaCompleto)) return null
+
+  // ═══ NO SE CARGA CIEGO (04/08) ═══
+  //
+  // La primera versión de esto cargaba igual con la Unidad de Negocio, la obra y el Detalle vacíos y
+  // avisaba "completalas vos en Compras". El dueño lo rechazó con razón: ese es exactamente el
+  // trabajo que este flujo existe para no hacer, y una fila sin unidad entra al Flujo de Caja con el
+  // rubro sin clasificar. Si hay algo que preguntar Y hay con qué contestarlo, se pregunta.
+  //
+  // "Con qué contestarlo" es la condición que importa: si no se pudieron leer los desplegables ni
+  // hay historia, preguntar sería mostrar un menú vacío. Ahí se carga igual y se dice — un
+  // comprobante que no llegó nunca a Compras es peor que uno con una celda por completar.
+  if (items.some((it) => imputacionPendiente(it).length)) return null
 
   // COMPARE-AND-SET igual que el botón. No es ceremonia: dos posts casi simultáneos de la misma
   // persona pueden llegar acá con el mismo fajo, y el que pierde tiene que no escribir nada.

@@ -134,7 +134,7 @@ test('sin nada cargable NO aparece el botón de Confirmar', () => {
   assert.deepEqual(att.actions.map((a) => a.id), ['corregir', 'descartar'])
 })
 
-test('faltando el número pero no la obra, el desplegable de obra SIGUE ofreciéndose', () => {
+test('faltando el número, el menú de imputación SIGUE ofreciéndose', () => {
   // El bloque de obra no cuelga de que el ítem sea cargable: cuelga de que la obra falte y tenga
   // opciones. Contestar la obra mientras se corrige el número no puede quedar bloqueado.
   const url = 'https://x/accion?t=s'
@@ -143,7 +143,8 @@ test('faltando el número pero no la obra, el desplegable de obra SIGUE ofrecié
     sugerencia: { obra: { sugerido: 'Taller', opciones: [{ valor: 'Taller', n: 18 }] } },
   }
   const att = botonesFajo({ id: 'f1', items: [it] }, { url })
-  assert.match(att[0].title, /¿A qué obra va\?/)
+  assert.match(att[0].title, /Falta imputar/)
+  assert.equal(att[0].actions[0].id, 'obra')
   assert.deepEqual(att[1].actions.map((a) => a.id), ['corregir', 'descartar'])
 })
 
