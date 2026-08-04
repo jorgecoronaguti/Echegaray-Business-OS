@@ -793,8 +793,54 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   return { filas: resuelto, notasHuerfanas, notasPuestas, anchoDeuda: ANCHO, cabArca, marcas: { bPos, b1, b2, b3, b4, b5, b6, b7, b8, fin: filas.length }, bPos, pos0, pos1, posTotal, posProy, posPlazo, posFaltan, cuentas: [fCuenta1, fCuenta2], fCompFecha, afip0, afip1, emi0, emi1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabDocFin, deudaL: L, deudaHeaders, deudaGrupos, cabAfip, cabEmi, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, anchoObras: obras.length }
 }
 
+/**
+ * ¿HAY UNA TABLA DINÁMICA EN LA SECCIÓN 1? Entonces este generador no escribe.
+ *
+ * Pregunta por la celda ancla con `includeGridData` — el único modo de saber si una celda ES una
+ * dinámica; ni `readSheetValues` ni `getSheetMeta` lo dicen, porque una dinámica no tiene ni valor
+ * ni fórmula propios.
+ *
+ * FALLA CERRADO: si la consulta no se puede hacer, aborta igual. "No pude verificar" no es permiso.
+ *
+ * @param {object} google
+ */
+// 'Proveedores' literal y NO `${PESTAÑA}`: en este script esa constante vale 'Proveedores y
+// Materiales' (el nombre del PASO, no el de la pestaña), y con ella la consulta devuelve
+// 400 "Unable to parse range" — o sea, la guarda abortaba siempre por el motivo equivocado.
+export async function abortarSiHayDinamica(google, { celda = 'Proveedores!A17' } = {}) {
+  if (process.env.ORQ_PISAR_DINAMICA_PROVEEDORES === 'si') {
+    console.warn('  ⚠ ORQ_PISAR_DINAMICA_PROVEEDORES=si: se escribe encima de la dinámica a pedido explícito')
+    return
+  }
+  let pivot = null
+  try {
+    const grid = await google.getGridData?.(ID, celda)
+    pivot = grid?.sheets?.[0]?.data?.[0]?.rowData?.[0]?.values?.[0]?.pivotTable ?? null
+  } catch (e) {
+    throw new Error(`no pude verificar si ${celda} es una tabla dinámica (${e.message}). `
+      + 'No escribo: no poder verificar nunca es permiso para pisar.')
+  }
+  if (pivot) {
+    throw new Error(`${celda} es una TABLA DINÁMICA nativa y este generador la reescribiría como bloque `
+      + 'de fórmulas, matándola en silencio. Para la sección 1 usá '
+      + '`orquestador/scripts/proveedores-pivot-aplicar.mjs`. Si de verdad querés pisarla, '
+      + 'ORQ_PISAR_DINAMICA_PROVEEDORES=si.')
+  }
+}
+
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
+
+  // ═══ NINGÚN GENERADOR PISA UNA TABLA DINÁMICA QUE NO CREÓ ═══
+  //
+  // La sección 1 de Proveedores dejó de ser un bloque de fórmulas: hoy es una tabla dinámica nativa
+  // (04/08/2026, pedido del dueño). Este script la reescribiría como bloque y la mataría en silencio
+  // — y encima es un PASO DEL PIPELINE (`flujo-caja-pasos.mjs`), así que bastaría con que alguien
+  // corriera el flujo entero por cualquier otro motivo.
+  //
+  // Se para antes de leer nada. Falla cerrado: si la consulta no se puede hacer, tampoco escribe,
+  // porque "no pude verificar" nunca es permiso para pisar.
+  await abortarSiHayDinamica(google)
   // SIN FILTRAR: `comprasRaw` conserva el índice REAL de cada fila (i → fila i+4 de Compras). La
   // deuda referencia filas puntuales de Compras, así que necesita el número real; filtrar primero y
   // usar el índice del array filtrado apunta a la fila equivocada (bug ya documentado en el archivo).

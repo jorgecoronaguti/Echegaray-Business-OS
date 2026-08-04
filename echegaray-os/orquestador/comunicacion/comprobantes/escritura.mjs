@@ -35,6 +35,7 @@ import { congelado } from '../../lib/congelador-sheets.mjs'
 import { estaCompleto, ESTADO } from '../../lib/comprobantes/fajo.mjs'
 import { numeroCanonico, claveComprobante, conceptoConAnotacion } from '../../lib/comprobantes/lectura.mjs'
 import * as repoReal from './repositorio.mjs'
+import { avisosDeVerificacion, cierre, COL as VCOL, tablaDeLoEscrito } from '../../lib/comprobantes/verificacion.mjs'
 
 const AQUI = dirname(fileURLToPath(import.meta.url))
 export const RUTA_CARGADOR = resolve(AQUI, '../../scripts/cargar-comprobantes-compras.mjs')
@@ -300,7 +301,22 @@ export async function escribirFajo(d, fajo) {
     .map((it, k) => ({ it, fila: filas[k] }))
     .filter(({ it }) => !it.comprobante?.obra)
     .map(({ it, fila }) => ({ proveedor: it.comprobante?.proveedor ?? null, fila: fila.fila ?? null }))
-  return { estado: ESTADO.CARGADO, texto: textoCargado(filas, yaEstaban, r.datos, { sinObra }), filas }
+  // ═══ LA PRUEBA DEL EFECTO ═══
+  //
+  // Hasta acá el mensaje decía lo que el cargador REPORTÓ. Ahora se releen las filas escritas del
+  // archivo y se muestra lo que quedó, con los dos controles. Si releer falla, no se inventa nada:
+  // se dice que no se pudo verificar y el resto del mensaje sale igual — la carga ya ocurrió.
+  let prueba = ''
+  try {
+    const leidas = await releerLoEscrito(d, filas)
+    prueba = [tablaDeLoEscrito(leidas), ...avisosDeVerificacion(leidas), cierre(leidas)].filter(Boolean).join('\n')
+  } catch (e) {
+    log?.warn?.('comprobantes: no pude releer lo escrito', { detalle: recorte(e?.message) })
+    prueba = '⚠ Cargué, pero no pude releer las filas para mostrarte lo que quedó. Revisalas en Compras.'
+  }
+
+  const texto = [textoCargado(filas, yaEstaban, r.datos, { sinObra }), prueba].filter(Boolean).join('\n')
+  return { estado: ESTADO.CARGADO, texto, filas }
 }
 
 /**
@@ -355,6 +371,38 @@ export function filaDeRegistro(it, fajo = {}) {
 export function aIso(v) {
   const m = String(v ?? '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
   return m ? `${m[3]}-${m[2]}-${m[1]}` : null
+}
+
+/**
+ * RELEE DE COMPRAS LAS FILAS QUE SE ACABAN DE ESCRIBIR, con la historia de cada proveedor.
+ *
+ * `d.leerCompras` entra inyectable para que el test ejercite la verificación sin tocar el Sheet; el
+ * default es el cliente real de sólo lectura.
+ *
+ * @returns {Promise<Array<{fila:number, valores:Array, historia:number[]}>>}
+ */
+async function releerLoEscrito(d, filas) {
+  const conFila = (filas ?? []).filter((f) => Number.isInteger(f?.fila))
+  if (!conFila.length) return []
+  const leer = d.leerCompras ?? (async () => {
+    const { makeGoogleClient } = await import('../../lib/google.mjs')
+    const g = await makeGoogleClient()
+    const id = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
+    return g.readSheetValues(id, 'Compras!A4:AL', { render: 'UNFORMATTED_VALUE' })
+  })
+  const compras = (await leer()) ?? []
+  const deLaFila = (n) => compras[n - 4] ?? []
+  return conFila.map((f) => {
+    const valores = deLaFila(f.fila)
+    const quien = String(valores?.[VCOL.proveedor] ?? '').trim().toLowerCase()
+    // La historia del proveedor SIN la fila que se acaba de escribir: incluirla haría que el importe
+    // sospechoso se compare consigo mismo y nunca destaque.
+    const historia = compras
+      .map((r, i) => ({ i: i + 4, prov: String(r?.[VCOL.proveedor] ?? '').trim().toLowerCase(), total: r?.[VCOL.total] }))
+      .filter((r) => r.prov && r.prov === quien && r.i !== f.fila)
+      .map((r) => r.total)
+    return { fila: f.fila, valores, historia }
+  })
 }
 
 function textoCargado(filas, yaEstaban, datos, { sinObra = [] } = {}) {
