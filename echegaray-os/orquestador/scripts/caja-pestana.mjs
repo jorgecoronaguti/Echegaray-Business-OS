@@ -748,7 +748,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // él es una decisión de tesorería, no un párrafo al lado del monto.
   push(['Qué pasa', '', 'Cuánto'])
   push(['Cheques de terceros que el cash flow espera y ya se entregaron', '', '@DIFECHEQ'])
-  push(['El cash flow proyecta un efectivo que no está', '', '@DIFCONC'])
+  push(['CAJA y el Cash Flow no arrancan del mismo saldo — alguien tocó uno de los dos', '', '@DIFCONC'])
   push(['Efectivo cobrado que no se depositó ni está en la caja física', '', '@SINEXPL'])
   // ═══ EL $0 QUE NO ERA UN CERO (01/08) ═══
   //
@@ -1028,36 +1028,23 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // ═══ POR QUÉ LA DIFERENCIA ES ENORME, Y CUÁNTO DE ELLA ES UN PROBLEMA DE VERDAD ═══
   //
   // POR QUÉ (21/07). Esta conciliación gritaba $46.280.782 y no se podía hacer nada con el número.
-  // Al abrirlo, la mayor parte NO ES UN ERROR: la fila de arriba compara la plata que hay HOY (21/07)
-  // contra el CIERRE PROYECTADO DE TODO JULIO. Entre una fecha y la otra hay diez días de cobros y
-  // pagos que el cuadro ya cuenta y que todavía no ocurrieron. Comparadas así, las dos cifras nunca
-  // van a coincidir, y una alerta que siempre está en rojo deja de leerse.
+  // ═══ POR QUÉ ACÁ YA NO HAY TRES RENGLONES MÁS (04/08) ═══
   //
-  // Estas líneas separan las tres cosas que estaban sumadas en un solo número:
-  //   · lo que el cash flow espera del RESTO DEL MES — no es un problema, es futuro;
-  //   · lo que el cuadro cuenta como cobrado este mes y NO tiene estado Cobrado — eso sí es un
-  //     problema: la proyección está tomando como hecho algo que no entró;
-  //   · el residuo, que es lo único verdaderamente sin explicar y lo único que hay que salir a buscar.
-  const C = 'Cobranzas', CO = 'Compras'
-  const hoy = 'TODAY()'
-  const finMes = 'EOMONTH(TODAY();0)'
-  const cobRestoMes = `SUMIFS(${C}!$M$5:$M$400;${C}!$Q$5:$Q$400;">"&${hoy};${C}!$Q$5:$Q$400;"<="&${finMes})`
-  // RANGO ABIERTO, NO HASTA LA 800 (01/08). El auditor de rangos fosilizados: "lee Compras hasta
-  // la 800, datos hasta la 797". Tres filas de margen. El día que Compras pase la 800 esta celda
-  // deja de contar los pagos del resto del mes SIN dar un error — el piso proyectado de caja se
-  // vería más alto de lo que es, que es el error que peor se paga. Los demás rangos de este archivo
-  // ya son abiertos por esta misma razón.
-  const pagRestoMes = `SUMIFS(${CO}!$O$4:$O;${CO}!$AD$4:$AD;">"&${hoy};${CO}!$AD$4:$AD;"<="&${finMes})`
-  const fResto = push(['   · lo que el cash flow espera que pase del 22 al fin de mes (cobros menos pagos)', '', '', '',
-    `=${cobRestoMes}-${pagRestoMes}`, '', '', '',
-    'NO es un error: es futuro. La fila de arriba compara la plata de HOY contra el cierre de TODO el mes, así que esta parte de la diferencia es simplemente lo que todavía no pasó.'])
-  const fNoCobrado = push(['   · cobros de este mes que el cuadro cuenta y NO tienen estado "Cobrado"', '', '', '',
-    `=SUMIFS(${C}!$M$5:$M$400;${C}!$Q$5:$Q$400;">="&EOMONTH(TODAY();-1)+1;${C}!$Q$5:$Q$400;"<="&${hoy};${C}!$O$5:$O$400;"<>Cobrado")`,
-    '', '', '',
-    '⚠ Esto SÍ es un problema: la proyección los da por entrados y su fecha ya pasó. O se cobraron y falta marcarlos, o hay que correr la fecha.'])
-  push(['⇒ LO QUE QUEDA SIN EXPLICAR', '', '', '',
-    `=${C_PESOS}${fDifConc}+${C_PESOS}${fResto}+${C_PESOS}${fNoCobrado}`, '', '', '',
-    'Este es el número a buscar: plata que se movió y no está en ninguna pestaña. Los dos renglones de arriba ya tienen explicación.'])
+  // Estas tres líneas —"lo que el cash flow espera del 22 al fin de mes", "cobros sin estado
+  // Cobrado" y "LO QUE QUEDA SIN EXPLICAR"— pertenecían a un diseño anterior, en el que la fila de
+  // arriba comparaba la caja de HOY contra el CIERRE PROYECTADO DE TODO EL MES. Con esa
+  // comparación la diferencia era enorme por construcción, y hacía falta descomponerla.
+  //
+  // Ese diseño cambió: hoy se compara contra el INICIO del mes, así que la diferencia tiene que ser
+  // cero y no hay nada que descomponer. Los tres renglones quedaron colgados, y el último SUMABA lo
+  // que antes explicaba la diferencia: mostraba $85.628.912 de "plata sin explicar" cuando la
+  // conciliación daba exacta. El dueño lo leyó como un agujero y perdió la confianza en la pestaña
+  // entera — con razón: un número al que nadie le puede decir de dónde sale no vale nada.
+  //
+  // LO QUE ESTE CONTROL PUEDE Y NO PUEDE DECIR, dicho sin adornos: detecta que alguien tocó a mano
+  // uno de los dos lados. NO detecta un error de carga, porque el cash flow toma su saldo inicial
+  // DE ESTA MISMA PESTAÑA — es un control validado contra su propia fuente. El control de verdad va
+  // contra el banco y contra ARCA, que son las dos fuentes que el OS no produce.
   push()
 
   // ── 7 · ¿DÓNDE ESTÁ EL EFECTIVO COBRADO? ────────────────────────────────────────────────────
@@ -1276,7 +1263,18 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // referencias, no copias: si el detalle cambia, el titular cambia con él.
   const PANEL = {
     '@TOTAL': `=${C_PESOS}${fTotal}`, '@CHEQUES': `=${C_PESOS}${fCh}`, '@NETA': `=$F$${fPeor}`, '@AIRE': `=${C_PESOS}${fAire}`,
-    '@DIFECHEQ': `=${C_IMP}${gDif}`, '@DIFCONC': `=ABS(${C_PESOS}${fDifConc})`, '@SINEXPL': `=${C_PESOS}${fSinExpl}`,
+    '@DIFECHEQ': `=${C_IMP}${gDif}`, '@SINEXPL': `=${C_PESOS}${fSinExpl}`,
+    // ═══ LA ALERTA MUESTRA LO QUE NO SE PUEDE EXPLICAR, NO LA RESTA BRUTA ═══
+    //
+    // Apuntaba a `ABS(diferencia contra el cash flow)`, que compara el saldo de HOY contra el cierre
+    // de FIN DE MES. Esa resta incluye, por definición, todo lo que todavía falta que pase en el mes:
+    // daba $80.035.427 cuando lo realmente inexplicado eran $5.593.485. El dueño la leyó como un
+    // agujero de ochenta millones —"necesito claridad en caja"— y tenía razón en desconfiar: el
+    // cuadro calculaba bien y titulaba mal.
+    //
+    // Una alerta que suena siempre deja de mirarse, y peor: le saca crédito a las que sí importan.
+    // La fila `⇒ LO QUE QUEDA SIN EXPLICAR` ya descuenta lo que tiene explicación conocida.
+    '@DIFCONC': `=ABS(${C_PESOS}${fDifConc})`,
     // ═══ ACÁ NO VA UN MONTO, Y ES A PROPÓSITO ═══
     //
     // La primera versión ponía el neto de efectivo con la ventana abierta ("lo que entraría al cargar
