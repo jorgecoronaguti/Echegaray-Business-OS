@@ -16,6 +16,7 @@
 import { readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { diagnosticoIdentidad } from './identidades.mjs'
 
 const AQUI = dirname(fileURLToPath(import.meta.url))
 const DIR = join(AQUI, 'capacidades')
@@ -78,6 +79,52 @@ export async function capacidadesHabilitadas(ctx) {
 }
 
 /**
+ * POR QUÉ una capacidad no está disponible para esta persona, en castellano.
+ *
+ * Existe porque "no está habilitada" tapaba dos cosas opuestas: un permiso que la persona no tiene
+ * (lo arregla Dirección) y una identidad que el OS no supo resolver (lo arregla el OS). Con el
+ * mismo texto para las dos, el defecto del 04/08 —identidades sembradas con ids de ejemplo— se leyó
+ * durante semanas como una restricción de permisos.
+ *
+ * Se llama SÓLO para explicar (nunca en el camino feliz) y no puede romper la respuesta: si la
+ * capacidad falla al explicarse, se sigue con el diagnóstico general.
+ *
+ * @returns {Promise<{codigo:string, mensaje:string}>}
+ */
+export async function motivoDeshabilitada(capacidad, ctx = {}) {
+  try {
+    const propio = await capacidad?.motivoNoHabilitada?.(ctx)
+    if (propio?.mensaje) return propio
+  } catch { /* explicar no puede tirar */ }
+  const identidad = diagnosticoIdentidad(ctx?.identidad)
+  if (identidad) return identidad
+  if (capacidad?.permisos?.length) {
+    return {
+      codigo: 'permiso_faltante',
+      mensaje: `necesita el permiso "${capacidad.permisos.join('", "')}", que hoy no tenés. Pedíselo a Dirección.`,
+    }
+  }
+  return { codigo: 'no_disponible', mensaje: 'no está disponible en este momento.' }
+}
+
+/**
+ * Las capacidades que este contexto NO tiene, cada una con su porqué.
+ *
+ * Es la otra mitad de la ayuda honesta: "¿qué sabés hacer?" mostraba sólo lo habilitado, así que a
+ * alguien sin identidad le mostraba un OS mucho más tonto de lo que es y no le decía por qué.
+ */
+export async function capacidadesNoDisponibles(ctx, habilitadas = null) {
+  const todas = await capacidades()
+  const ids = new Set((habilitadas ?? await capacidadesHabilitadas(ctx)).map((c) => c.id))
+  const out = []
+  for (const c of todas) {
+    if (ids.has(c.id)) continue
+    out.push({ capacidad: c, motivo: await motivoDeshabilitada(c, ctx) })
+  }
+  return out
+}
+
+/**
  * Catálogo COMPACTO para el modelo (el único lugar donde el catálogo viaja a la API).
  * Sin schemas ni ejemplos largos: id + qué hace, en una línea. Es lo que mantiene el
  * prompt de interpretación en el orden de los cientos de tokens y no de los miles.
@@ -88,11 +135,24 @@ export function catalogoCompacto(lista) {
 
 /** Texto de la ayuda dinámica, armado desde el registro. No hay lista escrita a mano.
  *  `enAyuda: false` deja afuera a la propia capacidad de ayuda: enumerarse a sí misma no le
- *  dice nada a quien acaba de encontrarla. */
-export function renderAyuda(lista) {
+ *  dice nada a quien acaba de encontrarla.
+ *
+ *  LO QUE NO PUEDE HACER TAMBIÉN SE DICE, con el motivo al lado. Callarlo era mentir por omisión:
+ *  a alguien cuya identidad no resolvía le mostraba un OS que no sabe agendar ni anotar tareas,
+ *  cuando la verdad es que sabe y no lo reconocía a él. */
+export function renderAyuda(lista, { noDisponibles = [] } = {}) {
   const visibles = lista.filter((c) => c.enAyuda !== false)
-  if (!visibles.length) {
+  const trabadas = noDisponibles.filter((n) => n?.capacidad?.enAyuda !== false && n?.motivo?.mensaje)
+  const partes = []
+  if (visibles.length) {
+    partes.push(['Puedo:', ...visibles.map((c) => `• ${c.descripcion};`)].join('\n').replace(/;$/, '.'))
+  }
+  if (trabadas.length) {
+    partes.push(['Esto lo sé hacer, pero ahora no puedo:',
+      ...trabadas.map((n) => `• ${n.capacidad.descripcion} — ${n.motivo.mensaje}`)].join('\n'))
+  }
+  if (!partes.length) {
     return 'Ahora mismo no tengo ninguna capacidad habilitada para vos. Avisale a Jorge.'
   }
-  return ['Puedo:', ...visibles.map((c) => `• ${c.descripcion};`)].join('\n').replace(/;$/, '.')
+  return partes.join('\n\n')
 }

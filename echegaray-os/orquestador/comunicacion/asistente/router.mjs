@@ -25,9 +25,10 @@ import {
   CAPACIDAD, INTENCION, ERROR, TZ_EMPRESA,
   errorAsistente, resultadoOk, resultadoError, resultadoAclaracion,
 } from './contratos.mjs'
-import { capacidadPorId, capacidadesHabilitadas, catalogoCompacto, renderAyuda } from './registro.mjs'
+import { capacidadPorId, capacidadesHabilitadas, capacidadesNoDisponibles, catalogoCompacto, motivoDeshabilitada, renderAyuda } from './registro.mjs'
 import { interpretar as interpretarDefault, interpretarDeterministico, parametrosPorIntencion, PREGUNTA_TIPO, plano } from './interpretar.mjs'
-import { identidadDe, resolverPersona, emailDe, nombreCorto, normalizar } from './identidades.mjs'
+import { identidadDe, resolverPersona, emailDe, nombreCorto, normalizar, esProblemaDeIdentidad } from './identidades.mjs'
+import { asegurarIdentidad } from './reconciliacion-identidades.mjs'
 import { parseCuando } from './tiempo.mjs'
 import { googleDe } from './google-cliente.mjs'
 import { interpretarFeedback } from '../../lib/drive-busqueda/feedback.mjs'
@@ -53,18 +54,39 @@ const OPCIONES_TIPO = [
 // ── Identidad ────────────────────────────────────────────────────────────────
 
 /**
- * Quién pide. Si no está en la tabla no se lo rechaza: se arma una identidad provisoria con
- * lo que trajo Mattermost. Sin email, las capacidades que dependen de Google quedan
- * deshabilitadas solas — que es exactamente lo que corresponde, sin un caso especial acá.
+ * Quién pide — y si el OS no lo sabe, SE AVERIGUA CONTRA MATTERMOST EN EL MOMENTO.
+ *
+ * ESTE ES EL AGUJERO QUE SE CERRÓ. La tabla tenía ids de una siembra de ejemplo (`u-jorge`), el
+ * evento trae el id real, no había fila, la identidad quedaba provisoria y SIN EMAIL — y sin email
+ * toda capacidad que necesita la cuenta de Google de la persona se cae sola de `habilitadas`. El
+ * dueño pidió un evento de Calendar teniendo su Google enlazado y recibió "no tengo eso habilitado
+ * para vos". El defecto no estaba en el permiso ni en la capacidad: estaba acá.
+ *
+ * La reparación cuesta UNA llamada a Mattermost y sólo cuando falta el dato: con la identidad
+ * completa no se consulta nada. Es fail-closed — si Mattermost no contesta no se escribe nada y se
+ * sigue con la identidad provisoria, que ahora sí se puede explicar (ver `diagnosticoIdentidad`).
  */
 async function identidadDeQuienPide(port, ctx) {
   const id = ctx.actor?.plataformaUserId ?? ctx.actor?.plataforma_user_id ?? null
   if (!id) return null
-  const guardada = await identidadDe(port, id, { plataforma: ctx.plataforma ?? PLATAFORMA })
-  if (guardada) return guardada
+  const plataforma = ctx.plataforma ?? PLATAFORMA
+  const guardada = await identidadDe(port, id, { plataforma })
+  if (guardada && emailDe(guardada)) return guardada
+
+  const r = await asegurarIdentidad({ port, mm: ctx.mattermost, plataforma, plataformaUserId: id, previa: guardada, log: ctx.log })
+  if (r.hallazgo) {
+    ctx.log?.warn?.('asistente: identidad no reconciliada', { codigo: r.hallazgo.codigo, detalle: r.hallazgo.mensaje })
+    await ctx.auditar?.({ evento: 'asistente.identidad', codigo: r.hallazgo.codigo, detalle: r.hallazgo.mensaje })
+  }
+  if (r.identidad && emailDe(r.identidad)) return r.identidad
+  // Ni la tabla ni Mattermost dieron una identidad utilizable: se sigue atendiendo lo que no
+  // necesita saber quién es (la ayuda, un recordatorio propio), y lo que sí lo necesita queda
+  // deshabilitado CON SU MOTIVO, en vez de disfrazado de permiso faltante.
+  // Está registrada pero incompleta (sin correo): NO es provisoria, y el diagnóstico lo distingue.
+  if (r.identidad) return r.identidad
   const nombre = ctx.actor?.plataformaUsername ?? ctx.actor?.plataforma_username ?? String(id)
   return {
-    plataforma: ctx.plataforma ?? PLATAFORMA, plataformaUserId: String(id), plataformaUsername: nombre,
+    plataforma, plataformaUserId: String(id), plataformaUsername: nombre,
     nombreVisible: nombre, alias: [], email: null, zonaHoraria: TZ_EMPRESA, activo: true, provisoria: true,
   }
 }
@@ -378,7 +400,7 @@ async function registrarEjecucion(port, ctx, identidad, capacidad, resultado) {
 export async function atenderPedido({ texto, ctx = {}, deps = {} } = {}) {
   const port = ctx.port
   const ahora = ctx.ahora ? ctx.ahora() : new Date()
-  const registro = deps.registro ?? { capacidadPorId, capacidadesHabilitadas }
+  const registro = deps.registro ?? { capacidadPorId, capacidadesHabilitadas, capacidadesNoDisponibles }
   const interpretarFn = deps.interpretar ?? interpretarDefault
 
   const identidad = ctx.identidad ?? await identidadDeQuienPide(port, ctx)
@@ -430,8 +452,22 @@ export async function atenderPedido({ texto, ctx = {}, deps = {} } = {}) {
   return resolverSolicitud({ solicitud, base, habilitadas, registro, preguntar, identidad, port })
 }
 
+/**
+ * El texto de ayuda que acompaña a "no entendí" y a "eso no lo sé hacer".
+ *
+ * Incluye lo que NO está disponible con su motivo: si a la persona no la identificamos, la ayuda
+ * sin esa línea le muestra un OS tonto y le deja creer que eso es todo lo que hay. Si el registro
+ * inyectado no sabe enumerar lo no disponible, se degrada a la lista de siempre — explicar de más
+ * nunca puede romper la respuesta.
+ */
+async function ayudaHonesta(base, habilitadas, registro) {
+  let noDisponibles = []
+  try { noDisponibles = await (registro?.capacidadesNoDisponibles ?? capacidadesNoDisponibles)(base, habilitadas) } catch { noDisponibles = [] }
+  return renderAyuda(habilitadas, { noDisponibles })
+}
+
 /** Lo que no se entendió: se pregunta el tipo si esa era la única duda, o se ofrece la ayuda. */
-async function sinIntencion({ solicitud, habilitadas, preguntar }) {
+async function sinIntencion({ solicitud, habilitadas, preguntar, base, registro }) {
   if (solicitud.ambiguedad === PREGUNTA_TIPO) {
     const opciones = OPCIONES_TIPO.filter((o) => habilitadas.some((c) => c.id === o.valor))
     if (opciones.length > 1) {
@@ -441,19 +477,31 @@ async function sinIntencion({ solicitud, habilitadas, preguntar }) {
       })
     }
   }
-  const err = errorAsistente(ERROR.INTERPRETACION, `No entendí qué necesitás.\n\n${renderAyuda(habilitadas)}`)
+  const err = errorAsistente(ERROR.INTERPRETACION, `No entendí qué necesitás.\n\n${await ayudaHonesta(base, habilitadas, registro)}`)
   return final(resultadoError('asistente', err), solicitud.via, INTENCION.DESCONOCIDO)
 }
 
-/** La capacidad que corresponde, sólo si existe Y está habilitada para esta persona. */
-async function capacidadPara(intencion, { registro, habilitadas, via }) {
+/**
+ * La capacidad que corresponde, sólo si existe Y está habilitada para esta persona.
+ *
+ * CUANDO NO ESTÁ HABILITADA SE DICE POR QUÉ, y ahí está el arreglo: "no tengo eso habilitado para
+ * vos" era la misma frase para un permiso que falta —problema de la persona, lo resuelve
+ * Dirección— y para una identidad que el OS no supo resolver, que es un defecto del OS y no tiene
+ * nada que ver con permisos. El código del error también los separa, para que la auditoría no los
+ * mezcle.
+ */
+async function capacidadPara(intencion, { registro, habilitadas, via, base }) {
   const capacidad = await registro.capacidadPorId(intencion)
   if (!capacidad) {
-    const err = errorAsistente(ERROR.DEFINITIVO, `Eso todavía no lo sé hacer.\n\n${renderAyuda(habilitadas)}`)
+    const err = errorAsistente(ERROR.DEFINITIVO, `Eso todavía no lo sé hacer.\n\n${await ayudaHonesta(base, habilitadas, registro)}`)
     return { fallo: final(resultadoError(intencion, err), via, intencion) }
   }
   if (!habilitadas.some((c) => c.id === capacidad.id)) {
-    const err = errorAsistente(ERROR.CAPACIDAD_DESHABILITADA, `Entendí lo que pedís, pero ahora mismo no tengo habilitado "${capacidad.nombre}" para vos.`)
+    const motivo = await motivoDeshabilitada(capacidad, base)
+    const codigo = esProblemaDeIdentidad(motivo.codigo) ? ERROR.IDENTIDAD_NO_RESUELTA : ERROR.CAPACIDAD_DESHABILITADA
+    const err = errorAsistente(codigo,
+      `Entendí que querés que haga esto: ${capacidad.nombre.toLowerCase()}. Ahora no puedo: ${motivo.mensaje}`,
+      `${capacidad.id} no habilitada · ${motivo.codigo}`)
     return { fallo: final(resultadoError(capacidad.id, err), via, intencion) }
   }
   return { capacidad }
@@ -462,9 +510,9 @@ async function capacidadPara(intencion, { registro, habilitadas, via }) {
 /** El pedido ya interpretado: capacidad, permisos, personas, validación y ejecución. */
 async function resolverSolicitud({ solicitud, base, habilitadas, registro, preguntar, identidad, port }) {
   const { intencion } = solicitud
-  if (intencion === INTENCION.DESCONOCIDO) return sinIntencion({ solicitud, habilitadas, preguntar })
+  if (intencion === INTENCION.DESCONOCIDO) return sinIntencion({ solicitud, habilitadas, preguntar, base, registro })
 
-  const elegida = await capacidadPara(intencion, { registro, habilitadas, via: solicitud.via })
+  const elegida = await capacidadPara(intencion, { registro, habilitadas, via: solicitud.via, base })
   if (elegida.fallo) return elegida.fallo
   const { capacidad } = elegida
 

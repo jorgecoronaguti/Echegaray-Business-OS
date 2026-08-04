@@ -51,14 +51,17 @@ test('un pedido completo se ejecuta y responde con la evidencia de la capacidad'
   assert.equal(llamada.parametros.destinatarioUserId, 'u-jorge', 'sin destinatario, es para quien pide')
 })
 
-test('la ayuda sale del registro y sólo nombra lo HABILITADO para esa persona', async () => {
+test('la ayuda sale del registro: OFRECE lo habilitado y DECLARA lo trabado con su motivo', async () => {
   const conGoogle = await entorno().pedir('¿qué sabés hacer?')
   assert.ok(conGoogle.texto.includes('evento'), 'con Google conectado ofrece Calendar')
+  assert.equal(/ahora no puedo/i.test(conGoogle.texto), false, 'sin nada trabado no hay nada que aclarar')
 
   const sinGoogle = await entorno({ lista: capacidades({ googleConectado: false }) }).pedir('¿qué sabés hacer?')
   assert.equal(sinGoogle.ok, true)
-  assert.equal(/calendar|tarea de google/i.test(sinGoogle.texto), false, 'no promete lo que va a fallar')
-  assert.ok(sinGoogle.texto.includes('recordarte') || sinGoogle.texto.includes('recordatorio.crear'))
+  const [puedo, noPuedo] = sinGoogle.texto.split('\n\n')
+  assert.equal(/calendar|tarea de google/i.test(puedo), false, 'no promete lo que va a fallar')
+  assert.match(noPuedo, /ahora no puedo/i, 'pero tampoco lo esconde: se dice qué no puede y por qué')
+  assert.ok(puedo.includes('recordarte') || puedo.includes('recordatorio.crear'))
   assert.deepEqual(sinGoogle.evidencia.capacidades.includes(CAPACIDAD.CALENDAR_EVENTO_CREAR), false)
 })
 
