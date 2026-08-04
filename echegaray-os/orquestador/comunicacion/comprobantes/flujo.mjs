@@ -302,7 +302,9 @@ export async function procesarPost(d, m = {}) {
     if (!r?.ok) { problemas.push(`· ${a.nombre}: ${r?.error ?? 'no pude leerlo'}`); continue }
     // El texto del post vale para TODOS sus adjuntos: mandar cinco fotos con un solo "ARCOR" arriba
     // es la forma en que se manda un fajo de una misma obra.
-    items.push(armarItem({ lectura: r.crudo, adjunto: a, listas: vocabulario, textoPost: m.texto ?? null }))
+    // `ahora` es el momento en que llegó la foto, y es el reloj contra el que se juzga si la fecha
+    // del comprobante puede ser cierta. Va con el ítem, no se toma al renderizar.
+    items.push(armarItem({ lectura: r.crudo, adjunto: a, listas: vocabulario, textoPost: m.texto ?? null, ahora: m.ahora ?? new Date() }))
   }
   if (!items.length) {
     return { texto: [TEXTO.NADA_LEGIBLE, ...(problemas.length ? ['', ...problemas] : [])].join('\n'), estado: 'ilegible' }

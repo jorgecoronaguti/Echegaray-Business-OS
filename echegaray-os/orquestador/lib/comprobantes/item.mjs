@@ -14,6 +14,7 @@ import { matchProveedor } from '../carga-comprobantes.mjs'
 import { normalizarLectura, claveComprobante } from './lectura.mjs'
 import { imputacionDeAnotacion } from './imputacion.mjs'
 import { imputacionDelModelo, valorDeLista } from './desplegables.mjs'
+import { palabrasInventadas, ecoDelOcr } from './plausibilidad.mjs'
 import { MAX_OPCIONES } from './fajo.mjs'
 
 /**
@@ -33,12 +34,14 @@ import { MAX_OPCIONES } from './fajo.mjs'
  * null si la referencia es ambigua. Escribir "ARCOR" no mete "ARCOR" en la celda: mete el rótulo del
  * desplegable que matchea sin ambigüedad, o no mete nada y se pregunta.
  */
-export function armarItem({ lectura, adjunto, listas, textoPost = null } = {}) {
+export function armarItem({ lectura, adjunto, listas, textoPost = null, ahora = null } = {}) {
   const crudo = lectura ?? {}
   const { comprobante, faltantes, dudas } = normalizarLectura(lectura)
   const listasOk = listas?.ok !== false && (listas?.proveedores?.length ?? 0) > 0
 
   let proveedorNuevo = false
+  let inventadas = []
+  const nombreLeido = comprobante.proveedor
   if (listasOk && comprobante.proveedor) {
     // EL DESPLEGABLE ES EL ÁRBITRO, NO EL MODELO. Cuando hubo revisión, las dos pasadas pueden haber
     // leído nombres distintos del mismo membrete ("Néstor Rubén Corralón Progreso" y "MATERIALES DE
@@ -53,6 +56,26 @@ export function armarItem({ lectura, adjunto, listas, textoPost = null } = {}) {
     }
     comprobante.proveedor = m.valor
     proveedorNuevo = m.esNuevo === true
+    // ═══ EL ECO DEL NOMBRE MAL LEÍDO (04/08) ═══
+    //
+    // `motivo:'ocr'` significa que el nombre del papel NO era el que se leyó: «COMESTIBLES BARCELO»
+    // es «Combustibles Barcelo». El proveedor queda arreglado, pero el modelo de visión ya había
+    // escrito el resto del JSON con el nombre equivocado en la cabeza, y devolvió el concepto
+    // «Comestibles y bebidas» para una carga de COMBUSTIBLE.
+    //
+    // Lo que se corrige acá no es el concepto: es que ese texto no era un dato del comprobante. Se
+    // descarta —no se reemplaza por nada— y se deja constancia de qué se descartó y por qué, que es
+    // lo único que le permite al dueño entender por qué le falta el concepto de un papel que lo
+    // tiene impreso.
+    if (m.motivo === 'ocr') {
+      inventadas = palabrasInventadas(nombreLeido, m.valor)
+      comprobante.nombreLeidoMal = nombreLeido
+      const eco = ecoDelOcr(comprobante.concepto, inventadas)
+      if (eco.contaminado) {
+        comprobante.conceptoDescartado = comprobante.concepto
+        comprobante.concepto = null
+      }
+    }
   }
   delete comprobante.proveedorAlt
 
@@ -78,7 +101,16 @@ export function armarItem({ lectura, adjunto, listas, textoPost = null } = {}) {
     comprobante.porQueEsaObra = String(crudo?.por_que_esa_obra ?? '').slice(0, 120) || null
   }
   if (delModelo.unidad && !comprobante.unidad) comprobante.unidad = delModelo.unidad
-  if (delModelo.categoria && !comprobante.categoria) comprobante.categoria = delModelo.categoria
+  // La categoría (columna B) la ELIGE el modelo de una lista cerrada, y por eso el mismo error de
+  // lectura la envenena igual que al concepto: con «COMESTIBLES BARCELO» delante, «Comestibles y
+  // bebidas» es la opción obvia del desplegable para lo que fue una carga de combustible. Si la
+  // elección repite una palabra que el OCR inventó, no se aplica y se pregunta con el menú — que es
+  // exactamente lo que hace `imputacionPendiente` con toda categoría vacía.
+  if (delModelo.categoria && !comprobante.categoria) {
+    const eco = ecoDelOcr(delModelo.categoria, inventadas)
+    if (eco.contaminado) comprobante.categoriaDescartada = delModelo.categoria
+    else comprobante.categoria = delModelo.categoria
+  }
   // LA FORMA DE PAGO YA VIENE FILTRADA CONTRA SU DESPLEGABLE. Lo que la visión leyó en `forma_pago`
   // es texto libre del papel —ahí decía "Importe" y "30 DIAS FECHA FACTURA"— y sólo sobrevive si es
   // uno de los seis valores de la columna P. Si no lo es, la celda queda vacía a propósito.
@@ -126,6 +158,11 @@ export function armarItem({ lectura, adjunto, listas, textoPost = null } = {}) {
     claveFuerte: k?.fuerte ?? false,
     proveedorNuevo,
     listasVerificadas: listasOk,
+    // CUÁNDO SE LEYÓ ESTA FOTO. Es el reloj contra el que se juzga si la fecha del comprobante puede
+    // ser cierta (`plausibilidad.mjs`). Viaja con el ítem y no se recalcula: el mensaje se vuelve a
+    // dibujar en cada click y el fajo vive en Postgres, así que medir contra "ahora" haría que el
+    // mismo comprobante sea plausible hoy e imposible dentro de un año.
+    leidoEn: ahora ? new Date(ahora).toISOString() : null,
     // LOS DESPLEGABLES VIAJAN CON EL ÍTEM. El mensaje se vuelve a dibujar en cada click, desde el
     // fajo que está en Postgres: si las listas se releyeran de Google ahí, sería una llamada por
     // click y —peor— se podría ofrecer algo distinto de lo que después se valida. Lo que se ofrece y

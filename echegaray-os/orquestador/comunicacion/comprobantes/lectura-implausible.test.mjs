@@ -64,6 +64,10 @@ const barceloMalLeida = (over = {}) => ({
   total: '5.223,36',
   condicion_venta: 'Contado',
   concepto: 'Comestibles y bebidas',
+  // El modelo también ELIGIÓ la categoría del desplegable con el nombre equivocado en la cabeza:
+  // «Comestibles y bebidas» está en la lista y es la opción obvia para un proveedor que se llama
+  // «COMESTIBLES». La columna B del Sheet se escribe con esto.
+  categoria: 'Comestibles y bebidas',
   anotacion_manuscrita: null,
   legible: true,
   dudas: [],
@@ -174,9 +178,17 @@ test('"Comestibles y bebidas" salía del nombre mal leído: se descarta y se dic
 
   assert.equal(c.proveedor, 'Combustibles Barcelo', 'el proveedor real, matcheado por distancia de edición')
   assert.equal(c.concepto, null, 'lo que se dedujo del nombre MAL leído no es un dato del comprobante')
-  assert.equal(c.categoria ?? null, null, 'y la categoría que salió del mismo error, tampoco')
-  assert.doesNotMatch(r.texto, /Comestibles y bebidas/,
-    'no puede quedar ni una aparición del rubro inventado a partir del OCR')
+  assert.equal(c.conceptoDescartado, 'Comestibles y bebidas', 'pero queda constancia de qué se tiró')
+
+  // La categoría que eligió el modelo tampoco entra a la columna B. Como queda vacía, la completa la
+  // historia del proveedor —6 cargas, todas Combustible— que es la fuente que sí sabe.
+  assert.notEqual(c.categoria, 'Comestibles y bebidas', 'la columna B no se escribe con el eco del OCR')
+  assert.equal(c.categoria, 'Combustible', 'y la historia de Compras la resuelve bien')
+
+  assert.doesNotMatch(r.texto, /\| Concepto \| Comestibles y bebidas \|/,
+    'no se muestra como si fuera lo que dice el papel')
+  assert.match(r.texto, /descarté el concepto \("Comestibles y bebidas"\)/,
+    'se muestra como lo que es: algo que se descartó, con su motivo')
   assert.match(r.texto, /COMESTIBLES BARCELO/,
     'se declara qué se leyó mal: sin eso el dueño no puede entender por qué falta el concepto')
 })
