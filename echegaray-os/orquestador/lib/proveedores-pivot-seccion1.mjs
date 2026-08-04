@@ -356,6 +356,54 @@ function formatoDeColumna({ sheetId, filaAncla, alto, columna, numberFormat, hor
 }
 
 /**
+ * EL FOOTPRINT DE LOS DOS CUADROS — Y POR QUÉ EL FORMATO NO SE MIDE POR LA CORRIDA.
+ *
+ * El alto de una dinámica es una ESTIMACIÓN hecha antes de escribir: el script cuenta proveedores
+ * distintos con `trim()`, el pivot agrupa por el valor crudo, y el pie agrega su propia fila. Cuando
+ * la dinámica emite UNA fila más que la estimada, esa fila cae fuera del `repeatCell` y se queda con
+ * el formato que la celda ya tenía. Pasó el 04/08/2026: el cuadro A creció de 9 a 10 proveedores y
+ * la última fila salió `67797,51 | 31/12/1899` — el importe pelado y el contador con el formato de
+ * FECHA que el cuadro B había dejado en la columna C. Ni un error: el formato es del archivo.
+ *
+ * Por eso el rango se calcula del FOOTPRINT —lo que el generador se adjudica entre sus rótulos y la
+ * sección 2— y no del alto de la corrida. Las dos bandas TESELAN el bloque: A desde su rótulo hasta
+ * el rótulo de B, B desde ahí hasta el final del colchón. Una fila de más formateada y vacía no se
+ * ve; una de menos rompe en silencio. Filas en base 1 a la entrada; `desde` en base 0.
+ *
+ * @param {{filaEncabezado:number, filaLimite:number, proveedores:number, facturas:number}} o
+ */
+export function bandasDeFormato({ filaEncabezado, filaLimite, proveedores, facturas }) {
+  const iA = filaEncabezado - 1        // el rótulo del cuadro A
+  const altoA = 1 + proveedores        // rótulo + una línea por proveedor
+  const iSub = iA + altoA + 1          // una fila de aire y después el subtítulo del cuadro B
+  const iB = iSub + 1                  // el rótulo del cuadro B
+  const altoB = 1 + facturas + 1       // rótulo + una línea por factura + la suma total
+  const finIdx = filaLimite - 1        // la fila del título de la sección 2: ahí no se entra
+  return {
+    iA, altoA, iSub, iB, altoB, finIdx,
+    necesita: altoA + 1 + 1 + altoB,
+    disponibles: filaLimite - filaEncabezado,
+    bandaA: { desde: iA, alto: iB - iA },
+    // Si el bloque todavía no entra, la banda de B sale en 0: el script inserta filas y recalcula.
+    bandaB: { desde: iB, alto: Math.max(finIdx - iB, 0) },
+  }
+}
+
+/**
+ * CUÁNTAS FILAS ESCRIBIÓ DE VERDAD EL CUADRO, releyendo el archivo. La banda de formato tolera que
+ * la dinámica emita de más, pero la POSICIÓN del cuadro B sigue saliendo de la estimación: si la
+ * deriva crece, el subtítulo cae dentro del cuadro A y Google se niega a renderizar.
+ *
+ * @param {Array<Array<any>>} filas  el bloque leído desde el rótulo del cuadro
+ * @returns {number} filas hasta la primera en blanco (rótulo incluido)
+ */
+export function altoEmitido(filas = []) {
+  const vacia = (f) => (f ?? []).every((c) => String(c ?? '').trim() === '')
+  const i = filas.findIndex(vacia)
+  return i < 0 ? filas.length : i
+}
+
+/**
  * DÓNDE EMPIEZA Y DÓNDE TERMINA LA SECCIÓN 1 — anclado al texto, nunca a un número de fila.
  *
  * No se usa `geometriaSeccion1` de `proveedores-bloque-vivo.mjs` porque aquélla exige que la fila de

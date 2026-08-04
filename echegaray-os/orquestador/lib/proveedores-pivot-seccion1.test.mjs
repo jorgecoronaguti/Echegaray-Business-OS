@@ -6,8 +6,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  anchoDelPivot, cabeEnElHueco, camposDeFila, COL, filtros, filtrosPorCondicion, fuenteCompras,
-  clavesRepetidas, formatoDeLaFecha, formatoDelImporte, geometriaDeLaSeccion, nivelesConSubtotal,
+  anchoDelPivot, altoEmitido, bandasDeFormato, cabeEnElHueco, camposDeFila, COL, filtros,
+  filtrosPorCondicion, fuenteCompras, clavesRepetidas, formatoDeLaFecha, formatoDeTodo,
+  formatoDelImporte, geometriaDeLaSeccion, nivelesConSubtotal,
   celdasVacias, deudaSinNombre, formatoDeLaCantidad, letraDeLaDeuda, pivotSeccion1, proveedoresQueAgrupan,
   reapuntarControl, VISTA,
 } from './proveedores-pivot-seccion1.mjs'
@@ -229,6 +230,92 @@ test('SIN FACTURA sí entra · SIN NOMBRE es el que rompe, y se avisa', () => {
   // Lo que rompe el cuadro es la falta de NOMBRE: ahí el pivot arma un grupo sin rótulo.
   assert.deepEqual(deudaSinNombre([fila('', '0001-0002', 5000)]), [{ comprobante: '0001-0002', saldo: 5000 }])
   assert.deepEqual(deudaSinNombre([fila('', '', 7000)]), [{ comprobante: '(sin número)', saldo: 7000 }])
+})
+
+/** ¿Esta fila (índice base 0) entra en la banda de formato? */
+const cubre = (banda, fila) => fila >= banda.desde && fila < banda.desde + banda.alto
+
+test('EL DERRAME · la fila que la dinámica emite de más se queda con el formato de antes', () => {
+  // 04/08/2026: el cuadro A pasó de 9 a 10 proveedores y la última fila salió
+  //   RSV | 67797,51 | 31/12/1899
+  // el importe pelado (formato TEXTO de la columna B del cuadro B) y el contador como FECHA (su
+  // columna C). El alto se había estimado con 9 proveedores, así que la 10ª fila quedó fuera del
+  // repeatCell y heredó lo que la corrida anterior había dejado ahí.
+  const p = bandasDeFormato({ filaEncabezado: 17, filaLimite: 80, proveedores: 9, facturas: 31 })
+  const bandaVieja = { desde: p.iA, alto: p.altoA }   // el alto ESTIMADO de la corrida
+  const decima = p.iA + 10                            // rótulo + 10 grupos: la fila que salió sin formato
+  assert.equal(cubre(bandaVieja, decima), false, 'así salió RSV: fuera del rango de formato')
+  assert.equal(cubre(p.bandaA, decima), true, 'la banda sigue midiéndose por la corrida, no por el footprint')
+})
+
+test('el formato del cuadro A cubre el gran total del pie y la deriva del conteo', () => {
+  const p = bandasDeFormato({ filaEncabezado: 17, filaLimite: 80, proveedores: 10, facturas: 31 })
+  // 0 = la última fila estimada · 1 = el gran total que agrega el pivot · 2 = un grupo de más
+  // (el script cuenta con trim(), el pivot agrupa por el valor crudo: "RSV" y "RSV " son dos).
+  for (const demas of [0, 1, 2]) {
+    assert.equal(cubre(p.bandaA, p.iA + p.altoA - 1 + demas), true, `la fila ${demas} de más quedó sin formato`)
+  }
+  assert.equal(cubre(p.bandaA, p.iB), false, 'la banda de A se comió el rótulo del cuadro B')
+})
+
+test('EL FOOTPRINT ENTERO LLEVA FORMATO: las dos bandas no dejan una fila suelta', () => {
+  for (const proveedores of [1, 9, 10, 25]) {
+    for (const facturas of [proveedores, 31, 90]) {
+      const filaEncabezado = 17
+      const filaLimite = filaEncabezado + proveedores + facturas + 5 + 12 // + colchón
+      const p = bandasDeFormato({ filaEncabezado, filaLimite, proveedores, facturas })
+      assert.equal(p.bandaA.desde, p.iA, 'el rótulo del cuadro A quedó afuera de la banda')
+      assert.equal(p.bandaA.desde + p.bandaA.alto, p.bandaB.desde,
+        `queda una fila sin banda entre los dos cuadros (${proveedores} prov · ${facturas} fact)`)
+      assert.equal(p.bandaB.desde + p.bandaB.alto, p.finIdx,
+        'el colchón queda sin formato: la factura de mañana hereda lo que hubiera ahí')
+      assert.equal(p.necesita, proveedores + facturas + 5, 'cambió lo que el bloque reserva')
+    }
+  }
+})
+
+test('la factura de mañana cae en una fila YA formateada', () => {
+  const filaLimite = 80
+  const hoy = bandasDeFormato({ filaEncabezado: 17, filaLimite, proveedores: 10, facturas: 31 })
+  const manana = bandasDeFormato({ filaEncabezado: 17, filaLimite, proveedores: 10, facturas: 35 })
+  const ultimaDeManana = manana.iB + manana.altoB - 1
+  assert.equal(cubre(hoy.bandaB, ultimaDeManana), true,
+    'el cuadro B crece dentro del colchón: si el colchón no lleva formato, la fila nueva sale cruda')
+})
+
+test('el bloque que todavía no entra no manda un repeatCell de alto 0', () => {
+  const apretado = bandasDeFormato({ filaEncabezado: 17, filaLimite: 20, proveedores: 10, facturas: 31 })
+  assert.equal(apretado.bandaB.alto, 0, 'un rango con start = end no se manda: primero se insertan filas')
+  assert.ok(apretado.necesita > apretado.disponibles, 'no detectó que el bloque no entra')
+})
+
+test('CADA COLUMNA SE DECLARA EN CADA CORRIDA: 3 en el cuadro A, 7 en el B', () => {
+  const pedidos = (vista) => formatoDeTodo({ sheetId: 3, filaAncla: 17, alto: 12, vista })
+  const columnas = (vista) => pedidos(vista).map((p) => p.repeatCell.range.startColumnIndex)
+  assert.deepEqual(columnas(VISTA.POR_PROVEEDOR), [0, 1, 2], 'una columna sin declarar hereda el formato de antes')
+  assert.deepEqual(columnas(VISTA.DETALLE), [0, 1, 2, 3, 4, 5, 6])
+  for (const vista of [VISTA.POR_PROVEEDOR, VISTA.DETALLE]) {
+    for (const p of pedidos(vista)) {
+      assert.ok(p.repeatCell.cell.userEnteredFormat.numberFormat.type, `columna ${p.repeatCell.range.startColumnIndex} sin numberFormat`)
+      assert.equal(p.repeatCell.range.endColumnIndex, p.repeatCell.range.startColumnIndex + 1)
+    }
+  }
+})
+
+test('el tipo de cada columna es el que el dato pide, no el que la celda tenía', () => {
+  const tipos = (vista) => formatoDeTodo({ sheetId: 3, filaAncla: 17, alto: 12, vista })
+    .map((p) => p.repeatCell.cell.userEnteredFormat.numberFormat.type)
+  assert.deepEqual(tipos(VISTA.POR_PROVEEDOR), ['TEXT', 'CURRENCY', 'NUMBER'])
+  // El comprobante es TEXTO: como número, "826666" se veía 01/05/4163 con el formato de la vuelta anterior.
+  assert.deepEqual(tipos(VISTA.DETALLE), ['TEXT', 'TEXT', 'DATE', 'TEXT', 'TEXT', 'TEXT', 'CURRENCY'])
+})
+
+test('ALTO EMITIDO · se cuenta lo que el archivo tiene, hasta la primera fila en blanco', () => {
+  const bloque = [['Proveedor', 'Se le debe', 'Facturas'], ['Alumetal', '$5.174.285', '2'], ['RSV', '$67.798', '1'], [], ['Cada operación']]
+  assert.equal(altoEmitido(bloque), 3, 'rótulo + dos proveedores')
+  assert.equal(altoEmitido([['a'], ['b']]), 2, 'sin fila en blanco, es todo lo leído')
+  assert.equal(altoEmitido([[' ', ''], ['b']]), 0, 'una fila de espacios es una fila vacía')
+  assert.equal(altoEmitido([]), 0)
 })
 
 test('LA GEOMETRÍA engancha el PRIMER cuadro, aunque tenga sólo tres columnas', () => {
