@@ -44,9 +44,11 @@ export function armarItem({ lectura, adjunto, listas, textoPost = null } = {}) {
     // leído nombres distintos del mismo membrete ("Néstor Rubén Corralón Progreso" y "MATERIALES DE
     // CONSTRUCCION"): se prueban las dos contra la lista estricta y gana la que matchea. Si ninguna
     // matchea, queda la principal marcada como nueva, igual que antes.
-    let m = matchProveedor(comprobante.proveedor, listas.proveedores)
+    // El CUIT primero: identifica al proveedor aunque la factura traiga la razón social del
+    // padrón y el desplegable el nombre de fantasía. Ver `matchProveedor`.
+    let m = matchProveedor(comprobante.proveedor, listas.proveedores, { cuit: comprobante.cuit, porCuit: listas.porCuit })
     if (m.esNuevo && comprobante.proveedorAlt) {
-      const alt = matchProveedor(comprobante.proveedorAlt, listas.proveedores)
+      const alt = matchProveedor(comprobante.proveedorAlt, listas.proveedores, { cuit: comprobante.cuit, porCuit: listas.porCuit })
       if (!alt.esNuevo) m = alt
     }
     comprobante.proveedor = m.valor
