@@ -47,7 +47,7 @@ function arbolDeImports(entrada, vistos = new Set()) {
 }
 
 const item = () => ({
-  clave: 'c:30712345678|A|0113-00010489',
+  clave: 'c:30712345678|0113-00010489',
   comprobante: {
     proveedor: 'Combustibles Barcelo', cuit: '30712345678', tipo: 'A', numero: '0113-00010489',
     fecha: '05/01/2026', total: 36460.30, iva: 5981, obra: 'Estrella',

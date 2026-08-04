@@ -17,7 +17,7 @@ const URL = `https://chat.ecsas.com.ar/comprobantes/accion?t=${SECRETO}`
 const OBRAS = ['Estrella', 'San Francisco', 'Messina']
 
 const item = (o = {}) => ({
-  clave: o.clave ?? 'c:30712345678|A|0113-00010489',
+  clave: o.clave ?? 'c:30712345678|0113-00010489',
   proveedorNuevo: o.proveedorNuevo ?? false,
   comprobante: {
     proveedor: 'Combustibles Barcelo', cuit: '30712345678', tipo: 'A', numero: '0113-00010489',
@@ -150,7 +150,7 @@ test('escritura OK: se contesta la FILA y se anota la trazabilidad del post', as
   const r = await escribirFajo({ port: null, repo, correr, congelado: SIN_HIELO }, fajo)
   assert.equal(r.estado, ESTADO.CARGADO)
   assert.match(r.texto, /fila 412/)
-  const c = repo._cargados.get('c:30712345678|A|0113-00010489')
+  const c = repo._cargados.get('c:30712345678|0113-00010489')
   assert.equal(c.fila, 412)
   assert.equal(c.post_id, 'p1', 'queda de qué post de Mattermost salió la fila')
 })
@@ -178,12 +178,56 @@ test('CON OBRA no aparece la advertencia: sólo se avisa lo que quedó incomplet
 
 test('un comprobante que YA estaba cargado no se manda al cargador', async () => {
   const { repo, fajo } = await conFajo()
-  repo._cargados.set('c:30712345678|A|0113-00010489', { clave: 'c:30712345678|A|0113-00010489', fila: 99 })
+  repo._cargados.set('c:30712345678|0113-00010489', { clave: 'c:30712345678|0113-00010489', fila: 99 })
   let corrio = false
   const correr = async () => { corrio = true; return { ok: true, datos: {} } }
   const r = await escribirFajo({ port: null, repo, correr, congelado: SIN_HIELO }, fajo)
   assert.equal(corrio, false)
   assert.match(r.texto, /ya estaban cargados/)
+})
+
+// ═══ EL TIQUE DE BARCELO DEL 03/08 — EL PEOR MODO DE FALLA QUE TUVO ESTE MÓDULO ═══
+//
+// Un comprobante SIN CLAVE nunca vuelve de `reservarClaves` (la columna es NOT NULL y
+// `registrarCargados` saltea la fila en silencio). Eso caía en la misma rama que "la clave ya estaba
+// en la tabla": el bot contestaba "ya estaban cargados. No los dupliqué.", cerraba el fajo como
+// CARGADO con `filas: []`, y el gasto NO QUEDABA EN NINGÚN LADO. Medido en producción el 04/08: el
+// fajo cerró `cargado`, `comunicacion.comprobantes_cargados` estaba VACÍA —o sea que no había con
+// qué haber deduplicado— y Compras no tenía la fila.
+//
+// Declarar éxito sin escribir es peor que fallar: nadie va a buscar lo que el sistema dijo que hizo.
+test('un comprobante SIN CLAVE no se declara cargado: falla fuerte y no se escribe nada', async () => {
+  const { repo, fajo } = await conFajo({
+    // La visión no leyó "TIQUE FACTURA A": sin letra no hay clave. Todo lo demás está.
+    // "S/N" pasa la política del chat —`numero` no está vacío— pero `numeroCanonico` no saca un
+    // correlativo de ahí: no hay con qué deduplicar. Es el único agujero que le queda al invariante
+    // "todo lo cargable es identificable", y por eso la guarda tiene que seguir estando.
+    // `clave: null` se pone DESPUÉS del helper a propósito: su `??` trataría el null como "no lo
+    // pasaste" y pondría la clave de siempre — el test pasaría sin probar nada.
+    items: [{ ...item({ comprobante: { numero: 'S/N', total: 60000.02 } }), clave: null }],
+  })
+  let corrio = false
+  const correr = async () => { corrio = true; return { ok: true, datos: { ok: true, escritas: 1, filas: [{ i: 0, fila: 810 }] } } }
+  const r = await escribirFajo({ port: null, repo, correr, congelado: SIN_HIELO }, fajo)
+
+  assert.equal(r.estado, ESTADO.ERROR, 'no es un éxito')
+  assert.doesNotMatch(r.texto, /ya estaban cargados/, 'NO se lo confunde con un duplicado')
+  assert.match(r.texto, /No cargué nada/)
+  assert.match(r.texto, /el número/, 'dice QUÉ falta, para que se pueda contestar')
+  assert.match(r.texto, /Corregir/, 'y cómo salir')
+  assert.equal(corrio, false, 'no se gasta una corrida del cargador')
+  assert.equal(repo._cargados.size, 0)
+  assert.equal(repo._fajos.get(fajo.id).estado, ESTADO.ABIERTO, 'se puede corregir y reintentar')
+})
+
+// La otra mitad del par: cuando SÍ es un duplicado, se sigue diciendo que lo es — y ahora con la
+// fila, que es lo que permite ir a mirarlo. Un mensaje que no se puede verificar no es una respuesta.
+test('el duplicado de verdad dice EN QUÉ FILA está', async () => {
+  const { repo, fajo } = await conFajo()
+  repo._cargados.set('c:30712345678|0113-00010489', { clave: 'c:30712345678|0113-00010489', fila: 412 })
+  const r = await escribirFajo({ port: null, repo, correr: async () => ({ ok: true, datos: {} }), congelado: SIN_HIELO }, fajo)
+  assert.equal(r.estado, ESTADO.CARGADO)
+  assert.match(r.texto, /fila 412 de Compras/)
 })
 
 test('si el cargador falla SIN escribir, se sueltan las reservas y el fajo vuelve a abierto', async () => {
@@ -300,7 +344,7 @@ test('corregir la obra la valida contra la lista: no entra una que el desplegabl
 test('corregir el número RECALCULA la clave: si no, se deduplicaría contra otra cosa', () => {
   const r = aplicarCorreccion(item(), { numero: '0113-00099999' }, { obras: OBRAS })
   assert.equal(r.ok, true)
-  assert.equal(r.item.clave, 'c:30712345678|A|0113-00099999')
+  assert.equal(r.item.clave, 'c:30712345678|0113-00099999')
 })
 
 test('corregir el total de una NOTA DE CRÉDITO conserva el signo negativo', () => {
@@ -341,7 +385,7 @@ test('el diálogo lleva el fajo y el índice en el state, y vuelven enteros', ()
 test('el formulario apunta al comprobante INCOMPLETO, no siempre al primero', () => {
   // Incompleto = le falta algo que IMPIDE cargar. La obra dejó de ser eso el 03/08/2026, así que el
   // ítem incompleto de este caso es el que no tiene número.
-  const items = [item(), item({ clave: 'c:x|A|1', comprobante: { numero: null } })]
+  const items = [item(), item({ clave: 'c:x|1', comprobante: { numero: null } })]
   assert.equal(indiceACorregir(items), 1)
 })
 

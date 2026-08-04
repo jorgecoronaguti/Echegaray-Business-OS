@@ -33,6 +33,7 @@ import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { congelado } from '../../lib/congelador-sheets.mjs'
 import { estaCompleto, ESTADO } from '../../lib/comprobantes/fajo.mjs'
+import { numeroCanonico, claveComprobante } from '../../lib/comprobantes/lectura.mjs'
 import * as repoReal from './repositorio.mjs'
 
 const AQUI = dirname(fileURLToPath(import.meta.url))
@@ -200,13 +201,51 @@ export async function escribirFajo(d, fajo) {
 
   // 2) RESERVAR las claves antes de escribir (ver el encabezado de este archivo).
   const aReservar = items.map((it) => filaDeRegistro(it, fajo))
+
+  // ═══ SIN CLAVE NO ES "YA ESTABA CARGADO" (04/08) ═══
+  //
+  // `registrarCargados` SALTEA en silencio toda fila sin `clave` —la columna es NOT NULL— así que un
+  // ítem sin clave nunca vuelve de `reservarClaves`. Antes eso caía en la misma bolsa que "la clave
+  // ya estaba en la tabla" y el bot contestaba "Estos comprobantes ya estaban cargados. No los
+  // dupliqué." cerrando el fajo como CARGADO, con `filas: []`: el gasto no se escribía en ningún
+  // lado y el mensaje declaraba éxito. Pasó en producción con el tique de Combustibles Barcelo del
+  // 03/08 ($60.000,02) — `comprobantes_cargados` estaba VACÍA, o sea que no había con qué haber
+  // deduplicado nada.
+  //
+  // Las dos situaciones se leen igual desde acá y son opuestas: una es "no hace falta escribir", la
+  // otra es "no puedo garantizar que no se duplique". Se separan ANTES de reservar, y la segunda
+  // frena todo el fajo: sin clave de idempotencia no se escribe: un reintento lo cargaría dos veces.
+  const sinClave = items.filter((it, k) => !aReservar[k].clave)
+  if (sinClave.length) {
+    const motivo = sinClave.map((it) => sinQueNoHayClave(it)).join(' · ')
+    await repo.reabrirFajo(port, { id: fajo.id, error: recorte(`sin clave de idempotencia: ${motivo}`) })
+    log?.error?.('comprobantes: ítem sin clave, no se escribió nada', { fajo: fajo.id, motivo })
+    return {
+      estado: ESTADO.ERROR,
+      texto: [
+        `**No cargué nada.** ${sinClave.length === 1 ? 'A un comprobante' : `A ${sinClave.length} comprobantes`} le falta lo que necesito para no cargarlo dos veces: ${motivo}.`,
+        'Tocá **Corregir** y completalo. No se escribió una sola fila en Compras.',
+      ].join('\n'),
+    }
+  }
+
   const reservadas = await repo.reservarClaves(port, aReservar)
   // Las que NO volvieron ya estaban: otro camino las cargó entre la confirmación y ahora.
   const yaEstaban = aReservar.filter((f) => !reservadas.includes(f.clave))
   const entran = items.filter((it, k) => reservadas.includes(aReservar[k].clave))
   if (!entran.length) {
     await repo.cerrarFajo(port, { id: fajo.id, estado: ESTADO.CARGADO, filas: [] })
-    return { estado: ESTADO.CARGADO, texto: 'Estos comprobantes ya estaban cargados. No los dupliqué.' }
+    // DÓNDE están, no sólo que están. Se pregunta a la tabla —la reserva no trae la fila— porque
+    // "ya estaba cargado" sin decir dónde no se puede verificar, y todo lo que no se puede verificar
+    // termina siendo una afirmación que nadie chequea.
+    const ya = await repo.yaCargados(port, yaEstaban.map((f) => f.clave))
+    const donde = [...ya.values()].map((r) => r?.fila).filter((f) => f != null)
+    return {
+      estado: ESTADO.CARGADO,
+      texto: donde.length
+        ? `Estos comprobantes ya estaban cargados (fila${donde.length > 1 ? 's' : ''} ${donde.join(', ')} de Compras). No los dupliqué.`
+        : 'Estos comprobantes ya estaban cargados. No los dupliqué.',
+    }
   }
 
   // 3) Correr el cargador.
@@ -256,11 +295,39 @@ export async function escribirFajo(d, fajo) {
   return { estado: ESTADO.CARGADO, texto: textoCargado(filas, yaEstaban, r.datos, { sinObra }), filas }
 }
 
-/** El comprobante como fila de `comunicacion.comprobantes_cargados`. */
+/**
+ * POR QUÉ este comprobante no tiene clave de idempotencia, en las palabras del dueño.
+ *
+ * `claveComprobante` devuelve null y no dice por qué: acá se reconstruye mirando los mismos tres
+ * datos que ella mira. Un "no pude" sin el qué obliga a la persona a adivinar cuál de los campos
+ * corregir, y en un fajo de diez fotos eso es un flujo abandonado.
+ */
+export function sinQueNoHayClave(it = {}) {
+  const c = it.comprobante ?? {}
+  const falta = []
+  if (!numeroCanonico(c.numero)) falta.push('el número')
+  if (!(c.esNotaCredito || c.tipo)) falta.push('la letra (A/B/C o NC)')
+  if (String(c.cuit ?? '').replace(/\D/g, '').length !== 11 && !String(c.proveedor ?? '').trim()) {
+    falta.push('el CUIT y el proveedor')
+  }
+  const quien = c.proveedor || c.numero || 'el comprobante'
+  return `${quien}: falta ${falta.join(' y ') || 'un dato para identificarlo'}`
+}
+
+/**
+ * El comprobante como fila de `comunicacion.comprobantes_cargados`.
+ *
+ * LA CLAVE SE DERIVA, NO SE CONFÍA (04/08). `it.clave` es un campo GUARDADO: lo calcula la lectura y
+ * lo recalcula el formulario de Corregir. Un fajo que quedó dormido en Postgres desde antes de un
+ * deploy —o al que un camino nuevo le tocó el comprobante sin recalcularla— la trae vieja o en null,
+ * y una clave en null hace que la reserva saltee la fila **en silencio**. Se recalcula desde el
+ * comprobante, que es de donde sale: el campo guardado es una caché, y una caché no manda sobre el
+ * dato. Si el comprobante tampoco alcanza para identificarlo, queda null y lo frena la guarda.
+ */
 export function filaDeRegistro(it, fajo = {}) {
   const c = it.comprobante ?? {}
   return {
-    clave: it.clave,
+    clave: it.clave ?? claveComprobante(c)?.clave ?? null,
     cuit: c.cuit ?? null,
     tipo: c.esNotaCredito ? 'NC' : (c.tipo ?? null),
     numero: c.numero ?? null,

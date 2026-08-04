@@ -141,15 +141,32 @@ export function caeCanonico(v) {
  *
  * @returns {{clave:string, fuerte:boolean}|null}  null = no hay con qué deduplicar
  */
-export function claveComprobante({ cuit, tipo, numero, proveedor } = {}) {
+export function claveComprobante({ cuit, tipo, numero, proveedor, esNotaCredito } = {}) {
   const n = numeroCanonico(numero)
-  const t = String(tipo ?? '').toUpperCase().replace(/\s+/g, '') || null
-  if (!n || !t) return null
+  if (!n) return null
+  // ═══ LA LETRA NO PUEDE ANULAR LA CLAVE (04/08) ═══
+  //
+  // Acá decía `if (!n || !t) return null`: sin letra no había clave, y sin clave `escribirFajo`
+  // salteaba el comprobante en silencio y contestaba "ya estaba cargado". Es exactamente lo que pasó
+  // con el tique de Combustibles Barcelo del 03/08 ($60.000,02): "TIQUE FACTURA A" no es "FACTURA A"
+  // y la visión devolvió la letra vacía.
+  //
+  // La letra es el dato MENOS confiable del papel —es una sola letra, en un tique térmico, muchas
+  // veces borroneada— y hacer depender de ella la identidad del comprobante convierte un problema de
+  // OCR en un gasto perdido. La identidad real es (EMISOR, punto de venta, número): la numeración
+  // corre por punto de venta, y ningún proveedor nos manda una A y una B con el mismo punto de venta
+  // y el mismo correlativo.
+  //
+  // Lo que SÍ se mantiene separado es la NOTA DE CRÉDITO: comparte numeración con las facturas y
+  // confundir una con otra ya costó $41,9M. Va en la clave por su propio flag, que no depende de que
+  // se lea ninguna letra.
+  const nc = esNotaCredito === true || String(tipo ?? '').toUpperCase().replace(/[^A-Z]/g, '') === 'NC'
+  const marca = nc ? 'NC|' : ''
   const c = soloDigitos(cuit)
-  if (c.length === 11) return { clave: `c:${c}|${t}|${n}`, fuerte: true }
+  if (c.length === 11) return { clave: `c:${c}|${marca}${n}`, fuerte: true }
   const p = normalizar(proveedor)
   if (!p) return null
-  return { clave: `p:${p}|${t}|${n}`, fuerte: false }
+  return { clave: `p:${p}|${marca}${n}`, fuerte: false }
 }
 
 /** Problemas que impiden ARMAR el comprobante. Distintos de los de `validar` del cargador. */

@@ -141,7 +141,7 @@ test('sin anotación manuscrita, la obra se PREGUNTA — pero ya no bloquea (03/
 
 test('un comprobante YA CARGADO se avisa con su fila, y no se ofrece cargarlo de nuevo', async () => {
   const repo = repoMemoria()
-  repo._cargados.set('c:30712345678|A|0113-00010489', { clave: 'c:30712345678|A|0113-00010489', fila: 412, hoja: 'Compras' })
+  repo._cargados.set('c:30712345678|0113-00010489', { clave: 'c:30712345678|0113-00010489', fila: 412, hoja: 'Compras' })
   const { d } = armar({ repo })
   const r = await procesarPost(d, post())
   assert.match(r.texto, /Ya está cargado\*\* — fila 412/)

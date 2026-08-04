@@ -19,7 +19,7 @@ const abierto = (o = {}) => ({
 })
 
 const item = (o = {}) => ({
-  clave: o.clave ?? 'c:30712345678|A|0113-00010489',
+  clave: o.clave ?? 'c:30712345678|0113-00010489',
   comprobante: {
     proveedor: 'Combustibles Barcelo', cuit: '30712345678', tipo: 'A', numero: '0113-00010489',
     fecha: '05/01/2026', total: 36460.30, iva: 5981, obra: 'Estrella', esNotaCredito: false,
@@ -61,7 +61,7 @@ test('la misma factura fotografiada dos veces se muestra UNA vez', () => {
 })
 
 test('dos comprobantes distintos NO se colapsan', () => {
-  const otro = item({ clave: 'c:30712345678|A|0113-00010490', comprobante: { numero: '0113-00010490' } })
+  const otro = item({ clave: 'c:30712345678|0113-00010490', comprobante: { numero: '0113-00010490' } })
   const { items } = colapsarRepetidos([item(), otro])
   assert.equal(items.length, 2)
 })
