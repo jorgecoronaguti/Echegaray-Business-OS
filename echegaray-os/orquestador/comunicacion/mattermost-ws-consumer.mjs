@@ -22,6 +22,8 @@
 
 import { crearConector } from './conector.mjs'
 import { crearLog } from '../../../communication-service/src/index.mjs'
+import { canalesDeArea } from '../lib/canal-de-area.mjs'
+import { query } from '../lib/db.mjs'
 
 const PLATAFORMA = 'mattermost'
 
@@ -72,6 +74,60 @@ function escaparRegex(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&
 export function canalesDeAdjuntos(env = process.env) {
   const crudo = env.MM_CANALES_ADJUNTOS ?? 'comprobantes-gastos,compras'
   return new Set(String(crudo).split(',').map((s) => s.trim().toLowerCase()).filter(Boolean))
+}
+
+/**
+ * ÁREAS CUYOS CANALES INGRESAN POR ADJUNTO. Hoy una sola: mandar una foto al canal de comprobantes
+ * ES el pedido de carga. Sumar otra es agregar una clave acá y atar el canal en el binding.
+ */
+export const AREAS_DE_ADJUNTOS = Object.freeze(['compras'])
+
+/**
+ * LA LISTA DE CANALES DE INGESTA SALE DEL BINDING, no de una lista escrita a mano.
+ *
+ * EL DEFECTO QUE ARREGLA. `MM_CANALES_ADJUNTOS` traía un default con dos slugs escritos en el
+ * código. Atar un canal nuevo al área `compras` en `comunicacion.canales_area` habilitaba de verdad
+ * la carga —la guarda pregunta por el binding— pero la foto mandada a ese canal moría acá, en el
+ * prefiltro, sin crear el evento: quien estaba en el canal veía que no pasaba nada y no había a qué
+ * echarle la culpa. Es exactamente la forma del pedido del dueño («segun el canal para quienes
+ * participen del canal») rota por el eslabón más barato de la cadena.
+ *
+ * SE UNE, NUNCA SE RESTA. El entorno sigue valiendo tal cual (arranque sin base, o un canal que
+ * todavía no está en el binding) y el binding SUMA. Por eso una base caída no puede apagar la
+ * ingesta: se avisa y se sigue con lo último que se supo. Ampliar el prefiltro no afloja nada — la
+ * puerta de verdad (`comprobantes/guarda.mjs`) vuelve a preguntarle al binding y al permiso, y un
+ * canal de más acá sólo cuesta un evento que después se deniega.
+ *
+ * @param {object} o
+ * @param {{query:Function}|null} [o.port]
+ * @param {Set<string>} [o.base]     lo que dice el entorno (siempre vale)
+ * @param {number} [o.ttlMs]         cada cuánto se relee el binding (no por mensaje: por minuto)
+ * @returns {() => Promise<Set<string>>}
+ */
+export function crearCanalesDeIngesta({ port = null, base = canalesDeAdjuntos(), ttlMs = 60_000, ahora = () => Date.now(), log = null } = {}) {
+  let vigente = new Set(base)
+  let vence = 0
+  return async function canales() {
+    if (!port?.query || ahora() < vence) return vigente
+    vence = ahora() + ttlMs
+    const union = new Set(base)
+    let falla = null
+    for (const area of AREAS_DE_ADJUNTOS) {
+      const r = await canalesDeArea({ port, area }).catch((e) => ({ ok: false, motivo: String(e?.message ?? e) }))
+      if (!r.ok) { falla = r.motivo; continue }
+      for (const c of r.canales) {
+        union.add(String(c.channelId).toLowerCase())
+        if (c.nombre) union.add(String(c.nombre).toLowerCase())
+      }
+    }
+    if (falla) {
+      // No se apaga la ingesta por no haber podido leer el binding: se conserva lo último conocido.
+      log?.warn?.('ws: no pude releer los canales de ingesta del binding', { motivo: falla })
+      return vigente
+    }
+    vigente = union
+    return vigente
+  }
 }
 
 /** ¿Este post trae archivos adjuntos? */
@@ -153,6 +209,11 @@ export function crearConsumidorWS(opts) {
     // Se resuelve UNA vez al construir el consumidor, no en cada mensaje: es configuración, y
     // releerla por post sería pagar un parseo por cada línea que alguien escribe en el equipo.
     canalesAdjuntos = canalesDeAdjuntos(),
+    // EL BINDING TAMBIÉN CUENTA. Con `port`, a lo del entorno se le suman los canales atados a las
+    // áreas de adjuntos en `comunicacion.canales_area`, releídos por minuto (no por mensaje). Sin
+    // `port` —los tests del consumidor solo— queda exactamente el comportamiento anterior.
+    port = null,
+    canalesDeIngesta = crearCanalesDeIngesta({ port, base: canalesAdjuntos, log }),
   } = opts
   if (!con?.recibir) throw new Error('consumidor-ws: falta con.recibir')
   if (!wsUrl) throw new Error('consumidor-ws: falta wsUrl')
@@ -166,7 +227,10 @@ export function crearConsumidorWS(opts) {
   async function manejarMensaje(raw) {
     const info = parsearPosted(raw)
     if (!info) return { estado: 'no-posted' }
-    if (!esRelevante(info, { botUserId, botUsername, canalesAdjuntos })) {
+    // Los canales de ingesta se piden por mensaje, pero se releen por minuto: adentro hay una
+    // caché con TTL. Así atar un canal nuevo al área lo habilita sin reiniciar el servicio.
+    const canalesAhora = await canalesDeIngesta()
+    if (!esRelevante(info, { botUserId, botUsername, canalesAdjuntos: canalesAhora })) {
       // POR QUÉ SE IGNORÓ, NO SÓLO QUE SE IGNORÓ. Una foto de factura que no llega a ningún lado y
       // deja un log que dice "ignorado por guarda" manda a buscar el problema a ciegas: pasó el
       // 03/08 y costó media hora descubrir que el canal viaja por SLUG y no por nombre visible.
@@ -177,7 +241,7 @@ export function crearConsumidorWS(opts) {
         channel_name: info.channelName ?? null,
         channel_id: info.post.channel_id ?? null,
         tiene_adjuntos: tieneAdjuntos(info.post),
-        canales_de_ingesta: [...canalesAdjuntos],
+        canales_de_ingesta: [...canalesAhora],
       })
       return { estado: 'ignorado' }
     }
@@ -269,7 +333,10 @@ async function main() {
     process.exit(1)
   }
 
-  const consumidor = crearConsumidorWS({ con, wsUrl, token, botUserId, botUsername, log })
+  // El `port` es el mismo pool del OS que ya usa el conector: sirve para que los canales de
+  // ingesta salgan del binding y no sólo del entorno. Si la base no contesta, el prefiltro sigue
+  // andando con lo que dice el entorno (ver `crearCanalesDeIngesta`).
+  const consumidor = crearConsumidorWS({ con, wsUrl, token, botUserId, botUsername, log, port: { query } })
   for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => { log.info('shutdown pedido', { señal: s }); consumidor.cerrar(); process.exit(0) })
   consumidor.conectar()
   log.info('mattermost-ws-consumer arrancado', { url: ofuscarUrl(wsUrl), bot: botUsername })

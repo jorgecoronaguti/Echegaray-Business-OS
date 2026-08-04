@@ -252,3 +252,90 @@ test('el eco del propio bot con adjuntos no reentra (anti-loop)', () => {
   const info = parsearPosted(crudo)
   assert.equal(esRelevante(info, { botUserId: BOT, canalesAdjuntos: new Set(['compras']) }), false)
 })
+
+// ── EL PREFILTRO PREGUNTA POR EL BINDING, NO SÓLO POR EL .env ───────────────
+//
+// El pedido del dueño es que estar en el canal alcance. Eso se rompía acá y en silencio: atar un
+// canal nuevo al área `compras` en `comunicacion.canales_area` habilitaba la carga de verdad —la
+// guarda pregunta por el binding— pero la foto mandada a ese canal no llegaba ni a crear un evento,
+// porque este prefiltro miraba una lista de slugs del entorno. Nadie recibía un rechazo: no pasaba
+// nada, que es la peor forma de fallar.
+
+/** `port` de mentira que sólo sabe contestar el binding de canales por área. */
+function portBinding({ filas = [], explota = false } = {}) {
+  let veces = 0
+  return {
+    get veces() { return veces },
+    async query(sql) {
+      veces++
+      if (explota) throw new Error('base caída (simulado)')
+      return { rows: /canales_area/.test(sql) ? filas : [] }
+    },
+  }
+}
+
+/** El frame real, pero mandado a OTRO canal: uno que existe en el binding y no en el entorno. */
+function frameEnCanal({ channelName, channelId }) {
+  const crudo = JSON.parse(JSON.stringify(FRAME_REAL_COMPROBANTES))
+  const post = JSON.parse(crudo.data.post)
+  post.channel_id = channelId
+  post.id = `p-${channelId}`
+  crudo.data.post = JSON.stringify(post)
+  crudo.data.channel_name = channelName
+  crudo.broadcast = { channel_id: channelId }
+  return crudo
+}
+
+test('un canal atado al área en el binding ingresa adjuntos aunque no esté en MM_CANALES_ADJUNTOS', async () => {
+  const { con, repo } = armarCon()
+  const port = portBinding({ filas: [{ channel_id: 'c-obra-nueva', canal_nombre: 'gastos-obra-nueva' }] })
+  const c = crearConsumidorWS({
+    con, wsUrl: 'ws://x', token: 't', botUserId: BOT, log: crearLog(() => {}), port,
+    canalesAdjuntos: new Set(['compras']), // el entorno NO conoce el canal nuevo
+  })
+  const r = await c.manejarMensaje(frameEnCanal({ channelName: 'gastos-obra-nueva', channelId: 'c-obra-nueva' }))
+  assert.equal(r.estado, 'aceptado', 'la foto del canal atado al área tiene que entrar')
+  assert.equal(repo.eventos.length, 1)
+})
+
+test('el binding SUMA y nunca resta: lo del entorno sigue entrando', async () => {
+  const { con } = armarCon()
+  const port = portBinding({ filas: [{ channel_id: 'c-obra-nueva', canal_nombre: 'gastos-obra-nueva' }] })
+  const c = crearConsumidorWS({
+    con, wsUrl: 'ws://x', token: 't', botUserId: BOT, log: crearLog(() => {}), port,
+    canalesAdjuntos: new Set(['compras']),
+  })
+  assert.equal((await c.manejarMensaje(FRAME_REAL_COMPROBANTES)).estado, 'aceptado')
+})
+
+test('un canal que NO está ni en el entorno ni en el binding sigue sin entrar', async () => {
+  const { con, repo } = armarCon()
+  const port = portBinding({ filas: [{ channel_id: 'c-obra-nueva', canal_nombre: 'gastos-obra-nueva' }] })
+  const c = crearConsumidorWS({
+    con, wsUrl: 'ws://x', token: 't', botUserId: BOT, log: crearLog(() => {}), port,
+    canalesAdjuntos: new Set(['compras']),
+  })
+  const r = await c.manejarMensaje(frameEnCanal({ channelName: 'chismes', channelId: 'c-chismes' }))
+  assert.equal(r.estado, 'ignorado')
+  assert.equal(repo.eventos.length, 0)
+})
+
+test('si la base no contesta, la ingesta NO se apaga: sigue valiendo lo del entorno', async () => {
+  const { con } = armarCon()
+  const c = crearConsumidorWS({
+    con, wsUrl: 'ws://x', token: 't', botUserId: BOT, log: crearLog(() => {}), port: portBinding({ explota: true }),
+    canalesAdjuntos: new Set(['compras']),
+  })
+  assert.equal((await c.manejarMensaje(FRAME_REAL_COMPROBANTES)).estado, 'aceptado')
+})
+
+test('el binding se relee por minuto, no por mensaje', async () => {
+  const { con } = armarCon()
+  const port = portBinding({ filas: [{ channel_id: 'c-obra-nueva', canal_nombre: 'gastos-obra-nueva' }] })
+  const c = crearConsumidorWS({
+    con, wsUrl: 'ws://x', token: 't', botUserId: BOT, log: crearLog(() => {}), port,
+    canalesAdjuntos: new Set(['compras']),
+  })
+  for (let i = 0; i < 5; i++) await c.manejarMensaje(posted({ id: `m${i}` }))
+  assert.equal(port.veces, 1, 'una sola consulta al binding para cinco mensajes')
+})

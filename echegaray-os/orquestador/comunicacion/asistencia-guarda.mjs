@@ -37,6 +37,7 @@
 // Mattermost, no escribe en la base y no razona con un modelo. Devuelve un veredicto.
 
 import { tienePermiso, PERMISO_ASISTENCIA_WRITE, DENEGADO } from '../lib/asistencia-permisos.mjs'
+import { canalOficialDeArea, CANAL } from '../lib/canal-de-area.mjs'
 
 /** Motivos de rechazo. Contrato con la integración: son estos tres y no más. */
 export const RECHAZO = Object.freeze({
@@ -74,6 +75,7 @@ export const TEXTO = Object.freeze({
   CANAL: [
     'La asistencia se carga sólo en el canal de asistencia del equipo.',
     'Entrá a ese canal y escribí ahí `@os asistencia`. Por mensaje privado, en un grupo o en otro canal no la registro.',
+    'Si no ves ese canal en tu lista, pedí que te agreguen: con estar adentro ya podés cargar.',
   ].join(' '),
   CANAL_NO_VERIFICABLE: [
     'No pude confirmar desde dónde estás escribiendo, así que no registré nada.',
@@ -83,9 +85,15 @@ export const TEXTO = Object.freeze({
     'No pude reconocer quién está cargando, y la asistencia siempre queda a nombre de alguien.',
     'Cerrá sesión, volvé a entrar a Mattermost y probá otra vez.',
   ].join(' '),
+  // ESTE MENSAJE YA NO MANDA A PEDIR UN PERMISO. La regla vigente es que estar en el canal
+  // habilita, y este texto sólo se ve DESPUÉS de que el canal se validó contra el binding — o sea,
+  // a alguien que escribió desde el canal correcto. Mandarlo a pedirle un permiso a Dirección era
+  // mandarlo a pedir algo que ya tiene: si llegó hasta acá y no está habilitado, el problema es del
+  // OS y hay que nombrarlo así.
   SIN_PERMISO: [
-    'No tenés habilitada la carga de asistencia.',
-    'Pedísela a Dirección: se activa en el momento y volvés a intentar.',
+    'No pude habilitarte la carga de asistencia.',
+    'La habilita estar en el canal de asistencia del equipo: no hace falta que te den nada aparte.',
+    'Si ya estás en ese canal y te sale esto, avisale a Dirección — es un problema del OS, no tuyo.',
   ].join(' '),
   PERMISO_NO_VERIFICABLE: [
     'No pude confirmar si tenés habilitada la carga de asistencia, así que no registré nada.',
@@ -193,24 +201,14 @@ export async function canalOficialDeAsistencia(port, { channelId, plataforma = '
 }
 
 async function canalOficial(port, { channelId, plataforma }) {
-  if (typeof port?.query !== 'function') {
-    return niega(RECHAZO.CANAL, DETALLE.BASE_INDISPONIBLE, TEXTO.CANAL_NO_VERIFICABLE)
-  }
-  let filas
-  try {
-    const r = await port.query(
-      `select canal_nombre from comunicacion.canales_area
-        where plataforma = $1 and channel_id = $2 and area_clave = $3 and activo
-        limit 1`,
-      [plataforma, channelId, AREA_ASISTENCIA],
-    )
-    filas = r?.rows ?? []
-  } catch {
-    // Fail-closed: si no se puede verificar, no se concede.
-    return niega(RECHAZO.CANAL, DETALLE.BASE_INDISPONIBLE, TEXTO.CANAL_NO_VERIFICABLE)
-  }
-  if (!filas.length) return niega(RECHAZO.CANAL, DETALLE.CANAL_NO_ES_EL_OFICIAL, TEXTO.CANAL)
-  return { ok: true, nombre: texto(filas[0].canal_nombre) ?? null }
+  // La consulta al binding es UNA sola en todo el OS (`lib/canal-de-area.mjs`): la comparten esta
+  // guarda, la de comprobantes y el prefiltro de ingesta del consumidor de WebSocket. Acá sólo se
+  // traducen sus motivos, y el "no se pudo preguntar" sigue siendo su propio caso — fail-closed.
+  const r = await canalOficialDeArea({ port, channelId, area: AREA_ASISTENCIA, plataforma })
+  if (r.ok) return { ok: true, nombre: r.nombre }
+  return r.motivo === CANAL.NO_VERIFICABLE
+    ? niega(RECHAZO.CANAL, DETALLE.BASE_INDISPONIBLE, TEXTO.CANAL_NO_VERIFICABLE)
+    : niega(RECHAZO.CANAL, DETALLE.CANAL_NO_ES_EL_OFICIAL, TEXTO.CANAL)
 }
 
 /** Permiso de escritura, con `lib/asistencia-permisos.mjs`. Traduce sus motivos a los míos. */

@@ -384,14 +384,34 @@ export function renderSinPersonal({ obra, fecha }) {
 }
 
 /**
- * Acceso denegado. En el MVP el modo es ABIERTO, así que el único rechazo real es no
- * tener identidad (un pedido sin usuario de Mattermost, que no se puede auditar).
+ * Acceso denegado, y CADA MOTIVO DICE QUÉ HACER.
+ *
+ * Tres situaciones distintas que antes se contestaban con dos frases:
+ *
+ *   · sin identidad     → el pedido no trae usuario de Mattermost: no hay a quién auditar.
+ *   · no se pudo        → la base o Mattermost no contestaron. Se deniega igual (fail-closed),
+ *     verificar          pero NO se le puede decir a alguien que no tiene permiso cuando lo que
+ *                        pasó es que el OS no pudo averiguarlo. Antes caían las dos en la misma
+ *                        frase y mandaban a pedirle a Dirección un permiso que quizá ya tenía.
+ *   · sin permiso       → la regla vigente es que estar en el canal alcanza, así que "pedísela a
+ *                         Dirección" dejó de ser la acción: la acción es escribir DESDE el canal
+ *                         del equipo, o pedir que te agreguen a él.
  */
 export function renderDenegado(motivo) {
   if (motivo === 'sin_identidad') {
     return '🔒 No pude identificarte. La asistencia se registra desde tu cuenta de Mattermost, porque queda a tu nombre.'
   }
-  return '🔒 No tenés permiso para registrar asistencia. Si corresponde, pedíselo a Dirección.'
+  if (motivo === 'error_verificando') {
+    return [
+      '🔒 No pude confirmar si podés cargar asistencia, así que no registré nada.',
+      'No es que no tengas permiso: no pude averiguarlo. Probá de nuevo en un minuto; si sigue igual, avisale a Dirección.',
+    ].join(' ')
+  }
+  return [
+    '🔒 Desde acá no puedo con la asistencia.',
+    'Se carga y se consulta en el canal de asistencia del equipo: con estar en ese canal ya podés, no hace falta que te habiliten nada aparte.',
+    'Si no lo ves en tu lista, pedí que te agreguen.',
+  ].join(' ')
 }
 
 export function renderPestanaProtegida({ pestana }) {
