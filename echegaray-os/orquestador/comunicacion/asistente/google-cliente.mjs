@@ -15,7 +15,7 @@
 // log guarde el 403 con su cuerpo — nunca al revés, y nunca un token en ninguno de los dos.
 
 import { makeGoogleClient, WORKSPACE_SCOPES } from '../../lib/google.mjs'
-import { operadorPara, tieneToken, getTokenFor, hayCuentaAutorizada } from '../../lib/google-oauth.mjs'
+import { operadorPara, tieneToken, getTokenFor, hayCuentaAutorizada, authUrl } from '../../lib/google-oauth.mjs'
 import { identidadDe, IDENTIDAD } from '../../lib/google-os.mjs'
 import { loadConfig } from '../../lib/config.mjs'
 import { ERROR, errorAsistente } from './contratos.mjs'
@@ -31,9 +31,31 @@ export const CONFIG_REQUERIDA = Object.freeze([
   'GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET', 'GOOGLE_OAUTH_REDIRECT',
 ])
 
-const MSG_SIN_ACCESO =
-  'No tengo acceso a tu Google. Entrá a "Conectar con Google" en el OS y autorizá Drive, '
-  + 'Calendar y Tareas; después volvé a pedírmelo.'
+// EL MENSAJE TIENE QUE TRAER EL LINK, NO EL NOMBRE DE UN BOTÓN QUE NO EXISTE.
+//
+// Decía «Entrá a "Conectar con Google" en el OS». Esa pantalla NO EXISTE: no hay ninguna ruta en
+// `src/app` que la sirva. La persona quedaba mandada a buscar un botón inexistente, y la capacidad
+// se veía rota para siempre — que es exactamente lo que pasó el 03 y 04/08 con el calendario.
+//
+// El link se arma en CADA llamada desde `authUrl()`, nunca se guarda: lleva el client_id, que sale
+// del entorno. El mismo link sirve para cualquier persona — el callback guarda el refresh_token
+// bajo el email con el que Google la autenticó, así que cada una autoriza la suya.
+
+/** El pedido de autorización, con el link vivo. Si falta la config, lo dice en vez de mentir. */
+export function invitacionAAutorizar(deps = {}) {
+  const url = deps.authUrl ?? authUrl
+  try {
+    return `Autorizá acá y volvé a pedírmelo (30 segundos): ${url('os')}`
+  } catch {
+    return `No puedo ni siquiera armar el link de autorización: al OS le falta ${CONFIG_REQUERIDA.join(' / ')}. `
+      + 'Esto es un problema del OS, no tuyo: avisale a Dirección.'
+  }
+}
+
+/** El "no tengo acceso" de siempre, ahora con el link pegado. Es una función y no una constante
+ *  porque el link depende del entorno, que puede cambiar sin reiniciar el proceso. */
+export const msgSinAcceso = (deps) =>
+  'No tengo acceso a tu Google (Drive, Calendar y Tareas). ' + invitacionAAutorizar(deps)
 
 // ── Secretos ─────────────────────────────────────────────────────────────────
 
@@ -174,8 +196,8 @@ export async function motivoGooglePropio(ctx, deps = {}) {
   }
   return {
     codigo: MOTIVO_GOOGLE.NO_ENLAZADO,
-    mensaje: `Para eso necesito TU cuenta de Google (${email}) y todavía no está enlazada. Entrá a `
-      + '"Conectar con Google" en el OS, autorizá Calendar y Tareas, y volvé a pedírmelo.',
+    mensaje: `Para eso necesito TU cuenta de Google (${email}) y todavía no está enlazada. `
+      + invitacionAAutorizar(),
   }
 }
 
@@ -223,7 +245,7 @@ export function clasificarErrorGoogle(e, { que = 'eso' } = {}) {
   const status = statusDe(e)
   const sinCuenta = /invalid_grant|unauthorized_client|insufficient|delegat|credencial de Google ausente|sin cuenta Google/i
   if (status === 401 || status === 403 || sinCuenta.test(detalle)) {
-    return errorAsistente(ERROR.GOOGLE_SIN_ACCESO, MSG_SIN_ACCESO, detalle)
+    return errorAsistente(ERROR.GOOGLE_SIN_ACCESO, msgSinAcceso(), detalle)
   }
   if (status === 404 || /no encontrad|not found/i.test(detalle)) {
     return errorAsistente(ERROR.NO_ENCONTRADO, `No encontré ${que}.`, detalle)
@@ -236,13 +258,13 @@ export function clasificarErrorGoogle(e, { que = 'eso' } = {}) {
 
 /** El error de "no hay cuenta conectada", con el mismo texto en todos lados. */
 export const errorSinCuenta = () => errorAsistente(
-  ERROR.GOOGLE_SIN_ACCESO, MSG_SIN_ACCESO,
+  ERROR.GOOGLE_SIN_ACCESO, msgSinAcceso(),
   `sin cuenta Google conectada (requiere ${CONFIG_REQUERIDA.join(', ')} + consentimiento del usuario)`,
 )
 
 /** El error de "tu cuenta no está, y esto escribiría en la de otro". */
 export const errorCuentaAjena = (google) => errorAsistente(
   ERROR.GOOGLE_SIN_ACCESO,
-  'Esto lo tengo que hacer en TU cuenta de Google y todavía no la conectaste. Entrá a "Conectar con Google" en el OS y lo hago.',
+  `Esto lo tengo que hacer en TU cuenta de Google y todavía no la conectaste. ${invitacionAAutorizar()}`,
   `cuenta resuelta ${cuentaDe(google)?.email ?? '(desconocida)'} ≠ cuenta del solicitante`,
 )

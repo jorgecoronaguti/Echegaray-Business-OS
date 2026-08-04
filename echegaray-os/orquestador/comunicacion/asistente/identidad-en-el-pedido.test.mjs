@@ -119,7 +119,9 @@ test('identificado pero sin Google enlazado: se lo nombra por lo que es y se dic
 
   assert.equal(r.ok, false)
   assert.equal(r.error.codigo, ERROR.CAPACIDAD_DESHABILITADA, 'esto SÍ es del usuario, no del OS')
-  assert.match(r.error.mensaje, /Conectar con Google/)
+  // El mensaje tiene que ser ACCIONABLE: el link de consentimiento, no el nombre de una
+  // pantalla que no existe. Fijar el texto viejo era fijar el defecto.
+  assert.match(r.error.mensaje, /accounts\.google\.com\/o\/oauth2/)
   assert.match(r.error.mensaje, new RegExp(EMAIL_JORGE))
   assert.equal(/Dirección/.test(r.error.mensaje), false, 'no es un problema del OS: no se lo mande a Dirección')
 })

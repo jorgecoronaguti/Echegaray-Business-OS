@@ -98,7 +98,9 @@ test('OAuth vencido → google_sin_acceso; 429 → temporal', async () => {
   const sinAcceso = googleFalso({ falla: Object.assign(new Error('google api 403: insufficient scope'), { status: 403 }) })
   const a = await capacidad.ejecutar({ titulo: 'Algo' }, ctxCon(sinAcceso))
   assert.equal(a.error.codigo, ERROR.GOOGLE_SIN_ACCESO)
-  assert.match(a.texto, /Conectar con Google/)
+  // El mensaje tiene que ser ACCIONABLE: el link de consentimiento, no el nombre de una
+  // pantalla que no existe. Fijar el texto viejo era fijar el defecto.
+  assert.match(a.texto, /accounts\.google\.com\/o\/oauth2/)
   const saturado = googleFalso({ falla: Object.assign(new Error('google api 429'), { status: 429 }) })
   const b = await capacidad.ejecutar({ titulo: 'Algo' }, ctxCon(saturado))
   assert.equal(b.error.codigo, ERROR.TEMPORAL)

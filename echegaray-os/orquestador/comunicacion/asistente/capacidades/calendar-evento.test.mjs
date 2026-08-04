@@ -102,7 +102,9 @@ test('OAuth vencido → google_sin_acceso con frase humana', async () => {
   const g = googleFalso({ falla: Object.assign(new Error('google api 401: invalid_grant'), { status: 401 }) })
   const r = await capacidad.ejecutar({ titulo: 'Reunión', inicio: MANANA_9 }, ctxCon(g))
   assert.equal(r.error.codigo, ERROR.GOOGLE_SIN_ACCESO)
-  assert.match(r.texto, /Conectar con Google/)
+  // El mensaje tiene que ser ACCIONABLE: el link de consentimiento, no el nombre de una
+  // pantalla que no existe. Fijar el texto viejo era fijar el defecto.
+  assert.match(r.texto, /accounts\.google\.com\/o\/oauth2/)
 })
 
 test('Google caído (503) es temporal', async () => {
