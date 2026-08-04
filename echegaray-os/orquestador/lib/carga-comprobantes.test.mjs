@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import * as carga from './carga-comprobantes.mjs'
-import { tipoComprobante, condicionAPago, matchProveedor, aNumero, aFechaAR, valoresInput, discrepanciaNeto, redondear2, verificarEscritura, mismoValor, colIndice, COL } from './carga-comprobantes.mjs'
+import { tipoComprobante, condicionAPago, matchProveedor, distanciaEdicion, aNumero, aFechaAR, valoresInput, discrepanciaNeto, redondear2, verificarEscritura, mismoValor, colIndice, COL } from './carga-comprobantes.mjs'
 
 test('el tipo de comprobante se normaliza al valor exacto del desplegable', () => {
   assert.equal(tipoComprobante('A'), 'F A')
@@ -196,4 +196,45 @@ test('una celda vacía sigue siendo vacía aunque se espere un número', () => {
   const r = verificarEscritura([{ M: 54447.71 }], [[...Array(12), { valor: '', numero: null }]], { desde: 800 })
   assert.equal(r.ok, false)
   assert.equal(r.vacias[0].columna, 'M')
+})
+
+test('EL CASO REAL: "COMESTIBLES BARCELO" es Combustibles Barcelo, que tiene 127 compras', () => {
+  // El OCR de una carga de combustible leyó "COMESTIBLES". El bot ofreció dar de alta un proveedor
+  // nuevo, lo que habría partido en dos la cuenta corriente de uno de los mayores proveedores.
+  const lista = ['Combustibles Barcelo', 'Alumetal', 'Corralon Progreso', 'DUPEC']
+  const m = matchProveedor('COMESTIBLES BARCELO', lista)
+  assert.equal(m.esNuevo, false, 'lo declaró proveedor nuevo')
+  assert.equal(m.valor, 'Combustibles Barcelo')
+  assert.equal(m.motivo, 'ocr')
+})
+
+test('el umbral es estricto: un proveedor de verdad distinto SIGUE siendo nuevo', () => {
+  // El error caro es el opuesto: fusionar dos proveedores que sí son distintos.
+  const lista = ['Combustibles Barcelo', 'Alumetal', 'Hormiserv']
+  for (const nuevo of ['Ferretería del Centro', 'Aceros del Sur', 'Hormigonera XXI']) {
+    assert.equal(matchProveedor(nuevo, lista).esNuevo, true, `fusionó "${nuevo}" con otro proveedor`)
+  }
+  // NOTA: "Alumetal Norte SA" SÍ se fusiona con "Alumetal", pero por la regla de CONTENCIÓN que ya
+  // existía, no por la distancia de edición. Es un riesgo real y anterior a este cambio: un
+  // proveedor cuyo nombre contiene al de otro se absorbe en silencio. Queda declarado acá.
+  assert.equal(matchProveedor('Alumetal Norte SA', lista).motivo, 'parcial')
+})
+
+test('si dos proveedores empatan a la misma distancia, se declara nuevo y no se adivina', () => {
+  // Los dos quedan a distancia 1 del leído: no hay forma de saber cuál es.
+  const lista = ['Ferreteria Sar', 'Ferreteria Ser']
+  const m = matchProveedor('Ferreteria Sur', lista)
+  assert.equal(m.esNuevo, true, 'eligió uno de dos candidatos igual de parecidos')
+})
+
+test('un nombre corto no entra al match por distancia: el umbral daría 0', () => {
+  const lista = ['RSV', 'RSX']
+  assert.equal(matchProveedor('RSW', lista).esNuevo, true)
+})
+
+test('la distancia de edición corta temprano y no miente', () => {
+  assert.equal(distanciaEdicion('comestibles barcelo', 'combustibles barcelo', 3), 2)
+  assert.equal(distanciaEdicion('igual', 'igual', 3), 0)
+  assert.equal(distanciaEdicion('abc', 'xyz', 2), 3, 'por encima del tope devuelve tope+1')
+  assert.equal(distanciaEdicion('a', 'aaaaaaaa', 2), 3, 'diferencia de largo mayor al tope')
 })
