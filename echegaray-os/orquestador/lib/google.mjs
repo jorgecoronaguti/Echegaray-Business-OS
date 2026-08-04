@@ -1204,6 +1204,22 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       return (j.sheets || []).map((s) => ({ sheetId: s.properties?.sheetId, title: s.properties?.title, rows: s.properties?.gridProperties?.rowCount, cols: s.properties?.gridProperties?.columnCount }))
     },
     /**
+     * ¿QUÉ HAY DE VERDAD EN ESTAS CELDAS? — la grilla cruda de un rango.
+     *
+     * Existe porque hay cosas que NO se ven por `values`: una **tabla dinámica** no tiene valor ni
+     * fórmula propios (sus celdas salen vacías con render FORMULA y llenas con FORMATTED_VALUE), así
+     * que la única forma de saber si una celda ES una dinámica es pedir la grilla. Sin esto, un
+     * generador no puede preguntarse "¿estoy por pisar una dinámica que no hice yo?".
+     *
+     * @param {string} fileId
+     * @param {string} rango   en A1, con pestaña ("Proveedores!A17")
+     * @param {string} [campos] la máscara de `fields`; por defecto lo mínimo para detectar dinámicas
+     */
+    async getGridData(fileId, rango, campos = 'sheets(data(rowData(values(pivotTable))))') {
+      return apiGet(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}`
+        + `?ranges=${encodeURIComponent(rango)}&includeGridData=true&fields=${encodeURIComponent(campos)}`)
+    },
+    /**
      * Los grupos de filas (+/-) que ya tiene cada pestaña: [{ title, grupos:[{startIndex, endIndex, depth}] }].
      *
      * Hace falta para poder BORRARLOS antes de crear los nuevos. La API no reemplaza un grupo: lo
