@@ -64,7 +64,8 @@ export const SECCIONES_PROVEEDORES = [
 // consulta en _ARCA_RAW, que es su origen declarado.
 
 /** La pestaña "Materiales" es del generador de punta a punta: sus secciones arrancan en 1. */
-export const SECCIONES_MATERIALES = ['familiaMes', 'obra']
+// `controlArca` cierra la pestaña: es el único control de Materiales que no se valida contra Compras.
+export const SECCIONES_MATERIALES = ['familiaMes', 'obra', 'controlArca']
 
 /** La primera sección que este generador escribe. Las anteriores son dinámicas. */
 export const PRIMERA_GENERADA = 'notasCredito'

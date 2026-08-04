@@ -42,6 +42,7 @@ import { MIN_MESES, COL_RUBRO, COL_FECHA, COL_TOTAL } from '../lib/cash-flow-lin
 import { escribirPreservando, limpiarCentinela, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
 import { MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL, CONTADOR } from '../lib/formato-statement.mjs'
+import { bloqueControlArca } from '../lib/control-arca-bloque.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Recurrentes'
@@ -156,7 +157,19 @@ export function grilla(proveedores) {
   c6[1] = `=SUMPRODUCT((${letra(C_AUX0)}${f0}:${letra(C_AUX0 + 11)}${f1}=0)*(${letra(C_MES0)}$${FILA_CAB}:${letra(C_MES0 + 11)}$${FILA_CAB}<=EOMONTH(TODAY();0)))`
   push(c6)
 
-  return { filas, f0, f1, fTot, ctrl, fDif }
+  // ── 3 · EL CONTROL QUE NO SE VALIDA CONTRA SÍ MISMO ─────────────────────────────────────────────
+  // El bloque 2 de arriba compara este cuadro contra Compras: las dos cifras salen de Compras. Prueba
+  // que el cuadro no se está olvidando un proveedor del rubro, y nada más — no puede detectar un
+  // error EN Compras. Éste compara contra el libro de IVA de ARCA, que el OS no escribe.
+  push(vacia())
+  const arca0 = filas.length + 1
+  for (const f of bloqueControlArca({ titulo: '3 · CONTROL CONTRA ARCA — la fuente independiente', rubros: [RUBRO], fila0: arca0 })) {
+    const fila = vacia()
+    f.forEach((c, i) => { fila[i] = c })
+    push(fila)
+  }
+
+  return { filas, f0, f1, fTot, ctrl, fDif, arca0 }
 }
 
 async function main() {
@@ -262,6 +275,11 @@ export function formatosPropios(hoja, g) {
   fmt(r(g.ctrl, g.ctrl + 2, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
   fmt(r(g.fDif - 1, g.fDif + 1, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_CONTROL })
   fmt(r(g.ctrl + 4, g.ctrl + 5, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: CONTADOR })
+  // El bloque de ARCA: los importes con "$", y en formato de control las cuatro celdas que TIENEN que
+  // dar cero (las dos direcciones, la diferencia agregada y el residuo de importes).
+  fmt(r(g.arca0 + 2, g.arca0 + 11, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
+  fmt(r(g.arca0 + 4, g.arca0 + 7, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_CONTROL })
+  fmt(r(g.arca0 + 8, g.arca0 + 9, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_CONTROL })
   // Las columnas auxiliares, ocultas: son andamio, no información.
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: C_AUX0, endIndex: ANCHO }, properties: { hiddenByUser: true }, fields: 'hiddenByUser' } })
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 340 }, fields: 'pixelSize' } })

@@ -70,6 +70,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { FAMILIAS, SIN_FAMILIA, formulaFamilia, familiaDeMaterial, RUBROS_CON_FAMILIA } from '../lib/familia-material.mjs'
+import { bloqueControlArca } from '../lib/control-arca-bloque.mjs'
 import { NOMBRES } from '../lib/sheet-pestanas.mjs'
 import { partir, filasHuerfanas, referenciasFuera, ref as refPestana } from '../lib/partir-pestana.mjs'
 import { anchosSegunContenido } from '../lib/nota-celda.mjs'
@@ -808,6 +809,19 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, not
   ])
   push([])
 
+  // ── 5 · EL CONTROL QUE NO SE VALIDA CONTRA SÍ MISMO ─────────────────────────────────────────────
+  //
+  // "TOTAL MATERIALES" por familia y el total por rubro son DOS AGREGACIONES DE COMPRAS. Que den lo
+  // mismo prueba que ninguna familia se perdió — no prueba nada sobre si Compras está bien. El dueño
+  // lo dijo en una palabra: "pésimo eso". Éste compara contra el libro de IVA de ARCA, que el OS no
+  // escribe, por FECHA DE FACTURA. Ver lib/control-arca-bloque.mjs.
+  const arca0 = filas.length + 1
+  for (const b of bloqueControlArca({
+    titulo: `${nSeccion('controlArca', SECCIONES_MATERIALES)} · CONTROL CONTRA ARCA — la fuente independiente`,
+    rubros: [...RUBROS_CON_FAMILIA], fila0: arca0,
+  })) push(b)
+  push([])
+
   const resuelto = filas.map((f) => f.map((c) => (typeof c === 'string'
     ? c.replaceAll('$TOTFAM', String(totFam)).replaceAll('$TOTPROV', String(fTotProv)).replaceAll('$TOTDEUDA', String(fTotProv))
     : c)))
@@ -832,7 +846,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, not
     ...[...NOTAS.porProveedor.entries()].filter(([k]) => !usadas.has(`p|${k}`)).map(([k, m]) => ({ tipo: 'proveedor', clave: k, texto: [...m.values()].map(String).join(' · ') })),
     ...[...NOTAS.porComprobante.entries()].filter(([k]) => !usadas.has(`c|${k}`)).map(([k, m]) => ({ tipo: 'comprobante', clave: k, texto: [...m.values()].map(String).join(' · ') })),
   ]
-  return { filas: resuelto, notasHuerfanas, notasPuestas, anchoDeuda: ANCHO, cabArca, marcas: { bPos, b1, b2, b3, b4, b5, b6, b7, fin: filas.length }, bPos, pos0, pos1, posTotal, posProy, posPlazo, posFaltan, fCompFecha, afip0, afip1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabDocFin, deudaL: L, deudaHeaders, deudaGrupos, cabAfip, cabCtrl, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, ctrl1, fAnuCtrl, fDif, fPlazo, anchoObras: obras.length }
+  return { filas: resuelto, notasHuerfanas, notasPuestas, anchoDeuda: ANCHO, cabArca, arca0, marcas: { bPos, b1, b2, b3, b4, b5, b6, b7, fin: filas.length }, bPos, pos0, pos1, posTotal, posProy, posPlazo, posFaltan, fCompFecha, afip0, afip1, nc0, nc1, cabNC, cabAnu, anu0, anu1, fArcaN, fArcaNotas, fArcaEn, fArcaSinNum, fArcaFaltan, fArcaVentas, cabDoc, cabDocFin, deudaL: L, deudaHeaders, deudaGrupos, cabAfip, cabCtrl, p0, p1, fSub, fTotProv, cabProv, fam0, fam1, totFam, obra0, obra1, cabFam, cabObra, ctrl, ctrl1, fAnuCtrl, fDif, fPlazo, anchoObras: obras.length }
 }
 
 /**

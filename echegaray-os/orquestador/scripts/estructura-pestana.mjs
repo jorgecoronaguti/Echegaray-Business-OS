@@ -26,6 +26,7 @@ import { escribirPreservando, limpiarCentinela, VACIO } from '../lib/preservar-a
 import { fila as filaConNombre, aRangoApi, verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
 import { MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL, CONTADOR, PORCENTAJE } from '../lib/formato-statement.mjs'
+import { bloqueControlArca } from '../lib/control-arca-bloque.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Estructura'
@@ -143,8 +144,20 @@ export function grilla() {
   c4[1] = `=COUNTIFS($${letra(C_NMESES)}${f0}:$${letra(C_NMESES)}${f1};"<${MIN_MESES}";$${letra(C_TOTREAL)}${f0}:$${letra(C_TOTREAL)}${f1};">0")`
   push(c4)
 
+  // ── 3 · EL CONTROL QUE NO SE VALIDA CONTRA SÍ MISMO ─────────────────────────────────────────────
+  // El bloque 2 compara este cuadro contra Compras, y las dos cifras salen de Compras: prueba que el
+  // cuadro no se olvida un sub-rubro, no que Compras esté bien. Éste compara contra el libro de IVA
+  // de ARCA, que el OS no escribe.
+  push(vacia())
+  const arca0 = filas.length + 1
+  for (const b of bloqueControlArca({ titulo: '3 · CONTROL CONTRA ARCA — la fuente independiente', rubros: ['Estructura'], fila0: arca0 })) {
+    const fila = vacia()
+    b.forEach((c, i) => { fila[i] = c })
+    push(fila)
+  }
+
   const resuelto = filas.map((f) => f.map((c) => (typeof c === 'string' ? c.replaceAll('$TOT', String(fTot)) : c)))
-  return { filas: resuelto, f0, f1, fTot, fCtrl: fc, rubros }
+  return { filas: resuelto, f0, f1, fTot, fCtrl: fc, rubros, arca0 }
 }
 
 /** El rótulo de la fila de totales. Es el ancla del rango con nombre: si cambia, cambian los dos. */
@@ -320,6 +333,11 @@ export function formatosPropios(sheetId, g) {
   fmt(r(g.fCtrl - 1, g.fCtrl, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
   fmt(r(g.fCtrl, g.fCtrl + 1, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_CONTROL })
   fmt(r(g.fCtrl + 1, g.fCtrl + 2, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: CONTADOR })
+  // El bloque de ARCA: importes de cierre con "$"; en formato de control las cuatro celdas que TIENEN
+  // que dar cero; y la columna C de las dos direcciones es un contador, no plata.
+  fmt(r(g.arca0 + 2, g.arca0 + 11, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
+  fmt(r(g.arca0 + 4, g.arca0 + 7, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_CONTROL })
+  fmt(r(g.arca0 + 8, g.arca0 + 9, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_CONTROL })
 
   // La columna A tiene que entrar el rótulo del control entero, que ahora dice lo que decía la prosa.
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 400 }, fields: 'pixelSize' } })
