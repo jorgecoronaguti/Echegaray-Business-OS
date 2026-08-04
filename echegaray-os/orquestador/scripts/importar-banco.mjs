@@ -42,6 +42,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { query } from '../lib/db.mjs'
 import { parsearExtracto, novedades, verificarCadena, clave } from '../lib/banco-importar.mjs'
+import { insertarMovimientos } from '../lib/banco-escribir.mjs'
 import { MOVIMIENTOS, MOVIMIENTOS_DIA, CUENTA, ORIGEN } from '../lib/banco-santander.mjs'
 import { registrarIngesta, FUENTES_INGESTA } from '../lib/registrar-sincronizacion.mjs'
 
@@ -94,24 +95,15 @@ function leerEntrada() {
 /**
  * Inserta ignorando los que ya están: la deduplicación la impone el índice único de la BASE.
  *
- * LA REFERENCIA SE ESCRIBE. Faltaba en esta lista de columnas, y era el agujero por el que se caía la
- * clave entera: el índice único `(cuenta, referencia, importe)` existe pero, si el INSERT no escribe la
- * columna, vive sobre NULLs y no protege nada — y el cruce contra cheques no tiene de dónde salir.
+ * EL INSERT NO VIVE ACÁ DESDE EL 04/08: vive en `lib/banco-escribir.mjs`, compartido con el botón de
+ * importación del chat. Dos INSERT distintos sobre la misma tabla se separan a la primera corrección
+ * —ya pasó con la columna `referencia`, que faltaba en una de las listas y dejó el índice único
+ * viviendo sobre NULLs— y desde ahí el conteo miente sin dar un solo error.
  */
 async function insertar(movs, origen) {
   if (!movs.length) return 0
-  let n = 0
-  for (const m of movs) {
-    const r = await query(
-      `insert into public.banco_movimientos (cuenta, fecha, concepto, importe, saldo_despues, origen, referencia)
-       values ($1, $2, $3, $4, $5, $6, $7)
-       on conflict do nothing
-       returning id`,
-      [CUENTA.numero, m.fecha, m.concepto, m.importe, m.saldo, origen, m.referencia ?? null],
-    )
-    n += r.rowCount
-  }
-  return n
+  const { insertados } = await insertarMovimientos({ query }, movs, origen)
+  return insertados
 }
 
 async function main() {
