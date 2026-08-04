@@ -335,7 +335,9 @@ test('sin formulario abierto: se explica cómo abrir uno, sin tocar la planilla'
 test('sin permiso: se niega antes de leer la planilla y queda auditado', async () => {
   const e = await crearEntorno({ permisos: permisosDoble(false) })
   const r = await elegirObra(e)
-  assert.match(r.body.ephemeral_text, /No tenés habilitada/)
+  assert.match(r.body.ephemeral_text, /No pude habilitarte/)
+  // Nombra la vía que habilita —el canal— en vez de mandar a pedirle un permiso a Dirección.
+  assert.match(r.body.ephemeral_text, /canal de asistencia/i)
   assert.equal(e.google.lecturas, 0, 'nada de leer la planilla para después negar')
   assert.equal(e.eventos.some((x) => x.evento.endsWith('denied')), true)
 })

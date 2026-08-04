@@ -108,7 +108,29 @@ export function normalizar(s) {
 
 /** Matchea el proveedor de la foto contra la lista ESTRICTA del desplegable E. Nunca inventa: si no
  *  hay match razonable, lo marca nuevo con el nombre tal cual, para que el dueño decida agregarlo. */
-export function matchProveedor(ocrNombre, lista) {
+export function matchProveedor(ocrNombre, lista, { cuit = null, porCuit = null } = {}) {
+  // ═══ EL CUIT MANDA SOBRE EL NOMBRE (04/08) ═══
+  //
+  // Una factura trae DOS nombres: la razón social del padrón y el de fantasía con el que la empresa
+  // conoce al proveedor. El desplegable de Compras usa el segundo. Medido dos veces en producción:
+  //   · «DUBOS UGARTE PEDRO LUIS RAUL» es DUPEC — el bot lo declaró proveedor nuevo y frenó la carga.
+  //   · «PEREZ GARCIA MARISOL BIBIANA» es Corralon Progreso — el mismo caso, el 30/07.
+  //
+  // Comparar textos nunca va a resolver eso: no se parecen en nada, y tienen que no parecerse. Lo que
+  // SÍ los identifica es el CUIT, que la factura trae impreso y que la pestaña `Proveedores` ya tiene
+  // cargado. Es una identidad exacta, no un parecido: por eso va PRIMERO y por eso, cuando acierta,
+  // no hay ambigüedad que resolver ni pregunta que hacer.
+  //
+  // `porCuit` es el mapa CUIT → nombre EXACTO del desplegable. Si no llega, todo sigue como antes.
+  const c = String(cuit ?? '').replace(/\D/g, '')
+  if (c.length === 11 && porCuit) {
+    const delPadron = porCuit instanceof Map ? porCuit.get(c) : porCuit[c]
+    // Se valida contra la lista igual: un nombre que el desplegable no tiene deja la celda en rojo,
+    // venga de donde venga. El CUIT resuelve QUIÉN es; el desplegable sigue decidiendo qué se escribe.
+    const enLista = delPadron && lista.find((p) => normalizar(p) === normalizar(delPadron))
+    if (enLista) return { valor: enLista, esNuevo: false, motivo: 'cuit' }
+  }
+
   const n = normalizar(ocrNombre)
   if (!n) return { valor: '', esNuevo: false, motivo: 'sin nombre' }
   const exacto = lista.find((p) => normalizar(p) === n)

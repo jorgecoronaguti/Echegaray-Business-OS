@@ -73,3 +73,34 @@ export async function listasDeCompras(google, { fileId = CASHFLOW_ID } = {}) {
     return { ok: false, ...vacias, error: String(e?.message ?? e).slice(0, 200) }
   }
 }
+
+/**
+ * CUIT → nombre EXACTO del desplegable de Compras, leído de la pestaña `Proveedores`.
+ *
+ * ═══ POR QUÉ EXISTE (04/08) ═══
+ *
+ * El desplegable de Compras usa el nombre de FANTASÍA («DUPEC», «Corralon Progreso») y la factura
+ * trae la razón social del padrón («DUBOS UGARTE PEDRO LUIS RAUL», «PEREZ GARCIA MARISOL BIBIANA»).
+ * No se parecen, y no tienen por qué parecerse: ningún matcheo de texto los va a unir nunca. El CUIT
+ * sí — está impreso en la factura y cargado en la columna B de `Proveedores`.
+ *
+ * NUNCA LANZA y nunca inventa: si no se puede leer la pestaña, devuelve un mapa vacío y el matcheo
+ * sigue siendo por nombre, exactamente como antes. Una lectura fallida no puede convertirse en un
+ * proveedor equivocado.
+ *
+ * @returns {Promise<Map<string,string>>} CUIT sin guiones → nombre tal cual está escrito
+ */
+export async function proveedoresPorCuit(google, { fileId = CASHFLOW_ID, rango = 'Proveedores!A41:B200' } = {}) {
+  const mapa = new Map()
+  if (typeof google?.readSheetValues !== 'function') return mapa
+  try {
+    for (const f of await google.readSheetValues(fileId, rango)) {
+      const nombre = String(f?.[0] ?? '').trim()
+      const cuit = String(f?.[1] ?? '').replace(/\D/g, '')
+      // El primero gana: si el mismo CUIT apareciera dos veces con nombres distintos, quedarse con
+      // uno al azar sería peor que quedarse con el de arriba, que es el que el dueño ordenó primero.
+      if (nombre && cuit.length === 11 && !mapa.has(cuit)) mapa.set(cuit, nombre)
+    }
+  } catch { /* sin listas se sigue matcheando por nombre: no poder leer no es un dato */ }
+  return mapa
+}

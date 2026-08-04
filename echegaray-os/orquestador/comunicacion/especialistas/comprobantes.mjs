@@ -28,7 +28,7 @@
 import { procesarPost, TEXTO as TEXTO_FLUJO } from '../comprobantes/flujo.mjs'
 import { escribirFajo } from '../comprobantes/escritura.mjs'
 import { leerAdjunto } from '../../lib/comprobantes/vision.mjs'
-import { listasDeCompras } from '../../lib/comprobantes/listas.mjs'
+import { listasDeCompras, proveedoresPorCuit } from '../../lib/comprobantes/listas.mjs'
 import { indiceDeCompras } from '../../lib/comprobantes/compras-vivas.mjs'
 import { perfilesDeImputacionDesdeDB } from '../../lib/imputacion-aprendida.mjs'
 import { urlConSecreto } from '../secreto-compartido.mjs'
@@ -119,7 +119,12 @@ export const especialista = {
       port,
       mattermost,
       leer: (adjunto, vocabulario) => leerAdjunto(adjunto, { vocabulario }),
-      listas: () => listasDeCompras(google),
+      // LAS LISTAS VIAJAN CON EL MAPA DE CUIT. Sin él, «DUBOS UGARTE PEDRO LUIS RAUL» se declara
+      // proveedor nuevo y la carga frena, aunque DUPEC esté en el desplegable con ese mismo CUIT.
+      listas: async () => {
+        const [l, porCuit] = await Promise.all([listasDeCompras(google), proveedoresPorCuit(google)])
+        return { ...l, porCuit }
+      },
       // EL PADRÓN DE ARCA es la fuente de verdad del número de comprobante: contra él se corrige el
       // dígito que la visión leyó de más. Se consulta por comprobante, con lo poco que se leyó; qué
       // claves se usan lo decide `arca.mjs`, que es también el que las va a conciliar.
