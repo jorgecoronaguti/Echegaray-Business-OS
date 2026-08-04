@@ -139,6 +139,54 @@ test('googleDe() NUNCA devuelve un cliente con identidad institucional', async (
   assert.equal(await asistente.googleDe({ identidad: { email: 'x@ecsas.com.ar' }, config: CONFIG, deps: deps() }), null)
 })
 
+// ── La caída silenciosa al robot (03/08/2026) ────────────────────────────────
+//
+// El dueño pidió "crea un evento … agregános a mí y a Rodrigo" y el evento apareció en el
+// calendario del SERVICE ACCOUNT. No hubo error: `orq.google_tokens` tiene su fila, así que
+// `googleDe` marcó el cliente `propia:true`; pero el refresh de ese token devuelve
+// `invalid_grant` (verificado el 03/08 contra Google) y `makeGoogleClient` estaba escrito así:
+//
+//     if (getToken) { const ut = await userToken(); if (ut) return ut }   // ← y si no, sigue
+//     …                                                                   //   al Service Account
+//
+// El cliente decía ser de Jorge y ejecutaba como el robot. El chat contestó "Listo". Para el
+// dueño el evento no existe: es peor que un fallo, porque no se nota.
+test('un cliente PERSONAL con el OAuth vencido NO ejecuta como el robot: falla y lo dice', async () => {
+  const { makeGoogleClient } = await import('./google.mjs')
+  const llamadas = []
+  const g = makeGoogleClient({
+    config: CONFIG,
+    scopes: [],
+    soloUsuario: true,                       // "esta cuenta es de una persona": sin ella, no hay evento
+    getToken: async () => null,              // OAuth vencido/revocado: no hay token de la persona
+    auth: { getAccessToken: async () => 'token-del-robot' },
+    fetchImpl: async (url, opts) => {
+      llamadas.push({ url, autorizacion: opts?.headers?.Authorization })
+      return { ok: true, status: 200, json: async () => ({ id: 'ev-en-el-calendario-del-robot' }) }
+    },
+  })
+  await assert.rejects(
+    () => g.calendarCreateEvent({ summary: 'Reu Alonso Construcciones', start: '2026-08-04T15:00:00-03:00', end: '2026-08-04T16:00:00-03:00' }),
+    /Google/i,
+    'creó el evento igual: cayó a la cuenta de servicio en silencio',
+  )
+  assert.deepEqual(llamadas, [], 'salió una llamada a Google con la credencial del robot')
+})
+
+test('sin soloUsuario nada cambia: el pipeline de Sheets sigue cayendo al Service Account', async () => {
+  const { makeGoogleClient } = await import('./google.mjs')
+  let autorizacion = null
+  const g = makeGoogleClient({
+    config: CONFIG,
+    scopes: [],
+    getToken: async () => null,
+    auth: { getAccessToken: async () => 'token-del-robot' },
+    fetchImpl: async (url, opts) => { autorizacion = opts?.headers?.Authorization; return { ok: true, status: 200, json: async () => ({ id: 'x' }) } },
+  })
+  await g.calendarCreateEvent({ summary: 'x', start: '2026-08-04T15:00:00-03:00', end: '2026-08-04T16:00:00-03:00' })
+  assert.equal(autorizacion, 'Bearer token-del-robot', 'el comportamiento histórico no se tocó')
+})
+
 // ── Lo que se escribe en un log ──────────────────────────────────────────────
 
 test('describirIdentidad() no filtra el email de la cuenta de servicio ni ningún token', () => {

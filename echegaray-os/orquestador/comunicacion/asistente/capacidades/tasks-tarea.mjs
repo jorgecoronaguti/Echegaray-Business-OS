@@ -16,7 +16,7 @@ import {
 } from '../contratos.mjs'
 import { paredAR, formatearAR } from '../tiempo.mjs'
 import {
-  clasificarErrorGoogle, googlePropioDisponible, motivoGooglePropio, permiteEfectoExterno, errorSinCuenta, errorCuentaAjena,
+  clasificarErrorGoogle, googlePropioDisponible, motivoGooglePropio, puedeEscribirAgenda, errorSinCuenta, errorCuentaAjena,
 } from '../google-cliente.mjs'
 
 const LISTA_DEFECTO = '@default'
@@ -87,7 +87,9 @@ export const capacidad = {
     }
     const { titulo, notas, vence, lista } = p.data
     if (!ctx.google) return resultadoError(CAPACIDAD.TASKS_TAREA_CREAR, errorSinCuenta())
-    if (!permiteEfectoExterno(ctx.google)) {
+    // La lista de tareas es de su dueño, igual que la agenda: tiene que constar que la
+    // cuenta es la de quien pide. Un cliente sin marca puede ser el del robot.
+    if (!puedeEscribirAgenda(ctx.google)) {
       return resultadoError(CAPACIDAD.TASKS_TAREA_CREAR, errorCuentaAjena(ctx.google))
     }
     const v = diaAR(vence)
