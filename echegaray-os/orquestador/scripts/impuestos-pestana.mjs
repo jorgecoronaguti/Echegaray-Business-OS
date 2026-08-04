@@ -24,6 +24,7 @@ import { posicionIvaCompleta } from '../lib/posicion-iva.mjs'
 import {
   anclaDeProyeccion, aNumero, formulaDebitoProyectado, formulaCreditoProyectado,
   formulaAPagarProyectado, formulaLibreDispProyectada, supuestoDelMes, RANGO_ALICUOTA_IVA,
+  proyectarLibreDisponibilidad, mesEnQueSeAgota, filasReferenciadas, contratoDeFilas,
 } from '../lib/iva-libre-disponibilidad.mjs'
 import { publicar as publicarNombres } from '../lib/rangos-nombrados.mjs'
 import { clasificar, mes as mesDe, COLUMNAS } from '../lib/retenciones-sufridas.mjs'
@@ -204,6 +205,52 @@ export function ubicarLineas(colA = [], rotulos = []) {
       + 'Sin ellas la proyección de IVA saldría $0 — no escribo una referencia muerta.')
   }
   return filas.map((f) => f.fila)
+}
+
+/**
+ * NINGUNA BASE PUEDE LLEVAR UN TOTAL Y UNO DE SUS COMPONENTES A LA VEZ.
+ *
+ * POR QUÉ EXISTE (04/08). El cuadro está armado con totales sin sangría y componentes indentados
+ * debajo: la fila 6 es "Cobros por ventas y servicios" y las 7·8·9 son su desglose; la 10 es
+ * "Cobranzas esperadas" y las 11·12·13 el suyo. Sumar un total Y uno de sus hijos cuenta esa plata
+ * dos veces, y el resultado NO se delata: no hay #ERROR, no hay negativo imposible, sólo un impuesto
+ * más grande. Sobre agosto, la fila 10 ($151.317.518) más su componente 11 daría $302,6M de base y
+ * $52,5M de débito donde corresponden $29,8M — un cuadro que le reserva a la empresa el doble de
+ * plata para el fisco, con la firma de quien lo aplicó.
+ *
+ * Hoy la base no solapa (débito 6+10, dos totales sin parentesco; crédito 24+25+29+30, cuatro
+ * componentes hermanos). Esto no arregla un defecto vivo: impide que aparezca cuando alguien agregue
+ * una línea a LINEAS_DEBITO o LINEAS_CREDITO sin mirar la jerarquía.
+ *
+ * EL PARENTESCO SE LEE DE LA SANGRÍA, que es como el cuadro lo expresa: un rótulo indentado pertenece
+ * al último rótulo sin indentar que tiene arriba.
+ * @param {Array} colA la columna A del cash flow
+ * @param {number[]} filas las filas elegidas (1-indexadas)
+ * @returns {number[]} las mismas filas si no solapan; si solapan, rompe
+ */
+export function sinSolapamiento(colA = [], filas = []) {
+  const texto = (f) => String(colA[f - 1]?.[0] ?? '')
+  const esComponente = (f) => /^\s{2,}/.test(texto(f))
+  /** El total del que cuelga una fila: el primer rótulo sin sangría hacia arriba. */
+  const padreDe = (f) => {
+    if (!esComponente(f)) return null
+    for (let i = f - 1; i >= 1; i--) if (texto(i).trim() && !esComponente(i)) return i
+    return null
+  }
+  const elegidas = new Set(filas)
+  const choques = []
+  for (const f of filas) {
+    const p = padreDe(f)
+    if (p && elegidas.has(p)) {
+      choques.push(`la fila ${f} ("${texto(f).trim()}") es COMPONENTE de la ${p} ("${texto(p).trim()}")`)
+    }
+  }
+  if (choques.length) {
+    throw new Error('impuestos-pestana: doble conteo en la base de la proyección de IVA — '
+      + `${choques.join(' · ')}. Sumar un total y uno de sus componentes cuenta esa plata dos veces `
+      + 'y el resultado sigue pareciendo un importe razonable. Elegí el total O sus componentes, nunca los dos.')
+  }
+  return filas
 }
 
 // "ESTA CELDA NO ES MÍA: NO LA TOQUES."
@@ -770,9 +817,24 @@ async function planDeProyeccionIva(google, ivaOficial) {
   // Tampoco lleva .catch, y por el mismo motivo: con [] las dos llamadas a ubicarLineas romperían
   // igual, pero con un mensaje que culparía al cash flow de haber perdido sus rótulos en vez de
   // decir que no se pudo leer. El error tiene que nombrar lo que pasó.
-  const colA = await google.readSheetValues(ID, `'${CF}'!A1:A80`)
-  const filasDebito = ubicarLineas(colA, LINEAS_DEBITO)
-  const filasCredito = ubicarLineas(colA, LINEAS_CREDITO)
+  // SE LEE LA GRILLA ENTERA, NO SÓLO LA COLUMNA A. Con los rótulos alcanzaba para ubicar las filas,
+  // pero no para MOSTRAR de qué números sale el impuesto — y un importe fiscal que no se puede
+  // rehacer a mano no se puede firmar. Con los valores acá, el --dry imprime la celda, su rótulo y
+  // su importe al lado del resultado.
+  const cf = await google.readSheetValues(ID, `'${CF}'!A1:N80`)
+  const filasDebito = sinSolapamiento(cf, ubicarLineas(cf, LINEAS_DEBITO))
+  const filasCredito = sinSolapamiento(cf, ubicarLineas(cf, LINEAS_CREDITO))
+  // LA BASE, CELDA POR CELDA. Es el insumo del cálculo, y se guarda para poder exhibirlo.
+  const base = (fs, m) => fs.map((f) => ({
+    celda: `${cmes(m)}${f}`,
+    fila: f,
+    rotulo: String(cf[f - 1]?.[0] ?? '').trim(),
+    valor: aNumero(cf[f - 1]?.[m]) ?? 0,
+  }))
+  const bases = Object.fromEntries(mesesAProyectar.map((m) => [m, {
+    debito: base(filasDebito, m),
+    credito: base(filasCredito, m),
+  }]))
   return {
     meses: mesesAProyectar,
     ultimoMesConDato,
@@ -780,23 +842,95 @@ async function planDeProyeccionIva(google, ivaOficial) {
     alicuotaVigente,
     filasDebito,
     filasCredito,
+    bases,
     supuesto: supuestoDelMes({ cobranzas: LINEAS_DEBITO, compras: LINEAS_CREDITO })
       + ` Arranca del saldo a favor de ${MES[(ultimoMesConDato ?? 1) - 1]} ($${Math.round(libreDisp ?? 0).toLocaleString('es-AR')}).`
       + ' Es un CÁLCULO, no un hecho: el débito fiscal de una obra se devenga con el certificado aprobado, que puede caer antes que el cobro.',
   }
 }
 
-/** Qué va a escribir la proyección, ANTES de escribirla. Es lo que se mira en --dry. */
+/**
+ * QUÉ VA A ESCRIBIR LA PROYECCIÓN, CON EL INSUMO AL LADO DEL RESULTADO.
+ *
+ * POR QUÉ ASÍ (04/08). La primera versión imprimía la definición ("débito ← filas 6+10") pero NINGÚN
+ * número, y justo arriba el bloque de control de ARCA imprimía "débito … crédito … a pagar …" sin
+ * decir que era otra cosa. Quien revisó leyó los números del control como si fueran los de la
+ * proyección, vio $52,2M donde la definición daba $29,8M, y frenó la aplicación — con razón: un
+ * importe fiscal que no reproduce su propia definición no se puede firmar.
+ *
+ * El defecto no era el cálculo (se verificó: 20.135.520 + 151.317.518 = 171.453.038, × 0,21/1,21 =
+ * 29.756.312, exacto). El defecto era la SALIDA: publicaba una conclusión ajena y no el insumo
+ * propio. Así que ahora se imprime la cuenta entera —celda, rótulo, importe, suma, factor— para que
+ * cualquiera la rehaga a mano con la calculadora y el archivo abierto.
+ *
+ * Y SE IMPRIME EL RESULTADO CALCULADO ACÁ, no sólo las fórmulas que van a la celda. Es un control
+ * cruzado real: si el núcleo puro y la fórmula del Sheet dejaran de coincidir, la diferencia se ve.
+ */
 function informarProyeccion(proy) {
   if (!proy?.meses?.length) {
     console.log(`  IVA: nada que proyectar (último mes con dato: ${proy?.ultimoMesConDato ?? 'ninguno'})`)
     return
   }
-  console.log(`  IVA proyectado: ${MES[proy.meses[0] - 1]}→${MES[proy.meses[proy.meses.length - 1] - 1]}`
-    + ` · ancla ${MES[proy.ultimoMesConDato - 1]} con $${Math.round(proy.libreDisp ?? 0).toLocaleString('es-AR')} de libre disponibilidad`
-    + ` · alícuota ${proy.alicuotaVigente === null ? '0,21 (se siembra la celda por primera vez)' : proy.alicuotaVigente}`)
-  console.log(`  débito ← '${CF}' filas ${proy.filasDebito.join('+')} · crédito ← filas ${proy.filasCredito.join('+')}`)
+  const alic = proy.alicuotaVigente ?? 0.21
+  const money = (n) => Math.round(n).toLocaleString('es-AR')
+  console.log(`\n  ══ PROYECCIÓN DE IVA — lo que se va a escribir en "${PESTAÑA}" ══`)
+  console.log(`  ancla: ${MES[proy.ultimoMesConDato - 1]} con $${money(proy.libreDisp ?? 0)} de libre disponibilidad`)
+  console.log(`  alícuota: ${alic}${proy.alicuotaVigente === null ? ' (la celda todavía no existe: se siembra)' : ` (de ${PESTAÑA}, rango ${RANGO_ALICUOTA_IVA})`}`
+    + ` · el IVA se extrae del bruto con a/(1+a) = ${(alic / (1 + alic)).toFixed(9)}`)
+
+  const futuros = proy.meses.map((m) => ({
+    periodo: `2026-${String(m).padStart(2, '0')}`,
+    base_debito: proy.bases[m].debito.reduce((s, b) => s + b.valor, 0),
+    base_credito: proy.bases[m].credito.reduce((s, b) => s + b.valor, 0),
+    supuesto: proy.supuesto,
+  }))
+  const calc = proyectarLibreDisponibilidad(
+    [{ periodo: `2026-${String(proy.ultimoMesConDato).padStart(2, '0')}`, libre_disp: proy.libreDisp ?? 0 }],
+    futuros, alic)
+
+  for (const m of proy.meses) {
+    console.log(`\n  ── ${MES[m - 1]}-26 ────────────────────────────────────────────────────`)
+    for (const lado of ['debito', 'credito']) {
+      let suma = 0
+      for (const b of proy.bases[m][lado]) {
+        suma += b.valor
+        console.log(`    ${lado === 'debito' ? 'DÉB' : 'CRÉ'}  '${CF}'!${b.celda.padEnd(5)} ${b.rotulo.slice(0, 46).padEnd(48)} ${money(b.valor).padStart(15)}`)
+      }
+      console.log(`         ${''.padEnd(6)} ${'BASE (suma de las de arriba)'.padEnd(48)} ${money(suma).padStart(15)}`)
+      console.log(`         ${''.padEnd(6)} ${`× ${alic}/(1+${alic}) =`.padEnd(48)} ${money(suma * alic / (1 + alic)).padStart(15)}`)
+    }
+    const r = calc.find((x) => x.periodo === `2026-${String(m).padStart(2, '0')}`)
+    console.log(`    ⇒ IVA A PAGAR EN EFECTIVO${''.padEnd(35)} ${money(r.a_pagar_efectivo).padStart(15)}`)
+    console.log(`      libre disponibilidad que queda${''.padEnd(29)} ${money(r.libre_disp).padStart(15)}`)
+  }
+  const total = calc.reduce((s, x) => s + (x.a_pagar_efectivo || 0), 0)
+  const agota = mesEnQueSeAgota(calc)
+  console.log(`\n  TOTAL a pagar en efectivo: $${money(total)} · el saldo a favor se agota en ${agota ? MES[Number(agota.slice(5)) - 1] : 'ningún mes del horizonte'}`)
   console.log(`  supuesto: ${proy.supuesto}`)
+}
+
+/** Las dos pestañas que leen el calendario de impuestos por número de fila. */
+const CASH_FLOWS = ['Cash Flow Mensual', 'Cash Flow Semanal']
+
+/**
+ * ¿La fila donde va a quedar cada rótulo es la que los dos cash flow ya referencian?
+ * Devuelve {ok, motivo}. Si no se puede leer alguno de los cuadros, NO se degrada a "ok": no saber
+ * si el contrato se rompe es exactamente el caso en que no hay que escribir.
+ */
+async function verificarFilasEstables(google, g) {
+  const destino = {}
+  g.filas.forEach((f, i) => {
+    const r = String(f?.[0] ?? '').trim()
+    if (r === CALENDARIO_IMPUESTOS.rotulos.iva) destino.iva = i + 1
+    if (r === CALENDARIO_IMPUESTOS.rotulos.iibb) destino.iibb = i + 1
+  })
+  const formulas = []
+  for (const hoja of CASH_FLOWS) {
+    // Las fórmulas, no los valores: lo que importa es a qué fila apuntan.
+    const grid = await google.readSheetGrid(ID, `'${hoja}'!A1:BZ60`)
+    for (const fila of grid.filas || []) for (const c of fila || []) if (c?.formula) formulas.push(c.formula)
+  }
+  return contratoDeFilas(filasReferenciadas(formulas, PESTAÑA), destino)
 }
 
 async function main() {
@@ -833,13 +967,52 @@ async function main() {
   console.log(`  retenciones sufridas: ${Math.round(ret.total).toLocaleString('es-AR')} · IVA ${Math.round(ret.porRegimen.iva ?? 0).toLocaleString('es-AR')} · Ganancias ${Math.round(ret.porRegimen.ganancias ?? 0).toLocaleString('es-AR')} · IIBB ${Math.round(ret.porRegimen.iibb ?? 0).toLocaleString('es-AR')}`)
   console.log(`${PESTAÑA}: ${g.filas.length} filas · ${planes.length} planes · IVA de ${iva.filter((m) => m.disponible).length} meses reales`)
   if (DRY) {
+    // ═══ ESTE BLOQUE NO ES LO QUE SE ESCRIBE ═══
+    //
+    // Es la posición TÉCNICA calculada sobre los comprobantes de ARCA (posicion-iva.mjs), que se
+    // conserva como CONTROL INDEPENDIENTE de la DDJJ: si las dos mediciones se separan mucho, alguna
+    // está mal. Proyecta con otro método (el ritmo de los meses reales ajustado por inflación), así
+    // que sus números NO tienen por qué coincidir con los de la proyección de abajo.
+    //
+    // El rótulo es tan enfático porque su ausencia ya costó una revisión entera: se leyó el débito de
+    // agosto de ESTE bloque ($52,2M) como si fuera el de la proyección ($29,8M), y la aplicación se
+    // frenó por un doble conteo que no existía. Dos números distintos, uno al lado del otro y sin
+    // decir cuál es cuál, es una salida que miente aunque cada número sea correcto.
+    console.log('\n  ══ CONTROL (NO se escribe) — posición técnica sobre comprobantes de ARCA ══')
+    console.log('  Otro método y otra fuente que la proyección de más abajo: sirve para contrastar la')
+    console.log('  DDJJ, no para llenar el cuadro. Que no coincida con la proyección es lo esperado.')
     for (const m of iva.filter((x) => x.disponible || x.es_proyeccion)) {
-      console.log(`  ${m.periodo}  débito ${Math.round(m.debito_fiscal).toLocaleString('es-AR').padStart(12)}  crédito ${Math.round(m.credito_fiscal).toLocaleString('es-AR').padStart(12)}  a pagar ${Math.round(m.a_pagar_real ?? 0).toLocaleString('es-AR').padStart(12)}  saldo a favor ${Math.round(m.saldo_queda).toLocaleString('es-AR').padStart(12)}${m.es_proyeccion ? '  (proyección)' : ''}`)
+      console.log(`  [control] ${m.periodo}  débito ${Math.round(m.debito_fiscal).toLocaleString('es-AR').padStart(12)}  crédito ${Math.round(m.credito_fiscal).toLocaleString('es-AR').padStart(12)}  a pagar ${Math.round(m.a_pagar_real ?? 0).toLocaleString('es-AR').padStart(12)}  saldo a favor ${Math.round(m.saldo_queda).toLocaleString('es-AR').padStart(12)}${m.es_proyeccion ? '  (proyección técnica)' : ''}`)
     }
     for (const p of planes) console.log(`  ${p.nombre.padEnd(42)} ${p.cuotas} cuotas x ${p.monto_cuota.toLocaleString('es-AR')} = ${Math.round(p.total).toLocaleString('es-AR')}`)
     informarProyeccion(proy)
+    // EL CONTRATO DE FILAS TAMBIÉN SE RESPONDE EN --dry, y sin riesgo: es la pregunta de si al
+    // aplicar hay que regenerar además los dos cash flow (que rehacen la pestaña entera y pueden
+    // resucitar filas que el dueño borró a mano). Contestarla ANTES de escribir es justamente el
+    // punto: si acá dice que sí hace falta, todavía se está a tiempo de no escribir.
+    const est = await verificarFilasEstables(google, g)
+    console.log(`\n  ${est.ok ? '✓' : '✖'} contrato de filas con los cash flow: ${est.motivo}`)
+    if (est.ok) console.log('    ⇒ NO hace falta correr cash-flow-rehacer.mjs después de aplicar.')
     return
   }
+
+  // ═══ ANTES DE ESCRIBIR: ¿SIGUEN LOS DOS CASH FLOW LEYENDO LA FILA QUE CREEN LEER? ═══
+  //
+  // Los dos cuadros referencian esta pestaña por NÚMERO de fila, y ese número se resuelve por rótulo
+  // sólo cuando se los regenera. Si acá se mueve "IVA a pagar" o "IIBB a pagar", los cash flow
+  // empiezan a leer la fila de al lado sin dar error.
+  //
+  // La salida fácil sería exigir correr cash-flow-rehacer.mjs después, pero ese script rehace las dos
+  // pestañas ENTERAS y el dueño borró líneas a mano en las dos: se las resucitaría. Así que en vez de
+  // rehacer, se verifica — y si no da, NO SE ESCRIBE. Escribir es justo el momento en que se rompen.
+  const estable = await verificarFilasEstables(google, g)
+  if (!estable.ok) {
+    console.error(`✖ NO escribo ${PESTAÑA}: ${estable.motivo}`)
+    console.error('  Opciones: (1) dejar los rótulos donde estaban, o (2) regenerar los dos cash flow'
+      + ' a sabiendas de que rehacen la pestaña entera y pueden resucitar filas borradas a mano.')
+    process.exit(1)
+  }
+  console.log(`  ✓ contrato de filas con los cash flow: ${estable.motivo}`)
 
   // PRIMERO la réplica _IIBB_RAW: las fórmulas de la sección 2 la referencian, así que tiene que
   // existir con sus datos ANTES de escribir el cuadro que la lee.
