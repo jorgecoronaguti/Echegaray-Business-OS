@@ -70,6 +70,10 @@ export const COLOR = {
 
 /** Arial en todo el archivo. Sus dígitos son de ancho fijo, así que las columnas de importes se
  *  alinean solas entre filas sin necesidad de una segunda familia monoespaciada. */
+// La convención de número de un estado financiero tiene UNA definición en el repo. Acá se consume,
+// no se copia — ver el bloque de NUM más abajo.
+import { MONEDA_TOTAL } from './formato-statement.mjs'
+
 export const FUENTE = 'Arial'
 export const FUENTE_NUM = 'Arial'
 
@@ -96,13 +100,32 @@ export const ALTO = { titulo: 28, bloque: 24, fila: 21 }
  * como "$4" y "$2" y ningún test lo vio. Un formato que depende de cómo está escrito un rótulo se
  * rompe cada vez que se mejora la redacción, y en silencio.
  */
+// ═══ EL NEGATIVO VA ENTRE PARÉNTESIS, Y EL ROJO ES DEL CONTROL (04/08) ═══
+//
+// Los tres patrones de acá llevaban `[Red]-`: guion y rojo. Las dos cosas están mal, y la segunda es
+// la peor.
+//
+//   · EL GUION. La presentación que exigen AICPA y FASB bajo US GAAP —endosada por IFRS y pedida por
+//     la SEC en las presentaciones de sociedades— es el PARÉNTESIS. El motivo es de lectura antes que
+//     de norma: un guion chico se confunde con una marca de impresión o se pasa por alto, y leer mal
+//     un solo número tuerce todo el análisis.
+//   · EL ROJO. Con `[Red]` se pinta CUALQUIER negativo: una nota de crédito legítima, un neto de tramo
+//     que da menos que cero porque ese mes se paga más de lo que se cobra. Cuando todo puede ponerse
+//     rojo, el rojo deja de avisar. El único rojo de una pestaña es el de un control que no cierra
+//     (MONEDA_CONTROL, en formato-statement.mjs).
+//
+// El patrón no se reescribe acá: se toma de formato-statement.mjs, que es su única definición. Ver el
+// límite declarado: los importes del CUERPO siguen llevando "$" en esta capa (la convención de
+// statement lo reserva para la fila de total), y eso todavía no se separó en las pestañas que la usan.
 export const NUM = {
   // El tercer tramo del patrón: un cero se muestra como "—" y no como "$0", que invita a leerse
   // como un dato medido cuando casi siempre significa "acá no hay nada".
-  moneda: { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' },
-  monedaExacta: { type: 'CURRENCY', pattern: '"$"#,##0.00;[Red]-"$"#,##0.00;"—"' },
-  cantidad: { type: 'NUMBER', pattern: '#,##0;-#,##0;"—"' },
-  porcentaje: { type: 'PERCENT', pattern: '0.0%;[Red]-0.0%;"—"' },
+  moneda: { ...MONEDA_TOTAL },
+  monedaExacta: { type: 'CURRENCY', pattern: '"$"#,##0.00;("$"#,##0.00);"—"' },
+  cantidad: { type: 'NUMBER', pattern: '#,##0;(#,##0);"—"' },
+  // El separador decimal del PATRÓN se deja exactamente como estaba: es lo único de este bloque que
+  // no se está corrigiendo, y cambiarlo "de paso" es cómo se rompe un formato en silencio.
+  porcentaje: { type: 'PERCENT', pattern: '0.0%;(0.0%);"—"' },
   fecha: { type: 'DATE', pattern: 'dd/mm/yyyy' },
   mes: { type: 'DATE', pattern: 'mmm-yy' },
   dias: { type: 'NUMBER', pattern: '0" d";-0" d";"—"' },
