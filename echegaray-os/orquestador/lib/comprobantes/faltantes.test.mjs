@@ -27,7 +27,9 @@ const comprobante = (over = {}) => ({
   obra: 'MESSINA',
   ...over,
 })
-const item = ({ comprobante: over, ...resto } = {}) => ({ comprobante: comprobante(over), ...resto })
+// `leidoEn` fija el reloj contra el que se juzga la fecha (`plausibilidad.mjs`): sin él, estos
+// casos se medirían contra el de la máquina y empezarían a fallar solos con el paso del tiempo.
+const item = ({ comprobante: over, ...resto } = {}) => ({ comprobante: comprobante(over), leidoEn: '2026-08-04T10:00:00Z', ...resto })
 
 const codigos = (it, pol) => faltantesDe(it, pol).map((f) => f.codigo)
 

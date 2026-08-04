@@ -12,6 +12,10 @@ import { botonesFajo, aplicarOpcion } from './fajo.mjs'
 import { perfilesDeImputacion, sugerirImputacion } from '../imputacion-aprendida.mjs'
 
 const barcelo = ({ comprobante, ...over } = {}) => ({
+  // El reloj contra el que se juzga si la fecha del comprobante puede ser cierta. Va FIJO: sin él,
+  // este fixture se juzgaría contra el reloj de la máquina y el test empezaría a fallar solo cuando
+  // 31/07/2026 quede fuera de la ventana. Ver `plausibilidad.mjs`.
+  leidoEn: '2026-08-04T10:00:00Z',
   ...over,
   comprobante: {
     proveedor: 'Combustibles Barcelo',
