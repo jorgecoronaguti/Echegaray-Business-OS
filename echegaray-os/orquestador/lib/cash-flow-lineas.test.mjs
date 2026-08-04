@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   formulaInteresSemana, edicionesConContenidoReal,
   formulaComisionesMes, formulaComisionesSemana, expresionComisionesPromedio, COMISIONES,
-  formulaOficina, formulaLineaMes, CUADRO, expresionReal, verificarCuadro,
+  formulaOficina, formulaLineaMes, CUADRO, expresionReal, verificarCuadro, formulaCobranzas,
 } from './cash-flow-lineas.mjs'
 import { NAT } from './banco-santander.mjs'
 import { TASAS } from './costo-descubierto.mjs'
@@ -296,4 +296,53 @@ test('una línea de control NUNCA puede vivir en un grupo que suma', () => {
     memo.signo = original
   }
   assert.doesNotThrow(() => verificarCuadro(), 'el cuadro tiene que volver a estar sano')
+})
+
+// ═══ EL CUADRO PROYECTABA LO QUE SE PAGA Y NO LO QUE SE COBRA (04/08/2026) ═══
+//
+// Medido contra el archivo real: los egresos de ago–dic estaban proyectados y sumaban ($72–89M por
+// mes); las cobranzas esperadas del mismo período eran un memo con signo 0. Cierre de diciembre
+// −$254.274.052 contra +$169.646.277 haciéndolo simétrico: $423.920.329 de diferencia, y una empresa
+// sana leyéndose como una quiebra. El dueño: "me da todo en rojo y a pérdida cuando la empresa
+// demuestra lo contrario".
+
+test('LAS COBRANZAS ESPERADAS SUMAN AL FLUJO, igual que los egresos proyectados', () => {
+  const todos = JSON.parse(JSON.stringify(CUADRO))
+  const buscar = (n) => JSON.stringify(n).length && null
+  void buscar
+  const grupos = []
+  const recorrer = (x) => {
+    if (Array.isArray(x)) return x.forEach(recorrer)
+    if (x && typeof x === 'object') {
+      if (typeof x.nombre === 'string' && Array.isArray(x.lineas)) grupos.push(x)
+      Object.values(x).forEach(recorrer)
+    }
+  }
+  recorrer(todos)
+  const esperadas = grupos.find((g) => /cobranzas esperadas/i.test(g.nombre))
+  assert.ok(esperadas, 'no encontré el grupo de cobranzas esperadas en el cuadro')
+  assert.equal(esperadas.signo, 1, 'sigue siendo un memo: el cuadro proyecta el gasto y no el cobro')
+  assert.match(esperadas.nombre, /suma al flujo/, 'el rótulo tiene que decir lo que hace')
+})
+
+test('un cobro esperado NO suma hacia atrás: el pasado es un hecho, no una expectativa', () => {
+  const f = formulaCobranzas('civil', 'A1', 'B1', 'esperado')
+  assert.match(f, /EOMONTH\(TODAY\(\);-1\)\+1/,
+    'sin el corte, un cobro que se esperaba en julio y no entró inflaría un mes ya cerrado')
+  assert.match(f, /\(A1>=EOMONTH/, 'el corte tiene que mirar el INICIO de la ventana, no la fecha del cobro')
+})
+
+test('el cobro REAL no lleva corte: enero sigue mostrando lo que entró en enero', () => {
+  const f = formulaCobranzas('civil', 'A1', 'B1', 'cobrado')
+  assert.doesNotMatch(f, /EOMONTH\(TODAY\(\)/, 'el hecho verificable contra el banco no se recorta')
+  assert.match(f, /\(LOWER\(Cobranzas!\$O\$5:\$O\$400\)="cobrado"\)/)
+})
+
+test('esperado y cobrado son excluyentes: ninguna cobranza puede contarse dos veces', () => {
+  const cob = formulaCobranzas('civil', 'A1', 'B1', 'cobrado')
+  const esp = formulaCobranzas('civil', 'A1', 'B1', 'esperado')
+  assert.match(cob, /="cobrado"/)
+  assert.match(esp, /<>"cobrado"/)
+  // Y ninguno de los dos toma un valor endosado: esa plata se entregó a un tercero.
+  for (const f of [cob, esp]) assert.match(f, /ENDOSADO/)
 })

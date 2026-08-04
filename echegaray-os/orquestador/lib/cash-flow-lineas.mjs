@@ -509,6 +509,10 @@ export const FIN_COB = 400
 export const COL_VALOR_BANCO = `$BB$5:$BB$${FIN_COB}`
 export const MARCA_ENDOSADO = 'ENDOSADO'
 
+/** El primer día del mes en curso, como fórmula. Es la línea que separa lo que YA PASÓ —donde sólo
+ *  vale lo cobrado de verdad— de lo que viene, donde las dos puntas son proyección. */
+export const INICIO_MES_ACTUAL = 'EOMONTH(TODAY();-1)+1'
+
 export function formulaCobranzas(tipo, desde, hasta, modo = 'cobrado') {
   const C = 'Cobranzas'
   const F = FIN_COB
@@ -537,7 +541,20 @@ export function formulaCobranzas(tipo, desde, hasta, modo = 'cobrado') {
   const estado = modo === 'esperado'
     ? `(${est}<>"cobrado")*(${est}<>"endosado")`
     : `(${est}="cobrado")`
-  return `=SUMPRODUCT(${filtro}*${noEndosado}*${estado}*(${fecha}>=${desde})*(${fecha}<${hasta})*${monto})`
+
+  // ═══ UN COBRO ESPERADO SÓLO CUENTA DE ESTE MES EN ADELANTE (04/08/2026) ═══
+  //
+  // El cuadro proyectaba los EGRESOS hacia adelante —jornales, cargas, impuestos, materiales— y NO
+  // los ingresos: el bloque de cobranzas esperadas era un memo que no sumaba. Medido: el cierre de
+  // diciembre daba −$254.274.052 cuando contando lo esperado da +$169.646.277. $423.920.329 de
+  // diferencia, y una empresa sana leyéndose como una quiebra.
+  //
+  // Ahora suma, pero NO hacia atrás. Un cobro que se esperaba en julio y no entró no es plata: es un
+  // atraso. Si sumara en su mes, el pasado dejaría de ser un hecho y el cuadro mentiría justo donde
+  // se lo puede verificar contra el banco. Por eso la ventana tiene que empezar en el mes en curso
+  // o después; para los meses cerrados la línea da cero y el atraso se ve en su propia fila.
+  const soloDeAcaEnAdelante = modo === 'esperado' ? `*(${desde}>=${INICIO_MES_ACTUAL})` : ''
+  return `=SUMPRODUCT(${filtro}*${noEndosado}*${estado}*(${fecha}>=${desde})*(${fecha}<${hasta})*${monto})${soloDeAcaEnAdelante}`
 }
 
 // ── LA COBERTURA DEL LADO DEL INGRESO (Cobranzas) ─────────────────────────────────────────────────
@@ -694,11 +711,17 @@ export const CUADRO = [
         ],
       },
       {
-        // MEMO, NO CAJA — signo 0: se muestra al lado del cobro real para poder planificar, pero NO
-        // suma al flujo neto (decisión del dueño 28/07: percibido y proyectado separados, sin
-        // mezclar). Son cobros ESPERADOS —Pendiente/Proyectado/Facturado/Vencido, nunca Endosado—
-        // ubicados en su fecha de cobro (o de venta si aún no tienen fecha de cobro).
-        nombre: 'Cobranzas esperadas — aún no cobradas (proyección, no suma al flujo)', signo: 0,
+        // ═══ SUMA AL FLUJO, DE ESTE MES EN ADELANTE (04/08/2026) ═══
+        //
+        // Era un memo con signo 0. La decisión del 28/07 —percibido y proyectado separados— se aplicó
+        // sólo a los ingresos: los EGRESOS de los meses que vienen (jornales, cargas sociales,
+        // impuestos, materiales) sí sumaban, y son igual de proyectados. Un cuadro que proyecta lo
+        // que se paga y no lo que se cobra no está siendo prudente: está mal. Daba −$254.274.052 a
+        // diciembre contra +$169.646.277 haciéndolo simétrico.
+        //
+        // El pasado no se toca: para los meses cerrados esta línea da cero (ver formulaCobranzas),
+        // así que enero-julio siguen siendo el hecho verificable contra el banco.
+        nombre: 'Cobranzas esperadas — de este mes en adelante (proyección, suma al flujo)', signo: 1,
         lineas: [
           { nombre: 'Esperado · obra civil', cobranzas: 'civil', modo: 'esperado', detalle: 'Cobranzas' },
           { nombre: 'Esperado · mantenimiento', cobranzas: 'mantenimiento', modo: 'esperado', detalle: 'Cobranzas' },
