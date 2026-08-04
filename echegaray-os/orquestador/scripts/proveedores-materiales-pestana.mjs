@@ -73,7 +73,8 @@ import { FAMILIAS, SIN_FAMILIA, formulaFamilia, familiaDeMaterial, RUBROS_CON_FA
 import { NOMBRES } from '../lib/sheet-pestanas.mjs'
 import { partir, filasHuerfanas, referenciasFuera, ref as refPestana } from '../lib/partir-pestana.mjs'
 import { anchosSegunContenido } from '../lib/nota-celda.mjs'
-import { fusionar, sobrantes, VACIO, rellenoDeCola } from '../lib/preservar-anotaciones.mjs'
+import { fusionar, sobrantes, VACIO, rellenoDeCola, estructural } from '../lib/preservar-anotaciones.mjs'
+import { obrasConMateriales } from '../lib/obras-con-materiales.mjs'
 import { conEdicionesRespetadas, guardarRegistro, detectarArranqueEnFrio, autoRespetarReescritura, leerRegistro, esRotulo } from '../lib/respetar-ediciones.mjs'
 // El respaldo de las notas por proveedor: sobrevive a que la lista de deuda cambie. Ver lib/proveedor-notas.mjs.
 import { claveProv, conciliarNotas, leerNotas, guardarNotas, borrarNotas, marcarEscritas, yaEscritas } from '../lib/proveedor-notas.mjs'
@@ -278,19 +279,12 @@ export function anchoBloque(cols = [], previo = []) {
   return Math.max((cols || []).length, anchoPrevio)
 }
 
-/**
- * LIMPIA EL FOOTPRINT DE UNA FILA ESTRUCTURAL — la que el generador es dueño de punta a punta
- * (los TOTALES y el encabezado/conteos de ARCA). En esas filas una celda vacía es SUYA y va vacía:
- * se marca cada '' con el centinela VACIO para que la FUSIÓN la BORRE de verdad, en vez de dejar ''
- * —que la fusión preserva— y así revivir el fantasma de una versión más ancha (seriales de fecha
- * pintados como moneda "$46.162", rótulos viejos "Fecha correcta"/"Tipo"/"Factura A" en las columnas
- * D–I). Sólo toca los '': un valor —o una NOTA legítima del generador, como la conciliación en la
- * col I de los cruces ARCA— es no-vacío y queda intacto. NO se usa en filas de detalle ni en el
- * bloque de deuda: ahí puede haber notas del dueño, preservadas por otra vía (celdas()/VACIO +
- * notasAncladas). El resto del footprint —más allá del ancho de cada fila— ya lo limpia el relleno
- * con VACIO al partir la pestaña (cuadroP).
- */
-export const estructural = (arr = []) => arr.map((c) => (c === '' ? VACIO : c))
+// LIMPIA EL FOOTPRINT DE UNA FILA ESTRUCTURAL — la que el generador es dueño de punta a punta (los
+// TOTALES y el encabezado/conteos de ARCA). Nació acá, pero el mismo defecto estaba sin curar en
+// Recurrentes y en Estructura, así que la definición se mudó a `lib/preservar-anotaciones.mjs` —donde
+// vive el centinela— y las tres pestañas usan una sola. Se re-exporta porque el test de este script la
+// importa de acá.
+export { estructural }
 
 export function layoutDeuda(headers) {
   const H = (headers || []).map((h) => String(h ?? '').trim())
@@ -789,7 +783,11 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, not
 
   // ── 4 · FAMILIA × OBRA ──────────────────────────────────────────────────────────────────────────
   const b4 = push([`${nSeccion('obra', SECCIONES_MATERIALES)} · POR OBRA`])
-  const cabObra = push(['Familia', ...obras, 'Total', 'Control (tiene que dar $0)'])
+  // "Sin obra" y no "Control (tiene que dar $0)": el rótulo largo no entraba en su columna y se leía
+  // cortado a la mitad ("Control (tiene que "), y encima decía CÓMO se calcula en vez de QUÉ es. Lo
+  // que la columna mide es la plata de esa familia que no tiene obra imputada. Que tenga que dar cero
+  // lo dice el formato, que la pinta en rojo apenas deja de darlo.
+  const cabObra = push(['Familia', ...obras, 'Total', 'Sin obra'])
   const obra0 = filas.length + 1
   for (const n of [...nombres, SIN_FAMILIA]) {
     const f = filas.length + 1
@@ -797,7 +795,9 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, not
       n === SIN_FAMILIA ? `${SIN_FAMILIA} — falta describir qué se compró` : n,
       ...obras.map((_, i) => `=SUMIFS(${COL_TOTAL};${COL_FAMILIA};LEFT($A${f};${n.length});${COL_OBRA};${letra(i + 1)}$${cabObra})`),
       `=SUM(${letra(1)}${f}:${letra(obras.length)}${f})`,
-      `=SUMIF(${COL_FAMILIA};LEFT($A${f};${n.length});${COL_TOTAL})-${letra(obras.length + 1)}${f}`,
+      // ROUND A PESO. Sin él la misma columna mostraba "$0", "-$0" y "—" para tres ceros idénticos —y
+      // uno de los tres en rojo—, porque el SUMIF y la suma por obra difieren en fracciones de centavo.
+      `=ROUND(SUMIF(${COL_FAMILIA};LEFT($A${f};${n.length});${COL_TOTAL})-${letra(obras.length + 1)}${f};0)`,
     ])
   }
   const obra1 = filas.length
@@ -1240,10 +1240,16 @@ async function main() {
   // VIVA sobre Compras, y la cabecera se gatea con predicadoConDeuda para que el proveedor que se paga
   // desaparezca solo. Los grupos salen de deudaAgrupada, calculado más abajo.
 
-  // Los nombres de obra son EXACTOS a como están en Compras (col J): "MESSINA", no "MESSINAS" —el
-  // dueño lo marcó, esa columna salía vacía—. SUMIFS es insensible a mayúsculas, así que "Taller"
-  // captura también "TALLER".
-  const obras = ['LA ESTRELLA', 'San Francisco', 'MESSINA', 'ARCOR', 'Administracion', 'Almacen', 'Taller', 'SAINT GOBAIN']
+  // ═══ LA LISTA DE OBRAS SALE DE LOS DATOS (04/08) ═══
+  //
+  // Estaba escrita a mano acá, y por eso un cliente nuevo no aparecía NUNCA solo: entró Quattropani ·
+  // Melisa García SAS con $32.937.000 y el desglose por obra siguió mostrando las mismas ocho
+  // columnas de siempre, $32.937.000 por debajo del total por familia de la sección de arriba. Ahora
+  // se deriva de "Cliente / Asignación" filtrando por rubro de material — ver lib/obras-con-materiales.
+  // Los nombres van EXACTOS a como están en Compras ("MESSINA", no "MESSINAS"): son el criterio
+  // literal del SUMIFS.
+  const obras = obrasConMateriales(compras, { rubros: RUBROS_CON_FAMILIA, monto: parseMonto, colObra: IDX.obra, colRubro: IDX.rubro, colTotal: IDX.total })
+  console.log(`  obras con materiales imputados (de los datos, por monto): ${obras.join(' · ')}`)
   // LO QUE EDITÓ LA PERSONA MANDA: se leen los encabezados reales del bloque de deuda para escribir
   // cada dato en la columna que el dueño rotuló, y para no pisar las que él agregó (Comentarios).
   let deudaCols = null

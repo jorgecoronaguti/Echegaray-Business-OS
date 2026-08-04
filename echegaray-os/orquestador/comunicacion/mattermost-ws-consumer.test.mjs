@@ -6,7 +6,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  parsearPosted, esRelevante, mapearAPayload, Deduplicador, crearConsumidorWS,
+  parsearPosted, esRelevante, mapearAPayload, Deduplicador, crearConsumidorWS, AREAS_DE_ADJUNTOS,
 } from './mattermost-ws-consumer.mjs'
 import {
   CommunicationService, RepositorioMemoria, MattermostAdapter, FakeMattermost,
@@ -337,5 +337,10 @@ test('el binding se relee por minuto, no por mensaje', async () => {
     canalesAdjuntos: new Set(['compras']),
   })
   for (let i = 0; i < 5; i++) await c.manejarMensaje(posted({ id: `m${i}` }))
-  assert.equal(port.veces, 1, 'una sola consulta al binding para cinco mensajes')
+  // UNA RELECTURA, NO CINCO. La relectura consulta el binding UNA VEZ POR ÁREA de adjuntos, así que
+  // el número esperado sale de esa lista y no de una constante escrita a mano: cuando se sumó
+  // `administracion_finanzas` (04/08), un `1` fijo se ponía rojo por el motivo equivocado — el
+  // invariante que importa es que no se consulte POR MENSAJE.
+  assert.equal(port.veces, AREAS_DE_ADJUNTOS.length,
+    `una sola relectura del binding para cinco mensajes (${AREAS_DE_ADJUNTOS.length} consulta(s): una por área)`)
 })

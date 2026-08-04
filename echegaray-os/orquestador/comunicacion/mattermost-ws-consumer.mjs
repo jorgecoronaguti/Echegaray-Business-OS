@@ -77,10 +77,19 @@ export function canalesDeAdjuntos(env = process.env) {
 }
 
 /**
- * ÁREAS CUYOS CANALES INGRESAN POR ADJUNTO. Hoy una sola: mandar una foto al canal de comprobantes
- * ES el pedido de carga. Sumar otra es agregar una clave acá y atar el canal en el binding.
+ * ÁREAS CUYOS CANALES INGRESAN POR ADJUNTO. Mandar el archivo ES el pedido: exigir "@os" además de
+ * soltarlo convertiría lo natural en un trámite. Sumar un área es agregar una clave acá y atar el
+ * canal en el binding.
+ *
+ *   · `compras`                 → la foto de la factura al canal de comprobantes (03/08).
+ *   · `administracion_finanzas` → el CSV/Excel del extracto al canal de Admin y Finanzas (04/08).
+ *
+ * LA SEGUNDA ES EL PEDIDO DEL 04/08 («que reciba cualquier tipo de archivo por acá») y no afloja
+ * nada: entrar al prefiltro sólo cuesta un evento. Leer y previsualizar un archivo no cambia un solo
+ * dato de la empresa, y lo único que escribe —importar movimientos— vuelve a preguntarle al binding
+ * y al permiso en `archivos/guarda.mjs`, y encima exige que una persona apriete un botón.
  */
-export const AREAS_DE_ADJUNTOS = Object.freeze(['compras'])
+export const AREAS_DE_ADJUNTOS = Object.freeze(['compras', 'administracion_finanzas'])
 
 /**
  * LA LISTA DE CANALES DE INGESTA SALE DEL BINDING, no de una lista escrita a mano.

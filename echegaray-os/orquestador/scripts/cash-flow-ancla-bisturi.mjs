@@ -55,9 +55,21 @@ async function unaPestaña(google, meta, { nombre, hasta }) {
     throw new Error(`${nombre}: debajo del inicio no está el cierre; la pestaña cambió de forma`)
   }
 
-  const cabeceras = (await google.readSheetValues(ID, `${nombre}!A${FILA_CAB}:BZ${FILA_CAB}`, { render: 'FORMATTED_VALUE' }))?.[0] ?? []
-  const nCols = cabeceras.filter((c, i) => i > 0 && String(c ?? '').trim()).length
-  if (nCols < 2) throw new Error(`${nombre}: sólo ${nCols} columna(s) de período`)
+  // ═══ UNA COLUMNA DE PERÍODO ES LA QUE TIENE UNA FECHA EN EL ENCABEZADO ═══
+  //
+  // Contarlas como "las que tienen algo" metió adentro a "Total 2026" y a "Nota", que son texto.
+  // `EOMONTH("Total 2026";0)` da #VALUE!, y así quedaron tres celdas rotas en la mensual y dos en
+  // la semanal. El encabezado de un período es una FECHA —Sheets la guarda como número— y ese es
+  // el único criterio que no confunde una columna de datos con una de cierre.
+  const cabeceras = (await google.readSheetValues(ID, `${nombre}!A${FILA_CAB}:BZ${FILA_CAB}`, { render: 'UNFORMATTED_VALUE' }))?.[0] ?? []
+  const esPeriodo = (i) => i > 0 && typeof cabeceras[i] === 'number' && cabeceras[i] > 0
+  let nCols = 0
+  while (esPeriodo(nCols + 1)) nCols++
+  // Las que quedan a la derecha llevan texto y NO son períodos: se limpian, no se calculan.
+  const extras = cabeceras.slice(nCols + 1)
+    .map((c, k) => ({ col: nCols + 1 + k, rotulo: String(c ?? '').trim() }))
+    .filter((x) => x.rotulo)
+  if (nCols < 2) throw new Error(`${nombre}: sólo ${nCols} columna(s) con fecha en el encabezado`)
 
   const nuevas = Array.from({ length: nCols }, (_, i) => expresionInicio({
     desde: `${letra(i + 1)}$${FILA_CAB}`,
@@ -69,15 +81,26 @@ async function unaPestaña(google, meta, { nombre, hasta }) {
   const viejas = (formulas[iInicio] ?? []).slice(1, nCols + 1).map((c) => String(c ?? ''))
   const cambian = nuevas.filter((f, i) => f !== viejas[i]).length
 
-  console.log(`\n═══ ${nombre} · fila ${filaInicio} · ${nCols} columnas · ${cambian} fórmula(s) cambian`)
+  console.log(`\n═══ ${nombre} · fila ${filaInicio} · ${nCols} columnas de período · ${cambian} fórmula(s) cambian`)
   console.log(`  antes  ${viejas[8] ?? viejas[0]}`)
   console.log(`  ahora  ${nuevas[8] ?? nuevas[0]}`)
+  if (extras.length) {
+    console.log(`  ${extras.length} columna(s) que NO son período y se dejan vacías en esta fila: `
+      + extras.map((e) => `${letra(e.col)} "${e.rotulo}"`).join(' · '))
+  }
   if (!APLICAR) return
 
-  await google.spreadsheetBatchUpdate(ID, [{ updateCells: {
-    range: { sheetId: hoja.sheetId, startRowIndex: filaInicio - 1, endRowIndex: filaInicio, startColumnIndex: 1, endColumnIndex: nCols + 1 },
-    rows: [{ values: nuevas.map((f) => ({ userEnteredValue: { formulaValue: f } })) }],
-    fields: 'userEnteredValue' } }], { espejo: true })
+  await google.spreadsheetBatchUpdate(ID, [
+    { updateCells: {
+      range: { sheetId: hoja.sheetId, startRowIndex: filaInicio - 1, endRowIndex: filaInicio, startColumnIndex: 1, endColumnIndex: nCols + 1 },
+      rows: [{ values: nuevas.map((f) => ({ userEnteredValue: { formulaValue: f } })) }],
+      fields: 'userEnteredValue' } },
+    // Un saldo de APERTURA no tiene total anual: el número del año es el cierre, que ya está en la
+    // fila de abajo. Vacío dice "no aplica", y es la verdad; una fórmula ahí sólo puede dar #VALUE!.
+    ...extras.map((e) => ({ updateCells: {
+      range: { sheetId: hoja.sheetId, startRowIndex: filaInicio - 1, endRowIndex: filaInicio, startColumnIndex: e.col, endColumnIndex: e.col + 1 },
+      rows: [{ values: [{ userEnteredValue: null }] }], fields: 'userEnteredValue' } })),
+  ], { espejo: true })
 
   // ── LA EVIDENCIA: la cadena releída del archivo, verificada con un criterio que no es el suyo.
   const vals = await google.readSheetValues(ID, `${nombre}!A${filaNeto}:BZ${filaCierre}`, { render: 'UNFORMATTED_VALUE' })
