@@ -89,9 +89,9 @@ import { normComprobante, esLlaveUtil } from '../lib/cheques-cobertura.mjs'
 import { signo, esNotaDeCredito } from '../lib/comprobante-arca.mjs'
 import { analizar as analizarNC, facturasAnuladasCargadas, clave as claveNC } from '../lib/notas-credito.mjs'
 import { cruzar, verificar } from '../lib/cobertura-arca.mjs'
-// El mismo comprobante repetido en la réplica de ARCA se lista UNA vez. Ver el lib: el dueño vio
-// "MADERAS LLITERAS 0006-00003449 $60.000" cuatro veces en un cuadro que dice qué hay que cargar.
-import { sinRepetidos } from '../lib/arca-duplicados.mjs'
+// El libro de ARCA se limpia de repetidos EN EL ORIGEN, antes de derivar nada. Ver el lib: filtrar
+// una derivación arregló la sección 4 y dejó Trielec repetido cuatro veces en la 3.
+import { sinComprobantesRepetidos } from '../lib/arca-duplicados.mjs'
 import { ARCA as N_ARCA, publicar } from '../lib/rangos-nombrados.mjs'
 import { query } from '../lib/db.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
@@ -1081,12 +1081,30 @@ async function main() {
   // sumando como compras: $197.442.458 declarados contra $155.489.182 reales. Y una nota de crédito
   // no puede figurar como "falta cargar en Compras" — no es una compra que nadie anotó, es plata
   // que el proveedor devolvió. Ver lib/comprobante-arca.mjs.
-  const rArca = (await query(
+  //
+  // ═══ Y SIN REPETIDOS, ACÁ ARRIBA, ANTES DE CUALQUIER DERIVACIÓN (04/08) ═══
+  //
+  // La réplica recibe el mismo comprobante en más de una descarga del libro y no tiene clave única.
+  // El primer arreglo filtraba `cruce.faltan` —una derivación— y por eso tapó la sección 4 y dejó
+  // "Trielec · 0038-00000003 · -$509.980" repetido CUATRO veces en la 3: las notas de crédito salen
+  // de otra derivación del mismo origen. Todo lo que sigue —el cruce contra Compras, el análisis de
+  // notas de crédito, las anuladas cargadas— cuelga de estas dos listas. Se limpian una vez, acá.
+  const rArcaCrudo = (await query(
     "select tipo_comprobante, emisor_nombre, emisor_cuit, punto_venta, numero, fecha_emision, imp_total from comprobantes_arca where tipo_libro='R' order by fecha_emision",
   )).rows
-  const eArca = (await query(
+  const eArcaCrudo = (await query(
     "select tipo_comprobante, receptor_cuit, punto_venta, numero, fecha_emision, imp_total from comprobantes_arca where tipo_libro='E' order by fecha_emision desc",
   )).rows
+  const rArca = sinComprobantesRepetidos(rArcaCrudo)
+  // En el libro de VENTAS el emisor es siempre la empresa: la identidad no necesita el CUIT (que
+  // además no viene en la consulta — ahí el CUIT es el del RECEPTOR).
+  const eArca = sinComprobantesRepetidos(eArcaCrudo, { emisorUnico: true })
+  const repetidos = (rArcaCrudo.length - rArca.length) + (eArcaCrudo.length - eArca.length)
+  if (repetidos > 0) {
+    console.log(`  ○ ${repetidos} comprobante(s) repetidos en comprobantes_arca: se usan una sola vez `
+      + '(clave tipo + emisor + punto de venta + número + importe). El duplicado entra en la réplica: '
+      + 'el arreglo de fondo es del importador.')
+  }
 
   // El cruce va por punto de venta + número normalizados: "0038-00025483" y "38-25483" son la misma
   // factura, y cada planilla la escribe a su manera.
@@ -1110,26 +1128,16 @@ async function main() {
     console.error(`⚠ el cruce contra ARCA no cierra: diferencia ${chequeo.diferencia}, ${chequeo.contados} de ${chequeo.esperados} comprobantes clasificados`)
   }
 
-  // ═══ EL MISMO COMPROBANTE, CUATRO VECES ═══════════════════════════════════════════════════════
-  //
-  // EL DEFECTO (04/08, lo vio el dueño). "MADERAS LLITERAS 0006-00003449" aparecía CUATRO veces por
-  // $60.000, y Trielec 0038-00000888 dos veces por $1.784.747. El cuadro decía 56 comprobantes sin
-  // cargar y no eran 56: eran menos, y el TOTAL SIN CARGAR estaba inflado en la diferencia. Un cuadro
-  // cuya única razón de ser es "esto hay que cargarlo" que pide cargar cuatro veces la misma factura
-  // es peor que no tenerlo.
-  //
-  // La causa está en la réplica: _ARCA_RAW recibe el mismo comprobante en más de una descarga del
-  // libro y no tiene clave única. Acá NO se arregla la réplica —eso es del importador—, pero tampoco
-  // se muestra el defecto como si fuera dato.
-  //
-  // La clave y el porqué de cada decisión están en lib/arca-duplicados.mjs, con su test.
-  const faltanEnCompras = sinRepetidos(cruce.faltan.map((r) => ({
-    nombre: canon(r.emisor_nombre), cuit: r.emisor_cuit,
-    comprobante: `${String(r.punto_venta).padStart(4, '0')}-${String(r.numero).padStart(8, '0')}`,
-    fecha: fecha(r.fecha_emision), importe: Number(r.imp_total),
-  }))).sort((a, b) => b.importe - a.importe)
-  const repetidos = cruce.faltan.length - faltanEnCompras.length
-  if (repetidos > 0) console.log(`  ○ ${repetidos} comprobante(s) repetidos en ${R}: se listan una sola vez (misma clave CUIT + comprobante + importe)`)
+  // SIN FILTRO DE DUPLICADOS ACÁ: `cruce.faltan` ya viene de un libro sin repetidos (ver arriba). Un
+  // segundo filtro sobre esta derivación es lo que hizo creer que el defecto estaba resuelto cuando
+  // sólo lo estaba en esta sección.
+  const faltanEnCompras = cruce.faltan
+    .map((r) => ({
+      nombre: canon(r.emisor_nombre), cuit: r.emisor_cuit,
+      comprobante: `${String(r.punto_venta).padStart(4, '0')}-${String(r.numero).padStart(8, '0')}`,
+      fecha: fecha(r.fecha_emision), importe: Number(r.imp_total),
+    }))
+    .sort((a, b) => b.importe - a.importe)
   // ═══ LAS FACTURAS EMITIDAS YA NO SE ESCRIBEN EN ESTA PESTAÑA (04/08) ═══════════════════════════
   //
   // El bloque "7 · FACTURAS EMITIDAS — control cruzado contra Cobranzas" llevaba su propia confesión
@@ -2105,12 +2113,28 @@ async function formatear(google, sheetId, g, ancho, filas, { filaArranque = 1 } 
   // dice cuántas facturas emitidas hay: el formato moneda de la columna entera se lo comía.
   if (g.fArcaN && g.fArcaVentas) fmt({ ...r(g.fArcaN - 1, g.fArcaVentas, 1, 2) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.cantidad, horizontalAlignment: 'CENTER' })
   fmt({ ...r(g.fSub, g.fSub + 1, 5, 6) }, 'userEnteredFormat', E.nota())
-  // La columna de fecha del bloque de ARCA, que mostraba el serial como plata.
+  // ═══ LA COLUMNA "FECHA" MOSTRABA 46193, 46132, 46119 — Y NO EN TODAS LAS FILAS ═══
+  //
+  // EL DEFECTO (04/08, lo vio el dueño en el render). En la sección 4 unas filas mostraban "26/2/2026"
+  // y otras "46193": el número de serie crudo, en la MISMA columna.
+  //
+  // LA CAUSA ERA MÍA, y de la peor clase: había DOS `fmt` sobre el mismo rango. El primero declaraba
+  // DATE y el segundo, dos líneas más abajo, lo pisaba con TEXT. Quedó así al desarmar el bucle que
+  // formateaba a la vez esta tabla y la de facturas emitidas —el bucle recorría columnas 3-4 para una
+  // y 1-3 para la otra, y al separarlos copié el rango equivocado—.
+  //
+  // Con formato TEXT sobre una celda cuyo VALOR ya se guardó como fecha (el string "26/2/2026" entra
+  // por USER_ENTERED y Sheets lo convierte a serial), lo que se ve es el número. Y no en todas las
+  // filas porque el bloque cambió de alto y de posición: cada fila cayó sobre una celda con la
+  // herencia de formato que le tocó. Es la definición del defecto que este archivo persigue hace
+  // semanas — UNA COLUMNA QUE NO DECLARA SU FORMATO EN CADA CORRIDA MUESTRA EL DE AYER.
+  //
+  // Queda UNA sola declaración por columna, de punta a punta del footprint del bloque:
+  //   B y C (CUIT, Comprobante) → TEXTO   · se declara más arriba
+  //   D (Fecha)                 → DATE    · acá
+  //   E (Importe)               → moneda  · la pasada por contenido
   fmt({ ...r(g.afip0 - 1, g.afip1, 3, 4) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: E.NUM.fecha, horizontalAlignment: 'CENTER' })
-
-  fmt({ ...r(g.afip0 - 1, g.afip1, 3, 4) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-    { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'CENTER' })
   for (const f of [g.cabDoc, g.cabAfip, g.cabCtrl]) {
     if (f) encabezadoStmt(f)
   }
