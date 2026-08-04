@@ -19,6 +19,7 @@ import {
   instrumentosDeLinea, formulaCalendarioImpuestosMes, formulaCalendarioImpuestosSemana,
   rotulosCalendarioImpuestos, CALENDARIO_IMPUESTOS,
 } from '../lib/cash-flow-lineas.mjs'
+import { pielCashFlow } from '../lib/cash-flow-piel.mjs'
 import { conEdicionesRespetadas, guardarRegistro, respetarEdiciones } from '../lib/respetar-ediciones.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { ref as refPestana } from '../lib/partir-pestana.mjs'
@@ -107,9 +108,20 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   const irASemana = periodo === 'semanal'
     ? `=HYPERLINK("${URL_BASE}#gid=SEMGID&range="&ADDRESS(${FILA_CAB};MATCH(1;ARRAYFORMULA((${letra(1)}$${FILA_CAB}:${letra(n)}$${FILA_CAB}<=TODAY())*(${letra(1)}$${FILA_CAB}:${letra(n)}$${FILA_CAB}+7>TODAY()));0)+1;4);"📅 IR A LA SEMANA DE HOY — "&TEXT(TODAY();"dd/mm/yyyy"))`
     : `=HYPERLINK("${URL_BASE}#gid=SEMGID&range="&ADDRESS(${FILA_CAB};MONTH(TODAY())+1;4);"📅 IR AL MES DE HOY — "&TEXT(TODAY();"mmmm yyyy"))`
+  // ═══ EL SUBTÍTULO ES UNA LÍNEA, NO UN PÁRRAFO (04/08) ═══
+  //
+  // Acá vivían 380 caracteres de prosa. Como la fila 2 no tiene más columnas que la A y la B, el texto
+  // se derramaba por encima de las primeras DOCE columnas de período: el cuadro abría con un muro de
+  // itálica tapando el primer trimestre. Lo mismo pasaba con la nota de cada actividad (ver más abajo).
+  // El estándar del dueño lo prohíbe explícitamente —"prohibida la columna de prosa por fila"— y el
+  // motivo es medible: él las borra a mano y volvían en cada corrida.
+  //
+  // Lo que se fue no se perdió: el criterio de proyección y el alcance de cada pestaña están escritos
+  // donde se pueden auditar (este archivo y cash-flow-lineas.mjs), y el cuadro ahora los MUESTRA en vez
+  // de explicarlos — lo proyectado va en itálica (cash-flow-piel.mjs), que es la convención.
   const nota = periodo === 'semanal'
-    ? 'Estado de flujo de efectivo por método directo (RT 8/9 · NIC 7): operativas, inversión y financiación. Tocá el + del margen izquierdo para abrir el detalle de cada categoría. ESTE CUADRO MUESTRA LO COMPROMETIDO: sólo cobros y pagos con fecha ya cargada — las proyecciones están en el Mensual, porque a nivel semana una proyección de materiales es ruido, no información.'
-    : 'Estado de flujo de efectivo por método directo (RT 8/9 · NIC 7): operativas, inversión y financiación. Tocá el + del margen izquierdo para abrir el detalle de cada categoría. Los meses que todavía no pasaron son PROYECCIÓN: Estructura y Recurrentes traen la suya de su propia pestaña; el resto usa el ritmo de los últimos 3 meses cerrados ajustado por inflación. Los INGRESOS no se proyectan (no hay obra facturada de octubre en adelante), así que el déficit del último trimestre es un piso, no un pronóstico.'
+    ? 'Método directo (RT 8/9 · NIC 7) · sólo lo comprometido: cobros y pagos con fecha ya cargada'
+    : 'Método directo (RT 8/9 · NIC 7) · las columnas en itálica todavía no pasaron: son proyección'
   push([irASemana, nota])
   meta.cabFila = push(['Período', ...cols.map(fechaAR), `Total ${AÑO}`])
 
@@ -129,13 +141,22 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
 
   for (const act of CUADRO) {
     push([])
-    push([act.actividad, act.nota])
+    // LA NOTA DE LA ACTIVIDAD NO VA EN LA GRILLA. Iba en la columna B de esta misma fila, y como la
+    // fila no tiene nada más a la derecha, Sheets la derramaba sobre las primeras doce columnas de
+    // período: tres párrafos atravesando el cuadro justo donde están los meses ya cerrados. La razón
+    // de cada clasificación (por qué el prendario es financiación y la grúa es inversión) está escrita
+    // en CUADRO, en cash-flow-lineas.mjs, que es donde se audita — no encima de los números.
+    push([act.actividad])
     const filaAct = filas.length
     const subGrupos = []
     for (const g of act.grupos) {
       const filaGrupo = filas.length + 1
       // signo 0 = grupo MEMO (informativo, ej. Cobranzas esperadas): ni "+" ni "(–)", no entra al flujo.
-      push([`${g.signo === 0 ? 'ℹ ' : g.signo > 0 ? '' : '(–) '}${g.nombre}`])
+      // El prefijo NO se agrega si el rótulo ya lo trae: los dos grupos memo de CUADRO empiezan con "ℹ",
+      // así que la versión anterior escribía "ℹ ℹ La misma nómina…" — dos glifos pegados que en pantalla
+      // se leen como una barra doble y no como una marca de "esto no suma".
+      const marca = g.signo === 0 ? (g.nombre.startsWith('ℹ') ? '' : 'ℹ ') : g.signo > 0 ? '' : '(–) '
+      push([`${marca}${g.nombre}`])
       const d0 = filas.length + 1
       for (const l of g.lineas) {
         const f = periodo === 'mensual'
@@ -307,7 +328,10 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
     }
   }
 
-  return { filas, meta, n, colTotal, filaCtrl, filaCtrlFin, filaRef }
+  // `fechas` y `periodo` viajan con la grilla porque la PIEL los necesita para decidir qué columnas
+  // son proyección. Recalcularlas en el formateador sería una segunda definición de la grilla de
+  // períodos, que es justo lo que ya se corrió una vez y escondió $292,8M.
+  return { filas, meta, n, colTotal, filaCtrl, filaCtrlFin, filaRef, fechas: cols, periodo }
 }
 
 // clearValues borra el contenido pero NO el formato: la grilla nueva cae sobre celdas que tenían el
@@ -315,8 +339,6 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
 async function formatear(google, data) {
   const meta = await google.getSheetMeta(ID)
   const gruposPrevios = await google.getRowGroups(ID)
-  const AZUL = { red: 0.17, green: 0.25, blue: 0.37 }
-  const GRIS = { red: 0.93, green: 0.94, blue: 0.95 }
   const req = []
   for (const d of data) {
     const p = d.range.split('!')[0]
@@ -329,7 +351,6 @@ async function formatear(google, data) {
     const filas = d.values.length
     const cols = d.values[0].length
     const rango = (r0, r1, c0 = 0, c1 = cols) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
-    const fmt = (r, fields, format) => req.push({ repeatCell: { range: r, cell: { userEnteredFormat: format }, fields } })
 
     // El layout viejo tenía celdas combinadas. Congelar una columna que parte una combinación es un
     // error duro de la API, y una combinación suelta descoloca toda la fila que se escriba encima.
@@ -353,59 +374,29 @@ async function formatear(google, data) {
       },
     })
 
-    // Base: todo el cuadro en pesos, sin decimales, con el guion para el cero (así el ojo va a lo que sí pasó).
-    fmt(rango(3, filas, 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-      { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }, horizontalAlignment: 'RIGHT' })
-    // Título y subtítulo.
-    fmt(rango(0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 13 } })
-    fmt(rango(1, 2), 'userEnteredFormat.textFormat', { textFormat: { italic: true, fontSize: 9, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } } })
-    // Fila de períodos: fondo oscuro. El MENSUAL rotula el mes ("ene-26"), no una fecha suelta
-    // ("01/01") que se lee como día; el SEMANAL sí usa la fecha de inicio de semana (dd/mm).
-    fmt(rango(2, 3), 'userEnteredFormat', {
-      backgroundColor: AZUL,
-      textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 }, fontSize: 9 },
-      numberFormat: { type: 'DATE', pattern: p.includes('Mensual') ? 'mmm-yy' : 'dd/mm' },
-      horizontalAlignment: 'CENTER',
-    })
-    fmt({ ...rango(2, 3), startColumnIndex: cols - 1, endColumnIndex: cols }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
-    // LA COLUMNA "DE DÓNDE SALE" ES UNA EXPLICACIÓN, NO UN IMPORTE. Tenía el formato moneda de todo
-    // el cuadro: diecinueve frases dibujadas como si fueran plata, en la columna que existe
-    // justamente para que el número de al lado se entienda.
-    fmt({ ...rango(3, filas), startColumnIndex: cols - 1, endColumnIndex: cols }, 'userEnteredFormat',
-      { numberFormat: { type: 'TEXT' }, textFormat: { fontFamily: 'Arial', fontSize: 9, italic: true, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, horizontalAlignment: 'LEFT', wrapStrategy: 'OVERFLOW_CELL' })
-    // La jerarquía visual tiene que coincidir con la jerarquía contable, o el +/- no se entiende:
-    // ACTIVIDAD en oscuro, categoría en gris y negrita, detalle liviano y sangrado.
-    for (const r of g.meta.actividades) {
-      fmt(rango(r - 1, r), 'userEnteredFormat',
-        { backgroundColor: AZUL, textFormat: { bold: true, fontSize: 10, foregroundColor: { red: 1, green: 1, blue: 1 } } })
-    }
-    for (const gr of g.meta.grupos) {
-      fmt(rango(gr.fila0 - 2, gr.fila0 - 1), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
-        { textFormat: { bold: true, fontSize: 9 }, backgroundColor: GRIS })
-      fmt(rango(gr.fila0 - 1, gr.fila1), 'userEnteredFormat.textFormat',
-        { textFormat: { bold: false, fontSize: 9, foregroundColor: { red: 0.3, green: 0.32, blue: 0.36 } } })
-    }
-    for (const r of [...g.meta.subtotales, g.meta.variacion]) {
-      fmt(rango(r - 1, r), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
-        { textFormat: { bold: true }, backgroundColor: { red: 0.89, green: 0.91, blue: 0.94 } })
-    }
-    // El efectivo al cierre es LA línea del cuadro: la que contesta qué día te quedás sin plata.
-    fmt(rango(g.meta.cierre - 1, g.meta.cierre), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
-      { textFormat: { bold: true, fontSize: 10 }, backgroundColor: { red: 0.85, green: 0.92, blue: 0.85 } })
-    // El bloque de referencias y el de control son texto, no plata.
-    fmt(rango(g.filaRef - 1, filas, 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-      { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' })
-    // Toda la columna B del bloque de control en moneda, hasta su última fila real (el bloque creció
-    // con los dos espejos del ingreso de T04: usar filaCtrlFin en vez de un +4 fijo que se quedaba corto).
-    fmt({ ...rango(g.filaCtrl - 1, g.filaCtrlFin), startColumnIndex: 1, endColumnIndex: 2 },
-      'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-      { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0' }, horizontalAlignment: 'RIGHT' })
-    fmt(rango(g.filaCtrl - 2, g.filaCtrl - 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true } })
-    // Columna A ancha (los rubros tienen nombre largo), períodos angostos.
-    req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 260 }, fields: 'pixelSize' } })
-    req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: cols }, properties: { pixelSize: 96 }, fields: 'pixelSize' } })
-    // Congelar el encabezado y la columna de rubros: sin esto, en la semana 40 no se sabe qué se está mirando.
-    req.push({ updateSheetProperties: { properties: { sheetId, gridProperties: { frozenRowCount: 3, frozenColumnCount: 1 } }, fields: 'gridProperties.frozenRowCount,gridProperties.frozenColumnCount' } })
+    // ═══ LA PIEL DE STATEMENT ═══
+    //
+    // Todo el formato del cuadro sale de UNA función pura y probada (lib/cash-flow-piel.mjs), que a su
+    // vez reusa los patrones de número de formato-statement.mjs. Antes se escribía acá a mano y el
+    // resultado era el que el dueño rechazó dos veces: barras azules rellenas por actividad, una barra
+    // gris por categoría, un rectángulo verde bajo el efectivo al cierre, el "$" repetido en cada celda
+    // del cuerpo y el negativo con guion rojo. Ninguna de esas cinco cosas existe en un estado
+    // financiero publicado.
+    req.push(...pielCashFlow({
+      sheetId,
+      meta: g.meta,
+      n: g.n,
+      ancho: cols,
+      nFilas: filas,
+      filaRef: g.filaRef,
+      filaCtrl: g.filaCtrl,
+      filaCtrlFin: g.filaCtrlFin,
+      periodo: g.periodo,
+      fechas: g.fechas,
+      hoy: new Date(),
+      filasHoja,
+      colsHoja,
+    }))
 
     // NUNCA DEJAR FILAS OCULTAS (decisión del dueño 28/07: "agrupadas pero no ocultas"). `collapsed:false`
     // en los grupos no limpia el `hiddenByUser` que dejó un colapso anterior, así que se fuerza acá:
