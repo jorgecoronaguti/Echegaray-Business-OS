@@ -677,3 +677,81 @@ test('las filas de oficina se llaman OFICINA, no administración', () => {
   const malRotuladas = textos.filter((t) => /sueldos de administraci[oó]n/i.test(t))
   assert.deepEqual(malRotuladas, [], 'ninguna fila que lee OFICINA_* puede llamarse "de administración"')
 })
+
+// ═══ EL TITULAR CONTESTA LAS DOS PREGUNTAS DEL DUEÑO (04/08) ═══
+//
+// Textual: "el concepto piso proyectado en caja es super confuso, ¿qué es? ¿lo puedo usar para
+// invertir o qué?" y "¿cuánto me va a quedar a fin de mes al cubrir todas las obligaciones?".
+// No son el mismo número y el titular publicaba uno solo, sin decir cuál. Además tenía pegado el
+// crédito no utilizado, que no es plata propia (NIC 7: el uso del descubierto es financiación).
+
+test('el titular publica los cuatro números que se deciden, y ninguno es capacidad de endeudarse', () => {
+  const g = construir()
+  const titulos = g.filas[g.fTitulos - 1].filter((x) => !vacia(x) && String(x || '').trim())
+  assert.equal(titulos.length, 4)
+  assert.match(titulos[0], /DISPONIBILIDADES/)
+  assert.match(titulos[1], /PISO DE CAJA/)
+  assert.match(titulos[2], /CIERRE DE ESTE MES/)
+  assert.match(titulos[3], /COLOCABLE/)
+  // EL DEFECTO QUE ESTO ATRAPA: "CRÉDITO NO UTILIZADO" al lado de las disponibilidades. Un margen de
+  // tarjeta y un acuerdo en descubierto sin usar no son un activo: son un compromiso del banco.
+  for (const t of titulos) assert.ok(!/CR[ÉE]DITO|AIRE|DESCUBIERTO/i.test(t), `"${t}" no va en el titular de caja`)
+})
+
+test('las cuatro cifras del titular son REFERENCIAS al detalle, nunca un número', () => {
+  const g = construir()
+  const cifras = g.filas[g.fCifras - 1].filter((x) => !vacia(x) && String(x || '').trim())
+  assert.equal(cifras.length, 4)
+  for (const c of cifras) {
+    assert.ok(String(c).startsWith('='), `el titular "${c}" tendría que ser una fórmula`)
+    assert.ok(!/^@/.test(String(c)), `quedó un marcador sin resolver: ${c}`)
+  }
+})
+
+test('el piso y lo que queda a fin de mes son DOS celdas distintas del calendario', () => {
+  const g = construir()
+  const [, piso, finMes] = g.filas[g.fCifras - 1].filter((x) => !vacia(x) && String(x || '').trim())
+  assert.notEqual(piso, finMes, 'si apuntan a la misma celda, el titular vuelve a contestar una sola pregunta')
+  // El piso sale de la fila del mínimo del horizonte.
+  const fPeor = filaDe(g, /el punto más bajo del horizonte/i)
+  assert.equal(piso, `=$F$${fPeor}`)
+  // Lo que queda a fin de mes sale de la posición acumulada del tramo que cierra el mes, ANCLADA A SU
+  // RÓTULO: si alguien inserta un tramo, esto se rompe acá y no en silencio en la pestaña.
+  const fila = Number(String(finMes).match(/\$F\$(\d+)/)[1])
+  assert.equal(String(g.filas[fila - 1][0]).trim(), 'Resto de este mes')
+})
+
+test('lo colocable descuenta la caja mínima y nunca es negativo', () => {
+  const g = construir()
+  const colocable = g.filas[g.fCifras - 1].filter((x) => !vacia(x) && String(x || '').trim())[3]
+  const fMin = filaDe(g, /^caja mínima deseada$/i)
+  assert.ok(fMin > 0, 'la caja mínima tiene que existir para poder restarla')
+  // EL DEFECTO: publicar el piso entero como colocable invita a inmovilizar la reserva operativa.
+  assert.ok(String(colocable).includes(`E${fMin}`), 'lo colocable tiene que restar la caja mínima')
+  assert.ok(String(colocable).includes('MAX(0;'), 'un colocable negativo se lee como "conseguí esto"')
+  // Y sin caja mínima cargada NO publica un número: publicaría el piso entero.
+  assert.ok(/^=IF\(N\(E\d+\)<=0;"";/.test(String(colocable)))
+})
+
+test('cada titular trae su pie, y el pie de la fecha es una fórmula (no una fecha escrita)', () => {
+  const g = construir()
+  const pies = g.filas[g.fCifras].filter((x) => !vacia(x) && String(x || '').trim())
+  assert.equal(pies.length, 4)
+  for (const p of pies) assert.ok(!/^@/.test(String(p)), `marcador sin resolver en el pie: ${p}`)
+  // El pie del piso y el de lo colocable citan CUÁNDO cae ese punto: sin la fecha, el piso no dice
+  // por cuánto tiempo se puede inmovilizar, que es exactamente lo que el dueño preguntó.
+  const fCuando = filaDe(g, /cuándo ocurre/i)
+  assert.ok(String(pies[1]).includes(`$F$${fCuando}`), 'el pie del piso tiene que decir cuándo cae')
+  assert.ok(String(pies[3]).includes(`$F$${fCuando}`), 'el pie de lo colocable tiene que dar el plazo')
+  // Y el del cierre de mes lee la fecha REAL del tramo, no un "31/08" escrito a mano.
+  assert.ok(/=".*"&\$G\$\d+/.test(String(pies[2])), 'el pie del cierre de mes tiene que leer la fecha del tramo')
+})
+
+test('no queda ningún marcador @ sin resolver en toda la grilla', () => {
+  const g = construir()
+  for (const [i, f] of g.filas.entries()) {
+    for (const c of f || []) {
+      if (typeof c === 'string' && /^@[A-Z]/.test(c)) assert.fail(`fila ${i + 1}: marcador vivo "${c}"`)
+    }
+  }
+})

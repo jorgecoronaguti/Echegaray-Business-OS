@@ -277,11 +277,41 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // caja de hoy los contaba DOS VECES (una en la posición y otra en el calendario). Por eso el titular
   // ya no es "liquidez neta" (que restaba cheques no salidos) sino el PISO PROYECTADO: lo más bajo que
   // llega la caja proyectando todo — el número que de verdad dice si la caja alcanza.
-  const fTitulos = push(['DISPONIBILIDADES', '', 'CHEQUES POR DEBITAR', '', 'PISO PROYECTADO DE CAJA', '', 'CRÉDITO NO UTILIZADO', ''])
-  const fCifras = push(['@TOTAL', '', '@CHEQUES', '', '@NETA', '', '@AIRE', ''])
+  // ═══ EL TITULAR CONTESTA LAS DOS PREGUNTAS QUE EL DUEÑO HIZO, SIN QUE NADIE SE LAS EXPLIQUE ═══
+  //
+  // POR QUÉ CAMBIA (04/08). Textual: "el concepto piso proyectado en caja es super confuso, ¿qué es?
+  // ¿lo puedo usar para invertir o qué?" y "¿cuánto me va a quedar a fin de mes al cubrir todas las
+  // obligaciones? necesito ver ese dato en caja, ¿es piso de caja eso?".
+  //
+  // NO, NO ES EL MISMO NÚMERO, y ahí estaba el problema: el titular publicaba uno solo y no decía
+  // cuál de los dos era. Son dos preguntas de tesorería distintas y las dos se deciden:
+  //
+  //   · EL PISO es el punto MÁS BAJO de todo el recorrido, y su fecha. Es el techo de lo que se
+  //     puede inmovilizar y el plazo máximo del instrumento: si la caja toca su mínimo el 11/08,
+  //     ningún plazo fijo puede vencer el 12. Contesta "¿puedo invertir?".
+  //   · LO QUE QUEDA AL CIERRE DEL MES es el saldo después de cubrir todo lo que vence hasta esa
+  //     fecha. Contesta "¿con cuánto arranco el mes que viene?". Es siempre mayor o igual al piso.
+  //   · LO COLOCABLE es el piso MENOS la caja mínima deseada. Un piso de $99M con un mínimo de $20M
+  //     no son $99M para invertir: son $79M. Publicar el piso a secas invitaba a inmovilizar la
+  //     reserva operativa entera.
+  //
+  // Y SE VA EL "CRÉDITO NO UTILIZADO" DEL TITULAR. Estaba pegado a las disponibilidades y no es plata
+  // propia: es capacidad de endeudarse. NIC 7 clasifica el uso del descubierto como actividad de
+  // FINANCIACIÓN —sólo lo admite dentro del efectivo cuando el propio giro en descubierto es parte
+  // integral de la gestión de caja, que no es el caso acá— y una línea no girada no es un activo de
+  // ninguna manera: es un compromiso del banco. Sigue estando, entero, en el bloque 3, cuyo título ya
+  // dice "NO SON EFECTIVO". Al lado de un saldo, se sumaba con el ojo.
+  //
+  // Y se va "CHEQUES POR DEBITAR": bajo criterio percibido NO se resta de las disponibilidades (no
+  // salieron todavía), así que ponerlo al lado invitaba justo a la resta que este cuadro evita. Es un
+  // insumo del piso —ya está adentro del calendario— y sigue con su fila propia en el bloque 1.
+  const fTitulos = push(['DISPONIBILIDADES HOY', '', 'PISO DE CAJA — EL PUNTO MÁS BAJO', '', 'QUEDA AL CIERRE DE ESTE MES', '', 'COLOCABLE SIN TOCAR LA OPERACIÓN', ''])
+  const fCifras = push(['@TOTAL', '', '@PISO', '', '@FINDEMES', '', '@COLOCABLE', ''])
   // El pie de cada titular dice QUÉ ENTRA en esa cifra, no qué se siente al mirarla. "Con esto se
-  // decide" era un consejo; lo que hace falta es la definición.
-  push(['caja y bancos disponibles hoy (percibido)', '', 'librados, salen cuando se debitan', '', 'lo más bajo que llega la caja en el horizonte', '', 'acuerdo y tarjeta sin usar — capacidad de endeudarse', ''])
+  // decide" era un consejo; lo que hace falta es la definición. Tres de los cuatro son FÓRMULAS: la
+  // fecha del piso y la del cierre del tramo cambian solas, y un pie escrito a mano con una fecha
+  // adentro es un número pegado que envejece sin avisar.
+  push(['@PIE1', '', '@PIE2', '', '@PIE3', '', '@PIE4', ''])
   push()
 
   // ═══ LO QUE NO CIERRA, ARRIBA Y JUNTO ═══════════════════════════════════════════════════════
@@ -650,8 +680,17 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   push(['Tramo', '', 'Entra', 'Sale', 'Neto del tramo', 'Queda después', 'Fin del tramo',
     'Entra: valores en cartera por su fecha de acreditación (detalle en 4.1) MÁS las cobranzas esperadas de Cobranzas (todo lo que no está cobrado ni endosado, por su fecha de cobro). Sale: cheques emitidos no debitados por su fecha de pago, MÁS los jornales cerrados sin pagar y los proyectados, por su fecha de pago. Una quincena sale del calendario cuando le escribís la fecha en "Pagado el": ahí su salida ya está en el extracto.', ''])
   const cal0 = filas.length + 1
+  // EL TRAMO QUE CIERRA EL MES, ANCLADO A SU RÓTULO Y NO A SU POSICIÓN. El titular "queda al cierre
+  // de este mes" lee la posición acumulada de este tramo; si mañana se agrega un tramo intermedio,
+  // `cal0 + 3` apuntaría a otra cosa y el titular mentiría sin romper ninguna suma.
+  //
+  // OJO CON EL BORDE: es MAX(TODAY()+14; fin de mes), así que en la última quincena el corte cae DESPUÉS
+  // del fin de mes. Por eso el pie del titular no dice "31/08" escrito a mano: lee la celda de fecha
+  // del propio tramo (columna G), que siempre dice la verdad sobre hasta cuándo llega esa cifra.
+  let fFinMes = 0
   TRAMOS.forEach(([rotulo], k) => {
     const f = cal0 + k
+    if (rotulo === 'Resto de este mes') fFinMes = f
     push([rotulo, '',
       // Lo que ENTRA se resuelve al final, cuando se sabe en qué filas quedó el detalle de la
       // cartera: es el mismo mecanismo de marcadores que ya usa el panel de arriba.
@@ -714,7 +753,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
     `=$D${filas.length}-$E$${fCh}-(${nominaEnCalendario})`, '', '', '', '',
     'Si no da cero, el calendario cuenta de más o de menos — casi siempre una fecha guardada como texto. Ahora mide las DOS fuentes: los cheques emitidos y las obligaciones de nómina (cerradas sin pagar + proyectadas).'])
   const fPeor = push(['   · el punto más bajo del horizonte', '', '', '', '', `=MIN($F${cal0}:$F${cal1})`, '', '', ''])
-  push(['   · cuándo ocurre', '', '', '', '', `=IFERROR(INDEX($A$${cal0}:$A$${cal1};MATCH($F${fPeor};$F$${cal0}:$F$${cal1};0));"")`, '', '',
+  const fCuando = push(['   · cuándo ocurre', '', '', '', '', `=IFERROR(INDEX($A$${cal0}:$A$${cal1};MATCH($F${fPeor};$F$${cal0}:$F$${cal1};0));"")`, '', '',
     'Si el punto más bajo es negativo, ése es el tramo en el que la caja no alcanza — y es la fecha en la que hay que actuar, no el total.', ''])
   // El rango de moneda tiene que llegar hasta ACÁ: las dos filas de cierre están debajo del último
   // tramo, y sin incluirlas "el punto más bajo" se dibujaba como una fecha (29/11/13049).
@@ -1262,7 +1301,23 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // El panel de arriba se resuelve acá, cuando ya se sabe en qué fila quedó cada total. Son
   // referencias, no copias: si el detalle cambia, el titular cambia con él.
   const PANEL = {
-    '@TOTAL': `=${C_PESOS}${fTotal}`, '@CHEQUES': `=${C_PESOS}${fCh}`, '@NETA': `=$F$${fPeor}`, '@AIRE': `=${C_PESOS}${fAire}`,
+    '@TOTAL': `=${C_PESOS}${fTotal}`,
+    '@PISO': `=$F$${fPeor}`,
+    // La posición acumulada al final del tramo que cubre este mes. NO es una cuenta nueva: es la misma
+    // celda "Queda después" que ya calcula el calendario, mostrada donde se decide.
+    '@FINDEMES': `=$F$${fFinMes}`,
+    // ═══ LO COLOCABLE = EL PISO MENOS LA RESERVA OPERATIVA ═══
+    //
+    // MAX(0;…) y no la resta cruda: si el piso ya está por debajo del mínimo, lo colocable es CERO, no
+    // un número negativo que se leería como "hay que conseguir esto". Que falte plata es lo que dice el
+    // bloque 4.4; acá la pregunta es cuánto se puede inmovilizar, y la respuesta es nada.
+    // Si nadie cargó la caja mínima, el mínimo vale 0 y esto publicaría el piso entero como colocable
+    // —el error más caro posible en esta celda—, así que en ese caso no muestra número: lo dice el pie.
+    '@COLOCABLE': `=IF(N(${C_PESOS}${fMin})<=0;"";MAX(0;$F$${fPeor}-${C_PESOS}${fMin}))`,
+    '@PIE1': 'caja y bancos, criterio percibido · las líneas de crédito NO son plata propia — bloque 3',
+    '@PIE2': `="lo más bajo que llega la caja proyectando todo · cae en: "&$F$${fCuando}`,
+    '@PIE3': `="después de cubrir todo lo que vence hasta el "&$G$${fFinMes}`,
+    '@PIE4': `=IF(N(${C_PESOS}${fMin})<=0;"⚠ cargá la caja mínima en 01_Valores Iniciales y este número aparece solo";"el piso menos la caja mínima de "&TEXT(${C_PESOS}${fMin};"$#,##0")&" · plazo máximo: hasta "&$F$${fCuando})`,
     '@DIFECHEQ': `=${C_IMP}${gDif}`, '@SINEXPL': `=${C_PESOS}${fSinExpl}`,
     // ═══ LA ALERTA MUESTRA LO QUE NO SE PUEDE EXPLICAR, NO LA RESTA BRUTA ═══
     //
@@ -1736,8 +1791,12 @@ async function formatear(google, sheetId, g) {
       { textFormat: { bold: true, fontSize: E.TAM.nota, foregroundColor: MUTED }, horizontalAlignment: 'LEFT', wrapStrategy: 'WRAP' })
     fmt(r(g.fCifras - 1, g.fCifras), 'userEnteredFormat',
       { numberFormat: E.NUM.moneda, textFormat: { bold: true, fontSize: E.TAM.titular, fontFamily: E.FUENTE_NUM, foregroundColor: INK }, horizontalAlignment: 'LEFT', verticalAlignment: 'MIDDLE' })
-    // El número que se decide —lo disponible— en el acento; los demás en tinta.
-    fmt(r(g.fCifras - 1, g.fCifras, 4, 5), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: E.TAM.titular, fontFamily: E.FUENTE_NUM, foregroundColor: ACENTO } })
+    // EL ACENTO VA EN EL NÚMERO QUE HABILITA UNA ACCIÓN, no en el más grande. Los tres primeros
+    // titulares describen la posición; el cuarto —lo colocable— es el único sobre el que se puede
+    // hacer algo hoy, y es la respuesta a la pregunta que el dueño hizo ("¿lo puedo usar para
+    // invertir o qué?"). Antes el acento estaba en el tercero, que era el piso, sin que nada dijera
+    // qué hacer con él.
+    fmt(r(g.fCifras - 1, g.fCifras, 6, 7), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: E.TAM.titular, fontFamily: E.FUENTE_NUM, foregroundColor: ACENTO } })
     fmt(r(g.fCifras, g.fCifras + 1), 'userEnteredFormat',
       { numberFormat: { type: 'TEXT' }, textFormat: { italic: true, fontSize: E.TAM.nota, foregroundColor: E.COLOR.nota }, horizontalAlignment: 'CENTER', wrapStrategy: 'WRAP' })
     req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: g.fCifras - 1, endIndex: g.fCifras }, properties: { pixelSize: 34 }, fields: 'pixelSize' } })
