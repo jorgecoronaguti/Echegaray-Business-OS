@@ -156,22 +156,22 @@ test('en la vista detalle el importe y la fecha NO caen en la misma columna', ()
 
 test('LA GEOMETRÍA encuentra los rótulos con el proveedor en cualquier columna', () => {
   const conPivot = [
-    ['1 · QUÉ SE DEBE Y CUÁNDO'], ['✓ cierra'],
+    ['1 · QUÉ SE DEBE Y CUÁNDO'], [], ['✓ cierra'],
     ['N° Comprobante', 'Proveedor', 'Fecha prevista de pago (día)', 'Cliente / Asignación', 'Tipo pago'],
     [], [], ['2 · CUENTA CORRIENTE POR PROVEEDOR'],
   ]
   const g = geometriaDeLaSeccion(conPivot)
-  assert.equal(g.filaEncabezado, 3, 'no encontró la fila de rótulos con el comprobante primero')
-  assert.equal(g.filaLimite, 6)
+  assert.equal(g.filaEncabezado, 4, 'no encontró la fila de rótulos con el comprobante primero')
+  assert.equal(g.filaLimite, 7)
 })
 
 test('la misma geometría sirve para el bloque de fórmulas viejo', () => {
   const conBloque = [
-    ['1 · QUÉ SE DEBE Y CUÁNDO'], ['✓ cierra'],
+    ['1 · QUÉ SE DEBE Y CUÁNDO'], [], ['✓ cierra'],
     ['Proveedor / factura', 'Próximo pago', 'Comprobante', 'Importe', 'Obra'],
     ['2 · CUENTA CORRIENTE POR PROVEEDOR'],
   ]
-  assert.equal(geometriaDeLaSeccion(conBloque).filaEncabezado, 3)
+  assert.equal(geometriaDeLaSeccion(conBloque).filaEncabezado, 4)
 })
 
 test('sin el título de la sección 2 no hay plan: no se escribe a ciegas', () => {
@@ -322,12 +322,50 @@ test('LA GEOMETRÍA engancha el PRIMER cuadro, aunque tenga sólo tres columnas'
   // Exigiendo cuatro columnas se salteaba el cuadro de totales (proveedor · se le debe · facturas)
   // y enganchaba el de detalle: cada corrida escribía más abajo y duplicaba el cuadro entero.
   const conDos = [
-    ['1 · QUÉ SE DEBE Y CUÁNDO'], ['✓ cierra'],
+    ['1 · QUÉ SE DEBE Y CUÁNDO'], [], ['✓ cierra'],
     ['Proveedor', 'Se le debe', 'Facturas'],
     ['Alumetal', '$5.174.285', '2'], [],
     ['Cada operación'],
     ['Proveedor', 'N° Comprobante', 'Fecha', 'Obra', 'Tipo pago', 'Categoría', 'Importe'],
     ['2 · CUENTA CORRIENTE POR PROVEEDOR'],
   ]
-  assert.equal(geometriaDeLaSeccion(conDos).filaEncabezado, 3, 'enganchó el segundo cuadro y va a duplicar')
+  assert.equal(geometriaDeLaSeccion(conDos).filaEncabezado, 4, 'enganchó el segundo cuadro y va a duplicar')
+})
+
+test('si el cuadro dio #REF! la geometría se ubica por el título, no por su propia salida', () => {
+  // El caso real: la fila de rótulos quedó como una sola celda "#REF!". Buscando "PROVEEDOR" con
+  // dos columnas, la detección se enganchaba en el rótulo del cuadro de ABAJO y escribía un
+  // segundo cuadro sin borrar el primero. Quedaron tres dinámicas donde tenía que haber dos.
+  const filas = [
+    ['Proveedores'], [], [], [],
+    ['1 · QUÉ SE DEBE Y CUÁNDO'],           // fila 5
+    [],                                      // 6
+    ['✓ el detalle cierra con el titular'],  // 7
+    ['#REF!'],                               // 8  ← acá va el cuadro A
+    [], [], [],
+    ['Cada operación'],
+    ['Proveedor', 'N° Comprobante', 'Importe'], // 13 ← el señuelo
+    ['2 · CUENTA CORRIENTE POR PROVEEDOR'],     // 14
+  ]
+  const geo = geometriaDeLaSeccion(filas)
+  assert.equal(geo.filaEncabezado, 8, 'se enganchó en el rótulo del cuadro de abajo')
+  assert.equal(geo.porTitulo, true, 'tiene que declarar que se ubicó por el título')
+  assert.equal(geo.filaLimite, 14)
+})
+
+test('cuando el cuadro está sano manda su propia fila de rótulos', () => {
+  const filas = [
+    ['1 · QUÉ SE DEBE Y CUÁNDO'], [], ['✓ ok'],
+    ['Proveedor', 'Se le debe', 'Facturas'],
+    ['Alumetal', '$1', '1'],
+    ['2 · CUENTA CORRIENTE POR PROVEEDOR'],
+  ]
+  const geo = geometriaDeLaSeccion(filas)
+  assert.equal(geo.filaEncabezado, 4)
+  assert.equal(geo.porTitulo, false)
+})
+
+test('el ancla por título nunca cae dentro de la sección 2', () => {
+  const filas = [['1 · QUÉ SE DEBE Y CUÁNDO'], [], ['2 · CUENTA CORRIENTE POR PROVEEDOR']]
+  assert.throws(() => geometriaDeLaSeccion(filas), /sección 2/)
 })

@@ -431,13 +431,33 @@ export function geometriaDeLaSeccion(filas = []) {
   const iCab = filas.findIndex((_, i) => i > iTitulo && i < iLimite
     && (filas[i] ?? []).some((c) => /PROVEEDOR/.test(txt(c)))
     && (filas[i] ?? []).filter((c) => String(c ?? '').trim()).length >= 2)
-  if (iCab < 0) throw new Error('no encontré la fila de rótulos de la sección 1 (ninguna columna dice "Proveedor")')
+
+  // ═══ EL ANCLA SALE DEL TÍTULO, NUNCA DE LA SALIDA ANTERIOR ═══
+  //
+  // Buscar la fila de rótulos es buscar la SALIDA DE LA CORRIDA ANTERIOR. Mientras esa salida esté
+  // sana funciona; el día que el cuadro da #REF! —una sola celda, no dos— la búsqueda no lo
+  // reconoce, se engancha en el rótulo del cuadro de ABAJO y escribe un segundo cuadro sin borrar
+  // el primero. Los dos se pisan y los dos mueren. Pasó de verdad: quedaron TRES dinámicas donde
+  // tenía que haber dos, y la de arriba en #REF!.
+  //
+  // El título de la sección y el de la siguiente son los únicos anclajes que no dependen de que
+  // ayer haya salido todo bien. El contrato de la pestaña es: título · aire · aviso · rótulos.
+  // La búsqueda se conserva sólo para AVISAR cuando lo que hay no está donde debería.
+  const iAncla = iTitulo + AVISO + 1
+  if (iAncla >= iLimite) throw new Error('el ancla de la sección 1 cae dentro de la sección 2: no escribo')
   return {
-    filaEncabezado: iCab + 1,
+    filaEncabezado: iAncla + 1,
     filaLimite: iLimite + 1,
-    encabezados: (filas[iCab] ?? []).map((c) => String(c ?? '').trim()),
+    porTitulo: iCab !== iAncla,
+    encabezados: (filas[iAncla] ?? []).map((c) => String(c ?? '').trim()),
   }
 }
+
+/**
+ * Filas entre el título de la sección 1 y su fila de rótulos: una en blanco y la del control.
+ * Es el contrato de la pestaña: título · aire · aviso · rótulos.
+ */
+export const AVISO = 2
 
 /**
  * REAPUNTA EL CONTROL A LA COLUMNA DONDE QUEDÓ EL IMPORTE.

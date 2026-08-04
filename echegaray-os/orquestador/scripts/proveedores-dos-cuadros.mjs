@@ -137,7 +137,25 @@ async function main() {
     range: { sheetId, startRowIndex: fila, endRowIndex: fila + 1, startColumnIndex: 0, endColumnIndex: 1 },
     rows: [{ values: [{ pivotTable: pivot }] }], fields: 'pivotTable' } })
 
+  // ═══ NINGUNA DINÁMICA VIEJA SOBREVIVE, ESTÉ DONDE ESTÉ ═══
+  //
+  // Limpiar el rectángulo [iA, finIdx) alcanza mientras el plan caiga donde cayó la corrida
+  // anterior. El día que no —porque el cuadro dio #REF! y la detección se corrió— la dinámica
+  // vieja queda FUERA del rectángulo, sobrevive, y las dos se pisan. Se enumeran los anclajes de
+  // verdad, leyendo la grilla, y se anulan uno por uno.
+  // El barrido arranca en la fila 1, no cerca del plan: una dinámica huérfana puede haber quedado
+  // MÁS ARRIBA que donde el plan de hoy pone el cuadro, y ahí es donde estaba la que sobrevivió.
+  // El límite es la sección 2, que tiene su propia dinámica y no se toca.
+  const grid = await google.getGridData(ID, `${PESTAÑA}!A1:A${geo.filaLimite - 1}`)
+  const viejas = (grid?.sheets?.[0]?.data?.[0]?.rowData ?? [])
+    .map((r, i) => (r?.values?.[0]?.pivotTable ? i : -1))
+    .filter((i) => i >= 0 && (i < iA || i >= finIdx))
+  if (viejas.length) console.log(`⚠ ${viejas.length} dinámica(s) fuera del plan: filas ${viejas.map((i) => i + 1).join(', ')} — se anulan`)
+
   await google.spreadsheetBatchUpdate(ID, [
+    ...viejas.map((i) => ({ updateCells: {
+      range: { sheetId, startRowIndex: i, endRowIndex: i + 1, startColumnIndex: 0, endColumnIndex: 1 },
+      rows: [{ values: [{ userEnteredValue: null }] }], fields: 'userEnteredValue,pivotTable' } })),
     // Limpiar el ancho entero del bloque, incluidas las dinámicas viejas.
     { updateCells: { range: { sheetId, startRowIndex: iA, endRowIndex: finIdx, startColumnIndex: 0, endColumnIndex: 7 },
       rows: vacias, fields: 'userEnteredValue,pivotTable' } },
@@ -177,6 +195,20 @@ async function main() {
       + ` · ${libres} fila(s) de aire antes del subtítulo (formateadas igual: la banda cubre el footprint)`
     if (libres < 0) { console.error(`✗ ${aviso}`); process.exitCode = 1 } else console.log(aviso)
   }
+
+  // LA EVIDENCIA DE QUE QUEDARON DOS Y NO TRES. Un #REF! en el cuadro de arriba no se ve leyendo
+  // valores —la celda dice "#REF!" y listo—; lo que lo delata es contar los anclajes.
+  const gridFinal = await google.getGridData(ID, `${PESTAÑA}!A1:A${geo.filaLimite}`)
+  const anclas = (gridFinal?.sheets?.[0]?.data?.[0]?.rowData ?? [])
+    .map((r, i) => (r?.values?.[0]?.pivotTable ? i + 1 : -1)).filter((i) => i > 0)
+  if (anclas.length === 2 && anclas[0] === iA + 1 && anclas[1] === iB + 1) {
+    console.log(`✓ dos dinámicas y sólo dos, en las filas ${anclas.join(' y ')}`)
+  } else {
+    console.error(`✗✗ hay ${anclas.length} dinámica(s) en las filas ${anclas.join(', ')}; se esperaban 2 (${iA + 1} y ${iB + 1})`)
+    process.exitCode = 1
+  }
+  const rotos = (leido ?? []).flat().filter((c) => /#(REF|NAME|VALUE|DIV|N\/A|ERROR|¿NOMBRE)/i.test(String(c ?? '')))
+  if (rotos.length) { console.error(`✗✗ ${rotos.length} celda(s) con error: ${[...new Set(rotos)].join(' · ')}`); process.exitCode = 1 }
 
   console.log('\nLEÍDO DEL ARCHIVO:')
   for (const f of leido ?? []) {
