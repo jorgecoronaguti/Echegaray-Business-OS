@@ -11,7 +11,7 @@ import {
   alicuotaValida, factorIvaSobreBruto, proyectarLibreDisponibilidad, mesEnQueSeAgota,
   formulaDebitoProyectado, formulaCreditoProyectado, formulaAPagarProyectado,
   formulaLibreDispProyectada, supuestoDelMes, RANGO_ALICUOTA_IVA, periodoDe,
-  anclaDeProyeccion, esNumero, aNumero,
+  anclaDeProyeccion, esNumero, aNumero, filasReferenciadas, contratoDeFilas,
 } from './iva-libre-disponibilidad.mjs'
 
 const A = 0.21
@@ -209,4 +209,46 @@ test('con diciembre cargado no queda nada por proyectar', () => {
   const a = anclaDeProyeccion(Array(12).fill('$1'), [])
   assert.equal(a.ultimoMesConDato, 12)
   assert.deepEqual(a.mesesAProyectar, [])
+})
+
+// ── EL CONTRATO DE FILAS CON LOS DOS CASH FLOW ───────────────────────────────────────────────────
+
+test('saca del cash flow real a qué filas de la pestaña de impuestos apunta', () => {
+  // La fórmula real de "Cash Flow Mensual"!C33 al 04/08/2026.
+  const mensual = "=N('Impuestos y Financieros'!B$18)+N('Impuestos y Financieros'!B$28)"
+  assert.deepEqual(filasReferenciadas([mensual]), [18, 28])
+  // La del semanal recorre los doce meses: muchas referencias, las mismas dos filas.
+  const semanal = Array.from({ length: 12 }, (_, i) => {
+    const c = String.fromCharCode(66 + i)
+    return `(N('Impuestos y Financieros'!${c}$18)+N('Impuestos y Financieros'!${c}$28))*(X>=B$3)`
+  }).join('+')
+  assert.deepEqual(filasReferenciadas([semanal]), [18, 28])
+})
+
+test('no confunde una referencia a OTRA pestaña con una propia', () => {
+  assert.deepEqual(filasReferenciadas(["=N('Cobranzas'!B$18)+N('Impuestos y Financieros'!B$28)"]), [28])
+})
+
+test('si las filas quedan donde los cash flow ya leen, NO hace falta regenerarlos', () => {
+  const r = contratoDeFilas([18, 28], { iva: 18, iibb: 28 })
+  assert.equal(r.ok, true)
+  assert.match(r.motivo, /no hace falta regenerarlos/)
+})
+
+test('si el rótulo se corrió una fila, NO se escribe — el cuadro leería la de al lado sin avisar', () => {
+  // Es el defecto del 30/07: agregar una línea arriba corre "IVA a pagar" de la 18 a la 19, los cash
+  // flow siguen leyendo la 18 y muestran otra cosa. Sin #REF y sin aviso.
+  const r = contratoDeFilas([18, 28], { iva: 19, iibb: 29 })
+  assert.equal(r.ok, false)
+  assert.match(r.motivo, /fila 19/)
+  assert.match(r.motivo, /sin error y sin aviso/)
+})
+
+test('en la primera escritura, sin nadie que referencie, no hay contrato que romper', () => {
+  const r = contratoDeFilas([], { iva: 18, iibb: 28 })
+  assert.equal(r.ok, true)
+})
+
+test('sin saber dónde van a quedar los rótulos, no se escribe', () => {
+  assert.equal(contratoDeFilas([18, 28], {}).ok, false)
 })

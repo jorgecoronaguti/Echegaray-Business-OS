@@ -8,7 +8,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { ubicarLineas } from './impuestos-pestana.mjs'
+import { ubicarLineas, sinSolapamiento } from './impuestos-pestana.mjs'
 
 const FUENTE = readFileSync(new URL('./impuestos-pestana.mjs', import.meta.url), 'utf8')
 
@@ -99,6 +99,50 @@ test('las líneas SIN FACTURA quedan deliberadamente fuera del crédito fiscal',
     'Gastos de estructura y administración', 'Servicios recurrentes',
   ])
   for (const f of sinFactura) assert.equal(credito.includes(f), false, `la fila ${f} no tiene factura: no da crédito fiscal`)
+})
+
+// ── EL DOBLE CONTEO ──────────────────────────────────────────────────────────────────────────────
+//
+// El cuadro tiene totales sin sangría y sus componentes indentados debajo. Sumar un total Y alguno de
+// sus componentes cuenta esa plata dos veces, y el resultado sigue pareciendo un importe razonable —
+// no hay #ERROR, no hay negativo imposible, sólo una carga fiscal inflada. Sobre agosto:
+// fila 10 ($151.317.518) + fila 11, su único componente con dato, daría $302,6M de base y $52,5M de
+// débito donde corresponden $29,8M. La única defensa es que el generador se niegue a armar la base.
+
+test('un TOTAL y uno de sus COMPONENTES no pueden estar los dos en la base', () => {
+  const a = colaAReal()
+  // fila 10 es el total y la 11 su componente: la base no puede llevar las dos.
+  a[10] = ['    Esperado · obra civil']
+  assert.throws(
+    () => sinSolapamiento(a, [10, 11]),
+    /doble conteo|componente/i,
+    'sumar la fila 10 y su hija 11 duplica $151M y nadie se entera',
+  )
+})
+
+test('dos componentes del mismo total sí pueden estar juntos', () => {
+  // 24 y 25 son hermanos bajo el total 23: sumarlos no duplica nada, y es justo lo que hace falta
+  // para dejar afuera los cheques y la tarjeta sin factura.
+  assert.deepEqual(sinSolapamiento(colaAReal(), [24, 25, 29, 30]), [24, 25, 29, 30])
+})
+
+test('dos totales sin parentesco entre sí pasan', () => {
+  assert.deepEqual(sinSolapamiento(colaAReal(), [6, 10]), [6, 10])
+})
+
+test('LA BASE REAL de hoy no tiene solapamiento — ni el débito ni el crédito', () => {
+  // Es el chequeo que descarta la hipótesis de doble conteo sobre la estructura real de la pestaña.
+  const a = colaAReal()
+  const deb = ubicarLineas(a, [
+    'Cobros por ventas y servicios (ya cobrado)',
+    'Cobranzas esperadas — de este mes en adelante (proyección, suma al flujo)',
+  ])
+  const cre = ubicarLineas(a, [
+    'Materiales e insumos de obra civil', 'Materiales de mantenimiento',
+    'Gastos de estructura y administración', 'Servicios recurrentes',
+  ])
+  assert.deepEqual(sinSolapamiento(a, deb), [6, 10])
+  assert.deepEqual(sinSolapamiento(a, cre), [24, 25, 29, 30])
 })
 
 test('el subtotal "(–) Pagos a proveedores de obra" NO se usa como base de crédito', () => {
