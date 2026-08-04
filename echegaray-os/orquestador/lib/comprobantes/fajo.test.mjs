@@ -202,3 +202,20 @@ test('cambiar el id no cambia el despacho: eso lo decide context.accion', () => 
     assert.ok(a.integration?.context?.accion, `la acción «${a.id}» tiene que declarar su accion en el context`)
   }
 })
+
+// Con imputación pendiente, "Confirmar" cambia de nombre y deja de ser el botón primario: en
+// producción el dueño lo apretó porque los menús no respondían, y la fila entró sin clasificar.
+test('mientras falte imputar, el botón dice lo que de verdad hace', () => {
+  const url = 'https://x/accion?t=s'
+  const it = { ...item({ comprobante: { obra: null } }), opciones: { obra: ['MESSINA', 'Taller'], unidad: [], detalle: {} } }
+  const att = botonesFajo({ id: 'f1', items: [it] }, { url })
+  const confirmar = att.at(-1).actions.find((a) => a.id === 'confirmar')
+  assert.equal(confirmar.name, 'Cargar igual, sin imputar')
+  assert.equal(confirmar.style, undefined, 'no es el camino primario')
+
+  // Contestada la imputación, vuelve a ser el Confirmar de siempre.
+  const listo = { ...it, comprobante: { ...it.comprobante, obra: 'MESSINA' }, opciones: { obra: [], unidad: [], detalle: {} } }
+  const b = botonesFajo({ id: 'f1', items: [listo] }, { url }).at(-1).actions.find((a) => a.id === 'confirmar')
+  assert.equal(b.name, 'Confirmar y cargar')
+  assert.equal(b.style, 'primary')
+})
