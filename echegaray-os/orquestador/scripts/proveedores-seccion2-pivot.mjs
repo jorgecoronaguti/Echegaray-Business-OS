@@ -149,6 +149,15 @@ async function main() {
   const p1 = await escribirDinamica({ google, sid, geo, corte, idx, fuente })
   if (!p1) return
   const p0 = geo.filaRotulos + 1
+  // El pie va DEBAJO del final real de la dinámica, y el final real puede pasarse de lo estimado.
+  // Si el pie no entra antes de la sección siguiente, no se escribe: escribir ahí le pisaría el
+  // título a otro dueño. Un cuadro sin total se ve; un título comido, no.
+  if (p1 + 2 > geo.filaLimite - 1) {
+    console.error(`✗✗ el pie caería en la fila ${p1 + 2} y la sección siguiente arranca en la ${geo.filaLimite}:`
+      + ' no escribo el resto ni el total. Corré de nuevo — la próxima corrida reserva con el alto real.')
+    process.exitCode = 1
+    return
+  }
   await escribirPie({ google, sid, R, p0, p1 })
   await recortarYVerificar({ google, sid, geo, corte, p0, p1, fResto: p1 + 1, fTotal: p1 + 2 })
 }
