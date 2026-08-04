@@ -12,6 +12,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { grilla, rescatar } from './caja-pestana.mjs'
+import { lineasDeCaja, conceptosFueraDelCalendario } from '../lib/calendario-egresos.mjs'
 import { CUENTAS } from '../lib/caja-disponibilidades.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
 
@@ -20,7 +21,11 @@ import { VACIO } from '../lib/preservar-anotaciones.mjs'
  *  lib/preservar-anotaciones.mjs — el centinela existe porque clearValues borraba trabajo del dueño. */
 const vacia = (s) => s === '' || s === VACIO
 
-const REFS = { bancoRaw: '_BANCO_RAW', cheques: 'Cheques Emitidos', chequesRaw: '_CHEQUES_RAW' }
+// `filasCal` son las filas de "Impuestos y Financieros" donde viven el IVA y el IIBB a pagar. En la
+// corrida real las ubica main() POR RÓTULO; acá son dos números cualesquiera porque lo que el test
+// verifica es la FORMA de la fórmula, no el contenido de esa pestaña. Que sean obligatorias es el
+// punto: sin ellas el generador rompe (ver el test de más abajo) en vez de escribir $0 de IVA.
+const REFS = { bancoRaw: '_BANCO_RAW', cheques: 'Cheques Emitidos', chequesRaw: '_CHEQUES_RAW', filasCal: { iva: 18, iibb: 19 } }
 const CARTERA = { origen: 'test', enCartera: [], endosados: [] }
 const construir = () => grilla(new Map(), REFS, CARTERA)
 
@@ -273,20 +278,29 @@ test('cada tramo del calendario suma los jornales, no sólo los cheques', () => 
   }
 })
 
-test('LA DESCARGA: una quincena con fecha en "Pagado el" sale del calendario', () => {
-  // Es el mecanismo entero en una condición. Mientras "Pagado el" esté vacía la quincena PESA; cuando
-  // el dueño escribe la fecha, deja de pesar — su salida ya está en el extracto del banco, y sumarla
-  // otra vez la contaría dos veces.
+test('LA DESCARGA: una quincena ya pagada no vuelve a pesar en el calendario', () => {
+  // MISMO DEFECTO, OTRO MECANISMO (04/08). Antes la descarga era una condición escrita a mano en esta
+  // pestaña: `(JORNALES_REAL_PAGADO="")`, o sea "sólo pesa la que nadie marcó como pagada". Desde que
+  // la columna sale de la definición única, la descarga son DOS propiedades de `formulaJornales`, y
+  // juntas cubren más casos que la condición vieja:
+  //
+  //   1. la fecha que ubica la quincena es la de PAGO REAL si existe (fechaDeCajaDeQuincena), y
+  //   2. la ventana del tramo empieza en CAJA_FECHA_SALDO.
+  //
+  // Una quincena marcada como pagada el 28/07 con el extracto cortado al 04/08 cae ANTES del piso de
+  // la ventana y no entra en ningún tramo: su plata ya está descontada del saldo del banco. Si se
+  // quitara cualquiera de las dos, las quincenas viejas volverían al tramo "Vencido" — que es
+  // exactamente los $106M de deuda inexistente que este test cuida.
   const g = construir()
   const sale = String(g.filas[g.cal0 - 1]?.[3] ?? '')
-  assert.match(sale, /\(JORNALES_REAL_PAGADO=""\)/,
-    'sólo pesa la que NO tiene fecha de pago real: eso es la descarga y el anti-doble-conteo')
-  // La proyección no lleva esa condición: una quincena que todavía no existe no puede estar pagada.
-  // SE AÍSLA SU TÉRMINO, no "todo lo que sigue": el corte hasta el final de la fórmula daba falso
-  // positivo en cuanto se sumó un tercer término (la oficina, que sí tiene una columna PAGADO). Mirar
-  // "de acá hasta el final" es la misma trampa que anclar en la posición.
-  const termino = (nombre) => sale.split('+SUMPRODUCT(').find((t) => t.includes(nombre)) ?? ''
-  const proy = termino('JORNALES_PROY_PAGO')
+  assert.match(sale, /IF\(ISNUMBER\(JORNALES_REAL_PAGADO\);JORNALES_REAL_PAGADO;/,
+    'lo PAGADO manda sobre lo previsto: si se pagó, se pagó')
+  assert.match(sale, /JORNALES_REAL_HASTA\)\)>=CAJA_FECHA_SALDO/,
+    'y la ventana arranca en el corte del extracto: lo anterior ya está dentro del saldo')
+  // La proyección no mira PAGADO: una quincena que todavía no existe no puede estar pagada. SE AÍSLA
+  // SU TÉRMINO, no "todo lo que sigue" — mirar hasta el final de la fórmula es la misma trampa que
+  // anclar en la posición, y ahora la fórmula tiene diecinueve sumandos detrás.
+  const proy = sale.split('+SUMPRODUCT(').find((t) => t.includes('JORNALES_PROY_PAGO')) ?? ''
   assert.ok(proy.includes('JORNALES_PROY_PAGO'), 'el término de la proyección se pudo aislar')
   assert.ok(!proy.includes('JORNALES_REAL_PAGADO'), 'la proyección no se filtra por pagada: no tiene sentido')
 })
@@ -294,37 +308,105 @@ test('LA DESCARGA: una quincena con fecha en "Pagado el" sale del calendario', (
 test('LA OFICINA TAMBIÉN SALE DE ESTA CAJA: el calendario la suma, y de la misma fuente que el cash flow', () => {
   // El dueño: "no estás considerando oficina... por ende podría estar mal en caja". Eran ~$3,4M por mes
   // que salen del mismo banco y que el piso proyectado no veía.
+  // Y DESDE EL 04/08 TAMBIÉN LA DIRECCIÓN, que es la otra mitad de la misma línea: $9.000.000 de
+  // retiros con fecha 10/08 que el calendario no veía porque leía OFICINA_* y no DIRECCION_*.
   const g = construir()
   const sale = String(g.filas[g.cal0 - 1]?.[3] ?? '')
   assert.match(sale, /OFICINA_PAGO/, 'la oficina entra al calendario')
-  assert.match(sale, /N\(OFICINA_PAGADO\)\+N\(OFICINA_PROYECTADO\)/, 'un mes está pagado o proyectado, nunca los dos')
+  assert.match(sale, /DIRECCION_PAGO/, 'y los retiros de Dirección, la otra mitad de la nómina de administración')
+  assert.match(sale, /IF\(ISNUMBER\(OFICINA_PAGADO\);OFICINA_PAGADO;0\)\+IF\(ISNUMBER\(OFICINA_PROYECTADO\)/,
+    'un mes está pagado o proyectado, nunca los dos')
   assert.match(sale, /OFICINA_PAGO>=CAJA_FECHA_SALDO/, 'antes del corte del extracto manda el banco, igual que la obra')
   // El término de la oficina se acota al SUYO: desde donde empieza hasta el siguiente sumando. Medir
-  // "todo lo que viene después" hacía fallar el test cuando se agregó al calendario la deuda que NO
-  // se paga con cheque, que sí sale de Compras y es un sumando aparte.
+  // "todo lo que viene después" hacía fallar el test en cuanto se sumó otro término de Compras — y
+  // ahora los términos de Compras son doce.
   const iOfi = sale.indexOf('SUMPRODUCT(ISNUMBER(OFICINA_PAGO)')
-  const sig = sale.indexOf('+SUMPRODUCT(', iOfi + 1)
+  const sig = sale.indexOf('+SUM', iOfi + 1)
   const terminoOficina = sale.slice(iOfi, sig < 0 ? undefined : sig)
   assert.ok(!/Compras!/.test(terminoOficina), 'la nómina sale de la planilla de sueldos, no de Compras')
 })
 
-test('EL PISO CUENTA LO QUE NO SE PAGA CON CHEQUE, o se coloca plata que hace falta', () => {
-  // Medido el 04/08: \$15.000.401 de deuda con fecha futura invisible para el calendario —débito
-  // \$7.484.627 (plan previsional), tarjeta \$5.124.412, efectivo \$1.624.000, transferencia \$767.362.
-  // Un piso MÁS ALTO que el real es el error que peor se paga.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL PISO CUENTA LA MISMA PLATA QUE EL CASH FLOW — NI MÁS NI MENOS (04/08)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El calendario tenía su propia lista de egresos (cheques + nómina) y el cash flow otra (rubros de
+// Compras). Con dos listas de la misma plata, el mismo mes daba $41.704.351 distinto en cada vista, y
+// el que veía de MENOS era el que produce el PISO PROYECTADO — el número con el que se decide cuánto
+// plazo fijo tomar. Un piso más alto que el real hace colocar plata que hace falta el 11/08.
+//
+// Ahora la columna sale de `expresionSaleEnVentana`: el MISMO cuadro. Estos tres tests cuidan las tres
+// formas en que eso se puede romper: que falte una línea, que una línea se cuente dos veces, y que una
+// línea sin fuente desaparezca en silencio en vez de romper.
+test('NINGUNA línea de egreso del cuadro se cae del calendario: los tramos suman las diecinueve', () => {
   const g = construir()
-  const sale = String(g.filas[g.cal0 - 1]?.[3] ?? '')
-  assert.match(sale, /Compras!\$X\$4:\$X="Pendiente"/, 'sólo la deuda viva')
-  assert.match(sale, /Compras!\$P\$4:\$P<>"Cheque"/, 'los cheques ya vienen de Cheques Emitidos: contarlos acá los duplica')
-  assert.match(sale, /Compras!\$P\$4:\$P<>"Echeq"/, 'un echeq es un cheque electrónico y también está en Cheques Emitidos')
-  assert.match(sale, /Compras!\$Q\$4:\$Q>=CAJA_FECHA_SALDO/, 'lo anterior al corte ya está dentro del saldo del banco')
-  assert.match(sale, /Compras!\$O\$4:\$O.*Compras!\$T\$4:\$T/s, 'sale el SALDO (total menos pagado), no el total de la factura')
+  const egresos = lineasDeCaja().filter(({ signo }) => signo === -1)
+  assert.ok(egresos.length >= 19, `el cuadro tiene ${egresos.length} líneas de egreso: si bajó, algo se perdió`)
+  // Cada línea deja una huella reconocible en la fórmula: su rubro de Compras, su rango con nombre o
+  // la pestaña de la que sale. Se verifica sobre TODOS los tramos, no sobre uno: un tramo que se
+  // arme distinto de los otros es el bug de doble conteo que ya costó $11,7M.
+  // Las dos líneas de nómina NO salen de Compras aunque tengan `rubro`: su fuente es la planilla de
+  // jornales (ver formulaJornales/formulaAdministracion), así que su huella es el rango con nombre.
+  const POR_PLANILLA = { 'Nómina · Jornales de obra': 'JORNALES_REAL_TOTAL', 'Nómina · Sueldos administración': 'DIRECCION_PAGO' }
+  const huella = ({ linea }) => (POR_PLANILLA[linea.rubro] ?? (linea.rubro ? `"${linea.rubro}"`
+    : linea.soloSub ? `"${linea.soloSub}"`
+      : linea.cheques ? (linea.inst === 'cheques' ? 'Cheques Emitidos' : 'Tarjeta de Credito')
+        : linea.calendarioImpuestos ? 'Impuestos y Financieros' : null))
+  for (const f of g.filas.slice(g.cal0 - 1, g.cal0 - 1 + 6)) {
+    const sale = String(f[3] ?? '')
+    for (const l of egresos) {
+      const h = huella(l)
+      // Las tres sin huella son las que valen cero DECLARADO (descubierto, comisiones, impuesto al
+      // cheque): su ausencia de la fórmula es el punto, y la cubre el test del control de más abajo.
+      if (!h) continue
+      assert.ok(sale.includes(h), `el tramo "${f[0]}" no ve "${l.linea.nombre}" (buscaba ${h})`)
+    }
+  }
+})
+
+test('EL DOBLE CONTEO QUE NO PUEDE VOLVER: los cheques entran sólo si NO tienen factura cargada', () => {
+  // Medido el 04/08: $43.380.472 de cheques librados cuya factura YA está en Compras. Como la columna
+  // suma Compras entera por rubro, sumar además el cheque cuenta esa plata dos veces — el cheque es el
+  // INSTRUMENTO y la factura es la OBLIGACIÓN. El cuadro llama a esa línea "Cheques sin factura
+  // cargada" y esto verifica que la fórmula haga honor al rótulo.
+  const g = construir()
+  for (const f of g.filas.slice(g.cal0 - 1, g.cal0 - 1 + 6)) {
+    const sale = String(f[3] ?? '')
+    for (const inst of ['Cheques Emitidos', 'Tarjeta de Credito']) {
+      const i = sale.indexOf(`'${inst}'`)
+      assert.ok(i > 0, `el tramo "${f[0]}" tiene que ver ${inst}`)
+      const termino = sale.slice(sale.lastIndexOf('SUMPRODUCT(', i), i + 400)
+      assert.ok(termino.includes('FALTA cargar la factura'),
+        `el término de ${inst} suma cheques SIN filtrar por la marca de cobertura: eso los cuenta dos veces`)
+    }
+  }
+  // Y el parche del 04/08 que sumaba a mano la deuda de Compras "no pagada con cheque" no puede
+  // volver: era un SUBCONJUNTO de lo que ya trae el cuadro, así que contaba esa plata dos veces.
+  for (const f of g.filas.slice(g.cal0 - 1, g.cal0 - 1 + 6)) {
+    assert.ok(!String(f[3]).includes('Compras!$X$4:$X="Pendiente"'),
+      'el filtro por estado/medio de pago duplica los rubros de Compras que ya vienen del cuadro')
+  }
+})
+
+test('UNA LÍNEA SIN FUENTE ROMPE, no desaparece: sin las filas del calendario fiscal no hay pestaña', () => {
+  // Es la propiedad que costó $41,7M: no fue una fórmula mal escrita, fue un concepto que nadie sumó
+  // y nada avisó. `formulaCalendarioImpuestosSemana` exige las filas del IVA/IIBB ubicadas por rótulo;
+  // sin ellas la referencia sería a una fila muerta y devolvería $0 de IVA SIN UN SOLO #ERROR.
+  assert.throws(() => grilla(new Map(), { ...REFS, filasCal: undefined }, CARTERA),
+    /Impuestos y Financieros/,
+    'el generador tiene que romper antes que escribir un calendario ciego al IVA')
 })
 
 test('la fecha que ubica el jornal en el tramo es la de PAGO, nunca la de cierre', () => {
   const g = construir()
   const sale = String(g.filas[g.cal0 - 1]?.[3] ?? '')
-  assert.ok(!sale.includes('JORNALES_REAL_HASTA'), 'HASTA es el devengamiento, no la caja')
+  // HASTA (el cierre de la quincena) es el DEVENGAMIENTO, no la caja, y no puede decidir el tramo.
+  // Aparece una sola vez y en un solo lugar: como último recurso del IF, para que una quincena sin
+  // ninguna fecha no desaparezca del cuadro. Que exista ese fallback está declarado en
+  // jornales-fecha-pago.mjs; que gobierne el tramo sería el defecto que este test cuida.
+  assert.match(sale, /IF\(ISNUMBER\(JORNALES_REAL_PAGO\);JORNALES_REAL_PAGO;JORNALES_REAL_HASTA\)/,
+    'el cierre es el ÚLTIMO recurso, detrás de la fecha pagada y de la prevista')
+  assert.ok(!/\(JORNALES_REAL_HASTA[>=<]/.test(sale), 'HASTA nunca compara contra el borde del tramo')
   assert.ok(!sale.includes('JORNALES_REAL_DESDE'))
 })
 
@@ -337,26 +419,56 @@ test('la fila "Sin fecha de pago cargada" queda sólo para los cheques, y eso es
   assert.ok(!String(fila[3]).includes('JORNALES'), 'no se le agregan jornales')
 })
 
-test('el control del horizonte mide las DOS fuentes, o daría rojo para siempre', () => {
-  // Al sumar los jornales al calendario, un control que resta sólo los cheques queda en rojo por una
-  // diferencia CORRECTA. Un control que da rojo siempre es un control que nadie lee.
+test('EL CONTROL NO SE MIDE CONTRA LO QUE PRODUCE: nombra los conceptos que el calendario no ve', () => {
+  // EL CONTROL QUE ESTABA ACÁ ERA EL DEFECTO. Medía `horizonte − cheques − nómina − oficina`, o sea el
+  // calendario menos las mismas tres fuentes que el calendario sumaba: no podía dar otra cosa que
+  // cero. Y su cero se leyó como "está todo bien" mientras al piso le faltaban $77M.
+  //
+  // El de ahora sale de `conceptosFueraDelCalendario`, que mide contra el CUADRO CONTABLE COMPLETO y
+  // publica el NOMBRE de lo que queda afuera. Si mañana alguien agrega una línea de egreso al cuadro
+  // y no la resuelve, aparece acá con su nombre en vez de evaporarse.
   const g = construir()
-  const fila = g.filas.slice(g.cal0 - 1, g.calFin + 4).find((f) => /^ +· control:/.test(String(f?.[0] ?? '')))
+  const fila = g.filas.find((f) => /no ubica en el tiempo/.test(String(f?.[0] ?? '')))
   assert.ok(fila, 'el control existe')
-  assert.match(String(fila[3]), /JORNALES_REAL_TOTAL/, 'resta la nómina cerrada sin pagar')
-  assert.match(String(fila[3]), /JORNALES_PROY_TOTAL/, 'y la proyectada')
-  assert.match(String(fila[3]), /OFICINA_PROYECTADO/, 'y la oficina, que también entra al calendario')
-  assert.match(String(fila[0]), /cheques.*nómina.*oficina/i, 'y el rótulo dice las tres cosas que mide')
+  const ciegos = conceptosFueraDelCalendario(
+    lineasDeCaja().filter(({ signo }) => signo === -1).map(({ linea }) => linea.nombre))
+  assert.equal(ciegos.length, 0, 'el universo medido es el cuadro entero: contra sí mismo no falta nada')
+  // Los tres que hoy no tienen fuente con fecha están NOMBRADOS en la pestaña, no escondidos.
+  const listado = String(fila[4] ?? '')
+  for (const n of ['descubierto', 'Comisiones', 'Impuesto al cheque']) {
+    assert.ok(listado.includes(n), `el control tiene que nombrar "${n}"; dice: ${listado}`)
+  }
+  assert.equal(fila[3], 0, 'y declarar su monto: un cero con nombre es una limitación, un cero mudo es un bug')
+  assert.ok(!/cheques.*nómina.*oficina/i.test(String(fila[0])),
+    'el control viejo se medía contra sus propias fuentes: no puede volver')
+})
+
+test('EL RIESGO DECLARADO: si cheques-cobertura no corrió, la pestaña lo dice en vez de mostrar $0', () => {
+  // El término de cheques lee la MARCA que escribe `cheques-cobertura`. Si ese agente no corrió, la
+  // columna está vacía, el término da $0 y el piso SUBE sin que se haya pagado nada — el mismo modo de
+  // falla, "cero sin avisar", que este trabajo entero vino a matar. Este control lo hace visible.
+  const g = construir()
+  const fila = g.filas.find((f) => /riesgo: cheques no debitados SIN marca/.test(String(f?.[0] ?? '')))
+  assert.ok(fila, 'el control de cobertura existe')
+  assert.match(String(fila[3]), /\$M\$2:\$M\$400=""/, 'cuenta los cheques que todavía no tienen marca')
+  assert.match(String(fila[3]), /<>"SI"/, 'entre los NO debitados: un cheque ya debitado no le importa al calendario')
 })
 
 test('ANTES DEL CORTE MANDA EL BANCO: las quincenas viejas sin marcar NO son deuda', () => {
   // Sin esta condición el calendario mostraba $106M en "Vencido": las trece quincenas del año que
   // nadie marcó como pagadas, porque la columna "Pagado el" es nueva. No tener el dato NO es deber la
   // plata — y la de una quincena pagada antes del corte ya está descontada del saldo del banco.
+  //
+  // DESDE EL 04/08 EL PISO ES DE TODA LA COLUMNA, no sólo de la nómina: cada sumando arranca en
+  // CAJA_FECHA_SALDO, así que una factura de Compras con fecha anterior al corte tampoco vuelve a
+  // restar. Es la misma regla aplicada a los diecinueve conceptos en vez de a tres.
   const g = construir()
   for (const f of g.filas.slice(g.cal0 - 1, g.cal0 - 1 + 6)) {
-    assert.match(String(f[3]), /JORNALES_REAL_PAGO>=CAJA_FECHA_SALDO/,
+    const sale = String(f[3])
+    assert.match(sale, /JORNALES_REAL_HASTA\)\)>=(MAX\()?CAJA_FECHA_SALDO/,
       'sólo entra la nómina cuyo pago cae en o después del corte del extracto')
+    assert.match(sale, /Compras!\$AD\$4:\$AD;">="&(MAX\()?CAJA_FECHA_SALDO/,
+      'y lo mismo Compras: lo anterior al corte ya está descontado del saldo del banco')
   }
 })
 
