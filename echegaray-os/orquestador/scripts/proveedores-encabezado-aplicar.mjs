@@ -37,10 +37,16 @@ const TINTA = { red: 0.13, green: 0.13, blue: 0.13 }
 const TENUE = { red: 0.45, green: 0.45, blue: 0.45 }
 const ROJO = { red: 0.7, green: 0.11, blue: 0.11 }
 /** El cero como raya: un tramo sin deuda se ve vacío sin leerlo. */
-const MONTO = { type: 'NUMBER', pattern: '#,##0;-#,##0;"—"' }
-const MONTO_TOTAL = { type: 'CURRENCY', pattern: '"$"#,##0;-"$"#,##0;"—"' }
-const PORCENTAJE = { type: 'PERCENT', pattern: '0%;-0%;"—"' }
-const ENTERO = { type: 'NUMBER', pattern: '#,##0;-#,##0;"—"' }
+// EL NEGATIVO VA ENTRE PARÉNTESIS, NO CON SIGNO MENOS.
+//
+// No es gusto: es lo que exigen AICPA y FASB bajo US GAAP, lo endosa IFRS y lo pide la SEC en las
+// presentaciones de sociedades. El motivo es de lectura, no de norma: un guion chico se confunde
+// con una marca de impresión o se pasa por alto, y leer mal un solo número tuerce todo el análisis.
+// El paréntesis se ve aunque se lea rápido y no rompe la alineación de la columna.
+const MONTO = { type: 'NUMBER', pattern: '#,##0;(#,##0);"—"' }
+const MONTO_TOTAL = { type: 'CURRENCY', pattern: '"$"#,##0;("$"#,##0);"—"' }
+const PORCENTAJE = { type: 'PERCENT', pattern: '0%;(0%);"—"' }
+const ENTERO = { type: 'NUMBER', pattern: '#,##0;(#,##0);"—"' }
 const TEXTO = { type: 'TEXT', pattern: '@' }
 const LINEA = { style: 'SOLID', width: 1, color: GRIS }
 

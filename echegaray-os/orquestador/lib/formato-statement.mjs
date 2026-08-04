@@ -13,22 +13,27 @@
 //      columna. La unidad se declara una vez, donde se cierra la cuenta.
 //   2. EL CERO SE ESCRIBE "—". Un "$0" y un "no hubo movimiento" se leen distinto: la raya dice
 //      "nada que informar acá" sin obligar al ojo a comparar dígitos.
-//   3. EL ROJO NO ES DEL NÚMERO, ES DEL CONTROL. Un patrón con [Red] pinta cualquier negativo —una
+//   3. EL NEGATIVO VA ENTRE PARÉNTESIS, NO CON SIGNO MENOS. Es la presentación que exigen AICPA y
+//      FASB bajo US GAAP, que endosa IFRS y que la SEC pide en las presentaciones de sociedades. El
+//      motivo es de lectura antes que de norma: un guion chico se confunde con una marca de
+//      impresión o se pasa por alto, y leer mal un solo número tuerce todo el análisis. El
+//      paréntesis se ve aunque se lea rápido y no rompe la alineación de la columna.
+//   4. EL ROJO NO ES DEL NÚMERO, ES DEL CONTROL. Un patrón con [Red] pinta cualquier negativo —una
 //      nota de crédito legítima, una diferencia de medio centavo que el formato dibuja "-$0"— y
-//      cuando todo puede ponerse rojo, el rojo no avisa de nada. Acá el negativo va con su signo, y
-//      el único rojo de la pestaña lo pone una regla condicional sobre la celda del control.
+//      cuando todo puede ponerse rojo, el rojo no avisa de nada. Acá el negativo va entre
+//      paréntesis, y el único rojo de la pestaña es el de la celda del control.
 //
 // Los tres patrones llevan un tercer tramo (el del cero) y ninguno lleva decimales: en esta empresa
 // no hay decisión que dependa de los centavos, y los centavos son ruido en una columna de importes.
 
-/** Cuerpo de tabla: sin "$", negativo con signo, cero en raya. */
-export const MONEDA_CUERPO = { type: 'CURRENCY', pattern: '#,##0;-#,##0;"—"' }
+/** Cuerpo de tabla: sin "$", negativo entre paréntesis, cero en raya. */
+export const MONEDA_CUERPO = { type: 'CURRENCY', pattern: '#,##0;(#,##0);"—"' }
 
 /** Fila de total y cifras de cierre: la única que declara la unidad. */
-export const MONEDA_TOTAL = { type: 'CURRENCY', pattern: '"$"#,##0;-"$"#,##0;"—"' }
+export const MONEDA_TOTAL = { type: 'CURRENCY', pattern: '"$"#,##0;("$"#,##0);"—"' }
 
 /** Un contador es un contador: ni "$", ni miles, ni decimales. */
-export const CONTADOR = { type: 'NUMBER', pattern: '0;-0;"—"' }
+export const CONTADOR = { type: 'NUMBER', pattern: '0;(0);"—"' }
 
 /** Una proporción: un decimal alcanza para decidir. */
 export const PORCENTAJE = { type: 'PERCENT', pattern: '0,0%' }

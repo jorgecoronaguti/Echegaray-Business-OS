@@ -1143,7 +1143,31 @@ async function formatear(google, sheetId, g, filasHoja = 0) {
   // La columna de procedencia ya no muestra texto (vive en la nota): angosta.
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 14, endIndex: 15 }, properties: { pixelSize: 24 }, fields: 'pixelSize' } })
   req.push(...notas)
-  await google.spreadsheetBatchUpdate(ID, req)
+
+  // ═══ DOS GUARDAS ANTES DE FORMATEAR ═══
+  //
+  // 1. LA GRILLA TIENE QUE ENTRAR EL BLOQUE. La pestaña tenía exactamente 69 filas y el bloque
+  //    creció al agregarle la proyección: el formateo pidió `A70:O69` y Google rechazó el lote
+  //    ENTERO con 400. Lo grave no fue el error: fue que los VALORES ya se habían escrito en el
+  //    lote anterior, así que quedaron las fórmulas nuevas sin el rango con nombre que publican
+  //    las líneas de abajo —que nunca se ejecutaron— y la pestaña mostró `#NAME?` en toda la
+  //    proyección. Una escritura a medias es peor que ninguna.
+  // 2. UN RANGO VACÍO NO SE MANDA. Un `startRowIndex >= endRowIndex` es siempre un error de
+  //    aritmética de quien lo armó, y cuesta el lote completo. Se descarta acá, una vez, en vez de
+  //    esperar que cada uno de los cuarenta `fmt` de arriba se acuerde.
+  if (n > (filasHoja ?? 0)) {
+    await google.spreadsheetBatchUpdate(ID, [{ appendDimension: {
+      sheetId, dimension: 'ROWS', length: n + 5 - (filasHoja ?? 0) } }])
+    console.log(`  la grilla pasa de ${filasHoja} a ${n + 5} filas: el bloque no entraba`)
+    filasHoja = n + 5
+  }
+  const vacio = (q) => {
+    const g0 = q?.repeatCell?.range ?? q?.updateCells?.range ?? q?.unmergeCells?.range
+    return g0 && Number(g0.startRowIndex ?? 0) >= Number(g0.endRowIndex ?? 0)
+  }
+  const descartados = req.filter(vacio).length
+  if (descartados) console.log(`  ⚠ ${descartados} pedido(s) de formato con rango vacío, descartados`)
+  await google.spreadsheetBatchUpdate(ID, req.filter((q) => !vacio(q)))
   // PIEL DE STATEMENT encima del formato de número: sin reja, secciones y encabezados por tipografía
   // + hairline (no barras rellenas), totales rulados. La misma que CAJA, Cheques y Cargas Sociales.
   await google.spreadsheetBatchUpdate(ID, skinRequests({ sheetId, filas: g.filas, cols: ANCHO, congeladas: 2, titular: g.titular, filasHoja: filasHoja }))

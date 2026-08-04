@@ -87,6 +87,16 @@ async function main() {
       sheetId: compraMeta.sheetId, dimension: 'COLUMNS', length: COL_CUIT + 1 - compraMeta.cols } }], { espejo: true })
     console.log(`  Compras: agregada(s) ${COL_CUIT + 1 - compraMeta.cols} columna(s) al final para el CUIT`)
   }
+  // ═══ UN CUIT QUE FALTA SE ESCRIBE VACÍO, NUNCA "(falta)" (04/08) ═══
+  //
+  // En el archivo vivo esta fórmula tenía `"(falta)"` como valor de respaldo, y el resultado era una
+  // columna de la cuenta corriente con "(falta)" repetido decenas de veces: la palabra más frecuente
+  // de todo el cuadro. Un rótulo que se repite en la mayoría de las filas deja de informar y pasa a
+  // ser ruido — y encima corre el ojo hacia la única columna que no decide nada.
+  //
+  // El hueco no se tapa ni se disimula: se CUENTA. Cuántos proveedores comerciales no tienen CUIT es
+  // una línea del control de carga de la sección 5, donde se puede accionar. Sesenta etiquetas no
+  // dicen más que un número, dicen menos.
   const formula = `=ARRAYFORMULA(IF($E$4:$E="";"";IFERROR(VLOOKUP($E$4:$E;${AUX}!$A:$B;2;FALSE);"")))`
   await google.spreadsheetBatchUpdate(ID, [
     { updateCells: {
