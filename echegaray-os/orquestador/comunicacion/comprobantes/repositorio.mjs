@@ -202,6 +202,22 @@ export async function anotarFilas(port, filas = []) {
 // llama a la misma en vez de armar la suya.
 export { candidatasArca } from '../../lib/comprobantes/arca.mjs'
 
+/**
+ * OLVIDA claves ya registradas —con fila y todo— porque la pestaña VIVA las desmintió.
+ *
+ * Es la única operación que borra un registro completo, y por eso quien la llama tiene que haber
+ * LEÍDO Compras y no haber encontrado la fila: el registro dice lo que este sistema escribió, la
+ * pestaña dice lo que hay. Cuando difieren manda la pestaña. Sin esto, una fila que el dueño borra a
+ * mano deja el comprobante imposible de volver a cargar, con el bot contestando "ya está cargado".
+ */
+export async function olvidarCargados(port, claves = []) {
+  const lista = [...new Set(claves.filter(Boolean))]
+  if (!lista.length) return 0
+  const { rowCount } = await port.query(
+    'delete from comunicacion.comprobantes_cargados where clave = any($1)', [lista])
+  return rowCount ?? 0
+}
+
 /** Suelta las claves reservadas cuando la escritura NO llegó a ocurrir. Sólo las que siguen sin fila. */
 export async function soltarReservas(port, claves = []) {
   const lista = [...new Set(claves.filter(Boolean))]
