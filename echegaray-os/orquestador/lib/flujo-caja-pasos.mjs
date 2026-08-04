@@ -57,7 +57,15 @@ export const PASOS = [
   // EL REGISTRO DECLARA LA PESTAÑA QUE ESCRIBE, SIEMPRE. Estos tres pasos la dejaban en blanco, así
   // que el censo de dueños las daba por HUÉRFANAS aunque un agente las mantenía todos los días. Un
   // registro incompleto es peor que no tenerlo: contesta que no hay dueño cuando sí lo hay.
-  ['tarjeta-control.mjs', 'Tarjeta de Credito — el cruce contra el resumen del banco y la disponibilidad que ve CAJA', ['Tarjeta de Credito']],
+  // ═══ TARJETA: UN SOLO DUEÑO PARA LA PESTAÑA (04/08) ═══
+  //
+  // Antes eran dos escritores: tarjeta-control.mjs ponía su bloque DEBAJO del registro y una persona
+  // mantenía a mano un panel arriba. De ahí salieron las dos numeraciones que se pisaban (1, 2, 5, 6
+  // arriba; otro 1 y otro 2 abajo) y dos fotos del banco con cortes distintos contradiciéndose en la
+  // misma pestaña. Ahora la pestaña entera —salvo el registro, que carga el dueño— la escribe un
+  // único generador, y por eso el control puede subir arriba y los rangos del registro quedar
+  // abiertos hacia abajo en vez de fosilizarse en una fila fija.
+  ['tarjeta-pestana.mjs', 'Tarjeta de Credito — la línea de crédito: disponible, calendario de vencimientos, uso y control contra el resumen', ['Tarjeta de Credito']],
   // RESUMEN va DESPUÉS de proveedores, cheques, jornales y tarjeta: es un tablero que apunta con
   // fórmula a los totales de esas cuatro pestañas, así que necesita que ya existan. Reemplazó dos
   // tablas dinámicas nativas huérfanas que duplicaban Proveedores y que ningún agente mantenía.
