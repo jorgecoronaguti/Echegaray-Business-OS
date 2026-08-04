@@ -346,3 +346,39 @@ test('esperado y cobrado son excluyentes: ninguna cobranza puede contarse dos ve
   // Y ninguno de los dos toma un valor endosado: esa plata se entregó a un tercero.
   for (const f of [cob, esp]) assert.match(f, /ENDOSADO/)
 })
+
+// ── LA CADENA DE CAJA AL CIERRE DE CADA PERÍODO ────────────────────────────────────────────────────
+//
+// El defecto que estos dos tests atrapan (04/08/2026): el ancla del saldo real se decidía con
+// EOMONTH en las DOS pestañas. En la semanal las cinco columnas de agosto caen en el mismo mes, así
+// que las cinco arrancaban con el saldo declarado en vez de encadenar con el cierre de la anterior.
+// La definición vive en lib/cash-flow-ancla-saldo.mjs; acá se prueba que la grilla la use.
+
+// La columna que sigue a los períodos es el "Total 2026" y no lleva ancla: es el saldo del primer
+// período, no una columna más. Se recorta acá para no probar contra ella.
+const columnasDePeriodo = (fila, n) => fila.slice(1, n + 1)
+
+test('grilla semanal: el ancla se decide por la ventana de la semana, no por su mes', () => {
+  const g = grilla('semanal', [], 'CAJA_TOTAL_DISPONIBLE', 'CAJA_FECHA_SALDO', {}, FILAS_CAL)
+  const fila = g.filas[g.meta.inicio - 1]
+  for (const c of columnasDePeriodo(fila, 53)) {
+    assert.doesNotMatch(String(c), /EOMONTH/,
+      'un cuadro semanal no puede decidir su ancla con un criterio mensual: agosto tiene 5 columnas')
+    assert.match(String(c), /\$3\+7<=CAJA_FECHA_SALDO/, 'la ventana del período es [desde, desde+7)')
+  }
+  // Cada semana encadena con el CIERRE de la anterior, no con el saldo declarado.
+  assert.match(String(fila[3]), new RegExp(`C${g.meta.cierre}`), 'la 3ª semana engancha del cierre de la 2ª')
+})
+
+test('grilla mensual: el ancla sigue siendo el mes del saldo — la corrección no toca lo que ya cerraba', () => {
+  // El mensual proyecta desde dos pestañas-tabla; sin sus filas el generador se niega a referenciar
+  // una fila muerta. Los números son los rótulos reales ubicados por el script.
+  const filasTabla = { Estructura: 60, Recurrentes: 40 }
+  const g = grilla('mensual', [], 'CAJA_TOTAL_DISPONIBLE', 'CAJA_FECHA_SALDO', filasTabla, FILAS_CAL)
+  const fila = g.filas[g.meta.inicio - 1]
+  for (const c of columnasDePeriodo(fila, 12)) {
+    assert.match(String(c), /EOMONTH\([A-Z]+\$3;0\)\+1<=CAJA_FECHA_SALDO/,
+      'el mes usa el primero del mes siguiente como límite excluyente')
+  }
+  assert.match(String(fila[3]), new RegExp(`C${g.meta.cierre}`), 'marzo encadena con el cierre de febrero')
+})
