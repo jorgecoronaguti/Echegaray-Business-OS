@@ -134,3 +134,36 @@ test('el secreto de comprobantes NO es el de asistencia: dos puertas, dos llaves
   })
   assert.match(u, /t=sec-comprobantes$/)
 })
+// EL BOTÓN NUNCA SALE SIN FIRMAR.
+//
+// El 04/08, en producción: el botón de obra se publicó sin el `?t=` y el servidor lo rechazó con
+// `secreto_invalido`. Mattermost lo muestra como "Sorry, we could not find the page", que no dice
+// nada de un secreto. La causa: el llamador pasaba `config.env`, que es la config validada por Zod
+// —una lista blanca donde el secreto no está—, no el entorno. Un env PARCIAL es peor que ninguno:
+// `undefined` cae al default y funciona; un objeto sin la clave firma con nada.
+
+test('un env parcial NO deja el botón sin secreto: se completa del proceso', () => {
+  const antesU = process.env.COMPROBANTES_ACCION_URL
+  const antesS = process.env.COMPROBANTES_ACCION_SECRETO
+  process.env.COMPROBANTES_ACCION_URL = 'https://x/comprobantes/accion'
+  process.env.COMPROBANTES_ACCION_SECRETO = 'SECRETO123'
+  try {
+    // Esto es exactamente lo que llegaba: un objeto que existe y no tiene ninguna de las dos claves.
+    const u = urlAccion({ DATABASE_URL: 'postgres://…', TENANT: 'echegaray' })
+    assert.match(u, /[?&]t=SECRETO123$/, 'el botón tiene que ir firmado aunque el env que llega esté incompleto')
+  } finally {
+    if (antesU === undefined) delete process.env.COMPROBANTES_ACCION_URL; else process.env.COMPROBANTES_ACCION_URL = antesU
+    if (antesS === undefined) delete process.env.COMPROBANTES_ACCION_SECRETO; else process.env.COMPROBANTES_ACCION_SECRETO = antesS
+  }
+})
+
+test('el env que llega tiene precedencia sobre el del proceso', () => {
+  const antes = process.env.COMPROBANTES_ACCION_SECRETO
+  process.env.COMPROBANTES_ACCION_SECRETO = 'DEL_PROCESO'
+  try {
+    const u = urlAccion({ COMPROBANTES_ACCION_URL: 'https://y/accion', COMPROBANTES_ACCION_SECRETO: 'DEL_ENV' })
+    assert.match(u, /^https:\/\/y\/accion\?t=DEL_ENV$/)
+  } finally {
+    if (antes === undefined) delete process.env.COMPROBANTES_ACCION_SECRETO; else process.env.COMPROBANTES_ACCION_SECRETO = antes
+  }
+})

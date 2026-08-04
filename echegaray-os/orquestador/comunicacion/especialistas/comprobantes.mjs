@@ -37,10 +37,26 @@ import * as repo from '../comprobantes/repositorio.mjs'
 export const URL_ACCION_BASE = process.env.COMPROBANTES_ACCION_URL
   || 'https://chat.ecsas.com.ar/comprobantes/accion'
 
-/** La URL con el secreto puesto. Un solo lugar la arma, así el servidor no exige algo que los
- *  botones no llevan — el defecto que la asistencia ya pagó en producción. */
+/**
+ * La URL con el secreto puesto. Un solo lugar la arma, así el servidor no exige algo que los
+ * botones no llevan — el defecto que la asistencia ya pagó en producción.
+ *
+ * ═══ Y ASÍ Y TODO CAYÓ EN ÉL (04/08) ═══
+ *
+ * El llamador pasaba `config?.env ?? process.env`, y `config.env` NO es el entorno: es el objeto que
+ * arma `loadConfig()` con una LISTA BLANCA de claves validadas por Zod, donde
+ * `COMPROBANTES_ACCION_SECRETO` no figura. Resultado: el botón se publicaba SIN el `?t=`, y el
+ * servidor —que sí exige el secreto— contestaba `secreto_invalido`. En Mattermost eso se ve como
+ * "Sorry, we could not find the page" al tocar la obra, que no dice nada de un secreto: mandó el
+ * diagnóstico al lado equivocado durante toda una tarde.
+ *
+ * Un entorno parcial es peor que ninguno: `undefined` cae al `process.env` por el default y funciona;
+ * un objeto que existe pero no tiene la clave la resuelve en `null` y firma con nada. Por eso cada
+ * clave se busca en el env recibido Y en el del proceso, en ese orden.
+ */
 export function urlAccion(env = process.env) {
-  return urlConSecreto(env.COMPROBANTES_ACCION_URL || URL_ACCION_BASE, env.COMPROBANTES_ACCION_SECRETO || null)
+  const de = (k) => env?.[k] || process.env[k] || null
+  return urlConSecreto(de('COMPROBANTES_ACCION_URL') || URL_ACCION_BASE, de('COMPROBANTES_ACCION_SECRETO'))
 }
 
 /**
