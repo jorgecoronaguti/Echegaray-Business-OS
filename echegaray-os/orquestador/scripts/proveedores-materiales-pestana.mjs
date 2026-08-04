@@ -71,7 +71,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { FAMILIAS, SIN_FAMILIA, formulaFamilia, familiaDeMaterial, RUBROS_CON_FAMILIA } from '../lib/familia-material.mjs'
 import { NOMBRES } from '../lib/sheet-pestanas.mjs'
-import { partir, filasHuerfanas, ref as refPestana } from '../lib/partir-pestana.mjs'
+import { partir, filasHuerfanas, referenciasFuera, ref as refPestana } from '../lib/partir-pestana.mjs'
 import { anchosSegunContenido } from '../lib/nota-celda.mjs'
 import { fusionar, sobrantes, VACIO, rellenoDeCola } from '../lib/preservar-anotaciones.mjs'
 import { conEdicionesRespetadas, guardarRegistro, detectarArranqueEnFrio, autoRespetarReescritura, leerRegistro, esRotulo } from '../lib/respetar-ediciones.mjs'
@@ -100,9 +100,21 @@ import { bloqueDeDeuda, clasificarDeuda } from '../lib/deuda-geometria.mjs'
 // Un texto nunca lleva formato de plata, y se decide por CONTENIDO. Ver el lib: la lista de defectos
 // cambiaba en cada corrida porque se mantenían rangos por bloque en vez de mirar la celda.
 import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
+// HASTA DÓNDE LLEGA LA MANO DE ESTE GENERADOR. Las secciones 1 y 2 de "Proveedores" son tablas
+// dinámicas nativas que hacen otros scripts: acá se calcula la FRONTERA —la fila del primer bloque
+// propio— y se escribe de ahí para abajo, nunca por encima. Ver lib/proveedores-frontera.mjs.
+import {
+  SECCIONES_MATERIALES, PRIMERA_GENERADA, nSeccion, buscarFrontera, finDeDinamica,
+  anclasDeDinamicas, verificarFronteraBajoDinamicas, anchoALimpiar, aAnchoCompleto,
+} from '../lib/proveedores-frontera.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = NOMBRES.proveedoresMateriales
+// EL TÍTULO DEL PRIMER BLOQUE QUE ESCRIBE ESTE GENERADOR — la FRONTERA de la pestaña "Proveedores".
+// Es UNA sola constante: la usa el `push` que lo escribe y la usa `buscarFrontera` para encontrarlo
+// en la pestaña. Si fueran dos textos, el día que cambie uno la frontera dejaría de aparecer y —bien—
+// no se escribiría nada, pero por el motivo equivocado.
+const TITULO_FRONTERA = 'NOTAS DE CRÉDITO'
 const DRY = process.argv.includes('--dry')
 // REGENERACIÓN INTENCIONAL (opt-in, apagado por defecto). Cuando el dueño pide explícitamente
 // "regenerá esta pestaña", este flag saltea las dos guardas de SKIP (firma editada / auto-respeto de
@@ -423,7 +435,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // literal de array, que NO es portable al separador es-AR ({"a"\"b"} vs {"a";"b"}) — ya rompió
   // una vez en esta misma pestaña. El texto del QUERY va entre comillas y el localizador de
   // fórmulas respeta los literales, así que sus comas llegan intactas.
-  const b1 = push(['1 · QUÉ SE DEBE Y CUÁNDO'])
+  const b1 = push([`${nSeccion('deuda')} · QUÉ SE DEBE Y CUÁNDO`])
   // AVISO VIVO DE DESFASAJE. El detalle de abajo son filas físicas: existen cuando corre el agente.
   // Los IMPORTES son fórmulas y se mueven solos, pero una factura de un proveedor NUEVO no tiene fila
   // hasta la próxima corrida. Esta línea compara —en vivo— el total real contra la suma de lo listado
@@ -542,7 +554,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // quién se gasta, cuánto, si AFIP tiene más facturado de lo cargado, y con qué plazo paga. Se sacaron
   // las diez columnas de deuda que repetían el bloque de arriba (regla 9) y hacían de esto una pared de
   // dieciséis columnas ilegible. Menos es más: siete columnas, cada una con un trabajo.
-  const b2 = push(['2 · CUENTA CORRIENTE POR PROVEEDOR'])
+  const b2 = push([`${nSeccion('cuentaCorriente')} · CUENTA CORRIENTE POR PROVEEDOR`])
   push(['Con quién se gasta y con qué plazo. El plazo —días entre factura y pago— es el dato clave: pagar a 0 días empuja al descubierto al 62,78% anual cuando el crédito del proveedor es gratis. La deuda de cada uno está arriba, agrupada. Sólo comerciales.'])
   const cabProv = push(['Proveedor', 'CUIT', 'Comprobantes', `Comprado ${AÑO}`, 'Plazo promedio', 'Qué se le compra'])
   const p0 = filas.length + 1
@@ -577,15 +589,27 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // La pregunta que el libro de IVA NO contesta: una nota de crédito puede ser una DEVOLUCIÓN (el
   // costo de la obra baja de verdad) o una REFACTURACIÓN (el costo sigue, sólo cambió de número y
   // de mes). Las dos son "tipo 3". Ver lib/notas-credito.mjs.
-  const b5 = push([`5 · NOTAS DE CRÉDITO`])
+  // EL NÚMERO NO SE ESCRIBE A MANO: sale de SECCIONES_PROVEEDORES, donde las dinámicas ocupan el 1 y
+  // el 2. Antes decía "5" acá y la pestaña mostraba "3", porque una renumeración al momento de
+  // escribir lo corregía: dos lugares diciendo el mismo número es un lugar de más.
+  const b5 = push([`${nSeccion(PRIMERA_GENERADA)} · ${TITULO_FRONTERA}`])
   push(['Una nota de crédito puede significar dos cosas opuestas y el libro de IVA las escribe igual. Si el proveedor volvió a facturar, el costo SIGUE existiendo: sólo cambió de número y muchas veces de mes. Darlo por ahorrado es el error caro. Cada nota se cruza contra las facturas del mismo CUIT: la que anula tiene que dar el MISMO importe al peso, la que la reemplaza da parecido.'])
-  const cabNC = push(['Proveedor', 'Nota de crédito', 'Fecha', 'Importe', 'Qué es', 'Anula la factura', 'La reemplaza', '', ''])
+  const cabNC = push(estructural(['Proveedor', 'Nota de crédito', 'Fecha', 'Importe', 'Qué es', 'Anula la factura', 'La reemplaza', '', '']))
   const nc0 = filas.length + 1
   // El IMPORTE sale del libro por CUIT + número; lo que el OS aporta es la CLASIFICACIÓN (devolución
   // o refacturación), que no está en ningún libro y es criterio, no dato.
+  //
+  // ═══ POR QUÉ VA `estructural` Y NO UN '' PELADO (04/08) ═══
+  //
+  // El dueño lo vio: una nota de crédito de Trielec repetida tres veces, con "Anula la factura" y "La
+  // reemplaza" mostrando comprobantes de OTRO proveedor. No era un cruce mal hecho: eran RESTOS. Una
+  // nota que hoy no anula nada trae `n.anula` vacío, y un '' significa "esta celda no es mía,
+  // conservá lo que había" — así que la fusión dejaba clavado el valor de la corrida anterior, que
+  // pertenecía al proveedor que ocupaba esa fila física antes. Estas filas son del generador de punta
+  // a punta: su vacío es SUYO y se limpia.
   for (const n of notasCredito) {
     const f = filas.length + 1
-    push([n.proveedor, n.comprobante, n.fecha, arcaPorComprobante(`"${n.cuit ?? ''}"`, `$B${f}`, '-1'), n.que, n.anula, n.reemplaza, '', ''])
+    push(estructural([n.proveedor, n.comprobante, n.fecha, arcaPorComprobante(`"${n.cuit ?? ''}"`, `$B${f}`, '-1'), n.que, n.anula, n.reemplaza, '', '']))
   }
   const nc1 = filas.length
   push(estructural(['TOTAL ACREDITADO', '', '', `=SUM($D${nc0}:$D${nc1})`, '', '', '', '', '']))
@@ -605,7 +629,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   }
 
   // ── 6 · LO QUE AFIP TIENE Y COMPRAS NO ──────────────────────────────────────────────────────────────
-  const b6 = push([`6 · FACTURADO A LA EMPRESA QUE NO ESTÁ EN COMPRAS — ${faltanEnCompras.length} comprobantes`])
+  const b6 = push([`${nSeccion('faltanEnCompras')} · FACTURADO A LA EMPRESA QUE NO ESTÁ EN COMPRAS — ${faltanEnCompras.length} comprobantes`])
   push([`Sale del libro de IVA COMPRAS de ARCA, que el OS ya replica. Se cruza contra Compras por N° de comprobante y, cuando ese número no está cargado, por proveedor + importe. Lo que queda acá está facturado a la empresa con CAE y no lo ve ninguna otra pestaña: no es un error de fórmula, es carga que falta.`])
   const cabAfip = push(estructural(['Proveedor según AFIP', 'CUIT', 'Comprobante', 'Fecha', 'Importe', '', '', '', '']))
   const afip0 = filas.length + 1
@@ -619,7 +643,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   push([])
 
   // ── 7 · CONTROL Y AUDITORÍA DE CARGA ────────────────────────────────────────────────────────────
-  const b7 = push(['7 · CONTROL Y AUDITORÍA DE CARGA'])
+  const b7 = push([`${nSeccion('control')} · CONTROL Y AUDITORÍA DE CARGA`])
   const ctrl = filas.length + 1
   push([`${RUBROS_CON_FAMILIA[0]} (rubro de Compras)`, `=SUMIF(${COL_RUBRO};"${RUBROS_CON_FAMILIA[0]}";${COL_TOTAL})`, 'Es la misma línea del Cash Flow Mensual.'])
   push([`${RUBROS_CON_FAMILIA[1]} (rubro de Compras)`, `=SUMIF(${COL_RUBRO};"${RUBROS_CON_FAMILIA[1]}";${COL_TOTAL})`, ''])
@@ -669,7 +693,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   // Estos son los únicos números del archivo que NO salen del Sheet: salen del libro de IVA que el
   // OS replica desde ARCA. Viven acá —una pestaña réplica, con origen declarado— y el Cash Flow
   // Mensual los mira por RANGO CON NOMBRE en vez de tenerlos pegados. Ver lib/rangos-nombrados.mjs.
-  const b8 = push(['8 · LO QUE ARCA REGISTRÓ — la plomería, no es para leer'])
+  const b8 = push([`${nSeccion('arca')} · LO QUE ARCA REGISTRÓ — la plomería, no es para leer`])
   push(['Cualquier pestaña que necesite estas cifras las referencia por nombre (ARCA_COMPRAS_TOTAL, ARCA_FALTAN_MONTO…). Si se copiaran, el día que ARCA traiga un comprobante nuevo habría dos verdades en el archivo y nadie sabría cuál mirar.'])
   const cabArca = push(estructural(['Concepto', 'Cantidad', 'Monto', '', '', '', '', '', '']))
   // LOS QUE SALEN DEL LIBRO VAN COMO FÓRMULA sobre _ARCA_RAW: se carga un comprobante en ARCA, el
@@ -703,7 +727,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   push([])
 
   // ── 9 · LO QUE LA EMPRESA FACTURÓ ───────────────────────────────────────────────────────────────
-  push([`9 · FACTURAS EMITIDAS — control cruzado contra Cobranzas (esto es VENTAS, no proveedores)`])
+  push([`${nSeccion('emitidas')} · FACTURAS EMITIDAS — control cruzado contra Cobranzas (esto es VENTAS, no proveedores)`])
   push(['Las facturas que emitió la empresa según AFIP, con su cliente y su CAE. El cruce contra Cobranzas es por N° de comprobante NORMALIZADO (0001-00000203 = 01-0000203): una emitida que Cobranzas no tiene es plata facturada que nadie sigue.'])
   const cabEmi = push(estructural(['Cliente', 'CUIT', 'Comprobante', 'Fecha', 'Importe', '¿Está en Cobranzas?', '', '', '']))
   const emi0 = filas.length + 1
@@ -721,7 +745,8 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   push([])
 
   // ── 3 · FAMILIA × MES ───────────────────────────────────────────────────────────────────────────
-  const b3 = push(['3 · POR FAMILIA Y POR MES'])
+  // "Materiales" es una pestaña propia y entera del generador: sus secciones arrancan en 1.
+  const b3 = push([`${nSeccion('familiaMes', SECCIONES_MATERIALES)} · POR FAMILIA Y POR MES`])
   const cabFam = push(['Familia', ...meses, `Total ${AÑO}`, '% del total', 'Civil', 'Mantenimiento'])
   const fam0 = filas.length + 1
   for (const n of [...nombres, SIN_FAMILIA]) {
@@ -746,7 +771,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
   push([])
 
   // ── 4 · FAMILIA × OBRA ──────────────────────────────────────────────────────────────────────────
-  const b4 = push(['4 · POR OBRA'])
+  const b4 = push([`${nSeccion('obra', SECCIONES_MATERIALES)} · POR OBRA`])
   const cabObra = push(['Familia', ...obras, 'Total', 'Control (tiene que dar $0)'])
   const obra0 = filas.length + 1
   for (const n of [...nombres, SIN_FAMILIA]) {
@@ -794,38 +819,58 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, emi
 }
 
 /**
- * ¿HAY UNA TABLA DINÁMICA EN LA SECCIÓN 1? Entonces este generador no escribe.
+ * LA GUARDA DE LAS DINÁMICAS — Y POR QUÉ CAMBIÓ DE ROL (04/08).
  *
- * Pregunta por la celda ancla con `includeGridData` — el único modo de saber si una celda ES una
- * dinámica; ni `readSheetValues` ni `getSheetMeta` lo dicen, porque una dinámica no tiene ni valor
- * ni fórmula propios.
+ * Nació abortando la corrida ENTERA con sólo encontrar una tabla dinámica en la sección 1. Evitaba
+ * el desastre grande (reescribir la dinámica como texto y matarla), pero producía uno lento: todo lo
+ * que vive DEBAJO de las dinámicas dejó de actualizarse, y el dueño terminó mirando cuadros viejos
+ * con restos de una corrida anterior. Un martillo donde hacía falta un límite.
  *
- * FALLA CERRADO: si la consulta no se puede hacer, aborta igual. "No pude verificar" no es permiso.
+ * HOY VERIFICA UNA SOLA COSA: que la FRONTERA calculada —la fila del primer bloque que este script
+ * escribe— caiga DEBAJO de la última dinámica. Si cae adentro, la detección de la frontera está
+ * fallando y escribir sería destruir: ahí sí aborta.
+ *
+ * Pregunta por la grilla con `includeGridData` porque es el único modo de saber si una celda ES una
+ * dinámica; ni `readSheetValues` ni `getSheetMeta` lo dicen (una dinámica no tiene valor ni fórmula
+ * propios). FALLA CERRADO: si la consulta no se puede hacer, aborta igual — "no pude verificar" no
+ * es permiso.
+ *
+ * 'Proveedores' literal y NO `${PESTAÑA}`: en este script esa constante vale 'Proveedores y
+ * Materiales' (el nombre del PASO, no el de la pestaña), y con ella la consulta devuelve
+ * 400 "Unable to parse range" — o sea, la guarda abortaba siempre por el motivo equivocado.
  *
  * @param {object} google
+ * @param {{frontera:number, visible:any[][], pestana?:string}} arg
+ * @returns {Promise<{ancla:number, fin:number}[]>} las dinámicas encontradas, con lo que ocupan
  */
-// 'Proveedores' literal y NO `${PESTAÑA}`: en este script esa constante vale 'Proveedores y
-// Materiales' (el nombre del PASO, no el de la pestaña), y con ella la consulta devuelve
-// 400 "Unable to parse range" — o sea, la guarda abortaba siempre por el motivo equivocado.
-export async function abortarSiHayDinamica(google, { celda = 'Proveedores!A17' } = {}) {
-  if (process.env.ORQ_PISAR_DINAMICA_PROVEEDORES === 'si') {
-    console.warn('  ⚠ ORQ_PISAR_DINAMICA_PROVEEDORES=si: se escribe encima de la dinámica a pedido explícito')
-    return
+export async function abortarSiHayDinamica(google, { frontera, visible = [], pestana = 'Proveedores' } = {}) {
+  if (!Number.isFinite(frontera) || frontera < 1) {
+    throw new Error('la guarda de dinámicas necesita una frontera calculada; sin ella no hay nada que verificar.')
   }
-  let pivot = null
+  let grid = null
   try {
-    const grid = await google.getGridData?.(ID, celda)
-    pivot = grid?.sheets?.[0]?.data?.[0]?.rowData?.[0]?.values?.[0]?.pivotTable ?? null
+    // LA PESTAÑA ENTERA, no sólo hasta la frontera: una dinámica anclada DEBAJO cae dentro de lo que
+    // se va a escribir, y el mismo control la atrapa (su fin queda >= frontera). Todo el ancho,
+    // además, porque una dinámica puede estar anclada en cualquier columna, no sólo en la A.
+    grid = await google.getGridData?.(ID, `${pestana}!A1:Z`)
   } catch (e) {
-    throw new Error(`no pude verificar si ${celda} es una tabla dinámica (${e.message}). `
+    throw new Error(`no pude verificar si hay tablas dinámicas en "${pestana}" (${e.message}). `
       + 'No escribo: no poder verificar nunca es permiso para pisar.')
   }
-  if (pivot) {
-    throw new Error(`${celda} es una TABLA DINÁMICA nativa y este generador la reescribiría como bloque `
-      + 'de fórmulas, matándola en silencio. Para la sección 1 usá '
-      + '`orquestador/scripts/proveedores-pivot-aplicar.mjs`. Si de verdad querés pisarla, '
-      + 'ORQ_PISAR_DINAMICA_PROVEEDORES=si.')
+  const dinamicas = anclasDeDinamicas(grid).map((a) => ({ ancla: a.fila, col: a.col, fin: finDeDinamica(visible, a.fila) }))
+  if (process.env.ORQ_PISAR_DINAMICA_PROVEEDORES === 'si') {
+    console.warn('  ⚠ ORQ_PISAR_DINAMICA_PROVEEDORES=si: no verifico la frontera contra las dinámicas, a pedido explícito')
+    return dinamicas
   }
+  verificarFronteraBajoDinamicas({ frontera, dinamicas })
+  if (!dinamicas.length) {
+    // No es motivo para abortar —escribir de la frontera para abajo sigue siendo correcto—, pero sí
+    // para decirlo: si las dinámicas desaparecieron, las secciones 1 y 2 no las mantiene nadie.
+    console.warn(`  ⚠ "${pestana}" no tiene ninguna tabla dinámica arriba de la fila ${frontera}: `
+      + 'las secciones 1 y 2 las hace proveedores-dos-cuadros.mjs / proveedores-pivot-aplicar.mjs y '
+      + 'hoy no están. Este generador NO las rehace.')
+  }
+  return dinamicas
 }
 
 async function main() {
@@ -833,14 +878,14 @@ async function main() {
 
   // ═══ NINGÚN GENERADOR PISA UNA TABLA DINÁMICA QUE NO CREÓ ═══
   //
-  // La sección 1 de Proveedores dejó de ser un bloque de fórmulas: hoy es una tabla dinámica nativa
-  // (04/08/2026, pedido del dueño). Este script la reescribiría como bloque y la mataría en silencio
-  // — y encima es un PASO DEL PIPELINE (`flujo-caja-pasos.mjs`), así que bastaría con que alguien
-  // corriera el flujo entero por cualquier otro motivo.
+  // Las secciones 1 y 2 de Proveedores dejaron de ser bloques de fórmulas: hoy son tablas dinámicas
+  // nativas (04/08/2026, pedido del dueño), y las hacen otros dos scripts. Este generador mantiene
+  // vivo TODO LO QUE VA DEBAJO y no toca una sola fila de arriba.
   //
-  // Se para antes de leer nada. Falla cerrado: si la consulta no se puede hacer, tampoco escribe,
-  // porque "no pude verificar" nunca es permiso para pisar.
-  await abortarSiHayDinamica(google)
+  // La verificación no se puede hacer acá: necesita la FRONTERA, y la frontera se lee de la pestaña
+  // (`buscarFrontera`, más abajo, junto con la lectura del bloque de deuda). Va justo antes de la
+  // partición, que es el último momento antes de escribir una celda.
+  //
   // SIN FILTRAR: `comprasRaw` conserva el índice REAL de cada fila (i → fila i+4 de Compras). La
   // deuda referencia filas puntuales de Compras, así que necesita el número real; filtrar primero y
   // usar el índice del array filtrado apunta a la fila equivocada (bug ya documentado en el archivo).
@@ -1158,6 +1203,8 @@ async function main() {
   // cada dato en la columna que el dueño rotuló, y para no pisar las que él agregó (Comentarios).
   let deudaCols = null
   let deudaPrevio = []
+  /** La pestaña "Proveedores" tal como se ve hoy. De acá sale la frontera. */
+  let vistaProveedores = []
   try {
     // SIN TECHO DE FILAS (28/07). Antes se leía `A1:AZ80`: con 80 filas el bloque de deuda —que puede
     // pasar de 100 filas cuando hay muchos proveedores— quedaba CORTADO, y las notas del dueño en los
@@ -1166,6 +1213,7 @@ async function main() {
     // nota que no se leyó se PERDÍA en cada corrida — el "no respeta mis ediciones" que marcó el dueño.
     // Se lee el bloque entero (todas las filas) para que ninguna nota quede fuera de la re-ancla.
     const prevP = await google.readSheetValues(ID, `'Proveedores'!A1:BZ`)
+    vistaProveedores = prevP || []
     const iCab = (prevP || []).findIndex((f) => /proveedor\s*\/\s*factura/i.test(String(f?.[0] ?? '')))
     if (iCab >= 0) {
       deudaCols = prevP[iCab]
@@ -1175,6 +1223,29 @@ async function main() {
     }
   } catch { /* la pestaña todavía no existe: se usa el layout por defecto */ }
   if (deudaCols) console.log(`  columnas de deuda según la pestaña (las del dueño): ${deudaCols.filter(Boolean).join(' · ')}`)
+
+  // ═══ LA FRONTERA: DE ESTA FILA PARA ABAJO ES MÍO, DE ACÁ PARA ARRIBA NO ═══
+  //
+  // Arriba viven la cabecera, el bloque de posición (fórmulas vivas que se mantienen solas) y las dos
+  // tablas dinámicas. Se busca por el TÍTULO del primer bloque generado y NUNCA por un número de
+  // fila: el bloque de arriba crece y se achica solo, y una fila fija escribiría adentro de una
+  // dinámica el día que aparezca un proveedor nuevo.
+  //
+  // Si no se encuentra, esta pestaña no se escribe — pero la corrida sigue: "Materiales" es una
+  // pestaña entera del generador y no tiene por qué quedarse vieja por un problema de la otra.
+  let frontera = null
+  let dinamicas = []
+  try {
+    frontera = buscarFrontera(vistaProveedores, TITULO_FRONTERA)
+    // LA GUARDA, EN SU ROL NUEVO: la frontera tiene que caer debajo de la última dinámica.
+    dinamicas = await abortarSiHayDinamica(google, { frontera, visible: vistaProveedores })
+    console.log(`  frontera de "${NOMBRES.proveedores}": fila ${frontera} ("${TITULO_FRONTERA}") — escribo de ahí para abajo`
+      + `${dinamicas.length ? ` · ${dinamicas.length} tabla(s) dinámica(s) arriba, la última termina en la fila ${Math.max(...dinamicas.map((d) => d.fin))}` : ''}`)
+  } catch (e) {
+    // FALLA CERRADO PARA ESTA PESTAÑA: no se escribe una sola celda de "Proveedores".
+    console.error(`  ⛔ "${NOMBRES.proveedores}" NO se escribe en esta corrida: ${e.message}`)
+    frontera = null
+  }
   // EL RESPALDO DE NOTAS, ANTES DE CONSTRUIR. Una nota vale por el proveedor del que habla, no por si
   // hoy le debemos: si se le pagó, sale de la lista y su celda desaparece — pero la nota no.
   const notasBase = await leerNotas(ID).catch((e) => { console.warn(`  ⚠ no pude leer el respaldo de notas: ${e.message}`); return new Map() })
@@ -1199,13 +1270,22 @@ async function main() {
     // contestarle. Ahora en seco se lee la pestaña y se listan los rótulos que el generador quiere
     // escribir y HOY NO ESTÁN: o los cambió él, o cambió el generador. Es la lista que hay que
     // mirar juntos antes de dejar correr la primera escritura con Regla 0.
-    const anchoLeer = Math.max(ancho, 30)
-    const vivo = await google.readSheetValues(ID, `${refPestana(PESTAÑA)}!A1:${letra(anchoLeer - 1)}${cuadro.length}`).catch(() => [])
-    const frio = detectarArranqueEnFrio(cuadro, vivo)
-    if (!frio.length) console.log('--dry: no escribí nada. Ningún rótulo mío falta en la pestaña — no tengo nada tuyo que pisar.')
+    //
+    // Y SE COMPARA CONTRA LA PESTAÑA QUE SE VA A ESCRIBIR, desde la frontera. Antes se leía la vieja
+    // "Proveedores y Materiales", que ya se retiró: la lectura fallaba, quedaba vacía y el seco
+    // listaba las 500 filas como si el dueño hubiera borrado todo. Un informe así no se mira.
+    if (!frontera) {
+      console.log(`--dry: no escribí nada. ⛔ sin frontera no puedo comparar "${NOMBRES.proveedores}" — arriba está el motivo.`)
+      return
+    }
+    const bloque = g.filas.slice(g.marcas.b5 - 1, g.marcas.b3 - 1)
+    const frio = detectarArranqueEnFrio(bloque, vistaProveedores.slice(frontera - 1))
+    console.log(`--dry: no escribí nada. Escribiría ${bloque.length} filas en "${NOMBRES.proveedores}" desde la fila ${frontera} `
+      + `(hasta la ${frontera + bloque.length - 1}) y ${g.filas.length - g.marcas.b3 + 1} en "${NOMBRES.materiales}" desde la 4.`)
+    if (!frio.length) console.log('       Ningún rótulo mío falta en la pestaña — no tengo nada tuyo que pisar.')
     else {
-      console.log(`--dry: no escribí nada. ⚠ ${frio.length} rótulo(s) que yo escribiría y HOY NO ESTÁN en "${PESTAÑA}":`)
-      for (const x of frio) console.log(`      fila ${String(x.fila).padStart(3)} · "${String(x.mio).slice(0, 70)}"`)
+      console.log(`       ⚠ ${frio.length} rótulo(s) que yo escribiría y HOY NO ESTÁN en "${NOMBRES.proveedores}":`)
+      for (const x of frio) console.log(`      fila ${String(x.fila + frontera - 1).padStart(3)} · "${String(x.mio).slice(0, 70)}"`)
       console.log('      Decime cuáles borraste o reescribiste VOS y los registro como tuyos.')
     }
     return
@@ -1244,41 +1324,54 @@ async function main() {
   // sus columnas y sus anchos. Las fórmulas se reubican solas (lib/partir-pestana.mjs) y ninguna
   // fila se pierde: `filasHuerfanas` lo verifica antes de escribir una sola celda.
   const M = g.marcas
+  const FILA0 = 4   // título, subtítulo, una vacía, y recién ahí el contenido
+  // ═══ EL TRAMO DE "Proveedores" EMPIEZA EN LA FRONTERA, NO EN LA FILA 1 ═══
+  //
+  // La posición (hero) y las secciones 1 y 2 ya NO son de este generador: el hero son fórmulas vivas
+  // que se mantienen solas y las otras dos son tablas dinámicas. El tramo arranca en el título del
+  // primer bloque propio (M.b5) y ATERRIZA en la frontera leída de la pestaña, así que sus fórmulas
+  // se reubican a las filas REALES donde van a quedar.
   const TRAMOS = [
-    { titulo: NOMBRES.proveedores, desde: M.bPos, hasta: M.b3 - 1,
+    { titulo: NOMBRES.proveedores, desde: M.b5, hasta: M.b3 - 1, desdeFila: frontera ?? FILA0, enFrontera: true,
+      saltear: frontera ? null : 'no pude ubicar la frontera en la pestaña',
       subtitulo: 'Qué se debe y a quién: la posición arriba, la deuda agrupada por proveedor (con el +/- para abrir sus facturas), la cuenta corriente con su plazo, las notas de crédito y lo que AFIP facturó que Compras no tiene. Todo son fórmulas sobre Compras y ARCA — ni un importe escrito.',
       anchos: [230, 132, 142, 104, 132, 132, 124, 172, 124, 124, 124, 124, 136, 116, 104, 240] },
-    { titulo: NOMBRES.materiales, desde: M.b3, hasta: M.fin,
+    { titulo: NOMBRES.materiales, desde: M.b3, hasta: M.fin, desdeFila: FILA0,
       subtitulo: 'En qué se va la plata: por familia de material y por mes, y la misma plata abierta por obra. Sale de la columna "Familia de material" de Compras, que el OS calcula con una sola definición.',
       anchos: [236, ...Array(12).fill(96), 116, 78, 116, 116] },
   ]
 
   // NINGUNA FILA SE PIERDE. Es la regla que el dueño puso después del rollback: "falta información
-  // relevante de la que antes sí contaba". Las filas 1..b1-1 son el título de la pestaña vieja, que
-  // se reemplaza por el título propio de cada pestaña nueva.
-  const huerfanas = filasHuerfanas(g.filas, [...TRAMOS, { titulo: '(título viejo)', desde: 1, hasta: M.bPos - 1 }])
+  // relevante de la que antes sí contaba". Lo que va del arranque hasta la frontera —título viejo,
+  // hero y las dos secciones que hoy son dinámicas— se declara acá como territorio que este script
+  // NO escribe: no se pierde, lo mantiene otro (el hero, el propio Sheet; las secciones 1 y 2,
+  // proveedores-dos-cuadros.mjs y el pivot de la sección 2).
+  const huerfanas = filasHuerfanas(g.filas, [...TRAMOS, { titulo: '(lo mantienen las dinámicas)', desde: 1, hasta: M.b5 - 1 }])
   if (huerfanas.length) {
     throw new Error(`${huerfanas.length} fila(s) quedarían afuera del reparto y se perderían: `
       + huerfanas.slice(0, 5).map((h) => `${h.fila} "${h.contenido}"`).join(' · '))
   }
+  // NI UNA FÓRMULA MIRANDO ARRIBA DE LA FRONTERA. Lo de arriba salió del reparto, así que una
+  // referencia a esas filas no se puede reubicar: quedaría apuntando a una fila de la dinámica y
+  // devolvería un número —el equivocado— sin un solo error. Hoy no hay ninguna (los únicos cruces son
+  // $TOTFAM, que vive en Materiales, y $TOTPROV, que sólo se usa dentro de la sección 2).
+  const colgadas = referenciasFuera(g.filas, TRAMOS)
+  if (colgadas.length) {
+    throw new Error(`${colgadas.length} fórmula(s) apuntan a filas que ya no escribe este generador `
+      + '(el hero o las secciones 1 y 2, que son tablas dinámicas): quedarían mirando la fila equivocada. '
+      + colgadas.slice(0, 5).map((c) => `${c.titulo} fila ${c.fila}: ${c.ref} en "${c.formula}"`).join(' · '))
+  }
 
-  const FILA0 = 4   // título, subtítulo, una vacía, y recién ahí el contenido
   const partes = partir(g.filas, TRAMOS, { desdeFila: FILA0 })
 
-  // LOS BLOQUES SE RENUMERAN POR PESTAÑA. Los rótulos vienen numerados en el orden en que se
-  // construye la grilla (1, 2, 5, 6, 7, 8, 9 en proveedores y 3, 4 en materiales): dejarlos así
-  // haría que la primera pestaña empiece en 1 y salte al 5, que se lee como si faltaran bloques.
-  for (const parte of partes) {
-    let n = 0
-    for (const fila of parte.filas) {
-      const t = String(fila?.[0] ?? '')
-      if (/^\d+\s*·\s/.test(t)) fila[0] = t.replace(/^\d+\s*·\s/, `${++n} · `)
-    }
-  }
+  // LA NUMERACIÓN YA VIENE BIEN DESDE EL CÓDIGO. Acá había una renumeración por pestaña que reescribía
+  // el "N · " de cada título contando bloques. Sobra desde que el número sale de SECCIONES_PROVEEDORES
+  // (las dinámicas ocupan el 1 y el 2, lo generado arranca en el 3) y sobre todo MENTIRÍA: contando
+  // sólo lo que este script escribe, "NOTAS DE CRÉDITO" volvería a ser el bloque 1.
 
   // Dónde quedó cada fila vieja, para traducir los marcadores que usa el formateador.
   const donde = new Map()
-  for (const t of TRAMOS) for (let f = t.desde; f <= t.hasta; f++) donde.set(f, { titulo: t.titulo, fila: f - t.desde + FILA0 })
+  for (const t of TRAMOS) for (let f = t.desde; f <= t.hasta; f++) donde.set(f, { titulo: t.titulo, fila: f - t.desde + t.desdeFila })
   // `anchoObras` es una CANTIDAD de columnas, no un número de fila: traducirlo lo rompería.
   const NO_ES_FILA = new Set(['anchoObras'])
   const traducir = (titulo) => {
@@ -1300,14 +1393,28 @@ async function main() {
     // nombrada no se toca ni con --force: es la diferencia entre "regenerá el cuadro de deuda" y
     // "regenerá las dos pestañas", que no es lo mismo cuando el dueño reescribió una de las dos.
     if (SOLO && t.titulo !== SOLO) { console.log(`  ⏭ ${t.titulo}: fuera del alcance (--solo ${SOLO}), no la toco`); continue }
+    if (t.saltear) { console.log(`  ⛔ ${t.titulo}: ${t.saltear} — no escribo una sola celda de esta pestaña`); continue }
+    // LA FILA DONDE ARRANCA LO QUE SE ESCRIBE. 1 en una pestaña propia del generador; la FRONTERA en
+    // "Proveedores", donde arriba viven el hero y las dos dinámicas. TODO lo que sigue —lecturas,
+    // fusión, cola, formato— se corre con este offset: escribir una sola fila por encima de la
+    // frontera reemplaza una tabla dinámica por texto y la mata en silencio.
+    const filaArranque = t.enFrontera ? t.desdeFila : 1
     // EL TÍTULO VA EN ORACIÓN, NO EN VERSALITA. Una pestaña entera gritando es la marca de una
     // planilla, no de un statement: la versalita se reserva para los títulos de sección.
-    const filasP = [[t.titulo], [t.subtitulo], [], ...partes[i].filas]
-    const anchoP = Math.max(...filasP.map((f) => f.length), t.anchos.length)
+    // En la pestaña con frontera NO hay título ni subtítulo propios: están arriba de la frontera y
+    // son de otro. El bloque arranca directo en su primer título de sección.
+    const filasP = t.enFrontera ? [...partes[i].filas] : [[t.titulo], [t.subtitulo], [], ...partes[i].filas]
+    // EL BLOQUE ES DUEÑO DE TODO SU ANCHO: lo que no llena, lo LIMPIA. El ancho no lo decide la fila
+    // más larga del día —si hoy hay menos columnas que ayer, las de ayer quedarían clavadas— sino el
+    // declarado del bloque. Ver lib/proveedores-frontera.mjs: es el defecto de las columnas "Anula la
+    // factura" / "La reemplaza", que mostraban restos de otro proveedor.
+    const anchoP = anchoALimpiar({ nuevas: filasP, declarado: t.anchos.length })
     // LOS ANCHOS SALEN DEL CONTENIDO, con los declarados como piso: un ancho escrito a mano se queda
     // corto en cuanto cambia un rótulo, y el texto se corta sin que nadie se entere.
     t.anchos = anchosSegunContenido(filasP, { base: t.anchos, max: 300 })
-    const cuadroP = filasP.map((f) => { const r = [...f]; while (r.length < anchoP) r.push(VACIO); return r })
+    const cuadroP = aAnchoCompleto(filasP, anchoP, VACIO)
+    /** La última fila (1-indexada) que ocupa el bloque en la pestaña. */
+    const filaFin = filaArranque + cuadroP.length - 1
 
     let hoja = hojas.find((h) => h.title === t.titulo)
     if (!hoja) {
@@ -1319,7 +1426,7 @@ async function main() {
     // La grilla tiene que alcanzar ANTES de escribir: un rango que excede la hoja hace fallar el
     // batch entero y deja la pestaña a medio escribir.
     const reqG = []
-    if ((hoja.rows ?? 0) < cuadroP.length + 10) reqG.push({ updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { rowCount: cuadroP.length + 30 } }, fields: 'gridProperties.rowCount' } })
+    if ((hoja.rows ?? 0) < filaFin + 10) reqG.push({ updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { rowCount: filaFin + 30 } }, fields: 'gridProperties.rowCount' } })
     if ((hoja.cols ?? 0) < anchoP) reqG.push({ appendDimension: { sheetId: hoja.sheetId, dimension: 'COLUMNS', length: anchoP - (hoja.cols ?? 0) + 2 } })
     if (reqG.length) await google.spreadsheetBatchUpdate(ID, reqG)
 
@@ -1335,9 +1442,12 @@ async function main() {
     // del dueño donde el generador deja vacío. Se lee el ancho COMPLETO de la hoja, no sólo anchoP,
     // para capturar lo que anotó a la derecha de la tabla. Y sólo se escriben las filas que el
     // generador produce: lo que esté MÁS abajo no se toca. Ver lib/preservar-anotaciones.mjs.
+    // LAS DOS LECTURAS ARRANCAN EN LA FRONTERA, igual que la escritura: así el índice 0 de `previo`,
+    // de `visible` y de `cuadroP` es la MISMA fila de la pestaña. Leer desde A1 y escribir desde la
+    // frontera desalinea la fusión y la Regla 0 celda por celda — el defecto de la grilla mezclada.
     const anchoLeer = Math.max(anchoP, hoja.cols ?? anchoP)
     const previo = await google.readSheetValues(
-      ID, `${refPestana(t.titulo)}!A1:${letra(anchoLeer - 1)}${cuadroP.length}`, { render: 'FORMULA' },
+      ID, `${refPestana(t.titulo)}!A${filaArranque}:${letra(anchoLeer - 1)}${filaFin}`, { render: 'FORMULA' },
     )
     // ═══ REGLA 0 — Y SI ADEMÁS REESCRIBIÓ UN TEXTO MÍO, GANA EL SUYO ═══
     //
@@ -1365,7 +1475,7 @@ async function main() {
     const visible = await google.readSheetValues(
       // Sin techo de filas: ver la nota de caja-pestana.mjs. "TOTAL FACTURADO" vive en la fila 202 y
       // toda lectura acotada a la grilla nueva lo daba por borrado.
-      ID, `${refPestana(t.titulo)}!A1:${letra(anchoLeer - 1)}`,
+      ID, `${refPestana(t.titulo)}!A${filaArranque}:${letra(anchoLeer - 1)}`,
     ).catch((e) => {
       throw new Error(`no pude leer el texto visible de "${t.titulo}" (${e.message}). NO escribo: sin esa lectura la Regla 0 decide a ciegas y la pestaña sale mezclada.`)
     })
@@ -1383,7 +1493,9 @@ async function main() {
     // pestaña (Proveedores/Materiales), pedida a mano. La fusión ya preservó lo del dueño, así que el
     // portón sólo estaría bloqueando la actualización que justamente se pidió. No afecta a Compras (su
     // contenido se escribe por otro camino y sigue protegido).
-    await google.batchUpdateValues(ID, [{ range: `${refPestana(t.titulo)}!A1`, values: fusion }], { yaGuardado: FORCE })
+    // EL RANGO ARRANCA EN LA FRONTERA. Con `A1` acá se escribiría el bloque entero encima del hero y
+    // de las dos tablas dinámicas: la escritura las reemplaza por texto y las mata sin un solo error.
+    await google.batchUpdateValues(ID, [{ range: `${refPestana(t.titulo)}!A${filaArranque}`, values: fusion }], { yaGuardado: FORCE })
     if (conservadas.length) console.log(`  ✋ ${t.titulo}: ${conservadas.length} celda(s) escritas por el dueño — CONSERVADAS, no se borra nada`)
 
     // ═══ LA COLA DE UN DISEÑO ANTERIOR MÁS LARGO ═══
@@ -1399,7 +1511,7 @@ async function main() {
     // importe, una fecha, un CUIT, un rótulo de sección). Una fila con una frase suya se SALTEA y se
     // reporta con su texto, para que no se vaya sin dejar rastro.
     const colaCruda = await google.readSheetValues(
-      ID, `${refPestana(t.titulo)}!A${cuadroP.length + 1}:${letra(anchoLeer - 1)}`,
+      ID, `${refPestana(t.titulo)}!A${filaFin + 1}:${letra(anchoLeer - 1)}`,
     ).catch(() => [])
     if (colaCruda.length) {
       const { mios } = await leerRegistro(ID, t.titulo).catch(() => ({ mios: [] }))
@@ -1415,12 +1527,12 @@ async function main() {
         })
         if (tramo) data.push(tramo)
         await google.batchUpdateValues(ID, data.map((x) => ({
-          range: `${refPestana(t.titulo)}!A${cuadroP.length + 1 + x.desde}`, values: x.filas,
+          range: `${refPestana(t.titulo)}!A${filaFin + 1 + x.desde}`, values: x.filas,
         })), { yaGuardado: FORCE })
-        console.log(`  🧹 ${t.titulo}: limpié ${limpiar.length} fila(s) de cola de un diseño anterior (filas ${cuadroP.length + 1}–${cuadroP.length + colaCruda.length})`)
+        console.log(`  🧹 ${t.titulo}: limpié ${limpiar.length} fila(s) de cola de un diseño anterior (filas ${filaFin + 1}–${filaFin + colaCruda.length})`)
       }
       for (const p of preservar) {
-        console.log(`  ✋ ${t.titulo}: fila ${cuadroP.length + 1 + p.i} de la cola es TUYA, la dejo: "${p.celdas.join(' · ').slice(0, 90)}"`)
+        console.log(`  ✋ ${t.titulo}: fila ${filaFin + 1 + p.i} de la cola es TUYA, la dejo: "${p.celdas.join(' · ').slice(0, 90)}"`)
       }
     }
     await sellarFirma(google, ID, t.titulo, refPestana(t.titulo))
@@ -1428,12 +1540,16 @@ async function main() {
       .catch((e) => console.warn(`  ⚠ ${t.titulo}: no pude guardar el registro de rótulos: ${e.message}`))
 
     const gP = { ...traducir(t.titulo), filas: cuadroP }
-    await formatear(google, hoja.sheetId, gP, anchoP, cuadroP.length)
+    await formatear(google, hoja.sheetId, gP, anchoP, cuadroP.length, { filaArranque })
 
-    // El título y el subtítulo de la pestaña, EN PIEL DE STATEMENT — igual que Impuestos: tinta sobre
-    // blanco con una línea fina abajo, NO la barra teal oscura que usa el estilo de dashboard. La
-    // barra rellena es justo lo que hace ver la pestaña como planilla y no como JPMorgan.
-    await google.spreadsheetBatchUpdate(ID, [
+    // ═══ EL TÍTULO, LOS ANCHOS DE COLUMNA Y LAS FILAS CONGELADAS SON DE LA PESTAÑA ENTERA ═══
+    //
+    // Y la pestaña entera ya no es de este generador cuando hay frontera: el título vive arriba, y el
+    // ancho de una columna vale también para las filas de las tablas dinámicas. Tocarlos desde acá es
+    // escribir por encima de la frontera por otra vía — la del formato, que no deja error pero deja
+    // los cuadros del dueño descuadrados. En la pestaña con frontera, no se tocan.
+    if (t.enFrontera) console.log(`  ${t.titulo}: no toco el título, los anchos de columna ni las filas congeladas — son de toda la pestaña, y arriba de la fila ${filaArranque} manda otro`)
+    else await google.spreadsheetBatchUpdate(ID, [
       { repeatCell: { range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: anchoP }, cell: { userEnteredFormat: { backgroundColor: { red: 1, green: 1, blue: 1 }, textFormat: { bold: true, fontSize: 15, foregroundColor: INK, fontFamily: 'Arial' }, horizontalAlignment: 'LEFT', verticalAlignment: 'MIDDLE' } }, fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)' } },
       { updateBorders: { range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: anchoP }, bottom: { style: 'SOLID', width: 1, color: HAIR } } },
       { repeatCell: { range: { sheetId: hoja.sheetId, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 0, endColumnIndex: anchoP }, cell: { userEnteredFormat: E.nota() }, fields: 'userEnteredFormat' } },
@@ -1445,8 +1561,20 @@ async function main() {
     ])
     // LA GRILLA ESCRITA VIAJA CON LA PESTAÑA: los grupos +/- y los rangos con nombre se calculan DESPUÉS
     // de escribir, y tienen que mirar la forma que quedó, no la que se planeó. Ver lib/deuda-geometria.
-    escritas.push({ titulo: t.titulo, filas: cuadroP.length, sheetId: hoja.sheetId, grid: cuadroP })
-    console.log(`  ${t.titulo.padEnd(32)} ${String(cuadroP.length).padStart(4)} filas x ${anchoP} columnas`)
+    escritas.push({ titulo: t.titulo, filas: cuadroP.length, filaArranque, filaFin, sheetId: hoja.sheetId, grid: cuadroP })
+    console.log(`  ${t.titulo.padEnd(32)} ${String(cuadroP.length).padStart(4)} filas x ${anchoP} columnas (filas ${filaArranque}–${filaFin} de la pestaña)`)
+  }
+
+  // ═══ EL BLOQUE DE DEUDA YA NO LO ESCRIBE ESTE GENERADOR ═══
+  //
+  // La sección 1 es una tabla dinámica. Todo lo que sigue —el respaldo de comentarios por proveedor y
+  // los grupos +/-— es maquinaria DE ESE BLOQUE, y correrla sobre lo que hoy derrama la dinámica sería
+  // leer sus celdas como si fueran mías: guardaría en public.proveedor_notas textos que no son notas,
+  // y borraría los grupos +/- que arma el otro script. Se ejecuta sólo si el bloque de deuda está de
+  // verdad en lo que se escribió.
+  const conDeuda = escritas.find((e) => e.titulo === NOMBRES.proveedores && bloqueDeDeuda(e.grid || []))
+  if (!conDeuda) {
+    console.log('  ⏭ el bloque de deuda es una tabla dinámica: no toco el respaldo de comentarios ni los grupos +/- — son suyos, no míos')
   }
 
   // ═══ EL RESPALDO DE NOTAS, DESPUÉS DE ESCRIBIR ═══
@@ -1456,10 +1584,10 @@ async function main() {
   // antes) se borra; lo que puse desde el respaldo se marca, para poder distinguir la próxima vez un
   // borrado suyo de una nota que todavía no llegó a la pestaña. Ver lib/proveedor-notas.mjs.
   try {
-    const hojaP = escritas.find((e) => e.titulo === NOMBRES.proveedores)
+    const hojaP = conDeuda
     if (hojaP) {
       const L = g.deudaL
-      const vistas = await google.readSheetValues(ID, `${refPestana(NOMBRES.proveedores)}!A1:${letra(Math.max(g.anchoDeuda, 8) - 1)}${hojaP.filas}`)
+      const vistas = await google.readSheetValues(ID, `${refPestana(NOMBRES.proveedores)}!A${hojaP.filaArranque}:${letra(Math.max(g.anchoDeuda, 8) - 1)}${hojaP.filaFin}`)
       const enPestana = new Map(); const presentes = new Set()
       for (const gp of deudaAgrupada) presentes.add(claveProv(gp.nombre))
       for (const f of vistas) {
@@ -1519,35 +1647,44 @@ async function main() {
     // VACÍAS, y las dos facturas del último proveedor quedaban afuera de todo grupo. Venían de
     // `deudaGrupos`, números de fila calculados mientras se armaba la grilla y traducidos por `donde`:
     // la misma foto vieja que descolocaba el formato. Ahora se clasifica la grilla que se escribió.
-    const geo = (() => {
-      const b = bloqueDeDeuda(hojaArca.grid || [])
-      if (!b) return null
-      const L = g.deudaL || {}
-      return clasificarDeuda(hojaArca.grid || [], {
-        prov: L.prov ?? 0, comp: L.comp ?? 2, imp: L.imp ?? 3, desde: b.desde, hasta: b.hasta,
-      })
-    })()
-    const gruposPrevios = (await google.getRowGroups(ID)).find((x) => x.sheetId === hojaArca.sheetId)?.grupos ?? []
-    const reqGr = gruposPrevios.map((v) => ({ deleteDimensionGroup: { range: { sheetId: hojaArca.sheetId, dimension: 'ROWS', startIndex: v.startIndex, endIndex: v.endIndex } } }))
-    // MOSTRAR TODAS LAS FILAS primero: borrar un grupo colapsado deja las filas con hiddenByUser=true, y
-    // esas quedan ocultas aunque el grupo nuevo abra expandido. Se limpia toda la pestaña de una.
-    reqGr.push({ updateDimensionProperties: { range: { sheetId: hojaArca.sheetId, dimension: 'ROWS', startIndex: 3, endIndex: hojaArca.filas }, properties: { hiddenByUser: false }, fields: 'hiddenByUser' } })
-    let nGrupos = 0
-    for (const gp of (geo?.grupos ?? [])) {
-      const range = { sheetId: hojaArca.sheetId, dimension: 'ROWS', startIndex: gp.inicio - 1, endIndex: gp.fin }
-      reqGr.push({ addDimensionGroup: { range } })
-      // ABIERTOS por defecto: el dueño quiere VER el N° de comprobante de cada factura sin tener que
-      // desplegar. El +/- queda igual para plegar el proveedor que no interese. (Antes arrancaban
-      // colapsados y parecía que los comprobantes no estaban.)
-      reqGr.push({ updateDimensionGroup: { dimensionGroup: { range, depth: 1, collapsed: false }, fields: 'collapsed' } })
-      // FORZAR VISIBLE: borrar un grupo colapsado deja las filas con hiddenByUser=true, y expandir el
-      // grupo nuevo NO las vuelve a mostrar. Sin esto, algunas facturas quedaban ocultas en silencio.
-      reqGr.push({ updateDimensionProperties: { range, properties: { hiddenByUser: false }, fields: 'hiddenByUser' } })
-      nGrupos++
+    //
+    // ═══ Y SÓLO SI EL BLOQUE DE DEUDA ES MÍO ═══
+    //
+    // Con la sección 1 hecha tabla dinámica, `geo` da null y lo único que quedaba de este tramo era el
+    // BORRADO de todos los grupos de la pestaña: le sacaría el +/- a un cuadro que no armé yo. Los
+    // rangos con nombre de ARCA, en cambio, apuntan a un bloque que sí escribo y se siguen publicando.
+    if (!conDeuda) console.log('  ⏭ los grupos +/- son de la tabla dinámica: no los toco (ni los borro)')
+    else {
+      const geo = (() => {
+        const b = bloqueDeDeuda(hojaArca.grid || [])
+        if (!b) return null
+        const L = g.deudaL || {}
+        return clasificarDeuda(hojaArca.grid || [], {
+          prov: L.prov ?? 0, comp: L.comp ?? 2, imp: L.imp ?? 3, desde: b.desde, hasta: b.hasta,
+        })
+      })()
+      const gruposPrevios = (await google.getRowGroups(ID)).find((x) => x.sheetId === hojaArca.sheetId)?.grupos ?? []
+      const reqGr = gruposPrevios.map((v) => ({ deleteDimensionGroup: { range: { sheetId: hojaArca.sheetId, dimension: 'ROWS', startIndex: v.startIndex, endIndex: v.endIndex } } }))
+      // MOSTRAR TODAS LAS FILAS primero: borrar un grupo colapsado deja las filas con hiddenByUser=true, y
+      // esas quedan ocultas aunque el grupo nuevo abra expandido. Se limpia toda la pestaña de una.
+      reqGr.push({ updateDimensionProperties: { range: { sheetId: hojaArca.sheetId, dimension: 'ROWS', startIndex: 3, endIndex: hojaArca.filas }, properties: { hiddenByUser: false }, fields: 'hiddenByUser' } })
+      let nGrupos = 0
+      for (const gp of (geo?.grupos ?? [])) {
+        const range = { sheetId: hojaArca.sheetId, dimension: 'ROWS', startIndex: gp.inicio - 1, endIndex: gp.fin }
+        reqGr.push({ addDimensionGroup: { range } })
+        // ABIERTOS por defecto: el dueño quiere VER el N° de comprobante de cada factura sin tener que
+        // desplegar. El +/- queda igual para plegar el proveedor que no interese. (Antes arrancaban
+        // colapsados y parecía que los comprobantes no estaban.)
+        reqGr.push({ updateDimensionGroup: { dimensionGroup: { range, depth: 1, collapsed: false }, fields: 'collapsed' } })
+        // FORZAR VISIBLE: borrar un grupo colapsado deja las filas con hiddenByUser=true, y expandir el
+        // grupo nuevo NO las vuelve a mostrar. Sin esto, algunas facturas quedaban ocultas en silencio.
+        reqGr.push({ updateDimensionProperties: { range, properties: { hiddenByUser: false }, fields: 'hiddenByUser' } })
+        nGrupos++
+      }
+      if (reqGr.length) await google.spreadsheetBatchUpdate(ID, reqGr)
+      console.log(`  función agrupar: ${nGrupos} grupos de deuda (uno por proveedor con facturas), expandidos`
+        + `${geo ? ` · ${geo.cabeceras.length} proveedores, ${geo.detalles.length} facturas, ${geo.vacias.length} fila(s) en reserva` : ''}`)
     }
-    if (reqGr.length) await google.spreadsheetBatchUpdate(ID, reqGr)
-    console.log(`  función agrupar: ${nGrupos} grupos de deuda (uno por proveedor con facturas), expandidos`
-      + `${geo ? ` · ${geo.cabeceras.length} proveedores, ${geo.detalles.length} facturas, ${geo.vacias.length} fila(s) en reserva` : ''}`)
     const nombres = await publicar(google, ID, hojaArca.sheetId, [
       { name: N_ARCA.comprobantes, fila: tArca.fArcaN, col: 2 },
       { name: N_ARCA.total, fila: tArca.fArcaN, col: 3 },
@@ -1569,8 +1706,10 @@ async function main() {
   // No se borra nada hasta comprobar que las cuatro nuevas están escritas y sin errores.
   let err = 0
   for (const e of escritas) {
-    const v = await google.readSheetValues(ID, `${refPestana(e.titulo)}!A1:T${e.filas}`)
-    v.forEach((f, i) => (f || []).forEach((c, j) => { if (/^#(REF|ERROR|N\/A|VALUE|¡|DIV|NAME|NUM|NULL)/.test(String(c ?? ''))) { err++; if (err <= 8) console.log(`  ⚠ ${e.titulo}!${letra(j)}${i + 1} = ${c}`) } }))
+    // SÓLO EL TRAMO ESCRITO: una celda en error arriba de la frontera es de la dinámica, no mía, y
+    // contarla haría que este generador se frene por un defecto que no puede arreglar.
+    const v = await google.readSheetValues(ID, `${refPestana(e.titulo)}!A${e.filaArranque}:T${e.filaFin}`)
+    v.forEach((f, i) => (f || []).forEach((c, j) => { if (/^#(REF|ERROR|N\/A|VALUE|¡|DIV|NAME|NUM|NULL)/.test(String(c ?? ''))) { err++; if (err <= 8) console.log(`  ⚠ ${e.titulo}!${letra(j)}${e.filaArranque + i} = ${c}`) } }))
   }
   console.log(err ? `\n⚠ ${err} celdas en error: NO retiro la pestaña vieja` : '\n✓ las cuatro pestañas, sin una sola celda en error')
 
@@ -1588,7 +1727,20 @@ async function main() {
   console.log(`  AFIP: ${g.afip1 - g.afip0 + 1} comprobantes facturados que Compras no tiene · ${g.emi1 - g.emi0 + 1} facturas emitidas listadas`)
 }
 
-async function formatear(google, sheetId, g, ancho, filas) {
+/**
+ * @param {object} google
+ * @param {number} sheetId
+ * @param {object} g marcadores ya traducidos a filas REALES de la pestaña (1-indexadas)
+ * @param {number} ancho
+ * @param {number} filas cuántas filas ocupa el bloque
+ * @param {{filaArranque?:number}} [opts] la fila real donde empieza `g.filas[0]`. Es 1 en una pestaña
+ *        propia y la FRONTERA cuando arriba hay tablas dinámicas: todo lo que se calcula por índice
+ *        de la grilla se corre con este offset. Sin él, el reset de formato del principio —que borra
+ *        bordes, notas y colores de `r(0, filas)`— caería sobre las dinámicas.
+ */
+async function formatear(google, sheetId, g, ancho, filas, { filaArranque = 1 } = {}) {
+  /** El desplazamiento 0-indexado entre la grilla y la pestaña. */
+  const F0 = filaArranque - 1
   // LA PIEL ES DE STATEMENT: sin barras de color, la estructura se marca con tipografía (tinta INK,
   // versalita apagada MUTED) y líneas finas (HAIR). Ver lib/estilo-statement.mjs. Las bandas azules
   // y grises que había antes son justo lo que hace ver una pestaña como planilla y no como JPMorgan.
@@ -1606,7 +1758,7 @@ async function formatear(google, sheetId, g, ancho, filas) {
   //
   // Un formato es tan persistente como un dato: si el cuadro se rehace entero, el formato también.
   const req = [
-    { unmergeCells: { range: r(0, filas) } },
+    { unmergeCells: { range: r(F0, F0 + filas) } },
     // ═══ LAS NOTAS VIEJAS TAMBIÉN SE BORRAN ═══
     //
     // clearValues borra el VALOR de una celda, no su NOTA (comentario). Cuando la pestaña cambia de
@@ -1614,14 +1766,14 @@ async function formatear(google, sheetId, g, ancho, filas) {
     // equivocado: en el PDF se veía "⇒ Diferencia contra el total" colgada de una fila de PEREZ
     // GARCIA. Un formato es tan persistente como un dato, y una nota también: si el cuadro se rehace
     // entero, las notas viejas se van con él.
-    { repeatCell: { range: r(0, filas, 0, Math.max(ancho, 26)), cell: {}, fields: 'note' } },
+    { repeatCell: { range: r(F0, F0 + filas, 0, Math.max(ancho, 26)), cell: {}, fields: 'note' } },
     {
       // EL RESET CUBRE LAS COLUMNAS DE SOBRA, no sólo las que tienen dato. La hoja tiene más columnas
       // que la tabla (Materiales: 19 vs 17), y las de sobra guardaban un relleno oscuro de un layout
       // viejo —se veía como un rectángulo negro en la esquina del título—. clearValues no lo saca; el
       // reset de formato sí, pero sólo si llega hasta esas columnas.
       repeatCell: {
-        range: r(0, filas, 0, Math.max(ancho, 26)),
+        range: r(F0, F0 + filas, 0, Math.max(ancho, 26)),
         cell: {
           userEnteredFormat: {
             backgroundColor: { red: 1, green: 1, blue: 1 },
@@ -1637,7 +1789,7 @@ async function formatear(google, sheetId, g, ancho, filas) {
     // Y la ALTURA vuelve al estándar. Va acá, ANTES que nada: una fila que quedó de 200px por un
     // formato viejo no se arregla sola, y las alturas específicas de más abajo tienen que ganarle
     // a ésta — el último pedido sobre el mismo rango es el que manda.
-    { updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: filas }, properties: { pixelSize: 21 }, fields: 'pixelSize' } },
+    { updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: F0, endIndex: F0 + filas }, properties: { pixelSize: 21 }, fields: 'pixelSize' } },
   ]
   // ═══ UN RANGO QUE NO EXISTE EN ESTA PESTAÑA SE DESCARTA, NO SE PINTA ═══
   //
@@ -1658,7 +1810,7 @@ async function formatear(google, sheetId, g, ancho, filas) {
   const hairTop = (row, c0 = 0, c1 = ancho) => { if (row >= 1) req.push({ updateBorders: { range: r(row - 1, row, c0, c1), top: { style: 'SOLID', width: 1, color: HAIR } } }) }
   // Los bordes viejos se limpian ANTES de poner las hairlines nuevas: una línea de un layout anterior
   // que quedó en el medio se lee como un error, igual que una banda de color huérfana.
-  req.push({ updateBorders: { range: r(0, filas, 0, Math.max(ancho, 26)), top: { style: 'NONE' }, bottom: { style: 'NONE' }, left: { style: 'NONE' }, right: { style: 'NONE' }, innerHorizontal: { style: 'NONE' }, innerVertical: { style: 'NONE' } } })
+  req.push({ updateBorders: { range: r(F0, F0 + filas, 0, Math.max(ancho, 26)), top: { style: 'NONE' }, bottom: { style: 'NONE' }, left: { style: 'NONE' }, right: { style: 'NONE' }, innerHorizontal: { style: 'NONE' }, innerVertical: { style: 'NONE' } } })
   // UN ENCABEZADO ES TEXTO, NUNCA PLATA. Arriba se aplica moneda a la columna B en adelante de TODA la
   // pestaña (es lo correcto para las cinco tablas de importes que lleva), y este ayudante vestía los
   // encabezados sin devolverles su formato de número: "Próximo pago", "Comprobante", "Obra" y "Tipo de
@@ -1675,9 +1827,8 @@ async function formatear(google, sheetId, g, ancho, filas) {
     hairTop(row, c0, c1)
   }
 
-  fmt(r(0, filas, 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+  fmt(r(F0, F0 + filas, 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }, horizontalAlignment: 'RIGHT' })
-  fmt(r(0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 15, foregroundColor: INK } })
 
   // ═══ LOS TÍTULOS Y LAS EXPLICACIONES SE DETECTAN, NO SE ADIVINAN ═══
   //
@@ -1692,24 +1843,32 @@ async function formatear(google, sheetId, g, ancho, filas) {
   const titulos = []
   for (let i = 0; i < g.filas.length; i++) if (esTitulo(g.filas[i]?.[0])) titulos.push(i)
 
-  for (const i of titulos) {
+  // `k` es el índice en la GRILLA y `k + F0` la fila de la PESTAÑA: mezclarlos formatea el renglón de
+  // al lado, y con la frontera puesta ese renglón puede ser de una tabla dinámica.
+  for (const k of titulos) {
+    const i = k + F0
     // Sección en tinta con una línea fina arriba — nada de barra celeste.
     fmt(r(i, i + 1), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
       { textFormat: { bold: true, fontSize: 11, foregroundColor: INK }, backgroundColor: { red: 1, green: 1, blue: 1 } })
     hairTop(i + 1)
     // La línea de abajo es la explicación del bloque: sólo si tiene texto largo y nada en B.
-    const sig = g.filas[i + 1]
+    const sig = g.filas[k + 1]
     if (sig && String(sig[0] ?? '').length > 40 && !String(sig[1] ?? '').trim()) {
       fmt(r(i + 1, i + 2), 'userEnteredFormat.textFormat,userEnteredFormat.wrapStrategy,userEnteredFormat.verticalAlignment',
         { textFormat: { italic: true, fontSize: 9, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'OVERFLOW_CELL', verticalAlignment: 'MIDDLE' })
       req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: i + 1, endIndex: i + 2 }, properties: { pixelSize: 18 }, fields: 'pixelSize' } })
     }
   }
-  // El subtítulo del encabezado de la pestaña, igual.
-  if (String(g.filas[1]?.[0] ?? '').length > 40) {
-    fmt(r(1, 2), 'userEnteredFormat.textFormat,userEnteredFormat.wrapStrategy,userEnteredFormat.verticalAlignment',
-      { textFormat: { italic: true, fontSize: 9, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'OVERFLOW_CELL', verticalAlignment: 'MIDDLE' })
-    req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 1, endIndex: 2 }, properties: { pixelSize: 18 }, fields: 'pixelSize' } })
+  // El título y el subtítulo de la PESTAÑA viven en sus filas 1 y 2, y con frontera no son de este
+  // generador: ahí arriba mandan el hero y las dinámicas. Se visten sólo cuando el bloque arranca en
+  // la fila 1, o sea cuando la pestaña entera es suya.
+  if (F0 === 0) {
+    fmt(r(0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 15, foregroundColor: INK } })
+    if (String(g.filas[1]?.[0] ?? '').length > 40) {
+      fmt(r(1, 2), 'userEnteredFormat.textFormat,userEnteredFormat.wrapStrategy,userEnteredFormat.verticalAlignment',
+        { textFormat: { italic: true, fontSize: 9, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'OVERFLOW_CELL', verticalAlignment: 'MIDDLE' })
+      req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 1, endIndex: 2 }, properties: { pixelSize: 18 }, fields: 'pixelSize' } })
+    }
   }
 
   // ═══ EL HERO: LA POSICIÓN, ARRIBA DE TODO ═══
@@ -1898,7 +2057,7 @@ async function formatear(google, sheetId, g, ancho, filas) {
   fmt({ ...r(g.ctrl - 1, finCtrl), startColumnIndex: 2, endColumnIndex: ancho }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.textFormat',
     { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: { fontSize: 9, italic: true } })
   fmt(r(g.ctrl - 2, g.ctrl - 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 11 } })
-  g.filas.forEach((f, i) => { if (/^⇒/.test(String(f[0] ?? ''))) fmt(r(i, i + 1, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true } }) })
+  g.filas.forEach((f, i) => { if (/^⇒/.test(String(f[0] ?? ''))) fmt(r(i + F0, i + F0 + 1, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true } }) })
   // UN CONTADOR NO ES PLATA. "46 facturas" dibujado como "$46" se lee como cuarenta y seis pesos.
   for (const f of g.cuentas) fmt(r(f - 1, f, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '0" facturas"' } })
   if (g.fCompFecha) fmt(r(g.fCompFecha - 1, g.fCompFecha, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '0" comprobantes"' } })
@@ -1906,7 +2065,10 @@ async function formatear(google, sheetId, g, ancho, filas) {
   // la pestaña dejó de ser la última (debajo quedaron ARCA y emitidas), así que `filas-1` formateaba
   // una celda vacía del final y el plazo real quedaba con formato moneda mostrando "$1" en vez de
   // "0,7 días". Otro defecto que sólo se ve en el PDF, no en un control que suma.
-  const filaPlazo = g.filas.findIndex((f) => /^Plazo promedio ponderado/.test(String(f?.[0] ?? ''))) + 1
+  // El "no está" se decide ANTES de sumarle el offset: con la frontera, un -1 + 1 + F0 daba un número
+  // positivo y se formateaba una fila cualquiera de la pestaña.
+  const iPlazo = g.filas.findIndex((f) => /^Plazo promedio ponderado/.test(String(f?.[0] ?? '')))
+  const filaPlazo = iPlazo >= 0 ? iPlazo + 1 + F0 : 0
   if (filaPlazo > 0) fmt(r(filaPlazo - 1, filaPlazo, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '0.0" días"' } })
 
   // ═══ UN TEXTO NUNCA LLEVA FORMATO DE PLATA — POR CONTENIDO, NO POR BLOQUE (31/07) ═══
@@ -1924,15 +2086,23 @@ async function formatear(google, sheetId, g, ancho, filas) {
   // lo que se agregue mañana. Las celdas que produce una FÓRMULA no entran acá (no se puede saber su
   // tipo sin evaluarla): esas siguen dependiendo de la declaración de su bloque.
   {
+    // Sus rangos vienen en coordenadas de la GRILLA (fila 1 = primera fila del bloque): se corren a
+    // las de la pestaña. Sin esto, con frontera, pintaría las filas de las dinámicas.
     const { requests: rTxt, celdas } = requestsTextoPorContenido(sheetId, g.filas || [])
-    req.push(...rTxt)
+    req.push(...rTxt.map((x) => (x.repeatCell?.range
+      ? { ...x, repeatCell: { ...x.repeatCell, range: { ...x.repeatCell.range, startRowIndex: x.repeatCell.range.startRowIndex + F0, endRowIndex: x.repeatCell.range.endRowIndex + F0 } } }
+      : x)))
     if (celdas) console.log(`  ${celdas} celda(s) de TEXTO con su formato de texto (no de plata) — por contenido, no por bloque`)
   }
 
-  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 250 }, fields: 'pixelSize' } })
-  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: ancho }, properties: { pixelSize: 108 }, fields: 'pixelSize' } })
-  // La reja apagada es el mayor salto de "planilla" a "statement". Va con la columna congelada.
-  req.push({ updateSheetProperties: { properties: { sheetId, gridProperties: { frozenColumnCount: 1, hideGridlines: true } }, fields: 'gridProperties(frozenColumnCount,hideGridlines)' } })
+  // LOS ANCHOS DE COLUMNA Y LA REJA SON DE LA PESTAÑA ENTERA, no del bloque: valen también para las
+  // filas de las tablas dinámicas, que este generador no gobierna. Con frontera no se tocan.
+  if (F0 === 0) {
+    req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 250 }, fields: 'pixelSize' } })
+    req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: ancho }, properties: { pixelSize: 108 }, fields: 'pixelSize' } })
+    // La reja apagada es el mayor salto de "planilla" a "statement". Va con la columna congelada.
+    req.push({ updateSheetProperties: { properties: { sheetId, gridProperties: { frozenColumnCount: 1, hideGridlines: true } }, fields: 'gridProperties(frozenColumnCount,hideGridlines)' } })
+  }
   await google.spreadsheetBatchUpdate(ID, req)
 }
 

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { reubicar, partir, filasHuerfanas, ref } from './partir-pestana.mjs'
+import { reubicar, partir, filasHuerfanas, referenciasFuera, ref } from './partir-pestana.mjs'
 
 const enMismaPestana = (fila) => ({ titulo: null, fila: fila - 9 })
 
@@ -54,6 +54,47 @@ test('partir reparte las filas y arregla las referencias cruzadas', () => {
   assert.equal(uno.filas.length, 3)
   assert.equal(uno.filas[1][1], '=SUM(Dos!A2:Dos!A3)')
   assert.equal(dos.filas[2][1], '=B2*2')
+})
+
+test('cada tramo puede aterrizar en SU fila: el que va debajo de una dinámica arranca en la frontera', () => {
+  // "Proveedores" abajo de dos tablas dinámicas que ocupan hasta la fila 40: su tramo aterriza en la
+  // 41, y sus fórmulas internas tienen que apuntar a la 41, no a la 4.
+  const filas = [
+    ['3 · NOTAS DE CRÉDITO'],        // 1
+    ['TRIELEC', -50000],             // 2
+    ['TOTAL', '=SUM(B2:B2)'],        // 3
+    ['1 · POR FAMILIA'],             // 4
+    ['Áridos', '=B3*2'],             // 5  → referencia a un tramo que se fue a otra pestaña
+  ]
+  const [prov, mat] = partir(filas, [
+    { titulo: 'Proveedores', desde: 1, hasta: 3, desdeFila: 41 },
+    { titulo: 'Materiales', desde: 4, hasta: 5 },
+  ], { desdeFila: 4 })
+  assert.equal(prov.filas[2][1], '=SUM(B42:B42)', 'la fórmula sigue a su bloque hasta la frontera')
+  assert.equal(mat.filas[1][1], '=Proveedores!B43*2', 'y desde la otra pestaña se la referencia bien')
+})
+
+test('una fórmula que apunta a una fila fuera del reparto se DENUNCIA: nadie la puede reubicar', () => {
+  // El caso real: el hero y las secciones 1 y 2 salieron del reparto (son tablas dinámicas). Si un
+  // bloque de abajo las mirara, `partir` dejaría la referencia como está y apuntaría a una fila de la
+  // dinámica devolviendo un número — el equivocado, y sin un solo error.
+  const filas = [
+    ['POSICIÓN', 13715178],          // 1  ← fuera de todo tramo
+    ['3 · NOTAS DE CRÉDITO'],        // 2
+    ['TOTAL', '=B3-B1'],             // 3  ← B1 apunta afuera
+  ]
+  const tramos = [{ titulo: 'Proveedores', desde: 2, hasta: 3, desdeFila: 41 }]
+  const fuera = referenciasFuera(filas, tramos)
+  assert.equal(fuera.length, 1)
+  assert.equal(fuera[0].apunta, 1)
+  assert.equal(fuera[0].ref, 'B1')
+  // Y sin referencias colgadas, la lista es vacía. Un literal con forma de referencia ("F931") y una
+  // referencia YA calificada (Compras!$H$4) no cuentan: ninguna de las dos se reubica.
+  const sanas = [
+    ['3 · NOTAS DE CRÉDITO'],
+    ['TOTAL', '=SUM(B1:B1)+SUMIF(Compras!$H$4:$H;"F931";Compras!$O$4:$O)'],
+  ]
+  assert.deepEqual(referenciasFuera(sanas, [{ titulo: 'X', desde: 1, hasta: 2 }]), [])
 })
 
 test('ninguna fila con contenido puede quedarse afuera del reparto', () => {
