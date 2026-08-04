@@ -244,6 +244,65 @@ export function anclaDeProyeccion(filaLibreDisp = [], mesesConDDJJ = []) {
   return { ultimoMesConDato: ultimo, libreDisp: saldo, mesesAProyectar }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// ¿SIGUEN LOS DOS CASH FLOW LEYENDO LA FILA QUE CREEN LEER?
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// POR QUÉ EXISTE (04/08). Los dos cash flow referencian esta pestaña por NÚMERO DE FILA
+// ('Impuestos y Financieros'!I$18 y !I$28), no por rótulo: el rótulo se resuelve una sola vez, cuando
+// se los regenera. Si el generador de impuestos corre solo y mueve esas filas, los cash flow siguen
+// apuntando al número viejo y leen la fila de al lado — sin #REF, sin error, sin aviso. Ya pasó el
+// 30/07: se renombró una fila razonando sobre la 18 y los dos cuadros quedaron sin poder regenerarse.
+//
+// LA SALIDA OBVIA ERA "CORRÉ TAMBIÉN cash-flow-rehacer.mjs", Y ES PEOR QUE EL PROBLEMA. Ese script
+// reescribe las dos pestañas ENTERAS, y el dueño borró líneas a mano en las dos: rehacerlas puede
+// resucitárselas. Cambiar un riesgo silencioso por uno que le devuelve trabajo que él eliminó no es
+// un arreglo.
+//
+// Así que en vez de rehacer, se VERIFICA. Antes de escribir se lee a qué fila apuntan hoy los cash
+// flow y se compara con la fila donde el generador va a dejar cada rótulo. Si coinciden, no hay nada
+// que regenerar. Si no coinciden, no se escribe: escribir sería justamente el momento en que las
+// referencias se rompen.
+
+/**
+ * Las filas de una pestaña a las que apunta un conjunto de fórmulas. PURA.
+ * @param {string[]} formulas p.ej. ["=N('Impuestos y Financieros'!I$18)+N('Impuestos y Financieros'!I$28)"]
+ * @param {string} pestana el nombre tal como aparece en la referencia
+ * @returns {number[]} las filas distintas, ordenadas
+ */
+export function filasReferenciadas(formulas = [], pestana = 'Impuestos y Financieros') {
+  const re = new RegExp(`'${pestana.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'!\\$?[A-Z]{1,2}\\$?(\\d+)`, 'g')
+  const filas = new Set()
+  for (const f of formulas) for (const m of String(f ?? '').matchAll(re)) filas.add(Number(m[1]))
+  return [...filas].sort((a, b) => a - b)
+}
+
+/**
+ * ¿Puede escribirse la pestaña sin romper lo que los cash flow ya referencian? PURA.
+ *
+ * @param {number[]} referenciadas las filas que los cash flow leen hoy
+ * @param {{iva:number, iibb:number}} destino dónde va a quedar cada rótulo después de escribir
+ * @returns {{ok:boolean, motivo:string}}
+ */
+export function contratoDeFilas(referenciadas = [], destino = {}) {
+  const { iva, iibb } = destino
+  if (!iva || !iibb) return { ok: false, motivo: 'no sé en qué fila van a quedar "IVA a pagar" y "IIBB a pagar"' }
+  // Si todavía nadie referencia nada (primera escritura, o cash flow sin generar), no hay contrato
+  // que romper: se escribe y el cash flow se resolverá por rótulo cuando le toque.
+  if (!referenciadas.length) return { ok: true, motivo: 'ningún cash flow referencia esta pestaña todavía' }
+  const faltan = [['IVA a pagar', iva], ['IIBB a pagar', iibb]]
+    .filter(([, f]) => !referenciadas.includes(f))
+    .map(([n, f]) => `${n} va a quedar en la fila ${f} y ningún cash flow la lee`)
+  if (faltan.length) {
+    return {
+      ok: false,
+      motivo: `${faltan.join(' · ')}. Los cash flow leen hoy las filas ${referenciadas.join(', ')}. `
+        + 'Escribir así dejaría los dos cuadros leyendo una fila equivocada, sin error y sin aviso.',
+    }
+  }
+  return { ok: true, motivo: `las filas ${iva} y ${iibb} son las que los cash flow ya leen: no hace falta regenerarlos` }
+}
+
 /** El texto que acompaña a cada mes proyectado. NUNCA se escribe un mes proyectado sin él. PURA. */
 export function supuestoDelMes({ cobranzas = [], compras = [] } = {}) {
   return `PROYECCIÓN — débito = IVA contenido en ${cobranzas.join(' + ') || 'las cobranzas del cash flow'}`
