@@ -23,6 +23,7 @@ import { conEdicionesRespetadas, guardarRegistro, respetarEdiciones } from '../l
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { ref as refPestana } from '../lib/partir-pestana.mjs'
 import { CAJA as N_CAJA } from '../lib/rangos-nombrados.mjs'
+import { expresionInicio } from '../lib/cash-flow-ancla-saldo.mjs'
 import { ubicarCaja } from '../lib/caja-disponibilidades.mjs'
 import { formulaInteresMes } from '../lib/costo-descubierto.mjs'
 import { formulaImpuesto } from '../lib/impuesto-cheque.mjs'
@@ -226,26 +227,38 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   // no un saldo cargado, sin esperar a que el agente vuelva a correr. Un cuadro que arranca de $0
   // sin decirlo hace leer el saldo proyectado como plata que hay.
   const rotuloInicio = 'Efectivo y equivalentes al inicio del período'
-  // EL SALDO REAL ANCLA EN EL MES DE SU FECHA, NO EN ENERO.
+  // EL SALDO REAL ANCLA EN EL PERÍODO QUE CONTIENE SU FECHA, NO EN ENERO Y NO EN "SU MES".
   //
   // La primera versión ponía el saldo declarado como inicio de ENERO. El saldo cargado es de JULIO,
   // así que arrastraba la plata de hoy siete meses hacia atrás y todos los meses cerrados quedaban
-  // mal. Ahora: antes del mes del saldo el cuadro no muestra saldo —no se puede, falta el saldo
-  // inicial de enero y nadie lo cargó— y desde ese mes en adelante encadena.
+  // mal. Antes del período del saldo el cuadro no muestra saldo —no se puede, falta el saldo inicial
+  // de enero y nadie lo cargó— y desde ahí en adelante encadena.
   //
-  // APROXIMACIÓN DECLARADA: el saldo es de un día en el medio del mes, y acá se toma como cierre de
-  // ese mes. Los movimientos de los días que faltan de ese mes quedan afuera del arrastre. Es de
-  // orden menor frente a la alternativa, que era mentir en siete meses.
-  const mesAncla = refCajaFecha ? `EOMONTH(${refCajaFecha};0)` : null
+  // LA SEGUNDA VERSIÓN ANCLABA POR MES (EOMONTH) EN LAS DOS PESTAÑAS, y eso rompió la semanal: las
+  // cinco columnas de agosto caen en el mismo mes, así que las cinco daban "es el mes del saldo" y
+  // las cinco arrancaban con $115.548.463 en vez de encadenar. El cierre del 31/08 mostraba
+  // $147.965.511 contra los $232.113.539 de la cadena — $84.148.028 que se arrastraban a las
+  // diecisiete semanas siguientes. Ahora el ancla se decide con la MISMA ventana [desde, hasta) con
+  // la que la columna suma sus movimientos, así que sirve para cualquier granularidad.
+  // La definición y su prueba: lib/cash-flow-ancla-saldo.mjs.
+  //
+  // APROXIMACIÓN DECLARADA: el saldo es de un día en el medio del período, y acá se toma como su
+  // inicio. Los movimientos de ese período anteriores a la fecha del saldo quedan contados dos veces
+  // (ya están en el saldo y vuelven a estar en el neto). En la semanal el error queda acotado a seis
+  // días; en la mensual, a un mes. Es de orden menor frente a la alternativa, que era mentir en siete
+  // meses, pero es real y por eso se dice.
   meta.inicio = push([refCaja
     ? `=IF(N(${refCaja})=0;"${rotuloInicio}  ⚠ sin saldo cargado en CAJA — el cuadro no puede decir cuándo se queda sin plata";"${rotuloInicio}")`
     : `${rotuloInicio}  ⚠ no encontré la pestaña CAJA`,
     ...cols.map((_, i) => {
-      if (!refCaja || !mesAncla) return i === 0 ? '=0' : `=${letra(i)}${filas.length + 2}`
-      const mes = `${letra(i + 1)}$${FILA_CAB}`
-      const anterior = i === 0 ? '""' : `${letra(i)}${filas.length + 2}`
-      // Antes del mes del saldo: vacío. En el mes del saldo: el saldo declarado. Después: encadena.
-      return `=IF(EOMONTH(${mes};0)<${mesAncla};"";IF(EOMONTH(${mes};0)=${mesAncla};N(${refCaja});IF(N(${anterior})=0;"";${anterior})))`
+      if (!refCaja || !refCajaFecha) return i === 0 ? '=0' : `=${letra(i)}${filas.length + 2}`
+      return expresionInicio({
+        desde: desde(i),
+        hasta: hasta(i),
+        refSaldo: refCaja,
+        refFecha: refCajaFecha,
+        anterior: i === 0 ? null : `${letra(i)}${filas.length + 2}`,
+      })
     })])
   // Un mes anterior al saldo declarado NO tiene cierre: mostrar la variación acumulada como si fuera
   // un saldo es exactamente el error que este bloque vino a corregir.
