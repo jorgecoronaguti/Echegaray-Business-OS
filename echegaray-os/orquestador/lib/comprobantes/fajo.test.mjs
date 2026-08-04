@@ -20,6 +20,9 @@ const abierto = (o = {}) => ({
 
 const item = (o = {}) => ({
   clave: o.clave ?? 'c:30712345678|0113-00010489',
+  // Reloj fijo: la fecha del comprobante se juzga contra esto y no contra el de la máquina, o el
+  // test empezaría a fallar solo el día que 05/01/2026 salga de la ventana. Ver `plausibilidad.mjs`.
+  leidoEn: '2026-08-04T10:00:00Z',
   comprobante: {
     proveedor: 'Combustibles Barcelo', cuit: '30712345678', tipo: 'A', numero: '0113-00010489',
     fecha: '05/01/2026', total: 36460.30, iva: 5981, obra: 'Estrella', esNotaCredito: false,

@@ -53,7 +53,8 @@
 // Code tampoco los exige— así que se ofrecen, no se preguntan. Y el rubro no se ofrece siquiera: es
 // derivado de la imputación (`rubro-caja.mjs`, definición única), y se muestra como lo que es.
 
-import { estaCompleto, preguntasDe, etiquetaComprobante, botonesFajo, PREGUNTA_OBRA, opcionesDe } from './fajo.mjs'
+import { estaCompleto, preguntasDe, rotulosDe, etiquetaComprobante, botonesFajo, PREGUNTA_OBRA, opcionesDe } from './fajo.mjs'
+import { dudasDeLectura } from './plausibilidad.mjs'
 
 export const money = (n) => (n == null
   ? '—'
@@ -95,7 +96,21 @@ export function titular(items = []) {
     const fila = filaDeCargado(items)
     return `⚠️ **Ya está${car > 1 ? 'n' : ''} cargado${car > 1 ? 's' : ''}${fila ? ` — Compras fila ${fila}` : ''}.** No hay nada para cargar.`
   }
-  if (fal && !lis) return `❓ **${uno ? 'Me falta un dato' : `Me faltan datos en ${fal}`}** para poder cargar${uno ? 'lo' : ''}.`
+  if (fal && !lis) {
+    // ═══ LA PREGUNTA NOMBRA LO QUE FALTA (04/08) ═══
+    //
+    // Decía "Me falta un dato para poder cargarlo" y abajo listaba todo. El dueño tenía que leer el
+    // mensaje entero para descubrir que lo único dudoso era la fecha. Cuando es UN comprobante y son
+    // una o dos cosas, se dicen: contestar una pregunta precisa cuesta un segundo y descifrar una
+    // genérica cuesta el mensaje entero. Con tres o más vuelve al texto corto, porque enumerarlas en
+    // el titular sería repetir el bloque de preguntas que viene abajo.
+    if (uno) {
+      const r = rotulosDe(items[0])
+      if (r.length === 1) return `❓ **Sólo me falta ${r[0]}** — el resto lo leí bien.`
+      if (r.length === 2) return `❓ **Me faltan dos cosas: ${r[0]} y ${r[1]}** — el resto lo leí bien.`
+    }
+    return `❓ **${uno ? 'Me falta un dato' : `Me faltan datos en ${fal}`}** para poder cargar${uno ? 'lo' : ''}.`
+  }
   const partes = [`✅ **${lis} listo${lis > 1 ? 's' : ''} para cargar**`]
   if (fal) partes.push(`${fal} con un dato pendiente`)
   if (car) partes.push(`${car} ya cargado${car > 1 ? 's' : ''}`)
@@ -113,19 +128,37 @@ function filaDeCargado(items) {
  */
 export function tablaComprobante(item = {}) {
   const c = item.comprobante ?? {}
+  // ═══ LO QUE NO PUEDE SER CIERTO NO SE MUESTRA COMO LEÍDO (04/08) ═══
+  //
+  // La tabla decía `Fecha 05/12/2003` e `IVA $0,01` con el mismo formato con el que muestra el total
+  // que sí estaba impreso. Para el que lee, las tres filas valen igual: son "lo que dice el papel".
+  // Ahí es donde un error de OCR se convierte en un dato de la empresa.
+  //
+  // Se marca como ilegible Y SE MUESTRA QUÉ SE LEYÓ. Las dos cosas: sin lo segundo el dueño no puede
+  // corregirlo de memoria ni entender qué pasó; sin lo primero, no es un aviso, es el dato.
+  const dudas = dudasDeLectura(item)
   const f = []
   f.push(['Comprobante', etiquetaComprobante(c)])
-  f.push(['Fecha', c.fecha ?? '_falta_'])
+  f.push(['Fecha', dudas.fecha ? ilegible(`leí ${dudas.fecha.leida}`) : (c.fecha ?? '_falta_')])
   f.push(['Obra', valorObra(c, item)])
   if (c.detalleObra || item.aprendido?.detalle) f.push(['Detalle', conOrigen(c.detalleObra ?? '_falta_', origenDetalle(c, item))])
   if (c.unidad) f.push(['Unidad', conOrigen(c.unidad, item.aprendido?.unidad ? sugeridoTexto(item.aprendido.unidad) : null)])
+  // LA CATEGORÍA (columna B) SE MUESTRA. El bot la escribe desde el 04/08 y nunca la mostraba: una
+  // columna que se escribe sin que el dueño la vea es una columna que nadie revisa.
+  if (c.categoria) f.push(['Categoría', conOrigen(c.categoria, item.aprendido?.categoria ? sugeridoTexto(item.aprendido.categoria) : null)])
   if (c.concepto) f.push(['Concepto', c.concepto])
+  else if (c.conceptoDescartado) f.push(['Concepto', ilegible('no pude leer qué se compró')])
   const importe = c.total != null ? redondear(c.total - (c.iva ?? 0)) : null
-  f.push(['Importe a Compras', money(importe)])
-  f.push(['IVA', c.iva != null ? money(c.iva) : '_sin IVA discriminado_'])
+  // El importe de la columna M se DERIVA del IVA (M = Total − IVA). Si el IVA no se pudo leer, este
+  // número tampoco es un dato leído: es una cuenta hecha con un dato malo, y se declara así.
+  f.push(['Importe a Compras', dudas.iva ? `${money(importe)} _(sale del IVA, que no pude leer)_` : money(importe)])
+  f.push(['IVA', dudas.iva ? ilegible(`leí ${money(dudas.iva.iva)}`) : (c.iva != null ? money(c.iva) : '_sin IVA discriminado_')])
   f.push(['**Total**', `**${c.total != null ? money(c.total) : '_ilegible_'}**`])
   return ['| | |', '|---|---|', ...f.map(([k, v]) => `| ${k} | ${v} |`)].join('\n')
 }
+
+/** Un dato que no se pudo leer, con la evidencia de lo que se leyó al lado. Nunca uno inventado. */
+const ilegible = (que) => `_ilegible — ${que}_`
 
 function valorObra(c, item) {
   if (!c.obra) return '_falta — ¿a qué obra va?_'
@@ -286,6 +319,18 @@ export function notasDe(item = {}) {
   const l = []
   if (c.otrosTributos) l.push(`percepciones / otros tributos ${money(c.otrosTributos)} — ya están dentro del Importe, no son IVA`)
   if (c.numeroLeidoMal) l.push(`había leído **${c.numeroLeidoMal}**; según ARCA el número es **${c.numero}**`)
+  // ═══ POR QUÉ FALTA EL CONCEPTO DE UN PAPEL QUE LO TIENE IMPRESO (04/08) ═══
+  //
+  // Sin esta nota, descartar el concepto envenenado se ve igual que no haberlo leído, y el dueño no
+  // tiene forma de saber que el bot leyó mal el nombre del proveedor — que es el dato que le permite
+  // desconfiar del resto de la fila.
+  if (c.nombreLeidoMal && (c.conceptoDescartado || c.categoriaDescartada)) {
+    const tirado = [
+      c.conceptoDescartado ? `el concepto ("${c.conceptoDescartado}")` : null,
+      c.categoriaDescartada ? `la categoría ("${c.categoriaDescartada}")` : null,
+    ].filter(Boolean).join(' y ')
+    l.push(`leí el proveedor como **${c.nombreLeidoMal}** y es **${c.proveedor}**: descarté ${tirado} porque salía${c.conceptoDescartado && c.categoriaDescartada ? 'n' : ''} de ese nombre mal leído, no del comprobante`)
+  }
   if (item.arca?.importesCorregidos) {
     const v = item.arca.importesCorregidos
     l.push(`los importes que leí no cerraban (total ${money(v.total)} · IVA ${money(v.iva)}): puse los de ARCA`)
