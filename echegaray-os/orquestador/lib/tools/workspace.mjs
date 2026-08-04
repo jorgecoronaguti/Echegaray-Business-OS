@@ -8,11 +8,14 @@
 // capacidad (mail.send/mail.trash/calendar.write/calendar.delete = requires_approval).
 
 import { normalizarDestinatarios } from '../google.mjs'
+import { invitacionAAutorizar } from '../../comunicacion/asistente/google-cliente.mjs'
 
+// El texto mandaba a un botón "Conectar con Google" en una extensión: no existe. Se usa la MISMA
+// invitación con link vivo que el asistente, para que no haya dos versiones del mismo pedido.
 const sinAcceso = (e) => {
   const m = String(e?.message ?? e)
   if (/unauthorized_client|401|403|delegat|invalid_grant|insufficient/i.test(m)) {
-    return { error: 'Todavía no tengo acceso a tu Google. Conectá tu cuenta desde el botón "Conectar con Google" en la extensión (autoriza Gmail y Calendar) y volvé a pedírmelo.' }
+    return { error: `Todavía no tengo acceso a tu Google. ${invitacionAAutorizar()}` }
   }
   return { error: `no pude consultar Google: ${m.slice(0, 140)}` }
 }

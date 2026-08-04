@@ -91,7 +91,9 @@ test('401 y invalid_grant son "conectá tu Google", no un stack en el chat', () 
   const e = Object.assign(new Error('google api 401: {"error":"invalid_token"}'), { status: 401 })
   const err = clasificarErrorGoogle(e)
   assert.equal(err.codigo, ERROR.GOOGLE_SIN_ACCESO)
-  assert.match(err.mensaje, /Conectar con Google/)
+  // El mensaje tiene que ser ACCIONABLE: el link de consentimiento, no el nombre de una
+  // pantalla que no existe. Fijar el texto viejo era fijar el defecto.
+  assert.match(err.mensaje, /accounts\.google\.com\/o\/oauth2/)
   assert.equal(err.reintentable, false)
   assert.ok(!/stack|at Object/.test(err.mensaje))
   assert.equal(clasificarErrorGoogle(new Error('invalid_grant: token expired')).codigo, ERROR.GOOGLE_SIN_ACCESO)
