@@ -944,6 +944,17 @@ export function expresionReal(l, desde, hasta) {
   // llena el script con VALORES y el agente la reescribe cada 2 horas. Devolver null es la señal.
   // La de IVA/IIBB tampoco: su fórmula (mensual/semanal) la arma el generador con las filas ubicadas.
   if (l.cheques || l.calendarioImpuestos) return null
+  // ═══ NULL ES "NO SÉ", Y TIENE QUE DECIRLO PARA TODAS (04/08/2026) ═══
+  //
+  // Salían por null sólo los cheques y el IVA/IIBB. Las otras tres líneas que tampoco viven en
+  // Compras —interés del descubierto, comisiones bancarias, impuesto al cheque— no tienen `rubro`,
+  // así que caían hasta el SUMIFS del final y producían `COL_RUBRO;"undefined"`: una fórmula válida,
+  // sin un solo error, que suma CERO para siempre. El generador del cash flow no lo notaba porque
+  // las intercepta antes de llegar acá; cualquier consumidor nuevo se comía el cero en silencio.
+  //
+  // Es la misma familia del defecto que costó $41,7M entre CAJA y el cash flow: plata que nadie
+  // suma y nada avisa. Devolver null obliga a quien pregunta a resolverla o a romper.
+  if (l.descubierto || l.comisionesBancarias || l.impuestoCheque) return null
   if (l.cobranzas) return formulaCobranzas(l.cobranzas, desde, hasta, l.modo).slice(1)
   if (l.rubro === 'Nómina · Jornales de obra') return formulaJornales(desde, hasta).slice(1)
   // `desdeCompras` es la marca del MEMO: la misma línea, leída de la otra fuente, para que la brecha

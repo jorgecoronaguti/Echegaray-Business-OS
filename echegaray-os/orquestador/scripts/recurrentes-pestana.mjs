@@ -41,7 +41,7 @@ import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { MIN_MESES, COL_RUBRO, COL_FECHA, COL_TOTAL } from '../lib/cash-flow-lineas.mjs'
 import { escribirPreservando, limpiarCentinela, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
-import { MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL, CONTADOR } from '../lib/formato-statement.mjs'
+import { MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL, CONTADOR, PORCENTAJE } from '../lib/formato-statement.mjs'
 import { bloqueControlArca } from '../lib/control-arca-bloque.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -163,7 +163,7 @@ export function grilla(proveedores) {
   // error EN Compras. Éste compara contra el libro de IVA de ARCA, que el OS no escribe.
   push(vacia())
   const arca0 = filas.length + 1
-  for (const f of bloqueControlArca({ titulo: '3 · CONTROL CONTRA ARCA — la fuente independiente', rubros: [RUBRO], fila0: arca0 })) {
+  for (const f of bloqueControlArca({ titulo: '3 · RESPALDO FISCAL — contra el libro de IVA de ARCA', rubros: [RUBRO], fila0: arca0 })) {
     const fila = vacia()
     f.forEach((c, i) => { fila[i] = c })
     push(fila)
@@ -275,11 +275,12 @@ export function formatosPropios(hoja, g) {
   fmt(r(g.ctrl, g.ctrl + 2, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
   fmt(r(g.fDif - 1, g.fDif + 1, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_CONTROL })
   fmt(r(g.ctrl + 4, g.ctrl + 5, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: CONTADOR })
-  // El bloque de ARCA: los importes con "$", y en formato de control las cuatro celdas que TIENEN que
-  // dar cero (las dos direcciones, la diferencia agregada y el residuo de importes).
-  fmt(r(g.arca0 + 2, g.arca0 + 11, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
-  fmt(r(g.arca0 + 4, g.arca0 + 7, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_CONTROL })
-  fmt(r(g.arca0 + 8, g.arca0 + 9, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_CONTROL })
+  // El bloque de ARCA: importes con "$", la cobertura como porcentaje, y en formato de control SÓLO
+  // la línea que tiene que dar cero de verdad — lo que ARCA facturó y Compras no cargó. Lo que está
+  // sin comprobante en el libro NO va en rojo: se sabe inflado por los proveedores que no facturan.
+  fmt(r(g.arca0 + 2, g.arca0 + 7, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
+  fmt(r(g.arca0 + 5, g.arca0 + 6, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: PORCENTAJE })
+  fmt(r(g.arca0 + 6, g.arca0 + 7, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_CONTROL })
   // Las columnas auxiliares, ocultas: son andamio, no información.
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: C_AUX0, endIndex: ANCHO }, properties: { hiddenByUser: true }, fields: 'hiddenByUser' } })
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 340 }, fields: 'pixelSize' } })

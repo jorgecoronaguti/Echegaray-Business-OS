@@ -150,7 +150,7 @@ export function grilla() {
   // de ARCA, que el OS no escribe.
   push(vacia())
   const arca0 = filas.length + 1
-  for (const b of bloqueControlArca({ titulo: '3 · CONTROL CONTRA ARCA — la fuente independiente', rubros: ['Estructura'], fila0: arca0 })) {
+  for (const b of bloqueControlArca({ titulo: '3 · RESPALDO FISCAL — contra el libro de IVA de ARCA', rubros: ['Estructura'], fila0: arca0 })) {
     const fila = vacia()
     b.forEach((c, i) => { fila[i] = c })
     push(fila)
@@ -333,11 +333,12 @@ export function formatosPropios(sheetId, g) {
   fmt(r(g.fCtrl - 1, g.fCtrl, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
   fmt(r(g.fCtrl, g.fCtrl + 1, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_CONTROL })
   fmt(r(g.fCtrl + 1, g.fCtrl + 2, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: CONTADOR })
-  // El bloque de ARCA: importes de cierre con "$"; en formato de control las cuatro celdas que TIENEN
-  // que dar cero; y la columna C de las dos direcciones es un contador, no plata.
-  fmt(r(g.arca0 + 2, g.arca0 + 11, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
-  fmt(r(g.arca0 + 4, g.arca0 + 7, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_CONTROL })
-  fmt(r(g.arca0 + 8, g.arca0 + 9, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_CONTROL })
+  // El bloque de ARCA: importes con "$", la cobertura como porcentaje, y en formato de control SÓLO
+  // la línea que tiene que dar cero de verdad — lo que ARCA facturó y Compras no cargó. Lo que está
+  // sin comprobante en el libro NO va en rojo: se sabe inflado por los proveedores que no facturan.
+  fmt(r(g.arca0 + 2, g.arca0 + 7, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
+  fmt(r(g.arca0 + 5, g.arca0 + 6, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: PORCENTAJE })
+  fmt(r(g.arca0 + 6, g.arca0 + 7, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_CONTROL })
 
   // La columna A tiene que entrar el rótulo del control entero, que ahora dice lo que decía la prosa.
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 400 }, fields: 'pixelSize' } })
