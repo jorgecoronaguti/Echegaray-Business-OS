@@ -299,7 +299,29 @@ async function main() {
 
   // ── La firma y el respeto por lo que editó una persona, ANTES de tocar nada ──────────────────────
   if ((await firmaGuardia(google, ID, PESTANA, `'${PESTANA}'`)).editada) return
-  if ((await autoRespetarReescritura(ID, PESTANA, g.filas, previo)).reescrita) return
+
+  // ═══ LA PUERTA DEL REDISEÑO AUTORIZADO (04/08) ═══
+  //
+  // `autoRespetarReescritura` compara los rótulos que este generador quiere escribir contra los que
+  // hay en la pestaña, y si sobreviven pocos concluye —bien— que la reescribió una persona y no la
+  // toca. Es la protección correcta para la corrida periódica.
+  //
+  // Pero cuando el dueño PIDE el rediseño, esa misma señal se da vuelta: un rediseño cambia casi
+  // todos los rótulos a propósito, así que cuanto mejor es el rediseño, más seguro lo bloquea. Sin
+  // una puerta, un rediseño ordenado por él es literalmente inaplicable.
+  //
+  // La puerta es `--rediseniar`, y vale por lo mismo que vale `ORQ_SHEETS_DESCONGELAR`: hay que
+  // tipearla en el comando. Un timer no la escribe, el worker no la escribe, un agente que la use
+  // deja dicho que la usó. No apaga la firma ni el candado —esos corren arriba y siguen mandando—:
+  // apaga UNA comparación, la que por definición no puede pasar cuando el layout entero cambia.
+  const REDISENAR = process.argv.includes('--rediseniar') || process.argv.includes('--rediseñar')
+  if (REDISENAR) {
+    console.log('  ⚠ --rediseniar: el dueño pidió reemplazar el layout, así que NO se compara contra los rótulos viejos.')
+    console.log('    La firma y el candado siguen activos. Verificá el resultado con ver-pestana.mjs.')
+  } else if ((await autoRespetarReescritura(ID, PESTANA, g.filas, previo)).reescrita) {
+    console.log('    Si el rediseño es a pedido tuyo, volvé a correrlo con --rediseniar.')
+    return
+  }
 
   // Ajustar el alto de la banda. El registro se corre entero; CAJA lo lee por rango de columna
   // ($E$3:$E$400), así que correrlo no rompe la referencia mientras siga por debajo de la fila 3.

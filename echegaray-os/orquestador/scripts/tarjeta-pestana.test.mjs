@@ -9,6 +9,7 @@
 //      la cuota siguiente quedaba afuera del control sin que nada avisara.
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { bandaFilas, ubicarRegistro, ubicarBloqueViejo, frescura, BANDA, TITULAR } from './tarjeta-pestana.mjs'
 import { auditarPatron, ES_TOTAL } from '../lib/patron-pestana.mjs'
 import { TARJETA, CORTE } from '../lib/banco-santander.mjs'
@@ -252,4 +253,33 @@ test('sin fecha propia, la tarjeta cae al corte del extracto — no se queda sin
   delete sinAl.al
   const filas = bandaFilas(31, { TARJETA: sinAl, CORTE: '2026-07-22' })
   assert.match(JSON.stringify(filas), /22\/07\/2026/)
+})
+
+// ═══ LA PUERTA DEL REDISEÑO NO PUEDE APAGAR LA FIRMA NI EL CANDADO (04/08) ═══
+//
+// `--rediseniar` existe porque `autoRespetarReescritura` bloquea, por diseño, cualquier cambio de
+// layout: cuanto mejor es el rediseño, menos rótulos viejos sobreviven y más seguro lo frena. Pero
+// la puerta tiene que apagar SÓLO esa comparación. La firma (¿editaste la pestaña desde mi última
+// escritura?) y el candado (¿la tomaste vos?) corren ANTES y tienen que seguir mandando — si la
+// bandera los apagara, sería el defecto que ya costó una pérdida del trabajo del dueño.
+
+test('--rediseniar apaga la comparación de rótulos y NADA más', () => {
+  const src = readFileSync(new URL('./tarjeta-pestana.mjs', import.meta.url), 'utf8')
+  const firma = src.indexOf('firmaGuardia(google, ID, PESTANA')
+  const puerta = src.indexOf("includes('--rediseniar')")
+  const rotulos = src.indexOf('autoRespetarReescritura(ID, PESTANA')
+  assert.ok(firma > 0 && puerta > 0 && rotulos > 0)
+  assert.ok(firma < puerta, 'la firma se evalúa ANTES de la puerta: la bandera no puede saltearla')
+  assert.ok(puerta < rotulos, 'la puerta gobierna la comparación de rótulos')
+  // La firma corta con su propio return, independiente de la bandera.
+  assert.match(src.slice(firma - 60, firma + 120), /if \(\(await firmaGuardia\([^)]*\)\)\.editada\) return/)
+  // Y la bandera no aparece en la línea de la firma ni en la del candado.
+  const lineaFirma = src.slice(src.lastIndexOf('\n', firma) + 1, src.indexOf('\n', firma))
+  assert.ok(!lineaFirma.includes('REDISENAR'), 'la firma no se condiciona a la bandera')
+})
+
+test('sin la bandera, la comparación de rótulos sigue corriendo', () => {
+  const src = readFileSync(new URL('./tarjeta-pestana.mjs', import.meta.url), 'utf8')
+  assert.match(src, /\} else if \(\(await autoRespetarReescritura\(/, 'sin bandera se evalúa igual que antes')
+  assert.match(src, /--rediseniar/, 'y el mensaje le dice al dueño cómo pedir el rediseño')
 })
