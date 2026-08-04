@@ -16,15 +16,17 @@
 //   7. ¿ya está cargado?              → por (CUIT, tipo, número) en el registro Y en Compras VIVO.
 //   8. abrir o ampliar el fajo        → un mensaje con botones, no una cascada.
 //
-// NO ESCRIBE EN EL SHEET. Ni acá ni por accidente: la escritura vive en `escritura.mjs` y sólo la
-// dispara un Confirmar.
+//   9. si no falta NADA, se carga solo → sin botones y sin clicks (ver `cargarSolo`).
+//
+// NO SABE ESCRIBIR EN EL SHEET. La escritura vive entera en `escritura.mjs` y entra por `escribir`,
+// inyectada como todo lo demás: acá se decide CUÁNDO, nunca CÓMO.
 
 import { matchProveedor } from '../../lib/carga-comprobantes.mjs'
 import { normalizarLectura, claveComprobante, MEDIA_SOPORTADOS, MAX_BYTES_ADJUNTO } from '../../lib/comprobantes/lectura.mjs'
 import { imputacionDeAnotacion } from '../../lib/comprobantes/imputacion.mjs'
 import { conciliarConArca, aplicarArca, ESTADO_ARCA } from '../../lib/comprobantes/arca.mjs'
 import { buscarEnCompras, HALLAZGO } from '../../lib/comprobantes/compras-vivas.mjs'
-import { colapsarRepetidos, entraEnElFajo, ESTADO } from '../../lib/comprobantes/fajo.mjs'
+import { colapsarRepetidos, entraEnElFajo, estaCompleto, ESTADO } from '../../lib/comprobantes/fajo.mjs'
 import { mensajeFajo } from '../../lib/comprobantes/mensaje.mjs'
 import { perfilesDeImputacion, sugerirImputacion } from '../../lib/imputacion-aprendida.mjs'
 import { puedeCargarComprobantes } from './guarda.mjs'
@@ -364,9 +366,63 @@ export async function procesarPost(d, m = {}) {
   }
   if (!fajo) return { texto: 'No pude abrir la carga. Probá de nuevo en un minuto.', estado: 'error' }
 
+  // 9) SE CARGA SOLO. Ver `cargarSolo`.
+  const solo = await cargarSolo(d, fajo, repo, problemas)
+  if (solo) return solo
+
   const msg = mensajeFajo(fajo, { url })
   const cola = problemas.length ? ['', '**No pude con estos:**', ...problemas].join('\n') : ''
   return { texto: msg.texto + cola, attachments: msg.attachments, estado: 'confirmar', fajoId: fajo.id }
+}
+
+/**
+ * MANDAR LA FOTO ES EL PEDIDO — no hay que confirmar nada. (04/08, decisión del dueño)
+ *
+ * Antes toda foto paraba en un mensaje con botones esperando un Confirmar. Con un fajo de veinte
+ * comprobantes eso son veinte clicks, y cada uno es una oportunidad de que el flujo se abandone a
+ * mitad: el gasto queda sin cargar en ningún lado, que es el peor resultado posible. El pedido del
+ * dueño es explícito: "mandar una foto y que se cargue perfecto sin fallas", igual que cuando la
+ * pasa por Claude Code, donde nunca hubo un paso de confirmación.
+ *
+ * SE CARGA SOLO CUANDO NO HAY NADA QUE PREGUNTAR. `estaCompleto` es exactamente esa condición y ya
+ * existía: proveedor conocido, total, fecha, número, y ningún duplicado probable sin contestar. Lo
+ * que le falta a un comprobante para ser cargable no cambió — cambió que, cuando no le falta nada,
+ * no se le hace perder el tiempo a nadie.
+ *
+ * LO QUE SIGUE PREGUNTANDO, y tiene que seguir haciéndolo: un proveedor que no está en el
+ * desplegable (lo agrega una persona), un PROBABLE duplicado (cargarlo o descartarlo solo son las
+ * dos salidas caras), y cualquier dato que la visión no pudo leer. Ahí el mensaje con botones
+ * aparece igual que siempre.
+ *
+ * LA OBRA NO BLOQUEA, y esto no lo cambia: se sigue resolviendo por lo escrito a mano y por la
+ * historia de Compras, y si no se puede, la fila entra SIN obra y el mensaje lo dice con la fila
+ * para completarla. Adivinar la obra por el proveedor sería fabricar imputación contable.
+ *
+ * @returns {Promise<object|null>} la respuesta ya cargada, o null si hay que preguntar algo
+ */
+async function cargarSolo(d, fajo, repo, problemas = []) {
+  const { port, escribir } = d
+  if (typeof escribir !== 'function') return null      // sin escritor inyectado: el flujo viejo
+  const items = fajo?.items ?? []
+  if (!items.length || !items.every(estaCompleto)) return null
+
+  // COMPARE-AND-SET igual que el botón. No es ceremonia: dos posts casi simultáneos de la misma
+  // persona pueden llegar acá con el mismo fajo, y el que pierde tiene que no escribir nada.
+  const tomado = await repo.tomarParaConfirmar(port, { id: fajo.id })
+  if (!tomado) return null
+
+  let r
+  try {
+    r = await escribir(tomado)
+  } catch (e) {
+    // La escritura no puede tumbar el post. Se reabre el fajo para poder reintentar y se dice.
+    await repo.reabrirFajo(port, { id: fajo.id, error: String(e?.message ?? e).slice(0, 200) }).catch(() => {})
+    d.log?.error?.('comprobantes: la carga automática falló', { fajo: fajo.id, error: String(e?.message ?? e) })
+    return { texto: `No pude cargarlo: ${String(e?.message ?? e).slice(0, 200)}.`, estado: 'error', fajoId: fajo.id }
+  }
+
+  const cola = problemas.length ? ['', '**No pude con estos:**', ...problemas].join('\n') : ''
+  return { texto: (r?.texto ?? '✔ Cargado.') + cola, estado: r?.estado ?? ESTADO.CARGADO, fajoId: fajo.id }
 }
 
 /**

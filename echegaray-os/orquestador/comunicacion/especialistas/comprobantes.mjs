@@ -26,6 +26,7 @@
 // fórmulas abiertas sobre Compras: el error se multiplica por cuatro antes de que nadie lo note.
 
 import { procesarPost, TEXTO as TEXTO_FLUJO } from '../comprobantes/flujo.mjs'
+import { escribirFajo } from '../comprobantes/escritura.mjs'
 import { leerAdjunto } from '../../lib/comprobantes/vision.mjs'
 import { listasDeCompras } from '../../lib/comprobantes/listas.mjs'
 import { indiceDeCompras } from '../../lib/comprobantes/compras-vivas.mjs'
@@ -130,6 +131,10 @@ export const especialista = {
       // EL FEEDER DE RESERVA de esa misma lib: el espejo en Postgres. Se usa sólo si no se pudo leer
       // la pestaña. Es el que ya consume el cargador de Claude Code — la misma lib, otra lectura.
       perfilesDesdeDB: () => perfilesDeImputacionDesdeDB({ query: (...a) => port.query(...a) }),
+      // EL ESCRITOR. Es el mismo `escribirFajo` que dispara el botón Confirmar —el que corre el
+      // cargador de Claude Code como proceso hijo—: no hay dos caminos de escritura, hay uno solo
+      // al que ahora también se llega sin apretar nada.
+      escribir: (f) => escribirFajo({ port, log }, f),
       url,
       log,
     }, {

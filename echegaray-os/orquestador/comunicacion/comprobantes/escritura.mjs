@@ -111,7 +111,12 @@ export async function correrCargador({ fajo, dry = false, actor = null, spawnImp
   // auditarlo después es la única razón por la que esta puerta es admisible.
   const entorno = dry || !actor
     ? env
-    : { ...env, ORQ_SHEETS_DESCONGELAR: `carga de comprobante confirmada en el chat por ${actor}` }
+    // El motivo dice "mandado al chat", no "confirmado": desde el 04/08 un comprobante al que no le
+    // falta nada se carga sin que nadie apriete un botón, y el rastro de auditoría tiene que decir
+    // lo que de verdad pasó. Lo que justifica la puerta no cambia — hay una PERSONA identificada que
+    // mandó ese comprobante a ese canal —, pero un log que describe un click que no ocurrió es un
+    // log que miente, y el rastro es la única razón por la que esta puerta es admisible.
+    : { ...env, ORQ_SHEETS_DESCONGELAR: `carga de comprobante mandado al chat por ${actor}` }
   try {
     const r = await unaCorrida(spawnImpl, args, { cwd, env: entorno })
     const linea = String(r.stdout ?? '').split('\n').reverse().find((l) => l.startsWith(MARCA_JSON))
