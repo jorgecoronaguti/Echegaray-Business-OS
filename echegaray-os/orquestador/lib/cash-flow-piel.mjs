@@ -24,7 +24,7 @@
 //
 // NO HAY BORDES VERTICALES NI CAJAS. Una regla existe para separar contenido en UNA dirección.
 
-import { MONEDA_CUERPO, MONEDA_TOTAL } from './formato-statement.mjs'
+import { MONEDA_CUERPO, MONEDA_TOTAL, CONTADOR, PORCENTAJE, MONEDA_CONTROL } from './formato-statement.mjs'
 import { INK, MUTED, HAIR, ACENTO, BLANCO } from './estilo-statement.mjs'
 
 const FUENTE = 'Arial'
@@ -80,7 +80,7 @@ export function columnasProyectadas(periodo, fechas, hoy) {
  */
 export function pielCashFlow({
   sheetId, meta, n, ancho, nFilas, filaRef, filaCtrl, filaCtrlFin,
-  periodo, fechas, hoy, filasHoja = 0, colsHoja = 0,
+  periodo, fechas, hoy, filasHoja = 0, colsHoja = 0, extras = [],
 }) {
   const req = []
   // UNA GUARDA, NO UNA CONFIANZA: un rango de alto o ancho cero devuelve 400 y tumba el lote entero,
@@ -208,6 +208,27 @@ export function pielCashFlow({
   regla(filaCtrl - 1, 'top')
   push(rango(filaCtrl - 1, filaCtrlFin, 1, 2), 'userEnteredFormat(numberFormat,horizontalAlignment)',
     { numberFormat: MONEDA_TOTAL, horizontalAlignment: 'RIGHT' })
+
+  // ── 6 bis. LOS BLOQUES DE DECISIÓN, COMPOSICIÓN Y CONTRASTE ─────────────────────────────────────
+  //
+  // Van AL FINAL a propósito: pisan lo que el cuerpo pintó encima de sus filas. Sin esto, una
+  // cobertura de obligaciones del 87% se dibuja como "$1" (el formato de moneda del cuerpo redondea
+  // 0,87 a 1 y le pone el símbolo) y un contador de semanas negativas se lee como plata. Es el mismo
+  // defecto que el auditor de pantalla llama "texto_en_numero", del otro lado.
+  const PATRON = {
+    moneda: MONEDA_TOTAL, porcentaje: PORCENTAJE, entero: CONTADOR, control: MONEDA_CONTROL,
+    fecha: { type: 'DATE', pattern: 'dd/mm/yyyy' }, texto: { type: 'TEXT' },
+  }
+  for (const e of extras) {
+    if (e.tipo === 'titulo') {
+      fila(e.f, 'userEnteredFormat(textFormat,numberFormat,horizontalAlignment)',
+        { textFormat: txt(INK, { bold: true, size: 11 }), numberFormat: PATRON.texto, horizontalAlignment: 'LEFT' })
+      regla(e.f, 'top')
+      continue
+    }
+    push(rango(e.f - 1, e.f, e.c0, e.c1), 'userEnteredFormat(numberFormat,horizontalAlignment)',
+      { numberFormat: PATRON[e.tipo] ?? PATRON.texto, horizontalAlignment: e.tipo === 'texto' ? 'LEFT' : 'RIGHT' })
+  }
 
   // ── 7. Anchos ───────────────────────────────────────────────────────────────────────────────────
   // La columna A llevaba 260 px y cortaba a la mitad los rótulos largos ("La misma nómina de
