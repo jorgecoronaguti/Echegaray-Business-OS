@@ -476,7 +476,7 @@ test('mientras el duplicado no se conteste NO aparece Confirmar', async () => {
   await manejar(click(fajo.id, 'corregir')) // cualquier acción que redibuje sirve para mirar el mensaje
   const { botonesFajo } = await import('../../lib/comprobantes/fajo.mjs')
   const ids = botonesFajo(repo._fajos.get(fajo.id), { url: URL })[0].actions.map((a) => a.id)
-  assert.deepEqual(ids, ['duplicado_mismo', 'duplicado_otro', 'descartar'])
+  assert.deepEqual(ids, ['dupmismo', 'dupotro', 'descartar'])
   assert.ok(mm)
 })
 

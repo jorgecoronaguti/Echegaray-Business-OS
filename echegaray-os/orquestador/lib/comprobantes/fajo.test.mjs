@@ -150,3 +150,54 @@ test('faltando el número pero no la obra, el desplegable de obra SIGUE ofrecié
 test('sin URL no se dibujan botones que no van a poder llamar a nadie', () => {
   assert.deepEqual(botonesFajo({ id: 'f1', items: [item()] }, {}), [])
 })
+
+// ═══ EL MISMO DEFECTO, DOS VECES, EN DOS MÓDULOS (04/08) ═══
+//
+// El `id` de una acción viaja adentro de la URL: POST /api/v4/posts/{post_id}/actions/{action_id}.
+// Ese segmento sólo acepta alfanuméricos. Con `obra_0`, `duplicado_mismo` y `duplicado_otro` la ruta
+// NO matcheaba: Mattermost mostraba "Sorry, we could not find the page" y el pedido NUNCA llegaba al
+// OS — así que tampoco dejaba rastro en nuestros logs, y el síntoma no señalaba la causa ni de lejos.
+//
+// La asistencia ya lo había pagado el 30/07 con sus botones de fecha, y desde entonces tiene un
+// validador. Comprobantes se escribió después y no lo reusó. Este test cierra ese hueco acá.
+
+test('TODOS los ids de acción son alfanuméricos: Mattermost los mete en la URL', () => {
+  const url = 'https://x/comprobantes/accion?t=1'
+  // Un fajo con las tres familias de botones a la vez: obra a elegir y un duplicado abierto.
+  // El botón de obra sólo existe si el comprobante NO trae obra Y hay opciones sugeridas: sin las
+  // dos cosas la sección no se dibuja y el test pasaría sin haber mirado nunca los ids que fallaban.
+  // OJO: `item()` sólo propaga `comprobante` y `extra`. Poner `sugerencia` afuera la descarta en
+  // silencio, la sección de obra no se dibuja, y el test pasa sin haber mirado los ids que fallaban
+  // — que es exactamente lo que me pasó en el primer intento de este mismo test.
+  const conObra = item({
+    comprobante: { obra: null },
+    extra: {
+      sugerencia: { obra: { opciones: [
+        { valor: 'San Francisco', n: 41 }, { valor: 'Administracion', n: 39 }, { valor: 'Taller', n: 18 },
+      ] } },
+    },
+  })
+  const conDup = item({ extra: { posibleDuplicado: { fila: 412 } } })
+  let vistos = 0
+  for (const fajo of [{ id: 'f1', items: [conObra] }, { id: 'f2', items: [conDup] }, { id: 'f3', items: [item()] }]) {
+    for (const att of botonesFajo(fajo, { url })) {
+      for (const a of (att.actions ?? [])) {
+        vistos++
+        assert.match(String(a.id), /^[A-Za-z0-9]+$/,
+          `el id «${a.id}» no entra en /posts/{id}/actions/{action_id}: el click muere en el router de Mattermost`)
+      }
+    }
+  }
+  // Sin esto, un cambio que deje de dibujar los botones haría pasar el test sin probar nada.
+  assert.ok(vistos >= 7, `tienen que revisarse los botones de obra, duplicado y confirmación (vistos: ${vistos})`)
+})
+
+test('cambiar el id no cambia el despacho: eso lo decide context.accion', () => {
+  const url = 'https://x/comprobantes/accion?t=1'
+  const att = botonesFajo({ id: 'f1', items: [item({ comprobante: { obra: null } })] }, { url })
+  const acciones = att.flatMap((a) => a.actions ?? [])
+  assert.ok(acciones.length > 0)
+  for (const a of acciones) {
+    assert.ok(a.integration?.context?.accion, `la acción «${a.id}» tiene que declarar su accion en el context`)
+  }
+})

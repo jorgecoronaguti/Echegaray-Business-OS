@@ -202,6 +202,21 @@ export function aplicarOpcion(item = {}, { campo, valor } = {}) {
  * Los botones. `integration.url` lleva el SECRETO en la query: Mattermost guarda esa URL en su base
  * y no se la manda al cliente, así que es el único lugar donde un callback puede probar que viene de
  * Mattermost. El callback NO trae token de identidad — verificado contra el servidor real.
+ *
+ * ═══ EL `id` SÓLO PUEDE SER ALFANUMÉRICO (04/08) ═══
+ *
+ * Viaja adentro de la URL de la API: `POST /api/v4/posts/{post_id}/actions/{action_id}`. Ese
+ * segmento no acepta guiones bajos. `obra_0`, `duplicado_mismo` y `duplicado_otro` hacían que la
+ * ruta NO matcheara: Mattermost mostraba "Sorry, we could not find the page" y **el pedido nunca
+ * llegaba al OS**, así que tampoco dejaba rastro en nuestros logs — el peor modo de falla posible,
+ * porque el síntoma no señala ni de lejos la causa.
+ *
+ * Este repo ya lo había pagado el 30/07 con los tres botones de fecha de la asistencia, y desde
+ * entonces `asistencia-mm/contrato-mattermost.mjs` valida el alfabeto. Comprobantes se escribió
+ * después y no reusó esa validación: el mismo defecto, dos veces, en dos módulos.
+ *
+ * El despacho NO depende del id —el handler lee `context.accion`—, así que el id es sólo el nombre
+ * que ve Mattermost y puede ser corto. El alfabeto de este campo lo decide Mattermost, no nosotros.
  */
 export function botonesFajo(fajo = {}, { url } = {}) {
   if (!url) return []
@@ -220,8 +235,8 @@ export function botonesFajo(fajo = {}, { url } = {}) {
       fallback: 'Decidí si este comprobante ya estaba cargado.',
       color: '#b58900',
       actions: [
-        { id: 'duplicado_mismo', name: `Es el mismo, no lo cargues${n}`, type: 'button', integration: { url, context: contexto('duplicado_mismo', { indice: dup }) } },
-        { id: 'duplicado_otro', name: `Es otro, cargalo${n}`, type: 'button', style: 'primary', integration: { url, context: contexto('duplicado_otro', { indice: dup }) } },
+        { id: 'dupmismo', name: `Es el mismo, no lo cargues${n}`, type: 'button', integration: { url, context: contexto('duplicado_mismo', { indice: dup }) } },
+        { id: 'dupotro', name: `Es otro, cargalo${n}`, type: 'button', style: 'primary', integration: { url, context: contexto('duplicado_otro', { indice: dup }) } },
         { id: 'descartar', name: 'Descartar', type: 'button', style: 'danger', integration: { url, context: contexto('descartar') } },
       ],
     }]
@@ -246,7 +261,7 @@ export function botonesFajo(fajo = {}, { url } = {}) {
       color: '#b58900',
       title: `¿A qué obra va${cual}? — ${it.comprobante?.proveedor ?? 'sin proveedor'}`,
       actions: opcionesDe(it.sugerencia?.obra).slice(0, 3).map((o, k) => ({
-        id: `obra_${k}`,
+        id: `obra${k}`,
         name: o.n != null ? `${o.valor} (${o.n})` : o.valor,
         type: 'button',
         integration: { url, context: contexto('imputar', { indice: oi, campo: 'obra', valor: o.valor }) },
