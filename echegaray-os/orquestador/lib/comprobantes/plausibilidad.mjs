@@ -168,13 +168,19 @@ export function ivaPlausible(c = {}) {
   // El IVA y el neto con signos opuestos no es una alícuota: es un signo mal puesto.
   const mismoSigno = (iva < 0) === (neto < 0)
   const plausible = mismoSigno && BANDAS_IVA.some(([lo, hi]) => ratio >= lo && ratio <= hi)
+  // "es el 0% del neto" sería justo lo contrario de lo que se quiere decir —el IVA cero es
+  // legítimo—, así que un ratio que redondea a cero se dice como lo que es: no llega ni al mínimo.
+  const cuanto = ratio < 0.01
+    ? 'no llega ni al 0,01% del neto'
+    : `es el ${ratio.toLocaleString('es-AR', { maximumFractionDigits: 2 })}% del neto`
+  const alicuotas = ALICUOTAS_IVA.filter((a) => a > 0).map((a) => a.toLocaleString('es-AR')).join(' · ')
   return {
     verificable: true,
     plausible,
     ratio,
     iva,
     neto,
-    motivo: plausible ? null : `es el ${ratio.toLocaleString('es-AR', { maximumFractionDigits: 2 })}% del neto, y las alícuotas son ${ALICUOTAS_IVA.filter((a) => a > 0).map((a) => a.toLocaleString('es-AR')).join(' · ')}%`,
+    motivo: plausible ? null : `no se parece a ninguna alícuota: ${cuanto} y las alícuotas son ${alicuotas}%`,
   }
 }
 

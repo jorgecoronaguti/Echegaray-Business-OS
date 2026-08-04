@@ -25,7 +25,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { procesarPost } from './flujo.mjs'
 import { aFajoJson } from './escritura.mjs'
-import { aplicarCorreccion } from './dialogo.mjs'
+import { aplicarCorreccion, elementosDe } from './dialogo.mjs'
 import { repoMemoria, portGuarda, mmFalso, filaCompras } from './dobles.mjs'
 import { indexarCompras } from '../../lib/comprobantes/compras-vivas.mjs'
 import { estaCompleto, preguntasDe } from '../../lib/comprobantes/fajo.mjs'
@@ -222,6 +222,17 @@ test('con las tres cosas mal, se nombran las tres y ninguna se inventa', async (
 })
 
 // ═══ 5 · CORREGIR DESTRABA — UN CONTROL SIN SALIDA NO ES UN CONTROL ═════════
+
+test('el formulario de Corregir ofrece la fecha y el IVA, que son los que hay que arreglar', async () => {
+  // Un control que bloquea y no pone delante el campo que hay que corregir es un callejón sin
+  // salida: el comprobante queda imposible de cargar y el gasto se pierde. El formulario admite
+  // cinco campos y la prioridad la deciden los faltantes.
+  const { d, repo } = armar({ lecturas: [barceloMalLeida()] })
+  const r = await procesarPost(d, post())
+  const nombres = elementosDe(itemDe(repo, r), { obras: LISTAS.obras }).map((e) => e.name)
+  assert.ok(nombres.includes('fecha'), `la fecha tiene que estar entre los ${nombres.length}: ${nombres}`)
+  assert.ok(nombres.includes('iva'), `el IVA también: ${nombres}`)
+})
 
 test('la fecha y el IVA tipeados por una persona no se vuelven a cuestionar', async () => {
   const { d, repo } = armar({ lecturas: [barceloMalLeida()] })

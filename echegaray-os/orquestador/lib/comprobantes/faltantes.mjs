@@ -238,6 +238,7 @@ export function faltantesDe(item = {}, politica = POLITICA.CARGADOR, { ahora } =
       falta(MOTIVO.IVA_IMPOSIBLE,
         `IVA imposible: leí ${pesos(d.iva.iva)} sobre un neto de ${pesos(d.iva.neto)} (${d.iva.motivo})`,
         `**no pude leer el IVA**: leí **${pesos(d.iva.iva)}** sobre un neto de **${pesos(d.iva.neto)}** y ${d.iva.motivo}. Tocá **Corregir** y ponelo — si el comprobante no discrimina IVA, escribí 0.`)
+
     }
   }
 
