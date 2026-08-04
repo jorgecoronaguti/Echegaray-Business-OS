@@ -634,3 +634,61 @@ test('un fajo con un duplicado abierto NO escribe nada si igual se fuerza el Con
   assert.equal(corridas, 0, 'no se corre el cargador con una pregunta sin contestar')
   assert.equal(r.estado, ESTADO.DESCARTADO)
 })
+
+// ═══ LA PRUEBA DEL EFECTO: releer la fila y mostrar lo que quedó ═══
+//
+// El bot contestaba "✔ Cargado en Compras, fila 412" y nada más. Con el importe leído mal la
+// respuesta era idéntica. El dueño lo pidió textual: "tiene que ser exactamente igual que
+// directamente por esta vía, la experiencia es confusa y no es certera". Lo que da certeza no es
+// el tilde: es el dato leído de su destino.
+
+/** Un Compras de mentira: `filas` es {nro: {proveedor, comprobante, fecha, importe, iva, total, obra}}. */
+function comprasFalso(filas = {}) {
+  const max = Math.max(...Object.keys(filas).map(Number), 4)
+  const grilla = Array.from({ length: max - 3 }, () => [])
+  for (const [nro, v] of Object.entries(filas)) {
+    const f = []
+    f[4] = v.proveedor; f[7] = v.comprobante; f[2] = v.fecha; f[9] = v.obra ?? 'Estrella'
+    f[12] = v.importe; f[13] = v.iva; f[14] = v.total
+    grilla[Number(nro) - 4] = f
+  }
+  return async () => grilla
+}
+
+test('CARGADO: el mensaje trae lo que quedó ESCRITO, releído de Compras', async () => {
+  const { repo, fajo } = await conFajo()
+  const correr = async () => ({ ok: true, datos: { ok: true, escritas: 1, filas: [{ i: 0, fila: 412 }] } })
+  const leerCompras = comprasFalso({
+    412: { proveedor: 'Combustibles Barcelo', comprobante: '0113-00010489', fecha: '05/01/2026', importe: 30479.30, iva: 5981, total: 36460.30 },
+  })
+  const r = await escribirFajo({ port: null, repo, correr, congelado: SIN_HIELO, leerCompras }, fajo)
+
+  assert.match(r.texto, /Esto es lo que quedó escrito en Compras/)
+  assert.match(r.texto, /\| 412 \| Combustibles Barcelo \| 0113-00010489 \|/, 'no muestra la fila releída')
+  assert.match(r.texto, /\$36\.460/, 'no muestra el total que quedó en el archivo')
+  assert.match(r.texto, /Releído del archivo/)
+})
+
+test('un importe leído mal se DENUNCIA, no se confirma con un tilde', async () => {
+  const { repo, fajo } = await conFajo()
+  const correr = async () => ({ ok: true, datos: { ok: true, escritas: 1, filas: [{ i: 0, fila: 412 }] } })
+  // La foto decía 36.460,30 y en el archivo quedó un total que no cierra con importe + IVA.
+  const leerCompras = comprasFalso({
+    412: { proveedor: 'Combustibles Barcelo', comprobante: '0113-00010489', fecha: '05/01/2026', importe: 30479.30, iva: 5981, total: 3646030 },
+  })
+  const r = await escribirFajo({ port: null, repo, correr, congelado: SIN_HIELO, leerCompras }, fajo)
+
+  assert.match(r.texto, /la aritmética no cierra/)
+  assert.match(r.texto, /No lo des por bueno/)
+})
+
+test('si releer falla, se dice — no se afirma un éxito que no se verificó', async () => {
+  const { repo, fajo } = await conFajo()
+  const correr = async () => ({ ok: true, datos: { ok: true, escritas: 1, filas: [{ i: 0, fila: 412 }] } })
+  const leerCompras = async () => { throw new Error('google 503') }
+  const r = await escribirFajo({ port: null, repo, correr, congelado: SIN_HIELO, leerCompras }, fajo)
+
+  assert.equal(r.estado, ESTADO.CARGADO, 'la carga ocurrió: no se puede decir que falló')
+  assert.match(r.texto, /no pude releer las filas/)
+  assert.match(r.texto, /fila 412/, 'igual se dice dónde quedó')
+})
