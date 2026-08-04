@@ -213,6 +213,97 @@ export function planDeEscritura({ encabezados = [], filaEncabezado, filaLimite, 
 }
 
 /**
+ * LAS COLUMNAS DE COMPRAS, UBICADAS POR SU RÓTULO.
+ *
+ * El dueño edita Compras y una columna borrada corre todas las que siguen: ubicar por posición fija
+ * es lo que un día dejó la deuda en cero. Las que nunca se movieron conservan su lugar histórico como
+ * respaldo; las que sí se mueven (las que agregó el OS) se buscan por nombre y, si no aparecen, se
+ * usa el respaldo y se deja dicho — nunca se inventa una columna.
+ *
+ * Es pura: recibe la fila de rótulos ya leída. El plan y el aplicador comparten esta función para que
+ * no puedan resolver columnas distintas y escribir una fórmula que el plan nunca mostró.
+ *
+ * @param {any[]} cabecera la fila 3 de Compras
+ * @returns {{rangos:Record<string,string>, avisos:string[]}}
+ */
+export function rangosDesdeEncabezado(cabecera = []) {
+  const avisos = []
+  const cab = (cabecera ?? []).map((c) => String(c ?? '').trim().toLowerCase())
+  const porNombre = (nombre, respaldo) => {
+    const i = cab.indexOf(nombre.toLowerCase())
+    if (i < 0) { avisos.push(`no encontré "${nombre}" en el encabezado de Compras; uso ${respaldo}`); return respaldo }
+    return `Compras!$${letra(i)}$4:$${letra(i)}`
+  }
+  return {
+    avisos,
+    rangos: {
+      prov: 'Compras!$E$4:$E',
+      estado: 'Compras!$X$4:$X',
+      total: 'Compras!$O$4:$O',
+      comprobante: 'Compras!$H$4:$H',
+      obra: 'Compras!$J$4:$J',
+      categoria: 'Compras!$B$4:$B',
+      comercial: porNombre('¿Proveedor comercial? (OS)', 'Compras!$AJ$4:$AJ'),
+      pagado: porNombre('Monto Pagado', 'Compras!$T$4:$T'),
+      parcial1: porNombre('Monto Parcial 1', 'Compras!$U$4:$U'),
+      parcial2: porNombre('Monto Parcial 2', 'Compras!$W$4:$W'),
+      fecha: porNombre('Fecha de caja', 'Compras!$AD$4:$AD'),
+      tipoPago: porNombre('Tipo pago', 'Compras!$P$4:$P'),
+    },
+  }
+}
+
+/**
+ * LA HUELLA DE LO QUE NO SE TOCA — la evidencia se toma ANTES y se compara DESPUÉS.
+ *
+ * Dos cosas son intocables al reescribir la sección 1, y las dos ya se perdieron en este archivo:
+ * la columna que el dueño rotuló más allá del contrato (hoy H, "Comentarios") y **la sección 2
+ * entera**, donde vive la columna B con los CUIT que cargó a mano.
+ *
+ * Que el script "no las incluya en su rango" no es evidencia de nada: un rango mal calculado también
+ * cree que no las incluye. La evidencia es el dato leído del archivo antes y después, y por eso esto
+ * devuelve un mapa comparable en vez de un booleano.
+ *
+ * @param {any[][]} filas la pestaña leída desde A1
+ * @param {{filaLimite:number, filaEncabezado:number, ancho:number}} geo
+ * @returns {Map<string,string>} dirección A1 → contenido
+ */
+export function huellaProtegida(filas = [], { filaLimite, filaEncabezado, ancho } = {}) {
+  const huella = new Map()
+  const anotar = (f, c, v) => {
+    const s = String(v ?? '')
+    if (s !== '') huella.set(`${letra(c)}${f + 1}`, s)
+  }
+  for (let f = 0; f < (filas ?? []).length; f++) {
+    const fila = filas[f] ?? []
+    // La sección 2 y todo lo que sigue: intacta entera, en todas sus columnas.
+    if (f + 1 >= filaLimite) { fila.forEach((v, c) => anotar(f, c, v)); continue }
+    // Dentro del bloque, las columnas del dueño (las que están más allá del ancho del contrato).
+    if (f + 1 > filaEncabezado) for (let c = ancho; c < fila.length; c++) anotar(f, c, fila[c])
+  }
+  return huella
+}
+
+/**
+ * QUÉ SE PERDIÓ O CAMBIÓ ENTRE DOS HUELLAS. Una sola entrada acá es motivo de alarma, no de nota
+ * al pie: significa que la escritura salió del rango que declaró.
+ *
+ * @param {Map<string,string>} antes
+ * @param {Map<string,string>} despues
+ * @returns {Array<{dir:string, antes:string, despues:string}>}
+ */
+export function diferenciasDeHuella(antes = new Map(), despues = new Map()) {
+  const dirs = new Set([...antes.keys(), ...despues.keys()])
+  const out = []
+  for (const dir of dirs) {
+    const a = antes.get(dir) ?? ''
+    const d = despues.get(dir) ?? ''
+    if (a !== d) out.push({ dir, antes: a, despues: d })
+  }
+  return out.sort((x, y) => x.dir.localeCompare(y.dir))
+}
+
+/**
  * LA GEOMETRÍA SE ANCLA AL TEXTO DEL DUEÑO, NO A NÚMEROS DE FILA.
  *
  * Los títulos "1 · QUÉ SE DEBE Y CUÁNDO" y "2 · CUENTA CORRIENTE POR PROVEEDOR" los escribió él y son

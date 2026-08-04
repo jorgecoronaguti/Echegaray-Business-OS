@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 
 import {
   defectosDeBloque, geometriaSeccion1, planDeEscritura, proveedoresCableados, referenciasAFilaFija,
-  ROTULOS_CONTRATO,
+  ROTULOS_CONTRATO, rangosDesdeEncabezado, huellaProtegida, diferenciasDeHuella,
 } from './proveedores-bloque-vivo.mjs'
 import { formulaPorFactura, formulaPorProveedor, referenciasCompras, esRangoAbierto } from './proveedores-deuda-viva.mjs'
 
@@ -173,4 +173,68 @@ test('los rótulos de la CUENTA CORRIENTE no son los de la sección 1 — el pla
   const plan = planDeEscritura({ ...geo, pendientes: 11 })
   // La columna B de la sección 2 es el CUIT, cargado a mano. El rango del plan termina en la fila 37.
   assert.ok(Number(/:[A-Z]+(\d+)$/.exec(plan.rango)?.[1]) < geo.filaLimite, `${plan.rango} invade la sección 2`)
+})
+
+// ═══ LAS COLUMNAS DE COMPRAS SE UBICAN POR RÓTULO, NO POR POSICIÓN ═══
+// El dueño borra una columna de Compras y todas las de la derecha se corren. Una referencia fija a
+// `$AJ` pasa a hablar de otra cosa y la deuda cambia sin que nada dé error.
+
+test('si una columna del OS se corre en Compras, el rango la sigue por su rótulo', () => {
+  const cabecera = Array.from({ length: 40 }, () => '')
+  cabecera[36] = '¿Proveedor comercial? (OS)'   // corrida una columna a la derecha de su lugar histórico
+  cabecera[20] = 'Monto Pagado'
+  const { rangos, avisos } = rangosDesdeEncabezado(cabecera)
+  assert.equal(rangos.comercial, 'Compras!$AK$4:$AK', 'siguió apuntando a la posición vieja')
+  assert.equal(rangos.pagado, 'Compras!$U$4:$U')
+  assert.ok(avisos.some((a) => /Fecha de caja/.test(a)), 'un rótulo ausente tiene que quedar declarado')
+})
+
+test('todos los rangos de Compras quedan ABIERTOS: uno acotado se fosiliza y deja plata afuera', () => {
+  const { rangos } = rangosDesdeEncabezado(['ID'])
+  for (const [k, v] of Object.entries(rangos)) assert.ok(esRangoAbierto(v), `${k}=${v} tiene fila final`)
+})
+
+// ═══ LA HUELLA: LA EVIDENCIA DE QUE NO SE TOCÓ LO AJENO ═══
+
+const GEO = { filaEncabezado: 17, filaLimite: 38, ancho: 7 }
+
+function PESTAÑA_CON_CUIT() {
+  const filas = PESTAÑA_VIVA()
+  filas[16] = [...ENCABEZADOS_VIVOS]
+  filas[17] = [A18_VIVA, '', '', '', '', '', '', 'nota del dueño en H18']
+  filas[48] = ['Corralon Progreso', '23-36911157-4', '185']
+  filas[49] = ['DUPEC', '20-28773782-4', '15']
+  return filas
+}
+
+test('la huella incluye los CUIT de la sección 2 y la columna del dueño dentro del bloque', () => {
+  const h = huellaProtegida(PESTAÑA_CON_CUIT(), GEO)
+  assert.equal(h.get('B49'), '23-36911157-4')
+  assert.equal(h.get('B50'), '20-28773782-4')
+  assert.equal(h.get('H18'), 'nota del dueño en H18')
+  // Y NO incluye lo que sí se reescribe: si lo incluyera, toda corrida daría falsa alarma.
+  assert.equal(h.has('A18'), false)
+})
+
+test('borrar un CUIT de la sección 2 aparece en las diferencias — no se puede perder en silencio', () => {
+  const antes = huellaProtegida(PESTAÑA_CON_CUIT(), GEO)
+  const rotas = PESTAÑA_CON_CUIT()
+  rotas[48] = ['Corralon Progreso', '', '185']
+  const dif = diferenciasDeHuella(antes, huellaProtegida(rotas, GEO))
+  assert.deepEqual(dif, [{ dir: 'B49', antes: '23-36911157-4', despues: '' }])
+})
+
+test('pisar la columna H del dueño aparece en las diferencias', () => {
+  const antes = huellaProtegida(PESTAÑA_CON_CUIT(), GEO)
+  const rotas = PESTAÑA_CON_CUIT()
+  rotas[17] = [A18_VIVA, '', '', '', '', '', '', '']
+  assert.deepEqual(diferenciasDeHuella(antes, huellaProtegida(rotas, GEO)),
+    [{ dir: 'H18', antes: 'nota del dueño en H18', despues: '' }])
+})
+
+test('una escritura que no salió de su rango no produce ninguna diferencia', () => {
+  const antes = huellaProtegida(PESTAÑA_CON_CUIT(), GEO)
+  const despues = PESTAÑA_CON_CUIT()
+  despues[17] = ['=IFERROR(ARRAYFORMULA(LET(…)))', '', '', '', '', '', '', 'nota del dueño en H18']
+  assert.deepEqual(diferenciasDeHuella(antes, huellaProtegida(despues, GEO)), [])
 })
