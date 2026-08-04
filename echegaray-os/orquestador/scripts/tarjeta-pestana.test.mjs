@@ -241,18 +241,23 @@ test('la banda fecha la foto con TARJETA.al, no con el corte del extracto', () =
     TARJETA: { ...TARJETA, al: '2026-07-29' },
     CORTE: '2026-07-22',
   }
-  const filas = bandaFilas(31, banco)
+  const r = bandaFilas(31, banco)
+  const filas = Array.isArray(r) ? r : r.filas
   const texto = JSON.stringify(filas)
   assert.match(texto, /29\/07\/2026/, 'tiene que fechar con la foto de la tarjeta')
-  assert.ok(!texto.includes('22/07/2026'), 'el corte del extracto no fecha la tarjeta')
+  // La línea de dólares lleva SU propia fecha (el resumen del 29/07 no reportó dólares), así que
+  // 22/07 puede aparecer — pero sólo ahí. El subtítulo y el disponible se fechan con la foto.
+  const subtitulo = (filas || []).map((f) => String(f?.[0] ?? '')).find((x) => x.includes('Santander')) ?? ''
+  assert.ok(subtitulo, 'tiene que existir el subtítulo')
+  assert.ok(!subtitulo.includes('22/07/2026'), 'el subtítulo se fecha con la foto de la tarjeta')
   assert.match(texto, /DATE\(2026;7;29\)/, 'el semáforo de antigüedad cuenta desde la foto de la tarjeta')
 })
 
 test('sin fecha propia, la tarjeta cae al corte del extracto — no se queda sin fechar', () => {
   const sinAl = { ...TARJETA }
   delete sinAl.al
-  const filas = bandaFilas(31, { TARJETA: sinAl, CORTE: '2026-07-22' })
-  assert.match(JSON.stringify(filas), /22\/07\/2026/)
+  const r2 = bandaFilas(31, { TARJETA: sinAl, CORTE: '2026-07-22' })
+  assert.match(JSON.stringify(Array.isArray(r2) ? r2 : r2.filas), /22\/07\/2026/)
 })
 
 // ═══ LA PUERTA DEL REDISEÑO NO PUEDE APAGAR LA FIRMA NI EL CANDADO (04/08) ═══

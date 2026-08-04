@@ -113,7 +113,12 @@ export const TARJETA = {
   al: '2026-07-29',
   limite: 10000000,
   consumidoPesos: 24000,
-  consumidoDolares: 0,
+  // EL RESUMEN DEL 29/07 NO TRAE LÍNEA EN DÓLARES, Y ESO NO ES UN CERO. El último dato que el banco
+  // reportó es el del 22/07: U$S 193,25 sin debitar. Ponerlo en 0 sería afirmar que se pagó, que es
+  // un hecho que nadie declaró — y de hecho hacía desaparecer la línea de la pestaña. Se conserva
+  // con SU fecha, que es distinta de la del resto de la foto y por eso se declara aparte.
+  consumidoDolares: 193.25,
+  consumidoDolaresAl: '2026-07-22',
   // El resumen del 29/07 los separa: lo consumido y lo que todavía no confirmó el comercio.
   pendienteDeConfirmacion: 32500,
   disponible: 8693073.70,
