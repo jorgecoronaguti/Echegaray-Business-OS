@@ -24,6 +24,12 @@ import { COL, filtros, fuenteCompras, geometriaDeLaSeccion, PENDIENTE } from '..
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Proveedores'
 const APLICAR = process.argv.includes('--aplicar')
+// A cuánto se lleva la grilla de Compras. Con 817 filas usadas y ~90 comprobantes por mes, esto son
+// más de quince años de margen: el origen deja de ser algo que haya que recordar.
+const MINIMO_GRILLA_COMPRAS = 3000
+// Filas de aire que se dejan entre el cuadro y la sección 2. Es lo que absorbe las facturas nuevas
+// sin que nadie tenga que correr nada; cuando se acaba, este mismo script inserta más.
+const COLCHON = 12
 
 const plata = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
 const T = { type: 'TEXT', pattern: '@' }
@@ -95,7 +101,6 @@ async function main() {
 
   console.log(`PROVEEDORES ${proveedores} · FACTURAS ${pendientes.length} · TOTAL ${plata(total)}`)
   console.log(`A (quién y cuánto) ${altoA} filas · B (cada operación) ${altoB} filas · necesita ${necesita}, hay ${disponibles}`)
-  const COLCHON = 4
   const faltan = necesita > disponibles ? necesita - disponibles + COLCHON : 0
   if (faltan) console.log(`⚠ se insertan ${faltan} fila(s) antes de la sección 2 (fila ${geo.filaLimite})`)
   if (!APLICAR) { console.log('\n(sin --aplicar: no se escribió nada)'); return }
@@ -104,7 +109,20 @@ async function main() {
   const sheetId = meta.find((s) => s.title === PESTAÑA)?.sheetId
   const compraMeta = meta.find((s) => s.title === 'Compras')
   if (!Number.isInteger(sheetId) || !(compraMeta?.rows > 3)) throw new Error('no pude resolver las pestañas: no escribo a ciegas')
-  const fuente = fuenteCompras({ sheetId: compraMeta.sheetId, filas: compraMeta.rows })
+
+  // ═══ EL ORIGEN NO SE PUEDE QUEDAR CORTO ═══
+  //
+  // El origen de una dinámica es un rango FIJO. Si termina donde hoy termina la grilla de Compras,
+  // el día que se llene los comprobantes nuevos caen afuera y NO DA ERROR: simplemente dejan de
+  // aparecer, y el cuadro miente hacia abajo sin que nada avise. Se agranda la grilla para que el
+  // origen tenga años de aire; una fila vacía de más en Compras no le hace nada a nadie.
+  const filasCompras = Math.max(compraMeta.rows, MINIMO_GRILLA_COMPRAS)
+  if (filasCompras > compraMeta.rows) {
+    console.log(`la grilla de Compras pasa de ${compraMeta.rows} a ${filasCompras} filas (para que el origen no se quede corto)`)
+    await google.spreadsheetBatchUpdate(ID, [{ appendDimension: {
+      sheetId: compraMeta.sheetId, dimension: 'ROWS', length: filasCompras - compraMeta.rows } }], { espejo: true })
+  }
+  const fuente = fuenteCompras({ sheetId: compraMeta.sheetId, filas: filasCompras })
 
   if (faltan) {
     await google.spreadsheetBatchUpdate(ID, [{ insertDimension: {

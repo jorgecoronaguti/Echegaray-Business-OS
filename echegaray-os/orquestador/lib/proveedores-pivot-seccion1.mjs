@@ -375,9 +375,14 @@ export function geometriaDeLaSeccion(filas = []) {
   if (iTitulo < 0) throw new Error('no encontré el título "1 · QUÉ SE DEBE Y CUÁNDO": la pestaña cambió de forma, no hay plan')
   const iLimite = filas.findIndex((_, i) => i > iTitulo && /^2\s*[·.\-]/.test(colA(i)))
   if (iLimite < 0) throw new Error('no encontré el título de la sección 2: sin límite no puedo reservar filas sin pisar lo de abajo')
+  // La PRIMERA fila de rótulos después del título, con AL MENOS DOS columnas.
+  //
+  // Exigía cuatro. El cuadro de totales por proveedor tiene tres (proveedor · se le debe · facturas),
+  // así que la geometría se lo salteaba y enganchaba el rótulo del cuadro de detalle: cada corrida
+  // creía que la sección arrancaba más abajo, no limpiaba lo de arriba y DUPLICABA el cuadro.
   const iCab = filas.findIndex((_, i) => i > iTitulo && i < iLimite
     && (filas[i] ?? []).some((c) => /PROVEEDOR/.test(txt(c)))
-    && (filas[i] ?? []).filter((c) => String(c ?? '').trim()).length >= 4)
+    && (filas[i] ?? []).filter((c) => String(c ?? '').trim()).length >= 2)
   if (iCab < 0) throw new Error('no encontré la fila de rótulos de la sección 1 (ninguna columna dice "Proveedor")')
   return {
     filaEncabezado: iCab + 1,

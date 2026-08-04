@@ -230,3 +230,17 @@ test('SIN FACTURA sí entra · SIN NOMBRE es el que rompe, y se avisa', () => {
   assert.deepEqual(deudaSinNombre([fila('', '0001-0002', 5000)]), [{ comprobante: '0001-0002', saldo: 5000 }])
   assert.deepEqual(deudaSinNombre([fila('', '', 7000)]), [{ comprobante: '(sin número)', saldo: 7000 }])
 })
+
+test('LA GEOMETRÍA engancha el PRIMER cuadro, aunque tenga sólo tres columnas', () => {
+  // Exigiendo cuatro columnas se salteaba el cuadro de totales (proveedor · se le debe · facturas)
+  // y enganchaba el de detalle: cada corrida escribía más abajo y duplicaba el cuadro entero.
+  const conDos = [
+    ['1 · QUÉ SE DEBE Y CUÁNDO'], ['✓ cierra'],
+    ['Proveedor', 'Se le debe', 'Facturas'],
+    ['Alumetal', '$5.174.285', '2'], [],
+    ['Cada operación'],
+    ['Proveedor', 'N° Comprobante', 'Fecha', 'Obra', 'Tipo pago', 'Categoría', 'Importe'],
+    ['2 · CUENTA CORRIENTE POR PROVEEDOR'],
+  ]
+  assert.equal(geometriaDeLaSeccion(conDos).filaEncabezado, 3, 'enganchó el segundo cuadro y va a duplicar')
+})
