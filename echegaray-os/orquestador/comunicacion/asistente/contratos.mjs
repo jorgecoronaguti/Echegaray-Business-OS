@@ -149,7 +149,8 @@ export const zParametrosTiempo = z.object({
  *
  * FIRMAS, fijadas acá porque Zod sólo puede decir "es una función" y el router las invoca a
  * todas igual. Que cada capacidad eligiera su forma se habría notado recién al cablear:
- *   habilitada(ctx)          -> Promise<boolean> | boolean
+ *   habilitada(ctx)           -> Promise<boolean> | boolean
+ *   motivoNoHabilitada(ctx)   -> Promise<{codigo,mensaje}> | {codigo,mensaje}
  *   ejecutar(parametros, ctx) -> Promise<zResultado>
  * `orden` gobierna en qué orden aparecen en la ayuda (menor primero); no es alfabético.
  */
@@ -164,6 +165,10 @@ export const zCapacidad = z.object({
   // Efecto externo (Google) ⇒ pasa por la barrera de idempotencia de ejecuciones.
   efectoExterno: z.boolean().default(false),
   habilitada: z.function().optional(),
+  // POR QUÉ no está habilitada. Opcional, y su ausencia no es neutra: sin esto la única
+  // explicación posible es la genérica, y "no tengo eso habilitado para vos" ya tapó una vez un
+  // defecto del OS (una identidad sin resolver) haciéndolo pasar por un permiso faltante.
+  motivoNoHabilitada: z.function().optional(),
   ejecutar: z.function(),
   entrada: z.unknown(),             // schema Zod de sus parámetros
 })
