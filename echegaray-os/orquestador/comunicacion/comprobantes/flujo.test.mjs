@@ -532,3 +532,76 @@ test('lo manuscrito se matchea contra J Y contra K: "Camion BSA - Messina" son D
   assert.equal(c.concepto, 'Nafta Super 1 y Diesel 500')
   assert.match(r.texto, /\| Concepto \| Nafta Super 1 y Diesel 500 \|/)
 })
+
+// ── SE CARGA SOLO: mandar la foto ES el pedido (04/08) ───────────────────────
+//
+// El dueño lo pidió textual: "quiero que todo funcione, mandar una foto y que se cargue perfecto sin
+// fallas". Un fajo de veinte comprobantes eran veinte clicks, y cada click es una chance de que el
+// flujo se abandone a mitad — el gasto sin cargar en ningún lado es el peor resultado posible.
+//
+// La condición no se inventó para esto: es `estaCompleto`, la misma que decide si hay algo que
+// preguntar. Lo que cambió es que, cuando no falta nada, no se le hace perder el tiempo a nadie.
+
+/** El escritor de mentira. Nunca se corre el cargador de verdad acá. */
+function conEscritor(over = {}) {
+  const llamadas = []
+  const escribir = async (fajo) => {
+    llamadas.push(fajo)
+    return { estado: ESTADO.CARGADO, texto: '✔ **Cargado** — Compras, fila 810.' }
+  }
+  return { escribir, llamadas, ...over }
+}
+
+test('un comprobante al que no le falta nada SE CARGA SOLO, sin botones y sin clicks', async () => {
+  const { d, repo } = armar()
+  const { escribir, llamadas } = conEscritor()
+  const r = await procesarPost({ ...d, escribir }, post())
+
+  assert.equal(llamadas.length, 1, 'se escribió, y una sola vez')
+  assert.match(r.texto, /Cargado/)
+  assert.equal(r.attachments, undefined, 'no quedan botones esperando a nadie')
+  assert.notEqual(r.estado, 'confirmar')
+  // El fajo NO queda abierto: si quedara, el próximo post se le sumaría y se cargaría dos veces.
+  assert.notEqual(repo._fajos.get(r.fajoId).estado, 'abierto')
+})
+
+test('el que SÍ tiene algo que preguntar sigue parando en los botones', async () => {
+  // Proveedor fuera del desplegable: agregarlo a la lista de Compras es una decisión de una persona.
+  const { d } = armar({ listas: { ok: true, proveedores: ['ACEROLATINA'], obras: LISTAS.obras } })
+  const { escribir, llamadas } = conEscritor()
+  const r = await procesarPost({ ...d, escribir }, post())
+
+  assert.equal(llamadas.length, 0, 'no se escribe nada mientras haya una pregunta abierta')
+  assert.equal(r.estado, 'confirmar')
+  assert.ok(r.attachments?.length, 'y los botones siguen ahí')
+})
+
+test('sin escritor inyectado NO se carga solo: el flujo viejo queda intacto', async () => {
+  const { d } = armar()
+  const r = await procesarPost(d, post())
+  assert.equal(r.estado, 'confirmar')
+})
+
+// LA CARRERA. Dos posts casi simultáneos de la misma persona pueden llegar acá con el mismo fajo:
+// el `tomarParaConfirmar` es un compare-and-set y el que pierde no tiene que escribir NADA. Sin esto,
+// el mismo comprobante entra dos veces a Compras y el costo de la obra se duplica.
+test('si alguien ya tomó el fajo, la carga automática no escribe', async () => {
+  const { d, repo } = armar()
+  const { escribir, llamadas } = conEscritor()
+  // El repositorio devuelve null en `tomarParaConfirmar`: alguien se lo llevó primero.
+  const repoTomado = { ...repo, tomarParaConfirmar: async () => null }
+  const r = await procesarPost({ ...d, repo: repoTomado, escribir }, post())
+  assert.equal(llamadas.length, 0)
+  assert.equal(r.estado, 'confirmar', 'se degrada al mensaje con botones, no se pierde el fajo')
+})
+
+// Que la escritura reviente no puede tumbar el post ni dejar el fajo trabado: se reabre para poder
+// reintentar, y se dice. Un fajo que queda en `confirmado` para siempre es un comprobante perdido.
+test('si la escritura revienta, el fajo vuelve a abierto y se avisa', async () => {
+  const { d, repo } = armar()
+  const escribir = async () => { throw new Error('Google no contesta') }
+  const r = await procesarPost({ ...d, escribir }, post())
+  assert.equal(r.estado, 'error')
+  assert.match(r.texto, /Google no contesta/)
+  assert.equal(repo._fajos.get(r.fajoId).estado, 'abierto', 'se puede reintentar')
+})
