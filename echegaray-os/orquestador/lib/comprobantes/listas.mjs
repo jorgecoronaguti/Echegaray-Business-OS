@@ -26,7 +26,7 @@ function opcionesDe(hoja) {
 }
 
 /**
- * Proveedores y obras del desplegable estricto de "Compras".
+ * Proveedores, obras y unidades de negocio del desplegable estricto de "Compras".
  *
  * Nunca lanza: si Google no contesta, devuelve listas vacías y lo DECLARA en `ok:false`. Con listas
  * vacías el matcheo de proveedor no puede afirmar nada, y quien llame tiene que saber que la
@@ -34,14 +34,18 @@ function opcionesDe(hoja) {
  * diferencia entre "no está" y "no sé".
  *
  * @param {object} google  cliente de `lib/google.mjs`
- * @returns {Promise<{ok:boolean, proveedores:string[], obras:string[], error?:string}>}
+ * LA UNIDAD DE NEGOCIO (columna I) se agregó el 04/08. Es la tercera columna que quedaba vacía en
+ * toda fila cargada por el chat, junto con la obra (J) y el detalle (K), y sin su lista no se la
+ * puede ofrecer: escribir "civil" a mano donde hay un desplegable estricto deja la celda en rojo.
+ *
+ * @returns {Promise<{ok:boolean, proveedores:string[], obras:string[], unidades:string[], error?:string}>}
  */
 export async function listasDeCompras(google, { fileId = CASHFLOW_ID } = {}) {
   if (typeof google?.readSheetValidations !== 'function') {
-    return { ok: false, proveedores: [], obras: [], error: 'sin cliente de Google' }
+    return { ok: false, proveedores: [], obras: [], unidades: [], error: 'sin cliente de Google' }
   }
   try {
-    const hojas = await google.readSheetValidations(fileId, ['Compras!E4:E12', 'Compras!J4:J12'])
+    const hojas = await google.readSheetValidations(fileId, ['Compras!E4:E12', 'Compras!J4:J12', 'Compras!I4:I12'])
     const compras = (hojas || []).filter((h) => /^compras$/i.test(h.properties?.title))
     // Los dos rangos vuelven en `data[0]` de dos entradas distintas de la MISMA hoja, en el orden en
     // que se pidieron. Se toma por posición porque la API no rotula los rangos de vuelta.
@@ -51,14 +55,16 @@ export async function listasDeCompras(google, { fileId = CASHFLOW_ID } = {}) {
         ok: true,
         proveedores: opcionesDe({ data: [conRangos.data[0]] }),
         obras: opcionesDe({ data: [conRangos.data[1]] }),
+        unidades: opcionesDe({ data: [conRangos.data[2]] }),
       }
     }
     return {
       ok: true,
       proveedores: opcionesDe(compras[0]),
       obras: opcionesDe(compras[1] ?? compras[0]),
+      unidades: opcionesDe(compras[2] ?? {}),
     }
   } catch (e) {
-    return { ok: false, proveedores: [], obras: [], error: String(e?.message ?? e).slice(0, 200) }
+    return { ok: false, proveedores: [], obras: [], unidades: [], error: String(e?.message ?? e).slice(0, 200) }
   }
 }

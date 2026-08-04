@@ -163,6 +163,51 @@ export function opcionesDe(sug) {
   return ops
 }
 
+/** Cómo se llama cada columna en el menú. Son los rótulos REALES de la pestaña Compras. */
+export const ETIQUETA_CAMPO = Object.freeze({
+  obra: 'Cliente / Asignación (obra)',
+  unidad: 'Unidad de Negocio',
+  detalle: 'Detalles / Obra',
+})
+
+/** Tope de opciones por menú. Mattermost renderiza el desplegable; una lista infinita no se usa. */
+export const MAX_OPCIONES = 25
+
+/**
+ * Las opciones del DESPLEGABLE ESTRICTO que este ítem trae guardadas.
+ *
+ * Viajan EN EL ÍTEM y no se releen de Google al renderizar: el mensaje se vuelve a dibujar en cada
+ * click, desde el fajo que está en Postgres, y salir a buscar los desplegables ahí significaría una
+ * llamada a Google por click —lenta— y, peor, la posibilidad de ofrecer algo distinto de lo que se
+ * validó. Lo que se ofreció y lo que se acepta tienen que salir de la MISMA lista.
+ *
+ * El detalle (columna K) cuelga de la obra: no tiene desplegable propio, su vocabulario legítimo es
+ * el que el dueño ya usó en ESA obra.
+ */
+export function opcionesDelDesplegable(item = {}, campo) {
+  const o = item?.opciones ?? {}
+  if (campo === 'obra') return Array.isArray(o.obra) ? o.obra : []
+  if (campo === 'unidad') return Array.isArray(o.unidad) ? o.unidad : []
+  const obra = item?.comprobante?.obra
+  return obra && o.detalle && Array.isArray(o.detalle[obra]) ? o.detalle[obra] : []
+}
+
+/** Lo que le falta a este ítem de la imputación, en el orden en que se pregunta. */
+export function imputacionPendiente(item = {}) {
+  if (!item || item.yaCargado) return []
+  const c = item.comprobante ?? {}
+  const falta = []
+  if (!c.obra) falta.push('obra')
+  if (!c.unidad) falta.push('unidad')
+  if (!c.detalleObra) falta.push('detalle')
+  return falta.filter((campo) => opcionesDe(item.sugerencia?.[campo]).length || opcionesDelDesplegable(item, campo).length)
+}
+
+/** El primer ítem con imputación pendiente. -1 si no hay ninguno. */
+export function indiceImputacionPendiente(items = []) {
+  return items.findIndex((it) => imputacionPendiente(it).length)
+}
+
 /** El primer ítem al que le falta la obra Y tiene opciones que ofrecer. -1 si no hay ninguno. */
 export function indiceObraOfrecible(items = []) {
   return items.findIndex((it) => it && !it.yaCargado && !it.comprobante?.obra && opcionesDe(it.sugerencia?.obra).length)
@@ -179,7 +224,12 @@ export function indiceObraOfrecible(items = []) {
  */
 export function aplicarOpcion(item = {}, { campo, valor } = {}) {
   if (!CAMPOS_IMPUTABLES.includes(campo)) return null
-  const elegido = opcionesDe(item?.sugerencia?.[campo]).find((o) => o.valor === String(valor ?? '').trim())
+  const v = String(valor ?? '').trim()
+  // Dos fuentes legítimas, las MISMAS que se ofrecieron: lo que contó la historia de Compras y el
+  // DESPLEGABLE ESTRICTO de la columna. La segunda se agregó el 04/08 — antes sólo se ofrecían las
+  // tres obras más frecuentes y el dueño no tenía forma de elegir ninguna otra de las 22 que existen.
+  const elegido = opcionesDe(item?.sugerencia?.[campo]).find((o) => o.valor === v)
+    ?? (opcionesDelDesplegable(item, campo).includes(v) ? { valor: v, n: null } : null)
   if (!elegido) return null
   const c = { ...(item.comprobante ?? {}) }
   const sug = { ...(item.sugerencia ?? {}) }
@@ -249,24 +299,55 @@ export function botonesFajo(fajo = {}, { url } = {}) {
   acciones.push({ id: 'descartar', name: 'Descartar', type: 'button', style: 'danger', integration: { url, context: contexto('descartar') } })
   const bloques = []
 
-  // LA OBRA SE CONTESTA CON UN CLICK. Se ofrece la del PRIMER comprobante que la necesita, no la de
-  // todos: cuatro comprobantes darían doce botones y el dueño no sabría cuál es de cuál. Al contestar
-  // uno, el mensaje se reescribe y aparece el siguiente.
-  const oi = indiceObraOfrecible(items)
+  // ═══ LAS TRES COLUMNAS QUE QUEDABAN VACÍAS SE PREGUNTAN CON EL DESPLEGABLE (04/08) ═══
+  //
+  // Antes acá había TRES BOTONES con las tres obras más frecuentes de la historia. Dos problemas
+  // medidos en producción el 04/08: (a) las obras del desplegable son 22, así que si la que
+  // correspondía no estaba entre las tres no había forma de elegirla; y (b) la Unidad de Negocio
+  // (columna I) y el Detalle (columna K) no se preguntaban nunca — el comprobante entraba con las
+  // tres celdas vacías y el mensaje decía "completalas vos en Compras", que es exactamente el
+  // trabajo que este flujo existe para no hacer.
+  //
+  // Ahora son MENÚS, con las opciones del desplegable estricto de cada columna. El patrón —`select`
+  // con `options` y la elección de vuelta en `selected_option`— es el mismo que ya usa la asistencia
+  // en producción; no se inventó nada acá.
+  //
+  // Se pregunta por el PRIMER comprobante que tenga algo pendiente, no por todos: cuatro
+  // comprobantes darían doce menús y nadie sabría cuál es de cuál. Al contestar uno, el mensaje se
+  // reescribe y aparece el siguiente.
+  const oi = indiceImputacionPendiente(items)
   if (oi >= 0) {
     const it = items[oi]
     const cual = items.length > 1 ? ` (${oi + 1}/${items.length})` : ''
-    bloques.push({
-      fallback: '¿A qué obra va este comprobante?',
-      color: '#b58900',
-      title: `¿A qué obra va${cual}? — ${it.comprobante?.proveedor ?? 'sin proveedor'}`,
-      actions: opcionesDe(it.sugerencia?.obra).slice(0, 3).map((o, k) => ({
-        id: `obra${k}`,
-        name: o.n != null ? `${o.valor} (${o.n})` : o.valor,
-        type: 'button',
-        integration: { url, context: contexto('imputar', { indice: oi, campo: 'obra', valor: o.valor }) },
-      })),
-    })
+    const menus = imputacionPendiente(it).map((campo) => {
+      // La historia va PRIMERO y con su conteo: es la que sabe cuál es la respuesta probable. Detrás,
+      // el resto del desplegable, para que ninguna opción legítima quede afuera.
+      const historia = opcionesDe(it.sugerencia?.[campo])
+      const vistos = new Set(historia.map((o) => o.valor))
+      const resto = opcionesDelDesplegable(it, campo).filter((v) => !vistos.has(v))
+      const options = [
+        ...historia.map((o) => ({ text: o.n != null ? `${o.valor} — ${o.n} vez/veces` : o.valor, value: o.valor })),
+        ...resto.map((v) => ({ text: v, value: v })),
+      ].slice(0, MAX_OPCIONES)
+      return {
+        id: campo,
+        name: ETIQUETA_CAMPO[campo],
+        type: 'select',
+        options,
+        // EL VALOR NO VIAJA EN EL CONTEXTO: lo pone Mattermost en `selected_option` al elegir. Lo
+        // que viaja es QUÉ se está contestando y de cuál comprobante.
+        integration: { url, context: contexto('imputar', { indice: oi, campo }) },
+      }
+    }).filter((m) => m.options.length)
+
+    if (menus.length) {
+      bloques.push({
+        fallback: 'Completá la imputación de este comprobante.',
+        color: '#b58900',
+        title: `Falta imputar${cual} — ${it.comprobante?.proveedor ?? 'sin proveedor'}${it.comprobante?.anotacion ? ` · escrito a mano: "${it.comprobante.anotacion}"` : ''}`,
+        actions: menus,
+      })
+    }
   }
 
   bloques.push({

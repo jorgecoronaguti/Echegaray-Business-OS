@@ -286,18 +286,40 @@ test('un proveedor SIN historia no recibe opciones inventadas: se dice por qué 
   assert.match(bloqueObra(item)[1], /sin obra/)
 })
 
-test('CONTESTAR ES UN CLICK: las tres obras más frecuentes salen como botones', () => {
-  const fajo = { id: 'f1', items: [tiqueSinAnotacion()] }
-  const att = botonesFajo(fajo, { url: 'https://x/comprobantes/accion?s=1' })
-  const obras = att[0]
-  assert.match(obras.title, /¿A qué obra va\? — Combustibles Barcelo/)
-  assert.deepEqual(obras.actions.map((a) => a.name), ['San Francisco (41)', 'Administracion (39)', 'Taller (18)'])
-  assert.deepEqual(obras.actions[0].integration.context, {
-    accion: 'imputar', fajo_id: 'f1', dominio: 'comprobantes', indice: 0, campo: 'obra', valor: 'San Francisco',
+// ═══ SE CONTESTA CON EL DESPLEGABLE, NO CON TRES BOTONES (04/08) ═══
+//
+// Los tres botones eran las tres obras más frecuentes de la historia. Las obras del desplegable de
+// Compras son 22: si la que correspondía no estaba entre las tres, no había forma de elegirla. Y la
+// Unidad de Negocio y el Detalle no se preguntaban nunca — las tres columnas quedaban vacías.
+test('LA IMPUTACIÓN SE CONTESTA CON LOS DESPLEGABLES DE COMPRAS', () => {
+  const it = {
+    ...tiqueSinAnotacion(),
+    opciones: { obra: ['Administracion', 'ARCOR', 'LA ESTRELLA', 'MESSINA', 'San Francisco', 'Taller'],
+      unidad: ['Civil', 'Estructura', 'Mantenimiento'], detalle: {} },
+  }
+  const att = botonesFajo({ id: 'f1', items: [it] }, { url: 'https://x/comprobantes/accion?s=1' })
+  const imp = att[0]
+  assert.match(imp.title, /Falta imputar — Combustibles Barcelo/)
+
+  const menus = imp.actions
+  // LAS TRES COLUMNAS QUE QUEDABAN VACÍAS, cada una con su rótulo real de la pestaña Compras.
+  assert.deepEqual(menus.map((a) => a.type), ['select', 'select', 'select'])
+  assert.deepEqual(menus.map((a) => a.id), ['obra', 'unidad', 'detalle'])
+  assert.deepEqual(menus.map((a) => a.name),
+    ['Cliente / Asignación (obra)', 'Unidad de Negocio', 'Detalles / Obra'])
+
+  // LA HISTORIA VA PRIMERO, CON SU CONTEO, y detrás el resto del desplegable: la respuesta probable
+  // arriba, pero ninguna opción legítima afuera.
+  const obras = menus[0].options
+  assert.deepEqual(obras.slice(0, 3).map((o) => o.text),
+    ['San Francisco — 41 vez/veces', 'Administracion — 39 vez/veces', 'Taller — 18 vez/veces'])
+  assert.ok(obras.some((o) => o.value === 'MESSINA'), 'y las que la historia no contó también están')
+  assert.equal(new Set(obras.map((o) => o.value)).size, obras.length, 'sin repetidos')
+
+  // EL VALOR NO VIAJA EN EL CONTEXTO: lo pone Mattermost en `selected_option` al elegir.
+  assert.deepEqual(menus[0].integration.context, {
+    accion: 'imputar', fajo_id: 'f1', dominio: 'comprobantes', indice: 0, campo: 'obra',
   })
-  // Y el bloque de siempre sigue estando. Desde el 03/08/2026 el Confirmar APARECE aunque falte la
-  // obra: se ofrece elegirla con un click y, si no se elige, se carga sin ella. Los botones de obra y
-  // el Confirmar conviven a propósito — son las dos salidas legítimas y ninguna se esconde.
   assert.deepEqual(att[1].actions.map((a) => a.id), ['confirmar', 'corregir', 'descartar'])
 })
 

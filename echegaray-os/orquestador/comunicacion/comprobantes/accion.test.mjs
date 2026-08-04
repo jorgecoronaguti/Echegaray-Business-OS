@@ -574,19 +574,39 @@ const sinObra = () => ({
   },
 })
 
+// El click de un MENÚ: el valor llega en `selected_option`, que lo agrega Mattermost. El `context`
+// es el que nosotros configuramos y viaja igual para todas las opciones del menú.
 const clickObra = (fajoId, valor, indice = 0) => click(fajoId, 'imputar', {
-  context: { accion: 'imputar', fajo_id: fajoId, indice, campo: 'obra', valor },
+  context: { accion: 'imputar', fajo_id: fajoId, indice, campo: 'obra', selected_option: valor },
 })
 
-test('tocar una obra la deja imputada y habilita Confirmar', async () => {
+// CONTESTAR LO ÚLTIMO QUE FALTABA ES CONFIRMAR (04/08). A quien acaba de completar la imputación no
+// se le pide un click más: si ya no queda nada que preguntar, se carga.
+test('elegir la ÚLTIMA imputación que faltaba carga sola, sin pedir Confirmar', async () => {
   const { repo, fajo } = await conFajo({ items: [sinObra()] })
-  const { mm, manejar } = manejador({ repo })
+  let escribio = null
+  const { manejar } = manejador({ repo, escribir: async (f) => { escribio = f; return { estado: ESTADO.CARGADO, texto: '✔ fila 810' } } })
   const r = await manejar(clickObra(fajo.id, 'San Francisco'))
-  assert.match(r.body.ephemeral_text, /San Francisco/)
   assert.equal(repo._fajos.get(fajo.id).items[0].comprobante.obra, 'San Francisco')
+  assert.ok(escribio, 'se cargó sin un click más')
+  assert.match(r.body.ephemeral_text, /Cargado|fila 810/)
+})
+
+// La otra mitad: mientras QUEDE algo que preguntar, no se escribe una fila a medias. Este ítem tiene
+// la unidad sin resolver y con opciones para ofrecer, así que contestar la obra no alcanza.
+test('si todavía queda imputación pendiente, se sigue preguntando en vez de cargar', async () => {
+  const conUnidad = {
+    ...sinObra(),
+    opciones: { obra: ['San Francisco', 'Taller'], unidad: ['Civil', 'Estructura'], detalle: {} },
+  }
+  const { repo, fajo } = await conFajo({ items: [conUnidad] })
+  let escribio = null
+  const { mm, manejar } = manejador({ repo, escribir: async (f) => { escribio = f; return {} } })
+  const r = await manejar(clickObra(fajo.id, 'San Francisco'))
+  assert.equal(escribio, null, 'no se escribe nada mientras falte la unidad de negocio')
+  assert.match(r.body.ephemeral_text, /San Francisco/)
   const post = mm.posts.find((p) => p.id === 'post_bot')
-  assert.match(post.message, /\| Obra \| San Francisco _\(la elegiste vos\)_ \|/)
-  assert.equal(post.props.attachments[0].actions.some((a) => a.id === 'confirmar'), true)
+  assert.equal(post.props.attachments[0].actions.map((a) => a.id).includes('unidad'), true, 'ahora pregunta la unidad')
 })
 
 test('una obra que este comprobante NO ofreció no se aplica — el callback no trae identidad', async () => {
