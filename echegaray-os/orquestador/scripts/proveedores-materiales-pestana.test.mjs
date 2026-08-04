@@ -356,6 +356,64 @@ test('EL CUADRO LISTA SÓLO A QUIEN SE LE DEBE HOY — sobre-incluir NO era grat
   assert.match(src, /SOBRE-INCLUIR NO ERA GRATIS/i, 'y queda escrito por qué se cambió')
 })
 
+// ═══ EL GENERADOR ESCRIBE DEBAJO DE LAS DINÁMICAS, Y SÓLO DEBAJO ═══
+//
+// `grilla()` no se exporta (arma la pestaña entera y toca Google y la base), así que lo que se puede
+// probar acá es el CONTRATO del archivo: que las decisiones que costaron trabajo estén escritas donde
+// tienen que estar. Si alguien las revierte, estos tests se ponen rojos.
+
+test('la escritura de "Proveedores" arranca en la frontera, nunca en A1', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  assert.match(src, /range: `\$\{refPestana\(t\.titulo\)\}!A\$\{filaArranque\}`/,
+    'el rango de escritura sale de filaArranque')
+  assert.ok(!/range: `\$\{refPestana\(t\.titulo\)\}!A1`/.test(src),
+    'un A1 acá escribe el bloque encima del hero y de las dos tablas dinámicas, y las mata')
+  // Las dos lecturas que alimentan la fusión y la Regla 0 tienen que arrancar en la MISMA fila que la
+  // escritura: desalinearlas es el defecto de la grilla mezclada (mitad bloque nuevo, mitad viejo).
+  assert.match(src, /!A\$\{filaArranque\}:\$\{letra\(anchoLeer - 1\)\}\$\{filaFin\}/, 'previo, desde la frontera')
+  assert.match(src, /!A\$\{filaArranque\}:\$\{letra\(anchoLeer - 1\)\}`/, 'visible, desde la frontera')
+  // Y el tramo empieza en el primer bloque PROPIO (b5), no en el hero (bPos).
+  assert.match(src, /titulo: NOMBRES\.proveedores, desde: M\.b5/, 'el tramo arranca en el primer bloque generado')
+})
+
+test('el formateador también respeta la frontera: nada de resetear el formato de las dinámicas', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  assert.match(src, /formatear\(google, hoja\.sheetId, gP, anchoP, cuadroP\.length, \{ filaArranque \}\)/)
+  // El reset del principio —unmerge, borrar notas, borrar bordes y colores— es lo que caería sobre las
+  // dinámicas si arrancara en la fila 0 de la pestaña.
+  assert.match(src, /unmergeCells: \{ range: r\(F0, F0 \+ filas\) \}/)
+  assert.ok(!/unmergeCells: \{ range: r\(0, filas\) \}/.test(src))
+  assert.match(src, /repeatCell: \{ range: r\(F0, F0 \+ filas, 0, Math\.max\(ancho, 26\)\), cell: \{\}, fields: 'note' \}/)
+})
+
+test('la numeración de las secciones sale de la constante, no de un número escrito a mano', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  for (const clave of ['PRIMERA_GENERADA', 'faltanEnCompras', 'control', 'arca', 'emitidas']) {
+    assert.match(src, new RegExp(`nSeccion\\('?${clave}'?\\)`), `la sección ${clave} numera por nSeccion`)
+  }
+  // Los números viejos, los que el dueño NO ve en la pestaña.
+  assert.ok(!/push\(\[`?5 · NOTAS DE CRÉDITO/.test(src), 'ya no dice 5 donde la pestaña muestra 3')
+  assert.ok(!/push\(\[`?6 · FACTURADO A LA EMPRESA/.test(src), 'ya no dice 6 donde la pestaña muestra 4')
+  // Y la renumeración al escribir se retiró: contaba sólo los bloques propios, así que NOTAS DE
+  // CRÉDITO volvería a ser "1 ·" y la pestaña mostraría dos secciones 1.
+  assert.ok(!/fila\[0\] = t\.replace\(\/\^\\d\+\\s\*·\\s\/, `\$\{\+\+n\} · `\)/.test(src),
+    'la renumeración por pestaña no puede volver: hoy mentiría')
+})
+
+test('EL DEFECTO DE TRIELEC: una nota de crédito que ya no anula nada limpia su celda, no la hereda', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  assert.match(src, /push\(estructural\(\[n\.proveedor, n\.comprobante, n\.fecha, arcaPorComprobante/,
+    'las filas de notas de crédito son del generador de punta a punta: su vacío se limpia')
+
+  // El efecto, sobre la fusión: la fila vieja decía qué factura anulaba; la nueva no anula nada.
+  const vieja = [['TRIELEC', '0003-00000123', '12/05/2026', -50000, 'refacturación', '0003-00000100', '0003-00000131']]
+  const conBug = fusionar([['TRIELEC', '0003-00000123', '12/05/2026', -50000, 'devolución', '', '']], vieja)
+  assert.equal(conBug[0][5], '0003-00000100', 'así se veía: el reemplazo de otra corrida sobrevivía')
+  const conFix = fusionar([estructural(['TRIELEC', '0003-00000123', '12/05/2026', -50000, 'devolución', '', ''])], vieja)
+  assert.equal(conFix[0][5], '', '"Anula la factura" queda limpia')
+  assert.equal(conFix[0][6], '', '"La reemplaza" queda limpia')
+})
+
 test('la convención del dueño: un negativo entre paréntesis en Parcial es el saldo que FALTA', () => {
   // Si esto se leyera como un pago, el saldo daría cero y el proveedor desaparecería de la lista
   // teniendo deuda — que es exactamente lo que pasó con Angel Fernandez y Gruas San Blas.
