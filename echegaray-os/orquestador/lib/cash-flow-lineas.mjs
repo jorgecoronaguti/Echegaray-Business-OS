@@ -98,7 +98,13 @@ export function lineasEgreso() {
  */
 export const INSTRUMENTOS = {
   cheques: { nombre: 'CHEQUES', pestaña: 'Cheques Emitidos', filaCab: 1, colMonto: 'F', colFecha: 'I', colMes: 'J', colDebitado: 'K', colMarca: 12 },
-  tarjeta: { nombre: 'TARJETA DE CRÉDITO', pestaña: 'Tarjeta de Credito', filaCab: 2, colMonto: 'E', colFecha: 'H', colMes: 'I', colDebitado: 'J', colMarca: 11 },
+  // `filaCab` 2 → 31 (04/08). El encabezado del registro de la tarjeta está en la fila 31, no en la 2:
+  // arriba vive la banda de la pestaña. Con el 2, `cheques-cobertura-sheet.mjs` estampaba su rótulo
+  // "Estado en el OS · al …" en la fila del SUBTÍTULO y colgaba las marcas por debajo, encima de la
+  // banda. Era un error preexistente que no se veía porque el bloque de arriba era distinto; el
+  // rediseño lo dejó a la vista. También corrige el rango de `cash-flow-rehacer` (MAX de fechas),
+  // que arrancaba en la 3 —dentro de la banda— en vez de en la primera fila de datos.
+  tarjeta: { nombre: 'TARJETA DE CRÉDITO', pestaña: 'Tarjeta de Credito', filaCab: 31, colMonto: 'E', colFecha: 'H', colMes: 'I', colDebitado: 'J', colMarca: 11 },
 }
 
 /** Hasta qué fila se busca en las pestañas de instrumentos. De sobra para lo que hay (89 y 29). */
