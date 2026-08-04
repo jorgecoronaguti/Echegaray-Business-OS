@@ -1336,6 +1336,31 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
      *  vía batchUpdate. `requests` = array de requests de la Sheets API. */
     async spreadsheetBatchUpdate(fileId, requests, { espejo = false, yaGuardado = false } = {}) {
       const hielo = frenar(fileId, `${(requests || []).length} request(s) estructurales/formato`); if (hielo) return hielo
+      // ═══ UN RANGO VACÍO TIRA EL LOTE ENTERO, Y ESO DEJA ESCRITURAS A MEDIAS ═══
+      //
+      // Google rechaza con 400 un rango cuyo inicio no es menor que su fin —`A70:O69`— y con él se
+      // cae el lote COMPLETO, incluidos los cuarenta pedidos válidos que venían atrás. El daño no
+      // es el error: es que el lote de VALORES suele haber salido bien un instante antes, así que
+      // la pestaña queda con datos nuevos y sin el formato ni los rangos con nombre que los hacen
+      // legibles. Pasó el 04/08: la proyección de IVA se escribió entera y quedó en `#NAME?` porque
+      // el rango con nombre `ALICUOTA_IVA` se publicaba después del formateo que reventó.
+      //
+      // Un rango de alto o ancho cero no puede hacer nada: descartarlo no cambia ningún resultado,
+      // sólo evita que un error de aritmética de un generador tumbe el trabajo de todos los demás.
+      // Va acá, en el único lugar por donde pasan todos, y no repetido en cada generador.
+      const vacio = (q) => {
+        for (const k of ['repeatCell', 'updateCells', 'unmergeCells', 'mergeCells', 'setDataValidation', 'updateBorders']) {
+          const r = q?.[k]?.range
+          if (!r) continue
+          if (Number.isInteger(r.startRowIndex) && Number.isInteger(r.endRowIndex) && r.startRowIndex >= r.endRowIndex) return true
+          if (Number.isInteger(r.startColumnIndex) && Number.isInteger(r.endColumnIndex) && r.startColumnIndex >= r.endColumnIndex) return true
+        }
+        const d = q?.updateDimensionProperties?.range ?? q?.deleteDimension?.range
+        if (d && Number.isInteger(d.startIndex) && Number.isInteger(d.endIndex) && d.startIndex >= d.endIndex) return true
+        return false
+      }
+      const nVacios = (requests || []).filter(vacio).length
+      if (nVacios) requests = (requests || []).filter((q) => !vacio(q))
       // Guarda central para el batch estructural: descarta los requests que DESTRUYEN —borran, pisan,
       // desplazan o reordenan contenido— sobre pestañas candadas/editadas, y deja pasar la apariencia.
       // Un `deleteDimension` cuenta como destructivo igual que un `updateCells` con valor: hasta el
