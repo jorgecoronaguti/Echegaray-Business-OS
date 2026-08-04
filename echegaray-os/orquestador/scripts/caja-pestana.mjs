@@ -1001,13 +1001,29 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   push(['4.5 · CONCILIACIÓN CONTRA EL CASH FLOW'])
   push(['El control que mide si el archivo sirve. Si la diferencia es chica, el cuadro es confiable. Si es grande, hay plata moviéndose fuera del Sheet y hay que buscarla antes de decidir con estos números.'])
   const fDecl = push(['Disponibilidad declarada (bloque 1)', '', '', '', `=${C_PESOS}${fTotal}`, '', '', '', 'Lo que dicen el extracto y el arqueo.'])
-  const fProy = push(['Efectivo al cierre que proyecta el Cash Flow al mes de la fecha del saldo', '', '', '',
-    refs.cierre
-      ? `=IFERROR(INDEX('Cash Flow Mensual'!$B$${refs.cierre}:$M$${refs.cierre};MATCH(EOMONTH(MAX($F$${d0}:$F$${d1});0);ARRAYFORMULA(EOMONTH('Cash Flow Mensual'!$B$${refs.cab}:$M$${refs.cab};0));0));"⚠ sin saldo cargado")`
-      : '⚠ no encontré la línea de cierre en el Cash Flow Mensual',
-    '', '', 'Cash Flow Mensual, línea "Efectivo y equivalentes al cierre"', 'Se calcula solo'])
+  // ═══ SE CONCILIA CONTRA EL INICIO DEL MES, NO CONTRA EL CIERRE (04/08) ═══
+  //
+  // Esta línea leía el CIERRE proyectado del mes y lo restaba de la plata que hay HOY. Son dos
+  // instantes distintos separados por semanas de cobros y pagos, así que la resta NUNCA podía dar
+  // cero: daba exactamente el flujo neto del mes. Medido el 03/08: la "diferencia" era $61.695.516
+  // y la fila 53 del Cash Flow —el aumento/disminución neta de agosto— era $61.695.516. El mismo
+  // número. El control no medía un descuadre: medía el mes.
+  //
+  // Y no era inocuo. Era la segunda línea más grande de "LO QUE NO CIERRA", así que la pestaña
+  // gritaba por $61,7M que no existían mientras el problema real —los $12,26M de efectivo sin
+  // explicar— quedaba tapado abajo. Una alerta que siempre está en rojo deja de leerse.
+  //
+  // La conciliación verdadera es una IDENTIDAD entre dos cifras del MISMO instante: la
+  // disponibilidad de hoy tiene que ser el punto de partida del cash flow del mes en curso. Si el
+  // cash flow arranca de otro número, alguien tocó uno de los dos y hay que mirarlo. Si coinciden,
+  // el cuadro es confiable — y eso es lo que un control tiene que poder decir.
+  const fProy = push(['Efectivo al inicio del mes según el Cash Flow', '', '', '',
+    refs.inicio
+      ? `=IFERROR(INDEX('Cash Flow Mensual'!$B$${refs.inicio}:$M$${refs.inicio};MATCH(EOMONTH(MAX($F$${d0}:$F$${d1});0);ARRAYFORMULA(EOMONTH('Cash Flow Mensual'!$B$${refs.cab}:$M$${refs.cab};0));0));"⚠ sin saldo cargado")`
+      : '⚠ no encontré la línea de inicio en el Cash Flow Mensual',
+    '', '', 'Cash Flow Mensual, línea "Efectivo y equivalentes al inicio"', 'Se calcula solo'])
   const fDifConc = push(['⇒ Diferencia', '', '', '', `=IFERROR(${C_PESOS}${fDecl}-${C_PESOS}${fProy};"")`, '', '', '',
-    'Distinto de cero = movimientos que el archivo no ve. No es un error de fórmula: es trabajo de carga.'])
+    'Tiene que ser CERO: el cash flow arranca de la caja de hoy. Distinto de cero = uno de los dos se tocó a mano.'])
 
   // ═══ POR QUÉ LA DIFERENCIA ES ENORME, Y CUÁNTO DE ELLA ES UN PROBLEMA DE VERDAD ═══
   //
@@ -1417,6 +1433,8 @@ async function main() {
     // de movimientos posteriores no se escribe: sin corte confiable, esa ventana no se puede acotar.
     bancoRaw: hojas.some((h) => h.title === '_BANCO_RAW') ? '_BANCO_RAW' : null,
     cierre: ubicarEnCashFlow(colA, 'Efectivo y equivalentes al cierre'),
+    // El INICIO del mes es contra lo que se concilia de verdad: ver el bloque 4.5.
+    inicio: ubicarEnCashFlow(colA, 'Efectivo y equivalentes al inicio'),
     cab: ubicarEnCashFlow(colA, 'Período'),
   }
 
