@@ -123,9 +123,16 @@ export const TARJETA = {
   // Los tres cupos internos que el resumen separa. El de cuotas es el que compromete meses futuros.
   adelantoEfectivo: { limite: 2000000, disponible: 2000000 },
   cuotas: { limite: 10000000, consumido: 3554133.30, disponible: 6445866.70 },
-  // El próximo período ya no tiene cuota pendiente en la foto del 29/07: la de agosto ($965.863,53)
-  // se debitó el 03/08 y está en el extracto. El resto sigue comprometido.
-  cuotasPendientes: { proximoPeriodo: 0, restante: 4783810.75 },
+  // ═══ NO PONER ESTO EN CERO PORQUE LA CUOTA YA SE DEBITÓ (04/08) ═══
+  //
+  // Se probó y el control de la pestaña lo cazó en la primera corrida: `proximoPeriodo` en 0 dejaba
+  // la diferencia en exactamente $965.864 y la pestaña marcaba "⚠ revisar la carga".
+  //
+  // El razonamiento equivocado era "la cuota de agosto se debitó el 03/08, así que ya no está
+  // pendiente". Pero esta constante es LA FOTO DEL 29/07, y al 29/07 esa cuota SÍ estaba pendiente.
+  // Una foto se transcribe con lo que decía el día que se sacó; corregirla con lo que pasó después
+  // la convierte en otra cosa —ni la foto ni el hoy— y rompe el único control que la verifica.
+  cuotasPendientes: { proximoPeriodo: 965863.53, restante: 4783810.75 },
 }
 
 /**
