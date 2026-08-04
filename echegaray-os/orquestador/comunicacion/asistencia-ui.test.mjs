@@ -247,8 +247,25 @@ test('fecha inexistente aclara que no se creó ninguna columna', () => {
 
 test('sin personal y sin permiso tienen mensajes propios', () => {
   assert.match(renderSinPersonal({ obra: obras[0], fecha: '2026-07-30' }), /No se encontró personal asignado/)
-  assert.match(renderDenegado(), /No tenés permiso/)
   assert.match(renderAyuda(), /todos presentes/)
+})
+
+// EL RECHAZO TIENE QUE DECIR QUÉ HACER, y con la regla vigente lo que hay que hacer no es pedir un
+// permiso: es escribir desde el canal del equipo (o pedir que te agreguen a él).
+test('el rechazo por permiso manda al canal, no a pedirle un permiso a Dirección', () => {
+  const t = renderDenegado()
+  assert.match(t, /canal de asistencia/i)
+  assert.match(t, /pedí que te agreguen/i)
+  assert.doesNotMatch(t, /ped[íi]selo a Dirección/i)
+})
+
+// "No pude averiguar si podés" NO es "no podés". Se deniega igual —fail-closed— pero se dice otra
+// cosa: mandar a pedir un permiso a alguien que ya lo tiene es mandarlo a perder el tiempo.
+test('no poder verificar se dice distinto de no tener permiso', () => {
+  const t = renderDenegado('error_verificando')
+  assert.match(t, /no pude confirmar/i)
+  assert.match(t, /no registré nada/i)
+  assert.doesNotMatch(t, /no ten[eé]s permiso/i)
 })
 
 // ── RUTEO entre registrar y consultar ───────────────────────────────────────

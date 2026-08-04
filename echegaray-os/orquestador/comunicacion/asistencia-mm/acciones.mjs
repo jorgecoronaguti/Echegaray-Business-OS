@@ -54,7 +54,8 @@ const META = '__meta'
 
 export const TEXTO = Object.freeze({
   PAYLOAD: 'No entendí esa acción. Volvé a escribir «asistencia» para empezar de nuevo.',
-  SIN_PERMISO: 'No tenés habilitada la carga de asistencia. Pedísela a Dirección.',
+  // Estar en el canal de asistencia habilita: no se manda a pedir un permiso que ya se tiene.
+  SIN_PERMISO: 'No pude habilitarte la carga de asistencia. La habilita estar en el canal de asistencia del equipo. Si ya estás en ese canal y te sale esto, avisale a Dirección.',
   SIN_SESION: 'Este formulario ya se cerró. Escribí «asistencia» para abrir uno nuevo.',
   SESION_AJENA: 'Ese formulario lo abrió otra persona. Escribí «asistencia» para abrir el tuyo.',
   MENSAJE_VIEJO: 'Ese es un mensaje de asistencia anterior. Usá el último que se publicó en el canal, o escribí «asistencia» para abrir uno nuevo.',

@@ -173,7 +173,11 @@ test('sin grant Y sin estar en el canal, se deniega', async () => {
   const { d } = armar({ port: portGuarda({ permisoOk: false }), miembros: {} })
   const r = await procesarPost(d, post())
   assert.equal(r.estado, 'rechazado_permiso')
-  assert.match(r.texto, /No tenés habilitada/)
+  assert.match(r.texto, /No pude habilitarte/)
+  // El mensaje tiene que nombrar la acción que destraba —estar en el canal— y no mandar a pedir
+  // un permiso: con la regla vigente, quien llegó hasta acá ya escribió desde el canal oficial.
+  assert.match(r.texto, /canal de comprobantes/i)
+  assert.doesNotMatch(r.texto, /Ped[íi]sela a Dirección/i)
 })
 
 test('membresía de OTRO canal no habilita: se pregunta por el canal oficial', async () => {
