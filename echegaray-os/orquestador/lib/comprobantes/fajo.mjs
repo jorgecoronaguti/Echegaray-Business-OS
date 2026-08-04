@@ -292,8 +292,21 @@ export function botonesFajo(fajo = {}, { url } = {}) {
     }]
   }
 
+  // ═══ "CONFIRMAR" NO PUEDE SER EL ATAJO PARA CARGAR CIEGO (04/08) ═══
+  //
+  // Mientras falte imputación que SE PUEDE contestar, el botón deja de ser "Confirmar y cargar" y
+  // pasa a decir lo que de verdad hace. Pasó en producción: los menús no respondían —el servicio de
+  // callbacks estaba con código viejo— y el dueño apretó Confirmar, que estaba ahí al lado, con la
+  // Unidad de Negocio y la obra vacías. La fila entró sin clasificar.
+  //
+  // La salida no se saca —a veces el comprobante de verdad no va a ninguna obra y hay que poder
+  // cargarlo— pero deja de parecer el camino normal: cambia el nombre, pierde el `primary` y queda
+  // detrás de los menús.
+  const faltaImputar = indiceImputacionPendiente(items) >= 0
   if (hayQueCargar) {
-    acciones.push({ id: 'confirmar', name: 'Confirmar y cargar', type: 'button', style: 'primary', integration: { url, context: contexto('confirmar') } })
+    acciones.push(faltaImputar
+      ? { id: 'confirmar', name: 'Cargar igual, sin imputar', type: 'button', integration: { url, context: contexto('confirmar') } }
+      : { id: 'confirmar', name: 'Confirmar y cargar', type: 'button', style: 'primary', integration: { url, context: contexto('confirmar') } })
   }
   acciones.push({ id: 'corregir', name: 'Corregir', type: 'button', integration: { url, context: contexto('corregir') } })
   acciones.push({ id: 'descartar', name: 'Descartar', type: 'button', style: 'danger', integration: { url, context: contexto('descartar') } })
