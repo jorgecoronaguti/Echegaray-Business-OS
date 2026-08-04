@@ -337,3 +337,74 @@ export function esCambioMaterial(actual = {}, anterior = null, umbrales = {}) {
   }
   return { publicar: false, motivo: 'sin cambios materiales desde la corrida anterior' }
 }
+
+// ═══ LA RESPUESTA QUE PIDIÓ EL DUEÑO (04/08) — UN MENSAJE, DOS OPCIONES ═══
+//
+// Textual: "que haga el análisis de caja de los gastos proyectados y me dé cuánto invertir y en qué
+// instrumento en Balanz, que me dé 2 opciones nada más".
+//
+// El ciclo publicaba SEIS mensajes: excedente por plazo con su derivación, una tabla por ventana con
+// todas las viables y todas las descartadas, el bloque de impuestos, el de por-qué-no-hay-propuesta,
+// y una propuesta por recomendación. Cada uno de esos bloques existe por un defecto real y ninguno
+// sobra como AUDITORÍA — pero juntos no contestan la pregunta: la entierran. El dueño la rechazó
+// tres veces antes por eso mismo.
+//
+// Así que se separan las dos cosas. Esto es la RESPUESTA: tres bloques, dos opciones, un renglón de
+// recomendación. Lo demás queda disponible para auditar cuando se lo pida, no encima de la respuesta.
+//
+// LO QUE NO SE RECORTA, porque recortarlo convertiría el número en mentira:
+//   · el neto lleva su ADVERTENCIA cuando faltan impuestos por conocer (IIBB San Juan, Ganancias).
+//     Un neto incompleto presentado como final es exactamente "presentar una estimación como hecho".
+//   · el día de tensión va al lado del monto: es lo que explica por qué el colocable no es la caja.
+
+/** Dos opciones. Ni una más: la tercera es información, no decisión. */
+export const OPCIONES_QUE_SE_PUBLICAN = 2
+
+/**
+ * @param {object} exc      excedente por plazo (`excedente-ventana.mjs`)
+ * @param {object} tabla    la tabla de la ventana elegida (`tablaDeVentana`)
+ * @returns {string|null}   null si no hay con qué contestar
+ */
+export function formatoRespuestaDueno(exc = {}, tabla = null) {
+  if (!tabla || !(tabla.viables ?? []).length) return null
+  const monto = Number(tabla.monto_a_colocar) || 0
+  if (!monto) return null
+
+  const v = (exc.ventanas_por_plazo || []).filter((x) => x.estado === 'ok')
+  const tension = v[0]?.fecha_tension ?? null
+  const opciones = tabla.viables.slice(0, OPCIONES_QUE_SE_PUBLICAN)
+  const L = ['**TESORERÍA · CUÁNTO INVERTIR Y EN QUÉ**', '']
+
+  // 1 · LA CAJA, después de los gastos proyectados.
+  L.push(`**Colocable hoy: ${pesos(monto)}**`)
+  if (tension) {
+    L.push(`_Es lo que sobra el ${tension}, el peor día del recorrido de ${tabla.dias} días. No es la caja: es la caja menos todo lo que ya está comprometido._`)
+  }
+
+  // 2 · LAS DOS OPCIONES.
+  L.push('', `| | Instrumento | TNA | Liquidez | Rinde en ${tabla.dias} días |`)
+  L.push('|---|---|---:|---|---:|')
+  opciones.forEach((o, k) => {
+    const tna = o.tna_declarada ?? o.tna_equivalente
+    L.push(`| ${k + 1} | **${o.instrumento}** | ${tna != null ? (tna * 100).toFixed(2) + '%' : DESCONOCIDO_TXT} `
+      + `| ${String(o.liquidez).split('·')[0].trim()} | **${pesos(o.rinde_en_pesos)}** |`)
+  })
+
+  // 3 · LA RECOMENDACIÓN, en una línea, con la diferencia en pesos.
+  const [a, b] = opciones
+  const dif = b ? Number(a.rinde_en_pesos ?? 0) - Number(b.rinde_en_pesos ?? 0) : null
+  L.push('', `**Recomendada: ${a.instrumento}.** `
+    + (dif != null && dif !== 0
+      ? `Rinde ${pesos(Math.abs(dif))} más que la otra${a.dias_vuelta > (b?.dias_vuelta ?? 0) ? ` y devuelve la plata ${a.dias_vuelta - b.dias_vuelta} día(s) más tarde` : ''}.`
+      : 'Es la de mayor rendimiento neto.'))
+
+  // EL ASTERISCO QUE NO SE SACA. Sin esto el número se lee como final y no lo es.
+  if (!tabla.fiscal?.completo) {
+    const faltan = (tabla.fiscal?.pendientes ?? []).map((p) => p.concepto).join(' y ')
+    L.push('', `⚠️ **Los rendimientos son un techo, no un resultado.** Está descontado el impuesto al cheque; `
+      + `falta ${faltan || 'impuestos que el OS no puede afirmar'}. El número real es MENOR.`)
+  }
+  return L.join('\n')
+}
+
+const DESCONOCIDO_TXT = 'DESCONOCIDO'

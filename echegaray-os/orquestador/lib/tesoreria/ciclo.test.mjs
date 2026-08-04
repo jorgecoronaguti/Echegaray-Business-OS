@@ -65,9 +65,10 @@ test('sin excedente el mercado SE RELEVA IGUAL, y la recomendación estructural 
   assert.equal(r.recomendacion_estructural.tipo, 'aplicar_a_deuda')
   assert.ok(publicados.some((t) => /NO HAY EXCEDENTE INVERTIBLE/.test(t)))
   assert.ok(publicados.some((t) => /REQUIERE APROBACIÓN HUMANA/.test(t)))
-  // Y la tabla comparativa se publica igual: saber contra qué se compara es información aunque hoy no
-  // haya un peso para colocar.
-  assert.ok(publicados.some((t) => /ALTERNATIVAS A \d+ DÍAS/.test(t)), 'falta la tabla comparativa')
+  // La tabla comparativa se SIGUE ARMANDO: saber contra qué se compara es información aunque hoy no
+  // haya un peso para colocar. Desde el 04/08 no se publica —el canal lleva la respuesta, no la
+  // auditoría— y viaja en `textos_auditoria`, que es donde se la verifica.
+  assert.ok(r.textos_auditoria.some((t) => /ALTERNATIVAS A \d+ DÍAS/.test(t)), 'falta la tabla comparativa')
   assert.ok(r.traza.some((p) => p.paso === 'tabla_instrumentos'))
 })
 
@@ -108,9 +109,15 @@ test('con excedente y una alternativa que gana, produce una propuesta validada',
   assert.equal(r.estado, 'ok')
   assert.ok(r.recomendaciones.length >= 1, `sin propuestas: ${JSON.stringify(r.sin_propuesta)}`)
   assert.equal(r.publicado, true)
-  // El primer mensaje ahora es el excedente POR PLAZO: es la mitad que decide y va antes que todo.
-  assert.match(publicados[0], /TESORERÍA · EXCEDENTE POR PLAZO/)
-  assert.ok(publicados.some((t) => /TESORERÍA · PROPUESTA DE INVERSIÓN/.test(t)))
+  // ═══ UN SOLO MENSAJE: LA RESPUESTA (04/08) ═══
+  // Pedido textual del dueño: cuánto invertir y en qué, dos opciones nada más. La propuesta detallada
+  // y las tablas se siguen armando y quedan en `textos_auditoria`.
+  assert.equal(publicados.length, 1, 'un mensaje, no seis')
+  assert.match(publicados[0], /TESORERÍA · CUÁNTO INVERTIR Y EN QUÉ/)
+  assert.ok(/Colocable hoy/.test(publicados[0]) && /Recomendada:/.test(publicados[0]))
+  // DOS OPCIONES, NI UNA MÁS: es lo que se pidió y es lo que hay que fijar.
+  assert.ok(publicados[0].split('\n').filter((l) => /^\| \d /.test(l)).length <= 2, 'como mucho dos opciones')
+  assert.ok(r.textos_auditoria.some((t) => /TESORERÍA · PROPUESTA DE INVERSIÓN/.test(t)))
   // Toda propuesta publicada pasó por la validación independiente.
   assert.ok(r.validaciones.every((v) => v.aprobada || !r.recomendaciones.some((x) => x.id === v.id)))
 })
@@ -339,7 +346,10 @@ test('DEFECTO · con descubierto abierto sale la propuesta de CANCELAR, no cuatr
   assert.ok(r.decision.sin_propuesta.length > 0)
   assert.equal(r.decision.sin_propuesta.filter((s) => !s.codigo || !s.motivo).length, 0,
     'un bloque sin propuesta y sin código es indistinguible de un bloque que el sistema no supo analizar')
-  assert.ok(publicados.some((t) => /POR QUÉ NO HAY PROPUESTA EN CADA BLOQUE/.test(t)))
+  assert.ok(r.textos_auditoria.some((t) => /POR QUÉ NO HAY PROPUESTA EN CADA BLOQUE/.test(t)))
+  // Y con descubierto abierto lo que SALE es cancelarlo, no dos opciones de inversión: colocar a 21%
+  // mientras se paga 62,78% de CFT es destruir valor.
+  assert.ok(publicados.some((t) => /Cancelar descubierto antes de evaluar/.test(t)))
 })
 
 test('DEFECTO · sin descubierto, un instrumento que rinde MENOS que el 62,78% igual se propone', async () => {

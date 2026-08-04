@@ -35,7 +35,7 @@ import { cancelarDescubierto, ventanaParaColocacion, decidirTesoreria } from './
 import { validarLote } from './validar.mjs'
 import {
   formatoPropuesta, formatoAplicarADeuda, formatoSesionRequerida, esCambioMaterial,
-  formatoExcedentePorPlazo, formatoTablaInstrumentos, formatoSinPropuesta,
+  formatoExcedentePorPlazo, formatoTablaInstrumentos, formatoSinPropuesta, formatoRespuestaDueno,
 } from './formato-mattermost.mjs'
 import { evaluarAccionabilidad } from './politicas.mjs'
 import { medirLey25413, parametrosFiscales, CLAVE_POLITICA_FISCAL } from './impuestos-colocacion.mjs'
@@ -532,18 +532,38 @@ export async function correrCiclo(deps = {}, opts = {}) {
     // 15-16 · Comparar contra la corrida anterior y publicar sólo lo material.
     const resumen = resumirCorrida({ posicion, excedente, comparacion, sesionRequerida: false })
     const publicar = opts.publicarSiempre ? { publicar: true, motivo: 'forzado' } : esCambioMaterial(resumen, opts.anterior, opts.umbrales)
-    const textos = [
-      // EL EXCEDENTE POR PLAZO VA PRIMERO Y VA SIEMPRE: es la mitad que decide.
+    // ═══ QUÉ SE PUBLICA: LA RESPUESTA, NO LA AUDITORÍA (04/08) ═══
+    //
+    // Pedido textual del dueño: "que haga el análisis de caja de los gastos proyectados y me dé
+    // cuánto invertir y en qué instrumento en Balanz, que me dé 2 opciones nada más".
+    //
+    // Se publicaban SEIS mensajes. Cada uno existe por un defecto real y ninguno sobra como
+    // auditoría, pero juntos no contestan la pregunta: la entierran. Ahora sale UN mensaje con la
+    // caja, el monto y dos opciones; el resto se calcula igual, viaja en el resultado y queda
+    // disponible para auditar —`textos_auditoria`— sin ocupar el canal.
+    //
+    // MODO COMPLETO por si alguna vez se lo quiere de vuelta: `opts.auditoria === true`.
+    const respuesta = formatoRespuestaDueno(excedente, tablaComparacion.tablas.find((t) => (t.viables ?? []).length))
+    const auditoria = [
       formatoExcedentePorPlazo(excedente),
       ...tablaComparacion.tablas.map((t) => formatoTablaInstrumentos(t)),
-      // LA CAUSA VA ANTES QUE LAS PROPUESTAS, no después: cuando no hay ninguna, es el único mensaje
-      // que contesta la pregunta del dueño.
       ...([formatoSinPropuesta(decision)].filter(Boolean)),
       ...(recEstructural ? [formatoAplicarADeuda(recEstructural, posicion)] : []),
       ...val.publicables.map((r) => formatoPropuesta(r, posicion, {
         fecha_caja: posicion.fecha, fecha_mercado: mercado.observado_en ?? null,
       })),
     ]
+    // EL ORDEN DE PRIORIDAD, y por qué es ése:
+    //
+    // 1. CANCELAR EL DESCUBIERTO gana sobre todo. Con saldo deudor, colocar plata a 21% mientras se
+    //    paga 62,78% de CFT es destruir valor: la respuesta a "cuánto invierto" es "nada, cancelá".
+    //    Publicar las dos opciones ahí sería contestar la pregunta y equivocar la decisión.
+    // 2. La RESPUESTA de dos opciones: el caso normal.
+    // 3. Sin respuesta —ningún instrumento viable— va la auditoría entera: el dueño tiene que poder
+    //    ver POR QUÉ no hay dos opciones. Callarse ahí es la peor salida de todas.
+    const textos = opts.auditoria ? auditoria
+      : recEstructural ? [formatoAplicarADeuda(recEstructural, posicion)]
+        : respuesta ? [respuesta] : auditoria
     // ═══ `publicado` ES LO QUE SE ENVIÓ, NO LO QUE SE DECIDIÓ ENVIAR ═══
     //
     // La versión anterior escribía `publicado: publicar.publicar`, o sea la DECISIÓN de publicar, sin
@@ -593,6 +613,7 @@ export async function correrCiclo(deps = {}, opts = {}) {
       bloqueos: mercado.bloqueos || [],
       publicado: seEnvio,
       mensajes_enviados: enviados,
+      textos_auditoria: auditoria,
       motivo_publicacion: publicar.motivo,
       accionabilidad, frescura_mercado: frescura,
       textos, resumen, traza,
