@@ -26,6 +26,9 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { grillaEncabezado, F, FILAS_AGING, MEDIOS } from '../lib/proveedores-encabezado.mjs'
+// Los anchos de columna son de TODA la pestaña: su definición vive una sola vez y este script es el
+// único que la aplica. Ver el lib: el encabezado los fijaba mirando sólo su propio cuadro.
+import { requestsDeAncho } from '../lib/proveedores-frontera.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Proveedores'
@@ -118,9 +121,17 @@ function pedidosDeFormato(sheetId, anchoHoja) {
 
   // Sin cuadrícula: es lo que convierte la planilla en un informe.
   p.push({ updateSheetProperties: { properties: { sheetId, gridProperties: { hideGridlines: true, frozenRowCount: 2 } }, fields: 'gridProperties.hideGridlines,gridProperties.frozenRowCount' } })
-  // Anchos: el rótulo respira, los números no necesitan lugar de más.
-  const ancho = (c1, c2, px) => ({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: c1, endIndex: c2 }, properties: { pixelSize: px }, fields: 'pixelSize' } })
-  p.push(ancho(0, 1, 260), ancho(1, 2, 130), ancho(2, 3, 60), ancho(3, 4, 80), ancho(4, 5, 28), ancho(5, 6, 250), ancho(6, 7, 130), ancho(7, 8, 60))
+  // ═══ LOS ANCHOS SON DE LA PESTAÑA ENTERA, ASÍ QUE SU DEFINICIÓN ES UNA SOLA (04/08) ═══
+  //
+  // Acá vivía la tabla de anchos, medida para el cuadro de la posición y nada más. Abajo de la fila
+  // 176 hay tablas de siete columnas con importes de nueve dígitos, y el resultado era texto cortado
+  // en toda la pestaña: "$209.231.2", "Qué e", "⇒ Materiales que ninguna familia está mira". Un ancho
+  // no se puede decidir mirando un solo bloque porque no existe "ancho por bloque".
+  //
+  // La definición se mudó a lib/proveedores-frontera.mjs, que ya es el módulo de la geometría
+  // compartida de esta pestaña. Este script sigue siendo el único que la APLICA —para que no haya dos
+  // escritores peleando por la misma propiedad—, pero ya no es el que la decide solo.
+  p.push(...requestsDeAncho(sheetId))
   return p
 }
 

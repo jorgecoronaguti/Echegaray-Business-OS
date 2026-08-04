@@ -27,6 +27,72 @@
 // Y si el título no aparece, NO SE ESCRIBE: "no pude encontrar la frontera" nunca es permiso para
 // escribir en la fila que uno supone.
 
+// ═══ LOS ANCHOS DE COLUMNA: UN SOLO DUEÑO PARA TODA LA PESTAÑA ═══
+//
+// EL DEFECTO (04/08, lo vio el dueño en el render). "Qué e" donde dice "Qué es". "Comprobantes de
+// compra (neto de notas de créd". "$209.231.2". "⇒ Materiales que ninguna familia está mira". Los
+// importes de la sección 4 cortados en "$970", "$815", "$1.78". Una pestaña ilegible.
+//
+// LA CAUSA es de PROPIEDAD, no de diseño. Un ancho de columna es de la COLUMNA ENTERA: no existe
+// "ancho por bloque". Y en esta pestaña escriben tres generadores:
+//
+//   proveedores-encabezado-aplicar.mjs   la posición (filas 1-13) — y fijaba los anchos
+//   proveedores-notas-visibles.mjs       la columna D de notas    — y también fijaba el de la D
+//   proveedores-materiales-pestana.mjs   de la frontera para abajo — se ABSTENÍA
+//
+// El encabezado fijaba 260·130·60·80·28·250·130·60, medidos para su propio cuadro de dos bloques de
+// tres columnas. Abajo hay tablas de siete columnas con rótulos largos e importes de nueve dígitos:
+// 60px para una columna que lleva "$209.231.271" no es una decisión, es un choque. Y notas-visibles
+// pisaba la D con 300 sin saber que el encabezado había puesto 80: ganaba el que corría último.
+//
+// La abstención del generador de abajo era correcta —no pisar lo que es de otro— pero el resultado
+// era que nadie negociaba. Lo que falta no es que cada uno fije lo suyo: es que haya UN dueño
+// declarado y los demás lo lean. Igual que `SECCIONES_PROVEEDORES` es la única fuente del número de
+// sección, esto es la única fuente del ancho.
+//
+// ═══ LA COLUMNA E ES EL AIRE DE LA PESTAÑA, Y NINGUNA TABLA LA USA ═══
+//
+// La E vale 28px porque es el separador entre los dos cuadros de la posición, que ya está aprobada.
+// Ensancharla para que entre "REFACTURACIÓN — el costo sigue" arreglaría las tablas de abajo y
+// desarmaría el bloque de arriba: 200px de aire en el medio de un cuadro que hoy se lee bien.
+//
+// Así que la E no se ensancha: se DEJA LIBRE. Las tablas de la frontera para abajo saltean la E y
+// siguen en la F. Cuesta un campo por tabla, y ese costo se pagó donde correspondía —fusionando
+// "Anula la factura" y "La reemplaza" en una sola columna, que además es lo que hay que leer: la
+// nota anula una factura Y la reemplaza por otra, es un hecho, no dos—.
+//
+// Consecuencia: esta definición no cambia una sola columna arriba de la fila 14.
+
+/** El ancho de cada columna de la pestaña "Proveedores", en píxeles. Índice 0 = columna A. */
+export const ANCHOS_PROVEEDORES = Object.freeze([
+  330, // A · el rótulo más largo que se escribe ("TELEFONICA MOVILES ARGENTINA SOCIEDAD ANONIMA")
+  130, // B · CUIT con guiones, N° de comprobante, "Se le debe"
+  125, // C · "Comprado 2026" y los montos del control ($209.231.271), fechas
+  300, // D · las notas del dueño ("Qué hacer"). Era el valor que ya ganaba en la práctica.
+  28,  // E · EL AIRE. Separador de los dos cuadros de la posición: ninguna tabla escribe acá.
+  210, // F · "REFACTURACIÓN — el costo sigue", "Tarjeta de crédito", los importes de la sección 4
+  220, // G · "0006-00003002 → 0004-00003445"
+  60,  // H · el % de la posición
+])
+
+/** La columna que ningún bloque generado usa: es el separador visual de toda la pestaña. */
+export const COL_AIRE = 4 // índice 0 ⇒ la E
+
+/**
+ * Los requests de `updateDimensionProperties` que fijan los anchos. Los emite UN generador (el del
+ * encabezado); los demás leen esta constante para saber con cuánto lugar cuentan y no la aplican.
+ * @param {number} sheetId
+ * @returns {object[]}
+ */
+export function requestsDeAncho(sheetId) {
+  return ANCHOS_PROVEEDORES.map((px, i) => ({
+    updateDimensionProperties: {
+      range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 },
+      properties: { pixelSize: px }, fields: 'pixelSize',
+    },
+  }))
+}
+
 /** El separador que llevan todos los títulos de sección de la pestaña: "3 · NOTAS DE CRÉDITO". */
 const PREFIJO_NUMERO = /^\s*\d+\s*·\s*/
 

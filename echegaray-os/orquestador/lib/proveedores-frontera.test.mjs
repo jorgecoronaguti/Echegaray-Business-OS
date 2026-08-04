@@ -13,6 +13,7 @@ import {
   SECCIONES_PROVEEDORES, SECCIONES_MATERIALES, PRIMERA_GENERADA, nSeccion,
   normalizarTitulo, esTituloDeSeccion, buscarFrontera, finDeDinamica, anclasDeDinamicas,
   verificarFronteraBajoDinamicas, anchoALimpiar, aAnchoCompleto, fronteraSegura,
+  ANCHOS_PROVEEDORES, COL_AIRE, requestsDeAncho,
 } from './proveedores-frontera.mjs'
 import { fusionar, VACIO } from './preservar-anotaciones.mjs'
 
@@ -199,4 +200,46 @@ test('sin título Y sin dinámicas no hay dónde anclar: no se escribe', () => {
   assert.throws(
     () => fronteraSegura({ visible: [['otra cosa']], titulo: 'NOTAS DE CRÉDITO', dinamicas: [] }),
     /no encontré "NOTAS DE CRÉDITO"/)
+})
+
+// ═══ EL TEXTO CORTADO: "Qué e", "$209.231.2", "⇒ Materiales que ninguna familia está mira" ═══
+//
+// El dueño lo vio en el render del 04/08. La causa era de PROPIEDAD: tres generadores escriben esta
+// pestaña, dos fijaban anchos mirando sólo su propio bloque y el tercero se abstenía. Un ancho es de
+// la columna entera, así que no hay "ancho por bloque" — hay un dueño o hay un choque.
+
+test('los anchos son UNA definición, y la aplica un solo generador', () => {
+  assert.equal(ANCHOS_PROVEEDORES.length, 8, 'A..H, las columnas que usan los tres bloques')
+  assert.ok(Object.isFrozen(ANCHOS_PROVEEDORES), 'nadie la muta en caliente')
+  const reqs = requestsDeAncho(123)
+  assert.equal(reqs.length, 8)
+  assert.deepEqual(reqs[0].updateDimensionProperties.range,
+    { sheetId: 123, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 })
+  assert.equal(reqs[0].updateDimensionProperties.properties.pixelSize, ANCHOS_PROVEEDORES[0])
+  // Una columna por request: un rango de varias columnas les pone el mismo ancho a todas, que es
+  // exactamente lo que no se quiere (la D mide 300 y la E 28).
+  for (const [i, r] of reqs.entries()) {
+    assert.equal(r.updateDimensionProperties.range.endIndex - r.updateDimensionProperties.range.startIndex, 1)
+    assert.equal(r.updateDimensionProperties.range.startIndex, i)
+  }
+})
+
+test('la columna E es el AIRE y sigue midiendo 28px: el encabezado no se toca', () => {
+  // La tentación era ensancharla para que entrara "REFACTURACIÓN — el costo sigue". Eso habría
+  // arreglado las tablas de abajo y desarmado el cuadro de la posición, que ya está aprobado: 200px
+  // de aire en el medio de un bloque que se lee bien. Se dejó libre en vez de ensancharla.
+  assert.equal(COL_AIRE, 4, 'la E')
+  assert.equal(ANCHOS_PROVEEDORES[COL_AIRE], 28, 'si esto crece, el encabezado se desarma')
+})
+
+test('cada columna tiene lugar para lo más ancho que le toca', () => {
+  // A ~7px por carácter a fontSize 9-10. No es exacto — es el piso que evita el defecto de volver a
+  // poner 60px en una columna que lleva "$209.231.271".
+  const cabe = (col, texto) => assert.ok(ANCHOS_PROVEEDORES[col] >= texto.length * 7,
+    `la columna ${String.fromCharCode(65 + col)} (${ANCHOS_PROVEEDORES[col]}px) corta "${texto}"`)
+  cabe(0, 'Comprobantes de compra (neto de notas)')   // el rótulo más largo del control
+  cabe(1, '30-71037035-0')                            // CUIT con guiones
+  cabe(2, '$209.231.271')                             // el monto del control de cobertura
+  cabe(5, 'REFACTURACIÓN — el costo sigue')           // "Qué es", en la F
+  cabe(6, '0006-00003002 → 0004-00003445')            // la cadena anula → reemplaza, en la G
 })
