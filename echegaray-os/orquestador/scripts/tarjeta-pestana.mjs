@@ -101,7 +101,14 @@ const ymd = (iso) => { const [a, m, d] = String(iso).split('-').map(Number); ret
  */
 export function bandaFilas(hdr = BANDA + 1, banco = { TARJETA, CORTE }) {
   const T = banco.TARJETA
-  const corte = ymd(banco.CORTE)
+  // ═══ LA TARJETA TIENE SU PROPIA FECHA DE FOTO, NO LA DEL EXTRACTO (04/08) ═══
+  //
+  // Acá se usaba `CORTE`, que es el corte del EXTRACTO DE LA CUENTA. El resumen de la tarjeta es
+  // otro documento y cierra otro día: el de la cuenta era del 22/07 y el de la tarjeta del 29/07.
+  // Con la fecha equivocada, el semáforo de antigüedad envejecía la foto una semana de más y el
+  // subtítulo declaraba un origen que no era. Ahora manda `TARJETA.al` si está declarada, y sólo
+  // se cae al corte de la cuenta cuando la foto de la tarjeta no trae fecha propia.
+  const corte = ymd(T.al || banco.CORTE)
   const dmy = `${String(corte.d).padStart(2, '0')}/${String(corte.m).padStart(2, '0')}/${corte.a}`
 
   // ── Los rangos del registro. ABIERTOS hacia abajo a propósito ───────────────────────────────────

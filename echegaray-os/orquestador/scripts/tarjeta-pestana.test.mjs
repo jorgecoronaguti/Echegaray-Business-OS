@@ -141,8 +141,11 @@ test('la foto del banco no puede envejecer en silencio', () => {
   const f = frescura({ a: 2026, m: 7, d: 22 }, '22/07/2026', 21)
   assert.match(f, /TODAY\(\)-DATE\(2026;7;22\)/)
   assert.match(f, /IF\(dd_>21;"⚠ foto de hace "/)
-  // El corte que se muestra es el declarado en el núcleo, no uno tipeado en el script.
-  assert.ok(String(banda[1][0]).includes(CORTE.split('-').reverse().join('/')))
+  // La fecha que se muestra es la declarada en el núcleo, no una tipeada en el script — y es la de
+  // la FOTO DE LA TARJETA (`TARJETA.al`), no la del corte del extracto de la cuenta: son dos
+  // documentos distintos que cierran días distintos.
+  const suFecha = (TARJETA.al || CORTE).split('-').reverse().join('/')
+  assert.ok(String(banda[1][0]).includes(suFecha), `el subtítulo tiene que declarar ${suFecha}`)
 })
 
 test('el control cierra contra el banco y dice su veredicto, sin una línea de prosa', () => {
@@ -223,4 +226,30 @@ test('el bloque viejo se reconoce por lo que dice, con o sin su número', () => 
 
 test('la banda nueva no se confunde con el bloque viejo que tiene que borrar', () => {
   assert.equal(ubicarBloqueViejo(banda, 0), null, 'el generador se tomaría a sí mismo por residuo')
+})
+
+// ═══ LA FOTO DE LA TARJETA TIENE SU PROPIA FECHA (04/08) ═══
+//
+// La banda usaba `CORTE` —el corte del EXTRACTO DE LA CUENTA— para fechar la foto de la TARJETA.
+// Son dos documentos distintos que cierran días distintos: el de la cuenta era del 22/07 y el de la
+// tarjeta del 29/07. Con la fecha ajena, el semáforo envejecía la foto una semana de más y el
+// subtítulo declaraba un origen que no era el suyo.
+
+test('la banda fecha la foto con TARJETA.al, no con el corte del extracto', () => {
+  const banco = {
+    TARJETA: { ...TARJETA, al: '2026-07-29' },
+    CORTE: '2026-07-22',
+  }
+  const filas = bandaFilas(31, banco)
+  const texto = JSON.stringify(filas)
+  assert.match(texto, /29\/07\/2026/, 'tiene que fechar con la foto de la tarjeta')
+  assert.ok(!texto.includes('22/07/2026'), 'el corte del extracto no fecha la tarjeta')
+  assert.match(texto, /DATE\(2026;7;29\)/, 'el semáforo de antigüedad cuenta desde la foto de la tarjeta')
+})
+
+test('sin fecha propia, la tarjeta cae al corte del extracto — no se queda sin fechar', () => {
+  const sinAl = { ...TARJETA }
+  delete sinAl.al
+  const filas = bandaFilas(31, { TARJETA: sinAl, CORTE: '2026-07-22' })
+  assert.match(JSON.stringify(filas), /22\/07\/2026/)
 })
