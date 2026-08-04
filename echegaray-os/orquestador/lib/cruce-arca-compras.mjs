@@ -162,12 +162,22 @@ export function conciliar({ comprobantes = [], filasCompras = [], clave, norm = 
   const rubroDesconocido = filasCompras.filter((f) => !comercial.has(f.rubro) && !sinFiscal.has(f.rubro))
 
   // ── DIRECCIÓN 1: lo que ARCA registró y Compras no tiene.
-  // Se delega en `cobertura-arca.cruzar`, que ya es la ÚNICA definición de este cruce en el OS
-  // (por N° de comprobante y, cuando el número no está cargado, por proveedor + importe).
+  //
+  // EL CRUCE VA CONTRA **COMPRAS ENTERA**, NO CONTRA EL UNIVERSO DE LA VISTA (05/08).
+  //
+  // La primera versión cruzaba sólo contra las filas comerciales dentro de la ventana, y por eso daba
+  // $13.090.051 donde `ARCA_FALTAN_MONTO` —el número que Proveedores ya publica— daba $13,8M. Dos
+  // cifras parecidas, con nombres parecidos, respondiendo preguntas distintas: fuente garantizada de
+  // desconfianza, y el dueño ya venía diciendo "no me da seguridad nada de lo que expresa caja".
+  //
+  // Y además era incorrecto: que una factura esté cargada en Compras no depende de en qué rubro cayó
+  // ni de si su mes entra en la ventana. Restringir el lado de Compras inflaba el faltante con
+  // comprobantes que sí estaban cargados, sólo que en un rubro que la vista no mira.
+  //
   // El proveedor se normaliza EN LOS DOS LADOS con la misma función: `cruzar` aplica `norm` al nombre
   // que trae ARCA y compara contra el `prov` de la fila, así que la fila tiene que llegar normalizada.
-  const paraCruce = universo.map((f) => ({ ...f, prov: norm(f.prov) }))
-  const cruce = cruzar(comprobantes, paraCruce, { norm, clave })
+  const todas = filasCompras.filter((f) => f.prov && f.total > 0)
+  const cruce = cruzar(comprobantes, todas.map((f) => ({ ...f, prov: norm(f.prov) })), { norm, clave })
 
   // ── DIRECCIÓN 2: lo que Compras tiene y ARCA no.
   // Una fila está respaldada si su comprobante es uno de los del libro, o si el cruce de arriba la
@@ -180,11 +190,18 @@ export function conciliar({ comprobantes = [], filasCompras = [], clave, norm = 
   const comprasSinArca = universo.filter((f) => !respaldada(f))
 
   const t = (l, k = 'total') => redondear(l.reduce((s, x) => s + monto(x[k]), 0))
+  const comprasUniverso = t(universo)
+  const comprasConRespaldo = t(conRespaldo)
   const totales = {
     arcaNeto: redondear(sumar(comprobantes, 'imp_total').neto),
-    comprasUniverso: t(universo),
-    comprasConRespaldo: t(conRespaldo),
+    comprasUniverso,
+    comprasConRespaldo,
     comprasSinArca: t(comprasSinArca),
+    // LA COBERTURA, QUE ES LO QUE LA VISTA PUEDE AFIRMAR. Es una proporción DENTRO del mismo
+    // conjunto: qué parte de lo que esta pestaña lista tiene un comprobante en el libro. Comparar el
+    // monto de la vista contra el total de ARCA es comparar universos distintos — eso fue lo que puso
+    // "−$203.592.436" en Recurrentes, donde el número grande era el otro universo, no un agujero.
+    cobertura: comprasUniverso > 0 ? comprasConRespaldo / comprasUniverso : null,
     arcaSinCompras: redondear(cruce.totales.faltan),
     notasDeCredito: redondear(cruce.totales.notas),
     fueraDeArca: t(fueraDeArca),
@@ -209,25 +226,33 @@ export function conciliar({ comprobantes = [], filasCompras = [], clave, norm = 
 }
 
 /**
- * NÚCLEO PURO: ¿la diferencia agregada se explica ENTERA con las líneas del detalle?
+ * NÚCLEO PURO: la única identidad que este control puede afirmar, y es EXACTA.
  *
- * Sin esto el control tiene la misma enfermedad que venía a curar: un número que nadie puede
- * reconstruir. La identidad es
+ *   lo que la vista lista (en la ventana) = lo respaldado por ARCA + lo que no lo está
  *
- *   Compras(universo) − ARCA(neto) = (Compras sin ARCA) − (ARCA sin Compras) + (notas de crédito)
- *                                    + (diferencia de importe en lo emparejado)
+ * ═══ POR QUÉ ÉSTA Y NO LA DE ANTES (05/08) ═══
  *
- * El último término se despeja: es lo que queda, y tiene significado propio — una factura cargada en
- * Compras por un importe distinto al que ARCA registró. Si el residuo no cierra, `ok` es false.
+ * La versión anterior partía de `Compras(universo) − ARCA(neto)` y despejaba el sobrante como
+ * "diferencia de importe en lo emparejado". Eso estaba mal por dos motivos, y el segundo es grave:
+ *
+ * 1. Los dos lados NO son el mismo universo. `ARCA(neto)` es el libro entero; `Compras(universo)` es
+ *    la porción que la vista muestra. En Recurrentes eso escribió "⇒ Diferencia agregada
+ *    −$203.592.436" comparando $5.638.835 de servicios recurrentes contra $209.231.271 de todas las
+ *    compras del año. No era un hallazgo: era la definición de que los universos no coinciden.
+ *
+ * 2. Al residuo se le puso CAUSA. La pestaña decía "−$212.255.479 · facturas cargadas por un IMPORTE
+ *    distinto al que ARCA registró". Eso es una INFERENCIA presentada como HECHO, y sobre
+ *    comprobantes que nunca se identificaron uno por uno. Un número así hace que el dueño desconfíe
+ *    del archivo entero — el estado del que se venía saliendo.
+ *
+ * Un residuo que no está identificado comprobante por comprobante no lleva nombre. Por eso esta
+ * identidad no tiene residuo: sus dos términos son particiones del MISMO conjunto de filas.
  */
 export function verificarIdentidad(r) {
   const t = r.totales
-  const difAgregada = redondear(t.comprasUniverso - t.arcaNeto)
-  const explicado = redondear(t.comprasSinArca - t.arcaSinCompras + t.notasDeCredito)
-  const difImportes = redondear(difAgregada - explicado)
-  // La identidad es exacta por construcción; `ok` protege contra un cambio futuro que la rompa.
-  const reconstruido = redondear(explicado + difImportes)
-  return { ok: Math.abs(difAgregada - reconstruido) < 0.5, difAgregada, explicado, difImportes }
+  const reconstruido = redondear(t.comprasConRespaldo + t.comprasSinArca)
+  const diferencia = redondear(t.comprasUniverso - reconstruido)
+  return { ok: Math.abs(diferencia) < 0.5, diferencia, universo: t.comprasUniverso, reconstruido }
 }
 
 const pesos = (n) => `$${Math.round(n).toLocaleString('es-AR')}`
@@ -240,7 +265,7 @@ const comp = (c) => `${String(c.punto_venta ?? '').padStart(4, '0')}-${String(c.
  * va a buscar el papel. Se listan los más grandes: una lista de 56 no se lee, y los primeros
  * concentran la plata.
  *
- * @returns {{estado:'no_verificable'|'hallazgo'|'ok', texto:string}}
+ * @returns {{estado:'no_verificable'|'hallazgo'|'medido'|'ok', texto:string}}
  */
 export function veredicto(r, { maxDetalle = 4 } = {}) {
   if (r.ventana.vacia) {
@@ -255,20 +280,39 @@ export function veredicto(r, { maxDetalle = 4 } = {}) {
   }
   const t = r.totales
   const partes = []
+
+  // ── LO QUE SÍ ES UN HALLAZGO, SIN AMBIGÜEDAD.
+  // Un comprobante con CAE que Compras no tiene es gasto real que ningún cuadro está viendo. No hay
+  // interpretación posible: o se carga, o falta explicar por qué no corresponde.
   if (Math.abs(t.arcaSinCompras) >= TOL_PESOS) {
     const top = r.arcaSinCompras.slice().sort((a, b) => monto(b.imp_total) - monto(a.imp_total))
     const lista = top.slice(0, maxDetalle).map((c) => `${comp(c)} ${c.emisor_nombre} ${pesos(monto(c.imp_total))}`).join(' · ')
     const resto = top.length > maxDetalle ? ` (+${top.length - maxDetalle} más)` : ''
     partes.push(`✗ ${pesos(t.arcaSinCompras)} en ${top.length} comprobante(s) que ARCA registró y Compras no tiene: ${lista}${resto}`)
   }
+
+  // ── LO QUE NO SE PUEDE LLAMAR ERROR TODAVÍA, Y POR ESO NO LLEVA ✗ (05/08).
+  //
+  // Una fila sin comprobante en el libro puede ser una carga a la que le falta el número, o un
+  // proveedor que simplemente no factura. Los tres mayores medidos —Gerson Castro, Pedro Fredes,
+  // AGUERO— son del segundo tipo. Hasta que Compras pueda marcar "sin comprobante", esta cifra está
+  // INFLADA por una cantidad desconocida, y presentarla como error es afirmar lo que no se sabe.
+  // Se informa como COBERTURA con su límite declarado al lado.
   if (Math.abs(t.comprasSinArca) >= TOL_PESOS) {
+    // QUE ESTÉ INFLADO NO LO HACE INÚTIL: la fila y el proveedor son justamente lo que hace falta
+    // para decidir cuál de los dos casos es cada uno. Lo que cambia es el marcador y el texto, no el
+    // detalle — un número sin las filas obliga a ir a buscarlas a mano.
     const top = r.comprasSinArca.slice().sort((a, b) => monto(b.total) - monto(a.total))
     const lista = top.slice(0, maxDetalle).map((f) => `fila ${f.fila} ${f.prov} ${pesos(f.total)}`).join(' · ')
     const resto = top.length > maxDetalle ? ` (+${top.length - maxDetalle} más)` : ''
-    partes.push(`✗ ${pesos(t.comprasSinArca)} en ${top.length} fila(s) de Compras sin comprobante en el libro de ARCA: ${lista}${resto}`)
+    const cob = t.cobertura === null ? '' : ` · cobertura ${(t.cobertura * 100).toFixed(1)}%`
+    partes.push(`ⓘ ${pesos(t.comprasSinArca)} en ${top.length} fila(s) sin comprobante en el libro${cob} — incluye proveedores que no emiten factura, NO es sin más carga con error: ${lista}${resto}`)
   }
+
   if (!partes.length) {
-    return { estado: 'ok', texto: `✓ Compras y el libro de ARCA coinciden comprobante por comprobante en ${r.ventana.desde}..${r.ventana.hasta}` }
+    return { estado: 'ok', texto: `✓ cada comprobante del libro está en Compras, y todo lo que esta vista lista en ${r.ventana.desde}..${r.ventana.hasta} tiene respaldo fiscal` }
   }
-  return { estado: 'hallazgo', texto: partes.join('  |  ') }
+  // El estado lo decide SÓLO la dirección inequívoca: si lo único que hay es cobertura parcial, el
+  // control no está fallando — está midiendo. Marcarlo como hallazgo entrenaría a ignorarlo.
+  return { estado: Math.abs(t.arcaSinCompras) >= TOL_PESOS ? 'hallazgo' : 'medido', texto: partes.join('  |  ') }
 }
