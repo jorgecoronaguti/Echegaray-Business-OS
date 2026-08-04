@@ -685,7 +685,31 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
         //
         // Sale del MISMO bloque que ahora lee el cash flow (OFICINA_*, publicados por la pestaña
         // Jornales): una capacidad, una fuente. Un mes está pagado o proyectado, nunca los dos.
-        + `+SUMPRODUCT(ISNUMBER(OFICINA_PAGO)*(OFICINA_PAGO>=CAJA_FECHA_SALDO)*${tramo(k, 'OFICINA_PAGO')}*(N(OFICINA_PAGADO)+N(OFICINA_PROYECTADO)))`,
+        + `+SUMPRODUCT(ISNUMBER(OFICINA_PAGO)*(OFICINA_PAGO>=CAJA_FECHA_SALDO)*${tramo(k, 'OFICINA_PAGO')}*(N(OFICINA_PAGADO)+N(OFICINA_PROYECTADO)))`
+        // ═══ Y TODO LO QUE NO SE PAGA CON CHEQUE (04/08) ═══
+        //
+        // El dueño: "no me da seguridad nada de lo que expresa caja ni cash flows". Tenía razón otra
+        // vez, y esta es una de las causas: el calendario sumaba los cheques emitidos, la nómina de
+        // obra y la de oficina — y NADA de lo que se paga por transferencia, débito, efectivo o
+        // tarjeta. Medido contra Compras el 04/08, con estado Pendiente y fecha de pago futura:
+        //
+        //     Débito           $7.484.627     ← las cuotas del plan de pago previsional
+        //     Tarjeta Crédito  $5.124.412
+        //     Efectivo         $1.624.000
+        //     Transferencia      $767.362
+        //                     ───────────
+        //                     $15.000.401     invisibles para el piso proyectado
+        //
+        // Un piso más alto que el real es el error que peor se paga: se coloca plata a treinta días
+        // y no se llega a pagar los sueldos. Por eso entra la deuda ENTERA, y el filtro es por medio
+        // de pago —no por rubro—: lo que ya está en "Cheques Emitidos" se excluye para no contarlo
+        // dos veces, y todo lo demás suma.
+        //
+        // `>=CAJA_FECHA_SALDO` por el mismo motivo que la nómina: lo anterior al corte del extracto
+        // ya está dentro del saldo del banco, y volver a restarlo sería contarlo dos veces.
+        + `+SUMPRODUCT((Compras!$X$4:$X="Pendiente")*(Compras!$P$4:$P<>"Cheque")*(Compras!$P$4:$P<>"Echeq")`
+        + `*ISNUMBER(Compras!$Q$4:$Q)*(Compras!$Q$4:$Q>=CAJA_FECHA_SALDO)*${tramo(k, 'Compras!$Q$4:$Q')}`
+        + `*(IF(ISNUMBER(Compras!$O$4:$O);Compras!$O$4:$O;0)-IF(ISNUMBER(Compras!$T$4:$T);Compras!$T$4:$T;0)))`,
       `=$C${f}-$D${f}`,
       // La posición acumulada arranca en la disponibilidad neta: de nada sirve un neto de tramo si no
       // se ve contra la plata que hay.
