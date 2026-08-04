@@ -18,8 +18,11 @@
 // La ventana sale de `_ARCA_RAW`: primer día del mes del comprobante más viejo, último día del mes
 // del más nuevo. Se estira sola.
 
-import { R, IMPORTE } from './arca-formula.mjs'
-import { RUBROS_SIN_COMPROBANTE_FISCAL } from './cruce-arca-compras.mjs'
+// Sólo `R`: el total del libro NO se muestra en una vista parcial (ver bloqueControlArca), así que
+// `IMPORTE` —la suma con signo de todo el libro— dejó de tener lugar acá. Y la línea "fuera de ARCA
+// por naturaleza" (jornales, cargas sociales) tampoco: en una vista de un solo rubro sería el mismo
+// número global repetido tres veces. Pertenece al control global, no a la vista.
+import { R } from './arca-formula.mjs'
 
 /** La pestaña de discrepancias. La escribe scripts/cruce-arca-pestana.mjs. */
 export const C = '_CRUCE_ARCA'
@@ -80,52 +83,43 @@ export function bloqueControlArca({ titulo, rubros, fila0 }) {
   const f = (n) => fila0 + n
   const filas = []
   filas.push([titulo])
-  filas.push(['Contra el libro de IVA COMPRAS de ARCA — la única fuente de este archivo que el OS no escribe. Ventana DEVENGADA, por fecha de FACTURA: ARCA imputa por período de DDJJ y el cuadro de arriba suma por fecha de CAJA. No son el mismo número y no tienen por qué serlo.'])
-
+  filas.push(['Mide SÓLO lo que esta pestaña lista, comprobante por comprobante contra el libro de ARCA. No compara totales: ARCA no trae rubro, así que su total es el de TODAS las compras y no el de esta vista. Por fecha de FACTURA, no de caja.'])
   filas.push([`="Ventana comparable · "&IF(${HAY_FUENTE};TEXT(${DESDE};"mmm yyyy")&" a "&TEXT(${HASTA};"mmm yyyy");"ARCA no replicó ningún comprobante")`])
-  filas.push(['ARCA · libro de compras, neto de notas de crédito', `=SUMPRODUCT((${R}!$B$4:$B="Compras")*${IMPORTE})`])
-  filas.push(['Compras · lo de esta pestaña, por fecha de FACTURA', `=${comprasDevengado(rubros)}`])
-  filas.push(['⇒ Diferencia agregada — no es el hallazgo, es el saldo de las dos direcciones', `=ROUND(B${f(4)}-B${f(3)};0)`])
 
-  // ═══ LAS DOS DIRECCIONES, SEPARADAS ═══
-  // Un neto de cero puede esconder $10M de cada lado. Son dos defectos distintos, se arreglan en dos
-  // lugares distintos, y por eso nunca se muestran restados.
-  // EL BLOQUE TIENE DOS COLUMNAS Y NADA MÁS: rótulo e importe.
+  // ═══ LOS TRES NÚMEROS SON PARTICIONES DEL MISMO CONJUNTO ═══
   //
-  // La primera versión ponía el recuento en una columna C. Los tests de Estructura y Recurrentes la
-  // rechazaron, y tienen razón: en este archivo toda columna satélite al lado de un número terminó
-  // siendo prosa que el dueño borra a mano y el generador le devuelve en la corrida siguiente. Los
-  // recuentos —que hacen falta, porque un monto sin cantidad no se puede salir a buscar— van adentro
-  // del veredicto, que es UNA celda y se lee de corrido.
-  filas.push(['→ ARCA registró y Compras NO tiene (de Compras entera: sin cargar todavía no tienen rubro)',
-    `=SUMIFS(${rg(CC.importe)};${rg(CC.direccion)};"${DIR.arcaSinCompras}")`])
-  filas.push(['→ Compras tiene cargado y ARCA NO respalda (de esta pestaña)',
+  // (respaldado) + (sin respaldo) = (lo que la vista lista). Exacto por construcción: las tres filas
+  // salen de las MISMAS filas de Compras, separadas por si ARCA tiene o no su comprobante.
+  //
+  // Es el arreglo del defecto del 04/08. La versión anterior ponía acá "ARCA · libro de compras
+  // $209.231.271" contra "Compras · lo de esta pestaña $5.638.835" y restaba: −$203.592.436 en
+  // Recurrentes, que no era un agujero sino dos universos distintos. El total del libro NO vuelve a
+  // aparecer en una vista parcial.
+  filas.push(['Lo que esta pestaña lista, dentro de la ventana', `=${comprasDevengado(rubros)}`])
+  filas.push(['· con su comprobante en el libro de ARCA', `=B${f(3)}-B${f(5)}`])
+  filas.push(['· sin comprobante en el libro — incluye proveedores que no facturan, NO es error sin más',
     `=${sinRespaldo(rubros)}`])
+  filas.push(['⇒ Cobertura fiscal de esta pestaña', `=IF(B${f(3)}=0;"";B${f(4)}/B${f(3)})`])
 
-  // ═══ LAS LÍNEAS TIENEN QUE RECONSTRUIR LA DIFERENCIA ═══
+  // ═══ EL ÚNICO NÚMERO GLOBAL, Y VA REFERENCIADO — NO RECALCULADO ═══
   //
-  // Sin estas dos, la pestaña muestra una diferencia agregada y dos direcciones que no suman a ella, y
-  // el que mira se queda con un número que nadie puede explicar — la misma enfermedad que este bloque
-  // vino a curar. Medido el 04/08 el residuo es −$31.096.502: no es ruido, es una cifra con
-  // significado propio (facturas cargadas por un importe distinto al que ARCA registró).
-  filas.push(['· Notas de crédito del libro — restan del total de ARCA, no son carga faltante',
-    `=SUMPRODUCT((${R}!$B$4:$B="Compras")*(${R}!$F$4:$F=-1)*${R}!$M$4:$M)`])
-  filas.push(['· El resto — facturas cargadas por un IMPORTE distinto al que ARCA registró',
-    `=ROUND(B${f(5)}-(B${f(7)}-B${f(6)}+B${f(8)});0)`])
-
-  // ═══ LO QUE NO ES ERROR, DECLARADO Y APARTE ═══
-  filas.push(['ⓘ Fuera de ARCA por naturaleza — jornales, cargas sociales, sueldos, impuestos: no llevan factura, no es un hueco',
-    `=${RUBROS_SIN_COMPROBANTE_FISCAL.map((r) => `SUMIFS(${COL_TOTAL};${COL_RUBRO};"${r}";${COL_FACTURA};">="&${DESDE};${COL_FACTURA};"<="&${HASTA})`).join('+')}`])
-  filas.push(['ⓘ Facturas de esta pestaña POSTERIORES a la ventana — la fuente todavía no llegó, no es un hueco',
-    `=${rubros.map((r) => `SUMIFS(${COL_TOTAL};${COL_RUBRO};"${r}";${COL_FACTURA};">"&${HASTA})`).join('+')}`])
+  // Un comprobante que Compras no cargó no tiene rubro todavía, así que NO se puede repartir entre las
+  // vistas: es de Compras entera. Ese número ya existe y ya tiene nombre — `ARCA_FALTAN_MONTO`, que
+  // publica Proveedores. Calcularlo de nuevo acá creaba una segunda cifra parecida con otro nombre
+  // ($13.090.051 contra $13,8M), que es fuente garantizada de desconfianza. Una definición, una fuente.
+  filas.push(['⚠ ARCA facturó y Compras NO lo tiene — de Compras ENTERA, no de esta pestaña', '=ARCA_FALTAN_MONTO'])
 
   // ═══ EL VEREDICTO ═══
-  // Sin fuente NO hay ✓. Un control que se pone verde cuando el libro no llegó afirma que está todo
-  // bien justamente cuando no se puede saber — es el peor de los tres estados posibles.
-  const nArca = `COUNTIFS(${rg(CC.direccion)};"${DIR.arcaSinCompras}")`
-  filas.push([`=IF(NOT(${HAY_FUENTE});"⚠ NO PUEDO VERIFICAR — ARCA no replicó comprobantes: este control no afirma nada";IF(AND(ROUND(B${f(6)};0)=0;ROUND(B${f(7)};0)=0);"✓ cada comprobante de ARCA está en Compras y cada carga de esta pestaña tiene respaldo fiscal";"✗ "&TEXT(B${f(6)};"$#,##0")&" en "&${nArca}&" comprobante(s) que ARCA registró y Compras no tiene · "&TEXT(B${f(7)};"$#,##0")&" en "&${sinRespaldoN(rubros)}&" fila(s) cargadas acá sin comprobante en ARCA — cada una con su número y su monto en ${C}"))`])
+  //
+  // Tres estados, y el del medio es nuevo: MEDIDO. Lo que está sin respaldo en el libro NO lleva ✗
+  // porque no se sabe cuánto de eso es carga incompleta y cuánto es un proveedor que no factura — los
+  // tres mayores (Gerson Castro, Pedro Fredes, AGUERO) son del segundo tipo. Poner ✗ sobre una cifra
+  // que se sabe inflada entrena al que la mira a ignorar el control, y ya pasó con los −$212M.
+  //
+  // Sin fuente NO hay ✓: afirmar que está todo bien justo cuando no se puede saber es el peor estado.
+  filas.push([`=IF(NOT(${HAY_FUENTE});"⚠ NO PUEDO VERIFICAR — ARCA no replicó comprobantes: este control no afirma nada";IF(ROUND(B${f(5)};0)=0;"✓ todo lo que esta pestaña lista en la ventana tiene su comprobante en el libro de ARCA";"ⓘ "&TEXT(B${f(5)};"$#,##0")&" en "&${sinRespaldoN(rubros)}&" fila(s) sin comprobante en el libro ("&TEXT(1-B${f(6)};"0,0%")&" de esta pestaña) — cada una con su fila y su monto en ${C}. Falta distinguir en Compras qué proveedor no factura: hasta entonces esta cifra está inflada y no es una lista de errores."))`])
   return filas
 }
 
 /** Cuántas filas ocupa el bloque. Quien lo inserta necesita saberlo ANTES de armar la grilla. */
-export const ALTO_BLOQUE = 13
+export const ALTO_BLOQUE = 9
