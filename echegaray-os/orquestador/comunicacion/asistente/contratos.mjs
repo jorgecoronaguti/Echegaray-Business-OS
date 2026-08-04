@@ -59,6 +59,9 @@ export const ERROR = Object.freeze({
   DUPLICADO: 'duplicado',
   ENTREGA_MATTERMOST: 'fallo_entrega_mattermost',
   CAPACIDAD_DESHABILITADA: 'capacidad_deshabilitada',
+  // "No sé quién sos" NO es "no tenés permiso": lo primero lo arregla el OS y lo segundo Dirección.
+  // Mientras compartieron código y frase, un defecto de identidad se leyó como una restricción.
+  IDENTIDAD_NO_RESUELTA: 'identidad_no_resuelta',
 })
 
 /** ¿Vale la pena reintentar este error? Sólo lo temporal y el fallo de entrega. */

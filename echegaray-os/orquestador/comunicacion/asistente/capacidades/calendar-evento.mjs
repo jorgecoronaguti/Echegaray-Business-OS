@@ -21,7 +21,7 @@ import {
 } from '../contratos.mjs'
 import { paredAR, formatearAR } from '../tiempo.mjs'
 import {
-  clasificarErrorGoogle, googlePropioDisponible, permiteEfectoExterno, errorSinCuenta, errorCuentaAjena,
+  clasificarErrorGoogle, googlePropioDisponible, motivoGooglePropio, permiteEfectoExterno, errorSinCuenta, errorCuentaAjena,
 } from '../google-cliente.mjs'
 
 /** Lo que dura una reunión cuando nadie dijo cuánto. Se afirma y se avisa; no se pregunta. */
@@ -102,6 +102,9 @@ export const capacidad = {
   ejemplos: ['agendame reunión con Rodrigo mañana a las 9', 'poneme visita a la obra el jueves 15hs'],
   entrada: zCalendarEvento,
   habilitada: (ctx) => googlePropioDisponible(ctx, ctx?.googleDeps),
+  // Y cuando NO está habilitada, por qué. Éste es el caso medido: el dueño pidió un evento, su
+  // identidad no resolvía, y el chat le contestó lo mismo que a alguien sin permiso.
+  motivoNoHabilitada: (ctx) => motivoGooglePropio(ctx, ctx?.googleDeps),
 
   async ejecutar(params, ctx = {}) {
     const p = zCalendarEvento.safeParse(params)

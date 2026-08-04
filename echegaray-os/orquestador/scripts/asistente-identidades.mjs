@@ -19,7 +19,13 @@
 
 import { query, withTx } from '../lib/db.mjs'
 import { registrarIdentidad, listarIdentidades } from '../comunicacion/asistente/identidades.mjs'
-import { TZ_EMPRESA } from '../comunicacion/asistente/contratos.mjs'
+import { aIdentidad } from '../comunicacion/asistente/reconciliacion-identidades.mjs'
+
+// El mapeo usuario de Mattermost → identidad del OS vive en `reconciliacion-identidades.mjs`, que
+// es también el que usa la reparación en caliente del router. Una sola forma de traducir a una
+// persona: si esto tuviera su propia copia, la siembra y la reparación podrían diferir en el
+// campo que importa (el correo) sin que nada fallara.
+export { aIdentidad }
 
 const PAGINA = 200
 
@@ -38,23 +44,6 @@ export async function traerUsuarios({ baseUrl, token, fetchImpl = globalThis.fet
     if (lote.length < PAGINA) break
   }
   return out.filter((u) => u && u.delete_at === 0 && u.is_bot !== true)
-}
-
-/** Usuario de Mattermost → identidad del OS. El nombre visible es el que la gente reconoce. */
-export function aIdentidad(u, { aliasPrevios = [] } = {}) {
-  const nombre = [u.first_name, u.last_name].filter(Boolean).join(' ').trim()
-  const alias = new Set(aliasPrevios.map((a) => String(a).trim()).filter(Boolean))
-  for (const a of [u.nickname, u.first_name, u.username]) if (a && String(a).trim()) alias.add(String(a).trim())
-  return {
-    plataforma: 'mattermost',
-    plataformaUserId: String(u.id),
-    plataformaUsername: u.username ?? null,
-    nombreVisible: nombre || u.nickname || u.username || String(u.id),
-    alias: [...alias],
-    email: u.email ?? null,
-    zonaHoraria: TZ_EMPRESA,
-    activo: true,
-  }
 }
 
 /**
