@@ -168,3 +168,53 @@ export function nombreCorto(identidad) {
   if (!identidad) return 'esa persona'
   return identidad.nombreVisible || identidad.plataformaUsername || identidad.plataformaUserId
 }
+
+// ── Diagnóstico ──────────────────────────────────────────────────────────────
+//
+// «No puedo identificarte» y «no tenés ese permiso» salían por la misma frase, y piden cosas
+// opuestas: la primera la arregla el OS (nadie del equipo puede hacer nada al respecto), la
+// segunda la arregla la persona o Dirección. Mientras fueron el mismo mensaje, el defecto real
+// —dos filas de identidad con ids de ejemplo— se leyó durante semanas como «no tengo permiso».
+
+export const MOTIVO_IDENTIDAD = Object.freeze({
+  SIN_ACTOR: 'identidad_sin_actor',
+  NO_REGISTRADA: 'identidad_no_registrada',
+  SIN_EMAIL: 'identidad_sin_email',
+})
+
+/** ¿Son códigos de "el OS no sabe quién sos"? Lo usa el router para elegir el código de error. */
+export const esProblemaDeIdentidad = (codigo) => Object.values(MOTIVO_IDENTIDAD).includes(codigo)
+
+/**
+ * ¿Por qué esta identidad no alcanza para actuar en nombre de la persona? `null` si alcanza.
+ *
+ * Devuelve el mensaje QUE VE LA PERSONA, y dice de quién es el problema: una identidad que falta
+ * o que está incompleta es un defecto del OS, no algo que se arregle escribiendo mejor el pedido.
+ *
+ * @returns {{codigo:string, mensaje:string}|null}
+ */
+export function diagnosticoIdentidad(identidad) {
+  if (!identidad) {
+    return {
+      codigo: MOTIVO_IDENTIDAD.SIN_ACTOR,
+      mensaje: 'No pude identificar quién me está escribiendo, así que no puedo hacer nada en tu nombre. '
+        + 'Es un problema del OS: avisale a Dirección.',
+    }
+  }
+  if (identidad.provisoria) {
+    return {
+      codigo: MOTIVO_IDENTIDAD.NO_REGISTRADA,
+      mensaje: `No te tengo registrado en el OS (tu usuario de chat es ${identidad.plataformaUserId}), `
+        + 'y sin eso no puedo actuar en tu cuenta. No es algo que puedas arreglar vos: avisale a '
+        + 'Dirección para que reconcilien las identidades del chat.',
+    }
+  }
+  if (!emailDe(identidad)) {
+    return {
+      codigo: MOTIVO_IDENTIDAD.SIN_EMAIL,
+      mensaje: `Te tengo registrado como ${nombreCorto(identidad)} pero sin tu correo, y sin el correo `
+        + 'no puedo actuar en tu Google. Es un problema del OS: avisale a Dirección.',
+    }
+  }
+  return null
+}

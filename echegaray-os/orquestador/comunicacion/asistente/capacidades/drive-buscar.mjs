@@ -48,7 +48,7 @@ import {
   CAPACIDAD, ERROR, errorAsistente, resultadoOk, resultadoError, resultadoAclaracion, zDriveBuscar,
 } from '../contratos.mjs'
 import { paredAR } from '../tiempo.mjs'
-import { clasificarErrorGoogle, googleDisponible, errorSinCuenta } from '../google-cliente.mjs'
+import { clasificarErrorGoogle, googleDisponible, motivoGoogleAlguna, errorSinCuenta } from '../google-cliente.mjs'
 import { crearIndice, buscar, registrarAceptacion, registrarRechazo, analizarConsulta } from '../../../lib/drive-busqueda/buscar.mjs'
 import { rutaLegible } from '../../../lib/drive-busqueda/ranking.mjs'
 import {
@@ -318,6 +318,7 @@ export const capacidad = {
   ejemplos: ['pasame el contrato de Quattropani', 'buscame el flujo de caja', 'vision/traccion'],
   entrada: zDriveBuscar,
   habilitada: (ctx) => googleDisponible(ctx, ctx?.googleDeps),
+  motivoNoHabilitada: (ctx) => motivoGoogleAlguna(ctx, ctx?.googleDeps),
 
   async ejecutar(params, ctx = {}) {
     const p = zDriveBuscar.safeParse(params)

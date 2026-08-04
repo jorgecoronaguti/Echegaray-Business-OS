@@ -19,6 +19,7 @@ import { operadorPara, tieneToken, getTokenFor, hayCuentaAutorizada } from '../.
 import { identidadDe, IDENTIDAD } from '../../lib/google-os.mjs'
 import { loadConfig } from '../../lib/config.mjs'
 import { ERROR, errorAsistente } from './contratos.mjs'
+import { diagnosticoIdentidad } from './identidades.mjs'
 
 /** Marca en el cliente con qué cuenta quedó armado. Symbol.for para que sobreviva a que
  *  dos módulos carguen copias distintas de este archivo (worker + web). */
@@ -116,6 +117,71 @@ export async function googlePropioDisponible(ctx, deps = {}) {
   if (cuentaDe(ctx?.google)?.propia === true) return true
   const tiene = deps.tieneToken ?? tieneToken
   try { return (await tiene(email)) === true } catch { return false }
+}
+
+// ── Por qué NO está disponible ───────────────────────────────────────────────
+//
+// `googlePropioDisponible` devuelve un booleano, y un booleano no explica nada. Cuando devolvía
+// `false` porque la persona no tenía identidad —el defecto real del 04/08— el chat contestaba «no
+// tengo habilitado eso para vos», que es la frase del permiso denegado. Dos causas opuestas, un
+// solo mensaje: la que era un defecto del OS se leyó como una restricción del usuario.
+
+export const MOTIVO_GOOGLE = Object.freeze({
+  NO_ENLAZADO: 'google_no_enlazado',
+  SIN_NINGUNA: 'google_sin_ninguna_cuenta',
+  NO_VERIFICABLE: 'google_no_verificable',
+})
+
+/** Por qué no está disponible algo que necesita la cuenta DE ESTA PERSONA. Nunca tira. */
+export async function motivoGooglePropio(ctx, deps = {}) {
+  const dIdentidad = diagnosticoIdentidad(ctx?.identidad)
+  if (dIdentidad) return dIdentidad
+  const email = String(ctx?.identidad?.email ?? '').toLowerCase()
+  const tiene = deps.tieneToken ?? tieneToken
+  try {
+    // Si el enlace SÍ está, entonces lo que falló fue el chequeo, no la persona: decirle
+    // "conectá tu Google" cuando ya lo conectó la manda a hacer algo que no va a cambiar nada.
+    if ((await tiene(email)) === true) {
+      return {
+        codigo: MOTIVO_GOOGLE.NO_VERIFICABLE,
+        mensaje: 'Tu Google figura enlazado pero ahora mismo no lo puedo usar. Probá de nuevo en un rato; '
+          + 'si sigue igual, avisale a Dirección.',
+      }
+    }
+  } catch {
+    return {
+      codigo: MOTIVO_GOOGLE.NO_VERIFICABLE,
+      mensaje: 'No pude verificar si tu cuenta de Google está enlazada. Probá de nuevo en un rato.',
+    }
+  }
+  return {
+    codigo: MOTIVO_GOOGLE.NO_ENLAZADO,
+    mensaje: `Para eso necesito TU cuenta de Google (${email}) y todavía no está enlazada. Entrá a `
+      + '"Conectar con Google" en el OS, autorizá Calendar y Tareas, y volvé a pedírmelo.',
+  }
+}
+
+/** Por qué no está disponible algo que se conforma con CUALQUIER cuenta (leer Drive). */
+export async function motivoGoogleAlguna(ctx, deps = {}) {
+  const hayAlguna = deps.hayCuentaAutorizada ?? hayCuentaAutorizada
+  try {
+    if ((await hayAlguna()) === true) {
+      return {
+        codigo: MOTIVO_GOOGLE.NO_VERIFICABLE,
+        mensaje: 'Hay una cuenta de Google conectada pero ahora mismo no la puedo usar. Probá de nuevo en un rato.',
+      }
+    }
+  } catch {
+    return {
+      codigo: MOTIVO_GOOGLE.NO_VERIFICABLE,
+      mensaje: 'No pude verificar el acceso a Google. Probá de nuevo en un rato.',
+    }
+  }
+  return {
+    codigo: MOTIVO_GOOGLE.SIN_NINGUNA,
+    mensaje: 'El OS no tiene ninguna cuenta de Google conectada, así que no puedo mirar Drive. '
+      + 'Es un problema del OS: avisale a Dirección.',
+  }
 }
 
 // ── Errores ──────────────────────────────────────────────────────────────────
