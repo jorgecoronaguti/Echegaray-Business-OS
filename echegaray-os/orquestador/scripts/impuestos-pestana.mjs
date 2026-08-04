@@ -21,6 +21,11 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { posicionIvaCompleta } from '../lib/posicion-iva.mjs'
+import {
+  anclaDeProyeccion, aNumero, formulaDebitoProyectado, formulaCreditoProyectado,
+  formulaAPagarProyectado, formulaLibreDispProyectada, supuestoDelMes, RANGO_ALICUOTA_IVA,
+} from '../lib/iva-libre-disponibilidad.mjs'
+import { publicar as publicarNombres } from '../lib/rangos-nombrados.mjs'
 import { clasificar, mes as mesDe, COLUMNAS } from '../lib/retenciones-sufridas.mjs'
 import { query } from '../lib/db.mjs'
 import { parsearDDJJ, alicuotaDeclarada } from '../lib/iibb-ddjj.mjs'
@@ -162,10 +167,62 @@ async function planesDePago() {
  * total, O de dónde sale. Las FILAS son las medidas y las COLUMNAS el tiempo — que es como se lee
  * cualquier cuadro fiscal— y todos los bloques quedan alineados uno debajo del otro.
  */
-function grilla(iva, planes, iibb, ivaOficial, C) {
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LAS LÍNEAS DEL CASH FLOW DE LAS QUE SALE LA PROYECCIÓN DE IVA
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// SE UBICAN POR SU RÓTULO, NUNCA POR SU FILA. Escribir 'Cash Flow Mensual'!I$24 acá es fabricar un
+// rango fosilizado: el cash flow se regenera entero y una fila insertada arriba convierte esa
+// referencia en otra cosa, en silencio y sin error. Ya pasó con Estructura!$15 y Recurrentes!$24.
+//
+// EL CRÉDITO NO USA EL TOTAL DE PROVEEDORES. "Cheques sin factura cargada" y "Cuotas de tarjeta sin
+// factura cargada" son plata que sale pero SIN comprobante, y sin comprobante no hay crédito fiscal
+// computable. Meterlas inflaría el crédito y haría desaparecer un pago de IVA que sí va a ocurrir.
+// Por eso se suman las sub-líneas con factura, una por una, y no el subtotal.
+const CF = 'Cash Flow Mensual'
+const LINEAS_DEBITO = [
+  'Cobros por ventas y servicios (ya cobrado)',
+  'Cobranzas esperadas — de este mes en adelante (proyección, suma al flujo)',
+]
+const LINEAS_CREDITO = [
+  'Materiales e insumos de obra civil',
+  'Materiales de mantenimiento',
+  'Gastos de estructura y administración',
+  'Servicios recurrentes',
+]
+
+/** La fila de cada rótulo en la columna A del cash flow. Rompe si falta alguno: una referencia a una
+ *  fila que no existe devuelve 0 y el cuadro proyectaría $0 de IVA otra vez, que es el defecto que
+ *  esto vino a arreglar. */
+export function ubicarLineas(colA = [], rotulos = []) {
+  const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
+  const idx = new Map(colA.map((f, i) => [norm(f?.[0]), i + 1]))
+  const filas = rotulos.map((r) => ({ rotulo: r, fila: idx.get(norm(r)) ?? null }))
+  const faltan = filas.filter((f) => !f.fila).map((f) => f.rotulo)
+  if (faltan.length) {
+    throw new Error(`impuestos-pestana: no encuentro en "${CF}" la(s) línea(s): ${faltan.join(' · ')}. `
+      + 'Sin ellas la proyección de IVA saldría $0 — no escribo una referencia muerta.')
+  }
+  return filas.map((f) => f.fila)
+}
+
+// "ESTA CELDA NO ES MÍA: NO LA TOQUES."
+//
+// POR QUÉ HACE FALTA (04/08). `fusionar()` distingue tres cosas: contenido (gana el generador),
+// VACIO (es mía y va vacía → se limpia) y cadena vacía (no es mía → se preserva). Pero `push()`
+// convierte la cadena vacía en VACIO, así que desde `mensual()` era IMPOSIBLE decir "preservá".
+//
+// Y esta pestaña lo necesita. La columna de julio del bloque de IVA la escribió una persona a mano
+// —débito, crédito, libre disponibilidad y la leyenda "⚠ PROYECCIÓN — DDJJ vence 20/08"— y en Drive
+// no hay F.2051 de julio. Para el generador julio "no existe", así que le escribía VACIO y se la
+// borraba. `respetar-ediciones` no la salva: por diseño respeta rótulos de texto, nunca importes.
+// Y julio es justo el mes que ancla toda la proyección, así que borrarlo además la falsea.
+const AJENO = ' ::AJENO:: '
+
+function grilla(iva, planes, iibb, ivaOficial, C, proy) {
   const filas = []
   const push = (c = []) => {
-    const r = [...c].map((x) => (x === '' || x === undefined || x === null ? VACIO : x))
+    const r = [...c].map((x) => (x === AJENO ? '' : (x === '' || x === undefined || x === null ? VACIO : x)))
     while (r.length < ANCHO) r.push(VACIO)
     filas.push(r); return filas.length
   }
@@ -221,24 +278,70 @@ function grilla(iva, planes, iibb, ivaOficial, C) {
   const mesesOf = M12.filter((m) => porMesOf.has(m))
   const ultOf = mesesOf[mesesOf.length - 1]
   // Los importes son VALORES de la DDJJ presentada, no fórmulas: el número oficial no se recalcula.
-  const of = (m, campo) => (porMesOf.has(m) ? porMesOf.get(m)[campo] : VACIO)
+  // (La función que los lee es `ofOAjeno`, más abajo: distingue además el mes que no es del
+  // generador. La versión anterior —`of`, que devolvía VACIO para todo lo que no fuera DDJJ— se
+  // eliminó a propósito: era la que borraba la columna que había escrito una persona.)
 
-  mensual('Débito fiscal del período', (m) => of(m, 'debito'),
-    'F.2051 · IVA generado por las ventas del mes.', { meses: mesesOf })
-  mensual('Crédito fiscal del período', (m) => of(m, 'credito'),
-    'F.2051 · IVA de las compras computable del mes.', { meses: mesesOf })
+  // ═══ LOS MESES QUE TODAVÍA NO PASARON (04/08) ═══
+  //
+  // Hasta hoy este bloque terminaba en el último mes con F.2051 en Drive y de ahí en adelante dejaba
+  // las celdas VACÍAS. El cash flow las lee con N(), que convierte un vacío en 0 sin avisar: el
+  // cuadro mostraba $0 de IVA hasta diciembre. No era un modelo faltante — `posicionIvaCompleta` ya
+  // calculaba la proyección y `grilla()` la recibía como primer parámetro sin usarla nunca.
+  //
+  // Ahora los meses futuros se escriben como FÓRMULA. Los meses reales siguen siendo VALORES (la
+  // DDJJ es fuente primaria y su número no se recalcula), pero un mes proyectado se deduce de celdas
+  // que ya viven en este archivo, y pegarlo como número lo congelaría: el dueño mueve una cobranza
+  // esperada y el IVA proyectado se queda con la foto vieja.
+  const proyIva = proy?.meses ?? []
+  const esProy = (m) => proyIva.includes(m)
+  // LOS MESES QUE YA TIENEN DATO EN LA HOJA PERO NO TIENEN DDJJ SE PRESERVAN, NO SE VACÍAN. Es el
+  // caso de julio: alguien lo calculó a mano. Entran a la lista de meses escribibles para que
+  // `mensual` los recorra, y la función de celda les devuelve AJENO — "no la toques".
+  const ancla = proy?.ultimoMesConDato ?? 0
+  const conDato = M12.filter((m) => m <= ancla && !mesesOf.includes(m))
+  const mesesIva = [...mesesOf, ...conDato, ...proyIva].sort((a, b) => a - b)
+  /** El valor de un mes NO proyectado: el de la DDJJ si la hay, y si no se preserva lo que haya. */
+  const ofOAjeno = (m, campo) => (porMesOf.has(m) ? porMesOf.get(m)[campo] : (m <= ancla ? AJENO : VACIO))
+  // Las filas de este bloque son consecutivas y se conocen antes de escribirlas: el arrastre del
+  // saldo necesita apuntar a la celda del mes ANTERIOR, que está en esta misma grilla.
+  const fDeb = filas.length + 1
+  const fCred = fDeb + 1
+  const fLibreDisp = fDeb + 3
+  const colAnt = (m) => `${cmes(m - 1)}${fLibreDisp}`
+  const brutos = (fs, m) => fs.map((f) => `'${CF}'!${cmes(m)}$${f}`)
+
+  mensual('Débito fiscal del período',
+    (m) => (esProy(m) ? formulaDebitoProyectado(brutos(proy.filasDebito, m)) : ofOAjeno(m, 'debito')),
+    'F.2051 · IVA generado por las ventas del mes. Los meses futuros son PROYECCIÓN: el IVA contenido en las cobranzas que el cash flow ya da por cobradas y esperadas.', { meses: mesesIva })
+  mensual('Crédito fiscal del período',
+    (m) => (esProy(m) ? formulaCreditoProyectado(brutos(proy.filasCredito, m)) : ofOAjeno(m, 'credito')),
+    'F.2051 · IVA de las compras computable del mes. Los meses futuros son PROYECCIÓN: el IVA contenido en las compras CON FACTURA que el cash flow ya proyecta (los cheques y la tarjeta sin factura quedan afuera: sin comprobante no hay crédito computable).', { meses: mesesIva })
   // EL RÓTULO NO SE ESCRIBE ACÁ: sale de ROTULOS_CALENDARIO, que es lo que el cash flow BUSCA. Este
   // bloque conserva 5 filas mensuales para no correr la fila de "IIBB a pagar" (28); pero la fila que
   // el cash flow encuentra la define el TEXTO, no la posición — el 30/07 se renombró esta fila
   // razonando sobre la fila 18 y los dos cash flow quedaron sin poder regenerarse.
   // La posición técnica del mes es derivable de débito − crédito + arrastre, así que no ocupa una fila
   // propia; su único mes relevante (marzo, a favor de ARCA) se ve en la libre disponibilidad.
-  mensual(CALENDARIO_IMPUESTOS.rotulos.iva, (m) => of(m, 'a_pagar_efectivo'),
-    'Lo absorbe el crédito de libre disponibilidad. En 2026 no salió plata por IVA — no es un egreso del cash flow.', { meses: mesesOf })
-  const fLibre = mensual('Saldo de libre disponibilidad (acumulado)', (m) => of(m, 'libre_disp'),
-    'F.2051 · crédito de la empresa inmovilizado en ARCA (marzo: se consumió parte para la posición a favor de ARCA). Se arrastra; el total no aplica.', { meses: mesesOf, totaliza: false })
-  const fDDJJ = mensual('DDJJ presentada', (m) => (porMesOf.has(m) ? `${porMesOf.get(m).fecha_presentacion} · N°${porMesOf.get(m).nro_transaccion}` : VACIO),
-    'F.2051 presentada ante ARCA. Fuente primaria, verificable por N° de transacción.', { meses: mesesOf, totaliza: false })
+  mensual(CALENDARIO_IMPUESTOS.rotulos.iva,
+    (m) => (esProy(m)
+      ? formulaAPagarProyectado(`${cmes(m)}${fDeb}`, `${cmes(m)}${fCred}`, colAnt(m))
+      : ofOAjeno(m, 'a_pagar_efectivo')),
+    'Hasta julio lo absorbió el crédito de libre disponibilidad. De agosto en adelante es PROYECCIÓN: lo que el saldo a favor del mes anterior ya no alcanza a absorber. ESTA es la fila que el cash flow lee.', { meses: mesesIva })
+  const fLibre = mensual('Saldo de libre disponibilidad (acumulado)',
+    (m) => (esProy(m)
+      ? formulaLibreDispProyectada(colAnt(m), `${cmes(m)}${fDeb}`, `${cmes(m)}${fCred}`)
+      : ofOAjeno(m, 'libre_disp')),
+    'F.2051 · crédito de la empresa inmovilizado en ARCA (marzo: se consumió parte para la posición a favor de ARCA). Se arrastra; el total no aplica.', { meses: mesesIva, totaliza: false })
+  const fDDJJ = mensual('DDJJ presentada',
+    (m) => (esProy(m) ? '⚠ PROYECCIÓN' : (porMesOf.has(m) ? `${porMesOf.get(m).fecha_presentacion} · N°${porMesOf.get(m).nro_transaccion}` : (m <= ancla ? AJENO : VACIO))),
+    'F.2051 presentada ante ARCA. Fuente primaria, verificable por N° de transacción. Los meses con "⚠ PROYECCIÓN" no tienen DDJJ: son un cálculo, no un hecho.', { meses: mesesIva, totaliza: false })
+  // EL SUPUESTO NO SE ESCRIBE ACÁ, AUNQUE SEA DONDE MEJOR SE LEERÍA. Una fila de más en esta sección
+  // corre hacia abajo la fila "IIBB a pagar", y el cash flow la referencia por su NÚMERO
+  // ('Impuestos y Financieros'!L$28) hasta que se lo regenera. Mientras tanto leería la fila de al
+  // lado sin dar error. Es la trampa que el 30/07 dejó los dos cash flow sin poder regenerarse.
+  // El supuesto viaja en la columna "De dónde sale" de cada fila (que se rinde como nota de celda) y
+  // se repite completo en la sección 7, que está debajo de todo y no mueve nada.
   push()
 
   // ── 2 · INGRESOS BRUTOS ────────────────────────────────────────────────────────────────────────
@@ -335,10 +438,29 @@ function grilla(iva, planes, iibb, ivaOficial, C) {
   push([`   · costo del impuesto al cheque proyectado a los meses sin extracto`, ...M12.map((m) => (m > new Date().getMonth() + 1
     ? `=IFERROR(AVERAGEIF($B$${fCheque}:$M$${fCheque};">0");0)` : VACIO)), `=SUM($B${filas.length + 1}:$M${filas.length + 1})`,
   'Promedio de los meses con extracto. El extracto cubre un mes: la base es fina y hay que decirlo.'])
-  push(['⚠ Tasa municipal de seguridad e higiene', ...Array(13).fill(VACIO),
-    'NO hay una sola fila en Compras ni en el banco. Si la obra tributa tasa municipal, hoy ese costo no está en ningún cuadro. No se estima.'])
-  push(['⚠ Impuesto de sellos', ...Array(13).fill(VACIO),
-    'Sin dato. Aplica sobre contratos: si se firmó alguno con sellado, no está registrado.'])
+  // ═══ UN HUECO SE VE COMO UN HUECO, NO COMO UN CERO (04/08) ═══
+  //
+  // El dueño: *"$0 y 'no lo sabemos' no son lo mismo y hoy se ven igual"*. Tenía razón: estas dos
+  // filas eran el rótulo con ⚠ y doce celdas vacías, que en un cuadro de importes se leen como "no
+  // hay nada que pagar". Son lo contrario: son impuestos que probablemente se pagan y que nadie
+  // cuantificó nunca.
+  //
+  // SE ESCRIBE "s/d" EN CADA MES, Y ES TEXTO A PROPÓSITO. SUM() ignora el texto, así que el hueco
+  // queda a la vista sin ensuciar un solo total — y sin que aparezca un cero que después alguien
+  // sume de buena fe. La columna de total dice "sin cuantificar" en vez de $0 por la misma razón.
+  // NO se estiman: estimar acá sería fabricar un dato, que es la primera regla de oro.
+  const SD = 's/d'
+  push(['⚠ Tasa municipal de seguridad e higiene', ...Array(12).fill(SD), 'sin cuantificar',
+    'HUECO DECLARADO · no hay una sola fila en Compras ni en el banco. Si la obra tributa tasa municipal, ese costo hoy no está en ningún cuadro. "s/d" no es cero: es que no se sabe. Para cerrarlo hace falta el municipio de cada obra y su ordenanza vigente.'])
+  push(['⚠ Impuesto de sellos', ...Array(12).fill(SD), 'sin cuantificar',
+    'HUECO DECLARADO · sin dato. Aplica sobre contratos: si se firmó alguno con sellado, no está registrado. "s/d" no es cero. Para cerrarlo hace falta la lista de contratos firmados en el año.'])
+  // EL ANTICIPO DE GANANCIAS SE CORTÓ Y NO SE SABE POR QUÉ. La fila de arriba lo lee de Compras y
+  // encuentra $144.427 por mes de enero a abril; de mayo en adelante, nada. Desde el Sheet no se
+  // puede distinguir "se dio de baja el anticipo" de "no se cargó el comprobante", y son cosas muy
+  // distintas: una no cuesta plata y la otra son ~$144k por mes que el cash flow no está viendo.
+  // No se proyecta —sería inventar— pero tampoco se deja el cero solo: se declara la pregunta.
+  push(['⚠ Anticipo de Ganancias — sin registro desde mayo', ...Array(12).fill(VACIO), VACIO,
+    'HUECO DECLARADO · último anticipo cargado: abril, $144.427/mes de enero a abril ($577.710 en el año). De mayo en adelante Compras no tiene ninguna fila. ¿Se dio de baja el anticipo, o no se cargó el comprobante? Si sigue vigente son ~$144.427 por mes que el cash flow no está proyectando. Lo confirma el estudio contable.'])
   push()
 
   // ── 5 · PLANES DE PAGO F931 ────────────────────────────────────────────────────────────────────
@@ -404,12 +526,41 @@ function grilla(iva, planes, iibb, ivaOficial, C) {
   push([seccion(7, 'Lo que falta para que esta pestaña se actualice sola')])
   push(['⚠ Los pagos de IVA e IIBB no están cargados en Compras: hoy el cash flow no ve esas salidas.'])
   push(['⚠ La alícuota de IIBB se toma de las DDJJ leídas. Conviene que la confirme el contador.'])
+  if (proyIva.length) push([`⚠ IVA de ${MES[proyIva[0] - 1]} a diciembre: ${proy.supuesto}`])
+  push()
+
+  // ── 8 · EL PARÁMETRO ───────────────────────────────────────────────────────────────────────────
+  //
+  // LA ALÍCUOTA VIVE EN UNA CELDA CON NOMBRE, NO ADENTRO DE UNA FÓRMULA. El dueño lo pidió así y
+  // además es lo único defendible: la skill de impuestos prohíbe afirmar una alícuota vigente sin
+  // verificarla, y el OS no puede verificar una norma en cada corrida. Así que el OS no la afirma —
+  // la LEE de acá, y quien la firma es quien puede hacerlo (el dueño con su contador). Cambiarla es
+  // editar UNA celda; toda la proyección de IVA se recalcula sola.
+  //
+  // AL FINAL DE LA PESTAÑA, Y ES DELIBERADO. Una fila nueva arriba corre hacia abajo las filas "IVA
+  // a pagar" e "IIBB a pagar", y los dos cash flow las referencian por su NÚMERO hasta que se los
+  // regenera. Abajo de todo no se mueve nada.
+  //
+  // SI YA HAY UN VALOR, NO SE PISA: `alicuotaVigente` sale de la celda leída antes de escribir. El
+  // valor de arranque sólo se pone la primera vez, y la celda queda declarada como editable.
+  push([seccion(8, 'Parámetros de esta pestaña — los edita el dueño con su contador')])
+  const fAlic = push(['Alícuota general de IVA', proy?.alicuotaVigente ?? 0.21, ...Array(11).fill(VACIO), VACIO,
+    `PARÁMETRO EDITABLE · lo usa la proyección de IVA de la sección 1 por el rango con nombre ${RANGO_ALICUOTA_IVA}. `
+    + 'El OS NO afirma que esta alícuota esté vigente: la lee de acá. Si cambia la norma, o si a la actividad le corresponde una alícuota distinta, se cambia esta celda y todo el cuadro se recalcula. Confirmala con el estudio contable.'])
 
   // ── EL HERO, RECIÉN AHORA: ya se sabe en qué fila quedó cada total ──────────────────────────────
   // El saldo a favor de IVA es la LIBRE DISPONIBILIDAD de la última DDJJ (ya incluye técnico +
   // retenciones/percepciones de IVA). El de IIBB, el saldo a favor de su última DDJJ. Por eso las
   // retenciones NO se vuelven a sumar al total: ya están adentro de esos dos saldos (doble conteo).
-  const saldoIVA = ultOf ? `${cmes(ultOf)}${fLibre}` : '0'
+  // EL ANCLA ES EL ÚLTIMO MES CON DATO REAL, NO LA ÚLTIMA DDJJ PRESENTADA NI EL ÚLTIMO MES DEL
+  // CUADRO (04/08). Estaba anclado en `ultOf` —la última F.2051 que hay en Drive, junio— y por eso
+  // el hero declaraba $19.344.911 de saldo a favor mientras la columna de julio, dos filas más
+  // abajo, ya decía $7.050.036. Sobredeclaraba $12,3M de plata inmovilizada, que es justo el número
+  // con el que se decide si hay que salir a cubrir un bache de caja.
+  // Y tampoco puede ser diciembre: de agosto en adelante el saldo es PROYECCIÓN, y el hero dice cuál
+  // es la posición HOY. Por eso el ancla es el último mes con dato real, que ahora incluye julio.
+  const mesSaldoIVA = proy?.ultimoMesConDato ?? ultOf
+  const saldoIVA = mesSaldoIVA ? `${cmes(mesSaldoIVA)}${fLibre}` : '0'
   const saldoIIBB = mesesIIBB.length ? `${cmes(mesesIIBB[mesesIIBB.length - 1])}${fSaldoI}` : '0'
   const hero = [
     ['LA POSICIÓN', 'Monto', ...Array(11).fill(VACIO), VACIO, 'De dónde sale'],
@@ -432,10 +583,13 @@ function grilla(iva, planes, iibb, ivaOficial, C) {
     filas,
     titular: heroBase + 2,
     heroTotales: [heroBase + 2, heroBase + 7],
-    alicuotas: [fAli],
+    alicuotas: [fAli, fAlic],
     textos: [fDDJJ],
+    // Los meses proyectados se marcan para que el estilo los distinga del dato real de un vistazo:
+    // una proyección que se ve igual que un hecho termina leyéndose como un hecho.
     proyectados: [],
     saldos: [fLibre, fSaldoI, fSalidaFin],
+    filaAlicuotaIva: fAlic,
   }
 }
 
@@ -582,6 +736,69 @@ async function leerRetenciones(google) {
   return clasificar(cobros)
 }
 
+/**
+ * QUÉ MESES SE PROYECTAN, DESDE QUÉ SALDO, CON QUÉ ALÍCUOTA Y CONTRA QUÉ FILAS DEL CASH FLOW.
+ *
+ * Se lee la pestaña ANTES de escribirla, y eso no es una precaución de más: el ancla de toda la
+ * proyección es la libre disponibilidad del último mes cargado, y ese mes puede haberlo escrito una
+ * persona (julio lo hizo). Si se anclara en la última F.2051 de Drive, la proyección arrancaría del
+ * saldo de junio ($19,3M) y el cuadro diría que el saldo a favor aguanta hasta fin de año, cuando en
+ * realidad se agota el mes siguiente.
+ */
+async function planDeProyeccionIva(google, ivaOficial) {
+  // La grilla de la sección 1 tal como está hoy. Se busca la fila por su RÓTULO, no por su número:
+  // la fila 19 de hoy es otra cosa apenas alguien agregue una línea arriba.
+  //
+  // SIN .catch: ESTA LECTURA DECIDE QUÉ SE ESCRIBE. Si la API falla y esto se degrada a [], el ancla
+  // desaparece y el generador escribe la pestaña SIN proyección — o peor, arranca de un saldo que no
+  // es. Un error de red terminaría produciendo un cuadro que dice que no hay IVA que pagar. Falla
+  // ruidoso: no correr es mejor que correr con un ancla inventada. (Lo fija deuda-geometria.test.)
+  const previo = await google.readSheetValues(ID, `${PESTAÑA}!A1:N60`)
+  const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
+  const filaDe = (rot) => previo.findIndex((f) => norm(f?.[0]) === norm(rot))
+  const iL = filaDe('Saldo de libre disponibilidad (acumulado)')
+  const filaLibre = iL >= 0 ? (previo[iL] || []).slice(1, 13) : []
+  const mesesConDDJJ = (ivaOficial ?? []).filter((d) => d.periodo).map((d) => Number(String(d.periodo).slice(5, 7)))
+  const { ultimoMesConDato, libreDisp, mesesAProyectar } = anclaDeProyeccion(filaLibre, mesesConDDJJ)
+
+  // LA ALÍCUOTA VIGENTE SALE DE LA CELDA, NO DE UNA CONSTANTE. Si el dueño ya la editó, manda la
+  // suya: es la regla de "edición manual = verdad definitiva". Sólo la primera vez se siembra 0,21.
+  const iA = filaDe('Alícuota general de IVA')
+  const crudo = iA >= 0 ? previo[iA]?.[1] : null
+  const alicuotaVigente = aNumero(crudo) !== null ? aNumero(crudo) / (String(crudo).includes('%') ? 100 : 1) : null
+
+  // Tampoco lleva .catch, y por el mismo motivo: con [] las dos llamadas a ubicarLineas romperían
+  // igual, pero con un mensaje que culparía al cash flow de haber perdido sus rótulos en vez de
+  // decir que no se pudo leer. El error tiene que nombrar lo que pasó.
+  const colA = await google.readSheetValues(ID, `'${CF}'!A1:A80`)
+  const filasDebito = ubicarLineas(colA, LINEAS_DEBITO)
+  const filasCredito = ubicarLineas(colA, LINEAS_CREDITO)
+  return {
+    meses: mesesAProyectar,
+    ultimoMesConDato,
+    libreDisp,
+    alicuotaVigente,
+    filasDebito,
+    filasCredito,
+    supuesto: supuestoDelMes({ cobranzas: LINEAS_DEBITO, compras: LINEAS_CREDITO })
+      + ` Arranca del saldo a favor de ${MES[(ultimoMesConDato ?? 1) - 1]} ($${Math.round(libreDisp ?? 0).toLocaleString('es-AR')}).`
+      + ' Es un CÁLCULO, no un hecho: el débito fiscal de una obra se devenga con el certificado aprobado, que puede caer antes que el cobro.',
+  }
+}
+
+/** Qué va a escribir la proyección, ANTES de escribirla. Es lo que se mira en --dry. */
+function informarProyeccion(proy) {
+  if (!proy?.meses?.length) {
+    console.log(`  IVA: nada que proyectar (último mes con dato: ${proy?.ultimoMesConDato ?? 'ninguno'})`)
+    return
+  }
+  console.log(`  IVA proyectado: ${MES[proy.meses[0] - 1]}→${MES[proy.meses[proy.meses.length - 1] - 1]}`
+    + ` · ancla ${MES[proy.ultimoMesConDato - 1]} con $${Math.round(proy.libreDisp ?? 0).toLocaleString('es-AR')} de libre disponibilidad`
+    + ` · alícuota ${proy.alicuotaVigente === null ? '0,21 (se siembra la celda por primera vez)' : proy.alicuotaVigente}`)
+  console.log(`  débito ← '${CF}' filas ${proy.filasDebito.join('+')} · crédito ← filas ${proy.filasCredito.join('+')}`)
+  console.log(`  supuesto: ${proy.supuesto}`)
+}
+
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const iibb = await leerIIBB(google)
@@ -595,7 +812,12 @@ async function main() {
   // la DDJJ de Rentas que esta misma pestaña lee: sumarlas otra vez sería contarlas dos veces.
   const retIva = Object.fromEntries(Object.entries(ret.porMes)
     .filter(([k]) => k.startsWith('iva|')).map(([k, v]) => [k.slice(4), v]))
+  // LA POSICIÓN TÉCNICA DE ARCA SIGUE CALCULÁNDOSE, PERO COMO CONTROL — NO COMO INSUMO. Es una
+  // segunda medición, independiente de la DDJJ: si las dos se separan mucho, alguna de las dos está
+  // mal y hay que mirarlo. Un control no se valida contra la información que produce, así que NO
+  // alimenta ninguna celda. Hasta el 04/08 se calculaba y se tiraba, que es otra cosa.
   const iva = await posicionIvaCompleta(AÑO, ventas, factor, retIva)
+  const proy = await planDeProyeccionIva(google, ivaOficial)
   const planes = await planesDePago()
   const cabCompras = (await google.readSheetValues(ID, 'Compras!A3:BZ3'))[0] || []
   const { col: C, faltan } = resolverColumnas(cabCompras, {
@@ -603,7 +825,7 @@ async function main() {
   })
   if (faltan.length) { console.error(`⚠ faltan columnas en Compras: ${faltan.join(', ')} — no escribo con referencias inventadas`); process.exit(1) }
   console.log(`  Compras por encabezado: Total=${C.total} · Concepto=${C.concepto} · Fecha de caja=${C.fecha} · Rubro=${C.rubro}`)
-  const g = grilla(iva, planes, iibb, ivaOficial, C)
+  const g = grilla(iva, planes, iibb, ivaOficial, C, proy)
   if (ret.sospechosas.length) {
     console.error(`  ⚠ ${ret.sospechosas.length} retención(es) con alícuota que no encaja con ningún régimen — NO se computaron:`)
     for (const x of ret.sospechosas) console.error(`     fila ${x.fila} ${x.cliente}: ${x.regimen} ${Math.round(x.monto).toLocaleString('es-AR')} = ${(x.alicuota * 100).toFixed(2)}%`)
@@ -615,6 +837,7 @@ async function main() {
       console.log(`  ${m.periodo}  débito ${Math.round(m.debito_fiscal).toLocaleString('es-AR').padStart(12)}  crédito ${Math.round(m.credito_fiscal).toLocaleString('es-AR').padStart(12)}  a pagar ${Math.round(m.a_pagar_real ?? 0).toLocaleString('es-AR').padStart(12)}  saldo a favor ${Math.round(m.saldo_queda).toLocaleString('es-AR').padStart(12)}${m.es_proyeccion ? '  (proyección)' : ''}`)
     }
     for (const p of planes) console.log(`  ${p.nombre.padEnd(42)} ${p.cuotas} cuotas x ${p.monto_cuota.toLocaleString('es-AR')} = ${Math.round(p.total).toLocaleString('es-AR')}`)
+    informarProyeccion(proy)
     return
   }
 
@@ -669,6 +892,17 @@ async function main() {
   const { conservadas } = salteada ? { conservadas: [] } : escritura
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
   if (!salteada) await formatear(google, hoja.sheetId, g, hoja.rows ?? 0)
+  // EL NOMBRE SE PUBLICA DESPUÉS DE ESCRIBIR, NUNCA ANTES. Un nombre que apunta a una fila que
+  // todavía no existe se resuelve a una celda vacía, y las fórmulas de la sección 1 leerían alícuota
+  // cero: todo el débito y todo el crédito proyectados darían $0 y el cuadro volvería a mentir en
+  // silencio. Y si la pestaña quedó salteada (candado o edición del dueño) tampoco se toca: la fila
+  // real es la de su última escritura, no la que acabo de calcular.
+  if (!salteada && g.filaAlicuotaIva) {
+    await publicarNombres(google, ID, hoja.sheetId, [{ name: RANGO_ALICUOTA_IVA, fila: g.filaAlicuotaIva, col: 2 }])
+      .then(() => console.log(`  ${RANGO_ALICUOTA_IVA} → ${PESTAÑA}!B${g.filaAlicuotaIva}`))
+      .catch((e) => console.warn(`  ⚠ no pude publicar ${RANGO_ALICUOTA_IVA}: ${e.message} — la proyección de IVA quedaría en $0`))
+  }
+  informarProyeccion(proy)
 
   // VERIFICAR MIRANDO LA PESTAÑA, no confiando en que la escritura salió bien.
   const v = await google.readSheetValues(ID, `${PESTAÑA}!A1:${letra(ANCHO - 1)}${g.filas.length}`)
@@ -745,4 +979,11 @@ async function formatear(google, sheetId, g, filasHoja = 0) {
   await google.spreadsheetBatchUpdate(ID, [{ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: n + 5 }, properties: { hiddenByUser: false }, fields: 'hiddenByUser' } }]).catch(() => {})
 }
 
-main().then(() => process.exit(0)).catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+// SÓLO CUANDO SE LO INVOCA COMO COMANDO. Sin esta guarda —que el resto de los generadores sí tiene—
+// bastaba `import` para que el archivo escribiera el Sheet real: un test que quisiera probar una
+// función pura de acá corría la pestaña entera contra el archivo de producción. Pasó el 04/08 al
+// escribir el primer test de este script; lo único que evitó la escritura fue el freno de mano, que
+// es una red que puede no estar puesta. Un módulo se importa; un comando se ejecuta.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().then(() => process.exit(0)).catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+}
