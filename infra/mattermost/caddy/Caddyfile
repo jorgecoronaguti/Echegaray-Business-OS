@@ -110,6 +110,24 @@
 		reverse_proxy {$OS_ASISTENCIA_UPSTREAM:unix//sockets/asistencia.sock}
 	}
 
+	# ── BOTONES DE LA IMPORTACIÓN DE ARCHIVOS ───────────────────────────────────────
+	#
+	# QUÉ PUBLICA:
+	#   POST /archivos/accion?t=<secreto>  Importar · Descartar de un extracto bancario leído
+	#
+	# MISMO PROCESO y MISMO SOCKET que las dos rutas de arriba: `servidor-asistencia.mjs` monta las
+	# tres. Sin upstream nuevo, sin servicio nuevo, sin puerto nuevo.
+	#
+	# TERCER SECRETO (`ARCHIVOS_ACCION_SECRETO`), por la misma razón que el de comprobantes es el
+	# tercero y no el mismo: quien puede confirmar un gasto no tiene por qué poder reescribir el saldo
+	# del banco, que es de donde cuelgan CAJA, el impuesto al cheque y el cruce de Cheques.
+	#
+	# Viaja en `?t=`, así que el filtro de log de abajo ya lo borra.
+	@archivos path /archivos /archivos/*
+	handle @archivos {
+		reverse_proxy {$OS_ASISTENCIA_UPSTREAM:unix//sockets/asistencia.sock}
+	}
+
 	# Todo lo demás sigue siendo Mattermost, exactamente como antes.
 	handle {
 		reverse_proxy mattermost:8065
