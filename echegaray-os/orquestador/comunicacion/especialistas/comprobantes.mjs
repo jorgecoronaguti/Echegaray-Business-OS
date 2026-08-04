@@ -118,7 +118,7 @@ export const especialista = {
     const r = await procesarPost({
       port,
       mattermost,
-      leer: (adjunto) => leerAdjunto(adjunto),
+      leer: (adjunto, vocabulario) => leerAdjunto(adjunto, { vocabulario }),
       listas: () => listasDeCompras(google),
       // EL PADRÓN DE ARCA es la fuente de verdad del número de comprobante: contra él se corrige el
       // dígito que la visión leyó de más. Se consulta por comprobante, con lo poco que se leyó; qué

@@ -45,6 +45,53 @@ export function tipoComprobante(letra) {
   return TIPOS[k] ?? TIPOS[String(letra).toUpperCase().trim()] ?? null
 }
 
+/**
+ * LOS SEIS VALORES DE LA COLUMNA P ("Tipo pago"), leídos del desplegable ESTRICTO del Sheet.
+ *
+ * ═══ POR QUÉ ESTA LISTA ESTÁ ESCRITA ACÁ (04/08) ═══
+ *
+ * El bot escribió `Importe` y `30 DIAS FECHA FACTURA` en esa columna. No son formas de pago: son
+ * pedazos de texto de la factura que el modelo copió en el campo equivocado. Como P tiene desplegable
+ * estricto, las dos celdas quedaron EN ROJO.
+ *
+ * La lista viva se lee del Sheet (`listas.mjs`) y ésa es la fuente. Esta constante es la ÚLTIMA
+ * defensa, la que corre aunque no se haya podido leer el desplegable y la que protege también al
+ * cargador de línea de comandos, que no lee listas. Que existan las dos no es duplicar la verdad: es
+ * que la celda no se ensucia ni cuando la verdad no se pudo consultar.
+ */
+export const TIPOS_PAGO = Object.freeze(['Efectivo', 'Transferencia', 'Débito', 'Tarjeta Crédito', 'Echeq', 'Cheque'])
+
+/**
+ * Lo leído → un valor EXACTO del desplegable P, o null.
+ *
+ * NO BUSCA "EL MÁS PARECIDO". Lo único que se tolera es la forma de escribir el MISMO valor
+ * —mayúsculas, tildes, y un puñado de variantes que nombran exactamente lo mismo— porque "EFECTIVO"
+ * y "Efectivo" no son dos respuestas distintas. Cualquier otra cosa devuelve null y la celda queda
+ * VACÍA: una celda vacía la completa alguien en dos segundos, una celda en rojo rompe el desplegable
+ * y hay que ir a buscarla.
+ *
+ * @param {string|null} v
+ * @param {string[]} [lista]  el desplegable VIVO, si se pudo leer; si no, los seis de arriba
+ */
+export function tipoPagoValido(v, lista = TIPOS_PAGO) {
+  const n = normalizar(v)
+  if (!n) return null
+  const opciones = (Array.isArray(lista) && lista.length ? lista : TIPOS_PAGO).map(String)
+  const exacto = opciones.find((o) => normalizar(o) === n)
+  if (exacto) return exacto
+  // Las variantes que nombran el MISMO medio de pago. Cada una está acá porque aparece escrita así en
+  // los comprobantes reales, no por si acaso: la lista se agranda con evidencia, no con imaginación.
+  const alias = {
+    'e cheq': 'Echeq', 'e-cheq': 'Echeq', echeque: 'Echeq', 'e cheque': 'Echeq',
+    'transferencia bancaria': 'Transferencia', transf: 'Transferencia',
+    'tarjeta de credito': 'Tarjeta Crédito', 'tarjeta credito': 'Tarjeta Crédito',
+    'debito automatico': 'Débito', 'tarjeta de debito': 'Débito', 'tarjeta debito': 'Débito',
+    contado: 'Efectivo',
+  }
+  const destino = alias[n.replace(/[-.]/g, ' ').replace(/\s+/g, ' ')] ?? alias[n]
+  return destino ? (opciones.find((o) => normalizar(o) === normalizar(destino)) ?? null) : null
+}
+
 /** Condición de venta de la factura → modalidad (F), estado (X) y total/parcial (S).
  *  Contado = pagada; Cuenta Corriente = pendiente. Es lo único que la foto declara sobre el pago. */
 export function condicionAPago(condicion) {
@@ -154,7 +201,9 @@ export function valoresInput(c) {
   set('concepto', c.concepto)
   set('neto', neto)
   set('iva', iva)
-  set('formaPago', c.formaPago) // sólo si la foto lo dice; si no, vacío (no se inventa)
+  // P SÓLO ACEPTA UNO DE SUS SEIS VALORES. Lo que no sea uno de ellos NO SE ESCRIBE: el desplegable
+  // es estricto y una celda en rojo es peor que una vacía. Ver `tipoPagoValido`.
+  set('formaPago', tipoPagoValido(c.formaPago))
   set('totalParcial', c.totalParcial ?? pago.totalParcial)
   set('estado', estado)
   // IMPUTACIÓN: sólo se escribe lo que venga explícito (la anotación del dueño en el comprobante).

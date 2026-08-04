@@ -141,8 +141,13 @@ export function indiceDuplicadoAbierto(items = []) {
 // se puede tocar y nadie ofreció, que es por donde entra un valor que el desplegable estricto de la
 // columna J va a rechazar.
 
-/** Campos que se pueden completar tocando un botón. El resto va por el formulario de "Corregir". */
-export const CAMPOS_IMPUTABLES = Object.freeze(['obra', 'unidad', 'detalle'])
+/**
+ * Campos que se pueden completar tocando un botón. El resto va por el formulario de "Corregir".
+ *
+ * `categoria` (columna B) entró el 04/08: quedaba vacía en TODA fila que cargó el bot, y tiene
+ * desplegable estricto igual que la obra y la unidad, así que se pregunta igual que ellas.
+ */
+export const CAMPOS_IMPUTABLES = Object.freeze(['categoria', 'obra', 'unidad', 'detalle'])
 
 /**
  * Las opciones que la lib de imputación aprendida contó para una dimensión, con el valor sugerido
@@ -165,6 +170,7 @@ export function opcionesDe(sug) {
 
 /** Cómo se llama cada columna en el menú. Son los rótulos REALES de la pestaña Compras. */
 export const ETIQUETA_CAMPO = Object.freeze({
+  categoria: 'Categoría',
   obra: 'Cliente / Asignación (obra)',
   unidad: 'Unidad de Negocio',
   detalle: 'Detalles / Obra',
@@ -188,6 +194,7 @@ export function opcionesDelDesplegable(item = {}, campo) {
   const o = item?.opciones ?? {}
   if (campo === 'obra') return Array.isArray(o.obra) ? o.obra : []
   if (campo === 'unidad') return Array.isArray(o.unidad) ? o.unidad : []
+  if (campo === 'categoria') return Array.isArray(o.categoria) ? o.categoria : []
   const obra = item?.comprobante?.obra
   return obra && o.detalle && Array.isArray(o.detalle[obra]) ? o.detalle[obra] : []
 }
@@ -197,6 +204,7 @@ export function imputacionPendiente(item = {}) {
   if (!item || item.yaCargado) return []
   const c = item.comprobante ?? {}
   const falta = []
+  if (!c.categoria) falta.push('categoria')
   if (!c.obra) falta.push('obra')
   if (!c.unidad) falta.push('unidad')
   if (!c.detalleObra) falta.push('detalle')
@@ -241,6 +249,8 @@ export function aplicarOpcion(item = {}, { campo, valor } = {}) {
     if (sug.detalle && sug.detalle.obra && sug.detalle.obra !== elegido.valor) sug.detalle = null
   } else if (campo === 'unidad') {
     c.unidad = elegido.valor
+  } else if (campo === 'categoria') {
+    c.categoria = elegido.valor
   } else {
     c.detalleObra = elegido.valor
     c.detalleVia = 'eleccion'

@@ -379,7 +379,17 @@ test('el DETALLE de la columna K se completa sólo cuando es UNO solo', async ()
 
 test('una anotación AMBIGUA sigue preguntando: el arreglo no es un adivinador', async () => {
   const listas = { ...LISTAS_COMPRAS, obras: ['MESSINA NORTE', 'MESSINA SUR'], detalles: {} }
-  const base = armar({ lecturas: [lecturaCorralonReal({ anotacion_manuscrita: 'Messinas', numero: '0004-00009999', fecha: '02/08/2026' })], listas })
+  // Los importes de este comprobante CIERRAN a propósito: `lecturaCorralonReal` trae el total copiado
+  // en el lugar del neto —el defecto real de aquella foto— y desde el 04/08 eso bloquea la carga. Lo
+  // que se prueba acá es la obra ambigua, no la aritmética: si el fixture no cerrara, el test pasaría
+  // por el motivo equivocado.
+  const base = armar({
+    lecturas: [lecturaCorralonReal({
+      anotacion_manuscrita: 'Messinas', numero: '0004-00009999', fecha: '02/08/2026',
+      neto_gravado: '51.239,67', iva_21: '10.760,33', total: '62.000,00',
+    })],
+    listas,
+  })
   const r = await procesarPost({ ...base.d, arcaDe: async () => [], comprasDe: async () => null }, post())
   assert.match(r.texto, /\| Obra \| _falta/)
   assert.match(r.texto, /a qué obra va/)
@@ -501,7 +511,9 @@ test('lo ESCRITO A MANO manda sobre el historial: no se discute con el papel', a
 test('sin historia suficiente NO se adivina la obra: se pregunta', async () => {
   const { d, repo } = armarTique({
     filas: filasBarcelo({ conHistoria: false, cargado: false }),
-    lecturas: [lecturaTiqueBarcelo({ numero: '00113-00019997', anotacion_manuscrita: null, total: '20.000,00', iva_21: '3.471,07', otros_tributos: null })],
+    // El neto acompaña al total: 16.528,93 + 3.471,07 = 20.000,00. Un fixture cuyos importes no
+    // cierran ya no llega a cargarse (04/08), y este test es sobre la obra, no sobre la aritmética.
+    lecturas: [lecturaTiqueBarcelo({ numero: '00113-00019997', anotacion_manuscrita: null, neto_gravado: '16.528,93', total: '20.000,00', iva_21: '3.471,07', otros_tributos: null })],
   })
   const r = await procesarPost(d, post())
   assert.equal(repo._fajos.get(r.fajoId).items[0].comprobante.obra, null)
