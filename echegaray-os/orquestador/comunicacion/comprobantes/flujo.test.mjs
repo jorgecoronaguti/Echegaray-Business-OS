@@ -605,3 +605,60 @@ test('si la escritura revienta, el fajo vuelve a abierto y se avisa', async () =
   assert.match(r.texto, /Google no contesta/)
   assert.equal(repo._fajos.get(r.fajoId).estado, 'abierto', 'se puede reintentar')
 })
+
+// ═══ LA FILA BORRADA A MANO (04/08) ═══
+//
+// El OS cargó el tique en la fila 810 y lo anotó en su registro. El dueño borró esa fila. Mandó la
+// foto de nuevo y el bot contestó "Ya está cargado — Compras fila 810. No hay nada que cargar":
+// el comprobante quedaba imposible de cargar para siempre, con un mensaje que sonaba a que todo
+// estaba bien.
+//
+// La regla del OS: un control no se valida contra la información que él mismo produce. El registro
+// dice lo que ESTE sistema escribió; la pestaña dice lo que HAY. Cuando difieren, manda la pestaña.
+test('si el dueño borró la fila, la pestaña le gana al registro y se vuelve a cargar', async () => {
+  const repo = repoMemoria()
+  const { d } = armar({ repo })
+  const clave = 'c:30712345678|0113-00010489'
+  // El registro dice que está en la 810…
+  repo._cargados.set(clave, { clave, fila: 810, hoja: 'Compras' })
+  // …y Compras, leída de verdad, no lo tiene.
+  const { escribir, llamadas } = conEscritor()
+  const r = await procesarPost({ ...d, escribir, comprasDe: async () => ({ ok: true, ...indexarCompras([]) }) }, post())
+
+  assert.equal(llamadas.length, 1, 'se vuelve a cargar')
+  assert.doesNotMatch(r.texto, /Ya está cargado/)
+  assert.equal(repo._cargados.has(clave), false, 'y el registro obsoleto se borra, no se ignora una vez')
+})
+
+// La otra mitad, y la que impide que el arreglo se convierta en un duplicador: cuando la fila SÍ
+// está en Compras, el aviso sigue igual y no se carga nada.
+test('si la fila SÍ está en Compras, sigue sin duplicarse', async () => {
+  const repo = repoMemoria()
+  const { d } = armar({ repo })
+  const clave = 'c:30712345678|0113-00010489'
+  repo._cargados.set(clave, { clave, fila: 810, hoja: 'Compras' })
+  const enCompras = { ok: true, ...indexarCompras([
+    ...Array.from({ length: 808 }, () => []),
+    filaCompras('5/1/2026', 'Combustibles Barcelo', 'F A', '0113-00010489', 'Estrella', '', 'Gasoil', '$ 36.460,30'),
+  ]) }
+  const { escribir, llamadas } = conEscritor()
+  const r = await procesarPost({ ...d, escribir, comprasDe: async () => enCompras }, post())
+
+  assert.equal(llamadas.length, 0, 'no se duplica')
+  assert.match(r.texto, /[Yy]a est/)
+  assert.equal(repo._cargados.has(clave), true, 'el registro que la pestaña CONFIRMA no se toca')
+})
+
+// NO PODER MIRAR NO ES HABER MIRADO. Si Compras no se pudo leer, no hay desmentido: el registro se
+// respeta. Degradar a "cargalo igual" ahí sería duplicar un gasto cada vez que Google no contesta.
+test('si no se pudo leer Compras, el registro se respeta', async () => {
+  const repo = repoMemoria()
+  const { d } = armar({ repo })
+  const clave = 'c:30712345678|0113-00010489'
+  repo._cargados.set(clave, { clave, fila: 810, hoja: 'Compras' })
+  const { escribir, llamadas } = conEscritor()
+  await procesarPost({ ...d, escribir, comprasDe: async () => ({ ok: false, error: 'Google no contesta' }) }, post())
+
+  assert.equal(llamadas.length, 0)
+  assert.equal(repo._cargados.has(clave), true)
+})

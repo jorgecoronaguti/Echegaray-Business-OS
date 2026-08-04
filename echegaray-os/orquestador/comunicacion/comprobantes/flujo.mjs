@@ -200,6 +200,26 @@ export function marcarEnCompras(items = [], indice = null) {
   }
   for (const it of items) {
     const r = buscarEnCompras(it.comprobante ?? {}, indice)
+
+    // ═══ EL REGISTRO PROPIO NO PRUEBA NADA: LA PRUEBA ES LA FILA EN COMPRAS (04/08) ═══
+    //
+    // `marcarYaCargados` marca contra `comunicacion.comprobantes_cargados`, que es lo que ESTE
+    // sistema anotó cuando escribió. Si el dueño borra esa fila de Compras —cosa que hace todo el
+    // tiempo— el registro sigue diciendo "cargado en la 810" y el bot contesta "ya está cargado, no
+    // hay nada que cargar" sobre una fila que no existe. El comprobante queda imposible de cargar
+    // para siempre, y encima con un mensaje que suena a que todo está bien.
+    //
+    // Pasó en producción: fila 810 borrada, el registro intacto, el tique inentrable.
+    //
+    // La regla del OS es explícita: un control no se valida contra la información que él mismo
+    // produce, y la evidencia es el dato leído en su DESTINO. Así que cuando la pestaña SÍ se pudo
+    // leer, ella manda: si no está, no está, y el registro se da por vencido. Cuando no se pudo leer
+    // no se toca nada — no poder mirar no es haber mirado.
+    if (it.yaCargado && it.yaCargado.fuente !== 'Compras' && r?.que !== HALLAZGO.CARGADO) {
+      it.registroObsoleto = { fila: it.yaCargado.fila ?? null, clave: it.clave ?? null }
+      delete it.yaCargado
+    }
+
     if (!r) continue
     if (r.que === HALLAZGO.CARGADO && !it.yaCargado) {
       // `via` viaja porque el mensaje tiene que poder decir POR QUÉ es ése ("mismo número y mismo
@@ -356,6 +376,9 @@ export async function procesarPost(d, m = {}) {
   //    sobre si ya está cargado; es justo cuando más falta hace mirar el destino.
   await marcarYaCargados(port, unicos, repo)
   marcarEnCompras(unicos, indiceCompras)
+  // Lo que la pestaña desmintió se BORRA del registro, no se ignora una vez: si quedara, la próxima
+  // foto del mismo comprobante volvería a chocar contra el mismo fantasma.
+  await olvidarObsoletos(port, unicos, repo)
 
   // 7 bis) Lo que el papel no dijo, lo dice la historia de Compras — vía el módulo que ya aprende
   //        para todo el OS. Nunca pisa lo escrito a mano.
@@ -484,6 +507,19 @@ function nuevoFajo(m, items) {
     postId: m.postId ?? null,
     items,
   }
+}
+
+/**
+ * Borra del registro las claves que la pestaña VIVA desmintió (`registroObsoleto`).
+ *
+ * Sólo se llama después de haber podido LEER Compras: sin esa lectura no hay desmentido, hay
+ * ignorancia. Que falle el borrado no puede tumbar la carga — el ítem ya está desmarcado en memoria
+ * y se va a cargar igual; lo único que se pierde es la limpieza.
+ */
+export async function olvidarObsoletos(port, items = [], repo = repoReal) {
+  const claves = items.map((it) => it?.registroObsoleto?.clave).filter(Boolean)
+  if (!claves.length || typeof repo.olvidarCargados !== 'function') return 0
+  try { return await repo.olvidarCargados(port, claves) } catch { return 0 }
 }
 
 /** Le cuelga a cada ítem el `yaCargado` que corresponda. Muta los ítems a propósito: son de acá. */

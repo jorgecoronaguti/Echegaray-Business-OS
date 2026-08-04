@@ -131,6 +131,12 @@ export function repoMemoria() {
       }
     },
 
+    async olvidarCargados(_p, claves = []) {
+      let n = 0
+      for (const k of claves) if (cargados.delete(k)) n++
+      return n
+    },
+
     async soltarReservas(_p, claves = []) {
       let n = 0
       for (const k of claves) {
