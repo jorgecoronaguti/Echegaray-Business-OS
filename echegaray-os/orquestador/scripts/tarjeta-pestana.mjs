@@ -76,7 +76,7 @@ const DRY = process.argv.includes('--dry')
 /** Ancho de grilla de la pestaña. El registro es más ancho: es el ledger, y el patrón admite uno. */
 const COLS = 12
 /** Alto exacto de la banda. El encabezado del registro queda en BANDA + 1. */
-export const BANDA = 30
+export const BANDA = 31
 /** La fila del titular dentro de la banda (1-based): la única cifra con la que se decide. */
 export const TITULAR = 7
 /** Hasta cuánto se acepta como redondeo en el control. Las cuotas del registro tienen centavos
@@ -87,6 +87,8 @@ const TOLERANCIA = 100
 const DIAS_FRESCURA = 21
 
 const ymd = (iso) => { const [a, m, d] = String(iso).split('-').map(Number); return { a, m, d } }
+/** Una ISO como la escribe el Sheet en es-AR: dd/mm/aaaa. */
+const dmyDe = (iso) => { const { a, m, d } = ymd(iso); return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${a}` }
 
 /**
  * NÚCLEO PURO: las filas de la banda, dado dónde arranca el registro.
@@ -159,6 +161,22 @@ export function bandaFilas(hdr = BANDA + 1, banco = { TARJETA, CORTE }) {
   // El cupo de cuotas es OTRO cupo y es menor. Va pegado al titular, no en un bloque aparte: es la
   // corrección que evita comprometer una compra que la tarjeta no aprueba.
   push(sub('en cuotas el cupo es otro, y manda'), T.cuotas.disponible, 'de un límite aparte')
+  // ═══ LO CONSUMIDO EN DÓLARES TIENE QUE VERSE (04/08) ═══
+  //
+  // El primer rediseño lo dejó afuera y el dueño lo cazó de una: "¿por qué no veo los consumos en
+  // dólares de la tarjeta?". No es un detalle de presentación. Un consumo en dólares se paga contra
+  // el MISMO cupo en pesos, pero convertido al tipo de cambio del CIERRE, no al de hoy: entre que se
+  // compra y que se paga, el importe en pesos cambia solo. Es la única línea de la tarjeta con
+  // riesgo de tipo de cambio, y esconderla es esconder exactamente lo que hay que mirar.
+  //
+  // Se muestra en su moneda —convertirla acá a pesos sería fingir que el TC de hoy es el del
+  // cierre— y con su PROPIA fecha: el resumen del 29/07 no reportó línea en dólares, así que el
+  // último dato del banco es el del 22/07 y así se declara. Dos cifras del mismo cuadro pueden ser
+  // de días distintos; lo que no se puede es no decirlo.
+  if (T.consumidoDolares > 0) {
+    push(sub('consumido en dólares — se paga del mismo cupo'), `=${T.consumidoDolares}`,
+      frescura(ymd(T.consumidoDolaresAl || T.al || banco.CORTE), dmyDe(T.consumidoDolaresAl || T.al || banco.CORTE)))
+  }
   push()
 
   // ── 1 · EL CALENDARIO. Tres tramos, no doce meses (CONDENSE) ────────────────────────────────────
