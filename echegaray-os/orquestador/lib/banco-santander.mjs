@@ -87,19 +87,45 @@ export const ACUERDO = {
  * $9.001.636,47 y el banco dice $9.062.069,50. No sé por qué difieren $60.433,03 y no lo voy a
  * inventar: el número que vale para decidir es el del banco.
  */
+// ═══ LA FOTO DEL 29/07 ESTABA EN LA PESTAÑA Y NO EN EL NÚCLEO (04/08) ═══
+//
+// Hasta hoy esto tenía la foto del 22/07 mientras la pestaña "Tarjeta de Credito" mostraba, escrita
+// a mano en sus celdas, una LECTURA MÁS NUEVA: "Detalle de Tarjeta del Santander al 29/07/2026".
+// Dos verdades del mismo concepto, y la del código era la vieja. El rediseño de la pestaña la iba a
+// pisar con datos de una semana antes — o sea, iba a hacer retroceder la información.
+//
+// Se transcribe la del 29/07, que es la que el dueño tiene del banco. No se inventa nada: cada cifra
+// sale de una celda suya y el `al` declara a qué día corresponde.
+//
+// EL NÚMERO DE TARJETA CAMBIA DE FORMA, NO DE TARJETA. El resumen del 22/07 la identificaba como
+// "Visa 921127486 Business" (el número de contrato) y el del 29/07 como "Visa terminada en 3319"
+// (los últimos cuatro dígitos del plástico), titular "Echegaray, Oviedo Ro". No son datos
+// contradictorios sino dos formas de nombrar lo mismo, así que se conservan LAS DOS: perder una
+// obliga a adivinar la próxima vez que el banco use la otra.
+//
+// SIGUE SIENDO UNA CONSTANTE CAPTURADA A MANO — el gap declarado. No hay puerta de carga para el
+// resumen de la tarjeta como sí la hay para los movimientos (importar-banco.mjs). Por eso `al`:
+// la pestaña muestra la antigüedad y avisa cuando la foto envejece.
 export const TARJETA = {
-  cuenta: 'Visa 921127486 · Business',
+  cuenta: 'Visa terminada en 3319 · Business',
+  contrato: 'Visa 921127486',
+  titular: 'Echegaray, Oviedo Ro',
+  al: '2026-07-29',
   limite: 10000000,
-  consumidoPesos: 998363.53,
-  consumidoDolares: 193.25,
-  disponible: 9062069.50,
-  cierra: '2026-07-23',
-  vence: '2026-08-03',
+  consumidoPesos: 24000,
+  consumidoDolares: 0,
+  // El resumen del 29/07 los separa: lo consumido y lo que todavía no confirmó el comercio.
+  pendienteDeConfirmacion: 32500,
+  disponible: 8693073.70,
+  cierra: '2026-08-20',
+  vence: '2026-09-01',
   debitoAutomatico: 'CC en pesos 179-000091383/6, por el total',
   // Los tres cupos internos que el resumen separa. El de cuotas es el que compromete meses futuros.
   adelantoEfectivo: { limite: 2000000, disponible: 2000000 },
-  cuotas: { limite: 10000000, consumido: 4437174.47, disponible: 5562825.53 },
-  cuotasPendientes: { proximoPeriodo: 965863.53, restante: 4783810.75 },
+  cuotas: { limite: 10000000, consumido: 3554133.30, disponible: 6445866.70 },
+  // El próximo período ya no tiene cuota pendiente en la foto del 29/07: la de agosto ($965.863,53)
+  // se debitó el 03/08 y está en el extracto. El resto sigue comprometido.
+  cuotasPendientes: { proximoPeriodo: 0, restante: 4783810.75 },
 }
 
 /**

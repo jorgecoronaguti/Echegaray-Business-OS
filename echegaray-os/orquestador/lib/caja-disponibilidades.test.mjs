@@ -104,8 +104,21 @@ test('un echeq endosado ya no es plata de la empresa', async () => {
 test('la tarjeta tiene un solo límite y el disponible lo declara el banco', async () => {
   const { TARJETA } = await import('./banco-santander.mjs')
   assert.equal(TARJETA.limite, 10000000)
-  assert.ok(TARJETA.consumidoPesos > 0 && TARJETA.consumidoDolares > 0)
-  // NO se recalcula: límite − consumido daría $9.001.636,47 y el banco dice $9.062.069,50.
-  assert.equal(TARJETA.disponible, 9062069.50)
+  // ═══ UN PERÍODO SIN CONSUMO EN DÓLARES NO ES UN DEFECTO (04/08) ═══
+  //
+  // Acá decía `consumidoPesos > 0 && consumidoDolares > 0`. Eso no fijaba una regla: fijaba el
+  // ACCIDENTE de la foto del 22/07, que casualmente tenía consumo en las dos monedas. Con la foto
+  // del 29/07 —sin un solo consumo en dólares, que es un mes perfectamente normal— el test se puso
+  // rojo y el dato correcto parecía el error. Lo que sí tiene que valer siempre es que los dos
+  // consumos estén DECLARADOS y no sean negativos: un consumo negativo es un dato mal leído.
+  for (const k of ['consumidoPesos', 'consumidoDolares']) {
+    assert.equal(typeof TARJETA[k], 'number', `${k} tiene que estar declarado`)
+    assert.ok(TARJETA[k] >= 0, `${k} no puede ser negativo`)
+  }
+  // EL DISPONIBLE LO DICE EL BANCO, NO SE RECALCULA. Es lo que este test protege de verdad:
+  // límite − consumido da otro número (hay cuotas y pendientes de confirmación en el medio).
+  assert.ok(TARJETA.disponible > 0)
   assert.notEqual(TARJETA.disponible, TARJETA.limite - TARJETA.consumidoPesos)
+  // Y la foto tiene fecha: sin `al` no se puede decir cuán vieja es.
+  assert.match(String(TARJETA.al ?? ''), /^\d{4}-\d{2}-\d{2}$/)
 })
