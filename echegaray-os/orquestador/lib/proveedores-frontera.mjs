@@ -43,11 +43,25 @@ export const SECCIONES_PROVEEDORES = [
   'deuda',              // 1 · QUÉ SE DEBE Y CUÁNDO            (tabla dinámica, no la escribe este OS)
   'cuentaCorriente',    // 2 · CUENTA CORRIENTE POR PROVEEDOR   (tabla dinámica, ídem)
   'notasCredito',       // 3 · NOTAS DE CRÉDITO                 ← LA FRONTERA
-  'faltanEnCompras',    // 4 · FACTURADO A LA EMPRESA QUE NO ESTÁ EN COMPRAS
-  'control',            // 5 · CONTROL Y AUDITORÍA DE CARGA
-  'arca',               // 6 · LO QUE ARCA REGISTRÓ
-  'emitidas',           // 7 · FACTURAS EMITIDAS
+  'faltanEnCompras',    // 4 · LO QUE ARCA FACTURÓ Y COMPRAS NO TIENE
+  'control',            // 5 · LO QUE HAY QUE CORREGIR EN COMPRAS
 ]
+
+// ═══ DOS SECCIONES QUE SE FUERON, Y POR QUÉ (04/08) ═══
+//
+// "6 · LO QUE ARCA REGISTRÓ — la plomería, no es para leer". Su propio rótulo admitía que no decidía
+// nada, y una pestaña de clase mundial no tiene una sección que pide que no la lean. Sus seis cifras
+// SÍ decían algo —cuánto de lo que ARCA registró está cargado en Compras y cuánto no—, así que dejaron
+// de ser una sección y pasaron a ser el CONTROL DE COBERTURA que encabeza la sección 4, que es la
+// pregunta que contestan. Los rangos con nombre ARCA_* siguen existiendo: se reapuntan a las filas
+// nuevas en cada corrida, como siempre.
+//
+// "7 · FACTURAS EMITIDAS — control cruzado contra Cobranzas (esto es VENTAS, no proveedores)". El
+// paréntesis del título era la confesión: veinte filas de ventas en la pestaña de proveedores. Un
+// cruce de facturas emitidas contra Cobranzas pertenece a Cobranzas, no acá, y mientras esa pestaña
+// no exista rehecha, el detalle no se reemplaza por una versión peor en el lugar equivocado: queda
+// la CIFRA de ventas registrada por ARCA (una línea, la que alimenta ARCA_VENTAS_*) y el detalle se
+// consulta en _ARCA_RAW, que es su origen declarado.
 
 /** La pestaña "Materiales" es del generador de punta a punta: sus secciones arrancan en 1. */
 export const SECCIONES_MATERIALES = ['familiaMes', 'obra']
@@ -102,6 +116,39 @@ export function buscarFrontera(visible = [], titulo) {
     + 'terminan las tablas dinámicas y empieza lo mío. NO escribo — una frontera supuesta escribe '
     + 'encima de una dinámica y la mata en silencio. Si el bloque se renombró, hay que actualizar '
     + 'SECCIONES_PROVEEDORES y correrlo con --dry primero.')
+}
+
+/**
+ * LA FRONTERA CUANDO EL TÍTULO YA NO ESTÁ.
+ *
+ * ═══ EL DEFECTO QUE ESTO ARREGLA (04/08) ═══
+ *
+ * `buscarFrontera` falla cerrado, y eso está bien: sin saber dónde terminan las dinámicas, escribir
+ * es destruir. Pero el ancla era un TEXTO de la columna A, y un texto se puede borrar — se borró. El
+ * resultado no fue un error ruidoso sino un silencio de días: el generador imprimía su "⛔ no escribo"
+ * en un log que nadie mira y TODA la pestaña de la fila 176 para abajo se congeló, mostrando la
+ * superposición de dos corridas viejas (notas de crédito con comprobantes de facturas emitidas al
+ * lado, fechas dibujadas como "$46.184"). Una pestaña rota que además se defiende de que la arreglen.
+ *
+ * La salida no es aflojar la guarda: es anclar en algo que no se puede borrar tipeando. Dónde termina
+ * la última tabla dinámica es un HECHO ESTRUCTURAL —sale del campo `pivotTable` de la API y del
+ * derrame que se ve—, no un rótulo. Si el título está, manda el título (respeta que el dueño mueva el
+ * bloque); si no está, la frontera es la fila siguiente a la última dinámica, con una fila de aire.
+ *
+ * Lo que NO cambia: si tampoco hay dinámicas, no hay dónde anclar y se sigue sin escribir. "No pude
+ * ubicarme" nunca es permiso para escribir en la fila que uno supone.
+ *
+ * @param {{visible:any[][], titulo:string, dinamicas:{ancla:number, fin:number}[]}} arg
+ * @returns {{fila:number, por:'titulo'|'dinamicas'}}
+ */
+export function fronteraSegura({ visible = [], titulo, dinamicas = [] } = {}) {
+  try {
+    return { fila: buscarFrontera(visible, titulo), por: 'titulo' }
+  } catch (e) {
+    const fin = dinamicas.reduce((m, d) => Math.max(m, d?.fin ?? 0), 0)
+    if (!fin) throw e
+    return { fila: fin + 2, por: 'dinamicas' }
+  }
 }
 
 /**

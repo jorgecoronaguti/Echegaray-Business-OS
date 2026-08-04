@@ -388,7 +388,7 @@ test('el formateador también respeta la frontera: nada de resetear el formato d
 
 test('la numeración de las secciones sale de la constante, no de un número escrito a mano', () => {
   const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
-  for (const clave of ['PRIMERA_GENERADA', 'faltanEnCompras', 'control', 'arca', 'emitidas']) {
+  for (const clave of ['PRIMERA_GENERADA', 'faltanEnCompras', 'control']) {
     assert.match(src, new RegExp(`nSeccion\\('?${clave}'?\\)`), `la sección ${clave} numera por nSeccion`)
   }
   // Los números viejos, los que el dueño NO ve en la pestaña.
@@ -421,4 +421,73 @@ test('la convención del dueño: un negativo entre paréntesis en Parcial es el 
   assert.equal(parseMonto('($ 5.124.412)'), -5124412)
   assert.equal(Math.max(0, parseMonto('($ 544.500)')), 0, 'un negativo NO resta: no es un pago')
   assert.equal(Math.max(0, parseMonto('$ 300.000')), 300000, 'un positivo sí es un pago parcial y resta')
+})
+
+// ═══ LOS TRES DEFECTOS DE LA SECCIÓN DE CONTROL, EN EL CÓDIGO QUE LOS PRODUCÍA ═══
+//
+// Son de FORMA de la pestaña, no de cálculo: ningún total cambia y por eso ningún control los veía.
+// Se ven en el PDF, que es donde el dueño los vio. El test mira el fuente porque el defecto está en
+// cómo se emiten las filas, no en un valor que se pueda calcular acá.
+
+test('la sección de control NO tiene columna de prosa: un párrafo por fila está prohibido', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  const i = src.indexOf('· LO QUE HAY QUE CORREGIR EN COMPRAS`]')
+  const fin = src.indexOf('LA ÚNICA PROSA DE LA SECCIÓN')
+  assert.ok(i > 0 && fin > i, 'la sección existe y termina en su nota al pie')
+  const bloque = src.slice(i, fin)
+  // Las frases que el dueño borraba a mano y volvían en cada corrida. Si alguna vuelve al cuerpo del
+  // bloque —no al pie—, es que volvió la columna de prosa.
+  for (const frase of [
+    'Es la misma línea del Cash Flow Mensual.',
+    'Cantidad de filas. La columna "Monto Pagado" está a medio llenar',
+    'Días. Cada día que se estira este número',
+    'Si es deuda, no está en la cuenta corriente de arriba',
+    'Filas que dicen "materiales varios"',
+  ]) {
+    assert.ok(!bloque.includes(frase), `volvió la prosa por fila: "${frase.slice(0, 40)}…"`)
+  }
+  // Y todas sus filas van con `estructural`, que es lo que hace que el resto de ayer se limpie. Con
+  // `push([...])` y un '' pelado, la fusión CONSERVA lo que había: por eso el comentario de "cantidad
+  // de filas" aparecía al lado de "Materiales Mantenimiento" y el de "días" al lado de "cuánta plata".
+  // Escritura por posición sobre un bloque que cambió de alto.
+  const filas = bloque.split('\n').filter((l) => /^\s{2}(const \w+ = )?push\(/.test(l))
+  const sinEstructural = filas.filter((l) => !/push\(estructural\(|push\(\[\]\)/.test(l))
+  assert.deepEqual(sinEstructural, [], 'toda fila del bloque de control se emite con estructural()')
+})
+
+test('un contador nunca cae en la columna de plata: B es cuánto, C es plata', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  // El defecto: '⚠ "Pagado" con monto MENOR al total | $5' — son CINCO FILAS, no cinco pesos. La
+  // causa raíz era estructural: cantidades e importes compartían la columna B, y se venía parcheando
+  // fila por fila con un formato de excepción que cada control nuevo volvía a necesitar.
+  assert.match(src, /cabCtrl = push\(estructural\(\['Qué está mal cargado', 'Filas', 'Plata'/,
+    'el encabezado declara las dos columnas separadas')
+  // El formato se declara para TODO el bloque, no fila por fila.
+  assert.match(src, /r\(g\.ctrl - 1, g\.ctrl1, 1, 2\)[\s\S]{0,180}numberFormat: E\.NUM\.cantidad/,
+    'la columna B del control es cantidad de punta a punta')
+  assert.match(src, /r\(g\.ctrl - 1, g\.ctrl1, 2, 3\)[\s\S]{0,180}numberFormat: E\.NUM\.moneda/,
+    'la columna C del control es moneda de punta a punta')
+  // Y los parches por fila que ya no hacen falta no pueden volver.
+  assert.ok(!/for \(const f of g\.cuentas\)/.test(src), 'el parche fila por fila se retiró')
+})
+
+test('las facturas emitidas ya no se escriben en la pestaña de proveedores', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  // Era un error de categoría que el propio título admitía: "(esto es VENTAS, no proveedores)".
+  assert.ok(!/push\(\[`\$\{nSeccion\('emitidas'\)\}/.test(src))
+  assert.ok(!/'¿Está en Cobranzas\?'/.test(src), 'la tabla de emitidas no se emite más')
+  assert.ok(!/push\(estructural\(\['TOTAL FACTURADO'/.test(src), 'ni su total')
+  // Pero el hallazgo NO se tira: lo que Cobranzas no tiene se sigue calculando y se reporta.
+  assert.match(src, /emitidasSinCobranza/)
+  assert.match(src, /VENTAS \(no es de esta pestaña\)/)
+})
+
+test('la conciliación con ARCA se declara UNA vez al pie, no en la columna I de cada fila', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  // El defecto: dos párrafos sueltos derramados en la columna I, a la derecha de la tabla, que en el
+  // PDF se leen como basura. Cada fila llevaba su propia declaración de "esto no es una fórmula".
+  assert.ok(!/Conciliación del OS al \$\{new Date\(\)\.toISOString\(\)\.slice\(0, 10\)\} — no es una fórmula/.test(src))
+  assert.ok(!/'Conciliación del OS: se encontraron por proveedor \+ importe/.test(src))
+  assert.match(src, /push\(\[`Los comprobantes salen del libro de IVA de ARCA/,
+    'la declaración vive al pie de la sección, una sola vez')
 })
