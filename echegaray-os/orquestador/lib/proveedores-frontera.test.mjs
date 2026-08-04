@@ -12,7 +12,7 @@ import assert from 'node:assert/strict'
 import {
   SECCIONES_PROVEEDORES, SECCIONES_MATERIALES, PRIMERA_GENERADA, nSeccion,
   normalizarTitulo, esTituloDeSeccion, buscarFrontera, finDeDinamica, anclasDeDinamicas,
-  verificarFronteraBajoDinamicas, anchoALimpiar, aAnchoCompleto,
+  verificarFronteraBajoDinamicas, anchoALimpiar, aAnchoCompleto, fronteraSegura,
 } from './proveedores-frontera.mjs'
 import { fusionar, VACIO } from './preservar-anotaciones.mjs'
 
@@ -47,14 +47,24 @@ test('la numeración sale de UNA lista: las dinámicas son 1 y 2, y lo generado 
   assert.equal(nSeccion(PRIMERA_GENERADA), 3)
   assert.equal(nSeccion('faltanEnCompras'), 4)
   assert.equal(nSeccion('control'), 5)
-  assert.equal(nSeccion('arca'), 6)
-  assert.equal(nSeccion('emitidas'), 7)
   // Materiales es una pestaña propia: sus secciones arrancan en 1.
   assert.equal(nSeccion('familiaMes', SECCIONES_MATERIALES), 1)
   assert.equal(nSeccion('obra', SECCIONES_MATERIALES), 2)
   // Una clave que no existe no devuelve un número cualquiera: falla.
   assert.throws(() => nSeccion('inventada'), /sección desconocida/)
-  assert.equal(SECCIONES_PROVEEDORES.length, 7)
+  assert.equal(SECCIONES_PROVEEDORES.length, 5)
+})
+
+test('las ventas y "la plomería" ya no son secciones de esta pestaña', () => {
+  // "7 · FACTURAS EMITIDAS" era ventas dentro del cuadro de lo que la empresa DEBE, y su propio
+  // título lo admitía. "6 · LO QUE ARCA REGISTRÓ — la plomería, no es para leer" declaraba que no
+  // había que leerla. Si alguna vuelve a la lista, este test se pone rojo.
+  assert.ok(!SECCIONES_PROVEEDORES.includes('emitidas'))
+  assert.ok(!SECCIONES_PROVEEDORES.includes('arca'))
+  assert.throws(() => nSeccion('emitidas'), /sección desconocida/)
+  assert.throws(() => nSeccion('arca'), /sección desconocida/)
+  // Y la numeración queda consecutiva y sin huecos: 1..5, ni un salto.
+  assert.deepEqual(SECCIONES_PROVEEDORES.map((c) => nSeccion(c)), [1, 2, 3, 4, 5])
 })
 
 test('el título se compara SIN su número y SIN tildes: "5 · NOTAS DE CRÉDITO" ≡ "3 · Notas de credito"', () => {
@@ -157,4 +167,36 @@ test('el ancho a limpiar nunca encoge por debajo del declarado, ni recorta un bl
   assert.equal(anchoALimpiar({}), 0)
   // El relleno es el CENTINELA, no la cadena vacía: '' se preserva, el centinela se limpia.
   assert.deepEqual(aAnchoCompleto([['a']], 3, VACIO), [['a', VACIO, VACIO]])
+})
+
+// ═══ EL DEFECTO QUE CONGELÓ LA PESTAÑA ENTERA ═══
+//
+// El título ancla es un TEXTO de la columna A, y un texto se puede borrar. Se borró: el 04/08 la
+// pestaña real no tenía "3 · NOTAS DE CRÉDITO" en ninguna fila, `buscarFrontera` tiraba, y el
+// generador imprimía "⛔ no escribo" en un log que nadie mira. Resultado verificado contra el archivo
+// vivo: de la fila 176 para abajo no se actualizaba nada, y lo que se veía era la superposición de
+// dos corridas viejas (fechas dibujadas como "$46.184", comprobantes de ventas al lado de notas de
+// crédito). Una pestaña rota que además se defendía de que la arreglaran.
+
+test('sin el título ancla, la frontera se calcula debajo de la última dinámica (y no se congela)', () => {
+  const { filas, frontera } = pestana()
+  const dinamicas = [{ ancla: 8, fin: 10 }, { ancla: 13, fin: 14 }]
+  // Con el título: manda el título.
+  assert.deepEqual(fronteraSegura({ visible: filas, titulo: 'NOTAS DE CRÉDITO', dinamicas }),
+    { fila: frontera, por: 'titulo' })
+  // Sin el título —el dueño lo borró, o una corrida rota lo pisó— sigue habiendo dónde anclar.
+  const sinTitulo = filas.map((f) => (/NOTAS DE CR/i.test(String(f?.[0] ?? '')) ? [] : f))
+  const r = fronteraSegura({ visible: sinTitulo, titulo: 'NOTAS DE CRÉDITO', dinamicas })
+  assert.equal(r.por, 'dinamicas')
+  assert.equal(r.fila, 16, 'la fila siguiente a la última dinámica, con una fila de aire')
+  // Y la frontera calculada así sigue pasando la guarda: no cae dentro de ninguna dinámica.
+  verificarFronteraBajoDinamicas({ frontera: r.fila, dinamicas })
+})
+
+test('sin título Y sin dinámicas no hay dónde anclar: no se escribe', () => {
+  // Es la única regla que no se toca. "No pude ubicarme" nunca es permiso para escribir en la fila
+  // que uno supone: ahí es donde una escritura reemplaza una dinámica por texto y la mata en silencio.
+  assert.throws(
+    () => fronteraSegura({ visible: [['otra cosa']], titulo: 'NOTAS DE CRÉDITO', dinamicas: [] }),
+    /no encontré "NOTAS DE CRÉDITO"/)
 })
