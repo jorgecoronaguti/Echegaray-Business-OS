@@ -91,6 +91,24 @@ test('las cobranzas esperadas SUMAN al lado que entra (son proyección, pero son
   assert.ok(entra.length > 0)
 })
 
+test('EL CHEQUE ENTRA SÓLO SI NO TIENE FACTURA: sumar los dos cuenta la misma plata dos veces', () => {
+  // EL ERROR QUE ESTO ATRAPA, Y LO COMETÍ YO (04/08). Mi primera reconciliación sumó TODOS los
+  // cheques no debitados Y ADEMÁS todos los rubros de Compras, y dio un piso de $40.831.653 cuando
+  // el real es $76.412.306: $43.380.472 de cheques cuya factura YA viajaba dentro de su rubro.
+  //
+  // El cheque es el INSTRUMENTO y la factura es la OBLIGACIÓN. El universo correcto —el que el cash
+  // flow usa desde el 21/07— es Compras entera MÁS sólo los cheques sin factura cargada.
+  const nombres = lineasDeCaja().filter(({ signo }) => signo === -1).map(({ linea }) => linea.nombre)
+  assert.ok(nombres.includes('Cheques sin factura cargada'), 'entra el cheque SIN factura')
+  assert.ok(nombres.includes('Cuotas de tarjeta sin factura cargada'))
+  // Y NO puede existir una línea que sume los cheques enteros: sería el doble conteo otra vez.
+  assert.deepEqual(nombres.filter((n) => /^cheques emitidos/i.test(n)), [])
+  // Las dos líneas de instrumento tienen que ser exactamente las "sin factura", nunca el total.
+  const deInstrumento = lineasDeCaja().filter(({ linea }) => linea.cheques).map(({ linea }) => linea.nombre)
+  assert.equal(deInstrumento.length, 2)
+  deInstrumento.forEach((n) => assert.match(n, /sin factura cargada$/))
+})
+
 test('marcaDeLinea distingue cheque de tarjeta: son dos instrumentos, no uno', () => {
   // Ya costó caro confundirlos en Cheques Recibidos: el número no identifica el instrumento.
   assert.equal(marcaDeLinea({ cheques: true, inst: 'cheques' }), 'cheques:cheques')

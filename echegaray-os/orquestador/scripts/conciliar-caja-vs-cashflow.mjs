@@ -19,6 +19,8 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { SUB_BIENES_DE_USO } from '../lib/cash-flow-lineas.mjs'
+import { INSTRUMENTOS } from '../lib/cash-flow-lineas.mjs'
+import { MARCAS } from '../lib/cheques-cobertura.mjs'
 import { EN_CARTERA } from '../lib/cartera-cheques.mjs'
 import { PESTAÑA as RAW_CHEQUES, COL as COL_CHEQUE, FILA0 as FILA0_CHEQUES } from './cheques-raw-pestana.mjs'
 
@@ -100,16 +102,47 @@ async function main() {
 
   // ── LO QUE SALE, DESDE EL DATO CRUDO ───────────────────────────────────────────────────────────
   const conceptos = []
+  /** Lo que el calendario viejo contaba DE MÁS: cheques cuya factura ya viaja dentro de su rubro. */
+  const duplicados = []
 
-  // 1 · Cheques emitidos no debitados. Es lo ÚNICO que el calendario veía además de la nómina.
-  const [chF, chI, chK] = await Promise.all([col('Cheques Emitidos!F2:F400'), col('Cheques Emitidos!I2:I400'), col('Cheques Emitidos!K2:K400')])
-  const cheques = []
-  for (let i = 0; i < 400; i++) {
-    if (String(chK[i] ?? '').toUpperCase() === 'SI') continue
-    if (!esNum(chI[i])) continue
-    cheques.push({ fecha: chI[i], monto: num(chF[i]) })
+  // 1 · Cheques emitidos no debitados.
+  //
+  // ═══ EL CHEQUE ES EL INSTRUMENTO, LA FACTURA ES LA OBLIGACIÓN: SUMAR LOS DOS ES CONTAR DOS VECES ═══
+  //
+  // La primera versión de este script sumaba TODOS los cheques no debitados y ADEMÁS todos los
+  // rubros de Compras. Casi todo cheque librado paga una factura que ya está cargada en Compras, así
+  // que esa plata entraba dos veces: medido al 04/08, $43.678.423 de cheques con fecha anterior al
+  // 31/08 contra apenas $1.000.000 que el cash flow reconoce como "sin factura cargada".
+  //
+  // La regla correcta ya existe en el archivo y la usa el cash flow desde el 21/07: suma Compras
+  // entera MÁS sólo los cheques cuya factura NO está cargada. El cruce por número de comprobante se
+  // hace en código y su resultado queda ESCRITO en la columna de marca de cada pestaña, así que acá
+  // se lee esa marca en vez de rehacer la normalización ("0001-000036" contra "1-36").
+  const marcaCol = (inst) => { let s = ''; for (let x = inst.colMarca; x >= 0; x = Math.floor(x / 26) - 1) s = String.fromCharCode(65 + (x % 26)) + s; return s }
+  for (const [clave, inst] of Object.entries(INSTRUMENTOS)) {
+    const f0 = inst.filaCab + 1
+    const [imp, fecha, deb, marca] = await Promise.all([
+      col(`'${inst.pestaña}'!${inst.colMonto}${f0}:${inst.colMonto}400`),
+      col(`'${inst.pestaña}'!${inst.colFecha}${f0}:${inst.colFecha}400`),
+      col(`'${inst.pestaña}'!${inst.colDebitado}${f0}:${inst.colDebitado}400`),
+      col(`'${inst.pestaña}'!${marcaCol(inst)}${f0}:${marcaCol(inst)}400`),
+    ])
+    const todos = []; const sinFactura = []
+    imp.forEach((v, i) => {
+      if (String(deb[i] ?? '').toUpperCase() === 'SI' || !esNum(fecha[i])) return
+      todos.push({ fecha: fecha[i], monto: num(v) })
+      // Sólo el que NO tiene factura en Compras: el resto ya viaja dentro de su rubro.
+      if (String(marca[i] ?? '').trim() === MARCAS.falta) sinFactura.push({ fecha: fecha[i], monto: num(v) })
+    })
+    const tSin = repartir(sinFactura, bordes)
+    const tTodos = repartir(todos, bordes)
+    // EL CALENDARIO VIEJO LEÍA UNA SOLA PESTAÑA: "Cheques Emitidos". La tarjeta no la miraba, así que
+    // para que la línea base sea fiel su deuda NO puede atribuirse al calendario viejo.
+    const loLeiaElViejo = clave === 'cheques'
+    conceptos.push({ nombre: `${inst.nombre} sin factura en Compras`, enViejo: loLeiaElViejo, enNuevo: true, tramos: tSin })
+    // El que SÍ la tiene ya viaja dentro de su rubro de Compras: sólo el calendario viejo lo sumaba.
+    duplicados.push({ nombre: `${clave}: librados con su factura ya cargada en Compras`, enViejo: loLeiaElViejo, tramos: tTodos.map((v, k) => v - tSin[k]) })
   }
-  conceptos.push({ nombre: 'Cheques emitidos no debitados', loVeElCalendario: true, tramos: repartir(cheques, bordes) })
 
   // 2 · Nómina de obra: quincena cerrada sin pagar (desde el corte) + proyectada.
   const [jrPago, jrPagado, jrTotal, jpPago, jpTotal] = await Promise.all([
@@ -120,14 +153,14 @@ async function main() {
   // ANTES DEL CORTE MANDA EL BANCO: una quincena pagada antes del corte YA está en el saldo.
   jrPago.forEach((f, i) => { if (esNum(f) && !esNum(jrPagado[i]) && f >= corte) jornales.push({ fecha: f, monto: num(jrTotal[i]) }) })
   jpPago.forEach((f, i) => { if (esNum(f)) jornales.push({ fecha: f, monto: num(jpTotal[i]) }) })
-  conceptos.push({ nombre: 'Jornales de obra', loVeElCalendario: true, tramos: repartir(jornales, bordes) })
+  conceptos.push({ nombre: 'Jornales de obra', enViejo: true, enNuevo: true, tramos: repartir(jornales, bordes) })
 
   // 3 · Nómina de administración = OFICINA + DIRECCIÓN. El calendario leía sólo la primera mitad.
   for (const [nombre, pref, visto] of [['Sueldos de oficina', 'OFICINA', true], ['Retiros de Dirección', 'DIRECCION', false]]) {
     const [pago, pagado, proy] = await Promise.all([col(`${pref}_PAGO`), col(`${pref}_PAGADO`), col(`${pref}_PROYECTADO`)])
     const filas = []
     pago.forEach((f, i) => { if (esNum(f) && f >= corte) filas.push({ fecha: f, monto: num(pagado[i]) + num(proy[i]) }) })
-    conceptos.push({ nombre, loVeElCalendario: visto, tramos: repartir(filas, bordes) })
+    conceptos.push({ nombre, enViejo: visto, enNuevo: true, tramos: repartir(filas, bordes) })
   }
 
   // 4 · TODO lo demás sale de Compras, por su fecha de caja. NADA de esto lo veía el calendario.
@@ -147,7 +180,7 @@ async function main() {
     porRubro.get(clave).push({ fecha: cFecha[i], monto: num(cTotal[i]) })
   }
   for (const [r, filas] of [...porRubro].sort()) {
-    conceptos.push({ nombre: `Compras · ${r}`, loVeElCalendario: false, tramos: repartir(filas, bordes) })
+    conceptos.push({ nombre: `Compras · ${r}`, enViejo: false, enNuevo: true, tramos: repartir(filas, bordes) })
   }
 
   // ── LO QUE ENTRA ───────────────────────────────────────────────────────────────────────────────
@@ -172,23 +205,34 @@ async function main() {
 
   // ── EL CUADRO ──────────────────────────────────────────────────────────────────────────────────
   const enMes = (c) => c.tramos.slice(0, 4).reduce((a, b) => a + b, 0)
-  const ciegos = conceptos.filter((c) => !c.loVeElCalendario && Math.abs(enMes(c)) > 0.5)
-  console.log('EGRESOS DEL MES EN CURSO QUE EL CALENDARIO NO VEÍA')
+  const ciegos = conceptos.filter((c) => !c.enViejo && Math.abs(enMes(c)) > 0.5)
+  console.log('EGRESOS DEL MES EN CURSO QUE EL CALENDARIO NO VEÍA  (el piso los ignoraba)')
   console.log('─'.repeat(72))
   for (const c of ciegos.sort((a, b) => enMes(b) - enMes(a))) {
     console.log(`  ${c.nombre.padEnd(52)} ${pesos(enMes(c)).padStart(16)}`)
   }
   const totalCiego = ciegos.reduce((a, c) => a + enMes(c), 0)
   console.log('─'.repeat(72))
-  console.log(`  ${'TOTAL que inflaba el piso'.padEnd(52)} ${pesos(totalCiego).padStart(16)}\n`)
+  console.log(`  ${'faltaban'.padEnd(52)} ${pesos(totalCiego).padStart(16)}\n`)
+
+  // Y del otro lado: lo que el calendario viejo contaba DE MÁS. El cheque es el instrumento y la
+  // factura la obligación; sumar los dos es contar la misma plata dos veces.
+  console.log('...Y LO QUE CONTABA DOS VECES  (el piso los restaba de más)')
+  console.log('─'.repeat(72))
+  for (const d of duplicados) console.log(`  ${d.nombre.padEnd(52)} ${pesos(enMes(d)).padStart(16)}`)
+  const totalDup = duplicados.reduce((a, d) => a + enMes(d), 0)
+  console.log('─'.repeat(72))
+  console.log(`  sobraban${' '.repeat(44)} ${pesos(totalDup).padStart(16)}`)
+  console.log(`  ${'EFECTO NETO SOBRE EL PISO DEL MES'.padEnd(52)} ${pesos(totalDup - totalCiego).padStart(16)}\n`)
 
   console.log('EL PISO, ANTES Y DESPUÉS')
   console.log('─'.repeat(72))
   let saldoViejo = disponible, saldoNuevo = disponible
   let peorViejo = { v: Infinity }, peorNuevo = { v: Infinity }
   bordes.forEach((b, k) => {
-    const saleViejo = conceptos.filter((c) => c.loVeElCalendario).reduce((a, c) => a + c.tramos[k], 0)
-    const saleNuevo = conceptos.reduce((a, c) => a + c.tramos[k], 0)
+    const saleViejo = conceptos.filter((c) => c.enViejo).reduce((a, c) => a + c.tramos[k], 0)
+      + duplicados.filter((d) => d.enViejo).reduce((a, d) => a + d.tramos[k], 0)
+    const saleNuevo = conceptos.filter((c) => c.enNuevo).reduce((a, c) => a + c.tramos[k], 0)
     saldoViejo += entra[k] - saleViejo
     saldoNuevo += entra[k] - saleNuevo
     if (saldoViejo < peorViejo.v) peorViejo = { v: saldoViejo, tramo: b.rotulo, hasta: b.hasta }
