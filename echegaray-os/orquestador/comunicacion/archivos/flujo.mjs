@@ -273,8 +273,18 @@ export async function procesarArchivos(dep, entrada = {}) {
   let estado = 'descripto'
 
   for (const l of lecturas) {
+    // UNA FOTO EN UN POST MIXTO NO SE DERIVA, Y SE DICE POR QUÉ.
+    //
+    // La derivación es del POST entero (arriba, cuando todo es imagen): Compras IA abre un fajo con
+    // sus botones de obra y se queda con la conversación. Un post con una foto Y un CSV no puede
+    // derivarse sin perder la previsualización del CSV, ni procesarse sin perder la foto. Antes esto
+    // decía "la derivo a comprobantes" y no la derivaba nadie: una afirmación falsa es peor que la
+    // limitación que tapaba.
     if (l.destino === DESTINO.COMPROBANTES) {
-      bloques.push(`${bloqueArchivo({ ...l, nota: 'La derivo a la carga de comprobantes.' })}`)
+      bloques.push(bloqueArchivo({
+        ...l,
+        nota: 'Las fotos de comprobantes las carga Compras IA: mandámela **sola**, en un mensaje aparte, y la proceso. Junto con otros archivos no la puedo tomar.',
+      }))
       continue
     }
 
@@ -340,7 +350,9 @@ export async function procesarArchivos(dep, entrada = {}) {
   }
 
   const texto = bloques.join('\n\n')
-  return { texto, ...(attachments ? { attachments } : {}), estado, lecturas, derivar: imagenes.length ? DESTINO.COMPROBANTES : null }
+  // `derivar: null` SIEMPRE en este punto: si se llegó acá es porque NO todo era imagen, y derivar un
+  // post mixto tiraría a la basura todo lo que se leyó de los demás archivos.
+  return { texto, ...(attachments ? { attachments } : {}), estado, lecturas, derivar: null }
 }
 
 /**

@@ -139,6 +139,23 @@ test('UNA IMAGEN sola se DERIVA al camino de comprobantes, que no se toca', asyn
   assert.equal(r.texto, '', 'no contesta nada: contesta Compras IA')
 })
 
+test('UN POST MIXTO (foto + CSV) no se deriva: se procesa el CSV y se dice qué hacer con la foto', async () => {
+  // Derivar el post entero a Compras IA tiraría la previsualización del extracto; procesarlo acá
+  // perdería la foto. Se hace lo que se puede y se DICE lo que no — sin afirmar una derivación que
+  // no ocurre, que es lo que decía la primera versión.
+  const mm = mattermostFalso({
+    f1: { nombre: 'factura.jpg', mime: 'image/jpeg', bytes: png() },
+    f2: { nombre: 'extracto.csv', mime: 'text/csv', bytes: Buffer.from(CSV_BANCO) },
+  })
+  const r = await procesarArchivos({
+    port, mattermost: mm, repo: repoMemoria(), url: 'https://chat/a?t=s', puedeImportar: abierta.puedeImportar,
+  }, entrada(['f1', 'f2']))
+  assert.equal(r.derivar, null, 'un post mixto no se deriva')
+  assert.match(r.texto, /mandámela \*\*sola\*\*/)
+  assert.match(r.texto, /Extracto bancario/, 'el CSV se procesó igual')
+  assert.ok(r.attachments?.length, 'y su botón sigue estando')
+})
+
 test('UN PDF se convierte a texto y se dice qué se encontró', async () => {
   const mm = mattermostFalso({ f1: { nombre: 'contrato.pdf', mime: 'application/pdf', bytes: pdf() } })
   const r = await procesarArchivos({
