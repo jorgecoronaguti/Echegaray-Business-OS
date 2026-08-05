@@ -23,6 +23,7 @@
 import { crearConector } from './conector.mjs'
 import { crearLog } from '../../../communication-service/src/index.mjs'
 import { canalesDeArea } from '../lib/canal-de-area.mjs'
+import { mattermostDelOs } from '../lib/mattermost-os.mjs'
 import { query } from '../lib/db.mjs'
 
 const PLATAFORMA = 'mattermost'
@@ -137,6 +138,57 @@ export function crearCanalesDeIngesta({ port = null, base = canalesDeAdjuntos(),
     vigente = union
     return vigente
   }
+}
+
+/**
+ * ¿LOS CANALES CONFIGURADOS EXISTEN DE VERDAD? Se pregunta a Mattermost, al arrancar.
+ *
+ * EL DEFECTO QUE ARREGLA, con nombre y apellido: `MM_CANALES_ADJUNTOS` decía
+ * `comprobantes-gastos,compras` y **`comprobantes-gastos` no existe en este Mattermost**. Un nombre
+ * de canal que no existe no da error en ningún lado: el prefiltro simplemente no matchea nunca, la
+ * foto no crea evento, y quien la mandó ve que no pasa nada. Nadie tiene a qué echarle la culpa
+ * porque no hay una sola línea roja en ningún log. Costó días.
+ *
+ * La lista de canales la sabe UNA sola fuente —la API de Mattermost— y es gratis preguntarle una vez
+ * al arrancar. Lo que no se puede es seguir suponiendo que lo tipeado en un `.env` corresponde a
+ * algo real.
+ *
+ * NO APAGA NADA. Si no se puede consultar la API, o si un canal no aparece, se AVISA y se sigue: el
+ * prefiltro con un canal de más sólo cuesta un evento que la puerta real deniega después, y apagar
+ * la ingesta por no haber podido verificar sería convertir un aviso en una caída.
+ *
+ * @returns {Promise<{ok:boolean, faltantes:string[], resueltos:number, motivo?:string}>}
+ */
+export async function verificarCanalesDeIngesta({ mattermost, canales, botUserId = null, log = null } = {}) {
+  const lista = [...(canales ?? [])]
+  if (!lista.length) return { ok: true, faltantes: [], resueltos: 0 }
+  if (typeof mattermost?.canalesDelBot !== 'function') {
+    log?.warn?.('ws: no puedo verificar los canales de ingesta contra Mattermost', { canales: lista })
+    return { ok: false, faltantes: [], resueltos: 0, motivo: 'sin_cliente' }
+  }
+  let reales
+  try {
+    reales = await mattermost.canalesDelBot({ botUserId })
+  } catch (e) {
+    log?.warn?.('ws: no pude consultar los canales de Mattermost', { detalle: String(e?.message ?? e).slice(0, 160) })
+    return { ok: false, faltantes: [], resueltos: 0, motivo: 'api_caida' }
+  }
+  const conocidos = new Set()
+  for (const c of reales ?? []) {
+    if (c?.id) conocidos.add(String(c.id).toLowerCase())
+    if (c?.name) conocidos.add(String(c.name).toLowerCase())
+  }
+  const faltantes = lista.filter((c) => !conocidos.has(String(c).toLowerCase()))
+  if (faltantes.length) {
+    // NIVEL ERROR, NO INFO. Es una configuración que promete algo que no se cumple: el que la mira
+    // cree que ese canal está habilitado y no lo está.
+    log?.error?.('ws: HAY CANALES DE INGESTA QUE NO EXISTEN — los mensajes de ese canal se pierden en silencio', {
+      faltantes, canales_reales: [...conocidos].filter((x) => !/^[a-z0-9]{26}$/.test(x)),
+    })
+  } else {
+    log?.info?.('ws: todos los canales de ingesta existen en Mattermost', { canales: lista })
+  }
+  return { ok: faltantes.length === 0, faltantes, resueltos: lista.length - faltantes.length }
 }
 
 /** ¿Este post trae archivos adjuntos? */
@@ -345,6 +397,12 @@ async function main() {
   // El `port` es el mismo pool del OS que ya usa el conector: sirve para que los canales de
   // ingesta salgan del binding y no sólo del entorno. Si la base no contesta, el prefiltro sigue
   // andando con lo que dice el entorno (ver `crearCanalesDeIngesta`).
+  // ¿LO QUE DICE EL .ENV EXISTE? Se pregunta una vez, al arrancar. Un canal tipeado que no existe se
+  // traga los mensajes sin dejar una sola línea roja: `comprobantes-gastos` lo hizo durante días.
+  // No bloquea el arranque — avisa. Ver `verificarCanalesDeIngesta`.
+  verificarCanalesDeIngesta({ mattermost: mattermostDelOs({ log }), canales: canalesDeAdjuntos(), botUserId, log })
+    .catch((e) => log.warn?.('ws: la verificación de canales falló', { detalle: String(e?.message ?? e).slice(0, 160) }))
+
   const consumidor = crearConsumidorWS({ con, wsUrl, token, botUserId, botUsername, log, port: { query } })
   for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => { log.info('shutdown pedido', { señal: s }); consumidor.cerrar(); process.exit(0) })
   consumidor.conectar()
