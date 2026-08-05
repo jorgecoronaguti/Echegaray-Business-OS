@@ -220,12 +220,25 @@ async function asegurarTabla() {
     )`)
 }
 
-/** El mapa de lo que escribí la última vez en esta pestaña: "fila:col" → {forma, borrada}. */
-export async function leerHuellas(fileId, pestana) {
+/**
+ * El mapa de lo que escribí la última vez en esta pestaña: "fila:col" → {forma, borrada}.
+ *
+ * Se acota a la VENTANA de este bloque (con holgura para detectar un corrimiento de filas). Sin
+ * acotar, las huellas de OTRO bloque de la misma pestaña —CAJA escribe dos veces, Proveedores tiene
+ * dos cuadros— caerían sobre celdas que no les corresponden y ensuciarían la medición de alineación
+ * hasta hacerla fallar. La huella dejaría de decidir justo en las pestañas más pobladas.
+ */
+export async function leerHuellas(fileId, pestana, ventana = null) {
   await asegurarTabla()
+  const cond = ventana ? ' and fila between $3 and $4 and col between $5 and $6' : ''
+  const holgura = Math.max(...DESPLAZAMIENTOS.map(Math.abs))
+  const args = ventana
+    ? [ventana.fila0 - holgura, ventana.fila0 + ventana.alto - 1 + holgura, ventana.col0, ventana.col0 + ventana.ancho - 1]
+    : []
   const r = await query(
-    'select fila, col, forma, huella, borrada_en from public.sheet_huella_celda where file_id = $1 and pestana = $2',
-    [fileId, pestana],
+    `select fila, col, forma, huella, borrada_en from public.sheet_huella_celda
+      where file_id = $1 and pestana = $2${cond}`,
+    [fileId, pestana, ...args],
   )
   return new Map(r.rows.map((x) => [claveCelda(x.fila, x.col), { forma: x.forma, huella: x.huella, borrada: Boolean(x.borrada_en) }]))
 }
@@ -275,9 +288,19 @@ export async function guardarHuellas(fileId, pestana, grid, { fila0 = 1, col0 = 
         [fileId, pestana, s.fila, s.col])
     }
   }
+  // ═══ EL BARRIDO SE LIMITA A LA VENTANA QUE SE ESCRIBIÓ ═══
+  //
+  // Una pestaña la escriben VARIOS bloques (CAJA hace una segunda pasada sobre la columna de
+  // orígenes; Proveedores escribe dos cuadros). Barrer por pestaña entera haría que el segundo
+  // escritor borrara la huella del primero, y a la corrida siguiente las celdas del primero
+  // aparecerían "sin huella" → ajenas → dejaría de mantenerlas. Es la misma forma del candado falso
+  // por dos escritores. Sólo se limpia lo que estaba DENTRO del rectángulo que esta corrida escribió.
+  const ancho = Math.max(...grid.map((f) => (f || []).length), 1)
   await query(
-    'delete from public.sheet_huella_celda where file_id = $1 and pestana = $2 and borrada_en is null and escrito_en < $3',
-    [fileId, pestana, sello],
+    `delete from public.sheet_huella_celda
+      where file_id = $1 and pestana = $2 and borrada_en is null and escrito_en < $3
+        and fila between $4 and $5 and col between $6 and $7`,
+    [fileId, pestana, sello, fila0, fila0 + grid.length - 1, col0, col0 + ancho - 1],
   )
   return { escritas: filas.length, borradas: suprimidas.length }
 }
@@ -288,7 +311,13 @@ export async function guardarHuellas(fileId, pestana, grid, { fila0 = 1, col0 = 
  * que las otras dos guardas no protejan ya.
  */
 export async function conHuellaDeCelda(fileId, pestana, generado, actual, opts = {}) {
-  const huellas = await leerHuellas(fileId, pestana).catch(() => new Map())
+  const ventana = {
+    fila0: opts.fila0 ?? 1,
+    col0: opts.col0 ?? 0,
+    alto: generado.length,
+    ancho: Math.max(...generado.map((f) => (f || []).length), 1),
+  }
+  const huellas = await leerHuellas(fileId, pestana, ventana).catch(() => new Map())
   const r = aplicarHuella(generado, actual, huellas, opts)
   return {
     ...r,
