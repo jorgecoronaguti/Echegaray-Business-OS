@@ -1,6 +1,15 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { registerHooks } from 'node:module'
+
+// ═══ EL AUTO-CANDADO ESTÁ APAGADO EN PRODUCCIÓN, PERO ACÁ SE PRUEBA ═══
+//
+// El dueño lo mandó a apagar el 05/08 —*"sacá los candados de mierda, editá todo y nunca más actives
+// los agentes de mantenimiento"*— y desde entonces `evaluarFirma` devuelve "no editada" por defecto.
+// Eso no puede borrar la prueba de CÓMO funciona el mecanismo: si mañana se vuelve a encender, tiene
+// que encenderse sobre lógica verificada. Los tests que ejercitan el candado lo prenden explícitamente;
+// que haga falta prenderlo es, además, la evidencia de que por defecto está apagado.
+process.env.ORQ_AUTOCANDADO = '1'
 import { nombreTab, esProtegible, tabsProtegibles, separarPermitido, separarRequests, gridVacia, protegerVacioSobreLleno, guardarEscritura, evaluarBloqueadas, guardarRequests, CLASE, clasificarRequest } from './guarda-escritura.mjs'
 import { firmaDeGrid } from './firma-tab.mjs'
 

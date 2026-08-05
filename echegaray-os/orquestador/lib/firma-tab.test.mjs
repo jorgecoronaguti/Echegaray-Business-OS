@@ -1,5 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+
+// El auto-candado está APAGADO por defecto desde el 05/08 (orden del dueño). Estos tests prueban su
+// lógica, así que lo encienden explícitamente: apagarlo no puede borrar la prueba de cómo funciona.
+process.env.ORQ_AUTOCANDADO = '1'
 import { firmaDeGrid, humanoEdito, evaluarFirma, guardarFirma, leerGridGuardado } from './firma-tab.mjs'
 
 test('la misma grilla da la misma firma (estable)', () => {

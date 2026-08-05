@@ -27,7 +27,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
-import { MONEDA_TOTAL, MONEDA_CUERPO, PORCENTAJE, VECES } from '../lib/formato-statement.mjs'
+import { MONEDA_TOTAL, MONEDA_CUERPO } from '../lib/formato-statement.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
@@ -36,7 +36,7 @@ import { CAJA as N_CAJA, publicar } from '../lib/rangos-nombrados.mjs'
 import { filaDeCuenta } from '../lib/caja-disponibilidades.mjs'
 import { DESDE_CAJA, PESTANA_ANEXO } from '../lib/caja-anexo-nombres.mjs'
 import { refsDelArchivo, rescatar } from '../lib/caja-refs.mjs'
-import { grilla, ANCHO, ANCHOS, FILAS_MAXIMAS } from '../lib/caja-grilla.mjs'
+import { grilla, ANCHO, ANCHOS, FILAS_MAXIMAS , esTituloDeBloque} from '../lib/caja-grilla.mjs'
 import { requestsDeGraficos, COL_ANCLA } from '../lib/caja-graficos.mjs'
 
 export { grilla, rescatar }
@@ -219,8 +219,13 @@ async function main() {
   const sinCargar = v.filter((f) => filaDeCuenta(String(f?.[0] ?? '').trim()) && !String(f?.[2] ?? '').trim())
   console.log(`\nQUEDÓ ESCRITO en ${g.filas.length} filas.`)
   console.log(`  Total disponibilidades: ${v[g.fTotal - 1]?.[4] || '—'}`)
-  console.log(`  Piso de caja: ${v[g.fPeor - 1]?.[2] || '—'} · ${v[g.fPeor - 1]?.[6] || '—'}`)
-  console.log(`  Controles: ${v[g.fCtrl1 - 2]?.[6] || '—'} · ${v[g.fCtrl1 - 1]?.[6] || '—'}`)
+  // LOS TRES SE LEEN DE LA COLUMNA E, que es donde vive el número que decide en toda la pestaña; el
+  // veredicto de cada control, del RÓTULO de su fila. Este log leía la C y la G —el layout viejo— y por
+  // eso imprimía "—" sobre una pestaña que había quedado bien: un resumen que miente en la dirección
+  // tranquilizadora es peor que no tenerlo.
+  console.log(`  Piso de caja: ${v[g.fPeor - 1]?.[4] || '—'} (${v[g.fPeor - 1]?.[5] || 'sin fecha'})`)
+  console.log(`  Controles: ${v[g.fCtrl1 - 2]?.[0] || '—'}`)
+  console.log(`             ${v[g.fCtrl1 - 1]?.[0] || '—'}`)
   if (sinCargar.length) console.log(`  ⚠ ${sinCargar.length} fila(s) sin dato cargado: ${sinCargar.map((f) => f[0]).join(' · ')}`)
 }
 
@@ -263,12 +268,21 @@ async function formatear(google, sheetId, g) {
   // Todo el cuerpo salía con MONEDA_TOTAL: el signo pesos repetido cientos de veces. Un símbolo que
   // aparece en todas las filas no distingue nada, y la fila donde SÍ se cierra la cuenta deja de
   // destacarse. El cuerpo va primero y los totales encima: los `repeatCell` se aplican en orden.
-  for (const c of [2, 3, 4, 5]) {
+  // ═══ C·D·E SON PLATA Y F ES FECHA, EN TODA LA PESTAÑA (05/08) ═══
+  //
+  // Antes la moneda se aplicaba a C·D·E·F y después cada bloque le devolvía a la F su formato de fecha
+  // a mano. Eso funcionaba mientras alguien se acordara: la fila del arqueo y la del colocable, que son
+  // nuevas, habrían salido con la fecha dibujada como "$46.437" —el número de serie con signo pesos—.
+  // Con la F declarada fecha DE ENTRADA, el contrato de columnas del generador y el formato dicen lo
+  // mismo, y un bloque nuevo hereda lo correcto sin acordarse de nada.
+  for (const c of [2, 3, 4]) {
     fmt(r(0, n, c, c + 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
       { numberFormat: MONEDA_CUERPO, horizontalAlignment: 'RIGHT' })
   }
+  fmt(r(0, n, 5, 6), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+    { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER' })
   for (const f of g.totales ?? []) {
-    for (const c of [2, 3, 4, 5]) fmt(r(f - 1, f, c, c + 1), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
+    for (const c of [2, 3, 4]) fmt(r(f - 1, f, c, c + 1), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
   }
   // LA COLUMNA "MONEDA" ES TEXTO: con el formato moneda de la columna entera, "ARS" quedaba en una
   // celda que dice ser plata. Y la de la derecha es el VEREDICTO: texto, siempre.
@@ -285,9 +299,6 @@ async function formatear(google, sheetId, g) {
   // con formato de moneda. Los dos defectos que el auditor de pantalla marcaba como `texto_en_numero`.
   fmt(r(g.d0 - 1, g.d1, 3, 4), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'NUMBER', pattern: '#,##0.00;;""' }, horizontalAlignment: 'CENTER' })
-  fmt(r(g.d0 - 1, g.fTotal, 5, 6), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-    { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER' })
-  fmt(r(g.d0 - 1, g.d1, 6, 7), 'userEnteredFormat.horizontalAlignment', { horizontalAlignment: 'CENTER' })
   // LOS IMPORTES EN DÓLARES, con su propio símbolo: sin esto, U$S 581,39 se dibuja "$581" y se lee como
   // 581 pesos — un error de lectura de tres órdenes de magnitud que sólo se ve mirando la pantalla.
   for (const f of g.usd) {
@@ -307,25 +318,17 @@ async function formatear(google, sheetId, g) {
     { numberFormat: { type: 'TEXT' }, textFormat: { bold: true, fontSize: E.TAM.nota, foregroundColor: MUTED }, horizontalAlignment: 'LEFT', wrapStrategy: 'WRAP', verticalAlignment: 'BOTTOM' })
   fmt(r(g.fCifras - 1, g.fCifras), 'userEnteredFormat',
     { numberFormat: E.NUM.moneda, textFormat: { bold: true, fontSize: E.TAM.titular, fontFamily: E.FUENTE_NUM, foregroundColor: INK }, horizontalAlignment: 'LEFT', verticalAlignment: 'MIDDLE' })
-  // EL ACENTO VA EN EL NÚMERO QUE HABILITA UNA ACCIÓN, no en el más grande. Los tres primeros
-  // titulares describen la posición; lo colocable es el único sobre el que se puede hacer algo hoy.
-  fmt(r(g.fCifras - 1, g.fCifras, 6, 7), 'userEnteredFormat.textFormat',
+  // EL ACENTO VA EN EL PISO, que es el número con el que se decide: cuánto se puede inmovilizar y hasta
+  // cuándo. "Cuánto hay hoy" y "qué queda a fin de mes" describen la posición; el piso la restringe.
+  fmt(r(g.fCifras - 1, g.fCifras, 2, 3), 'userEnteredFormat.textFormat',
     { textFormat: { bold: true, fontSize: E.TAM.titular, fontFamily: E.FUENTE_NUM, foregroundColor: ACENTO } })
-  for (const c of [0, 2, 4, 6]) {
+  for (const c of [0, 2, 4]) {
     req.push({ mergeCells: { range: r(g.fTitulos - 1, g.fTitulos, c, c + 2), mergeType: 'MERGE_ROWS' } })
     req.push({ mergeCells: { range: r(g.fCifras - 1, g.fCifras, c, c + 2), mergeType: 'MERGE_ROWS' } })
   }
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: g.fTitulos - 1, endIndex: g.fTitulos }, properties: { pixelSize: 32 }, fields: 'pixelSize' } })
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: g.fCifras - 1, endIndex: g.fCifras }, properties: { pixelSize: 38 }, fields: 'pixelSize' } })
 
-  // ── LOS NÚMEROS QUE NO SON PLATA ────────────────────────────────────────────────────────────────
-  // UNA COBERTURA NO ES UN IMPORTE: es cuántas veces alcanza. Con el formato de la columna, 1,83 se
-  // dibujaba "$2" — el número que decide si hay que salir a buscar plata, redondeado a dos pesos.
-  fmt(r(g.fCobDesde - 1, g.fCobHasta, 6, 7), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-    { numberFormat: VECES, horizontalAlignment: 'CENTER' })
-  fmt(r(g.fCobDesde - 1, g.fCobHasta, 5, 6), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-    { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER' })
-  // El acumulado de la concentración es una proporción, no plata.
   // ── ENCABEZADOS Y TÍTULOS DE BLOQUE ─────────────────────────────────────────────────────────────
   const cabCal = g.filas.findIndex((f) => String(f?.[0] ?? '').trim() === 'Tramo') + 1
   const cabCob = g.filas.findIndex((f) => String(f?.[0] ?? '').trim() === 'Horizonte') + 1
@@ -342,7 +345,7 @@ async function formatear(google, sheetId, g) {
     const t = String(f[0] ?? '')
     // EL RÓTULO DE UN BLOQUE SE VE COMO UN BLOQUE, con el estilo del archivo y no con una negrita
     // suelta. Ocupa la fila entera: no compite con ninguna columna.
-    if (/^\d+ · /.test(t)) {
+    if (esTituloDeBloque(t)) {
       fmt(r(i, i + 1), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
       fmt(r(i, i + 1, 0, 6), 'userEnteredFormat', { textFormat: { bold: true, fontFamily: E.FUENTE, fontSize: E.TAM.cuerpo, foregroundColor: INK }, horizontalAlignment: 'LEFT' })
       borde(r(i, i + 1))
@@ -357,10 +360,44 @@ async function formatear(google, sheetId, g) {
   // Comparte la grilla con el bloque de cuentas, donde la D es "Tipo de cambio" y la F "Fecha". Sin
   // decirlo explícitamente heredaba esos formatos y un saldo se dibujaba como una fecha: un cuadro así
   // no se puede revisar, el ojo no suma lo que ve.
-  fmt(r(g.cal0 - 1, g.calFin, 2, 6), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+  fmt(r(g.cal0 - 1, g.calFin, 2, 5), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT' })
-  // Y la columna "Hasta" del calendario es TEXTO ("12/08" lo produce un TEXT), nunca una fecha serial.
-  fmt(r(g.cal0 - 1, g.calFin, 6, 7), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
+
+  // ── UN SALDO VIEJO SE VE VIEJO ──────────────────────────────────────────────────────────────────
+  //
+  // Reemplaza la columna "Antigüedad" que decía "1 días" / "⚠ 14 días" y que el dueño mandó a sacar
+  // junto con el resto de la G. El dato importa —el extracto en dólares tenía catorce días— pero ya
+  // está en la fecha de al lado: alcanza con que se vea distinta. Una regla condicional no gasta
+  // ninguna columna y, a diferencia del texto, no se desactualiza si nadie corre el generador.
+  // ═══ LAS REGLAS CONDICIONALES SE BORRAN ANTES DE AGREGAR LA PROPIA (05/08) ═══
+  //
+  // `addConditionalFormatRule` se comporta igual que `addChart`: SIEMPRE agrega. Con el timer cada dos
+  // horas eso son doce reglas por día sobre el mismo rango, invisibles en la pestaña y acumulándose en
+  // el archivo. Y la primera que coincide GANA, así que la que quedó de un diseño viejo puede seguir
+  // pintando algo que ya no significa nada — que es exactamente lo que pasó: el titular del piso
+  // apareció con fondo rosa y letra roja, de una regla de una versión anterior de la pestaña.
+  //
+  // Se borran TODAS las de CAJA, no sólo las propias, y se vuelve a poner la única que esta pestaña
+  // usa. Es legítimo acá y no en cualquier pestaña: CAJA es íntegramente generada —las dos celdas del
+  // arqueo son lo único que carga una persona, y una celda de captura no lleva regla condicional—.
+  // Se borran de atrás para adelante porque `deleteConditionalFormatRule` reindexa las que quedan.
+  //
+  // `getConditionalFormats` devuelve la CANTIDAD por pestaña, no las reglas: alcanza, porque para
+  // borrarlas se las nombra por índice. (Llegué a escribir un segundo lector con el mismo nombre en
+  // `google.mjs`; el de abajo ganaba por estar después y mi versión devolvía otra forma. Un método
+  // duplicado en un objeto no da error: gana el último y el otro desaparece sin ruido.)
+  const nReglas = (await google.getConditionalFormats(ID).catch(() => []))
+    .find((h) => h.sheetId === sheetId)?.reglas ?? 0
+  for (let i = nReglas - 1; i >= 0; i--) req.push({ deleteConditionalFormatRule: { sheetId, index: i } })
+  if (nReglas) console.log(`  🧹 ${nReglas} regla(s) condicional(es) viejas borradas antes de poner la propia`)
+
+  req.push({ addConditionalFormatRule: { index: 0, rule: {
+    ranges: [r(g.d0 - 1, g.d1, 5, 6)],
+    booleanRule: {
+      condition: { type: 'DATE_BEFORE', values: [{ relativeDate: 'PAST_WEEK' }] },
+      format: { textFormat: { foregroundColor: { red: 0.72, green: 0.42, blue: 0.05 }, bold: true } },
+    },
+  } } })
 
   // Totales RULADOS, no rellenos de color: la línea de total lleva una hairline arriba y la cifra que
   // se decide va en acento. Es como un estado financiero cierra un total, no como una planilla lo pinta.
@@ -386,6 +423,7 @@ async function formatear(google, sheetId, g) {
     },
   })
   ANCHOS.forEach((px, i) => req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: px }, fields: 'pixelSize' } }))
+
   // Un texto se dibuja como texto, decidido por CONTENIDO y no por rangos que hay que mantener.
   const { requests: rTxt, celdas } = requestsTextoPorContenido(sheetId, g.filas || [])
   req.push(...rTxt)

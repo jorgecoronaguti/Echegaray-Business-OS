@@ -29,23 +29,40 @@ test('EL ANCLA CAE DENTRO DE LA GRILLA QUE EL GENERADOR GARANTIZA', () => {
   assert.match(src, /gridProperties\.columnCount/, 'y pedirle a la API que cambie el ancho, no sólo el alto')
 })
 
-test('EL WATERFALL ARRANCA EN UN NIVEL Y SIGUE EN DELTAS: dos rangos, no uno', () => {
-  // La primera barra es la CAJA DE HOY (un nivel) y las seis siguientes son los netos de cada tramo
-  // (deltas). Por eso el dominio y la serie se arman con dos rangos NO CONTIGUOS. Sin
-  // `firstValueIsTotal` el recorrido arrancaría en cero y el gráfico mostraría un pozo que no existe.
-  const w = graficoRecorrido(7, G).addChart.chart.spec.waterfallChart
-  assert.equal(w.firstValueIsTotal, true)
-  const dom = w.domain.data.sourceRange.sources
-  const ser = w.series[0].data.sourceRange.sources
-  assert.equal(dom.length, 2)
-  assert.equal(ser.length, 2)
-  // El primero es la fila del total de disponibilidades; el segundo, los seis tramos del calendario.
-  assert.equal(dom[0].startRowIndex, G.fTotal - 1)
-  assert.equal(dom[1].startRowIndex, G.cal0 - 1)
-  assert.equal(dom[1].endRowIndex, G.cal1)
-  // Y la serie lee la MISMA plata que la tabla: columna E (índice 4) en las mismas filas.
-  for (const s of ser) assert.equal(s.startColumnIndex, 4)
-  for (const d of dom) assert.equal(d.startColumnIndex, 0)
+test('LA CURVA DE LIQUIDEZ LEE LAS TRES COLUMNAS DEL CALENDARIO Y NADA MÁS', () => {
+  // ═══ POR QUÉ YA NO ES UN WATERFALL ═══
+  //
+  // Este test exigía un waterfall y llegó a exigir DOS rangos no contiguos por eje — algo que la API
+  // rechaza—, así que pasaba en verde mientras el gráfico no se dibujaba en el archivo. Después el
+  // dueño borró el waterfall que sí llegó a dibujarse. La forma correcta para *¿en qué semana me
+  // quedo corto?* es un COMBO: barras del movimiento del tramo y una línea con la posición acumulada.
+  //
+  // Lo que este test protege es lo único que puede romperse en frío: que las tres series salgan de las
+  // columnas C, D y E del CALENDARIO —las mismas celdas que la tabla— y de ninguna otra parte. Un
+  // gráfico con datos propios es la forma más elegante de tener dos verdades.
+  const b = graficoRecorrido(7, G).addChart.chart.spec.basicChart
+  assert.equal(b.chartType, 'COMBO')
+  assert.equal(b.legendPosition, 'BOTTOM_LEGEND', 'con tres series, sin leyenda no se puede leer')
+  const dom = b.domains[0].domain.sourceRange.sources
+  assert.equal(dom.length, 1)
+  assert.equal(dom[0].startColumnIndex, 0, 'el dominio es el rótulo del tramo, columna A')
+  // Y EL ENVOLTORIO IMPORTA: en un basicChart la ChartData va directa. Con `{ data: … }` —que es lo
+  // que pide un waterfall— la API devuelve 400 "Unknown name data" y no se dibuja nada. Leerlo así
+  // desde el test es lo que fija la forma correcta.
+  assert.equal(b.domains[0].domain.data, undefined, 'en un basicChart la ChartData va SIN envoltorio `data`')
+  assert.deepEqual(b.series.map((s) => s.series.sourceRange.sources[0].startColumnIndex), [2, 3, 4],
+    'Entra (C), Sale (D) y Queda después (E) — el contrato de columnas de la pestaña')
+  assert.deepEqual(b.series.map((s) => s.type), ['COLUMN', 'COLUMN', 'LINE'],
+    'el acumulado es una LÍNEA: dibujado como barra se lee como si fuera un movimiento más')
+  // LA LEYENDA SALE DEL ENCABEZADO DE LA TABLA: el rango arranca UNA fila antes que los datos y
+  // `headerCount: 1` le dice a Sheets que esa fila son los nombres. Sin eso la leyenda dibuja tres
+  // cuadraditos sin texto — tres series indistinguibles, peor que no tener leyenda.
+  assert.equal(b.headerCount, 1, 'sin headerCount la leyenda sale sin nombres')
+  for (const s of [...b.series, b.domains[0].domain]) {
+    const f = (s.series ?? s).sourceRange.sources[0]
+    assert.equal(f.startRowIndex, G.cal0 - 2, 'el rango incluye la fila de encabezado, que es de donde salen los nombres')
+    assert.equal(f.endRowIndex, G.cal1)
+  }
 })
 
 // La CONCENTRACIÓN POR CLIENTE se fue de CAJA (05/08): el dueño la quiere fuera —'no quiero nada

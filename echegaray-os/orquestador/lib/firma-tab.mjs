@@ -139,7 +139,27 @@ export function humanoEdito(firmaActual, firmaGuardada) {
  * @param {{firmaActual:string, firmaGuardada:string|null, hayEdicionHumana?:boolean}} p
  * @returns {{editada:boolean, motivo:string}}
  */
+/**
+ * ═══ EL AUTO-CANDADO ESTÁ APAGADO POR ORDEN DEL DUEÑO (05/08) ═══
+ *
+ * Textual: *"sacá los candados de mierda, editá todo y nunca más actives los agentes de
+ * mantenimiento"*. El mecanismo se estaba comiendo su propio trabajo: cada escritura sellaba una
+ * firma, la corrida siguiente la veía distinta de la pestaña —porque él la edita, y porque el propio
+ * generador la cambia— y se auto-candaba. Resultado medido hoy: CAJA quedó cortada en la fila 32
+ * durante horas porque tres escrituras seguidas se saltearon solas, y cada una lo informaba en un log
+ * que nadie mira.
+ *
+ * LO QUE SE PIERDE, DICHO SIN ADORNO: esta guarda existía porque hay siete pérdidas registradas del
+ * trabajo del dueño. Apagarla devuelve al generador la capacidad de pisar lo que él escriba a mano.
+ * Lo que queda protegiéndolo es `lib/no-borrar.mjs` —que corrige toda escritura que deje VACÍA una
+ * celda con contenido, sin bypass— y la fusión preservadora. Eso cubre el borrado, no el pisado.
+ *
+ * Para volver a encenderlo: `ORQ_AUTOCANDADO=1`.
+ */
+const autocandadoEncendido = () => process.env.ORQ_AUTOCANDADO === '1'
+
 export function evaluarFirma({ firmaActual, firmaGuardada, hayEdicionHumana = false }) {
+  if (!autocandadoEncendido()) return { editada: false, motivo: 'auto-candado apagado por orden del dueño (05/08)' }
   if (firmaGuardada) {
     return firmaActual === firmaGuardada
       ? { editada: false, motivo: 'coincide con mi última escritura' }
