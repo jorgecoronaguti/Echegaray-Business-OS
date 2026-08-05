@@ -1,3 +1,5 @@
+import { ref as refPestana } from './partir-pestana.mjs'
+
 // RANGOS CON NOMBRE — para que un número tenga UNA dirección estable en todo el archivo.
 //
 // POR QUÉ (21/07). El Cash Flow Mensual es una pestaña "calculada": la regla es que TODO tiene que
@@ -90,10 +92,113 @@ export function pedidos(sheetId, destinos = [], existentes = []) {
   })
 }
 
-/** Publica los nombres. Falla silenciosamente NO: si no se puede, el que llama se entera. */
-export async function publicar(google, fileId, sheetId, destinos = []) {
-  if (!destinos.length) return { nombres: 0 }
+// ═══ UN NOMBRE PUBLICADO NO ES UN NOMBRE QUE APUNTA A ALGO (05/08) ═══
+//
+// EL CASO REAL. `ARCA_COMPRAS_TOTAL` prometía un importe y devolvía "0001-00000204" — un número de
+// comprobante—; `ARCA_FALTAN_N` prometía un contador y devolvía "30-71647696-7", un CUIT. Los doce
+// nombres apuntaban a la fila que el generador había CALCULADO para su bloque, pero esa fila todavía
+// tenía el contenido de un diseño anterior: la escritura de valores no llegó a esas celdas y la
+// publicación de los nombres siguió adelante igual.
+//
+// LA API DE SHEETS ACEPTA CUALQUIER RANGO. `addNamedRange` sobre una celda con basura devuelve 200,
+// así que la corrida imprimía "12 rangos con nombre publicados" y se daba por terminada. El efecto
+// se veía cuatro pestañas más allá —Recurrentes, Estructura, Materiales y Cash Flow Mensual mostraban
+// un número de comprobante donde prometían plata— y nadie lo ataba a esta línea.
+//
+// LO QUE PRUEBA UNA ESCRITURA ES EL DATO LEÍDO EN SU DESTINO. Después de publicar se RELEE cada
+// celda y se compara con la ESPECIE que el nombre promete. No alcanza con "hay algo": un texto
+// donde va plata es exactamente el defecto.
+
+/** Qué especie de dato promete cada nombre. Un contador es un ENTERO; un monto es PLATA. */
+export const ESPECIE = {
+  [ARCA.comprobantes]: 'entero', [ARCA.total]: 'importe',
+  [ARCA.notasN]: 'entero', [ARCA.notasMonto]: 'importe',
+  [ARCA.enComprasN]: 'entero', [ARCA.enComprasMonto]: 'importe',
+  [ARCA.sinNumeroN]: 'entero', [ARCA.sinNumeroMonto]: 'importe',
+  [ARCA.faltanN]: 'entero', [ARCA.faltanMonto]: 'importe',
+  [ARCA.ventasN]: 'entero', [ARCA.ventasMonto]: 'importe',
+  [CAJA.total]: 'importe',
+  // CAJA_FECHA_SALDO es una fecha y PROV_LIBRETA es una tabla de texto: no declaran especie y por lo
+  // tanto no se verifican acá. Declarar de más sería inventar un criterio para poder chequearlo.
+}
+
+/**
+ * NÚCLEO PURO: qué especie de dato es este valor, leído con UNFORMATTED_VALUE.
+ *
+ * Se lee SIN formatear a propósito: "$209.231.271" formateado es un string y un número de
+ * comprobante también, así que el formato borra justo la distinción que hace falta. Ver la memoria
+ * "Fechas dd/mm/yy: el parser que vacía la pestaña".
+ *
+ * @param {unknown} valor
+ * @returns {'vacio'|'entero'|'numero'|'texto'}
+ */
+export function especieDe(valor) {
+  if (valor === null || valor === undefined) return 'vacio'
+  if (typeof valor === 'number') return Number.isInteger(valor) ? 'entero' : 'numero'
+  const s = String(valor).trim()
+  if (s === '') return 'vacio'
+  // La API puede devolver el número como string según la ruta; "0001-00000204" no matchea acá, que
+  // es todo el punto: los ceros a la izquierda y el guión lo delatan como comprobante.
+  if (/^-?\d+$/.test(s)) return 'entero'
+  if (/^-?\d+\.\d+$/.test(s)) return 'numero'
+  return 'texto'
+}
+
+/**
+ * NÚCLEO PURO: los nombres cuya celda NO tiene la especie que el nombre promete.
+ *
+ * Un importe acepta entero o decimal (y el negativo: las notas de crédito restan). Un contador
+ * acepta sólo un entero. Ninguno de los dos acepta texto NI vacío: una celda vacía bajo un nombre
+ * publicado es el caso de "el nombre se reapuntó a una grilla que todavía no se escribió", que es
+ * tan mudo como el texto y tan equivocado.
+ *
+ * @param {Array<{name:string, fila:number, col:number, especie?:string}>} destinos
+ * @param {(d:{name:string}) => unknown} leer devuelve el valor crudo de la celda de ese destino
+ * @returns {{name:string, fila:number, col:number, espera:string, encontro:string, valor:unknown}[]}
+ */
+export function desalineados(destinos = [], leer = () => undefined) {
+  const out = []
+  for (const d of destinos) {
+    const espera = d.especie ?? ESPECIE[d.name]
+    if (!espera) continue
+    const valor = leer(d)
+    const hay = especieDe(valor)
+    const ok = espera === 'importe' ? (hay === 'entero' || hay === 'numero') : hay === espera
+    if (!ok) out.push({ name: d.name, fila: d.fila, col: d.col, espera, encontro: hay, valor })
+  }
+  return out
+}
+
+/** La celda A1 de una fila/columna 1-indexadas. Sólo hasta la Z: los nombres viven en las primeras. */
+const a1 = (fila, col) => `${String.fromCharCode(64 + col)}${fila}`
+
+/**
+ * Publica los nombres Y COMPRUEBA QUE APUNTEN A ALGO DE LA ESPECIE PROMETIDA.
+ *
+ * La relectura es UNA sola llamada: el rectángulo que cubre todos los destinos. Doce lecturas
+ * sueltas por corrida son doce oportunidades más de comerse un 429 justo después de escribir.
+ *
+ * Sin `titulo` no se puede releer (la API de valores direcciona por nombre de pestaña, no por
+ * sheetId) y se devuelve `verificado: false` — que es la verdad, no un éxito.
+ *
+ * @returns {Promise<{nombres:number, verificado:boolean, malApuntados:Array<object>}>}
+ */
+export async function publicar(google, fileId, sheetId, destinos = [], { titulo = null } = {}) {
+  if (!destinos.length) return { nombres: 0, verificado: false, malApuntados: [] }
   const existentes = await google.getNamedRanges(fileId).catch(() => [])
   await google.spreadsheetBatchUpdate(fileId, pedidos(sheetId, destinos, existentes))
-  return { nombres: destinos.length }
+  if (!titulo) return { nombres: destinos.length, verificado: false, malApuntados: [] }
+
+  const f0 = Math.min(...destinos.map((d) => d.fila)), f1 = Math.max(...destinos.map((d) => d.fila))
+  const c0 = Math.min(...destinos.map((d) => d.col)), c1 = Math.max(...destinos.map((d) => d.col))
+  // El nombre de la pestaña, escapado — la misma función que usan las fórmulas al reubicarse.
+  let leido = null
+  try {
+    leido = await google.readSheetValues(fileId, `${refPestana(titulo)}!${a1(f0, c0)}:${a1(f1, c1)}`, { render: 'UNFORMATTED_VALUE' })
+  } catch { leido = null }
+  // NO PODER RELEER NO ES "SALIÓ BIEN". Se dice que no se verificó y el que llama decide.
+  if (!leido) return { nombres: destinos.length, verificado: false, malApuntados: [] }
+
+  const malApuntados = desalineados(destinos, (d) => (leido[d.fila - f0] || [])[d.col - c0])
+  return { nombres: destinos.length, verificado: true, malApuntados }
 }
