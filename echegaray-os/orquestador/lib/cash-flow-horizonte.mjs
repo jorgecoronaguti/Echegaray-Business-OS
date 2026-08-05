@@ -43,8 +43,21 @@
 
 import { expresionReal, expresionProyeccionMes } from './cash-flow-lineas.mjs'
 
-/** El horizonte que pide la skill de tesorería. 8 sería el otro valor defendible. */
-export const SEMANAS_HORIZONTE = 13
+// ═══ EL DUEÑO PIDIÓ LAS 51 SEMANAS DE VUELTA (05/08) ═══
+//
+// El horizonte se había acortado a 13 —el rodante que pide la skill de tesorería— porque el semanal
+// no proyectaba nada y contradecía al mensual en $140.350.436, con SIGNO OPUESTO en el aumento neto
+// del año. La causa de esa contradicción NO era el largo del horizonte: era que el semanal sólo
+// sumaba lo ya cargado. Acortarlo tapaba el síntoma escondiendo los meses donde se veía.
+//
+// Ese defecto ya está resuelto —`formulaLineaSemana` proyecta con el mismo criterio que el mensual—
+// así que el horizonte largo vuelve a ser sostenible: las 51 semanas cubren el año y cada una
+// proyecta, en vez de mostrar cero hasta que alguien cargue la factura.
+//
+// Lo que se pierde y hay que decirlo: una proyección semanal a cuarenta semanas vista es mucho menos
+// confiable que a cuatro. El cuadro las marca en itálica como proyectadas; la confianza la pone quien
+// lo lee, no el número.
+export const SEMANAS_HORIZONTE = 51
 /** Cuántas semanas ya cerradas mira el contraste "lo esperado contra lo que ocurrió". */
 export const SEMANAS_CERRADAS = 4
 
