@@ -141,6 +141,18 @@ const FORCE = process.argv.includes('--force') || process.env.ORQ_PROV_FORCE ===
 const iSolo = process.argv.indexOf('--solo')
 const SOLO = iSolo >= 0 ? String(process.argv[iSolo + 1] ?? '').trim() : ''
 const AÑO = 2026
+// ═══ CÓDIGO QUE SE CALCULA PARA TIRARSE, Y POR QUÉ SIGUE ACÁ (05/08) ═══
+//
+// `TOP`, `deudaAgrupada` y el renglón del "resto" arman las secciones 1 y 2 como TEXTO. Desde que
+// las dos son tablas dinámicas nativas, el tramo que las contiene queda ARRIBA de la frontera y se
+// descarta al partir: se calcula entero en cada corrida y no llega al archivo. Sacarlo sería lo
+// correcto, y NO se saca en este pase porque no es un borrado: `deudaAgrupada` alimenta también
+// `deudaGrupos`, el rango con nombre `$TOTPROV`, los grupos +/- de la pestaña y la conciliación de
+// notas del dueño, repartidos en 2.200 líneas. Es un refactor con riesgo propio —el de romper lo que
+// sí se escribe— y merece su propio pase, con su propia verificación contra el archivo.
+//
+// Lo que cuesta dejarlo: tiempo de CPU y confusión al leer. Lo que costaría sacarlo mal: el cuadro
+// de deuda del dueño. Mientras siga acá, la regla es que NADIE agregue nada nuevo a este tramo.
 const TOP = 30
 /** Colchón de filas sobre la deuda actual, para que la tabla derrame sin pisar el bloque siguiente.
  *  ANTES ERA UN 40 FIJO y dejaba 27 filas muertas: el dueño vio la pestaña y dijo "es completamente
