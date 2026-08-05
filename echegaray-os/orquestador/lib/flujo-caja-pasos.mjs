@@ -63,6 +63,10 @@ export const PASOS = [
   // `cheques-emitidos-sync-banco.mjs`, que sincroniza una columna y declara [].
   ['proveedores-cuenta-corriente.mjs', 'Compras!AM "CUIT (OS)" + la auxiliar _PROVEEDORES_OS — el origen del CUIT de la sección 2', ['_PROVEEDORES_OS'], ['--aplicar']],
   ['proveedores-materiales-pestana.mjs', 'Proveedores (notas de crédito, ARCA y control) + Materiales — de la frontera para abajo', ['Proveedores', 'Materiales']],
+  // ANTES DE LAS DOS DINÁMICAS: los títulos "1 · …" y "2 · …" son su ANCLA y no los reponía nadie.
+  // Si el dueño borra esa celda, los dos pasos que siguen fallan cerrado —correcto— y la pestaña se
+  // congela en silencio. Escribe UNA celda y sólo si está vacía; ver lib/proveedores-titulos.mjs.
+  ['proveedores-titulos-sembrar.mjs', 'Proveedores · los títulos de las secciones 1 y 2, que son el ancla de las dinámicas', [], ['--aplicar']],
   ['proveedores-dos-cuadros.mjs', 'Proveedores · sección 1 — las dos dinámicas: quién y cuánto, y cada operación', [], ['--aplicar']],
   ['proveedores-seccion2-pivot.mjs', 'Proveedores · sección 2 — la dinámica de concentración con su resto y su total', [], ['--aplicar']],
   ['proveedores-notas-visibles.mjs', 'Proveedores · la columna "Qué hacer" del dueño, anclada a su proveedor', [], ['--aplicar']],

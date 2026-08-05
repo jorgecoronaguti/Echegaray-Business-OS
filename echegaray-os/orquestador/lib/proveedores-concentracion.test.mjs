@@ -36,6 +36,31 @@ describe('gastoPorProveedor', () => {
     assert.equal(g.length, 1)
     assert.equal(g[0].total, 100)
   })
+
+  it('el mismo proveedor con y sin espacio es UNO, y guarda las dos grafías', () => {
+    const g = gastoPorProveedor([fila('AGUERO ', 100), fila('AGUERO', 50)])
+    assert.equal(g.length, 1, 'el espacio no crea un proveedor nuevo')
+    assert.equal(g[0].total, 150)
+    assert.deepEqual([...g[0].variantes].sort(), ['AGUERO', 'AGUERO '])
+  })
+})
+
+describe('nombresVisibles', () => {
+  it('EL DEFECTO: el nombre recortado no engancha la fila que tiene el espacio', () => {
+    // Medido en el archivo el 05/08: `"AGUERO "` existe así en Compras y el filtro decía "AGUERO",
+    // así que la dinámica no lo listaba. El cuadro cerraba igual —el resto es TOTAL menos lo
+    // listado, por fórmula— y por eso el control no lo veía: un proveedor del top 47 desaparecido
+    // de la vista, engordando una línea muda.
+    const c = cortePorConcentracion([fila('AGUERO ', 100), fila('Alumetal', 900)])
+    const visibles = nombresVisibles(c)
+    assert.ok(visibles.includes('AGUERO '), 'tiene que ir la grafía CRUDA, la que está en la columna')
+    for (const v of visibles) assert.equal(typeof v, 'string')
+  })
+
+  it('si el proveedor aparece con dos grafías, van las dos al filtro', () => {
+    const c = cortePorConcentracion([fila('AGUERO ', 600), fila('AGUERO', 400)])
+    assert.deepEqual(nombresVisibles(c).sort(), ['AGUERO', 'AGUERO '])
+  })
 })
 
 describe('cortePorConcentracion', () => {

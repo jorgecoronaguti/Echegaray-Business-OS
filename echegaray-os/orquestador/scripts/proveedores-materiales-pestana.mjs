@@ -72,6 +72,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { FAMILIAS, SIN_FAMILIA, formulaFamilia, familiaDeMaterial, RUBROS_CON_FAMILIA } from '../lib/familia-material.mjs'
 import { bloqueControlArca } from '../lib/control-arca-bloque.mjs'
 // "El mismo proveedor" se define UNA vez, en lib/: ver el comentario junto a RUBROS_COMERCIALES.
+import { tituloDeSeccion } from '../lib/proveedores-titulos.mjs'
 import { normNombre } from '../lib/razon-social.mjs'
 import { NOMBRES } from '../lib/sheet-pestanas.mjs'
 import { partir, mapaDeFilas, filasHuerfanas, referenciasFuera, ref as refPestana } from '../lib/partir-pestana.mjs'
@@ -140,6 +141,18 @@ const FORCE = process.argv.includes('--force') || process.env.ORQ_PROV_FORCE ===
 const iSolo = process.argv.indexOf('--solo')
 const SOLO = iSolo >= 0 ? String(process.argv[iSolo + 1] ?? '').trim() : ''
 const AÑO = 2026
+// ═══ CÓDIGO QUE SE CALCULA PARA TIRARSE, Y POR QUÉ SIGUE ACÁ (05/08) ═══
+//
+// `TOP`, `deudaAgrupada` y el renglón del "resto" arman las secciones 1 y 2 como TEXTO. Desde que
+// las dos son tablas dinámicas nativas, el tramo que las contiene queda ARRIBA de la frontera y se
+// descarta al partir: se calcula entero en cada corrida y no llega al archivo. Sacarlo sería lo
+// correcto, y NO se saca en este pase porque no es un borrado: `deudaAgrupada` alimenta también
+// `deudaGrupos`, el rango con nombre `$TOTPROV`, los grupos +/- de la pestaña y la conciliación de
+// notas del dueño, repartidos en 2.200 líneas. Es un refactor con riesgo propio —el de romper lo que
+// sí se escribe— y merece su propio pase, con su propia verificación contra el archivo.
+//
+// Lo que cuesta dejarlo: tiempo de CPU y confusión al leer. Lo que costaría sacarlo mal: el cuadro
+// de deuda del dueño. Mientras siga acá, la regla es que NADIE agregue nada nuevo a este tramo.
 const TOP = 30
 /** Colchón de filas sobre la deuda actual, para que la tabla derrame sin pisar el bloque siguiente.
  *  ANTES ERA UN 40 FIJO y dejaba 27 filas muertas: el dueño vio la pestaña y dijo "es completamente
@@ -501,7 +514,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, not
   // literal de array, que NO es portable al separador es-AR ({"a"\"b"} vs {"a";"b"}) — ya rompió
   // una vez en esta misma pestaña. El texto del QUERY va entre comillas y el localizador de
   // fórmulas respeta los literales, así que sus comas llegan intactas.
-  const b1 = push([`${nSeccion('deuda')} · QUÉ SE DEBE Y CUÁNDO`])
+  const b1 = push([tituloDeSeccion('deuda')])
   // AVISO VIVO DE DESFASAJE. El detalle de abajo son filas físicas: existen cuando corre el agente.
   // Los IMPORTES son fórmulas y se mueven solos, pero una factura de un proveedor NUEVO no tiene fila
   // hasta la próxima corrida. Esta línea compara —en vivo— el total real contra la suma de lo listado
@@ -620,7 +633,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, not
   // quién se gasta, cuánto, si AFIP tiene más facturado de lo cargado, y con qué plazo paga. Se sacaron
   // las diez columnas de deuda que repetían el bloque de arriba (regla 9) y hacían de esto una pared de
   // dieciséis columnas ilegible. Menos es más: siete columnas, cada una con un trabajo.
-  const b2 = push([`${nSeccion('cuentaCorriente')} · CUENTA CORRIENTE POR PROVEEDOR`])
+  const b2 = push([tituloDeSeccion('cuentaCorriente')])
   push(['Con quién se gasta y con qué plazo. El plazo —días entre factura y pago— es el dato clave: pagar a 0 días empuja al descubierto al 62,78% anual cuando el crédito del proveedor es gratis. La deuda de cada uno está arriba, agrupada. Sólo comerciales.'])
   const cabProv = push(['Proveedor', 'CUIT', 'Comprobantes', `Comprado ${AÑO}`, 'Plazo promedio', 'Qué se le compra'])
   const p0 = filas.length + 1

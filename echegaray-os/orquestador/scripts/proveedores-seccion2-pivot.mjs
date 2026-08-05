@@ -25,6 +25,8 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { COLCHON_FINAL, filaDelSiguienteTitulo, filasNoVacias, sobranteDeColchon, ultimaConDato } from '../lib/proveedores-colchon.mjs'
 import { cortePorConcentracion, escalones, nombresVisibles, UMBRAL } from '../lib/proveedores-concentracion.mjs'
 import { ANCHOS_PROVEEDORES } from '../lib/proveedores-frontera.mjs'
+import { leerCuerpoDeDinamica, leerParaDecidirBorrado } from '../lib/proveedores-lectura-dinamica.mjs'
+import { SECCIONES_DINAMICAS } from '../lib/proveedores-titulos.mjs'
 import { requestsDeRotulos, rotulosQueNoEntran } from '../lib/proveedores-rotulos.mjs'
 import { columnasDeCompras, filasDelPie, referencias } from '../lib/proveedores-seccion2-pie.mjs'
 
@@ -37,8 +39,9 @@ const COLCHON_RESERVA = 10
 const ANCHO_LECTURA = 'AZ'
 /** Las columnas del cuadro: proveedor · CUIT · comprado · comprobantes. */
 const ANCHO = 4
-/** Los nombres de los dos valores. Se declaran una vez: van al pivot Y a la fila de rótulos. */
-const VALORES = Object.freeze(['Comprado 2026', 'Comprobantes'])
+/** Los nombres de los dos valores: van al pivot, a la fila de rótulos, y son con lo que el sembrador
+ *  de títulos RECONOCE esta sección cuando su título no está. Por eso se declaran en la lib. */
+const VALORES = SECCIONES_DINAMICAS.find((s) => s.clave === 'cuentaCorriente').valores
 
 const plata = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
 
@@ -195,8 +198,13 @@ async function escribirDinamica({ google, sid, geo, corte, idx, fuente }) {
       properties: { hiddenByUser: false }, fields: 'hiddenByUser' } },
   ], { espejo: true })
 
-  const emitido = await google.readSheetValues(ID, `${PESTAÑA}!A${geo.filaRotulos}:D${geo.filaLimite - 1}`, { render: 'FORMULA' })
-  const p1 = ultimaConDato(emitido ?? [], { desde: 1, hasta: geo.filaLimite - geo.filaRotulos + 1 }) + iRot
+  // SE LEE CON EL RENDER QUE VE UNA DINÁMICA, que no es el que ve una fórmula. Esta lectura estaba en
+  // `FORMULA` y por eso el 05/08 la guarda abortó sobre una sección 2 que estaba PERFECTA: 47
+  // proveedores en la pantalla, cero filas para la guarda. Ver `lib/proveedores-lectura-dinamica.mjs`.
+  const emitido = await leerCuerpoDeDinamica({
+    google, id: ID, rango: `${PESTAÑA}!A${geo.filaRotulos}:D${geo.filaLimite - 1}`,
+  })
+  const p1 = ultimaConDato(emitido, { desde: 1, hasta: geo.filaLimite - geo.filaRotulos + 1 }) + iRot
   const listadas = p1 - geo.filaRotulos // filas de datos, sin la de rótulos
   if (p1 <= geo.filaRotulos) {
     console.error('✗✗ la dinámica no emitió una sola fila: el filtro la dejó vacía (la trampa del `condition`)')
@@ -254,7 +262,11 @@ async function escribirPie({ google, sid, R, p0, p1, rotulos }) {
  * nunca la pantalla que respondió que sí.
  */
 async function recortarYVerificar({ google, sid, geo, corte, p0, p1, fResto, fTotal }) {
-  const ancho = await google.readSheetValues(ID, `${PESTAÑA}!A1:${ANCHO_LECTURA}${geo.filaLimite + 20}`, { render: 'FORMULA' })
+  // DOS LECTURAS FUSIONADAS, PORQUE ACÁ SE BORRA. Una fila cuenta como vacía sólo si no tiene nada de
+  // nadie: ni fórmula que devuelve "" (sólo la ve FORMULA) ni salida de dinámica (sólo FORMATTED).
+  const ancho = await leerParaDecidirBorrado({
+    google, id: ID, rango: `${PESTAÑA}!A1:${ANCHO_LECTURA}${geo.filaLimite + 20}`,
+  })
   const siguiente = filaDelSiguienteTitulo(ancho, geo.filaRotulos)
   const s = sobranteDeColchon({ filas: ancho, desde: geo.filaRotulos, hasta: siguiente })
   const sucias = filasNoVacias(ancho, s)

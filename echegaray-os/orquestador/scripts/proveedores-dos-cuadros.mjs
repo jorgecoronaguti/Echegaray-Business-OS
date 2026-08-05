@@ -21,6 +21,8 @@ import { loadConfig } from '../lib/config.mjs'
 import { diferenciasDeHuella, huellaProtegida } from '../lib/proveedores-bloque-vivo.mjs'
 import { COLCHON_FINAL, filaDelSiguienteTitulo, filasNoVacias, sobranteDeColchon } from '../lib/proveedores-colchon.mjs'
 import { ANCHOS_PROVEEDORES } from '../lib/proveedores-frontera.mjs'
+import { leerParaDecidirBorrado } from '../lib/proveedores-lectura-dinamica.mjs'
+import { SECCIONES_DINAMICAS, VALORES_DETALLE } from '../lib/proveedores-titulos.mjs'
 import {
   altoEmitido, bandasDeFormato, COL, filtros, formatoDeTodo, fuenteCompras, geometriaDeLaSeccion,
   PENDIENTE, rotulosDelCuadro, VISTA,
@@ -40,6 +42,10 @@ const COLCHON = 12
 /** Hasta dónde se mira el ancho para decidir si una fila está vacía. Bien a la derecha del bloque. */
 const ANCHO_LECTURA = 'AZ'
 
+/** Los `name` de los valores del cuadro A. Los declara `proveedores-titulos.mjs` porque el
+ *  sembrador de títulos reconoce la sección por ellos: dos copias es cómo se desincronizan. */
+const VALORES = SECCIONES_DINAMICAS.find((s) => s.clave === 'deuda').valores
+
 const plata = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
 
 /** A · una línea por proveedor. COUNTA sobre el proveedor —no sobre el comprobante—: hay una factura
@@ -48,8 +54,8 @@ const cuadroTotales = (fuente) => ({
   source: fuente,
   rows: [{ sourceColumnOffset: COL.proveedor, showTotals: false, sortOrder: 'DESCENDING', valueBucket: { valuesIndex: 0 } }],
   values: [
-    { sourceColumnOffset: COL.saldo, summarizeFunction: 'SUM', name: 'Se le debe' },
-    { sourceColumnOffset: COL.proveedor, summarizeFunction: 'COUNTA', name: 'Facturas' },
+    { sourceColumnOffset: COL.saldo, summarizeFunction: 'SUM', name: VALORES[0] },
+    { sourceColumnOffset: COL.proveedor, summarizeFunction: 'COUNTA', name: VALORES[1] },
   ],
   filterSpecs: filtros(),
   valueLayout: 'HORIZONTAL',
@@ -145,8 +151,8 @@ async function main() {
   // LOS RÓTULOS DE CADA CUADRO, CALCULADOS ANTES DE ESCRIBIR. Si alguno no entra ni partido en dos
   // líneas se avisa: la regla de la pestaña es acortar el rótulo antes que ensanchar la columna, y
   // los de los campos de fila no se pueden acortar sin tocar Compras — así que hay que saberlo.
-  const rotulosA = rotulosDelCuadro({ vista: VISTA.POR_PROVEEDOR, cabecera, nombresDeValores: ['Se le debe', 'Facturas'] })
-  const rotulosB = rotulosDelCuadro({ vista: VISTA.DETALLE, cabecera, nombresDeValores: ['Importe'] })
+  const rotulosA = rotulosDelCuadro({ vista: VISTA.POR_PROVEEDOR, cabecera, nombresDeValores: [...VALORES] })
+  const rotulosB = rotulosDelCuadro({ vista: VISTA.DETALLE, cabecera, nombresDeValores: [...VALORES_DETALLE] })
   for (const [nombre, rots] of [['A', rotulosA], ['B', rotulosB]]) {
     for (const r of rotulosQueNoEntran(rots, ANCHOS_PROVEEDORES)) {
       console.log(`⚠ cuadro ${nombre}: el rótulo "${r.texto}" necesita ${r.lineas} líneas en su columna`)
@@ -262,7 +268,17 @@ async function main() {
  * columna le borrara al dueño catorce fechas que vivían más a la derecha. Ver `lib/proveedores-colchon.mjs`.
  */
 async function recortarElAire({ google, sheetId, geo }) {
-  const ancho = await google.readSheetValues(ID, `${PESTAÑA}!A1:${ANCHO_LECTURA}${geo.filaLimite + 20}`, { render: 'FORMULA' })
+  // ═══ DOS LECTURAS FUSIONADAS, Y ES LO QUE MANTENÍA MUERTO AL CUADRO B (05/08) ═══
+  //
+  // Esta lectura era sólo `FORMULA`, que NO VE el cuerpo de una tabla dinámica. Lo último con algo
+  // del bloque era entonces el subtítulo "Cada operación" —el cuadro B, 19 filas recién escritas,
+  // no existía para la lectura— así que el recorte le devolvía al colchón las filas que el cuadro
+  // acababa de ocupar, y el cinturón `filasNoVacias`, que usa la misma lectura, lo dejaba pasar.
+  // Una dinámica sin lugar no se renderiza: Google la deja en #REF!, que es como estaba el cuadro B
+  // en el archivo. El generador destruía su propio cuadro al final de cada corrida.
+  // Ver `lib/proveedores-lectura-dinamica.mjs`.
+  const rango = `${PESTAÑA}!A1:${ANCHO_LECTURA}${geo.filaLimite + 20}`
+  const ancho = await leerParaDecidirBorrado({ google, id: ID, rango })
   const siguiente = filaDelSiguienteTitulo(ancho, geo.filaEncabezado)
   const s = sobranteDeColchon({ filas: ancho, desde: geo.filaEncabezado, hasta: siguiente })
   const sucias = filasNoVacias(ancho, s)
@@ -279,7 +295,7 @@ async function recortarElAire({ google, sheetId, geo }) {
     sheetId, dimension: 'ROWS', startIndex: s.desdeBorrar - 1, endIndex: s.hastaBorrar - 1 } } }], { espejo: true })
 
   // LA EVIDENCIA ES DEL EFECTO: se relee y se cuenta el aire que quedó de verdad.
-  const despues = await google.readSheetValues(ID, `${PESTAÑA}!A1:${ANCHO_LECTURA}${geo.filaLimite + 20}`, { render: 'FORMULA' })
+  const despues = await leerParaDecidirBorrado({ google, id: ID, rango })
   const ahora = sobranteDeColchon({ filas: despues, desde: geo.filaEncabezado, hasta: filaDelSiguienteTitulo(despues, geo.filaEncabezado) })
   if (ahora.blancas === COLCHON_FINAL) console.log(`✓ quedaron ${ahora.blancas} filas de aire, releídas del archivo`)
   else { console.error(`✗✗ quedaron ${ahora.blancas} filas de aire y se esperaban ${COLCHON_FINAL}`); process.exitCode = 1 }

@@ -25,10 +25,13 @@ import { loadConfig } from '../lib/config.mjs'
 import { query } from '../lib/db.mjs'
 import { geometriaDeLaSeccion, altoEmitido } from '../lib/proveedores-pivot-seccion1.mjs'
 import { ANCHOS_PROVEEDORES } from '../lib/proveedores-frontera.mjs'
+import { COL_NOTA_AUX } from '../lib/proveedores-auxiliar.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Proveedores'
 const AUX = '_PROVEEDORES_OS'
+/** Quién escribe la auxiliar. Acá sólo se LEE: un bloque, un dueño. Ver lib/proveedores-auxiliar.mjs. */
+const DUEÑO_AUX = 'proveedores-cuenta-corriente.mjs'
 const APLICAR = process.argv.includes('--aplicar')
 /** La dinámica del cuadro A ocupa A·B·C. La nota va en la D, pegada y fuera de su cuerpo. */
 const COL_NOTA = 3
@@ -43,29 +46,20 @@ const ROTULO = 'Qué hacer'
 /** Filas de más que se preparan: si mañana entra un proveedor, su nota ya lo espera. */
 const COLCHON = 4
 
+// La columna de la nota sale del contrato de la auxiliar, no de un 3 tipeado: si mañana la auxiliar
+// gana una columna en el medio, esto se mueve con ella en vez de traer el CUIT como si fuera la nota.
 const formulaNota = (fila) =>
-  `=IF($A${fila}="";"";IFERROR(VLOOKUP($A${fila};${AUX}!$A:$C;3;FALSE);""))`
+  `=IF($A${fila}="";"";IFERROR(VLOOKUP($A${fila};${AUX}!$A:$C;${COL_NOTA_AUX};FALSE);""))`
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
 
   const { rows: notas } = await query(
     "select proveedor, nota from public.proveedor_notas where trim(coalesce(nota,'')) <> '' order by proveedor")
-  const { rows: provs } = await query(
-    "select nombre, cuit from public.proveedores where trim(coalesce(nombre,'')) <> '' order by nombre")
 
   const porNombre = new Map(notas.map((n) => [String(n.proveedor).trim(), String(n.nota).trim()]))
-  // Un proveedor con nota que no está en `proveedores` igual tiene que llegar a la pestaña auxiliar:
-  // si no, la nota existe en la base y no se ve en ningún lado, que es el problema que vino a
-  // resolver esta capacidad.
-  const nombres = [...new Set([...provs.map((p) => String(p.nombre).trim()), ...porNombre.keys()])].sort()
-  const cuits = new Map(provs.map((p) => [String(p.nombre).trim(), p.cuit]))
-  const conGuiones = (c) => {
-    const d = String(c ?? '').replace(/\D/g, '')
-    return d.length === 11 ? `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}` : String(c ?? '')
-  }
 
-  console.log(`NOTAS ${notas.length} · PROVEEDORES en la auxiliar ${nombres.length}`)
+  console.log(`NOTAS ${notas.length} · la auxiliar ${AUX} la escribe ${DUEÑO_AUX}`)
   for (const n of notas) console.log(`  ${String(n.proveedor).padEnd(34)} ${String(n.nota).slice(0, 62)}`)
 
   const visible = await google.readSheetValues(ID, `${PESTAÑA}!A1:R220`, { render: 'FORMATTED_VALUE' })
@@ -105,29 +99,16 @@ async function main() {
   const hoja = meta.find((s) => s.title === PESTAÑA)
   const aux = meta.find((s) => s.title === AUX)
   if (!hoja || !aux) throw new Error(`no encontré ${!hoja ? PESTAÑA : AUX}: no escribo a ciegas`)
-
-  // ── 1. La auxiliar gana una tercera columna con la nota. Es del OS: se rehace entera.
-  // La grilla se agranda ANTES: escribir en una columna que no existe da 400 y no escribe nada.
-  const alto = Math.max(nombres.length + 1, 200)
-  const crecer = []
-  if ((aux.cols ?? 0) < 3) crecer.push({ appendDimension: { sheetId: aux.sheetId, dimension: 'COLUMNS', length: 3 - (aux.cols ?? 0) } })
-  if ((aux.rows ?? 0) < alto) crecer.push({ appendDimension: { sheetId: aux.sheetId, dimension: 'ROWS', length: alto - (aux.rows ?? 0) } })
-  if (crecer.length) {
-    await google.spreadsheetBatchUpdate(ID, crecer, { espejo: true })
-    console.log(`  ${AUX}: grilla agrandada a ${alto} filas × 3 columnas`)
+  // LA AUXILIAR NO SE ESCRIBE ACÁ. La tenía como segundo escritor —con una columna más que el
+  // primero— y lo único que evitaba el choque era el orden de PASOS. Sólo se comprueba que exista y
+  // que tenga la columna que la fórmula va a pedir: escribir una búsqueda contra una columna que no
+  // está devuelve vacío en silencio, que es peor que no escribirla.
+  if ((aux.cols ?? 0) < COL_NOTA_AUX) {
+    throw new Error(`${AUX} tiene ${aux.cols} columna(s) y la nota vive en la ${COL_NOTA_AUX}: `
+      + `la escribe ${DUEÑO_AUX} y tiene que correr antes que esto. No escribo una búsqueda que va a dar vacío.`)
   }
-  await google.spreadsheetBatchUpdate(ID, [{ updateCells: {
-    range: { sheetId: aux.sheetId, startRowIndex: 0, endRowIndex: alto, startColumnIndex: 0, endColumnIndex: 3 },
-    rows: [
-      { values: ['Proveedor', 'CUIT', 'Qué hacer'].map((v) => ({ userEnteredValue: { stringValue: v } })) },
-      ...nombres.map((n) => ({ values: [n, conGuiones(cuits.get(n)), porNombre.get(n) ?? ''].map((v) => ({
-        userEnteredValue: v ? { stringValue: String(v) } : null })) })),
-      ...Array.from({ length: Math.max(0, alto - nombres.length - 1) },
-        () => ({ values: Array.from({ length: 3 }, () => ({ userEnteredValue: null })) })),
-    ],
-    fields: 'userEnteredValue' } }], { espejo: true })
 
-  // ── 2. El rótulo y la columna de búsqueda, sobre todo el footprint del cuadro A.
+  // ── El rótulo y la columna de búsqueda, sobre todo el footprint del cuadro A.
   const FMT = 'userEnteredFormat'
   await google.spreadsheetBatchUpdate(ID, [
     { updateCells: {

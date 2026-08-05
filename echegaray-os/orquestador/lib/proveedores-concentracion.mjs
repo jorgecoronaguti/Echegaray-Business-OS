@@ -55,10 +55,12 @@ export function gastoPorProveedor(filas = []) {
   const cuenta = new Map()
   for (const f of filas) {
     if (!esComercial(f)) continue
-    const p = String(f?.[OFF.proveedor] ?? '').trim()
-    const a = cuenta.get(p) ?? { proveedor: p, total: 0, comprobantes: 0 }
+    const crudo = String(f?.[OFF.proveedor] ?? '')
+    const p = crudo.trim()
+    const a = cuenta.get(p) ?? { proveedor: p, total: 0, comprobantes: 0, variantes: new Set() }
     a.total += Number(f?.[OFF.total]) || 0
     a.comprobantes += p === '' ? 0 : 1 // COUNTA de la dinámica cuenta el proveedor, no la fila
+    if (p !== '') a.variantes.add(crudo)
     cuenta.set(p, a)
   }
   return [...cuenta.values()].sort((a, b) => b.total - a.total || a.proveedor.localeCompare(b.proveedor))
@@ -124,7 +126,19 @@ export function escalones(filas = [], umbrales = ESCALONES) {
  * `visibleValues` compara la REPRESENTACIÓN del valor, no el valor: van strings siempre. Y nunca
  * `condition` — un filtro por condición sobre una columna de grid descarta TODAS las filas sin dar
  * error y la dinámica aparece perfecta y vacía.
+ *
+ * ═══ VAN TODAS LAS GRAFÍAS CRUDAS, NO LA CLAVE RECORTADA (05/08) ═══
+ *
+ * Acá se agrupa por el nombre con `trim()`, y hasta hoy se filtraba por ESA clave. Medido en el
+ * archivo: de los 47 nombres del corte, uno —`"AGUERO "`, con un espacio al final en Compras— no
+ * existe con esa grafía en la columna origen, así que la dinámica NO lo lista. El cuadro no pierde
+ * un peso —el resto es TOTAL menos lo listado, por fórmula— pero un proveedor del top 47 desaparece
+ * de la vista y engorda una línea muda: la peor forma de equivocarse, porque el control cierra.
+ *
+ * La clave sigue siendo la recortada (un proveedor con y sin espacio es UN proveedor); al filtro van
+ * todas las grafías con las que aparece. La dinámica las agrupa igual, porque agrupa por valor.
  */
 export function nombresVisibles(corte) {
-  return (corte?.listados ?? []).map((p) => String(p.proveedor))
+  return (corte?.listados ?? []).flatMap((p) => (
+    p.variantes?.size ? [...p.variantes] : [String(p.proveedor)]))
 }
