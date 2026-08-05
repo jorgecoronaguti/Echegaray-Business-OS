@@ -297,3 +297,28 @@ test('la fecha del fajo se canoniza antes de buscar: "2/8/2026" es el mismo día
   })
   assert.equal(r.duplicados.length, 1, 'mismo comprobante escrito distinto sigue siendo el mismo')
 })
+
+// ═══ EL PROVEEDOR SE RESUELVE IGUAL POR LOS DOS CAMINOS (05/08) ═══
+//
+// El bot pasaba `porCuit` a `matchProveedor` y este cargador no. El mismo comprobante daba dos
+// respuestas distintas según por dónde entrara: «DUBOS UGARTE PEDRO LUIS RAUL» —la razón social del
+// padrón de quien en el desplegable se llama DUPEC— era un proveedor conocido para el chat y uno
+// nuevo para la terminal. Un paso con dos implementaciones termina con dos verdades; acá quedó una.
+
+test('el CUIT resuelve al proveedor del desplegable también desde el cargador', async () => {
+  const r = await prepararPlan([{
+    proveedor: 'DUBOS UGARTE PEDRO LUIS RAUL', cuit: '20-28773782-4',
+    fecha: '04/08/2026', tipo: 'A', numero: '00009-00003204', total: 469564.7, iva: 81494.7,
+  }], { lista: ['DUPEC', 'Combustibles Barcelo'], porCuit: new Map([['20287737824', 'DUPEC']]) })
+  assert.deepEqual(r.nuevos, [], 'con el CUIT en el mapa no hay ningún proveedor nuevo que dar de alta')
+  assert.equal(r.plan.length, 1)
+  assert.equal(r.plan[0].valores.E, 'DUPEC', 'se escribe el nombre del desplegable, no la razón social')
+})
+
+test('sin el mapa de CUIT se comporta exactamente como antes: nadie se rompe por el parámetro nuevo', async () => {
+  const r = await prepararPlan([{
+    proveedor: 'DUBOS UGARTE PEDRO LUIS RAUL', cuit: '20-28773782-4',
+    fecha: '04/08/2026', tipo: 'A', numero: '00009-00003204', total: 469564.7, iva: 81494.7,
+  }], { lista: ['DUPEC'] })
+  assert.deepEqual(r.nuevos, ['DUBOS UGARTE PEDRO LUIS RAUL'], 'sin CUIT no hay forma de saberlo y se declara nuevo')
+})
