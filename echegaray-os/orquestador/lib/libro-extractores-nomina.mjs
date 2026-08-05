@@ -1,0 +1,169 @@
+// LOS EXTRACTORES DE NÓMINA — jornales de obra, oficina y dirección, desde "Jornales por Quincena".
+//
+// ═══ POR QUÉ ESTA FUENTE Y NO COMPRAS (31/07 y 01/08, ya medido y ya pagado) ═══
+//
+// Las tres viven en la planilla de nómina y NO en Compras, y no es una preferencia de estilo:
+//
+//   · JORNALES DE OBRA. En Compras están tipeados a mano como estimación ($144.848.022 en el año);
+//     el dato real de la planilla da $114.371.743. Sumar Compras infla la caja $30,5M.
+//   · OFICINA + DIRECCIÓN. Compras tiene CINCO personas y la planilla tenía DOS: los tres que
+//     faltaban son los retiros de Dirección. Desde el 01/08 las dos mitades viven en la planilla y
+//     la línea del cash flow es su suma (`formulaAdministracion`), con Compras convertido en MEMO.
+//
+// Por eso `deCompras` saltea estos dos rubros: si los emitiera, el libro contaría la misma nómina dos
+// veces. La regla del CUADRO es la misma —la línea de Compras vive en un grupo con `signo: 0`— y acá
+// se cumple sacándola del libro, que es donde se cuenta una sola vez.
+//
+// ═══ LA ENTRADA SON LOS RANGOS CON NOMBRE, NO LAS FILAS DE LA PESTAÑA ═══
+//
+// El cash flow lee `JORNALES_REAL_*`, `OFICINA_*` y `DIRECCION_*` por NOMBRE desde que el rediseño del
+// 23/07 movió las quincenas de la fila 3 a la 41 y las sumas siguieron devolviendo un número —el de las
+// filas equivocadas— sin marcar un solo error. El libro lee exactamente los mismos nombres: si la
+// pestaña se reordena, las dos vistas se mueven juntas.
+
+import { movimiento, SALE, estadoContraCorte } from './libro-movimientos.mjs'
+import { isoDeSerial } from './libro-extractores-fechas.mjs'
+
+/** La pestaña de la que salen los tres bloques. Es una sola: el bloque distingue, no la pestaña. */
+export const PESTANA_NOMINA = 'Jornales por Quincena'
+export const RUBRO_JORNALES = 'Nómina · Jornales de obra'
+export const RUBRO_ADMINISTRACION = 'Nómina · Sueldos administración'
+
+const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+/**
+ * Un rango con nombre leído por la API viene como filas (`[[46001], [46015]]`); un test lo escribe
+ * como lista (`[46001, 46015]`). Las dos son la misma columna: se acepta la que llegue.
+ */
+const columna = (v) => (Array.isArray(v) ? v : []).map((c) => (Array.isArray(c) ? c[0] : c))
+
+/**
+ * LA IDENTIDAD DE UN RENGLÓN DE NÓMINA ES SU BLOQUE, NO SU FILA.
+ *
+ * Los cuatro bloques (real, proyectado, oficina, dirección) viven en la MISMA pestaña, y la clave de
+ * deduplicación cae en `origen:pestaña:fila` cuando el movimiento no tiene comprobante ni número de
+ * cheque. Sin el bloque adentro, el renglón 3 de Oficina y el renglón 3 de Dirección serían el mismo
+ * movimiento y uno de los dos desaparecería del libro sin que ninguna suma se rompa.
+ */
+const filaDe = (bloque, i) => `${bloque}:${i + 1}`
+
+/**
+ * JORNALES POR QUINCENA → los egresos de la nómina de obra.
+ *
+ * ═══ LA FECHA QUE DECIDE, EN EL MISMO ORDEN QUE LA FÓRMULA ═══
+ *
+ * `fechaDeCajaDeQuincena(PAGO, HASTA, PAGADO)` de `jornales-fecha-pago.mjs`, textual:
+ *   1. PAGADO   — salió de verdad. Es un HECHO. Gana siempre.
+ *   2. PREVISTA — el lote del banco si ya pasó, o el parámetro (`Se paga el`).
+ *   3. CIERRE   — último recurso, para que una quincena sin ninguna fecha no desaparezca del cuadro.
+ * Una quincena no se paga el día que cierra: el extracto lo prueba (cierre 15/07 → lote del 17/07).
+ *
+ * ═══ EL ESTADO NO ES "REAL PORQUE EL BLOQUE SE LLAMA REAL" ═══
+ *
+ * El bloque real son las quincenas CERRADAS, que no es lo mismo que PAGADAS: la que cierra el 31/07 se
+ * paga el 03/08. Marcarla REAL diría que la plata ya salió de la cuenta cinco días antes de que salga
+ * —una estimación presentada como hecho, que es la regla de oro nº 2— así que manda la columna que el
+ * dueño marca: con "Pagado el" es REAL, sin ella es COMPROMETIDO (liquidada, con fecha, todavía en la
+ * cuenta). Para el calendario de CAJA no cambia un peso: los tramos filtran por FECHA, no por estado.
+ *
+ * @param {{reales?:object, proyectadas?:object}} bloques columnas de los rangos con nombre
+ * @param {number|null} corte serial del corte, para que un proyectado vencido se vea como VENCIDO
+ * @returns {Array} movimientos
+ */
+export function deJornalesQuincenas({ reales = {}, proyectadas = {} } = {}, corte = null) {
+  const out = []
+  const real = {
+    pago: columna(reales.pago), hasta: columna(reales.hasta),
+    pagado: columna(reales.pagado), total: columna(reales.total),
+  }
+  for (let i = 0; i < Math.max(real.total.length, real.pago.length, real.hasta.length); i++) {
+    const pagado = num(real.pagado[i])
+    const fecha = pagado ?? num(real.pago[i]) ?? num(real.hasta[i])
+    const importe = num(real.total[i])
+    if (fecha === null || !importe) continue
+    out.push(movimiento({
+      fecha,
+      signo: SALE,
+      importe,
+      concepto: `Jornales · quincena al ${isoDeSerial(num(real.hasta[i]) ?? fecha)}`,
+      rubro: RUBRO_JORNALES,
+      estado: pagado === null ? 'COMPROMETIDO' : 'REAL',
+      origen: { pestana: PESTANA_NOMINA, fila: filaDe('Quincenas reales', i) },
+    }))
+  }
+  const proy = { pago: columna(proyectadas.pago), hasta: columna(proyectadas.hasta), total: columna(proyectadas.total) }
+  for (let i = 0; i < Math.max(proy.total.length, proy.pago.length, proy.hasta.length); i++) {
+    const fecha = num(proy.pago[i]) ?? num(proy.hasta[i])
+    const importe = num(proy.total[i])
+    if (fecha === null || !importe) continue
+    out.push(movimiento({
+      fecha,
+      signo: SALE,
+      importe,
+      concepto: `Jornales · quincena proyectada al ${isoDeSerial(num(proy.hasta[i]) ?? fecha)}`,
+      rubro: RUBRO_JORNALES,
+      estado: estadoContraCorte('PROYECTADO', fecha, corte),
+      origen: { pestana: PESTANA_NOMINA, fila: filaDe('Quincenas proyectadas', i) },
+    }))
+  }
+  return out
+}
+
+/**
+ * NÚCLEO PURO: un bloque MENSUAL de la planilla de nómina (Oficina o Dirección) → movimientos.
+ *
+ * Los dos bloques tienen la misma forma —`_PAGO` (cuándo sale de la caja), `_PAGADO` (lo que ya se
+ * pagó) y `_PROYECTADO` (lo que se va a pagar)— y el cash flow los suma con la misma fórmula
+ * (`formulaOficina` / `formulaDireccion`, idénticas salvo el nombre del rango). Una sola función:
+ * dos copias de esto se desincronizan la primera vez que alguien toque una.
+ *
+ * UN MES ESTÁ PAGADO O PROYECTADO, NUNCA LOS DOS. La planilla lo garantiza por construcción (la
+ * proyección se apaga sola cuando la celda de pagado tiene plata). Si algún día se llenaran las dos, el
+ * Sheet las SUMA y duplicaría el mes; acá gana el hecho y se avisa, que es lo que el comentario de
+ * `formulaOficina` dice que tiene que pasar: *"el control de nómina lo grita en vez de duplicar"*.
+ */
+function deBloqueMensual({ pago, pagado, proyectado }, corte, { bloque, aviso }) {
+  const P = columna(pago); const G = columna(pagado); const Y = columna(proyectado)
+  const out = []
+  for (let i = 0; i < Math.max(P.length, G.length, Y.length); i++) {
+    const fecha = num(P[i])
+    const real = num(G[i])
+    const proy = num(Y[i])
+    if (fecha === null) continue
+    if (real && proy) {
+      aviso(`libro-extractores-nomina(${bloque}): el renglón ${i + 1} tiene PAGADO ${real} y PROYECTADO ${proy} `
+        + 'a la vez. Vale el pagado (el hecho le gana a la proyección); el Sheet los sumaría y duplicaría el mes.')
+    }
+    const importe = real || proy
+    if (!importe) continue
+    out.push(movimiento({
+      fecha,
+      signo: SALE,
+      importe,
+      concepto: `${bloque} · ${isoDeSerial(fecha)}`,
+      rubro: RUBRO_ADMINISTRACION,
+      estado: real ? 'REAL' : estadoContraCorte('PROYECTADO', fecha, corte),
+      origen: { pestana: PESTANA_NOMINA, fila: filaDe(bloque, i) },
+    }))
+  }
+  return out
+}
+
+/** Por defecto el aviso va a la consola; los tests le inyectan un colector para poder afirmarlo. */
+const avisoPorDefecto = (m) => console.warn(m)
+
+/** OFICINA (bloque "Oficina 26" de la planilla) → sueldos de administración. */
+export function deOficina(bloque = {}, corte = null, { aviso = avisoPorDefecto } = {}) {
+  return deBloqueMensual(bloque, corte, { bloque: 'Oficina', aviso })
+}
+
+/**
+ * DIRECCIÓN → la otra mitad de la misma línea de nómina.
+ *
+ * Son los retiros mensuales de Jorge Echegaray, Rodrigo Echegaray y Jorge Corona. Existían sólo en
+ * Compras y una sola vez (julio, a pagar el 10/08), así que de septiembre a diciembre el cuadro
+ * proyectaba $3.000.000/mes contra $9.800.000 reales: **$26.000.000 de egreso que nadie veía**. La
+ * pestaña los proyecta desde el 01/08 y ésta es la puerta por la que entran al libro.
+ */
+export function deDireccion(bloque = {}, corte = null, { aviso = avisoPorDefecto } = {}) {
+  return deBloqueMensual(bloque, corte, { bloque: 'Dirección', aviso })
+}

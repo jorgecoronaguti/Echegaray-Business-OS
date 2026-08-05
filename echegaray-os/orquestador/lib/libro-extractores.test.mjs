@@ -1,8 +1,14 @@
 // LOS EXTRACTORES, EN FRÍO — filas armadas a mano, con los casos que ya costaron plata.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { deCompras, deCobranzas, deChequesEmitidos, deBancoCargos } from './libro-extractores.mjs'
+import {
+  deCompras, deCobranzas, deChequesEmitidos, deBancoCargos,
+  deTarjetaSinFactura, deImpuestosCalendario, deCartera,
+} from './libro-extractores.mjs'
 import { ENTRA, SALE } from './libro-movimientos.mjs'
+import { MARCAS } from './cheques-cobertura.mjs'
+import { INSTRUMENTOS } from './cash-flow-lineas.mjs'
+import { serialDe, isoDeSerial } from './libro-extractores-fechas.mjs'
 
 // ── Compras: título, agrupador, encabezado, datos ─────────────────────────────────────────────────
 // Los nombres del encabezado REAL de la fila 3 del archivo, verificados el 05/08.
@@ -15,10 +21,30 @@ const compras = (extra = []) => [[], [], ENC_COMPRAS,
   ['Prov SRL', '', '', 70000, 'Pendiente', 'Transferencia', 'Estructura', 45990, ''],
   ...extra]
 
-test('COMPRAS: pagado=REAL, pendiente vencido=VENCIDO, y el cheque NO se emite desde acá', () => {
+test('COMPRAS: la factura pagada con CHEQUE también sale por acá — el calendario no filtra el tipo', () => {
+  // CAMBIO DE CONTRATO (05/08): antes se salteaba "para que no la contara dos veces", y el resultado
+  // era que no la contaba NINGUNA vez. El calendario de CAJA suma Compras con un SUMIFS por rubro y
+  // fecha sin mirar el tipo de pago, y del lado de los cheques suma sólo los marcados "FALTA la
+  // factura". Las dos puertas se separan por la MARCA, no por el tipo de pago.
   const ms = deCompras(compras(), 46000)
-  // El cheque lo emite Cheques Emitidos como COMPROMETIDO: emitirlo acá lo contaría dos veces.
-  assert.ok(!ms.some((m) => m.concepto === 'Cheq SA'), 'el pago con cheque entra por la otra puerta')
+  const conCheque = ms.find((m) => m.concepto === 'Cheq SA')
+  assert.ok(conCheque, 'sin esta fila, esa plata no estaba en el libro por ninguna puerta')
+  assert.equal(conCheque.instrumento, 'cheque')
+  // Y su clave es la del comprobante, no la del cheque: no puede colisionar con "Cheques Emitidos".
+  assert.ok(conCheque.clave.startsWith('comp:'), conCheque.clave)
+})
+
+test('COMPRAS: la NÓMINA no sale de Compras — la planilla es la fuente y acá duplicaría $30,5M', () => {
+  const conNomina = compras([
+    ['Jornales', '', '', 8000000, 'Pagado', 'Transferencia', 'Nómina · Jornales de obra', 46000, ''],
+    ['Jorge Corona', '', '', 3000000, 'Pagado', 'Transferencia', 'Nómina · Sueldos administración', 46000, ''],
+  ])
+  const ms = deCompras(conNomina, 46000)
+  assert.ok(!ms.some((m) => /Nómina/.test(m.rubro)), 'la nómina entra por libro-extractores-nomina.mjs')
+})
+
+test('COMPRAS: pagado=REAL, pendiente vencido=VENCIDO', () => {
+  const ms = deCompras(compras(), 46000)
   const pagado = ms.find((m) => m.concepto === 'Mariana SA')
   assert.equal(pagado.estado, 'REAL')
   assert.equal(pagado.signo, SALE)
@@ -40,12 +66,22 @@ test('COMPRAS: sin la columna "Rubro de caja" en el encabezado, ROMPE nombrándo
 
 // ── Cobranzas: los datos arrancan en la fila 5 ────────────────────────────────────────────────────
 // Ídem: el encabezado real de la fila 4 de Cobranzas. El importe es el NETO de retenciones.
-const ENC_COB = ['x', 'Obra / Cliente', 'Estado', 'TOTAL a cobrar (neto de retenciones)', 'Fecha cobro', 'Fecha cobro', 'Forma de Cobro']
+const ENC_COB = ['x', 'Obra / Cliente', 'Estado', 'TOTAL a cobrar (neto de retenciones)', 'Fecha cobro', 'Fecha cobro', 'Forma de Cobro', 'Valor banco']
 const cob = [[], [], [], ENC_COB,
-  ['', 'MESSINA', 'Cobrado', 500000, 46005, 46005, 'Transferencia'],
-  ['', 'ARCOR', 'Pendiente', 300000, 45990, 45990, 'eCheq'],
-  ['', 'ANULADA', 'CANCELAR', 999999, 46000, 46000, ''],
+  ['', 'MESSINA', 'Cobrado', 500000, 46005, 46005, 'Transferencia', ''],
+  ['', 'ARCOR', 'Pendiente', 300000, 45990, 45990, 'eCheq', ''],
+  ['', 'ANULADA', 'CANCELAR', 999999, 46000, 46000, '', ''],
+  ['', 'LA ESTRELLA', 'Pendiente', 10000000, 46060, 46060, 'eCheq', 'ENDOSADO A ALUMETAL'],
 ]
+
+test('COBRANZAS: un valor ENDOSADO no va a entrar nunca — son los $20M de LA ESTRELLA', () => {
+  // El echeq se entregó a Alumetal para pagarle: Cobranzas hace bien en registrarlo, pero esa plata
+  // no va a pasar por la cuenta corriente. Sin el filtro, el cuadro esperaba $20.000.000 en agosto.
+  const ms = deCobranzas(cob, 46000)
+  assert.ok(!ms.some((m) => m.concepto === 'LA ESTRELLA'), 'el endoso no es un cobro futuro')
+  // Y el filtro es por PREFIJO, como el LEFT() de la fórmula: la celda dice "ENDOSADO A ALUMETAL".
+  assert.equal(deCobranzas(cob, 46000, { colValorBanco: 7 }).length, 2)
+})
 
 test('COBRANZAS: cobrado usa la fecha REAL, pendiente la esperada, CANCELAR no existe', () => {
   const ms = deCobranzas(cob, 46000)
@@ -61,14 +97,18 @@ test('COBRANZAS: cobrado usa la fecha REAL, pendiente la esperada, CANCELAR no e
 // ── Cheques Emitidos: registro con encabezado en la fila 18, datos desde la 20 ───────────────────
 // El encabezado real de la fila 20 del archivo: 'Nro', 'Monto', y la fecha en minúscula.
 const ENC_CH = ['Tipo', 'Nro', 'Proveedor', 'Monto', 'fecha de pago', 'DEBITADO']
+const M = INSTRUMENTOS.cheques.colMarca
+/** Una fila del registro, con la marca del cruce en su columna real (la 12 = M). */
+const chq = (celdas, marca) => { const f = celdas.slice(); f[M] = marca; return f }
 const cheques = () => {
-  const filas = Array.from({ length: 23 }, () => [])
+  const filas = Array.from({ length: 24 }, () => [])
   // El registro real: encabezado en la fila 19 (índice 18), datos desde la 20 — igual que $K$20:$K.
   filas[18] = ENC_CH
-  filas[19] = ['FISICO', '313', 'Corralón', 750000, 46010, '']
-  filas[20] = ['ECHEQ', '313', 'Otro SA', 200000, 46012, '']
-  filas[21] = ['FISICO', '200', 'Debitado SA', 99999, 45980, 'SI']
-  filas[22] = ['FISICO', '', 'Sin número SA', 10000, 46011, '']
+  filas[19] = chq(['FISICO', '313', 'Corralón', 750000, 46010, ''], MARCAS.falta)
+  filas[20] = chq(['ECHEQ', '313', 'Otro SA', 200000, 46012, ''], MARCAS.falta)
+  filas[21] = chq(['FISICO', '200', 'Debitado SA', 99999, 45980, 'SI'], MARCAS.falta)
+  filas[22] = chq(['FISICO', '', 'Sin número SA', 10000, 46011, ''], MARCAS.falta)
+  filas[23] = chq(['FISICO', '999', 'Con factura SA', 43380472, 46013, ''], MARCAS.ok)
   return filas
 }
 
@@ -84,6 +124,15 @@ test('CHEQUES: el no debitado es COMPROMETIDO; el debitado NO se emite — ya es
   assert.ok(sinNum.clave.startsWith('origen:'), 'sin número, la fila es la identidad')
 })
 
+test('CHEQUES: el que YA tiene factura en Compras no se emite — sumarlo contaba $43,4M dos veces', () => {
+  const ms = deChequesEmitidos(cheques(), { fila0: 20 })
+  assert.ok(!ms.some((m) => m.concepto === 'Con factura SA'), 'esa plata ya viaja por la puerta de Compras')
+  // Y la marca se lee de la columna del contrato, no de un rótulo: su encabezado lleva la fecha.
+  const sinMarcar = cheques().map((f) => { const g = f.slice(); g[M] = ''; return g })
+  assert.equal(deChequesEmitidos(sinMarcar, { fila0: 20 }).length, 0,
+    'lo que el OS todavía no cruzó no se puede afirmar que falte')
+})
+
 // ── Banco: sólo los cargos sin factura ────────────────────────────────────────────────────────────
 test('BANCO: sólo emite los cargos del banco — el resto ya está en el saldo', () => {
   const filas = [[], [], [],
@@ -95,4 +144,92 @@ test('BANCO: sólo emite los cargos del banco — el resto ya está en el saldo'
   assert.equal(ms.length, 2, 'la acreditación NO se emite: duplicarla inventó $9,9M una vez')
   assert.ok(ms.every((m) => m.estado === 'REAL' && m.signo === SALE))
   assert.ok(ms.every((m) => m.rubro === 'Financiero'))
+})
+
+// ── Tarjeta de Crédito: registro con encabezado en la fila 31 ────────────────────────────────────
+const T = INSTRUMENTOS.tarjeta
+/** Una fila del registro de la tarjeta: monto E(4), fecha H(7), debitado J(9), marca L(11). */
+const cuota = (monto, fecha, debitado, marca) => {
+  const f = []
+  f[4] = monto; f[7] = fecha; f[9] = debitado; f[11] = marca; f[6] = 'COMPRA VISA'
+  return f
+}
+
+test('TARJETA: sólo la cuota SIN factura y NO debitada — la marca manda, no el rótulo', () => {
+  const filas = Array.from({ length: 31 }, () => [])
+  filas[31] = cuota(556899, 46010, '', MARCAS.falta)
+  filas[32] = cuota(300000, 46011, 'SI', MARCAS.falta) // ya salió de la cuenta
+  filas[33] = cuota(400000, 46012, '', MARCAS.ok) // su factura está en Compras
+  filas[34] = cuota(100000, null, '', MARCAS.falta) // sin fecha: pesa YA
+  const ms = deTarjetaSinFactura(filas, { filaCab: T.filaCab })
+  assert.equal(ms.length, 2)
+  assert.ok(ms.every((m) => m.instrumento === 'tarjeta' && m.estado === 'COMPROMETIDO' && m.signo === SALE))
+  assert.deepEqual(ms.map((m) => m.importe), [556899, 100000])
+  assert.equal(ms[1].fecha, 0, 'un compromiso sin fecha no es uno que no vence')
+})
+
+// ── Impuestos y Financieros: el calendario fiscal ─────────────────────────────────────────────────
+const impuestos = () => {
+  const filas = Array.from({ length: 20 }, () => [])
+  filas[17] = ['⇒ IVA a pagar en efectivo', 1000, 0, '', 3000] // enero, febrero(0), marzo(vacío), abril
+  filas[17][12] = 5000 // diciembre = columna M = índice 12
+  filas[18] = ['⇒ IIBB a pagar en el mes', 200]
+  return filas
+}
+
+test('IMPUESTOS: el vencimiento es fin de mes del período + 20 días — enero vence el 20/02', () => {
+  const ms = deImpuestosCalendario(impuestos(), { filaIva: 18, filaIibb: 19 }, 2026, serialDe(2026, 8, 5))
+  const enero = ms.find((m) => /IVA.*01\/2026/.test(m.concepto))
+  assert.equal(isoDeSerial(enero.fecha), '2026-02-20')
+  // Y diciembre vence en ENERO DEL AÑO SIGUIENTE, que es el caso que un mes+1 ingenuo rompe.
+  const dic = ms.find((m) => /IVA.*12\/2026/.test(m.concepto))
+  assert.equal(isoDeSerial(dic.fecha), '2027-01-20')
+  assert.equal(dic.estado, 'PROYECTADO')
+  assert.equal(enero.estado, 'VENCIDO', 'venció antes del corte y nadie lo marcó')
+})
+
+test('IMPUESTOS: un mes en cero no es un movimiento, y los doce meses no colapsan en uno', () => {
+  const ms = deImpuestosCalendario(impuestos(), { filaIva: 18, filaIibb: 19 }, 2026, null)
+  assert.equal(ms.length, 4, 'IVA enero, abril y diciembre + IIBB enero')
+  // Los doce meses viven en la MISMA fila: sin la celda en la clave, la dedup los deja en uno.
+  assert.equal(new Set(ms.map((m) => m.clave)).size, 4)
+  assert.ok(ms.every((m) => m.rubro === 'Impuestos' && m.signo === SALE))
+})
+
+test('IMPUESTOS: sin las filas ubicadas por rótulo, ROMPE — una fila muerta devuelve $0 callada', () => {
+  assert.throws(() => deImpuestosCalendario(impuestos(), { filaIva: 18 }, 2026), /IVA y del IIBB/)
+})
+
+// ── _CHEQUES_RAW: la cartera ──────────────────────────────────────────────────────────────────────
+// Columnas de la réplica: A tipo · B número · C banco · D librador · F fecha de pago · G importe · H estado.
+const raw = (tipo, numero, fecha, importe, estado) => {
+  const f = ['', '', '', 'Mineral Del Río', '', '', '', '']
+  f[0] = tipo; f[1] = numero; f[5] = fecha; f[6] = importe; f[7] = estado
+  return f
+}
+
+test('CARTERA: recibido Y en custodia — depositado o emitido no son cartera', () => {
+  const filas = [[], [], [],
+    raw('recibido', '00000514', 46030, 290000, 'En custodia'),
+    raw('recibido', '00000515', 46035, 10000000, 'Depositado'),
+    raw('emitido', '00000313', 46040, 750000, 'En custodia'),
+    raw('recibido', '00000516', null, 500000, 'En custodia'),
+  ]
+  const ms = deCartera(filas)
+  assert.equal(ms.length, 1)
+  assert.equal(ms[0].importe, 290000)
+  assert.equal(ms[0].signo, ENTRA)
+  assert.equal(ms[0].estado, 'COMPROMETIDO', 'el valor está en la mano; la plata no está en la cuenta')
+  assert.equal(ms[0].rubro, 'Valores en cartera')
+})
+
+test('CARTERA: el 514 que me dieron no es el 514 que libré — el signo está en la clave', () => {
+  const recibido = deCartera([[], [], [], raw('recibido', '514', 46030, 290000, 'En custodia')])[0]
+  const emitido = deChequesEmitidos((() => {
+    const filas = Array.from({ length: 20 }, () => [])
+    filas[18] = ENC_CH
+    filas[19] = chq(['FISICO', '514', 'Corralón', 750000, 46010, ''], MARCAS.falta)
+    return filas
+  })(), { fila0: 20 })[0]
+  assert.notEqual(recibido.clave, emitido.clave, 'sin el signo, uno de los dos desaparece del libro')
 })
