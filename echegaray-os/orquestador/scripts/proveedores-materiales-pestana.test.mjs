@@ -491,3 +491,50 @@ test('la conciliación con ARCA se declara UNA vez al pie, no en la columna I de
   assert.match(src, /push\(\[`Los comprobantes salen del libro de IVA de ARCA/,
     'la declaración vive al pie de la sección, una sola vez')
 })
+
+test('ninguna tabla de la frontera para abajo escribe en la columna de aire', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  // La E mide 28px porque separa los dos cuadros de la posición. Es donde "$970.226" se veía como
+  // "$970" y "Qué es" como "Qué e". Las tablas la saltean: el quinto campo de cada fila es AIRE.
+  assert.match(src, /const AIRE = ''/)
+  for (const [tabla, fila] of [
+    ['notas de crédito', /cabNC = push\(estructural\(\['Proveedor', 'Nota de crédito', 'Fecha', 'Importe', AIRE,/],
+    ['lo que ARCA facturó', /cabAfip = push\(estructural\(\['Proveedor según ARCA', 'CUIT', 'Comprobante', 'Fecha', AIRE,/],
+    ['facturas anuladas', /cabAnu = push\(estructural\(\['Factura anulada cargada en Compras', 'Cargada como', 'Fecha cargada', 'Importe', AIRE,/],
+  ]) {
+    assert.match(src, fila, `la tabla de ${tabla} tiene que saltear la E`)
+  }
+  // Y el total de la sección 4 suma la F, no la E: si vuelve a sumar la E, suma una columna vacía.
+  assert.match(src, /`=SUM\(\$F\$\{afip0\}:\$F\$\{afip1\}\)`/)
+  assert.ok(!/`=SUM\(\$E\$\{afip0\}:\$E\$\{afip1\}\)`/.test(src))
+})
+
+test('el generador de abajo NO fija anchos: los aplica el dueño declarado', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  const enFrontera = src.slice(src.indexOf('enFrontera: true'), src.indexOf('anchosSegunContenido'))
+  assert.ok(!/updateDimensionProperties[\s\S]{0,120}COLUMNS/.test(enFrontera),
+    'dos escritores peleando por la misma propiedad es lo que dejó la D en 80 o en 300 según el orden')
+})
+
+test('un rótulo que no entra se acorta antes de ensanchar la columna', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  // Ensanchar la A para que entre una frase de 63 caracteres empuja toda la pestaña por un rótulo.
+  for (const largo of [
+    '⇒ Materiales que ninguna familia está mirando (tiene que dar —)',
+    'Comprobantes emitidos por la empresa (ventas, para el Cash Flow)',
+    'Factura ANULADA por una nota de crédito, cargada igual',
+    'Plazo promedio ponderado de toda la compra comercial',
+  ]) {
+    assert.ok(!src.includes(largo), `volvió el rótulo largo: "${largo.slice(0, 40)}…"`)
+  }
+})
+
+test('la columna Fecha declara su formato UNA vez, y es DATE', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  // EL DEFECTO: la columna mostraba 46193 en unas filas y 26/2/2026 en otras, porque había DOS fmt
+  // sobre el mismo rango —DATE y, dos líneas más abajo, TEXT— y ganaba el último. Una sola
+  // declaración por columna, o vuelve el serial.
+  const sobreLaFecha = src.match(/r\(g\.afip0 - 1, g\.afip1, 3, 4\)/g) ?? []
+  assert.equal(sobreLaFecha.length, 1, 'dos formatos sobre la misma columna: gana el último y no se nota')
+  assert.match(src, /r\(g\.afip0 - 1, g\.afip1, 3, 4\) \}[\s\S]{0,140}numberFormat: E\.NUM\.fecha/)
+})
