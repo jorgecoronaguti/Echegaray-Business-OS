@@ -134,6 +134,54 @@ test('espejo:true salta candado y firma (no lee A1:BZ): un espejo _RAW se escrib
   assert.equal(escritos.length, 1, 'el espejo se escribe directo')
 })
 
+// ═══ LA HUELLA POR CELDA EN EL PORTÓN (05/08) ═══
+// "no podés volver a escribir algo si yo ya lo borré, pasó en los dos cash flows". La huella decide
+// celda por celda ANTES de fusionar, y vale para toda pestaña de contenido —incluidas las que pasan
+// respetar:false—, porque colgarla de esa bandera es la trampa que ya costó una pérdida.
+
+test('lo que el dueño vació no se reescribe: la huella suprime aunque respetar:false', async () => {
+  const escritos = []
+  const google = {
+    async readSheetValues() { return [['', 'sigue esto']] },   // la primera celda: él la vació
+    async batchUpdateValues(_id, p) { escritos.push(p[0].values) },
+  }
+  let guardado = null
+  const guardas = guardasStub({
+    conHuella: async (_f, _p, grid) => ({
+      grid: grid.map((f) => ['', ...f.slice(1)]),               // veredicto: la celda A1 la vaciaste vos
+      suprimidas: [{ fila: 1, col: 0, forma: 'total', mio: 'TOTAL' }],
+      ajenas: [],
+      alineacion: { alineada: true, motivo: 'alineada' },
+      guardar: async (g) => { guardado = g },
+    }),
+  })
+  await escribirPreservando(google, 'ID', 'CAJA', [['TOTAL', 'sigue esto']], { respetar: false, guardas })
+  assert.equal(escritos[0][0][0], '', 'la celda que él vació queda vacía: NO se resucita')
+  assert.equal(escritos[0][0][1], 'sigue esto', 'el resto de la pestaña se sigue manteniendo')
+  assert.ok(guardado, 'la huella se sella DESPUÉS de escribir: evidencia del efecto, no del intento')
+})
+
+test('la huella no se consulta en un espejo _RAW (no hay nada del dueño que proteger)', async () => {
+  let consultada = false
+  const google = { async readSheetValues() { return [['viejo']] }, async batchUpdateValues() {} }
+  await escribirPreservando(google, 'ID', '_ARCA_RAW', [['nuevo']], {
+    respetar: false, espejo: true, guardas: guardasStub({ conHuella: async () => { consultada = true } }),
+  })
+  assert.equal(consultada, false)
+})
+
+test('firma NO VERIFICABLE = no se escribe (el fail-closed que estaba escrito y no aplicado)', async () => {
+  let escribio = false
+  const google = { async readSheetValues() { return [['viejo']] }, async batchUpdateValues() { escribio = true } }
+  const r = await escribirPreservando(google, 'ID', 'CAJA', [['nuevo']], {
+    respetar: false,
+    // Es lo que devuelve firmaGuardia real cuando no pudo releer la pestaña o consultar la base.
+    guardas: guardasStub({ firmaGuardia: async () => ({ editada: false, noVerificable: true }) }),
+  })
+  assert.equal(escribio, false, 'sin poder verificar la firma no se escribe: un regen postergado no destruye nada')
+  assert.equal(r.noVerificable, true)
+})
+
 test('escribirPreservando respeta fila y columna de arranque', async () => {
   const escritos = []
   const google = {
