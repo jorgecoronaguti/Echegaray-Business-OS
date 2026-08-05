@@ -148,7 +148,15 @@ export const PASOS = [
   // Va última: ubica las líneas del Cash Flow por rótulo, así que necesita el cuadro ya escrito.
   // 'Caja' con minúsculas era el nombre viejo de la pestaña: quedó declarado y el censo lo reportaba
   // como una pestaña fantasma. Un nombre que sobrevive a su renombre apunta al vacío para siempre.
-  ['caja-pestana.mjs', 'CAJA — disponibilidades, cheques emitidos y margen de tarjeta', ['CAJA']],
+  // ═══ EL ANEXO VA ANTES QUE CAJA, Y NO ES COSMÉTICO (05/08/2026) ═══
+  //
+  // CAJA se rehízo entera: pasó de 143 filas a 45 y el detalle del analista —conciliaciones,
+  // trazabilidad contra el extracto, el costo del descubierto— vive ahora en `_CAJA_ANEXO`. CAJA cita
+  // once cifras de ese anexo POR RANGO CON NOMBRE (`ANEXO_*`), así que el anexo tiene que escribirse y
+  // publicar sus nombres PRIMERO. Al revés, en un arranque en frío la pestaña que el dueño abre todos
+  // los días se llena de #NAME? — y si algo tiene que mostrar un error una corrida, que sea el auxiliar.
+  ['caja-anexo-pestana.mjs', '_CAJA_ANEXO — el detalle y las conciliaciones que sostienen los veredictos de CAJA', ['_CAJA_ANEXO']],
+  ['caja-pestana.mjs', 'CAJA — la posición de tesorería en una pantalla (45 filas)', ['CAJA']],
   // El núcleo Postgres, para que la web y el chat vean lo mismo que la planilla y no un mes atrás.
   // ÚLTIMO ANTES DEL NÚCLEO: unificar el formato de las catorce pestañas. Va al final porque cada
   // script anterior acaba de reescribir la suya, y una pasada de formato hecha antes se pierde.

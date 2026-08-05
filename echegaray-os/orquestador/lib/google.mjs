@@ -1273,6 +1273,23 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       }))
     },
     /**
+     * Los gráficos de cada pestaña: [{ sheetId, title, charts: [{ chartId, title }] }].
+     *
+     * POR QUÉ HACE FALTA LEERLOS. `addChart` SIEMPRE agrega uno nuevo: no hay "crear o actualizar". Un
+     * generador que dibuja su gráfico en cada corrida deja veinte gráficos apilados sobre la misma
+     * celda en un día, y desde la pestaña sólo se ve el último — los otros diecinueve están debajo,
+     * invisibles, engordando el archivo. Es el mismo defecto que los grupos de filas que se apilaban en
+     * el margen izquierdo. Para poder BORRAR los propios antes de dibujar, primero hay que verlos.
+     */
+    async getCharts(fileId) {
+      const j = await apiGet(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?fields=sheets(properties(sheetId,title),charts(chartId,spec(title)))`)
+      return (j.sheets || []).map((s) => ({
+        sheetId: s.properties?.sheetId,
+        title: s.properties?.title,
+        charts: (s.charts || []).map((c) => ({ chartId: c.chartId, title: c.spec?.title ?? '' })),
+      }))
+    },
+    /**
      * El ancho en píxeles de cada columna de una pestaña. Sirve para VERIFICAR el formato en vez de
      * suponerlo: una columna descolocada no se ve en los valores, sólo en el ancho, y sin poder
      * leerlo el diagnóstico de "quedó descuadrado" es adivinanza.
