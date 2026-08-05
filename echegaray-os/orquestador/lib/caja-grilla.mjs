@@ -374,33 +374,18 @@ export function grilla(cargado, refs) {
     `=N(${ANEXO.tarjetaDisponible})`, `=N(${ANEXO.acuerdo})`, `=N(${ANEXO.aire})`, '',
     `=IF(N(${ANEXO.diasDeCaja})=0;"";TEXT(N(${ANEXO.diasDeCaja});"0")&" días de caja")`])
 
-  // ── 6 · DE QUIÉN DEPENDE LA COBRANZA ────────────────────────────────────────────────────────────
+  // ── LA CONCENTRACIÓN DE COBRANZA SE FUE DE ACÁ (05/08) ──────────────────────────────────────────
   //
-  // "Alta concentración = el riesgo de caja no es financiero, es comercial". Es el otro lado del piso:
-  // un calendario perfecto no sirve de nada si el 42% del cobro depende de que UNA empresa pague en
-  // fecha.
+  // El dueño: *"no quiero nada de cobranza en caja, sólo datos de caja"*. Tenía razón y el criterio es
+  // más fuerte que la preferencia: CAJA contesta *cuánta plata hay y hasta cuándo alcanza*. De quién
+  // depende el cobro es riesgo COMERCIAL — decide otra cosa, se mira en otro momento y la mezcla le
+  // roba la primera pantalla al número que sí se decide acá.
   //
-  // ⚠ EL RANKING ES DE ALTURA FIJA Y ESO NO ES UNA LIMITACIÓN, ES EL REQUISITO: QUERY y SORT+UNIQUE
-  // DERRAMAN, y esta pestaña se escribe con fusión preservadora fila por fila. Cinco filas más un
-  // "otros" que absorbe el resto: no se pierde un peso y ninguna celda puede pisar la de abajo.
-  push(['5 · DE QUIÉN DEPENDE LA COBRANZA', '', '', '', '', '',
-    `sobre la cartera "${ESTADOS.pendiente}"`])
-  const cabCli = push(['Cliente', '', 'Pendiente de cobro', '', '', '', '% acumulado'])
-  const fCli0 = filas.length + 1
-  const PUESTOS = ['1º', '2º', '3º', '4º', '5º']
-  PUESTOS.forEach((p, i) => {
-    const f = filas.length + 1
-    push([formulaClienteRanking(p, i + 1, `$${C_IMP}$${f}`), '', formulaMontoRanking(i + 1), '', '', '',
-      `=IF($${C_IMP}$${f}="";"";SUM($${C_IMP}$${fCli0}:$${C_IMP}${f})/$${C_IMP}$${fCli0 + 6})`])
-  })
-  const fCli1 = filas.length
-  push(['Los demás clientes', '',
-    `=MAX(0;$${C_IMP}$${fCli1 + 2}-SUM($${C_IMP}$${fCli0}:$${C_IMP}$${fCli1}))`, '', '', '', ''])
-  // LOS OTROS ESTADOS NO SE SUMAN A ESTE TOTAL: dos categorías con distinta certeza no comparten
-  // columna. Un "Proyectado" (sin factura), un "Facturado" sin fecha acordada y un "Cancelado" viven
-  // separados en `_CAJA_ANEXO` — acá manda la cuenta por cobrar, que es la que financia la caja.
-  const fCliTot = push(['⇒ Total pendiente de cobro', '', formulaTotalEstado('pendiente'), '', '', '',
-    'los otros estados, en el anexo'])
+  // El ranking por cliente vive en el Cash Flow Semanal, que es el cuadro que proyecta el ingreso, y
+  // el detalle por estado en `_CAJA_ANEXO`. No se perdió: cambió de lugar.
+  //
+  // Lo que SÍ se queda es la cobranza como INSUMO de la cobertura (bloque 4): "¿la caja más lo que
+  // voy a cobrar alcanza para lo que tengo que pagar?" es una pregunta de caja, no de cobranza.
 
   // ── 7 · LOS CONTROLES, EN VEREDICTO ─────────────────────────────────────────────────────────────
   //
@@ -413,7 +398,7 @@ export function grilla(cargado, refs) {
   // decide: la primera es plata que no cuadra (hay que buscarla), la segunda es información que falta
   // (hay que cargarla). La columna de la derecha NOMBRA cuál manda, con su monto: sin eso el total
   // agrupado sería exactamente el "número mudo" que este archivo persigue.
-  const fCtrl0 = push(['6 · CONTROLES — el detalle en _CAJA_ANEXO', '', '', '', '', '',
+  const fCtrl0 = push(['5 · CONTROLES — el detalle en _CAJA_ANEXO', '', '', '', '', '',
     'todos tienen que dar cero'])
   const noCierra = [ANEXO.difEcheq, ANEXO.difConciliacion, ANEXO.efectivoSinExplicar]
   const falta = [ANEXO.vencidoSinConciliar, ANEXO.oficinaSinCanal, ANEXO.chequesSinMarca, ANEXO.chequesSinFecha]
@@ -478,6 +463,6 @@ export function grilla(cargado, refs) {
     fTitulos, fCifras, d0, d1, cab1, fTotal, fCh, fCartera, fBancoPesos,
     fArq0, fArq1, fArqArs, fArqUsd,
     cal0, cal1, calTotal, calFin, fPeor, fFinMes,
-    fCob0, fCobDesde, fCobHasta, fCredito, cabCli, fCli0, fCli1, fCliTot, fCtrl0, fCtrl1,
+    fCob0, fCobDesde, fCobHasta, fCredito, fCtrl0, fCtrl1,
   }
 }

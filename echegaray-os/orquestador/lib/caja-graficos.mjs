@@ -153,7 +153,7 @@ export async function requestsDeGraficos(google, fileId, sheetId, g) {
   // La primera versión devolvía `[]` en silencio en dos de sus tres salidas, y en la corrida real no se
   // dibujó ningún gráfico sin que el log dijera una palabra. "No apareció y no sé por qué" es el peor
   // estado posible: no se puede ni arreglar ni descartar. Cada salida imprime su motivo.
-  const faltan = ['fTotal', 'cal0', 'cal1', 'fCli0', 'fCli1'].filter((k) => !g?.[k])
+  const faltan = ['fTotal', 'cal0', 'cal1'].filter((k) => !g?.[k])
   if (faltan.length) {
     console.warn(`  ⚠ NO dibujo los gráficos: la grilla no trae ${faltan.join(', ')}`)
     return []
@@ -170,6 +170,5 @@ export async function requestsDeGraficos(google, fileId, sheetId, g) {
   return [
     ...mios.map((c) => ({ deleteEmbeddedObject: { objectId: c.chartId } })),
     graficoRecorrido(sheetId, g),
-    graficoConcentracion(sheetId, g),
   ]
 }

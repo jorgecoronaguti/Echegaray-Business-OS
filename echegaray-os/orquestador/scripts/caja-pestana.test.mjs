@@ -61,7 +61,7 @@ test('NI UNA FILA EN BLANCO: el hueco es un defecto medido, no un separador', ()
 
 test('la grilla se puede construir sin red, sin base y sin escribir nada', () => {
   const g = construir()
-  assert.ok(g.filas.length > 40, 'la pestaña tiene que tener sus bloques')
+  assert.ok(g.filas.length > 30, 'la pestaña tiene que tener sus bloques')
   assert.ok(g.d0 > 0 && g.d1 >= g.d0, 'el bloque de disponibilidades tiene principio y fin')
 })
 
@@ -553,7 +553,7 @@ test('LA NUMERACIÓN DE BLOQUES ES CONSECUTIVA Y SIN HUECOS', () => {
   const g = construir()
   const rot = g.filas.map((f) => String(f?.[0] ?? '').trim())
   const raiz = rot.map((t) => t.match(/^(\d+) · /)?.[1]).filter(Boolean).map(Number)
-  assert.deepEqual(raiz, [1, 2, 3, 4, 5, 6], `bloques con hueco: ${raiz.join(', ')}`)
+  assert.deepEqual(raiz, [1, 2, 3, 4, 5], `bloques con hueco: ${raiz.join(", ")}`)
   // Y ningún rótulo puede quedar con la numeración vieja: un "7.3" suelto manda a buscar un bloque que
   // ya no existe en esta pestaña.
   for (const t of rot) assert.ok(!/^\d+\.\d+ · /.test(t), `quedó un rótulo del anexo viejo: ${t}`)
@@ -561,7 +561,7 @@ test('LA NUMERACIÓN DE BLOQUES ES CONSECUTIVA Y SIN HUECOS', () => {
 
 test('EL "$" ES DEL TOTAL: el cuerpo va sin símbolo y sólo las filas de cierre lo llevan', () => {
   const g = construir()
-  assert.ok(g.totales.length >= 3, 'tienen que existir filas de total identificadas')
+  assert.ok(g.totales.length >= 2, 'tienen que existir filas de total identificadas')
   // El ancla es el TEXTO, nunca la posición: agregar un bloque no puede romper la lista.
   for (const f of g.totales) assert.match(String(g.filas[f - 1][0]), /^\s*(⇒|Total|TOTAL)/)
   const fCuenta = filaDe(g, /^Caja en pesos$/)

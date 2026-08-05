@@ -48,25 +48,20 @@ test('EL WATERFALL ARRANCA EN UN NIVEL Y SIGUE EN DELTAS: dos rangos, no uno', (
   for (const d of dom) assert.equal(d.startColumnIndex, 0)
 })
 
-test('el gráfico no tiene datos propios: lee las mismas celdas que la tabla', () => {
-  // Un gráfico alimentado por su propio cálculo es la forma más elegante de tener dos verdades.
-  const c = graficoConcentracion(7, G).addChart.chart.spec.basicChart
-  assert.equal(c.domains[0].domain.data.sourceRange.sources[0].startRowIndex, G.fCli0 - 1)
-  assert.equal(c.series[0].series.sourceRange.sources[0].startColumnIndex, 2, 'el importe sale de la columna C')
-  assert.equal(c.chartType, 'BAR', 'los nombres de cliente son largos: en vertical salen rotados e ilegibles')
-  assert.equal(c.legendPosition, 'NO_LEGEND', 'una sola serie: la leyenda roba ancho y no agrega nada')
-})
+// La CONCENTRACIÓN POR CLIENTE se fue de CAJA (05/08): el dueño la quiere fuera —'no quiero nada
+// de cobranza en caja, sólo datos de caja'— y con ella se fue su gráfico. Vive en el Cash Flow
+// Semanal, que es el cuadro que proyecta el ingreso.
 
 test('SE BORRAN LOS PROPIOS ANTES DE DIBUJAR, y sólo los propios', async () => {
   // `addChart` SIEMPRE agrega: no existe "crear o actualizar". Sin borrar primero, la corrida de cada
   // dos horas apila doce gráficos por día sobre la misma celda y sólo se ve el último.
   const reqs = await requestsDeGraficos(fake([
     { chartId: 1, title: `${MARCA}El recorrido de la caja, tramo por tramo` },
-    { chartId: 2, title: 'un gráfico que hizo el dueño' },
+    { chartId: 3, title: 'un gráfico que hizo el dueño' },
   ]), 'file', 7, G)
   const borrados = reqs.filter((r) => r.deleteEmbeddedObject).map((r) => r.deleteEmbeddedObject.objectId)
   assert.deepEqual(borrados, [1], 'si el dueño dibuja el suyo, es suyo: no se toca')
-  assert.equal(reqs.filter((r) => r.addChart).length, 2)
+  assert.equal(reqs.filter((r) => r.addChart).length, 1)
   // Y los borrados van PRIMERO: al revés se borraría el que se acaba de crear.
   assert.ok(reqs.findIndex((r) => r.deleteEmbeddedObject) < reqs.findIndex((r) => r.addChart))
 })

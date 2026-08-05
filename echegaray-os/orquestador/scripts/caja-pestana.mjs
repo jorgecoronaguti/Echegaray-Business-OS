@@ -326,13 +326,10 @@ async function formatear(google, sheetId, g) {
   fmt(r(g.fCobDesde - 1, g.fCobHasta, 5, 6), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER' })
   // El acumulado de la concentración es una proporción, no plata.
-  fmt(r(g.fCli0 - 1, g.fCli1, 6, 7), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-    { numberFormat: PORCENTAJE, horizontalAlignment: 'CENTER' })
-
   // ── ENCABEZADOS Y TÍTULOS DE BLOQUE ─────────────────────────────────────────────────────────────
   const cabCal = g.filas.findIndex((f) => String(f?.[0] ?? '').trim() === 'Tramo') + 1
   const cabCob = g.filas.findIndex((f) => String(f?.[0] ?? '').trim() === 'Horizonte') + 1
-  for (const c of [g.cab1, cabCal, cabCob, g.cabCli].filter((x) => x > 0)) {
+  for (const c of [g.cab1, cabCal, cabCob].filter((x) => x > 0)) {
     // UN ENCABEZADO ES TEXTO, NUNCA PLATA NI FECHA: se le devuelve el formato de número junto con la
     // tipografía, o gana el que se aplicó a la columna entera más arriba.
     fmt(r(c - 1, c), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
