@@ -54,6 +54,46 @@ botón — un botón que existe para contestar "no podés" manda a diagnosticar 
 
 ---
 
+## Antes que nada: correr el auditor
+
+No hace falta leer la lista de abajo para saber qué falta. **Se pregunta:**
+
+```bash
+set -a; . ~/.config/echegaray-orq/comunicacion.env; set +a
+node orquestador/scripts/auditar-cableado-chat.mjs            # mira base + entorno + API + URL pública
+node orquestador/scripts/auditar-cableado-chat.mjs --reparar   # ata el canal y otorga el grant (idempotente)
+```
+
+Sale con código 1 si falta algo. Nunca imprime un secreto. `--reparar` toca **sólo** datos de
+configuración en Postgres: no despliega, no reinicia servicios y no toca Caddy.
+
+Y para probarlo de punta a punta sin depender de que el dueño mande una foto:
+
+```bash
+node orquestador/scripts/probar-archivo-en-vivo.mjs --archivo /ruta/al/extracto.csv --canal os-pruebas
+```
+
+Sube el archivo, crea un post REAL, inyecta en el borde de ingesta con la identidad de una persona
+real, espera al worker de producción y **relee del servidor la respuesta publicada**. La evidencia es
+el efecto, no lo que devolvió una función.
+
+**Estado verificado el 05/08/2026** (con esos dos comandos, contra el sistema vivo):
+
+| Pieza | Estado |
+|---|---|
+| Migración `comunicacion.archivos_recibidos` | ✓ aplicada |
+| `corridas_estado_check` acepta `browser_error` | ✓ aplicada |
+| Binding `administracion_finanzas` → `administracion` (Oficina) | ✓ (lo ató `--reparar`) |
+| Grant `finanzas.banco.import` | ✓ sólo el dueño (los jefes de obra **no**: cargar un gasto y reescribir el saldo del banco no son el mismo permiso) |
+| `ARCHIVOS_ACCION_SECRETO` | ✗ **falta** en `comunicacion.env` y en `asistencia-http.env` |
+| Ruta pública `/archivos/accion` | ✗ **404** — el Caddyfile que Caddy montea (`worktrees/release-runtime`) no tiene el bloque, y el commit desplegado no monta la ruta |
+| Código desplegado | ✗ **`deploy/comunicacion-protegido` no tiene la carpeta `archivos/`** |
+
+La última fila explica todas las demás: los servicios se reiniciaron, pero sobre un commit que no
+tiene la feature. Por eso `archivos_recibidos` tiene **0 filas**: el camino nunca se ejecutó.
+
+---
+
 ## Qué hace falta para que ande en producción
 
 ### 1. La migración
@@ -136,7 +176,9 @@ camino de comprobantes y se alcanza por **import dinámico**, para que el árbol
 
 | Síntoma | Dónde mirar |
 |---|---|
+| El bot contesta **"No supe a quién derivarlo"** y muestra el catálogo | el worker desplegado NO tiene el especialista. Si en ese catálogo no figura **Recepción de archivos**, es eso y no otra cosa |
 | El bot no contesta al archivo | ¿es DM, mención, o canal de ingesta? journal de `-ws` (`ws: ignorado por guarda` dice el motivo) |
+| `ws: HAY CANALES DE INGESTA QUE NO EXISTEN` | un nombre de `MM_CANALES_ADJUNTOS` no corresponde a ningún canal: esos mensajes se pierden en silencio. Corregir el `.env` o invitar al bot al canal |
 | "todavía no está habilitada" | falta la migración |
 | Previsualiza pero no hay botón | falta el binding del canal, o el grant/membresía; el mensaje dice cuál |
 | Los botones no hacen nada | falta `ARCHIVOS_ACCION_SECRETO`, o Caddy no publica `/archivos/accion` |

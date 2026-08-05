@@ -99,7 +99,8 @@ test('un PROVEEDOR DESCONOCIDO frena la carga y se pregunta por su nombre', () =
   const nuevo = { ...item(), proveedorNuevo: true }
   assert.equal(estaCompleto(nuevo), false)
   const p = preguntasDe(nuevo).join(' ')
-  assert.match(p, /no está en la lista de Compras/)
+  assert.match(p, /no está en el desplegable de Compras/)
+  assert.match(p, /Corregir/, 'sin nombrar Corregir, la pregunta no se puede contestar')
   assert.match(p, /Combustibles Barcelo/, 'se dice QUÉ proveedor, no un "hay un problema"')
 })
 
