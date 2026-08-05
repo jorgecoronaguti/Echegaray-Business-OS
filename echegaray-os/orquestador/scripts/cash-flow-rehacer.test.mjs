@@ -7,7 +7,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { grilla, meses } from './cash-flow-rehacer.mjs'
-import { semanasRodantes, SEMANAS_HORIZONTE } from '../lib/cash-flow-horizonte.mjs'
+import { semanasDelAnio, SEMANAS_HORIZONTE } from '../lib/cash-flow-horizonte.mjs'
 
 /** Un martes cualquiera, fijo: un horizonte rodante probado contra `new Date()` es un test que
  *  cambia de premisa todos los días y no se puede leer cuando falla. */
@@ -56,7 +56,7 @@ for (const periodo of ['semanal', 'mensual']) {
     const g = arma(periodo)
     assert.equal(g.periodo, periodo)
     assert.equal(g.fechas.length, g.n)
-    assert.deepEqual(g.fechas, periodo === 'semanal' ? semanasRodantes(HOY) : meses())
+    assert.deepEqual(g.fechas, periodo === 'semanal' ? semanasDelAnio(HOY) : meses())
   })
 
   test(`${periodo}: el cierre existe y es la última fila del estado`, () => {

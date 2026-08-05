@@ -35,6 +35,7 @@ import { parseMonto } from '../lib/cash-briefing.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
 import { borrarNotas, vaciarColumnaDeProsa } from '../lib/nota-celda.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { seccion, sub as subItem, total as rotuloTotal, auditarPatron } from '../lib/patron-pestana.mjs'
 // LAS COLUMNAS DE COMPRAS, POR SU ENCABEZADO. Esta pestaña todavía las referenciaba por su LETRA
@@ -44,7 +45,7 @@ import { resolverColumnas, rango } from '../lib/compras-columnas.mjs'
 // LOS DOS RÓTULOS QUE EL CASH FLOW BUSCA EN ESTA PESTAÑA. No se escriben a mano acá: el consumidor los
 // ubica POR TEXTO en la columna A, así que el texto es el contrato entre las dos pestañas y tiene una
 // sola definición. Ver el bloque "EL CALENDARIO FISCAL" en lib/cash-flow-lineas.mjs.
-import { CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
+import { CALENDARIO_IMPUESTOS, CUADRO } from '../lib/cash-flow-lineas.mjs'
 import { formulaUltimaFecha, formulaUltimoPeriodo, rotuloPorFuente, DIAS_AVISO_MENSUAL } from '../lib/fecha-de-frescura.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -181,9 +182,40 @@ async function planesDePago() {
 // computable. Meterlas inflaría el crédito y haría desaparecer un pago de IVA que sí va a ocurrir.
 // Por eso se suman las sub-líneas con factura, una por una, y no el subtotal.
 const CF = 'Cash Flow Mensual'
+/**
+ * ═══ LOS NOMBRES SALEN DEL CUADRO, NO SE TIPEAN ACÁ (05/08) ═══
+ *
+ * Estaban escritos a mano y uno derivó: el cuadro dice "Cobranzas esperadas — de este mes en adelante
+ * (suma al flujo)" y acá decía "…(proyección, suma al flujo)". El generador hizo lo correcto —falló
+ * CERRADO, negándose a escribir una referencia muerta que habría dejado la proyección de IVA en $0—
+ * pero la pestaña quedó sin poder regenerarse hasta que alguien mirara.
+ *
+ * Es la cuarta vez en el día que un contrato entre pestañas está escrito como una frase. La frase es
+ * para la persona que lee y va a cambiar; el contrato tiene que salir de la definición única. Se
+ * resuelve por PREFIJO contra `CUADRO`, que es quien escribe esos rótulos: si mañana el cuadro le
+ * agrega o le saca palabras al final, esto lo sigue encontrando, y si la línea DESAPARECE rompe acá
+ * —con el nombre que no encontró— en vez de escribir una referencia a la nada.
+ */
+const delCuadro = (prefijo) => {
+  // CUADRO es actividad → grupos → líneas: se recorre entero, sin suponer la profundidad.
+  const nombres = []
+  const bajar = (x) => {
+    if (Array.isArray(x)) return x.forEach(bajar)
+    if (!x || typeof x !== 'object') return
+    if (typeof x.nombre === 'string') nombres.push(x.nombre)
+    for (const v of Object.values(x)) if (v && typeof v === 'object') bajar(v)
+  }
+  bajar(CUADRO)
+  const halladas = nombres.filter((n) => String(n).startsWith(prefijo))
+  if (halladas.length !== 1) {
+    throw new Error(`impuestos-pestana: "${prefijo}…" no identifica UNA línea del cuadro `
+      + `(encontré ${halladas.length}). El cuadro es la fuente de los rótulos: revisá cash-flow-lineas.mjs.`)
+  }
+  return halladas[0]
+}
 const LINEAS_DEBITO = [
   'Cobros por ventas y servicios (ya cobrado)',
-  'Cobranzas esperadas — de este mes en adelante (proyección, suma al flujo)',
+  delCuadro('Cobranzas esperadas — de este mes en adelante'),
 ]
 const LINEAS_CREDITO = [
   'Materiales e insumos de obra civil',
@@ -1171,6 +1203,21 @@ async function formatear(google, sheetId, g, filasHoja = 0) {
   // PIEL DE STATEMENT encima del formato de número: sin reja, secciones y encabezados por tipografía
   // + hairline (no barras rellenas), totales rulados. La misma que CAJA, Cheques y Cargas Sociales.
   await google.spreadsheetBatchUpdate(ID, skinRequests({ sheetId, filas: g.filas, cols: ANCHO, congeladas: 2, titular: g.titular, filasHoja: filasHoja }))
+
+  // ═══ UN TEXTO SE DIBUJA COMO TEXTO, DECIDIDO POR CONTENIDO (05/08) ═══
+  //
+  // `auditar-pantalla.mjs` marcaba 22 celdas `texto_en_numero` en esta pestaña: "s/d" y otras notas
+  // sentadas en celdas con formato CURRENCY. Una celda que dice "s/d" con formato de plata se lee como
+  // si hubiera un importe que no se ve, y ése es el defecto que hace desconfiar de la fila entera.
+  //
+  // No se arregla con una lista de rangos que hay que mantener: se decide por CONTENIDO, que es lo que
+  // ya hacen CAJA, su anexo y Proveedores con la misma función. Va DESPUÉS de la piel, o la piel se lo
+  // lleva puesto: los `repeatCell` se aplican en orden.
+  {
+    const { requests: rTxt, celdas } = requestsTextoPorContenido(sheetId, g.filas || [])
+    if (rTxt.length) await google.spreadsheetBatchUpdate(ID, rTxt)
+    if (celdas) console.log(`  ${celdas} celda(s) de TEXTO con su formato de texto (no de plata)`)
+  }
   // Ninguna fila queda OCULTA: un colapso de una versión anterior dejó filas con hiddenByUser=true,
   // y borrar el grupo no las vuelve a mostrar.
   await google.spreadsheetBatchUpdate(ID, [{ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: n + 5 }, properties: { hiddenByUser: false }, fields: 'hiddenByUser' } }]).catch(() => {})

@@ -41,10 +41,23 @@
 // timing intra-mes. Lo que ya está cargado cae en su fecha real; lo que falta cargar se supone
 // parejo. El total del mes es exacto; el día de la semana dentro del mes es un supuesto.
 
-import { expresionReal, expresionProyeccionMes } from './cash-flow-lineas.mjs'
+import { expresionReal, expresionProyeccionMes, mesCerrado } from './cash-flow-lineas.mjs'
 
-/** El horizonte que pide la skill de tesorería. 8 sería el otro valor defendible. */
-export const SEMANAS_HORIZONTE = 13
+// ═══ EL DUEÑO PIDIÓ LAS 51 SEMANAS DE VUELTA (05/08) ═══
+//
+// El horizonte se había acortado a 13 —el rodante que pide la skill de tesorería— porque el semanal
+// no proyectaba nada y contradecía al mensual en $140.350.436, con SIGNO OPUESTO en el aumento neto
+// del año. La causa de esa contradicción NO era el largo del horizonte: era que el semanal sólo
+// sumaba lo ya cargado. Acortarlo tapaba el síntoma escondiendo los meses donde se veía.
+//
+// Ese defecto ya está resuelto —`formulaLineaSemana` proyecta con el mismo criterio que el mensual—
+// así que el horizonte largo vuelve a ser sostenible: las 51 semanas cubren el año y cada una
+// proyecta, en vez de mostrar cero hasta que alguien cargue la factura.
+//
+// Lo que se pierde y hay que decirlo: una proyección semanal a cuarenta semanas vista es mucho menos
+// confiable que a cuatro. El cuadro las marca en itálica como proyectadas; la confianza la pone quien
+// lo lee, no el número.
+export const SEMANAS_HORIZONTE = 51
 /** Cuántas semanas ya cerradas mira el contraste "lo esperado contra lo que ocurrió". */
 export const SEMANAS_CERRADAS = 4
 
@@ -65,6 +78,33 @@ export function semanasRodantes(hoy, n = SEMANAS_HORIZONTE) {
 }
 
 /**
+ * LAS SEMANAS DEL AÑO CALENDARIO, DE ENERO A DICIEMBRE — no las que vienen desde hoy.
+ *
+ * El dueño: *"las 51 semanas que vienen, pero del año 2026, no lo que viene"*. Contar hacia adelante
+ * desde hoy mete columnas de 2027 en un cuadro rotulado 2026, y deja fuera los meses ya cerrados del
+ * año — que son justamente contra los que se compara lo proyectado.
+ *
+ * El cuadro es del EJERCICIO: arranca el primer lunes que cae dentro del año y termina en el último.
+ * Así el semanal y el mensual cubren exactamente el mismo período y sus totales se pueden comparar,
+ * que es la condición para que la conciliación entre los dos signifique algo.
+ *
+ * @param {Date|string|number} enElAnio cualquier fecha del año que se quiere cubrir
+ * @returns {Array<Date>} los lunes del año, en orden
+ */
+export function semanasDelAnio(enElAnio) {
+  const anio = new Date(enElAnio).getFullYear()
+  // El primer lunes ON OR BEFORE el 1° de enero: la semana que CONTIENE al 1° pertenece al año, aunque
+  // arranque en diciembre. Si no, los primeros días del ejercicio no caen en ninguna columna.
+  const d = lunesDe(new Date(Date.UTC(anio, 0, 1)))
+  const out = []
+  for (let x = d; x.getUTCFullYear() <= anio; x = new Date(x.getTime() + 7 * 86400000)) {
+    out.push(x)
+    if (out.length > 54) break // guarda: un año tiene 52 o 53 semanas, nunca más
+  }
+  return out
+}
+
+/**
  * Las `n` semanas que YA CERRARON, de la más vieja a la más reciente. Es la ventana del contraste:
  * la única donde "lo que se esperaba" y "lo que ocurrió" son dos hechos comparables.
  */
@@ -74,16 +114,39 @@ export function semanasCerradas(hoy, n = SEMANAS_CERRADAS) {
 }
 
 /**
- * Qué parte del mes `M` le toca a la ventana [desde, hasta), medida sobre los días que TODAVÍA NO
- * PASARON. Los días ya transcurridos del mes en curso no reciben proyección: lo que iba a pasar en
- * ellos ya pasó y está —o no— cargado en Compras. Sin este recorte, la primera semana del horizonte
- * cobraría proyección por días que ya son historia y el cuadro contaría dos veces esa plata.
+ * Qué parte del mes `M` le toca a la ventana [desde, hasta): sus días sobre los días del mes.
+ *
+ * ES UNA PARTICIÓN EXACTA, Y AHORA SE PUEDE DEMOSTRAR. Antes el denominador eran los días que
+ * faltaban DESDE HOY (`finMes - MAX(M;TODAY())`) y el numerador recortaba igual contra `TODAY()`.
+ * Ese recorte existía para que el mes en curso no cobrara proyección por días ya vividos — pero
+ * hacía el trabajo a medias: repartía sobre los días restantes el `falta` del mes ENTERO, así que
+ * el mes en curso terminaba proyectado completo del lado semanal mientras el mensual no lo
+ * proyectaba en absoluto (ver `mesCerrado` en cash-flow-lineas.mjs: $177M de contradicción).
+ *
+ * Quién no se proyecta lo decide ahora `falta`, una sola vez y con la misma condición que el
+ * mensual. Acá queda sólo el reparto, que es aritmética pura: sumando las semanas que tocan un mes,
+ * Σ (días propios) / (días del mes) = 1 exacto. Sin ese 1 exacto, las dos pestañas no pueden cerrar.
  */
 function parteDelMes(desde, hasta, M) {
   const finMes = `EOMONTH(${M};0)+1`
-  const restantes = `MAX(0;${finMes}-MAX(${M};TODAY()))`
-  const propios = `MAX(0;MIN(${hasta};${finMes})-MAX(${desde};${M};TODAY()))`
-  return `IF(${restantes}=0;0;${propios}/${restantes})`
+  // `M` VA ENTRE PARÉNTESIS. Es una EXPRESIÓN (`EOMONTH(B$3;-1)+1`), no una celda: sin paréntesis,
+  // `finMes-${M}` se lee `EOMONTH(…)+1-EOMONTH(…)+1` y el denominador da el día del mes más dos en
+  // vez de los treinta días. Lo encontró el test de la partición, no la lectura del código.
+  return `MAX(0;MIN(${hasta};${finMes})-MAX(${desde};${M}))/(${finMes}-(${M}))`
+}
+
+/**
+ * NÚCLEO PURO: lo que le FALTA cargar al mes `M` en la línea `l` — la parte proyectada del mes.
+ *
+ * Es la MISMA cantidad que el mensual suma cuando hace `MAX(real; proy)`: `MAX(real;proy) = real +
+ * MAX(0; proy − real)`. Escrita así, el mensual y el semanal se pueden probar iguales sobre un mes
+ * entero en vez de creerlo. Devuelve null cuando la línea no proyecta.
+ */
+export function expresionFalta(l, M, filasTabla = {}, anio = 2026) {
+  const proy = expresionProyeccionMes(l, M, filasTabla, anio)
+  if (proy === null) return null
+  const real = expresionReal(l, M, `EOMONTH(${M};0)+1`)
+  return `IF(${mesCerrado(M)};0;MAX(0;${proy}-${real}))`
 }
 
 /**
@@ -106,12 +169,11 @@ export function formulaLineaSemana(l, desde, hasta, filasTabla = {}, anio = 2026
   // El domingo de la semana: `desde+6`. Con `hasta` (el lunes siguiente) el mes saldría corrido una
   // semana entera cada vez que el mes termina un domingo.
   const M2 = `EOMONTH(${desde}+6;-1)+1`
-  const proy1 = expresionProyeccionMes(l, M1, filasTabla, anio)
-  if (proy1 === null) return `=${real}`
-  const proy2 = expresionProyeccionMes(l, M2, filasTabla, anio)
-  const falta = (M, proy) => `MAX(0;${proy}-${expresionReal(l, M, `EOMONTH(${M};0)+1`)})`
-  const tramo = (M, proy) => `${falta(M, proy)}*${parteDelMes(desde, hasta, M)}`
-  return `=${real}+${tramo(M1, proy1)}+IF(${M2}=${M1};0;${tramo(M2, proy2)})`
+  const falta1 = expresionFalta(l, M1, filasTabla, anio)
+  if (falta1 === null) return `=${real}`
+  const falta2 = expresionFalta(l, M2, filasTabla, anio)
+  const tramo = (M, falta) => `(${falta})*${parteDelMes(desde, hasta, M)}`
+  return `=${real}+${tramo(M1, falta1)}+IF(${M2}=${M1};0;${tramo(M2, falta2)})`
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════

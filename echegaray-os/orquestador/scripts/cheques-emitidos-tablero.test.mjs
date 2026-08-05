@@ -46,6 +46,7 @@ test('el total de los tramos suma EXACTAMENTE las filas de los tramos', () => {
 test('el titular resta las dos líneas que están justo arriba', () => {
   const fTitular = filaDe(/^⇒ Con esto podés pagar/)
   assert.equal(banda[fTitular - 1][1], `=IF(ISNUMBER(B${fTitular - 2});B${fTitular - 2}-B${fTitular - 1};"⚠ falta el saldo de CAJA")`)
+
 })
 
 test('los tramos cubren toda la recta del tiempo, sin huecos ni superposición', () => {
@@ -57,10 +58,23 @@ test('los tramos cubren toda la recta del tiempo, sin huecos ni superposición',
   assert.match(f(/^Sin fecha/), /NOT\(ISNUMBER/)
 })
 
-test('la plata disponible se busca en CAJA POR RÓTULO, nunca por celda', () => {
+test('la plata disponible se cita POR NOMBRE — ni por celda ni por rótulo', () => {
+  // ═══ ESTE TEST EXIGÍA LO CONTRARIO Y SE DIO VUELTA (05/08) ═══
+  //
+  // Pedía `MATCH("Total disponibilidades"; CAJA!$A$1:$A$200; 0)` y lo defendía así: "si el rótulo
+  // cambia la celda tiene que gritar, no mentir". La mitad estaba bien —gritar es mejor que mentir— y
+  // cuando el rediseño de CAJA le agregó tres palabras al rótulo, gritó. Pero gritar no es la
+  // respuesta correcta cuando el dato SÍ está: la pestaña quedó publicando "⚠ falta el saldo de CAJA"
+  // sobre una CAJA que tenía su total perfectamente calculado.
+  //
+  // Un match exacto contra un texto es un contrato entre pestañas escrito en el idioma equivocado. El
+  // contrato es el RANGO CON NOMBRE, que CAJA reapunta en cada corrida a la fila real de su total:
+  // sobrevive a que se muevan las filas Y a que se reescriba el rótulo.
   const f = String(banda[filaDe(/^Plata disponible hoy/) - 1][1])
-  assert.match(f, /MATCH\("Total disponibilidades";CAJA!\$A\$1:\$A\$200;0\)/)
-  assert.match(f, /IFERROR/, 'si el rótulo cambia la celda tiene que gritar, no mentir')
+  assert.ok(f.includes('CAJA_TOTAL_DISPONIBLE'), 'el saldo de CAJA se cita por rango con nombre')
+  assert.doesNotMatch(f, /MATCH\(/, 'un rótulo se puede reescribir; un nombre no')
+  assert.doesNotMatch(f, /CAJA!\$?[A-Z]/, 'y menos todavía por celda: CAJA se reescribe entera')
+  assert.match(f, /⚠/, 'y si CAJA todavía no publicó su total, lo dice en vez de mostrar un cero')
 })
 
 test('la banda NUNCA escribe en la columna F: CAJA la suma como si fuera un cheque', () => {

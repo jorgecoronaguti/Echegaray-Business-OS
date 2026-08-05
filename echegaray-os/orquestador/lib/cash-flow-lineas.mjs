@@ -341,8 +341,22 @@ export function formulaCalendarioImpuestosSemana(desde, hasta, anio, filasCal) {
 //   · null     — no se proyecta. Los jornales ya traen sus quincenas futuras de su propia planilla.
 /** Menos de esto no es una tendencia mensual, es un pago suelto. Misma regla que Estructura. */
 export const MIN_MESES = 4
-/** La fila del encabezado con los 12 primeros-de-mes. Se usa para contar en cuántos hubo gasto. */
-const MESES_CAB = '$B$3:$M$3'
+/**
+ * La fila del encabezado con los 12 primeros-de-mes. Se usa para contar en cuántos hubo gasto.
+ *
+ * VA CALIFICADA CON LA PESTAÑA, Y NO ES UN DETALLE (05/08). Acá decía `'$B$3:$M$3'` a secas — una
+ * referencia RELATIVA A LA PESTAÑA DONDE CAE LA FÓRMULA. En el Mensual B..M son efectivamente los
+ * doce meses del año. En el SEMANAL, B..M son las doce PRIMERAS SEMANAS (29/12/2025 … 16/03/2026):
+ * la misma fórmula, copiada a la otra pestaña, contaba "en cuántos de estos doce meses hubo gasto"
+ * sobre cuatro meses repetidos. El test `mesesConGasto < 4` prendía o apagaba la proyección de cada
+ * rubro por el motivo equivocado, y sin dar un solo error.
+ *
+ * Calificada con la pestaña son las MISMAS doce celdas se escriba donde se escriba, que es la única
+ * forma de que las dos pestañas proyecten lo mismo. Si alguien renombra la pestaña, esto se rompe
+ * con #REF! —ruidoso— en vez de seguir devolviendo otro número en silencio.
+ */
+export const PESTANA_MENSUAL = 'Cash Flow Mensual'
+const MESES_CAB = `'${PESTANA_MENSUAL}'!$B$3:$M$3`
 
 // LAS FILAS NO SE HARDCODEAN MÁS. La versión anterior apuntaba a Estructura!$15 y Recurrentes!$24
 // escritos a mano, y eso ya falló una vez: los dos cash flow leían Estructura de un rango que había
@@ -1026,13 +1040,29 @@ export function expresionReal(l, desde, hasta) {
  * @param {string} colMes letra de la columna del mes · @param {string} colTabla la equivalente en la pestaña de detalle
  * @param {number} filaCab fila del encabezado con las fechas
  */
+/**
+ * UN MES YA CERRADO —O EL QUE ESTÁ EN CURSO— NO SE PROYECTA: lo que iba a pasar ya pasó, y lo que
+ * falta cargar de él es un problema de carga, no un pronóstico.
+ *
+ * SE EXPORTA PORQUE ES LA MISMA REGLA EN LAS DOS PESTAÑAS Y NO LO ERA (05/08). El mensual la tenía
+ * adentro de `formulaLineaMes` y el semanal —que llama a `expresionProyeccionMes` por su cuenta para
+ * repartir el mes entre sus semanas— nunca la recibió. Resultado medido en el Sheet vivo: el semanal
+ * proyectaba $318.461.819 de "lo que falta cargar" contra $150.021.078 del mensual, y el mismo
+ * diciembre cerraba en ($168.625.438) según uno y en $8.758.805 según el otro. $177M de contradicción
+ * entre dos cuadros que el comentario de cash-flow-horizonte.mjs declaraba imposible de contradecir.
+ *
+ * La causa no era el reparto entre semanas: era que el mes EN CURSO se proyectaba entero del lado
+ * semanal y nada del lado mensual. Ahora la condición vive UNA vez y las dos la usan.
+ */
+export const mesCerrado = (M) => `EOMONTH(${M};0)<=EOMONTH(TODAY();0)`
+
 export function formulaLineaMes(l, colMes, colTabla, filaCab, filasTabla = {}, anio = 2026) {
   if (l.cheques || l.calendarioImpuestos) return null
   const mes = `${colMes}$${filaCab}`
   const real = expresionReal(l, mes, `EOMONTH(${mes};0)+1`)
   const proy = expresionProyeccionMes(l, mes, filasTabla, anio)
   if (proy === null) return `=${real}`
-  return `=IF(EOMONTH(${mes};0)<=EOMONTH(TODAY();0);${real};MAX(${real};${proy}))`
+  return `=IF(${mesCerrado(mes)};${real};MAX(${real};${proy}))`
 }
 
 /**
@@ -1084,7 +1114,11 @@ export function expresionProyeccionMes(l, mes, filasTabla = {}, anio = 2026) {
   const ventana = `${expresionReal(l, 'EOMONTH(TODAY();-4)+1', 'EOMONTH(TODAY();-1)+1')}/3`
   const factor = `IFERROR(INDEX(Parámetros!$C$74:$C$90;MATCH(EOMONTH(${mes};0);ARRAYFORMULA(EOMONTH(Parámetros!$A$74:$A$90;0));0));1)`
   const mesesConGasto = `SUMPRODUCT(--(COUNTIFS(${COL_RUBRO};"${l.rubro}";${COL_FECHA};">="&${MESES_CAB};${COL_FECHA};"<"&EOMONTH(${MESES_CAB};0)+1)>0))`
-  return `IF(${mesesConGasto}<${MIN_MESES};0;${ventana}*${factor})`
+  // FUERA DEL AÑO DEL CUADRO NO SE PROYECTA — la regla ya estaba escrita en el docstring de arriba y
+  // sólo la cumplía la rama 'tabla'. La rama 'ritmo' proyectaba cualquier mes, y el semanal la usaba:
+  // su última columna (lunes 28/12/2026) pisa enero de 2027, así que cobraba 3/31 de un mes entero de
+  // ritmo por cada rubro — plata de otro ejercicio sumada al total de éste.
+  return `IF(YEAR(${mes})<>${anio};0;IF(${mesesConGasto}<${MIN_MESES};0;${ventana}*${factor}))`
 }
 
 /**
