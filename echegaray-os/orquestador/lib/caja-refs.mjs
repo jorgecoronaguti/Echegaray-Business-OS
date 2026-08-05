@@ -13,6 +13,7 @@ import { hallarPestana } from './sheet-pestanas.mjs'
 import { CALENDARIO_IMPUESTOS, rotulosCalendarioImpuestos } from './cash-flow-lineas.mjs'
 import { EN_CARTERA } from './cartera-cheques.mjs'
 import * as BANCO from './banco-santander.mjs'
+import { ALIAS, filaDeCuenta } from './caja-disponibilidades.mjs'
 
 /**
  * Las líneas del cuadro de caja que NO tienen fuente con fecha, y por eso valen CERO por tramo.
@@ -131,4 +132,41 @@ export async function carteraDelArchivo() {
     console.log(`  ⚠ la cartera no salió de la base (${e.message}): uso el respaldo ${c.origen}. El total y el calendario SIGUEN saliendo de la réplica.`)
     return c
   }
+}
+
+/**
+ * Lo que el dueño ya cargó, rescatado ANTES de reescribir.
+ *
+ * LAS COLUMNAS SE UBICAN POR SU RÓTULO, no por su letra: un rescate por posición leyó "USD" donde
+ * esperaba un importe y habría borrado cuatro saldos cargados sin decir nada.
+ *
+ * SE RESCATA LO QUE LA PERSONA ESCRIBIÓ, NO LO QUE MUESTRA LA PANTALLA: leyendo el valor formateado,
+ * un Fondo fijo en $0 volvía como el texto "—" (así lo dibuja el formato de moneda) y la celda quedaba
+ * en #VALUE!, que se propagaba al TOTAL.
+ */
+export function rescatar(previo) {
+  const cargado = new Map()
+  let mapa = null
+  const leer = (c) => {
+    const v = c?.formula ?? (c?.numero ?? c?.valor ?? '')
+    return typeof v === 'string' && /^[—–-]$/.test(v.trim()) ? 0 : v
+  }
+  for (const fila of previo) {
+    const f = fila.map(leer)
+    const a = String(fila?.[0]?.valor ?? '').trim()
+    if (/^(cuenta|línea|linea|concepto)$/i.test(a)) {
+      mapa = { imp: -1, fecha: -1, origen: -1, quien: -1 }
+      fila.forEach((c, i) => {
+        const t = String(c?.valor ?? '').trim().toLowerCase()
+        if (mapa.imp < 0 && /^(saldo|importe|cotizaci)/.test(t)) mapa.imp = i
+        if (mapa.fecha < 0 && /^fecha/.test(t)) mapa.fecha = i
+        if (mapa.origen < 0 && /^origen/.test(t)) mapa.origen = i
+        if (mapa.quien < 0 && /^declarado/.test(t)) mapa.quien = i
+      })
+      continue
+    }
+    if (!a || !mapa || !filaDeCuenta(a)) continue
+    cargado.set(ALIAS.get(a) ?? a, { saldo: f?.[mapa.imp] ?? '', fecha: f?.[mapa.fecha] ?? '', origen: f?.[mapa.origen] ?? '', quien: f?.[mapa.quien] ?? '' })
+  }
+  return cargado
 }

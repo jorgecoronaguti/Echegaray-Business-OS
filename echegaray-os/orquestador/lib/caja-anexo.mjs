@@ -87,7 +87,11 @@ function bloqueMovimientos(h) {
   push(['A1 · MOVIMIENTOS POSTERIORES — DE QUÉ SE COMPONEN LOS DOS NETOS DE CAJA'])
   push(['Concepto', 'Moneda', 'Importe', '', '', 'Fecha', 'De dónde sale'])
 
-  push(['Posteriores al CORTE DEL EXTRACTO — el neto suma al total de CAJA', '', '', '', '', `=${corte}`, ''])
+  // LA FECHA VA GUARDADA CON ISNUMBER: `=CAJA_BANCO_CORTE` sobre una celda vacía devuelve 0, y el 0 con
+  // formato de fecha se dibuja "30/12/1899". Es el defecto `fecha_cero` que el auditor de pantalla
+  // reportaba en CAJA, y la causa es siempre la misma: una referencia cruda en una columna de fecha.
+  push(['Posteriores al CORTE DEL EXTRACTO — el neto suma al total de CAJA', '', '', '', '',
+    `=IF(ISNUMBER(${corte});${corte};"")`, ''])
   push(['   · (+) cobros acreditados después del corte', 'ARS',
     `=${formulaCobrosPosteriores(corte)}`, '', '', '',
     'Cobranzas en estado Cobrado (sin echeq), con fecha posterior al corte'])
@@ -185,10 +189,10 @@ function bloqueCartera(h) {
     'Cobranzas sabe que el echeq se cobró; no sabe qué pasó DESPUÉS con el valor'])
   // Cobranzas registra que el echeq se cobró —y es cierto— pero no sabe qué pasó DESPUÉS con el valor.
   // Si este número es mayor que el de la cartera, la diferencia son cheques que se endosaron.
-  const fDif = push(['⇒ Diferencia contra el banco (manda el banco)', '',
+  const fDifCartera = push(['⇒ Diferencia contra el banco (manda el banco)', '',
     `=C${fControl}-${DESDE_CAJA.cartera}`, '', '', '',
     'Distinto de cero = el cash flow espera como ingreso plata que ya se entregó'])
-  return { fDif }
+  return { fDifCartera, fControlCartera: fControl }
 }
 
 /**
@@ -315,7 +319,7 @@ export function grillaAnexo(ctx = {}) {
   const destinos = [
     { name: ANEXO.efectivoNeto, fila: mov.fNeto, col: 3 },
     { name: ANEXO.oficinaSinCanal, fila: mov.fSinCanal, col: 3 },
-    { name: ANEXO.difEcheq, fila: car.fDif, col: 3 },
+    { name: ANEXO.difEcheq, fila: car.fDifCartera, col: 3 },
     { name: ANEXO.tarjetaDisponible, fila: cre.fDisp, col: 5 },
     { name: ANEXO.acuerdo, fila: cre.fAcu, col: 5 },
     { name: ANEXO.aire, fila: cre.fAire, col: 5 },

@@ -35,8 +35,8 @@ import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-edicion
 import { CAJA as N_CAJA, publicar } from '../lib/rangos-nombrados.mjs'
 import { filaDeCuenta } from '../lib/caja-disponibilidades.mjs'
 import { DESDE_CAJA, PESTANA_ANEXO } from '../lib/caja-anexo-nombres.mjs'
-import { refsDelArchivo } from '../lib/caja-refs.mjs'
-import { grilla, rescatar, ANCHO, ANCHOS, FILAS_MAXIMAS } from '../lib/caja-grilla.mjs'
+import { refsDelArchivo, rescatar } from '../lib/caja-refs.mjs'
+import { grilla, ANCHO, ANCHOS, FILAS_MAXIMAS } from '../lib/caja-grilla.mjs'
 import { requestsDeGraficos } from '../lib/caja-graficos.mjs'
 
 export { grilla, rescatar }

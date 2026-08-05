@@ -24,6 +24,7 @@ import { CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
 import { MARCAS } from '../lib/cheques-cobertura.mjs'
 import { EN_CARTERA } from '../lib/cartera-cheques.mjs'
 import { PESTAÑA as RAW_CHEQUES, COL as COL_CHEQUE, FILA0 as FILA0_CHEQUES } from './cheques-raw-pestana.mjs'
+import { BORDES } from '../lib/caja-grilla.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 
@@ -37,7 +38,7 @@ export const fmtFecha = (s) => serialADate(s).toLocaleDateString('es-AR', { time
 export const pesos = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString('es-AR')
 
 /**
- * NÚCLEO PURO: los bordes de los tramos del calendario, tal como los arma caja-pestana.mjs.
+ * NÚCLEO PURO: los bordes de los tramos del calendario, con los MISMOS rótulos que arma CAJA.
  *
  * LOS BORDES SE FUERZAN CRECIENTES CON MAX y cada tramo es (borde anterior, borde]. Es lo que evita
  * que un vencimiento caiga en dos tramos cuando la ventana de catorce días cruza el fin de mes.
@@ -48,14 +49,12 @@ export function bordesDeTramos(hoy) {
   const d = serialADate(hoy)
   const finMes = dateASerial(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)))
   const finMesQueViene = dateASerial(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 2, 0)))
-  return [
-    { rotulo: 'Vencido — ya pasó la fecha', hasta: hoy },
-    { rotulo: 'Esta semana', hasta: hoy + 7 },
-    { rotulo: 'Semana que viene', hasta: hoy + 14 },
-    { rotulo: 'Resto de este mes', hasta: Math.max(hoy + 14, finMes) },
-    { rotulo: 'El mes que viene', hasta: Math.max(hoy + 14, finMesQueViene) },
-    { rotulo: 'Más adelante', hasta: null },
-  ]
+  // LOS RÓTULOS SALEN DE `BORDES`, NO SE COPIAN. Este conciliador compara tramo por tramo contra lo que
+  // muestra CAJA, y hasta hoy tenía su propia lista de nombres escrita a mano: el día que uno de los dos
+  // renombrara un tramo, el cruce empezaría a comparar "Esta semana" contra nada y reportaría un desvío
+  // que no existe — o peor, dejaría de reportar uno que sí. Una capacidad, una fuente.
+  const hastas = [hoy, hoy + 7, hoy + 14, Math.max(hoy + 14, finMes), Math.max(hoy + 14, finMesQueViene), null]
+  return BORDES.map(([rotulo], k) => ({ rotulo, hasta: hastas[k] }))
 }
 
 /** NÚCLEO PURO: en qué tramo cae una fecha. Devuelve -1 si no es un número. */

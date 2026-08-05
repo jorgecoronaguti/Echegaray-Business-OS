@@ -32,7 +32,7 @@
 
 import * as BANCO from './banco-santander.mjs'
 import { ANEXO, DESDE_CAJA } from './caja-anexo-nombres.mjs'
-import { CUENTAS, ALIAS, RANGO_TC, filaDeCuenta } from './caja-disponibilidades.mjs'
+import { CUENTAS, RANGO_TC } from './caja-disponibilidades.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { rotuloAlDia, formulaAntiguedad } from './fecha-de-frescura.mjs'
 import {
@@ -41,11 +41,15 @@ import {
 } from './caja-posterior-al-corte.mjs'
 import { formulaCartera, formulaCarteraTramo } from './cartera-cheques.mjs'
 import { expresionSaleEnVentana } from './calendario-egresos.mjs'
-import { formulaChequesSinFactura, formulaCalendarioImpuestosSemana, INSTRUMENTOS } from './cash-flow-lineas.mjs'
-import { MARCAS } from './cheques-cobertura.mjs'
 import { ESTADOS, formulaTotalEstado, formulaMontoRanking, formulaClienteRanking } from './cobranzas-cartera.mjs'
 import { inciertoHasta } from './caja-anexo-controles.mjs'
-import { SIN_FUENTE_EN_VENTANA } from './caja-refs.mjs'
+// LA ESCALERA DE VENCIMIENTOS VIVE EN SU PROPIO ARCHIVO: la consumen el calendario de acá, el bloque de
+// cobertura 30/60/90 y el conciliador que compara tramo por tramo contra la planilla.
+import {
+  BORDES, PISO_CAJA, DESDE_SIEMPRE, desdeTramo, hastaTramo, resolutorDeTramo, cobranzasEsperadasTramo,
+} from './caja-calendario.mjs'
+
+export { BORDES, cobranzasEsperadasTramo }
 
 /** El objetivo del rediseño, escrito donde se puede verificar. Una pantalla, sin scrollear. */
 export const FILAS_MAXIMAS = 45
@@ -63,102 +67,12 @@ export const COL_PROSA = 7
 export const ANCHOS = [380, 56, 140, 140, 140, 104, 156, 24]
 
 const C_IMP = 'C', C_TC = 'D', C_PESOS = 'E'
-const C_PESOS_I = C_PESOS.charCodeAt(0) - 65
 
 /** La valuación estándar de una fila de cuenta: importe en su moneda × tipo de cambio. */
 const saldoEnPesos = (f) => `=IF(C${f}="";"";C${f}*IF(D${f}="";1;D${f}))`
 
 /** Cuánto vale hoy una cuenta según el banco, cuando la réplica del extracto no está. */
 const saldoDeBanco = (c) => (c.banco === 'cartera' ? BANCO.totalEcheqs(BANCO.enCartera()) : BANCO.CUENTA[c.banco])
-
-/**
- * Lo que el dueño ya cargó, rescatado ANTES de reescribir.
- *
- * LAS COLUMNAS SE UBICAN POR SU RÓTULO, no por su letra: un rescate por posición leyó "USD" donde
- * esperaba un importe y habría borrado cuatro saldos cargados sin decir nada.
- *
- * SE RESCATA LO QUE LA PERSONA ESCRIBIÓ, NO LO QUE MUESTRA LA PANTALLA: leyendo el valor formateado,
- * un Fondo fijo en $0 volvía como el texto "—" (así lo dibuja el formato de moneda) y la celda quedaba
- * en #VALUE!, que se propagaba al TOTAL.
- */
-export function rescatar(previo) {
-  const cargado = new Map()
-  let mapa = null
-  const leer = (c) => {
-    const v = c?.formula ?? (c?.numero ?? c?.valor ?? '')
-    return typeof v === 'string' && /^[—–-]$/.test(v.trim()) ? 0 : v
-  }
-  for (const fila of previo) {
-    const f = fila.map(leer)
-    const a = String(fila?.[0]?.valor ?? '').trim()
-    if (/^(cuenta|línea|linea|concepto)$/i.test(a)) {
-      mapa = { imp: -1, fecha: -1, origen: -1, quien: -1 }
-      fila.forEach((c, i) => {
-        const t = String(c?.valor ?? '').trim().toLowerCase()
-        if (mapa.imp < 0 && /^(saldo|importe|cotizaci)/.test(t)) mapa.imp = i
-        if (mapa.fecha < 0 && /^fecha/.test(t)) mapa.fecha = i
-        if (mapa.origen < 0 && /^origen/.test(t)) mapa.origen = i
-        if (mapa.quien < 0 && /^declarado/.test(t)) mapa.quien = i
-      })
-      continue
-    }
-    if (!a || !mapa || !filaDeCuenta(a)) continue
-    cargado.set(ALIAS.get(a) ?? a, { saldo: f?.[mapa.imp] ?? '', fecha: f?.[mapa.fecha] ?? '', origen: f?.[mapa.origen] ?? '', quien: f?.[mapa.quien] ?? '' })
-  }
-  return cargado
-}
-
-/**
- * LOS TRAMOS SE DEFINEN POR SUS BORDES, NO POR SEIS CONDICIONES SUELTAS.
- *
- * La primera versión escribía la condición de cada tramo a mano y mezclaba tramos por SEMANA con
- * tramos por MES: en cuanto la ventana de catorce días cruza el fin de mes, un cheque cumple dos
- * condiciones y se cuenta dos veces ($11.733.832 contra $11.076.832 reales). Con bordes ORDENADOS el
- * problema no puede existir: cada tramo es (borde anterior, borde] y los bordes se fuerzan crecientes
- * con MAX. Un borde que queda antes que el anterior deja su tramo vacío, que es lo correcto.
- *
- * Los tramos son cortos cerca de hoy y largos lejos: lo que vence esta semana se decide hoy.
- */
-export const BORDES = [
-  ['Vencido — ya pasó la fecha', 'TODAY()'],
-  ['Esta semana', 'TODAY()+7'],
-  ['Semana que viene', 'TODAY()+14'],
-  ['Resto de este mes', 'MAX(TODAY()+14;EOMONTH(TODAY();0))'],
-  ['El mes que viene', 'MAX(TODAY()+14;EOMONTH(TODAY();1))'],
-  ['Más adelante', ''],
-]
-
-/** El piso del calendario: lo anterior al corte YA está dentro del saldo del banco. */
-const PISO_CAJA = DESDE_CAJA.fecha
-/** El techo del último tramo: "Más adelante" no tiene borde y una ventana necesita dos. */
-const FIN_HORIZONTE = 'DATE(2100;1;1)'
-/**
- * UN CHEQUE VIEJO Y NO DEBITADO SIGUE SIENDO PLATA QUE VA A SALIR, así que su término no se corta en el
- * corte del extracto. Serial 0 = 30/12/1899: antes que cualquier cheque. Abrir la ventana hasta el
- * serial 0 sólo es correcto JUNTO CON `soloNoDebitados`: sin esa mitad, "Vencido" volvía a restar 10
- * cheques y 2 cuotas ya debitadas ($12.188.441) que el saldo de partida ya tenía descontados.
- */
-const DESDE_SIEMPRE = '0'
-const SOLO_PENDIENTES = { soloNoDebitados: true }
-
-/**
- * Las cobranzas ESPERADAS de un tramo: todo lo que Cobranzas no marca como cobrado ni endosado, por su
- * fecha de cobro. Mismo criterio que la línea del cash flow y mismos bordes que el lado que sale, así
- * que nada cae en dos tramos.
- *
- * ISNUMBER sobre la fecha, SIEMPRE: una fecha guardada como TEXTO compara como mayor que cualquier
- * número y el mismo cobro entraría en varios tramos. Es el defecto que ya costó $657.000.
- */
-export function cobranzasEsperadasTramo(desde, hasta) {
-  const est = 'LOWER(Cobranzas!$O$5:$O$400)'
-  const fecha = 'Cobranzas!$Q$5:$Q$400'
-  const monto = 'IF(ISNUMBER(Cobranzas!$M$5:$M$400);Cobranzas!$M$5:$M$400;0)'
-  const cond = [`(${est}<>"cobrado")`, `(${est}<>"endosado")`, `ISNUMBER(${fecha})`]
-  if (desde) cond.push(`(${fecha}>=${desde})`)
-  if (hasta) cond.push(`(${fecha}<${hasta})`)
-  else if (!desde) cond.push(`(${fecha}<TODAY())`)
-  return `SUMPRODUCT(${cond.join('*')}*${monto})`
-}
 
 /**
  * LA GRILLA DE CAJA. Pura: sin red, sin base, sin escribir una celda.
@@ -349,33 +263,14 @@ export function grilla(cargado, refs) {
   // empresa DESPUÉS. La pregunta no es "cuánto debo" sino "en qué semana me quedo corto".
   push(['3 · CALENDARIO DE VENCIMIENTOS — CUÁNDO ENTRA Y CUÁNDO SALE', '', '', '', '', '',
     `=IF(ISNUMBER(${DESDE_CAJA.fecha});"desde el corte del "&TEXT(${DESDE_CAJA.fecha};"dd/mm/yyyy");"⚠ sin corte")`])
-  const ch = refs.cheques
-  const ANIO_CAL = new Date().getFullYear()
-  const desdeTramo = (k) => (k === 0 ? PISO_CAJA : `MAX(${PISO_CAJA};${BORDES[k - 1][1]})`)
-  const hastaTramo = (k) => BORDES[k][1] || FIN_HORIZONTE
-  /**
-   * Lo que la definición única no sabe resolver sola, resuelto acá y sólo acá.
-   *
-   * ⚠ EL TÉRMINO DE CHEQUES ES "SIN FACTURA CARGADA", NO "TODOS LOS NO DEBITADOS": el cheque es el
-   * INSTRUMENTO y la factura la OBLIGACIÓN, y Compras entera ya viaja en los otros sumandos. Sumar los
-   * cheques enteros contaba $43.380.472 dos veces.
-   */
-  const resolutorDeTramo = (k) => ({
-    'cheques:cheques': (desde, hasta) => formulaChequesSinFactura(
-      k === 0 ? DESDE_SIEMPRE : desde, hasta, MARCAS.falta, [INSTRUMENTOS.cheques], SOLO_PENDIENTES).slice(1),
-    'cheques:tarjeta': (desde, hasta) => formulaChequesSinFactura(
-      k === 0 ? DESDE_SIEMPRE : desde, hasta, MARCAS.falta, [INSTRUMENTOS.tarjeta], SOLO_PENDIENTES).slice(1),
-    // El IVA/IIBB a pagar NO vive en Compras: lo calcula "Impuestos y Financieros" y esta línea lo LEE.
-    impuestos: (desde, hasta) => formulaCalendarioImpuestosSemana(desde, hasta, ANIO_CAL, refs.filasCal).slice(1),
-    ...Object.fromEntries(SIN_FUENTE_EN_VENTANA.map((m) => [m, () => '0'])),
-  })
+  const resolutor = (k) => resolutorDeTramo(k, refs.filasCal)
   // LA COLUMNA "SALE" ES EL CUADRO DEL CASH FLOW, CORTADO POR TRAMO. Hasta el 04/08 este calendario
   // tenía su PROPIA lista de egresos y el cash flow otra: dos listas de la misma plata clasificadas por
   // ejes distintos daban $41.704.351 de desacuerdo sobre el mismo mes, y el que veía de MENOS era el
   // que produce el PISO. Por construcción ya no pueden discrepar en QUÉ cuentan, sólo en CUÁNDO — que
   // es la pregunta que este calendario existe para contestar. Y falla cerrado: una línea del cuadro que
   // no se sepa resolver rompe el generador en vez de desaparecer en silencio.
-  const saleDelTramo = (k) => `=${expresionSaleEnVentana(desdeTramo(k), hastaTramo(k), resolutorDeTramo(k))}`
+  const saleDelTramo = (k) => `=${expresionSaleEnVentana(desdeTramo(k), hastaTramo(k), resolutor(k))}`
 
   push(['Tramo', '', 'Entra', 'Sale', 'Neto del tramo', 'Queda después', 'Hasta'])
   const cal0 = filas.length + 1
@@ -449,7 +344,7 @@ export function grilla(cargado, refs) {
     const f = filas.length + 1
     const hasta = `TODAY()+${dias}`
     push([`A ${dias} días`, '',
-      `=${expresionSaleEnVentana(PISO_CAJA, hasta, resolutorDeTramo(0))}`, '',
+      `=${expresionSaleEnVentana(PISO_CAJA, hasta, resolutor(0))}`, '',
       // `.slice(1)` porque formulaCarteraTramo devuelve la fórmula con su "=" y acá es un sumando.
       `=${DESDE_CAJA.total}+${formulaCarteraTramo(null, hasta).slice(1)}+${cobranzasEsperadasTramo(null, hasta)}`,
       `=${hasta}`,

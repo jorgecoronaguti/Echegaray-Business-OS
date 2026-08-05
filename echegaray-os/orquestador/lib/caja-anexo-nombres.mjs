@@ -91,6 +91,9 @@ export const ESPECIE_ANEXO = {
   [DESDE_CAJA.bancoSaldo]: 'importe',
   [DESDE_CAJA.cartera]: 'importe',
   [DESDE_CAJA.minima]: 'importe',
+  // El tipo de cambio no es plata, pero la especie que hace falta verificar es la misma: que haya un
+  // NÚMERO ahí y no un texto ni una celda vacía. `importe` es el predicado que acepta entero o decimal.
+  TIPO_CAMBIO_USD: 'importe',
 }
 
 /** El nombre de la pestaña auxiliar. Prefijo `_` como `_BANCO_RAW` y `_PROVEEDORES_OS`: no se lee. */

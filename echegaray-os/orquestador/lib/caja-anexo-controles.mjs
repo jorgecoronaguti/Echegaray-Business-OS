@@ -213,17 +213,24 @@ export function bloqueTrazabilidad(h) {
   // escribe de veinte maneras— quedan nueve grupos, y cada uno tiene una pestaña que debería
   // explicarlo. DOS NO TIENEN NINGUNA: el impuesto al cheque y el costo del descubierto salen todos
   // los meses y ningún cuadro del archivo los espera.
+  // LA DIFERENCIA VA EN LA COLUMNA E, NO EN LA F. La F es la columna de FECHAS de toda la pestaña, y un
+  // importe ahí hereda su formato: la versión anterior mostraba "30/03/87349" donde hay −$899.154. Un
+  // desvío disfrazado de fecha no lo lee nadie, y arreglarlo con una excepción de formato es cargarle a
+  // la vista un problema que la GRILLA puede evitar poniendo cada cosa en su columna.
   push(['   Qué salió de la cuenta y dónde está registrado'])
-  push(['Qué salió', '', 'Según el banco', '', 'Según la pestaña', 'Diferencia', ''])
+  push(['Qué salió', '', 'Según el banco', 'Según la pestaña', 'Diferencia', '', 'Qué pestaña lo tiene'])
   const n0 = h.n + 1
   for (const gr of CONC.GRUPOS) {
     const f = h.n + 1
     // LA DIFERENCIA SÓLO SE CALCULA CUANDO HAY CON QUÉ COMPARAR: un "0" donde no hay pestaña se leería
     // como "cuadra", que es lo contrario de lo que pasa.
-    push([gr.naturaleza, '', `=${CONC.segunBanco(gr.naturaleza)}`, '',
+    push([gr.naturaleza, '', `=${CONC.segunBanco(gr.naturaleza)}`,
       gr.formula ? `=${gr.formula(CONC.VENTANA.desde, CONC.VENTANA.hasta)}` : '',
-      gr.formula ? `=E${f}-C${f}` : '', ''])
-    if (gr.detalle) push(['   · cuáles son', '', '', '', gr.detalle(), '', ''])
+      gr.formula ? `=D${f}-C${f}` : '', '',
+      gr.pestana ? `${gr.pestana} — ${gr.nota}` : gr.nota])
+    // EL DETALLE VA DEBAJO DE SU GRUPO, cuando la diferencia se puede accionar: un desvío con un total
+    // no le sirve a nadie; con el número de cheque y el proveedor se resuelve en dos minutos.
+    if (gr.detalle) push(['   · cuáles son', '', '', '', '', '', gr.detalle()])
   }
   const n1 = h.n
   push(['⇒ TOTAL QUE SALIÓ DE LA CUENTA', '', `=SUM(C${n0}:C${n1})`, '', '', '', ''])
