@@ -74,7 +74,7 @@ import { bloqueControlArca } from '../lib/control-arca-bloque.mjs'
 // "El mismo proveedor" se define UNA vez, en lib/: ver el comentario junto a RUBROS_COMERCIALES.
 import { normNombre } from '../lib/razon-social.mjs'
 import { NOMBRES } from '../lib/sheet-pestanas.mjs'
-import { partir, filasHuerfanas, referenciasFuera, ref as refPestana } from '../lib/partir-pestana.mjs'
+import { partir, mapaDeFilas, filasHuerfanas, referenciasFuera, ref as refPestana } from '../lib/partir-pestana.mjs'
 import { anchosSegunContenido } from '../lib/nota-celda.mjs'
 import { fusionar, sobrantes, VACIO, rellenoDeCola, estructural } from '../lib/preservar-anotaciones.mjs'
 import { obrasConMateriales } from '../lib/obras-con-materiales.mjs'
@@ -295,18 +295,60 @@ export function anchoBloque(cols = [], previo = []) {
 // importa de acá.
 export { estructural }
 
-// ═══ LA COLUMNA E NO SE ESCRIBE: ES EL AIRE DE LA PESTAÑA ═══
+// ═══ LA COLUMNA E NO LA ESCRIBEN LAS TABLAS DE TEXTO ═══
 //
-// Vale 28px porque separa los dos cuadros de la posición, que ya está aprobada, y ensancharla para
-// que entre "REFACTURACIÓN — el costo sigue" desarmaría un bloque que hoy se lee bien. Así que las
-// tablas de la frontera para abajo la SALTEAN: A·B·C·D · F·G. Ver ANCHOS_PROVEEDORES.
+// Separa los dos cuadros de la posición, así que las tablas de la frontera para abajo la SALTEAN:
+// A·B·C·D · F·G. Ver ANCHOS_PROVEEDORES — donde también está por qué la E dejó de medir 28px: la
+// dinámica del cuadro de detalle sí la ocupa (un pivot no puede saltear columnas) y con esa raja el
+// tipo de pago salía cortado en cinco caracteres, veinticuatro veces.
 //
 // Se escribe con este nombre y no con un '' pelado por dos razones. Una: un '' en el medio de una
 // fila se lee como un campo que alguien olvidó llenar, y el próximo que toque esta tabla lo va a
-// "arreglar" metiendo un dato de 28px de ancho. Dos: `estructural` lo convierte en el centinela
-// VACIO, así que la celda queda declarada como MÍA y vacía — si una corrida anterior escribió algo
-// ahí, se limpia en vez de quedar clavado.
+// "arreglar" metiendo un dato ahí. Dos: `estructural` lo convierte en el centinela VACIO, así que la
+// celda queda declarada como MÍA y vacía — si una corrida anterior escribió algo ahí, se limpia en
+// vez de quedar clavado.
 const AIRE = ''
+
+/** `anchoObras` es una CANTIDAD de columnas, no un número de fila: traducirlo lo rompería. */
+const NO_ES_FILA = new Set(['anchoObras'])
+
+/**
+ * LOS MARCADORES DE LA GRILLA, LLEVADOS A LAS FILAS REALES DE UNA PESTAÑA.
+ *
+ * `g` trae ~40 marcadores (`fArcaN`, `fam0`, `cabAfip`, …) en coordenadas de la grilla ANTES de
+ * partirla en dos pestañas. De ellos salen dos cosas que tienen que coincidir con la fila donde el
+ * dato quedó escrito de verdad: dónde formatea cada bloque y a qué celda apunta cada rango con
+ * nombre. El que no pertenece a esta pestaña da `null` — no se formatea ni se publica.
+ *
+ * ═══ POR QUÉ DELEGA EN `mapaDeFilas` Y NO REHACE LA CUENTA (05/08) ═══
+ *
+ * Porque la rehacía, y le faltaba un caso. El bucle inline hacía `f - t.desde + t.desdeFila`, y el
+ * tramo de "Materiales" NO declara `desdeFila` —arranca en la fila 4, como cualquier pestaña propia
+ * del generador, y ese 4 vive en las opciones de `partir`—. Resultado: `undefined` en la suma, `NaN`
+ * en los ~20 marcadores de Materiales, `null` en el JSON de la API y un `startRowIndex` ausente, que
+ * para Sheets significa "desde el principio de la hoja". El formato de un bloque cayendo sobre la
+ * pestaña entera, sin un solo error.
+ *
+ * `partir` reubica las FÓRMULAS con la misma cuenta. Si las dos discrepan, el nombre apunta a una
+ * fila y el dato está en otra: exactamente el defecto que este archivo tiene que evitar.
+ *
+ * @param {Record<string, unknown>} g la grilla con sus marcadores
+ * @param {Array<{titulo:string, desde:number, hasta:number, desdeFila?:number}>} tramos
+ * @param {string} titulo la pestaña cuyos marcadores se quieren
+ * @param {{desdeFila?:number}} [opts] la fila de arranque por defecto — la misma que recibe `partir`
+ */
+export function traducirMarcadores(g, tramos, titulo, { desdeFila = 1 } = {}) {
+  const donde = mapaDeFilas(tramos, { desdeFila })
+  const t = (n) => { const d = donde.get(n); return d && d.titulo === titulo ? d.fila : null }
+  const out = {}
+  for (const [k, v] of Object.entries(g || {})) {
+    if (NO_ES_FILA.has(k) || k === 'marcas' || k === 'filas') out[k] = v
+    else if (typeof v === 'number') out[k] = t(v)
+    else if (Array.isArray(v) && v.every((x) => typeof x === 'number')) out[k] = v.map(t).filter(Boolean)
+    else out[k] = v
+  }
+  return out
+}
 
 export function layoutDeuda(headers) {
   const H = (headers || []).map((h) => String(h ?? '').trim())
@@ -1493,22 +1535,7 @@ async function main() {
   // (las dinámicas ocupan el 1 y el 2, lo generado arranca en el 3) y sobre todo MENTIRÍA: contando
   // sólo lo que este script escribe, "NOTAS DE CRÉDITO" volvería a ser el bloque 1.
 
-  // Dónde quedó cada fila vieja, para traducir los marcadores que usa el formateador.
-  const donde = new Map()
-  for (const t of TRAMOS) for (let f = t.desde; f <= t.hasta; f++) donde.set(f, { titulo: t.titulo, fila: f - t.desde + t.desdeFila })
-  // `anchoObras` es una CANTIDAD de columnas, no un número de fila: traducirlo lo rompería.
-  const NO_ES_FILA = new Set(['anchoObras'])
-  const traducir = (titulo) => {
-    const t = (n) => { const d = donde.get(n); return d && d.titulo === titulo ? d.fila : null }
-    const out = {}
-    for (const [k, v] of Object.entries(g)) {
-      if (NO_ES_FILA.has(k) || k === 'marcas' || k === 'filas') out[k] = v
-      else if (typeof v === 'number') out[k] = t(v)
-      else if (Array.isArray(v) && v.every((x) => typeof x === 'number')) out[k] = v.map(t).filter(Boolean)
-      else out[k] = v
-    }
-    return out
-  }
+  const traducir = (titulo) => traducirMarcadores(g, TRAMOS, titulo, { desdeFila: FILA0 })
 
   let hojas = await google.getSheetMeta(ID)
   const escritas = []
@@ -1756,6 +1783,10 @@ async function main() {
   // el script MORÍA ahí. Se caía justo después de escribir, así que se perdían en silencio los grupos
   // +/-, los rangos con nombre, el respaldo de notas y la verificación de celdas en error. Un skip es
   // una decisión legítima del sistema; tiene que terminar la corrida, no abortarla.
+  // El contador de defectos que decide si se puede retirar la pestaña vieja. Se declara ACÁ porque
+  // un rango con nombre apuntando a basura cuenta como defecto igual que una celda en `#REF!`: las
+  // dos hacen que otra pestaña muestre un número equivocado sin dar error.
+  let err = 0
   const hojaArca = escritas.find((e) => e.titulo === NOMBRES.proveedores)
   if (!hojaArca) {
     console.log(`  ⏭ "${NOMBRES.proveedores}" no se escribió en esta corrida: no toco sus grupos +/- ni sus rangos con nombre. La geometría de la pestaña sigue siendo la de su última escritura, que es lo correcto.`)
@@ -1826,13 +1857,22 @@ async function main() {
       { name: N_ARCA.faltanMonto, fila: tArca.fArcaFaltan, col: 3 },
       { name: N_ARCA.ventasN, fila: tArca.fArcaVentas, col: 2 },
       { name: N_ARCA.ventasMonto, fila: tArca.fArcaVentas, col: 3 },
-    ].filter((x) => x.fila))
-    console.log(`  ${nombres.nombres} rangos con nombre publicados: el Cash Flow los referencia en vez de copiarlos`)
+    ].filter((x) => x.fila), { titulo: NOMBRES.proveedores })
+    console.log(`  ${nombres.nombres} rangos con nombre publicados: el Cash Flow los referencia en vez de copiarlos`
+      + (nombres.verificado ? '' : ' — ⚠ NO pude releerlos: no sé a qué apuntan'))
+    // ═══ LO QUE PRUEBA LA PUBLICACIÓN ES EL DATO LEÍDO EN SU DESTINO ═══
+    // Un 200 de la API sólo dice que el nombre existe. Que apunte a un importe donde promete un
+    // importe se sabe releyendo. Cuando no da, el daño no se ve acá: se ve en Recurrentes, en
+    // Estructura, en Materiales y en el Cash Flow Mensual, que muestran lo que haya en esa celda.
+    for (const m of nombres.malApuntados) {
+      console.log(`  ⚠ RANGO CON NOMBRE MAL APUNTADO: ${m.name} → ${refPestana(NOMBRES.proveedores)}!${letra(m.col - 1)}${m.fila} `
+        + `= ${JSON.stringify(m.valor)} (${m.encontro}, se esperaba ${m.espera}). Las pestañas que lo leen van a mostrar eso.`)
+    }
+    if (nombres.malApuntados.length) err += nombres.malApuntados.length
   }
 
   // ═══ VERIFICACIÓN ANTES DE RETIRAR LA PESTAÑA VIEJA ═══
   // No se borra nada hasta comprobar que las cuatro nuevas están escritas y sin errores.
-  let err = 0
   for (const e of escritas) {
     // SÓLO EL TRAMO ESCRITO: una celda en error arriba de la frontera es de la dinámica, no mía, y
     // contarla haría que este generador se frene por un defecto que no puede arreglar.
