@@ -51,7 +51,49 @@ export const DIAS_ACREDITACION_VALORES = 3
 /** Ventana con la que se propuso la reserva mínima (`proponerReservaMinima`, 7 días por defecto). */
 export const DIAS_VENTANA_RESERVA = 7
 
+/**
+ * EL ESCENARIO QUE GOBIERNA CUALQUIER DECISIÓN DE COLOCACIÓN: entra la mitad de lo cobrable.
+ *
+ * Estaba escrito `0.5` a mano en cuatro lugares. Mientras los cuatro coincidieran no pasaba nada; el
+ * día que uno cambiara, dos partes del sistema iban a calcular la misma caja con escenarios distintos
+ * y la diferencia no iba a tener dónde verse.
+ */
+export const FACTOR_INGRESOS_ADVERSO = 0.5
+
 const redondear = (n) => Math.round(Number(n) || 0)
+
+/**
+ * ═══ LA CAJA LIBRE PARA COLOCAR — LA DEFINICIÓN, Y ESTÁ ACÁ UNA SOLA VEZ ═══
+ *
+ * `CLAUDE.md` · REALIDAD ÚNICA: un concepto crítico se define una sola vez. Éste se definía dos: el
+ * motor lo calculaba caminando el calendario y el validador lo recalculaba sobre la foto de hoy con
+ * otra fórmula. El 03/08/2026 los dos números eran $48.214.876 y −$3.325.484 — $51,5M de distancia—,
+ * y como el que vetaba era el segundo, TODA recomendación se auto-rechazaba: el dueño nunca vio una.
+ *
+ * La caja libre es el PISO del recorrido menos lo que el recorrido no puede ver:
+ *
+ *     libre = piso − cheques que el calendario no ve − reserva mínima aprobada
+ *
+ * Lo demás —lo vencido, los cheques con fecha, las obligaciones, las cobranzas— ya está adentro del
+ * piso, contado exactamente una vez. Restarlo de nuevo acá es contar el mismo peso dos veces, y
+ * restar dos veces lo mismo garantiza que nunca haya excedente.
+ *
+ * Quien no tenga calendario puede llamar igual: el piso de un recorrido vacío es la caja de hoy menos
+ * lo vencido, que es la lectura de T+0 — más conservadora, misma definición.
+ */
+export function cajaLibreParaColocar({ piso = 0, restringidaFueraDelCalendario = 0, reserva = 0 } = {}) {
+  const p = Number(piso) || 0
+  const fuera = Number(restringidaFueraDelCalendario) || 0
+  const r = Number(reserva) || 0
+  const libre = p - fuera - r
+  return {
+    // `libre` puede ser negativo: eso ES información (no alcanza ni para la reserva). `colocable` es
+    // el que decide, y no puede serlo.
+    libre: redondear(libre),
+    colocable: Math.max(0, redondear(libre)),
+    componentes: { piso: redondear(p), restringida_fuera_del_calendario: redondear(fuera), reserva: redondear(r) },
+  }
+}
 
 /**
  * SALDO CORRIDO EN PESOS, día por día. Puro: no lee nada, no adivina nada.
@@ -182,7 +224,7 @@ export function restringidaDeVentana(cheques = [], hoy = new Date(), dias = 30) 
 export function ventanaDeExcedente({
   dias = [], hasta = 30, saldoInicial = 0, vencido = 0, valoresADepositar = 0,
   diasAcreditacion = DIAS_ACREDITACION_VALORES, reserva = 0, restringidaFueraDelCalendario = 0,
-  factorIngresos = 0.5, hoy = new Date(), fechaCaja = null, vencidoDetalle = null,
+  factorIngresos = FACTOR_INGRESOS_ADVERSO, hoy = new Date(), fechaCaja = null, vencidoDetalle = null,
 } = {}) {
   const corrido = saldoCorrido({
     dias, saldoInicial, vencido, valoresADepositar, diasAcreditacion, hasta, factorIngresos,
@@ -192,7 +234,9 @@ export function ventanaDeExcedente({
   }
   const solape = solapeReservaConCalendario(dias, reserva)
   const piso = corrido.piso - (Number(restringidaFueraDelCalendario) || 0)
-  const monto = Math.max(0, piso - (Number(reserva) || 0))
+  // LA MISMA FUNCIÓN QUE USA EL VALIDADOR. No es un refactor cosmético: es la única forma de que los
+  // dos lados no puedan volver a discrepar sin que un test se ponga rojo.
+  const monto = cajaLibreParaColocar({ piso: corrido.piso, restringidaFueraDelCalendario, reserva }).colocable
   const limite = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + hasta)
   // LA CUENTA VIAJA CON EL NÚMERO. No es un extra opcional: el dueño rechazó tres informes por un
   // monto sin derivación, así que la ventana no se considera completa sin ella.
@@ -239,7 +283,7 @@ export function excedentePorVentana({
   diasAcreditacion = DIAS_ACREDITACION_VALORES, reserva = 0, restringidaFueraDelCalendario = 0,
   hoy = new Date(), fechaCaja = null, vencidoDetalle = null,
 } = {}) {
-  const factores = { base: 1, adverso: 0.5, sin_cobranzas: 0 }
+  const factores = { base: 1, adverso: FACTOR_INGRESOS_ADVERSO, sin_cobranzas: 0 }
   const salida = []
   for (const h of ventanas) {
     const escenarios = {}

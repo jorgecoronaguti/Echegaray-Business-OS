@@ -137,7 +137,61 @@ export function matchProveedor(ocrNombre, lista, { cuit = null, porCuit = null }
   if (exacto) return { valor: exacto, esNuevo: false }
   const contiene = lista.find((p) => { const np = normalizar(p); return np.includes(n) || n.includes(np) })
   if (contiene && Math.min(n.length, normalizar(contiene).length) >= 4) return { valor: contiene, esNuevo: false, motivo: 'parcial' }
+
+  // ═══ EL OCR SE COME LETRAS, Y UN PROVEEDOR CON 127 COMPRAS NO ES UNO NUEVO (04/08) ═══
+  //
+  // Medido en producción: la foto de una carga de combustible se leyó «COMESTIBLES BARCELO». El
+  // proveedor real es «Combustibles Barcelo» y ya tenía 127 comprobantes por $7.919.775 en Compras.
+  // Ni el match exacto ni el de contención lo enganchan —"comestibles" no contiene a "combustibles"
+  // ni al revés— así que el bot le ofreció al dueño dar de alta un proveedor nuevo, que habría
+  // partido en dos la cuenta corriente de uno de sus mayores proveedores.
+  //
+  // Dos letras de diferencia sobre veinte no son un proveedor distinto: son un OCR. Se compara por
+  // distancia de edición, y el umbral es ESTRICTO porque el error caro es el opuesto —fusionar dos
+  // proveedores que sí son distintos—: hasta el 15% del largo y nunca más de 3 letras.
+  //
+  // Y sobre todo: EL MATCH TIENE QUE SER ÚNICO. Si dos proveedores de la lista quedan a la misma
+  // distancia mínima, no hay forma de saber cuál es y se declara nuevo, que es la salida honesta.
+  // Elegir el primero sería acertar la mitad de las veces sin decirlo.
+  const tope = Math.min(3, Math.floor(n.length * 0.15))
+  if (tope >= 1) {
+    let mejor = null; let dMejor = Infinity; let empatados = 0
+    for (const p of lista) {
+      const d = distanciaEdicion(n, normalizar(p), tope)
+      if (d > tope) continue
+      if (d < dMejor) { dMejor = d; mejor = p; empatados = 1 } else if (d === dMejor) empatados++
+    }
+    if (mejor && empatados === 1) return { valor: mejor, esNuevo: false, motivo: 'ocr', distancia: dMejor }
+  }
   return { valor: String(ocrNombre).trim(), esNuevo: true }
+}
+
+/**
+ * Distancia de edición (Levenshtein) con corte temprano: apenas la fila entera supera `tope`, no hay
+ * forma de que el resultado baje de ahí y se abandona. Sobre una lista de cien proveedores eso es la
+ * diferencia entre comparar todo y descartar casi todo en las primeras letras.
+ *
+ * @param {string} a
+ * @param {string} b
+ * @param {number} tope  distancia máxima que interesa; por encima devuelve `tope + 1`
+ * @returns {number}
+ */
+export function distanciaEdicion(a = '', b = '', tope = Infinity) {
+  if (a === b) return 0
+  if (Math.abs(a.length - b.length) > tope) return tope + 1
+  let previa = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i++) {
+    const fila = [i]
+    let minFila = i
+    for (let j = 1; j <= b.length; j++) {
+      const costo = a[i - 1] === b[j - 1] ? 0 : 1
+      fila[j] = Math.min(previa[j] + 1, fila[j - 1] + 1, previa[j - 1] + costo)
+      if (fila[j] < minFila) minFila = fila[j]
+    }
+    if (minFila > tope) return tope + 1
+    previa = fila
+  }
+  return previa[b.length]
 }
 
 /** Un importe de la foto → número. Acepta "$28.479,30" (es-AR) o número JS. null si no es número. */

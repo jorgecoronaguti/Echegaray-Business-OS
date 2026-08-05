@@ -469,6 +469,35 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       const j = await apiGet(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&pageSize=10`)
       return j.files || []
     },
+    /** LO QUE HAY ADENTRO DE UNA CARPETA, con paginado completo.
+     *
+     *  Sin esto, cualquier pregunta sobre "los archivos de tal carpeta" se contesta con
+     *  `searchFile`, que busca por NOMBRE en todo el Drive y no sabe de carpetas: trae de otras
+     *  carpetas lo que se llame parecido y se pierde lo que ahí adentro se llama distinto.
+     *
+     *  Pagina hasta el final a propósito. La API devuelve 100 por página; quedarse con la primera
+     *  no da error, da una respuesta incompleta que se ve completa — el modo de falla más caro.
+     *
+     *  @param {string} carpetaId
+     *  @param {{q?:string, campos?:string, tope?:number}} opts `q` se AGREGA al filtro de carpeta.
+     *  @returns {Promise<Array<{id:string,name:string,mimeType:string,modifiedTime:string,size?:string}>>}
+     */
+    async listarCarpeta(carpetaId, { q = '', campos = 'id,name,mimeType,modifiedTime,size', tope = 2000 } = {}) {
+      const filtro = `'${String(carpetaId).replace(/'/g, "\\'")}' in parents and trashed = false${q ? ` and (${q})` : ''}`
+      const out = []
+      let pageToken = ''
+      do {
+        const url = 'https://www.googleapis.com/drive/v3/files'
+          + `?q=${encodeURIComponent(filtro)}`
+          + `&fields=${encodeURIComponent(`nextPageToken,files(${campos})`)}`
+          + '&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true'
+          + (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '')
+        const j = await apiGet(url)
+        out.push(...(j.files || []))
+        pageToken = j.nextPageToken || ''
+      } while (pageToken && out.length < tope)
+      return out
+    },
     /** Metadata liviana de un archivo por id (existe? cómo se llama?). Lanza si NO existe (404).
      *  Para VALIDAR un adjunto antes de encolar un mail — así el OS no afirma haber adjuntado
      *  un archivo inexistente. */
@@ -813,6 +842,11 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     async getMeta(fileId) {
       return apiGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,size,webViewLink&supportsAllDrives=true`)
     },
+    /** Los BYTES crudos de un archivo. Ya se usaban por dentro (Excel, PDF, imágenes) pero no
+     *  estaban expuestos, así que reenviar un archivo tal cual —a un mail, al chat— obligaba a
+     *  parsearlo y volver a armarlo. Un PDF que hay que entregar se entrega, no se reconstruye.
+     *  @returns {Promise<Buffer>} */
+    async descargarBytes(fileId) { return downloadBytes(fileId) },
     /** Lee un archivo Excel (.xlsx/.xlsm) descargándolo y parseándolo. Acotado a
      *  maxRows para no explotar tokens. Devuelve pestañas + filas de la elegida. */
     async readExcel(fileId, { sheet, maxRows = 50 } = {}) {
@@ -1302,6 +1336,31 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
      *  vía batchUpdate. `requests` = array de requests de la Sheets API. */
     async spreadsheetBatchUpdate(fileId, requests, { espejo = false, yaGuardado = false } = {}) {
       const hielo = frenar(fileId, `${(requests || []).length} request(s) estructurales/formato`); if (hielo) return hielo
+      // ═══ UN RANGO VACÍO TIRA EL LOTE ENTERO, Y ESO DEJA ESCRITURAS A MEDIAS ═══
+      //
+      // Google rechaza con 400 un rango cuyo inicio no es menor que su fin —`A70:O69`— y con él se
+      // cae el lote COMPLETO, incluidos los cuarenta pedidos válidos que venían atrás. El daño no
+      // es el error: es que el lote de VALORES suele haber salido bien un instante antes, así que
+      // la pestaña queda con datos nuevos y sin el formato ni los rangos con nombre que los hacen
+      // legibles. Pasó el 04/08: la proyección de IVA se escribió entera y quedó en `#NAME?` porque
+      // el rango con nombre `ALICUOTA_IVA` se publicaba después del formateo que reventó.
+      //
+      // Un rango de alto o ancho cero no puede hacer nada: descartarlo no cambia ningún resultado,
+      // sólo evita que un error de aritmética de un generador tumbe el trabajo de todos los demás.
+      // Va acá, en el único lugar por donde pasan todos, y no repetido en cada generador.
+      const vacio = (q) => {
+        for (const k of ['repeatCell', 'updateCells', 'unmergeCells', 'mergeCells', 'setDataValidation', 'updateBorders']) {
+          const r = q?.[k]?.range
+          if (!r) continue
+          if (Number.isInteger(r.startRowIndex) && Number.isInteger(r.endRowIndex) && r.startRowIndex >= r.endRowIndex) return true
+          if (Number.isInteger(r.startColumnIndex) && Number.isInteger(r.endColumnIndex) && r.startColumnIndex >= r.endColumnIndex) return true
+        }
+        const d = q?.updateDimensionProperties?.range ?? q?.deleteDimension?.range
+        if (d && Number.isInteger(d.startIndex) && Number.isInteger(d.endIndex) && d.startIndex >= d.endIndex) return true
+        return false
+      }
+      const nVacios = (requests || []).filter(vacio).length
+      if (nVacios) requests = (requests || []).filter((q) => !vacio(q))
       // Guarda central para el batch estructural: descarta los requests que DESTRUYEN —borran, pisan,
       // desplazan o reordenan contenido— sobre pestañas candadas/editadas, y deja pasar la apariencia.
       // Un `deleteDimension` cuenta como destructivo igual que un `updateCells` con valor: hasta el

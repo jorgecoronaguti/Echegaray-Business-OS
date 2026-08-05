@@ -13,7 +13,7 @@
 // del propio generador (la col I de los cruces ARCA, que es no-vacía y por eso se conserva).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { estructural, predicadoConDeuda, soloConDeuda, layoutDeuda, notasAncladas, anchoBloque } from './proveedores-materiales-pestana.mjs'
+import { estructural, predicadoConDeuda, soloConDeuda, layoutDeuda, notasAncladas, anchoBloque, traducirMarcadores } from './proveedores-materiales-pestana.mjs'
 import { fusionar, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { readFileSync } from 'node:fs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
@@ -356,6 +356,64 @@ test('EL CUADRO LISTA SÓLO A QUIEN SE LE DEBE HOY — sobre-incluir NO era grat
   assert.match(src, /SOBRE-INCLUIR NO ERA GRATIS/i, 'y queda escrito por qué se cambió')
 })
 
+// ═══ EL GENERADOR ESCRIBE DEBAJO DE LAS DINÁMICAS, Y SÓLO DEBAJO ═══
+//
+// `grilla()` no se exporta (arma la pestaña entera y toca Google y la base), así que lo que se puede
+// probar acá es el CONTRATO del archivo: que las decisiones que costaron trabajo estén escritas donde
+// tienen que estar. Si alguien las revierte, estos tests se ponen rojos.
+
+test('la escritura de "Proveedores" arranca en la frontera, nunca en A1', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  assert.match(src, /range: `\$\{refPestana\(t\.titulo\)\}!A\$\{filaArranque\}`/,
+    'el rango de escritura sale de filaArranque')
+  assert.ok(!/range: `\$\{refPestana\(t\.titulo\)\}!A1`/.test(src),
+    'un A1 acá escribe el bloque encima del hero y de las dos tablas dinámicas, y las mata')
+  // Las dos lecturas que alimentan la fusión y la Regla 0 tienen que arrancar en la MISMA fila que la
+  // escritura: desalinearlas es el defecto de la grilla mezclada (mitad bloque nuevo, mitad viejo).
+  assert.match(src, /!A\$\{filaArranque\}:\$\{letra\(anchoLeer - 1\)\}\$\{filaFin\}/, 'previo, desde la frontera')
+  assert.match(src, /!A\$\{filaArranque\}:\$\{letra\(anchoLeer - 1\)\}`/, 'visible, desde la frontera')
+  // Y el tramo empieza en el primer bloque PROPIO (b5), no en el hero (bPos).
+  assert.match(src, /titulo: NOMBRES\.proveedores, desde: M\.b5/, 'el tramo arranca en el primer bloque generado')
+})
+
+test('el formateador también respeta la frontera: nada de resetear el formato de las dinámicas', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  assert.match(src, /formatear\(google, hoja\.sheetId, gP, anchoP, cuadroP\.length, \{ filaArranque \}\)/)
+  // El reset del principio —unmerge, borrar notas, borrar bordes y colores— es lo que caería sobre las
+  // dinámicas si arrancara en la fila 0 de la pestaña.
+  assert.match(src, /unmergeCells: \{ range: r\(F0, F0 \+ filas\) \}/)
+  assert.ok(!/unmergeCells: \{ range: r\(0, filas\) \}/.test(src))
+  assert.match(src, /repeatCell: \{ range: r\(F0, F0 \+ filas, 0, Math\.max\(ancho, 26\)\), cell: \{\}, fields: 'note' \}/)
+})
+
+test('la numeración de las secciones sale de la constante, no de un número escrito a mano', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  for (const clave of ['PRIMERA_GENERADA', 'faltanEnCompras', 'control']) {
+    assert.match(src, new RegExp(`nSeccion\\('?${clave}'?\\)`), `la sección ${clave} numera por nSeccion`)
+  }
+  // Los números viejos, los que el dueño NO ve en la pestaña.
+  assert.ok(!/push\(\[`?5 · NOTAS DE CRÉDITO/.test(src), 'ya no dice 5 donde la pestaña muestra 3')
+  assert.ok(!/push\(\[`?6 · FACTURADO A LA EMPRESA/.test(src), 'ya no dice 6 donde la pestaña muestra 4')
+  // Y la renumeración al escribir se retiró: contaba sólo los bloques propios, así que NOTAS DE
+  // CRÉDITO volvería a ser "1 ·" y la pestaña mostraría dos secciones 1.
+  assert.ok(!/fila\[0\] = t\.replace\(\/\^\\d\+\\s\*·\\s\/, `\$\{\+\+n\} · `\)/.test(src),
+    'la renumeración por pestaña no puede volver: hoy mentiría')
+})
+
+test('EL DEFECTO DE TRIELEC: una nota de crédito que ya no anula nada limpia su celda, no la hereda', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  assert.match(src, /push\(estructural\(\[n\.proveedor, n\.comprobante, n\.fecha, arcaPorComprobante/,
+    'las filas de notas de crédito son del generador de punta a punta: su vacío se limpia')
+
+  // El efecto, sobre la fusión: la fila vieja decía qué factura anulaba; la nueva no anula nada.
+  const vieja = [['TRIELEC', '0003-00000123', '12/05/2026', -50000, 'refacturación', '0003-00000100', '0003-00000131']]
+  const conBug = fusionar([['TRIELEC', '0003-00000123', '12/05/2026', -50000, 'devolución', '', '']], vieja)
+  assert.equal(conBug[0][5], '0003-00000100', 'así se veía: el reemplazo de otra corrida sobrevivía')
+  const conFix = fusionar([estructural(['TRIELEC', '0003-00000123', '12/05/2026', -50000, 'devolución', '', ''])], vieja)
+  assert.equal(conFix[0][5], '', '"Anula la factura" queda limpia')
+  assert.equal(conFix[0][6], '', '"La reemplaza" queda limpia')
+})
+
 test('la convención del dueño: un negativo entre paréntesis en Parcial es el saldo que FALTA', () => {
   // Si esto se leyera como un pago, el saldo daría cero y el proveedor desaparecería de la lista
   // teniendo deuda — que es exactamente lo que pasó con Angel Fernandez y Gruas San Blas.
@@ -363,4 +421,134 @@ test('la convención del dueño: un negativo entre paréntesis en Parcial es el 
   assert.equal(parseMonto('($ 5.124.412)'), -5124412)
   assert.equal(Math.max(0, parseMonto('($ 544.500)')), 0, 'un negativo NO resta: no es un pago')
   assert.equal(Math.max(0, parseMonto('$ 300.000')), 300000, 'un positivo sí es un pago parcial y resta')
+})
+
+// ═══ LOS TRES DEFECTOS DE LA SECCIÓN DE CONTROL, EN EL CÓDIGO QUE LOS PRODUCÍA ═══
+//
+// Son de FORMA de la pestaña, no de cálculo: ningún total cambia y por eso ningún control los veía.
+// Se ven en el PDF, que es donde el dueño los vio. El test mira el fuente porque el defecto está en
+// cómo se emiten las filas, no en un valor que se pueda calcular acá.
+
+test('la sección de control NO tiene columna de prosa: un párrafo por fila está prohibido', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  const i = src.indexOf('· LO QUE HAY QUE CORREGIR EN COMPRAS`]')
+  const fin = src.indexOf('LA ÚNICA PROSA DE LA SECCIÓN')
+  assert.ok(i > 0 && fin > i, 'la sección existe y termina en su nota al pie')
+  const bloque = src.slice(i, fin)
+  // Las frases que el dueño borraba a mano y volvían en cada corrida. Si alguna vuelve al cuerpo del
+  // bloque —no al pie—, es que volvió la columna de prosa.
+  for (const frase of [
+    'Es la misma línea del Cash Flow Mensual.',
+    'Cantidad de filas. La columna "Monto Pagado" está a medio llenar',
+    'Días. Cada día que se estira este número',
+    'Si es deuda, no está en la cuenta corriente de arriba',
+    'Filas que dicen "materiales varios"',
+  ]) {
+    assert.ok(!bloque.includes(frase), `volvió la prosa por fila: "${frase.slice(0, 40)}…"`)
+  }
+  // Y todas sus filas van con `estructural`, que es lo que hace que el resto de ayer se limpie. Con
+  // `push([...])` y un '' pelado, la fusión CONSERVA lo que había: por eso el comentario de "cantidad
+  // de filas" aparecía al lado de "Materiales Mantenimiento" y el de "días" al lado de "cuánta plata".
+  // Escritura por posición sobre un bloque que cambió de alto.
+  const filas = bloque.split('\n').filter((l) => /^\s{2}(const \w+ = )?push\(/.test(l))
+  const sinEstructural = filas.filter((l) => !/push\(estructural\(|push\(\[\]\)/.test(l))
+  assert.deepEqual(sinEstructural, [], 'toda fila del bloque de control se emite con estructural()')
+})
+
+test('un contador nunca cae en la columna de plata: B es cuánto, C es plata', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  // El defecto: '⚠ "Pagado" con monto MENOR al total | $5' — son CINCO FILAS, no cinco pesos. La
+  // causa raíz era estructural: cantidades e importes compartían la columna B, y se venía parcheando
+  // fila por fila con un formato de excepción que cada control nuevo volvía a necesitar.
+  assert.match(src, /cabCtrl = push\(estructural\(\['Qué está mal cargado', 'Filas', 'Plata'/,
+    'el encabezado declara las dos columnas separadas')
+  // El formato se declara para TODO el bloque, no fila por fila.
+  assert.match(src, /r\(g\.ctrl - 1, g\.ctrl1, 1, 2\)[\s\S]{0,180}numberFormat: E\.NUM\.cantidad/,
+    'la columna B del control es cantidad de punta a punta')
+  assert.match(src, /r\(g\.ctrl - 1, g\.ctrl1, 2, 3\)[\s\S]{0,180}numberFormat: E\.NUM\.moneda/,
+    'la columna C del control es moneda de punta a punta')
+  // Y los parches por fila que ya no hacen falta no pueden volver.
+  assert.ok(!/for \(const f of g\.cuentas\)/.test(src), 'el parche fila por fila se retiró')
+})
+
+test('las facturas emitidas ya no se escriben en la pestaña de proveedores', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  // Era un error de categoría que el propio título admitía: "(esto es VENTAS, no proveedores)".
+  assert.ok(!/push\(\[`\$\{nSeccion\('emitidas'\)\}/.test(src))
+  assert.ok(!/'¿Está en Cobranzas\?'/.test(src), 'la tabla de emitidas no se emite más')
+  assert.ok(!/push\(estructural\(\['TOTAL FACTURADO'/.test(src), 'ni su total')
+  // Pero el hallazgo NO se tira: lo que Cobranzas no tiene se sigue calculando y se reporta.
+  assert.match(src, /emitidasSinCobranza/)
+  assert.match(src, /VENTAS \(no es de esta pestaña\)/)
+})
+
+test('la conciliación con ARCA se declara UNA vez al pie, no en la columna I de cada fila', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  // El defecto: dos párrafos sueltos derramados en la columna I, a la derecha de la tabla, que en el
+  // PDF se leen como basura. Cada fila llevaba su propia declaración de "esto no es una fórmula".
+  assert.ok(!/Conciliación del OS al \$\{new Date\(\)\.toISOString\(\)\.slice\(0, 10\)\} — no es una fórmula/.test(src))
+  assert.ok(!/'Conciliación del OS: se encontraron por proveedor \+ importe/.test(src))
+  assert.match(src, /push\(\[`Los comprobantes salen del libro de IVA de ARCA/,
+    'la declaración vive al pie de la sección, una sola vez')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA GRILLA PARTIDA EN DOS PESTAÑAS: A QUÉ CELDA APUNTA CADA RANGO CON NOMBRE
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL DEFECTO MEDIDO (05/08). En el archivo vivo, `ARCA_COMPRAS_TOTAL` prometía un importe y devolvía
+// "0001-00000204" —un número de comprobante— y `ARCA_FALTAN_N` prometía un contador y devolvía
+// "30-71647696-7", un CUIT. Los dos son valores de la LISTA de comprobantes faltantes, que vive
+// veinte filas debajo del bloque de cobertura. Un nombre que resuelve a la lista en vez de al bloque
+// no da error en ningún lado: lo muestran Recurrentes, Estructura, Materiales y el Cash Flow Mensual.
+//
+// Se prueba sobre la grilla PARTIDA, que es donde puede torcerse: el tramo de "Proveedores" aterriza
+// en la FRONTERA (abajo de las tablas dinámicas) y el de "Materiales" en la fila 4 de su propia
+// pestaña, y son dos aritméticas distintas conviviendo en la misma corrida.
+
+test('con la grilla partida en dos pestañas, el marcador de ARCA cae en el BLOQUE, no en la lista', () => {
+  // La grilla como la arma el generador, en coordenadas de ANTES de partirla. Los números son los
+  // reales de la corrida del 05/08: frontera 176 y 16 notas de crédito.
+  const FRONTERA = 176, FILA0 = 4, NOTAS = 16
+  const b5 = 100                                  // "3 · NOTAS DE CRÉDITO" — la frontera
+  const cabArca = b5 + 6 + NOTAS                  // título+subtítulo+cabecera+notas+TOTAL+vacía+título 4
+  const fArcaN = cabArca + 1, fArcaFaltan = cabArca + 5, fArcaVentas = cabArca + 6
+  const cabAfip = cabArca + 8                     // y debajo, la LISTA de lo que falta cargar
+  const afip0 = cabAfip + 1
+  const b3 = afip0 + 40                           // "Materiales" arranca acá
+
+  const g = { fArcaN, fArcaFaltan, fArcaVentas, cabAfip, afip0, fam0: b3 + 2, anchoObras: 7 }
+  const tramos = [
+    { titulo: 'Proveedores', desde: b5, hasta: b3 - 1, desdeFila: FRONTERA },
+    { titulo: 'Materiales', desde: b3, hasta: b3 + 60 },
+  ]
+  const t = traducirMarcadores(g, tramos, 'Proveedores', { desdeFila: FILA0 })
+
+  // El bloque de cobertura, en las filas donde el generador lo escribe de verdad.
+  assert.equal(t.fArcaN, 199, 'ARCA_COMPRAS_N/TOTAL')
+  assert.equal(t.fArcaFaltan, 203)
+  assert.equal(t.fArcaVentas, 204)
+  // Y NO en la lista de comprobantes faltantes, que es donde apuntaban en el archivo vivo.
+  assert.ok(t.fArcaN < t.cabAfip, 'el marcador cayó dentro de la lista de faltantes')
+  assert.ok(t.fArcaVentas < t.afip0, 'el marcador cayó dentro de la lista de faltantes')
+  // `anchoObras` es una CANTIDAD de columnas: traducirlo como fila lo rompería.
+  assert.equal(t.anchoObras, 7)
+})
+
+test('los marcadores de "Materiales" —el tramo sin `desdeFila`— son filas REALES, no NaN', () => {
+  // El tramo de Materiales no declara su fila de arranque: la hereda de las opciones de `partir`.
+  // La copia inline que traducía los marcadores no tenía ese respaldo y devolvía NaN para los ~20
+  // marcadores de esa pestaña. NaN se serializa como null en el JSON de la API, y un `startRowIndex`
+  // ausente significa "desde el principio de la hoja": el formato de un bloque cayendo sobre la
+  // pestaña entera, sin un solo error y sin nadie mirándolo.
+  const tramos = [
+    { titulo: 'Proveedores', desde: 100, hasta: 199, desdeFila: 176 },
+    { titulo: 'Materiales', desde: 200, hasta: 260 },
+  ]
+  const g = { fam0: 202, fam1: 220, totFam: 221, obra0: 224, cabObra: 223, anchoObras: 7 }
+  const t = traducirMarcadores(g, tramos, 'Materiales', { desdeFila: 4 })
+  for (const k of ['fam0', 'fam1', 'totFam', 'obra0', 'cabObra']) {
+    assert.ok(Number.isFinite(t[k]), `${k} tradujo a ${t[k]}`)
+  }
+  assert.equal(t.fam0, 6, 'la fila 200 de la grilla es la 4 de Materiales, así que la 202 es la 6')
 })

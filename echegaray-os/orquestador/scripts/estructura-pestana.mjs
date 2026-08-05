@@ -22,8 +22,11 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { SUBRUBROS, OTROS } from '../lib/sub-rubro-estructura.mjs'
-import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { escribirPreservando, limpiarCentinela, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { fila as filaConNombre, aRangoApi, verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
+import { skinRequests } from '../lib/estilo-statement.mjs'
+import { MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL, CONTADOR, PORCENTAJE } from '../lib/formato-statement.mjs'
+import { bloqueControlArca } from '../lib/control-arca-bloque.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Estructura'
@@ -57,11 +60,23 @@ export function grilla() {
   const rubros = [...SUBRUBROS.map(([n]) => n), OTROS]
   const filas = []
   const push = (c) => { filas.push(c); return filas.length }
-  const vacia = () => Array(ANCHO).fill('')
+  // ═══ CADA CELDA NACE MÍA Y VACÍA (04/08) ═══
+  //
+  // Antes era `Array(ANCHO).fill('')`, y la fusión lee la cadena vacía como "no es mi celda,
+  // preservala". Cuando este layout creció —se agregaron el subtítulo, dos filas en blanco y el
+  // título de sección— el encabezado y las tres primeras filas de datos de la versión ANTERIOR se
+  // quedaron clavados en las filas 2 a 5: los doce primeros-de-mes en crudo pintados como moneda
+  // ("$46.023"), y fórmulas de "% del total" dividiendo por $P$11, que en el layout de hoy es
+  // "Honorarios y servicios". Dos encabezados, un cuadro duplicado, y ni un solo #ERROR que lo
+  // delatara. El centinela declara el vacío; el clearValues, que sería la otra salida, ya borró el
+  // trabajo del dueño seis veces.
+  const vacia = () => Array(ANCHO).fill(VACIO)
 
   const t = vacia(); t[0] = 'Gastos de estructura'; push(t)
   const s = vacia()
-  s[0] = `Sale de Compras, rubro "Estructura" (columna AC). De agosto en adelante son PROYECCIONES: promedio de los meses con gasto, ajustado por la inflación de Parámetros. Sólo se proyecta lo que apareció en ${MIN_MESES} meses o más.`
+  // UNA LÍNEA. El párrafo anterior se envolvía sobre la columna de enero y quedaba cortado; lo que
+  // explicaba —qué es proyección— lo dice ahora la itálica del propio cuadro.
+  s[0] = `Rubro "Estructura" de Compras. Desde agosto, proyección (itálica): sólo lo que apareció en ${MIN_MESES} meses o más.`
   push(s)
   push(vacia()); push(vacia())
   // EL TÍTULO DE SECCIÓN VA JUSTO ARRIBA DE SU ENCABEZADO. Aprovecha una de las filas en blanco que
@@ -110,19 +125,39 @@ export function grilla() {
   const c1 = vacia()
   c1[0] = '2 · CONTROL — QUE ESTE CUADRO SEA EXACTAMENTE EL RUBRO ESTRUCTURA DE COMPRAS'
   push(c1)
-  const c2 = vacia(); c2[0] = 'Estructura según Compras'; c2[1] = '=SUMIF(Compras!$AC$4:$AC;"Estructura";Compras!$O$4:$O)'
-  c2[3] = 'Es la misma línea del Cash Flow Mensual.'
+  // ═══ NI UNA COLUMNA DE PROSA (04/08) ═══
+  //
+  // La columna D llevaba una oración por fila de control ("Es la misma línea del Cash Flow Mensual.",
+  // "Distinto de cero = hay gastos…", "Un gasto que pasó una o dos veces no es una tendencia…"). El
+  // dueño las borra a mano y volvían en cada corrida — con el worker cada 2 horas, todos los días.
+  // Si un número necesita un párrafo al lado, el número está mal elegido: lo que decía la oración
+  // pasa al RÓTULO, que es una celda que ya existía y que nadie borra.
+  const c2 = vacia(); c2[0] = 'Estructura según Compras (la misma línea del Cash Flow Mensual)'
+  c2[1] = '=SUMIF(Compras!$AC$4:$AC;"Estructura";Compras!$O$4:$O)'
   const fc = push(c2)
-  const c3 = vacia(); c3[0] = '⇒ Diferencia (debe ser $0)'; c3[1] = `=$B${fc}-$${letra(C_TOTREAL)}${fTot}`
-  c3[3] = 'Distinto de cero = hay gastos de estructura que este cuadro no está mirando.'
+  const c3 = vacia(); c3[0] = '⇒ Diferencia — gastos de estructura que el cuadro no mira (debe ser $0)'
+  // ROUND A PESO: sin esto, una diferencia de fracciones de centavo se dibuja "-$0" y enciende el
+  // rojo del control con los datos perfectos. Un control que grita por nada se deja de mirar.
+  c3[1] = `=ROUND($B${fc}-$${letra(C_TOTREAL)}${fTot};0)`
   push(c3)
-  const c4 = vacia(); c4[0] = `Rubros no proyectados (< ${MIN_MESES} meses)`
+  const c4 = vacia(); c4[0] = `Rubros no proyectados — pasaron menos de ${MIN_MESES} meses, no son tendencia`
   c4[1] = `=COUNTIFS($${letra(C_NMESES)}${f0}:$${letra(C_NMESES)}${f1};"<${MIN_MESES}";$${letra(C_TOTREAL)}${f0}:$${letra(C_TOTREAL)}${f1};">0")`
-  c4[3] = 'Un gasto que pasó una o dos veces no es una tendencia. Proyectarlo infló el año a $120,8M contra $33M reales.'
   push(c4)
 
+  // ── 3 · EL CONTROL QUE NO SE VALIDA CONTRA SÍ MISMO ─────────────────────────────────────────────
+  // El bloque 2 compara este cuadro contra Compras, y las dos cifras salen de Compras: prueba que el
+  // cuadro no se olvida un sub-rubro, no que Compras esté bien. Éste compara contra el libro de IVA
+  // de ARCA, que el OS no escribe.
+  push(vacia())
+  const arca0 = filas.length + 1
+  for (const b of bloqueControlArca({ titulo: '3 · RESPALDO FISCAL — contra el libro de IVA de ARCA', rubros: ['Estructura'], fila0: arca0 })) {
+    const fila = vacia()
+    b.forEach((c, i) => { fila[i] = c })
+    push(fila)
+  }
+
   const resuelto = filas.map((f) => f.map((c) => (typeof c === 'string' ? c.replaceAll('$TOT', String(fTot)) : c)))
-  return { filas: resuelto, f0, f1, fTot, fCtrl: fc, rubros }
+  return { filas: resuelto, f0, f1, fTot, fCtrl: fc, rubros, arca0 }
 }
 
 /** El rótulo de la fila de totales. Es el ancla del rango con nombre: si cambia, cambian los dos. */
@@ -252,48 +287,82 @@ async function main() {
   console.log(`  Rubros sin proyectar       ${v[g.fCtrl + 1]?.[1]}`)
 }
 
-async function formatear(google, sheetId, g) {
-  const AZUL = { red: 0.17, green: 0.25, blue: 0.37 }
-  const AMBAR = { red: 1, green: 0.97, blue: 0.88 } // el fondo de lo proyectado
+/**
+ * NÚCLEO PURO: los formatos propios de esta pestaña — los que la piel de statement no puede deducir
+ * del contenido. Cada columna declara el suyo en cada corrida; ninguna hereda.
+ *
+ * ═══ LO QUE SE FUE, Y POR QUÉ (04/08) ═══
+ *
+ * La barra AZUL rellena del encabezado, el fondo ÁMBAR de lo proyectado y el gris de la fila del
+ * total: los tres son rectángulos pintados, que es el rasgo que hace que una pestaña se lea como
+ * planilla y no como un estado financiero. La jerarquía la da la tipografía y una línea fina —lo que
+ * ya sabía hacer `estilo-statement`, y esta pestaña nunca usó—. Lo proyectado se distingue en
+ * ITÁLICA, que es la convención para un estimado y cumple igual la regla de negocio de que un
+ * estimado nunca se confunda con un hecho.
+ *
+ * Y el "$" se fue del cuerpo: queda sólo en la fila del total y en el bloque de control.
+ *
+ * @param {number} sheetId
+ * @param {ReturnType<typeof grilla>} g
+ * @returns {object[]} requests, para aplicar DESPUÉS de la piel
+ */
+export function formatosPropios(sheetId, g) {
   const r = (r0, r1, c0 = 0, c1 = ANCHO) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
   const req = [{ unmergeCells: { range: r(0, g.filas.length) } }]
   const fmt = (rg, fields, format) => req.push({ repeatCell: { range: rg, cell: { userEnteredFormat: format }, fields } })
 
   fmt(r(0, g.filas.length, 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-    { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }, horizontalAlignment: 'RIGHT' })
-  fmt(r(0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 13 } })
-  fmt(r(1, 2), 'userEnteredFormat.textFormat,userEnteredFormat.wrapStrategy',
-    { textFormat: { italic: true, fontSize: 9, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'WRAP' })
-  fmt(r(FILA_CAB - 1, FILA_CAB), 'userEnteredFormat',
-    { backgroundColor: AZUL, textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 }, fontSize: 9 }, horizontalAlignment: 'CENTER', wrapStrategy: 'WRAP' })
+    { numberFormat: MONEDA_CUERPO, horizontalAlignment: 'RIGHT' })
   fmt({ ...r(FILA_CAB - 1, FILA_CAB), startColumnIndex: C_MES0, endColumnIndex: C_MES0 + 12 },
-    'userEnteredFormat.numberFormat', { numberFormat: { type: 'DATE', pattern: 'mmm' } })
-  // Los meses proyectados con fondo ámbar: un estimado no se puede confundir con un hecho.
-  // Agosto es el primer mes proyectado (índice 7 de los 12).
+    'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+    { numberFormat: { type: 'DATE', pattern: 'mmm' }, horizontalAlignment: 'RIGHT' })
+  fmt({ ...r(FILA_CAB - 1, FILA_CAB), startColumnIndex: C_TOTREAL, endColumnIndex: C_PCT + 1 },
+    'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+    { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'RIGHT' })
+  // Lo proyectado, en itálica. Agosto es el primer mes proyectado (índice 7 de los 12).
   fmt({ ...r(g.f0 - 1, g.fTot), startColumnIndex: C_MES0 + 7, endColumnIndex: C_MES0 + 12 },
-    'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat',
-    { backgroundColor: AMBAR, textFormat: { italic: true } })
+    'userEnteredFormat.textFormat', { textFormat: { italic: true } })
   fmt({ ...r(g.f0 - 1, g.fTot + 1), startColumnIndex: C_PROY, endColumnIndex: C_PROY + 1 },
-    'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat', { backgroundColor: AMBAR, textFormat: { italic: true } })
-  fmt(r(g.fTot - 1, g.fTot), 'userEnteredFormat.textFormat,userEnteredFormat.backgroundColor',
-    { textFormat: { bold: true }, backgroundColor: { red: 0.89, green: 0.91, blue: 0.94 } })
+    'userEnteredFormat.textFormat', { textFormat: { italic: true } })
+  // La fila del total es la única del cuadro que lleva "$".
+  fmt(r(g.fTot - 1, g.fTot, 1, C_PCT + 1), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
   fmt({ ...r(g.f0 - 1, g.fTot), startColumnIndex: C_PCT, endColumnIndex: C_PCT + 1 },
-    'userEnteredFormat.numberFormat', { numberFormat: { type: 'PERCENT', pattern: '0.0%' } })
-  // El bloque de control: la columna D lleva la explicación, no plata.
-  fmt({ ...r(g.fCtrl - 2, g.filas.length), startColumnIndex: 2, endColumnIndex: ANCHO },
-    'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.textFormat',
-    { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: { fontSize: 9, italic: true } })
-  fmt(r(g.fCtrl - 2, g.fCtrl - 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: 11 } })
-  fmt(r(g.fCtrl, g.fCtrl + 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true } })
-  fmt({ ...r(g.fCtrl + 1, g.fCtrl + 2), startColumnIndex: 1, endColumnIndex: 2 },
-    'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '0' } })
+    'userEnteredFormat.numberFormat', { numberFormat: PORCENTAJE })
+  // El bloque de control: dos importes de cierre, la diferencia en formato de control (el único rojo
+  // de la pestaña) y un contador. La columna C en adelante ya no lleva nada — la prosa se fue al rótulo.
+  fmt(r(g.fCtrl - 1, g.fCtrl, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
+  fmt(r(g.fCtrl, g.fCtrl + 1, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_CONTROL })
+  fmt(r(g.fCtrl + 1, g.fCtrl + 2, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: CONTADOR })
+  // El bloque de ARCA: importes con "$", la cobertura como porcentaje, y en formato de control SÓLO
+  // la línea que tiene que dar cero de verdad — lo que ARCA facturó y Compras no cargó. Lo que está
+  // sin comprobante en el libro NO va en rojo: se sabe inflado por los proveedores que no facturan.
+  fmt(r(g.arca0 + 2, g.arca0 + 7, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
+  fmt(r(g.arca0 + 5, g.arca0 + 6, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: PORCENTAJE })
+  fmt(r(g.arca0 + 6, g.arca0 + 7, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_CONTROL })
 
-  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 250 }, fields: 'pixelSize' } })
+  // La columna A tiene que entrar el rótulo del control entero, que ahora dice lo que decía la prosa.
+  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 400 }, fields: 'pixelSize' } })
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: C_PCT + 1 }, properties: { pixelSize: 100 }, fields: 'pixelSize' } })
   // Las auxiliares se ocultan: el dueño pidió "no quiero el detalle de nada".
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: C_PCT + 1, endIndex: ANCHO }, properties: { hiddenByUser: true }, fields: 'hiddenByUser' } })
-  req.push({ updateSheetProperties: { properties: { sheetId, gridProperties: { frozenRowCount: FILA_CAB, frozenColumnCount: 1 } }, fields: 'gridProperties.frozenRowCount,gridProperties.frozenColumnCount' } })
-  await google.spreadsheetBatchUpdate(ID, req)
+  req.push({ updateSheetProperties: { properties: { sheetId, gridProperties: { frozenColumnCount: 1 } }, fields: 'gridProperties.frozenColumnCount' } })
+  return req
+}
+
+async function formatear(google, sheetId, g) {
+  // La piel PRIMERO y los formatos propios DESPUÉS, en el mismo lote: los requests se aplican en
+  // orden, así que lo propio manda donde se superpone. La piel recibe la grilla SIN el centinela: el
+  // `\0` no es espacio para `trim()` y le rompería la detección de "esta fila tiene contenido".
+  await google.spreadsheetBatchUpdate(ID, [
+    ...skinRequests({
+      sheetId,
+      filas: limpiarCentinela(g.filas).map((f) => f.slice(0, C_PCT + 1)),
+      cols: C_PCT + 1,
+      congeladas: FILA_CAB,
+      filasHoja: g.filas.length,
+    }),
+    ...formatosPropios(sheetId, g),
+  ])
 }
 
 // SÓLO CORRE SI SE LO INVOCA, NO SI SE LO IMPORTA. Sin esta guarda, un test que importa `grilla()`

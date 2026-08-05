@@ -503,7 +503,12 @@ export async function correrCiclo(deps = {}, opts = {}) {
     paso('decision', 'ok', `${decision.n_propuestas} propuesta(s) · ${decision.sin_propuesta.length} bloque(s) con causa declarada`)
 
     // 14 · Revisión independiente (SKILL 9). Lo que no pasa, NO se publica.
-    const val = validarLote(generadas.propuestas, { posicion, excedente, proyeccion, instrumentos: aptos, ahora, fiscal })
+    //
+    // EL CALENDARIO VIAJA A LA VALIDACIÓN. Sin él, el validador sólo puede medir la caja libre a T+0
+    // —sin las cobranzas del período y con los cheques firmados restados enteros— y rechaza todo lo
+    // que el motor aprueba: eso fue exactamente el defecto de $51,5M. Es la MISMA lista de días que
+    // alimentó al motor, así que los dos miden la misma caja; el validador la recorre por su cuenta.
+    const val = validarLote(generadas.propuestas, { posicion, excedente, proyeccion, instrumentos: aptos, ahora, fiscal, dias: flujo.dias })
     paso('validacion', 'ok', `${val.publicables.length} publicables · ${val.rechazadas.length} rechazadas`)
 
     // ═══ 14 bis · LA TABLA COMPARATIVA — lo que el dueño pidió y no estaba ═══

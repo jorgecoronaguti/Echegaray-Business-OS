@@ -41,6 +41,10 @@ export const RUTA_COMANDO_DEFAULT = '/asistencia/comando'
 // con dos permisos distintos, y compartir el secreto haría que quien puede cargar asistencia pudiera
 // confirmar un gasto. Un secreto compartido entre dos puertas es una sola puerta.
 export const RUTA_COMPROBANTES_DEFAULT = '/comprobantes/accion'
+// Los botones de la importación de un archivo (hoy: el extracto bancario). Tercera ruta y TERCER
+// secreto, por lo mismo: quien puede cargar un comprobante no tiene por qué poder reescribir el saldo
+// del banco. Un secreto compartido entre dos puertas es una sola puerta.
+export const RUTA_ARCHIVOS_DEFAULT = '/archivos/accion'
 const MAX_BYTES_DEFAULT = 16 * 1024 // un slash command de Mattermost son ~1 KB
 const BODY_TIMEOUT_MS_DEFAULT = 5000
 
@@ -69,9 +73,11 @@ export function crearServidorAsistencia({
   manejarAccion,
   manejarComando = null,
   manejarComprobantes = null,
+  manejarArchivos = null,
   rutaAccion = RUTA_ACCION_DEFAULT,
   rutaComando = RUTA_COMANDO_DEFAULT,
   rutaComprobantes = RUTA_COMPROBANTES_DEFAULT,
+  rutaArchivos = RUTA_ARCHIVOS_DEFAULT,
   maxBytes = MAX_BYTES_DEFAULT,
   bodyTimeoutMs = BODY_TIMEOUT_MS_DEFAULT,
   log = null,
@@ -88,6 +94,11 @@ export function crearServidorAsistencia({
       // stacks), manejador y secreto distintos.
       if (ruta === rutaComprobantes && typeof manejarComprobantes === 'function') {
         return await atenderAccion(req, res, { manejarAccion: manejarComprobantes, maxBytes, bodyTimeoutMs })
+      }
+
+      // Los botones de la importación de un archivo. Mismo transporte, manejador y secreto propios.
+      if (ruta === rutaArchivos && typeof manejarArchivos === 'function') {
+        return await atenderAccion(req, res, { manejarAccion: manejarArchivos, maxBytes, bodyTimeoutMs })
       }
 
       // El slash command llega como form-urlencoded; la acción, como JSON. Los dos se leen
@@ -295,7 +306,16 @@ async function main() {
     log,
   })
 
-  const server = crearServidorAsistencia({ manejarAccion, manejarComando, manejarComprobantes, log })
+  // IMPORTACIÓN DE ARCHIVOS (hoy: el extracto bancario). Su propio secreto y su propio manejador. Si
+  // falta el secreto, la ruta queda montada y DENIEGA todo (falla cerrado); acá queda dicho por qué.
+  const secretoArchivos = process.env.ARCHIVOS_ACCION_SECRETO || null
+  if (!secretoArchivos) log.warn('sin ARCHIVOS_ACCION_SECRETO: la importación de archivos por botón se va a denegar')
+  const { crearManejadorArchivos } = await import('./archivos/accion.mjs')
+  const manejarArchivos = crearManejadorArchivos({
+    port: pool, mattermost, secreto: secretoArchivos, log,
+  })
+
+  const server = crearServidorAsistencia({ manejarAccion, manejarComando, manejarComprobantes, manejarArchivos, log })
 
   const cerrar = (s) => { log.info('shutdown', { señal: s }); server.close(() => process.exit(0)) }
   for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => cerrar(s))

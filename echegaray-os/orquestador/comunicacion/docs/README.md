@@ -11,6 +11,8 @@ construcción** y describe estados que ya no son los vigentes.
 | [`DOD-ASISTENCIA.md`](./DOD-ASISTENCIA.md) | Definition of Done del módulo: los criterios de cierre con su evidencia ejecutada |
 | [`OPERACION-ASISTENCIA.md`](./OPERACION-ASISTENCIA.md) | Runbook del día a día: permisos, corregir una carga, conflictos, horas extra, auditoría |
 | [`OPERACION-BOT-WEBSOCKET.md`](./OPERACION-BOT-WEBSOCKET.md) | Operación del transporte: bot `@os`, WebSocket saliente, tokens |
+| [`OPERACION-COMPROBANTES.md`](./OPERACION-COMPROBANTES.md) | Runbook de la carga de gastos por foto: permisos, canal, botones, entorno |
+| [`OPERACION-ARCHIVOS.md`](./OPERACION-ARCHIVOS.md) | Runbook de la recepción de **cualquier** archivo: qué hace con cada formato, las dos puertas de la importación bancaria, entorno y qué reiniciar |
 
 ## Histórico de construcción — no describe el estado actual
 

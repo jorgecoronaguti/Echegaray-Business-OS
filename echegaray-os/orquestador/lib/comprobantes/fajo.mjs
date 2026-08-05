@@ -23,7 +23,7 @@
 // agrupación que se usara como control de duplicados sería un control que depende del reloj.
 
 import { claveComprobante } from './lectura.mjs'
-import { faltantesDe, puedeCargarse, POLITICA, PREGUNTA_OBRA } from './faltantes.mjs'
+import { faltantesDe, puedeCargarse, POLITICA, PREGUNTA_OBRA, ROTULO } from './faltantes.mjs'
 
 /** Ventana de agrupación, en minutos. Corta a propósito: agrupa una tanda, no una jornada. */
 export const VENTANA_FAJO_MIN = Number(process.env.ORQ_COMPROBANTES_VENTANA_MIN || 5)
@@ -113,14 +113,27 @@ export function etiquetaComprobante(c = {}) {
 // historial y la reconoce por igualdad; su texto es uno solo y vive en `faltantes.mjs`.
 export { PREGUNTA_OBRA }
 
+/** Lo que le falta a un comprobante POR CHAT, con su código: es lo que el titular necesita nombrar. */
+export function faltantesDelChat(item = {}, o = {}) {
+  return faltantesDe(item, POLITICA.CHAT, o)
+}
+
 /** Qué le falta a un comprobante para poder cargarse POR CHAT, en castellano y como PREGUNTA. */
-export function preguntasDe(item = {}) {
-  return faltantesDe(item, POLITICA.CHAT).map((f) => f.pregunta)
+export function preguntasDe(item = {}, o = {}) {
+  return faltantesDelChat(item, o).map((f) => f.pregunta)
+}
+
+/**
+ * Lo que falta, nombrado en una frase corta: "la fecha", "el IVA". Sin duplicados y en el orden en
+ * que se evaluó. Es lo que convierte "me falta un dato" en "sólo me falta la fecha".
+ */
+export function rotulosDe(item = {}, o = {}) {
+  return [...new Set(faltantesDelChat(item, o).map((f) => ROTULO[f.codigo] ?? 'un dato'))]
 }
 
 /** ¿Este ítem se puede escribir sin preguntarle nada a nadie? */
-export function estaCompleto(item = {}) {
-  return puedeCargarse(item, POLITICA.CHAT)
+export function estaCompleto(item = {}, o = {}) {
+  return puedeCargarse(item, POLITICA.CHAT, o)
 }
 
 /** ¿Queda algún duplicado sin contestar? Mientras lo haya, no se ofrece Confirmar. */

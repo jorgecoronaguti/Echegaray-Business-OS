@@ -130,6 +130,11 @@ export const PROMPT_LECTURA = [
   '· Percepciones (IIBB, SUSS), impuestos internos y otros tributos van juntos en otros_tributos.',
   '· El CAE es el "Cód. Autorización Electrónico": 14 dígitos, abajo, cerca del código de barras o',
   '  del QR. Copialo entero si está; si no lo ves entero, poné null.',
+  '· El CONCEPTO SALE DE LOS RENGLONES DEL COMPROBANTE — los artículos facturados, en el medio del',
+  '  papel, con su cantidad y su precio. NUNCA del nombre del proveedor ni del rubro que sugiere ese',
+  '  nombre. Pasó: se leyó el emisor como "COMESTIBLES BARCELO" (era "Combustibles Barcelo") y el',
+  '  concepto salió "Comestibles y bebidas" para una carga de COMBUSTIBLE. Si los renglones no se',
+  '  leen, poné null: qué se compró no se deduce de quién lo vendió.',
   '· Si es NOTA DE CRÉDITO poné es_nota_credito=true. No cambies el signo de los importes: copialos',
   '  positivos tal como figuran.',
   '',
@@ -194,7 +199,11 @@ export function bloqueImputacion(v = {}) {
 
   if (obras.length) l.push('', `OBRA / CLIENTE (columna J) — valores válidos:\n${obras.map((o) => `  · ${o}`).join('\n')}`)
   if (unidades.length) l.push('', `UNIDAD DE NEGOCIO (columna I) — qué clase de costo es:\n${unidades.map((o) => `  · ${o}`).join('\n')}`)
-  if (categorias.length) l.push('', `CATEGORÍA (columna B) — qué se compró, en el vocabulario de la empresa:\n${categorias.map((o) => `  · ${o}`).join('\n')}`)
+  if (categorias.length) {
+    l.push('', `CATEGORÍA (columna B) — qué se compró, en el vocabulario de la empresa:\n${categorias.map((o) => `  · ${o}`).join('\n')}`,
+      'Sale de LOS RENGLONES del comprobante, no del nombre del proveedor: un proveedor que se llama',
+      '"Combustibles X" puede facturar un service, y uno que se llama "Corralón Y" puede facturar nafta.')
+  }
   if (detalles.length) {
     l.push('', 'DETALLE / OBRA (columna K) — el frente, vehículo o rubro DENTRO de la obra. Estos son los',
       'que ya se usaron en cada una; elegí uno sólo si la obra que elegiste es la suya. NUNCA un nombre',

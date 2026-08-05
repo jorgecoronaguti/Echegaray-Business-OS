@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { titulo, bloque, encabezado, celda, total, nota, proyectado, alerta, reset, auditar, FUENTE, FUENTE_NUM, TAM, NUM, COLOR } from './estilo-pestana.mjs'
+import { MONEDA_TOTAL } from './formato-statement.mjs'
 
 test('toda la pestaña usa la misma familia', () => {
   // El dueño pidió Arial en todas. No se pierde la alineación de los importes: los dígitos de Arial
@@ -25,6 +26,26 @@ test('un cero se muestra como "—", no como "$0"', () => {
   for (const u of ['moneda', 'cantidad', 'porcentaje', 'dias']) {
     assert.match(NUM[u].pattern, /"—"$/, `${u} tiene que terminar en el guion`)
   }
+})
+
+test('el negativo va entre paréntesis y NINGÚN patrón pinta de rojo por el signo', () => {
+  // EL DEFECTO (04/08): los tres patrones llevaban `[Red]-`. Dos problemas a la vez.
+  //
+  //   · El guion. La presentación que exigen AICPA y FASB bajo US GAAP —endosada por IFRS y pedida
+  //     por la SEC— es el paréntesis: un guion chico se confunde con una marca de impresión.
+  //   · El rojo. Con `[Red]` se pintaba CUALQUIER negativo (una nota de crédito legítima, el neto de
+  //     un tramo en el que se paga más de lo que se cobra). Cuando todo puede ponerse rojo, el rojo
+  //     no avisa de nada. El único rojo es el de un control que no cierra: MONEDA_CONTROL.
+  for (const u of ['moneda', 'monedaExacta', 'cantidad', 'porcentaje']) {
+    assert.equal(NUM[u].pattern.includes('[Red]'), false, `${u} pinta de rojo por el signo`)
+    const negativo = NUM[u].pattern.split(';')[1]
+    assert.match(negativo, /^\(.*\)$/, `${u} muestra el negativo como "${negativo}" en vez de entre paréntesis`)
+  }
+})
+
+test('el patrón de moneda es EL del repo, no una copia', () => {
+  // Que sea la misma definición y no una igual: la única forma de que no vuelvan a divergir.
+  assert.deepEqual(NUM.moneda, { ...MONEDA_TOTAL })
 })
 
 test('la unidad se declara: no hay forma de inferirla del rótulo', () => {

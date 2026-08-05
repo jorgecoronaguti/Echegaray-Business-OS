@@ -42,7 +42,12 @@ export const MAX_ADJUNTOS = Number(process.env.ORQ_COMPROBANTES_MAX_ADJUNTOS || 
 export const TEXTO = Object.freeze({
   SIN_ESQUEMA: 'La carga de comprobantes por chat todavía no está habilitada en esta instalación. Avisale a Dirección.',
   SIN_ADJUNTOS: 'Mandame la foto o el PDF del comprobante y lo cargo.',
-  NADA_LEGIBLE: 'No pude leer ninguno de los archivos que mandaste. Si son fotos, que se vea el total y el número de comprobante.',
+  // "NO CARGUÉ NADA" VA EXPLÍCITO. "No pude leer" describe lo que le pasó al bot; lo que el dueño
+  // necesita saber es qué pasó con SU gasto. Sin esa frase, un mensaje que arranca con una disculpa
+  // se puede leer como "lo cargué igual, más o menos".
+  NADA_LEGIBLE: 'No pude leer ninguno de los archivos que mandaste, así que **no cargué nada**. '
+    + 'Si son fotos: que se vean enteros el total y el número de comprobante, sin reflejos y sin cortar los bordes. '
+    + 'Mandalos de nuevo y lo intento otra vez.',
   DEMASIADOS: `Mandá hasta ${MAX_ADJUNTOS} comprobantes por vez, así los puedo revisar de a uno.`,
 })
 
@@ -302,7 +307,9 @@ export async function procesarPost(d, m = {}) {
     if (!r?.ok) { problemas.push(`· ${a.nombre}: ${r?.error ?? 'no pude leerlo'}`); continue }
     // El texto del post vale para TODOS sus adjuntos: mandar cinco fotos con un solo "ARCOR" arriba
     // es la forma en que se manda un fajo de una misma obra.
-    items.push(armarItem({ lectura: r.crudo, adjunto: a, listas: vocabulario, textoPost: m.texto ?? null }))
+    // `ahora` es el momento en que llegó la foto, y es el reloj contra el que se juzga si la fecha
+    // del comprobante puede ser cierta. Va con el ítem, no se toma al renderizar.
+    items.push(armarItem({ lectura: r.crudo, adjunto: a, listas: vocabulario, textoPost: m.texto ?? null, ahora: m.ahora ?? new Date() }))
   }
   if (!items.length) {
     return { texto: [TEXTO.NADA_LEGIBLE, ...(problemas.length ? ['', ...problemas] : [])].join('\n'), estado: 'ilegible' }

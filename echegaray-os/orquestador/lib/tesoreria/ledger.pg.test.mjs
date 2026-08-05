@@ -54,6 +54,10 @@ before(async () => {
   const anchoTasa = readFileSync(join(APP, 'supabase', 'migrations', '20260803150000_tesoreria_tasa_ancho_real.sql'), 'utf8')
   await query(anchoTasa)
   await query(anchoTasa)
+  // Y la que admite 'browser_error' como estado terminal de una corrida.
+  const estados = readFileSync(join(APP, 'supabase', 'migrations', '20260804090000_tesoreria_corrida_browser_error.sql'), 'utf8')
+  await query(estados)
+  await query(estados)
   // Un test que sólo pasa la primera vez contra una base limpia no es un test: es una casualidad.
   // Correrlo dos veces seguidas contra el mismo contenedor tiene que dar lo mismo.
   await query(`truncate tesoreria.corridas, tesoreria.instrumentos, tesoreria.politicas restart identity cascade`)
@@ -84,6 +88,18 @@ test("NO existe el estado 'ejecutada': este agente no opera", opts, async () => 
     () => query("insert into tesoreria.recomendaciones (id, run_id, bloque, monto_maximo, moneda, horizonte_dias, vence_en, payload, estado) values ('x',$1,'C',1,'ARS',30,now(),'{}','ejecutada')", [runId]),
     /check constraint/,
   )
+})
+
+test('una corrida SÍ puede cerrarse con `browser_error`: el ledger registra su propio fracaso', opts, async () => {
+  // Con Chrome caído el update explotaba contra el check y `cerrarCorrida` no llegaba a correr: la
+  // fila quedaba `en_curso` para siempre y el rastro del navegador roto se perdía.
+  await ledger.cerrarCorrida(query, runId, { estado: 'browser_error', motivo: 'el contenedor del navegador no existe' })
+  const { rows } = await query('select estado, terminada_en from tesoreria.corridas where run_id = $1', [runId])
+  assert.equal(rows[0].estado, 'browser_error')
+  assert.ok(rows[0].terminada_en, 'la corrida quedó sin cerrar')
+  // Y lo que sigue prohibido en una corrida: un estado inventado no entra.
+  await assert.rejects(() => ledger.cerrarCorrida(query, runId, { estado: 'ejecutada' }), /check constraint/)
+  await query("update tesoreria.corridas set estado = 'en_curso', terminada_en = null where run_id = $1", [runId])
 })
 
 test('las observaciones de mercado NO se pisan: cada lectura es una fila', opts, async () => {

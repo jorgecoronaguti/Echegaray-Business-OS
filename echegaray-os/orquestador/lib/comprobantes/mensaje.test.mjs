@@ -12,6 +12,10 @@ import { botonesFajo, aplicarOpcion } from './fajo.mjs'
 import { perfilesDeImputacion, sugerirImputacion } from '../imputacion-aprendida.mjs'
 
 const barcelo = ({ comprobante, ...over } = {}) => ({
+  // El reloj contra el que se juzga si la fecha del comprobante puede ser cierta. Va FIJO: sin él,
+  // este fixture se juzgaría contra el reloj de la máquina y el test empezaría a fallar solo cuando
+  // 31/07/2026 quede fuera de la ventana. Ver `plausibilidad.mjs`.
+  leidoEn: '2026-08-04T10:00:00Z',
   ...over,
   comprobante: {
     proveedor: 'Combustibles Barcelo',
@@ -86,14 +90,23 @@ test('sin nada raro, la primera línea dice que está listo y cuántas filas ent
   assert.match(t, /apretá \*\*Confirmar\*\* y lo escribo en Compras \(1 fila\)/)
 })
 
-test('lo que falta se pregunta aparte de la tabla, con ❓', () => {
+test('lo que falta se pregunta aparte de la tabla, con ❓ — y el titular lo NOMBRA', () => {
   // El faltante que SÍ bloquea: sin número no se puede cargar por chat. (La obra dejó de bloquear el
   // 03/08/2026 y tiene su propio test más abajo.)
+  //
+  // El titular decía "Me falta un dato" y obligaba a leer el mensaje entero para descubrir cuál.
+  // Desde el 04/08, cuando es UN comprobante y falta UNA cosa, la primera línea la nombra.
   const item = barcelo({ comprobante: { numero: null } })
   const t = resumenFajo({ items: [item] })
-  assert.match(t.split('\n')[0], /Me falta un dato/)
+  assert.match(t.split('\n')[0], /Sólo me falta el número/)
   assert.match(t, /❓ .*número de comprobante/)
   assert.equal(estadoDeItem(item), ESTADO_ITEM.FALTA)
+})
+
+test('con tres faltantes el titular NO los enumera: eso ya lo hace el bloque de preguntas', () => {
+  const item = barcelo({ comprobante: { numero: null, fecha: null, total: null, neto: null } })
+  const t = resumenFajo({ items: [item] })
+  assert.match(t.split('\n')[0], /Me falta un dato/)
 })
 
 // ── LA OBRA SE OFRECE PERO NO BLOQUEA (03/08/2026) ──────────────────────────

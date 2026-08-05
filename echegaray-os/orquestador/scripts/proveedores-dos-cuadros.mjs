@@ -19,7 +19,10 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { diferenciasDeHuella, huellaProtegida } from '../lib/proveedores-bloque-vivo.mjs'
-import { COL, filtros, fuenteCompras, geometriaDeLaSeccion, PENDIENTE } from '../lib/proveedores-pivot-seccion1.mjs'
+import {
+  altoEmitido, bandasDeFormato, COL, filtros, formatoDeTodo, fuenteCompras, geometriaDeLaSeccion,
+  PENDIENTE, VISTA,
+} from '../lib/proveedores-pivot-seccion1.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Proveedores'
@@ -32,10 +35,6 @@ const MINIMO_GRILLA_COMPRAS = 3000
 const COLCHON = 12
 
 const plata = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
-const T = { type: 'TEXT', pattern: '@' }
-const PLATA = { type: 'CURRENCY', pattern: '"$"#,##0' }
-const FECHA = { type: 'DATE', pattern: 'dd/mm/yyyy' }
-const ENTERO = { type: 'NUMBER', pattern: '0' }
 
 /** A · una línea por proveedor. COUNTA sobre el proveedor —no sobre el comprobante—: hay una factura
  *  sin número y contando comprobantes mostraba "0 facturas" a quien se le deben $100.000. */
@@ -66,15 +65,6 @@ const cuadroDetalle = (fuente) => ({
   valueLayout: 'HORIZONTAL',
 })
 
-/** El formato de un bloque, columna por columna. Una dinámica usa el formato que la celda ya tenía:
- *  sin declararlo, el comprobante 826666 se ve como 01/05/4163 y una fecha como $46.238. */
-function formato(sheetId, desde, alto, cols) {
-  return cols.map((numberFormat, c) => ({ repeatCell: {
-    range: { sheetId, startRowIndex: desde, endRowIndex: desde + alto, startColumnIndex: c, endColumnIndex: c + 1 },
-    cell: { userEnteredFormat: { numberFormat, horizontalAlignment: numberFormat === T ? 'LEFT' : 'RIGHT' } },
-    fields: 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment' } }))
-}
-
 const texto = (sheetId, fila, valor, bold = false) => ({ updateCells: {
   range: { sheetId, startRowIndex: fila, endRowIndex: fila + 1, startColumnIndex: 0, endColumnIndex: 1 },
   rows: [{ values: [{ userEnteredValue: { stringValue: valor }, userEnteredFormat: { textFormat: { bold } } }] }],
@@ -93,15 +83,14 @@ async function main() {
   const antes = await google.readSheetValues(ID, `${PESTAÑA}!A1:R220`, { render: 'FORMULA' })
   const geo = geometriaDeLaSeccion(visible)
 
-  // A: rótulo + un proveedor por fila. B: subtítulo + rótulo + una factura por fila + suma total.
-  const altoA = 1 + proveedores
-  const altoB = 2 + pendientes.length + 1
-  const necesita = altoA + 1 + altoB
-  const disponibles = geo.filaLimite - geo.filaEncabezado
+  // Dónde va cada cuadro y qué franja se formatea. El alto de un pivot es una ESTIMACIÓN y el
+  // formato NO se mide con ella: las bandas cubren el footprint entero — ver `bandasDeFormato`.
+  let plan = bandasDeFormato({ ...geo, proveedores, facturas: pendientes.length })
 
   console.log(`PROVEEDORES ${proveedores} · FACTURAS ${pendientes.length} · TOTAL ${plata(total)}`)
-  console.log(`A (quién y cuánto) ${altoA} filas · B (cada operación) ${altoB} filas · necesita ${necesita}, hay ${disponibles}`)
-  const faltan = necesita > disponibles ? necesita - disponibles + COLCHON : 0
+  console.log(`A (quién y cuánto) ${plan.altoA} filas · B (cada operación) ${plan.altoB} filas`
+    + ` · necesita ${plan.necesita}, hay ${plan.disponibles}`)
+  const faltan = plan.necesita > plan.disponibles ? plan.necesita - plan.disponibles + COLCHON : 0
   if (faltan) console.log(`⚠ se insertan ${faltan} fila(s) antes de la sección 2 (fila ${geo.filaLimite})`)
   if (!APLICAR) { console.log('\n(sin --aplicar: no se escribió nada)'); return }
 
@@ -129,31 +118,56 @@ async function main() {
       range: { sheetId, dimension: 'ROWS', startIndex: geo.filaLimite - 1, endIndex: geo.filaLimite - 1 + faltan },
       inheritFromBefore: true } }], { espejo: true })
     geo.filaLimite += faltan
+    // El colchón recién insertado forma parte del footprint: la banda de formato se recalcula para
+    // llegar hasta el final, o las filas nuevas quedan crudas la primera vez que se usen.
+    plan = bandasDeFormato({ ...geo, proveedores, facturas: pendientes.length })
   }
 
   // La huella se toma DESPUÉS de insertar: si no, compara filas corridas y grita diferencias falsas.
   const base = faltan ? await google.readSheetValues(ID, `${PESTAÑA}!A1:R220`, { render: 'FORMULA' }) : antes
   const huellaAntes = huellaProtegida(base, { ...geo, ancho: 7 })
 
-  const iA = geo.filaEncabezado - 1          // el rótulo del cuadro A
-  const iSub = iA + altoA + 1                // el subtítulo del cuadro B
-  const iB = iSub + 1                        // el rótulo del cuadro B
-  const finIdx = geo.filaLimite - 1
+  const { iA, iSub, iB, finIdx, bandaA, bandaB } = plan
+  if (!(bandaA.alto > 0 && bandaB.alto > 0)) {
+    throw new Error('el bloque no entra ni después de insertar filas: no formateo un rango vacío')
+  }
 
   const vacias = Array.from({ length: finIdx - iA }, () => ({ values: Array.from({ length: 7 }, () => ({ userEnteredValue: null })) }))
   const anclaPivot = (fila, pivot) => ({ updateCells: {
     range: { sheetId, startRowIndex: fila, endRowIndex: fila + 1, startColumnIndex: 0, endColumnIndex: 1 },
     rows: [{ values: [{ pivotTable: pivot }] }], fields: 'pivotTable' } })
 
+  // ═══ NINGUNA DINÁMICA VIEJA SOBREVIVE, ESTÉ DONDE ESTÉ ═══
+  //
+  // Limpiar el rectángulo [iA, finIdx) alcanza mientras el plan caiga donde cayó la corrida
+  // anterior. El día que no —porque el cuadro dio #REF! y la detección se corrió— la dinámica
+  // vieja queda FUERA del rectángulo, sobrevive, y las dos se pisan. Se enumeran los anclajes de
+  // verdad, leyendo la grilla, y se anulan uno por uno.
+  // El barrido arranca en la fila 1, no cerca del plan: una dinámica huérfana puede haber quedado
+  // MÁS ARRIBA que donde el plan de hoy pone el cuadro, y ahí es donde estaba la que sobrevivió.
+  // El límite es la sección 2, que tiene su propia dinámica y no se toca.
+  const grid = await google.getGridData(ID, `${PESTAÑA}!A1:A${geo.filaLimite - 1}`)
+  const viejas = (grid?.sheets?.[0]?.data?.[0]?.rowData ?? [])
+    .map((r, i) => (r?.values?.[0]?.pivotTable ? i : -1))
+    .filter((i) => i >= 0 && (i < iA || i >= finIdx))
+  if (viejas.length) console.log(`⚠ ${viejas.length} dinámica(s) fuera del plan: filas ${viejas.map((i) => i + 1).join(', ')} — se anulan`)
+
   await google.spreadsheetBatchUpdate(ID, [
+    ...viejas.map((i) => ({ updateCells: {
+      range: { sheetId, startRowIndex: i, endRowIndex: i + 1, startColumnIndex: 0, endColumnIndex: 1 },
+      rows: [{ values: [{ userEnteredValue: null }] }], fields: 'userEnteredValue,pivotTable' } })),
     // Limpiar el ancho entero del bloque, incluidas las dinámicas viejas.
     { updateCells: { range: { sheetId, startRowIndex: iA, endRowIndex: finIdx, startColumnIndex: 0, endColumnIndex: 7 },
       rows: vacias, fields: 'userEnteredValue,pivotTable' } },
     anclaPivot(iA, cuadroTotales(fuente)),
     texto(sheetId, iSub, 'Cada operación', true),
     anclaPivot(iB, cuadroDetalle(fuente)),
-    ...formato(sheetId, iA, altoA, [T, PLATA, ENTERO]),
-    ...formato(sheetId, iB, altoB, [T, T, FECHA, T, T, T, PLATA]),
+    // CADA COLUMNA, DECLARADA EN CADA CORRIDA Y SOBRE EL FOOTPRINT ENTERO. Una dinámica no trae
+    // formato: usa el que la celda ya tenía. Midiendo la banda con el alto de la corrida, el cuadro
+    // A creció a 10 proveedores y la 10ª fila salió `67797,51 | 31/12/1899` — la columna B en TEXTO
+    // y la C en FECHA, que es lo que el cuadro B había dejado ahí.
+    ...formatoDeTodo({ sheetId, filaAncla: bandaA.desde, alto: bandaA.alto, vista: VISTA.POR_PROVEEDOR }),
+    ...formatoDeTodo({ sheetId, filaAncla: bandaB.desde, alto: bandaB.alto, vista: VISTA.DETALLE }),
     // Ninguna fila del cuadro puede quedar oculta: siete lo estuvieron y el total cerraba igual.
     { updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: iA, endIndex: finIdx },
       properties: { hiddenByUser: false }, fields: 'hiddenByUser' } },
@@ -169,9 +183,35 @@ async function main() {
   }
   console.log('✓ ni una celda protegida cambió (columna H y sección 2, verificadas releyendo)')
 
-  const vista = await google.readSheetValues(ID, `${PESTAÑA}!A${geo.filaEncabezado}:G${geo.filaLimite - 1}`)
+  const leido = await google.readSheetValues(ID, `${PESTAÑA}!A${geo.filaEncabezado}:G${geo.filaLimite - 1}`)
+
+  // La banda de formato ya tolera que la dinámica emita de más; la POSICIÓN del cuadro B todavía
+  // sale de la estimación. Si la deriva se come el aire, el subtítulo cae adentro del cuadro A y
+  // Google se niega a renderizar. Se cuenta releyendo, no se supone.
+  const emitidoA = altoEmitido(leido ?? [])
+  if (emitidoA !== plan.altoA) {
+    const libres = plan.iSub - plan.iA - emitidoA
+    const aviso = `el cuadro A emitió ${emitidoA} filas y se habían estimado ${plan.altoA}`
+      + ` · ${libres} fila(s) de aire antes del subtítulo (formateadas igual: la banda cubre el footprint)`
+    if (libres < 0) { console.error(`✗ ${aviso}`); process.exitCode = 1 } else console.log(aviso)
+  }
+
+  // LA EVIDENCIA DE QUE QUEDARON DOS Y NO TRES. Un #REF! en el cuadro de arriba no se ve leyendo
+  // valores —la celda dice "#REF!" y listo—; lo que lo delata es contar los anclajes.
+  const gridFinal = await google.getGridData(ID, `${PESTAÑA}!A1:A${geo.filaLimite}`)
+  const anclas = (gridFinal?.sheets?.[0]?.data?.[0]?.rowData ?? [])
+    .map((r, i) => (r?.values?.[0]?.pivotTable ? i + 1 : -1)).filter((i) => i > 0)
+  if (anclas.length === 2 && anclas[0] === iA + 1 && anclas[1] === iB + 1) {
+    console.log(`✓ dos dinámicas y sólo dos, en las filas ${anclas.join(' y ')}`)
+  } else {
+    console.error(`✗✗ hay ${anclas.length} dinámica(s) en las filas ${anclas.join(', ')}; se esperaban 2 (${iA + 1} y ${iB + 1})`)
+    process.exitCode = 1
+  }
+  const rotos = (leido ?? []).flat().filter((c) => /#(REF|NAME|VALUE|DIV|N\/A|ERROR|¿NOMBRE)/i.test(String(c ?? '')))
+  if (rotos.length) { console.error(`✗✗ ${rotos.length} celda(s) con error: ${[...new Set(rotos)].join(' · ')}`); process.exitCode = 1 }
+
   console.log('\nLEÍDO DEL ARCHIVO:')
-  for (const f of vista ?? []) {
+  for (const f of leido ?? []) {
     const t = (f ?? []).map((c) => String(c ?? '')).join(' | ')
     console.log('  ' + (t.replace(/[| ]/g, '') ? t.slice(0, 104) : '·'))
   }

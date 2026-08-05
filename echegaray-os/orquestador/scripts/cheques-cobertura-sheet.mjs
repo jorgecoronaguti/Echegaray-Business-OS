@@ -17,7 +17,8 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { repartirCobertura, aCubrirPorMes, normComprobante, esLlaveUtil, hallarPestana, MARCAS, marcaDe } from '../lib/cheques-cobertura.mjs'
+import { repartirCobertura, aCubrirPorMes, normComprobante, esLlaveUtil, hallarPestana, MARCAS, marcaDe, inferirRespaldo } from '../lib/cheques-cobertura.mjs'
+import { normNombre } from '../lib/razon-social.mjs'
 import { INSTRUMENTOS, formulasInstrumento } from '../lib/cash-flow-lineas.mjs'
 import { ARCA as N_ARCA } from '../lib/rangos-nombrados.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
@@ -67,14 +68,40 @@ async function leer(google) {
   const crudoCh = await google.readSheetValues(ID, `${CH}!A2:L400`)
   const crudoTj = await google.readSheetValues(ID, `${INSTRUMENTOS.tarjeta.pestaña}!A3:K400`)
   // fecha = la fecha REAL de pago (columna I). fecha_pago es su rótulo "julio 26", que es formato.
-  const cheques = crudoCh.map((f, i) => ({ fila: i + 2, tipo: f[0], proveedor: f[4], monto: num(f[5]), comprobante: f[7], fecha: fechaAR(f[8]), fecha_pago: f[9], debitado: f[10] })).filter((c) => c.monto > 0)
-  const tarjeta = crudoTj.map((f, i) => ({ fila: i + 3, proveedor: f[2], monto: num(f[4]), comprobante: f[6], fecha_pago: f[8], debitado: f[9] })).filter((c) => c.monto > 0)
-  return { enCompras, cheques, tarjeta, pestanaCheques: CH, filasCh: crudoCh.length + 1, filasTj: crudoTj.length + 2 }
+  const cheques = crudoCh.map((f, i) => ({ fila: i + 2, tipo: f[0], proveedor: f[4], monto: num(f[5]), comprobante: f[7], fecha: fechaAR(f[8]), fecha_pago: f[9], debitado: f[10], marca: f[12] })).filter((c) => c.monto > 0)
+  const tarjeta = crudoTj.map((f, i) => ({ fila: i + 3, proveedor: f[2], monto: num(f[4]), comprobante: f[6], fecha_pago: f[8], debitado: f[9], marca: f[10] })).filter((c) => c.monto > 0)
+  // ── EL LADO DE COMPRAS QUE NECESITA EL CRUCE DE RESPALDO, EN CRUDO ────────────────────────────────
+  // SE LEE APARTE Y CON UNFORMATTED_VALUE A PROPÓSITO. La lectura de arriba viene formateada y `num()`
+  // desarma "$1.234,50" a mano; sobre un número crudo esa misma función borra el punto decimal y
+  // devuelve 12345. Y la fecha formateada es "05/08/26", que no se puede restar contra otra fecha.
+  // Dos lecturas del mismo rango es barato; una lectura mal parseada en el cruce que decide si un
+  // cheque entra o no al calendario, no.
+  const crudoCompras = await google.readSheetValues(ID, 'Compras!C4:O', { render: 'UNFORMATTED_VALUE' })
+  const numero = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+  const filasCompras = crudoCompras.map((f, i) => ({
+    fila: i + 4, prov: normNombre(f?.[2]), fecha: numero(f?.[0]) || null, total: numero(f?.[12]),
+  })).filter((f) => f.prov && f.total > 0)
+  return { enCompras, filasCompras, cheques, tarjeta, pestanaCheques: CH, filasCh: crudoCh.length + 1, filasTj: crudoTj.length + 2 }
 }
 
-function grilla({ enCompras, cheques, tarjeta }) {
-  const ch = repartirCobertura(cheques, enCompras)
-  const tj = repartirCobertura(tarjeta, enCompras)
+/**
+ * El cruce de respaldo de los DOS instrumentos, en una sola pasada por cada uno.
+ *
+ * Se hace acá y no adentro de `grilla` porque su resultado lo necesitan los dos consumidores: el
+ * bloque del cash flow (para contar) y el marcado fila por fila (para escribir). Calcularlo dos veces
+ * podría dar dos repartos distintos —el criterio consume cada fila de Compras una sola vez— y la
+ * pestaña terminaría diciendo una cosa y el bloque otra.
+ */
+export function respaldos({ cheques, tarjeta, filasCompras }) {
+  return {
+    cheques: inferirRespaldo(cheques, filasCompras),
+    tarjeta: inferirRespaldo(tarjeta, filasCompras),
+  }
+}
+
+export function grilla({ enCompras, cheques, tarjeta }, resp) {
+  const ch = repartirCobertura(cheques, enCompras, { inferidos: resp.cheques.inferidos })
+  const tj = repartirCobertura(tarjeta, enCompras, { inferidos: resp.tarjeta.inferidos })
   const cubrir = aCubrirPorMes(cheques)
   const filas = []
   const push = (c = []) => { const r = [...c]; while (r.length < ANCHO) r.push(''); filas.push(r); return filas.length }
@@ -105,22 +132,37 @@ function grilla({ enCompras, cheques, tarjeta }) {
   // del agente. Ahora cuenta las marcas que el OS escribe al lado de cada cheque, así que se mueve
   // solo y cualquiera puede verificarlo filtrando la pestaña.
   const F = { cheques: formulasInstrumento(INSTRUMENTOS.cheques, MARCAS), tarjeta: formulasInstrumento(INSTRUMENTOS.tarjeta, MARCAS) }
+  const NOTA_INFERIDO = 'INFERENCIA, no hecho: no tienen N°, pero hay una factura del mismo proveedor por exactamente el mismo importe y con fecha cercana. Se los cuenta aparte de los verificados y NO bajan el piso de caja: el piso se calcula con las dos puntas, arriba en CAJA.'
+  const NOTA_SIN_MARCA = '⚠ Filas que el OS todavía no miró: se cargaron después de la última corrida de "cheques-cobertura". Mientras la marca esté vacía, el término de cheques del calendario NO las ve. Tiene que dar cero.'
+  // LAS FILAS DE LOS TOTALES SE GUARDAN AL EMPUJARLAS, NO SE CUENTAN HACIA ATRÁS (05/08).
+  // Acá había `fFalta - 8` y `fFalta - 3`: desplazamientos escritos a mano desde la fila del total.
+  // Agregar dos renglones a cada instrumento —los inferidos y los todavía sin marcar— los habría
+  // dejado apuntando a "ya contemplados", y el total "FALTA CARGAR" habría publicado la plata que SÍ
+  // está cubierta sin dar un solo error. Es el mismo defecto que ya rompió Estructura!$15.
+  const fil = {}
   push(['CHEQUES — total emitido', F.cheques.total.cantidad, F.cheques.total.monto, '', '', ''])
   push(['  · ya contemplados (su factura está en Compras)', F.cheques.contemplados.cantidad, F.cheques.contemplados.monto, '', '', 'Ya están en el cash flow, en el rubro de esa factura. Sumarlos de nuevo sería duplicar.'])
-  push(['  · FALTA la factura en Compras (confirmado)', F.cheques.falta.cantidad, F.cheques.falta.monto, '', '', '⚠ Tienen número de comprobante y ese número NO está en Compras. Plata que sale y que ninguna línea del cash flow ve.'])
-  push(['  · sin N° de comprobante — no se puede saber', F.cheques.sinNumero.cantidad, F.cheques.sinNumero.monto, '', '', 'Su factura puede estar en Compras perfectamente. Cargando el N° de comprobante en la pestaña Cheques se resuelve solo.'])
+  push(['  · ≈ atribuidos por proveedor + importe (inferencia)', F.cheques.inferidos.cantidad, F.cheques.inferidos.monto, '', '', NOTA_INFERIDO])
+  fil.faltaCh = push(['  · FALTA la factura en Compras (confirmado)', F.cheques.falta.cantidad, F.cheques.falta.monto, '', '', '⚠ Tienen número de comprobante y ese número NO está en Compras. Plata que sale y que ninguna línea del cash flow ve.'])
+  fil.sinNumCh = push(['  · sin N° de comprobante — no se puede saber', F.cheques.sinNumero.cantidad, F.cheques.sinNumero.monto, '', '', 'Su factura puede estar en Compras perfectamente. Cargando el N° de comprobante en la pestaña Cheques se resuelve solo.'])
+  fil.sinMarcaCh = push(['  · ⚠ todavía SIN MARCAR por el OS (no debitados)', F.cheques.sinMarca().cantidad, F.cheques.sinMarca().monto, '', '', NOTA_SIN_MARCA])
   push()
   push(['TARJETA DE CRÉDITO — total', F.tarjeta.total.cantidad, F.tarjeta.total.monto, '', '', ''])
   push(['  · ya contemplados', F.tarjeta.contemplados.cantidad, F.tarjeta.contemplados.monto, '', '', ''])
-  push(['  · FALTA la factura (confirmado)', F.tarjeta.falta.cantidad, F.tarjeta.falta.monto, '', '', ''])
-  push(['  · sin N° de comprobante', F.tarjeta.sinNumero.cantidad, F.tarjeta.sinNumero.monto, '', '', ''])
+  push(['  · ≈ atribuidos por proveedor + importe (inferencia)', F.tarjeta.inferidos.cantidad, F.tarjeta.inferidos.monto, '', '', NOTA_INFERIDO])
+  fil.faltaTj = push(['  · FALTA la factura (confirmado)', F.tarjeta.falta.cantidad, F.tarjeta.falta.monto, '', '', ''])
+  fil.sinNumTj = push(['  · sin N° de comprobante', F.tarjeta.sinNumero.cantidad, F.tarjeta.sinNumero.monto, '', '', ''])
+  fil.sinMarcaTj = push(['  · ⚠ todavía SIN MARCAR por el OS (no debitados)', F.tarjeta.sinMarca().cantidad, F.tarjeta.sinMarca().monto, '', '', NOTA_SIN_MARCA])
   push()
   const fFalta = filas.length + 1
   // Los #{n} son números de fila RELATIVOS al bloque: el bloque no sabe todavía en qué fila del
   // Cash Flow va a caer. Se reemplazan por la fila real recién cuando se sabe. Escribir la fila
   // directo daba una referencia que apuntaba al vacío en cuanto el cuadro crecía una línea.
-  push(['⇒ FALTA CARGAR, CONFIRMADO', `=B#{${fFalta - 8}}+B#{${fFalta - 3}}`, `=C#{${fFalta - 8}}+C#{${fFalta - 3}}`, '', '', 'El cash flow subestima los egresos AL MENOS en esto. Es la misma plata que muestra la línea "Cheques y tarjeta sin factura cargada" del cuadro de arriba.'])
-  push(['⇒ Sin poder verificar (falta el N° de comprobante)', `=B#{${fFalta - 7}}+B#{${fFalta - 2}}`, `=C#{${fFalta - 7}}+C#{${fFalta - 2}}`, '', '', 'No es un faltante: es una ignorancia. Se resuelve cargando el número en Cheques y Tarjeta.'])
+  const suma = (c, ...fs) => `=${fs.map((f) => `${c}#{${f}}`).join('+')}`
+  push(['⇒ FALTA CARGAR, CONFIRMADO', suma('B', fil.faltaCh, fil.faltaTj), suma('C', fil.faltaCh, fil.faltaTj), '', '', 'El cash flow subestima los egresos AL MENOS en esto. Es la misma plata que muestra la línea "Cheques y tarjeta sin factura cargada" del cuadro de arriba.'])
+  push(['⇒ Sin poder verificar (falta el N° de comprobante)', suma('B', fil.sinNumCh, fil.sinNumTj), suma('C', fil.sinNumCh, fil.sinNumTj), '', '', 'No es un faltante: es una ignorancia. Se resuelve cargando el número en Cheques y Tarjeta. Los que se pudieron atribuir por proveedor + importe ya NO están acá: están en el renglón "≈ atribuidos".'])
+  push(['⇒ Sin mirar todavía por el OS (tiene que dar $0)', suma('B', fil.sinMarcaCh, fil.sinMarcaTj), suma('C', fil.sinMarcaCh, fil.sinMarcaTj), '', '',
+    'Si no da cero, "cheques-cobertura" no corrió desde que se cargaron esas filas: el calendario de CAJA no las está viendo y el piso proyectado es optimista en esa magnitud. Se arregla corriendo el agente, no cargando datos.'])
   push()
   push(['CHEQUES A CUBRIR — los que todavía no se debitaron'])
   push(['Otra pregunta, y es de tesorería: no importa si la factura está registrada, importa cuánta plata tiene que haber en la cuenta y cuándo. Un cheque emitido es un compromiso más firme que una factura con fecha prevista.'])
@@ -147,9 +189,22 @@ function grilla({ enCompras, cheques, tarjeta }) {
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const datos = await leer(google)
-  const g = grilla(datos)
-  console.log(`CHEQUES  ${datos.cheques.length} · contemplados ${g.ch.contemplados.length} (${ars(g.ch.monto_contemplado).toLocaleString('es-AR')}) · falta factura ${g.ch.falta_factura.length} (${ars(g.ch.monto_falta_factura).toLocaleString('es-AR')}) · sin N° ${g.ch.sin_numero_comprobante.length} (${ars(g.ch.monto_sin_numero).toLocaleString('es-AR')})`)
-  console.log(`TARJETA  ${datos.tarjeta.length} · contemplados ${g.tj.contemplados.length} (${ars(g.tj.monto_contemplado).toLocaleString('es-AR')}) · falta factura ${g.tj.falta_factura.length} · sin N° ${g.tj.sin_numero_comprobante.length}`)
+  const resp = respaldos(datos)
+  const g = grilla(datos, resp)
+  const $ = (n) => `$${ars(n).toLocaleString('es-AR')}`
+  console.log(`CHEQUES  ${datos.cheques.length} · contemplados ${g.ch.contemplados.length} (${$(g.ch.monto_contemplado)}) · ≈inferidos ${g.ch.inferidos.length} (${$(g.ch.monto_inferido)}) · falta factura ${g.ch.falta_factura.length} (${$(g.ch.monto_falta_factura)}) · sin N° ${g.ch.sin_numero_comprobante.length} (${$(g.ch.monto_sin_numero)})`)
+  console.log(`TARJETA  ${datos.tarjeta.length} · contemplados ${g.tj.contemplados.length} (${$(g.tj.monto_contemplado)}) · ≈inferidos ${g.tj.inferidos.length} · falta factura ${g.tj.falta_factura.length} · sin N° ${g.tj.sin_numero_comprobante.length}`)
+  // EL QUE NO SE PUDO CRUZAR, CON NOMBRE Y MONTO. Un total no se puede accionar: para cerrar el hueco
+  // hay que ir a la fila y cargarle el número. Los ambiguos van aparte porque su problema es otro —
+  // hay factura candidata pero no alcanza una por cheque, así que atribuirla sería elegir a ojo.
+  for (const [k, r] of Object.entries(resp)) {
+    const noDeb = (a) => a.filter((i) => String(i.debitado ?? '').trim().toUpperCase() !== 'SI')
+    for (const [rotulo, lista] of [['sin respaldo', noDeb(r.sinRespaldo)], ['ambiguos', noDeb(r.ambiguos)]]) {
+      if (!lista.length) continue
+      console.log(`  ${k} · ${rotulo} y NO debitados: ${lista.length} · ${$(lista.reduce((s, i) => s + i.monto, 0))}`)
+      for (const i of [...lista].sort((a, b) => b.monto - a.monto)) console.log(`      fila ${String(i.fila).padStart(4)}  ${String(i.proveedor ?? '').slice(0, 26).padEnd(27)} ${$(i.monto).padStart(14)}`)
+    }
+  }
   console.log(`A CUBRIR ${ars(g.cubrir.total).toLocaleString('es-AR')} en ${g.cubrir.por_mes.length} meses`)
   if (DRY) return
 
@@ -221,7 +276,7 @@ async function main() {
     // Regla general: un script que escribe en una pestaña que no es suya no cambia su geometría.
   ])
 
-  await marcarInstrumentos(google, datos)
+  await marcarInstrumentos(google, datos, resp)
 
   // ═══ EL QUE ESCRIBE ÚLTIMO, SELLA. SI NO, CANDA UNA PESTAÑA QUE NADIE EDITÓ (01/08) ═══
   //
@@ -276,11 +331,11 @@ async function main() {
  * escrito fila por fila y el total lo hace el Sheet. Por eso ahora también se marca la TARJETA:
  * antes sólo se marcaban los cheques y la mitad del número no tenía dónde apoyarse.
  */
-async function marcarInstrumentos(google, datos) {
+async function marcarInstrumentos(google, datos, resp) {
   const hojas = await google.getSheetMeta(ID)
   const objetivo = [
-    { ...INSTRUMENTOS.cheques, pestaña: datos.pestanaCheques, items: datos.cheques, hasta: datos.filasCh },
-    { ...INSTRUMENTOS.tarjeta, items: datos.tarjeta, hasta: datos.filasTj },
+    { ...INSTRUMENTOS.cheques, pestaña: datos.pestanaCheques, items: datos.cheques, hasta: datos.filasCh, inferidos: resp.cheques.inferidos },
+    { ...INSTRUMENTOS.tarjeta, items: datos.tarjeta, hasta: datos.filasTj, inferidos: resp.tarjeta.inferidos },
   ]
   for (const o of objetivo) {
     const hoja = hojas.find((h) => h.title === o.pestaña)
@@ -291,7 +346,11 @@ async function marcarInstrumentos(google, datos) {
     if (hoja.cols > COL) {
       const letraCol = letra(COL)
       const zona = await google.readSheetValues(ID, `${o.pestaña}!${letraCol}1:${letraCol}${hoja.rows}`)
-      const mio = (t) => t.startsWith('✓') || t.startsWith('⚠') || t.startsWith('Estado en el OS')
+      // QUÉ ES "MÍO" SALE DE LAS MARCAS, NO DE UNA LISTA DE GLIFOS A MANO (05/08). Decía
+      // `✓ | ⚠ | Estado en el OS`, y al agregar la marca de inferencia —que abre con ≈— la guarda
+      // habría visto contenido ajeno en su propia columna y abortado el marcado entero. Una guarda
+      // que no conoce lo que el propio script escribe se convierte en un freno permanente.
+      const mio = (t) => Object.values(MARCAS).includes(t) || t.startsWith('Estado en el OS')
       const ocupada = zona.some((f) => { const t = String(f?.[0] ?? '').trim(); return t && !mio(t) })
       if (ocupada) throw new Error(`me niego a escribir: la columna ${letraCol} de ${o.pestaña} tiene contenido que no reconozco.`)
     } else {
@@ -300,7 +359,7 @@ async function marcarInstrumentos(google, datos) {
 
     // Una marca por FILA REAL de la pestaña, no una por item: las filas sin importe quedan vacías y
     // las demás no se corren.
-    const porFila = new Map(o.items.map((i) => [i.fila, marcaDe(i.comprobante, datos.enCompras)]))
+    const porFila = new Map(o.items.map((i) => [i.fila, marcaDe(i.comprobante, datos.enCompras, o.inferidos.has(i.fila))]))
     const marcas = []
     for (let f = o.filaCab + 1; f <= o.hasta; f++) marcas.push([porFila.get(f) ?? ''])
     // ACÁ LA FECHA DE LA CORRIDA ES LA CORRECTA, Y ES LA EXCEPCIÓN A LA REGLA (03/08).
@@ -326,4 +385,9 @@ async function marcarInstrumentos(google, datos) {
   }
 }
 
-main().then(() => process.exit(0)).catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+// SÓLO CORRE SI SE LO INVOCA. Sin esta guarda, importar el archivo para testear `grilla` en frío
+// arranca main() y ESCRIBE EN EL SHEET REAL. Es la misma guarda que ya tiene caja-pestana.mjs, y
+// existe por el mismo motivo: un test que reescribe la planilla del dueño no es un test.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().then(() => process.exit(0)).catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+}

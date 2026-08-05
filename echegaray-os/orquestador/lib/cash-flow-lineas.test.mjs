@@ -10,6 +10,7 @@ import { TASAS } from './costo-descubierto.mjs'
 import { ALICUOTA, formulaImpuesto } from './impuesto-cheque.mjs'
 import { respetarEdiciones } from './respetar-ediciones.mjs'
 import { grilla } from '../scripts/cash-flow-rehacer.mjs'
+import { SEMANAS_HORIZONTE } from './cash-flow-horizonte.mjs'
 
 // Helpers de validación de una fórmula es-AR (no la evaluamos en un Sheet real: la validamos estructural).
 const ERROR_TOKENS = /#(REF|ERROR|N\/A|VALUE|DIV|NAME|NUM|NULL|¡)/
@@ -28,6 +29,8 @@ const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26
 // Los números son los REALES de "Impuestos y Financieros" (leídos del archivo: IVA en la 18, IIBB en la
 // 28), no dos cualquiera: si algún día el simulacro y la pestaña se separan, que se note acá.
 const FILAS_CAL = { iva: 18, iibb: 28 }
+/** Las filas de total de las pestañas que proyectan. Las ubica el script por rótulo; acá se simulan. */
+const TABLAS = { Estructura: 15, Recurrentes: 24 }
 
 // ── CAMBIO 1 · las líneas 40/41 (descubierto e impuesto al cheque) ahora SE CALCULAN por semana ──
 
@@ -51,7 +54,9 @@ test('formulaInteresSemana: mismo modelo verificado que el mensual, ventana de 7
 })
 
 test("grilla semanal: las líneas del descubierto e impuesto al cheque NO quedan vacías en ninguna semana", () => {
-  const g = grilla('semanal', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", {}, FILAS_CAL)
+  // DESDE EL 04/08 EL SEMANAL TAMBIÉN PROYECTA, así que también necesita las filas de las tablas de
+  // proyección: si no las tiene, el generador se niega a referenciar una fila muerta (y hace bien).
+  const g = grilla('semanal', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", TABLAS, FILAS_CAL)
   const desc = g.meta.detalle.find((d) => d.linea.descubierto)
   const imp = g.meta.detalle.find((d) => d.linea.impuestoCheque)
   assert.ok(desc && imp, 'existen ambas líneas en el semanal')
@@ -70,7 +75,7 @@ test("grilla semanal: las líneas del descubierto e impuesto al cheque NO quedan
 })
 
 test('impuesto al cheque semanal resuelto = 0,6% de entradas + 0,6% de salidas de la semana', () => {
-  const g = grilla('semanal', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", {}, FILAS_CAL)
+  const g = grilla('semanal', [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", TABLAS, FILAS_CAL)
   const ingreso = g.meta.detalle.filter((d) => d.signo > 0).map((d) => d.fila)
   const egreso = g.meta.detalle.filter((d) => d.signo < 0 && !d.linea.impuestoCheque).map((d) => d.fila)
   const imp = g.meta.detalle.find((d) => d.linea.impuestoCheque)
@@ -153,7 +158,7 @@ test('la línea semanal de comisiones carga el cargo en la semana del cierre de 
 })
 
 test('la línea de comisiones está en el cuadro, en Financiación, y NO queda vacía en ninguna columna', () => {
-  for (const [periodo, filasTabla] of [['mensual', { Estructura: 15, Recurrentes: 24 }], ['semanal', {}]]) {
+  for (const [periodo, filasTabla] of [['mensual', { Estructura: 15, Recurrentes: 24 }], ['semanal', TABLAS]]) {
     const g = grilla(periodo, [], "'Caja'!$E$5", "MAX('Caja'!$A$6:$A$9)", filasTabla, FILAS_CAL)
     const com = g.meta.detalle.find((d) => d.linea.comisionesBancarias)
     assert.ok(com, `${periodo}: la línea de comisiones existe en el cuadro`)
@@ -345,4 +350,41 @@ test('esperado y cobrado son excluyentes: ninguna cobranza puede contarse dos ve
   assert.match(esp, /<>"cobrado"/)
   // Y ninguno de los dos toma un valor endosado: esa plata se entregó a un tercero.
   for (const f of [cob, esp]) assert.match(f, /ENDOSADO/)
+})
+
+// ── LA CADENA DE CAJA AL CIERRE DE CADA PERÍODO ────────────────────────────────────────────────────
+//
+// El defecto que estos dos tests atrapan (04/08/2026): el ancla del saldo real se decidía con
+// EOMONTH en las DOS pestañas. En la semanal las cinco columnas de agosto caen en el mismo mes, así
+// que las cinco arrancaban con el saldo declarado en vez de encadenar con el cierre de la anterior.
+// La definición vive en lib/cash-flow-ancla-saldo.mjs; acá se prueba que la grilla la use.
+
+// La columna que sigue a los períodos es el "Total 2026" y no lleva ancla: es el saldo del primer
+// período, no una columna más. Se recorta acá para no probar contra ella.
+const columnasDePeriodo = (fila, n) => fila.slice(1, n + 1)
+
+test('grilla semanal: el ancla se decide por la ventana de la semana, no por su mes', () => {
+  const g = grilla('semanal', [], 'CAJA_TOTAL_DISPONIBLE', 'CAJA_FECHA_SALDO', TABLAS, FILAS_CAL)
+  const fila = g.filas[g.meta.inicio - 1]
+  // 13 columnas desde el 04/08, no 53: el semanal dejó de mirar el año (ver cash-flow-horizonte.mjs).
+  for (const c of columnasDePeriodo(fila, SEMANAS_HORIZONTE)) {
+    assert.doesNotMatch(String(c), /EOMONTH/,
+      'un cuadro semanal no puede decidir su ancla con un criterio mensual: agosto tiene 5 columnas')
+    assert.match(String(c), /\$3\+7<=CAJA_FECHA_SALDO/, 'la ventana del período es [desde, desde+7)')
+  }
+  // Cada semana encadena con el CIERRE de la anterior, no con el saldo declarado.
+  assert.match(String(fila[3]), new RegExp(`C${g.meta.cierre}`), 'la 3ª semana engancha del cierre de la 2ª')
+})
+
+test('grilla mensual: el ancla sigue siendo el mes del saldo — la corrección no toca lo que ya cerraba', () => {
+  // El mensual proyecta desde dos pestañas-tabla; sin sus filas el generador se niega a referenciar
+  // una fila muerta. Los números son los rótulos reales ubicados por el script.
+  const filasTabla = { Estructura: 60, Recurrentes: 40 }
+  const g = grilla('mensual', [], 'CAJA_TOTAL_DISPONIBLE', 'CAJA_FECHA_SALDO', filasTabla, FILAS_CAL)
+  const fila = g.filas[g.meta.inicio - 1]
+  for (const c of columnasDePeriodo(fila, 12)) {
+    assert.match(String(c), /EOMONTH\([A-Z]+\$3;0\)\+1<=CAJA_FECHA_SALDO/,
+      'el mes usa el primero del mes siguiente como límite excluyente')
+  }
+  assert.match(String(fila[3]), new RegExp(`C${g.meta.cierre}`), 'marzo encadena con el cierre de febrero')
 })

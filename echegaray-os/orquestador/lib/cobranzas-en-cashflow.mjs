@@ -12,8 +12,12 @@
 // clasificación que hace la fórmula del Sheet, y se compara mes contra mes. Si el cuadro y esta
 // cuenta dicen lo mismo, la fórmula está haciendo lo que promete.
 
-/** Las columnas de Cobranzas, por índice desde A=0. Verificadas contra el encabezado del 21/07. */
-export const C = { unidad: 5, cliente: 6, total: 12, forma: 13, estado: 14, fechaVenta: 15, fechaCobro: 16, banco: 53 }
+/** Las columnas de Cobranzas, por índice desde A=0. Verificadas contra el encabezado del 21/07;
+ *  comprobante/emisión agregados el 04/08 y reverificados contra la fila 4 real. */
+export const C = {
+  emision: 2, comprobante: 4, unidad: 5, cliente: 6, concepto: 8,
+  total: 12, forma: 13, estado: 14, fechaVenta: 15, fechaCobro: 16, banco: 53,
+}
 /** La marca que el OS escribe cuando el banco dice que el valor se entregó a un tercero. */
 export const MARCA_ENDOSADO = 'ENDOSADO'
 
@@ -45,7 +49,8 @@ export function leerCobro(fila, nro) {
   const txt = (j) => String(fila[j]?.valor ?? '').trim()
   const monto = num(C.total)
   if (!monto) return null
-  const f = aFecha(num(C.fechaCobro)) ?? aFecha(num(C.fechaVenta))
+  const fechaCobro = aFecha(num(C.fechaCobro))
+  const f = fechaCobro ?? aFecha(num(C.fechaVenta))
   return {
     fila: nro,
     monto,
@@ -53,9 +58,98 @@ export function leerCobro(fila, nro) {
     cliente: txt(C.cliente),
     estado: txt(C.estado),
     fecha: f,
+    fechaCobro,
     mes: f ? mesDe(f) : null,
+    comprobante: txt(C.comprobante),
+    concepto: txt(C.concepto),
+    forma: txt(C.forma),
     endosado: txt(C.banco).toUpperCase().startsWith(MARCA_ENDOSADO),
   }
+}
+
+/** La condición exacta con la que el cuadro cuenta un cobro como YA COBRADO (fila 6). */
+export const esCobrado = (c) => String(c.estado).toLowerCase() === 'cobrado'
+/** Y la de la línea de esperadas (fila 10): ni cobrado ni endosado. */
+export const esPendiente = (c) => !esCobrado(c) && String(c.estado).toLowerCase() !== 'endosado' && !c.endosado
+
+const primeroDelMes = (d) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1))
+
+/**
+ * NÚCLEO PURO: el repaso de Cobranzas que pidió el dueño — "repasar todo cobranzas e ir viendo el
+ * tema de caja a fin de cada semana y mes".
+ *
+ * LOS CUATRO HUECOS QUE BUSCA, Y POR QUÉ CADA UNO ES PLATA QUE EL CUADRO NO MUESTRA:
+ *
+ *   sinFecha — un pendiente sin fecha de cobro NI de venta no cae en ninguna columna. No aparece en
+ *     ninguna semana ni en ningún mes: es invisible para el cuadro y para la decisión.
+ *
+ *   invisiblesAlCuadro — EL HUECO CARO Y SILENCIOSO. La línea de esperadas lleva el corte
+ *     `(col >= EOMONTH(TODAY();-1)+1)` para no inflar un mes ya cerrado con un cobro que no entró, y
+ *     eso está bien. Pero el efecto es que un pendiente FECHADO ANTES del mes en curso desaparece de
+ *     las dos líneas: no es cobrado (no entró) y su columna está apagada. La empresa sigue esperando
+ *     esa plata y el cuadro no la muestra en ningún lado. NO se corrige acá: dónde debe reaparecer
+ *     —el mes en curso, una línea de vencidos, o nada hasta renegociar la fecha— es una decisión del
+ *     dueño con efecto económico. Acá se mide y se declara.
+ *
+ *   vencidos — pendientes con fecha pasada que siguen pendientes. Incluye a los invisibles y además
+ *     a los del mes en curso, que el cuadro sí muestra pero como si fueran a entrar.
+ *
+ *   cobradosAFuturo — marcados "Cobrado" con fecha de cobro POSTERIOR a hoy. El cash flow es
+ *     percibido: no se puede haber cobrado algo que se cobra la semana que viene. O la fecha está
+ *     mal, o el estado se adelantó; en cualquier caso el mes de ese cobro está afirmando un hecho
+ *     que todavía no ocurrió.
+ *
+ * @param {Array<object>} cobros salida de leerCobro
+ * @param {{hoy: Date|string|number}} opciones
+ */
+export function repasar(cobros = [], { hoy } = {}) {
+  const h = new Date(hoy)
+  const inicioMes = primeroDelMes(h)
+  const pendientes = cobros.filter(esPendiente)
+  const sinFecha = pendientes.filter((c) => !c.fecha)
+  const conFecha = pendientes.filter((c) => c.fecha)
+  const suma = (l) => l.reduce((s, c) => s + c.monto, 0)
+  return {
+    total: cobros.length,
+    montoTotal: suma(cobros),
+    cobrados: cobros.filter(esCobrado).length,
+    pendientes: pendientes.length,
+    montoPendiente: suma(pendientes),
+    sinFecha,
+    vencidos: conFecha.filter((c) => c.fecha < h).sort((a, b) => a.fecha - b.fecha),
+    invisiblesAlCuadro: conFecha.filter((c) => c.fecha < inicioMes).sort((a, b) => a.fecha - b.fecha),
+    cobradosAFuturo: cobros.filter((c) => esCobrado(c) && c.fechaCobro && c.fechaCobro > h),
+    montos: {
+      sinFecha: suma(sinFecha),
+      vencidos: suma(conFecha.filter((c) => c.fecha < h)),
+      invisiblesAlCuadro: suma(conFecha.filter((c) => c.fecha < inicioMes)),
+      cobradosAFuturo: suma(cobros.filter((c) => esCobrado(c) && c.fechaCobro && c.fechaCobro > h)),
+    },
+  }
+}
+
+/**
+ * NÚCLEO PURO: reconstruye, mes por mes, las DOS líneas de ingreso del cuadro desde Cobranzas.
+ *
+ * Es la contraprueba de la fila 6 y la fila 10 hecha en JavaScript con la misma regla de la fórmula,
+ * para poder contestar "¿la línea de cobranzas de este mes se puede reconstruir?" sin preguntarle al
+ * cuadro. Un control validado contra la misma fórmula que produce el número no es un control.
+ *
+ * @param {Array<object>} cobros · @param {{hoy: Date|string|number}} opciones
+ * @returns {Map<string,{cobrado:number, esperado:number}>} clave AAAA-MM
+ */
+export function porMes(cobros = [], { hoy } = {}) {
+  const corte = primeroDelMes(new Date(hoy))
+  const acc = new Map()
+  for (const c of cobros) {
+    if (!c.fecha || c.endosado) continue
+    if (!acc.has(c.mes)) acc.set(c.mes, { cobrado: 0, esperado: 0 })
+    if (esCobrado(c)) acc.get(c.mes).cobrado += c.monto
+    // El corte de la fórmula: un esperado de un mes ya cerrado NO suma. Se replica tal cual para que
+    // la comparación mida el dato, no una diferencia de criterio inventada acá.
+    else if (esPendiente(c) && c.fecha >= corte) acc.get(c.mes).esperado += c.monto
+  }
+  return acc
 }
 
 /**

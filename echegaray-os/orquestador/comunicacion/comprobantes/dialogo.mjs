@@ -11,6 +11,7 @@
 import { aNumero, redondear2 } from '../../lib/carga-comprobantes.mjs'
 import { fechaDeLectura, numeroCanonico, claveComprobante, obraDeAnotacion } from '../../lib/comprobantes/lectura.mjs'
 import { identidadDelComprobante } from '../../lib/comprobantes/aritmetica.mjs'
+import { dudasDeLectura } from '../../lib/comprobantes/plausibilidad.mjs'
 
 export const MAX_ELEMENTOS = 5
 export const CALLBACK_ID = 'comprobantes.corregir'
@@ -47,6 +48,12 @@ export function camposFaltantes(item = {}) {
   // número que había que arreglar.
   const ar = identidadDelComprobante({ neto: c.neto, iva: c.iva, otros: c.otrosTributos, total: c.total })
   if (ar.verificable && !ar.cierra) f.unshift('total', 'neto', 'iva')
+  // Un dato que se leyó pero no puede ser cierto tiene que ganarse un lugar entre los cinco campos
+  // del formulario: es exactamente el que hay que arreglar. Sin esto, el control bloqueaba el
+  // comprobante y "Corregir" ofrecía la obra y el proveedor — todo menos la fecha imposible.
+  const dudas = dudasDeLectura(item)
+  if (dudas.iva) f.unshift('iva')
+  if (dudas.fecha) f.unshift('fecha')
   return [...new Set(f)]
 }
 
@@ -156,7 +163,13 @@ export function aplicarCorreccion(item = {}, submission = {}, { obras = [] } = {
   if (fecha) {
     const f = fechaDeLectura(fecha)
     if (!f) errors.fecha = 'Poné la fecha como DD/MM/AAAA.'
-    else c.fecha = f
+    else {
+      c.fecha = f
+      // MISMA REGLA QUE `totalTipeado`: el control de plausibilidad duda de lo que leyó un modelo,
+      // no de lo que escribió alguien con el papel en la mano. Sin esta marca, un comprobante viejo
+      // de verdad quedaría trabado para siempre — el control pide corregir y corregir lo redispara.
+      c.fechaTipeada = true
+    }
   }
 
   const total = dado('total')
@@ -180,7 +193,11 @@ export function aplicarCorreccion(item = {}, submission = {}, { obras = [] } = {
   if (iva) {
     const v = aNumero(iva)
     if (v == null) errors.iva = 'Eso no es un importe. Escribilo como 5.981,00.'
-    else c.iva = redondear2(Math.abs(v) * (c.esNotaCredito ? -1 : 1))
+    else {
+      c.iva = redondear2(Math.abs(v) * (c.esNotaCredito ? -1 : 1))
+      // Un 0 escrito a mano es una respuesta legítima y frecuente: "este tique no discrimina IVA".
+      c.ivaTipeado = true
+    }
   }
 
   // El neto no se escribe en ninguna celda —la columna M se DERIVA de Total − IVA— pero es uno de los

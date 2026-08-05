@@ -39,6 +39,7 @@
 
 import { aFechaAR, aNumero, normalizar, tipoComprobante } from '../carga-comprobantes.mjs'
 import { identidadDelComprobante, fueraDeEscala, pesos, FACTOR_FUERA_DE_ESCALA } from './aritmetica.mjs'
+import { dudasDeLectura } from './plausibilidad.mjs'
 
 /** Por qué un comprobante no está listo. El código es el contrato; los textos son presentación. */
 export const MOTIVO = Object.freeze({
@@ -53,6 +54,33 @@ export const MOTIVO = Object.freeze({
   NUMERO: 'numero',
   ARITMETICA: 'aritmetica',
   ESCALA: 'escala',
+  // Los dos del 04/08: un dato que se LEYÓ pero no puede ser cierto. Son distintos de FECHA (que es
+  // el hueco) a propósito — el mensaje tiene que poder decir "leí esto y no puede ser", que es una
+  // información que el dueño necesita para entender por qué le estoy preguntando algo que el papel sí
+  // tiene impreso.
+  FECHA_IMPOSIBLE: 'fecha_imposible',
+  IVA_IMPOSIBLE: 'iva_imposible',
+})
+
+/**
+ * Cómo se nombra cada faltante en una frase corta. Es lo que permite que el titular diga
+ * "sólo me falta la fecha" en vez de "me falta un dato": una pregunta precisa se contesta en un
+ * segundo y una genérica obliga a leer todo el mensaje para adivinar qué se está pidiendo.
+ */
+export const ROTULO = Object.freeze({
+  [MOTIVO.PROVEEDOR_NUEVO]: 'saber quién es el proveedor',
+  [MOTIVO.DUPLICADO]: 'saber si ya está cargado',
+  [MOTIVO.OBRA]: 'la obra',
+  [MOTIVO.PROVEEDOR]: 'el proveedor',
+  [MOTIVO.IMPORTE]: 'el importe',
+  [MOTIVO.TOTAL]: 'el total',
+  [MOTIVO.FECHA]: 'la fecha',
+  [MOTIVO.FECHA_IMPOSIBLE]: 'la fecha',
+  [MOTIVO.IVA_IMPOSIBLE]: 'el IVA',
+  [MOTIVO.TIPO]: 'el tipo de comprobante',
+  [MOTIVO.NUMERO]: 'el número',
+  [MOTIVO.ARITMETICA]: 'que los importes cierren',
+  [MOTIVO.ESCALA]: 'confirmar el total',
 })
 
 /**
@@ -80,6 +108,18 @@ export const POLITICA = Object.freeze({
     exigirNumero: false,
     exigirTotal: false,
     exigirProveedorConocido: false,
+    // ═══ POR QUÉ LA PLAUSIBILIDAD SÍ ES UNA DIFERENCIA DE CANAL (04/08) ═══
+    //
+    // El chat muestra lo que leyó UNA MÁQUINA y que nadie miró: ahí una fecha de 2003 es, con
+    // certeza, un año mal leído. El fajo que recibe la línea de comandos lo arma una persona (o
+    // Claude Code) con el papel delante, y su ventana legítima de fechas incluye comprobantes viejos
+    // que se están regularizando — bloquearlos convertiría el control en un muro para el único caso
+    // en que la fecha rara es de verdad.
+    //
+    // LO QUE NO DEPENDE DEL CANAL sigue sin depender: la identidad aritmética opina en las dos, y
+    // ahí no hay excepción posible porque un importe que no cierra cuesta lo mismo entre por donde
+    // entre. Acá la diferencia no es cuánto cuesta el error: es cuánta confianza merece la fuente.
+    verificarPlausibilidad: false,
   }),
   // El bot: tiene botones, así que lo que falta se pregunta antes de escribir nada.
   CHAT: Object.freeze({
@@ -92,6 +132,8 @@ export const POLITICA = Object.freeze({
     // Total − IVA. Sin total, del otro lado no hay con qué escribir la fila.
     exigirTotal: true,
     exigirProveedorConocido: true,
+    // Un dato leído que no puede ser cierto se declara ilegible y se pregunta. Ver `plausibilidad.mjs`.
+    verificarPlausibilidad: true,
   }),
 })
 
@@ -104,9 +146,11 @@ export const POLITICA = Object.freeze({
  * @param {{comprobante?:object, proveedorNuevo?:boolean, posibleDuplicado?:object,
  *          duplicadoResuelto?:string|null, yaCargado?:object}} item
  * @param {object} politica  una de `POLITICA`
+ * @param {{ahora?:Date|string}} [o]  el reloj contra el que se juzga la fecha; por defecto el momento
+ *   en que se leyó la foto (`item.leidoEn`) y, si no viaja, el de la máquina.
  * @returns {Array<{codigo:string, texto:string, pregunta:string}>}
  */
-export function faltantesDe(item = {}, politica = POLITICA.CARGADOR) {
+export function faltantesDe(item = {}, politica = POLITICA.CARGADOR, { ahora } = {}) {
   const c = item.comprobante ?? {}
   const p = politica ?? POLITICA.CARGADOR
   const out = []
@@ -114,8 +158,16 @@ export function faltantesDe(item = {}, politica = POLITICA.CARGADOR) {
 
   if (p.exigirProveedorConocido && item.proveedorNuevo) {
     const quien = c.proveedor ?? '(ilegible)'
+    // ═══ UNA PREGUNTA QUE NO SE PUEDE CONTESTAR NO ES UNA PREGUNTA (04/08) ═══
+    //
+    // Decía «¿lo agrego?» y NO HAY forma de contestar que sí: el desplegable de la columna es
+    // estricto y sólo lo extiende una persona en el Sheet. El dueño leía una oferta, no tenía con
+    // qué aceptarla, y el comprobante quedaba trabado sin que nada dijera cómo destrabarlo. Ahora la
+    // frase nombra las DOS salidas reales, que además son las dos que existen de verdad.
     falta(MOTIVO.PROVEEDOR_NUEVO, `proveedor fuera del desplegable: "${quien}"`,
-      `el proveedor **${quien}** no está en la lista de Compras — ¿lo agrego?`)
+      `**${quien}** no está en el desplegable de Compras, así que no puedo elegirlo. Tocá **Corregir** `
+      + `y escribí el nombre tal como figura en la lista, o agregalo al desplegable de la columna y `
+      + `volvé a mandar la foto.`)
   }
   // UN PROBABLE DUPLICADO ES UNA PREGUNTA, NO UNA DECISIÓN. Ni cargar ni descartar solo: mismo
   // proveedor, mismo día y mismo importe con otro número puede ser el mismo comprobante con un
@@ -170,6 +222,34 @@ export function faltantesDe(item = {}, politica = POLITICA.CARGADOR) {
   }
 
   if (!aFechaAR(c.fecha)) falta(MOTIVO.FECHA, 'fecha ilegible o ausente', 'no pude leer la fecha')
+
+  // ═══ UN DATO QUE NO PUEDE SER CIERTO NO ES UN DATO LEÍDO (04/08) ═══
+  //
+  // Los dos casos del comprobante de Barcelo: `Fecha 05/12/2003` e `IVA $0,01` sobre un neto de
+  // $5.223,35. Los dos se MOSTRARON como si fueran lo que decía el papel, y los dos son imposibles
+  // mirando un solo campo — no hacía falta compararlos con nada, sólo preguntarles si pueden existir.
+  //
+  // Se declaran como faltantes y no como notas al pie porque la consecuencia tiene que ser real: un
+  // comprobante con la fecha ilegible NO se escribe, igual que uno sin fecha. La diferencia con
+  // `MOTIVO.FECHA` es sólo que acá se puede decir QUÉ se leyó, y eso ahorra la mitad de la pregunta.
+  //
+  // Nunca se corrige el valor: no se redondea el IVA a la alícuota más cercana ni se cambia el año
+  // por el actual. Eso sería fabricar exactamente el dato que no se pudo leer.
+  if (p.verificarPlausibilidad) {
+    const d = dudasDeLectura(item, { ahora })
+    if (d.fecha) {
+      falta(MOTIVO.FECHA_IMPOSIBLE,
+        `fecha imposible: leí ${d.fecha.leida} (${d.fecha.motivo})`,
+        `**no pude leer la fecha**: lo que leí es **${d.fecha.leida}** y no puede ser — ${d.fecha.motivo}. Tocá **Corregir** y ponela.`)
+    }
+    if (d.iva) {
+      falta(MOTIVO.IVA_IMPOSIBLE,
+        `IVA imposible: leí ${pesos(d.iva.iva)} sobre un neto de ${pesos(d.iva.neto)} (${d.iva.motivo})`,
+        `**no pude leer el IVA**: leí **${pesos(d.iva.iva)}** sobre un neto de **${pesos(d.iva.neto)}** y ${d.iva.motivo}. Tocá **Corregir** y ponelo — si el comprobante no discrimina IVA, escribí 0.`)
+
+    }
+  }
+
   if (c.tipo && !tipoComprobante(c.tipo)) {
     falta(MOTIVO.TIPO, `tipo de comprobante no reconocido: "${c.tipo}"`,
       `no reconozco el tipo de comprobante "${c.tipo}"`)
@@ -185,10 +265,10 @@ export function faltantesDe(item = {}, politica = POLITICA.CARGADOR) {
  * se chequea acá y no en `faltantesDe`. `duplicadoResuelto:'mismo'` es el dueño diciendo que ya
  * estaba — tampoco se carga, aunque no le falte ningún dato.
  */
-export function puedeCargarse(item = {}, politica = POLITICA.CARGADOR) {
+export function puedeCargarse(item = {}, politica = POLITICA.CARGADOR, o = {}) {
   if (item.yaCargado) return false
   if (item.duplicadoResuelto === 'mismo') return false
-  return faltantesDe(item, politica).length === 0
+  return faltantesDe(item, politica, o).length === 0
 }
 
 /**
