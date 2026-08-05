@@ -119,43 +119,67 @@ export function formulaUltimoCobroRegistrado() {
 // CONCENTRACIÓN POR CLIENTE — UN RANKING QUE NO DERRAMA
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 //
-// ⚠ POR QUÉ NO SE USA QUERY NI SORT+UNIQUE, QUE ES LO QUE PEDIRÍA EL MANUAL. Las dos DERRAMAN: una
-// sola celda escribe tantas filas como clientes haya. Esta pestaña se escribe con fusión preservadora
-// FILA POR FILA, así que un derrame de cinco filas pisa las cinco de abajo y corrompe el bloque
-// siguiente sin dar un solo error — y el día que entre un cliente nuevo, el derrame crece y rompe
-// otra fila más. Un ranking de altura fija (LARGE + INDEX sobre cinco filas escritas) devuelve UN
-// valor por celda: no puede pisar nada, y el "otros" absorbe lo que quede afuera sin perder un peso.
+// ═══ ME CORRIJO SOBRE LA VERSIÓN DEL 05/08 DE LA MAÑANA, Y ESTABA MAL EN PANTALLA ═══
 //
-// EL DEDUPE ES EL PROBLEMA REAL, y se resuelve sin columnas auxiliares: se arma una clave por fila
-// (el cliente si la fila califica, un carácter fijo si no) y sólo sobrevive la PRIMERA aparición de
-// cada clave. Las filas que no califican comparten la clave fija, así que sobrevive una sola — y esa
-// se anula porque el término se multiplica por la condición.
+// La primera versión evitaba QUERY con este argumento: "QUERY, SORT y UNIQUE DERRAMAN; esta pestaña se
+// escribe con fusión preservadora fila por fila, así que un derrame de cinco filas pisa las cinco de
+// abajo". El riesgo es real y está bien identificado. La conclusión no: **una función que devuelve un
+// array sólo derrama si NADIE la consume.** `INDEX(QUERY(…);k;2)` devuelve UN valor — INDEX consume el
+// array— y no puede pisar una celda. Este mismo archivo ya lo usa así, en producción, en
+// `cash-flow-tesoreria.mjs`, para el mismo ranking sobre la misma pestaña.
+//
+// Y la alternativa que se eligió para no usar QUERY NO FUNCIONA. Era:
+//
+//     ARRAYFORMULA( (O="Pendiente") * (MATCH(clave;clave;0)=fila) * SUMIFS(M;G;G;O;"Pendiente") )
+//
+// **SUMIFS no se vectoriza adentro de ARRAYFORMULA.** SUMIF sí acepta un criterio en forma de array;
+// SUMIFS no. Con un criterio array devuelve un escalar o un error, y el LARGE de arriba se comía el
+// #VALUE! con su IFERROR: las cinco filas del ranking salieron VACÍAS en el Sheet real, con el total
+// intacto en $345.200.985 y la fila "Los demás clientes" absorbiéndolo entero. O sea el defecto exacto
+// que este bloque existía para evitar: una línea muda de trescientos cuarenta y cinco millones.
+//
+// No dio ningún error visible. Lo encontró el render de la pestaña escrita, no un test — y por eso el
+// test de abajo ahora prohíbe el patrón `SUMIFS` dentro de `ARRAYFORMULA`, que es la causa y no el
+// síntoma.
+//
+// LA REGLA QUE QUEDA: no se prohíbe QUERY, se exige que esté CONSUMIDA. Un array que entra a INDEX, a
+// LARGE o a SUM no derrama; uno que queda solo en la celda, sí.
 
-/** El total por cliente, deduplicado, como array de una sola columna. PURA. */
-export function arrayTotalPorCliente(clave = 'pendiente') {
-  const cli = rango(COB.cliente)
-  const est = rango(COB.estado)
-  const cond = `(${est}="${ESTADOS[clave]}")`
-  // La clave de dedupe: el cliente cuando la fila califica, "·" cuando no. Nunca vacío: MATCH sobre
-  // "" contra celdas realmente vacías da resultados distintos según la fila y el dedupe se rompe.
-  const llave = `IF(${cond};${cli};"·")`
-  const orden = `(ROW(${cli})-ROW(${COB.pestaña}!$${COB.cliente}$${COB.primera})+1)`
-  const total = `SUMIFS(${rango(COB.monto)};${cli};${cli};${est};"${ESTADOS[clave]}")`
-  return `ARRAYFORMULA(${cond}*(MATCH(${llave};${llave};0)=${orden})*${total})`
+/** El rango que ve la consulta. G=Col1 … M=Col7 … O=Col9. Si cambia el orden de columnas de Cobranzas
+ *  esto se rompe FUERTE (da otro número, no un error), y por eso vive al lado del mapa COB. */
+const Q_RANGO = `${COB.pestaña}!$${COB.cliente}$${COB.primera}:$${COB.estado}$${COB.ultima}`
+/** Sin el label vacío, QUERY agrega una fila de encabezado para la columna agregada y el ranking se
+ *  corre un puesto: el primer cliente desaparecería sin dar error. */
+const Q_LABEL = "label sum(Col7) ''"
+
+/**
+ * NÚCLEO PURO: el ranking de clientes por total en un estado, agrupado y ordenado.
+ *
+ * Devuelve la CONSULTA, no la celda: siempre tiene que entrar a un INDEX. Sola en una celda derrama.
+ * `Col1 is not null` deja afuera las filas sin cliente, que si no se agrupan todas en un mismo bucket
+ * anónimo y pueden ganarle el primer puesto a un cliente real.
+ */
+export function consultaPorCliente(clave = 'pendiente') {
+  const estado = String(ESTADOS[clave]).replace(/'/g, "''")
+  return `QUERY(${Q_RANGO};"select Col1,sum(Col7) where Col9 = '${estado}' and Col1 is not null`
+    + ` group by Col1 order by sum(Col7) desc ${Q_LABEL}";0)`
 }
 
 /** NÚCLEO PURO: el importe del k-ésimo cliente. Vacío si hay menos de k clientes. */
 export function formulaMontoRanking(k, clave = 'pendiente') {
-  return `=IFERROR(LARGE(${arrayTotalPorCliente(clave)};${k});"")`
+  return `=IFERROR(INDEX(${consultaPorCliente(clave)};${k};2);"")`
 }
 
 /**
- * NÚCLEO PURO: el nombre del cliente cuyo total está en `celdaMonto`.
- * Se busca por el monto ya calculado y no se recalcula el LARGE: la mitad del costo, y las dos celdas
- * de la fila no se pueden contradecir. Ante un empate exacto de dos clientes, INDEX devuelve el
- * primero y las dos filas mostrarían el mismo nombre — está declarado en la nota de la celda.
+ * NÚCLEO PURO: el nombre del k-ésimo cliente.
+ *
+ * SALE DEL MISMO PUESTO QUE EL IMPORTE, no de buscar ese importe en la lista. La versión anterior
+ * hacía `MATCH(importe; array; 0)` para ahorrarse una consulta, y con eso dos clientes empatados en el
+ * mismo total mostraban el mismo nombre en dos filas. Ir por el puesto no puede empatar.
+ *
+ * La fila igual se apaga si no hay importe: sin plata no hay nombre, y una fila a medias se lee como
+ * un dato roto.
  */
-export function formulaClienteRanking(puesto, celdaMonto, clave = 'pendiente') {
-  return `=IF(${celdaMonto}="";"";"${puesto}  "&IFERROR(INDEX(${rango(COB.cliente)};`
-    + `MATCH(${celdaMonto};${arrayTotalPorCliente(clave)};0));"(sin nombre)"))`
+export function formulaClienteRanking(puesto, k, celdaMonto, clave = 'pendiente') {
+  return `=IF(${celdaMonto}="";"";"${puesto}  "&IFERROR(INDEX(${consultaPorCliente(clave)};${k};1);"(sin nombre)"))`
 }

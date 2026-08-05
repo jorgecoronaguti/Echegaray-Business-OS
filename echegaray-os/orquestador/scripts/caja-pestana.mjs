@@ -27,7 +27,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
-import { MONEDA_TOTAL, MONEDA_CUERPO, PORCENTAJE } from '../lib/formato-statement.mjs'
+import { MONEDA_TOTAL, MONEDA_CUERPO, PORCENTAJE, VECES } from '../lib/formato-statement.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
@@ -314,7 +314,7 @@ async function formatear(google, sheetId, g) {
   // UNA COBERTURA NO ES UN IMPORTE: es cuántas veces alcanza. Con el formato de la columna, 1,83 se
   // dibujaba "$2" — el número que decide si hay que salir a buscar plata, redondeado a dos pesos.
   fmt(r(g.fCobDesde - 1, g.fCobHasta, 6, 7), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-    { numberFormat: { type: 'NUMBER', pattern: '0,00" ×";;"—"' }, horizontalAlignment: 'CENTER' })
+    { numberFormat: VECES, horizontalAlignment: 'CENTER' })
   fmt(r(g.fCobDesde - 1, g.fCobHasta, 5, 6), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER' })
   // El acumulado de la concentración es una proporción, no plata.

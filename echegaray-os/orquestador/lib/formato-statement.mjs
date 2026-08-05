@@ -35,8 +35,25 @@ export const MONEDA_TOTAL = { type: 'CURRENCY', pattern: '"$"#,##0;("$"#,##0);"�
 /** Un contador es un contador: ni "$", ni miles, ni decimales. */
 export const CONTADOR = { type: 'NUMBER', pattern: '0;(0);"—"' }
 
+// ═══ EL PATRÓN SE ESCRIBE EN CONVENCIÓN US, AUNQUE EL ARCHIVO SEA es_AR (05/08/2026) ═══
+//
+// EL DEFECTO, MEDIDO EN PANTALLA. La cobertura de obligaciones de CAJA salía `003 ×` donde tenía que
+// decir `3,27 ×`. El patrón era `0,00" ×"`, escrito "a la argentina" pensando que la coma es el
+// separador decimal. **No lo es adentro de un patrón**: ahí la coma SIEMPRE es el separador de miles y
+// el punto SIEMPRE el decimal, y Sheets después los dibuja según el locale del archivo. Así que
+// `0,00` no es "dos decimales": son TRES dígitos obligatorios con un separador de miles en el medio, y
+// 3,27 se redondea a 3 y se rellena a "003".
+//
+// No da error, no rompe ninguna suma y arruina justo el número que contesta "¿me alcanza?". El mismo
+// defecto estaba en el porcentaje de acá y en el ratio de "Tarjeta de Credito", con el mismo origen.
+//
+//     EN UN PATRÓN: el decimal es `.` y el de miles es `,`. Siempre. Lo demás lo hace el locale.
+
 /** Una proporción: un decimal alcanza para decidir. */
-export const PORCENTAJE = { type: 'PERCENT', pattern: '0,0%' }
+export const PORCENTAJE = { type: 'PERCENT', pattern: '0.0%' }
+
+/** Cuántas veces alcanza (cobertura de obligaciones). Dos decimales: 1,05 y 1,50 deciden distinto. */
+export const VECES = { type: 'NUMBER', pattern: '0.00" \u00d7";;"\u2014"' }
 
 /**
  * EL ÚNICO COLOR DE LA PESTAÑA: una celda de control que no cierra.

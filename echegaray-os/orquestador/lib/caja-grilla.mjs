@@ -377,7 +377,7 @@ export function grilla(cargado, refs) {
   const PUESTOS = ['1º', '2º', '3º', '4º', '5º']
   PUESTOS.forEach((p, i) => {
     const f = filas.length + 1
-    push([formulaClienteRanking(p, `$${C_IMP}$${f}`), '', formulaMontoRanking(i + 1), '', '', '',
+    push([formulaClienteRanking(p, i + 1, `$${C_IMP}$${f}`), '', formulaMontoRanking(i + 1), '', '', '',
       `=IF($${C_IMP}$${f}="";"";SUM($${C_IMP}$${fCli0}:$${C_IMP}${f})/$${C_IMP}$${fCli0 + 6})`])
   })
   const fCli1 = filas.length
