@@ -73,6 +73,18 @@ export function entraEnElFajo(abierto, post, { ventanaMin = VENTANA_FAJO_MIN } =
  * no se puede afirmar que sean el mismo, y unir dos gastos distintos es peor que mostrar dos veces
  * el mismo.
  *
+ * ═══ EL REPETIDO SE ANOTA, NO SE TIRA (05/08) ═══
+ *
+ * Antes el repetido salía por `repetidos` y quien llamaba lo descartaba. Es la mitad del defecto de
+ * las cinco fotos: dos de ellas eran copias del mismo tique y no aparecían en ninguna línea del
+ * mensaje — para el dueño, dos fotos que se evaporaron. Ahora la copia queda COLGADA del que
+ * sobrevive (`copias`), con su `fileId` y su nombre de archivo, y viaja adentro del fajo: es lo que
+ * le permite a `rendicion.mjs` cerrar la cuenta contra la cantidad de adjuntos que entraron, y al
+ * mensaje decir «mandaste 3 fotos de este mismo comprobante».
+ *
+ * Se ACUMULA en vez de reemplazarse porque el fajo se colapsa de nuevo cada vez que se amplía: si
+ * cada pasada pisara la lista, las copias del primer post desaparecerían al llegar el segundo.
+ *
  * @returns {{items:Array, repetidos:Array}}
  */
 export function colapsarRepetidos(items = []) {
@@ -82,11 +94,23 @@ export function colapsarRepetidos(items = []) {
   for (const it of items) {
     const k = claveComprobante(it?.comprobante ?? {})
     if (!k) { out.push(it); continue }
-    if (vistos.has(k.clave)) { repetidos.push({ item: it, clave: k.clave }); continue }
-    vistos.set(k.clave, it)
-    out.push(it)
+    const ya = vistos.get(k.clave)
+    if (ya) {
+      repetidos.push({ item: it, clave: k.clave })
+      ya.copias = [...(ya.copias ?? []), ...(it?.copias ?? []), origenDe(it)].filter(Boolean)
+      continue
+    }
+    const copia = { ...it }
+    vistos.set(k.clave, copia)
+    out.push(copia)
   }
   return { items: out, repetidos }
+}
+
+/** La identidad de archivo de un ítem: con qué foto entró. Sin fileId no se puede rendir cuenta. */
+function origenDe(it) {
+  const o = it?.origen
+  return o?.fileId ? { fileId: o.fileId, nombre: o.nombre ?? o.fileId } : null
 }
 
 /**
@@ -229,10 +253,10 @@ export function indiceImputacionPendiente(items = []) {
   return items.findIndex((it) => imputacionPendiente(it).length)
 }
 
-/** El primer ítem al que le falta la obra Y tiene opciones que ofrecer. -1 si no hay ninguno. */
-export function indiceObraOfrecible(items = []) {
-  return items.findIndex((it) => it && !it.yaCargado && !it.comprobante?.obra && opcionesDe(it.sugerencia?.obra).length)
-}
+// `indiceObraOfrecible` vivía acá y se borró el 05/08: nadie la llamaba. Preguntaba sólo por la
+// obra, y desde el 04/08 quien decide qué se pregunta es `indiceImputacionPendiente`, que mira las
+// CUATRO columnas con lista (B, I, J, K). Dos funciones para la misma decisión con alcances
+// distintos es cómo se termina preguntando una cosa y validando otra.
 
 /**
  * Aplica una opción ELEGIDA con un botón. Devuelve el ítem nuevo (no muta) o null si no se acepta.

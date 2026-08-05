@@ -149,11 +149,16 @@ export function indexarCompras(filas = [], { cuitPorProveedor = null } = {}) {
   // Una sola lectura del Sheet alimenta TODO lo que hace falta: el duplicado, el vocabulario con el
   // que se resuelve lo escrito a mano, la historia de imputación con la que se aprende, y la escala
   // de cada proveedor con la que se detecta un importe fuera de rango.
+  const usosDeObra = usosDeObraEnCompras(filas)
   return {
     porNumero,
     porFechaTotal,
     porFecha,
     filas: n,
+    // LOS VALORES REALES DE LA COLUMNA J. Ver `usosDeObraEnCompras`: son la fuente canónica de la
+    // obra cuando el desplegable no se puede leer, y la evidencia de cómo se escribe cada una.
+    obras: Object.keys(usosDeObra),
+    usosDeObra,
     detalles: detallesPorObra(filas),
     usosDeDetalle: usosDeDetallePorObra(filas),
     escalaPorProveedor: escalasDe(totalesPorProveedor),
@@ -348,6 +353,7 @@ export async function indiceDeCompras(google, { fileId, cuitPorProveedor = null 
   const id = fileId || process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
   const vacio = {
     porNumero: new Map(), porFechaTotal: new Map(), porFecha: new Map(), filas: 0,
+    obras: [], usosDeObra: {},
     detalles: {}, usosDeDetalle: {}, escalaPorProveedor: {}, historia: [],
   }
   if (typeof google?.readSheetValues !== 'function') return { ok: false, ...vacio, error: 'sin cliente de Google' }
@@ -397,6 +403,53 @@ export function usosDeDetallePorObra(filas = []) {
   return out
 }
 
+/**
+ * LOS VALORES REALES DE LA COLUMNA J, con su conteo. La otra cara del desplegable.
+ *
+ * ═══ POR QUÉ NO ALCANZA EL DESPLEGABLE (05/08) ═══
+ *
+ * `listas.mjs` lee la lista de la columna J pidiendo la METADATA de validación de un rango chico.
+ * Cuando Google no contesta esa llamada —o cuando el rango se mueve— la lista vuelve VACÍA, y con la
+ * lista vacía `matchUnico` no puede afirmar nada: el bot deja de resolver la obra escrita a mano y,
+ * peor, el formulario de Corregir dejaba entrar el texto libre («Estrella» donde la columna dice
+ * «LA ESTRELLA»).
+ *
+ * Pero la columna J tiene 293 filas escritas por el dueño, y ahí está el vocabulario canónico REAL:
+ * el valor tal como él lo escribe. Es la misma lectura que ya se hace para buscar el duplicado, así
+ * que no cuesta una consulta más.
+ *
+ * NO REEMPLAZA AL DESPLEGABLE, LO RESPALDA. El desplegable es lo que la celda va a aceptar sin
+ * quedar en rojo, y por eso manda; esto es la evidencia de qué se escribió de verdad, y sirve para
+ * (a) resolver la obra cuando el desplegable no se pudo leer y (b) descubrir un valor legítimo que
+ * el desplegable todavía no tiene.
+ *
+ * @returns {Object<string, number>} valor exacto de la columna J → cuántas filas lo usan
+ */
+export function usosDeObraEnCompras(filas = []) {
+  const out = {}
+  for (const r of filas) {
+    const obra = String(r?.[EN.obra] ?? '').trim()
+    if (!obra) continue
+    out[obra] = (out[obra] ?? 0) + 1
+  }
+  return out
+}
+
+/** Cuántas filas tiene que tener una obra de la columna J para tomarse como vocabulario canónico. */
+export const MIN_USOS_OBRA = 2
+
+/**
+ * Las obras de la columna J que son vocabulario y no un tipeo suelto: usadas `min` veces o más.
+ *
+ * El umbral es el mismo criterio que `detallesFirmes` y por la misma razón: una obra real aparece
+ * decenas de veces en 293 filas; un valor mal escrito una sola vez —justamente el «Estrella» que
+ * escribió el bot esta semana— aparece una. Sin el umbral, el error de ayer se convertiría en el
+ * vocabulario de mañana.
+ */
+export function obrasFirmes(usos = {}, min = MIN_USOS_OBRA) {
+  return Object.entries(usos ?? {}).filter(([, n]) => n >= min).sort((a, b) => b[1] - a[1]).map(([o]) => o)
+}
+
 /** Cuántas veces la usó cada obra un detalle antes de completarlo solo. Ver `usosDeDetallePorObra`. */
 export const MIN_USOS_DETALLE = 2
 
@@ -424,7 +477,7 @@ function contarDetalles(filas = []) {
 }
 
 /**
- * Las filas de Compras con la forma que espera `imputacion-aprendida.mjs`.
+ * Las filas de Compras con la forma que espera `imputacion-aprendida.mjs` (`indice.historia`).
  *
  * POR QUÉ ACÁ Y NO OTRA TABLA. La lib que APRENDE cómo imputa el dueño ya existe y es la única que
  * sabe hacerlo (perfiles por proveedor, umbrales calibrados, confianza declarada). Lo que le faltaba
@@ -435,11 +488,11 @@ function contarDetalles(filas = []) {
  *
  * Entonces: la historia sale de la MISMA lectura que ya se hace para el duplicado, y el que aprende
  * sigue siendo uno solo. Cero consultas de más, cero segunda implementación.
+ *
+ * `historiaDeCompras(filas)` —un envoltorio que hacía `indexarCompras(filas).historia`— se borró el
+ * 05/08: no lo llamaba nadie salvo su propio test. Una segunda puerta de entrada al mismo índice es
+ * una invitación a leer la pestaña dos veces.
  */
-export function historiaDeCompras(filas = []) {
-  return indexarCompras(filas).historia
-}
-
 function aHistoria(reg) {
   return {
     proveedor: reg.proveedor,

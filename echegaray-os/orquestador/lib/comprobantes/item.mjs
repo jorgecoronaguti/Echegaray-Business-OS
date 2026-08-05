@@ -12,7 +12,7 @@
 
 import { matchProveedor } from '../carga-comprobantes.mjs'
 import { normalizarLectura, claveComprobante } from './lectura.mjs'
-import { imputacionDeAnotacion } from './imputacion.mjs'
+import { imputacionDeAnotacion, condicionDeAnotacion } from './imputacion.mjs'
 import { imputacionDelModelo, valorDeLista } from './desplegables.mjs'
 import { palabrasInventadas, ecoDelOcr } from './plausibilidad.mjs'
 import { MAX_OPCIONES } from './fajo.mjs'
@@ -150,6 +150,23 @@ export function armarItem({ lectura, adjunto, listas, textoPost = null, ahora = 
   }
   comprobante.detalleObra = imp.detalle ?? null
   comprobante.detalleVia = imp.detalleVia ?? null
+
+  // ═══ LA CONDICIÓN DE VENTA ESCRITA A MANO MANDA SOBRE LA IMPRESA (05/08) ═══
+  //
+  // Es la tercera cosa que dice la mano del dueño, junto con la obra y el detalle: «Estrella /
+  // pisos - galpón 9 / **c/c**». Decide si la fila entra Pendiente o Pagada, o sea si esa plata
+  // aparece o no como deuda en el Flujo de Fondos. La impresa la puso el proveedor al emitir; la
+  // manuscrita la puso la empresa al recibir, y es posterior.
+  //
+  // Se prueban DOS fuentes, en orden: lo que la visión aisló como condición manuscrita, y —si no
+  // aisló nada— la transcripción literal completa, donde el `c/c` viaja pegado a la obra. Sin marca
+  // inequívoca no se toca nada: queda la impresa, que es lo que había antes de este arreglo.
+  const cond = condicionDeAnotacion(comprobante.condicionManuscrita) ?? condicionDeAnotacion(comprobante.anotacion)
+  if (cond) {
+    comprobante.condicion = cond
+    comprobante.condicionVia = 'manuscrita'
+  }
+  delete comprobante.condicionManuscrita
 
   const k = claveComprobante(comprobante)
   return {

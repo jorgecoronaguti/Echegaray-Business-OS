@@ -151,6 +151,26 @@ export const POLITICA = Object.freeze({
  * @returns {Array<{codigo:string, texto:string, pregunta:string}>}
  */
 export function faltantesDe(item = {}, politica = POLITICA.CARGADOR, { ahora } = {}) {
+  // ═══ A LO QUE YA ESTÁ EN COMPRAS NO LE FALTA NADA (05/08) ═══
+  //
+  // El tique de Barcelo 00113-00014288 se mandó TRES veces y ya estaba en la fila 822. El bot lo
+  // detectó —`yaCargado` estaba puesto— y AUN ASÍ contestó pidiendo la fecha, el IVA y mandando a
+  // tocar «Corregir», porque el mensaje arma sus preguntas con `preguntasDe` → `faltantesDe`, y esta
+  // función miraba el comprobante sin preguntarse si hacía falta cargarlo.
+  //
+  // Es la peor forma de contestar que existe para ese caso: la persona vuelve a mirar el papel, lo
+  // corrige, y todo ese trabajo era para una fila que ya estaba escrita. Peor todavía, el mensaje
+  // deja la duda de si se cargó o no.
+  //
+  // «Qué le falta para poder cargarse» es una pregunta que NO TIENE SENTIDO sobre algo que no se va
+  // a cargar. `puedeCargarse` ya lo sabía y lo chequeaba por su cuenta —por eso la carga nunca se
+  // duplicó—; lo que faltaba era que lo supiera también el que redacta las preguntas. Se contesta
+  // acá, una sola vez, para las dos caras.
+  //
+  // NO SE PIERDE NINGÚN CONTROL: un `yaCargado` es la fila leída en el DESTINO (`marcarEnCompras`),
+  // no una anotación propia — el registro que no se puede verificar ya se descarta antes de llegar
+  // acá. Y un PROBABLE duplicado sin contestar no entra por este camino: ése sigue preguntándose.
+  if (item.yaCargado || item.duplicadoResuelto === 'mismo') return []
   const c = item.comprobante ?? {}
   const p = politica ?? POLITICA.CARGADOR
   const out = []

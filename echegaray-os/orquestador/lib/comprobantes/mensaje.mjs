@@ -148,6 +148,12 @@ export function tablaComprobante(item = {}) {
   if (c.categoria) f.push(['Categoría', conOrigen(c.categoria, item.aprendido?.categoria ? sugeridoTexto(item.aprendido.categoria) : null)])
   if (c.concepto) f.push(['Concepto', c.concepto])
   else if (c.conceptoDescartado) f.push(['Concepto', ilegible('no pude leer qué se compró')])
+  // LA CONDICIÓN DE VENTA SE MUESTRA CUANDO LA DECIDIÓ LA MANO DEL DUEÑO (05/08). Es la que define
+  // si la fila entra **Pendiente** o **Pagada**, o sea si esa plata aparece como deuda en el Flujo
+  // de Fondos, y le gana a la impresa: un cambio de esa consecuencia no puede pasar en silencio.
+  if (c.condicion && c.condicionVia === 'manuscrita') {
+    f.push(['Condición', conOrigen(`${c.condicion} → ${c.condicion === 'Cuenta Corriente' ? 'Pendiente' : 'Pagado'}`, 'escrito a mano')])
+  }
   const importe = c.total != null ? redondear(c.total - (c.iva ?? 0)) : null
   // El importe de la columna M se DERIVA del IVA (M = Total − IVA). Si el IVA no se pudo leer, este
   // número tampoco es un dato leído: es una cuenta hecha con un dato malo, y se declara así.
@@ -317,6 +323,16 @@ export function lineaRubro(item = {}) {
 export function notasDe(item = {}) {
   const c = item.comprobante ?? {}
   const l = []
+  // ═══ LAS FOTOS REPETIDAS SE NOMBRAN (05/08) ═══
+  //
+  // El mismo tique llegó TRES veces en tres fotos y el mensaje mostraba una sola línea, sin decir
+  // nada de las otras dos: para quien mandó las tres, dos fotos se habían perdido. Va acá —y no sólo
+  // en la rendición del post— porque el mensaje se vuelve a dibujar desde el fajo en cada click, y
+  // la rendición del post no viaja a Postgres.
+  const copias = (item.copias ?? []).length
+  if (copias) {
+    l.push(`mandaste ${copias + 1} fotos de este mismo comprobante (${(item.copias ?? []).map((x) => `\`${x.nombre ?? x.fileId}\``).join(', ')}) — lo cargo **una sola vez**`)
+  }
   if (c.otrosTributos) l.push(`percepciones / otros tributos ${money(c.otrosTributos)} — ya están dentro del Importe, no son IVA`)
   if (c.numeroLeidoMal) l.push(`había leído **${c.numeroLeidoMal}**; según ARCA el número es **${c.numero}**`)
   // ═══ POR QUÉ FALTA EL CONCEPTO DE UN PAPEL QUE LO TIENE IMPRESO (04/08) ═══
