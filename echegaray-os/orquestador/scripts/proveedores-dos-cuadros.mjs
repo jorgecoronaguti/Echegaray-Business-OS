@@ -21,6 +21,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { diferenciasDeHuella, huellaProtegida } from '../lib/proveedores-bloque-vivo.mjs'
 import { COLCHON_FINAL, filaDelSiguienteTitulo, filasNoVacias, sobranteDeColchon } from '../lib/proveedores-colchon.mjs'
 import { ANCHOS_PROVEEDORES } from '../lib/proveedores-frontera.mjs'
+import { leerParaDecidirBorrado } from '../lib/proveedores-lectura-dinamica.mjs'
 import {
   altoEmitido, bandasDeFormato, COL, filtros, formatoDeTodo, fuenteCompras, geometriaDeLaSeccion,
   PENDIENTE, rotulosDelCuadro, VISTA,
@@ -262,7 +263,11 @@ async function main() {
  * columna le borrara al dueño catorce fechas que vivían más a la derecha. Ver `lib/proveedores-colchon.mjs`.
  */
 async function recortarElAire({ google, sheetId, geo }) {
-  const ancho = await google.readSheetValues(ID, `${PESTAÑA}!A1:${ANCHO_LECTURA}${geo.filaLimite + 20}`, { render: 'FORMULA' })
+  // DOS LECTURAS FUSIONADAS: acá se BORRA, y el cuerpo de una dinámica es invisible para `FORMULA`.
+  // Hoy este bloque no se recortaba de más por suerte —debajo del cuadro B hay texto que frena el
+  // conteo—, pero la suerte no es un control. Ver `lib/proveedores-lectura-dinamica.mjs`.
+  const rango = `${PESTAÑA}!A1:${ANCHO_LECTURA}${geo.filaLimite + 20}`
+  const ancho = await leerParaDecidirBorrado({ google, id: ID, rango })
   const siguiente = filaDelSiguienteTitulo(ancho, geo.filaEncabezado)
   const s = sobranteDeColchon({ filas: ancho, desde: geo.filaEncabezado, hasta: siguiente })
   const sucias = filasNoVacias(ancho, s)
@@ -279,7 +284,7 @@ async function recortarElAire({ google, sheetId, geo }) {
     sheetId, dimension: 'ROWS', startIndex: s.desdeBorrar - 1, endIndex: s.hastaBorrar - 1 } } }], { espejo: true })
 
   // LA EVIDENCIA ES DEL EFECTO: se relee y se cuenta el aire que quedó de verdad.
-  const despues = await google.readSheetValues(ID, `${PESTAÑA}!A1:${ANCHO_LECTURA}${geo.filaLimite + 20}`, { render: 'FORMULA' })
+  const despues = await leerParaDecidirBorrado({ google, id: ID, rango })
   const ahora = sobranteDeColchon({ filas: despues, desde: geo.filaEncabezado, hasta: filaDelSiguienteTitulo(despues, geo.filaEncabezado) })
   if (ahora.blancas === COLCHON_FINAL) console.log(`✓ quedaron ${ahora.blancas} filas de aire, releídas del archivo`)
   else { console.error(`✗✗ quedaron ${ahora.blancas} filas de aire y se esperaban ${COLCHON_FINAL}`); process.exitCode = 1 }
