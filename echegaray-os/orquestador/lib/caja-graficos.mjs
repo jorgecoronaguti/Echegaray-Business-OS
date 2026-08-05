@@ -27,6 +27,15 @@
 // Sin 3D, sin sombras, sin gridlines de fondo, sin leyenda cuando hay una sola serie. La misma
 // disciplina que las tablas. El acento se reserva para lo que decide: el subtotal del recorrido.
 
+/**
+ * LA COLUMNA DONDE SE ANCLAN. Los gráficos flotan, pero el ANCLA es una celda REAL: si la pestaña no
+ * tiene tantas columnas, `addChart` devuelve 400 y el lote entero se cae. CAJA tiene 8 columnas de
+ * datos y nada garantizaba que la hoja tuviera una novena — el generador sólo asegura el alto, nunca
+ * el ancho. Por eso el número vive acá, exportado, y `caja-pestana.mjs` garantiza la columna ANTES de
+ * pedir el gráfico. Un ancla fuera de la grilla es el modo de falla más probable de este archivo.
+ */
+export const COL_ANCLA = 8
+
 /** El prefijo que marca un gráfico como PROPIO. Lo que no lo lleve, no se toca. */
 export const MARCA = '⟡ '
 export const TITULO_RECORRIDO = `${MARCA}El recorrido de la caja, tramo por tramo`
@@ -87,7 +96,7 @@ export function graficoRecorrido(sheetId, g) {
             connectorLineStyle: { color: GRIS_CLARO, type: 'MEDIUM_DASHED', width: 1 },
           },
         },
-        position: { overlayPosition: { anchorCell: { sheetId, rowIndex: 1, columnIndex: 8 }, widthPixels: 620, heightPixels: 300 } },
+        position: { overlayPosition: { anchorCell: { sheetId, rowIndex: 1, columnIndex: COL_ANCLA }, widthPixels: 620, heightPixels: 300 } },
       },
     },
   }
@@ -125,7 +134,7 @@ export function graficoConcentracion(sheetId, g) {
             headerCount: 0,
           },
         },
-        position: { overlayPosition: { anchorCell: { sheetId, rowIndex: 18, columnIndex: 8 }, widthPixels: 620, heightPixels: 260 } },
+        position: { overlayPosition: { anchorCell: { sheetId, rowIndex: 18, columnIndex: COL_ANCLA }, widthPixels: 620, heightPixels: 260 } },
       },
     },
   }
@@ -139,15 +148,25 @@ export function graficoConcentracion(sheetId, g) {
  * en su PROPIO lote — un `addChart` que falle no puede tirarse abajo el formato de la pestaña entera.
  */
 export async function requestsDeGraficos(google, fileId, sheetId, g) {
-  if (!g?.fTotal || !g?.cal0 || !g?.cal1 || !g?.fCli0 || !g?.fCli1) return []
-  const hojas = await google.getCharts(fileId).catch(() => null)
+  // ═══ UN CAMINO QUE NO DIBUJA TIENE QUE DECIR POR QUÉ ═══
+  //
+  // La primera versión devolvía `[]` en silencio en dos de sus tres salidas, y en la corrida real no se
+  // dibujó ningún gráfico sin que el log dijera una palabra. "No apareció y no sé por qué" es el peor
+  // estado posible: no se puede ni arreglar ni descartar. Cada salida imprime su motivo.
+  const faltan = ['fTotal', 'cal0', 'cal1', 'fCli0', 'fCli1'].filter((k) => !g?.[k])
+  if (faltan.length) {
+    console.warn(`  ⚠ NO dibujo los gráficos: la grilla no trae ${faltan.join(', ')}`)
+    return []
+  }
+  const hojas = await google.getCharts(fileId).catch((e) => { console.warn(`  ⚠ getCharts falló: ${e.message}`); return null })
   if (!hojas) {
     // NO PODER LEER LOS EXISTENTES NO ES "NO HAY NINGUNO": dibujar igual apilaría uno más en cada
     // corrida. Sin la lectura no se puede decidir, así que no se dibuja y se dice por qué.
-    console.warn('  ⚠ no pude leer los gráficos existentes: NO dibujo (dibujar sin borrar los apila)')
+    console.warn('  ⚠ NO dibujo los gráficos: no pude leer los existentes, y dibujar sin borrar los apila')
     return []
   }
   const mios = (hojas.find((h) => h.sheetId === sheetId)?.charts ?? []).filter((c) => String(c.title ?? '').startsWith(MARCA))
+  if (mios.length) console.log(`  🗑 borro ${mios.length} gráfico(s) míos de la corrida anterior antes de redibujar`)
   return [
     ...mios.map((c) => ({ deleteEmbeddedObject: { objectId: c.chartId } })),
     graficoRecorrido(sheetId, g),

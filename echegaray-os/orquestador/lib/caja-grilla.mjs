@@ -63,8 +63,21 @@ export const ANCHO = 8
  * generador y va vacía, así la fusión limpia lo que quedó de las corridas viejas.
  */
 export const COL_PROSA = 7
-/** Los anchos, en píxeles. Suman 1.136: entran en una pantalla sin scroll horizontal. */
-export const ANCHOS = [380, 56, 140, 140, 140, 104, 156, 24]
+/**
+ * Los anchos, en píxeles. Suman 1.140: entran en una pantalla sin scroll horizontal.
+ *
+ * ═══ EL REPARTO SE CORRIGIÓ MIRANDO EL RENDER (05/08) ═══
+ *
+ * `auditar-pantalla.mjs` marcó seis textos cortados sobre la pestaña escrita. La columna del rótulo
+ * tenía 380px (≈66 caracteres) y la del VEREDICTO 156px (≈27): al revés de lo que necesita este
+ * diseño. Los rótulos de bloque desbordan libres sobre las columnas vacías de al lado, así que la A
+ * puede ceder; el veredicto NO desborda —a su derecha está el centinela de 24px— y es el que dice
+ * "⚠ hay $12.188.441 sin marcar". Un aviso cortado no avisa.
+ *
+ * Los rótulos también se acortaron: ensanchar hasta que entre cualquier frase es cómo una pestaña
+ * termina pidiendo scroll horizontal.
+ */
+export const ANCHOS = [330, 52, 140, 140, 140, 100, 214, 24]
 
 const C_IMP = 'C', C_TC = 'D', C_PESOS = 'E'
 
@@ -109,7 +122,7 @@ export function grilla(cargado, refs) {
   // del dato, y con el pipeline detenido eso es una mentira que se lee como un hecho. Ahora es la más
   // nueva de LAS TRES PUERTAS que mueven esta caja (extracto, compras pagadas, cobranzas), calculada
   // por Sheets: cambia cuando cambia el dato, sin que corra nadie.
-  push(['POSICIÓN DE CAJA', '', '', '', '', '', rotuloAlDia('Dato más nuevo', formulaFrescuraCaja({ bancoRaw: refs.bancoRaw }))])
+  push(['POSICIÓN DE CAJA', '', '', '', '', '', rotuloAlDia('Dato', formulaFrescuraCaja({ bancoRaw: refs.bancoRaw }))])
   // ═══ LAS CUATRO CIFRAS QUE SE DECIDEN, Y CADA UNA DICE QUÉ ES ═══
   //
   // El dueño: *"el concepto piso proyectado en caja es super confuso, ¿qué es? ¿lo puedo usar para
@@ -190,7 +203,7 @@ export function grilla(cargado, refs) {
   // leídos entre las cinco cuentas y el total eran la mitad del ruido de este bloque.
   const fPost = fBancoPesos && refs.bancoRaw ? filas.length + 1 : 0
   if (fPost) {
-    push(['Movimientos posteriores al corte del extracto ‖ desglose en _CAJA_ANEXO', 'ARS',
+    push(['Movimientos posteriores al corte', 'ARS',
       formulaNetaPosterior(`$F$${fBancoPesos}`), '', `=${C_IMP}${fPost}`, '=TODAY()',
       `=IF(${C_IMP}${fPost}=0;"sin movimientos";"vivo")`])
   }
@@ -231,7 +244,7 @@ export function grilla(cargado, refs) {
   // librado que el banco todavía no debitó NO salió de la cuenta. Que no se reste es correcto; que no
   // se DIGA es lo que hacía desconfiar —"Total" y "Disponibilidad neta" daban el mismo número con esta
   // línea en el medio—. El rótulo ahora lo dice y la fila memo no suma.
-  const fCh = push(['Cheques emitidos pendientes de debitar ‖ no restan hasta que el banco los debita', 'ARS',
+  const fCh = push(['Cheques emitidos sin debitar ‖ no restan', 'ARS',
     `=SUMPRODUCT((UPPER('${refs.cheques}'!$K$2:$K$400)<>"SI")*IF(ISNUMBER('${refs.cheques}'!$F$2:$F$400);'${refs.cheques}'!$F$2:$F$400;0))`,
     '', '', '', 'salen en el calendario'])
 
@@ -248,8 +261,8 @@ export function grilla(cargado, refs) {
   // quedó en la fila vieja y los rangos con nombre se republicaron en una celda vacía: la caja física
   // ($39,28M) se fue a cero sin un solo #ERROR. Ahora se RE-EMITE en su fila nueva desde lo que se leyó
   // al empezar; si no se pudo leer nada, vuelve a salir AJENA — sin dato no se sobrescribe.
-  const fArq0 = push(['2 · ARQUEO DE LA CAJA FÍSICA — LO ÚNICO QUE SE CARGA A MANO', '', '', '', '', '',
-    `=IF(ISNUMBER(${DESDE_CAJA.arqueoArsFecha});"contado el "&TEXT(${DESDE_CAJA.arqueoArsFecha};"dd/mm/yyyy");"⚠ sin arqueo: la caja física vale $0 hasta que cargues la fecha")`])
+  const fArq0 = push(['2 · ARQUEO DE LA CAJA FÍSICA — SE CARGA A MANO', '', '', '', '', '',
+    `=IF(ISNUMBER(${DESDE_CAJA.arqueoArsFecha});"contado el "&TEXT(${DESDE_CAJA.arqueoArsFecha};"dd/mm/yyyy");"⚠ sin arqueo: la caja vale $0")`])
   const suyoOAusente = (rot, campo) => { const v = previo(rot, campo); return v === '' || v === null || v === undefined ? AJENA : v }
   const arq = (rot, mon) => [rot, mon, suyoOAusente(rot, 'saldo'), AJENA, AJENA, suyoOAusente(rot, 'fecha'), AJENA]
   const fArqArs = push(arq('Caja en pesos — contado', 'ARS'))
@@ -261,8 +274,8 @@ export function grilla(cargado, refs) {
   // ES UNA ESCALERA DE VENCIMIENTOS (maturity ladder), que es como un banco mira su liquidez: cada
   // tramo dice qué entra, qué sale, cuál es el neto y —lo que la hace útil— con cuánta plata queda la
   // empresa DESPUÉS. La pregunta no es "cuánto debo" sino "en qué semana me quedo corto".
-  push(['3 · CALENDARIO DE VENCIMIENTOS — CUÁNDO ENTRA Y CUÁNDO SALE', '', '', '', '', '',
-    `=IF(ISNUMBER(${DESDE_CAJA.fecha});"desde el corte del "&TEXT(${DESDE_CAJA.fecha};"dd/mm/yyyy");"⚠ sin corte")`])
+  push(['3 · CALENDARIO — CUÁNDO ENTRA Y CUÁNDO SALE', '', '', '', '', '',
+    `=IF(ISNUMBER(${DESDE_CAJA.fecha});"desde el "&TEXT(${DESDE_CAJA.fecha};"dd/mm/yyyy");"⚠ sin corte")`])
   const resolutor = (k) => resolutorDeTramo(k, refs.filasCal)
   // LA COLUMNA "SALE" ES EL CUADRO DEL CASH FLOW, CORTADO POR TRAMO. Hasta el 04/08 este calendario
   // tenía su PROPIA lista de egresos y el cash flow otra: dos listas de la misma plata clasificadas por
@@ -304,7 +317,7 @@ export function grilla(cargado, refs) {
   // ERAN OCHO RENGLONES Y AHORA SON DOS. Los seis que se fueron (los tres del riesgo de cobertura, el
   // declarado de ya debitados, los conceptos sin fuente y los cheques sin fecha) están enteros en
   // `_CAJA_ANEXO` bloque A8, y su veredicto está en el bloque 6 de acá.
-  const fPeor = push(['· el piso proyectado, y entre qué y qué está parado', '',
+  const fPeor = push(['· el piso, y entre qué y qué está parado', '',
     `=MIN($F${cal0}:$F${cal1})`,
     `=MIN(${BORDES.map((_, k) => `$F${cal0 + k}-(${inciertoHasta(hastaTramo(k), DESDE_SIEMPRE)})`).join(';')})`,
     `=$C${filas.length + 1}-$D${filas.length + 1}`, '',
@@ -320,9 +333,9 @@ export function grilla(cargado, refs) {
   // pasada contra el real de ésta. Esa comparación necesita las predicciones congeladas de
   // `public.finanzas_caja_negra` replicadas en el archivo, y esa réplica hoy no existe. Sin ella, un
   // "previsto" escrito acá sería un número inventado.
-  push(['· previsto contra real — lo que vencía y sigue sin conciliarse', '',
+  push(['· previsto contra real — lo que vencía', '',
     `=$C${cal0}`, `=$D${cal0}`, `=N(${ANEXO.vencidoSinConciliar})`, '',
-    `=IF(N(${ANEXO.vencidoSinConciliar})=0;"al día";"⚠ hay "&TEXT(N(${ANEXO.vencidoSinConciliar});"$#,##0")&" sin marcar — detalle en _CAJA_ANEXO A6")`])
+    `=IF(N(${ANEXO.vencidoSinConciliar})=0;"al día";"⚠ "&TEXT(N(${ANEXO.vencidoSinConciliar});"$#,##0")&" sin marcar")`])
   const calFin = filas.length
 
   // ── 5 · ¿ALCANZA? ───────────────────────────────────────────────────────────────────────────────
@@ -336,8 +349,8 @@ export function grilla(cargado, refs) {
   // un banco y con un proveedor, y no se mueven con el almanaque. Las tres ventanas ARRANCAN en el
   // corte del extracto, así que lo ya vencido pesa en las tres: una obligación atrasada no deja de
   // existir porque pasó su fecha.
-  const fCob0 = push(['4 · ¿ALCANZA? — COBERTURA DE OBLIGACIONES Y CRÉDITO NO UTILIZADO', '', '', '', '', '',
-    'debajo de 1,00 hay que conseguir plata'])
+  const fCob0 = push(['4 · ¿ALCANZA? — COBERTURA Y CRÉDITO', '', '', '', '', '',
+    'debajo de 1,00 falta plata'])
   push(['Horizonte', '', 'Obligaciones', '', 'Caja + cobranzas', 'Hasta', 'Cobertura'])
   const fCobDesde = filas.length + 1
   for (const dias of [30, 60, 90]) {
@@ -357,9 +370,9 @@ export function grilla(cargado, refs) {
   // clasifica el uso del descubierto como actividad de FINANCIACIÓN; una línea no girada no es un
   // activo de ninguna manera: es un compromiso del banco. El desglose —cupo, consumos, cuotas y lo que
   // cuesta el descubierto por día— vive en `_CAJA_ANEXO` A3.
-  const fCredito = push(['Crédito no utilizado (tarjeta + acuerdo) ‖ NO es efectivo, es deuda sin tomar', 'ARS',
+  const fCredito = push(['Crédito no utilizado ‖ NO es efectivo', 'ARS',
     `=N(${ANEXO.tarjetaDisponible})`, `=N(${ANEXO.acuerdo})`, `=N(${ANEXO.aire})`, '',
-    `=IF(N(${ANEXO.diasDeCaja})=0;"";TEXT(N(${ANEXO.diasDeCaja});"0")&" días de caja al ritmo actual")`])
+    `=IF(N(${ANEXO.diasDeCaja})=0;"";TEXT(N(${ANEXO.diasDeCaja});"0")&" días de caja")`])
 
   // ── 6 · DE QUIÉN DEPENDE LA COBRANZA ────────────────────────────────────────────────────────────
   //
@@ -370,7 +383,7 @@ export function grilla(cargado, refs) {
   // ⚠ EL RANKING ES DE ALTURA FIJA Y ESO NO ES UNA LIMITACIÓN, ES EL REQUISITO: QUERY y SORT+UNIQUE
   // DERRAMAN, y esta pestaña se escribe con fusión preservadora fila por fila. Cinco filas más un
   // "otros" que absorbe el resto: no se pierde un peso y ninguna celda puede pisar la de abajo.
-  push(['5 · DE QUIÉN DEPENDE LA COBRANZA — CONCENTRACIÓN POR CLIENTE', '', '', '', '', '',
+  push(['5 · DE QUIÉN DEPENDE LA COBRANZA', '', '', '', '', '',
     `sobre la cartera "${ESTADOS.pendiente}"`])
   const cabCli = push(['Cliente', '', 'Pendiente de cobro', '', '', '', '% acumulado'])
   const fCli0 = filas.length + 1
@@ -387,7 +400,7 @@ export function grilla(cargado, refs) {
   // columna. Un "Proyectado" (sin factura), un "Facturado" sin fecha acordada y un "Cancelado" viven
   // separados en `_CAJA_ANEXO` — acá manda la cuenta por cobrar, que es la que financia la caja.
   const fCliTot = push(['⇒ Total pendiente de cobro', '', formulaTotalEstado('pendiente'), '', '', '',
-    'los otros estados, en _CAJA_ANEXO'])
+    'los otros estados, en el anexo'])
 
   // ── 7 · LOS CONTROLES, EN VEREDICTO ─────────────────────────────────────────────────────────────
   //
@@ -400,7 +413,7 @@ export function grilla(cargado, refs) {
   // decide: la primera es plata que no cuadra (hay que buscarla), la segunda es información que falta
   // (hay que cargarla). La columna de la derecha NOMBRA cuál manda, con su monto: sin eso el total
   // agrupado sería exactamente el "número mudo" que este archivo persigue.
-  const fCtrl0 = push(['6 · CONTROLES — EL VEREDICTO ACÁ, EL DETALLE EN _CAJA_ANEXO', '', '', '', '', '',
+  const fCtrl0 = push(['6 · CONTROLES — el detalle en _CAJA_ANEXO', '', '', '', '', '',
     'todos tienen que dar cero'])
   const noCierra = [ANEXO.difEcheq, ANEXO.difConciliacion, ANEXO.efectivoSinExplicar]
   const falta = [ANEXO.vencidoSinConciliar, ANEXO.oficinaSinCanal, ANEXO.chequesSinMarca, ANEXO.chequesSinFecha]
@@ -412,26 +425,29 @@ export function grilla(cargado, refs) {
     const mx = `MAX(${pares.map(([n]) => `ABS(N(${n}))`).join(';')})`
     return `=IF(${mx}=0;"✓ en cero";${cual(pares).replaceAll('@MX', mx)})`
   }
+  // LAS ETIQUETAS SON CORTAS A PROPÓSITO: la celda las muestra con su monto al lado y el conjunto tiene
+  // que entrar en la columna, o el aviso se corta justo donde dice cuánto. El nombre completo de cada
+  // control está en su bloque del anexo, que es donde se va a mirar el detalle.
   push(['· plata que no cierra — hay que ir a buscarla', '', `=${suma(noCierra)}`, '', '', '',
-    veredicto([[ANEXO.difEcheq, 'echeqs ya entregados que el cash flow espera'],
-      [ANEXO.difConciliacion, 'CAJA y el Cash Flow no arrancan del mismo saldo'],
-      [ANEXO.efectivoSinExplicar, 'efectivo cobrado sin depositar ni en la caja física']])])
+    veredicto([[ANEXO.difEcheq, 'echeqs entregados'],
+      [ANEXO.difConciliacion, 'CAJA vs Cash Flow'],
+      [ANEXO.efectivoSinExplicar, 'efectivo sin depositar']])])
   const fCtrl1 = push(['· información que falta — hay que cargarla', '', `=${suma(falta)}`, '', '', '',
     veredicto([[ANEXO.vencidoSinConciliar, 'vencido sin conciliar'],
-      [ANEXO.oficinaSinCanal, 'sueldos de OFICINA sin canal declarado'],
-      [ANEXO.chequesSinMarca, 'cheques sin marca de cobertura'],
-      [ANEXO.chequesSinFecha, 'cheques sin fecha de pago']])])
+      [ANEXO.oficinaSinCanal, 'OFICINA sin canal'],
+      [ANEXO.chequesSinMarca, 'cheques sin marca'],
+      [ANEXO.chequesSinFecha, 'cheques sin fecha']])])
 
   // ── EL PANEL SE RESUELVE ACÁ, cuando ya se sabe en qué fila quedó cada total. Son REFERENCIAS, no
   // copias: si el detalle cambia, el titular cambia con él.
   const nl = '&CHAR(10)&'
   const PANEL = {
-    '@ROT1': `="DISPONIBLE HOY"${nl}"caja y bancos, criterio percibido"`,
-    '@ROT2': `="PISO DE CAJA — EL PUNTO MÁS BAJO"${nl}"lo más bajo que llega proyectando todo · "&$G$${fPeor}`,
-    '@ROT3': `="QUEDA AL CIERRE DE ESTE MES"${nl}"después de cubrir todo lo que vence hasta el "&$G$${fFinMes}`,
+    '@ROT1': `="DISPONIBLE HOY"${nl}"caja y bancos · percibido"`,
+    '@ROT2': `="PISO DE CAJA"${nl}"lo más bajo del recorrido · "&$G$${fPeor}`,
+    '@ROT3': `="QUEDA A FIN DE MES"${nl}"cubierto todo lo que vence al "&$G$${fFinMes}`,
     // Si nadie cargó la caja mínima, el mínimo vale 0 y esto publicaría el piso entero como colocable
     // —el error más caro posible en esta celda—, así que en ese caso el rótulo pide el dato.
-    '@ROT4': `=IF(N(${DESDE_CAJA.minima})<=0;"COLOCABLE SIN TOCAR LA OPERACIÓN"${nl}"⚠ cargá la caja mínima en 01_Valores Iniciales";"COLOCABLE SIN TOCAR LA OPERACIÓN"${nl}"el piso menos la caja mínima de "&TEXT(${DESDE_CAJA.minima};"$#,##0")&" · plazo máximo: "&$G$${fPeor})`,
+    '@ROT4': `=IF(N(${DESDE_CAJA.minima})<=0;"COLOCABLE"${nl}"⚠ cargá la caja mínima en 01_Valores Iniciales";"COLOCABLE"${nl}"el piso menos la caja mínima de "&TEXT(${DESDE_CAJA.minima};"$#,##0"))`,
     '@TOTAL': `=${C_PESOS}${fTotal}`,
     '@PISO': `=$C$${fPeor}`,
     // La posición acumulada al final del tramo que cubre este mes. NO es una cuenta nueva: es la misma

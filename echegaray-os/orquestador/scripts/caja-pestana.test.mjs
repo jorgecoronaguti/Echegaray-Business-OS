@@ -13,7 +13,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { grilla, rescatar } from './caja-pestana.mjs'
-import { FILAS_MAXIMAS } from '../lib/caja-grilla.mjs'
+import { FILAS_MAXIMAS, ANCHOS } from '../lib/caja-grilla.mjs'
 import { lineasDeCaja, conceptosFueraDelCalendario } from '../lib/calendario-egresos.mjs'
 import { CUENTAS } from '../lib/caja-disponibilidades.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
@@ -119,7 +119,7 @@ test('los cheques emitidos NO restan de la disponibilidad, y el rótulo lo DICE'
   // Cualquiera lee que se resta — y no se resta, porque un cheque librado que el banco no debitó NO
   // salió de la cuenta (percibido). Que no se reste es correcto; que no se diga es lo que hace desconfiar.
   const g = construir()
-  const f = filaDe(g, /^Cheques emitidos pendientes de debitar/)
+  const f = filaDe(g, /^Cheques emitidos sin debitar/)
   assert.ok(f > 0, 'la línea memo tiene que existir')
   assert.match(String(g.filas[f - 1][0]), /no restan/, 'el rótulo tiene que decir que no se resta')
   assert.ok(vacia(celda(g, f, 4)), 'y no puede aportar valor en pesos: entraría al SUM del bloque')
@@ -385,7 +385,7 @@ test('el titular publica los cuatro números que se deciden, y ninguno es capaci
   assert.equal(titulos.length, 4)
   assert.match(titulos[0], /DISPONIBLE HOY/)
   assert.match(titulos[1], /PISO DE CAJA/)
-  assert.match(titulos[2], /CIERRE DE ESTE MES/)
+  assert.match(titulos[2], /A FIN DE MES/)
   assert.match(titulos[3], /COLOCABLE/)
   for (const t of titulos) {
     assert.ok(!/^"?CR[ÉE]DITO|AIRE TOTAL|DESCUBIERTO/i.test(t), `"${t}" no va en el titular de caja`)
@@ -755,4 +755,34 @@ test('la fila que declara la fecha de su bloque NO usa la columna de fechas', ()
     assert.ok(vacia(f[5]), `el bloque de la fila ${i + 1} declara su fecha en la columna F, que no es de texto`)
     assert.ok(!vacia(f[6]), `el bloque de la fila ${i + 1} no declara de cuándo es su dato`)
   }
+})
+
+test('NINGÚN RÓTULO SE CORTA: el texto fijo entra en el ancho de su columna', () => {
+  // `auditar-pantalla.mjs` marcó SEIS textos cortados sobre la pestaña escrita: A11 con 71 caracteres
+  // en 380px (entran 66), y los dos rótulos del titular. Un rótulo cortado se lee como basura y hace
+  // desconfiar de la fila entera; peor todavía en la columna del VEREDICTO, que dice cuánto falta.
+  //
+  // Se mide con el ancho REAL de cada columna, no a ojo: ~5,75 px por carácter en el cuerpo del
+  // archivo, que es la relación con la que el auditor encontró los seis. Sólo se audita el texto FIJO
+  // —lo que produce una fórmula no se puede medir sin evaluarla— y sólo las dos columnas que no
+  // desbordan: la A cuando tiene un vecino con contenido, y la G, que tiene el centinela a la derecha.
+  const g = construir()
+  const cabe = (px) => Math.floor(px / 5.75)
+  for (const [i, f] of g.filas.entries()) {
+    for (const col of [0, 6]) {
+      const v = f[col]
+      if (typeof v !== 'string' || vacia(v) || v.startsWith('=')) continue
+      assert.ok(v.length <= cabe(ANCHOS[col]),
+        `fila ${i + 1} col ${String.fromCharCode(65 + col)}: ${v.length} caracteres en ${ANCHOS[col]}px `
+        + `(entran ${cabe(ANCHOS[col])}). Acortá el rótulo antes que ensanchar: la pestaña ya está en su ancho.\n  "${v}"`)
+    }
+  }
+})
+
+test('LA COLUMNA DEL VEREDICTO ES LA MÁS ANCHA DESPUÉS DEL RÓTULO', () => {
+  // El reparto estaba al revés de lo que este diseño necesita: 380px para el rótulo —que desborda
+  // libre sobre las columnas vacías de al lado— y 156px para el veredicto, que NO desborda porque a su
+  // derecha está el centinela de 24px. El que dice "⚠ $12.188.441 sin marcar" es el que necesita aire.
+  assert.ok(ANCHOS[6] > ANCHOS[2], 'el veredicto tiene que ser más ancho que una columna de importe')
+  assert.equal(ANCHOS.reduce((a, b) => a + b, 0), 1140, 'y el total tiene que seguir entrando en una pantalla')
 })

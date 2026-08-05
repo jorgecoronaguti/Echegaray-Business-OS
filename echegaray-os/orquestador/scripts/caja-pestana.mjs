@@ -37,7 +37,7 @@ import { filaDeCuenta } from '../lib/caja-disponibilidades.mjs'
 import { DESDE_CAJA, PESTANA_ANEXO } from '../lib/caja-anexo-nombres.mjs'
 import { refsDelArchivo, rescatar } from '../lib/caja-refs.mjs'
 import { grilla, ANCHO, ANCHOS, FILAS_MAXIMAS } from '../lib/caja-grilla.mjs'
-import { requestsDeGraficos } from '../lib/caja-graficos.mjs'
+import { requestsDeGraficos, COL_ANCLA } from '../lib/caja-graficos.mjs'
 
 export { grilla, rescatar }
 
@@ -144,10 +144,18 @@ async function main() {
   // GARANTIZAR EL ALTO ANTES DE TODO: si el batch apunta más allá del alto real, la API ABORTA el write
   // entero y CAJA queda con lo de la corrida anterior. El alto se ASEGURA, no se supone.
   const hasta = Math.max(g.filas.length + 20, hoja.rows ?? 0)
-  if ((hoja.rows ?? 0) < hasta) {
+  // Y EL ANCHO TAMBIÉN, QUE NADIE ASEGURABA. Los gráficos flotan pero su ANCLA es una celda real: si la
+  // hoja no llega a esa columna, `addChart` devuelve 400 y el lote se cae entero. El generador
+  // garantizaba el alto desde julio y el ancho nunca — y el ancho no se nota hasta que algo lo pide.
+  const anchoHoja = Math.max(ANCHO, COL_ANCLA + 2, hoja.cols ?? 0)
+  if ((hoja.rows ?? 0) < hasta || (hoja.cols ?? 0) < anchoHoja) {
     await google.spreadsheetBatchUpdate(ID, [{
-      updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { rowCount: hasta } }, fields: 'gridProperties.rowCount' },
+      updateSheetProperties: {
+        properties: { sheetId: hoja.sheetId, gridProperties: { rowCount: hasta, columnCount: anchoHoja } },
+        fields: 'gridProperties.rowCount,gridProperties.columnCount',
+      },
     }])
+    console.log(`  ↔ la hoja queda en ${hasta} filas × ${anchoHoja} columnas (el ancla de los gráficos es la ${COL_ANCLA + 1}ª)`)
   }
   const creados = await rangoConNombre(google, hoja.sheetId, g, { soloFaltantes: true })
   if (creados) console.log(`  🔖 ${creados} rango(s) con nombre CREADOS (no existían): arranque en frío`)
@@ -392,11 +400,10 @@ async function formatear(google, sheetId, g) {
   // quedaría sin formato. Un gráfico es un resumen de la tabla: si no se puede dibujar, la tabla tiene
   // que quedar igual de bien. Ver lib/caja-graficos.mjs.
   const charts = await requestsDeGraficos(google, ID, sheetId, g)
-  if (charts.length) {
-    await google.spreadsheetBatchUpdate(ID, charts)
-      .then(() => console.log(`  📊 ${charts.filter((c) => c.addChart).length} gráfico(s) dibujados`))
-      .catch((e) => console.warn(`  ⚠ no pude dibujar los gráficos (${e.message}). La tabla quedó bien: el gráfico la resume, no la reemplaza.`))
-  }
+  if (!charts.length) return
+  await google.spreadsheetBatchUpdate(ID, charts)
+    .then(() => console.log(`  📊 ${charts.filter((c) => c.addChart).length} gráfico(s) dibujados`))
+    .catch((e) => console.warn(`  ⚠ NO pude dibujar los gráficos (${e.message}). La tabla quedó bien: el gráfico la resume, no la reemplaza.`))
 }
 
 // ═══ SÓLO ESCRIBE SI SE LO CORRE A PROPÓSITO ═══
