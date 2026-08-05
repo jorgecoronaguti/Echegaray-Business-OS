@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-// LA SECCIÓN 2 DE PROVEEDORES — TODOS los proveedores, como tabla dinámica nativa.
+// EL ORIGEN DEL CUIT QUE MUESTRA LA SECCIÓN 2 — la columna derivada en Compras y su auxiliar.
 //
-// Listaba los 30 más grandes y metía 74 en una línea "resto". El dueño: "quiero esa dinámica en
-// todos los proveedores". Son 105 comerciales por $281.227.326.
+// ESTE SCRIPT YA NO ESCRIBE LA SECCIÓN 2. La dinámica es de `proveedores-seccion2-pivot.mjs`; acá
+// quedó lo que esa dinámica necesita para existir y que no puede hacer sola: el CUIT dentro de su
+// ORIGEN. Un bloque, un dueño — el encabezado decía otra cosa y un encabezado que miente sobre lo
+// que hace el archivo es cómo vuelven los dos dueños.
 //
 // ═══ EL CUIT, Y POR QUÉ HIZO FALTA UNA COLUMNA EN COMPRAS ═══
 //

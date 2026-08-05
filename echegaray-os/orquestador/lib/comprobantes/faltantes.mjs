@@ -158,8 +158,16 @@ export function faltantesDe(item = {}, politica = POLITICA.CARGADOR, { ahora } =
 
   if (p.exigirProveedorConocido && item.proveedorNuevo) {
     const quien = c.proveedor ?? '(ilegible)'
+    // ═══ UNA PREGUNTA QUE NO SE PUEDE CONTESTAR NO ES UNA PREGUNTA (04/08) ═══
+    //
+    // Decía «¿lo agrego?» y NO HAY forma de contestar que sí: el desplegable de la columna es
+    // estricto y sólo lo extiende una persona en el Sheet. El dueño leía una oferta, no tenía con
+    // qué aceptarla, y el comprobante quedaba trabado sin que nada dijera cómo destrabarlo. Ahora la
+    // frase nombra las DOS salidas reales, que además son las dos que existen de verdad.
     falta(MOTIVO.PROVEEDOR_NUEVO, `proveedor fuera del desplegable: "${quien}"`,
-      `el proveedor **${quien}** no está en la lista de Compras — ¿lo agrego?`)
+      `**${quien}** no está en el desplegable de Compras, así que no puedo elegirlo. Tocá **Corregir** `
+      + `y escribí el nombre tal como figura en la lista, o agregalo al desplegable de la columna y `
+      + `volvé a mandar la foto.`)
   }
   // UN PROBABLE DUPLICADO ES UNA PREGUNTA, NO UNA DECISIÓN. Ni cargar ni descartar solo: mismo
   // proveedor, mismo día y mismo importe con otro número puede ser el mismo comprobante con un

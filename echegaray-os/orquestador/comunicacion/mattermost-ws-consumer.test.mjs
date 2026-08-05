@@ -7,6 +7,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   parsearPosted, esRelevante, mapearAPayload, Deduplicador, crearConsumidorWS, AREAS_DE_ADJUNTOS,
+  verificarCanalesDeIngesta,
 } from './mattermost-ws-consumer.mjs'
 import {
   CommunicationService, RepositorioMemoria, MattermostAdapter, FakeMattermost,
@@ -343,4 +344,49 @@ test('el binding se relee por minuto, no por mensaje', async () => {
   // invariante que importa es que no se consulte POR MENSAJE.
   assert.equal(port.veces, AREAS_DE_ADJUNTOS.length,
     `una sola relectura del binding para cinco mensajes (${AREAS_DE_ADJUNTOS.length} consulta(s): una por área)`)
+})
+
+// ── El canal que no existe (04/08) ──────────────────────────────────────────
+//
+// `MM_CANALES_ADJUNTOS=comprobantes-gastos,compras` apuntaba a un canal inexistente. El prefiltro no
+// matcheaba nunca, la foto no creaba evento y no había una sola línea roja en ningún log.
+
+test('un canal configurado que NO existe se declara a nivel ERROR', async () => {
+  const errores = []
+  const log = { error: (m, d) => errores.push({ m, d }), info() {}, warn() {} }
+  const mattermost = {
+    async canalesDelBot() {
+      return [{ id: 'ataehrdpmfyctqyjcfz5rs9jka', name: 'compras', display_name: 'Comprobantes-gastos', type: 'O' }]
+    },
+  }
+  const r = await verificarCanalesDeIngesta({ mattermost, canales: new Set(['comprobantes-gastos', 'compras']), log })
+  assert.equal(r.ok, false)
+  assert.deepEqual(r.faltantes, ['comprobantes-gastos'])
+  assert.equal(errores.length, 1, 'sin un ERROR, el defecto sigue siendo invisible')
+  assert.match(errores[0].m, /NO EXISTEN/)
+})
+
+test('el id y el slug valen los dos; con todo bien no hay error', async () => {
+  const errores = []
+  const log = { error: (m) => errores.push(m), info() {}, warn() {} }
+  const mattermost = {
+    async canalesDelBot() { return [{ id: 'ABCDEF', name: 'compras', display_name: 'X', type: 'O' }] },
+  }
+  const r = await verificarCanalesDeIngesta({ mattermost, canales: new Set(['abcdef', 'compras']), log })
+  assert.equal(r.ok, true)
+  assert.equal(r.resueltos, 2)
+  assert.equal(errores.length, 0)
+})
+
+test('si la API no contesta se avisa y NO se apaga la ingesta', async () => {
+  const mattermost = { async canalesDelBot() { throw new Error('502') } }
+  const r = await verificarCanalesDeIngesta({ mattermost, canales: new Set(['compras']) })
+  assert.equal(r.ok, false)
+  assert.equal(r.motivo, 'api_caida')
+  assert.deepEqual(r.faltantes, [], 'no poder verificar no es "el canal no existe"')
+})
+
+test('sin cliente de Mattermost se avisa y no se afirma nada', async () => {
+  const r = await verificarCanalesDeIngesta({ mattermost: null, canales: new Set(['compras']) })
+  assert.equal(r.motivo, 'sin_cliente')
 })

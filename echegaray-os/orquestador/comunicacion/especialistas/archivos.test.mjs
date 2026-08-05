@@ -26,15 +26,15 @@ const portCanal = (area) => ({
   },
 })
 
-test('EN EL CANAL DE COMPRAS el adjunto es de Compras IA, y la recepción genérica NO lo reclama', () => {
-  assert.equal(comprobantes.reconoce('', { fileIds: ['f1'], area: 'compras' }).destino, 'cargar')
+test('EN EL CANAL DE COMPRAS el adjunto es de Compras IA, y la recepción genérica NO lo reclama', async () => {
+  assert.equal((await comprobantes.reconoce('', { fileIds: ['f1'], area: 'compras' })).destino, 'cargar')
   assert.equal(archivos.reconoce('', { fileIds: ['f1'], area: 'compras' }), null,
     'robarle la foto a Compras IA rompería la carga de gastos entera')
 })
 
-test('FUERA DE COMPRAS el adjunto es de la recepción genérica, y Compras IA NO lo reclama', () => {
+test('FUERA DE COMPRAS el adjunto es de la recepción genérica, y Compras IA NO lo reclama', async () => {
   assert.equal(archivos.reconoce('', { fileIds: ['f1'], area: 'administracion_finanzas' }).destino, 'recibir')
-  assert.equal(comprobantes.reconoce('', { fileIds: ['f1'], area: 'administracion_finanzas' }), null)
+  assert.equal(await comprobantes.reconoce('', { fileIds: ['f1'], area: 'administracion_finanzas' }), null)
 })
 
 test('sin adjuntos no reclama nada: un mensaje de texto no es un archivo', () => {

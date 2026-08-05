@@ -24,6 +24,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query } from '../lib/db.mjs'
 import { geometriaDeLaSeccion, altoEmitido } from '../lib/proveedores-pivot-seccion1.mjs'
+import { ANCHOS_PROVEEDORES } from '../lib/proveedores-frontera.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Proveedores'
@@ -31,6 +32,13 @@ const AUX = '_PROVEEDORES_OS'
 const APLICAR = process.argv.includes('--aplicar')
 /** La dinámica del cuadro A ocupa A·B·C. La nota va en la D, pegada y fuera de su cuerpo. */
 const COL_NOTA = 3
+// ═══ EL ANCHO DE LA D NO SE FIJA ACÁ (04/08) ═══
+//
+// Este script ponía la D en 300px y proveedores-encabezado-aplicar.mjs la ponía en 80: ganaba el que
+// corriera último, y nadie podía decir cuánto medía la columna sin saber el orden de la corrida. Un
+// ancho es de la columna entera, así que su definición es una sola —ANCHOS_PROVEEDORES en
+// lib/proveedores-frontera.mjs— y la aplica un solo generador. Acá se LEE, para no escribir una nota
+// más larga de lo que entra.
 const ROTULO = 'Qué hacer'
 /** Filas de más que se preparan: si mañana entra un proveedor, su nota ya lo espera. */
 const COLCHON = 4
@@ -75,6 +83,19 @@ async function main() {
     && /^cada operaci[oó]n/i.test(String(f?.[0] ?? '').trim()))
   if (iSub < 0) throw new Error('no encontré el subtítulo "Cada operación": sin techo no escribo')
   const hasta = Math.min(desde + altoEmitido(cuerpo) + COLCHON, iSub) // iSub es base 0 = la fila anterior en base 1
+  // ═══ Y SE USA PARA AVISAR LO QUE NO VA A ENTRAR ═══
+  //
+  // Leer el ancho compartido sirve para algo más que no pisarlo: a fontSize 9 en itálica entran unos
+  // 7px por carácter, así que una nota más larga que eso se va a ver CORTADA en la pestaña. El dueño
+  // escribe estas notas para leerlas; que una quede a medias es el mismo defecto de pantalla que el
+  // resto del archivo persigue, sólo que en un texto suyo. No se trunca —es su texto— pero se avisa.
+  const CARACTERES = Math.floor(ANCHOS_PROVEEDORES[COL_NOTA] / 7)
+  const largas = [...porNombre.entries()].filter(([, t]) => t.length > CARACTERES)
+  if (largas.length) {
+    console.log(`\n⚠ ${largas.length} nota(s) más largas que los ${ANCHOS_PROVEEDORES[COL_NOTA]}px de la columna `
+      + `(~${CARACTERES} caracteres): se van a ver cortadas en la pestaña.`)
+    for (const [n, t] of largas) console.log(`     ${n.padEnd(26)} ${t.length} car.: "${t.slice(0, CARACTERES)}…"`)
+  }
   console.log(`\nCUADRO A: rótulos en la fila ${geo.filaEncabezado} · "Cada operación" en la ${iSub + 1}`
     + ` · la nota va en D${desde}:D${hasta - 1}`)
   if (hasta - desde < 1) throw new Error('el cuadro A no tiene filas entre los rótulos y el subtítulo: no escribo')
@@ -122,8 +143,6 @@ async function main() {
       cell: { userEnteredFormat: { numberFormat: { type: 'TEXT', pattern: '@' }, horizontalAlignment: 'LEFT',
         textFormat: { fontSize: 9, italic: true, foregroundColor: { red: 0.45, green: 0.45, blue: 0.45 } } } },
       fields: `${FMT}.numberFormat,${FMT}.horizontalAlignment,${FMT}.textFormat` } },
-    { updateDimensionProperties: { range: { sheetId: hoja.sheetId, dimension: 'COLUMNS', startIndex: COL_NOTA, endIndex: COL_NOTA + 1 },
-      properties: { pixelSize: 300 }, fields: 'pixelSize' } },
   ], { espejo: true })
 
   // ── LA EVIDENCIA: qué proveedor con deuda quedó con su nota a la vista.

@@ -74,10 +74,14 @@ test('el ÚNICO archivo del módulo que nombra la API del modelo es el que lee l
   assert.ok(modulos.size >= 5, 'el rastreador no recorrió nada: la prueba sería vacía')
 })
 
-test('el RECLAMO del especialista es determinístico: cuesta cero', () => {
+test('el RECLAMO del especialista es determinístico: cuesta cero', async () => {
   // Si `reconoce` llamara al modelo, cada mensaje del equipo costaría plata sólo por existir.
-  assert.equal(especialista.reconoce('', { fileIds: ['f1'], area: 'compras' }).destino, 'cargar')
-  assert.equal(especialista.reconoce('hola qué tal', { fileIds: [], area: 'compras' }), null)
+  assert.equal((await especialista.reconoce('', { fileIds: ['f1'], area: 'compras' })).destino, 'cargar')
+  assert.equal(await especialista.reconoce('hola qué tal', { fileIds: [], area: 'compras' }), null)
+  // SIN `port` NO HAY CONSULTA: la respuesta escrita se reclama contra el fajo abierto, y sin base
+  // el especialista devuelve null sin tocar nada. Un reclamo no puede depender de una lectura que
+  // no se hizo.
+  assert.equal(await especialista.reconoce('MESSINA', { fileIds: [], area: 'compras' }), null)
 })
 
 test('la puerta de permisos no roza un modelo', async () => {

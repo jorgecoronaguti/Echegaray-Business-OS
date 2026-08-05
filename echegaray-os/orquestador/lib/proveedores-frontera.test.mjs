@@ -13,7 +13,9 @@ import {
   SECCIONES_PROVEEDORES, SECCIONES_MATERIALES, PRIMERA_GENERADA, nSeccion,
   normalizarTitulo, esTituloDeSeccion, buscarFrontera, finDeDinamica, anclasDeDinamicas,
   verificarFronteraBajoDinamicas, anchoALimpiar, aAnchoCompleto, fronteraSegura,
+  ANCHOS_PROVEEDORES, COL_AIRE, requestsDeAncho,
 } from './proveedores-frontera.mjs'
+import { detectar } from './defectos-pantalla.mjs'
 import { fusionar, VACIO } from './preservar-anotaciones.mjs'
 
 /** Una pestaña como la ve el dueño: cabecera, posición, dos dinámicas, y abajo lo del generador. */
@@ -199,4 +201,93 @@ test('sin título Y sin dinámicas no hay dónde anclar: no se escribe', () => {
   assert.throws(
     () => fronteraSegura({ visible: [['otra cosa']], titulo: 'NOTAS DE CRÉDITO', dinamicas: [] }),
     /no encontré "NOTAS DE CRÉDITO"/)
+})
+
+// ═══ EL TEXTO CORTADO: "Qué e", "$209.231.2", "⇒ Materiales que ninguna familia está mira" ═══
+//
+// El dueño lo vio en el render del 04/08. La causa era de PROPIEDAD: tres generadores escriben esta
+// pestaña, dos fijaban anchos mirando sólo su propio bloque y el tercero se abstenía. Un ancho es de
+// la columna entera, así que no hay "ancho por bloque" — hay un dueño o hay un choque.
+
+test('los anchos son UNA definición, y la aplica un solo generador', () => {
+  assert.equal(ANCHOS_PROVEEDORES.length, 8, 'A..H, las columnas que usan los tres bloques')
+  assert.ok(Object.isFrozen(ANCHOS_PROVEEDORES), 'nadie la muta en caliente')
+  const reqs = requestsDeAncho(123)
+  assert.equal(reqs.length, 8)
+  assert.deepEqual(reqs[0].updateDimensionProperties.range,
+    { sheetId: 123, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 })
+  assert.equal(reqs[0].updateDimensionProperties.properties.pixelSize, ANCHOS_PROVEEDORES[0])
+  // Una columna por request: un rango de varias columnas les pone el mismo ancho a todas, que es
+  // exactamente lo que no se quiere (la D mide 300 y la E 28).
+  for (const [i, r] of reqs.entries()) {
+    assert.equal(r.updateDimensionProperties.range.endIndex - r.updateDimensionProperties.range.startIndex, 1)
+    assert.equal(r.updateDimensionProperties.range.startIndex, i)
+  }
+})
+
+// ═══ LA COLUMNA E: 24 DE LOS 34 TEXTOS CORTADOS QUE QUEDABAN (05/08) ═══
+//
+// La E se declaró "aire, ninguna tabla la usa". Las tablas de TEXTO la saltean; la tabla DINÁMICA de
+// la sección 1 no puede: un pivot ocupa columnas consecutivas desde su ancla y el cuadro de detalle
+// llega hasta la G. Con 28px, "Transferencia" y "Tarjeta Crédito" salían cortados en 5 caracteres.
+test('la columna E entra el tipo de pago más largo: el cuadro de detalle la ocupa, no es aire', () => {
+  assert.equal(COL_AIRE, 4, 'la E sigue siendo la que saltean las tablas de TEXTO')
+  // Los cinco valores reales de "Tipo pago" en Compras, medidos el 05/08.
+  const TIPOS = ['Cheque', 'Efectivo', 'Echeq', 'Transferencia', 'Tarjeta Crédito']
+  for (const t of TIPOS) {
+    assert.ok(ANCHOS_PROVEEDORES[COL_AIRE] >= t.length * 10 * 0.57,
+      `la E (${ANCHOS_PROVEEDORES[COL_AIRE]}px) corta "${t}" — es lo que reportaba el auditor 24 veces`)
+  }
+  // Y no se pasa de rosca: la E es la más angosta de las que llevan texto, sigue haciendo de aire.
+  assert.ok(ANCHOS_PROVEEDORES[COL_AIRE] < ANCHOS_PROVEEDORES[1], 'más angosta que la B')
+})
+
+test('EL DEFECTO, medido con el auditor de verdad: con la E en 28px el tipo de pago se corta', () => {
+  const fila = (anchos) => ({
+    anchos,
+    altos: [21],
+    filas: [[
+      { valor: 'Alumetal', formato: { numberFormat: { type: 'TEXT', pattern: '@' } } },
+      { valor: '0001-00000211', formato: { numberFormat: { type: 'TEXT', pattern: '@' } } },
+      { valor: '16/08/2026', formato: { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' } } },
+      { valor: 'LA ESTRELLA', formato: { numberFormat: { type: 'TEXT', pattern: '@' } } },
+      { valor: 'Tarjeta Crédito', formato: { numberFormat: { type: 'TEXT', pattern: '@' }, wrapStrategy: 'CLIP' } },
+      { valor: 'B', formato: { numberFormat: { type: 'TEXT', pattern: '@' } } },
+      { valor: '$1.234', formato: { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0' } } },
+    ]],
+  })
+  const viejos = [...ANCHOS_PROVEEDORES]
+  viejos[COL_AIRE] = 28
+  assert.equal(detectar(fila(viejos)).filter((d) => d.tipo === 'texto_cortado').length, 1)
+  assert.deepEqual(detectar(fila([...ANCHOS_PROVEEDORES])), [], 'con el ancho declarado hoy, ni un defecto')
+})
+
+// ═══ LA NUMERACIÓN DE BLOQUES: CONSECUTIVA Y SIN HUECOS ═══
+//
+// La pestaña llegó a leerse "1, 2, 7, 5": la sección 7 era un resto de un diseño anterior que ningún
+// generador reclamaba y la 3 y la 4 no existían. La skill del área lo prohíbe explícitamente —un
+// cuadro que salta números parece que perdió bloques— y acá es medible: los números salen del ORDEN
+// de esta lista, así que no pueden saltarse a menos que alguien saltee un elemento.
+test('los números de sección son 1..N, consecutivos y sin huecos, en las dos pestañas', () => {
+  for (const [nombre, orden] of [['Proveedores', SECCIONES_PROVEEDORES], ['Materiales', SECCIONES_MATERIALES]]) {
+    const numeros = orden.map((c) => nSeccion(c, orden))
+    assert.deepEqual(numeros, orden.map((_, i) => i + 1), `${nombre}: la numeración salta`)
+    assert.equal(new Set(orden).size, orden.length, `${nombre}: una sección repetida`)
+  }
+  // Las dos dinámicas ocupan el 1 y el 2, así que el primer bloque que escribe el generador es el 3.
+  assert.equal(nSeccion(PRIMERA_GENERADA), 3)
+  // Y un número no puede salir de una clave inventada: eso es lo que producía el "7".
+  assert.throws(() => nSeccion('emitidas'), /sección desconocida/)
+})
+
+test('cada columna tiene lugar para lo más ancho que le toca', () => {
+  // A ~7px por carácter a fontSize 9-10. No es exacto — es el piso que evita el defecto de volver a
+  // poner 60px en una columna que lleva "$209.231.271".
+  const cabe = (col, texto) => assert.ok(ANCHOS_PROVEEDORES[col] >= texto.length * 7,
+    `la columna ${String.fromCharCode(65 + col)} (${ANCHOS_PROVEEDORES[col]}px) corta "${texto}"`)
+  cabe(0, 'Comprobantes de compra (neto de notas)')   // el rótulo más largo del control
+  cabe(1, '30-71037035-0')                            // CUIT con guiones
+  cabe(2, '$209.231.271')                             // el monto del control de cobertura
+  cabe(5, 'REFACTURACIÓN — el costo sigue')           // "Qué es", en la F
+  cabe(6, '0006-00003002 → 0004-00003445')            // la cadena anula → reemplaza, en la G
 })

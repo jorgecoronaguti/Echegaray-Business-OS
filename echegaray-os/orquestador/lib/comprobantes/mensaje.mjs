@@ -441,12 +441,23 @@ export function resumenFajo(fajo = {}) {
     }
   }
   else if (pendientes) {
-    // Si hay opciones ofrecidas hay botones para tocarlas: decir sólo "contestame" haría escribir lo
-    // que se resuelve con un click.
+    // ═══ DECIR QUÉ TIENE QUE HACER ÉL, NO QUE FALTA ALGO (04/08) ═══
+    //
+    // "Contestame lo que falta" mandaba a contestar cosas que NO se contestan escribiendo: un total
+    // que no se leyó, una fecha imposible o un proveedor fuera del desplegable sólo se arreglan desde
+    // **Corregir**. El dueño escribía la respuesta, no pasaba nada, y la conclusión razonable era que
+    // el bot no funciona. Cada cierre nombra la acción que de verdad resuelve lo que está trabado.
     const hayBotones = items.some((it) => opcionesDe(it?.sugerencia?.obra).length && !it?.comprobante?.obra)
-    l.push(hayBotones
-      ? '**No hay nada que cargar todavía.** Tocá la obra —o escribime otra— y lo cargo.'
-      : '**No hay nada que cargar todavía.** Contestame lo que falta y lo cargo.')
+    const necesitaCorregir = items.some((it) => preguntasDe(it).some((p) => !/ya esté cargado/.test(p) && p !== PREGUNTA_OBRA))
+    if (necesitaCorregir) {
+      l.push(hayBotones
+        ? '**No hay nada que cargar todavía.** Lo de arriba con ❓ no lo pude leer del papel: tocá **Corregir** y completalo. La obra sí podés tocarla o escribírmela acá.'
+        : '**No hay nada que cargar todavía.** Lo de arriba con ❓ no lo pude leer del papel: tocá **Corregir** y completalo, y lo cargo.')
+    } else {
+      l.push(hayBotones
+        ? '**No hay nada que cargar todavía.** Tocá la obra —o escribime el nombre acá mismo— y lo cargo.'
+        : '**No hay nada que cargar todavía.** Contestame lo que falta y lo cargo.')
+    }
   }
   else l.push('**No hay nada que cargar:** ya estaba en Compras.')
   return l.join('\n')

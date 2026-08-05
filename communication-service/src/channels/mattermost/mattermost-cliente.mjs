@@ -261,6 +261,28 @@ export class MattermostCliente {
   async actualizarPost({ id, message, props }) {
     return this._req('PUT', `/posts/${id}`, { id, message, props: props ?? {} })
   }
+
+  /**
+   * TODOS los canales donde el bot es miembro, de todos sus equipos.
+   *
+   * Existe para poder VERIFICAR configuración contra la realidad: la lista de canales de ingesta se
+   * tipea en un `.env` y un nombre que no corresponde a ningún canal no da error en ningún lado —
+   * simplemente se traga los mensajes. Preguntarle a la única fuente que sabe cuáles existen cuesta
+   * dos llamadas al arrancar.
+   *
+   * Devuelve `{id, name, display_name, type}`. `name` es el SLUG (lo que viaja en el frame WS),
+   * `display_name` es lo que se ve en la pantalla: son distintos y confundirlos ya costó días.
+   */
+  async canalesDelBot({ botUserId } = {}) {
+    const equipos = await this._req('GET', '/users/me/teams')
+    const quien = botUserId ? encodeURIComponent(botUserId) : 'me'
+    const out = []
+    for (const t of equipos ?? []) {
+      const cs = await this._req('GET', `/users/${quien}/teams/${t.id}/channels`)
+      for (const c of cs ?? []) out.push({ id: c.id, name: c.name, display_name: c.display_name, type: c.type })
+    }
+    return out
+  }
 }
 
 function safeJson(t) {
