@@ -1857,20 +1857,63 @@ async function main() {
       console.log(`  función agrupar: ${nGrupos} grupos de deuda (uno por proveedor con facturas), expandidos`
         + `${geo ? ` · ${geo.cabeceras.length} proveedores, ${geo.detalles.length} facturas, ${geo.vacias.length} fila(s) en reserva` : ''}`)
     }
-    const nombres = await publicar(google, ID, hojaArca.sheetId, [
-      { name: N_ARCA.comprobantes, fila: tArca.fArcaN, col: 2 },
-      { name: N_ARCA.total, fila: tArca.fArcaN, col: 3 },
-      { name: N_ARCA.notasN, fila: tArca.fArcaNotas, col: 2 },
-      { name: N_ARCA.notasMonto, fila: tArca.fArcaNotas, col: 3 },
-      { name: N_ARCA.enComprasN, fila: tArca.fArcaEn, col: 2 },
-      { name: N_ARCA.enComprasMonto, fila: tArca.fArcaEn, col: 3 },
-      { name: N_ARCA.sinNumeroN, fila: tArca.fArcaSinNum, col: 2 },
-      { name: N_ARCA.sinNumeroMonto, fila: tArca.fArcaSinNum, col: 3 },
-      { name: N_ARCA.faltanN, fila: tArca.fArcaFaltan, col: 2 },
-      { name: N_ARCA.faltanMonto, fila: tArca.fArcaFaltan, col: 3 },
-      { name: N_ARCA.ventasN, fila: tArca.fArcaVentas, col: 2 },
-      { name: N_ARCA.ventasMonto, fila: tArca.fArcaVentas, col: 3 },
-    ].filter((x) => x.fila), { titulo: NOMBRES.proveedores })
+    // ═══ LAS FILAS SALEN DE LA PESTAÑA ESCRITA, NO DEL PLAN (05/08) ═══
+    //
+    // `tArca` traduce índices que se calcularon MIENTRAS se armaba la grilla. Es la misma foto vieja
+    // que ya había descolocado los grupos +/- y que este archivo corrigió arriba clasificando la
+    // grilla escrita — pero los rangos con nombre se quedaron con el método viejo. Medido hoy en el
+    // archivo vivo: el plan decía filas 124-130 y el bloque estaba en las 177-182. Los doce nombres
+    // apuntaban a la lista de comprobantes faltantes, y Recurrentes, Estructura, Materiales y el Cash
+    // Flow Mensual mostraban un CUIT o un número de comprobante donde prometen plata.
+    //
+    // El ancla es el RÓTULO de cada línea, releído de la columna A. Es el mismo criterio que usa CAJA
+    // para republicar los suyos y el que ya usa el bloque de grupos de acá al lado: lo que decide es
+    // lo que quedó escrito. Si un rótulo no aparece, ese nombre no se publica —y `publicar` además
+    // verifica la especie antes de apuntar, así que un bloque a medio escribir no puede corromper a
+    // cuatro pestañas en silencio.
+    const colA = (await google.readSheetValues(ID, `${refPestana(NOMBRES.proveedores)}!A1:A400`)
+      .catch(() => null))?.map((f) => String(f?.[0] ?? '').trim()) ?? null
+    // ═══ SE BUSCA DESPUÉS DEL ÚLTIMO ENCABEZADO DEL BLOQUE, Y POR PREFIJO ═══
+    //
+    // Dos cosas que sólo se ven mirando el archivo vivo. La pestaña tiene HOY una copia vieja del
+    // bloque arriba de la buena: "· notas de crédito (restan)" aparece dos veces, en la 126 y en la
+    // 178, y un `findIndex` se queda con la primera — que es la fósil. Y algunos rótulos de la copia
+    // vieja tienen la redacción anterior ("neto de notas de crédito" contra "neto de notas"), así que
+    // el match exacto tampoco los encuentra.
+    //
+    // Las dos se resuelven igual: el bloque bueno es el que está DESPUÉS del último encabezado
+    // "Cobertura del libro de IVA de ARCA", y dentro de esa ventana el rótulo se identifica por su
+    // comienzo. Que la copia vieja siga ahí es un defecto aparte —anotado, no tapado—: lo que este
+    // cambio garantiza es que ningún nombre se apunte a ella.
+    // Se toma la ÚLTIMA aparición y por PREFIJO: la copia fósil está arriba de la buena, y algunos de
+    // sus rótulos llevan la redacción anterior ("neto de notas de crédito" contra "neto de notas").
+    const filaDeRotulo = (rotulo) => {
+      if (!colA) return null
+      for (let i = colA.length - 1; i >= 0; i--) if (colA[i].startsWith(rotulo)) return i + 1
+      return null
+    }
+    // Los rótulos son los MISMOS literales que escribe la grilla, arriba en este archivo. Si alguno
+    // cambia, el nombre deja de publicarse y se dice — en vez de apuntar a la fila de al lado.
+    const LINEAS_ARCA = [
+      ['Comprobantes de compra (neto de notas)', N_ARCA.comprobantes, N_ARCA.total],
+      ['· notas de crédito (restan)', N_ARCA.notasN, N_ARCA.notasMonto],
+      ['· cargados en Compras, por N° de comprobante', N_ARCA.enComprasN, N_ARCA.enComprasMonto],
+      ['· cargados sin su N° de comprobante', N_ARCA.sinNumeroN, N_ARCA.sinNumeroMonto],
+      ['· ⚠ sin cargar en Compras', N_ARCA.faltanN, N_ARCA.faltanMonto],
+      ['Comprobantes emitidos (ventas)', N_ARCA.ventasN, N_ARCA.ventasMonto],
+    ]
+    const destinosArca = []
+    const sinRotulo = []
+    for (const [rotulo, nN, nMonto] of LINEAS_ARCA) {
+      const fila = filaDeRotulo(rotulo)
+      if (!fila) { sinRotulo.push(rotulo); continue }
+      destinosArca.push({ name: nN, fila, col: 2 }, { name: nMonto, fila, col: 3 })
+    }
+    if (sinRotulo.length) {
+      console.log(`  ⚠ ${sinRotulo.length} línea(s) del bloque ARCA no aparecen en la pestaña escrita: `
+        + `${sinRotulo.join(' · ')}. Sus rangos con nombre NO se reapuntan — se quedan donde estaban.`)
+    }
+    const nombres = await publicar(google, ID, hojaArca.sheetId, destinosArca, { titulo: NOMBRES.proveedores })
     console.log(`  ${nombres.nombres} rangos con nombre publicados: el Cash Flow los referencia en vez de copiarlos`
       + (nombres.verificado ? '' : ' — ⚠ NO pude releerlos: no sé a qué apuntan'))
     // ═══ LO QUE PRUEBA LA PUBLICACIÓN ES EL DATO LEÍDO EN SU DESTINO ═══

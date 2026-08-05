@@ -135,16 +135,34 @@ const googleFalso = (celdas) => ({
   },
 })
 
-test('publicar DEVUELVE los nombres que quedaron apuntando a otra especie', async () => {
+test('publicar NO APUNTA un nombre a una celda que no tiene lo que el nombre promete', async () => {
+  // ═══ EL TEST SE DIO VUELTA (05/08) ═══
+  //
+  // Pedía que `publicar` publicara los cuatro y DEVOLVIERA cuál había quedado mal apuntado. El aviso
+  // servía —así apareció que cinco `ARCA_*` apuntaban a números de comprobante y CUITs— pero llegaba
+  // DESPUÉS del daño: los nombres ya apuntando a basura, y Recurrentes, Estructura, Materiales y el
+  // Cash Flow Mensual mostrando un número de comprobante donde prometen plata. Un aviso posterior al
+  // daño es una autopsia.
+  //
+  // Las celdas ya están escritas cuando se llama acá; lo único que falta es a dónde apunta cada
+  // nombre. Así que ahora se mira primero y se apunta después: el que no pasa se queda donde estaba.
   const destinos = [
     { name: ARCA.comprobantes, fila: 199, col: 2 }, { name: ARCA.total, fila: 199, col: 3 },
     { name: ARCA.ventasN, fila: 204, col: 2 }, { name: ARCA.ventasMonto, fila: 204, col: 3 },
   ]
   const filas = [[521, '0001-00000204'], [], [], [], [], [20, 315783920.5]]
-  const r = await publicar(googleFalso(filas), 'ID', 7, destinos, { titulo: 'Proveedores' })
-  assert.equal(r.nombres, 4)
+  const g = googleFalso(filas)
+  const pedidos = []
+  const espia = { ...g, spreadsheetBatchUpdate: async (id, reqs) => { pedidos.push(...(reqs || [])); return {} } }
+  const r = await publicar(espia, 'ID', 7, destinos, { titulo: 'Proveedores' })
   assert.equal(r.verificado, true)
   assert.deepEqual(r.malApuntados.map((m) => m.name), [ARCA.total])
+  assert.deepEqual(r.noPublicados, [ARCA.total])
+  // TRES publicados, no cuatro: el que apuntaba a "0001-00000204" no se apuntó a ninguna parte.
+  assert.equal(r.nombres, 3)
+  const nombresPedidos = pedidos.map((q) => q.addNamedRange?.namedRange?.name ?? q.updateNamedRange?.namedRange?.name)
+  assert.ok(!nombresPedidos.includes(ARCA.total), 'se pidió apuntar el nombre a la celda con el comprobante')
+  assert.equal(nombresPedidos.filter(Boolean).length, 3)
 })
 
 test('si no se puede releer, la respuesta es "no verificado" — nunca "salió bien"', async () => {

@@ -184,21 +184,52 @@ const a1 = (fila, col) => `${String.fromCharCode(64 + col)}${fila}`
  * @returns {Promise<{nombres:number, verificado:boolean, malApuntados:Array<object>}>}
  */
 export async function publicar(google, fileId, sheetId, destinos = [], { titulo = null } = {}) {
-  if (!destinos.length) return { nombres: 0, verificado: false, malApuntados: [] }
+  if (!destinos.length) return { nombres: 0, verificado: false, malApuntados: [], noPublicados: [] }
   const existentes = await google.getNamedRanges(fileId).catch(() => [])
-  await google.spreadsheetBatchUpdate(fileId, pedidos(sheetId, destinos, existentes))
-  if (!titulo) return { nombres: destinos.length, verificado: false, malApuntados: [] }
 
-  const f0 = Math.min(...destinos.map((d) => d.fila)), f1 = Math.max(...destinos.map((d) => d.fila))
-  const c0 = Math.min(...destinos.map((d) => d.col)), c1 = Math.max(...destinos.map((d) => d.col))
-  // El nombre de la pestaña, escapado — la misma función que usan las fórmulas al reubicarse.
-  let leido = null
-  try {
-    leido = await google.readSheetValues(fileId, `${refPestana(titulo)}!${a1(f0, c0)}:${a1(f1, c1)}`, { render: 'UNFORMATTED_VALUE' })
-  } catch { leido = null }
-  // NO PODER RELEER NO ES "SALIÓ BIEN". Se dice que no se verificó y el que llama decide.
-  if (!leido) return { nombres: destinos.length, verificado: false, malApuntados: [] }
+  // ═══ SE MIRA ANTES DE APUNTAR, NO DESPUÉS (05/08) ═══
+  //
+  // Hasta hoy esto publicaba los doce nombres y RECIÉN DESPUÉS releía para avisar cuáles habían
+  // quedado mal apuntados. El aviso salía —y sirvió: así apareció que cinco `ARCA_*` apuntaban a
+  // números de comprobante y CUITs— pero para entonces el daño ya estaba hecho: los nombres apuntando
+  // a basura, y Recurrentes, Estructura, Materiales y el Cash Flow Mensual mostrando un número de
+  // comprobante donde prometen plata. Un aviso que llega después del daño es una autopsia.
+  //
+  // Las CELDAS ya están escritas cuando se llama a esta función; lo único que falta es a dónde apunta
+  // cada nombre. Así que se lee primero, se descartan los destinos que no tienen la especie prometida,
+  // y se publican sólo los que sí. El nombre descartado se queda donde estaba —o no se crea— y el que
+  // llama recibe la lista para gritarla. Las dos salidas son ruidosas; apuntar a basura era silenciosa.
+  //
+  // Sin `titulo` no se puede releer (la API de valores direcciona por nombre de pestaña, no por
+  // sheetId): ahí se publica todo y se devuelve `verificado: false`, que es la verdad y no un éxito.
+  let malApuntados = []
+  let aPublicar = destinos
+  let verificado = false
+  if (titulo) {
+    const f0 = Math.min(...destinos.map((d) => d.fila)), f1 = Math.max(...destinos.map((d) => d.fila))
+    const c0 = Math.min(...destinos.map((d) => d.col)), c1 = Math.max(...destinos.map((d) => d.col))
+    // La relectura es UNA sola llamada: el rectángulo que cubre todos los destinos. Doce lecturas
+    // sueltas por corrida son doce oportunidades más de comerse un 429.
+    let leido = null
+    try {
+      leido = await google.readSheetValues(fileId, `${refPestana(titulo)}!${a1(f0, c0)}:${a1(f1, c1)}`, { render: 'UNFORMATTED_VALUE' })
+    } catch { leido = null }
+    // NO PODER RELEER NO ES "SALIÓ BIEN" NI ES "NO PUBLIQUES": es no saber. Se publica —para no dejar
+    // el archivo sin nombres por un 429— y se dice que no se verificó.
+    if (leido) {
+      verificado = true
+      malApuntados = desalineados(destinos, (d) => (leido[d.fila - f0] || [])[d.col - c0])
+      const malos = new Set(malApuntados.map((m) => m.name))
+      aPublicar = destinos.filter((d) => !malos.has(d.name))
+    }
+  }
 
-  const malApuntados = desalineados(destinos, (d) => (leido[d.fila - f0] || [])[d.col - c0])
-  return { nombres: destinos.length, verificado: true, malApuntados }
+  if (aPublicar.length) await google.spreadsheetBatchUpdate(fileId, pedidos(sheetId, aPublicar, existentes))
+  return {
+    nombres: aPublicar.length,
+    verificado,
+    malApuntados,
+    /** Los que NO se apuntaron a la celda pedida porque esa celda no tiene lo que el nombre promete. */
+    noPublicados: malApuntados.map((m) => m.name),
+  }
 }
