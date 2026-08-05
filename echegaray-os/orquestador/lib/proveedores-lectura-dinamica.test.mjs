@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert'
 import { describe, it } from 'node:test'
-import { sobranteDeColchon, ultimaConDato } from './proveedores-colchon.mjs'
+import { filasNoVacias, sobranteDeColchon, ultimaConDato } from './proveedores-colchon.mjs'
 import {
   fusionarLecturas, leerCuerpoDeDinamica, leerParaDecidirBorrado, RENDER_EMITIDO, RENDER_ESCRITO,
 } from './proveedores-lectura-dinamica.mjs'
@@ -114,6 +114,42 @@ describe('leerParaDecidirBorrado', () => {
     const bien = sobranteDeColchon({ filas: fusionada, desde: 1, hasta: 12, colchon: 3 })
     assert.equal(bien.ultima, 5, 'la última con algo es el cuarto proveedor')
     assert.deepEqual([bien.desdeBorrar, bien.hastaBorrar], [9, 12], 'sólo se devuelve el aire de verdad')
+  })
+
+  /**
+   * LA SECCIÓN 1 COMO LA ESCRIBE SU GENERADOR, y como se destruía sola al terminar.
+   *
+   * 17 rótulos del cuadro A · 18-29 su cuerpo (dinámica) · 30 aire · 31 el subtítulo "Cada
+   * operación" · 32-50 el cuerpo del cuadro B (dinámica) · 51 el título de la sección 2.
+   */
+  function seccion1RecienEscrita() {
+    const emitido = Array.from({ length: 51 }, () => [''])
+    emitido[16] = ['Proveedor', 'Se le debe', 'Facturas']
+    for (let i = 17; i <= 28; i++) emitido[i] = [`Proveedor ${i}`, '1.000', '1']
+    emitido[30] = ['Cada operación']
+    for (let i = 31; i <= 49; i++) emitido[i] = [`0001-0000${i}`, 'Alumetal', '15/08/2026']
+    emitido[50] = ['2 · CUENTA CORRIENTE POR PROVEEDOR']
+    // Para FORMULA sólo existe lo que alguien ESCRIBIÓ: los rótulos, el subtítulo y el título.
+    const escrito = emitido.map((f, i) => ([16, 30, 50].includes(i) ? f : ['']))
+    return {
+      readSheetValues: (_id, _r, { render } = {}) => Promise.resolve(render === RENDER_ESCRITO ? escrito : emitido),
+    }
+  }
+
+  it('EL CASO REAL: el recorte le devolvía al colchón las filas del cuadro que acababa de escribir', async () => {
+    const google = seccion1RecienEscrita()
+    const soloFormula = await google.readSheetValues('X', 'r', { render: RENDER_ESCRITO })
+    const malo = sobranteDeColchon({ filas: soloFormula, desde: 17, hasta: 51, colchon: 3 })
+    assert.equal(malo.ultima, 31, 'lo último con algo era el subtítulo: el cuadro B no existía')
+    assert.deepEqual([malo.desdeBorrar, malo.hastaBorrar], [35, 51],
+      'borraba 16 de las 19 filas del cuadro B — y una dinámica sin lugar queda en #REF!')
+    assert.deepEqual(filasNoVacias(soloFormula, malo), [],
+      'y el cinturón, que usa la misma lectura ciega, lo dejaba pasar')
+
+    const fusionada = await leerParaDecidirBorrado(leer(google))
+    const bien = sobranteDeColchon({ filas: fusionada, desde: 17, hasta: 51, colchon: 3 })
+    assert.equal(bien.ultima, 50, 'el cuadro B termina en la 50')
+    assert.equal(bien.sobrante, 0, 'no sobra nada: no se borra una sola fila')
   })
 
   it('lee las dos veces el MISMO rango, con los dos renders', async () => {

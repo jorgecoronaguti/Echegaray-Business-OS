@@ -268,9 +268,15 @@ async function main() {
  * columna le borrara al dueño catorce fechas que vivían más a la derecha. Ver `lib/proveedores-colchon.mjs`.
  */
 async function recortarElAire({ google, sheetId, geo }) {
-  // DOS LECTURAS FUSIONADAS: acá se BORRA, y el cuerpo de una dinámica es invisible para `FORMULA`.
-  // Hoy este bloque no se recortaba de más por suerte —debajo del cuadro B hay texto que frena el
-  // conteo—, pero la suerte no es un control. Ver `lib/proveedores-lectura-dinamica.mjs`.
+  // ═══ DOS LECTURAS FUSIONADAS, Y ES LO QUE MANTENÍA MUERTO AL CUADRO B (05/08) ═══
+  //
+  // Esta lectura era sólo `FORMULA`, que NO VE el cuerpo de una tabla dinámica. Lo último con algo
+  // del bloque era entonces el subtítulo "Cada operación" —el cuadro B, 19 filas recién escritas,
+  // no existía para la lectura— así que el recorte le devolvía al colchón las filas que el cuadro
+  // acababa de ocupar, y el cinturón `filasNoVacias`, que usa la misma lectura, lo dejaba pasar.
+  // Una dinámica sin lugar no se renderiza: Google la deja en #REF!, que es como estaba el cuadro B
+  // en el archivo. El generador destruía su propio cuadro al final de cada corrida.
+  // Ver `lib/proveedores-lectura-dinamica.mjs`.
   const rango = `${PESTAÑA}!A1:${ANCHO_LECTURA}${geo.filaLimite + 20}`
   const ancho = await leerParaDecidirBorrado({ google, id: ID, rango })
   const siguiente = filaDelSiguienteTitulo(ancho, geo.filaEncabezado)

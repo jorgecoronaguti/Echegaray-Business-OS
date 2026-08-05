@@ -18,10 +18,18 @@
 //   1. UN FALSO NEGATIVO. La guarda del generador da por vacía una dinámica llena y aborta. Cuesta el
 //      pie del cuadro (queda sin "resto" ni "total"), el recorte del aire, y deja la pestaña a medio
 //      escribir: exactamente el estado en que quedó Proveedores el 05/08.
-//   2. UN BORRADO. La lógica del colchón cuenta filas en blanco para devolverlas con
-//      `deleteDimension`. Con la lectura en FORMULA, el cuerpo entero de una dinámica ES una fila en
-//      blanco. Hoy no se dispara de casualidad —debajo de cada pivot hay un texto o una fórmula que
-//      frena el conteo, que se hace desde abajo—, y borrar una fila no tiene vuelta.
+//   2. UN BORRADO, Y NO ES HIPOTÉTICO. La lógica del colchón cuenta filas en blanco para devolverlas
+//      con `deleteDimension`. Con la lectura en FORMULA, el cuerpo entero de una dinámica ES una fila
+//      en blanco — y el "cinturón" `filasNoVacias`, que comprueba que no se borre nada con datos, usa
+//      LA MISMA lectura ciega, así que da el visto bueno.
+//
+//      Medido en el archivo el 05/08: la tabla "Cada operación" de la sección 1 está en **#REF!**.
+//      El generador la escribe (19 filas), y al terminar `recortarElAire` mide el bloque con la
+//      lectura FORMULA, ve que lo último con algo es el SUBTÍTULO —el cuerpo de la dinámica no
+//      existe para esa lectura—, y le devuelve al colchón las filas que la dinámica acababa de
+//      ocupar. Una dinámica sin lugar no se renderiza: Google la deja en #REF!. El generador
+//      destruía su propio cuadro al final de cada corrida, y el dry-run lo confirma pidiendo insertar
+//      28 filas otra vez.
 //
 // LA REGLA, ENTONCES:
 //
