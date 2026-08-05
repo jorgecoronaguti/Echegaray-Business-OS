@@ -1211,11 +1211,19 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       // RELEE y, si no aterrizó, se dice con nombre y apellido.
       const perdidos = []
       for (const d of loc) {
-        const primera = (d.values || []).flat().find((c) => c !== '' && c !== null && c !== undefined)
-        if (primera === undefined || typeof primera === 'string' && primera[0] === '=') continue
+        // ═══ SE COMPARA UN TEXTO PLANO, NUNCA UN NÚMERO NI UNA FECHA (05/08, mismo día) ═══
+        //
+        // La primera versión comparaba String contra String y gritó en falso a la primera corrida: un
+        // 67981.02 escrito con USER_ENTERED vuelve "67.981,02" y un "04/08/2026" vuelve como fecha.
+        // Una guarda que grita en falso se termina ignorando — y ésta existe para un caso real. Se
+        // elige como testigo el primer TEXTO plano (sin dígitos ni separadores), que hace el viaje de
+        // ida y vuelta sin transformarse; si el lote no tiene ninguno, no se verifica y no se miente.
+        const testigo = (d.values || []).flat().find((c) => typeof c === 'string' && c.trim() !== ''
+          && c[0] !== '=' && !/^[\d.,/\-$\s%]+$/.test(c))
+        if (testigo === undefined) continue
         const leido = await cliente.readSheetValues(fileId, d.range).catch(() => null)
         if (!leido) continue
-        if (!(leido.flat() || []).some((c) => String(c) === String(primera))) perdidos.push(d.range)
+        if (!(leido.flat() || []).some((c) => String(c) === String(testigo))) perdidos.push(d.range)
       }
       if (perdidos.length) {
         console.warn(`  ⚠ LA ESCRITURA NO ATERRIZÓ en ${perdidos.length} rango(s): ${perdidos.slice(0, 4).join(', ')}. `
