@@ -189,11 +189,33 @@ async function main() {
   }
 
   // 5) Lo que quedó en la base, que es donde se ve si algo murió sin decirlo.
+  // El outbox se busca por `evento_id`: `correlation_id` es del evento canónico, no de la salida.
+  // `estado = 'dead'` es la dead-letter — el modo de falla que hay que ver de una lectura.
   const outbox = await query(
-    `select estado, dead, coalesce(error,'') as error from comunicacion.outbox
-      where correlation_id = $1 order by creado_at`, [ev.correlation_id]).catch(() => ({ rows: [] }))
-  if (outbox.rows.length) {
-    console.log('outbox  :', outbox.rows.map((r) => `${r.estado}${r.dead ? ' DEAD' : ''}${r.error ? ` (${r.error.slice(0, 80)})` : ''}`).join(' · '))
+    `select o.estado, o.intentos, coalesce(o.last_error,'') as error, o.platform_ref
+       from comunicacion.outbox o
+       join comunicacion.eventos e on e.id = o.evento_id
+      where e.correlation_id = $1 order by o.creado_at`, [ev.correlation_id])
+    .catch((e) => ({ rows: [], error: String(e?.message ?? e) }))
+  if (outbox.error) console.log(`outbox  : no pude leerlo (${outbox.error.slice(0, 100)})`)
+  else if (!outbox.rows.length) console.log('outbox  : sin salidas para este evento')
+  for (const r of outbox.rows) {
+    console.log(`outbox  : ${r.estado}${r.estado === 'dead' ? '  ← DEAD LETTER' : ''} · ${r.intentos} intento(s)`
+      + `${r.platform_ref ? ` · post ${r.platform_ref}` : ''}${r.error ? ` · ${r.error.slice(0, 120)}` : ''}`)
+  }
+  const dl = await query(
+    `select motivo, coalesce(error,'') as error from comunicacion.dead_letter
+      where creado_at > now() - interval '10 minutes' order by creado_at desc limit 3`).catch(() => ({ rows: [] }))
+  for (const r of dl.rows) console.log(`dead    : ${r.motivo}${r.error ? ` · ${r.error.slice(0, 120)}` : ''}`)
+
+  // CERO MODELO: este camino tiene que ser determinístico. Si el contador se movió, alguien metió un
+  // modelo donde no va — es lo más grave que se puede encontrar acá.
+  const chat = await query(
+    `select count(*)::int as n from orq.chat_result where created_at > now() - interval '5 minutes'`)
+    .catch(() => ({ rows: [] }))
+  if (chat.rows.length) {
+    const n = chat.rows[0].n
+    console.log(`modelo  : ${n} llamada(s) en orq.chat_result en los últimos 5 min${n ? '  ← revisar: el ruteo y la lectura de archivos son 0 API' : ''}`)
   }
   const arch = await query(
     `select nombre, familia, formato, destino, estado, coalesce(error,'') as error
