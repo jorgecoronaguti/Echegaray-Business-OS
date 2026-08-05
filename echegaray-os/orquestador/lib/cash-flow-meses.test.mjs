@@ -78,14 +78,19 @@ test('ninguna fila tiene números sin decir qué son, y el patrón de la pestañ
   assert.deepEqual(malos, [])
 })
 
-test('publica CF_MESES sobre sus doce meses: la proyección de comisiones cuenta sobre ese rango', () => {
+test('publica los tres nombres que el resto del archivo necesita, sobre doce filas cada uno', () => {
+  // CF_MESES lo cuenta la proyección de comisiones; los dos saldos los mira el anexo de CAJA, que
+  // hasta hoy ubicaba estas filas por los rótulos de la matriz vieja y sus doce columnas B..M.
   const { meta } = armar()
   const d = destinosNombrados(meta)
-  assert.equal(d.length, 1)
-  assert.equal(d[0].name, NOMBRE_MESES)
-  assert.equal(d[0].fila, meta.aux.fila0)
-  assert.equal(d[0].filas, 12)
+  assert.deepEqual(d.map((x) => x.name), [NOMBRE_MESES, 'CF_SALDO_INICIO', 'CF_SALDO_CIERRE'])
+  for (const x of d) {
+    assert.equal(x.fila, meta.aux.fila0)
+    assert.equal(x.filas, 12)
+  }
   assert.equal(d[0].col, meta.aux.col.fecha + 1)
+  assert.equal(d[1].col, meta.aux.col.inicio + 1)
+  assert.equal(d[2].col, meta.aux.col.saldo + 1)
 })
 
 test('el saldo del año sale del último mes con cadena, no de sumar los saldos', () => {

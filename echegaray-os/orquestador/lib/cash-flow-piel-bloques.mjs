@@ -149,7 +149,7 @@ export function pielBloques({ sheetId, meta, tipo = 'dia', filasHoja = 0, colsHo
   // ── 6. La zona auxiliar: oculta. Es maquinaria, y una vista no muestra maquinaria ────────────────
   req.push({
     updateDimensionProperties: {
-      range: { sheetId, dimension: 'COLUMNS', startIndex: ANCHO_VISTA, endIndex: COL_AUX + 14 },
+      range: { sheetId, dimension: 'COLUMNS', startIndex: ANCHO_VISTA, endIndex: COL_AUX + 16 },
       properties: { hiddenByUser: true }, fields: 'hiddenByUser',
     },
   })

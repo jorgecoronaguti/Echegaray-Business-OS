@@ -80,6 +80,7 @@ export function grillaMeses({ anio = 2026, refs = {}, hoy = new Date() } = {}) {
     fecha: COL_AUX, ingReal: COL_AUX + 1, ingProy: COL_AUX + 2, egrReal: COL_AUX + 3, egrProy: COL_AUX + 4,
     ingresos: COL_AUX + 5, egresos: COL_AUX + 6, netoReal: COL_AUX + 7, netoProy: COL_AUX + 8,
     neto: COL_AUX + 9, saldo: COL_AUX + 10, interes: COL_AUX + 11, comisiones: COL_AUX + 12, impuesto: COL_AUX + 13,
+    inicio: COL_AUX + 14,
   }
   const cAux = (col, fila) => celda(col, fila)
   const rango = (col, f0 = AUX_0, f1 = AUX_1) => `${celda(col, f0)}:${celda(col, f1)}`
@@ -167,6 +168,7 @@ export function grillaMeses({ anio = 2026, refs = {}, hoy = new Date() } = {}) {
     fila[aux.netoProy] = `=N(${cAux(aux.ingProy, filaAux)})-N(${cAux(aux.egrProy, filaAux)})`
     fila[aux.neto] = `=N(${cAux(aux.ingresos, filaAux)})-N(${cAux(aux.egresos, filaAux)})`
     fila[aux.saldo] = `=IF(N(${celda(1, filaCierre)})=0;"";N(${celda(1, filaCierre)}))`
+    fila[aux.inicio] = `=IF(N(${celda(1, filaInicio)})=0;"";N(${celda(1, filaInicio)}))`
     fila[aux.interes] = formulaInteresMes(celda(1, filaInicio), celda(0, filaTitulo))
     fila[aux.comisiones] = formulaComisionesMes(celda(0, filaTitulo))
     fila[aux.impuesto] = `=(${terminoLibro({ desde, hasta, medida: 'magnitud', instrumentos: [...INSTRUMENTOS_BANCARIOS] })})*${ALICUOTA}`
@@ -192,6 +194,20 @@ export function grillaMeses({ anio = 2026, refs = {}, hoy = new Date() } = {}) {
 }
 
 /**
+ * LOS NOMBRES QUE ESTA VISTA LE OFRECE AL RESTO DEL ARCHIVO.
+ *
+ * Existen porque el rediseño le rompió el piso a un consumidor real: el anexo de CAJA ubicaba las
+ * filas de esta pestaña por los rótulos de la matriz vieja ("Efectivo y equivalentes al inicio",
+ * "…al cierre", "Período") y leía sus doce meses en las columnas B..M. Ninguna de las dos cosas
+ * existe más. Con estos tres nombres, ese control vuelve a apuntar a algo estable sin conocer la
+ * geometría de la vista — que es lo que tendría que haber hecho desde el principio.
+ */
+export const NOMBRES_VISTA = Object.freeze({
+  meses: NOMBRE_MESES,
+  inicio: 'CF_SALDO_INICIO',
+  cierre: 'CF_SALDO_CIERRE',
+})
+/**
  * LOS RANGOS CON NOMBRE QUE PUBLICA ESTA VISTA.
  *
  * CF_MESES son los doce meses del ejercicio, y no es decorativo: la proyección de comisiones
@@ -200,7 +216,11 @@ export function grillaMeses({ anio = 2026, refs = {}, hoy = new Date() } = {}) {
  * error: devuelve cero meses y la proyección desaparece sin que nadie se entere.
  */
 export function destinosNombrados(meta) {
-  return [{ name: NOMBRE_MESES, fila: meta.aux.fila0, col: meta.aux.col.fecha + 1, filas: 12 }]
+  return [
+    { name: NOMBRES_VISTA.meses, fila: meta.aux.fila0, col: meta.aux.col.fecha + 1, filas: 12 },
+    { name: NOMBRES_VISTA.inicio, fila: meta.aux.fila0, col: meta.aux.col.inicio + 1, filas: 12 },
+    { name: NOMBRES_VISTA.cierre, fila: meta.aux.fila0, col: meta.aux.col.saldo + 1, filas: 12 },
+  ]
 }
 
 /**
