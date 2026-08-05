@@ -20,7 +20,7 @@ import {
   rotulosCalendarioImpuestos, CALENDARIO_IMPUESTOS, expresionProyeccionMes,
 } from '../lib/cash-flow-lineas.mjs'
 import {
-  SEMANAS_HORIZONTE, semanasRodantes, semanasCerradas, formulaLineaSemana,
+  SEMANAS_HORIZONTE, semanasDelAnio, semanasCerradas, formulaLineaSemana,
   naturalezaLinea, GLOSA_NATURALEZA,
 } from '../lib/cash-flow-horizonte.mjs'
 import { bloqueDecision, bloqueContraste, bloqueNaturaleza } from '../lib/cash-flow-tesoreria.mjs'
@@ -91,7 +91,7 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   // Trece semanas rodantes desde la semana en curso, no las 53 del calendario. El porqué —y la
   // identidad que garantiza que el semanal y el mensual no puedan discrepar sobre un mes completo—
   // está escrito entero en lib/cash-flow-horizonte.mjs, que es donde se puede probar.
-  const cols = periodo === 'semanal' ? semanasRodantes(hoy, SEMANAS_HORIZONTE) : meses()
+  const cols = periodo === 'semanal' ? semanasDelAnio(hoy) : meses()
   const n = cols.length
   const colTotal = letra(n + 1) // A + n períodos → la siguiente es el total
   const FILA_CAB = 3
@@ -107,7 +107,7 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   // EL TÍTULO DICE QUÉ PREGUNTA CONTESTA CADA UNO, porque ahora contestan preguntas distintas: el
   // semanal, en qué semana no alcanza la plata; el mensual, cómo cierra el año.
   push([periodo === 'semanal'
-    ? `Cash Flow Semanal — las ${SEMANAS_HORIZONTE} semanas que vienen`
+    ? `Cash Flow Semanal ${new Date().getFullYear()} — semana a semana, de enero a diciembre`
     : `Cash Flow Mensual ${AÑO} — cuándo entra y sale la plata`])
   // A2 = el atajo a la semana de hoy.
   //

@@ -78,6 +78,33 @@ export function semanasRodantes(hoy, n = SEMANAS_HORIZONTE) {
 }
 
 /**
+ * LAS SEMANAS DEL AÑO CALENDARIO, DE ENERO A DICIEMBRE — no las que vienen desde hoy.
+ *
+ * El dueño: *"las 51 semanas que vienen, pero del año 2026, no lo que viene"*. Contar hacia adelante
+ * desde hoy mete columnas de 2027 en un cuadro rotulado 2026, y deja fuera los meses ya cerrados del
+ * año — que son justamente contra los que se compara lo proyectado.
+ *
+ * El cuadro es del EJERCICIO: arranca el primer lunes que cae dentro del año y termina en el último.
+ * Así el semanal y el mensual cubren exactamente el mismo período y sus totales se pueden comparar,
+ * que es la condición para que la conciliación entre los dos signifique algo.
+ *
+ * @param {Date|string|number} enElAnio cualquier fecha del año que se quiere cubrir
+ * @returns {Array<Date>} los lunes del año, en orden
+ */
+export function semanasDelAnio(enElAnio) {
+  const anio = new Date(enElAnio).getFullYear()
+  // El primer lunes ON OR BEFORE el 1° de enero: la semana que CONTIENE al 1° pertenece al año, aunque
+  // arranque en diciembre. Si no, los primeros días del ejercicio no caen en ninguna columna.
+  const d = lunesDe(new Date(Date.UTC(anio, 0, 1)))
+  const out = []
+  for (let x = d; x.getUTCFullYear() <= anio; x = new Date(x.getTime() + 7 * 86400000)) {
+    out.push(x)
+    if (out.length > 54) break // guarda: un año tiene 52 o 53 semanas, nunca más
+  }
+  return out
+}
+
+/**
  * Las `n` semanas que YA CERRARON, de la más vieja a la más reciente. Es la ventana del contraste:
  * la única donde "lo que se esperaba" y "lo que ocurrió" son dos hechos comparables.
  */
