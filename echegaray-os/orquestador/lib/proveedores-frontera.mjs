@@ -139,6 +139,29 @@ export const SECCIONES_PROVEEDORES = [
 // la CIFRA de ventas registrada por ARCA (una línea, la que alimenta ARCA_VENTAS_*) y el detalle se
 // consulta en _ARCA_RAW, que es su origen declarado.
 
+/**
+ * ═══ UN BLOQUE, UN DUEÑO, Y EL ORDEN EN QUE CORREN (05/08) ═══
+ *
+ * El defecto que esto cierra: la sección 2 tuvo dos dueños —el generador de texto la escribía con
+ * `TOP = 30` y una línea muda de "resto de proveedores comerciales (74)" por $28M, y el pivot la
+ * rehacía entera— así que cada corrida del pipeline deshacía la dinámica. Y el defecto gemelo, que
+ * era peor porque no se veía: de los seis generadores de esta pestaña **sólo uno estaba en `PASOS`**.
+ * Los anchos declarados el 04/08 nunca llegaron al archivo por eso.
+ *
+ * Acá se declara quién escribe qué y en qué orden. `flujo-caja-pasos.test.mjs` verifica contra esta
+ * lista que el pipeline los corra a todos, en este orden y sin repetir un bloque — si alguien agrega
+ * un generador nuevo y se olvida de enchufarlo, la suite se pone roja en vez de que la pestaña
+ * envejezca en silencio durante días.
+ */
+export const DUENOS_DE_PROVEEDORES = Object.freeze([
+  Object.freeze({ bloque: 'origen · CUIT (OS) en Compras', script: 'proveedores-cuenta-corriente.mjs' }),
+  Object.freeze({ bloque: 'de la frontera para abajo (3, 4, 5) + Materiales', script: 'proveedores-materiales-pestana.mjs' }),
+  Object.freeze({ bloque: '1 · qué se debe y cuándo', script: 'proveedores-dos-cuadros.mjs' }),
+  Object.freeze({ bloque: '2 · cuenta corriente por proveedor', script: 'proveedores-seccion2-pivot.mjs' }),
+  Object.freeze({ bloque: 'la columna "Qué hacer" del dueño', script: 'proveedores-notas-visibles.mjs' }),
+  Object.freeze({ bloque: 'el encabezado (la posición) y los anchos', script: 'proveedores-encabezado-aplicar.mjs' }),
+])
+
 /** La pestaña "Materiales" es del generador de punta a punta: sus secciones arrancan en 1. */
 // `controlArca` cierra la pestaña: es el único control de Materiales que no se valida contra Compras.
 export const SECCIONES_MATERIALES = ['familiaMes', 'obra', 'controlArca']
