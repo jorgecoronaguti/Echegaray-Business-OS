@@ -85,12 +85,19 @@ export function rolesDeLaGrilla(inicios = [], fechaSaldo, finDe) {
  * @param {string} p.refSaldo   celda/rango con nombre del saldo real (`CAJA_TOTAL_DISPONIBLE`)
  * @param {string} p.refFecha   celda/rango con nombre de su fecha (`CAJA_FECHA_SALDO`)
  * @param {string|null} p.anterior celda del cierre del período anterior, o null en la primera columna
+ * @param {string} [p.yaVividoEnElAncla] expresión de lo que YA se movió dentro del período ancla antes
+ *   de la fecha del saldo. Se RESTA sólo en ese período y por una razón aritmética: el saldo declarado
+ *   está fechado en el MEDIO del período, así que si el período arranca con ese saldo y después suma
+ *   todos sus movimientos, los que ocurrieron entre el inicio y el corte se cuentan dos veces. En un
+ *   cuadro semanal la distorsión es de días; en uno mensual, de hasta un mes entero de movimientos.
+ *   Vacío (default) = comportamiento histórico, para no cambiar en silencio los cuadros que ya lo usan.
  */
-export function expresionInicio({ desde, hasta, refSaldo, refFecha, anterior = null }) {
+export function expresionInicio({ desde, hasta, refSaldo, refFecha, anterior = null, yaVividoEnElAncla = '' }) {
   // El vacío de la primera columna se escribe como "" y no como la celda de la izquierda: a la
   // izquierda de la primera columna está el rótulo, y N("Efectivo…") daría 0 sin avisar.
   const encadena = anterior ? `IF(N(${anterior})=0;"";${anterior})` : '""'
-  return `=IF(${hasta}<=${refFecha};"";IF(${desde}<=${refFecha};N(${refSaldo});${encadena}))`
+  const ancla = yaVividoEnElAncla ? `N(${refSaldo})-(${yaVividoEnElAncla})` : `N(${refSaldo})`
+  return `=IF(${hasta}<=${refFecha};"";IF(${desde}<=${refFecha};${ancla};${encadena}))`
 }
 
 /**

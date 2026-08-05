@@ -73,7 +73,13 @@ const rango = (sheetId, f0, f1, c0, c1) => ({ sheetId, startRowIndex: f0 - 1, en
 const fuente = (...rangos) => ({ sourceRange: { sources: rangos } })
 const texto = (size, color = GRIS) => ({ fontFamily: 'Arial', fontSize: size, foregroundColor: color })
 
-/** El envoltorio común: título, subtítulo que dice qué se decide, y posición flotante. */
+/**
+ * El envoltorio común: título, subtítulo que dice qué se decide, y posición flotante.
+ *
+ * `hiddenDimensionStrategy: SHOW_ALL` NO ES OPCIONAL para las vistas de bloques. Su serie vive en la
+ * zona auxiliar, que está OCULTA a propósito (es maquinaria), y el default de Sheets
+ * —SKIP_HIDDEN_ROWS_AND_COLUMNS— la descarta: el gráfico sale vacío sin dar ningún error.
+ */
 const chart = (titulo, subtitulo, spec, sheetId, fila, alto = 280) => ({
   addChart: {
     chart: {
@@ -86,6 +92,7 @@ const chart = (titulo, subtitulo, spec, sheetId, fila, alto = 280) => ({
         fontName: 'Arial',
         // Fondo blanco explícito: el default hereda el de la hoja y con la cuadrícula oculta queda gris.
         backgroundColor: BLANCO,
+        hiddenDimensionStrategy: 'SHOW_ALL',
         ...spec,
       },
       position: { overlayPosition: { anchorCell: { sheetId, rowIndex: fila, columnIndex: COL_ANCLA }, widthPixels: 760, heightPixels: alto } },
@@ -241,5 +248,157 @@ export async function requestsDeGraficos(google, fileId, sheetId, g, pestana = '
   return [
     ...mios.map((c) => ({ deleteEmbeddedObject: { objectId: c.chartId } })),
     ...dibujables.map((c) => CONSTRUCTOR[c.clave](sheetId, g)),
+  ]
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LOS CUATRO GRÁFICOS DE LAS VISTAS DE BLOQUES (05/08/2026)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El dueño los pidió por nombre: real contra proyectado, entradas contra salidas, tendencia del neto y
+// liquidez proyectada. Los cuatro leen la ZONA AUXILIAR de su vista —que a su vez referencia las mismas
+// celdas del cuadro— así que no existe forma de que un gráfico diga algo distinto de la tabla.
+//
+// Los tres primeros viven en el Mensual porque su serie es mensual; el de liquidez, en el Semanal,
+// porque la pregunta que contesta ("¿en qué semana no alcanza?") es del horizonte semanal.
+
+export const TITULO_REAL_PROY = `${MARCA}Lo real contra lo proyectado, mes a mes`
+export const TITULO_ENTRA_SALE = `${MARCA}Lo que entra y lo que sale, mes a mes`
+export const TITULO_TENDENCIA = `${MARCA}Tendencia del resultado neto`
+export const TITULO_LIQUIDEZ_SEM = `${MARCA}Liquidez proyectada, semana a semana`
+
+/** Una columna entera de la zona auxiliar, como fuente de serie. `col` es 0-based. */
+const colAux = (sheetId, aux, col) => fuente(rango(sheetId, aux.fila0, aux.fila1, col + 1, col + 1))
+
+const ejes = (tituloIzq) => [
+  { position: 'BOTTOM_AXIS', format: texto(9) },
+  { position: 'LEFT_AXIS', title: tituloIzq, format: texto(9) },
+]
+
+/** 1. REAL vs PROYECTADO. Dice cuánto del año todavía es una promesa y no un hecho. */
+export function graficoRealProyectado(sheetId, g) {
+  const { aux } = g
+  return chart(TITULO_REAL_PROY,
+    'La parte clara es la que todavía puede no ocurrir: cuanto más adelante en el año, más pesa',
+    {
+      basicChart: {
+        chartType: 'COLUMN', stackedType: 'STACKED', legendPosition: 'BOTTOM_LEGEND',
+        axis: ejes('Resultado del mes'),
+        domains: [{ domain: colAux(sheetId, aux, aux.col.fecha) }],
+        series: [
+          { series: colAux(sheetId, aux, aux.col.netoReal), targetAxis: 'LEFT_AXIS', color: ACENTO },
+          { series: colAux(sheetId, aux, aux.col.netoProy), targetAxis: 'LEFT_AXIS', color: GRIS_CLARO },
+        ],
+        headerCount: 0,
+      },
+    }, sheetId, 1, 300)
+}
+
+/** 2. ENTRADAS vs SALIDAS. El mes donde las barras se cruzan es el que consume caja. */
+export function graficoEntradasSalidas(sheetId, g) {
+  const { aux } = g
+  return chart(TITULO_ENTRA_SALE,
+    'Donde la barra de salidas supera a la de entradas, el mes se paga con caja acumulada',
+    {
+      basicChart: {
+        chartType: 'COLUMN', legendPosition: 'BOTTOM_LEGEND',
+        axis: ejes('Movimiento del mes'),
+        domains: [{ domain: colAux(sheetId, aux, aux.col.fecha) }],
+        series: [
+          { series: colAux(sheetId, aux, aux.col.ingresos), targetAxis: 'LEFT_AXIS', color: ACENTO },
+          { series: colAux(sheetId, aux, aux.col.egresos), targetAxis: 'LEFT_AXIS', color: GRIS_CLARO },
+        ],
+        headerCount: 0,
+      },
+    }, sheetId, 17, 300)
+}
+
+/** 3. TENDENCIA DEL NETO. Una sola línea: si baja tres meses seguidos, no es un mes malo. */
+export function graficoTendencia(sheetId, g) {
+  const { aux } = g
+  return chart(TITULO_TENDENCIA,
+    'Tres meses seguidos en baja no son un mes malo: son una tendencia, y se corrige antes',
+    {
+      basicChart: {
+        chartType: 'LINE', legendPosition: 'NO_LEGEND',
+        axis: ejes('Neto del mes'),
+        domains: [{ domain: colAux(sheetId, aux, aux.col.fecha) }],
+        series: [{ series: colAux(sheetId, aux, aux.col.neto), targetAxis: 'LEFT_AXIS', color: INK, lineStyle: { width: 2, type: 'SOLID' } }],
+        headerCount: 0,
+      },
+    }, sheetId, 33, 300)
+}
+
+/** 4. LIQUIDEZ PROYECTADA. El saldo al domingo de cada semana del horizonte: dónde cruza el cero. */
+export function graficoLiquidezSemanal(sheetId, g) {
+  const aux = g.auxSemanas
+  return chart(TITULO_LIQUIDEZ_SEM,
+    'Donde la línea cruza el cero ya no es una decisión de tesorería: es financiamiento',
+    {
+      basicChart: {
+        chartType: 'LINE', legendPosition: 'NO_LEGEND',
+        axis: ejes('Saldo proyectado'),
+        domains: [{ domain: colAux(sheetId, aux, aux.col.fecha) }],
+        series: [{ series: colAux(sheetId, aux, aux.col.saldo), targetAxis: 'LEFT_AXIS', color: ACENTO, lineStyle: { width: 2, type: 'SOLID' } }],
+        headerCount: 0,
+      },
+    }, sheetId, 1, 320)
+}
+
+const CONSTRUCTOR_BLOQUES = {
+  realProyectado: graficoRealProyectado,
+  entradasSalidas: graficoEntradasSalidas,
+  tendencia: graficoTendencia,
+  liquidezSemanal: graficoLiquidezSemanal,
+}
+
+/**
+ * NÚCLEO PURO: qué gráficos de bloques son dibujables con lo que trae la vista.
+ *
+ * Devolver "no se puede" es una respuesta legítima —el semanal no tiene serie mensual— y se informa,
+ * porque devolver `[]` en silencio ya dejó una pestaña sin gráficos sin que el log dijera una palabra.
+ */
+export function planDeGraficosBloques(g = {}) {
+  const CATALOGO = [
+    { clave: 'realProyectado', requiere: ['aux'], campos: ['netoReal', 'netoProy'] },
+    { clave: 'entradasSalidas', requiere: ['aux'], campos: ['ingresos', 'egresos'] },
+    { clave: 'tendencia', requiere: ['aux'], campos: ['neto'] },
+    { clave: 'liquidezSemanal', requiere: ['auxSemanas'], campos: [] },
+  ]
+  const dibujables = []
+  const omitidos = []
+  for (const c of CATALOGO) {
+    const base = g[c.requiere[0]]
+    const falta = []
+    if (!base?.col || !base.fila0 || !base.fila1) falta.push(c.requiere[0])
+    else for (const campo of c.campos) if (base.col[campo] === undefined) falta.push(campo)
+    if (falta.length) omitidos.push({ clave: c.clave, falta })
+    else dibujables.push(c)
+  }
+  return { dibujables, omitidos }
+}
+
+/**
+ * Los requests para dejar los gráficos de una vista de bloques: borrar los que hay y dibujar los que van.
+ *
+ * BORRA TODOS, NO SÓLO LOS MARCADOS. Es la única excepción del repo y es del rediseño: estas dos
+ * pestañas se rehicieron enteras por pedido del dueño, y los gráficos que había apuntaban a filas de la
+ * matriz vieja que ya no existen — dejarlos vivos es dejar cuatro cuadros mudos o, peor, mintiendo
+ * sobre celdas que hoy significan otra cosa. Fuera de estas dos pestañas sigue mandando la MARCA.
+ */
+export async function requestsDeGraficosBloques(google, fileId, sheetId, g, pestana = '') {
+  const { dibujables, omitidos } = planDeGraficosBloques(g)
+  for (const o of omitidos) console.log(`  · ${pestana}: no dibujo "${o.clave}" — la vista no trae ${o.falta.join(', ')}`)
+  if (!dibujables.length) return []
+  const hojas = await google.getCharts(fileId).catch((e) => { console.warn(`  ⚠ ${pestana}: getCharts falló: ${e.message}`); return null })
+  if (!hojas) {
+    console.warn(`  ⚠ ${pestana}: NO dibujo — no pude leer los existentes, y dibujar sin borrar los apila`)
+    return []
+  }
+  const viejos = hojas.find((h) => h.sheetId === sheetId)?.charts ?? []
+  if (viejos.length) console.log(`  🗑 ${pestana}: borro ${viejos.length} gráfico(s) de la estructura anterior`)
+  return [
+    ...viejos.map((c) => ({ deleteEmbeddedObject: { objectId: c.chartId } })),
+    ...dibujables.map((c) => CONSTRUCTOR_BLOQUES[c.clave](sheetId, g)),
   ]
 }

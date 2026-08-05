@@ -356,7 +356,14 @@ export const MIN_MESES = 4
  * con #REF! —ruidoso— en vez de seguir devolviendo otro número en silencio.
  */
 export const PESTANA_MENSUAL = 'Cash Flow Mensual'
-const MESES_CAB = `'${PESTANA_MENSUAL}'!$B$3:$M$3`
+// ═══ LOS MESES DEL EJERCICIO, POR NOMBRE Y NO POR LA FILA 3 (05/08/2026) ═══
+//
+// Acá decía `Cash Flow Mensual!$B$3:$M$3`: la fila de encabezados de la MATRIZ, que dejó de existir
+// cuando las dos vistas se rehicieron como bloques. Una referencia a una fila que ahora está vacía no
+// da error: COUNTIFS cuenta cero meses, el promedio de comisiones da 0 y la proyección desaparece en
+// silencio. El nombre lo publica la vista mensual sobre su columna de meses y sobrevive al rediseño.
+export const NOMBRE_MESES = 'CF_MESES'
+const MESES_CAB = NOMBRE_MESES
 
 // LAS FILAS NO SE HARDCODEAN MÁS. La versión anterior apuntaba a Estructura!$15 y Recurrentes!$24
 // escritos a mano, y eso ya falló una vez: los dos cash flow leían Estructura de un rango que había
