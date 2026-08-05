@@ -21,23 +21,23 @@ const portCanal = (area) => ({
 
 // ── El reclamo ───────────────────────────────────────────────────────────────
 
-test('una foto sin una sola palabra, en el canal de compras, la reclama Compras IA', () => {
-  const r = especialista.reconoce('', { fileIds: ['f1'], area: 'compras' })
+test('una foto sin una sola palabra, en el canal de compras, la reclama Compras IA', async () => {
+  const r = await especialista.reconoce('', { fileIds: ['f1'], area: 'compras' })
   assert.equal(r.destino, 'cargar')
   assert.equal(r.confianza, 1)
 })
 
-test('un mensaje SIN adjuntos en el canal de compras NO se reclama: no le roba a los demás', () => {
-  assert.equal(especialista.reconoce('cuánto le debemos a Cemento SA', { fileIds: [], area: 'compras' }), null)
-  assert.equal(especialista.reconoce('hola', { fileIds: [], area: 'compras' }), null)
+test('un mensaje SIN adjuntos en el canal de compras NO se reclama: no le roba a los demás', async () => {
+  assert.equal(await especialista.reconoce('cuánto le debemos a Cemento SA', { fileIds: [], area: 'compras' }), null)
+  assert.equal(await especialista.reconoce('hola', { fileIds: [], area: 'compras' }), null)
 })
 
-test('una foto en OTRO canal no la reclama: el canal de comprobantes es el de comprobantes', () => {
-  assert.equal(especialista.reconoce('', { fileIds: ['f1'], area: 'personas' }), null)
+test('una foto en OTRO canal no la reclama: el canal de comprobantes es el de comprobantes', async () => {
+  assert.equal(await especialista.reconoce('', { fileIds: ['f1'], area: 'personas' }), null)
 })
 
-test('preguntar cómo se cargan los comprobantes sí se reclama, flojito', () => {
-  const r = especialista.reconoce('cómo cargo un comprobante', {})
+test('preguntar cómo se cargan los comprobantes sí se reclama, flojito', async () => {
+  const r = await especialista.reconoce('cómo cargo un comprobante', {})
   assert.equal(r.destino, 'ayuda')
   assert.ok(r.confianza < 1, 'una pregunta no puede ganarle a un especialista que reconoce lo suyo')
 })

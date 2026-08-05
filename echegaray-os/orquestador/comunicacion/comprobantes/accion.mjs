@@ -21,11 +21,12 @@
 // ventana abierta justo para el caso que hay que impedir.
 
 import { igualEnTiempoConstante } from '../secreto-compartido.mjs'
-import { ESTADO, estaCompleto, resolverDuplicado, aplicarOpcion, imputacionPendiente } from '../../lib/comprobantes/fajo.mjs'
+import { ESTADO, estaCompleto, resolverDuplicado } from '../../lib/comprobantes/fajo.mjs'
 import { mensajeFajo } from '../../lib/comprobantes/mensaje.mjs'
 import { puedeCargarComprobantes } from './guarda.mjs'
 import { dialogoCorreccion, leerEstado, aplicarCorreccion, CALLBACK_ID } from './dialogo.mjs'
 import { escribirFajo } from './escritura.mjs'
+import { aplicarEleccion, confirmarFajo, RESULTADO } from './aplicar.mjs'
 import * as repoReal from './repositorio.mjs'
 
 const responder = (body) => ({ status: 200, body })
@@ -131,20 +132,18 @@ export function crearManejadorComprobantes({ port, mattermost, secreto = null, u
 
 async function confirmar(d, p) {
   const { port, mattermost, escribir, repo, log } = d
-  // COMPARE-AND-SET. Si no devuelve fila, o el fajo no existe o ya lo tomó otro click.
-  const fajo = await repo.tomarParaConfirmar(port, { id: p.fajoId })
-  if (!fajo) {
-    const actual = await repo.fajoPorId(port, p.fajoId)
-    if (!actual) return responder({ ephemeral_text: TEXTO.SIN_FAJO })
-    return responder({ ephemeral_text: actual.estado === ESTADO.CONFIRMADO ? TEXTO.YA_EN_CURSO : TEXTO.YA_CERRADO })
-  }
-
-  // El post se reescribe a "cargando" ANTES de arrancar: la escritura tarda y el silencio de un bot
-  // se lee como un bot colgado. Que falle este refresco no puede tumbar la carga.
-  await refrescar(mattermost, fajo, { message: `${TEXTO.CARGANDO}\n\n${resumenPlano(fajo)}`, attachments: [] }, log)
-
-  const r = await escribir({ port, repo, log }, fajo)
-  await refrescar(mattermost, fajo, { message: r.texto, attachments: [] }, log)
+  // COMPARE-AND-SET y escritura viven en `aplicar.mjs`: es lo mismo que hace la respuesta escrita en
+  // el hilo, y tiene que ser LA MISMA decisión. Acá sólo se le da forma de callback HTTP.
+  const r = await confirmarFajo({
+    port, repo, escribir, log,
+    // El post se reescribe a "cargando" ANTES de arrancar: la escritura tarda y el silencio de un bot
+    // se lee como un bot colgado. Que falle este refresco no puede tumbar la carga.
+    alEmpezar: (fajo) => refrescar(mattermost, fajo, { message: `${TEXTO.CARGANDO}\n\n${resumenPlano(fajo)}`, attachments: [] }, log),
+  }, { fajoId: p.fajoId })
+  if (r.que === RESULTADO.SIN_FAJO) return responder({ ephemeral_text: TEXTO.SIN_FAJO })
+  if (r.que === 'ya_en_curso') return responder({ ephemeral_text: TEXTO.YA_EN_CURSO })
+  if (r.que === RESULTADO.CERRADO) return responder({ ephemeral_text: TEXTO.YA_CERRADO })
+  await refrescar(mattermost, r.fajo, { message: r.texto, attachments: [] }, log)
   return responder({ ephemeral_text: r.estado === ESTADO.CARGADO ? '✔ Cargado.' : r.texto })
 }
 
@@ -249,32 +248,19 @@ async function contestarDuplicado(d, p) {
 
 async function imputar(d, p) {
   const { port, mattermost, url, repo, log } = d
-  const fajo = await repo.fajoPorId(port, p.fajoId)
-  if (!fajo) return responder({ ephemeral_text: TEXTO.SIN_FAJO })
-  if (fajo.estado !== ESTADO.ABIERTO) return responder({ ephemeral_text: TEXTO.YA_CERRADO })
-
-  const items = [...(fajo.items ?? [])]
-  const item = items[p.indice ?? -1]
-  if (!item) return responder({ ephemeral_text: TEXTO.SIN_FAJO })
-  const nuevo = aplicarOpcion(item, { campo: p.campo, valor: p.valor })
-  // Un valor que este comprobante no ofreció, o un segundo click sobre un botón que ya se contestó y
-  // dejó de ofrecerse: en los dos casos no se toca nada. Es el mismo idempotente que el duplicado.
-  if (!nuevo) return responder({ ephemeral_text: TEXTO.OPCION_INVALIDA })
-  items[p.indice] = nuevo
-
-  const guardado = await repo.guardarItems(port, { id: fajo.id, items })
-  if (!guardado) return responder({ ephemeral_text: TEXTO.YA_CERRADO })
-  log?.info?.('comprobantes: imputación elegida', { fajo: fajo.id, indice: p.indice, campo: p.campo })
+  const r = await aplicarEleccion({ port, repo, log }, {
+    fajoId: p.fajoId, indices: [p.indice], campo: p.campo, valor: p.valor,
+  })
+  if (r.que === RESULTADO.SIN_FAJO) return responder({ ephemeral_text: TEXTO.SIN_FAJO })
+  if (r.que === RESULTADO.CERRADO) return responder({ ephemeral_text: TEXTO.YA_CERRADO })
+  if (r.que === RESULTADO.INVALIDA) return responder({ ephemeral_text: TEXTO.OPCION_INVALIDA })
 
   // CONTESTAR LO ÚLTIMO QUE FALTABA ES CONFIRMAR. No se le pide un click más a quien acaba de
   // completar la imputación: si ya no queda nada que preguntar y todo es cargable, se carga. Es la
   // misma condición que usa la carga automática del post, y el mismo `escribirFajo` de siempre.
-  const listo = (guardado.items ?? []).length
-    && (guardado.items ?? []).every((it) => !imputacionPendiente(it).length)
-    && (guardado.items ?? []).some(estaCompleto)
-  if (listo) return await confirmar(d, { ...p, fajoId: fajo.id })
+  if (r.listo) return await confirmar(d, { ...p, fajoId: r.fajo.id })
 
-  await refrescar(mattermost, guardado, mensajeMattermost(guardado, url), log)
+  await refrescar(mattermost, r.fajo, mensajeMattermost(r.fajo, url), log)
   return responder({ ephemeral_text: `Anotado: ${p.campo} = ${p.valor}.` })
 }
 
