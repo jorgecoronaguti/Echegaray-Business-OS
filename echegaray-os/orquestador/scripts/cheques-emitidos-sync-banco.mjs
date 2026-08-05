@@ -28,7 +28,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
-import { planSync, filaRegistro, verificarEncabezado, COL, norm } from '../lib/cheques-emitidos-sync.mjs'
+import { planSync, filaRegistro, verificarEncabezado, sinComprobante, COL, norm } from '../lib/cheques-emitidos-sync.mjs'
 import { bloquear, desbloquear } from '../lib/pestana-bloqueada.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -94,7 +94,7 @@ async function main() {
     const fila = filaHdr + 1 + i
     if (r?.[COL.tipo] || r?.[COL.numero]) ultima = fila
     if (!norm(r?.[COL.numero])) return
-    registro.push({ fila, tipo: r[COL.tipo], numero: r[COL.numero], debitado: r[COL.debitado], proveedor: r[COL.proveedor], monto: r[COL.monto] })
+    registro.push({ fila, tipo: r[COL.tipo], numero: r[COL.numero], debitado: r[COL.debitado], proveedor: r[COL.proveedor], monto: r[COL.monto], nroComp: r[COL.nroComp] })
   })
   console.log(`registro: ${registro.length} cheque(s) desde la fila ${filaHdr + 1}, última con dato ${ultima}`)
 
@@ -111,6 +111,8 @@ async function main() {
     const fis = p.soloEnPestana.filter((r) => /fisico/i.test(String(r.tipo))).length
     console.log(`  ℹ ${p.soloEnPestana.length} del registro no están en public.cheques (${fis} físicos, ${p.soloEnPestana.length - fis} echeq): no se tocan, el registro es del dueño`)
   }
+
+  avisarSinComprobante(p)
 
   if (DRY) { console.log('\n(--dry) no escribí nada.'); return }
   if (!p.updates.length && !p.agregar.length) { console.log('\nnada que sincronizar: el registro ya coincide con la base.'); return }
@@ -144,6 +146,34 @@ async function main() {
   const ok = !p2.updates.length && !p2.agregar.length
   console.log(`verificación: ${reg2.length} cheque(s) en el registro · ${ok ? '✓ la base y el registro coinciden' : `✖ quedaron ${p2.updates.length} diferencia(s) y ${p2.agregar.length} sin agregar`}`)
   if (!ok) process.exitCode = 1
+}
+
+/**
+ * EL AVISO QUE TIENE QUE LLEGAR EN EL MOMENTO DE LA CARGA, NO EN LA CONCILIACIÓN.
+ *
+ * Un cheque sin N° de comprobante no se puede cruzar contra Compras nunca más, y eso no es un detalle
+ * de archivo: el calendario de CAJA decide con la marca de ese cruce, así que un cheque sin número es
+ * plata que el piso proyectado no puede afirmar ni negar. Al 05/08 eran $8.424.279 en once cheques no
+ * debitados. Cada uno de ellos fue, alguna vez, una fila que acababa de entrar y a la que le faltaban
+ * diez segundos de alguien que tenía el papel en la mano.
+ *
+ * No bloquea el sync: el cheque tiene que entrar igual —el DEBITADO es un hecho del banco y no puede
+ * esperar—. Lo que no puede pasar es que entre en silencio.
+ */
+function avisarSinComprobante(p) {
+  const { yaEnElRegistro, seEstanAgregando } = sinComprobante(p)
+  if (seEstanAgregando.length) {
+    console.log(`\n⚠ ${seEstanAgregando.length} cheque(s) entran SIN N° de comprobante — el banco no lo informa, lo tenés vos:`)
+    for (const c of seEstanAgregando) console.log(`    ${c.instrumento} ${norm(c.numero)}  ${String(c.contraparte ?? '').slice(0, 28).padEnd(29)} ${$(c.importe)}  paga ${c.fecha_pago}`)
+    console.log('    Cargales el N° en la columna H de "Cheques Emitidos". Sin él no se pueden cruzar contra Compras')
+    console.log('    y el piso proyectado de caja no va a poder afirmar si esa plata ya está contemplada.')
+  }
+  if (yaEnElRegistro.length) {
+    const t = yaEnElRegistro.reduce((s, r) => s + (parseFloat(String(r.monto ?? '').replace(/[^0-9,.-]/g, '').replace(/\./g, '').replace(',', '.')) || 0), 0)
+    console.log(`\n⚠ ${yaEnElRegistro.length} cheque(s) YA en el registro, todavía no debitados y sin N° de comprobante — ${$(t)}:`)
+    for (const r of yaEnElRegistro) console.log(`    fila ${String(r.fila).padStart(4)}  ${String(r.proveedor ?? '').slice(0, 28).padEnd(29)} ${String(r.monto ?? '')}`)
+    console.log('    Ésta es exactamente la banda que "el ancho de la banda" publica en CAJA: se cierra cargando estos números.')
+  }
 }
 
 main()
