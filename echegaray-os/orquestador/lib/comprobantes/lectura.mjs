@@ -248,6 +248,10 @@ export function normalizar_lectura(crudo = {}) {
       total,
       otrosTributos: otros === 0 ? null : otros,
       condicion: textoODefault(crudo.condicion_venta),
+      // LO QUE LA VISIÓN AISLÓ COMO CONDICIÓN ESCRITA A MANO, aparte de la impresa. Viaja crudo:
+      // quien lo convierte en «Cuenta Corriente» o «Contado» es `condicionDeAnotacion`, y quien
+      // decide que le gana a la impresa es `armarItem`. Acá no se decide, se transporta.
+      condicionManuscrita: textoODefault(crudo.condicion_manuscrita),
       formaPago: textoODefault(crudo.forma_pago),
       concepto: textoODefault(crudo.concepto),
       anotacion: textoODefault(crudo.anotacion_manuscrita),

@@ -23,9 +23,11 @@
 
 import { claveComprobante, MEDIA_SOPORTADOS, MAX_BYTES_ADJUNTO } from '../../lib/comprobantes/lectura.mjs'
 import { conciliarConArca, aplicarArca, ESTADO_ARCA } from '../../lib/comprobantes/arca.mjs'
-import { buscarEnCompras, HALLAZGO, escalaDelProveedor, detallesFirmes } from '../../lib/comprobantes/compras-vivas.mjs'
+import { buscarEnCompras, HALLAZGO, escalaDelProveedor, detallesFirmes, obrasFirmes } from '../../lib/comprobantes/compras-vivas.mjs'
 import { colapsarRepetidos, entraEnElFajo, estaCompleto, imputacionPendiente, ESTADO } from '../../lib/comprobantes/fajo.mjs'
 import { mensajeFajo } from '../../lib/comprobantes/mensaje.mjs'
+import { rendicionDeAdjuntos, textoRendicion } from '../../lib/comprobantes/rendicion.mjs'
+import { matchUnico } from '../../lib/comprobantes/imputacion.mjs'
 import { perfilesDeImputacion, sugerirImputacion } from '../../lib/imputacion-aprendida.mjs'
 import { puedeCargarComprobantes } from './guarda.mjs'
 import * as repoReal from './repositorio.mjs'
@@ -61,16 +63,19 @@ export async function bajarAdjunto(mattermost, fileId) {
     const mediaType = String(info?.mime_type ?? '').split(';')[0].trim().toLowerCase()
     const nombre = info?.name ?? fileId
     if (!MEDIA_SOPORTADOS.includes(mediaType)) {
-      return { ok: false, nombre, error: `no puedo mirar un archivo ${mediaType || 'de tipo desconocido'}` }
+      return { ok: false, fileId, nombre, error: `no puedo mirar un archivo ${mediaType || 'de tipo desconocido'}` }
     }
     if (Number(info?.size ?? 0) > MAX_BYTES_ADJUNTO) {
-      return { ok: false, nombre, error: 'la imagen pesa demasiado; mandala más liviana' }
+      return { ok: false, fileId, nombre, error: 'la imagen pesa demasiado; mandala más liviana' }
     }
     const buf = await mattermost.archivo(fileId)
     const data = Buffer.isBuffer(buf) ? buf.toString('base64') : Buffer.from(buf).toString('base64')
     return { ok: true, fileId, nombre, mediaType, data }
   } catch (e) {
-    return { ok: false, nombre: fileId, error: `no pude bajar el archivo: ${String(e?.message ?? e).slice(0, 120)}` }
+    // EL `fileId` VIAJA TAMBIÉN EN EL FALLO (05/08). Sin él, un adjunto que no se pudo bajar no se
+    // puede aparear con el adjunto que entró, y la rendición no puede cerrar la cuenta: es la mitad
+    // del defecto de las cinco fotos, donde tres se perdieron sin que nada lo dijera.
+    return { ok: false, fileId, nombre: fileId, error: `no pude bajar el archivo: ${String(e?.message ?? e).slice(0, 120)}` }
   }
 }
 
@@ -280,7 +285,9 @@ export async function procesarPost(d, m = {}) {
   const problemas = []
   for (const id of fileIds) {
     const a = await bajarAdjunto(mattermost, id)
-    if (a.ok) bajados.push(a); else problemas.push(`· ${a.nombre}: ${a.error}`)
+    // Los problemas viajan como OBJETOS con su `fileId`, no como renglones ya formateados: el
+    // renglón se puede escribir al final, pero aparear un adjunto con su motivo exige el id.
+    if (a.ok) bajados.push(a); else problemas.push({ fileId: a.fileId ?? id, nombre: a.nombre, error: a.error })
   }
 
   // 4) Leer con el modelo. Una llamada por adjunto.
@@ -292,6 +299,8 @@ export async function procesarPost(d, m = {}) {
   ])
   const vocabulario = {
     ...listasVivas,
+    // ═══ LA OBRA SALE DEL DESPLEGABLE Y, SI NO SE PUDO LEER, DE LA COLUMNA J VIVA (05/08) ═══
+    obras: obrasCanonicas(listasVivas?.obras, indiceCompras),
     detalles: indiceCompras?.detalles ?? {},
     // El vocabulario FIRME de la columna K —lo que cada obra ya usó más de una vez— es con lo que se
     // imputa solo. La lista completa sigue siendo la que se ofrece en el menú.
@@ -304,7 +313,7 @@ export async function procesarPost(d, m = {}) {
     // Sin esto transcribía "HW DX 2018" y ahí terminaba — nadie sabe que eso es un vehículo si no le
     // dijiste que existe una obra "Vehiculos / Maquinas".
     const r = await leer(a, vocabulario)
-    if (!r?.ok) { problemas.push(`· ${a.nombre}: ${r?.error ?? 'no pude leerlo'}`); continue }
+    if (!r?.ok) { problemas.push({ fileId: a.fileId, nombre: a.nombre, error: r?.error ?? 'no pude leerlo' }); continue }
     // El texto del post vale para TODOS sus adjuntos: mandar cinco fotos con un solo "ARCOR" arriba
     // es la forma en que se manda un fajo de una misma obra.
     // `ahora` es el momento en que llegó la foto, y es el reloj contra el que se juzga si la fecha
@@ -312,7 +321,8 @@ export async function procesarPost(d, m = {}) {
     items.push(armarItem({ lectura: r.crudo, adjunto: a, listas: vocabulario, textoPost: m.texto ?? null, ahora: m.ahora ?? new Date() }))
   }
   if (!items.length) {
-    return { texto: [TEXTO.NADA_LEGIBLE, ...(problemas.length ? ['', ...problemas] : [])].join('\n'), estado: 'ilegible' }
+    const rend = rendicionDeAdjuntos({ fileIds, items: [], problemas })
+    return { texto: [TEXTO.NADA_LEGIBLE, '', textoRendicion(rend)].join('\n'), estado: 'ilegible' }
   }
 
   // 5) ARCA, ANTES de colapsar: corrige el número mal leído, que es justo con lo que se deduplica.
@@ -389,13 +399,66 @@ export async function procesarPost(d, m = {}) {
   }
   if (!fajo) return { texto: 'No pude abrir la carga. Probá de nuevo en un minuto.', estado: 'error' }
 
-  // 9) SE CARGA SOLO. Ver `cargarSolo`.
-  const solo = await cargarSolo(d, fajo, repo, problemas)
+  // ═══ 9) LA RENDICIÓN DE CUENTAS DE ESTE POST (05/08) ═══
+  //
+  // Se calcula ANTES de cargar y sobre `fileIds` —lo que ENTRÓ—, no sobre lo que sobrevivió. Es la
+  // única forma de que un adjunto que se cae por un camino nuevo aparezca igual en el mensaje. Los
+  // ítems se filtran a los de ESTE post: el fajo puede traer pendientes mudados de uno anterior, y
+  // rendir cuenta de ellos acá diría que llegaron fotos que nadie mandó.
+  const rendicion = rendicionDeAdjuntos({ fileIds, items: (fajo.items ?? []).filter(deEstePost(fileIds)), problemas })
+  if (!rendicion.cuadra) {
+    log?.error?.('comprobantes: hay adjuntos sin destino', {
+      post: m.postId, fajo: fajo.id, total: rendicion.total, cuenta: rendicion.cuenta,
+    })
+  }
+  // 10) SE CARGA SOLO. Ver `cargarSolo`. Le viaja la rendición ENTERA y no su texto: allá se sabe si
+  //     la escritura ocurrió de verdad, y sólo entonces el renglón puede hablar en pasado.
+  const solo = await cargarSolo(d, fajo, repo, rendicion)
   if (solo) return solo
 
   const msg = mensajeFajo(fajo, { url })
-  const cola = problemas.length ? ['', '**No pude con estos:**', ...problemas].join('\n') : ''
-  return { texto: msg.texto + cola, attachments: msg.attachments, estado: 'confirmar', fajoId: fajo.id }
+  return { texto: msg.texto + ['', textoRendicion(rendicion)].join('\n'), attachments: msg.attachments, estado: 'confirmar', fajoId: fajo.id }
+}
+
+/** ¿Este ítem entró con alguna de las fotos de ESTE post? Por `origen` o por cualquiera de sus copias. */
+function deEstePost(fileIds = []) {
+  const set = new Set(fileIds.map(String))
+  return (it) => set.has(String(it?.origen?.fileId)) || (it?.copias ?? []).some((c) => set.has(String(c?.fileId)))
+}
+
+/**
+ * LAS OBRAS CANÓNICAS: el desplegable estricto MANDA, la columna J viva lo respalda.
+ *
+ * ═══ EL DEFECTO (05/08) ═══
+ *
+ * En la columna J se escribió «Estrella» donde el desplegable dice «LA ESTRELLA». Un valor que no
+ * está en el desplegable deja la celda EN ROJO y rompe los cruces de Proveedores y Cash Flow — y,
+ * peor, parte la obra en dos: los reportes suman «LA ESTRELLA» por un lado y «Estrella» por el otro,
+ * y el margen de la obra deja de existir sin que nada falle.
+ *
+ * La lista del desplegable se lee pidiendo la METADATA de validación de un rango chico, y esa
+ * llamada puede volver vacía sin que nada explote. Con la lista vacía `matchUnico` no puede afirmar
+ * nada y la obra se pierde. Pero la columna J tiene 293 filas escritas por el dueño: ahí está el
+ * valor canónico REAL, y sale de la MISMA lectura que ya se hace para buscar el duplicado.
+ *
+ * ═══ EL ORDEN, QUE ES TODA LA REGLA ═══
+ *
+ * 1. Primero el DESPLEGABLE: es lo único que la celda acepta sin quedar en rojo.
+ * 2. Después, de las obras FIRMES de la columna J, sólo las que el desplegable **no puede
+ *    representar** — o sea las que `matchUnico` no resuelve contra él. Si la J dice «Estrella» y el
+ *    desplegable dice «LA ESTRELLA», no se agrega una rival: se deja que el matcheo la resuelva.
+ *    Sin esta condición, el error de ayer se convertiría en la segunda opción de mañana y la
+ *    anotación «Estrella» pasaría a ser AMBIGUA — que es como se apaga un arreglo con su propio
+ *    resultado.
+ * 3. Y si el desplegable no se pudo leer, las firmes de la columna J son toda la lista.
+ */
+export function obrasCanonicas(delDesplegable = [], indice = null) {
+  const base = (delDesplegable ?? []).map((o) => String(o).trim()).filter(Boolean)
+  const firmes = obrasFirmes(indice?.usosDeObra ?? {})
+  if (!base.length) return firmes
+  const ya = new Set(base)
+  const extra = firmes.filter((o) => !ya.has(o) && !matchUnico(o, base))
+  return [...base, ...extra]
 }
 
 /**
@@ -423,7 +486,7 @@ export async function procesarPost(d, m = {}) {
  *
  * @returns {Promise<object|null>} la respuesta ya cargada, o null si hay que preguntar algo
  */
-async function cargarSolo(d, fajo, repo, problemas = []) {
+async function cargarSolo(d, fajo, repo, rendicion = null) {
   const { port, escribir } = d
   if (typeof escribir !== 'function') return null      // sin escritor inyectado: el flujo viejo
   const items = fajo?.items ?? []
@@ -456,8 +519,16 @@ async function cargarSolo(d, fajo, repo, problemas = []) {
     return { texto: `No pude cargarlo: ${String(e?.message ?? e).slice(0, 200)}.`, estado: 'error', fajoId: fajo.id }
   }
 
-  const cola = problemas.length ? ['', '**No pude con estos:**', ...problemas].join('\n') : ''
-  return { texto: (r?.texto ?? '✔ Cargado.') + cola, estado: r?.estado ?? ESTADO.CARGADO, fajoId: fajo.id }
+  // LA RENDICIÓN VIAJA TAMBIÉN EN EL CAMINO QUE CARGA SOLO. Es justo donde más falta hace: acá no
+  // hay botones ni tabla que revisar, y el único renglón contra el que el dueño puede comparar
+  // cuántas fotos mandó es éste.
+  //
+  // Habla en pasado SÓLO si la escritura ocurrió. `escribirFajo` también devuelve `encolado` (freno
+  // de mano puesto) y `error` sin lanzar: decir «2 cargados ahora» arriba de «no cargué nada» sería
+  // el mensaje contradiciéndose a sí mismo en dos renglones seguidos.
+  const estado = r?.estado ?? ESTADO.CARGADO
+  const cola = rendicion ? `\n\n${textoRendicion(rendicion, { seCargaron: estado === ESTADO.CARGADO })}` : ''
+  return { texto: (r?.texto ?? '✔ Cargado.') + cola, estado, fajoId: fajo.id }
 }
 
 /**
