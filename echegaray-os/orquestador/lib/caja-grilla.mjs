@@ -404,7 +404,7 @@ export function grilla(cargado, refs) {
   // pasada contra el real de ésta. Esa comparación necesita las predicciones congeladas de
   // `public.finanzas_caja_negra` replicadas en el archivo, y esa réplica hoy no existe. Sin ella, un
   // "previsto" escrito acá sería un número inventado.
-  push([`=IF(N(${ANEXO.vencidoSinConciliar})=0;"· previsto contra real — al día: no quedó nada vencido sin marcar";"· previsto contra real — venció y sigue sin marcarse como cobrado o pagado")`,
+  push([`=IF(N(${ANEXO.vencidoSinConciliar})=0;"· previsto contra real — al día";"· previsto contra real — venció y sigue sin marcar")`,
     '', '', '', `=N(${ANEXO.vencidoSinConciliar})`, ''])
   const calFin = filas.length
 
@@ -444,7 +444,7 @@ export function grilla(cargado, refs) {
   // clasifica el uso del descubierto como actividad de FINANCIACIÓN; una línea no girada no es un
   // activo de ninguna manera: es un compromiso del banco. El desglose —cupo, consumos, cuotas y lo que
   // cuesta el descubierto por día— vive en `_CAJA_ANEXO` A3.
-  const fCredito = push([`=IF(N(${ANEXO.diasDeCaja})=0;"Crédito disponible sin usar ‖ NO es efectivo";"Crédito disponible sin usar ‖ NO es efectivo · alcanza para "&TEXT(N(${ANEXO.diasDeCaja});"0")&" días de caja")`,
+  const fCredito = push([`=IF(N(${ANEXO.diasDeCaja})=0;"Crédito sin usar ‖ NO es efectivo";"Crédito sin usar ‖ NO es efectivo · "&TEXT(N(${ANEXO.diasDeCaja});"0")&" días de caja")`,
     'ARS', '', '', `=N(${ANEXO.aire})`, ''])
   // ═══ LO COLOCABLE BAJÓ ACÁ DESDE EL TITULAR ═══
   //
@@ -540,7 +540,7 @@ export function grilla(cargado, refs) {
     // EL RÓTULO DEL PISO DICE LA BANDA, porque el piso solo se lee como certeza y no lo es: hay cheques
     // cuya cobertura no se sabe. La punta de abajo es E−D en esa misma fila, así que el lector puede
     // atarla a lo que ve. Si no hay incertidumbre, la frase no aparece: una banda de ancho cero es ruido.
-    '@ROTPISO': `=IF($D$${fPeor}<=0;"· el piso del recorrido";"· el piso del recorrido — puede bajar hasta "&TEXT($E$${fPeor}-$D$${fPeor};"$#,##0")&" si los cheques sin cobertura conocida salen")`,
+    '@ROTPISO': `=IF($D$${fPeor}<=0;"· el piso del recorrido";"· el piso puede bajar hasta "&TEXT($E$${fPeor}-$D$${fPeor};"$#,##0")&" si salen los cheques sin cobertura")`,
     // LA CARTERA SALE DE LA FUENTE, NO DEL DETALLE: era `=SUM($C$47:$C$47)` sobre importes pegados, así
     // que entró el cheque 514 y el total siguió en $10.000.000 con $10.290.000 en cartera. Ahora es un
     // SUMIFS de rango abierto sobre `_CHEQUES_RAW`: entra un cheque y lo toma sin que corra nadie.
