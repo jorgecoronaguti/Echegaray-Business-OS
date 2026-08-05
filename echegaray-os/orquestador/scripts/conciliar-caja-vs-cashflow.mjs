@@ -372,9 +372,20 @@ async function main() {
   // Ahora se lee la celda que CAJA publica. LA FILA SE BUSCA POR SU RÓTULO: el punto más bajo se
   // mueve cada vez que el calendario gana o pierde una fila, y una referencia fija leería otra cosa
   // sin dar error. Si la pestaña todavía no se regeneró, la diferencia lo dice con su número.
-  const ROTULO_PISO = 'el punto más bajo del horizonte'
+  //
+  // ═══ Y SE BUSCA POR EL CONCEPTO, NO POR LA FRASE (05/08) ═══
+  //
+  // Estaba atado al texto exacto 'el punto más bajo del horizonte' y el rediseño de CAJA reescribió
+  // ese rótulo. El conciliador cerró los seis tramos en $0 —el modelo y la pestaña coincidían al
+  // peso— y terminó diciendo "no encontré la fila: sin ella no puedo verificar el efecto". Tercera
+  // vez en el mismo día que un contrato entre piezas estaba escrito como una frase: un rótulo se
+  // reescribe cuando mejora la lectura, y no puede llevarse puesto a un control.
+  //
+  // El ancla es el CONCEPTO —una línea anotada que habla del piso— y no la redacción. Si mañana el
+  // rótulo vuelve a cambiar, esto lo sigue encontrando; si desaparece la línea, lo dice.
+  const ROTULO_PISO = /^·.*\bpiso\b/i
   const caja = await g.readSheetValues(ID, 'CAJA!A1:F', { render: 'UNFORMATTED_VALUE' })
-  const iPiso = caja.findIndex((f) => String(f?.[0] ?? '').includes(ROTULO_PISO))
+  const iPiso = caja.findIndex((f) => ROTULO_PISO.test(String(f?.[0] ?? '').trim()))
 
   // ── LA DIFERENCIA, ABIERTA POR TRAMO Y POR LADO ────────────────────────────────────────────────
   // Las filas del calendario se buscan POR RÓTULO, igual que el piso: son las mismas seis constantes
@@ -398,11 +409,16 @@ async function main() {
   console.log('EL VEREDICTO — LO QUE LA PESTAÑA MUESTRA CONTRA LO QUE DEBERÍA MOSTRAR')
   console.log('─'.repeat(72))
   if (iPiso < 0) {
-    console.log(`  ⚠ no encontré la fila "${ROTULO_PISO}" en CAJA: sin ella no puedo verificar el efecto.\n`)
+    console.log('  ⚠ no encontré en CAJA ninguna línea anotada que hable del piso: sin ella no puedo verificar el efecto.\n')
     process.exitCode = 1
     return
   }
-  const escrito = num(caja[iPiso]?.[5])
+  // ═══ LA COLUMNA E, QUE ES DONDE VIVE EL NÚMERO QUE DECIDE (05/08) ═══
+  //
+  // Leía la F. Con el contrato de columnas nuevo de CAJA —A concepto · B moneda · C y D los insumos ·
+  // E el número que decide · F la fecha— la F trae la FECHA del piso: un serial de Sheets. El control
+  // habría comparado $81.484.555 contra 46246 y cantado un desvío de ochenta millones que no existe.
+  const escrito = num(caja[iPiso]?.[4])
   console.log(`  piso escrito en CAJA (fila ${iPiso + 1}) : ${pesos(escrito)}`)
   console.log(`  piso con la definición única        : ${pesos(peorNuevo.v)}`)
   // ═══ POR QUÉ NO SE EXIGE EL PESO EXACTO ═══
