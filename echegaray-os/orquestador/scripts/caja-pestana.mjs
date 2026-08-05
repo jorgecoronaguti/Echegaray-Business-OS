@@ -51,7 +51,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
-import { MONEDA_TOTAL } from '../lib/formato-statement.mjs'
+import { MONEDA_TOTAL, MONEDA_CUERPO, PORCENTAJE } from '../lib/formato-statement.mjs'
 // `notasDeColumna` NO se importa, y no es un olvido: es la función que escribía las notas de la
 // columna H. Un test de orquestador/lib/sin-notas-generadas.test.mjs impide que vuelva a entrar.
 import { altoDeParrafo } from '../lib/nota-celda.mjs'
@@ -83,6 +83,10 @@ import { EN_CARTERA, formulaCartera, formulaCarteraTramo, formulaImporteEnCarter
 import { expresionSaleEnVentana, lineasDeCaja, marcaDeLinea, conceptosFueraDelCalendario } from '../lib/calendario-egresos.mjs'
 import { formulaChequesSinFactura, formulaCalendarioImpuestosSemana, INSTRUMENTOS, CALENDARIO_IMPUESTOS, rotulosCalendarioImpuestos } from '../lib/cash-flow-lineas.mjs'
 import { MARCAS } from '../lib/cheques-cobertura.mjs'
+import {
+  ESTADOS, ESPERADOS, formulaTotalEstado, formulaCantidadEstado, formulaEstadoDesconocido,
+  formulaUltimoCobroRegistrado, formulaMontoRanking, formulaClienteRanking,
+} from '../lib/cobranzas-cartera.mjs'
 
 // LA MISMA definición de "dos cobros que no se pueden distinguir" que usa el control de la pestaña
 // Cobranzas. Antes acá había una segunda basada en el ID, y al reparar la columna A —que se
@@ -134,6 +138,15 @@ const ANCHO = 8
 /** La columna de prosa. Se sigue emitiendo con el centinela —en vez de dejar de emitirse— para que la
  *  intención quede DECLARADA: la columna es del generador y va vacía. Ver el bloque de arriba. */
 const COL_PROSA = 7
+
+/**
+ * A partir de cuántos días sin registrar un cobro, un "no hay nada vencido" deja de ser una buena
+ * noticia y pasa a ser un aviso de que nadie está cargando.
+ *
+ * Diez y no treinta: Cobranzas recibe movimientos varias veces por semana, así que diez días de
+ * silencio ya son un dato. Y no treinta porque a esa altura el mes cerró y el aviso llega tarde.
+ */
+const DIAS_SIN_CARGA = 10
 /** El ancho de cada columna. La última mide lo mínimo: existe para limpiarse, no para leerse. */
 const ANCHOS = [400, 64, 148, 96, 152, 104, 96, 24]
 const C_IMP = 'C', C_TC = 'D', C_PESOS = 'E'
@@ -612,7 +625,53 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
     'La plata que realmente hay hoy (percibido). Los cheques emitidos salen cuando se debitan (calendario), no restan acá.'])
   push()
 
-  // ══ 2 · EL CALENDARIO DE VENCIMIENTOS ═══════════════════════════════════════════════════════════
+  // ══ 2 · EL ARQUEO ═══════════════════════════════════════════════════════════════════════════════
+  //
+  // ═══ DONDE VIVE EL ARQUEO (01/08) ═══
+  //
+  // El dueño, con la pantalla delante: "mirá cómo me has dejado caja con cosas en cero y con fechas
+  // desactualizadas". El bloque 1 mostraba en la columna "Saldo en moneda de origen" el ARQUEO (0)
+  // mientras la columna de pesos mostraba el saldo real ($15,19M): la fila decía cero y "2 días"
+  // teniendo quince millones vivos. La causa era de diseño, no de dato — la celda de CARGA ocupaba la
+  // celda de RESULTADO. En las filas de banco esa columna es el saldo; sólo en las de caja era un input.
+  //
+  // Acá el conteo físico es lo que es: un dato declarado, con su fecha, en su propio bloque. Arriba
+  // queda lo que hay HOY, que es lo que se mira para decidir.
+  //
+  // ═══ Y POR QUÉ SUBIÓ DEL FINAL DEL ANEXO AL SEGUNDO LUGAR (05/08) ═══
+  //
+  // ES LA ÚNICA CELDA DE CAPTURA DE LA PESTAÑA: acá el dueño TIPEA. Todo lo demás son fórmulas que
+  // se calculan solas. Estaba último, después de nueve bloques de conciliaciones, así que para
+  // registrar un conteo de caja había que bajar por todo el anexo — y la fecha del arqueo es el ancla
+  // de la que cuelga TODO el efectivo del bloque 1 (sin ella la caja física vale $0 por diseño).
+  // Un dato que se carga a diario no puede estar donde termina la lectura: va donde empieza.
+  //
+  // NO SE REESCRIBE LO QUE HAY: `suyoOAusente` devuelve AJENA cuando no se pudo leer nada, y la
+  // fusión preserva. Lo que sí cambia de lugar es el bloque, y por eso el conteo tiene que VIAJAR:
+  //
+  // ═══ EL CONTEO VIAJA CON SU BLOQUE, NO SE QUEDA EN LA FILA (03/08) ═══
+  //
+  // Hasta el 03/08 estas filas salían con TODAS sus celdas ausentes (`AJENA`): "no las escribo, que la
+  // fusión preserve lo que el dueño tipeó". Eso sólo es cierto MIENTRAS EL BLOQUE NO SE MUEVE — la
+  // fusión preserva por POSICIÓN. Una corrida metió cuatro filas más arriba, el bloque bajó de la 148
+  // a la 152, y el conteo del dueño se quedó en la 148 mientras los cuatro rangos con nombre se
+  // republicaban en la 152, vacía. `CAJA_ARQUEO_ARS_FECHA` quedó en blanco y la caja física ($39,28M)
+  // se fue a cero: la fila del efectivo arranca con `IF(NOT(ISNUMBER(fecha));0;…)`.
+  //
+  // El conteo se RE-EMITE en su fila nueva desde lo que se leyó al empezar. Se lee el valor INGRESADO
+  // (número de serie para las fechas), no el formateado: "30/07/2026" depende del locale, 46233 no.
+  // Si no se pudo leer nada, la celda vuelve a salir AJENA — sin dato no se sobrescribe, que es el
+  // lado seguro para equivocarse. Ese mecanismo es EXACTAMENTE lo que hace segura esta mudanza.
+  const fArq0 = push(['2 · ARQUEO DE LA CAJA FÍSICA — LO ÚNICO QUE SE CARGA A MANO'])
+  push(['El conteo físico del cajón y el día en que se hizo. Es el ANCLA: de esa fecha en adelante la caja se mueve sola con las cobranzas y los pagos en efectivo. Cargá acá el importe y la fecha; arriba se muestra lo que hay hoy.'])
+  const suyoOAusente = (rot, campo) => { const v = previo(rot, campo); return v === '' || v === null || v === undefined ? AJENA : v }
+  const arq = (rot, mon) => [rot, mon, suyoOAusente(rot, 'saldo'), AJENA, AJENA, suyoOAusente(rot, 'fecha'), AJENA, AJENA]
+  const fArqArs = push(arq('Caja en pesos — contado', 'ARS'))
+  const fArqUsd = push(arq('Caja en dólares — contado', 'USD'))
+  const fArq1 = filas.length
+  push()
+
+  // ══ 3 · EL CALENDARIO DE VENCIMIENTOS ═══════════════════════════════════════════════════════════
   //
   // POR QUÉ SE REHIZO (23/07). El dueño: "quisiera que quede con mayor claridad los momentos en los
   // que va a ingresar dinero y va a salir, producto de los movimientos con cheques; esto no está
@@ -627,7 +686,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   //
   // Los tramos son cortos cerca de hoy y largos lejos: lo que vence esta semana se decide hoy, lo de
   // noviembre no. Doce meses iguales gastarían media pantalla en meses que no cambian una decisión.
-  push(['2 · CALENDARIO DE VENCIMIENTOS — CUÁNDO ENTRA Y CUÁNDO SALE'])
+  push(['3 · CALENDARIO DE VENCIMIENTOS — CUÁNDO ENTRA Y CUÁNDO SALE'])
   const ch = refs.cheques
   const F400 = `IF(ISNUMBER('${ch}'!$F$2:$F$400);'${ch}'!$F$2:$F$400;0)`
   const K400 = `UPPER('${ch}'!$K$2:$K$400)<>"SI"`
@@ -852,12 +911,84 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   const calFin = filas.length - 1
   push()
 
+  // ══ 4 · COBERTURA DE OBLIGACIONES ═══════════════════════════════════════════════════════════════
+  //
+  // POR QUÉ EXISTE (05/08). El calendario de arriba contesta CUÁNDO. Falta la pregunta que el
+  // tesorero hace después y que decide si hay que salir a cobrar o a pedir plata: ¿ALCANZA? Es el
+  // indicador `(caja + cobranzas comprometidas) / obligaciones del período` de la skill de tesorería.
+  //
+  // NO ES UN CUADRO NUEVO DE PLATA: los dos lados salen de las MISMAS expresiones que arma el
+  // calendario —`expresionSaleEnVentana` para lo que sale, la cartera y las cobranzas esperadas para
+  // lo que entra— con otra ventana. Si mañana el cuadro del cash flow suma una línea, ésta la toma
+  // sola. Una segunda definición de "obligaciones" es exactamente lo que costó los $41,7M.
+  //
+  // 30/60/90 Y NO LOS TRAMOS DEL CALENDARIO, a propósito: son los horizontes con los que se negocia
+  // con un banco y con un proveedor, y no se mueven con el almanaque. Las tres ventanas ARRANCAN en
+  // el corte del extracto, así que lo ya vencido pesa en las tres: una obligación atrasada no deja
+  // de existir porque pasó su fecha.
+  const fCob0 = push(['4 · ¿ALCANZA? — COBERTURA DE OBLIGACIONES A 30, 60 Y 90 DÍAS'])
+  push(['Por cada peso que hay que pagar en el período, cuántos pesos hay para pagarlo: la caja de hoy más las cobranzas comprometidas, contra las obligaciones del mismo período. Debajo de 1,00 hay que conseguir plata; muy por encima, hay plata parada.'])
+  push(['Horizonte', '', 'Obligaciones del período', '', 'Caja + cobranzas comprometidas', 'Hasta', 'Cobertura',
+    'Obligaciones: el mismo cuadro que el cash flow, cortado en la ventana (incluye lo ya vencido). Recursos: la disponibilidad percibida de hoy más los valores en cartera y las cobranzas esperadas que se acreditan dentro de la ventana.'])
+  const fCobDesde = filas.length + 1
+  for (const dias of [30, 60, 90]) {
+    const f = filas.length + 1
+    const hasta = `TODAY()+${dias}`
+    push([`A ${dias} días`, '',
+      `=${expresionSaleEnVentana(PISO_CAJA, hasta, resolutorDeTramo(0))}`, '',
+      // `.slice(1)` porque formulaCarteraTramo devuelve la fórmula con su "=" adelante y acá es un
+      // sumando, no la celda entera. Es el mismo destete que ya hace el resolutor del calendario.
+      `=$${C_PESOS}$${fNeta}+${formulaCarteraTramo(null, hasta).slice(1)}+${cobranzasEsperadasTramo(null, hasta)}`,
+      `=${hasta}`,
+      // LA DIVISIÓN POR CERO NO SE TAPA CON IFERROR: sin obligaciones no hay cobertura que calcular,
+      // y un "—" dice eso. Un IFERROR acá escondería además una fórmula rota.
+      `=IF(${C_IMP}${f}<=0;"";${C_PESOS}${f}/${C_IMP}${f})`, '', ''])
+  }
+  const fCobHasta = filas.length
+  push()
+
+  // ══ 5 · DE QUIÉN DEPENDE LA COBRANZA ════════════════════════════════════════════════════════════
+  //
+  // "Concentración de cobranza: % de la cobranza que depende de un solo cliente. Alta concentración =
+  // el riesgo de caja no es financiero, es comercial" (finanzas-tesoreria-construccion). Es el otro
+  // lado del piso: un calendario perfecto no sirve de nada si el 42% del cobro depende de que UNA
+  // empresa pague en fecha.
+  //
+  // ⚠ EL RANKING ES DE ALTURA FIJA Y ESO NO ES UNA LIMITACIÓN, ES EL REQUISITO. Ver el encabezado de
+  // lib/cobranzas-cartera.mjs: QUERY y SORT+UNIQUE derraman, y esta pestaña se escribe con fusión
+  // preservadora fila por fila. Cinco filas más un "otros" que absorbe el resto: no se pierde un peso
+  // y ninguna celda puede pisar la de abajo.
+  push(['5 · DE QUIÉN DEPENDE LA COBRANZA — CONCENTRACIÓN POR CLIENTE'])
+  push([`Sobre la cartera en estado "${ESTADOS.pendiente}": facturado y todavía no cobrado. Los otros estados van abajo, en su propia fila — un proyectado y una factura cancelada no son lo mismo que una cuenta por cobrar y no se suman en la misma columna.`])
+  push(['Cliente', '', 'Pendiente de cobro', '', '', '', '% acumulado',
+    'El ranking sale de Cobranzas por fórmula: entra un cliente nuevo y se reordena solo. Si dos clientes tienen EXACTAMENTE el mismo total, las dos filas muestran el primero — el importe sigue siendo correcto.'])
+  const fCli0 = filas.length + 1
+  const PUESTOS = ['1º', '2º', '3º', '4º', '5º']
+  PUESTOS.forEach((p, i) => {
+    const f = filas.length + 1
+    push([formulaClienteRanking(p, `$${C_IMP}$${f}`), '', formulaMontoRanking(i + 1), '', '', '',
+      `=IF($${C_IMP}$${f}="";"";SUM($${C_IMP}$${fCli0}:$${C_IMP}${f})/$${C_IMP}$${fCli0 + 6})`, '', ''])
+  })
+  const fCli1 = filas.length
+  push(['Los demás clientes', '', `=MAX(0;$${C_IMP}$${fCli1 + 2}-SUM($${C_IMP}$${fCli0}:$${C_IMP}$${fCli1}))`, '', '', '', '', '',
+    'Lo que queda fuera del top cinco. Existe para que la suma cierre contra el total: sin esta fila, un cliente nuevo desaparecería del cuadro sin que nada avisara.'])
+  push(['⇒ Total pendiente de cobro', '', formulaTotalEstado('pendiente'), '', '', '', '', '',
+    'Cobranzas, estado Pendiente. Es el numerador de todo el bloque.'])
+  // LOS OTROS ESTADOS, CADA UNO EN SU FILA. No se suman al total de arriba y ésa es la corrección: la
+  // regla de la skill es que dos categorías con distinta certeza no comparten columna.
+  push([`Además, "${ESTADOS.proyectado}" — todavía no hay factura`, '', formulaTotalEstado('proyectado'), '', '', '', '', '',
+    'Cobro esperado sin comprobante emitido. El calendario lo cuenta como ingreso futuro; acá se ve separado para que no se confunda con una cuenta por cobrar.'])
+  push([`Además, "${ESTADOS.facturado}" — emitida, sin fecha de cobro acordada`, '', formulaTotalEstado('facturado'), '', '', '', '', ''])
+  push([`Y "${ESTADOS.cancelado}" — no se va a cobrar`, '', formulaTotalEstado('cancelado'), '', '', '', '', '',
+    'Facturas dadas de baja. NO entran en ningún total de esta pestaña ni en el calendario: si esta cifra crece, es facturación que se perdió y hay que mirarla en el P&L, no en la caja.'])
+  push()
+
   // ── MARGEN DE CRÉDITO — resumen arriba, el detalle vive abajo en "Líneas de crédito" ──────────────
   // JPMorgan: la posición de arriba se lee en tres segundos. El margen de crédito es capacidad de pago,
   // no efectivo, así que va como resumen de tres líneas; el desglose (consumos, cuotas, controles,
   // costo del descubierto) está abajo, plegado. Las tres cifras se completan más abajo, cuando el
   // bloque de líneas de crédito ya calculó su disponible.
-  push(['3 · LÍNEAS DE CRÉDITO NO UTILIZADAS — NO SON EFECTIVO'])
+  push(['6 · LÍNEAS DE CRÉDITO NO UTILIZADAS — NO SON EFECTIVO'])
   const fMTar = push(['Tarjeta — disponible para comprar'])
   const fMAcu = push(['Acuerdo en descubierto'])
   const fMAire = push(['Aire total'])
@@ -870,7 +1001,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // UN BLOQUE SIN NÚMERO NO SE SABE SI ES UNA SECCIÓN, UN SUB-BLOQUE O UN RESTO. Éste, el del costo
   // del descubierto y el de "cómo se actualiza" eran los tres sueltos de la pestaña: el lector no
   // tenía forma de saber dónde terminaba uno y empezaba el otro.
-  const fCtrl0 = push(['4 · ANEXO — EL DETALLE Y LAS CONCILIACIONES'])
+  const fCtrl0 = push(['7 · ANEXO — EL DETALLE Y LAS CONCILIACIONES'])
 
   const fAlerta0 = push(['⚠ LO QUE NO CIERRA — mirar antes de decidir con los números de arriba'])
   push(['Cada línea es un problema con nombre y monto.'])
@@ -930,7 +1061,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // endosados, que no son plata— y dos filas de control. Una tabla que dice "acá está lo que tenés"
   // con cinco filas en el medio que no son eso obliga a decidir fila por fila cuál suma. El detalle
   // es valioso y se queda, pero abajo y con su propio título.
-  push(['4.1 · VALORES EN CARTERA, UNO POR UNO'])
+  push(['7.1 · VALORES EN CARTERA, UNO POR UNO'])
   // EL DETALLE DE LOS CHEQUES EN CARTERA, colapsable. Va DESPUÉS de las cuentas y antes del total,
   // así que no entra en el rango que suma: sumaría dos veces la misma plata.
   const ultima = CUENTAS[CUENTAS.length - 1]
@@ -981,7 +1112,16 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   push()
 
   // ── 4 · LÍNEAS DE CRÉDITO ───────────────────────────────────────────────────────────────────────
-  push(['4.2 · LÍNEAS DE CRÉDITO — DETALLE Y CONTROL CONTRA EL RESUMEN DEL BANCO'])
+  // ═══ 7.2 ES LA FUSIÓN DE LOS DOS BLOQUES QUE CONTESTABAN LA MISMA PREGUNTA (05/08) ═══
+  //
+  // Eran "4.2 · LÍNEAS DE CRÉDITO" y "4.3 · COSTO DEL DESCUBIERTO", uno debajo del otro. Los dos
+  // contestan lo mismo con dos mitades: **cuánto crédito hay y qué cuesta usarlo**. Separados, el
+  // que miraba el aire de $26,9M tenía que bajar a otro bloque para enterarse de que tomarlo sale
+  // $1.506,85 por día por millón — y el que miraba el costo no veía contra cuánto. Una decisión de
+  // financiamiento necesita las dos cifras a la vez o no es una decisión.
+  //
+  // No se borró una sola fila: las del costo del descubierto siguen abajo, dentro de este bloque.
+  push(['7.2 · CRÉDITO DISPONIBLE Y LO QUE CUESTA USARLO'])
   push(['El margen de tarjeta es capacidad de endeudarse, no plata propia: sumarlo a las disponibilidades hace creer líquida a la empresa justo antes de no poder pagar. Los cupos en pesos y en dólares son distintos, no se mezclan.'])
   const cab3 = push(['Línea', 'Moneda', 'Importe en moneda de origen', 'Tipo de cambio', 'Importe en pesos', '', '', 'Origen del dato'])
 
@@ -1039,7 +1179,9 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // generando". El modelo no se estimó: reproduce al centavo el cargo que el banco hizo el 14/07
   // (ver costo-descubierto.mjs). Por eso el bloque muestra la verificación al lado del cálculo: una
   // tasa copiada de una pantalla y una tasa que reproduce un cargo real no valen lo mismo.
-  push(['4.3 · COSTO DEL DESCUBIERTO — LO QUE CORRE POR DÍA CON LA CUENTA EN ROJO'])
+  // SUB-TÍTULO, NO BLOQUE: la segunda mitad de la misma pregunta. Sin número propio para que la
+  // numeración no vuelva a tener huecos ni sub-niveles que nadie sabe leer.
+  push(['   Qué cuesta usarlo — lo que corre por día con la cuenta en rojo'])
   const saldoBanco = `$${C_PESOS}$${fBancoPesos}`
   const fTasa = push(['Tasa nominal anual del acuerdo', '', TASAS.tna, '', '', '', '',
     `Acuerdo N° ${BANCO.ACUERDO.numero}. Costo financiero total ${(BANCO.ACUERDO.cft * 100).toFixed(2)}% anual.`, 'Réplica del banco'])
@@ -1058,7 +1200,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   push()
 
   // ── 5 · ALERTA ──────────────────────────────────────────────────────────────────────────────────
-  push(['4.4 · DÍAS DE LIQUIDEZ — HASTA CUÁNDO ALCANZA'])
+  push(['7.3 · DÍAS DE LIQUIDEZ — HASTA CUÁNDO ALCANZA'])
 
   // ═══ DÍAS DE CAJA ═══════════════════════════════════════════════════════════════════════════
   //
@@ -1129,7 +1271,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   push(['Primer mes con caja negativa', '', '', '', primerMes('<0'), '', '', '',
     '⚠ Ojo: los ingresos de octubre en adelante están en $0 porque no hay obra facturada. Esta fecha es un PISO, no un pronóstico.'])
   // ── 4 · CONCILIACIÓN ────────────────────────────────────────────────────────────────────────────
-  push(['4.5 · CONCILIACIÓN CONTRA EL CASH FLOW'])
+  push(['7.4 · CONCILIACIÓN CONTRA EL CASH FLOW'])
   push(['El control que mide si el archivo sirve. Si la diferencia es chica, el cuadro es confiable. Si es grande, hay plata moviéndose fuera del Sheet y hay que buscarla antes de decidir con estos números.'])
   const fDecl = push(['Disponibilidad declarada (bloque 1)', '', '', '', `=${C_PESOS}${fTotal}`, '', '', '', 'Lo que dicen el extracto y el arqueo.'])
   // ═══ SE CONCILIA CONTRA EL INICIO DEL MES, NO CONTRA EL CIERRE (04/08) ═══
@@ -1205,7 +1347,71 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // contar el cajón / tomá un arqueo nuevo". Cuando el dueño registra ese arqueo, las dos cosas se
   // cierran a la vez: la línea T06 colapsa (la ventana ">" arqueo se corre) y este residuo baja. Por
   // eso el control se queda como está: la carga automática no lo reemplaza, lo dispara.
-  push(['4.6 · TRAZABILIDAD DEL EFECTIVO COBRADO'])
+  // ══ 7.5 · VENCIDO SIN CONCILIAR ═════════════════════════════════════════════════════════════════
+  //
+  // POR QUÉ EXISTE (05/08). Es la aplicación directa de la regla de la skill de tesorería: "un
+  // proyectado que se cumple se marca como real". Mientras no se marque, no se sabe si esa plata
+  // entró — y el calendario de arriba la sigue esperando en un tramo que ya pasó, inflando el
+  // "Vencido" con cobros que quizá ya están en el banco y con pagos que quizá ya salieron.
+  //
+  // ⚠ Y ACÁ UN CERO NO ES UNA BUENA NOTICIA POR SÍ SOLO. "Está todo conciliado" y "hace tres semanas
+  // que nadie carga un movimiento" se dibujan exactamente igual. Por eso el bloque no termina en el
+  // total: termina en una FRASE que mira la fecha del último cobro registrado y dice cuál de las dos
+  // cosas está pasando. Un cero mudo miente.
+  //
+  // LOS ESTADOS NO SE SUMAN ENTRE SÍ. Cada uno tiene su fila porque un "Pendiente" vencido (factura
+  // emitida que no entró) y un "Proyectado" vencido (una fecha estimada que no se cumplió) piden
+  // acciones distintas: al primero se lo reclama, al segundo se lo reproyecta.
+  push(['7.5 · VENCIDO SIN CONCILIAR — LO QUE YA DEBERÍA HABER PASADO Y NADIE MARCÓ'])
+  push(['Cobros y pagos cuya fecha ya pasó y que siguen sin marcarse como reales. No es plata perdida: es información que falta. Mientras esté acá, ni el piso de caja ni la cobertura de arriba son confiables.'])
+  push(['Qué quedó sin marcar', '', 'Cuánto', '', '', '', 'Cuántos'])
+  const fVenc0 = filas.length + 1
+  for (const clave of ESPERADOS) {
+    push([`Cobros en "${ESTADOS[clave]}" con fecha de cobro ya pasada`, '',
+      formulaTotalEstado(clave, { hasta: 'TODAY()' }), '', '', '',
+      formulaCantidadEstado(clave, { hasta: 'TODAY()' }), '', ''])
+  }
+  // EL LADO QUE PAGA. Un cheque librado, no debitado y con fecha vencida es el caso simétrico: o el
+  // banco todavía no lo presentó, o ya lo debitó y nadie marcó la columna. Las dos cosas hay que
+  // mirarlas, y la segunda ensucia el saldo.
+  push(['Cheques emitidos no debitados con fecha de pago ya pasada', '', '',
+    `=SUMPRODUCT((${K400})*ISNUMBER(${I400})*(${I400}<TODAY())*${F400})`, '', '',
+    `=SUMPRODUCT((${K400})*ISNUMBER(${I400})*(${I400}<TODAY())*1)`, '',
+    'Pestaña de cheques, DEBITADO distinto de SI y fecha de pago anterior a hoy. Si el banco ya lo debitó, marcarlo: hasta entonces el calendario lo vuelve a restar.'])
+  const fVenc1 = filas.length
+  const fVencTot = push(['⇒ Total vencido sin conciliar', '', `=SUM($${C_IMP}$${fVenc0}:$${C_IMP}$${fVenc1})+SUM($${C_TC}$${fVenc0}:$${C_TC}$${fVenc1})`,
+    '', '', '', '', '', 'Cobros más pagos. No se compensan entre sí: los dos son trabajo administrativo pendiente.'])
+  const fUltCob = push(['Último cobro efectivamente registrado en Cobranzas', '', '', '', '',
+    formulaUltimoCobroRegistrado(), '', '',
+    'La fecha de cobro más nueva con estado Cobrado. Es lo que distingue "no hay nada vencido" de "hace semanas que nadie carga".'])
+  // ═══ LA FILA QUE IMPIDE QUE EL CERO MIENTA ═══
+  //
+  // Devuelve una FRASE, no un importe, y por eso se anota para que el formateador le dé TEXTO: la
+  // columna es de plata y dibujaría la frase con formato de moneda. Mismo tratamiento que `fRespuesta`.
+  const fVencDicta = push(['⇒ ¿el cero es real?', '', '', '',
+    `=IF($${C_IMP}$${fVencTot}>0;"hay "&TEXT($${C_IMP}$${fVencTot};"$#,##0")&" para conciliar";`
+    + `IF(NOT(ISNUMBER($F$${fUltCob}));"⚠ no puedo saberlo: Cobranzas no tiene ningún cobro con fecha";`
+    + `IF(TODAY()-$F$${fUltCob}>${DIAS_SIN_CARGA};"⚠ NO — hace "&TEXT(TODAY()-$F$${fUltCob};"0")&" días que no se registra un cobro: el cero es silencio, no orden";`
+    + `"sí — no hay nada vencido y la carga está al día")))`, '', '', '',
+    'Un cero sólo significa "está todo conciliado" si además alguien viene cargando movimientos. Esta fila mira las dos cosas.'])
+  // EL PRECIO DE LA LISTA BLANCA, PAGADO A LA VISTA. Ver lib/cobranzas-cartera.mjs: los cuadros de
+  // esta pestaña eligen estados por nombre, así que un sexto estado dejaría plata afuera en silencio.
+  push(['   · riesgo: filas de Cobranzas con un estado que el OS no conoce', '', formulaEstadoDesconocido(), '', '', '', '', '',
+    'Tiene que dar cero. Si no, hay filas cuyo importe no está entrando en ningún cuadro de esta pestaña ni en el calendario.'])
+  push()
+
+  // ══ 7.6 · TRAZABILIDAD CONTRA EL BANCO ══════════════════════════════════════════════════════════
+  //
+  // ═══ ERAN DOS BLOQUES Y CONTESTABAN LA MISMA PREGUNTA (05/08) ═══
+  //
+  // "4.6 · TRAZABILIDAD DEL EFECTIVO COBRADO" y "4.7 · TRAZABILIDAD DE LO QUE SALIÓ DEL BANCO" son
+  // las dos mitades de un solo control: **el extracto contra las pestañas, en los mismos días**. Uno
+  // mira lo que entró en efectivo, el otro lo que salió por la cuenta; los dos se apoyan en la misma
+  // ventana del mismo extracto y los dos concluyen lo mismo (esto es carga pendiente o un corte de
+  // fechas). Separados, había que leer dos títulos casi iguales para entender que era un solo cruce.
+  //
+  // No se fue ninguna fila ni ningún control: quedaron los dos, bajo un título que dice qué son.
+  push(['7.6 · TRAZABILIDAD CONTRA EL BANCO — EL EXTRACTO CONTRA LAS PESTAÑAS'])
   // 239 caracteres en una columna donde entran 238: el auditor lo medía cortado por UN carácter.
   push(['Un cobro en efectivo que no se depositó tiene que estar en la caja física. Este control resta lo cobrado en efectivo, menos lo depositado, menos lo declarado en la caja de arriba. Si sobra plata, o no está o el cobro no ocurrió.'])
   // ═══ LA MISMA VENTANA DE TIEMPO DE LOS DOS LADOS ═══
@@ -1298,7 +1504,8 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // explicarlo. DOS NO TIENEN NINGUNA: el impuesto al cheque y el costo del descubierto salen todos
   // los meses y ningún cuadro del archivo los espera. Por eso la proyección muestra un saldo que la
   // cuenta nunca llega a tener.
-  push(['4.7 · TRAZABILIDAD DE LO QUE SALIÓ DEL BANCO'])
+  // SUB-TÍTULO, NO BLOQUE NUEVO: la otra mitad del mismo cruce contra el extracto.
+  push(['   Y del otro lado: qué salió de la cuenta y dónde está registrado'])
   push(['Cada peso que salió de la cuenta tiene una pestaña que debería tenerlo. Acá se compara el extracto contra esa pestaña en los MISMOS días. Una diferencia es carga pendiente o un corte de fechas — lo que no puede pasar es que nadie la mire.'])
   push(['Qué salió', '', 'Según el banco', '', 'Según la pestaña', 'Diferencia', '', 'Qué pestaña lo tiene que tener'])
   const n0 = filas.length + 1
@@ -1336,7 +1543,7 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
     'Los dos números tienen que ser iguales. Distintos = apareció un concepto nuevo en el banco sin grupo asignado.'])
   push()
 
-  push(['4.8 · TIPO DE CAMBIO — SÓLO PARA VALUAR LA CUENTA EN DÓLARES'])
+  push(['7.7 · TIPO DE CAMBIO — SÓLO PARA VALUAR LA CUENTA EN DÓLARES'])
   push(['Está al final a propósito: la empresa cobra, paga y decide en pesos. El dólar acá no es una posición, es una cuenta chica que hay que poder sumar al total — y para eso hace falta una cotización con origen.'])
   const cab0 = push(['Concepto', '', 'Cotización', '', '', 'Fecha', '', 'Origen del dato'])
   const fRef = push([TIPO_CAMBIO.referencia.nombre, '', TIPO_CAMBIO.referencia.formula, '', '', '=TODAY()', '', TIPO_CAMBIO.referencia.origen, 'Se calcula solo'])
@@ -1351,44 +1558,23 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
     `=${C_IMP}${filas.length + 1}*${C_TC}${filas.length + 1}`, '', '',
     'Exposición al tipo de cambio: esta parte de la caja cambia de valor sin que entre ni salga un peso.', 'Se calcula solo'])
   push()
-  push(['4.9 · BASES DE PREPARACIÓN — DE DÓNDE SALE Y CADA CUÁNTO SE ACTUALIZA'])
-  push(['· Los saldos (las celdas amarillas) se cargan a mano o pegando el extracto en el chat: el OS lo lee y los completa. Lo que está en dólares se carga en dólares.'])
-  push(['· No hay integración con el banco. La API de banca empresa se pide al banco y hoy no está contratada — hasta entonces, el saldo entra por extracto, captura o arqueo.'])
-  push(['· El tipo de cambio se actualiza solo con la cotización del día. Si operás a otro (MEP, tarjeta), cargalo en la fila "Dólar declarado" y ése pasa a mandar.'])
-  push(['· Todo lo demás de esta pestaña se recalcula solo cada 2 horas junto con el resto del archivo.'])
-
-  // ═══ 4.10 · DONDE VIVE EL ARQUEO (01/08) ═══
+  // ═══ EL BLOQUE "BASES DE PREPARACIÓN" SE FUE DE LA PESTAÑA (05/08) ═══
   //
-  // El dueño, con la pantalla delante: "mirá cómo me has dejado caja con cosas en cero y con fechas
-  // desactualizadas". El bloque 1 mostraba en la columna "Saldo en moneda de origen" el ARQUEO (0)
-  // mientras la columna de pesos mostraba el saldo real ($15,19M): la fila decía cero y "2 días"
-  // teniendo quince millones vivos. La causa era de diseño, no de dato — la celda de CARGA ocupaba la
-  // celda de RESULTADO. En las filas de banco esa columna es el saldo; sólo en las de caja era un input.
+  // Eran cuatro renglones de prosa que no producían ningún número y que nadie puede accionar: de
+  // dónde salen los saldos, que no hay API del banco, cómo se pisa el tipo de cambio y cada cuánto
+  // corre el pipeline. Es documentación del MECANISMO, y el lugar de la documentación del mecanismo
+  // es el código, no la vista con la que se decide.
   //
-  // Acá el conteo físico es lo que es: un dato declarado, con su fecha, en su propio bloque. Arriba
-  // queda lo que hay HOY, que es lo que se mira para decidir.
-  //
-  // ═══ EL CONTEO VIAJA CON SU BLOQUE, NO SE QUEDA EN LA FILA (03/08) ═══
-  //
-  // Hasta hoy estas filas salían con TODAS sus celdas ausentes (`AJENA`): "no las escribo, que la
-  // fusión preserve lo que el dueño tipeó". Eso sólo es cierto MIENTRAS EL BLOQUE NO SE MUEVE — la
-  // fusión preserva por POSICIÓN. La corrida de hoy metió cuatro filas más arriba, el bloque bajó de
-  // la 148 a la 152, y el conteo del dueño se quedó en la 148 mientras los cuatro rangos con nombre
-  // se republicaban en la 152, vacía. `CAJA_ARQUEO_ARS_FECHA` quedó en blanco y la caja física
-  // ($39,28M) se fue a cero: la fila del efectivo arranca con `IF(NOT(ISNUMBER(fecha));0;…)`.
-  //
-  // Ahora el conteo se RE-EMITE en su fila nueva desde lo que se leyó al empezar. Se sigue leyendo el
-  // valor INGRESADO (número de serie para las fechas), no el formateado: "30/07/2026" depende del
-  // locale, 46233 no. Si no se pudo leer nada, la celda vuelve a salir AJENA — sin dato no se
-  // sobrescribe, que es el lado seguro para equivocarse.
-  push([])
-  const fArq0 = push(['4.10 · ARQUEO DECLARADO DE LA CAJA FÍSICA'])
-  push(['El conteo físico del cajón y el día en que se hizo. Es el ANCLA: de esa fecha en adelante la caja se mueve sola con las cobranzas y los pagos en efectivo. Cargá acá el importe y la fecha; arriba se muestra lo que hay hoy.'])
-  const suyoOAusente = (rot, campo) => { const v = previo(rot, campo); return v === '' || v === null || v === undefined ? AJENA : v }
-  const arq = (rot, mon) => [rot, mon, suyoOAusente(rot, 'saldo'), AJENA, AJENA, suyoOAusente(rot, 'fecha'), AJENA, AJENA]
-  const fArqArs = push(arq('Caja en pesos — contado', 'ARS'))
-  const fArqUsd = push(arq('Caja en dólares — contado', 'USD'))
-  const fArq1 = filas.length
+  // NINGÚN CONTROL DESAPARECE SIN DEJAR RASTRO, y acá no desaparece ninguno porque no había ninguno:
+  // los cuatro renglones eran descriptivos. Lo que decían sigue verificado en otro lado, y por eso
+  // este bloque se puede ir sin perder cobertura:
+  //   · "los saldos se cargan a mano o pegando el extracto" → las celdas amarillas del bloque 1 lo
+  //     muestran solas, y el importador vive en `orquestador/scripts/importar-extracto-banco.mjs`.
+  //   · "no hay integración con el banco" → si el extracto envejece, lo canta el bloque de
+  //     trazabilidad contra el banco (7.5) comparando el extracto contra cada pestaña.
+  //   · "el tipo de cambio se pisa con Dólar declarado" → lo dice el propio bloque 7.6, en la fila
+  //     "Dólar declarado", que es donde se hace.
+  //   · "se recalcula solo cada 2 horas" → lo prueba la fecha del titular, que es una fórmula viva.
 
   // El panel de arriba se resuelve acá, cuando ya se sabe en qué fila quedó cada total. Son
   // referencias, no copias: si el detalle cambia, el titular cambia con él.
@@ -1487,7 +1673,13 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
 
   // El grupo colapsable de controles va desde su encabezado hasta la última fila del cuadro.
   const fCtrl1 = filas.length
-  return { filas, fRespuesta, cal0, calFin, calTotal, gCanario, n0, n1, usd, fTitulos, fCifras, fAire, fDias, fRitmo, fAlerta0, fAlerta1, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, fMTar, fMAcu, fMAire, fMargenTit: fMTar - 1, fCtrl0, fCtrl1, amarillas, fDetCob, fDetDep, fArq0, fArq1, fArqArs, fArqUsd }
+  // LAS FILAS DE TOTAL, IDENTIFICADAS POR SU RÓTULO Y NO POR SU POSICIÓN. Son las únicas que llevan
+  // el signo "$" (ver formato-statement.mjs, regla 1): un símbolo repetido en ochenta celdas deja de
+  // informar. El ancla es el texto —"⇒" o "Total"— así que agregar un bloque no rompe la lista.
+  const totales = filas
+    .map((f, i) => (/^\s*(⇒|Total|TOTAL|⇒ Total)/.test(String(f?.[0] ?? '')) ? i + 1 : 0))
+    .filter(Boolean)
+  return { filas, totales, fRespuesta, fVencDicta, fCob0, fCobDesde, fCobHasta, fCli0, fCli1, cal0, calFin, calTotal, gCanario, n0, n1, usd, fTitulos, fCifras, fAire, fDias, fRitmo, fAlerta0, fAlerta1, fBancoPesos, fTasa, d0, d1, g0, g1, gControl, gDif, cab0, cab1, cab3, fTC, fRef, fDec, fTotal, fUSD, fNeta, fCh, fLim, fDisp, fAcu, fDecl, fMTar, fMAcu, fMAire, fMargenTit: fMTar - 1, fCtrl0, fCtrl1, amarillas, fDetCob, fDetDep, fArq0, fArq1, fArqArs, fArqUsd }
 }
 
 /**
@@ -1879,9 +2071,22 @@ async function formatear(google, sheetId, g) {
   // [Red] — el rojo de esta pestaña es del control que no cierra, no de cualquier número que dé menos
   // que cero. Con [Red] se pintaba en rojo el neto de un tramo en el que legítimamente se paga más de
   // lo que se cobra, y un rojo que aparece siempre deja de avisar.
-  const MONEDA = { ...MONEDA_TOTAL }
-  fmt(r(0, n, 2, 3), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: MONEDA, horizontalAlignment: 'RIGHT' })
-  fmt(r(0, n, 4, 5), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: MONEDA, horizontalAlignment: 'RIGHT' })
+  //
+  // ═══ EL "$" ES DEL TOTAL, NO DE CADA CELDA (05/08) ═══
+  //
+  // Hasta hoy TODO el cuerpo de CAJA salía con MONEDA_TOTAL: el signo pesos repetido en cada celda de
+  // las dos columnas de plata, cientos de veces. La regla 1 de formato-statement.mjs existe desde el
+  // 04/08 y esta pestaña era la que no la cumplía. No es estética: un símbolo que aparece en todas
+  // las filas no distingue nada, y la fila donde SÍ se cierra la cuenta deja de destacarse.
+  //
+  // El cuerpo va primero y los totales encima: los `repeatCell` se aplican en orden, así que las
+  // filas de `g.totales` —ubicadas por su rótulo, nunca por su fila— recuperan el "$".
+  fmt(r(0, n, 2, 3), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: MONEDA_CUERPO, horizontalAlignment: 'RIGHT' })
+  fmt(r(0, n, 4, 5), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: MONEDA_CUERPO, horizontalAlignment: 'RIGHT' })
+  for (const f of g.totales ?? []) {
+    fmt(r(f - 1, f, 2, 3), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
+    fmt(r(f - 1, f, 4, 5), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
+  }
   // El tipo de cambio no es plata: es una relación. Con dos decimales y sin signo $.
   fmt(r(0, n, 3, 4), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'NUMBER', pattern: '#,##0.00;;""' }, horizontalAlignment: 'CENTER' })
@@ -1989,6 +2194,23 @@ async function formatear(google, sheetId, g) {
   // La fila que contesta con una FRASE ("no, hay $X de sobra") es texto, no un importe.
   if (g.fRespuesta) fmt(r(g.fRespuesta - 1, g.fRespuesta, 4, 5), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' })
+  // MISMO CASO: la fila que dice si el cero del bloque 7.5 es orden o silencio devuelve una FRASE en
+  // una columna de plata. Sin esto se dibujaba con formato de moneda y quedaba ilegible.
+  if (g.fVencDicta) fmt(r(g.fVencDicta - 1, g.fVencDicta, 4, 5), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+    { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' })
+
+  // ── LOS NÚMEROS QUE NO SON PLATA ────────────────────────────────────────────────────────────────
+  // UNA COBERTURA NO ES UN IMPORTE: es cuántas veces alcanza. Con el formato de la columna, 1,83 se
+  // dibujaba "$2" — el número que decide si hay que salir a buscar plata, redondeado a dos pesos.
+  if (g.fCobDesde && g.fCobHasta) {
+    fmt(r(g.fCobDesde - 1, g.fCobHasta, 6, 7), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+      { numberFormat: { type: 'NUMBER', pattern: '0,00" ×";;"—"' }, horizontalAlignment: 'CENTER' })
+  }
+  // El acumulado de la concentración es una proporción, no plata.
+  if (g.fCli0 && g.fCli1) {
+    fmt(r(g.fCli0 - 1, g.fCli1, 6, 7), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+      { numberFormat: PORCENTAJE, horizontalAlignment: 'CENTER' })
+  }
 
   // LOS DÍAS DE CAJA SON DÍAS. Con el formato moneda de la columna, "2 días" se dibujaba como "$2":
   // el número más importante de la pestaña leído como dos pesos.
@@ -2077,7 +2299,10 @@ async function formatear(google, sheetId, g) {
     const t = String(f[0] ?? '')
     // EL RÓTULO DE UN BLOQUE SE VE COMO UN BLOQUE, con el estilo del archivo y no con una negrita
     // suelta. Y ocupa la fila entera: no compite con ninguna columna.
-    if (/^\d+ · |^CÓMO SE ACTUALIZA|^COSTO DE USAR|^MARGEN DE CRÉDITO|^CONTROLES Y CONCILIAC|^DISPONIBILIDADES/.test(t)) {
+    // `\d+(\.\d+)?` para que los sub-bloques del anexo (7.1 … 7.7) se dibujen como lo que son. Antes
+    // el patrón pedía dígito+espacio y "7.1 · " no lo cumplía: los siete sub-bloques salían con el
+    // mismo peso que una fila de datos y el lector no tenía dónde apoyarse.
+    if (/^\d+(\.\d+)? · |^CÓMO SE ACTUALIZA|^MARGEN DE CRÉDITO|^CONTROLES Y CONCILIAC|^DISPONIBILIDADES/.test(t)) {
       // Encabezado de sección al estilo statement: versalita en tinta, sin barra de color, con una
       // hairline abajo. La jerarquía la da la tipografía, no un rectángulo azul.
       fmt(r(i, i + 1), 'userEnteredFormat', { textFormat: { bold: true, fontFamily: E.FUENTE, fontSize: E.TAM.cuerpo, foregroundColor: INK }, horizontalAlignment: 'LEFT' })
@@ -2088,7 +2313,15 @@ async function formatear(google, sheetId, g) {
     // La introducción tiene 307 caracteres y la del bloque de crédito 332, las dos en filas de 20px:
     // se leía la primera línea y el resto quedaba abajo del borde. Se combinan a lo ancho y la fila
     // crece lo que haga falta, con tope: un párrafo no puede empujar la tabla media pantalla.
-    const explicacion = t.length > 120 && !String(f[1] ?? '').trim() && !String(f[4] ?? '').trim()
+    // ⚠ Y NO ALCANZA CON QUE B Y E ESTÉN VACÍAS (05/08). Las cinco filas del ranking de clientes
+    // llevan en la columna del rótulo una FÓRMULA larga (`=IF($C$61="";"";"1º  "&INDEX(…))`) con B y
+    // E vacías: cumplían la condición, se combinaban a lo ancho y el importe de la columna C quedaba
+    // debajo de una celda fusionada. Un rótulo calculado no es un párrafo. La señal que los separa es
+    // que la fila TIENE un número al lado: si hay algo en la columna de importe, no es prosa. Se
+    // agrega SÓLO esa condición y no un "no empieza con =": las filas de detalle de cobros y
+    // depósitos también llevan una fórmula en la columna A y ésas SÍ tienen que seguir combinándose.
+    const explicacion = t.length > 120
+      && !String(f[1] ?? '').trim() && !String(f[2] ?? '').trim() && !String(f[4] ?? '').trim()
     if (explicacion) {
       req.push({ mergeCells: { range: r(i, i + 1, 0, ANCHO), mergeType: 'MERGE_ROWS' } })
       fmt(r(i, i + 1, 0, ANCHO), 'userEnteredFormat', { ...E.nota(), wrapStrategy: 'WRAP', verticalAlignment: 'MIDDLE' })

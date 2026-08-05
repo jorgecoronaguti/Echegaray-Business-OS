@@ -911,3 +911,105 @@ test('no queda ningún marcador @ sin resolver en toda la grilla', () => {
     }
   }
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA LEGIBILIDAD SE MIDE, NO SE OPINA (05/08/2026)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('LA NUMERACIÓN DE BLOQUES ES CONSECUTIVA Y SIN HUECOS, arriba y en el anexo', () => {
+  // El dueño: un cuadro que va "1, 2, 3, 4, 8, 9" desorienta — parece que faltan bloques. Al subir el
+  // arqueo y fusionar dos pares del anexo, la numeración vieja quedaba con cuatro huecos.
+  const g = construir()
+  const rot = g.filas.map((f) => String(f?.[0] ?? '').trim())
+  const raiz = rot.map((t) => t.match(/^(\d+) · /)?.[1]).filter(Boolean).map(Number)
+  assert.deepEqual(raiz, [1, 2, 3, 4, 5, 6, 7], `bloques con hueco: ${raiz.join(', ')}`)
+  const sub = rot.map((t) => t.match(/^7\.(\d+) · /)?.[1]).filter(Boolean).map(Number)
+  assert.deepEqual(sub, [1, 2, 3, 4, 5, 6, 7], `sub-bloques con hueco: ${sub.join(', ')}`)
+  // Y ningún rótulo puede quedar con la numeración vieja: un "4.6" suelto manda a buscar un bloque
+  // que ya no existe.
+  for (const t of rot) assert.ok(!/^4\.\d+ · /.test(t), `quedó un rótulo viejo: ${t}`)
+})
+
+test('EL ARQUEO ES CAPTURA Y VA ARRIBA: el dueño no baja nueve conciliaciones para tipear', () => {
+  // Es la ÚNICA celda de la pestaña donde se escribe a mano, y su fecha es el ancla de la que cuelga
+  // todo el efectivo del bloque 1 (sin ella la caja física vale $0 por diseño). Estaba última.
+  const g = construir()
+  assert.ok(g.fArq0 < filaDe(g, /^3 · CALENDARIO/), 'el arqueo tiene que estar antes del calendario')
+  assert.ok(g.fArq0 < g.fCtrl0, 'el arqueo no puede vivir dentro del anexo de controles')
+  // Y LA MUDANZA NO PISA NADA: sin lectura previa las dos celdas de carga siguen AUSENTES, que es lo
+  // único que la fusión preserva (el centinela VACIO las borraría). Es la propiedad que hace segura
+  // la mudanza: el conteo del dueño viaja a la fila nueva o no se toca, nunca se pierde.
+  for (const f of [g.fArqArs, g.fArqUsd]) {
+    for (const col of [2, 5]) {
+      assert.equal(g.filas[f - 1][col], undefined, 'la celda de carga del arqueo se preserva, no se pisa')
+    }
+  }
+})
+
+test('EL "$" ES DEL TOTAL: el cuerpo va sin símbolo y sólo las filas de cierre lo llevan', () => {
+  // Regla 1 de formato-statement.mjs. CAJA repetía el signo pesos en cada celda de las dos columnas
+  // de plata: un símbolo que aparece en todas las filas no distingue nada, y la fila donde SÍ se
+  // cierra la cuenta deja de destacarse.
+  const g = construir()
+  assert.ok(g.totales.length >= 5, 'tienen que existir filas de total identificadas')
+  // El ancla es el TEXTO, nunca la posición: agregar un bloque no puede romper la lista.
+  for (const f of g.totales) assert.match(String(g.filas[f - 1][0]), /^\s*(⇒|Total|TOTAL)/)
+  // Y las filas del cuerpo NO están: si entrara una, volvería el "$" repetido.
+  const fCuenta = filaDe(g, /^Caja en pesos$/)
+  assert.ok(fCuenta > 0 && !g.totales.includes(fCuenta))
+})
+
+test('un RÓTULO CALCULADO no se combina como si fuera un párrafo', () => {
+  // Las cinco filas del ranking llevan una fórmula larga en la columna del rótulo con B y E vacías:
+  // cumplían la condición de "explicación", se fusionaban a lo ancho y tapaban el importe de al lado.
+  const g = construir()
+  for (let f = g.fCli0; f <= g.fCli1; f++) {
+    const t = String(g.filas[f - 1][0])
+    assert.ok(t.length > 120 && t.startsWith('='), 'el rótulo del ranking es una fórmula larga')
+    assert.ok(String(g.filas[f - 1][2] ?? '').trim(), 'y tiene un importe al lado: por eso no es prosa')
+  }
+})
+
+test('LA COBERTURA SALE DE LA MISMA DEFINICIÓN QUE EL CALENDARIO, no de una cuenta nueva', () => {
+  // Una segunda definición de "obligaciones" es exactamente lo que costó los $41,7M de desacuerdo
+  // entre CAJA y el Cash Flow. Los tres horizontes usan la expresión del cuadro del cash flow.
+  const g = construir()
+  const tramo0 = String(g.filas[g.cal0 - 1][3])
+  for (let f = g.fCobDesde; f <= g.fCobHasta; f++) {
+    const sale = String(g.filas[f - 1][2])
+    assert.ok(sale.startsWith(tramo0.slice(0, 60)), `la fila ${f} no usa el cuadro del cash flow`)
+    assert.ok(sale.includes('TODAY()+'), 'la ventana tiene que ser de 30, 60 o 90 días')
+    // Y arranca en el corte del extracto: lo ya vencido pesa en las tres ventanas.
+    assert.ok(sale.includes('CAJA_FECHA_SALDO'))
+    // Los recursos son caja + cartera + cobranzas esperadas, no la caja sola.
+    const recursos = String(g.filas[f - 1][4])
+    assert.ok(recursos.includes(`$E$${g.fNeta}`) && recursos.includes('Cobranzas!'))
+    // Sin obligaciones no se inventa una cobertura infinita.
+    assert.ok(String(g.filas[f - 1][6]).startsWith(`=IF(C${f}<=0;"";`))
+  }
+})
+
+test('EL CERO DEL BLOQUE DE VENCIDOS NO PUEDE QUEDAR MUDO', () => {
+  // "Está todo conciliado" y "hace tres semanas que nadie carga un movimiento" se dibujan igual.
+  const g = construir()
+  const dicta = String(g.filas[g.fVencDicta - 1][4])
+  const fUlt = filaDe(g, /Último cobro efectivamente registrado/)
+  assert.ok(fUlt > 0, 'sin la fecha del último cobro no se puede distinguir orden de silencio')
+  assert.ok(dicta.includes(`$F$${fUlt}`), 'el veredicto tiene que MIRAR esa fecha')
+  assert.ok(dicta.includes('TODAY()-$F$'), 'y medir cuántos días pasaron')
+  assert.ok(/no se registra un cobro/.test(dicta))
+  // Y si Cobranzas no tiene ninguna fecha usable, tampoco festeja: lo dice.
+  assert.ok(dicta.includes('NOT(ISNUMBER('))
+})
+
+test('los estados de Cobranzas NO se suman entre sí en el cuadro de vencidos', () => {
+  // Regla literal de finanzas-tesoreria-construccion. Un "Pendiente" vencido se reclama; un
+  // "Proyectado" vencido se reproyecta. Sumarlos en una fila borra la diferencia.
+  const g = construir()
+  const filas = g.filas.filter((f) => /^Cobros en "/.test(String(f?.[0] ?? ''))).map((f) => String(f[2]))
+  assert.equal(filas.length, 3, 'una fila por estado esperado: Pendiente, Facturado, Proyectado')
+  for (const f of filas) {
+    const cuantos = ['Pendiente', 'Proyectado', 'Facturado', 'Cobrado', 'CANCELAR'].filter((e) => f.includes(`="${e}"`))
+    assert.equal(cuantos.length, 1, `una fila suma ${cuantos.length} estados: ${cuantos.join('+')}`)
+  }
+})
