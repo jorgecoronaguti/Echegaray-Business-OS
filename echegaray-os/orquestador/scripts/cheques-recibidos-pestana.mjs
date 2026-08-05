@@ -91,7 +91,14 @@ async function main() {
   push([seccion(1, '¿cuánto valor tengo y cuándo se vuelve caja?')])
   push(['Concepto', 'Monto', 'Qué significa'])
   const fCartera = push([total('En cartera — todavía no es caja'),
-    '=IFERROR(INDEX(CAJA!$E$1:$E$200;MATCH("Valores a depositar";CAJA!$A$1:$A$200;0));"⚠ no está en CAJA")',
+    // ═══ EL RÓTULO SE BUSCA CON COMODÍN (05/08) ═══
+    //
+    // Era un MATCH exacto contra "Valores a depositar" y la fila de CAJA se llama "Valores a depositar
+    // ‖ no suma al total": el sufijo explica por qué no suma, y es información que el lector necesita.
+    // Con el match exacto esta celda publicaba "⚠ no está en CAJA" sobre un dato que estaba ahí — el
+    // mismo defecto que dejó a Cheques Emitidos sin saldo. Un rótulo es para quien lee, y va a cambiar;
+    // el comodín ata el contrato al COMIENZO del rótulo, que es lo que identifica a la fila.
+    '=IFERROR(INDEX(CAJA!$E$1:$E$200;MATCH("Valores a depositar*";CAJA!$A$1:$A$200;0));"⚠ no está en CAJA")',
     'Valores de terceros en custodia en el banco: siguen siendo tuyos, pero recién son plata el día que se depositan. La posición la manda el extracto (pestaña CAJA).'])
   const fEndosado = push(['Endosado a un tercero — ya salió', '',
     'Se entregó a un proveedor para pagarle: es un pago hecho, NO un ingreso que va a entrar.'])

@@ -250,13 +250,63 @@ async function main() {
   const previo = await google.readSheetValues(ID, `'${PESTANA}'!A1:M`).catch((e) => {
     throw new Error(`no pude leer "${PESTANA}" (${e.message}). NO escribo: la fusión tomaría la pestaña por vacía y pisaría lo tuyo.`)
   })
-  // LA FIRMA primero (respeto más fuerte: cualquier edición tuya). Después, la reescritura total.
-  if ((await firmaGuardia(google, ID, PESTANA, `'${PESTANA}'`)).editada) return
+  // ═══ UN CAMINO QUE NO ESCRIBE TIENE QUE DECIR POR QUÉ (05/08) ═══
+  //
+  // Estos dos `return` eran mudos, y eso costó una tarde. La banda quedó publicando "⚠ no está en
+  // CAJA" sobre una CAJA que tenía su total bien calculado; el generador corrió, imprimió su resumen
+  // y terminó con "0 celdas en error" — y el resumen sale de RELEER la pestaña, así que mostraba los
+  // valores VIEJOS con cara de recién escritos. Un log que felicita sin haber escrito es peor que un
+  // error: manda a buscar el defecto al lado equivocado.
+  const firma = await firmaGuardia(google, ID, PESTANA, `'${PESTANA}'`)
+  if (firma.editada) {
+    console.log(`  ✋ NO escribo: la firma dice que "${PESTANA}" la editaste vos${firma.motivo ? ` (${firma.motivo})` : ''}.`)
+    console.log('     Lo que hay en la pestaña es tuyo y se queda. Si querés que la rehaga, decímelo.')
+    return
+  }
   // AUTO-RESPETO (24/07): si reescribiste esta pestaña entera, la tomo como tuya y no la piso.
-  if ((await autoRespetarReescritura(ID, PESTANA, filas, previo)).reescrita) return
+  const auto = await autoRespetarReescritura(ID, PESTANA, filas, previo)
+  if (auto.reescrita) {
+    console.log(`  ✋ NO escribo: "${PESTANA}" fue reescrita entera fuera del OS${auto.motivo ? ` (${auto.motivo})` : ''}, así que la tomo como tuya.`)
+    return
+  }
   const { grid: filasFinal, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, PESTANA, filas, previo)
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${String(r.suyo).slice(0, 44)}") en vez de "${String(r.mio).slice(0, 44)}"`)
-  await google.batchUpdateValues(ID, [{ range: `${PESTANA}!A1`, values: filasFinal }])
+  // ═══ EL NOMBRE DE LA PESTAÑA VA ENTRE COMILLAS SIMPLES (05/08) ═══
+  //
+  // "Cheques Emitidos" tiene un espacio, y en notación A1 un nombre con espacio SIN comillas no es un
+  // rango válido. La lectura de arriba sí las pone; la escritura no. Cinco líneas más arriba en el
+  // mismo archivo, dos convenciones distintas para el mismo nombre.
+  //
+  // Y no se cae con un error: el pedido no aterriza donde debería. La banda quedó publicando "⚠ no
+  // está en CAJA" mientras el generador imprimía su resumen y "0 celdas en error" — porque ese
+  // resumen sale de RELEER la pestaña, y releía lo viejo con cara de recién escrito.
+  //
+  // LA ESCRITURA SE VERIFICA LEYENDO SU DESTINO, no por lo que devolvió la API. Si el rango no
+  // aterriza, esto lo dice; que la API conteste 200 no prueba absolutamente nada.
+  // ═══ ESTA PESTAÑA SE ESCRIBE POR `updateCells`, DIRECCIONANDO POR sheetId (05/08) ═══
+  //
+  // `values.batchUpdate` sobre "Cheques Emitidos" contesta `totalUpdatedCells` con el `updatedRange`
+  // correcto y NO aterriza: la celda se queda con su contenido viejo. Verificado con las tres formas
+  // de lectura, con una marca única y releyendo diez segundos por si algo la revertía. Ninguna de las
+  // cuatro guardas del archivo intervino, y las otras siete pestañas aceptan esa misma escritura — el
+  // rechazo es de esta pestaña y de ninguna otra. La causa sigue sin identificarse.
+  //
+  // Direccionar por `sheetId` sí aterriza, y de paso saca del medio toda la ambigüedad de la notación
+  // A1: nombres con espacios, comillas simples y la precedencia de los rangos con nombre.
+  const escrito = await google.escribirValoresPorCeldas(ID, hoja.sheetId, filasFinal)
+  if (escrito?.protegido) {
+    console.log(`  ✋ NO escribo: la guarda central frenó "${PESTANA}"${escrito.motivo ? ` (${escrito.motivo})` : ''}.`)
+    return
+  }
+  {
+    const releido = await google.readSheetValues(ID, `'${PESTANA}'!B5:B8`, { render: 'FORMULA' }).catch(() => null)
+    const esperado = (filasFinal[5] || [])[1]
+    const vino = (releido || [])[1]?.[0]
+    if (esperado && vino !== esperado) {
+      throw new Error(`la escritura NO aterrizó: B6 tendría que decir "${String(esperado).slice(0, 60)}" `
+        + `y dice "${String(vino).slice(0, 60)}". No sigo dando por buena una pestaña que no cambió.`)
+    }
+  }
   await sellarFirma(google, ID, PESTANA, `'${PESTANA}'`)
   await guardarRegistro(ID, PESTANA, filasFinal, ediciones, previo, candidatos)
     .catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))

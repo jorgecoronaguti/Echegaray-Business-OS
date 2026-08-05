@@ -1196,7 +1196,58 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         { valueInputOption: 'USER_ENTERED', data: loc },
       )
       await sellar()
-      return res
+      // ═══ LO QUE PRUEBA UNA ESCRITURA ES EL DATO LEÍDO EN SU DESTINO (05/08/2026) ═══
+      //
+      // La API contestó `totalUpdatedCells: 2` con el `updatedRange` correcto sobre "Cheques Emitidos"
+      // y la celda se quedó con su contenido viejo. Verificado con las tres formas de lectura, con una
+      // marca única y releyendo durante diez segundos por si algo la revertía: la escritura nunca
+      // aterrizó. Ni el congelador, ni la guarda central, ni no-borrar, ni el respeto de ediciones
+      // intervinieron — los cuatro dejaron pasar el dato. La misma escritura por `updateCells` con
+      // `sheetId` sí aterriza, y el resto de las pestañas del archivo aceptan las dos formas.
+      //
+      // No sé todavía POR QUÉ esa pestaña descarta la escritura por valores. Lo que sí se puede cerrar
+      // es el silencio: una escritura que se pierde sin decirlo deja al generador felicitándose sobre
+      // datos viejos —"0 celdas en error"— y manda a buscar el defecto al lado equivocado. Acá se
+      // RELEE y, si no aterrizó, se dice con nombre y apellido.
+      const perdidos = []
+      for (const d of loc) {
+        const primera = (d.values || []).flat().find((c) => c !== '' && c !== null && c !== undefined)
+        if (primera === undefined || typeof primera === 'string' && primera[0] === '=') continue
+        const leido = await cliente.readSheetValues(fileId, d.range).catch(() => null)
+        if (!leido) continue
+        if (!(leido.flat() || []).some((c) => String(c) === String(primera))) perdidos.push(d.range)
+      }
+      if (perdidos.length) {
+        console.warn(`  ⚠ LA ESCRITURA NO ATERRIZÓ en ${perdidos.length} rango(s): ${perdidos.slice(0, 4).join(', ')}. `
+          + 'La API contestó que sí y el dato leído en su destino dice que no. NO des por buena esta corrida.')
+      }
+      return perdidos.length ? { ...res, noAterrizo: perdidos } : res
+    },
+    /**
+     * ESCRIBIR VALORES POR `updateCells`, direccionando por `sheetId` en vez de por nombre.
+     *
+     * Es el camino que sí aterriza en "Cheques Emitidos", donde `values.batchUpdate` reporta éxito y
+     * descarta el dato. Direccionar por `sheetId` además elimina de raíz toda la ambigüedad de la
+     * notación A1: nombres con espacios, comillas simples, y la precedencia de los rangos con nombre.
+     *
+     * Un `''` se escribe como celda VACÍA (no como el texto vacío) para que la fila no quede con
+     * cadenas fantasma que después se leen como contenido.
+     */
+    async escribirValoresPorCeldas(fileId, sheetId, values, { fila0 = 0, col0 = 0 } = {}) {
+      const loc = await localizeValues(fileId, values)
+      const celda = (c) => {
+        if (c === '' || c === null || c === undefined) return {}
+        if (typeof c === 'number') return { userEnteredValue: { numberValue: c } }
+        const t = String(c)
+        if (t[0] === '=') return { userEnteredValue: { formulaValue: t } }
+        return { userEnteredValue: { stringValue: t } }
+      }
+      const ancho = Math.max(...loc.map((f) => (f || []).length), 1)
+      return cliente.spreadsheetBatchUpdate(fileId, [{ updateCells: {
+        range: { sheetId, startRowIndex: fila0, endRowIndex: fila0 + loc.length, startColumnIndex: col0, endColumnIndex: col0 + ancho },
+        rows: loc.map((f) => ({ values: Array.from({ length: ancho }, (_, i) => celda((f || [])[i])) })),
+        fields: 'userEnteredValue',
+      } }])
     },
     /** Limpia (vacía) el contenido de un rango sin borrar formato. */
     async clearValues(fileId, range, { espejo = false, yaGuardado = false } = {}) {
@@ -1281,6 +1332,31 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
      * invisibles, engordando el archivo. Es el mismo defecto que los grupos de filas que se apilaban en
      * el margen izquierdo. Para poder BORRAR los propios antes de dibujar, primero hay que verlos.
      */
+    /**
+     * LOS RANGOS PROTEGIDOS DE CADA PESTAÑA.
+     *
+     * POR QUÉ HIZO FALTA (05/08/2026). Una escritura a "Cheques Emitidos" devolvía
+     * `totalUpdatedCells: 2` con `updatedRange` correcto, y la celda seguía con su contenido viejo —
+     * verificado con las tres formas de lectura y con una marca única. La misma escritura a CAJA
+     * aterrizaba. Ni el congelador, ni la guarda central, ni no-borrar, ni el respeto de ediciones
+     * intervenían: los cuatro dejaban pasar el dato.
+     *
+     * Un rango protegido con `warningOnly` hace exactamente eso: la API contesta 200, informa las
+     * celdas como actualizadas y descarta el contenido. Es el modo de falla más engañoso del archivo
+     * —"la pantalla que respondió que sí"— y no se puede diagnosticar sin poder LEER las protecciones.
+     */
+    async getProtectedRanges(fileId) {
+      const j = await apiGet(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?fields=sheets(properties(sheetId,title),protectedRanges(protectedRangeId,description,warningOnly,range,editors))`)
+      return (j.sheets || []).flatMap((s) => (s.protectedRanges || []).map((p) => ({
+        sheetId: s.properties?.sheetId,
+        title: s.properties?.title,
+        protectedRangeId: p.protectedRangeId,
+        description: p.description ?? '',
+        warningOnly: !!p.warningOnly,
+        range: p.range ?? null,
+        editors: p.editors ?? null,
+      })))
+    },
     async getCharts(fileId) {
       const j = await apiGet(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?fields=sheets(properties(sheetId,title),charts(chartId,spec(title)))`)
       return (j.sheets || []).map((s) => ({
