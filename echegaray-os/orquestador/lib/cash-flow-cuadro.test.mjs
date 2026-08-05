@@ -80,6 +80,28 @@ test('la línea de cheques sin factura es una fórmula que suma las marcas del O
   assert.ok(f.includes('>=B$3') && f.includes('<EOMONTH(B$3;0)+1'))
   // Un importe que no es número no rompe la suma (hay celdas con "-" en esas columnas).
   assert.ok(f.includes('IF(ISNUMBER('))
+  // EL CASH FLOW MENSUAL CUENTA TAMBIÉN LO YA DEBITADO, Y TIENE QUE SEGUIR HACIÉNDOLO: un cheque que
+  // el banco debitó en julio fue un pago real de julio, y como su factura no está en Compras nadie
+  // más lo cuenta. Filtrar acá por debitado dejaría meses pasados sin ese egreso.
+  assert.ok(!f.includes('<>"SI"'), 'el cash flow mensual no filtra por debitado — el mes ya pasó')
+})
+
+// ═══ EL DEFECTO DE $12.188.441 (05/08/2026) ═══
+//
+// El calendario de CAJA arranca del SALDO DEL BANCO y abre su primer tramo desde el serial 0, para no
+// perder un cheque viejo que sigue sin presentarse. Sin el filtro de debitado, esa ventana arrastraba
+// 10 cheques ($11.631.542) y 2 cuotas de tarjeta ($556.899) que el banco YA había debitado y que el
+// saldo de partida ya tenía descontados: se restaban dos veces y hundían el piso proyectado.
+test('la variante del CALENDARIO excluye lo que el banco YA debitó — el piso parte del saldo', () => {
+  const f = formulaChequesSinFactura('0', 'TODAY()', MARCAS.falta, [INSTRUMENTOS.cheques], { soloNoDebitados: true })
+  const c = INSTRUMENTOS.cheques
+  assert.ok(f.includes(`UPPER('${c.pestaña}'!$${c.colDebitado}$${c.filaCab + 1}:$${c.colDebitado}$400)<>"SI"`),
+    'sin esta condición el tramo "Vencido" vuelve a restar cheques que ya salieron de la cuenta')
+  // Y la tarjeta tiene SU propia columna de debitado: usar la del cheque (K) leería otra cosa.
+  const t = formulaChequesSinFactura('0', 'TODAY()', MARCAS.falta, [INSTRUMENTOS.tarjeta], { soloNoDebitados: true })
+  assert.ok(t.includes(`UPPER('${INSTRUMENTOS.tarjeta.pestaña}'!$${INSTRUMENTOS.tarjeta.colDebitado}$`))
+  // UPPER porque la columna la tipea una persona: "Si", "si" y "SI" son el mismo hecho.
+  assert.ok(f.includes('UPPER('))
 })
 
 // EL LADO DEL INGRESO TAMBIÉN SE AUDITA (T04). Antes el control del pie sólo miraba el egreso

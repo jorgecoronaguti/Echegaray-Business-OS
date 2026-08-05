@@ -686,6 +686,21 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
    * y está acá escrita porque no es evidente. Serial 0 = 30/12/1899: antes que cualquier cheque.
    */
   const DESDE_SIEMPRE = '0'
+  /**
+   * ...Y LA OTRA MITAD DEL MISMO INVARIANTE, QUE FALTABA Y COSTÓ $12.188.441 (05/08/2026).
+   *
+   * Abrir la ventana hasta el serial 0 sólo es correcto si al mismo tiempo se excluye lo que el banco
+   * YA debitó. Sin eso, el tramo "Vencido" volvía a restar 10 cheques ($11.631.542) y 2 cuotas de
+   * tarjeta ($556.899) que ya habían salido de la cuenta y que el saldo del extracto —el punto de
+   * partida del calendario— ya tenía descontados. El piso quedaba $12.188.441 más bajo que la
+   * realidad, y un piso demasiado bajo no es "conservador": frena colocaciones que sí se podían hacer.
+   *
+   * El resto del calendario resuelve lo mismo por FECHA (`>= CAJA_FECHA_SALDO`, porque una factura
+   * anterior al corte ya se pagó). Para un cheque la fecha no alcanza: el papel puede tener fecha de
+   * hace un mes y seguir sin presentarse. Para el cheque la pregunta es "¿salió?", y esa respuesta la
+   * da la columna DEBITADO, no el almanaque.
+   */
+  const SOLO_PENDIENTES = { soloNoDebitados: true }
   const desdeTramo = (k) => (k === 0 ? PISO_CAJA : `MAX(${PISO_CAJA};${BORDES[k - 1][1]})`)
   const hastaTramo = (k) => BORDES[k][1] || FIN_HORIZONTE
 
@@ -713,12 +728,15 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
    * está en Compras, y Compras entera ya viaja en los sumandos de arriba. Sumar los cheques enteros
    * contaba $43.380.472 dos veces. La marca del cruce la escribe `cheques-cobertura` fila por fila,
    * así que acá se lee esa marca en vez de rehacer la normalización de números de comprobante.
+   *
+   * ⚠ Y ES "SIN FACTURA **Y TODAVÍA NO DEBITADO**" (05/08/2026). Ver `SOLO_PENDIENTES` abajo: sin esa
+   * mitad, la ventana abierta desde el serial 0 arrastraba $12.188.441 de cheques y cuotas YA pagados.
    */
   const resolutorDeTramo = (k) => ({
     'cheques:cheques': (desde, hasta) => formulaChequesSinFactura(
-      k === 0 ? DESDE_SIEMPRE : desde, hasta, MARCAS.falta, [INSTRUMENTOS.cheques]).slice(1),
+      k === 0 ? DESDE_SIEMPRE : desde, hasta, MARCAS.falta, [INSTRUMENTOS.cheques], SOLO_PENDIENTES).slice(1),
     'cheques:tarjeta': (desde, hasta) => formulaChequesSinFactura(
-      k === 0 ? DESDE_SIEMPRE : desde, hasta, MARCAS.falta, [INSTRUMENTOS.tarjeta]).slice(1),
+      k === 0 ? DESDE_SIEMPRE : desde, hasta, MARCAS.falta, [INSTRUMENTOS.tarjeta], SOLO_PENDIENTES).slice(1),
     // El IVA/IIBB a pagar NO vive en Compras: lo calcula "Impuestos y Financieros" mes a mes y esta
     // línea lo LEE. Las filas se ubican POR RÓTULO en main() y se pasan en `refs`; si no aparecen, el
     // generador rompe. Una referencia a fila muerta devuelve $0 sin un solo error.

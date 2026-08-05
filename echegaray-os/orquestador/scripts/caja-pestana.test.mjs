@@ -388,6 +388,31 @@ test('EL DOBLE CONTEO QUE NO PUEDE VOLVER: los cheques entran sólo si NO tienen
   }
 })
 
+test('EL OTRO DOBLE CONTEO: un cheque YA DEBITADO no vuelve a restarse — ya está en el saldo', () => {
+  // ═══ EL DEFECTO DE $12.188.441 (05/08/2026) ═══
+  //
+  // El calendario parte del SALDO DEL BANCO y abre su primer tramo desde el serial 0, para no perder un
+  // cheque viejo que sigue sin presentarse. Esa apertura sólo es correcta junto con el filtro de
+  // debitado: sin él, el tramo "Vencido" volvía a restar 10 cheques ($11.631.542) y 2 cuotas de tarjeta
+  // ($556.899) que el banco ya había debitado y que el saldo de partida YA tenía descontados. El piso
+  // proyectado quedaba $12.188.441 por debajo del real, y un piso falsamente bajo frena colocaciones
+  // que sí se podían hacer.
+  //
+  // El invariante estaba ESCRITO en el comentario de `DESDE_SIEMPRE` desde el 04/08 ("si el banco no lo
+  // debitó, no salió de la cuenta") y la fórmula implementaba sólo la mitad que abre la ventana.
+  const g = construir()
+  const COL_DEBITADO = { 'Cheques Emitidos': 'K', 'Tarjeta de Credito': 'J' }
+  for (const f of g.filas.slice(g.cal0 - 1, g.cal0 - 1 + 6)) {
+    const sale = String(f[3] ?? '')
+    for (const [inst, colDeb] of Object.entries(COL_DEBITADO)) {
+      const i = sale.indexOf(`'${inst}'`)
+      const termino = sale.slice(sale.lastIndexOf('SUMPRODUCT(', i), i + 600)
+      assert.ok(termino.includes(`UPPER('${inst}'!$${colDeb}$`) && termino.includes('<>"SI"'),
+        `el tramo "${f[0]}" resta ${inst} sin excluir lo ya debitado: esa plata ya salió y está en el saldo`)
+    }
+  }
+})
+
 test('UNA LÍNEA SIN FUENTE ROMPE, no desaparece: sin las filas del calendario fiscal no hay pestaña', () => {
   // Es la propiedad que costó $41,7M: no fue una fórmula mal escrita, fue un concepto que nadie sumó
   // y nada avisó. `formulaCalendarioImpuestosSemana` exige las filas del IVA/IIBB ubicadas por rótulo;

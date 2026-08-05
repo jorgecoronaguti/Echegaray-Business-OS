@@ -164,15 +164,37 @@ export function formulasInstrumento(inst, marcas) {
  * esas filas. La diferencia práctica: el día que se carga una factura que faltaba, esta línea baja
  * sola. Antes se quedaba con el número viejo hasta la próxima corrida del agente.
  *
+ * ═══ POR QUÉ HAY UNA VARIANTE "SÓLO LO QUE TODAVÍA NO SALIÓ" (05/08/2026) ═══
+ *
+ * Los dos consumidores de esta fórmula preguntan cosas distintas y la diferencia son $12.188.441.
+ *
+ *   · El CASH FLOW MENSUAL pregunta *qué pasó por la caja en el mes*. Un cheque debitado en julio
+ *     fue un pago real de julio, y como su factura no está en Compras nadie más lo cuenta: tiene
+ *     que estar. Ahí el filtro de debitado NO va.
+ *   · El CALENDARIO DE CAJA arranca del SALDO DEL BANCO y proyecta hacia adelante. Un cheque ya
+ *     debitado ya salió de la cuenta: el saldo del que parte el calendario lo tiene descontado, así
+ *     que volver a restarlo lo cuenta dos veces y hunde el piso.
+ *
+ * El calendario abre su primer tramo desde el serial 0 —para no perder un cheque viejo que sigue sin
+ * debitarse— y ESA ventana, sin el filtro, arrastraba los doce instrumentos ya pagados: 10 cheques
+ * por $11.631.542 y 2 cuotas de tarjeta por $556.899. El comentario de `DESDE_SIEMPRE` en
+ * caja-pestana.mjs ya declaraba el invariante correcto ("si el banco no lo debitó, no salió de la
+ * cuenta"); la fórmula implementaba sólo la mitad que abre la ventana, nunca la que excluye lo
+ * debitado. Una condición razonada y no escrita no protege de nada.
+ *
  * @param {string} desde expresión de la fecha de inicio (ej. 'B$3')
  * @param {string} hasta expresión de la fecha de fin, EXCLUYENTE
  * @param {string} marcaFalta el texto exacto que el OS escribe cuando la factura no está
+ * @param {Array} instrumentos cuáles abrir (cheques, tarjeta, o los dos)
+ * @param {{soloNoDebitados?:boolean}} opciones `true` = sólo lo que sigue en la cuenta (calendario)
  */
-export function formulaChequesSinFactura(desde, hasta, marcaFalta, instrumentos = Object.values(INSTRUMENTOS)) {
-  const trozo = ({ pestaña, filaCab, colMonto, colFecha, colMarca }) => {
+export function formulaChequesSinFactura(desde, hasta, marcaFalta, instrumentos = Object.values(INSTRUMENTOS), { soloNoDebitados = false } = {}) {
+  const trozo = ({ pestaña, filaCab, colMonto, colFecha, colMarca, colDebitado }) => {
     const col = (n) => { let s = ''; for (let x = n; x >= 0; x = Math.floor(x / 26) - 1) s = String.fromCharCode(65 + (x % 26)) + s; return s }
     const r = (c) => `'${pestaña}'!$${c}$${filaCab + 1}:$${c}$${FILA_FIN}`
-    return `SUMPRODUCT((${r(col(colMarca))}="${marcaFalta}")*(${r(colFecha)}>=${desde})*(${r(colFecha)}<${hasta})*IF(ISNUMBER(${r(colMonto)});${r(colMonto)};0))`
+    // UPPER, igual que el resto del archivo: la columna la tipea una persona y escribe "Si" y "si".
+    const pendiente = soloNoDebitados ? `*(UPPER(${r(colDebitado)})<>"SI")` : ''
+    return `SUMPRODUCT((${r(col(colMarca))}="${marcaFalta}")*(${r(colFecha)}>=${desde})*(${r(colFecha)}<${hasta})${pendiente}*IF(ISNUMBER(${r(colMonto)});${r(colMonto)};0))`
   }
   return `=${instrumentos.map(trozo).join('+')}`
 }
