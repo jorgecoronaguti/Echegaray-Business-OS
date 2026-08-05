@@ -13,7 +13,7 @@
 // del propio generador (la col I de los cruces ARCA, que es no-vacía y por eso se conserva).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { estructural, predicadoConDeuda, soloConDeuda, layoutDeuda, notasAncladas, anchoBloque } from './proveedores-materiales-pestana.mjs'
+import { estructural, predicadoConDeuda, soloConDeuda, layoutDeuda, notasAncladas, anchoBloque, traducirMarcadores } from './proveedores-materiales-pestana.mjs'
 import { fusionar, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { readFileSync } from 'node:fs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
@@ -490,4 +490,65 @@ test('la conciliación con ARCA se declara UNA vez al pie, no en la columna I de
   assert.ok(!/'Conciliación del OS: se encontraron por proveedor \+ importe/.test(src))
   assert.match(src, /push\(\[`Los comprobantes salen del libro de IVA de ARCA/,
     'la declaración vive al pie de la sección, una sola vez')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA GRILLA PARTIDA EN DOS PESTAÑAS: A QUÉ CELDA APUNTA CADA RANGO CON NOMBRE
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL DEFECTO MEDIDO (05/08). En el archivo vivo, `ARCA_COMPRAS_TOTAL` prometía un importe y devolvía
+// "0001-00000204" —un número de comprobante— y `ARCA_FALTAN_N` prometía un contador y devolvía
+// "30-71647696-7", un CUIT. Los dos son valores de la LISTA de comprobantes faltantes, que vive
+// veinte filas debajo del bloque de cobertura. Un nombre que resuelve a la lista en vez de al bloque
+// no da error en ningún lado: lo muestran Recurrentes, Estructura, Materiales y el Cash Flow Mensual.
+//
+// Se prueba sobre la grilla PARTIDA, que es donde puede torcerse: el tramo de "Proveedores" aterriza
+// en la FRONTERA (abajo de las tablas dinámicas) y el de "Materiales" en la fila 4 de su propia
+// pestaña, y son dos aritméticas distintas conviviendo en la misma corrida.
+
+test('con la grilla partida en dos pestañas, el marcador de ARCA cae en el BLOQUE, no en la lista', () => {
+  // La grilla como la arma el generador, en coordenadas de ANTES de partirla. Los números son los
+  // reales de la corrida del 05/08: frontera 176 y 16 notas de crédito.
+  const FRONTERA = 176, FILA0 = 4, NOTAS = 16
+  const b5 = 100                                  // "3 · NOTAS DE CRÉDITO" — la frontera
+  const cabArca = b5 + 6 + NOTAS                  // título+subtítulo+cabecera+notas+TOTAL+vacía+título 4
+  const fArcaN = cabArca + 1, fArcaFaltan = cabArca + 5, fArcaVentas = cabArca + 6
+  const cabAfip = cabArca + 8                     // y debajo, la LISTA de lo que falta cargar
+  const afip0 = cabAfip + 1
+  const b3 = afip0 + 40                           // "Materiales" arranca acá
+
+  const g = { fArcaN, fArcaFaltan, fArcaVentas, cabAfip, afip0, fam0: b3 + 2, anchoObras: 7 }
+  const tramos = [
+    { titulo: 'Proveedores', desde: b5, hasta: b3 - 1, desdeFila: FRONTERA },
+    { titulo: 'Materiales', desde: b3, hasta: b3 + 60 },
+  ]
+  const t = traducirMarcadores(g, tramos, 'Proveedores', { desdeFila: FILA0 })
+
+  // El bloque de cobertura, en las filas donde el generador lo escribe de verdad.
+  assert.equal(t.fArcaN, 199, 'ARCA_COMPRAS_N/TOTAL')
+  assert.equal(t.fArcaFaltan, 203)
+  assert.equal(t.fArcaVentas, 204)
+  // Y NO en la lista de comprobantes faltantes, que es donde apuntaban en el archivo vivo.
+  assert.ok(t.fArcaN < t.cabAfip, 'el marcador cayó dentro de la lista de faltantes')
+  assert.ok(t.fArcaVentas < t.afip0, 'el marcador cayó dentro de la lista de faltantes')
+  // `anchoObras` es una CANTIDAD de columnas: traducirlo como fila lo rompería.
+  assert.equal(t.anchoObras, 7)
+})
+
+test('los marcadores de "Materiales" —el tramo sin `desdeFila`— son filas REALES, no NaN', () => {
+  // El tramo de Materiales no declara su fila de arranque: la hereda de las opciones de `partir`.
+  // La copia inline que traducía los marcadores no tenía ese respaldo y devolvía NaN para los ~20
+  // marcadores de esa pestaña. NaN se serializa como null en el JSON de la API, y un `startRowIndex`
+  // ausente significa "desde el principio de la hoja": el formato de un bloque cayendo sobre la
+  // pestaña entera, sin un solo error y sin nadie mirándolo.
+  const tramos = [
+    { titulo: 'Proveedores', desde: 100, hasta: 199, desdeFila: 176 },
+    { titulo: 'Materiales', desde: 200, hasta: 260 },
+  ]
+  const g = { fam0: 202, fam1: 220, totFam: 221, obra0: 224, cabObra: 223, anchoObras: 7 }
+  const t = traducirMarcadores(g, tramos, 'Materiales', { desdeFila: 4 })
+  for (const k of ['fam0', 'fam1', 'totFam', 'obra0', 'cabObra']) {
+    assert.ok(Number.isFinite(t[k]), `${k} tradujo a ${t[k]}`)
+  }
+  assert.equal(t.fam0, 6, 'la fila 200 de la grilla es la 4 de Materiales, así que la 202 es la 6')
 })
