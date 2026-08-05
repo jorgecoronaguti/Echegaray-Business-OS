@@ -24,7 +24,7 @@ import {
   naturalezaLinea, GLOSA_NATURALEZA,
 } from '../lib/cash-flow-horizonte.mjs'
 import { bloqueDecision, bloqueContraste, bloqueNaturaleza } from '../lib/cash-flow-tesoreria.mjs'
-import { bloqueLiquidez, bloquePuente, formulaColchon } from '../lib/cash-flow-liquidez.mjs'
+import { bloqueLiquidez, formulaColchon } from '../lib/cash-flow-liquidez.mjs'
 import { requestsDeGraficos, COL_ANCLA } from '../lib/cash-flow-graficos.mjs'
 import { pielCashFlow } from '../lib/cash-flow-piel.mjs'
 import { conEdicionesRespetadas, guardarRegistro, respetarEdiciones } from '../lib/respetar-ediciones.mjs'
@@ -379,15 +379,6 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   for (const f of liq.filas) push(f)
   meta.liquidez = liq
 
-  push([])
-  const pte = bloquePuente({
-    fila0: filas.length + 1,
-    colTotal,
-    actividades: CUADRO.map((act, i) => ({ nombre: act.actividad, fila: meta.subtotales[i] })),
-  })
-  for (const f of pte.filas) push(f)
-  meta.puente = pte
-
   // LA COMPOSICIÓN POR NATURALEZA, con su control de partición. Si las cuatro cajas no dan la
   // variación neta, alguna línea quedó sin clasificar — y eso se ve, no se promedia.
   const iniH = `$B$${FILA_CAB}`
@@ -488,11 +479,6 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
     filaEntradas: meta.entradas,
     filaSalidas: meta.salidas,
     colN: n + 1,
-    puente0: meta.puente?.puente0,
-    puente1: meta.puente?.puente1,
-    // El puente guarda su valor en la B, como todos los bloques de decisión: ahí B es un escalar del
-    // horizonte entero, no el primer período.
-    puenteCol: 2,
     // El contraste tiene su PROPIA ventana de tiempo (períodos ya cerrados) y por eso su propio
     // encabezado. Mezclarlo con la fila 3 sería la Regla de Oro 3 rota dentro de un gráfico.
     desvioCab: meta.contraste?.filaCab,
@@ -564,7 +550,6 @@ export function extrasTesoreria(meta, ancho) {
   }
   pintar(meta.decision, 2) // sólo la columna B es número; la C es un nombre y queda texto
   pintar(meta.liquidez, 2)
-  pintar(meta.puente, 2)
   pintar(meta.naturaleza, 2)
   pintar(meta.contraste, meta.contraste?.ancho ?? 2)
   return out

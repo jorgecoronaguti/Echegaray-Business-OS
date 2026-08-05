@@ -1,4 +1,4 @@
-// LOS GRÁFICOS DE LOS DOS CASH FLOW — CUATRO, Y CADA UNO CONTESTA UNA PREGUNTA QUE SE DECIDE.
+// LOS GRÁFICOS DE LOS DOS CASH FLOW — DOS, Y CADA UNO CONTESTA UNA PREGUNTA QUE SE DECIDE.
 //
 // ═══ POR QUÉ EXISTEN (05/08/2026) ═══
 //
@@ -17,15 +17,17 @@
 //     categoría (mismo criterio que "el egreso que más la explica" del bloque de decisión);
 //   · velocímetros / semáforos de cobertura — el número con su umbral al lado dice lo mismo sin tinta.
 //
-// Los cuatro que quedan, y qué decide cada uno:
-//   1. CURVA DE LIQUIDEZ con la línea del colchón → cuándo hay que salir a buscar plata, y cuánta.
-//   2. ENTRADAS CONTRA SALIDAS por período → si el período se paga solo o se paga con saldo viejo.
-//   3. WATERFALL DEL AÑO por actividad → de dónde sale y a dónde se va la variación del efectivo.
-//   4. LO ESPERADO CONTRA LO COBRADO → qué supuesto de cobranza falló, que es el que hay que corregir.
+//   · WATERFALL del año por actividad — lo borró el dueño, y con razón: resume el pasado en tres
+//     cifras que ya están en el cuerpo del cuadro con sus rótulos.
+//
+// Los dos que quedan, y qué decide cada uno:
+//   1. COMBO DE LIQUIDEZ — barras de lo que entra y lo que sale, línea de la posición acumulada y
+//      línea del colchón → en qué período no alcanza la plata, por qué, y cuánta hay que conseguir.
+//   2. LO ESPERADO CONTRA LO COBRADO → qué supuesto de cobranza falló, que es el que hay que corregir.
 //
 // ═══ LEEN LAS MISMAS CELDAS QUE LA TABLA — NUNCA UNA SEGUNDA FUENTE ═══
 //
-// Un gráfico con su propio cálculo es la forma más elegante de tener dos verdades. Los cuatro apuntan
+// Un gráfico con su propio cálculo es la forma más elegante de tener dos verdades. Los dos apuntan
 // a las filas que el generador ya escribió; si mañana cambia una fórmula del cuerpo, cambian con ella.
 //
 // ═══ TRAMPAS YA PAGADAS QUE ESTE ARCHIVO RESPETA ═══
@@ -36,6 +38,12 @@
 // · `anchorCell` es una celda REAL: si la hoja no llega a esa columna, la API devuelve 400 y se cae
 //   el LOTE ENTERO (incluido el formato). Por eso `COL_ANCLA` se exporta y el generador garantiza el
 //   ancho de la hoja ANTES de pedir los gráficos, y por eso estos requests van en su propio lote.
+// · `BasicChartDomain.domain` ES un `ChartData` DIRECTO — `{ domain: { data: … } }` mete un campo
+//   `data` que la referencia de la API no declara para un basicChart (sí para un waterfall, que es de
+//   donde salió la confusión). Un dominio que la API descarta no da error: el gráfico se dibuja con
+//   las categorías numeradas 1, 2, 3… en vez de las fechas, y nadie lo nota hasta mirarlo.
+//   NO ESTÁ VERIFICADO CONTRA LA API VIVA: desde un worktree no se escribe al Sheet. Se corrige a la
+//   forma documentada y la primera corrida real desde el árbol principal lo confirma o lo desmiente.
 // · Un waterfall NO acepta más de un `sourceRange` por eje, ni `color` dentro de `connectorLineStyle`.
 
 /**
@@ -46,10 +54,11 @@ export const COL_ANCLA = 58
 
 /** El prefijo que marca un gráfico como PROPIO. Lo que no lo lleve, no se toca. */
 export const MARCA = '⟡ '
-export const TITULO_LIQUIDEZ = `${MARCA}Curva de liquidez — hasta dónde baja la caja`
-export const TITULO_FLUJO = `${MARCA}Lo que entra contra lo que sale`
-export const TITULO_PUENTE = `${MARCA}De dónde sale y a dónde se va el efectivo`
+export const TITULO_LIQUIDEZ = `${MARCA}Liquidez — lo que entra, lo que sale y hasta dónde baja la caja`
 export const TITULO_DESVIO = `${MARCA}Cobranzas: lo esperado contra lo cobrado`
+// RETIRAR UN GRÁFICO NO DEJA HUÉRFANOS, y por eso el borrado es por MARCA y no por la lista de los
+// que se van a dibujar: los que ya estén en el Sheet con el prefijo se borran igual, se sigan
+// dibujando o no. Un catálogo que borrara "los míos de esta corrida" dejaría el juego viejo abajo.
 
 // La misma paleta que las tablas: tinta, gris apagado y un solo acento. Sin 3D, sin sombras, sin
 // relleno de fondo. El color se reserva para lo que decide.
@@ -85,105 +94,63 @@ const chart = (titulo, subtitulo, spec, sheetId, fila, alto = 280) => ({
 })
 
 /**
- * 1. LA CURVA DE LIQUIDEZ — el cierre período a período, con la línea del colchón por encima.
+ * 1. LA CURVA DE LIQUIDEZ — UN SOLO COMBO, PORQUE LA PREGUNTA ES UNA SOLA.
  *
- * ES EL GRÁFICO QUE JUSTIFICA LA PESTAÑA. La fila de cierre son 53 números que nadie compara a ojo;
- * la curva muestra el pozo, cuándo empieza y cuánto dura. La línea horizontal del colchón es la que
- * convierte "baja" en "baja DEMASIADO": sin una referencia, una curva descendente no dice nada.
+ * ═══ POR QUÉ UN COMBO Y NO DOS GRÁFICOS (05/08/2026) ═══
  *
- * El colchón se dibuja como una serie propia porque Sheets no tiene línea de umbral: se apunta a la
- * MISMA celda del bloque de liquidez repetida a lo ancho, así que el umbral del gráfico y el de la
- * tabla no pueden discrepar.
+ * Acá había dos: una LÍNEA con el cierre y un COLUMN con entradas contra salidas. Contestan media
+ * pregunta cada uno. La pregunta que se le hace a un cash flow es *"¿en qué semana me quedo corto, y
+ * por qué?"* — el saldo dice CUÁNDO y el movimiento dice POR QUÉ, y separados hay que alternar la
+ * vista entre dos dibujos con el mismo eje horizontal para cruzarlos a ojo. Superpuestos, el período
+ * donde la barra de salida se despega de la de entrada es visiblemente el mismo donde la línea cae:
+ * la causa y el efecto quedan en la misma columna de píxeles.
+ *
+ * El dueño lo pidió con ese nombre: barras de entra/sale más LÍNEA de posición acumulada.
+ *
+ * ═══ Y POR QUÉ NO UN WATERFALL ═══
+ *
+ * El waterfall que se dibujó antes en este cuadro lo borró el dueño. Muestra el recorrido del AÑO
+ * ENTERO abierto por actividad: es un resumen del pasado, no una alarma sobre el futuro, y las tres
+ * cifras que resume ya están en el cuerpo del cuadro con sus rótulos. Con él se fue `bloquePuente`,
+ * que existía SÓLO para ponerle las tres filas contiguas (la API rechaza un waterfall con el eje
+ * partido en varios rangos): tres celdas que no hacían más que referenciar a otras tres.
+ *
+ * ═══ LA LÍNEA DEL COLCHÓN ES LA QUE CONVIERTE "BAJA" EN "BAJA DEMASIADO" ═══
+ *
+ * Sheets no tiene línea de umbral, así que el colchón va como una cuarta serie que apunta a la MISMA
+ * fila del cuadro que lee el bloque de liquidez. El umbral del gráfico y el de la tabla no pueden
+ * discrepar porque son la misma celda.
+ *
+ * `type` POR SERIE es lo que hace COMBO a un basicChart: sin él, las cuatro salen del mismo tipo y
+ * la posición acumulada aparece como una barra más, que es exactamente lo que no se quiere ver.
  */
 export function graficoLiquidez(sheetId, g) {
+  const fila = (f) => fuente(rango(sheetId, f, f, 2, g.colN))
   return chart(TITULO_LIQUIDEZ,
-    'Donde la curva cruza el colchón hay que decidir financiamiento; donde cruza el cero, ya no es opcional',
+    'Donde la línea cruza el colchón hay que decidir financiamiento; donde cruza el cero, ya no es opcional. Las barras dicen por qué',
     {
       basicChart: {
-        chartType: 'LINE',
+        chartType: 'COMBO',
         legendPosition: 'BOTTOM_LEGEND',
         axis: [
           { position: 'BOTTOM_AXIS', format: texto(9) },
-          { position: 'LEFT_AXIS', format: texto(9) },
+          { position: 'LEFT_AXIS', title: 'Movimiento del período', format: texto(9) },
+          { position: 'RIGHT_AXIS', title: 'Posición de caja', format: texto(9) },
         ],
-        domains: [{ domain: { data: fuente(rango(sheetId, g.filaCab, g.filaCab, 2, g.colN)) } }],
+        domains: [{ domain: fila(g.filaCab) }],
         series: [
-          { series: fuente(rango(sheetId, g.filaCierre, g.filaCierre, 2, g.colN)), targetAxis: 'LEFT_AXIS', color: ACENTO, lineStyle: { width: 2, type: 'SOLID' } },
-          { series: fuente(rango(sheetId, g.filaColchon, g.filaColchon, 2, g.colN)), targetAxis: 'LEFT_AXIS', color: ALERTA, lineStyle: { width: 1, type: 'MEDIUM_DASHED' } },
+          // LAS BARRAS VAN AL EJE IZQUIERDO Y LA POSICIÓN AL DERECHO, Y NO ES estética: el movimiento
+          // de una semana y el saldo acumulado están en órdenes de magnitud distintos. En un solo eje,
+          // la curva de posición aplasta las barras contra el piso y deja de leerse cuál es la semana
+          // que no se paga sola — que es la mitad de lo que este gráfico existe para mostrar.
+          { series: fila(g.filaEntradas), targetAxis: 'LEFT_AXIS', type: 'COLUMN', color: ACENTO },
+          { series: fila(g.filaSalidas), targetAxis: 'LEFT_AXIS', type: 'COLUMN', color: GRIS_CLARO },
+          { series: fila(g.filaCierre), targetAxis: 'RIGHT_AXIS', type: 'LINE', color: INK, lineStyle: { width: 2, type: 'SOLID' } },
+          { series: fila(g.filaColchon), targetAxis: 'RIGHT_AXIS', type: 'LINE', color: ALERTA, lineStyle: { width: 1, type: 'MEDIUM_DASHED' } },
         ],
         headerCount: 0,
       },
-    }, sheetId, 1, 320)
-}
-
-/**
- * 2. ENTRADAS CONTRA SALIDAS, período a período.
- *
- * La curva de arriba muestra el SALDO; ésta muestra el MOVIMIENTO, que es otra pregunta: un período
- * puede cerrar bien y haber consumido saldo viejo. Dos columnas enfrentadas hacen obvio cuáles son
- * los períodos que no se pagan solos — que son los que hay que ir a mirar.
- *
- * COLUMN y no dos líneas: son cantidades de cada período, no una serie continua.
- */
-export function graficoEntradasSalidas(sheetId, g) {
-  return chart(TITULO_FLUJO,
-    'Un período donde la barra de salida supera la de entrada se está pagando con saldo viejo',
-    {
-      basicChart: {
-        chartType: 'COLUMN',
-        legendPosition: 'BOTTOM_LEGEND',
-        axis: [
-          { position: 'BOTTOM_AXIS', format: texto(9) },
-          { position: 'LEFT_AXIS', format: texto(9) },
-        ],
-        domains: [{ domain: { data: fuente(rango(sheetId, g.filaCab, g.filaCab, 2, g.colN)) } }],
-        series: [
-          { series: fuente(rango(sheetId, g.filaEntradas, g.filaEntradas, 2, g.colN)), targetAxis: 'LEFT_AXIS', color: ACENTO },
-          { series: fuente(rango(sheetId, g.filaSalidas, g.filaSalidas, 2, g.colN)), targetAxis: 'LEFT_AXIS', color: GRIS },
-        ],
-        headerCount: 0,
-      },
-    }, sheetId, 18)
-}
-
-/**
- * 3. EL PUENTE DEL EFECTIVO — waterfall de la variación del horizonte por actividad.
- *
- * Contesta "de dónde sale y a dónde se va la plata" en un solo dibujo: operativas, inversión,
- * financiación y el neto. Como tabla son cuatro números que hay que sumar mentalmente con su signo.
- *
- * UN SOLO `sourceRange` POR EJE. La API rechaza un waterfall con dominio o serie partidos en varios
- * rangos, así que las filas tienen que ser CONTIGUAS. Las tres "FLUJO NETO DE …" del cuerpo no lo
- * son —cada una vive debajo de su actividad—: por eso `bloquePuente` las pone contiguas
- * REFERENCIÁNDOLAS, sin recalcular nada. Ver cash-flow-liquidez.mjs.
- *
- * `firstValueIsTotal: false` porque el primer punto es un DELTA (el flujo de operativas), no un
- * nivel de caja. El subtotal final lo dibuja Sheets solo: es la variación neta del horizonte.
- */
-export function graficoPuente(sheetId, g) {
-  return chart(TITULO_PUENTE,
-    'El recorrido del efectivo del horizonte, actividad por actividad',
-    {
-      waterfallChart: {
-        domain: { data: fuente(rango(sheetId, g.puente0, g.puente1, 1, 1)) },
-        series: [{
-          data: fuente(rango(sheetId, g.puente0, g.puente1, g.puenteCol, g.puenteCol)),
-          // Lo que suma en gris claro, lo que resta en gris medio: la dirección ya la dice la posición
-          // de la barra. Dos colores enfrentados convierten un recorrido en un semáforo, y acá pagar
-          // no es una mala noticia.
-          positiveColumnsStyle: { color: GRIS_CLARO },
-          negativeColumnsStyle: { color: GRIS },
-          subtotalColumnsStyle: { color: ACENTO },
-          hideTrailingSubtotal: false,
-        }],
-        stackedType: 'STACKED',
-        // El primer punto es un DELTA (el flujo de operativas), no un nivel de caja.
-        firstValueIsTotal: false,
-        hideConnectorLines: false,
-        // Sin `color` acá dentro: la API lo rechaza en connectorLineStyle.
-        connectorLineStyle: { type: 'MEDIUM_DASHED', width: 1 },
-      },
-    }, sheetId, 35)
+    }, sheetId, 1, 340)
 }
 
 /**
@@ -207,7 +174,7 @@ export function graficoDesvio(sheetId, g) {
           { position: 'BOTTOM_AXIS', format: texto(9) },
           { position: 'LEFT_AXIS', format: texto(9) },
         ],
-        domains: [{ domain: { data: fuente(rango(sheetId, g.desvioCab, g.desvioCab, 2, g.desvioColN)) } }],
+        domains: [{ domain: fuente(rango(sheetId, g.desvioCab, g.desvioCab, 2, g.desvioColN)) }],
         series: [
           { series: fuente(rango(sheetId, g.desvioEsperado, g.desvioEsperado, 2, g.desvioColN)), targetAxis: 'LEFT_AXIS', color: GRIS },
           { series: fuente(rango(sheetId, g.desvioReal, g.desvioReal, 2, g.desvioColN)), targetAxis: 'LEFT_AXIS', color: ACENTO },
@@ -230,9 +197,10 @@ export function graficoDesvio(sheetId, g) {
  */
 export function planDeGraficos(g = {}) {
   const CATALOGO = [
-    { clave: 'liquidez', requiere: ['filaCab', 'filaCierre', 'filaColchon', 'colN'] },
-    { clave: 'entradasSalidas', requiere: ['filaCab', 'filaEntradas', 'filaSalidas', 'colN'] },
-    { clave: 'puente', requiere: ['puente0', 'puente1', 'puenteCol'] },
+    // El combo necesita las CUATRO series. Si falta una fila, se omite ENTERO en vez de dibujarse a
+    // medias: un gráfico de liquidez sin la línea del colchón muestra una curva que baja y no dice si
+    // eso está mal — es peor que no tenerlo, porque parece que la pregunta ya está contestada.
+    { clave: 'liquidez', requiere: ['filaCab', 'filaCierre', 'filaColchon', 'filaEntradas', 'filaSalidas', 'colN'] },
     { clave: 'desvio', requiere: ['desvioCab', 'desvioEsperado', 'desvioReal', 'desvioColN'] },
   ]
   const dibujables = []
@@ -247,8 +215,6 @@ export function planDeGraficos(g = {}) {
 
 const CONSTRUCTOR = {
   liquidez: graficoLiquidez,
-  entradasSalidas: graficoEntradasSalidas,
-  puente: graficoPuente,
   desvio: graficoDesvio,
 }
 

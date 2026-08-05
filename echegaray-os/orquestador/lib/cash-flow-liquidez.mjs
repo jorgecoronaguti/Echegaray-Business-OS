@@ -62,37 +62,6 @@ export function formulaColchon(filasEgreso, colN) {
 }
 
 /**
- * NÚCLEO PURO: el puente del efectivo — la variación del horizonte abierta por actividad.
- *
- * POR QUÉ ES UN BLOQUE Y NO SE GRAFICA DIRECTO SOBRE LOS SUBTOTALES. Las tres filas "FLUJO NETO DE
- * …" están separadas por las actividades que las producen, y un waterfall de la API NO acepta más de
- * un `sourceRange` por eje: con las filas sueltas no hay gráfico posible. Este bloque las pone
- * contiguas REFERENCIÁNDOLAS —`=<total>` y nada más—, así que no es un segundo cálculo: es la misma
- * celda leída desde otro lugar. Si mañana cambia una línea del cuerpo, el puente cambia con ella.
- *
- * La columna B del bloque significa "el total del horizonte", igual que en los otros bloques de
- * decisión que ya viven debajo del cierre (ahí B siempre es un escalar, nunca un período).
- *
- * @param {number} fila0 · @param {string} colTotal letra de la columna del total
- * @param {Array<{fila:number,nombre:string}>} actividades subtotal de cada actividad
- */
-export function bloquePuente({ fila0, colTotal, actividades }) {
-  const filas = []
-  const push = (a, b = '', c = '') => { filas.push([a, b, c]); return fila0 + filas.length - 1 }
-  const fTit = push('EL PUENTE DEL EFECTIVO — de dónde sale y a dónde se va, en todo el horizonte')
-  const primera = fila0 + filas.length
-  for (const a of actividades) push(a.nombre, `=${colTotal}${a.fila}`)
-  const ultima = fila0 + filas.length - 1
-  return {
-    filas,
-    titulo: fTit,
-    puente0: primera,
-    puente1: ultima,
-    formatos: { texto: [fTit], moneda: Array.from({ length: ultima - primera + 1 }, (_, i) => primera + i) },
-  }
-}
-
-/**
  * NÚCLEO PURO: el bloque de perfil de liquidez.
  *
  * @param {object} p
