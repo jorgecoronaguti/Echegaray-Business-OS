@@ -7,7 +7,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { grilla, meses } from './cash-flow-rehacer.mjs'
-import { semanasRodantes, SEMANAS_HORIZONTE } from '../lib/cash-flow-horizonte.mjs'
+import { semanasRodantes } from '../lib/cash-flow-horizonte.mjs'
+import { columnasMeta, indiceMeta, anchoConMeta } from '../lib/cash-flow-columnas.mjs'
 
 /** Un martes cualquiera, fijo: un horizonte rodante probado contra `new Date()` es un test que
  *  cambia de premisa todos los días y no se puede leer cuando falla. */
@@ -65,5 +66,79 @@ for (const periodo of ['semanal', 'mensual']) {
     assert.ok(meta.cierre > meta.inicio)
     assert.ok(meta.inicio > meta.variacion)
     assert.ok(meta.variacion > Math.max(...meta.subtotales))
+  })
+
+  // ════════════════════════════════════════════════════════════════════════════════════════════════
+  // EL CONTRATO DE COLUMNAS — los 42 defectos de pantalla, atacados donde nacen
+  // ════════════════════════════════════════════════════════════════════════════════════════════════
+
+  test(`${periodo}: el rectángulo mide exactamente lo que declara el contrato de columnas`, () => {
+    const g = arma(periodo)
+    const ancho = Math.max(...g.filas.map((f) => f.length))
+    assert.equal(ancho, anchoConMeta(periodo, g.n),
+      `el rectángulo mide ${ancho} y el contrato dice ${anchoConMeta(periodo, g.n)}`)
+  })
+
+  test(`${periodo}: cada columna de metadatos lleva SU título en SU índice`, () => {
+    const g = arma(periodo)
+    const cab = g.filas[g.meta.cabFila - 1]
+    for (const c of columnasMeta(periodo)) {
+      assert.equal(cab[indiceMeta(periodo, c.clave, g.n)], c.titulo,
+        `el encabezado de "${c.clave}" no está en su índice: la banda de formato va a caer corrida`)
+    }
+  })
+
+  test(`${periodo}: toda línea declara su naturaleza y de dónde sale — ninguna queda muda`, () => {
+    const g = arma(periodo)
+    const iNat = indiceMeta(periodo, 'naturaleza', g.n)
+    const iDon = indiceMeta(periodo, 'donde', g.n)
+    for (const d of g.meta.detalle) {
+      assert.ok(String(g.filas[d.fila - 1][iNat] ?? '').length > 3, `fila ${d.fila}: sin naturaleza declarada`)
+      const don = String(g.filas[d.fila - 1][iDon] ?? '')
+      assert.ok(don.length > 3, `fila ${d.fila}: sin origen declarado`)
+      // El defecto REAL que estaba en el Sheet vivo: `Compras, rubro "undefined"`. Un rótulo con la
+      // palabra "undefined" es código que se filtró a la pantalla del dueño.
+      assert.ok(!don.includes('undefined'), `fila ${d.fila}: "${don}"`)
+    }
+  })
+
+  // ────────────────────────────────────────────────────────────────────────────────────────────────
+  // LOS FANTASMAS DEL LAYOUT ANTERIOR
+  //
+  // Medido en el Sheet vivo el 05/08: B69, B76 y B83 —tres filas EN BLANCO que separan un bloque de
+  // otro— tenían renglones del viejo bloque "DÓNDE ESTÁ EL DETALLE" ("Compras, rubro …", uno de ellos
+  // con `rubro "undefined"`), y B36/B41 las notas de actividad que el dueño había borrado a mano. La
+  // fusión que preserva sus ediciones no puede distinguir "él anotó acá" de "acá quedó lo que yo mismo
+  // escribí en un layout anterior": el generador tiene que DECIR cuáles filas son suyas.
+
+  test(`${periodo}: las filas en blanco están declaradas y están realmente en blanco`, () => {
+    const g = arma(periodo)
+    assert.ok(g.meta.vacias.length >= 5, 'ninguna fila separadora declarada: los fantasmas vuelven')
+    for (const f of g.meta.vacias) {
+      const fila = g.filas[f - 1] ?? []
+      assert.deepEqual(fila.filter((c) => c !== '' && c != null), [],
+        `la fila ${f} se declara vacía y tiene contenido`)
+    }
+  })
+
+  test(`${periodo}: las filas de título no tienen nada a la derecha de la A`, () => {
+    const g = arma(periodo)
+    assert.ok(g.meta.soloColumnaA.length >= 6, 'faltan títulos declarados')
+    for (const f of g.meta.soloColumnaA) {
+      const fila = g.filas[f - 1] ?? []
+      assert.ok(String(fila[0] ?? '').length > 0, `la fila ${f} se declara título y está vacía`)
+      assert.deepEqual(fila.slice(1).filter((c) => c !== '' && c != null), [],
+        `la fila ${f} es un título y tiene contenido a la derecha: no puede desbordar`)
+    }
+    const cruce = g.meta.soloColumnaA.filter((f) => g.meta.vacias.includes(f))
+    assert.deepEqual(cruce, [], `filas declaradas separador Y título: ${cruce}`)
+  })
+
+  test(`${periodo}: el bloque "dónde está el detalle" ya no existe como tabla al pie`, () => {
+    // Eran 23 filas que repetían el nombre de cada línea para decir de dónde salía, con la prosa en la
+    // columna B de 96 px: de ahí salían 6 de los 8 "texto_cortado". La información no se perdió — es
+    // ahora una columna, al lado del número.
+    const g = arma(periodo)
+    assert.ok(!g.filas.some((f) => String(f?.[0] ?? '').startsWith('DÓNDE ESTÁ EL DETALLE')))
   })
 }

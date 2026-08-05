@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { pielCashFlow, columnasProyectadas } from './cash-flow-piel.mjs'
 import { MONEDA_CUERPO, MONEDA_TOTAL } from './formato-statement.mjs'
+import { anchoConMeta, bandasMeta } from './cash-flow-columnas.mjs'
 
 // Un cuadro de juguete con la misma FORMA que el real: encabezado en la fila 3, una actividad, un
 // grupo con dos líneas de detalle, su subtotal, y el bloque de cierre.
@@ -14,14 +15,17 @@ const META = {
   inicio: 12,
   cierre: 13,
   detalle: [{ fila: 7 }, { fila: 8 }],
+  soloColumnaA: [1, 5, 15],
+  vacias: [4, 10],
 }
 const BASE = {
   sheetId: 42,
   meta: META,
   n: 12,
-  ancho: 17,           // A + 12 meses + Total + Real + Proyectado + De dónde
+  // A + 12 meses + Total + las columnas de metadatos. El ancho NO se escribe a mano: sale del mismo
+  // contrato que usa el generador, que es justamente lo que estaba duplicado.
+  ancho: anchoConMeta('mensual', 12),
   nFilas: 25,
-  filaRef: 15,
   filaCtrl: 20,
   filaCtrlFin: 23,
   periodo: 'mensual',
@@ -139,6 +143,76 @@ test('la reja se apaga y el encabezado queda anclado', () => {
   assert.equal(s.updateSheetProperties.properties.gridProperties.hideGridlines, true)
   assert.equal(s.updateSheetProperties.properties.gridProperties.frozenRowCount, 3)
   assert.equal(s.updateSheetProperties.properties.gridProperties.frozenColumnCount, 1)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL DEFECTO QUE ESTOS TRES TESTS ATRAPAN — 34 de los 42 de pantalla del Semanal
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// La piel pintaba de moneda la banda `[colTotal+1, colTotal+3)` y de texto la de ahí en adelante. Eso
+// suponía que la primera columna después del Total era "Real (Compras)". Cuando se insertó "Naturaleza
+// del dato" delante, la banda quedó corrida una columna: 33 glosas de texto con formato CURRENCY, y
+// "Proyectado" —que es plata— con formato TEXT. Ninguna celda daba error.
+//
+// El test no compara contra números escritos a mano: le pregunta al contrato qué especie tiene cada
+// columna y verifica que el ÚLTIMO formato que la toca sea el suyo. Volver a la aritmética a mano lo
+// pone rojo con cualquier lista de columnas.
+
+/** El numberFormat que efectivamente queda en (fila, col): gana el último request que la toca. */
+function formatoEfectivo(rs, fila, col) {
+  let out = null
+  for (const r of rs) {
+    const g = r.repeatCell?.range
+    const nf = r.repeatCell?.cell?.userEnteredFormat?.numberFormat
+    if (!g || !nf) continue
+    if (fila - 1 >= g.startRowIndex && fila - 1 < g.endRowIndex && col >= g.startColumnIndex && col < g.endColumnIndex) out = nf
+  }
+  return out
+}
+
+test('una columna de texto declara que es texto: ninguna glosa cae en la banda de moneda', () => {
+  const rs = reqs()
+  for (const b of bandasMeta('mensual', BASE.n)) {
+    for (const f of [7, 8]) {           // las dos filas de detalle del cuadro de juguete
+      const nf = formatoEfectivo(rs, f, b.indice)
+      assert.ok(nf, `la columna "${b.clave}" (índice ${b.indice}) quedó sin formato declarado`)
+      if (b.tipo === 'texto') {
+        assert.equal(nf.type, 'TEXT', `"${b.clave}" es texto y quedó como ${nf.type}: es el defecto "texto_en_numero"`)
+      } else {
+        assert.equal(nf.type, 'CURRENCY', `"${b.clave}" es plata y quedó como ${nf.type}: un importe dibujado como texto`)
+      }
+    }
+  }
+})
+
+test('cada columna de metadatos pide su propio ancho — 96 px cortaban las glosas', () => {
+  const rs = reqs()
+  const anchos = new Map()
+  for (const r of rs) {
+    const d = r.updateDimensionProperties
+    if (d?.range?.dimension !== 'COLUMNS') continue
+    for (let c = d.range.startIndex; c < d.range.endIndex; c++) anchos.set(c, d.properties.pixelSize)
+  }
+  for (const b of bandasMeta('mensual', BASE.n)) {
+    assert.equal(anchos.get(b.indice), b.px, `"${b.clave}" quedó en ${anchos.get(b.indice)} px y pide ${b.px}`)
+    if (b.tipo === 'texto') assert.ok(b.px > 96, `"${b.clave}" en 96 px corta la glosa`)
+  }
+  // Y las de período siguen siendo angostas: ensanchar todo sería la otra forma de romperlo.
+  for (let c = 1; c <= BASE.n + 1; c++) assert.equal(anchos.get(c), 96, `la columna de período ${c} cambió de ancho`)
+})
+
+test('un título puede desbordar porque a su derecha el generador garantiza vacío', () => {
+  const rs = reqs()
+  const over = rs.filter((r) => r.repeatCell?.cell?.userEnteredFormat?.wrapStrategy === 'OVERFLOW_CELL')
+  assert.equal(over.length, META.soloColumnaA.length)
+  for (const r of over) {
+    assert.equal(r.repeatCell.range.startColumnIndex, 0, 'el desborde es de la columna A y de ninguna otra')
+    assert.equal(r.repeatCell.range.endColumnIndex, 1)
+  }
+  // Sin filas declaradas como "sólo columna A" no se autoriza ningún desborde: OVERFLOW sobre una fila
+  // con datos a la derecha taparía una cifra, que es peor que un título cortado.
+  assert.equal(pielCashFlow({ ...BASE, meta: { ...META, soloColumnaA: [] } })
+    .filter((r) => r.repeatCell?.cell?.userEnteredFormat?.wrapStrategy === 'OVERFLOW_CELL').length, 0)
 })
 
 test('los encabezados que no son período no llevan formato de fecha', () => {

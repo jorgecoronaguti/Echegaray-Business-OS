@@ -26,6 +26,7 @@
 
 import { MONEDA_CUERPO, MONEDA_TOTAL, CONTADOR, PORCENTAJE, MONEDA_CONTROL } from './formato-statement.mjs'
 import { INK, MUTED, HAIR, ACENTO, BLANCO } from './estilo-statement.mjs'
+import { bandasMeta } from './cash-flow-columnas.mjs'
 
 const FUENTE = 'Arial'
 const txt = (color, { bold = false, size = 9, italic = false } = {}) =>
@@ -83,6 +84,9 @@ export function pielCashFlow({
   periodo, fechas, hoy, filasHoja = 0, colsHoja = 0, extras = [],
 }) {
   const req = []
+  // La geometría de las columnas de la derecha NO se recalcula acá: se pregunta. Ver el encabezado de
+  // lib/cash-flow-columnas.mjs — dos aritméticas paralelas fue exactamente el defecto que se pagó.
+  const bandas = bandasMeta(periodo, n)
   // UNA GUARDA, NO UNA CONFIANZA: un rango de alto o ancho cero devuelve 400 y tumba el lote entero,
   // dejando la pestaña escrita a medias. Ya pasó con esta misma pestaña.
   const rango = (r0, r1, c0, c1) => (r1 > r0 && c1 > c0
@@ -129,16 +133,26 @@ export function pielCashFlow({
   // y no hace falta ninguna línea vertical para lograrlo.
   push(rango(primeraFila - 1, nFilas, colTotal, colTotal + 1), 'userEnteredFormat(numberFormat,horizontalAlignment)',
     { numberFormat: MONEDA_TOTAL, horizontalAlignment: 'RIGHT' })
-  // Las columnas de conciliación del mensual (Real / Proyectado) son importes, no períodos.
-  if (ancho > colTotal + 1) {
-    push(rango(primeraFila - 1, nFilas, colTotal + 1, Math.min(colTotal + 3, ancho)),
-      'userEnteredFormat(numberFormat,horizontalAlignment)',
-      { numberFormat: MONEDA_CUERPO, horizontalAlignment: 'RIGHT' })
-  }
-  // "De dónde sale la proyección" es una explicación, no plata.
-  if (ancho > colTotal + 3) {
-    push(rango(primeraFila - 1, nFilas, colTotal + 3, ancho), 'userEnteredFormat(numberFormat,textFormat,horizontalAlignment,wrapStrategy)',
-      { numberFormat: { type: 'TEXT' }, textFormat: txt(MUTED, { size: 9, italic: true }), horizontalAlignment: 'LEFT', wrapStrategy: 'CLIP' })
+  // ── LAS COLUMNAS DE METADATOS, UNA POR UNA Y POR SU ESPECIE DECLARADA ───────────────────────────
+  //
+  // Acá vivían dos rangos calculados a mano (`colTotal+1 … colTotal+3` en moneda y de ahí en adelante
+  // en texto). Esa aritmética era una SEGUNDA definición de la geometría del cuadro, y el día que se
+  // insertó "Naturaleza del dato" delante de "Real (Compras)" quedó corrida una columna: 33 glosas de
+  // texto pintadas de moneda y la columna "Proyectado" —que es plata— pintada de texto. Ningún error
+  // en ninguna celda: sólo una pestaña mal dibujada.
+  //
+  // Ahora cada columna dice de qué especie es (lib/cash-flow-columnas.mjs) y la piel la obedece. No
+  // hay forma de correrse: si se agrega una columna, se agrega en la lista y las dos puntas se enteran.
+  for (const b of bandas) {
+    if (b.indice >= ancho) continue // la grilla puede haber quedado más angosta: no se pinta la nada
+    const r = rango(primeraFila - 1, nFilas, b.indice, b.indice + 1)
+    if (b.tipo === 'moneda') {
+      push(r, 'userEnteredFormat(numberFormat,textFormat,horizontalAlignment,wrapStrategy)',
+        { numberFormat: MONEDA_CUERPO, textFormat: txt(INK, { size: 9 }), horizontalAlignment: 'RIGHT', wrapStrategy: 'CLIP' })
+    } else {
+      push(r, 'userEnteredFormat(numberFormat,textFormat,horizontalAlignment,wrapStrategy)',
+        { numberFormat: { type: 'TEXT' }, textFormat: txt(MUTED, { size: 9, italic: true }), horizontalAlignment: 'LEFT', wrapStrategy: 'CLIP' })
+    }
   }
 
   // ── 3. Título, subtítulo y encabezado de períodos ───────────────────────────────────────────────
@@ -157,9 +171,17 @@ export function pielCashFlow({
   // Los encabezados que NO son un período no llevan formato de fecha, o Sheets los dibuja como una.
   push(rango(meta.cabFila - 1, meta.cabFila, colTotal, ancho), 'userEnteredFormat(numberFormat,textFormat)',
     { numberFormat: { type: 'TEXT' }, textFormat: txt(INK, { bold: true, size: 9 }) })
-  if (ancho > colTotal + 1) {
-    push(rango(meta.cabFila - 1, meta.cabFila, colTotal + 1, ancho), 'userEnteredFormat.textFormat',
-      { textFormat: txt(MUTED, { bold: true, size: 9, italic: true }) })
+  // El encabezado de un metadato se apaga: son columnas de respaldo, no períodos. Y va alineado con su
+  // contenido —a la izquierda si es texto, a la derecha si es plata— o el ojo lee dos tablas distintas.
+  for (const b of bandas) {
+    if (b.indice >= ancho) continue
+    push(rango(meta.cabFila - 1, meta.cabFila, b.indice, b.indice + 1),
+      'userEnteredFormat(textFormat,horizontalAlignment,wrapStrategy)',
+      {
+        textFormat: txt(MUTED, { bold: true, size: 9, italic: true }),
+        horizontalAlignment: b.tipo === 'moneda' ? 'RIGHT' : 'LEFT',
+        wrapStrategy: 'CLIP',
+      })
   }
   regla(meta.cabFila, 'bottom')
 
@@ -198,12 +220,18 @@ export function pielCashFlow({
     push(rango(primeraFila - 1, meta.cierre, i + 1, i + 2), 'userEnteredFormat.textFormat.italic', { textFormat: { italic: true } })
   }
 
-  // ── 6. Los bloques de texto del pie ─────────────────────────────────────────────────────────────
-  // Referencias y control son texto y no plata: el formato moneda del cuerpo los dibujaba como importes.
-  push(rango(filaRef - 1, nFilas, 1, ancho), 'userEnteredFormat(numberFormat,horizontalAlignment,textFormat)',
+  // ── 6. El bloque de control del pie ─────────────────────────────────────────────────────────────
+  // Es texto y no plata: el formato moneda del cuerpo lo dibujaba como importes. `filaRef` (el viejo
+  // bloque "DÓNDE ESTÁ EL DETALLE") ya no existe —esa información es ahora una COLUMNA al lado de cada
+  // línea— y por eso el pie arranca en el título del control. Se sigue aceptando `filaRef` por si un
+  // llamador viejo lo manda: el rango empieza en el primero de los dos que exista.
+  const pie = Math.min(...[filaRef, filaCtrl - 1].filter((x) => Number.isFinite(x) && x > 0))
+  push(rango(pie - 1, nFilas, 1, ancho), 'userEnteredFormat(numberFormat,horizontalAlignment,textFormat)',
     { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: txt(MUTED, { size: 9 }) })
-  fila(filaRef, 'userEnteredFormat.textFormat', { textFormat: txt(INK, { bold: true, size: 11 }) })
-  regla(filaRef, 'top')
+  if (Number.isFinite(filaRef) && filaRef > 0) {
+    fila(filaRef, 'userEnteredFormat.textFormat', { textFormat: txt(INK, { bold: true, size: 11 }) })
+    regla(filaRef, 'top')
+  }
   fila(filaCtrl - 1, 'userEnteredFormat.textFormat', { textFormat: txt(INK, { bold: true, size: 11 }) })
   regla(filaCtrl - 1, 'top')
   push(rango(filaCtrl - 1, filaCtrlFin, 1, 2), 'userEnteredFormat(numberFormat,horizontalAlignment)',
@@ -234,8 +262,29 @@ export function pielCashFlow({
   // La columna A llevaba 260 px y cortaba a la mitad los rótulos largos ("La misma nómina de
   // administración, según Compr…"). Un rótulo cortado no es un rótulo.
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 340 }, fields: 'pixelSize' } })
-  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: ancho }, properties: { pixelSize: 96 }, fields: 'pixelSize' } })
+  // Las columnas de PERÍODO y la del total llevan el ancho de un importe. Las de metadatos, no: una
+  // glosa de 40 caracteres en 96 px se corta, y ésos eran los "texto_cortado" que quedaban. Cada una
+  // pide su ancho en la misma lista que declara su especie.
+  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: Math.min(colTotal + 1, ancho) }, properties: { pixelSize: 96 }, fields: 'pixelSize' } })
+  for (const b of bandas) {
+    if (b.indice >= ancho) continue
+    req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: b.indice, endIndex: b.indice + 1 }, properties: { pixelSize: b.px }, fields: 'pixelSize' } })
+  }
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: Math.max(nFilas, filasHoja) }, properties: { pixelSize: 21 }, fields: 'pixelSize' } })
+
+  // ── 8. Los títulos pueden desbordar, porque no tienen nada al lado ──────────────────────────────
+  //
+  // "LO ESPERADO CONTRA LO QUE OCURRIÓ — las 4 semanas ya cerradas" son 61 caracteres y la columna A
+  // mide 340 px: con `CLIP` el auditor lo cuenta —con razón— como texto cortado. Ensanchar la columna
+  // A hasta que entre el título más largo desperdiciaría 300 px en todas las filas por culpa de seis.
+  //
+  // La salida correcta es la que usa cualquier estado financiero impreso: un encabezado de sección
+  // ocupa el ancho que necesita, porque a su derecha no hay ningún dato que tape. Que a la derecha no
+  // haya nada es una garantía del generador (`meta.soloColumnaA` se fuerza vacío después de la fusión),
+  // no una suposición: sin esa garantía, OVERFLOW taparía una cifra.
+  for (const f of (meta.soloColumnaA ?? [])) {
+    push(rango(f - 1, f, 0, 1), 'userEnteredFormat.wrapStrategy', { wrapStrategy: 'OVERFLOW_CELL' })
+  }
 
   return req
 }

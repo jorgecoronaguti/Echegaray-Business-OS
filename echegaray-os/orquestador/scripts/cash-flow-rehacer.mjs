@@ -25,6 +25,7 @@ import {
 } from '../lib/cash-flow-horizonte.mjs'
 import { bloqueDecision, bloqueContraste, bloqueNaturaleza } from '../lib/cash-flow-tesoreria.mjs'
 import { pielCashFlow } from '../lib/cash-flow-piel.mjs'
+import { columnasMeta, indiceMeta } from '../lib/cash-flow-columnas.mjs'
 import { conEdicionesRespetadas, guardarRegistro, respetarEdiciones } from '../lib/respetar-ediciones.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { ref as refPestana } from '../lib/partir-pestana.mjs'
@@ -103,12 +104,28 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   const filas = []
   const meta = {} // dónde quedó cada cosa, para las fórmulas de totales
   const push = (celdas) => { filas.push(celdas); return filas.length }
+  // ═══ LAS FILAS QUE SON DEL GENERADOR DE PUNTA A PUNTA (05/08) ═══
+  //
+  // Una fila en blanco entre bloques, y una fila de título de bloque, son ESTRUCTURA: por diseño no
+  // tienen nada (o nada a la derecha de la A). Hay que decirlo explícitamente porque la fusión que
+  // preserva las ediciones del dueño no puede distinguir "el dueño anotó acá" de "acá quedó lo que yo
+  // mismo escribí en un layout anterior" — y con el cuadro cambiando de forma, lo segundo pasa siempre.
+  //
+  // MEDIDO EN EL SHEET VIVO, no deducido: el cuadro tenía en B69, B76 y B83 —tres separadores— renglones
+  // del viejo bloque "DÓNDE ESTÁ EL DETALLE" ("Compras, rubro …", incluido un `rubro "undefined"` de una
+  // corrida vieja), y en B36/B41 las notas de actividad que el dueño había borrado a mano. Cinco de los
+  // 34 "texto_en_numero" eran eso: fantasmas de un layout anterior resucitados por la fusión, uno por uno,
+  // en cada corrida. Es el mismo defecto que las "notas que resucitan", del lado de la estructura.
+  const vacias = []    // filas que este generador escribe VACÍAS a propósito
+  const soloA = []     // filas donde sólo la columna A lleva contenido
+  const separador = () => { const f = push([]); vacias.push(f); return f }
+  const titulo = (t) => { const f = push([t]); soloA.push(f); return f }
 
   // EL TÍTULO DICE QUÉ PREGUNTA CONTESTA CADA UNO, porque ahora contestan preguntas distintas: el
   // semanal, en qué semana no alcanza la plata; el mensual, cómo cierra el año.
-  push([periodo === 'semanal'
+  titulo(periodo === 'semanal'
     ? `Cash Flow Semanal — las ${SEMANAS_HORIZONTE} semanas que vienen`
-    : `Cash Flow Mensual ${AÑO} — cuándo entra y sale la plata`])
+    : `Cash Flow Mensual ${AÑO} — cuándo entra y sale la plata`)
   // A2 = el atajo a la semana de hoy.
   //
   // EL RANGO TIENE QUE SER UNA CELDA, NO UNA COLUMNA. La versión anterior armaba ADDRESS(1;col;4) y
@@ -154,7 +171,7 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   const subtotalesAct = []
 
   for (const act of CUADRO) {
-    push([])
+    separador()
     // LA NOTA DE LA ACTIVIDAD NO VA EN LA GRILLA. Iba en la columna B de esta misma fila, y como la
     // fila no tiene nada más a la derecha, Sheets la derramaba sobre las primeras doce columnas de
     // período: tres párrafos atravesando el cuadro justo donde están los meses ya cerrados. La razón
@@ -256,7 +273,7 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   meta.subtotales = subtotalesAct
 
   // ── EL CIERRE QUE PIDE LA NORMA ────────────────────────────────────────────────────────────────
-  push([])
+  separador()
   meta.variacion = push(['AUMENTO / (DISMINUCIÓN) NETA DEL EFECTIVO',
     ...cols.map((_, i) => `=${subtotalesAct.map((f) => `${letra(i + 1)}${f}`).join('+')}`)])
   // El efectivo al inicio: el primer período lo toma del único lugar donde puede vivir un saldo
@@ -319,7 +336,7 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   // lee 'Cash Flow Mensual'!A3:N9 fijo— y correr el cuerpo diez filas los rompería en silencio,
   // devolviendo otro número en vez de un error. El cierre es de todos modos el ancla visual del
   // cuadro (única fila con doble regla): lo que sigue se lee como su explicación, que es lo que es.
-  push([])
+  separador()
   const dec = bloqueDecision({
     periodo,
     fila0: filas.length + 1,
@@ -331,6 +348,7 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
     refCaja,
   })
   for (const f of dec.filas) push(f)
+  soloA.push(dec.titulo)
   meta.decision = dec
 
   // LA COMPOSICIÓN POR NATURALEZA, con su control de partición. Si las cuatro cajas no dan la
@@ -340,7 +358,7 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   const proyecta = (l) => expresionProyeccionMes(l, iniH, filasTabla, AÑO) !== null
   const esModelo = (l) => naturalezaLinea(l) === 'MODELO'
   const esEsperado = (l) => naturalezaLinea(l) === 'ESPERADO'
-  push([])
+  separador()
   const nat = bloqueNaturaleza({
     fila0: filas.length + 1,
     colTotal,
@@ -352,10 +370,11 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
     filasModelo: meta.detalle.filter((d) => esModelo(d.linea)).map((d) => d.fila),
   })
   for (const f of nat.filas) push(f)
+  soloA.push(nat.titulo)
   meta.naturaleza = nat
 
   // EL CONTRASTE, con su propio encabezado de fechas: es otra ventana de tiempo y se dice.
-  push([])
+  separador()
   const con = bloqueContraste({
     fila0: filas.length + 1,
     periodo,
@@ -366,18 +385,10 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
       // escribe: un cuadro de contraste sin períodos que contrastar sólo confunde.
       : meses().filter((m) => m.getUTCMonth() < hoy.getUTCMonth()),
   })
-  if (con.filas.length > 2) { for (const f of con.filas) push(f); meta.contraste = con }
+  if (con.filas.length > 2) { for (const f of con.filas) push(f); soloA.push(con.titulo); meta.contraste = con }
 
-  push([])
-  const filaRef = push(['DÓNDE ESTÁ EL DETALLE DE CADA LÍNEA'])
-  for (const { linea: l } of meta.detalle) {
-    push([l.nombre, l.detalle
-      ? `Pestaña ${l.detalle}`
-      : `Compras, rubro "${l.rubro}"${l.excluirSub ? ` (sin "${l.excluirSub}", que va a inversión)` : ''} · detalle en la pestaña ${detalleDeRubro(l.rubro)}`])
-  }
-
-  push([])
-  push(['CONTROL — que no falte ni sobre nada'])
+  separador()
+  titulo('CONTROL — que no falte ni sobre nada')
   const filaCtrl = filas.length + 1
   for (const c of bloqueControl(meta.egr0, meta.egr1, 'B', filaCtrl)) push([c.etiqueta, c.formula, c.nota])
   const filaCtrlFin = filas.length // última fila del bloque de control (1-based), para formatear en moneda
@@ -391,37 +402,54 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   filas[meta.cierre - 1][n + 1] = `=${letra(n)}${meta.cierre}`
   filas[meta.inicio - 1][n + 1] = `=${letra(1)}${meta.inicio}`
 
-  // ═══ CADA MOVIMIENTO DECLARA SU NATURALEZA (04/08) ═══
+  // ═══ CADA MOVIMIENTO DECLARA SU NATURALEZA Y SU ORIGEN, AL LADO DEL NÚMERO (04/08 · 05/08) ═══
   //
   // Regla absoluta de la skill de tesorería: todo movimiento se clasifica explícitamente como REAL ·
   // COMPROMETIDO · PROYECTADO · ESTIMADO · VENCIDO · PAGADO · COBRADO · CONCILIADO. Hasta hoy la
   // única marca era la itálica de la columna — y la itálica dice CUÁNDO, no QUÉ. Un cobro esperado
   // de un cliente y un cheque ya firmado caen los dos en una columna futura y salían los dos en
   // itálica: uno es una promesa y el otro una orden de pago. Ahora cada línea lo dice al lado.
-  filas[meta.cabFila - 1][n + 2] = 'Naturaleza del dato'
-  for (const { fila: f, linea: l } of meta.detalle) filas[f - 1][n + 2] = GLOSA_NATURALEZA[naturalezaLinea(l)]
+  //
+  // "Dónde está el detalle" bajó del pie a esta banda (05/08): era un bloque de 23 filas que repetía
+  // el nombre de cada línea para decir de dónde salía, y su prosa vivía en la columna B de 96 px —de
+  // ahí salían seis de los ocho "texto_cortado" del auditor—. Al lado del número dice lo mismo, sin
+  // hacer bajar 23 filas y sin cortarse.
+  //
+  // NINGÚN ÍNDICE SE CALCULA ACÁ: se pide por clave (lib/cash-flow-columnas.mjs). Esa aritmética
+  // repetida entre la grilla y la piel es la que dejó la naturaleza pintada de moneda.
+  const iMeta = (clave) => indiceMeta(periodo, clave, n)
+  for (const c of columnasMeta(periodo)) filas[meta.cabFila - 1][iMeta(c.clave)] = c.titulo
+  for (const { fila: f, linea: l } of meta.detalle) {
+    filas[f - 1][iMeta('naturaleza')] = GLOSA_NATURALEZA[naturalezaLinea(l)]
+    filas[f - 1][iMeta('donde')] = l.detalle
+      ? `Pestaña ${l.detalle}`
+      : `Compras, rubro "${l.rubro ?? '(sin rubro: la línea la resuelve el OS)'}"${l.excluirSub ? ` (sin "${l.excluirSub}")` : ''} → ${detalleDeRubro(l.rubro)}`
+  }
 
   // En el mensual, el total del año mezcla real y proyección: hay que poder separarlos de un vistazo,
   // o un estimado se lee como un hecho.
   if (periodo === 'mensual') {
-    filas[meta.cabFila - 1][n + 3] = 'Real (Compras)'
-    filas[meta.cabFila - 1][n + 4] = 'Proyectado'
-    filas[meta.cabFila - 1][n + 5] = 'De dónde sale la proyección'
     for (const { fila: f, linea: l } of meta.detalle) {
-      filas[f - 1][n + 3] = l.rubro && !l.cobranzas
+      filas[f - 1][iMeta('real')] = l.rubro && !l.cobranzas
         ? `=${l.excluirSub
           ? `${formulaTotalRubro(l.rubro)}-SUMIF(${'Compras!$AF$4:$AF'};"${l.excluirSub}";${'Compras!$O$4:$O'})`
           : formulaTotalRubro(l.rubro)}`
         : `=${letra(n + 1)}${f}`
-      filas[f - 1][n + 4] = `=${letra(n + 1)}${f}-${letra(n + 3)}${f}`
-      filas[f - 1][n + 5] = origenLinea(l)
+      filas[f - 1][iMeta('proyectado')] = `=${letra(n + 1)}${f}-${letra(iMeta('real'))}${f}`
+      filas[f - 1][iMeta('origen')] = origenLinea(l)
     }
   }
+
+  // Las filas de estructura viajan en `meta` porque las necesitan DOS consumidores: el generador, para
+  // forzarlas vacías después de la fusión (los fantasmas del layout anterior), y la piel, para dejar
+  // que un título desborde sobre una columna B que está garantizada vacía.
+  meta.vacias = vacias
+  meta.soloColumnaA = [...soloA, ...meta.actividades].sort((a, b) => a - b)
 
   // `fechas` y `periodo` viajan con la grilla porque la PIEL los necesita para decidir qué columnas
   // son proyección. Recalcularlas en el formateador sería una segunda definición de la grilla de
   // períodos, que es justo lo que ya se corrió una vez y escondió $292,8M.
-  return { filas, meta, n, colTotal, filaCtrl, filaCtrlFin, filaRef, fechas: cols, periodo }
+  return { filas, meta, n, colTotal, filaCtrl, filaCtrlFin, fechas: cols, periodo }
 }
 
 /**
@@ -502,7 +530,6 @@ async function formatear(google, data) {
       n: g.n,
       ancho: cols,
       nFilas: filas,
-      filaRef: g.filaRef,
       filaCtrl: g.filaCtrl,
       filaCtrlFin: g.filaCtrlFin,
       periodo: g.periodo,
@@ -791,10 +818,16 @@ async function main() {
     // las escribió, las escribí yo y él las borró. La fila de encabezado de una actividad es de este
     // generador de punta a punta y su contenido a la derecha de la A es, por diseño, nada. Se fuerza
     // acá y no antes de la fusión, porque es justamente la fusión la que las resucitaba.
-    for (const f of d.g.meta.actividades) {
-      const fila = d.values[f - 1]
-      if (fila) for (let c = 1; c < fila.length; c++) fila[c] = ''
-    }
+    //
+    // GENERALIZADO A TODA LA ESTRUCTURA (05/08). El mismo mecanismo resucitaba los renglones del viejo
+    // bloque "DÓNDE ESTÁ EL DETALLE" sobre las filas EN BLANCO que separan un bloque de otro: medido en
+    // el Sheet vivo, B69/B76/B83 tenían "Compras, rubro …" —uno de ellos con `rubro "undefined"`, de una
+    // corrida vieja— encima de tres separadores. Cada vez que el cuadro cambia de alto, la fusión lee lo
+    // que quedó del layout anterior como texto del dueño y lo deja. Una fila en blanco entre bloques y el
+    // renglón de un título son de este generador de punta a punta: se fuerzan.
+    const limpiar = (f, desde) => { const fila = d.values[f - 1]; if (fila) for (let c = desde; c < fila.length; c++) fila[c] = '' }
+    for (const f of d.g.meta.soloColumnaA ?? d.g.meta.actividades) limpiar(f, 1)
+    for (const f of d.g.meta.vacias ?? []) limpiar(f, 0)
     d._ediciones = ediciones // se persiste el set COMPLETO: un borrado real del dueño no se olvida.
     d._candidatos = candidatos
     d._actual = actual
