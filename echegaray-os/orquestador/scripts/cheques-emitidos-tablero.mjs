@@ -62,6 +62,7 @@
 //
 //   node orquestador/scripts/cheques-emitidos-tablero.mjs [--dry]
 
+import { CAJA as N_CAJA } from '../lib/rangos-nombrados.mjs'
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { skinRequests, MUTED, HAIR } from '../lib/estilo-statement.mjs'
@@ -141,10 +142,20 @@ export function bandaFilas(HDR) {
     fila(),
     fila(seccion(1, '¿me alcanza? — lo que firmé contra lo que hay en el banco')),
     fila('Concepto', 'Monto', 'Qué significa'),
-    // La plata disponible es de CAJA: no se recalcula acá. Se busca POR RÓTULO (CAJA se reescribe
-    // entera y sus filas se mueven); si el rótulo cambia, la celda lo GRITA en vez de mentir.
+    // ═══ POR NOMBRE, NO POR RÓTULO (05/08) ═══
+    //
+    // La plata disponible es de CAJA: no se recalcula acá. Se buscaba con
+    // `MATCH("Total disponibilidades"; CAJA!A:A; 0)`, un match EXACTO sobre un texto — y el rediseño de
+    // CAJA le agregó tres palabras al rótulo ("⇒ Total disponibilidades — criterio percibido"). La
+    // celda hizo lo que prometía su comentario: GRITÓ "⚠ no está en CAJA" en vez de mentir, y por eso
+    // el defecto tardó una corrida en aparecer en vez de tres meses.
+    //
+    // Pero gritar no es la respuesta correcta cuando el dato SÍ está. CAJA ya publica ese número como
+    // rango con nombre —`CAJA_TOTAL_DISPONIBLE`, reapuntado en cada corrida a la fila real del total—
+    // y un nombre sobrevive a que se muevan las filas Y a que se reescriba el rótulo. El rótulo es
+    // para la persona que lee; el nombre es el contrato entre pestañas.
     fila('Plata disponible hoy — todas las cuentas',
-      '=IFERROR(INDEX(CAJA!$E$1:$E$200;MATCH("Total disponibilidades";CAJA!$A$1:$A$200;0));"⚠ no está en CAJA")',
+      `=IF(N(${N_CAJA.total})=0;"⚠ CAJA todavía no publicó su total";N(${N_CAJA.total}))`,
       'Bancos, caja y valores a depositar. Sale de la pestaña CAJA, que es su dueña.'),
     fila('   · (−) cheques firmados, no debitados', `=${outstanding}`,
       'Ya lo firmaste y lo entregaste: salió de tus manos, todavía no de la cuenta.'),

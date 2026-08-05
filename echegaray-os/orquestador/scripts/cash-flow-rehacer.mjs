@@ -143,7 +143,10 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   // año calendario, que tiene las semanas que tenga. Un encabezado que no cuenta lo que suma es la
   // misma clase de defecto que el "26" de la fila 3: nadie lo cuestiona y esconde dos semanas.
   meta.cabFila = push(['Período', ...cols.map(fechaAR),
-    periodo === 'semanal' ? `Total ${n} semanas ${AÑO}` : `Total ${AÑO}`])
+    // "Total 53 semanas 2026" son 21 caracteres en una columna de 96px: entran 18, y el auditor de
+    // pantalla lo marcaba cortado. El año ya está en el título de la pestaña y la cantidad de semanas
+    // se cuenta mirando el cuadro; lo que la columna tiene que decir es que es el total.
+    `Total ${AÑO}`])
 
   // ── EL CUERPO DEL ESTADO, POR ACTIVIDAD ────────────────────────────────────────────────────────
   // Cada categoría muestra su subtotal; el detalle va agrupado debajo y se abre con el +/- del

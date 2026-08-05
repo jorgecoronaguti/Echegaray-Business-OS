@@ -71,7 +71,9 @@ export function bloqueDecision({ periodo, fila0, colN, filaCab, filaCierre, fila
   const rango = (f) => `$B$${f}:${colN}$${f}`
   const cierres = rango(filaCierre)
 
-  const fTit = push('LO QUE ESTE CUADRO DECIDE — riesgo de caja y de cliente')
+  // 55 caracteres en una columna de 340px: entran 54, y el auditor de pantalla lo marcaba cortado por
+  // UNO. "de cliente" no agrega nada que las filas de abajo no digan con su propio rótulo.
+  const fTit = push('LO QUE ESTE CUADRO DECIDE — riesgo de caja y cliente')
   // La peor columna se identifica por su FECHA, no por su número de columna: así el resto del bloque
   // la vuelve a encontrar aunque la grilla cambie de ancho, y de paso se lee.
   const fPeor = push(`Peor ${U} del horizonte`, `=IFERROR(INDEX(${rango(filaCab)};1;MATCH(MIN(${cierres});${cierres};0));"")`)
