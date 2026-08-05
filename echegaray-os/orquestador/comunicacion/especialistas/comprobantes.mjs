@@ -27,11 +27,14 @@
 
 import { procesarPost, TEXTO as TEXTO_FLUJO } from '../comprobantes/flujo.mjs'
 import { escribirFajo } from '../comprobantes/escritura.mjs'
+import { atenderRespuesta } from '../comprobantes/respuesta.mjs'
+import { interpretarRespuesta, MAX_LARGO } from '../../lib/comprobantes/respuesta-texto.mjs'
 import { leerAdjunto } from '../../lib/comprobantes/vision.mjs'
 import { listasDeCompras, proveedoresPorCuit } from '../../lib/comprobantes/listas.mjs'
 import { indiceDeCompras } from '../../lib/comprobantes/compras-vivas.mjs'
 import { perfilesDeImputacionDesdeDB } from '../../lib/imputacion-aprendida.mjs'
 import { urlConSecreto } from '../secreto-compartido.mjs'
+import { puedeCargarComprobantes } from '../comprobantes/guarda.mjs'
 import * as repo from '../comprobantes/repositorio.mjs'
 
 /** URL de callback de los botones. Distinta de la de asistencia: son dos dominios distintos. */
@@ -76,6 +79,32 @@ function plano(texto) {
   return String(texto ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 }
 
+/**
+ * ¿Este texto es la respuesta a la pregunta que este bot dejó abierta?
+ *
+ * Cuesta UNA consulta indexada por (plataforma, user, canal, estado) y sólo cuando el mensaje no
+ * trae adjuntos y es corto —un nombre de obra lo es; un párrafo es otra conversación—. Sin fajo
+ * abierto no hay pregunta abierta y no se reclama nada.
+ *
+ * FALLA HACIA AFUERA: si la base no contesta, se devuelve null y el mensaje sigue su camino. Un
+ * reclamo fabricado sobre una lectura fallida secuestraría el mensaje para no poder atenderlo.
+ */
+async function reclamoDeRespuesta(texto, ctx = {}) {
+  const t = String(texto ?? '').trim()
+  if (!t || t.length > MAX_LARGO) return null
+  const port = ctx.port
+  const userId = ctx.actor?.plataforma_user_id
+  const channelId = ctx.actor?.channel_id
+  if (typeof port?.query !== 'function' || !userId || !channelId) return null
+  try {
+    const fajo = await repo.fajoAbierto(port, { plataforma: ctx.actor?.plataforma ?? 'mattermost', userId, channelId })
+    if (!fajo) return null
+    const respuesta = interpretarRespuesta(fajo, t)
+    if (!respuesta) return null
+    return { destino: 'responder', confianza: 1, fajo, respuesta }
+  } catch { return null }
+}
+
 export const especialista = {
   slug: 'comprobantes',
   agentSlug: 'compras',
@@ -98,7 +127,7 @@ export const especialista = {
   // nada porque `atender` sin adjuntos no dispara ningún trabajo: contesta qué sabe hacer.
   preferidoDeArea: true,
 
-  reconoce(texto, ctx = {}) {
+  async reconoce(texto, ctx = {}) {
     // EL PEDIDO ES EL ARCHIVO. Un post con adjuntos en el canal de compras es una carga de
     // comprobantes aunque no traiga una sola palabra.
     if ((ctx.fileIds?.length ?? 0) > 0 && ctx.area === 'compras') {
@@ -106,11 +135,41 @@ export const especialista = {
     }
     const t = plano(texto)
     if (RE_COMO.test(t) || RE_PREGUNTA.test(t)) return { destino: 'ayuda', confianza: 0.4 }
-    return null
+
+    // ═══ LA RESPUESTA A LO QUE ÉL MISMO DEJÓ ABIERTO (04/08) ═══
+    //
+    // El mensaje del fajo dice, textual: «Tocá la obra —o escribime otra— y lo cargo». Escribirla no
+    // hacía NADA: este especialista reclamaba sólo posts con adjuntos, así que "MESSINA" en el hilo
+    // no lo reclamaba nadie y el Director contestaba con el catálogo de capacidades. El bot pedía un
+    // dato, la persona lo daba, y el bot cambiaba de tema.
+    //
+    // SE RECLAMA POCO Y A PROPÓSITO: sólo si hay un fajo ABIERTO de esa persona en ese canal Y el
+    // texto se resuelve contra las opciones que ese fajo ofreció. Un texto que no matchea nada
+    // devuelve null y sigue su camino intacto — un especialista que se cree dueño de todo le roba
+    // mensajes a los demás.
+    return await reclamoDeRespuesta(texto, ctx)
   },
 
   async atender({ texto, intencion, port, actor, google, fileIds = [], postId, mattermost, config, log }) {
-    const ruta = intencion ?? this.reconoce(texto, { fileIds, area: 'compras' })
+    const ruta = intencion ?? await this.reconoce(texto, { fileIds, area: 'compras', port, actor })
+
+    // Una respuesta escrita a la pregunta abierta. No baja archivos, no gasta un token de visión: es
+    // aplicar una opción que ya se ofreció.
+    if (ruta?.destino === 'responder' && ruta.fajo && ruta.respuesta) {
+      // LA PUERTA OTRA VEZ. Que el fajo exista prueba que se pasó cuando se mandó la foto, no que se
+      // pase AHORA: un permiso se revoca y un canal se despega del área. Este camino termina
+      // escribiendo en Compras, así que se vuelve a preguntar, y falla cerrado.
+      const permitido = await puedeCargarComprobantes({
+        port, actor: actor ?? {}, channelId: actor?.channel_id,
+        plataforma: actor?.plataforma ?? 'mattermost', mattermost,
+      })
+      if (!permitido.ok) return { texto: permitido.texto, estado: `rechazado_${permitido.motivo}`, privado: false }
+      // El escritor NO se inyecta: `confirmarFajo` usa `escribirFajo` por default, que es el mismo
+      // que dispara el botón Confirmar y el mismo que corre el cargador de Claude Code. Un camino.
+      return await atenderRespuesta({
+        port, mattermost, log, url: urlAccion(config?.env ?? process.env),
+      }, { fajo: ruta.fajo, respuesta: ruta.respuesta })
+    }
 
     if (!fileIds.length || ruta?.destino === 'ayuda') return ayuda()
 

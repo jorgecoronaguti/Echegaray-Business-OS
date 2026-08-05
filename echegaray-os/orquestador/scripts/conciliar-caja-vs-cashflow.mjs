@@ -104,6 +104,8 @@ async function main() {
   const conceptos = []
   /** Lo que el calendario viejo contaba DE MÁS: cheques cuya factura ya viaja dentro de su rubro. */
   const duplicados = []
+  /** Lo que NO se puede afirmar en ninguna dirección. No suma a ningún piso: define la BANDA. */
+  const incierto = []
 
   // 1 · Cheques emitidos no debitados.
   //
@@ -127,21 +129,35 @@ async function main() {
       col(`'${inst.pestaña}'!${inst.colDebitado}${f0}:${inst.colDebitado}400`),
       col(`'${inst.pestaña}'!${marcaCol(inst)}${f0}:${marcaCol(inst)}400`),
     ])
-    const todos = []; const sinFactura = []
+    // ═══ CUATRO GRUPOS, NO DOS — Y LA DIFERENCIA VALÍA $38.377.479 (05/08) ═══
+    //
+    // Acá decía: `sinFactura` = los marcados FALTA, y `duplicados` = todo el resto, con el rótulo
+    // "librados con su factura ya cargada en Compras". Ese "todo el resto" incluía DOS cosas que no
+    // tienen su factura verificada: los que no tienen N° de comprobante (no se puede saber) y los que
+    // el OS todavía no miró (marca vacía). Medido contra el Sheet real ese mismo día: OCHO cheques por
+    // $38.377.479, cargados después de la última corrida del marcador, que este verificador declaraba
+    // cubiertos. Un verificador que afirma lo que no sabe es peor que no tenerlo — es el mismo defecto
+    // que vino a corregir, cometido del otro lado.
+    const G = { falta: [], sinNumero: [], sinMarca: [], ok: [] }
     imp.forEach((v, i) => {
       if (String(deb[i] ?? '').toUpperCase() === 'SI' || !esNum(fecha[i])) return
-      todos.push({ fecha: fecha[i], monto: num(v) })
-      // Sólo el que NO tiene factura en Compras: el resto ya viaja dentro de su rubro.
-      if (String(marca[i] ?? '').trim() === MARCAS.falta) sinFactura.push({ fecha: fecha[i], monto: num(v) })
+      const m = String(marca[i] ?? '').trim()
+      const item = { fecha: fecha[i], monto: num(v) }
+      if (m === MARCAS.falta) G.falta.push(item)
+      else if (m === MARCAS.sinNumero) G.sinNumero.push(item)
+      else if (!m) G.sinMarca.push(item)
+      else G.ok.push(item)   // ✓ verificado o ≈ inferido: hay evidencia de que su factura está cargada
     })
-    const tSin = repartir(sinFactura, bordes)
-    const tTodos = repartir(todos, bordes)
     // EL CALENDARIO VIEJO LEÍA UNA SOLA PESTAÑA: "Cheques Emitidos". La tarjeta no la miraba, así que
     // para que la línea base sea fiel su deuda NO puede atribuirse al calendario viejo.
     const loLeiaElViejo = clave === 'cheques'
-    conceptos.push({ nombre: `${inst.nombre} sin factura en Compras`, enViejo: loLeiaElViejo, enNuevo: true, tramos: tSin })
+    conceptos.push({ nombre: `${inst.nombre} sin factura en Compras`, enViejo: loLeiaElViejo, enNuevo: true, tramos: repartir(G.falta, bordes) })
     // El que SÍ la tiene ya viaja dentro de su rubro de Compras: sólo el calendario viejo lo sumaba.
-    duplicados.push({ nombre: `${clave}: librados con su factura ya cargada en Compras`, enViejo: loLeiaElViejo, tramos: tTodos.map((v, k) => v - tSin[k]) })
+    duplicados.push({ nombre: `${clave}: librados con su factura ya cargada en Compras`, enViejo: loLeiaElViejo, tramos: repartir(G.ok, bordes) })
+    // LAS DOS INCERTIDUMBRES, SEPARADAS Y CON NOMBRE. No entran a ningún piso: son la BANDA entre el
+    // mejor y el peor caso, que es lo que se publica más abajo.
+    incierto.push({ nombre: `${clave}: sin N° de comprobante — no se puede verificar`, tramos: repartir(G.sinNumero, bordes) })
+    incierto.push({ nombre: `${clave}: el OS todavía no los miró (marca vacía)`, tramos: repartir(G.sinMarca, bordes) })
   }
 
   // 2 · Nómina de obra: quincena cerrada sin pagar (desde el corte) + proyectada.
@@ -244,6 +260,31 @@ async function main() {
   console.log(`  piso del calendario VIEJO   : ${pesos(peorViejo.v)}  (${peorViejo.tramo}, hasta ${fmtFecha(peorViejo.hasta)})`)
   console.log(`  piso con la definición única: ${pesos(peorNuevo.v)}  (${peorNuevo.tramo}, hasta ${fmtFecha(peorNuevo.hasta)})`)
   console.log(`  el piso estaba inflado en   : ${pesos(peorViejo.v - peorNuevo.v)}\n`)
+
+  // ═══ ENTRE QUÉ Y QUÉ ESTÁ PARADO EL DUEÑO ═══
+  //
+  // El piso de arriba se calcula con lo que se PUEDE AFIRMAR. Pero hay cheques cuya cobertura no se
+  // sabe: sin N° de comprobante no hay contra qué cruzarlos, y los que el OS todavía no miró tampoco
+  // cuentan. Un piso sin esa banda al lado se lee como certeza y con eso se decide cuánta plata se
+  // inmoviliza en un plazo fijo. Se publican las DOS puntas: la de arriba supone que todos tienen su
+  // factura cargada (y entonces ya viajan por su rubro) y la de abajo supone que ninguno la tiene.
+  console.log('LA BANDA — LO QUE NO SE PUEDE AFIRMAR EN NINGUNA DIRECCIÓN')
+  console.log('─'.repeat(72))
+  for (const c of incierto) {
+    const t = c.tramos.reduce((a, b) => a + b, 0)
+    if (Math.abs(t) > 0.5) console.log(`  ${c.nombre.padEnd(52)} ${pesos(t).padStart(16)}`)
+  }
+  let saldoPeor = disponible; let pisoPeor = Infinity
+  bordes.forEach((b, k) => {
+    const sale = conceptos.filter((c) => c.enNuevo).reduce((a, c) => a + c.tramos[k], 0)
+      + incierto.reduce((a, c) => a + c.tramos[k], 0)
+    saldoPeor += entra[k] - sale
+    if (saldoPeor < pisoPeor) pisoPeor = saldoPeor
+  })
+  console.log('─'.repeat(72))
+  console.log(`  PISO si TODOS tienen su factura cargada (mejor caso): ${pesos(peorNuevo.v)}`)
+  console.log(`  PISO si NINGUNO la tiene              (peor  caso): ${pesos(pisoPeor)}`)
+  console.log(`  ancho de la banda                                  : ${pesos(peorNuevo.v - pisoPeor)}\n`)
 
   // ── LO QUE LA PESTAÑA MUESTRA DE VERDAD ────────────────────────────────────────────────────────
   //
