@@ -625,7 +625,7 @@ export function bloqueControl(filaPrimerEgreso, filaUltimoEgreso, colTotal, fila
       nota: 'Todo lo que hay en la pestaña Compras, sin filtrar.',
     },
     {
-      etiqueta: 'Suma de las líneas de egreso (a valores de Compras)',
+      etiqueta: 'Suma de las líneas de egreso (valores de Compras)',
       formula: `=${porRubro}`,
       nota: 'Cada rubro de Compras sumado por separado. Si un rubro quedara fuera del cuadro, esto daría menos que el total de arriba.',
     },
@@ -651,7 +651,7 @@ export function bloqueControl(filaPrimerEgreso, filaUltimoEgreso, colTotal, fila
     },
     // LOS DOS ESPEJOS DEL LADO DEL INGRESO (T04): que ningún cobro real se caiga del cuadro en silencio.
     {
-      etiqueta: 'Cobros sin unidad de negocio (van a "Otras cobranzas" — asignarles unidad)',
+      etiqueta: 'Cobros sin unidad de negocio (van a "Otras cobranzas")',
       formula: formulaCobranzasSinUnidad(),
       nota: 'Cobros con plata pero con la unidad (columna F de Cobranzas) vacía. Por decisión del dueño se cuentan en "Otras cobranzas" para que no se caigan del cuadro, y acá quedan visibles para asignarles la unidad real (civil/mantenimiento) si corresponde. No se cuentan dos veces: esta línea es diagnóstico, no suma. Los endosos no cuentan.',
     },
@@ -721,7 +721,7 @@ export const CUADRO = [
         //
         // El pasado no se toca: para los meses cerrados esta línea da cero (ver formulaCobranzas),
         // así que enero-julio siguen siendo el hecho verificable contra el banco.
-        nombre: 'Cobranzas esperadas — de este mes en adelante (proyección, suma al flujo)', signo: 1,
+        nombre: 'Cobranzas esperadas — de este mes en adelante (suma al flujo)', signo: 1,
         lineas: [
           { nombre: 'Esperado · obra civil', cobranzas: 'civil', modo: 'esperado', detalle: 'Cobranzas' },
           { nombre: 'Esperado · mantenimiento', cobranzas: 'mantenimiento', modo: 'esperado', detalle: 'Cobranzas' },
@@ -766,7 +766,7 @@ export const CUADRO = [
         // como el costo de la administración del mes. Un número que parece un total y no lo es es peor
         // que no mostrarlo. Las dos mitades se ven abiertas en "Jornales por Quincena", que es donde
         // está su detalle y adonde lleva el vínculo de la línea que sí suma.
-        nombre: 'ℹ La misma nómina de administración, según Compras (control, no suma al flujo)', signo: 0,
+        nombre: 'ℹ La misma nómina de administración, según Compras (control)', signo: 0,
         lineas: [
           { nombre: 'Sueldos de administración cargados a mano en Compras', rubro: 'Nómina · Sueldos administración', desdeCompras: true, detalle: 'Compras' },
         ],
@@ -875,7 +875,7 @@ export const CUADRO = [
         // Compras— con el control del pie cerrando igual, porque las dos salen del mismo lado. Se
         // muestran al lado, como las cobranzas esperadas: la plata deja de ser invisible sin arriesgar
         // contarla dos veces, y cuando se carguen las facturas estas líneas bajan solas a cero.
-        nombre: 'ℹ Salió del banco y no está cargado en Compras (control, no suma al flujo)', signo: 0,
+        nombre: 'ℹ Salió del banco y no está en Compras (control)', signo: 0,
         lineas: [
           { nombre: 'AFIP — pagos debitados de la cuenta', bancoNat: 'AFIP', detalle: 'Impuestos y Financieros' },
           { nombre: 'Consumos con tarjeta de débito', bancoNat: 'Compras con tarjeta de débito', detalle: 'Compras' },
@@ -982,34 +982,65 @@ export function expresionReal(l, desde, hasta) {
  * @param {string} colMes letra de la columna del mes · @param {string} colTabla la equivalente en la pestaña de detalle
  * @param {number} filaCab fila del encabezado con las fechas
  */
-export function formulaLineaMes(l, colMes, colTabla, filaCab, filasTabla = {}) {
+export function formulaLineaMes(l, colMes, colTabla, filaCab, filasTabla = {}, anio = 2026) {
   if (l.cheques || l.calendarioImpuestos) return null
   const mes = `${colMes}$${filaCab}`
   const real = expresionReal(l, mes, `EOMONTH(${mes};0)+1`)
+  const proy = expresionProyeccionMes(l, mes, filasTabla, anio)
+  if (proy === null) return `=${real}`
+  return `=IF(EOMONTH(${mes};0)<=EOMONTH(TODAY();0);${real};MAX(${real};${proy}))`
+}
+
+/**
+ * NÚCLEO PURO: la PROYECCIÓN de una línea para un mes CUALQUIERA, expresado como fórmula.
+ *
+ * POR QUÉ SE SEPARÓ DE formulaLineaMes (04/08). El Cash Flow Semanal pasó a ser un forecast rodante
+ * de 13 semanas, y una semana necesita saber cuánto proyecta el MES que la contiene para poder
+ * repartirlo. Si esa proyección se volviera a escribir en el archivo del semanal habría DOS
+ * definiciones del mismo número —el error que este archivo entero vino a matar—, y el día que una
+ * cambiara el mensual y el semanal dirían cosas distintas sobre la misma plata sin que nada avise.
+ *
+ * EL MES SE PASA COMO EXPRESIÓN, NO COMO LETRA DE COLUMNA. Antes la proyección de tabla se leía como
+ * `Estructura!I$15`: la columna I porque el mes de la columna I del cash flow es septiembre. Eso ata
+ * el dato a la POSICIÓN de la columna, que es exactamente el defecto que ya escondió $292,8M cuando
+ * la fila 3 tenía el día 26 en vez del 1°. Ahora se busca por el MES de la fecha del encabezado
+ * (`INDEX(...;MONTH(mes))`), así que si la grilla cambia de forma la referencia sigue al dato.
+ *
+ * FUERA DEL AÑO DEL CUADRO NO SE PROYECTA. La tabla de detalle tiene DOCE columnas, una por mes de
+ * `anio`. Un mes de 2027 caería en la columna de su número de mes — leería enero de 2026 y lo
+ * presentaría como enero de 2027. Devolver 0 es decir "no sé", que es la verdad.
+ *
+ * @param {object} l línea del CUADRO
+ * @param {string} mes expresión que devuelve el PRIMER DÍA del mes (ej. 'I$3', 'EOMONTH(B$3;-1)+1')
+ * @param {Object<string,number>} filasTabla {pestaña: fila del total}, ubicada por rótulo
+ * @param {number} anio el año que cubre la tabla de detalle
+ * @returns {string|null} expresión es-AR SIN el '=', o null si esta línea NO se proyecta
+ */
+export function expresionProyeccionMes(l, mes, filasTabla = {}, anio = 2026) {
   // Un bien de uso no tiene ritmo: comprar una moto en enero no significa comprar una por mes. Es
   // el mismo error que el SAC, y la misma regla lo mata.
   const p = l.soloSub ? null : PROYECCION[l.rubro]
   // LA OFICINA YA VIENE PROYECTADA HASTA DICIEMBRE en su propio bloque (ajustada por inflación, mes por
   // mes). Volver a proyectarla acá sobre el ritmo de los últimos tres meses sería contar dos veces la
   // misma proyección — y encima con una fórmula que buscaría por un rubro que esta línea no tiene.
-  if (p === null || l.cobranzas || l.oficina) return `=${real}`
-  let proy
+  // Las líneas que no viven en Compras (cheques, calendario fiscal, descubierto, comisiones, impuesto
+  // al cheque, control del banco) traen su propio futuro o son un memo: proyectarlas sería inventar.
+  if (p === null || l.cobranzas || l.oficina || l.cheques || l.calendarioImpuestos
+    || l.descubierto || l.comisionesBancarias || l.impuestoCheque || l.bancoNat || l.desdeCompras) return null
   if (p?.tipo === 'tabla') {
     const fila = filasTabla[p.pestaña]
     if (!fila) throw new Error(`cash-flow-lineas: no sé en qué fila de "${p.pestaña}" está "${p.rotulo}" — sin eso la referencia sería a una fila muerta`)
-    proy = `${p.pestaña}!${colTabla}$${fila}`
-  } else {
-    // LOS TRES MESES CERRADOS, SIN EL MES EN CURSO. La ventana anterior llegaba hasta el fin del
-    // mes corriente y dividía por 3: metía un mes a medio transcurrir en el promedio, así que el
-    // ritmo salía más bajo cuanto más temprano se miraba. Un mes que todavía no terminó no es una
-    // observación completa. Además ahora coincide exactamente con la ventana del núcleo Postgres,
-    // que es la condición para que la web y la planilla digan lo mismo.
-    const ventana = `${expresionReal(l, 'EOMONTH(TODAY();-4)+1', 'EOMONTH(TODAY();-1)+1')}/3`
-    const factor = `IFERROR(INDEX(Parámetros!$C$74:$C$90;MATCH(EOMONTH(${mes};0);ARRAYFORMULA(EOMONTH(Parámetros!$A$74:$A$90;0));0));1)`
-    const mesesConGasto = `SUMPRODUCT(--(COUNTIFS(${COL_RUBRO};"${l.rubro}";${COL_FECHA};">="&${MESES_CAB};${COL_FECHA};"<"&EOMONTH(${MESES_CAB};0)+1)>0))`
-    proy = `IF(${mesesConGasto}<${MIN_MESES};0;${ventana}*${factor})`
+    return `IF(YEAR(${mes})<>${anio};0;INDEX(${p.pestaña}!$B$${fila}:$M$${fila};1;MONTH(${mes})))`
   }
-  return `=IF(EOMONTH(${mes};0)<=EOMONTH(TODAY();0);${real};MAX(${real};${proy}))`
+  // LOS TRES MESES CERRADOS, SIN EL MES EN CURSO. La ventana anterior llegaba hasta el fin del
+  // mes corriente y dividía por 3: metía un mes a medio transcurrir en el promedio, así que el
+  // ritmo salía más bajo cuanto más temprano se miraba. Un mes que todavía no terminó no es una
+  // observación completa. Además ahora coincide exactamente con la ventana del núcleo Postgres,
+  // que es la condición para que la web y la planilla digan lo mismo.
+  const ventana = `${expresionReal(l, 'EOMONTH(TODAY();-4)+1', 'EOMONTH(TODAY();-1)+1')}/3`
+  const factor = `IFERROR(INDEX(Parámetros!$C$74:$C$90;MATCH(EOMONTH(${mes};0);ARRAYFORMULA(EOMONTH(Parámetros!$A$74:$A$90;0));0));1)`
+  const mesesConGasto = `SUMPRODUCT(--(COUNTIFS(${COL_RUBRO};"${l.rubro}";${COL_FECHA};">="&${MESES_CAB};${COL_FECHA};"<"&EOMONTH(${MESES_CAB};0)+1)>0))`
+  return `IF(${mesesConGasto}<${MIN_MESES};0;${ventana}*${factor})`
 }
 
 /**

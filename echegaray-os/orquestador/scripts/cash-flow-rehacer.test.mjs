@@ -6,13 +6,18 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { grilla, semanas, meses } from './cash-flow-rehacer.mjs'
+import { grilla, meses } from './cash-flow-rehacer.mjs'
+import { semanasRodantes, SEMANAS_HORIZONTE } from '../lib/cash-flow-horizonte.mjs'
+
+/** Un martes cualquiera, fijo: un horizonte rodante probado contra `new Date()` es un test que
+ *  cambia de premisa todos los días y no se puede leer cuando falla. */
+const HOY = new Date(Date.UTC(2026, 7, 4))
 
 const arma = (periodo) => grilla(periodo, [], null, null,
   // Las tablas de proyección y el calendario fiscal se ubican por rótulo contra el Sheet; para una
   // prueba de FORMA alcanza con una fila cualquiera: no se evalúa ninguna fórmula.
   { Estructura: 10, Recurrentes: 10, 'Materiales y Proveedores': 10 },
-  { iva: 20, iibb: 21 })
+  { iva: 20, iibb: 21 }, HOY)
 
 for (const periodo of ['semanal', 'mensual']) {
   test(`${periodo}: ninguna fila del cuadro escribe prosa al lado de los números`, () => {
@@ -51,7 +56,7 @@ for (const periodo of ['semanal', 'mensual']) {
     const g = arma(periodo)
     assert.equal(g.periodo, periodo)
     assert.equal(g.fechas.length, g.n)
-    assert.deepEqual(g.fechas, periodo === 'semanal' ? semanas() : meses())
+    assert.deepEqual(g.fechas, periodo === 'semanal' ? semanasRodantes(HOY) : meses())
   })
 
   test(`${periodo}: el cierre existe y es la última fila del estado`, () => {
