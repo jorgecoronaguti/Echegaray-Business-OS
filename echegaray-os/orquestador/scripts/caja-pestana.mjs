@@ -903,6 +903,18 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   push(['   · riesgo: cheques no debitados SIN marca de cobertura (el término de cheques los ignora)', '', '',
     `=SUMPRODUCT((${K400})*(${M_CH}="")*${F400})`, '', '', '', '',
     'Si no da cero, "cheques-cobertura" no corrió sobre esas filas y el calendario no los está viendo: su plata no está ni acá ni en Compras. El cero de este control es lo que hace confiable el término de cheques.'])
+  // ═══ EL OTRO LADO DEL MISMO TÉRMINO, Y ES EL QUE COSTÓ $12.188.441 (05/08) ═══
+  //
+  // Esta cifra es la que el calendario EXCLUYE a propósito: cheques y cuotas sin factura en Compras
+  // que el banco YA debitó. No se restan porque el saldo del que parte el calendario ya los tiene
+  // descontados — restarlos otra vez hundía el piso $12.188.441 y por eso CAJA y el conciliador no
+  // cerraban. Queda a la vista, con su monto, en vez de ser una exclusión invisible: si un día crece
+  // sin que crezcan los pagos, es que alguien está marcando DEBITADO sin que el banco haya debitado.
+  //
+  // NO SE SUMA A NINGÚN TOTAL. Es la medida de lo que este bloque decide NO contar.
+  push(['   · declarado: ya debitados y sin factura — el saldo del banco ya los tiene descontados', '', '',
+    `=SUMPRODUCT((UPPER('${ch}'!$K$2:$K$400)="SI")*(${M_CH}="${MARCAS.falta}")*${F400})`, '', '', '', '',
+    'La plata que el término de cheques deja afuera A PROPÓSITO. Un cheque debitado ya salió de la cuenta: el saldo del que arranca este calendario lo tiene descontado, y volver a restarlo lo cuenta dos veces. Medido el 05/08: 10 cheques por $11.631.542 y 2 cuotas de tarjeta por $556.899.'])
   const fPeor = push(['   · el punto más bajo del horizonte', '', '', '', '', `=MIN($F${cal0}:$F${cal1})`, '', '', ''])
   const fCuando = push(['   · cuándo ocurre', '', '', '', '', `=IFERROR(INDEX($A$${cal0}:$A$${cal1};MATCH($F${fPeor};$F$${cal0}:$F$${cal1};0));"")`, '', '',
     'Si el punto más bajo es negativo, ése es el tramo en el que la caja no alcanza — y es la fecha en la que hay que actuar, no el total.', ''])

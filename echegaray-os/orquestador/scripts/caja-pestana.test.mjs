@@ -912,6 +912,20 @@ test('no queda ningún marcador @ sin resolver en toda la grilla', () => {
   }
 })
 
+test('LO QUE EL CALENDARIO EXCLUYE A PROPÓSITO SE PUBLICA CON SU MONTO', () => {
+  // Una exclusión invisible es indistinguible de un olvido. Los $12.188.441 de cheques ya debitados
+  // se dejan afuera porque el saldo del banco ya los tiene descontados — y eso tiene que poder
+  // leerse en la pestaña, con su número, al lado del control hermano que mide los sin marca.
+  const g = construir()
+  const f = filaDe(g, /ya debitados y sin factura/)
+  assert.ok(f > 0, 'la exclusión tiene que estar declarada en el calendario')
+  const v = String(g.filas[f - 1][3])
+  assert.ok(v.includes('="SI"'), 'mide justamente los DEBITADOS, que es lo que el término excluye')
+  assert.ok(v.includes('FALTA cargar la factura'), 'y sólo los que no tienen factura en Compras')
+  // NO puede entrar en ningún total: es la medida de lo que este bloque decide no contar.
+  assert.ok(f > g.calTotal, 'va DEBAJO del total del horizonte, fuera de su rango de suma')
+})
+
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // LA LEGIBILIDAD SE MIDE, NO SE OPINA (05/08/2026)
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
