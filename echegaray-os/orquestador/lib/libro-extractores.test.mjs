@@ -5,8 +5,9 @@ import { deCompras, deCobranzas, deChequesEmitidos, deBancoCargos } from './libr
 import { ENTRA, SALE } from './libro-movimientos.mjs'
 
 // ── Compras: título, agrupador, encabezado, datos ─────────────────────────────────────────────────
-const ENC_COMPRAS = ['Proveedor', 'CUIT (OS)', 'Comprobante', 'Importe total', 'Estado pago',
-  'Tipo pago', 'Rubro de caja', 'Fecha de caja (OS)', 'Obra']
+// Los nombres del encabezado REAL de la fila 3 del archivo, verificados el 05/08.
+const ENC_COMPRAS = ['Proveedor', 'CUIT (OS)', 'N° Comprobante', 'Total', 'Estado pago',
+  'Tipo pago', 'Rubro de caja', 'Fecha de caja', 'Detalles / Obra']
 const compras = (extra = []) => [[], [], ENC_COMPRAS,
   ['Mariana SA', '30-71037035-0', '0002-00000683', 100000, 'Pagado', 'Transferencia', 'Materiales Civil', 46000, 'ARCOR'],
   ['Nota SA', '30-71037035-0', '0002-00000683', -21359, 'Pagado', 'Transferencia', 'Materiales Civil', 46001, ''],
@@ -38,18 +39,19 @@ test('COMPRAS: sin la columna "Rubro de caja" en el encabezado, ROMPE nombrándo
 })
 
 // ── Cobranzas: los datos arrancan en la fila 5 ────────────────────────────────────────────────────
-const ENC_COB = ['x', 'Cliente', 'Estado', 'Importe', 'Fecha estimada de cobro', 'Fecha de cobro', 'Forma']
+// Ídem: el encabezado real de la fila 4 de Cobranzas. El importe es el NETO de retenciones.
+const ENC_COB = ['x', 'Obra / Cliente', 'Estado', 'TOTAL a cobrar (neto de retenciones)', 'Fecha cobro', 'Fecha cobro', 'Forma de Cobro']
 const cob = [[], [], [], ENC_COB,
-  ['', 'MESSINA', 'Cobrado', 500000, 46010, 46005, 'Transferencia'],
-  ['', 'ARCOR', 'Pendiente', 300000, 45990, '', 'eCheq'],
-  ['', 'ANULADA', 'CANCELAR', 999999, 46000, '', ''],
+  ['', 'MESSINA', 'Cobrado', 500000, 46005, 46005, 'Transferencia'],
+  ['', 'ARCOR', 'Pendiente', 300000, 45990, 45990, 'eCheq'],
+  ['', 'ANULADA', 'CANCELAR', 999999, 46000, 46000, ''],
 ]
 
 test('COBRANZAS: cobrado usa la fecha REAL, pendiente la esperada, CANCELAR no existe', () => {
   const ms = deCobranzas(cob, 46000)
   assert.ok(!ms.some((m) => m.concepto === 'ANULADA'), 'una fila anulada no es un movimiento')
   const cobrado = ms.find((m) => m.concepto === 'MESSINA')
-  assert.equal(cobrado.fecha, 46005, 'manda la fecha en que la plata ENTRÓ, no la estimada')
+  assert.equal(cobrado.fecha, 46005, 'manda la fecha en que la plata ENTRÓ')
   assert.equal(cobrado.estado, 'REAL')
   const pendiente = ms.find((m) => m.concepto === 'ARCOR')
   assert.equal(pendiente.estado, 'VENCIDO', 'esperado para una fecha que pasó y nadie marcó')
@@ -57,7 +59,8 @@ test('COBRANZAS: cobrado usa la fecha REAL, pendiente la esperada, CANCELAR no e
 })
 
 // ── Cheques Emitidos: registro con encabezado en la fila 18, datos desde la 20 ───────────────────
-const ENC_CH = ['Tipo', 'Número', 'Proveedor', 'Importe', 'Fecha de pago', 'DEBITADO']
+// El encabezado real de la fila 20 del archivo: 'Nro', 'Monto', y la fecha en minúscula.
+const ENC_CH = ['Tipo', 'Nro', 'Proveedor', 'Monto', 'fecha de pago', 'DEBITADO']
 const cheques = () => {
   const filas = Array.from({ length: 23 }, () => [])
   // El registro real: encabezado en la fila 19 (índice 18), datos desde la 20 — igual que $K$20:$K.

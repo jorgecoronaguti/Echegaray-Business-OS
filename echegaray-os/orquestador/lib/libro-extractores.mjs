@@ -62,10 +62,13 @@ function columnasObligatorias(encabezado, nombres, fuente) {
  */
 export function deCompras(filas = [], corte = null) {
   const enc = filas[2] ?? [] // fila 3: el encabezado real (1 título, 2 agrupador)
+  // Los nombres son los del encabezado REAL de la fila 3, verificados contra el archivo el 05/08.
+  // "Rubro de caja" y "Orden de pago (OS)" aparecen DOS veces en el encabezado: resolverColumnas se
+  // queda con la primera aparición, que es la columna AB que escribe rubro-caja-sheet.mjs.
   const c = columnasObligatorias(enc, {
-    proveedor: 'Proveedor', cuit: 'CUIT (OS)', comprobante: 'Comprobante',
-    importe: 'Importe total', estado: 'Estado pago', tipoPago: 'Tipo pago',
-    rubro: 'Rubro de caja', fechaCaja: 'Fecha de caja (OS)', obra: 'Obra',
+    proveedor: 'Proveedor', cuit: 'CUIT (OS)', comprobante: 'N° Comprobante',
+    importe: 'Total', estado: 'Estado pago', tipoPago: 'Tipo pago',
+    rubro: 'Rubro de caja', fechaCaja: 'Fecha de caja', obra: 'Detalles / Obra',
   }, 'Compras')
   const out = []
   for (let i = 3; i < filas.length; i++) {
@@ -114,9 +117,12 @@ export function deCompras(filas = [], corte = null) {
  */
 export function deCobranzas(filas = [], corte = null) {
   const enc = filas[3] ?? [] // fila 4: encabezado; los datos arrancan en la 5
+  // Encabezado real de la fila 4, verificado el 05/08. El importe que mueve la caja es el TOTAL a
+  // cobrar NETO de retenciones: el bruto incluye plata que nunca va a llegar a la cuenta (las
+  // retenciones se sufren en el cobro — son los $7,38M que ninguna pestaña miraba).
   const c = columnasObligatorias(enc, {
-    cliente: 'Cliente', estado: 'Estado', importe: 'Importe',
-    fechaEsperada: 'Fecha estimada de cobro', fechaReal: 'Fecha de cobro', forma: 'Forma',
+    cliente: 'Obra / Cliente', estado: 'Estado', importe: 'TOTAL a cobrar (neto de retenciones)',
+    fechaEsperada: 'Fecha cobro', fechaReal: 'Fecha cobro', forma: 'Forma de Cobro',
   }, 'Cobranzas')
   const out = []
   for (let i = 4; i < filas.length; i++) {
@@ -155,9 +161,12 @@ export function deCobranzas(filas = [], corte = null) {
  */
 export function deChequesEmitidos(filas = [], { fila0 = 20 } = {}) {
   const enc = filas[fila0 - 2] ?? [] // el encabezado del registro, una fila arriba del primer dato
+  // El encabezado real del registro (fila 20 del archivo, verificado el 05/08): "Nro" es el número
+  // del cheque, "Monto" el importe, y hay DOS columnas de fecha de pago — "fecha de pago" (la fecha)
+  // y "fecha pago" (el mes en texto). resolverColumnas matchea exacto, así que no se confunden.
   const c = columnasObligatorias(enc, {
-    tipo: 'Tipo', numero: 'Número', proveedor: 'Proveedor', importe: 'Importe',
-    fechaPago: 'Fecha de pago', debitado: 'DEBITADO',
+    tipo: 'Tipo', numero: 'Nro', proveedor: 'Proveedor', importe: 'Monto',
+    fechaPago: 'fecha de pago', debitado: 'DEBITADO',
   }, 'Cheques Emitidos')
   const out = []
   for (let i = fila0 - 1; i < filas.length; i++) {
