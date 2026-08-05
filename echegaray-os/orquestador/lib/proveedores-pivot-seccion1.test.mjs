@@ -5,6 +5,7 @@
 // #REF!, ni aviso. Un test barato evita volver a descubrirlo mirando la pantalla.
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { CONTADOR, MONEDA_CUERPO } from './formato-statement.mjs'
 import {
   anchoDelPivot, altoEmitido, bandasDeFormato, cabeEnElHueco, camposDeFila, COL, filtros,
   filtrosPorCondicion, fuenteCompras, clavesRepetidas, formatoDeLaFecha, formatoDeTodo,
@@ -148,6 +149,19 @@ test('la DEUDA se formatea como plata, y no en la columna de la cantidad de fact
   assert.equal(imp.repeatCell.cell.userEnteredFormat.numberFormat.type, 'CURRENCY')
 })
 
+test('el cuerpo de la tabla NO repite el "$": estas dinámicas no emiten fila de total', () => {
+  for (const vista of [VISTA.POR_PROVEEDOR, VISTA.DETALLE]) {
+    for (const p of formatoDeTodo({ sheetId: 3, filaAncla: 17, alto: 15, vista })) {
+      const nf = p.repeatCell.cell.userEnteredFormat.numberFormat
+      if (nf.type !== 'CURRENCY') continue
+      assert.equal(nf.pattern, MONEDA_CUERPO.pattern,
+        'un "$" repetido en ochenta filas deja de informar; la unidad la declara el titular de arriba')
+      assert.ok(nf.pattern.includes('('), 'el negativo va entre paréntesis (AICPA/FASB/IFRS/SEC)')
+      assert.ok(nf.pattern.includes('—'), 'el cero se escribe en raya, no como "$0"')
+    }
+  }
+})
+
 test('en la vista detalle el importe y la fecha NO caen en la misma columna', () => {
   const imp = formatoDelImporte({ sheetId: 3, filaAncla: 17, alto: 15, ancho: 7, vista: VISTA.DETALLE })
   const fec = formatoDeLaFecha({ sheetId: 3, filaAncla: 17, alto: 15, vista: VISTA.DETALLE })
@@ -212,8 +226,10 @@ test('la cantidad de facturas lleva formato de entero, o hereda el de fecha de a
   const f = formatoDeLaCantidad({ sheetId: 3, filaAncla: 17, alto: 11, ancho: 3 })
   assert.equal(f.repeatCell.range.startColumnIndex, 2, 'la cantidad es la última columna')
   assert.equal(f.repeatCell.cell.userEnteredFormat.numberFormat.type, 'NUMBER')
-  assert.equal(f.repeatCell.cell.userEnteredFormat.numberFormat.pattern, '0',
+  assert.equal(f.repeatCell.cell.userEnteredFormat.numberFormat.pattern, CONTADOR.pattern,
     'sin patrón propio, "2 facturas" se muestra como 01/01/1900 con el formato de la corrida anterior')
+  assert.ok(!f.repeatCell.cell.userEnteredFormat.numberFormat.pattern.includes('$'),
+    'un contador es un contador: ni "$", ni miles, ni decimales')
 })
 
 test('el conteo de facturas cuenta FILAS, no números de comprobante', () => {

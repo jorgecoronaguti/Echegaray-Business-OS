@@ -24,6 +24,8 @@
 // 2. `showTotals` en un nivel intermedio NO emite subtotales. Se apaga en todos los niveles: el
 //    único total es el gran total del pie, que es el que se controla contra el titular.
 
+import { CONTADOR, MONEDA_CUERPO } from './formato-statement.mjs'
+
 /** Las columnas de Compras por su offset dentro del source (que arranca en A). */
 // `obra: 9` es "Cliente / Asignación" (J), que es donde vive LA ESTRELLA / MESSINA / San Francisco.
 // NO es "Unidad de Negocio" (I, offset 8): esa columna dice "Civil" o "Estructura" — el rubro, no la
@@ -266,7 +268,7 @@ export function formatoDelImporte({ sheetId, filaAncla, alto, vista = VISTA.POR_
   const columna = columnaDeLaDeuda({ vista })
   return formatoDeColumna({
     sheetId, filaAncla, alto, columna,
-    numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0' }, horizontalAlignment: 'RIGHT',
+    numberFormat: MONEDA_CUERPO, horizontalAlignment: 'RIGHT',
   })
 }
 
@@ -301,7 +303,7 @@ export function formatoDeLaFecha({ sheetId, filaAncla, alto, vista = VISTA.DETAL
 export function formatoDeLaCantidad({ sheetId, filaAncla, alto, ancho }) {
   return formatoDeColumna({
     sheetId, filaAncla, alto, columna: ancho - 1,
-    numberFormat: { type: 'NUMBER', pattern: '0' }, horizontalAlignment: 'RIGHT',
+    numberFormat: CONTADOR, horizontalAlignment: 'RIGHT',
   })
 }
 
@@ -325,14 +327,18 @@ export function formatoDeTodo({ sheetId, filaAncla, alto, vista = VISTA.POR_PROV
       horizontalAlignment: c === iFecha ? 'RIGHT' : 'LEFT',
     }))
   }
+  // EL "$" NO VA EN EL CUERPO. Estas dos dinámicas no emiten fila de total (el `showTotals: false`
+  // del nivel externo también apaga el gran total del pie, medido contra el archivo), así que el
+  // único "$" de la sección es el del titular de arriba — que es exactamente donde tiene que estar.
+  // El cero sale en raya y el negativo entre paréntesis: ver `lib/formato-statement.mjs`.
   pedidos.push(formatoDeColumna({
     sheetId, filaAncla, alto, columna: campos.length,
-    numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0' }, horizontalAlignment: 'RIGHT',
+    numberFormat: MONEDA_CUERPO, horizontalAlignment: 'RIGHT',
   }))
   if (ancho > campos.length + 1) {
     pedidos.push(formatoDeColumna({
       sheetId, filaAncla, alto, columna: ancho - 1,
-      numberFormat: { type: 'NUMBER', pattern: '0' }, horizontalAlignment: 'RIGHT',
+      numberFormat: CONTADOR, horizontalAlignment: 'RIGHT',
     }))
   }
   return pedidos
