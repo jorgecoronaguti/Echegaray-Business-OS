@@ -110,13 +110,28 @@ export function detectar(f, { desdeFila = 1, huecoMax = 3 } = {}) {
   // TODAS las columnas de importes de ese cuadro pasaban a "tener fechas cerca" y cualquier importe
   // en el rango de seriales se marcaba: pasó con $54.043 en Recurrentes y $48.613 en Estructura, que
   // son gastos reales. Una fila con tres o más fechas es un encabezado de períodos, no datos.
+  //
+  // Y LA VECINDAD NO CRUZA UN TÍTULO DE SECCIÓN (05/08). La ventana de 15 filas se pensó para no
+  // mirar la columna entera, pero sigue siendo una distancia: en "Proveedores" el pie de la sección 2
+  // —"Comprado 2026", moneda en la columna C— y la fila de fechas de la sección 3 quedan a ocho filas,
+  // así que $50.000 de un proveedor real se reportaba como "una fecha a la que se le escapó el
+  // formato". Son dos TABLAS DISTINTAS que comparten la columna, no una columna inconsistente.
+  // Un título de sección ("3 · NOTAS DE CRÉDITO") es la frontera declarada entre bloques apilados —
+  // el mismo criterio con el que `finDeDinamica` decide dónde termina una tabla dinámica.
   const VENTANA = 15
+  const TITULO_SECCION = /^\s*\d+\s*·\s*\S/
+  const esTitulo = f.filas.map((fila) => TITULO_SECCION.test(String(fila?.[0]?.valor ?? '')))
   const conFecha = f.filas.map((fila) => {
     const cols = (fila || []).map((c, j) => ((c?.formato?.numberFormat?.type === 'DATE' || c?.formato?.numberFormat?.type === 'DATE_TIME') ? j : -1)).filter((j) => j >= 0)
     return new Set(cols.length >= 3 ? [] : cols)
   })
   const fechaCerca = (fila, col) => {
-    for (let k = Math.max(0, fila - VENTANA); k <= Math.min(conFecha.length - 1, fila + VENTANA); k++) {
+    for (let k = fila - 1; k >= Math.max(0, fila - VENTANA); k--) {
+      if (esTitulo[k]) break
+      if (conFecha[k].has(col)) return true
+    }
+    for (let k = fila; k <= Math.min(conFecha.length - 1, fila + VENTANA); k++) {
+      if (k > fila && esTitulo[k]) break
       if (conFecha[k].has(col)) return true
     }
     return false

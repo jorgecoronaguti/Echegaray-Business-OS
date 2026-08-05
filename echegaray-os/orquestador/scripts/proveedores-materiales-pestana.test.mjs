@@ -17,6 +17,8 @@ import { estructural, predicadoConDeuda, soloConDeuda, layoutDeuda, notasAnclada
 import { fusionar, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { readFileSync } from 'node:fs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
+import { ANCHOS_PROVEEDORES } from '../lib/proveedores-frontera.mjs'
+import { caracteresQueEntran } from '../lib/proveedores-rotulos.mjs'
 
 test('estructural: convierte los \'\' en VACIO y deja intacto todo lo no-vacío', () => {
   const out = estructural(['TOTAL', '', 0, '=SUM(A1:A2)', '', 'nota'])
@@ -488,8 +490,77 @@ test('la conciliación con ARCA se declara UNA vez al pie, no en la columna I de
   // PDF se leen como basura. Cada fila llevaba su propia declaración de "esto no es una fórmula".
   assert.ok(!/Conciliación del OS al \$\{new Date\(\)\.toISOString\(\)\.slice\(0, 10\)\} — no es una fórmula/.test(src))
   assert.ok(!/'Conciliación del OS: se encontraron por proveedor \+ importe/.test(src))
-  assert.match(src, /push\(\[`Los comprobantes salen del libro de IVA de ARCA/,
+  assert.match(src, /push\(\[`Del libro de IVA de ARCA/,
     'la declaración vive al pie de la sección, una sola vez')
+})
+
+// ═══ NINGÚN PÁRRAFO SE ESCRIBE MÁS LARGO DE LO QUE ENTRA (05/08) ═══
+//
+// `auditar-pantalla.mjs` reportaba A261 (306 caracteres) y A283 (368) como `texto_cortado`: la frase
+// terminaba a mitad de palabra. Estas filas llevan una sola celda, así que derraman sobre la pestaña
+// ENTERA — y ni con los 1.465px de las ocho columnas alcanzan. No hay ancho que lo arregle: hay que
+// escribir menos, que además es la regla de minimalismo del área.
+test('ningún párrafo del generador se escribe más largo de lo que entra en la pestaña', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  const tope = caracteresQueEntran(ANCHOS_PROVEEDORES.reduce((a, b) => a + b, 0))
+  // Los `push` de UNA sola celda de texto: son las filas que derraman. Una interpolación `${…}` se
+  // mide como 12 caracteres (la más larga que se emite es una fecha ISO, 10).
+  const parrafos = [...src.matchAll(/push\(\[[`']((?:[^`'\\]|\\.)+)[`']\]\)/g)]
+    .map((m) => ({ crudo: m[1], largo: m[1].replace(/\$\{[^}]*\}/g, 'X'.repeat(12)).length }))
+    .filter((p) => p.largo > 60)
+  assert.ok(parrafos.length >= 2, 'no encontré los párrafos del generador: cambió la forma de emitirlos')
+  for (const p of parrafos) {
+    assert.ok(p.largo <= tope,
+      `un párrafo de ${p.largo} caracteres y entran ${tope}: se va a ver cortado. "${p.crudo.slice(0, 70)}…"`)
+  }
+})
+
+test('ninguna tabla de la frontera para abajo escribe en la columna de aire', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  // La E separa los dos cuadros de la posición. Es donde "$970.226" se veía como "$970" y "Qué es"
+  // como "Qué e". Las tablas de TEXTO la saltean: el quinto campo de cada fila es AIRE. (La dinámica
+  // del detalle sí la ocupa —un pivot no saltea columnas— y por eso la E ya no mide 28px.)
+  assert.match(src, /const AIRE = ''/)
+  for (const [tabla, fila] of [
+    ['notas de crédito', /cabNC = push\(estructural\(\['Proveedor', 'Nota de crédito', 'Fecha', 'Importe', AIRE,/],
+    ['lo que ARCA facturó', /cabAfip = push\(estructural\(\['Proveedor según ARCA', 'CUIT', 'Comprobante', 'Fecha', AIRE,/],
+    ['facturas anuladas', /cabAnu = push\(estructural\(\['Factura anulada cargada en Compras', 'Cargada como', 'Fecha cargada', 'Importe', AIRE,/],
+  ]) {
+    assert.match(src, fila, `la tabla de ${tabla} tiene que saltear la E`)
+  }
+  // Y el total de la sección 4 suma la F, no la E: si vuelve a sumar la E, suma una columna vacía.
+  assert.match(src, /`=SUM\(\$F\$\{afip0\}:\$F\$\{afip1\}\)`/)
+  assert.ok(!/`=SUM\(\$E\$\{afip0\}:\$E\$\{afip1\}\)`/.test(src))
+})
+
+test('el generador de abajo NO fija anchos: los aplica el dueño declarado', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  const enFrontera = src.slice(src.indexOf('enFrontera: true'), src.indexOf('anchosSegunContenido'))
+  assert.ok(!/updateDimensionProperties[\s\S]{0,120}COLUMNS/.test(enFrontera),
+    'dos escritores peleando por la misma propiedad es lo que dejó la D en 80 o en 300 según el orden')
+})
+
+test('un rótulo que no entra se acorta antes de ensanchar la columna', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  // Ensanchar la A para que entre una frase de 63 caracteres empuja toda la pestaña por un rótulo.
+  for (const largo of [
+    '⇒ Materiales que ninguna familia está mirando (tiene que dar —)',
+    'Comprobantes emitidos por la empresa (ventas, para el Cash Flow)',
+    'Factura ANULADA por una nota de crédito, cargada igual',
+    'Plazo promedio ponderado de toda la compra comercial',
+  ]) {
+    assert.ok(!src.includes(largo), `volvió el rótulo largo: "${largo.slice(0, 40)}…"`)
+  }
+})
+
+test('la columna Fecha declara su formato UNA vez, y es DATE', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  // EL DEFECTO: la columna mostraba 46193 en unas filas y 26/2/2026 en otras, porque había DOS fmt
+  // sobre el mismo rango —DATE y, dos líneas más abajo, TEXT— y ganaba el último. Una sola
+  // declaración por columna, o vuelve el serial.
+  const sobreLaFecha = src.match(/r\(g\.afip0 - 1, g\.afip1, 3, 4\)/g) ?? []
+  assert.equal(sobreLaFecha.length, 1, 'dos formatos sobre la misma columna: gana el último y no se nota')
+  assert.match(src, /r\(g\.afip0 - 1, g\.afip1, 3, 4\) \}[\s\S]{0,140}numberFormat: E\.NUM\.fecha/)
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════

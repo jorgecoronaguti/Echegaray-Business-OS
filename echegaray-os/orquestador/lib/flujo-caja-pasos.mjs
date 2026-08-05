@@ -36,7 +36,41 @@ export const PASOS = [
   // Deuda", "Proveedores — Cuenta Corriente"…— que dejaron de existir cuando el bloque se unificó en
   // una sola pestaña "Proveedores". Con nombres que no existen, el control de "todo se actualiza
   // solo" daba a Proveedores por huérfana aunque este script la rehaga en cada corrida.
-  ['proveedores-materiales-pestana.mjs', 'Proveedores (deuda, cuenta corriente, control y ARCA) + Materiales', ['Proveedores', 'Materiales']],
+  // ═══ "Proveedores" TIENE CINCO GENERADORES Y SÓLO UNO CORRÍA (05/08) ═══
+  //
+  // Acá había una sola línea: el generador de texto. Los otros cuatro —las dos tablas dinámicas, las
+  // notas del dueño y el encabezado— sólo se ejecutaban si alguien los corría a mano. Es el modo de
+  // falla más silencioso que tiene este archivo, y esta vez se pudo medir: `ANCHOS_PROVEEDORES` se
+  // declaró como fuente única el 04/08 y **nunca llegó al Sheet**, porque quien los aplica es
+  // `proveedores-encabezado-aplicar.mjs` y no estaba en esta lista. `auditar-pantalla.mjs` seguía
+  // reportando 107 textos cortados contra anchos viejos de 60px y 28px que ya nadie defendía.
+  //
+  // EL ORDEN NO ES COSMÉTICO — cada uno necesita lo que dejó el anterior:
+  //
+  //   1. la columna derivada `CUIT (OS)` en Compras: es el ORIGEN del segundo campo de la sección 2.
+  //   2. el generador de texto: escribe de la frontera para abajo y deja los títulos "3 · …", "4 · …",
+  //      "5 · …". La sección 2 se ubica por "el título de la sección que sigue": sin ese "3 ·" no
+  //      tiene límite inferior y no escribe.
+  //   3. y 4. las dos dinámicas, que reservan filas antes del título de abajo y devuelven el sobrante.
+  //   5. las notas del dueño, que se resuelven contra los nombres que la dinámica del cuadro A acaba
+  //      de emitir (y de paso agrega la tercera columna de _PROVEEDORES_OS, que el paso 1 deja en dos).
+  //   6. el encabezado, ÚLTIMO: su guarda aborta si la sección 1 se movió hacia arriba, así que
+  //      necesita que ya esté donde va — y es el único que aplica los anchos de toda la pestaña.
+  //
+  // NINGUNO DE LOS CUATRO NUEVOS DECLARA "Proveedores" COMO SUYA. Son dueños de un BLOQUE, no de la
+  // pestaña, y el registro es de pestañas: declararla los volvería "segundos dueños" en el censo, que
+  // es exactamente el defecto que se está persiguiendo. Mismo criterio que
+  // `cheques-emitidos-sync-banco.mjs`, que sincroniza una columna y declara [].
+  ['proveedores-cuenta-corriente.mjs', 'Compras!AM "CUIT (OS)" + la auxiliar _PROVEEDORES_OS — el origen del CUIT de la sección 2', ['_PROVEEDORES_OS'], ['--aplicar']],
+  ['proveedores-materiales-pestana.mjs', 'Proveedores (notas de crédito, ARCA y control) + Materiales — de la frontera para abajo', ['Proveedores', 'Materiales']],
+  // ANTES DE LAS DOS DINÁMICAS: los títulos "1 · …" y "2 · …" son su ANCLA y no los reponía nadie.
+  // Si el dueño borra esa celda, los dos pasos que siguen fallan cerrado —correcto— y la pestaña se
+  // congela en silencio. Escribe UNA celda y sólo si está vacía; ver lib/proveedores-titulos.mjs.
+  ['proveedores-titulos-sembrar.mjs', 'Proveedores · los títulos de las secciones 1 y 2, que son el ancla de las dinámicas', [], ['--aplicar']],
+  ['proveedores-dos-cuadros.mjs', 'Proveedores · sección 1 — las dos dinámicas: quién y cuánto, y cada operación', [], ['--aplicar']],
+  ['proveedores-seccion2-pivot.mjs', 'Proveedores · sección 2 — la dinámica de concentración con su resto y su total', [], ['--aplicar']],
+  ['proveedores-notas-visibles.mjs', 'Proveedores · la columna "Qué hacer" del dueño, anclada a su proveedor', [], ['--aplicar']],
+  ['proveedores-encabezado-aplicar.mjs', 'Proveedores · el encabezado (la posición) y LOS ANCHOS de toda la pestaña', [], ['--aplicar']],
   ['estructura-pestana.mjs', 'pestaña Estructura con su proyección', ['Estructura']],
   // Escribe DOS pestañas: primero la réplica _IIBB_RAW (las DDJJ de Ingresos Brutos leídas del PDF de
   // Rentas, el insumo) y después el cuadro que la referencia. Declarar la réplica evita que el censo
@@ -118,7 +152,15 @@ export const PASOS = [
   // Va última: ubica las líneas del Cash Flow por rótulo, así que necesita el cuadro ya escrito.
   // 'Caja' con minúsculas era el nombre viejo de la pestaña: quedó declarado y el censo lo reportaba
   // como una pestaña fantasma. Un nombre que sobrevive a su renombre apunta al vacío para siempre.
-  ['caja-pestana.mjs', 'CAJA — disponibilidades, cheques emitidos y margen de tarjeta', ['CAJA']],
+  // ═══ EL ANEXO VA ANTES QUE CAJA, Y NO ES COSMÉTICO (05/08/2026) ═══
+  //
+  // CAJA se rehízo entera: pasó de 143 filas a 45 y el detalle del analista —conciliaciones,
+  // trazabilidad contra el extracto, el costo del descubierto— vive ahora en `_CAJA_ANEXO`. CAJA cita
+  // once cifras de ese anexo POR RANGO CON NOMBRE (`ANEXO_*`), así que el anexo tiene que escribirse y
+  // publicar sus nombres PRIMERO. Al revés, en un arranque en frío la pestaña que el dueño abre todos
+  // los días se llena de #NAME? — y si algo tiene que mostrar un error una corrida, que sea el auxiliar.
+  ['caja-anexo-pestana.mjs', '_CAJA_ANEXO — el detalle y las conciliaciones que sostienen los veredictos de CAJA', ['_CAJA_ANEXO']],
+  ['caja-pestana.mjs', 'CAJA — la posición de tesorería en una pantalla (45 filas)', ['CAJA']],
   // El núcleo Postgres, para que la web y el chat vean lo mismo que la planilla y no un mes atrás.
   // ÚLTIMO ANTES DEL NÚCLEO: unificar el formato de las catorce pestañas. Va al final porque cada
   // script anterior acaba de reescribir la suya, y una pasada de formato hecha antes se pierde.

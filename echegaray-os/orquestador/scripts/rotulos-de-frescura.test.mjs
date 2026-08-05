@@ -14,7 +14,10 @@ import { readFile } from 'node:fs/promises'
  */
 const CONVERTIDAS = [
   'orquestador/scripts/cheques-emitidos-tablero.mjs',
-  'orquestador/scripts/caja-pestana.mjs',
+  // CAJA construye su grilla en la lib desde el rediseño del 05/08 (el script quedó con lo que sólo se
+  // puede hacer contra Google). El canario apunta a donde vive el RÓTULO, que es lo que puede regresar;
+  // el script sigue vigilado abajo por el test que prohíbe estampar la fecha de la corrida.
+  'orquestador/lib/caja-grilla.mjs',
   'orquestador/scripts/jornales-pestana.mjs',
   'orquestador/scripts/impuestos-pestana.mjs',
   'orquestador/scripts/cargas-sociales-pestana.mjs',
@@ -59,8 +62,11 @@ const sinComentarios = (src) => src
   .map((l) => (/^\s*(\/\/|\*|\/\*)/.test(l) ? '' : l))
   .join('\n')
 
+/** Los que ESCRIBEN una pestaña convertida sin construir su rótulo: no pueden estampar la fecha igual. */
+const SOLO_ESCRITURA = ['orquestador/scripts/caja-pestana.mjs', 'orquestador/scripts/caja-anexo-pestana.mjs']
+
 test('las pestañas convertidas NO estampan la fecha de la corrida en un rótulo "al …"', async () => {
-  for (const f of CONVERTIDAS) {
+  for (const f of [...CONVERTIDAS, ...SOLO_ESCRITURA]) {
     const src = sinComentarios(await leer(f))
     // El patrón exacto del defecto: un rótulo "al <algo>" interpolado en la misma expresión que un
     // reloj. Se buscan las dos formas que este repo usó (`toLocaleDateString` e `toISOString`).

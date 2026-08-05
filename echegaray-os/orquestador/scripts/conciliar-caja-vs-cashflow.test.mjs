@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { bordesDeTramos, tramoDe, repartir, dateASerial, serialADate } from './conciliar-caja-vs-cashflow.mjs'
+import { bordesDeTramos, tramoDe, repartir, dateASerial, serialADate, descomponerPorTramo, vencimientosFiscales } from './conciliar-caja-vs-cashflow.mjs'
 
 /** 04/08/2026, el día en que se midió la diferencia de $41.704.351. */
 const HOY = dateASerial(new Date(Date.UTC(2026, 7, 4)))
@@ -71,6 +71,45 @@ test('repartir NO crea ni pierde plata, y deja afuera lo que no tiene fecha', ()
   assert.equal(tramos.reduce((a, x) => a + x, 0), 317000 + 9000000 + 6189317 + 5716410)
   assert.equal(tramos[1], 9000000)
   assert.equal(tramos[2], 6189317)
+})
+
+test('la diferencia se ATRIBUYE a un lado y a un tramo, no queda en un número final', () => {
+  // POR QUÉ IMPORTA: el 05/08 el script decía "no cierra por $12.188.441" y ahí terminaba. Con un solo
+  // número no se puede saber si la pestaña ve egresos de más o ingresos de menos, y los dos se
+  // arreglan al revés. Abierto por tramo y por lado, el residuo cayó entero en "Vencido / lo que SALE"
+  // y eso apuntó directo a la causa: cheques ya debitados restados otra vez.
+  const bordes = bordesDeTramos(HOY)
+  const pestaña = new Map(bordes.map((b, k) => [b.rotulo, { entra: 100 * k, sale: 10 * k }]))
+  // La pestaña ve 500 de egreso donde el modelo ve 12.188.441: la diferencia va del lado que SALE.
+  pestaña.set('Vencido — ya pasó la fecha', { entra: 0, sale: 12188441 })
+  const abierta = descomponerPorTramo(bordes, bordes.map((_, k) => 100 * k), bordes.map((_, k) => 10 * k), pestaña)
+  assert.equal(abierta[0].difEntra, 0)
+  assert.equal(abierta[0].difSale, -12188441, 'la pestaña resta de más: el signo tiene que ser NEGATIVO')
+  assert.equal(abierta[0].acum, -12188441)
+  // Y el acumulado es el que explica el piso: los tramos limpios no lo mueven.
+  for (const t of abierta.slice(1)) assert.equal(t.dif, 0)
+  assert.equal(abierta.at(-1).acum, -12188441)
+})
+
+test('un tramo que NO está en la pestaña se ve, no se descuenta como cero', () => {
+  // Un rótulo que cambia de un lado y no del otro dejaría la resta contra una fila inexistente. Eso
+  // tiene que verse como falta, no confundirse con "la pestaña no tiene nada en ese tramo".
+  const bordes = bordesDeTramos(HOY)
+  const abierta = descomponerPorTramo(bordes, bordes.map(() => 0), bordes.map(() => 7000), new Map())
+  assert.equal(abierta.every((t) => t.falta), true)
+  assert.equal(abierta[0].difSale, 7000)
+})
+
+test('el IVA/IIBB vence a los 20 días del cierre del mes, y sólo si hay monto', () => {
+  // Es la MISMA regla que escribe formulaCalendarioImpuestosSemana en la pestaña (EOMONTH+20). Si acá
+  // se usara otra, el conciliador estaría midiendo su propia opinión y la diferencia no diría nada.
+  const iva = Array(12).fill(0); iva[7] = 12000000       // agosto
+  const iibb = Array(12).fill(0); iibb[7] = 884541
+  const v = vencimientosFiscales(2026, iva, iibb)
+  assert.equal(v.length, 1, 'un mes sin IVA ni IIBB no genera vencimiento')
+  assert.equal(v[0].monto, 12884541)
+  // 31/08/2026 + 20 = 20/09/2026.
+  assert.equal(serialADate(v[0].fecha).toISOString().slice(0, 10), '2026-09-20')
 })
 
 test('el borde del mes es EXCLUYENTE: lo del 31/08 no es "resto de este mes"', () => {

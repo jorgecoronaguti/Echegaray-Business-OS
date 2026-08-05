@@ -20,9 +20,11 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { SUB_BIENES_DE_USO } from '../lib/cash-flow-lineas.mjs'
 import { INSTRUMENTOS } from '../lib/cash-flow-lineas.mjs'
+import { CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
 import { MARCAS } from '../lib/cheques-cobertura.mjs'
 import { EN_CARTERA } from '../lib/cartera-cheques.mjs'
 import { PESTAÑA as RAW_CHEQUES, COL as COL_CHEQUE, FILA0 as FILA0_CHEQUES } from './cheques-raw-pestana.mjs'
+import { BORDES } from '../lib/caja-grilla.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 
@@ -36,7 +38,7 @@ export const fmtFecha = (s) => serialADate(s).toLocaleDateString('es-AR', { time
 export const pesos = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString('es-AR')
 
 /**
- * NÚCLEO PURO: los bordes de los tramos del calendario, tal como los arma caja-pestana.mjs.
+ * NÚCLEO PURO: los bordes de los tramos del calendario, con los MISMOS rótulos que arma CAJA.
  *
  * LOS BORDES SE FUERZAN CRECIENTES CON MAX y cada tramo es (borde anterior, borde]. Es lo que evita
  * que un vencimiento caiga en dos tramos cuando la ventana de catorce días cruza el fin de mes.
@@ -47,14 +49,12 @@ export function bordesDeTramos(hoy) {
   const d = serialADate(hoy)
   const finMes = dateASerial(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)))
   const finMesQueViene = dateASerial(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 2, 0)))
-  return [
-    { rotulo: 'Vencido — ya pasó la fecha', hasta: hoy },
-    { rotulo: 'Esta semana', hasta: hoy + 7 },
-    { rotulo: 'Semana que viene', hasta: hoy + 14 },
-    { rotulo: 'Resto de este mes', hasta: Math.max(hoy + 14, finMes) },
-    { rotulo: 'El mes que viene', hasta: Math.max(hoy + 14, finMesQueViene) },
-    { rotulo: 'Más adelante', hasta: null },
-  ]
+  // LOS RÓTULOS SALEN DE `BORDES`, NO SE COPIAN. Este conciliador compara tramo por tramo contra lo que
+  // muestra CAJA, y hasta hoy tenía su propia lista de nombres escrita a mano: el día que uno de los dos
+  // renombrara un tramo, el cruce empezaría a comparar "Esta semana" contra nada y reportaría un desvío
+  // que no existe — o peor, dejaría de reportar uno que sí. Una capacidad, una fuente.
+  const hastas = [hoy, hoy + 7, hoy + 14, Math.max(hoy + 14, finMes), Math.max(hoy + 14, finMesQueViene), null]
+  return BORDES.map(([rotulo], k) => ({ rotulo, hasta: hastas[k] }))
 }
 
 /** NÚCLEO PURO: en qué tramo cae una fecha. Devuelve -1 si no es un número. */
@@ -85,6 +85,60 @@ export function repartir(filas, bordes) {
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
 const esNum = (v) => typeof v === 'number' && Number.isFinite(v)
+
+/**
+ * NÚCLEO PURO: abre la diferencia entre el modelo y la pestaña TRAMO POR TRAMO y LADO POR LADO.
+ *
+ * POR QUÉ NO ALCANZA CON EL NÚMERO FINAL (05/08/2026). El script decía "no cierra por $12.188.441" y
+ * ahí terminaba: con un solo número no se puede saber si la pestaña ve egresos de más, ingresos de
+ * menos, o las dos cosas compensándose. Un residuo que no se puede atribuir a un lado no es una
+ * conciliación, es una alarma.
+ *
+ * La diferencia de PISO es la suma acumulada de las diferencias de tramo hasta el tramo del piso: por
+ * eso la última columna acumula. Si todas las diferencias de tramo dan cero y el piso igual no cierra,
+ * el problema está en el saldo de arranque, no en el calendario.
+ *
+ * @param {Array<{rotulo:string}>} bordes
+ * @param {Array<number>} entraModelo
+ * @param {Array<number>} saleModelo
+ * @param {Map<string,{entra:number, sale:number}>} pestaña por rótulo de tramo
+ * @returns {Array<{rotulo:string, difEntra:number, difSale:number, dif:number, acum:number, falta:boolean}>}
+ */
+/**
+ * NÚCLEO PURO: los vencimientos del calendario fiscal (IVA + IIBB), en serial de Sheets.
+ *
+ * MISMA CUENTA QUE LA PESTAÑA, A PROPÓSITO: el IVA/IIBB de un período se paga alrededor del 20 del mes
+ * siguiente, o sea fin del mes del período + 20 días. Es literalmente lo que escribe
+ * `formulaCalendarioImpuestosSemana`. Si acá se usara otra regla de timing, el conciliador estaría
+ * midiendo su propia opinión y la diferencia no significaría nada.
+ *
+ * @param {number} anio el año de la grilla de "Impuestos y Financieros"
+ * @param {Array<number>} iva doce meses, enero primero · @param {Array<number>} iibb ídem
+ * @returns {Array<{fecha:number, monto:number}>}
+ */
+export function vencimientosFiscales(anio, iva = [], iibb = []) {
+  const out = []
+  for (let m = 1; m <= 12; m++) {
+    const finDelMes = dateASerial(new Date(Date.UTC(anio, m, 0)))
+    const monto = num(iva[m - 1]) + num(iibb[m - 1])
+    if (monto) out.push({ fecha: finDelMes + 20, monto })
+  }
+  return out
+}
+
+export function descomponerPorTramo(bordes, entraModelo, saleModelo, pestaña) {
+  let acum = 0
+  return bordes.map((b, k) => {
+    const p = pestaña.get(b.rotulo)
+    // El signo es SIEMPRE "pestaña − modelo", igual que el veredicto final: negativo = la pestaña ve
+    // menos plata que el modelo. Invertirlo en un lado y no en el otro haría que las columnas no sumen.
+    const difEntra = num(p?.entra) - entraModelo[k]
+    const difSale = -(num(p?.sale) - saleModelo[k])
+    const dif = difEntra + difSale
+    acum += dif
+    return { rotulo: b.rotulo, difEntra, difSale, dif, acum, falta: !p }
+  })
+}
 
 async function main() {
   const g = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
@@ -199,6 +253,24 @@ async function main() {
     conceptos.push({ nombre: `Compras · ${r}`, enViejo: false, enNuevo: true, tramos: repartir(filas, bordes) })
   }
 
+  // 5 · EL IVA/IIBB A PAGAR. No vive en Compras: lo calcula "Impuestos y Financieros" mes a mes, y la
+  // pestaña lo suma al calendario desde el 04/08. Mientras esta cuenta no lo modelaba, la comparación
+  // quedaba con un residuo de $31.122.498 repartido en los tramos de septiembre en adelante — grande,
+  // sin nombre, y a un cambio de fecha de distancia de caer en el tramo del piso y ensuciar el
+  // veredicto. LAS FILAS SE UBICAN POR SU RÓTULO: una fila fija devolvería $0 sin dar error.
+  const impA = (await col(`'${CALENDARIO_IMPUESTOS.pestaña}'!A1:A200`)).map((v) => String(v ?? '').trim())
+  const filaDe = (rotulo) => impA.indexOf(rotulo) + 1
+  const [fIva, fIibb] = [filaDe(CALENDARIO_IMPUESTOS.rotulos.iva), filaDe(CALENDARIO_IMPUESTOS.rotulos.iibb)]
+  if (!fIva || !fIibb) {
+    throw new Error(`conciliar: no encuentro "${CALENDARIO_IMPUESTOS.rotulos.iva}" / "${CALENDARIO_IMPUESTOS.rotulos.iibb}" `
+      + `en "${CALENDARIO_IMPUESTOS.pestaña}" — sin esas filas el IVA quedaría fuera de la comparación y el residuo sería mudo`)
+  }
+  const fila = async (f) => (await g.readSheetValues(ID, `'${CALENDARIO_IMPUESTOS.pestaña}'!B${f}:M${f}`, { render: 'UNFORMATTED_VALUE' }))?.[0] ?? []
+  const [vIva, vIibb] = await Promise.all([fila(fIva), fila(fIibb)])
+  // Sólo lo que vence DESPUÉS del corte: lo anterior ya salió y está dentro del saldo del banco.
+  const fiscales = vencimientosFiscales(new Date().getFullYear(), vIva, vIibb).filter((x) => x.fecha >= corte)
+  conceptos.push({ nombre: 'IVA e IIBB a pagar (calendario fiscal)', enViejo: false, enNuevo: true, tramos: repartir(fiscales, bordes) })
+
   // ── LO QUE ENTRA ───────────────────────────────────────────────────────────────────────────────
   const [cobM, cobO, cobQ] = await Promise.all([col('Cobranzas!M5:M400'), col('Cobranzas!O5:O400'), col('Cobranzas!Q5:Q400')])
   const esperadas = []
@@ -245,10 +317,12 @@ async function main() {
   console.log('─'.repeat(72))
   let saldoViejo = disponible, saldoNuevo = disponible
   let peorViejo = { v: Infinity }, peorNuevo = { v: Infinity }
+  const saleModelo = []
   bordes.forEach((b, k) => {
     const saleViejo = conceptos.filter((c) => c.enViejo).reduce((a, c) => a + c.tramos[k], 0)
       + duplicados.filter((d) => d.enViejo).reduce((a, d) => a + d.tramos[k], 0)
     const saleNuevo = conceptos.filter((c) => c.enNuevo).reduce((a, c) => a + c.tramos[k], 0)
+    saleModelo.push(saleNuevo)
     saldoViejo += entra[k] - saleViejo
     saldoNuevo += entra[k] - saleNuevo
     if (saldoViejo < peorViejo.v) peorViejo = { v: saldoViejo, tramo: b.rotulo, hasta: b.hasta }
@@ -301,6 +375,26 @@ async function main() {
   const ROTULO_PISO = 'el punto más bajo del horizonte'
   const caja = await g.readSheetValues(ID, 'CAJA!A1:F', { render: 'UNFORMATTED_VALUE' })
   const iPiso = caja.findIndex((f) => String(f?.[0] ?? '').includes(ROTULO_PISO))
+
+  // ── LA DIFERENCIA, ABIERTA POR TRAMO Y POR LADO ────────────────────────────────────────────────
+  // Las filas del calendario se buscan POR RÓTULO, igual que el piso: son las mismas seis constantes
+  // que `bordesDeTramos` usa de este lado, así que si un día divergen el cuadro muestra "—" y no una
+  // resta contra la fila equivocada.
+  const porRotulo = new Map()
+  for (const b of bordes) {
+    const i = caja.findIndex((f) => String(f?.[0] ?? '').trim() === b.rotulo)
+    if (i >= 0) porRotulo.set(b.rotulo, { entra: num(caja[i]?.[2]), sale: num(caja[i]?.[3]) })
+  }
+  const abierta = descomponerPorTramo(bordes, entra, saleModelo, porRotulo)
+  console.log('DÓNDE ESTÁ LA DIFERENCIA — pestaña menos modelo, tramo por tramo')
+  console.log('─'.repeat(72))
+  console.log(`  ${'Tramo'.padEnd(28)}${'por lo que ENTRA'.padStart(17)}${'por lo que SALE'.padStart(17)}`)
+  for (const t of abierta) {
+    console.log(`  ${(t.falta ? `${t.rotulo} (no está en CAJA)` : t.rotulo).padEnd(28)}`
+      + `${pesos(t.difEntra).padStart(17)}${pesos(t.difSale).padStart(17)}   acum ${pesos(t.acum)}`)
+  }
+  console.log('')
+
   console.log('EL VEREDICTO — LO QUE LA PESTAÑA MUESTRA CONTRA LO QUE DEBERÍA MOSTRAR')
   console.log('─'.repeat(72))
   if (iPiso < 0) {
@@ -318,11 +412,15 @@ async function main() {
   // por debajo del error que este trabajo corrigió— y NO se relaja: si un día no cierra por más que
   // eso, es porque el calendario y esta cuenta volvieron a contar cosas distintas.
   //
-  // LA OTRA DIFERENCIA LEGÍTIMA, DECLARADA: este script no modela el IVA/IIBB del calendario fiscal
-  // (no vive en Compras) y la pestaña SÍ lo suma desde el 04/08. Ese IVA vence el 20 de cada mes, así
-  // que sólo puede afectar tramos posteriores al que hoy marca el piso; si algún día el piso cayera
-  // en un tramo con vencimiento de IVA adentro, la pestaña mostraría MENOS que esta cuenta y la
-  // diferencia sería exactamente ese IVA. Un piso más bajo que el modelo nunca es el error peligroso.
+  // LA DIFERENCIA QUE ANTES ERA "LEGÍTIMA Y DECLARADA" YA NO EXISTE (05/08): el IVA/IIBB del calendario
+  // fiscal se modela arriba, con la misma regla de vencimiento que escribe la pestaña, así que el
+  // residuo de los tramos de septiembre en adelante bajó de $31.122.498 a $0. Un residuo declarado es
+  // mejor que uno oculto, pero uno medido es mejor que los dos: mientras estaba declarado, nadie podía
+  // saber si adentro del "IVA" viajaba además otro error.
+  //
+  // LO QUE SIGUE SIN MODELARSE, Y HAY QUE SABERLO: interés del descubierto, comisiones bancarias e
+  // impuesto al cheque. La pestaña también los pone en CERO y lo declara en su propio control, así que
+  // los dos lados coinciden en el número — pero coinciden en un cero que ninguno de los dos midió.
   const dif = escrito - peorNuevo.v
   const TOLERANCIA = 1000
   console.log(`  el piso sigue inflado en            : ${pesos(dif)}`)

@@ -413,7 +413,7 @@ async function formatear(google, sheetId, grid, hdr) {
     // heredaban formato de FECHA y se leían "24/1/29279" en vez de "$10.000.000".
     { repeatCell: { range: rg(4, BANDA, 1, 2), cell: { userEnteredFormat: { numberFormat: money, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } },
     // La única celda que no es plata en la columna B: el ratio de financiamiento.
-    { repeatCell: { range: rg(g.fRatio - 1, g.fRatio, 1, 2), cell: { userEnteredFormat: { numberFormat: { type: 'PERCENT', pattern: '0,0%' }, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } },
+    { repeatCell: { range: rg(g.fRatio - 1, g.fRatio, 1, 2), cell: { userEnteredFormat: { numberFormat: { type: 'PERCENT', pattern: '0.0%' }, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } },
     // La columna C es contexto corto (una fecha, una fuente, un veredicto): TEXTO, gris y chica.
     // Si quedara en formato de número, "resumen al 22/07/2026" se convertiría en una fecha.
     { repeatCell: { range: rg(4, BANDA, 2, 3), cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: txt(MUTED, { size: 9 }), wrapStrategy: 'OVERFLOW_CELL' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment,textFormat,wrapStrategy)' } },

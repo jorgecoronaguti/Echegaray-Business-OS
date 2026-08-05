@@ -27,6 +27,82 @@
 // Y si el título no aparece, NO SE ESCRIBE: "no pude encontrar la frontera" nunca es permiso para
 // escribir en la fila que uno supone.
 
+// ═══ LOS ANCHOS DE COLUMNA: UN SOLO DUEÑO PARA TODA LA PESTAÑA ═══
+//
+// EL DEFECTO (04/08, lo vio el dueño en el render). "Qué e" donde dice "Qué es". "Comprobantes de
+// compra (neto de notas de créd". "$209.231.2". "⇒ Materiales que ninguna familia está mira". Los
+// importes de la sección 4 cortados en "$970", "$815", "$1.78". Una pestaña ilegible.
+//
+// LA CAUSA es de PROPIEDAD, no de diseño. Un ancho de columna es de la COLUMNA ENTERA: no existe
+// "ancho por bloque". Y en esta pestaña escriben tres generadores:
+//
+//   proveedores-encabezado-aplicar.mjs   la posición (filas 1-13) — y fijaba los anchos
+//   proveedores-notas-visibles.mjs       la columna D de notas    — y también fijaba el de la D
+//   proveedores-materiales-pestana.mjs   de la frontera para abajo — se ABSTENÍA
+//
+// El encabezado fijaba 260·130·60·80·28·250·130·60, medidos para su propio cuadro de dos bloques de
+// tres columnas. Abajo hay tablas de siete columnas con rótulos largos e importes de nueve dígitos:
+// 60px para una columna que lleva "$209.231.271" no es una decisión, es un choque. Y notas-visibles
+// pisaba la D con 300 sin saber que el encabezado había puesto 80: ganaba el que corría último.
+//
+// La abstención del generador de abajo era correcta —no pisar lo que es de otro— pero el resultado
+// era que nadie negociaba. Lo que falta no es que cada uno fije lo suyo: es que haya UN dueño
+// declarado y los demás lo lean. Igual que `SECCIONES_PROVEEDORES` es la única fuente del número de
+// sección, esto es la única fuente del ancho.
+//
+// ═══ LA COLUMNA E: EL "AIRE" QUE NO ERA AIRE (05/08) ═══
+//
+// Esta definición declaró la E como el separador de los dos cuadros de la posición —28px— "y ninguna
+// tabla la usa". Las tablas de texto de la frontera para abajo la saltean, sí. Pero la sección 1 es
+// una TABLA DINÁMICA NATIVA y una dinámica ocupa columnas CONSECUTIVAS desde su ancla: el cuadro de
+// detalle tiene seis campos de fila (proveedor · comprobante · fecha · obra · tipo de pago ·
+// categoría) más el importe, así que se lleva A..G — la E incluida, le guste a quién le guste. No es
+// negociable desde el código: la API no tiene "saltear una columna".
+//
+// El resultado medido por `auditar-pantalla.mjs` sobre el archivo real: **24 de los 34 textos
+// cortados que sobrevivían a esta tabla de anchos estaban en la columna E** — "Transferencia",
+// "Tarjeta Crédito", "Efectivo" cortados en 5 caracteres. Una columna con dos dueños que declaran
+// usos incompatibles es el mismo defecto que perseguimos en las pestañas, una capa más abajo.
+//
+// LA E SE ENSANCHA A LO QUE PIDE SU USO REAL, MEDIDO EN COMPRAS: los cinco valores del tipo de pago
+// son Cheque · Efectivo · Echeq · Transferencia · Tarjeta Crédito, y el más largo son 15 caracteres
+// ⇒ 86px. Con 90px entra el peor caso y sobra lo mínimo.
+//
+// LO QUE ESO CUESTA, DICHO: el separador entre los dos cuadros de la posición pasa de 28 a 90px y la
+// pestaña se corre 62px a la derecha. No desarma nada —el cuadro derecho ya empezaba en la F— y es
+// mucho menos que ensanchar la A, que es la que empuja de verdad. Las tablas de abajo siguen
+// salteando la E: su hueco pasa de 28 a 90px de aire, que no produce un solo defecto medido.
+
+/** El ancho de cada columna de la pestaña "Proveedores", en píxeles. Índice 0 = columna A. */
+export const ANCHOS_PROVEEDORES = Object.freeze([
+  330, // A · el rótulo más largo que se escribe ("TELEFONICA MOVILES ARGENTINA SOCIEDAD ANONIMA")
+  130, // B · CUIT con guiones, N° de comprobante, "Se le debe"
+  125, // C · "Comprado 2026" y los montos del control ($209.231.271), fechas
+  300, // D · las notas del dueño ("Qué hacer"). Era el valor que ya ganaba en la práctica.
+  90,  // E · el tipo de pago del cuadro de detalle ("Tarjeta Crédito"), y el aire del encabezado
+  210, // F · "REFACTURACIÓN — el costo sigue", "Tarjeta de crédito", los importes de la sección 4
+  220, // G · "0006-00003002 → 0004-00003445"
+  60,  // H · el % de la posición
+])
+
+/** La columna que las tablas de TEXTO saltean: entre los dos cuadros del encabezado no va nada. */
+export const COL_AIRE = 4 // índice 0 ⇒ la E
+
+/**
+ * Los requests de `updateDimensionProperties` que fijan los anchos. Los emite UN generador (el del
+ * encabezado); los demás leen esta constante para saber con cuánto lugar cuentan y no la aplican.
+ * @param {number} sheetId
+ * @returns {object[]}
+ */
+export function requestsDeAncho(sheetId) {
+  return ANCHOS_PROVEEDORES.map((px, i) => ({
+    updateDimensionProperties: {
+      range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 },
+      properties: { pixelSize: px }, fields: 'pixelSize',
+    },
+  }))
+}
+
 /** El separador que llevan todos los títulos de sección de la pestaña: "3 · NOTAS DE CRÉDITO". */
 const PREFIJO_NUMERO = /^\s*\d+\s*·\s*/
 
@@ -62,6 +138,44 @@ export const SECCIONES_PROVEEDORES = [
 // no exista rehecha, el detalle no se reemplaza por una versión peor en el lugar equivocado: queda
 // la CIFRA de ventas registrada por ARCA (una línea, la que alimenta ARCA_VENTAS_*) y el detalle se
 // consulta en _ARCA_RAW, que es su origen declarado.
+
+/**
+ * ═══ UN BLOQUE, UN DUEÑO, Y EL ORDEN EN QUE CORREN (05/08) ═══
+ *
+ * El defecto que esto cierra: la sección 2 tuvo dos dueños —el generador de texto la escribía con
+ * `TOP = 30` y una línea muda de "resto de proveedores comerciales (74)" por $28M, y el pivot la
+ * rehacía entera— así que cada corrida del pipeline deshacía la dinámica. Y el defecto gemelo, que
+ * era peor porque no se veía: de los seis generadores de esta pestaña **sólo uno estaba en `PASOS`**.
+ * Los anchos declarados el 04/08 nunca llegaron al archivo por eso.
+ *
+ * Acá se declara quién escribe qué y en qué orden. `flujo-caja-pasos.test.mjs` verifica contra esta
+ * lista que el pipeline los corra a todos, en este orden y sin repetir un bloque — si alguien agrega
+ * un generador nuevo y se olvida de enchufarlo, la suite se pone roja en vez de que la pestaña
+ * envejezca en silencio durante días.
+ */
+/*
+ * ═══ LOS TÍTULOS DE LAS SECCIONES 1 Y 2 YA TIENEN DUEÑO (05/08) ═══
+ *
+ * No lo tenían: el generador de texto los construye pero quedan arriba de la frontera y se descartan
+ * al partir, y las dinámicas los BUSCAN para ubicarse. Borrar "1 · QUÉ SE DEBE Y CUÁNDO" o "2 ·
+ * CUENTA CORRIENTE POR PROVEEDOR" frenaba los dos pasos —fallan cerrado, que es lo correcto— sin que
+ * nadie repusiera el rótulo. Ya había pasado con el título de la frontera, y por eso existe
+ * `fronteraSegura`.
+ *
+ * LA VÍA OBVIA SIGUE SIN SERVIR, y por eso el dueño es un paso aparte y no este generador: que su
+ * tramo arranque en el título de la sección 1 es incompatible con su mecanismo de limpieza —
+ * `aAnchoCompleto` rellena con el centinela VACIO y un VACIO sobre el cuerpo de una dinámica la
+ * BORRA—. `proveedores-titulos-sembrar.mjs` escribe UNA celda, sólo si falta y sólo si está vacía.
+ */
+export const DUENOS_DE_PROVEEDORES = Object.freeze([
+  Object.freeze({ bloque: 'origen · CUIT (OS) en Compras', script: 'proveedores-cuenta-corriente.mjs' }),
+  Object.freeze({ bloque: 'de la frontera para abajo (3, 4, 5) + Materiales', script: 'proveedores-materiales-pestana.mjs' }),
+  Object.freeze({ bloque: 'los títulos de las secciones 1 y 2', script: 'proveedores-titulos-sembrar.mjs' }),
+  Object.freeze({ bloque: '1 · qué se debe y cuándo', script: 'proveedores-dos-cuadros.mjs' }),
+  Object.freeze({ bloque: '2 · cuenta corriente por proveedor', script: 'proveedores-seccion2-pivot.mjs' }),
+  Object.freeze({ bloque: 'la columna "Qué hacer" del dueño', script: 'proveedores-notas-visibles.mjs' }),
+  Object.freeze({ bloque: 'el encabezado (la posición) y los anchos', script: 'proveedores-encabezado-aplicar.mjs' }),
+])
 
 /** La pestaña "Materiales" es del generador de punta a punta: sus secciones arrancan en 1. */
 // `controlArca` cierra la pestaña: es el único control de Materiales que no se valida contra Compras.

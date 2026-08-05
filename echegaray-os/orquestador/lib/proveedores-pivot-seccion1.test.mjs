@@ -5,12 +5,13 @@
 // #REF!, ni aviso. Un test barato evita volver a descubrirlo mirando la pantalla.
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { CONTADOR, MONEDA_CUERPO } from './formato-statement.mjs'
 import {
   anchoDelPivot, altoEmitido, bandasDeFormato, cabeEnElHueco, camposDeFila, COL, filtros,
   filtrosPorCondicion, fuenteCompras, clavesRepetidas, formatoDeLaFecha, formatoDeTodo,
   formatoDelImporte, geometriaDeLaSeccion, nivelesConSubtotal,
   celdasVacias, deudaSinNombre, formatoDeLaCantidad, letraDeLaDeuda, pivotSeccion1, proveedoresQueAgrupan,
-  reapuntarControl, VISTA,
+  reapuntarControl, rotulosDelCuadro, VISTA,
 } from './proveedores-pivot-seccion1.mjs'
 
 const fuente = fuenteCompras({ sheetId: 7, filas: 900 })
@@ -148,6 +149,19 @@ test('la DEUDA se formatea como plata, y no en la columna de la cantidad de fact
   assert.equal(imp.repeatCell.cell.userEnteredFormat.numberFormat.type, 'CURRENCY')
 })
 
+test('el cuerpo de la tabla NO repite el "$": estas dinámicas no emiten fila de total', () => {
+  for (const vista of [VISTA.POR_PROVEEDOR, VISTA.DETALLE]) {
+    for (const p of formatoDeTodo({ sheetId: 3, filaAncla: 17, alto: 15, vista })) {
+      const nf = p.repeatCell.cell.userEnteredFormat.numberFormat
+      if (nf.type !== 'CURRENCY') continue
+      assert.equal(nf.pattern, MONEDA_CUERPO.pattern,
+        'un "$" repetido en ochenta filas deja de informar; la unidad la declara el titular de arriba')
+      assert.ok(nf.pattern.includes('('), 'el negativo va entre paréntesis (AICPA/FASB/IFRS/SEC)')
+      assert.ok(nf.pattern.includes('—'), 'el cero se escribe en raya, no como "$0"')
+    }
+  }
+})
+
 test('en la vista detalle el importe y la fecha NO caen en la misma columna', () => {
   const imp = formatoDelImporte({ sheetId: 3, filaAncla: 17, alto: 15, ancho: 7, vista: VISTA.DETALLE })
   const fec = formatoDeLaFecha({ sheetId: 3, filaAncla: 17, alto: 15, vista: VISTA.DETALLE })
@@ -212,8 +226,10 @@ test('la cantidad de facturas lleva formato de entero, o hereda el de fecha de a
   const f = formatoDeLaCantidad({ sheetId: 3, filaAncla: 17, alto: 11, ancho: 3 })
   assert.equal(f.repeatCell.range.startColumnIndex, 2, 'la cantidad es la última columna')
   assert.equal(f.repeatCell.cell.userEnteredFormat.numberFormat.type, 'NUMBER')
-  assert.equal(f.repeatCell.cell.userEnteredFormat.numberFormat.pattern, '0',
+  assert.equal(f.repeatCell.cell.userEnteredFormat.numberFormat.pattern, CONTADOR.pattern,
     'sin patrón propio, "2 facturas" se muestra como 01/01/1900 con el formato de la corrida anterior')
+  assert.ok(!f.repeatCell.cell.userEnteredFormat.numberFormat.pattern.includes('$'),
+    'un contador es un contador: ni "$", ni miles, ni decimales')
 })
 
 test('el conteo de facturas cuenta FILAS, no números de comprobante', () => {
@@ -271,6 +287,50 @@ test('EL FOOTPRINT ENTERO LLEVA FORMATO: las dos bandas no dejan una fila suelta
         'el colchón queda sin formato: la factura de mañana hereda lo que hubiera ahí')
       assert.equal(p.necesita, proveedores + facturas + 5, 'cambió lo que el bloque reserva')
     }
+  }
+})
+
+// ═══ EL DEFECTO: LA BANDA DEL CUERPO SE COMÍA LA FILA DE RÓTULOS (05/08) ═══
+//
+// `auditar-pantalla.mjs` sobre el archivo real: B17 "Se le debe", C17 "Facturas", G32 "Importe" —
+// tres `texto_en_numero` que producía este mismo generador en cada corrida, porque el formato del
+// cuerpo (moneda, contador) arrancaba en la fila del rótulo. El rótulo no es cuerpo.
+test('el CUERPO arranca debajo del rótulo, y el rótulo tiene su propia fila', () => {
+  for (const proveedores of [1, 10, 25]) {
+    for (const facturas of [proveedores, 31, 90]) {
+      const filaEncabezado = 17
+      const filaLimite = filaEncabezado + proveedores + facturas + 5 + 12
+      const p = bandasDeFormato({ filaEncabezado, filaLimite, proveedores, facturas })
+      assert.equal(p.rotuloA, p.iA + 1, 'la fila de rótulos del cuadro A, en base 1')
+      assert.equal(p.rotuloB, p.iB + 1)
+      assert.equal(p.cuerpoA.desde, p.iA + 1, 'el cuerpo de A empieza DESPUÉS del rótulo')
+      assert.equal(p.cuerpoB.desde, p.iB + 1)
+      // Rótulo + cuerpo teselan la banda entera: ni una fila del footprint se queda sin formato.
+      assert.equal(p.cuerpoA.desde + p.cuerpoA.alto, p.bandaA.desde + p.bandaA.alto)
+      assert.equal(p.cuerpoB.desde + p.cuerpoB.alto, p.finIdx)
+    }
+  }
+  // Un bloque que todavía no entra no puede pedir un rango de alto negativo.
+  const apretado = bandasDeFormato({ filaEncabezado: 17, filaLimite: 18, proveedores: 9, facturas: 40 })
+  assert.ok(apretado.cuerpoA.alto >= 0 && apretado.cuerpoB.alto >= 0)
+})
+
+test('los rótulos que va a emitir la dinámica se saben ANTES de escribir', () => {
+  const cabecera = []
+  cabecera[COL.proveedor] = 'Proveedor'
+  cabecera[COL.comprobante] = 'N° Comprobante'
+  cabecera[COL.proximoPago] = 'Fecha prevista de pago (día)'
+  cabecera[COL.obra] = 'Cliente / Asignación'
+  cabecera[COL.tipoPago] = 'Tipo pago'
+  cabecera[COL.categoria] = 'Categoría'
+  assert.deepEqual(rotulosDelCuadro({ vista: VISTA.DETALLE, cabecera }),
+    ['Proveedor', 'N° Comprobante', 'Fecha prevista de pago (día)', 'Cliente / Asignación', 'Tipo pago', 'Categoría', 'Importe'])
+  // Los `name` de los valores sí se pueden renombrar: son lo único que la API deja tocar.
+  assert.deepEqual(rotulosDelCuadro({ vista: VISTA.POR_PROVEEDOR, cabecera, nombresDeValores: ['Se le debe', 'Facturas'] }),
+    ['Proveedor', 'Se le debe', 'Facturas'])
+  // Un rótulo por columna emitida, siempre: si no coinciden, el formato del rótulo se desalinea.
+  for (const vista of [VISTA.DETALLE, VISTA.POR_PROVEEDOR]) {
+    assert.equal(rotulosDelCuadro({ vista, cabecera }).length, anchoDelPivot(pivotSeccion1({ sheetId: 1, startRowIndex: 2, endRowIndex: 9, startColumnIndex: 0, endColumnIndex: 38 }, { vista })))
   }
 })
 

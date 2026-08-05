@@ -19,10 +19,15 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { diferenciasDeHuella, huellaProtegida } from '../lib/proveedores-bloque-vivo.mjs'
+import { COLCHON_FINAL, filaDelSiguienteTitulo, filasNoVacias, sobranteDeColchon } from '../lib/proveedores-colchon.mjs'
+import { ANCHOS_PROVEEDORES } from '../lib/proveedores-frontera.mjs'
+import { leerParaDecidirBorrado } from '../lib/proveedores-lectura-dinamica.mjs'
+import { SECCIONES_DINAMICAS, VALORES_DETALLE } from '../lib/proveedores-titulos.mjs'
 import {
   altoEmitido, bandasDeFormato, COL, filtros, formatoDeTodo, fuenteCompras, geometriaDeLaSeccion,
-  PENDIENTE, VISTA,
+  PENDIENTE, rotulosDelCuadro, VISTA,
 } from '../lib/proveedores-pivot-seccion1.mjs'
+import { requestsDeRotulos, rotulosQueNoEntran } from '../lib/proveedores-rotulos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Proveedores'
@@ -30,9 +35,16 @@ const APLICAR = process.argv.includes('--aplicar')
 // A cuánto se lleva la grilla de Compras. Con 817 filas usadas y ~90 comprobantes por mes, esto son
 // más de quince años de margen: el origen deja de ser algo que haya que recordar.
 const MINIMO_GRILLA_COMPRAS = 3000
-// Filas de aire que se dejan entre el cuadro y la sección 2. Es lo que absorbe las facturas nuevas
-// sin que nadie tenga que correr nada; cuando se acaba, este mismo script inserta más.
+// Lo que se RESERVA de una cuando hay que insertar. Insertar de a una fila cuesta una corrida
+// entera, así que cuando no entra se pide holgura — y al final de la corrida se devuelve lo que
+// sobró (ver `recortarElAire`). El colchón que QUEDA puesto es `COLCHON_FINAL`, chico y a propósito.
 const COLCHON = 12
+/** Hasta dónde se mira el ancho para decidir si una fila está vacía. Bien a la derecha del bloque. */
+const ANCHO_LECTURA = 'AZ'
+
+/** Los `name` de los valores del cuadro A. Los declara `proveedores-titulos.mjs` porque el
+ *  sembrador de títulos reconoce la sección por ellos: dos copias es cómo se desincronizan. */
+const VALORES = SECCIONES_DINAMICAS.find((s) => s.clave === 'deuda').valores
 
 const plata = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
 
@@ -42,8 +54,8 @@ const cuadroTotales = (fuente) => ({
   source: fuente,
   rows: [{ sourceColumnOffset: COL.proveedor, showTotals: false, sortOrder: 'DESCENDING', valueBucket: { valuesIndex: 0 } }],
   values: [
-    { sourceColumnOffset: COL.saldo, summarizeFunction: 'SUM', name: 'Se le debe' },
-    { sourceColumnOffset: COL.proveedor, summarizeFunction: 'COUNTA', name: 'Facturas' },
+    { sourceColumnOffset: COL.saldo, summarizeFunction: 'SUM', name: VALORES[0] },
+    { sourceColumnOffset: COL.proveedor, summarizeFunction: 'COUNTA', name: VALORES[1] },
   ],
   filterSpecs: filtros(),
   valueLayout: 'HORIZONTAL',
@@ -73,6 +85,10 @@ const texto = (sheetId, fila, valor, bold = false) => ({ updateCells: {
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
 
+  // LOS RÓTULOS DE LOS CAMPOS DE FILA SON LOS ENCABEZADOS DE COMPRAS: la API no deja renombrarlos y
+  // Compras es fuente, no se edita. Se leen para poder darle a la fila de rótulos el alto que hace
+  // falta — "Fecha prevista de pago (día)" no entra de una línea en ninguna columna razonable.
+  const cabecera = (await google.readSheetValues(ID, 'Compras!A3:AL3', { render: 'FORMATTED_VALUE' }))?.[0] ?? []
   const compras = await google.readSheetValues(ID, 'Compras!A4:AL', { render: 'UNFORMATTED_VALUE' })
   const pendientes = (compras ?? []).filter((f) => String(f?.[COL.estado] ?? '').trim() === PENDIENTE
     && String(f?.[COL.comercial] ?? '').trim() === '1')
@@ -132,6 +148,17 @@ async function main() {
     throw new Error('el bloque no entra ni después de insertar filas: no formateo un rango vacío')
   }
 
+  // LOS RÓTULOS DE CADA CUADRO, CALCULADOS ANTES DE ESCRIBIR. Si alguno no entra ni partido en dos
+  // líneas se avisa: la regla de la pestaña es acortar el rótulo antes que ensanchar la columna, y
+  // los de los campos de fila no se pueden acortar sin tocar Compras — así que hay que saberlo.
+  const rotulosA = rotulosDelCuadro({ vista: VISTA.POR_PROVEEDOR, cabecera, nombresDeValores: [...VALORES] })
+  const rotulosB = rotulosDelCuadro({ vista: VISTA.DETALLE, cabecera, nombresDeValores: [...VALORES_DETALLE] })
+  for (const [nombre, rots] of [['A', rotulosA], ['B', rotulosB]]) {
+    for (const r of rotulosQueNoEntran(rots, ANCHOS_PROVEEDORES)) {
+      console.log(`⚠ cuadro ${nombre}: el rótulo "${r.texto}" necesita ${r.lineas} líneas en su columna`)
+    }
+  }
+
   const vacias = Array.from({ length: finIdx - iA }, () => ({ values: Array.from({ length: 7 }, () => ({ userEnteredValue: null })) }))
   const anclaPivot = (fila, pivot) => ({ updateCells: {
     range: { sheetId, startRowIndex: fila, endRowIndex: fila + 1, startColumnIndex: 0, endColumnIndex: 1 },
@@ -166,8 +193,12 @@ async function main() {
     // formato: usa el que la celda ya tenía. Midiendo la banda con el alto de la corrida, el cuadro
     // A creció a 10 proveedores y la 10ª fila salió `67797,51 | 31/12/1899` — la columna B en TEXTO
     // y la C en FECHA, que es lo que el cuadro B había dejado ahí.
-    ...formatoDeTodo({ sheetId, filaAncla: bandaA.desde, alto: bandaA.alto, vista: VISTA.POR_PROVEEDOR }),
-    ...formatoDeTodo({ sheetId, filaAncla: bandaB.desde, alto: bandaB.alto, vista: VISTA.DETALLE }),
+    // EL CUERPO ARRANCA DEBAJO DEL RÓTULO: con la banda entera, "Se le debe" y "Facturas" quedaban
+    // declaradas moneda y contador, y el auditor las reportaba como B17/C17/G32 en cada corrida.
+    ...formatoDeTodo({ sheetId, filaAncla: plan.cuerpoA.desde, alto: plan.cuerpoA.alto, vista: VISTA.POR_PROVEEDOR }),
+    ...formatoDeTodo({ sheetId, filaAncla: plan.cuerpoB.desde, alto: plan.cuerpoB.alto, vista: VISTA.DETALLE }),
+    ...requestsDeRotulos({ sheetId, fila: plan.rotuloA, textos: rotulosA, anchos: ANCHOS_PROVEEDORES, derecha: [1, 2] }),
+    ...requestsDeRotulos({ sheetId, fila: plan.rotuloB, textos: rotulosB, anchos: ANCHOS_PROVEEDORES, derecha: [2, 6] }),
     // Ninguna fila del cuadro puede quedar oculta: siete lo estuvieron y el total cerraba igual.
     { updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: iA, endIndex: finIdx },
       properties: { hiddenByUser: false }, fields: 'hiddenByUser' } },
@@ -210,11 +241,64 @@ async function main() {
   const rotos = (leido ?? []).flat().filter((c) => /#(REF|NAME|VALUE|DIV|N\/A|ERROR|¿NOMBRE)/i.test(String(c ?? '')))
   if (rotos.length) { console.error(`✗✗ ${rotos.length} celda(s) con error: ${[...new Set(rotos)].join(' · ')}`); process.exitCode = 1 }
 
+  await recortarElAire({ google, sheetId, geo })
+
   console.log('\nLEÍDO DEL ARCHIVO:')
   for (const f of leido ?? []) {
     const t = (f ?? []).map((c) => String(c ?? '')).join(' | ')
     console.log('  ' + (t.replace(/[| ]/g, '') ? t.slice(0, 104) : '·'))
   }
+}
+
+/**
+ * DEVOLVER EL AIRE QUE SOBRÓ ENTRE ESTA SECCIÓN Y LA 2.
+ *
+ * POR QUÉ (04/08). El dueño: entre las dos secciones había un agujero de filas vacías que se lee
+ * como un error de la pestaña. El colchón tiene una razón legítima —una dinámica que no entra NO se
+ * renderiza y deja la sección invisible— pero reservar con holgura y dejarlo puesto convierte una
+ * precaución en un defecto visible.
+ *
+ * La reserva se hace ANTES de escribir, cuando todavía no se sabe cuánto va a emitir la dinámica; la
+ * devolución se hace DESPUÉS, cuando ya se puede medir. La capacidad de crecer no se pierde: las
+ * filas que quedan absorben el crecimiento chico sin correr nada, y cuando no alcanzan este mismo
+ * script vuelve a insertar. Lo que se pierde es el agujero.
+ *
+ * Se mide anclado al TÍTULO de la sección 2 —texto real de otro dueño— y mirando el ancho ENTERO:
+ * borrar una fila no tiene vuelta, y ya pasó que un generador que se creyó dueño hasta su última
+ * columna le borrara al dueño catorce fechas que vivían más a la derecha. Ver `lib/proveedores-colchon.mjs`.
+ */
+async function recortarElAire({ google, sheetId, geo }) {
+  // ═══ DOS LECTURAS FUSIONADAS, Y ES LO QUE MANTENÍA MUERTO AL CUADRO B (05/08) ═══
+  //
+  // Esta lectura era sólo `FORMULA`, que NO VE el cuerpo de una tabla dinámica. Lo último con algo
+  // del bloque era entonces el subtítulo "Cada operación" —el cuadro B, 19 filas recién escritas,
+  // no existía para la lectura— así que el recorte le devolvía al colchón las filas que el cuadro
+  // acababa de ocupar, y el cinturón `filasNoVacias`, que usa la misma lectura, lo dejaba pasar.
+  // Una dinámica sin lugar no se renderiza: Google la deja en #REF!, que es como estaba el cuadro B
+  // en el archivo. El generador destruía su propio cuadro al final de cada corrida.
+  // Ver `lib/proveedores-lectura-dinamica.mjs`.
+  const rango = `${PESTAÑA}!A1:${ANCHO_LECTURA}${geo.filaLimite + 20}`
+  const ancho = await leerParaDecidirBorrado({ google, id: ID, rango })
+  const siguiente = filaDelSiguienteTitulo(ancho, geo.filaEncabezado)
+  const s = sobranteDeColchon({ filas: ancho, desde: geo.filaEncabezado, hasta: siguiente })
+  const sucias = filasNoVacias(ancho, s)
+  if (s.sobrante && sucias.length) {
+    console.error(`✗ NO recorto: las filas ${sucias.join(', ')} tienen datos — borrar no tiene vuelta`)
+    return
+  }
+  if (!s.sobrante) {
+    console.log(`${s.blancas} fila(s) de aire antes de la sección 2: no sobra nada (colchón ${COLCHON_FINAL})`)
+    return
+  }
+  console.log(`${s.blancas} fila(s) de aire antes de la sección 2 → se devuelven ${s.sobrante}, quedan ${COLCHON_FINAL}`)
+  await google.spreadsheetBatchUpdate(ID, [{ deleteDimension: { range: {
+    sheetId, dimension: 'ROWS', startIndex: s.desdeBorrar - 1, endIndex: s.hastaBorrar - 1 } } }], { espejo: true })
+
+  // LA EVIDENCIA ES DEL EFECTO: se relee y se cuenta el aire que quedó de verdad.
+  const despues = await leerParaDecidirBorrado({ google, id: ID, rango })
+  const ahora = sobranteDeColchon({ filas: despues, desde: geo.filaEncabezado, hasta: filaDelSiguienteTitulo(despues, geo.filaEncabezado) })
+  if (ahora.blancas === COLCHON_FINAL) console.log(`✓ quedaron ${ahora.blancas} filas de aire, releídas del archivo`)
+  else { console.error(`✗✗ quedaron ${ahora.blancas} filas de aire y se esperaban ${COLCHON_FINAL}`); process.exitCode = 1 }
 }
 
 main().catch((e) => { console.error(e); process.exit(1) })
