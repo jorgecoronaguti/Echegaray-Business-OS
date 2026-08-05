@@ -154,25 +154,23 @@ export const SECCIONES_PROVEEDORES = [
  * envejezca en silencio durante días.
  */
 /*
- * ═══ LO QUE SIGUE SIN DUEÑO, DICHO (05/08) ═══
+ * ═══ LOS TÍTULOS DE LAS SECCIONES 1 Y 2 YA TIENEN DUEÑO (05/08) ═══
  *
- * Los TÍTULOS de las secciones 1 y 2 no los escribe nadie. El generador de texto los construye pero
- * quedan arriba de la frontera y se descartan al partir; las dinámicas los BUSCAN para ubicarse. Si
- * el dueño borra "1 · QUÉ SE DEBE Y CUÁNDO" o "2 · CUENTA CORRIENTE POR PROVEEDOR", los dos pasos se
- * frenan solos —fallan cerrado, que es lo correcto— y nadie repone el rótulo. Ya pasó con el título
- * de la frontera, y por eso existe `fronteraSegura`.
+ * No lo tenían: el generador de texto los construye pero quedan arriba de la frontera y se descartan
+ * al partir, y las dinámicas los BUSCAN para ubicarse. Borrar "1 · QUÉ SE DEBE Y CUÁNDO" o "2 ·
+ * CUENTA CORRIENTE POR PROVEEDOR" frenaba los dos pasos —fallan cerrado, que es lo correcto— sin que
+ * nadie repusiera el rótulo. Ya había pasado con el título de la frontera, y por eso existe
+ * `fronteraSegura`.
  *
- * POR QUÉ NO SE ARREGLA ACÁ, y no es pereza: la vía obvia —que el tramo del generador arranque en el
- * título de la sección 1 y emita filas de reserva— es incompatible con su propio mecanismo de
- * limpieza. `aAnchoCompleto` rellena cada fila con el centinela VACIO hasta el ancho del bloque, y un
- * VACIO sobre el cuerpo de una dinámica la BORRA. El modo de falla no es "queda feo": es la pestaña
- * destruida, que ya pasó una vez. La salida correcta es un sembrador propio que escriba ÚNICAMENTE la
- * celda del título cuando falta y jamás toque el cuerpo — y eso se hace mirando el render, no a ciegas
- * desde un worktree.
+ * LA VÍA OBVIA SIGUE SIN SERVIR, y por eso el dueño es un paso aparte y no este generador: que su
+ * tramo arranque en el título de la sección 1 es incompatible con su mecanismo de limpieza —
+ * `aAnchoCompleto` rellena con el centinela VACIO y un VACIO sobre el cuerpo de una dinámica la
+ * BORRA—. `proveedores-titulos-sembrar.mjs` escribe UNA celda, sólo si falta y sólo si está vacía.
  */
 export const DUENOS_DE_PROVEEDORES = Object.freeze([
   Object.freeze({ bloque: 'origen · CUIT (OS) en Compras', script: 'proveedores-cuenta-corriente.mjs' }),
   Object.freeze({ bloque: 'de la frontera para abajo (3, 4, 5) + Materiales', script: 'proveedores-materiales-pestana.mjs' }),
+  Object.freeze({ bloque: 'los títulos de las secciones 1 y 2', script: 'proveedores-titulos-sembrar.mjs' }),
   Object.freeze({ bloque: '1 · qué se debe y cuándo', script: 'proveedores-dos-cuadros.mjs' }),
   Object.freeze({ bloque: '2 · cuenta corriente por proveedor', script: 'proveedores-seccion2-pivot.mjs' }),
   Object.freeze({ bloque: 'la columna "Qué hacer" del dueño', script: 'proveedores-notas-visibles.mjs' }),

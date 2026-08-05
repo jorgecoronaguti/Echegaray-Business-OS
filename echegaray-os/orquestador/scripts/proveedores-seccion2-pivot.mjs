@@ -26,6 +26,7 @@ import { COLCHON_FINAL, filaDelSiguienteTitulo, filasNoVacias, sobranteDeColchon
 import { cortePorConcentracion, escalones, nombresVisibles, UMBRAL } from '../lib/proveedores-concentracion.mjs'
 import { ANCHOS_PROVEEDORES } from '../lib/proveedores-frontera.mjs'
 import { leerCuerpoDeDinamica, leerParaDecidirBorrado } from '../lib/proveedores-lectura-dinamica.mjs'
+import { SECCIONES_DINAMICAS } from '../lib/proveedores-titulos.mjs'
 import { requestsDeRotulos, rotulosQueNoEntran } from '../lib/proveedores-rotulos.mjs'
 import { columnasDeCompras, filasDelPie, referencias } from '../lib/proveedores-seccion2-pie.mjs'
 
@@ -38,8 +39,9 @@ const COLCHON_RESERVA = 10
 const ANCHO_LECTURA = 'AZ'
 /** Las columnas del cuadro: proveedor · CUIT · comprado · comprobantes. */
 const ANCHO = 4
-/** Los nombres de los dos valores. Se declaran una vez: van al pivot Y a la fila de rótulos. */
-const VALORES = Object.freeze(['Comprado 2026', 'Comprobantes'])
+/** Los nombres de los dos valores: van al pivot, a la fila de rótulos, y son con lo que el sembrador
+ *  de títulos RECONOCE esta sección cuando su título no está. Por eso se declaran en la lib. */
+const VALORES = SECCIONES_DINAMICAS.find((s) => s.clave === 'cuentaCorriente').valores
 
 const plata = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
 

@@ -22,6 +22,7 @@ import { diferenciasDeHuella, huellaProtegida } from '../lib/proveedores-bloque-
 import { COLCHON_FINAL, filaDelSiguienteTitulo, filasNoVacias, sobranteDeColchon } from '../lib/proveedores-colchon.mjs'
 import { ANCHOS_PROVEEDORES } from '../lib/proveedores-frontera.mjs'
 import { leerParaDecidirBorrado } from '../lib/proveedores-lectura-dinamica.mjs'
+import { SECCIONES_DINAMICAS, VALORES_DETALLE } from '../lib/proveedores-titulos.mjs'
 import {
   altoEmitido, bandasDeFormato, COL, filtros, formatoDeTodo, fuenteCompras, geometriaDeLaSeccion,
   PENDIENTE, rotulosDelCuadro, VISTA,
@@ -41,6 +42,10 @@ const COLCHON = 12
 /** Hasta dónde se mira el ancho para decidir si una fila está vacía. Bien a la derecha del bloque. */
 const ANCHO_LECTURA = 'AZ'
 
+/** Los `name` de los valores del cuadro A. Los declara `proveedores-titulos.mjs` porque el
+ *  sembrador de títulos reconoce la sección por ellos: dos copias es cómo se desincronizan. */
+const VALORES = SECCIONES_DINAMICAS.find((s) => s.clave === 'deuda').valores
+
 const plata = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
 
 /** A · una línea por proveedor. COUNTA sobre el proveedor —no sobre el comprobante—: hay una factura
@@ -49,8 +54,8 @@ const cuadroTotales = (fuente) => ({
   source: fuente,
   rows: [{ sourceColumnOffset: COL.proveedor, showTotals: false, sortOrder: 'DESCENDING', valueBucket: { valuesIndex: 0 } }],
   values: [
-    { sourceColumnOffset: COL.saldo, summarizeFunction: 'SUM', name: 'Se le debe' },
-    { sourceColumnOffset: COL.proveedor, summarizeFunction: 'COUNTA', name: 'Facturas' },
+    { sourceColumnOffset: COL.saldo, summarizeFunction: 'SUM', name: VALORES[0] },
+    { sourceColumnOffset: COL.proveedor, summarizeFunction: 'COUNTA', name: VALORES[1] },
   ],
   filterSpecs: filtros(),
   valueLayout: 'HORIZONTAL',
@@ -146,8 +151,8 @@ async function main() {
   // LOS RÓTULOS DE CADA CUADRO, CALCULADOS ANTES DE ESCRIBIR. Si alguno no entra ni partido en dos
   // líneas se avisa: la regla de la pestaña es acortar el rótulo antes que ensanchar la columna, y
   // los de los campos de fila no se pueden acortar sin tocar Compras — así que hay que saberlo.
-  const rotulosA = rotulosDelCuadro({ vista: VISTA.POR_PROVEEDOR, cabecera, nombresDeValores: ['Se le debe', 'Facturas'] })
-  const rotulosB = rotulosDelCuadro({ vista: VISTA.DETALLE, cabecera, nombresDeValores: ['Importe'] })
+  const rotulosA = rotulosDelCuadro({ vista: VISTA.POR_PROVEEDOR, cabecera, nombresDeValores: [...VALORES] })
+  const rotulosB = rotulosDelCuadro({ vista: VISTA.DETALLE, cabecera, nombresDeValores: [...VALORES_DETALLE] })
   for (const [nombre, rots] of [['A', rotulosA], ['B', rotulosB]]) {
     for (const r of rotulosQueNoEntran(rots, ANCHOS_PROVEEDORES)) {
       console.log(`⚠ cuadro ${nombre}: el rótulo "${r.texto}" necesita ${r.lineas} líneas en su columna`)
