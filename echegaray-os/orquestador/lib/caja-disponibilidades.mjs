@@ -257,7 +257,13 @@ const letraCol = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n /
 export function ubicarCaja(filas = []) {
   const txt = (f, i = 0) => String(f?.[i] ?? '').trim()
   const iCab = filas.findIndex((f) => txt(f) === 'Cuenta')
-  const iTotal = filas.findIndex((f) => txt(f).startsWith('TOTAL DISPONIBILIDADES'))
+  // ═══ EL MATCH ES INSENSIBLE A MAYÚSCULAS, Y NO ES UN DETALLE (05/08) ═══
+  //
+  // Estaba escrito `startsWith('TOTAL DISPONIBILIDADES')` de cuando el rótulo iba en versales. La
+  // pestaña pasó a escribirlo como "Total disponibilidades" y este localizador devolvió `null` desde
+  // entonces: `cash-flow-rehacer` cayó a su respaldo por rango con nombre y nadie se enteró, porque
+  // el respaldo funciona. Un localizador que no localiza y no rompe es la peor clase de defecto.
+  const iTotal = filas.findIndex((f) => /^total disponibilidades/i.test(txt(f)))
   if (iCab < 0 || iTotal <= iCab) return null
   const cab = filas[iCab]
   const busca = (re) => cab.findIndex((c) => re.test(String(c ?? '').trim().toLowerCase()))

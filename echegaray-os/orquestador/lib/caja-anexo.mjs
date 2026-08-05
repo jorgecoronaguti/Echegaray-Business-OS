@@ -32,6 +32,7 @@ import { VACIO } from './preservar-anotaciones.mjs'
 import {
   bloqueLiquidez, bloqueConciliacion, bloqueVencido, bloqueTrazabilidad, bloqueCalendarioCiego,
 } from './caja-anexo-controles.mjs'
+import { bloqueSeries } from './caja-anexo-series.mjs'
 
 export { PESTANA_ANEXO }
 
@@ -313,6 +314,11 @@ export function grillaAnexo(ctx = {}) {
   const tra = bloqueTrazabilidad(h)
   const cal = bloqueCalendarioCiego(h)
   const tc = bloqueTipoDeCambio(h)
+  // LAS SERIES DE LOS GRÁFICOS DE CAJA VAN ÚLTIMAS. Son 130 filas de matriz —una fila por día— y no
+  // se leen: las lee un gráfico. Puestas arriba empujarían el detalle que sí se consulta. Viven acá y
+  // no en CAJA porque la portada no admite una matriz, y no en una pestaña nueva porque el anexo ya
+  // existe para exactamente esto. Ver lib/caja-anexo-series.mjs.
+  const ser = bloqueSeries(h)
 
   // LOS NOMBRES SE DECLARAN CON SU FILA REAL, NO CON UNA CONSTANTE. Es lo único que hace que el anexo
   // pueda crecer sin romper CAJA — y la especie de cada uno se verifica DESPUÉS de publicar.
@@ -336,5 +342,7 @@ export function grillaAnexo(ctx = {}) {
   const totales = h.filas
     .map((f, i) => (/^\s*(⇒|Total|TOTAL)/.test(String(f?.[0] ?? '')) ? i + 1 : 0))
     .filter(Boolean)
-  return { filas: h.filas, destinos, totales, fTC: tc.fTC, fDec: tc.fDec, ...mov, ...car, ...cre, ...liq, ...con, ...ven, ...tra, ...cal }
+  // `series` va con su propio nombre y no esparcido como los demás: sus ocho coordenadas se usan
+  // juntas, y esparcirlas invitaría a que una colisione con la de otro bloque sin que nada avise.
+  return { filas: h.filas, destinos, totales, series: ser, fTC: tc.fTC, fDec: tc.fDec, ...mov, ...car, ...cre, ...liq, ...con, ...ven, ...tra, ...cal }
 }

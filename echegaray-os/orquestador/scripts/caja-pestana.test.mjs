@@ -1,150 +1,124 @@
-// LA GRILLA DE CAJA, VERIFICADA EN FRÍO. Sin red, sin base, sin escribir una celda.
+// LA PORTADA DE CAJA, VERIFICADA EN FRÍO. Sin red, sin base, sin escribir una celda.
 //
-// POR QUÉ EXISTE (31/07). El bloque de disponibilidades tiene una propiedad que no se puede ver leyendo
-// una fórmula sola: que el TOTAL no cuente el mismo peso dos veces. Basta con que dos filas del rango
-// aporten el mismo dinero para que la empresa se crea más líquida de lo que está — y ninguna fórmula
-// individual da error. Sólo se ve mirando la grilla ENTERA.
+// ═══ ESTE ARCHIVO SE REESCRIBIÓ ENTERO (05/08/2026) — CONTRATO NUEVO, NO AJUSTE ═══
 //
-// QUÉ SE MUDÓ (05/08/2026). El anexo de CAJA vive ahora en `_CAJA_ANEXO`. Los invariantes de esos
-// bloques —el desglose del efectivo, la nómina por canal, la cartera, los vencidos, los controles del
-// calendario— NO se borraron: están en lib/caja-anexo.test.mjs. Un invariante que se muda de archivo y
-// no se muda de test es un invariante que se perdió.
+// Los tests que estaban acá medían el diseño de bloques apilados: el titular de tres cifras, el
+// calendario en las columnas C·D·E, la cobertura 30/60/90, las dos líneas de veredicto de los
+// controles. Ese diseño ya no existe: la pestaña es una PORTADA de cinco tarjetas más cuatro bloques,
+// y un test que verifica un layout retirado no protege nada — sólo obliga a mantenerlo.
+//
+// LO QUE NO SE PERDIÓ, Y ES LA MITAD DEL VALOR DE ESTE ARCHIVO: cada invariante que costó plata sigue
+// verificado, traducido al layout nuevo. El anti-doble-conteo del total, el arqueo que se re-emite en
+// su fila nueva, la coma como separador en es-AR, la columna de prosa que no vuelve, los rangos con
+// nombre que no se reapuntan antes de escribir, y el corte de la corrida cuando la escritura se frena
+// (esos dos, en scripts/caja-pestana-escritura.test.mjs: no verifican QUÉ dice la pestaña sino CÓMO se
+// escribe).
+// Las fórmulas de las tarjetas y de los avisos se verifican en lib/caja-tarjetas.test.mjs y
+// lib/caja-avisos.test.mjs; los bloques que se mudaron al anexo, en lib/caja-anexo.test.mjs.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import { grilla, rescatar } from './caja-pestana.mjs'
-import { FILAS_MAXIMAS, ANCHOS , esTituloDeBloque} from '../lib/caja-grilla.mjs'
-import { lineasDeCaja, conceptosFueraDelCalendario } from '../lib/calendario-egresos.mjs'
+import {
+  FILAS_MAXIMAS, ANCHO, ANCHOS, COLS_PLATA, COLS_TARJETA, COL_PROSA, esTituloDeBloque,
+} from '../lib/caja-grilla.mjs'
 import { CUENTAS } from '../lib/caja-disponibilidades.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
-import { MARCAS } from '../lib/cheques-cobertura.mjs'
+import { terminoLibro, LIBRO } from '../lib/libro-sumas.mjs'
+import { NO_REAL, HORIZONTE } from '../lib/caja-tarjetas.mjs'
+import { BORDES } from '../lib/caja-calendario.mjs'
 
-/** Una celda VACÍA de la grilla. El generador no escribe '': escribe el centinela VACIO, que le dice al
- *  portón "esta celda es MÍA y está vacía" (una celda ajena y vacía se preserva). */
+/** Una celda VACÍA de la grilla. El generador no escribe cadena vacía: escribe el centinela VACIO, que
+ *  le dice al portón "esta celda es MÍA y está vacía" (una celda ajena y vacía se preserva). */
 const vacia = (s) => s === '' || s === VACIO
 
 // `filasCal` son las filas de "Impuestos y Financieros" donde viven el IVA y el IIBB a pagar. En la
 // corrida real las ubica el script POR RÓTULO; acá son dos números cualesquiera porque lo que el test
-// verifica es la FORMA de la fórmula. Que sean obligatorias es el punto: sin ellas el generador rompe.
+// verifica es que sean OBLIGATORIAS: sin esa pestaña el libro no ve el egreso más grande del año.
 const REFS = { bancoRaw: '_BANCO_RAW', cheques: 'Cheques Emitidos', tarjeta: 'Tarjeta de Credito', chequesRaw: '_CHEQUES_RAW', filasCal: { iva: 18, iibb: 19 } }
 const construir = () => grilla(new Map(), REFS)
 
-/** La fila (1-based) cuyo rótulo en la columna A matchea. */
-const filaDe = (g, re) => g.filas.findIndex((f) => re.test(String(f?.[0] ?? '').trim())) + 1
+/** La fila (1-based) cuyo rótulo en la columna indicada matchea. */
+const filaDe = (g, re, col = 0) => g.filas.findIndex((f) => re.test(String(f?.[col] ?? '').trim())) + 1
 const celda = (g, fila, col) => String(g.filas[fila - 1]?.[col] ?? '')
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
-// EL OBJETIVO DEL REDISEÑO ES UN NÚMERO, Y SE MIDE (05/08/2026)
+// UNA PANTALLA. EL OBJETIVO ES UN NÚMERO Y SE MIDE
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
-//
-// El dueño pidió la caja nueva tres veces después de dos rondas de mejoras. El diagnóstico no era de
-// defectos: era de TAMAÑO. 143 filas es la vista del analista; el CFO decide con cuatro cifras y un
-// calendario. Sin un tope MEDIDO, la pestaña vuelve a crecer bloque a bloque — que es exactamente
-// cómo llegó a 143.
 
-test('CAJA ENTRA EN UNA PANTALLA: no pasa de 45 filas', () => {
+test('LA PORTADA ENTRA EN UNA PANTALLA: no pasa del tope declarado', () => {
+  // El dueño pidió la caja nueva cuatro veces. Las tres primeras se respondió con defectos corregidos
+  // y con tamaño; la cuarta fue explícita sobre la FORMA: *"debe ocupar prácticamente una pantalla
+  // completa sin desplazarse"*. Sin un tope MEDIDO la pestaña vuelve a crecer bloque a bloque, que es
+  // exactamente cómo llegó a 143 filas.
   const g = construir()
   assert.ok(g.filas.length <= FILAS_MAXIMAS,
-    `CAJA quedó en ${g.filas.length} filas. El tope es ${FILAS_MAXIMAS}: si hace falta un bloque nuevo, `
-    + 'algo tiene que irse a _CAJA_ANEXO. Dejarla crecer es cómo llegó a 143.')
+    `CAJA quedó en ${g.filas.length} filas y el tope es ${FILAS_MAXIMAS}. Si hace falta un bloque nuevo, algo tiene que irse a _CAJA_ANEXO.`)
 })
 
 test('NI UNA FILA EN BLANCO: el hueco es un defecto medido, no un separador', () => {
-  // `auditar-pantalla.mjs` reportaba "hueco: 5 filas en blanco (66 a 70)". En una pestaña de 45 filas
-  // una fila vacía cuesta lo mismo que una de datos y no separa mejor que un título de bloque.
   const g = construir()
   const enBlanco = g.filas
-    .map((f, i) => ({ fila: i + 1, algo: (f || []).some((c, j) => j !== 7 && !vacia(c) && c !== undefined) }))
+    .map((f, i) => ({ fila: i + 1, algo: (f || []).some((c, j) => j !== COL_PROSA && !vacia(c) && c !== undefined) }))
     .filter((x) => !x.algo)
   assert.deepEqual(enBlanco.map((x) => x.fila), [], 'volvieron las filas en blanco')
 })
 
-test('la grilla se puede construir sin red, sin base y sin escribir nada', () => {
+test('LOS DOS PANELES COMPARTEN LAS MISMAS FILAS: es lo que hace que entre en una pantalla', () => {
+  // Si algún día alguien "ordena" la pestaña apilando los bloques, el alto se duplica y el rediseño se
+  // deshace sin que ninguna fórmula cambie. El invariante verificable es que las filas de datos tengan
+  // contenido de los DOS lados.
   const g = construir()
-  assert.ok(g.filas.length > 30, 'la pestaña tiene que tener sus bloques')
-  assert.ok(g.d0 > 0 && g.d1 >= g.d0, 'el bloque de disponibilidades tiene principio y fin')
-})
-
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-// EL BLOQUE 1 — QUE EL TOTAL NO CUENTE LA MISMA PLATA DOS VECES
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-
-test('"Caja en pesos" es la PRIMERA fila del bloque y suma el neto de efectivo del anexo', () => {
-  const g = construir()
-  const fCaja = filaDe(g, /^caja en pesos$/i)
-  assert.equal(fCaja, g.d0, 'el arqueo tiene que seguir siendo la fila ancla del bloque')
-  const origen = celda(g, fCaja, 2)
-  assert.match(origen, /^=/, '"Caja en pesos" tiene que ser una FÓRMULA, no un número pegado')
-  assert.match(origen, /CAJA_ARQUEO_ARS/, 'parte del arqueo declarado, citado por nombre')
-  // EL NETO SE MUDÓ AL ANEXO Y SE CITA POR NOMBRE. Antes era `$C$<fila del neto>`: una referencia por
-  // celda a una fila que ahora vive en otra pestaña. El nombre es lo que hace posible la mudanza.
-  assert.match(origen, /ANEXO_EFECTIVO_NETO/, 'el neto de efectivo entra por su rango con nombre')
-  assert.match(celda(g, fCaja, 4), new RegExp(`C${fCaja}\\*IF\\(D${fCaja}`), 'y se valúa como cualquier otra cuenta')
-})
-
-test('EL ANTI-DOBLE-CONTEO: el neto de efectivo entra al total por UNA sola puerta', () => {
-  // El total es un SUM del bloque: si dos filas aportaran el mismo efectivo, la empresa se creería más
-  // líquida de lo que está y ninguna fórmula daría error.
-  const g = construir()
-  let n = 0
-  for (let f = g.d0; f <= g.fTotal; f++) {
-    for (const col of [2, 4]) if (celda(g, f, col).includes('ANEXO_EFECTIVO_NETO')) n++
+  for (let f = g.d0; f <= Math.min(g.d1, g.lad1); f++) {
+    assert.ok(!vacia(celda(g, f, 0)), `la fila ${f} perdió el panel izquierdo`)
+    assert.ok(!vacia(celda(g, f, 5)), `la fila ${f} perdió el panel derecho`)
   }
-  assert.equal(n, 1, 'el neto de efectivo tiene que entrar al total por una sola puerta')
+  assert.equal(g.lad0, g.d0, 'los dos paneles arrancan en la misma fila')
 })
 
-test('el total sigue sumando el bloque entero y descontando los valores a depositar', () => {
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LAS CINCO TARJETAS — LA PORTADA
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('LAS CINCO TARJETAS ESTÁN, EN ORDEN, Y CADA UNA OCUPA SUS TRES RENGLONES', () => {
   const g = construir()
-  const total = celda(g, g.fTotal, 4)
-  assert.ok(total.includes(`SUM(E${g.d0}:E${g.d1})`), `el total tiene que barrer todo el bloque: ${total}`)
-  const fCartera = filaDe(g, /^valores a depositar/i)
-  assert.ok(total.includes(`-E${fCartera}`), 'y seguir restando los echeq en custodia (percibido)')
+  const esperados = ['CAJA DISPONIBLE', 'CAJA COMPROMETIDA', `CAJA PROYECTADA · ${HORIZONTE} DÍAS`,
+    'RIESGO DE LIQUIDEZ', 'PRÓXIMO CUELLO DE BOTELLA']
+  esperados.forEach((rot, i) => {
+    const col = COLS_TARJETA[i]
+    assert.equal(celda(g, g.fRotulos, col), rot, `la tarjeta ${i + 1} tiene que ser "${rot}" en la columna ${col}`)
+    assert.match(celda(g, g.fCifras, col), /^=/, `la cifra de "${rot}" tiene que ser una fórmula, nunca un número`)
+    assert.match(celda(g, g.fContexto, col), /^=/, `"${rot}" sin línea de contexto es un número mudo`)
+  })
+  // Y NINGUNA CELDA MÁS EN ESAS TRES FILAS: una tarjeta ocupa dos columnas combinadas, y algo escrito
+  // en la columna de la derecha queda TAPADO por el merge — un dato invisible es peor que uno feo.
+  for (const f of [g.fRotulos, g.fCifras, g.fContexto]) {
+    for (let c = 0; c < ANCHO; c++) {
+      if (COLS_TARJETA.includes(c)) continue
+      assert.ok(vacia(g.filas[f - 1][c]), `fila ${f} col ${c}: queda tapada por la combinación de la tarjeta`)
+    }
+  }
 })
 
-test('LA FECHA DE LA POSICIÓN VIVE EN LA FILA DEL TOTAL, y es la más reciente del bloque', () => {
-  // Se publicaba apuntando a "la última fila del bloque, columna F" — que tenía fecha sólo porque la
-  // cartera estaba última. Al agregar tres filas, la última pasó a ser una sin fecha: EOMONTH de una
-  // celda vacía da 31/12/1899 y las dos filas más importantes de los dos cash flow quedaron VACÍAS los
-  // doce meses. Sin error, sin aviso.
+test('LAS CIFRAS DE LAS TARJETAS SALEN DEL LIBRO O DE LA PROPIA PESTAÑA, nunca de una cuenta nueva', () => {
+  // Es la regla que puso el dueño: todo número de plata es una fórmula sobre `_MOVIMIENTOS` armada con
+  // `terminoLibro`, o una referencia a un rango con nombre que ya existe. Se compara contra lo que
+  // produce la función y no contra un literal escrito acá: un literal sería una segunda fuente de
+  // verdad que queda en verde midiendo el contrato viejo.
   const g = construir()
-  const fecha = celda(g, g.fTotal, 5)
-  assert.match(fecha, /^=/, 'la fecha de la posición tiene que ser CALCULADA, no un día pegado a mano')
-  assert.ok(fecha.includes(`$F$${g.d0}:$F$${g.d1}`), `tiene que ser el MAX de las fechas del bloque; dice: ${fecha}`)
-  assert.ok(/MAX\(/.test(fecha), 'la posición vale a la fecha del dato MÁS RECIENTE que la compone')
-  assert.notEqual(g.fTotal, g.d1, 'el total está DEBAJO del bloque, no es su última fila')
+  const val = (i) => celda(g, g.fCifras, COLS_TARJETA[i])
+  assert.equal(val(0), `=$C$${g.fCierre}`, 'la caja disponible es EL TOTAL del panel de cuentas, no una suma nueva')
+  assert.equal(val(1), `=${terminoLibro({ signo: -1, estados: ['COMPROMETIDO'], medida: 'magnitud' })}`)
+  assert.equal(val(2), `=$C$${g.fCierre}+${terminoLibro({ desde: 'TODAY()', hasta: `TODAY()+${HORIZONTE}`, estados: NO_REAL })}`)
+  assert.equal(val(3), `=$I$${g.fCierre}`, 'el riesgo de liquidez es el piso que calcula la escalera')
+  assert.match(val(4), /^=IFERROR\(INDEX\(\$F\$\d+:\$F\$\d+;MATCH\(MIN\(\$I/,
+    'el cuello de botella sale del MISMO MATCH que el piso, o puede señalar otro tramo')
 })
 
-test('los cheques emitidos NO restan de la disponibilidad, y el rótulo lo DICE', () => {
-  // "Total disponibilidades" y "Disponibilidad neta" daban el MISMO número con esta línea en el medio.
-  // Cualquiera lee que se resta — y no se resta, porque un cheque librado que el banco no debitó NO
-  // salió de la cuenta (percibido). Que no se reste es correcto; que no se diga es lo que hace desconfiar.
-  const g = construir()
-  const f = filaDe(g, /^Cheques emitidos sin debitar/)
-  assert.ok(f > 0, 'la línea memo tiene que existir')
-  assert.match(String(g.filas[f - 1][0]), /no restan/, 'el rótulo tiene que decir que no se resta')
-  // EL IMPORTE VIVE EN LA E COMO TODOS (05/08): la columna del número que decide es la misma en toda la
-  // pestaña. Lo que impide que se sume no es dejar la celda vacía —eso lo escondía— sino estar FUERA del
-  // rango que suma el total, que es un hecho verificable acá y no una convención que hay que recordar.
-  assert.ok(!vacia(celda(g, f, 4)), 'el importe va en la E, la columna del número que decide')
-  assert.ok(f > g.fTotal, 'y lo que evita el doble conteo es estar DEBAJO del total, fuera de su rango')
-  const suma = String(g.filas[g.fTotal - 1][4])
-  const [, , hasta] = suma.match(/SUM\(E(\d+):E(\d+)\)/) || []
-  assert.ok(Number(hasta) < f, `el total suma hasta E${hasta} y la memo está en la ${f}: entraría al SUM`)
-})
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL PANEL DE CUENTAS — QUE EL TOTAL NO CUENTE LA MISMA PLATA DOS VECES
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-test('la caja en dólares existe, lleva su moneda y se valúa al tipo de cambio', () => {
-  // "U$S 15.000" cobrados en efectivo entraban al cajón de PESOS como $15.000: el importe correcto en
-  // la moneda equivocada, que no da error y está mal por dos órdenes de magnitud.
-  const g = construir()
-  const f = filaDe(g, /^Caja en dólares$/)
-  assert.ok(f > 0, 'tiene que haber una fila de caja en dólares')
-  assert.equal(celda(g, f, 1), 'USD', 'la columna de moneda dice USD')
-  assert.match(celda(g, f, 2), /"USD"/, 'suma sólo los cobros marcados en dólares')
-  assert.match(celda(g, f, 3), /TIPO_CAMBIO_USD/, 'y trae el tipo de cambio')
-  assert.match(celda(g, f, 4), new RegExp(`C${f}\\*IF\\(D${f}`), 'y se valúa como cualquier otra cuenta')
-})
-
-test('las cuentas del bloque siguen siendo las del plan de cuentas (el rótulo es el ancla)', () => {
+test('las cuentas del plan siguen estando, y el rótulo es el ancla', () => {
   const g = construir()
   for (const c of CUENTAS) {
     assert.ok(filaDe(g, new RegExp(`^${c.nombre.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')) > 0,
@@ -152,489 +126,268 @@ test('las cuentas del bloque siguen siendo las del plan de cuentas (el rótulo e
   }
 })
 
+test('EL ANTI-DOBLE-CONTEO: el neto de efectivo entra al total por UNA sola puerta', () => {
+  // El total es un SUM del bloque: si dos filas aportaran el mismo efectivo, la empresa se creería más
+  // líquida de lo que está y ninguna fórmula daría error.
+  const g = construir()
+  let n = 0
+  for (let f = g.d0; f <= g.fCierre; f++) {
+    for (const col of COLS_PLATA) if (celda(g, f, col).includes('ANEXO_EFECTIVO_NETO')) n++
+  }
+  assert.equal(n, 1, 'el neto de efectivo tiene que entrar al total por una sola puerta')
+})
+
+test('el total barre el bloque entero y descuenta los valores a depositar (percibido)', () => {
+  const g = construir()
+  const total = celda(g, g.fCierre, 2)
+  assert.ok(total.includes(`SUM(C${g.d0}:C${g.d1})`), `el total tiene que barrer todo el bloque: ${total}`)
+  assert.ok(total.includes(`-C${g.fCartera}`), 'y seguir restando los echeq en custodia: no son caja de hoy')
+})
+
+test('EL RÓTULO DEL TOTAL ES EL QUE BUSCAN LOS OTROS MÓDULOS, y por eso no lleva flecha adelante', () => {
+  // `cash-briefing` corta las cuentas con /^total disponibilidades/i y `ubicarCaja` hace lo mismo. Con
+  // la flecha del diseño anterior ninguno de los dos lo encontraba y los dos caían a su respaldo EN
+  // SILENCIO: el briefing volvía a sumar las filas a mano, que es de donde salió una vez una caja de
+  // $384.000.000 que no existía.
+  const g = construir()
+  assert.match(celda(g, g.fCierre, 0), /^Total disponibilidades/,
+    'el rótulo del total arranca en "Total disponibilidades" o dos módulos dejan de encontrarlo')
+})
+
+test('la caja en dólares se lleva en dólares y se valúa aparte', () => {
+  // "U$S 15.000" cobrados en efectivo entraban al cajón de PESOS como $15.000: el importe correcto en
+  // la moneda equivocada, que no da error y está mal por tres órdenes de magnitud.
+  const g = construir()
+  const f = filaDe(g, /^Caja en dólares$/)
+  assert.ok(f > 0 && g.usd.includes(f), 'la fila en dólares tiene que estar declarada para pintarse "U$S"')
+  assert.match(celda(g, f, 1), /"USD"/, 'el importe en origen suma sólo los cobros marcados en dólares')
+  assert.equal(celda(g, f, 2), `=IF(ISNUMBER(B${f});B${f}*TIPO_CAMBIO_USD;"")`, 'y se valúa en su propia celda')
+})
+
+test('la fecha de la posición vive en la fila del total y es la MÁS RECIENTE del bloque', () => {
+  // Se publicaba apuntando a "la última fila del bloque" — que tenía fecha sólo porque la cartera
+  // estaba última. Al agregar filas, la última pasó a ser una sin fecha: EOMONTH de una celda vacía da
+  // 31/12/1899 y las dos filas más importantes de los dos cash flow quedaron VACÍAS los doce meses.
+  const g = construir()
+  const fecha = celda(g, g.fCierre, 3)
+  assert.ok(fecha.startsWith('=') && /MAX\(/.test(fecha), 'la fecha de la posición tiene que ser calculada')
+  assert.ok(fecha.includes(`$D$${g.d0}:$D$${g.d1}`), `tiene que ser el MAX de las fechas del bloque; dice: ${fecha}`)
+})
+
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
-// EL ARQUEO — LA ÚNICA CELDA DE CAPTURA DE TODO EL ARCHIVO
+// LA ESCALERA DE VENCIMIENTOS
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('LOS SEIS TRAMOS, Y SU NETO SALE DEL LIBRO — no de seis fuentes con seis criterios', () => {
+  // El diseño anterior sumaba por su cuenta cheques, jornales, oficina, impuestos y cobranzas en cada
+  // tramo. Dos listas de la misma plata clasificadas por ejes distintos dieron $41.704.351 de
+  // desacuerdo sobre el mismo mes, y el que veía de MENOS era el que produce el PISO.
+  const g = construir()
+  assert.equal(g.lad1 - g.lad0 + 1, BORDES.length, 'los seis tramos con borde temporal')
+  BORDES.forEach(([rotulo], k) => {
+    const f = g.lad0 + k
+    assert.equal(celda(g, f, 5), rotulo, `el tramo ${k} perdió su rótulo`)
+    assert.ok(celda(g, f, 7).includes(`${LIBRO.pestana}!`), `el neto del tramo "${rotulo}" no lee el libro`)
+    for (const e of NO_REAL) assert.ok(celda(g, f, 7).includes(`="${e}"`), `el tramo "${rotulo}" no ve los ${e}`)
+  })
+})
+
+test('EL PRIMER TRAMO ABRE EN EL SERIAL 0: un cheque viejo sin presentar no puede desaparecer', () => {
+  // Si "Vencido" arrancara en el corte del extracto, un cheque librado hace un mes y todavía no
+  // debitado no caería en ningún tramo: el piso subiría sin que se haya pagado nada. Con el libro esto
+  // es seguro porque lo que ya salió está marcado REAL, y REAL está excluido de todos los tramos.
+  const g = construir()
+  assert.equal(celda(g, g.lad0, 7), `=${terminoLibro({ desde: '0', hasta: 'TODAY()', estados: NO_REAL })}`,
+    'el tramo Vencido tiene que abrir en el serial 0 y cerrar hoy')
+  assert.ok(celda(g, g.lad0 + 1, 7).includes('CAJA_FECHA_SALDO'),
+    'y sólo el primero: el resto arranca en su borde, nunca antes del corte del extracto')
+})
+
+test('LA POSICIÓN ACUMULADA ES UNA CADENA QUE ARRANCA EN LA DISPONIBILIDAD', () => {
+  const g = construir()
+  assert.equal(celda(g, g.lad0, 8), `=CAJA_TOTAL_DISPONIBLE+$H${g.lad0}`,
+    'el primer tramo parte de la caja de hoy, citada por su rango con nombre')
+  for (let f = g.lad0 + 1; f <= g.lad1; f++) {
+    assert.equal(celda(g, f, 8), `=$I${f - 1}+$H${f}`, `la fila ${f} rompe la cadena de la posición acumulada`)
+  }
+})
+
+test('el piso es el MÍNIMO de la cadena, con su fecha y con la punta de abajo al lado', () => {
+  const g = construir()
+  assert.equal(celda(g, g.fCierre, 8), `=MIN($I$${g.lad0}:$I$${g.lad1})`, 'el piso es el mínimo del recorrido')
+  assert.match(celda(g, g.fCierre, 6), /^=IFERROR\(INDEX\(\$G\$/, 'y la fecha del piso sale del mismo MATCH')
+  // LA PUNTA DE ABAJO ES EXACTA, NO EL PISO MENOS UN TOTAL: se recalcula el mínimo restando en cada
+  // tramo lo incierto ACUMULADO hasta ese borde. Restarle al piso todo lo incierto le cargaría plata
+  // que sale DESPUÉS del punto más bajo, y una banda inflada se ignora igual que una alarma que suena
+  // siempre.
+  const banda = celda(g, g.fCierre, 7)
+  const terminos = [...banda.matchAll(/\$I(\d+)-\(/g)].map((m) => Number(m[1]))
+  assert.deepEqual(terminos, Array.from({ length: BORDES.length }, (_, k) => g.lad0 + k),
+    'los términos tienen que ser las filas de los tramos, en orden y sin saltarse ninguno')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// ALERTAS Y ACCIONES, EN SU LUGAR DE LA GRILLA
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('CUATRO ALERTAS A LA IZQUIERDA Y TRES ACCIONES A LA DERECHA, todas condicionales', () => {
+  const g = construir()
+  const alertas = []
+  const acciones = []
+  for (let f = g.fAviso0; f <= g.fAviso1; f++) {
+    if (!vacia(celda(g, f, 0))) alertas.push(celda(g, f, 0))
+    if (!vacia(celda(g, f, 5))) acciones.push(celda(g, f, 5))
+  }
+  assert.equal(alertas.length, 4)
+  assert.equal(acciones.length, 3)
+  for (const a of [...alertas, ...acciones]) assert.match(a, /^=IF\(/, 'un aviso de texto vale hasta la corrida siguiente')
+})
+
+test('LOS CONTROLES DEL ANEXO NO DESAPARECIERON: cada uno está citado en una alerta', () => {
+  // La mudanza al anexo es de UBICACIÓN, no de cobertura. Si un control se cayera del anexo y nadie lo
+  // citara acá, la pestaña quedaría más linda y más ciega — que es lo que no puede pasar.
+  const g = construir()
+  const bloque = g.filas.slice(g.fAviso0 - 1, g.fAviso1).map((f) => f.join(' ')).join(' ')
+  for (const n of ['ANEXO_DIF_ECHEQ', 'ANEXO_DIF_CONCILIACION', 'ANEXO_EFECTIVO_SIN_EXPLICAR',
+    'ANEXO_VENCIDO_SIN_CONCILIAR', 'ANEXO_OFICINA_SIN_CANAL', 'ANEXO_CHEQUES_SIN_MARCA', 'ANEXO_CHEQUES_SIN_FECHA']) {
+    assert.ok(bloque.includes(n), `el control ${n} no está citado en ninguna alerta: se perdió al mudarse`)
+  }
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// NI UN NÚMERO PEGADO EN UNA CELDA DE PLATA
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * LAS ÚNICAS EXCEPCIONES, DECLARADAS POR ESCRITO — no en silencio, que es donde se cuela el agujero.
+ *
+ * · El ARQUEO: son las dos celdas de captura de todo el archivo. Salen AUSENTES (la fusión preserva lo
+ *   que el dueño tipeó) o con el número que él escribió.
+ * · La cuenta en dólares del banco: el extracto en dólares NO tiene réplica en el archivo (`_BANCO_RAW`
+ *   es la cuenta en pesos), así que su saldo sale de la transcripción declarada en banco-santander.mjs
+ *   con su fecha de corte al lado, y la regla de "fecha vieja" lo pinta. Un dato viejo DECLARADO es
+ *   mejor que un #REF! que rompe el total. Es el único gap de fuente que queda en esta pestaña.
+ */
+const PEGADO_DECLARADO = new Set(['Santander · cta cte USD', 'Caja en pesos — contado', 'Caja en dólares — contado'])
+
+test('CERO NÚMEROS PEGADOS: toda celda de plata es una fórmula', () => {
+  // Es la Regla de Oro número 5 del dueño, medida sobre la grilla entera y no bloque por bloque. Un
+  // número pegado sólo cambia cuando corre el agente, y el timer de este archivo ya estuvo detenido
+  // semanas: la pestaña seguiría mostrando la caja de hace diez días sin que nada avise.
+  const g = construir()
+  // LA BANDA DE LAS TARJETAS Y EL ENCABEZADO NO SON ZONA DE DATOS: llevan texto a propósito y el
+  // formateador les devuelve el formato de TEXTO fila por fila. La fila de las CIFRAS sí se audita, y
+  // se audita entera: son las cinco celdas más miradas del archivo.
+  const bandas = new Set([g.fRotulos, g.fContexto, g.fCab])
+  for (const [i, fila] of g.filas.entries()) {
+    if (bandas.has(i + 1)) continue
+    if (PEGADO_DECLARADO.has(String(fila[0] ?? '').trim())) continue
+    for (const c of COLS_PLATA) {
+      const v = fila[c]
+      if (v === undefined || vacia(v)) continue
+      assert.ok(String(v).startsWith('='),
+        `fila ${i + 1} col ${String.fromCharCode(65 + c)}: "${String(v).slice(0, 40)}" es un número pegado en una celda de plata`)
+    }
+  }
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL ARQUEO — LA ÚNICA CAPTURA DE TODO EL ARCHIVO
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
 test('sin nada leído, el arqueo sale AUSENTE: sin dato no se sobrescribe', () => {
   // NO ALCANZA CON `vacia()`: el centinela VACIO pasa por vacío y significa "es mía y va vacía", o sea
   // que la fusión la LIMPIA. La primera versión de este test decía vacia() y dejó pasar un generador
-  // que le borraba el conteo al dueño en la primera corrida — lo cazó el render en frío.
+  // que le borraba el conteo al dueño en la primera corrida.
   const g = construir()
   for (const f of [g.fArqArs, g.fArqUsd]) {
-    assert.ok(f > 0, 'el bloque del arqueo tiene que existir')
-    for (const col of [2, 5]) {
+    assert.ok(f > 0, 'las dos filas del arqueo tienen que existir')
+    for (const col of [1, 3]) {
       assert.equal(g.filas[f - 1][col], undefined,
         `la celda ${col} del arqueo tiene que estar AUSENTE (ni valor ni centinela VACIO): la carga el dueño`)
     }
   }
 })
 
+test('EL RESCATE LEE LA MISMA COLUMNA EN LA QUE EL GENERADOR ESCRIBE EL ARQUEO', () => {
+  // ═══ EL DEFECTO QUE ESTE TEST CAZA, Y QUE ESTUVO VIVO HASTA HOY (05/08) ═══
+  //
+  // `rescatar` mapea las columnas por el TEXTO del encabezado: busca la primera que arranque en
+  // "saldo|importe|cotiza". En el diseño anterior el encabezado decía "En su moneda" en la columna
+  // donde el dueño tipea y "Saldo en pesos" dos columnas más allá, así que el rescate leía la columna
+  // CALCULADA —siempre vacía en la fila del arqueo— y el conteo no viajaba nunca. El test que había no
+  // lo vio porque construía el encabezado A MANO, con un texto que el generador no escribe.
+  //
+  // Acá el encabezado sale de la GRILLA REAL. Un mock de encabezado es una segunda fuente de verdad.
+  const g = construir()
+  const cel = (valor, numero = null) => ({ valor, numero, formula: null, formato: null })
+  const grid = [
+    g.filas[g.fCab - 1].map((c) => cel(String(c ?? ''))),
+    [cel('Caja en pesos — contado'), cel('0', 0), cel(''), cel('30/07/2026', 46233)],
+  ]
+  const cargado = rescatar(grid)
+  assert.equal(cargado.get('Caja en pesos — contado')?.saldo, 0, 'el importe tipeado tiene que viajar')
+  assert.equal(cargado.get('Caja en pesos — contado')?.fecha, 46233, 'y su fecha también: sin fecha no hay ventana')
+})
+
 test('con el conteo ya cargado, el arqueo se RE-EMITE en su fila nueva (no se queda en la vieja)', () => {
-  // La fusión preserva por POSICIÓN. Una corrida metió cuatro filas arriba, el bloque bajó de la 148 a
-  // la 152, el conteo se quedó en la 148 y los rangos con nombre se republicaron en la 152 vacía:
-  // CAJA_ARQUEO_ARS_FECHA quedó en blanco y $39,28M se fueron a cero sin un solo #ERROR.
+  // La fusión preserva por POSICIÓN. Una corrida metió cuatro filas arriba, el bloque bajó, el conteo
+  // se quedó en la fila vieja y los rangos con nombre se republicaron en una celda vacía: la caja
+  // física ($39,28M) se fue a cero sin un solo #ERROR.
   const cargado = new Map([
     ['Caja en pesos — contado', { saldo: 0, fecha: 46233, origen: '', quien: '' }],
     ['Caja en dólares — contado', { saldo: 15000, fecha: 46233, origen: '', quien: '' }],
   ])
   const g = grilla(cargado, REFS)
-  assert.equal(g.filas[g.fArqArs - 1][2], 0, 'el importe 0 es un dato, no un vacío')
-  assert.equal(g.filas[g.fArqArs - 1][5], 46233, 'y su fecha también — sin fecha no hay ventana')
-  assert.equal(g.filas[g.fArqUsd - 1][2], 15000)
-  // LA FECHA VIAJA COMO NÚMERO DE SERIE, no como "30/07/2026": el texto depende del locale (es_AR) y ya
-  // vació una pestaña entera por leerse como dd/mm/yy.
-  assert.equal(typeof g.filas[g.fArqArs - 1][5], 'number')
+  assert.equal(g.filas[g.fArqArs - 1][1], 0, 'el importe 0 es un dato, no un vacío')
+  // LA FECHA VIAJA COMO NÚMERO DE SERIE, no como "30/07/2026": el texto depende del locale (es_AR) y
+  // ya vació una pestaña entera por leerse como dd/mm/yy.
+  assert.equal(g.filas[g.fArqArs - 1][3], 46233)
+  assert.equal(typeof g.filas[g.fArqArs - 1][3], 'number')
+  assert.equal(g.filas[g.fArqUsd - 1][1], 15000)
 })
 
-test('el rescate LEE el bloque del arqueo: sin esto el conteo no tiene de dónde viajar', () => {
-  const cel = (valor, numero = null, formula = null) => ({ valor, numero, formula, formato: null })
-  const grid = [
-    [cel('Cuenta'), cel('Moneda'), cel('Saldo en su moneda'), cel(''), cel(''), cel('Fecha del saldo')],
-    [cel('2 · ARQUEO DE LA CAJA FÍSICA — LO ÚNICO QUE SE CARGA A MANO')],
-    [cel('Caja en pesos — contado'), cel('ARS'), cel('0', 0), cel(''), cel(''), cel('30/07/2026', 46233)],
-    [cel('Caja en dólares — contado'), cel('USD'), cel('U$S 15.000,00', 15000), cel(''), cel(''), cel('30/07/2026', 46233)],
-  ]
-  const cargado = rescatar(grid)
-  assert.equal(cargado.get('Caja en pesos — contado')?.saldo, 0)
-  assert.equal(cargado.get('Caja en pesos — contado')?.fecha, 46233)
-  assert.equal(cargado.get('Caja en dólares — contado')?.saldo, 15000)
-  const g = grilla(cargado, REFS)
-  assert.equal(g.filas[g.fArqArs - 1][5], 46233)
-})
-
-test('EL ARQUEO ES CAPTURA Y VA ARRIBA: el dueño no baja nueve conciliaciones para tipear', () => {
+test('SÓLO EL ARQUEO ES AMARILLO: el color no puede mentir sobre quién es dueño de la celda', () => {
+  // El diseño anterior pintaba de amarillo "Caja en pesos" y "Caja en dólares", que son CALCULADAS.
+  // Amarillo significa "acá podés escribir", y escribir ahí borraba una fórmula.
   const g = construir()
-  assert.ok(g.fArq0 < filaDe(g, /^3 · CALENDARIO/), 'el arqueo tiene que estar antes del calendario')
-  assert.ok(g.fArq0 < g.fCtrl0, 'el arqueo no puede vivir dentro del bloque de controles')
-})
-
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-// EL CALENDARIO — EL PISO CUENTA LA MISMA PLATA QUE EL CASH FLOW, NI MÁS NI MENOS (04/08)
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-//
-// El calendario tenía su propia lista de egresos (cheques + nómina) y el cash flow otra (rubros de
-// Compras). Con dos listas de la misma plata, el mismo mes daba $41.704.351 distinto en cada vista, y
-// el que veía de MENOS era el que produce el PISO PROYECTADO — el número con el que se decide cuánto
-// plazo fijo tomar. Un piso más alto que el real hace colocar plata que hace falta el 11/08.
-
-test('NINGUNA línea de egreso del cuadro se cae del calendario: los tramos suman las diecinueve', () => {
-  const g = construir()
-  const egresos = lineasDeCaja().filter(({ signo }) => signo === -1)
-  assert.ok(egresos.length >= 19, `el cuadro tiene ${egresos.length} líneas de egreso: si bajó, algo se perdió`)
-  // Las dos líneas de nómina NO salen de Compras aunque tengan `rubro`: su fuente es la planilla de
-  // jornales, así que su huella es el rango con nombre.
-  const POR_PLANILLA = { 'Nómina · Jornales de obra': 'JORNALES_REAL_TOTAL', 'Nómina · Sueldos administración': 'DIRECCION_PAGO' }
-  const huella = ({ linea }) => (POR_PLANILLA[linea.rubro] ?? (linea.rubro ? `"${linea.rubro}"`
-    : linea.soloSub ? `"${linea.soloSub}"`
-      : linea.cheques ? (linea.inst === 'cheques' ? 'Cheques Emitidos' : 'Tarjeta de Credito')
-        : linea.calendarioImpuestos ? 'Impuestos y Financieros' : null))
-  for (const f of g.filas.slice(g.cal0 - 1, g.cal1)) {
-    const sale = String(f[3] ?? '')
-    for (const l of egresos) {
-      const h = huella(l)
-      // Las tres sin huella son las que valen cero DECLARADO (descubierto, comisiones, impuesto al
-      // cheque): su ausencia es el punto, y la cubre el control del anexo.
-      if (!h) continue
-      assert.ok(sale.includes(h), `el tramo "${f[0]}" no ve "${l.linea.nombre}" (buscaba ${h})`)
-    }
-  }
-})
-
-test('EL DOBLE CONTEO QUE NO PUEDE VOLVER: los cheques entran sólo si NO tienen factura cargada', () => {
-  // Medido el 04/08: $43.380.472 de cheques librados cuya factura YA está en Compras. Como la columna
-  // suma Compras entera por rubro, sumar además el cheque cuenta esa plata dos veces — el cheque es el
-  // INSTRUMENTO y la factura la OBLIGACIÓN.
-  const g = construir()
-  for (const f of g.filas.slice(g.cal0 - 1, g.cal1)) {
-    const sale = String(f[3] ?? '')
-    for (const inst of ['Cheques Emitidos', 'Tarjeta de Credito']) {
-      const i = sale.indexOf(`'${inst}'`)
-      assert.ok(i > 0, `el tramo "${f[0]}" tiene que ver ${inst}`)
-      const termino = sale.slice(sale.lastIndexOf('SUMPRODUCT(', i), i + 400)
-      assert.ok(termino.includes('FALTA cargar la factura'),
-        `el término de ${inst} suma cheques SIN filtrar por la marca de cobertura: eso los cuenta dos veces`)
-    }
-    assert.ok(!sale.includes('Compras!$X$4:$X="Pendiente"'),
-      'el filtro por estado/medio de pago duplica los rubros de Compras que ya vienen del cuadro')
-  }
-})
-
-test('EL OTRO DOBLE CONTEO: un cheque YA DEBITADO no vuelve a restarse — ya está en el saldo', () => {
-  // El calendario parte del SALDO DEL BANCO y abre su primer tramo desde el serial 0, para no perder un
-  // cheque viejo que sigue sin presentarse. Esa apertura sólo es correcta junto con el filtro de
-  // debitado: sin él, "Vencido" volvía a restar 10 cheques ($11.631.542) y 2 cuotas ($556.899) que el
-  // banco ya había debitado. El piso quedaba $12.188.441 por debajo del real — y un piso falsamente
-  // bajo no es "conservador": frena colocaciones que sí se podían hacer.
-  const g = construir()
-  const COL_DEBITADO = { 'Cheques Emitidos': 'K', 'Tarjeta de Credito': 'J' }
-  for (const f of g.filas.slice(g.cal0 - 1, g.cal1)) {
-    const sale = String(f[3] ?? '')
-    for (const [inst, colDeb] of Object.entries(COL_DEBITADO)) {
-      const i = sale.indexOf(`'${inst}'`)
-      const termino = sale.slice(sale.lastIndexOf('SUMPRODUCT(', i), i + 600)
-      assert.ok(termino.includes(`UPPER('${inst}'!$${colDeb}$`) && termino.includes('<>"SI"'),
-        `el tramo "${f[0]}" resta ${inst} sin excluir lo ya debitado: esa plata ya salió y está en el saldo`)
-    }
-  }
-})
-
-test('cada tramo del calendario suma los jornales, no sólo los cheques', () => {
-  // El calendario leía UNA sola fuente: "Cheques Emitidos". Medido: el piso daba $70.643.236 ignorando
-  // los ~$14M por mes de jornales, que es el egreso más grande de la empresa.
-  const g = construir()
-  const tramos = g.filas.slice(g.cal0 - 1, g.cal1)
-  assert.equal(tramos.length, 6, 'los seis tramos con borde temporal')
-  for (const f of tramos) {
-    const sale = String(f[3])
-    assert.match(sale, /JORNALES_REAL_PAGO/, 'el tramo tiene que ver la quincena cerrada sin pagar')
-    assert.match(sale, /JORNALES_PROY_PAGO/, 'y la proyectada')
-    assert.match(sale, /Cheques Emitidos|K\$2|I\$2/, 'sin perder los cheques, que ya estaban')
-  }
-})
-
-test('LA DESCARGA: una quincena ya pagada no vuelve a pesar en el calendario', () => {
-  const g = construir()
-  const sale = String(g.filas[g.cal0 - 1]?.[3] ?? '')
-  assert.match(sale, /IF\(ISNUMBER\(JORNALES_REAL_PAGADO\);JORNALES_REAL_PAGADO;/,
-    'lo PAGADO manda sobre lo previsto: si se pagó, se pagó')
-  assert.match(sale, /JORNALES_REAL_HASTA\)\)>=CAJA_FECHA_SALDO/,
-    'y la ventana arranca en el corte del extracto: lo anterior ya está dentro del saldo')
-  // La proyección no mira PAGADO: una quincena que todavía no existe no puede estar pagada. SE AÍSLA SU
-  // TÉRMINO — mirar hasta el final de la fórmula es la misma trampa que anclar en la posición.
-  const proy = sale.split('+SUMPRODUCT(').find((t) => t.includes('JORNALES_PROY_PAGO')) ?? ''
-  assert.ok(proy.includes('JORNALES_PROY_PAGO'), 'el término de la proyección se pudo aislar')
-  assert.ok(!proy.includes('JORNALES_REAL_PAGADO'), 'la proyección no se filtra por pagada: no tiene sentido')
-})
-
-test('LA OFICINA TAMBIÉN SALE DE ESTA CAJA, y de la misma fuente que el cash flow', () => {
-  // El dueño: "no estás considerando oficina... por ende podría estar mal en caja". Eran ~$3,4M por mes
-  // que salen del mismo banco. Y también la DIRECCIÓN: $9.000.000 de retiros con fecha 10/08 que el
-  // calendario no veía porque leía OFICINA_* y no DIRECCION_*.
-  const g = construir()
-  const sale = String(g.filas[g.cal0 - 1]?.[3] ?? '')
-  assert.match(sale, /OFICINA_PAGO/, 'la oficina entra al calendario')
-  assert.match(sale, /DIRECCION_PAGO/, 'y los retiros de Dirección, la otra mitad de la nómina de administración')
-  assert.match(sale, /IF\(ISNUMBER\(OFICINA_PAGADO\);OFICINA_PAGADO;0\)\+IF\(ISNUMBER\(OFICINA_PROYECTADO\)/,
-    'un mes está pagado o proyectado, nunca los dos')
-  const iOfi = sale.indexOf('SUMPRODUCT(ISNUMBER(OFICINA_PAGO)')
-  const sig = sale.indexOf('+SUM', iOfi + 1)
-  assert.ok(!/Compras!/.test(sale.slice(iOfi, sig < 0 ? undefined : sig)),
-    'la nómina sale de la planilla de sueldos, no de Compras')
-})
-
-test('ANTES DEL CORTE MANDA EL BANCO: las quincenas viejas sin marcar NO son deuda', () => {
-  // Sin esta condición el calendario mostraba $106M en "Vencido": las trece quincenas del año que nadie
-  // marcó como pagadas, porque la columna "Pagado el" es nueva. No tener el dato NO es deber la plata.
-  const g = construir()
-  for (const f of g.filas.slice(g.cal0 - 1, g.cal1)) {
-    const sale = String(f[3])
-    assert.match(sale, /JORNALES_REAL_HASTA\)\)>=(MAX\()?CAJA_FECHA_SALDO/)
-    assert.match(sale, /Compras!\$AD\$4:\$AD;">="&(MAX\()?CAJA_FECHA_SALDO/,
-      'lo anterior al corte ya está descontado del saldo del banco')
-  }
-})
-
-test('EL CALENDARIO PROYECTA LOS DOS LADOS, o su piso es falso', () => {
-  // El dueño: "esos de 727k no es real". Se proyectaba la nómina hasta diciembre del lado que SALE y del
-  // lado que ENTRA sólo se miraba la cartera de cheques. Proyectar un lado y no el otro no es prudencia:
-  // es un cuadro desbalanceado que asusta con un número que no es un piso.
-  const g = construir()
-  for (const f of g.filas.slice(g.cal0 - 1, g.cal1)) {
-    const entra = String(f[2] ?? '')
-    assert.match(entra, /Cobranzas!\$O\$5/, 'el tramo mira el estado de Cobranzas')
-    assert.match(entra, /Cobranzas!\$Q\$5/, 'y la fecha de cobro')
-    assert.match(entra, /_CHEQUES_RAW/, 'sin perder la cartera, que ya estaba')
-    // Lo COBRADO no entra (ya está en el banco) y lo ENDOSADO tampoco (se le dio a un tercero).
-    assert.match(entra, /<>"cobrado"/)
-    assert.match(entra, /<>"endosado"/)
-    // ISNUMBER sobre la fecha: una fecha como TEXTO caería en varios tramos.
-    assert.match(entra, /ISNUMBER\(Cobranzas!\$Q\$5/)
-  }
-})
-
-test('la fecha que ubica el jornal en el tramo es la de PAGO, nunca la de cierre', () => {
-  const g = construir()
-  const sale = String(g.filas[g.cal0 - 1]?.[3] ?? '')
-  assert.match(sale, /IF\(ISNUMBER\(JORNALES_REAL_PAGO\);JORNALES_REAL_PAGO;JORNALES_REAL_HASTA\)/,
-    'el cierre es el ÚLTIMO recurso, detrás de la fecha pagada y de la prevista')
-  assert.ok(!/\(JORNALES_REAL_HASTA[>=<]/.test(sale), 'HASTA nunca compara contra el borde del tramo')
-})
-
-test('UNA LÍNEA SIN FUENTE ROMPE, no desaparece: sin las filas del calendario fiscal no hay pestaña', () => {
-  // Es la propiedad que costó $41,7M: no fue una fórmula mal escrita, fue un concepto que nadie sumó y
-  // nada avisó. Una referencia a una fila muerta devolvería $0 de IVA SIN UN SOLO #ERROR.
-  assert.throws(() => grilla(new Map(), { ...REFS, filasCal: undefined }), /Impuestos y Financieros/,
-    'el generador tiene que romper antes que escribir un calendario ciego al IVA')
-})
-
-test('el universo del control de conceptos ciegos es el CUADRO, no las fuentes del calendario', () => {
-  // EL CONTROL QUE ESTABA ACÁ ERA EL DEFECTO. Medía `horizonte − cheques − nómina − oficina`: el
-  // calendario menos las mismas tres fuentes que el calendario sumaba, así que no podía dar otra cosa
-  // que cero — y ese cero se leyó como "está todo bien" mientras al piso le faltaban $77M.
-  const ciegos = conceptosFueraDelCalendario(
-    lineasDeCaja().filter(({ signo }) => signo === -1).map(({ linea }) => linea.nombre))
-  assert.equal(ciegos.length, 0, 'el universo medido es el cuadro entero: contra sí mismo no falta nada')
-})
-
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-// EL TITULAR Y LA BANDA DEL PISO
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-
-test('el titular publica TRES números y ninguno es capacidad de endeudarse', () => {
-  // "El concepto piso proyectado en caja es super confuso, ¿qué es? ¿lo puedo usar para invertir o
-  // qué?" y "¿cuánto me va a quedar a fin de mes?". No son el mismo número y el titular publicaba uno
-  // solo. Además tenía pegado el crédito no utilizado, que no es plata propia (NIC 7: el uso del
-  // descubierto es actividad de FINANCIACIÓN).
-  //
-  // ERAN CUATRO Y LA CUARTA ESTABA VACÍA (05/08). "COLOCABLE" mostraba un pedido de configuración
-  // —"⚠ cargá la caja mínima"— en vez de un número: un cuarto del titular ocupado por una tarea
-  // pendiente. Bajó al bloque de cobertura, que es donde se decide si alcanza. El titular es para lo
-  // que se mira primero, y tres cifras se comparan de un vistazo; cuatro ya se leen de a una.
-  const g = construir()
-  const titulos = g.filas[g.fTitulos - 1].filter((x) => !vacia(x) && String(x || '').trim())
-  assert.equal(titulos.length, 3)
-  assert.match(titulos[0], /CUÁNTO HAY HOY/)
-  assert.match(titulos[1], /EL PISO/)
-  assert.match(titulos[2], /A FIN DE MES/)
-  for (const t of titulos) {
-    assert.ok(!/^"?CR[ÉE]DITO|AIRE TOTAL|DESCUBIERTO/i.test(t), `"${t}" no va en el titular de caja`)
-    // EL RÓTULO TRAE SU DEFINICIÓN EN LA MISMA CELDA (con salto de línea), porque una fila entera de
-    // pies cuesta más de lo que aporta en una pestaña con presupuesto de 45 filas.
-    assert.ok(String(t).startsWith('='), 'el rótulo es una fórmula: su definición lleva datos vivos')
-    assert.ok(String(t).includes('CHAR(10)'), 'rótulo y definición van en la misma celda, en dos líneas')
-  }
-})
-
-test('las tres cifras del titular son REFERENCIAS al detalle, nunca un número', () => {
-  const g = construir()
-  const cifras = g.filas[g.fCifras - 1].filter((x) => !vacia(x) && String(x || '').trim())
-  assert.equal(cifras.length, 3)
-  for (const c of cifras) {
-    assert.ok(String(c).startsWith('='), `el titular "${c}" tendría que ser una fórmula`)
-    assert.ok(!/^@/.test(String(c)), `quedó un marcador sin resolver: ${c}`)
-  }
-})
-
-test('el piso y lo que queda a fin de mes son DOS celdas distintas del calendario', () => {
-  const g = construir()
-  const [, piso, finMes] = g.filas[g.fCifras - 1].filter((x) => !vacia(x) && String(x || '').trim())
-  assert.notEqual(piso, finMes, 'si apuntan a la misma celda, el titular vuelve a contestar una sola pregunta')
-  // LOS DOS SALEN DE LA COLUMNA E, que es el contrato de la pestaña: el número que decide vive ahí.
-  assert.equal(piso, `=$E$${g.fPeor}`, 'el piso sale de la línea que lo calcula con su banda')
-  // Lo que queda a fin de mes sale de la posición acumulada del tramo que cierra el mes, ANCLADA A SU
-  // RÓTULO: si alguien inserta un tramo, esto se rompe acá y no en silencio en la pestaña.
-  const fila = Number(String(finMes).match(/\$E\$(\d+)/)[1])
-  assert.equal(String(g.filas[fila - 1][0]).trim(), 'Resto de este mes')
-})
-
-test('el piso no se publica solo: en la misma línea van la punta de abajo y el ancho de la banda', () => {
-  // El piso solo se lee como CERTEZA, y con él se decide un plazo fijo. Hay dos grupos de cheques cuya
-  // cobertura no se sabe: con el piso a secas, esa ignorancia se lee como dato.
-  //
-  // LA LÍNEA SE REACOMODÓ AL CONTRATO DE COLUMNAS (05/08): el piso es el número que decide, así que va
-  // en la E; lo que podría salir de más es una SALIDA, así que va en la D; y la punta de abajo se lee
-  // como E−D sin necesidad de una tercera celda que el lector no pueda atar a nada.
-  const g = construir()
-  assert.ok(g.fPeor > 0)
-  assert.match(celda(g, g.fPeor, 4), /^=MIN\(\$E/, 'el piso es el mínimo del recorrido, en la columna E')
-  assert.match(celda(g, g.fPeor, 3), /^=\$E\d+-MIN\(/, 'lo incierto es piso menos la punta de abajo, en la D')
-  assert.match(celda(g, g.fPeor, 5), /^=IFERROR\(INDEX\(/, 'y la F trae la fecha del piso, que es el plazo máximo')
-  assert.match(String(g.filas[g.fTitulos - 1][2]), /cae en/, 'el titular dice en qué tramo cae, o el piso no da un plazo')
-})
-
-test('la punta de abajo es un MÍNIMO por tramo, no el piso menos un total', () => {
-  // Restarle al piso TODO lo incierto le carga plata que sale DESPUÉS del punto más bajo: el peor caso
-  // quedaría más abajo de lo que puede estar, y una banda inflada se ignora igual que una alarma que
-  // suena siempre.
-  const g = construir()
-  const f = celda(g, g.fPeor, 3)
-  const terminos = [...f.matchAll(/\$E(\d+)-\(/g)].map((m) => Number(m[1]))
-  assert.deepEqual(terminos, Array.from({ length: g.cal1 - g.cal0 + 1 }, (_, i) => g.cal0 + i),
-    'los términos tienen que ser las filas de los tramos, en orden y sin saltarse ninguno')
-})
-
-test('la banda cuenta lo que NO se puede afirmar, y sólo eso', () => {
-  const g = construir()
-  const f = celda(g, g.fPeor, 3)
-  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  assert.match(f, new RegExp(esc(`="${MARCAS.sinNumero}"`)), 'los cheques sin N° de comprobante')
-  assert.match(f, /\$M\$2:\$M\$400=""/, 'y los que el OS todavía no miró')
-  // Los verificados y los inferidos tienen evidencia y viven del lado de arriba: si entraran, la banda
-  // contaría como incierta plata que ya viaja dentro de su rubro y además la restaría dos veces.
-  assert.ok(!f.includes(MARCAS.ok), 'metió los verificados en la banda de lo que no se puede afirmar')
-  assert.ok(!f.includes(MARCAS.inferido), 'metió los inferidos: entonces el cruce de respaldo no sirve para nada')
-  assert.ok(!f.includes(MARCAS.falta), 'los "FALTA" ya los suma el calendario: contarlos acá los restaría dos veces')
-})
-
-test('lo colocable descuenta la caja mínima, nunca es negativo, y dice hasta cuándo', () => {
-  // BAJÓ DEL TITULAR AL BLOQUE DE COBERTURA (05/08): es un dato de segundo orden —el piso menos la
-  // reserva operativa— y arriba ocupaba un cuarto de la primera pantalla mostrando un pedido de
-  // configuración. Acá está al lado de "¿alcanza?", que es la pregunta con la que se decide colocar.
-  const g = construir()
-  assert.ok(g.fColocable > g.fCobHasta, 'va en el bloque de cobertura, no en el titular')
-  const colocable = celda(g, g.fColocable, 4)
-  // Y CON SU FECHA: la del piso es el vencimiento máximo del instrumento. Sin ella, "colocable $X"
-  // invita a un plazo fijo que vence después del día en que hace falta la plata.
-  assert.equal(celda(g, g.fColocable, 5), `=$F$${g.fPeor}`, 'sin la fecha del piso no hay plazo que respetar')
-  // LA CAJA MÍNIMA SE CITA POR NOMBRE Y EL NOMBRE APUNTA A SU FUENTE (`01_Valores Iniciales`): ni CAJA
-  // ni el anexo la copian, así que no puede haber dos versiones del mismo parámetro.
-  assert.ok(String(colocable).includes('CAJA_MINIMA'), 'lo colocable tiene que restar la caja mínima')
-  assert.ok(String(colocable).includes('MAX(0;'), 'un colocable negativo se lee como "conseguí esto"')
-  // Y sin caja mínima cargada NO publica un número: publicaría el piso entero, que es el error más caro
-  // posible en esta celda.
-  assert.ok(/^=IF\(N\(CAJA_MINIMA\)<=0;"";/.test(String(colocable)))
-})
-
-test('no queda ningún marcador @ sin resolver en toda la grilla', () => {
-  const g = construir()
-  for (const [i, f] of g.filas.entries()) {
-    for (const c of f || []) {
-      if (typeof c === 'string' && /^@[A-Z]/.test(c)) assert.fail(`fila ${i + 1}: marcador vivo "${c}"`)
-    }
-  }
-})
-
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-// LA COBERTURA, LA CONCENTRACIÓN Y LOS VEREDICTOS
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-
-test('LA COBERTURA SALE DE LA MISMA DEFINICIÓN QUE EL CALENDARIO, no de una cuenta nueva', () => {
-  // Una segunda definición de "obligaciones" es exactamente lo que costó los $41,7M de desacuerdo entre
-  // CAJA y el Cash Flow.
-  //
-  // Y SE MIDE EN PESOS, NO EN VECES (05/08). La columna publicaba "2,89 ×" y era otro lugar donde la
-  // pestaña dejaba de contestar la pregunta del dueño, que la hizo así: *"¿cuánto me va a quedar a fin
-  // de mes al cubrir todas las obligaciones?"*. Un múltiplo no se responde con eso. Ahora la E dice
-  // CUÁNTO SOBRA, en la misma columna que el resto de los números que se deciden, y un faltante se ve
-  // solo porque es negativo — sin necesidad de explicar que debajo de 1,00 falta plata.
-  const g = construir()
-  const tramo0 = String(g.filas[g.cal0 - 1][3])
-  for (let f = g.fCobDesde; f <= g.fCobHasta; f++) {
-    const sale = String(g.filas[f - 1][3])
-    assert.ok(sale.startsWith(tramo0.slice(0, 60)), `la fila ${f} no usa el cuadro del cash flow`)
-    assert.ok(sale.includes('TODAY()+'), 'la ventana tiene que ser de 30, 60 o 90 días')
-    assert.ok(sale.includes('CAJA_FECHA_SALDO'), 'arranca en el corte: lo ya vencido pesa en las tres ventanas')
-    const recursos = String(g.filas[f - 1][2])
-    assert.ok(recursos.includes('CAJA_TOTAL_DISPONIBLE') && recursos.includes('Cobranzas!'),
-      'los recursos son caja + cartera + cobranzas esperadas, no la caja sola')
-    assert.equal(celda(g, f, 4), `=$C${f}-$D${f}`,
-      'lo que sobra es la resta de las dos columnas de al lado: nada que el lector no pueda atar')
-  }
-})
-
-test('el crédito no utilizado va DEBAJO de la cobertura y se cita por nombre, no se recalcula', () => {
-  const g = construir()
-  assert.ok(g.fCredito > g.fCobHasta, 'el crédito no es efectivo: no puede ir pegado a un saldo')
-  const fila = g.filas[g.fCredito - 1]
-  assert.match(String(fila[0]), /NO es efectivo/, 'el rótulo tiene que decirlo')
-  // EL DESGLOSE SE FUE AL ANEXO (05/08): cupo de tarjeta y acuerdo ocupaban las columnas de ENTRA y SALE
-  // sin ser ni lo uno ni lo otro. Acá queda el total disponible, citado por nombre, y los días de caja
-  // en el rótulo — que es donde se lee sin cruzar la pantalla.
-  assert.ok(String(fila[4]).includes('ANEXO_AIRE'), 'el total se cita por nombre: el detalle vive en el anexo')
-  assert.ok(String(fila[0]).includes('ANEXO_DIAS_CAJA'), 'y los días de caja van en el rótulo, no en una columna')
-})
-
-test('un RÓTULO CALCULADO no se combina como si fuera un párrafo', () => {
-  // Las cinco filas del ranking llevan una fórmula larga en la columna del rótulo con B y E vacías:
-  // cumplían la condición de "explicación", se fusionaban a lo ancho y tapaban el importe de al lado.
-  const g = construir()
-  for (let f = g.fCli0; f <= g.fCli1; f++) {
-    const t = String(g.filas[f - 1][0])
-    assert.ok(t.length > 120 && t.startsWith('='), 'el rótulo del ranking es una fórmula larga')
-    assert.ok(String(g.filas[f - 1][2] ?? '').trim(), 'y tiene un importe al lado: por eso no es prosa')
-  }
-})
-
-test('LOS CONTROLES NO DESAPARECIERON: cada uno sigue nombrado en el veredicto de CAJA', () => {
-  // La mudanza al anexo es de UBICACIÓN, no de cobertura. Si un control se cayera del anexo y nadie lo
-  // citara acá, la pestaña quedaría más linda y más ciega — que es exactamente lo que no puede pasar.
-  const g = construir()
-  const bloque = g.filas.slice(g.fCtrl0 - 1, g.fCtrl1).map((f) => f.join(' ')).join(' ')
-  for (const n of ['ANEXO_DIF_ECHEQ', 'ANEXO_DIF_CONCILIACION', 'ANEXO_EFECTIVO_SIN_EXPLICAR',
-    'ANEXO_VENCIDO_SIN_CONCILIAR', 'ANEXO_OFICINA_SIN_CANAL', 'ANEXO_CHEQUES_SIN_MARCA', 'ANEXO_CHEQUES_SIN_FECHA']) {
-    assert.ok(bloque.includes(n), `el control ${n} no está citado en el veredicto: se perdió al mudarse`)
-  }
-  // Y EL VEREDICTO NOMBRA AL CULPABLE: un total agrupado sin decir cuál manda es el "número mudo" que
-  // este archivo persigue desde el 21/07.
-  //
-  // EL VEREDICTO SE MUDÓ AL RÓTULO (05/08). Vivía en la G —"efectivo sin depositar: $2.310.646"— y el
-  // total agrupado en la C: para leer un control había que cruzar la pantalla entera. Ahora el rótulo
-  // nombra cuál manda y la E dice cuánto suma el grupo, en la misma columna que todos los números.
-  for (let f = g.fCtrl0 + 1; f <= g.fCtrl1; f++) {
-    assert.match(celda(g, f, 0), /^=IF\(/, 'el rótulo tiene que decir CUÁL de los controles manda')
-    assert.match(celda(g, f, 0), /"\$#,##0"/, 'y con su monto')
-    assert.match(celda(g, f, 4), /^=ABS\(N\(/, 'y el total del grupo va en la E, la columna del número')
-  }
-})
-
-test('la varianza previsto-contra-real está en la primera pantalla, no en el anexo', () => {
-  // Es KPI de primer orden en cualquier tesorería y en este archivo no existía en ninguna parte.
-  const g = construir()
-  const f = filaDe(g, /previsto contra real/i)
-  assert.ok(f > 0, 'la varianza tiene que estar en CAJA')
-  assert.ok(f < g.fCob0, 'y pegada al calendario, que es de donde sale')
-  // ES UNA LÍNEA, NO UN RENGLÓN DE TABLA (05/08): repetía en C y D el tramo Vencido que está tres filas
-  // más arriba, y el mismo número dos veces en la misma pantalla hace dudar de los dos. Queda el desvío
-  // —lo único que esta línea aporta— en la columna del número, y el rótulo dice si está al día.
-  assert.match(celda(g, f, 4), /ANEXO_VENCIDO_SIN_CONCILIAR/, 'el desvío es lo que sigue sin marcarse')
-  assert.match(celda(g, f, 0), /ANEXO_VENCIDO_SIN_CONCILIAR/, 'y el rótulo dice si está al día o no')
+  assert.deepEqual(g.amarillas, [g.fArqArs, g.fArqUsd])
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // LEGIBILIDAD Y FORMATO — SE MIDE, NO SE OPINA
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-test('LA NUMERACIÓN DE BLOQUES ES CONSECUTIVA Y SIN HUECOS', () => {
-  // Un cuadro que va "1, 2, 3, 4, 8, 9" desorienta: parece que faltan bloques.
+test('LA NUMERACIÓN DE BLOQUES ES CONSECUTIVA Y SIN HUECOS, mirando LAS DOS columnas de título', () => {
   const g = construir()
-  const rot = g.filas.map((f) => String(f?.[0] ?? '').trim())
-  const raiz = rot.map((t) => (String(t).match(/(\d+) · /) || [])[1]).filter(Boolean).map(Number)
-  assert.deepEqual(raiz, [1, 2, 3, 4, 5], `bloques con hueco: ${raiz.join(", ")}`)
-  // Y ningún rótulo puede quedar con la numeración vieja: un "7.3" suelto manda a buscar un bloque que
-  // ya no existe en esta pestaña.
-  for (const t of rot) assert.ok(!/^\d+\.\d+ · /.test(t), `quedó un rótulo del anexo viejo: ${t}`)
+  const raiz = []
+  for (const f of g.filas) {
+    for (const c of [0, 5]) {
+      if (!esTituloDeBloque(f?.[c])) continue
+      const m = String(f[c]).match(/"?(\d+) · /)
+      if (m) raiz.push(Number(m[1]))
+    }
+  }
+  assert.deepEqual(raiz, [1, 2, 3, 4], `bloques con hueco: ${raiz.join(' ')}`)
 })
 
-test('EL "$" ES DEL TOTAL: el cuerpo va sin símbolo y sólo las filas de cierre lo llevan', () => {
-  const g = construir()
-  assert.ok(g.totales.length >= 2, 'tienen que existir filas de total identificadas')
-  // El ancla es el TEXTO, nunca la posición: agregar un bloque no puede romper la lista.
-  for (const f of g.totales) assert.match(String(g.filas[f - 1][0]), /^\s*(⇒|Total|TOTAL)/)
-  const fCuenta = filaDe(g, /^Caja en pesos$/)
-  assert.ok(fCuenta > 0 && !g.totales.includes(fCuenta))
-})
-
-test('CADA BLOQUE DECLARA LA FECHA DE SU FUENTE, y es una fórmula', () => {
+test('CADA BLOQUE CON FUENTE PROPIA DECLARA SU FECHA, y es calculada', () => {
   // La pestaña mezcla un arqueo del 04/08, un extracto del 05/08 y un resumen de tarjeta del 22/07. Es
-  // legítimo —una fuente viva no le presta su frescura a una congelada— pero tiene que estar DICHO.
+  // legítimo —una fuente viva no le presta su frescura a una congelada— pero tiene que estar DICHO. Los
+  // bloques 3 y 4 se derivan de los de arriba: inventarles una fecha sería peor que no tenerla.
   const g = construir()
-  const bloques = g.filas.map((f, i) => ({ i, t: String(f?.[0] ?? '') })).filter((x) => esTituloDeBloque(x.t))
-  assert.ok(bloques.length >= 5)
-  //
-  // ═══ SÓLO LOS BLOQUES CON FUENTE PROPIA, Y COMO FECHA (05/08) ═══
-  //
-  // Este test contaba "todos" y pasaba en verde porque miraba la columna G, donde había frases como
-  // "debajo de 1,00 falta plata": una frase que no es una fecha aprobaba el control de frescura. Los
-  // bloques 4 y 5 no tienen fuente propia —se derivan de los de arriba— y ponerles una fecha inventada
-  // habría sido peor que no tenerla. La regla real es: el que tiene fuente con corte declara SU fecha,
-  // calculada, en la columna de las fechas; el que no tiene, no declara nada.
-  const conFecha = bloques.filter((b) => !vacia(g.filas[b.i][5]) && String(g.filas[b.i][5] ?? '').trim())
-  assert.ok(conFecha.length >= 3, 'los bloques con fuente propia (cuentas, arqueo, calendario) declaran su fecha')
-  for (const b of conFecha) {
-    assert.ok(String(g.filas[b.i][5]).startsWith('='),
-      `el bloque "${b.t.slice(0, 30)}" declara una fecha escrita a mano: eso fecha la CORRIDA, no el dato`)
+  for (const c of [0, 5]) {
+    assert.ok(String(g.filas[g.fBloques12 - 1][c] ?? '').startsWith('='),
+      `el título del bloque de la columna ${c} tiene que traer su frescura calculada`)
+    assert.ok(!String(g.filas[g.fBloques34 - 1][c] ?? '').startsWith('='),
+      'un bloque derivado no declara frescura: sería una fecha inventada')
   }
 })
 
 test('ninguna fórmula usa la coma como separador de ARGUMENTOS (en es_AR va `;`; la coma es decimal)', () => {
-  // Este test empezó siendo "ninguna coma" y encontró un falso positivo que enseña la regla real: la
-  // fila del ritmo de gasto divide por `30,44` y en un archivo es-AR eso es el NÚMERO 30,44. La regla
-  // que importa es la otra: una coma entre ARGUMENTOS deja #ERROR! en la celda.
   const g = construir()
   for (const [i, fila] of g.filas.entries()) {
     for (const [j, c] of fila.entries()) {
-      if (j >= 7) continue
       const s = String(c ?? '')
       if (!s.startsWith('=')) continue
       const sospechosas = s.replace(/"[^"]*"/g, '""').replace(/(?<=\d),(?=\d)/g, '')
@@ -647,199 +400,65 @@ test('ninguna fórmula usa la coma como separador de ARGUMENTOS (en es_AR va `;`
 /** Saca los literales de texto de una fórmula: lo de adentro es prosa legítima y no se audita. */
 const sinLits = (s) => String(s).replace(/"(?:[^"]|"")*"/g, '«»')
 
-test('NINGUNA fórmula lleva su explicación PEGADA con " — " fuera de un literal', () => {
-  // H114 quedó en #ERROR! y el generador había dicho "✓ ninguna celda en error": la celda tenía la
-  // fórmula del detalle Y su explicación pegadas. Eso no parsea, y en la columna de prosa el
-  // localizador es-AR además le cambia las comas del castellano por ";".
+test('NINGUNA fórmula lleva su explicación PEGADA con guion largo fuera de un literal', () => {
+  // Una celda quedó en #ERROR! y el generador había dicho "ninguna celda en error": tenía la fórmula Y
+  // su explicación pegadas. Eso no parsea.
   const g = construir()
   for (const [i, fila] of (g.filas || []).entries()) {
     for (const [j, c] of (fila || []).entries()) {
       const s = String(c ?? '')
       if (!s.startsWith('=')) continue
-      assert.ok(!/\s—\s/.test(sinLits(s)),
-        `fila ${i + 1} col ${j}: la fórmula tiene una explicación pegada con " — " fuera de comillas.\n  ${s.slice(0, 140)}`)
+      assert.ok(!/\s—\s/.test(sinLits(s)), `fila ${i + 1} col ${j}: explicación pegada fuera de comillas.\n  ${s.slice(0, 140)}`)
     }
   }
 })
 
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-// LA COLUMNA H NO VUELVE (03/08)
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-//
-// La corrida del 03/08 le escribió al dueño 66 celdas de prosa en la columna H. Él las borra siempre
-// —textual: "esas aclaraciones de mierda yo siempre las saco"— y ya lo había pedido en julio para
-// Impuestos y Cargas Sociales. Volvió por un MERGE: se rescataron generadores de una rama anterior a
-// esa decisión. Por eso el control es de grilla y no de revisión: un merge no lee las decisiones, lee
-// los tests.
-
-test('la grilla no lleva NI UNA celda de prosa en la columna H', () => {
-  const g = construir()
-  const conTexto = g.filas.map((f, i) => ({ fila: i + 1, v: f[7] })).filter((x) => !vacia(x.v) && x.v !== undefined)
-  assert.deepEqual(conTexto, [],
-    'volvió la columna "de dónde sale". El generador escribe el DATO; la explicación va en el código.\n'
-    + conTexto.slice(0, 8).map((x) => `  fila ${x.fila}: ${String(x.v).slice(0, 70)}`).join('\n'))
-})
-
-test('la columna H se emite con el centinela: la intención queda DECLARADA, no implícita', () => {
-  // Una celda AUSENTE significa "no es mía, no la toco"; el centinela VACIO significa "es mía y va
-  // vacía". La columna de prosa es del generador, así que sale declarada — y así la fusión limpia las
-  // 66 que quedaron de las corridas viejas.
-  const g = construir()
-  for (const f of g.filas) assert.equal(f[7], VACIO, 'la columna de prosa tiene que salir con el centinela')
-})
-
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-// LOS RANGOS CON NOMBRE — UN NOMBRE NO SE REAPUNTA A UNA GRILLA QUE NO SE ESCRIBIÓ (03/08)
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-//
-// EL DAÑO, MEDIDO. Los rangos se publicaban ANTES de escribir, contra la grilla que el generador
-// PENSABA escribir. El 03/08 el portón frenó la escritura —la pestaña era del dueño— y la pestaña quedó
-// con su layout viejo mientras los nombres se iban cuatro filas abajo: `CAJA_ARQUEO_ARS` cayó en una
-// celda vacía y el total pasó de $123,79M a $80,91M. Sin un solo #REF!, y con el diff de la pestaña en
-// CERO celdas: el contenido no se tocó, se movieron los punteros.
-
-const G_FALSA = { fArqArs: 15, fArqUsd: 16, fBancoPesos: 8, fCartera: 10 }
-
-test('ANTES de escribir sólo se CREAN los que faltan: ninguno se reapunta', async () => {
-  const { requestsDeRangos, RANGOS_DE_CAJA } = await import('./caja-pestana.mjs')
-  const existentes = RANGOS_DE_CAJA.map((r, i) => ({ name: r.nombre, namedRangeId: `id${i}`, range: { startRowIndex: 999 } }))
-  assert.equal(requestsDeRangos(7, G_FALSA, existentes, { soloFaltantes: true }).length, 0,
-    'con todos los nombres ya creados, antes de escribir no se toca ninguno')
-})
-
-test('ANTES de escribir, el que NO existe sí se crea — si no, #NAME? en la primera corrida', async () => {
-  const { requestsDeRangos, RANGOS_DE_CAJA } = await import('./caja-pestana.mjs')
-  const reqs = requestsDeRangos(7, G_FALSA, [], { soloFaltantes: true })
-  assert.equal(reqs.length, RANGOS_DE_CAJA.length, 'arranque en frío: se crean todos')
-  assert.ok(reqs.every((r) => r.addNamedRange), 'sólo se AGREGAN, nunca se reapunta')
-})
-
-test('DESPUÉS de escribir sí se reapuntan todos a la grilla escrita', async () => {
-  const { requestsDeRangos, RANGOS_DE_CAJA } = await import('./caja-pestana.mjs')
-  const existentes = RANGOS_DE_CAJA.map((r, i) => ({ name: r.nombre, namedRangeId: `id${i}`, range: { startRowIndex: 999 } }))
-  const reqs = requestsDeRangos(7, G_FALSA, existentes)
-  assert.equal(reqs.length, RANGOS_DE_CAJA.length)
-  const arq = reqs.find((r) => r.updateNamedRange?.namedRange?.name === 'CAJA_ARQUEO_ARS')
-  assert.equal(arq.updateNamedRange.namedRange.range.startRowIndex, 14, 'fila 15, 0-based')
-})
-
-test('TIPO_CAMBIO_USD ya NO lo publica CAJA: su bloque se mudó al anexo', async () => {
-  // Dos escritores sobre el mismo nombre es cómo un rango termina apuntando a una celda vacía. El
-  // bloque del tipo de cambio vive en `_CAJA_ANEXO`, así que el anexo es su único dueño.
-  const { RANGOS_DE_CAJA } = await import('./caja-pestana.mjs')
-  assert.ok(!RANGOS_DE_CAJA.some((r) => r.nombre === 'TIPO_CAMBIO_USD'),
-    'dos generadores publicando el mismo nombre es la receta del rango que miente')
-})
-
-test('EL DESASTRE DEL 31/07: si la escritura se saltea, NO se formatea ni se mueven los nombres', () => {
-  // La guarda hacía bien su trabajo —con la pestaña candada no se escribe— pero el resultado se
-  // ignoraba: `formatear` pintaba la geometría de la grilla NUEVA sobre los valores VIEJOS y `publicar`
-  // reapuntaba los nombres a celdas vacías. Con el total y la fecha de corte en cero, todo cheque y toda
-  // quincena pasan el filtro ">=CAJA_FECHA_SALDO" y el calendario infla.
-  //
-  // Se verifica sobre el FUENTE porque es una secuencia de efectos sobre Google, no una función pura:
-  // un test que llamara a las mismas funciones mockeadas probaría el mock, no el orden.
-  const src = readFileSync(new URL('./caja-pestana.mjs', import.meta.url), 'utf8')
-  const i = src.indexOf('const escritura = await escribirPreservando')
-  assert.ok(i > 0, 'el resultado de la escritura se guarda en una variable, no se descarta')
-  const corte = src.indexOf('await formatear(', i)
-  assert.ok(corte > i, 'formatear viene después de escribir')
-  const entre = src.slice(i, corte)
-  assert.match(entre, /escritura\?\.bloqueada \|\| escritura\?\.editadaPorHumano/, 'se consulta el skip')
-  assert.match(entre, /\n\s+return\n/, 'y se CORTA la corrida antes de formatear')
-  assert.ok(src.indexOf('await publicar(', corte) > corte, 'publicar queda del lado protegido por el return')
-})
-
-test('el generador NO publica rangos en el camino de la escritura frenada', () => {
-  const src = readFileSync(new URL('./caja-pestana.mjs', import.meta.url), 'utf8')
-  const corte = src.indexOf('escritura?.bloqueada || escritura?.editadaPorHumano')
-  const soloFaltantes = src.indexOf('soloFaltantes: true')
-  const reapunta = src.indexOf('reapuntados a la grilla RECIÉN ESCRITA')
-  assert.ok(corte > 0 && soloFaltantes > 0 && reapunta > 0, 'las tres marcas tienen que existir')
-  assert.ok(soloFaltantes < corte, 'la creación de los que faltan va ANTES del corte')
-  assert.ok(reapunta > corte, 'el reapuntado va DESPUÉS del corte: si la escritura se frena, no se llega')
-})
-
-test('CAJA no se escribe si falta la pestaña del anexo: sería media pantalla en #NAME?', () => {
-  const src = readFileSync(new URL('./caja-pestana.mjs', import.meta.url), 'utf8')
-  const i = src.indexOf('PESTANA_ANEXO)')
-  const escribe = src.indexOf('escribirPreservando(google')
-  assert.ok(i > 0 && i < escribe, 'la guarda tiene que estar ANTES de escribir')
-  assert.match(src.slice(i, i + 500), /throw new Error/, 'y romper, no seguir con los controles en error')
-})
-
-
-test('TEXTO EN UNA COLUMNA DE PLATA: sólo los encabezados, y el formateador los declara', () => {
-  // `auditar-pantalla.mjs` reportaba 4 defectos `texto_en_numero` — el caso real era F52 "Esta semana",
-  // un rótulo de tramo caído en la columna de la posición acumulada. Un texto en una celda con formato
-  // de moneda no da error: se dibuja raro y hace desconfiar de toda la fila.
-  //
-  // La única excepción legítima es el ENCABEZADO de una tabla, y tiene que ser exactamente eso: una fila
-  // que el formateador YA CONOCE y a la que le devuelve el formato de TEXTO. Cualquier otra constante en
-  // C, D o E es el defecto — y esta lista es la misma que usa `formatear`, así que agregar un encabezado
-  // sin declararlo pone este test en rojo en vez de dejar cuatro celdas mal dibujadas en la planilla.
-  const g = construir()
-  const cabeceras = new Set([g.cab1, g.cabCli, filaDe(g, /^Tramo$/), filaDe(g, /^Horizonte$/)])
-  for (const [i, f] of g.filas.entries()) {
-    for (const col of [2, 3, 4]) {
-      const v = f[col]
-      if (typeof v !== 'string' || vacia(v) || v.startsWith('=') || !Number.isNaN(Number(v))) continue
-      assert.ok(cabeceras.has(i + 1),
-        `fila ${i + 1} col ${String.fromCharCode(65 + col)}: "${v}" es texto en una columna de plata y no es un encabezado declarado`)
-    }
-  }
-})
-
-test('la fecha de cada bloque va en la COLUMNA DE FECHAS, y es una fecha de verdad', () => {
-  // ═══ SE DIO VUELTA (05/08) ═══
-  //
-  // Este test exigía lo contrario: la frescura de cada bloque iba en la G porque la F era "de fechas en
-  // el bloque de cuentas y de PLATA en el calendario", y una frase en la F se habría dibujado como un
-  // importe. Eso describía el defecto, no la solución. Con el contrato nuevo la F es la columna de
-  // fechas de TODA la pestaña —el calendario ya no la usa para plata— así que la declaración de cada
-  // bloque va donde están las demás fechas, alineada con ellas, y como valor de fecha y no como frase.
-  const g = construir()
-  for (const [i, f] of g.filas.entries()) {
-    if (!esTituloDeBloque(f[0])) continue
-    // Un bloque derivado (¿alcanza?, controles) no tiene fuente propia y va sin fecha: inventarle una
-    // sería declarar una frescura que no le corresponde. Lo que no puede es poner una FRASE ahí.
-    if (!vacia(f[5])) assert.ok(String(f[5]).startsWith('='), `la fecha del bloque de la fila ${i + 1} tiene que ser calculada`)
-    assert.ok(vacia(f[6]), `el bloque de la fila ${i + 1} volvió a escribir en la G, que ya no existe`)
-  }
-})
-
-test('NINGÚN RÓTULO SE CORTA: el texto fijo entra en el ancho de su columna', () => {
-  // `auditar-pantalla.mjs` marcó SEIS textos cortados sobre la pestaña escrita: A11 con 71 caracteres
-  // en 380px (entran 66), y los dos rótulos del titular. Un rótulo cortado se lee como basura y hace
-  // desconfiar de la fila entera; peor todavía en la columna del VEREDICTO, que dice cuánto falta.
-  //
-  // Se mide con el ancho REAL de cada columna, no a ojo: ~5,75 px por carácter en el cuerpo del
-  // archivo, que es la relación con la que el auditor encontró los seis. Sólo se audita el texto FIJO
-  // —lo que produce una fórmula no se puede medir sin evaluarla—. Desde el 05/08 se audita SÓLO la A:
-  // la G dejó de existir como columna, y el resto son números, que no se cortan sino que se redondean.
+test('NINGÚN RÓTULO FIJO SE CORTA: el texto entra en el ancho de su columna', () => {
+  // `auditar-pantalla.mjs` marcó seis textos cortados sobre la pestaña escrita. Un rótulo cortado se
+  // lee como basura y hace desconfiar de la fila entera. Se mide con el ancho REAL de cada columna
+  // (~5,75px por carácter) y sólo sobre el texto FIJO: lo que produce una fórmula no se puede medir sin
+  // evaluarla. Los títulos de bloque quedan afuera: desbordan libres sobre columnas vacías.
   const g = construir()
   const cabe = (px) => Math.floor(px / 5.75)
   for (const [i, f] of g.filas.entries()) {
-    // EL TÍTULO DE UN BLOQUE OCUPA LA FILA ENTERA y desborda libre sobre columnas vacías: medirlo contra
-    // el ancho de la A lo obligaría a caber donde no tiene por qué. Se audita el rótulo de RENGLÓN, que
-    // sí tiene un número a la derecha que lo corta.
-    if (esTituloDeBloque(f[0])) continue
-    for (const col of [0]) {
+    for (const col of [0, 5]) {
       const v = f[col]
-      if (typeof v !== 'string' || vacia(v) || v.startsWith('=')) continue
+      if (typeof v !== 'string' || vacia(v) || v.startsWith('=') || esTituloDeBloque(v)) continue
       assert.ok(v.length <= cabe(ANCHOS[col]),
-        `fila ${i + 1} col ${String.fromCharCode(65 + col)}: ${v.length} caracteres en ${ANCHOS[col]}px `
-        + `(entran ${cabe(ANCHOS[col])}). Acortá el rótulo antes que ensanchar: la pestaña ya está en su ancho.\n  "${v}"`)
+        `fila ${i + 1} col ${String.fromCharCode(65 + col)}: ${v.length} caracteres en ${ANCHOS[col]}px (entran ${cabe(ANCHOS[col])}).\n  "${v}"`)
     }
   }
 })
 
-test('LA COLUMNA DEL NÚMERO QUE DECIDE ES LA MÁS ANCHA DESPUÉS DEL RÓTULO', () => {
-  // El reparto tiene que seguir al contrato de columnas: la E es donde se lee el número con el que se
-  // decide, así que es la más ancha de las de dato. Y la G tiene que valer CERO: si alguien le da ancho,
-  // vuelve a ser el cajón sin significado propio que el dueño mandó a sacar.
-  assert.ok(ANCHOS[4] > ANCHOS[2] && ANCHOS[4] > ANCHOS[3],
-    'la E es la columna del número que decide: tiene que ser la más ancha de las de dato')
-  assert.equal(ANCHOS[6], 0, 'la columna G no existe más: darle ancho la resucita')
-  assert.ok(ANCHOS.reduce((a, b) => a + b, 0) <= 1140, 'y el total tiene que seguir entrando en una pantalla')
+test('LA GRILLA ENTRA EN UNA PANTALLA A LO ANCHO, y la columna que decide es la ancha', () => {
+  assert.equal(ANCHOS.length, ANCHO, 'un ancho por columna, o la última se queda con el default')
+  assert.ok(ANCHOS.reduce((a, b) => a + b, 0) <= 1140, 'el total tiene que entrar sin scroll horizontal')
+  // La columna del aire entre paneles es lo más angosto que hay: si crece, deja de ser aire y se lee
+  // como una columna vacía, que el auditor de pantalla reporta como hueco.
+  assert.ok(ANCHOS[4] <= 24, 'la E es aire, no una columna')
+  assert.ok(ANCHOS[8] > ANCHOS[6], 'la I es la posición acumulada: el número que decide de la escalera')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA COLUMNA DE PROSA NO VUELVE (03/08)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// La corrida del 03/08 le escribió al dueño 66 celdas de prosa. Él las borra siempre —textual: "esas
+// aclaraciones de mierda yo siempre las saco"— y ya lo había pedido en julio. Volvió por un MERGE: se
+// rescataron generadores de una rama anterior a esa decisión. Por eso el control es de grilla y no de
+// revisión: un merge no lee las decisiones, lee los tests.
+
+test('la grilla no lleva NI UNA celda de prosa, y la columna sale con el centinela', () => {
+  const g = construir()
+  for (const [i, f] of g.filas.entries()) {
+    assert.equal(f[COL_PROSA], VACIO,
+      `fila ${i + 1}: la columna de prosa tiene que salir con el centinela para que la fusión limpie las viejas`)
+  }
+})
+
+test('SIN EL CALENDARIO FISCAL NO HAY PESTAÑA: una fuente que falta no puede leerse como un cero', () => {
+  // Es la propiedad que costó $41,7M: no fue una fórmula mal escrita, fue un concepto que nadie sumó y
+  // nada avisó. Sin la pestaña de impuestos el libro no ve el IVA/IIBB y el piso sube sin que se haya
+  // pagado nada, sin un solo #ERROR.
+  assert.throws(() => grilla(new Map(), { ...REFS, filasCal: undefined }), /Impuestos y Financieros/)
 })

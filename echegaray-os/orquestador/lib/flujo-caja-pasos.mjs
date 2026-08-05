@@ -172,7 +172,7 @@ export const PASOS = [
   // publicar sus nombres PRIMERO. Al revés, en un arranque en frío la pestaña que el dueño abre todos
   // los días se llena de #NAME? — y si algo tiene que mostrar un error una corrida, que sea el auxiliar.
   ['caja-anexo-pestana.mjs', '_CAJA_ANEXO — el detalle y las conciliaciones que sostienen los veredictos de CAJA', ['_CAJA_ANEXO']],
-  ['caja-pestana.mjs', 'CAJA — la posición de tesorería en una pantalla (45 filas)', ['CAJA']],
+  ['caja-pestana.mjs', 'CAJA — la portada ejecutiva de tesorería: cinco tarjetas y una pantalla', ['CAJA']],
   // El núcleo Postgres, para que la web y el chat vean lo mismo que la planilla y no un mes atrás.
   // ÚLTIMO ANTES DEL NÚCLEO: unificar el formato de las catorce pestañas. Va al final porque cada
   // script anterior acaba de reescribir la suya, y una pasada de formato hecha antes se pierde.
