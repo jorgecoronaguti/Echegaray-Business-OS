@@ -344,6 +344,23 @@ export function formatoDeTodo({ sheetId, filaAncla, alto, vista = VISTA.POR_PROV
   return pedidos
 }
 
+/**
+ * LOS RÓTULOS QUE VA A ESCRIBIR LA DINÁMICA, ANTES DE QUE LOS ESCRIBA.
+ *
+ * Un campo de fila hereda el encabezado de su columna en Compras y la API no deja renombrarlo; sólo
+ * los `values` aceptan `name`. Saberlos de antemano es lo que permite darle a la fila de rótulos el
+ * alto que necesita para que "Fecha prevista de pago (día)" no salga cortado — sin tocar Compras,
+ * que es fuente y no se edita.
+ *
+ * @param {{vista?:string, cabecera?:any[], nombresDeValores?:string[]}} o  la fila 3 de Compras
+ * @returns {string[]} un rótulo por columna, en el orden en que la dinámica los emite
+ */
+export function rotulosDelCuadro({ vista = VISTA.POR_PROVEEDOR, cabecera = [], nombresDeValores = [] } = {}) {
+  const campos = camposDeFila({ vista }).map((r) => String(cabecera[r.sourceColumnOffset] ?? '').trim())
+  const valores = valoresDelPivot({ vista }).map((v, i) => String(nombresDeValores[i] ?? v.name ?? '').trim())
+  return [...campos, ...valores]
+}
+
 /** El pedido de formato de UNA columna del bloque, desde la fila siguiente al rótulo. */
 function formatoDeColumna({ sheetId, filaAncla, alto, columna, numberFormat, horizontalAlignment }) {
   return {
@@ -392,6 +409,16 @@ export function bandasDeFormato({ filaEncabezado, filaLimite, proveedores, factu
     bandaA: { desde: iA, alto: iB - iA },
     // Si el bloque todavía no entra, la banda de B sale en 0: el script inserta filas y recalcula.
     bandaB: { desde: iB, alto: Math.max(finIdx - iB, 0) },
+    // ═══ EL CUERPO EMPIEZA DEBAJO DEL RÓTULO (05/08) ═══
+    //
+    // La banda es el FOOTPRINT del cuadro —rótulo incluido— y se usaba tal cual para formatear el
+    // cuerpo: la celda que dice "Se le debe" quedaba declarada moneda y la que dice "Facturas",
+    // contador. El auditor los reportaba como `texto_en_numero` (B17, C17, G32) en cada corrida, y
+    // el generador los volvía a producir. El rótulo tiene su propio formato: ver lib/proveedores-rotulos.mjs.
+    rotuloA: iA + 1,                                              // base 1, para el formato del rótulo
+    rotuloB: iB + 1,
+    cuerpoA: { desde: iA + 1, alto: Math.max(iB - iA - 1, 0) },   // base 0, la fila siguiente al rótulo
+    cuerpoB: { desde: iB + 1, alto: Math.max(finIdx - iB - 1, 0) },
   }
 }
 

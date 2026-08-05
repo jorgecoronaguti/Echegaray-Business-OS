@@ -15,6 +15,7 @@ import {
   verificarFronteraBajoDinamicas, anchoALimpiar, aAnchoCompleto, fronteraSegura,
   ANCHOS_PROVEEDORES, COL_AIRE, requestsDeAncho,
 } from './proveedores-frontera.mjs'
+import { detectar } from './defectos-pantalla.mjs'
 import { fusionar, VACIO } from './preservar-anotaciones.mjs'
 
 /** Una pestaña como la ve el dueño: cabecera, posición, dos dinámicas, y abajo lo del generador. */
@@ -224,12 +225,41 @@ test('los anchos son UNA definición, y la aplica un solo generador', () => {
   }
 })
 
-test('la columna E es el AIRE y sigue midiendo 28px: el encabezado no se toca', () => {
-  // La tentación era ensancharla para que entrara "REFACTURACIÓN — el costo sigue". Eso habría
-  // arreglado las tablas de abajo y desarmado el cuadro de la posición, que ya está aprobado: 200px
-  // de aire en el medio de un bloque que se lee bien. Se dejó libre en vez de ensancharla.
-  assert.equal(COL_AIRE, 4, 'la E')
-  assert.equal(ANCHOS_PROVEEDORES[COL_AIRE], 28, 'si esto crece, el encabezado se desarma')
+// ═══ LA COLUMNA E: 24 DE LOS 34 TEXTOS CORTADOS QUE QUEDABAN (05/08) ═══
+//
+// La E se declaró "aire, ninguna tabla la usa". Las tablas de TEXTO la saltean; la tabla DINÁMICA de
+// la sección 1 no puede: un pivot ocupa columnas consecutivas desde su ancla y el cuadro de detalle
+// llega hasta la G. Con 28px, "Transferencia" y "Tarjeta Crédito" salían cortados en 5 caracteres.
+test('la columna E entra el tipo de pago más largo: el cuadro de detalle la ocupa, no es aire', () => {
+  assert.equal(COL_AIRE, 4, 'la E sigue siendo la que saltean las tablas de TEXTO')
+  // Los cinco valores reales de "Tipo pago" en Compras, medidos el 05/08.
+  const TIPOS = ['Cheque', 'Efectivo', 'Echeq', 'Transferencia', 'Tarjeta Crédito']
+  for (const t of TIPOS) {
+    assert.ok(ANCHOS_PROVEEDORES[COL_AIRE] >= t.length * 10 * 0.57,
+      `la E (${ANCHOS_PROVEEDORES[COL_AIRE]}px) corta "${t}" — es lo que reportaba el auditor 24 veces`)
+  }
+  // Y no se pasa de rosca: la E es la más angosta de las que llevan texto, sigue haciendo de aire.
+  assert.ok(ANCHOS_PROVEEDORES[COL_AIRE] < ANCHOS_PROVEEDORES[1], 'más angosta que la B')
+})
+
+test('EL DEFECTO, medido con el auditor de verdad: con la E en 28px el tipo de pago se corta', () => {
+  const fila = (anchos) => ({
+    anchos,
+    altos: [21],
+    filas: [[
+      { valor: 'Alumetal', formato: { numberFormat: { type: 'TEXT', pattern: '@' } } },
+      { valor: '0001-00000211', formato: { numberFormat: { type: 'TEXT', pattern: '@' } } },
+      { valor: '16/08/2026', formato: { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' } } },
+      { valor: 'LA ESTRELLA', formato: { numberFormat: { type: 'TEXT', pattern: '@' } } },
+      { valor: 'Tarjeta Crédito', formato: { numberFormat: { type: 'TEXT', pattern: '@' }, wrapStrategy: 'CLIP' } },
+      { valor: 'B', formato: { numberFormat: { type: 'TEXT', pattern: '@' } } },
+      { valor: '$1.234', formato: { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0' } } },
+    ]],
+  })
+  const viejos = [...ANCHOS_PROVEEDORES]
+  viejos[COL_AIRE] = 28
+  assert.equal(detectar(fila(viejos)).filter((d) => d.tipo === 'texto_cortado').length, 1)
+  assert.deepEqual(detectar(fila([...ANCHOS_PROVEEDORES])), [], 'con el ancho declarado hoy, ni un defecto')
 })
 
 test('cada columna tiene lugar para lo más ancho que le toca', () => {

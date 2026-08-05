@@ -20,10 +20,12 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { diferenciasDeHuella, huellaProtegida } from '../lib/proveedores-bloque-vivo.mjs'
 import { COLCHON_FINAL, filaDelSiguienteTitulo, filasNoVacias, sobranteDeColchon } from '../lib/proveedores-colchon.mjs'
+import { ANCHOS_PROVEEDORES } from '../lib/proveedores-frontera.mjs'
 import {
   altoEmitido, bandasDeFormato, COL, filtros, formatoDeTodo, fuenteCompras, geometriaDeLaSeccion,
-  PENDIENTE, VISTA,
+  PENDIENTE, rotulosDelCuadro, VISTA,
 } from '../lib/proveedores-pivot-seccion1.mjs'
+import { requestsDeRotulos, rotulosQueNoEntran } from '../lib/proveedores-rotulos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Proveedores'
@@ -77,6 +79,10 @@ const texto = (sheetId, fila, valor, bold = false) => ({ updateCells: {
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
 
+  // LOS RÓTULOS DE LOS CAMPOS DE FILA SON LOS ENCABEZADOS DE COMPRAS: la API no deja renombrarlos y
+  // Compras es fuente, no se edita. Se leen para poder darle a la fila de rótulos el alto que hace
+  // falta — "Fecha prevista de pago (día)" no entra de una línea en ninguna columna razonable.
+  const cabecera = (await google.readSheetValues(ID, 'Compras!A3:AL3', { render: 'FORMATTED_VALUE' }))?.[0] ?? []
   const compras = await google.readSheetValues(ID, 'Compras!A4:AL', { render: 'UNFORMATTED_VALUE' })
   const pendientes = (compras ?? []).filter((f) => String(f?.[COL.estado] ?? '').trim() === PENDIENTE
     && String(f?.[COL.comercial] ?? '').trim() === '1')
@@ -136,6 +142,17 @@ async function main() {
     throw new Error('el bloque no entra ni después de insertar filas: no formateo un rango vacío')
   }
 
+  // LOS RÓTULOS DE CADA CUADRO, CALCULADOS ANTES DE ESCRIBIR. Si alguno no entra ni partido en dos
+  // líneas se avisa: la regla de la pestaña es acortar el rótulo antes que ensanchar la columna, y
+  // los de los campos de fila no se pueden acortar sin tocar Compras — así que hay que saberlo.
+  const rotulosA = rotulosDelCuadro({ vista: VISTA.POR_PROVEEDOR, cabecera, nombresDeValores: ['Se le debe', 'Facturas'] })
+  const rotulosB = rotulosDelCuadro({ vista: VISTA.DETALLE, cabecera, nombresDeValores: ['Importe'] })
+  for (const [nombre, rots] of [['A', rotulosA], ['B', rotulosB]]) {
+    for (const r of rotulosQueNoEntran(rots, ANCHOS_PROVEEDORES)) {
+      console.log(`⚠ cuadro ${nombre}: el rótulo "${r.texto}" necesita ${r.lineas} líneas en su columna`)
+    }
+  }
+
   const vacias = Array.from({ length: finIdx - iA }, () => ({ values: Array.from({ length: 7 }, () => ({ userEnteredValue: null })) }))
   const anclaPivot = (fila, pivot) => ({ updateCells: {
     range: { sheetId, startRowIndex: fila, endRowIndex: fila + 1, startColumnIndex: 0, endColumnIndex: 1 },
@@ -170,8 +187,12 @@ async function main() {
     // formato: usa el que la celda ya tenía. Midiendo la banda con el alto de la corrida, el cuadro
     // A creció a 10 proveedores y la 10ª fila salió `67797,51 | 31/12/1899` — la columna B en TEXTO
     // y la C en FECHA, que es lo que el cuadro B había dejado ahí.
-    ...formatoDeTodo({ sheetId, filaAncla: bandaA.desde, alto: bandaA.alto, vista: VISTA.POR_PROVEEDOR }),
-    ...formatoDeTodo({ sheetId, filaAncla: bandaB.desde, alto: bandaB.alto, vista: VISTA.DETALLE }),
+    // EL CUERPO ARRANCA DEBAJO DEL RÓTULO: con la banda entera, "Se le debe" y "Facturas" quedaban
+    // declaradas moneda y contador, y el auditor las reportaba como B17/C17/G32 en cada corrida.
+    ...formatoDeTodo({ sheetId, filaAncla: plan.cuerpoA.desde, alto: plan.cuerpoA.alto, vista: VISTA.POR_PROVEEDOR }),
+    ...formatoDeTodo({ sheetId, filaAncla: plan.cuerpoB.desde, alto: plan.cuerpoB.alto, vista: VISTA.DETALLE }),
+    ...requestsDeRotulos({ sheetId, fila: plan.rotuloA, textos: rotulosA, anchos: ANCHOS_PROVEEDORES, derecha: [1, 2] }),
+    ...requestsDeRotulos({ sheetId, fila: plan.rotuloB, textos: rotulosB, anchos: ANCHOS_PROVEEDORES, derecha: [2, 6] }),
     // Ninguna fila del cuadro puede quedar oculta: siete lo estuvieron y el total cerraba igual.
     { updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: iA, endIndex: finIdx },
       properties: { hiddenByUser: false }, fields: 'hiddenByUser' } },

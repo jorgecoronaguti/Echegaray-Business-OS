@@ -24,6 +24,8 @@ import { CONTADOR, MONEDA_CUERPO, MONEDA_TOTAL } from '../lib/formato-statement.
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { COLCHON_FINAL, filaDelSiguienteTitulo, filasNoVacias, sobranteDeColchon, ultimaConDato } from '../lib/proveedores-colchon.mjs'
 import { cortePorConcentracion, escalones, nombresVisibles, UMBRAL } from '../lib/proveedores-concentracion.mjs'
+import { ANCHOS_PROVEEDORES } from '../lib/proveedores-frontera.mjs'
+import { requestsDeRotulos, rotulosQueNoEntran } from '../lib/proveedores-rotulos.mjs'
 import { columnasDeCompras, filasDelPie, referencias } from '../lib/proveedores-seccion2-pie.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -35,6 +37,8 @@ const COLCHON_RESERVA = 10
 const ANCHO_LECTURA = 'AZ'
 /** Las columnas del cuadro: proveedor · CUIT · comprado · comprobantes. */
 const ANCHO = 4
+/** Los nombres de los dos valores. Se declaran una vez: van al pivot Y a la fila de rótulos. */
+const VALORES = Object.freeze(['Comprado 2026', 'Comprobantes'])
 
 const plata = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
 
@@ -46,8 +50,8 @@ const pivot = (fuente, idx, visibles) => ({
     { sourceColumnOffset: idx.cuit, showTotals: false, sortOrder: 'ASCENDING' },
   ],
   values: [
-    { sourceColumnOffset: idx.total, summarizeFunction: 'SUM', name: 'Comprado 2026' },
-    { sourceColumnOffset: idx.proveedor, summarizeFunction: 'COUNTA', name: 'Comprobantes' },
+    { sourceColumnOffset: idx.total, summarizeFunction: 'SUM', name: VALORES[0] },
+    { sourceColumnOffset: idx.proveedor, summarizeFunction: 'COUNTA', name: VALORES[1] },
   ],
   // NUNCA por `condition`: un filtro por condición sobre una columna de grid descarta TODAS las
   // filas sin dar error, y la dinámica aparece perfecta y vacía. Los valores van como TEXTO — es la
@@ -158,7 +162,13 @@ async function main() {
     process.exitCode = 1
     return
   }
-  await escribirPie({ google, sid, R, p0, p1 })
+  // Los dos primeros rótulos los hereda de los encabezados de Compras (la API no deja renombrar un
+  // campo de fila); los dos últimos son los `name` de los valores, declarados en VALORES.
+  const rotulos = [String(cabecera[idx.proveedor] ?? '').trim(), String(cabecera[idx.cuit] ?? '').trim(), ...VALORES]
+  for (const r of rotulosQueNoEntran(rotulos, ANCHOS_PROVEEDORES)) {
+    console.log(`⚠ el rótulo "${r.texto}" necesita ${r.lineas} líneas en su columna: hay que acortarlo`)
+  }
+  await escribirPie({ google, sid, R, p0, p1, rotulos })
   await recortarYVerificar({ google, sid, geo, corte, p0, p1, fResto: p1 + 1, fTotal: p1 + 2 })
 }
 
@@ -201,7 +211,7 @@ async function escribirDinamica({ google, sid, geo, corte, idx, fuente }) {
 }
 
 /** SEGUNDA PASADA: el pie, pegado al final REAL, y el formato de cada columna declarado de nuevo. */
-async function escribirPie({ google, sid, R, p0, p1 }) {
+async function escribirPie({ google, sid, R, p0, p1, rotulos }) {
   const fResto = p1 + 1
   const fTotal = p1 + 2
   const pie = filasDelPie({ R, p0, p1, fResto, fTotal })
@@ -211,15 +221,25 @@ async function escribirPie({ google, sid, R, p0, p1 }) {
       rows: [celdas(pie.resto), celdas(pie.total)], fields: 'userEnteredValue' } },
     // CADA COLUMNA DECLARA SU FORMATO EN CADA CORRIDA. Una dinámica no trae formato: usa el que la
     // celda ya tenía, y por eso una fecha heredada convierte un conteo en `01/01/1900`.
-    fmt(sid, iRot, fTotal, 0, { type: 'TEXT', pattern: '@' }, 'LEFT'),
-    fmt(sid, iRot, fTotal, 1, { type: 'TEXT', pattern: '@' }, 'LEFT'),
+    // ═══ Y EL CUERPO ARRANCA EN iRot + 1, NO EN iRot (05/08) ═══
+    //
+    // Con el rango arrancando en la fila de rótulos, la celda que dice "Comprado 2026" quedaba
+    // declarada CURRENCY y la que dice "Comprobantes", contador: los dos `texto_en_numero` que el
+    // auditor reportaba como C69 y D69 los producía este mismo bloque en cada corrida.
+    fmt(sid, iRot + 1, fTotal, 0, { type: 'TEXT', pattern: '@' }, 'LEFT'),
+    fmt(sid, iRot + 1, fTotal, 1, { type: 'TEXT', pattern: '@' }, 'LEFT'),
     // El "$" es del total: repetido en cada fila deja de informar y sólo ensucia la columna. El cero
     // va en raya y el negativo entre paréntesis (AICPA/FASB, endosado por IFRS y exigido por la SEC).
-    fmt(sid, iRot, fTotal - 1, 2, MONEDA_CUERPO, 'RIGHT'),
-    fmt(sid, iRot, fTotal - 1, 3, CONTADOR, 'RIGHT'),
+    fmt(sid, iRot + 1, fTotal - 1, 2, MONEDA_CUERPO, 'RIGHT'),
+    fmt(sid, iRot + 1, fTotal - 1, 3, CONTADOR, 'RIGHT'),
     fmt(sid, fTotal - 1, fTotal, 2, MONEDA_TOTAL, 'RIGHT'),
     fmt(sid, fTotal - 1, fTotal, 3, CONTADOR, 'RIGHT'),
-    negrita(sid, iRot, ANCHO), raya(sid, iRot, ANCHO),
+    // La fila de rótulos tiene su formato propio —texto, wrap y el alto que necesite— porque no es
+    // cuerpo: ver lib/proveedores-rotulos.mjs.
+    // `negrita` no va acá: la negrita del rótulo ya la pone `requestsDeRotulos`, y dos escritores
+    // sobre el mismo formato es cómo se pierde el tamaño de fuente que uno de los dos declaró.
+    ...requestsDeRotulos({ sheetId: sid, fila: iRot + 1, textos: rotulos, anchos: ANCHOS_PROVEEDORES, derecha: [2, 3] }),
+    raya(sid, iRot, ANCHO),
     negrita(sid, fResto - 1, ANCHO, false), raya(sid, fResto - 1, ANCHO),
     negrita(sid, fTotal - 1, ANCHO),
     { updateDimensionProperties: { range: { sheetId: sid, dimension: 'ROWS', startIndex: iRot, endIndex: fTotal },

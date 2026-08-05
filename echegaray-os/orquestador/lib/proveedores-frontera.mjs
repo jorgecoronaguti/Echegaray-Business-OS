@@ -50,18 +50,28 @@
 // declarado y los demás lo lean. Igual que `SECCIONES_PROVEEDORES` es la única fuente del número de
 // sección, esto es la única fuente del ancho.
 //
-// ═══ LA COLUMNA E ES EL AIRE DE LA PESTAÑA, Y NINGUNA TABLA LA USA ═══
+// ═══ LA COLUMNA E: EL "AIRE" QUE NO ERA AIRE (05/08) ═══
 //
-// La E vale 28px porque es el separador entre los dos cuadros de la posición, que ya está aprobada.
-// Ensancharla para que entre "REFACTURACIÓN — el costo sigue" arreglaría las tablas de abajo y
-// desarmaría el bloque de arriba: 200px de aire en el medio de un cuadro que hoy se lee bien.
+// Esta definición declaró la E como el separador de los dos cuadros de la posición —28px— "y ninguna
+// tabla la usa". Las tablas de texto de la frontera para abajo la saltean, sí. Pero la sección 1 es
+// una TABLA DINÁMICA NATIVA y una dinámica ocupa columnas CONSECUTIVAS desde su ancla: el cuadro de
+// detalle tiene seis campos de fila (proveedor · comprobante · fecha · obra · tipo de pago ·
+// categoría) más el importe, así que se lleva A..G — la E incluida, le guste a quién le guste. No es
+// negociable desde el código: la API no tiene "saltear una columna".
 //
-// Así que la E no se ensancha: se DEJA LIBRE. Las tablas de la frontera para abajo saltean la E y
-// siguen en la F. Cuesta un campo por tabla, y ese costo se pagó donde correspondía —fusionando
-// "Anula la factura" y "La reemplaza" en una sola columna, que además es lo que hay que leer: la
-// nota anula una factura Y la reemplaza por otra, es un hecho, no dos—.
+// El resultado medido por `auditar-pantalla.mjs` sobre el archivo real: **24 de los 34 textos
+// cortados que sobrevivían a esta tabla de anchos estaban en la columna E** — "Transferencia",
+// "Tarjeta Crédito", "Efectivo" cortados en 5 caracteres. Una columna con dos dueños que declaran
+// usos incompatibles es el mismo defecto que perseguimos en las pestañas, una capa más abajo.
 //
-// Consecuencia: esta definición no cambia una sola columna arriba de la fila 14.
+// LA E SE ENSANCHA A LO QUE PIDE SU USO REAL, MEDIDO EN COMPRAS: los cinco valores del tipo de pago
+// son Cheque · Efectivo · Echeq · Transferencia · Tarjeta Crédito, y el más largo son 15 caracteres
+// ⇒ 86px. Con 90px entra el peor caso y sobra lo mínimo.
+//
+// LO QUE ESO CUESTA, DICHO: el separador entre los dos cuadros de la posición pasa de 28 a 90px y la
+// pestaña se corre 62px a la derecha. No desarma nada —el cuadro derecho ya empezaba en la F— y es
+// mucho menos que ensanchar la A, que es la que empuja de verdad. Las tablas de abajo siguen
+// salteando la E: su hueco pasa de 28 a 90px de aire, que no produce un solo defecto medido.
 
 /** El ancho de cada columna de la pestaña "Proveedores", en píxeles. Índice 0 = columna A. */
 export const ANCHOS_PROVEEDORES = Object.freeze([
@@ -69,13 +79,13 @@ export const ANCHOS_PROVEEDORES = Object.freeze([
   130, // B · CUIT con guiones, N° de comprobante, "Se le debe"
   125, // C · "Comprado 2026" y los montos del control ($209.231.271), fechas
   300, // D · las notas del dueño ("Qué hacer"). Era el valor que ya ganaba en la práctica.
-  28,  // E · EL AIRE. Separador de los dos cuadros de la posición: ninguna tabla escribe acá.
+  90,  // E · el tipo de pago del cuadro de detalle ("Tarjeta Crédito"), y el aire del encabezado
   210, // F · "REFACTURACIÓN — el costo sigue", "Tarjeta de crédito", los importes de la sección 4
   220, // G · "0006-00003002 → 0004-00003445"
   60,  // H · el % de la posición
 ])
 
-/** La columna que ningún bloque generado usa: es el separador visual de toda la pestaña. */
+/** La columna que las tablas de TEXTO saltean: entre los dos cuadros del encabezado no va nada. */
 export const COL_AIRE = 4 // índice 0 ⇒ la E
 
 /**
