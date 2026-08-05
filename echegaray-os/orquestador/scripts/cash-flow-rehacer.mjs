@@ -20,10 +20,12 @@ import {
   rotulosCalendarioImpuestos, CALENDARIO_IMPUESTOS, expresionProyeccionMes,
 } from '../lib/cash-flow-lineas.mjs'
 import {
-  SEMANAS_HORIZONTE, semanasDelAnio, semanasCerradas, formulaLineaSemana,
+  semanasDelAnio, semanasCerradas, formulaLineaSemana,
   naturalezaLinea, GLOSA_NATURALEZA,
 } from '../lib/cash-flow-horizonte.mjs'
 import { bloqueDecision, bloqueContraste, bloqueNaturaleza } from '../lib/cash-flow-tesoreria.mjs'
+import { bloqueLiquidez, formulaColchon } from '../lib/cash-flow-liquidez.mjs'
+import { requestsDeGraficos, COL_ANCLA } from '../lib/cash-flow-graficos.mjs'
 import { pielCashFlow } from '../lib/cash-flow-piel.mjs'
 import { conEdicionesRespetadas, guardarRegistro, respetarEdiciones } from '../lib/respetar-ediciones.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
@@ -136,8 +138,12 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
     ? 'Método directo (RT 8/9 · NIC 7) · forecast rodante: corre una semana por semana'
     : 'Método directo (RT 8/9 · NIC 7) · las columnas en itálica todavía no pasaron: son proyección'
   push([irASemana, nota])
+  // EL RÓTULO DEL TOTAL CUENTA LAS COLUMNAS QUE HAY, NO UNA CONSTANTE. Decía "Total 51 semanas"
+  // sobre una suma de 53: `SEMANAS_HORIZONTE` es el largo del rodante viejo y el cuadro pasó a ser el
+  // año calendario, que tiene las semanas que tenga. Un encabezado que no cuenta lo que suma es la
+  // misma clase de defecto que el "26" de la fila 3: nadie lo cuestiona y esconde dos semanas.
   meta.cabFila = push(['Período', ...cols.map(fechaAR),
-    periodo === 'semanal' ? `Total ${SEMANAS_HORIZONTE} semanas` : `Total ${AÑO}`])
+    periodo === 'semanal' ? `Total ${n} semanas ${AÑO}` : `Total ${AÑO}`])
 
   // ── EL CUERPO DEL ESTADO, POR ACTIVIDAD ────────────────────────────────────────────────────────
   // Cada categoría muestra su subtotal; el detalle va agrupado debajo y se abre con el +/- del
@@ -310,6 +316,30 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   meta.egr0 = meta.detalle[0].fila
   meta.egr1 = meta.detalle[meta.detalle.length - 1].fila
 
+  // ── LO QUE ENTRA, LO QUE SALE Y LA LÍNEA DEL COLCHÓN ───────────────────────────────────────────
+  //
+  // El cuadro tenía subtotales por categoría y el neto por actividad, pero NINGUNA fila decía
+  // "entró tanto" y "salió tanto" en el período. Es la primera pregunta que se le hace a un cash
+  // flow y había que sumarla a mano recorriendo seis subtotales con su signo. Además son las dos
+  // series del gráfico de entradas contra salidas: sin una fila que las contenga no hay nada que
+  // graficar, y un gráfico que se arma su propia suma es una segunda verdad esperando su turno.
+  //
+  // VAN DEBAJO DEL CIERRE, no arriba. El orden de la norma —actividades, variación, inicio, cierre—
+  // no se toca: esto es una LECTURA de lo de arriba y se lee después, igual que el resto de los
+  // bloques de decisión. Y agregar filas acá no mueve el cuerpo, que es lo que los consumidores que
+  // leen por posición (A3:N9) necesitan que no se mueva.
+  const filasIngreso = meta.grupos.filter((g) => g.signo > 0).map((g) => g.filaGrupo)
+  const filasEgreso = meta.grupos.filter((g) => g.signo < 0).map((g) => g.filaGrupo)
+  const sumaDe = (fs, i) => fs.map((f) => `${letra(i + 1)}${f}`).join('+')
+  meta.entradas = push(['(+) Total de entradas del período', ...cols.map((_, i) => `=${sumaDe(filasIngreso, i)}`)])
+  meta.salidas = push(['(–) Total de salidas del período', ...cols.map((_, i) => `=${sumaDe(filasEgreso, i)}`)])
+  // EL COLCHÓN SE CALCULA UNA VEZ, EN LA B, Y EL RESTO DE LA FILA LA REFERENCIA. Es una línea
+  // horizontal: repetir la fórmula 53 veces sería 53 oportunidades de que una quede distinta, y la
+  // fórmula es un SUMPRODUCT sobre todo el ancho — cara de recalcular por columna.
+  meta.colchon = push(['Colchón mínimo de caja (referencia del gráfico)',
+    formulaColchon(filasEgreso, letra(n)),
+    ...cols.slice(1).map(() => `=$B$${filas.length + 1}`)])
+
   // ══════════════════════════════════════════════════════════════════════════════════════════════
   // LO QUE EL CUADRO DECIDE — va DEBAJO del efectivo al cierre, y es una decisión, no una omisión
   // ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -332,6 +362,22 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   })
   for (const f of dec.filas) push(f)
   meta.decision = dec
+
+  // EL PERFIL DE LIQUIDEZ: hasta dónde baja contra el colchón, hasta dónde sube, hacia dónde va y
+  // en qué fecha exacta se cruza cada línea. El bloque de arriba nombra la peor columna; éste dice
+  // si esa peor columna es un problema y cuándo empieza a serlo — que es lo que se acciona.
+  push([])
+  const liq = bloqueLiquidez({
+    periodo,
+    fila0: filas.length + 1,
+    colN: letra(n),
+    filaCab: meta.cabFila,
+    filaCierre: meta.cierre,
+    filaVariacion: meta.variacion,
+    filaColchon: meta.colchon,
+  })
+  for (const f of liq.filas) push(f)
+  meta.liquidez = liq
 
   // LA COMPOSICIÓN POR NATURALEZA, con su control de partición. Si las cuatro cajas no dan la
   // variación neta, alguna línea quedó sin clasificar — y eso se ve, no se promedia.
@@ -421,7 +467,67 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   // `fechas` y `periodo` viajan con la grilla porque la PIEL los necesita para decidir qué columnas
   // son proyección. Recalcularlas en el formateador sería una segunda definición de la grilla de
   // períodos, que es justo lo que ya se corrió una vez y escondió $292,8M.
+  // LAS ANCLAS DE LOS GRÁFICOS SALEN DE LA MISMA GRILLA QUE LAS ESCRIBIÓ. Escribir "la curva lee la
+  // fila 55" en el módulo de gráficos ataría el dibujo a una POSICIÓN, que es el defecto que este
+  // cuadro ya pagó dos veces (el "26" de la fila 3 y el rango fosilizado de Estructura). Acá las
+  // filas se conocen porque se acaban de crear: si el cuadro cambia de forma, los gráficos la siguen.
+  // Las columnas van en base 1 e inclusivas: los períodos son B..(n+1).
+  meta.graficos = {
+    filaCab: meta.cabFila,
+    filaCierre: meta.cierre,
+    filaColchon: meta.colchon,
+    filaEntradas: meta.entradas,
+    filaSalidas: meta.salidas,
+    colN: n + 1,
+    // El contraste tiene su PROPIA ventana de tiempo (períodos ya cerrados) y por eso su propio
+    // encabezado. Mezclarlo con la fila 3 sería la Regla de Oro 3 rota dentro de un gráfico.
+    desvioCab: meta.contraste?.filaCab,
+    desvioEsperado: meta.contraste ? meta.contraste.filaCab + 1 : undefined,
+    desvioReal: meta.contraste ? meta.contraste.filaCab + 2 : undefined,
+    desvioColN: meta.contraste?.ancho,
+  }
   return { filas, meta, n, colTotal, filaCtrl, filaCtrlFin, filaRef, fechas: cols, periodo }
+}
+
+/**
+ * NÚCLEO PURO: las filas donde el generador NO escribe nada a la derecha de la columna A.
+ *
+ * ═══ POR QUÉ (05/08) ═══
+ *
+ * Medido hoy en el Sheet vivo, en las DOS pestañas: la fila 69 —un separador en blanco— decía
+ * "Planes de pago de deuda previsional | Compras, rubro …"; la 70, que es el título "COMPOSICIÓN DEL
+ * FLUJO", tenía "Pestaña Compras" pegado en la B; la 77 ("LO ESPERADO CONTRA LO QUE OCURRIÓ") y la 84
+ * ("DÓNDE ESTÁ EL DETALLE"), lo mismo. Restos de un layout anterior en el que esas filas pertenecían
+ * al bloque de detalle, sentados justo en el medio de los bloques que se leen para decidir.
+ *
+ * Sobreviven por el mismo mecanismo que ya se documentó para las filas de actividad: la fusión que
+ * respeta las ediciones del dueño no puede distinguir "texto que el dueño escribió" de "texto que
+ * escribí yo en otra versión del cuadro y que ahora no va". Los lee como suyos y los devuelve corrida
+ * tras corrida. La cura de entonces fue una lista a mano —`meta.actividades`— y por eso sólo curó las
+ * tres filas de actividad.
+ *
+ * La regla generalizada es la que ya vale para el ancho de un bloque: EL GENERADOR ES DUEÑO DE TODO
+ * EL ANCHO DE LAS FILAS QUE ESCRIBE. Si en la grilla que produjo esta corrida una fila no tiene nada
+ * a la derecha de la A, ahí no va nada — ni un resto mío ni algo que se le parezca.
+ *
+ * SE MIRA LA GRILLA GENERADA, NO LA FUSIONADA. Después de la fusión el resto ya está adentro y la
+ * fila parece tener contenido legítimo: preguntarle a la fusión es preguntarle al problema.
+ *
+ * LO QUE ESTO CUESTA, DECLARADO: si el dueño anota algo al lado de un título de bloque o en una fila
+ * separadora, se le borra. Es el mismo precio que ya se aceptó para las filas de actividad, y a
+ * cambio ningún resto de un layout viejo puede volver a sentarse en el medio del cuadro. Las filas
+ * con dato —todo el cuerpo, el detalle, los controles— traen fórmula en la B y no las toca.
+ *
+ * @param {Array<Array<any>>} generado la grilla ANTES de fusionar
+ * @returns {number[]} números de fila 1-based
+ */
+export function filasSoloRotulo(generado = []) {
+  const out = []
+  generado.forEach((fila, i) => {
+    const derecha = (fila ?? []).slice(1)
+    if (derecha.every((c) => c === '' || c == null)) out.push(i + 1)
+  })
+  return out
 }
 
 /**
@@ -443,6 +549,7 @@ export function extrasTesoreria(meta, ancho) {
     }
   }
   pintar(meta.decision, 2) // sólo la columna B es número; la C es un nombre y queda texto
+  pintar(meta.liquidez, 2)
   pintar(meta.naturaleza, 2)
   pintar(meta.contraste, meta.contraste?.ancho ?? 2)
   return out
@@ -461,7 +568,17 @@ async function formatear(google, data) {
     const { sheetId } = h
     const g = d.g
     const filasHoja = h.rows ?? 200
-    const colsHoja = h.cols ?? 60
+    let colsHoja = h.cols ?? 60
+    // ═══ EL ANCLA DE UN GRÁFICO ES UNA CELDA REAL ═══
+    // Si la hoja no llega a la columna donde se anclan, `addChart` devuelve 400 y —como los requests
+    // viajan en lote— se cae TODO el lote, formato incluido. La hoja se ensancha ACÁ, antes de pedir
+    // nada, y los gráficos van igual en su propio lote más abajo por si algo más falla.
+    const anchoNecesario = COL_ANCLA + 2
+    if (colsHoja < anchoNecesario) {
+      req.push({ appendDimension: { sheetId, dimension: 'COLUMNS', length: anchoNecesario - colsHoja } })
+      console.log(`  ↔ ${p}: la hoja pasa de ${colsHoja} a ${anchoNecesario} columnas (el ancla de los gráficos es la ${COL_ANCLA + 1}ª)`)
+      colsHoja = anchoNecesario
+    }
     const filas = d.values.length
     const cols = d.values[0].length
     const rango = (r0, r1, c0 = 0, c1 = cols) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
@@ -533,6 +650,24 @@ async function formatear(google, data) {
     }
   }
   await google.spreadsheetBatchUpdate(ID, req)
+
+  // ── LOS GRÁFICOS, EN SU PROPIO LOTE ────────────────────────────────────────────────────────────
+  // Un gráfico resume la tabla: si no se puede dibujar, la tabla tiene que quedar igual de bien. En
+  // el mismo lote que el formato, un `addChart` rechazado (un ancla fuera de grilla, un waterfall con
+  // una propiedad que la API no acepta) se lleva puesto el formato de las dos pestañas.
+  for (const d of data) {
+    const h = meta.find((s) => s.title === d.range.split('!')[0])
+    if (!h) continue
+    try {
+      const reqs = await requestsDeGraficos(google, ID, h.sheetId, d.g.meta.graficos, h.title)
+      if (reqs.length) {
+        await google.spreadsheetBatchUpdate(ID, reqs)
+        console.log(`  📈 ${h.title}: ${reqs.filter((r) => r.addChart).length} gráfico(s) dibujados`)
+      }
+    } catch (e) {
+      console.warn(`  ⚠ ${h.title}: no pude dibujar los gráficos (${e.message}). La tabla quedó bien igual.`)
+    }
+  }
 }
 
 /**
@@ -765,6 +900,10 @@ async function main() {
   // texto vacío. El registro completo (incluidos los borrados) se persiste igual, así que un borrado real
   // del dueño no se olvida: se re-aplica en la próxima corrida NORMAL. Ver edicionesConContenidoReal.
   for (const d of data) {
+    // COPIA DE LA GRILLA GENERADA, ANTES DE FUSIONAR. `filasSoloRotulo` tiene que preguntarle a lo
+    // que produjo ESTA corrida: después de la fusión el resto viejo ya está adentro y la fila parece
+    // legítima. Se copia fila por fila porque la fusión trabaja sobre los mismos arrays.
+    d._generado = d.values.map((f) => [...f])
     // El TEXTO QUE SE VE, no la fórmula: ver lib/preservar-anotaciones.mjs.
     const actual = await verPestana(d.pestaña)
     const res = await conEdicionesRespetadas(ID, d.pestaña, d.values, actual)
@@ -791,7 +930,7 @@ async function main() {
     // las escribió, las escribí yo y él las borró. La fila de encabezado de una actividad es de este
     // generador de punta a punta y su contenido a la derecha de la A es, por diseño, nada. Se fuerza
     // acá y no antes de la fusión, porque es justamente la fusión la que las resucitaba.
-    for (const f of d.g.meta.actividades) {
+    for (const f of filasSoloRotulo(d._generado)) {
       const fila = d.values[f - 1]
       if (fila) for (let c = 1; c < fila.length; c++) fila[c] = ''
     }
