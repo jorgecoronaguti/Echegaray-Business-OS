@@ -113,7 +113,9 @@ import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mj
 import {
   SECCIONES_MATERIALES, PRIMERA_GENERADA, nSeccion, fronteraSegura, finDeDinamica,
   anclasDeDinamicas, verificarFronteraBajoDinamicas, anchoALimpiar, aAnchoCompleto,
+  ANCHOS_PROVEEDORES,
 } from '../lib/proveedores-frontera.mjs'
+import { parrafosQueNoEntran } from '../lib/proveedores-rotulos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = NOMBRES.proveedoresMateriales
@@ -373,7 +375,9 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, not
   const meses = Array.from({ length: 12 }, (_, m) => `1/${m + 1}/${AÑO}`)
 
   push([`PROVEEDORES Y MATERIALES ${AÑO}`])
-  push(['Las mismas 738 filas de Compras vistas de los dos lados: a quién le compro y a quién le debo. Todo por fecha de PAGO, no de factura. Acá no hay ningún importe escrito: son fórmulas sobre Compras y sobre Cheques Emitidos, así que se corrige allá y cambia solo.'])
+  // SIN EL "738": era un número pegado en una frase —el día que Compras tenga 900 filas, miente— y
+  // además empujaba el párrafo por encima de lo que entra en la pestaña.
+  push(['Las mismas filas de Compras vistas de los dos lados: a quién le compro y a quién le debo. Todo por fecha de PAGO, no de factura. Ningún importe escrito: son fórmulas sobre Compras y Cheques Emitidos, así que se corrige allá y cambia solo.'])
   push([])
 
   // ── POSICIÓN (hero) — LA PANTALLA ABRE CON LA POSICIÓN, IGUAL QUE IMPUESTOS ──────────────────────
@@ -613,7 +617,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, not
   // el 2. Antes decía "5" acá y la pestaña mostraba "3", porque una renumeración al momento de
   // escribir lo corregía: dos lugares diciendo el mismo número es un lugar de más.
   const b5 = push([`${nSeccion(PRIMERA_GENERADA)} · ${TITULO_FRONTERA}`])
-  push(['Una nota de crédito puede significar dos cosas opuestas y el libro de IVA las escribe igual. Si el proveedor volvió a facturar, el costo SIGUE existiendo: sólo cambió de número y muchas veces de mes. Darlo por ahorrado es el error caro. Cada nota se cruza contra las facturas del mismo CUIT: la que anula tiene que dar el MISMO importe al peso, la que la reemplaza da parecido.'])
+  push(['Una nota de crédito puede significar dos cosas opuestas y el libro de IVA las escribe igual. Si el proveedor volvió a facturar, el costo SIGUE: cambió de número y casi siempre de mes. Darlo por ahorrado es el error caro. Se cruza contra el mismo CUIT.'])
   // ═══ SIETE CAMPOS EN SEIS COLUMNAS, Y EL QUE SOBRABA NO HACÍA FALTA (04/08) ═══
   //
   // La columna E es el aire de la pestaña (28px, separador de los dos cuadros de la posición) y
@@ -698,7 +702,10 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, not
   filas[fArcaFaltan - 1][1] = `=COUNTIF($A$${afip0}:$A$${afip1};"<>")`
   filas[fArcaFaltan - 1][2] = `=SUM($F$${afip0}:$F$${afip1})`
   push([])
-  push([`Los comprobantes salen del libro de IVA de ARCA, que el OS replica en ${R}. "Cargados por proveedor + importe" y "sin cargar" son una conciliación del OS al ${new Date().toISOString().slice(0, 10)}, no una fórmula: el cruce normaliza números de comprobante escritos de seis formas distintas y esa normalización no existe en Sheets.`])
+  // 306 CARACTERES NO ENTRAN EN NINGÚN ANCHO. El auditor lo reportaba como A261 cortado: la frase
+  // terminaba en "…que el OS replica en" y el resto no se leía. Ensanchar no es una opción —la fila
+  // ya derrama sobre la pestaña entera— así que se escribe menos. Tope: ver `caracteresQueEntran`.
+  push([`Del libro de IVA de ARCA, que el OS replica en ${R}. "Cargados por proveedor + importe" y "sin cargar" son conciliación del OS al ${new Date().toISOString().slice(0, 10)}, no fórmula: normaliza seis formas de escribir un N° de comprobante. Sheets no sabe.`])
   push([])
 
   // ── 5 · LO QUE HAY QUE CORREGIR EN COMPRAS ──────────────────────────────────────────────────────
@@ -781,8 +788,9 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, not
     anu1 = filas.length
     push([])
   }
-  // LA ÚNICA PROSA DE LA SECCIÓN, AL PIE Y UNA SOLA VEZ.
-  push(['Sin N° de comprobante un pago no se puede ligar a su factura, ni hoy ni nunca. Sin familia, la plata no se sabe en qué se gastó. Una factura anulada por una nota de crédito y cargada igual no la ve ningún control —el importe cierra— pero su número ya no existe para ARCA y el costo quedó en el mes viejo. Todo se corrige en Compras, que es el origen; acá sólo se mide.'])
+  // LA ÚNICA PROSA DE LA SECCIÓN, AL PIE Y UNA SOLA VEZ — Y CORTA. Tenía 368 caracteres y el auditor
+  // la reportaba cortada (A283): media explicación se perdía justo donde dice qué hacer.
+  push(['Sin N° de comprobante un pago no se liga a su factura, ni hoy ni nunca. Sin familia, no se sabe en qué se gastó. Una factura anulada y cargada igual no la ve ningún control: el importe cierra. Todo se corrige en Compras; acá sólo se mide.'])
   push([])
 
   // ── 3 · FAMILIA × MES ───────────────────────────────────────────────────────────────────────────
@@ -1365,6 +1373,12 @@ async function main() {
   const ancho = Math.max(...g.filas.map((f) => f.length))
   const cuadro = g.filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r })
   console.log(`${PESTAÑA}: ${cuadro.length} filas x ${ancho} columnas`)
+  // UN PÁRRAFO QUE NO ENTRA SE VE CORTADO, y en una fila que derrama sobre toda la pestaña no hay
+  // ancho que lo arregle: hay que escribir menos. Se avisa acá, con el número, para que no sea una
+  // discusión de gustos — es el defecto `texto_cortado` que el auditor reportaba como A261 y A283.
+  for (const p of parrafosQueNoEntran(g.filas, { anchoPx: ANCHOS_PROVEEDORES.reduce((a, b) => a + b, 0) })) {
+    console.log(`  ⚠ párrafo de ${p.largo} caracteres y entran ${p.entran}: "${p.texto.slice(0, 60)}…"`)
+  }
   console.log(`  bloque de deuda: ${g.anchoDeuda} columnas de ancho real (los rótulos son ${g.deudaL?.cols?.length ?? '?'}) — se limpia todo ese ancho y las notas se re-anclan a su proveedor`)
   if (g.notasHuerfanas?.length) {
     // NO se pierde en silencio: queda en el log, textual, y el snapshot previo lo conserva entero.

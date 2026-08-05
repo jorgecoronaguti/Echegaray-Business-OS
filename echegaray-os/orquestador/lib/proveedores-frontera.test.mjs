@@ -262,6 +262,24 @@ test('EL DEFECTO, medido con el auditor de verdad: con la E en 28px el tipo de p
   assert.deepEqual(detectar(fila([...ANCHOS_PROVEEDORES])), [], 'con el ancho declarado hoy, ni un defecto')
 })
 
+// ═══ LA NUMERACIÓN DE BLOQUES: CONSECUTIVA Y SIN HUECOS ═══
+//
+// La pestaña llegó a leerse "1, 2, 7, 5": la sección 7 era un resto de un diseño anterior que ningún
+// generador reclamaba y la 3 y la 4 no existían. La skill del área lo prohíbe explícitamente —un
+// cuadro que salta números parece que perdió bloques— y acá es medible: los números salen del ORDEN
+// de esta lista, así que no pueden saltarse a menos que alguien saltee un elemento.
+test('los números de sección son 1..N, consecutivos y sin huecos, en las dos pestañas', () => {
+  for (const [nombre, orden] of [['Proveedores', SECCIONES_PROVEEDORES], ['Materiales', SECCIONES_MATERIALES]]) {
+    const numeros = orden.map((c) => nSeccion(c, orden))
+    assert.deepEqual(numeros, orden.map((_, i) => i + 1), `${nombre}: la numeración salta`)
+    assert.equal(new Set(orden).size, orden.length, `${nombre}: una sección repetida`)
+  }
+  // Las dos dinámicas ocupan el 1 y el 2, así que el primer bloque que escribe el generador es el 3.
+  assert.equal(nSeccion(PRIMERA_GENERADA), 3)
+  // Y un número no puede salir de una clave inventada: eso es lo que producía el "7".
+  assert.throws(() => nSeccion('emitidas'), /sección desconocida/)
+})
+
 test('cada columna tiene lugar para lo más ancho que le toca', () => {
   // A ~7px por carácter a fontSize 9-10. No es exacto — es el piso que evita el defecto de volver a
   // poner 60px en una columna que lleva "$209.231.271".

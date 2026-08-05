@@ -17,6 +17,8 @@ import { estructural, predicadoConDeuda, soloConDeuda, layoutDeuda, notasAnclada
 import { fusionar, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { readFileSync } from 'node:fs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
+import { ANCHOS_PROVEEDORES } from '../lib/proveedores-frontera.mjs'
+import { caracteresQueEntran } from '../lib/proveedores-rotulos.mjs'
 
 test('estructural: convierte los \'\' en VACIO y deja intacto todo lo no-vacío', () => {
   const out = estructural(['TOTAL', '', 0, '=SUM(A1:A2)', '', 'nota'])
@@ -488,8 +490,29 @@ test('la conciliación con ARCA se declara UNA vez al pie, no en la columna I de
   // PDF se leen como basura. Cada fila llevaba su propia declaración de "esto no es una fórmula".
   assert.ok(!/Conciliación del OS al \$\{new Date\(\)\.toISOString\(\)\.slice\(0, 10\)\} — no es una fórmula/.test(src))
   assert.ok(!/'Conciliación del OS: se encontraron por proveedor \+ importe/.test(src))
-  assert.match(src, /push\(\[`Los comprobantes salen del libro de IVA de ARCA/,
+  assert.match(src, /push\(\[`Del libro de IVA de ARCA/,
     'la declaración vive al pie de la sección, una sola vez')
+})
+
+// ═══ NINGÚN PÁRRAFO SE ESCRIBE MÁS LARGO DE LO QUE ENTRA (05/08) ═══
+//
+// `auditar-pantalla.mjs` reportaba A261 (306 caracteres) y A283 (368) como `texto_cortado`: la frase
+// terminaba a mitad de palabra. Estas filas llevan una sola celda, así que derraman sobre la pestaña
+// ENTERA — y ni con los 1.465px de las ocho columnas alcanzan. No hay ancho que lo arregle: hay que
+// escribir menos, que además es la regla de minimalismo del área.
+test('ningún párrafo del generador se escribe más largo de lo que entra en la pestaña', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  const tope = caracteresQueEntran(ANCHOS_PROVEEDORES.reduce((a, b) => a + b, 0))
+  // Los `push` de UNA sola celda de texto: son las filas que derraman. Una interpolación `${…}` se
+  // mide como 12 caracteres (la más larga que se emite es una fecha ISO, 10).
+  const parrafos = [...src.matchAll(/push\(\[[`']((?:[^`'\\]|\\.)+)[`']\]\)/g)]
+    .map((m) => ({ crudo: m[1], largo: m[1].replace(/\$\{[^}]*\}/g, 'X'.repeat(12)).length }))
+    .filter((p) => p.largo > 60)
+  assert.ok(parrafos.length >= 2, 'no encontré los párrafos del generador: cambió la forma de emitirlos')
+  for (const p of parrafos) {
+    assert.ok(p.largo <= tope,
+      `un párrafo de ${p.largo} caracteres y entran ${tope}: se va a ver cortado. "${p.crudo.slice(0, 70)}…"`)
+  }
 })
 
 test('ninguna tabla de la frontera para abajo escribe en la columna de aire', () => {

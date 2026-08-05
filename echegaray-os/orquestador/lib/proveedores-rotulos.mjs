@@ -73,6 +73,43 @@ export function rotulosQueNoEntran(textos = [], anchos = [], { maxLineas = 2, fo
 }
 
 /**
+ * ═══ Y LO MISMO PARA UN PÁRRAFO, QUE ES EL OTRO TEXTO QUE NO ENTRA ═══
+ *
+ * Las notas al pie de las secciones 4 y 5 tenían 306 y 368 caracteres en una fila cuya columna A
+ * derrama sobre toda la pestaña: ni así entran. El auditor los reportaba como `texto_cortado` (A261,
+ * A283) y la frase terminaba a mitad de palabra. La respuesta no es ensanchar —no hay ancho que
+ * alcance— ni poner wrap y estirar la fila a cuatro líneas: es ESCRIBIR MENOS, que además es la regla
+ * de minimalismo del área. Esto da el tope exacto para que no sea una discusión de gustos.
+ *
+ * @param {number} anchoPx  el ancho disponible: si la fila está sola, es la pestaña entera
+ * @returns {number} cuántos caracteres entran
+ */
+export function caracteresQueEntran(anchoPx, fontSize = 10) {
+  return Math.floor(anchoPx / (fontSize * 0.57))
+}
+
+/**
+ * Los párrafos del bloque que se van a ver cortados. Un párrafo es una fila con UNA sola celda con
+ * texto: el resto de su fila está vacío y por eso Sheets lo derrama.
+ *
+ * @param {any[][]} filas
+ * @param {{anchoPx:number, fontSize?:number}} o
+ * @returns {Array<{fila:number, largo:number, entran:number, texto:string}>} vacío = está bien
+ */
+export function parrafosQueNoEntran(filas = [], { anchoPx = 0, fontSize = 10 } = {}) {
+  const entran = caracteresQueEntran(anchoPx, fontSize)
+  const out = []
+  filas.forEach((f, i) => {
+    const conTexto = (f || []).filter((c) => String(c ?? '').trim() !== '')
+    if (conTexto.length !== 1) return
+    const texto = String(f[0] ?? '').trim()
+    if (!texto || texto.startsWith('=') || texto.length <= entran) return
+    out.push({ fila: i + 1, largo: texto.length, entran, texto })
+  })
+  return out
+}
+
+/**
  * LOS REQUESTS QUE LE DAN A LA FILA DE RÓTULOS SU FORMATO PROPIO.
  *
  * TEXTO (nunca el formato numérico del cuerpo), WRAP, el alto que hace falta, negrita chica y gris —

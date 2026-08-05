@@ -75,6 +75,39 @@ test('una fecha VEINTE filas más abajo no convierte un importe en sospechoso', 
   assert.deepEqual(detectar(filas.length ? { filas, anchos: [] } : null, { huecoMax: 999 }), [])
 })
 
+// ═══ EL FALSO POSITIVO DE "Proveedores": DOS TABLAS SOBRE LA MISMA COLUMNA (05/08) ═══
+//
+// El pie de la sección 2 lleva "Comprado 2026" en la columna C —moneda— y la tabla de notas de
+// crédito, ocho filas más abajo, lleva su Fecha en la misma C. El auditor reportaba los $50.000 de un
+// proveedor real como "un entero en el rango de seriales de fecha". No es una columna inconsistente:
+// son dos tablas distintas, y lo que las separa es el título de sección que hay en el medio.
+test('la vecindad NO cruza un título de sección: son dos tablas, no una columna', () => {
+  const seccion2 = [
+    [cel('2 · CUENTA CORRIENTE POR PROVEEDOR')],
+    [cel('Proveedor'), cel('CUIT'), cel('Comprado 2026')],
+    [cel('JM'), cel('30-11111111-1'), cel('$50.000', 'CURRENCY')],
+    [cel('TOTAL'), cel(''), cel('$281.227.326', 'CURRENCY')],
+  ]
+  const seccion3 = [
+    [cel('3 · NOTAS DE CRÉDITO')],
+    [cel('Proveedor'), cel('Nota de crédito'), cel('Fecha')],
+    [cel('Trielec'), cel('0003-00000123'), cel('12/05/2026', 'DATE')],
+  ]
+  assert.deepEqual(detectar(hoja([...seccion2, ...seccion3])), [],
+    'el $50.000 de JM es plata de otra tabla: el título de la sección 3 corta la vecindad')
+
+  // Y NO se afloja el control: dentro de la MISMA tabla, sin título en el medio, se sigue cazando.
+  const mismaTabla = [
+    [cel('4 · LO QUE ARCA FACTURÓ')],
+    [cel('Proveedor'), cel('CUIT'), cel('Fecha')],
+    [cel('ADDATO'), cel('30-22222222-2'), cel('12/05/2026', 'DATE')],
+    [cel('BOTAS'), cel('30-33333333-3'), cel('$46.198', 'CURRENCY')],
+  ]
+  const d = detectar(hoja(mismaTabla))
+  assert.equal(d.length, 1)
+  assert.equal(d[0].tipo, 'fecha_como_moneda')
+})
+
 test('un importe negativo NO es texto', () => {
   // El signo va ANTES del peso. La primera versión no lo contemplaba y generó 2.486 falsos
   // positivos: un control que grita por todo enseña a ignorarlo.

@@ -153,6 +153,23 @@ export const SECCIONES_PROVEEDORES = [
  * un generador nuevo y se olvida de enchufarlo, la suite se pone roja en vez de que la pestaña
  * envejezca en silencio durante días.
  */
+/*
+ * ═══ LO QUE SIGUE SIN DUEÑO, DICHO (05/08) ═══
+ *
+ * Los TÍTULOS de las secciones 1 y 2 no los escribe nadie. El generador de texto los construye pero
+ * quedan arriba de la frontera y se descartan al partir; las dinámicas los BUSCAN para ubicarse. Si
+ * el dueño borra "1 · QUÉ SE DEBE Y CUÁNDO" o "2 · CUENTA CORRIENTE POR PROVEEDOR", los dos pasos se
+ * frenan solos —fallan cerrado, que es lo correcto— y nadie repone el rótulo. Ya pasó con el título
+ * de la frontera, y por eso existe `fronteraSegura`.
+ *
+ * POR QUÉ NO SE ARREGLA ACÁ, y no es pereza: la vía obvia —que el tramo del generador arranque en el
+ * título de la sección 1 y emita filas de reserva— es incompatible con su propio mecanismo de
+ * limpieza. `aAnchoCompleto` rellena cada fila con el centinela VACIO hasta el ancho del bloque, y un
+ * VACIO sobre el cuerpo de una dinámica la BORRA. El modo de falla no es "queda feo": es la pestaña
+ * destruida, que ya pasó una vez. La salida correcta es un sembrador propio que escriba ÚNICAMENTE la
+ * celda del título cuando falta y jamás toque el cuerpo — y eso se hace mirando el render, no a ciegas
+ * desde un worktree.
+ */
 export const DUENOS_DE_PROVEEDORES = Object.freeze([
   Object.freeze({ bloque: 'origen · CUIT (OS) en Compras', script: 'proveedores-cuenta-corriente.mjs' }),
   Object.freeze({ bloque: 'de la frontera para abajo (3, 4, 5) + Materiales', script: 'proveedores-materiales-pestana.mjs' }),
