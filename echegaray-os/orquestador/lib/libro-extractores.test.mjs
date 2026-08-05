@@ -12,8 +12,11 @@ import { serialDe, isoDeSerial } from './libro-extractores-fechas.mjs'
 
 // ── Compras: título, agrupador, encabezado, datos ─────────────────────────────────────────────────
 // Los nombres del encabezado REAL de la fila 3 del archivo, verificados el 05/08.
-const ENC_COMPRAS = ['Proveedor', 'CUIT (OS)', 'N° Comprobante', 'Total', 'Estado pago',
-  'Tipo pago', 'Rubro de caja', 'Fecha de caja', 'Detalles / Obra']
+// 'Estado' es la columna INPUT (X, contrato del cargador: Pagado/Pendiente); 'Estado pago' es el
+// SEMÁFORO derivado ("✅ Pagado" / "🟡 Por vencer"). El extractor tiene que decidir por la primera:
+// contra el semáforo, /pagado/ no matcheaba nunca y toda compra pagada quedaba PROYECTADO.
+const ENC_COMPRAS = ['Proveedor', 'CUIT (OS)', 'N° Comprobante', 'Total', 'Estado',
+  'Tipo pago', 'Rubro de caja', 'Fecha de caja', 'Detalles / Obra', 'Estado pago']
 const compras = (extra = []) => [[], [], ENC_COMPRAS,
   ['Mariana SA', '30-71037035-0', '0002-00000683', 100000, 'Pagado', 'Transferencia', 'Materiales Civil', 46000, 'ARCOR'],
   ['Nota SA', '30-71037035-0', '0002-00000683', -21359, 'Pagado', 'Transferencia', 'Materiales Civil', 46001, ''],
@@ -50,6 +53,16 @@ test('COMPRAS: pagado=REAL, pendiente vencido=VENCIDO', () => {
   assert.equal(pagado.signo, SALE)
   const pendiente = ms.find((m) => m.concepto === 'Prov SRL')
   assert.equal(pendiente.estado, 'VENCIDO', 'proyectado con fecha pasada = vencido, no proyectado')
+})
+
+test('COMPRAS: decide la columna Estado, no el semáforo — y una decoración no rompe el match', () => {
+  // El caso real del 05/08: la fila 791 de Alumetal decía Estado="Pagado" y "Estado pago"="✅ Pagado".
+  // Con el contrato apuntando al semáforo, /^pagado$/ contra "✅ Pagado" da false: REAL imposible.
+  const ms = deCompras(compras([
+    ['Decorada SA', '30-00000000-0', '0009-00000009', 123456, '✅ Pagado', 'Transferencia', 'Materiales Civil', 46003, '', '🟡 Por vencer'],
+  ]), 46000)
+  const dec = ms.find((m) => m.concepto === 'Decorada SA')
+  assert.equal(dec.estado, 'REAL', 'la palabra manda aunque venga decorada; el semáforo no decide')
 })
 
 test('COMPRAS: una nota de crédito ENTRA — plata que vuelve, no un egreso negativo', () => {

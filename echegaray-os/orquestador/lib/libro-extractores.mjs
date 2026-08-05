@@ -94,7 +94,10 @@ export function deCompras(filas = [], corte = null) {
   // queda con la primera aparición, que es la columna AB que escribe rubro-caja-sheet.mjs.
   const c = columnasObligatorias(enc, {
     proveedor: 'Proveedor', cuit: 'CUIT (OS)', comprobante: 'N° Comprobante',
-    importe: 'Total', estado: 'Estado pago', tipoPago: 'Tipo pago',
+    // 'Estado' (columna X), NO 'Estado pago' (Z). La Z es el SEMÁFORO derivado —"✅ Pagado",
+    // "🟡 Por vencer"— y /^pagado$/ no matchea un emoji adelante: TODA compra pagada quedaba
+    // PROYECTADO. La X es la columna que escribe el cargador con el contrato Pagado/Pendiente.
+    importe: 'Total', estado: 'Estado', tipoPago: 'Tipo pago',
     rubro: 'Rubro de caja', fechaCaja: 'Fecha de caja', obra: 'Detalles / Obra',
   }, 'Compras')
   const out = []
@@ -103,7 +106,8 @@ export function deCompras(filas = [], corte = null) {
     const importe = num(f[c.importe])
     const fecha = num(f[c.fechaCaja])
     if (importe === null || fecha === null) continue // sin importe o sin fecha de caja no hay movimiento
-    const pagado = /^pagado$/i.test(txt(f[c.estado]))
+    // Se tolera decoración alrededor de la palabra ("✅ Pagado"): se compara sólo lo alfabético.
+    const pagado = /^pagado$/i.test(txt(f[c.estado]).replace(/[^a-záéíóúüñ]/gi, ''))
     const tipo = txt(f[c.tipoPago]).toLowerCase()
     const rubro = txt(f[c.rubro])
     // LA NÓMINA NO SALE DE ACÁ, Y NO ES UNA PREFERENCIA: son $30,5M de jornales tipeados a mano como

@@ -63,9 +63,14 @@ async function extraerDeLasFuentes(google, corte) {
   // ENDOSADO. Leyendo menos, esa columna llega vacía y el libro esperaría $20.000.000 de LA ESTRELLA
   // que ya se entregaron a Alumetal y nunca van a pasar por la cuenta.
   const [compras, cobranzas, cheques, banco, tarjeta, carteraRaw, impuestos] = await Promise.all([
-    leer('Compras!A1:AN500'), leer('Cobranzas!A1:BB300'),
-    leer("'Cheques Emitidos'!A1:M500"), leer('_BANCO_RAW!A1:F600'),
-    leer("'Tarjeta de Credito'!A1:M400"), leer('_CHEQUES_RAW!A1:L400'),
+    // RANGOS ABIERTOS, SIN TOPE DE FILA. El tope 500 dejó afuera las filas 501+ de Compras — los
+    // $32,9M de Alumetal con fecha de caja esta semana entre ellas — y el portón lo gritó como
+    // $35,17M de diferencia. Es la fila 200 de Cobranzas otra vez: un tope escrito hoy es una bomba
+    // que explota el día que la pestaña crece, sin un solo error. Un rango abierto llega hasta la
+    // última fila con datos, siempre.
+    leer('Compras!A1:AN'), leer('Cobranzas!A1:BB'),
+    leer("'Cheques Emitidos'!A1:M"), leer('_BANCO_RAW!A1:F'),
+    leer("'Tarjeta de Credito'!A1:M"), leer('_CHEQUES_RAW!A1:L'),
     leer(`'${CALENDARIO_IMPUESTOS.pestaña}'!A1:N60`),
   ])
   // LA NÓMINA VIVE EN RANGOS CON NOMBRE, y por eso se lee por nombre: el rediseño del 23/07 movió las
