@@ -26,6 +26,9 @@ import { formulaDireccion } from './direccion-retiros.mjs'
 import { formulaBancoPorNaturaleza } from './banco-vs-cuadro.mjs'
 // El "⇒ " de los rótulos de total sale de una sola función, la misma que usan los generadores.
 import { total } from './patron-pestana.mjs'
+// La traducción a fórmula de "¿este N° de comprobante sirve para cruzar?" vive pegada a su gemela de
+// código, en lib/cheques-cobertura.mjs. Importarla es lo que impide que se escriban dos reglas.
+import { expresionTieneNumero } from './cheques-cobertura.mjs'
 
 /** El sub-rubro de Estructura que NO es gasto del mes sino inversión. Lo escribe estructura-pestana. */
 export const SUB_BIENES_DE_USO = 'Equipos y rodados (inversión)'
@@ -97,14 +100,14 @@ export function lineasEgreso() {
  * filaCab = fila del encabezado · las columnas son letras porque las usa una fórmula del Sheet.
  */
 export const INSTRUMENTOS = {
-  cheques: { nombre: 'CHEQUES', pestaña: 'Cheques Emitidos', filaCab: 1, colMonto: 'F', colFecha: 'I', colMes: 'J', colDebitado: 'K', colMarca: 12 },
+  cheques: { nombre: 'CHEQUES', pestaña: 'Cheques Emitidos', filaCab: 1, colMonto: 'F', colFecha: 'I', colMes: 'J', colDebitado: 'K', colComprobante: 'H', colMarca: 12 },
   // `filaCab` 2 → 31 (04/08). El encabezado del registro de la tarjeta está en la fila 31, no en la 2:
   // arriba vive la banda de la pestaña. Con el 2, `cheques-cobertura-sheet.mjs` estampaba su rótulo
   // "Estado en el OS · al …" en la fila del SUBTÍTULO y colgaba las marcas por debajo, encima de la
   // banda. Era un error preexistente que no se veía porque el bloque de arriba era distinto; el
   // rediseño lo dejó a la vista. También corrige el rango de `cash-flow-rehacer` (MAX de fechas),
   // que arrancaba en la 3 —dentro de la banda— en vez de en la primera fila de datos.
-  tarjeta: { nombre: 'TARJETA DE CRÉDITO', pestaña: 'Tarjeta de Credito', filaCab: 31, colMonto: 'E', colFecha: 'H', colMes: 'I', colDebitado: 'J', colMarca: 11 },
+  tarjeta: { nombre: 'TARJETA DE CRÉDITO', pestaña: 'Tarjeta de Credito', filaCab: 31, colMonto: 'E', colFecha: 'H', colMes: 'I', colDebitado: 'J', colComprobante: 'G', colMarca: 11 },
 }
 
 /** Hasta qué fila se busca en las pestañas de instrumentos. De sobra para lo que hay (89 y 29). */
@@ -135,8 +138,27 @@ export function formulasInstrumento(inst, marcas) {
   return {
     total: { cantidad: `=SUMPRODUCT(--(${M}<>""))`, monto: `=SUMPRODUCT((${M}<>"")*${importe})` },
     contemplados: conMarca(marcas.ok),
+    inferidos: conMarca(marcas.inferido),
     falta: conMarca(marcas.falta),
     sinNumero: conMarca(marcas.sinNumero),
+    /**
+     * LO QUE EL OS TODAVÍA NO MIRÓ. La marca es una foto que escribe el agente; una fila cargada
+     * después de la última corrida no tiene ninguna, y entonces NO la cuenta ni "contemplados" ni
+     * "falta" ni "sin número": desaparece de los cuatro renglones sin que la suma deje de cuadrar.
+     * Medido el 05/08: ocho cheques por $38.377.479 en ese estado. Por eso el bloque publica este
+     * renglón — si no da cero, el resto de la descomposición está incompleta y hay que decirlo.
+     *
+     * Se parte en dos porque las dos mitades se arreglan distinto: la que YA tiene N° de comprobante
+     * se resuelve corriendo el agente, y la que no, cargando el dato.
+     */
+    sinMarca: (conNumero = null) => {
+      const cond = conNumero === null ? '' : `*(${conNumero ? '' : '1-'}${expresionTieneNumero(R(inst.colComprobante))})`
+      const pendiente = `(UPPER(${R(inst.colDebitado)})<>"SI")`
+      return {
+        cantidad: `=SUMPRODUCT(${pendiente}*(${M}="")*--ISNUMBER(${R(inst.colMonto)})${cond})`,
+        monto: `=SUMPRODUCT(${pendiente}*(${M}="")*${importe}${cond})`,
+      }
+    },
     /**
      * Lo que todavía no se debitó, por mes. Se compara contra la FECHA, no contra el rótulo: la
      * columna de mes de la pestaña dice "julio 26" pero adentro tiene una fecha, así que comparar

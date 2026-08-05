@@ -27,8 +27,44 @@
 // Y no borra ni reordena NADA del registro: sólo corrige la columna DEBITADO y agrega al final lo que
 // falta. Las filas son del dueño.
 
+// La misma definición de "¿este N° de comprobante sirve para cruzar?" que usa el cruce contra
+// Compras. Si acá se avisara con otro criterio, el sync diría "está" sobre un número que el cruce
+// después descarta, y el aviso perdería sentido justo donde tiene que servir.
+import { normComprobante, esLlaveUtil } from './cheques-cobertura.mjs'
+
 /** Sólo dígitos y sin ceros a la izquierda: "00000303" y "303" son el mismo cheque. */
 export const norm = (n) => String(n ?? '').replace(/\D/g, '').replace(/^0+/, '')
+
+/**
+ * NÚCLEO PURO: LOS CHEQUES QUE ENTRAN —O YA ESTÁN— SIN N° DE COMPROBANTE.
+ *
+ * ═══ POR QUÉ SE AVISA ACÁ Y NO SEIS MESES DESPUÉS (05/08) ═══
+ *
+ * `filaRegistro` no escribe la columna del N° de comprobante, y no puede: el banco informa el cheque,
+ * no la factura que paga. O sea que TODO cheque que entra por esta puerta nace sin la llave que
+ * después necesita el cruce contra Compras. Medido el 05/08: 50 cheques del registro sin N°, y 11
+ * todavía no debitados por $8.424.279 cuya cobertura no se puede afirmar de ninguna manera. Ese hueco
+ * no se descubrió al cargarlos: se descubrió meses después, cuando alguien fue a conciliar y encontró
+ * un número que no se podía verificar en el momento en que se usa para decidir.
+ *
+ * El dato lo tiene quien firmó el cheque, y lo tiene EN EL MOMENTO. Diez segundos ahí valen más que
+ * cualquier cruce por importe después — y el cruce por importe, medido, recupera 2 de 11.
+ *
+ * SÓLO LOS NO DEBITADOS del registro. Un cheque ya debitado sin N° también es un hueco, pero es un
+ * hueco de archivo: su plata ya salió y ya está dentro del saldo del banco. Mezclarlos convertía el
+ * aviso en una lista de 50 que nadie iba a leer.
+ *
+ * @param {{registro?:Array<{fila:number, nroComp?:string, debitado?:string, proveedor?:string, monto?:*}>, agregar?:Array}} args
+ * @returns {{yaEnElRegistro:Array, seEstanAgregando:Array}}
+ */
+export function sinComprobante({ registro = [], agregar = [] } = {}) {
+  const falta = (v) => !esLlaveUtil(normComprobante(v))
+  return {
+    yaEnElRegistro: registro.filter((r) => falta(r.nroComp) && String(r.debitado ?? '').trim().toUpperCase() !== 'SI'),
+    // Los que este sync está por agregar: nacen sin N° por construcción, no hace falta mirarles nada.
+    seEstanAgregando: agregar,
+  }
+}
 
 /**
  * El estado del banco → la marca del desplegable DEBITADO (estricto: "SI"/"No", esa mayúscula exacta).

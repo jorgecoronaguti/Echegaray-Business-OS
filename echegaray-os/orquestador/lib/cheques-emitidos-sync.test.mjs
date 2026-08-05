@@ -2,7 +2,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  norm, debitadoDe, instrumentoDe, clave, planSync, filaRegistro, verificarEncabezado, aFechaAR, COL,
+  norm, debitadoDe, instrumentoDe, clave, planSync, filaRegistro, verificarEncabezado, aFechaAR,
+  sinComprobante, COL,
 } from './cheques-emitidos-sync.mjs'
 
 const ORIGEN_ECHEQ = 'Santander Empresas · pantalla ECHEQs Emitidos (PDF 30/07/2026 09:06)'
@@ -147,6 +148,31 @@ test('filaRegistro respeta el ancho ROTULADO (A–L) y no escribe fuera del cuad
   assert.equal(f[COL.emision], '')
   assert.equal(f[COL.tipoComp], '')
   assert.equal(f[COL.nroComp], '')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL AVISO SE DA AL CARGAR, NO SEIS MESES DESPUÉS AL CONCILIAR
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('todo cheque que entra por el banco nace SIN N° de comprobante — y hay que decirlo ahí', () => {
+  // `filaRegistro` deja la columna vacía y no puede hacer otra cosa: el banco informa el cheque, no
+  // la factura que paga. Si nadie avisa en ese momento, el hueco se descubre meses después — que fue
+  // exactamente lo que pasó con los 11 cheques no debitados por $8.424.279 medidos el 05/08.
+  const nuevos = [{ instrumento: 'ECHEQ', numero: '372', contraparte: 'Alumetal', importe: 500000 }]
+  assert.equal(sinComprobante({ agregar: nuevos }).seEstanAgregando.length, 1, 'los agregó en silencio')
+})
+
+test('avisa por los NO debitados del registro, no por los que ya salieron de la cuenta', () => {
+  // Un cheque debitado sin N° también es un hueco, pero es un hueco de archivo: su plata ya está
+  // dentro del saldo del banco. Mezclarlos hacía una lista de 50 que nadie iba a leer.
+  const registro = [
+    { fila: 118, nroComp: '', debitado: 'No', proveedor: 'Con-Sec', monto: '1.700.000' },
+    { fila: 20, nroComp: '', debitado: 'SI', proveedor: 'ya salió', monto: '500.000' },
+    { fila: 121, nroComp: '0038-00025872', debitado: 'No', proveedor: 'Alumetal', monto: '16.649.000' },
+    { fila: 23, nroComp: '7206', debitado: 'No', proveedor: 'número corto', monto: '265.000' },
+  ]
+  assert.deepEqual(sinComprobante({ registro }).yaEnElRegistro.map((x) => x.fila), [118, 23],
+    'tiene que avisar por los no debitados sin llave útil — y "7206" no es una llave útil')
 })
 
 test('verificarEncabezado: el layout REAL de la pestaña pasa', () => {
