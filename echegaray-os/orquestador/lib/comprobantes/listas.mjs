@@ -90,17 +90,74 @@ export async function listasDeCompras(google, { fileId = CASHFLOW_ID } = {}) {
  *
  * @returns {Promise<Map<string,string>>} CUIT sin guiones → nombre tal cual está escrito
  */
-export async function proveedoresPorCuit(google, { fileId = CASHFLOW_ID, rango = 'Proveedores!A41:B200' } = {}) {
-  const mapa = new Map()
-  if (typeof google?.readSheetValues !== 'function') return mapa
+export async function proveedoresPorCuit(google, { fileId = CASHFLOW_ID, rango = 'Proveedores!A1:B400' } = {}) {
+  if (typeof google?.readSheetValues !== 'function') return new Map()
   try {
-    for (const f of await google.readSheetValues(fileId, rango)) {
-      const nombre = String(f?.[0] ?? '').trim()
-      const cuit = String(f?.[1] ?? '').replace(/\D/g, '')
-      // El primero gana: si el mismo CUIT apareciera dos veces con nombres distintos, quedarse con
-      // uno al azar sería peor que quedarse con el de arriba, que es el que el dueño ordenó primero.
-      if (nombre && cuit.length === 11 && !mapa.has(cuit)) mapa.set(cuit, nombre)
-    }
+    return cuitsDeLaGrilla(await google.readSheetValues(fileId, rango))
   } catch { /* sin listas se sigue matcheando por nombre: no poder leer no es un dato */ }
+  return new Map()
+}
+
+/** El encabezado que marca dónde empieza el bloque de cuenta corriente. Ver `cuitsDeLaGrilla`. */
+const RE_ENCABEZADO_CUIT = /\bcuit\b/i
+
+/**
+ * El título de una sección de la pestaña ("3 · NOTAS DE CRÉDITO"). Cierra el bloque que se venía
+ * leyendo. Es la gramática que la pestaña ya usa para separar sus partes: anclarse a ella es
+ * anclarse al texto, no a la fila.
+ */
+const RE_TITULO_SECCION = /^\s*\d+\s*·/
+
+/**
+ * CUIT → nombre, buscando el bloque POR SU ENCABEZADO y no por su número de fila.
+ *
+ * ═══ EL RANGO FIJO ESTABA ANCLADO A UNA POSICIÓN QUE SE MUEVE (05/08) ═══
+ *
+ * Antes esto leía `Proveedores!A41:B200`. Medido contra la pestaña viva: el bloque de cuenta
+ * corriente —el único donde la columna B es un CUIT— arranca en la fila 55, debajo del encabezado
+ * «Proveedor | CUIT (OS) | Comprado 2026». Las filas 41 a 54 son la cola del bloque de arriba, donde
+ * la columna B es el N° de comprobante: se estaban leyendo números de factura como si fueran CUIT.
+ *
+ * Y el bloque SE MUEVE. `Proveedores` la regenera un generador cada dos horas y su primera sección
+ * crece y se achica con la cantidad de facturas abiertas: cada factura nueva empuja el bloque de
+ * CUIT una fila hacia abajo. Con 74 CUIT hoy, el tope de 200 aguanta; el día que la deuda abierta
+ * sume filas, los últimos proveedores se caen del rango y el bot los declara "nuevos" —que es
+ * exactamente el mensaje que traba la carga—, sin un solo error en ningún lado.
+ *
+ * Se busca el encabezado que dice CUIT y se lee de ahí para abajo. Un encabezado se renombra mucho
+ * menos que una fila se corre, y si el bloque desapareciera el mapa vuelve vacío: el matcheo sigue
+ * siendo por nombre, igual que cuando Google no contesta.
+ *
+ * NÚCLEO PURO: entra la grilla, sale el mapa. Es lo que permite probar el defecto sin el Sheet real.
+ *
+ * @param {Array<Array<string>>} grilla  filas de dos columnas: nombre y CUIT
+ * @returns {Map<string,string>} CUIT sin guiones → nombre tal cual está escrito
+ */
+export function cuitsDeLaGrilla(grilla = []) {
+  const mapa = new Map()
+  let dentro = false
+  for (const f of grilla) {
+    const a = String(f?.[0] ?? '').trim()
+    const b = String(f?.[1] ?? '').trim()
+    if (!dentro) {
+      // El encabezado del bloque: la segunda columna se llama CUIT. Los otros dos encabezados de la
+      // pestaña ("Se le debe", "N° Comprobante") no lo dicen, y son justo los que no hay que leer.
+      if (a && RE_ENCABEZADO_CUIT.test(b)) dentro = true
+      continue
+    }
+    // ═══ Y SE CIERRA EN LA SECCIÓN SIGUIENTE ═══
+    //
+    // La pestaña tiene DOS bloques con CUIT y significan cosas distintas: el de cuenta corriente usa
+    // el nombre del DESPLEGABLE («DUPEC») y el de cobertura de ARCA usa la razón social del padrón
+    // («DUBOS UGARTE PEDRO LUIS RAUL»). Este mapa promete lo primero —es lo único que se puede
+    // escribir en la columna E— y mezclarle lo segundo sería meter dos verdades en un solo mapa.
+    if (RE_TITULO_SECCION.test(a)) break
+    // Un CUIT tiene once dígitos. Lo que no los tenga se saltea sin cortar el bloque: en la columna
+    // hay proveedores sin CUIT cargado, y frenar en el primero dejaría afuera a todos los de abajo.
+    const cuit = b.replace(/\D/g, '')
+    // El primero gana: si el mismo CUIT apareciera dos veces con nombres distintos, quedarse con
+    // uno al azar sería peor que quedarse con el de arriba, que es el que el dueño ordenó primero.
+    if (a && cuit.length === 11 && !mapa.has(cuit)) mapa.set(cuit, a)
+  }
   return mapa
 }

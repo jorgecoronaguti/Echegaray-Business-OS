@@ -40,6 +40,7 @@ import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
 import { perfilesDeImputacionDesdeDB, perfilesDeImputacion, sugerirImputacion } from '../lib/imputacion-aprendida.mjs'
 import { indiceDeCompras, buscarEnCompras, HALLAZGO } from '../lib/comprobantes/compras-vivas.mjs'
 import { conciliarConArca, aplicarArca, candidatasArca, ESTADO_ARCA } from '../lib/comprobantes/arca.mjs'
+import { listasDeCompras, proveedoresPorCuit } from '../lib/comprobantes/listas.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
@@ -65,16 +66,10 @@ const emitir = (o) => { if (JSON_OUT) console.log(MARCA_JSON + JSON.stringify(o)
 // se cuela un desfasaje que nadie ve hasta que escribe en la columna de al lado.
 const idx = colIndice // 'A'->0, 'AA'->26
 
-/** Lista viva del desplegable ESTRICTO de proveedores (columna E). */
-async function listaProveedores(google) {
-  const sheets = await google.readSheetValidations(ID, ['Compras!E4:E12'])
-  const s = (sheets || []).find((x) => /^compras$/i.test(x.properties?.title))
-  for (const row of s?.data?.[0]?.rowData || []) {
-    const dv = (row.values || [])[0]?.dataValidation
-    if (dv?.condition?.type === 'ONE_OF_LIST') return dv.condition.values.map((v) => v.userEnteredValue)
-  }
-  return []
-}
+// LA LISTA DEL DESPLEGABLE Y EL MAPA DE CUIT SALEN DE `lib/comprobantes/listas.mjs`, que es de donde
+// ya los saca el bot. Acá había una copia de `listasDeCompras` —las mismas quince líneas leyendo la
+// misma validación de `Compras!E4:E12`— y una copia es una segunda verdad esperando el día en que
+// una de las dos se arregle sola. Se borró: una capacidad, una fuente.
 
 /** Traduce lo que devolvió la escritura en la razón HUMANA de por qué el destino quedó como quedó. */
 function porQueNoEntro(respuesta, leidoOk) {
@@ -142,8 +137,10 @@ async function conciliar(cc, arcaDe) {
  *
  * @returns {Promise<{item:object, arca:object, prov:object, hallazgo:object|null}>}
  */
-export async function prepararUno(c = {}, { lista = [], indiceCompras = null, arcaDe = null, cargarIgual = false } = {}) {
-  const prov = matchProveedor(c.proveedor, lista)
+export async function prepararUno(c = {}, { lista = [], porCuit = null, indiceCompras = null, arcaDe = null, cargarIgual = false } = {}) {
+  // EL CUIT MANDA SOBRE EL NOMBRE, igual que en el chat: la factura trae la razón social del padrón
+  // y el desplegable el nombre de fantasía. Sin `porCuit` se comporta exactamente como antes.
+  const prov = matchProveedor(c.proveedor, lista, { cuit: c.cuit, porCuit })
   // La fecha se canoniza ANTES que nada: ARCA la exige en DD/MM/AAAA y el índice de Compras compara
   // contra ese mismo formato. Un "5/1/2026" sin normalizar no matchea nada y el duplicado pasa.
   const cc = { ...c, proveedor: prov.valor, fecha: aFechaAR(c.fecha) ?? c.fecha ?? null }
@@ -272,15 +269,25 @@ async function main() {
   // UNA SOLA LECTURA DE LA PESTAÑA VIVA alimenta las dos cosas que hacen falta: el índice contra el
   // que se busca el duplicado y la historia con la que `imputacion-aprendida.mjs` sugiere la
   // imputación. Ya se leía para lo segundo; lo primero es lo que faltaba y no cuesta una consulta más.
-  const [lista, colE, indiceCompras] = await Promise.all([
-    listaProveedores(google), google.readSheetValues(ID, 'Compras!E1:E'), indiceDeCompras(google, { fileId: ID }),
+  // ═══ EL MAPA DE CUIT VIAJA TAMBIÉN ACÁ (05/08) ═══
+  //
+  // El bot lo usaba y este cargador no, así que el MISMO comprobante resolvía distinto según por
+  // dónde entrara: «DUBOS UGARTE PEDRO LUIS RAUL» es DUPEC por CUIT para el chat y un proveedor
+  // nuevo para la terminal. Dos respuestas para el mismo paso es lo que este archivo evita en las
+  // columnas y no estaba evitando en el proveedor. Una capacidad, una fuente.
+  const [listas, porCuit, colE, indiceCompras] = await Promise.all([
+    listasDeCompras(google, { fileId: ID }),
+    proveedoresPorCuit(google, { fileId: ID }),
+    google.readSheetValues(ID, 'Compras!E1:E'),
+    indiceDeCompras(google, { fileId: ID }),
   ])
+  const lista = listas.proveedores
   const perfiles = await perfilesDe(indiceCompras)
   let ultima = 0
   colE.forEach((r, i) => { if (r[0] != null && r[0] !== '') ultima = i + 1 })
 
   const { plan, rechazos, duplicados, percep, nuevos, arca } = await prepararPlan(comprobantes, {
-    lista, indiceCompras, perfiles, cargarIgual: CARGAR_IGUAL,
+    lista, porCuit, indiceCompras, perfiles, cargarIgual: CARGAR_IGUAL,
     arcaDe: (c) => candidatasArca({ query }, c),
   })
 

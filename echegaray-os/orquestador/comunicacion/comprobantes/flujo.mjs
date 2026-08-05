@@ -319,7 +319,7 @@ export async function procesarPost(d, m = {}) {
   await conciliarItems(items, arcaDe)
 
   // 6) Colapsar los repetidos del propio envío (la misma factura fotografiada dos veces).
-  const { items: unicos } = colapsarRepetidos(items)
+  let { items: unicos } = colapsarRepetidos(items)
 
   // 7) ¿Ya estaban cargados? En el registro del chat Y en la pestaña Compras VIVA: el comprobante
   //    pudo haber entrado por Claude Code o a mano, que es exactamente lo que pasó.
@@ -353,9 +353,38 @@ export async function procesarPost(d, m = {}) {
     // en vez de perder los comprobantes recién leídos.
     if (!fajo) fajo = await repo.abrirFajo(port, nuevoFajo(m, unicos))
   } else {
-    // Un fajo abierto pero fuera de la ventana no se toca: se cierra por vencimiento para que el
-    // índice único deje abrir el nuevo, y el mensaje viejo queda como quedó.
-    if (abierto) await repo.cerrarFajo(port, { id: abierto.id, estado: ESTADO.DESCARTADO, error: 'vencido por ventana' })
+    // ═══ EL FAJO SE CIERRA; EL GASTO NO SE TIRA (05/08) ═══
+    //
+    // Antes acá decía "el mensaje viejo queda como quedó" y el fajo se cerraba DESCARTADO con sus
+    // ítems adentro. Eso no dejaba el mensaje viejo: borraba el gasto. Medido en producción sobre
+    // los primeros quince fajos: OCHO terminaron `descartado` con `error='vencido por ventana'` y
+    // CERO filas, y entre ellos DUPEC 00009-00003204 por $469.564,70 y Corralon Progreso
+    // 0004-00036542 por $62.000. Nadie se enteró: el bot preguntaba algo, la persona tardaba más de
+    // cinco minutos, mandaba la foto siguiente, y con ella el comprobante anterior desaparecía.
+    //
+    // La ventana decide UNA sola cosa —si este post se agrupa con el anterior— y esa decisión sigue
+    // igual: se abre un fajo nuevo. Lo que no se puede derivar de ella es tirar lo que quedó
+    // pendiente. El índice único parcial obliga a que haya un solo fajo abierto por (persona,
+    // canal), así que la única forma de no perder nada es que los pendientes SE MUDEN al fajo nuevo.
+    //
+    // Se mudan sólo los que siguen pendiendo de una respuesta: lo ya cargado no vuelve (`yaCargado`
+    // marca lo que se encontró en Compras o en el registro) y `colapsarRepetidos` evita que el mismo
+    // comprobante se duplique al mudarse. Los viejos van PRIMERO porque son los que llevan más
+    // tiempo esperando.
+    if (abierto) {
+      const mudados = (abierto.items ?? []).filter((it) => it && !it.yaCargado)
+      if (mudados.length) unicos = colapsarRepetidos([...mudados, ...unicos]).items
+      await repo.cerrarFajo(port, {
+        id: abierto.id,
+        estado: ESTADO.DESCARTADO,
+        error: mudados.length ? `reemplazado: ${mudados.length} pendiente(s) mudados al fajo nuevo` : 'vencido por ventana',
+      })
+      // Y EL MENSAJE VIEJO NO PUEDE QUEDAR CON BOTONES MUERTOS. Apretarlos ahora contesta
+      // "ya cerrado", que le dice a la persona que su comprobante se perdió justo cuando NO se
+      // perdió. Se reescribe para que apunte al mensaje nuevo. Que no se pueda reescribir no
+      // cambia nada de lo importante: el gasto ya viajó.
+      if (mudados.length) await avisarQueSeMudo(mattermost, abierto, mudados.length, log)
+    }
     fajo = await repo.abrirFajo(port, nuevoFajo(m, unicos))
   }
   if (!fajo) return { texto: 'No pude abrir la carga. Probá de nuevo en un minuto.', estado: 'error' }
@@ -446,6 +475,31 @@ async function perfilesDeHistorial(indiceCompras, d) {
   const desdeDB = d.perfilesDesdeDB
   if (typeof desdeDB !== 'function') return null
   try { return await desdeDB() } catch { return null }
+}
+
+/**
+ * Reescribe el aviso del fajo que se cerró para decir que lo pendiente se mudó, y le saca los
+ * botones.
+ *
+ * NO LANZA NUNCA: llega después de que los ítems ya viajaron. Que Mattermost no conteste deja un
+ * mensaje viejo con botones que contestan "ya cerrado" —molesto—, pero el gasto está a salvo en el
+ * fajo nuevo. Tumbar la carga por no poder editar un mensaje sería cambiar lo barato por lo caro.
+ */
+export async function avisarQueSeMudo(mattermost, fajo, cuantos = 0, log) {
+  const id = fajo?.aviso_post_id
+  if (!id || typeof mattermost?.actualizarPost !== 'function') return false
+  const que = cuantos === 1 ? 'El comprobante que quedaba pendiente acá sigue' : `Los ${cuantos} comprobantes que quedaban pendientes acá siguen`
+  try {
+    await mattermost.actualizarPost({
+      id,
+      message: `⤴ ${que} sin cargar y **no se perdieron**: los pasé al mensaje de abajo, contestame ahí.`,
+      props: { attachments: [] },
+    })
+    return true
+  } catch (e) {
+    log?.warn?.('comprobantes: no pude reescribir el aviso del fajo mudado', { detalle: String(e?.message ?? e).slice(0, 200) })
+    return false
+  }
 }
 
 function nuevoFajo(m, items) {

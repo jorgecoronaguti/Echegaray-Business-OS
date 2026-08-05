@@ -101,6 +101,59 @@ test('pasada la ventana, el fajo viejo se cierra y arranca uno nuevo', async () 
   assert.equal(repo._fajos.get(r1.fajoId).estado, ESTADO.DESCARTADO)
 })
 
+// ── EL GASTO NO SE PIERDE AL VENCER LA VENTANA (05/08) ───────────────────────
+//
+// El defecto que este bloque congela costó ocho comprobantes en producción, entre ellos uno de
+// $469.564,70: el bot preguntaba algo, la persona tardaba más de cinco minutos, mandaba la foto
+// siguiente, y el comprobante anterior se cerraba `descartado` con cero filas SIN QUE NADIE LO
+// DIJERA. No es un caso raro: es el caso normal de cualquier comprobante que necesite una respuesta.
+
+test('el comprobante pendiente NO se pierde al vencer la ventana: se muda al fajo nuevo', async () => {
+  const { d, repo } = armar({
+    // El primero no se puede cargar solo (proveedor fuera del desplegable): queda esperando respuesta.
+    lecturas: [lecturaBarcelo({ emisor: 'FERRETERIA EL TORNILLO SRL' }), lecturaBarcelo({ numero: '0113-00010490' })],
+  })
+  const r1 = await mandar(d, repo, post({ postId: 'p1' }))
+  const viejo = repo._fajos.get(r1.fajoId)
+  assert.equal(viejo.items.length, 1)
+
+  const r2 = await mandar(d, repo, post({ postId: 'p2', fileIds: ['f2'], ahora: new Date('2026-08-03T10:30:00Z') }))
+  const nuevo = repo._fajos.get(r2.fajoId)
+
+  assert.equal(repo._fajos.get(r1.fajoId).estado, ESTADO.DESCARTADO, 'el fajo viejo se cierra igual: un solo abierto por persona y canal')
+  assert.equal(nuevo.items.length, 2, 'el pendiente viajó: sin esto el gasto desaparece sin que nadie se entere')
+  const proveedores = nuevo.items.map((it) => it.comprobante?.proveedor)
+  assert.ok(proveedores.includes('FERRETERIA EL TORNILLO SRL'), 'el que quedó esperando respuesta tiene que seguir en la conversación')
+  assert.match(r2.texto, /FERRETERIA EL TORNILLO SRL/, 'y tiene que verse en el mensaje nuevo, con sus botones vivos')
+})
+
+test('el mensaje viejo se reescribe: no quedan botones que digan que se perdió algo que no se perdió', async () => {
+  const { d, repo, mm } = armar({
+    lecturas: [lecturaBarcelo({ emisor: 'FERRETERIA EL TORNILLO SRL' }), lecturaBarcelo({ numero: '0113-00010490' })],
+  })
+  const r1 = await mandar(d, repo, post({ postId: 'p1' }))
+  // El aviso con botones lo publica el especialista; acá se simula esa anotación.
+  await repo.guardarAvisoPost(null, { id: r1.fajoId, avisoPostId: 'aviso_1' })
+  await mm.crearPost({ channel_id: 'c_comprobantes', message: 'viejo' })
+  mm.posts[mm.posts.length - 1].id = 'aviso_1'
+
+  await mandar(d, repo, post({ postId: 'p2', fileIds: ['f2'], ahora: new Date('2026-08-03T10:30:00Z') }))
+
+  const aviso = mm.posts.find((p) => p.id === 'aviso_1')
+  assert.match(aviso.message, /no se perdieron/, 'el mensaje viejo tiene que decir la verdad de lo que pasó')
+  assert.deepEqual(aviso.props.attachments, [], 'y quedarse sin botones muertos')
+})
+
+test('lo que YA está cargado no se muda: mudar un cargado lo pondría de nuevo en la cola', async () => {
+  const { d, repo } = armar({ lecturas: [lecturaBarcelo({ emisor: 'FERRETERIA EL TORNILLO SRL' }), lecturaBarcelo({ numero: '0113-00010490' })] })
+  const r1 = await mandar(d, repo, post({ postId: 'p1' }))
+  // Se marca como ya cargado, igual que si Compras lo hubiera desmentido entre un post y el otro.
+  repo._fajos.get(r1.fajoId).items[0].yaCargado = { fila: 700, hoja: 'Compras' }
+
+  const r2 = await mandar(d, repo, post({ postId: 'p2', fileIds: ['f2'], ahora: new Date('2026-08-03T10:30:00Z') }))
+  assert.equal(repo._fajos.get(r2.fajoId).items.length, 1, 'sólo viaja lo que sigue pendiente de una respuesta')
+})
+
 // ── Proveedor desconocido ────────────────────────────────────────────────────
 
 test('PROVEEDOR DESCONOCIDO: se pregunta, no se inventa, y no se ofrece Confirmar', async () => {
