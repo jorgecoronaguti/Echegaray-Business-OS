@@ -1,4 +1,9 @@
 import { hallarPestana } from './sheet-pestanas.mjs'
+// EL CRITERIO DE RESPALDO NO SE REESCRIBE ACÁ: es el mismo que el cruce contra ARCA usa cuando a una
+// fila de Compras le falta el número. Una segunda copia es como empezó la divergencia que
+// lib/cobertura-arca.mjs vino a cerrar.
+import { candidatasPorImporte } from './cobertura-arca.mjs'
+import { normNombre } from './razon-social.mjs'
 
 // ¿LOS CHEQUES Y LA TARJETA ESTÁN CONTEMPLADOS EN EL CASH FLOW, O SON PLATA INVISIBLE?
 //
@@ -48,13 +53,119 @@ export const normComprobante = (s) => String(s ?? '')
 export const esLlaveUtil = (k) => k.includes('-') || k.replace(/-/g, '').length >= 5
 
 /**
+ * `esLlaveUtil` TRADUCIDA A FÓRMULA, para que el Sheet pueda partir en dos el bloque de lo no marcado.
+ *
+ * POR QUÉ HACE FALTA UNA SEGUNDA ESCRITURA DE LA MISMA REGLA. El cruce se hace en código porque
+ * normalizar "0001-000036" contra "1-36" en una celda sería ilegible; pero el renglón "el OS todavía
+ * no miró esta fila" tiene que moverse SOLO —si se congelara en un número pegado envejecería igual
+ * que la marca que vino a vigilar—. Vive pegada a su gemela de código a propósito: son dos líneas que
+ * se leen juntas o divergen. `pin-esLlaveUtil` en el test las ata a la misma tabla de casos.
+ *
+ * La expresión es la de arriba, término a término: tiene un guión, O mide cinco o más caracteres.
+ * (1-…)*(1-…) en vez de OR(), que en Sheets no es array-safe y devolvería un único booleano.
+ *
+ * LA APROXIMACIÓN, DECLARADA: la gemela de código cuenta DÍGITOS y ésta cuenta CARACTERES, porque
+ * contar dígitos en una celda exige recorrer el texto y eso no es array-safe adentro de un
+ * SUMPRODUCT. Difieren sólo si alguien escribe cinco o más caracteres SIN un solo dígito ("pendiente")
+ * — no hay ninguno hoy en el registro. El renglón que parte es un DIAGNÓSTICO, no un importe del
+ * cuadro: los dos pedazos suman lo mismo pase lo que pase, y lo único que se movería es de qué lado
+ * del renglón cae una fila.
+ * @param {string} rango rango de la columna del N° de comprobante (ya con pestaña y $)
+ * @returns {string} expresión (sin '='), array-safe, en locale es_AR
+ */
+export function expresionTieneNumero(rango) {
+  const texto = `(${rango}&"")`
+  const soloDigitos = `LEN(SUBSTITUTE(${texto};"-";""))`
+  return `(1-(1-ISNUMBER(FIND("-";${texto})))*(1-(${soloDigitos}>=5)))`
+}
+
+/**
+ * TOLERANCIA DEL CRUCE DE RESPALDO PARA UN CHEQUE: cero por ciento, o sea un peso de piso.
+ *
+ * ARCA usa 3% porque compara el neto del libro contra el Total de Compras. Un cheque no tiene esa
+ * diferencia: paga un importe y ese importe se escribe. MEDIDO el 05/08 con 3%: seis cheques de
+ * $750.000 de Corralón Progreso emparejaron contra una única factura de $744.526. Un importe redondo
+ * es un pago a cuenta, no el total de una factura, y un emparejamiento falso acá es CARO: le dice al
+ * calendario "este cheque ya viaja dentro de su rubro", lo saca de los egresos y SUBE el piso —
+ * que es el número con el que se decide cuánta plata se inmoviliza.
+ */
+export const TOL_CHEQUE = 0
+/** Cuántos días puede haber entre la factura y el cheque que la paga. El mismo proveedor factura el
+ *  mismo importe varias veces al año; sin ventana, el cruce elige la primera del año. */
+export const VENTANA_DIAS_CHEQUE = 60
+
+/**
+ * NÚCLEO PURO: los instrumentos SIN N° de comprobante que IGUAL se pueden atribuir a una fila de
+ * Compras, por proveedor + importe + fecha cercana.
+ *
+ * ES UNA INFERENCIA Y SE DEVUELVE COMO TAL, en una lista separada de los cruzados por número. La
+ * llave buena identifica una factura; esto sólo dice "hay una fila de Compras que es exactamente
+ * esta plata, del mismo proveedor, en el mismo momento".
+ *
+ * ═══ LA GUARDA DE AMBIGÜEDAD, QUE ES LO QUE SEPARA UNA INFERENCIA DE UNA MONEDA AL AIRE ═══
+ *
+ * Si por un (proveedor, importe) hay MÁS cheques que facturas candidatas, no se infiere ninguno.
+ * Sin esta guarda, seis cheques iguales contra una factura terminan con uno emparejado —el primero
+ * que pasó— y cinco no: el emparejado es arbitrario, y encima es el que baja el egreso del cuadro.
+ * Preferir el hueco declarado antes que la atribución arbitraria no es prudencia decorativa: el
+ * hueco se puede cerrar cargando un dato, la atribución falsa no se ve nunca más.
+ *
+ * @param {Array<{fila:number, proveedor?:string, monto:number, comprobante?:string, fecha?:Date|number|null}>} instrumentos
+ * @param {Array<{fila:number, prov:string, total:number, fecha?:number|null}>} filasCompras con el
+ *   proveedor YA normalizado por el llamador, igual que pide `cruzar` en lib/cobertura-arca.mjs
+ * @returns {{inferidos:Map<number,{filaCompras:number, total:number}>, ambiguos:Array, sinRespaldo:Array}}
+ */
+export function inferirRespaldo(instrumentos = [], filasCompras = [], { norm = normNombre, tol = TOL_CHEQUE, ventanaDias = VENTANA_DIAS_CHEQUE } = {}) {
+  const sinLlave = instrumentos.filter((i) => !esLlaveUtil(normComprobante(i.comprobante)))
+  // Se agrupa por (proveedor, importe al peso) porque la ambigüedad es una propiedad del GRUPO, no
+  // de cada cheque: sólo mirando el grupo entero se sabe si alcanzan las facturas para todos.
+  const grupos = new Map()
+  for (const i of sinLlave) {
+    const k = `${norm(i.proveedor)}|${Math.round(Number(i.monto) || 0)}`
+    grupos.set(k, [...(grupos.get(k) ?? []), i])
+  }
+  const usadas = new Set()
+  const inferidos = new Map()
+  const ambiguos = []
+  const sinRespaldo = []
+  for (const grupo of grupos.values()) {
+    const busca = (i, u) => candidatasPorImporte(
+      { prov: norm(i.proveedor), total: Number(i.monto) || 0, fecha: serialDe(i.fecha) },
+      filasCompras, { usadas: u, tol, ventanaDias })
+    // Las candidatas del grupo ANTES de consumir ninguna: es contra ese universo que se mide si
+    // alcanzan. Medirlo después de consumir declaraba ambiguo al segundo de dos pares perfectos.
+    const universo = new Set(grupo.flatMap((i) => busca(i, usadas)).map((f) => f.fila))
+    if (!universo.size) { sinRespaldo.push(...grupo); continue }
+    if (grupo.length > universo.size) { ambiguos.push(...grupo); continue }
+    for (const i of grupo) {
+      const [cand] = busca(i, usadas)
+      if (!cand) { sinRespaldo.push(i); continue }
+      usadas.add(cand.fila)
+      inferidos.set(i.fila, { filaCompras: cand.fila, total: Number(cand.total) || 0 })
+    }
+  }
+  return { inferidos, ambiguos, sinRespaldo }
+}
+
+/** La fecha de un instrumento como serial de Sheets, venga como Date o como serial. PURA.
+ *  Sin esto, comparar un Date contra el serial de Compras da NaN y la ventana no filtra nada. */
+export function serialDe(v) {
+  if (typeof v === 'number' && Number.isFinite(v)) return v
+  if (v instanceof Date && !Number.isNaN(+v)) return Math.round((Date.UTC(v.getFullYear(), v.getMonth(), v.getDate()) - Date.UTC(1899, 11, 30)) / 86400000)
+  return null
+}
+
+/**
  * NÚCLEO PURO: reparte instrumentos de pago (cheques, tarjeta) entre los que YA están contemplados
  * en Compras y los que no.
  * @param {Array<{comprobante?:string, monto:number, proveedor?:string, fecha_pago?:string, debitado?:string}>} instrumentos
  * @param {Set<string>} comprobantesEnCompras claves ya normalizadas
+ * @param {{inferidos?:Map<number,object>}} opciones `inferidos` lo produce `inferirRespaldo`: las
+ *   filas sin N° que igual se pudieron atribuir a una factura. Salen de `sin_numero_comprobante` —
+ *   dejarlas en los dos lados contaría la misma plata dos veces en el bloque del cash flow.
  * @returns {{contemplados:Array, sin_registrar:Array, total:number, monto_contemplado:number, monto_sin_registrar:number, sin_numero:number}}
  */
-export function repartirCobertura(instrumentos = [], comprobantesEnCompras = new Set()) {
+export function repartirCobertura(instrumentos = [], comprobantesEnCompras = new Set(), { inferidos = new Map() } = {}) {
   // TRES grupos, no dos. La diferencia importa y casi la paso por alto: de los 50 cheques que no
   // matchean, 40 ($21.880.254) simplemente NO TIENEN número de comprobante cargado — su factura
   // puede estar perfectamente en Compras y no hay forma de saberlo. Sólo 10 ($11.631.542) tienen
@@ -63,21 +174,27 @@ export function repartirCobertura(instrumentos = [], comprobantesEnCompras = new
   const contemplados = []
   const faltaFactura = []
   const sinNumero = []
+  const inferidosArr = []
   for (const i of instrumentos) {
     const k = normComprobante(i.comprobante)
-    if (!esLlaveUtil(k)) sinNumero.push(i)
+    if (!esLlaveUtil(k)) (inferidos.has(i.fila) ? inferidosArr : sinNumero).push(i)
     else if (comprobantesEnCompras.has(k)) contemplados.push(i)
     else faltaFactura.push(i)
   }
   const suma = (a) => a.reduce((s, x) => s + (Number(x.monto) || 0), 0)
   return {
     contemplados,
+    // LOS INFERIDOS NO SE MEZCLAN CON LOS CONTEMPLADOS. Los primeros son un HECHO (el número de la
+    // factura está en Compras); éstos son una atribución por proveedor + importe. Sumarlos juntos
+    // convertiría una inferencia en un hecho con sólo pasar por una función.
+    inferidos: inferidosArr,
     falta_factura: faltaFactura,
     sin_numero_comprobante: sinNumero,
     // Se mantiene por compatibilidad: todo lo que NO se pudo confirmar como contemplado.
     sin_registrar: [...faltaFactura, ...sinNumero],
     total: suma(instrumentos),
     monto_contemplado: suma(contemplados),
+    monto_inferido: suma(inferidosArr),
     monto_falta_factura: suma(faltaFactura),
     monto_sin_numero: suma(sinNumero),
     monto_sin_registrar: suma(faltaFactura) + suma(sinNumero),
@@ -153,15 +270,63 @@ export function faltaFacturaConFecha(instrumentos = [], comprobantesEnCompras = 
  */
 export const MARCAS = {
   ok: '✓ su factura está en Compras',
+  // ═══ POR QUÉ ESTA MARCA ES DISTINTA DE LA DE ARRIBA Y NO UN ✓ MÁS (05/08) ═══
+  // El glifo es lo único que se mira cuando se filtra la pestaña. Un ✓ acá diría "está verificado"
+  // sobre algo que se dedujo del importe: la regla de oro nº 2 —nunca presentar una estimación como
+  // un hecho— se rompe en el glifo, no en el texto que nadie lee.
+  inferido: '≈ INFERIDO — sin N°, pero hay una factura del mismo proveedor por el mismo importe',
   falta: '⚠ FALTA cargar la factura en Compras — este pago no lo ve el cash flow',
   sinNumero: '⚠ sin N° de comprobante — no se puede cruzar',
 }
 
-/** NÚCLEO PURO: qué marca le toca a un instrumento de pago. */
-export function marcaDe(comprobante, comprobantesEnCompras = new Set()) {
+/**
+ * NÚCLEO PURO: qué marca le toca a un instrumento de pago.
+ * @param {string} comprobante
+ * @param {Set<string>} comprobantesEnCompras claves ya normalizadas
+ * @param {boolean} [inferido] si `inferirRespaldo` le encontró una factura por proveedor + importe
+ */
+export function marcaDe(comprobante, comprobantesEnCompras = new Set(), inferido = false) {
   const k = normComprobante(comprobante)
-  if (!esLlaveUtil(k)) return MARCAS.sinNumero
+  if (!esLlaveUtil(k)) return inferido ? MARCAS.inferido : MARCAS.sinNumero
   return comprobantesEnCompras.has(k) ? MARCAS.ok : MARCAS.falta
+}
+
+/**
+ * NÚCLEO PURO: LA DESCOMPOSICIÓN QUE DECIDE, y por qué no alcanza con las marcas.
+ *
+ * ═══ EL DEFECTO QUE ESTO CIERRA (05/08) ═══
+ *
+ * La marca de la pestaña es una FOTO: la escribe el agente cuando corre y no se mueve sola. Medido
+ * contra el Sheet real: la columna decía "al 24/7/2026" y las OCHO filas cargadas después de esa
+ * fecha —$38.377.479, todas ECHEQ con vencimiento en agosto— no tenían ninguna marca. El término de
+ * cheques del calendario suma por la marca "FALTA", así que esos ocho no entraban por ningún lado; y
+ * el verificador independiente, que clasificaba "todo lo que no dice FALTA ya tiene su factura", los
+ * contaba como cubiertos. Dos vistas distintas del mismo hecho, las dos equivocadas por omisión.
+ *
+ * LA CAUSA NO ES EL CRUCE: es la ANTIGÜEDAD de la marca. Por eso esta función NO lee marcas —
+ * recalcula el estado desde el dato crudo— y devuelve el grupo `sinMarca` aparte, que es la medida
+ * de cuánto se está decidiendo con una foto vieja.
+ *
+ * @param {Array} instrumentos con {fila, monto, comprobante, debitado, marca}
+ * @param {Set<string>} comprobantesEnCompras
+ * @param {Map<number,object>} inferidos de `inferirRespaldo`
+ * @returns {{ok:Array, inferidos:Array, falta:Array, hueco:Array, sinMarca:Array, montos:object}}
+ */
+export function estadoDeCobertura(instrumentos = [], comprobantesEnCompras = new Set(), inferidos = new Map()) {
+  const g = { ok: [], inferidos: [], falta: [], hueco: [], sinMarca: [] }
+  for (const i of instrumentos) {
+    const m = marcaDe(i.comprobante, comprobantesEnCompras, inferidos.has(i.fila))
+    if (m === MARCAS.ok) g.ok.push(i)
+    else if (m === MARCAS.inferido) g.inferidos.push(i)
+    else if (m === MARCAS.falta) g.falta.push(i)
+    else g.hueco.push(i)
+    // `sinMarca` cruza los otros cuatro grupos a propósito: no es un estado de cobertura, es un
+    // estado del OS —"nadie miró esta fila todavía"— y su monto es el que el calendario ignora.
+    if (!String(i.marca ?? '').trim()) g.sinMarca.push(i)
+  }
+  const suma = (a) => a.reduce((s, x) => s + (Number(x.monto) || 0), 0)
+  const montos = Object.fromEntries(Object.entries(g).map(([k, v]) => [k, suma(v)]))
+  return { ...g, montos }
 }
 
 /**

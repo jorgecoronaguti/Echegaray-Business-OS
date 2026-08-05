@@ -82,7 +82,7 @@ import { EN_CARTERA, formulaCartera, formulaCarteraTramo, formulaImporteEnCarter
 // dos vistas de la misma plata.
 import { expresionSaleEnVentana, lineasDeCaja, marcaDeLinea, conceptosFueraDelCalendario } from '../lib/calendario-egresos.mjs'
 import { formulaChequesSinFactura, formulaCalendarioImpuestosSemana, INSTRUMENTOS, CALENDARIO_IMPUESTOS, rotulosCalendarioImpuestos } from '../lib/cash-flow-lineas.mjs'
-import { MARCAS } from '../lib/cheques-cobertura.mjs'
+import { MARCAS, expresionTieneNumero } from '../lib/cheques-cobertura.mjs'
 import {
   ESTADOS, ESPERADOS, formulaTotalEstado, formulaCantidadEstado, formulaEstadoDesconocido,
   formulaUltimoCobroRegistrado, formulaMontoRanking, formulaClienteRanking,
@@ -900,9 +900,27 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   // leyendo la marca que escribe `cheques-cobertura`. Si ese agente no corrió, la columna de marca
   // está vacía, el término da $0 y NADA avisa: el piso sube sin que se haya pagado nada. Este control
   // cuenta los cheques no debitados que todavía no tienen marca. Tiene que dar cero.
+  // ═══ EL RIESGO, PARTIDO EN DOS PORQUE SE ARREGLAN DISTINTO (05/08) ═══
+  //
+  // Este control era UN renglón de $38.377.479 en rojo. Honesto, pero inaccionable: no decía qué
+  // hacer con esa plata. Medido contra el registro real ese día, esos $38,4M eran DOS problemas de
+  // naturaleza opuesta y en proporción 90/10:
+  //
+  //   · $34.776.200 en cuatro cheques que SÍ tienen su N° de comprobante cargado, y ese número está
+  //     en Compras. No falta ningún dato: falta que corra el agente que escribe la marca.
+  //   · $3.601.279 en cuatro cheques sin N° de comprobante. Ahí no hay agente que valga: el dato no
+  //     existe y sólo lo puede cargar quien firmó el cheque.
+  //
+  // Ver los dos juntos hacía leer un agujero de $38,4M donde el trabajo humano pendiente era $3,6M.
+  const TIENE_NUM = expresionTieneNumero(`'${ch}'!$H$2:$H$400`)
+  const sinMarca = (cond) => `=SUMPRODUCT((${K400})*(${M_CH}="")*${cond}*${F400})`
   push(['   · riesgo: cheques no debitados SIN marca de cobertura (el término de cheques los ignora)', '', '',
     `=SUMPRODUCT((${K400})*(${M_CH}="")*${F400})`, '', '', '', '',
     'Si no da cero, "cheques-cobertura" no corrió sobre esas filas y el calendario no los está viendo: su plata no está ni acá ni en Compras. El cero de este control es lo que hace confiable el término de cheques.'])
+  push(['        de los cuales, con N° de comprobante ya cargado', '', '', sinMarca(TIENE_NUM), '', '', '', '',
+    'No falta ningún dato: falta que corra "cheques-cobertura". Se resuelve solo en la próxima corrida del agente.'])
+  push(['        de los cuales, SIN N° de comprobante', '', '', sinMarca(`(1-${TIENE_NUM})`), '', '', '', '',
+    '⚠ Acá no alcanza con correr el agente: el dato no existe. Hay que cargarle el N° de comprobante a esas filas de la pestaña Cheques Emitidos, y son las únicas que lo pueden hacer las personas.'])
   // ═══ EL OTRO LADO DEL MISMO TÉRMINO, Y ES EL QUE COSTÓ $12.188.441 (05/08) ═══
   //
   // Esta cifra es la que el calendario EXCLUYE a propósito: cheques y cuotas sin factura en Compras
@@ -918,9 +936,36 @@ export function grilla(cargado, refs, cartera = carteraDeRespaldo()) {
   const fPeor = push(['   · el punto más bajo del horizonte', '', '', '', '', `=MIN($F${cal0}:$F${cal1})`, '', '', ''])
   const fCuando = push(['   · cuándo ocurre', '', '', '', '', `=IFERROR(INDEX($A$${cal0}:$A$${cal1};MATCH($F${fPeor};$F$${cal0}:$F$${cal1};0));"")`, '', '',
     'Si el punto más bajo es negativo, ése es el tramo en el que la caja no alcanza — y es la fecha en la que hay que actuar, no el total.', ''])
-  // El rango de moneda tiene que llegar hasta ACÁ: las dos filas de cierre están debajo del último
-  // tramo, y sin incluirlas "el punto más bajo" se dibujaba como una fecha (29/11/13049).
-  const calFin = filas.length - 1
+  // ═══ ENTRE QUÉ Y QUÉ ESTÁ PARADO EL PISO ═══════════════════════════════════════════════════════
+  //
+  // El punto más bajo de arriba se calcula con lo que se PUEDE AFIRMAR: el término de cheques suma
+  // sólo los marcados "FALTA la factura". Pero hay dos grupos cuya cobertura NO se sabe —los que no
+  // tienen N° de comprobante y los que el OS todavía no miró— y con el piso solo, esa ignorancia se
+  // lee como certeza. Es el número con el que se decide cuánta plata se inmoviliza a plazo fijo: no
+  // puede publicarse sin su banda.
+  //
+  // LA PUNTA DE ABAJO ES EXACTA, NO EL PISO MENOS UN TOTAL. Se recalcula el MÍNIMO restando en cada
+  // tramo lo incierto ACUMULADO hasta el borde de ese tramo. Restarle al piso el total de lo incierto
+  // habría sido más corto y estaría mal en cuanto el punto más bajo no fuera el último tramo: le
+  // cargaría al piso plata que sale después.
+  //
+  // Los inferidos NO entran en esta banda: tienen evidencia positiva —una factura del mismo proveedor
+  // por exactamente el mismo importe— y por eso viven del lado de arriba. Esa es toda la utilidad del
+  // cruce de respaldo: no cambia el piso, ANGOSTA la banda.
+  const inciertoHasta = (hasta) => [MARCAS.sinNumero, ''].map((m) => formulaChequesSinFactura(DESDE_SIEMPRE, hasta, m).slice(1)).join('+')
+  const fPeorCaso = push(['   · … y si NINGUNO de los no verificados tuviera su factura', '', '', '', '',
+    `=MIN(${TRAMOS.map((_, k) => `$F${cal0 + k}-(${inciertoHasta(hastaTramo(k))})`).join(';')})`, '', '',
+    'La otra punta. Supone que todos los cheques sin N° de comprobante y todos los que el OS no miró son pagos que ningún rubro de Compras está viendo, y los suma como egresos en su fecha. El piso real está entre esta fila y la de arriba.'])
+  push(['   · ancho de la banda — lo que NO se puede afirmar', '', '', '', '', `=$F${fPeor}-$F${fPeorCaso}`, '', '',
+    'Cuánto vale la ignorancia, en pesos, sobre el número que decide. Baja de dos formas: cargando el N° de comprobante de los cheques que no lo tienen (lo hacen las personas) y corriendo "cheques-cobertura" (lo hace el OS).'])
+  // El rango de moneda tiene que llegar hasta ACÁ: las filas de cierre están debajo del último tramo,
+  // y sin incluirlas "el punto más bajo" se dibujaba como una fecha (29/11/13049).
+  //
+  // `filas.length` Y NO `filas.length - 1` (05/08): el −1 dejaba afuera la ÚLTIMA fila empujada, que
+  // hasta hoy era "cuándo ocurre" —texto, que no necesita formato de moneda— y desde hoy es "ancho de
+  // la banda", que sí. Un importe sin formato de moneda al lado de dos que lo tienen se lee como otra
+  // cosa; es el mismo hallazgo que la fila de julio del calendario de cheques.
+  const calFin = filas.length
   push()
 
   // ══ 4 · COBERTURA DE OBLIGACIONES ═══════════════════════════════════════════════════════════════

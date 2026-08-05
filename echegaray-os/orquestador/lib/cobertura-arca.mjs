@@ -30,6 +30,49 @@ import { signo, sumar } from './comprobante-arca.mjs'
 export const TOL_IMPORTE = 0.03
 
 /**
+ * NÚCLEO PURO: LA SEGUNDA PASADA, AISLADA — "¿hay una fila de Compras que sea ESTA misma plata?".
+ *
+ * ═══ POR QUÉ VIVE ACÁ Y NO ADENTRO DE `cruzar` (05/08) ═══
+ *
+ * El criterio de respaldo —mismo proveedor, mismo importe, cada fila de Compras se consume UNA sola
+ * vez— resuelve un problema que aparece en dos lugares distintos: una factura de ARCA a la que le
+ * falta el número en Compras, y un CHEQUE emitido al que le falta el N° de comprobante. Los dos
+ * preguntan lo mismo: "sin la llave buena, ¿puedo igual atribuir esta plata a una fila que ya está
+ * cargada?". Escribirlo dos veces es exactamente como empezó la divergencia que este archivo vino a
+ * cerrar, así que se escribe una y se parametriza lo que de verdad cambia entre los dos usos.
+ *
+ * LO QUE CAMBIA ENTRE LOS DOS USOS, Y POR QUÉ:
+ *
+ *   · `tol` — ARCA usa 3% porque compara el `imp_total` del libro contra el Total de Compras y ahí
+ *     hay diferencias legítimas (neto vs total, redondeos, ajustes). Un CHEQUE no: el cheque paga un
+ *     importe y ese importe es el que se escribe. Con 3% medí seis cheques redondos de $750.000 de
+ *     Corralón Progreso emparejando contra UNA sola factura de $744.526 — un importe redondo es un
+ *     pago a cuenta, no el total de una factura. Por eso los cheques van con tolerancia de UN PESO.
+ *   · `ventanaDias` — una factura y el cheque que la paga están cerca en el tiempo. ARCA no lo
+ *     necesita (ya filtra por período de DDJJ); el cheque sí, porque el mismo proveedor factura el
+ *     mismo importe muchas veces en el año.
+ *
+ * NO MUTA `usadas`: el que llama decide si consume la fila. Un emparejamiento que se descarta por
+ * ambiguo NO tiene que dejar la fila de Compras marcada como usada.
+ *
+ * @param {{prov:string, total:number, fecha?:number|null}} item el que busca respaldo, con el
+ *   proveedor YA normalizado por el llamador (cada planilla escribe el nombre a su manera)
+ * @param {Array<{fila:number, prov:string, total:number, fecha?:number|null}>} filasCompras
+ * @param {{usadas?:Set<number>, tol?:number, ventanaDias?:number|null}} opciones
+ * @returns {Array} las filas candidatas, en el orden de `filasCompras`. Vacío = sin respaldo.
+ */
+export function candidatasPorImporte(item, filasCompras = [], { usadas = new Set(), tol = TOL_IMPORTE, ventanaDias = null } = {}) {
+  const monto = Number(item?.total) || 0
+  // El piso de UN PESO no es cosmético: con `tol` en 0 la comparación sería contra la igualdad exacta
+  // de dos flotantes y $635.020,00 leído de dos pestañas distintas puede diferir en 1e-9.
+  const margen = Math.max(1, monto * tol)
+  return filasCompras.filter((f) => !usadas.has(f.fila)
+    && f.prov === item?.prov
+    && Math.abs((Number(f.total) || 0) - monto) <= margen
+    && (ventanaDias === null || !f.fecha || !item?.fecha || Math.abs(f.fecha - item.fecha) <= ventanaDias))
+}
+
+/**
  * NÚCLEO PURO: el cruce completo.
  *
  * @param {Array} comprobantes de comprobantes_arca (tipo_libro='R'), con tipo_comprobante,
@@ -52,10 +95,9 @@ export function cruzar(comprobantes = [], filasCompras = [], { norm = (s) => Str
 
     if (enCompras.has(clave(c))) { porNumero.push(c); continue }
 
-    const monto = Number(c.imp_total) || 0
-    const p = norm(c.emisor_nombre)
-    const cand = filasCompras.find((f) =>
-      !usadas.has(f.fila) && f.prov === p && Math.abs(f.total - monto) <= Math.max(1, monto * TOL_IMPORTE))
+    // La segunda pasada vive en `candidatasPorImporte` — la misma que usa el cruce de cheques.
+    const [cand] = candidatasPorImporte(
+      { prov: norm(c.emisor_nombre), total: Number(c.imp_total) || 0 }, filasCompras, { usadas })
     if (cand) { usadas.add(cand.fila); porImporte.push({ ...c, fila: cand.fila }); continue }
 
     faltan.push(c)

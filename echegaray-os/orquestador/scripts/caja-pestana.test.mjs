@@ -15,6 +15,7 @@ import { grilla, rescatar } from './caja-pestana.mjs'
 import { lineasDeCaja, conceptosFueraDelCalendario } from '../lib/calendario-egresos.mjs'
 import { CUENTAS } from '../lib/caja-disponibilidades.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
+import { MARCAS } from '../lib/cheques-cobertura.mjs'
 
 /** Una celda VACÍA de la grilla. El generador no escribe '': escribe el centinela VACIO, que le dice
  *  al portón "esta celda es MÍA y está vacía" (una celda ajena y vacía se preserva). Ver
@@ -875,6 +876,71 @@ test('el piso y lo que queda a fin de mes son DOS celdas distintas del calendari
   // RÓTULO: si alguien inserta un tramo, esto se rompe acá y no en silencio en la pestaña.
   const fila = Number(String(finMes).match(/\$F\$(\d+)/)[1])
   assert.equal(String(g.filas[fila - 1][0]).trim(), 'Resto de este mes')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA BANDA DEL PISO — el piso solo se lee como certeza, y con él se decide un plazo fijo
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('el piso no se publica solo: al lado va la punta de abajo y el ancho de la banda', () => {
+  const g = construir()
+  const fPeor = filaDe(g, /el punto más bajo del horizonte/i)
+  const fPeorCaso = filaDe(g, /si NINGUNO de los no verificados tuviera su factura/i)
+  const fAncho = filaDe(g, /ancho de la banda/i)
+  assert.ok(fPeorCaso > fPeor, 'la punta de abajo tiene que ir pegada al piso, no perdida en otro bloque')
+  assert.equal(celda(g, fAncho, 5), `=$F${fPeor}-$F${fPeorCaso}`, 'el ancho tiene que salir de las dos puntas, no ser otro cálculo')
+})
+
+test('la punta de abajo es un MÍNIMO por tramo, no el piso menos un total', () => {
+  // POR QUÉ IMPORTA: restarle al piso TODO lo incierto le carga plata que sale después del punto más
+  // bajo. El peor caso quedaría más abajo de lo que puede estar, y una banda inflada se ignora igual
+  // que una alarma que suena siempre.
+  const g = construir()
+  const f = celda(g, filaDe(g, /si NINGUNO de los no verificados tuviera su factura/i), 5)
+  assert.ok(f.startsWith('=MIN('), 'dejó de ser un mínimo por tramo')
+  // Un término por tramo, y cada uno resta lo incierto acumulado hasta el borde de ESE tramo.
+  // (`$F` a secas no sirve para contar: las columnas de monto de Cheques Emitidos también son $F.)
+  const terminos = [...f.matchAll(/\$F(\d+)-\(/g)].map((m) => Number(m[1]))
+  const primero = filaDe(g, /Vencido — ya pasó la fecha/)
+  const ultimo = filaDe(g, /^Más adelante$/)
+  assert.deepEqual(terminos, Array.from({ length: ultimo - primero + 1 }, (_, i) => primero + i),
+    'los términos tienen que ser las filas de los tramos, en orden y sin saltarse ninguno')
+})
+
+test('la banda cuenta lo que NO se puede afirmar, y sólo eso', () => {
+  const g = construir()
+  const f = celda(g, filaDe(g, /si NINGUNO de los no verificados tuviera su factura/i), 5)
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  // Los dos grupos sin verificar: sin N° de comprobante, y los que el OS todavía no miró (marca vacía).
+  assert.match(f, new RegExp(esc(`="${MARCAS.sinNumero}"`)))
+  assert.match(f, /\$M\$2:\$M\$400=""/)
+  // Y NO los verificados ni los inferidos: ésos tienen evidencia y viven del lado de arriba. Si la
+  // marca ✓ entrara acá, la banda contaría como incierta plata que ya viaja dentro de su rubro y
+  // además la restaría dos veces.
+  assert.ok(!f.includes(MARCAS.ok), 'metió los verificados en la banda de lo que no se puede afirmar')
+  assert.ok(!f.includes(MARCAS.inferido), 'metió los inferidos en la banda: entonces el cruce de respaldo no sirve para nada')
+  assert.ok(!f.includes(MARCAS.falta), 'los "FALTA" ya los suma el calendario: contarlos acá los restaría dos veces')
+})
+
+test('el riesgo de los no marcados se parte en "falta correr el agente" y "falta el dato"', () => {
+  // Eran $38.377.479 en un solo renglón rojo. Medido: el 90,6% sólo necesitaba que corriera el
+  // agente y el 9,4% necesitaba que una persona cargara el N° de comprobante. Verlos juntos hacía
+  // leer un agujero de $38,4M donde el trabajo humano pendiente era $3,6M.
+  const g = construir()
+  const fCon = filaDe(g, /de los cuales, con N° de comprobante ya cargado/i)
+  const fSin = filaDe(g, /de los cuales, SIN N° de comprobante/i)
+  assert.ok(fCon > 0 && fSin > 0, 'el riesgo volvió a ser un solo renglón inaccionable')
+  const [con, sin] = [celda(g, fCon, 3), celda(g, fSin, 3)]
+  // Los dos miran la MISMA población (no debitados, sin marca) y se parten por el N° de comprobante.
+  for (const f of [con, sin]) {
+    assert.match(f, /\$M\$2:\$M\$400=""/)
+    assert.match(f, /UPPER\('Cheques Emitidos'!\$K\$2:\$K\$400\)<>"SI"/)
+    assert.match(f, /\$H\$2:\$H\$400/, 'la partición tiene que mirar la columna del N° de comprobante')
+  }
+  // Complementarios: el que tiene número y el que no. Si los dos usaran la misma condición, uno de
+  // los dos renglones sería siempre cero y nadie se enteraría.
+  assert.notEqual(con, sin)
+  assert.ok(sin.includes('(1-('), 'el renglón "sin N°" tiene que ser la negación del otro')
 })
 
 test('lo colocable descuenta la caja mínima y nunca es negativo', () => {
