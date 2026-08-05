@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { reubicar, partir, filasHuerfanas, referenciasFuera, ref } from './partir-pestana.mjs'
+import { reubicar, partir, mapaDeFilas, filasHuerfanas, referenciasFuera, ref } from './partir-pestana.mjs'
 
 const enMismaPestana = (fila) => ({ titulo: null, fila: fila - 9 })
 
@@ -104,4 +104,48 @@ test('ninguna fila con contenido puede quedarse afuera del reparto', () => {
   const h = filasHuerfanas(filas, [{ titulo: 'X', desde: 1, hasta: 2 }])
   assert.equal(h.length, 1)
   assert.equal(h[0].fila, 3)
+})
+
+// ═══ LOS MARCADORES Y LAS FÓRMULAS TIENEN QUE CAER EN LA MISMA FILA (05/08) ═══
+//
+// Es la condición que hace que un rango con nombre signifique algo: el nombre se publica sobre la
+// fila que dice el MARCADOR (`fArcaN`), y el dato lo escribe `partir` sobre la fila que dice la
+// REUBICACIÓN. Si las dos cuentas no son la misma cuenta, el nombre apunta a una fila y el número
+// está en otra — y la pestaña que lo lee muestra lo que haya ahí, sin dar error.
+
+test('el tramo que NO declara `desdeFila` usa el de las opciones — no `undefined`', () => {
+  // "Materiales" arranca en la fila 4 como cualquier pestaña propia del generador, y ese 4 vive en
+  // las opciones. Sumarle `undefined` da NaN, NaN se serializa como null en el JSON de la API, y un
+  // `startRowIndex` ausente significa "desde el principio de la hoja": el formato de un bloque
+  // aplicado a la pestaña entera, sin un solo error.
+  const tramos = [
+    { titulo: 'Proveedores', desde: 10, hasta: 19, desdeFila: 176 },
+    { titulo: 'Materiales', desde: 20, hasta: 29 },
+  ]
+  const mapa = mapaDeFilas(tramos, { desdeFila: 4 })
+  for (const [vieja, d] of mapa) {
+    assert.ok(Number.isFinite(d.fila), `la fila ${vieja} (${d.titulo}) tradujo a ${d.fila}`)
+  }
+  assert.equal(mapa.get(20).fila, 4, 'la primera fila de Materiales aterriza en la 4')
+  assert.equal(mapa.get(29).fila, 13)
+  assert.equal(mapa.get(10).fila, 176, 'y la de Proveedores en la frontera')
+})
+
+test('la fila del marcador es la MISMA fila donde `partir` deja el dato', () => {
+  // Cada fila lleva su propio número escrito, así que se puede comprobar dónde terminó cada una.
+  const filas = Array.from({ length: 30 }, (_, i) => [`fila ${i + 1}`])
+  const tramos = [
+    { titulo: 'Proveedores', desde: 10, hasta: 19, desdeFila: 176 },
+    { titulo: 'Materiales', desde: 20, hasta: 29 },
+  ]
+  const partes = partir(filas, tramos, { desdeFila: 4 })
+  const mapa = mapaDeFilas(tramos, { desdeFila: 4 })
+  for (const [i, t] of tramos.entries()) {
+    const arranque = Number.isFinite(t.desdeFila) ? t.desdeFila : 4
+    for (let f = t.desde; f <= t.hasta; f++) {
+      const filaReal = mapa.get(f).fila
+      assert.equal(partes[i].filas[filaReal - arranque][0], `fila ${f}`,
+        `el marcador de la fila vieja ${f} dice ${filaReal} y el dato quedó en otra`)
+    }
+  }
 })
