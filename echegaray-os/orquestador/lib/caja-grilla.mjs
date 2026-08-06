@@ -317,6 +317,10 @@ export function grilla(cargado, refs) {
     invArs: fBalanzArs ? `$C$${fBalanzArs}` : '',
     invUsd: fBalanzUsd ? `$C$${fBalanzUsd}` : '',
     invFecha: fBalanzArs ? `$D$${fBalanzArs}` : '',
+    // LIBRE = el mínimo del recorrido: el piso simple de la fila de cierre y la fecha del punto
+    // más bajo. El "peor caso" ($H) se queda en la escalera; la tarjeta publica lo medido.
+    pisoSimple: `$I$${fCierre}`,
+    pisoFecha: `$G$${fCierre}`,
   })
   const porTarjeta = (campo) => {
     const fila = Array.from({ length: ANCHO }, () => '')

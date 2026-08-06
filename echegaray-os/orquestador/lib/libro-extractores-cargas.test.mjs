@@ -57,7 +57,7 @@ test('un vencimiento que ya pasó y nadie pagó es VENCIDO, no PROYECTADO', () =
 test('EL HECHO LE GANA A LA PROYECCIÓN: el mes que Compras ya pagó, la cadena no lo emite', () => {
   const avisos = []
   const ms = deCargasSociales({ fechas: FECHAS, f931: F931, gremiales: GREMIALES }, CORTE,
-    { mesesPagados: new Set(['2026-08']), aviso: (m) => avisos.push(m) })
+    { mesesPagados: new Set([`2026-08·${RUBRO_CARGAS}`, `2026-08·${RUBRO_GREMIALES}`]), aviso: (m) => avisos.push(m) })
   assert.equal(ms.filter((m) => m.fecha === S('2026-08-10')).length, 0,
     'la cadena volvió a proyectar un mes que ya salió de la caja: son $8,5M contados dos veces')
   assert.equal(ms.length, 10)
@@ -96,7 +96,7 @@ const COMPRAS = [[], [], ENC,
 
 test('cargasEnCompras separa lo pagado (el mes que la cadena no debe emitir) de lo previsto', () => {
   const { mesesPagados, previstas } = cargasEnCompras(COMPRAS)
-  assert.deepEqual([...mesesPagados], ['2026-06'])
+  assert.deepEqual([...mesesPagados], [`2026-06·${RUBRO_CARGAS}`])
   assert.equal(previstas.length, 3, 'las tres previstas de agosto; la cuota del plan NO es de este rubro')
   assert.equal(previstas.reduce((a, p) => a + p.total, 0), 9500000)
 })
@@ -122,14 +122,14 @@ test('FAIL-SAFE: si la cadena no publica, Compras vuelve a entrar entero', () =>
   assert.equal(deCompras(COMPRAS, CORTE).length, libro.length)
 })
 
-test('la exclusión es por MES CUBIERTO: septiembre sin cadena sigue saliendo de Compras', () => {
+test('la exclusión es por (MES · RUBRO) CUBIERTO: septiembre sin cadena sigue saliendo de Compras', () => {
   const sept = filaCompras({ prov: 'ARCA', total: 6500000, estado: 'Proyectado', rubro: RUBRO_CARGAS, fecha: S('2026-09-10') })
-  const libro = deCompras([...COMPRAS, sept], CORTE, { cargasCubiertas: new Set(['2026-08']) })
+  const libro = deCompras([...COMPRAS, sept], CORTE, { cargasCubiertas: new Set([`2026-08·${RUBRO_CARGAS}`]) })
   assert.ok(libro.some((m) => m.importe === 6500000), 'se excluyó un mes que la cadena no cubre')
 })
 
 test('cubiertaPorLaCadena: los tres motivos por los que una fila NO se excluye', () => {
-  const cubiertos = new Set(['2026-08'])
+  const cubiertos = new Set([`2026-08·${RUBRO_CARGAS}`])
   const base = { rubro: RUBRO_CARGAS, fecha: S('2026-08-10'), pagada: false }
   assert.equal(cubiertaPorLaCadena(base, cubiertos), true)
   assert.equal(cubiertaPorLaCadena({ ...base, pagada: true }, cubiertos), false, 'una salida real no se descarta nunca')
@@ -163,4 +163,27 @@ test('los tres rangos se declaran anclados a su rótulo, y un rango ciego no se 
   const problemas = verificarRangos(grilla, rangosDeCargas({ fF931: fGremiales, fGremiales, fFechas }))
   assert.equal(problemas.length, 1)
   assert.equal(problemas[0].problema, 'desanclado')
+})
+
+
+test('EL CASO DEL AUDITOR: los gremiales pagados NO tiran abajo el F931 del mismo mes', () => {
+  // Con la precedencia por mes entero, marcar "Pagado" la fila de gremiales del 17/08 ($700k)
+  // hacía desaparecer también el F931 de agosto ($7,0M) de la cadena, y el cash flow volvía a los
+  // números redondos tipeados a mano. Los dos rubros vencen en días distintos (10 y 17): hay una
+  // semana por mes con el mes pagado a medias, y cada rubro decide solo.
+  const pagados = new Set([`2026-08·${RUBRO_GREMIALES}`])
+  const ms = deCargasSociales({ fechas: FECHAS, f931: F931, gremiales: GREMIALES }, CORTE, { mesesPagados: pagados })
+  const agosto = ms.filter((m) => m.fecha === S('2026-08-10'))
+  assert.equal(agosto.filter((m) => m.rubro === RUBRO_CARGAS).length, 1, 'el F931 de agosto desapareció')
+  assert.equal(agosto.filter((m) => m.rubro === RUBRO_GREMIALES).length, 0, 'los gremiales pagados volvieron')
+})
+
+test('EL AÑO ES DEL DEVENGADO: la nómina de diciembre que sale en enero se llama dic-26, no dic-27', () => {
+  // Leído en el Sheet vivo por el auditor: "F931 · nómina de dic-27" en la fila del 10/01/2027.
+  const ms = deCargasSociales({ fechas: FECHAS, f931: F931, gremiales: GREMIALES }, CORTE)
+  const dic = ms.filter((m) => String(m.concepto).includes('dic-'))
+  assert.ok(dic.length >= 1, 'el fixture tiene que cubrir diciembre para probar el cruce de año')
+  for (const m of dic) assert.match(String(m.concepto), /dic-26/, `el concepto dice: ${m.concepto}`)
+  assert.ok(!ms.some((m) => /-27$/.test(String(m.concepto).slice(-3)) && !String(m.concepto).includes('dic')),
+    'ningún concepto puede citar un año que la serie no devenga')
 })

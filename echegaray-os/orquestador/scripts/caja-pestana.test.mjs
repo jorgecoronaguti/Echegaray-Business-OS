@@ -83,7 +83,7 @@ test('LAS CINCO TARJETAS ESTÁN, EN ORDEN, Y CADA UNA OCUPA SUS TRES RENGLONES',
   // RIESGO y CUELLO no aparecen: los borró el dueño (huellas selladas en sheet_huella_celda) y la
   // quinta columna de tarjetas (I) queda vacía. El piso sigue en el cierre de la escalera.
   const g = construir()
-  const esperados = ['CAJA DISPONIBLE', 'CAJA COMPROMETIDA', 'A COBRAR', 'INVERTIDO', 'CAJA · FIN DE MES']
+  const esperados = ['CAJA DISPONIBLE', 'CAJA COMPROMETIDA', 'LIBRE DISPONIBILIDAD', 'CAJA INVERTIDA', 'SALDO AL CIERRE']
   esperados.forEach((rot, i) => {
     const col = COLS_TARJETA[i]
     assert.equal(celda(g, g.fRotulos, col), rot, `la tarjeta ${i + 1} tiene que ser "${rot}" en la columna ${col}`)
@@ -112,12 +112,11 @@ test('LAS CIFRAS DE LAS TARJETAS SALEN DEL LIBRO O DE LA PROPIA PESTAÑA, nunca 
   assert.equal(val(1), `=${terminoLibro({ signo: -1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`)
   // 06/08 (4ª directiva del dueño): LIBRE = el piso de la escalera, referenciado de su fila de
   // cierre. El porqué vive en caja-tarjetas.mjs; acá sólo se fija que la grilla pase las celdas.
-  assert.equal(val(2), `=${terminoLibro({ signo: 1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`,
-    'A COBRAR es la misma suma del mes con signo contrario')
+  assert.equal(val(2), `=N($I$${g.fCierre})`, 'LIBRE es el mínimo medido del recorrido, de la fila de cierre')
   assert.equal(val(3), `=N($C$${g.fBalanzArs})+N($C$${g.fBalanzUsd})`,
     'INVERTIDO referencia las filas Balanz del panel, no una segunda fuente')
-  // 6ª directiva: FIN DE MES es la consecuencia de las otras tres tarjetas, por referencia.
-  assert.equal(val(4), '=N($A$3)+N($E$3)-N($C$3)')
+  // La enumeración final: SALDO AL CIERRE = disponible − comprometida + cobros del mes.
+  assert.equal(val(4), `=N($A$3)-N($C$3)+${terminoLibro({ signo: 1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`)
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════

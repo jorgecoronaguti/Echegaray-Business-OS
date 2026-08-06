@@ -137,6 +137,12 @@ export function formasDeTextoPropio(generado = []) {
       const forma = formaDe(c)
       if (!forma || forma.startsWith('=')) continue
       if ((forma.match(/[a-záéíóúüñ]/g) || []).length < 3) continue
+      // SÓLO TEXTO INCONFUNDIBLE DE GENERADOR (rechazo del auditor de cierre, 06/08, probado en
+      // frío): la versión anterior reclamaba TODA palabra de la grilla — 129 formas en Impuestos,
+      // entre ellas "total", "iva", "importe", "disponible" — y una nota del dueño que coincidiera
+      // se borraba. La propiedad exige una marca tipográfica que ningún humano tipea al anotar
+      // (⚠ ⇒ ‖ § · —) o un rótulo largo: "Total" nunca vuelve a ser evidencia de que lo escribí yo.
+      if (!/[⚠⇒‖§·—]/.test(forma) && forma.length < 23) continue
       out.add(forma)
     }
   }
