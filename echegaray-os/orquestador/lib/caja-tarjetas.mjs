@@ -131,7 +131,9 @@ export function tarjetas(ref) {
       // saldría en negativo por el signo del egreso y la tarjeta diría "-$43.380.472 comprometidos",
       // que se lee como si la deuda fuera a favor.
       valor: formulaLibro({ signo: -1, estados: NO_REAL, hasta: 'EOMONTH(TODAY();0)+1', medida: 'magnitud' }),
-      contexto: `="de eso "&${plata(venceEn7)}&" vence antes del "&${dia('TODAY()+7')}`,
+      // En millones: "de eso $37.560.513 vence antes del 13/08" medía 40 caracteres y la columna
+      // admite 38 (auditor de pantalla, 06/08).
+      contexto: `="$"&TEXT(${venceEn7}/1000000;"#,##0.0")&"M vencen antes del "&${dia('TODAY()+7')}`,
       especie: 'plata',
     },
     {
