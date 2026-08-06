@@ -13,6 +13,14 @@ export const PASOS = [
   // se refresca, todo lo que sigue calcula sobre una foto vieja y ningún control lo ve — pasó el
   // 21/07: la quincena en curso quedó $1.231.963 por debajo de la real.
   ['espejar-jornales.mjs', 'espejo del archivo JORNALES (_J_OBREROS y _J_OFICINA)', ['_J_OBREROS', '_J_OFICINA']],
+  // ═══ EL ESLABÓN QUE FALTABA (06/08) ═══
+  //
+  // `Parámetros!A72` declara desde el primer día que el bloque de índices "lo actualiza el OS solo
+  // desde la web" y NINGÚN script lo escribía: cinco lectores, cero escritores. La base sí se
+  // refrescaba, así que la planilla y el OS proyectaban con índices distintos (julio 2,0% contra
+  // 1,8%) sin un solo error a la vista. Va ACÁ ARRIBA porque Recurrentes, Estructura y el cash flow
+  // leen ese bloque: si se escribe después, todos ellos calculan una corrida atrasados.
+  ['parametros-inflacion.mjs', 'Parámetros — el bloque de índices, bajado de public.indice_economico con su fecha de lectura', ['Parámetros']],
   // UN SOLO DUEÑO PARA JORNALES. Antes eran dos: la tool de sincronización de nómina escribía el
   // cuadro de quincenas y jornales-escala-uocra.mjs el bloque de la escala. Dos escritores sobre una
   // pestaña es lo que produce anchos de grilla mezclados, bloques huérfanos y —acá— el techo de 14

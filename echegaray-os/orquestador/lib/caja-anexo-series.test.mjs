@@ -6,9 +6,11 @@
 // ve mirando el gráfico.
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import {
   bloqueSeries, ubicarSeries, saldoHistorico, saldoProyectado, topContraparte,
-  ROTULOS, LARGO, COL, DIAS_HISTORIA, DIAS_PROYECCION, TOP_N,
+  ingresosDelMes, egresosDelMes,
+  ROTULOS, LARGO, COL, DIAS_HISTORIA, DIAS_PROYECCION, TOP_N, MESES,
 } from './caja-anexo-series.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 import { NO_REAL } from './caja-tarjetas.mjs'
@@ -67,6 +69,77 @@ test('LAS FECHAS DEL QUERY VIAJAN EN ISO, no en dd/mm', () => {
   const f = topContraparte(-1, 1, 2)
   assert.ok(f.includes('TEXT(TODAY();"yyyy-mm-dd")'))
   assert.ok(f.includes("A >= date '"))
+})
+
+test('EL AÑO SE SUMA CONTRA EL LIBRO, NO CONTRA UNA SEGUNDA CUENTA', () => {
+  // El defecto que atrapa: alguien "arregla" la serie del equilibrio escribiendo un SUMIFS contra
+  // Cobranzas o Compras. Ahí habría dos definiciones de "lo que entra en marzo" y el gráfico y las
+  // tarjetas de CAJA discreparían sin que nada avise. Se compara contra el CONSTRUCTOR, no contra un
+  // texto copiado: si `terminoLibro` cambia, este test se mueve con él.
+  const ventana = (m) => ({ desde: `DATE(YEAR(TODAY());${m};1)`, hasta: `DATE(YEAR(TODAY());${m + 1};1)` })
+  assert.equal(ingresosDelMes(3), `=${terminoLibro({ ...ventana(3), signo: 1, medida: 'magnitud' })}`)
+  assert.equal(egresosDelMes(3), `=${terminoLibro({ ...ventana(3), signo: -1, medida: 'magnitud' })}`)
+  assert.ok(ingresosDelMes(1).includes('_MOVIMIENTOS!$A$2:$A'), 'la fuente es el libro, con rango abierto')
+  assert.ok(!/\$[A-Z]+\$\d+:\$?[A-Z]+\$\d+/.test(egresosDelMes(1)), 'ningún rango con tope: el libro crece con cada corrida')
+})
+
+test('DICIEMBRE CIERRA EN ENERO DEL AÑO SIGUIENTE, y ningún mes se pisa con el otro', () => {
+  // `hasta` es EXCLUSIVO en todo el repo: si diciembre cerrara en DATE(y;12;31) se perdería el 31, y si
+  // dos meses compartieran el borde, un movimiento del 1° se contaría dos veces.
+  assert.ok(egresosDelMes(12).includes('DATE(YEAR(TODAY());13;1)'), 'DATE normaliza el mes 13 al 1° de enero')
+  for (let m = 1; m < MESES; m++) {
+    const cierre = `<DATE(YEAR(TODAY());${m + 1};1)`
+    assert.ok(ingresosDelMes(m).includes(cierre))
+    assert.ok(ingresosDelMes(m + 1).includes(`>=DATE(YEAR(TODAY());${m + 1};1)`), 'el mes siguiente arranca donde cierra el anterior')
+  }
+})
+
+test('EL AÑO SALE DE TODAY(), NUNCA ESCRITO: el timer estuvo detenido semanas', () => {
+  // Un "2026" pegado convierte el gráfico del año en el gráfico del año pasado el 1° de enero, y sin
+  // dar un solo error. Vale para las celdas Y para el rótulo, que es lo que ubica la serie.
+  for (const f of [ingresosDelMes(7), egresosDelMes(7)]) assert.doesNotMatch(f, /\b20\d\d\b/)
+  assert.doesNotMatch(ROTULOS.equilibrio, /\b20\d\d\b/)
+})
+
+test('LOS DOS SIGNOS VAN EN MAGNITUD: en neto las curvas no se cruzarían nunca', () => {
+  // Es el defecto que anula el gráfico entero. El egreso vive en el libro con signo −1: en `neto` se
+  // dibuja debajo del cero, el azul queda siempre arriba y el "punto de equilibrio" no existe.
+  assert.ok(!egresosDelMes(5).includes('*N(_MOVIMIENTOS!$B$2:$B)'), 'el egreso no se multiplica por su signo')
+  assert.ok(egresosDelMes(5).includes('(_MOVIMIENTOS!$B$2:$B=-1)'), 'pero sí se FILTRA por signo −1')
+  assert.ok(ingresosDelMes(5).includes('(_MOVIMIENTOS!$B$2:$B=1)'))
+})
+
+test('EL AÑO ENTRA CON TODOS LOS ESTADOS: lo cobrado y lo esperado', () => {
+  // Con sólo REAL, los meses que todavía no pasaron valdrían cero y el cruce se leería donde no está.
+  for (const f of [ingresosDelMes(9), egresosDelMes(9)]) {
+    assert.ok(!f.includes('="REAL"'), 'ningún filtro de estado: entra todo el año')
+    assert.ok(!f.includes('="PROYECTADO"'))
+  }
+})
+
+test('el bloque del equilibrio emite doce meses con sus dos columnas de plata', () => {
+  const h = hojaFalsa()
+  const r = bloqueSeries(h)
+  assert.equal(r.fEq1 - r.fEq0 + 1, MESES)
+  const primera = h.filas[r.fEq0 - 1]
+  const ultima = h.filas[r.fEq1 - 1]
+  assert.equal(String(primera[COL.fecha - 1]), '=DATE(YEAR(TODAY());1;1)')
+  assert.equal(String(ultima[COL.fecha - 1]), `=DATE(YEAR(TODAY());${MESES};1)`)
+  assert.equal(String(primera[COL.importe - 1]), ingresosDelMes(1))
+  assert.equal(String(primera[COL.egreso - 1]), egresosDelMes(1))
+  // LA FILA DEL RÓTULO LLEVA LOS NOMBRES DE LAS DOS SERIES: es de donde el gráfico saca la leyenda.
+  const cab = h.filas[r.fEq0 - 2]
+  assert.equal(cab[0], ROTULOS.equilibrio)
+  assert.equal(cab[COL.importe - 1], 'Ingresos')
+  assert.equal(cab[COL.egreso - 1], 'Egresos')
+})
+
+test('el generador le da a la columna del mes el formato "mmm", o el eje se dibuja ilegible', () => {
+  // Se verifica sobre el FUENTE porque formatear() pide el cliente de Google. La columna F del anexo
+  // entero es dd/mm/yyyy: sin esta excepción, el eje de abajo son doce "01/03/2026" rotados y pisados.
+  const src = readFileSync(new URL('../scripts/caja-anexo-pestana.mjs', import.meta.url), 'utf8')
+  assert.match(src, /fEq0/, 'el formateador tiene que ubicar el bloque del equilibrio por su fila real')
+  assert.match(src, /pattern: 'mmm'/)
 })
 
 test('el bloque emite las cuatro series con su largo declarado', () => {

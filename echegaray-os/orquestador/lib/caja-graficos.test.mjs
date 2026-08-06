@@ -14,29 +14,74 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { graficos, requestsDeGraficos, MARCA, FILA_ANCLA, COL_ANCLA } from './caja-graficos.mjs'
-import { COL } from './caja-anexo-series.mjs'
+import { graficos, requestsDeGraficos, MARCA, FILA_ANCLA, COL_ANCLA, TITULO_EQUILIBRIO } from './caja-graficos.mjs'
+import { COL, MESES } from './caja-anexo-series.mjs'
 
 const SERIES = {
-  historia: { f0: 40, f1: 99 }, proyeccion: { f0: 101, f1: 160 },
+  equilibrio: { f0: 26, f1: 37 }, historia: { f0: 40, f1: 99 }, proyeccion: { f0: 101, f1: 160 },
   pagos: { f0: 162, f1: 166 }, cobranzas: { f0: 168, f1: 172 },
 }
 const ANEXO = 99
 const fake = (charts) => ({ getCharts: async () => [{ sheetId: 7, title: 'Caja', charts }] })
+const equilibrio = (s = SERIES) => graficos(7, ANEXO, s).requests[0].addChart.chart.spec
 
 test('SON CUATRO Y CADA UNO CONTESTA UNA PREGUNTA DISTINTA', () => {
-  // El dueño los eligió: evolución, proyección, concentración de pagos y de cobranzas. Ninguno repite
-  // lo que ya dice una tabla — un gráfico que resume algo que está al lado es decoración.
+  // El dueño los eligió: equilibrio del año, proyección, concentración de pagos y de cobranzas. Ninguno
+  // repite lo que ya dice una tabla — un gráfico que resume algo que está al lado es decoración.
   const { requests, faltan } = graficos(7, ANEXO, SERIES)
   assert.equal(requests.length, 4)
   assert.deepEqual(faltan, [])
   assert.deepEqual(requests.map((r) => r.addChart.chart.spec.title), [
-    `${MARCA}Evolución de la caja`, `${MARCA}Proyección de la caja`,
+    TITULO_EQUILIBRIO, `${MARCA}Proyección de la caja`,
     `${MARCA}Concentración de pagos`, `${MARCA}Concentración de cobranzas`,
   ])
   for (const r of requests) {
     assert.ok(r.addChart.chart.spec.subtitle, 'un gráfico sin la pregunta que contesta es decoración')
   }
+})
+
+test('LA EVOLUCIÓN DE LA CAJA YA NO SE DIBUJA: el dueño la reemplazó por el equilibrio', () => {
+  // El defecto que atrapa: dejar los dos. Serían cinco gráficos en cuatro slots y el quinto taparía al
+  // que está debajo, porque las posiciones se calculan de a dos por fila.
+  const { requests, faltan } = graficos(7, ANEXO, SERIES)
+  const titulos = requests.map((r) => r.addChart.chart.spec.title)
+  assert.ok(!titulos.some((t) => /Evoluci[óo]n/i.test(t)), 'el gráfico de la evolución no se dibuja más')
+  // Y la serie del pasado sigue en el anexo sin que su ausencia se reporte como una falla: se dejó de
+  // DIBUJAR, no se borró — el dato es del dueño.
+  assert.ok(!faltan.includes('historia'))
+  assert.deepEqual(graficos(7, ANEXO, { ...SERIES, historia: null }).requests.length, 4)
+})
+
+test('EL EQUILIBRIO SON DOS SERIES SOBRE LOS DOCE MESES, Y SE CRUZAN', () => {
+  // Es el gráfico entero: si le falta una serie no hay nada que cruzar, y si el rango no cubre el año
+  // el "punto de equilibrio" se leería sobre medio año sin que nada avise.
+  const spec = equilibrio()
+  const b = spec.basicChart
+  assert.equal(b.chartType, 'LINE', 'un cruce es un hecho de la línea: en columnas hay que buscarlo a ojo')
+  assert.equal(b.lineSmoothing, true)
+  assert.equal(b.series.length, 2, 'una sola serie no puede cruzarse con nada')
+  const [ing, egr] = b.series.map((s) => s.series.sourceRange.sources[0])
+  assert.equal(ing.startColumnIndex, COL.importe - 1)
+  assert.equal(egr.startColumnIndex, COL.egreso - 1)
+  // DOCE PUNTOS DE DATO, más la fila del encabezado que le da el nombre a cada curva.
+  for (const s of [ing, egr, b.domains[0].domain.sourceRange.sources[0]]) {
+    assert.equal(s.endRowIndex - s.startRowIndex, MESES + 1, 'doce meses y la fila de los rótulos')
+    assert.equal(s.startRowIndex, SERIES.equilibrio.f0 - 2, 'el rango arranca en la fila del encabezado')
+  }
+  assert.equal(b.headerCount, 1, 'sin headerCount la leyenda dice "Series 1" y "Series 2"')
+  assert.notEqual(b.legendPosition, 'NO_LEGEND', 'dos curvas sin leyenda no se distinguen')
+})
+
+test('EL AZUL ENTRA Y EL ROJO SALE, Y EL SUBTÍTULO LO DICE CON PALABRAS', () => {
+  // Si el subtítulo nombra los colores al revés que las series, el gráfico se lee al revés — y un
+  // gráfico que se lee al revés es peor que ninguno. Además es la red: si la leyenda fallara, la frase
+  // sigue diciendo cuál es cuál.
+  const b = equilibrio().basicChart
+  const [ing, egr] = b.series.map((s) => s.color)
+  assert.ok(ing.blue > ing.red, 'los ingresos van en azul')
+  assert.ok(egr.red > egr.blue, 'los egresos van en rojo')
+  assert.match(equilibrio().subtitle, /rojo supera al azul/)
+  assert.match(equilibrio().title, /punto de equilibrio/)
 })
 
 test('LOS DATOS SALEN DEL ANEXO, NUNCA DE UNA SEGUNDA FUENTE', () => {
@@ -56,12 +101,15 @@ test('LOS DATOS SALEN DEL ANEXO, NUNCA DE UNA SEGUNDA FUENTE', () => {
 })
 
 test('LAS CURVAS LEEN FECHA CONTRA IMPORTE; LOS RANKINGS, NOMBRE CONTRA IMPORTE', () => {
-  const [ev, pr, pag, cob] = graficos(7, ANEXO, SERIES).requests.map((r) => r.addChart.chart.spec.basicChart)
-  for (const c of [ev, pr]) {
+  const [eq, pr, pag, cob] = graficos(7, ANEXO, SERIES).requests.map((r) => r.addChart.chart.spec.basicChart)
+  for (const c of [eq, pr]) {
     assert.equal(c.chartType, 'LINE', 'un saldo diario es una curva: como barras son sesenta barras ilegibles')
     assert.equal(c.domains[0].domain.sourceRange.sources[0].startColumnIndex, COL.fecha - 1)
     assert.equal(c.series[0].series.sourceRange.sources[0].startColumnIndex, COL.importe - 1)
   }
+  // La proyección sigue siendo UNA curva de saldo: la leyenda le robaría ancho sin agregar nada.
+  assert.equal(pr.series.length, 1)
+  assert.equal(pr.legendPosition, 'NO_LEGEND')
   for (const c of [pag, cob]) {
     // BAR y no COLUMN: los nombres de contraparte son largos y en vertical se dibujan rotados.
     assert.equal(c.chartType, 'BAR')

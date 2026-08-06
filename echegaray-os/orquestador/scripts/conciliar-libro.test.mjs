@@ -9,8 +9,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   evaluarBorde, ventanasDeTramo, conciliar, libroEntra, libroSale, residuosDeclarados,
-  rubrosDelCuadro, FUENTE, TOLERANCIA,
+  rubrosDelCuadro, leerLibro, FUENTE, TOLERANCIA,
 } from './conciliar-libro.mjs'
+import { LIBRO as MAPA_LIBRO } from '../lib/libro-sumas.mjs'
 import { BORDES } from '../lib/caja-calendario.mjs'
 import { serialDe, isoDeSerial, eomonth } from '../lib/libro-extractores-fechas.mjs'
 
@@ -166,4 +167,26 @@ test('si el borde de la pestaña no coincide con el calculado, no cierra aunque 
   const r = conciliar(LIBRO, caja, { hoy: HOY, corte: CORTE })
   assert.equal(r.bordesEnDesacuerdo.length, 1)
   assert.equal(r.cierra, false, 'si no miran el mismo día, ninguna comparación vale')
+})
+
+test('LA COLUMNA NUEVA AL FINAL NO CORRE NINGÚN ÍNDICE: el portón sigue leyendo lo que cree leer', () => {
+  // EL DEFECTO QUE ESTO ATRAPA. `leerLibro` toma la fila POR ÍNDICE (origen es el 13) y la pestaña
+  // acaba de ganar una columna, `Cliente`. Puesta al final no mueve nada; puesta en el medio —al lado
+  // de `Obra`, que es donde se leería mejor— corre `Origen`, `Fila` y `Clave` un lugar, y el portón
+  // sigue conciliando sin dar un solo error: contra el campo equivocado, que es el peor resultado.
+  const fila = [46000, -1, 250000, 'ARS', 'Alumetal', 'Materiales Civil', 'operativa', 'PROYECTADO',
+    'transferencia', 'Alumetal', '30111111119', '0001-00000001', 'Galpon 9', 'Compras', 42,
+    'comp:30111111119:1:S', 'LA ESTRELLA']
+  assert.equal(fila.length, Object.keys(MAPA_LIBRO.col).length, 'la fila de prueba tiene que tener el ancho real del libro')
+  const [m] = leerLibro([fila])
+  assert.equal(m.fecha, 46000)
+  assert.equal(m.signo, -1)
+  assert.equal(m.importe, 250000)
+  assert.equal(m.rubro, 'Materiales Civil')
+  assert.equal(m.estado, 'PROYECTADO')
+  assert.equal(m.instrumento, 'transferencia')
+  assert.equal(m.origen, 'Compras', 'si esto dice "Galpon 9" o 42, la columna nueva se metió en el medio')
+  // Y `Cliente` es la ÚLTIMA: el día que alguien la mueva, el assert de arriba se pone rojo.
+  assert.equal(MAPA_LIBRO.col.cliente, 'Q')
+  assert.equal(fila.indexOf('LA ESTRELLA'), fila.length - 1)
 })

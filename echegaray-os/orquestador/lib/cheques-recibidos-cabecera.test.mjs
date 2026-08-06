@@ -141,7 +141,7 @@ test('el calendario cuelga del SELECTOR, no del reloj: dos corridas dan lo mismo
 test('EL SELECTOR ES DEL DUEÑO: lo que él escriba vuelve tal cual, y en su especie', () => {
   // La cabecera se escribe como un rectángulo entero: sin esto, cada corrida le borraría el mes.
   assert.equal(valorSelector({}), SELECTOR_DEFECTO)
-  assert.equal(valorSelector({ formula: '=EOMONTH(TODAY();-1)+1' }), '=EOMONTH(TODAY();-1)+1')
+  assert.equal(valorSelector({ formula: '=EOMONTH(TODAY();-1)+1', crudo: 46204 }), '=EOMONTH(TODAY();-1)+1')
   assert.equal(valorSelector({ formula: '=DATE(2026;9;1)', crudo: 46266 }), '=DATE(2026;9;1)')
   // Una fecha tipeada vuelve como NÚMERO: re-escribirla como texto "01/09/2026" la convertiría en
   // TEXTO y el calendario entero pasaría a #VALUE! sin que nadie escribiera nada mal.
@@ -149,7 +149,8 @@ test('EL SELECTOR ES DEL DUEÑO: lo que él escriba vuelve tal cual, y en su esp
   assert.equal(typeof valorSelector({ formula: '01/09/2026', crudo: 46266 }), 'number')
   // El 0 de una celda vacía no es una fecha: sería el 30/12/1899.
   assert.equal(valorSelector({ formula: '', crudo: 0 }), SELECTOR_DEFECTO)
-  assert.equal(valorSelector({ crudo: 'agosto' }), 'agosto')
+  // "agosto" a secas rompería las 42 celdas del calendario (#VALUE!): texto que no es serial → defecto.
+  assert.equal(valorSelector({ crudo: 'agosto' }), SELECTOR_DEFECTO)
 })
 
 test('LA FRESCURA SALE DE LA RÉPLICA, NO DEL RELOJ NI DE UN TEXTO PEGADO', () => {
@@ -212,4 +213,15 @@ test('NINGUNA regla condicional referencia otra hoja a pelo: la API lo rechaza c
     const crudas = f.replace(/INDIRECT\("[^"]*"\)/g, '')
     assert.ok(!/_CHEQUES_RAW/.test(crudas), `referencia cruzada sin INDIRECT:\n  ${f.slice(0, 120)}`)
   }
+})
+
+test('EL SELECTOR NO PRESERVA BASURA: la fórmula ajena del layout viejo no es un mes elegido', () => {
+  // Pagado en vivo: B7 heredó el SUMIFS de "Depositado" del diseño anterior y el calendario mostró
+  // "marzo 47917" ($16,8M leídos como fecha). Sólo se preserva el default o un serial 2000–2100.
+  const D = valorSelector({})
+  assert.match(D, /^=EOMONTH/)
+  assert.equal(valorSelector({ formula: '=SUMIFS(X;Y;"Depositado")', crudo: 16807425.92 }), D, 'la fórmula ajena vuelve al defecto')
+  assert.equal(valorSelector({ crudo: 16807425.92 }), D, 'un importe no es una fecha')
+  assert.equal(valorSelector({ crudo: 46235 }), 46235, 'un serial elegido por el dueño se respeta')
+  assert.equal(valorSelector({ formula: D, crudo: 46204 }), D, 'el propio default se reconoce')
 })

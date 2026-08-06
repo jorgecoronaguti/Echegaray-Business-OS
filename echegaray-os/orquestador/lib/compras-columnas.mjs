@@ -36,6 +36,27 @@ export function resolverColumnas(encabezado = [], nombres = {}) {
 }
 
 /**
+ * `resolverColumnas` PERO FALLANDO CERRADO, con los nombres que faltan adentro del mensaje.
+ *
+ * La diferencia no es de estilo: `resolverColumnas` devuelve `faltan` y sigue, y un llamador que no
+ * lo mire va a leer `f[undefined]` — que en JS no es un error, es `undefined`, y produce movimientos
+ * plausibles y equivocados. Todo extractor del libro pasa por acá justamente para no poder hacer eso.
+ *
+ * @param {any[]} encabezado
+ * @param {Record<string,string>} nombres
+ * @param {string} fuente el nombre de la pestaña, para que el error diga dónde mirar
+ * @returns {Record<string,number>} sólo los índices: el que falla ya rompió
+ */
+export function columnasObligatorias(encabezado, nombres, fuente) {
+  const { idx, faltan } = resolverColumnas(encabezado, nombres)
+  if (faltan.length) {
+    throw new Error(`libro-extractores(${fuente}): faltan columnas en el encabezado: ${faltan.join(' · ')}. `
+      + 'Leer por posición produciría movimientos plausibles y equivocados — no extraigo.')
+  }
+  return idx
+}
+
+/**
  * NÚCLEO PURO: un rango abierto de Compras a partir de una letra ya resuelta.
  * La fila 4 es la primera de datos: las 3 de arriba son título, agrupador y encabezado.
  */

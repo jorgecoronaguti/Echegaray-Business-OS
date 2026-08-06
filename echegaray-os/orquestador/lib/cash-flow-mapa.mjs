@@ -14,8 +14,40 @@ import {
   conciliarCobranzas, conciliarCompras, conciliarEstructuraNeta, conciliarSinFactura,
   conciliarBanco, conciliarJornales, conciliarSueldos, impuestoAlCheque, serialDeFecha,
 } from './cash-flow-conciliacion.mjs'
+import { CALENDARIO_IMPUESTOS } from './cash-flow-lineas.mjs'
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+
+/**
+ * DÓNDE ESTÁN LAS DOS FILAS DEL CALENDARIO FISCAL, POR SU RÓTULO.
+ *
+ * ═══ EL DEFECTO QUE ESTO MATA (06/08) ═══
+ *
+ * `ivaIibbEnVentana` recibía `filaIva = 18, filaIibb = 28` como DEFAULTS, y la única llamada (más
+ * abajo, fila 33) no los pasaba. Acertaba por casualidad: 18 y 28 eran las filas reales de
+ * "Impuestos y Financieros". El resto del OS ubica esas dos filas POR RÓTULO —caja-refs,
+ * libro-movimientos-pestana, cash-flow-rehacer y conciliar-caja-vs-cashflow, los cuatro— y esta era
+ * la única que no. El día que la pestaña se reordenara, la conciliación seguiría corriendo contra la
+ * fila de al lado: sin error, sin aviso, con otro número.
+ *
+ * Y se reordenó: la reconstrucción del 06/08 puso la posición, el calendario de vencimientos y el
+ * riesgo ARRIBA del detalle. Con los defaults viejos esto habría leído la fila del hero.
+ *
+ * ROMPE si no encuentra alguno: un calendario fiscal que no se encuentra vale 0, y 0 de IVA sube el
+ * piso de caja sin que se haya pagado nada.
+ */
+export function filasCalendarioFiscal(impuestos = []) {
+  const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
+  const fila = (rotulo) => impuestos.findIndex((f) => norm(f?.[0]) === norm(rotulo)) + 1
+  const iva = fila(CALENDARIO_IMPUESTOS.rotulos.iva)
+  const iibb = fila(CALENDARIO_IMPUESTOS.rotulos.iibb)
+  if (!iva || !iibb) {
+    const faltan = [!iva && `"${CALENDARIO_IMPUESTOS.rotulos.iva}"`, !iibb && `"${CALENDARIO_IMPUESTOS.rotulos.iibb}"`].filter(Boolean)
+    throw new Error(`cash-flow-mapa: no encuentro ${faltan.join(' ni ')} en la columna A de `
+      + `"${CALENDARIO_IMPUESTOS.pestaña}". Sin esas filas el IVA/IIBB a pagar valdría 0 y el piso de caja subiría solo.`)
+  }
+  return { iva, iibb }
+}
 
 /**
  * IVA + IIBB que vencen dentro de la ventana.
@@ -24,8 +56,21 @@ const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
  * se modela como fin de mes + 20 días, que es lo que usa el cuadro semanal; el mensual lo resuelve
  * apuntando a la columna del mes anterior. Las dos formas tienen que dar lo mismo y por eso acá hay
  * UNA sola: si el mensual y el semanal difieren, la diferencia aparece.
+ *
+ * ═══ EL +20 SIGUE ACÁ A PROPÓSITO, Y ES UNA LIMITACIÓN DECLARADA ═══
+ *
+ * Desde el 06/08 el OS tiene el calendario REAL (`lib/vencimientos-fiscales.mjs`): el IVA de julio no
+ * vence el 20/08 sino el 19/08, y el de septiembre el 20/10 y no el 20/10 por casualidad. Esta
+ * función NO lo usa porque su trabajo es reproducir la fórmula que hoy vive escrita en la celda del
+ * Cash Flow Semanal (`formulaCalendarioImpuestosSemana`, que también dice +20). Un control que usa
+ * otro criterio que la celda que controla marca una diferencia que no existe.
+ *
+ * Las dos se cambian JUNTAS, y ese cambio obliga a regenerar el Cash Flow Semanal — que rehace la
+ * pestaña entera y puede resucitar filas que el dueño borró a mano. Por eso no se hizo acá.
+ * A escala mensual da igual: +20 y las fechas reales (16 a 21) caen siempre en el mismo mes.
  */
-export function ivaIibbEnVentana(impuestos = [], { desde, hasta, anio = 2026 }, filaIva = 18, filaIibb = 28) {
+export function ivaIibbEnVentana(impuestos = [], { desde, hasta, anio = 2026 }, filas = null) {
+  const { iva: filaIva, iibb: filaIibb } = filas ?? filasCalendarioFiscal(impuestos)
   let total = 0
   const detalle = []
   for (let m = 1; m <= 12; m++) {
@@ -75,7 +120,7 @@ export const LINEAS = [
   { fila: 30, rubro: "Servicios recurrentes", concepto: 'Servicios recurrentes', tipo: 'fuente', fuente: 'Compras', criterio: 'AC="Servicios recurrentes" · fecha de caja AD', calc: (F, v) => conciliarCompras(F.compras, { rubro: 'Servicios recurrentes', ...v }) },
   { fila: 31, concepto: '(–) Pagos de impuestos', tipo: 'subtotal', hijos: [32, 33] },
   { fila: 32, rubro: "Impuestos", concepto: 'Impuestos nacionales y provinciales', tipo: 'fuente', fuente: 'Compras', criterio: 'AC="Impuestos" · fecha de caja AD', calc: (F, v) => conciliarCompras(F.compras, { rubro: 'Impuestos', ...v }) },
-  { fila: 33, concepto: 'IVA e Ingresos Brutos a pagar', tipo: 'fuente', fuente: 'Impuestos y Financieros', criterio: 'fila 18 (IVA) + fila 28 (IIBB) del mes que VENCE en la ventana (fin de mes + 20 días)', calc: (F, v) => ivaIibbEnVentana(F.impuestos, v) },
+  { fila: 33, concepto: 'IVA e Ingresos Brutos a pagar', tipo: 'fuente', fuente: 'Impuestos y Financieros', criterio: `filas "${CALENDARIO_IMPUESTOS.rotulos.iva}" + "${CALENDARIO_IMPUESTOS.rotulos.iibb}" (ubicadas POR RÓTULO, no por número) del mes que VENCE en la ventana (fin de mes + 20 días)`, calc: (F, v) => ivaIibbEnVentana(F.impuestos, v) },
   { fila: 34, concepto: 'FLUJO NETO DE ACTIVIDADES OPERATIVAS', tipo: 'derivada', criterio: '= 6 + 10 − 14 − 23 − 28 − 31', calc: null },
   { fila: 37, concepto: '(–) Adquisición de bienes de uso', tipo: 'subtotal', hijos: [38] },
   { fila: 38, subrubroInv: 'Equipos y rodados (inversión)', concepto: 'Equipos, rodados y maquinaria', tipo: 'fuente', fuente: 'Compras', criterio: 'AF="Equipos y rodados (inversión)" · fecha de caja AD', calc: (F, v) => conciliarCompras(F.compras, { subrubro: 'Equipos y rodados (inversión)', ...v }) },

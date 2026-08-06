@@ -25,8 +25,9 @@ import { deduplicar, separarInternas, sumar } from '../lib/libro-movimientos.mjs
 import {
   deCompras, deCobranzas, deChequesEmitidos, deBancoCargos,
   deTarjetaSinFactura, deImpuestosCalendario, deCartera,
-  deJornalesQuincenas, deOficina, deDireccion,
+  deJornalesQuincenas, deOficina, deDireccion, comprasPagadasConCheque,
 } from '../lib/libro-extractores.mjs'
+import { cruzar, chequesDelRegistro } from '../lib/cruce-cheque-factura.mjs'
 import { ROTULOS_CALENDARIO, CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
 import { total } from '../lib/patron-pestana.mjs'
 import { ubicarRegistro } from './cheques-emitidos-tablero.mjs'
@@ -38,8 +39,11 @@ const DRY = process.argv.includes('--dry')
 /** El serial de HOY en el huso del archivo (es-AR): el corte para vencidos. */
 const hoySerial = () => Math.floor((Date.now() - Date.UTC(1899, 11, 30)) / 86400000)
 
+// `Cliente` va DESPUÉS de `Clave` y no al lado de `Obra`, que es donde se leería mejor: el portón
+// (conciliar-libro.mjs) lee esta pestaña por índice —origen es el 13— y una columna insertada en el
+// medio le corre tres campos SIN darle un error. Seguiría conciliando, contra los datos equivocados.
 const ENCABEZADO = ['Fecha', 'Signo', 'Importe', 'Moneda', 'Concepto', 'Rubro', 'Actividad', 'Estado',
-  'Instrumento', 'Contraparte', 'CUIT', 'Comprobante', 'Obra', 'Origen', 'Fila', 'Clave']
+  'Instrumento', 'Contraparte', 'CUIT', 'Comprobante', 'Obra', 'Origen', 'Fila', 'Clave', 'Cliente']
 
 /** Los rangos con nombre de la nómina. El cash flow lee EXACTAMENTE éstos: una sola definición. */
 const NOMBRES_NOMINA = [
@@ -71,7 +75,9 @@ async function extraerDeLasFuentes(google, corte) {
     leer('Compras!A1:AN'), leer('Cobranzas!A1:BB'),
     leer("'Cheques Emitidos'!A1:M"), leer('_BANCO_RAW!A1:F'),
     leer("'Tarjeta de Credito'!A1:M"), leer('_CHEQUES_RAW!A1:L'),
-    leer(`'${CALENDARIO_IMPUESTOS.pestaña}'!A1:N60`),
+    // ABIERTO también (06/08): el rediseño llevó los rótulos del calendario a las filas 55/65 y el
+    // tope 60 dejó el IIBB afuera — la bomba que este mismo comentario describe, en la línea de abajo.
+    leer(`'${CALENDARIO_IMPUESTOS.pestaña}'!A1:N`),
   ])
   // LA NÓMINA VIVE EN RANGOS CON NOMBRE, y por eso se lee por nombre: el rediseño del 23/07 movió las
   // quincenas de la fila 3 a la 41 y toda suma anclada a la fila habría seguido devolviendo un número
@@ -93,10 +99,19 @@ async function extraerDeLasFuentes(google, corte) {
       + `${CALENDARIO_IMPUESTOS.pestaña}. Una referencia a una fila muerta devuelve $0 sin un solo error: no extraigo.`)
   }
 
+  // ═══ EL CRUCE SE COMPUTA UNA VEZ, ACÁ, Y LOS EXTRACTORES LO RECIBEN ═══
+  //
+  // Los extractores son funciones puras sobre las filas de UNA pestaña; el cruce necesita LAS DOS
+  // (qué factura paga cada cheque vivo). Calcularlo dentro de cada extractor rompería la pureza y
+  // —peor— podría dar dos repartos distintos: el criterio consume cada factura una sola vez, así que
+  // dos corridas independientes emparejarían distinto y Compras diría una cosa y los cheques otra.
+  // Es el mismo motivo por el que `cheques-cobertura-sheet` calcula sus respaldos una sola vez.
+  const cruce = cruzar(chequesDelRegistro(cheques, { fila0: reg.primera }), comprasPagadasConCheque(compras))
+
   return {
-    Compras: deCompras(compras, corte),
+    Compras: deCompras(compras, corte, { cruce }),
     Cobranzas: deCobranzas(cobranzas, corte),
-    'Cheques Emitidos': deChequesEmitidos(cheques, { fila0: reg.primera }),
+    'Cheques Emitidos': deChequesEmitidos(cheques, { fila0: reg.primera, cruce }),
     'Tarjeta de Credito': deTarjetaSinFactura(tarjeta),
     _BANCO_RAW: deBancoCargos(banco, { fila0: 4 }),
     _CHEQUES_RAW: deCartera(carteraRaw),
@@ -152,7 +167,8 @@ async function escribirYVerificar(google, consolidado) {
     .slice()
     .sort((a, b) => a.fecha - b.fecha)
     .map((m) => [m.fecha, m.signo, m.importe, m.moneda, m.concepto, m.rubro, m.actividad, m.estado,
-      m.instrumento, m.contraparte, m.cuit, m.comprobante, m.obra, m.origen.pestana, m.origen.fila ?? '', m.clave])]
+      m.instrumento, m.contraparte, m.cuit, m.comprobante, m.obra, m.origen.pestana, m.origen.fila ?? '', m.clave,
+      m.cliente])]
 
   let hojas = await google.getSheetMeta(ID)
   let hoja = hojas.find((h) => h.title === PESTAÑA)

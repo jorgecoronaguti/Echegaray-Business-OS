@@ -30,6 +30,15 @@
 // proyección y es lo único que entra en la historia: sin esa simetría, el día de hoy —donde las dos
 // curvas se tocan— contaría dos veces la misma plata.
 
+// ═══ Y LA SERIE DEL AÑO: INGRESOS CONTRA EGRESOS, MES A MES (06/08/2026) ═══
+//
+// Orden del dueño: el gráfico de la evolución de la caja se reemplaza por uno que muestre EN TODO EL
+// AÑO lo que entra contra lo que sale, para poder ver el PUNTO DE EQUILIBRIO. Es la única lectura de
+// la pestaña que no habla de saldo sino de CAUDAL: un saldo alto con egresos que le pasan por arriba
+// todos los meses es una empresa que se está comiendo la caja, y eso una curva de saldo no lo dice.
+//
+// Doce filas, dos importes por fila, todo por `terminoLibro` sobre el mismo libro que el resto.
+
 import { terminoLibro, LIBRO } from './libro-sumas.mjs'
 import { DESDE_CAJA } from './caja-anexo-nombres.mjs'
 import { NO_REAL } from './caja-tarjetas.mjs'
@@ -37,6 +46,8 @@ import { NO_REAL } from './caja-tarjetas.mjs'
 /** Cuántos días mira cada curva. El dueño pidió 60 y 60: dos meses a cada lado del día de hoy. */
 export const DIAS_HISTORIA = 60
 export const DIAS_PROYECCION = 60
+/** Los doce meses del año en curso: el gráfico del punto de equilibrio mira el año ENTERO. */
+export const MESES = 12
 /** Cuántas contrapartes entran en cada gráfico de concentración. Cinco: la sexta ya no se lee. */
 export const TOP_N = 5
 /** La ventana de los dos gráficos de concentración, en días. */
@@ -49,6 +60,10 @@ export const DIAS_TOP = 30
  * doble: un rango de gráfico mal apuntado dibuja una curva perfecta de datos equivocados.
  */
 export const ROTULOS = Object.freeze({
+  // EL RÓTULO DEL EQUILIBRIO NO LLEVA EL AÑO, y es a propósito: las celdas dicen `YEAR(TODAY())`, así
+  // que la serie cambia sola de año. Un rótulo con "2026" adentro sería el único pedazo del bloque que
+  // se congela — y como la ubicación es POR TEXTO EXACTO, el 1° de enero dejaría de encontrarse.
+  equilibrio: 'Concepto · ingresos vs egresos por mes, año en curso',
   historia: `Concepto · saldo real, últimos ${DIAS_HISTORIA} días`,
   proyeccion: `Concepto · saldo proyectado, próximos ${DIAS_PROYECCION} días`,
   pagos: `Concepto · pagos, top contrapartes a ${DIAS_TOP} días`,
@@ -57,11 +72,17 @@ export const ROTULOS = Object.freeze({
 
 /** Cuántas filas de datos tiene cada serie, para poder ubicarlas sin volver a leer nada. */
 export const LARGO = Object.freeze({
-  historia: DIAS_HISTORIA, proyeccion: DIAS_PROYECCION, pagos: TOP_N, cobranzas: TOP_N,
+  equilibrio: MESES, historia: DIAS_HISTORIA, proyeccion: DIAS_PROYECCION, pagos: TOP_N, cobranzas: TOP_N,
 })
 
-/** Las columnas del anexo que usan los gráficos. La F ya está formateada como fecha y la C como plata. */
-export const COL = Object.freeze({ rotulo: 1, importe: 3, fecha: 6 }) // 1-based, como los pide la API
+/**
+ * Las columnas del anexo que usan los gráficos. La F ya está formateada como fecha y la C como plata.
+ *
+ * `egreso` es la D — la segunda columna de plata del anexo— y existe porque el gráfico del equilibrio
+ * es el único con DOS series: necesita dos columnas de importe una al lado de la otra para que el
+ * bloque se lea como la tabla que es (mes · entra · sale).
+ */
+export const COL = Object.freeze({ rotulo: 1, importe: 3, egreso: 4, fecha: 6 }) // 1-based, como los pide la API
 
 /** Un desplazamiento de días desde hoy, escrito como lo escribiría una persona. */
 const dia = (n) => (n === 0 ? 'TODAY()' : n > 0 ? `TODAY()+${n}` : `TODAY()-${-n}`)
@@ -76,6 +97,35 @@ const dia = (n) => (n === 0 ? 'TODAY()' : n > 0 ? `TODAY()+${n}` : `TODAY()-${-n
  */
 export const saldoHistorico = (d) =>
   `=${DESDE_CAJA.total}-${terminoLibro({ desde: dia(d + 1), hasta: dia(1), estados: ['REAL'] })}`
+
+/**
+ * El primer día del mes `m` del AÑO EN CURSO. `m = 13` devuelve el 1° de enero del año siguiente, que
+ * es exactamente el cierre exclusivo que necesita diciembre: `DATE` normaliza el mes que se pasa de 12.
+ *
+ * Va con `YEAR(TODAY())` y no con el año escrito: el timer de este archivo ya estuvo detenido semanas,
+ * y un "2026" pegado convierte el gráfico del año en el gráfico del año pasado sin dar un solo error.
+ */
+const mes1 = (m) => `DATE(YEAR(TODAY());${m};1)`
+
+/**
+ * NÚCLEO PURO: lo que ENTRA y lo que SALE en el mes `m` (1..12), todo el año, todos los estados.
+ *
+ * ═══ POR QUÉ TODOS LOS ESTADOS Y NO SÓLO LO REAL ═══
+ *
+ * El punto de equilibrio se busca sobre el AÑO, y el año todavía no pasó: con sólo `REAL` los meses
+ * futuros valdrían cero y el cruce se leería donde no está. Entra lo cobrado y lo esperado
+ * (`COMPROMETIDO`, `PROYECTADO`, `VENCIDO`), que es cómo se decide un plazo con meses de anticipación.
+ *
+ * ═══ Y POR QUÉ LOS DOS EN MAGNITUD ═══
+ *
+ * El egreso vive en el libro con signo −1: en `neto` se dibujaría abajo del cero y las dos curvas
+ * jamás se tocarían — que es justo lo que este gráfico tiene que mostrar. En magnitud las dos suben
+ * desde cero y el cruce es el punto de equilibrio, visible sin leer un número.
+ */
+export const ingresosDelMes = (m) =>
+  `=${terminoLibro({ desde: mes1(m), hasta: mes1(m + 1), signo: 1, medida: 'magnitud' })}`
+export const egresosDelMes = (m) =>
+  `=${terminoLibro({ desde: mes1(m), hasta: mes1(m + 1), signo: -1, medida: 'magnitud' })}`
 
 /** NÚCLEO PURO: el saldo proyectado al día `d` (positivo = futuro), sumando lo que todavía no pasó. */
 export const saldoProyectado = (d) =>
@@ -118,12 +168,27 @@ export function topContraparte(signo, k, col) {
  * EL BLOQUE DEL ANEXO. Recibe el constructor de grilla del anexo (`h.push` devuelve la fila real).
  *
  * @param {{push:Function}} h
- * @returns {{fHist0:number,fHist1:number,fProy0:number,fProy1:number,fPag0:number,fPag1:number,fCob0:number,fCob1:number}}
+ * @returns {{fEq0:number,fEq1:number,fHist0:number,fHist1:number,fProy0:number,fProy1:number,fPag0:number,fPag1:number,fCob0:number,fCob1:number}}
  */
 export function bloqueSeries(h) {
   const { push } = h
   push([`A10 · SERIES DE LOS GRÁFICOS DE CAJA — LAS CALCULA \`${LIBRO.pestana}\`, NO SE PEGAN`])
 
+  // LOS ENCABEZADOS DE ESTA FILA SON LOS NOMBRES DE LAS DOS SERIES DEL GRÁFICO. El rango que dibuja
+  // arranca acá (con `headerCount: 1`), así que "Ingresos" y "Egresos" son lo que dice la leyenda:
+  // sin ellos Sheets rotula "Series 1" y "Series 2", y un gráfico de dos curvas sin leyenda no se lee.
+  push([ROTULOS.equilibrio, '', 'Ingresos', 'Egresos', '', 'Mes',
+    'Todo el año, todos los estados: lo que ya entró y lo que se espera'])
+  const fEq0 = h.n + 1
+  for (let m = 1; m <= MESES; m++) push(['', '', ingresosDelMes(m), egresosDelMes(m), '', `=${mes1(m)}`])
+  const fEq1 = h.n
+
+  // ═══ ESTA SERIE HOY NO LA DIBUJA NINGÚN GRÁFICO ═══
+  //
+  // El dueño reemplazó "Evolución de la caja" por el cruce de arriba (06/08/2026). Se conserva porque
+  // es la única reconstrucción del pasado que tiene el archivo y retirarla es borrar un dato que nadie
+  // pidió borrar; el costo de tenerla son sesenta fórmulas. Si sigue sin consumidor, se retira — pero
+  // esa decisión es del dueño, no del que vino a cambiar un gráfico.
   push([ROTULOS.historia, '', 'Saldo', '', '', 'Día', 'Saldo de hoy menos lo REAL posterior a ese día'])
   const fHist0 = h.n + 1
   // De más viejo a más nuevo: un eje temporal que va para atrás se lee mal y Sheets lo dibuja igual.
@@ -145,7 +210,7 @@ export function bloqueSeries(h) {
   for (let k = 1; k <= TOP_N; k++) push([topContraparte(1, k, 1), '', topContraparte(1, k, 2)])
   const fCob1 = h.n
 
-  return { fHist0, fHist1, fProy0, fProy1, fPag0, fPag1, fCob0, fCob1 }
+  return { fEq0, fEq1, fHist0, fHist1, fProy0, fProy1, fPag0, fPag1, fCob0, fCob1 }
 }
 
 /**
@@ -156,7 +221,7 @@ export function bloqueSeries(h) {
  * arreglar ni descartar. Ya pasó con este mismo módulo.
  *
  * @param {Array<Array<any>>} colA los valores de la columna A del anexo, desde la fila 1
- * @returns {{historia:{f0:number,f1:number}|null, proyeccion:…, pagos:…, cobranzas:…}}
+ * @returns {{equilibrio:{f0:number,f1:number}|null, historia:…, proyeccion:…, pagos:…, cobranzas:…}}
  */
 export function ubicarSeries(colA = []) {
   const buscar = (rotulo, largo) => {
@@ -166,6 +231,7 @@ export function ubicarSeries(colA = []) {
     return { f0: i + 2, f1: i + 1 + largo }
   }
   return {
+    equilibrio: buscar(ROTULOS.equilibrio, LARGO.equilibrio),
     historia: buscar(ROTULOS.historia, LARGO.historia),
     proyeccion: buscar(ROTULOS.proyeccion, LARGO.proyeccion),
     pagos: buscar(ROTULOS.pagos, LARGO.pagos),

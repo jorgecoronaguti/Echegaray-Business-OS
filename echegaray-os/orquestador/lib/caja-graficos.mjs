@@ -14,6 +14,20 @@
 //   · CONCENTRACIÓN DE COBRANZAS → si un cliente es la mitad de lo que entra, el riesgo de caja no es
 //     financiero: es comercial.
 //
+// ═══ Y LA EVOLUCIÓN SE REEMPLAZÓ POR EL PUNTO DE EQUILIBRIO (06/08/2026) ═══
+//
+// Orden del dueño: *"mostrar en todo el año ingresos vs egresos, para determinar el punto de
+// equilibrio"*. Ocupa el mismo lugar —arriba a la izquierda, el primero que se lee— y contesta una
+// pregunta que la curva de saldo no podía: la evolución mostraba CUÁNTO HAY, y ésta muestra si lo que
+// entra alcanza para lo que sale. Un saldo que baja despacio y un mes que se financia con la caja
+// vieja se ven igual en una curva de saldo; acá se ven distinto, porque el rojo pasa al azul.
+//
+// La serie del pasado sigue existiendo en el anexo (`ROTULOS.historia`): se dejó de DIBUJAR, no se
+// borró. El dato es del dueño y él no pidió borrarlo.
+//
+//   · EQUILIBRIO (los doce meses del año) → ¿el año se paga solo? Dos curvas, lo que entra y lo que
+//     sale, y el mes donde se cruzan.
+//
 // ═══ NINGUNO TIENE DATOS PROPIOS ═══
 //
 // Los cuatro leen rangos de `_CAJA_ANEXO` que son fórmulas sobre `_MOVIMIENTOS` (ver
@@ -32,7 +46,7 @@
 // equivocados. Un gráfico huérfano que sigue pintando algo que ya no significa nada es peor que uno
 // que falta. Esto vale para CAJA, que es íntegramente generada, y no es un permiso general.
 
-import { COL, DIAS_HISTORIA, DIAS_PROYECCION, DIAS_TOP, TOP_N } from './caja-anexo-series.mjs'
+import { COL, DIAS_PROYECCION, DIAS_TOP, TOP_N } from './caja-anexo-series.mjs'
 
 /**
  * DÓNDE SE ANCLAN. Los gráficos flotan, pero el ANCLA es una celda REAL: si la hoja no llega a esa
@@ -51,16 +65,20 @@ const ALTO_PX = 300
 
 /** El prefijo que marca un gráfico como PROPIO. Se conserva para poder reconocerlos en el archivo. */
 export const MARCA = '⟡ '
-export const TITULO_EVOLUCION = `${MARCA}Evolución de la caja`
+export const TITULO_EQUILIBRIO = `${MARCA}Ingresos vs egresos por mes — punto de equilibrio`
 export const TITULO_PROYECCION = `${MARCA}Proyección de la caja`
 export const TITULO_PAGOS = `${MARCA}Concentración de pagos`
 export const TITULO_COBRANZAS = `${MARCA}Concentración de cobranzas`
 
-// La misma paleta que la pestaña: tinta, gris apagado y UN acento. El rojo no se usa acá: en un
-// gráfico de caja todo negativo se pintaría de rojo y el rojo dejaría de avisar.
+// La misma paleta que la pestaña: tinta, gris apagado y UN acento.
 const INK = { red: 0.10, green: 0.13, blue: 0.20 }
 const GRIS = { red: 0.62, green: 0.63, blue: 0.65 }
 const ACENTO = { red: 0.11, green: 0.23, blue: 0.37 }
+// EL ROJO ENTRA, Y SÓLO PARA UNA COSA. La regla anterior era no usarlo —en un gráfico de saldo todo
+// negativo se pintaría de rojo y el rojo dejaría de avisar—. Acá el rojo no marca un negativo: marca
+// LA SALIDA de plata, una serie entera y una sola. Es apagado a propósito: un rojo saturado grita en
+// los doce meses, y lo que tiene que gritar es el mes donde le pasa por arriba al azul.
+const ROJO = { red: 0.60, green: 0.24, blue: 0.22 }
 
 const rango = (sheetId, f0, f1, c0, c1) => ({ sheetId, startRowIndex: f0 - 1, endRowIndex: f1, startColumnIndex: c0 - 1, endColumnIndex: c1 })
 /**
@@ -112,6 +130,42 @@ function curva({ titulo, subtitulo, sheetId, anexo, rango: r, posicion, color })
   }, sheetId, posicion)
 }
 
+/**
+ * EL CRUCE: dos curvas sobre los doce meses —lo que entra y lo que sale— y el punto donde se tocan.
+ *
+ * ═══ POR QUÉ LÍNEAS Y NO COLUMNAS ═══
+ *
+ * La pregunta del dueño es DÓNDE SE CRUZAN, y un cruce es un hecho de la línea: dos series de columnas
+ * agrupadas se comparan de a pares, mes por mes, y el mes en que una pasa a la otra hay que buscarlo a
+ * ojo comparando alturas. Con líneas el cruce es un punto que se ve sin buscarlo. Se suavizan
+ * (`lineSmoothing`) porque doce puntos con quiebres duros parecen ruido y acá lo que importa es la
+ * tendencia, no el valor exacto de un mes — ése está en la tabla del anexo.
+ *
+ * ═══ Y POR QUÉ EL RANGO ARRANCA UNA FILA ANTES ═══
+ *
+ * `headerCount: 1` con la fila del rótulo adentro es lo único que hace que la leyenda diga "Ingresos"
+ * y "Egresos". Sin eso Sheets rotula "Series 1" y "Series 2" y las dos curvas quedan sin nombre. Esa
+ * fila existe siempre: `ubicarSeries` devuelve `f0` como la SIGUIENTE a la del rótulo que encontró.
+ *
+ * Igual el subtítulo nombra los colores en la frase que se lee: si algún día la leyenda se rompe, el
+ * gráfico sigue diciendo qué es cada curva.
+ */
+function cruce({ titulo, subtitulo, sheetId, anexo, rango: r, posicion }) {
+  const cab = r.f0 - 1
+  return base(titulo, subtitulo, {
+    chartType: 'LINE',
+    lineSmoothing: true,
+    legendPosition: 'BOTTOM_LEGEND',
+    headerCount: 1,
+    axis: [{ position: 'BOTTOM_AXIS', format: texto(9) }, { position: 'LEFT_AXIS', format: texto(9) }],
+    domains: [{ domain: fuente(rango(anexo, cab, r.f1, COL.fecha, COL.fecha)) }],
+    series: [
+      { series: fuente(rango(anexo, cab, r.f1, COL.importe, COL.importe)), targetAxis: 'LEFT_AXIS', color: ACENTO },
+      { series: fuente(rango(anexo, cab, r.f1, COL.egreso, COL.egreso)), targetAxis: 'LEFT_AXIS', color: ROJO },
+    ],
+  }, sheetId, posicion)
+}
+
 /** Un ranking: barras HORIZONTALES, porque los nombres de contraparte son largos y rotados no se leen. */
 function ranking({ titulo, subtitulo, sheetId, anexo, rango: r, posicion, color }) {
   return base(titulo, subtitulo, {
@@ -134,10 +188,10 @@ function ranking({ titulo, subtitulo, sheetId, anexo, rango: r, posicion, color 
  */
 export function graficos(sheetId, anexo, series = {}) {
   const cuadros = [
-    ['historia', (r, posicion) => curva({
-      titulo: TITULO_EVOLUCION,
-      subtitulo: `Saldo día por día de los últimos ${DIAS_HISTORIA} días — de dónde viene la caja de hoy`,
-      sheetId, anexo, rango: r, posicion, color: GRIS,
+    ['equilibrio', (r, posicion) => cruce({
+      titulo: TITULO_EQUILIBRIO,
+      subtitulo: 'Donde el rojo supera al azul, el mes se financia con caja acumulada',
+      sheetId, anexo, rango: r, posicion,
     })],
     ['proyeccion', (r, posicion) => curva({
       titulo: TITULO_PROYECCION,

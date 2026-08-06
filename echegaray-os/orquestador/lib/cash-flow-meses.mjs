@@ -26,11 +26,14 @@
 // fila del cuadro no va nada más: el dueño pidió "no agregar información, no agregar métricas".
 
 import {
-  MEDIDAS, CONCEPTOS, COL, FILA, FOOTPRINT,
-  conceptosDe, filaDeConcepto, colTotal, columnasDeTiempo, filaGraficos,
-  expresionVentana, formulaMedida, ventanas, celda, rangoFila, serialDeFecha, rotuloMes,
+  COL, FILA,
+  conceptosDe, filaDeConcepto, colTotal, columnasDeTiempo, filaGraficos, footprintDe,
+  medidasDeLaMatriz, bloquesDeMedida, formulasDeMedida,
+  expresionVentana, ventanas, celda, rangoFila, serialDeFecha, rotuloMes,
 } from './cash-flow-matriz.mjs'
+import { MEDIDAS, formulaMedida } from './cash-flow-medidas.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
+import { bloquesDeCliente, filaTituloPorCliente, formulasPorCliente } from './cash-flow-por-cliente.mjs'
 import { expresionInicio } from './cash-flow-ancla-saldo.mjs'
 import { NOMBRE_MESES } from './cash-flow-lineas.mjs'
 import { NOMBRES as PRESUPUESTO } from './cash-flow-presupuesto.mjs'
@@ -73,12 +76,15 @@ export function grillaMeses({ anio = 2026, refs = {} } = {}) {
   const n = columnasDeTiempo(TIPO)
   const cT = colTotal(TIPO)
   const meses = ventanas(TIPO, { anio })
+  const footprint = footprintDe(TIPO, anio)
   const fila = Object.fromEntries(conceptosDe(TIPO).map((c) => [c.clave, filaDeConcepto(TIPO, c.clave)]))
   const meta = {
-    pestana: PESTANA_MENSUAL, tipo: TIPO, anio, ancho: FOOTPRINT.mes.cols, footprint: FOOTPRINT.mes,
+    pestana: PESTANA_MENSUAL, tipo: TIPO, anio, ancho: footprint.cols, footprint,
     cab: { fila: FILA.cabecera, col0: COL.tiempo0, n, colTotal: cT },
     fila, hero: { rotulo: FILA.heroRotulo, valor: FILA.heroValor, slots: SLOTS_HERO },
-    grafico: { fila: filaGraficos(TIPO) },
+    bloques: bloquesDeMedida(TIPO),
+    clientes: { titulo: filaTituloPorCliente(TIPO), bloques: bloquesDeCliente(TIPO) },
+    grafico: { fila: filaGraficos(TIPO), col: COL.tiempo0 },
     ventanas: meses, rotulos: meses.map((v) => rotuloMes(v.desde)),
   }
 
@@ -148,13 +154,19 @@ function columnaDeMes(poner, meta, j, { refSaldo, refFecha }) {
   poner(f.saldoInicial, col, refSaldo && refFecha
     ? expresionInicio({
       desde, hasta, refSaldo, refFecha,
-      yaVividoEnElAncla: terminoLibro({ desde, hasta: `${refFecha}+1`, estados: ['REAL'], medida: 'neto' }),
+      // SIN TECHO EN EL CORTE (06/08): la línea de "posteriores al corte" del total NO tiene techo,
+      // así que un REAL fechado DESPUÉS del corte ya está adentro del saldo declarado. Restarlo sólo
+      // hasta el corte lo dejaba en el inicio Y en la columna de su fecha: $11,1M contados dos veces
+      // (medidos por el verificador de conectividad). Se resta TODO el REAL desde el arranque del
+      // período ancla en adelante; la cadena lo re-suma exactamente una vez en la columna que le toca.
+      yaVividoEnElAncla: terminoLibro({ desde, estados: ['REAL'], medida: 'neto' }),
       anterior: j === 0 ? null : celda(col - 1, f.saldoFinal),
     })
     : '')
-  for (const c of CONCEPTOS) {
-    if (c.medida === undefined) continue
-    poner(f[c.clave], col, formulaMedida(MEDIDAS[c.medida], desde, hasta))
+  // Subtotal + apertura por rubro, de la misma función que usa el semanal: las dos vistas no pueden
+  // definir distinto qué es "Materiales Civil" porque no hay dos definiciones.
+  for (const c of medidasDeLaMatriz()) {
+    for (const linea of formulasDeMedida(meta.tipo, c.clave, { col, desde, hasta })) poner(linea.fila, col, linea.formula)
   }
   poner(f.resultado, col,
     `=N(${celda(col, f.ingresoReal)})+N(${celda(col, f.ingresoProyectado)})`
@@ -163,6 +175,10 @@ function columnaDeMes(poner, meta, j, { refSaldo, refFecha }) {
   // leería como "la empresa cerró el mes sin plata", que es una afirmación que nadie hizo.
   poner(f.saldoFinal, col,
     `=IF(N(${celda(col, f.saldoInicial)})=0;"";N(${celda(col, f.saldoInicial)})+N(${celda(col, f.resultado)}))`)
+
+  // La sección POR CLIENTE cuelga de los subtotales de arriba (su residuo los resta), así que se
+  // escribe después: el orden de escritura es el orden en que se audita la dependencia.
+  for (const linea of formulasPorCliente(meta.tipo, { col, desde, hasta })) poner(linea.fila, col, linea.formula)
 
   poner(f.variacionPresupuesto, col, formulaVariacionPresupuesto(cab, celda(col, f.resultado)))
   poner(f.variacionMesAnterior, col, j === 0

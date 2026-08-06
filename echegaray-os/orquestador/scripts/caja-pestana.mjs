@@ -25,6 +25,23 @@
 // mano (el arqueo). Antes de reescribirla se leen los valores cargados y se vuelven a poner en su
 // lugar, buscándolos POR EL NOMBRE DE LA CUENTA y no por número de fila.
 //
+// ═══ ANTES DE LA PRIMERA CORRIDA CON LAS 4 TARJETAS (06/08) — LIMPIAR LAS HUELLAS DE G2:G4 ═══
+//
+// El dueño había borrado la tarjeta RIESGO (G2:G4) y ese borrado está sellado con `borrada_en` en
+// `public.sheet_huella_celda`: el generador es incapaz de reescribir esas celdas por diseño. La
+// tarjeta CAJA PROYECTADA ahora vive ahí POR ORDEN EXPLÍCITA del dueño (el reorden JPM), así que
+// quien aplique este cambio limpia esas tres marcas —y SÓLO esas— a mano, una vez, antes de correr
+// este script. El generador no lo hace solo: pisar una huella de borrado es exactamente lo que la
+// huella existe para impedir. I2:I4 (la tarjeta CUELLO, también borrada por él) NO se limpia: sigue
+// borrada y la quinta columna de tarjetas queda vacía.
+//
+//   delete from public.sheet_huella_celda
+//    where file_id = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
+//      and pestana = 'Caja'
+//      and col = 6              -- la columna G (0-based)
+//      and fila between 2 and 4
+//      and borrada_en is not null;
+//
 //   node orquestador/scripts/caja-pestana.mjs [--dry]
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
@@ -173,7 +190,7 @@ async function main() {
 
   // DESARMAR LAS COMBINACIONES ANTES DE ESCRIBIR, NO DESPUÉS: en la corrida en que existe una celda
   // combinada, la escritura se pierde EN SILENCIO —ni error ni valor— y recién la corrida siguiente
-  // deja el dato. La portada combina diez celdas (las cinco tarjetas × tres filas), así que esto pasó
+  // deja el dato. La portada combina las tarjetas × tres filas, así que esto pasó
   // de ser una precaución a ser obligatorio en cada corrida.
   await google.spreadsheetBatchUpdate(ID, [{ unmergeCells: { range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: Math.max(g.filas.length, hoja.rows ?? 0), startColumnIndex: 0, endColumnIndex: Math.max(ANCHO, hoja.cols ?? ANCHO) } } }]).catch(() => {})
   // UNA LECTURA QUE FALLA NO ES UNA PESTAÑA VACÍA: con `.catch(() => [])` un 429 se convertía en "está
@@ -255,7 +272,7 @@ async function main() {
   const v = await google.readSheetValues(ID, `${tab}!A1:${letra(ANCHO - 1)}${g.filas.length}`)
   const sinCargar = v.filter((f) => filaDeCuenta(String(f?.[0] ?? '').trim()) && !String(f?.[1] ?? '').trim())
   console.log(`\nQUEDÓ ESCRITO en ${g.filas.length} filas.`)
-  // LAS CINCO TARJETAS, LEÍDAS DE LA PESTAÑA Y NO DE LA GRILLA: lo que se informa es el EFECTO, no lo
+  // LAS TARJETAS, LEÍDAS DE LA PESTAÑA Y NO DE LA GRILLA: lo que se informa es el EFECTO, no lo
   // que el generador pensaba escribir. Un resumen que sale del objeto en memoria no prueba nada.
   g.tarjetas.forEach((t, i) => console.log(`  ${t.rotulo}: ${v[g.fCifras - 1]?.[COLS_TARJETA[i]] || '—'}`))
   for (let f = g.fAviso0; f <= g.fAviso1; f++) {
@@ -294,7 +311,7 @@ async function formatear(google, sheetId, g, anexo) {
   const req = [
     { unmergeCells: { range: r(0, Math.max(n, 200)) } },
     E.reset(sheetId, Math.max(n + 20, 200), ANCHO),
-    // SE CONGELAN LAS CUATRO PRIMERAS FILAS: el titular y las cinco tarjetas. Es lo que hace que el
+    // SE CONGELAN LAS CUATRO PRIMERAS FILAS: el titular y las cuatro tarjetas. Es lo que hace que el
     // número que decide siga a la vista si alguien baja a mirar los gráficos.
     { updateSheetProperties: { properties: { sheetId, gridProperties: { hideGridlines: true, frozenRowCount: 4 } }, fields: 'gridProperties.hideGridlines,gridProperties.frozenRowCount' } },
   ]
@@ -359,15 +376,13 @@ async function formatear(google, sheetId, g, anexo) {
     { numberFormat: E.NUM.moneda, textFormat: { bold: true, fontSize: E.TAM.titular, fontFamily: E.FUENTE_NUM, foregroundColor: INK }, horizontalAlignment: 'LEFT', verticalAlignment: 'MIDDLE', wrapStrategy: 'CLIP' })
   fmt(r(g.fContexto - 1, g.fContexto), 'userEnteredFormat',
     { numberFormat: { type: 'TEXT' }, textFormat: { fontSize: E.TAM.nota, foregroundColor: MUTED }, horizontalAlignment: 'LEFT', verticalAlignment: 'TOP', wrapStrategy: 'CLIP' })
-  // EL ACENTO VA EN EL RIESGO DE LIQUIDEZ, que es el número con el que se decide cuánta plata se
-  // inmoviliza. "Disponible" y "proyectada" describen la posición; el piso la restringe.
-  const colRiesgo = COLS_TARJETA[3]
-  fmt(r(g.fCifras - 1, g.fCifras, colRiesgo, colRiesgo + 1), 'userEnteredFormat.textFormat',
+  // EL ACENTO VA EN LA CAJA DISPONIBLE, que desde el 06/08 es la liquidez OPERATIVA (sin Balanz): el
+  // número con el que se decide qué se paga. Las tarjetas RIESGO y CUELLO que llevaban el acento y el
+  // formato de texto las borró el dueño y ya no se emiten; el piso vive en el cierre de la escalera,
+  // que ya se pinta con el acento más abajo.
+  const colDisponible = COLS_TARJETA[0]
+  fmt(r(g.fCifras - 1, g.fCifras, colDisponible, colDisponible + 1), 'userEnteredFormat.textFormat',
     { textFormat: { bold: true, fontSize: E.TAM.titular, fontFamily: E.FUENTE_NUM, foregroundColor: ACENTO } })
-  // LA QUINTA TARJETA ES TEXTO ("Esta semana"), no plata: con formato de moneda queda en #VALUE! o se
-  // dibuja como "—", que es exactamente el defecto `texto_en_numero` que el auditor de pantalla marca.
-  const colCuello = COLS_TARJETA[4]
-  fmt(r(g.fCifras - 1, g.fCifras, colCuello, colCuello + 1), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
   for (const c of COLS_TARJETA) {
     for (const f of [g.fRotulos, g.fCifras, g.fContexto]) {
       req.push({ mergeCells: { range: r(f - 1, f, c, c + 2), mergeType: 'MERGE_ROWS' } })

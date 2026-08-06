@@ -27,6 +27,10 @@ import { loadConfig } from '../lib/config.mjs'
 import { MAPA, ROLES_SUMADOS, fuentesSumadas } from '../lib/cash-flow-cobertura.mjs'
 import { lineasDeCaja, conceptosFueraDelCalendario, marcaDeLinea } from '../lib/calendario-egresos.mjs'
 import { RAW } from '../lib/conciliacion-por-naturaleza.mjs'
+import { deCompras, deCobranzas } from '../lib/libro-extractores.mjs'
+import { veredictoPorMetodo, faltanteEnCartera } from '../lib/caja-canales.mjs'
+import { EN_CARTERA } from '../lib/cartera-cheques.mjs'
+import { COL as COL_RAW, FILA0 as FILA0_RAW, PESTAÑA as PESTANA_RAW } from './cheques-raw-pestana.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const pesos = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString('es-AR')
@@ -72,6 +76,49 @@ export function veredictoConectividad(sumadas, ciegos = []) {
   })))
 }
 
+/**
+ * ¿CADA MÉTODO DE PAGO LLEGA AL SALDO, O HAY UNO QUE NO ENTRA POR NINGUNA PUERTA?
+ *
+ * Es la segunda mitad de la pregunta del dueño, y no la contesta el mapa de pestañas: "Compras está
+ * conectada" puede ser cierto y aun así haber un MÉTODO —el echeq— cuya plata no aparece en ningún
+ * lado. La prueba del 06/08: $2.569.676 en cuatro filas marcadas "Pagado" con cheque/echeq y fecha
+ * posterior al corte, que ni el saldo tenía ni la proyección miraba.
+ *
+ * El veredicto cruza DOS productores distintos (ver `canalDeMovimiento`): el estado que pone el libro
+ * y lo que suman las fórmulas vivas de CAJA. Ninguno de los dos, solo, ve el hueco.
+ *
+ * @param {object} g cliente de Google (sólo lectura)
+ * @param {number|null} corte serial de la fecha de corte del extracto
+ * @returns {Promise<Array>} los renglones del veredicto, huecos primero
+ */
+async function porMetodo(g, corte) {
+  // Compras hasta BZ: el extractor resuelve por encabezado y "CUIT (OS)" vive después de la AL — con
+  // una lectura corta falla cerrado nombrando la columna, que es lo correcto pero no es el veredicto.
+  const [compras, cobranzas] = await Promise.all([
+    g.readSheetValues(ID, 'Compras!A1:BZ', { render: 'UNFORMATTED_VALUE' }),
+    g.readSheetValues(ID, 'Cobranzas!A1:BB', { render: 'UNFORMATTED_VALUE' }),
+  ])
+  const movimientos = [...deCompras(compras ?? [], corte), ...deCobranzas(cobranzas ?? [], corte)]
+  return { movimientos, veredicto: veredictoPorMetodo(movimientos, { corte }) }
+}
+
+/**
+ * Los valores de terceros EN LA MANO que van a acreditar después del corte, leídos de la réplica de
+ * cheques — la otra fuente, la que prueba que la precondición del canal "cartera" se cumple.
+ * Mismo criterio que la fórmula viva de "Valores a depositar": tipo recibido Y estado En custodia.
+ */
+async function carteraPosteriorAlCorte(g, corte) {
+  const filas = await g.readSheetValues(ID, `${PESTANA_RAW}!A1:M`, { render: 'UNFORMATTED_VALUE' })
+  const i = (letra) => [...letra.toUpperCase()].reduce((n, c) => n * 26 + (c.charCodeAt(0) - 64), 0) - 1
+  return (filas ?? []).slice(FILA0_RAW - 1).reduce((a, f) => {
+    if (String(f?.[i(COL_RAW.tipo)] ?? '').toLowerCase() !== 'recibido') return a
+    if (String(f?.[i(COL_RAW.estado)] ?? '').toLowerCase() !== EN_CARTERA.toLowerCase()) return a
+    const pago = Number(f?.[i(COL_RAW.fechaPago)])
+    if (!Number.isFinite(pago) || !(pago > corte)) return a
+    return a + (Number(f?.[i(COL_RAW.importe)]) || 0)
+  }, 0)
+}
+
 async function main() {
   const g = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const uno = async (r) => {
@@ -98,6 +145,45 @@ async function main() {
   console.log('─'.repeat(96))
   const total = await uno('CAJA_TOTAL_DISPONIBLE')
   console.log(`\n  disponibilidad percibida hoy: ${pesos(total)}`)
+
+  // ═══ MÉTODO POR MÉTODO ═══
+  // EL CORTE ES EL DEL EXTRACTO, no el rótulo de frescura de la pestaña. Con `CAJA_FECHA_SALDO` —que
+  // es el MAX de todas las fechas del bloque, y una de ellas es TODAY()— la ventana quedaría más
+  // corta que la real y el control reportaría menos huecos de los que hay. Se calcula como lo define
+  // `formulaFechaCorte`: la fecha del último movimiento de la réplica.
+  const fechasRaw = await g.readSheetValues(ID, `${RAW.hoja}!${RAW.fecha}${RAW.desde}:${RAW.fecha}`, { render: 'UNFORMATTED_VALUE' })
+  const corte = fechasRaw.reduce((mx, f) => (typeof f?.[0] === 'number' && f[0] > mx ? f[0] : mx), 0)
+  const { movimientos, veredicto } = await porMetodo(g, corte || null)
+  const huecos = veredicto.filter((m) => !m.cubierto)
+  console.log(`\n¿QUÉ LÍNEA DE CAJA ABSORBE CADA MÉTODO DE PAGO? (corte del extracto: serial ${corte || '—'})`)
+  console.log('─'.repeat(96))
+  for (const m of veredicto) {
+    console.log(`  ${m.cubierto ? '✓' : '✗'} ${m.metodo.padEnd(15)} ${pesos(m.monto).padStart(16)}  ${String(m.filas).padStart(4)} mov  ${m.canal}`)
+  }
+  if (huecos.length) {
+    const suma = huecos.reduce((a, b) => a + b.monto, 0)
+    console.log(`\n  ✗ ${pesos(suma)} no está en ningún saldo NI en ninguna proyección.`)
+    console.log('    Un pago con instrumento diferido y fecha posterior al corte no puede ser un HECHO:')
+    console.log('    el extracto termina en el corte y el instrumento todavía no debitó.')
+    process.exitCode = 1
+  } else {
+    console.log('\n  ✓ Ningún egreso queda fuera: cada movimiento cae en exactamente un canal.')
+  }
+
+  // LA PRECONDICIÓN DEL CANAL "CARTERA", VERIFICADA CONTRA LA OTRA FUENTE. El echeq cobrado se excluye
+  // del saldo bancario porque "ya está en Valores a depositar"; si no está cargado en la réplica de
+  // cheques, esa exclusión lo hace desaparecer. Ver `faltanteEnCartera`.
+  const cart = faltanteEnCartera(movimientos, await carteraPosteriorAlCorte(g, corte), { corte: corte || null })
+  console.log(`\n  valores a acreditar después del corte · Cobranzas espera ${pesos(cart.esperado)}`
+    + ` · ${PESTANA_RAW} tiene ${pesos(cart.enCartera)}`)
+  if (cart.falta > 0) {
+    console.log(`  ✗ faltan ${pesos(cart.falta)} en la cartera: esa plata no la muestra NINGUNA línea de CAJA.`)
+    console.log('    O el valor no se cargó en la réplica, o el cobro ya no va a entrar (endosado) y')
+    console.log('    Cobranzas todavía lo espera. Las dos son cargas del dueño, no cosas que el código deduzca.\n')
+    process.exitCode = 1
+  } else {
+    console.log('  ✓ cada valor que Cobranzas espera cobrar está en la cartera.\n')
+  }
 
   // ═══ EL MONTO DE LO QUE QUEDA AFUERA, MEDIDO ═══
   //

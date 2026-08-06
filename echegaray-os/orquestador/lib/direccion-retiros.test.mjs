@@ -64,16 +64,28 @@ test('lo pagado sale del ESTADO de la fila, no de que la fecha ya haya pasado', 
   // Una fila con fecha de caja vencida y estado "🟢 Vigente" es un pago previsto que NO salió.
   // Tomarla como pagada apagaría la proyección de un mes que se sigue debiendo.
   assert.match(f, /REGEXMATCH\('Compras'!\$Z\$4:\$Z&"";"Pagado"\)/)
-  assert.match(f, /DATE\(2026;7;1\)/)
+  // LA VENTANA ES LA DEL MES SIGUIENTE: el retiro de julio se paga el 10/08 — los pagos del 03-04/08
+  // confirman JULIO, no agosto (el defecto de los $9M dobles, 06/08).
   assert.match(f, /DATE\(2026;8;1\)/)
+  assert.match(f, /DATE\(2026;9;1\)/)
   // Dentro de SUMPRODUCT, N() no se expande sobre un rango: tiene que ser IF(ISNUMBER(...)).
   assert.ok(!/\*N\('Compras'/.test(f), `N() sobre un rango adentro de SUMPRODUCT no se expande: ${f}`)
 })
 
-test('el retiro de diciembre se paga en ENERO del año siguiente', () => {
+test('el retiro de diciembre se paga en ENERO del año siguiente, y el mes 13 no existe', () => {
   // Es percibido: ese pago no es caja de 2026 y el cuadro tiene que dejarlo caer fuera de la ventana.
-  assert.equal(formulaSePagaElDireccion(12, 2026), '=DATE(2026;13;DIRECCION_DIA_PAGO)')
+  //
+  // ESTE TEST CONSAGRABA EL DEFECTO (06/08 — B7 de la auditoría). Exigía `DATE(2026;13;…)`. Sheets lo
+  // resuelve por desborde y devuelve 10/01/2027, así que el número salía bien; pero la celda declara
+  // un mes que no existe, y el día que esa fórmula se copie a otra pestaña o se traduzca a SQL, el
+  // desborde no la va a salvar. Un test que exige la forma equivocada la vuelve intocable.
+  assert.equal(formulaSePagaElDireccion(12, 2026), '=DATE(2027;1;DIRECCION_DIA_PAGO)')
   assert.equal(formulaSePagaElDireccion(7, 2026), '=DATE(2026;8;DIRECCION_DIA_PAGO)')
+  // Y la ventana de "pagado" del mes de diciembre tampoco puede tener meses 13 ni 14.
+  const dic = formulaPagadoMes(12, 2026)
+  assert.match(dic, /DATE\(2027;1;1\)/)
+  assert.match(dic, /DATE\(2027;2;1\)/)
+  assert.doesNotMatch(dic, /DATE\(\d{4};1[3-9];/)
 })
 
 test('el día de pago es un PARÁMETRO de la pestaña, no una constante en el código', () => {

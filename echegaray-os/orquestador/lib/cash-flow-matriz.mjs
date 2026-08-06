@@ -26,44 +26,20 @@
 // una semana cruza el fin de mes y sus movimientos caen a los dos lados. Repartirla es una
 // convención, y cualquiera que se elija genera diferencias de borde que no son defectos. Lo que sí
 // tiene que cerrar es la definición, y eso es lo que se prueba.
+//
+// ═══ QUÉ ESTÁ ACÁ Y QUÉ NO ═══
+//
+// Acá está DÓNDE va cada cosa: las filas, las columnas, las ventanas, el footprint. QUÉ suma cada fila
+// de plata vive en `cash-flow-medidas.mjs`, que este archivo importa y que no sabe nada de geometría.
 
-import { terminoLibro } from './libro-sumas.mjs'
+import { OTROS, rubrosDeApertura, claveSub, rotuloSub } from './cash-flow-rubros.mjs'
+import {
+  MEDIDAS, esMedidaReal, formulaMedida, formulaRubro,
+} from './cash-flow-medidas.mjs'
+import { nombresDeClientes, ROTULO_SIN_CLIENTE } from './libro-clientes.mjs'
 
 /** Un día en milisegundos. Todas las fechas se manejan en UTC: el huso del proceso no decide un mes. */
 export const DIA_MS = 86400000
-
-/** Lo que YA pasó: entró o salió de la cuenta. */
-export const ESTADOS_REALES = Object.freeze(['REAL'])
-/**
- * Lo que TODAVÍA NO pasó, en las tres formas en que el libro lo registra. Los tres van juntos en la
- * línea "proyectado" porque los tres son plata que no está en la cuenta; la diferencia entre un cheque
- * emitido (COMPROMETIDO) y un cobro esperado (PROYECTADO) se lee en el detalle, no en el saldo.
- * VENCIDO entra acá y no en real: una fecha que pasó sin conciliar NO es plata que se movió.
- */
-export const ESTADOS_PENDIENTES = Object.freeze(['PROYECTADO', 'VENCIDO', 'COMPROMETIDO'])
-
-/**
- * LAS CUATRO MEDIDAS DE FLUJO. El orden es el de las filas de la matriz: primero lo que entra.
- *
- * `signoNeto` es cómo entra la medida en el resultado; `medida:'magnitud'` es cómo se MUESTRA. Los
- * egresos se muestran en positivo —un pago de $3M se lee "$3.000.000", no "($3.000.000)"— y restan igual.
- */
-export const MEDIDAS = Object.freeze([
-  { clave: 'ingresoReal', signo: 1, estados: ESTADOS_REALES, medida: 'neto', signoNeto: 1 },
-  { clave: 'ingresoProyectado', signo: 1, estados: ESTADOS_PENDIENTES, medida: 'neto', signoNeto: 1 },
-  { clave: 'egresoReal', signo: -1, estados: ESTADOS_REALES, medida: 'magnitud', signoNeto: -1 },
-  { clave: 'egresoProyectado', signo: -1, estados: ESTADOS_PENDIENTES, medida: 'magnitud', signoNeto: -1 },
-])
-
-/** El filtro que se le pide al libro para una medida dentro de una ventana. PURO. */
-export function filtroDeMedida(m, desde, hasta) {
-  return { desde, hasta, signo: m.signo, estados: [...m.estados], medida: m.medida }
-}
-
-/** La fórmula de una medida sobre una ventana. `desde` incluida, `hasta` EXCLUIDA. PURA. */
-export function formulaMedida(m, desde, hasta) {
-  return `=${terminoLibro(filtroDeMedida(m, desde, hasta))}`
-}
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // LAS FILAS: UN CONCEPTO CADA UNA, EN EL ORDEN EN QUE SE LEEN
@@ -73,8 +49,38 @@ export function formulaMedida(m, desde, hasta) {
 // columna A es una sola lista de conceptos, y el "   · " de las vistas de bloques servía para marcar
 // jerarquía DENTRO de un bloque — jerarquía que acá la da la fila, no la sangría.
 
-/** `total: true` = la columna TOTAL suma la fila. Un saldo es un stock: sumarlo no significa nada. */
-export const CONCEPTOS = Object.freeze([
+
+/**
+ * Las sub-líneas de una medida: un rubro cada una, y "Otros" al final. PURA.
+ *
+ * ═══ POR QUÉ "· Otros" SE SIGUE EMITIENDO EN INGRESOS, AUNQUE HOY VALGA $0 (06/08/2026) ═══
+ *
+ * El dueño lo dejó a criterio. Se emite, y no por inercia: con la definición nueva del subtotal —todo
+ * lo que entra MENOS las devoluciones— la fila volvió a tener un contenido posible y dos trabajos
+ * concretos. Muestra (a) un rubro de ingreso que el Libro empiece a emitir mañana y que esta lista no
+ * nombre, y (b) un "Valores en cartera" con estado REAL, que no debería existir. Sin la fila, las dos
+ * cosas se caerían del cuadro y el subtotal seguiría cerrando consigo mismo.
+ *
+ * El cero de hoy no es una fila inútil: es la EVIDENCIA, mirable en la pestaña, de que la taxonomía de
+ * ingresos cubre todo lo que entra. Una fila ausente no prueba nada.
+ */
+function subLineasDe(concepto) {
+  const m = MEDIDAS[concepto.medida]
+  const rubros = rubrosDeApertura(m.signo, esMedidaReal(m))
+  return [...rubros, OTROS].map((r) => ({
+    clave: claveSub(concepto.clave, r),
+    rotulo: rotuloSub(r),
+    total: true,
+    sub: { de: concepto.clave, rubro: r === OTROS ? null : r },
+  }))
+}
+
+/**
+ * `total: true` = la columna TOTAL suma la fila. Un saldo es un stock: sumarlo no significa nada.
+ *
+ * Cada medida arrastra sus sub-líneas: el orden de lectura es subtotal, apertura, subtotal, apertura.
+ */
+const TRONCO = Object.freeze([
   { clave: 'saldoInicial', rotulo: 'Saldo inicial', total: false },
   { clave: 'ingresoReal', rotulo: 'Ingresos reales', medida: 0, total: true },
   { clave: 'ingresoProyectado', rotulo: 'Ingresos proyectados', medida: 1, total: true },
@@ -88,8 +94,64 @@ export const CONCEPTOS = Object.freeze([
   { clave: 'variacionMesAnterior', rotulo: 'Variación vs mes anterior', total: false, soloMes: true },
 ])
 
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA SECCIÓN "POR CLIENTE" — el pedido del 06/08: "discriminame a cada uno de los clientes con su
+// monto de ingresos y de egresos reales y proyectados".
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Las FILAS se declaran acá porque son parte del vocabulario (`CONCEPTOS`); la geometría y las
+// fórmulas viven en `cash-flow-por-cliente.mjs`, que importa de acá y no al revés. El por qué de la
+// forma —una sección al final y no cuatro aperturas más— está escrito allá, junto al código que la
+// arma. Los nombres de los clientes salen de `libro-clientes.mjs`: no se tipean acá.
+
+/** Las cuatro medidas que se abren por cliente, en el orden del tronco. */
+export const MEDIDAS_POR_CLIENTE = Object.freeze([
+  { clave: 'ingresoReal', rotulo: 'Ingresos reales' },
+  { clave: 'ingresoProyectado', rotulo: 'Ingresos proyectados' },
+  { clave: 'egresoReal', rotulo: 'Egresos reales' },
+  { clave: 'egresoProyectado', rotulo: 'Egresos proyectados' },
+])
+
+/** El rótulo de la sección. En oración y sin adornos: es un título, no un cartel. */
+export const TITULO_POR_CLIENTE = 'Por cliente'
+/** La clave de la fila del título de la sección. */
+export const CLAVE_TITULO_POR_CLIENTE = 'tituloPorCliente'
+
+/** La clave de la fila cabecera de un cliente (su neto). */
+export const claveCliente = (nombre) => `cliente::${nombre}`
+/** La clave de una de las cuatro líneas de un cliente. */
+export const claveClienteMedida = (nombre, claveMedida) => `cliente::${nombre}::${claveMedida}`
+
+/**
+ * Las filas de UN cliente: su neto y sus cuatro componentes. PURA.
+ *
+ * `residuo: true` marca el bloque de "Otros y sin asignar": las mismas cinco filas, pero calculadas
+ * por diferencia contra el subtotal del tronco en vez de por filtro.
+ */
+function filasDeCliente(nombre, { residuo = false } = {}) {
+  return [
+    { clave: claveCliente(nombre), rotulo: nombre, total: true, cli: { nombre, residuo, medida: null } },
+    ...MEDIDAS_POR_CLIENTE.map((m) => ({
+      clave: claveClienteMedida(nombre, m.clave),
+      rotulo: rotuloSub(m.rotulo),
+      total: true,
+      cli: { nombre, residuo, medida: m.clave },
+    })),
+  ]
+}
+
+export const CONCEPTOS = Object.freeze([
+  ...TRONCO.flatMap((c) => (c.medida === undefined ? [c] : [c, ...subLineasDe(c)])),
+  { clave: CLAVE_TITULO_POR_CLIENTE, rotulo: TITULO_POR_CLIENTE, total: false, tituloSeccion: true },
+  ...nombresDeClientes().flatMap((n) => filasDeCliente(n)),
+  ...filasDeCliente(ROTULO_SIN_CLIENTE, { residuo: true }),
+])
+
 /** Las filas que lleva cada vista, en orden. PURA. */
 export const conceptosDe = (tipo) => CONCEPTOS.filter((c) => tipo === 'mes' || !c.soloMes)
+
+/** Las cuatro medidas, que son las que abren en sub-líneas. PURA. */
+export const medidasDeLaMatriz = () => CONCEPTOS.filter((c) => c.medida !== undefined)
 
 /**
  * LA GEOMETRÍA, DECLARADA UNA VEZ Y COMPARTIDA POR LAS DOS VISTAS.
@@ -110,31 +172,129 @@ export function filaDeConcepto(tipo, clave) {
   return FILA.concepto + i
 }
 
-/** Cuántas columnas de tiempo tiene cada vista. 13 semanas = la corriente + 12; 12 meses = el ejercicio. */
-export const SEMANAS_HORIZONTE = 13
-export const MESES_DEL_ANIO = 12
-export const columnasDeTiempo = (tipo) => (tipo === 'mes' ? MESES_DEL_ANIO : SEMANAS_HORIZONTE)
+/**
+ * LAS FILAS DE UN BLOQUE DE MEDIDA: el subtotal, cada rubro y la de "Otros". PURA.
+ *
+ * Todo lo que necesite saber dónde está algo sale de acá. Los tres rangos con nombre, los gráficos y
+ * la piel se mueven solos cuando se agrega un rubro; un índice tipeado no se movería, y ya rompió el
+ * piso de un consumidor real (el anexo de CAJA ubicaba filas por posición).
+ */
+export function bloqueDeMedida(tipo, claveMedida) {
+  const subs = conceptosDe(tipo).filter((c) => c.sub?.de === claveMedida)
+  if (!subs.length) throw new Error(`la medida "${claveMedida}" no tiene apertura por rubro`)
+  const filas = subs.map((c) => filaDeConcepto(tipo, c.clave))
+  return {
+    clave: claveMedida,
+    subtotal: filaDeConcepto(tipo, claveMedida),
+    rubros: subs.filter((c) => c.sub.rubro).map((c) => ({ rubro: c.sub.rubro, fila: filaDeConcepto(tipo, c.clave) })),
+    otros: filaDeConcepto(tipo, claveSub(claveMedida, OTROS)),
+    // Las sub-líneas son CONTIGUAS por construcción: la piel las formatea como un rango, no una por una.
+    primeraSub: filas[0],
+    ultimaSub: filas[filas.length - 1],
+  }
+}
 
-/** La columna de TOTAL: la que sigue a la última de tiempo. */
-export const colTotal = (tipo) => COL.tiempo0 + columnasDeTiempo(tipo)
+/** Los cuatro bloques de una vista, en orden. PURA. Lo consume la piel para saber qué va en negrita. */
+export const bloquesDeMedida = (tipo) => medidasDeLaMatriz().map((c) => bloqueDeMedida(tipo, c.clave))
 
 /**
- * EL FOOTPRINT REAL DE CADA VISTA — lo que el generador se declara dueño, limpia, y ACHICA.
+ * NÚCLEO PURO: las fórmulas de un bloque de medida en UNA columna — subtotal, rubros y "Otros".
+ *
+ * LAS DOS VISTAS LLAMAN A ESTA MISMA FUNCIÓN, y por eso no pueden discrepar: lo único que cambia
+ * entre la semanal y la mensual es la ventana.
+ *
+ * EL SUBTOTAL ES EL LIBRO, NO LA SUMA DE LAS SUB-LÍNEAS. Si fuera la suma, un rubro que el Libro
+ * empiece a emitir mañana desaparecería del cuadro y el total seguiría cerrando consigo mismo.
+ * "Otros" se DESPEJA de la resta, así que ese rubro nuevo aparece ahí y se ve.
+ *
+ * @returns {Array<{fila:number, formula:string}>}
+ */
+export function formulasDeMedida(tipo, claveMedida, { col, desde, hasta }) {
+  const concepto = CONCEPTOS.find((c) => c.clave === claveMedida)
+  const m = MEDIDAS[concepto.medida]
+  const { subtotal, rubros, otros } = bloqueDeMedida(tipo, claveMedida)
+  const primera = rubros[0].fila
+  const ultima = rubros[rubros.length - 1].fila
+  return [
+    { fila: subtotal, formula: formulaMedida(m, desde, hasta) },
+    ...rubros.map((r) => ({ fila: r.fila, formula: formulaRubro(m, desde, hasta, r.rubro) })),
+    { fila: otros, formula: `=N(${celda(col, subtotal)})-SUM(${celda(col, primera)}:${celda(col, ultima)})` },
+  ]
+}
+
+/** La medida del tronco detrás de una clave ('egresoReal' → su entrada de MEDIDAS). PURA. */
+export const medidaDe = (claveMedida) => MEDIDAS[CONCEPTOS.find((c) => c.clave === claveMedida).medida]
+
+/** Los doce meses del ejercicio. Es lo único fijo: un año siempre tiene doce. */
+export const MESES_DEL_ANIO = 12
+
+/**
+ * CUÁNTAS COLUMNAS DE TIEMPO TIENE CADA VISTA — y por qué la semanal ya no es un número fijo.
+ *
+ * ═══ EL SEMANAL DEJÓ DE SER RODANTE (06/08/2026) ═══
+ *
+ * Eran trece semanas contadas desde hoy. El dueño lo rechazó por la misma razón por la que ya había
+ * rechazado el rodante en la vista de líneas: *"las semanas del año 2026, no lo que viene"*. Un
+ * rodante mete columnas de 2027 en un cuadro del ejercicio, y esconde las semanas ya cerradas —que
+ * son justamente contra las que se compara lo que viene—. Ahora las dos vistas cubren EXACTAMENTE el
+ * mismo período: el año calendario. Es la condición para que compararlas signifique algo.
+ *
+ * El largo NO se puede constantizar: depende del año. 2026 son 53 semanas (la primera es la del lunes
+ * 29/12/2025, que contiene el 1° de enero); un año que empieza domingo y es bisiesto son 54.
+ */
+export const columnasDeTiempo = (tipo, anio = null) =>
+  (tipo === 'mes' ? MESES_DEL_ANIO : semanasDelAnio(anio ?? new Date().getUTCFullYear()).length)
+
+/** La columna de TOTAL: la que sigue a la última de tiempo. */
+export const colTotal = (tipo, anio = null) => COL.tiempo0 + columnasDeTiempo(tipo, anio)
+
+/**
+ * DÓNDE Y CUÁNTO OCUPAN LOS GRÁFICOS, medido en filas y columnas del propio cuadro.
+ *
+ * Se declara acá y no en `cash-flow-graficos` porque el FOOTPRINT depende de esto: si el alto de la
+ * hoja no llegara al ancla, `addChart` devuelve 400 y se cae el lote; y si el achique no contemplara
+ * la zona, `deleteDimension` amputaría los gráficos recién dibujados. Un solo número, dos consumidores.
+ *
+ * `col0: COL.tiempo0` — anclados en B y no en A: contra el rótulo de la columna A el gráfico no respira.
+ */
+export const GRAFICO = Object.freeze({
+  filas: 18,
+  cols: Object.freeze({ semana: 10, mes: 6 }),
+  col0: COL.tiempo0,
+  /** Columnas de aire entre los dos gráficos del mensual, que van lado a lado. */
+  aire: 1,
+  /** Filas de hoja debajo del último gráfico. Sin margen, el gráfico toca el borde de la hoja. */
+  margen: 1,
+})
+
+/** La fila donde arranca el primer gráfico: dos renglones debajo de la última del cuadro. */
+export const filaGraficos = (tipo) => FILA.concepto + conceptosDe(tipo).length + 1
+
+/**
+ * EL ALTO DE CADA VISTA. Incluye el espacio de los gráficos, que se anclan DEBAJO de la matriz:
+ * `anchorCell` es una celda real y si la hoja no llega, la API devuelve 400 y se cae el lote entero.
+ *
+ * Es una función de la cantidad de filas del cuadro, no un número tipeado: la apertura por rubros pasó
+ * el semanal de 14 filas a 43, y un alto constante habría dejado el gráfico anclado fuera de la hoja.
+ */
+export const altoDe = (tipo) => filaGraficos(tipo) + GRAFICO.filas + GRAFICO.margen
+
+/**
+ * EL FOOTPRINT REAL DE UNA VISTA — lo que el generador se declara dueño, limpia, y ACHICA.
  *
  * Las dos pestañas venían de 220×65 y 220×62 con 86 filas muertas y quince columnas auxiliares
  * ocultas. Acá el ancho es exactamente el de la matriz (concepto + tiempo + total) y el alto es el
  * contenido más el sitio de los gráficos: sin declararlo, el resto de la hoja se queda para siempre
  * con la mitad derecha del diseño anterior.
  *
- * `filas` incluye el espacio de los gráficos, que se anclan DEBAJO de la matriz: `anchorCell` es una
- * celda real y si la hoja no llega, la API devuelve 400 y se cae el lote entero.
+ * ES UNA FUNCIÓN Y NO UNA CONSTANTE porque el ancho del semanal depende del año (53 columnas en 2026,
+ * 54 en un año que arranca domingo). Un footprint constante que no coincidiera con la grilla dejaría
+ * columnas escritas afuera de lo que el generador limpia — que es el defecto que el footprint vino a
+ * cerrar.
  */
-export const FOOTPRINT = Object.freeze({
-  semana: Object.freeze({ filas: 34, cols: 1 + SEMANAS_HORIZONTE + 1 }),
-  mes: Object.freeze({ filas: 50, cols: 1 + MESES_DEL_ANIO + 1 }),
-})
-/** La fila donde arranca el primer gráfico: dos renglones debajo de la última del cuadro. */
-export const filaGraficos = (tipo) => FILA.concepto + conceptosDe(tipo).length + 1
+export function footprintDe(tipo, anio = null) {
+  return Object.freeze({ filas: altoDe(tipo), cols: 1 + columnasDeTiempo(tipo, anio) + 1 })
+}
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // LAS VENTANAS DE TIEMPO — LA MISMA FUNCIÓN PARA LAS DOS VISTAS
@@ -149,9 +309,34 @@ export function lunesDe(d) {
   return x
 }
 
+/** Una semana ISO a partir de su lunes. `hasta` es el lunes siguiente, EXCLUIDO. */
+const semanaDe = (lunes) => ({ desde: lunes, hasta: new Date(lunes.getTime() + 7 * DIA_MS) })
+
+/**
+ * NÚCLEO PURO: LAS SEMANAS DE UN AÑO CALENDARIO, de la que contiene el 1° de enero a la que contiene
+ * el 31 de diciembre. Para 2026 son 53: la primera arranca el lunes 29/12/2025.
+ *
+ * La primera semana pertenece al año aunque arranque en diciembre del anterior — si no, los primeros
+ * días del ejercicio no caerían en ninguna columna y el semanal dejaría de cubrir lo mismo que el
+ * mensual. Lo mismo del otro lado: la última semana se derrama sobre enero.
+ *
+ * El largo se CALCULA, no se declara: entre los dos lunes hay un número exacto de semanas y contarlo
+ * mal significa una columna de más (vacía y sumada al TOTAL) o una de menos (días sin columna).
+ */
+export function semanasDelAnio(anio) {
+  const primera = lunesDe(new Date(Date.UTC(anio, 0, 1)))
+  const ultima = lunesDe(new Date(Date.UTC(anio, 11, 31)))
+  const n = Math.round((ultima.getTime() - primera.getTime()) / (7 * DIA_MS)) + 1
+  return Array.from({ length: n }, (_, i) => semanaDe(new Date(primera.getTime() + i * 7 * DIA_MS)))
+}
+
 /**
  * NÚCLEO PURO: las ventanas de una vista. `desde` incluida, `hasta` EXCLUIDA — el mismo criterio que
  * `terminoLibro`, y por eso un movimiento no puede caer en dos columnas.
+ *
+ * Para la vista semanal hay dos modos y ninguno tiene default: `anio` da el EJERCICIO (lo que muestra
+ * la pestaña) y `hoy`+`n` da un rodante (lo que usan los controles que miran hacia adelante). Un
+ * default silencioso acá fue exactamente lo que puso columnas de 2027 en un cuadro rotulado 2026.
  *
  * @param {'semana'|'mes'} tipo
  * @param {{hoy?:Date, anio?:number, n?:number}} p
@@ -164,11 +349,10 @@ export function ventanas(tipo, { hoy = new Date(), anio = null, n = null } = {})
       desde: new Date(Date.UTC(a, m, 1)), hasta: new Date(Date.UTC(a, m + 1, 1)),
     }))
   }
+  if (anio !== null) return semanasDelAnio(anio)
+  if (!n) throw new Error('una vista semanal necesita el año del ejercicio (anio) o el largo del rodante (n)')
   const l0 = lunesDe(hoy)
-  return Array.from({ length: n ?? SEMANAS_HORIZONTE }, (_, i) => {
-    const desde = new Date(l0.getTime() + i * 7 * DIA_MS)
-    return { desde, hasta: new Date(desde.getTime() + 7 * DIA_MS) }
-  })
+  return Array.from({ length: n }, (_, i) => semanaDe(new Date(l0.getTime() + i * 7 * DIA_MS)))
 }
 
 /** Las ventanas de un día dentro de [desde, hasta). Es la unidad atómica de las otras dos. PURA. */

@@ -36,37 +36,49 @@
 //                       libro sólo como (a) verificación de estado —un cheque debitado, un pago que
 //                       pasó a real— y (b) los cargos sin factura (comisiones, impuesto al cheque)
 //                       que ninguna otra pestaña registra. Duplicar el resto inventó $9,9M una vez.
+//
+// ═══ QUÉ FUENTES SABEN DE QUÉ CLIENTE ES CADA MOVIMIENTO (06/08/2026) ═══
+//
+// Sólo TRES: Compras (columna J, "Cliente / Asignación"), Cobranzas (G, "Obra / Cliente") y
+// `_CHEQUES_RAW` (K, "Obra"). Las demás NO lo saben y no se les inventa:
+//
+// · Cheques Emitidos tiene "Unidad de Negocio", que dice Civil (101 filas) o Mantenimiento (4) — es
+//   la línea de negocio, no el cliente. Mapearla sería fabricar una asignación que nadie hizo.
+// · Tarjeta, banco, IVA/IIBB y la nómina son gasto de estructura o de empresa: no tienen cliente
+//   porque no lo tienen, y forzarlos a uno repartiría a mano un costo indirecto.
+//
+// Todo lo que queda sin cliente cae en el residuo VISIBLE de la vista ("Otros y sin asignar"), que se
+// despeja por diferencia contra el subtotal. Son $179,3M reales y $187,9M proyectados medidos el
+// 06/08: es la cifra más grande del bloque, y esconderla sería el peor resultado de todos.
 
 import { movimiento, ENTRA, SALE, estadoContraCorte } from './libro-movimientos.mjs'
+import { clienteCanonico } from './libro-clientes.mjs'
+import { instrumentoDePago, estadoDeEgreso } from './caja-canales.mjs'
 import { rubroDeCaja, SIN_CLASIFICAR } from './rubro-caja.mjs'
-import { resolverColumnas } from './compras-columnas.mjs'
+import { resolverColumnas, columnasObligatorias } from './compras-columnas.mjs'
+// EL LADO "COMPRAS" COMO FUENTE vive aparte desde el 06/08: sus rótulos los leen DOS consumidores
+// (este extractor y el cruce cheque↔factura) y tipearlos dos veces deja a uno leyendo índices viejos.
+import { columnasDeCompras, estaPagada, pendienteDeCompra, cuotasEnCheque } from './libro-extractores-compras.mjs'
 import { INSTRUMENTOS, MARCA_ENDOSADO, COL_VALOR_BANCO, colMesDelAnio } from './cash-flow-lineas.mjs'
 // El default de `deChequesEmitidos` era un 20 escrito a mano y el registro se movió a la 27. El
 // llamador real (libro-movimientos-pestana) pasa el ancla viva; el default es para todos los demás.
 import { FILA_DATO0 as FILA_DATO0_CHEQUES } from './cheques-emitidos-geometria.mjs'
 import { MARCAS } from './cheques-cobertura.mjs'
 import { EN_CARTERA } from './cartera-cheques.mjs'
+import { vencimientoIva, vencimientoIibb, serialDe } from './vencimientos-fiscales.mjs'
 import { COL as COL_RAW, FILA0 as FILA0_RAW, PESTAÑA as PESTANA_RAW } from '../scripts/cheques-raw-pestana.mjs'
 import { finDeMes } from './libro-extractores-fechas.mjs'
 import { RUBRO_JORNALES, RUBRO_ADMINISTRACION } from './libro-extractores-nomina.mjs'
 
 export { deJornalesQuincenas, deOficina, deDireccion } from './libro-extractores-nomina.mjs'
+// Se re-exportan para no romper a quien ya los importaba de acá; su casa es el módulo de Compras.
+export { pendienteDeCompra, comprasPagadasConCheque, NOMBRES_COMPRAS } from './libro-extractores-compras.mjs'
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 const txt = (v) => String(v ?? '').trim()
 /** Letra de columna → índice 0-based. 'A'→0, 'BB'→53. Las coordenadas del archivo son letras. */
 export const indiceDeColumna = (letra) => String(letra).toUpperCase().split('')
   .reduce((n, c) => n * 26 + (c.charCodeAt(0) - 64), 0) - 1
-
-/** Falla cerrado si el encabezado no trae las columnas pedidas: nombra las que faltan. */
-function columnasObligatorias(encabezado, nombres, fuente) {
-  const { idx, faltan } = resolverColumnas(encabezado, nombres)
-  if (faltan.length) {
-    throw new Error(`libro-extractores(${fuente}): faltan columnas en el encabezado: ${faltan.join(' · ')}. `
-      + 'Leer por posición produciría movimientos plausibles y equivocados — no extraigo.')
-  }
-  return idx
-}
 
 /**
  * COMPRAS → movimientos de egreso.
@@ -87,22 +99,25 @@ function columnasObligatorias(encabezado, nombres, fuente) {
  * NO SE LE PONE `numeroCheque` a propósito: la clave de esta fila es (CUIT, comprobante, signo) y la
  * del cheque sin factura es (instrumento, número, signo). Son universos disjuntos y no colisionan.
  *
+ * ═══ UNA COMPRA A MEDIO PAGAR DEBE POR EL SALDO, NO POR EL TOTAL (06/08) ═══
+ *
+ * Compras lleva "Total o Parcial", "Monto Pagado" y "Monto Parcial 1" (el saldo, en negativo). El
+ * extractor leía sólo "Total", así que una factura de $2.300.000 con $1.000.000 ya entregado entraba
+ * al libro por los $2.300.000 enteros — y de ahí a CAJA COMPROMETIDA, que decía que había que cubrir
+ * plata que ya había salido. Medido en vivo: dos filas abiertas (Gerson Castro, PEDRO TELLO) inflaban
+ * la tarjeta en $1.300.000. La parte pagada no aparece por ningún lado como REAL, así que no es que
+ * estuviera contada dos veces: estaba contada UNA vez y del lado equivocado.
+ *
+ * SÓLO SOBRE LA FILA ABIERTA. Si la fila está "Pagado", el instrumento se entregó por el total y el
+ * saldo es cero por construcción: restar ahí borraría el movimiento y volvería a abrir el agujero de
+ * la compra pagada con cheque que todavía no debitó (ver el bloque de arriba).
+ *
  * @param {Array<Array>} filas todas las filas de Compras (fila 1 = título), UNFORMATTED_VALUE
  * @param {number} corte serial de hoy/corte para vencidos
+ * @param {{aviso?:(m:string)=>void}} [opciones] `aviso` recibe las contradicciones de la planilla
  */
-export function deCompras(filas = [], corte = null) {
-  const enc = filas[2] ?? [] // fila 3: el encabezado real (1 título, 2 agrupador)
-  // Los nombres son los del encabezado REAL de la fila 3, verificados contra el archivo el 05/08.
-  // "Rubro de caja" y "Orden de pago (OS)" aparecen DOS veces en el encabezado: resolverColumnas se
-  // queda con la primera aparición, que es la columna AB que escribe rubro-caja-sheet.mjs.
-  const c = columnasObligatorias(enc, {
-    proveedor: 'Proveedor', cuit: 'CUIT (OS)', comprobante: 'N° Comprobante',
-    // 'Estado' (columna X), NO 'Estado pago' (Z). La Z es el SEMÁFORO derivado —"✅ Pagado",
-    // "🟡 Por vencer"— y /^pagado$/ no matchea un emoji adelante: TODA compra pagada quedaba
-    // PROYECTADO. La X es la columna que escribe el cargador con el contrato Pagado/Pendiente.
-    importe: 'Total', estado: 'Estado', tipoPago: 'Tipo pago',
-    rubro: 'Rubro de caja', fechaCaja: 'Fecha de caja', obra: 'Detalles / Obra',
-  }, 'Compras')
+export function deCompras(filas = [], corte = null, { aviso = (m) => console.warn(m), cruce = null } = {}) {
+  const c = columnasDeCompras(filas) // fila 3: el encabezado real (1 título, 2 agrupador)
   const out = []
   for (let i = 3; i < filas.length; i++) {
     const f = filas[i] ?? []
@@ -110,7 +125,7 @@ export function deCompras(filas = [], corte = null) {
     const fecha = num(f[c.fechaCaja])
     if (importe === null || fecha === null) continue // sin importe o sin fecha de caja no hay movimiento
     // Se tolera decoración alrededor de la palabra ("✅ Pagado"): se compara sólo lo alfabético.
-    const pagado = /^pagado$/i.test(txt(f[c.estado]).replace(/[^a-záéíóúüñ]/gi, ''))
+    const pagado = estaPagada(f[c.estado])
     const tipo = txt(f[c.tipoPago]).toLowerCase()
     const rubro = txt(f[c.rubro])
     // LA NÓMINA NO SALE DE ACÁ, Y NO ES UNA PREFERENCIA: son $30,5M de jornales tipeados a mano como
@@ -118,30 +133,54 @@ export function deCompras(filas = [], corte = null) {
     // CUADRO del cash flow lo resuelve poniendo esa línea en un grupo con `signo: 0` (memo); el libro,
     // que cuenta cada movimiento UNA vez, lo resuelve no emitiéndola. Ver libro-extractores-nomina.mjs.
     if (rubro === RUBRO_JORNALES || rubro === RUBRO_ADMINISTRACION) continue
-    const instrumento = /echeq/.test(tipo) ? 'echeq'
-      : /cheque/.test(tipo) ? 'cheque'
-        : /transfer/.test(tipo) ? 'transferencia'
-          : /efectivo/.test(tipo) ? 'efectivo'
-            : /tarjeta/.test(tipo) ? 'tarjeta'
-              : /d[eé]bito/.test(tipo) ? 'debito' : 'desconocido'
-    const estadoBase = pagado ? 'REAL' : 'PROYECTADO'
-    out.push(movimiento({
-      fecha,
-      signo: SALE,
+    const instrumento = instrumentoDePago(tipo)
+    // ═══ "PAGADO CON CHEQUE" NO ES "LA PLATA SALIÓ" (06/08) ═══
+    //
+    // Medido en vivo: cuatro filas por $2.569.676 netos marcadas "Pagado" con echeq/cheque y fecha de
+    // caja POSTERIOR al corte del extracto salían de acá como REAL. Un REAL no lo mira ninguna de las
+    // tres vistas de proyección (CAJA COMPROMETIDA, CAJA PROYECTADA 30 DÍAS, la escalera) porque se
+    // asume que ya está en el saldo — y no estaba: el extracto termina en el corte y el cheque no
+    // debitó. Tampoco lo restaba la línea de posteriores, que mira sólo Transferencia y Débito. Esa
+    // plata no existía en ninguna parte del cuadro.
+    //
+    // La regla vive en `caja-canales.mjs` junto con la lista de medios que SÍ pegan al banco en el
+    // día, importada de la fórmula viva de CAJA — para que no puedan discrepar.
+    const estadoBase = estadoDeEgreso({ instrumento, pagado, fecha, corte })
+    const base = {
       // Una NOTA DE CRÉDITO viene con importe negativo: es plata que VUELVE. El signo del movimiento
       // se invierte y la magnitud queda positiva — la clave de dedup ya distingue nota de factura.
-      ...(importe < 0 ? { signo: ENTRA } : {}),
-      importe: Math.abs(importe),
+      signo: importe < 0 ? ENTRA : SALE,
       concepto: txt(f[c.proveedor]),
       contraparte: txt(f[c.proveedor]),
-      cuit: txt(f[c.cuit]),
-      comprobante: txt(f[c.comprobante]),
       rubro: rubro || rubroDeCaja({}) || SIN_CLASIFICAR,
       obra: txt(f[c.obra]),
-      estado: estadoContraCorte(estadoBase, fecha, corte),
+      cliente: txt(f[c.cliente]),
       instrumento,
-      origen: { pestana: 'Compras', fila: i + 1 },
-    }))
+    }
+    const debe = Math.abs(pendienteDeCompra({ importe, pagado, montoPagado: num(f[c.montoPagado]) },
+      (m) => aviso(`libro-extractores(Compras) fila ${i + 1}: ${m}`)))
+    // ═══ EL CHEQUE VIVO PARTE LA FILA EN DOS (06/08) ═══
+    //
+    // El cruce sólo actúa donde la fila iba a salir como REAL: es ahí donde el compromiso desaparece
+    // de las tres vistas de proyección. Si ya es COMPROMETIDO o PROYECTADO, la escalera la ve igual y
+    // partirla no agregaría nada — sí agregaría una diferencia de criterio entre dos casos gemelos.
+    const enCheques = estadoBase === 'REAL' ? cruce?.porCompra?.get(i + 1) : null
+    const enVuelo = Math.min(debe, enCheques?.vivo ?? 0)
+    if (enVuelo > 0) {
+      out.push(...cuotasEnCheque(base, enCheques.cuotas, corte, { fila: i + 1, comprobante: txt(f[c.comprobante]) }))
+    }
+    const yaSalio = Math.round((debe - enVuelo) * 100) / 100
+    if (yaSalio > 0) {
+      out.push(movimiento({
+        ...base,
+        fecha,
+        importe: yaSalio,
+        cuit: txt(f[c.cuit]),
+        comprobante: txt(f[c.comprobante]),
+        estado: estadoContraCorte(estadoBase, fecha, corte),
+        origen: { pestana: 'Compras', fila: i + 1 },
+      }))
+    }
   }
   return out
 }
@@ -196,9 +235,25 @@ export function deCobranzas(filas = [], corte = null, { colValorBanco = null } =
     out.push(movimiento({
       fecha,
       signo: ENTRA,
-      importe,
+      // ═══ UN COBRO NEGATIVO ES PLATA QUE VUELVE, NO PLATA QUE ENTRA (06/08) ═══
+      //
+      // `movimiento()` guarda el importe SIEMPRE en magnitud y el signo aparte, así que un −$96.800
+      // con `signo: ENTRA` fijo se convertía en +$96.800: el ajuste sumaba en vez de restar y el
+      // error valía el DOBLE del monto. `deCompras` ya invertía el signo para la nota de crédito;
+      // acá faltaba el espejo, y el espejo no es simetría decorativa — es la misma aritmética.
+      //
+      // MEDIDO EN VIVO: Cobranzas f58, MACRO CONSTRUCCIONES, −$96.800 con fecha 7/08. El Libro lo
+      // emitía como ingreso REAL de +$96.800 y la semana del 3/08 mostraba "· Cobranzas $329.120"
+      // donde la fuente dice $135.520. La línea "Movimientos posteriores al corte" de CAJA —que usa
+      // SUMIFS sobre la misma columna— lo sumaba bien: dos productores del mismo hecho, uno mal.
+      ...(importe < 0 ? { signo: SALE } : {}),
+      importe: Math.abs(importe),
       concepto: txt(f[c.cliente]),
       contraparte: txt(f[c.cliente]),
+      // La misma celda es la contraparte Y el cliente: en un cobro son la misma persona. Se manda a
+      // las dos porque `contraparte` guarda el texto crudo (el que se lee en el detalle) y `cliente`
+      // guarda el canónico (el que agrupa) — y el crudo no se pierde al canonizar.
+      cliente: txt(f[c.cliente]),
       rubro: 'Cobranzas',
       estado: estadoContraCorte(cobrado ? 'REAL' : 'PROYECTADO', fecha, corte),
       instrumento: /echeq/.test(forma) ? 'echeq' : /cheque/.test(forma) ? 'cheque'
@@ -229,8 +284,17 @@ export function deCobranzas(filas = [], corte = null, { colValorBanco = null } =
  * la última corrida ("Estado en el OS · al 05/08"), así que no se puede matchear por texto. El índice
  * se importa de `INSTRUMENTOS.cheques.colMarca`, que es la MISMA constante que usan el que marca y el
  * que suma — declarada una vez justamente porque escrita tres veces se desincronizaba en silencio.
+ *
+ * ═══ Y DESDE EL 06/08, EL QUE YA SE CRUZÓ CONTRA SU FACTURA TAMPOCO ═══
+ *
+ * La marca de la columna M es una FOTO vieja y sólo sabe decir "el número de esta fila no está en
+ * Compras". El cruce formal (`lib/cruce-cheque-factura.mjs`) sabe más: empareja también los que no
+ * traen número, y cuando empareja, esa plata sale por la puerta de Compras con su rubro y su cliente
+ * reales. Emitirla además acá la contaría dos veces. La decisión de qué puerta le toca a cada cheque
+ * NO se toma en este archivo ni en el otro: se toma en `puertaDeCheque`, una sola vez, y los dos
+ * extractores la leen. Sin `cruce`, este extractor se comporta exactamente como antes.
  */
-export function deChequesEmitidos(filas = [], { fila0 = FILA_DATO0_CHEQUES, colMarca = INSTRUMENTOS.cheques.colMarca } = {}) {
+export function deChequesEmitidos(filas = [], { fila0 = FILA_DATO0_CHEQUES, colMarca = INSTRUMENTOS.cheques.colMarca, cruce = null } = {}) {
   const enc = filas[fila0 - 2] ?? [] // el encabezado del registro, una fila arriba del primer dato
   // El encabezado real del registro: "Nro" es el número
   // del cheque, "Monto" el importe, y hay DOS columnas de fecha de pago — "fecha de pago" (la fecha)
@@ -246,6 +310,7 @@ export function deChequesEmitidos(filas = [], { fila0 = FILA_DATO0_CHEQUES, colM
     if (importe === null || importe === 0) continue
     if (/^si$/i.test(txt(f[c.debitado]))) continue // ya está en el saldo del banco
     if (txt(f[colMarca]) !== MARCAS.falta) continue // con factura, ya entró por Compras
+    if (cruce?.porCheque?.has(i + 1)) continue // cruzado: su plata sale por la puerta de Compras
     const esEcheq = /echeq/i.test(txt(f[c.tipo]))
     out.push(movimiento({
       // Sin fecha de pago cargada el cheque existe igual: cae al corte para que pese YA — un
@@ -375,7 +440,19 @@ export function deImpuestosCalendario(filas = [], { filaIva, filaIibb } = {}, an
     for (let m = 1; m <= 12; m++) {
       const importe = num(f[m]) // B..M = índices 1..12 = meses 1..12
       if (!importe) continue
-      const fecha = finDeMes(anio, m) + 20
+      // ═══ LA FECHA DE VENCIMIENTO REAL, NO "FIN DE MES + 20" (06/08) ═══
+      //
+      // El +20 era la ÚNICA noción de vencimiento fiscal de todo el OS, repetida en tres archivos, y
+      // no distinguía impuesto ni terminación de CUIT. Ahora el calendario existe y está verificado
+      // contra ARCA para el IVA (terminación 3 → día 19, con cuatro corrimientos que ninguna regla
+      // reproduce) y declarado como supuesto para el IIBB de San Juan (día 16, la moda de las seis
+      // presentaciones reales de _IIBB_RAW).
+      //
+      // A escala mensual el cambio es neutro —el +20 y las fechas reales (16 a 21) caen siempre en el
+      // mismo mes, así que ninguna conciliación mensual se mueve— pero el calendario semanal de CAJA
+      // y el "próximo vencimiento" del hero pasan a apuntar al día correcto en vez de al día 20.
+      const periodo = `${anio}-${String(m).padStart(2, '0')}`
+      const fecha = serialDe((clave === 'IVA' ? vencimientoIva(periodo) : vencimientoIibb(periodo)).fecha)
       out.push(movimiento({
         fecha,
         signo: SALE,
@@ -428,6 +505,11 @@ export function deCartera(filas = [], { fila0 = FILA0_RAW } = {}) {
       contraparte: txt(f[i(COL_RAW.librador)]),
       cuit: txt(f[i(COL_RAW.libradorCuit)]),
       obra: txt(f[i(COL_RAW.obra)]),
+      // La columna "Obra" de la réplica es donde el propio archivo asigna el valor a un cliente
+      // ("MESSINA"); el librador es el respaldo para cuando esa celda viene vacía. Se prueba la
+      // asignación PRIMERO porque es una decisión del dueño: la razón social del librador puede no
+      // decir a qué cliente pertenece el cheque ("Alimentos Del Sur SA" por LA ESTRELLA).
+      cliente: clienteCanonico(txt(f[i(COL_RAW.obra)])) || txt(f[i(COL_RAW.librador)]),
       rubro: 'Valores en cartera',
       estado: 'COMPROMETIDO',
       instrumento: /echeq/i.test(tipo) ? 'echeq' : 'cheque',

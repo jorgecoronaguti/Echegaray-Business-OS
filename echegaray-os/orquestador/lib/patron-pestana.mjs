@@ -135,13 +135,42 @@ export function auditarPatron(filas = [], { ancho } = {}) {
 
   // ── Un solo ancho de grilla. Dos anchos es lo que hace que un cuadro se vea corrido. ──
   const anchos = new Map()
-  filas.forEach((f) => {
+  const encabezados = []
+  filas.forEach((f, i) => {
     if (!ES_ENCABEZADO.test(celda(f, 0))) return
     let n = (f || []).length
     while (n > 0 && !celda(f, n - 1)) n--
-    if (n) anchos.set(n, (anchos.get(n) ?? 0) + 1)
+    if (!n) return
+    anchos.set(n, (anchos.get(n) ?? 0) + 1)
+    encabezados.push({ fila: i, ancho: n })
   })
-  const declarado = ancho ?? [...anchos.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+  // El ancho de la pestaña es el del cuadro: el que más se repite y, si empatan, el MÁS ANCHO.
+  // Sin el desempate por ancho, una pestaña con un cuadro y dos bloques de posición —tres
+  // encabezados, uno cada uno— elegía como "declarado" el primero que apareciera, que es justamente
+  // el más angosto, y entonces el cuadro entero quedaba marcado como el intruso.
+  const declarado = ancho ?? [...anchos.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]?.[0]
+  // ═══ EXCEPCIÓN 2 — EL BLOQUE DE POSICIÓN, ARRIBA (06/08) ═══
+  //
+  // Una pestaña puede ABRIR con bloques de posición más angostos que su cuadro, y no es un descuido:
+  // un calendario de vencimientos no tiene doce meses, tiene fechas; una posición de financiamiento
+  // tiene límite, tomado y disponible. Forzarlos a doce columnas sería inventar diez celdas vacías
+  // por fila para que el auditor esté contento.
+  //
+  // LA EXCEPCIÓN ES ESTRECHA, para que no se cuele el descuadre real que esta regla vino a cazar:
+  // sólo cuentan los bloques que están ARRIBA del primer cuadro del ancho declarado, y sólo si son
+  // MÁS ANGOSTOS. Uno más ancho arriba, o uno angosto en el medio del detalle, sigue siendo un cuadro
+  // que no se puso de acuerdo — que es exactamente lo que se ve corrido en pantalla.
+  const primeroDelAncho = encabezados.find((e) => e.ancho === declarado)?.fila ?? Infinity
+  const dePosicion = new Set(encabezados
+    .filter((e) => e.fila < primeroDelAncho && e.ancho < declarado)
+    .map((e) => e.ancho))
+  for (const a of dePosicion) {
+    // Sólo se perdona si TODOS los encabezados de ese ancho están arriba: uno suelto abajo delata
+    // que el ancho no es de la posición sino de un cuadro que quedó descuadrado.
+    const abajo = encabezados.some((e) => e.ancho === a && e.fila >= primeroDelAncho)
+    if (abajo) dePosicion.delete(a)
+  }
+  for (const a of dePosicion) anchos.delete(a)
   // UNA EXCEPCIÓN, Y UNA SOLA: EL LEDGER. Una pestaña de statement puede llevar debajo su registro
   // crudo —cheque por cheque, operación por operación—, que necesariamente es más ancho que los
   // cuadros de arriba. Se admite UN bloque así: más ancho que el resto y una sola vez. Dos o tres

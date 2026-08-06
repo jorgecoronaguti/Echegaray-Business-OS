@@ -124,7 +124,7 @@ export function bloqueConciliacion(h) {
       : '⚠ no encontré la línea de inicio en el Cash Flow Mensual',
     '', ''])
   const fReal = push(['REAL del mes hasta el corte (el ancla lo descuenta del inicio)', '', '', '',
-    `=${terminoLibro({ desde: `EOMONTH(${DESDE_CAJA.fecha};-1)+1`, hasta: `${DESDE_CAJA.fecha}+1`, estados: ['REAL'] })}`,
+    `=${terminoLibro({ desde: `EOMONTH(${DESDE_CAJA.fecha};-1)+1`, estados: ['REAL'] })}`,
     '', ''])
   const fDif = push(['⇒ Diferencia — tiene que ser CERO', '', '', '',
     `=IFERROR(E${fDecl}-E${fProy}-E${fReal};"")`, '', ''])

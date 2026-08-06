@@ -42,7 +42,12 @@ async function leer(google) {
   const [men, sem, compras, cobranzas, cheques, tarjeta, banco, impuestos, jor, caja] = await Promise.all([
     v(`'Cash Flow Mensual'!A1:P70`), v(`'Cash Flow Semanal'!A1:BZ70`), v(`'Compras'!A1:AJ2000`),
     v(`'Cobranzas'!A1:BD400`), v(`'Cheques Emitidos'!A1:P400`), v(`'Tarjeta de Credito'!A1:N400`),
-    v(`'_BANCO_RAW'!A1:H3000`), v(`'Impuestos y Financieros'!A1:N40`), v(`'Jornales por Quincena'!A1:P110`),
+    // "Impuestos y Financieros" hasta la 120, no hasta la 40 (06/08). El rango cortaba en la fila 40
+    // y dejaba INVISIBLES los bloques de planes, deuda financiera, gaps y parámetros — que ya vivían
+    // más abajo. Con la reconstrucción (posición y calendario ARRIBA del detalle) el corte se llevaba
+    // puestas también las dos filas del calendario fiscal, que ahora están cerca de la 50: la
+    // conciliación habría leído `undefined` y declarado $0 de IVA sin un solo error.
+    v(`'_BANCO_RAW'!A1:H3000`), v(`'Impuestos y Financieros'!A1:O120`), v(`'Jornales por Quincena'!A1:P110`),
     v(`'CAJA'!A1:J40`),
   ])
   // Los rangos con nombre del bloque de jornales, resueltos a filas con sus campos con nombre.
