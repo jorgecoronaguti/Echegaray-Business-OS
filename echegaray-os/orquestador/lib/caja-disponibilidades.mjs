@@ -111,24 +111,40 @@ export const CUENTAS = [
     origenSugerido: 'Santander, saldo total en dólares',
   },
   {
-    // ═══ BALANZ — LA INVERSIÓN TAMBIÉN ES CAJA (06/08) ═══
+    // ═══ BALANZ — INVERTIDO, NO DISPONIBLE (06/08, orden del dueño) ═══
     //
     // El 05/08 salieron del banco $22.530.000 ("A balanz capital valores / inv") y U$S 15.000 de la
     // cuenta USD. Sin estas filas la plata desaparecía del total: el banco la descuenta y ninguna
-    // línea la recibe. Es plata de la empresa en una cuenta comitente — disponibilidad, no gasto.
-    // El saldo es el APORTE probado por extracto, no la posición total (gap declarado en
-    // banco-santander.mjs BALANZ): con el extracto de Balanz se reemplaza.
-    nombre: 'Balanz · inversiones ARS',
+    // línea la recibe. Es plata de la empresa en una cuenta comitente. El saldo es el APORTE probado
+    // por extracto, no la posición total (gap declarado en banco-santander.mjs BALANZ): con el
+    // extracto de Balanz se reemplaza.
+    //
+    // ═══ POR QUÉ `noSuma` (06/08) ═══
+    //
+    // El dueño, textual: *"el concepto de 'caja disponible' tiene que ser lo que se refleja
+    // únicamente en el saldo bancario (ars y usd) como caja en efectivo (ars y usd), discriminar lo
+    // que se encuentra en Balanz invertido, reflejarlo en las tarjetas de manera ordenada como se
+    // vería y usaría en el JPMorgan"*. Es exactamente cómo un tesorero mira su posición en
+    // J.P. Morgan Access Liquidity Solutions (jpmorgan.com/payments/solutions/access): el operating
+    // cash —lo que puede pagar HOY— separado de los invested balances, que se muestran aparte con su
+    // naturaleza, y la liquidez total es la suma de los dos. Una cuenta comitente no paga un cheque
+    // mañana: sumarla al disponible infla el número con el que se decide qué se paga.
+    //
+    // El mecanismo es el MISMO del ‖ de "Valores a depositar": la fila se ve, se valúa, y el total
+    // la resta. La tarjeta INVERTIDO de la portada referencia estas celdas — una sola fuente.
+    nombre: 'Balanz · inversiones ARS ‖ invertido',
     moneda: 'ARS',
     banco: 'balanzArs',
     patron: /^balanz.*\bars\b/i,
+    noSuma: true,
     origenSugerido: 'Transferencia del 05/08 (extracto Santander) — posición pendiente del extracto Balanz',
   },
   {
-    nombre: 'Balanz · inversiones USD',
+    nombre: 'Balanz · inversiones USD ‖ invertido',
     moneda: 'USD',
     banco: 'balanzUsd',
     patron: /^balanz.*\busd\b/i,
+    noSuma: true,
     origenSugerido: 'Transferencia del 05/08 (base 25.413 de la cta USD) — posición pendiente del extracto Balanz',
   },
   {
@@ -151,6 +167,7 @@ export const CUENTAS = [
     nombre: 'Valores a depositar ‖ no suma al total',
     moneda: 'ARS',
     patron: /^valores a depositar/i,
+    noSuma: true,
     // 21/07: DEJÓ DE SALIR DE COBRANZAS. La fórmula sobre Cobranzas daba $30.000.000 y la cartera
     // real es $10.000.000: dos de los tres echeq están ENDOSADOS a Alumetal. Cobranzas registra que
     // se cobró —y es cierto, el echeq entró— pero no puede saber qué pasó después con el valor. Eso
@@ -193,6 +210,9 @@ export const ALIAS = new Map([
   ['Banco Santander — Cuenta corriente en pesos 179-091383/6', 'Santander · cta cte ARS'],
   ['Banco Santander — Cuenta corriente en dólares', 'Santander · cta cte USD'],
   ['Valores a depositar (cheques de terceros en cartera)', 'Valores a depositar'],
+  // Los rótulos previos al ‖ (06/08): un dato cargado sobre el nombre viejo vuelve a su cuenta.
+  ['Balanz · inversiones ARS', 'Balanz · inversiones ARS ‖ invertido'],
+  ['Balanz · inversiones USD', 'Balanz · inversiones USD ‖ invertido'],
 ])
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

@@ -76,13 +76,14 @@ test('LOS DOS PANELES COMPARTEN LAS MISMAS FILAS: es lo que hace que entre en un
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
-// LAS CINCO TARJETAS — LA PORTADA
+// LAS CUATRO TARJETAS — LA PORTADA (el orden JPM del 06/08: operativo · invertido · comprometido · proyectado)
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-test('LAS CINCO TARJETAS ESTÁN, EN ORDEN, Y CADA UNA OCUPA SUS TRES RENGLONES', () => {
+test('LAS CUATRO TARJETAS ESTÁN, EN ORDEN, Y CADA UNA OCUPA SUS TRES RENGLONES', () => {
+  // RIESGO y CUELLO no aparecen: los borró el dueño (huellas selladas en sheet_huella_celda) y la
+  // quinta columna de tarjetas (I) queda vacía. El piso sigue en el cierre de la escalera.
   const g = construir()
-  const esperados = ['CAJA DISPONIBLE', 'CAJA COMPROMETIDA', `CAJA PROYECTADA · ${HORIZONTE} DÍAS`,
-    'RIESGO DE LIQUIDEZ', 'PRÓXIMO CUELLO DE BOTELLA']
+  const esperados = ['CAJA DISPONIBLE', 'INVERTIDO', 'CAJA COMPROMETIDA', `CAJA PROYECTADA · ${HORIZONTE} DÍAS`]
   esperados.forEach((rot, i) => {
     const col = COLS_TARJETA[i]
     assert.equal(celda(g, g.fRotulos, col), rot, `la tarjeta ${i + 1} tiene que ser "${rot}" en la columna ${col}`)
@@ -107,11 +108,12 @@ test('LAS CIFRAS DE LAS TARJETAS SALEN DEL LIBRO O DE LA PROPIA PESTAÑA, nunca 
   const g = construir()
   const val = (i) => celda(g, g.fCifras, COLS_TARJETA[i])
   assert.equal(val(0), `=$C$${g.fCierre}`, 'la caja disponible es EL TOTAL del panel de cuentas, no una suma nueva')
-  assert.equal(val(1), `=${terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'EOMONTH(TODAY();0)+1', medida: 'magnitud' })}`)
-  assert.equal(val(2), `=$C$${g.fCierre}+${terminoLibro({ desde: 'TODAY()', hasta: `TODAY()+${HORIZONTE}`, estados: NO_REAL })}`)
-  assert.equal(val(3), `=$I$${g.fCierre}`, 'el riesgo de liquidez es el piso que calcula la escalera')
-  assert.match(val(4), /^=IFERROR\(INDEX\(\$F\$\d+:\$F\$\d+;MATCH\(MIN\(\$I/,
-    'el cuello de botella sale del MISMO MATCH que el piso, o puede señalar otro tramo')
+  // INVERTIDO referencia las filas Balanz DEL PANEL — la misma fuente que se ve abajo, no una segunda
+  // posición: cuando el extracto de Balanz reemplace el aporte, la tarjeta cambia con la grilla.
+  assert.equal(val(1), `=N($C$${g.fBalanzArs})+N($C$${g.fBalanzUsd})`,
+    'lo invertido sale de las celdas de la grilla, nunca de una constante propia')
+  assert.equal(val(2), `=${terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'EOMONTH(TODAY();0)+1', medida: 'magnitud' })}`)
+  assert.equal(val(3), `=$C$${g.fCierre}+${terminoLibro({ desde: 'TODAY()', hasta: `TODAY()+${HORIZONTE}`, estados: NO_REAL })}`)
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -137,11 +139,19 @@ test('EL ANTI-DOBLE-CONTEO: el neto de efectivo entra al total por UNA sola puer
   assert.equal(n, 1, 'el neto de efectivo tiene que entrar al total por una sola puerta')
 })
 
-test('el total barre el bloque entero y descuenta los valores a depositar (percibido)', () => {
+test('el total barre el bloque entero y descuenta TODAS las filas ‖: cartera y Balanz (operativo)', () => {
+  // La orden del 06/08: la caja disponible es SÓLO banco y efectivo. Lo invertido se ve, se valúa y
+  // NO suma — como los invested balances en el panel de JPM. El total queda más conservador, y es el
+  // número correcto para decidir un pago: la comitente no cubre un cheque mañana.
   const g = construir()
   const total = celda(g, g.fCierre, 2)
   assert.ok(total.includes(`SUM(C${g.d0}:C${g.d1})`), `el total tiene que barrer todo el bloque: ${total}`)
   assert.ok(total.includes(`-C${g.fCartera}`), 'y seguir restando los echeq en custodia: no son caja de hoy')
+  assert.ok(total.includes(`-C${g.fBalanzArs}`), 'y restar Balanz ARS: está invertido, no disponible')
+  assert.ok(total.includes(`-C${g.fBalanzUsd}`), 'y restar Balanz USD: está invertido, no disponible')
+  // Y NINGUNA RESTA MÁS: son exactamente las tres filas ‖ (cartera + Balanz ARS + Balanz USD). Una
+  // cuarta resta sería una cuenta excluida en silencio; una de menos, plata contada dos veces.
+  assert.equal((total.match(/-C\d+/g) || []).length, 3, `el total resta otra cosa: ${total}`)
 })
 
 test('EL RÓTULO DEL TOTAL ES EL QUE BUSCAN LOS OTROS MÓDULOS, y por eso no lleva flecha adelante', () => {
@@ -272,7 +282,7 @@ test('LOS CONTROLES DEL ANEXO NO DESAPARECIERON: cada uno está citado en una al
  *   total — gap declarado en banco-santander.mjs BALANZ; se reemplaza cuando llegue su extracto.
  */
 const PEGADO_DECLARADO = new Set(['Santander · cta cte USD', 'Caja en pesos — contado', 'Caja en dólares — contado',
-  'Balanz · inversiones ARS', 'Balanz · inversiones USD'])
+  'Balanz · inversiones ARS ‖ invertido', 'Balanz · inversiones USD ‖ invertido'])
 
 test('CERO NÚMEROS PEGADOS: toda celda de plata es una fórmula', () => {
   // Es la Regla de Oro número 5 del dueño, medida sobre la grilla entera y no bloque por bloque. Un
@@ -467,12 +477,16 @@ test('SIN EL CALENDARIO FISCAL NO HAY PESTAÑA: una fuente que falta no puede le
   assert.throws(() => grilla(new Map(), { ...REFS, filasCal: undefined }), /Impuestos y Financieros/)
 })
 
-test('BALANZ ESTÁ EN LA CAJA: los aportes del 05/08 no desaparecen del total', () => {
+test('BALANZ ESTÁ EN LA CAJA, DISCRIMINADO: se ve, se valúa, y el rótulo declara que no suma', () => {
   // El 05/08 salieron del banco $22.530.000 y U$S 15.000 hacia Balanz. El banco los descuenta de su
-  // saldo: sin estas dos filas, mover plata a la inversión la hacía desaparecer de la disponibilidad.
+  // saldo: sin estas dos filas, mover plata a la inversión la hacía desaparecer de la empresa. Desde
+  // el 06/08 llevan el ‖ (orden del dueño): son INVERTIDO, no disponible — la fila se muestra con su
+  // valuación y su fecha, el total no la suma y la tarjeta INVERTIDO la cita.
   const g = construir()
-  const fArs = filaDe(g, /^Balanz · inversiones ARS$/)
-  const fUsd = filaDe(g, /^Balanz · inversiones USD$/)
+  const fArs = filaDe(g, /^Balanz · inversiones ARS ‖ invertido$/)
+  const fUsd = filaDe(g, /^Balanz · inversiones USD ‖ invertido$/)
+  assert.equal(fArs, g.fBalanzArs, 'la fila declarada es la que lleva el rótulo')
+  assert.equal(fUsd, g.fBalanzUsd)
   assert.ok(fArs > 0, 'falta la fila Balanz ARS')
   assert.ok(fUsd > 0, 'falta la fila Balanz USD')
   assert.equal(g.filas[fArs - 1][1], 22530000, 'el aporte ARS probado por el extracto del 05/08')

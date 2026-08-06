@@ -30,6 +30,30 @@ test('renombrar una fila no pierde el dato ya cargado', () => {
   assert.ok(!filaDeCuenta('TOTAL DISPONIBILIDADES'))
 })
 
+// ═══ BALANZ ES INVERTIDO, NO DISPONIBLE (06/08, orden del dueño) ═══
+//
+// "el concepto de 'caja disponible' tiene que ser lo que se refleja únicamente en el saldo bancario
+// (ars y usd) como caja en efectivo (ars y usd), discriminar lo que se encuentra en Balanz invertido".
+// El mecanismo es el ‖ de "Valores a depositar": la fila se ve y no suma. Lo que este test protege:
+// que el rótulo nuevo siga siendo una fila de cuenta (o el rescate pierde el dato en silencio), que
+// el dato cargado con el nombre viejo sobreviva por ALIAS, y que la exclusión esté DECLARADA.
+test('las filas Balanz llevan el ‖, declaran noSuma, y el nombre viejo no pierde el dato', () => {
+  const ars = cuenta('Balanz · inversiones ARS ‖ invertido')
+  const usd = cuenta('Balanz · inversiones USD ‖ invertido')
+  assert.ok(ars && usd, 'las dos filas de Balanz existen con su rótulo ‖')
+  assert.equal(ars.noSuma, true)
+  assert.equal(usd.noSuma, true)
+  assert.equal(cuenta('Valores a depositar ‖ no suma al total').noSuma, true)
+  // El patrón sobrevive al rótulo nuevo Y al viejo: es lo que devuelve un saldo cargado a su cuenta.
+  for (const n of ['Balanz · inversiones ARS ‖ invertido', 'Balanz · inversiones ARS']) {
+    assert.ok(ars.patron.test(n), `el patrón ARS tiene que matchear "${n}"`)
+    assert.ok(filaDeCuenta(n), `"${n}" tiene que reconocerse como fila de cuenta`)
+  }
+  assert.ok(!ars.patron.test('Balanz · inversiones USD ‖ invertido'), 'sin cruzarse de moneda')
+  assert.equal(ALIAS.get('Balanz · inversiones ARS'), 'Balanz · inversiones ARS ‖ invertido')
+  assert.equal(ALIAS.get('Balanz · inversiones USD'), 'Balanz · inversiones USD ‖ invertido')
+})
+
 // Un saldo en dólares valuado en $0 porque falta el tipo de cambio es peor que no mostrarlo:
 // se suma como cero y baja el total sin avisar.
 test('sin tipo de cambio, los dólares no valen cero: no valen nada declarado', () => {

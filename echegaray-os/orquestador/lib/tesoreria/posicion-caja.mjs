@@ -64,12 +64,18 @@ export function enDescubierto(cajaHoy) {
  * mueve, el nombre de la cuenta no.
  */
 export function clasificarCuentas(cuentas = []) {
-  const out = { ars_liquida: 0, moneda_extranjera: 0, valores_a_depositar: 0, sin_clasificar: 0, detalle: [] }
+  const out = { ars_liquida: 0, moneda_extranjera: 0, valores_a_depositar: 0, invertido: 0, sin_clasificar: 0, detalle: [] }
   for (const c of cuentas) {
     const n = String(c.cuenta ?? '').toLowerCase()
     const saldo = Number(c.saldo) || 0
     let clase
-    if (/valores a depositar|cheques? (en )?cartera|a depositar/.test(n)) clase = 'valores_a_depositar'
+    // LO INVERTIDO SE CLASIFICA PRIMERO (06/08): "Balanz · inversiones ARS ‖ invertido" contiene
+    // "ars" y sin este corte caía en `ars_liquida` — plata YA colocada contada como colocable, y el
+    // excedente recomendaría invertir dos veces la misma comitente. Desde el 06/08 la pestaña además
+    // la excluye de su total (orden del dueño: disponible = operativo, estilo JPM), así que el cruce
+    // de coherencia también tiene que restarla.
+    if (/balanz|‖ invertido|inversi[oó]n/.test(n)) clase = 'invertido'
+    else if (/valores a depositar|cheques? (en )?cartera|a depositar/.test(n)) clase = 'valores_a_depositar'
     else if (/\busd\b|d[oó]lar|u\$s/.test(n)) clase = 'moneda_extranjera'
     else if (/pesos|ars|cta cte|cuenta corriente|caja|banco|santander|movimientos/.test(n)) clase = 'ars_liquida'
     else clase = 'sin_clasificar'
@@ -111,8 +117,13 @@ export function coherenciaDelTotal(total, composicion) {
     return { coherente: false, total_declarado: Math.round(Number(total) || 0), esperado: null, diferencia: null,
       motivo: 'no hay ninguna cuenta legible en la pestaña CAJA: el total no se puede cruzar contra nada, y un total sin contraste no sostiene una posición' }
   }
-  const suma = composicion.ars_liquida + composicion.moneda_extranjera + composicion.valores_a_depositar + composicion.sin_clasificar
-  const esperado = suma - composicion.valores_a_depositar
+  // `invertido` con guarda: una composición armada por un caller viejo no trae la clase y NaN
+  // convertiría el control entero en "incoherente" sin decir por qué.
+  const invertido = Number(composicion.invertido) || 0
+  const suma = composicion.ars_liquida + composicion.moneda_extranjera + composicion.valores_a_depositar + invertido + composicion.sin_clasificar
+  // La relación vigente (06/08): el total de la pestaña excluye los valores a depositar (no son caja
+  // hasta acreditarse) Y lo invertido en Balanz (orden del dueño: el disponible es operativo).
+  const esperado = suma - composicion.valores_a_depositar - invertido
   // Total 0 y cuentas 0 daba diferencia 0 → "coherente". Dos ceros que coinciden no son un cruce.
   if (Number(total) === 0 && esperado === 0) {
     return { coherente: false, total_declarado: 0, esperado: 0, diferencia: 0,

@@ -9,8 +9,8 @@
 // desplazarse. Portada ejecutiva. Dirección debe entender la situación en menos de cinco segundos"*.
 //
 // CUARENTA Y CINCO FILAS DE TABLA SIGUEN SIENDO UNA TABLA. Lo que separa un tablero de tesorería de
-// una planilla no es el tamaño: es que arriba haya CINCO NÚMEROS y no cinco cuadros. Acá quedan
-// veinte filas: el titular, las cinco tarjetas, dos paneles lado a lado —las cuentas y la escalera de
+// una planilla no es el tamaño: es que arriba haya POCOS NÚMEROS GRANDES y no cinco cuadros. Acá
+// quedan veinte filas: el titular, las cuatro tarjetas, dos paneles lado a lado —las cuentas y la escalera de
 // vencimientos— y dos listas cortas, alertas y acciones. Nada más. Todo lo que era conciliación,
 // arqueo detallado, auditoría o control vive en `_CAJA_ANEXO` y se asoma acá como una línea de alerta.
 //
@@ -19,6 +19,12 @@
 // El diseño anterior apilaba bloque sobre bloque, y por eso una pestaña honesta necesitaba 45 filas.
 // Un producto no apila: distribuye. Las columnas A–D son el panel de CUENTAS y las F–I el panel de
 // VENCIMIENTOS, sobre las MISMAS filas. Eso corta a la mitad el alto sin sacar un solo dato.
+//
+// ═══ EL 06/08: DISPONIBLE = OPERATIVO, INVERTIDO APARTE (orden del dueño, estilo JPM) ═══
+//
+// Las filas de Balanz llevan ‖ y el total ya no las suma; la tarjeta INVERTIDO (segunda) las cita.
+// Todo lo que cuelga de CAJA_TOTAL_DISPONIBLE —la escalera, el peor caso, los dos cash flow, el
+// control A5 del anexo— pasa a medir LIQUIDEZ OPERATIVA, que es el número correcto para decidir pagos.
 //
 //   A · el concepto            F · el tramo
 //   B · importe en su moneda   G · hasta cuándo (fecha)
@@ -105,9 +111,10 @@ export const COL_PROSA = 9
  * caracteres). La E vale 18: es aire, no una columna. La J vale 32 y no 0 porque una columna de ancho
  * cero se comporta como oculta, y en esta pestaña ninguna fila y ninguna columna se ocultan.
  *
- * LAS TARJETAS SE MONTAN SOBRE ESTOS MISMOS ANCHOS, de a pares (A:B, C:D, E:F, G:H, I:J). La primera
- * queda más ancha que las otras cuatro y es a propósito: "caja disponible" es la cifra que se mira
- * primero y en cualquier tablero de tesorería es la que ocupa más lugar.
+ * LAS TARJETAS SE MONTAN SOBRE ESTOS MISMOS ANCHOS, de a pares (A:B, C:D, E:F, G:H; la I:J quedó sin
+ * tarjeta cuando el dueño borró la quinta). La primera queda más ancha que las otras y es a
+ * propósito: "caja disponible" es la cifra que se mira primero y en cualquier tablero de tesorería
+ * es la que ocupa más lugar.
  */
 export const ANCHOS = [224, 118, 130, 86, 18, 180, 82, 120, 130, 32]
 
@@ -115,8 +122,14 @@ export const ANCHOS = [224, 118, 130, 86, 18, 180, 82, 120, 130, 32]
 export const COLS_PLATA = Object.freeze([1, 2, 7, 8])
 /** Las columnas donde vive una FECHA. Formato de fecha en toda la pestaña, sin excepciones por bloque. */
 export const COLS_FECHA = Object.freeze([3, 6])
-/** Las cinco columnas donde ancla cada tarjeta. Se merge con la de al lado. */
-export const COLS_TARJETA = Object.freeze([0, 2, 4, 6, 8])
+/**
+ * Las cuatro columnas donde ancla cada tarjeta. Se merge con la de al lado.
+ *
+ * ERAN CINCO (06/08): el dueño borró RIESGO (G2:G4) y CUELLO (I2:I4) de la pestaña, y pidió el orden
+ * del tesorero de JPM — disponible operativo, invertido, comprometida, proyectada. La quinta columna
+ * de tarjetas (I) queda vacía: el borrado del CUELLO se respeta y ninguna tarjeta se corre ahí.
+ */
+export const COLS_TARJETA = Object.freeze([0, 2, 4, 6])
 
 /** Cuánto vale hoy una cuenta según el banco, cuando la réplica del extracto no está. */
 const saldoDeBanco = (c) => (c.banco === 'cartera' ? BANCO.totalEcheqs(BANCO.enCartera())
@@ -164,11 +177,20 @@ export function grilla(cargado, refs) {
   const usd = []
   let fBancoPesos = 0
   let fCartera = 0
+  let fBalanzArs = 0
+  let fBalanzUsd = 0
+  // LAS FILAS ‖ QUE EL TOTAL RESTA. Antes era sólo la cartera y estaba escrita a mano en la fórmula
+  // del total; hoy son tres (cartera + las dos de Balanz) y salen de la declaración `noSuma` de cada
+  // cuenta: agregar una cuarta fila que no suma es declararla, no acordarse de tocar el total.
+  const noSuman = []
   const FILA_0 = 7 // la primera fila de datos: título + 3 de tarjetas + títulos de bloque + encabezado
   for (const c of CUENTAS) {
     const f = FILA_0 + izq.length
     if (c.banco === 'saldoPesos') fBancoPesos = f
     if (c.banco === 'cartera') fCartera = f
+    if (c.banco === 'balanzArs') fBalanzArs = f
+    if (c.banco === 'balanzUsd') fBalanzUsd = f
+    if (c.noSuma) noSuman.push(f)
     if (c.moneda === 'USD') usd.push(f)
     // EL IMPORTE EN SU MONEDA ES EL HECHO; el saldo en pesos es el CÁLCULO. Un saldo en dólares
     // metido a la fuerza en una columna de pesos es un dato falso, y en Argentina se vuelve falso más
@@ -253,16 +275,20 @@ export function grilla(cargado, refs) {
 
   // ── LAS DOS FILAS DE CIERRE DE LOS PANELES ──────────────────────────────────────────────────────
   const fCierre = FILA_0 + Math.max(izq.length, der.length)
-  // PERCIBIDO: el total excluye los Valores a depositar (echeq en custodia, sin acreditar). No son
-  // caja de hoy — entran en la escalera cuando se acreditan. Es también el "Efectivo al inicio" de los
-  // dos cash flow, y su fecha vive en la MISMA fila que el monto: separarlos ya dejó las dos líneas
-  // más importantes de los dos cuadros vacías durante doce meses.
+  // PERCIBIDO Y OPERATIVO: el total excluye TODAS las filas ‖ — los Valores a depositar (echeq en
+  // custodia, sin acreditar: no son caja hasta que se acreditan) y desde el 06/08 las dos de Balanz
+  // (orden del dueño: la caja disponible es SÓLO banco y efectivo; lo invertido se discrimina, como
+  // en el panel operating-vs-invested de JPM Access). Queda = banco ARS + banco USD + efectivo ARS +
+  // efectivo USD + movimientos posteriores al corte. Es el número con el que se decide un pago — más
+  // conservador, y es el correcto: una comitente no cubre un cheque mañana. Es también el "Efectivo
+  // al inicio" de los dos cash flow, y su fecha vive en la MISMA fila que el monto: separarlos ya
+  // dejó las dos líneas más importantes de los dos cuadros vacías durante doce meses.
   //
   // EL RÓTULO ARRANCA EN "Total disponibilidades" Y NO EN "⇒": `cash-briefing` y `ubicarCaja` lo
   // buscan por texto desde el principio de la celda. El "⇒" del diseño anterior los dejó a los dos
   // sin encontrarlo, y los dos cayeron a su respaldo en silencio.
   const totalIzq = ['Total disponibilidades ‖ percibido',
-    '', `=SUM(C${d0}:C${d1})${fCartera ? `-C${fCartera}` : ''}`, `=IFERROR(MAX($D$${d0}:$D$${d1});"")`]
+    '', `=SUM(C${d0}:C${d1})${noSuman.map((f) => `-C${f}`).join('')}`, `=IFERROR(MAX($D$${d0}:$D$${d1});"")`]
   // EL PISO NO SE PUBLICA SOLO. Se calcula con lo que se PUEDE AFIRMAR, y hay dos grupos de cheques
   // cuya cobertura no se sabe: con el piso a secas esa ignorancia se lee como certeza, y con este
   // número se decide cuánta plata se inmoviliza. La punta de abajo es EXACTA —se recalcula el mínimo
@@ -277,14 +303,18 @@ export function grilla(cargado, refs) {
   ]
 
   // ── LAS TARJETAS, QUE SE RESUELVEN CUANDO YA SE SABE EN QUÉ FILA QUEDÓ CADA TOTAL ───────────────
+  //
+  // INVERTIDO cita las celdas C de las filas Balanz del panel — la MISMA fuente que se ve tres filas
+  // abajo, no una segunda copia de la posición. El día que llegue el extracto de Balanz y la grilla
+  // cambie el saldo, la tarjeta cambia con ella.
   const T = tarjetas({
     total: `$C$${fCierre}`,
     fecha: `$D$${fCierre}`,
-    piso: `$I$${fCierre}`,
-    peorCaso: `$H$${fCierre}`,
-    fechaPiso: `$G$${fCierre}`,
-    tramos: `$F$${lad0}:$F$${lad1}`,
-    saldos: `$I$${lad0}:$I$${lad1}`,
+    // Si la fila desaparece de CUENTAS, la referencia sale vacía y `tarjetas` FALLA CERRADO: mejor
+    // romper acá que publicar una tarjeta que apunta a `$C$0`.
+    invArs: fBalanzArs ? `$C$${fBalanzArs}` : '',
+    invUsd: fBalanzUsd ? `$C$${fBalanzUsd}` : '',
+    invFecha: fBalanzArs ? `$D$${fBalanzArs}` : '',
   })
   const porTarjeta = (campo) => {
     const fila = Array.from({ length: ANCHO }, () => '')
@@ -364,7 +394,7 @@ export function grilla(cargado, refs) {
     fBloques12, fCab, fBloques34,
     d0, d1, lad0, lad1, fCierre, fFinMes,
     fArqArs, fArqUsd, fAviso0, fAviso1,
-    fBancoPesos, fCartera, fPost,
+    fBancoPesos, fCartera, fBalanzArs, fBalanzUsd, fPost, noSuman,
     tarjetas: T,
   }
 }
