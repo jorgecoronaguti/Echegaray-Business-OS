@@ -23,9 +23,11 @@ const CORTE = serialDe(2026, 8, 1)
 test('los cinco bordes se evalúan con la MISMA aritmética que sus expresiones', () => {
   const v = BORDES.map(([, e]) => evaluarBorde(e, HOY))
   assert.deepEqual(v.slice(0, 3), [HOY, HOY + 7, HOY + 14])
-  // "Resto de este mes": MAX(TODAY()+14; fin de mes). El 05/08 + 14 = 19/08, y el mes cierra el 31/08.
-  assert.equal(isoDeSerial(v[3]), '2026-08-31')
-  assert.equal(isoDeSerial(v[4]), '2026-09-30')
+  // "Resto de este mes": MAX(TODAY()+14; fin de mes + 1). El borde es EXCLUIDO: para que el 31/08
+  // caiga ADENTRO del mes, el borde es el 01/09 (contrato del 06/08 — antes el último día del mes
+  // se escapaba al tramo siguiente).
+  assert.equal(isoDeSerial(v[3]), '2026-09-01')
+  assert.equal(isoDeSerial(v[4]), '2026-10-01')
   assert.equal(v[5], Infinity, '"Más adelante" no tiene techo, y una ventana necesita dos')
 })
 
@@ -35,7 +37,7 @@ test('el MAX de los bordes es un MAX de verdad: a fin de mes gana TODAY()+14', (
   const fin = serialDe(2026, 8, 28)
   assert.equal(evaluarBorde(BORDES[3][1], fin), fin + 14)
   assert.ok(evaluarBorde(BORDES[3][1], fin) >= evaluarBorde(BORDES[2][1], fin), 'los bordes son crecientes')
-  assert.equal(evaluarBorde(BORDES[4][1], fin), eomonth(fin, 1))
+  assert.equal(evaluarBorde(BORDES[4][1], fin), eomonth(fin, 1) + 1, 'el borde excluido es el día siguiente al fin de mes')
 })
 
 test('un borde que este portón no sabe evaluar ROMPE — no compara contra una ventana inventada', () => {

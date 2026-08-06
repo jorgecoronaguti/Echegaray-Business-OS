@@ -31,8 +31,13 @@ export const BORDES = [
   ['Vencido — ya pasó la fecha', 'TODAY()'],
   ['Esta semana', 'TODAY()+7'],
   ['Semana que viene', 'TODAY()+14'],
-  ['Resto de este mes', 'MAX(TODAY()+14;EOMONTH(TODAY();0))'],
-  ['El mes que viene', 'MAX(TODAY()+14;EOMONTH(TODAY();1))'],
+  // EOMONTH()+1 Y NO EOMONTH(): el borde es EXCLUIDO (criterio `hasta` de todo el repo), así que
+  // con EOMONTH a secas el ÚLTIMO día del mes caía en el tramo siguiente — el 31/08 aparecía en "El
+  // mes que viene" y quien conciliaba el "Resto de este mes" contra el cierre del Cash Flow veía
+  // $2.114.940 de diferencia que no era de nadie (conciliación del 06/08). "Resto de este MES"
+  // tiene que contener el mes entero.
+  ['Resto de este mes', 'MAX(TODAY()+14;EOMONTH(TODAY();0)+1)'],
+  ['El mes que viene', 'MAX(TODAY()+14;EOMONTH(TODAY();1)+1)'],
   ['Más adelante', ''],
 ]
 
