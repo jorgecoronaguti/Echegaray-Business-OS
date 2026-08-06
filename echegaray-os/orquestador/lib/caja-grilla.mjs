@@ -129,7 +129,9 @@ export const COLS_FECHA = Object.freeze([3, 6])
  * del tesorero de JPM — disponible operativo, invertido, comprometida, proyectada. La quinta columna
  * de tarjetas (I) queda vacía: el borrado del CUELLO se respeta y ninguna tarjeta se corre ahí.
  */
-export const COLS_TARJETA = Object.freeze([0, 2, 4, 6])
+// CINCO SLOTS de nuevo (06/08, orden del dueño): disponible · comprometida · LIBRE · invertido ·
+// proyectada — "invertido y proyectada al final", y la LIBRE contesta cuánto se puede usar entero.
+export const COLS_TARJETA = Object.freeze([0, 2, 4, 6, 8])
 
 /** Cuánto vale hoy una cuenta según el banco, cuando la réplica del extracto no está. */
 const saldoDeBanco = (c) => (c.banco === 'cartera' ? BANCO.totalEcheqs(BANCO.enCartera())

@@ -23,11 +23,11 @@ const REF = {
 const T = () => tarjetas(REF)
 const de = (clave) => T().find((t) => t.clave === clave)
 
-test('son CUATRO, en el orden del tesorero de JPM: operativo → invertido → comprometido → proyectado', () => {
-  // Es el ordenamiento de JPM Access Liquidity Solutions que pidió el dueño: primero lo que puede
-  // pagar HOY, después lo colocado con su naturaleza, después lo que debe, después cómo termina el
-  // mes. RIESGO y CUELLO no vuelven: los borró él de la pestaña, y el piso vive en la escalera.
-  assert.deepEqual(T().map((t) => t.clave), ['disponible', 'invertido', 'comprometida', 'proyectada'])
+test('son CINCO, en el orden que pidió el dueño: disponible → comprometida → LIBRE → invertido → proyectada', () => {
+  // 06/08: "invertido y caja proyectada al final", y en el medio la respuesta a su pregunta — ¿puedo
+  // usar la caja disponible entera? NO: LIBRE = disponible − comprometida es lo que se usa sin romper
+  // compromisos (el net cash position de un panel de tesorería).
+  assert.deepEqual(T().map((t) => t.clave), ['disponible', 'comprometida', 'libre', 'invertido', 'proyectada'])
 })
 
 test('las cuatro tienen rótulo, cifra y contexto: la forma de la tarjeta no se negocia', () => {
@@ -96,4 +96,9 @@ test('FALLA CERRADO: sin una referencia, rompe antes de escribir una celda en er
   assert.throws(() => tarjetas({ ...REF, invArs: '' }), /faltan las referencias/)
   assert.throws(() => tarjetas({ ...REF, total: '' }), /faltan las referencias/)
   assert.throws(() => tarjetas(), /faltan las referencias/)
+})
+
+test('LIBRE referencia las cifras de las dos tarjetas vecinas, no una tercera aritmética', () => {
+  const l = de('libre')
+  assert.equal(l.valor, '=N($A$3)-N($C$3)', 'disponible (A3) menos comprometida (C3), por referencia')
 })
