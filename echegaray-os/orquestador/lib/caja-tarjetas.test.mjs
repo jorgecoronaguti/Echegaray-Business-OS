@@ -60,13 +60,18 @@ test('INVERTIDO cita las filas Balanz de la grilla — una sola fuente, nunca un
   assert.ok(t.contexto.includes(REF.invFecha), 'la fecha de la posición sale de la fila Balanz, no del reloj')
 })
 
-test('CAJA COMPROMETIDA son las obligaciones del MES, en MAGNITUD — no sólo los cheques', () => {
-  // Con estados ['COMPROMETIDO'] la tarjeta mostró $7,7M a principio de mes: la quincena, las cargas
-  // y los impuestos viven como PROYECTADO y quedaban afuera (corrección del dueño, 06/08). Sin
-  // `desde`: lo vencido impago sigue comprometido. En neto saldría negativo y se leería al revés.
-  assert.equal(de('comprometida').valor,
-    `=${terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'EOMONTH(TODAY();0)+1', medida: 'magnitud' })}`)
-  assert.ok(!de('comprometida').valor.includes('"REAL"'), 'lo REAL ya salió de la cuenta: no es obligación')
+test('CAJA COMPROMETIDA es la ventana de 7 DÍAS, con el mes completo en el contexto (5ª directiva)', () => {
+  // La ventana a fin de mes dio $46,8M contra $45,9M disponibles y el dueño la rechazó: "estan
+  // tomandose mal las temporalidades" — lo que vence después de las cobranzas del 14/15/28 se paga
+  // con ESA plata, no con la de hoy. El titular es lo que la caja de HOY sí tiene que cubrir (7
+  // días, vencido impago adentro — sin `desde`), y el mes entero queda a la vista en el contexto.
+  const c = de('comprometida')
+  assert.equal(c.valor,
+    `=${terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'TODAY()+7', medida: 'magnitud' })}`)
+  assert.match(c.rotulo, /7 DÍAS/, 'el rótulo declara su ventana — sin eso el número se lee como el mes')
+  assert.match(c.contexto, /todo el mes/, 'el mes completo no se esconde: baja al contexto')
+  assert.ok(c.contexto.includes('EOMONTH(TODAY();0)+1'), 'el contexto mide el mes con la misma suma del libro')
+  assert.ok(!c.valor.includes('"REAL"'), 'lo REAL ya salió de la cuenta: no es obligación')
 })
 
 test('CAJA PROYECTADA es la caja OPERATIVA de hoy MÁS la ventana del libro, y excluye lo REAL', () => {
@@ -109,8 +114,10 @@ test('LIBRE es el PISO de la escalera — 4ª y definitiva (06/08): ninguna rest
   // es el piso de la escalera — que la pestaña ya calcula. La tarjeta lo referencia con MIN de las
   // dos puntas de la fila de cierre, el mismo criterio con el que esa fila elige su propio rótulo.
   const l = de('libre')
-  assert.equal(l.valor, `=MIN(N(${REF.piso});N(${REF.pisoSimple}))`,
-    'el MIN de peor-caso ($H) y mínimo simple ($I) de la fila de cierre — no una cuarta aritmética')
+  // 5ª directiva: el MÍNIMO SIMPLE ($I), no el peor caso ($H) — el peor caso restaba $22,6M de
+  // cheques de cobertura incierta y tapaba el recorrido medido; ese escenario vive en la escalera.
+  assert.equal(l.valor, `=N(${REF.pisoSimple})`,
+    'el mínimo medido del recorrido, de la fila de cierre — no una cuarta aritmética')
   assert.match(l.contexto, /cobrando lo proyectado/,
     'sin la cláusula, el piso se lee como plata garantizada — y depende de las cobranzas')
   assert.ok(l.contexto.includes(REF.pisoFecha), 'la fecha del punto más bajo sale de la fila de cierre')
