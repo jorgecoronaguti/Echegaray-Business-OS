@@ -96,8 +96,9 @@ test('planes: dónde coincide la carga de Compras con ARCA y dónde NO (medido f
     '2026-05': '2026-05-16', '2026-06': '2026-06-16', '2026-07': '2026-07-16',
     '2026-08': '2026-08-16', '2026-09': '2026-09-16', '2026-10': '2026-10-16',
   }
-  // 16/05/2026 es sábado; 16/08/2026 es domingo y el 17 es el feriado de San Martín trasladado, así
-  // que ARCA corre las dos al 18.
+  // 16/05/2026 es sábado y 16/08/2026 es domingo (aritmética); ARCA corre las dos al 18, que es lo
+  // que dice su agenda. Que agosto salte dos días por el feriado de San Martín es INFERENCIA: manda
+  // la tabla del organismo, no el motivo que se le suponga.
   const discrepan = { '2026-05': '2026-05-18', '2026-08': '2026-08-18' }
   for (const [mes, fechaCompras] of Object.entries(enCompras)) {
     const v = vencimientoPlan(mes)

@@ -83,9 +83,13 @@ export const VENCIMIENTO_IVA = {
  *     ago-26 → Compras 16/08 (DOMINGO) · ARCA 18/08   (filas 478 y 725, $2.968.642,73)
  *
  * Las dos discrepancias son el mismo caso: la fecha cargada cae en fin de semana y ARCA no debita
- * sábados ni domingos. Los tres corrimientos de la tabla tienen su motivo —16/02 y 17/02 son Carnaval,
- * el 16/05 es sábado, el 17/08 es el feriado de San Martín trasladado— y por eso la tabla no se
- * deriva: se consulta. Los otros trece meses sí coinciden.
+ * sábados ni domingos. Los otros trece meses sí coinciden.
+ *
+ * QUÉ ES HECHO Y QUÉ ES INFERENCIA. HECHO: los tres corrimientos de la tabla (feb al 18, may al 18,
+ * ago al 18) están en la agenda del organismo, consultada el 06/08, y el 16/05 es sábado y el 16/08
+ * domingo por aritmética. INFERENCIA: que feb se corra dos días por Carnaval y ago por el feriado de
+ * San Martín trasladado al 17. Es la explicación más probable y NO se verificó calendario de feriados
+ * en mano — por eso la tabla no se deriva de una regla: se consulta.
  *
  * La carga del dueño NO se toca: la corrige el libro al leerla, con `debitoRealDePlan`.
  */
