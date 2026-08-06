@@ -126,8 +126,8 @@ test('el financiamiento declara que NO mide el descubierto tomado', () => {
   // Un "disponible" que se lee como plata que está, y puede no estar, es la línea con la que se
   // decide no salir a pedir un adelanto.
   const filas = posicion()
-  const desc = filas.find((x) => /descubierto Santander/.test(String(x[0] ?? '')))
-  assert.match(String(desc[0]), /⚠ uso actual s\/d/)
+  const desc = filas.find((x) => /Descubierto Santander/.test(String(x[0] ?? '')))
+  assert.match(String(desc[0]), /⚠ uso: lo mide CAJA/, 'la duda queda escrita en el rótulo corto')
   const techo = filas.find((x) => /FINANCIAMIENTO SIN USAR/.test(String(x[0] ?? '')))
   assert.match(String(techo[0]), /TECHO/)
 })
