@@ -203,3 +203,13 @@ test('las reglas condicionales que se borran son SÓLO las de adentro de la band
   const orden = reglasABorrar([dentro, dentro, dentro])
   assert.deepEqual(orden, [2, 1, 0])
 })
+
+test('NINGUNA regla condicional referencia otra hoja a pelo: la API lo rechaza con 400', () => {
+  // Pagado en vivo el 06/08: el lote entero de formato se cayó por un `_CHEQUES_RAW!` crudo dentro
+  // de CUSTOM_FORMULA. Toda referencia cruzada tiene que ir envuelta en INDIRECT("...").
+  for (const r of reglasCondicionales(7)) {
+    const f = r.addConditionalFormatRule.rule.booleanRule.condition.values[0].userEnteredValue
+    const crudas = f.replace(/INDIRECT\("[^"]*"\)/g, '')
+    assert.ok(!/_CHEQUES_RAW/.test(crudas), `referencia cruzada sin INDIRECT:\n  ${f.slice(0, 120)}`)
+  }
+})

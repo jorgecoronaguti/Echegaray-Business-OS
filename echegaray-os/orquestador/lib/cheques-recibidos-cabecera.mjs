@@ -322,7 +322,11 @@ export function reglasCondicionales(sheetId) {
   const cal = [rango(sheetId, FILA_SEM0 - 1, FILA_SEM0 - 1 + SEMANAS, COL_CAL0, COL_CAL1)]
   const ancla = `${String.fromCharCode(65 + COL_CAL0)}${FILA_SEM0}`
   const fecha = fechaPorPosicion()
-  const monto = `ROUND(${formulaCarteraDia(fecha).slice(1)})`
+  // EL FORMATO CONDICIONAL NO ACEPTA OTRA HOJA (06/08, pagado en vivo): la API devuelve 400 ante un
+  // `_CHEQUES_RAW!...` crudo dentro de CUSTOM_FORMULA — la misma limitación que ya obligó a INDIRECT
+  // con los rangos con nombre en CAJA. Cada referencia cruzada va envuelta.
+  const indirecta = (f) => f.replace(/('?_CHEQUES_RAW'?!\$?[A-Z]+\$?\d*(?::\$?[A-Z]+\$?\d*)?)/g, 'INDIRECT("$1")')
+  const monto = `ROUND(${indirecta(formulaCarteraDia(fecha).slice(1))})`
   const maximo = `ROUND($G$${FILA_VALORES})`
   const suma = `ROUND(SUM($B$${FILA_TRAMO0}:$B$${FILA_TRAMO0 + TRAMOS.length - 1}))`
   const regla = (ranges, formula, format) => ({
