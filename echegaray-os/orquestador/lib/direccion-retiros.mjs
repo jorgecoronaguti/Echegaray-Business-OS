@@ -108,7 +108,9 @@ export const esRetiro = (persona, nombres = NOMBRES_DIRECCION) =>
  * @param {string} celdaNombre la celda con el nombre de la persona (ej. "$A$47")
  */
 export const formulaRetiroMensual = (celdaNombre) =>
-  `=IFERROR(INDEX(SORT(FILTER({${COL_IMPORTE}\\${COL_FECHA_CAJA}};LOWER(${COL_PERSONA}&"")=LOWER(${celdaNombre}));2;0);1;1);"")`
+  // Sólo filas CON importe: una proyección ELIMINADA (O=0) o sin cargar no es "la última carga" —
+  // el 06/08 las filas de julio (importes viejos, fecha de caja posterior) taparon el pago real.
+  `=IFERROR(INDEX(SORT(FILTER({${COL_IMPORTE}\\${COL_FECHA_CAJA}};LOWER(${COL_PERSONA}&"")=LOWER(${celdaNombre});IF(ISNUMBER(${COL_IMPORTE});${COL_IMPORTE};0)>0);2;0);1;1);"")`
 
 /**
  * NÚCLEO PURO: la fecha de caja MÁS TEMPRANA de un retiro de Dirección — desde cuándo corre.
