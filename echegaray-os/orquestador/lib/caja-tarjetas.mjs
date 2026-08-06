@@ -135,15 +135,23 @@ export function tarjetas(ref) {
     {
       clave: 'libre',
       rotulo: 'LIBRE DISPONIBILIDAD',
-      // LA ENUMERACIÓN FINAL DEL DUEÑO (06/08): "caja disponible, comprometida, libre
-      // disponibilidad, invertida y saldo al cierre". LIBRE es lo que se puede usar HOY sin dejar
-      // ningún día del recorrido al descubierto: el MÍNIMO de la posición proyectada día a día
-      // (cobros y pagos cada uno en su fecha), referenciado de la fila de cierre de la escalera —
-      // el mínimo simple ($I), no el "peor caso" ($H) que descuenta cheques de cobertura incierta
-      // (rechazo del auditor de cierre: publicaba $7,4M donde el recorrido medido daba $29,7M;
-      // ese escenario vive en la fila de la escalera y su alerta, que es su casa).
-      valor: `=N(${ref.pisoSimple})`,
-      contexto: `="hoy · mínimo del mes el "&${dia(ref.pisoFecha)}`,
+      // ═══ LA REGLA QUE CERRÓ SIETE ITERACIONES (06/08): SE TIENE QUE PODER DERIVAR MIRANDO ═══
+      //
+      // La versión anterior era el piso de la escalera: el número correcto, pero salía de una fila
+      // de más abajo y el dueño no podía reconstruirlo desde las tarjetas — "la caja disponible es
+      // menor a la comprometida o sea q la libre no puede ser ese numero. no se entiende nada".
+      // Tenía razón en lo que importa: un titular que no se deriva de los titulares vecinos es un
+      // número mágico, aunque sea exacto.
+      //
+      // LIBRE = disponible − lo que vence ANTES de que entre plata nueva (7 días, vencido impago
+      // adentro) — la MISMA cifra que la tarjeta de al lado publica en su contexto ("próx. 7 días:
+      // $16,0M"): el lector hace 45,9 − 16,0 = 29,9 con los ojos. El resto del mes se paga con las
+      // cobranzas del mes, y esa historia la termina SALDO AL CIERRE. Hoy este número coincide con
+      // el piso de la escalera (no entra ninguna cobranza antes del jueves); cuando difieran, el
+      // piso VERDADERO —con cada cobro en su fecha— sigue en la fila de cierre de la escalera y su
+      // alerta, que jamás dejaron de calcularlo.
+      valor: `=N($A$3)-${venceEn7}`,
+      contexto: `="disponible − lo que vence al "&${dia('TODAY()+7')}`,
       especie: 'plata',
     },
     {
