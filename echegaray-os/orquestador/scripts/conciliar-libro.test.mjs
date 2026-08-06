@@ -9,8 +9,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   evaluarBorde, ventanasDeTramo, conciliar, libroEntra, libroSale, residuosDeclarados,
-  rubrosDelCuadro, leerLibro, FUENTE, TOLERANCIA,
+  rubrosDelCuadro, leerLibro, declaracionDeEndosos, FUENTE, TOLERANCIA,
 } from './conciliar-libro.mjs'
+import { ENDOSADO } from '../lib/libro-endosos.mjs'
 import { LIBRO as MAPA_LIBRO } from '../lib/libro-sumas.mjs'
 import { BORDES } from '../lib/caja-calendario.mjs'
 import { serialDe, isoDeSerial, eomonth } from '../lib/libro-extractores-fechas.mjs'
@@ -189,4 +190,20 @@ test('LA COLUMNA NUEVA AL FINAL NO CORRE NINGÚN ÍNDICE: el portón sigue leyen
   // Y `Cliente` es la ÚLTIMA: el día que alguien la mueva, el assert de arriba se pone rojo.
   assert.equal(MAPA_LIBRO.col.cliente, 'Q')
   assert.equal(fila.indexOf('LA ESTRELLA'), fila.length - 1)
+})
+
+test('LA EXCLUSIÓN POR ENDOSO NO MUEVE NINGÚN Δ — por eso el portón la NOMBRA con su monto', () => {
+  // Los dos echeq de LA ESTRELLA se excluyen del libro porque no van a acreditar nunca. Eran
+  // movimientos REAL, y la escalera sólo mira lo NO-REAL: el Δ de todos los tramos sigue en cero y
+  // este portón los daría por buenos sin enterarse. Son $20.000.000 que están en una pestaña del
+  // archivo y no están en el libro — si no se nombran, desaparecen.
+  const filas = [[], [], [],
+    ['recibido', '90020099', 'Santander', 'Alimentos Del Sur SA', '', 46234, 10000000, 'Depositado'],
+    ['recibido', '90020100', 'Santander', 'Alimentos Del Sur SA', '', 46249, 10000000, ENDOSADO],
+    ['recibido', '90020101', 'Santander', 'Alimentos Del Sur SA', '', 46265, 10000000, ENDOSADO],
+  ]
+  const d = declaracionDeEndosos(filas)
+  assert.equal(d.total, 20000000, 'el monto es lo que hace verificable la exclusión')
+  assert.deepEqual(d.valores.map((v) => v.numero), ['90020100', '90020101'])
+  assert.equal(declaracionDeEndosos([]).total, 0, 'sin endosos, la línea dice $0 y no desaparece')
 })
