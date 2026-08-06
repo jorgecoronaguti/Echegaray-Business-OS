@@ -32,6 +32,7 @@
 // dos vistas lo deciden distinto.
 
 import { rubroDeCaja, SIN_CLASIFICAR } from './rubro-caja.mjs'
+import { clienteCanonico } from './libro-clientes.mjs'
 
 /** Lo que la caja hace con el movimiento. `+1` entra, `-1` sale. Nunca cero: un movimiento neutro no
  *  es un movimiento — es dos, y contarlo como uno esconde uno de los dos lados. */
@@ -117,6 +118,13 @@ export function movimiento(m = {}) {
     cuit: soloDigitos(m.cuit) || '',
     comprobante: norm(m.comprobante),
     obra: norm(m.obra),
+    // ═══ EL CLIENTE SE CANONIZA ACÁ Y NO EN CADA EXTRACTOR ═══
+    //
+    // Cada fuente lo nombra distinto ("LA ESTRELLA" en Compras, "LA ESTRELLA /ALIMENTOS DEL SUR SAS"
+    // en Cobranzas) y son SIETE extractores. Con la traducción en cada uno, el que se agregue mañana
+    // se olvida de llamarla y sus filas caen en el residuo sin que nada avise. Acá no se puede olvidar:
+    // el que no manda `cliente` obtiene el vacío, que es la respuesta correcta para el que no lo tiene.
+    cliente: clienteCanonico(m.cliente),
     origen: Object.freeze({ pestana: norm(m.origen.pestana), fila: m.origen.fila ?? null }),
     clave: claveDe({ ...m, importe, instrumento }),
   })

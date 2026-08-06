@@ -74,13 +74,15 @@ test('la partición detecta un hueco: si un día se cae, el test se pone rojo', 
   assert.equal(r.huecos.length, 1)
 })
 
+/** El tronco: ni las sub-líneas de rubro, ni la sección por cliente que cuelga del final. */
+const troncoDe = (tipo) => conceptosDe(tipo).filter((c) => !c.sub && !c.cli && !c.tituloSeccion)
+
 test('el TRONCO está en el orden que pidió el dueño, y el saldo final en la misma fila en las dos vistas', () => {
-  const tronco = conceptosDe('semana').filter((c) => !c.sub).map((c) => c.rotulo)
-  assert.deepEqual(tronco, [
+  assert.deepEqual(troncoDe('semana').map((c) => c.rotulo), [
     'Saldo inicial', 'Ingresos reales', 'Ingresos proyectados', 'Egresos reales', 'Egresos proyectados',
     'Resultado', 'Saldo final',
   ])
-  assert.deepEqual(conceptosDe('mes').filter((c) => !c.sub).map((c) => c.rotulo).slice(7), [
+  assert.deepEqual(troncoDe('mes').map((c) => c.rotulo).slice(7), [
     'Variación vs presupuesto', 'Variación vs mes anterior',
   ])
   assert.equal(FILA.cabecera, 7)
@@ -148,7 +150,10 @@ test('el footprint declarado es el que la matriz ocupa de verdad: ni una columna
     // amputaría los gráficos recién dibujados.
     assert.equal(fp.filas, filaGraficos(tipo) + GRAFICO.filas + GRAFICO.margen)
     assert.ok(fp.filas > filaGraficos(tipo) + GRAFICO.filas, `${tipo}: el gráfico termina fuera de la hoja`)
-    assert.ok(fp.filas <= 100, `${tipo}: 220 filas para un cuadro de 45 es lo que se vino a sacar`)
+    // El techo subió de 100 a 130 el 06/08 y hay que decir por qué: la sección POR CLIENTE agrega 36
+    // filas (7 bloques × 5, más el título) y el semanal pasó de 43 a 79 filas de cuadro. Sigue siendo
+    // un techo y no un cheque en blanco: lo que se vino a sacar eran 220 filas para un cuadro de 45.
+    assert.ok(fp.filas <= 130, `${tipo}: ${fp.filas} filas — el cuadro está creciendo sin control`)
   }
   assert.equal(COL.tiempo0, 1)
   assert.equal(GRAFICO.col0, COL.tiempo0, 'los gráficos se anclan en B: contra la columna A no respiran')

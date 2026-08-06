@@ -245,6 +245,24 @@ function formatoCuerpo({ push, celdas, reglaFina, rango, meta, col0, colUltima }
       { textFormat: txt(TENUE, { size: 9 }) })
   }
 
+  // ── La sección POR CLIENTE: misma sangría y misma tipografía que la apertura por rubro ───────────
+  //
+  // A propósito: son la misma clase de fila —el detalle que respalda un subtotal— y darles una piel
+  // propia las haría leer como otra tabla pegada abajo. Lo único distinto es el TÍTULO de la sección
+  // (gris, chico, con una regla fina arriba) y la cabecera de cada cliente, que pesa como un subtotal
+  // porque ES un subtotal: el neto de ese cliente.
+  if (meta.clientes) {
+    celdas(meta.clientes.titulo, 0, meta.footprint.cols, 'userEnteredFormat.textFormat',
+      { textFormat: txt(MUTED, { bold: true, size: 9 }) })
+    reglaFina(meta.clientes.titulo, 'top')
+    for (const b of meta.clientes.bloques) {
+      celdas(b.cabecera, 0, meta.footprint.cols, 'userEnteredFormat.textFormat',
+        { textFormat: txt(INK, { bold: true, size: 10 }) })
+      push(rango(b.primera - 1, b.ultima, 0, meta.footprint.cols), 'userEnteredFormat.textFormat',
+        { textFormat: txt(TENUE, { size: 9 }) })
+    }
+  }
+
   // Las dos filas que se leen primero. El saldo final lleva el único acento del cuadro, y una regla
   // fina arriba que lo separa del resultado: es la línea de cierre, no una fila más de la lista.
   celdas(f.resultado, 0, meta.footprint.cols, 'userEnteredFormat.textFormat', { textFormat: txt(INK, { bold: true, size: 10 }) })

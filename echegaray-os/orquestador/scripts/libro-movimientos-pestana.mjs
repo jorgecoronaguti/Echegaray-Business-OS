@@ -38,8 +38,11 @@ const DRY = process.argv.includes('--dry')
 /** El serial de HOY en el huso del archivo (es-AR): el corte para vencidos. */
 const hoySerial = () => Math.floor((Date.now() - Date.UTC(1899, 11, 30)) / 86400000)
 
+// `Cliente` va DESPUÉS de `Clave` y no al lado de `Obra`, que es donde se leería mejor: el portón
+// (conciliar-libro.mjs) lee esta pestaña por índice —origen es el 13— y una columna insertada en el
+// medio le corre tres campos SIN darle un error. Seguiría conciliando, contra los datos equivocados.
 const ENCABEZADO = ['Fecha', 'Signo', 'Importe', 'Moneda', 'Concepto', 'Rubro', 'Actividad', 'Estado',
-  'Instrumento', 'Contraparte', 'CUIT', 'Comprobante', 'Obra', 'Origen', 'Fila', 'Clave']
+  'Instrumento', 'Contraparte', 'CUIT', 'Comprobante', 'Obra', 'Origen', 'Fila', 'Clave', 'Cliente']
 
 /** Los rangos con nombre de la nómina. El cash flow lee EXACTAMENTE éstos: una sola definición. */
 const NOMBRES_NOMINA = [
@@ -152,7 +155,8 @@ async function escribirYVerificar(google, consolidado) {
     .slice()
     .sort((a, b) => a.fecha - b.fecha)
     .map((m) => [m.fecha, m.signo, m.importe, m.moneda, m.concepto, m.rubro, m.actividad, m.estado,
-      m.instrumento, m.contraparte, m.cuit, m.comprobante, m.obra, m.origen.pestana, m.origen.fila ?? '', m.clave])]
+      m.instrumento, m.contraparte, m.cuit, m.comprobante, m.obra, m.origen.pestana, m.origen.fila ?? '', m.clave,
+      m.cliente])]
 
   let hojas = await google.getSheetMeta(ID)
   let hoja = hojas.find((h) => h.title === PESTAÑA)

@@ -255,11 +255,16 @@ test('sin los rangos con nombre de CAJA, el ancla va VACÍA en vez de apuntar a 
   assert.match(en(filas, meta.hero.valor, 1), /Falta el saldo declarado/)
 })
 
-test('después del saldo final no hay NADA: el dueño pidió no agregar información', () => {
+test('después de la sección POR CLIENTE no hay NADA: nada se cuela sin que el dueño lo pida', () => {
   const { filas, meta } = armar()
-  assert.equal(meta.filaFin, meta.fila.saldoFinal)
-  assert.equal(filas.length, meta.fila.saldoFinal)
-  // 43 filas de cuadro: 7 del tronco + la apertura por rubro de las cuatro medidas. La zona de gráficos
-  // está en el footprint pero no lleva contenido escrito.
-  assert.equal(conceptosDe('semana').length, 43)
+  // EL CONTRATO CAMBIÓ EL 06/08 y por un pedido explícito ("discriminame a cada uno de los clientes
+  // con su monto de ingresos y de egresos reales y proyectados"), no por goteo. La regla sigue siendo
+  // la misma: la última fila escrita es la última fila que el dueño pidió, y después no va nada.
+  const ultima = meta.clientes.bloques[meta.clientes.bloques.length - 1].ultima
+  assert.equal(meta.filaFin, ultima)
+  assert.equal(filas.length, ultima)
+  assert.ok(meta.clientes.titulo > meta.fila.saldoFinal, 'la sección va DESPUÉS del saldo final')
+  // 79 filas de cuadro: 7 del tronco + 36 de la apertura por rubro + 36 de la sección POR CLIENTE
+  // (1 título + 7 bloques de 5). La zona de gráficos está en el footprint pero no lleva contenido.
+  assert.equal(conceptosDe('semana').length, 79)
 })

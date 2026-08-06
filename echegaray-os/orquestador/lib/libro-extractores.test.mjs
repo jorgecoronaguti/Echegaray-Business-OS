@@ -15,10 +15,14 @@ import { serialDe, isoDeSerial } from './libro-extractores-fechas.mjs'
 // 'Estado' es la columna INPUT (X, contrato del cargador: Pagado/Pendiente); 'Estado pago' es el
 // SEMÁFORO derivado ("✅ Pagado" / "🟡 Por vencer"). El extractor tiene que decidir por la primera:
 // contra el semáforo, /pagado/ no matcheaba nunca y toda compra pagada quedaba PROYECTADO.
-// 'Monto Pagado' va ÚLTIMA a propósito: las filas de abajo tienen 9 celdas y la dejan vacía, que es
-// el caso normal (nada pagado a cuenta). Las pruebas del saldo parcial la completan explícitamente.
+// 'Cliente / Asignación' (la J del archivo) es la que dice de qué CLIENTE es el egreso; 'Detalles /
+// Obra' (la K) es texto libre —"combustible", "Cuota 18", "46381"— y no sirve para eso.
+// 'Monto Pagado' y 'Cliente / Asignación' van ÚLTIMAS a propósito: las filas de abajo tienen 9 celdas
+// y las dejan vacías, que es el caso normal (nada pagado a cuenta, sin cliente asignado). Las pruebas
+// del saldo parcial y las del cliente las completan explícitamente.
 const ENC_COMPRAS = ['Proveedor', 'CUIT (OS)', 'N° Comprobante', 'Total', 'Estado',
-  'Tipo pago', 'Rubro de caja', 'Fecha de caja', 'Detalles / Obra', 'Estado pago', 'Monto Pagado']
+  'Tipo pago', 'Rubro de caja', 'Fecha de caja', 'Detalles / Obra', 'Estado pago', 'Monto Pagado',
+  'Cliente / Asignación']
 const compras = (extra = []) => [[], [], ENC_COMPRAS,
   ['Mariana SA', '30-71037035-0', '0002-00000683', 100000, 'Pagado', 'Transferencia', 'Materiales Civil', 46000, 'ARCOR'],
   ['Nota SA', '30-71037035-0', '0002-00000683', -21359, 'Pagado', 'Transferencia', 'Materiales Civil', 46001, ''],
@@ -324,4 +328,37 @@ test('CARTERA: el 514 que me dieron no es el 514 que libré — el signo está e
     return filas
   })(), { fila0: 20 })[0]
   assert.notEqual(recibido.clave, emitido.clave, 'sin el signo, uno de los dos desaparece del libro')
+})
+
+test('COMPRAS: el CLIENTE del egreso sale de la J y viene canonizado, no de "Detalles / Obra"', () => {
+  // EL DEFECTO QUE ESTO ATRAPA. La columna `obra` del libro sale de "Detalles / Obra" (la K), que es
+  // texto libre: su inventario vivo tiene 130 valores del tipo "combustible", "Cuota 18" y "46381".
+  // Si la sección POR CLIENTE del cash flow colgara de ahí, mostraría "combustible" como cliente y a
+  // LA ESTRELLA en ningún lado. El cliente es la J, y llega al libro con el nombre canónico.
+  const ms = deCompras(compras([
+    // K dice "Galpon 9" y J dice "LA ESTRELLA": las dos cosas se guardan, cada una en su campo.
+    ['Alumetal', '30-11111111-1', '0007-00000007', 250000, 'Pendiente', 'Transferencia',
+      'Materiales Civil', 46300, 'Galpon 9', '', '', 'LA ESTRELLA'],
+    // Una asignación INTERNA no es un cliente: cae en el residuo, no le cuelga gasto a nadie.
+    ['Papelera', '30-22222222-2', '0008-00000008', 30000, 'Pendiente', 'Transferencia',
+      'Estructura', 46300, 'oficina', '', '', 'Administracion'],
+  ]), 46000)
+  const conCliente = ms.find((m) => m.concepto === 'Alumetal')
+  assert.equal(conCliente.cliente, 'LA ESTRELLA')
+  assert.equal(conCliente.obra, 'Galpon 9', 'la K se sigue guardando: es el detalle, no el cliente')
+  assert.equal(ms.find((m) => m.concepto === 'Papelera').cliente, '', 'Administracion es un centro de costo')
+  // Y una fila sin la J cargada —305 de las 996 del archivo— no inventa un cliente.
+  assert.equal(ms.find((m) => m.concepto === 'Prov SRL').cliente, '')
+})
+
+test('COBRANZAS: el cliente del cobro es el mismo canónico que el del egreso', () => {
+  // Es la condición de la que depende la sección entera: si el ingreso dijera "LA ESTRELLA /ALIMENTOS
+  // DEL SUR SAS" y el egreso "LA ESTRELLA", serían dos filas distintas del cuadro para un solo cliente.
+  const ms = deCobranzas([[], [], [], ENC_COB,
+    ['', 'LA ESTRELLA /ALIMENTOS DEL SUR SAS', 'Cobrado', 5000000, 46000, 46000, 'Transferencia', ''],
+    ['', 'IMOTOR/San Francisco/JAVI SANCHEZ', 'Pendiente', 3000000, 46300, 46300, 'Transferencia', ''],
+  ], 46100)
+  assert.equal(ms[0].cliente, 'LA ESTRELLA')
+  assert.equal(ms[0].contraparte, 'LA ESTRELLA /ALIMENTOS DEL SUR SAS', 'el texto crudo no se pierde al canonizar')
+  assert.equal(ms[1].cliente, 'San Francisco')
 })

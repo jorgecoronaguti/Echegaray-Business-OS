@@ -36,8 +36,23 @@
 //                       libro sólo como (a) verificación de estado —un cheque debitado, un pago que
 //                       pasó a real— y (b) los cargos sin factura (comisiones, impuesto al cheque)
 //                       que ninguna otra pestaña registra. Duplicar el resto inventó $9,9M una vez.
+//
+// ═══ QUÉ FUENTES SABEN DE QUÉ CLIENTE ES CADA MOVIMIENTO (06/08/2026) ═══
+//
+// Sólo TRES: Compras (columna J, "Cliente / Asignación"), Cobranzas (G, "Obra / Cliente") y
+// `_CHEQUES_RAW` (K, "Obra"). Las demás NO lo saben y no se les inventa:
+//
+// · Cheques Emitidos tiene "Unidad de Negocio", que dice Civil (101 filas) o Mantenimiento (4) — es
+//   la línea de negocio, no el cliente. Mapearla sería fabricar una asignación que nadie hizo.
+// · Tarjeta, banco, IVA/IIBB y la nómina son gasto de estructura o de empresa: no tienen cliente
+//   porque no lo tienen, y forzarlos a uno repartiría a mano un costo indirecto.
+//
+// Todo lo que queda sin cliente cae en el residuo VISIBLE de la vista ("Otros y sin asignar"), que se
+// despeja por diferencia contra el subtotal. Son $179,3M reales y $187,9M proyectados medidos el
+// 06/08: es la cifra más grande del bloque, y esconderla sería el peor resultado de todos.
 
 import { movimiento, ENTRA, SALE, estadoContraCorte } from './libro-movimientos.mjs'
+import { clienteCanonico } from './libro-clientes.mjs'
 import { instrumentoDePago, estadoDeEgreso } from './caja-canales.mjs'
 import { rubroDeCaja, SIN_CLASIFICAR } from './rubro-caja.mjs'
 import { resolverColumnas } from './compras-columnas.mjs'
@@ -145,6 +160,13 @@ export function deCompras(filas = [], corte = null, { aviso = (m) => console.war
     // PROYECTADO. La X es la columna que escribe el cargador con el contrato Pagado/Pendiente.
     importe: 'Total', estado: 'Estado', tipoPago: 'Tipo pago', montoPagado: 'Monto Pagado',
     rubro: 'Rubro de caja', fechaCaja: 'Fecha de caja', obra: 'Detalles / Obra',
+    // ═══ EL CLIENTE DEL EGRESO ES LA J, NO LA K ═══
+    //
+    // La K ("Detalles / Obra") es texto libre y ya alimenta la columna `obra` del libro: su inventario
+    // vivo tiene 130 valores distintos —"combustible", "Cuota 18", "Junio", "46381", "Emiliano"— y
+    // ninguno es un cliente. La J ("Cliente / Asignación") sí: 21 valores, de los cuales seis son los
+    // clientes reales y el resto son centros de costo internos que `clienteCanonico` descarta.
+    cliente: 'Cliente / Asignación',
   }, 'Compras')
   const out = []
   for (let i = 3; i < filas.length; i++) {
@@ -188,6 +210,7 @@ export function deCompras(filas = [], corte = null, { aviso = (m) => console.war
       comprobante: txt(f[c.comprobante]),
       rubro: rubro || rubroDeCaja({}) || SIN_CLASIFICAR,
       obra: txt(f[c.obra]),
+      cliente: txt(f[c.cliente]),
       estado: estadoContraCorte(estadoBase, fecha, corte),
       instrumento,
       origen: { pestana: 'Compras', fila: i + 1 },
@@ -261,6 +284,10 @@ export function deCobranzas(filas = [], corte = null, { colValorBanco = null } =
       importe: Math.abs(importe),
       concepto: txt(f[c.cliente]),
       contraparte: txt(f[c.cliente]),
+      // La misma celda es la contraparte Y el cliente: en un cobro son la misma persona. Se manda a
+      // las dos porque `contraparte` guarda el texto crudo (el que se lee en el detalle) y `cliente`
+      // guarda el canónico (el que agrupa) — y el crudo no se pierde al canonizar.
+      cliente: txt(f[c.cliente]),
       rubro: 'Cobranzas',
       estado: estadoContraCorte(cobrado ? 'REAL' : 'PROYECTADO', fecha, corte),
       instrumento: /echeq/.test(forma) ? 'echeq' : /cheque/.test(forma) ? 'cheque'
@@ -490,6 +517,11 @@ export function deCartera(filas = [], { fila0 = FILA0_RAW } = {}) {
       contraparte: txt(f[i(COL_RAW.librador)]),
       cuit: txt(f[i(COL_RAW.libradorCuit)]),
       obra: txt(f[i(COL_RAW.obra)]),
+      // La columna "Obra" de la réplica es donde el propio archivo asigna el valor a un cliente
+      // ("MESSINA"); el librador es el respaldo para cuando esa celda viene vacía. Se prueba la
+      // asignación PRIMERO porque es una decisión del dueño: la razón social del librador puede no
+      // decir a qué cliente pertenece el cheque ("Alimentos Del Sur SA" por LA ESTRELLA).
+      cliente: clienteCanonico(txt(f[i(COL_RAW.obra)])) || txt(f[i(COL_RAW.librador)]),
       rubro: 'Valores en cartera',
       estado: 'COMPROMETIDO',
       instrumento: /echeq/i.test(tipo) ? 'echeq' : 'cheque',

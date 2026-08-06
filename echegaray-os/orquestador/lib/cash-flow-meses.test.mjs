@@ -30,8 +30,9 @@ test('doce columnas de mes más TOTAL, y las filas de concepto en orden', () => 
   assert.deepEqual(
     conceptosDe('mes').map((c) => en(filas, meta.fila[c.clave], 0)),
     conceptosDe('mes').map((c) => c.rotulo))
-  // 45 filas: los 9 conceptos del tronco más la apertura por rubro de las cuatro medidas.
-  assert.equal(conceptosDe('mes').length, 45)
+  // 81 filas: los 9 conceptos del tronco, la apertura por rubro de las cuatro medidas (36) y la
+  // sección POR CLIENTE (1 título + 7 bloques de 5 = 36).
+  assert.equal(conceptosDe('mes').length, 81)
   assert.deepEqual(meta.footprint, footprintDe('mes', 2026))
 })
 
@@ -184,10 +185,15 @@ test('el patrón de la pestaña se cumple, salvo la única excepción declarada:
   assert.deepEqual(malos.map((m) => m.regla), ['sin-secciones'], JSON.stringify(malos))
 })
 
-test('después de la última variación no hay NADA: el costo financiero vive en Impuestos y Financieros', () => {
+test('después de la sección POR CLIENTE no hay NADA: el costo financiero vive en Impuestos y Financieros', () => {
   const { filas, meta } = armar()
-  assert.equal(meta.filaFin, meta.fila.variacionMesAnterior)
-  assert.equal(filas.length, meta.fila.variacionMesAnterior)
+  // EL CONTRATO CAMBIÓ EL 06/08 y por un pedido explícito, no por goteo: la última fila era
+  // "Variación vs mes anterior" y ahora es la última del bloque residual de la sección POR CLIENTE.
+  // Lo que NO cambió es la regla: después de eso no va nada más.
+  const ultima = meta.clientes.bloques[meta.clientes.bloques.length - 1].ultima
+  assert.equal(meta.filaFin, ultima)
+  assert.equal(filas.length, ultima)
+  assert.ok(meta.clientes.titulo > meta.fila.variacionMesAnterior, 'la sección va DESPUÉS del tronco entero')
   const texto = filas.flat().map((c) => String(c ?? '')).join(' ')
   assert.ok(!/descubierto|impuesto al cheque|comisiones/i.test(texto), 'un costo modelado no puede vivir adentro del cuadro')
 })

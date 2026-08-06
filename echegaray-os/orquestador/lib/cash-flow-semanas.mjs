@@ -55,6 +55,7 @@ import {
   ventanas, celda, rangoFila, serialDeFecha,
 } from './cash-flow-matriz.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
+import { bloquesDeCliente, filaTituloPorCliente, formulasPorCliente } from './cash-flow-por-cliente.mjs'
 import { expresionInicioCorrido } from './cash-flow-ancla-saldo.mjs'
 
 /** El nombre de la pestaña. Único lugar donde se escribe. */
@@ -99,6 +100,7 @@ export function grillaSemanal({ hoy = new Date(), anio = null, refs = {}, gid = 
     cab: { fila: FILA.cabecera, col0: COL.tiempo0, n, colTotal: cT },
     fila, hero: { rotulo: FILA.heroRotulo, valor: FILA.heroValor, slots: SLOTS_HERO },
     bloques: bloquesDeMedida(TIPO),
+    clientes: { titulo: filaTituloPorCliente(TIPO), bloques: bloquesDeCliente(TIPO) },
     grafico: { fila: filaGraficos(TIPO), col: COL.tiempo0 },
     ventanas: semanas,
   }
@@ -196,6 +198,10 @@ function columnaDeSemana(poner, meta, j, { refSaldo, refFecha }) {
   // sin plata", que es una afirmación que nadie hizo. Los flujos de esa semana sí se ven — son historia.
   poner(f.saldoFinal, col,
     `=IF(N(${celda(col, f.saldoInicial)})=0;"";N(${celda(col, f.saldoInicial)})+N(${celda(col, f.resultado)}))`)
+  // La sección POR CLIENTE va DESPUÉS del saldo: cuelga de los subtotales de arriba y su residuo los
+  // resta. Escribirla antes no rompería nada —Sheets resuelve el orden solo— pero acá el orden de
+  // escritura es el orden de lectura, y así el que audita sigue la dependencia de arriba hacia abajo.
+  for (const linea of formulasPorCliente(meta.tipo, { col, desde, hasta })) poner(linea.fila, col, linea.formula)
 }
 
 /**
