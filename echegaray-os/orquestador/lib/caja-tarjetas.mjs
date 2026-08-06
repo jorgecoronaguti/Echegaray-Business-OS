@@ -135,23 +135,20 @@ export function tarjetas(ref) {
     {
       clave: 'libre',
       rotulo: 'LIBRE DISPONIBILIDAD',
-      // ═══ LA REGLA QUE CERRÓ SIETE ITERACIONES (06/08): SE TIENE QUE PODER DERIVAR MIRANDO ═══
+      // ═══ LA DEFINICIÓN ES DEL DUEÑO, TEXTUAL (06/08, la que cerró todas las iteraciones) ═══
       //
-      // La versión anterior era el piso de la escalera: el número correcto, pero salía de una fila
-      // de más abajo y el dueño no podía reconstruirlo desde las tarjetas — "la caja disponible es
-      // menor a la comprometida o sea q la libre no puede ser ese numero. no se entiende nada".
-      // Tenía razón en lo que importa: un titular que no se deriva de los titulares vecinos es un
-      // número mágico, aunque sea exacto.
+      // "disponible es toda la plata q hay, comprometida es lo q hay q pagar el resto de
+      // compromisos del mes, POR ENDE surge libre disponibilidad". La resta de las dos tarjetas de
+      // al lado, por referencia — el lector la verifica con los ojos, que fue la regla que ninguna
+      // versión anterior cumplía del todo.
       //
-      // LIBRE = disponible − lo que vence ANTES de que entre plata nueva (7 días, vencido impago
-      // adentro) — la MISMA cifra que la tarjeta de al lado publica en su contexto ("próx. 7 días:
-      // $16,0M"): el lector hace 45,9 − 16,0 = 29,9 con los ojos. El resto del mes se paga con las
-      // cobranzas del mes, y esa historia la termina SALDO AL CIERRE. Hoy este número coincide con
-      // el piso de la escalera (no entra ninguna cobranza antes del jueves); cuando difieran, el
-      // piso VERDADERO —con cada cobro en su fecha— sigue en la fila de cierre de la escalera y su
-      // alerta, que jamás dejaron de calcularlo.
-      valor: `=N($A$3)-${venceEn7}`,
-      contexto: `="disponible − lo que vence al "&${dia('TODAY()+7')}`,
+      // PUEDE DAR NEGATIVO y no es un defecto: significa que el resto del mes no se cubre con la
+      // caja de hoy sino con las cobranzas que entran en el mes — y el contexto lo dice en ese
+      // caso, para que el paréntesis rojo no se lea como quiebra. La historia la termina SALDO AL
+      // CIERRE, que suma esas cobranzas. El mínimo día-a-día del recorrido (el piso) sigue vivo en
+      // la fila de cierre de la escalera y su alerta.
+      valor: '=N($A$3)-N($C$3)',
+      contexto: '=IF(N($A$3)-N($C$3)>=0;"disponible − comprometida del mes";"se cubre con lo cobrado en el mes")',
       especie: 'plata',
     },
     {

@@ -59,15 +59,16 @@ test('COMPROMETIDA = todo lo que hay que pagar en el mes − lo ya pagado, con l
   assert.ok(!c.valor.includes('"REAL"'), 'lo REAL ya salió de la cuenta: no es obligación')
 })
 
-test('LIBRE se DERIVA de las tarjetas vecinas: disponible − lo que vence en 7 días', () => {
-  // La regla que cerró siete iteraciones: un titular que no se reconstruye desde los titulares
-  // vecinos es un número mágico. La resta usa la MISMA suma de 7 días que la comprometida publica
-  // en su contexto — el lector la verifica con los ojos.
+test('LIBRE es la resta de sus dos vecinas — la definición textual del dueño', () => {
+  // "disponible es toda la plata q hay, comprometida es lo q hay q pagar el resto del mes, POR
+  // ENDE surge libre disponibilidad". Por referencia a A3 y C3: se verifica con los ojos. Y cuando
+  // da negativo, el contexto explica la cobertura (cobranzas del mes) en vez de dejar un paréntesis
+  // rojo sin historia.
   const l = de('libre')
   assert.equal(l.rotulo, 'LIBRE DISPONIBILIDAD')
-  assert.equal(l.valor, `=N($A$3)-${terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'TODAY()+7', medida: 'magnitud' })}`)
-  assert.match(l.contexto, /disponible − lo que vence/, 'la cuenta queda escrita para el que mira')
-  assert.ok(l.valor.startsWith('=N($A$3)-'), 'arranca en la tarjeta DISPONIBLE (A3), no en una fila de la escalera')
+  assert.equal(l.valor, '=N($A$3)-N($C$3)')
+  assert.match(l.contexto, /disponible − comprometida del mes/)
+  assert.match(l.contexto, /se cubre con lo cobrado en el mes/, 'el caso negativo lleva su explicación')
 })
 
 test('INVERTIDO cita las filas Balanz de la grilla — una sola fuente, nunca una segunda posición', () => {
