@@ -175,6 +175,13 @@ export function pielBloques({ sheetId, meta, tipo = 'dia', filasHoja = 0, colsHo
  * @param {number} [p.desde] índice donde se insertan (0 = arriba de todo)
  */
 export function reglasCondicionales({ sheetId, meta, refMinima = null }) {
+  // ═══ EL RANGO CON NOMBRE VA ENVUELTO EN INDIRECT (05/08, pagado en la primera aplicación) ═══
+  //
+  // La API rechaza `N(CAJA_MINIMA)` dentro de una CUSTOM_FORMULA de formato condicional con 400
+  // INVALID_ARGUMENT: las fórmulas de formato condicional NO aceptan rangos con nombre — limitación
+  // de Sheets, no de este código. `INDIRECT("nombre")` sí resuelve, y sigue el nombre si la celda se
+  // mueve, que es la razón por la que acá no va una dirección fija.
+  const porNombre = refMinima ? `INDIRECT("${refMinima}")` : null
   const bloques = meta.dias ?? meta.meses ?? []
   const req = []
   const celdaB = (f) => ({ sheetId, startRowIndex: f - 1, endRowIndex: f, startColumnIndex: 1, endColumnIndex: 2 })
@@ -192,14 +199,14 @@ export function reglasCondicionales({ sheetId, meta, refMinima = null }) {
     // El orden importa: la primera regla que da verdadera gana. El déficit va primero porque un saldo
     // negativo también está por debajo del piso, y lo que hay que ver es que está bajo cero.
     req.push(rule(b.filaCierre, `=N(${c})<0`, DEFICIT))
-    if (refMinima) req.push(rule(b.filaCierre, `=AND(N(${c})>=0;N(${c})<N(${refMinima}))`, AVISO))
+    if (refMinima) req.push(rule(b.filaCierre, `=AND(N(${c})>=0;N(${c})<N(${porNombre}))`, AVISO))
   }
   // El piso del período, en el hero: si el mínimo de los catorce días cae bajo cero, es lo primero que
   // tiene que gritar la pestaña.
   if (meta.piso?.minimo) {
     const c = `$B$${meta.piso.minimo}`
     req.push(rule(meta.piso.minimo, `=N(${c})<0`, DEFICIT))
-    if (refMinima) req.push(rule(meta.piso.minimo, `=AND(N(${c})>=0;N(${c})<N(${refMinima}))`, AVISO))
+    if (refMinima) req.push(rule(meta.piso.minimo, `=AND(N(${c})>=0;N(${c})<N(${porNombre}))`, AVISO))
   }
   if (meta.piso?.colchon) req.push(rule(meta.piso.colchon, `=N($B$${meta.piso.colchon})<0`, DEFICIT))
   return req
