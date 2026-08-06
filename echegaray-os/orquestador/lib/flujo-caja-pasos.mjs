@@ -143,7 +143,8 @@ export const PASOS = [
   // "Cheques Recibidos" que la leen por fórmula**. Una fuente que se congela sin gritar — el mismo
   // modo de falla del espejo de JORNALES, que mostró una quincena entera con valores viejos.
   //
-  // Va ANTES de cheques-recibidos-pestana, que es quien la consume.
+  // Va ANTES de cheques-recibidos-tablero y del registro de esa pestaña, que la consumen los dos: la
+  // cabecera por fórmula y el registro por una QUERY sobre esta misma réplica.
   ['cheques-raw-pestana.mjs', '_CHEQUES_RAW — la réplica de la cartera de cheques que lee Cheques Recibidos', ['_CHEQUES_RAW']],
   // ═══ QUIÉN ES EL DUEÑO DE "Cheques Recibidos" — DECIDIDO (01/08) ═══
   //
@@ -158,8 +159,17 @@ export const PASOS = [
   // como unidad, que es lo que hace que el total signifique algo, y además entra la orden de pago de
   // Messina, que no tiene número de operación y en el registro viejo no tenía dónde ir.
   //
-  // `--pestana` le dice que escriba el real: sabe hacerlo desde el 30/07 y el diseño ya está aprobado.
-  ['cheques-recibidos-tablero.mjs', 'Cheques Recibidos — la cartera con el cheque como unidad', ['Cheques Recibidos'], ['--pestana', 'Cheques Recibidos']],
+  // ═══ EL DUEÑO ESTABA DECLARADO Y EL ARCHIVO NO EXISTÍA (06/08) ═══
+  //
+  // Esta línea apuntaba desde el 01/08 a `cheques-recibidos-tablero.mjs`, que NO estaba en el repo:
+  // el paso fallaba en cada corrida del pipeline y la pestaña envejecía sin que nada avisara. Los dos
+  // generadores viejos —`cheques-recibidos-pestana.mjs` y `cheques-recibidos-cobro.mjs`— se
+  // retiraron con este cambio: describían un registro por OPERACIÓN que ya no existe. Hoy el
+  // registro es el derrame de una QUERY sobre `_CHEQUES_RAW` y este paso escribe SÓLO la cabecera
+  // (filas 1-26). El test de este archivo comprueba que cada paso declarado exista de verdad.
+  //
+  // `--pestana` le dice a qué destino escribir: el real o una copia de prueba.
+  ['cheques-recibidos-tablero.mjs', 'Cheques Recibidos — la cabecera de la cartera (el registro es una QUERY)', ['Cheques Recibidos'], ['--pestana', 'Cheques Recibidos']],
   ['cheques-emitidos-tablero.mjs', 'Cheques Emitidos — de lo firmado, cuánto no salió todavía y cuándo sale', ['Cheques Emitidos']],
   // Va última: ubica las líneas del Cash Flow por rótulo, así que necesita el cuadro ya escrito.
   // 'Caja' con minúsculas era el nombre viejo de la pestaña: quedó declarado y el censo lo reportaba
