@@ -41,7 +41,7 @@
 // peso quedaría dos veces en el total de disponibilidades. Por eso cada cobro cae en EXACTAMENTE UN
 // canal según su forma de cobro, y los tres canales son una PARTICIÓN sin intersección:
 //
-//     Echeq       → "Valores a depositar" (cartera)        · excluido acá
+//     Echeq/Cheque→ "Valores a depositar" (cartera)        · excluido acá
 //     Efectivo    → "Movimientos de efectivo posteriores al arqueo" (caja física, T06) · excluido acá
 //     el resto    → esta línea (transferencia, depósito, débito: pegan al banco)
 //
@@ -133,6 +133,12 @@ export function formulaCobrosPosteriores(corte, c = COB) {
   return `SUMIFS(${rango(c.hoja, c.total, c.desde)};`
     + `${rango(c.hoja, c.estado, c.desde)};"Cobrado";`
     + `${rango(c.hoja, c.forma, c.desde)};"<>Echeq";`
+    // UN CHEQUE FÍSICO DE TERCEROS TAMPOCO ESTÁ EN EL BANCO (06/08). El e-cheque se excluía y el
+    // cheque en papel no, aunque los dos son lo mismo para la caja: un valor en la mano, que vive en
+    // "Valores a depositar" hasta que se acredita. Sumarlo acá lo pondría en la cartera Y en el
+    // banco. Hoy vale $0 —las 89 cobranzas del archivo usan Transferencia, Efectivo o Echeq, ninguna
+    // dice Cheque— y por eso se arregla ahora: la primera que entre no va a avisar de nada.
+    + `${rango(c.hoja, c.forma, c.desde)};"<>Cheque";`
     // El efectivo va a la caja física (T06), no al banco: se excluye para que la partición por canal
     // no deje ningún cobro contado dos veces. Ver el encabezado de este archivo.
     + `${rango(c.hoja, c.forma, c.desde)};"<>Efectivo";`

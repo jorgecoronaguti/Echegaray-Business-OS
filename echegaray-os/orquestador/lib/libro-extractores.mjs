@@ -38,6 +38,7 @@
 //                       que ninguna otra pestaña registra. Duplicar el resto inventó $9,9M una vez.
 
 import { movimiento, ENTRA, SALE, estadoContraCorte } from './libro-movimientos.mjs'
+import { instrumentoDePago, estadoDeEgreso } from './caja-canales.mjs'
 import { rubroDeCaja, SIN_CLASIFICAR } from './rubro-caja.mjs'
 import { resolverColumnas } from './compras-columnas.mjs'
 import { INSTRUMENTOS, MARCA_ENDOSADO, COL_VALOR_BANCO, colMesDelAnio } from './cash-flow-lineas.mjs'
@@ -118,13 +119,19 @@ export function deCompras(filas = [], corte = null) {
     // CUADRO del cash flow lo resuelve poniendo esa línea en un grupo con `signo: 0` (memo); el libro,
     // que cuenta cada movimiento UNA vez, lo resuelve no emitiéndola. Ver libro-extractores-nomina.mjs.
     if (rubro === RUBRO_JORNALES || rubro === RUBRO_ADMINISTRACION) continue
-    const instrumento = /echeq/.test(tipo) ? 'echeq'
-      : /cheque/.test(tipo) ? 'cheque'
-        : /transfer/.test(tipo) ? 'transferencia'
-          : /efectivo/.test(tipo) ? 'efectivo'
-            : /tarjeta/.test(tipo) ? 'tarjeta'
-              : /d[eé]bito/.test(tipo) ? 'debito' : 'desconocido'
-    const estadoBase = pagado ? 'REAL' : 'PROYECTADO'
+    const instrumento = instrumentoDePago(tipo)
+    // ═══ "PAGADO CON CHEQUE" NO ES "LA PLATA SALIÓ" (06/08) ═══
+    //
+    // Medido en vivo: cuatro filas por $2.569.676 netos marcadas "Pagado" con echeq/cheque y fecha de
+    // caja POSTERIOR al corte del extracto salían de acá como REAL. Un REAL no lo mira ninguna de las
+    // tres vistas de proyección (CAJA COMPROMETIDA, CAJA PROYECTADA 30 DÍAS, la escalera) porque se
+    // asume que ya está en el saldo — y no estaba: el extracto termina en el corte y el cheque no
+    // debitó. Tampoco lo restaba la línea de posteriores, que mira sólo Transferencia y Débito. Esa
+    // plata no existía en ninguna parte del cuadro.
+    //
+    // La regla vive en `caja-canales.mjs` junto con la lista de medios que SÍ pegan al banco en el
+    // día, importada de la fórmula viva de CAJA — para que no puedan discrepar.
+    const estadoBase = estadoDeEgreso({ instrumento, pagado, fecha, corte })
     out.push(movimiento({
       fecha,
       signo: SALE,

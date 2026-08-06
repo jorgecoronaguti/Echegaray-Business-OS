@@ -108,6 +108,15 @@ test('excluye los echeq, que ya están contados en la cartera', () => {
   assert.match(formulaCobrosPosteriores('$F$19'), /"<>Echeq"/)
 })
 
+test('y excluye también el CHEQUE FÍSICO: un valor en la mano tampoco está en el banco', () => {
+  // EL DEFECTO (06/08, latente): el e-cheque se excluía y el cheque en papel no, aunque los dos son
+  // lo mismo para la caja — un valor que vive en "Valores a depositar" hasta que se acredita.
+  // Un cobro con forma "Cheque" se sumaba al saldo BANCARIO estando todavía en la cartera: el mismo
+  // peso en los dos lados. Hoy vale $0 (ninguna de las 89 cobranzas del archivo dice "Cheque"), y por
+  // eso se arregla ahora: la primera que entre no iba a avisar de nada.
+  assert.match(formulaCobrosPosteriores('$F$19'), /"<>Cheque"/)
+})
+
 // ═══ LA PARTICIÓN POR CANAL: EL EFECTIVO NO ESTÁ EN EL BANCO, ESTÁ EN LA CAJA FÍSICA (T06) ═══
 
 test('el banco NO cuenta el efectivo: va a la caja física, no duplicar', () => {

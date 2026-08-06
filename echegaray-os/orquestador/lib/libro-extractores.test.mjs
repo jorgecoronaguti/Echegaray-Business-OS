@@ -46,6 +46,26 @@ test('COMPRAS: la NÓMINA no sale de Compras — la planilla es la fuente y acá
   assert.ok(!ms.some((m) => /Nómina/.test(m.rubro)), 'la nómina entra por libro-extractores-nomina.mjs')
 })
 
+test('COMPRAS: "Pagado" con echeq y fecha POSTERIOR al corte es COMPROMETIDO, no REAL', () => {
+  // EL DEFECTO MEDIDO EN VIVO (06/08). Cuatro filas por $2.569.676 netos —Alumetal, FEMENIA, DUPEC,
+  // Hormiserv— marcadas "Pagado" con echeq/cheque y fecha de caja posterior al corte del extracto
+  // salían de acá como REAL. Un REAL no lo mira NINGUNA de las tres vistas de proyección (CAJA
+  // COMPROMETIDA, CAJA PROYECTADA 30 DÍAS, la escalera de vencimientos), que filtran por
+  // COMPROMETIDO/PROYECTADO/VENCIDO — y tampoco lo restaba ningún saldo: el extracto termina en el
+  // corte y la línea de posteriores mira sólo Transferencia y Débito. Esa plata no existía en el cuadro.
+  const ms = deCompras(compras([
+    ['FEMENIA', '30-11111111-1', '00002-00001071', 1839200, 'Pagado', 'Echeq', 'Materiales Civil', 46264, ''],
+    ['Barcelo', '30-22222222-2', '00131-00016807', 203132, 'Pagado', 'Débito', 'Materiales Civil', 46246, ''],
+  ]), 46240)
+  const echeq = ms.find((m) => m.concepto === 'FEMENIA')
+  assert.equal(echeq.estado, 'COMPROMETIDO', 'el cheque sale de tus manos, no de tu cuenta: hasta el débito es un compromiso')
+  // Y la otra mitad NO se toca: un débito posterior al corte SÍ lo resta la línea de posteriores, así
+  // que degradarlo lo contaría dos veces —restado del saldo y proyectado en la escalera—.
+  assert.equal(ms.find((m) => m.concepto === 'Barcelo').estado, 'REAL')
+  // El cheque de la fila base tiene fecha 46002, muy anterior al corte: ya está en el extracto.
+  assert.equal(ms.find((m) => m.concepto === 'Cheq SA').estado, 'REAL')
+})
+
 test('COMPRAS: pagado=REAL, pendiente vencido=VENCIDO', () => {
   const ms = deCompras(compras(), 46000)
   const pagado = ms.find((m) => m.concepto === 'Mariana SA')
