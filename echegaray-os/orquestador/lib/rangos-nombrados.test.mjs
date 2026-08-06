@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { pedidos, ARCA, ESPECIE, especieDe, desalineados, publicar } from './rangos-nombrados.mjs'
+import { pedidos, ARCA, CAJA, ESPECIE, especieDe, desalineados, esSerialDeFecha, publicar } from './rangos-nombrados.mjs'
 
 test('crea el nombre cuando no existe', () => {
   const [p] = pedidos(7, [{ name: 'ARCA_COMPRAS_N', fila: 10, col: 4 }], [])
@@ -170,4 +170,25 @@ test('si no se puede releer, la respuesta es "no verificado" — nunca "salió b
   const r = await publicar(roto, 'ID', 7, [{ name: ARCA.total, fila: 199, col: 3 }], { titulo: 'Proveedores' })
   assert.equal(r.verificado, false)
   assert.deepEqual(r.malApuntados, [])
+})
+
+test('EL DEFECTO DEL 06/08: la fecha del saldo apuntando a la celda de plata se DENUNCIA', () => {
+  // CAJA_FECHA_SALDO quedó publicado sobre C13 (el total, $68M). Un importe es "entero" igual que un
+  // serial de fecha, así que sin banda no había nada que gritara — y el piso MAX(fecha;TODAY()) de la
+  // escalera se fue a 68 millones: todos los tramos futuros en $0, en la pestaña Y en el portón.
+  const destinos = [
+    { name: CAJA.total, fila: 13, col: 3 },
+    { name: CAJA.fecha, fila: 13, col: 4 },
+  ]
+  const bien = desalineados(destinos, (d) => ({ '13|3': 68372941.82, '13|4': 46240 })[`${d.fila}|${d.col}`])
+  assert.deepEqual(bien, [], 'total en plata y fecha en serial: nada que denunciar')
+
+  const mal = desalineados(destinos, (d) => ({ '13|3': 68372941.82, '13|4': 68372941.82 })[`${d.fila}|${d.col}`])
+  assert.deepEqual(mal.map((m) => m.name), [CAJA.fecha], 'la "fecha" de 68 millones se denuncia')
+
+  // La banda: hoy sí, el año 1999 no, el 2101 no, y un string numérico entra igual (la API varía).
+  assert.equal(esSerialDeFecha(46240), true)
+  assert.equal(esSerialDeFecha(36525), false)
+  assert.equal(esSerialDeFecha(73051), false)
+  assert.deepEqual(desalineados([{ name: CAJA.fecha, fila: 1, col: 1 }], () => '46240'), [])
 })

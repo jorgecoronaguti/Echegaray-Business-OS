@@ -663,3 +663,33 @@ test('un batch de pura apariencia no consulta nada: ni getSheetMeta, ni base, ni
   assert.equal(g.requests.length, 3)
   assert.deepEqual(g.bloqueadas, [])
 })
+
+test('EL DEFECTO DE LOS 20 GRÁFICOS: deleteEmbeddedObject se atribuye a SU pestaña mirando getCharts', async (t) => {
+  // El request sólo trae objectId → "le pega a todas" → con "Cheques Recibidos" candada permanente,
+  // el borrado de gráficos de CAJA se descartaba en silencio mientras el addChart pasaba. CAJA llegó
+  // a VEINTE gráficos superpuestos. Con la atribución, el borrado en pestaña libre pasa aunque haya
+  // otra candada; el borrado en la candada se frena; y un objectId desconocido sigue fail-closed.
+  t.after(() => { globalThis.__dobleDbGuarda.query = sinBase })
+  const reg = baseViva({ candadas: ['Cheques Recibidos'] })
+  const pl = planillaFalsa()
+  // Sin firma sellada la pestaña libre se lee como "editada por el dueño" y se frena igual (fail-closed):
+  // el test necesita la pestaña GENUINAMENTE libre para probar la atribución, no el fail-closed.
+  reg.firmas.set(TAB, firmaDeGrid(pl.estado.grid))
+  const CANDADA_SID = 9
+  pl.getSheetMeta = async () => [
+    { sheetId: SID, title: TAB, rows: 30, cols: 26 },
+    { sheetId: CANDADA_SID, title: 'Cheques Recibidos', rows: 30, cols: 26 },
+  ]
+  pl.getCharts = async () => [
+    { sheetId: SID, title: TAB, charts: [{ chartId: 111 }, { chartId: 222 }] },
+    { sheetId: CANDADA_SID, title: 'Cheques Recibidos', charts: [{ chartId: 333 }] },
+  ]
+  const g = await guardarRequests(pl, 'ID', [
+    { deleteEmbeddedObject: { objectId: 111 } },   // gráfico de la pestaña LIBRE → pasa
+    { deleteEmbeddedObject: { objectId: 222 } },   // ídem
+    { deleteEmbeddedObject: { objectId: 333 } },   // gráfico de la pestaña CANDADA → se frena
+    { deleteEmbeddedObject: { objectId: 999 } },   // desconocido (una imagen, un id muerto) → se frena
+  ])
+  const ids = g.requests.map((r) => r.deleteEmbeddedObject.objectId)
+  assert.deepEqual(ids, [111, 222], 'los gráficos de la pestaña libre se borran; el de la candada y el desconocido no')
+})

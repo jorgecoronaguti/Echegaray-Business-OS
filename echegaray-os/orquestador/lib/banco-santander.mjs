@@ -56,10 +56,34 @@ export const CUENTA = {
   // inventa el movimiento faltante: los $143.500 son el único tramo que el banco no explica.
   saldoUltimoMovimiento: 5595130.74,
   saldoPendienteConciliar: -609232.51,
-  // 05/08/2026: el dueño depositó los U$S 15.400 de la caja física en la cuenta (instrucción por
-  // chat; el arqueo CAJA_ARQUEO_USD quedó en 0 el mismo día). 581,39 + 15.400 = 15.981,39. El
-  // extracto del depósito no se adjuntó todavía: cuando llegue, este número se verifica contra él.
-  saldoDolares: 15981.39,
+  // 05/08/2026: el dueño depositó los U$S 15.400 de la caja física (arqueo USD quedó en 0) y el
+  // mismo día salieron U$S 15.000 a Balanz. Las DOS patas están probadas por el extracto de pesos
+  // del 06/08: el impuesto 25.413 de la cuenta 179-091384/3 declara "base impo. usd 15.400" (crédito)
+  // y "base impo. usd 15.000" (débito), y la comisión del 06/08 confirma el depósito. El destino
+  // Balanz lo confirmó el dueño. 581,39 + 15.400 − 15.000 = 981,39. Cuando llegue el extracto USD,
+  // este número se verifica contra él.
+  saldoDolares: 981.39,
+  corteDolares: '2026-08-05',
+}
+
+/**
+ * LA POSICIÓN EN BALANZ — LOS APORTES PROBADOS, NO EL TOTAL DE LA CUENTA.
+ *
+ * 05/08/2026, extracto Santander: "Transferencia inmediata - A balanz capital valores / inv /
+ * 30710630670" por $22.530.000, y U$S 15.000 desde la cuenta USD (probado por la base imponible del
+ * 25.413; destino confirmado por el dueño). Plata de la empresa que cambió de lugar: sacarla del
+ * banco sin darle una fila la hacía desaparecer del total de disponibilidades.
+ *
+ * GAP DECLARADO: esto es el APORTE de ese día, no la posición total de Balanz — el 16/07 hubo un
+ * rescate de $11.913.568, así que la cuenta existía antes y puede tener tenencias previas y
+ * rendimientos que acá no están. Sin el extracto de Balanz no se inventan: cuando el dueño lo
+ * traiga, estos números se reemplazan por la posición declarada por Balanz.
+ */
+export const BALANZ = {
+  ars: 22530000,
+  usd: 15000,
+  corte: '2026-08-05',
+  cuit: '30710630670',
 }
 
 /**

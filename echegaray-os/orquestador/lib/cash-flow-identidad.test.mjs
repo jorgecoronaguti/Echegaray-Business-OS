@@ -14,8 +14,8 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { MEDIDAS, formulaMedida, particionExacta } from './cash-flow-bloques.mjs'
-import { grillaAgenda } from './cash-flow-agenda.mjs'
+import { MEDIDAS, formulaMedida, particionExacta, ventanas, ventanasDiarias } from './cash-flow-matriz.mjs'
+import { grillaSemanal } from './cash-flow-semanas.mjs'
 import { grillaMeses } from './cash-flow-meses.mjs'
 
 /** Saca de un término las dos condiciones de fecha, respetando paréntesis balanceados.
@@ -92,16 +92,27 @@ test('las cuatro medidas son una partición del flujo: real y pendiente, sin sup
 test('las fórmulas que quedan ESCRITAS en las dos pestañas son la misma definición', () => {
   // Éste es el que importa: no compara la función con sí misma, compara lo que cada vista PONE en su
   // celda. Si mañana alguien escribe un SUMPRODUCT a mano en una de las dos, acá se pone rojo.
-  const hoy = new Date(Date.UTC(2026, 7, 5))
   const refs = { saldo: 'CAJA_TOTAL_DISPONIBLE', fecha: 'CAJA_FECHA_SALDO', minima: 'CAJA_MINIMA' }
-  const agenda = grillaAgenda({ hoy, refs })
-  const mensual = grillaMeses({ anio: 2026, refs, hoy })
-  const dia = agenda.meta.dias[0]
-  const mes = mensual.meta.meses[7]
-  const cols = [mensual.meta.aux.col.ingReal, mensual.meta.aux.col.ingProy, mensual.meta.aux.col.egrReal, mensual.meta.aux.col.egrProy]
-  MEDIDAS.forEach((m, k) => {
-    const enLaAgenda = sinVentana(agenda.filas[dia.filasMedida[k] - 1][1])
-    const enElMensual = sinVentana(mensual.filas[mes.filaAux - 1][cols[k]])
-    assert.equal(enLaAgenda, enElMensual, `la medida ${m.clave} no está escrita igual en las dos pestañas`)
+  const sem = grillaSemanal({ hoy: new Date(Date.UTC(2026, 7, 5)), refs })
+  const mes = grillaMeses({ anio: 2026, refs })
+  const claves = ['ingresoReal', 'ingresoProyectado', 'egresoReal', 'egresoProyectado']
+  claves.forEach((clave, k) => {
+    // Las dos vistas ponen cada medida en la MISMA fila —es la geometría compartida— y en la primera
+    // columna de tiempo. Lo único que puede diferir es la ventana, y eso es lo que se quita.
+    const enElSemanal = sinVentana(sem.filas[sem.meta.fila[clave] - 1][sem.meta.cab.col0])
+    const enElMensual = sinVentana(mes.filas[mes.meta.fila[clave] - 1][mes.meta.cab.col0])
+    assert.equal(enElSemanal, enElMensual, `la medida ${MEDIDAS[k].clave} no está escrita igual en las dos pestañas`)
+    assert.equal(sem.meta.fila[clave], mes.meta.fila[clave], `${clave} no está en la misma fila en las dos vistas`)
   })
+})
+
+test('PARTICIÓN COHERENTE: semana y mes son uniones de las mismas ventanas diarias', () => {
+  // No se testea "la suma de las semanas de un mes da el mes" porque NO ES CIERTO: una semana cruza el
+  // fin de mes y sus movimientos caen a los dos lados. Repartirla es una convención, y cualquiera que
+  // se elija genera diferencias de borde que no son defectos. Lo que hace imposible la contradicción es
+  // que las dos ventanas salgan de la misma función sobre la misma unidad atómica: el día.
+  for (const v of [...ventanas('semana', { hoy: new Date(Date.UTC(2026, 7, 5)) }), ...ventanas('mes', { anio: 2026 })]) {
+    const dias = ventanasDiarias(v.desde, v.hasta)
+    assert.deepEqual(particionExacta(dias, v.desde, v.hasta).huecos, [])
+  }
 })

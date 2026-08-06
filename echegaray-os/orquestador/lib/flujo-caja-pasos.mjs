@@ -31,10 +31,12 @@ export const PASOS = [
   ['rubro-caja-sheet.mjs', 'la columna "Rubro de caja" de Compras — de acá cuelga todo lo demás', []],
   // Recurrentes va ANTES del cash flow: el cuadro lee de ella su proyección y necesita que exista.
   ['recurrentes-pestana.mjs', 'Recurrentes — servicios fijos, sin proyectar meses ya cerrados', ['Recurrentes']],
-  // ═══ LAS DOS VISTAS DE CASH FLOW SE REHICIERON COMO BLOQUES (05/08) ═══
+  // ═══ LAS DOS VISTAS DE CASH FLOW SON UNA MATRIZ: CONCEPTO × TIEMPO (06/08) ═══
   //
-  // `cash-flow-rehacer.mjs` escribía las mismas dos pestañas como una matriz de 51 columnas. El dueño
-  // pidió una agenda diaria y doce bloques mensuales, y lo escribe `cash-flow-vistas.mjs`. El viejo
+  // `cash-flow-rehacer.mjs` escribía las mismas dos pestañas como una matriz de 51 columnas. Pasaron
+  // por un diseño de bloques verticales que el dueño rechazó —98 filas para catorce días— y volvieron
+  // a la forma de siempre: una fila por concepto, el tiempo a la derecha. Lo escribe
+  // `cash-flow-vistas.mjs` (13 semanas y 12 meses, con su presupuesto). El viejo
   // SALE de esta lista, no se comenta "por las dudas": dos escritores sobre una misma pestaña es lo que
   // produce el candado falso —el que escribe último sella la firma y el otro se auto-canda—, y encima
   // cada uno impondría una estructura distinta cada dos horas.
@@ -42,7 +44,7 @@ export const PASOS = [
   // El presupuesto va PRIMERO porque el Mensual cita sus rangos con nombre, igual que _CAJA_ANEXO antes
   // de CAJA: un nombre que todavía no existe deja #NAME? en la pestaña que el dueño abre todos los días.
   // (Lo publica el mismo script `cash-flow-vistas.mjs`, en su primer paso.)
-  ['cash-flow-vistas.mjs', 'Cash Flow Semanal (agenda diaria), Cash Flow Mensual (bloques) y _PRESUPUESTO_MENSUAL',
+  ['cash-flow-vistas.mjs', 'Cash Flow Semanal (13 semanas), Cash Flow Mensual (12 meses) y _PRESUPUESTO_MENSUAL',
     ['Cash Flow Semanal', 'Cash Flow Mensual', '_PRESUPUESTO_MENSUAL']],
   // LOS NOMBRES SON LOS DE HOY. Declaraba las cuatro pestañas del diseño viejo —"Proveedores —
   // Deuda", "Proveedores — Cuenta Corriente"…— que dejaron de existir cuando el bloque se unificó en
@@ -99,7 +101,7 @@ export const PASOS = [
   ['f931-sheet.mjs', 'la réplica _F931_RAW — las DDJJ F931 leídas de los PDF del data room', ['_F931_RAW']],
   ['cargas-sociales-pestana.mjs', 'Cargas Sociales — la pestaña entera: declarado, pagado, proyección, caja, SAC y planes', ['Cargas Sociales']],
   ['cobranzas-control.mjs', 'Cobranzas — detector de duplicados', []],
-  ['cheques-cobertura-sheet.mjs', 'Cash Flow Mensual — qué cheques y tarjeta faltan cargar en Compras', []],
+  ['cheques-cobertura-sheet.mjs', 'Cheques Emitidos — marcas de cobertura en la columna M (el bloque del Mensual se retiró: matriz 06/08)', [], ['--solo-marcas']],
   // EL REGISTRO DECLARA LA PESTAÑA QUE ESCRIBE, SIEMPRE. Estos tres pasos la dejaban en blanco, así
   // que el censo de dueños las daba por HUÉRFANAS aunque un agente las mantenía todos los días. Un
   // registro incompleto es peor que no tenerlo: contesta que no hay dueño cuando sí lo hay.
@@ -143,7 +145,8 @@ export const PASOS = [
   // "Cheques Recibidos" que la leen por fórmula**. Una fuente que se congela sin gritar — el mismo
   // modo de falla del espejo de JORNALES, que mostró una quincena entera con valores viejos.
   //
-  // Va ANTES de cheques-recibidos-pestana, que es quien la consume.
+  // Va ANTES de cheques-recibidos-tablero y del registro de esa pestaña, que la consumen los dos: la
+  // cabecera por fórmula y el registro por una QUERY sobre esta misma réplica.
   ['cheques-raw-pestana.mjs', '_CHEQUES_RAW — la réplica de la cartera de cheques que lee Cheques Recibidos', ['_CHEQUES_RAW']],
   // ═══ QUIÉN ES EL DUEÑO DE "Cheques Recibidos" — DECIDIDO (01/08) ═══
   //
@@ -158,8 +161,17 @@ export const PASOS = [
   // como unidad, que es lo que hace que el total signifique algo, y además entra la orden de pago de
   // Messina, que no tiene número de operación y en el registro viejo no tenía dónde ir.
   //
-  // `--pestana` le dice que escriba el real: sabe hacerlo desde el 30/07 y el diseño ya está aprobado.
-  ['cheques-recibidos-tablero.mjs', 'Cheques Recibidos — la cartera con el cheque como unidad', ['Cheques Recibidos'], ['--pestana', 'Cheques Recibidos']],
+  // ═══ EL DUEÑO ESTABA DECLARADO Y EL ARCHIVO NO EXISTÍA (06/08) ═══
+  //
+  // Esta línea apuntaba desde el 01/08 a `cheques-recibidos-tablero.mjs`, que NO estaba en el repo:
+  // el paso fallaba en cada corrida del pipeline y la pestaña envejecía sin que nada avisara. Los dos
+  // generadores viejos —`cheques-recibidos-pestana.mjs` y `cheques-recibidos-cobro.mjs`— se
+  // retiraron con este cambio: describían un registro por OPERACIÓN que ya no existe. Hoy el
+  // registro es el derrame de una QUERY sobre `_CHEQUES_RAW` y este paso escribe SÓLO la cabecera
+  // (filas 1-26). El test de este archivo comprueba que cada paso declarado exista de verdad.
+  //
+  // `--pestana` le dice a qué destino escribir: el real o una copia de prueba.
+  ['cheques-recibidos-tablero.mjs', 'Cheques Recibidos — la cabecera de la cartera (el registro es una QUERY)', ['Cheques Recibidos'], ['--pestana', 'Cheques Recibidos']],
   ['cheques-emitidos-tablero.mjs', 'Cheques Emitidos — de lo firmado, cuánto no salió todavía y cuándo sale', ['Cheques Emitidos']],
   // Va última: ubica las líneas del Cash Flow por rótulo, así que necesita el cuadro ya escrito.
   // 'Caja' con minúsculas era el nombre viejo de la pestaña: quedó declarado y el censo lo reportaba

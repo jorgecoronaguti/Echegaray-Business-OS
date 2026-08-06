@@ -13,6 +13,9 @@ import { ANEXO, DESDE_CAJA } from './caja-anexo-nombres.mjs'
 import { ESPECIE_ANEXO } from './caja-anexo-nombres.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { MARCAS } from './cheques-cobertura.mjs'
+// La fila donde arranca el registro de Cheques Emitidos NO se escribe a mano en un test: es lo que
+// este cambio vino a cerrar. Ver lib/cheques-emitidos-geometria.mjs.
+import { FILA_DATO0 } from './cheques-emitidos-geometria.mjs'
 
 const vacia = (s) => s === '' || s === VACIO
 const REFS = { bancoRaw: '_BANCO_RAW', cheques: 'Cheques Emitidos', tarjeta: 'Tarjeta de Credito', cierre: 60, inicio: 50, cab: 5 }
@@ -173,7 +176,7 @@ test('EL RIESGO DECLARADO: si cheques-cobertura no corrió, la pestaña lo dice 
   const g = construir()
   const f = filaDe(g, /riesgo: cheques no debitados SIN marca/i)
   assert.ok(f > 0, 'el control de cobertura tiene que existir')
-  assert.match(celda(g, f, 3), /\$M\$2:\$M\$400=""/, 'cuenta los cheques que todavía no tienen marca')
+  assert.match(celda(g, f, 3), new RegExp(`\\$M\\$${FILA_DATO0}:\\$M\\$400=""`), 'cuenta los cheques que todavía no tienen marca')
   assert.match(celda(g, f, 3), /<>"SI"/, 'entre los NO debitados: un cheque ya debitado no le importa al calendario')
 })
 
@@ -186,9 +189,9 @@ test('el riesgo de los no marcados se parte en "falta correr el agente" y "falta
   const sin = celda(g, filaDe(g, /SIN N° de comprobante/i), 3)
   assert.ok(con && sin, 'el riesgo volvió a ser un solo renglón inaccionable')
   for (const f of [con, sin]) {
-    assert.match(f, /\$M\$2:\$M\$400=""/)
-    assert.match(f, /UPPER\('Cheques Emitidos'!\$K\$2:\$K\$400\)<>"SI"/)
-    assert.match(f, /\$H\$2:\$H\$400/, 'la partición tiene que mirar la columna del N° de comprobante')
+    assert.match(f, new RegExp(`\\$M\\$${FILA_DATO0}:\\$M\\$400=""`))
+    assert.match(f, new RegExp(`UPPER\\('Cheques Emitidos'!\\$K\\$${FILA_DATO0}:\\$K\\$400\\)<>"SI"`))
+    assert.match(f, new RegExp(`\\$H\\$${FILA_DATO0}:\\$H\\$400`), 'la partición tiene que mirar la columna del N° de comprobante')
   }
   // Complementarios: si los dos usaran la misma condición, uno sería siempre cero y nadie se enteraría.
   assert.notEqual(con, sin)

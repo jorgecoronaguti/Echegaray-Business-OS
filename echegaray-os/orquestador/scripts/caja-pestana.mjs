@@ -243,9 +243,12 @@ async function main() {
   // LOS DOS NOMBRES EN LA MISMA FILA. El Cash Flow Mensual ancla su saldo inicial en ellos: con
   // referencias por celda, insertar un bloque acá arriba dejaba sus dos filas de efectivo vacías y sin
   // avisar. La C es la columna del saldo en pesos y la D la de su fecha.
+  // `publicar` es 1-indexado: C=3 y D=4. Con col 2/3 el nombre de la fecha quedó apuntando a la celda
+  // de PLATA y el piso MAX(CAJA_FECHA_SALDO;TODAY()) de la escalera subió a millones: todos los tramos
+  // futuros en $0, en la pestaña Y en el portón que usa el mismo nombre — un cero ciego (06/08).
   const { malApuntados } = await publicar(google, ID, hoja.sheetId, [
-    { name: N_CAJA.total, fila: g.fCierre, col: 2 },
-    { name: N_CAJA.fecha, fila: g.fCierre, col: 3 },
+    { name: N_CAJA.total, fila: g.fCierre, col: 3 },
+    { name: N_CAJA.fecha, fila: g.fCierre, col: 4 },
   ], { titulo: tab })
   for (const m of malApuntados) console.warn(`  ⚠ ${m.name} promete ${m.espera} y encontró ${m.encontro}`)
 

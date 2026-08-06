@@ -118,9 +118,18 @@ export const ESPECIE = {
   [ARCA.faltanN]: 'entero', [ARCA.faltanMonto]: 'importe',
   [ARCA.ventasN]: 'entero', [ARCA.ventasMonto]: 'importe',
   [CAJA.total]: 'importe',
-  // CAJA_FECHA_SALDO es una fecha y PROV_LIBRETA es una tabla de texto: no declaran especie y por lo
-  // tanto no se verifican acá. Declarar de más sería inventar un criterio para poder chequearlo.
+  // Una fecha SÍ tiene criterio verificable: el serial de Sheets vive en una banda angosta conocida.
+  // El 06/08 este nombre quedó apuntando a la celda del total ($68M) y nada gritó: el piso
+  // MAX(CAJA_FECHA_SALDO;TODAY()) de la escalera se fue a millones y vació todos los tramos futuros.
+  [CAJA.fecha]: 'fecha',
+  // PROV_LIBRETA es una tabla de texto: no declara especie. Declarar de más sería inventar un criterio.
 }
+
+// La banda de seriales que puede ser una fecha real de este archivo: 2000–2100. Un importe de caja
+// (millones) o un número de comprobante caen afuera, que es exactamente la confusión que hay que ver.
+const SERIAL_2000 = 36526
+const SERIAL_2100 = 73050
+export const esSerialDeFecha = (v) => typeof v === 'number' && Number.isInteger(v) && v >= SERIAL_2000 && v <= SERIAL_2100
 
 /**
  * NÚCLEO PURO: qué especie de dato es este valor, leído con UNFORMATTED_VALUE.
@@ -163,7 +172,9 @@ export function desalineados(destinos = [], leer = () => undefined) {
     if (!espera) continue
     const valor = leer(d)
     const hay = especieDe(valor)
-    const ok = espera === 'importe' ? (hay === 'entero' || hay === 'numero') : hay === espera
+    const ok = espera === 'importe' ? (hay === 'entero' || hay === 'numero')
+      : espera === 'fecha' ? esSerialDeFecha(typeof valor === 'string' && /^\d+$/.test(valor.trim()) ? Number(valor) : valor)
+      : hay === espera
     if (!ok) out.push({ name: d.name, fila: d.fila, col: d.col, espera, encontro: hay, valor })
   }
   return out

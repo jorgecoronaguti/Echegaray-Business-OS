@@ -29,6 +29,8 @@ import { total } from './patron-pestana.mjs'
 // La traducción a fórmula de "¿este N° de comprobante sirve para cruzar?" vive pegada a su gemela de
 // código, en lib/cheques-cobertura.mjs. Importarla es lo que impide que se escriban dos reglas.
 import { expresionTieneNumero } from './cheques-cobertura.mjs'
+// La fila del encabezado de "Cheques Emitidos" vive en UN solo archivo. Ver la nota de INSTRUMENTOS.
+import { FILA_HDR as FILA_HDR_CHEQUES } from './cheques-emitidos-geometria.mjs'
 
 /** El sub-rubro de Estructura que NO es gasto del mes sino inversión. Lo escribe estructura-pestana. */
 export const SUB_BIENES_DE_USO = 'Equipos y rodados (inversión)'
@@ -100,7 +102,12 @@ export function lineasEgreso() {
  * filaCab = fila del encabezado · las columnas son letras porque las usa una fórmula del Sheet.
  */
 export const INSTRUMENTOS = {
-  cheques: { nombre: 'CHEQUES', pestaña: 'Cheques Emitidos', filaCab: 1, colMonto: 'F', colFecha: 'I', colMes: 'J', colDebitado: 'K', colComprobante: 'H', colMarca: 12 },
+  // `filaCab` 1 → FILA_HDR (06/08). Decía 1, o sea que TODO el que derivaba su rango de acá leía
+  // "Cheques Emitidos" desde la fila 2 — desde adentro de la banda. El encabezado real nunca estuvo
+  // en la 1: estaba en la 20 y hoy está en la 26. No daba error porque los rótulos de la banda no son
+  // números, pero cualquier criterio que mire texto o cuente filas contaba la banda como cheques.
+  // Ahora sale de `cheques-emitidos-geometria.mjs`, que es el único lugar donde ese número existe.
+  cheques: { nombre: 'CHEQUES', pestaña: 'Cheques Emitidos', filaCab: FILA_HDR_CHEQUES, colMonto: 'F', colFecha: 'I', colMes: 'J', colDebitado: 'K', colComprobante: 'H', colMarca: 12 },
   // `filaCab` 2 → 31 (04/08). El encabezado del registro de la tarjeta está en la fila 31, no en la 2:
   // arriba vive la banda de la pestaña. Con el 2, `cheques-cobertura-sheet.mjs` estampaba su rótulo
   // "Estado en el OS · al …" en la fila del SUBTÍTULO y colgaba las marcas por debajo, encima de la
@@ -110,7 +117,10 @@ export const INSTRUMENTOS = {
   tarjeta: { nombre: 'TARJETA DE CRÉDITO', pestaña: 'Tarjeta de Credito', filaCab: 31, colMonto: 'E', colFecha: 'H', colMes: 'I', colDebitado: 'J', colComprobante: 'G', colMarca: 11 },
 }
 
-/** Hasta qué fila se busca en las pestañas de instrumentos. De sobra para lo que hay (89 y 29). */
+/** Hasta qué fila se busca en las pestañas de instrumentos. De sobra para lo que hay (105 y 29).
+ *  Para los cheques NO es un número cómodo: es el tope que CAJA!H15 tiene cableado, y CAJA está
+ *  congelada. `cheques-emitidos-geometria.test.mjs` verifica que este 400 y el de allá sigan siendo
+ *  el mismo — no se importa porque acá también gobierna a la tarjeta, que no depende de CAJA!H15. */
 const FILA_FIN = 400
 
 const letraDe = (n) => { let s = ''; for (let x = n; x >= 0; x = Math.floor(x / 26) - 1) s = String.fromCharCode(65 + (x % 26)) + s; return s }

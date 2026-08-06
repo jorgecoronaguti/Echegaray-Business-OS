@@ -266,9 +266,13 @@ test('LOS CONTROLES DEL ANEXO NO DESAPARECIERON: cada uno está citado en una al
  * · La cuenta en dólares del banco: el extracto en dólares NO tiene réplica en el archivo (`_BANCO_RAW`
  *   es la cuenta en pesos), así que su saldo sale de la transcripción declarada en banco-santander.mjs
  *   con su fecha de corte al lado, y la regla de "fecha vieja" lo pinta. Un dato viejo DECLARADO es
- *   mejor que un #REF! que rompe el total. Es el único gap de fuente que queda en esta pestaña.
+ *   mejor que un #REF! que rompe el total.
+ * · Las dos filas de Balanz (06/08): la plataforma no tiene réplica en el archivo. El saldo es el
+ *   APORTE probado por el extracto de Santander del 05/08 ($22,53M + U$S 15.000), no la posición
+ *   total — gap declarado en banco-santander.mjs BALANZ; se reemplaza cuando llegue su extracto.
  */
-const PEGADO_DECLARADO = new Set(['Santander · cta cte USD', 'Caja en pesos — contado', 'Caja en dólares — contado'])
+const PEGADO_DECLARADO = new Set(['Santander · cta cte USD', 'Caja en pesos — contado', 'Caja en dólares — contado',
+  'Balanz · inversiones ARS', 'Balanz · inversiones USD'])
 
 test('CERO NÚMEROS PEGADOS: toda celda de plata es una fórmula', () => {
   // Es la Regla de Oro número 5 del dueño, medida sobre la grilla entera y no bloque por bloque. Un
@@ -461,4 +465,30 @@ test('SIN EL CALENDARIO FISCAL NO HAY PESTAÑA: una fuente que falta no puede le
   // nada avisó. Sin la pestaña de impuestos el libro no ve el IVA/IIBB y el piso sube sin que se haya
   // pagado nada, sin un solo #ERROR.
   assert.throws(() => grilla(new Map(), { ...REFS, filasCal: undefined }), /Impuestos y Financieros/)
+})
+
+test('BALANZ ESTÁ EN LA CAJA: los aportes del 05/08 no desaparecen del total', () => {
+  // El 05/08 salieron del banco $22.530.000 y U$S 15.000 hacia Balanz. El banco los descuenta de su
+  // saldo: sin estas dos filas, mover plata a la inversión la hacía desaparecer de la disponibilidad.
+  const g = construir()
+  const fArs = filaDe(g, /^Balanz · inversiones ARS$/)
+  const fUsd = filaDe(g, /^Balanz · inversiones USD$/)
+  assert.ok(fArs > 0, 'falta la fila Balanz ARS')
+  assert.ok(fUsd > 0, 'falta la fila Balanz USD')
+  assert.equal(g.filas[fArs - 1][1], 22530000, 'el aporte ARS probado por el extracto del 05/08')
+  assert.equal(g.filas[fUsd - 1][1], 15000, 'el aporte USD probado por la base 25.413 de la cta USD')
+  assert.ok(g.usd.includes(fUsd), 'la fila USD se declara para valuarse con TIPO_CAMBIO_USD')
+  assert.equal(celda(g, fUsd, 2), `=IF(ISNUMBER(B${fUsd});B${fUsd}*TIPO_CAMBIO_USD;"")`)
+  // CADA CUENTA SE FECHA CON SU PROPIA FUENTE: Balanz es del 05/08, no del corte global de julio.
+  assert.equal(celda(g, fArs, 3), '2026-08-05')
+  assert.equal(celda(g, fUsd, 3), '2026-08-05')
+})
+
+test('LA CUENTA USD DEL BANCO QUEDÓ AL 05/08: depósito 15.400 − 15.000 a Balanz = 981,39', () => {
+  // Las dos patas están probadas por el impuesto 25.413 del extracto de pesos (bases usd 15.400 y
+  // 15.000). Fechar este saldo con el corte global de julio afirmaría una frescura que no es la suya.
+  const g = construir()
+  const f = filaDe(g, /^Santander · cta cte USD$/)
+  assert.equal(g.filas[f - 1][1], 981.39)
+  assert.equal(celda(g, f, 3), '2026-08-05')
 })
