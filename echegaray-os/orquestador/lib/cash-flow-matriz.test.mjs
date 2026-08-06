@@ -8,21 +8,37 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  CONCEPTOS, FILA, COL, FOOTPRINT, ESTADOS_PENDIENTES, MEDIDAS,
-  conceptosDe, filaDeConcepto, colTotal, columnasDeTiempo, filaGraficos,
-  ventanas, ventanasDiarias, particionExacta, expresionVentana,
+  CONCEPTOS, FILA, COL, GRAFICO, ESTADOS_PENDIENTES, MEDIDAS,
+  conceptosDe, filaDeConcepto, colTotal, columnasDeTiempo, filaGraficos, footprintDe,
+  bloqueDeMedida, bloquesDeMedida, formulasDeMedida, medidasDeLaMatriz,
+  ventanas, ventanasDiarias, particionExacta, expresionVentana, semanasDelAnio,
   formulaMayorImporte, formulaMayorContraparte, serialDeFecha, lunesDe, letra,
 } from './cash-flow-matriz.mjs'
+import { RUBROS_INGRESO, RUBROS_EGRESO, OTROS, claveSub, rotuloSub } from './cash-flow-rubros.mjs'
 
 const HOY = new Date(Date.UTC(2026, 7, 5)) // miércoles 5 de agosto de 2026
 
-test('las trece semanas arrancan en el lunes de la semana corriente y no se saltean ninguna', () => {
-  const v = ventanas('semana', { hoy: HOY })
-  assert.equal(v.length, 13)
-  assert.equal(v[0].desde.getTime(), lunesDe(HOY).getTime())
-  assert.equal(v[0].desde.getUTCDay(), 1, 'la semana arranca el lunes')
-  const r = particionExacta(v, v[0].desde, v[12].hasta)
-  assert.deepEqual(r.huecos, [], 'un hueco entre dos semanas es un movimiento que no cae en ninguna columna')
+test('EL AÑO ENTERO: 53 semanas de 2026, la primera contiene el 1° de enero y la última el 31/12', () => {
+  const v = semanasDelAnio(2026)
+  // El defecto que esto mata: un rodante desde hoy mete columnas de 2027 en un cuadro rotulado 2026 y
+  // esconde las semanas ya cerradas, que son contra las que se compara lo que viene.
+  assert.equal(v.length, 53)
+  assert.equal(v[0].desde.toISOString().slice(0, 10), '2025-12-29', 'la semana del 1° de enero arranca en diciembre')
+  assert.ok(v[0].desde <= new Date(Date.UTC(2026, 0, 1)) && new Date(Date.UTC(2026, 0, 1)) < v[0].hasta)
+  const fin = new Date(Date.UTC(2026, 11, 31))
+  assert.ok(v[52].desde <= fin && fin < v[52].hasta, 'la última semana tiene que contener el 31/12')
+  for (const s of v) assert.equal(s.desde.getUTCDay(), 1, 'toda semana arranca el lunes')
+  assert.deepEqual(particionExacta(v, v[0].desde, v[52].hasta).huecos, [],
+    'un hueco entre dos semanas es un movimiento que no cae en ninguna columna')
+  assert.equal(ventanas('semana', { anio: 2026 }).length, 53)
+})
+
+test('una vista semanal sin año ni largo de rodante NO se construye con un default silencioso', () => {
+  // Ese default fue exactamente lo que puso columnas de 2027 en la pestaña de 2026.
+  assert.throws(() => ventanas('semana', { hoy: HOY }), /año del ejercicio/)
+  const rodante = ventanas('semana', { hoy: HOY, n: 13 })
+  assert.equal(rodante.length, 13)
+  assert.equal(rodante[0].desde.getTime(), lunesDe(HOY).getTime())
 })
 
 test('los doce meses del ejercicio parten el año exacto, con EOMONTH y no con +30', () => {
@@ -39,7 +55,7 @@ test('PARTICIÓN COHERENTE: una semana y un mes son uniones de las MISMAS ventan
   // Lo que hace imposible que las dos vistas se contradigan no es que las semanas sumen el mes —una
   // semana cruza el fin de mes y cae a los dos lados—, sino que las dos se construyen sobre la misma
   // unidad atómica con el mismo filtro. Eso es lo que se prueba.
-  for (const s of ventanas('semana', { hoy: HOY })) {
+  for (const s of ventanas('semana', { anio: 2026 })) {
     const dias = ventanasDiarias(s.desde, s.hasta)
     assert.equal(dias.length, 7)
     assert.deepEqual(particionExacta(dias, s.desde, s.hasta).huecos, [])
@@ -58,32 +74,84 @@ test('la partición detecta un hueco: si un día se cae, el test se pone rojo', 
   assert.equal(r.huecos.length, 1)
 })
 
-test('la geometría es la misma en las dos vistas, y las filas están en el orden que pidió el dueño', () => {
-  assert.deepEqual(conceptosDe('semana').map((c) => c.rotulo), [
+test('el TRONCO está en el orden que pidió el dueño, y el saldo final en la misma fila en las dos vistas', () => {
+  const tronco = conceptosDe('semana').filter((c) => !c.sub).map((c) => c.rotulo)
+  assert.deepEqual(tronco, [
     'Saldo inicial', 'Ingresos reales', 'Ingresos proyectados', 'Egresos reales', 'Egresos proyectados',
     'Resultado', 'Saldo final',
   ])
-  assert.deepEqual(conceptosDe('mes').map((c) => c.rotulo).slice(7), [
+  assert.deepEqual(conceptosDe('mes').filter((c) => !c.sub).map((c) => c.rotulo).slice(7), [
     'Variación vs presupuesto', 'Variación vs mes anterior',
   ])
   assert.equal(FILA.cabecera, 7)
   assert.equal(filaDeConcepto('semana', 'saldoInicial'), 8)
-  assert.equal(filaDeConcepto('semana', 'saldoFinal'), 14)
-  assert.equal(filaDeConcepto('mes', 'saldoFinal'), 14, 'las dos vistas tienen el saldo final en la misma fila')
-  assert.equal(filaDeConcepto('mes', 'variacionMesAnterior'), 16)
+  assert.equal(filaDeConcepto('semana', 'saldoFinal'), filaDeConcepto('mes', 'saldoFinal'),
+    'las dos vistas tienen el saldo final en la misma fila')
+})
+
+test('LA APERTURA POR RUBRO: cada medida abre en sus rubros del libro más "Otros", y las dos vistas igual', () => {
+  assert.equal(medidasDeLaMatriz().length, 4)
+  for (const tipo of ['semana', 'mes']) {
+    for (const b of bloquesDeMedida(tipo)) {
+      const esperados = b.clave.startsWith('ingreso') ? RUBROS_INGRESO : RUBROS_EGRESO
+      assert.deepEqual(b.rubros.map((r) => r.rubro), [...esperados], `${tipo}/${b.clave}`)
+      // Las sub-líneas son contiguas y "Otros" va última: la piel las formatea como un rango.
+      assert.equal(b.primeraSub, b.subtotal + 1)
+      assert.equal(b.ultimaSub, b.otros)
+      assert.equal(b.otros, b.subtotal + esperados.length + 1)
+    }
+  }
+  // Las mismas filas relativas en las dos vistas: un rubro no puede estar en un lugar acá y otro allá.
+  const rel = (tipo) => bloquesDeMedida(tipo).map((b) => [b.clave, b.subtotal - FILA.concepto, b.otros - FILA.concepto])
+  assert.deepEqual(rel('semana'), rel('mes'))
+  assert.equal(rotuloSub('Impuestos'), '    · Impuestos')
+  assert.equal(claveSub('egresoReal', 'Impuestos'), 'egresoReal::Impuestos')
+})
+
+test('la taxonomía no tiene duplicados, y ningún rubro se llama "Otros"', () => {
+  // Un rubro repetido se sumaría dos veces adentro de la apertura y "Otros" saldría negativo sin que
+  // nada diera error: el subtotal seguiría siendo el del libro y la resta no cerraría.
+  for (const lista of [RUBROS_INGRESO, RUBROS_EGRESO]) {
+    assert.equal(new Set(lista).size, lista.length, JSON.stringify(lista))
+    assert.ok(!lista.includes(OTROS), '"Otros" no es un rubro del libro: es lo que queda al restar')
+  }
+  assert.equal(new Set(CONCEPTOS.map((c) => c.clave)).size, CONCEPTOS.length, 'dos conceptos con la misma clave')
+})
+
+test('"Otros" SE DESPEJA del subtotal: un rubro nuevo del Libro aparece ahí en vez de desaparecer', () => {
+  const lineas = formulasDeMedida('semana', 'egresoReal', { col: 1, desde: '$B$7', hasta: '$B$7+7' })
+  const b = bloqueDeMedida('semana', 'egresoReal')
+  const otros = lineas.find((l) => l.fila === b.otros).formula
+  // Subtotal menos las sub-líneas LISTADAS, por aritmética de celdas de la propia columna. Si en vez
+  // de esto el subtotal fuera la SUMA de las sub-líneas, un rubro que el Libro empiece a emitir mañana
+  // se caería del cuadro y el total seguiría cerrando consigo mismo: coherente y falso.
+  assert.equal(otros, `=N($B$${b.subtotal})-SUM($B$${b.primeraSub}:$B$${b.otros - 1})`)
+  // Y el subtotal es el LIBRO, no la suma de abajo.
+  const sub = lineas.find((l) => l.fila === b.subtotal).formula
+  assert.ok(sub.startsWith('=SUMPRODUCT('), sub)
+  assert.ok(!sub.includes('SUM($B$'), 'el subtotal no puede salir de sus propias sub-líneas')
+  // Cada rubro filtra por su nombre EXACTO, el que emite el libro.
+  for (const r of b.rubros) {
+    const f = lineas.find((l) => l.fila === r.fila).formula
+    assert.ok(f.includes(`="${r.rubro}"`), `${r.rubro}: ${f}`)
+  }
 })
 
 test('el footprint declarado es el que la matriz ocupa de verdad: ni una columna de más', () => {
-  for (const tipo of ['semana', 'mes']) {
-    const cols = 1 + columnasDeTiempo(tipo) + 1 // concepto + tiempo + TOTAL
-    assert.equal(FOOTPRINT[tipo].cols, cols)
-    assert.equal(colTotal(tipo), cols - 1)
-    // El alto tiene que alojar el cuadro Y el ancla de los gráficos: `anchorCell` es una celda real y
-    // si la hoja no llega, la API devuelve 400 y se cae el lote entero.
-    assert.ok(FOOTPRINT[tipo].filas > filaGraficos(tipo), `${tipo}: el gráfico se ancla fuera de la hoja`)
-    assert.ok(FOOTPRINT[tipo].filas <= 50, `${tipo}: 220 filas para un cuadro de 16 es lo que se vino a sacar`)
+  for (const [tipo, n] of [['semana', 53], ['mes', 12]]) {
+    const fp = footprintDe(tipo, 2026)
+    assert.equal(columnasDeTiempo(tipo, 2026), n)
+    assert.equal(fp.cols, 1 + n + 1, `${tipo}: concepto + tiempo + TOTAL`)
+    assert.equal(colTotal(tipo, 2026), fp.cols - 1)
+    // El alto tiene que alojar el cuadro Y LA ZONA DE GRÁFICOS entera: `anchorCell` es una celda real
+    // (si la hoja no llega, addChart devuelve 400) y si el achique no la contemplara, deleteDimension
+    // amputaría los gráficos recién dibujados.
+    assert.equal(fp.filas, filaGraficos(tipo) + GRAFICO.filas + GRAFICO.margen)
+    assert.ok(fp.filas > filaGraficos(tipo) + GRAFICO.filas, `${tipo}: el gráfico termina fuera de la hoja`)
+    assert.ok(fp.filas <= 100, `${tipo}: 220 filas para un cuadro de 45 es lo que se vino a sacar`)
   }
   assert.equal(COL.tiempo0, 1)
+  assert.equal(GRAFICO.col0, COL.tiempo0, 'los gráficos se anclan en B: contra la columna A no respiran')
 })
 
 test('el encabezado de tiempo es un SERIAL: el texto "1/12/2026" ya dejó CF_MESES con una cadena adentro', () => {

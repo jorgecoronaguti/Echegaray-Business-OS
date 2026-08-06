@@ -46,9 +46,14 @@
 //   forma documentada y la primera corrida real desde el árbol principal lo confirma o lo desmiente.
 // · Un waterfall NO acepta más de un `sourceRange` por eje, ni `color` dentro de `connectorLineStyle`.
 
+import { GRAFICO } from './cash-flow-matriz.mjs'
+import { ANCHOS, ALTO_FILA } from './cash-flow-piel-matriz.mjs'
+
 /**
- * La columna donde se anclan, contada desde 0. Va HOLGADAMENTE a la derecha del cuadro más ancho
- * (el semanal: 53 períodos + rótulo + total + naturaleza = 56 columnas) para no taparlo nunca.
+ * La columna donde se anclan los gráficos de las vistas de LÍNEAS (`cash-flow-rehacer`), contada desde
+ * 0. Va HOLGADAMENTE a la derecha de ese cuadro para no taparlo nunca.
+ *
+ * Las MATRICES no la usan: se anclan debajo del cuadro, en la columna B. Ver `colAncla`.
  */
 export const COL_ANCLA = 58
 
@@ -80,7 +85,7 @@ const texto = (size, color = GRIS) => ({ fontFamily: 'Arial', fontSize: size, fo
  * zona auxiliar, que está OCULTA a propósito (es maquinaria), y el default de Sheets
  * —SKIP_HIDDEN_ROWS_AND_COLUMNS— la descarta: el gráfico sale vacío sin dar ningún error.
  */
-const chart = (titulo, subtitulo, spec, sheetId, fila, alto = 280, col = COL_ANCLA) => ({
+const chart = (titulo, subtitulo, spec, sheetId, fila, alto = 280, col = COL_ANCLA, ancho = 760) => ({
   addChart: {
     chart: {
       spec: {
@@ -95,7 +100,7 @@ const chart = (titulo, subtitulo, spec, sheetId, fila, alto = 280, col = COL_ANC
         hiddenDimensionStrategy: 'SHOW_ALL',
         ...spec,
       },
-      position: { overlayPosition: { anchorCell: { sheetId, rowIndex: fila, columnIndex: col }, widthPixels: 760, heightPixels: alto } },
+      position: { overlayPosition: { anchorCell: { sheetId, rowIndex: fila, columnIndex: col }, widthPixels: ancho, heightPixels: alto } },
     },
   },
 })
@@ -272,6 +277,19 @@ export const TITULO_LIQUIDEZ_SEM = `${MARCA}Liquidez proyectada, semana a semana
 const filaMatriz = (sheetId, meta, fila) =>
   fuente(rango(sheetId, fila, fila, meta.cab.col0 + 1, meta.cab.col0 + meta.cab.n))
 
+// ═══ DÓNDE SE ANCLAN, Y POR QUÉ SE MIDEN EN COLUMNAS ═══
+//
+// Debajo del cuadro, con dos renglones de aire (`meta.grafico.fila` ya es filaFin+2) y desde la
+// COLUMNA B: contra el rótulo de la columna A el gráfico no respira. El tamaño se declara en columnas
+// y filas del propio cuadro (`GRAFICO`) y se convierte a píxeles con el ancho y el alto reales de la
+// pestaña — así el gráfico ocupa un número entero de columnas y el footprint que lo aloja sale de la
+// MISMA declaración. Un alto en píxeles inventado acá y un footprint calculado allá se separan en la
+// primera fila que se agregue, y `deleteDimension` amputa el gráfico sin decir nada.
+const ANCHO_PX = (tipo) => GRAFICO.cols[tipo] * ANCHOS.tiempo
+const ALTO_PX = GRAFICO.filas * ALTO_FILA
+/** La columna del gráfico `i` de una vista: lado a lado, con una columna de aire entre ellos. */
+const colAncla = (tipo, i = 0) => GRAFICO.col0 + i * (GRAFICO.cols[tipo] + GRAFICO.aire)
+
 const ejes = (tituloIzq) => [
   { position: 'BOTTOM_AXIS', format: texto(9) },
   { position: 'LEFT_AXIS', title: tituloIzq, format: texto(9) },
@@ -289,7 +307,7 @@ export function graficoLiquidezSemanal(sheetId, meta) {
         series: [{ series: filaMatriz(sheetId, meta, meta.fila.saldoFinal), targetAxis: 'LEFT_AXIS', color: ACENTO, lineStyle: { width: 2, type: 'SOLID' } }],
         headerCount: 0,
       },
-    }, sheetId, meta.grafico.fila - 1, 320, 0)
+    }, sheetId, meta.grafico.fila - 1, ALTO_PX, colAncla('semana'), ANCHO_PX('semana'))
 }
 
 /**
@@ -314,7 +332,7 @@ export function graficoEntradasSalidas(sheetId, meta) {
         ],
         headerCount: 0,
       },
-    }, sheetId, meta.grafico.fila - 1, 300, 0)
+    }, sheetId, meta.grafico.fila - 1, ALTO_PX, colAncla('mes', 0), ANCHO_PX('mes'))
 }
 
 /** MENSUAL · una sola línea: si baja tres meses seguidos, no es un mes malo. */
@@ -329,7 +347,10 @@ export function graficoTendencia(sheetId, meta) {
         series: [{ series: filaMatriz(sheetId, meta, meta.fila.resultado), targetAxis: 'LEFT_AXIS', color: INK, lineStyle: { width: 2, type: 'SOLID' } }],
         headerCount: 0,
       },
-    }, sheetId, meta.grafico.fila + 14, 300, 0)
+    // LADO A LADO con el de entradas y salidas, no debajo: son la misma pregunta mirada de dos formas
+    // ("¿qué mes consume caja?" y "¿es un mes o una tendencia?") y comparadas de un vistazo se
+    // responden juntas. Apilados, la segunda exigía scroll y nadie la miraba.
+    }, sheetId, meta.grafico.fila - 1, ALTO_PX, colAncla('mes', 1), ANCHO_PX('mes'))
 }
 
 const CONSTRUCTOR_MATRIZ = {

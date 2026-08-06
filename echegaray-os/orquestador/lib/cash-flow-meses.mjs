@@ -26,9 +26,10 @@
 // fila del cuadro no va nada más: el dueño pidió "no agregar información, no agregar métricas".
 
 import {
-  MEDIDAS, CONCEPTOS, COL, FILA, FOOTPRINT,
-  conceptosDe, filaDeConcepto, colTotal, columnasDeTiempo, filaGraficos,
-  expresionVentana, formulaMedida, ventanas, celda, rangoFila, serialDeFecha, rotuloMes,
+  COL, FILA,
+  conceptosDe, filaDeConcepto, colTotal, columnasDeTiempo, filaGraficos, footprintDe,
+  medidasDeLaMatriz, bloquesDeMedida, formulasDeMedida, MEDIDAS, formulaMedida,
+  expresionVentana, ventanas, celda, rangoFila, serialDeFecha, rotuloMes,
 } from './cash-flow-matriz.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 import { expresionInicio } from './cash-flow-ancla-saldo.mjs'
@@ -73,12 +74,14 @@ export function grillaMeses({ anio = 2026, refs = {} } = {}) {
   const n = columnasDeTiempo(TIPO)
   const cT = colTotal(TIPO)
   const meses = ventanas(TIPO, { anio })
+  const footprint = footprintDe(TIPO, anio)
   const fila = Object.fromEntries(conceptosDe(TIPO).map((c) => [c.clave, filaDeConcepto(TIPO, c.clave)]))
   const meta = {
-    pestana: PESTANA_MENSUAL, tipo: TIPO, anio, ancho: FOOTPRINT.mes.cols, footprint: FOOTPRINT.mes,
+    pestana: PESTANA_MENSUAL, tipo: TIPO, anio, ancho: footprint.cols, footprint,
     cab: { fila: FILA.cabecera, col0: COL.tiempo0, n, colTotal: cT },
     fila, hero: { rotulo: FILA.heroRotulo, valor: FILA.heroValor, slots: SLOTS_HERO },
-    grafico: { fila: filaGraficos(TIPO) },
+    bloques: bloquesDeMedida(TIPO),
+    grafico: { fila: filaGraficos(TIPO), col: COL.tiempo0 },
     ventanas: meses, rotulos: meses.map((v) => rotuloMes(v.desde)),
   }
 
@@ -152,9 +155,10 @@ function columnaDeMes(poner, meta, j, { refSaldo, refFecha }) {
       anterior: j === 0 ? null : celda(col - 1, f.saldoFinal),
     })
     : '')
-  for (const c of CONCEPTOS) {
-    if (c.medida === undefined) continue
-    poner(f[c.clave], col, formulaMedida(MEDIDAS[c.medida], desde, hasta))
+  // Subtotal + apertura por rubro, de la misma función que usa el semanal: las dos vistas no pueden
+  // definir distinto qué es "Materiales Civil" porque no hay dos definiciones.
+  for (const c of medidasDeLaMatriz()) {
+    for (const linea of formulasDeMedida(meta.tipo, c.clave, { col, desde, hasta })) poner(linea.fila, col, linea.formula)
   }
   poner(f.resultado, col,
     `=N(${celda(col, f.ingresoReal)})+N(${celda(col, f.ingresoProyectado)})`

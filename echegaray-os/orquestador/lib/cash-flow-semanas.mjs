@@ -1,4 +1,4 @@
-// CASH FLOW SEMANAL — TRECE SEMANAS EN UNA MATRIZ: FILAS DE CONCEPTO, COLUMNAS DE TIEMPO.
+// CASH FLOW SEMANAL — EL AÑO ENTERO EN UNA MATRIZ: FILAS DE CONCEPTO, COLUMNAS DE TIEMPO.
 //
 // ═══ QUÉ REEMPLAZA (06/08/2026) ═══
 //
@@ -8,11 +8,22 @@
 // exigía recordar el bloque de arriba mientras se leía el de abajo. El dueño lo rechazó y pidió
 // volver a la claridad de siempre: **una fila por concepto, todo el tiempo a la derecha**.
 //
-// ═══ POR QUÉ 13 SEMANAS ═══
+// ═══ POR QUÉ EL AÑO ENTERO Y NO TRECE SEMANAS (06/08/2026, segunda corrección) ═══
 //
-// Es el rodante que pide la skill de tesorería: la semana corriente más doce. Cubre el trimestre —el
-// horizonte en el que una cobranza todavía se puede empujar y un pago todavía se puede reprogramar—
-// y entra entero en una pantalla sin scroll horizontal a 95px por columna.
+// La primera versión mostraba el rodante de trece semanas que pide la skill de tesorería. El dueño lo
+// rechazó por la misma razón por la que ya había rechazado el rodante en la vista de líneas: un cuadro
+// que arranca en la semana corriente **esconde la historia del ejercicio** —las semanas ya cerradas,
+// que son contra las que se compara lo que viene— y mete columnas del año siguiente en una pestaña
+// rotulada 2026. Ahora son las 53 semanas de 2026 (la primera es la del lunes 29/12/2025, que contiene
+// el 1° de enero) y el semanal cubre EXACTAMENTE el mismo período que el mensual.
+//
+// Lo que se paga por eso: hay scroll horizontal. Se compensa con la columna A congelada y el atajo
+// "📅 hoy", que salta a la columna de la semana corriente.
+//
+// LAS SEMANAS ANTERIORES AL CORTE DE CAJA MUESTRAN SUS FLUJOS Y NO SU SALDO. Los flujos son historia
+// del libro y se ven; el saldo NO se puede reconstruir hacia atrás desde un saldo declarado hoy, así
+// que va en blanco hasta la semana que contiene el corte (rol ANTES de `cash-flow-ancla-saldo`). Un
+// cero ahí se leería como "la empresa cerró esa semana sin plata", que es una afirmación que nadie hizo.
 //
 // ═══ LO QUE NO ESTÁ ACÁ, Y DÓNDE ESTÁ ═══
 //
@@ -26,9 +37,10 @@
 // final no va NADA.
 
 import {
-  MEDIDAS, CONCEPTOS, COL, FILA, FOOTPRINT, ESTADOS_PENDIENTES,
-  conceptosDe, filaDeConcepto, colTotal, columnasDeTiempo, filaGraficos,
-  expresionVentana, formulaMedida, formulaMayorImporte, formulaMayorContraparte,
+  COL, FILA, ESTADOS_PENDIENTES,
+  conceptosDe, filaDeConcepto, colTotal, columnasDeTiempo, filaGraficos, footprintDe,
+  medidasDeLaMatriz, bloquesDeMedida, formulasDeMedida,
+  expresionVentana, formulaMayorImporte, formulaMayorContraparte,
   ventanas, celda, rangoFila, serialDeFecha,
 } from './cash-flow-matriz.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
@@ -52,32 +64,36 @@ const SLOTS_HERO = Object.freeze([0, 3, 7, 11])
  * NÚCLEO PURO: la grilla entera de la pestaña. No toca la red: se prueba fórmula por fórmula.
  *
  * @param {object} p
- * @param {Date} p.hoy
+ * @param {Date} p.hoy sólo decide el año por defecto: las columnas son las del ejercicio, no las que vienen
+ * @param {number} p.anio el ejercicio que cubre la pestaña
  * @param {{saldo:string|null, fecha:string|null, minima:string|null}} p.refs rangos con nombre de CAJA
  * @param {number|null} p.gid  sheetId de la propia pestaña, para el vínculo "hoy". Sin él, no hay vínculo.
  * @returns {{filas:any[][], meta:object}}
  */
-export function grillaSemanal({ hoy = new Date(), refs = {}, gid = null } = {}) {
+export function grillaSemanal({ hoy = new Date(), anio = null, refs = {}, gid = null } = {}) {
   const { saldo: refSaldo = null, fecha: refFecha = null } = refs
+  const ejercicio = anio ?? hoy.getUTCFullYear()
   const filas = []
   const poner = (fila, col, valor) => {
     const f = filas[fila - 1] || (filas[fila - 1] = [])
     f[col] = valor
   }
-  const n = columnasDeTiempo(TIPO)
-  const cT = colTotal(TIPO)
-  const semanas = ventanas(TIPO, { hoy, n })
+  const n = columnasDeTiempo(TIPO, ejercicio)
+  const cT = colTotal(TIPO, ejercicio)
+  const semanas = ventanas(TIPO, { anio: ejercicio })
+  const footprint = footprintDe(TIPO, ejercicio)
   const fila = Object.fromEntries(conceptosDe(TIPO).map((c) => [c.clave, filaDeConcepto(TIPO, c.clave)]))
   const meta = {
-    pestana: PESTANA_SEMANAL, tipo: TIPO, ancho: FOOTPRINT.semana.cols, footprint: FOOTPRINT.semana,
+    pestana: PESTANA_SEMANAL, tipo: TIPO, anio: ejercicio, ancho: footprint.cols, footprint,
     cab: { fila: FILA.cabecera, col0: COL.tiempo0, n, colTotal: cT },
     fila, hero: { rotulo: FILA.heroRotulo, valor: FILA.heroValor, slots: SLOTS_HERO },
-    grafico: { fila: filaGraficos(TIPO) },
+    bloques: bloquesDeMedida(TIPO),
+    grafico: { fila: filaGraficos(TIPO), col: COL.tiempo0 },
     ventanas: semanas,
   }
 
   // ── 1 y 2. El título, de dónde sale todo, y el atajo a la semana corriente ───────────────────────
-  poner(FILA.titulo, 0, TITULO)
+  poner(FILA.titulo, 0, `${TITULO} ${ejercicio}`)
   poner(FILA.subtitulo, 0,
     '="Qué se cobra, qué se paga y con cuánto cierra cada semana · del libro de movimientos · al "&TEXT(TODAY();"d/mm/yyyy")')
   const vinculo = vinculoHoy(gid, meta)
@@ -85,7 +101,7 @@ export function grillaSemanal({ hoy = new Date(), refs = {}, gid = null } = {}) 
 
   bloqueHero(poner, meta, refs)
 
-  // ── La cabecera: el concepto y los trece lunes ───────────────────────────────────────────────────
+  // ── La cabecera: el concepto y los lunes del ejercicio ───────────────────────────────────────────
   poner(FILA.cabecera, 0, 'Concepto')
   semanas.forEach((v, j) => poner(FILA.cabecera, COL.tiempo0 + j, serialDeFecha(v.desde)))
   poner(FILA.cabecera, cT, 'TOTAL')
@@ -154,43 +170,67 @@ function columnaDeSemana(poner, meta, j, { refSaldo, refFecha }) {
   const { desde, hasta } = expresionVentana(cab, meta.tipo)
   const f = meta.fila
 
-  poner(f.saldoInicial, col, j === 0
-    ? anclaDeLaPrimeraSemana({ desde, refSaldo, refFecha })
-    : `=N(${celda(col - 1, f.saldoFinal)})`)
-  for (const c of CONCEPTOS) {
-    if (c.medida === undefined) continue
-    poner(f[c.clave], col, formulaMedida(MEDIDAS[c.medida], desde, hasta))
+  poner(f.saldoInicial, col, inicioDeLaSemana({
+    desde, hasta, refSaldo, refFecha, anterior: j === 0 ? null : celda(col - 1, f.saldoFinal),
+  }))
+  // Cada medida trae su subtotal Y su apertura por rubro, de la misma función que usa el mensual.
+  for (const c of medidasDeLaMatriz()) {
+    for (const linea of formulasDeMedida(meta.tipo, c.clave, { col, desde, hasta })) poner(linea.fila, col, linea.formula)
   }
   poner(f.resultado, col,
     `=N(${celda(col, f.ingresoReal)})+N(${celda(col, f.ingresoProyectado)})`
     + `-N(${celda(col, f.egresoReal)})-N(${celda(col, f.egresoProyectado)})`)
-  poner(f.saldoFinal, col, `=N(${celda(col, f.saldoInicial)})+N(${celda(col, f.resultado)})`)
+  // Una semana sin cadena (anterior al corte) no tiene cierre: queda VACÍA, nunca en cero. Es la misma
+  // regla que el mensual, y el motivo es el mismo: un cero se leería como "la empresa cerró esa semana
+  // sin plata", que es una afirmación que nadie hizo. Los flujos de esa semana sí se ven — son historia.
+  poner(f.saldoFinal, col,
+    `=IF(N(${celda(col, f.saldoInicial)})=0;"";N(${celda(col, f.saldoInicial)})+N(${celda(col, f.resultado)}))`)
 }
 
 /**
- * EL ÚNICO SALDO QUE NO ENCADENA. Sale del saldo declarado de CAJA, corregido por lo REAL que separa
- * el corte del lunes — para adelante o para atrás. La aritmética y su porqué, en cash-flow-ancla-saldo.
+ * EL SALDO AL INICIO DE UNA SEMANA — los tres papeles de `cash-flow-ancla-saldo`, en una fórmula.
+ *
+ * Con el cuadro cubriendo el año entero hay semanas ANTERIORES al corte de CAJA, que antes no existían
+ * (el rodante arrancaba en la semana corriente). Los tres casos son los que ya estaban probados:
+ *
+ *   ANTES     la semana termina antes o justo en el corte → no hay con qué reconstruir el saldo: VACÍO.
+ *   ANCLA     el corte cae adentro → `expresionInicioCorrido` sobre el saldo declarado.
+ *   ENCADENA  posterior → arranca donde cerró la anterior, y propaga el vacío si la anterior no cerró.
+ *
+ * Cuál es cuál lo decide la FÓRMULA y no este código: `refFecha` es un rango con nombre que se lee
+ * cuando la hoja calcula, no cuando el generador escribe. El día que el dueño mueva el corte de CAJA,
+ * el ancla se muda de columna sola.
+ *
+ * EL TÉRMINO `puestaAlDia` VALE CERO ACÁ, y se deja igual: es el contrato de `expresionInicioCorrido`
+ * —lo que el control A5 del anexo de CAJA verifica— y su ventana [corte+1, lunes) es vacía por
+ * construcción dentro de la rama ANCLA (ahí el lunes es anterior o igual al corte). Recortarlo sería
+ * escribir a mano una variante de una función de ancla que está probada donde vive.
  *
  * Sin los dos rangos con nombre la celda va VACÍA y la pestaña lo dice en el hero: un ancla mal
  * apuntada es un cuadro entero mintiendo con cara de correcto.
  */
-function anclaDeLaPrimeraSemana({ desde, refSaldo, refFecha }) {
+function inicioDeLaSemana({ desde, hasta, refSaldo, refFecha, anterior = null }) {
   if (!refSaldo || !refFecha) return ''
-  return expresionInicioCorrido({
+  const ancla = expresionInicioCorrido({
     refSaldo,
     yaVivido: terminoLibro({ desde, hasta: `${refFecha}+1`, estados: ['REAL'], medida: 'neto' }),
     puestaAlDia: terminoLibro({ desde: `${refFecha}+1`, hasta: desde, estados: ['REAL'], medida: 'neto' }),
-  })
+  }).replace(/^=/, '')
+  // El vacío de la primera columna se escribe como "" y no como la celda de la izquierda: a la
+  // izquierda de la primera columna está el rótulo, y N("Saldo inicial") daría 0 sin avisar.
+  const encadena = anterior ? `IF(N(${anterior})=0;"";${anterior})` : '""'
+  return `=IF(${hasta}<=${refFecha};"";IF(${desde}<=${refFecha};${ancla};${encadena}))`
 }
 
 /**
  * EL ATAJO A LA SEMANA CORRIENTE — el que el dueño extrañaba de la versión vieja.
  *
- * Busca el lunes de hoy en la fila de encabezados y arma la dirección con ADDRESS: si mañana el
- * horizonte incluyera semanas pasadas, el vínculo sigue cayendo en la correcta sin tocar una línea.
+ * Busca el lunes de hoy en la fila de encabezados y arma la dirección con ADDRESS. Con el cuadro
+ * cubriendo el año entero es el atajo que hace tolerable el scroll horizontal: la semana corriente
+ * está en algún lugar de 53 columnas y este vínculo salta a ella.
  *
- * SI EL CUADRO QUEDÓ VIEJO, LA CELDA MUESTRA #N/A, Y ESTÁ BIEN: significa que hoy ya no está en el
- * horizonte, o sea que hace trece semanas que nadie regenera la pestaña. Taparlo con un IFERROR
+ * SI EL CUADRO QUEDÓ VIEJO, LA CELDA MUESTRA #N/A, Y ESTÁ BIEN: significa que hoy ya no cae en el
+ * ejercicio que muestra la pestaña —cambió el año y nadie la regeneró—. Taparlo con un IFERROR
  * cambiaría un aviso por un vínculo que lleva a cualquier lado.
  */
 export function vinculoHoy(gid, meta) {

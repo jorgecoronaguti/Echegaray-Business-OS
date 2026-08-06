@@ -11,7 +11,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { grillaMeses, mesesDelAnio, destinosNombrados, PESTANA_MENSUAL } from './cash-flow-meses.mjs'
 import { NOMBRE_MESES } from './cash-flow-lineas.mjs'
-import { FOOTPRINT, conceptosDe, colTotal } from './cash-flow-matriz.mjs'
+import { footprintDe, conceptosDe, colTotal, letra } from './cash-flow-matriz.mjs'
+import { RUBROS_EGRESO } from './cash-flow-rubros.mjs'
 import { auditarPatron } from './patron-pestana.mjs'
 
 const REFS = { saldo: 'CAJA_TOTAL_DISPONIBLE', fecha: 'CAJA_FECHA_SALDO', minima: 'CAJA_MINIMA' }
@@ -19,17 +20,19 @@ const armar = (opts = {}) => grillaMeses({ anio: 2026, refs: REFS, ...opts })
 const en = (filas, f, c) => String((filas[f - 1] || [])[c] ?? '')
 const fueraDeComillas = (s) => String(s).replace(/"[^"]*"/g, '""')
 
-test('doce columnas de mes más TOTAL, y las nueve filas de concepto en orden', () => {
+test('doce columnas de mes más TOTAL, y las filas de concepto en orden', () => {
   const { filas, meta } = armar()
   assert.equal(meta.pestana, PESTANA_MENSUAL)
   assert.equal(meta.cab.n, 12)
-  assert.equal(meta.cab.colTotal, colTotal('mes'))
+  assert.equal(meta.cab.colTotal, colTotal('mes', 2026))
   assert.equal(en(filas, meta.cab.fila, 0), 'Concepto')
   assert.equal(en(filas, meta.cab.fila, meta.cab.colTotal), 'TOTAL')
   assert.deepEqual(
     conceptosDe('mes').map((c) => en(filas, meta.fila[c.clave], 0)),
     conceptosDe('mes').map((c) => c.rotulo))
-  assert.equal(conceptosDe('mes').length, 9)
+  // 45 filas: los 9 conceptos del tronco más la apertura por rubro de las cuatro medidas.
+  assert.equal(conceptosDe('mes').length, 45)
+  assert.deepEqual(meta.footprint, footprintDe('mes', 2026))
 })
 
 test('los doce encabezados son SERIALES del primer día de cada mes, nunca texto', () => {
@@ -77,16 +80,36 @@ test('los meses anteriores al corte quedan sin cadena en vez de inventar un sald
   assert.ok(f.startsWith('=IF('), f)
   assert.ok(f.includes('""'), 'un mes anterior al corte no se puede reconstruir: va vacío, no en cero')
   // Y su saldo final tampoco: un cero se leería como "cerró el mes sin plata", que nadie afirmó.
-  assert.ok(en(filas, meta.fila.saldoFinal, meta.cab.col0).startsWith('=IF(N($B$8)=0;""'))
+  assert.ok(en(filas, meta.fila.saldoFinal, meta.cab.col0).startsWith(`=IF(N($B$${meta.fila.saldoInicial})=0;""`))
 })
 
 test('cada mes encadena con el cierre del anterior', () => {
   const { filas, meta } = armar()
   for (let j = 1; j < 12; j++) {
-    const anterior = String.fromCharCode(65 + meta.cab.col0 + j - 1)
+    const anterior = letra(meta.cab.col0 + j - 1)
     assert.ok(en(filas, meta.fila.saldoInicial, meta.cab.col0 + j).includes(`$${anterior}$${meta.fila.saldoFinal}`),
       `el mes ${j + 1} no engancha con el cierre del anterior`)
   }
+})
+
+test('LA APERTURA POR RUBRO también en el mensual: subtotal del libro, rubros exactos, "Otros" despejado', () => {
+  const { filas, meta } = armar()
+  const c = meta.cab.col0
+  assert.equal(meta.bloques.length, 4)
+  for (const b of meta.bloques) {
+    const sub = en(filas, b.subtotal, c)
+    assert.ok(sub.startsWith('=SUMPRODUCT('), `${b.clave}: el subtotal sale del libro, no de sus sub-líneas`)
+    assert.ok(!sub.includes('SUM($B$'), `${b.clave}: si el subtotal fuera la suma, un rubro nuevo del Libro desaparecería`)
+    for (const r of b.rubros) {
+      assert.ok(en(filas, r.fila, c).includes(`="${r.rubro}"`), `${r.rubro}: el filtro es por igualdad exacta`)
+      assert.equal(en(filas, r.fila, 0), `    · ${r.rubro}`)
+    }
+    assert.equal(en(filas, b.otros, c), `=N($B$${b.subtotal})-SUM($B$${b.primeraSub}:$B$${b.otros - 1})`)
+  }
+  // Y los rubros de egreso son los catorce que emite el libro: si mañana cambia uno, la sub-línea
+  // sumaría cero para siempre sin dar un solo error.
+  assert.deepEqual(meta.bloques[2].rubros.map((r) => r.rubro), [...RUBROS_EGRESO])
+  assert.deepEqual(meta.bloques[0].rubros.map((r) => r.rubro), ['Cobranzas', 'Valores en cartera'])
 })
 
 test('cero números pegados en las filas de plata', () => {
@@ -104,7 +127,7 @@ test('cero números pegados en las filas de plata', () => {
 
 test('el hero sale del propio cuadro: cuatro cifras, ninguna con aritmética propia', () => {
   const { filas, meta } = armar()
-  const T = String.fromCharCode(65 + meta.cab.colTotal)
+  const T = letra(meta.cab.colTotal)
   assert.equal(en(filas, meta.hero.valor, meta.hero.slots[0]), `=N($${T}$${meta.fila.resultado})`)
   assert.equal(en(filas, meta.hero.valor, meta.hero.slots[1]),
     `=N($${T}$${meta.fila.ingresoReal})+N($${T}$${meta.fila.ingresoProyectado})`)
@@ -155,14 +178,14 @@ test('ninguna fórmula derrama sobre las celdas de abajo', () => {
 test('el patrón de la pestaña se cumple, salvo la única excepción declarada: una matriz no tiene secciones', () => {
   const { filas } = armar()
   const render = filas.map((f) => (f || []).map((c) => (typeof c === 'string' && c.startsWith('=') ? 0 : c)))
-  const malos = auditarPatron(render, { ancho: FOOTPRINT.mes.cols })
+  const malos = auditarPatron(render, { ancho: footprintDe('mes', 2026).cols })
   assert.deepEqual(malos.map((m) => m.regla), ['sin-secciones'], JSON.stringify(malos))
 })
 
 test('después de la última variación no hay NADA: el costo financiero vive en Impuestos y Financieros', () => {
   const { filas, meta } = armar()
   assert.equal(meta.filaFin, meta.fila.variacionMesAnterior)
-  assert.equal(filas.length, 16)
+  assert.equal(filas.length, meta.fila.variacionMesAnterior)
   const texto = filas.flat().map((c) => String(c ?? '')).join(' ')
   assert.ok(!/descubierto|impuesto al cheque|comisiones/i.test(texto), 'un costo modelado no puede vivir adentro del cuadro')
 })

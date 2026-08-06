@@ -10,16 +10,21 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   pielMatriz, reglasCondicionales, borrarCondicionales, achicarHoja, DEFICIT, AVISO, ANCHOS,
+  ALTO_FILA, tandasDeGrupos, desocultarFootprint, NIVELES_DE_GRUPO,
 } from './cash-flow-piel-matriz.mjs'
-import { planDeGraficosMatriz, requestsDeGraficosMatriz, graficoLiquidezSemanal, MARCA } from './cash-flow-graficos.mjs'
+import {
+  planDeGraficosMatriz, requestsDeGraficosMatriz, graficoLiquidezSemanal,
+  graficoEntradasSalidas, graficoTendencia, MARCA,
+} from './cash-flow-graficos.mjs'
 import { grillaSemanal } from './cash-flow-semanas.mjs'
 import { grillaMeses } from './cash-flow-meses.mjs'
-import { FOOTPRINT } from './cash-flow-matriz.mjs'
+import { footprintDe, GRAFICO } from './cash-flow-matriz.mjs'
 
 const HOY = new Date(Date.UTC(2026, 7, 5))
 const REFS = { saldo: 'CAJA_TOTAL_DISPONIBLE', fecha: 'CAJA_FECHA_SALDO', minima: 'CAJA_MINIMA' }
-const semanal = () => grillaSemanal({ hoy: HOY, refs: REFS }).meta
+const semanal = () => grillaSemanal({ hoy: HOY, anio: 2026, refs: REFS }).meta
 const mensual = () => grillaMeses({ anio: 2026, refs: REFS }).meta
+const FP_SEMANA = footprintDe('semana', 2026)
 
 test('la reja congelada: siete filas y la columna del concepto', () => {
   const req = pielMatriz({ sheetId: 7, meta: semanal() })
@@ -33,7 +38,8 @@ test('la reja congelada: siete filas y la columna del concepto', () => {
 test('los anchos: el concepto ancho, las columnas de tiempo angostas, el total un poco más', () => {
   const meta = semanal()
   const req = pielMatriz({ sheetId: 7, meta })
-  const cols = req.filter((r) => r.updateDimensionProperties?.range.dimension === 'COLUMNS')
+  const cols = req.filter((r) => r.updateDimensionProperties?.range.dimension === 'COLUMNS'
+    && r.updateDimensionProperties.fields === 'pixelSize')
   assert.equal(cols[0].updateDimensionProperties.properties.pixelSize, ANCHOS.concepto)
   assert.equal(cols[1].updateDimensionProperties.range.startIndex, meta.cab.col0)
   assert.equal(cols[1].updateDimensionProperties.properties.pixelSize, ANCHOS.tiempo)
@@ -107,29 +113,106 @@ test('borrar las reglas viejas va de atrás para adelante: al revés se corren l
 })
 
 test('la hoja se ACHICA al footprint: 220×65 para mostrar 15 columnas es lo que se vino a sacar', () => {
-  const req = achicarHoja(7, { filas: 220, cols: 65 }, FOOTPRINT.semana)
+  const req = achicarHoja(7, { filas: 220, cols: 65 }, FP_SEMANA)
   assert.equal(req.length, 2)
-  assert.deepEqual(req[0].deleteDimension.range, { sheetId: 7, dimension: 'ROWS', startIndex: 34, endIndex: 220 })
-  assert.deepEqual(req[1].deleteDimension.range, { sheetId: 7, dimension: 'COLUMNS', startIndex: 15, endIndex: 65 })
+  assert.deepEqual(req[0].deleteDimension.range, { sheetId: 7, dimension: 'ROWS', startIndex: FP_SEMANA.filas, endIndex: 220 })
+  assert.deepEqual(req[1].deleteDimension.range, { sheetId: 7, dimension: 'COLUMNS', startIndex: FP_SEMANA.cols, endIndex: 65 })
   // Y no borra nada si ya está en medida: un deleteDimension de rango vacío devuelve 400.
-  assert.deepEqual(achicarHoja(7, { filas: 34, cols: 15 }, FOOTPRINT.semana), [])
+  assert.deepEqual(achicarHoja(7, { filas: FP_SEMANA.filas, cols: FP_SEMANA.cols }, FP_SEMANA), [])
 })
 
-test('los gráficos leen las FILAS de la matriz, no una segunda fuente', () => {
+test('LOS GRUPOS HEREDADOS SE BORRAN HASTA VACIAR, y en tandas por dimensión', () => {
+  // El defecto: un grupo colapsado del layout viejo dejó las filas 8 a 13 del Mensual INVISIBLES —la
+  // matriz entera tapada— y el generador la siguió escribiendo y formateando sin decir nada.
+  const tandas = tandasDeGrupos(7, FP_SEMANA)
+  assert.equal(tandas.length, 2, 'una tanda por dimensión: el error de las filas no puede frenar las columnas')
+  assert.deepEqual(tandas.map((t) => t.length), [NIVELES_DE_GRUPO, NIVELES_DE_GRUPO])
+  assert.deepEqual(tandas[0][0].deleteDimensionGroup.range,
+    { sheetId: 7, dimension: 'ROWS', startIndex: 0, endIndex: FP_SEMANA.filas })
+  assert.deepEqual(tandas[1][0].deleteDimensionGroup.range,
+    { sheetId: 7, dimension: 'COLUMNS', startIndex: 0, endIndex: FP_SEMANA.cols })
+  // Cada request va SOLO en su lote: borrar un grupo que no existe devuelve 400 y tumbaría el formato.
+  for (const t of tandas) for (const r of t) assert.deepEqual(Object.keys(r), ['deleteDimensionGroup'])
+  assert.deepEqual(tandasDeGrupos(7, { filas: 0, cols: 0 }), [])
+})
+
+test('el footprint entero se DESOCULTA antes de formatear, y con alto uniforme', () => {
+  const meta = semanal()
+  const req = pielMatriz({ sheetId: 7, meta })
+  const unhide = req.filter((r) => r.updateDimensionProperties?.fields === 'hiddenByUser')
+  assert.equal(unhide.length, 2, 'filas y columnas')
+  assert.deepEqual(unhide.map((r) => r.updateDimensionProperties.range.dimension), ['ROWS', 'COLUMNS'])
+  for (const r of unhide) assert.equal(r.updateDimensionProperties.properties.hiddenByUser, false)
+  // VAN PRIMERAS: formatear lo invisible es exactamente el defecto que se pagó.
+  assert.equal(req.indexOf(unhide[0]), 0)
+  assert.deepEqual(desocultarFootprint(7, { filas: 0, cols: 0 }), [])
+  // Y el alto se resetea en TODO el footprint: una fila de 42px heredada parte la matriz en dos tablas.
+  const altos = req.find((r) => r.updateDimensionProperties?.range.dimension === 'ROWS'
+    && r.updateDimensionProperties.fields === 'pixelSize')
+  assert.equal(altos.updateDimensionProperties.properties.pixelSize, ALTO_FILA)
+  assert.equal(altos.updateDimensionProperties.range.endIndex, meta.footprint.filas)
+})
+
+test('LA PIEL DE LA MATRIZ: encabezado pintado, subtotales en negrita, sub-líneas con sangría', () => {
+  const meta = semanal()
+  const req = pielMatriz({ sheetId: 7, meta })
+  const deFila = (f, extra = () => true) => req.filter((r) => r.repeatCell?.range?.startRowIndex === f - 1
+    && r.repeatCell.range.endRowIndex === f && extra(r))
+  // 1. El encabezado tiene FONDO: sin banda, con 53 columnas la fila de fechas se pierde.
+  const cab = deFila(meta.cab.fila, (r) => r.repeatCell.cell.userEnteredFormat?.backgroundColor)
+  assert.equal(cab.length, 1)
+  assert.equal(cab[0].repeatCell.cell.userEnteredFormat.textFormat.bold, true)
+  // 2. Resultado y Saldo final en NEGRITA, y el saldo final con borde superior: es la línea de cierre.
+  for (const f of [meta.fila.resultado, meta.fila.saldoFinal]) {
+    assert.ok(deFila(f, (r) => r.repeatCell.cell.userEnteredFormat?.textFormat?.bold === true).length,
+      `la fila ${f} tiene que ir en negrita`)
+    assert.ok(req.some((r) => r.updateBorders?.range.startRowIndex === f - 1 && r.updateBorders.top),
+      `la fila ${f} tiene que llevar la regla fina arriba`)
+  }
+  // 3. Los cuatro subtotales en negrita y sus sub-líneas SIN negrita: la jerarquía la hace el peso.
+  for (const b of meta.bloques) {
+    assert.ok(deFila(b.subtotal, (r) => r.repeatCell.cell.userEnteredFormat?.textFormat?.bold === true).length,
+      `${b.clave}: el subtotal tiene que ir en negrita o se pierde adentro de su propia apertura`)
+    const subs = req.filter((r) => r.repeatCell?.range?.startRowIndex === b.primeraSub - 1
+      && r.repeatCell.range.endRowIndex === b.ultimaSub)
+    assert.equal(subs.length, 1, `${b.clave}: las sub-líneas se formatean como un rango contiguo`)
+    assert.equal(subs[0].repeatCell.cell.userEnteredFormat.textFormat.bold, false)
+  }
+})
+
+test('el gráfico del semanal se ancla DEBAJO del cuadro, en la columna B, y entra en la hoja', () => {
   const meta = semanal()
   const g = graficoLiquidezSemanal(7, meta)
   const serie = g.addChart.chart.spec.basicChart.series[0].series.sourceRange.sources[0]
-  assert.equal(serie.startRowIndex, meta.fila.saldoFinal - 1)
+  assert.equal(serie.startRowIndex, meta.fila.saldoFinal - 1, 'lee la FILA de saldo final de la matriz')
   assert.equal(serie.endRowIndex, meta.fila.saldoFinal)
   assert.equal(serie.startColumnIndex, meta.cab.col0)
-  assert.equal(serie.endColumnIndex, meta.cab.col0 + meta.cab.n)
+  assert.equal(serie.endColumnIndex, meta.cab.col0 + meta.cab.n, 'la fila ENTERA: las semanas en blanco son huecos, no un corte')
   const dominio = g.addChart.chart.spec.basicChart.domains[0].domain.sourceRange.sources[0]
   assert.equal(dominio.startRowIndex, meta.cab.fila - 1, 'el eje son los encabezados de tiempo')
-  // Anclado DEBAJO del cuadro y dentro de la hoja: `anchorCell` es una celda real.
-  const p = g.addChart.chart.position.overlayPosition.anchorCell
-  assert.equal(p.columnIndex, 0)
-  assert.equal(p.rowIndex, meta.grafico.fila - 1)
-  assert.ok(p.rowIndex < FOOTPRINT.semana.filas)
+  const pos = g.addChart.chart.position.overlayPosition
+  assert.equal(pos.anchorCell.columnIndex, GRAFICO.col0, 'en la columna B: contra la A no respira')
+  assert.equal(pos.anchorCell.rowIndex, meta.grafico.fila - 1)
+  assert.equal(pos.anchorCell.rowIndex, meta.filaFin + 1, 'dos renglones de aire debajo del cuadro')
+  assert.equal(pos.widthPixels, GRAFICO.cols.semana * ANCHOS.tiempo)
+  assert.equal(pos.heightPixels, GRAFICO.filas * ALTO_FILA)
+  // Y TERMINA DENTRO DE LA HOJA: si el achique lo amputara, el gráfico desaparece en cada corrida.
+  assert.ok(pos.anchorCell.rowIndex + GRAFICO.filas <= meta.footprint.filas)
+})
+
+test('los dos del mensual van LADO A LADO, con una columna de aire, y sin salirse del footprint', () => {
+  const meta = mensual()
+  const a = graficoEntradasSalidas(7, meta).addChart.chart.position.overlayPosition
+  const b = graficoTendencia(7, meta).addChart.chart.position.overlayPosition
+  assert.equal(a.anchorCell.rowIndex, b.anchorCell.rowIndex, 'a la misma altura: se comparan de un vistazo')
+  assert.equal(a.anchorCell.columnIndex, GRAFICO.col0)
+  assert.equal(b.anchorCell.columnIndex, GRAFICO.col0 + GRAFICO.cols.mes + GRAFICO.aire)
+  for (const p of [a, b]) {
+    assert.equal(p.widthPixels, GRAFICO.cols.mes * ANCHOS.tiempo)
+    assert.ok(p.anchorCell.rowIndex + GRAFICO.filas <= meta.footprint.filas)
+  }
+  // El segundo termina dentro del ancho de la hoja: un ancla fuera del grid devuelve 400.
+  assert.ok(b.anchorCell.columnIndex + GRAFICO.cols.mes <= meta.footprint.cols)
 })
 
 test('el plan dice qué gráfico lleva cada vista, y por qué no los otros', () => {

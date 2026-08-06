@@ -28,13 +28,18 @@
 
 import { MONEDA_CUERPO, MONEDA_TOTAL } from './formato-statement.mjs'
 import { INK, MUTED, HAIR, ACENTO, BLANCO } from './estilo-statement.mjs'
-import { FILA } from './cash-flow-matriz.mjs'
+import { FILA, letra } from './cash-flow-matriz.mjs'
 
 const FUENTE = 'Arial'
 /** El detalle, apagado contra la tinta de los titulares: se lee como respaldo, no como mensaje. */
 const TENUE = { red: 0.36, green: 0.38, blue: 0.42 }
 /** El gris del encabezado de la matriz. Suave: marca la banda sin competir con los números. */
 const GRIS_SUAVE = { red: 0.95, green: 0.95, blue: 0.94 }
+/**
+ * El tinte de la columna TOTAL. Más claro todavía que el encabezado: con 53 columnas de tiempo, el
+ * TOTAL es el único ancla visual del extremo derecho y sin un fondo se pierde entre las semanas.
+ */
+const GRIS_TOTAL = { red: 0.97, green: 0.97, blue: 0.96 }
 /** El único rojo del archivo: saldo bajo cero. */
 export const DEFICIT = { red: 0.70, green: 0.20, blue: 0.20 }
 /** Ámbar: por encima de cero pero por debajo del piso. Avisa sin gritar. */
@@ -77,6 +82,15 @@ export function pielMatriz({ sheetId, meta, filasHoja = 0, colsHoja = 0 }) {
   const col0 = meta.cab.col0
   const colUltima = meta.cab.colTotal
 
+  // ── 0. TODO EL FOOTPRINT VISIBLE, ANTES DE PINTAR NADA ──────────────────────────────────────────
+  //
+  // El layout anterior dejó GRUPOS de filas colapsados y el Mensual apareció con las filas 8 a 13
+  // invisibles: la matriz entera —los cuatro flujos y el resultado— tapada, y el formato aplicándose
+  // igual sobre celdas que nadie veía. Los grupos los borra `tandasDeGrupos` (necesita su propio lote,
+  // porque borrar un grupo que no existe devuelve 400); lo que sigue desoculta lo que quedó escondido
+  // "a mano". Va PRIMERO en el lote: formatear lo invisible es exactamente el defecto que se pagó.
+  req.push(...desocultarFootprint(sheetId, { filas: alto, cols: ancho }))
+
   // ── 1. La hoja: sin reja, con el encabezado y el concepto anclados ───────────────────────────────
   req.push({
     updateSheetProperties: {
@@ -112,8 +126,54 @@ export function pielMatriz({ sheetId, meta, filasHoja = 0, colsHoja = 0 }) {
   dim('COLUMNS', 0, 1, ANCHOS.concepto)
   dim('COLUMNS', col0, colUltima, ANCHOS.tiempo)
   dim('COLUMNS', colUltima, colUltima + 1, ANCHOS.total)
+  // El alto se RESETEA en todo el footprint, no sólo en las filas nuevas: una fila que quedó de 42px
+  // en un layout anterior sigue de 42px para siempre, y una matriz con dos alturas se lee como dos
+  // tablas pegadas.
   dim('ROWS', 0, alto, ALTO_FILA)
   return req
+}
+
+/**
+ * NÚCLEO PURO: los requests que dejan VISIBLE todo el footprint.
+ *
+ * `hiddenByUser:false` sobre filas y columnas. No alcanza con borrar los grupos: una fila que alguien
+ * ocultó a mano (o que quedó oculta de la zona auxiliar del diseño viejo) sigue oculta después de que
+ * el grupo desaparece, y el generador la escribe igual — un cuadro correcto que no se ve.
+ */
+export function desocultarFootprint(sheetId, { filas = 0, cols = 0 } = {}) {
+  return [['ROWS', filas], ['COLUMNS', cols]]
+    .filter(([, fin]) => fin > 0)
+    .map(([dimension, fin]) => ({
+      updateDimensionProperties: {
+        range: { sheetId, dimension, startIndex: 0, endIndex: fin },
+        properties: { hiddenByUser: false },
+        fields: 'hiddenByUser',
+      },
+    }))
+}
+
+/** Cuántos niveles de grupo se intenta borrar. Sheets admite hasta 8 anidados; cuatro cubre cualquier layout real. */
+export const NIVELES_DE_GRUPO = 4
+
+/**
+ * NÚCLEO PURO: los requests para VACIAR los grupos de filas y columnas heredados, EN TANDAS.
+ *
+ * ═══ POR QUÉ EN TANDAS Y NO EN UNA LISTA SOLA ═══
+ *
+ * `deleteDimensionGroup` sobre un rango SIN grupo devuelve 400, y un 400 en un `batchUpdate` tumba el
+ * lote ENTERO — con el formato adentro. Y no se puede saber cuántos niveles hay sin leerlos. Así que
+ * se manda un request por vez y se corta en el primer error: ése es el nivel que ya no existe.
+ *
+ * Cada tanda es una dimensión, para que el error de las filas no impida limpiar las columnas.
+ *
+ * @returns {Array<Array<object>>} una lista de requests por dimensión, en orden de borrado
+ */
+export function tandasDeGrupos(sheetId, { filas = 0, cols = 0 } = {}, niveles = NIVELES_DE_GRUPO) {
+  return [['ROWS', filas], ['COLUMNS', cols]]
+    .filter(([, fin]) => fin > 0)
+    .map(([dimension, fin]) => Array.from({ length: niveles }, () => ({
+      deleteDimensionGroup: { range: { sheetId, dimension, startIndex: 0, endIndex: fin } },
+    })))
 }
 
 /** Título, subtítulo y el atajo de la esquina. */
@@ -130,8 +190,11 @@ function formatoEncabezado({ celdas, meta }) {
 function formatoHero({ celdas, reglaFina, meta }) {
   for (const s of meta.hero.slots) {
     celdas(meta.hero.rotulo, s, s + 1, 'userEnteredFormat.textFormat', { textFormat: txt(MUTED, { bold: true, size: 9 }) })
+    // Cuerpo 12: es lo más grande que entra en una columna de 95px con un importe de nueve cifras. En
+    // 14 Sheets lo tapa con "###" sin avisar, y en 18 —el tamaño de las tarjetas de CAJA, que viven en
+    // columnas anchas— no entra ni la mitad. La jerarquía la hacen la negrita y el color.
     celdas(meta.hero.valor, s, s + 1, 'userEnteredFormat(textFormat,numberFormat,horizontalAlignment)',
-      { textFormat: txt(ACENTO, { bold: true, size: 11 }), numberFormat: MONEDA_TOTAL, horizontalAlignment: 'LEFT' })
+      { textFormat: txt(ACENTO, { bold: true, size: 12 }), numberFormat: MONEDA_TOTAL, horizontalAlignment: 'LEFT' })
     celdas(meta.hero.valor, s + 1, s + 2, 'userEnteredFormat(textFormat,numberFormat)',
       { textFormat: txt(TENUE, { size: 9 }), numberFormat: { type: 'TEXT' } })
   }
@@ -149,24 +212,47 @@ function formatoCuerpo({ push, celdas, reglaFina, rango, meta, col0, colUltima }
   // entregaría once y una cadena — que es exactamente lo que pasó en el Mensual anterior.
   celdas(meta.cab.fila, 0, meta.footprint.cols, 'userEnteredFormat(backgroundColor,textFormat)',
     { backgroundColor: GRIS_SUAVE, textFormat: txt(MUTED, { bold: true, size: 9 }) })
+  // La fecha va CENTRADA sobre su columna: es el título de la columna, no un dato alineado con los
+  // importes de abajo. Alineada a la derecha, con 53 columnas angostas, se leía pegada a la vecina.
   celdas(meta.cab.fila, col0, colUltima, 'userEnteredFormat(numberFormat,horizontalAlignment)',
-    { numberFormat: { type: 'DATE', pattern: patron }, horizontalAlignment: 'RIGHT' })
+    { numberFormat: { type: 'DATE', pattern: patron }, horizontalAlignment: 'CENTER' })
   celdas(meta.cab.fila, colUltima, colUltima + 1, 'userEnteredFormat(numberFormat,horizontalAlignment)',
-    { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'RIGHT' })
+    { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'CENTER' })
   reglaFina(meta.cab.fila, 'bottom')
 
-  // El cuerpo: el concepto a la izquierda, plata a la derecha en toda la matriz.
+  // El cuerpo: el concepto a la izquierda, plata a la derecha en toda la matriz. `MONEDA_CUERPO` es
+  // moneda sin decimales y ya escribe "—" cuando el valor es cero: el guion no se inventa como texto,
+  // sale del patrón — un "—" tipeado sería un texto donde tiene que haber un número.
   push(rango(FILA.concepto - 1, filaFin, 0, 1), 'userEnteredFormat(textFormat,horizontalAlignment)',
     { textFormat: txt(INK, { size: 10 }), horizontalAlignment: 'LEFT' })
   push(rango(FILA.concepto - 1, filaFin, col0, colUltima + 1), 'userEnteredFormat(numberFormat,horizontalAlignment)',
     { numberFormat: MONEDA_CUERPO, horizontalAlignment: 'RIGHT' })
+  // La columna TOTAL, con su propio fondo. Sólo el fondo: el resto lo ponen las filas, y si se pisara
+  // acá la negrita del saldo final se perdería justo en la celda que cierra el cuadro.
+  push(rango(FILA.concepto - 1, filaFin, colUltima, colUltima + 1), 'userEnteredFormat.backgroundColor',
+    { backgroundColor: GRIS_TOTAL })
 
-  // Las dos filas que se leen primero. El saldo final lleva el único acento del cuadro.
+  // ── La apertura por rubro: el subtotal pesa, el detalle respalda ────────────────────────────────
+  //
+  // La jerarquía la hacen el PESO y el TAMAÑO, no un color ni una caja: el subtotal en negrita a
+  // cuerpo 10, sus rubros en gris a cuerpo 9 con la sangría que ya trae el rótulo. Sin esto, 43 filas
+  // de la misma tipografía se leen como una lista plana y el subtotal se pierde adentro de su propia
+  // apertura — que es exactamente lo contrario de lo que la apertura vino a resolver.
+  for (const b of meta.bloques ?? []) {
+    celdas(b.subtotal, 0, meta.footprint.cols, 'userEnteredFormat.textFormat',
+      { textFormat: txt(INK, { bold: true, size: 10 }) })
+    push(rango(b.primeraSub - 1, b.ultimaSub, 0, meta.footprint.cols), 'userEnteredFormat.textFormat',
+      { textFormat: txt(TENUE, { size: 9 }) })
+  }
+
+  // Las dos filas que se leen primero. El saldo final lleva el único acento del cuadro, y una regla
+  // fina arriba que lo separa del resultado: es la línea de cierre, no una fila más de la lista.
   celdas(f.resultado, 0, meta.footprint.cols, 'userEnteredFormat.textFormat', { textFormat: txt(INK, { bold: true, size: 10 }) })
   reglaFina(f.resultado, 'top')
   celdas(f.saldoFinal, 0, meta.footprint.cols, 'userEnteredFormat.textFormat', { textFormat: txt(ACENTO, { bold: true, size: 10 }) })
   celdas(f.saldoFinal, col0, colUltima + 1, 'userEnteredFormat(textFormat,numberFormat)',
     { textFormat: txt(ACENTO, { bold: true, size: 10 }), numberFormat: MONEDA_TOTAL })
+  reglaFina(f.saldoFinal, 'top')
 }
 
 /**
@@ -190,7 +276,9 @@ export function reglasCondicionales({ sheetId, meta, refMinima = null }) {
   const f = meta.fila
   const c0 = meta.cab.col0
   const c1 = meta.cab.colTotal + 1
-  const letraCol = (i) => String.fromCharCode(65 + i) // las matrices no pasan de la columna N
+  // `letra` y no `String.fromCharCode(65+i)`: con el semanal a 53 semanas la matriz llega a BC, y la
+  // aritmética corta devolvía un carácter cualquiera pasada la Z — una regla condicional apuntando a
+  // una celda que no existe no da error, simplemente no pinta nunca.
   const req = []
   const regla = (filaN, formula, color, bold) => req.push({
     addConditionalFormatRule: {
@@ -205,7 +293,7 @@ export function reglasCondicionales({ sheetId, meta, refMinima = null }) {
     },
   })
   /** La celda de referencia de una regla: columna RELATIVA (corre con el rango), fila FIJA. */
-  const ref = (filaN) => `${letraCol(c0)}$${filaN}`
+  const ref = (filaN) => `${letra(c0)}$${filaN}`
 
   // El orden importa: la primera regla que da verdadera gana. El déficit va primero porque un saldo
   // negativo también está por debajo del piso, y lo que hay que ver es que está bajo cero.

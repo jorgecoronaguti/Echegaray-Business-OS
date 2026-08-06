@@ -35,7 +35,9 @@ import {
   grillaPresupuesto, rescatarPresupuesto, formatoPresupuesto,
   PESTANA_PRESUPUESTO, ANCHO_PRESUPUESTO,
 } from '../lib/cash-flow-presupuesto.mjs'
-import { pielMatriz, reglasCondicionales, borrarCondicionales, achicarHoja } from '../lib/cash-flow-piel-matriz.mjs'
+import {
+  pielMatriz, reglasCondicionales, borrarCondicionales, achicarHoja, tandasDeGrupos,
+} from '../lib/cash-flow-piel-matriz.mjs'
 import { requestsDeGraficosMatriz } from '../lib/cash-flow-graficos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -55,7 +57,29 @@ async function refsDeCaja(google) {
   return refs
 }
 
-/** Asegura que la pestaña exista y tenga sitio para lo que se va a escribir. Sólo AGRANDA (achicar va después). */
+/**
+ * NÚCLEO PURO: qué propiedades de tamaño le faltan a una hoja para alojar el footprint. `{}` = ninguna.
+ *
+ * Sólo AGRANDA: el achique va después de escribir, cuando ya se sabe que la firma dio permiso.
+ */
+export function tamanoQueFalta(hoja, { filas, cols }) {
+  const props = {}
+  if ((hoja?.rows ?? 0) < filas) props.rowCount = filas
+  if ((hoja?.cols ?? 0) < cols) props.columnCount = cols
+  return props
+}
+
+/**
+ * Asegura que la pestaña exista y tenga sitio para lo que se va a escribir.
+ *
+ * ═══ `--dry` NO ESCRIBE NADA, Y ESTO ERA UNA GOTERA (06/08/2026) ═══
+ *
+ * El `--dry` cortaba antes de la grilla pero NO antes de esta función: si la pestaña existía y era más
+ * chica que el footprint, agrandarla era un `spreadsheetBatchUpdate` contra el archivo real. Medido en
+ * vivo: una corrida `--dry` desde un worktree llevó las dos pestañas de 34×15 y 50×14 a 71×55 y 73×14.
+ * Es aditivo —filas y columnas vacías, sin contenido ni formato— pero es una escritura, y un `--dry`
+ * que escribe es un `--dry` que no sirve para decidir si escribir.
+ */
 async function asegurarHoja(google, titulo, { filas, cols }) {
   // `hallarPestana` TIRA cuando la pestaña no existe — no devuelve null. En el arranque en frío eso
   // rompía el --dry y habría roto la corrida real.
@@ -70,9 +94,11 @@ async function asegurarHoja(google, titulo, { filas, cols }) {
     console.log(`  ✚ creé la pestaña ${titulo}`)
     return hoja
   }
-  const props = {}
-  if ((hoja.rows ?? 0) < filas) props.rowCount = filas
-  if ((hoja.cols ?? 0) < cols) props.columnCount = cols
+  const props = tamanoQueFalta(hoja, { filas, cols })
+  if (Object.keys(props).length && DRY) {
+    console.log(`  ✚ (--dry) ${titulo} pasaría de ${hoja.rows}×${hoja.cols} a ${filas}×${cols}`)
+    return hoja
+  }
   if (Object.keys(props).length) {
     await google.spreadsheetBatchUpdate(ID, [{
       updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: props }, fields: Object.keys(props).map((k) => `gridProperties.${k}`).join(',') },
@@ -80,6 +106,30 @@ async function asegurarHoja(google, titulo, { filas, cols }) {
     hoja = buscar(await google.getSheetMeta(ID))
   }
   return hoja
+}
+
+/**
+ * VACÍA LOS GRUPOS DE FILAS Y COLUMNAS HEREDADOS — uno por vez, cortando en el primer error.
+ *
+ * ═══ EL DEFECTO QUE ESTO CIERRA (06/08/2026) ═══
+ *
+ * El layout anterior dejó un grupo de filas colapsado y el Mensual amaneció con las filas 8 a 13
+ * invisibles: la matriz entera tapada, sin un solo error, con el generador escribiéndola y
+ * formateándola cada dos horas sobre celdas que nadie veía. Se limpió a mano una vez; esto lo
+ * garantiza en cada corrida.
+ *
+ * VA REQUEST POR REQUEST, NO EN LOTE: borrar un grupo que no existe devuelve 400, y un 400 dentro de
+ * un `batchUpdate` tumba el lote entero. El primer error de una dimensión significa "ya no quedan".
+ */
+async function borrarGruposHeredados(google, sheetId, footprint, pestana) {
+  let borrados = 0
+  for (const tanda of tandasDeGrupos(sheetId, footprint)) {
+    for (const request of tanda) {
+      try { await google.spreadsheetBatchUpdate(ID, [request]); borrados++ } catch { break }
+    }
+  }
+  if (borrados) console.log(`  ⌄ ${pestana}: ${borrados} grupo(s) de filas/columnas heredado(s) borrado(s)`)
+  return borrados
 }
 
 /**
@@ -171,6 +221,9 @@ async function escribirVista(google, construir, footprint, refs, nombresDe = nul
     console.log(`  ✂ ${meta.pestana}: la hoja pasa de ${hoja.rows}×${hoja.cols} a ${footprint.filas}×${footprint.cols}`)
   }
 
+  // ── Los grupos heredados, vaciados ANTES de formatear ──
+  await borrarGruposHeredados(google, hoja.sheetId, footprint, meta.pestana)
+
   // ── El formato, con las reglas condicionales borradas ANTES de re-crearse ──
   const cf = await google.getConditionalFormats(ID).catch(() => [])
   const cuantas = cf.find((c) => c.sheetId === hoja.sheetId)?.reglas ?? 0
@@ -204,8 +257,10 @@ async function main() {
   // Los nombres los publica escribirVista ANTES de achicar la hoja: publicarlos después dejó
   // CF_SALDO_INICIO/CIERRE quemados el 06/08 (ver el comentario adentro).
   await escribirVista(google, () => grillaMeses({ anio: AÑO, refs }), mensual.meta.footprint, refs, destinosNombrados)
-  const semanal = grillaSemanal({ hoy, refs })
-  await escribirVista(google, (gid) => grillaSemanal({ hoy, refs, gid }), semanal.meta.footprint, refs)
+  // Y EL SEMANAL VA CON EL MISMO AÑO QUE EL MENSUAL, no con el rodante de hoy: las dos vistas cubren
+  // el mismo ejercicio o la conciliación entre ellas deja de significar algo.
+  const semanal = grillaSemanal({ hoy, anio: AÑO, refs })
+  await escribirVista(google, (gid) => grillaSemanal({ hoy, anio: AÑO, refs, gid }), semanal.meta.footprint, refs)
   if (DRY) return console.log('\n--dry: no escribí nada.')
 
   // ── VERIFICAR CONTRA EL SHEET, que es lo único que prueba una escritura ──

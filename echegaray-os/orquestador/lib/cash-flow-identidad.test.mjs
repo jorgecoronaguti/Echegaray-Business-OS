@@ -93,7 +93,7 @@ test('las fórmulas que quedan ESCRITAS en las dos pestañas son la misma defini
   // Éste es el que importa: no compara la función con sí misma, compara lo que cada vista PONE en su
   // celda. Si mañana alguien escribe un SUMPRODUCT a mano en una de las dos, acá se pone rojo.
   const refs = { saldo: 'CAJA_TOTAL_DISPONIBLE', fecha: 'CAJA_FECHA_SALDO', minima: 'CAJA_MINIMA' }
-  const sem = grillaSemanal({ hoy: new Date(Date.UTC(2026, 7, 5)), refs })
+  const sem = grillaSemanal({ hoy: new Date(Date.UTC(2026, 7, 5)), anio: 2026, refs })
   const mes = grillaMeses({ anio: 2026, refs })
   const claves = ['ingresoReal', 'ingresoProyectado', 'egresoReal', 'egresoProyectado']
   claves.forEach((clave, k) => {
@@ -104,6 +104,21 @@ test('las fórmulas que quedan ESCRITAS en las dos pestañas son la misma defini
     assert.equal(enElSemanal, enElMensual, `la medida ${MEDIDAS[k].clave} no está escrita igual en las dos pestañas`)
     assert.equal(sem.meta.fila[clave], mes.meta.fila[clave], `${clave} no está en la misma fila en las dos vistas`)
   })
+
+  // Y LA APERTURA POR RUBRO TAMBIÉN, línea por línea. La taxonomía vive UNA vez y las dos vistas la
+  // importan; si alguien agregara un rubro sólo en una, "Otros" diría cosas distintas en cada pestaña
+  // y las dos seguirían cerrando contra su propio subtotal — dos cuadros coherentes que se contradicen.
+  sem.meta.bloques.forEach((b, i) => {
+    const m = mes.meta.bloques[i]
+    assert.deepEqual(b.rubros.map((r) => r.rubro), m.rubros.map((r) => r.rubro), `${b.clave}: distinta apertura`)
+    for (let k = 0; k < b.rubros.length; k++) {
+      assert.equal(b.rubros[k].fila, m.rubros[k].fila, `${b.clave}/${b.rubros[k].rubro} no está en la misma fila`)
+      assert.equal(
+        sinVentana(sem.filas[b.rubros[k].fila - 1][sem.meta.cab.col0]),
+        sinVentana(mes.filas[m.rubros[k].fila - 1][mes.meta.cab.col0]),
+        `${b.clave}/${b.rubros[k].rubro} no está escrito igual en las dos pestañas`)
+    }
+  })
 })
 
 test('PARTICIÓN COHERENTE: semana y mes son uniones de las mismas ventanas diarias', () => {
@@ -111,7 +126,7 @@ test('PARTICIÓN COHERENTE: semana y mes son uniones de las mismas ventanas diar
   // fin de mes y sus movimientos caen a los dos lados. Repartirla es una convención, y cualquiera que
   // se elija genera diferencias de borde que no son defectos. Lo que hace imposible la contradicción es
   // que las dos ventanas salgan de la misma función sobre la misma unidad atómica: el día.
-  for (const v of [...ventanas('semana', { hoy: new Date(Date.UTC(2026, 7, 5)) }), ...ventanas('mes', { anio: 2026 })]) {
+  for (const v of [...ventanas('semana', { anio: 2026 }), ...ventanas('mes', { anio: 2026 })]) {
     const dias = ventanasDiarias(v.desde, v.hasta)
     assert.deepEqual(particionExacta(dias, v.desde, v.hasta).huecos, [])
   }
