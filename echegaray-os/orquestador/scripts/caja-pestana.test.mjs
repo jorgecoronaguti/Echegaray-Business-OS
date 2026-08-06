@@ -109,7 +109,9 @@ test('LAS CIFRAS DE LAS TARJETAS SALEN DEL LIBRO O DE LA PROPIA PESTAÑA, nunca 
   const val = (i) => celda(g, g.fCifras, COLS_TARJETA[i])
   assert.equal(val(0), `=$C$${g.fCierre}`, 'la caja disponible es EL TOTAL del panel de cuentas, no una suma nueva')
   assert.equal(val(1), `=${terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'EOMONTH(TODAY();0)+1', medida: 'magnitud' })}`)
-  assert.equal(val(2), '=N($A$3)-N($C$3)', 'LIBRE = disponible − comprometida, por referencia a las cifras vecinas')
+  // 06/08 (contrato nuevo): LIBRE = available liquidity — disponible MÁS invertido menos comprometida.
+  // El porqué completo vive en caja-tarjetas.mjs; acá sólo se fija que la grilla estampe esa fórmula.
+  assert.equal(val(2), '=N($A$3)+N($G$3)-N($C$3)', 'LIBRE = (disponible + invertido) − comprometida, por referencia a las cifras vecinas')
   assert.equal(val(3), `=N($C$${g.fBalanzArs})+N($C$${g.fBalanzUsd})`,
     'INVERTIDO referencia las filas Balanz del panel, no una segunda fuente')
   assert.equal(val(4), `=$C$${g.fCierre}+${terminoLibro({ desde: 'TODAY()', hasta: `TODAY()+${HORIZONTE}`, estados: NO_REAL })}`)

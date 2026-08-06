@@ -131,12 +131,28 @@ export function tarjetas(ref) {
       // ═══ LA RESPUESTA A "¿PUEDO USAR LA CAJA DISPONIBLE ENTERA?" (06/08, pregunta del dueño) ═══
       //
       // NO: parte de lo disponible ya está prometido este mes (quincenas, cargas, impuestos, cheques).
-      // Esta tarjeta es el neto — el "net cash position" de un panel de tesorería: disponible HOY
-      // menos comprometido del mes. ESTE es el número que se puede usar sin romper ningún compromiso.
-      // Referencia a las DOS tarjetas vecinas, no una tercera aritmética: si una cambia, ésta sigue.
-      // Las cifras viven en la FILA 3, columnas A (disponible) y C (comprometida) — los slots 1 y 2.
-      valor: '=N($A$3)-N($C$3)',
-      contexto: '="disponible hoy − comprometido del mes"',
+      //
+      // ═══ Y EL CONTRATO CAMBIÓ EL MISMO DÍA (segunda pregunta del dueño) ═══
+      //
+      // La primera versión era `disponible − comprometida`: $897.367 "libres" en agosto. El dueño:
+      // "me parece muy poco para q en agosto solo nos quede eso libre" — y la auditoría fría le dio
+      // la razón. El número era correcto bajo su definición, pero la definición era el PEOR CASO
+      // disfrazado de saldo: comparaba TODO el egreso no-REAL del mes ($45,0M) contra la caja de
+      // HOY, con $45,0M en Balanz —rescatables en un día hábil— mirando desde la tarjeta de al lado
+      // y sin contarle ni un peso de las cobranzas del mes.
+      //
+      // La definición vigente es la de AVAILABLE LIQUIDITY de un panel de tesorería (JPM/Kyriba):
+      // liquidez total (operativa + invertida) menos comprometido del mes — lo que se puede
+      // comprometer HOY sin depender de que ningún cliente pague. Las cobranzas proyectadas siguen
+      // afuera a propósito: una proyección no es plata, y su lugar es CAJA PROYECTADA.
+      //
+      // El escenario estricto NO desaparece: baja al contexto como "sin rescatar Balanz", que es lo
+      // que siempre fue — un escenario de estrés, no el titular.
+      //
+      // Referencia a las TRES tarjetas vecinas, no una cuarta aritmética: si una cambia, ésta sigue.
+      // Las cifras viven en la FILA 3: A (disponible), C (comprometida), G (invertido).
+      valor: '=N($A$3)+N($G$3)-N($C$3)',
+      contexto: '="sin rescatar Balanz: "&TEXT((N($A$3)-N($C$3))/1000000;"$#,##0.0")&"M"',
       especie: 'plata',
     },
     {

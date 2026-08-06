@@ -98,7 +98,21 @@ test('FALLA CERRADO: sin una referencia, rompe antes de escribir una celda en er
   assert.throws(() => tarjetas(), /faltan las referencias/)
 })
 
-test('LIBRE referencia las cifras de las dos tarjetas vecinas, no una tercera aritmética', () => {
+test('LIBRE es la liquidez TOTAL menos lo comprometido, con el escenario sin Balanz en el contexto', () => {
+  // ═══ EL CONTRATO CAMBIÓ EL 06/08 (segunda pregunta del dueño) ═══
+  //
+  // Con `disponible − comprometida` la tarjeta decía $897.367 "libres" en agosto — el peor caso
+  // absoluto (ni una cobranza entra, Balanz intocable) disfrazado de saldo libre. El dueño: "me
+  // parece muy poco para q en agosto solo nos quede eso libre". La auditoría fría dio la razón:
+  // el número era correcto bajo esa definición, pero la definición comparaba TODO el egreso del mes
+  // contra la caja de HOY, con $45,0M rescatables en 24 hs mirando desde la tarjeta de al lado.
+  //
+  // La definición vigente es la de available liquidity (JPM/Kyriba): (operativo + invertido) −
+  // comprometido del mes. El escenario estricto no se pierde: baja al contexto como "sin rescatar
+  // Balanz", que es exactamente lo que era — un escenario, no el titular.
   const l = de('libre')
-  assert.equal(l.valor, '=N($A$3)-N($C$3)', 'disponible (A3) menos comprometida (C3), por referencia')
+  assert.equal(l.valor, '=N($A$3)+N($G$3)-N($C$3)',
+    'disponible (A3) más invertido (G3) menos comprometida (C3), por referencia a las tarjetas')
+  assert.match(l.contexto, /sin rescatar Balanz/, 'el escenario conservador queda a la vista, no desaparece')
+  assert.ok(l.contexto.includes('N($A$3)-N($C$3)'), 'el escenario del contexto es la MISMA resta que era el titular')
 })
