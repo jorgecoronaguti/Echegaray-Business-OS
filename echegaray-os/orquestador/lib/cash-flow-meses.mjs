@@ -32,6 +32,7 @@ import {
   expresionVentana, ventanas, celda, rangoFila, serialDeFecha, rotuloMes,
 } from './cash-flow-matriz.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
+import { bloquesDeCliente, filaTituloPorCliente, formulasPorCliente } from './cash-flow-por-cliente.mjs'
 import { expresionInicio } from './cash-flow-ancla-saldo.mjs'
 import { NOMBRE_MESES } from './cash-flow-lineas.mjs'
 import { NOMBRES as PRESUPUESTO } from './cash-flow-presupuesto.mjs'
@@ -81,6 +82,7 @@ export function grillaMeses({ anio = 2026, refs = {} } = {}) {
     cab: { fila: FILA.cabecera, col0: COL.tiempo0, n, colTotal: cT },
     fila, hero: { rotulo: FILA.heroRotulo, valor: FILA.heroValor, slots: SLOTS_HERO },
     bloques: bloquesDeMedida(TIPO),
+    clientes: { titulo: filaTituloPorCliente(TIPO), bloques: bloquesDeCliente(TIPO) },
     grafico: { fila: filaGraficos(TIPO), col: COL.tiempo0 },
     ventanas: meses, rotulos: meses.map((v) => rotuloMes(v.desde)),
   }
@@ -167,6 +169,10 @@ function columnaDeMes(poner, meta, j, { refSaldo, refFecha }) {
   // leería como "la empresa cerró el mes sin plata", que es una afirmación que nadie hizo.
   poner(f.saldoFinal, col,
     `=IF(N(${celda(col, f.saldoInicial)})=0;"";N(${celda(col, f.saldoInicial)})+N(${celda(col, f.resultado)}))`)
+
+  // La sección POR CLIENTE cuelga de los subtotales de arriba (su residuo los resta), así que se
+  // escribe después: el orden de escritura es el orden en que se audita la dependencia.
+  for (const linea of formulasPorCliente(meta.tipo, { col, desde, hasta })) poner(linea.fila, col, linea.formula)
 
   poner(f.variacionPresupuesto, col, formulaVariacionPresupuesto(cab, celda(col, f.resultado)))
   poner(f.variacionMesAnterior, col, j === 0

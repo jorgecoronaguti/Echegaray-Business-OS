@@ -28,6 +28,12 @@ export const LIBRO = Object.freeze({
     fecha: 'A', signo: 'B', importe: 'C', moneda: 'D', concepto: 'E', rubro: 'F', actividad: 'G',
     estado: 'H', instrumento: 'I', contraparte: 'J', cuit: 'K', comprobante: 'L', obra: 'M',
     origen: 'N', fila: 'O', clave: 'P',
+    // ═══ POR QUÉ `Cliente` VA AL FINAL Y NO AL LADO DE `Obra`, QUE ES DONDE SE LEERÍA MEJOR ═══
+    //
+    // Porque el portón (`scripts/conciliar-libro.mjs`) lee la pestaña POR ÍNDICE —origen es el 13—, y
+    // meter una columna en el medio le corre tres campos sin darle un solo error: seguiría conciliando,
+    // contra los datos equivocados. Al final, ninguna posición existente se mueve.
+    cliente: 'Q',
   }),
 })
 
@@ -55,6 +61,7 @@ const grupoIgual = (col, valores) =>
  * @param {string[]} [f.rubros] OR de rubros exactos
  * @param {string[]} [f.origenes] OR de pestañas de origen (columna N)
  * @param {string[]} [f.instrumentos] OR de instrumentos
+ * @param {string[]} [f.clientes] OR de clientes CANÓNICOS (columna Q, la que escribe libro-clientes)
  * @param {string}  [f.obra] una obra exacta
  * @param {'neto'|'magnitud'} [f.medida] 'neto' multiplica por el signo (default); 'magnitud' no
  * @returns {string} un término SUMPRODUCT(...) en sintaxis es-AR (`;` no aplica: no lleva argumentos múltiples)
@@ -68,6 +75,10 @@ export function terminoLibro(f = {}) {
   if (f.rubros?.length) cond.push(grupoIgual(LIBRO.col.rubro, f.rubros))
   if (f.origenes?.length) cond.push(grupoIgual(LIBRO.col.origen, f.origenes))
   if (f.instrumentos?.length) cond.push(grupoIgual(LIBRO.col.instrumento, f.instrumentos))
+  // El cliente se filtra por la columna CANÓNICA y no por `contraparte`: la contraparte de un egreso
+  // es el PROVEEDOR, así que filtrarla por "LA ESTRELLA" devolvería cero para siempre sin dar error.
+  // Quién es el cliente de cada fila lo decide `libro-clientes.mjs`, una sola vez, al armar el libro.
+  if (f.clientes?.length) cond.push(grupoIgual(LIBRO.col.cliente, f.clientes))
   if (f.obra) cond.push(`(${R(LIBRO.col.obra)}="${f.obra}")`)
   const importe = f.medida === 'magnitud'
     ? `N(${R(LIBRO.col.importe)})`

@@ -243,8 +243,21 @@ export const hoySerial = () => {
 
 // ── LO QUE EXIGE RED ──────────────────────────────────────────────────────────────────────────────
 
-/** Las 16 columnas de `_MOVIMIENTOS`: A fecha · B signo · C importe · F rubro · H estado · N origen. */
-function leerLibro(crudo) {
+/**
+ * `_MOVIMIENTOS` LEÍDA POR ÍNDICE: A fecha · B signo · C importe · F rubro · H estado · I instrumento
+ * · N origen. La pestaña tiene más columnas (hoy 17, con `Cliente` en la Q) y este portón sólo usa
+ * seis: no las nombra por encabezado porque son las mismas desde que existe el libro.
+ *
+ * ═══ POR QUÉ UNA COLUMNA NUEVA VA SIEMPRE AL FINAL ═══
+ *
+ * Porque acá los índices están escritos. Una columna insertada en el medio corre `origen` del 13 al
+ * 14 y este portón sigue funcionando: lee la fila entera, no explota, y concilia contra el campo
+ * equivocado. Un control que compara mal es peor que uno que no corre — el test de este archivo fija
+ * el contrato con una fila que trae la columna extra al final.
+ *
+ * Está exportada para poder probarla en frío: `main()` es lo único que toca la red.
+ */
+export function leerLibro(crudo) {
   return (crudo ?? []).filter((f) => Number.isFinite(f?.[0]) && Number.isFinite(f?.[2]))
     .map((f) => ({
       fecha: f[0],

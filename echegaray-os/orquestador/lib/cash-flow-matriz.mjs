@@ -29,6 +29,7 @@
 
 import { terminoLibro } from './libro-sumas.mjs'
 import { OTROS, rubrosDeSigno, claveSub, rotuloSub } from './cash-flow-rubros.mjs'
+import { nombresDeClientes, ROTULO_SIN_CLIENTE } from './libro-clientes.mjs'
 
 /** Un día en milisegundos. Todas las fechas se manejan en UTC: el huso del proceso no decide un mes. */
 export const DIA_MS = 86400000
@@ -110,8 +111,58 @@ const TRONCO = Object.freeze([
   { clave: 'variacionMesAnterior', rotulo: 'Variación vs mes anterior', total: false, soloMes: true },
 ])
 
-export const CONCEPTOS = Object.freeze(
-  TRONCO.flatMap((c) => (c.medida === undefined ? [c] : [c, ...subLineasDe(c)])))
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA SECCIÓN "POR CLIENTE" — el pedido del 06/08: "discriminame a cada uno de los clientes con su
+// monto de ingresos y de egresos reales y proyectados".
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Las FILAS se declaran acá porque son parte del vocabulario (`CONCEPTOS`); la geometría y las
+// fórmulas viven en `cash-flow-por-cliente.mjs`, que importa de acá y no al revés. El por qué de la
+// forma —una sección al final y no cuatro aperturas más— está escrito allá, junto al código que la
+// arma. Los nombres de los clientes salen de `libro-clientes.mjs`: no se tipean acá.
+
+/** Las cuatro medidas que se abren por cliente, en el orden del tronco. */
+export const MEDIDAS_POR_CLIENTE = Object.freeze([
+  { clave: 'ingresoReal', rotulo: 'Ingresos reales' },
+  { clave: 'ingresoProyectado', rotulo: 'Ingresos proyectados' },
+  { clave: 'egresoReal', rotulo: 'Egresos reales' },
+  { clave: 'egresoProyectado', rotulo: 'Egresos proyectados' },
+])
+
+/** El rótulo de la sección. En oración y sin adornos: es un título, no un cartel. */
+export const TITULO_POR_CLIENTE = 'Por cliente'
+/** La clave de la fila del título de la sección. */
+export const CLAVE_TITULO_POR_CLIENTE = 'tituloPorCliente'
+
+/** La clave de la fila cabecera de un cliente (su neto). */
+export const claveCliente = (nombre) => `cliente::${nombre}`
+/** La clave de una de las cuatro líneas de un cliente. */
+export const claveClienteMedida = (nombre, claveMedida) => `cliente::${nombre}::${claveMedida}`
+
+/**
+ * Las filas de UN cliente: su neto y sus cuatro componentes. PURA.
+ *
+ * `residuo: true` marca el bloque de "Otros y sin asignar": las mismas cinco filas, pero calculadas
+ * por diferencia contra el subtotal del tronco en vez de por filtro.
+ */
+function filasDeCliente(nombre, { residuo = false } = {}) {
+  return [
+    { clave: claveCliente(nombre), rotulo: nombre, total: true, cli: { nombre, residuo, medida: null } },
+    ...MEDIDAS_POR_CLIENTE.map((m) => ({
+      clave: claveClienteMedida(nombre, m.clave),
+      rotulo: rotuloSub(m.rotulo),
+      total: true,
+      cli: { nombre, residuo, medida: m.clave },
+    })),
+  ]
+}
+
+export const CONCEPTOS = Object.freeze([
+  ...TRONCO.flatMap((c) => (c.medida === undefined ? [c] : [c, ...subLineasDe(c)])),
+  { clave: CLAVE_TITULO_POR_CLIENTE, rotulo: TITULO_POR_CLIENTE, total: false, tituloSeccion: true },
+  ...nombresDeClientes().flatMap((n) => filasDeCliente(n)),
+  ...filasDeCliente(ROTULO_SIN_CLIENTE, { residuo: true }),
+])
 
 /** Las filas que lleva cada vista, en orden. PURA. */
 export const conceptosDe = (tipo) => CONCEPTOS.filter((c) => tipo === 'mes' || !c.soloMes)
@@ -187,6 +238,9 @@ export function formulasDeMedida(tipo, claveMedida, { col, desde, hasta }) {
     { fila: otros, formula: `=N(${celda(col, subtotal)})-SUM(${celda(col, primera)}:${celda(col, ultima)})` },
   ]
 }
+
+/** La medida del tronco detrás de una clave ('egresoReal' → su entrada de MEDIDAS). PURA. */
+export const medidaDe = (claveMedida) => MEDIDAS[CONCEPTOS.find((c) => c.clave === claveMedida).medida]
 
 /** Los doce meses del ejercicio. Es lo único fijo: un año siempre tiene doce. */
 export const MESES_DEL_ANIO = 12

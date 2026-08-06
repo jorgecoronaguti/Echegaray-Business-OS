@@ -15,8 +15,10 @@ import { serialDe, isoDeSerial } from './libro-extractores-fechas.mjs'
 // 'Estado' es la columna INPUT (X, contrato del cargador: Pagado/Pendiente); 'Estado pago' es el
 // SEMÁFORO derivado ("✅ Pagado" / "🟡 Por vencer"). El extractor tiene que decidir por la primera:
 // contra el semáforo, /pagado/ no matcheaba nunca y toda compra pagada quedaba PROYECTADO.
+// 'Cliente / Asignación' (la J del archivo) es la que dice de qué CLIENTE es el egreso; 'Detalles /
+// Obra' (la K) es texto libre —"combustible", "Cuota 18", "46381"— y no sirve para eso.
 const ENC_COMPRAS = ['Proveedor', 'CUIT (OS)', 'N° Comprobante', 'Total', 'Estado',
-  'Tipo pago', 'Rubro de caja', 'Fecha de caja', 'Detalles / Obra', 'Estado pago']
+  'Tipo pago', 'Rubro de caja', 'Fecha de caja', 'Detalles / Obra', 'Estado pago', 'Cliente / Asignación']
 const compras = (extra = []) => [[], [], ENC_COMPRAS,
   ['Mariana SA', '30-71037035-0', '0002-00000683', 100000, 'Pagado', 'Transferencia', 'Materiales Civil', 46000, 'ARCOR'],
   ['Nota SA', '30-71037035-0', '0002-00000683', -21359, 'Pagado', 'Transferencia', 'Materiales Civil', 46001, ''],
