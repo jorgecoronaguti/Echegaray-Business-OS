@@ -56,7 +56,9 @@ test('RIESGO DE LIQUIDEZ es el piso, y su contexto trae la banda de incertidumbr
   // cobertura no se sabe: sin la banda esa ignorancia se lee como dato.
   const t = de('riesgo')
   assert.equal(t.valor, `=${REF.piso}`)
-  assert.match(t.contexto, /puede bajar hasta/)
+  // "peor caso $X,XM": corto para la columna (65 caracteres no entran en 39, medido por el auditor
+  // de pantalla); la banda sigue presente, en millones.
+  assert.match(t.contexto, /peor caso/)
   // SI LA BANDA ES DE ANCHO CERO, LA FRASE NO APARECE: una banda que no existe es ruido, y un aviso
   // que suena siempre deja de avisar.
   assert.ok(t.contexto.startsWith(`=IF(${REF.peorCaso}>=${REF.piso};"el punto más bajo`),
