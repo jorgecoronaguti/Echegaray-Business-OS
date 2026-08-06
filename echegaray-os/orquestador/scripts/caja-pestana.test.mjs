@@ -112,7 +112,8 @@ test('LAS CIFRAS DE LAS TARJETAS SALEN DEL LIBRO O DE LA PROPIA PESTAÑA, nunca 
   assert.equal(val(1), `=${terminoLibro({ signo: -1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`)
   // 06/08 (4ª directiva del dueño): LIBRE = el piso de la escalera, referenciado de su fila de
   // cierre. El porqué vive en caja-tarjetas.mjs; acá sólo se fija que la grilla pase las celdas.
-  assert.equal(val(2), `=N($I$${g.fCierre})`, 'LIBRE es el mínimo medido del recorrido, de la fila de cierre')
+  assert.equal(val(2), `=N($A$3)-${terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'TODAY()+7', medida: 'magnitud' })}`,
+    'LIBRE = disponible − lo que vence en 7 días, derivable de la portada')
   assert.equal(val(3), `=N($C$${g.fBalanzArs})+N($C$${g.fBalanzUsd})`,
     'INVERTIDO referencia las filas Balanz del panel, no una segunda fuente')
   // La enumeración final: SALDO AL CIERRE = disponible − comprometida + cobros del mes.

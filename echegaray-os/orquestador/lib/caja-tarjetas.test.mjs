@@ -59,12 +59,15 @@ test('COMPROMETIDA = todo lo que hay que pagar en el mes − lo ya pagado, con l
   assert.ok(!c.valor.includes('"REAL"'), 'lo REAL ya salió de la cuenta: no es obligación')
 })
 
-test('LIBRE DISPONIBILIDAD es el mínimo MEDIDO del recorrido, no el peor caso (rechazo del auditor)', () => {
+test('LIBRE se DERIVA de las tarjetas vecinas: disponible − lo que vence en 7 días', () => {
+  // La regla que cerró siete iteraciones: un titular que no se reconstruye desde los titulares
+  // vecinos es un número mágico. La resta usa la MISMA suma de 7 días que la comprometida publica
+  // en su contexto — el lector la verifica con los ojos.
   const l = de('libre')
   assert.equal(l.rotulo, 'LIBRE DISPONIBILIDAD')
-  assert.equal(l.valor, `=N(${REF.pisoSimple})`, 'el mínimo simple ($I) de la fila de cierre, por referencia')
-  assert.ok(l.contexto.includes(REF.pisoFecha), 'la fecha del punto más bajo, del mismo criterio que el valor')
-  assert.ok(!l.valor.includes('$H$'), 'el peor caso ($H) es de la escalera, no del titular')
+  assert.equal(l.valor, `=N($A$3)-${terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'TODAY()+7', medida: 'magnitud' })}`)
+  assert.match(l.contexto, /disponible − lo que vence/, 'la cuenta queda escrita para el que mira')
+  assert.ok(l.valor.startsWith('=N($A$3)-'), 'arranca en la tarjeta DISPONIBLE (A3), no en una fila de la escalera')
 })
 
 test('INVERTIDO cita las filas Balanz de la grilla — una sola fuente, nunca una segunda posición', () => {
