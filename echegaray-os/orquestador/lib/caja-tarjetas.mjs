@@ -112,7 +112,9 @@ export function tarjetas(ref) {
       // Y NO SE PUBLICA SOLO: hay cheques cuya cobertura no se sabe. Con el piso a secas esa
       // ignorancia se lee como certeza. Si la banda es de ancho cero, la frase no aparece — una banda
       // que no existe es ruido.
-      contexto: `=IF(${ref.peorCaso}>=${ref.piso};"el punto más bajo de todo el recorrido";"puede bajar hasta "&${plata(ref.peorCaso)}&" si salen los cheques sin cobertura")`,
+      // Corto para su columna (el auditor midió 65 sobre 39): el detalle del peor caso está en la
+      // escalera y en el anexo; acá alcanza con el número.
+      contexto: `=IF(${ref.peorCaso}>=${ref.piso};"el punto más bajo del recorrido";"peor caso "&TEXT(${ref.peorCaso}/1000000;"$#,##0.0")&"M sin cobertura")`,
       especie: 'plata',
     },
     {
