@@ -17,8 +17,12 @@ import { serialDe, isoDeSerial } from './libro-extractores-fechas.mjs'
 // contra el semáforo, /pagado/ no matcheaba nunca y toda compra pagada quedaba PROYECTADO.
 // 'Cliente / Asignación' (la J del archivo) es la que dice de qué CLIENTE es el egreso; 'Detalles /
 // Obra' (la K) es texto libre —"combustible", "Cuota 18", "46381"— y no sirve para eso.
+// 'Monto Pagado' y 'Cliente / Asignación' van ÚLTIMAS a propósito: las filas de abajo tienen 9 celdas
+// y las dejan vacías, que es el caso normal (nada pagado a cuenta, sin cliente asignado). Las pruebas
+// del saldo parcial y las del cliente las completan explícitamente.
 const ENC_COMPRAS = ['Proveedor', 'CUIT (OS)', 'N° Comprobante', 'Total', 'Estado',
-  'Tipo pago', 'Rubro de caja', 'Fecha de caja', 'Detalles / Obra', 'Estado pago', 'Cliente / Asignación']
+  'Tipo pago', 'Rubro de caja', 'Fecha de caja', 'Detalles / Obra', 'Estado pago', 'Monto Pagado',
+  'Cliente / Asignación']
 const compras = (extra = []) => [[], [], ENC_COMPRAS,
   ['Mariana SA', '30-71037035-0', '0002-00000683', 100000, 'Pagado', 'Transferencia', 'Materiales Civil', 46000, 'ARCOR'],
   ['Nota SA', '30-71037035-0', '0002-00000683', -21359, 'Pagado', 'Transferencia', 'Materiales Civil', 46001, ''],
@@ -66,6 +70,47 @@ test('COMPRAS: "Pagado" con echeq y fecha POSTERIOR al corte es COMPROMETIDO, no
   assert.equal(ms.find((m) => m.concepto === 'Barcelo').estado, 'REAL')
   // El cheque de la fila base tiene fecha 46002, muy anterior al corte: ya está en el extracto.
   assert.equal(ms.find((m) => m.concepto === 'Cheq SA').estado, 'REAL')
+})
+
+test('COMPRAS: una fila con pago PARCIAL entra por el SALDO, no por el total', () => {
+  // EL DEFECTO MEDIDO EN VIVO (06/08) contra el archivo real. Dos filas abiertas de Compras con plata
+  // ya entregada a cuenta —Gerson Castro $2.300.000 con $1.000.000 pagado, PEDRO TELLO $524.000 con
+  // $300.000 pagado— entraban al libro por su TOTAL. CAJA COMPROMETIDA las sumaba enteras y decía que
+  // había que cubrir $1.300.000 que ya habían salido de la caja. La parte pagada no está en el libro
+  // como REAL por ningún lado, así que no era doble conteo: era el número equivocado, una sola vez.
+  const ms = deCompras(compras([
+    ['Gerson Castro', '', '', 2300000, 'Pendiente', 'Efectivo', 'Materiales Civil', 46257, 'MESSINA', '', 1000000],
+    ['PEDRO TELLO', '', '', 524000, 'Pendiente', 'Efectivo', 'Materiales Civil', 46247, 'LA ESTRELLA', '', 300000],
+  ]), 46240)
+  assert.equal(ms.find((m) => m.concepto === 'Gerson Castro').importe, 1300000)
+  assert.equal(ms.find((m) => m.concepto === 'PEDRO TELLO').importe, 224000)
+  // Y la fila SIN pago parcial no se mueve un peso: el saldo sólo aplica donde hay plata entregada.
+  assert.equal(ms.find((m) => m.concepto === 'Prov SRL').importe, 70000)
+})
+
+test('COMPRAS: una fila "Pagado" NO se descuenta — ahí el instrumento vale por el total', () => {
+  // El guarda que impide que el arreglo del saldo parcial reabra el agujero del cheque diferido: una
+  // fila "Pagado" trae "Monto Pagado" = Total por construcción. Sin el guarda, el echeq de FEMENIA
+  // por $1.839.200 que todavía no debitó daría importe 0 y desaparecería de CAJA COMPROMETIDA.
+  const ms = deCompras(compras([
+    ['FEMENIA', '30-11111111-1', '00002-00001071', 1839200, 'Pagado', 'Echeq', 'Materiales Civil', 46264, '', '', 1839200],
+  ]), 46240)
+  const echeq = ms.find((m) => m.concepto === 'FEMENIA')
+  assert.equal(echeq.estado, 'COMPROMETIDO')
+  assert.equal(echeq.importe, 1839200, 'el cheque entregado compromete el total, no un saldo cero')
+})
+
+test('COMPRAS: "Monto Pagado" ≥ Total sin estado Pagado avisa y manda el TOTAL', () => {
+  // El caso real de la fila 457 (FCL Junio): $800.000 de Total, $800.000 de "Monto Pagado" y
+  // Estado="Proyectado". Las dos columnas se contradicen. Devolver cero borraría el movimiento del
+  // libro por una celda mal cargada; el libro no fabrica un saldo, avisa y arrastra el total.
+  const avisos = []
+  const ms = deCompras(compras([
+    ['FCL', '', '', 800000, 'Proyectado', 'Transferencia', 'Nómina · Gremiales', 46213, '', '', 800000],
+  ]), 46240, { aviso: (m) => avisos.push(m) })
+  assert.equal(ms.find((m) => m.concepto === 'FCL').importe, 800000)
+  assert.equal(avisos.length, 1, avisos.join(' / '))
+  assert.match(avisos[0], /Monto Pagado/)
 })
 
 test('COMPRAS: pagado=REAL, pendiente vencido=VENCIDO', () => {
@@ -116,6 +161,22 @@ test('COBRANZAS: un valor ENDOSADO no va a entrar nunca — son los $20M de LA E
   assert.ok(!ms.some((m) => m.concepto === 'LA ESTRELLA'), 'el endoso no es un cobro futuro')
   // Y el filtro es por PREFIJO, como el LEFT() de la fórmula: la celda dice "ENDOSADO A ALUMETAL".
   assert.equal(deCobranzas(cob, 46000, { colValorBanco: 7 }).length, 2)
+})
+
+test('COBRANZAS: un cobro NEGATIVO es plata que vuelve — el error valía el doble del monto', () => {
+  // MEDIDO EN VIVO (06/08): Cobranzas f58, MACRO CONSTRUCCIONES, −$96.800, Transferencia, 7/08.
+  // `movimiento()` guarda la magnitud y el signo aparte, así que con `signo: ENTRA` fijo el ajuste
+  // entraba como +$96.800. La semana del 3/08 mostraba "Ingresos reales · Cobranzas $329.120"
+  // donde la fuente dice $232.320−$96.800 = $135.520. Diferencia: $193.600, el DOBLE del monto.
+  const conAjuste = [...cob, ['', 'MACRO CONSTRUCCIONES', 'Cobrado', -96800, 46241, 46241, 'Transferencia', '']]
+  const m = deCobranzas(conAjuste, 46240).find((x) => x.concepto === 'MACRO CONSTRUCCIONES')
+  assert.equal(m.signo, SALE, 'un importe negativo invierte el signo, igual que la nota de crédito de Compras')
+  assert.equal(m.importe, 96800, 'la magnitud queda positiva; el signo manda')
+  // Lo que decide es el NETO de la ventana, que es lo que la columna del cuadro suma.
+  const ventana = deCobranzas(conAjuste, 46240)
+    .filter((x) => x.fecha === 46241)
+    .reduce((a, x) => a + x.signo * x.importe, 0)
+  assert.equal(ventana, -96800, 'el neto de la ventana, no la suma de magnitudes')
 })
 
 test('COBRANZAS: cobrado usa la fecha REAL, pendiente la esperada, CANCELAR no existe', () => {
@@ -267,4 +328,37 @@ test('CARTERA: el 514 que me dieron no es el 514 que libré — el signo está e
     return filas
   })(), { fila0: 20 })[0]
   assert.notEqual(recibido.clave, emitido.clave, 'sin el signo, uno de los dos desaparece del libro')
+})
+
+test('COMPRAS: el CLIENTE del egreso sale de la J y viene canonizado, no de "Detalles / Obra"', () => {
+  // EL DEFECTO QUE ESTO ATRAPA. La columna `obra` del libro sale de "Detalles / Obra" (la K), que es
+  // texto libre: su inventario vivo tiene 130 valores del tipo "combustible", "Cuota 18" y "46381".
+  // Si la sección POR CLIENTE del cash flow colgara de ahí, mostraría "combustible" como cliente y a
+  // LA ESTRELLA en ningún lado. El cliente es la J, y llega al libro con el nombre canónico.
+  const ms = deCompras(compras([
+    // K dice "Galpon 9" y J dice "LA ESTRELLA": las dos cosas se guardan, cada una en su campo.
+    ['Alumetal', '30-11111111-1', '0007-00000007', 250000, 'Pendiente', 'Transferencia',
+      'Materiales Civil', 46300, 'Galpon 9', '', '', 'LA ESTRELLA'],
+    // Una asignación INTERNA no es un cliente: cae en el residuo, no le cuelga gasto a nadie.
+    ['Papelera', '30-22222222-2', '0008-00000008', 30000, 'Pendiente', 'Transferencia',
+      'Estructura', 46300, 'oficina', '', '', 'Administracion'],
+  ]), 46000)
+  const conCliente = ms.find((m) => m.concepto === 'Alumetal')
+  assert.equal(conCliente.cliente, 'LA ESTRELLA')
+  assert.equal(conCliente.obra, 'Galpon 9', 'la K se sigue guardando: es el detalle, no el cliente')
+  assert.equal(ms.find((m) => m.concepto === 'Papelera').cliente, '', 'Administracion es un centro de costo')
+  // Y una fila sin la J cargada —305 de las 996 del archivo— no inventa un cliente.
+  assert.equal(ms.find((m) => m.concepto === 'Prov SRL').cliente, '')
+})
+
+test('COBRANZAS: el cliente del cobro es el mismo canónico que el del egreso', () => {
+  // Es la condición de la que depende la sección entera: si el ingreso dijera "LA ESTRELLA /ALIMENTOS
+  // DEL SUR SAS" y el egreso "LA ESTRELLA", serían dos filas distintas del cuadro para un solo cliente.
+  const ms = deCobranzas([[], [], [], ENC_COB,
+    ['', 'LA ESTRELLA /ALIMENTOS DEL SUR SAS', 'Cobrado', 5000000, 46000, 46000, 'Transferencia', ''],
+    ['', 'IMOTOR/San Francisco/JAVI SANCHEZ', 'Pendiente', 3000000, 46300, 46300, 'Transferencia', ''],
+  ], 46100)
+  assert.equal(ms[0].cliente, 'LA ESTRELLA')
+  assert.equal(ms[0].contraparte, 'LA ESTRELLA /ALIMENTOS DEL SUR SAS', 'el texto crudo no se pierde al canonizar')
+  assert.equal(ms[1].cliente, 'San Francisco')
 })

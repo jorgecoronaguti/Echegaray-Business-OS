@@ -69,10 +69,12 @@ test('el mes que ancla descuenta lo que ya está adentro del saldo declarado', (
   const { filas, meta } = armar()
   const f = en(filas, meta.fila.saldoInicial, meta.cab.col0 + 7) // agosto
   assert.ok(f.includes('CAJA_TOTAL_DISPONIBLE'))
-  assert.ok(f.includes('CAJA_FECHA_SALDO+1'),
-    'sin restar lo ya movido en el mes del corte, el saldo declarado se suma encima de sus propios movimientos')
-  // La semántica que el control A5 del anexo de CAJA verifica: total − REAL del mes hasta el corte.
+  // SIN TECHO EN EL CORTE (06/08): el total contiene TODO lo REAL (su línea de posteriores no tiene
+  // techo). Con techo, un REAL posterior al corte quedaba en el inicio Y en su columna: $11,1M dobles.
+  assert.ok(!f.includes('CAJA_FECHA_SALDO+1'),
+    'el techo en el corte volvió: los REAL posteriores se cuentan dos veces en la cadena')
   assert.ok(f.includes('CAJA_TOTAL_DISPONIBLE)-('), f)
+  assert.match(f, /"REAL"/, 'el ancla descuenta lo REAL del período en adelante')
 })
 
 test('los meses anteriores al corte quedan sin cadena en vez de inventar un saldo', () => {
