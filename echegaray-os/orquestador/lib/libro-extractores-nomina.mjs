@@ -215,7 +215,10 @@ export function deOficina(bloque = {}, corte = null, { aviso = avisoPorDefecto, 
 /**
  * DIRECCIÓN → la otra mitad de la misma línea de nómina.
  *
- * Son los retiros mensuales de Jorge Echegaray, Rodrigo Echegaray y Jorge Corona. Existían sólo en
+ * Son los retiros mensuales de Jorge Echegaray, Rodrigo Echegaray y Jorge Corona. OJO al conciliar
+ * contra el extracto: el débito del retiro NO lleva el nombre del socio — el de Jorge Corona sale
+ * "A ana laura echegaray ovi" (confirmado por el dueño, 06/08/2026). Por eso el respaldo bancario
+ * (libro-respaldo-banco.mjs) matchea por lote monto+día y nunca por identidad. Existían sólo en
  * Compras y una sola vez (julio, a pagar el 10/08), así que de septiembre a diciembre el cuadro
  * proyectaba $3.000.000/mes contra $9.800.000 reales: **$26.000.000 de egreso que nadie veía**. La
  * pestaña los proyecta desde el 01/08 y ésta es la puerta por la que entran al libro.
