@@ -60,9 +60,11 @@ test('cada línea de cliente lleva el MISMO filtro que su subtotal, más la colu
     const f = lineas.find((l) => l.fila === m.fila).formula
     const subtotal = formulasDeMedida('semana', m.clave, VENTANA)
       .find((l) => l.fila === filaDeConcepto('semana', m.clave)).formula
-    // El término del subtotal, con UNA condición más. Se compara quitando la condición del cliente:
-    // si quedara algo distinto, las dos filas estarían contando ventanas o estados diferentes.
-    const sinCliente = f.replace('*((_MOVIMIENTOS!$Q$2:$Q="LA ESTRELLA"))', '')
+    // Los términos del subtotal, con UNA condición más EN CADA UNO. Se compara quitando la condición
+    // del cliente: si quedara algo distinto, las dos filas estarían contando ventanas o estados
+    // diferentes. `replaceAll` y no `replace`: desde el neteo de devoluciones (06/08) el subtotal
+    // tiene dos términos, y quitar sólo el primero dejaba comparando una fórmula con la mitad de otra.
+    const sinCliente = f.replaceAll('*((_MOVIMIENTOS!$Q$2:$Q="LA ESTRELLA"))', '')
     assert.equal(sinCliente, subtotal, `${m.clave}: el filtro del cliente no puede cambiar la medida`)
     assert.ok(f.includes('_MOVIMIENTOS!$Q$2:$Q="LA ESTRELLA"'), `${m.clave}: ${f}`)
   }
@@ -138,8 +140,11 @@ test('EL FOOTPRINT SE RECALCULA con las filas nuevas: el gráfico sigue cayendo 
   // cae el lote entero y la pestaña queda a medio escribir. El alto es una FUNCIÓN de las filas.
   const clientes = nombresDeClientes().length + 1 // + el residuo
   const seccion = 1 + clientes * (1 + MEDIDAS_POR_CLIENTE.length)
-  assert.equal(conceptosDe('semana').length, 43 + seccion)
-  assert.equal(conceptosDe('mes').length, 45 + seccion)
+  // 42 y 44: una fila MENOS que antes del 06/08 — "Ingresos reales · Valores en cartera" se dejó de
+  // emitir porque la cartera nunca es real (cuando el valor se acredita, entra por el banco como
+  // "Cobranzas"). Era una fila en cero en las 53 columnas.
+  assert.equal(conceptosDe('semana').length, 42 + seccion)
+  assert.equal(conceptosDe('mes').length, 44 + seccion)
   for (const tipo of ['semana', 'mes']) {
     const fp = footprintDe(tipo, 2026)
     assert.equal(filaGraficos(tipo), FILA.concepto + conceptosDe(tipo).length + 1)

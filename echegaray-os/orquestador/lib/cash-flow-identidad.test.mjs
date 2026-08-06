@@ -14,7 +14,8 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { MEDIDAS, formulaMedida, particionExacta, ventanas, ventanasDiarias } from './cash-flow-matriz.mjs'
+import { particionExacta, ventanas, ventanasDiarias } from './cash-flow-matriz.mjs'
+import { MEDIDAS, formulaMedida } from './cash-flow-medidas.mjs'
 import { grillaSemanal } from './cash-flow-semanas.mjs'
 import { grillaMeses } from './cash-flow-meses.mjs'
 

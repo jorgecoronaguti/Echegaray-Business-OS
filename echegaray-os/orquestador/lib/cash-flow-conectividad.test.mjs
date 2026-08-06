@@ -135,23 +135,43 @@ test('EL DEFECTO: el echeq de LA ESTRELLA suma en Cobranzas Y en Valores en cart
   assert.equal(pares[0].cartera.origen, '_CHEQUES_RAW')
 })
 
-// ══ EL DEFECTO 4: EL RUBRO QUE SE ESCONDE EN "· Otros" ════════════════════════════════════════════
+// ══ EL DEFECTO 4, YA CERRADO: LA DEVOLUCIÓN QUE SE MOSTRABA COMO INGRESO ══════════════════════════
 
-test('una nota de crédito de proveedor entra como INGRESO con un rubro de EGRESO → "· Otros"', () => {
-  // Medido: $1.519.417 en 10 movimientos. La plata está (el subtotal la contiene y "Otros" se
-  // despeja), pero la sub-línea no la nombra: "Ingresos reales · Otros" no dice de quién vuelve.
+test('ARREGLADO: una nota de crédito de proveedor NETEA su rubro de egreso, no es un ingreso', () => {
+  // El defecto medido el 06/08: 9 movimientos por $833k —7 notas de crédito de proveedores y las
+  // anulaciones del impuesto al cheque— entraban con signo +1 y rubro de EGRESO, y el cuadro los
+  // mostraba en "Ingresos reales · Otros". El dueño: "¿qué sería «Otros» en Ingresos reales? Son
+  // valores que no sé dónde encontrar". No son ingresos: son egresos que se corrigieron.
   const libro = [
-    mov({ signo: 1, fecha: 46237, importe: 1372237, estado: 'REAL', rubro: 'Materiales Civil' }),
+    mov({ signo: 1, fecha: 46237, importe: 531000, estado: 'REAL', rubro: 'Materiales Civil' }),
     mov({ signo: 1, fecha: 46237, importe: 136200, estado: 'REAL', rubro: 'Financiero' }),
     mov({ signo: 1, fecha: 46237, importe: 500000, estado: 'REAL', rubro: 'Cobranzas' }),
   ]
-  const r = rubrosEnOtros(libro)
-  assert.deepEqual(r.map((x) => x.rubro), ['Materiales Civil', 'Financiero'])
-  assert.equal(Math.round(r.reduce((a, x) => a + x.monto, 0)), 1508437)
-  // Y la ubicación lo confirma: cae en la sub-línea "Otros" de ingresos reales.
+  // Ninguno de los tres se esconde ya en "· Otros": los dos primeros tienen sub-línea propia del lado
+  // del egreso y el tercero es un cobro genuino. Si se revirtiera el neteo, los dos primeros vuelven.
+  assert.deepEqual(rubrosEnOtros(libro).map((x) => x.rubro), [])
   const u = ubicar(libro[0], 'mes', rejilla('mes', ANIO))
-  assert.equal(u.enOtros, true)
-  assert.equal(u.fila, filaDeConcepto('mes', claveSub('ingresoReal', OTROS)))
+  assert.equal(u.medida, 'egresoReal', 'la devolución vive del lado del egreso que corrige')
+  assert.equal(u.enOtros, false)
+  assert.equal(u.fila, filaDeConcepto('mes', claveSub('egresoReal', 'Materiales Civil')))
+  // Y el cobro genuino sigue siendo un ingreso: el neteo no se comió lo que sí entra.
+  assert.equal(ubicar(libro[2], 'mes', rejilla('mes', ANIO)).medida, 'ingresoReal')
+})
+
+test('"· Otros" SIGUE ATRAPANDO lo que la taxonomía no nombra — no quedó una fila muerta', () => {
+  const g = rejilla('mes', ANIO)
+  // Un rubro que el Libro empiece a emitir mañana y que ninguna lista nombre.
+  const nuevo = ubicar(mov({ signo: 1, fecha: 46237, estado: 'REAL', rubro: 'Subsidio' }), 'mes', g)
+  assert.equal(nuevo.enOtros, true)
+  assert.equal(nuevo.fila, filaDeConcepto('mes', claveSub('ingresoReal', OTROS)))
+  // Y un "Valores en cartera" con estado REAL, que no debería existir: ahora que la sub-línea no se
+  // emite bajo lo real, la fila "Otros" es la que lo muestra en vez de dejarlo caer del cuadro.
+  const cartera = ubicar(mov({ signo: 1, fecha: 46237, estado: 'REAL', rubro: 'Valores en cartera' }), 'mes', g)
+  assert.equal(cartera.fila, filaDeConcepto('mes', claveSub('ingresoReal', OTROS)))
+  // El cruce inverso NO se invierte: un cobro devuelto sale plata, y su rubro no abre del lado egreso.
+  const devuelto = ubicar(mov({ signo: -1, fecha: 46237, estado: 'REAL', rubro: 'Cobranzas' }), 'mes', g)
+  assert.equal(devuelto.medida, 'egresoReal')
+  assert.equal(devuelto.fila, filaDeConcepto('mes', claveSub('egresoReal', OTROS)))
 })
 
 // ══ EL PUENTE CON EL EXTRACTOR: un cobro negativo no puede ser un ingreso ══════════════════════════

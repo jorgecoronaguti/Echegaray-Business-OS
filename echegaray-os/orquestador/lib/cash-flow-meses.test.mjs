@@ -30,9 +30,10 @@ test('doce columnas de mes más TOTAL, y las filas de concepto en orden', () => 
   assert.deepEqual(
     conceptosDe('mes').map((c) => en(filas, meta.fila[c.clave], 0)),
     conceptosDe('mes').map((c) => c.rotulo))
-  // 81 filas: los 9 conceptos del tronco, la apertura por rubro de las cuatro medidas (36) y la
-  // sección POR CLIENTE (1 título + 7 bloques de 5 = 36).
-  assert.equal(conceptosDe('mes').length, 81)
+  // 80 filas: los 9 conceptos del tronco, la apertura por rubro de las cuatro medidas (35) y la
+  // sección POR CLIENTE (1 título + 7 bloques de 5 = 36). Eran 36 de apertura hasta el 06/08: se fue
+  // "Ingresos reales · Valores en cartera", que era cero en los doce meses por construcción.
+  assert.equal(conceptosDe('mes').length, 80)
   assert.deepEqual(meta.footprint, footprintDe('mes', 2026))
 })
 
@@ -112,7 +113,10 @@ test('LA APERTURA POR RUBRO también en el mensual: subtotal del libro, rubros e
   // Y los rubros de egreso son los catorce que emite el libro: si mañana cambia uno, la sub-línea
   // sumaría cero para siempre sin dar un solo error.
   assert.deepEqual(meta.bloques[2].rubros.map((r) => r.rubro), [...RUBROS_EGRESO])
-  assert.deepEqual(meta.bloques[0].rubros.map((r) => r.rubro), ['Cobranzas', 'Valores en cartera'])
+  // "Valores en cartera" SÓLO bajo proyectados: bajo reales estaba en cero los doce meses, porque el
+  // día que el valor se acredita entra al libro por el banco con rubro "Cobranzas".
+  assert.deepEqual(meta.bloques[0].rubros.map((r) => r.rubro), ['Cobranzas'])
+  assert.deepEqual(meta.bloques[1].rubros.map((r) => r.rubro), ['Cobranzas', 'Valores en cartera'])
 })
 
 test('cero números pegados en las filas de plata', () => {

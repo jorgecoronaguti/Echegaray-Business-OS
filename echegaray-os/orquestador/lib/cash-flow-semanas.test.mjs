@@ -9,8 +9,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { grillaSemanal, vinculoHoy, PESTANA_SEMANAL } from './cash-flow-semanas.mjs'
 import {
-  ESTADOS_PENDIENTES, conceptosDe, colTotal, footprintDe, letra, semanasDelAnio, serialDeFecha,
+  conceptosDe, colTotal, footprintDe, letra, semanasDelAnio, serialDeFecha,
 } from './cash-flow-matriz.mjs'
+import { ESTADOS_PENDIENTES } from './cash-flow-medidas.mjs'
 import { auditarPatron } from './patron-pestana.mjs'
 
 const HOY = new Date(Date.UTC(2026, 7, 5)) // miércoles 5 de agosto de 2026
@@ -265,7 +266,9 @@ test('después de la sección POR CLIENTE no hay NADA: nada se cuela sin que el 
   assert.equal(meta.filaFin, ultima)
   assert.equal(filas.length, ultima)
   assert.ok(meta.clientes.titulo > meta.fila.saldoFinal, 'la sección va DESPUÉS del saldo final')
-  // 79 filas de cuadro: 7 del tronco + 36 de la apertura por rubro + 36 de la sección POR CLIENTE
+  // 78 filas de cuadro: 7 del tronco + 35 de la apertura por rubro + 36 de la sección POR CLIENTE
   // (1 título + 7 bloques de 5). La zona de gráficos está en el footprint pero no lleva contenido.
-  assert.equal(conceptosDe('semana').length, 79)
+  // Eran 36 de apertura: el 06/08 se dejó de emitir "Ingresos reales · Valores en cartera", que valía
+  // cero en las 53 columnas porque el valor acreditado entra al libro como "Cobranzas".
+  assert.equal(conceptosDe('semana').length, 78)
 })

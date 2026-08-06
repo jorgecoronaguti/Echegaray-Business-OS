@@ -20,8 +20,10 @@
 //
 //   2. LA FILA.  En qué sub-línea cae — y si cae en "· Otros", que es la fila donde un rubro se
 //      esconde. "Otros" no es un hueco (se despeja del subtotal, así que la plata está), pero un
-//      rubro entero escondido ahí sí es un defecto de taxonomía. Medido: $1.519.417 de notas de
-//      crédito de proveedores que entran como INGRESO con un rubro de EGRESO.
+//      rubro entero escondido ahí sí es un defecto de taxonomía. Fue este control el que midió las
+//      notas de crédito de proveedores presentadas como ingreso — el defecto que el neteo del 06/08
+//      cerró (`cash-flow-rubros.esDevolucion`). Desde entonces esta cuenta tiene que dar vacía para
+//      ese caso: si vuelve a listarlas, es que el neteo se rompió.
 //
 //   3. EL DOBLE CONTEO CONTRA EL ANCLA.  El saldo inicial del período ancla es
 //      `CAJA_TOTAL_DISPONIBLE − REAL[inicio, CAJA_FECHA_SALDO+1)`. Pero CAJA_TOTAL_DISPONIBLE **no
@@ -47,7 +49,7 @@
 import {
   COL, ventanas, conceptosDe, filaDeConcepto, letra, serialDeFecha,
 } from './cash-flow-matriz.mjs'
-import { OTROS, claveSub, rubrosDeSigno } from './cash-flow-rubros.mjs'
+import { OTROS, claveSub, rubrosDeApertura, ladoDe } from './cash-flow-rubros.mjs'
 
 /** Los estados que van a la línea "proyectado". Espejo de ESTADOS_PENDIENTES, en forma de test. */
 const PENDIENTE = new Set(['PROYECTADO', 'VENCIDO', 'COMPROMETIDO'])
@@ -62,14 +64,19 @@ export function rejilla(tipo, anio) {
 /**
  * NÚCLEO PURO: la MEDIDA a la que pertenece un movimiento — la fila de subtotal que lo contiene.
  *
- * Es la traducción exacta del filtro que escribe `formulasDeMedida`: signo + grupo de estados. Si
- * esto y aquello se separaran, el veredicto diría que un movimiento está en una fila donde no está.
+ * Es la traducción exacta del filtro que escribe `formulasDeMedida`: lado + grupo de estados. Si esto
+ * y aquello se separaran, el veredicto diría que un movimiento está en una fila donde no está.
+ *
+ * EL LADO NO ES EL SIGNO desde el 06/08: una nota de crédito de proveedor ENTRA (signo +1) con un
+ * rubro de egreso y RESTA del egreso de ese rubro, no suma en ingresos. Quién decide eso es `ladoDe`,
+ * una sola vez, en la taxonomía — el mismo lugar del que sale el filtro de la celda.
  */
 export function medidaDe(mov = {}) {
-  const entra = mov.signo === 1
   const real = mov.estado === 'REAL'
   if (!real && !PENDIENTE.has(mov.estado)) return null // un estado que ninguna medida mira
-  return entra ? (real ? 'ingresoReal' : 'ingresoProyectado') : (real ? 'egresoReal' : 'egresoProyectado')
+  return ladoDe(mov) === 1
+    ? (real ? 'ingresoReal' : 'ingresoProyectado')
+    : (real ? 'egresoReal' : 'egresoProyectado')
 }
 
 /**
@@ -87,7 +94,9 @@ export function medidaDe(mov = {}) {
 export function ubicar(mov = {}, tipo, grilla = []) {
   const medida = medidaDe(mov)
   if (!medida) return { medida: null, fila: null, columna: null, enOtros: false, motivo: 'estado que ninguna medida mira' }
-  const propio = rubrosDeSigno(mov.signo).includes(mov.rubro)
+  // La apertura de la medida, no la del signo: bajo "Ingresos reales" no hay sub-línea de cartera, así
+  // que un "Valores en cartera" REAL cae en "· Otros" — que es exactamente lo que se quiere ver.
+  const propio = rubrosDeApertura(ladoDe(mov), mov.estado === 'REAL').includes(mov.rubro)
   const clave = claveSub(medida, propio ? mov.rubro : OTROS)
   const v = grilla.find((w) => mov.fecha >= w.desde && mov.fecha < w.hasta)
   return {
@@ -209,9 +218,12 @@ export function valorPorDosPuertas(movimientos = []) {
  * NÚCLEO PURO: los rubros que la taxonomía de la vista NO nombra y que terminan en "· Otros".
  *
  * "Otros" se despeja del subtotal, así que la plata está en el cuadro — pero un rubro entero ahí
- * adentro es invisible para decidir. El caso típico es el SIGNO CRUZADO: una nota de crédito de un
- * proveedor entra (signo +1) con un rubro de egreso ("Materiales Civil"), que no está en la lista de
- * rubros de ingreso y por eso cae en "Ingresos reales · Otros".
+ * adentro es invisible para decidir.
+ *
+ * EL CASO QUE ESTE CONTROL DESTAPÓ Y QUE YA NO PUEDE VOLVER: el SIGNO CRUZADO. Una nota de crédito de
+ * proveedor entra (signo +1) con un rubro de egreso, y hasta el 06/08 caía en "Ingresos reales ·
+ * Otros" — $833k presentados como si la empresa los hubiera cobrado. Ahora netea el egreso de su
+ * propio rubro y este control deja de listarla: si vuelve a aparecer acá, es que el neteo se rompió.
  *
  * @returns {Array<{signo:number, rubro:string, filas:number, monto:number}>}
  */
@@ -219,7 +231,7 @@ export function rubrosEnOtros(movimientos = []) {
   const g = new Map()
   for (const m of movimientos) {
     if (!medidaDe(m)) continue
-    if (rubrosDeSigno(m.signo).includes(m.rubro)) continue
+    if (rubrosDeApertura(ladoDe(m), m.estado === 'REAL').includes(m.rubro)) continue
     const k = `${m.signo}|${m.rubro}`
     const a = g.get(k) ?? { signo: m.signo, rubro: m.rubro, filas: 0, monto: 0 }
     a.filas++

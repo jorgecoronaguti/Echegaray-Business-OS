@@ -8,13 +8,16 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  CONCEPTOS, FILA, COL, GRAFICO, ESTADOS_PENDIENTES, MEDIDAS,
+  CONCEPTOS, FILA, COL, GRAFICO,
   conceptosDe, filaDeConcepto, colTotal, columnasDeTiempo, filaGraficos, footprintDe,
   bloqueDeMedida, bloquesDeMedida, formulasDeMedida, medidasDeLaMatriz,
   ventanas, ventanasDiarias, particionExacta, expresionVentana, semanasDelAnio,
   formulaMayorImporte, formulaMayorContraparte, serialDeFecha, lunesDe, letra,
 } from './cash-flow-matriz.mjs'
-import { RUBROS_INGRESO, RUBROS_EGRESO, OTROS, claveSub, rotuloSub } from './cash-flow-rubros.mjs'
+import { ESTADOS_PENDIENTES, MEDIDAS } from './cash-flow-medidas.mjs'
+import {
+  RUBROS_INGRESO, RUBROS_EGRESO, OTROS, claveSub, rotuloSub, rubrosDeApertura,
+} from './cash-flow-rubros.mjs'
 
 const HOY = new Date(Date.UTC(2026, 7, 5)) // miércoles 5 de agosto de 2026
 
@@ -95,7 +98,9 @@ test('LA APERTURA POR RUBRO: cada medida abre en sus rubros del libro más "Otro
   assert.equal(medidasDeLaMatriz().length, 4)
   for (const tipo of ['semana', 'mes']) {
     for (const b of bloquesDeMedida(tipo)) {
-      const esperados = b.clave.startsWith('ingreso') ? RUBROS_INGRESO : RUBROS_EGRESO
+      // La apertura depende del signo Y del estado: "Ingresos reales" NO abre en "Valores en cartera",
+      // que es cero por construcción (cuando el valor se acredita entra por el banco como "Cobranzas").
+      const esperados = rubrosDeApertura(b.clave.startsWith('ingreso') ? 1 : -1, b.clave.endsWith('Real'))
       assert.deepEqual(b.rubros.map((r) => r.rubro), [...esperados], `${tipo}/${b.clave}`)
       // Las sub-líneas son contiguas y "Otros" va última: la piel las formatea como un rango.
       assert.equal(b.primeraSub, b.subtotal + 1)

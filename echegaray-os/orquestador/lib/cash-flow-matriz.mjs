@@ -26,51 +26,20 @@
 // una semana cruza el fin de mes y sus movimientos caen a los dos lados. Repartirla es una
 // convención, y cualquiera que se elija genera diferencias de borde que no son defectos. Lo que sí
 // tiene que cerrar es la definición, y eso es lo que se prueba.
+//
+// ═══ QUÉ ESTÁ ACÁ Y QUÉ NO ═══
+//
+// Acá está DÓNDE va cada cosa: las filas, las columnas, las ventanas, el footprint. QUÉ suma cada fila
+// de plata vive en `cash-flow-medidas.mjs`, que este archivo importa y que no sabe nada de geometría.
 
-import { terminoLibro } from './libro-sumas.mjs'
-import { OTROS, rubrosDeSigno, claveSub, rotuloSub } from './cash-flow-rubros.mjs'
+import { OTROS, rubrosDeApertura, claveSub, rotuloSub } from './cash-flow-rubros.mjs'
+import {
+  MEDIDAS, esMedidaReal, formulaMedida, formulaRubro,
+} from './cash-flow-medidas.mjs'
 import { nombresDeClientes, ROTULO_SIN_CLIENTE } from './libro-clientes.mjs'
 
 /** Un día en milisegundos. Todas las fechas se manejan en UTC: el huso del proceso no decide un mes. */
 export const DIA_MS = 86400000
-
-/** Lo que YA pasó: entró o salió de la cuenta. */
-export const ESTADOS_REALES = Object.freeze(['REAL'])
-/**
- * Lo que TODAVÍA NO pasó, en las tres formas en que el libro lo registra. Los tres van juntos en la
- * línea "proyectado" porque los tres son plata que no está en la cuenta; la diferencia entre un cheque
- * emitido (COMPROMETIDO) y un cobro esperado (PROYECTADO) se lee en el detalle, no en el saldo.
- * VENCIDO entra acá y no en real: una fecha que pasó sin conciliar NO es plata que se movió.
- */
-export const ESTADOS_PENDIENTES = Object.freeze(['PROYECTADO', 'VENCIDO', 'COMPROMETIDO'])
-
-/**
- * LAS CUATRO MEDIDAS DE FLUJO. El orden es el de las filas de la matriz: primero lo que entra.
- *
- * `signoNeto` es cómo entra la medida en el resultado; `medida:'magnitud'` es cómo se MUESTRA. Los
- * egresos se muestran en positivo —un pago de $3M se lee "$3.000.000", no "($3.000.000)"— y restan igual.
- */
-export const MEDIDAS = Object.freeze([
-  { clave: 'ingresoReal', signo: 1, estados: ESTADOS_REALES, medida: 'neto', signoNeto: 1 },
-  { clave: 'ingresoProyectado', signo: 1, estados: ESTADOS_PENDIENTES, medida: 'neto', signoNeto: 1 },
-  { clave: 'egresoReal', signo: -1, estados: ESTADOS_REALES, medida: 'magnitud', signoNeto: -1 },
-  { clave: 'egresoProyectado', signo: -1, estados: ESTADOS_PENDIENTES, medida: 'magnitud', signoNeto: -1 },
-])
-
-/** El filtro que se le pide al libro para una medida dentro de una ventana. PURO. */
-export function filtroDeMedida(m, desde, hasta) {
-  return { desde, hasta, signo: m.signo, estados: [...m.estados], medida: m.medida }
-}
-
-/** La fórmula de una medida sobre una ventana. `desde` incluida, `hasta` EXCLUIDA. PURA. */
-export function formulaMedida(m, desde, hasta) {
-  return `=${terminoLibro(filtroDeMedida(m, desde, hasta))}`
-}
-
-/** La fórmula de UN rubro dentro de una medida. Mismo filtro, más el rubro exacto. PURA. */
-export function formulaRubro(m, desde, hasta, rubro) {
-  return `=${terminoLibro({ ...filtroDeMedida(m, desde, hasta), rubros: [rubro] })}`
-}
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // LAS FILAS: UN CONCEPTO CADA UNA, EN EL ORDEN EN QUE SE LEEN
@@ -81,9 +50,23 @@ export function formulaRubro(m, desde, hasta, rubro) {
 // jerarquía DENTRO de un bloque — jerarquía que acá la da la fila, no la sangría.
 
 
-/** Las sub-líneas de una medida: un rubro cada una, y "Otros" al final. PURA. */
+/**
+ * Las sub-líneas de una medida: un rubro cada una, y "Otros" al final. PURA.
+ *
+ * ═══ POR QUÉ "· Otros" SE SIGUE EMITIENDO EN INGRESOS, AUNQUE HOY VALGA $0 (06/08/2026) ═══
+ *
+ * El dueño lo dejó a criterio. Se emite, y no por inercia: con la definición nueva del subtotal —todo
+ * lo que entra MENOS las devoluciones— la fila volvió a tener un contenido posible y dos trabajos
+ * concretos. Muestra (a) un rubro de ingreso que el Libro empiece a emitir mañana y que esta lista no
+ * nombre, y (b) un "Valores en cartera" con estado REAL, que no debería existir. Sin la fila, las dos
+ * cosas se caerían del cuadro y el subtotal seguiría cerrando consigo mismo.
+ *
+ * El cero de hoy no es una fila inútil: es la EVIDENCIA, mirable en la pestaña, de que la taxonomía de
+ * ingresos cubre todo lo que entra. Una fila ausente no prueba nada.
+ */
 function subLineasDe(concepto) {
-  const rubros = rubrosDeSigno(MEDIDAS[concepto.medida].signo)
+  const m = MEDIDAS[concepto.medida]
+  const rubros = rubrosDeApertura(m.signo, esMedidaReal(m))
   return [...rubros, OTROS].map((r) => ({
     clave: claveSub(concepto.clave, r),
     rotulo: rotuloSub(r),

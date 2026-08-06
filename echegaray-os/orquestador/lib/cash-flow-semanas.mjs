@@ -47,8 +47,9 @@
 // El dueño fue explícito: "no agregar información, no agregar métricas". Después de la fila del saldo
 // final no va NADA.
 
+import { ESTADOS_PENDIENTES } from './cash-flow-medidas.mjs'
 import {
-  COL, FILA, ESTADOS_PENDIENTES,
+  COL, FILA,
   conceptosDe, filaDeConcepto, colTotal, columnasDeTiempo, filaGraficos, footprintDe,
   medidasDeLaMatriz, bloquesDeMedida, formulasDeMedida,
   expresionVentana, formulaMayorImporte, formulaMayorContraparte,

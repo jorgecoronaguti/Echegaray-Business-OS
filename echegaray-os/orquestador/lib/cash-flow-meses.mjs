@@ -28,9 +28,10 @@
 import {
   COL, FILA,
   conceptosDe, filaDeConcepto, colTotal, columnasDeTiempo, filaGraficos, footprintDe,
-  medidasDeLaMatriz, bloquesDeMedida, formulasDeMedida, MEDIDAS, formulaMedida,
+  medidasDeLaMatriz, bloquesDeMedida, formulasDeMedida,
   expresionVentana, ventanas, celda, rangoFila, serialDeFecha, rotuloMes,
 } from './cash-flow-matriz.mjs'
+import { MEDIDAS, formulaMedida } from './cash-flow-medidas.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 import { bloquesDeCliente, filaTituloPorCliente, formulasPorCliente } from './cash-flow-por-cliente.mjs'
 import { expresionInicio } from './cash-flow-ancla-saldo.mjs'

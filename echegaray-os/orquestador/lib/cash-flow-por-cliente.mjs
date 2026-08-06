@@ -39,11 +39,11 @@
 // LOS SUBTOTALES DE CONCEPTO NO CAMBIAN. Esta sección no toca una sola fórmula del tronco: cuelga de
 // sus celdas y las lee. Si mañana cambia la definición de "Egresos reales", cambia acá también.
 
-import { terminoLibro } from './libro-sumas.mjs'
 import {
   CLAVE_TITULO_POR_CLIENTE, MEDIDAS_POR_CLIENTE,
-  claveCliente, claveClienteMedida, conceptosDe, filaDeConcepto, filtroDeMedida, medidaDe, celda,
+  claveCliente, claveClienteMedida, conceptosDe, filaDeConcepto, medidaDe, celda,
 } from './cash-flow-matriz.mjs'
+import { terminosDeMedida, expresionDeTerminos } from './cash-flow-medidas.mjs'
 
 /**
  * LOS BLOQUES DE CLIENTE DE UNA VISTA, en orden: cabecera, sus cuatro filas, y si es el residuo. PURA.
@@ -77,9 +77,16 @@ export const filaTituloPorCliente = (tipo) => filaDeConcepto(tipo, CLAVE_TITULO_
 /**
  * NÚCLEO PURO: las cinco fórmulas de UN cliente en UNA columna.
  *
- * · las cuatro medidas → el MISMO `filtroDeMedida` que produce el subtotal del tronco, más el cliente
- *   canónico. La partición cierra contra el subtotal por ARITMÉTICA y no por casualidad: es el mismo
- *   término del mismo libro, con una condición más.
+ * · las cuatro medidas → los MISMOS `terminosDeMedida` que producen el subtotal del tronco, con el
+ *   cliente canónico agregado a cada término. La partición cierra contra el subtotal por ARITMÉTICA y
+ *   no por casualidad: son los mismos términos del mismo libro, con una condición más.
+ *
+ *   ES POR ESO QUE EL NETEO DE DEVOLUCIONES (06/08) BAJÓ HASTA ACÁ. `Compras!J` asigna cliente también
+ *   a los EGRESOS, así que una nota de crédito de proveedor puede traer cliente. Si la fila del cliente
+ *   siguiera usando el filtro viejo, esa devolución sería un ingreso del cliente —el mismo defecto que
+ *   se acaba de sacar del tronco— y además el residuo se despejaría contra un subtotal que ya no la
+ *   tiene: saldría de menos, y con un solo cliente asignado podría salir NEGATIVO. La sección no
+ *   cambió de forma: cambió el término del que cuelga, que es lo que siempre prometió hacer.
  * · la cabecera → entra − sale sobre sus propias cuatro celdas, idéntica a la fila "Resultado".
  * · el residuo → el subtotal del tronco MENOS las celdas de los clientes listados, medida por medida.
  *   No es un `SUM` sobre un rango porque las celdas de una misma medida NO son contiguas: están
@@ -94,7 +101,9 @@ export function formulasDeCliente(tipo, nombre, { col, desde, hasta }) {
   const listados = bloques.filter((x) => !x.residuo)
   const medidas = b.medidas.map((m) => {
     if (!b.residuo) {
-      return { fila: m.fila, formula: `=${terminoLibro({ ...filtroDeMedida(medidaDe(m.clave), desde, hasta), clientes: [nombre] })}` }
+      const terminos = terminosDeMedida(medidaDe(m.clave), desde, hasta)
+        .map((t) => ({ ...t, filtro: { ...t.filtro, clientes: [nombre] } }))
+      return { fila: m.fila, formula: `=${expresionDeTerminos(terminos)}` }
     }
     const subtotal = celda(col, filaDeConcepto(tipo, m.clave))
     const partes = listados.map((x) => `N(${celda(col, x.medidas.find((y) => y.clave === m.clave).fila)})`)
