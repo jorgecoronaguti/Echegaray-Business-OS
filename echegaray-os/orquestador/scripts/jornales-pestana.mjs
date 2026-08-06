@@ -79,6 +79,7 @@ import { columna, aRangoApi, verificarRangos, explicarProblemas } from '../lib/r
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { seccion, sub, total as rotuloTotal, auditarPatron } from '../lib/patron-pestana.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
+import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
 // SIN `vaciarColumnaDeProsa` (06/08): esta pestaña NO TIENE columna de prosa — su última columna es
 // "Pagado el", la del dueño. Importarla era la invitación a volver a llamarla, que es exactamente la
 // 4ª reincidencia del borrado de sus catorce fechas.
@@ -351,9 +352,9 @@ export function grilla({
   const fHero = { costo: 0, real: 0, comprometido: 0, falta: 0, proximo: 0 }
   push(['JORNALES Y SUELDOS — la posición'])
   fHero.costo = push([rotuloTotal('Costo de la nómina en el año')])
-  fHero.real = push([sub('REAL — ya salió de la caja (obra con fecha de pago, oficina y dirección pagadas)')])
-  fHero.comprometido = push([sub('COMPROMETIDO — trabajo hecho y todavía sin pagar')])
-  fHero.falta = push([sub('PROYECTADO — de acá a diciembre: obra, oficina y dirección')])
+  fHero.real = push([sub('REAL — ya salió de la caja')])
+  fHero.comprometido = push([sub('COMPROMETIDO — hecho, sin pagar')])
+  fHero.falta = push([sub('PROYECTADO — a diciembre, motor salarial')])
   fHero.proximo = push([sub('Próximo pago')])
   // QUÉ NO ESTÁ ACÁ ADENTRO, DICHO EN LA PESTAÑA. El dueño: "¿está considerando lo que se le debe
   // pagar a la nómina en SAC y vacaciones? ¿eso está en cargas sociales?". No y sí: este cuadro es
@@ -399,7 +400,7 @@ export function grilla({
 
   // ── 1.3 · LAS QUINCENAS ──
   push([seccion('1.3', 'Las quincenas que faltan hasta diciembre')])
-  const fHpd = push([sub('Horas por persona y por día — medidas sobre las quincenas cerradas recientes')])
+  const fHpd = push([sub('Horas por persona y día — medidas')])
   push(['Quincena', 'Hasta', 'Se paga el', 'Días hábiles', 'Personas', 'Horas por persona', 'Σ $/hora del mes', 'Proyectado'])
   const p0 = filas.length + 1
   pendientes.forEach((q, i) => {
@@ -656,9 +657,9 @@ export function grilla({
   // registro que las produce. El CONTROL viaja con ellas: si las tres no suman lo pagado, falta
   // registrar cómo salió una quincena, y eso hoy está en alarma por $268.531.
   const fCanal = {
-    banco: push([sub('De lo pagado — por banco (baja el saldo bancario)')]),
-    adelanto: push([sub('De lo pagado — en adelantos (efectivo, antes del cierre)')]),
-    recibo: push([sub('De lo pagado — contra recibo (efectivo, al cobrar la quincena)')]),
+    banco: push([sub('De lo pagado — por banco')]),
+    adelanto: push([sub('De lo pagado — en adelantos')]),
+    recibo: push([sub('De lo pagado — contra recibo')]),
   }
   // "Pagado el" VA AL FINAL, no intercalada. Insertarla al lado de "Se paga el" correría los índices de
   // las once columnas que produce nomina-sync, y eso ya rompió el registro una vez hoy (la columna "Se
@@ -712,7 +713,7 @@ export function grilla({
     { total: colDe('TOTAL'), sigma: colDe('Σ $/hora'), dias: colDe('Días hábiles'), hasta: colDe('Hasta') },
     f0, fLast,
   )
-  filas[fHpd - 1][2] = `=IF(N(B${fHpd})=0;"⚠ ninguna quincena cerrada en la ventana: subí «${PARAMETRO_MESES_BASE.rotulo}» en Parámetros";"medido sobre las quincenas cerradas de los últimos "&${RANGO_MESES_BASE}&" meses")`
+  filas[fHpd - 1][2] = `=IF(N(B${fHpd})=0;"⚠ ninguna quincena cerrada en la ventana: subí «${PARAMETRO_MESES_BASE.rotulo}» en Parámetros";"medido s/ cerradas · "&${RANGO_MESES_BASE}&" meses")`
   // ═══ CERRADA vs EN CURSO: LO DECIDE UNA FÓRMULA, NO UNA CORRIDA DEL AGENTE ═══
   //
   // El dueño: "la última fila de este cuadro está mal porque considera que la quincena que está en
@@ -783,6 +784,9 @@ export function grilla({
     ],
     // Horas con un decimal · cantidades enteras · el único porcentaje de la pestaña.
     cantidades: [fHpd],
+    // Prosa que RINDE una fórmula: el pase por contenido la saltea (empieza con '='). Se declara acá
+    // y el formato la pinta TEXTO. col 0-based.
+    celdasDeProsaFormula: [{ fila: fHpd, col: 2 }, { fila: fCanal.recibo, col: 2 }],
     enteros: [plantel.fTotal],
     // La única celda del hero que es una FECHA y no plata. Sin esto sale "$46.242".
     fechasHero: [fHero.proximo],
@@ -1316,6 +1320,18 @@ async function formatear(google, sheetId, filas, g) {
     ...skinRequests({ sheetId, filas, cols: ANCHO, congeladas: 2, titular: g.titular, filasHoja: filas.length }),
     // Todo lo que es plata, a la derecha y con cifras tabulares.
     { repeatCell: { range: rg(3, filas.length, 1, ANCHO), cell: { userEnteredFormat: { numberFormat: moneda, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } },
+    // La prosa se pinta como TEXTO decidida por contenido, DESPUÉS del barrido de moneda — antes de
+    // él, el repeatCell la pisaba y "ver Cargas Sociales" quedaba como un número roto (06/08).
+    ...requestsTextoPorContenido(sheetId, filas).requests,
+    // Las celdas cuya PROSA sale de una fórmula (el pase por contenido las saltea: su contenido
+    // empieza con '='): formato TEXTO explícito, decidido por lo que RINDEN, no por lo que contienen.
+    ...(g.celdasDeProsaFormula ?? []).map(({ fila, col }) => ({
+      repeatCell: {
+        range: rg(fila - 1, fila, col, col + 1),
+        cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', wrapStrategy: 'CLIP' } },
+        fields: 'userEnteredFormat(numberFormat,horizontalAlignment,wrapStrategy)',
+      },
+    })),
     { updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: filas.length }, properties: { pixelSize: 21 }, fields: 'pixelSize' } },
     // EL TÍTULO Y EL SUBTÍTULO DERRAMAN, NO ENVUELVEN. A su derecha no hay ningún dato, así que se
     // leen de corrido en un renglón; envolviéndose quedaban partidos en dos y la fila de 21px sólo

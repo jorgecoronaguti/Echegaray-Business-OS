@@ -205,7 +205,7 @@ export function grilla({ periodos, conceptos, ps, C, bloqueBase = null }) {
   const hCosto = push([rotuloTotal('Costo laboral del año — devengado'), '@COSTO', ...Array(11).fill(VACIO), VACIO, 'Declarado ene–jun más lo proyectado jul–dic.'])
   const hDecl = push([sub('declarado en las DDJJ F931 (ene–jun)'), '@DECL', ...Array(11).fill(VACIO), VACIO, `Sección 1 · réplica ${RAW}, leída de los PDF.`])
   const hProy = push([sub('proyectado (jul–dic)'), '@PROY', ...Array(11).fill(VACIO), VACIO, 'Sección 4 · alícuotas medidas sobre los seis meses reales.'])
-  const hDeuda = push([rotuloTotal(`Deuda previsional en planes — cuotas que faltan pagar en ${AÑO}`), '@DEUDA', ...Array(11).fill(VACIO), VACIO, VACIO])
+  const hDeuda = push([rotuloTotal('Deuda previsional en planes · por pagar'), '@DEUDA', ...Array(11).fill(VACIO), VACIO, VACIO])
   push()
 
   // ── 1 · DECLARADO ──────────────────────────────────────────────────────────────────────────────
@@ -284,7 +284,7 @@ export function grilla({ periodos, conceptos, ps, C, bloqueBase = null }) {
   const fDot = mensual('Dotación proyectada', () => `=IFERROR(INDEX(${REALES(fEmp)};COUNT(${REALES(fEmp)}));"")`,
     'El ÚLTIMO mes con DDJJ, no el promedio: un promedio no fue cierto ningún mes y acá multiplica costos por persona.', { meses: proyMeses, totaliza: false })
   const fPlantel = filas.length + 1
-  push([sub('   control: plantel de obra de la última quincena (planilla JORNALES)'),
+  push([sub('   control: plantel de la última quincena'),
     '=IFERROR(INDEX(JORNALES_REAL_PERSONAS;COUNT(JORNALES_REAL_PERSONAS));"")',
     `=IF(N($B$${fPlantel})=0;"";IF(N($${cm(DESDE_PROY)}$${fDot})=0;"";IF(ABS($${cm(DESDE_PROY)}$${fDot}-$B$${fPlantel})/$${cm(DESDE_PROY)}$${fDot}>0,3;"⚠ la DDJJ y la planilla no coinciden";"✓ coherente con la planilla")))`,
     ...Array(11).fill(VACIO),
@@ -459,7 +459,9 @@ export function grilla({ periodos, conceptos, ps, C, bloqueBase = null }) {
   // una relación de 0,67 mostrada como "$1" son números que el ojo lee mal y que además hacen dudar
   // del resto del cuadro. Se declaran acá para que el formato las trate por lo que son.
   // El titular de la pestaña: la cifra que contesta la pregunta de arriba de todo.
-  return { filas, cantidades: [fEmp, fDot], ratios: [fRelacion], titular: hCosto }
+  // La celda del veredicto (col C del control de plantel) rinde PROSA desde una fórmula: el formato
+  // la pinta TEXTO o el barrido de moneda la muestra como número roto.
+  return { filas, cantidades: [fEmp, fDot], ratios: [fRelacion], titular: hCosto, prosaFormula: [{ fila: fPlantel, col: 2 }] }
 }
 
 async function main() {
@@ -503,7 +505,7 @@ async function main() {
   const ps = await planes()
   console.log(`${periodos.length} período(s) F931 · ${conceptos.length} concepto(s) · ${ps.length} plan(es) de pago`)
 
-  const { filas, cantidades, ratios, titular } = grilla({ periodos, conceptos, ps, C, bloqueBase })
+  const { filas, cantidades, ratios, titular, prosaFormula } = grilla({ periodos, conceptos, ps, C, bloqueBase })
   console.log(`grilla: ${filas.length} filas × ${ANCHO} columnas — un solo ancho para toda la pestaña`)
   if (DRY) return
 
@@ -571,7 +573,7 @@ async function main() {
   const { conservadas } = salteada ? { conservadas: [] } : escritura
   if (conservadas.length) console.log(`✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
-  if (!salteada) await formatear(google, hoja.sheetId, gridFinal, { cantidades, ratios, titular })
+  if (!salteada) await formatear(google, hoja.sheetId, gridFinal, { cantidades, ratios, titular, prosaFormula })
 
   // ── VERIFICAR MIRANDO LA PESTAÑA, no confiando en que la escritura salió bien ──
   const v = await google.readSheetValues(ID, `'${PESTAÑA}'!A1:${COL_ORIGEN}${filas.length}`)
@@ -587,7 +589,7 @@ async function main() {
 }
 
 /** El formato: la piel de statement compartida más lo propio de la grilla mensual. */
-async function formatear(google, sheetId, filas, { cantidades = [], ratios = [], titular = 0 } = {}) {
+async function formatear(google, sheetId, filas, { cantidades = [], ratios = [], titular = 0, prosaFormula = [] } = {}) {
   // ═══ NINGUNA NOTA. NI UNA. ═══
   //
   // POR QUÉ (23/07, TERCERA VEZ SOBRE LO MISMO). El dueño: "la pestaña cargas sociales vuelve a
@@ -636,6 +638,13 @@ async function formatear(google, sheetId, filas, { cantidades = [], ratios = [],
   for (const f of ratios) {
     reqs.push({ repeatCell: { range: rg(f - 1, f, 1, 14), cell: { userEnteredFormat: { numberFormat: { type: 'PERCENT', pattern: '0.0%;;"—"' } } }, fields: 'userEnteredFormat.numberFormat' } })
   }
+  reqs.push(...prosaFormula.map(({ fila, col }) => ({
+    repeatCell: {
+      range: { sheetId, startRowIndex: fila - 1, endRowIndex: fila, startColumnIndex: col, endColumnIndex: col + 1 },
+      cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' } },
+      fields: 'userEnteredFormat(numberFormat,horizontalAlignment)',
+    },
+  })))
   await google.spreadsheetBatchUpdate(ID, reqs)
 }
 

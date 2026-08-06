@@ -200,7 +200,7 @@ export function filasPlantel({ hoja, bloque, categorias, personas, filaInicio, e
   const R = (c) => `'${hoja}'!$${c}$${bloque.inicio}:$${c}$${bloque.fin}`
   const D = R('D'); const W = R('W')
   const filas = []
-  filas.push(['Categoría', 'Personas', 'Σ $/hora', '$/hora mínimo', 'Equivale a (convenio)', 'Básico convenio', 'Margen', 'Estado'])
+  filas.push(['Categoría', 'Personas', 'Σ $/hora', '$/hora mínimo', 'Convenio', 'Básico convenio', 'Margen', 'Estado'])
   const fPrimera = filaInicio + 1
   // El grupo de cinco filas del mes vigente en la réplica, resuelto por el parser: sin esto el MATCH
   // por nombre de mes vuelve a caer en el año equivocado, que es el defecto B3.
@@ -263,17 +263,18 @@ export function filasEscalon({ meses, escalones, filaInicio, celdaSigmaBase }) {
       : `=IFERROR($C${r - 1}*(1+${RANGO_AUMENTO});"")`
     filas.push([
       `=EOMONTH(DATE(${m.anio};${m.mes};1);0)`,
-      e ? `${e.rotulo}${e.acuerdo ? ` · ${e.acuerdo}` : ''}` : 'sin acuerdo publicado',
+      // Sólo el escalón (112px ≈ 19 caracteres); el acuerdo va en "De dónde sale".
+      e ? `${e.rotulo}` : 'sin acuerdo',
       basico,
       i === 0 ? VACIO : `=IFERROR($C${r}/$C${r - 1}-1;"")`,
       `=IFERROR($C${r}/$C$${f0};"")`,
       // Σ $/hora del plantel = el del mes base × el factor. NO se recalcula por categoría: el plantel
       // vive UNA sola vez, en 1.1, y acá se referencia. Duplicarlo es tener dos planteles.
       `=IFERROR(${celdaSigmaBase}*$E${r};"")`,
-      e ? 'acuerdo publicado' : 'estimado con el aumento esperado de Parámetros',
+      e ? `${String(e.acuerdo ?? 'acuerdo').replace(/^Acuerdo\s+/, 'Ac.')}`.slice(0, 19) : 'estimado·parám.',
       i === 0
         ? 'mes base: factor 1,0000, sin aumento'
-        : (e ? '✓ acuerdo' : `⚠ estimado — último acuerdo: ${(ult?.rotulo ?? '—').slice(0, 24)}`),
+        : (e ? '✓ acuerdo' : `⚠ est. · últ: ${(ult?.rotulo ?? '—').slice(0, 12)}`),
     ])
   })
   const f1 = f0 + meses.length - 1

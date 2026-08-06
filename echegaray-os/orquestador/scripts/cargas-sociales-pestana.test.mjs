@@ -127,7 +127,7 @@ test('A7 · LA DOTACIÓN ES LA ÚLTIMA REAL, NO UN AVERAGE — y se controla con
   assert.doesNotMatch(celda, /AVERAGE/, 'volvió el promedio: 21 personas que no fueron ciertas ningún mes')
   assert.match(celda, /INDEX\(.*COUNT\(/, 'tiene que tomar el último mes con DDJJ')
   // Y el control cruzado: la planilla de jornales, que es otra fuente.
-  const ctrl = filaCS(/plantel de obra de la última quincena/)
+  const ctrl = filaCS(/plantel de la última quincena/)
   assert.ok(ctrl, 'sin el contraste, la dotación se valida contra sí misma')
   assert.match(String(ctrl[1]), /JORNALES_REAL_PERSONAS/)
   assert.match(String(ctrl[2]), /⚠ la DDJJ y la planilla no coinciden/)

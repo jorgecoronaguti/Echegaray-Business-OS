@@ -77,10 +77,10 @@ test('A3 · EL MES BASE ABRE EL CUADRO CON FACTOR 1: no hay dónde escribir el d
 test('los meses SIN acuerdo publicado se encadenan con el parámetro, no con el IPC', () => {
   const meses = mesesDelMotor(new Date(2026, 6, 31), [{ desde: new Date(2026, 8, 1), hasta: new Date(2026, 8, 15) }])
   const esc = filasEscalon({ meses, escalones, filaInicio: 20, celdaSigmaBase: '$C$18' })
-  const sep = esc.filas.find((f) => String(f[1]) === 'sin acuerdo publicado')
+  const sep = esc.filas.find((f) => String(f[1]) === 'sin acuerdo')
   assert.ok(sep, 'septiembre 2026 no está publicado: tiene que salir rotulado como estimado')
   assert.match(String(sep[2]), new RegExp(`\\*\\(1\\+${RANGO_AUMENTO}\\)`))
-  assert.match(String(sep[7]), /⚠ estimado/)
+  assert.match(String(sep[7]), /⚠ est\./, 'el estado dice que es estimación, al ancho de la columna')
   // Y NINGUNA celda del cuadro puede citar el bloque de inflación de Parámetros: son series distintas.
   const todo = esc.filas.flat().map(String).join(' ')
   assert.doesNotMatch(todo, /Par[áa]metros'!\$[AC]\$7[0-9]/, 'el motor está leyendo el bloque de IPC')
