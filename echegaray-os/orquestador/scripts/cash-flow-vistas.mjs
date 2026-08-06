@@ -121,7 +121,7 @@ async function rehacerPresupuesto(google) {
  * Devuelve la hoja y si de verdad se escribió: una pestaña que NO se escribió no cambió de forma, así
  * que tampoco se le tocan el formato, el tamaño ni sus rangos con nombre.
  */
-async function escribirVista(google, construir, footprint, refs) {
+async function escribirVista(google, construir, footprint, refs, nombresDe = null) {
   const previa = construir(null)
   const hoja = await asegurarHoja(google, previa.meta.pestana, footprint)
   // El vínculo "📅 hoy" necesita el gid de la propia pestaña: se construye de nuevo con él ya sabido.
@@ -145,6 +145,17 @@ async function escribirVista(google, construir, footprint, refs) {
   }
   await guardarRegistro(ID, meta.pestana, fusionada, ediciones, actual, candidatos)
     .catch((e) => console.warn(`  ⚠ ${meta.pestana}: no pude guardar el registro de rótulos: ${e.message}`))
+
+  // ── LOS NOMBRES SE PUBLICAN ANTES DE ACHICAR (06/08, pagado en vivo) ──
+  //
+  // El achique borró las columnas donde vivían CF_SALDO_INICIO/CF_SALDO_CIERRE y Google los dejó
+  // QUEMADOS: el GET no los proyecta pero el nombre sigue reservado — el add da 400 para siempre.
+  // Publicando primero, el nombre ya apunta a la matriz nueva cuando las columnas viejas mueren.
+  const destinos = nombresDe ? nombresDe(meta) : []
+  if (destinos.length) {
+    await publicar(google, ID, hoja.sheetId, destinos, { titulo: meta.pestana })
+    console.log(`  🔖 ${destinos.length} rango(s) con nombre publicados en ${meta.pestana}`)
+  }
 
   const graficos = await requestsDeGraficosMatriz(google, ID, hoja.sheetId, meta, meta.pestana)
   if (graficos.borrar.length) {
@@ -190,12 +201,9 @@ async function main() {
   // EL MENSUAL VA PRIMERO, y no es indistinto: publica CF_MESES —los doce meses del ejercicio— y la
   // proyección de comisiones del SEMANAL cuenta sobre ese rango.
   const mensual = grillaMeses({ anio: AÑO, refs })
-  const res = await escribirVista(google, () => grillaMeses({ anio: AÑO, refs }), mensual.meta.footprint, refs)
-  if (res?.escrito) {
-    const destinos = destinosNombrados(res.meta)
-    await publicar(google, ID, res.hoja.sheetId, destinos, { titulo: PESTANA_MENSUAL })
-    console.log(`  🔖 ${destinos.length} rango(s) con nombre publicados en ${PESTANA_MENSUAL}`)
-  }
+  // Los nombres los publica escribirVista ANTES de achicar la hoja: publicarlos después dejó
+  // CF_SALDO_INICIO/CIERRE quemados el 06/08 (ver el comentario adentro).
+  await escribirVista(google, () => grillaMeses({ anio: AÑO, refs }), mensual.meta.footprint, refs, destinosNombrados)
   const semanal = grillaSemanal({ hoy, refs })
   await escribirVista(google, (gid) => grillaSemanal({ hoy, refs, gid }), semanal.meta.footprint, refs)
   if (DRY) return console.log('\n--dry: no escribí nada.')

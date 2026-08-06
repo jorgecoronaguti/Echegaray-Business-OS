@@ -101,7 +101,7 @@ export const PASOS = [
   ['f931-sheet.mjs', 'la réplica _F931_RAW — las DDJJ F931 leídas de los PDF del data room', ['_F931_RAW']],
   ['cargas-sociales-pestana.mjs', 'Cargas Sociales — la pestaña entera: declarado, pagado, proyección, caja, SAC y planes', ['Cargas Sociales']],
   ['cobranzas-control.mjs', 'Cobranzas — detector de duplicados', []],
-  ['cheques-cobertura-sheet.mjs', 'Cash Flow Mensual — qué cheques y tarjeta faltan cargar en Compras', []],
+  ['cheques-cobertura-sheet.mjs', 'Cheques Emitidos — marcas de cobertura en la columna M (el bloque del Mensual se retiró: matriz 06/08)', [], ['--solo-marcas']],
   // EL REGISTRO DECLARA LA PESTAÑA QUE ESCRIBE, SIEMPRE. Estos tres pasos la dejaban en blanco, así
   // que el censo de dueños las daba por HUÉRFANAS aunque un agente las mantenía todos los días. Un
   // registro incompleto es peor que no tenerlo: contesta que no hay dueño cuando sí lo hay.

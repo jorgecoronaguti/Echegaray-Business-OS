@@ -120,7 +120,8 @@ function bloqueHero(poner, meta) {
 
   poner(R, s1, 'RESULTADO DEL AÑO')
   poner(V, s1, `=N(${T('resultado')})`)
-  poner(V, s1 + 1, 'Lo que entra menos lo que sale, todo el ejercicio')
+  // Corto: el auditor de pantalla midió que 49 caracteres no entran en la columna del hero (37).
+  poner(V, s1 + 1, 'entra − sale, ejercicio 2026')
 
   poner(R, s2, 'ENTRA EN EL AÑO')
   poner(V, s2, `=N(${T('ingresoReal')})+N(${T('ingresoProyectado')})`)
@@ -192,8 +193,11 @@ export function formulaVariacionPresupuesto(celdaMes, celdaResultado) {
  */
 export const NOMBRES_VISTA = Object.freeze({
   meses: NOMBRE_MESES,
-  inicio: 'CF_SALDO_INICIO',
-  cierre: 'CF_SALDO_CIERRE',
+  // CF_SALDO_INICIO/CF_SALDO_CIERRE quedaron QUEMADOS el 06/08: el achique de columnas del rediseño
+  // los dejó colgando del lado de Google (el GET no los proyecta pero el nombre sigue reservado y el
+  // add da 400). Nombres nuevos, y el generador ahora publica ANTES de achicar para no repetirlo.
+  inicio: 'CF_INICIO',
+  cierre: 'CF_CIERRE',
 })
 
 /**

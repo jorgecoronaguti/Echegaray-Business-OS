@@ -121,7 +121,7 @@ test('publica los tres nombres que el resto del archivo necesita, sobre las FILA
   // INDEX(rango;1;MATCH(…)). Publicarlos sobre la geometría anterior no da error: devuelve otra celda.
   const { meta } = armar()
   const d = destinosNombrados(meta)
-  assert.deepEqual(d.map((x) => x.name), [NOMBRE_MESES, 'CF_SALDO_INICIO', 'CF_SALDO_CIERRE'])
+  assert.deepEqual(d.map((x) => x.name), [NOMBRE_MESES, 'CF_INICIO', 'CF_CIERRE'])
   assert.deepEqual(d.map((x) => x.fila), [meta.cab.fila, meta.fila.saldoInicial, meta.fila.saldoFinal])
   for (const x of d) {
     assert.equal(x.col, 2, 'arrancan en la columna B')

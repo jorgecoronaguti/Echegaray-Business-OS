@@ -27,6 +27,10 @@ import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Cash Flow Mensual'
 const DRY = process.argv.includes('--dry')
+// --solo-marcas: NO escribe el bloque en el Cash Flow Mensual — sólo las marcas de la columna M de
+// "Cheques Emitidos" (que CAJA!H15 consume). Desde el rediseño del 06/08 el Mensual es UNA matriz y
+// después del cuadro no va nada: el pipeline corre este script con la bandera puesta.
+const SOLO_MARCAS = process.argv.includes('--solo-marcas')
 const ANCHO = 6
 const FIRMA = '¿QUÉ NO ESTÁ EN ESTE CUADRO? — cobertura contra todas las fuentes'
 
@@ -217,6 +221,11 @@ async function main() {
   }
   console.log(`A CUBRIR ${ars(g.cubrir.total).toLocaleString('es-AR')} en ${g.cubrir.por_mes.length} meses`)
   if (DRY) return
+  if (SOLO_MARCAS) {
+    await marcarInstrumentos(google, datos, resp)
+    console.log('  --solo-marcas: columna M estampada; el bloque del Mensual NO se escribe (matriz del 06/08).')
+    return
+  }
 
   // Idempotente: si el bloque ya está, se rehace en su lugar; si no, va después de lo último.
   const actual = await google.readSheetValues(ID, `${PESTAÑA}!A1:${letra(ANCHO - 1)}200`)
