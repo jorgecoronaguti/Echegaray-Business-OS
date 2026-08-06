@@ -265,7 +265,10 @@ export function grilla(cargado, refs) {
     if (rotulo === 'Resto de este mes') fFinMes = f
     der.push([
       rotulo,
-      BORDES[k][1] ? `=${BORDES[k][1]}` : '',
+      // LA COLUMNA "Hasta" MUESTRA EL ÚLTIMO DÍA INCLUIDO (borde − 1), no el borde: el borde es
+      // excluido y mostrarlo hacía leer "Hasta 13/08" para un tramo que termina el 12. En
+      // castellano, "hasta" incluye.
+      BORDES[k][1] ? `=(${BORDES[k][1]})-1` : '',
       `=${terminoLibro({ desde: k === 0 ? DESDE_SIEMPRE : desdeTramo(k), hasta: hastaTramo(k), estados: NO_REAL })}`,
       // La posición acumulada arranca en la disponibilidad: un neto de tramo sin la plata que hay
       // detrás no contesta nada.

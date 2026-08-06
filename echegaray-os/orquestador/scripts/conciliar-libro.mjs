@@ -93,8 +93,10 @@ export function evaluarBorde(expr, hoy) {
   if (e === 'TODAY()') return hoy
   const suma = /^TODAY\(\)\+(\d+)$/.exec(e)
   if (suma) return hoy + Number(suma[1])
-  const max = /^MAX\(TODAY\(\)\+(\d+);EOMONTH\(TODAY\(\);(-?\d+)\)\)$/.exec(e)
-  if (max) return Math.max(hoy + Number(max[1]), eomonth(hoy, Number(max[2])))
+  // El `+N` opcional tras EOMONTH existe desde el 06/08: el borde es excluido, y sin el +1 el
+  // último día del mes caía en el tramo siguiente (la diferencia de $2.114.940 de la conciliación).
+  const max = /^MAX\(TODAY\(\)\+(\d+);EOMONTH\(TODAY\(\);(-?\d+)\)(?:\+(\d+))?\)$/.exec(e)
+  if (max) return Math.max(hoy + Number(max[1]), eomonth(hoy, Number(max[2])) + Number(max[3] ?? 0))
   throw new Error(`conciliar-libro: no sé evaluar el borde "${expr}". Los BORDES cambiaron y este `
     + 'portón compararía contra una ventana equivocada — prefiero romper.')
 }
@@ -292,8 +294,12 @@ export function conciliar(libro, tramos, { hoy, corte, tolerancia = TOLERANCIA, 
     }
   })
   const peor = filas.reduce((mx, f) => Math.max(mx, Math.abs(f.delta)), 0)
+  // LA CELDA "Hasta" DE LA PESTAÑA MUESTRA EL ÚLTIMO DÍA INCLUIDO (borde − 1, desde el 06/08): el
+  // borde interno es excluido, y mostrarlo hacía leer "Hasta 13/08" para un tramo que termina el
+  // 12. Este control compara contra borde − 1: si alguien vuelve a estampar el borde crudo en la
+  // celda, esto se pone rojo — que es exactamente lo que tiene que pasar.
   const bordesEnDesacuerdo = filas.filter((f) => f.bordeCaja && Number.isFinite(f.bordeLibro)
-    && Math.abs(f.bordeCaja - f.bordeLibro) > 0)
+    && Math.abs(f.bordeCaja - (f.bordeLibro - 1)) > 0)
   return { filas, peor, bordesEnDesacuerdo, cierra: peor < tolerancia && !bordesEnDesacuerdo.length }
 }
 

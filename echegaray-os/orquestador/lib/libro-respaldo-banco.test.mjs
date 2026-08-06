@@ -3,7 +3,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   debitosDelExtracto, corteDelExtracto, pagosDeResumen, cubiertaPorResumen,
-  respaldoEnLote, PARTES_MAXIMAS, HOLGURA_LOTE,
+  respaldoEnLote, PARTES_MAXIMAS, HOLGURA_LOTE, chequesCubiertosPorBanco,
 } from './libro-respaldo-banco.mjs'
 import { NAT } from './banco-santander.mjs'
 
@@ -133,4 +133,51 @@ test('LOTE: sin corte no se decide nada — el motivo lo dice', () => {
   const r = respaldoEnLote(9000000, 46244, debitosDelExtracto(BANCO), { corte: null })
   assert.equal(r.cubierto, 0)
   assert.match(r.motivo, /sin corte/)
+})
+
+test('CHEQUES YA DEBITADOS (06/08): la cuota de Diesel cubierta, la de $1 de diferencia NO', () => {
+  // El caso real: el banco debitó 2 cheques de $500.000 (24/07, refs 314/315) y el libro contaba la
+  // cuota de Diesel como COMPROMETIDA al 12/08. Y la contraprueba del $1: el débito de $470.945 no
+  // cubre la cuota de $470.944 — ese débito es el cheque 313, que el libro ya tiene como REAL.
+  const debitos = [
+    { fecha: 46237, concepto: 'Cheque debitado', importe: 500000, fila: 10 },
+    { fecha: 46237, concepto: 'Cheque debitado', importe: 500000, fila: 11 },
+    { fecha: 46240, concepto: 'Cheque debitado', importe: 470945, fila: 12 },
+    { fecha: 46240, concepto: 'Debito transf. online banking emp', importe: 500000, fila: 13 },
+  ]
+  const movs = [
+    { signo: -1, instrumento: 'cheque', estado: 'COMPROMETIDO', importe: 500000, fecha: 46246, concepto: 'Diesel · cheque 316' },
+    { signo: -1, instrumento: 'cheque', estado: 'COMPROMETIDO', importe: 510000, fecha: 46246, concepto: 'Diesel · cheque 316b' },
+    { signo: -1, instrumento: 'cheque', estado: 'COMPROMETIDO', importe: 470944, fecha: 46251, concepto: 'Corralón · cheque 312' },
+    { signo: -1, instrumento: 'cheque', estado: 'REAL', importe: 470945, fecha: 46240, concepto: 'Corralón · cheque 313' },
+  ]
+  const { cubiertos, avisos } = chequesCubiertosPorBanco(movs, debitos)
+  assert.equal(cubiertos.size, 1, 'sólo la cuota con débito exacto no consumido')
+  assert.ok(cubiertos.has(0), 'la cuota de $500.000 queda cubierta')
+  assert.equal(cubiertos.get(0).fecha, 46237)
+  assert.ok(!cubiertos.has(1), 'la de $510.000 no tiene débito exacto: sigue comprometida')
+  assert.ok(!cubiertos.has(2), 'el $1 de diferencia es señal: 470.944 ≠ 470.945')
+  assert.equal(avisos.length, 0)
+})
+
+test('un REAL consume su débito primero: el mismo papel no paga dos veces', () => {
+  const debitos = [{ fecha: 46240, concepto: 'Cheque debitado', importe: 470945, fila: 12 }]
+  const movs = [
+    { signo: -1, instrumento: 'cheque', estado: 'REAL', importe: 470945, fecha: 46240, concepto: 'ya contado' },
+    { signo: -1, instrumento: 'cheque', estado: 'COMPROMETIDO', importe: 470945, fecha: 46251, concepto: 'otro papel igual' },
+  ]
+  const { cubiertos } = chequesCubiertosPorBanco(movs, debitos)
+  assert.equal(cubiertos.size, 0, 'el débito ya lo consumió el REAL: el pendiente sigue pendiente')
+})
+
+test('más pendientes que débitos del mismo importe = ambiguo: no se cubre ninguno y se avisa', () => {
+  const debitos = [{ fecha: 46237, concepto: 'Echeq canje interno recibido 24hs', importe: 200000, fila: 9 }]
+  const movs = [
+    { signo: -1, instrumento: 'echeq', estado: 'COMPROMETIDO', importe: 200000, fecha: 46250, concepto: 'a' },
+    { signo: -1, instrumento: 'echeq', estado: 'COMPROMETIDO', importe: 200000, fecha: 46260, concepto: 'b' },
+  ]
+  const { cubiertos, avisos } = chequesCubiertosPorBanco(movs, debitos)
+  assert.equal(cubiertos.size, 0)
+  assert.equal(avisos.length, 1)
+  assert.match(avisos[0], /ambiguo/)
 })

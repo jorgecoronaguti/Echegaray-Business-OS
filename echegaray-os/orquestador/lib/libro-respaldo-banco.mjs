@@ -203,3 +203,72 @@ export function respaldoEnLote(importe, prevista, debitos = [], { corte, usados 
   const c = candidatos[0]
   return { ...c, motivo: `respaldado por ${c.filas.length} débito(s) iguales de _BANCO_RAW` }
 }
+
+/** Un débito del extracto que ES un cheque saliendo: el papel presentado o el echeq canjeado. */
+const ES_DEBITO_DE_CHEQUE = /cheque debitado|echeq (canje|clearing)|canje interno recibido/i
+
+/**
+ * NÚCLEO PURO: los cheques del libro que el banco YA debitó — la corrección del 06/08.
+ *
+ * ═══ EL CASO QUE ESTO CURA (dueño, textual: "hay cheques q ya fueron pagados") ═══
+ *
+ * El banco debitó DOS cheques de $500.000 el 24/07 (refs 314/315) y el libro seguía contando la
+ * cuota en cheque de Diesel Rodriguez como COMPROMETIDA al 12/08 — $500.000 de obligación que ya
+ * había salido de la cuenta. La fuente de estados (`public.cheques`) tenía corte 31/07 y nadie
+ * grita cuando envejece: el extracto es la única verdad.
+ *
+ * LA REGLA ES POR IMPORTE EXACTO Y POR CONTEO, no por número (Compras no siempre lo tiene, y el
+ * número sin el instrumento no identifica — trampa conocida):
+ *   1. se toman SÓLO los débitos con concepto de cheque (`ES_DEBITO_DE_CHEQUE`);
+ *   2. cada movimiento REAL del libro con instrumento cheque/echeq CONSUME primero su débito de
+ *      igual importe (el más cercano en fecha) — sin este paso, el débito del cheque ya contado
+ *      cubriría además al pendiente y el mismo papel pagaría dos veces;
+ *   3. una cuota pendiente queda CUBIERTA sólo si los débitos restantes de su importe EXACTO
+ *      alcanzan para TODAS las pendientes de ese importe — si hay más pendientes que débitos, no
+ *      se cubre ninguna: decir "pagado" de más es el error que rompe una tesorería.
+ *
+ * El $1 de diferencia ya probó ser señal, no ruido: el débito de $470.945 NO cubre la cuota de
+ * $470.944 — y está bien, porque ese débito es el cheque 313 que el libro ya tiene como REAL.
+ *
+ * @param {Array} movimientos el libro completo (se lee, no se muta)
+ * @param {Array} debitos `debitosDelExtracto(banco)`
+ * @returns {{cubiertos:Map<number,{fecha:number,fila:number}>, avisos:string[]}} índice del
+ *   movimiento → con qué débito quedó cubierto
+ */
+export function chequesCubiertosPorBanco(movimientos = [], debitos = []) {
+  const esCheque = (m) => m?.signo === -1 && /cheq/i.test(String(m?.instrumento ?? ''))
+  const deCheque = debitos.filter((d) => ES_DEBITO_DE_CHEQUE.test(d.concepto))
+  const libres = new Map() // importe exacto → débitos no consumidos
+  for (const d of deCheque) {
+    if (!libres.has(d.importe)) libres.set(d.importe, [])
+    libres.get(d.importe).push(d)
+  }
+  // Paso 2: lo REAL consume primero.
+  for (const m of movimientos) {
+    if (!esCheque(m) || m.estado !== 'REAL') continue
+    const grupo = libres.get(m.importe)
+    if (!grupo?.length) continue
+    grupo.sort((a, b) => Math.abs(a.fecha - m.fecha) - Math.abs(b.fecha - m.fecha))
+    grupo.shift()
+  }
+  // Paso 3: conteo por importe exacto sobre lo pendiente.
+  const pendientes = new Map()
+  movimientos.forEach((m, i) => {
+    if (!esCheque(m) || m.estado === 'REAL') return
+    if (!pendientes.has(m.importe)) pendientes.set(m.importe, [])
+    pendientes.get(m.importe).push(i)
+  })
+  const cubiertos = new Map()
+  const avisos = []
+  for (const [importe, indices] of pendientes) {
+    const grupo = (libres.get(importe) ?? []).sort((a, b) => a.fecha - b.fecha)
+    if (!grupo.length) continue
+    if (grupo.length < indices.length) {
+      avisos.push(`respaldo-banco: ${grupo.length} débito(s) de $${importe} contra ${indices.length} `
+        + 'cheque(s) pendientes del mismo importe — ambiguo, no cubro ninguno')
+      continue
+    }
+    indices.forEach((i, k) => cubiertos.set(i, { fecha: grupo[k].fecha, fila: grupo[k].fila }))
+  }
+  return { cubiertos, avisos }
+}
