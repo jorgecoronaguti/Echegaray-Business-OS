@@ -19,6 +19,7 @@ import { terminoLibro } from './libro-sumas.mjs'
 
 const REF = {
   total: '$C$15', fecha: '$D$15', invArs: '$C$11', invUsd: '$C$12', invFecha: '$D$11',
+  piso: '$H$15', pisoSimple: '$I$15', pisoFecha: '$G$15',
 }
 const T = () => tarjetas(REF)
 const de = (clave) => T().find((t) => t.clave === clave)
@@ -98,17 +99,24 @@ test('FALLA CERRADO: sin una referencia, rompe antes de escribir una celda en er
   assert.throws(() => tarjetas(), /faltan las referencias/)
 })
 
-test('LIBRE son los BANCOS menos lo comprometido — Balanz NO entra al titular (3ª directiva, 06/08)', () => {
-  // ═══ LA HISTORIA DEL CONTRATO, PORQUE CAMBIÓ TRES VECES EN UN DÍA ═══
+test('LIBRE es el PISO de la escalera — 4ª y definitiva (06/08): ninguna resta nueva, una referencia', () => {
+  // ═══ POR QUÉ NINGUNA DE LAS TRES RESTAS ANTERIORES PODÍA ESTAR BIEN ═══
   //
-  // v1 `disponible − comprometida` → $897k y el dueño lo cuestionó. v2 "available liquidity"
-  // (+ Balanz) → $43,2M y el dueño la rechazó, textual: "una cosa es el saldo en los bancos, otra
-  // cosa es en balanz q es donde invertimos". v3 (VIGENTE) es v1 con el rescate de Balanz como
-  // escenario en el contexto: el titular no mezcla bancos con inversión, y un LIBRE negativo es
-  // información (el mes no se cubre sin rescatar o sin cobrar), no un defecto.
+  // v1 bancos−comprometido ($897k, "muy poco") · v2 +Balanz ($43,2M, "una cosa son los bancos,
+  // otra balanz") · v3 = v1 (−$1,8M, "¿deficitarios? pésimo"). Las tres comparaban la caja de HOY
+  // contra los pagos de TODO el mes ignorando CUÁNDO entran las cobranzas. La pregunta real es
+  // cuánto se puede usar hoy sin que ningún día del recorrido quede al descubierto, y esa respuesta
+  // es el piso de la escalera — que la pestaña ya calcula. La tarjeta lo referencia con MIN de las
+  // dos puntas de la fila de cierre, el mismo criterio con el que esa fila elige su propio rótulo.
   const l = de('libre')
-  assert.equal(l.valor, '=N($A$3)-N($C$3)',
-    'disponible (A3) menos comprometida (C3): SOLO bancos y efectivo, sin Balanz')
-  assert.match(l.contexto, /rescatando Balanz/, 'el rescate es el escenario del contexto, no el titular')
-  assert.ok(l.contexto.includes('N($A$3)+N($G$3)-N($C$3)'), 'el escenario del contexto es la suma con Balanz')
+  assert.equal(l.valor, `=MIN(N(${REF.piso});N(${REF.pisoSimple}))`,
+    'el MIN de peor-caso ($H) y mínimo simple ($I) de la fila de cierre — no una cuarta aritmética')
+  assert.match(l.contexto, /cobrando lo proyectado/,
+    'sin la cláusula, el piso se lee como plata garantizada — y depende de las cobranzas')
+  assert.ok(l.contexto.includes(REF.pisoFecha), 'la fecha del punto más bajo sale de la fila de cierre')
+})
+
+test('FALLA CERRADO también sin las referencias del piso', () => {
+  assert.throws(() => tarjetas({ ...REF, piso: '' }), /faltan las referencias/)
+  assert.throws(() => tarjetas({ ...REF, pisoFecha: '' }), /faltan las referencias/)
 })
