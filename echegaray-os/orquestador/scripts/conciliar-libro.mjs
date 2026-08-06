@@ -205,12 +205,12 @@ export function conciliar(libro, tramos, { hoy, corte, tolerancia = TOLERANCIA }
     const v = ventanasDeTramo(k, hoy, corte)
     const entra = libroEntra(libro, v)
     const sale = libroSale(libro, v, rubros)
-    const delta = (t.entra - entra.total) - (t.sale - sale.total)
+    // La portada publica el NETO del tramo; el delta es neto contra neto.
+    const delta = t.neto - (entra.total - sale.total)
     return {
       k,
       rotulo: t.rotulo,
-      cajaEntra: t.entra,
-      cajaSale: t.sale,
+      cajaNeto: t.neto,
       libroEntra: entra.total,
       libroSale: sale.total,
       entraPorFuente: entra.porFuente,
@@ -251,26 +251,39 @@ function leerLibro(crudo) {
     }))
 }
 
-/** El calendario de CAJA: A rótulo · C Entra · D Sale · F Hasta, ubicado por su encabezado. */
+/**
+ * El calendario de CAJA en la PORTADA (05/08): el panel derecho — F Tramo · G Hasta · H Neto ·
+ * I Saldo después — ubicado por su encabezado. La portada ya no publica Entra y Sale por separado,
+ * así que la comparación es por NETO de tramo.
+ *
+ * ═══ LO QUE ESTE PORTÓN ES DESPUÉS DE LA MIGRACIÓN, DICHO SIN VUELTAS ═══
+ *
+ * Antes de migrar las vistas comparaba DOS MODELOS INDEPENDIENTES (los SUMIFS del diseño viejo
+ * contra el libro) y su cero fue el pasaporte de la migración — ese cero quedó registrado el
+ * 05/08/2026. Desde que la escalera se alimenta del propio libro, esto es una REGRESIÓN: detecta
+ * fórmulas rotas, ventanas corridas y celdas pisadas, pero ya no puede validar el libro contra un
+ * modelo ajeno. El control independiente del libro es su cadena de fuentes (banco, Compras,
+ * Cobranzas, planilla) — los extractores fallan cerrados contra ellas.
+ */
 function leerCalendario(caja) {
-  const iCab = caja.findIndex((f) => String(f?.[0] ?? '').trim() === 'Tramo')
-  if (iCab < 0) throw new Error('no encontré el calendario en CAJA (falta el encabezado "Tramo")')
+  const iCab = caja.findIndex((f) => String(f?.[5] ?? '').trim() === 'Tramo')
+  if (iCab < 0) throw new Error('no encontré el calendario en CAJA (falta el encabezado "Tramo" en el panel derecho)')
   const tramos = []
   for (let i = iCab + 1; i < caja.length; i++) {
-    const rot = String(caja[i]?.[0] ?? '').trim()
+    const rot = String(caja[i]?.[5] ?? '').trim()
     if (/^⇒/.test(rot) || !rot) break
-    tramos.push({ rotulo: rot, entra: num(caja[i]?.[2]), sale: num(caja[i]?.[3]), hasta: num(caja[i]?.[5]) || null })
+    tramos.push({ rotulo: rot, neto: num(caja[i]?.[7]), hasta: num(caja[i]?.[6]) || null })
   }
   return tramos
 }
 
 function imprimir(r) {
-  console.log('EL LIBRO CONTRA EL CALENDARIO DE CAJA — tramo por tramo, por lo que entra y por lo que sale')
+  console.log('EL LIBRO CONTRA LA ESCALERA DE LA PORTADA — regresión por neto de tramo (el cero de dos modelos independientes quedó registrado el 05/08/2026, pre-migración)')
   console.log('─'.repeat(96))
-  console.log(`  ${'Tramo'.padEnd(26)}${'CAJA entra'.padStart(14)}${'libro entra'.padStart(14)}${'CAJA sale'.padStart(14)}${'libro sale'.padStart(14)}${'Δ neto'.padStart(13)}`)
+  console.log(`  ${'Tramo'.padEnd(26)}${'CAJA neto'.padStart(14)}${'libro entra'.padStart(14)}${'libro sale'.padStart(14)}${'libro neto'.padStart(14)}${'Δ'.padStart(13)}`)
   for (const f of r.filas) {
-    console.log(`  ${f.rotulo.slice(0, 25).padEnd(26)}${pesos(f.cajaEntra).padStart(14)}${pesos(f.libroEntra).padStart(14)}`
-      + `${pesos(f.cajaSale).padStart(14)}${pesos(f.libroSale).padStart(14)}${pesos(f.delta).padStart(13)}`)
+    console.log(`  ${f.rotulo.slice(0, 25).padEnd(26)}${pesos(f.cajaNeto).padStart(14)}${pesos(f.libroEntra).padStart(14)}`
+      + `${pesos(f.libroSale).padStart(14)}${pesos(f.libroEntra - f.libroSale).padStart(14)}${pesos(f.delta).padStart(13)}`)
     if (Math.abs(f.delta) < TOLERANCIA) continue
     const abierto = (o) => Object.entries(o).filter(([, v]) => Math.abs(v) >= 1)
       .map(([k, v]) => `${k} ${pesos(v)}`).join(' · ') || '—'
@@ -300,7 +313,7 @@ async function main() {
   // Se concilia lo ESCRITO en la pestaña, no lo que la memoria del generador cree haber escrito.
   const [crudo, caja, corteRaw] = await Promise.all([
     g.readSheetValues(ID, '_MOVIMIENTOS!A2:P2000', { render: 'UNFORMATTED_VALUE' }),
-    g.readSheetValues(ID, 'CAJA!A1:F45', { render: 'UNFORMATTED_VALUE' }),
+    g.readSheetValues(ID, 'CAJA!A1:I45', { render: 'UNFORMATTED_VALUE' }),
     // PISO_CAJA es `CAJA_FECHA_SALDO`, el rango con nombre que publica CAJA: el corte del extracto.
     g.readSheetValues(ID, PISO_CAJA, { render: 'UNFORMATTED_VALUE' }),
   ])

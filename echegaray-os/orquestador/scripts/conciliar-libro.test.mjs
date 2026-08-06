@@ -73,12 +73,13 @@ const LIBRO = [
 
 /** Lo que mostraría CAJA si contara exactamente lo mismo. */
 const CAJA_QUE_CIERRA = [
-  { rotulo: 'Vencido — ya pasó la fecha', entra: 400, sale: 1000 - 200 + 5000 },
-  { rotulo: 'Esta semana', entra: 250, sale: 3000 },
-  { rotulo: 'Semana que viene', entra: 0, sale: 0 },
-  { rotulo: 'Resto de este mes', entra: 0, sale: 6111 },
-  { rotulo: 'El mes que viene', entra: 0, sale: 0 },
-  { rotulo: 'Más adelante', entra: 0, sale: 0 },
+  // CAMBIO DE CONTRATO (05/08): la portada publica el NETO del tramo, no entra/sale por separado.
+  { rotulo: 'Vencido — ya pasó la fecha', neto: 400 - (1000 - 200 + 5000) },
+  { rotulo: 'Esta semana', neto: 250 - 3000 },
+  { rotulo: 'Semana que viene', neto: 0 },
+  { rotulo: 'Resto de este mes', neto: 0 - 6111 },
+  { rotulo: 'El mes que viene', neto: 0 },
+  { rotulo: 'Más adelante', neto: 0 },
 ]
 
 test('VEREDICTO: un libro que cuenta lo mismo que el calendario cierra y habilita la migración', () => {
@@ -88,7 +89,7 @@ test('VEREDICTO: un libro que cuenta lo mismo que el calendario cierra y habilit
 })
 
 test('VEREDICTO: una diferencia de un solo tramo abre el portón y NO se compensa entre tramos', () => {
-  const caja = CAJA_QUE_CIERRA.map((t, i) => (i === 1 ? { ...t, sale: t.sale + 1_000_000 } : t))
+  const caja = CAJA_QUE_CIERRA.map((t, i) => (i === 1 ? { ...t, neto: t.neto - 1_000_000 } : t))
   const r = conciliar(LIBRO, caja, { hoy: HOY, corte: CORTE })
   assert.equal(r.cierra, false)
   assert.equal(Math.round(r.filas[1].delta), -1_000_000)
@@ -98,7 +99,7 @@ test('VEREDICTO: una diferencia de un solo tramo abre el portón y NO se compens
 
 test('VEREDICTO: dos errores que se cancelan ENTRE tramos no pasan — el neto es por tramo', () => {
   const caja = CAJA_QUE_CIERRA.map((t, i) => {
-    if (i === 1) return { ...t, sale: t.sale + 500 }
+    if (i === 1) return { ...t, neto: t.neto - 500 }
     if (i === 3) return { ...t, sale: t.sale - 500 }
     return t
   })
