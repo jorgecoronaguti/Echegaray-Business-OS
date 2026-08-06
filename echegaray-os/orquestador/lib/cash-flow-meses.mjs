@@ -151,7 +151,12 @@ function columnaDeMes(poner, meta, j, { refSaldo, refFecha }) {
   poner(f.saldoInicial, col, refSaldo && refFecha
     ? expresionInicio({
       desde, hasta, refSaldo, refFecha,
-      yaVividoEnElAncla: terminoLibro({ desde, hasta: `${refFecha}+1`, estados: ['REAL'], medida: 'neto' }),
+      // SIN TECHO EN EL CORTE (06/08): la línea de "posteriores al corte" del total NO tiene techo,
+      // así que un REAL fechado DESPUÉS del corte ya está adentro del saldo declarado. Restarlo sólo
+      // hasta el corte lo dejaba en el inicio Y en la columna de su fecha: $11,1M contados dos veces
+      // (medidos por el verificador de conectividad). Se resta TODO el REAL desde el arranque del
+      // período ancla en adelante; la cadena lo re-suma exactamente una vez en la columna que le toca.
+      yaVividoEnElAncla: terminoLibro({ desde, estados: ['REAL'], medida: 'neto' }),
       anterior: j === 0 ? null : celda(col - 1, f.saldoFinal),
     })
     : '')

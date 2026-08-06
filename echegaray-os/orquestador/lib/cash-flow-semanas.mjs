@@ -224,7 +224,9 @@ function inicioDeLaSemana({ desde, hasta, refSaldo, refFecha, anterior = null })
   if (!refSaldo || !refFecha) return ''
   const ancla = expresionInicioCorrido({
     refSaldo,
-    yaVivido: terminoLibro({ desde, hasta: `${refFecha}+1`, estados: ['REAL'], medida: 'neto' }),
+    // Sin techo en el corte: el total ya contiene todo lo REAL (ver cash-flow-meses). El término
+    // puestaAlDia se conserva por contrato pero su ventana sigue vacía en la rama ancla.
+    yaVivido: terminoLibro({ desde, estados: ['REAL'], medida: 'neto' }),
     puestaAlDia: terminoLibro({ desde: `${refFecha}+1`, hasta: desde, estados: ['REAL'], medida: 'neto' }),
   }).replace(/^=/, '')
   // El vacío de la primera columna se escribe como "" y no como la celda de la izquierda: a la
