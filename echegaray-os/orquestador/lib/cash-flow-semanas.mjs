@@ -14,11 +14,22 @@
 // rechazó por la misma razón por la que ya había rechazado el rodante en la vista de líneas: un cuadro
 // que arranca en la semana corriente **esconde la historia del ejercicio** —las semanas ya cerradas,
 // que son contra las que se compara lo que viene— y mete columnas del año siguiente en una pestaña
-// rotulada 2026. Ahora son las 53 semanas de 2026 (la primera es la del lunes 29/12/2025, que contiene
-// el 1° de enero) y el semanal cubre EXACTAMENTE el mismo período que el mensual.
+// rotulada 2026. Ahora son las 53 semanas de 2026: la primera es la del lunes 29/12/2025, que contiene
+// el 1° de enero.
 //
-// Lo que se paga por eso: hay scroll horizontal. Se compensa con la columna A congelada y el atajo
-// "📅 hoy", que salta a la columna de la semana corriente.
+// ═══ Y LO QUE ESO NO SIGNIFICA: LAS DOS VISTAS NO CUBREN EL MISMO PERÍODO (06/08, medido) ═══
+//
+// Acá decía "el semanal cubre EXACTAMENTE el mismo período que el mensual". Es falso y se puede
+// medir: el semanal va de [29/12/2025, 4/1/2027) y el mensual de [1/1/2026, 1/1/2027). Son tres días
+// de más de cada lado, y sobre el archivo vivo esos tres días valen **$11.259.575** de nómina
+// proyectada de enero de 2027 que están en el TOTAL del semanal y no en el del mensual.
+//
+// No es un defecto arreglable —una semana ISO que cruza el 1° de enero tiene que caer en algún lado—,
+// pero la AFIRMACIÓN sí lo era: hace leer las dos columnas TOTAL como si tuvieran que coincidir. La
+// diferencia la mide `bordesEntreVistas` y la imprime `scripts/cf-conectividad.mjs`.
+//
+// Lo que se paga por el año entero: hay scroll horizontal. Se compensa con la columna A congelada y
+// el atajo "📅 hoy", que salta a la columna de la semana corriente.
 //
 // LAS SEMANAS ANTERIORES AL CORTE DE CAJA MUESTRAN SUS FLUJOS Y NO SU SALDO. Los flujos son historia
 // del libro y se ven; el saldo NO se puede reconstruir hacia atrás desde un saldo declarado hoy, así

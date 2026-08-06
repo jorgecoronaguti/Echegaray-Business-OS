@@ -116,6 +116,22 @@ test('COBRANZAS: un valor ENDOSADO no va a entrar nunca — son los $20M de LA E
   assert.equal(deCobranzas(cob, 46000, { colValorBanco: 7 }).length, 2)
 })
 
+test('COBRANZAS: un cobro NEGATIVO es plata que vuelve — el error valía el doble del monto', () => {
+  // MEDIDO EN VIVO (06/08): Cobranzas f58, MACRO CONSTRUCCIONES, −$96.800, Transferencia, 7/08.
+  // `movimiento()` guarda la magnitud y el signo aparte, así que con `signo: ENTRA` fijo el ajuste
+  // entraba como +$96.800. La semana del 3/08 mostraba "Ingresos reales · Cobranzas $329.120"
+  // donde la fuente dice $232.320−$96.800 = $135.520. Diferencia: $193.600, el DOBLE del monto.
+  const conAjuste = [...cob, ['', 'MACRO CONSTRUCCIONES', 'Cobrado', -96800, 46241, 46241, 'Transferencia', '']]
+  const m = deCobranzas(conAjuste, 46240).find((x) => x.concepto === 'MACRO CONSTRUCCIONES')
+  assert.equal(m.signo, SALE, 'un importe negativo invierte el signo, igual que la nota de crédito de Compras')
+  assert.equal(m.importe, 96800, 'la magnitud queda positiva; el signo manda')
+  // Lo que decide es el NETO de la ventana, que es lo que la columna del cuadro suma.
+  const ventana = deCobranzas(conAjuste, 46240)
+    .filter((x) => x.fecha === 46241)
+    .reduce((a, x) => a + x.signo * x.importe, 0)
+  assert.equal(ventana, -96800, 'el neto de la ventana, no la suma de magnitudes')
+})
+
 test('COBRANZAS: cobrado usa la fecha REAL, pendiente la esperada, CANCELAR no existe', () => {
   const ms = deCobranzas(cob, 46000)
   assert.ok(!ms.some((m) => m.concepto === 'ANULADA'), 'una fila anulada no es un movimiento')

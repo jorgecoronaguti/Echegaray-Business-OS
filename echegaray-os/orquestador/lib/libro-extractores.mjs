@@ -203,7 +203,19 @@ export function deCobranzas(filas = [], corte = null, { colValorBanco = null } =
     out.push(movimiento({
       fecha,
       signo: ENTRA,
-      importe,
+      // ═══ UN COBRO NEGATIVO ES PLATA QUE VUELVE, NO PLATA QUE ENTRA (06/08) ═══
+      //
+      // `movimiento()` guarda el importe SIEMPRE en magnitud y el signo aparte, así que un −$96.800
+      // con `signo: ENTRA` fijo se convertía en +$96.800: el ajuste sumaba en vez de restar y el
+      // error valía el DOBLE del monto. `deCompras` ya invertía el signo para la nota de crédito;
+      // acá faltaba el espejo, y el espejo no es simetría decorativa — es la misma aritmética.
+      //
+      // MEDIDO EN VIVO: Cobranzas f58, MACRO CONSTRUCCIONES, −$96.800 con fecha 7/08. El Libro lo
+      // emitía como ingreso REAL de +$96.800 y la semana del 3/08 mostraba "· Cobranzas $329.120"
+      // donde la fuente dice $135.520. La línea "Movimientos posteriores al corte" de CAJA —que usa
+      // SUMIFS sobre la misma columna— lo sumaba bien: dos productores del mismo hecho, uno mal.
+      ...(importe < 0 ? { signo: SALE } : {}),
+      importe: Math.abs(importe),
       concepto: txt(f[c.cliente]),
       contraparte: txt(f[c.cliente]),
       rubro: 'Cobranzas',
