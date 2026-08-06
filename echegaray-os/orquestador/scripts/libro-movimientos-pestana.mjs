@@ -29,6 +29,8 @@ import {
   deCargasSociales, mesesCubiertos, cargasEnCompras, reemplazadasPorLaCadena, NOMBRES_CARGAS,
 } from '../lib/libro-extractores.mjs'
 import { cruzar, chequesDelRegistro } from '../lib/cruce-cheque-factura.mjs'
+import { endososDeCartera } from '../lib/libro-endosos.mjs'
+import { debitosDelExtracto, corteDelExtracto, pagosDeResumen } from '../lib/libro-respaldo-banco.mjs'
 import { ROTULOS_CALENDARIO, CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
 import { total } from '../lib/patron-pestana.mjs'
 import { ubicarRegistro } from './cheques-emitidos-tablero.mjs'
@@ -126,7 +128,24 @@ async function extraerDeLasFuentes(google, corte) {
   // Es el mismo motivo por el que `cheques-cobertura-sheet` calcula sus respaldos una sola vez.
   const cruce = cruzar(chequesDelRegistro(cheques, { fila0: reg.primera }), comprasPagadasConCheque(compras))
 
-  // ═══ LA PRECEDENCIA SE RESUELVE ACÁ, UNA VEZ, Y LOS DOS EXTRACTORES LA RECIBEN ═══
+  // ═══ EL EXTRACTO ES TESTIGO DE LO QUE LAS PESTAÑAS TODAVÍA NO SABEN (06/08) ═══
+  //
+  // Se arma UNA vez y lo comparten los tres consumidores porque `usados` tiene que ser el mismo Set:
+  // un débito respalda a UN movimiento. Con un Set por extractor, Oficina y Dirección podrían
+  // reclamar los mismos $3.000.000 y el libro daría por pagada plata que salió una sola vez.
+  const extracto = {
+    debitos: debitosDelExtracto(banco),
+    corte: corteDelExtracto(banco),
+    usados: new Set(),
+  }
+  const pagosTarjeta = pagosDeResumen(banco)
+  // Los valores ENDOSADOS: el cobro que se registró y que nunca va a acreditar. La columna BB de
+  // Cobranzas es la puerta que marca el dueño a mano y en el archivo vivo estaba vacía; ésta es la
+  // que se actualiza sola desde el banco. Ver lib/libro-endosos.mjs.
+  const endosos = endososDeCartera(carteraRaw)
+  const excluidos = []
+
+  // ═══ LA PRECEDENCIA DE LAS CARGAS SE RESUELVE ACÁ, UNA VEZ, Y LOS DOS EXTRACTORES LA RECIBEN ═══
   //
   // Es la misma forma que el cruce cheque↔factura: la decisión de qué puerta le toca a cada peso no se
   // toma dentro de un extractor —serían dos criterios que se desincronizan— sino en un solo lugar. El
@@ -143,35 +162,49 @@ async function extraerDeLasFuentes(google, corte) {
     + `y reemplaza ${swap.length} fila(s) previstas de Compras por ${pesos(swap.reduce((a, x) => a + x.total, 0))}`)
 
   return {
-    Compras: deCompras(compras, corte, { cruce, cargasCubiertas }),
-    'Cargas Sociales': cargas,
-    Cobranzas: deCobranzas(cobranzas, corte),
-    'Cheques Emitidos': deChequesEmitidos(cheques, { fila0: reg.primera, cruce }),
-    'Tarjeta de Credito': deTarjetaSinFactura(tarjeta),
-    _BANCO_RAW: deBancoCargos(banco, { fila0: 4 }),
-    _CHEQUES_RAW: deCartera(carteraRaw),
-    'Impuestos y Financieros': deImpuestosCalendario(impuestos, filasCal, new Date().getFullYear(), corte),
-    Jornales: deJornalesQuincenas({
-      reales: { pago: R.JORNALES_REAL_PAGO, hasta: R.JORNALES_REAL_HASTA, pagado: R.JORNALES_REAL_PAGADO, total: R.JORNALES_REAL_TOTAL },
-      proyectadas: { pago: R.JORNALES_PROY_PAGO, hasta: R.JORNALES_PROY_HASTA, total: R.JORNALES_PROY_TOTAL },
-    }, corte),
-    Oficina: deOficina({ pago: R.OFICINA_PAGO, pagado: R.OFICINA_PAGADO, proyectado: R.OFICINA_PROYECTADO }, corte),
-    Dirección: deDireccion({ pago: R.DIRECCION_PAGO, pagado: R.DIRECCION_PAGADO, proyectado: R.DIRECCION_PROYECTADO }, corte),
+    fuentes: {
+      Compras: deCompras(compras, corte, { cruce, cargasCubiertas }),
+      'Cargas Sociales': cargas,
+      Cobranzas: deCobranzas(cobranzas, corte, { endosos, excluidos }),
+      'Cheques Emitidos': deChequesEmitidos(cheques, { fila0: reg.primera, cruce }),
+      'Tarjeta de Credito': deTarjetaSinFactura(tarjeta, { pagos: pagosTarjeta }),
+      _BANCO_RAW: deBancoCargos(banco, { fila0: 4 }),
+      _CHEQUES_RAW: deCartera(carteraRaw),
+      'Impuestos y Financieros': deImpuestosCalendario(impuestos, filasCal, new Date().getFullYear(), corte),
+      Jornales: deJornalesQuincenas({
+        reales: { pago: R.JORNALES_REAL_PAGO, hasta: R.JORNALES_REAL_HASTA, pagado: R.JORNALES_REAL_PAGADO, total: R.JORNALES_REAL_TOTAL },
+        proyectadas: { pago: R.JORNALES_PROY_PAGO, hasta: R.JORNALES_PROY_HASTA, total: R.JORNALES_PROY_TOTAL },
+      }, corte),
+      Oficina: deOficina({ pago: R.OFICINA_PAGO, pagado: R.OFICINA_PAGADO, proyectado: R.OFICINA_PROYECTADO },
+        corte, { extracto }),
+      Dirección: deDireccion({ pago: R.DIRECCION_PAGO, pagado: R.DIRECCION_PAGADO, proyectado: R.DIRECCION_PROYECTADO },
+        corte, { extracto }),
+    },
+    excluidos,
+    corteBanco: extracto.corte,
   }
 }
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const corte = hoySerial()
-  const porFuente = await extraerDeLasFuentes(google, corte)
+  const { fuentes: porFuente, excluidos, corteBanco } = await extraerDeLasFuentes(google, corte)
   const todos = Object.values(porFuente).flat()
   const { libro: dedup, colapsos } = deduplicar(todos)
   const { consolidado, internas, netoInterno } = separarInternas(dedup)
 
-  console.log(`LIBRO CANÓNICO — corte ${new Date().toLocaleDateString('es-AR')}`)
+  console.log(`LIBRO CANÓNICO — corte ${new Date().toLocaleDateString('es-AR')} · extracto hasta el serial ${corteBanco}`)
   for (const [fuente, ms] of Object.entries(porFuente)) {
     const t = sumar(ms, {})
     console.log(`  ${fuente.padEnd(18)} ${String(ms.length).padStart(4)} movimiento(s) · neto ${pesos(t.total)}`)
+  }
+  // LA EXCLUSIÓN SE PUBLICA CON SU MONTO. Una plata que desaparece del cuadro sin que nadie diga
+  // cuánta es indistinguible de un error — y ésta son $20.000.000.
+  if (excluidos.length) {
+    const total = excluidos.reduce((a, x) => a + (x.fila ? x.importe : 0), 0)
+    console.log(`  ⊘ EXCLUIDOS por endoso: ${excluidos.filter((x) => x.fila).length} cobro(s) · ${pesos(total)} `
+      + '— ese valor se entregó a un tercero y no va a acreditar nunca')
+    for (const x of excluidos) console.log(`    · ${x.fila ? `Cobranzas f${x.fila} ${pesos(x.importe)}` : '⚠ sin emparejar'} — ${x.motivo}`)
   }
   console.log(`  ${'— deduplicado'.padEnd(18)} ${String(consolidado.length).padStart(4)} · ${colapsos.length} colapso(s) declarado(s) · internas ${internas.length} (neto ${pesos(netoInterno)})`)
   if (netoInterno !== 0) {

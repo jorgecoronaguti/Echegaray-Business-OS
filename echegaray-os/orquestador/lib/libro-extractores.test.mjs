@@ -350,6 +350,46 @@ test('TARJETA: sólo la cuota SIN factura y NO debitada — la marca manda, no e
   assert.equal(ms[1].fecha, 0, 'un compromiso sin fecha no es uno que no vence')
 })
 
+// El caso REAL del 06/08/2026: "Tarjeta de Credito" f46 (Pinturería Córdoba, cuota 1/3 de las
+// facturas 0042-00056761 y 62, $263.813,91) vence el 46236 = 02/08 y no tiene puesta la marca
+// DEBITADO; el extracto debitó el resumen el 46237 = 03/08 por $1.384.664,47.
+const CUOTA_PINTURERIA = 263813.91333333333
+const PAGOS_RESUMEN = [{ fecha: 46174, importe: 357119.31 }, { fecha: 46209, importe: 1264991.58 },
+  { fecha: 46237, importe: 1384664.47 }]
+const tarjetaConLaCuota = () => {
+  const filas = Array.from({ length: 31 }, () => [])
+  filas[45] = cuota(CUOTA_PINTURERIA, 46236, '', MARCAS.falta) // vence 02/08, el resumen ya se pagó
+  filas[49] = cuota(CUOTA_PINTURERIA, 46267, '', MARCAS.falta) // vence 02/09, todavía no
+  return filas
+}
+
+test('TARJETA: la cuota que el resumen YA PAGÓ deja de estar comprometida — los $263.814 del Vencido', () => {
+  // MEDIDO EN VIVO (06/08): el tramo "Vencido" de la escalera mostraba −$487.814. El vencido real son
+  // los $224.000 de PEDRO TELLO (Compras f821, parcial abierto): los otros $263.814 ya se habían
+  // debitado con el resumen del 03/08 y seguían pesando porque la marca DEBITADO la pone una persona
+  // cuota por cuota y se atrasa. El extracto no se atrasa.
+  const ms = deTarjetaSinFactura(tarjetaConLaCuota(), { filaCab: T.filaCab, pagos: PAGOS_RESUMEN })
+  const cubierta = ms.find((m) => m.origen.fila === 46)
+  assert.equal(cubierta.estado, 'REAL', 'el resumen debitado la contiene')
+  assert.equal(cubierta.fecha, 46237, 'la fecha es la del DÉBITO: es el día en que la plata salió')
+  const proxima = ms.find((m) => m.origen.fila === 50)
+  assert.equal(proxima.estado, 'COMPROMETIDO', 'la cuota de 02/09 no la debitó nadie todavía')
+  assert.equal(proxima.fecha, 46267)
+  // Lo que la escalera suma en el tramo "Vencido" (NO-REAL con fecha anterior a hoy) queda en cero.
+  const vencido = ms.filter((m) => m.estado !== 'REAL' && m.fecha < 46240)
+    .reduce((a, m) => a + m.importe, 0)
+  assert.equal(vencido, 0)
+})
+
+test('TARJETA: sin el extracto la cuota vuelve a estar COMPROMETIDA — el test prueba el defecto', () => {
+  // Si mañana alguien deja de pasarle los pagos de resumen, esto se pone rojo: son los $263.814 que
+  // engordaban el tramo "Vencido" de la escalera.
+  const ms = deTarjetaSinFactura(tarjetaConLaCuota(), { filaCab: T.filaCab })
+  const vencido = ms.filter((m) => m.estado !== 'REAL' && m.fecha < 46240)
+    .reduce((a, m) => a + m.importe, 0)
+  assert.equal(Math.round(vencido), 263814, 'éste es el número que el extracto tiene que hacer desaparecer')
+})
+
 // ── Impuestos y Financieros: el calendario fiscal ─────────────────────────────────────────────────
 const impuestos = () => {
   const filas = Array.from({ length: 20 }, () => [])
@@ -461,4 +501,51 @@ test('COBRANZAS: el cliente del cobro es el mismo canónico que el del egreso', 
   assert.equal(ms[0].cliente, 'LA ESTRELLA')
   assert.equal(ms[0].contraparte, 'LA ESTRELLA /ALIMENTOS DEL SUR SAS', 'el texto crudo no se pierde al canonizar')
   assert.equal(ms[1].cliente, 'San Francisco')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA CUOTA DE PLAN QUE VENCÍA UN DOMINGO (06/08)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Compras tiene dos cuotas de plan al 16/08/2026 —DOMINGO— por $2.968.642,73 (filas 478 y 725). ARCA
+// no debita fines de semana: su calendario las pone el 18/08, que es lo que muestra "Impuestos y
+// Financieros". El libro las llevaba al 16: la misma plata, dos fechas, dos días de diferencia.
+
+const DOM_16_AGO = serialDe(2026, 8, 16)
+const MAR_18_AGO = serialDe(2026, 8, 18)
+
+test('COMPRAS: una cuota de plan de ARCA cargada en DOMINGO se debita el día hábil del organismo', () => {
+  const ms = deCompras(compras([
+    ['ARCA', '', 'W303094 C1-1V', 2494875.65, 'Pendiente', 'Débito', 'Deuda previsional (planes de pago)', DOM_16_AGO, 'JUNIO Financiación - Cuota 1'],
+    ['ARCA', '', '', 473767.08, 'Proyectado', 'Transferencia', 'Deuda previsional (planes de pago)', DOM_16_AGO, 'Deuda Previcional - 931 Enero 26'],
+  ]), 46240, { aviso: () => {} })
+  const cuotas = ms.filter((m) => m.rubro === 'Deuda previsional (planes de pago)')
+  assert.equal(cuotas.length, 2)
+  for (const q of cuotas) {
+    assert.equal(q.fecha, MAR_18_AGO, `la cuota se debita el 18/08, no el ${isoDeSerial(q.fecha)}`)
+  }
+  // Es exactamente la plata que la pestaña de impuestos pone el 18/08.
+  assert.equal(Math.round(cuotas.reduce((a, q) => a + q.importe, 0) * 100) / 100, 2968642.73)
+})
+
+test('COMPRAS: la corrección de fin de semana NO alcanza a otro rubro ni a una cuota YA PAGADA', () => {
+  const ms = deCompras(compras([
+    // Un proveedor con fecha de sábado: es una estimación del dueño y manda la suya.
+    ['Prov SA', '', '', 500000, 'Pendiente', 'Transferencia', 'Materiales Civil', DOM_16_AGO, ''],
+    // Una cuota de mayo ya pagada un sábado: es un hecho consumado, moverlo desalinea la conciliación.
+    ['ARCA', '', '', 1034931.82, 'Pagado', 'Transferencia', 'Deuda previsional (planes de pago)', serialDe(2026, 5, 16), 'Deuda Previcional - 931 Dic 25'],
+  ]), 46240, { aviso: () => {} })
+  assert.equal(ms.find((m) => m.concepto === 'Prov SA').fecha, DOM_16_AGO, 'una compra a proveedor no se re-fecha')
+  const pagada = ms.find((m) => m.rubro === 'Deuda previsional (planes de pago)')
+  assert.equal(pagada.fecha, serialDe(2026, 5, 16), 'un pago ya ocurrido conserva SU fecha')
+})
+
+test('COMPRAS: una cuota de plan en día HÁBIL se respeta aunque no coincida con la tabla', () => {
+  // 16/09/2026 es miércoles y la tabla de ARCA también dice 16: acá se prueba que la puerta no se
+  // abre por "difiere de la tabla" sino sólo por "cae en fin de semana".
+  const jueves = serialDe(2026, 7, 16)
+  const ms = deCompras(compras([
+    ['ARCA', '', '', 473767.08, 'Pendiente', 'Transferencia', 'Deuda previsional (planes de pago)', jueves, ''],
+  ]), 46100, { aviso: () => {} })
+  assert.equal(ms.find((m) => m.rubro === 'Deuda previsional (planes de pago)').fecha, jueves)
 })

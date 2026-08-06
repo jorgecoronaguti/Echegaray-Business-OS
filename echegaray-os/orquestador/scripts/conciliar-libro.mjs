@@ -41,6 +41,7 @@ import { CUADRO } from '../lib/cash-flow-lineas.mjs'
 import { eomonth, serialDe } from '../lib/libro-extractores-fechas.mjs'
 import { PESTANA_NOMINA } from '../lib/libro-extractores-nomina.mjs'
 import { PESTANA_CARGAS, cargasEnCompras, mesesCubiertos, reemplazadasPorLaCadena } from '../lib/libro-extractores-cargas.mjs'
+import { endososDeCartera } from '../lib/libro-endosos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const pesos = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString('es-AR')
@@ -222,6 +223,29 @@ export function swapDeCargas(libro, v, reemplazadas = []) {
 }
 
 /**
+ * NÚCLEO PURO: LO QUE EL LIBRO NO TIENE PORQUE SE EXCLUYÓ A PROPÓSITO — los valores ENDOSADOS.
+ *
+ * ═══ POR QUÉ ESTO VIVE EN EL PORTÓN Y NO SÓLO EN EL GENERADOR (06/08) ═══
+ *
+ * Los dos echeq de $10.000.000 endosados a Alumetal se cobraron (Cobranzas los registra) y no van a
+ * acreditar nunca: `deCobranzas` los saca del libro. Esa exclusión no mueve NINGÚN Δ de tramo —eran
+ * movimientos REAL, y la escalera sólo mira lo NO-REAL— así que este portón la daría por buena sin
+ * enterarse. Pero son $20.000.000 que están en una pestaña del archivo y no están en el libro, y una
+ * plata que desaparece sin que nadie diga cuánta es indistinguible de un error.
+ *
+ * Se lee de `_CHEQUES_RAW`, que es la MISMA fuente que usa el extractor: si mañana el criterio cambia
+ * de un lado, el portón deja de coincidir y hay que mirarlo. Un control con su propia copia de la
+ * regla deja de controlar el día que una de las dos se mueve.
+ *
+ * @param {Array<Array>} filas `_CHEQUES_RAW`
+ * @returns {{total:number, valores:Array}}
+ */
+export function declaracionDeEndosos(filas = []) {
+  const valores = endososDeCartera(filas)
+  return { total: valores.reduce((a, v) => a + v.importe, 0), valores }
+}
+
+/**
  * NÚCLEO PURO: EL VEREDICTO. Compara tramo por tramo y dice si las vistas pueden migrar.
  *
  * EL VEREDICTO ES POR Δ NETO DE TRAMO, no por lado: lo que decide la escalera es con cuánta plata
@@ -358,8 +382,14 @@ function imprimir(r) {
   if (swap.cadena || swap.plano) {
     console.log(`  · cargas sociales, tramo SWAPPEADO: la cadena de "Cargas Sociales" aporta ${pesos(swap.cadena)} `
       + `y por precedencia NO entran ${swap.filas} fila(s) previstas de Compras por ${pesos(swap.plano)} `
-      + `(diferencia ${pesos(swap.delta ?? swap.cadena - swap.plano)}: es lo que la cadena mide de más o de menos que lo tipeado a mano).`)
+      + `(diferencia ${pesos(swap.cadena - swap.plano)}: es lo que la cadena mide de más o de menos que lo tipeado a mano).`)
     console.log('    Las filas PAGADAS de esos rubros siguen entrando por Compras, y si la cadena deja de publicar sus rangos con nombre, Compras vuelve a entrar entero.')
+  }
+  // La exclusión de endosos no mueve ningún Δ (eran REAL), y por eso hay que NOMBRARLA: si no, desaparece.
+  console.log(`  · valores ENDOSADOS que Cobranzas registra y el libro excluye: ${pesos(r.endosados.total)} `
+    + `en ${r.endosados.valores.length} valor(es) — esa plata se entregó a un tercero y no va a acreditar nunca`)
+  for (const v of r.endosados.valores) {
+    console.log(`      ${v.numero || '(sin número)'} · ${pesos(v.importe)} · vence ${v.fecha} · ${v.librador}`)
   }
   for (const f of r.bordesEnDesacuerdo) {
     console.log(`  ⚠ el borde de "${f.rotulo}" no coincide: CAJA ${f.bordeCaja} · portón ${f.bordeLibro}. `
@@ -374,7 +404,7 @@ function imprimir(r) {
 async function main() {
   const g = makeGoogleClient({ config: loadConfig() })
   // Se concilia lo ESCRITO en la pestaña, no lo que la memoria del generador cree haber escrito.
-  const [crudo, caja, corteRaw, compras] = await Promise.all([
+  const [crudo, caja, corteRaw, compras, carteraRaw] = await Promise.all([
     g.readSheetValues(ID, '_MOVIMIENTOS!A2:P2000', { render: 'UNFORMATTED_VALUE' }),
     g.readSheetValues(ID, 'CAJA!A1:I45', { render: 'UNFORMATTED_VALUE' }),
     // PISO_CAJA es `CAJA_FECHA_SALDO`, el rango con nombre que publica CAJA: el corte del extracto.
@@ -382,6 +412,7 @@ async function main() {
     // COMPRAS, PARA MEDIR EL OTRO LADO DEL SWAP. El portón no puede declarar "estas filas no entran"
     // leyendo únicamente el libro: en el libro no están, justamente. La cifra sale de la fuente.
     g.readSheetValues(ID, 'Compras!A1:AN', { render: 'UNFORMATTED_VALUE' }).catch(() => []),
+    g.readSheetValues(ID, '_CHEQUES_RAW!A1:L', { render: 'UNFORMATTED_VALUE' }),
   ])
   const libro = leerLibro(crudo)
   if (!libro.length) throw new Error('_MOVIMIENTOS está vacía: corré primero libro-movimientos-pestana.mjs')
@@ -396,7 +427,7 @@ async function main() {
     ? reemplazadasPorLaCadena(cargasEnCompras(compras), mesesCubiertos(libro.filter((m) => m.origen === FUENTE.cargas)))
     : []
   const r = conciliar(libro, leerCalendario(caja), { hoy: hoySerial(), corte, cargasReemplazadas })
-  imprimir(r)
+  imprimir({ ...r, endosados: declaracionDeEndosos(carteraRaw) })
   if (!r.cierra) process.exitCode = 1
 }
 

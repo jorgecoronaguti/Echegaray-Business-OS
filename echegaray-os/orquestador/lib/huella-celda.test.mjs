@@ -158,3 +158,50 @@ test('formaDe enmascara fecha, importe, porcentaje y número; y una celda vacía
 test('el apóstrofo de Sheets no cambia la forma', () => {
   assert.equal(formaDe("'Texto"), formaDe('Texto'))
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL RESIDUO DE UN LAYOUT ANTERIOR (06/08) — el caso medido en "Impuestos y Financieros"
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// I20:M20 tenía cinco "⚠ PROYECCIÓN" colgando a la derecha de una fila del calendario. Ese texto lo
+// escribe la fila "DDJJ presentada", que en el layout viejo estaba en la 20 y hoy está en la 57. El
+// generador pedía limpiar (VACIO) y la huella lo bloqueaba: una celda VACIO no deja huella, el barrido
+// borró la vieja, y de ahí en más la celda parecía del dueño. Se verificó en la base: para la fila 20
+// hay huella de las columnas 0 y 1 y ninguna de la 8 a la 12, con la pestaña mostrando el residuo.
+
+test('(d) mi propio texto de un layout anterior SÍ se limpia cuando pido limpiar', () => {
+  const PROY = '⚠ PROYECCIÓN'
+  // Lo que el generador escribe HOY: el rótulo del calendario en la fila del residuo, y el texto
+  // "⚠ PROYECCIÓN" en otra fila (la de la DDJJ), que es donde vive ahora.
+  const quiere = [...lastre(), ['18/08 · Planes de pago F931 (ARCA) · ago', '=$I$86', VACIO, VACIO],
+    ['DDJJ presentada', '19/08·N…4821', PROY, PROY]]
+  // La huella de la corrida anterior: el VACIO no deja huella, así que las dos últimas columnas de la
+  // fila del calendario no están en el mapa.
+  const huellas = huellasDe(quiere)
+  assert.equal(huellas.has(claveCelda(lastre().length + 1, 2)), false, 'una celda VACIO no deja huella')
+  // La pestaña hoy: la fila del calendario ARRASTRA el residuo del layout viejo.
+  const hoy = quiere.map((f, i) => (i === quiere.length - 2 ? [f[0], f[1], PROY, PROY] : f))
+
+  const { grid, residuos, ajenas, alineacion } = aplicarHuella(quiere, hoy, huellas)
+  assert.equal(alineacion.alineada, true, alineacion.motivo)
+  assert.equal(residuos.length, 2, 'las dos celdas de residuo se reconocen como propias')
+  assert.deepEqual(ajenas, [], 'no son del dueño: es texto que yo mismo escribo hoy en otra fila')
+  // LA PRUEBA DEL EFECTO: después de fusionar, la celda queda vacía en la pestaña.
+  const fusionada = fusionar(grid, hoy)
+  assert.equal(fusionada[quiere.length - 2][2], '', 'el residuo se limpia')
+  assert.equal(fusionada[quiere.length - 2][3], '')
+  // Y la celda donde el texto SÍ va se sigue escribiendo.
+  assert.equal(fusionada.at(-1)[2], PROY)
+})
+
+test('(e) un IMPORTE sin huella no se toca aunque yo escriba importes en otras celdas', () => {
+  // El seguro del caso (d): si la coincidencia se midiera sobre cualquier forma, `<$>` haría propio
+  // cualquier número del dueño. Sólo cuenta el texto con letras.
+  const quiere = [...lastre(), ['Total del mes', '$ 1.000.000,00', VACIO]]
+  const huellas = huellasDe(quiere)
+  const hoy = quiere.map((f, i) => (i === quiere.length - 1 ? [f[0], f[1], '$ 60.433,00'] : f))
+  const { grid, residuos, ajenas } = aplicarHuella(quiere, hoy, huellas)
+  assert.deepEqual(residuos, [], 'un importe no es un rótulo: no se reclama como propio')
+  assert.equal(ajenas.length, 1)
+  assert.equal(fusionar(grid, hoy).at(-1)[2], '$ 60.433,00', 'el número del dueño sobrevive')
+})

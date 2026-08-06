@@ -209,6 +209,9 @@ export function cargasEnCompras(filas = []) {
     const f = filas[i] ?? []
     const rubro = String(f[c.rubro] ?? '').trim()
     if (rubro !== RUBRO_CARGAS && rubro !== RUBRO_GREMIALES) continue
+    // La fecha se lee tal cual: `fechaDeCajaDeCompra` sólo corrige las cuotas de plan de ARCA que
+    // caen fin de semana, y ése es otro rubro. Si algún día corrigiera también éstos, hay que pasar
+    // por ahí — el mes que sale de acá tiene que ser EL MISMO que usa `deCompras` para excluir.
     const fecha = num(f[c.fechaCaja])
     const total = num(f[c.importe])
     if (fecha === null || !total) continue
