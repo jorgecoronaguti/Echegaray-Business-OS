@@ -23,6 +23,8 @@
 
 import { movimiento, SALE, estadoContraCorte } from './libro-movimientos.mjs'
 import { isoDeSerial } from './libro-extractores-fechas.mjs'
+import { estadoDeEgreso } from './caja-canales.mjs'
+import { respaldoEnLote } from './libro-respaldo-banco.mjs'
 
 /** La pestaña de la que salen los tres bloques. Es una sola: el bloque distingue, no la pestaña. */
 export const PESTANA_NOMINA = 'Jornales por Quincena'
@@ -121,7 +123,7 @@ export function deJornalesQuincenas({ reales = {}, proyectadas = {} } = {}, cort
  * Sheet las SUMA y duplicaría el mes; acá gana el hecho y se avisa, que es lo que el comentario de
  * `formulaOficina` dice que tiene que pasar: *"el control de nómina lo grita en vez de duplicar"*.
  */
-function deBloqueMensual({ pago, pagado, proyectado }, corte, { bloque, aviso }) {
+function deBloqueMensual({ pago, pagado, proyectado }, corte, { bloque, aviso, extracto }) {
   const P = columna(pago); const G = columna(pagado); const Y = columna(proyectado)
   const out = []
   for (let i = 0; i < Math.max(P.length, G.length, Y.length); i++) {
@@ -135,25 +137,79 @@ function deBloqueMensual({ pago, pagado, proyectado }, corte, { bloque, aviso })
     }
     const importe = real || proy
     if (!importe) continue
-    out.push(movimiento({
-      fecha,
+    const comun = {
       signo: SALE,
       importe,
       concepto: `${bloque} · ${isoDeSerial(fecha)}`,
       rubro: RUBRO_ADMINISTRACION,
-      estado: real ? 'REAL' : estadoContraCorte('PROYECTADO', fecha, corte),
       origen: { pestana: PESTANA_NOMINA, fila: filaDe(bloque, i) },
-    }))
+    }
+    if (!real) {
+      out.push(movimiento({ ...comun, fecha, estado: estadoContraCorte('PROYECTADO', fecha, corte) }))
+      continue
+    }
+    // ═══ "PAGADO" CON FECHA FUTURA NO ES "LA PLATA SALIÓ" (06/08) ═══
+    //
+    // Medido en vivo: Dirección de julio, $9.000.000 (tres socios × $3.000.000), marcado pagado con
+    // fecha de caja 10/08 — cuatro días DESPUÉS del corte del extracto. El libro lo emitía REAL, y un
+    // REAL no lo mira ninguna de las vistas de proyección porque se asume que ya está en el saldo del
+    // banco. No estaba: el extracto termina en el corte. Nueve millones invisibles.
+    //
+    // La regla es la misma que `caja-canales.mjs` ya aplica a Compras y sale de ahí para que no
+    // puedan discrepar: sin instrumento declarado —que es el caso de la nómina, la planilla no dice
+    // cómo se pagó— un pago con fecha posterior al corte es un COMPROMISO, no un hecho.
+    out.push(...partirContraElExtracto({ ...comun, fecha, importe }, { corte, extracto, bloque, i, aviso }))
   }
   return out
+}
+
+/**
+ * NÚCLEO PURO: un pago declarado HECHO se parte en la parte que el extracto respalda y la que no.
+ *
+ * Sin extracto, o sin respaldo único, devuelve UN movimiento con el estado que corresponde por fecha
+ * (`estadoDeEgreso`) — que ya es el arreglo del defecto: el compromiso vuelve a estar visible. El
+ * respaldo sólo lo AFINA, pasando a REAL la parte que el banco prueba que salió.
+ */
+function partirContraElExtracto(base, { corte, extracto, bloque, i, aviso }) {
+  const estado = estadoDeEgreso({ instrumento: 'desconocido', pagado: true, fecha: base.fecha, corte })
+  if (estado === 'REAL' || !extracto?.debitos?.length) return [movimiento({ ...base, estado })]
+  const r = respaldoEnLote(base.importe, base.fecha, extracto.debitos,
+    { corte: extracto.corte, usados: extracto.usados })
+  if (!r.cubierto) {
+    aviso(`libro-extractores-nomina(${bloque}): el renglón ${i + 1} dice PAGADO $${base.importe} con fecha `
+      + `${isoDeSerial(base.fecha)}, posterior al corte del extracto. Queda COMPROMETIDO entero: ${r.motivo}.`)
+    return [movimiento({ ...base, estado })]
+  }
+  // El débito respaldó a este movimiento y no puede respaldar a otro: se marca consumido. Sin esto,
+  // dos bloques de la misma planilla podrían reclamar los mismos $3.000.000 y el libro daría por
+  // pagada plata que salió una sola vez.
+  for (const fila of r.filas) extracto.usados?.add(fila)
+  const resto = Math.round((base.importe - r.cubierto) * 100) / 100
+  const ms = [movimiento({
+    ...base,
+    fecha: r.fecha,
+    importe: r.cubierto,
+    estado: 'REAL',
+    concepto: `${base.concepto} · ${r.motivo}`,
+    origen: { ...base.origen, fila: `${base.origen.fila}:real` },
+  })]
+  if (resto > 0) {
+    ms.push(movimiento({
+      ...base,
+      importe: resto,
+      estado,
+      origen: { ...base.origen, fila: `${base.origen.fila}:pendiente` },
+    }))
+  }
+  return ms
 }
 
 /** Por defecto el aviso va a la consola; los tests le inyectan un colector para poder afirmarlo. */
 const avisoPorDefecto = (m) => console.warn(m)
 
 /** OFICINA (bloque "Oficina 26" de la planilla) → sueldos de administración. */
-export function deOficina(bloque = {}, corte = null, { aviso = avisoPorDefecto } = {}) {
-  return deBloqueMensual(bloque, corte, { bloque: 'Oficina', aviso })
+export function deOficina(bloque = {}, corte = null, { aviso = avisoPorDefecto, extracto = null } = {}) {
+  return deBloqueMensual(bloque, corte, { bloque: 'Oficina', aviso, extracto })
 }
 
 /**
@@ -164,6 +220,6 @@ export function deOficina(bloque = {}, corte = null, { aviso = avisoPorDefecto }
  * proyectaba $3.000.000/mes contra $9.800.000 reales: **$26.000.000 de egreso que nadie veía**. La
  * pestaña los proyecta desde el 01/08 y ésta es la puerta por la que entran al libro.
  */
-export function deDireccion(bloque = {}, corte = null, { aviso = avisoPorDefecto } = {}) {
-  return deBloqueMensual(bloque, corte, { bloque: 'Dirección', aviso })
+export function deDireccion(bloque = {}, corte = null, { aviso = avisoPorDefecto, extracto = null } = {}) {
+  return deBloqueMensual(bloque, corte, { bloque: 'Dirección', aviso, extracto })
 }
