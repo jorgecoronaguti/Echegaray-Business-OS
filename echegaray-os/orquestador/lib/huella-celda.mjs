@@ -106,6 +106,44 @@ export const hayContenido = (v) => formaDe(v) !== ''
 export const claveCelda = (fila, col) => `${fila}:${col}`
 
 /**
+ * LAS FORMAS DE TEXTO QUE EL GENERADOR ESCRIBE HOY, EN CUALQUIER PARTE DE SU GRILLA.
+ *
+ * ═══ EL RESIDUO INMORTAL (06/08) ═══
+ *
+ * "Impuestos y Financieros" quedó con cinco celdas "⚠ PROYECCIÓN" en I20:M20, colgando a la derecha de
+ * una fila del calendario de vencimientos. Ese texto lo escribe la fila "DDJJ presentada", que en el
+ * layout anterior vivía en la fila 20 y hoy vive en la 57. El generador SÍ manda el centinela VACIO en
+ * I20:M20 —la grilla rellena su ancho entero— así que la limpieza estaba pedida y no ocurría.
+ *
+ * La causa es de acá: `huellasDeEscritura` no deja huella de una celda VACIO (correcto: no hay
+ * contenido que registrar) y el barrido borra las huellas viejas de la ventana escrita. Entonces la
+ * celda queda OCUPADA (con el resto del layout viejo) y SIN huella propia, que es exactamente la
+ * firma de "nunca fue mía y tiene algo tuyo" → se preservaba. Para siempre, y en cada corrida.
+ *
+ * La regla de propiedad no se afloja: se le agrega la única evidencia que faltaba. Si el generador
+ * manda VACIO —una orden explícita de limpiar SU celda— y lo que hay ahí es un TEXTO que él mismo
+ * sigue escribiendo en otra parte de esta misma grilla, esa celda es suya: la escribió él en un layout
+ * anterior. El dueño tendría que haber tipeado, letra por letra, uno de los textos del generador.
+ *
+ * SÓLO TEXTO, Y CON LETRAS. Un importe o una fecha residual comparten forma (`<$>`, `<f>`) con
+ * cualquier importe o fecha que el generador escriba hoy: bastaría eso para borrar un número del
+ * dueño. Una fórmula tampoco cuenta —el dueño copia fórmulas—. Queda el texto con al menos tres
+ * letras, que es lo que produce un rótulo y no produce un dato.
+ */
+export function formasDeTextoPropio(generado = []) {
+  const out = new Set()
+  for (const f of generado || []) {
+    for (const c of f || []) {
+      const forma = formaDe(c)
+      if (!forma || forma.startsWith('=')) continue
+      if ((forma.match(/[a-záéíóúüñ]/g) || []).length < 3) continue
+      out.add(forma)
+    }
+  }
+  return out
+}
+
+/**
  * Cuántas de mis huellas caen sobre una celda con la MISMA forma, probando un desplazamiento de filas.
  * Las celdas vacías no se cuentan: son justo lo que se está juzgando, e incluirlas sesgaría el
  * veredicto hacia "desalineada" cada vez que el dueño borra algo.
@@ -158,13 +196,14 @@ export function mejorDesplazamiento(actual = [], huellas = new Map(), opts = {})
  * preservá lo que hay". Por eso suprimir es exactamente escribir `''` — la celda queda como el dueño
  * la dejó, vacía si él la vació, con su contenido si es suya.
  *
- * @returns {{grid:any[][], suprimidas:Array, ajenas:Array, alineacion:object}}
+ * @returns {{grid:any[][], suprimidas:Array, ajenas:Array, residuos:Array, alineacion:object}}
  */
 export function aplicarHuella(generado = [], actual = [], huellas = new Map(), opts = {}) {
   const { fila0 = 1, col0 = 0 } = opts
   const alineacion = mejorDesplazamiento(actual, huellas, opts)
-  const suprimidas = []; const ajenas = []
-  if (!alineacion.alineada) return { grid: generado, suprimidas, ajenas, alineacion }
+  const suprimidas = []; const ajenas = []; const residuos = []
+  if (!alineacion.alineada) return { grid: generado, suprimidas, ajenas, residuos, alineacion }
+  const mias = formasDeTextoPropio(generado)
   const grid = generado.map((f, i) => (f || []).map((c, j) => {
     if (!quiereEscribir(c)) return c
     const fila = fila0 + i - alineacion.off
@@ -179,11 +218,20 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
       suprimidas.push({ fila, col, filaHoy: fila0 + i, colHoy: col, forma: mia.forma, huella: mia.huella, mio: String(c).slice(0, 60) })
       return ''
     }
-    // NUNCA FUE MÍA Y TIENE ALGO TUYO. Sin evidencia de que la escribí yo, no se pisa.
-    if (!mia && ocupada) { ajenas.push({ fila, col, suyo: String((actual[i] || [])[j]).slice(0, 60) }); return '' }
+    if (!mia && ocupada) {
+      // MI RESIDUO DE UN LAYOUT ANTERIOR. Pedí limpiar esta celda y lo que hay es un texto que yo
+      // mismo sigo escribiendo en otra parte de la grilla: la escribí yo cuando esa fila era otra
+      // cosa. Sin esto el residuo es inmortal — no dejé huella (era VACIO) y por eso parece tuyo.
+      if (c === VACIO && mias.has(formaDe((actual[i] || [])[j]))) {
+        residuos.push({ fila: fila0 + i, col, suyo: String((actual[i] || [])[j]).slice(0, 60) })
+        return c
+      }
+      // NUNCA FUE MÍA Y TIENE ALGO TUYO. Sin evidencia de que la escribí yo, no se pisa.
+      ajenas.push({ fila, col, suyo: String((actual[i] || [])[j]).slice(0, 60) }); return ''
+    }
     return c
   }))
-  return { grid, suprimidas, ajenas, alineacion }
+  return { grid, suprimidas, ajenas, residuos, alineacion }
 }
 
 /**

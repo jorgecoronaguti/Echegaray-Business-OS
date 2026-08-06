@@ -332,3 +332,47 @@ test('ningún archivo del generador pasa de 500 líneas', () => {
     assert.ok(n <= 500, `${a} tiene ${n} líneas`)
   }
 })
+
+test('las filas del CALENDARIO declaran suyo todo su ancho: I:M van con centinela, no vacías', () => {
+  // ═══ EL RESIDUO I20:M20 (06/08) ═══
+  //
+  // La pestaña arrastraba cinco "⚠ PROYECCIÓN" a la derecha de "18/08 · Planes de pago F931 (ARCA)".
+  // Ese texto es de la fila "DDJJ presentada", que en el layout anterior estaba en la 20 y hoy está en
+  // la 57. Lo primero que hubo que probar es de quién dice el generador que son esas celdas: si las
+  // dejara como cadena vacía, `fusionar()` las leería como "no son mías, preservá" y el residuo sería
+  // legítimo. Las declara suyas con VACIO —esto lo fija— y la limpieza la desbloquea `huella-celda`.
+  const g = armar()
+  const filasCal = g.filas
+    .map((f, i) => ({ f, i }))
+    .filter(({ f }) => /^\d{2}\/\d{2} · .+ · (ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)/.test(String(f[0] ?? '')))
+  assert.ok(filasCal.length >= 4, `esperaba filas de calendario y encontré ${filasCal.length}`)
+  for (const { f, i } of filasCal) {
+    // A el rótulo, B el importe; de C a O es ancho propio que tiene que limpiarse solo.
+    for (let j = 2; j < 15; j++) {
+      assert.equal(f[j], VACIO, `fila ${i + 1} col ${j + 1}: una fila del calendario no puede dejar ancho sin centinela`)
+    }
+  }
+})
+
+test('el residuo de un layout anterior se limpia de punta a punta (grilla → huella → fusión)', async () => {
+  // La prueba del EFECTO: no que la grilla mande VACIO, sino que la celda quede vacía en la pestaña.
+  const { aplicarHuella, huellasDeEscritura, claveCelda } = await import('../lib/huella-celda.mjs')
+  const { fusionar } = await import('../lib/preservar-anotaciones.mjs')
+  const g = armar()
+  const idxCal = g.filas.findIndex((f) => /^\d{2}\/\d{2} · Planes de pago F931/.test(String(f[0] ?? '')))
+  assert.ok(idxCal > 0, 'tiene que haber una fila de calendario de planes')
+  // La pestaña de hoy: lo que el generador escribió, más el residuo del layout viejo en I:M.
+  const huellas = new Map(huellasDeEscritura(g.filas).map((h) => [claveCelda(h.fila, h.col), { forma: h.forma, huella: h.huella, borrada: false }]))
+  const hoy = g.filas.map((f, i) => (i === idxCal
+    ? f.map((c, j) => (j >= 8 && j <= 12 ? '⚠ PROYECCIÓN' : (c === VACIO ? '' : c)))
+    : f.map((c) => (c === VACIO ? '' : c))))
+  const { grid, alineacion } = aplicarHuella(g.filas, hoy, huellas)
+  assert.equal(alineacion.alineada, true, alineacion.motivo)
+  const fusionada = fusionar(grid, hoy)
+  for (let j = 8; j <= 12; j++) {
+    assert.equal(fusionada[idxCal][j], '', `la columna ${j + 1} de la fila del calendario tiene que quedar vacía`)
+  }
+  // Y el texto sigue vivo donde SÍ va: la fila de la DDJJ presentada.
+  const idxDDJJ = g.filas.findIndex((f) => String(f[0] ?? '').trim() === 'DDJJ presentada')
+  assert.equal(fusionada[idxDDJJ][8], '⚠ PROYECCIÓN')
+})
