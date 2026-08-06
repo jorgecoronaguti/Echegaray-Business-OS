@@ -1,51 +1,54 @@
-// CASH FLOW MENSUAL — DOCE BLOQUES EJECUTIVOS, UNO POR MES DEL EJERCICIO.
+// CASH FLOW MENSUAL — LOS DOCE MESES DEL EJERCICIO EN UNA MATRIZ.
 //
-// ═══ QUÉ CONTESTA (05/08/2026) ═══
+// ═══ QUÉ REEMPLAZA (06/08/2026) ═══
 //
-// *"¿Cómo cierra el año, y qué mes se sale de lo previsto?"* Una fila por concepto y doce columnas de
-// meses contesta la primera a fuerza de recorrer el ojo, y la segunda no la contesta nunca: la
-// comparación contra el presupuesto y contra el mes anterior no existía en ninguna parte del archivo.
+// A los doce bloques verticales de ocho líneas. Contestaban "¿cómo cierra agosto?" y no contestaban
+// nunca la que importa —*"¿cómo cierra el año y qué mes se sale de lo previsto?"*— porque para
+// comparar dos meses había que recorrer 96 filas de arriba abajo. El dueño lo rechazó y pidió la
+// forma de siempre: una fila por concepto, los doce meses a la derecha, el total al final.
 //
-// Cada mes es un bloque de siete líneas —saldo inicial, ingresos, egresos, resultado neto, saldo al
-// cierre, variación contra presupuesto, variación contra el mes anterior— y las dos variaciones se
-// leen como un chip al lado del número ("+12% vs jul"), que es como las muestra cualquier producto de
-// tesorería serio. Un chip no es decoración: es la diferencia entre ver un número y entenderlo.
+// ═══ LO QUE SE CONSERVA ENTERO ═══
 //
-// ═══ EL PRESUPUESTO NO SE INVENTA ═══
+// · Todo número de plata sale de `_MOVIMIENTOS` por `terminoLibro` — ningún número pegado.
+// · El ancla del saldo es `expresionInicio` (cash-flow-ancla-saldo.mjs), con la MISMA semántica: el
+//   mes que contiene el corte arranca en `total − REAL del mes hasta el corte`. El control A5 del
+//   anexo de CAJA verifica exactamente esa identidad; cambiarla lo dejaría midiendo otra cosa.
+// · El presupuesto no se inventa: sale de `_PRESUPUESTO_MENSUAL`, y un mes sin cargar muestra "—".
+//   Un cero no es un presupuesto de cero: es que nadie lo cargó.
+// · Los tres rangos con nombre (CF_MESES, CF_SALDO_INICIO, CF_SALDO_CIERRE) se siguen publicando, ahora
+//   sobre las filas 7, 8 y 14 y las columnas B..M. Los consume el anexo de CAJA y la proyección de
+//   comisiones bancarias: son el contrato de esta vista con el resto del archivo.
 //
-// No existía como fuente. Se creó la pestaña de carga `_PRESUPUESTO_MENSUAL` (cash-flow-presupuesto.mjs)
-// con dos celdas por mes que llena el dueño. Mientras un mes no tenga presupuesto cargado, su variación
-// muestra "—". Un cero no es un presupuesto de cero: es que nadie lo cargó, y confundir las dos cosas es
-// exactamente la clase de número inventado que la regla de oro 1 prohíbe.
+// ═══ LO QUE SE FUE, Y ADÓNDE ═══
 //
-// ═══ DÓNDE VIVE CADA FÓRMULA ═══
-//
-// Las sumas del libro viven en la zona auxiliar (columnas ocultas), una fila por mes y contigua: es lo
-// que permite que los gráficos lean una serie de verdad y que la vista quede con referencias cortas en
-// vez de un SUMPRODUCT de 400 caracteres por celda. La definición de cada medida es la MISMA que usa la
-// agenda diaria (cash-flow-bloques.mjs): las dos vistas no pueden discrepar porque comparten el filtro.
+// El costo financiero estimado del año (interés del descubierto, comisiones, impuesto al cheque) vive
+// en "Impuestos y Financieros". No son movimientos cargados sino modelo del OS. Después de la última
+// fila del cuadro no va nada más: el dueño pidió "no agregar información, no agregar métricas".
 
 import {
-  MEDIDAS, ANCHO_VISTA, COL_AUX, formulaMedida, celda, item, rotuloMes, fechaAR, INSTRUMENTOS_BANCARIOS,
-} from './cash-flow-bloques.mjs'
+  MEDIDAS, CONCEPTOS, COL, FILA, FOOTPRINT,
+  conceptosDe, filaDeConcepto, colTotal, columnasDeTiempo, filaGraficos,
+  expresionVentana, formulaMedida, ventanas, celda, rangoFila, serialDeFecha, rotuloMes,
+} from './cash-flow-matriz.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 import { expresionInicio } from './cash-flow-ancla-saldo.mjs'
-import { formulaInteresMes } from './costo-descubierto.mjs'
-import { formulaComisionesMes, NOMBRE_MESES } from './cash-flow-lineas.mjs'
-import { ALICUOTA } from './impuesto-cheque.mjs'
+import { NOMBRE_MESES } from './cash-flow-lineas.mjs'
 import { NOMBRES as PRESUPUESTO } from './cash-flow-presupuesto.mjs'
 
 /** El nombre de la pestaña. Único lugar donde se escribe. */
 export const PESTANA_MENSUAL = 'Cash Flow Mensual'
+const TIPO = 'mes'
 
-const sinIgual = (f) => String(f).replace(/^=/, '')
+/** Los doce primeros-de-mes del ejercicio. La fecha ES el contrato de la ventana de cada columna. */
+export const mesesDelAnio = (anio) => ventanas(TIPO, { anio }).map((v) => v.desde)
 
-/** Los doce primeros-de-mes del ejercicio. La fecha ES el contrato de la ventana de cada bloque. */
-export const mesesDelAnio = (anio) => Array.from({ length: 12 }, (_, m) => new Date(Date.UTC(anio, m, 1)))
+/** Dónde arranca cada una de las cuatro cifras del hero. */
+const SLOTS_HERO = Object.freeze([0, 3, 7, 11])
 
 /**
  * La celda del presupuesto de un mes, buscada POR FECHA y no por posición.
  *
+ * PRESUPUESTO_MESES es un rango VERTICAL de doce filas, así que `INDEX(rango;n)` es inequívoco.
  * Si el rango con nombre todavía no existe —primera corrida, antes de que se cree la pestaña— la
  * fórmula devuelve #NAME? y el IFERROR de quien la usa lo convierte en "—". Nunca en un cero.
  */
@@ -60,173 +63,164 @@ const refPresupuesto = (rango, mes) => `INDEX(${rango};MATCH(${mes};${PRESUPUEST
  * @param {Date} [p.hoy]
  * @returns {{filas:any[][], meta:object}}
  */
-export function grillaMeses({ anio = 2026, refs = {}, hoy = new Date() } = {}) {
+export function grillaMeses({ anio = 2026, refs = {} } = {}) {
   const { saldo: refSaldo = null, fecha: refFecha = null } = refs
   const filas = []
-  const push = (celdas) => { filas.push(celdas); return filas.length }
-  const meta = { meses: [], secciones: [] }
-  const meses = mesesDelAnio(anio)
-
-  // ── La zona auxiliar: una fila por mes, contigua, oculta ─────────────────────────────────────────
-  //
-  // Arranca en la fila del PRIMER BLOQUE y no en la 4, por lo mismo que en la agenda diaria: una fila
-  // con números en columnas ocultas y la columna A vacía es una fila sin concepto. Detrás de los doce
-  // bloques —96 renglones corridos, todos con rótulo— no hay ninguna fila muda.
-  const FILAS_POR_MES = 8
-  const AUX_0 = 10 // 1 título, 2 subtítulo, 3 blanco, 4-7 hero, 8 blanco, 9 sección
-  const AUX_1 = AUX_0 + meses.length - 1
-  if (AUX_1 - AUX_0 + 1 > meses.length * FILAS_POR_MES) throw new Error('la zona auxiliar no entra detrás de los bloques')
-  const aux = {
-    fecha: COL_AUX, ingReal: COL_AUX + 1, ingProy: COL_AUX + 2, egrReal: COL_AUX + 3, egrProy: COL_AUX + 4,
-    ingresos: COL_AUX + 5, egresos: COL_AUX + 6, netoReal: COL_AUX + 7, netoProy: COL_AUX + 8,
-    neto: COL_AUX + 9, saldo: COL_AUX + 10, interes: COL_AUX + 11, comisiones: COL_AUX + 12, impuesto: COL_AUX + 13,
-    inicio: COL_AUX + 14,
+  const poner = (f, col, valor) => {
+    const row = filas[f - 1] || (filas[f - 1] = [])
+    row[col] = valor
   }
-  const cAux = (col, fila) => celda(col, fila)
-  const rango = (col, f0 = AUX_0, f1 = AUX_1) => `${celda(col, f0)}:${celda(col, f1)}`
-  meta.aux = { fila0: AUX_0, fila1: AUX_1, col: aux }
+  const n = columnasDeTiempo(TIPO)
+  const cT = colTotal(TIPO)
+  const meses = ventanas(TIPO, { anio })
+  const fila = Object.fromEntries(conceptosDe(TIPO).map((c) => [c.clave, filaDeConcepto(TIPO, c.clave)]))
+  const meta = {
+    pestana: PESTANA_MENSUAL, tipo: TIPO, anio, ancho: FOOTPRINT.mes.cols, footprint: FOOTPRINT.mes,
+    cab: { fila: FILA.cabecera, col0: COL.tiempo0, n, colTotal: cT },
+    fila, hero: { rotulo: FILA.heroRotulo, valor: FILA.heroValor, slots: SLOTS_HERO },
+    grafico: { fila: filaGraficos(TIPO) },
+    ventanas: meses, rotulos: meses.map((v) => rotuloMes(v.desde)),
+  }
 
-  push([`Cash flow mensual ${anio} — cuánto entra, cuánto sale y cómo cierra cada mes`])
-  push(['Criterio percibido · todo sale del libro de movimientos · el saldo arranca en el mes del último saldo declarado de caja',
-    '', `Al ${fechaAR(hoy)}`])
-  push([])
+  poner(FILA.titulo, 0, `Cash Flow Mensual ${anio}`)
+  poner(FILA.subtitulo, 0,
+    '="Cuánto entra, cuánto sale y cómo cierra cada mes · criterio percibido · del libro de movimientos · al "&TEXT(TODAY();"d/mm/yyyy")')
 
-  // ── EL HERO ──────────────────────────────────────────────────────────────────────────────────────
-  const filaHero = push([`EL EJERCICIO ${anio}`, `=SUM(${rango(aux.neto)})`, 'Resultado neto del año'])
-  const filaIng = push([item('Entra en el año'), `=SUM(${rango(aux.ingresos)})`,
-    `=IF(SUM(${rango(aux.ingProy)})=0;"";"incluye "&TEXT(SUM(${rango(aux.ingProy)});"$ #,##0")&" todavía a cobrar")`])
-  const filaEgr = push([item('Sale en el año'), `=SUM(${rango(aux.egresos)})`,
-    `=IF(SUM(${rango(aux.egrProy)})=0;"";"incluye "&TEXT(SUM(${rango(aux.egrProy)});"$ #,##0")&" todavía a pagar")`])
-  // EL SALDO DE DICIEMBRE, NO LA SUMA DE LOS SALDOS. Se toma el último mes que tenga cadena: los meses
-  // anteriores al saldo declarado van vacíos a propósito (ver más abajo) y sumarlos daría cualquier cosa.
-  const filaFin = push([item('Con cuánto cierra el año'), `=IFERROR(INDEX(${rango(aux.saldo)};COUNT(${rango(aux.saldo)}));"")`,
-    'Saldo proyectado al 31 de diciembre'])
-  meta.hero = { titulo: filaHero, ingresos: filaIng, egresos: filaEgr, cierre: filaFin }
-  push([])
+  bloqueHero(poner, meta)
 
-  // ── SECCIÓN 1: los doce meses ────────────────────────────────────────────────────────────────────
-  meta.secciones.push(push([`1 · LOS DOCE MESES DE ${anio}`]))
-  let filaCierreAnterior = null
-  let filaNetoAnterior = null
-  meses.forEach((m, i) => {
-    const filaAux = AUX_0 + i
-    const filaTitulo = push([fechaAR(m)]) // la celda ES una fecha; el formato la muestra "ago 2026"
-    const desde = celda(0, filaTitulo)
-    const hasta = `EOMONTH(${celda(0, filaTitulo)};0)+1`
+  poner(FILA.cabecera, 0, 'Concepto')
+  meses.forEach((v, j) => poner(FILA.cabecera, COL.tiempo0 + j, serialDeFecha(v.desde)))
+  poner(FILA.cabecera, cT, 'TOTAL')
 
-    // El saldo inicial: el rol de cada mes frente al saldo declarado lo decide cash-flow-ancla-saldo,
-    // que es donde está probado. Acá sólo se le dice qué parte del mes ancla YA está adentro del saldo.
-    const yaVivido = terminoLibro({ desde, hasta: `${refFecha}+1`, estados: ['REAL'], medida: 'neto' })
-    const filaInicio = push([item('Saldo inicial'),
-      refSaldo && refFecha
-        ? expresionInicio({
-          desde, hasta, refSaldo, refFecha, yaVividoEnElAncla: yaVivido,
-          anterior: filaCierreAnterior ? celda(1, filaCierreAnterior) : null,
-        })
-        : ''])
-    const filaIngresos = push([item('Ingresos'), `=N(${cAux(aux.ingresos, filaAux)})`,
-      `=IF(N(${cAux(aux.ingProy, filaAux)})=0;"";"incluye "&TEXT(${cAux(aux.ingProy, filaAux)};"$ #,##0")&" a cobrar")`])
-    const filaEgresos = push([item('Egresos'), `=N(${cAux(aux.egresos, filaAux)})`,
-      `=IF(N(${cAux(aux.egrProy, filaAux)})=0;"";"incluye "&TEXT(${cAux(aux.egrProy, filaAux)};"$ #,##0")&" a pagar")`])
-    const filaNeto = push(['⇒ Resultado neto', `=N(${cAux(aux.neto, filaAux)})`])
-    const filaCierre = push(['⇒ Saldo al cierre',
-      `=IF(N(${celda(1, filaInicio)})=0;"";N(${celda(1, filaInicio)})+N(${celda(1, filaNeto)}))`])
-    filas[filaTitulo - 1][1] = `=N(${celda(1, filaCierre)})`
-
-    // ── Las dos variaciones ───────────────────────────────────────────────────────────────────────
-    const pI = refPresupuesto(PRESUPUESTO.ingresos, desde)
-    const pE = refPresupuesto(PRESUPUESTO.egresos, desde)
-    const presupNeto = `(N(${pI})-N(${pE}))`
-    const hayPresupuesto = `(N(${pI})<>0)+(N(${pE})<>0)`
-    const filaVsPresup = push([item('Contra el presupuesto'),
-      `=IFERROR(IF(${hayPresupuesto}=0;"";N(${celda(1, filaNeto)})-${presupNeto});"")`,
-      `=IFERROR(IF(${hayPresupuesto}=0;"— sin presupuesto cargado";TEXT((N(${celda(1, filaNeto)})-${presupNeto})/ABS(${presupNeto});"+0%;-0%")&" vs presupuesto");"— sin presupuesto cargado")`])
-    const filaVsMes = push([item('Contra el mes anterior'),
-      filaNetoAnterior ? `=N(${celda(1, filaNeto)})-N(${celda(1, filaNetoAnterior)})` : '',
-      filaNetoAnterior
-        ? `=IFERROR(IF(N(${celda(1, filaNetoAnterior)})=0;"—";TEXT((N(${celda(1, filaNeto)})-N(${celda(1, filaNetoAnterior)}))/ABS(${celda(1, filaNetoAnterior)});"+0%;-0%")&" vs "&TEXT(${celda(0, filaTitulo)}-1;"mmm"));"—")`
-        : '—'])
-
-    meta.meses.push({
-      mes: m, rotulo: rotuloMes(m), filaTitulo, filaInicio, filaIngresos, filaEgresos,
-      filaNeto, filaCierre, filaVsPresup, filaVsMes, filaAux,
-    })
-    filaCierreAnterior = filaCierre
-    filaNetoAnterior = filaNeto
-
-    // ── La maquinaria: las cuatro medidas del libro y los tres costos modelados ────────────────────
-    const fila = filas[filaAux - 1] || (filas[filaAux - 1] = [])
-    fila[aux.fecha] = `=${celda(0, filaTitulo)}`
-    const [mIngR, mIngP, mEgrR, mEgrP] = MEDIDAS
-    fila[aux.ingReal] = formulaMedida(mIngR, desde, hasta)
-    fila[aux.ingProy] = formulaMedida(mIngP, desde, hasta)
-    fila[aux.egrReal] = formulaMedida(mEgrR, desde, hasta)
-    fila[aux.egrProy] = formulaMedida(mEgrP, desde, hasta)
-    fila[aux.ingresos] = `=N(${cAux(aux.ingReal, filaAux)})+N(${cAux(aux.ingProy, filaAux)})`
-    fila[aux.egresos] = `=N(${cAux(aux.egrReal, filaAux)})+N(${cAux(aux.egrProy, filaAux)})`
-    fila[aux.netoReal] = `=N(${cAux(aux.ingReal, filaAux)})-N(${cAux(aux.egrReal, filaAux)})`
-    fila[aux.netoProy] = `=N(${cAux(aux.ingProy, filaAux)})-N(${cAux(aux.egrProy, filaAux)})`
-    fila[aux.neto] = `=N(${cAux(aux.ingresos, filaAux)})-N(${cAux(aux.egresos, filaAux)})`
-    fila[aux.saldo] = `=IF(N(${celda(1, filaCierre)})=0;"";N(${celda(1, filaCierre)}))`
-    fila[aux.inicio] = `=IF(N(${celda(1, filaInicio)})=0;"";N(${celda(1, filaInicio)}))`
-    fila[aux.interes] = formulaInteresMes(celda(1, filaInicio), celda(0, filaTitulo))
-    fila[aux.comisiones] = formulaComisionesMes(celda(0, filaTitulo))
-    fila[aux.impuesto] = `=(${terminoLibro({ desde, hasta, medida: 'magnitud', instrumentos: [...INSTRUMENTOS_BANCARIOS] })})*${ALICUOTA}`
-  })
-
-  // ── SECCIÓN 2: lo que modela el OS, declarado aparte ─────────────────────────────────────────────
-  push([])
-  meta.secciones.push(push(['2 · COSTO FINANCIERO ESTIMADO DEL AÑO']))
-  const filaInteres = push([item('Interés del descubierto'), `=SUM(${rango(aux.interes)})`,
-    'Corre sólo en los meses que arrancan en descubierto'])
-  const filaComisiones = push([item('Comisiones bancarias'), `=SUM(${rango(aux.comisiones)})`,
-    'Cargo de fin de mes del banco'])
-  const filaImpuesto = push([item('Impuesto al cheque'), `=SUM(${rango(aux.impuesto)})`,
-    'Ley 25.413 · sobre débitos y créditos del mes'])
-  meta.costoFinanciero = [filaInteres, filaComisiones, filaImpuesto]
-  push([])
+  for (const c of conceptosDe(TIPO)) poner(fila[c.clave], 0, c.rotulo)
+  for (let j = 0; j < n; j++) columnaDeMes(poner, meta, j, { refSaldo, refFecha })
+  for (const c of conceptosDe(TIPO)) {
+    if (c.total) poner(fila[c.clave], cT, `=SUM(${rangoFila(fila[c.clave], COL.tiempo0, COL.tiempo0 + n - 1)})`)
+  }
 
   meta.filaFin = filas.length
-  meta.ancho = ANCHO_VISTA
-  meta.pestana = PESTANA_MENSUAL
-  meta.anio = anio
   return { filas, meta }
+}
+
+/**
+ * EL TITULAR DEL AÑO — cuatro cifras, todas leídas del propio cuadro.
+ *
+ * Ninguna recalcula nada: si mañana cambia una fórmula del cuerpo, el hero cambia con ella. Un
+ * titular con su propia aritmética es la forma más elegante de tener dos verdades en una pestaña.
+ */
+function bloqueHero(poner, meta) {
+  const [s1, s2, s3, s4] = meta.hero.slots
+  const R = meta.hero.rotulo
+  const V = meta.hero.valor
+  const T = (clave) => celda(meta.cab.colTotal, meta.fila[clave])
+  const plata = (c) => `TEXT(${c};"$ #,##0")`
+  // El cierre del año es el saldo final de DICIEMBRE, no la suma de los saldos: sumar doce stocks no
+  // da un stock. Los meses anteriores al corte van vacíos, así que sumarlos daría cualquier cosa.
+  const diciembre = celda(meta.cab.col0 + meta.cab.n - 1, meta.fila.saldoFinal)
+
+  poner(R, s1, 'RESULTADO DEL AÑO')
+  poner(V, s1, `=N(${T('resultado')})`)
+  poner(V, s1 + 1, 'Lo que entra menos lo que sale, todo el ejercicio')
+
+  poner(R, s2, 'ENTRA EN EL AÑO')
+  poner(V, s2, `=N(${T('ingresoReal')})+N(${T('ingresoProyectado')})`)
+  poner(V, s2 + 1, `=IF(N(${T('ingresoProyectado')})=0;"";"incluye "&${plata(T('ingresoProyectado'))}&" todavía a cobrar")`)
+
+  poner(R, s3, 'SALE EN EL AÑO')
+  poner(V, s3, `=N(${T('egresoReal')})+N(${T('egresoProyectado')})`)
+  poner(V, s3 + 1, `=IF(N(${T('egresoProyectado')})=0;"";"incluye "&${plata(T('egresoProyectado'))}&" todavía a pagar")`)
+
+  poner(R, s4, 'CIERRE PROYECTADO DEL AÑO')
+  poner(V, s4, `=N(${diciembre})`)
+  poner(V, s4 + 1, 'Saldo proyectado al 31 de diciembre')
+}
+
+/** Una columna de mes: el ancla o el eslabón, las cuatro medidas, el resultado, el saldo y las variaciones. */
+function columnaDeMes(poner, meta, j, { refSaldo, refFecha }) {
+  const col = meta.cab.col0 + j
+  const cab = celda(col, meta.cab.fila)
+  const { desde, hasta } = expresionVentana(cab, meta.tipo)
+  const f = meta.fila
+
+  // El rol de cada mes frente al saldo declarado lo decide cash-flow-ancla-saldo, que es donde está
+  // probado. Acá sólo se le dice qué parte del mes ancla YA está adentro del saldo.
+  poner(f.saldoInicial, col, refSaldo && refFecha
+    ? expresionInicio({
+      desde, hasta, refSaldo, refFecha,
+      yaVividoEnElAncla: terminoLibro({ desde, hasta: `${refFecha}+1`, estados: ['REAL'], medida: 'neto' }),
+      anterior: j === 0 ? null : celda(col - 1, f.saldoFinal),
+    })
+    : '')
+  for (const c of CONCEPTOS) {
+    if (c.medida === undefined) continue
+    poner(f[c.clave], col, formulaMedida(MEDIDAS[c.medida], desde, hasta))
+  }
+  poner(f.resultado, col,
+    `=N(${celda(col, f.ingresoReal)})+N(${celda(col, f.ingresoProyectado)})`
+    + `-N(${celda(col, f.egresoReal)})-N(${celda(col, f.egresoProyectado)})`)
+  // Un mes sin cadena (anterior al corte) no tiene cierre: queda vacío, nunca en cero. Un cero se
+  // leería como "la empresa cerró el mes sin plata", que es una afirmación que nadie hizo.
+  poner(f.saldoFinal, col,
+    `=IF(N(${celda(col, f.saldoInicial)})=0;"";N(${celda(col, f.saldoInicial)})+N(${celda(col, f.resultado)}))`)
+
+  poner(f.variacionPresupuesto, col, formulaVariacionPresupuesto(cab, celda(col, f.resultado)))
+  poner(f.variacionMesAnterior, col, j === 0
+    ? ''
+    : `=N(${celda(col, f.resultado)})-N(${celda(col - 1, f.resultado)})`)
+}
+
+/**
+ * LA VARIACIÓN CONTRA EL PRESUPUESTO — y el "—" que no es un cero.
+ *
+ * El IFERROR es de los legítimos: cubre el caso ESPERADO de que `_PRESUPUESTO_MENSUAL` todavía no
+ * exista (primera corrida del archivo) y sus rangos con nombre devuelvan #NAME?. No tapa una búsqueda
+ * que falla — tapa una pestaña que todavía no nació, y lo dice con el mismo guion que el mes sin cargar.
+ */
+export function formulaVariacionPresupuesto(celdaMes, celdaResultado) {
+  const pI = refPresupuesto(PRESUPUESTO.ingresos, celdaMes)
+  const pE = refPresupuesto(PRESUPUESTO.egresos, celdaMes)
+  const hay = `(N(${pI})<>0)+(N(${pE})<>0)`
+  return `=IFERROR(IF(${hay}=0;"—";N(${celdaResultado})-(N(${pI})-N(${pE})));"—")`
 }
 
 /**
  * LOS NOMBRES QUE ESTA VISTA LE OFRECE AL RESTO DEL ARCHIVO.
  *
- * Existen porque el rediseño le rompió el piso a un consumidor real: el anexo de CAJA ubicaba las
- * filas de esta pestaña por los rótulos de la matriz vieja ("Efectivo y equivalentes al inicio",
- * "…al cierre", "Período") y leía sus doce meses en las columnas B..M. Ninguna de las dos cosas
- * existe más. Con estos tres nombres, ese control vuelve a apuntar a algo estable sin conocer la
- * geometría de la vista — que es lo que tendría que haber hecho desde el principio.
+ * Existen porque un rediseño ya le rompió el piso a un consumidor real: el anexo de CAJA ubicaba las
+ * filas de esta pestaña por sus rótulos y leía sus doce meses en las columnas B..M. Con estos tres
+ * nombres, ese control apunta a algo estable sin conocer la geometría de la vista.
  */
 export const NOMBRES_VISTA = Object.freeze({
   meses: NOMBRE_MESES,
   inicio: 'CF_SALDO_INICIO',
   cierre: 'CF_SALDO_CIERRE',
 })
+
 /**
- * LOS RANGOS CON NOMBRE QUE PUBLICA ESTA VISTA.
+ * LOS RANGOS CON NOMBRE QUE PUBLICA ESTA VISTA — AHORA HORIZONTALES.
  *
- * CF_MESES son los doce meses del ejercicio, y no es decorativo: la proyección de comisiones
- * bancarias cuenta sobre ellos cuántos meses tienen extracto. Antes apuntaba a la fila 3 de la
- * matriz vieja — una fila que este rediseño dejó vacía, y una referencia a celdas vacías no da
- * error: devuelve cero meses y la proyección desaparece sin que nadie se entere.
+ * Eran tres columnas de doce filas en la zona auxiliar oculta; son tres FILAS de doce columnas, que es
+ * la geometría de la matriz. Sus consumidores (`caja-anexo-controles.mjs`) los usan con
+ * `INDEX(rango;1;MATCH(…))`: `MATCH` da lo mismo sobre una fila o una columna, y la fila explícita en
+ * `INDEX` es lo que lo hace inequívoco — `INDEX(rango;n)` sobre una sola fila significa "la fila n".
+ *
+ * SE PUBLICAN EN LA MISMA CORRIDA QUE SE ESCRIBE LA GRILLA. Un nombre apuntando a la geometría
+ * anterior no da error: devuelve otra celda, y el control que lo lee miente sin un solo #REF!.
  */
 export function destinosNombrados(meta) {
+  const col = meta.cab.col0 + 1 // los destinos se declaran 1-indexados
+  const cols = meta.cab.n
   return [
-    { name: NOMBRES_VISTA.meses, fila: meta.aux.fila0, col: meta.aux.col.fecha + 1, filas: 12 },
-    { name: NOMBRES_VISTA.inicio, fila: meta.aux.fila0, col: meta.aux.col.inicio + 1, filas: 12 },
-    { name: NOMBRES_VISTA.cierre, fila: meta.aux.fila0, col: meta.aux.col.saldo + 1, filas: 12 },
+    { name: NOMBRES_VISTA.meses, fila: meta.cab.fila, col, filas: 1, cols },
+    { name: NOMBRES_VISTA.inicio, fila: meta.fila.saldoInicial, col, filas: 1, cols },
+    { name: NOMBRES_VISTA.cierre, fila: meta.fila.saldoFinal, col, filas: 1, cols },
   ]
 }
 
 /**
- * La expresión que el semanal y el mensual comparten para un mes. Existe para el TEST de identidad:
- * si alguien cambia la definición de una medida en una vista y no en la otra, el test lo ve sin red.
+ * La expresión que las dos vistas comparten para un período. Existe para el TEST de identidad: si
+ * alguien cambia la definición de una medida en una vista y no en la otra, el test lo ve sin red.
  */
 export function medidasDelMes(desdeRef, hastaRef) {
-  return MEDIDAS.map((m) => ({ clave: m.clave, formula: sinIgual(formulaMedida(m, desdeRef, hastaRef)) }))
+  return MEDIDAS.map((m) => ({ clave: m.clave, formula: formulaMedida(m, desdeRef, hastaRef).replace(/^=/, '') }))
 }

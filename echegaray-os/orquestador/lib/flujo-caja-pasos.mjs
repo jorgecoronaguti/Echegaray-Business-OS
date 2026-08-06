@@ -31,10 +31,12 @@ export const PASOS = [
   ['rubro-caja-sheet.mjs', 'la columna "Rubro de caja" de Compras — de acá cuelga todo lo demás', []],
   // Recurrentes va ANTES del cash flow: el cuadro lee de ella su proyección y necesita que exista.
   ['recurrentes-pestana.mjs', 'Recurrentes — servicios fijos, sin proyectar meses ya cerrados', ['Recurrentes']],
-  // ═══ LAS DOS VISTAS DE CASH FLOW SE REHICIERON COMO BLOQUES (05/08) ═══
+  // ═══ LAS DOS VISTAS DE CASH FLOW SON UNA MATRIZ: CONCEPTO × TIEMPO (06/08) ═══
   //
-  // `cash-flow-rehacer.mjs` escribía las mismas dos pestañas como una matriz de 51 columnas. El dueño
-  // pidió una agenda diaria y doce bloques mensuales, y lo escribe `cash-flow-vistas.mjs`. El viejo
+  // `cash-flow-rehacer.mjs` escribía las mismas dos pestañas como una matriz de 51 columnas. Pasaron
+  // por un diseño de bloques verticales que el dueño rechazó —98 filas para catorce días— y volvieron
+  // a la forma de siempre: una fila por concepto, el tiempo a la derecha. Lo escribe
+  // `cash-flow-vistas.mjs` (13 semanas y 12 meses, con su presupuesto). El viejo
   // SALE de esta lista, no se comenta "por las dudas": dos escritores sobre una misma pestaña es lo que
   // produce el candado falso —el que escribe último sella la firma y el otro se auto-canda—, y encima
   // cada uno impondría una estructura distinta cada dos horas.
@@ -42,7 +44,7 @@ export const PASOS = [
   // El presupuesto va PRIMERO porque el Mensual cita sus rangos con nombre, igual que _CAJA_ANEXO antes
   // de CAJA: un nombre que todavía no existe deja #NAME? en la pestaña que el dueño abre todos los días.
   // (Lo publica el mismo script `cash-flow-vistas.mjs`, en su primer paso.)
-  ['cash-flow-vistas.mjs', 'Cash Flow Semanal (agenda diaria), Cash Flow Mensual (bloques) y _PRESUPUESTO_MENSUAL',
+  ['cash-flow-vistas.mjs', 'Cash Flow Semanal (13 semanas), Cash Flow Mensual (12 meses) y _PRESUPUESTO_MENSUAL',
     ['Cash Flow Semanal', 'Cash Flow Mensual', '_PRESUPUESTO_MENSUAL']],
   // LOS NOMBRES SON LOS DE HOY. Declaraba las cuatro pestañas del diseño viejo —"Proveedores —
   // Deuda", "Proveedores — Cuenta Corriente"…— que dejaron de existir cuando el bloque se unificó en

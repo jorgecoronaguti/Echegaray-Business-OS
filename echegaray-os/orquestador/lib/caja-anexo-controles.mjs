@@ -77,8 +77,12 @@ export function bloqueLiquidez(h) {
   // LOS MESES SIN CIERRE NO CUENTAN: el cuadro deja en blanco los anteriores al saldo declarado y una
   // celda vacía vale 0 en una comparación. Sin el filtro `<>""`, la alerta encontraba "enero 2026" —
   // un mes que ya pasó, o sea el aviso más inútil posible.
+  // `INDEX(rango;1;MATCH(…))` CON LA FILA EXPLÍCITA (06/08): desde que el Cash Flow Mensual es una
+  // matriz, CF_MESES y CF_SALDO_CIERRE son FILAS de doce columnas y no columnas de doce filas. Sobre un
+  // rango de una sola fila, `INDEX(rango;n)` significa "la fila n" —devuelve #REF!— y no "la columna n".
+  // MATCH no cambia: da la posición lo mismo sobre una fila que sobre una columna.
   const primerMes = (cond) => (rangoCierre
-    ? `=IFERROR(TEXT(INDEX(${rangoMes};MATCH(1;ARRAYFORMULA((${rangoCierre}<>"")*(${rangoCierre}${cond}));0));"mmmm yyyy");"ningún mes del año")`
+    ? `=IFERROR(TEXT(INDEX(${rangoMes};1;MATCH(1;ARRAYFORMULA((${rangoCierre}<>"")*(${rangoCierre}${cond}));0));"mmmm yyyy");"ningún mes del año")`
     : '⚠ falta la línea de cierre en el Cash Flow Mensual')
   push(['Primer mes por debajo de la caja mínima (proyección del Cash Flow)', '', '', '', '', '',
     primerMes(`<${DESDE_CAJA.minima}`)])
@@ -113,7 +117,7 @@ export function bloqueConciliacion(h) {
   const fDecl = push(['Disponibilidad declarada en CAJA', '', '', '', `=${DESDE_CAJA.total}`, '', ''])
   const fProy = push(['Efectivo al inicio del mes según el Cash Flow Mensual', '', '', '',
     refs.inicio && refs.cab
-      ? `=IFERROR(INDEX(${refs.inicio};MATCH(EOMONTH(${DESDE_CAJA.fecha};0);ARRAYFORMULA(EOMONTH(${refs.cab};0));0));"⚠ sin saldo cargado")`
+      ? `=IFERROR(INDEX(${refs.inicio};1;MATCH(EOMONTH(${DESDE_CAJA.fecha};0);ARRAYFORMULA(EOMONTH(${refs.cab};0));0));"⚠ sin saldo cargado")`
       : '⚠ no encontré la línea de inicio en el Cash Flow Mensual',
     '', ''])
   const fReal = push(['REAL del mes hasta el corte (el ancla lo descuenta del inicio)', '', '', '',

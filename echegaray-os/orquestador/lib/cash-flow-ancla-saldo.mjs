@@ -101,6 +101,39 @@ export function expresionInicio({ desde, hasta, refSaldo, refFecha, anterior = n
 }
 
 /**
+ * NÚCLEO PURO: el ancla de una grilla que ARRANCA EN EL PRESENTE — la primera columna del semanal.
+ *
+ * POR QUÉ HACE FALTA OTRA (06/08/2026). `expresionInicio` decide entre tres papeles porque el cuadro
+ * mensual arranca en enero y puede tener columnas ANTERIORES al saldo declarado, que no se pueden
+ * reconstruir. El semanal rehecho arranca en la semana corriente: no hay columnas anteriores, y la
+ * única pregunta es dónde cae el corte respecto del lunes. Las dos respuestas son aritmética pura:
+ *
+ *   corte DENTRO de la semana  → el saldo declarado ya trae los movimientos del lunes al corte:
+ *                                 se RESTAN, o se cuentan dos veces cuando la columna sume su ventana.
+ *   corte ANTES del lunes      → al saldo declarado le faltan los movimientos del corte al lunes:
+ *                                 se SUMAN.
+ *
+ * Y no hace falta un IF para elegir: cada término es una ventana que queda VACÍA en el otro caso
+ * —[lunes, corte+1) es imposible si el corte es anterior al lunes, y [corte+1, lunes) lo es si el
+ * corte cae dentro—, así que el que no corresponde vale cero. Una sola expresión, sin rama muerta.
+ *
+ * LA SEMÁNTICA DEL ANCLA NO CAMBIA: cuando el corte cae dentro del período, esto da exactamente
+ * `total − REAL(desde el inicio del período hasta el corte)`, que es lo que devuelve `expresionInicio`
+ * y lo que el control A5 del anexo de CAJA verifica. Sólo lo REAL: un proyectado vencido que nadie
+ * concilió no es plata en la cuenta.
+ *
+ * @param {object} p
+ * @param {string} p.desde expresión del primer día del período (la celda del encabezado)
+ * @param {string} p.refSaldo rango con nombre del saldo declarado
+ * @param {string} p.refFecha rango con nombre de su fecha de corte
+ * @param {string} p.yaVivido expresión de lo REAL en [desde, corte+1) — se resta
+ * @param {string} p.puestaAlDia expresión de lo REAL en [corte+1, desde) — se suma
+ */
+export function expresionInicioCorrido({ refSaldo, yaVivido, puestaAlDia }) {
+  return `=N(${refSaldo})-(${yaVivido})+(${puestaAlDia})`
+}
+
+/**
  * NÚCLEO PURO: la cadena de saldos que DEBERÍA mostrar el cuadro.
  *
  * Existe para poder verificar la pestaña contra algo que no salga de la pestaña: reconstruye inicio
