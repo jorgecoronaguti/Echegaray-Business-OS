@@ -30,7 +30,7 @@ import {
 } from '../lib/libro-extractores.mjs'
 import { cruzar, chequesDelRegistro } from '../lib/cruce-cheque-factura.mjs'
 import { endososDeCartera } from '../lib/libro-endosos.mjs'
-import { debitosDelExtracto, corteDelExtracto, pagosDeResumen } from '../lib/libro-respaldo-banco.mjs'
+import { debitosDelExtracto, corteDelExtracto, pagosDeResumen, chequesCubiertosPorBanco } from '../lib/libro-respaldo-banco.mjs'
 import { ROTULOS_CALENDARIO, CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
 import { total } from '../lib/patron-pestana.mjs'
 import { ubicarRegistro } from './cheques-emitidos-tablero.mjs'
@@ -182,14 +182,31 @@ async function extraerDeLasFuentes(google, corte) {
     },
     excluidos,
     corteBanco: extracto.corte,
+    // Los débitos crudos viajan al orquestador: el respaldo de cheques contra el banco corre sobre
+    // el libro ENTERO (necesita a los REAL para que consuman su débito primero), no dentro de un
+    // extractor que sólo ve su pestaña.
+    debitosBanco: extracto.debitos,
   }
 }
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const corte = hoySerial()
-  const { fuentes: porFuente, excluidos, corteBanco } = await extraerDeLasFuentes(google, corte)
+  const { fuentes: porFuente, excluidos, corteBanco, debitosBanco } = await extraerDeLasFuentes(google, corte)
   const todos = Object.values(porFuente).flat()
+  // ═══ EL EXTRACTO CORRIGE LOS CHEQUES QUE LAS PESTAÑAS TODAVÍA DAN POR VIVOS (06/08) ═══
+  //
+  // `public.cheques` tenía corte 31/07 y el banco ya había debitado cheques que el libro seguía
+  // contando como COMPROMETIDOS ($500.000 de Diesel, refs 314/315 del 24/07). La regla, su porqué y
+  // sus guardas viven en lib/libro-respaldo-banco.mjs (`chequesCubiertosPorBanco`).
+  const respaldo = chequesCubiertosPorBanco(todos, debitosBanco)
+  for (const aviso of respaldo.avisos) console.log(`  ⚠ ${aviso}`)
+  respaldo.cubiertos.forEach((d, i) => {
+    const m = todos[i]
+    console.log(`  ✓ cheque ${pesos(m.importe)} (${m.concepto?.slice(0, 40)}) ya debitado: `
+      + `pasa a REAL al serial ${d.fecha} (débito _BANCO_RAW f${d.fila})`)
+    todos[i] = { ...m, estado: 'REAL', fecha: d.fecha }
+  })
   const { libro: dedup, colapsos } = deduplicar(todos)
   const { consolidado, internas, netoInterno } = separarInternas(dedup)
 
