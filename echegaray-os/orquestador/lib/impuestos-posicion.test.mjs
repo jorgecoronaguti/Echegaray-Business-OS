@@ -128,7 +128,7 @@ test('el financiamiento declara que NO mide el descubierto tomado', () => {
   const filas = posicion()
   const desc = filas.find((x) => /descubierto Santander/.test(String(x[0] ?? '')))
   assert.match(String(desc[0]), /⚠ uso actual s\/d/)
-  const techo = filas.find((x) => /Capacidad de financiamiento SIN USAR/.test(String(x[0] ?? '')))
+  const techo = filas.find((x) => /FINANCIAMIENTO SIN USAR/.test(String(x[0] ?? '')))
   assert.match(String(techo[0]), /TECHO/)
 })
 

@@ -68,7 +68,11 @@ export function bloqueIva(G, { anio, ivaOficial, proy }) {
       : ofOAjeno(m, 'libre_disp')),
     'F.2051 · crédito de la empresa inmovilizado en ARCA. Se arrastra; el total no aplica.', { meses, totaliza: false })
   const fDDJJ = G.mensual('DDJJ presentada',
-    (m) => (esProy(m) ? '⚠ PROYECCIÓN' : (porMesOf.has(m) ? `${porMesOf.get(m).fecha_presentacion} · N°${porMesOf.get(m).nro_transaccion}` : (m <= ancla ? AJENO : VACIO))),
+    (m) => (esProy(m) ? '⚠ PROYECCIÓN' : (porMesOf.has(m)
+      // Corto para la columna de mes (108px ≈ 18 caracteres): fecha dd/mm + últimas 4 del N° de
+      // transacción — alcanza para verificar contra ARCA sin desbordar la celda.
+      ? `${String(porMesOf.get(m).fecha_presentacion).slice(0, 5)}·N…${String(porMesOf.get(m).nro_transaccion).slice(-4)}`
+      : (m <= ancla ? AJENO : VACIO))),
     'F.2051 presentada ante ARCA. Fuente primaria, verificable por N° de transacción. Los meses con "⚠ PROYECCIÓN" no tienen DDJJ: son un cálculo, no un hecho.', { meses, totaliza: false })
   G.blanco()
   return { fDeb, fCred, fAPagar, fLibre, fDDJJ, meses, mesesOf, ancla, anio }

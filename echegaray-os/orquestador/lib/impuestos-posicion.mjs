@@ -174,7 +174,7 @@ export function filasDeLaPosicion({ cal, base, hoy, refs, acuerdo, tarjeta }) {
   // ES UN TECHO, Y SE DICE. Esta pestaña no mide cuánto del acuerdo está tomado HOY —eso vive en
   // CAJA, que lee el saldo del banco— así que el disponible del descubierto es su límite entero.
   // Llamarlo "capacidad disponible" a secas sería declarar plata que puede no estar.
-  F.push([rotuloTotal('Capacidad de financiamiento SIN USAR (TECHO: no descuenta el descubierto ya tomado)'),
+  F.push([rotuloTotal('FINANCIAMIENTO SIN USAR · TECHO'),
     '', '', `=SUM($D$${f0}:$D$${f1})`])
   F.push([])
   return F

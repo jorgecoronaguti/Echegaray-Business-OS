@@ -190,7 +190,7 @@ export function filasFinanciamiento({ acuerdo, tarjeta, celdaPrendario, celdaPla
       // ⚠ EN EL RÓTULO: esta pestaña no mide cuánto del acuerdo está tomado hoy. Sin la marca, el
       // "disponible" se lee como plata que está y puede no estar — y es la línea con la que se
       // decide no salir a pedir un adelanto.
-      rotulo: `Acuerdo en descubierto Santander N° ${acuerdo.numero}  ⚠ uso actual s/d (lo mide CAJA)`,
+      rotulo: `Descubierto Santander ${acuerdo.numero} ⚠ uso: lo mide CAJA`,
       limite: acuerdo.importe,
       usado: celdaUsoDescubierto ? `=MIN(${acuerdo.importe};MAX(0;-${celdaUsoDescubierto}))` : '',
       disponible: null, // lo calcula el generador como límite − usado, en la propia grilla

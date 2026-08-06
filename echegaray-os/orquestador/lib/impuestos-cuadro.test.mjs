@@ -126,7 +126,7 @@ test('la posición de financiamiento muestra las CUATRO fuentes, no dos', () => 
     celdaUsoDescubierto: 'CAJA_SALDO_BANCO',
   })
   assert.equal(filas.length, 4)
-  assert.match(filas[0].rotulo, /descubierto Santander N° 00007/)
+  assert.match(filas[0].rotulo, /Descubierto Santander 00007/)
   assert.equal(filas[0].limite, 18200000)
   assert.match(filas[1].rotulo, /Tarjeta de crédito/)
   assert.equal(filas[1].limite, 10000000)
