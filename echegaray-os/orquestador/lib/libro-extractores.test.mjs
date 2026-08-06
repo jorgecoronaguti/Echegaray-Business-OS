@@ -3,8 +3,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   deCompras, deCobranzas, deChequesEmitidos, deBancoCargos,
-  deTarjetaSinFactura, deImpuestosCalendario, deCartera,
+  deTarjetaSinFactura, deImpuestosCalendario, deCartera, comprasPagadasConCheque,
 } from './libro-extractores.mjs'
+import { cruzar, chequesDelRegistro } from './cruce-cheque-factura.mjs'
 import { ENTRA, SALE } from './libro-movimientos.mjs'
 import { MARCAS } from './cheques-cobertura.mjs'
 import { INSTRUMENTOS } from './cash-flow-lineas.mjs'
@@ -227,6 +228,91 @@ test('CHEQUES: el que YA tiene factura en Compras no se emite — sumarlo contab
   const sinMarcar = cheques().map((f) => { const g = f.slice(); g[M] = ''; return g })
   assert.equal(deChequesEmitidos(sinMarcar, { fila0: 20 }).length, 0,
     'lo que el OS todavía no cruzó no se puede afirmar que falte')
+})
+
+// ── EL CRUCE CHEQUE ↔ FACTURA: la fila de Compras que se parte en dos ─────────────────────────────
+//
+// EL CASO REAL DEL 06/08. Compras f633 (Diesel Rodriguez, $2.010.000, "0003-00000460") dice "Pagado"
+// con cheque y fecha de caja 46190 — anterior al corte 46240. `estadoDeEgreso` concluye REAL, y un
+// REAL no lo mira ninguna vista de proyección. Pero de los cuatro cheques que la pagan, DOS todavía
+// no debitaron ($1.010.000, vencen el 46251): esa mitad no salió de la cuenta.
+const ENC_CH_CRUCE = ['Tipo', 'Nro', 'fecha de emision', 'CUIT', 'Proveedor', 'Monto', 'Tipo comp',
+  'Nro comp', 'fecha de pago', 'fecha pago', 'DEBITADO', 'Unidad de Negocio', 'Estado en el OS']
+const registroDiesel = () => [[], ENC_CH_CRUCE,
+  ['FISICO', 314, 46180, '', 'Diesel Rodriguez', 500000, 'FA', '0003-00000460', 46231, 46231, 'SI', 'Civil', MARCAS.ok],
+  ['FISICO', 316, 46180, '', 'Diesel Rodriguez', 500000, 'FA', '0003-00000460', 46251, 46251, 'No', 'Civil', MARCAS.ok],
+  ['FISICO', 316, 46180, '', 'Diesel Rodriguez', 510000, 'FA', '0003-00000460', 46251, 46251, 'No', 'Civil', MARCAS.ok],
+]
+const comprasDiesel = () => compras([
+  ['Diesel Rodriguez', '20-11111111-1', '0003-00000460', 2010000, 'Pagado', 'Cheque', 'Estructura', 46190, ''],
+])
+const cruceDiesel = () => cruzar(
+  chequesDelRegistro(registroDiesel(), { fila0: 3 }),
+  comprasPagadasConCheque(comprasDiesel()),
+)
+
+test('EL DEFECTO: "Pagado" con fecha anterior al corte y cheque VIVO era REAL entero — $1,01M invisibles', () => {
+  const sinCruce = deCompras(comprasDiesel(), 46240).filter((m) => m.concepto === 'Diesel Rodriguez')
+  assert.equal(sinCruce.length, 1)
+  assert.equal(sinCruce[0].estado, 'REAL', 'así estaba: la fila entera dada por salida')
+  assert.equal(sinCruce[0].importe, 2010000)
+
+  const ms = deCompras(comprasDiesel(), 46240, { cruce: cruceDiesel() }).filter((m) => m.concepto.startsWith('Diesel'))
+  const real = ms.filter((m) => m.estado === 'REAL')
+  const comp = ms.filter((m) => m.estado === 'COMPROMETIDO')
+  assert.equal(real.length, 1)
+  assert.equal(real[0].importe, 1000000, 'lo que ya debitó sigue siendo un hecho')
+  assert.equal(comp.length, 2)
+  assert.equal(comp.reduce((a, m) => a + m.importe, 0), 1010000)
+  // La fecha del compromiso es la del CHEQUE, no la de caja de la factura: la plata sale cuando debita.
+  assert.ok(comp.every((m) => m.fecha === 46251))
+  // Y NO SE INVENTA NI SE PIERDE UN PESO: la fila sigue valiendo lo mismo.
+  assert.equal(ms.reduce((a, m) => a + m.importe, 0), 2010000)
+})
+
+test('LA CUOTA HEREDA EL RUBRO Y EL CLIENTE DE SU FACTURA — es lo que el cruce vino a dar', () => {
+  const ms = deCompras(comprasDiesel(), 46240, { cruce: cruceDiesel() })
+  const comp = ms.filter((m) => m.estado === 'COMPROMETIDO')
+  assert.ok(comp.every((m) => m.rubro === 'Estructura'), 'sin cruce el cheque caía en "Cheques emitidos"')
+  assert.ok(comp.every((m) => m.instrumento === 'cheque'))
+  assert.ok(comp.every((m) => m.comprobante === '0003-00000460'))
+})
+
+test('LAS CLAVES DE LAS CUOTAS: dos cheques que se llaman IGUAL no pueden colapsar', () => {
+  // Los dos cheques vivos de la fixture se llaman los DOS "FISICO 316" — es el registro real. Con la
+  // clave `cheque:316:S` colapsarían y se perderían $500.000 sin un solo error; con `comp:CUIT:N°:S`
+  // colapsarían contra el resto REAL de su propia fila. La identidad es (fila de Compras, cheque).
+  const ms = deCompras(comprasDiesel(), 46240, { cruce: cruceDiesel() })
+  const claves = ms.map((m) => m.clave)
+  assert.equal(new Set(claves).size, claves.length, 'ninguna clave repetida')
+  const comp = ms.filter((m) => m.estado === 'COMPROMETIDO')
+  assert.ok(comp.every((m) => m.clave.startsWith('origen:compras:')), comp.map((m) => m.clave).join(' · '))
+  assert.ok(comp.every((m) => /cheque \d+$/.test(String(m.origen.fila))))
+})
+
+test('SIN CRUCE, deCompras se comporta EXACTAMENTE como antes — el cruce es opt-in', () => {
+  const conNada = deCompras(comprasDiesel(), 46240)
+  const conVacio = deCompras(comprasDiesel(), 46240, { cruce: { porCompra: new Map() } })
+  assert.deepEqual(conNada.map((m) => m.clave), conVacio.map((m) => m.clave))
+  assert.deepEqual(conNada.map((m) => m.importe), conVacio.map((m) => m.importe))
+})
+
+test('LA PARTICIÓN EN EL LIBRO: el cheque cruzado NO sale por las dos puertas', () => {
+  // El registro de la fixture está marcado "✓ su factura está en Compras", así que `deChequesEmitidos`
+  // ya lo excluía. La prueba dura es la otra: un cheque marcado "FALTA" que el cruce SÍ empareja.
+  const reg = registroDiesel().map((f, i) => (i >= 2 ? [...f.slice(0, 12), MARCAS.falta] : f))
+  const cruce = cruzar(chequesDelRegistro(reg, { fila0: 3 }), comprasPagadasConCheque(comprasDiesel()))
+  const sinCruce = deChequesEmitidos(reg, { fila0: 3 })
+  const conCruce = deChequesEmitidos(reg, { fila0: 3, cruce })
+  assert.equal(sinCruce.length, 2, 'los dos vivos entraban por la puerta de los cheques')
+  assert.equal(conCruce.length, 0, 'cruzados: su plata sale por Compras, con su rubro real')
+  // ═══ Y ACÁ SE VE EL OTRO LADO DEL MISMO AGUJERO ═══
+  // Con la marca "FALTA" mal puesta, el libro contaba la factura ENTERA como REAL ($2.010.000) Y
+  // además los dos cheques como COMPROMETIDO ($1.010.000): $3.020.000 por una deuda de $2.010.000.
+  // La partición no sólo destapa plata invisible — también saca un doble conteo de $1.010.000.
+  const total = (ms) => ms.filter((m) => m.concepto.startsWith('Diesel')).reduce((a, m) => a + m.importe, 0)
+  assert.equal(total(sinCruce) + total(deCompras(comprasDiesel(), 46240)), 3020000)
+  assert.equal(total(conCruce) + total(deCompras(comprasDiesel(), 46240, { cruce })), 2010000)
 })
 
 // ── Banco: sólo los cargos sin factura ────────────────────────────────────────────────────────────
