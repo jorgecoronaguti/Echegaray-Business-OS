@@ -98,21 +98,17 @@ test('FALLA CERRADO: sin una referencia, rompe antes de escribir una celda en er
   assert.throws(() => tarjetas(), /faltan las referencias/)
 })
 
-test('LIBRE es la liquidez TOTAL menos lo comprometido, con el escenario sin Balanz en el contexto', () => {
-  // ═══ EL CONTRATO CAMBIÓ EL 06/08 (segunda pregunta del dueño) ═══
+test('LIBRE son los BANCOS menos lo comprometido — Balanz NO entra al titular (3ª directiva, 06/08)', () => {
+  // ═══ LA HISTORIA DEL CONTRATO, PORQUE CAMBIÓ TRES VECES EN UN DÍA ═══
   //
-  // Con `disponible − comprometida` la tarjeta decía $897.367 "libres" en agosto — el peor caso
-  // absoluto (ni una cobranza entra, Balanz intocable) disfrazado de saldo libre. El dueño: "me
-  // parece muy poco para q en agosto solo nos quede eso libre". La auditoría fría dio la razón:
-  // el número era correcto bajo esa definición, pero la definición comparaba TODO el egreso del mes
-  // contra la caja de HOY, con $45,0M rescatables en 24 hs mirando desde la tarjeta de al lado.
-  //
-  // La definición vigente es la de available liquidity (JPM/Kyriba): (operativo + invertido) −
-  // comprometido del mes. El escenario estricto no se pierde: baja al contexto como "sin rescatar
-  // Balanz", que es exactamente lo que era — un escenario, no el titular.
+  // v1 `disponible − comprometida` → $897k y el dueño lo cuestionó. v2 "available liquidity"
+  // (+ Balanz) → $43,2M y el dueño la rechazó, textual: "una cosa es el saldo en los bancos, otra
+  // cosa es en balanz q es donde invertimos". v3 (VIGENTE) es v1 con el rescate de Balanz como
+  // escenario en el contexto: el titular no mezcla bancos con inversión, y un LIBRE negativo es
+  // información (el mes no se cubre sin rescatar o sin cobrar), no un defecto.
   const l = de('libre')
-  assert.equal(l.valor, '=N($A$3)+N($G$3)-N($C$3)',
-    'disponible (A3) más invertido (G3) menos comprometida (C3), por referencia a las tarjetas')
-  assert.match(l.contexto, /sin rescatar Balanz/, 'el escenario conservador queda a la vista, no desaparece')
-  assert.ok(l.contexto.includes('N($A$3)-N($C$3)'), 'el escenario del contexto es la MISMA resta que era el titular')
+  assert.equal(l.valor, '=N($A$3)-N($C$3)',
+    'disponible (A3) menos comprometida (C3): SOLO bancos y efectivo, sin Balanz')
+  assert.match(l.contexto, /rescatando Balanz/, 'el rescate es el escenario del contexto, no el titular')
+  assert.ok(l.contexto.includes('N($A$3)+N($G$3)-N($C$3)'), 'el escenario del contexto es la suma con Balanz')
 })
