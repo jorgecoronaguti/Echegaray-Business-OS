@@ -14,6 +14,7 @@
 // posible que el anexo cambie de forma sin romper CAJA y al revés.
 
 import * as BANCO from './banco-santander.mjs'
+import { terminoLibro } from './libro-sumas.mjs'
 import { DESDE_CAJA, ANEXO } from './caja-anexo-nombres.mjs'
 import { formulaEgresoDiario } from './egreso-diario.mjs'
 import { esIndistinguible } from './cobranzas-duplicado.mjs'
@@ -93,6 +94,14 @@ export function bloqueLiquidez(h) {
  * daba exactamente el flujo neto del mes ($61.695.516 medidos el 03/08 contra la fila 53 del cuadro,
  * el mismo número). El control no medía un descuadre: medía el mes, y gritaba en rojo todos los días.
  *
+ * Y EL MISMO ERROR VOLVIÓ POR LA OTRA PUNTA (06/08). El ancla del Mensual cambió: el inicio del mes
+ * anclado ya no ES el total de CAJA — se RECONSTRUYE como total − REAL transcurrido del mes. Comparar
+ * total contra inicio volvió a medir el mes ($42.247.935 el 06/08, exactamente el REAL de agosto).
+ * La identidad vigente es: total − inicio − REAL del mes hasta el corte = 0, con el REAL salido del
+ * libro por `terminoLibro` — la MISMA ventana que usa el ancla (mes del corte, hasta el corte
+ * inclusive). Si el ancla y el control citaran dos ventanas distintas, el control mediría la
+ * diferencia entre ventanas, no un descuadre.
+ *
  * LO QUE ESTE CONTROL PUEDE Y NO PUEDE DECIR: detecta que alguien tocó a mano uno de los dos lados. NO
  * detecta un error de carga, porque el cash flow toma su saldo inicial de CAJA — es un control
  * validado contra su propia fuente y por eso está declarado como tal. El control de verdad va contra
@@ -107,8 +116,11 @@ export function bloqueConciliacion(h) {
       ? `=IFERROR(INDEX(${refs.inicio};MATCH(EOMONTH(${DESDE_CAJA.fecha};0);ARRAYFORMULA(EOMONTH(${refs.cab};0));0));"⚠ sin saldo cargado")`
       : '⚠ no encontré la línea de inicio en el Cash Flow Mensual',
     '', ''])
+  const fReal = push(['REAL del mes hasta el corte (el ancla lo descuenta del inicio)', '', '', '',
+    `=${terminoLibro({ desde: `EOMONTH(${DESDE_CAJA.fecha};-1)+1`, hasta: `${DESDE_CAJA.fecha}+1`, estados: ['REAL'] })}`,
+    '', ''])
   const fDif = push(['⇒ Diferencia — tiene que ser CERO', '', '', '',
-    `=IFERROR(E${fDecl}-E${fProy};"")`, '', ''])
+    `=IFERROR(E${fDecl}-E${fProy}-E${fReal};"")`, '', ''])
   return { fDif }
 }
 

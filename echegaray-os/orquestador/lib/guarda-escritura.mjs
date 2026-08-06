@@ -400,6 +400,25 @@ export async function guardarRequests(cliente, fileId, requests) {
   const id2tab = new Map(meta.map((m) => [m.sheetId, m.title]))
   const dims = new Map(meta.map((m) => [m.sheetId, { rows: m.rows, cols: m.cols }]))
   const clases = (requests || []).map((r) => clasificarRequest(r, dims))
+  // ═══ deleteEmbeddedObject SE ATRIBUYE MIRANDO EL ARCHIVO (06/08) ═══
+  //
+  // El request sólo trae `objectId`, así que el clasificador lo marca "le pega a todas" y con
+  // CUALQUIER pestaña candada se frena. Con "Cheques Recibidos" candada permanente, el borrado de
+  // gráficos de CAJA nunca entró: cada corrida "borraba" los viejos, el filtro los descartaba en
+  // silencio, el addChart sí pasaba — y la pestaña acumuló VEINTE gráficos superpuestos. El dueño
+  // del objeto es un dato del archivo: se consulta getCharts y se atribuye a SU pestaña. Un objeto
+  // que no aparece (una imagen, un id muerto) queda inatribuible: fail-closed, como estaba.
+  if ((requests || []).some((r) => r?.deleteEmbeddedObject?.objectId !== undefined) && cliente.getCharts) {
+    const hojas = await cliente.getCharts(fileId).catch(() => null)
+    if (hojas) {
+      const duenoDeObjeto = new Map()
+      for (const h of hojas) for (const ch of h.charts || []) duenoDeObjeto.set(ch.chartId, h.sheetId)
+      requests.forEach((r, i) => {
+        const id = r?.deleteEmbeddedObject?.objectId
+        if (id !== undefined && duenoDeObjeto.has(id)) clases[i] = { ...clases[i], sheetIds: [duenoDeObjeto.get(id)], todas: false }
+      })
+    }
+  }
   const destructivos = clases.filter((c) => c.clase === CLASE.DESTRUCTIVO)
   const hayTodas = destructivos.some((c) => c.todas)
   const atribuidas = new Set()
