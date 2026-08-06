@@ -75,7 +75,9 @@ async function extraerDeLasFuentes(google, corte) {
     leer('Compras!A1:AN'), leer('Cobranzas!A1:BB'),
     leer("'Cheques Emitidos'!A1:M"), leer('_BANCO_RAW!A1:F'),
     leer("'Tarjeta de Credito'!A1:M"), leer('_CHEQUES_RAW!A1:L'),
-    leer(`'${CALENDARIO_IMPUESTOS.pestaña}'!A1:N60`),
+    // ABIERTO también (06/08): el rediseño llevó los rótulos del calendario a las filas 55/65 y el
+    // tope 60 dejó el IIBB afuera — la bomba que este mismo comentario describe, en la línea de abajo.
+    leer(`'${CALENDARIO_IMPUESTOS.pestaña}'!A1:N`),
   ])
   // LA NÓMINA VIVE EN RANGOS CON NOMBRE, y por eso se lee por nombre: el rediseño del 23/07 movió las
   // quincenas de la fila 3 a la 41 y toda suma anclada a la fila habría seguido devolviendo un número

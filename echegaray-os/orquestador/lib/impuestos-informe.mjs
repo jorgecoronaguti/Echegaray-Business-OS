@@ -18,7 +18,7 @@ export function informarProyeccion(proy) {
   }
   const alic = proy.alicuotaVigente ?? 0.21
   const money = (n) => Math.round(n).toLocaleString('es-AR')
-  console.log(`\n  ══ PROYECCIÓN DE IVA — lo que se va a escribir en "${PESTAÑA}" ══`)
+  console.log(`\n  ══ PROYECCIÓN DE IVA — lo que se va a escribir en "Impuestos y Financieros" ══`)
   console.log(`  ancla: ${MES[proy.ultimoMesConDato - 1]} con $${money(proy.libreDisp ?? 0)} de libre disponibilidad`)
   console.log(`  alícuota: ${alic}${proy.alicuotaVigente === null ? ' (la celda todavía no existe: se siembra)' : ` (rango ${RANGO_ALICUOTA_IVA})`}`
     + ` · el IVA se extrae del bruto con a/(1+a) = ${(alic / (1 + alic)).toFixed(9)}`)

@@ -105,13 +105,13 @@ export function filasDeLaPosicion({ cal, base, hoy, refs, acuerdo, tarjeta }) {
   const prox = proximoVencimiento(conCelda)
 
   F.push([`LA POSICIÓN AL ${ddmm(hoy)}`, 'Monto'])
-  F.push([rotuloTotal('IMPUESTOS A FAVOR — plata inmovilizada en el fisco'), `=${refs.saldoIva}+${refs.saldoIibb}`])
-  F.push([subItem('saldo a favor de IVA (libre disponibilidad, F.2051)'), `=${refs.saldoIva}`])
-  F.push([subItem('saldo a favor de IIBB (DDJJ de Rentas)'), `=${refs.saldoIibb}`])
-  F.push([rotuloTotal('DEUDA FISCAL-FINANCIERA PENDIENTE — sólo lo que falta pagar'),
+  F.push([rotuloTotal('IMPUESTOS A FAVOR'), `=${refs.saldoIva}+${refs.saldoIibb}`])
+  F.push([subItem('saldo a favor de IVA · F.2051'), `=${refs.saldoIva}`])
+  F.push([subItem('saldo a favor de IIBB · DGR'), `=${refs.saldoIibb}`])
+  F.push([rotuloTotal('DEUDA PENDIENTE · FISCAL Y FINANCIERA'),
     formulaDeudaPendiente(refs.prendPend, refs.planesPend)])
-  F.push([subItem('prendario Ford XLS — cuotas que no vencieron'), `=${refs.prendPend}`])
-  F.push([subItem('planes de pago F931 — cuotas que no vencieron'), `=${refs.planesPend}`])
+  F.push([subItem('prendario · cuotas por vencer'), `=${refs.prendPend}`])
+  F.push([subItem('planes F931 · cuotas por vencer'), `=${refs.planesPend}`])
   F.push([prox
     ? rotuloTotal(`PRÓXIMO VENCIMIENTO · ${ddmm(prox.fecha)} · ${prox.concepto}`)
     : rotuloTotal('PRÓXIMO VENCIMIENTO · no hay ninguno en la ventana'),
@@ -148,12 +148,12 @@ export function filasDeLaPosicion({ cal, base, hoy, refs, acuerdo, tarjeta }) {
   // de IVA o IIBB ya cumplido con importe en el cuadro es algo para ir a mirar al extracto, no una
   // deuda confirmada. El rótulo lo dice, porque un número de riesgo que se lee como certeza es peor
   // que no tenerlo.
-  F.push([`⚠ RIESGO · IVA/IIBB con vencimiento cumplido al ${ddmm(hoy)} — verificar contra el extracto`,
+  F.push([`⚠ vencido s/verificar al ${ddmm(hoy)} · ver extracto`,
     formulaVencidoImpago(conCelda)])
   // SIN FECHA CIERTA: el impuesto al cheque lo debita el banco todos los días (no vence, se va), y el
   // Anticipo de Ganancias no tiene registro desde mayo. Los dos se pagan y ninguno entra al
   // calendario, así que aparecen como riesgo declarado y no como proyección con fecha.
-  F.push(['⚠ RIESGO · sin fecha cierta (Ley 25.413 + Anticipo de Ganancias, próximos 3 meses)',
+  F.push(['⚠ sin fecha cierta · 25.413 + Ant. Ganancias (90d)',
     refs.otrosSinFecha ?? '=0'])
   F.push([])
 

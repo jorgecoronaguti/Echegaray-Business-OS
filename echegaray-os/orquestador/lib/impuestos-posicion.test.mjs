@@ -78,10 +78,11 @@ test('el hero dice DEUDA PENDIENTE, y sólo lo que falta pagar', () => {
   // El defecto B: decía $31.895.983 (las doce cuotas del año, siete ya pagadas) donde lo pendiente
   // son $14.372.450. El rótulo tiene que decir de qué habla, o el número se lee como el total.
   const hero = posicion().slice(0, 9)
-  assert.match(String(hero[4][0]), /PENDIENTE/)
-  assert.match(String(hero[4][0]), /sólo lo que falta pagar/)
-  assert.match(String(hero[5][0]), /cuotas que no vencieron/)
-  assert.match(String(hero[6][0]), /cuotas que no vencieron/)
+  // Rótulos CORTOS (auditor de pantalla, 06/08): PENDIENTE es la palabra que separa deuda real de
+  // acumulado histórico; "por vencer" es la condición en tres palabras.
+  assert.match(String(hero[4][0]), /DEUDA PENDIENTE/)
+  assert.match(String(hero[5][0]), /cuotas por vencer/)
+  assert.match(String(hero[6][0]), /cuotas por vencer/)
 })
 
 test('el próximo vencimiento lleva su fecha y su concepto EN el rótulo', () => {
@@ -103,9 +104,9 @@ test('una fecha SUPUESTA se marca en la columna A, no en una nota que nadie ve',
 })
 
 test('el riesgo se declara como PREGUNTA: la pestaña no sabe si algo se pagó', () => {
-  const f = posicion().find((x) => /RIESGO · IVA\/IIBB/.test(String(x[0] ?? '')))
+  const f = posicion().find((x) => /vencido s\/verificar/.test(String(x[0] ?? '')))
   assert.ok(f, 'tiene que existir el renglón de riesgo')
-  assert.match(String(f[0]), /verificar contra el extracto/)
+  assert.match(String(f[0]), /ver extracto/, 'la duda queda escrita: la pestaña no sabe si algo se pagó')
 })
 
 test('las tres ventanas son acumuladas y ninguna incluye lo vencido', () => {
@@ -117,7 +118,7 @@ test('las tres ventanas son acumuladas y ninguna incluye lo vencido', () => {
   assert.ok(celdas(v60).length <= celdas(v90).length)
   for (const c of celdas(v30)) assert.ok(celdas(v90).includes(c), 'lo de 30 días está adentro de lo de 90')
   // El renglón de vencidos NO comparte ni una celda con las ventanas.
-  const riesgo = filas.find((x) => /RIESGO · IVA\/IIBB/.test(String(x[0] ?? '')))
+  const riesgo = filas.find((x) => /vencido s\/verificar/.test(String(x[0] ?? '')))
   for (const c of celdas(String(riesgo[1]))) assert.ok(!celdas(v90).includes(c), 'lo vencido no es proyección')
 })
 
