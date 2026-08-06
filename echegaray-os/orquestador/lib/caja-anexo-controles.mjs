@@ -67,8 +67,12 @@ export function bloqueLiquidez(h) {
     + `IF(${DESDE_CAJA.total}<${DESDE_CAJA.minima};"⚠ SÍ — faltan "&TEXT(${DESDE_CAJA.minima}-${DESDE_CAJA.total};"$#,##0");`
     + `"no — hay "&TEXT(${DESDE_CAJA.total}-${DESDE_CAJA.minima};"$#,##0")&" de sobra"))`])
 
-  const rangoCierre = refs.cierre ? `'Cash Flow Mensual'!$B$${refs.cierre}:$M$${refs.cierre}` : null
-  const rangoMes = refs.cab ? `'Cash Flow Mensual'!$B$${refs.cab}:$M$${refs.cab}` : null
+  // POR RANGO CON NOMBRE, NO POR FILA (05/08): el Mensual rediseñado ya no tiene la fila B..M de
+  // cierres — publica CF_SALDO_CIERRE / CF_MESES y estos controles los consumen por nombre. Un nombre
+  // ausente deja null y el aviso ruidoso de abajo; una fila contada a mano habría apuntado a otra
+  // celda del layout nuevo sin un solo error.
+  const rangoCierre = refs.cierre ?? null
+  const rangoMes = refs.cab ?? null
   // LOS MESES SIN CIERRE NO CUENTAN: el cuadro deja en blanco los anteriores al saldo declarado y una
   // celda vacía vale 0 en una comparación. Sin el filtro `<>""`, la alerta encontraba "enero 2026" —
   // un mes que ya pasó, o sea el aviso más inútil posible.
@@ -100,7 +104,7 @@ export function bloqueConciliacion(h) {
   const fDecl = push(['Disponibilidad declarada en CAJA', '', '', '', `=${DESDE_CAJA.total}`, '', ''])
   const fProy = push(['Efectivo al inicio del mes según el Cash Flow Mensual', '', '', '',
     refs.inicio && refs.cab
-      ? `=IFERROR(INDEX('Cash Flow Mensual'!$B$${refs.inicio}:$M$${refs.inicio};MATCH(EOMONTH(${DESDE_CAJA.fecha};0);ARRAYFORMULA(EOMONTH('Cash Flow Mensual'!$B$${refs.cab}:$M$${refs.cab};0));0));"⚠ sin saldo cargado")`
+      ? `=IFERROR(INDEX(${refs.inicio};MATCH(EOMONTH(${DESDE_CAJA.fecha};0);ARRAYFORMULA(EOMONTH(${refs.cab};0));0));"⚠ sin saldo cargado")`
       : '⚠ no encontré la línea de inicio en el Cash Flow Mensual',
     '', ''])
   const fDif = push(['⇒ Diferencia — tiene que ser CERO', '', '', '',
