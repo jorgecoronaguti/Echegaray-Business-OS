@@ -141,18 +141,23 @@ export function tarjetas(ref) {
       // HOY, con $45,0M en Balanz —rescatables en un día hábil— mirando desde la tarjeta de al lado
       // y sin contarle ni un peso de las cobranzas del mes.
       //
-      // La definición vigente es la de AVAILABLE LIQUIDITY de un panel de tesorería (JPM/Kyriba):
-      // liquidez total (operativa + invertida) menos comprometido del mes — lo que se puede
-      // comprometer HOY sin depender de que ningún cliente pague. Las cobranzas proyectadas siguen
-      // afuera a propósito: una proyección no es plata, y su lugar es CAJA PROYECTADA.
+      // ═══ Y VOLVIÓ A CAMBIAR EL MISMO DÍA — TERCERA DIRECTIVA, LA QUE MANDA ═══
       //
-      // El escenario estricto NO desaparece: baja al contexto como "sin rescatar Balanz", que es lo
-      // que siempre fue — un escenario de estrés, no el titular.
+      // La versión "available liquidity" (disponible + Balanz − comprometido) duró horas. El dueño,
+      // textual: "una cosa es el saldo en los bancos, otra cosa es en balanz q es donde invertimos,
+      // y tener en cuenta q se vienen pagos de trabajado en primera quincena de obreros". El titular
+      // NO mezcla lo invertido con los bancos: LIBRE es lo que queda de los BANCOS Y EFECTIVO después
+      // de cubrir lo que falta pagar del mes (la quincena de obreros incluida — entra por el motor).
+      // Puede dar NEGATIVO, y eso es información, no un defecto: dice que el mes no se cubre sin
+      // rescatar Balanz o sin cobrar. El rescate es el escenario del contexto, no el titular.
+      //
+      // Las cobranzas proyectadas siguen afuera a propósito: una proyección no es plata, y su lugar
+      // es CAJA PROYECTADA.
       //
       // Referencia a las TRES tarjetas vecinas, no una cuarta aritmética: si una cambia, ésta sigue.
       // Las cifras viven en la FILA 3: A (disponible), C (comprometida), G (invertido).
-      valor: '=N($A$3)+N($G$3)-N($C$3)',
-      contexto: '="sin rescatar Balanz: "&TEXT((N($A$3)-N($C$3))/1000000;"$#,##0.0")&"M"',
+      valor: '=N($A$3)-N($C$3)',
+      contexto: '="rescatando Balanz: "&TEXT((N($A$3)+N($G$3)-N($C$3))/1000000;"$#,##0.0")&"M"',
       especie: 'plata',
     },
     {
