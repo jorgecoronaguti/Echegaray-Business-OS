@@ -70,6 +70,34 @@ function columnasObligatorias(encabezado, nombres, fuente) {
 }
 
 /**
+ * NÚCLEO PURO: lo que una fila de Compras TODAVÍA DEBE.
+ *
+ * Devuelve el total salvo que la fila esté abierta y con un pago parcial encima, en cuyo caso devuelve
+ * el saldo. Los tres guardas no son paranoia, cada uno tapa un caso real de la planilla:
+ *
+ *   · `pagado` — la fila cerrada carga el instrumento por el total; su "Monto Pagado" es el total.
+ *   · `importe > 0` — una nota de crédito viene en negativo y no tiene pagos parciales que restar.
+ *   · `montoPagado < importe` — si la planilla dice "no está pagada" y a la vez "pagué todo" (hoy: la
+ *     fila 457, FCL Junio, $800.000 con Estado=Proyectado), las dos columnas se contradicen. Devolver
+ *     cero borraría el movimiento del libro entero por una celda mal cargada, y fabricar un cero es
+ *     peor que arrastrar el total: se avisa y manda el total, que es la lectura conservadora.
+ *
+ * @param {{importe:number, pagado:boolean, montoPagado:number|null}} f
+ * @param {(m:string)=>void} aviso
+ * @returns {number}
+ */
+export function pendienteDeCompra({ importe, pagado, montoPagado }, aviso = () => {}) {
+  const ya = num(montoPagado) ?? 0
+  if (pagado || !(importe > 0) || !(ya > 0)) return importe
+  if (ya >= importe) {
+    aviso(`"Monto Pagado" ${ya} cubre o supera el Total ${importe} pero el Estado no es "Pagado". `
+      + 'Va el total: la planilla se contradice y el libro no inventa un saldo cero.')
+    return importe
+  }
+  return importe - ya
+}
+
+/**
  * COMPRAS → movimientos de egreso.
  *
  * El estado sale de "Estado pago": Pagado = REAL (con su fecha real de pago), lo demás = PROYECTADO
@@ -88,10 +116,24 @@ function columnasObligatorias(encabezado, nombres, fuente) {
  * NO SE LE PONE `numeroCheque` a propósito: la clave de esta fila es (CUIT, comprobante, signo) y la
  * del cheque sin factura es (instrumento, número, signo). Son universos disjuntos y no colisionan.
  *
+ * ═══ UNA COMPRA A MEDIO PAGAR DEBE POR EL SALDO, NO POR EL TOTAL (06/08) ═══
+ *
+ * Compras lleva "Total o Parcial", "Monto Pagado" y "Monto Parcial 1" (el saldo, en negativo). El
+ * extractor leía sólo "Total", así que una factura de $2.300.000 con $1.000.000 ya entregado entraba
+ * al libro por los $2.300.000 enteros — y de ahí a CAJA COMPROMETIDA, que decía que había que cubrir
+ * plata que ya había salido. Medido en vivo: dos filas abiertas (Gerson Castro, PEDRO TELLO) inflaban
+ * la tarjeta en $1.300.000. La parte pagada no aparece por ningún lado como REAL, así que no es que
+ * estuviera contada dos veces: estaba contada UNA vez y del lado equivocado.
+ *
+ * SÓLO SOBRE LA FILA ABIERTA. Si la fila está "Pagado", el instrumento se entregó por el total y el
+ * saldo es cero por construcción: restar ahí borraría el movimiento y volvería a abrir el agujero de
+ * la compra pagada con cheque que todavía no debitó (ver el bloque de arriba).
+ *
  * @param {Array<Array>} filas todas las filas de Compras (fila 1 = título), UNFORMATTED_VALUE
  * @param {number} corte serial de hoy/corte para vencidos
+ * @param {{aviso?:(m:string)=>void}} [opciones] `aviso` recibe las contradicciones de la planilla
  */
-export function deCompras(filas = [], corte = null) {
+export function deCompras(filas = [], corte = null, { aviso = (m) => console.warn(m) } = {}) {
   const enc = filas[2] ?? [] // fila 3: el encabezado real (1 título, 2 agrupador)
   // Los nombres son los del encabezado REAL de la fila 3, verificados contra el archivo el 05/08.
   // "Rubro de caja" y "Orden de pago (OS)" aparecen DOS veces en el encabezado: resolverColumnas se
@@ -101,7 +143,7 @@ export function deCompras(filas = [], corte = null) {
     // 'Estado' (columna X), NO 'Estado pago' (Z). La Z es el SEMÁFORO derivado —"✅ Pagado",
     // "🟡 Por vencer"— y /^pagado$/ no matchea un emoji adelante: TODA compra pagada quedaba
     // PROYECTADO. La X es la columna que escribe el cargador con el contrato Pagado/Pendiente.
-    importe: 'Total', estado: 'Estado', tipoPago: 'Tipo pago',
+    importe: 'Total', estado: 'Estado', tipoPago: 'Tipo pago', montoPagado: 'Monto Pagado',
     rubro: 'Rubro de caja', fechaCaja: 'Fecha de caja', obra: 'Detalles / Obra',
   }, 'Compras')
   const out = []
@@ -138,7 +180,8 @@ export function deCompras(filas = [], corte = null) {
       // Una NOTA DE CRÉDITO viene con importe negativo: es plata que VUELVE. El signo del movimiento
       // se invierte y la magnitud queda positiva — la clave de dedup ya distingue nota de factura.
       ...(importe < 0 ? { signo: ENTRA } : {}),
-      importe: Math.abs(importe),
+      importe: Math.abs(pendienteDeCompra({ importe, pagado, montoPagado: num(f[c.montoPagado]) },
+        (m) => aviso(`libro-extractores(Compras) fila ${i + 1}: ${m}`))),
       concepto: txt(f[c.proveedor]),
       contraparte: txt(f[c.proveedor]),
       cuit: txt(f[c.cuit]),

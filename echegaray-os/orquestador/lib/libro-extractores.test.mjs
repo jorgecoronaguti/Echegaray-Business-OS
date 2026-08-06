@@ -15,8 +15,10 @@ import { serialDe, isoDeSerial } from './libro-extractores-fechas.mjs'
 // 'Estado' es la columna INPUT (X, contrato del cargador: Pagado/Pendiente); 'Estado pago' es el
 // SEMÁFORO derivado ("✅ Pagado" / "🟡 Por vencer"). El extractor tiene que decidir por la primera:
 // contra el semáforo, /pagado/ no matcheaba nunca y toda compra pagada quedaba PROYECTADO.
+// 'Monto Pagado' va ÚLTIMA a propósito: las filas de abajo tienen 9 celdas y la dejan vacía, que es
+// el caso normal (nada pagado a cuenta). Las pruebas del saldo parcial la completan explícitamente.
 const ENC_COMPRAS = ['Proveedor', 'CUIT (OS)', 'N° Comprobante', 'Total', 'Estado',
-  'Tipo pago', 'Rubro de caja', 'Fecha de caja', 'Detalles / Obra', 'Estado pago']
+  'Tipo pago', 'Rubro de caja', 'Fecha de caja', 'Detalles / Obra', 'Estado pago', 'Monto Pagado']
 const compras = (extra = []) => [[], [], ENC_COMPRAS,
   ['Mariana SA', '30-71037035-0', '0002-00000683', 100000, 'Pagado', 'Transferencia', 'Materiales Civil', 46000, 'ARCOR'],
   ['Nota SA', '30-71037035-0', '0002-00000683', -21359, 'Pagado', 'Transferencia', 'Materiales Civil', 46001, ''],
@@ -64,6 +66,47 @@ test('COMPRAS: "Pagado" con echeq y fecha POSTERIOR al corte es COMPROMETIDO, no
   assert.equal(ms.find((m) => m.concepto === 'Barcelo').estado, 'REAL')
   // El cheque de la fila base tiene fecha 46002, muy anterior al corte: ya está en el extracto.
   assert.equal(ms.find((m) => m.concepto === 'Cheq SA').estado, 'REAL')
+})
+
+test('COMPRAS: una fila con pago PARCIAL entra por el SALDO, no por el total', () => {
+  // EL DEFECTO MEDIDO EN VIVO (06/08) contra el archivo real. Dos filas abiertas de Compras con plata
+  // ya entregada a cuenta —Gerson Castro $2.300.000 con $1.000.000 pagado, PEDRO TELLO $524.000 con
+  // $300.000 pagado— entraban al libro por su TOTAL. CAJA COMPROMETIDA las sumaba enteras y decía que
+  // había que cubrir $1.300.000 que ya habían salido de la caja. La parte pagada no está en el libro
+  // como REAL por ningún lado, así que no era doble conteo: era el número equivocado, una sola vez.
+  const ms = deCompras(compras([
+    ['Gerson Castro', '', '', 2300000, 'Pendiente', 'Efectivo', 'Materiales Civil', 46257, 'MESSINA', '', 1000000],
+    ['PEDRO TELLO', '', '', 524000, 'Pendiente', 'Efectivo', 'Materiales Civil', 46247, 'LA ESTRELLA', '', 300000],
+  ]), 46240)
+  assert.equal(ms.find((m) => m.concepto === 'Gerson Castro').importe, 1300000)
+  assert.equal(ms.find((m) => m.concepto === 'PEDRO TELLO').importe, 224000)
+  // Y la fila SIN pago parcial no se mueve un peso: el saldo sólo aplica donde hay plata entregada.
+  assert.equal(ms.find((m) => m.concepto === 'Prov SRL').importe, 70000)
+})
+
+test('COMPRAS: una fila "Pagado" NO se descuenta — ahí el instrumento vale por el total', () => {
+  // El guarda que impide que el arreglo del saldo parcial reabra el agujero del cheque diferido: una
+  // fila "Pagado" trae "Monto Pagado" = Total por construcción. Sin el guarda, el echeq de FEMENIA
+  // por $1.839.200 que todavía no debitó daría importe 0 y desaparecería de CAJA COMPROMETIDA.
+  const ms = deCompras(compras([
+    ['FEMENIA', '30-11111111-1', '00002-00001071', 1839200, 'Pagado', 'Echeq', 'Materiales Civil', 46264, '', '', 1839200],
+  ]), 46240)
+  const echeq = ms.find((m) => m.concepto === 'FEMENIA')
+  assert.equal(echeq.estado, 'COMPROMETIDO')
+  assert.equal(echeq.importe, 1839200, 'el cheque entregado compromete el total, no un saldo cero')
+})
+
+test('COMPRAS: "Monto Pagado" ≥ Total sin estado Pagado avisa y manda el TOTAL', () => {
+  // El caso real de la fila 457 (FCL Junio): $800.000 de Total, $800.000 de "Monto Pagado" y
+  // Estado="Proyectado". Las dos columnas se contradicen. Devolver cero borraría el movimiento del
+  // libro por una celda mal cargada; el libro no fabrica un saldo, avisa y arrastra el total.
+  const avisos = []
+  const ms = deCompras(compras([
+    ['FCL', '', '', 800000, 'Proyectado', 'Transferencia', 'Nómina · Gremiales', 46213, '', '', 800000],
+  ]), 46240, { aviso: (m) => avisos.push(m) })
+  assert.equal(ms.find((m) => m.concepto === 'FCL').importe, 800000)
+  assert.equal(avisos.length, 1, avisos.join(' / '))
+  assert.match(avisos[0], /Monto Pagado/)
 })
 
 test('COMPRAS: pagado=REAL, pendiente vencido=VENCIDO', () => {
